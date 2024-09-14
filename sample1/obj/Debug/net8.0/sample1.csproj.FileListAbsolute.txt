@@ -1,0 +1,14 @@
+C:\repos\scripts\sample1\bin\Debug\net8.0\sample1.exe
+C:\repos\scripts\sample1\bin\Debug\net8.0\sample1.deps.json
+C:\repos\scripts\sample1\bin\Debug\net8.0\sample1.runtimeconfig.json
+C:\repos\scripts\sample1\bin\Debug\net8.0\sample1.dll
+C:\repos\scripts\sample1\bin\Debug\net8.0\sample1.pdb
+C:\repos\scripts\sample1\obj\Debug\net8.0\sample1.GeneratedMSBuildEditorConfig.editorconfig
+C:\repos\scripts\sample1\obj\Debug\net8.0\sample1.AssemblyInfoInputs.cache
+C:\repos\scripts\sample1\obj\Debug\net8.0\sample1.AssemblyInfo.cs
+C:\repos\scripts\sample1\obj\Debug\net8.0\sample1.csproj.CoreCompileInputs.cache
+C:\repos\scripts\sample1\obj\Debug\net8.0\sample1.dll
+C:\repos\scripts\sample1\obj\Debug\net8.0\refint\sample1.dll
+C:\repos\scripts\sample1\obj\Debug\net8.0\sample1.pdb
+C:\repos\scripts\sample1\obj\Debug\net8.0\sample1.genruntimeconfig.cache
+C:\repos\scripts\sample1\obj\Debug\net8.0\ref\sample1.dll

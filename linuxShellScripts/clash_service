@@ -1,0 +1,5 @@
+[Unit]
+Description=clash-core
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/clash-core/clash -f /usr/local/bin/clash-core/config.yaml

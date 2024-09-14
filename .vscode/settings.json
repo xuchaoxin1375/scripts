@@ -1,0 +1,16 @@
+{
+    "eggHelper.serverPort": 35684,
+    "files.associations": {
+        "*.ino": "cpp",
+        "*.cjson": "jsonc",
+        "*.wxss": "css",
+        "*.wxs": "javascript",
+        ".js": "html",
+        ".vue": "html",
+        "*.html": "html",
+        "*.yrf": "json",
+        "*.rpx": "xml",
+        "*.stl": "json",
+        "iostream": "cpp"
+    }
+}

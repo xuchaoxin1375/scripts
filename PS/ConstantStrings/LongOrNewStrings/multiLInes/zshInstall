@@ -1,0 +1,5 @@
+# this is a source replace for installing `ohMyZsh`;you can replace the original content like below:
+
+REPO=${REPO:-mirrors/oh-my-zsh}
+REMOTE=${REMOTE:-https://gitee.com/${REPO}.git}
+

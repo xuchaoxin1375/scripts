@@ -1,0 +1,9 @@
+
+# 同时忽略log,logs目录
+**/log/
+**/logs/
+*.log
+*.tmp
+**/*.db
+#python的缓存文件
+**/.mypy_cache
