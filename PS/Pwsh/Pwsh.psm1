@@ -604,6 +604,46 @@ function Get-Size
     .EXAMPLE
     "C:\Users\Username\Downloads", "C:\Program Files" | Get-Size -Unit MB
     计算多个路径的大小，并以 MB 为单位显示结果。
+    .EXAMPLE
+    指定显示单位为KB ,显示5位小数
+    PS> Get-Size -PrecisionFormatTable -Precision 5 -Unit KB
+
+    Mode  BaseName Size      Unit
+    ----  -------- ----      ----
+    da--- PS       563.93848 KB
+    .EXAMPLE
+    保留3位小数(但是显示位数保持默认的2位),使用管道符`|fl`来查看三位小数
+    PS> Get-Size -Precision 3 -Unit KB
+
+    Mode  BaseName   Size Unit
+    ----  --------   ---- ----
+    da--- PS       564.14 KB
+    .EXAMPLE
+    PS> Get-Size -Precision 3 -Unit KB|fl
+
+    Mode     : da---
+    BaseName : PS
+    Size     : 564.408
+    Unit     : KB
+    
+    .EXAMPLE
+    指定显示精度为4为小数(由于这里恰好第3,4位小数为0,所以没有显示出来,指定更多位数,可以显示)
+    PS🌙[BAT:79%][MEM:44.52% (14.12/31.71)GB][0:03:01]
+    # [cxxu@CXXUCOLORFUL][<W:192.168.1.178>][C:\repos\scripts\PS]
+    PS> Get-Size -PrecisionFormatTable -Precision 4
+
+    Mode  BaseName Size Unit
+    ----  -------- ---- ----
+    da--- PS       0.55 MB
+
+    指定显示精度为5为小数
+    PS🌙[BAT:79%][MEM:44.55% (14.13/31.71)GB][0:03:05]
+    # [cxxu@CXXUCOLORFUL][<W:192.168.1.178>][C:\repos\scripts\PS]
+    PS> Get-Size -PrecisionFormatTable -Precision 5
+
+    Mode  BaseName Size    Unit
+    ----  -------- ----    ----
+    da--- PS       0.55002 MB
 
     .INPUTS
     System.String[]
@@ -617,14 +657,18 @@ function Get-Size
 
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $true, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
-        [string[]]$Path,
+        [Parameter( ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
+        [string[]]$Path = '.',
         # [switch]$ItemType,
         [Parameter(Mandatory = $false)]
         [ValidateSet('B', 'KB', 'MB', 'GB', 'TB')]
         [string]$Unit = 'MB',
-        $Precision = 3,
-        [switch]$Detail
+
+        #文件大小精度
+        $Precision = 2,
+        [switch]$PrecisionFormatTable,
+        [switch]$Detail,
+        [switch]$FormatTable
     )
     
     begin
@@ -677,28 +721,37 @@ function Get-Size
                 Write-Verbose "`$sizeInSpecifiedUnit: $sizeInSpecifiedUnit"
                 $Size = [math]::Round($sizeInSpecifiedUnit, [int]$Precision)
                 Write-Verbose "`$size: $Size"
-                
+                if ($PrecisionFormatTable)
+                {
+                    $size = "$size"
+                }
                 $res = [PSCustomObject]@{
                     Mode     = $Mode
-                    BaseName=$baseName
-                    # Size = $Size #默认打印数字的时候只保留小数点后2位
-                    size     = "$size" #这里转换为字符串打印
+                    BaseName = $baseName
+                    Size     = $Size #默认打印数字的时候只保留小数点后2位
                     Unit     = $Unit
                 }
-                $verbo=[pscustomobject]@{
+                $verbo = [pscustomobject]@{
                     Itemtype = $itemType
                     Path     = $item
                     
                 }
-                if($Detail){
+                if ($Detail)
+                {
 
                     # $res | Add-Member -MemberType NoteProperty -Name FullPath -Value (Convert-Path $item)
-                    foreach($p in $verbo.PsObject.Properties){
+                    foreach ($p in $verbo.PsObject.Properties)
+                    {
 
                         $res | Add-Member -MemberType NoteProperty -Name $p.Name -Value $p.value
                     }
                 }
 
+                if ($FormatTable)
+                {
+
+                    $res = $res | Format-Table #数据表格化显示
+                }
                 return $res
             }
             else
@@ -710,13 +763,42 @@ function Get-Size
 }
 function Get-ItemSizeSorted
 {
+    <# 
+    .SYNOPSIS
+    对指定目录以文件大小从大到小排序展示其中的子目录和文件列表
+    .EXAMPLE
+    PS🌙[BAT:79%][MEM:44.53% (14.12/31.71)GB][0:00:19]
+    # [cxxu@CXXUCOLORFUL][<W:192.168.1.178>][C:\repos\scripts\PS]
+    PS> get-ItemSizeSorted -Unit KB
+
+    Mode  BaseName                          Size Unit
+    ----  --------                          ---- ----
+    da--- Deploy                           82.45 KB
+    da--- Basic                            78.55 KB
+    d---- Pwsh                             49.91 KB
+    d---- TaskSchdPwsh                     40.06 KB
+    #>
     param (
-        $Path = '.'
+        $Path = '.',
+        [Parameter(Mandatory = $false)]
+        [ValidateSet('B', 'KB', 'MB', 'GB', 'TB')]
+        [string]$Unit = 'MB',
+        #文件大小精度
+        $Precision = 3,
+        [switch]$Detail,
+        [switch]$PrecisionFormatTable,
+        [switch]$FormatTable
     )
     $res = Get-ChildItem $Path | ForEach-Object {
-        $_ | Get-Size
+        $_ | Get-Size -Unit $Unit -Precision $Precision -Detail:$Detail `
+            -PrecisionFormatTable:$PrecisionFormatTable # -FormatTable:$FormatTable 
     }
     $sorted = $res | Sort-Object -Property size -Descending
+    if ($FormatTable)
+    {
+
+        $sorted = $sorted | Format-Table
+    }
     return $sorted
 }
 
