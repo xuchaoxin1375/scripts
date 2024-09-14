@@ -6,4 +6,6 @@
 *.tmp
 **/*.db
 #python的缓存文件
+*.pyc
 **/.mypy_cache
+**/__pycache__
