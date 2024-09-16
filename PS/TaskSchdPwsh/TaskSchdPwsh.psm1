@@ -562,12 +562,16 @@ Reporting timer end at:22:51:50
         
         [parameter(ParameterSetName = 'MinsOnly')]
         $TickMins = @(),
-        # 
+        # 设定闹钟
+        # [parameter(ParameterSetName = 'Alarm')]
+        # $InHour24Format ,
+        # [parameter(ParameterSetName = 'Alarm')]
+        # $InMinute ,
         [parameter(ParameterSetName = 'Alarm')]
-        $InHour24Format ,
+        $AlarmTime,
+        #闹钟精确到秒
         [parameter(ParameterSetName = 'Alarm')]
-        $InMinute ,
-
+        [switch]$AlarmTimeWithSecond,
         #倒计时报时(秒),例如输入4.5*60，表示倒计时4分钟半后倒计时报时(闹钟)
         [parameter(ParameterSetName = 'Timer')]
         $Timer = 0,
@@ -589,8 +593,8 @@ Reporting timer end at:22:51:50
         # 可以自行查找系统安装的TTS引擎,参考Microsoft官方文档
         $DesktopVoice = 'Huihui', #常见的还有Zira(英文引擎)等,Huihui是中文引擎
 
-        # [ValidateSet('Chinese', 'Default')][string]    
-        # $Language = 'Default',
+        [ValidateSet('Chinese', 'Default')][string]    
+        $Language = 'Chinese',
 
         # 等待一分钟，以避免重复报时
         #设置每多秒请求一次报时(不超过60),如果设置为0,表示不启用此参数
@@ -605,12 +609,26 @@ Reporting timer end at:22:51:50
     )
     # function New-TextToSpeech{}
     $PSBoundParameters
-    
+    # 默认要报的消息是时间,(那么仅需要报出时:分(而不报秒))
+    $messageIsTime = $true
     function New-MessageReportInner
     {
+        <# 
+        .SYNOPSIS
+        这里是对外部New-MessageReport的一个简单封装
+        .DESCRIPTION
+        设置了默认的行为,在被调用时自动引用外部函数的相应变量的值,而不需要手动传参,只需要传递必要的参数或者设置相关变量即可
+        .NOTES
+        此内部函数一般不设置参数,直接引用外部参数,如果需要更改,则修改外部参数即可
+        如果不希望影响到外部参数,那么可以考虑设立对应的参数
+        #>
         param (
+            # [switch]$MessageIsTime
+            $message = $message,
+            [switch]$ReadSecond 
         )
-        New-MessageReport -message $message -ReadSecond:$ReadSecond -ToastNotification:$ToastNotification 
+        New-MessageReport -message $message -MessageIsTime:$messageIsTime -ReadSecond:$ReadSecond -ToastNotification:$ToastNotification  
+        # New-TextToSpeech -message $message -DesktopVoice $DesktopVoice 
         
     }
 
@@ -623,7 +641,8 @@ Reporting timer end at:22:51:50
         $currentMinute = (Get-Date).Minute
         $currentSecond = (Get-Date).Second
         
-        $TimeRaw = Get-Time
+        # $TimeRaw = Get-Time
+        $message = Get-Time
         # $Time = Get-Time -SetSecondsToZero
         
         $report = $false
@@ -631,7 +650,7 @@ Reporting timer end at:22:51:50
         # 检查是否要播报当前时间
         if ($Now)
         {
-            New-MessageReportInner
+            New-MessageReportInner 
             return
         }
         elseif ($RepeateInterval -and $PSCmdlet.ParameterSetName -eq 'Repeate' )
@@ -659,7 +678,18 @@ Reporting timer end at:22:51:50
             # 直接倒计时$timer秒即可
             Start-Sleep $Timer
             # $report = $true
-            New-MessageReportInner -message "$Timer seconds  Passed!"
+            $msg_cn = "倒计时${Timer}秒结束"
+            $msg_en = "Countdown ${Timer} seconds end"
+            # $DesktopVoice
+            if ($Language -eq 'Chinese')
+            {
+                $message = $msg_cn
+            }
+            else
+            {
+                $message = $msg_en
+            }
+            New-MessageReportInner -message $message -messageIsTime:$false
 
             Write-Host "Reporting timer end at:$(Get-Time)" -ForegroundColor Red
             # 闹钟报时后直接return(但是会导致Start-ProcessHidden中运行来不及报时就退出了,也就是说后台起一个新进程中如果再使用start-job就要考虑异步任务能否来得及执行(通常来不及),可以考虑用-NoExit不主动退出后台shell)
@@ -667,12 +697,50 @@ Reporting timer end at:22:51:50
         }
         elseif ($PSCmdlet.ParameterSetName -eq 'Alarm')
         {
-            if ($currentHour -eq $InHour24Format -and $currentMinute -eq $InMinute)
+            $AlarmTime = [datetime]$AlarmTime 
+            Write-Host "Reporting alarm at:$AlarmTime" -ForegroundColor Magenta
+            $CurrentDate = Get-Date
+            Write-Verbose "$AlarmTime -eq $CurrentDate"
+            # $delta = ($AlarmTime - $CurrentDate)
+            # $delta = [math]::abs($delta.TotalSeconds)
+            
+            # $shouldReport = $AlarmTime -eq $CurrentDate
+            # if ($delta -lt 1)
+            # {
+            #     $shouldReport = $true
+            # }
+            $shouldReport = $AlarmTime.Hour -eq $CurrentDate.Hour -and $AlarmTime.Minute -eq $CurrentDate.Minute 
+            if ($AlarmTimeWithSecond)
             {
-                # $report = $true
-                New-MessageReportInner
-                return 
+
+                $shouldReport = $shouldReport -and $AlarmTime.Second -eq $CurrentDate.Second
+                $ReadSecond = $true
             }
+            else
+            {
+                $ReadSecond = $false
+            }
+            
+            if ($shouldReport )
+            {
+                Write-Host 'readsecond:'$ReadSecond
+                Write-Host 'Reporting Time...'
+                New-MessageReportInner -ReadSecond:$ReadSecond
+                return
+                # $shouldReport = $false #防止重复报时
+                # Start-Sleep 1
+            }
+            else
+            {
+                Write-Host 'Not Time...'
+            }
+
+            # if ($currentHour -eq $InHour24Format -and $currentMinute -eq $InMinute)
+            # {
+            #     # $report = $true
+            #     New-MessageReportInner
+            #     return 
+            # }
 
         }
         # 下面的情况设置报时标记,统一报时即可
@@ -769,7 +837,8 @@ function New-MessageReport
     [CmdletBinding()]
     param(
         $message = $TimeRaw,
-        $DesktopVoice = $DesktopVoice,
+        $DesktopVoice = 'Huihui',
+        [switch]$MessageIsTime,
         # 默认不读秒,如果设置为$true则读秒
         [switch]$ReadSecond,
         [switch]$ToastNotification,
@@ -777,14 +846,19 @@ function New-MessageReport
         [switch]$ShowWindow
     )
     $PSBoundParameters | Format-Table
-    Write-Host "Reporting time:$message" -ForegroundColor Red
-    if (!$ReadSecond)
+    if ($MessageIsTime)
     {
-        # 移除秒的部分(不读秒)
-        $message = Get-TimeHMFormatStr -TimeStr $message 
-        Write-Verbose "message:$message"
-    }
+        
+        Write-Host "Reporting time:$message" -ForegroundColor Red
+    
+        if (!$ReadSecond)
+        {
+            # 移除秒的部分(不读秒)
+            $message = Get-TimeHMFormatStr -TimeStr $message 
+            Write-Verbose "message:$message"
+        }
 
+    }
     New-TextToSpeech -message $message -DesktopVoice $DesktopVoice   &  #这里使用后台执行运算符&
     # 但是注意,如果外层调用Start-TimeAnnouncer，会造成重复后台,即发生嵌套,会导致内层的后台任无法运行,比如这里的New-TextToSpeech将无法顺利执行
 
