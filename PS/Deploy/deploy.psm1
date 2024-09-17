@@ -1046,6 +1046,63 @@ function Deploy-ScoopApps
     scoop install "$configs\scoop_apps.json"
 }
 
+function Deploy-ScoopStartMenuAppsStarter
+{
+    <# 
+    .SYNOPSIS
+    将Scoop开始菜单 Scoop Apps 目录添加到用户 PATH 环境变量中
+    并且为了能够使得命令行内能够直接启动.lnk，需要配置环境变量PathExt，这个变量一般配置系统别环境变量PATHEXT，需要管理员权限
+    .NOTES
+    # 需要以管理员权限运行此脚本
+    #>
+
+    # 定义 Scoop Apps 目录路径
+    $scoopAppsPathEx = [System.Environment]::ExpandEnvironmentVariables('%USERPROFILE%\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Scoop Apps')
+    $scoopAppsPath = '%USERPROFILE%\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Scoop Apps'
+
+    # 修改用户 PATH 环境变量
+    $userPath = [System.Environment]::GetEnvironmentVariable('PATH', 'User')
+    if ($userPath -notlike "*$scoopAppsPathEx*")
+    {
+        $newUserPath = $scoopAppsPath + ';' + $userPath
+        [System.Environment]::SetEnvironmentVariable('PATH', $newUserPath, 'User')
+        Write-Host '已将 Scoop Apps 目录添加到用户 PATH 环境变量中。'
+    }
+    else
+    {
+        Write-Host 'Scoop Apps 目录已在用户 PATH 环境变量中。'
+    }
+    #刷新当前shell中的Path变量(非永久性,当前shell会话有效)
+    $env:path += $scoopAppsPath
+    # 修改系统 PATHEXT 环境变量
+    $systemPathExt = [System.Environment]::GetEnvironmentVariable('PATHEXT', 'Machine')
+    if ($systemPathExt -notlike '*.LNK*')
+    {
+        $newSystemPathExt = '.LNK' + ';' + $systemPathExt
+        [System.Environment]::SetEnvironmentVariable('PATHEXT', $newSystemPathExt, 'Machine')
+        Write-Host '已将 .LNK 添加到系统 PATHEXT 环境变量中。'
+    }
+    else
+    {
+        Write-Host '.LNK 已在系统 PATHEXT 环境变量中。'
+    }
+    #全局安装的GUI软件添加到Path(系统级Path)
+    $systemPath = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine')
+    $ScoopAppsG = 'C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Scoop Apps'
+    if ($systemPath -notlike "*$ScoopAppsG*")
+    {
+
+        $newSystemPath = $scoopAppsG + ';' + $SystemPath
+        [System.Environment]::SetEnvironmentVariable( 'Path', $newSystemPath, 'Machine')
+        Write-Host '已将 全局Scoop Apps 添加到系统 PATH 环境变量中。'
+    }
+    else
+    {
+        Write-Host '全局Scoop Apps 已在系统 PATH 环境变量中。'
+    }
+    Write-Host '环境变量修改完成。请重新启动命令提示符或 PowerShell 以使更改生效。'
+}
+
 function Deploy-GithubHostsAutoUpdater
 {
     <# 
