@@ -769,6 +769,8 @@ function Get-ItemSizeSorted
     对指定目录以文件大小从大到小排序展示其中的子目录和文件列表
     .DESCRIPTION
     继承大多数Get-Size函数的参数,比如可以指定文件文件大小的单位，大小数值保留的小数位数等(详情请参考Get-Size函数)。
+    .NOTES
+    这里可以考虑使用并行方案进行统计
     .EXAMPLE
     PS🌙[BAT:79%][MEM:44.53% (14.12/31.71)GB][0:00:19]
     # [cxxu@CXXUCOLORFUL][<W:192.168.1.178>][C:\repos\scripts\PS]
@@ -781,6 +783,7 @@ function Get-ItemSizeSorted
     d---- Pwsh                             49.91 KB
     d---- TaskSchdPwsh                     40.06 KB
     #>
+    [CmdletBinding()]
     param (
         $Path = '.',
         [Parameter(Mandatory = $false)]
@@ -792,9 +795,17 @@ function Get-ItemSizeSorted
         [switch]$PrecisionFormatTable,
         [switch]$FormatTable
     )
-    $res = Get-ChildItem $Path | ForEach-Object {
-        $_ | Get-Size -Unit $Unit -Precision $Precision -Detail:$Detail `
+    $res = Get-ChildItem $Path | ForEach-Object -Parallel {
+        $Unit = $using:Unit
+        $Precision = $using:Precision
+        $Detail = $using:Detail
+        $PrecisionFormatTable = $using:PrecisionFormatTable
+        $FormatTable = $using:FormatTable
+        $item = $_ | Get-Size -Unit $Unit -Precision $Precision -Detail:$Detail `
             -PrecisionFormatTable:$PrecisionFormatTable # -FormatTable:$FormatTable 
+            
+        Write-Host $item  -ForegroundColor Red
+        return $item
     }
     $sorted = $res | Sort-Object -Property size -Descending
     if ($FormatTable)
