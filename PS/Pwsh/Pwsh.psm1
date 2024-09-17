@@ -606,7 +606,7 @@ function Get-Size
     计算多个路径的大小，并以 MB 为单位显示结果。
     .EXAMPLE
     指定显示单位为KB ,显示5位小数
-    PS> Get-Size -PrecisionFormatTable -Precision 5 -Unit KB
+    PS> Get-Size -SizeAsString -Precision 5 -Unit KB
 
     Mode  BaseName Size      Unit
     ----  -------- ----      ----
@@ -630,7 +630,7 @@ function Get-Size
     指定显示精度为4为小数(由于这里恰好第3,4位小数为0,所以没有显示出来,指定更多位数,可以显示)
     PS🌙[BAT:79%][MEM:44.52% (14.12/31.71)GB][0:03:01]
     # [cxxu@CXXUCOLORFUL][<W:192.168.1.178>][C:\repos\scripts\PS]
-    PS> Get-Size -PrecisionFormatTable -Precision 4
+    PS> Get-Size -SizeAsString -Precision 4
 
     Mode  BaseName Size Unit
     ----  -------- ---- ----
@@ -639,7 +639,7 @@ function Get-Size
     指定显示精度为5为小数
     PS🌙[BAT:79%][MEM:44.55% (14.13/31.71)GB][0:03:05]
     # [cxxu@CXXUCOLORFUL][<W:192.168.1.178>][C:\repos\scripts\PS]
-    PS> Get-Size -PrecisionFormatTable -Precision 5
+    PS> Get-Size -SizeAsString -Precision 5
 
     Mode  BaseName Size    Unit
     ----  -------- ----    ----
@@ -666,7 +666,7 @@ function Get-Size
 
         #文件大小精度
         $Precision = 2,
-        [switch]$PrecisionFormatTable,
+        [switch]$SizeAsString,
         [switch]$Detail,
         [switch]$FormatTable
     )
@@ -675,7 +675,7 @@ function Get-Size
     {
         if ($VerbosePreference)
         {
-
+            # 即使外部不显示传入-Verbose参数,也会显示Verbose信息
             $PSBoundParameters | Format-Table  
             
         }
@@ -721,7 +721,7 @@ function Get-Size
                 Write-Verbose "`$sizeInSpecifiedUnit: $sizeInSpecifiedUnit"
                 $Size = [math]::Round($sizeInSpecifiedUnit, [int]$Precision)
                 Write-Verbose "`$size: $Size"
-                if ($PrecisionFormatTable)
+                if ($SizeAsString)
                 {
                     $size = "$size"
                 }
@@ -746,7 +746,7 @@ function Get-Size
                         $res | Add-Member -MemberType NoteProperty -Name $p.Name -Value $p.value
                     }
                 }
-
+                # 这个选项其实有点多余,用户完全可以自己用管道符|ft获取表格试图,有更高的灵活性
                 if ($FormatTable)
                 {
 
@@ -759,6 +759,10 @@ function Get-Size
                 Write-Warning "路径不存在: $item"
             }
         }
+    }
+    end
+    {
+        # return $res
     }
 }
 
@@ -792,21 +796,58 @@ function Get-ItemSizeSorted
         #文件大小精度
         $Precision = 3,
         [switch]$Detail,
-        [switch]$PrecisionFormatTable,
-        [switch]$FormatTable
+        [switch]$SizeAsString,
+        [switch]$FormatTable,
+        [switch]$Parallel,
+        $ThrottleLimit = 5
     )
-    $res = Get-ChildItem $Path | ForEach-Object -Parallel {
-        $Unit = $using:Unit
-        $Precision = $using:Precision
-        $Detail = $using:Detail
-        $PrecisionFormatTable = $using:PrecisionFormatTable
-        $FormatTable = $using:FormatTable
-        $item = $_ | Get-Size -Unit $Unit -Precision $Precision -Detail:$Detail `
-            -PrecisionFormatTable:$PrecisionFormatTable # -FormatTable:$FormatTable 
-            
-        Write-Host $item  -ForegroundColor Red
-        return $item
+    if ($VerbosePreference)
+    {
+        $PSBoundParameters | Format-Table
     }
+    $verbose = $VerbosePreference
+    if ($Parallel)
+    {
+        Write-Host 'Parallel Mode.'
+        $res = Get-ChildItem $Path | ForEach-Object -Parallel {
+            $Unit = $using:Unit
+            $Precision = $using:Precision
+            $Detail = $using:Detail
+            $SizeAsString = $using:SizeAsString
+            $item = $_ | Get-Size -Unit $Unit -Precision $Precision -Detail:$Detail `
+                -SizeAsString:$SizeAsString # -FormatTable:$FormatTable 
+            
+            # Write-Output $item 
+            # $item | Format-Table  | Out-String 
+            $verbose = $using:verbose
+            if ($verbose)
+            {
+                Write-Host $item -ForegroundColor blue
+            }
+            return $item
+        } -ThrottleLimit $ThrottleLimit
+    }
+    else
+    {
+        Write-Host 'Calculating ... '
+        $res = Get-ChildItem $Path | ForEach-Object {
+            $item = $_ | Get-Size -Unit $Unit -Precision $Precision -Detail:$Detail -SizeAsString:$SizeAsString -Verbose:$false # -FormatTable:$FormatTable 
+            
+            # Write-Host $item  -ForegroundColor Red
+            # $item | Format-Table #会被视为返回值,后续的管道服sort将无法正确执行(利用break可以验证,这个语句本身没有问题,但是后续的管道无法正常执行)
+            # break
+            # 非-parallel脚本块,可以直接引用外部变量
+            if ($VerbosePreference)
+            {
+
+                Write-Host $item
+            }
+            # Write-Output $item 
+            return $item
+        }
+    }
+        
+
     $sorted = $res | Sort-Object -Property size -Descending
     if ($FormatTable)
     {
