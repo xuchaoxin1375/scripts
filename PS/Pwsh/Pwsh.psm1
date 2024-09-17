@@ -774,7 +774,20 @@ function Get-ItemSizeSorted
     .DESCRIPTION
     继承大多数Get-Size函数的参数,比如可以指定文件文件大小的单位，大小数值保留的小数位数等(详情请参考Get-Size函数)。
     .NOTES
-    这里可以考虑使用并行方案进行统计
+    这里默认不是用并行计算,如果需要启用并行计算，可以通过参数-Parallel来启用。
+    
+    .PARAMETER Parallel
+    这里可以考虑使用并行方案进行统计,但是建议不要滥用,因为并行计算创建多线程也是需要资源和时间开销的,在文件数量不是很巨大的情况下,使用并行方案反而会降低速度,并行数量通常建议不超过3个为宜;
+    .PARAMETER ThrottleLimit
+    并行计算时的并发数,如果启用并行计算，ThrottleLimit参数默认为5,可以通过此参数指定为其他正整数
+
+    .PARAMETER Path
+    要排序的目录
+    .PARAMETER Unit
+    将文件大小单位转换为指定单位
+    
+
+
     .EXAMPLE
     PS🌙[BAT:79%][MEM:44.53% (14.12/31.71)GB][0:00:19]
     # [cxxu@CXXUCOLORFUL][<W:192.168.1.178>][C:\repos\scripts\PS]
