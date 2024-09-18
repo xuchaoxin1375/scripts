@@ -19,7 +19,19 @@ function p
     
     }
 }
-
+function Add-CxxuPsModuleToProfile
+{
+    <# 
+    .SYNOPSIS
+    将此模块集推荐的自动加载工作添加到powershell的配置文件$profile中
+     #>
+    param (
+        
+    )
+    $pf = $PROFILE
+    'p'>$pf
+    
+}
 function Update-PwshEnv
 {
     [CmdletBinding()]param()

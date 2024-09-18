@@ -16,6 +16,10 @@
   - 另一方面,powershell支持自动加载模块,而且这个过程灵活快速,不会影响启动powershell的时间
   - 因此,应该尽量模块化配置
 
+### 经典的开源模块posh-git参考学习
+
+- [Git - Git 在 PowerShell 中使用 Git (git-scm.com)](https://git-scm.com/book/zh/v2/附录-A%3A-在其它环境中使用-Git-Git-在-PowerShell-中使用-Git)
+
 ## 如何载入模块集PS👺
 
 - 分为三个步骤配置

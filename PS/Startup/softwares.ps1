@@ -66,7 +66,8 @@ $softwares = @(
     'snipaste', #高性能截图软件,用途比较单一
     # 'pixpin', #辅助snipaste用来长截图和录制gif以及做ocr
     'windhawk',
-    'ditto'
+    'ditto',
+    'quicklook'
     
     # memorymaster
 )
