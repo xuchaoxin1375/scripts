@@ -1,3 +1,193 @@
+
+function Set-ExplorerSoftwareIcons
+{
+    <# 
+    .SYNOPSIS
+    本命令用于禁用系统Explorer默认的计算机驱动器以外的软件图标,尤其是国内的网盘类软件(百度网盘,夸克网盘,迅雷,以及许多视频类软件)
+    也可以撤销禁用
+    .PARAMETER Enabled
+    是否允许软件设置资源管理器内的驱动器图标
+    使用True表示允许
+    使用False表示禁用(默认)
+    .NOTES
+    使用管理员权限执行此命令
+    .EXAMPLE
+    PS C:\Users\cxxu\Desktop> set-ExplorerSoftwareIcons -Enabled True
+    refresh explorer to check icons
+    #禁用其他软件设置资源管理器驱动器图标
+    PS C:\Users\cxxu\Desktop> set-ExplorerSoftwareIcons -Enabled False
+    refresh explorer to check icons
+    .EXAMPLE
+    显示设置过程信息
+    PS C:\Users\cxxu\Desktop> set-ExplorerSoftwareIcons -Enabled True -Verbose
+    VERBOSE: Enabled Explorer Software Icons (allow Everyone Permission)
+    refresh explorer to check icons
+    .EXAMPLE
+    显示设置过程信息,并且启动资源管理器查看刷新后的图标是否被禁用或恢复
+    PS C:\Users\cxxu\Desktop> set-ExplorerSoftwareIcons -Enabled True -Verbose -RefreshExplorer
+    VERBOSE: Enabled Explorer Software Icons (allow Everyone Permission)
+    refresh explorer to check icons
+    PS C:\Users\cxxu\Desktop> set-ExplorerSoftwareIcons -Enabled False -Verbose -RefreshExplorer
+    VERBOSE: Disabled Explorer Software Icons (Remove Everyone Group Permission)
+    refresh explorer to check icons
+
+    #>
+    [CmdletBinding()]
+    param (
+        [ValidateSet('True', 'False')]$Enabled ,
+        [switch]$RefreshExplorer
+    )
+    $path = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\MyComputer\NameSpace'
+    $acl = Get-Acl -Path $path
+
+    # 禁用继承并删除所有继承的访问规则
+    $acl.SetAccessRuleProtection($true, $false)
+
+    # 清除所有现有的访问规则
+    $acl.Access | ForEach-Object {
+        $acl.RemoveAccessRule($_) | Out-Null
+    }
+
+
+    # 添加SYSTEM和Administrators的完全控制权限
+    $identities = @('NT AUTHORITY\SYSTEM', 'BUILTIN\Administrators')
+    if ($Enabled -eq 'True')
+    {
+        $identities += @('Everyone')
+        Write-Verbose 'Enabled Explorer Software Icons (allow Everyone Permission)'
+    }
+    else
+    {
+        Write-Verbose 'Disabled Explorer Software Icons (Remove Everyone Group Permission)'
+    }
+    foreach ($identity in $identities)
+    {
+        $rule = New-Object System.Security.AccessControl.RegistryAccessRule($identity, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')
+        $acl.AddAccessRule($rule)
+    }
+
+    # 应用新的ACL
+    Set-Acl -Path $path -AclObject $acl # -ErrorAction Stop
+    Write-Host 'refresh explorer to check icons'    
+    if ($RefreshExplorer)
+    {
+        explorer.exe
+    }
+}
+
+function Set-PythonPipSource
+{
+    param (
+        $mirror = 'https://pypi.tuna.tsinghua.edu.cn/simple'
+    )
+    pip config set global.index-url $mirror
+}
+function Set-CondaSource
+{
+    param (
+        
+    )
+    
+    #备份旧配置,如果有的话
+    if (Test-Path "$userprofile\.condarc")
+    {
+        Copy-Item "$userprofile\.condarc" "$userprofile\.condarc.bak"
+    }
+    #写入内容
+    @'
+channels:
+  - defaults
+show_channel_urls: true
+default_channels:
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/r
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/msys2
+custom_channels:
+  conda-forge: https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud
+  msys2: https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud
+  bioconda: https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud
+  menpo: https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud
+  pytorch: https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud
+  pytorch-lts: https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud
+  simpleitk: https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud
+  deepmodeling: https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/
+'@ >"$userprofile\.condarc"
+
+    Write-Host 'Check your conda config...'
+    conda config --show-sources
+}
+
+function Get-BeijingTime
+{
+    # 获取北京时间的函数
+    # 通过API获取北京时间
+    $url = 'http://worldtimeapi.org/api/timezone/Asia/Shanghai'
+    $response = Invoke-RestMethod -Uri $url
+    $beijingTime = [DateTime]$response.datetime
+    return $beijingTime
+}
+
+function Sync-SystemTime
+{
+    <#
+    .SYNOPSIS
+        同步系统时间到 time.windows.com NTP 服务器。
+    .DESCRIPTION
+        使用 Windows 内置的 w32tm 命令同步本地系统时间到 time.windows.com。
+        同步完成后，显示当前系统时间。
+        w32tm 是 Windows 中用于管理和配置时间同步的命令行工具。以下是一些常用的 w32tm 命令和参数介绍：
+
+        常用命令
+        w32tm /query /status
+        显示当前时间服务的状态，包括同步源、偏差等信息。
+        w32tm /resync
+        强制系统与配置的时间源重新同步。
+        w32tm /config /manualpeerlist:"<peers>" /syncfromflags:manual /reliable:YES /update
+        配置手动指定的 NTP 服务器列表（如 time.windows.com），并更新设置。
+        w32tm /query /peers
+        列出当前配置的时间源（NTP 服务器）。
+        w32tm /stripchart /computer:<target> /dataonly
+        显示与目标计算机之间的时差，类似 ping 的方式。
+        注意事项
+        运行某些命令可能需要管理员权限。
+        确保你的网络设置允许访问 NTP 服务器。
+        适用于 Windows Server 和 Windows 客户端版本。
+    .NOTES
+        需要管理员权限运行。
+    .EXAMPLE
+    # 调用函数
+    # Sync-SystemTime
+    #>
+    try
+    {
+        # 配置 NTP 服务器
+        w32tm /config /manualpeerlist:"time.windows.com" /syncfromflags:manual /reliable:YES /update
+        
+        # 同步时间
+        w32tm /resync
+
+        # 显示当前时间
+        $currentTime = Get-Date
+        Write-Output "当前系统时间: $currentTime"
+    }
+    catch
+    {
+        Write-Error "无法同步时间: $_"
+    }
+}
+
+function Update-SystemTime
+{
+    # 获取北京时间的函数
+   
+
+    # 显示当前北京时间
+    $beijingTime = Get-BeijingTime
+    Write-Output "当前北京时间: $beijingTime"
+
+    # 设置本地时间为北京时间（需要管理员权限）
+    # Set-Date -Date $beijingTime
+}
 function Update-DataJsonLastWriteTime
 {
     param (
@@ -204,7 +394,7 @@ xxx
     [CmdletBinding()]
     param (
         [Parameter(  Position = 0, ValueFromPipeline = $true)]
-        [Alias('DataJson','JsonFile','Path','File')]$JsonInput = $DataJson,
+        [Alias('DataJson', 'JsonFile', 'Path', 'File')]$JsonInput = $DataJson,
 
         [Parameter(Position = 1)]
         [string][Alias('Property')]$Key

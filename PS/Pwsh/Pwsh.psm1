@@ -6,32 +6,20 @@ function p
     .SYNOPSIS
     打开新的powershell环境，加载最基础的列表图标模块
     #>
+    [CmdletBinding()]
+    param(
+
+    )
     pwsh -noe -c { 
-        Set-PromptVersion Balance; 
+        Set-PromptVersion Balance ;  
         Import-TerminalIcons;
         Set-PSReadLinesCommon; 
         Set-PSReadLinesAdvanced
+        
+    
     }
 }
-function Start-PwshInit0
-{
-    <# 
-    .SYNOPSIS
-    在已经打开的powershell中切换到一个新的shell环境
-    .DESCRIPTION
 
-    新加载的这个新环境会重新加载配置模,当您的模块发生变换时,执行此命令会更新环境以便于您检验模块修改后是否达到预期
-    启动powershell时加载$profile是很耗时的,即便$profile中的内容不多,启动延迟也是令人难以接受的,通常命令行的响应延迟超过100ms就会让一部分人产生性能对机器或shell性能的怀疑和焦虑
-
-    其实现方式就是嗲用pwsh程序,设置参数-noexit即-noe,这样新加载的shell环境就不会退出,然后用-c 执行命令init0,这个命令定义在自动加载模块中(自动加载并调用其中的逻辑这不会消耗时间,除非被调用的命令逻辑本身是耗时的)
-
-    init0中编写满足一个环境的基本初始化设置的命令调用,例如提供基础的全局可用的变量,包括常用的字符串,最基础的常用路径变量(比如家目录中常用变量)
-    .NOTES
-    如果使用支持指定启动参数的Terminal,例如windows Termnial,那么可以通过指定启动参数为`pwsh -noe -c 'Start=PwshInit0'`来启动,这样也没有动用$profile;当在terminal中新建一个terminal时,会类似于$profile自动执行基础的初始化操作
-    而输入pwsh时仍然能够保持最快的响应速度!因为此时pwsh仍然没有$profile读取和执行操作
-    #>
-    pwsh -noe -c 'init0'
-}
 function Update-PwshEnv
 {
     [CmdletBinding()]param()

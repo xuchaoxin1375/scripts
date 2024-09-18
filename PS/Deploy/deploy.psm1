@@ -1491,6 +1491,8 @@ function Deploy-RestartExplorerHotkey
     
     
 }
+#一键部署局域网内smb共享文件夹
+# 本模块包含其中的4个函数,另一个函数是权限设定函数,Grant-PermissionToPath
 function Enable-NetworkDiscoveyAndSharing
 {
     <# 
@@ -1698,6 +1700,7 @@ function Deploy-SmbSharing
         #密码可以改,但是建议尽可能简单,默认为1(为了符合函数设计的安全规范,这里不设置明文默认密码)
         [parameter(ParameterSetName = 'SmbUser')]
         $SmbUserkey = '1',
+        [switch]$DisableSmbUserLogonLocally,
         # 设置宽松的NTFS权限(但是仍然不一定会生效),如果可以用,尽量不要用Force选项
         [switch]$Force
     )
@@ -1734,7 +1737,7 @@ function Deploy-SmbSharing
             # 定义新用户的用户名和密码
             $username = $SmbUser
 
-            # 创建新用户(为了规范起见,最好在使用本地安全策略将Smb共享账户设置为禁止本地登录(加入本地登录黑名单,详情另见它文,这个步骤难以脚本化))
+            # 创建新用户(为了规范起见,最好在使用本地安全策略将Smb共享账户设置为禁止本地登录(加入本地登录黑名单,详情另见它文,这个步骤难以脚本化)这里尝试使用Disable-SmbSharingUserLogonLocallyRight函数来实现此策略设置)
             net user $username $SmbUserKey /add /fullname:"Shared Folder User" /comment:"User for accessing shared folder" /expires:never 
             # 由于New-LocalUser在不同windows平台上可能执行失败,所以这里用net user,而不是用New-LocalUser
             # New-LocalUser -Name $username -Password $SmbUserKey -FullName 'Shared Folder User' -Description 'User for accessing shared folder'
@@ -1763,9 +1766,45 @@ function Deploy-SmbSharing
 
     # 创建Smb共享文件夹的README
     New-SmbSharingReadme
-    
+    if ($DisableSmbUserLogonLocally)
+    {
+        Disable-SmbSharingUserLogonLocallyRight -SmbUser $SmbUser
+    }
 }
 
+function Disable-SmbSharingUserLogonLocallyRight
+{
+    <# 
+    .SYNOPSIS
+    使用管理员权限运行函数
+    #>
+    param (
+        $SmbUser,
+        $WorkingDirectory = 'C:/tmp'
+    )
+    if (!(Test-Path $WorkingDirectory ))
+    {
+
+        New-Item -ItemType Directory -Path $WorkingDirectory -Force -Verbose
+    }
+    $path = Get-Location
+    Set-Location $WorkingDirectory
+
+    Write-Host 'setting Smb User Logon Locally Right' -ForegroundColor Blue
+    # 添加用户到拒绝本地登录策略
+    secedit /export /cfg secconfig.cfg
+    #修改拒绝本地登陆的项目,注意$smbUser变量的取值,依赖于之前的设置,或者在这里重新设置
+    $smbUser = 'smb'#如果和你的设定用户名不同,则需要重新设置
+
+(Get-Content secconfig.cfg) -replace 'SeDenyInteractiveLogonRight = ', "SeDenyInteractiveLogonRight =$smbUser," | Set-Content secconfig.cfg
+ 
+    secedit /configure /db secedit.sdb /cfg secconfig.cfg > $null
+    #上面这个语句可能会提示你设置过程中遇到错误,但是我检查发现其成功设置了响应的策略,您可以重启secpol.msc程序来查看响应的设置是否更新,或者检查切换用户时列表中会不会出现smbUser选项
+    Remove-Item secconfig.cfg #移除临时使用的配置文件
+    Set-Location $path
+}
+
+#部署gitconfig
 function Deploy-GitConfig
 {
     <# 
