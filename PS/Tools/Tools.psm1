@@ -82,6 +82,22 @@ function Set-PythonPipSource
     )
     pip config set global.index-url $mirror
 }
+function Get-MsysSourceScript
+{
+    <# 
+    .SYNOPSIS
+    获取更新msys2下pacman命令的换源脚本,默认换为清华源
+    
+    .NOTES
+    将输出的脚本复制到剪切板,然后粘贴到msys2命令行窗口中执行
+    #>
+    param (
+
+    )
+    $script={sed -i 's#https\?://mirror.msys2.org/#https://mirrors.tuna.tsinghua.edu.cn/msys2/#g' /etc/pacman.d/mirrorlist*}
+    
+    return $script.ToString()
+}
 function Set-CondaSource
 {
     param (

@@ -23,7 +23,7 @@ ctrl control
 designer_qt "$pyside6\designer"
 dingtalk "$dingtalk_bin\dingTalk"
 dism++ "$dismPlusPlus\Dism++x64.exe"
-ditto "$ditto_Home\ditto"
+# ditto "$ditto_Home\ditto"
 drawio "$cp\draw.io\draw.io.exe"
 dts $dts_home\lowGui.exe 
 edge "$edge_home\msedge.exe"
@@ -81,7 +81,7 @@ safe360 "$Safe360_home\360safe.exe"
 sandbox_Ctrl "$sandboxie_home\SbieCtrl.exe"
 sandbox_Man "$sandboxie_home\sandMan.exe"
 sandbox_start "$sandboxie_home\start.exe"
-snipaste "$snipaste_home\snipaste"
+# snipaste "$snipaste_home\snipaste"
 sogouSettings "$sogouInputMethodShortcuts_home\设置.lnk"
 sogouWizard "$sogouWizard\sgWizard.exe"
 sound sndVol
