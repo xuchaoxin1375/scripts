@@ -280,10 +280,23 @@ deploy-CxxuPsModules
 
 ```
 
-用法文档
+### 用法文档
+
+- 将上述代码粘贴到powershell7窗口中,回车执行
 
 ```powershell
 help Deploy-CxxuPsModules -Full
+```
+
+### 运行说明
+
+- 无参数直接调用部署函数版本要求你已经安装git,以下版本尝试从github下载本仓库包(版本可能滞后),如果你不想安装git可以尝试以下方案
+  - Gitee下载源代码也可以,但是需要登陆才能获取下载链接
+  - Github虽然慢,也可能连不上,但是仓库很小,不会下载太久
+  - 如果下面方案不行,那么只好下载git,然后运行其他Mode方案,比如无参数,或者手动下载包,然后通过参数`PackagePath`来指定包的位置进行部署
+
+```powershell
+deploy-CxxuPsModules -Mode FromPackage -Verbose 
 ```
 
 
