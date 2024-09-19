@@ -69,7 +69,7 @@ function Add-CxxuPsModuleToProfile
         $ProfileLevel = $Profile
     )
     $pf = $ProfileLevel
-    '# AutoRun commands from CxxuPsModules'+" $(Get-Date)" >> $pf
+    '# AutoRun commands from CxxuPsModules' + " $(Get-Date)" >> $pf
     {
         p -NoNewShell
     }.ToString().Trim()>>$pf #向配置文件追加内容
@@ -1041,7 +1041,109 @@ function Get-PathType
         Write-Output 'RelativePath'
     }
 }
-function Install-Scoop-Deprecated
+
+function Get-PsProfilesPath
+{
+    <# 
+    .SYNOPSIS
+    获取所有的$profile级别文件路径,即便文件不存在
+    #>
+    $profiles = @(
+        $profile.CurrentUserCurrentHost,
+        $profile.CurrentUserAllHosts,
+        $profile.AllUsersCurrentHost,
+        $profile.AllUsersAllHosts
+    )
+    return $profiles
+}
+ 
+function Remove-PsProfiles
+{
+    $profiles = Get-PsProfilesPath
+    foreach ($profile in $profiles)
+    {
+        Remove-Item -Force -Verbose $profile -ErrorAction SilentlyContinue
+    }
+}
+
+function Get-CxxuPsModulePackage
+{
+    param(
+        $Directory = "$home/Downloads/CxxuPsModules",
+        $url = 'https://codeload.github.com/xuchaoxin1375/scripts/zip/refs/heads/main',
+        $outputFile = "scripts-$( Get-Date -Format 'yyyy-MM-dd--hh-mm-ss').zip"
+    )
+    $PackgePath = "$Directory/$outputFile"
+    Invoke-WebRequest -Uri $url -OutFile $PackgePath 
+    return $PackgePath
+}
+function Deploy-CxxuPsModules
+{
+    <# 
+    .SYNOPSIS
+    一键部署CxxuPsModules，将此模块集推荐的自动加载工作添加到powershell的配置文件$profile中
+    请使用powershell7部署
+    #>
+    [CmdletBinding()]
+    param(
+        $RepoPath = "$env:systemdrive/repos/scripts",
+        $newPsPath = "$RepoPath/PS",
+        [ValidateSet('Gitee,Github')]$Source = 'gitee',
+        $PackagePath = "$home/Downloads/CxxuPsModules/scripts*.zip"
+    )
+        
+    if ($host.Version.Major -lt 7)
+    {
+        Throw 'Please use powershell7 to deploy CxxuPsModules!'
+    }
+    
+    # 路径准备
+    if (!(Test-Path $RepoPath))
+    {
+        New-Item -ItemType Directory $RepoPath -Verbose
+    }
+    if ((Test-Path $PackagePath))
+    {
+        Write-Host "Mode:Expanding local pacakge:[$PackagePath]" -ForegroundColor Green
+        $RepoPathParentDir = Split-Path $RepoPath -Parent
+        # 指定要解压到的目录,如果不存在Expand-archive会自动创建相应的目录
+        # 获取可用的最新版本
+        #利用Desceding将最新的排在前面
+        $files = Get-ChildItem $PackagePath | Sort-Object -Property LastWriteTime -Descending 
+        $PackagePath = @($files)[0]
+        Expand-Archive -Path $PackagePath -DestinationPath $RepoPathParentDir -Force
+        Rename-Item (Get-ChildItem "$RepoPath/scripts*" | Select-Object -First 1) "$RepoPathParentDir/scripts" -Verbose
+    }
+    else
+    {
+        Write-Host "Mode:Clone From Remote repository:[$source]" -ForegroundColor Blue
+        $url = "https://${Source}.com/xuchaoxin1375/scripts.git"
+        Write-Verbose $url
+        # 检查路径占用
+        if (Test-Path $RepoPath)
+        {
+            Write-Host "$($RepoPath) already exists!Choose another path."
+            $RepoPath = Read-Host -Prompt 'Input new path (Ctrl+C to exit)'
+        }
+        Write-Verbose $RepoPath
+        #克隆仓库
+        # git 支持指定一个不存在的目录作为克隆目的地址,所以可以不用检查目录是否存在并手动创建
+        git clone $url $RepoPath
+    }
+ 
+    # $RepoPath = 'C:\repos\scripts\PS' #这里修改为您下载的模块所在目录,这里的取值作为示范
+    $env:PSModulePath = ";$NewPsPath" #为了能够调用CxxuPSModules中的函数,这里需要这么临时设置一下
+    Add-EnvVar -EnvVar PsModulePath -NewValue $newPsPath -Verbose #这里$RepoPath上面定义的(默认是User作用于,并且基于User的原有取值插入新值)
+    # 你也可以替换`off`为`LTS`不完全禁用更新但是降低更新频率(仅更新LTS长期支持版powershell)
+    [System.Environment]::SetEnvironmentVariable('powershell_updatecheck', 'LTS', 'user')
+
+    #添加基础环境自动执行任务到$profile中
+    # Add-CxxuPsModuleToProfile
+
+    #检查模块设置效果
+    Start-Process -FilePath pwsh -ArgumentList '-noe -c p'
+}
+function Install-ScoopByLocalProxy
 {
     param (
         [ValidateSet('Default', 'Proxy')]$Method = 'Default'
