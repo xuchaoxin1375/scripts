@@ -94,7 +94,7 @@ function Update-PwshVars
     $PwshVarFilesFull = $PwshVarFilesFast + $PwshVarFilesEnhance 
 
     # write-verbose "checking the environment of the windows system (`$env:variables)😊..." 
-    write-verbose 'updating envs!'
+    Write-Verbose 'updating envs!'
     # 执行这段导入环境变量的逻辑时,不可以使用定义在环境变量文件中的变量,这会出现引用未定义变量的问题
     #注意字符串末尾没有反斜杠,拼接路径的时候需要加一个斜杠
     #🎈在需要添加新的环境变量配置文件时,只需要在PwshVarFiles中追加即可
@@ -124,6 +124,7 @@ function Update-PwshVars
           
         Set-PwshVarFile -VarFile $VarFile # -AsPwshEnvForHomeVars
     }
+    Write-Verbose 'envs updated!'
     
 }
 
@@ -138,7 +139,8 @@ function Set-PwshVarFile
     )
     # rvpa "$VarFilesDir\$VarFile "
     
-    if($VerbosePreference){
+    if ($VerbosePreference)
+    {
 
         Write-Host "`t$VarFile" -ForegroundColor Blue
     }

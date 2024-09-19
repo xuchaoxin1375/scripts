@@ -1166,7 +1166,8 @@ function Deploy-CxxuPsModules
         $PackagePath = "$home/Downloads/CxxuPsModules/scripts*.zip",
         # 选择部署模式:如果选择FromPackage,则仅尝试查找本地包,如果没有,则通过下载模块集包到本地,然后执行安装(不保证成功下载)
         # 如果选择默认的Default,则依次检查本地包是否存在,如果不存在,则尝试通过克隆的方式下载(要求已经安装git)
-        [ValidateSet('Default', 'FromPackage', 'FromRemoteGit')]$Mode = 'Default'
+        [ValidateSet('Default', 'FromPackage', 'FromRemoteGit')]$Mode = 'Default',
+        [switch]$Force
     )
         
     if ($host.Version.Major -lt 7)
@@ -1182,13 +1183,21 @@ function Deploy-CxxuPsModules
         Write-Host "$($RepoPath) already exists!"
         if (! (Test-DirectoryEmpty $RepoPath ))
         {
-            Write-Host "The directory [$RepoPath] is not empty,please choose another path!" -ForegroundColor Red
-            Throw 'Try another path(RepoPath)! OR delete or rename(backup) the exist directory!'
-            # $RepoPath = Read-Host -Prompt 'Input new path (Ctrl+C to exit)'
-            # Write-Verbose "Updated RepoPath to [$RepoPath]"
-            # # $newPsPath = "$RepoPath\PS"
-            # $NewPsPath = $NewPsPathPattern | Invoke-Expression
-            # Write-Verbose "Updated newPsPath to [$newPsPath]"
+            if ($Force)
+            {
+                Rename-Item -Path $RepoPath -NewName "$($RepoPath).bak" -Verbose
+            }
+            else
+            {
+
+                Write-Host "The directory [$RepoPath] is not empty,please choose another path!" -ForegroundColor Red
+                Throw 'Try another path(RepoPath)! OR delete or rename(backup) the exist directory!'
+                # $RepoPath = Read-Host -Prompt 'Input new path (Ctrl+C to exit)'
+                # Write-Verbose "Updated RepoPath to [$RepoPath]"
+                # # $newPsPath = "$RepoPath\PS"
+                # $NewPsPath = $NewPsPathPattern | Invoke-Expression
+                # Write-Verbose "Updated newPsPath to [$newPsPath]"
+            }
         }
         New-Item -ItemType Directory $RepoPath -Verbose
     }
@@ -1262,6 +1271,7 @@ function Deploy-CxxuPsModules
     # $RepoPath = 'C:\repos\scripts\PS' #这里修改为您下载的模块所在目录,这里的取值作为示范
     $env:PSModulePath = ";$NewPsPath" #为了能够调用CxxuPSModules中的函数,这里需要这么临时设置一下
     Add-EnvVar -EnvVar PsModulePath -NewValue $newPsPath -Verbose #这里$RepoPath上面定义的(默认是User作用于,并且基于User的原有取值插入新值)
+    Add-EnvVar -EnvVar CxxuPsModulePath -NewValue $NewRepoPath -Verbose
     # 你也可以替换`off`为`LTS`不完全禁用更新但是降低更新频率(仅更新LTS长期支持版powershell)
     [System.Environment]::SetEnvironmentVariable('powershell_updatecheck', 'LTS', 'user')
 
@@ -1513,6 +1523,7 @@ function Set-PromptVersion
     )
     # 检查基础环境信息,以便powershell prompt字段可以正确显示
     Update-PwshEnvIfNotYet -Mode core # > $null
+    Update-PwshAliases -Core
     Set-LastUpdateTime -Verbose:$VerbosePreference
 
     $env:PromptVersion = $version
@@ -1839,10 +1850,15 @@ function Update-PwshEnvIfNotYet
             'Vars', 
             # 'Aliases',
             'Env' #both Vars and Aliases
-        )]$Mode = 'Env'
+        )]$Mode = 'Env',
+        $Force
     )
     # 如果环境模式(等级)不满足要求,则导入对应级别的环境
-    if (! (Test-PsEnvMode -Mode $Mode ))
+    if ($Force)
+    {
+        Update-PwshEnv
+    }
+    elseif (! (Test-PsEnvMode -Mode $Mode ))
     {
         if ($Mode -eq 'core')
         {
