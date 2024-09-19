@@ -469,6 +469,98 @@ function Get-SystemInfoBasic
    #>
     Get-CimInstance -ClassName Win32_OperatingSystem | Select-Object Caption, Version, OSArchitecture, BuildNumber
 }
+# function Get-SystemInfo
+function Get-ComputerCoreHardwareInfo
+{
+    # 获取 CPU 信息
+    $cpu = Get-WmiObject -Class Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors, MaxClockSpeed
+    
+    # 获取内存信息
+    $memory = Get-WmiObject -Class Win32_PhysicalMemory | Select-Object Manufacturer, Capacity, Speed
+    # 计算内存总容量 (以GB为单位)
+    $totalMemoryGB = ($memory | Measure-Object -Property Capacity -Sum).Sum / 1GB
+
+ 
+    
+    # 获取磁盘信息
+    $disk = Get-WmiObject -Class Win32_DiskDrive | Select-Object Model, Size, MediaType
+    
+    # 获取操作系统信息
+    $os = Get-WmiObject -Class Win32_OperatingSystem | Select-Object Caption, Version, OSArchitecture, LastBootUpTime
+    
+    # 获取主板信息
+    $motherboard = Get-WmiObject -Class Win32_BaseBoard | Select-Object Manufacturer, Product, SerialNumber
+    
+    # 获取显卡信息
+    $gpu = Get-WmiObject -Class Win32_VideoController | Select-Object Name, AdapterRAM, DriverVersion
+    
+    # 输出信息，使用不同颜色和格式化显示
+    Write-Host '---------------------------' -ForegroundColor Cyan
+    Write-Host '系统核心配置信息:' -ForegroundColor Yellow
+    Write-Host '---------------------------' -ForegroundColor Cyan
+
+    # CPU 信息
+    Write-Host 'CPU 信息' -ForegroundColor Green
+    $cpu | ForEach-Object {
+        Write-Host ('名称: {0}' -f $_.Name)
+        Write-Host ('核心数量: {0}' -f $_.NumberOfCores)
+        Write-Host ('逻辑处理器数量: {0}' -f $_.NumberOfLogicalProcessors)
+        Write-Host ('最大主频: {0} MHz' -f $_.MaxClockSpeed)
+    }
+    Write-Host ''
+
+    # 内存信息
+    Write-Host '内存信息' -ForegroundColor Green
+    # 输出总内存容量
+    Write-Host ('内存总容量: {0} GB' -f [math]::round($totalMemoryGB, 2)) -ForegroundColor Cyan
+    $memory | ForEach-Object {
+        Write-Host ('制造商: {0}' -f $_.Manufacturer)
+        Write-Host ('容量: {0} GB' -f ([math]::round($_.Capacity / 1GB, 2)))
+        Write-Host ('速度: {0} MHz' -f $_.Speed)
+    }
+    Write-Host ''
+
+    # 磁盘信息
+    Write-Host '磁盘信息' -ForegroundColor Green
+    $disk | ForEach-Object {
+        Write-Host ('型号: {0}' -f $_.Model)
+        Write-Host ('大小: {0} GB' -f ([math]::round($_.Size / 1GB, 2)))
+        Write-Host ('类型: {0}' -f $_.MediaType)
+    }
+    Write-Host ''
+
+    # 操作系统信息
+    Write-Host '操作系统信息' -ForegroundColor Green
+    $os | ForEach-Object {
+        Write-Host ('系统: {0}' -f $_.Caption)
+        Write-Host ('版本: {0}' -f $_.Version)
+        Write-Host ('架构: {0}' -f $_.OSArchitecture)
+        Write-Host ('上次启动时间: {0}' -f $_.LastBootUpTime)
+    }
+    Write-Host ''
+
+    # 主板信息
+    Write-Host '主板信息' -ForegroundColor Green
+    $motherboard | ForEach-Object {
+        Write-Host ('制造商: {0}' -f $_.Manufacturer)
+        Write-Host ('型号: {0}' -f $_.Product)
+        Write-Host ('序列号: {0}' -f $_.SerialNumber)
+    }
+    Write-Host ''
+
+    # 显卡信息
+    Write-Host '显卡信息' -ForegroundColor Green
+    $gpu | ForEach-Object {
+        Write-Host ('名称: {0}' -f $_.Name)
+        Write-Host ('显存: {0} GB' -f ([math]::round($_.AdapterRAM / 1GB, 2)))
+        Write-Host ('驱动版本: {0}' -f $_.DriverVersion)
+    }
+    Write-Host '---------------------------' -ForegroundColor Cyan
+}
+
+
+
+
 function Get-MatherBoardInfo
 {
     return Get-CimInstance -ClassName Win32_baseboard

@@ -307,10 +307,16 @@ function Update-CodeiumVScodeExtension
     $continue = Confirm-UserContinue -Description 'Restart vscode'
     $process = Get-Process -Name code
     Write-Host $process
+
+    $process = Get-Process -Name code*
+    $process | Format-Table
     if ($continue)
     {
         # Get-Process code | Stop-Process
-        $process | Restart-Process -Verbose
+        # $process | Restart-Process -Verbose #重启后导致大量进程被启动
+        $process | Stop-Process -Force -Verbose
+        & code
+        
     }
 
     

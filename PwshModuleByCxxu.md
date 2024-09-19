@@ -207,7 +207,23 @@ psmodulePath C:\repos\scripts\ps
 
 ## 配置 `$Profile`自动初始化(可选)👺
 
-### 为当前用户配置
+### 自动配置
+
+```powershell
+Add-CxxuPsModuleToProfile
+```
+
+- 上述语句将为您的`$profile`文件添加适当的内容,以便自动导入基本环境(调用前提是你已经正确完成模块自动导入路径的配置)
+
+- 详细使用说明可以通过
+
+  ```powershell
+  help Add-CxxuPsModuleToProfile -full
+  ```
+
+  进行查看
+
+### 手动配置
 
 - 如果您不在意加载powershell的那几秒钟,可以将`init`函数的调用配置到`$profile`文件中
 
@@ -267,6 +283,66 @@ psmodulePath C:\repos\scripts\ps
 - 因此本模块集采用了灵活的设计,通过自动导入来降低载入速度的影响
 - 默认情况下,配置好自动导入模块路径到`$PsModulePath`后,powershell的启动速度不会受到影响,只有当调用模块中的少数耗时函数或者环境导入函数,才会占用明显的时间,例如`init`函数,或者`p`函数
 - 相同配置下,在windows10下的载入速度可能比win11要快
+
+### 自动导入效果举例
+
+- ```
+  PowerShell 7.4.5
+  Setting basic environment in current shell...
+  Loading personal and system profiles took 890ms.
+  
+  init Memory Info
+  PS🌙[BAT:98%][MEM:50.61% (7.78/15.37)GB][11:05:41]
+  # [cxxu@BEFEIXIAOXINLAP][<W:192.168.1.77>][~\scoop\apps\powershell\current]
+  PS>
+  
+  ```
+
+  此试验结果是以下配置和系统得出
+
+  ```cmd
+  PS> Get-SystemInfo
+  ---------------------------
+  系统核心配置信息:
+  ---------------------------
+  CPU 信息
+  名称: AMD Ryzen 7 4800U with Radeon Graphics
+  核心数量: 8
+  逻辑处理器数量: 16
+  最大主频: 1800 MHz
+  
+  内存信息
+  制造商: Samsung
+  容量: 8 GB
+  速度: 3200 MHz
+  制造商: Samsung
+  容量: 8 GB
+  速度: 3200 MHz
+  
+  磁盘信息
+  型号: WDC PC SN730 SDBPNTY-512G-1101
+  大小: 476.94 GB
+  类型: Fixed hard disk media
+  
+  操作系统信息
+  系统: Microsoft Windows 11 专业版
+  版本: 10.0.22631
+  架构: 64 位
+  上次启动时间: 20240919075427.500000+480
+  
+  主板信息
+  制造商: LENOVO
+  型号: LNVNB161216
+  序列号: PF24BC6V
+  
+  显卡信息
+  名称: AMD Radeon(TM) Graphics
+  显存: 0.5 GB
+  驱动版本: 27.20.11028.10001
+  ---------------------------
+  ```
+
+  
 
 # 常用设置参考
 

@@ -5,18 +5,47 @@ function p
     <# 
     .SYNOPSIS
     打开新的powershell环境，加载最基础的列表图标模块
+    .DESCRIPTION
+    支持两种模式,一类是当需要要刷新模块时,在当前powershell会话中执行此命令
+    另一类是作为每个powershell会话自动导入的基础性配置
+    .NOTES
+    将此命令配置到环境变量时,一定要使用原地导入配置的模式,即使用参数`NoNewShell`否则会导致循环创建新的pwsh进程
+    这种情况下只能使用Ctrl+C关闭会话,并且使用`ps pwsh`检查相关进程,关闭多余进程
+    .NOTES
+    如果发现 提示语句被重复导入,那么可能是配置文件中的配置项目重复了
+    例如Setting basic environment in current shell...提示了两次,那么用编辑器打开$profile移除多余的导入语句
     #>
     [CmdletBinding()]
     param(
+        #是否启动新的shell环境
+        [switch]
+        [Alias('KeepCurrentShell', 'InlineImport')]
+        $NoNewShell #默认启动新环境
 
     )
-    pwsh -noe -c { 
+    $script = { 
+        # 设置prompt样式(这里面会导入基础的powershell预定变量和别名)
         Set-PromptVersion Balance ;  
+        # 导入图标模块
         Import-TerminalIcons;
+        # 补全模块PSReadline及其相关配置
         Set-PSReadLinesCommon; 
         Set-PSReadLinesAdvanced
         
-    
+    }
+    if ($NoNewShell)
+    {
+        # 当前环境不启动新的shell环境，直接执行$script
+        Write-Host 'Setting basic environment in current shell...'
+        & $script
+    }
+    else
+    {
+        # 请求启动新的powershell环境
+        Write-Host 'Loading new pwsh environment...'
+
+        pwsh -noe -c $script 
+        # pwsh -noe -c {p -NoNewShell }
     }
 }
 function Add-CxxuPsModuleToProfile
@@ -24,14 +53,29 @@ function Add-CxxuPsModuleToProfile
     <# 
     .SYNOPSIS
     将此模块集推荐的自动加载工作添加到powershell的配置文件$profile中
+    .DESCRIPTION
+    从$profile中移除
+    
+    .PARAMETER ProfileLevel
+    默认情况下写入的是$Profile.CurrentUserCurrentHost
+    您也可以选择其他等级的配置,例如最大作用等级$Profile.AllUsersAllHosts
+    .Notes
+    注意,为所有用户设置需要管理员权限
+    .NOTES
+    如果要移除,则建议通过编辑对应级别的$Profile来移除相关语句
+    比如 移除命令p
      #>
     param (
-        
+        $ProfileLevel = $Profile
     )
-    $pf = $PROFILE
-    'p'>$pf
-    
+    $pf = $ProfileLevel
+    '# AutoRun commands from CxxuPsModules'+" $(Get-Date)" >> $pf
+    {
+        p -NoNewShell
+    }.ToString().Trim()>>$pf #向配置文件追加内容
+    '# End AutoRun commands from CxxuPsModules' >> $pf
 }
+
 function Update-PwshEnv
 {
     [CmdletBinding()]param()
@@ -1214,6 +1258,21 @@ Register-ArgumentCompleter -CommandName Get-CommandSourceCode -ParameterName Nam
 }
 function Set-PromptVersion
 {
+    <# 
+    .SYNOPSIS
+
+    设置powershell的prompt版本
+    为了设置balance以及信息更丰富的prompt,这里会导入基础的powershell变量和别名
+
+    .DESCRIPTION
+    默认使用最朴素的prompt
+    .EXAMPLE
+    PS>Set-PromptVersion -version 'Balance'
+    
+    PS🌙[BAT:98%][MEM:44.97% (6.91/15.37)GB][10:27:41]
+    # [cxxu@BEFEIXIAOXINLAP][<W:192.168.1.77>][~]
+    PS>
+    #>
     [CmdletBinding()]
     param(
         [ValidateSet('Balance', 'Simple', 'Brilliant', 'Brilliant2', 'Default', 'Short', 'short2')]
@@ -1232,6 +1291,7 @@ function Set-PoshPrompt
     <# 
     .synopsis
     设置oh-my-posh主题,可以用 ls $env:POSH_THEMES_PATH 查看可用主题,我们只需要获取.omp.json前面部分的主题配置文件名称即可
+    
     .example
     🚀 Set-PoshPrompt ys
     # cxxu @ cxxuwin in ~\Desktop [21:17:20]
@@ -1250,7 +1310,7 @@ function Test-PromptDelay
 {
     <# 
     .SYNOPSIS
-    # 测量当前使用的 Prompt 相应性能(延迟)
+    # 测量当前使用的 Prompt 响应性能(延迟)
     通过执行多次计算平均时间来评估延迟
     .EXAMPLE
 
@@ -1584,35 +1644,9 @@ function Start-VscodeSSh
         #根据查询到的ip地址,创建变量
         $Server = 'cxxuRedmibook',
         # $Path="/home/" #需要打开的目录
-        $Path = 'C:\users\cxxu' 
+        $Path = $home 
     )
     code --folder-uri "vscode-remote://ssh-remote+$Server/$Path"
-}
-function Copy-RobocopyDefault
-{
-    param (
-        [Parameter(Mandatory = $true, Position = 0)]
-        [string]$Source,
-
-        [Parameter(Mandatory = $true, Position = 1)]
-        [string]$Destination,
-
-        [parameter(ParameterSetName = 'Files')]
-        [string]$Files = '',
-        $Threads = 16,
-        [parameter(ParameterSetName = 'Recurse')]
-        [switch]$Recurse
-    )
-
-    $script = { 
-        robocopy $Source $Destination $Files `
-        ($Recurse) ? '/E' : ''  `
-            /Z ` #使用可重启模式
-        /R:1 /W:1 ` #指定重试次数和超时时间
-        /MT:$Threads #指定多线程}
-    }
-
-    Invoke-Command -ScriptBlock $script
 }
 
 function Copy-Robocopy

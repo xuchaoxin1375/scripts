@@ -90,13 +90,11 @@ function qq_run
     qq *> $null # $null
 
 }
-function bebo_run
-{
-    bebo *> $null
-}
+
 function clash_run
 {
     clash *>$null
+    # Start-ProcessSilentlyFromShortcut -ShortcutName 'Clash for windows.lnk'
 }
 function run_silently
 {
@@ -110,6 +108,26 @@ function qq
     run 'TencentQQ'
     
 }
+
+function Start-ProcessSilentlyFromShortcut
+{
+    param (
+        $Path,
+        $ShortcutName
+    )
+    if ($ShortcutName)
+    {
+
+        $Path = Get-Command $ShortcutName
+    }
+    $p = $Path | Select-Object -ExpandProperty Source; 
+    #方案1
+    Start-Process $p &
+    #方案2
+    # $s = Get-ShortcutLinkInfo $p | Select-Object -ExpandProperty TargetPath; 
+    # & $s *>$null
+}
+
 function hostsEdit
 {
     c $env:hosts

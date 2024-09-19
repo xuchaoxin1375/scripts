@@ -16,8 +16,8 @@ calibre "$calibre_home\calibre.exe"
 windhawk "$windhawk_portable_home\windhawk.exe"
 
 chfs "$chfs_home\chfs.exe"
-chfs "$chfs_home\chfs"
 clash "$clash_home\clash for windows"
+; clash 'Clash for Windows.lnk'
 Verge "$Verge_home\clash Verge.exe"
 ctrl control
 designer_qt "$pyside6\designer"
