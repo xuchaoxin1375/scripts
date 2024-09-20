@@ -95,7 +95,7 @@ function Set-GitProxy
     # write-host (git config --global http.proxy)
 
 }
-function Get-SpeedUpUri
+function Get-SpeedUpUrl
 {
     <# 
     .SYNOPSIS
@@ -107,16 +107,16 @@ function Get-SpeedUpUri
     比如,可以用于github资源下载加速,通过在源链接前面追加加速镜像链接来提高下载速度
     .EXAMPLE
     获取加速修改后的链接(默认为追加头域名)
-    PS C:\> Get-SpeedUpUri -Uri https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip
+    PS C:\> Get-SpeedUpUrl -Url https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip
     https://hub.fgit.cf/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip
     另一种方式
-    PS C:\> Get-SpeedUpUri -Uri https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip -Option InsteadOf
+    PS C:\> Get-SpeedUpUrl -Url https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip -Option InsteadOf
     https://hub.fgit.cf/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip
     .EXAMPLE
     加速下载github release
-    PS C:\Users\cxxu\Desktop> $link=Get-SpeedUpUri https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip
+    PS C:\Users\cxxu\Desktop> $link=Get-SpeedUpUrl https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip
 
-    PS C:\Users\cxxu\Desktop> Invoke-WebRequest -Uri $link
+    PS C:\Users\cxxu\Desktop> Invoke-WebRequest -Url $link
 
     StatusCode        : 200
     StatusDescription : OK
@@ -124,120 +124,148 @@ function Get-SpeedUpUri
     #>
     param (
         # 被加速的链接,比如github release 的链接,或githubusercontent的链接;至于能不能够加速需要看源是否支持,比较好的源都支持
-        $Uri,
+        $Url,
         # 源可能会失效,默认的源可能会失效,可以找找新的源
-        $Prefix = 'https://mirror.ghproxy.com/',
+        $Prefix = '', #https://mirror.ghproxy.com/
 
         # 其他通过替换域名的方式加速
         $OriginDomain = 'github.com',
         #替换成加速域名
         $InsteadOf = 'hub.fgit.cf',
-
+        $LinkNumber = 1,
         [validateSet('Prefix', 'InsteadOf')]$Option = 'Prefix',
-        [switch]$NotToClipboard
-        
+        [switch]$NotToClipboard,
+        [switch]$Silent
        
     )
 
     switch ($Option)
     {
-        'Prefix' { $uri = $prefix + $Uri }
-        'InsteadOf' { $uri = $Uri -replace $OriginDomain, $InsteadOf }
+        'Prefix'
+        { 
+            $res = @()
+            if ($Silent)
+            {
+                Write-Host 'Mode:Silent', "`$LinkNumber=$LinkNumber" -ForegroundColor Blue
+                $Urls = Get-AvailableGithubMirrors -PassThru #$urls第一个是空字符串,表示不用镜像
+                $Urls[1.. ($LinkNumber)] | ForEach-Object { 
+                    $prefix = $_; 
+                    $speedUrl = "$prefix/$Url" 
+                    Write-Verbose $SpeedUrl  
+                    $res += $speedUrl
+                }
+            }
+            else
+            {
+                # $prefix = Get-AvailableGithubMirrors
+                $prefix = @(Get-SelectedMirror ) 
+                foreach ($item in $prefix)
+                {
+
+                    $Url = "$prefix/$Url" 
+                    $res += $Url
+                }
+            }
+        }
+        'InsteadOf'
+        {
+            $Url = $Url -replace $OriginDomain, $InsteadOf 
+        }
         Default {}
     }
-    # Write-Host $uri -ForegroundColor Blue
+    # Write-Host $Url -ForegroundColor Blue
     if (! $NotToClipboard)
     {
-        $uri | Set-Clipboard
+        $res | Set-Clipboard
     }
-    return  $uri
+    return  $res
 }
 function Invoke-GithubResourcesSpeedup
 {
-    <# 
-    .SYNOPSIS
-    这是一个封装了Get-SpeedUpUri的下载GitHub资源的函数。
+    <# 
+    .SYNOPSIS
+    这是一个封装了Get-SpeedUpUrl的下载GitHub资源的函数。
     支持管道符输入
     支持指定Aria2多线程下载
 
     .EXAMPLE
-    PS> Invoke-GithubResourcesSpeedup -Uri https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip
+    PS> Invoke-GithubResourcesSpeedup -Url https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip
     Download from: https://mirror.ghproxy.com/https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip
     .EXAMPLE
     PS> 'https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip'|Invoke-GithubResourcesSpeedup
 
-    #>
-    param(
-        [Parameter(Mandatory = $true, Position = 0, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
-        [string]$Uri,
+    #>
+    param(
+        [Parameter(Mandatory = $true, Position = 0, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
+        [string]$Url,
 
-        [Parameter(Mandatory = $false)]
-        [string]$Directory = "$env:USERPROFILE/Downloads",
+        [Parameter(Mandatory = $false)]
+        [string]$Directory = "$env:USERPROFILE/Downloads",
         $FileName = '', 
         [validateset('aria2c', 'default')]$Downloader = 'aria2c',
-        $Threads = 64
+        $Threads = 32
     
-    )
+    )
 
     Begin
     {
-        # 检查Get-SpeedUpUri函数是否存在
-        if (-not (Get-Command Get-SpeedUpUri -ErrorAction SilentlyContinue))
+        # 检查Get-SpeedUpUrl函数是否存在
+        if (-not (Get-Command Get-SpeedUpUrl -ErrorAction SilentlyContinue))
         {
-            throw 'Get-SpeedUpUri function is not found. Please define it before using Invoke-GithubResourcesSpeedup.'
+            throw 'Get-SpeedUpUrl function is not found. Please define it before using Invoke-GithubResourcesSpeedup.'
         }
         
     }
 
-    Process
+    Process
     {
-        try
+        try
         {
-            # 调用Get-SpeedUpUri函数获取加速后的URI
-            # Write-Host "debug:[$Uri]"
-            $speedUpUri = Get-SpeedUpUri -Uri $Uri
-            # 使用Invoke-WebRequest下载文件
-            Write-Host 'Download from:' $speedUpUri
+            # 调用Get-SpeedUpUrl函数获取加速后的Url
+            # Write-Host "debug:[$Url]"
+            $speedUpUrl = Get-SpeedUpUrl -Url $Url
+            # 使用Invoke-WebRequest下载文件
+            Write-Host 'Download from:' $speedUpUrl
             if ($Downloader -eq '')
             {
 
-                Invoke-WebRequest -Uri $speedUpUri -OutFile $Directory
+                Invoke-WebRequest -Url $speedUpUrl -OutFile $Directory
             }
             elseif ($downloader -like 'aria2*')
             {
-                $expression = "$downloader  $SpeedUpUri -d $Directory  -s $Threads "  
+                $expression = "$downloader  $SpeedUpUrl -d $Directory  -s $Threads -x 16 -k 1M "  
                 $expression = ($FileName) ? ($expression + "-o $FileName"): $expression
                 Write-Verbose $expression
                 $expression | Invoke-Expression
             }
-        }
-        catch
+        }
+        catch
         {
-            Write-Error "Failed to download from: $Uri"
-        }
-    }
+            Write-Error "Failed to download from: $Url"
+        }
+    }
 }
 
 # 你现在可以这样使用这个函数：
 # 'https://github.com/user/repo/file.zip' | Invoke-GithubResourcesSpeedup
 # 或者
-# Invoke-GithubResourcesSpeedup -Uri 'https://github.com/user/repo/file.zip'
+# Invoke-GithubResourcesSpeedup -Url 'https://github.com/user/repo/file.zip'
 # function Get-SpeedUpGithubRaw
 
 # {
 #     <# 
 #     .SYNOPSIS
 #     借助FastGit等替换域名的加速的情形
-#     优先使用Get-SpeedUpUri ,该函数更加通用，除非故障
+#     优先使用Get-SpeedUpUrl ,该函数更加通用，除非故障
 #     github似乎已经改版了raw.githubusercontent.com,可能会改为其他的
 #     #>
 #     param (
-#         $Uri,
+#         $Url,
 #         $InsteadOfGithubRaw = 'raw.fgit.cf',
 #         $OriginDomainGithubRaw = 'raw.githubusercontent.com'
 #     )
-#     $uri = $Uri -replace $OriginDomainGithubRaw, $InsteadOfGithubRaw
-#     return $uri
+#     $Url = $Url -replace $OriginDomainGithubRaw, $InsteadOfGithubRaw
+#     return $Url
 # }
 
 function Update-CodeiumVScodeExtension
@@ -263,12 +291,12 @@ function Update-CodeiumVScodeExtension
     $versionNumber = ("$v" -split '-')[1] #版本好字符串,形如1.8.40
     Write-Host $versionNumber -background Magenta
 
-    $release_page_uri = "https://github.com/Exafunction/codeium/releases/tag/language-server-v$versionNumber"
-    $uri = "https://github.com/Exafunction/codeium/releases/download/language-server-v$versionNumber/language_server_windows_x64.exe.gz"
+    # $release_page_Url = "https://github.com/Exafunction/codeium/releases/tag/language-server-v$versionNumber"
+    $Url = "https://github.com/Exafunction/codeium/releases/download/language-server-v$versionNumber/language_server_windows_x64.exe.gz"
 
-    $speedUri = Get-SpeedUpUri $uri
-    Write-Host $speedUri -BackgroundColor Blue
-    #invoke-webrequest $speedUri
+    $speedUrl = Get-SpeedUpUrl $Url
+    Write-Host $speedUrl -BackgroundColor Blue
+    #invoke-webrequest $speedUrl
     $desktop = "$env:userprofile\desktop"
     $fileName = 'language_server_windows_x64.exe.gz'
     $f = "$desktop\$fileName"
@@ -280,12 +308,12 @@ function Update-CodeiumVScodeExtension
             { 
 
                 # 使用-s 参数默认是5个线程,这里通过参数$threads来设置线程数,默认值设置为32
-                aria2c $speedUri -d $desktop -o $fileName -s $Threads; break
+                aria2c $speedUrl -d $desktop -o $fileName -s $Threads; break
             }
             'default'
             {
 
-                Invoke-WebRequest -Uri $speedUri -OutFile $f; break
+                Invoke-WebRequest -Url $speedUrl -OutFile $f; break
             }
             Default
             {

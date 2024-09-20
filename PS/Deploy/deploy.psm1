@@ -314,6 +314,14 @@ function Get-AvailableGithubMirrors
 
 function Get-SelectedMirror
 {
+    <# 
+    .SYNOPSIS
+    让用户选择可用的镜像连接,允许选择多个
+    .NOTES
+    包含单个字符串的数组被返回时会被自动解包,这种情况下会是一个字符串
+    如果却是需要外部接受数组,那么可以在外部使用@()来包装返回结果即可
+
+    #>
     [CmdletBinding()]
     param (
         
@@ -323,46 +331,80 @@ function Get-SelectedMirror
     )
     $Mirrors = Get-AvailableGithubMirrors -PassThru -Linearly:$Linearly
 
+    $res = @()
     if (!$Silent)
     {
         # 交互模式
         $numOfMirrors = $Mirrors.Count
         $range = "[0~$($numOfMirrors-1)]"
-        $num = Read-Host -Prompt "Select the number of the mirror you want to use $range ?(default: $default)"
+        $num = Read-Host -Prompt "Select the number(s) of the mirror you want to use $range ?(default: $default)"
         # $mirror = 'https://mirror.ghproxy.com'
-        $n = $num -as [int] #可能是数字或者空$null
-        if ($VerbosePreference)
-        {
-            
-            Write-Verbose "`$n=$n"
-            Write-Verbose "`$num=$num"
-            Write-Verbose "`$numOfMirrors=$numOfMirrors"
-        }
-   
-        #  如果输入的是空白字符,则默认设置为0
-        if ( $num.trim().Length -eq 0)
+        # if($num.ToCharArray() -contains ','){
+        # }
+
+        $numStrs = $num -split ',' | Where-Object { $_.Trim() } | Get-Unique #转换为数组(自动去除空白字符)
+        # 如果$num是一个空字符串(Read-Host遇到直接回车的情况),那么$numStrs会是$null
+        if (!$numStrs )
         {
             Write-Host 'choose the Default 1'
-            $n = $default
+            # $n = $default
+            $res += $Default
         }
-        elseif ($n -notin 0..($numOfMirrors - 1))
+        else
         {
-            Throw " Input a number within the range! $range"
-        } 
+            foreach ($num in $numStrs)
+            {
+                $n = $num -as [int] #可能是数字或者空$null
+                if ($VerbosePreference)
+                {
+            
+                    Write-Verbose "`$n=$n"
+                    Write-Verbose "`$num=$num"
+                    Write-Verbose "`$numOfMirrors=$numOfMirrors"
+                }
+   
+                #  如果输入的是空白字符,则默认设置为0
+                # if ( $num.trim().Length -eq 0)
+       
+                if ($n -notin 0..($numOfMirrors - 1))
+                {
+                    Throw " Input a number within the range! $range"
+                }
+                else
+                {
+                    # 合法的序号输入，插入到$res
+                    $res += $n
+                }
+            }
+        }
     }
-    else
+    elseif ($Silent)
     {
-        $n = $default
+        # Silent模式下默认选择第1个镜像
+        $res += $default
     }
-    if ($n -gt 0)
+    # 抽取镜像
+    $mirrors = $Mirrors[$res] #利用pwsh的数组高级特性
+    # Write-Host $mirrors -ForegroundColor Blue
+    $mirrors = @($mirrors) #确保其为数组
+    
+    # 用户选择了一个合法的镜像代号(0表示不使用镜像)
+    Write-Host 'Selected mirror:[ ' # -NoNewline
+    foreach ($mir in $mirrors)
     {
-        # 用户选择了一个合法的镜像代号(0表示不使用镜像)
-        Write-Host "Selected mirror:[$n : " -NoNewline
-        Write-Host "$($Mirrors[$n])" -BackgroundColor Gray -NoNewline
-        Write-Host ']'#打印一个空行
+        Write-Host "`t$mir" -BackgroundColor Gray -NoNewline
+        Write-Host ''
+
     }
-    $mirror = $Mirrors[$n]
-    return $mirror
+    # Write-Host "$($Mirrors[$n])" -BackgroundColor Gray -NoNewline
+    Write-Host ']'#打印一个空行
+
+    # 包含单个字符串的数组被返回时会被自动解包,这种情况下会是一个字符串
+    #如果却是需要外部接受数组,那么可以在外部使用@()来包装返回结果即可
+    return $mirrors
+    # return [array]$Mirrors
+    # return $res
+
 }
 
 
@@ -448,11 +490,13 @@ function Deploy-ScoopByGithubMirrors
         
         [switch]$InstallBasicSoftwares,
         $ScriptsDirectory = "$home/Downloads",
-        [switch]$InstallForAdmin
+        [switch]$InstallForAdmin,
+        [switch]$Silent
     )
   
     # 获取可用的github加速镜像站(用户选择的)
-    $mirror = Get-SelectedMirror
+    $mirrors = Get-SelectedMirror -Silent:$Silent
+    # $mirror = @($mirrors)[0]
     ## 加速下载scoop原生安装脚本
     $script = (Invoke-RestMethod $mirror/https://raw.githubusercontent.com/scoopinstaller/install/master/install.ps1)
  
@@ -631,7 +675,8 @@ function Add-ScoopBuckets
     param (
         # [parameter(Mandatory = $true)]    
         $mirror,
-        [switch]$NoMirror
+        [switch]$NoMirror,
+        [switch]$Silent
     )
     if ($mirror)
     {
@@ -645,7 +690,8 @@ function Add-ScoopBuckets
     }
     else
     {
-        $mirror = Get-SelectedMirror
+        $mirror = Get-SelectedMirror -Silent:$Silent
+        # $mirror=@($mirror)[0]
         Write-Verbose "The mirror is: $mirror"
     }
     $spc = "$mirror/https://github.com/lzwme/scoop-proxy-cn".Trim('/')
@@ -833,12 +879,14 @@ The spc1 bucket was added successfully.
         [parameter(ParameterSetName = 'Bucket')]
         [switch]$UpdateBucket,
         [parameter(ParameterSetName = 'Bucket')]
-        $BackupBucketWithName
+        $BackupBucketWithName,
+        [switch]$Silent
     )
 
     if (!$Mirror -and !$UseGiteeScoop)
     {
-        $Mirror = Get-SelectedMirror
+        $Mirror = Get-SelectedMirror  -Silent:$Silent
+        # $Mirror=@($Mirror)[0]
     }
     if ($VerbosePreference)
     {
