@@ -4,7 +4,7 @@ param(
     [ValidateSet('pwsh', 'powershell')]$shell = 'powershell',
     [switch]$verbose
 )
-function Deploy-GithubHostsAutoUpdater
+function Deploy-GithubHostsAutoUpdater-Archive
 {
     <# 
     .SYNOPSIS
@@ -21,7 +21,8 @@ function Deploy-GithubHostsAutoUpdater
         
         [ValidateSet('pwsh', 'powershell')]$shell = 'powershell',
         # 需要执行的更新脚本位置
-        $File = '' #自行指定
+        $File = '', #自行指定
+        [alias('Comment')]$Description = "Task Create Time: $(Get-DateTimeNumber)"
     )
     # 检查参数情况
     Write-Verbose 'Checking parameters ...'
@@ -48,6 +49,7 @@ function Deploy-GithubHostsAutoUpdater
     $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
 
     # 创建计划任务
-    Register-ScheduledTask -TaskName 'Update-githubHosts' -Action $action -Trigger $trigger1, $trigger2 -Settings $settings -Principal $principal
+    Register-ScheduledTask -TaskName 'Update-GithubHosts' -Action $action -Trigger $trigger1, $trigger2 `
+        -Settings $settings -Principal $principal -Description $Description
 }
-Deploy-GithubHostsAutoUpdater -File $File -shell $shell -Verbose:$verbose
+Deploy-GithubHostsAutoUpdater-Archive -File $File -shell $shell -Verbose:$verbose

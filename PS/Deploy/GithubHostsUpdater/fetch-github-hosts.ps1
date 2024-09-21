@@ -8,7 +8,7 @@ function Update-GithubHosts-Archive
     需要用管理员权限运行
     原项目提供了bash脚本,这里补充一个powershell版本的,这样就不需要打开git-bash
     .Notes
-    与函数配套的,还有一个Deploy-githubHostsAutoUpdater,它可以向系统注册一个按时执行此脚本的自动任务(可能要管理员权限运行),可以用来自动更新hosts
+    与函数配套的,还有一个Deploy-GithubHostsAutoUpdater,它可以向系统注册一个按时执行此脚本的自动任务(可能要管理员权限运行),可以用来自动更新hosts
     .NOTES
     可以将本函数放到powershell模块中,也可以当做单独的脚本运行
     .LINK
