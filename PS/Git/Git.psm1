@@ -99,12 +99,15 @@ function Get-SpeedUpUrl
 {
     <# 
     .SYNOPSIS
-    链接修改(包括拼接和替换加速域名)
-    如果是其他替换域名的方式,可以修改实现代码,这里隐藏获取链接的方式
-
+    链接修改(包括拼接或替换加速域名),主要以拼接的方式来加速(比较方便)
+    
     .DESCRIPTION 
-
     比如,可以用于github资源下载加速,通过在源链接前面追加加速镜像链接来提高下载速度
+    调用外部的加速镜像测试函数,获取可用网站列表(能够响应,不保证一定可用),支持用户自主选择加速的镜像
+    可以选择多个镜像(逗号分隔),此时会返回对应数量的镜像加速后的链接
+
+    .NOTES
+    如果是其他替换域名的方式,可以修改实现代码,这里隐藏获取链接的方式
     .EXAMPLE
     获取加速修改后的链接(默认为追加头域名)
     PS C:\> Get-SpeedUpUrl -Url https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip
@@ -158,12 +161,13 @@ function Get-SpeedUpUrl
             else
             {
                 # $prefix = Get-AvailableGithubMirrors
-                $prefix = @(Get-SelectedMirror ) 
-                foreach ($item in $prefix)
+                $prefixes = @(Get-SelectedMirror ) 
+                foreach ($prefix in $prefixes)
                 {
 
-                    $Url = "$prefix/$Url" 
-                    $res += $Url
+                    $speedUrl = "$prefix/$Url" 
+                    Write-Verbose $SpeedUrl  
+                    $res += $speedUrl
                 }
             }
         }
@@ -204,7 +208,8 @@ function Invoke-GithubResourcesSpeedup
         [Parameter(Mandatory = $false)]
         [string]$Directory = "$env:USERPROFILE/Downloads",
         $FileName = '', 
-        [validateset('aria2c', 'default')]$Downloader = 'aria2c', #aria2c和aria2的意思一样
+        [validateset('aria2c', 'webrequest')]
+        $Downloader = 'aria2c', #aria2c和aria2的意思一样
         $Threads = 16
     
     )
@@ -226,13 +231,17 @@ function Invoke-GithubResourcesSpeedup
         $speedUpUrl = Get-SpeedUpUrl -Url $Url
         # 使用Invoke-WebRequest下载文件
         Write-Host 'Download from:' $speedUpUrl
-           
-        if ($downloader -like 'aria2*')
+        # 默认使用powershell自带命令下载(aria2c 线程数设置太多可能会下不动)
+        if ($Downloader -eq 'WebRequest')
         {
-            $Aria2Availability = (Get-Command aria2* -ErrorAction SilentlyContinue)
+            Invoke-WebRequest -Uri $speedUpUrl -OutFile $Directory
+        }
+        elseif ($downloader -like 'aria2*')
+        {
+            $Aria2Availability = Get-Command aria2* -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source | Split-Path -LeafBase
             if ($Aria2Availability)
             {
-                $downloader = $Aria2Availability.Name
+                $downloader = $Aria2Availability
             }
             else
             {
@@ -240,10 +249,10 @@ function Invoke-GithubResourcesSpeedup
                 $downloader = ''
             }
             $expression = "$downloader  $SpeedUpUrl -d $Directory  -s $Threads -x 16 -k 1M "  
-            if ($VerbosePreference)
-            {
-                $expression += ' --console-log-level=info '
-            }
+            # if ($VerbosePreference)
+            # {
+            #     $expression += ' --console-log-level=info ' #输出内容很长
+            # }
             # 如果指定了文件名,则将文件下载为指定的文件名,否则默认名字
             $expression = ($FileName) ? ($expression + " -o $FileName"): $expression
             #以Verbose的风格显示aria2c下载命令行
@@ -251,12 +260,7 @@ function Invoke-GithubResourcesSpeedup
 
             $expression | Invoke-Expression
         }
-        # 调用外部下载器失败($downloader='')则自动使用默认下载工具下载
-        if ($Downloader -eq '')
-        {
 
-            Invoke-WebRequest -Url $speedUpUrl -OutFile $Directory
-        }
     }
 }
 

@@ -1259,7 +1259,8 @@ function Deploy-GithubHostsAutoUpdater
     [CmdletBinding()]
     param (
         
-        [ValidateSet('pwsh', 'powershell')]$shell = 'powershell',
+        # [ValidateSet('pwsh', 'powershell')]$shell = 'powershell',
+        $shell='pwsh',#此函数为pwsh设计(powershell v5不可用)
         
         # 需要执行的更新脚本位置(这个参数在不常用,采用直接通过pwsh调用指定函数的方式执行任务)
         $File = '' , #自行指定
@@ -1286,12 +1287,12 @@ function Deploy-GithubHostsAutoUpdater
     #     # $File = 'C:\repos\scripts\PS\Deploy\fetch-github-hosts.ps1' #这是绝对路径的例子(注意文件名到底是横杠（-)还是下划线(_)需要分清楚
     # }
 
-    $action = New-ScheduledTaskAction -Execute $shell -Argument " -ExecutionPolicy ByPass -NoProfile -WindowStyle Hidden -c $ActionFunction" 
+    $action = New-ScheduledTaskAction -Execute $shell -Argument " -ExecutionPolicy ByPass  -WindowStyle Hidden -c $ActionFunction" 
     # 定义两个触发器
     $trigger1 = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Hours 1)
     $trigger2 = New-ScheduledTaskTrigger -AtStartup
-    # 任务执行角色设置
-    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+    # 任务执行角色设置 #尝试以管理与组的方式指定UserId
+    $principal = New-ScheduledTaskPrincipal -UserId "$env:UserName" -LogonType ServiceAccount -RunLevel Highest
     # 这里的-UserId 可以指定创建者;但是注意,任务创建完毕后,不一定能够立即看Author(创建者)字段的信息,需要过一段时间才可以看到,包括taskschd.msc也是一样存在滞后
     # $principal = New-ScheduledTaskPrincipal -UserId $env:UserName -LogonType ServiceAccount -RunLevel Highest
 
@@ -1302,7 +1303,16 @@ function Deploy-GithubHostsAutoUpdater
         -Trigger $trigger1, $trigger2 -Settings $settings -Principal $principal -Description $Description
     # 立即执行(初次)
     Write-Host 'Try to start ScheduledTask First time...'
-    Start-ScheduledTask -TaskName $TaskName 
+    # Start-ScheduledTask -TaskName $TaskName #初次启动相应的任务
+    Start-ScheduledTask -TaskName Update-Githubhosts
+
+    #检查部署效果
+    Start-Sleep 5 #等待5秒钟，让更新操作完成
+    # 检查hosts文件修改情况(上一次更改时间)
+    $hosts = 'C:\Windows\System32\drivers\etc\hosts'
+    Get-ChildItem $hosts | Select-Object LastWriteTime #查看hosts文件更新时间(最有一次写入时间),文件内部的更新时间是hosts列表更新时间而不是文件更新时间
+    Get-Content $hosts | Select-Object -Last 5 #查看hosts文件的最后5行信息
+    Notepad $hosts # 外部打开记事本查看整个hosts文件
 }
 
 
@@ -2083,7 +2093,7 @@ function Deploy-StartupServices
     $PSBoundParameters | Format-Table
     # Get-ChildItem $Script
     
-    $action = New-ScheduledTaskAction -Execute $shell -Argument " -ExecutionPolicy ByPass -NoProfile -WindowStyle Hidden -File $Script"
+    $action = New-ScheduledTaskAction -Execute $shell -Argument " -ExecutionPolicy ByPass  -WindowStyle Hidden -File $Script"
     # 定义触发器
     $trigger = New-ScheduledTaskTrigger -AtStartup
     # 任务执行主体设置(以System身份运行,且优先级最高,无论用户是否登陆都运行,适合于后台服务，如aria2，chfs，alist等)
