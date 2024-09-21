@@ -718,7 +718,8 @@ function Get-DateTimeNumber
     获取时间,格式为yyyyMMDDHHmmss (仅包含数字)
     获取时间不是很常用,这里给它标记一下
     #>
-    return (Get-Date -Format 'yyyyMMHHmmss')
+    $res=Get-Date -Format 'yyyyMMddHHmmss'
+    return $res
 }
 function Get-DateTime
 {
