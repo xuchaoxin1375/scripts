@@ -1282,7 +1282,35 @@ function Deploy-CxxuPsModules
     Start-Process -FilePath pwsh -ArgumentList '-noe -c p'
 }
 
+function Confirm-PsVersion
+{
+    <# 
+    .SYNOPSIS
+    如果当前版本高于指定版本，则返回当前版本对象，否则返回$False
+    直接抛出版本过低的提示错误有点过头了
+    #>
+    param (
+        $Major = 7,
+        $Minor = 0,
+        $Build = 0
 
+    )
+    $version = $host.Version
+    if ($Version.Major -ge $Major -and $Version.Minor -ge $Minor -and $Version.Build -ge $Build)
+    {
+        # $res = $True
+        # Write-Host 
+        return $Version
+    }
+    else
+    {
+        # $res = $false
+        Write-Host "Powershell version is lower than $Major.$Minor.$Build" -ForegroundColor Red
+        return $False
+    }
+    # return $res
+    
+}
 
 function Install-ScoopByLocalProxy
 {

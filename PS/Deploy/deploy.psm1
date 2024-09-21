@@ -496,7 +496,7 @@ function Deploy-ScoopByGithubMirrors
   
     # 获取可用的github加速镜像站(用户选择的)
     $mirrors = Get-SelectedMirror -Silent:$Silent
-    # $mirror = @($mirrors)[0]
+    $mirror = @($mirrors)[0]
     ## 加速下载scoop原生安装脚本
     $script = (Invoke-RestMethod $mirror/https://raw.githubusercontent.com/scoopinstaller/install/master/install.ps1)
  
@@ -885,7 +885,7 @@ The spc1 bucket was added successfully.
 
     if (!$Mirror -and !$UseGiteeScoop)
     {
-        $Mirror = Get-SelectedMirror  -Silent:$Silent
+        $Mirror = Get-SelectedMirror -Silent:$Silent
         # $Mirror=@($Mirror)[0]
     }
     if ($VerbosePreference)
@@ -1150,7 +1150,79 @@ function Deploy-ScoopStartMenuAppsStarter
     }
     Write-Host '环境变量修改完成。请重新启动命令提示符或 PowerShell 以使更改生效。'
 }
+function Update-GithubHosts
+{
+    <# 
+    .SYNOPSIS
+    函数会修改hosts文件，从github520项目获取快速访问的hosts
+    .DESCRIPTION
+    需要用管理员权限运行
+    原项目提供了bash脚本,这里补充一个powershell版本的,这样就不需要打开git-bash
+    .Notes
+    与函数配套的,还有一个Deploy-githubHostsAutoUpdater,它可以向系统注册一个按时执行此脚本的自动任务(可能要管理员权限运行),可以用来自动更新hosts
+    .NOTES
+    可以将本函数放到powershell模块中,也可以当做单独的脚本运行
+    .LINK
+    https://github.com/521xueweihan/GitHub520
+    .LINK
+    https://gitee.com/xuchaoxin1375/scripts/tree/main/PS/Deploy
+    #>
+    [CmdletBinding()]
+    param (
+        # 可以使用通用的powershell参数(-verbose)查看运行细节
+        $hosts = 'C:\Windows\System32\drivers\etc\hosts',
+        $remote = 'https://raw.hellogithub.com/hosts'
+    )
+    # 创建临时文件
+    # $tempHosts = New-TemporaryFile
 
+    # 定义 hosts 文件路径和远程 URL
+
+    # 定义正则表达式
+    $reg = '(?s)# GitHub520 Host Start.*?# GitHub520 Host End'
+
+
+    # 读取 hosts 文件并删除指定内容,再追加新内容
+    # $content = (Get-Content $hosts) 
+    $content = Get-Content -Raw -Path $hosts
+    # Write-Host $content
+    #debug 检查将要替换的内容
+
+    #查看将要被替换的内容片段是否正确
+    # $content -match $reg
+    $res = [regex]::Match($content, $reg)
+    Write-Verbose '----start----'
+    Write-Verbose $res[0].Value
+    Write-Verbose '----end----'
+
+    # return 
+    $content = $content -replace $reg, ''
+
+    # 追加新内容到$tempHosts文件中
+    # $content | Set-Content $tempHosts
+    #也可以这样写:
+    #$content | >> $tempHosts 
+
+    # 下载远程内容并追加到临时文件
+    # $NewHosts = New-TemporaryFile
+    $New = Invoke-WebRequest -Uri $remote -UseBasicParsing #New是一个网络对象而不是字符串
+    $New = $New.ToString() #清理头信息
+    #移除结尾多余的空行,避免随着更新,hosts文件中的内容有大量的空行残留
+       
+    # 将内容覆盖添加到 hosts 文件 (需要管理员权限)
+    # $content > $hosts
+    $content.TrimEnd() > $hosts
+    ''>> $hosts #使用>>会引入一个换行符(设计实验:$s='123',$s > example;$s >> example就可以看出引入的换行),
+    # 这里的策略是强控,即无论之前Github520的内容和前面的内容之间隔了多少个空格,
+    # 这里总是移除多余(全部)空行,然后手动插入一个空行,再追加新内容(Gith520 hosts)
+    $New.Trim() >> $hosts
+
+    
+    Write-Verbose $($content + $NewContent)
+    # 刷新配置
+    ipconfig /flushdns
+    
+}
 function Deploy-GithubHostsAutoUpdater
 {
     <# 
@@ -1158,19 +1230,46 @@ function Deploy-GithubHostsAutoUpdater
     向系统注册自动更新GithubHosts的计划任务
     .DESCRIPTION
     如果需要修改触发器，可以自行在源代码内调整，或者参考Microsoft相关文档；也可以使用taskschd.msc 图形界面来创建或修改计划任务
-
-    .NOtes
+    .Notes
+    仅支持powershell7+以上版本,如果你只有powershellv5并且不想升级powershell7,则考虑独立的部署版本
+    兼容powershell5和powershell7的以归档版本不在维护,此目录是"$PSScriptRoot\GithubHostsUpdater",该目录下有说明
+    .Notes
     移除计划任务：
     unregister-ScheduledTask -TaskName  Update-GithubHosts
+    .Notes
+    自动任务可能被经用,请用管理员权限在shell命令行中启用任务,然后执行配置和信息查询等操作
+    PS> enable-scheduledtask -TaskName Update-GithubHosts -Verbose
+    Enable-ScheduledTask: 拒绝访问。
+
+    PS🌙[BAT:98%][MEM:54.87% (8.43/15.37)GB][12:27:17]
+    # [cxxu@BEFEIXIAOXINLAP][<W:192.168.1.77>][~\Desktop]
+    PS> sudo pwsh
+    PowerShell 7.4.5
+    Setting basic environment in current shell...
+    Loading personal and system profiles took 925ms.
+
+    PS🌙[BAT:98%][MEM:54.87% (8.43/15.37)GB][12:27:25]
+    #⚡️[cxxu@BEFEIXIAOXINLAP][<W:192.168.1.77>][~\Desktop]
+    PS> enable-scheduledtask -TaskName Update-GithubHosts -Verbose
+
+    TaskPath                                       TaskName
+    --------                                       --------
+    \                                              Update-GithubHosts
     #>
     [CmdletBinding()]
     param (
         
         [ValidateSet('pwsh', 'powershell')]$shell = 'powershell',
-        # 需要执行的更新脚本位置
-        $f = '' , #自行指定
-        $TaskName = 'Update-githubHosts'
+        
+        # 需要执行的更新脚本位置(这个参数在不常用,采用直接通过pwsh调用指定函数的方式执行任务)
+        $File = '' , #自行指定
+        $TaskName = 'Update-GithubHosts',
+        #其中 $ActionFunction 代表要执行的更新任务,是自动导入可执行的函数
+        $ActionFunction = 'Update-GithubHosts',
+        [alias('Comment')]$Description = "Task Create Time: $(Get-DateTimeNumber)"
     )
+    $continue = Confirm-PsVersion -Major 7 #检查powershell版本
+    if (! $continue) { return $false }
     # 检查参数情况
     Write-Verbose 'Checking parameters ...'
     $PSBoundParameters | Format-Table   
@@ -1179,15 +1278,15 @@ function Deploy-GithubHostsAutoUpdater
     Write-Host 'Registering...'
     # Start-Sleep 3
     # 定义计划任务的基本属性
-    if (! $f)
-    {
+    # if (! $File)
+    # {
     
-        $f = "$PSScriptRoot\GithubHostsUpdater\fetch-github-hosts.ps1" #自行修改为你的脚本保存目录(我将其放在powershell模块中,可以用$PSScriptRoot来指定目录)
+    #     $File = "$PSScriptRoot\GithubHostsUpdater\fetch-github-hosts.ps1" #自行修改为你的脚本保存目录(我将其放在powershell模块中,可以用$PSScriptRoot来指定目录)
        
-        # $f = 'C:\repos\scripts\PS\Deploy\fetch-github-hosts.ps1' #这是绝对路径的例子(注意文件名到底是横杠（-)还是下划线(_)需要分清楚
-    }
+    #     # $File = 'C:\repos\scripts\PS\Deploy\fetch-github-hosts.ps1' #这是绝对路径的例子(注意文件名到底是横杠（-)还是下划线(_)需要分清楚
+    # }
 
-    $action = New-ScheduledTaskAction -Execute $shell -Argument " -ExecutionPolicy ByPass -NoProfile -WindowStyle Hidden -File $f"
+    $action = New-ScheduledTaskAction -Execute $shell -Argument " -ExecutionPolicy ByPass -NoProfile -WindowStyle Hidden -c $ActionFunction" 
     # 定义两个触发器
     $trigger1 = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Hours 1)
     $trigger2 = New-ScheduledTaskTrigger -AtStartup
@@ -1200,7 +1299,10 @@ function Deploy-GithubHostsAutoUpdater
 
     # 创建计划任务
     Register-ScheduledTask -TaskName $TaskName -Action $action `
-        -Trigger $trigger1, $trigger2 -Settings $settings -Principal $principal
+        -Trigger $trigger1, $trigger2 -Settings $settings -Principal $principal -Description $Description
+    # 立即执行(初次)
+    Write-Host 'Try to start ScheduledTask First time...'
+    Start-ScheduledTask -TaskName $TaskName 
 }
 
 

@@ -1,5 +1,5 @@
 
-function Update-githubHosts
+function Update-GithubHosts-Archive
 {
     <# 
     .SYNOPSIS
@@ -72,4 +72,4 @@ function Update-githubHosts
     ipconfig /flushdns
     
 }
-Update-githubHosts
+Update-GithubHosts-Archive

@@ -1,6 +1,6 @@
 
 param(
-    $f = "$PSScriptRoot\fetch-github-hosts.ps1",
+    $File = "$PSScriptRoot\fetch-github-hosts.ps1",
     [ValidateSet('pwsh', 'powershell')]$shell = 'powershell',
     [switch]$verbose
 )
@@ -21,7 +21,7 @@ function Deploy-GithubHostsAutoUpdater
         
         [ValidateSet('pwsh', 'powershell')]$shell = 'powershell',
         # 需要执行的更新脚本位置
-        $f = '' #自行指定
+        $File = '' #自行指定
     )
     # 检查参数情况
     Write-Verbose 'Checking parameters ...'
@@ -31,15 +31,15 @@ function Deploy-GithubHostsAutoUpdater
     Write-Host 'Registering...'
     Start-Sleep 3
     # 定义计划任务的基本属性
-    if (! $f)
+    if (! $File)
     {
     
-        $f = "$PSScriptRoot\fetch-github-hosts.ps1" #自行修改为你的脚本保存目录(我将其放在powershell模块中,可以用$PSScriptRoot来指定目录)
+        $File = "$PSScriptRoot\fetch-github-hosts.ps1" #自行修改为你的脚本保存目录(我将其放在powershell模块中,可以用$PSScriptRoot来指定目录)
        
-        # $f = 'C:\repos\scripts\PS\Deploy\fetch-github-hosts.ps1' #这是绝对路径的例子(注意文件名到底是横杠（-)还是下划线(_)需要分清楚
+        # $File = 'C:\repos\scripts\PS\Deploy\fetch-github-hosts.ps1' #这是绝对路径的例子(注意文件名到底是横杠（-)还是下划线(_)需要分清楚
     }
 
-    $action = New-ScheduledTaskAction -Execute $shell -Argument " -ExecutionPolicy ByPass -NoProfile -WindowStyle Hidden -File $f"
+    $action = New-ScheduledTaskAction -Execute $shell -Argument " -ExecutionPolicy ByPass -NoProfile -WindowStyle Hidden -File $File"
     # 定义两个触发器
     $trigger1 = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Hours 1)
     $trigger2 = New-ScheduledTaskTrigger -AtStartup
@@ -50,5 +50,4 @@ function Deploy-GithubHostsAutoUpdater
     # 创建计划任务
     Register-ScheduledTask -TaskName 'Update-githubHosts' -Action $action -Trigger $trigger1, $trigger2 -Settings $settings -Principal $principal
 }
-
-Deploy-GithubHostsAutoUpdater -f $f -shell $shell -Verbose:$verbose
+Deploy-GithubHostsAutoUpdater -File $File -shell $shell -Verbose:$verbose
