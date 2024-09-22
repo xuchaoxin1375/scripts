@@ -48,11 +48,25 @@ function New-Shortcut
     将该参数设置为非路径的字符串通常没有意义,除非桌面上有个文件名为该字符串的文件或目录
     函数执行完毕后会调用Get-shortcutLinkInfo获取快捷方式的信息
 
+    .DESCRIPTION
+    使用此命令行方式创建的快捷方式会在路径(TargetPath)不可用时默认将其拼接到用户桌面目录后,例如`TargetPath = startup.myfile`,
+    如果此文件系统无法直接找到该文件，则会自动创建新的路径"$env:USERPROFILE\Desktop\startup.myfile"
+    尽管如此,这个自动生成的路径只是一种猜测而已,往往是不可靠的
+    快捷方式(Shortcut)不支持相对路径,只支持绝对路径
+    在这种仅指定一个名字(不是绝对路径)的情况下,利用本函数提供的参数`TargetPathAsAppName`开关来告诉创建脚本,
+    我这个是一个程序名,而不是绝对路径,需要进一步将其转换为绝对路径才可以用(事实上,这个参数也兼容路径字符串)
+    在此参数作用下,这里利用了`gcm`命令来解析TargetPath,解析成功的前提是`TargetPath`是存在的路径,
+    或者是通过path环境变量配置过路径,能够在命令行直接打开的文件(通常是可执行文件.exe,.msc等),比如说,notepad就是合法的取值
+
+    #>
+
+    <# 
+
     .EXAMPLE
     
     PS[BAT:69%][MEM:27.80% (8.81/31.70)GB][12:01:17]
     # [~\Desktop]
-    PS> new-Shortcut -Path demo3 -TargetPath C:\repos\scripts\PS\Startup\startup.ps1 -Arguments  '-Nologo -NoProfile'
+    PS> New-Shortcut -Path demo3 -TargetPath C:\repos\scripts\PS\Startup\startup.ps1 -Arguments  '-Nologo -NoProfile'
             The shortcut file name must has a suffix of .lnk or .url
             The .lnk extension is used by default
     [C:\Users\cxxu\Desktop\demo3.lnk] will be used
@@ -60,13 +74,22 @@ function New-Shortcut
     You can use -Force to overwrite it,or move the existing file first
 
     .EXAMPLE
-    PS[BAT:69%][MEM:27.79% (8.81/31.70)GB][12:01:20]
-    # [~\Desktop]
-    PS> new-Shortcut -Path demo3 -TargetPath C:\repos\scripts\PS\Startup\startup.ps1 -Arguments  '-Nologo -NoProfile' -Force
+    # 使用Force参数强制覆盖已有的同名链接文件(如果已经有了的话)
+    PS> New-Shortcut -Path demo4 -TargetPath C:\repos\scripts\PS\Startup\startup.ps1 -Arguments  '-Nologo -NoProfile' -Force
             The shortcut file name must has a suffix of .lnk or .url
-            The .lnk extension is used by default
-    [C:\Users\cxxu\Desktop\demo3.lnk] will be used
-    Shortcut created at C:\Users\cxxu\Desktop\demo3.lnk
+    [C:\Users\cxxu\Desktop\demo4.lnk] will be used
+
+    Check action result:
+
+    FullName         : C:\Users\cxxu\Desktop\demo4.lnk
+    Arguments        : -Nologo -NoProfile
+    Description      : 09/22/2024 11:46:37
+    Hotkey           :
+    IconLocation     : ,0
+    RelativePath     :
+    TargetPath       : C:\repos\scripts\PS\Startup\startup.ps1
+    WindowStyle      : 1
+    WorkingDirectory :
 
     PS[BAT:69%][MEM:27.74% (8.79/31.70)GB][12:01:38]
     # [~\Desktop]
@@ -138,7 +161,7 @@ function New-Shortcut
     # 创建上帝模式的快捷方式
     $GodModeFolderGUID = 'ED7BA470-8E54-465E-825C-99712043E01C'
     $GodModePath = "shell:::{$GodModeFolderGUID}"
-    new-shortcut -path "$home\desktop\GodMode.lnk" -TargetPath 'explorer.exe' -Arguments $GodModePath -Force -TargetPathAsAppName
+    New-shortcut -path "$home\desktop\GodMode.lnk" -TargetPath 'explorer.exe' -Arguments $GodModePath -Force -TargetPathAsAppName
     
     #执行结果:
     explorer.exe
@@ -176,30 +199,140 @@ function New-Shortcut
     PS> New-Shortcut -Path $HOME\desktop\Mathx -TargetPath typora.exe -Arguments C:\repos\blogs\Courses\Math\ -IconLocation C:\ProgramData\scoop\apps\typora\current\resources\assets\app.ico -Force -TargetPathAsAppName
     
     #>
+    <# 
+    .EXAMPLE
+    #创建一个任务管理器的快捷方式,直接指定taskmger作为TargetPath(需要配合ResolveTargetPath选项),默认打开最大化 显示创建过程中的信息,强制创建
+    PS> new-Shortcut -Path tsk -TargetPath taskmgr -WindowStyle Maximized -Force -ResolveTargetPath
+        The shortcut file name must has a suffix of .lnk or .url
+    [C:\Users\cxxu\Desktop\tsk.lnk] will be used
 
+    Check action result:
+
+    FullName         : C:\Users\cxxu\Desktop\tsk.lnk
+    Arguments        :
+    Description      : 09/22/2024 12:13:03
+    Hotkey           :
+    IconLocation     : ,0
+    RelativePath     :
+    TargetPath       : C:\WINDOWS\system32\taskmgr.exe
+    WindowStyle      : 3
+    WorkingDirectory :
+
+    .EXAMPLE
+    创建taskmgr的快捷方式,这里没有指定TargetPathAsAppName选项，函数内部会推荐你尝试将TargetPath作为可执行程序名(用户可能经常会忘记使用TargetPathAsAppName选项)
+    PS> new-Shortcut -Path tsk -TargetPath taskmgr -WindowStyle Minimized  -Force -Verbose -TargetPathAsAppName
+    VERBOSE: The path []  is converted to absolute path: [C:\Users\cxxu\Desktop\tsk]
+    Try Consider the targetPath as a callable name:@{Source=C:\WINDOWS\system32\Taskmgr.exe}
+
+    Key                 Value
+    ---                 -----
+    Path                tsk
+    TargetPath          taskmgr
+    WindowStyle         Minimized
+    Force               True
+    Verbose             True
+    TargetPathAsAppName True
+
+            The shortcut file name must has a suffix of .lnk or .url
+    VERBOSE:        The .lnk extension is used by default
+    [C:\Users\cxxu\Desktop\tsk.lnk] will be used
+    VERBOSE: WindowStyle: 7
+
+    Check action result:
+
+    FullName         : C:\Users\cxxu\Desktop\tsk.lnk
+    Arguments        :
+    Description      : 09/22/2024 16:28:53
+    Hotkey           :
+    IconLocation     : ,0
+    RelativePath     :
+    TargetPath       : C:\WINDOWS\system32\taskmgr.exe
+    WindowStyle      : 7
+    WorkingDirectory :
+    #>
+    [CmdletBinding()]
     param (
-        [string]$TargetPath,
+        # 快捷方式要存放的路径
         [string]$Path = '.',
+
+        # 快捷方式指向的目标(目录或文件,可以是课执行程序文件或代码文件)
+        [string]$TargetPath,
+
+        # 快捷方式启动参数(当TargetPath为可执行程序时并且接受命令行参数时有用)
         [string]$Arguments = '',
+        # 快捷方式的工作目录,部分可执行程序对于工作目录比价敏感,这时候指定工作目录比较有用
         [string]$WorkingDirectory = '',
+        # 指定快捷方式的图标,比较少使用此参数,如果快捷方式的图标有问题，或者想要其他的非默认图标,可以使用此参数指定
         $IconLocation = '',
-        [switch]$TargetPathAsAppName,
+
+        # 指定快捷方式的目标是一个可执行程序的名字,而不是一个目录或文件的路径
+        # 用户可能经常会忘记使用TargetPathAsAppName选项,函数会向用户做出决策推荐
+        [switch]
+        [alias('ResolveTargetPath')]
+        $TargetPathAsAppName,
+
+        # 指定快捷方式的快捷键启动(主要针对放在桌面上的快捷方式)
         $HotKey = '',
+        # 对快捷方式的描述
+        $Description = "$(Get-Date)",
+        # 窗口样式(1为普通，3为最大化，7为最小化),默认为1;此参数不一定有效,例如shell窗口一般有效
+        [ValidateSet('Normal', 'Maximized', 'Minimized')]
+        $WindowStyle ,
+        # 如果已经存在同名快捷方式,使用Force选项覆盖已经存在的快捷方式
         [switch]$Force
     )
     # 处理快捷方式各个属性值
+    # 虽然快捷方式仅支持绝对路径,这里尝试获取$Path的绝对路径,将函数间接支持相对路径
+    # $Path = Convert-Path $Path #无法解析尚不存在的路径,另寻它法
     if ((Get-PathType $Path ) -eq 'RelativePath')
     {
-        
+        $RawPath
         $Path = Join-Path -Path $PWD -ChildPath $Path
- 
+        Write-Verbose "The path [$RawPath]  is converted to absolute path: [$Path]"
+        
     }
-    # $Path = Resolve-Path $Path
+    # 如果不指定为AppName的话，尝试解析传入的TargetPath
+
     if (! $TargetPathAsAppName)
     {
-        $TargetPath = Resolve-Path $TargetPath
+        # 尝试将TargetPath作为一个路径来解析(同一成绝对路径的形式)
+        $TargetPathAbs = Convert-Path $TargetPath -ErrorAction SilentlyContinue
+        if (! $TargetPathAbs)
+        {
+            # 如果解析失败,很可能是用户直接输入了一个可执行程序的名字,那么尝试将它作为可执行程序的名字来处理(也就是不用修改TargetPath)
+            Write-Host "TargetPath is not a available path: $TargetPath;You can try the option -TargetPathAsAppName to run it" -ForegroundColor DarkGray
+            # 向用户确认是否尝试推荐的决策(这一块代码不是必须的,完全可以要求用户重新追加参数再次执行命令)
+            # 为了方便起见,这里加入了交互式的询问
+            $Continue = Read-Host -Prompt 'Try with Option  -TargetPathAsAppName?[y/n](default y to continue)'
+            if ($Continue.ToLower() -eq 'y' -or $Continue.Trim() -eq '')
+            {
+                # 报告更改后的行为是如何的
+                $TargetPathAsAppName = $true
+            
+            }
+            else
+            {
+                # 用户放弃推荐的决策,结束函数
+                return
+            }
+        
+        }
+    }
+    # 这里两个if顺序有讲究(如果前面没有指定TargetPathAsAppName,但是函数认为用户很可能会使用TargetPathAsAppName选项,那么会把$TargetPathAsAppName设置为$True)
+    if ($TargetPathAsAppName)
+    {
+        # 如果TargetPath是一个程序名字(而不是路径),那么可以原原本本的传递给TargetPath属性就行(前提是命令中直接输入此名字的换可以打开某个文件或者程序)
+        # pass
+        # $TargetPathAbs = Convert-Path $TargetPath -ErrorAction SilentlyContinue
+        Write-Host "Try Consider the targetPath as a callable name:$(Get-Command $TargetPath|Select-Object Source) " -ForegroundColor Blue
     }
 
+ 
+    
+    if ($VerbosePreference)
+    {
+        $PSBoundParameters | Format-Table
+    }
 
     # Write-Host $TargetPath
 
@@ -239,17 +372,35 @@ function New-Shortcut
     # 设置对象
     $WshShell = New-Object -ComObject WScript.Shell
     $Shortcut = $WshShell.createShortcut($Path)
-    # debug TargetPath property
     $Shortcut.TargetPath = $TargetPath
     $Shortcut.Hotkey = $HotKey
-    $Shortcut.IconLocation = $IconLocation
+    $Shortcut.Description = $Description
+
     #如果语句是 $Shortcut.TargetPath = 'string example',则会被拼接为"$env:userprofile/desktop/string example";这是api决定的
     # 事实上,快捷方式是针对计算机上的某个位置(资源)的快捷访问方式,而不是对于一个字符串做访问,因此targetPath参数不要设置为非路径或者软件名的字符串,否则会出现意外的效果,而且本身也没有意义,例如将数字123设置为一个快捷方式的目标路径,通常是没有意义的,除非您的桌面上恰好有一个文件或目录名为123
     $Shortcut.Arguments = $Arguments
 
+    if ($WindowStyle )
+    {
+
+        $windowStyleCode = switch ($WindowStyle)
+        {
+            'Maximized' { 3 }
+            'Minimized' { 7 }
+            Default { 1 }
+        }
+        Write-Verbose "WindowStyle: $windowStyleCode"
+        $Shortcut.WindowStyle = $windowStyleCode
+    }
+    # 以下属性如果默认置空容易报错,这里将他们放到分支中,当参数不为空时才设置
     if ($WorkingDirectory -ne '')
     {
         $Shortcut.WorkingDirectory = $WorkingDirectory
+    }
+    if ($IconLocation)
+    {
+        
+        $Shortcut.IconLocation = $IconLocation
     }
     $Shortcut.Save()
 
@@ -263,8 +414,6 @@ function New-Shortcut
     Get-ShortcutLinkInfo $Path
 }
 
-# 使用示例：
-# New-Shortcut -TargetPath "C:\Path\To\Your\Application.exe" -Path "C:\Users\Public\Desktop\Application.lnk"
 
 
 
