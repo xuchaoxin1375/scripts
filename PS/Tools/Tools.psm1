@@ -94,7 +94,7 @@ function Get-MsysSourceScript
     param (
 
     )
-    $script={sed -i 's#https\?://mirror.msys2.org/#https://mirrors.tuna.tsinghua.edu.cn/msys2/#g' /etc/pacman.d/mirrorlist*}
+    $script = { sed -i 's#https\?://mirror.msys2.org/#https://mirrors.tuna.tsinghua.edu.cn/msys2/#g' /etc/pacman.d/mirrorlist* }
     
     return $script.ToString()
 }
@@ -210,6 +210,37 @@ function Update-DataJsonLastWriteTime
         $DataJson = $DataJson
     )
     Update-Json -Key LastWriteTime -Value (Get-Date) -DataJson $DataJson
+}
+function Test-DirectoryEmpty
+{
+    <# 
+    .SYNOPSIS
+    判断一个目录是否为空目录
+    .PARAMETER directoryPath
+    要检查的目录路径
+    .PARAMETER CheckNoFile
+    如果为true,递归子目录检查是否有文件
+    #>
+    param (
+        [string]$directoryPath,
+        [switch]$CheckNoFile
+    )
+
+    if (-Not (Test-Path -Path $directoryPath))
+    {
+        throw "The directory path '$directoryPath' does not exist."
+    }
+    if ($CheckNoFile)
+    {
+
+        $itemCount = (Get-ChildItem -Path $directoryPath -File -Recurse | Measure-Object).Count
+    }
+    else
+    {
+        $items = Get-ChildItem -Path $directoryPath
+        $itemCount = $items.count
+    }
+    return $itemCount -eq 0
 }
 function Update-Json
 {

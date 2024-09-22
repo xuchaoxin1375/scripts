@@ -250,6 +250,32 @@ function New-Shortcut
     WindowStyle      : 7
     WorkingDirectory :
     #>
+    <# 
+    .EXAMPLE
+    创建声音设置控制面板(sound)
+    PS> New-Shortcut -Path $home/desktop/snd -TargetPath control -Arguments '/name Microsoft.sound'
+    TargetPath is not a available path: control
+    Try with Option  -TargetPathAsAppName?[y/n](default y to continue):
+    Try Consider the targetPath as a callable name:@{Source=C:\WINDOWS\system32\control.exe}
+            The shortcut file name must has a suffix of .lnk or .url
+    [C:\Users\cxxu/desktop/snd.lnk] will be used
+
+    Check action result:
+
+    FullName         : C:\Users\cxxu\desktop\snd.lnk
+    Arguments        : /name Microsoft.sound
+    Description      : 09/22/2024 17:59:07
+    Hotkey           :
+    IconLocation     : ,0
+    RelativePath     :
+    TargetPath       : C:\WINDOWS\system32\control.exe
+    WindowStyle      : 1
+
+    .EXAMPLE
+    在桌面上创建可选功能配置控制面板的快捷方式
+    PS>  New-Shortcut -Path $home/desktop/windows可选功能配置 -TargetPath optionalfeatures.exe -Force
+    #>
+
     [CmdletBinding()]
     param (
         # 快捷方式要存放的路径
@@ -324,7 +350,18 @@ function New-Shortcut
         # 如果TargetPath是一个程序名字(而不是路径),那么可以原原本本的传递给TargetPath属性就行(前提是命令中直接输入此名字的换可以打开某个文件或者程序)
         # pass
         # $TargetPathAbs = Convert-Path $TargetPath -ErrorAction SilentlyContinue
-        Write-Host "Try Consider the targetPath as a callable name:$(Get-Command $TargetPath|Select-Object Source) " -ForegroundColor Blue
+        
+        $detail = $(Get-Command $TargetPath -ErrorAction Stop | Select-Object Source )  
+        # try
+        # {
+
+        # }
+        # catch
+        # {
+        #     return
+        # }
+
+        Write-Host "Try Consider the targetPath as a callable name: ${Detail} " -ForegroundColor Blue
     }
 
  
