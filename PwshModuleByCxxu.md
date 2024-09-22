@@ -68,217 +68,38 @@
 
 ## 自动部署(一键运行脚本)👺👺
 
+复制粘贴以下代码到powershell7中运行,会自动选择方案为你部署模块集合
+
+如果您遇到报错或者失败,则重新粘贴执行,并且切换方案码(code)(下面内置了3个方案)
+
 ```powershell
 
-function Test-DirectoryEmpty
-{
-    <# 
-    .SYNOPSIS
-    判断一个目录是否为空目录
-    .PARAMETER directoryPath
-    要检查的目录路径
-    .PARAMETER CheckNoFile
-    如果为true,递归子目录检查是否有文件
-    #>
-    param (
-        [string]$directoryPath,
-        [switch]$CheckNoFile
-    )
-
-    if (-Not (Test-Path -Path $directoryPath))
-    {
-        throw "The directory path '$directoryPath' does not exist."
-    }
-    if ($CheckNoFile)
-    {
-
-        $itemCount = (Get-ChildItem -Path $directoryPath -File -Recurse | Measure-Object).Count
-    }
-    else
-    {
-        $items = Get-ChildItem -Path $directoryPath
-        $itemCount = $items.count
-    }
-    return $itemCount -eq 0
+Set-ExecutionPolicy Bypass -Scope CurrentUser -Force
+$mirror = 'https://github.moeyy.xyz' #如果采用github方案，那么推荐使用加速镜像来下载脚本文件，如果此镜像不可用，请自行搜搜可用镜像，然后替换此值即可
+#默认使用国内平台 gitee加速
+$url1 = 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1'
+$url2= 'https://raw.gitcode.com/xuchaoxin1375/Scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1'
+#国外Github平台
+$url3 = "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1"
+$urls = @($url1, $url2,$url3)
+$code = Read-Host "Enter the Deploy Scheme code [0..$($urls.Count-1)](default:0)"
+$code = $code -as [int]
+if(!$code){
+	$code=0 #默认选择第一个链接(数组索引0)
 }
-function Get-CxxuPsModulePackage
-{
-    [CmdletBinding()]
-    param(
-        $Directory = "$home/Downloads/CxxuPsModules",
-        $url = 'https://codeload.github.com/xuchaoxin1375/scripts/zip/refs/heads/main',
-        $outputFile = "scripts-$( Get-Date -Format 'yyyy-MM-dd--hh-mm-ss').zip"
-    )
-    $PackgePath = "$Directory/$outputFile"
-    Write-Verbose "Downloading $url to $PackgePath"
-    Invoke-WebRequest -Uri $url -OutFile $PackgePath 
-    return $PackgePath
-}
-function Deploy-CxxuPsModules
-{
-    <# 
-    .SYNOPSIS
-    一键部署CxxuPsModules，将此模块集推荐的自动加载工作添加到powershell的配置文件$profile中
-    请使用powershell7部署
-    .EXAMPLE
-    直接调用,不是用参数,适合第一次部署
-    deploy-CxxuPsModules
-    .EXAMPLE
-    使用在线方案,从默认的gitee仓库克隆下载(要求预先安装Git软件)
-    PS C:\Users\cxxu > deploy-CxxuPsModules -Mode FromRemoteGit -RepoPath C:/TestPsM -Verbose
-    Mode:Clone From Remote repository:[gitee]
-    VERBOSE: https://gitee.com/xuchaoxin1375/scripts.git
-    VERBOSE: C:/TestPsM
-    Cloning into 'C:/TestPsM'...
-    remote: Enumerating objects: 430, done.
-    remote: Counting objects: 100% (238/238), done.
-    remote: Compressing objects: 100% (206/206), done.
-    remote: Total 430 (delta 72), reused 82 (delta 1), pack-reused 192
-    Receiving objects: 100% (430/430), 1004.73 KiB | 659.00 KiB/s, done.
-    Resolving deltas: 100% (80/80), done.
 
-    Name         Value
-    ----         -----
-    PsModulePath C:/TestPsM\PS
-                C:\Users\cxxu\Desktop\TestPsy\PS
-                C:\Users\cxxu\scoop\modules
-    .EXAMPLE
-    从远程的Github仓库下载zip包,并解压到指定目录(如果本地已经有包,则优先使用本地的包)
-    
-    PS C:\Users\cxxu\scoop\apps\powershell\current> deploy-CxxuPsModules -Mode FromPackage -RepoPath C:/TestDirPs -PackagePath $home/desktop  -Verbose
-    VERBOSE: Downloading https://codeload.github.com/xuchaoxin1375/scripts/zip/refs/heads/main to C:\Users\cxxu/Downloads/CxxuPsModules/scripts-2024-09-19--09-05-42.zip
-    VERBOSE: Requested HTTP/1.1 GET with 0-byte payload
-    VERBOSE: Received HTTP/1.1 response of content type application/zip of unknown size
-    VERBOSE: File Name: scripts-2024-09-19--09-05-42.zip
-    Mode:Expanding local pacakge:[C:\Users\cxxu/Downloads/CxxuPsModules/scripts-2024-09-19--09-05-42.zip]
-    C:\TestDirPs\scripts-main C:/TestDirPs/scripts
-    VERBOSE: Performing the operation "Remove Directory" on target "C:\TestDirPs\scripts-main".
+$scripts = Invoke-RestMethod $urls[$code]
 
-    Name         Value
-    ----         -----
-    PsModulePath C:/TestDirPs\PS
-                C:\Users\cxxu\scoop\modules
+$scripts | Invoke-Expression
 
-    #>
-    [CmdletBinding()]
-    param(
-        # 模块集所在仓库的存放目录
-        $RepoPath = "$env:systemdrive/repos/scripts",
-        # 添加到环境变量中的路径
-        $NewPsPath = "$RepoPath\PS",
-        [ValidateSet('Gitee,Github')]$Source = 'gitee',
-        $PackagePath = "$home/Downloads/CxxuPsModules/scripts*.zip",
-        # 选择部署模式:如果选择FromPackage,则仅尝试查找本地包,如果没有,则通过下载模块集包到本地,然后执行安装(不保证成功下载)
-        # 如果选择默认的Default,则依次检查本地包是否存在,如果不存在,则尝试通过克隆的方式下载(要求已经安装git)
-        [ValidateSet('Default', 'FromPackage', 'FromRemoteGit')]$Mode = 'Default'
-    )
-        
-    if ($host.Version.Major -lt 7)
-    {
-        Throw 'Please use powershell7 to deploy CxxuPsModules!'
-    }
-    
-    # 路径准备
-    # $NewPsPath = $NewPsPathPattern | Invoke-Expression
-    # 检查路径占用
-    if (Test-Path $RepoPath)
-    {
-        Write-Host "$($RepoPath) already exists!"
-        if (! (Test-DirectoryEmpty $RepoPath ))
-        {
-            Write-Host "The directory [$RepoPath] is not empty,please choose another path!" -ForegroundColor Red
-            Throw 'Try another path(RepoPath)! OR delete or rename(backup) the exist directory!'
-            # $RepoPath = Read-Host -Prompt 'Input new path (Ctrl+C to exit)'
-            # Write-Verbose "Updated RepoPath to [$RepoPath]"
-            # # $newPsPath = "$RepoPath\PS"
-            # $NewPsPath = $NewPsPathPattern | Invoke-Expression
-            # Write-Verbose "Updated newPsPath to [$newPsPath]"
-        }
-        New-Item -ItemType Directory $RepoPath -Verbose
-    }
-    # if (!(Test-Path $RepoPath))
-    # {
-    #     New-Item -ItemType Directory $RepoPath -Verbose
-    # }
-
-    #模式及其代码准备
-    $RemoteGitCloneScript = { 
-        Write-Host "Mode:Clone From Remote repository:[$source]" -ForegroundColor Blue
-        $GitCmdAvailability = Get-Command git -ErrorAction SilentlyContinue
-        if (!$GitCmdAvailability)
-        {
-            Throw 'Git is not available on your system,please install it first!'
-        }
-        $url = "https://${Source}.com/xuchaoxin1375/scripts.git"
-        Write-Verbose $url
-   
-        Write-Verbose $RepoPath
-        #克隆仓库
-        # git 支持指定一个不存在的目录作为克隆目的地址,所以可以不用检查目录是否存在并手动创建
-        git clone $url $RepoPath 
-    }
-    $LocalScript = {
-        Write-Host "Mode:Expanding local pacakge:[$PackagePath]" -ForegroundColor Green
-        # $RepoPathParentDir = Split-Path $RepoPath -Parent
-        # 指定要解压到的目录,如果不存在Expand-archive会自动创建相应的目录
-        # 获取本地已下载的可用的最新版本
-        #利用Desceding将最新的排在前面
-        $files = Get-ChildItem $PackagePath | Sort-Object -Property LastWriteTime -Descending 
-        $PackagePath = @($files)[0]
-        # 解压到合适的目录下
-        Expand-Archive -Path $PackagePath -DestinationPath $RepoPath -Force
-        
-        $rawPath = Get-ChildItem "$RepoPath/scripts*" -Directory | Select-Object -First 1
-        $newPath = "$RepoPath/scripts"
-
-        Write-Host @($rawPath, $newPath  ) -ForegroundColor Blue
-
-        Move-Item $rawPath/* $RepoPath -Force
-        #移除空目录(如果上述步骤顺利的话)
-        Remove-Item $rawPath -Verbose #如果非空,会警报用户
-        # Rename-Item $rawPath $newPath -Verbose
-    }
-    if ($Mode -eq 'Default')
-    {
-
-        if ((Test-Path $PackagePath))
-        {
-            & $LocalScript
-        }
-        else
-        {
-            
-            & $RemoteGitCloneScript
-        }
-    }
-    elseif ($Mode -eq 'FromPackage')
-    {
-        # 自动调用默认的下载行为
-        # 您也可以手动调用Get-CxxuPsModulePackage下载包到指定位置,然后通过外部传递包的目录
-        $PackagePath = Get-CxxuPsModulePackage
-        & $LocalScript
-    }
-    elseif ($Mode -eq 'FromRemoteGit')
-    {
-        & $RemoteGitCloneScript
-    }
- 
-    # $RepoPath = 'C:\repos\scripts\PS' #这里修改为您下载的模块所在目录,这里的取值作为示范
-    $env:PSModulePath = ";$NewPsPath" #为了能够调用CxxuPSModules中的函数,这里需要这么临时设置一下
-    Add-EnvVar -EnvVar PsModulePath -NewValue $newPsPath -Verbose #这里$RepoPath上面定义的(默认是User作用于,并且基于User的原有取值插入新值)
-    # 你也可以替换`off`为`LTS`不完全禁用更新但是降低更新频率(仅更新LTS长期支持版powershell)
-    [System.Environment]::SetEnvironmentVariable('powershell_updatecheck', 'LTS', 'user')
-
-    #添加基础环境自动执行任务到$profile中
-    # Add-CxxuPsModuleToProfile
-
-    #检查模块设置效果
-    Start-Process -FilePath pwsh -ArgumentList '-noe -c p'
-}
-#调用函数 (详情可以参考代码内文档)
-deploy-CxxuPsModules
 
 ```
+
+Notes:如果上述代码执行顺利,部署时间5秒钟左右即可完成
+
+如果不顺利,比如报错,那么尝试调整调用参数,具体参数参考函数用法文档
+
+> 可选的,在变量`$scripts`保存了部署脚本的内容,您可以粘贴到文本编辑器或代码编辑器中查看和调整
 
 ### 用法文档
 

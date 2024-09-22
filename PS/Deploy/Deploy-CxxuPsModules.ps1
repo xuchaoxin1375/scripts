@@ -183,3 +183,20 @@ function Deploy-CxxuPsModules
     #检查模块设置效果
     Start-Process -FilePath pwsh -ArgumentList '-noe -c p'
 }
+
+# 调用上述定义的函数
+## 检查Git是否可用,如果可用,采用最可靠的克隆方案执行,否则采用下载仓库,和本地解压方案
+$GitAvailability = Get-Command git -ErrorAction SilentlyContinue
+
+if ($GitAvailability)
+{
+    #装有Git的用户使用此方案(可以指定参数,也可以不指定)
+    Deploy-CxxuPsModules # -RepoPath  C:/temp/scripts -Verbose
+    
+}
+else
+{
+    
+    #没有Git的用户使用此方案(可以进一步指定参数)
+    Deploy-CxxuPsModules -Mode FromPackage -Verbose
+}

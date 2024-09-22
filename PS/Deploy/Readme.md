@@ -13,29 +13,31 @@
     ```powershell
     
     Set-ExecutionPolicy Bypass -Scope CurrentUser -Force
-    $mirror = 'https://github.moeyy.xyz'
-    $url1 = 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.psm1'
-    $url2 = "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/deploy.psm1"
-    $urls = @($url1, $url2)
-    $code = Read-Host "Enter the code [0..$($urls.Count-1)]"
+    $mirror = 'https://github.moeyy.xyz' #如果采用github方案，那么推荐使用加速镜像来下载脚本文件，如果此镜像不可用，请自行搜搜可用镜像，然后替换此值即可
+    #默认使用国内平台 gitee加速
+    $url1 = 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1'
+    $url2= 'https://raw.gitcode.com/xuchaoxin1375/Scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1'
+    #国外Github平台
+    $url3 = "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1"
+    $urls = @($url1, $url2,$url3)
+    $code = Read-Host "Enter the Deploy Scheme code [0..$($urls.Count-1)](default:0)"
     $code = $code -as [int]
+    if(!$code){
+    	$code=0 #默认选择第一个链接(数组索引0)
+    }
+    
     $scripts = Invoke-RestMethod $urls[$code]
     
     $scripts | Invoke-Expression
     
-    $GitAvailability = Get-Command git -ErrorAction SilentlyContinue
-    if ($GitAvailability)
-    {
-        #装有Git的用户使用此方案(可以指定参数)
-        Deploy-CxxuPsModules -RepoPath # C:/temp/scripts -Verbose
-        
-    }
-    else
-    {
-        
-        #没有Git的用户使用此方案(可以进一步指定参数)
-        Deploy-CxxuPsModules -Mode FromPackage -Verbose
-    }
     ```
 
-    
+  - 使用语法查看命令
+
+    ```powershell
+    help Deploy-CxxuPsModules -full
+    ```
+
+- 如果离线方案下载不下来,那么考虑git方案下载
+
+  - [联想应用商店 (lenovo.com)](https://lestore.lenovo.com/search?k=git),在此网站可以快速下载git (for windows);然后重新执行此脚本进行安装
