@@ -93,12 +93,14 @@ function Deploy-CxxuPsModules
         else
         {
 
-            Write-Host "The default RepoPath directory [$RepoPath] is already exist!" -ForegroundColor Blue
-            Write-Host "Plans:Try run it with -Force to overlay the directory! `
+            Write-Host "The default RepoPath directory [$RepoPath] is already exist!" -ForegroundColor Magenta
+            Write-Host "Plans:Try run Deploy-CxxuPsModules it with -Force option  to overlay the exist directory! `
             Or run Deploy-CxxuPsModules  with Option -RepoPath <YourNewPath> to retry!`
-                eg.{Deploy-CxxuPsModules -RepoPath  C:/PwshCxxu/scripts -Verbose} " -ForegroundColor Gray
+                eg. & {Deploy-CxxuPsModules -RepoPath  C:/PwshCxxu/scripts -Verbose} " -ForegroundColor Blue
 
-            Throw 'Try another path(RepoPath)! OR delete or rename(backup) the exist directory!'
+            # Throw 'Try another path(RepoPath)! OR delete or rename(backup) the exist directory!' #报错可能会让新用户不知所措,这里直接退出即可
+            return
+
             # $RepoPath = Read-Host -Prompt 'Input new path (Ctrl+C to exit)'
             # Write-Verbose "Updated RepoPath to [$RepoPath]"
             # # $newPsPath = "$RepoPath\PS"
