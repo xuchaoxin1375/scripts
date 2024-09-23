@@ -75,7 +75,22 @@ function Add-CxxuPsModuleToProfile
     }.ToString().Trim()>>$pf #向配置文件追加内容
     '# End AutoRun commands from CxxuPsModules' >> $pf
 }
-
+function Add-CxxuPsModuleToEnvVar
+{
+    <# 
+    .SYNOPSIS
+    这个函数不太有用,因为在调用此函数前需要你配置好环境变量或者修改$env:PsmodulePath=";$CxxuPsModulePath"
+    或者在删除了$CxxuPsModulePath后重新设置的时候调用一下把路径加回去
+    #>
+    param (
+        [ValidateSet('Machine', 'User')]$Scope = 'User'
+    )
+    # $CxxuPsModulePath = "../$PsScriptRoot"
+    $CxxuPsModulePath = $env:CxxuPsModulePath 
+    Write-Host 'CxxuPsModulePath:' $CxxuPsModulePath
+    Add-EnvVar -EnvVar PsModulePath -NewValue $CxxuPsModulePath -Verbose -Scope $Scope
+    
+}
 function Update-PwshEnv
 {
     [CmdletBinding()]param()
@@ -1376,7 +1391,7 @@ function Test-PromptDelay
         # 加载prompt的次数,10次基本就够了(5次也够的)
         $iterations = 10
     )
-    $DurationArrays = (1..$iterations | ForEach-Object { Measure-Command { Prompt *> $null } })
+    $DurationArrays = (1..$iterations | ForEach-Object { Measure-Command { prompt *> $null } })
     $DurationSum = ($DurationArrays | ForEach-Object { $_.TotalSeconds }) | Measure-Object -Sum
     $averageDuration = $DurationSum.Sum / ($DurationArrays.Count)
     Write-Host $averageDuration 'seconds'
