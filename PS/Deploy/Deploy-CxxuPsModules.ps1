@@ -93,7 +93,11 @@ function Deploy-CxxuPsModules
         else
         {
 
-            Write-Host "The directory [$RepoPath] is not empty,please choose another path!" -ForegroundColor Red
+            Write-Host "The default RepoPath directory [$RepoPath] is already exist!" -ForegroundColor Blue
+            Write-Host "Plans:Try run it with -Force to overlay the directory! `
+            Or run Deploy-CxxuPsModules  with Option -RepoPath <YourNewPath> to retry!`
+                eg.{Deploy-CxxuPsModules -RepoPath  C:/PwshCxxu/scripts -Verbose} " -ForegroundColor Gray
+
             Throw 'Try another path(RepoPath)! OR delete or rename(backup) the exist directory!'
             # $RepoPath = Read-Host -Prompt 'Input new path (Ctrl+C to exit)'
             # Write-Verbose "Updated RepoPath to [$RepoPath]"
@@ -173,7 +177,8 @@ function Deploy-CxxuPsModules
     # $RepoPath = 'C:\repos\scripts\PS' #这里修改为您下载的模块所在目录,这里的取值作为示范
     $env:PSModulePath = ";$NewPsPath" #为了能够调用CxxuPSModules中的函数,这里需要这么临时设置一下
     Add-EnvVar -EnvVar PsModulePath -NewValue $newPsPath -Verbose #这里$RepoPath上面定义的(默认是User作用于,并且基于User的原有取值插入新值)
-    Add-EnvVar -EnvVar CxxuPsModulePath -NewValue $NewRepoPath -Verbose
+    # 添加本模块集所在目录的环境变量,便于后续引用(虽然不是必须的)
+    Add-EnvVar -EnvVar CxxuPsModulePath -NewValue $NewPsPath -Verbose
     # 你也可以替换`off`为`LTS`不完全禁用更新但是降低更新频率(仅更新LTS长期支持版powershell)
     [System.Environment]::SetEnvironmentVariable('powershell_updatecheck', 'LTS', 'user')
 
