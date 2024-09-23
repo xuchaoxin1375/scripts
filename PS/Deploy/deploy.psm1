@@ -2025,6 +2025,7 @@ function Deploy-WtSettings
         #指定是否为免安装版本的windows terminal
         # $Portable = '' 
         [switch]$Portable,
+        [switch]$InstalledByScoop,
         [switch]$Force
     )
     Update-PwshEnvIfNotYet -Mode Vars
@@ -2032,6 +2033,7 @@ function Deploy-WtSettings
     $ConfigBackup = "$configs\wtConf.json"
     $WtConfig = "$wtConf_Home\settings.json"
     $WtPortableConfig = "$wtPortableConf_Home\settings.json"
+    $WtScoopGlobalVersionConfig="$scoop_global_apps\windows-terminal\current\settings\settings.json"
     if ($Force)
     {
         $items = @($WtConfig, $WtPortableConfig)
@@ -2049,6 +2051,11 @@ function Deploy-WtSettings
     {
         # Copy-Item -Path $ConfigBackup -Destination $WtPortableConfig -Verbose -Force
         New-Item -ItemType SymbolicLink -Path $WtPortableConfig -Target $ConfigBackup -Verbose -Force
+    }
+    elseif ($InstalledByScoop)
+    {
+        # Copy-Item -Path $ConfigBackup -Destination $WtPortableConfig -Verbose -Force
+        New-Item -ItemType SymbolicLink -Path $WtScoopGlobalVersionConfig -Target $ConfigBackup -Verbose -Force
     }
     else
     {
