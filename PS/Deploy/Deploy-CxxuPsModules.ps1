@@ -88,7 +88,7 @@ function Deploy-CxxuPsModules
         # }
         if ($Force)
         {
-            Rename-Item -Path $RepoPath -NewName "$($RepoPath).bak" -Verbose
+            Rename-Item -Path $RepoPath -NewName "$($RepoPath).bak.$((Get-Date).ToString('yyyy-MM-dd--HH-mm-ss'))" -Verbose
         }
         else
         {
@@ -180,7 +180,7 @@ function Deploy-CxxuPsModules
     $env:PSModulePath = ";$NewPsPath" #为了能够调用CxxuPSModules中的函数,这里需要这么临时设置一下
     Add-EnvVar -EnvVar PsModulePath -NewValue $newPsPath -Verbose #这里$RepoPath上面定义的(默认是User作用于,并且基于User的原有取值插入新值)
     # 添加本模块集所在目录的环境变量,便于后续引用(虽然不是必须的)
-    Add-EnvVar -EnvVar CxxuPsModulePath -NewValue $NewPsPath -Verbose
+    Set-EnvVar -EnvVar CxxuPsModulePath  $NewPsPath -Verbose
     # 你也可以替换`off`为`LTS`不完全禁用更新但是降低更新频率(仅更新LTS长期支持版powershell)
     [System.Environment]::SetEnvironmentVariable('powershell_updatecheck', 'LTS', 'user')
 
