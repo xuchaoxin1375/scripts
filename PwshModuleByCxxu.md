@@ -70,6 +70,16 @@
 
 复制粘贴以下代码到powershell7中运行,会自动选择方案为你部署模块集合
 
+```powershell
+$url = 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1'
+$scripts = Invoke-RestMethod $url
+$scripts | Invoke-Expression
+```
+
+
+
+### 备用方案
+
 如果您遇到报错或者失败,则重新粘贴执行,并且切换方案码(code)(下面内置了3个方案)
 
 ```powershell
@@ -82,10 +92,10 @@ $url2= 'https://raw.gitcode.com/xuchaoxin1375/Scripts/raw/main/PS/Deploy/Deploy-
 #国外Github平台
 $url3 = "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1"
 $urls = @($url1, $url2,$url3)
-$code = Read-Host "Enter the Deploy Scheme code [0..$($urls.Count-1)](default:0)"
+$code = Read-Host "Enter the Deploy Scheme code [0..$($urls.Count-1)](default:1)"
 $code = $code -as [int]
 if(!$code){
-	$code=0 #默认选择第一个链接(数组索引0)
+	$code=1 #默认选择第一个链接(数组索引0)
 }
 
 $scripts = Invoke-RestMethod $urls[$code]

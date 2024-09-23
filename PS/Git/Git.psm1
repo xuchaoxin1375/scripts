@@ -342,7 +342,7 @@ function Update-CodeiumVScodeExtension
 
     #$serverDir="$desktop\codeium_lsw"
     $serverDir = Resolve-Path "$lastVersionItem\dist\*"
-    $serverDir = Get-ChildItem "$lastVersionItem\dist\*" -Directory | Where-Object { $_.Name.Length -ge 20 }
+    $serverDir = Get-ChildItem "$lastVersionItem\dist\*" -Directory | Where-Object { $_.Name.Length -ge 10 }
     7z x $f -o"$serverDir"
 
     #清理文件
@@ -351,7 +351,7 @@ function Update-CodeiumVScodeExtension
 
     #是否重启vscode
     $continue = Confirm-UserContinue -Description 'Restart vscode'
-    $process = Get-Process -Name code
+    $process = Get-Process -Name code -ErrorAction SilentlyContinue
     Write-Host $process
 
     $process = Get-Process -Name code*
@@ -361,7 +361,7 @@ function Update-CodeiumVScodeExtension
         # Get-Process code | Stop-Process
         # $process | Restart-Process -Verbose #重启后导致大量进程被启动
         $process | Stop-Process -Force -Verbose
-        & code
+        & code #启动默认code界面
         
     }
 

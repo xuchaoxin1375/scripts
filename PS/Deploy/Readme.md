@@ -6,37 +6,57 @@
 
 - 关于快速部署此模块集(及其所在仓库),这里创建的专用脚本文件为`Deploy-CxxuPsModules.ps1`
 
-- 用户使用方法:
 
-  - 运行一下命令行进行部署
+### 用户使用方法
 
-    ```powershell
-    
-    Set-ExecutionPolicy Bypass -Scope CurrentUser -Force
-    $mirror = 'https://github.moeyy.xyz' #如果采用github方案，那么推荐使用加速镜像来下载脚本文件，如果此镜像不可用，请自行搜搜可用镜像，然后替换此值即可
-    #默认使用国内平台 gitee加速
-    $url1 = 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1'
-    $url2= 'https://raw.gitcode.com/xuchaoxin1375/Scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1'
-    #国外Github平台
-    $url3 = "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1"
-    $urls = @($url1, $url2,$url3)
-    $code = Read-Host "Enter the Deploy Scheme code [0..$($urls.Count-1)](default:0)"
-    $code = $code -as [int]
-    if(!$code){
-    	$code=0 #默认选择第一个链接(数组索引0)
-    }
-    
-    $scripts = Invoke-RestMethod $urls[$code]
-    
-    $scripts | Invoke-Expression
-    
-    ```
+- 运行一下命令行进行部署
 
-  - 使用语法查看命令
+  ```powershell
+  
+  Set-ExecutionPolicy Bypass -Scope CurrentUser -Force
+  $mirror = 'https://github.moeyy.xyz' #如果采用github方案，那么推荐使用加速镜像来下载脚本文件，如果此镜像不可用，请自行搜搜可用镜像，然后替换此值即可
+  #默认使用国内平台 gitee加速
+  $url1 = 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1'
+  $url2= 'https://raw.gitcode.com/xuchaoxin1375/Scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1'
+  #国外Github平台
+  $url3 = "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1"
+  $urls = @($url1, $url2,$url3)
+  $code = Read-Host "Enter the Deploy Scheme code [0..$($urls.Count-1)](default:1)"
+  $code = $code -as [int]
+  if(!$code){
+  	$code=1 #默认选择第一个链接(数组索引0)
+  }
+  
+  $scripts = Invoke-RestMethod $urls[$code]
+  
+  $scripts | Invoke-Expression
+  
+  ```
 
-    ```powershell
-    help Deploy-CxxuPsModules -full
-    ```
+
+### 精简版
+
+```powershell
+$url = 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1'
+$scripts = Invoke-RestMethod $url
+$scripts | Invoke-Expression
+
+```
+
+或者写在一行里面
+
+```powershell
+$url = 'https://raw.gitcode.com/xuchaoxin1375/Scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1';$scripts = Invoke-RestMethod $url;$scripts | Invoke-Expression
+
+```
+
+
+
+### 使用语法查看命令
+
+```powershell
+help Deploy-CxxuPsModules -full
+```
 
 - 如果离线方案下载不下来,那么考虑git方案下载
 

@@ -1502,23 +1502,8 @@ function Deploy-AndroidStudio_depends
 }
 
 
-function Deploy-Softwares
-{
 
-    $softLists = 'wechat', 'qq', '360zip', 'aliyundrive', 'clash for windows'
-    foreach ($soft in $softLists)
-    {
-        # write $soft
-        winstall $soft
-    }
-}
-function Deploy-WinxRay
-{
-    param (
-        
-    )
-    New-Junction $env:winxrayConf $configs\proxyToolsConfigs\winxrayRules
-}
+
 function Confirm-AdminPermission
 {
     <# 
