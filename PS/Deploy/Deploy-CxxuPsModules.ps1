@@ -1,6 +1,10 @@
 
 function Get-CxxuPsModulePackage
 {
+    <# 
+    .SYNOPSIS
+    Github目前允许用户没有登录的情况下开源仓库包
+    #>
     [CmdletBinding()]
     param(
         $Directory = "$home/Downloads/CxxuPsModules",
@@ -65,7 +69,7 @@ function Deploy-CxxuPsModules
                 C:\Users\cxxu\scoop\modules
 
     #>
-    [CmdletBinding(SupportsShouldProcess=$true)]
+    [CmdletBinding(SupportsShouldProcess = $true)]
     param(
         # 模块集所在仓库的存放目录(这个目录不一定是git clone下来的仓库目录,也可以是从本地包解压到对应位置的目录)
         $RepoPath = "$env:systemdrive\repos\scripts",
@@ -213,19 +217,29 @@ function Deploy-CxxuPsModules
     Start-Process -FilePath pwsh -ArgumentList '-noe -c p'
 }
 
-# 调用上述定义的函数
-## 检查Git是否可用,如果可用,采用最可靠的克隆方案执行,否则采用下载仓库,和本地解压方案
-$GitAvailability = Get-Command git -ErrorAction SilentlyContinue
+function Install-CxxuPsModules
+{
+    <# 
+    .SYNOPSIS
+    # 调用上述定义的函数
+    .DESCRIPTION
+    这里判断Git是否可用，如果可用，采用最可靠的克隆方案执行，否则采用下载仓库,和本地解压方案,然后用合适的参数调用Deploy-CxxuPsModule
+    本函数适合作为一种默认方案,如果失败,用户可以尝试手动调用相关的函数,自行指定参数,比如Deploy-CxxuPsModule
+    #>
 
-if ($GitAvailability)
-{
-    #装有Git的用户使用此方案(可以指定参数,也可以不指定)
-    Deploy-CxxuPsModules # -RepoPath  C:/temp/scripts -Verbose
+    ## 检查Git是否可用,如果可用,采用最可靠的克隆方案执行,否则采用下载仓库,和本地解压方案
+    $GitAvailability = Get-Command git -ErrorAction SilentlyContinue
+
+    if ($GitAvailability)
+    {
+        #装有Git的用户使用此方案
+        Deploy-CxxuPsModules # -RepoPath  C:/temp/scripts -Verbose
     
-}
-else
-{
+    }
+    else
+    {
     
-    #没有Git的用户使用此方案(可以进一步指定参数)
-    Deploy-CxxuPsModules -Mode FromPackage -Verbose
+        #没有Git的用户使用此方案
+        Deploy-CxxuPsModules -Mode FromPackage -Verbose
+    } 
 }
