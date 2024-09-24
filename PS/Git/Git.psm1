@@ -238,7 +238,7 @@ function Invoke-GithubResourcesSpeedup
         }
         elseif ($downloader -like 'aria2*')
         {
-            $Aria2Availability = Get-Command aria2* -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source | Split-Path -LeafBase
+            $Aria2Availability = Get-Command aria2* -ErrorAction SilentlyContinue | Select-Object -First 1 | Select-Object -ExpandProperty Source | Split-Path -LeafBase #防止找到多个aria2c,这里使用select -First 1来指定其中的第一个
             if ($Aria2Availability)
             {
                 $downloader = $Aria2Availability
@@ -288,18 +288,25 @@ function Invoke-GithubResourcesSpeedup
 
 function Update-CodeiumVScodeExtension
 {
-    param(
-        [ValidateSet('aria2c', 'default')]$Downloader = 'aria2c',
-        $Threads = 32
-    )
+   
     <# 
     .SYNOPSIS
     加速下载并更新vscode中codeium插件
     当打开vscode时codeium自动更新下载了一些内容后下不动了,或者太慢了,就可以关闭vscode,然后执行本函数
 
+    .DESCRIPTION
+    如果你使用的是scoop install vscode (当前用户安装),那么可以考虑使用以下命令来重定向extension目录
+    new-item -itemtype SymbolicLink -Path $home/.vscode/extensions -Target $home\scoop\persist\vscode\data\extensions
+    或者指定参数$vscodeExtensions来指定目录extensions目录的位置,将codeium包下载到合适的位置
     #>
+    param(
+        [ValidateSet('aria2c', 'default')]$Downloader = 'aria2c',
+        $Threads = 32,
+        #通过scoop安装的vscode(为当前用户安装的extension路径) $home\scoop\persist\vscode\data\extensions;
+        # 如果是全局安装,就把$home换为$Env:ProgramData (全局安装有权限写入问题,导致配置无法保存,因此通常不使用此方案安装!)
+        $vscodeExtensions = '~\.vscode\extensions'
+    )
 
-    $vscodeExtensions = '~\.vscode\extensions'
     $codeiumExtensionPath = (Resolve-Path "$vscodeExtensions\codeium*")
     #ls $vscodeExtensions\codeium*
     $lastVersionItem = Resolve-Path $codeiumExtensionPath | Sort-Object -Property Name | Sort-Object -Descending | Select-Object -First 1

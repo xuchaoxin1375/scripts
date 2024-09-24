@@ -20,7 +20,7 @@ function Set-ExplorerSoftwareIcons
     .EXAMPLE
     显示设置过程信息
     PS C:\Users\cxxu\Desktop> set-ExplorerSoftwareIcons -Enabled True -Verbose
-    VERBOSE: Enabled Explorer Software Icons (allow Everyone Permission)
+    # VERBOSE: Enabled Explorer Software Icons (allow Everyone Permission)
     refresh explorer to check icons
     .EXAMPLE
     显示设置过程信息,并且启动资源管理器查看刷新后的图标是否被禁用或恢复
