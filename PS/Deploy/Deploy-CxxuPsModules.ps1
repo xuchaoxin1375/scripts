@@ -180,6 +180,7 @@ function Deploy-CxxuPsModules
     if ($Mode -eq 'Default')
     {
 
+        
         if ((Test-Path $PackagePath))
         {
             & $LocalScript
@@ -187,7 +188,23 @@ function Deploy-CxxuPsModules
         else
         {
             
-            & $RemoteGitCloneScript
+            ## 检查Git是否可用,如果可用,采用最可靠的克隆方案执行,否则采用下载仓库,和本地解压方案
+            $GitAvailability = Get-Command git -ErrorAction SilentlyContinue
+
+            if ($GitAvailability)
+            {
+                #装有Git的用户使用此方案
+                Deploy-CxxuPsModules # -RepoPath  C:/temp/scripts -Verbose
+    
+                & $RemoteGitCloneScript
+            }
+            else
+            {
+    
+                #没有Git的用户使用此方案(从云端仓库clone代码)
+                $PackagePath = Get-CxxuPsModulePackage
+                & $LocalScript
+            } 
         }
     }
     elseif ($Mode -eq 'FromPackage')
@@ -217,7 +234,7 @@ function Deploy-CxxuPsModules
     Start-Process -FilePath pwsh -ArgumentList '-noe -c p'
 }
 
-function Install-CxxuPsModules
+function Install-CxxuPsModules-Deprecated
 {
     <# 
     .SYNOPSIS

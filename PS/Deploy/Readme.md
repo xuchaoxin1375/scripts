@@ -18,7 +18,7 @@ $url = 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPs
 $scripts = Invoke-RestMethod $url
 $scripts | Invoke-Expression
 #尝试执行默认的安装行为,如果失败(很可能是没有安装Git,这时候需要手动下载仓库文件包),尝试手动调用Deploy-CxxuPsModule函数,并使用合适的参数,尝试离线安装
-Install-CxxuPsModules 
+Deploy-CxxuPsModules 
 
 
 ```
@@ -48,7 +48,7 @@ $scripts = Invoke-RestMethod $urls[$code]
 
 $scripts | Invoke-Expression
 
-Install-CxxuPsModules 
+Deploy-CxxuPsModules 
 
 ```
 
@@ -83,7 +83,7 @@ PS C:\Users\cxxu> $url = 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/De
 >> $scripts = Invoke-RestMethod $url
 >> $scripts | Invoke-Expression
 >> #尝试执行默认的安装行为,如果失败(很可能是没有安装Git,这时候需要手动下载仓库文件包),尝试手动调用Deploy-CxxuPsModule函数,并使用合适的参数,尝试离线安装
-PS C:\Users\cxxu> Install-CxxuPsModules^C#假设这一步报错或者遇到失败(如果是目录名冲突,那么您可在调用`Deploy-CxxuPsModules`时使用路径RepoPath参数新指定取值,或者使用Force选项)
+PS C:\Users\cxxu> Deploy-CxxuPsModules^C#假设这一步报错或者遇到失败(如果是目录名冲突,那么您可在调用`Deploy-CxxuPsModules`时使用路径RepoPath参数新指定取值,或者使用Force选项)
 #如果是报红色错误,可以开始强力方案(1:下载git软件 2:下载项目压缩包离线安装)
 
 #下面使用强力方案2来安装离线包(注意要在同一个shell窗口上下文下继续执行执行)
@@ -128,6 +128,3 @@ CxxuPsModulePath C:\tmp\CxxuPS\PS
 help Deploy-CxxuPsModules -full
 ```
 
-- 如果离线方案下载不下来,那么考虑git方案下载
-
-  - [联想应用商店 (lenovo.com)](https://lestore.lenovo.com/search?k=git),在此网站可以快速下载git (for windows);然后重新执行此脚本进行安装
