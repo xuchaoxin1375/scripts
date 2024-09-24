@@ -68,70 +68,7 @@
 
 ## 自动部署(一键运行脚本)👺👺
 
-复制粘贴以下代码到powershell7中运行,会自动选择方案为你部署模块集合
-
-```powershell
-$url = 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1'
-$scripts = Invoke-RestMethod $url
-$scripts | Invoke-Expression
-```
-
-
-
-### 备用方案
-
-如果您遇到报错或者失败,则重新粘贴执行,并且切换方案码(code)(下面内置了3个方案)
-
-```powershell
-
-Set-ExecutionPolicy Bypass -Scope CurrentUser -Force
-$mirror = 'https://github.moeyy.xyz' #如果采用github方案，那么推荐使用加速镜像来下载脚本文件，如果此镜像不可用，请自行搜搜可用镜像，然后替换此值即可
-#默认使用国内平台 gitee加速
-$url1 = 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1'
-$url2= 'https://raw.gitcode.com/xuchaoxin1375/Scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1'
-#国外Github平台
-$url3 = "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1"
-$urls = @($url1, $url2,$url3)
-$code = Read-Host "Enter the Deploy Scheme code [0..$($urls.Count-1)](default:1)"
-$code = $code -as [int]
-if(!$code){
-	$code=1 #默认选择第一个链接(数组索引0)
-}
-
-$scripts = Invoke-RestMethod $urls[$code]
-
-$scripts | Invoke-Expression
-
-
-```
-
-Notes:如果上述代码执行顺利,部署时间5秒钟左右即可完成
-
-如果不顺利,比如报错,那么尝试调整调用参数,具体参数参考函数用法文档
-
-> 可选的,在变量`$scripts`保存了部署脚本的内容,您可以粘贴到文本编辑器或代码编辑器中查看和调整
-
-### 用法文档
-
-- 将上述代码粘贴到powershell7窗口中,回车执行
-- 通过help命令来查看帮助
-
-```powershell
-help Deploy-CxxuPsModules -Full
-```
-
-### 运行说明
-
-- 无参数直接调用部署函数版本要求你已经安装git,以下版本尝试从github下载本仓库包(版本可能滞后),如果你不想安装git可以尝试指定`Mode`选择离线安装以下方案
-  - Gitee下载源代码也可以,但是需要登陆才能获取下载链接
-  - Github虽然慢,也可能连不上,但是仓库很小,能连上的话不会下载太久
-- 如果下面方案不行,那么只好下载git,然后运行其他Mode方案,比如无参数,或者手动下载包,然后通过参数`PackagePath`来指定包的位置进行部署
-
-```powershell
-deploy-CxxuPsModules -Mode FromPackage -Verbose 
-```
-
-
+参考仓库内的一键部署文档: [一键部署](./PS/Deploy/Readme.md)
 
 ## 手动部署
 
