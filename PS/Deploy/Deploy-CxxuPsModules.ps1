@@ -11,6 +11,9 @@ function Get-CxxuPsModulePackage
         $url = 'https://codeload.github.com/xuchaoxin1375/scripts/zip/refs/heads/main',
         $outputFile = "scripts-$( Get-Date -Format 'yyyy-MM-dd--hh-mm-ss').zip"
     )
+    if(!(Test-Path $Directory)){
+        New-item -ItemType Directory -Path $Directory -Verbose
+    }
     $PackgePath = "$Directory/$outputFile"
     Write-Verbose "Downloading $url to $PackgePath"
     Invoke-WebRequest -Uri $url -OutFile $PackgePath 
@@ -200,7 +203,7 @@ function Deploy-CxxuPsModules
             else
             {
     
-                #没有Git的用户使用此方案(从云端仓库clone代码)
+                #没有Git的用户使用此方案(前面检测过了没有本地包,git又不可用,所以从云端仓库clone代码)
                 $PackagePath = Get-CxxuPsModulePackage
                 & $LocalScript
             } 
