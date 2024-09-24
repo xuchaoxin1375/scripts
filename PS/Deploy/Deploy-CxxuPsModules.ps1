@@ -194,7 +194,6 @@ function Deploy-CxxuPsModules
             if ($GitAvailability)
             {
                 #装有Git的用户使用此方案
-                Deploy-CxxuPsModules # -RepoPath  C:/temp/scripts -Verbose
     
                 & $RemoteGitCloneScript
             }
