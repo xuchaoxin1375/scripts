@@ -11,8 +11,9 @@ function Get-CxxuPsModulePackage
         $url = 'https://codeload.github.com/xuchaoxin1375/scripts/zip/refs/heads/main',
         $outputFile = "scripts-$( Get-Date -Format 'yyyy-MM-dd--hh-mm-ss').zip"
     )
-    if(!(Test-Path $Directory)){
-        New-item -ItemType Directory -Path $Directory -Verbose
+    if (!(Test-Path $Directory))
+    {
+        New-Item -ItemType Directory -Path $Directory -Verbose
     }
     $PackgePath = "$Directory/$outputFile"
     Write-Verbose "Downloading $url to $PackgePath"
@@ -90,6 +91,7 @@ function Deploy-CxxuPsModules
         $Mode = 'Default',
         [switch]$Force
     )
+    
     # 打印此函数的所有参数极其取值,方便用户排查问题
     $params = [pscustomobject]@{
         RepoPath    = $RepoPath
@@ -99,8 +101,24 @@ function Deploy-CxxuPsModules
         Mode        = $Mode
         Force       = $Force
     }
+
     $PSBoundParameters | Format-Table
     $params | Format-Table
+
+    $isContinue = $PSCmdlet.ShouldProcess("$env:UserName@$env:COMPUTERNAME", 'Deploy CxxuPsModules')
+    if ($isContinue)
+    {
+        # 用户选择继续执行
+        Write-Host 'Deploy CxxuPsModules...'
+    }
+    else
+    {
+        #用户取消继续执行
+        # 向用户展示调用语法
+        Get-Command Deploy-CxxuPsModules -Syntax
+        # 退出执行
+        return 
+    }
 
     if ($host.Version.Major -lt 7)
     {
@@ -262,3 +280,13 @@ function Install-CxxuPsModules-Deprecated
         Deploy-CxxuPsModules -Mode FromPackage -Verbose
     } 
 }
+
+#交互脚本
+# $continue = Read-Host 'Install the CxxuPSModules in Default Parameters?
+# [Input y to continue,n to exit and use your customized parameters to install it](y/n)'
+# if ($continue)
+# {
+#     Deploy-CxxuPsModules -Verbose
+# }
+
+Deploy-CxxuPsModules -Verbose -Confirm
