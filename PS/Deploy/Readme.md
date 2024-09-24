@@ -13,14 +13,16 @@
 
 ### 简短版👺
 
+- 尝试执行默认的安装行为,如果失败
+  - 很可能是没有安装Git,这时候需要手动下载仓库文件包
+  - 或者尝试手动下载仓库包，调用`Deploy-CxxuPsModule`函数,并使用合适的参数,尝试离线安装
+    
+
 ```powershell
 $url = 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1'
 $scripts = Invoke-RestMethod $url
 $scripts | Invoke-Expression
-#尝试执行默认的安装行为,如果失败(很可能是没有安装Git,这时候需要手动下载仓库文件包),尝试手动调用Deploy-CxxuPsModule函数,并使用合适的参数,尝试离线安装
-Deploy-CxxuPsModules 
-
-
+# Deploy-CxxuPsModules 
 ```
 
 
