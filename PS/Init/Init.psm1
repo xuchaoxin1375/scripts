@@ -242,7 +242,10 @@ function Set-PSReadLinesAdvanced
     <# beautify the powershell interactive interface  #>
     # modify the color of the inlinePrediction:
     Write-Verbose ('loading psReadLines & keyHandler!(advanced)' + "`n")
-    Set-PSReadLineOption -PredictionSource History # 设置预测文本来源为历史记A
+    Import-Module CompletionPredictor -Verbose #-Verbose:$VerbosePreference
+
+    Set-PSReadLineOption -PredictionSource HistoryAndPlugin # 设置预测文本来源为历史和插件
+    Set-PSReadLineOption -PredictionViewStyle ListView #使用视图列表显示预测后选
     
     <# set colors #>
     Set-PSReadLineOption -Colors @{'inlineprediction' = '#d0d0cb' }#grayLight(grayDark #babbb4)
@@ -259,6 +262,7 @@ function Set-PSReadLinesCommon
 
     #modify the color of selection:
     Set-PSReadLineOption -Colors @{'selection' = '#0080ff' } 
+  
     # PSColor to color the folders(in the ls command excute result.)
     # Import-Module Get-ChildItemColor
 

@@ -26,6 +26,11 @@ function Remove-CxxuFile
 
 function Test-RequestConfirmationTemplate
 {
+    <# 
+    .SYNOPSIS
+    演示ShouldProcess和ShouldContinue组合使用,提供二次消息确认
+
+    #>
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')] 
     param (
         [string]$Target = 'MyResource'
@@ -36,8 +41,8 @@ function Test-RequestConfirmationTemplate
     {
 
         # After ShouldProcess, you can call ShouldContinue for further confirmation
-        $message = 'Continue with this operation?(by ShouldContinue)'
-        $caption = 'Confirm'
+        $message = 'Message:Continue with this operation?(by ShouldContinue)'
+        $caption = 'Caption:Confirm(ShouldContinue)'
         $shouldContinue = $PSCmdlet.ShouldContinue($message, $caption)
         
         if ($shouldContinue)
@@ -51,12 +56,8 @@ function Test-RequestConfirmationTemplate
             Write-Host "Operation on $Target canceled by user."
         }
     }
-    else
-    {
-        # If user cancels in the first confirmation
-        Write-Host "Operation on $Target not confirmed."
-    }
+    
 }
 
 # 测试函数
-Test-RequestConfirmationTemplate -Target 'MyResource'
+# Test-RequestConfirmationTemplate -Target 'MyResource'
