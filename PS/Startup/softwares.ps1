@@ -53,9 +53,7 @@ Update-PwshEnvIfNotYet #导入别名（需要的话）
 Write-Host "start apps every $Interval seconds,to reduce the stress of the cpu load"
 # Start-Sleep $Interval
 
-function proxy{
-    $c
-}
+
 #启动软件
 $softwares = @(
     # 'dock_finder',

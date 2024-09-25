@@ -67,13 +67,26 @@ function Deploy-GitForwindows
     # Expand-Archive -Path $Package -DestinationPath $Path 
 
     # 临时地(在当前powershell会话内,让git命令可以在任意目录下调用),如果需要后续任意目录下调用，需要添加git.exe所在目录到环境变量Path
-    $env:Path = "$Path\bin;$env:path"
+    $GitBin = "$Path\bin"
+    $env:Path = "$GitBin;$env:path" #临时添加到当前会话的Path变量中(如果需要添加到User或Machine级环境变量,建议把$env:Path替换为更准确的对应级别的变量值,防止污染)
     Write-Verbose 'Check the first value of the environment variable Path:' -Verbose
-    # [System.Environment]::GetEnvironmentVariable('path', 'user') -split ';'
     $env:path -split ';' | Select-Object -First 1
+    
+    # 向系统注册git所在路径
+    $UserPath = [System.Environment]::GetEnvironmentVariable('path', 'user') <# -split ';' #>
+    
+    #不会自动转换或丢失%var%形式的Path变量提取
+    #采用reg query命令查询而不使用Get-ItemProperty 查询注册表,因为Get-ItemProperty 会自动转换或丢失%var%形式的Path变量
+    $RawPathValue = reg query 'HKEY_CURRENT_USER\Environment' /v Path
+    $RawPathValue -match 'Path\s+REG_EXPAND_SZ\s+(.+)'
+    $UserPath = $Matches[1] 
+    Write-Verbose "Path value of [$env:Username] `n$($UserPath -split ';' -join "`n")" -Verbose
 
+    [System.Environment]::SetEnvironmentVariable('Path', "$GitBin;$UserPath", 'user')
     #检查命令可用性
     Get-Command git | Format-List *
+    # 可以选择列出潜在的所有git版本
+    Get-Command git.exe* | Select-Object Name, Source,CommandType,Version
 }
 
 
