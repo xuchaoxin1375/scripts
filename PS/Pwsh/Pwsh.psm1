@@ -1795,7 +1795,7 @@ function Copy-Robocopy
 
     Write-Host 'checking directory name...'
     #向用户展示参数设置
-    $PSBoundParameters  
+    # $PSBoundParameters  
     # 这里要求$source和$destination在函数参数定义出不可以定为String类型,会导致Get-PsIOItemInfo返回值无法正确赋值
     # $Source = Get-PsIOItemInfo $Source
     # $destination = Get-PsIOItemInfo $Destination
@@ -1814,8 +1814,8 @@ function Copy-Robocopy
         $continue = Confirm-UserContinue -Description 'The Destination directory name is different from the Source directory name! Create the Same Name Directory?'
         if ($continue)
         {
-            $Destination = Join-Path $Destination $Source.Name
-            Write-Verbose "$Destination"
+            $Destination = Join-Path $Destination $SN
+            Write-Verbose "$Destination" -Verbose
         }
     }
 
