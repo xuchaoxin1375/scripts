@@ -11,15 +11,72 @@ function Get-CxxuPsModulePackage
         $url = 'https://codeload.github.com/xuchaoxin1375/scripts/zip/refs/heads/main',
         $outputFile = "scripts-$( Get-Date -Format 'yyyy-MM-dd--hh-mm-ss').zip"
     )
+    $urls = @(
+        'https://gitcode.net/xuchaoxin1375/scripts/-/archive/SourceCodePackage/scripts-SourceCodePackage.zip',
+        'https://codeload.github.com/xuchaoxin1375/scripts/zip/refs/heads/main'
+    )
+    $index = 0
+    foreach ($url in $urls)
+    {
+
+        Write-Host "${index}:[${url}]" -ForegroundColor Blue
+        $index++
+    }
+    $UrlCode = Read-Host "Enter the Deploy Scheme code [0..$($urls.Count-1)](default:0)"
+    if ($UrlCode.Trim() -eq '') { $UrlCode = 0 }
+    $url = $urls[$UrlCode]
     if (!(Test-Path $Directory))
     {
         New-Item -ItemType Directory -Path $Directory -Verbose
     }
     $PackgePath = "$Directory/$outputFile"
-    Write-Verbose "Downloading $url to $PackgePath"
-    Invoke-WebRequest -Uri $url -OutFile $PackgePath 
+    Write-Verbose "Downloading [$url] to $PackgePath" -Verbose
+    Invoke-WebRequest -Uri $url -OutFile $PackgePath -Verbose
     return $PackgePath
 }
+
+function Deploy-GitForwindows
+{
+    [CmdletBinding()]
+    param(
+        # 注意区分这url是一个自解压文件还是压缩包文件
+        $url = 'https://gitcode.net/x-cmd-build/git-for-windows/-/releases/v2.41.0/downloads/git-for-windows.7z.exe',
+        $Path = 'C:\PortableGit'
+    )
+    # 实用New-Item的-force参数,即便路径已经存在,也不会报错(如果已经存在此目录,内部的也不会被覆盖(移除))
+    New-Item -ItemType Directory $Path -Verbose -Force 
+    $Package = "$Path\PortableGit.7z.exe"
+    # $Package = "$home/downloads/PortableGit.7z.exe"
+    if (!(Test-Path $Package))
+    {
+
+        Invoke-WebRequest -Uri $url -OutFile $Package -Verbose
+    }
+    else
+    {
+        Write-Host "$Package already exists!"
+    }
+    # 静默安装(默认解压到$Pacakge所在目录的PortableGit子目录)
+    # & $Package -y #这种做法会抛到后台进程去执行安装,前台继续执行,可能会引发顺序命令顺序问题
+    Write-Host 'Installing PortableGit...(it may take a while)' -ForegroundColor Blue
+
+    Start-Process "$Package" -ArgumentList '-y' -Wait #使用Start-Process命令执行安装,配合-wait参数等待安装完成再执行后续内容
+    #将目录转移到专门的目录下
+    # Move-Item $Path\PortableGit "$env:SystemDrive\" -Verbose -Force
+    Move-Item $Path\PortableGit\* "$path" -Verbose -Force
+    # Expand-Archive -Path $Package -DestinationPath $Path 
+
+    # 临时地(在当前powershell会话内,让git命令可以在任意目录下调用),如果需要后续任意目录下调用，需要添加git.exe所在目录到环境变量Path
+    $env:Path = "$Path\bin;$env:path"
+    Write-Verbose 'Check the first value of the environment variable Path:' -Verbose
+    # [System.Environment]::GetEnvironmentVariable('path', 'user') -split ';'
+    $env:path -split ';' | Select-Object -First 1
+
+    #检查命令可用性
+    Get-Command git | Format-List *
+}
+
+
 function Deploy-CxxuPsModules
 {
     <# 
@@ -211,7 +268,21 @@ function Deploy-CxxuPsModules
             
             ## 检查Git是否可用,如果可用,采用最可靠的克隆方案执行,否则采用下载仓库,和本地解压方案
             $GitAvailability = Get-Command git -ErrorAction SilentlyContinue
+            if (!$GitAvailability)
+            {
 
+                #向用户推荐一键安装git的方案,然后使用默认的下载方案
+                Write-Host 'Git is not available on your system!' -ForegroundColor Blue
+                $InstallGit = Read-Host 'Do you want to install it (it take a few seconds)!(y/n)(Default: y)'
+                if ($InstallGit -eq 'y' -or $InstallGit.Trim() -eq '')
+                {
+                    Deploy-GitForwindows -Verbose
+                    # & $RemoteGitCloneScript
+                }
+                #重新计算Git是否可用
+                $GitAvailability = Get-Command git -ErrorAction SilentlyContinue
+            }
+            # 根据用户是否有git，调用不同的方案
             if ($GitAvailability)
             {
                 #装有Git的用户使用此方案
@@ -221,7 +292,8 @@ function Deploy-CxxuPsModules
             else
             {
     
-                #没有Git的用户使用此方案(前面检测过了没有本地包,git又不可用,所以从云端仓库clone代码)
+
+                #没有Git且不想安装git的用户使用此方案(前面检测过了没有本地包,git又不可用,所以从云端仓库clone代码)
                 $PackagePath = Get-CxxuPsModulePackage
                 & $LocalScript
             } 

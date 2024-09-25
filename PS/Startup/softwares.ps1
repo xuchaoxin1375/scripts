@@ -53,15 +53,17 @@ Update-PwshEnvIfNotYet #导入别名（需要的话）
 Write-Host "start apps every $Interval seconds,to reduce the stress of the cpu load"
 # Start-Sleep $Interval
 
-
+function proxy{
+    $c
+}
 #启动软件
 $softwares = @(
     # 'dock_finder',
     # 'listary',
     'mydockfinder',
     # 'cfw' ,
-    # 'whale',#公交车,虽然速度挺快,而且试用期长,但是容易导致许多网站使用出现频繁验证和报错,例如openai
     'Verge',
+    # 'whale',#公交车,虽然速度挺快,而且试用期长,但是容易导致许多网站使用出现频繁验证和报错,例如openai
     'trafficMonitor', #配置在里面在个别场合容易启动失败,可以单独启动
     'snipaste', #高性能截图软件,用途比较单一
     # 'pixpin', #辅助snipaste用来长截图和录制gif以及做ocr
