@@ -366,9 +366,14 @@ function Write-Path
 function Write-OSVersionInfo
 {
     param (
-        
+        [switch]$CaptionOnly
     )
-    $res = (Confirm-OSVersionCaption) + '@' + (Confirm-OSFullVersionCode)
+    $res = Confirm-OSVersionCaption
+    if (!$CaptionOnly)
+    {
+
+        $res = $res + '@' + (Confirm-OSFullVersionCode)
+    }
     $res = '[' + $res + ']'
     Write-Host $res -NoNewline -ForegroundColor DarkGray
 }

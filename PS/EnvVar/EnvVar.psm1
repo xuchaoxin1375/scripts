@@ -313,7 +313,7 @@ C:\Users\cxxu\.dotnet\tools
     [CmdletBinding()]
     param (
         
-        [Alias('Name','Key')]$EnvVar = 'new',
+        [Alias('Name', 'Key')]$EnvVar = 'new',
         [Alias('Value')]$NewValue = (Get-Date).ToString(),
         [switch]$ResolveNewValue,
 
@@ -458,7 +458,7 @@ function Remove-EnvVar
     [cmdletbinding()]
     param (
         
-        $EnvVar = '',
+        [Alias('Name', 'Key')] $EnvVar = '',
         
         # choose User or Machine,the former is default(no need for Administrator priviledge)
         # the Machine scope need Administrator priviledge
@@ -526,7 +526,7 @@ function Set-EnvVar
     #>
     [CmdletBinding()]
     param (                                
-        $EnvVar = '',
+        [Alias('Key', 'Name')]$EnvVar = '',
         [alias('Value')]$NewValue = 'NewValue',
         $Scope = 'User'
     )

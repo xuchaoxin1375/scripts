@@ -103,7 +103,7 @@ function Confirm-OSVersionCaption
         $os = Get-CimInstance Win32_OperatingSystem
         $Catption = $os.Caption
         $cp = ('Win' + $Catption.Split('Windows')[1])
-        Add-EnvVar -Name 'OSCaption' -NewValue $cp 
+        Set-EnvVar -Name 'OSCaption' -NewValue $cp 
     }
     return $env:OSCaption
 }
@@ -125,7 +125,7 @@ function Confirm-OSFullVersionCode
     {
     
         $code = Get-WindowsVersionFromRegistry | Select-Object -ExpandProperty FullVersion
-        Add-EnvVar -Name 'OSFullVersionCode' -NewValue $code
+        Set-EnvVar -Name 'OSFullVersionCode' -NewValue $code
     }
     return $env:OSFullVersionCode
 }
