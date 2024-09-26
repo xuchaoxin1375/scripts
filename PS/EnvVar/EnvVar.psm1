@@ -313,8 +313,8 @@ C:\Users\cxxu\.dotnet\tools
     [CmdletBinding()]
     param (
         
-        $EnvVar = 'new',
-        $NewValue = (Get-Date).ToString(),
+        [Alias('Name','Key')]$EnvVar = 'new',
+        [Alias('Value')]$NewValue = (Get-Date).ToString(),
         [switch]$ResolveNewValue,
 
         # choose User or Machine,the former is default(no need for Administrator priviledge)

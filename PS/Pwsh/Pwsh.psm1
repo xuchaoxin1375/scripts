@@ -363,6 +363,15 @@ function Write-Path
     Write-Host (('[' + $currentPath.Replace($HOME, '~') + ']')) -ForegroundColor DarkGray -NoNewline
     
 }
+function Write-OSVersionInfo
+{
+    param (
+        
+    )
+    $res = (Confirm-OSVersionCaption) + '@' + (Confirm-OSFullVersionCode)
+    $res = '[' + $res + ']'
+    Write-Host $res -NoNewline -ForegroundColor DarkGray
+}
 function write-PsEnvMode
 {
     [CmdletBinding()]
@@ -512,6 +521,7 @@ function PromptBrilliant
     Write-Host ('├─') -ForegroundColor Cyan -NoNewline
     Write-UserHostname
     Write-HostIp
+    Write-OSVersionInfo
     Write-Data; Write-Time
     Write-Host ''
     Write-Host ('├─') -ForegroundColor Magenta -NoNewline
@@ -571,6 +581,7 @@ function PromptBalance
     write-PermissoinLevel
     Write-UserHostname
     Write-HostIp
+    Write-OSVersionInfo
     Write-Path
     write-GitBasicInfo
     Write-Host ''
@@ -921,6 +932,24 @@ function Get-ItemSizeSorted
         
 
     $sorted = $res | Sort-Object -Property size -Descending
+    $sumUnit = ($sorted | Measure-Object -Property size -Sum).Sum
+    $sumByte = $sumUnit * ([int]"1$Unit")
+    # $smbBit = $sumByte * 8 #精度不够,不展示
+    $sumKB = $sumByte / 1KB
+    $sumMB = $sumByte / 1MB
+    $sumGB = $sumByte / 1GB
+    Write-Host "SUM size: $sumUnit $Unit" -ForegroundColor Magenta
+    Write-Host "SUM size: $sumGB GB" -ForegroundColor Magenta
+    $sumReport = [PSCustomObject]@{
+        # "sum$Unit"   = $sum
+        # smbBit  = $smbBit
+        sumByte = $sumByte
+        sumKB   = $sumKB
+        sumMB   = $sumMB
+        sumGB   = $sumGB
+    }
+    $sumReport | Format-Table
+
     if ($FormatTable)
     {
 
@@ -1391,7 +1420,7 @@ function Test-PromptDelay
         # 加载prompt的次数,10次基本就够了(5次也够的)
         $iterations = 10
     )
-    $DurationArrays = (1..$iterations | ForEach-Object { Measure-Command { prompt *> $null } })
+    $DurationArrays = (1..$iterations | ForEach-Object { Measure-Command { Prompt *> $null } })
     $DurationSum = ($DurationArrays | ForEach-Object { $_.TotalSeconds }) | Measure-Object -Sum
     $averageDuration = $DurationSum.Sum / ($DurationArrays.Count)
     Write-Host $averageDuration 'seconds'

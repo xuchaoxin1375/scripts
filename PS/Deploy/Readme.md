@@ -23,6 +23,29 @@ $scripts | Invoke-Expression
 # Deploy-CxxuPsModules 
 ```
 
+### 一行搞定
+
+下面虽然提供了更短的方案,可以一行搞定,但是为了便于审查,使用上面的多行版本会更推荐,比如方便我们引用`$url`以及`$scripts`进行其他操作
+
+```powershell
+Invoke-Expression (Invoke-RestMethod 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1')
+
+```
+
+或者
+
+```powershell
+irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1'|iex
+```
+
+还可以做短链转换
+
+```powershell
+irm 'http://b.mtw.so/62WaCm'|iex
+```
+
+
+
 ### 备用方案版
 
 如果您遇到报错或者失败,则重新粘贴执行,并且切换方案码(code)(下面内置了3个方案)

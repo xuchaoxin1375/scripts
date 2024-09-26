@@ -13,7 +13,135 @@
 # 日志:记录当前时间
 # "test:$(Get-Date)"> "$scripts\startup\log\log"
  #>
+function Get-SystemVersionCoreInfoOfWindows
+{
+    param (
+        
+    )
+    $os = Get-CimInstance Win32_OperatingSystem
+    $Catption = $os.Caption
+    ('Win' + $Catption.Split('Windows')[1]) + ' ' + "<$os.Version>"
+}
+function Get-WindowsVersionFromRegistry
+{
+    <# 
+    .SYNOPSIS
+    查询windows系统版本的信息
+    
+    .DESCRIPTION
+    这里采用查询注册表的方式来获取相关信息
 
+    指定了注册表路径 HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion，这里存储了 Windows 版本信息。
+    定义了要查询的属性列表：
+    ProductName：产品名称（如 "Windows 11 Pro"）
+    DisplayVersion：显示版本（如 "22H2"）
+    CurrentBuild：当前构建号
+    UBR（Update Build Revision）：更新构建修订号
+    遍历属性列表，从注册表中获取每个属性的值。
+    构造完整版本号（CurrentBuild.UBR）。
+    格式化输出信息。
+    返回格式化后的输出。
+        #>
+    $registryPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
+    
+    $properties = @(
+        'ProductName',
+        'DisplayVersion',
+        'CurrentBuild',
+        'UBR',
+        'ReleaseId',
+        'CurrentMajorVersionNumber',
+        'CurrentMinorVersionNumber'
+    )
+
+    $result = @{}
+    foreach ($prop in $properties)
+    {
+        $result[$prop] = (Get-ItemProperty -Path $registryPath -Name $prop -ErrorAction SilentlyContinue).$prop
+    }
+
+    
+    # 判断是否为 Windows 11
+    $isWindows11 = [System.Environment]::OSVersion.Version.Build -ge 22000
+
+    # 如果是 Windows 11 但 ProductName 显示为 Windows 10，则修正
+    if ($isWindows11 -and $result.ProductName -like '*Windows 10*')
+    {
+        $result.ProductName = $result.ProductName -replace 'Windows 10', 'Windows 11'
+    }
+    $fullVersion = "$($result.CurrentMajorVersionNumber).$($result.CurrentMinorVersionNumber).$($result.CurrentBuild).$($result.UBR)"
+
+    $res = [PSCustomObject]@{
+        ProductName               = $result.ProductName
+        DisplayVersion            = $result.DisplayVersion
+        ReleaseId                 = $result.ReleaseId
+        CurrentMajorVersionNumber = $result.CurrentMajorVersionNumber
+        CurrentMinorVersionNumber = $result.CurrentMinorVersionNumber
+        CurrentBuild              = $result.CurrentBuild
+        UBR                       = $result.UBR
+        FullVersion               = $fullVersion
+        # IsWindows11               = $isWindows11
+    }
+    return $res
+}
+function Confirm-OSVersionCaption
+{
+    <# 
+    .SYNOPSIS
+    确认系统存在OSCaption变量供其他进程使用
+    .DESCRIPTION
+    如果相应的环境变量缺失,那么执行计算并填充对应变量,否则跳过不做
+    #>
+    param (
+        #强制更新或写入环境变量
+        [alias('Update')][switch]$Force
+    )
+        
+    if ($Force || $null -eq $env:OSCaption)
+    {
+    
+        $os = Get-CimInstance Win32_OperatingSystem
+        $Catption = $os.Caption
+        $cp = ('Win' + $Catption.Split('Windows')[1])
+        Add-EnvVar -Name 'OSCaption' -NewValue $cp 
+    }
+    return $env:OSCaption
+}
+
+function Confirm-OSFullVersionCode
+{
+    <# 
+    .SYNOPSIS
+    确认系统存在OSCaption变量供其他进程使用
+    .DESCRIPTION
+    如果相应的环境变量缺失,那么执行计算并填充对应变量,否则跳过不做
+    #>
+    param (
+        #强制更新或写入环境变量
+        [alias('Update')][switch]$Force
+    )
+        
+    if ($Force -or $null -eq $env:OSFullVersionCode)
+    {
+    
+        $code = Get-WindowsVersionFromRegistry | Select-Object -ExpandProperty FullVersion
+        Add-EnvVar -Name 'OSFullVersionCode' -NewValue $code
+    }
+    return $env:OSFullVersionCode
+}
+function Confirm-EnvVarOfInfo
+{
+    <# 
+    .SYNOPSIS
+    确认基本的系统环境信息,比如系统版本号等
+    如果相应的环境变量缺失,那么执行计算并填充对应变量,否则跳过不做
+    #>
+    param (
+        
+    )
+    Confirm-OSVersionCaption
+
+}
 function Start-StartupTasks
 {
 
@@ -40,7 +168,8 @@ function Start-StartupTasks
     # $MapLog = "$scripts\startup\log\MapLog.txt"
     #开机启动日志文件
     # $log_file = "$log_home\log.txt"
-    
+
+    Confirm-EnvVarOfInfo
     #如果当前机器不是MainPC,则拉取主PC的blogs,Scripts,configs仓库
     Update-ReposesConfigedIfNeed
     

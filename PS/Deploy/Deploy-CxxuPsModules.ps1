@@ -86,7 +86,7 @@ function Deploy-GitForwindows
     #检查命令可用性
     Get-Command git | Format-List *
     # 可以选择列出潜在的所有git版本
-    Get-Command git.exe* | Select-Object Name, Source,CommandType,Version
+    Get-Command git.exe* | Select-Object Name, Source, CommandType, Version
 }
 
 
@@ -192,7 +192,7 @@ function Deploy-CxxuPsModules
 
     if ($host.Version.Major -lt 7)
     {
-        Throw 'Please use powershell7 to deploy CxxuPsModules!'
+        Write-Warning 'Please use powershell7 use full feature of the CxxuPsModules!' 
     }
     
     # 路径准备
