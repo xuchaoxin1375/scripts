@@ -245,7 +245,7 @@ function Set-PSReadLinesAdvanced
     Import-Module CompletionPredictor -Verbose #-Verbose:$VerbosePreference
 
     Set-PSReadLineOption -PredictionSource HistoryAndPlugin # 设置预测文本来源为历史和插件
-    Set-PSReadLineOption -PredictionViewStyle ListView #使用视图列表显示预测后选
+    Set-PSReadLineOption -PredictionViewStyle ListView -BellStyle None  #使用视图列表显示预测后选
     
     <# set colors #>
     Set-PSReadLineOption -Colors @{'inlineprediction' = '#d0d0cb' }#grayLight(grayDark #babbb4)

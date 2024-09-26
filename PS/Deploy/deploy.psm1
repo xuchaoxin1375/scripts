@@ -1179,7 +1179,7 @@ function Update-GithubHosts
     # 定义 hosts 文件路径和远程 URL
 
     # 定义正则表达式
-    $reg = '(?s)# GitHub520 Host Start.*?# GitHub520 Host End'
+    $pattern = '(?s)# GitHub520 Host Start.*?# GitHub520 Host End'
 
 
     # 读取 hosts 文件并删除指定内容,再追加新内容
@@ -1189,14 +1189,14 @@ function Update-GithubHosts
     #debug 检查将要替换的内容
 
     #查看将要被替换的内容片段是否正确
-    # $content -match $reg
-    $res = [regex]::Match($content, $reg)
+    # $content -match $pattern
+    $res = [regex]::Match($content, $pattern)
     Write-Verbose '----start----'
     Write-Verbose $res[0].Value
     Write-Verbose '----end----'
 
     # return 
-    $content = $content -replace $reg, ''
+    $content = $content -replace $pattern, ''
 
     # 追加新内容到$tempHosts文件中
     # $content | Set-Content $tempHosts

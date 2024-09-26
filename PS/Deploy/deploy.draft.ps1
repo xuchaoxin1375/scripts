@@ -61,3 +61,4 @@ Deploy-GitConfig
 # 安装7z
 #部署ssh
 New-SSHKeyPairs
+

@@ -37,21 +37,45 @@ function Get-CxxuPsModulePackage
 
 function Deploy-GitForwindows
 {
+    <# 
+    .SYNOPSIS
+    帮助windows系统用户一键部署Git for Windows
+    .DESCRIPTION
+    部署方案有多种,可以自动操作,如果失败,可以尝试分步骤操作
+    此函数提供了灵活的参数组合供用户选择,理想情况下使用无参数版本就可以了
+    但是无参数其实依赖于预设的默认参数,资源链接可能会过时,这种情况下需要用户自行寻找资源链接,然后使用相应的参数选项传递给此函数
+
+    #>
     [CmdletBinding(DefaultParameterSetName = 'Online')]
     param(
         # 使用镜像加速下载git release文件
         [parameter(ParameterSetName = 'Online')]
+        #如果不是用mirror,可以指定其为空字符串''
         $mirror = 'https://gh-proxy.com',
         # 注意区分这url是一个自解压文件还是压缩包文件
+        # url可以是从git for windows 的二进制文件镜像站提供的文件下载链接(网页中右键复制指定文件的链接即可,注意是Portable版本的(一般后缀为.7z.exe),而不是普通的安装版)
         [parameter(ParameterSetName = 'Online')]
         $url = 'https://github.com/git-for-windows/git/releases/download/v2.46.2.windows.1/PortableGit-2.46.2-64-bit.7z.exe',
 
         [parameter(ParameterSetName = 'PackagePath')]
+        # 出来上述指定提供链接的方法来下载,还可以自己手动下载,然后将保存的路径作为$PackagePath的取值来调用函数部署Git
         $PackagePath ,
+        [switch]$InstallByGiteeScoop,
         
         $Path = 'C:\PortableGit'
     )
-    # 实用New-Item的-force参数,即便路径已经存在,也不会报错(如果已经存在此目录,内部的也不会被覆盖(移除))
+
+
+    if ($InstallByGiteeScoop)
+    {
+        Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+
+        Invoke-WebRequest -useb scoop.201704.xyz | Invoke-Expression
+
+        scoop install git  #为当前用户安装,如果全局需要管理员权限
+    }
+
+    # 用New-Item的-force参数,即便路径已经存在,也不会报错(如果已经存在此目录,内部的也不会被覆盖(移除))
     New-Item -ItemType Directory $Path -Verbose -Force 
     if ( $PSCmdlet.ParameterSetName -eq 'PackagePath' )
     {
@@ -63,7 +87,7 @@ function Deploy-GitForwindows
         $Package = "$Path\PortableGit.7z.exe"
         if (!(Test-Path $Package))
         {
-            $url = "${mirror}/${url}"
+            $url = "${mirror}/${url}".Trim('/')
             Invoke-WebRequest -Uri $url -OutFile $Package -Verbose
         }
         

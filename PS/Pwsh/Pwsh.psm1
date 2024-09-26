@@ -662,12 +662,19 @@ function Get-Size
     此函数计算指定路径的文件或目录的大小。对于目录，它会递归计算所有子目录和文件的总大小。
     函数支持以不同的单位（如 B、KB、MB、GB、TB）显示结果。
 
+    .NOTES
+    次函数遇到Path为目录的情况时,使用的是ls 的-recurse参数,不需要自己编写循环遍历,也不便使用进度计数
+    而内部的process块内对$path做遍历是为了支持管道符,也就是形如ls *|Get-Size的方式调用,这时候$Path会是一个数组,对其做遍历
+
     .PARAMETER Path
     要计算大小的文件或目录的路径。可以是相对路径或绝对路径。
 
     .PARAMETER Unit
     指定结果显示的单位。可选值为 B（字节）、KB、MB、GB、TB。默认为 MB。
 
+    #>
+
+    <# 
     .EXAMPLE
     Get-Size -Path "C:\Users\Username\Documents"
     计算 Documents 文件夹的大小，并以默认单位（MB）显示结果。
@@ -754,6 +761,7 @@ function Get-Size
             $PSBoundParameters | Format-Table  
             
         }
+        # 大小单位换算(倍率)
         $unitMultiplier = @{
             'B'  = 1
             'KB' = 1KB
@@ -761,12 +769,36 @@ function Get-Size
             'GB' = 1GB
             'TB' = 1TB
         }
+        #进度计数器
+        # $PSStyle.Progress.View = 'Classic'
+        $i = 0
+        # $PSStyle.Progress.View = 'Minimal'
+        $count = (Get-ChildItem $Path).count
+        Write-Verbose "$count Path(s) will be processed" # -ForegroundColor Blue
     }
 
     process
     {
+        # $i = 0
+
         foreach ($item in $Path)
         {
+            # 增加write-process支持
+                
+            # Write-Verbose "Calculating size of directory $item"
+            if ($count -gt 1)
+            {
+
+                $Completed = ($i / $count) * 100
+                # 精度控制
+                $Completed = [math]::Round($Completed, 1)
+                # Write-Host $i 
+                Write-Progress -Activity "Calculating size of $item" -Status "Progress: $Completed %" -PercentComplete $Completed
+                $i += 1
+            }
+            # 模拟耗时逻辑检查进度条功能
+            # Start-Sleep -Milliseconds 500
+
             if (Test-Path -Path $item)
             {
                 $size = 0
@@ -783,6 +815,7 @@ function Get-Size
                 {
                     $ItemType = 'Directory'
                 }
+                # 计算$Path的一级子目录或文件的大小
                 if ($itemInfo -is [System.IO.DirectoryInfo])
                 {
                     $size = (Get-ChildItem -Path $item -Recurse -Force | Measure-Object -Property Length -Sum).Sum
@@ -791,11 +824,12 @@ function Get-Size
                 {
                     $size = (Get-Item $item).Length
                 }
-
+                # 大小单位换算
                 $sizeInSpecifiedUnit = $size / $unitMultiplier[$Unit]
                 Write-Verbose "`$sizeInSpecifiedUnit: $sizeInSpecifiedUnit"
                 $Size = [math]::Round($sizeInSpecifiedUnit, [int]$Precision)
                 Write-Verbose "`$size: $Size"
+                # 制表格式输出
                 if ($SizeAsString)
                 {
                     $size = "$size"
@@ -917,10 +951,17 @@ function Get-ItemSizeSorted
     }
     else
     {
+        $i = 0
+        $items = Get-ChildItem $Path
+        $count = $items.count
         Write-Host 'Calculating ... '
-        $res = Get-ChildItem $Path | ForEach-Object {
+        $res = $items | ForEach-Object {
+
             $item = $_ | Get-Size -Unit $Unit -Precision $Precision -Detail:$Detail -SizeAsString:$SizeAsString -Verbose:$false # -FormatTable:$FormatTable 
             
+            $Completed = [math]::Round($i++ / $count * 100, 1)
+            # $i += 1
+            Write-Progress -Activity 'Calculating items sizes... ' -Status "Processing: $Completed%" -PercentComplete $Completed
             # Write-Host $item  -ForegroundColor Red
             # $item | Format-Table #会被视为返回值,后续的管道服sort将无法正确执行(利用break可以验证,这个语句本身没有问题,但是后续的管道无法正常执行)
             # break
@@ -1360,6 +1401,17 @@ Register-ArgumentCompleter -CommandName Get-CommandSourceCode -ParameterName Nam
     $commands | ForEach-Object {
         [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
     }
+}
+function dm
+{
+    <# 
+    .SYNOPSIS
+    将powershell的prompt设置为简单的状态,以便于将聚焦到命令行上,而不是其他多余或次要的信息
+    #>
+    param (
+    )
+    Set-PromptVersion -version Default
+    
 }
 function Set-PromptVersion
 {
