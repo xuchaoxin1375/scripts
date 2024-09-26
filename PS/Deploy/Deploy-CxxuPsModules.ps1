@@ -37,25 +37,39 @@ function Get-CxxuPsModulePackage
 
 function Deploy-GitForwindows
 {
-    [CmdletBinding()]
+    [CmdletBinding(DefaultParameterSetName = 'Online')]
     param(
+        # 使用镜像加速下载git release文件
+        [parameter(ParameterSetName = 'Online')]
+        $mirror = 'https://gh-proxy.com',
         # 注意区分这url是一个自解压文件还是压缩包文件
-        $url = 'https://gitcode.net/x-cmd-build/git-for-windows/-/releases/v2.41.0/downloads/git-for-windows.7z.exe',
+        [parameter(ParameterSetName = 'Online')]
+        $url = 'https://github.com/git-for-windows/git/releases/download/v2.46.2.windows.1/PortableGit-2.46.2-64-bit.7z.exe',
+
+        [parameter(ParameterSetName = 'PackagePath')]
+        $PackagePath ,
+        
         $Path = 'C:\PortableGit'
     )
     # 实用New-Item的-force参数,即便路径已经存在,也不会报错(如果已经存在此目录,内部的也不会被覆盖(移除))
     New-Item -ItemType Directory $Path -Verbose -Force 
-    $Package = "$Path\PortableGit.7z.exe"
-    # $Package = "$home/downloads/PortableGit.7z.exe"
-    if (!(Test-Path $Package))
+    if ( $PSCmdlet.ParameterSetName -eq 'PackagePath' )
     {
-
-        Invoke-WebRequest -Uri $url -OutFile $Package -Verbose
+        $Package = $PackagePath
     }
     else
     {
-        Write-Host "$Package already exists!"
+
+        $Package = "$Path\PortableGit.7z.exe"
+        if (!(Test-Path $Package))
+        {
+            $url = "${mirror}/${url}"
+            Invoke-WebRequest -Uri $url -OutFile $Package -Verbose
+        }
+        
     }
+    # Write-Host "$Package  exist!" 
+    # $Package = "$home/downloads/PortableGit.7z.exe"
     # 静默安装(默认解压到$Pacakge所在目录的PortableGit子目录)
     # & $Package -y #这种做法会抛到后台进程去执行安装,前台继续执行,可能会引发顺序命令顺序问题
     Write-Host 'Installing PortableGit...(it may take a while)' -ForegroundColor Blue
