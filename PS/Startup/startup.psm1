@@ -97,7 +97,7 @@ function Confirm-OSVersionCaption
         [alias('Update')][switch]$Force
     )
         
-    if ($Force || $null -eq $env:OSCaption)
+    if ($Force -or $null -eq $env:OSCaption)
     {
     
         $os = Get-CimInstance Win32_OperatingSystem
@@ -108,7 +108,7 @@ function Confirm-OSVersionCaption
     return $env:OSCaption
 }
 
-function Confirm-OSFullVersionCode
+function Confirm-OSVersionFullCode
 {
     <# 
     .SYNOPSIS

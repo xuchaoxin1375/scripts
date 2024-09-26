@@ -372,7 +372,7 @@ function Write-OSVersionInfo
     if (!$CaptionOnly)
     {
 
-        $res = $res + '@' + (Confirm-OSFullVersionCode)
+        $res = $res + '@' + (Confirm-OSVersionFullCode)
     }
     $res = '[' + $res + ']'
     Write-Host $res -NoNewline -ForegroundColor DarkGray
