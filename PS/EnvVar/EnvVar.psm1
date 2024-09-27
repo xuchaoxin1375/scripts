@@ -1,50 +1,4 @@
-function Clear-EnvVar
-{
-    param (
-        [ValidateSet('User', 'Machine')]
-        [string]$Scope,
-        [switch]$Refresh
-    )
 
-    # $Scope = if ($Scope -eq 'User') { 'User' } else { 'Machine' }
-
-    function Clear-Variables
-    {
-        param ($Scope)
-        $envVariables = [System.Environment]::GetEnvironmentVariables($Scope)
-        # 遍历各个对象逐个移除(取值置空就是移除效果)
-        foreach ($key in $envVariables.Keys)
-        {
-            [System.Environment]::SetEnvironmentVariable($key, $null, $Scope)
-        }
-        Write-Output "$Scope environment variables cleared."
-    }
-
-    Clear-Variables -scope $Scope
-
-    <#   
-    if ($Scope -eq 'User')
-    {
-        Clear-Variables -scope $Scope
-    }
-    elseif ($Scope -eq 'System')
-    {
-        # 修改系统级环境变量,需要管理员权限
-        # 尝试启动管理与powershell(可以考虑直接调用前面定义的内部函数,提高代码复用率)
-        Start-Process powershell -Verb RunAs -ArgumentList {
-            # 参数由外部的-ArgumentList传入
-            param ($Scope)
-            $envVariables = [System.Environment]::GetEnvironmentVariables($Scope)
-            foreach ($key in $envVariables.Keys)
-            {
-                [System.Environment]::SetEnvironmentVariable($key, '', $Scope)
-            }
-            Write-Output 'System environment variables cleared.'
-        } -ArgumentList $Scope
-        
-    }
-    #>
-}
 
 # Example usage:
 # Clear-EnvironmentVariables -Scope "User"
@@ -54,8 +8,7 @@ function Format-EnvItemNumber
     <#
     .SYNOPSIS 
     辅助函数,用于将Get-EnvList(或Get-EnvVar)的返回值转换为带行号的表格
-    如果放在脚本(.ps1)中要放在Get-EnvList之前
-    如果放在模块(.psm1)中,则位置可以随意一点
+ 
      #>
     param(
         $EnvVars,
@@ -232,7 +185,8 @@ function Get-EnvVar
         [validateset('User', 'Machine', 'U', 'M', 'Detail', 'D', 'Combin', 'C')]
         $Scope = 'C',
         #是否统计环境变量的取值个数,例如Path变量
-        [switch]$Count = $false
+        [switch]$Count = $false,
+        [switch]$PassThru
         
     )
     $res = Get-EnvList -Scope $Scope | Where-Object { $_.Name -like $Key }
@@ -240,11 +194,46 @@ function Get-EnvVar
     #统计环境变量个数
     $res = Format-EnvItemNumber -EnvVars $res -Scope 
     # Write-Output $res
+    $values = (Remove-RedundantSemicolon $res.value) -split ';'
     if ($Count)
     {
-        $res = $res.value -split ';' | catn
+        # $res = $res.value -split ';' | catn
+        $i = 1
+        $items = $values | ForEach-Object {
+            
+            [PSCustomObject]@{
+                # EnvVar = $EnvVar;
+                Numberi = $i++
+                Valuei  = $_  
+            } 
+            
+        }
+        # $items | Format-Table
+
+        $res = $items
     }
     return $res
+    # if ($Count)
+    # {
+    #     $i = 0
+    #     # $res = $res.value -split ';' | catn
+    #     foreach ($item in $res)
+    #     {
+
+    #         $Log += [PSCustomObject]@{
+    #             # EnvVar = $EnvVar;
+    #             Number = $i
+    #             Valuei = $item  
+    #         } 
+    #         $i++
+    #     }
+    #     # $log | Format-Table
+    #     return 
+    # }
+    # if ($passThru)
+    # {
+    #     return $res
+    # }
 }
 
 function Get-EnvPath
@@ -256,19 +245,120 @@ function Remove-RedundantSemicolon
 {
     <# 
     .SYNOPSIS
-        #清理可能多余的分号
+    #清理可能多余的分号,包括首位多出的分号,或者相邻元素见多余的分号和空格
     .EXAMPLE
-    PS>Remove-RedundantSemicolon ";;env1;env2;  ; env3"
-    env1;env2; env3
+    PS C:\repos\scripts\PS\Test> remove-RedundantSemicolon ";;env1;env2;  ; env3"
+    env1;env2;env3
     #>
+    [CmdletBinding()]
     param (
-        $String
+        [parameter(Position = 0, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
+        $Values
     )
-    $String = $String -replace '(;+)\s*;', '$1'
+    begin
+    {
 
-    return $String.trim(';')
+    }
+    process
+    {
+        $res = @()
+        foreach ($value in $Values)
+        {
+
+            # 匹配一个或多个';'并且跟随0个或多个空格
+            $Value = $Value -replace ';[;\s]*', ';'
+            $Value = $Value.trim(';')
+            Write-Verbose $Value
+            $res += $value
+            # $res | Format-Table
+
+        }
+        return $res
+        
+    }
+    end
+    {
+        
+    }
+
 }
+function Get-EnvVarRawValue
+{
+    <# 
+    .SYNOPSIS
+    从相应的注册表中读取指定环境变量的取值
+    .DESCRIPTION
 
+    # 不会自动转换或丢失%var%形式的Path变量提取
+        # 采用reg query命令查询而不使用Get-ItemProperty 查询注册表, 因为Get-ItemProperty 会自动转换或丢失%var%形式的变量
+        # 注册表这里也可以区分清楚用户级别和系统级别的环境变量
+    #>
+    [CmdletBinding()]
+    param (
+        [Alias('Name', 'Key')]$EnvVar = 'new', 
+        [ValidateSet('Machine', 'User')]
+        $Scope = 'User'
+    )
+    $currentValue = [System.Environment]::getenvironmentvariable($EnvVar, $Scope)
+    if ($CurrentValue)
+    {
+        if ($scope -eq 'User')
+        {
+
+            $CurrentValue = reg query 'HKEY_CURRENT_USER\Environment' /v $EnvVar
+        }
+        else
+        {
+            $currentValue = reg query 'HKEY_LOCAL_MACHINE\System\CurrentControlSet\Control\Session Manager\Environment' /v $EnvVar
+        }
+        $CurrentValue = @($CurrentValue) -join '' #确保$CurrentValue是一个字符串
+        # $CurrentValue -match 'Path\s+REG_EXPAND_SZ\s+(.+)'
+        if (
+
+            $CurrentValue -match 'REG.*SZ\s+(.+)'
+        )
+        {
+
+            $CurrentValue = $Matches[1] 
+        }
+    }
+    # 返回的是一个字符串,而不是;分隔的字符串数组
+    return $currentValue 
+}
+function Get-EnvVarExpandedValue
+{
+    <# 
+    .SYNOPSIS
+    获取当前用户或机器级别的环境变量值,并且取值是全展开的(将%var%替换为其真实值)
+    .DESCRIPTION
+    # 考虑到[environment]::getenvironmentvariable($envvar, $scope)的行为稳定性不足(有时候会丢失%var%形式取值,有事后又会保留%var%,这里的模式做显式解析,展开%var%)
+    #>
+    [CmdletBinding()]
+    param (
+        [Alias('Name', 'Key')]$EnvVar = 'new', 
+        [ValidateSet('Machine', 'User')]
+        $Scope = 'User'
+    )
+    $CurrentValue = [Environment]::GetEnvironmentVariable($EnvVar, $Scope)
+    $currentValues = $CurrentValue.Trim(';') -split ';'
+    $ExpandedValues = @()
+    foreach ($item in $currentValues)
+    {
+        # Convert-Path $item
+        $ExpandedValues += [Environment]::ExpandEnvironmentVariables($item)
+    }
+    # Write-Verbose "ExpandedValue: $ExpandedValues"
+    if ($VerbosePreference)
+    {
+        Write-Verbose 'ExpandedValues:'
+        # $ExpandedValues | Format-List | Out-String #每个值占一行地打印出来
+        foreach ($value in $ExpandedValues)
+        {
+            Write-Verbose $value -Verbose
+        }
+    }
+    return $ExpandedValues | Join-String -Separator ';'
+}
 function Add-EnvVar
 {
     <# 
@@ -279,6 +369,9 @@ function Add-EnvVar
 
 当对一个已经存在变量添加值时,会在头部插入新值;(有些时候末尾会带有分号,导致查询出来的值可能存在2个来连续的分号)
 这时候可以判断移除最后一个分号,然后再添加新值,头插方式也行
+
+#>
+    <# 
 .EXAMPLE
 PS BAT [10:58:25 PM] [C:\Users\cxxu\Desktop]
 [🔋 100%] MEM:72.79% [5.71/xx] GB |> add-envVar -EnvVar new2 -NewValue v2
@@ -310,7 +403,7 @@ C:\Users\cxxu\AppData\Local\Programs\oh-my-posh\bin
 C:\Users\cxxu\.dotnet\tools
 
 #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         
         [Alias('Name', 'Key')]$EnvVar = 'new',
@@ -321,14 +414,39 @@ C:\Users\cxxu\.dotnet\tools
         # the Machine scope need Administrator priviledge
         [ValidateSet('Machine', 'User')]
         $Scope = 'User',
+        [switch]$ExpandValue,
+        [switch]$Append,
+        [switch]$Sort,
+        [switch]$Force
 
-        [switch]$Query = $false
     )
     # 同步环境变量
     Update-EnvVarFromSysEnv -Scope $Scope
-    # 先获取当前用户或机器级别的环境变量值
+    # 先获取当前用户或机器级别的环境变量值(警告:使用$env:var方式获取的值可能会丢失%var%格式)
     $CurrentValue = [Environment]::GetEnvironmentVariable($EnvVar, $Scope)
 
+    if ($ExpandValue)
+    {
+        if ($CurrentValue)
+        {
+            
+            $ExpandedValues = Get-EnvVarExpandedValue -EnvVar $EnvVar -Scope $Scope -Verbose:$VerbosePreference
+            # $continue = $PSCmdlet.ShouldProcess($EnvVar, 'ExpandValue')
+            #这是一个危险操作,使用shouldcontinue询问
+            $continue = $PSCmdlet.ShouldContinue($EnvVar, 'ExpandValue')
+            if ($Force -or $continue)
+            {
+                $CurrentValue = $ExpandedValues -join ';' #确保是一个;分隔的字符串
+            }
+        }
+    }
+    else
+    {
+
+    
+        $CurrentValue = Get-EnvVarRawValue -EnvVar $EnvVar -Scope $Scope -Verbose:$VerbosePreference
+    }
+ 
     #查询当前值,能够区分不同Scope的环境变量(例如用户变量和系统变量都有Path,如果只想插入一个新值到用户Path,就要用上述方法访问)
  
     # $CurrentValue = "`$env:$EnvVar" | Invoke-Expression #无法区分用户和系统的path变量
@@ -339,13 +457,44 @@ C:\Users\cxxu\.dotnet\tools
     {
         $NewValue = (Resolve-Path $NewValue).Path
         Write-Verbose "Resolved NewValue: $NewValue"
+    } 
+    # 设置新值(现在还未经过清洗处理,不保证规范性)
+    # 用户可以选择新值要插在头部还是接在尾部
+    if ($Append)
+    {
+        $NewValueFull = "$CurrentValue;$NewValue"
     }
-    #$CurrentValue如果没有提前设置值,则返回null,而不是'',不能用$CurrentValue -ne '' 判断是否新变量,直接用$CurrentValue 即可
-    $NewValueFull = $CurrentValue  ? "$NewValue;$CurrentValue" : $NewValue 
-    # Write-Output $NewValue
+    else
+    {
+
+        $NewValueFull = "$NewValue;$CurrentValue"
+    }
+    # 变量取值规范化处理
+    $NewValueFull = Remove-RedundantSemicolon $NewValueFull
+    # 提示待添加值是否已经存在于原值
+    if ($NewValue -in $CurrentValue)
+    {
+        Write-Warning "Value $NewValue already exists in $EnvVar" 
+    }
+    if ($PSCmdlet.ShouldProcess($EnvVar, 'Get Unique Value'))
+    {
+        
+        $NewValueFull = $NewValueFull -split ';' | Select-Object -Unique | Join-String -Separator ';' #移除重复的项目
+
+    }
+    if ($Sort)
+    {
+
+        $NewValueFull = $NewValueFull | Sort-Object #对取值按顺序排序(可选)
+    }
+    #$CurrentValue如果没有提前设置值,则返回$null,而不是'',不能用$CurrentValue -ne '' 判断是否新变量,直接用$CurrentValue 即可
+    # $NewValueFull = $CurrentValue  ? "$NewValue;$CurrentValue" : $NewValue 
+    # $NewValueFull = if ($CurrentValue) { "$NewValue;$CurrentValue" } else { $NewValue } #可以避免多余的分号出现,不过即便出现也问题不大,我们还可以在最后使用清理逻辑进行规范化
+    
+ 
     
     # 查看即将进行的更改,如果启用了$V或$Query,则会打印出更改的表达式,如果是后者还会进一步询问
-    if ($V -or $Query)
+    if ($VerbosePreference)
     {
 
         # Write-Host "`$env:$EnvVar From [$CurrentValue] TO [$NewValue]" -BackgroundColor green
@@ -357,59 +506,123 @@ C:\Users\cxxu\.dotnet\tools
         #理论上可以不用Out-String,但是个别场景(比如后续的Read-Host)会导致输出顺序错乱,所以这里用Out-String强制渲染
         if ($EnvVar -eq 'Path')
         {
+            # Path内容一般比较长,这里将其分行列表显示
             $Log | Format-List 
         }
         else
         {
-            $Log | Format-Table -Wrap -AutoSize | Out-String #| Write-Host -ForegroundColor Green
+            $Log | Format-Table -Wrap -AutoSize | Format-Table #| Write-Host -ForegroundColor Green
         }
         
         
     }
-    if ($Query)
+    if ($PSCmdlet.ShouldProcess("$env:COMPUTERNAME,Scope=$Scope", 'Add-EnvVar'))
     {
         
-        $replay = Read-Host -Prompt 'Enter y to continue,else exit '
-        if ($replay -ne 'y')
-        {
-            return
-        }
-    }
-    # 设置 Scope 级别的 Path 环境变量
-    $NewValueFull = Remove-RedundantSemicolon $NewValueFull
-    [Environment]::SetEnvironmentVariable($EnvVar, $NewValueFull, $Scope)
+        
+        # 设置 Scope 级别的 $EnvVar 环境变量
+             
+        #持久化添加到环境变量
+        [Environment]::SetEnvironmentVariable($EnvVar, $NewValueFull, $Scope)
+        
+        # 刷新当前shell的环境变量
+        #检查,要对path特殊处理
 
-    # 刷新当前shell的环境变量
-    $env_left = "`$env:$EnvVar"
-    $NewValueRefresh = $NewValueFull
-    #检查,要对path特殊处理
-    if ($EnvVar -eq 'Path')
-    {
-        $CurrentValue = $env:Path  
-        # $env:Path -split ';' |Write-Host -ForegroundColor Blue
-        $NewValueRefresh = Remove-RedundantSemicolon "$NewValue;$CurrentValue"
+        if ($EnvVar -eq 'Path')
+        {
+            $CurrentValue = $env:Path  
+            # $env:Path -split ';' |Write-Host -ForegroundColor Blue
+            $NewValueFull = Remove-RedundantSemicolon "$NewValue;$CurrentValue"
+        }
+
+        #方案1:比较繁琐,不够直接
+        # $left = "`$env:$EnvVar"
+        # $expression = "$left = '$NewValueFull'" 
+        # $expression | Invoke-Expression
+        #方案2:比较推荐,使用set-item方法
+        Set-Item -Path Env:\$EnvVar -Value $NewValueFull -Force -Confirm:$false
+
+ 
+
+        # return $NewValue
+        # Write-Verbose "$($left)=`n$($NewValueFull -split ';' | Out-String)" # -BackgroundColor Yellow
+        # $res = [PSCustomObject]@{
+        #     Name  = $EnvVar
+        #     Value = $NewValueFull -split ';' | Out-String 
+        # }
     }
-    $expression = "$env_left = '$NewValueRefresh'" 
-    $expression | Invoke-Expression
-    # return $NewValue
-    # Write-Verbose "$($env_left)=`n$($NewValueFull -split ';' | Out-String)" # -BackgroundColor Yellow
-    $res = [PSCustomObject]@{
-        Name  = $EnvVar
-        Value = $NewValueFull -split ';' | Out-String 
-    }
-    return $res | Format-Table -AutoSize -Wrap
+    # return $res | Format-Table -AutoSize -Wrap
+    $res = Get-EnvVar $EnvVar -Scope $Scope -Count | Format-Table
+    return $res
 
 }
 
+function Clear-EnvVar
+{
+    <# 
+    .SYNOPSIS
+    删除环境变量,支持用户级和系统级
+    .DESCRIPTION
+    适合在需要导入环境变量时使用,是一个高风险的操作
+    .NOTES
+    使用前请做好备份(比如使用注册表来备份,或者Backup-EnvsByPwsh    Backup-EnvsRegistry两个函数进行备份)
+    #>
+    param (
+        [ValidateSet('User', 'Machine')]
+        [string]$Scope,
+        [switch]$Refresh
+    )
 
+    # $Scope = if ($Scope -eq 'User') { 'User' } else { 'Machine' }
+
+    function Clear-Variables
+    {
+        param ($Scope)
+        $envVariables = [System.Environment]::GetEnvironmentVariables($Scope)
+        # 遍历各个对象逐个移除(取值置空就是移除效果)
+        foreach ($key in $envVariables.Keys)
+        {
+            [System.Environment]::SetEnvironmentVariable($key, $null, $Scope)
+        }
+        Write-Output "$Scope environment variables cleared."
+    }
+
+    Clear-Variables -scope $Scope
+
+    <#   
+    if ($Scope -eq 'User')
+    {
+        Clear-Variables -scope $Scope
+    }
+    elseif ($Scope -eq 'System')
+    {
+        # 修改系统级环境变量,需要管理员权限
+        # 尝试启动管理与powershell(可以考虑直接调用前面定义的内部函数,提高代码复用率)
+        Start-Process powershell -Verb RunAs -ArgumentList {
+            # 参数由外部的-ArgumentList传入
+            param ($Scope)
+            $envVariables = [System.Environment]::GetEnvironmentVariables($Scope)
+            foreach ($key in $envVariables.Keys)
+            {
+                [System.Environment]::SetEnvironmentVariable($key, '', $Scope)
+            }
+            Write-Output 'System environment variables cleared.'
+        } -ArgumentList $Scope
+        
+    }
+    #>
+}
 function Clear-EnvValue
 {
     <# 
     .SYNOPSIS
     清理环境变量中多余的分号
     注意对于系统级的变量需要使用管理员运行
-    本质是调用Add-EnvVar 添加一个空字符串来清理
-    
+    .DESCRIPTION
+    Add-envva 实现了环境变量取值的清洗功能,让不规范的取值(比如多余的分号)清除掉
+    本质是调用Add-EnvVar 添加一个空字符串来触发清理,封装为新函数名更符合语义调用
+    #>
+    <# 
     .EXAMPLE
     [🔋 100%] MEM:34.16% [10.83/31.70] GB |> add-EnvVar env37 "val;;;val"
     $env:env37:
@@ -587,12 +800,12 @@ function Update-EnvVarFromSysEnv
     $envs.GetEnumerator() | Where-Object { $_.Key -notin 'Path', 'PsModulePath' } 
     | ForEach-Object {
         # Write-Output "$($_.Name)=$($_.Value)"
-        $env_left = "`$env:$($_.Name)"
-        $expressoin = "$env_left='$($_.Value)'"
-        $CurrentValue = $env_left | Invoke-Expression
+        $left = "`$env:$($_.Name)"
+        $expressoin = "$left='$($_.Value)'"
+        $CurrentValue = $left | Invoke-Expression
         if ($CurrentValue -ne $_.Value)
         {
-            # Write-Host "$env_left from `n`t[$(Invoke-Expression($env_left))] `n=TO=> `n`t [$($_.Value)]" -BackgroundColor Magenta
+            # Write-Host "$left from `n`t[$(Invoke-Expression($left))] `n=TO=> `n`t [$($_.Value)]" -BackgroundColor Magenta
             $expressoin | Invoke-Expression
         }
     }

@@ -1,4 +1,40 @@
+function Format-DoubleColumn
+{
 
+    <# 
+    .SYNOPSIS
+    将数组格式化为双列,第一列为Index，第二列为Value,完成元素计数和展示任务
+    .DESCRIPTION
+    支持管道符,将数组通过管道符传递给此函数即可
+    还可以进一步传递结果给Format-table做进一步格式化等操作,比如换行等操作
+    #>
+    <# 
+    .EXAMPLE
+    $array = @("Apple", "Banana", "Cherry", "Date", "Elderberry")
+    $array | Format-DoubleColumn | Format-Table -AutoSize
+    #>
+    param (
+        [Parameter(ValueFromPipeline = $true)]
+        [object[]]$InputObject
+    )
+
+    begin
+    {
+        $index = 1
+    }
+
+    process
+    {
+        foreach ($item in $InputObject)
+        {
+            [PSCustomObject]@{
+                Index = $index
+                Value = $item
+            }
+            $index++
+        }
+    }
+}
 function Set-ExplorerSoftwareIcons
 {
     <# 

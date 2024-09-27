@@ -43,24 +43,9 @@ function Get-WindowsVersionFromRegistry
     返回格式化后的输出。
         #>
     $registryPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
-    
-    $properties = @(
-        'ProductName',
-        'DisplayVersion',
-        'CurrentBuild',
-        'UBR',
-        'ReleaseId',
-        'CurrentMajorVersionNumber',
-        'CurrentMinorVersionNumber'
-    )
 
-    $result = @{}
-    foreach ($prop in $properties)
-    {
-        $result[$prop] = (Get-ItemProperty -Path $registryPath -Name $prop -ErrorAction SilentlyContinue).$prop
-    }
 
-    
+    $result = (Get-ItemProperty -Path $registryPath )
     # 判断是否为 Windows 11
     $isWindows11 = [System.Environment]::OSVersion.Version.Build -ge 22000
 
@@ -69,7 +54,7 @@ function Get-WindowsVersionFromRegistry
     {
         $result.ProductName = $result.ProductName -replace 'Windows 10', 'Windows 11'
     }
-    $fullVersion = "$($result.CurrentMajorVersionNumber).$($result.CurrentMinorVersionNumber).$($result.CurrentBuild).$($result.UBR)"
+    # $fullVersion = "$($result.CurrentMajorVersionNumber).$($result.CurrentMinorVersionNumber).$($result.CurrentBuild).$($result.UBR)"
 
     $res = [PSCustomObject]@{
         ProductName               = $result.ProductName
@@ -79,7 +64,9 @@ function Get-WindowsVersionFromRegistry
         CurrentMinorVersionNumber = $result.CurrentMinorVersionNumber
         CurrentBuild              = $result.CurrentBuild
         UBR                       = $result.UBR
-        FullVersion               = $fullVersion
+        FullVersion               = $result.LCUVer
+        LCUVer                    = $result.LCUVer
+        
         # IsWindows11               = $isWindows11
     }
     return $res
@@ -245,10 +232,12 @@ function Update-ReposesConfigedIfNeed
         Write-Host 'This is not MainPC, pulling blogs and Scripts repository...' -ForegroundColor Yellow
         # 从云端拉取仓库更新配置
         Update-ReposesConfiged
-        Start-Process pwsh -ArgumentList @(
-            '-NoLogo',
-            '-c', 'init'
-        )
+        Start-Process wt
+        # Start-Process pwsh -ArgumentList @(
+        #     '-NoLogo',
+        #     '-c', 
+        #     'init'
+        # )
         #启动新的powershell窗口待命,如果有pull动作使得新的配置生效
         # Start-Process pwsh -WorkingDirectory $desktop 
     }

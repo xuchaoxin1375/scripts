@@ -124,6 +124,7 @@ function Deploy-GitForwindows
     # 将Git所在目录插入到系统环境变量Path中(这里仅操作User级别,不需要管理权限)
     $NewUserPath = "$GitBin;$UserPath"
     [System.Environment]::SetEnvironmentVariable('Path', $NewUserPath, 'user')
+    
     #检查命令可用性
     Get-Command git | Format-List *
     # 可以选择列出潜在的所有git版本
