@@ -103,7 +103,7 @@ function Confirm-OSVersionCaption
         $os = Get-CimInstance Win32_OperatingSystem
         $Catption = $os.Caption
         $cp = ('Win' + $Catption.Split('Windows')[1])
-        Set-EnvVar -Name 'OSCaption' -NewValue $cp 
+        Set-EnvVar -Name 'OSCaption' -NewValue $cp | Out-Null
     }
     return $env:OSCaption
 }
@@ -135,12 +135,25 @@ function Confirm-EnvVarOfInfo
     .SYNOPSIS
     确认基本的系统环境信息,比如系统版本号等
     如果相应的环境变量缺失,那么执行计算并填充对应变量,否则跳过不做
+    .DESCRIPTION
+    除了开机自启，你也可以手动调用此函数随时检查相关环境变量
+
     #>
     param (
         
     )
     Confirm-OSVersionCaption
-
+    if ($null -eq $env:Scripts)
+    {
+        $scripts = $PSScriptRoot | Split-Path | Split-Path 
+        # $scripts=Split-Path $env:CxxuPSModulePath
+        Set-EnvVar -Name 'Scripts' -NewValue $scripts
+    }
+    if ($null -eq $env:CxxuPSModulePath)
+    {
+        $CxxuPsModulePath = $PSScriptRoot | Split-Path
+        Set-EnvVar -Name 'CxxuPSModulePath' -NewValue $CxxuPsModulePath
+    }
 }
 function Start-StartupTasks
 {
