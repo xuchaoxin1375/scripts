@@ -31,6 +31,7 @@ function p
         # 补全模块PSReadline及其相关配置
         Set-PSReadLinesCommon; 
         Set-PSReadLinesAdvanced
+        Set-ArgumentCompleter
         
     }
     if ($NoNewShell)

@@ -10,7 +10,9 @@ function Format-EnvItemNumber
     辅助函数,用于将Get-EnvList(或Get-EnvVar)的返回值转换为带行号的表格
  
      #>
+    [CmdletBinding()]
     param(
+        [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
         $EnvVars,
         #是否显式传入Scope
         [switch]$Scope
@@ -33,7 +35,8 @@ function Get-EnvList
     .SYNOPSIS
     列出所有用户环境变量[系统环境变量|全部环境变量(包括用户和系统共有的环境变量)|用户和系统合并后的无重复键的环境变量]
     获取
-
+    #>
+    <# 
     .EXAMPLE
     > Get-EnvList -Scope U
 
@@ -133,6 +136,8 @@ function Get-EnvVar
     函数是对[Get-EnvList]的封装扩展,使得调用比较方便,支持统配模糊匹配环境变量名
     如果需要正则匹配,将-like改为-match
     如果需要检查变量值(匹配),直接用Get-EnvList 配合 |where{}查找
+    #>
+    <# 
     .EXAMPLE
     > get-EnvVar -scope U |ft -AutoSize -wrap
 
@@ -177,7 +182,7 @@ function Get-EnvVar
     #>
     param(
         #env var name
-        [Alias('Name', 'EnvVar')]$Key = '*',
+        [Alias('Name', 'Key')]$EnvVar = '*',
 
         #one of [User|Machine|Detail|Combin] abbr [U|M|D|C]
         #Detail:show env in both user and machine
@@ -189,52 +194,35 @@ function Get-EnvVar
         [switch]$PassThru
         
     )
-    $res = Get-EnvList -Scope $Scope | Where-Object { $_.Name -like $Key }
-
+    $res = Get-EnvList -Scope $Scope | Where-Object { $_.Name -like $EnvVar }
+    # Write-Host $res -ForegroundColor Magenta
     #统计环境变量个数
     $res = Format-EnvItemNumber -EnvVars $res -Scope 
     # Write-Output $res
     $values = (Remove-RedundantSemicolon $res.value) -split ';'
     if ($Count)
     {
-        # $res = $res.value -split ';' | catn
-        $i = 1
-        $items = $values | ForEach-Object {
+        # $i = 1
+        # $items = $values | ForEach-Object {
             
-            [PSCustomObject]@{
-                # EnvVar = $EnvVar;
-                Numberi = $i++
-                Valuei  = $_  
-            } 
+        #     [PSCustomObject]@{
+        #         # EnvVar = $EnvVar;
+        #         Numberi = $i++
+        #         Valuei  = $_  
+        #     } 
             
-        }
+        # }
         # $items | Format-Table
-
-        $res = $items
+        # $res = $items
+        
+        $res = $values | Format-DoubleColumn
     }
     return $res
-    # if ($Count)
-    # {
-    #     $i = 0
-    #     # $res = $res.value -split ';' | catn
-    #     foreach ($item in $res)
-    #     {
-
-    #         $Log += [PSCustomObject]@{
-    #             # EnvVar = $EnvVar;
-    #             Number = $i
-    #             Valuei = $item  
-    #         } 
-    #         $i++
-    #     }
-    #     # $log | Format-Table
-    #     return 
-    # }
-    # if ($passThru)
-    # {
-    #     return $res
-    # }
+   
 }
+
+
+
 
 function Get-EnvPath
 {
