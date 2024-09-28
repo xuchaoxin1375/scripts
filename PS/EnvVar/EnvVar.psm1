@@ -256,7 +256,9 @@ function Remove-RedundantSemicolon
             # 匹配一个或多个';'并且跟随0个或多个空格
             $Value = $Value -replace ';[;\s]*', ';'
             $Value = $Value.trim(';')
-            Write-Verbose $Value
+            
+            Write-Debug $Value
+
             $res += $value
             # $res | Format-Table
 
@@ -310,6 +312,11 @@ function Get-EnvVarRawValue
             $CurrentValue = $Matches[1] 
         }
     }
+    if ($VerbosePreference)
+    {
+        Write-Verbose "RawValue of [$EnvVar]:"
+        Write-Host ($currentValue -split ';' | Format-DoubleColumn | Out-String)
+    }
     # 返回的是一个字符串,而不是;分隔的字符串数组
     return $currentValue 
 }
@@ -320,6 +327,9 @@ function Get-EnvVarExpandedValue
     获取当前用户或机器级别的环境变量值,并且取值是全展开的(将%var%替换为其真实值)
     .DESCRIPTION
     # 考虑到[environment]::getenvironmentvariable($envvar, $scope)的行为稳定性不足(有时候会丢失%var%形式取值,有事后又会保留%var%,这里的模式做显式解析,展开%var%)
+    .NOTES
+    内部调用.Net 的[Environment]::ExpandEnvironmentVariables(String)进行计算，
+    当String形如%var%并且存在环境变量var,那么var会被展开，%会被消掉，如果var环境变量并不存在，那么会原路返回
     #>
     [CmdletBinding()]
     param (
@@ -354,10 +364,27 @@ function Add-EnvVar
 添加环境变量(包括创建新变量及其取值,为已有变量添加取值),并且立即更新所作的更改
 这里我们利用$expression | Invoke-Expression等方法来手动立即更新当前powershell上下文的环境变量,实现不需要重启更新环境变量
 虽然本函数能够刷新当前powershell上下文的环境变量,但是其他shell进程却不会跟着刷新,可以手动调用Update-EnvVarFromSysEnv来更新当前shell的环境变量
-
+.DESCRIPTION
 当对一个已经存在变量添加值时,会在头部插入新值;(有些时候末尾会带有分号,导致查询出来的值可能存在2个来连续的分号)
 这时候可以判断移除最后一个分号,然后再添加新值,头插方式也行
-
+.PARAMETER EnvVar
+想要操作的环境变量名,可以是已经存在或者尚未存在的
+在相关模块中为其设置了补全器支持
+.PARAMETER NewValue
+想要添加的新值或者初始化尚未存在的环境变量的值
+.PARAMETER Scope 
+想要添加的新环境变量的用户级别还是系统级别(默认为用户级别):User|Machine
+.PARAMETER ExpandValue
+是否展开变量值(仅适用于Path或者类似性质的变量(取值为一个或多个路径的字符串),其他类型的变量(比如OS版本等,不要使用此选项))
+.PARAMETER ResolvePath
+如果是路径,将变量值转换为绝对路径(如果原路径是相对路径的话,应该转换为绝对路径(使用此选项),否则环境变量分不清它)
+如果是%var%类型的取值,则可以不用此选项,系统在需要的时候可以识别并展开
+.PARAMETER Append
+是否在原有值的末尾追加新值(默认插在头部)
+.PARAMETER Sort
+是否对(;)号分隔的环境变量取值按照字典顺序排序
+.PARAMETER Force
+不做询问直接执行(如果权限足够的话)
 #>
     <# 
 .EXAMPLE
@@ -391,12 +418,73 @@ C:\Users\cxxu\AppData\Local\Programs\oh-my-posh\bin
 C:\Users\cxxu\.dotnet\tools
 
 #>
+<# 
+.EXAMPLE
+# 坚持特定的变量极其取值
+可以看到下面的用户级别取值出现多余的分号(为了测试清理功能)
+PS> Get-EnvVar -Scope User -EnvVar Path
+
+Number Scope Name Value
+------ ----- ---- -----
+     1 User  Path ;;;%repos%;c:/repos/scripts;C:\PortableGit\bin;C:\Users…
+
+以整洁的方式查看清理规范的环境变量取值
+PS🌙[BAT:100%][MEM:51.92% (4.08/7.85)GB][18:23:59]
+# [cxxu@CXXUREDMIBOOK][<W:192.168.1.46>][Win 11 专业版@24H2:10.0.26100.1297][~\Desktop]
+PS> Get-EnvVar -Scope User -EnvVar Path -Count
+
+Index Value
+----- -----
+    1 %repos%
+    2 c:/repos/scripts
+    3 C:\PortableGit\bin
+    4 C:\Users\cxxu\scoop\apps\vscode\current\bin
+    5 C:\Users\cxxu\AppData\Roaming\Microsoft\Windows\Start Menu\Programs…
+    6 C:\Users\cxxu\scoop\apps\gsudo\current
+    7 C:\Users\cxxu\scoop\shims
+    8 C:/exes
+    9 C:\exes\pcmaster
+   10 C:\Users\cxxu\AppData\Local\Microsoft\WindowsApps
+   11 C:\Users\cxxu\.dotnet\tools
+
+#清理多余的符号(分号),并打印查询清理后的结果
+#这里可以调用Get-Envvalue命令,也可以直接添加一个''值到Path
+PS🌙[BAT:100%][MEM:52.11% (4.09/7.85)GB][18:24:07]
+# [cxxu@CXXUREDMIBOOK][<W:192.168.1.46>][Win 11 专业版@24H2:10.0.26100.1297][~\Desktop]
+PS> Clear-EnvValue  Path -Scope User
+#或者Add-EnvVar -Scope User -EnvVar Path -NewValue '' 也可以触发清理并规范化变量值的操作
+
+Index Value
+----- -----
+    1 %repos%
+    2 %scripts%
+    3 C:\PortableGit\bin
+    4 C:\Users\cxxu\scoop\apps\vscode\current\bin
+    5 C:\Users\cxxu\AppData\Roaming\Microsoft\Windows\Start Menu\Programs…
+    6 C:\Users\cxxu\scoop\apps\gsudo\current
+    7 C:\Users\cxxu\scoop\shims
+    8 %exes%
+    9 C:\exes\pcmaster
+   10 C:\Users\cxxu\AppData\Local\Microsoft\WindowsApps
+   11 C:\Users\cxxu\.dotnet\tools
+
+#手动再次检查清理结果
+PS🌙[BAT:100%][MEM:52.06% (4.09/7.85)GB][18:24:30]
+# [cxxu@CXXUREDMIBOOK][<W:192.168.1.46>][Win 11 专业版@24H2:10.0.26100.1297][~\Desktop]
+PS> Get-EnvVar -Scope User -EnvVar Path
+
+Number Scope Name Value
+------ ----- ---- -----
+     1 User  Path %repos%;%scripts%;C:\PortableGit\bin;C:\Users\cxxu\scoo…
+
+
+#>
     [CmdletBinding(SupportsShouldProcess)]
     param (
         
         [Alias('Name', 'Key')]$EnvVar = 'new',
         [Alias('Value')]$NewValue = (Get-Date).ToString(),
-        [switch]$ResolveNewValue,
+        [Alias('NewValueIsPath')][switch]$ResolveNewValue,
 
         # choose User or Machine,the former is default(no need for Administrator priviledge)
         # the Machine scope need Administrator priviledge
@@ -409,10 +497,17 @@ C:\Users\cxxu\.dotnet\tools
 
     )
     # 同步环境变量
-    Update-EnvVarFromSysEnv -Scope $Scope
+    Update-EnvVarFromSysEnv -Scope $Scope -Verbose:$false
     # 先获取当前用户或机器级别的环境变量值(警告:使用$env:var方式获取的值可能会丢失%var%格式)
     $CurrentValue = [Environment]::GetEnvironmentVariable($EnvVar, $Scope)
+    if ($ResolveNewValue)
+    {
 
+        # $NewValue = Convert-Path $NewValue #足够简单,但是无法兼容和解决$NewValue路径尚不存在的情况
+        $NewValueFullPath = [system.io.path]::GetFullPath($NewValue) #调用.net方法获取绝对路径
+        Write-Verbose "[$NewValue] resolved to [$NewValueFullPath] "
+        $NewValue = $NewValueFullPath
+    }
     if ($ExpandValue)
     {
         if ($CurrentValue)
@@ -427,11 +522,11 @@ C:\Users\cxxu\.dotnet\tools
                 $CurrentValue = $ExpandedValues -join ';' #确保是一个;分隔的字符串
             }
         }
+     
     }
     else
     {
-
-    
+        # 默认行为,不会去展开%var%格式的值
         $CurrentValue = Get-EnvVarRawValue -EnvVar $EnvVar -Scope $Scope -Verbose:$VerbosePreference
     }
  
@@ -440,12 +535,8 @@ C:\Users\cxxu\.dotnet\tools
     # $CurrentValue = "`$env:$EnvVar" | Invoke-Expression #无法区分用户和系统的path变量
 
     # 添加新路径到现有 Path
-    #如果使用了ResolveNewValue参数，将NewValue转换为完整的路径
-    if ($ResolveNewValue)
-    {
-        $NewValue = (Resolve-Path $NewValue).Path
-        Write-Verbose "Resolved NewValue: $NewValue"
-    } 
+    
+
     # 设置新值(现在还未经过清洗处理,不保证规范性)
     # 用户可以选择新值要插在头部还是接在尾部
     if ($Append)
@@ -459,20 +550,23 @@ C:\Users\cxxu\.dotnet\tools
     }
     # 变量取值规范化处理
     $NewValueFull = Remove-RedundantSemicolon $NewValueFull
+    # return 
     # 提示待添加值是否已经存在于原值
     if ($NewValue -in $CurrentValue)
     {
         Write-Warning "Value $NewValue already exists in $EnvVar" 
     }
+
+
     if ($PSCmdlet.ShouldProcess($EnvVar, 'Get Unique Value'))
     {
+        # 推荐用户清理重复值(不用着急预览,在最后更改前提示预览即可)
         
         $NewValueFull = $NewValueFull -split ';' | Select-Object -Unique | Join-String -Separator ';' #移除重复的项目
 
     }
     if ($Sort)
     {
-
         $NewValueFull = $NewValueFull | Sort-Object #对取值按顺序排序(可选)
     }
     #$CurrentValue如果没有提前设置值,则返回$null,而不是'',不能用$CurrentValue -ne '' 判断是否新变量,直接用$CurrentValue 即可
@@ -527,17 +621,10 @@ C:\Users\cxxu\.dotnet\tools
         # $left = "`$env:$EnvVar"
         # $expression = "$left = '$NewValueFull'" 
         # $expression | Invoke-Expression
+        Write-Debug "$($left)=`n$($NewValueFull -split ';' | Out-String)" # -BackgroundColor Yellow
         #方案2:比较推荐,使用set-item方法
-        Set-Item -Path Env:\$EnvVar -Value $NewValueFull -Force -Confirm:$false
+        Set-Item -Path Env:\$EnvVar -Value $NewValueFull -Force -Confirm:$false -Verbose:$false
 
- 
-
-        # return $NewValue
-        # Write-Verbose "$($left)=`n$($NewValueFull -split ';' | Out-String)" # -BackgroundColor Yellow
-        # $res = [PSCustomObject]@{
-        #     Name  = $EnvVar
-        #     Value = $NewValueFull -split ';' | Out-String 
-        # }
     }
     # return $res | Format-Table -AutoSize -Wrap
     $res = Get-EnvVar $EnvVar -Scope $Scope -Count | Format-Table
@@ -779,6 +866,7 @@ function Update-EnvVarFromSysEnv
 
     默认读取的是User级别的环境变量
     .#>
+    [CmdletBinding()]
     param(
 
         $Scope = 'Combin'
