@@ -40,9 +40,10 @@ function Get-EnvVarCompleter
     {
         # $envVars = [System.Environment]::GetEnvironmentVariables()
         # $envVars = $envVars.Keys 
-        $envVars = Get-EnvList | Select-Object -ExpandProperty Name
-        $Scope='Combin' #默认为Combin范围
+        # $envVars = Get-EnvList | Select-Object -ExpandProperty Name
+        $Scope = 'Combined' #默认为Combined范围
     }
+    # $Scope = 'Combined'
     $envVars = Get-EnvList -Scope $Scope | Select-Object -ExpandProperty Name
     # 根据输入的字母过滤环境变量
     $filteredEnvVars = $envVars | Where-Object { $_ -like "$wordToComplete*" }
@@ -56,7 +57,32 @@ function Get-EnvVarCompleter
         # $value = $value -split ';' | Format-DoubleColumn | Out-String
         #方案2:(依赖于外部定义的函数，如Get-EnvVar)
         #主要一定要将命令的结果转换为字符串，否则无法被后续的completionResult正确处理
-        $value = Get-EnvVar -Scope $Scope -EnvVar $ev -Count | Out-String   
+        if ($Scope -ne 'Combined')
+        {
+
+            $value = (Get-EnvVarRawValue -Scope $Scope -EnvVar $ev ) -split ';' #这里尝试使用原汁原味格式显示%var%的中间变量(暂时仅支持User和Machine范围)
+        }
+        else
+        {
+            $value = (Get-EnvVar -Scope $Scope -EnvVar $ev | Select-Object -ExpandProperty Value) -split ';'
+        }
+        # 考虑到当$value的值过长会影响terminal的现实效果(窗口过小会空白,最大化后窗口补全才行);
+
+        $Limit = 5 #限制补全的候选值的最大行数
+        $count = $value.count
+        if ($count -gt $Limit)
+        {
+
+            # 这里限制补全的候选值的tooltip内容最大长度(不超过$Limit行)
+            $value = $value | Format-DoubleColumn | Select-Object -First $Limit | Out-String 
+            $value = $value.Trim()
+            # $value += '......'
+            $value += "`n---[$Limit/$count]---"
+        }
+        else
+        {
+            $value = $value | Format-DoubleColumn | Out-String
+        }
         <# 
             有两种构造函数重载
             System.Management.Automation.CompletionResult new(string completionText, string listItemText, System.Management.Automation.CompletionResultType resultType, string toolTip)

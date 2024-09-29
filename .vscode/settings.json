@@ -12,5 +12,6 @@
         "*.rpx": "xml",
         "*.stl": "json",
         "iostream": "cpp"
-    }
+    },
+    "dotnet.defaultSolution": "ConsoleApp1.sln"
 }

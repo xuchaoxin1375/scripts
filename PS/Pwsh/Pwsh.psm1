@@ -374,7 +374,7 @@ function Write-OSVersionInfo
     {
 
         $displayversion = Get-WindowsVersionFromRegistry | Select-Object -ExpandProperty DisplayVersion
-        $res = $res + '@'  + "${displayversion}:"+ (Confirm-OSVersionFullCode)
+        $res = $res + '@' + "${displayversion}:" + (Confirm-OSVersionFullCode)
     }
     $res = '[' + $res + ']'
     Write-Host $res -NoNewline -ForegroundColor DarkGray
@@ -512,6 +512,52 @@ function PromptSimple
     return 'PS> '
     
 }
+function Import-ModuleForce
+{
+    <# 
+    .SYNOPSIS
+    默认重载已经加载了的模块,而不是重载所有模块来加快操作速度
+    #>
+    [CmdletBinding()]
+    param (
+        # [switch]$PassThru
+    )
+
+    # 获取当前 已经加载了的模块
+    $modules = Get-Module | Select-Object -ExpandProperty Name
+
+    $res = @()
+    foreach ($module in $modules)
+    {
+        # 跳过某些模块的重载(如果这个模块比较特殊的话,比如包含注册补全的模块，这个模块就要谨慎重载,默认跳过,可以根据自己的情况调整)
+        # Remove-Module $module -ErrorAction SilentlyContinue -Force
+        # if ($module -like '*completion*')
+        # { 
+        #     Write-Warning "Skipping $module"
+        #     continue 
+        # }
+
+        # Import-Module $module -Force -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
+        $exp = "Import-Module $module -Force -ErrorAction SilentlyContinue -WarningAction SilentlyContinue"
+        $res += $exp
+        Write-Verbose "Imported $module "
+    }
+    # if ($PassThru)
+    # {
+
+    #     return $res -join "`n"
+    # }
+    return $res -join "`n"
+}
+function ipmof
+{
+    param (
+    )
+    # Import-Module PSReadLine -Force
+    Import-ModuleForce
+    # Set-PSReadLineOption -PredictionViewStyle ListView
+    
+}
 
 function PromptBrilliant
 {
@@ -523,12 +569,12 @@ function PromptBrilliant
     #section1
     Write-Host ('┌─') -NoNewline
     Write-BatteryAndMemoryUse
+    Write-OSVersionInfo
     Write-Host ''
     #section2
     Write-Host ('├─') -ForegroundColor Cyan -NoNewline
     Write-UserHostname
     Write-HostIp
-    Write-OSVersionInfo
     Write-Data; Write-Time
     Write-Host ''
     Write-Host ('├─') -ForegroundColor Magenta -NoNewline
@@ -580,6 +626,7 @@ function PromptBalance
     Write-BatteryAndMemoryUse
     # Write-Host "`t" -NoNewline
     # Write-Data;
+    Write-OSVersionInfo
     Write-Time
     
     #section2
@@ -588,7 +635,6 @@ function PromptBalance
     write-PermissoinLevel
     Write-UserHostname
     Write-HostIp
-    Write-OSVersionInfo
     Write-Path
     write-GitBasicInfo
     Write-Host ''
@@ -1794,14 +1840,7 @@ function Update-PwshEnvIfNotYet
 
     Write-Verbose 'Environment  have been Imported in the current powershell!'
 }
-function ue
-{
-    <# 
-    .SYNOPSIS 
-    作为高优先级的别名,定义为函数Udpate-PwshEnvIfNotYet的可直接调用的别名函数
-    #>
-    Update-PwshEnvIfNotYet
-}
+ 
 function Start-VscodeSSh
 {
     param (

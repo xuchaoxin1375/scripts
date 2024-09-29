@@ -1,3 +1,4 @@
+ 
 function Format-DoubleColumn
 {
 
@@ -13,6 +14,7 @@ function Format-DoubleColumn
     $array = @("Apple", "Banana", "Cherry", "Date", "Elderberry")
     $array | Format-DoubleColumn | Format-Table -AutoSize
     #>
+    [CmdletBinding()]
     param (
         [Parameter(ValueFromPipeline = $true)]
         [object[]]$InputObject
@@ -21,10 +23,13 @@ function Format-DoubleColumn
     begin
     {
         $index = 1
+
     }
 
     process
     {
+        # Write-Debug "InputObject Count: $($InputObject.Count)"
+        # Write-Debug "InputObject:$inputObject"
         foreach ($item in $InputObject)
         {
             [PSCustomObject]@{

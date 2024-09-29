@@ -2,8 +2,14 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "C#: ConsoleApp1 Debug",
+            "type": "dotnet",
+            "request": "launch",
+            "projectPath": "${workspaceFolder}/CS/ConsoleApp1.csproj"
+        },
+        {
             "name": "Python: Current File",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal"

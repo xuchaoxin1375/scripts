@@ -1,8 +1,61 @@
-
+class EnvVar
+{
+    <# Define the class. Try constructors, properties, or methods. #>
+    # [int]$Number
+    [string]$Scope
+    [string]$Name
+    [string]$Value
+    [String]  ToString()
+    {
+        return "$($this.Scope) $($this.Name) $($this.Value)"
+    }
+}
 
 # Example usage:
 # Clear-EnvironmentVariables -Scope "User"
 # Clear-EnvironmentVariables -Scope "System"
+function Format-IndexObject
+{
+    <# 
+    .EXAMPLE
+    PS> Get-EnvList -Scope User|Format-IndexObject
+
+    Indexi Scope Name                     Value
+    ------ ----- ----                     -----
+        1 User  MSYS2_MINGW              C:\msys64\ucrt64\bin
+        2 User  NVM_SYMLINK              C:\Program Files\nodejs
+        3 User  powershell_updatecheck   LTS
+        4 User  GOPATH                   C:\Users\cxxu\go
+        5 User  Path                     C:\repos\scripts;...
+    #>
+    param (
+        [parameter(ValueFromPipeline)]
+        $InputObject
+    )
+    begin
+    {
+        $index = 1
+    }
+    process
+    {
+        foreach ($item in $InputObject)
+        {
+            # $e=[PSCustomObject]@{
+            #     Index = $index
+           
+            # }
+            $item | Add-Member -MemberType NoteProperty -Name 'Index' -Value $index
+            $index++
+            Write-Debug "index=$index"
+        
+            # 使用get-member查看对象结构
+            # $item | Get-Member
+            $item | Select-Object *
+        }
+    }
+}
+
+
 function Format-EnvItemNumber
 {
     <#
@@ -10,31 +63,65 @@ function Format-EnvItemNumber
     辅助函数,用于将Get-EnvList(或Get-EnvVar)的返回值转换为带行号的表格
  
      #>
+    [OutputType([EnvVar[]])]
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
-        $EnvVars,
+        [envvar[]] $Envvar,
         #是否显式传入Scope
-        [switch]$Scope
+        $Scope = 'Combined'
     )
-    $res = for ($i = 0; $i -lt $EnvVars.Count; $i++)
+    # 对数组做带序号（index）的枚举操作,经常使用此for循环
+    begin
     {
-        [PSCustomObject]@{
-            'Number' = $i + 1
-            'Scope'  = $Scope ? $EnvVars[$i].Scope :'Default'
-            'Name'   = $EnvVars[$i].Name
-            'Value'  = $EnvVars[$i].Value
+        $res = @()
+        $index = 1
+    }
+    process
+    {
+        # for ($i = 0; $i -lt $Envvar.Count; $i++)
+        # {
+        #     # 适合普通方式调用,不适合管道传参(对计数不友好,建议用foreach来遍历)
+        #     Write-Debug "i=$i" #以管道传参调用本函数是会出现不正确计数,$Envvar总是只有一个元素,不同于不同传参,这里引入index变量来计数
+        # } 
+
+        foreach ($env in $Envvar)
+        {
+            # $env = [PSCustomObject]@{
+            #     'Number' = $index 
+            #     'Scope'  = $env.Scope
+            #     'Name'   = $Env.Name
+            #     'Value'  = $Env.Value
+            # }
+      
+            $value = $env | Select-Object -ExpandProperty value 
+            $value = $value -split ';' 
+            Write-Debug "$($value.count)"
+            $tb = $value | Format-DoubleColumn
+            $separator = "-End OF-$index-[$($env.Name)]-------------------`n"
+            Write-Debug "$env , index=$index"
+            $index++
+            $res += $tb + $separator
         }
     }
-    return $res
+    end
+    {
+        Write-Debug "count=$($res.count)"
+        return $res 
+    }
 }
-
 function Get-EnvList
 {
     <# 
     .SYNOPSIS
     列出所有用户环境变量[系统环境变量|全部环境变量(包括用户和系统共有的环境变量)|用户和系统合并后的无重复键的环境变量]
     获取
+    .LINK
+    相关api文档
+    https://learn.microsoft.com/zh-cn/dotnet/api/system.environment.getenvironmentvariables?view=net-8.0
+    .LINK
+    想要查看的枚举值类型文档
+    https://learn.microsoft.com/zh-cn/dotnet/api/system.environmentvariabletarget?view=net-8.0
     #>
     <# 
     .EXAMPLE
@@ -58,68 +145,57 @@ function Get-EnvList
     Combin POSH_SHELL_VERSION              7.4.1
     Combin USERPROFILE                     C:\Users\cxxu
     Combin PROCESSOR_REVISION              8e0b
+
     #>
+    [ OutputType([EnvVar[]])]
+    [CmdletBinding(SupportsPaging)]
     param(
         #one of [User|Machine|Detail|Combin] abbr [U|M|D|C]
-        [validateset('User', 'Machine', 'U', 'M', 'Detail', 'D', 'Combin', 'C')]
-        $Scope = 'C'
+        [validateset('User', 'Machine', 'Combined')]
+        $Scope = 'Combined'
     )
-    $env_user = [Environment]::GetEnvironmentVariables('User')
-    $env_machine = [Environment]::GetEnvironmentVariables('Machine')
-    $envs = [System.Environment]::GetEnvironmentVariables()
-    # $env_detail=$env_user,$env_machine
+    switch -Wildcard ($Scope)
+    {
+        'U*'
+        {
+            $envs = [Environment]::GetEnvironmentVariables([System.EnvironmentVariableTarget]::User)
+            #从hastable简化为hashtableEnumerator (包含键值对Name,Value)
+            # $envUser=$envUser.GetEnumerator() 
+
+        }
+        'M*'
+        { 
+            $envs = [Environment]::GetEnvironmentVariables([System.EnvironmentVariableTarget]::Machine)
+  
+        }
+        'C*'
+        { 
+            $envs = [Environment]::GetEnvironmentVariables([System.EnvironmentVariableTarget]::Process) 
+        }
+        default
+        {
+            $envs = [Environment]::GetEnvironmentVariables([System.EnvironmentVariableTarget]::Process) 
+        }
+    }
+    Write-Debug "envs=$envs"
+    # $env_detail=$envUser,$envMachine
 
     $envs = $envs.GetEnumerator() | ForEach-Object {
-        [PSCustomObject]@{
-            Scope = 'Combin'
+        [EnvVar]@{
+            Scope = $Scope
             Name  = $_.Name
             Value = $_.Value
             
         }
     }
-    $env_user = $env_user.GetEnumerator() | ForEach-Object {
-        [PSCustomObject]@{
-            Scope = 'User'
-            Name  = $_.Name
-            Value = $_.Value
-        }
-    }
-
-    $env_machine = $env_machine.GetEnumerator() | ForEach-Object {
-        [PSCustomObject]@{
-            Scope = 'Machine'
-            Name  = $_.Name
-            Value = $_.Value
-        }
-    }
-
-    # 合并两个数组
-    $env_detail = $env_user + $env_machine
-
-    # 输出结果
-    # $combinedEnvs | Format-Table -AutoSize -Property Scope, Name, Value
 
 
-    # switch基本用法
-    # switch ($Scope) {
-    #     {$_ -eq 'User'} { $res=$env_user }
-    #     {$_ -eq 'Machine'} { $res=$env_machine }
-    #     Default {$res=$envs}
-    # }
-    # switch高级用法
-    switch -Wildcard ($Scope)
-    {
-        'U*' { $res = $env_user }
-        'M*' { $res = $env_machine }
-        'D*' { $res = $env_detail }
-        'C*' { $res = $envs }
-        Default { $res = $envs }
-    }
+
     #以下是可选操作
     # $res = $res.GetEnumerator() 
     #| Select-Object -ExpandProperty Name
     
-    return $res
+    return $envs
     
 }
 
@@ -180,6 +256,9 @@ function Get-EnvVar
         4 User  OneDriveConsumer C:\Users\cxxu\OneDrive
         5 User  OneDrive         C:\Users\cxxu\OneDrive
     #>
+    [OutputType([EnvVar[]])]
+    # [OutputType([IndexObject], ParameterSetName = 'Count')]
+    [CmdletBinding(SupportsPaging)]
     param(
         #env var name
         [Alias('Name', 'Key')]$EnvVar = '*',
@@ -187,41 +266,40 @@ function Get-EnvVar
         #one of [User|Machine|Detail|Combin] abbr [U|M|D|C]
         #Detail:show env in both user and machine
         #Combin:show env in user and machine merge(only user value if both have the env var)
-        [validateset('User', 'Machine', 'U', 'M', 'Detail', 'D', 'Combin', 'C')]
-        $Scope = 'C',
-        #是否统计环境变量的取值个数,例如Path变量
-        [switch]$Count = $false,
-        [switch]$PassThru
+        [validateset('User', 'Machine', 'Combined')]
+        $Scope = 'Combined',
+
+        # 已废弃:是否统计环境变量的取值个数,例如Path变量
+        # 可以使用Format-IndexObject来进行计数展示处理
+        # [parameter(ParameterSetName = 'Count')]
+        [switch][alias('PrintAsCountView')]$Count
+        # [switch]$PassThru
         
     )
     $res = Get-EnvList -Scope $Scope | Where-Object { $_.Name -like $EnvVar }
     # Write-Host $res -ForegroundColor Magenta
+    
     #统计环境变量个数
-    $res = Format-EnvItemNumber -EnvVars $res -Scope 
-    # Write-Output $res
-    $values = (Remove-RedundantSemicolon $res.value) -split ';'
     if ($Count)
     {
-        # $i = 1
-        # $items = $values | ForEach-Object {
-            
-        #     [PSCustomObject]@{
-        #         # EnvVar = $EnvVar;
-        #         Numberi = $i++
-        #         Valuei  = $_  
-        #     } 
-            
-        # }
-        # $items | Format-Table
-        # $res = $items
-        
-        $res = $values | Format-DoubleColumn
+        #方案1
+        #清理并规范化环境变量取值
+        $value = (Remove-RedundantSemicolon $res.value) -split ';'
+        $res = $value | Format-DoubleColumn
+        #方案2
+        # $res | Format-EnvItemNumber
+       
     }
     return $res
    
 }
 
-
+class IndexObject
+{
+    $index
+    $Value
+    <# Define the class. Try constructors, properties, or methods. #>
+}
 
 
 function Get-EnvPath
@@ -309,7 +387,8 @@ function Get-EnvVarRawValue
         )
         {
 
-            $CurrentValue = $Matches[1] 
+            $CurrentValue = $Matches[1] | Remove-RedundantSemicolon
+            # 规范化
         }
     }
     if ($VerbosePreference)
@@ -418,7 +497,7 @@ C:\Users\cxxu\AppData\Local\Programs\oh-my-posh\bin
 C:\Users\cxxu\.dotnet\tools
 
 #>
-<# 
+    <# 
 .EXAMPLE
 # 坚持特定的变量极其取值
 可以看到下面的用户级别取值出现多余的分号(为了测试清理功能)
@@ -869,7 +948,7 @@ function Update-EnvVarFromSysEnv
     [CmdletBinding()]
     param(
 
-        $Scope = 'Combin'
+        $Scope = 'Combined'
     )
     $envs = [System.Environment]::GetEnvironmentVariables($Scope)
     # 扫描所有的注册表中已有的环境变量,将其同步到当前powershell中,防止在不同shell中操作环境变量导致的不一致性
