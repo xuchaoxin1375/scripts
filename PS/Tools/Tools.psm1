@@ -433,6 +433,61 @@ function Convert-MarkdownToHtml
         }
     }
 }
+function Measure-AlphabeticChars
+{
+
+    <#
+    .SYNOPSIS
+        Counts the number of alphabetic characters in a given string or array of strings.
+
+    .DESCRIPTION
+        This function takes a string or an array of strings and counts all the alphabetic characters (A-Z, a-z) in each string.
+        It supports both pipeline input and direct parameter input.
+
+    .PARAMETER InputString
+        The string or array of strings in which to count the alphabetic characters.
+    #>
+    <# 
+.EXAMPLE
+    Measure-AlphabeticChars -InputString "Hello, World!"
+    Output: 10
+
+.EXAMPLE
+    "Hello, World!" | Measure-AlphabeticChars
+    Output: 10
+
+.EXAMPLE
+    Measure-AlphabeticChars -InputString @("Hello, World!", "PowerShell 7")
+    Output: 10
+            10
+
+.EXAMPLE
+    @("Hello, World!", "PowerShell 7") | Measure-AlphabeticChars
+    Output: 10
+            10
+
+.NOTES
+    Author: Your Name
+    Date: Today's date
+    #>
+
+
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
+        [string[]]$InputString
+    )
+
+    process
+    {
+        foreach ($str in $InputString)
+        {
+            # Use regex to find all alphabetic characters and count them
+            $ms = [regex]::Matches($str, '[a-zA-Z]')
+            $ms.Count
+        }
+    }
+}
 function Get-Json
 {
     <#
