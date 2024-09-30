@@ -6,7 +6,7 @@
 - 关于快速部署此powershell7模块集(及其所在仓库),这里创建的专用脚本文件为 `Deploy-CxxuPsModules.ps1`
 - 这里着重介绍如何快速部署此项目
 
-## 部署方法
+## 部署本仓库的方法
 
 - 拷贝下面提供的代码(两个版本选择其中一个,优先使用第一个),然后粘贴到powershell7窗口中回车运行
 
@@ -142,3 +142,18 @@ CxxuPsModulePath C:\tmp\CxxuPS\PS
 ```powershell
 help Deploy-CxxuPsModules -full
 ```
+
+## 部署powershell7的方法
+
+- 安装powershell7的方式有很多,这里提供一个一键安装的方案,但是不保证有效
+  - 加速下载依赖于github加速镜像站,如果内置的镜像站过期或不可用,您可以通过github相关加速站点获取可用方案
+  - [【镜像站点搜集】 · Issue #116 · hunshcn/gh-proxy (github.com)](https://github.com/hunshcn/gh-proxy/issues/116#issuecomment-2339526975)
+
+- 以下是部署脚本
+
+  ```powershell
+  irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-Pwsh7Portable.ps1'|iex
+  ```
+
+  - 安装过程中会提示你是否要删除安装包,根据需要选择是否删除即可
+  - 会自动为你配置环境变量(用户级别的Path),便于你后续直接从任意位置通过`pwsh`来启动powershell7

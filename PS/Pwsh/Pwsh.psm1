@@ -1551,18 +1551,23 @@ function Update-Powershell-Leagcy
 
 function Get-LatestPowerShellDownloadUrl
 {
+    param(
+        [ValidateSet('msi', 'zip')]$PackageType = 'msi'
+    )
     $releasesUrl = 'https://api.github.com/repos/PowerShell/PowerShell/releases/latest'
     $releaseInfo = Invoke-RestMethod -Uri $releasesUrl -Headers @{ 'User-Agent' = 'PowerShell-Script' }
 
+    Write-Host "Trying to get latest PowerShell ${PackageType}..."
     foreach ($asset in $releaseInfo.assets)
     {
-        if ($asset.name -like '*win-x64.msi')
+        if ($asset.name -like "*win-x64.${PackageType}")
         {
             return $asset.browser_download_url
         }
     }
     throw 'No suitable installer found in the latest release.'
 }
+
 
 function Update-PowerShell
 {
