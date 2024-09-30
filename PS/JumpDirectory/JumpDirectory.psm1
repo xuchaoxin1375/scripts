@@ -275,7 +275,6 @@ function startMenu_user_
 {
     Set-Location $userStartMenu
 }
-setalias startMenu startMenu_user
 function music_
 {
     param (

@@ -718,7 +718,7 @@ function Get-DateTimeNumber
     获取时间,格式为yyyyMMDDHHmmss (仅包含数字)
     获取时间不是很常用,这里给它标记一下
     #>
-    $res=Get-Date -Format 'yyyyMMddHHmmss'
+    $res = Get-Date -Format 'yyyyMMddHHmmss'
     return $res
 }
 function Get-DateTime
@@ -774,52 +774,6 @@ function remote_folder
     )
     code --folder-uri "vscode-remote://ssh-remote+$hostname_opt$dir"
 }
-function catn
-{
-    <# 
-    .Synopsis
-    Mimic Unic / Linux tool nl number lines
-   
-    .Description
-    Print file content with numbered lines no original nl options supported
-   
-    .Example
-     nl .\food.txt
-    #>
-    param (
-        $Path = '',
-        [Parameter(ValueFromPipeline)]
-        [String]
-        $content
-        # $FileName
- 
-    )
-    begin
-    {
-        $i = 0
-    }    
-    process
-    {
-
-        if ($path -eq '')
-        {
-            $content | ForEach-Object {
-                $i++
-                '{0,-5} {1} ' -f $i, $_ 
-            
-            }
-        }
-        else
-        {
-            # $content = (Get-Content $Path)
-            Get-Content $Path | ForEach-Object {
-                $i++
-                '{0,-5} {1} ' -f $i, $_ 
-            
-            }
-        }
-    }
-}
 function Get-LineNumberWidth
 {
     param (
@@ -828,17 +782,19 @@ function Get-LineNumberWidth
     [math]::Max([int][math]::Log10($contents.Count) + 1, 2)
 }
 
-function Get-ContentWithLineNumber
+function Get-ContentNL
 {
     <# 
 .SYNOPSIS
 该函数用于计数地输出文本内容:在每行的开头显示该行是文本中的第几行(行号),以及该行的内容
 支持管道符输入被统计对象
+#>
+    <# 
 .EXAMPLE
 #常规用法,通过参数指定文本文件路径来计数地输出文本内容
-Get-ContentWithLineNumber -InputData .\r.txt
+Get-ContentNL -InputData .\r.txt
 .EXAMPLE
-rvpa .\r.txt |Get-ContentWithLineNumber
+rvpa .\r.txt |Get-ContentNL
 .EXAMPLE
 将一个三行的文本字符串作为管道输入，然后将其,显式指出将管道符内容视为字符串而不是路径字符串进行统计
 #创建测试多行字符串变量
@@ -848,7 +804,7 @@ line2
 line3
 '@
 
-$mlstr|Get-ContentWithLineNumber -AsString
+$mlstr|Get-ContentNL -AsString
 
 .EXAMPLE
 计数一个多行字符串变量的行数
@@ -861,20 +817,20 @@ PS C:\repos\scripts\PS\Test> $mlstr
 line1
 line2
 line3
-PS C:\repos\scripts\PS\Test> Get-ContentWithLineNumber -InputData $mlstr -AsString
+PS C:\repos\scripts\PS\Test> Get-ContentNL -InputData $mlstr -AsString
 1:line1
 2:line2
 3:line3
 .EXAMPLE
 #跟踪文本文件内容的变化(每秒刷新一次内容);
-Get-ContentWithLineNumber -InputData .\log.txt -RepetitionInterval 1
+Get-ContentNL -InputData .\log.txt -RepetitionInterval 1
 .EXAMPLE
 #在powershell新窗口中更新
-Start-Process powershell -ArgumentList '-NoExit -Command Get-ContentWithLineNumber -InputData .\log.txt -RepetitionInterval 1'
+Start-Process powershell -ArgumentList '-NoExit -Command Get-ContentNL -InputData .\log.txt -RepetitionInterval 1'
 .EXAMPLE
-ls传递给cat读取合并,然后在传给Get-ContentWithLineNumber来计数处理
+ls传递给cat读取合并,然后在传给Get-ContentNL来计数处理
 
-PS> ls ab*.cpp|cat|Get-ContentWithLineNumber -AsString -Verbose
+PS> ls ab*.cpp|cat|Get-ContentNL -AsString -Verbose
 VERBOSE: Checking contents...
 1:#include <iostream>
 2:using namespace std;
@@ -904,7 +860,7 @@ VERBOSE: 2024/9/14 22:03:43
 #从ls命令通过管道符传递多个文件进行读取
 PS🌙[BAT:79%][MEM:48.16% (15.27/31.71)GB][22:03:52]
 # [cxxu@CXXUCOLORFUL][<W:192.168.1.178>][C:\repos\scripts\Cpp\stars_printer]
-PS> ls ab*.cpp|Get-ContentWithLineNumber
+PS> ls ab*.cpp|Get-ContentNL
 # Start File(1) [C:\repos\scripts\Cpp\stars_printer\ab.cpp]:
 
 1:#include <iostream>
@@ -941,7 +897,7 @@ PS> ls ab*.cpp|Get-ContentWithLineNumber
 通过get-item命令(别名gi)获取字符串对应的文件
 PS🌙[BAT:79%][MEM:48.52% (15.39/31.71)GB][22:04:07]
 # [cxxu@CXXUCOLORFUL][<W:192.168.1.178>][C:\repos\scripts\Cpp\stars_printer]
-PS> gi .\ab.cpp|Get-ContentWithLineNumber
+PS> gi .\ab.cpp|Get-ContentNL
 # Start File(1) [C:\repos\scripts\Cpp\stars_printer\ab.cpp]:
 
 1:#include <iostream>
@@ -959,7 +915,7 @@ PS> gi .\ab.cpp|Get-ContentWithLineNumber
 # End File(1) [C:\repos\scripts\Cpp\stars_printer\ab.cpp]:
 
 .Notes
-可以设置别名,比如pscatn 
+可以设置别名,比如pscatn,psnl
 #>
     [CmdletBinding()]
     param(
@@ -1007,7 +963,11 @@ PS> gi .\ab.cpp|Get-ContentWithLineNumber
         }
         else
         {
-            # 否则，认为是文件路径
+            # 否则，认为是文件路径,但是还是要检查文件是否存在或者合法
+            if(!(Test-Path $InputData -PathType Leaf)){
+                Write-Error "File does not exist:$($InputData.Trim()) Do you want to consider the Input as a string?(use -AsString option ) "
+                return
+            }
             $lineNumber = 0
 
             Write-Host "$LineSeparator Start File($itemNumber) [$_]:" -BackgroundColor Yellow -NoNewline
@@ -1048,7 +1008,7 @@ PS> gi .\ab.cpp|Get-ContentWithLineNumber
                 if ($Clear) { Clear-Host }
 
                 # 这里使用递归调用(并且将此处调用的RepetitionInterval指定为不刷新(0),否则嵌套停不下来了)
-                Get-ContentWithLineNumber -InputData $InputData -RepetitionInterval 0
+                Get-ContentNL -InputData $InputData -RepetitionInterval 0
                 # 也可以简单使用 
                 # Get-Content $InputData
                 Start-Sleep $RepetitionInterval
