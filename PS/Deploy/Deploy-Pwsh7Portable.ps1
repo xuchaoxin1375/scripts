@@ -22,7 +22,15 @@ function Deploy-Pwsh7Portable
         $InstallPath = "$env:systemDrive\powershell\7"
 
     )
-
+    # 给用户一个取消部署的选择机会
+    if ($PSCmdlet.ShouldProcess("$env:UserName@$env:COMPUTERNAME", 'Deploy-Pwsh7Portable'))
+    {
+        Write-Verbose 'Start deploy powershell7 portable...'
+    }
+    else
+    {
+        return
+    }
     function Get-LatestPowerShellDownloadUrl
     {
         <# 
@@ -132,3 +140,5 @@ function Deploy-Pwsh7Portable
     }
     
 }
+#调用函数
+Deploy-Pwsh7Portable
