@@ -970,7 +970,7 @@ PS> gi .\ab.cpp|Get-ContentNL
             }
             $lineNumber = 0
 
-            Write-Host "$LineSeparator Start File($itemNumber) [$_]:" -BackgroundColor Yellow -NoNewline
+            Write-Host "$LineSeparator Start File($itemNumber) [$_]" -BackgroundColor Yellow -NoNewline
             Write-Host "`n"
             
             try

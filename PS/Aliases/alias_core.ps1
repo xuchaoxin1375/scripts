@@ -2,3 +2,4 @@
 src Get-SourceCode
 #umo Import-ModuleForce
 ue Update-PwshEnvIfNotYet
+nlps Get-ContentNL

@@ -13,7 +13,7 @@ function Update-PwshAliases
     Write-Verbose 'updating aliases!'
     # 这里是载入pwsh环境变量的最初阶段,需要用绝对路径!
     $alias_file_core = @(
-        'alias_core'
+        'alias_core.ps1'
     )
     $alias_full = @(
         'functions', 

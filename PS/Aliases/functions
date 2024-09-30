@@ -82,8 +82,7 @@ w where.exe
 whereis where.exe
 
 ; ca catn
-pscatn Get-contentWithLineNumber
-psnl Get-contentWithLineNumber
+pscatn Get-contentNL
 
 
 disk_info drivers_diskInfo
