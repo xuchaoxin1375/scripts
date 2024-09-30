@@ -4,7 +4,7 @@
 
 本仓库内的PS模块是powershell的模块集合
 
-包含了许多实用的powershell函数
+包含了许多实用的powershell函数，想要直接部署，请跳转到**自动部署**一节
 
 
 ## 本模块设计风格与配置说明
@@ -28,7 +28,7 @@
   3. 配置环境变量`PsModulePath`(以便自动导入模块)
   4. 创建并配置pwsh的配置文件,即`profile.ps1`文件
 
-## 软件准备👺
+### 软件准备👺
 
 安装**powershell7**和**git**
 
@@ -36,33 +36,26 @@
 
 都可以利用加速镜像下载,或者使用国内的应用商店(联想应用商店,可以在线下载,或者火绒应用商店),虽然版本可能不是最新的,但是可以让模块运行起来
 
-### 检查powershell版本
+检查powershell版本
 
 - 本模块集主要为`powershell 7`开发(简记为`pwsh`)，而非系统自带的`powershell`(v5)
 
-  - ```powershell
-    PS[BAT:79%][MEM:32.65% (10.35/31.70)GB][17:18:40]
-    # [C:\repos\scripts]
-     $PSVersionTable
-    
-    Name                           Value
-    ----                           -----
-    PSVersion                      7.4.2
-    PSEdition                      Core
-    GitCommitId                    7.4.2
-    OS                             Microsoft Windows 10.0.22631
-    Platform                       Win32NT
-    PSCompatibleVersions           {1.0, 2.0, 3.0, 4.0…}
-    PSRemotingProtocolVersion      2.3
-    SerializationVersion           1.1.0.1
-    WSManStackVersion              3.0
-    ```
-
-- 其中PSVersion字段第一个数字表示powershell大版本
+  在powershell 中执行`$host.Version`
+  
+  ```powershell
+  PS> $host.Version
+  
+  Major  Minor  Build  Revision
+  -----  -----  -----  --------
+  7      4      5      -1
+  
+  ```
+  
+- 其中第一个数字表示powershell大版本
 
 - 虽然也部分支持powershell v5,但是为了获得最好的兼容性和可用性,建议使用powershell v7
 
-#### 下载powershell 7
+下载powershell 7
 
 - [powershell7下载和安装@powershell下载加速@国内镜像加速下载安装包-CSDN博客](https://cxxu1375.blog.csdn.net/article/details/140461455)
 
