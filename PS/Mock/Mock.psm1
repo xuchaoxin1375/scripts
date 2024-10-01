@@ -12,6 +12,7 @@
 #     # 生成随机内容并写入文件
 #     1..$contentLength | ForEach-Object { [char]([byte](Get-Random -Minimum 0 -Maximum 256)) } | Out-File -FilePath (Join-Path $folderPath $fileName) -Encoding ascii
 # }
+
 function Get-RandomString
 {
     param(
