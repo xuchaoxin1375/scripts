@@ -14,102 +14,7 @@ class EnvVar
 # Example usage:
 # Clear-EnvironmentVariables -Scope "User"
 # Clear-EnvironmentVariables -Scope "System"
-function Format-IndexObject
-{
-    <# 
-    .EXAMPLE
-    PS> Get-EnvList -Scope User|Format-IndexObject
 
-    Indexi Scope Name                     Value
-    ------ ----- ----                     -----
-        1 User  MSYS2_MINGW              C:\msys64\ucrt64\bin
-        2 User  NVM_SYMLINK              C:\Program Files\nodejs
-        3 User  powershell_updatecheck   LTS
-        4 User  GOPATH                   C:\Users\cxxu\go
-        5 User  Path                     C:\repos\scripts;...
-    #>
-    param (
-        [parameter(ValueFromPipeline)]
-        $InputObject
-    )
-    begin
-    {
-        $index = 1
-    }
-    process
-    {
-        foreach ($item in $InputObject)
-        {
-            # $e=[PSCustomObject]@{
-            #     Index = $index
-           
-            # }
-            $item | Add-Member -MemberType NoteProperty -Name 'Index' -Value $index
-            $index++
-            Write-Debug "index=$index"
-        
-            # 使用get-member查看对象结构
-            # $item | Get-Member
-            $item | Select-Object *
-        }
-    }
-}
-
-
-function Format-EnvItemNumber
-{
-    <#
-    .SYNOPSIS 
-    辅助函数,用于将Get-EnvList(或Get-EnvVar)的返回值转换为带行号的表格
- 
-     #>
-    [OutputType([EnvVar[]])]
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
-        [envvar[]] $Envvar,
-        #是否显式传入Scope
-        $Scope = 'Combined'
-    )
-    # 对数组做带序号（index）的枚举操作,经常使用此for循环
-    begin
-    {
-        $res = @()
-        $index = 1
-    }
-    process
-    {
-        # for ($i = 0; $i -lt $Envvar.Count; $i++)
-        # {
-        #     # 适合普通方式调用,不适合管道传参(对计数不友好,建议用foreach来遍历)
-        #     Write-Debug "i=$i" #以管道传参调用本函数是会出现不正确计数,$Envvar总是只有一个元素,不同于不同传参,这里引入index变量来计数
-        # } 
-
-        foreach ($env in $Envvar)
-        {
-            # $env = [PSCustomObject]@{
-            #     'Number' = $index 
-            #     'Scope'  = $env.Scope
-            #     'Name'   = $Env.Name
-            #     'Value'  = $Env.Value
-            # }
-      
-            $value = $env | Select-Object -ExpandProperty value 
-            $value = $value -split ';' 
-            Write-Debug "$($value.count)"
-            $tb = $value | Format-DoubleColumn
-            $separator = "-End OF-$index-[$($env.Name)]-------------------`n"
-            Write-Debug "$env , index=$index"
-            $index++
-            $res += $tb + $separator
-        }
-    }
-    end
-    {
-        Write-Debug "count=$($res.count)"
-        return $res 
-    }
-}
 function Get-EnvList
 {
     <# 
@@ -304,7 +209,65 @@ class IndexObject
 
 function Get-EnvPath
 {
-    $env:Path -split ';' | catn
+    <# 
+    .SYNOPSIS
+    获取Path环境变量,支持用户变量，系统变量和进程级环境变量
+    .DESCRIPTION
+    默认获取当前进程级别的Path环境变量,融合了用户级别和系统级别的环境变量
+    默认对结果做了升序排序,如果需要其他排序,可以使用管道符进行排序
+    注意返回的是一个数组,而且每个元素是自定义class IndexObject的实例
+    .EXAMPLE
+    直接调用,以一个表格的形式显示,但类型是一个数组，而不是表格对象,保留了后续处理的潜力
+    PS>  Get-EnvPath
+    Index Value
+    ----- -----
+        1 %exes%
+        2 C:\Program Files\Microsoft VS Code\bin
+        3 C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Scoop Apps
+        4 C:\ProgramData\scoop\apps\gsudo\current
+        5 C:\ProgramData\scoop\apps\miniconda3\current\Li
+    .EXAMPLE
+    排序和重新排序可以这么做
+    Get-EnvPath|select -ExpandProperty Value|sort Value -Descending|Format-DoubleColumn
+    
+    Index Value
+    ----- -----
+        1 %exes%
+        2 C:\WINDOWS\System32\OpenSSH\
+        3 C:\WINDOWS\system32
+        4 C:\WINDOWS
+        5 C:\Users\cxxu\scoop\shims
+    #>
+    [OutputType([IndexObject[]])]
+    param(
+        [ValidateSet('user', 'machine', 'process')]$scope = 'process',
+        [switch]$NoSort
+    )
+    switch -Wildcard ($scope)
+    {
+        'U*'
+        {
+            # $Path = [System.Environment]::GetEnvironmentVariable('Path', 'User')
+            $path = Get-EnvVarRawValue -EnvVar 'Path' -Scope 'User'
+        }
+        'M*'
+        {
+            # $Path = [System.Environment]::GetEnvironmentVariable('Path', 'Machine')
+            $path = Get-EnvVarRawValue -EnvVar 'Path' -Scope 'Machine'
+        }
+        Default
+        {
+            # $Path = [System.Environment]::GetEnvironmentVariable('Path', 'Process')
+            $path = Get-EnvVarRawValue -EnvVar 'Path' -Scope 'Process'
+        }
+    }
+
+    $value = $Path -split ';' | Format-DoubleColumn
+    if (!$NoSort)
+    {
+        $value = $value.value | Sort-Object | Format-DoubleColumn
+    }
+    return $value
 }
 
 function Remove-RedundantSemicolon
@@ -364,26 +327,42 @@ function Get-EnvVarRawValue
     [CmdletBinding()]
     param (
         [Alias('Name', 'Key')]$EnvVar = 'new', 
-        [ValidateSet('Machine', 'User')]
+        [ValidateSet('Machine', 'User', 'Process')]
         $Scope = 'User'
     )
     $currentValue = [System.Environment]::getenvironmentvariable($EnvVar, $Scope)
     if ($CurrentValue)
     {
-        if ($scope -eq 'User')
+        if ($scope -eq 'User' -or $scope -eq 'Process')
         {
 
-            $CurrentValue = reg query 'HKEY_CURRENT_USER\Environment' /v $EnvVar
+            $CurrentValueUser = reg query 'HKEY_CURRENT_USER\Environment' /v $EnvVar
+            $currentValue = $CurrentValueUser
         }
-        else
+        if ($scope -eq 'Machine' -or $scope -eq 'Process')
         {
-            $currentValue = reg query 'HKEY_LOCAL_MACHINE\System\CurrentControlSet\Control\Session Manager\Environment' /v $EnvVar
+            $currentValueMachine = reg query 'HKEY_LOCAL_MACHINE\System\CurrentControlSet\Control\Session Manager\Environment' /v $EnvVar
+            $currentValue = $currentValueMachine
+
+        }
+        if ($Scope -eq 'process')
+        {
+
+            #recurse
+            $U = Get-EnvVarRawValue -EnvVar $EnvVar -Scope 'User'
+            $M = Get-EnvVarRawValue -EnvVar $EnvVar -Scope 'Machine'
+            $currentValue = @($U, $M) -join ';' | Remove-RedundantSemicolon
+            return $currentValue
+            # $CurrentValue = $CurrentValueUser + $currentValueMachine
         }
         $CurrentValue = @($CurrentValue) -join '' #确保$CurrentValue是一个字符串
         # $CurrentValue -match 'Path\s+REG_EXPAND_SZ\s+(.+)'
+        # $mts = [regex]::Matches($CurrentValue, $pattern)
+        # return $mts
         if (
 
             $CurrentValue -match 'REG.*SZ\s+(.+)'
+
         )
         {
 

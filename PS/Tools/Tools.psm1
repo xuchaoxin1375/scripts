@@ -1,4 +1,106 @@
+
+function Format-IndexObject
+{
+    <# 
+    .SYNOPSIS
+    将数组格式化为带行号的表格,第一列为Index(如果不是可以自行select调整)，其他列为原来数组中元素对象的属性列
+    .DESCRIPTION
+    可以和轻量的Format-DoubleColumn互补,但是不要同时使用它们
+    #>
+    <# 
+    .EXAMPLE
+    PS> Get-EnvList -Scope User|Format-IndexObject
+
+    Indexi Scope Name                     Value
+    ------ ----- ----                     -----
+        1 User  MSYS2_MINGW              C:\msys64\ucrt64\bin
+        2 User  NVM_SYMLINK              C:\Program Files\nodejs
+        3 User  powershell_updatecheck   LTS
+        4 User  GOPATH                   C:\Users\cxxu\go
+        5 User  Path                     C:\repos\scripts;...
+    #>
+    param (
+        [parameter(ValueFromPipeline)]
+        $InputObject,
+        $IndexColumnName = 'Index_i'
+    )
+    begin
+    {
+        $index = 1
+    }
+    process
+    {
+        foreach ($item in $InputObject)
+        {
+            # $e=[PSCustomObject]@{
+            #     Index = $index
+           
+            # }
+            $item | Add-Member -MemberType NoteProperty -Name $IndexColumnName -Value $index -ErrorAction Break
+            $index++
+            Write-Debug "$IndexColumnName=$index"
+        
+            # 使用get-member查看对象结构
+            # $item | Get-Member
+            $item | Select-Object *
+        }
+    }
+}
+
+function Format-EnvItemNumber
+{
+    <#
+    .SYNOPSIS 
+    辅助函数,用于将Get-EnvList(或Get-EnvVar)的返回值转换为带行号的表格
  
+     #>
+    [OutputType([EnvVar[]])]
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
+        [envvar[]] $Envvar,
+        #是否显式传入Scope
+        $Scope = 'Combined'
+    )
+    # 对数组做带序号（index）的枚举操作,经常使用此for循环
+    begin
+    {
+        $res = @()
+        $index = 1
+    }
+    process
+    {
+        # for ($i = 0; $i -lt $Envvar.Count; $i++)
+        # {
+        #     # 适合普通方式调用,不适合管道传参(对计数不友好,建议用foreach来遍历)
+        #     Write-Debug "i=$i" #以管道传参调用本函数是会出现不正确计数,$Envvar总是只有一个元素,不同于不同传参,这里引入index变量来计数
+        # } 
+
+        foreach ($env in $Envvar)
+        {
+            # $env = [PSCustomObject]@{
+            #     'Number' = $index 
+            #     'Scope'  = $env.Scope
+            #     'Name'   = $Env.Name
+            #     'Value'  = $Env.Value
+            # }
+      
+            $value = $env | Select-Object -ExpandProperty value 
+            $value = $value -split ';' 
+            Write-Debug "$($value.count)"
+            $tb = $value | Format-DoubleColumn
+            $separator = "-End OF-$index-[$($env.Name)]-------------------`n"
+            Write-Debug "$env , index=$index"
+            $index++
+            $res += $tb + $separator
+        }
+    }
+    end
+    {
+        Write-Debug "count=$($res.count)"
+        return $res 
+    }
+}
 function Format-DoubleColumn
 {
 
