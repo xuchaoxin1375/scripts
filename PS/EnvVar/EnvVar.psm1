@@ -351,7 +351,7 @@ function Get-EnvVarRawValue
             #recurse
             $U = Get-EnvVarRawValue -EnvVar $EnvVar -Scope 'User'
             $M = Get-EnvVarRawValue -EnvVar $EnvVar -Scope 'Machine'
-            $currentValue = @($U, $M) -join ';' | Remove-RedundantSemicolon
+            $currentValue = (@($U , $M) -join ';') -split ';' | Select-Object -Unique | Remove-RedundantSemicolon
             return $currentValue
             # $CurrentValue = $CurrentValueUser + $currentValueMachine
         }
