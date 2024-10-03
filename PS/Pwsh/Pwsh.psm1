@@ -374,7 +374,8 @@ function Write-OSVersionInfo
     {
 
         $displayversion = Get-WindowsVersionFromRegistry | Select-Object -ExpandProperty DisplayVersion
-        $res = $res + '@' + "${displayversion}:" + (Confirm-OSVersionFullCode)
+        $OsVersionFullCode = (Confirm-OSVersionFullCode)
+        $res = $res + '@' + "${displayversion}:" + $OsVersionFullCode
     }
     $res = '[' + $res + ']'
     Write-Host $res -NoNewline -ForegroundColor DarkGray

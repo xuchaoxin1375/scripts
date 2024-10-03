@@ -130,6 +130,7 @@ function Confirm-EnvVarOfInfo
         
     )
     Confirm-OSVersionCaption
+    Confirm-OSVersionFullCode 
     if ($null -eq $env:Scripts)
     {
         $scripts = $PSScriptRoot | Split-Path | Split-Path 
@@ -206,6 +207,8 @@ function Start-StartupBgProcesses
     Start-ProcessHidden -scriptBlock { Start-TimeAnnouncer -ToastNotification } -PassThru
     # 后台进程维护一个ConnectionName,每隔一段时间检查一次(若发生变化则更新ConnectionName),可供其他进程快速读取ConnectionName
     Start-IpAddressUpdaterDaemon
+
+    Confirm-OSVersionFullCode -Force
 }
 function Start-IpAddressUpdaterDaemon
 {
