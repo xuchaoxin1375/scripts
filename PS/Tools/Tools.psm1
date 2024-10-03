@@ -154,6 +154,11 @@ function Set-ExplorerSoftwareIcons
     使用False表示禁用(默认)
     .NOTES
     使用管理员权限执行此命令
+    .NOTES
+    如果软件是为全局用户安装的,那么还需要考虑HKLM,而不是仅仅考虑HKCU
+    ls 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Explorer\MyComputer\NameSpace\'
+    #>
+    <# 
     .EXAMPLE
     PS C:\Users\cxxu\Desktop> set-ExplorerSoftwareIcons -Enabled True
     refresh explorer to check icons
@@ -180,37 +185,50 @@ function Set-ExplorerSoftwareIcons
         [ValidateSet('True', 'False')]$Enabled ,
         [switch]$RefreshExplorer
     )
-    $path = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\MyComputer\NameSpace'
-    $acl = Get-Acl -Path $path
-
-    # 禁用继承并删除所有继承的访问规则
-    $acl.SetAccessRuleProtection($true, $false)
-
-    # 清除所有现有的访问规则
-    $acl.Access | ForEach-Object {
-        $acl.RemoveAccessRule($_) | Out-Null
-    }
-
-
-    # 添加SYSTEM和Administrators的完全控制权限
-    $identities = @('NT AUTHORITY\SYSTEM', 'BUILTIN\Administrators')
-    if ($Enabled -eq 'True')
+    $pathUser = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\MyComputer\NameSpace'
+    $pathMachine = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Explorer\MyComputer\NameSpace'
+    function Set-PathPermission
     {
-        $identities += @('Everyone')
-        Write-Verbose 'Enabled Explorer Software Icons (allow Everyone Permission)'
+        param (
+            $Path
+        )
+        
+        $acl = Get-Acl -Path $path -ErrorAction SilentlyContinue
+    
+        # 禁用继承并删除所有继承的访问规则
+        $acl.SetAccessRuleProtection($true, $false)
+    
+        # 清除所有现有的访问规则
+        $acl.Access | ForEach-Object {
+            # $acl.RemoveAccessRule($_) | Out-Null
+            $acl.RemoveAccessRule($_) *> $null
+        } 
+    
+    
+        # 添加SYSTEM和Administrators的完全控制权限
+        $identities = @('NT AUTHORITY\SYSTEM', 'BUILTIN\Administrators')
+        if ($Enabled -eq 'True')
+        {
+            $identities += @('Everyone')
+            Write-Verbose "Enabled Explorer Software Icons [$path] (allow Everyone Permission)"
+        }
+        else
+        {
+            Write-Verbose "Disabled Explorer Software Icons [$path] (Remove Everyone Group Permission)"
+        }
+        foreach ($identity in $identities)
+        {
+            $rule = New-Object System.Security.AccessControl.RegistryAccessRule($identity, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')
+            $acl.AddAccessRule($rule)
+        }
+    
+        # 应用新的ACL
+        Set-Acl -Path $path -AclObject $acl # -ErrorAction Stop
     }
-    else
+    foreach ($path in @($pathUser, $pathMachine))
     {
-        Write-Verbose 'Disabled Explorer Software Icons (Remove Everyone Group Permission)'
+        Set-PathPermission -Path $path
     }
-    foreach ($identity in $identities)
-    {
-        $rule = New-Object System.Security.AccessControl.RegistryAccessRule($identity, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')
-        $acl.AddAccessRule($rule)
-    }
-
-    # 应用新的ACL
-    Set-Acl -Path $path -AclObject $acl # -ErrorAction Stop
     Write-Host 'refresh explorer to check icons'    
     if ($RefreshExplorer)
     {

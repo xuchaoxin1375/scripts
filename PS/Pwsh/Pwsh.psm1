@@ -80,8 +80,14 @@ function Add-CxxuPsModuleToEnvVar
 {
     <# 
     .SYNOPSIS
-    这个函数不太有用,因为在调用此函数前需要你配置好环境变量或者修改$env:PsmodulePath=";$CxxuPsModulePath"
+    在调用此函数前需要你配置好环境变量
+    或者修改$env:PsmodulePath=";$CxxuPsModulePath"
+    .DESCRIPTION
+    默认仅为当前用户的psmodulepath添加此模块集的路径,部分情况下,比如通过nsudo使用trustedInstaller权限的pwsh窗口中,是不访问用户级别的环境变量的,你需要将$CxxuPsModulePath添加到系统级别的PsModulePath路径中才有效
+    使用次函数方便这个过程
     或者在删除了$CxxuPsModulePath后重新设置的时候调用一下把路径加回去
+    .EXAMPLE
+    Add-EnvVar PSModulePath $env:PSModulePath -Scope Machine 
     #>
     param (
         [ValidateSet('Machine', 'User')]$Scope = 'User'
