@@ -24,15 +24,72 @@ function p
 
     )
     $script = { 
-        # 设置prompt样式(这里面会导入基础的powershell预定变量和别名)
-        Set-PromptVersion Balance ;  
-        # 导入图标模块
-        Import-TerminalIcons;
-        # 补全模块PSReadline及其相关配置
-        Set-PSReadLinesCommon; 
-        Set-PSReadLinesAdvanced
-        Set-ArgumentCompleter
-        
+        $startTime = Get-Date
+
+        $tasks = {
+            # 设置prompt样式(这里面会导入基础的powershell预定变量和别名)
+            Set-PromptVersion Balance 
+            # 导入图标模块
+            # Import-TerminalIcons
+            # 补全模块PSReadline及其相关配置
+            Set-PSReadLinesCommon
+            Set-PSReadLinesAdvanced
+            Set-PsExtension 
+            Set-ArgumentCompleter
+            Confirm-EnvVarOfInfo
+        }
+        $taskScriptStr = $tasks.ToString()
+        # 原始多行字符串
+
+        # 提取非注释行
+        $TaskLines = $taskScriptStr -split "`n" 
+        | Where-Object { $_ -notmatch '^\s*#' -and $_ -notmatch '^\s*$' }
+        | ForEach-Object { $_.Trim() }
+
+        $report = @()
+        $i = 0
+        $count = $TaskLines.Count
+        # $PSStyle.Progress.View = 'Classic'
+        foreach ($line in $TaskLines)
+        {
+
+            $Completed = [math]::Round($i++ / $count * 100, 1)
+            Write-Progress -Activity 'Loading... ' -Id 0 -Status "$line -> Processing: $Completed%" -PercentComplete $Completed
+            
+            # Write-Verbose "Loading $line " # -ForegroundColor DarkCyan   
+            Write-Verbose "Loading $line " #-ForegroundColor DarkCyan # -NoNewline #配合执行时间显示
+
+            # & $line #不支持参数解析,不好用
+            # Invoke-Command -ScriptBlock { $line } #作用域不在当前会话
+
+            #iex 支持当前会话作用域，但是速度较慢
+            # $line | Invoke-Expression
+
+            $res = Measure-Command { Invoke-Expression $line }
+            $time = [int]$res.TotalMilliseconds
+            # Write-Host "time: $time " -ForegroundColor Magenta
+            # 整理为表格对象(总结报告加载情况)
+            $res = [PSCustomObject]@{
+                Command = $line
+                Time    = $time
+            }
+            $report += $res
+            # $res | Format-Table
+            # return $res 
+            
+            # Start-Sleep -Milliseconds 500
+
+      
+
+        }
+
+        $report | Sort-Object Time -Descending | Format-Table -AutoSize
+
+        $endTime = Get-Date
+        $loadTime = $endTime - $startTime
+        $loadTime = $loadTime.Totalmilliseconds
+        Write-Host "Environment Loading time: $loadTime ms " -ForegroundColor Magenta
+
     }
     if ($NoNewShell)
     {
@@ -49,7 +106,110 @@ function p
         # pwsh -noe -c {p -NoNewShell }
     }
 }
+function Set-PsExtension
+{
+    <# 
+.SYNOPSIS
+是否启用额外的相关扩展
+.DESCRIPTION
+检查环境变量extent,如果取值为True,那么指导用户安装或启用相应的模块
+否则跳过不处理这部分扩展内容
+#>
+    [CmdletBinding(DefaultParameterSetName = 'PsExtension')]
+    param (
+        [parameter(ParameterSetName = 'PsExtension')]
+        # 要安装的模块列表
+        #按照实用性排序
+        $modules = @(
+            #第一梯队
+            'CompletionPredictor'
+            # 'ZLocation'
+            #第二梯队
+            'z'
+            # 'Terminal-Icons'
+        ),
+        # 安装模块的范围
+        [ValidateSet('CurrentUser', 'AllUsers')]$Scope,
+        # 是否启用额外的相关扩展
+        [parameter(ParameterSetName = 'Switch')]
+        [ValidateSet('On', 'Off')]
+        [parameter(Position = 0)]
+        # 出于加载速度和轻便性考虑，不默认启用这部分扩展功能
+        $Switch = 'Off'
+    )
+    if ($PSCmdlet.ParameterSetName -eq 'Switch')
+    {
+
+        if ($Switch -eq 'Off')
+        {
+            
+            Write-Verbose 'Skip pwsh extension functions!' -Verbose
+            Set-EnvVar -Name 'PsExtension' -NewValue 'False'
+        }
+        elseif ($Switch -eq 'On')
+        {
+            
+            Set-EnvVar -Name 'PsExtension' -NewValue 'True'
+        }
+    }
+    elseif ($env:PsExtension -eq 'True')
+    {
+
+        # scoop 相关
+        Invoke-Expression (&scoop-search --hook)
+        # 检查模块是否已经安装,必要时安装对应的模块
+        $i = 0
+        $count = $modules.Count
+        $report = @()
+        foreach ($module in $modules)
+        {
+            $moduleAvailability = Get-Module -ListAvailable -Name $module
+            if ($moduleAvailability)
+            {
+                Write-Verbose "Module $module is already installed"
+            }
+            else
+            {
+                Install-Module -Name $module -Scope $Scope -Verbose
+            }
+
+            # Write-Verbose "Importing module $module" -Verbose
+            # $moduleAvailability | Import-Module 
+            # 执行导入操作
+            # Import-Module $module 
+            $res = Measure-Command { 
+                Import-Module $module
+            }
+            
+            #显示进度条
+            $completed = [math]::Round($i++ / $count * 100, 1)
+            # Start-Sleep -Milliseconds 500
+            Write-Progress -Activity 'Importing Modules... ' -Id 1 -ParentId 0 -Status " $module progress: $completed %" -PercentComplete $completed
+
+            #准备报告导入情况信息 
+            $time = [int]$res.TotalMilliseconds
+            $res = [PSCustomObject]@{
+                Module = $module
+                time   = $time
+            }
+            $report += $res
+        }
+
+        $totalTime = $report | Measure-Object -Property time -Sum | Select-Object -ExpandProperty Sum
+        # 准备视图
+        $report = $report | Sort-Object -Descending time | Format-Table |Out-String 
+        Write-Host $report
+
+        Write-Host "Time Of importing modules: $($totalTime)"
+        # return $report
+        #其他模块导入后的提示信息
+        # Write-Host -Foreground Green "`n[ZLocation] knows about $((Get-ZLocation).Keys.Count) locations.`n"
+    }
+    
+}
+
 function Add-CxxuPsModuleToProfile
+
 {
     <# 
     .SYNOPSIS
@@ -538,7 +698,7 @@ function Import-ModuleForce
     foreach ($module in $modules)
     {
         # 跳过某些模块的重载(如果这个模块比较特殊的话,比如包含注册补全的模块，这个模块就要谨慎重载,默认跳过,可以根据自己的情况调整)
-        # Remove-Module $module -ErrorAction SilentlyContinue -Force
+        Remove-Module $module -ErrorAction SilentlyContinue -Force
         # if ($module -like '*completion*')
         # { 
         #     Write-Warning "Skipping $module"
@@ -1036,7 +1196,6 @@ function Get-ItemSizeSorted
             $item = $_ | Get-Size -Unit $Unit -Precision $Precision -Detail:$Detail -SizeAsString:$SizeAsString -Verbose:$false # -FormatTable:$FormatTable 
             
             $Completed = [math]::Round($i++ / $count * 100, 1)
-            # $i += 1
             Write-Progress -Activity 'Calculating items sizes... ' -Status "Processing: $Completed%" -PercentComplete $Completed
             # Write-Host $item  -ForegroundColor Red
             # $item | Format-Table #会被视为返回值,后续的管道服sort将无法正确执行(利用break可以验证,这个语句本身没有问题,但是后续的管道无法正常执行)

@@ -17,6 +17,8 @@ function Start-CoreInit
 {
     <# 
   .SYNOPSIS
+  此方法废弃，使用p函数代替
+  .DESCRIPTION
   # 诸如pwsh的快捷键,图标,列表颜色,上次prompt返回时间以及Prompt样式设置
   #>
     [CmdletBinding()]
@@ -242,7 +244,7 @@ function Set-PSReadLinesAdvanced
     <# beautify the powershell interactive interface  #>
     # modify the color of the inlinePrediction:
     Write-Verbose ('loading psReadLines & keyHandler!(advanced)' + "`n")
-    Import-Module CompletionPredictor -Verbose #-Verbose:$VerbosePreference
+    # Import-Module CompletionPredictor -Verbose #-Verbose:$VerbosePreference
 
     Set-PSReadLineOption -PredictionSource HistoryAndPlugin # 设置预测文本来源为历史和插件
     Set-PSReadLineOption -PredictionViewStyle ListView -BellStyle None  #使用视图列表显示预测后选

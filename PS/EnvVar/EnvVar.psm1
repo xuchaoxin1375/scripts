@@ -685,8 +685,8 @@ Number Scope Name Value
 
     }
     # return $res | Format-Table -AutoSize -Wrap
-    $res = Get-EnvVar $EnvVar -Scope $Scope -Count | Format-Table
-    return $res
+    # $res = Get-EnvVar $EnvVar -Scope $Scope -Count 
+    # return $res
 
 }
 
@@ -830,7 +830,7 @@ function Remove-EnvVar
     }
     else
     {
-        Write-Host "No [$EnvVar] was found! Nothing to Remove."
+        Write-Verbose "No [$EnvVar] was found! Nothing to Remove."
     }
 
 }
@@ -879,7 +879,7 @@ function Set-EnvVar
     #移除旧值(如果旧值非空的话)
     Remove-EnvVar -EnvVar $EnvVar -Scope $Scope
     #添加新值
-    Add-EnvVar -EnvVar $EnvVar -NewValue $NewValue -Scope $Scope
+    Add-EnvVar -EnvVar $EnvVar -NewValue $NewValue -Scope $Scope 
 }
 function Get-EnvCountedValues
 {

@@ -129,8 +129,8 @@ function Confirm-EnvVarOfInfo
     param (
         
     )
-    Confirm-OSVersionCaption
-    Confirm-OSVersionFullCode 
+    Confirm-OSVersionCaption | Out-Null
+    Confirm-OSVersionFullCode | Out-Null
     if ($null -eq $env:Scripts)
     {
         $scripts = $PSScriptRoot | Split-Path | Split-Path 
@@ -141,6 +141,12 @@ function Confirm-EnvVarOfInfo
     {
         $CxxuPsModulePath = $PSScriptRoot | Split-Path
         Set-EnvVar -Name 'CxxuPSModulePath' -NewValue $CxxuPsModulePath
+    }
+    #确认是否启用扩展功能
+    if ($null -eq $env:PsExtension)
+    {
+        Write-Verbose 'confrim pwsh extension functions' -Verbose
+        Set-EnvVar -Name 'PsExtension' -NewValue 'True'
     }
 }
 function Start-StartupTasks
@@ -170,7 +176,7 @@ function Start-StartupTasks
     #开机启动日志文件
     # $log_file = "$log_home\log.txt"
 
-    Confirm-EnvVarOfInfo
+    # Confirm-EnvVarOfInfo
     #如果当前机器不是MainPC,则拉取主PC的blogs,Scripts,configs仓库
     Update-ReposesConfigedIfNeed
     
@@ -208,7 +214,7 @@ function Start-StartupBgProcesses
     # 后台进程维护一个ConnectionName,每隔一段时间检查一次(若发生变化则更新ConnectionName),可供其他进程快速读取ConnectionName
     Start-IpAddressUpdaterDaemon
 
-    Confirm-OSVersionFullCode -Force
+    # Confirm-OSVersionFullCode -Force
 }
 function Start-IpAddressUpdaterDaemon
 {
