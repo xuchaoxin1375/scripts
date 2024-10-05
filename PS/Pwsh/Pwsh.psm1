@@ -23,6 +23,17 @@ function p
         $NoNewShell #默认启动新环境
 
     )
+    # 处理$profile 和windows terminal 中的携带参数启动pwsh冲突或重复关系
+    if($null -eq $env:PsInit){
+        Write-Verbose "Loading Pwsh Env..."
+        $env:PsInit='True' 
+
+    }else{
+
+        Write-Verbose "Pwsh Env Loaded!"
+        return
+    }
+
     $script = { 
         $startTime = Get-Date
 
@@ -49,7 +60,7 @@ function p
         $report = @()
         $i = 0
         $count = $TaskLines.Count
-        # $PSStyle.Progress.View = 'Classic'
+        $PSStyle.Progress.View = 'Classic'
         foreach ($line in $TaskLines)
         {
 
@@ -129,7 +140,7 @@ function Set-PsExtension
             # 'Terminal-Icons'
         ),
         # 安装模块的范围
-        [ValidateSet('CurrentUser', 'AllUsers')]$Scope,
+        [ValidateSet('CurrentUser', 'AllUsers')]$Scope='CurrentUser',
         # 是否启用额外的相关扩展
         [parameter(ParameterSetName = 'Switch')]
         [ValidateSet('On', 'Off')]
@@ -170,7 +181,7 @@ function Set-PsExtension
             }
             else
             {
-                Install-Module -Name $module -Scope $Scope -Verbose
+                Install-Module -Name $module -Scope $Scope  -Force
             }
 
             # Write-Verbose "Importing module $module" -Verbose
@@ -178,7 +189,7 @@ function Set-PsExtension
             # 执行导入操作
             # Import-Module $module 
             $res = Measure-Command { 
-                Import-Module $module
+                Import-Module $module 
             }
             
             #显示进度条
@@ -1006,7 +1017,7 @@ function Get-Size
             'TB' = 1TB
         }
         #进度计数器
-        # $PSStyle.Progress.View = 'Classic'
+        $PSStyle.Progress.View = 'Classic'
         $i = 0
         # $PSStyle.Progress.View = 'Minimal'
         $count = (Get-ChildItem $Path).count

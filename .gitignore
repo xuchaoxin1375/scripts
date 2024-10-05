@@ -12,5 +12,6 @@
 **/*.cache
 **/*.exe
 **/*.dll
+!PS/**/*.dll
 **/*.pdb
 **/bin/
