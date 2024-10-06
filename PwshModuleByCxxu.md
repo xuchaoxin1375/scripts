@@ -317,6 +317,34 @@ Add-CxxuPsModuleToProfile
   
   ```
 
+#### 载入环境配置耗时报告
+
+```powershell
+ Measure-Command {pwsh -c init }
+```
+
+例如
+
+```powershell
+PS🌙[BAT:96%][MEM:40.72% (6.26/15.37)GB][Win 11 专业版@24H2:10.0.26100.1742][18:21:18]
+# [cxxu@BFXUXIAOXIN][<W:192.168.1.77>][~\Desktop]
+PS> Measure-Command {pwsh -c init }
+
+Days              : 0
+Hours             : 0
+Minutes           : 0
+Seconds           : 0
+Milliseconds      : 529
+Ticks             : 5292275
+TotalDays         : 6.12531828703704E-06
+TotalHours        : 0.000147007638888889
+TotalMinutes      : 0.00882045833333333
+TotalSeconds      : 0.5292275
+TotalMilliseconds : 529.2275
+```
+
+说明启动一个新pwsh并且执行init初始化(环境配置任务)耗时大约529毫秒
+
 #### 修改扩展部分要加载的模块
 
 定位到`Set-PsExtension`定义位置,修改`modules`参数
