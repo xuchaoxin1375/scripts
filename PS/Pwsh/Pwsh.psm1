@@ -70,7 +70,7 @@ function init
         #iex 支持当前会话作用域，但是速度较慢
         # $line | Invoke-Expression
 
-        $res = Measure-Command {  Invoke-Expression $line -OutVariable out }
+        $res = Measure-Command { Invoke-Expression $line -OutVariable out }
         Write-Output $out #从Measure-commnd 内部获取输出
 
         $time = [int]$res.TotalMilliseconds
@@ -153,7 +153,7 @@ function p
     }
     if ($Force)
     {
-        pwsh -noe -noprofile -c {init -Force -InformationAction continue}
+        pwsh -noe -noprofile -c { init -Force -InformationAction continue }
     }
 }
 function Set-PsExtension
@@ -616,19 +616,20 @@ function write-PsEnvMode
 
     # Write-Host $Psenvmode  
 
-    if ($PSEnvMode -eq 3)
-    {
-        $mode = '☀️'
-    }
-    elseif ($Psenvmode -eq 2)
-    {
-        $mode = '🌓'
-    }
-    elseif ($Psenvmode -eq 1)
-    {
-        $mode = '🌙'
-    }
-    Write-Host $mode -NoNewline # -BackgroundColor 'green'
+    # if ($PSEnvMode -eq 3)
+    # {
+    #     $mode = '☀️'
+    # }
+    # elseif ($Psenvmode -eq 2)
+    # {
+    #     $mode = '🌓'
+    # }
+    # elseif ($Psenvmode -eq 1)
+    # {
+    #     $mode = '🌙'
+    # }
+    $mode = $Psenvmode
+    Write-Host "[Mode:$mode]" -NoNewline # -BackgroundColor 'green'
     
 }
 function write-PsMode
