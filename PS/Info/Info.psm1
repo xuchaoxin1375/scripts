@@ -559,7 +559,26 @@ function Get-ComputerCoreHardwareInfo
 }
 
 
+function Get-ModuleByCxxu
+{
+    <# 
+    .SYNOPSIS
+    获取CxxuPSModulePath下的模块信息
+    .DESCRIPTION
+    如果需要进一步调整信息显示，可以利用管道符进一步处理,比如排序等
+    #>
+    param(
+        [switch]$SkipUnavailable
+    )
+    $res = Get-Module -ListAvailable | Where-Object { $_.ModuleBase -like "$env:CxxuPSModulePath*" }
+    # $res = $res | Where-Object { $_.ExportedCommands }
+    if ($SkipUnavailable) {
 
+        $res = $res | Where-Object { $_.ExportedCommands.Count }
+    }
+    return $res 
+    
+}
 
 function Get-MatherBoardInfo
 {

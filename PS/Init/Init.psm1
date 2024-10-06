@@ -13,31 +13,6 @@ function Start-Pwsh7Init
 
    
 }
-function Start-CoreInit
-{
-    <# 
-  .SYNOPSIS
-  此方法废弃，使用p函数代替
-  .DESCRIPTION
-  # 诸如pwsh的快捷键,图标,列表颜色,上次prompt返回时间以及Prompt样式设置
-  #>
-    [CmdletBinding()]
-    param(
-    
-    )
-    # 早期执行部分:通用设置,可以放在前面执行的逻辑(或者任意地方):
-    Set-PSReadLinesCommon
-    Start-OptimizeForPSVersion
-    
-    Import-TerminalIcons
-    # 设置prompt
-    # 准备内存信息字段显示;读取PsEnvMode变量来显示当前环境变量等级
-    Set-LastUpdateTime # *> $null
-    Start-MemoryInfoInit
-    # 设置prompt 
-    Set-PromptVersion -version Balance
-    #中期执行的部分
-}
 
         
         
@@ -53,26 +28,6 @@ function Start-CoreInit
 # }
 
 
-
-function Start-PwshInit0
-{
-    <# 
-    .SYNOPSIS
-    在已经打开的powershell中切换到一个新的shell环境
-    .DESCRIPTION
-
-    新加载的这个新环境会重新加载配置模,当您的模块发生变换时,执行此命令会更新环境以便于您检验模块修改后是否达到预期
-    启动powershell时加载$profile是很耗时的,即便$profile中的内容不多,启动延迟也是令人难以接受的,通常命令行的响应延迟超过100ms就会让一部分人产生性能对机器或shell性能的怀疑和焦虑
-
-    其实现方式就是嗲用pwsh程序,设置参数-noexit即-noe,这样新加载的shell环境就不会退出,然后用-c 执行命令init0,这个命令定义在自动加载模块中(自动加载并调用其中的逻辑这不会消耗时间,除非被调用的命令逻辑本身是耗时的)
-
-    init0中编写满足一个环境的基本初始化设置的命令调用,例如提供基础的全局可用的变量,包括常用的字符串,最基础的常用路径变量(比如家目录中常用变量)
-    .NOTES
-    如果使用支持指定启动参数的Terminal,例如windows Termnial,那么可以通过指定启动参数为`pwsh -noe -c 'Start=PwshInit0'`来启动,这样也没有动用$profile;当在terminal中新建一个terminal时,会类似于$profile自动执行基础的初始化操作
-    而输入pwsh时仍然能够保持最快的响应速度!因为此时pwsh仍然没有$profile读取和执行操作
-    #>
-    pwsh -noe -c 'init0'
-}
 function Set-CommonInit
 {
     [CmdletBinding()]
@@ -86,24 +41,15 @@ function Set-CommonInit
     #使用set-variable 语句来修改变量,而不是直接使用# $PSEnvMode = 1 或$Global:PSEnvMode = 1 的方式修改变量,可以避免IDE不当的警告提示(定义而未使用)
     Set-Variable -Name PsEnvMode -Value 3 -Scope Global
 }
-function init0
-{
-    pwsh -noe -c { 
-        Update-PwshEnv
-        Start-CoreInit
-    }
-}
-function init
+
+function Start-init-Deprecated
 {
     <#
     .SYNOPSIS
     这里配置需要自动运行的模块函数;不在此函数中列出的不会自动执行! 
     .DESCRIPTION
     这里组织的代码块分为早期，中期，和周期，当然也有些无所谓调用位置的，可以放到最后，提现重要性
-    .Notes
-    #psReadLines对于pwsh5从某些方式进入可能会不识别相关命令
-    #目前已知单独打开pwsh5的窗口时可以正常加载这部分内容
-    #但是从pwsh7中启子shell pwsh5会导致其不识别,尚不清除
+
 
     #>
     [CmdletBinding()]

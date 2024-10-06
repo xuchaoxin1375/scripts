@@ -1,5 +1,106 @@
 
 
+function init
+{ 
+    <# 
+    .SYNOPSIS
+    加载pwsh的配置(包括常用变量和别名,模块导入管理)
+    .DESCRIPTION
+    对$profile和windows terminal 启动参数中都执行(直接或着间接)做了免重复处理
+    .NOTES
+    严格上讲,按照powershell的设计规范,加载配置应该放在$profile中
+    另一方面,如果不侵入$profile而仅配置terminal软件的启动参数,可以不放在$profile
+    最关键的问题在于如果同时配置了terminal和$profile的情况下如何协调载入问题
+    #>
+    [CmdletBinding()]
+    param(
+        [switch]$Force
+    )
+    if ($Force -or $null -eq $env:PsInit)
+    {
+        Write-Verbose 'Init pwsh env...'
+        $env:PsInit = 'True' 
+
+    }
+    else
+    {
+
+        Write-Verbose 'Init work already done!' 
+        return
+    }
+
+    $startTime = Get-Date
+
+    $tasks = {
+        # 设置prompt样式(这里面会导入基础的powershell预定变量和别名)
+        Set-PromptVersion Balance 
+        # 导入图标模块
+        # Import-TerminalIcons
+        # 补全模块PSReadline及其相关配置
+        Set-PSReadLinesCommon
+        Set-PSReadLinesAdvanced
+        Set-ArgumentCompleter
+        Confirm-EnvVarOfInfo
+        Set-PsExtension 
+    }
+    $taskScriptStr = $tasks.ToString()
+    # 原始多行字符串
+
+    # 提取非注释行
+    $TaskLines = $taskScriptStr -split "`n" 
+    | Where-Object { $_ -notmatch '^\s*#' -and $_ -notmatch '^\s*$' }
+    | ForEach-Object { $_.Trim() }
+
+    $report = @()
+    $i = 0
+    $count = $TaskLines.Count
+    $PSStyle.Progress.View = 'Classic'
+    foreach ($line in $TaskLines)
+    {
+
+        $Completed = [math]::Round($i++ / $count * 100, 1)
+        Write-Progress -Activity 'Loading... ' -Id 0 -Status "$line -> Processing: $Completed%" -PercentComplete $Completed
+            
+        # Write-Verbose "Loading $line " # -ForegroundColor DarkCyan   
+        Write-Information "Loading $line " #-ForegroundColor DarkCyan # -NoNewline #配合执行时间显示
+
+        # & $line #不支持参数解析,不好用
+        # Invoke-Command -ScriptBlock { $line } #作用域不在当前会话
+
+        #iex 支持当前会话作用域，但是速度较慢
+        # $line | Invoke-Expression
+
+        $res = Measure-Command {  Invoke-Expression $line -OutVariable out }
+        Write-Output $out #从Measure-commnd 内部获取输出
+
+        $time = [int]$res.TotalMilliseconds
+        # Write-Host "time: $time " -ForegroundColor Magenta
+        # 整理为表格对象(总结报告加载情况)
+        $res = [PSCustomObject]@{
+            Command = $line
+            Time    = $time
+        }
+        $report += $res
+        # $res | Format-Table
+        # return $res 
+            
+        # Start-Sleep -Milliseconds 500
+    }
+
+    if ($InformationPreference)
+    {
+        $report | Sort-Object Time -Descending | Format-Table -AutoSize
+    }
+
+    $endTime = Get-Date
+    $loadTime = $endTime - $startTime
+    $loadTime = $loadTime.Totalmilliseconds
+
+    Write-Host "Environment Loading time: $loadTime ms " -ForegroundColor Magenta
+    # 清理竞争关系变量
+    # $env:PsInit = $null
+    # Remove-Variable $env:PsInit
+}
 function p
 {
     <# 
@@ -8,6 +109,13 @@ function p
     .DESCRIPTION
     支持两种模式,一类是当需要要刷新模块时,在当前powershell会话中执行此命令
     另一类是作为每个powershell会话自动导入的基础性配置
+    .NOTES
+    性能分析
+    默认情况下,载入powershell环境或配置不会显示过多细节以保持简洁,但是如果用户对于加载过程中的耗时环节感兴趣,那么可以使用
+    `p -force`来查看加载耗时报告(此时内部调用pwsh -noprofile,会忽略$profile中的指令,同时用了-c参数执行`p`函数,以强制重新加载新的pwsh会话以及相应的环境配置导入任务,并且使用-InformationAction continue来输出加载耗时报告)
+    .Notes
+    报告给的细节部分(比如加载哪些模块对应耗时,但是其他一些语句也会产生耗时,
+    尤其是gmo -listavailables是比较耗时的,其耗时比较稳定,这里不展示该项目耗时)
     .NOTES
     将此命令配置到环境变量时,一定要使用原地导入配置的模式,即使用参数`NoNewShell`否则会导致循环创建新的pwsh进程
     这种情况下只能使用Ctrl+C关闭会话,并且使用`ps pwsh`检查相关进程,关闭多余进程
@@ -20,101 +128,32 @@ function p
         #是否启动新的shell环境
         [switch]
         [Alias('KeepCurrentShell', 'InlineImport')]
-        $NoNewShell #默认启动新环境
+        $NoNewShell , #默认启动新环境
+        [switch]$Force
 
     )
     # 处理$profile 和windows terminal 中的携带参数启动pwsh冲突或重复关系
-    if($null -eq $env:PsInit){
-        Write-Verbose "Loading Pwsh Env..."
-        $env:PsInit='True' 
-
-    }else{
-
-        Write-Verbose "Pwsh Env Loaded!"
-        return
-    }
-
-    $script = { 
-        $startTime = Get-Date
-
-        $tasks = {
-            # 设置prompt样式(这里面会导入基础的powershell预定变量和别名)
-            Set-PromptVersion Balance 
-            # 导入图标模块
-            # Import-TerminalIcons
-            # 补全模块PSReadline及其相关配置
-            Set-PSReadLinesCommon
-            Set-PSReadLinesAdvanced
-            Set-PsExtension 
-            Set-ArgumentCompleter
-            Confirm-EnvVarOfInfo
-        }
-        $taskScriptStr = $tasks.ToString()
-        # 原始多行字符串
-
-        # 提取非注释行
-        $TaskLines = $taskScriptStr -split "`n" 
-        | Where-Object { $_ -notmatch '^\s*#' -and $_ -notmatch '^\s*$' }
-        | ForEach-Object { $_.Trim() }
-
-        $report = @()
-        $i = 0
-        $count = $TaskLines.Count
-        $PSStyle.Progress.View = 'Classic'
-        foreach ($line in $TaskLines)
+    if ($null -eq $env:PsInit)
+    {
+        if ($NoNewShell)
         {
-
-            $Completed = [math]::Round($i++ / $count * 100, 1)
-            Write-Progress -Activity 'Loading... ' -Id 0 -Status "$line -> Processing: $Completed%" -PercentComplete $Completed
+            # 当前环境不启动新的shell环境，直接执行$script
+            Write-Host 'Setting basic environment in current shell...'
+            init -Verbose:$VerbosePreference
             
-            # Write-Verbose "Loading $line " # -ForegroundColor DarkCyan   
-            Write-Verbose "Loading $line " #-ForegroundColor DarkCyan # -NoNewline #配合执行时间显示
-
-            # & $line #不支持参数解析,不好用
-            # Invoke-Command -ScriptBlock { $line } #作用域不在当前会话
-
-            #iex 支持当前会话作用域，但是速度较慢
-            # $line | Invoke-Expression
-
-            $res = Measure-Command { Invoke-Expression $line }
-            $time = [int]$res.TotalMilliseconds
-            # Write-Host "time: $time " -ForegroundColor Magenta
-            # 整理为表格对象(总结报告加载情况)
-            $res = [PSCustomObject]@{
-                Command = $line
-                Time    = $time
-            }
-            $report += $res
-            # $res | Format-Table
-            # return $res 
-            
-            # Start-Sleep -Milliseconds 500
-
-      
-
         }
-
-        $report | Sort-Object Time -Descending | Format-Table -AutoSize
-
-        $endTime = Get-Date
-        $loadTime = $endTime - $startTime
-        $loadTime = $loadTime.Totalmilliseconds
-        Write-Host "Environment Loading time: $loadTime ms " -ForegroundColor Magenta
-
+        else
+        {
+            # 请求启动新的powershell环境
+            Write-Host 'Loading new pwsh environment...'
+            
+            pwsh -noe -c init
+            # Start-Process -FilePath pwsh -NoNewWindow -ArgumentList " -noe -c init -Verbose:$([int]$VerbosePreference) "
+        }
     }
-    if ($NoNewShell)
+    if ($Force)
     {
-        # 当前环境不启动新的shell环境，直接执行$script
-        Write-Host 'Setting basic environment in current shell...'
-        & $script
-    }
-    else
-    {
-        # 请求启动新的powershell环境
-        Write-Host 'Loading new pwsh environment...'
-
-        pwsh -noe -c $script 
-        # pwsh -noe -c {p -NoNewShell }
+        pwsh -noe -noprofile -c {init -Force -InformationAction continue}
     }
 }
 function Set-PsExtension
@@ -140,7 +179,7 @@ function Set-PsExtension
             # 'Terminal-Icons'
         ),
         # 安装模块的范围
-        [ValidateSet('CurrentUser', 'AllUsers')]$Scope='CurrentUser',
+        [ValidateSet('CurrentUser', 'AllUsers')]$Scope = 'CurrentUser',
         # 是否启用额外的相关扩展
         [parameter(ParameterSetName = 'Switch')]
         [ValidateSet('On', 'Off')]
@@ -167,21 +206,23 @@ function Set-PsExtension
     {
 
         # scoop 相关
-        Invoke-Expression (&scoop-search --hook)
+        # Invoke-Expression (&scoop-search --hook)
         # 检查模块是否已经安装,必要时安装对应的模块
         $i = 0
         $count = $modules.Count
         $report = @()
+        # $AvailableModules = Get-Module -ListAvailable #性能不佳，不做-Name的话会耗费几百毫秒
         foreach ($module in $modules)
         {
-            $moduleAvailability = Get-Module -ListAvailable -Name $module
+            # 获取指定模块是否可用
+            $moduleAvailability = Get-Module -ListAvailable -Name $module #查询一个要几十毫秒
             if ($moduleAvailability)
             {
                 Write-Verbose "Module $module is already installed"
             }
             else
             {
-                Install-Module -Name $module -Scope $Scope  -Force
+                Install-Module -Name $module -Scope $Scope -Force
             }
 
             # Write-Verbose "Importing module $module" -Verbose
@@ -189,7 +230,7 @@ function Set-PsExtension
             # 执行导入操作
             # Import-Module $module 
             $res = Measure-Command { 
-                Import-Module $module 
+                Import-Module $module -Verbose:$false
             }
             
             #显示进度条
@@ -208,16 +249,23 @@ function Set-PsExtension
 
         $totalTime = $report | Measure-Object -Property time -Sum | Select-Object -ExpandProperty Sum
         # 准备视图
-        $report = $report | Sort-Object -Descending time | Format-Table |Out-String 
-        Write-Host $report
+        $report = $report | Sort-Object -Descending time # | Format-Table #| Out-String 
+        
+        
+        if ($InformationPreference)
+        {
+            # Write-Host $report
+            Write-Output $report 
 
-        Write-Host "Time Of importing modules: $($totalTime)"
+            Write-Verbose "Time Of importing modules: $($totalTime)" -Verbose
+        }
         # return $report
         #其他模块导入后的提示信息
         # Write-Host -Foreground Green "`n[ZLocation] knows about $((Get-ZLocation).Keys.Count) locations.`n"
     }
     
 }
+
 
 function Add-CxxuPsModuleToProfile
 
@@ -243,7 +291,9 @@ function Add-CxxuPsModuleToProfile
     $pf = $ProfileLevel
     '# AutoRun commands from CxxuPsModules' + " $(Get-Date)" >> $pf
     {
-        p -NoNewShell
+        # p -NoNewShell
+        init 
+
     }.ToString().Trim()>>$pf #向配置文件追加内容
     '# End AutoRun commands from CxxuPsModules' >> $pf
 }
