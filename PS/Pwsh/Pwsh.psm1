@@ -1736,6 +1736,8 @@ function Set-PsPrompt
         [ValidateSet('Balance', 'Simple', 'Brilliant', 'Brilliant2', 'Default', 'Short', 'short2')]
         # $version = 'Default'
         $version = ''
+        # ,
+        # [switch]$Permanent
     )
 
     if (! $version)
@@ -1747,19 +1749,23 @@ function Set-PsPrompt
         }
         else
         {
-        # 用户没有和环境变量PsPrompt都没有指定Prompt版本时,则默认启用Balance版本
+            # 用户没有和环境变量PsPrompt都没有指定Prompt版本时,则默认启用Balance版本
             $version = 'Balance'
         }
     }
-    # 将综合的决策结果写入到环境变量(自动更新当前环境的PsPrompt变量)
-    Set-EnvVar PsPrompt $version 
+    else
+    {
+        
+        # 将综合的决策结果写入到环境变量(自动更新当前环境的PsPrompt变量)
+        Set-EnvVar PsPrompt $version  #这是一个耗时逻辑,不建议作为默认参数集使用
+    }
 
     # 检查基础环境信息,以便powershell prompt字段可以正确显示
     Update-PwshEnvIfNotYet -Mode core # > $null
     Update-PwshAliases -Core
     Set-LastUpdateTime -Verbose:$VerbosePreference
 
-    # $env:PsPrompt = $version
+    $env:PsPrompt = $version
     Write-Verbose "Prompt Version: $version"
 }
 
@@ -2111,7 +2117,7 @@ function Update-PwshEnvIfNotYet
             Update-PwshEnv
         }
         # 导入变量后,更新命令提示符
-        Set-PsPrompt  -Verbose:$VerbosePreference
+        Set-PsPrompt -Verbose:$VerbosePreference
     }
 
     Write-Verbose 'Environment  have been Imported in the current powershell!'
