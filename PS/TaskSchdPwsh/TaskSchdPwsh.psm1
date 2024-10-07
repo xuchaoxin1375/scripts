@@ -5,6 +5,7 @@ function Start-ScriptWhenIntervalEnough
     <#
 .SYNOPSIS
 调用本函数时判断上一次调用距离现在时间是否足够大,如果足够大,则执行指定脚本或任务
+满足触发条件时,会更新$LastUpdateTime全局变量
 .DESCRIPTION
 利用相关环境变量(LastUpdateTime)判断上一次更新是在什么时候,并在间隔达到阈值(Interval)后执行一个或多个脚本
     该函数的主要作用是在每隔指定时间后执行一个或多个脚本,例如定期更新一些数据
@@ -16,7 +17,8 @@ function Start-ScriptWhenIntervalEnough
 
 .PARAMETER Scripts
     $Scripts参数 指定要执行的脚本的路径或PowerShell代码,可以是字符串数组
-
+    #>
+    <# 
 .EXAMPLE
     如果距离上一次执行时间间隔大于2s,则执行C:\repos\scripts\testDir\test.ps1脚本
     PS[BAT:77%][MEM:29.58% (9.38/31.70)GB][9:13:10]
@@ -53,12 +55,23 @@ function Start-ScriptWhenIntervalEnough
         $Interval = 5,
         $ScriptBlock = '',
         $Scripts = '',
-        $LastUpdate = $LastUpdate #来自于启动powershell时初始化的时间变量(Global)
+        #来自于启动powershell时初始化的时间变量(Global)
+        
+        $LastUpdate = $LastUpdate 
     )
     $currentTime = Get-Date
     
     # Write-Host $currentTime,($currentTime - $LastUpdate).TotalSeconds -BackgroundColor Magenta
-    if ( ($currentTime - [datetime]$LastUpdate).TotalSeconds -ge $Interval)
+    if (!$LastUpdate)
+    {
+        # $Global:LastUpdate = Get-Date
+        Set-LastUpdateTime
+        Write-Warning 'Create new LastUpdate variable!'
+    }
+    
+    # 这里需要确保$LastUpdate不为空
+    $enough = ($currentTime - [datetime]$LastUpdate).TotalSeconds -ge $Interval
+    if ( $enough )
     { 
         #debug
         if ($ScriptBlock)
@@ -81,7 +94,8 @@ function Start-ScriptWhenIntervalEnough
             }
         }
         # 更新时间记录(这里要用全局变量来广播,使得下一次访问$LastUpdate是更新的值)
-        $Global:LastUpdate = Get-Date
+        # $Global:LastUpdate = Get-Date
+        Set-LastUpdateTime
     }
 }
 function Start-PeriodlyDaemon
@@ -636,7 +650,7 @@ Reporting timer end at:22:51:50
     # 处理定点报时:采用轮询的方式,为了判断当前时间是否应该报时,需要放置在循环中,每隔一段时间检查一次(比如1秒)
     while ($true)
     {
-        $currentHour = (Get-Date).Hour
+        # $currentHour = (Get-Date).Hour
         # 关键是分钟,是否是30分(半点)还是0分 (整点)
         $currentMinute = (Get-Date).Minute
         $currentSecond = (Get-Date).Second

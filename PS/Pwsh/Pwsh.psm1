@@ -16,7 +16,11 @@ function init
     param(
         [switch]$Force
     )
-    if ($Force -or $null -eq $env:PsInit)
+
+    Write-Host 'initing...'
+    # 使用临时环境$env:Psinit会引发副作用(子作用域的pwsh也会继承此变量),这里限制其作用域,使用普通变量(局部)
+    #考虑到$profile和wt中的启动参数同时调用init,都是同一个作用域,不需要第二个作用域访问到此标记变量,因此使用普通变量即可(同一个会话内可以访问)
+    if ($Force -or $null -eq $PsInit)
     {
         Write-Verbose 'Init pwsh env...'
         $env:PsInit = 'True' 
@@ -25,15 +29,14 @@ function init
     else
     {
 
-        Write-Verbose 'Init work already done!' 
+        Write-Verbose 'Init work loadded !' -Verbose
         return
     }
 
     $startTime = Get-Date
 
+    Set-LastUpdateTime
     $tasks = {
-        # 设置prompt样式(这里面会导入基础的powershell预定变量和别名)
-        Set-PsPrompt  
         # 导入图标模块
         # Import-TerminalIcons
         # 补全模块PSReadline及其相关配置
@@ -42,6 +45,9 @@ function init
         Set-ArgumentCompleter
         Confirm-EnvVarOfInfo
         Set-PsExtension 
+
+        # 设置prompt样式(这里面会导入基础的powershell预定变量和别名)
+        Set-PsPrompt  
     }
     $taskScriptStr = $tasks.ToString()
     # 原始多行字符串
@@ -646,7 +652,8 @@ function Write-BatteryAndMemoryUse
     调用Get-MemoryUseSummary和Get-BatteryLevel,做进一步处理使得其适合作为Prompt的一部分
     #>
     # prepare data
-    $MemoryUseSummary = Get-MemoryUseSummary
+    $MemoryUseSummary = Get-MemoryUseSummary #耗时逻辑
+    #数据解包
     $MemoryUsePercentage, $MemoryUseRatio = $MemoryUseSummary.MemoryUsePercentage, $MemoryUseSummary.MemoryUseRatio #0.1s左右
     $BAT = Get-BatteryLevel #0.2s左右
     
@@ -873,7 +880,7 @@ function PromptBalance
  #>
 
     #section1
-    Write-BatteryAndMemoryUse
+    Write-BatteryAndMemoryUse #这个部分内部设计比较复杂，肆意修改容易出现错误，如果出现错误，请注释掉它来检验是否是它引起的
     # Write-Host "`t" -NoNewline
     # Write-Data;
     Write-OSVersionInfo

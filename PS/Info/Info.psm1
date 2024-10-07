@@ -310,11 +310,13 @@ function Get-MemoryUseRatio
     <# 
     .SYNOPSIS
     获取内存占用数值
+    .DESCRIPTION
     如果您可以接受个别时候加载速度略慢(也不会太慢,100ms左右),且不希望后台额外运行计算内存占用的磁盘进程,那么可以使用这个函数
     
     如果不按住回车键,几乎感觉不到卡顿,总体资源占用会比 Get-MemoryUseRatioCache 要低,属于懒惰计算)
 
-    被调用时,当场计算直接获取(在间隔超过预设时会调用耗时操作(计算内存占用),所以shell相应的稳定性稍差,但是最慢的情况也能够在100ms左右返回结果
+    被调用时,直接获取内存占用信息(在间隔超过预设时会调用耗时操作(计算内存占用),
+    所以shell响应速度稳定性稍差,但是最慢的情况也能够在100ms左右返回结果
     #>
     [cmdletbinding()]
     param(
@@ -326,13 +328,37 @@ function Get-MemoryUseRatio
     # $FreeMemory = (Get-CimInstance -ClassName Win32_OperatingSystem).FreePhysicalMemory / 1MB
     # if (((Get-Date) - $LastUpdate).TotalSeconds -ge $Interval)
 
-    # 跟据指定时间间隔参数$Interval执行耗时逻辑
-    Start-ScriptWhenIntervalEnough -Interval $Interval -ScriptBlock {
+    $s = {
         $OS = Get-CimInstance -ClassName Win32_OperatingSystem;
         # 访问硬件信息,所以比较耗时(100ms左右)
-        $env:cachedTotalMemory = $OS.TotalVisibleMemorySize / 1MB;
-        $env:cachedFreeMemory = $OS.FreePhysicalMemory / 1MB;
+        # $env:cachedTotalMemory = 
+        $cachedTotalMemory = $OS.TotalVisibleMemorySize / 1MB;
+        # $env:cachedFreeMemory =
+        $cachedFreeMemory = $OS.FreePhysicalMemory / 1MB;
+        
+        Update-Json -Key cachedTotalMemory -Value $cachedTotalMemory -DataJson $DataJson
+        Update-Json -Key cachedFreeMemory -Value $cachedFreeMemory -DataJson $DataJson
     }
+    # 跟据指定时间间隔参数$Interval执行耗时逻辑
+    Start-ScriptWhenIntervalEnough -Interval $Interval -ScriptBlock $s
+
+    # 从Json文件获取已用内存和占用信息(速度很快)
+    $cachedFreeMemory = Get-Json -Key cachedFreeMemory -ErrorAction SilentlyContinue
+    $cachedTotalMemory = Get-Json -Key cachedTotalMemory -ErrorAction SilentlyContinue
+    if ($null -eq $cachedFreeMemory)
+    # {
+    #     Write-Host 'the key of cachedFreeMemory not found' -ForegroundColor Red
+    #     return 'pending'
+    # }
+    {
+        # 创建对应的项目
+        Write-Host 'creating cached..json items.'
+        & $s
+        # 递归调用(此次调用正常情况下不会失败)
+        # return Get-MemoryUseRatio
+    }
+    $cachedFreeMemory = [float]$cachedFreeMemory
+    $cachedTotalMemory = [float]$cachedTotalMemory
     # return
     if ($VerbosePreference)
     {
@@ -341,11 +367,11 @@ function Get-MemoryUseRatio
     }
     # 计算已用内存和占用百分比
     # $UsedMemory = $TotalMemory - $FreeMemory
-    $UsedMemory = [float]$env:cachedTotalMemory - [float]$env:cachedFreeMemory
-    $FreeMemory = [float]$env:cachedFreeMemory
+    $UsedMemory = $cachedTotalMemory - $cachedFreeMemory
+    $FreeMemory = $cachedFreeMemory
     $res = [PSCustomObject]@{
         UsedMemory  = $UsedMemory
-        TotalMemory = [float]$env:cachedTotalMemory
+        TotalMemory = $cachedTotalMemory
         FreeMemory  = $FreeMemory
     }
     return $res
@@ -395,14 +421,17 @@ function Get-MemoryUseSummary
     .EXAMPLE
 
     #>
+    # $cachedFreeMemory = Get-JsonValue -Key cachedFreeMemory -DataJson $DataJson
     
-    if (!$env:cachedFreeMemory)
-    {
-        Write-Host 'init Memory Info' -ForegroundColor Magenta
+    # if (!$env:cachedFreeMemory)
+    # if(!$cachedFreeMemory)
+    # {
+    #     Write-Host 'init Memory Info' -ForegroundColor Magenta
+        
+    #     Set-LastUpdateTime
 
-        Set-LastUpdateTime
-        Start-MemoryInfoInit
-    }
+    #     Start-MemoryInfoInit
+    # }
 
 
     $MemoryUseRatio = Get-MemoryUseRatio
@@ -572,7 +601,8 @@ function Get-ModuleByCxxu
     )
     $res = Get-Module -ListAvailable | Where-Object { $_.ModuleBase -like "$env:CxxuPSModulePath*" }
     # $res = $res | Where-Object { $_.ExportedCommands }
-    if ($SkipUnavailable) {
+    if ($SkipUnavailable)
+    {
 
         $res = $res | Where-Object { $_.ExportedCommands.Count }
     }
