@@ -33,7 +33,7 @@ function init
 
     $tasks = {
         # 设置prompt样式(这里面会导入基础的powershell预定变量和别名)
-        Set-PromptVersion Balance 
+        Set-PsPrompt  
         # 导入图标模块
         # Import-TerminalIcons
         # 补全模块PSReadline及其相关配置
@@ -326,7 +326,7 @@ function Update-PwshEnv
     Update-PwshVars -Verbose:$VerbosePreference
     Update-PwshAliases -Verbose:$VerbosePreference
     Set-Variable -Name PsEnvMode -Value 3 -Scope Global
-    Set-PromptVersion Balance
+    Set-PsPrompt 
     # Start-CoreInit
 }
 function Get-AdministratorPrivilege
@@ -478,8 +478,8 @@ function New-PromptStyle
     .SYNOPSIS
     设置powershell提示符,这里的方案是不影响Prompt函数的
     但是不适合编写复杂的Prompt,可读性不佳
-    复杂Prompt可以通过另一个方案:PromptVersion配合环境变量来实现
-    两种方案中,第二种方案会覆盖掉本方案,但是可以将本方案打包,作为PromptVersion的一个版本
+    复杂Prompt可以通过另一个方案:PsPrompt配合环境变量来实现
+    两种方案中,第二种方案会覆盖掉本方案,但是可以将本方案打包,作为PsPrompt的一个版本
     .EXAMPLE
     PS [cxxu\Desktop] > New-PromptStyle  -Short
     .EXAMPLE
@@ -1354,14 +1354,17 @@ function Prompt
     <# 
     .SYNOPSIS
     设置powershell提示符(powershell 默认调用)
+    .DESCRIPTION
+    读取相应的环境变量类设定prompt样式,配合Set-PsPrompt来指定prompt样式
+
     但我们这里改写Prompt函数,而且还可以通过设置环境变量来更改当前prompt主题
-    Prompt函数无法传参,但是可以通过设置辅助函数Set-PromptVersion,修改主题来间接传参(控制全局变量)
-    关于这部分逻辑详见外部的Set-PromptVersion
+    Prompt函数无法传参,但是可以通过设置辅助函数Set-PsPrompt,修改主题来间接传参(控制全局变量)
+    关于这部分逻辑详见外部的Set-PsPrompt
     #>
     # 和上一层输出间隔一行
     Write-Host ''
 
-    switch ($env:PromptVersion)
+    switch ($env:PsPrompt)
     {
         # 'Fast' { PromptFast }
         'Brilliant' { PromptBrilliant }
@@ -1707,21 +1710,22 @@ function dm
     #>
     param (
     )
-    Set-PromptVersion -version Default
+    Set-PsPrompt -version Default
     
 }
-function Set-PromptVersion
+function Set-PsPrompt
 {
     <# 
     .SYNOPSIS
 
     设置powershell的prompt版本
+    .DESCRIPTION
     为了设置balance以及信息更丰富的prompt,这里会导入基础的powershell变量和别名
 
     .DESCRIPTION
     默认使用最朴素的prompt
     .EXAMPLE
-    PS>Set-PromptVersion -version 'Balance'
+    PS>Set-PsPrompt -version 'Balance'
     
     PS🌙[BAT:98%][MEM:44.97% (6.91/15.37)GB][10:27:41]
     # [cxxu@BEFEIXIAOXINLAP][<W:192.168.1.77>][~]
@@ -1730,14 +1734,32 @@ function Set-PromptVersion
     [CmdletBinding()]
     param(
         [ValidateSet('Balance', 'Simple', 'Brilliant', 'Brilliant2', 'Default', 'Short', 'short2')]
-        $version = 'Default'
+        # $version = 'Default'
+        $version = ''
     )
+
+    if (! $version)
+    {
+        # 用户不指定prompt版本时,尝试读取环境变量PsPrompt
+        if ($env:PsPrompt)
+        {
+            $version = $env:PsPrompt
+        }
+        else
+        {
+        # 用户没有和环境变量PsPrompt都没有指定Prompt版本时,则默认启用Balance版本
+            $version = 'Balance'
+        }
+    }
+    # 将综合的决策结果写入到环境变量(自动更新当前环境的PsPrompt变量)
+    Set-EnvVar PsPrompt $version 
+
     # 检查基础环境信息,以便powershell prompt字段可以正确显示
     Update-PwshEnvIfNotYet -Mode core # > $null
     Update-PwshAliases -Core
     Set-LastUpdateTime -Verbose:$VerbosePreference
 
-    $env:PromptVersion = $version
+    # $env:PsPrompt = $version
     Write-Verbose "Prompt Version: $version"
 }
 
@@ -2089,7 +2111,7 @@ function Update-PwshEnvIfNotYet
             Update-PwshEnv
         }
         # 导入变量后,更新命令提示符
-        Set-PromptVersion -version Balance -Verbose:$VerbosePreference
+        Set-PsPrompt  -Verbose:$VerbosePreference
     }
 
     Write-Verbose 'Environment  have been Imported in the current powershell!'

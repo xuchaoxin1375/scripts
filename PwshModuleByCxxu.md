@@ -397,7 +397,7 @@ Time Of importing modules: 96
 Command                   Time
 -------                   ----
 Set-PsExtension            312
-Set-PromptVersion Balance  245
+Set-PsPrompt Balance  245
 Set-ArgumentCompleter       55
 Confirm-EnvVarOfInfo        38
 Set-PSReadLinesCommon       33
