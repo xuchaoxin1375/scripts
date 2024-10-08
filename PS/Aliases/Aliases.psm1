@@ -48,6 +48,7 @@ function Set-PwshAliasFile
     }
     $alias_file = "$alias_dir\$alias_file"
 
+    # foreach ($line in [System.IO.File]::ReadLines($alias_file)){
     Get-Content $alias_file | ForEach-Object {
         $line = $_.ToString()
          

@@ -1,5 +1,5 @@
 
-function Set-PwshVarFileTesting
+function Import-PwshVarFileTesting
 {
     [CmdletBinding()]
     param (
@@ -122,14 +122,21 @@ function Update-PwshVars
     foreach ($VarFile in $PwshVarFiles) 
     {
           
-        Set-PwshVarFile -VarFile $VarFile # -AsPwshEnvForHomeVars
+        Import-PwshVarFile -VarFile $VarFile # -AsPwshEnvForHomeVars
     }
     Write-Verbose 'envs updated!'
     
 }
 
-function Set-PwshVarFile
+function Import-PwshVarFile
 {
+    <# 
+    .SYNOPSIS
+    从文件中加载pwsh变量,创建基本的pwsh变量环境
+    .DESCRIPTION
+    由于读取文件涉及到io操作,需要尽快加速此过程,可以使用.Net api 而不是powershell管用方法里读取,尤其是作为pwsh加载任务,需要尽可能高的性能
+    但是,如果需要处理的文件不是很大,那么使用.Net api 反而可能更慢
+    #>
     [CmdletBinding()]
     param (
         # 虽然可以使用[ValidateSet()]来指定常用的变量定义列表文件名,但是不利于维护,可以先查看Pwsh目录下的文件,然后手动指定一个文件
@@ -147,10 +154,13 @@ function Set-PwshVarFile
     # 变量文件存储位置
     $VarFilesDir = $PSScriptRoot + '\confs'
     $VarFileFullPath = "$VarFilesDir\${VarFile}.conf"
-    # Write-Host "`t$VarFileFullPath" -ForegroundColor yellow
+    Write-Debug "`t$VarFileFullPath" #-ForegroundColor yellow
     
     # 如果使用parallel处理,定义在变量列表中的变量创建顺序求无法得到保证,可能导致错误!
-    Get-Content $VarFileFullPath | ForEach-Object {
+    # foreach ($line in [System.IO.File]::ReadLines($VarFileFullPath)){ #后面使用continue来跳过不合法的条目)
+    Get-Content $VarFileFullPath | ForEach-Object { #后面使用retur来跳过不合法条目
+        Write-Debug "content: $line"
+        # continue
         $line = $_.ToString()
         # write-verbose $line
         #兼容不带有等号的写法(以空格分割变量名和变量值的写法);
@@ -192,8 +202,9 @@ function Set-PwshVarFile
         }
         else
         {
-            # continue(这里用continue无效,应该用return)
+            # continue #(forech-object里continue,return不会直接退出)
             return 
+
         }
         #激活该变量
         Write-Debug $line #这时一行调试信息
@@ -217,7 +228,7 @@ function Set-ANSIColorEnv
     这是蓝色背景红色文本
     #>
     
-    Set-PwshVarFile -VarFile VarColors
+    Import-PwshVarFile -VarFile VarColors
 
     Write-Host "${BgMagenta}ANSI Color Environment Variables${Reset}  ${blue}Set${Reset}!"
 
