@@ -606,7 +606,7 @@ function Write-OSVersionInfo
     if (!$CaptionOnly)
     {
 
-        $displayversion = Get-WindowsVersionFromRegistry | Select-Object -ExpandProperty DisplayVersion
+        $displayversion = Get-WindowsOSVersionFromRegistry | Select-Object -ExpandProperty DisplayVersion
         $OsVersionFullCode = (Confirm-OSVersionFullCode)
         $res = $res + '@' + "${displayversion}:" + $OsVersionFullCode
     }

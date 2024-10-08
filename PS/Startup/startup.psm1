@@ -22,7 +22,7 @@ function Get-SystemVersionCoreInfoOfWindows
     $Catption = $os.Caption
     ('Win' + $Catption.Split('Windows')[1]) + ' ' + "<$os.Version>"
 }
-function Get-WindowsVersionFromRegistry
+function Get-WindowsOSVersionFromRegistry
 {
     <# 
     .SYNOPSIS
@@ -41,6 +41,9 @@ function Get-WindowsVersionFromRegistry
     构造完整版本号（CurrentBuild.UBR）。
     格式化输出信息。
     返回格式化后的输出。
+    .NOTES
+    win10的注冊表和win11有所不同,win10可能有:WinREVersion : 10.0.19041.3920 这种字段
+    而win11则是其他形式,比如LCUVersion
         #>
     $registryPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
 
@@ -54,7 +57,8 @@ function Get-WindowsVersionFromRegistry
     {
         $result.ProductName = $result.ProductName -replace 'Windows 10', 'Windows 11'
     }
-    # $fullVersion = "$($result.CurrentMajorVersionNumber).$($result.CurrentMinorVersionNumber).$($result.CurrentBuild).$($result.UBR)"
+    # 下面这个拼接方式兼容性好点,可以兼容win10,win11
+    $fullVersion = "$($result.CurrentMajorVersionNumber).$($result.CurrentMinorVersionNumber).$($result.CurrentBuild).$($result.UBR)"
 
     $res = [PSCustomObject]@{
         ProductName               = $result.ProductName
@@ -64,8 +68,9 @@ function Get-WindowsVersionFromRegistry
         CurrentMinorVersionNumber = $result.CurrentMinorVersionNumber
         CurrentBuild              = $result.CurrentBuild
         UBR                       = $result.UBR
-        FullVersion               = $result.LCUVer
+        FullVersion               = $fullVersion
         LCUVer                    = $result.LCUVer
+        WinREVersion              = $result.WinREVersion
         
         # IsWindows11               = $isWindows11
     }
@@ -111,7 +116,7 @@ function Confirm-OSVersionFullCode
     if ($Force -or $null -eq $env:OSFullVersionCode)
     {
     
-        $code = Get-WindowsVersionFromRegistry | Select-Object -ExpandProperty FullVersion
+        $code = Get-WindowsOSVersionFromRegistry | Select-Object -ExpandProperty FullVersion
         Set-EnvVar -Name 'OSFullVersionCode' -NewValue $code
     }
     return $env:OSFullVersionCode
