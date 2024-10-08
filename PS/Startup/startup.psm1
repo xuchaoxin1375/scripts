@@ -134,8 +134,8 @@ function Confirm-EnvVarOfInfo
     param (
         
     )
-    Confirm-OSVersionCaption | Out-Null
-    Confirm-OSVersionFullCode | Out-Null
+    Confirm-OSVersionCaption > $null
+    Confirm-OSVersionFullCode > $null
     if ($null -eq $env:Scripts)
     {
         $scripts = $PSScriptRoot | Split-Path | Split-Path 
@@ -151,7 +151,7 @@ function Confirm-EnvVarOfInfo
     if ($null -eq $env:PsExtension)
     {
         Write-Verbose 'confrim pwsh extension functions' -Verbose
-        Set-EnvVar -Name 'PsExtension' -NewValue 'True'
+        Set-EnvVar -Name 'PsExtension' -NewValue 'False' #默认禁用扩展部分，加快安装和pwsh启动速度
     }
 }
 function Start-StartupTasks

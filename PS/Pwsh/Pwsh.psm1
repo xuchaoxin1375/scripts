@@ -186,11 +186,12 @@ function Set-PsExtension
         ),
         # 安装模块的范围
         [ValidateSet('CurrentUser', 'AllUsers')]$Scope = 'CurrentUser',
+        
         # 是否启用额外的相关扩展
+        # 出于加载速度和轻便性考虑，不默认启用这部分扩展功能
         [parameter(ParameterSetName = 'Switch')]
         [ValidateSet('On', 'Off')]
         [parameter(Position = 0)]
-        # 出于加载速度和轻便性考虑，不默认启用这部分扩展功能
         $Switch = 'Off'
     )
     if ($PSCmdlet.ParameterSetName -eq 'Switch')
