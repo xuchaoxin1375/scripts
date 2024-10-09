@@ -22,6 +22,7 @@ function Get-SystemVersionCoreInfoOfWindows
     $Catption = $os.Caption
     ('Win' + $Catption.Split('Windows')[1]) + ' ' + "<$os.Version>"
 }
+
 function Get-WindowsOSVersionFromRegistry
 {
     <# 
@@ -75,6 +76,20 @@ function Get-WindowsOSVersionFromRegistry
         # IsWindows11               = $isWindows11
     }
     return $res
+}
+
+function Get-windowsOSFullVersionCode
+{
+    <# 
+    .SYNOPSIS
+    利用cmd /c ver命令获取相应的包含完整系统版本号的字符串
+    然后利用powershell的字符串处理方法进行过滤,最后提取出相应的字符串
+    #>
+    param (
+        
+    )
+    cmd /c ver | Select-String '\d+\.\d+\.\d+\.\d+' | Select-Object -ExpandProperty Matches | Select-Object Value
+    
 }
 function Confirm-OSVersionCaption
 {
