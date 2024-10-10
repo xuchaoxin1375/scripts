@@ -235,6 +235,22 @@ function Set-ExplorerSoftwareIcons
         explorer.exe
     }
 }
+# function invoke-aria2Downloader
+# {
+#     param (
+#         $url,
+#         [Alias('spilit')]
+#         $s = 16,
+        
+#         [Alias('max-connection-per-server')]
+#         $x = 16,
+
+#         [Alias('min-split-size')]
+#         $k = '1M'
+#     )
+#     aria2c -s $s -x $s -k $k $url
+    
+# }
 
 function Set-PythonPipSource
 {

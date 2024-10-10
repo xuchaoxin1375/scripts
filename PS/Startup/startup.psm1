@@ -186,7 +186,7 @@ function Start-StartupTasks
         [int]$Interval = 2
     )
     # 为了使开机自启的脚本能够正常执行(使用别名唤醒软件和服务,需要初始化pwsh)
-    init -NoNewPwsh 
+    Update-PwshEnvIfNotYet
     #在初始化非MainPC时,从远程仓库拉去内容后需要重新运行初始化函数
     
     #路径变量
