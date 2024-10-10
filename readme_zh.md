@@ -26,15 +26,15 @@ irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsMod
 
 ```
 
-更具体的说明查看此文档：[部署说明](./PS/Deploy/readme.md)
+更具体的说明查看此文档：[部署说明](./PS/Deploy/Readme.md)
 
 文档相对路径
 
 ```powershell
-./PS/Deploy/readme.md
+./PS/Deploy/Readme.md
 ```
 
-
+- 注意,这里区分大小写`Readme.md`和`readme.md`不同,在线仓库(gitee/github对大小写敏感,虽然windows上我用typora试过都可以)
 
 ### 适配说明
 
