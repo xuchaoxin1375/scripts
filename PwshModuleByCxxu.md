@@ -1,13 +1,12 @@
 [toc]
 
-# abstract
+## abstract
 
 本仓库内的PS模块是powershell的模块集合
 
 包含了许多实用的powershell函数，想要直接部署，请跳转到**自动部署**一节
 
-
-## 本模块设计风格与配置说明
+### 本模块设计风格与配置说明
 
 - 本**模块集**经过历次迭代,最终将所有自动导入运行的语句封装为若干函数并分散到几个模块中,比如`init`模块,`pwsh`模块
   - 配合模块自动导入(将模块路径添加到环境变量`$psModulePath`中),而`$profile`中可以只保留了一个语句调用 `init`函数(或者其他简洁的逻辑)
@@ -20,13 +19,26 @@
 
 - [Git - Git 在 PowerShell 中使用 Git (git-scm.com)](https://git-scm.com/book/zh/v2/附录-A%3A-在其它环境中使用-Git-Git-在-PowerShell-中使用-Git)
 
-## 如何载入模块集PS👺
 
-- 分为三个步骤配置
-  1. 克隆本项目(如果不需要powershell模块以外的目录,可以提取`PS`出来,其他的删除即可
-  2. 检查powershell版本(推荐安装powershell 7+,以下简称为`pwsh`)
-  3. 配置环境变量`PsModulePath`(以便自动导入模块)
-  4. 创建并配置pwsh的配置文件,即`profile.ps1`文件
+
+## 自动部署(一键运行脚本)👺👺
+
+参考仓库内的一键部署文档: [一键部署](./PS/Deploy/Readme.md)
+
+## 手动部署(备用)
+
+尽量使用上述的一键部署方案,除非失败,那么尝试手动部署(成功率高)
+
+### 步骤大纲
+
+1. 下载或克隆本项目
+   - 如果不需要powershell模块以外的目录,可以提取`PS`出来,其他的删除即可
+2. 软件准备
+   1. 检查powershell版本(推荐安装powershell 7+,以下简称为`pwsh`)
+   2. 推荐安装git(不是必须的)
+3. 配置环境变量`PsModulePath`(以便自动导入模块)
+
+此外,您可以创建并配置pwsh的配置文件,即`profile.ps1`文件,这不是必须的
 
 ### 软件准备👺
 
@@ -34,14 +46,26 @@
 
 前者是必备,后者是推荐(便于更新模块版本)
 
-都可以利用加速镜像下载,或者使用国内的应用商店(联想应用商店,可以在线下载,或者火绒应用商店),虽然版本可能不是最新的,但是可以让模块运行起来
+这两个软件都可以利用加速镜像下载,或者使用国内的应用商店(**联想应用商店**,可以在线下载,或者**火绒应用商店**),虽然版本可能不是最新的,但是可以让模块运行起来
 
-检查powershell版本
+#### 相关链接
+
+- 简单手动方案(成功率高)
+
+  - [联想应用商店 (lenovo.com)](https://lestore.lenovo.com/)
+
+- 其他方案(包括一键自动化方案自动化操作)
+
+  - [powershell7下载和安装@powershell下载加速@国内镜像加速下载安装包-CSDN博客](https://cxxu1375.blog.csdn.net/article/details/140461455)
+
+  - [git@git安装包下载@国内git for windows加速下载@命令行一键安装git软件@多种加速下载方案高成功率.md_联想软件商店 git-CSDN博客](https://cxxu1375.blog.csdn.net/article/details/142528392)
+
+#### 检查powershell版本
 
 - 本模块集主要为`powershell 7`开发(简记为`pwsh`)，而非系统自带的`powershell`(v5)
 
   在powershell 中执行`$host.Version`
-  
+
   ```powershell
   PS> $host.Version
   
@@ -50,20 +74,11 @@
   7      4      5      -1
   
   ```
-  
+
 - 其中第一个数字表示powershell大版本
 
 - 虽然也部分支持powershell v5,但是为了获得最好的兼容性和可用性,建议使用powershell v7
 
-下载powershell 7
-
-- [powershell7下载和安装@powershell下载加速@国内镜像加速下载安装包-CSDN博客](https://cxxu1375.blog.csdn.net/article/details/140461455)
-
-## 自动部署(一键运行脚本)👺👺
-
-参考仓库内的一键部署文档: [一键部署](./PS/Deploy/Readme.md)
-
-## 手动部署
 
 ### 下载或者克隆仓库到本地(二选一)
 
@@ -73,27 +88,13 @@
 
 #### 下载仓库压缩包直接使用
 
-- 虽然使用git 可以方便管理代码仓库,但是对于非专业人士这不是必须的
+- 虽然使用git 可以方便管理代码仓库,但是对于运行此模块集不是必须的
 - 仅仅使用本仓库可以直接下载压缩包(可能需要注册登录网站的账号才能够下载),然后解压到自己选定的目录
   - [ 本仓库Scripts下载ZIP (gitee.com)](https://gitee.com/xuchaoxin1375/scripts/repository/archive/main.zip)
-
-#### git方案克隆使用
-
-- 安装git 
-
-  - [Git - Downloads (git-scm.com)](https://git-scm.com/downloads)
-    - 这里的连接是github release的链接,您可以使用加速镜像站获取加速下载的连接:[GitHub 文件加速 - Moeyy](https://moeyy.cn/gh-proxy)
-  - 或者直接从镜像站加速下载:[CNPM Binaries Mirror (npmmirror.com)](https://registry.npmmirror.com/binary.html?path=git-for-windows/)
-
-- 本仓库发布在gitee,您可以在仓库主页面点击克隆按钮获得连接
-
-  - 相关仓库:
-
-    ```http
-    https://gitee.com/xuchaoxin1375/scripts.git
-    ```
-
-- 在您的计算机执行`git clone` 命令即可
+    - 需要登录下载,但下载速度快
+  - [Download ZIP (github.com)](https://github.com/xuchaoxin1375/scripts/archive/refs/heads/main.zip)
+    - 免登录下载，但不一定下的动
+    - 或者下载release(也是源码,但不一定是最新版本)
 
 
 
@@ -126,11 +127,11 @@ $env:PSModulePath=";$p"
 
 - 查看后续章节详解
 
-## 持久化添加到环境变量
+### 持久化添加到环境变量
 
 - 以下操作会(间接)修改注册表
 
-### 方案1
+#### 方案1
 
 采用临时配置,然后调用本模块集中的持久化变量配置命令,让配置持久化
 
@@ -162,9 +163,9 @@ psmodulePath C:\repos\scripts\ps
 
 
 
-### 方案2
+#### 方案2
 
-#### 用户级变量配置
+##### 用户级变量配置
 
 - 对于第一次使用本模块集的用户,执行以下powershell语句配置
 
@@ -183,7 +184,7 @@ psmodulePath C:\repos\scripts\ps
 
   - 这一步默认**仅修改用户级别的环境变量**
 
-#### 系统级变量配置
+##### 系统级变量配置
 
 - 如果需要修改**机器级别的环境变量**(系统环境变量),请使用**管理员权限**,配合选项`/M`即**追加执行**:
 
@@ -201,9 +202,9 @@ psmodulePath C:\repos\scripts\ps
   setx PSModulePath $FullPsModulePath /M
   ```
 
-## 设置powershell执行策略(按需执行)
+## 设置powershell执行策略(按需执行)👺
 
-- 如果您遇到执行模块中的函数报错(尤其是自带的powershell v5),请尝试执行一下命令,然后重试
+- 如果您遇到执行模块中的函数报错(尤其是通过自带的powershell v5),请尝试执行一下命令,然后重试
 
   - ```POWERSHELL
     Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy Bypass -Force

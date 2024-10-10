@@ -3,8 +3,10 @@
 ## 说明
 
 - 此模块内包含了关于部署powershell7模块的脚本文件等内容
-- 关于快速部署此powershell7模块集(及其所在仓库),这里创建的专用脚本文件为 `Deploy-CxxuPsModules.ps1`
-- 这里着重介绍如何快速部署此项目
+  - 关于快速部署此powershell7模块集(及其所在仓库),这里创建的专用脚本文件为 `Deploy-CxxuPsModules.ps1`
+  - 这里着重介绍如何快速部署此项目
+
+- 虽然模块是为powershell7(pwsh)编写的,但是一键部署脚本是支持在windows powershell(v5)上运行和启动的,也就是说,部署脚本允许你后安装pwsh
 
 ## 部署本仓库的方法
 
@@ -23,7 +25,7 @@ $scripts | Invoke-Expression
 # Deploy-CxxuPsModules 
 ```
 
-### 一行搞定
+### 一行搞定👺
 
 下面虽然提供了更短的方案,可以一行搞定,但是为了便于审查,使用上面的多行版本会更推荐,比如方便我们引用`$url`以及`$scripts`进行其他操作
 

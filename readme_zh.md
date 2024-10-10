@@ -5,7 +5,7 @@
 ## abstract
 
 - 记录日常编写的脚本,函数
-- 以powershell为主,将这些代码组成成相应的模块,支持灵活导入,配置简单
+- 以powershell7为主,将这些代码组成成相应的模块,支持一键灵活导入,配置简单
 
 ## powershell 7+模块集
 
@@ -18,6 +18,15 @@
   -  [Scripts:PwshModuleByCxxu - GitCode](https://gitcode.com/xuchaoxin1375/Scripts/blob/main/PwshModuleByCxxu.md)
   -  [Gitee|PwshModuleByCxxu.md](https://gitee.com/xuchaoxin1375/scripts/blob/main/PwshModuleByCxxu.md)
   -  [Github|PwshModuleByCxxu.md](https://github.com/xuchaoxin1375/scripts/blob/main/PwshModuleByCxxu.md)
+
+## 一键部署此项目
+
+```powershell
+irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1'|iex
+
+```
+
+更具体的说明查看此文档：[部署说明](./PS/Deploy/readme.md#部署本仓库的方法)
 
 ### 适配说明
 
