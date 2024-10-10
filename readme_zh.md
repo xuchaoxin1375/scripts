@@ -26,7 +26,15 @@ irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsMod
 
 ```
 
-更具体的说明查看此文档：[部署说明](./PS/Deploy/readme.md#部署本仓库的方法)
+更具体的说明查看此文档：[部署说明](./PS/Deploy/readme.md)
+
+文档相对路径
+
+```powershell
+./PS/Deploy/readme.md
+```
+
+
 
 ### 适配说明
 
