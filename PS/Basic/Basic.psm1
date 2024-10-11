@@ -1216,12 +1216,12 @@ function Stop-ComputerInquery
 }
 function SleepComputer
 {
-    Push-ReposesConfigedForMainPC
+    Push-ReposesConfiged 
     rundll32.exe powrprof.dll, SetSuspendState 0, 1, 0
 }
 function LockScreen
 {
-    Push-ReposesConfigedForMainPC
+    Push-ReposesConfiged 
     rundll32.exe user32.dll, LockWorkStation
 }
 function shutdown_timer1
