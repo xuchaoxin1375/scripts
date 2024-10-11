@@ -13,9 +13,9 @@ function Set-NetworkDiscovery
     param(
         [ValidateSet('on', 'off')]
         [string]
-        $state = 'on'
+        $status = 'on'
     )
-    $switch = ($state -eq 'on') ? 'yes':'no'
+    $switch = ($status -eq 'on') ? 'yes':'no'
     # Write-Host $switch
 
     #对于英文系统
@@ -39,9 +39,9 @@ function Set-NetworkFileAndPrinterSharing
     param(
         [ValidateSet('on', 'off')]
         [string]
-        $state = 'on'
+        $status = 'on'
     )
-    $switch = ($state -eq 'on') ? 'yes':'no'
+    $switch = ($status -eq 'on') ? 'yes':'no'
     # Write-Host $switch
     netsh advfirewall firewall set rule group="File and Printer Sharing" new enable=$switch
     netsh advfirewall firewall set rule group="文件和打印机共享" new enable=$switch
