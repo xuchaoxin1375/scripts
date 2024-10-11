@@ -195,7 +195,9 @@ function Start-StartupTasks
     # $MapLog = "$scripts\startup\log\MapLog.txt"
     #开机启动日志文件
     # $log_file = "$log_home\log.txt"
-
+    
+    # 这里是为了能够检测出当系统更新重启后,更新的系统版本号
+    Confirm-OSVersionFullCode -Force
     # Confirm-EnvVarOfInfo
     #如果当前机器不是MainPC,则拉取主PC的blogs,Scripts,configs仓库
     Update-ReposesConfigedIfNeed
@@ -233,8 +235,7 @@ function Start-StartupBgProcesses
     Start-ProcessHidden -scriptBlock { Start-TimeAnnouncer -ToastNotification } -PassThru
     # 后台进程维护一个ConnectionName,每隔一段时间检查一次(若发生变化则更新ConnectionName),可供其他进程快速读取ConnectionName
     Start-IpAddressUpdaterDaemon
-
-    # Confirm-OSVersionFullCode -Force
+ 
 }
 function Start-IpAddressUpdaterDaemon
 {
