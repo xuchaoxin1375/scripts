@@ -232,6 +232,13 @@ function Start-StartupBgProcesses
     # 配置半点报时和整点报时后台进程(精简版系统可能没有可用TTS引擎,弹出一个窗口代替,或者弹出一条系统通知更好)
     Update-PwshEnvIfNotYet
 
+    $exist = Get-Process pwsh* | Where-Object { $_.CommandLine -like '*Start-TimeAnnouncer*' }
+    if ($exist)
+    {
+        $exist | Stop-Process
+        Write-Verbose 'Stop-Process existed TimeAnnouncer process' -Verbose
+    }
+    Write-Verbose "start new TimeAnnouncer process" -Verbose
     Start-ProcessHidden -scriptBlock { Start-TimeAnnouncer -ToastNotification } -PassThru
     # 后台进程维护一个ConnectionName,每隔一段时间检查一次(若发生变化则更新ConnectionName),可供其他进程快速读取ConnectionName
     Start-IpAddressUpdaterDaemon
