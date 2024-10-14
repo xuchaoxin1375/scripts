@@ -378,30 +378,30 @@ function Get-MemoryUseRatio
     
 }
 
-function Get-MemoryUseInfoCached
-{
-    <# 
-    .SYNOPSIS
-    获取内存占用数值
-    如果您在意prompt返回的速度稳定性,且不在意后台定时进行少量的磁盘读写,那么可以使用该函数
+# function Get-MemoryUseInfoCached
+# {
+#     <# 
+#     .SYNOPSIS
+#     获取内存占用数值
+#     如果您在意prompt返回的速度稳定性,且不在意后台定时进行少量的磁盘读写,那么可以使用该函数
 
-    用独立于当前shell的保存到磁盘上的近期数值,理论上响应速度更加稳定,但会在后台占用一定资源,每隔一定时间(预设时间),耗时任务被后台进程独立执行和维护,进程会进行磁盘读写,读写的量很少,时间主要在于计算内存占用的调用上
-    .DESCRIPTION
-    由于计算内存占用的进程被独立出去,要设置计算频率(时间间隔),详见Start-PeriodlyDaemon
-    关于这个后台进程,可以手动结束掉,模块中配备了Stop-LastUpdateDaemon函数,都可以独立调用
-    然而,多个地方或多次调用Start-PeriodlyDaemon会导致进程号混乱,此时Stop-lastUpdateDaemon可能无法全部相关进程,您可以用任务管理器,搜索具有相关命令行
+#     用独立于当前shell的保存到磁盘上的近期数值,理论上响应速度更加稳定,但会在后台占用一定资源,每隔一定时间(预设时间),耗时任务被后台进程独立执行和维护,进程会进行磁盘读写,读写的量很少,时间主要在于计算内存占用的调用上
+#     .DESCRIPTION
+#     由于计算内存占用的进程被独立出去,要设置计算频率(时间间隔),详见Start-PeriodlyDaemon
+#     关于这个后台进程,可以手动结束掉,模块中配备了Stop-LastUpdateDaemon函数,都可以独立调用
+#     然而,多个地方或多次调用Start-PeriodlyDaemon会导致进程号混乱,此时Stop-lastUpdateDaemon可能无法全部相关进程,您可以用任务管理器,搜索具有相关命令行
     
-    #>
-    param (
-        $SourceFile = $LastUpdate
-    )
-    $res = Get-Content "$LastUpdateLog"
-    $res = $res -split "`n"
-    $FreeMemory = $res[0]
-    # $TotalMemory = $res[1]
-    $UsedMemory = $TotalMemory - $FreeMemory
-    return $UsedMemory, $TotalMemory, $FreeMemory
-}
+#     #>
+#     param (
+#         $SourceFile = $LastUpdate
+#     )
+#     $res = Get-Content $SourceFile
+#     $res = $res -split "`n"
+#     $FreeMemory = $res[0]
+#     # $TotalMemory = $res[1]
+#     $UsedMemory = $TotalMemory - $FreeMemory
+#     return $UsedMemory, $TotalMemory, $FreeMemory
+# }
 function Get-MemoryUseSummary
 {
     <# 
