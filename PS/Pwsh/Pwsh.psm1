@@ -23,7 +23,8 @@ function init
     if ($Force -or $null -eq $PsInit)
     {
         Write-Verbose 'Init pwsh env...'
-        $env:PsInit = 'True' 
+        # $env:PsInit = 'True' 
+        $global:PsInit = $True
 
     }
     else
@@ -139,7 +140,7 @@ function p
 
     )
     # 处理$profile 和windows terminal 中的携带参数启动pwsh冲突或重复关系
-    if ($null -eq $env:PsInit)
+    if ($null -eq $PsInit)
     {
         if ($NoNewShell)
         {
