@@ -132,14 +132,48 @@ function Set-SSHServerInit
         Write-Output "Firewall rule 'OpenSSH-Server-In-TCP' has been created and exists."
     }
 }
+function Set-SSHClientInit
+{ 
+    <# 
+    .SYNOPSIS
+    利用global变量,将Get-SSHPubKeysAdderScripts中想要定义的变量能够在函数内传达到函数外
+    这样就整合并代替了以下命令
+    Get-SSHPreRunPubkeyVarsScript|iex ;Get-SSHPubKeysAdderScripts -PassThru|scb
+    
+    #>
+    param (
+        
+    )
+    $authorized_keys = '~/.ssh/authorized_keys'
+    $pubkeys = "$home\.ssh\id_*pub"
+    #查看公钥文件
+    $pubkeys = Get-ChildItem $pubkeys
 
+    if ($pubkeys.count -lt 1)
+    {
+        Write-Warning 'No ssh key pairs found, please Continuewith the guide New-SSHKeyPairs !'
+        New-SSHKeyPairs
+        $pubkeys = Get-ChildItem $pubkeys
+    }
+    # $pubkeys
+    #兼容多个的情况,默认选择其中的第一个
+    $pubkey = $pubkeys[0]
+
+    Set-Variable -Name authorized_keys -Value $authorized_keys -Scope Global
+    Set-Variable -Name pubkey -Value $pubkey -Scope Global
+
+    Get-SSHPubKeysAdderScripts -PassThru | Set-Clipboard
+    
+}
 function Get-SSHPreRunPubkeyVarsScript
 {
     <# 
     .SYNOPSIS
     生成一段预执行脚本,创建相关文件(公钥等)的路径变量,便于后续引用
     .DESCRIPTION
+    用法说明:首先执行以下命令行
     Get-SSHPreRunPubkeyVarsScript|iex 
+
     #client 再执行以下两个函数中的一个即可,以获得一段创建**授权公钥文件**(authorized_keys)的脚本
     Get-SSHPubKeysAdderScripts #方案1
     # Get-SSHPubKeysPushScripts #方案2
@@ -148,7 +182,8 @@ function Get-SSHPreRunPubkeyVarsScript
     #>
     $script = @'
     #ssh Client端执行:详情查看帮助
-    #流程简述(受限于变量作用域限制难以直接整合,手动执行本行) Get-SSHPreRunPubkeyVarsScript|iex ;Get-SSHPubKeysAdderScripts -PassThru|scb
+    #使用说明和流程简述(受限于变量作用域限制难以直接整合,手动执行):
+    # Get-SSHPreRunPubkeyVarsScript|iex ;Get-SSHPubKeysAdderScripts -PassThru|scb
 
     $authorized_keys = '~/.ssh/authorized_keys'
     $authorized_keys = "$env:userprofile/.ssh/authorized_keys"
@@ -162,6 +197,8 @@ function Get-SSHPreRunPubkeyVarsScript
     write-host $pubkey
     
 '@
+    
+    Write-Host $pubkey
     # Write-Host $script -ForegroundColor Blue
     # $script | Invoke-Expression -Verbose #外部脚本无法访问
     return $script
@@ -249,7 +286,7 @@ function Set-SSHDefaultShell
 {
     param(
         #shell建议选择pwsh或powershell,默认为pwsh;
-        [validateset('pwsh','pwsh_scoop', 'powershell', 'cmd')]$Shell = 'pwsh',
+        [validateset('pwsh', 'pwsh_scoop', 'powershell', 'cmd')]$Shell = 'pwsh',
         $ShellFullPath #优先级高
     )
     if ($ShellFullPath)
@@ -268,7 +305,7 @@ function Set-SSHDefaultShell
 
         #powershell 7+的安装方式有多重
         # $value = 'C:\Program Files\powershell\7\pwsh.exe' 
-        $value ='C:\ProgramData\scoop\apps\powershell\current\pwsh.exe'
+        $value = 'C:\ProgramData\scoop\apps\powershell\current\pwsh.exe'
     }
     elseif ($Shell -eq 'powershell')
     {
@@ -279,7 +316,7 @@ function Set-SSHDefaultShell
     {
         #默认行为,可以直接不修改,但是考虑到可能从其他shell更改回cmd,这里要保留
         # $value = 'cmd.exe'
-        $value= 'C:\Windows\System32\cmd.exe'
+        $value = 'C:\Windows\System32\cmd.exe'
     }
     New-ItemProperty -Path 'HKLM:\SOFTWARE\OpenSSH' -Name DefaultShell -Value $value -PropertyType String -Force
         
