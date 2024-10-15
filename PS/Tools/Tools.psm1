@@ -672,10 +672,10 @@ xxx
 
     [CmdletBinding()]
     param (
-        [Parameter(  Position = 0, ValueFromPipeline = $true)]
+        [Parameter(   ValueFromPipeline = $true)]
         [Alias('DataJson', 'JsonFile', 'Path', 'File')]$JsonInput = $DataJson,
 
-        [Parameter(Position = 1)]
+        [Parameter(Position = 0)]
         [string][Alias('Property')]$Key
     )
 
@@ -712,3 +712,34 @@ xxx
         Write-Error "Failed to extract the property value for '$Key'."
     }
 }
+
+
+function Get-JsonItemCompleter
+{
+    param(
+        $commandName, 
+        $parameterName,
+        $wordToComplete,
+        $commandAst,
+        $fakeBoundParameters
+        # $cursorPosition
+    )
+    if ($fakeBoundParameters.containskey('JsonInput'))
+    {
+        $Json = $fakeBoundParameters['JsonInput']
+    
+    }else{
+        $Json = $DataJson
+    }
+    $res = Get-Content $Json | ConvertFrom-Json
+    $Names = $res | Get-Member -MemberType NoteProperty | Select-Object -ExpandProperty Name
+    $Names = $Names | Where-Object { $_ -like "$wordToComplete*" }
+    foreach ($name in $Names)
+    {
+        $value = $res | Select-Object -ExpandProperty $name | Out-String
+
+        [System.Management.Automation.CompletionResult]::new($name, $name, 'ParameterValue', $value)
+    }
+}
+
+Register-ArgumentCompleter -CommandName Get-Json -ParameterName Key -ScriptBlock ${function:Get-JsonItemCompleter}

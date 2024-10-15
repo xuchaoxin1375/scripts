@@ -238,7 +238,7 @@ function Start-StartupBgProcesses
         $exist | Stop-Process
         Write-Verbose 'Stop-Process existed TimeAnnouncer process' -Verbose
     }
-    Write-Verbose "start new TimeAnnouncer process" -Verbose
+    Write-Verbose 'start new TimeAnnouncer process' -Verbose
     Start-ProcessHidden -scriptBlock { Start-TimeAnnouncer -ToastNotification } -PassThru
     # 后台进程维护一个ConnectionName,每隔一段时间检查一次(若发生变化则更新ConnectionName),可供其他进程快速读取ConnectionName
     Start-IpAddressUpdaterDaemon
@@ -288,6 +288,7 @@ function Confirm-DataJson
     #>
     param(
         # $PassThru
+        $DataJson = $DataJson
     )
     if (!(Test-Path $DataJson))
     {
@@ -296,5 +297,22 @@ function Confirm-DataJson
             IpPrompt       = ''
         }
         $s | ConvertTo-Json | Set-Content $DataJson
+    }
+    try
+    {
+        $jsonContent = Get-Content -Path $DataJson -Raw
+        $null = $jsonContent | ConvertFrom-Json
+        Write-Verbose 'The JSON file is valid.'
+        return $true
+    }
+    catch
+    {
+        Write-Error 'The JSON file is not valid.'
+        Rename-Item $DataJson -NewName "$($DataJson).bak.$((Get-Date).ToString('yyyy-MM-dd--HH-mm-ss'))" -Force -Verbose
+
+        # 重新创建datajson文件
+        Write-Host 'Create new DataJson file.'
+        Confirm-DataJson
+        return $false
     }
 }
