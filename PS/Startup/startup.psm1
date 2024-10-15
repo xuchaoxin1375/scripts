@@ -298,21 +298,22 @@ function Confirm-DataJson
         }
         $s | ConvertTo-Json | Set-Content $DataJson
     }
-    try
+    $jsonContent = Get-Content -Path $DataJson -Raw
+    $validity = $jsonContent | ConvertFrom-Json
+    if ($validity)
     {
-        $jsonContent = Get-Content -Path $DataJson -Raw
-        $null = $jsonContent | ConvertFrom-Json
         Write-Verbose 'The JSON file is valid.'
-        return $true
+        # return $true
+        # return $validity
     }
-    catch
+    else
     {
-        Write-Error 'The JSON file is not valid.'
+        Write-Warning 'The JSON file is not valid.'
         Rename-Item $DataJson -NewName "$($DataJson).bak.$((Get-Date).ToString('yyyy-MM-dd--HH-mm-ss'))" -Force -Verbose
 
         # 重新创建datajson文件
         Write-Host 'Create new DataJson file.'
         Confirm-DataJson
-        return $false
+        # return $false
     }
 }

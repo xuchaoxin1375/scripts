@@ -46,9 +46,10 @@ function init
         Set-ArgumentCompleter
         Confirm-EnvVarOfInfo
         Set-PsExtension 
-
+        
         # 设置prompt样式(这里面会导入基础的powershell预定变量和别名)
         Set-PsPrompt  
+        Confirm-DataJson
     }
     $taskScriptStr = $tasks.ToString()
     # 原始多行字符串
