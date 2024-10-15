@@ -558,6 +558,16 @@ function Write-UserHostname
     $userHostname = Get-UserHostName
     Write-Host (('[' + $userHostname + ']')) -ForegroundColor Cyan -NoNewline
 }
+function Write-Uptime
+{
+    param (
+        
+    )
+    $time = Get-Uptime | Select-Object -ExpandProperty TotalDays
+    $res = [math]::Round($time, 2)
+    Write-Host "[UP:${res}Days]" -ForegroundColor DarkGray -NoNewline
+    
+}
 function Write-HostIp
 {
     <# 
@@ -888,6 +898,7 @@ function PromptBalance
     # Write-Data;
     Write-OSVersionInfo
     Write-Time
+    Write-Uptime
     
     #section2
     Write-Host ''
