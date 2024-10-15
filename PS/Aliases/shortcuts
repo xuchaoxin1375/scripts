@@ -33,7 +33,7 @@ endnote "$endnote_home\endnote.exe"
 et "$exes\everything" 
 eu Update-PwshVars
 filecxx "$exes\filecxx_downloader\fileu.exe"
-firefox $fireFox_home\firefox.exe 
+; firefox $fireFox_home\firefox.exe 
 fleet "$fleet_home\c*\*\fleet"
 foobar "$foobar_home\foobar_CN\foobar2000.exe"
 geogebra  "$Geogebra_home\GeoGebraCalculator"

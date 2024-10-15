@@ -32,10 +32,26 @@ $GithubMirrorsTest = @(
 
     ''#收尾
 )
-$GithubMirrors = $GithubMirrors + $GithubMirrorsTest
+#如果你懒得添加引号,那么将镜像链接逐个添加到下面的多行字符串中,即便包含了引号或者双引号逗号也都能够正确处理
+
+$GithubMirrorsInString = @'
+https://sciproxy.com/
+https://cf.ghproxy.cc/, # comment demo
+'https://gh.noki.icu/',
+""https://sciproxy.com/""
+https://demo.testNew.com/
+'https://slink.ltd/'
+
+'@
+
+$GithubMirrorsInString = $GithubMirrorsInString -replace '#.*', ' ' -replace '[",;\n\r]', ' ' -replace "'" , ' ' -replace '\s+', ' '
+
+$GithubMirrorsInString = $GithubMirrorsInString -split ' ' #去重等操作留到后面一起处理
+
+$GithubMirrors = $GithubMirrors + $GithubMirrorsTest + $GithubMirrorsInString
 $GithubMirrors = $GithubMirrors | Where-Object { $_ }#移除空串
 $GithubMirrors = $GithubMirrors | ForEach-Object { $_.trim('/') } | Sort-Object #统一链接风格(去除末尾的`/`如果有的话)
-$GithubMirrors = $GithubMirrors | Get-Unique #移除重复条目
+$GithubMirrors = $GithubMirrors | Select-Object -Unique # Get-Unique #移除重复条目(注意get-Unique要求被处理数组是有序的,否则无效,可以用select -unique更通用)
 
 function Test-LinksLinearly
 {
@@ -1260,7 +1276,7 @@ function Deploy-GithubHostsAutoUpdater
     param (
         
         # [ValidateSet('pwsh', 'powershell')]$shell = 'powershell',
-        $shell='pwsh',#此函数为pwsh设计(powershell v5不可用)
+        $shell = 'pwsh', #此函数为pwsh设计(powershell v5不可用)
         
         # 需要执行的更新脚本位置(这个参数在不常用,采用直接通过pwsh调用指定函数的方式执行任务)
         $File = '' , #自行指定
@@ -2033,7 +2049,7 @@ function Deploy-WtSettings
     $ConfigBackup = "$configs\wtConf.json"
     $WtConfig = "$wtConf_Home\settings.json"
     $WtPortableConfig = "$wtPortableConf_Home\settings.json"
-    $WtScoopGlobalVersionConfig="$scoop_global_apps\windows-terminal\current\settings\settings.json"
+    $WtScoopGlobalVersionConfig = "$scoop_global_apps\windows-terminal\current\settings\settings.json"
     if ($Force)
     {
         $items = @($WtConfig, $WtPortableConfig)
