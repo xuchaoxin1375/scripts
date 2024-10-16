@@ -121,7 +121,8 @@ function Set-SSHServerInit
     # Start the sshd service
     [CmdletBinding(SupportsShouldProcess = $true)]
     param(
-        
+        $ruleName = 'OpenSSH-Server-In-TCP',
+        $ruleDisplayName = 'OpenSSH Server (sshd)'
     )
     Start-Service sshd -Confirm:$false
 
@@ -129,8 +130,8 @@ function Set-SSHServerInit
     Set-Service -Name sshd -StartupType 'Automatic' -Confirm:$false
 
     # Confirm the Firewall rule is configured. It should be created automatically by setup. Run the following to verify
-    $ruleName = 'OpenSSH-Server-In-TCP'
-    $ruleDisplayName = 'OpenSSH Server (sshd)'
+  
+
     $rule = Get-NetFirewallRule -Name $ruleName -ErrorAction SilentlyContinue 
     $res = $rule | Select-Object Name, Enabled
 
