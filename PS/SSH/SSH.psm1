@@ -112,25 +112,48 @@ function Get-SSHPubKeysPushScripts
 function Set-SSHServerInit
 {
     <# 
+    .SYNOPSIS
     初始化ssh server 端的sshd服务
     包括初次启动服务，以及开机自启动设置,防火墙设置以及验证
+    .DESCRIPTION
+    使用-Confirm选项来缓解风险
     #>
     # Start the sshd service
-    Start-Service sshd
+    [CmdletBinding(SupportsShouldProcess = $true)]
+    param(
+        
+    )
+    Start-Service sshd -Confirm:$false
 
     # OPTIONAL but recommended:
-    Set-Service -Name sshd -StartupType 'Automatic'
+    Set-Service -Name sshd -StartupType 'Automatic' -Confirm:$false
 
     # Confirm the Firewall rule is configured. It should be created automatically by setup. Run the following to verify
-    if (!(Get-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -ErrorAction SilentlyContinue | Select-Object Name, Enabled))
+    $ruleName = 'OpenSSH-Server-In-TCP'
+    $ruleDisplayName = 'OpenSSH Server (sshd)'
+    $rule = Get-NetFirewallRule -Name $ruleName -ErrorAction SilentlyContinue 
+    $res = $rule | Select-Object Name, Enabled
+
+    if (!$res)
     {
-        Write-Output "Firewall Rule 'OpenSSH-Server-In-TCP' does not exist, creating it..."
-        New-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -DisplayName 'OpenSSH Server (sshd)' -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22
+        Write-Output "Firewall Rule $ruleName does not exist, creating it..."
+        
     }
     else
     {
-        Write-Output "Firewall rule 'OpenSSH-Server-In-TCP' has been created and exists."
+        Write-Output "Firewall rule $ruleName has been created.Try reset it..."
+        $continue = $PSCmdlet.ShouldProcess($ruleName, 'Reset Firewall Rule')
+        if ($continue)
+        {
+            Remove-NetFirewallRule -Name $ruleName -Verbose
+            # Set-SSHServerInit
+        }
+        else
+        {
+            return
+        }
     }
+    New-NetFirewallRule -Name $ruleName -DisplayName $ruleDisplayName -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22 -Verbose
 }
 function Set-SSHClientInit
 { 
