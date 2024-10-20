@@ -76,7 +76,7 @@ mydockfinder "$Mydockfinder_home\Mydockfinder1.9.9\dock_64.exe"
 @REM wt "$windowsTerminal_home\wt.exe"
 qq_legcy "$qq_legcy_home\QQScLauncher.exe"
 qtdesigner designer_qt
-quicker "$quicker_home\quicker"
+; quicker "$quicker_home\quicker"
 safe360 "$Safe360_home\360safe.exe"
 sandbox_Ctrl "$sandboxie_home\SbieCtrl.exe"
 sandbox_Man "$sandboxie_home\sandMan.exe"

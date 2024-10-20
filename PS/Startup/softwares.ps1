@@ -60,14 +60,15 @@ $softwares = @(
     # 'listary',
     'mydockfinder',
     # 'cfw' ,
-    'Verge',
+    'Verge', #精简版系统可能无法打开
     # 'whale',#公交车,虽然速度挺快,而且试用期长,但是容易导致许多网站使用出现频繁验证和报错,例如openai
     'trafficMonitor', #配置在里面在个别场合容易启动失败,可以单独启动
     'snipaste', #高性能截图软件,用途比较单一
     # 'pixpin', #辅助snipaste用来长截图和录制gif以及做ocr
-    'windhawk',
+    # 'windhawk',
     'ditto',
-    'quicklook'
+    'quicklook',
+    'quicker'
     
     # memorymaster
 )
