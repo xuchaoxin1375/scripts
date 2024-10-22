@@ -101,7 +101,7 @@ wechat "$wechat_home\wechat.exe"
 winget_Raw "$windowsApps_user\winget.exe" #windows自带的winget的安装路径(我们可以用scoop安装,就不用管它)
 winxray $winxray_home/winxray 
 word "$cp\Microsoft Office\root\Office16\WINWORD.EXE"
-youdaoDict "C:\Users\cxxu\AppData\Local\youdao\dict\Application\YoudaoDict.exe"
+; youdaoDict "C:\Users\cxxu\AppData\Local\youdao\dict\Application\YoudaoDict.exe"
 handle "$exes\handle\handle64.exe"
 
 @REM SevenZipGUI (rvpa "$sevenZip_home\2*\7zFM.exe")

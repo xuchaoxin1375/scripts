@@ -96,10 +96,17 @@ function Get-EnvVarCompleter
 
 function Set-ArgumentCompleter
 {
+    <# 
+    .SYNOPSIS
+    批量为适配了补全器的命令注册ArgumentCompleter
+    .DESCRIPTION
+    本模块集为EnvVar等模块内的命令适配了补全器
+    批量注册器的一个重要条件是具有相同的参数名字,并且有相同的含义,补全效果才是匹配的
+    #>
     param (
     )
     # Import-Module ArgumentCompletion
-
+    # 获取命令名字
     $EnvVarCmds = Get-Command -Module EnvVar | Select-Object -ExpandProperty Name 
     # foreach ($cmd in $EnvVarCmds)
     $EnvVarCmds | ForEach-Object {

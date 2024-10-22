@@ -728,7 +728,9 @@ function Get-JsonItemCompleter
     {
         $Json = $fakeBoundParameters['JsonInput']
     
-    }else{
+    }
+    else
+    {
         $Json = $DataJson
     }
     $res = Get-Content $Json | ConvertFrom-Json
@@ -736,9 +738,14 @@ function Get-JsonItemCompleter
     $Names = $Names | Where-Object { $_ -like "$wordToComplete*" }
     foreach ($name in $Names)
     {
-        $value = $res | Select-Object -ExpandProperty $name | Out-String
+        $value = $res | Select-Object $name | Format-List | Out-String
+        # $value = Get-Json -JsonInput $Json $name |Out-String
+        if (! $value)
+        {
+            $value = 'Error:Nested property expand failed'
+        }
 
-        [System.Management.Automation.CompletionResult]::new($name, $name, 'ParameterValue', $value)
+        [System.Management.Automation.CompletionResult]::new($name, $name, 'ParameterValue', $value.ToString())
     }
 }
 
