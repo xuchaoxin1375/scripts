@@ -1900,6 +1900,7 @@ function Deploy-SmbSharing
 
             # 创建新用户(为了规范起见,最好在使用本地安全策略将Smb共享账户设置为禁止本地登录(加入本地登录黑名单,详情另见它文,这个步骤难以脚本化)这里尝试使用Disable-SmbSharingUserLogonLocallyRight函数来实现此策略设置)
             net user $username $SmbUserKey /add /fullname:"Shared Folder User" /comment:"User for accessing shared folder" /expires:never 
+            Set-LocalUser -PasswordNeverExpires $true -Name $username #设置账户的密码永不过期
             # 由于New-LocalUser在不同windows平台上可能执行失败,所以这里用net user,而不是用New-LocalUser
             # New-LocalUser -Name $username -Password $SmbUserKey -FullName 'Shared Folder User' -Description 'User for accessing shared folder'
             # 将新用户添加到Smb共享文件夹的用户组,这不是必须的(默认是没有SMB组的)
