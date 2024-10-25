@@ -62,6 +62,7 @@ function Deploy-Pwsh7Portable
     {
         Write-Host "try use mirror: $mirror to speed up link"
         $BaseUrl = "$mirror/$BaseUrl".trim('/')
+        write-host "Downloading from $BaseUrl"
     }
     else
     {

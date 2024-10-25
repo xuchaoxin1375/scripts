@@ -88,6 +88,7 @@ function Deploy-GitForwindows
         if (!(Test-Path $Package))
         {
             $url = "${mirror}/${url}".Trim('/')
+            Write-Host "Downloading [$url] to $Package" -ForegroundColor Blue
             Invoke-WebRequest -Uri $url -OutFile $Package -Verbose
         }
         
@@ -368,9 +369,17 @@ function Deploy-CxxuPsModules
  
     # $RepoPath = 'C:\repos\scripts\PS' #这里修改为您下载的模块所在目录,这里的取值作为示范
     $env:PSModulePath = ";$NewPsPath" #为了能够调用CxxuPSModules中的函数,这里需要这么临时设置一下
-    Add-EnvVar -EnvVar PsModulePath -NewValue $newPsPath -Verbose #这里$RepoPath上面定义的(默认是User作用于,并且基于User的原有取值插入新值)
-    # 添加本模块集所在目录的环境变量,便于后续引用(虽然不是必须的)
-    Set-EnvVar -EnvVar CxxuPsModulePath $NewPsPath -Verbose
+    if($host.Version.Major -gt 7){
+
+        Add-EnvVar -EnvVar PsModulePath -NewValue $newPsPath -Verbose #这里$RepoPath上面定义的(默认是User作用于,并且基于User的原有取值插入新值)
+        # 添加本模块集所在目录的环境变量,便于后续引用(虽然不是必须的)
+        Set-EnvVar -EnvVar CxxuPsModulePath $NewPsPath -Verbose
+    }else{
+        # 在powershel了低版本上，无法使用Add-EnvVar,使用setx 来设置相应的环境变量,PsModulePath的用户级别变量默认情况下通常是空的
+        # 而系统级别的PsModulePath则是有预设值的(和windows powershell共用)
+        setx PSModulePath $newPsPath 
+    }
+
     # 你也可以替换`off`为`LTS`不完全禁用更新但是降低更新频率(仅更新LTS长期支持版powershell)
     [System.Environment]::SetEnvironmentVariable('powershell_updatecheck', 'LTS', 'user')
 
