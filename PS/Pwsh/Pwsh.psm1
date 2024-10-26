@@ -615,12 +615,13 @@ function Write-OSVersionInfo
     param (
         [switch]$CaptionOnly
     )
+    #获取windows edition 例如 Win 11 Pro
     $res = Confirm-OSVersionCaption
     if (!$CaptionOnly)
     {
 
-        $displayversion = Get-WindowsOSVersionFromRegistry | Select-Object -ExpandProperty DisplayVersion
-        $OsVersionFullCode = (Confirm-OSVersionFullCode)
+        $displayversion = Get-WindowsOSVersionFromRegistry | Select-Object -ExpandProperty DisplayVersion #例如24H2
+        $OsVersionFullCode = (Confirm-OSVersionFullCode) #例如 10.0.26100.2152
         $res = $res + '@' + "${displayversion}:" + $OsVersionFullCode
     }
     $res = '[' + $res + ']'

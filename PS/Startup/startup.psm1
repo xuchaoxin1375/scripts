@@ -149,7 +149,7 @@ function Confirm-EnvVarOfInfo
     param (
         
     )
-    Confirm-OSVersionCaption > $null
+    Confirm-OSVersionCaption  > $null
     Confirm-OSVersionFullCode > $null
     if ($null -eq $env:Scripts)
     {
@@ -198,6 +198,7 @@ function Start-StartupTasks
     
     # 这里是为了能够检测出当系统更新重启后,更新的系统版本号
     Confirm-OSVersionFullCode -Force
+    Confirm-OSVersionCaption -Force
     # Confirm-EnvVarOfInfo
     #如果当前机器不是MainPC,则拉取主PC的blogs,Scripts,configs仓库
     Update-ReposesConfigedIfNeed
