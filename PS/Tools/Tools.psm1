@@ -309,7 +309,7 @@ custom_channels:
     Write-Host 'Check your conda config...'
     conda config --show-sources
 }
-function Deploy-WinodwsActivation
+function Deploy-WindowsActivation
 {
     Invoke-RestMethod https://massgrave.dev/get | Invoke-Expression
 }

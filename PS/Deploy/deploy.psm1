@@ -1,40 +1,39 @@
 
 
 $GithubMirrors = @(
-    # 注意,如果你的浏览器使用了代理,那么部分镜像站会和代理冲突,所以可能命令行中测试可以访问的链接在浏览器中确打不开镜像站,可以关闭代理或换个浏览器后重新验证该镜像站的可用性
-    #搜集到的链接可以用gpt进行修改,将链接包裹引号(指令:为这些链接分别添加引号);或者自己粘贴到文件文件中然后编写脚本转换为数组格式
-    'https://github.moeyy.xyz', # Moeyy - 提供 GitHub 文件的加速下载功能
-    'https://ghproxy.cc',
-    'https://ghproxy.net', # GitHub Proxy by GitHub99 - 提供 GitHub 文件的加速下载和克隆服务 #和用户自己的代理可能发生冲突
-    'https://mirror.ghproxy.com',
-    
-    # 'https://ghproxy.com/bad/demo', #虚假镜像,用来测试代码是否能够正确处理不可用的镜像链接
-    'https://ghproxy.homeboyc.cn/',
-    'https://gh-proxy.com/',
-    
-    'https://gh.ddlc.top',
-    'https://github.ur1.fun/',
 
-    '' #空字符串收尾
+    # '' #空字符串收尾
 )
 $GithubMirrorsTest = @(
-    'https://gh-proxy.com/',
-    'https://ghps.cc/',
-    'https://ghproxy.net/',
-    'https://github.moeyy.xyz/',
-    'https://gh.ddlc.top/',
-    'https://slink.ltd/',
-    'https://gh.con.sh/',
-    'https://hub.gitmirror.com/',
-    'https://sciproxy.com/',
-    'https://cf.ghproxy.cc/',
-    'https://gh.noki.icu/',
 
-    ''#收尾
+    # ''#收尾
 )
 #如果你懒得添加引号,那么将镜像链接逐个添加到下面的多行字符串中,即便包含了引号或者双引号逗号也都能够正确处理
 
 $GithubMirrorsInString = @'
+# 注意,如果你的浏览器使用了代理,那么部分镜像站会和代理冲突,所以可能命令行中测试可以访问的链接在浏览器中确打不开镜像站,可以关闭代理或换个浏览器后重新验证该镜像站的可用性
+#搜集到的链接可以用gpt进行修改,将链接包裹引号(指令:为这些链接分别添加引号);或者自己粘贴到文件文件中然后编写脚本转换为数组格式
+'https://github.moeyy.xyz', # Moeyy - 提供 GitHub 文件的加速下载功能
+'https://ghproxy.cc',
+'https://ghproxy.net', # GitHub Proxy by GitHub99 - 提供 GitHub 文件的加速下载和克隆服务 #和用户自己的代理可能发生冲突
+'https://mirror.ghproxy.com',
+
+# 'https://ghproxy.com/bad/demo', #虚假镜像,用来测试代码是否能够正确处理不可用的镜像链接
+'https://ghproxy.homeboyc.cn/',
+'https://gh-proxy.com/',
+'https://gh-proxy.com/',
+'https://ghps.cc/',
+'https://ghproxy.net/',
+'https://github.moeyy.xyz/',
+'https://gh.ddlc.top/',
+'https://slink.ltd/',
+'https://gh.con.sh/',
+'https://hub.gitmirror.com/',
+'https://sciproxy.com/',
+'https://cf.ghproxy.cc/',
+'https://gh.noki.icu/',
+'https://gh.ddlc.top',
+'https://github.ur1.fun/',
 https://sciproxy.com/
 https://cf.ghproxy.cc/, # comment demo
 'https://gh.noki.icu/',
@@ -335,7 +334,7 @@ function Get-SelectedMirror
     让用户选择可用的镜像连接,允许选择多个
     .NOTES
     包含单个字符串的数组被返回时会被自动解包,这种情况下会是一个字符串
-    如果却是需要外部接受数组,那么可以在外部使用@()来包装返回结果即可
+    如果确实需要外部接受数组,那么可以在外部使用@()来包装返回结果即可
 
     #>
     [CmdletBinding()]
@@ -455,7 +454,8 @@ function Install-BasicSoftwares
     # 基础软件可以考虑全局安装(所有用户可以用,这需要管理员权限)
     scoop install scoop-cn/7zip -g
     scoop install scoop-cn/git -g
-    scoop install scoop-cn/aria2 -g
+    # scoop install scoop-cn/aria2 -g
+    
 }
 function Set-ScoopAria2Options
 {
@@ -664,7 +664,9 @@ function Deploy-ScoopByGitee
     scoop bucket add scoopcn https://gitee.com/scoop-installer/scoopcn
     if ($InstallBasicSoftwares)
     {
-        scoop install 7zip git aria2 -g
+        scoop install 7zip git  -g
+        scoop install scoop-search -g
+        scoop install aria2 -g
     }
 }
 function Add-ScoopBuckets
