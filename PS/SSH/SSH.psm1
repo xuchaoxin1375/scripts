@@ -53,6 +53,8 @@ function Get-SSHPubKeysAdderScripts
 
     $script = '$pubkey=' + "'$pubkey_content'" + @'
 
+#    Enable-SSHPubkeyAuthentication
+
 $authorized_keys='~/.ssh/authorized_keys'
 if(Test-Path $authorized_keys){
 
@@ -124,10 +126,32 @@ function Set-SSHServerInit
         $ruleName = 'OpenSSH-Server-In-TCP',
         $ruleDisplayName = 'OpenSSH Server (sshd)'
     )
-    Start-Service sshd -Confirm:$false
 
-    # OPTIONAL but recommended:
-    Set-Service -Name sshd -StartupType 'Automatic' -Confirm:$false
+    if (Get-Service sshd -ErrorAction SilentlyContinue)
+    {
+
+        Start-Service sshd -Confirm:$false
+        
+        # OPTIONAL but recommended:
+        Set-Service -Name sshd -StartupType 'Automatic' -Confirm:$false
+    }
+    else
+    {
+
+        Write-Warning 'sshd service does not exist! Install OpenSSH before using this function!'
+        Write-Host 'for example,use scoop install openssh,follow the script:'
+        Write-Host @'
+scoop install openssh # -g 可以选择全局安装,需要管理员权限
+$p=scoop which sshd ;$dir=Split-Path $p;cd $dir; & .\install-sshd.ps1
+
+'@
+        if (Get-Command scoop -ErrorAction SilentlyContinue)
+        {
+            scoop install openssh # -g 可以选择全局安装,需要管理员权限
+            $p = scoop which sshd ; $dir = Split-Path $p; Set-Location $dir; & .\install-sshd.ps1
+        }
+        # return 
+    }
 
     # Confirm the Firewall rule is configured. It should be created automatically by setup. Run the following to verify
   
