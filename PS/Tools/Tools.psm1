@@ -322,7 +322,18 @@ function Get-BeijingTime
     $beijingTime = [DateTime]$response.datetime
     return $beijingTime
 }
-
+function Enable-WindowsUpdateByDelay
+{
+    $reg = "$PsScriptRoot\..\..\registry\windows-updates-unpause.reg" | Resolve-Path
+    Write-Host $reg
+    & $reg
+}
+function Disable-WindowsUpdateByDelay
+{
+    $reg = "$PsScriptRoot\..\..\registry\windows-updates-pause.reg" | Resolve-Path
+    Write-Host $reg
+    & $reg
+}
 function Sync-SystemTime
 {
     <#
