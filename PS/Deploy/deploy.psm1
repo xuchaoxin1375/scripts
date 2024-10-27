@@ -2343,7 +2343,3 @@ function Deploy-TrafficMonitor
     # 重新启动TrafficMonitor
     TrafficMonitor #别名启动
 }
-function Deploy-Links
-{
-    . "$PSScriptRoot\links.bak"
-}
