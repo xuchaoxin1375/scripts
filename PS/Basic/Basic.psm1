@@ -233,6 +233,30 @@ function wiki2latex
         $data_out | Set-Clipboard
     }
 }
+function ty2latex
+{
+    <# 
+    .SYNOPSIS
+    将字符串中的 \(,\) 转换成 $
+    将字符串中的 \[,\] 转换成 $$
+    .EXAMPLE
+    PS>ty2latex '$\left( \frac{1}{2} \right)$'
+    #>
+
+    [CmdletBinding()]
+    param(
+        [parameter(ValueFromPipeline)]
+        $String
+    )
+    #方案1:正则匹配
+    $res = $String -replace '(\\\(\s*)|(\s*\\\))', '$' -replace '(\\\[)|(\\\])', '$$$$'
+    #方案2:精准替换(容错性不足,但是规则简单,使用字符串的Replace()函数)
+    # $res=$String.replace('\(','$').replace('\)','$').replace('\[','$$').replace('\]','$$')
+
+    # $res = $String 
+    $res | Set-Clipboard
+    $res
+}
 function wechat_second
 {
     Start-ProgramInSandboxie -Program (Get-ShortcutPath wechat)
@@ -964,7 +988,8 @@ PS> gi .\ab.cpp|Get-ContentNL
         else
         {
             # 否则，认为是文件路径,但是还是要检查文件是否存在或者合法
-            if(!(Test-Path $InputData -PathType Leaf)){
+            if (!(Test-Path $InputData -PathType Leaf))
+            {
                 Write-Error "File does not exist:$($InputData.Trim()) Do you want to consider the Input as a string?(use -AsString option ) "
                 return
             }
