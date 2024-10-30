@@ -1066,10 +1066,10 @@ function Set-ScoopVersion
         if ($NewPath.Trim() -eq '')
         {
             $NewPath = "$home\scoop0"
-            Write-Host 'Use default backup Path name $NewPath'
+            Write-Host "Use default backup Path name $NewPath"
         }
         # return 
-        Rename-Item $Path -NewName "${NewPath}"
+        Rename-Item $Path -NewName $NewPath -Verbose
     }
     else
     {
