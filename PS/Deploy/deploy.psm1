@@ -1059,13 +1059,21 @@ function Set-ScoopVersion
     )
     #检查现有目录
     $mode = Get-Item $Path | Select-Object -ExpandProperty Mode
-    if ($mode -notlike 'l*'){
-        Write-Warning "The scoop path already exist! Try to backup it first"
-        $NewName=Read-Host "Please input the new name of the path"
-        return 
-        Rename-Item $Path -NewName "${NewName}"
-    }else{
-        write-verbose "The scoop link already exist,change to $ToPath" -Verbose
+    if ($mode -notlike 'l*')
+    {
+        Write-Warning 'The scoop path already exist! Try to backup it first'
+        $NewPath = Read-Host 'Please input the new name of the path'
+        if ($NewPath.Trim() -eq '')
+        {
+            $NewPath = "$home\scoop0"
+            Write-Host 'Use default backup Path name $NewPath'
+        }
+        # return 
+        Rename-Item $Path -NewPath "${NewPath}"
+    }
+    else
+    {
+        Write-Verbose "The scoop link already exist,change to $ToPath" -Verbose
     }
     # 确保指定目录存在
     $path, $ToPath | ForEach-Object {
