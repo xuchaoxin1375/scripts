@@ -664,7 +664,7 @@ function Deploy-ScoopByGitee
     scoop bucket add scoopcn https://gitee.com/scoop-installer/scoopcn
     if ($InstallBasicSoftwares)
     {
-        scoop install 7zip git  -g
+        scoop install 7zip git -g
         scoop install scoop-search -g
         scoop install aria2 -g
     }
@@ -988,6 +988,96 @@ The spc1 bucket was added successfully.
     scoop update
     
 }
+
+function Set-ScoopVersion
+{
+    <# 
+    .SYNOPSIS
+    设置scoop版本
+    .DESCRIPTION
+    
+    .Notes
+    家目录可以用$home,或~表示,但是前者更加鲁棒,许多情况下后者会解析错误
+    .PARAMETER Path
+    您的scoop目录(默认为$home\scoop),默认安装的话你不需要手动传入该参数
+    .PARAMETER ToPath
+    您想要切换的Scoop版本所在目录,比如$home\scoop1
+    .EXAMPLE
+    Set-ScoopVersion -Path $home\scoop -ToPath $home\scoop1
+    .EXAMPLE
+    Set-ScoopVersion -ToPath $home\scoop0
+    .EXAMPLE
+    # [cxxu@BFXUXIAOXIN][<W:192.168.1.77>][~]
+    PS> Set-ScoopVersion -ToPath ~/scoop1
+    VERBOSE: Performing the operation "Create Junction" on target "Destination: C:\Users\cxxu\scoop".
+    VERBOSE: Performing the operation "Create Directory" on target "Destination: C:\Users\cxxu\scoop".
+
+        Directory: C:\Users\cxxu
+
+    Mode                 LastWriteTime         Length Name
+    ----                 -------------         ------ ----
+    l----          10/30/2024  5:49 PM                scoop -> C:\Users\cxxu\scoop1
+    Scoop was found in C:\Users\cxxu\scoop1,so scoop is available now!
+
+
+    Name     Source                                                          Updated               Manifests
+    ----     ------                                                          -------               ---------
+    main     https://github.moeyy.xyz/https://github.com/ScoopInstaller/Main 10/30/2024 4:31:22 PM      1344
+    scoop-cn https://github.moeyy.xyz/https://github.com/duzyn/scoop-cn      10/30/2024 9:52:06 AM      5734
+    spc      https://gh-proxy.com/https://github.com/lzwme/scoop-proxy-cn    10/30/2024 9:53:02 AM     10017
+
+
+    PS[Mode:1][BAT:97%][MEM:60.79% (9.34/15.37)GB][Win 11 IoT @24H2:10.0.26100.2033][5:49:09 PM][UP:1.9Days]
+    # [cxxu@BFXUXIAOXIN][<W:192.168.1.77>][~]
+    PS> Set-ScoopVersion -ToPath ~/scoop0
+    VERBOSE: Performing the operation "Create Junction" on target "Destination: C:\Users\cxxu\scoop".
+    VERBOSE: Performing the operation "Create Directory" on target "Destination: C:\Users\cxxu\scoop".
+
+        Directory: C:\Users\cxxu
+
+    Mode                 LastWriteTime         Length Name
+    ----                 -------------         ------ ----
+    l----          10/30/2024  5:49 PM                scoop -> C:\Users\cxxu\scoop0
+    Scoop was found in C:\Users\cxxu\scoop0,so scoop is available now!
+
+
+    Name    Source                                                       Updated                Manifests
+    ----    ------                                                       -------                ---------
+    main    https://gitee.com/scoop-installer/Main.git                   10/30/2024 12:29:54 PM      1344
+    extras  https://gitee.com/scoop-installer/Extras                     10/30/2024 12:32:18 PM      2092
+    java    https://gitee.com/scoop-installer/Java                       10/25/2024 9:20:21 AM        294
+    scoopcn https://gitee.com/scoop-installer/scoopcn                    10/28/2024 4:39:06 PM         30
+    spc     https://gh-proxy.com/https://github.com/lzwme/scoop-proxy-cn 10/30/2024 9:53:02 AM      10017
+    .NOTES
+    Author: Cxxu
+    #>
+    param(
+        # 这里指定scoop安装目录(家目录)(也是符号/链接点链接所在目录),可以创建相应的环境变量来更优雅指定此路径,比如`setx Scoop $home\scoop`,然后使用$env:scoop 表示scoop家目录
+        $Path = "$home\scoop",
+        # 在这里设置默认版本,当你不提供参数时,默认使用这个默认指定的版本
+        $ToPath = "$home\scoop0"
+    )
+    # 确保指定目录存在
+    $path, $ToPath | ForEach-Object {
+        New-Item -Path $_ -ItemType Directory -Verbose -ErrorAction SilentlyContinue 
+    }
+    $ToPath = Resolve-Path $ToPath
+    New-Item -ItemType Junction -Path $Path -Target $ToPath -Verbose -Force
+    #检查切换后的目录内是否有scoop可以用
+    $res = Get-Command scoop -ErrorAction SilentlyContinue
+    if (!$res)
+    {
+        Write-Warning "Scoop not found in $ToPath,Scoop isn't available now"
+        Write-Warning 'Consider to install a new scoop version before use it'
+    }
+    else
+    {
+        Write-Host "Scoop was found in $ToPath,so scoop is available now!" 
+        # 查看当前版本下的buckets
+        scoop bucket list | Format-Table 
+    }
+}
+
 function Deploy-ScoopForCNUser
 {
  
