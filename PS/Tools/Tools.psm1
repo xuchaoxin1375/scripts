@@ -1,4 +1,15 @@
-
+function Get-CxxuPsModuleVersion
+{
+    <# 
+    通过git提交时间显示版本情况
+    #>
+    param (
+       
+    )
+    git log -1 
+    # git log -1 --pretty=format:'%h - %an, %ar%n%s'
+    
+}
 function Format-IndexObject
 {
     <# 
