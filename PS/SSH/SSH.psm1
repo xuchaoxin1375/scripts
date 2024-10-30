@@ -53,7 +53,7 @@ function Get-SSHPubKeysAdderScripts
 
     $script = '$pubkey=' + "'$pubkey_content'" + @'
 
-#    Enable-SSHPubkeyAuthentication
+Enable-SSHPubkeyAuthentication
 
 $authorized_keys='~/.ssh/authorized_keys'
 if(Test-Path $authorized_keys){
@@ -154,12 +154,15 @@ $p=scoop which sshd ;$dir=Split-Path $p;cd $dir; & .\install-sshd.ps1
             if ($res)
             {
                 $p = $res | Select-Object -ExpandProperty Source
-                if ($p -like '*scoop*'){
+                if ($p -like '*scoop*')
+                {
 
                     Write-Verbose 'sshd is installed by scoop' -Verbose
                 }
 
-            }else{
+            }
+            else
+            {
 
                 scoop install openssh # -g 可以选择全局安装,需要管理员权限
             }
@@ -381,6 +384,11 @@ function Set-SSHDefaultShell
         # $value = 'cmd.exe'
         $value = 'C:\Windows\System32\cmd.exe'
     }
-    New-ItemProperty -Path 'HKLM:\SOFTWARE\OpenSSH' -Name DefaultShell -Value $value -PropertyType String -Force
+    if (Get-Command $value )
+    {
+        New-ItemProperty -Path 'HKLM:\SOFTWARE\OpenSSH' -Name DefaultShell -Value $value -PropertyType String -Force
+    }else{
+        Write-Host "Can't find $value,try another shell"
+    }
         
 }
