@@ -1,12 +1,28 @@
-function Get-CxxuPsModuleVersion
+function Get-CxxuPsModuleVersoin {
+    param (
+        
+    )
+    Get-RepositoryVersion -Repository $scripts
+    
+}
+function Get-RepositoryVersion
 {
     <# 
     通过git提交时间显示版本情况
     #>
     param (
-       
+        $Repository = './'
     )
-    git log -1 
+    $Repository = Resolve-Path $Repository
+    Write-Verbose "Repository:[$Repository]" -Verbose
+    Write-Output $Repository
+    Push-Location $Repository
+    git log -1
+    Pop-Location
+    # Set-Location $Repository
+    # git log -1 
+    # Set-Location -
+
     # git log -1 --pretty=format:'%h - %an, %ar%n%s'
     
 }
