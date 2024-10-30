@@ -1069,7 +1069,7 @@ function Set-ScoopVersion
             Write-Host 'Use default backup Path name $NewPath'
         }
         # return 
-        Rename-Item $Path -NewPath "${NewPath}"
+        Rename-Item $Path -NewName "${NewPath}"
     }
     else
     {
