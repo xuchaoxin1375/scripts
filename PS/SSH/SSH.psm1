@@ -149,7 +149,20 @@ $p=scoop which sshd ;$dir=Split-Path $p;cd $dir; & .\install-sshd.ps1
      
         if (Get-Command scoop -ErrorAction SilentlyContinue)
         {
-            scoop install openssh # -g 可以选择全局安装,需要管理员权限
+            #检查是否通过scoop安装了openssh，如果没有就安装
+            $res = Get-Command sshd -ErrorAction SilentlyContinue
+            if ($res)
+            {
+                $p = $res | Select-Object -ExpandProperty Source
+                if ($p -like '*scoop*'){
+
+                    Write-Verbose 'sshd is installed by scoop' -Verbose
+                }
+
+            }else{
+
+                scoop install openssh # -g 可以选择全局安装,需要管理员权限
+            }
             $p = scoop which sshd ; $dir = Split-Path $p; Set-Location $dir; & .\install-sshd.ps1
         }
         # return 
