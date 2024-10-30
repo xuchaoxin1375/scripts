@@ -222,7 +222,7 @@ function wiki2latex
     param(
         [Parameter(ValueFromPipeline)]
         [String]
-        $content = 'Noting!'
+        $content = (Get-Clipboard)
     )
     process
     {
@@ -246,10 +246,18 @@ function ty2latex
     [CmdletBinding()]
     param(
         [parameter(ValueFromPipeline)]
-        $String
+        $String,
+        $Path="$home\desktop\ty2latex.txt"
     )
+    #默认从文件中读取内容
+    if(!$String){
+        if(Test-Path $Path){
+            $String = Get-Content $Path
+        }
+        $String = Get-Clipboard
+    }
     #方案1:正则匹配
-    $res = $String -replace '(\\\(\s*)|(\s*\\\))', '$' -replace '(\\\[)|(\\\])', '$$$$'
+    $res = $String -replace '(\\\(\s*)|(\s*\\\))', '$' -replace '(\\\[\s*)|(\s*\\\])', '$$$$'
     #方案2:精准替换(容错性不足,但是规则简单,使用字符串的Replace()函数)
     # $res=$String.replace('\(','$').replace('\)','$').replace('\[','$$').replace('\]','$$')
 
