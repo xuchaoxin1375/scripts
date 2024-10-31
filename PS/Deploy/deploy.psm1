@@ -1055,17 +1055,20 @@ function Set-ScoopVersion
         # 这里指定scoop安装目录(家目录)(也是符号/链接点链接所在目录),可以创建相应的环境变量来更优雅指定此路径,比如`setx Scoop $home\scoop`,然后使用$env:scoop 表示scoop家目录
         $Path = "$home\scoop",
         # 在这里设置默认版本,当你不提供参数时,默认使用这个默认指定的版本
+        [parameter(Position = 0)]
         $ToPath = "$home\scoop0"
     )
     #检查现有目录
-    $mode = Get-Item $Path | Select-Object -ExpandProperty Mode
+    
+
+    $mode = Get-Item $Path -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Mode 
     if ($mode -notlike 'l*')
     {
-        Write-Warning 'The scoop path already exist! Try to backup it first'
-        $NewPath = Read-Host 'Please input the new name of the path'
+        Write-Warning "The scoop path [$Path] already exist! Try to backup it first"
+        $NewPath = Read-Host "Please input the new name of the path (default is [$ToPath])"
         if ($NewPath.Trim() -eq '')
         {
-            $NewPath = "$home\scoop0"
+            $NewPath = $ToPath
             Write-Host "Use default backup Path name $NewPath"
         }
         # return 
@@ -1073,14 +1076,30 @@ function Set-ScoopVersion
     }
     else
     {
-        Write-Verbose "The scoop link already exist,change to $ToPath" -Verbose
+        Write-Verbose "The scoop [link] already exist,change to $ToPath" -Verbose
     }
+   
     # 确保指定目录存在
     $path, $ToPath | ForEach-Object {
         New-Item -Path $_ -ItemType Directory -Verbose -ErrorAction SilentlyContinue 
     }
     $ToPath = Resolve-Path $ToPath
     New-Item -ItemType Junction -Path $Path -Target $ToPath -Verbose -Force
+
+    $NewName = Split-Path $ToPath -Leaf #用作配置文件目录
+    $ConfigHome = "$home\.config"
+    $ScoopConfigHome = "$ConfigHome\scoop"
+    $ToScoopConfigHome = "$configHome\$newName"
+
+    $mode = Get-Item $ScoopConfigHome -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Mode
+    if ($mode -notlike 'l*')
+    {
+        Write-Warning 'The scoop config path already exist! Try to backup it first'
+      
+        Rename-Item $ScoopConfigHome -NewName $ToScoopConfigHome -Verbose
+    }
+    New-Item -ItemType Directory -Path $ToScoopConfigHome -Verbose -ErrorAction SilentlyContinue
+    New-Item -ItemType Junction -Path $scoopConfigHome -Target $ToScoopConfigHome -Verbose -Force
     #检查切换后的目录内是否有scoop可以用
     $res = Get-Command scoop -ErrorAction SilentlyContinue
     if (!$res)
@@ -1093,6 +1112,7 @@ function Set-ScoopVersion
         Write-Host "Scoop was found in $ToPath,so scoop is available now!" 
         # 查看当前版本下的buckets
         scoop bucket list | Format-Table 
+        scoop config 
     }
 }
 
