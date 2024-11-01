@@ -26,7 +26,8 @@ function Deploy-GitForwindows
         $PackagePath ,
         [switch]$InstallByGiteeScoop,
         
-        $Path = 'C:\PortableGit'
+        $Path = 'C:\PortableGit',
+        [switch]$IgnoreCache
     )
     Write-Verbose 'Try to get the lastest version of git portable version...'
     $latestRelease = Invoke-WebRequest -Uri 'https://api.github.com/repos/git-for-windows/git/releases/latest' -Method Get | ConvertFrom-Json
@@ -52,7 +53,7 @@ function Deploy-GitForwindows
     }
 
     # 用New-Item的-force参数,即便路径已经存在,也不会报错(如果已经存在此目录,内部的也不会被覆盖(移除))
-    New-Item -ItemType Directory $Path -Verbose -Force 
+    New-Item -ItemType Directory $Path -Verbose -Force # -ErrorAction SilentlyContinue
     if ( $PSCmdlet.ParameterSetName -eq 'PackagePath' )
     {
         $Package = $PackagePath
@@ -61,7 +62,7 @@ function Deploy-GitForwindows
     {
 
         $Package = "$Path\PortableGit.7z.exe"
-        if (!(Test-Path $Package))
+        if ($IgnoreCache -or !(Test-Path $Package))
         {
             $url = "${mirror}/${url}".Trim('/')
             Write-Host "Downloading [$url] to $Package" -ForegroundColor Blue
