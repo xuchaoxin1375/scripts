@@ -313,6 +313,7 @@ function Remove-RedundantSemicolon
     }
 
 }
+
 function Get-EnvVarRawValue
 {
     <# 
@@ -378,6 +379,7 @@ function Get-EnvVarRawValue
     # 返回的是一个字符串,而不是;分隔的字符串数组
     return $currentValue 
 }
+
 function Get-EnvVarExpandedValue
 {
     <# 
@@ -790,6 +792,56 @@ function Clear-EnvValue
     )
     Add-EnvVar -EnvVar $EnvVar -NewValue '' -Scope $Scope 
 
+}
+function Remove-EnvVarValue
+{
+    <# 
+    .SYNOPSIS
+    删除环境变量中的指定值
+    .DESCRIPTION
+    注意指定Scope,这是必须的
+    #>
+    param (
+        [string]$EnvVar,
+        [string]$ValueToRemove,
+        [validateset('Machine', 'User')]$Scope = 'User'
+    )
+
+    $CurrentValue = [Environment]::GetEnvironmentVariable($EnvVar, $Scope)
+
+    if ( $CurrentValue )
+    {
+        $NewValue = ($CurrentValue -split ";") | Where-Object { $_ -ne $ValueToRemove } | Join-String -Separator ";"
+        
+        [Environment]::SetEnvironmentVariable($EnvVar, $NewValue, $Scope)
+        if ($NewValue.Length -lt $CurrentValue.Length)
+        {
+
+            Write-Host "Removed [$ValueToRemove] from $EnvVar"
+            # $res = [Environment]::GetEnvironmentVariable($EnvVar, $Scope) -split ';'
+            # Write-Output $res
+        }
+        else
+        {
+
+            Write-Warning "[$ValueToRemove] does not exist in $EnvVar"
+            # 用户可能拼写错误,尝试给出提示(如果存在合适的提示的话)
+            $suggest = $CurrentValue -split ';' | Where-Object { $_ -like "*${ValueToRemove}*" }
+            if ($suggest)
+            {
+                
+                Write-Verbose "may be you want to try these available values: " -Verbose
+                $suggest
+            }
+
+        }
+    }
+    else
+    {
+        Write-Warning "$EnvVar does not exist,no need to remove!"
+        
+        Write-Warning 'Or you can try another scope(User or Machine),User is default scope option'
+    }
 }
 function Remove-EnvVar
 {
