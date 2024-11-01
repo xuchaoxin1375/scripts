@@ -108,3 +108,6 @@ function Deploy-GitForwindows
     # 可以选择列出潜在的所有git版本
     Get-Command git.exe* | Select-Object Name, Source, CommandType, Version
 }
+
+#检查当前命令是否可用
+Get-Command Deploy-GitForwindows -Syntax
