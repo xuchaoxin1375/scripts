@@ -1,4 +1,5 @@
-function Get-CxxuPsModuleVersoin {
+function Get-CxxuPsModuleVersoin
+{
     param (
         
     )
@@ -360,6 +361,30 @@ function Disable-WindowsUpdateByDelay
     $reg = "$PsScriptRoot\..\..\registry\windows-updates-pause.reg" | Resolve-Path
     Write-Host $reg
     & $reg
+}
+function Set-TaskBarTime
+{
+    <# 
+    sShortTime：控制系统中短时间,不显示秒（例如 HH:mm）的显示格式，HH 表示24小时制（H 单独使用则表示12小时制）。
+    sTimeFormat：控制系统的完整时间格式(长时间格式,相比于短时间格式增加了秒数显示)
+    .EXAMPLE
+    #设置为12小时制,且小时为个位数是不补0
+     Set-TaskBarTime -TimeFormat h:mm:ss 
+     .EXAMPLE
+    #设置为24小时制，且小时为个位数是补0
+     Set-TaskBarTime -TimeFormat H:mm:ss
+     .EXAMPLE
+    #设置为24小时制，且小时为个位数是补0
+     Set-TaskBarTime -TimeFormat HH:mm:ss
+    #>
+    param (
+        # $ShortTime = 'HH:mm',
+        $TimeFormat = 'H:mm:ss'
+    )
+    # Set-ItemProperty -Path 'HKCU:\Control Panel\International' -Name 'sShortTime' -Value $ShortTime
+    Set-ItemProperty -Path 'HKCU:\Control Panel\International' -Name 'sTimeFormat' -Value $TimeFormat
+
+    
 }
 function Sync-SystemTime
 {
