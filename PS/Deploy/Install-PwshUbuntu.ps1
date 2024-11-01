@@ -9,7 +9,7 @@ sudo apt-get install -y wget
 
 # Download the PowerShell package file
 
-wget https://gh-proxy.com/https://github.com/PowerShell/PowerShell/releases/download/v7.4.5/powershell_7.4.5-1.deb_amd64.deb
+wget https://ghp.ci/https://github.com/PowerShell/PowerShell/releases/download/v7.4.5/powershell_7.4.5-1.deb_amd64.deb
 
 ###################################
 # Install the PowerShell package

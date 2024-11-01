@@ -17,6 +17,7 @@ $GithubMirrorsInString = @'
 'https://ghproxy.cc',
 'https://ghproxy.net', # GitHub Proxy by GitHub99 - 提供 GitHub 文件的加速下载和克隆服务 #和用户自己的代理可能发生冲突
 'https://mirror.ghproxy.com',
+https://ghp.ci/,
 
 # 'https://ghproxy.com/bad/demo', #虚假镜像,用来测试代码是否能够正确处理不可用的镜像链接
 'https://ghproxy.homeboyc.cn/',
