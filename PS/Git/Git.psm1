@@ -192,7 +192,10 @@ function Invoke-GithubResourcesSpeedup
     支持管道符输入(注意要是字符串才能传过管道符,可以用引号包裹)
 
     支持指定Aria2多线程下载(默认尝试调用,不可用的话则尝试用invoke-webrequest下载)
-
+    .Notes
+    aria2c 设置UA
+    -U, --user-agent=<USER_AGENT>¶
+    Set user agent for HTTP(S) downloads. Default: aria2/$VERSION, $VERSION is replaced by package version.
     .EXAMPLE
     PS> Invoke-GithubResourcesSpeedup -Url https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip
     Download from: https://mirror.ghproxy.com/https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip
@@ -207,9 +210,9 @@ function Invoke-GithubResourcesSpeedup
 
         [Parameter(Mandatory = $false)]
         [string]$Directory = "$env:USERPROFILE/Downloads",
-        $FileName = '', 
+        # $FileName = '', 
         [validateset('aria2c', 'webrequest')]
-        $Downloader = 'aria2c', #aria2c和aria2的意思一样
+        $Downloader = 'webrequest', #aria2c和aria2的意思一样
         $Threads = 16
     
     )
@@ -221,6 +224,7 @@ function Invoke-GithubResourcesSpeedup
         {
             throw 'Get-SpeedUpUrl function is not found. Please define it before using Invoke-GithubResourcesSpeedup.'
         }
+        $UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.66 Safari/537.36'
         
     }
 
@@ -234,27 +238,27 @@ function Invoke-GithubResourcesSpeedup
         # 默认使用powershell自带命令下载(aria2c 线程数设置太多可能会下不动)
         if ($Downloader -eq 'WebRequest')
         {
-            Invoke-WebRequest -Uri $speedUpUrl -OutFile $Directory
+            # Invoke-WebRequest -Uri $speedUpUrl -OutFile $Directory
+            Invoke-WebRequest -Uri $speedUpUrl -OutFile $Directory -UserAgent $UA
+
         }
         elseif ($downloader -like 'aria2*')
         {
-            $Aria2Availability = Get-Command aria2* -ErrorAction SilentlyContinue | Select-Object -First 1 | Select-Object -ExpandProperty Source | Split-Path -LeafBase #防止找到多个aria2c,这里使用select -First 1来指定其中的第一个
+            # $Aria2Availability = Get-Command aria2* -ErrorAction SilentlyContinue | Where-Object { $_.CommandType -eq 'Application' } | Select-Object -First 1 | Select-Object -ExpandProperty Source | Split-Path -LeafBase #防止找到多个aria2c,这里使用select -First 1来指定其中的第一个
+            $Aria2Availability = Get-Command aria2c -ErrorAction SilentlyContinue
             if ($Aria2Availability)
             {
-                $downloader = $Aria2Availability
+                Write-Verbose "Aria2c is available!"
+                # $downloader = $Aria2Availability
             }
-            else
-            {
-                # aria2c不可用,将下载器置为为空,表示使用默认下载命令
-                $downloader = ''
-            }
-            $expression = "$downloader  $SpeedUpUrl -d $Directory  -s $Threads -x 16 -k 1M "  
+            
+            $expression = "aria2c  $SpeedUpUrl -d $Directory  -s $Threads -x 16 -k 1M --user-agent='$UA'"  
             # if ($VerbosePreference)
             # {
             #     $expression += ' --console-log-level=info ' #输出内容很长
             # }
             # 如果指定了文件名,则将文件下载为指定的文件名,否则默认名字
-            $expression = ($FileName) ? ($expression + " -o $FileName"): $expression
+            # $expression = ($FileName) ? ($expression + " -o $FileName"): $expression
             #以Verbose的风格显示aria2c下载命令行
             Write-Verbose $expression -Verbose
 
