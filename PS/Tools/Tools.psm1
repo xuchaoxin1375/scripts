@@ -234,7 +234,11 @@ function Set-ExplorerSoftwareIcons
     
     
         # 添加SYSTEM和Administrators的完全控制权限
-        $identities = @('NT AUTHORITY\SYSTEM', 'BUILTIN\Administrators')
+        $identities = @(
+            'NT AUTHORITY\SYSTEM'
+            # ,
+            # 'BUILTIN\Administrators'
+        )
         if ($Enabled -eq 'True')
         {
             $identities += @('Everyone')
