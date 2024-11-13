@@ -527,7 +527,7 @@ function Get-ComputerCoreHardwareInfo
             Write-Progress -Activity "Geting hardware info" -Status "Completed: $completed %" -PercentComplete ($completed)
             Invoke-Expression $task
             # Start-Sleep 1
-            Write-Host $index 
+            # Write-Host $index 
             $index++
         }
         return $cpu, $memory, $disk, $os, $motherboard, $gpu
@@ -633,7 +633,8 @@ function Get-ComputerCoreHardwareInfo
         Write-Host ('---------------------------') -ForegroundColor Cyan
         $index++
     }
-    Write-Warning ('显存: 请使用专门工具或任务管理器中的性能面板查看:dxgi-info.exe,dxdiag.exe' ) 
+    Write-Warning ('显存: 建议使用专门工具或任务管理器中的性能面板查看:dxgi-info.exe,dxdiag.exe' +
+     "`n下面显示的信息来自于dxgi-info.exe;每个显卡都用====Adapter===== 分割引出信息(省电模式可能会禁用显卡导致部分信息不可用)") 
     dxgi-info.exe
     
 }
