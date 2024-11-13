@@ -498,36 +498,78 @@ function Get-SystemInfoBasic
    #>
     Get-CimInstance -ClassName Win32_OperatingSystem | Select-Object Caption, Version, OSArchitecture, BuildNumber
 }
-# function Get-SystemInfo
+
 function Get-ComputerCoreHardwareInfo
 {
-    # 获取 CPU 信息
-    $cpu = Get-WmiObject -Class Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors, MaxClockSpeed
-    
-    # 获取内存信息
-    $memory = Get-WmiObject -Class Win32_PhysicalMemory | Select-Object Manufacturer, Capacity, Speed
-    # 计算内存总容量 (以GB为单位)
-    $totalMemoryGB = ($memory | Measure-Object -Property Capacity -Sum).Sum / 1GB
-
- 
-    
-    # 获取磁盘信息
-    $disk = Get-WmiObject -Class Win32_DiskDrive | Select-Object Model, Size, MediaType
-    
-    # 获取操作系统信息
-    $os = Get-WmiObject -Class Win32_OperatingSystem | Select-Object Caption, Version, OSArchitecture, LastBootUpTime
-    
-    # 获取主板信息
-    $motherboard = Get-WmiObject -Class Win32_BaseBoard | Select-Object Manufacturer, Product, SerialNumber
-    
-    # 获取显卡信息
-    $gpu = Get-WmiObject -Class Win32_VideoController | Select-Object Name, AdapterRAM, DriverVersion
-    
     # 输出信息，使用不同颜色和格式化显示
     Write-Host '---------------------------' -ForegroundColor Cyan
     Write-Host '系统核心配置信息:' -ForegroundColor Yellow
     Write-Host '---------------------------' -ForegroundColor Cyan
+    
+    # 获取硬件信息
+    # 方案1:串行等待执行
+    function Get-HardwareInfoSerial
+    {
+        $s = {
+            $cpu = Get-CimInstance -ClassName Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors, MaxClockSpeed
+            $memory = Get-CimInstance -ClassName Win32_PhysicalMemory | Select-Object Manufacturer, Capacity, Speed
+            $disk = Get-CimInstance -ClassName Win32_DiskDrive | Select-Object Model, Size, MediaType
+            $os = Get-CimInstance -ClassName Win32_OperatingSystem | Select-Object Caption, Version, OSArchitecture, LastBootUpTime
+            $motherboard = Get-CimInstance -ClassName Win32_BaseBoard | Select-Object Manufacturer, Product, SerialNumber
+            $gpu = Get-CimInstance -ClassName Win32_VideoController | Select-Object Name, AdapterRAM, DriverVersion 
+        }
+        $tasks = $s.ToString() -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+        $index = 0
+        foreach ($task in $tasks)
+        {
+            $completed = $index / ($tasks.Count)
+            $completed = [math]::round($completed * 100, 2) 
+            Write-Progress -Activity "Geting hardware info" -Status "Completed: $completed %" -PercentComplete ($completed)
+            Invoke-Expression $task
+            # Start-Sleep 1
+            Write-Host $index 
+            $index++
+        }
+        return $cpu, $memory, $disk, $os, $motherboard, $gpu
+    }
+    $cpu, $memory, $disk, $os, $motherboard, $gpu = Get-HardwareInfoSerial
+    #方案2:后台并行执行
+    # # 启动后台任务
+    function Get-HardwareInfobyJobs
+    { 
+        $cpuJob = Start-Job -ScriptBlock { Get-CimInstance -ClassName Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors, MaxClockSpeed }
+        $memoryJob = Start-Job -ScriptBlock { Get-CimInstance -ClassName Win32_PhysicalMemory | Select-Object Manufacturer, Capacity, Speed }
+        $diskJob = Start-Job -ScriptBlock { Get-CimInstance -ClassName Win32_DiskDrive | Select-Object Model, Size, MediaType }
+        $osJob = Start-Job -ScriptBlock { Get-CimInstance -ClassName Win32_OperatingSystem | Select-Object Caption, Version, OSArchitecture, LastBootUpTime }
+        $motherboardJob = Start-Job -ScriptBlock { Get-CimInstance -ClassName Win32_BaseBoard | Select-Object Manufacturer, Product, SerialNumber }
+        $gpuJob = Start-Job -ScriptBlock { Get-CimInstance -ClassName Win32_VideoController | Select-Object Name, AdapterRAM, DriverVersion }
 
+        # 等待所有任务完成
+        Wait-Job -Job $cpuJob, $memoryJob, $diskJob, $osJob, $motherboardJob, $gpuJob
+
+        # 获取结果
+        $cpu = Receive-Job -Job $cpuJob
+        $memory = Receive-Job -Job $memoryJob
+        $disk = Receive-Job -Job $diskJob
+        $os = Receive-Job -Job $osJob
+        $motherboard = Receive-Job -Job $motherboardJob
+        $gpu = Receive-Job -Job $gpuJob
+
+        # 清理任务
+        Remove-Job -Job $cpuJob, $memoryJob, $diskJob, $osJob, $motherboardJob, $gpuJob
+
+        # # 输出结果
+        # $cpu
+        # $memory
+        # $disk
+        # $os
+        # $motherboard
+        # $gpu
+    }
+
+    # 计算总内存容量 (以GB为单位)
+    $totalMemoryGB = ($memory | Measure-Object -Property Capacity -Sum).Sum / 1GB
+    
     # CPU 信息
     Write-Host 'CPU 信息' -ForegroundColor Green
     $cpu | ForEach-Object {
@@ -540,12 +582,15 @@ function Get-ComputerCoreHardwareInfo
 
     # 内存信息
     Write-Host '内存信息' -ForegroundColor Green
-    # 输出总内存容量
     Write-Host ('内存总容量: {0} GB' -f [math]::round($totalMemoryGB, 2)) -ForegroundColor Cyan
-    $memory | ForEach-Object {
+    $memory | ForEach-Object -Begin { $index = 1 } {
+        Write-Host ('---------------------------') -ForegroundColor Cyan
+        Write-Host ('内存条 {0}' -f $index) -ForegroundColor Yellow
         Write-Host ('制造商: {0}' -f $_.Manufacturer)
         Write-Host ('容量: {0} GB' -f ([math]::round($_.Capacity / 1GB, 2)))
         Write-Host ('速度: {0} MHz' -f $_.Speed)
+        Write-Host ('---------------------------') -ForegroundColor Cyan
+        $index++
     }
     Write-Host ''
 
@@ -579,14 +624,19 @@ function Get-ComputerCoreHardwareInfo
 
     # 显卡信息
     Write-Host '显卡信息' -ForegroundColor Green
-    $gpu | ForEach-Object {
+    $gpu | ForEach-Object -Begin { $index = 1 } {
+        Write-Host '---------------------------' -ForegroundColor Cyan
+        Write-Host ('显卡 {0}' -f $index) -ForegroundColor Yellow
         Write-Host ('名称: {0}' -f $_.Name)
-        Write-Host ('显存: {0} GB' -f ([math]::round($_.AdapterRAM / 1GB, 2)))
+        # Write-Host ('显存: {0} GB' -f ([math]::round($_.AdapterRAM / 1GB, 2))) #不准确
         Write-Host ('驱动版本: {0}' -f $_.DriverVersion)
+        Write-Host ('---------------------------') -ForegroundColor Cyan
+        $index++
     }
-    Write-Host '---------------------------' -ForegroundColor Cyan
+    Write-Warning ('显存: 请使用专门工具或任务管理器中的性能面板查看:dxgi-info.exe,dxdiag.exe' ) 
+    dxgi-info.exe
+    
 }
-
 
 function Get-ModuleByCxxu
 {
