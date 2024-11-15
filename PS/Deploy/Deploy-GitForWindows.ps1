@@ -79,7 +79,7 @@ function Deploy-GitForwindows
     Start-Process "$Package" -ArgumentList '-y' -Wait #使用Start-Process命令执行安装,配合-wait参数等待安装完成再执行后续内容
     #将目录转移到专门的目录下
     # Move-Item $Path\PortableGit "$env:SystemDrive\" -Verbose -Force
-    Move-Item $Path\PortableGit\* "$path" -Verbose -Force
+    Move-Item $Path\PortableGit\* "$path" -Verbose -Force -Confirm:$false
     # Expand-Archive -Path $Package -DestinationPath $Path 
 
     # 临时地(在当前powershell会话内,让git命令可以在任意目录下调用),如果需要后续任意目录下调用，需要添加git.exe所在目录到环境变量Path

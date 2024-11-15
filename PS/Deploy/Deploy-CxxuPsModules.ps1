@@ -333,5 +333,14 @@ function Install-CxxuPsModules-Deprecated
 # {
 #     Deploy-CxxuPsModules -Verbose
 # }
+function Remove-CxxuPsModulesEnvVars {
+    param (
+        
+    )
 
+    Remove-EnvVar -EnvVar CxxuPsModulePath
+    Remove-EnvVarValue -EnvVar Path -ValueToRemove 'C:\PortableGit\bin' 
+    Remove-EnvVarValue -EnvVar Path -ValueToRemove "$env:systemDrive\powershell\7"
+    
+}
 Deploy-CxxuPsModules -Verbose -Confirm
