@@ -1471,21 +1471,23 @@ function Deploy-LinksFromFile
     .DESCRIPTION
     为了提高成功率,建议你创建另一个本地管理员用户maintainer,然后注销当前用户,切换到另一个用户中执行本函数
     .EXAMPLE
-     Deploy-LinksFromFile -Path C:\repos\scripts\PS\Deploy\confs\HomeLinks.conf -DirectoryOfLinks C:\users\cxxu -Directorysource D:\users\cxxu\
+     Deploy-LinksFromFile -Path C:\repos\scripts\PS\Deploy\confs\HomeLinks.conf -DirectoryOfLinksToSave C:\users\cxxu -DirectoryTargetSource D:\users\cxxu\
     #>
     param (
+        #配置文件:记录需要创建链接的符号,比如downloads,documents,scoop,vscode,....
         [Alias('BackupFile')]$Path  ,
 
-        # 需要将符号链接创建或者恢复到的目录
-        $DirectoryOfLinks = '$home',
+        # 需要将符号链接创建或者恢复到的目录,比如'C:\users\cxxu'
+        $DirectoryOfLinksToSave = "$home",
         #例如 "D:\users\$env:UserName"
+        #指定要链接的Target目标存在于哪个目录
         [parameter(Mandatory = $true)]
-        $Directorysource 
+        $DirectoryTargetSource 
     )
     # 遍历每一行
     Get-Content $Path | ForEach-Object {
-        $Path = "$DirectoryOfLinks\$_"
-        $Target = "$Directorysource\$_"
+        $Path = "$DirectoryOfLinksToSave\$_"
+        $Target = "$DirectoryTargetSource\$_"
         if (! $_.StartsWith('#') -and $_.Trim() )
         {
             # write-host $Path

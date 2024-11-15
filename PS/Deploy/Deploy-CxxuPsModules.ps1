@@ -139,10 +139,10 @@ function Deploy-CxxuPsModules
         return 
     }
 
-    if ($host.Version.Major -lt 7)
-    {
-        Write-Warning 'Please use powershell7 use full feature of the CxxuPsModules!' 
-    }
+    # if ($host.Version.Major -lt 7)
+    # {
+    #     Write-Warning 'Please use powershell7 use full feature of the CxxuPsModules!' 
+    # }
     
     # 路径准备
     # $NewPsPath = $NewPsPathPattern | Invoke-Expression
@@ -294,9 +294,18 @@ function Deploy-CxxuPsModules
 
     #添加基础环境自动执行任务到$profile中
     # Add-CxxuPsModuleToProfile
+    Write-Warning 'Please use powershell7 use full feature of the CxxuPsModules!' 
+    if ($host.Version.Major -lt 7)
+    {
+        $continue = $PSCmdlet.ShouldProcess("Install-Pwsh7Portable", 'Install pwsh7 portable')
+        if ($continue)
+        {
 
-    #检查模块设置效果
-    Start-Process -FilePath pwsh -ArgumentList '-noe -c p'
+            Invoke-RestMethod 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-Pwsh7Portable.ps1' | Invoke-Expression
+            #检查模块设置效果
+            Start-Process -FilePath pwsh -ArgumentList '-noe -c p'
+        }
+    }
 }
 
 function Install-CxxuPsModules-Deprecated
@@ -333,7 +342,8 @@ function Install-CxxuPsModules-Deprecated
 # {
 #     Deploy-CxxuPsModules -Verbose
 # }
-function Remove-CxxuPsModulesEnvVars {
+function Remove-CxxuPsModulesEnvVars
+{
     param (
         
     )
