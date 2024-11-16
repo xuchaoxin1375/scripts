@@ -267,6 +267,16 @@ function Set-ExplorerSoftwareIcons
         explorer.exe
     }
 }
+function pow
+{
+    [CmdletBinding()]
+    param(
+        [double]$base,
+        [double]$exponent
+    )
+    return [math]::pow($base, $exponent)
+}
+
 # function invoke-aria2Downloader
 # {
 #     param (
