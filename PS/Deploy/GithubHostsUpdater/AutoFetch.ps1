@@ -22,7 +22,7 @@ function Deploy-GithubHostsAutoUpdater-Archive
         [ValidateSet('pwsh', 'powershell')]$shell = 'powershell',
         # 需要执行的更新脚本位置
         $File = '', #自行指定
-        [alias('Comment')]$Description = "Task Create Time: $(Get-DateTimeNumber)"
+        [alias('Comment')]$Description = "Task Create Time: $(Get-Date -Format 'yyyyMMddHHmmss')"
     )
     # 检查参数情况
     Write-Verbose 'Checking parameters ...'
