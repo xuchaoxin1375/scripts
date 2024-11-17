@@ -882,6 +882,25 @@ function PromptBrilliant2
 }
 
 
+function PromptFast
+{
+    <# 
+ .SYNOPSIS
+ 对性能影响小
+ #>
+
+
+    # Write-Host "`t" -NoNewline
+    write-PermissoinLevel
+    Write-UserHostname
+    # Write-HostIp
+    Write-Path
+    Write-Time
+    Write-Uptime
+    write-GitBasicInfo
+    Write-Host ''
+    
+}
 function PromptBalance
 {
     <# 
@@ -1388,7 +1407,7 @@ function Prompt
 
     switch ($env:PsPrompt)
     {
-        # 'Fast' { PromptFast }
+        'Fast' { PromptFast }
         'Brilliant' { PromptBrilliant }
         'Brilliant2' { PromptBrilliant2 }
         'Balance' { PromptBalance }
@@ -1755,7 +1774,7 @@ function Set-PsPrompt
     #>
     [CmdletBinding()]
     param(
-        [ValidateSet('Balance', 'Simple', 'Brilliant', 'Brilliant2', 'Default', 'Short', 'short2')]
+        [ValidateSet('fast', 'Balance', 'Simple', 'Brilliant', 'Brilliant2', 'Default', 'Short', 'short2')]
         # $version = 'Default'
         $version = ''
         # ,
