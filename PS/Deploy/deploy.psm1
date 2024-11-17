@@ -1414,7 +1414,7 @@ function Deploy-GithubHostsAutoUpdater
         $TaskName = 'Update-GithubHosts',
         #其中 $ActionFunction 代表要执行的更新任务,是自动导入可执行的函数
         $ActionFunction = 'Update-GithubHosts',
-        [alias('Comment')]$Description = "Task Create Time: $(Get-DateTimeNumber)"
+        [alias('Comment')]$Description = "Task Create Time: $(Get-Date -Format 'yyyyMMddHHmmss')"
     )
     $continue = Confirm-PsVersion -Major 7 #检查powershell版本
     if (! $continue) { return $false }
