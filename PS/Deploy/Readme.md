@@ -145,6 +145,18 @@ CxxuPsModulePath C:\tmp\CxxuPS\PS
 help Deploy-CxxuPsModules -full
 ```
 
+## 部署临时使用CxxuPsModule Deploy模块
+
+Deploy模块含有大量实用函数(基本上其他单独的deploy-xxx都能在Deploy模块中找到),但是内容较多,有可能被误杀;
+
+建议使用powershell7来执行,powershell v5可能会不兼容或部分函数不兼容
+
+```powershell
+irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy.psm1'|iex
+```
+
+
+
 ## 部署powershell7的方法
 
 - 安装powershell7的方式有很多,这里提供一个一键安装的方案,但是不保证有效
