@@ -1972,6 +1972,7 @@ function Deploy-SmbSharing
     .NOTES
     访问方式共享文件夹的方式参考其他资料 https://cxxu1375.blog.csdn.net/article/details/140139320
     #>
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         
         # 定义共享文件夹路径和共享名称
@@ -1999,7 +2000,13 @@ function Deploy-SmbSharing
         [switch]$Force
     )
     #启用文件共享功能以及网络发现功能(后者是为了方便我们免ip访问,不是必须的)
-
+    $continue = $PSCmdlet.ShouldProcess("$env:USERNAME`@$env:ComputerName", ('Enable file sharing and discovery' + "smbDiscovery:${Path};smbUser:${SmbUser};smbUserkey:${SmbUserkey}"))
+    if (!$continue)
+    {
+        help Deploy-SmbSharing -Full
+        Get-Command Deploy-SmbSharing -Syntax
+        return 'User Cancel the operation!'
+    }
     Enable-NetworkDiscoveyAndSharing
 
     # 检查文件夹是否存在，如果不存在则创建
