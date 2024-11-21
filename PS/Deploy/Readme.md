@@ -165,11 +165,21 @@ Deploy-SmbSharing
 
 ### 部署SmbSharing共享文件夹
 
+部署smbsharing
+
 ```powershel
 irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy.psm1'|iex
 gcm Deploy-SmbSharing -syntax
 # help Deploy-SmbSharing #执行这一行查看使用帮助,默认不执行直接部署配置
 Deploy-SmbSharing -DisableSmbUserLogonLocally -Verbose
+
+```
+
+重置smbsharing:清理默认smb专用用户名和共享名称
+
+```powershell
+Remove-LocalUser smb
+Remove-SmbShare share
 
 ```
 
