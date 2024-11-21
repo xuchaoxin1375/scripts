@@ -2001,7 +2001,7 @@ function Deploy-SmbSharing
     )
     #启用文件共享功能以及网络发现功能(后者是为了方便我们免ip访问,不是必须的)
     $ConfirmPreference='High'
-    $continue = $PSCmdlet.ShouldProcess("$env:USERNAME`@$env:ComputerName", ('Enable file sharing and discovery' + "smbDiscovery:${Path};smbUser:${SmbUser};smbUserkey:${SmbUserkey}"))
+    $continue = $PSCmdlet.ShouldProcess("$env:USERNAME`@$env:ComputerName", ('Enable file sharing and discovery' + "`t smbDiscovery:${Path};`t smbUser:${SmbUser};`t smbUserkey:${SmbUserkey}"))
     if (!$continue)
     {
         help Deploy-SmbSharing -Full
