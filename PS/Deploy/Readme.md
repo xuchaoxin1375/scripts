@@ -183,6 +183,16 @@ Remove-SmbShare share
 
 ```
 
+### 部署ScoopForCnUser
+
+```powershell
+irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy.psm1'|iex
+gcm Deploy-ScoopForCnUser -syntax
+Deploy-ScoopForCNUser -UseGiteeForkAndBucket -InstallBasicSoftwares # -InstallForAdmin
+Add-ScoopBuckets -Silent
+
+```
+
 
 
 ## 部署powershell7的方法
@@ -205,7 +215,7 @@ Remove-SmbShare share
 
 ```powershell
 irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-GitForWindows.ps1'|iex
-Deploy-GitForWindows -IngoreCache
+Deploy-GitForWindows -IgnoreCache
 
 ```
 
