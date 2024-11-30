@@ -259,7 +259,7 @@ function Set-ExplorerSoftwareIcons
     }
     foreach ($path in @($pathUser, $pathMachine))
     {
-        Set-PathPermission -Path $path
+        Set-PathPermission -Path $path *> $null
     }
     Write-Host 'refresh explorer to check icons'    
     if ($RefreshExplorer)

@@ -1375,6 +1375,22 @@ function Deploy-GithubHostsAutoUpdater
     <# 
     .SYNOPSIS
     向系统注册自动更新GithubHosts的计划任务
+    .NOTES
+    支持powershell 5+
+    依赖于在线仓库,会下载相关脚本,开机运行
+    #>
+    param (
+    )
+    Invoke-RestMethod https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/GithubHostsUpdater/Register-GithubHostsAutoUpdater.ps1 | Invoke-Expression
+
+    
+}
+function Deploy-GithubHostsAutoUpdater-Deprecated
+{
+    <# 
+    .SYNOPSIS
+    向系统注册自动更新GithubHosts的计划任务(本函数由于计划任务限制,需要在用户级别环境运行,会定时闪现一个窗口,影响使用体验)
+    如果需要支持powershell 5+,使用单独文件部署,可以在用户登陆桌面前运行,效果更好
     .DESCRIPTION
     如果需要修改触发器，可以自行在源代码内调整，或者参考Microsoft相关文档；也可以使用taskschd.msc 图形界面来创建或修改计划任务
     .Notes
