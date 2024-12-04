@@ -27,6 +27,10 @@ function Get-RepositoryVersion
     # git log -1 --pretty=format:'%h - %an, %ar%n%s'
     
 }
+function Set-Defender
+{
+    . "$PSScriptRoot\..\..\cmd\WDC.bat"
+}
 function Format-IndexObject
 {
     <# 
@@ -539,7 +543,9 @@ custom_channels:
 }
 function Deploy-WindowsActivation
 {
-    Invoke-RestMethod https://massgrave.dev/get | Invoke-Expression
+    # Invoke-RestMethod https://massgrave.dev/get | Invoke-Expression
+
+    Invoke-RestMethod https://get.activated.win | Invoke-Expression
 }
 function Get-BeijingTime
 {
