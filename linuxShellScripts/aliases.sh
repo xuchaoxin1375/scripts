@@ -38,12 +38,12 @@ a vimR="vim -R"#使用只读模式的vim来查看文件也是不错的
 # wget www.google.com
 curl_gg="curl -i google.com|nl"
 # 通过别名/bash函数来配置,方便控制开关.
-# e https_proxy=127.0.0.1:7890
-# e http_proxy=127.0.0.1:7890
-# echo  {https_proxy,http_proxy}=127.0.0.1:7890
-# 分配律等价于: https_proxy=127.0.0.1:7890 http_proxy=127.0.0.1:7890
-a proxy_on="export {https_proxy,http_proxy}=127.0.0.1:7890"
-a proxy_off="unset {https_proxy,http_proxy}=127.0.0.1:7890"
+# e https_proxy=127.0.0.1:7897
+# e http_proxy=127.0.0.1:7897
+# echo  {https_proxy,http_proxy}=127.0.0.1:7897
+# 分配律等价于: https_proxy=127.0.0.1:7897 http_proxy=127.0.0.1:7897
+a proxy_on="export {https_proxy,http_proxy}=127.0.0.1:7897"
+a proxy_off="unset {https_proxy,http_proxy}=127.0.0.1:7897"
 a remove_perge_package="sudo apt-get purge --auto-remove "
 a gccp="g++"
 a cp="cp"

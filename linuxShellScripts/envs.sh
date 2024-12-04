@@ -34,13 +34,13 @@ e d="/mnt/d"
 e c="/mnt/c"
 # -------------under---------
 
-# INFO[0000] Mixed(http+socks) proxy listening at: [::]:7890
+# INFO[0000] Mixed(http+socks) proxy listening at: [::]:7897
 # 测试代理是否可以加速:
 # curl https://duckduckgo.com/
 # wget www.google.com
 # 通过别名/bash函数来配置,方便控制开关.
-# e https_proxy=127.0.0.1:7890
-# e http_proxy=127.0.0.1:7890
+# e https_proxy=127.0.0.1:7897
+# e http_proxy=127.0.0.1:7897
 
 e zsh_plugins=${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins
 e zsh_syntax_highlighting=$zsh_plugins/zsh_syntax_highlighting

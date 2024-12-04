@@ -60,8 +60,8 @@ function Set-Proxy
         200
 
     proxy is available!
-    $env:http_proxy=http://localhost:7890
-    $env:https_proxy=http://localhost:7890
+    $env:http_proxy=http://localhost:7897
+    $env:https_proxy=http://localhost:7897
 
     PS🌙[BAT:80%][MEM:37.4% (11.86/31.71)GB][21:16:35]
     # [cxxu@CXXUCOLORFUL][<W:192.168.1.178>][C:\repos\scripts]{Git:main}
@@ -71,7 +71,7 @@ function Set-Proxy
     param(
         [ValidateSet('On', 'Off')]$Status = 'On',
         #开关选项,默认不使用该选项,表示开启代理,使用该选项表示关闭代理
-        $Port = '7890',
+        $Port = '7897',
         #这里假设走本地提供的代理服务,或者localhost通常就是127.0.0.1,如果是其他服务器,可以自己修改
         $Server = 'http://localhost',
         [switch]$TestProxyAvailable
