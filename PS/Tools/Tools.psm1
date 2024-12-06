@@ -568,6 +568,101 @@ function Disable-WindowsUpdateByDelay
     Write-Host $reg
     & $reg
 }
+function Get-BootEntries
+{
+    
+    chcp 437; cmd /c bcdedit | Write-Output | Out-String -OutVariable bootEntries *> $null
+
+
+    # 使用正则表达式提取identifier和description
+    $regex = "identifier\s+(\{[^\}]+\})|description\s+(.+)"
+    $matches = [regex]::Matches($bootEntries, $regex)
+    # $matches
+
+
+    $entries = @()
+    $ids = @()
+    $descriptions = @()
+    foreach ($match in $matches)
+    {
+        $identifier = $match.Groups[1].Value
+        $description = $match.Groups[2].Value
+
+        if ($identifier  )
+        {
+            $ids += $identifier
+        }
+        if ( $description )
+        {
+            $descriptions += $description
+        }
+
+    }
+    foreach ($id in $ids)
+    {
+        $entries += [PSCustomObject]@{
+            Identifier  = $id
+            Description = $descriptions[$ids.IndexOf($id)]
+        }
+    }
+
+    Write-Output $entries
+}
+
+function rebootToOS
+{
+    Add-Type -AssemblyName PresentationFramework
+    $bootEntries = Get-BootEntries
+    # 定义启动项
+    # $bootEntries = @(
+    #     [PSCustomObject]@{Identifier = '{bootmgr}'; Description = 'Windows Boot Manager' },
+    #     [PSCustomObject]@{Identifier = '{current}'; Description = 'Windows 10' },
+    #     [PSCustomObject]@{Identifier = '{b794f931-144f-11ef-bbb1-dcfb484e80bc}'; Description = 'Windows 10' }
+    # )
+
+    # 创建窗口
+    [xml]$xaml = @"
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        Title="Choose Boot Entry" Height="500" Width="400">
+    <StackPanel>
+        <TextBlock Text="Select a system to reboot into:" Margin="10"/>
+        <ListBox Name="BootEntryList" Margin="10" DisplayMemberPath="Description"/>
+        <Button Name="RebootButton" Content="Reboot" Margin="10" HorizontalAlignment="Center" Width="100"/>
+    </StackPanel>
+</Window>
+"@
+
+    $reader = (New-Object System.Xml.XmlNodeReader $xaml)
+    $window = [Windows.Markup.XamlReader]::Load($reader)
+
+    # 获取控件
+    $listBox = $window.FindName("BootEntryList")
+    $button = $window.FindName("RebootButton")
+
+    # 填充ListBox
+    $listBox.ItemsSource = $bootEntries
+
+    # 定义按钮点击事件
+    $button.Add_Click({
+            $selectedEntry = $listBox.SelectedItem
+            if ($null -ne $selectedEntry)
+            {
+                $identifier = $selectedEntry.Identifier
+                Write-Output "Rebooting to: $($selectedEntry.Description) with Identifier $identifier"
+                # 调用重启命令 (此处只是示例，实际环境中请谨慎操作)
+                # shutdown.exe /r /t 0 /fw /f /d p:4:1 /c "Reboot to $identifier"
+            }
+            else
+            {
+                [System.Windows.MessageBox]::Show("Please select an entry to reboot into.", "No Entry Selected", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning)
+            }
+        })
+
+    # 显示窗口
+    $window.ShowDialog()
+
+}
+
 function Set-TaskBarTime
 {
     <# 
