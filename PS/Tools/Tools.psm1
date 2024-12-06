@@ -571,26 +571,32 @@ function Disable-WindowsUpdateByDelay
 function Get-BootEntries
 {
     
-    chcp 437; cmd /c bcdedit | Write-Output | Out-String -OutVariable bootEntries *> $null
+    chcp 437 >$null; cmd /c bcdedit | Write-Output | Out-String -OutVariable bootEntries *> $null
 
 
     # 使用正则表达式提取identifier和description
-    $regex = "identifier\s+(\{[^\}]+\})|description\s+(.+)"
+    $regex = "identifier\s+(\{[^\}]+\})|\bdevice\s+(.+)|description\s+(.+)"
     $matches = [regex]::Matches($bootEntries, $regex)
     # $matches
 
 
     $entries = @()
     $ids = @()
+    $devices = @()
     $descriptions = @()
     foreach ($match in $matches)
     {
         $identifier = $match.Groups[1].Value
-        $description = $match.Groups[2].Value
+        $device = $match.Groups[2].Value
+        $description = $match.Groups[3].Value
 
         if ($identifier  )
         {
             $ids += $identifier
+        }
+        if ($device)
+        {
+            $devices += $device
         }
         if ( $description )
         {
@@ -602,17 +608,76 @@ function Get-BootEntries
     {
         $entries += [PSCustomObject]@{
             Identifier  = $id
+            device      = $devices[$ids.IndexOf($id)]
             Description = $descriptions[$ids.IndexOf($id)]
         }
     }
 
     Write-Output $entries
 }
+function Get-WindowsVersionInfoOnDrive
+{
+    <# 
+    .SYNOPSIS
+    查询安装在指定盘符的Windows版本信息,默认查询D盘上的windows系统版本
+
+    .EXAMPLE
+    $driver = "D"
+    $versionInfo = Get-WindowsVersionInfo -Driver $driver
+
+    # 输出版本信息
+    $versionInfo | Format-List
+
+    #>
+    param (
+        # [Parameter(Mandatory = $true)]
+        [string]$Driver = "D"
+    )
+
+    # 确保盘符格式正确
+    if (-not $Driver.EndsWith(":"))
+    {
+        $Driver += ":"
+    }
+
+    try
+    {
+        # 加载指定盘符的注册表
+        reg load HKLM\TempHive "$Driver\Windows\System32\config\SOFTWARE" | Out-Null
+
+        # 获取Windows版本信息
+        $osInfo = Get-ItemProperty -Path 'HKLM:\TempHive\Microsoft\Windows NT\CurrentVersion'
+
+        # 创建一个对象保存版本信息
+        $versionInfo = [PSCustomObject]@{
+            WindowsVersion = $osInfo.ProductName
+            OSVersion      = $osInfo.DisplayVersion
+            BuildNumber    = $osInfo.CurrentBuild
+            UBR            = $osInfo.UBR
+            LUVersion      = $osInfo.ReleaseId
+        }
+
+        # 卸载注册表
+        reg unload HKLM\TempHive | Out-Null
+
+        # 返回版本信息
+        return $versionInfo
+    }
+    catch
+    {
+        Write-Error "无法加载注册表或获取信息，请确保指定的盘符是有效的Windows安装盘符。"
+    }
+}
 
 function rebootToOS
 {
     Add-Type -AssemblyName PresentationFramework
     $bootEntries = Get-BootEntries
+    $bootEntries = $bootEntries | ForEach-Object {
+        [PSCustomObject]@{
+            Identifier  = $_.Identifier
+            Description = $_.Description + $_.device + "`n$($_.Identifier)" 
+        } }
     # 定义启动项
     # $bootEntries = @(
     #     [PSCustomObject]@{Identifier = '{bootmgr}'; Description = 'Windows Boot Manager' },
@@ -621,14 +686,42 @@ function rebootToOS
     # )
 
     # 创建窗口
+
     [xml]$xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        Title="Choose Boot Entry" Height="500" Width="400">
-    <StackPanel>
-        <TextBlock Text="Select a system to reboot into:" Margin="10"/>
-        <ListBox Name="BootEntryList" Margin="10" DisplayMemberPath="Description"/>
-        <Button Name="RebootButton" Content="Reboot" Margin="10" HorizontalAlignment="Center" Width="100"/>
-    </StackPanel>
+        Title="Choose Boot Entry" Height="600" Width="450" WindowStartupLocation="CenterScreen"
+        Background="White" AllowsTransparency="False" WindowStyle="SingleBorderWindow">
+    <Grid>
+        <Border Background="White" CornerRadius="10" BorderBrush="Gray" BorderThickness="1" Padding="10">
+            <StackPanel>
+                <TextBlock Text="Select a system to reboot into(从列表中选择重启项目):" Margin="10" FontWeight="Bold" FontSize="14"/>
+                <ListBox Name="BootEntryList" Margin="10" Background="LightBlue" BorderThickness="0">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Border Background="LightGray" CornerRadius="10" Padding="5" Margin="5">
+                                <TextBlock Text="{Binding Description}" Margin="5,0,0,0"/>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                <Button Name="RebootButton" Content="Reboot|点击重启" Margin="10" HorizontalAlignment="Center" Width="140" Background="#FF2A2A" Foreground="White" FontWeight="Bold" Cursor="Hand">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Background" Value="#FF2A2A"/>
+                            <Setter Property="Foreground" Value="White"/>
+                            <Setter Property="FontWeight" Value="Bold"/>
+                            <Setter Property="Cursor" Value="Hand"/>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#FF5555"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+            </StackPanel>
+        </Border>
+    </Grid>
 </Window>
 "@
 
@@ -651,6 +744,10 @@ function rebootToOS
                 Write-Output "Rebooting to: $($selectedEntry.Description) with Identifier $identifier"
                 # 调用重启命令 (此处只是示例，实际环境中请谨慎操作)
                 # shutdown.exe /r /t 0 /fw /f /d p:4:1 /c "Reboot to $identifier"
+                cmd /c bcdedit /bootsequence $identifier 
+                Write-Host "rebooting to $($selectedEntry.Description) after 3 seconds!(close the shell to stop/cancel it)"
+                Start-Sleep 3
+                shutdown.exe /r /t 0
             }
             else
             {
