@@ -677,7 +677,10 @@ function Add-ScoopBuckets
     基本上，添加spc这个bucket就够了,软件数量很丰富
     .DESCRIPTION
     可以根据自己的需要往里面修改或添加更多的bucket
+    优先从gitee加速的仓库(利用github action fork的仓库自动同步上游,然后gitee再从自己的fork同步到gitee)
+    https://gitee.com/xuchaoxin1375/spc
 
+    补充方案才是直接利用github配合镜像加速
     创建冗余bucket,提高可用性和更大几率,更好的加速备选选择(使用scoop install -k 来避免可能造成错误的断点恢复下载)
     scoop bucket add spc https://github.moeyy.xyz/https://github.com/lzwme/scoop-proxy-cn
     scoop bucket add spc1 https://ghproxy.cc/https://github.com/lzwme/scoop-proxy-cn 
@@ -697,23 +700,24 @@ function Add-ScoopBuckets
         [switch]$NoMirror,
         [switch]$Silent
     )
-    if ($mirror)
-    {
+    # if ($mirror)
+    # {
 
-        Write-Verbose "The mirror is: $mirror"    
-    }
-    elseif ($NoMirror  )
-    {
-        $mirror = ''
-        Write-Verbose 'The mirror is not specified!'
-    }
-    else
-    {
-        $mirror = Get-SelectedMirror -Silent:$Silent
-        # $mirror=@($mirror)[0]
-        Write-Verbose "The mirror is: $mirror"
-    }
-    $spc = "$mirror/https://github.com/lzwme/scoop-proxy-cn".Trim('/')
+    #     Write-Verbose "The mirror is: $mirror"    
+    # }
+    # elseif ($NoMirror  )
+    # {
+    #     $mirror = ''
+    #     Write-Verbose 'The mirror is not specified!'
+    # }
+    # else
+    # {
+    #     $mirror = Get-SelectedMirror -Silent:$Silent
+    #     # $mirror=@($mirror)[0]
+    #     Write-Verbose "The mirror is: $mirror"
+    # }
+    # $spc = "$mirror/https://github.com/lzwme/scoop-proxy-cn".Trim('/')
+    $spc = 'https://gitee.com/xuchaoxin1375/spc'
 
     Write-Host 'Adding more buckets...(It may take a while, please be patient!)'
     Write-Verbose "The spc bucket is: $spc"
