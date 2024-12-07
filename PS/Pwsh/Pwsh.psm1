@@ -113,7 +113,7 @@ function p
 {
     <# 
     .SYNOPSIS
-    打开新的powershell环境，加载最基础的列表图标模块
+    打开新的powershell环境 
     .DESCRIPTION
     支持两种模式,一类是当需要要刷新模块时,在当前powershell会话中执行此命令
     另一类是作为每个powershell会话自动导入的基础性配置
@@ -140,6 +140,8 @@ function p
         [switch]$Force
 
     )
+   
+  
     # 处理$profile 和windows terminal 中的携带参数启动pwsh冲突或重复关系
     if ($null -eq $PsInit)
     {
@@ -301,7 +303,15 @@ function Add-CxxuPsModuleToProfile
     '# AutoRun commands from CxxuPsModules' + " $(Get-Date)" >> $pf
     {
         # p -NoNewShell
-        init 
+        # init *>$null
+        init
+        
+        $res = Get-Command 'scoop-search' -ErrorAction SilentlyContinue
+        if ($res)
+        {
+            Write-Host 'scoop-search hook loaded!'
+            Invoke-Expression (&scoop-search --hook)
+        }
 
     }.ToString().Trim()>>$pf #向配置文件追加内容
     '# End AutoRun commands from CxxuPsModules' >> $pf
