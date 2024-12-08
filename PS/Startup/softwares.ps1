@@ -112,7 +112,9 @@ foreach ($item in $softwares)
 if ($TotalMemory -le 8)
 {
     Write-Host 'The amount of memory is no more than 8G, the softwares will not be started.' -ForegroundColor Magenta
-    memorymaster #this program will auto clean memory when the memory usage ratio is too high
+    # memorymaster #this program will auto clean memory when the memory usage ratio is too high
+    # memreduct可以从scoop安装,功能更强大,可配置性丰富,可以设置定时和阈值自动清理,以及快捷键触发清理
+    memreduct
 }
 
 Write-Host 'All softwares started!' -ForegroundColor Blue

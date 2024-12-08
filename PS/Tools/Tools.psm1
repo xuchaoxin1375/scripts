@@ -677,24 +677,17 @@ function rebootToOS
         [PSCustomObject]@{
             Identifier  = $_.Identifier
             Description = $_.Description + $_.device + "`n$($_.Identifier)" 
-        } }
-    # 定义启动项
-    # $bootEntries = @(
-    #     [PSCustomObject]@{Identifier = '{bootmgr}'; Description = 'Windows Boot Manager' },
-    #     [PSCustomObject]@{Identifier = '{current}'; Description = 'Windows 10' },
-    #     [PSCustomObject]@{Identifier = '{b794f931-144f-11ef-bbb1-dcfb484e80bc}'; Description = 'Windows 10' }
-    # )
-
-    # 创建窗口
+        } 
+    }
 
     [xml]$xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        Title="Choose Boot Entry" Height="600" Width="450" WindowStartupLocation="CenterScreen"
+        Title="System Utility (by @Cxxu)" Height="600" Width="450" WindowStartupLocation="CenterScreen"
         Background="White" AllowsTransparency="False" WindowStyle="SingleBorderWindow">
     <Grid>
         <Border Background="White" CornerRadius="10" BorderBrush="Gray" BorderThickness="1" Padding="10">
             <StackPanel>
-                <TextBlock Text="Select a system to reboot into(从列表中选择重启项目):" Margin="10" FontWeight="Bold" FontSize="14"/>
+                <TextBlock Text="Select a system to reboot into (从列表中选择重启项目):" Margin="10" FontWeight="Bold" FontSize="14"/>
                 <ListBox Name="BootEntryList" Margin="10" Background="LightBlue" BorderThickness="0">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
@@ -704,7 +697,7 @@ function rebootToOS
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
-                <Button Name="RebootButton" Content="Reboot|点击重启" Margin="10" HorizontalAlignment="Center" Width="140" Background="#FF2A2A" Foreground="White" FontWeight="Bold" Cursor="Hand">
+                <Button Name="RebootButton" Content="Reboot | 点击重启" Margin="10" HorizontalAlignment="Center" Width="140" Background="#FF2A2A" Foreground="White" FontWeight="Bold" Cursor="Hand">
                     <Button.Style>
                         <Style TargetType="Button">
                             <Setter Property="Background" Value="#FF2A2A"/>
@@ -719,6 +712,27 @@ function rebootToOS
                         </Style>
                     </Button.Style>
                 </Button>
+                <Button Name="ShutdownButton" Content="Shutdown and Restart" Width="200" Height="30" Margin="10" HorizontalAlignment="Center" Background="#FF2A2A" Foreground="White" FontWeight="Bold" Cursor="Hand">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Background" Value="#FF2A2A"/>
+                            <Setter Property="Foreground" Value="White"/>
+                            <Setter Property="FontWeight" Value="Bold"/>
+                            <Setter Property="Cursor" Value="Hand"/>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#FF5555"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+                <TextBlock HorizontalAlignment="Center" Margin="10">
+                    <Hyperlink Name="iReboot">iReboot</Hyperlink>
+                </TextBlock>
+                <TextBlock HorizontalAlignment="Center" Margin="10">
+                    <Hyperlink Name="EasyBCD">EasyBCD</Hyperlink>
+                </TextBlock>
             </StackPanel>
         </Border>
     </Grid>
@@ -731,23 +745,33 @@ function rebootToOS
     # 获取控件
     $listBox = $window.FindName("BootEntryList")
     $button = $window.FindName("RebootButton")
+    $shutdownButton = $window.FindName("ShutdownButton")
+    $iReboot = $window.FindName("iReboot")
+    $EasyBCD = $window.FindName("EasyBCD")
 
     # 填充ListBox
     $listBox.ItemsSource = $bootEntries
 
-    # 定义按钮点击事件
+    # 定义重启按钮点击事件
     $button.Add_Click({
             $selectedEntry = $listBox.SelectedItem
             if ($null -ne $selectedEntry)
             {
                 $identifier = $selectedEntry.Identifier
-                Write-Output "Rebooting to: $($selectedEntry.Description) with Identifier $identifier"
-                # 调用重启命令 (此处只是示例，实际环境中请谨慎操作)
-                # shutdown.exe /r /t 0 /fw /f /d p:4:1 /c "Reboot to $identifier"
-                cmd /c bcdedit /bootsequence $identifier 
-                Write-Host "rebooting to $($selectedEntry.Description) after 3 seconds!(close the shell to stop/cancel it)"
-                Start-Sleep 3
-                shutdown.exe /r /t 0
+                $confirmReboot = [System.Windows.MessageBox]::Show(
+                    "Are you sure you want to reboot to $($selectedEntry.Description)?", 
+                    "Confirm Reboot", 
+                    [System.Windows.MessageBoxButton]::YesNo, 
+                    [System.Windows.MessageBoxImage]::Warning
+                )
+                if ($confirmReboot -eq [System.Windows.MessageBoxResult]::Yes)
+                {
+                    Write-Output "Rebooting to: $($selectedEntry.Description) with Identifier $identifier"
+                    cmd /c bcdedit /bootsequence $identifier
+                    Write-Host "Rebooting to $($selectedEntry.Description) after 3 seconds! (close the shell to stop/cancel it)"
+                    Start-Sleep 3
+                    shutdown.exe /r /t 0
+                }
             }
             else
             {
@@ -755,10 +779,34 @@ function rebootToOS
             }
         })
 
+    # 定义关机按钮点击事件
+    $shutdownButton.Add_Click({
+            $confirmShutdown = [System.Windows.MessageBox]::Show(
+                "Are you sure you want to shutdown and restart?", 
+                "Confirm Shutdown", 
+                [System.Windows.MessageBoxButton]::YesNo, 
+                [System.Windows.MessageBoxImage]::Warning
+            )
+            if ($confirmShutdown -eq [System.Windows.MessageBoxResult]::Yes)
+            {
+                Write-Output "Executing shutdown command"
+                Start-Process "shutdown.exe" -ArgumentList "/fw", "/r", "/t", "0"
+            }
+        })
+
+    # 定义链接点击事件
+    $iReboot.Add_Click({
+            Start-Process "https://neosmart.net/iReboot/?utm_source=EasyBCD&utm_medium=software&utm_campaign=EasyBCD iReboot"
+        })
+
+    $EasyBCD.Add_Click({
+            Start-Process "https://neosmart.net/EasyBCD/"
+        })
+
     # 显示窗口
     $window.ShowDialog()
-
 }
+
 
 function Set-TaskBarTime
 {
