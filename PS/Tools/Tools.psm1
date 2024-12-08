@@ -712,7 +712,7 @@ function rebootToOS
                         </Style>
                     </Button.Style>
                 </Button>
-                <Button Name="ShutdownButton" Content="Shutdown and Restart" Width="200" Height="30" Margin="10" HorizontalAlignment="Center" Background="#FF2A2A" Foreground="White" FontWeight="Bold" Cursor="Hand">
+                <Button Name="RebootToBios" Content="Restart to BIOS" Width="200" Height="30" Margin="10" HorizontalAlignment="Center" Background="#FF2A2A" Foreground="White" FontWeight="Bold" Cursor="Hand">
                     <Button.Style>
                         <Style TargetType="Button">
                             <Setter Property="Background" Value="#FF2A2A"/>
@@ -742,10 +742,11 @@ function rebootToOS
     $reader = (New-Object System.Xml.XmlNodeReader $xaml)
     $window = [Windows.Markup.XamlReader]::Load($reader)
 
-    # 获取控件
+    # 重启到指定系统获取控件
     $listBox = $window.FindName("BootEntryList")
     $button = $window.FindName("RebootButton")
-    $shutdownButton = $window.FindName("ShutdownButton")
+    # 其他控件
+    $RebootToBios = $window.FindName("RebootToBios")
     $iReboot = $window.FindName("iReboot")
     $EasyBCD = $window.FindName("EasyBCD")
 
@@ -780,7 +781,7 @@ function rebootToOS
         })
 
     # 定义关机按钮点击事件
-    $shutdownButton.Add_Click({
+    $RebootToBios.Add_Click({
             $confirmShutdown = [System.Windows.MessageBox]::Show(
                 "Are you sure you want to shutdown and restart?", 
                 "Confirm Shutdown", 
