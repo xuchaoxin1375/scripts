@@ -682,7 +682,7 @@ function rebootToOS
 
     [xml]$xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        Title="System Utility (by @Cxxu)" Height="600" Width="450" WindowStartupLocation="CenterScreen"
+        Title="Reboot Utility (by @Cxxu)" Height="600" Width="450" WindowStartupLocation="CenterScreen"
         Background="White" AllowsTransparency="False" WindowStyle="SingleBorderWindow">
     <Grid>
         <Border Background="White" CornerRadius="10" BorderBrush="Gray" BorderThickness="1" Padding="10">
