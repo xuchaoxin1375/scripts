@@ -228,7 +228,8 @@ function Set-SSHClientInit
     Set-Variable -Name authorized_keys -Value $authorized_keys -Scope Global
     Set-Variable -Name pubkey -Value $pubkey -Scope Global
 
-    Get-SSHPubKeysAdderScripts -PassThru | Set-Clipboard
+    Get-SSHPubKeysAdderScripts -PassThru | Set-Clipboard #将脚本内容输出到剪切板中
+    Write-Warning "if the clipboard content is not complete,please re-run the command!"
     
 }
 function Get-SSHPreRunPubkeyVarsScript

@@ -1063,12 +1063,13 @@ function Set-ScoopVersion
         [parameter(Position = 0)]
         $ToPath = "$home\scoop0"
     )
-    #检查现有目录
-    
-
-    $mode = Get-Item $Path -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Mode 
+    #检查现有相关的目录和链接
+    # 获取$path模式(如果存在对应的目录或链接)
+    $mode = Get-Item $Path -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Mode #如果不存在对应目录或链接,则返回$null
+    # 检查$Path指定名字链接是否存在
     if ($mode -notlike 'l*')
     {
+        #存在目录$path
         Write-Warning "The scoop path [$Path] already exist! Try to backup it first"
         $NewPath = Read-Host "Please input the new name of the path (default is [$ToPath])"
         if ($NewPath.Trim() -eq '')
@@ -1076,12 +1077,17 @@ function Set-ScoopVersion
             $NewPath = $ToPath
             Write-Host "Use default backup Path name $NewPath"
         }
-        # return 
+        # 备份已有目录为新名字
         Rename-Item $Path -NewName $NewPath -Verbose
+    }
+    elseif ($mode ) 
+    {
+        # 存在$path链接
+        Write-Verbose "The [$path] link already exist,change to $ToPath" -Verbose
     }
     else
     {
-        Write-Verbose "The scoop [link] already exist,change to $ToPath" -Verbose
+        Write-Verbose "The [$path] does not exist,create it now..."
     }
    
     # 确保指定目录存在
@@ -1745,7 +1751,9 @@ function Deploy-Typora
         # $Typora_Scoop_Config
         # $Typora_Config = "$scoop_global/apps/typora/current"
         
-        
+        # 设置默认打开方式
+        cmd /c assoc .md=MarkdownFile #这里的MarkdownFile是自定义的名字，也可以是别的名字,注意在ftype中使用同一个文件类型名字
+        cmd /c ftype MarkdownFile=C:\ProgramData\scoop\apps\typora\current\Typora.exe %1 
     }
     $winmm = "$typora_home\winmm.dll"
     $patcher = "$configs\typora\winmm.dll"
@@ -2015,7 +2023,7 @@ function Deploy-SmbSharing
         #密码可以改,但是建议尽可能简单,默认为1(为了符合函数设计的安全规范,这里不设置明文默认密码)
         [parameter(ParameterSetName = 'SmbUser')]
         $SmbUserkey = '1',
-        [switch]$DisableSmbUserLogonLocally,
+        [switch]$AllowSmbUserLogonDesktop,
         # 设置宽松的NTFS权限(但是仍然不一定会生效),如果可以用,尽量不要用Force选项
         [switch]$Force
     )
@@ -2090,9 +2098,13 @@ function Deploy-SmbSharing
 
     # 创建Smb共享文件夹的README
     New-SmbSharingReadme
-    if ($DisableSmbUserLogonLocally)
+    if (!$AllowSmbUserLogonDesktop)
     {
         Disable-SmbSharingUserLogonLocallyRight -SmbUser $SmbUser
+    }
+    else
+    {
+        Write-Warning "The Smb User is allowed to logon windows desktop locally!(for security reason, it is not recommended to allow this)"
     }
 }
 
