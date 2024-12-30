@@ -661,8 +661,10 @@ function Deploy-ScoopByGitee
     # 拉取新库地址()
     scoop update
     Write-Verbose 'Scoop add more buckets(this process may failed to perform!You can retry to add buckets manually later!'
-    scoop bucket add extras
-    scoop bucket add scoopcn https://gitee.com/scoop-installer/scoopcn
+   
+    Add-ScoopBuckets
+    # scoop bucket add scoopcn https://gitee.com/scoop-installer/scoopcn
+
     if ($InstallBasicSoftwares)
     {
         scoop install 7zip git -g
@@ -722,6 +724,7 @@ function Add-ScoopBuckets
     Write-Host 'Adding more buckets...(It may take a while, please be patient!)'
     Write-Verbose "The spc bucket is: $spc"
     scoop bucket add spc $spc  
+    scoop bucket add extras
             
 }
 
