@@ -2493,6 +2493,9 @@ function Deploy-EnvsByPwsh
 
 function Deploy-TrafficMonitor
 {
+    param(
+        [switch]$InstalledByScoop
+    )
     $process = Get-Process -Name TrafficMonitor -ErrorAction SilentlyContinue
     if ($process)
     {
@@ -2508,7 +2511,10 @@ function Deploy-TrafficMonitor
     }
     # 导入必要的环境变量
     Update-PwshEnvIfNotYet 
-    # 配置插件
+    # 配置插件(注意相关变量(VarSet3中配置,$trafficMonitor_home是基础变量,而$trafficMonitor_plugins基于$trafficMonitor_home拼接而成))
+    if($InstalledByScoop){
+        $trafficMonitor_home="$scoop_global_apps\TrafficMonitor\current"
+    }
     New-Junction $trafficMonitor_plugins $configs\trafficMonitor\plugins
     #配置设置
     # HardLink $trafficMonitor\config.ini $configs\trafficMonitor\config.ini

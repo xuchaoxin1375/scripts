@@ -88,7 +88,7 @@ sound sndVol
 texstudio "$exes\texstudio-4.3.1-win-portable-qt6\texstudio"
 tomcat $env:tomcatBin\startup.bat 
 tomcatShutdown $env:tomcatBin\shutdown.bat 
-trafficMonitor "$trafficMonitor_home\trafficMonitor"
+# trafficMonitor "$trafficMonitor_home\trafficMonitor"
 #部分软件逐渐用scoop安装的版本代替
 # typora "$typora_home\typora.exe"
 
