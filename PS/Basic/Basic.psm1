@@ -247,11 +247,13 @@ function ty2latex
     param(
         [parameter(ValueFromPipeline)]
         $String,
-        $Path="$home\desktop\ty2latex.txt"
+        $Path = "$home\desktop\ty2latex.txt"
     )
     #默认从文件中读取内容
-    if(!$String){
-        if(Test-Path $Path){
+    if (!$String)
+    {
+        if (Test-Path $Path)
+        {
             $String = Get-Content $Path
         }
         $String = Get-Clipboard
@@ -1092,7 +1094,11 @@ function New-Junction
         Remove-Item -Force -Verbose $path 
         # timer_tips
     }
-
+    if (!(Test-Path $Target))
+    {
+        Write-Host 'target does not exist!'
+        New-Item -ItemType Directory -Force -Verbose $Target
+    }
 
     New-Item -Verbose -Force -ItemType junction -Path $Path -Target (Resolve-Path $Target)
     

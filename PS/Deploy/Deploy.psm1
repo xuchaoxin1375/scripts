@@ -2514,6 +2514,8 @@ function Deploy-TrafficMonitor
     # 配置插件(注意相关变量(VarSet3中配置,$trafficMonitor_home是基础变量,而$trafficMonitor_plugins基于$trafficMonitor_home拼接而成))
     if($InstalledByScoop){
         $trafficMonitor_home="$scoop_global_apps\TrafficMonitor\current"
+        #重新计算$trafficMonitor_plugins
+        $trafficMonitor_plugins="$trafficMonitor_home\plugins"
     }
     New-Junction $trafficMonitor_plugins $configs\trafficMonitor\plugins
     #配置设置
