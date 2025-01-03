@@ -224,7 +224,7 @@ function Invoke-GithubResourcesSpeedup
         {
             throw 'Get-SpeedUpUrl function is not found. Please define it before using Invoke-GithubResourcesSpeedup.'
         }
-        $UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.66 Safari/537.36'
+        $UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.66 Safari/537.36'
         
     }
 
@@ -264,7 +264,8 @@ function Invoke-GithubResourcesSpeedup
 
             $expression | Invoke-Expression
         }
-
+        # 检查下载结果
+        Get-ChildItem "$Directory" | Sort-Object -Property LastWriteTime -Descending | Select-Object -First 1
     }
 }
 

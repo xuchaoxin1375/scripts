@@ -198,9 +198,7 @@ Add-ScoopBuckets -Silent
 ## 部署powershell7的方法
 
 - 安装powershell7的方式有很多,这里提供一个一键安装的方案,但是不保证有效
-  - 加速下载依赖于github加速镜像站,如果内置的镜像站过期或不可用,您可以通过github相关加速站点获取可用方案
-  - [【镜像站点搜集】 · Issue #116 · hunshcn/gh-proxy (github.com)](https://github.com/hunshcn/gh-proxy/issues/116#issuecomment-2339526975)
-
+  
 - 以下是部署脚本
 
   ```powershell

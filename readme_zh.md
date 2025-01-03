@@ -28,7 +28,25 @@ irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsMod
 
 更具体的说明查看此文档：[部署说明](./PS/Deploy/Readme.md)
 
-文档相对路径
+### 部署失败问题👺
+
+本项目的许多一键部署脚本依赖于`github.com`的加速站点,如果这些站点过期了,那么会导致相关下载行为无法顺利执行`irm,wget`等
+
+并且这些加速镜像站点是硬编码内置在代码中,当然大多情况下你可以在命令行中指定最新可用的加速镜像站来修复过期的加速站链接
+
+仓库中许多代码都使用了这种不完美的配置方案,以便于提供独立的功能(比如用户可以独立调用`Deploy-GitForwindows`,`Deploy-Pwsh7Portable`等,维护这些模块时,需要注意批量替换这些加速站地址
+
+
+
+### github公益加速站👺
+
+- 加速下载依赖于github加速镜像站,如果内置的镜像站过期或不可用,您可以通过github相关加速站点获取可用方案
+  - https://yishijie.gitlab.io/ziyuan/
+  - [【镜像站点搜集】 · Issue #116 · hunshcn/gh-proxy (github.com)](https://github.com/hunshcn/gh-proxy/issues/116#issuecomment-2339526975)
+
+
+
+### 文档相对路径
 
 ```powershell
 ./PS/Deploy/Readme.md
