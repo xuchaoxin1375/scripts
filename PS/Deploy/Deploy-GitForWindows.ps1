@@ -15,7 +15,8 @@ function Deploy-GitForwindows
         # 使用镜像加速下载git release文件
         [parameter(ParameterSetName = 'Online')]
         #如果不是用mirror,可以指定其为空字符串''
-        $mirror = 'https://ghp.ci',
+        #加速镜像可能会失效,如果不可用自行替换此参数,可以在命令行中指定
+        $mirror = 'https://https://ghgo.xyz',
         # 注意区分这url是一个自解压文件还是压缩包文件
         # url可以是从git for windows 的二进制文件镜像站提供的文件下载链接(网页中右键复制指定文件的链接即可,注意是Portable版本的(一般后缀为.7z.exe),而不是普通的安装版)
         [parameter(ParameterSetName = 'Online')]
