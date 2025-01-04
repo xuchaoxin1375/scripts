@@ -2264,6 +2264,12 @@ function Deploy-StartupServices
     启动 配置了开机自启的服务的脚本文件
     .DESCRIPTION
     作为服务,应该在用户还没有登陆到桌面前就应该启动
+    .NOTES
+    这里的服务类任务是不需要弹出窗口而比较适合在后台默默运行的,一般使用管理员或者系统用户的身份启动服务
+    然而系统用户角色无法访问用户级别的环境变量,也就是说例如pwsh.exe所在路径如果仅仅配置到用户级别,那么开机启动的服务将无法找到pwsh.exe
+    为了避免这个问题,你有两种选择,一种是讲路径配置到系统级别的环境变量,比如path中;
+    对于scoop安装的powershell,若指定了全局安装,那么可以直接使用pwsh.exe,否则需要指定pwsh.exe的绝对路径
+    本项目提供的deploy-pwsh7portable 默认仅仅配置到用户级别的Path中,因此无法直接配合Deploy-StartupServices使用;需要手动配置到系统Path中
     #>
     param (
         $shell = 'pwsh',
