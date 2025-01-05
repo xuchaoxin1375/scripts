@@ -20,13 +20,19 @@ function Update-GithubHosts-Archive
     param (
         # 可以使用通用的powershell参数(-verbose)查看运行细节
         $hosts = 'C:\Windows\System32\drivers\etc\hosts',
-        $remote = 'https://raw.hellogithub.com/hosts'
+        $remote = 'https://raw.hellogithub.com/hosts',
+        # 如果原站不可用,考虑直接访问github,用加速站获取文件
+        [switch]$UseLink2,
+        $mirror = 'https://ghgo.xyz/', #加速镜像站可能会失效,需要注意更新维护
+        $remote_github_raw = 'https://raw.githubusercontent.com/521xueweihan/GitHub520/refs/heads/main/hosts',
+
+        $UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.66 Safari/537.36'
     )
     # 创建临时文件
     # $tempHosts = New-TemporaryFile
 
     # 定义 hosts 文件路径和远程 URL
-
+    Write-Warning "if failed,please use `-UseLink2` option to retry!"
     # 定义正则表达式
     $reg = '(?s)# GitHub520 Host Start.*?# GitHub520 Host End'
 
@@ -54,7 +60,13 @@ function Update-GithubHosts-Archive
 
     # 下载远程内容并追加到临时文件
     # $NewHosts = New-TemporaryFile
-    $New = Invoke-WebRequest -Uri $remote -UseBasicParsing #New是一个网络对象而不是字符串
+    if ($UseLink2)
+    {
+        $remote = $mirror + $remote_github_raw
+        Write-Verbose $remote
+    }
+    $New = Invoke-WebRequest -Uri $remote -UseBasicParsing -UserAgent $UA #New是一个网络对象而不是字符串
+    
     $New = $New.ToString() #清理头信息
     #移除结尾多余的空行,避免随着更新,hosts文件中的内容有大量的空行残留
        
