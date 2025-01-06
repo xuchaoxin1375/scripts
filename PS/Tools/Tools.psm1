@@ -6,6 +6,13 @@ function Get-CxxuPsModuleVersoin
     Get-RepositoryVersion -Repository $scripts
     
 }
+
+function regex_tk_tool
+{
+    $p = Resolve-Path "$PSScriptRoot/../../pythonScripts/regex_tk_tool.py"
+    Write-Verbose "$p"
+    python $p
+}
 function Get-RepositoryVersion
 {
     <# 
