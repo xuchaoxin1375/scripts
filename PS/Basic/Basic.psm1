@@ -1382,6 +1382,8 @@ function Push-ReposesConfiged
     param(
         $repoDirs = $CommonReposes
     )
+    #记录当前路径
+    Push-Location
 
     Update-PwshEnvIfNotYet -Mode Vars
     #如果是主PC,则执行云端同步操作(push)
@@ -1412,6 +1414,10 @@ function Push-ReposesConfiged
         # Pop-Location
     }
 
+    # 恢复当前路径
+    # Pop-Location
+    Set-Location $home/desktop
+    Write-Verbose "current location is $home/desktop"
     # 如果不需要Pop-Location，这里可以添加注释掉的部分，以便始终回到脚本初始目录
     #Push-Location $initialLocation
 
@@ -1528,7 +1534,8 @@ function Update-ReposesConfiged
 
     # 恢复当前路径
     # Pop-Location
-    cd $home/desktop
+    Set-Location $home/desktop
+    Write-Verbose "current location is $home/desktop"
 
     #启动新的powershell窗口,使得新的配置生效
     # Start-Process pwsh
