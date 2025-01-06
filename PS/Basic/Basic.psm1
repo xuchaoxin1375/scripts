@@ -1527,8 +1527,9 @@ function Update-ReposesConfiged
     }
 
     # 恢复当前路径
-    Pop-Location
-    
+    # Pop-Location
+    cd $home/desktop
+
     #启动新的powershell窗口,使得新的配置生效
     # Start-Process pwsh
 }
