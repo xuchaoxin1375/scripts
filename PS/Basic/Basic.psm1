@@ -1476,6 +1476,8 @@ function Update-ReposesConfiged
         $repoDirs = '',
         [switch]$Force
     )
+    #记录当前路径
+    Push-Location
 
     # 导入环境变量(当前么有导入过),以便本函数确定默认值,即哪些仓库需要同步
     Update-PwshEnvIfNotYet -Mode Vars
@@ -1484,7 +1486,7 @@ function Update-ReposesConfiged
     Write-Verbose "$repoDirs will be try to update." -Verbose
     # 获取repos目录下所有子目录路径
     # $repoDirs = Get-ChildItem -Path $repos -Directory
-
+    
 
     foreach ($repoDir in $repoDirs)
     {
@@ -1523,6 +1525,10 @@ function Update-ReposesConfiged
         }
 
     }
+
+    # 恢复当前路径
+    Pop-Location
+    
     #启动新的powershell窗口,使得新的配置生效
     # Start-Process pwsh
 }
