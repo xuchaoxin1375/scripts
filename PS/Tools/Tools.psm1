@@ -6,6 +6,126 @@ function Get-CxxuPsModuleVersoin
     Get-RepositoryVersion -Repository $scripts
     
 }
+function Get-CharacterEncoding
+{
+
+    <# 
+    .SYNOPSIS
+    显示字符串的字符编码信息,包括Unicode编码,UTF8编码,ASCII编码
+    .DESCRIPTION
+    利用此函数来分析给定字符串中的各个字符的编码,尤其是空白字符,在执行空白字符替换时,可以排查出不可见字符替换不掉的问题
+    .EXAMPLE
+    PS> Get-CharacterEncoding -InputString "  0.46" | Format-Table -AutoSize
+
+    Character UnicodeCode UTF8Encoding AsciiCode
+    --------- ----------- ------------ ---------
+            U+0020      0x20                32
+              U+00A0      0xC2 0xA0          N/A
+            0 U+0030      0x30                48
+            . U+002E      0x2E                46
+            4 U+0034      0x34                52
+            6 U+0036      0x36                54
+    #>
+    param (
+        [string]$InputString
+    )
+    $utf8 = [System.Text.Encoding]::UTF8
+
+    $InputString.ToCharArray() | ForEach-Object {
+        $char = $_
+        $unicode = [int][char]$char
+        $utf8Bytes = $utf8.GetBytes([char[]]$char)
+        $utf8Hex = $utf8Bytes | ForEach-Object { "0x{0:X2}" -f $_ }
+        $ascii = if ($unicode -lt 128) { $unicode } else { "N/A" }
+
+        [PSCustomObject]@{
+            Character    = $char
+            UnicodeCode  = "U+{0:X4}" -f $unicode
+            UTF8Encoding = ($utf8Hex -join " ")
+            AsciiCode    = $ascii
+        }
+    }
+}
+function Get-CharacterEncodingsGUI
+{
+    # 加载 Windows Forms 程序集
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+
+    # 定义函数
+    function Get-CharacterEncoding
+    {
+        param (
+            [string]$InputString
+        )
+        $utf8 = [System.Text.Encoding]::UTF8
+
+        $InputString.ToCharArray() | ForEach-Object {
+            $char = $_
+            $unicode = [int][char]$char
+            $utf8Bytes = $utf8.GetBytes([char[]]$char)
+            $utf8Hex = $utf8Bytes | ForEach-Object { "0x{0:X2}" -f $_ }
+            $ascii = if ($unicode -lt 128) { $unicode } else { "N/A" }
+
+            [PSCustomObject]@{
+                Character    = $char
+                UnicodeCode  = "U+{0:X4}" -f $unicode
+                UTF8Encoding = ($utf8Hex -join " ")
+                AsciiCode    = $ascii
+            }
+        }
+    }
+
+    # 创建主窗体
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = "字符编码实时解析"
+    $form.Size = New-Object System.Drawing.Size(800, 600)
+    $form.StartPosition = "CenterScreen"
+
+    # 创建输入框
+    $inputBox = New-Object System.Windows.Forms.TextBox
+    $inputBox.Location = New-Object System.Drawing.Point(10, 10)
+    $inputBox.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
+    $inputBox.Font = New-Object System.Drawing.Font("Microsoft Sans Serif", 12)
+    $inputBox.Size = New-Object System.Drawing.Size(760, 30)
+    $form.Controls.Add($inputBox)
+
+    # 创建结果显示框
+    $resultBox = New-Object System.Windows.Forms.TextBox
+    $resultBox.Location = New-Object System.Drawing.Point(10, 50)
+    $resultBox.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right -bor [System.Windows.Forms.AnchorStyles]::Bottom
+    $resultBox.Multiline = $true
+    $resultBox.ScrollBars = "Vertical"
+    $resultBox.ReadOnly = $true
+    $resultBox.Size = New-Object System.Drawing.Size(760, 500)
+    $form.Controls.Add($resultBox)
+
+    # 实时解析事件
+    $inputBox.Add_TextChanged({
+            $in = $inputBox.Text
+            if (-not [string]::IsNullOrEmpty($in))
+            {
+                $result = Get-CharacterEncoding -InputString $in | Format-Table |Out-String
+                $resultBox.Text = $result
+            }
+            else
+            {
+                $resultBox.Clear()
+            }
+        })
+
+    # 窗体大小调整事件
+    $form.Add_SizeChanged({
+            $inputBox.Width = $form.ClientSize.Width - 20
+            $resultBox.Width = $form.ClientSize.Width - 20
+            $resultBox.Height = $form.ClientSize.Height - $inputBox.Height - 30
+        })
+
+    # 显示窗口
+    [void]$form.ShowDialog()
+
+}
+
 
 function regex_tk_tool
 {
