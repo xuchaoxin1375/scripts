@@ -87,43 +87,63 @@ function Get-CharacterEncodingsGUI
     $inputBox.Location = New-Object System.Drawing.Point(10, 10)
     $inputBox.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
     $inputBox.Font = New-Object System.Drawing.Font("Microsoft Sans Serif", 12)
-    $inputBox.Size = New-Object System.Drawing.Size(760, 30)
+    $inputBox.Multiline = $true
+    $inputBox.ScrollBars = [System.Windows.Forms.ScrollBars]::Vertical
+    $inputBox.WordWrap = $true
+    $inputBox.Size = New-Object System.Drawing.Size(760, 60)
     $form.Controls.Add($inputBox)
 
     # 创建结果显示框
     $resultBox = New-Object System.Windows.Forms.TextBox
-    $resultBox.Location = New-Object System.Drawing.Point(10, 50)
+    $resultBox.Location = New-Object System.Drawing.Point(10, ($inputBox.Location.Y + $inputBox.Height + 10)) # 使用数值计算位置
     $resultBox.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right -bor [System.Windows.Forms.AnchorStyles]::Bottom
     $resultBox.Multiline = $true
-    $resultBox.ScrollBars = "Vertical"
+    $resultBox.ScrollBars = [System.Windows.Forms.ScrollBars]::Vertical
     $resultBox.ReadOnly = $true
-    $resultBox.Size = New-Object System.Drawing.Size(760, 500)
+    $resultBox.Font = New-Object System.Drawing.Font("Consolas", 10)
+    $resultBox.Size = New-Object System.Drawing.Size(760, ($form.ClientSize.Height - ($inputBox.Location.Y + $inputBox.Height + 20)))
     $form.Controls.Add($resultBox)
+
+    # 动态调整输入框高度
+    $inputBox.Add_TextChanged({
+        $lineCount = $inputBox.Lines.Length
+        $fontHeight = $inputBox.Font.Height
+        $padding = 10
+        $newHeight = ($lineCount * $fontHeight) + $padding
+
+        # 限制最小和最大高度
+        $minHeight = 60
+        $maxHeight = 200
+        $inputBox.Height = [Math]::Min([Math]::Max($newHeight, $minHeight), $maxHeight)
+
+        # 调整结果框位置和高度
+        $resultBox.Top = $inputBox.Location.Y + $inputBox.Height + 10
+        $resultBox.Height = $form.ClientSize.Height - $resultBox.Top - 10
+    })
 
     # 实时解析事件
     $inputBox.Add_TextChanged({
-            $in = $inputBox.Text
-            if (-not [string]::IsNullOrEmpty($in))
-            {
-                $result = Get-CharacterEncoding -InputString $in | Format-Table |Out-String
-                $resultBox.Text = $result
-            }
-            else
-            {
-                $resultBox.Clear()
-            }
-        })
+        $inputText = $inputBox.Text
+        if (-not [string]::IsNullOrEmpty($inputText))
+        {
+            $result = Get-CharacterEncoding -InputString $inputText | Format-Table | Out-String
+            $resultBox.Text = $result
+        }
+        else
+        {
+            $resultBox.Clear()
+        }
+    })
 
     # 窗体大小调整事件
     $form.Add_SizeChanged({
-            $inputBox.Width = $form.ClientSize.Width - 20
-            $resultBox.Width = $form.ClientSize.Width - 20
-            $resultBox.Height = $form.ClientSize.Height - $inputBox.Height - 30
-        })
+        $inputBox.Width = $form.ClientSize.Width - 20
+        $resultBox.Width = $form.ClientSize.Width - 20
+        $resultBox.Height = $form.ClientSize.Height - $resultBox.Top - 10
+    })
 
     # 显示窗口
     [void]$form.ShowDialog()
-
 }
 
 
