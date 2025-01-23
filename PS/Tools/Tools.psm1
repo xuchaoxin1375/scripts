@@ -6,6 +6,165 @@ function Get-CxxuPsModuleVersoin
     Get-RepositoryVersion -Repository $scripts
     
 }
+
+function Get-CsvRowsTail {
+<#
+.SYNOPSIS
+    提取CSV文件的表头和从第k行到最后一行的数据，并将其保存到指定输出文件中。
+
+.DESCRIPTION
+    该脚本读取输入的CSV文件，提取文件的表头（第一行）和指定的第k行到最后一行的数据，
+    然后将提取的内容保存到指定的输出文件中。
+    
+.PARAMETER InputFile
+    输入的CSV文件路径。
+    
+.PARAMETER OutputFile
+    输出的CSV文件路径。
+    
+.PARAMETER StartRow
+    提取的数据从第几行开始，k行。第一行为1。
+
+.EXAMPLE
+    .\Extract-CsvRows.ps1 -InputFile "C:\path\to\input.csv" -OutputFile "C:\path\to\output.csv" -StartRow 5
+    从`C:\path\to\input.csv`文件中提取表头和第5行到最后一行的数据，并将其保存到`C:\path\to\output.csv`。
+
+.NOTES
+    文件使用UTF-8编码进行读写，确保CSV文件的格式正确。
+#>
+
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$InputFile,     # 输入的CSV文件路径
+
+        [Parameter(Mandatory=$true)]
+        [string]$OutputFile,    # 输出的CSV文件路径
+
+        [Parameter(Mandatory=$true)]
+        [int]$StartRow          # 第k行，从1开始
+    )
+
+    # 确保StartRow是有效的
+    if ($StartRow -lt 1) {
+        Write-Error "StartRow 必须大于或等于1"
+        return
+    }
+
+    # 读取CSV文件
+    try {
+        $data = Import-Csv -Path $InputFile
+    } catch {
+        Write-Error "读取CSV文件失败: $_"
+        return
+    }
+
+    # 提取表头行
+    $header = $data | Select-Object -First 0
+
+    # 提取从第$StartRow行到最后一行的数据
+    $rows = $data | Select-Object -Skip ($StartRow - 1)
+
+    # 保存表头行和提取的行到新的输出文件
+    try {
+        # 输出表头行
+        $header | Export-Csv -Path $OutputFile -NoTypeInformation -Force
+        # 输出从第$StartRow行开始的数据行
+        $rows | Export-Csv -Path $OutputFile -NoTypeInformation -Append -Force
+    } catch {
+        Write-Error "保存CSV文件失败: $_"
+    }
+
+    Write-Host "处理完成，结果已保存到: $OutputFile"
+}
+
+<#
+.SYNOPSIS
+    提取CSV文件的表头和从指定百分比位置到最后一行的数据，并将其保存到指定输出文件中。
+
+.DESCRIPTION
+    该脚本读取输入的CSV文件，提取表头（第一行）和指定百分比位置到最后一行的数据，
+    然后将提取的内容保存到指定的输出文件中。
+
+.PARAMETER InputFile
+    输入的CSV文件路径。
+
+.PARAMETER OutputFile
+    输出的CSV文件路径。
+
+.PARAMETER StartPercentage
+    提取数据开始的百分比，例如 80 表示提取最后 20% 的数据。
+
+.EXAMPLE
+    .\Extract-CsvRows.ps1 -InputFile "C:\path\to\input.csv" -OutputFile "C:\path\to\output.csv" -StartPercentage 80
+    从`C:\path\to\input.csv`文件中提取表头和最后20%的数据，并将其保存到`C:\path\to\output.csv`。
+
+.NOTES
+    - 文件使用UTF-8编码进行读写。
+    - 百分比值应在 0-100 之间。
+#>
+
+function Extract-CsvRows {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$InputFile,     # 输入的CSV文件路径
+
+        # [Parameter(Mandatory=$true)]
+        [string]$OutputFile,    # 输出的CSV文件路径
+
+        [Parameter(Mandatory=$true)]
+        [int]$StartPercentage   # 提取开始的百分比位置 (0-100)
+    )
+
+    # 验证百分比范围
+    if ($StartPercentage -lt 0 -or $StartPercentage -gt 100) {
+        Write-Error "StartPercentage 必须在 0 到 100 之间。"
+        return
+    }
+
+    # 读取CSV文件
+    try {
+        $data = Import-Csv -Path $InputFile
+    } catch {
+        Write-Error "读取CSV文件失败: $_"
+        return
+    }
+
+    # 获取总行数
+    $totalRows = $data.Count
+
+    if ($totalRows -eq 0) {
+        Write-Error "输入文件没有数据。"
+        return
+    }
+
+    # 计算起始行号
+    $startRow = [math]::Ceiling($totalRows * ($StartPercentage / 100.0))
+
+    # 提取表头行
+    $header = $data | Select-Object -First 0
+
+    # 提取从起始行到最后一行的数据
+    $rows = $data | Select-Object -Skip ($startRow - 1)
+
+    # 保存表头行和提取的行到新的输出文件
+    try {
+        # 输出表头行
+        $header | Export-Csv -Path $OutputFile -NoTypeInformation -Force
+        # 输出提取的数据行
+        $rows | Export-Csv -Path $OutputFile -NoTypeInformation -Append -Force
+    } catch {
+        Write-Error "保存CSV文件失败: $_"
+    }
+
+    Write-Host "处理完成，结果已保存到: $OutputFile"
+}
+
+# 调用示例
+# Extract-CsvRows -InputFile "C:\path\to\input.csv" -OutputFile "C:\path\to\output.csv" -StartPercentage 80
+
+# 调用示例
+# Extract-CsvRows -InputFile "C:\path\to\input.csv" -OutputFile "C:\path\to\output.csv" -StartRow 5
+
 function Get-CharacterEncoding
 {
 
