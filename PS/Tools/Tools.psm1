@@ -7,8 +7,9 @@ function Get-CxxuPsModuleVersoin
     
 }
 
-function Get-CsvRowsTail {
-<#
+function Get-CsvRowsTail
+{
+    <#
 .SYNOPSIS
     提取CSV文件的表头和从第k行到最后一行的数据，并将其保存到指定输出文件中。
 
@@ -34,26 +35,30 @@ function Get-CsvRowsTail {
 #>
 
     param (
-        [Parameter(Mandatory=$true)]
-        [string]$InputFile,     # 输入的CSV文件路径
+        [Parameter(Mandatory = $true)]
+        [string]$InputFile, # 输入的CSV文件路径
 
-        [Parameter(Mandatory=$true)]
-        [string]$OutputFile,    # 输出的CSV文件路径
+        [Parameter(Mandatory = $true)]
+        [string]$OutputFile, # 输出的CSV文件路径
 
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [int]$StartRow          # 第k行，从1开始
     )
 
     # 确保StartRow是有效的
-    if ($StartRow -lt 1) {
+    if ($StartRow -lt 1)
+    {
         Write-Error "StartRow 必须大于或等于1"
         return
     }
 
     # 读取CSV文件
-    try {
+    try
+    {
         $data = Import-Csv -Path $InputFile
-    } catch {
+    }
+    catch
+    {
         Write-Error "读取CSV文件失败: $_"
         return
     }
@@ -65,12 +70,15 @@ function Get-CsvRowsTail {
     $rows = $data | Select-Object -Skip ($StartRow - 1)
 
     # 保存表头行和提取的行到新的输出文件
-    try {
+    try
+    {
         # 输出表头行
         $header | Export-Csv -Path $OutputFile -NoTypeInformation -Force
         # 输出从第$StartRow行开始的数据行
         $rows | Export-Csv -Path $OutputFile -NoTypeInformation -Append -Force
-    } catch {
+    }
+    catch
+    {
         Write-Error "保存CSV文件失败: $_"
     }
 
@@ -103,28 +111,33 @@ function Get-CsvRowsTail {
     - 百分比值应在 0-100 之间。
 #>
 
-function Extract-CsvRows {
+function Get-CsvRowsByPercentage
+{
     param (
-        [Parameter(Mandatory=$true)]
-        [string]$InputFile,     # 输入的CSV文件路径
+        [Parameter(Mandatory = $true)]
+        [string]$InputFile, # 输入的CSV文件路径
 
         # [Parameter(Mandatory=$true)]
-        [string]$OutputFile,    # 输出的CSV文件路径
+        [string]$OutputFile, # 输出的CSV文件路径
 
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [int]$StartPercentage   # 提取开始的百分比位置 (0-100)
     )
 
     # 验证百分比范围
-    if ($StartPercentage -lt 0 -or $StartPercentage -gt 100) {
+    if ($StartPercentage -lt 0 -or $StartPercentage -gt 100)
+    {
         Write-Error "StartPercentage 必须在 0 到 100 之间。"
         return
     }
 
     # 读取CSV文件
-    try {
+    try
+    {
         $data = Import-Csv -Path $InputFile
-    } catch {
+    }
+    catch
+    {
         Write-Error "读取CSV文件失败: $_"
         return
     }
@@ -132,7 +145,8 @@ function Extract-CsvRows {
     # 获取总行数
     $totalRows = $data.Count
 
-    if ($totalRows -eq 0) {
+    if ($totalRows -eq 0)
+    {
         Write-Error "输入文件没有数据。"
         return
     }
@@ -147,12 +161,15 @@ function Extract-CsvRows {
     $rows = $data | Select-Object -Skip ($startRow - 1)
 
     # 保存表头行和提取的行到新的输出文件
-    try {
+    try
+    {
         # 输出表头行
         $header | Export-Csv -Path $OutputFile -NoTypeInformation -Force
         # 输出提取的数据行
         $rows | Export-Csv -Path $OutputFile -NoTypeInformation -Append -Force
-    } catch {
+    }
+    catch
+    {
         Write-Error "保存CSV文件失败: $_"
     }
 
@@ -164,6 +181,253 @@ function Extract-CsvRows {
 
 # 调用示例
 # Extract-CsvRows -InputFile "C:\path\to\input.csv" -OutputFile "C:\path\to\output.csv" -StartRow 5
+
+function Start-HTTPServer
+{
+    <#
+    .SYNOPSIS
+    启动一个简单的HTTP文件服务器
+
+    .DESCRIPTION
+    将指定的本地文件夹作为HTTP服务器的根目录,默认监听在8080端口
+
+    .PARAMETER Path
+    指定要作为服务器根目录的本地文件夹路径
+
+    .PARAMETER Port
+    指定HTTP服务器要监听的端口号,默认为8080
+
+    .EXAMPLE
+    Start-SimpleHTTPServer -Path "C:\Share" -Port 8000
+    将C:\Share文件夹作为根目录,在8000端口启动HTTP服务器
+
+    .EXAMPLE
+    Start-SimpleHTTPServer
+    将当前目录作为根目录,在8080端口启动HTTP服务器
+    #>
+
+    [CmdletBinding()]
+    param(
+        [Parameter(Position = 0)]
+        [string]$Path = (Get-Location).Path,
+        
+        [Parameter(Position = 1)]
+        [int]$Port = 8080
+    )
+
+    Add-Type -AssemblyName System.Web
+    try
+    {
+        # 验证路径是否存在
+        if (-not (Test-Path $Path))
+        {
+            throw "指定的路径 '$Path' 不存在"
+        }
+
+        # 创建HTTP监听器
+        $Listener = New-Object System.Net.HttpListener
+        $Listener.Prefixes.Add("http://+:$Port/")
+
+        # 尝试启动监听器
+        try
+        {
+            $Listener.Start()
+        }
+        catch
+        {
+            throw "无法启动HTTP服务器,可能是权限不足或端口被占用: $_"
+        }
+
+        Write-Host "HTTP服务器已启动:"
+        Write-Host "根目录: $Path"
+        Write-Host "地址: http://localhost:$Port/"
+        Write-Host "按 Ctrl+C 停止服务器"
+
+        while ($Listener.IsListening)
+        {
+            # 等待请求
+            $Context = $Listener.GetContext()
+            $Request = $Context.Request
+            $Response = $Context.Response
+            
+            # URL解码请求路径
+            $DecodedPath = [System.Web.HttpUtility]::UrlDecode($Request.Url.LocalPath)
+            $LocalPath = Join-Path $Path $DecodedPath.TrimStart('/')
+            
+            # 设置响应头，支持UTF-8
+            $Response.Headers.Add("Content-Type", "text/html; charset=utf-8")
+            
+            # 处理目录请求
+            if ((Test-Path $LocalPath) -and (Get-Item $LocalPath).PSIsContainer)
+            {
+                $LocalPath = Join-Path $LocalPath "index.html"
+                if (-not (Test-Path $LocalPath))
+                {
+                    # 生成目录列表
+                    $Content = Get-DirectoryListing $DecodedPath.TrimStart('/') (Get-ChildItem (Join-Path $Path $DecodedPath.TrimStart('/')))
+                    $Buffer = [System.Text.Encoding]::UTF8.GetBytes($Content)
+                    $Response.ContentLength64 = $Buffer.Length
+                    $Response.OutputStream.Write($Buffer, 0, $Buffer.Length)
+                    $Response.Close()
+                    continue
+                }
+            }
+
+            # 处理文件请求
+            if (Test-Path $LocalPath)
+            {
+                $File = Get-Item $LocalPath
+                $Response.ContentType = Get-MimeType $File.Extension
+                $Response.ContentLength64 = $File.Length
+                
+                # 添加文件名编码支持
+                $FileName = [System.Web.HttpUtility]::UrlEncode($File.Name)
+                $Response.Headers.Add("Content-Disposition", "inline; filename*=UTF-8''$FileName")
+                
+                $FileStream = [System.IO.File]::OpenRead($File.FullName)
+                $FileStream.CopyTo($Response.OutputStream)
+                $FileStream.Close()
+            }
+            else
+            {
+                # 返回404
+                $Response.StatusCode = 404
+                $Content = "404 - 文件未找到"
+                $Buffer = [System.Text.Encoding]::UTF8.GetBytes($Content)
+                $Response.ContentLength64 = $Buffer.Length
+                $Response.OutputStream.Write($Buffer, 0, $Buffer.Length)
+            }
+
+            $Response.Close()
+        }
+    }
+    finally
+    {
+        if ($Listener)
+        {
+            $Listener.Stop()
+            $Listener.Close()
+        }
+    }
+}
+
+function Get-DirectoryListing
+{
+    param($RelativePath, $Items)
+    
+    $html = @"
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Index of /$RelativePath</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { text-align: left; padding: 8px; border-bottom: 1px solid #ddd; }
+        th { background-color: #f2f2f2; }
+        tr:hover { background-color: #f5f5f5; }
+        a { text-decoration: none; color: #0066cc; }
+        .size { text-align: right; }
+        .date { white-space: nowrap; }
+    </style>
+</head>
+<body>
+    <h1>Index of /$RelativePath</h1>
+    <table>
+        <tr>
+            <th>名称</th>
+            <th class="size">大小</th>
+            <th class="date">修改时间</th>
+        </tr>
+"@
+
+    if ($RelativePath)
+    {
+        $html += "<tr><td><a href='../'>..</a></td><td></td><td></td></tr>"
+    }
+
+    # 分别处理文件夹和文件，并按名称排序
+    $Folders = $Items | Where-Object { $_.PSIsContainer } | Sort-Object Name
+    $Files = $Items | Where-Object { !$_.PSIsContainer } | Sort-Object Name
+
+    # 先显示文件夹
+    foreach ($Item in $Folders)
+    {
+        $Name = $Item.Name
+        $LastModified = $Item.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss")
+        $EncodedName = [System.Web.HttpUtility]::UrlEncode($Name)
+        
+        $html += "<tr><td><a href='$EncodedName/'>$Name/</a></td><td class='size'>-</td><td class='date'>$LastModified</td></tr>"
+    }
+
+    # 再显示文件
+    foreach ($Item in $Files)
+    {
+        $Name = $Item.Name
+        $Size = Format-FileSize $Item.Length
+        $LastModified = $Item.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss")
+        $EncodedName = [System.Web.HttpUtility]::UrlEncode($Name)
+        
+        $html += "<tr><td><a href='$EncodedName'>$Name</a></td><td class='size'>$Size</td><td class='date'>$LastModified</td></tr>"
+    }
+
+    $html += @"
+    </table>
+    <footer style="margin-top: 20px; color: #666; font-size: 12px;">
+        共 $($Folders.Count) 个文件夹, $($Files.Count) 个文件
+    </footer>
+</body>
+</html>
+"@
+
+    return $html
+}
+
+function Format-FileSize
+{
+    param([long]$Size)
+    
+    if ($Size -gt 1GB) { return "{0:N2} GB" -f ($Size / 1GB) }
+    if ($Size -gt 1MB) { return "{0:N2} MB" -f ($Size / 1MB) }
+    if ($Size -gt 1KB) { return "{0:N2} KB" -f ($Size / 1KB) }
+    return "$Size B"
+}
+
+function Get-MimeType
+{
+    param([string]$Extension)
+    
+    $MimeTypes = @{
+        ".txt"  = "text/plain; charset=utf-8"
+        ".ps1"  = "text/plain; charset=utf-8"
+        ".py"   = "text/plain; charset=utf-8"
+        ".htm"  = "text/html; charset=utf-8"
+        ".html" = "text/html; charset=utf-8"
+        ".css"  = "text/css; charset=utf-8"
+        ".js"   = "text/javascript; charset=utf-8"
+        ".json" = "application/json; charset=utf-8"
+        ".jpg"  = "image/jpeg"
+        ".jpeg" = "image/jpeg"
+        ".png"  = "image/png"
+        ".gif"  = "image/gif"
+        ".pdf"  = "application/pdf"
+        ".xml"  = "application/xml; charset=utf-8"
+        ".zip"  = "application/zip"
+        ".md"   = "text/markdown; charset=utf-8"
+        ".mp4"  = "video/mp4"
+        ".mp3"  = "audio/mpeg"
+        ".wav"  = "audio/wav"
+    }
+    
+    # return $MimeTypes[$Extension.ToLower()] ?? "application/octet-stream"
+    $key = $Extension.ToLower()
+    if ($MimeTypes.ContainsKey($key))
+    {
+        return $MimeTypes[$key]
+    }
+    return "application/octet-stream"
+}
 
 function Get-CharacterEncoding
 {
@@ -265,41 +529,41 @@ function Get-CharacterEncodingsGUI
 
     # 动态调整输入框高度
     $inputBox.Add_TextChanged({
-        $lineCount = $inputBox.Lines.Length
-        $fontHeight = $inputBox.Font.Height
-        $padding = 10
-        $newHeight = ($lineCount * $fontHeight) + $padding
+            $lineCount = $inputBox.Lines.Length
+            $fontHeight = $inputBox.Font.Height
+            $padding = 10
+            $newHeight = ($lineCount * $fontHeight) + $padding
 
-        # 限制最小和最大高度
-        $minHeight = 60
-        $maxHeight = 200
-        $inputBox.Height = [Math]::Min([Math]::Max($newHeight, $minHeight), $maxHeight)
+            # 限制最小和最大高度
+            $minHeight = 60
+            $maxHeight = 200
+            $inputBox.Height = [Math]::Min([Math]::Max($newHeight, $minHeight), $maxHeight)
 
-        # 调整结果框位置和高度
-        $resultBox.Top = $inputBox.Location.Y + $inputBox.Height + 10
-        $resultBox.Height = $form.ClientSize.Height - $resultBox.Top - 10
-    })
+            # 调整结果框位置和高度
+            $resultBox.Top = $inputBox.Location.Y + $inputBox.Height + 10
+            $resultBox.Height = $form.ClientSize.Height - $resultBox.Top - 10
+        })
 
     # 实时解析事件
     $inputBox.Add_TextChanged({
-        $inputText = $inputBox.Text
-        if (-not [string]::IsNullOrEmpty($inputText))
-        {
-            $result = Get-CharacterEncoding -InputString $inputText | Format-Table | Out-String
-            $resultBox.Text = $result
-        }
-        else
-        {
-            $resultBox.Clear()
-        }
-    })
+            $inputText = $inputBox.Text
+            if (-not [string]::IsNullOrEmpty($inputText))
+            {
+                $result = Get-CharacterEncoding -InputString $inputText | Format-Table | Out-String
+                $resultBox.Text = $result
+            }
+            else
+            {
+                $resultBox.Clear()
+            }
+        })
 
     # 窗体大小调整事件
     $form.Add_SizeChanged({
-        $inputBox.Width = $form.ClientSize.Width - 20
-        $resultBox.Width = $form.ClientSize.Width - 20
-        $resultBox.Height = $form.ClientSize.Height - $resultBox.Top - 10
-    })
+            $inputBox.Width = $form.ClientSize.Width - 20
+            $resultBox.Width = $form.ClientSize.Width - 20
+            $resultBox.Height = $form.ClientSize.Height - $resultBox.Top - 10
+        })
 
     # 显示窗口
     [void]$form.ShowDialog()
@@ -882,7 +1146,7 @@ function Get-BootEntries
 
     # 使用正则表达式提取identifier和description
     $regex = "identifier\s+(\{[^\}]+\})|\bdevice\s+(.+)|description\s+(.+)"
-    $matches = [regex]::Matches($bootEntries, $regex)
+    $ms = [regex]::Matches($bootEntries, $regex)
     # $matches
 
 
@@ -890,7 +1154,7 @@ function Get-BootEntries
     $ids = @()
     $devices = @()
     $descriptions = @()
-    foreach ($match in $matches)
+    foreach ($match in $ms)
     {
         $identifier = $match.Groups[1].Value
         $device = $match.Groups[2].Value
