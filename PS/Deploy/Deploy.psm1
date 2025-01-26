@@ -702,24 +702,24 @@ function Add-ScoopBuckets
         [switch]$NoMirror,
         [switch]$Silent
     )
-    # if ($mirror)
-    # {
+    if ($mirror)
+    {
 
-    #     Write-Verbose "The mirror is: $mirror"    
-    # }
-    # elseif ($NoMirror  )
-    # {
-    #     $mirror = ''
-    #     Write-Verbose 'The mirror is not specified!'
-    # }
-    # else
-    # {
-    #     $mirror = Get-SelectedMirror -Silent:$Silent
-    #     # $mirror=@($mirror)[0]
-    #     Write-Verbose "The mirror is: $mirror"
-    # }
-    # $spc = "$mirror/https://github.com/lzwme/scoop-proxy-cn".Trim('/')
-    $spc = 'https://gitee.com/xuchaoxin1375/spc'
+        Write-Verbose "The mirror is: $mirror"    
+    }
+    elseif ($NoMirror  )
+    {
+        $mirror = ''
+        Write-Verbose 'The mirror is not specified!'
+    }
+    else
+    {
+        $mirror = Get-SelectedMirror -Silent:$Silent
+        # $mirror=@($mirror)[0]
+        Write-Verbose "The mirror is: $mirror"
+    }
+    $spc = "$mirror/https://github.com/lzwme/scoop-proxy-cn".Trim('/')
+    # $spc = 'https://gitee.com/xuchaoxin1375/spc'
 
     Write-Host 'Adding more buckets...(It may take a while, please be patient!)'
     Write-Verbose "The spc bucket is: $spc"

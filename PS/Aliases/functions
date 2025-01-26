@@ -94,7 +94,7 @@ read read-host
 as androidstudio 
 ipSetDns ncpa.cpl 
 ; t touch 
-t typora_dir
+t typora.exe
 outFile out-file 
 add gd 
 modules psPS 

@@ -2122,27 +2122,6 @@ function c
     code $dirName
     # --proxy-pac-url=http://127.0.0.1:1083/proxy.pac
 }
-function typora_dir
-{
-    <# 
-.synopsis
-typora_dir 可以默认将当前目录作为参数传递给 typora打开(作为工作空间)
-否则打开参数dirName指定的目录作为工作工作空间
-
-.example 
->PS typora_dir
-
-description:without argument (default with ".")
-.example
->PS typora_dir .
-.example 
->PS typora_dir C:\Users\cxxu\desktop
-#>
-    param(
-        $dirName = '.'
-    )
-    typora $dirName
-}
 
 function code_proxy
 {
