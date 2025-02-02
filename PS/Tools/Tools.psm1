@@ -241,7 +241,7 @@ function Start-HTTPServer
         Write-Host "HTTP服务器已启动:"
         Write-Host "根目录: $Path"
         Write-Host "地址: http://localhost:$Port/"
-        Write-Host "按 Ctrl+C 停止服务器"
+        Write-Host "按 Ctrl+C 停止服务器(可能需要数十秒的时间,如果等不及可以考虑关闭掉对应的命令行窗口)"
 
         while ($Listener.IsListening)
         {
@@ -311,6 +311,37 @@ function Start-HTTPServer
     }
 }
 
+function Start-HTTPServerBG
+{
+    param (
+        # 默认shell为windows powershell,如果安装了powershell7+ (即pwsh)可以用pwsh代替;
+        # 默认情况下,需要将Start-HTTPServer写入到powershell配置文件中或者powershell的自动导入模块中,否则Start-HTTPServerBG命令不可用,导致启动失败
+        # $shell = "powershell",
+        $shell = "pwsh", #个人使用pwsh比较习惯
+        $path = "$home\desktop",
+        $Port = 8080
+    )
+    Write-Verbose "try to start http server..." -Verbose
+    # $PSBoundParameters 
+    $params = [PSCustomObject]@{
+        shell = $shell
+        path  = $path
+        Port  = $Port
+    }
+    Write-Output $params #不能直接用Write-Output输出字面量对象,会被当做字符串输出
+    # Write-Output $shell, $path, $Port
+    # $exp = "Start-Process -WindowStyle Hidden -FilePath $shell -ArgumentList { -c Start-HTTPServer -path $path -port $Port } -PassThru"
+    # Write-Output $exp
+    # $ps = $exp | Invoke-Expression
+    
+    # $func = ${Function:Start-HTTPServer} #由于Start-HttpServer完整代码过于分散,仅仅这样写不能获得完整的Start-HTTPServer函数
+    $ps = Start-Process  -FilePath $shell -ArgumentList "-c Start-HTTPServer -path $path -port $Port" -PassThru
+    #debug start-process语法
+    # $ps = Start-Process -FilePath pwsh -ArgumentList "-c", "Get-Location;Pause "
+
+    return $ps
+    
+}
 function Get-DirectoryListing
 {
     param($RelativePath, $Items)
