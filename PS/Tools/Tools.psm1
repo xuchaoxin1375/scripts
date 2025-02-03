@@ -335,7 +335,7 @@ function Start-HTTPServerBG
     # $ps = $exp | Invoke-Expression
     
     # $func = ${Function:Start-HTTPServer} #由于Start-HttpServer完整代码过于分散,仅仅这样写不能获得完整的Start-HTTPServer函数
-    $ps = Start-Process  -FilePath $shell -ArgumentList "-c Start-HTTPServer -path $path -port $Port" -PassThru
+    $ps = Start-Process -WindowStyle Hidden -FilePath $shell -ArgumentList "-c Start-HTTPServer -path $path -port $Port" -PassThru
     #debug start-process语法
     # $ps = Start-Process -FilePath pwsh -ArgumentList "-c", "Get-Location;Pause "
 
