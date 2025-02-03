@@ -500,6 +500,10 @@ function Get-CharacterEncoding
         }
     }
 }
+
+
+
+
 function Get-CharacterEncodingsGUI
 {
     # 加载 Windows Forms 程序集

@@ -21,9 +21,9 @@ function Update-GithubHosts-Archive
         # 可以使用通用的powershell参数(-verbose)查看运行细节
         $hosts = 'C:\Windows\System32\drivers\etc\hosts',
         $remote = 'https://raw.hellogithub.com/hosts',
-        # 如果原站不可用,考虑直接访问github,用加速站获取文件
+        # 如果原站不可用,考虑访问github,用加速站获取文件
         [switch]$UseLink2,
-        $mirror = 'https://ghgo.xyz/', #加速镜像站可能会失效,需要注意更新维护
+        $mirror = 'https://ghfast.top/', #加速镜像站可能会失效,需要注意更新维护(https://ghproxy.link/)
         $remote_github_raw = 'https://raw.githubusercontent.com/521xueweihan/GitHub520/refs/heads/main/hosts',
 
         $UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.66 Safari/537.36'
@@ -59,12 +59,15 @@ function Update-GithubHosts-Archive
     #$content | >> $tempHosts 
 
     # 下载远程内容并追加到临时文件
+
+    ## 根据需要修改$remote链接
     # $NewHosts = New-TemporaryFile
     if ($UseLink2)
     {
         $remote = $mirror + $remote_github_raw
         Write-Verbose $remote
     }
+
     $New = Invoke-WebRequest -Uri $remote -UseBasicParsing -UserAgent $UA #New是一个网络对象而不是字符串
     
     $New = $New.ToString() #清理头信息

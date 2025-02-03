@@ -1326,6 +1326,22 @@ function Update-GithubHosts
     https://github.com/521xueweihan/GitHub520
     .LINK
     https://gitee.com/xuchaoxin1375/scripts/tree/main/PS/Deploy
+
+    #>
+    <# 
+    .EXAMPLE
+    
+# GitHub520 Host Start
+140.82.112.26                 alive.github.com
+172.18.0.2                    api.github.com
+...
+185.199.111.133               private-user-images.githubusercontent.com
+
+
+# Update time: 2025-02-02T21:59:11+08:00
+# Update url: https://raw.hellogithub.com/hosts
+# Star me: https://github.com/521xueweihan/GitHub520
+# GitHub520 Host End
     #>
     [CmdletBinding()]
     param (
