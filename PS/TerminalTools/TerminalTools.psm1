@@ -203,7 +203,8 @@ function tree_pwsh
                 # 带树干的字符串:│ ├ ─  └ ─ |
                 $indent_tree = "│`t" * ($depth - 1) + '│'
                 # 打印路径
-                $pathNameRelative = $_.baseName
+                # $pathNameRelative = $_.baseName
+                $pathNameRelative = $_.Name
                 Write-Output "$indent_tree`──($depth)$($pathNameRelative)"
 
                 if ((Get-Item $_) -is [system.io.directoryinfo] )
