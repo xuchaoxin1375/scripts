@@ -7,7 +7,7 @@ function Get-CxxuPsModuleVersoin
     
 }
 
-function Get-CsvRowsTail
+function Get-CsvRowsTail-Archived
 {
     <#
 .SYNOPSIS
@@ -82,10 +82,271 @@ function Get-CsvRowsTail
         Write-Error "保存CSV文件失败: $_"
     }
 
-    Write-Host "处理完成，结果已保存到: $OutputFile"
+    Write-Host "处理完成，结果已保存为!(默认所在目录和源文件${InputFile})同目录: $(Resolve-Path $OutputFile)"
+    $row | Select-Object -First 3 | Format-Table ; Write-Host "....";
+    Write-Host "Totol lines:$($row.count)"
 }
 
-<#
+function Get-CsvRowsTail
+{
+    <#
+.SYNOPSIS
+    提取 CSV 文件的表头和从第 k 行到最后一行的数据，并将其保存到指定输出文件中。
+
+.DESCRIPTION
+    该函数读取输入的 CSV 文件，提取文件的表头（第一行）以及指定起始行号（k）到最后一行的数据，
+    然后将提取的内容保存到指定的输出文件中。注意：函数采用 UTF-8 编码读写文件。
+
+.PARAMETER InputFile
+    输入的 CSV 文件路径。
+
+.PARAMETER OutputFile
+    输出的 CSV 文件路径。
+
+.PARAMETER StartRow
+    提取数据的起始行号（第一行为 1）。
+
+.EXAMPLE
+    Get-CsvRowsTail -InputFile "C:\path\to\input.csv" -OutputFile "C:\path\to\output.csv" -StartRow 5
+#>
+
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$InputFile,
+
+        [Parameter(Mandatory = $true)]
+        [string]$OutputFile,
+
+        [Parameter(Mandatory = $true)]
+        [int]$StartRow
+    )
+
+    if ($StartRow -lt 1)
+    {
+        Write-Error "StartRow 必须大于或等于 1"
+        return
+    }
+
+    # 使用 Import-Csv 读取 CSV 文件 (Import-Csv: 读取 CSV 文件，将每一行转换为对象)
+    try
+    {
+        $data = Import-Csv -Path $InputFile -Encoding UTF8
+    }
+    catch
+    {
+        Write-Error "读取 CSV 文件失败: $_"
+        return
+    }
+
+    # 读取表头行 (Header)：直接从文件中获取第一行文本
+    try
+    {
+        $headerLine = Get-Content -Path $InputFile -Encoding UTF8 -TotalCount 1
+    }
+    catch
+    {
+        Write-Error "读取表头失败: $_"
+        return
+    }
+
+    # 根据 StartRow 提取数据行 (Data Rows)
+    try
+    {
+        if ($StartRow -eq 1)
+        {
+            # 若从第一行开始，则直接用 Import-Csv 获取所有数据
+            $rows = $data
+        }
+        else
+        {
+            # 注意：CSV 文件第一行为表头，故数据行实际从第二行开始
+            $rows = Import-Csv -Path $InputFile -Encoding UTF8 | Select-Object -Skip ($StartRow - 1)
+        }
+    }
+    catch
+    {
+        Write-Error "提取数据行失败: $_"
+        return
+    }
+
+    # 保存数据到输出文件 (Exporting Data)
+    try
+    {
+        # 先写入表头行
+        Set-Content -Path $OutputFile -Value $headerLine -Encoding UTF8 -Force
+        # 追加数据行（使用 Export-Csv 会自动添加表头，因此这里使用 -Append 参数，并关闭类型信息）
+        $rows | Export-Csv -Path $OutputFile -NoTypeInformation -Append -Encoding UTF8 -Force
+    }
+    catch
+    {
+        Write-Error "保存 CSV 文件失败: $_"
+        return
+    }
+
+    $fileDir = Split-Path $OutputFile
+    Write-Host "处理完成，结果已保存到: $(Resolve-Path $OutputFile)"
+    $rows | Select-Object -First 3 | Format-Table ; Write-Host "....";
+    Write-Host "Totol lines:$($rows.count)"
+    Write-Host $fileDir
+
+    # explorer "$fileDir"
+}
+function Get-CsvRowsTailGUI
+{
+
+    # 加载 Windows Forms 和 Drawing 程序集 (Assembly)
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+
+    # 定义 CSV 行提取函数 (CSV Rows Extraction Function)
+
+
+    # 建立 GUI 窗体 (Form)
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = "CSV 行提取工具"      # 窗体标题（Window Title）
+    $form.Size = New-Object System.Drawing.Size(500, 250)
+    $form.StartPosition = "CenterScreen"
+
+    # 输入文件标签
+    $labelInput = New-Object System.Windows.Forms.Label
+    $labelInput.Location = New-Object System.Drawing.Point(10, 20)
+    $labelInput.Size = New-Object System.Drawing.Size(80, 20)
+    $labelInput.Text = "输入文件:"          # “Input File”
+    $form.Controls.Add($labelInput)
+
+    # 输入文件文本框
+    $textBoxInput = New-Object System.Windows.Forms.TextBox
+    $textBoxInput.Location = New-Object System.Drawing.Point(100, 20)
+    $textBoxInput.Size = New-Object System.Drawing.Size(280, 20)
+    $form.Controls.Add($textBoxInput)
+
+    # 输入文件浏览按钮
+    $buttonBrowseInput = New-Object System.Windows.Forms.Button
+    $buttonBrowseInput.Location = New-Object System.Drawing.Point(390, 18)
+    $buttonBrowseInput.Size = New-Object System.Drawing.Size(75, 23)
+    $buttonBrowseInput.Text = "浏览"          # “Browse”
+    $form.Controls.Add($buttonBrowseInput)
+
+    # 输出文件标签
+    $labelOutput = New-Object System.Windows.Forms.Label
+    $labelOutput.Location = New-Object System.Drawing.Point(10, 60)
+    $labelOutput.Size = New-Object System.Drawing.Size(80, 20)
+    $labelOutput.Text = "输出文件:"          # “Output File”
+    $form.Controls.Add($labelOutput)
+
+    # 输出文件文本框
+    $textBoxOutput = New-Object System.Windows.Forms.TextBox
+    $textBoxOutput.Location = New-Object System.Drawing.Point(100, 60)
+    $textBoxOutput.Size = New-Object System.Drawing.Size(280, 20)
+    $form.Controls.Add($textBoxOutput)
+
+    # 输出文件浏览按钮
+    $buttonBrowseOutput = New-Object System.Windows.Forms.Button
+    $buttonBrowseOutput.Location = New-Object System.Drawing.Point(390, 58)
+    $buttonBrowseOutput.Size = New-Object System.Drawing.Size(75, 23)
+    $buttonBrowseOutput.Text = "浏览"         # “Browse”
+    $form.Controls.Add($buttonBrowseOutput)
+
+    # 起始行号标签
+    $labelStartRow = New-Object System.Windows.Forms.Label
+    $labelStartRow.Location = New-Object System.Drawing.Point(10, 100)
+    $labelStartRow.Size = New-Object System.Drawing.Size(80, 20)
+    $labelStartRow.Text = "要截取的起始行号:"         # “Start Row”
+    $form.Controls.Add($labelStartRow)
+
+    # 起始行号文本框
+    $textBoxStartRow = New-Object System.Windows.Forms.TextBox
+    $textBoxStartRow.Location = New-Object System.Drawing.Point(100, 100)
+    $textBoxStartRow.Size = New-Object System.Drawing.Size(100, 20)
+    $textBoxStartRow.Text = "2"             # 默认值
+    $form.Controls.Add($textBoxStartRow)
+
+    # 执行按钮
+    $buttonExecute = New-Object System.Windows.Forms.Button
+    $buttonExecute.Location = New-Object System.Drawing.Point(100, 140)
+    $buttonExecute.Size = New-Object System.Drawing.Size(75, 23)
+    $buttonExecute.Text = "执行"            # “Execute”
+    $form.Controls.Add($buttonExecute)
+
+    # 退出按钮
+    $buttonCancel = New-Object System.Windows.Forms.Button
+    $buttonCancel.Location = New-Object System.Drawing.Point(200, 140)
+    $buttonCancel.Size = New-Object System.Drawing.Size(75, 23)
+    $buttonCancel.Text = "退出"            # “Exit”
+    $form.Controls.Add($buttonCancel)
+
+    # 为“浏览”输入文件按钮添加事件处理 (Event Handler)
+    $buttonBrowseInput.Add_Click({
+            $openFileDialog = New-Object System.Windows.Forms.OpenFileDialog
+            $openFileDialog.Filter = "CSV 文件 (*.csv)|*.csv|所有文件 (*.*)|*.*"
+            if ($openFileDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK)
+            {
+                $textBoxInput.Text = $openFileDialog.FileName
+            }
+        })
+
+    # 为“浏览”输出文件按钮添加事件处理
+    $buttonBrowseOutput.Add_Click({
+            $saveFileDialog = New-Object System.Windows.Forms.SaveFileDialog
+            $saveFileDialog.Filter = "CSV 文件 (*.csv)|*.csv|所有文件 (*.*)|*.*"
+            if ($saveFileDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK)
+            {
+                $textBoxOutput.Text = $saveFileDialog.FileName
+            }
+        })
+
+    # 为“执行”按钮添加事件处理
+    $buttonExecute.Add_Click({
+            $inputFile = $textBoxInput.Text
+            $outputFile = $textBoxOutput.Text
+            $startRow = $textBoxStartRow.Text
+
+            # 简单的输入检查
+            if ([string]::IsNullOrEmpty($inputFile) -or -not (Test-Path $inputFile))
+            {
+                [System.Windows.Forms.MessageBox]::Show("请输入有效的输入文件路径！", "错误", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+                return
+            }
+
+            if ([string]::IsNullOrEmpty($outputFile))
+            {
+                [System.Windows.Forms.MessageBox]::Show("请输入有效的输出文件路径！", "错误", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+                return
+            }
+
+            if (-not [int]::TryParse($startRow, [ref]$null))
+            {
+                [System.Windows.Forms.MessageBox]::Show("起始行号必须为整数！", "错误", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+                return
+            }
+
+            $startRowInt = [int]$startRow
+
+            try
+            {
+                Get-CsvRowsTail -InputFile $inputFile -OutputFile $outputFile -StartRow $startRowInt
+                [System.Windows.Forms.MessageBox]::Show("CSV 提取完成！", "信息", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+            }
+            catch
+            {
+                [System.Windows.Forms.MessageBox]::Show("执行过程中发生错误：" + $_.Exception.Message, "错误", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+            }
+        })
+
+    # 为“退出”按钮添加事件处理
+    $buttonCancel.Add_Click({
+            $form.Close()
+        })
+
+    # 显示窗体 (Show the Form)
+    [void]$form.ShowDialog()
+
+    
+}
+
+function Get-CsvRowsByPercentage
+{
+    <#
 .SYNOPSIS
     提取CSV文件的表头和从指定百分比位置到最后一行的数据，并将其保存到指定输出文件中。
 
@@ -111,8 +372,6 @@ function Get-CsvRowsTail
     - 百分比值应在 0-100 之间。
 #>
 
-function Get-CsvRowsByPercentage
-{
     param (
         [Parameter(Mandatory = $true)]
         [string]$InputFile, # 输入的CSV文件路径
