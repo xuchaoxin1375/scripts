@@ -185,11 +185,13 @@ function Get-CsvRowsTail
 
     $fileDir = Split-Path $OutputFile
     Write-Host "处理完成，结果已保存到: $(Resolve-Path $OutputFile)"
-    $rows | Select-Object -First 3 | Format-Table ; Write-Host "....";
+    Write-Host "....";
     Write-Host "Totol lines:$($rows.count)"
     Write-Host $fileDir
-
     # explorer "$fileDir"
+    # Start-Job -ScriptBlock { Start-Sleep 1; explorer "$using:fileDir" }
+    
+    # $rows | Select-Object -First 3 | Format-Table ; 
 }
 function Get-CsvRowsTailGUI
 {
@@ -198,26 +200,28 @@ function Get-CsvRowsTailGUI
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
 
-    # 定义 CSV 行提取函数 (CSV Rows Extraction Function)
-
-
     # 建立 GUI 窗体 (Form)
     $form = New-Object System.Windows.Forms.Form
-    $form.Text = "CSV 行提取工具"      # 窗体标题（Window Title）
+    $form.Text = "CSV 行提取工具"      # 窗体标题 (Window Title)
     $form.Size = New-Object System.Drawing.Size(500, 250)
     $form.StartPosition = "CenterScreen"
+    $form.MinimumSize = New-Object System.Drawing.Size(400, 200)  # 设置最小尺寸
 
     # 输入文件标签
     $labelInput = New-Object System.Windows.Forms.Label
     $labelInput.Location = New-Object System.Drawing.Point(10, 20)
     $labelInput.Size = New-Object System.Drawing.Size(80, 20)
     $labelInput.Text = "输入文件:"          # “Input File”
+    # 锚定于左上角，不随窗体尺寸变化 (Anchor to Top, Left)
+    $labelInput.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left
     $form.Controls.Add($labelInput)
 
     # 输入文件文本框
     $textBoxInput = New-Object System.Windows.Forms.TextBox
     $textBoxInput.Location = New-Object System.Drawing.Point(100, 20)
     $textBoxInput.Size = New-Object System.Drawing.Size(280, 20)
+    # 锚定于上、左、右，使其宽度随窗体宽度变化 (Anchor to Top, Left, Right)
+    $textBoxInput.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
     $form.Controls.Add($textBoxInput)
 
     # 输入文件浏览按钮
@@ -225,6 +229,8 @@ function Get-CsvRowsTailGUI
     $buttonBrowseInput.Location = New-Object System.Drawing.Point(390, 18)
     $buttonBrowseInput.Size = New-Object System.Drawing.Size(75, 23)
     $buttonBrowseInput.Text = "浏览"          # “Browse”
+    # 锚定于上、右 (Anchor to Top, Right)
+    $buttonBrowseInput.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Right
     $form.Controls.Add($buttonBrowseInput)
 
     # 输出文件标签
@@ -232,12 +238,14 @@ function Get-CsvRowsTailGUI
     $labelOutput.Location = New-Object System.Drawing.Point(10, 60)
     $labelOutput.Size = New-Object System.Drawing.Size(80, 20)
     $labelOutput.Text = "输出文件:"          # “Output File”
+    $labelOutput.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left
     $form.Controls.Add($labelOutput)
 
     # 输出文件文本框
     $textBoxOutput = New-Object System.Windows.Forms.TextBox
     $textBoxOutput.Location = New-Object System.Drawing.Point(100, 60)
     $textBoxOutput.Size = New-Object System.Drawing.Size(280, 20)
+    $textBoxOutput.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
     $form.Controls.Add($textBoxOutput)
 
     # 输出文件浏览按钮
@@ -245,37 +253,44 @@ function Get-CsvRowsTailGUI
     $buttonBrowseOutput.Location = New-Object System.Drawing.Point(390, 58)
     $buttonBrowseOutput.Size = New-Object System.Drawing.Size(75, 23)
     $buttonBrowseOutput.Text = "浏览"         # “Browse”
+    $buttonBrowseOutput.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Right
     $form.Controls.Add($buttonBrowseOutput)
 
     # 起始行号标签
     $labelStartRow = New-Object System.Windows.Forms.Label
     $labelStartRow.Location = New-Object System.Drawing.Point(10, 100)
-    $labelStartRow.Size = New-Object System.Drawing.Size(80, 20)
+    $labelStartRow.Size = New-Object System.Drawing.Size(120, 20)
     $labelStartRow.Text = "要截取的起始行号:"         # “Start Row”
+    $labelStartRow.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left
     $form.Controls.Add($labelStartRow)
 
     # 起始行号文本框
     $textBoxStartRow = New-Object System.Windows.Forms.TextBox
-    $textBoxStartRow.Location = New-Object System.Drawing.Point(100, 100)
+    # 将文本框的位置稍作调整，避开标签 (位置 X 值等于标签宽度 + 10)
+    $textBoxStartRow.Location = New-Object System.Drawing.Point(130, 110)
     $textBoxStartRow.Size = New-Object System.Drawing.Size(100, 20)
     $textBoxStartRow.Text = "2"             # 默认值
+    $textBoxStartRow.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left
     $form.Controls.Add($textBoxStartRow)
 
     # 执行按钮
     $buttonExecute = New-Object System.Windows.Forms.Button
-    $buttonExecute.Location = New-Object System.Drawing.Point(100, 140)
+    $buttonExecute.Location = New-Object System.Drawing.Point(100, 160)
     $buttonExecute.Size = New-Object System.Drawing.Size(75, 23)
     $buttonExecute.Text = "执行"            # “Execute”
+    # 锚定于左下角 (Anchor to Bottom, Left)
+    $buttonExecute.Anchor = [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Left
     $form.Controls.Add($buttonExecute)
 
     # 退出按钮
     $buttonCancel = New-Object System.Windows.Forms.Button
-    $buttonCancel.Location = New-Object System.Drawing.Point(200, 140)
+    $buttonCancel.Location = New-Object System.Drawing.Point(200, 160)
     $buttonCancel.Size = New-Object System.Drawing.Size(75, 23)
     $buttonCancel.Text = "退出"            # “Exit”
+    $buttonCancel.Anchor = [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Left
     $form.Controls.Add($buttonCancel)
 
-    # 为“浏览”输入文件按钮添加事件处理 (Event Handler)
+    # 为“浏览”输入文件按钮添加事件处理
     $buttonBrowseInput.Add_Click({
             $openFileDialog = New-Object System.Windows.Forms.OpenFileDialog
             $openFileDialog.Filter = "CSV 文件 (*.csv)|*.csv|所有文件 (*.*)|*.*"
@@ -338,11 +353,10 @@ function Get-CsvRowsTailGUI
             $form.Close()
         })
 
-    # 显示窗体 (Show the Form)
+    # 显示窗体
     [void]$form.ShowDialog()
-
-    
 }
+
 
 function Get-CsvRowsByPercentage
 {
