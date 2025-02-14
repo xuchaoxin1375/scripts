@@ -118,7 +118,10 @@ function Get-CsvRowsTail
         [string]$OutputFile,
 
         [Parameter(Mandatory = $true)]
-        [int]$StartRow
+        [int]$StartRow,
+
+        [switch]$ShowInExplorer
+        
     )
 
     if ($StartRow -lt 1)
@@ -183,16 +186,21 @@ function Get-CsvRowsTail
         return
     }
 
-    $fileDir = Split-Path $OutputFile
+    $fileDir = Split-Path (Resolve-Path $OutputFile)
     Write-Host "处理完成，结果已保存到: $(Resolve-Path $OutputFile)"
+    Write-Host ($fileDir)
+    $rows | Select-Object -First 3 | Select-Object -Property SKU, Name | Format-Table  ; 
     Write-Host "....";
-    Write-Host "Totol lines:$($rows.count)"
-    Write-Host $fileDir
-    # explorer "$fileDir"
-    # Start-Job -ScriptBlock { Start-Sleep 1; explorer "$using:fileDir" }
+    Write-Host "Totol data lines:$($rows.count-1)"
+
+    # 配置是否自动用资源文件管理打开csv所在文件夹
+    if ($ShowInExplorer) {
+        explorer "$fileDir"
+        # Start-Job -ScriptBlock { Start-Sleep 1; explorer "$using:fileDir" }
+    }
     
-    # $rows | Select-Object -First 3 | Format-Table ; 
 }
+
 function Get-CsvRowsTailGUI
 {
 
