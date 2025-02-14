@@ -57,7 +57,7 @@ function Import-PwshVarFileTesting
 #         $PwshVarFilesFast = @(
 #             'VarSet1', 
 #             'VarSet2'
-#             'VarStrings'
+#             'GlobalConfig'
 #         )
 #         $PwshVarFilesEnhance = @(
 #             'VarSet3', 
@@ -84,7 +84,7 @@ function Update-PwshVars
     $PwshVarFilesFast = @(
         'VarSet1', 
         'VarSet2',
-        'VarStrings'
+        'GlobalConfig'
     )
     $PwshVarFilesEnhance = @(
         'VarSet3', 

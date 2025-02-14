@@ -705,7 +705,7 @@ ControlPanel                     C:\repos\scripts\PS\ControlPanel
   updating envs!
           VarSet1
           VarSet2
-          VarStrings
+          GlobalConfig
           VarSet3
           VarAndroid
           VarFiles
@@ -777,7 +777,7 @@ ControlPanel                     C:\repos\scripts\PS\ControlPanel
   updating envs!
           VarSet1
           VarSet2
-          VarStrings
+          GlobalConfig
           VarSet3
           VarAndroid
           VarFiles
