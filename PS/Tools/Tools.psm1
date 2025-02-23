@@ -194,13 +194,158 @@ function Get-CsvRowsTail
     Write-Host "Totol data lines:$($rows.count-1)"
 
     # 配置是否自动用资源文件管理打开csv所在文件夹
-    if ($ShowInExplorer) {
+    if ($ShowInExplorer)
+    {
         explorer "$fileDir"
         # Start-Job -ScriptBlock { Start-Sleep 1; explorer "$using:fileDir" }
     }
     
 }
+function Set-OpenWithVscode
+{
+    <# 
+    .SYNOPSIS
+    设置 VSCode 打开方式为默认打开方式。
+    .DESCRIPTION
+    直接使用powershell的命令不是很方便
+    这里通过cmd脚本设置
+    #>
+    <# 
+    .NOTES
+    也可以按照如下格式创建vscode.reg文件，然后导入注册表
 
+    Windows Registry Editor Version 5.00
+
+    [HKEY_CLASSES_ROOT\*\shell\VSCode]
+    @="Open with Code"
+    "Icon"="C:\\Program Files\\Microsoft VS Code\\Code.exe"
+
+    [HKEY_CLASSES_ROOT\*\shell\VSCode\command]
+    @="$PathWrapped \"%1\""
+
+    Windows Registry Editor Version 5.00
+
+    [HKEY_CLASSES_ROOT\Directory\shell\VSCode]
+    @="Open with Code"
+    "Icon"="C:\\Program Files\\Microsoft VS Code\\Code.exe"
+
+    [HKEY_CLASSES_ROOT\Directory\shell\VSCode\command]
+    @="$PathWrapped \"%V\""
+
+    Windows Registry Editor Version 5.00
+
+    [HKEY_CLASSES_ROOT\Directory\Background\shell\VSCode]
+    @="Open with Code"
+    "Icon"="C:\\Program Files\\Microsoft VS Code\\Code.exe"
+
+    [HKEY_CLASSES_ROOT\Directory\Background\shell\VSCode\command]
+    @="$PathWrapped \"%V\""
+
+    #>
+    [CmdletBinding(DefaultParameterSetName = "Add")]
+    param (
+        [parameter(ParameterSetName = "Add")]
+        $Path = "C:\Program Files\Microsoft VS Code\Code.exe",
+        [parameter(ParameterSetName = "Remove")]
+        [switch]$Remove
+    )
+    Write-Verbose "Set [$Path] as Vscode Path(default installation path)" -Verbose
+    # 定义 VSCode 安装路径
+    #debug
+    # $Path = "C:\Program Files\Microsoft VS Code\Code.exe"
+    $PathForWindows=($Path -replace '\\', "\\")
+
+    $PathWrapped = '\"' + $PathForWindows + '\"' # 由于reg添加右键打开的规范,需要得到形如此的串 \"C:\\Program Files\\Microsoft VS Code\\Code.exe\"
+    # 将注册表内容作为多行字符串保存
+    $AddMenuRegContent = @"
+    Windows Registry Editor Version 5.00
+   
+       [HKEY_CLASSES_ROOT\*\shell\VSCode]
+       @="Open with Code"
+       "Icon"="$PathForWindows" 
+   
+       [HKEY_CLASSES_ROOT\*\shell\VSCode\command]
+       @="$PathWrapped \"%1\""
+   
+       Windows Registry Editor Version 5.00
+   
+       [HKEY_CLASSES_ROOT\Directory\shell\VSCode]
+       @="Open with Code"
+       "Icon"="$PathForWindows" 
+   
+       [HKEY_CLASSES_ROOT\Directory\shell\VSCode\command]
+       @="$PathWrapped \"%V\""
+   
+       Windows Registry Editor Version 5.00
+   
+       [HKEY_CLASSES_ROOT\Directory\Background\shell\VSCode]
+       @="Open with Code"
+       "Icon"="$PathForWindows" 
+   
+       [HKEY_CLASSES_ROOT\Directory\Background\shell\VSCode\command]
+       @="$PathWrapped \"%V\""
+"@  
+    $RemoveMenuRegContent = @"
+    Windows Registry Editor Version 5.00
+
+[-HKEY_CLASSES_ROOT\*\shell\VSCode]
+
+[-HKEY_CLASSES_ROOT\*\shell\VSCode\command]
+
+[-HKEY_CLASSES_ROOT\Directory\shell\VSCode]
+
+[-HKEY_CLASSES_ROOT\Directory\shell\VSCode\command]
+
+[-HKEY_CLASSES_ROOT\Directory\Background\shell\VSCode]
+
+[-HKEY_CLASSES_ROOT\Directory\Background\shell\VSCode\command]
+"@
+    $regContent = $AddMenuRegContent
+    # if ($Remove)
+    if ($PSCmdlet.ParameterSetName -eq "Remove")
+    {
+        # 执行 reg delete 命令删除注册表文件
+        Write-Verbose "Removing VSCode context menu entries..."
+        $regContent = $RemoveMenuRegContent
+
+    }
+    # 检查 VSCode 是否安装在指定路径
+    elseif (Test-Path $Path)
+    {
+          
+        Write-Verbose "The specified VSCode path exists. Proceeding with registry creation."
+    }
+    else
+    {
+        Write-Host "The specified VSCode path does not exist. Please check the path."
+        Write-Host "use -Path to specify the path of VSCode installation."
+    }
+
+    Write-Host "Creating registry entries for VSCode:"
+    
+    
+    # 创建临时 .reg 文件路径
+    $tempRegFile = [System.IO.Path]::Combine($env:TEMP, "vs-code-context-menu.reg")
+    # 将注册表内容写入临时 .reg 文件
+    $regContent | Set-Content -Path $tempRegFile
+    
+    # Write-Host $AddMenuRegContent
+    Get-Content $tempRegFile
+    # 删除临时 .reg 文件
+    # Remove-Item -Path $tempRegFile -Force
+
+    # 执行 reg import 命令导入注册表文件
+    try
+    {
+        reg import $tempRegFile
+        Write-Host "Registry entries for VSCode have been successfully created."
+    }
+    catch
+    {
+        Write-Host "An error occurred while importing the registry file."
+    }
+    Write-Host "Completed.Refresh Explorer to see changes."
+}
 function Get-CsvRowsTailGUI
 {
 
