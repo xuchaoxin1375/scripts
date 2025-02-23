@@ -208,7 +208,20 @@ function Set-OpenWithVscode
     设置 VSCode 打开方式为默认打开方式。
     .DESCRIPTION
     直接使用powershell的命令不是很方便
-    这里通过cmd脚本设置
+    这里通过创建一个临时的reg文件,然后调用reg import命令导入
+    支持添加右键菜单open with vscode 
+    也支持移除open with vscode 菜单
+    你可以根据喜好设置标题,比如open with Vscode 或者其他,open with code之类的名字
+    .EXAMPLE
+    简单默认参数配置
+    Set-OpenWithVscode
+    
+    .EXAMPLE
+    完整的参数配置
+    Set-OpenWithVscode -Path "C:\Program Files\Microsoft VS Code\Code.exe" -MenuName "Open with VsCode"
+    .EXAMPLE
+    移除右键vscode菜单
+    PS> Set-OpenWithVscode -Remove
     #>
     <# 
     .NOTES
@@ -217,7 +230,7 @@ function Set-OpenWithVscode
     Windows Registry Editor Version 5.00
 
     [HKEY_CLASSES_ROOT\*\shell\VSCode]
-    @="Open with Code"
+    @=$MenuName
     "Icon"="C:\\Program Files\\Microsoft VS Code\\Code.exe"
 
     [HKEY_CLASSES_ROOT\*\shell\VSCode\command]
@@ -226,7 +239,7 @@ function Set-OpenWithVscode
     Windows Registry Editor Version 5.00
 
     [HKEY_CLASSES_ROOT\Directory\shell\VSCode]
-    @="Open with Code"
+    @=$MenuName
     "Icon"="C:\\Program Files\\Microsoft VS Code\\Code.exe"
 
     [HKEY_CLASSES_ROOT\Directory\shell\VSCode\command]
@@ -235,17 +248,20 @@ function Set-OpenWithVscode
     Windows Registry Editor Version 5.00
 
     [HKEY_CLASSES_ROOT\Directory\Background\shell\VSCode]
-    @="Open with Code"
+    @=$MenuName
     "Icon"="C:\\Program Files\\Microsoft VS Code\\Code.exe"
 
     [HKEY_CLASSES_ROOT\Directory\Background\shell\VSCode\command]
     @="$PathWrapped \"%V\""
 
     #>
+
     [CmdletBinding(DefaultParameterSetName = "Add")]
     param (
         [parameter(ParameterSetName = "Add")]
         $Path = "C:\Program Files\Microsoft VS Code\Code.exe",
+        [parameter(ParameterSetName = "Add")]
+        $MenuName = "Open with VsCode",
         [parameter(ParameterSetName = "Remove")]
         [switch]$Remove
     )
@@ -253,15 +269,16 @@ function Set-OpenWithVscode
     # 定义 VSCode 安装路径
     #debug
     # $Path = "C:\Program Files\Microsoft VS Code\Code.exe"
-    $PathForWindows=($Path -replace '\\', "\\")
-
+    $PathForWindows = ($Path -replace '\\', "\\")
     $PathWrapped = '\"' + $PathForWindows + '\"' # 由于reg添加右键打开的规范,需要得到形如此的串 \"C:\\Program Files\\Microsoft VS Code\\Code.exe\"
+    $MenuName = '"' + $MenuName + '"' # 去除空格
+
     # 将注册表内容作为多行字符串保存
     $AddMenuRegContent = @"
     Windows Registry Editor Version 5.00
    
        [HKEY_CLASSES_ROOT\*\shell\VSCode]
-       @="Open with Code"
+       @=$MenuName
        "Icon"="$PathForWindows" 
    
        [HKEY_CLASSES_ROOT\*\shell\VSCode\command]
@@ -270,7 +287,7 @@ function Set-OpenWithVscode
        Windows Registry Editor Version 5.00
    
        [HKEY_CLASSES_ROOT\Directory\shell\VSCode]
-       @="Open with Code"
+       @=$MenuName
        "Icon"="$PathForWindows" 
    
        [HKEY_CLASSES_ROOT\Directory\shell\VSCode\command]
@@ -279,7 +296,7 @@ function Set-OpenWithVscode
        Windows Registry Editor Version 5.00
    
        [HKEY_CLASSES_ROOT\Directory\Background\shell\VSCode]
-       @="Open with Code"
+       @=$MenuName
        "Icon"="$PathForWindows" 
    
        [HKEY_CLASSES_ROOT\Directory\Background\shell\VSCode\command]
