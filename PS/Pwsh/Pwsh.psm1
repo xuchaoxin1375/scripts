@@ -2176,6 +2176,21 @@ function Update-PwshEnvIfNotYet
  
 function Start-VscodeSSh
 {
+    <# 
+    .SYNOPSIS
+    命令行中启动vscode的ssh远程连接,进行远程编程或文件管理
+    .PARAMETER Server
+    远程服务器的名称(可以主机名)或ip地址
+    .PARAMETER Path
+    需要打开的目录,默认是用户的主目录
+    例如'/www/wwwroot/xcx/tissuschic.com/wordpress'
+    .EXAMPLE
+    linux主机的ip地址为192.168.1.111;并且配置了ssh免密登录(上传了公钥),可以直接使用如下命令进行远程编程或文件管理:
+    比如我要编辑网站demosite.com根目录,就可以用以下命令打开
+    
+    PS> Start-VscodeSSh -Server 192.168.1.111 -Path /www/wwwroot/xcx/demosite.com/wordpress
+
+    #>
     param (
 
         #根据查询到的ip地址,创建变量
