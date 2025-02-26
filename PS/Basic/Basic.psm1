@@ -1394,6 +1394,20 @@ function Push-ReposesConfiged
     # $repoDirs #指定配置需要同步的仓库目录
     $repoDirs = $CommonReposes
     
+    $repoDirs | ForEach-Object -Parallel {
+        $repoDir = $_
+        # 切换到当前仓库目录
+        $p = "$repos\$repoDir"
+        Set-Location -Path $p
+        Write-Host $P -ForegroundColor Magenta
+        # 执行任务
+        if (Test-Path -Path '.git')
+        {
+            gitUpdateReposSimply
+        }
+        Write-SeparatorLine
+    } -ThrottleLimit 10
+    <# 
     foreach ($repoDir in $repoDirs)
     {
         # 切换到当前仓库目录
@@ -1412,7 +1426,7 @@ function Push-ReposesConfiged
 
         # 可选：恢复至原始工作目录，如果你希望脚本执行完毕后回到原始目录
         # Pop-Location
-    }
+    } #>
 
     # 恢复当前路径
     Pop-Location
