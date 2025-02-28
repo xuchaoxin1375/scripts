@@ -376,7 +376,9 @@ function Export-NewCSVFile
         $CsvDirectory,
         $OutputDirectory
     )
-    $StoppedSku = $StoppedSku -replace '.*?(0.*\d+).*', '$1' #提取出数字(整数),例如45316
+    # $StoppedSku = $StoppedSku -replace '.*?(0.*\d+).*', '$1' #从sk...U提取出数字(整数),例如45316
+    $StoppedSku=$StoppedSku -replace '.*?(\d+).*', '$1' #从SK...U提取出数字(整数),例如45316
+    Write-Verbose $StoppedSku -Verbose
     $StoppedSku = "{0:D$DigitBits}" -f [int]$StoppedSku #补齐位数到$DigitBits位数
     Write-Verbose "StoppedSku: $StoppedSku" -Verbose
     # # 开始处理
@@ -395,6 +397,8 @@ function Export-NewCSVFile
     # $filename = ".\${p_name}.csv" # 简化方案:# ".\${p_name}.csv"
     
     Get-CsvTailRows -InputFile $inputfile -OutputFile "$OutputDirectory\${p_name}_${StoppedSku}+.csv" -StartRow $start_row -ShowInExplorer:$ShowInExplorer
+
+    Write-Host "$("`n"*3)"
 }
 function Export-NewCSVFilesFromSKU
 {
