@@ -1503,7 +1503,10 @@ function Update-ReposesConfiged
         Write-Verbose $P
         if (!(Test-Path $P))
         {
-            git clone "$gitee_xuchaoxin1375/$repoDir" "$repos\$repoDir"
+            $gitUrl = "$gitee_xuchaoxin1375/$repoDir" #.Trim('\\')
+            $Path = "$repos\$repoDir"
+            Write-Verbose "[$giturl] will be cloned to [$Path] !" -Verbose
+            git clone $gitUrl $Path 
             continue
 
         }
