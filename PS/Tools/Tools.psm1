@@ -377,7 +377,7 @@ function Export-NewCSVFile
         $OutputDirectory
     )
     # $StoppedSku = $StoppedSku -replace '.*?(0.*\d+).*', '$1' #从sk...U提取出数字(整数),例如45316
-    $StoppedSku=$StoppedSku -replace '.*?(\d+).*', '$1' #从SK...U提取出数字(整数),例如45316
+    $StoppedSku = $StoppedSku -replace '.*?(\d+).*', '$1' #从SK...U提取出数字(整数),例如45316
     Write-Verbose $StoppedSku -Verbose
     $StoppedSku = "{0:D$DigitBits}" -f [int]$StoppedSku #补齐位数到$DigitBits位数
     Write-Verbose "StoppedSku: $StoppedSku" -Verbose
@@ -747,6 +747,81 @@ function Set-OpenWithVscode
     }
     Write-Host "Completed.Refresh Explorer to see changes."
 }
+
+function Get-BatchSiteBuilderLines
+{
+    <# 
+    .SYNOPSIS
+    获取批量站点生成器的生成命令行(宝塔面板专用)
+    .DESCRIPTION
+    格式说明
+    批量格式：域名|根目录|FTP|数据库|PHP版本
+    
+    案例： bt.cn,test.cn:8081|/www/wwwroot/bt.cn|1|1|56
+
+
+    最简单的站点:
+    域名|1|0|0|0
+
+    1.   域名参数：多个域名用 , 分割
+    2.   根目录参数：填写 1 为自动创建，或输入具体目录
+    3.   FTP参数：填写 1 为自动创建，填写 0 为不创建
+    4.   数据库参数：填写 1 为自动创建，填写 0 为不创建
+    5.   PHP版本参数：填写 0 为静态，或输入PHP具体版本号列如：56、71、74
+
+    如需添加多个站点，请换行填写
+
+    .NOTES
+
+    .EXAMPLE
+    #⚡️[Administrator@CXXUDESK][~\Desktop][19:38:22][UP:4.09Days]
+    PS> Get-BatchSiteBuilderLines  -user zw -domains @"
+    >> domain1.com
+    >> domain2.com
+    >> domain3.com
+    >> "@
+    domain1.com     |/www/wwwroot/zw/domain1.com    |0|0|84
+    domain2.com     |/www/wwwroot/zw/domain2.com    |0|0|84
+    domain3.com     |/www/wwwroot/zw/domain3.com    |0|0|84
+    .EXAMPLE
+    #⚡️[Administrator@CXXUDESK][~\Desktop][19:38:25][UP:4.09Days]
+    PS> Get-BatchSiteBuilderLines  -domains @"
+    >> domain1.com
+    >> domain2.com
+    >> domain3.com
+    >> "@
+    domain1.com     |/www/wwwroot/domain1.com       |0|0|84
+    domain2.com     |/www/wwwroot/domain2.com       |0|0|84
+    domain3.com     |/www/wwwroot/domain3.com       |0|0|84
+        输出示例
+
+    #>
+    [CmdletBinding()]
+    param (
+        $domains = @"
+domain1.com
+domain2.com
+"@,
+        $user,
+        $php = 84
+    )
+    $domains = $domains.trim() -split "`r?`n" | Where-Object { $_.Length }
+    $lines = [System.Collections.ArrayList]@()
+    # $domains = $domains -replace "`r?`n", ";"
+    # $domains = $domains -replace "`n", ";"
+    # Write-Verbose $domains
+    Write-Verbose "$($domains.Length)" 
+
+    foreach ($domain in $domains)
+    {
+        Write-Verbose "[$domain]"
+        $line = "$domain`t|/www/wwwroot/$user/$domain`t|0|0|$php" -replace "//","/"
+        Write-Host $line
+        $lines.Add($line) > $null
+    }
+    $lines | Set-Clipboard
+}
+
 function Start-HTTPServer
 {
     <#
