@@ -1,3 +1,12 @@
+$p = 1
+function print_default_parameter
+{
+    param (
+        $v = $p
+    )
+    Write-Host $v
+    
+}
 # 定义函数 a
 function a
 {

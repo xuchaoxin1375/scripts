@@ -202,8 +202,8 @@ gcm *mirror*
 #check commands usage (syntax)
 gcm Get-AvailableGithubMirrors -Syntax #use this is enough in general cases
 gcm Get-SelectedMirror -Syntax
-
-$github_mirror=Get-AvailableGithubMirrors #choose a mirror which is available
+#choose a mirror which is available
+$github_mirror = Get-AvailableGithubMirrors -PassThru 
 # $gihtub_mirror=Get-AvailableGithubMirrors -silent #choose default mirror
 Write-Verbose $github_mirror -Verbose #check what mirror is chosen
 
