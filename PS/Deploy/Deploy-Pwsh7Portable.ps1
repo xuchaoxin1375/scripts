@@ -8,7 +8,7 @@ Get-Command Get-AvailableGithubMirrors -Syntax #use this is enough in general ca
 Get-Command Get-SelectedMirror -Syntax
 
 $github_mirror = Get-AvailableGithubMirrors #choose a mirror which is available
-
+Write-Verbose $github_mirror -Verbose
 function Deploy-Pwsh7Portable
 {
     <# 
@@ -58,7 +58,9 @@ function Deploy-Pwsh7Portable
         {
             if ($asset.name -like "*win-x64.${PackageType}")
             {
-                return $asset.browser_download_url
+                $url = $asset.browser_download_url
+                Write-Verbose $url -Verbose
+                return $url
             }
         }
         throw 'No suitable installer found in the latest release.'
@@ -152,4 +154,4 @@ function Deploy-Pwsh7Portable
     
 }
 #调用函数
-Deploy-Pwsh7Portable
+Deploy-Pwsh7Portable -mirror $github_mirror -Verbose
