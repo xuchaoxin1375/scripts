@@ -203,8 +203,8 @@ gcm *mirror*
 gcm Get-AvailableGithubMirrors -Syntax #use this is enough in general cases
 gcm Get-SelectedMirror -Syntax
 #choose a mirror which is available
-$github_mirror = Get-AvailableGithubMirrors -PassThru 
-# $gihtub_mirror=Get-AvailableGithubMirrors -silent #choose default mirror
+
+$gihtub_mirror=Get-SelectedMirror #choose default mirror
 Write-Verbose $github_mirror -Verbose #check what mirror is chosen
 
 ```
@@ -225,7 +225,7 @@ Write-Verbose $github_mirror -Verbose #check what mirror is chosen
   - 不一定能够一次性成功,如果失败,您可以多尝试几次,或者检查该脚本的输出信息中的下载连接是否可用(比如粘贴到浏览器中手动尝试下载,如果可以下载,那么重试是有意义的,否则需要从别的地方下载便携版安装包放置到指定位置($env:temp)目录,这个目录可以通过poweshell打开或者资源管理器中地址栏输入`%temp%`打开,将包放置到里面,然后再次运行脚本进行部署)
   - 会自动为你配置环境变量(用户级别的Path),便于你后续直接从任意位置通过`pwsh`来启动powershell7
 
-## 部署git for windows
+## 部署Git for windows🎈
 
 ```powershell
 irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-GitForWindows.ps1'|iex

@@ -68,7 +68,7 @@ function Test-LinksLinearly
     [cmdletbinding(DefaultParameterSetName = 'First')]
     param (
         $Mirrors = $GithubMirrors,
-        $TimeOutSec = 4,
+        $TimeOutSec = 10,
         [parameter(ParameterSetName = 'First')]
         $First = 5,
         [parameter(ParameterSetName = 'All')]
@@ -108,7 +108,9 @@ function Test-LinksLinearly
     } 
     if ($availableMirrors.Count -eq 0)
     {
-        throw 'No mirrors are available!'
+        Write-Warning 'all mirrors are timeout! but there may be some mirrors are available,try to choose one manually...'
+
+        $availableMirrors = $Mirrors
     }
     return $availableMirrors
 }
@@ -121,7 +123,7 @@ function Test-LinksParallel
     [CmdletBinding()]
     param (
         $Mirrors = $GithubMirrors,
-        $TimeOutSec = 2,
+        $TimeOutSec = 6,
         $ThrottleLimits = 16
         # $First = 5
     )
@@ -206,7 +208,7 @@ function Test-MirrorAvailability
     [CmdletBinding()]
     param (
         [string]$Url,
-        $TimeoutSec = 3
+        $TimeoutSec = 6
     )
 
     try
@@ -262,7 +264,7 @@ function Get-AvailableGithubMirrors
     param(
         $Mirrors = $GithubMirrors,
         $ThrottleLimits = 16,
-        $TimeOutSec = 3,
+        $TimeOutSec = 6,
         [switch]$ListView,
         [switch]$PassThru,
         [switch]$SkipCheckAvailability,
@@ -2443,7 +2445,7 @@ function Deploy-StartupTasks
 }
  
 
-function Deploy-PortableGit
+function Deploy-PortableGitPathEnvVar
 {
     Update-PwshEnvIfNotYet -Mode Vars
     $items = @($Git_Portable_home, $Git_Portable_bin)
