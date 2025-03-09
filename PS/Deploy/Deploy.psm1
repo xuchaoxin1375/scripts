@@ -380,7 +380,7 @@ PS C:\repos\scripts>
     $Mirrors = Get-AvailableGithubMirrors -PassThru -Linearly:$Linearly
 
     $res = @()
-    if (!$Silent)
+    if ($Silent)
     {
         # 交互模式
         $numOfMirrors = $Mirrors.Count
