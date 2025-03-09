@@ -6,7 +6,7 @@ Get-Command *mirror*
 #check commands usage (syntax)
 Get-Command Get-AvailableGithubMirrors -Syntax #use this is enough in general cases
 Get-Command Get-SelectedMirror -Syntax
-$github_mirror = Get-AvailableGithubMirrors -PassThru 
+$github_mirror = Get-SelectedMirror   
 
 function Update-GithubHosts-Archive
 {

@@ -8,8 +8,10 @@ Get-Command Get-AvailableGithubMirrors -Syntax #use this is enough in general ca
 Get-Command Get-SelectedMirror -Syntax
 
 #choose a mirror which is available
-$github_mirror = Get-AvailableGithubMirrors -PassThru 
+$github_mirror = Get-SelectedMirror   
+
 Write-Verbose $github_mirror -Verbose
+
 function Deploy-Pwsh7Portable
 {
     <# 
