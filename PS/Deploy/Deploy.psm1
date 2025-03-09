@@ -3,8 +3,8 @@
 #如果你懒得添加引号,那么将镜像链接逐个添加到下面的多行字符串中,即便包含了引号或者双引号逗号也都能够正确处理
 # 配置一个相对稳定的镜像源(出了源的贡献者,还有可能被 墙,因此还是要定期检查)
 # 可用列表检查 https://yishijie.gitlab.io/ziyuan/
-# $github_mirror = "https://gh-proxy.com"
-Set-Variable -Name github-mirror -Value "https://gh-proxy.com" -Option Constant -Scope Global
+$global:github_mirror = "https://gh-proxy.com"
+# Set-Variable -Name github-mirror -Value "https://gh-proxy.com"  -Scope Global
 
 $GithubMirrors = @(
 
@@ -67,7 +67,7 @@ function Test-LinksLinearly
     [cmdletbinding(DefaultParameterSetName = 'First')]
     param (
         $Mirrors = $GithubMirrors,
-        $TimeOutSec = 10,
+        $TimeOutSec = 6,
         [parameter(ParameterSetName = 'First')]
         $First = 5,
         [parameter(ParameterSetName = 'All')]
@@ -213,9 +213,14 @@ function Test-MirrorAvailability
     try
     {
         # 使用 Invoke-WebRequest 检查可用性
-        $response = Invoke-WebRequest -Uri $Url -Method Head -TimeoutSec $TimeOutSec -ErrorAction Stop
-        
+        # 方案1
+        $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -Method Head -TimeoutSec $TimeOutSec -ErrorAction Stop
         $availability = $response.StatusCode -eq 200
+
+        #方案2
+        # $response = Test-Connection -ComputerName "gh-proxy.com" -Count 1
+        # $availability = $response
+        
     }
     catch
     {
