@@ -41,7 +41,6 @@ $GithubMirrorsInString = @'
 'https://gh.ddlc.top',
 'https://github.ur1.fun/',
 https://sciproxy.com/
-https://cf.ghproxy.cc/, 
 'https://gh.noki.icu/',
 "https://sciproxy.com/"
 'https://slink.ltd/'

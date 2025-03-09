@@ -47,6 +47,7 @@ function Deploy-GitForwindows
         
         $LastUrls = $latestRelease.assets | Where-Object { $_.name -like '*PortableGit*' } | Select-Object -ExpandProperty browser_download_url
         $url = @($LastUrls) | Where-Object { $_ -like '*64*' } | Select-Object -First 1
+        Write-Verbose "Latest release url: $url"
     }
     else
     {
