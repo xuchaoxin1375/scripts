@@ -41,7 +41,7 @@ function Deploy-GitForwindows
         [switch]$IgnoreCache
     )
     Write-Verbose 'Try to get the lastest version of git portable version...'
-    $latestRelease = Invoke-WebRequest -Uri 'https://api.github.com/repos/git-for-windows/git/releases/latest' -Method Get | ConvertFrom-Json
+    $latestRelease = Invoke-WebRequest -UseBasicParsing -Uri 'https://api.github.com/repos/git-for-windows/git/releases/latest' -Method Get | ConvertFrom-Json
     if ($latestRelease)
     {
         
@@ -76,8 +76,8 @@ function Deploy-GitForwindows
         if ($IgnoreCache -or !(Test-Path $Package))
         {
             $url = "${mirror}/${url}".Trim('/')
-            Write-Host "Downloading [$url] to $Package" -ForegroundColor Blue
-            Invoke-WebRequest -Uri $url -OutFile $Package -Verbose
+            Write-Host "Downloading [$url] to $Package" -ForegroundColor cyan
+            Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $Package -Verbose
         }
         
     }
@@ -85,7 +85,7 @@ function Deploy-GitForwindows
     # $Package = "$home/downloads/PortableGit.7z.exe"
     # 静默安装(默认解压到$Pacakge所在目录的PortableGit子目录)
     # & $Package -y #这种做法会抛到后台进程去执行安装,前台继续执行,可能会引发顺序命令顺序问题
-    Write-Host 'Installing PortableGit...(it may take a while)' -ForegroundColor Blue
+    Write-Host 'Installing PortableGit...(it may take a while)' -ForegroundColor cyan
 
     Start-Process "$Package" -ArgumentList '-y' -Wait #使用Start-Process命令执行安装,配合-wait参数等待安装完成再执行后续内容
     #将目录转移到专门的目录下

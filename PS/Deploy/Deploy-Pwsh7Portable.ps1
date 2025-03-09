@@ -90,7 +90,7 @@ function Deploy-Pwsh7Portable
     {
 
         # 调用 Invoke-WebRequest 下载文件
-        Invoke-WebRequest -Uri $baseUrl -OutFile $outputPath
+        Invoke-WebRequest -Uri $baseUrl -UseBasicParsing -OutFile $outputPath
     }
     else
     {

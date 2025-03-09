@@ -434,7 +434,7 @@ PS C:\repos\scripts>
     }
     # 抽取镜像
     $mirrors = $Mirrors[$res] #利用pwsh的数组高级特性
-    # Write-Host $mirrors -ForegroundColor Blue
+    # Write-Host $mirrors -ForegroundColor cyan
     $mirrors = @($mirrors) #确保其为数组
     
     # 用户选择了一个合法的镜像代号(0表示不使用镜像)
@@ -2137,7 +2137,7 @@ function Deploy-SmbSharing
     }
     else
     {
-        Write-Host '您未选择创建专门用于访问Smb共享文件夹的用户,请使用已有的用户账户及密码(不是pin码)作为访问凭证' -ForegroundColor Blue
+        Write-Host '您未选择创建专门用于访问Smb共享文件夹的用户,请使用已有的用户账户及密码(不是pin码)作为访问凭证' -ForegroundColor cyan
     }
     if ($force)
     {
@@ -2178,7 +2178,7 @@ function Disable-SmbSharingUserLogonLocallyRight
     $path = Get-Location
     Set-Location $WorkingDirectory
 
-    Write-Host 'setting Smb User Logon Locally Right' -ForegroundColor Blue
+    Write-Host 'setting Smb User Logon Locally Right' -ForegroundColor cyan
     # 添加用户到拒绝本地登录策略
     secedit /export /cfg secconfig.cfg
     #修改拒绝本地登陆的项目,注意$smbUser变量的取值,依赖于之前的设置,或者在这里重新设置
@@ -2402,7 +2402,7 @@ function Deploy-StartupTasks
         # 写入自启动目录的脚本不需要有什么任务逻辑,让它去启动模块目录中的开机自启动脚本即可
         "pwsh -file $startupScript " > $Path #可以省略 pwsh的 -file 参数
         Write-Host 'The content of the startup script in the shell:startup directory:'
-        Get-Content $Path | Write-Host -ForegroundColor blue
+        Get-Content $Path | Write-Host -ForegroundColor cyan
         
         
     }
@@ -2435,7 +2435,7 @@ function Deploy-StartupTasks
     $items | ForEach-Object {
         Get-ChildItem $_
     }
-    # Write-Host $p.directory -ForegroundColor Blue
+    # Write-Host $p.directory -ForegroundColor cyan
 
 
     if ($RunAtOnce)
@@ -2532,7 +2532,7 @@ function Deploy-EnvsByPwsh
 
             Add-EnvVar -EnvVar $item.Name -NewValue $item.Value -Scope $Scope
             # Write-Verbose
-            Write-Host "$($item.Name):$($item.Value) was added." -ForegroundColor Blue
+            Write-Host "$($item.Name):$($item.Value) was added." -ForegroundColor cyan
         }
         else
         {
