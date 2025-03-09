@@ -149,7 +149,7 @@ function Get-SpeedUpUrl
             $res = @()
             if ($Silent)
             {
-                Write-Host 'Mode:Silent', "`$LinkNumber=$LinkNumber" -ForegroundColor Blue
+                Write-Host 'Mode:Silent', "`$LinkNumber=$LinkNumber" Cyan
                 $Urls = Get-AvailableGithubMirrors -PassThru #$urls第一个是空字符串,表示不用镜像
                 $Urls[1.. ($LinkNumber)] | ForEach-Object { 
                     $prefix = $_; 
@@ -177,7 +177,7 @@ function Get-SpeedUpUrl
         }
         Default {}
     }
-    # Write-Host $Url -ForegroundColor Blue
+    # Write-Host $Url Cyan
     if (! $NotToClipboard)
     {
         $res | Set-Clipboard

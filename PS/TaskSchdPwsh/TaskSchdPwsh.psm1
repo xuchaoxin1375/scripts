@@ -790,7 +790,7 @@ Reporting timer end at:22:51:50
             {
                 # New-MessageReport # 报时
                 # 这里用输出文字日志来检查报告时机
-                Write-Host "$DesktopVoice $(Get-Time)" -ForegroundColor Blue
+                Write-Host "$DesktopVoice $(Get-Time)" Cyan
                 # 调用报时函数
                 if ($report)
                 {
@@ -1119,7 +1119,7 @@ running & waiting ...
             {
                 # & $Scriptblock # 执行任务
                 # 这里用输出文字日志来检查报告时机
-                Write-Host "$DesktopVoice $(Get-Time)" -ForegroundColor Blue
+                Write-Host "$DesktopVoice $(Get-Time)" Cyan
                 # 调用执行任务函数
                 if ($report)
                 {

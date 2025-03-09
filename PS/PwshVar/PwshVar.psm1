@@ -7,7 +7,7 @@ function Import-PwshVarFileTesting
         [switch]$AsPwshEnvForHomeVars 
     )
     
-    Write-Host "`t$VarFile" -ForegroundColor Blue
+    Write-Host "`t$VarFile" Cyan
     $VarFilesDir = $PSScriptRoot
     $VarFileFullPath = "$VarFilesDir\${VarFile}.conf"
     
@@ -149,7 +149,7 @@ function Import-PwshVarFile
     if ($VerbosePreference)
     {
 
-        Write-Host "`t$VarFile" -ForegroundColor Blue
+        Write-Host "`t$VarFile" Cyan
     }
     # 变量文件存储位置
     $VarFilesDir = $PSScriptRoot + '\confs'

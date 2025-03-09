@@ -500,7 +500,7 @@ function Get-PSDirItem-Deprecated
     # $p=$exist ? (Resolve-Path $p) : ''
     $p = Resolve-Path $p
     $p = $p.Path.Trim('\') #字符串类型
-    Write-Host $p -ForegroundColor Blue
+    Write-Host $p Cyan
 
     $allItems = Get-ChildItem "$p/.."
     # Write-Host $allItems

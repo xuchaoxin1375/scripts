@@ -19,7 +19,7 @@ function Get-CxxuPsModulePackage
     foreach ($url in $urls)
     {
 
-        Write-Host "${index}:[${url}]" -ForegroundColor Blue
+        Write-Host "${index}:[${url}]" -ForegroundColor cyan
         $index++
     }
     $UrlCode = Read-Host "Enter the Deploy Scheme code [0..$($urls.Count-1)](default:0)"
@@ -162,7 +162,7 @@ function Deploy-CxxuPsModules
             Write-Host "The default RepoPath directory [$RepoPath] is already exist!" -ForegroundColor Magenta
             Write-Host "Plans:Try run Deploy-CxxuPsModules it with -Force option  to overlay the exist directory! `
             Or run Deploy-CxxuPsModules  with Option -RepoPath <YourNewPath> to retry!`
-                eg. & {Deploy-CxxuPsModules -RepoPath  C:/PwshCxxu/scripts -Verbose} " -ForegroundColor Blue
+                eg. & {Deploy-CxxuPsModules -RepoPath  C:/PwshCxxu/scripts -Verbose} " -ForegroundColor cyan
 
             # Throw 'Try another path(RepoPath)! OR delete or rename(backup) the exist directory!' #报错可能会让新用户不知所措,这里直接退出即可
             return
@@ -182,7 +182,7 @@ function Deploy-CxxuPsModules
 
     #模式及其代码准备
     $RemoteGitCloneScript = { 
-        Write-Host "Mode:Clone From Remote repository:[$source]" -ForegroundColor Blue
+        Write-Host "Mode:Clone From Remote repository:[$source]" -ForegroundColor cyan
         $GitCmdAvailability = Get-Command git -ErrorAction SilentlyContinue
         if (!$GitCmdAvailability)
         {
@@ -210,7 +210,7 @@ function Deploy-CxxuPsModules
         $rawPath = Get-ChildItem "$RepoPath/scripts*" -Directory | Select-Object -First 1
         $newPath = "$RepoPath/scripts"
 
-        Write-Host @($rawPath, $newPath  ) -ForegroundColor Blue
+        Write-Host @($rawPath, $newPath  ) -ForegroundColor cyan
 
         Move-Item $rawPath/* $RepoPath -Force
         #移除空目录(如果上述步骤顺利的话)
@@ -234,7 +234,7 @@ function Deploy-CxxuPsModules
             {
 
                 #向用户推荐一键安装git的方案,然后使用默认的下载方案
-                Write-Host 'Git is not available on your system!' -ForegroundColor Blue
+                Write-Host 'Git is not available on your system!' -ForegroundColor cyan
                 $InstallGit = Read-Host 'Do you want to install it (it take a few seconds)!(y/n)(Default: y)'
                 if ($InstallGit -eq 'y' -or $InstallGit.Trim() -eq '')
                 {

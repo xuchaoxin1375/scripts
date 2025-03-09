@@ -18,14 +18,15 @@ $GithubMirrorsTest = @(
 $GithubMirrorsInString = @'
 # 注意,如果你的浏览器使用了代理,那么部分镜像站会和代理冲突,所以可能命令行中测试可以访问的链接在浏览器中确打不开镜像站,可以关闭代理或换个浏览器后重新验证该镜像站的可用性
 #搜集到的链接可以用gpt进行修改,将链接包裹引号(指令:为这些链接分别添加引号);或者自己粘贴到文件文件中然后编写脚本转换为数组格式
+
+'https://gh-proxy.com/',
 'https://github.moeyy.xyz', # Moeyy - 提供 GitHub 文件的加速下载功能
 'https://ghproxy.cc',
 'https://ghproxy.net', # GitHub Proxy by GitHub99 - 提供 GitHub 文件的加速下载和克隆服务 #和用户自己的代理可能发生冲突
 'https://mirror.ghproxy.com',
 
-# 'https://ghproxy.com/bad/demo', #虚假镜像,用来测试代码是否能够正确处理不可用的镜像链接
+'https://ghproxy.com/bad/demo', #虚假镜像,用来测试代码是否能够正确处理不可用的镜像链接
 'https://ghproxy.homeboyc.cn/',
-'https://gh-proxy.com/',
 'https://gh-proxy.com/',
 'https://ghps.cc/',
 'https://ghproxy.net/',
@@ -40,10 +41,9 @@ $GithubMirrorsInString = @'
 'https://gh.ddlc.top',
 'https://github.ur1.fun/',
 https://sciproxy.com/
-https://cf.ghproxy.cc/, # comment demo
+https://cf.ghproxy.cc/, 
 'https://gh.noki.icu/',
-""https://sciproxy.com/""
-https://demo.testNew.com/
+"https://sciproxy.com/"
 'https://slink.ltd/'
 
 '@

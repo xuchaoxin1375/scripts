@@ -117,7 +117,7 @@ if ($TotalMemory -le 8)
     memreduct
 }
 
-Write-Host 'All softwares started!' -ForegroundColor Blue
+Write-Host 'All softwares started!' Cyan
 
 Write-Host 'All done!' -ForegroundColor Green
 #映射alist网络磁盘分区
