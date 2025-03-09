@@ -193,6 +193,20 @@ Add-ScoopBuckets -Silent
 
 ```
 
+### 查看可用的github_mirror加速镜像站
+
+```powershell
+irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy.psm1'|iex
+# get functions or commands about mirror operations!
+gcm *mirror* 
+#check commands usage (syntax)
+gcm Get-AvailableGithubMirrors -Syntax #use this is enough in general cases
+gcm Get-SelectedMirror -Syntax
+
+$github_mirror=Get-AvailableGithubMirrors #choose a mirror which is available
+
+```
+
 
 
 ## 部署powershell7的方法

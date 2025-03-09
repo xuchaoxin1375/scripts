@@ -3,7 +3,8 @@
 #如果你懒得添加引号,那么将镜像链接逐个添加到下面的多行字符串中,即便包含了引号或者双引号逗号也都能够正确处理
 # 配置一个相对稳定的镜像源(出了源的贡献者,还有可能被 墙,因此还是要定期检查)
 # 可用列表检查 https://yishijie.gitlab.io/ziyuan/
-$github_mirror = "https://gh-proxy.com"
+# $github_mirror = "https://gh-proxy.com"
+Set-Variable -Name github-mirror -Value "https://gh-proxy.com" -Option Constant -Scope Global
 
 $GithubMirrors = @(
 
@@ -336,11 +337,37 @@ function Get-SelectedMirror
 {
     <# 
     .SYNOPSIS
-    让用户选择可用的镜像连接,允许选择多个
+    让用户选择可用的镜像连接,允许选择多个,逗号隔开
     .NOTES
     包含单个字符串的数组被返回时会被自动解包,这种情况下会是一个字符串
     如果确实需要外部接受数组,那么可以在外部使用@()来包装返回结果即可
+    .EXAMPLE
+    PS C:\repos\scripts> Get-SelectedMirror         
+Checking available Mirrors...
+         https://demo.testNew.com.
+         https://gh.ddlc.top
+...
 
+Available Mirrors:
+ 0: Use No Mirror
+ 1: https://gh.ddlc.top
+ 2: https://ghps.cc
+ 3: https://gh.con.sh
+ 4: https://gh.noki.icu
+ 5: https://slink.ltd
+ 6: https://github.moeyy.xyz
+ 7: https://ghproxy.homeboyc.cn
+
+Select the number(s) of the mirror you want to use [0~15] ?(default: 1): 1,3,5
+Selected mirror:[ 
+        https://gh.ddlc.top
+        https://gh.con.sh
+        https://slink.ltd
+]
+https://gh.ddlc.top
+https://gh.con.sh
+https://slink.ltd
+PS C:\repos\scripts>
     #>
     [CmdletBinding()]
     param (

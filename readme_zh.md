@@ -19,6 +19,10 @@
   -  [Gitee|PwshModuleByCxxu.md](https://gitee.com/xuchaoxin1375/scripts/blob/main/PwshModuleByCxxu.md)
   -  [Github|PwshModuleByCxxu.md](https://github.com/xuchaoxin1375/scripts/blob/main/PwshModuleByCxxu.md)
 
+### 常用powershell模块在线运行🎈
+
+- 参考文档:[Deploy/readme.md](PS/Deploy/readme.md)
+
 ## 一键部署此项目
 
 ```powershell
@@ -45,7 +49,6 @@ irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsMod
   - [GitHub Mirror 文件加速|列表集合](https://github-mirror.us.kg/)
   - [【镜像站点搜集】 · Issue #116 · hunshcn/gh-proxy (github.com)](https://github.com/hunshcn/gh-proxy/issues/116#issuecomment-2339526975)
   
-
 - powershell模块中,几乎用到镜像加速站的独立模块都用`$github_mirror`变量来存储和管理,如果需要替换镜像链接
 
   - 设`$github_mirror='https://olddomain.com'`,如果你要替换为新的镜像链接`https://newdomain.com`

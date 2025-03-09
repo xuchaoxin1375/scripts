@@ -1,4 +1,14 @@
-$github_mirror="https://gh-proxy.com"
+
+# $github_mirror="https://gh-proxy.com"
+Invoke-RestMethod 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy.psm1' | Invoke-Expression
+# get functions or commands about mirror operations!
+Get-Command *mirror* 
+#check commands usage (syntax)
+Get-Command Get-AvailableGithubMirrors -Syntax #use this is enough in general cases
+Get-Command Get-SelectedMirror -Syntax
+
+$github_mirror = Get-AvailableGithubMirrors #choose a mirror which is available
+
 function Deploy-Pwsh7Portable
 {
     <# 
@@ -62,7 +72,7 @@ function Deploy-Pwsh7Portable
     {
         Write-Host "try use mirror: $mirror to speed up link"
         $BaseUrl = "$mirror/$BaseUrl".trim('/')
-        write-host "Downloading from $BaseUrl"
+        Write-Host "Downloading from $BaseUrl"
     }
     else
     {

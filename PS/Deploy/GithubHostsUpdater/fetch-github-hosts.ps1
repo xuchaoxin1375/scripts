@@ -1,5 +1,14 @@
 
-$github_mirror = 'https://gh-proxy.com' #加速镜像站,可能会失效,也可能是部分时段失效,需要注意更新维护
+# $github_mirror = 'https://gh-proxy.com' #加速镜像站,可能会失效,也可能是部分时段失效,需要注意更新维护
+Invoke-RestMethod 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy.psm1' | Invoke-Expression
+# get functions or commands about mirror operations!
+Get-Command *mirror* 
+#check commands usage (syntax)
+Get-Command Get-AvailableGithubMirrors -Syntax #use this is enough in general cases
+Get-Command Get-SelectedMirror -Syntax
+
+$github_mirror = Get-AvailableGithubMirrors #choose a mirror which is available
+
 function Update-GithubHosts-Archive
 {
     <# 
