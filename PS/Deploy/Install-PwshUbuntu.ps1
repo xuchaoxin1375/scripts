@@ -1,3 +1,4 @@
+github_mirror="https://gh-proxy.com"
 ###################################
 # Prerequisites
 
@@ -9,7 +10,7 @@ sudo apt-get install -y wget
 
 # Download the PowerShell package file
 
-wget https://ghgo.xyz/https://github.com/PowerShell/PowerShell/releases/download/v7.4.5/powershell_7.4.5-1.deb_amd64.deb
+wget $github_mirror/https://github.com/PowerShell/PowerShell/releases/download/v7.4.5/powershell_7.4.5-1.deb_amd64.deb
 
 ###################################
 # Install the PowerShell package

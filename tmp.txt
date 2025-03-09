@@ -1,9 +1,0 @@
-$shell = "powershell"
-$path = "$home\desktop"
-$Port = "8080"
-
-[PSCustomObject]@{
-shell="$shell"
-path=$path
-Port=$Port
-}

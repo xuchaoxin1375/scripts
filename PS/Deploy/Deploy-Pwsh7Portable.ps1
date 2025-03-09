@@ -1,4 +1,4 @@
-
+$github_mirror="https://gh-proxy.com"
 function Deploy-Pwsh7Portable
 {
     <# 
@@ -17,7 +17,7 @@ function Deploy-Pwsh7Portable
     param (
         # 'https://github.com/PowerShell/PowerShell/releases/latest/download/powershell-7.x.x-win-x64.zip'
         $BaseUrl = '',
-        $mirror = 'https://ghgo.xyz',
+        $mirror = $github_mirror,
         # "$env:ProgramFiles\PowerShell\7" #可能要管理员权限
         $InstallPath = "$env:systemDrive\powershell\7"
 

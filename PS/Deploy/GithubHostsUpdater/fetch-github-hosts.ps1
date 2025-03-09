@@ -1,4 +1,5 @@
 
+$github_mirror = 'https://gh-proxy.com' #加速镜像站,可能会失效,也可能是部分时段失效,需要注意更新维护
 function Update-GithubHosts-Archive
 {
     <# 
@@ -23,7 +24,7 @@ function Update-GithubHosts-Archive
         $remote = 'https://raw.hellogithub.com/hosts',
         # 如果原站不可用,考虑访问github,用加速站获取文件
         [switch]$UseLink2,
-        $mirror = 'https://ghfast.top/', #加速镜像站可能会失效,需要注意更新维护(https://ghproxy.link/)
+        $mirror = $github_mirror, #加速镜像站可能会失效,需要注意更新维护(https://ghproxy.link/)
         $remote_github_raw = 'https://raw.githubusercontent.com/521xueweihan/GitHub520/refs/heads/main/hosts',
 
         $UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.66 Safari/537.36'

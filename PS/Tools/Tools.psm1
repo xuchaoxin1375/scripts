@@ -772,29 +772,42 @@ function Get-BatchSiteBuilderLines
     如需添加多个站点，请换行填写
 
     .NOTES
+    domain1.com
+    domain2.com
+    domain3.com
 
     .EXAMPLE
-    #⚡️[Administrator@CXXUDESK][~\Desktop][19:38:22][UP:4.09Days]
+    #测试命令行
+
+Get-BatchSiteBuilderLines  -user zw -domains @"
+            domain1.com
+            domain2.com
+            domain3.com
+"@
+#回车执行
+
+
+    .EXAMPLE
+    执行结果
+    #⚡️[Administrator@CXXUDESK][~\Desktop][9:21:52][UP:4.66Days]
     PS> Get-BatchSiteBuilderLines  -user zw -domains @"
-    >> domain1.com
-    >> domain2.com
-    >> domain3.com
+    >>     domain1.com
+    >>     domain2.com
+    >>     domain3.com
     >> "@
-    domain1.com     |/www/wwwroot/zw/domain1.com    |0|0|84
-    domain2.com     |/www/wwwroot/zw/domain2.com    |0|0|84
-    domain3.com     |/www/wwwroot/zw/domain3.com    |0|0|84
+    domain1.com,*.domain1.com       |/www/wwwroot/zw/domain1.com    |0|0|84
+    domain2.com,*.domain2.com       |/www/wwwroot/zw/domain2.com    |0|0|84
+    domain3.com,*.domain3.com       |/www/wwwroot/zw/domain3.com    |0|0|84
     .EXAMPLE
-    #⚡️[Administrator@CXXUDESK][~\Desktop][19:38:25][UP:4.09Days]
+    #⚡️[Administrator@CXXUDESK][~\Desktop][9:22:07][UP:4.66Days]
     PS> Get-BatchSiteBuilderLines  -domains @"
-    >> domain1.com
-    >> domain2.com
-    >> domain3.com
+    >>     domain1.com
+    >>     domain2.com
+    >>     domain3.com
     >> "@
-    domain1.com     |/www/wwwroot/domain1.com       |0|0|84
-    domain2.com     |/www/wwwroot/domain2.com       |0|0|84
-    domain3.com     |/www/wwwroot/domain3.com       |0|0|84
-        输出示例
-
+    domain1.com,*.domain1.com       |/www/wwwroot/domain1.com       |0|0|84
+    domain2.com,*.domain2.com       |/www/wwwroot/domain2.com       |0|0|84
+    domain3.com,*.domain3.com       |/www/wwwroot/domain3.com       |0|0|84
     #>
     [CmdletBinding()]
     param (
@@ -802,7 +815,9 @@ function Get-BatchSiteBuilderLines
 domain1.com
 domain2.com
 "@,
+        $LD3 = "*"    ,
         $user,
+    
         $php = 84
     )
     $domains = $domains.trim() -split "`r?`n" | Where-Object { $_.Length }
@@ -815,7 +830,9 @@ domain2.com
     foreach ($domain in $domains)
     {
         Write-Verbose "[$domain]"
-        $line = "$domain`t|/www/wwwroot/$user/$domain`t|0|0|$php" -replace "//","/"
+        $domain = $domain.Trim()
+        $line = "$domain,$LD3.$domain`t|/www/wwwroot/$user/$domain`t|0|0|$php" -replace "//", "/" 
+        $line = $line.Trim()
         Write-Host $line
         $lines.Add($line) > $null
     }

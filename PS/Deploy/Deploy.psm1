@@ -1,5 +1,10 @@
 
 
+#如果你懒得添加引号,那么将镜像链接逐个添加到下面的多行字符串中,即便包含了引号或者双引号逗号也都能够正确处理
+# 配置一个相对稳定的镜像源(出了源的贡献者,还有可能被 墙,因此还是要定期检查)
+# 可用列表检查 https://yishijie.gitlab.io/ziyuan/
+$github_mirror = "https://gh-proxy.com"
+
 $GithubMirrors = @(
 
     # '' #空字符串收尾
@@ -8,7 +13,6 @@ $GithubMirrorsTest = @(
 
     # ''#收尾
 )
-#如果你懒得添加引号,那么将镜像链接逐个添加到下面的多行字符串中,即便包含了引号或者双引号逗号也都能够正确处理
 
 $GithubMirrorsInString = @'
 # 注意,如果你的浏览器使用了代理,那么部分镜像站会和代理冲突,所以可能命令行中测试可以访问的链接在浏览器中确打不开镜像站,可以关闭代理或换个浏览器后重新验证该镜像站的可用性
@@ -17,7 +21,6 @@ $GithubMirrorsInString = @'
 'https://ghproxy.cc',
 'https://ghproxy.net', # GitHub Proxy by GitHub99 - 提供 GitHub 文件的加速下载和克隆服务 #和用户自己的代理可能发生冲突
 'https://mirror.ghproxy.com',
-https://ghgo.xyz/,
 
 # 'https://ghproxy.com/bad/demo', #虚假镜像,用来测试代码是否能够正确处理不可用的镜像链接
 'https://ghproxy.homeboyc.cn/',
@@ -245,11 +248,12 @@ function Get-AvailableGithubMirrors
     .EXAMPLE
     
 
- .NOTES
+    .NOTES
     推荐使用 aria2 等多线程下载工具来加速下载，让镜像加速效果更加明显。
  
     .LINK
     # 镜像站搜集和参考
+    https://ghproxy.link/
     https://github-mirror.us.kg/
     https://github.com/hunshcn/gh-proxy/issues/116
     #>
@@ -2534,10 +2538,11 @@ function Deploy-TrafficMonitor
     # 导入必要的环境变量
     Update-PwshEnvIfNotYet 
     # 配置插件(注意相关变量(VarSet3中配置,$trafficMonitor_home是基础变量,而$trafficMonitor_plugins基于$trafficMonitor_home拼接而成))
-    if($InstalledByScoop){
-        $trafficMonitor_home="$scoop_global_apps\TrafficMonitor\current"
+    if($InstalledByScoop)
+    {
+        $trafficMonitor_home = "$scoop_global_apps\TrafficMonitor\current"
         #重新计算$trafficMonitor_plugins
-        $trafficMonitor_plugins="$trafficMonitor_home\plugins"
+        $trafficMonitor_plugins = "$trafficMonitor_home\plugins"
     }
     New-Junction $trafficMonitor_plugins $configs\trafficMonitor\plugins
     #配置设置

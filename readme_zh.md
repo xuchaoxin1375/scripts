@@ -38,12 +38,20 @@ irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsMod
 
 
 
-### github公益加速站👺
+## github公益加速站👺
 
 - 加速下载依赖于github加速镜像站,如果内置的镜像站过期或不可用,您可以通过github相关加速站点获取可用方案
-  - https://yishijie.gitlab.io/ziyuan/
+  - [GitHub文件加速|列表集合](https://yishijie.gitlab.io/ziyuan/)
+  - [GitHub Mirror 文件加速|列表集合](https://github-mirror.us.kg/)
   - [【镜像站点搜集】 · Issue #116 · hunshcn/gh-proxy (github.com)](https://github.com/hunshcn/gh-proxy/issues/116#issuecomment-2339526975)
+  
 
+- powershell模块中,几乎用到镜像加速站的独立模块都用`$github_mirror`变量来存储和管理,如果需要替换镜像链接
+
+  - 设`$github_mirror='https://olddomain.com'`,如果你要替换为新的镜像链接`https://newdomain.com`
+  - 可以打开vscode,然后在仓库中搜索所有`https://olddomain.com`,替换为`https://newdomain.com`
+
+  
 
 
 ### 文档相对路径
