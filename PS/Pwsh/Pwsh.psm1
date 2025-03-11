@@ -1132,7 +1132,7 @@ function Get-Size
 
         foreach ($item in $Path)
         {
-            # 增加write-process支持
+            # 增加write-progress支持
                 
             # Write-Verbose "Calculating size of directory $item"
             if ($count -gt 1)
