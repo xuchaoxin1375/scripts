@@ -1,44 +1,31 @@
-function Get-CharacterEncoding
+
+# 指定需要被更新插件的wordpress站总目录
+# $wp_sites_dir = 'D:\wordpress\'
+$wp_sites_dir = 'C:\sites\wp_sites\'
+
+# 需要更新的插件(提前解压),下面的数组中一行一个插件目录
+$dir_sources = @(
+    "W:\wp_sites\wp_plugins\price_pay\hellotopay"
+    "W:\wp_sites\wp_plugins\price_pay\public-payment-for-woo"
+    # "C:\Share\df\wp_sites\wp_plugins\price_pay\woo-nexpay"
+)
+# 可以考虑启用多线程(尤其是pwsh7)
+foreach($dir in $dir_sources)
 {
+    # $dir = $dir_sources[0]
 
-    <# 
-    .SYNOPSIS
-    显示字符串的字符编码信息，包括 Unicode 编码、UTF8 编码、ASCII 编码和 HTML 实体编码
-    .DESCRIPTION
-    利用此函数来分析给定字符串中的各个字符的编码，尤其是空白字符，在执行空白字符替换时，可以排查出不可见字符替换不掉的问题
-    .EXAMPLE
-    PS> Get-CharacterEncoding -InputString "  0.46" | Format-Table -AutoSize
+    $dir_name = Split-Path $dir -Leaf
+    # Write-Host $dir_name
+    
+    # $filter="plugins"
+    $filter = $dir_name
+    $pattern = '*\wp-content\plugins\*'
 
-    Character UnicodeCode UTF8Encoding AsciiCode HtmlEntity
-    --------- ----------- ------------ --------- ----------
-            U+0020      0x20                32     &nbsp;
-              U+00A0      0xC2 0xA0          N/A    &nbsp;
-            0 U+0030      0x30                48     0
-            . U+002E      0x2E                46     .
-            4 U+0034      0x34                52     4
-            6 U+0036      0x36                54     6
-    #>
-    param (
-        [string]$InputString
-    )
-    $utf8 = [System.Text.Encoding]::UTF8
+    Write-Output "Searching for files in $wp_sites_dir (wait for a moment....)"
 
-    $InputString.ToCharArray() | ForEach-Object {
-        $char = $_
-        $unicode = [int][char]$char
-        $utf8Bytes = $utf8.GetBytes([char[]]$char)
-        $utf8Hex = $utf8Bytes | ForEach-Object { "0x{0:X2}" -f $_ }
-        $ascii = if ($unicode -lt 128) { $unicode } else { "N/A" }
+    # 可以考虑先清空已有目录,然后重新应用复制新的(间接重置同步最新相关目录)
+    # Get-ChildItem -Path $wp_sites_dir -Recurse -Directory -Filter $filter | Where-Object { $_.FullName -like $pattern }
 
-        # 计算 HTML 实体编码
-        $htmlEntity = if ($unicode -ge 128) { "&#$unicode;" } else { $char }
-
-        [PSCustomObject]@{
-            Character    = $char
-            UnicodeCode  = "U+{0:X4}" -f $unicode
-            UTF8Encoding = ($utf8Hex -join " ")
-            AsciiCode    = $ascii
-            HtmlEntity   = $htmlEntity
-        }
-    }
+    $contents = Get-ChildItem -Path $wp_sites_dir -Recurse -Directory -Filter $filter | Where-Object { $_.FullName -like $pattern }
+    Write-Output $contents 
 }

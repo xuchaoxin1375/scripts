@@ -400,6 +400,92 @@ function Export-NewCSVFile
 
     Write-Host "$("`n"*3)"
 }
+function Export-CsvSplitFiles
+{
+    <# 
+    .SYNOPSIS
+    将 CSV 文件平均分割成多个较小的 CSV 文件，如果无法平均，则余数放到最后一个文件中。
+
+    .PARAMETER InputFile
+    需要分割的 CSV 文件路径。
+
+    .PARAMETER OutputDirectory
+    输出分割后 CSV 文件的目录。
+
+    .PARAMETER Numbers
+    需要分割的文件数量（默认为 10）。
+
+    .EXAMPLE
+    Export-CsvSplitFiles -InputFile "C:\data\largefile.csv" -OutputDirectory "C:\data\split" -Numbers 5
+
+    #>
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$InputFile,
+
+        # [Parameter(Mandatory = $true)]
+        [string]$OutputDirectory = "",
+
+        [int]$Numbers = 10
+    )
+    if ($OutputDirectory -eq "")
+    {
+        $OutputDirectory = Split-Path $InputFile
+    }
+
+    # 确保输入文件存在
+    if (-not (Test-Path $InputFile))
+    {
+        Write-Error "输入文件 $InputFile 不存在。"
+        return
+    }
+
+    # 确保输出目录存在
+    if (-not (Test-Path $OutputDirectory))
+    {
+        New-Item -ItemType Directory -Path $OutputDirectory | Out-Null
+    }
+
+    # 读取 CSV 文件
+    $data = Import-Csv -Path $InputFile
+    $totalRows = $data.Count
+
+    if ($totalRows -eq 0)
+    {
+        Write-Error "CSV 文件没有数据。"
+        return
+    }
+
+    # 计算每个文件应包含的行数
+    $rowsPerFile = [math]::Ceiling($totalRows / $Numbers)
+
+    # 分割数据并写入文件
+    for ($i = 0; $i -lt $Numbers; $i++)
+    {
+        $start = $i * $rowsPerFile
+        if ($start -ge $totalRows)
+        {
+            break
+        }
+
+        $end = [math]::Min($start + $rowsPerFile, $totalRows)
+        $splitData = $data[$start..($end - 1)]
+
+        # 生成文件名
+        $fileBaseName = Split-Path $InputFile -LeafBase
+        Write-Host $fileBaseName
+
+        $outputFile = Join-Path -Path $OutputDirectory -ChildPath ("${fileBaseName}_split_{0}_$($start+1)-$end.csv" -f ($i + 1))
+
+        # 导出 CSV
+        $splitData | Export-Csv -Path $outputFile -NoTypeInformation -Encoding UTF8
+
+        Write-Host "已生成文件: $outputFile"
+    }
+
+    Write-Host "CSV 文件分割完成，输出目录: $OutputDirectory"
+}
+
 function Export-NewCSVFilesFromSKU
 {
     <# 
