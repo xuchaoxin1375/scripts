@@ -833,7 +833,84 @@ function Set-OpenWithVscode
     }
     Write-Host "Completed.Refresh Explorer to see changes."
 }
+function Get-BatchSiteDBCreateLines
+{
+    <# 
+    .SYNOPSIS
+    获取批量站点数据库创建命令行
+    .DESCRIPTION
+    默认生成两种命令行,一种是可以直接在shell中执行,另一种是保存到sql文件中,最后调用mysql命令行来执行
+    第一种使用起来简单,但是开销大,而且构造语句的过程中相对比较麻烦,需要考虑powershell对特殊字符的解释
+    第二种命令简短,而且符号包裹更少,运行开销较小,理论上比第一种快;但是powershell对于mysql命令行执行
+    sql文件也相对麻烦,需要用一些技巧
 
+    #>
+    [CmdletBinding()]
+    param (
+        $domains = @"
+domain1.com
+domain2.com
+"@,
+        # 指明网站的创建或归属者,涉及到网站数据库名字和网站根目录的区分
+        $SiteOwner,
+
+        #可以配置系统环境变量 df_server,可以是ip或域名
+        $server = $env:DF_SERVER1, 
+        # 对于wordpress,一般使用utf8mb4_general_ci
+        $collate = 'utf8mb4_general_ci',
+        $MySqlUser = "root",
+
+        # 置空表示不输出sql文件
+        $SqlFielSavePath = "$home\Desktop\BatchSiteDBCreate-$SiteOwner.sql",
+
+        [Parameter(ParameterSetName = "UseKey")]
+        $MySqlkey = $env:DF_MysqlKey,
+        [parameter(ParameterSetName = "UseKey")]
+        [switch]$UseKey
+    )
+    $domains = @($domains) -join "`n"
+    $domains = $domains.trim() -split "`r?`n|," | Where-Object { $_.Length }
+    # $lines = [System.Collections.ArrayList]@()
+    # $sqlLines = [System.Collections.ArrayList]@()
+    $lines = New-Object System.Collections.Generic.List[string]
+    $sqlLines = New-Object System.Collections.Generic.List[string]
+
+    $password = ""
+    if($PSCmdlet.ParameterSetName -eq "UseKey")
+    {
+
+        if($UseKey -and $MySqlkey)
+        {
+            $password = " -p$MySqlkey"
+        }
+
+    }
+
+    Write-Verbose "读取的域名规范化(移除多余的空白和`www.`,使数据库名字结构统一)" -Verbose
+    foreach ($domain in $domains)
+    {
+        $domain = $domain.Trim() -replace "www.", "" 
+        $line = "mysql -u$mysqlUser -h $server $password -e 'CREATE DATABASE ``${SiteOwner}_$domain`` CHARACTER SET utf8mb4 COLLATE $collate;' "
+        $sqlLine = 'CREATE DATABASE ' + " ``${SiteOwner}_$domain`` CHARACTER SET utf8mb4 COLLATE $collate;"
+
+        Write-Verbose $line
+        Write-Verbose $sqlLine
+
+        $lines.Add($line) > $null
+        $sqlLines.Add($sqlLine) > $null
+
+        # 两组前后分开,合并返回
+        # $lines = $lines + $sqlLine
+        $lines.AddRange($sqlLines) 
+        # $line | Invoke-Expression
+    }
+    if($SqlFielSavePath)
+    {
+        $sqlLines | Out-File $SqlFielSavePath -Encoding utf8   
+    }
+    return $lines
+    
+}
 function Get-BatchSiteBuilderLines
 {
     <# 
@@ -871,32 +948,41 @@ Get-BatchSiteBuilderLines  -user zw -domains @"
             domain3.com
 "@
 #回车执行
-
-
+#>
+    <# 
     .EXAMPLE
-    执行结果
-    #⚡️[Administrator@CXXUDESK][~\Desktop][9:21:52][UP:4.66Days]
-    PS> Get-BatchSiteBuilderLines  -user zw -domains @"
-    >>     domain1.com
-    >>     domain2.com
-    >>     domain3.com
+    
+    #⚡️[Administrator@CXXUDESK][~\Desktop][20:48:14][UP:9.14Days]
+    PS> Get-BatchSiteBuilderLines -user zw "a.com,b.com"
+    a.com,*.a.com   |/www/wwwroot/zw/a.com  |0|0|84
+    b.com,*.b.com   |/www/wwwroot/zw/b.com  |0|0|84
+
+    #⚡️[Administrator@CXXUDESK][~\Desktop][20:48:15][UP:9.14Days]
+    PS> Get-BatchSiteBuilderLines -user zw @"
+    >> a.com
+    >> b.com
     >> "@
-    domain1.com,*.domain1.com       |/www/wwwroot/zw/domain1.com    |0|0|84
-    domain2.com,*.domain2.com       |/www/wwwroot/zw/domain2.com    |0|0|84
-    domain3.com,*.domain3.com       |/www/wwwroot/zw/domain3.com    |0|0|84
+    a.com,*.a.com   |/www/wwwroot/zw/a.com  |0|0|84
+    b.com,*.b.com   |/www/wwwroot/zw/b.com  |0|0|84
     .EXAMPLE
-    #⚡️[Administrator@CXXUDESK][~\Desktop][9:22:07][UP:4.66Days]
-    PS> Get-BatchSiteBuilderLines  -domains @"
-    >>     domain1.com
-    >>     domain2.com
-    >>     domain3.com
-    >> "@
-    domain1.com,*.domain1.com       |/www/wwwroot/domain1.com       |0|0|84
-    domain2.com,*.domain2.com       |/www/wwwroot/domain2.com       |0|0|84
-    domain3.com,*.domain3.com       |/www/wwwroot/domain3.com       |0|0|84
-    #>
+    #⚡️[Administrator@CXXUDESK][~\Desktop][20:48:58][UP:9.14Days]
+    PS> Get-BatchSiteBuilderLines -user zw @(
+    >> 'a.com'
+    >> 'b.com')
+    a.com,*.a.com   |/www/wwwroot/zw/a.com  |0|0|84
+    b.com,*.b.com   |/www/wwwroot/zw/b.com  |0|0|84
+
+    #⚡️[Administrator@CXXUDESK][~\Desktop][20:49:13][UP:9.14Days]
+    PS> Get-BatchSiteBuilderLines -user zw @(
+    >> 'a.com'
+    >> 'b.com'
+    >> )
+    a.com,*.a.com   |/www/wwwroot/zw/a.com  |0|0|84
+    b.com,*.b.com   |/www/wwwroot/zw/b.com  |0|0|84
+    #> 
     [CmdletBinding()]
     param (
+        # 使用多行字符串,相比于直接使用字符串,在脚本中可以省略去引号的书写
         $domains = @"
 domain1.com
 domain2.com
@@ -906,10 +992,15 @@ domain2.com
     
         $php = 84
     )
-    $domains = $domains.trim() -split "`r?`n" | Where-Object { $_.Length }
+    $domains = @($domains) -join "`n"
+
+    # 统一成字符串处理
+    $domains = $domains.trim() -split "`r?`n|," | Where-Object { $_.Length }
     $lines = [System.Collections.ArrayList]@()
+
     # $domains = $domains -replace "`r?`n", ";"
     # $domains = $domains -replace "`n", ";"
+
     # Write-Verbose $domains
     Write-Verbose "$($domains.Length)" 
 
@@ -918,11 +1009,62 @@ domain2.com
         Write-Verbose "[$domain]"
         $domain = $domain.Trim()
         $line = "$domain,$LD3.$domain`t|/www/wwwroot/$user/$domain`t|0|0|$php" -replace "//", "/" 
-        $line = $line.Trim()
+       
+        $line = $line.Trim() 
         Write-Host $line
         $lines.Add($line) > $null
     }
+
     $lines | Set-Clipboard
+    Write-Host "lines copied to clipboard!" -ForegroundColor Cyan
+}
+function Get-BatchSiteBuilderLines-DF
+{
+    param(
+        $user,
+        $domains,
+        $server = $env:DF_SERVER1,
+        $MySqlUser = "root",
+        $MySqlkey = "",
+        $SqlFielSavePath = "$home\Desktop\BatchSiteDBCreate-$user.sql"
+    )
+    $siteExpressions = Get-BatchSiteBuilderLines -user $user -domains $domains
+    # $siteExpressions | Set-Clipboard
+    Write-Host $siteExpressions
+
+    # Pause
+    $dbExpressions = Get-BatchSiteDBCreateLines -domains $domains -SiteOwner $user
+
+
+    Write-Warning "Please Check the sql lines,especially the siteOwner is exactly what you want!"
+    Write-Output $dbExpressions
+    # Pause
+
+    # foreach ($line in $dbExpressions)
+    # {
+    #     $line | Invoke-Expression
+    # }
+    Write-Warning "Running the sql file (by cmd /c ... ),wait a moment please..."
+    if($MySqlkey)
+    {
+        $password = " -p$MySqlkey"
+    }
+    else
+    {
+        $password = ""
+    }
+    if(Test-Path $sqlFielSavePath)
+    {
+        
+        Write-Host "file exist!"
+        $expression = "cmd /c `" mysql -u $MySqlUser -h $server $password < ```"$sqlFielSavePath```" `""
+        Write-Host $expression
+        Invoke-Expression $expression
+        # cmd /c $expression
+        
+    }
+
+    
 }
 
 function Start-HTTPServer
