@@ -985,7 +985,7 @@ Get-BatchSiteBuilderLines  -user zw -domains @"
         # 使用多行字符串,相比于直接使用字符串,在脚本中可以省略去引号的书写
         $domains = @"
 domain1.com
-domain2.com
+www.domain2.com
 "@,
         $LD3 = "*"    ,
         $user,
@@ -1007,7 +1007,7 @@ domain2.com
     foreach ($domain in $domains)
     {
         Write-Verbose "[$domain]"
-        $domain = $domain.Trim()
+        $domain = $domain.Trim() -replace "www.", ""
         $line = "$domain,$LD3.$domain`t|/www/wwwroot/$user/$domain`t|0|0|$php" -replace "//", "/" 
        
         $line = $line.Trim() 
@@ -1016,7 +1016,7 @@ domain2.com
     }
 
     $lines | Set-Clipboard
-    Write-Host "lines copied to clipboard!" -ForegroundColor Cyan
+    Write-Host "`nlines copied to clipboard!" -ForegroundColor Cyan
 }
 function Get-BatchSiteBuilderLines-DF
 {
@@ -1056,7 +1056,7 @@ function Get-BatchSiteBuilderLines-DF
     if(Test-Path $sqlFielSavePath)
     {
         
-        Write-Host "file exist!"
+        Write-Verbose "File exist!" -Verbose
         $expression = "cmd /c `" mysql -u $MySqlUser -h $server $password < ```"$sqlFielSavePath```" `""
         Write-Host $expression
         Invoke-Expression $expression
@@ -1066,7 +1066,42 @@ function Get-BatchSiteBuilderLines-DF
 
     
 }
+function New-LocalMysqlDB
+{
+    param (
+        $Name,
+        $server = 'localhost',
+        $CharSet = 'utf8mb4',
+        $collate = "utf8mb4_general_ci",
+        [switch]$Remove
+    )
+    if(!$Remove)
+    {
 
+        $command = " mysql -uroot -h $server -e 'CREATE DATABASE ``$Name`` CHARACTER SET $CharSet COLLATE $collate; show databases like `"$Name`";' "  
+        Write-Verbose $command -Verbose
+    }
+    else
+    {
+        # 提示用户输入
+        $userInput = Read-Host "Do you want to remove the database $Name? (Y/N)"
+        $userInput = $userInput.ToLower()
+        # 判断用户输入是否为空（即回车）
+        if ([string]::IsNullOrEmpty($userInput) -or $userInput -eq 'y')
+        {
+            # 用户按了回车，继续执行后续代码            
+            $command = " mysql -uroot -h $server -e '  DROP DATABASE IF EXISTS ``$Name``;  show databases like `"$Name`";' "  
+        }
+        else
+        {
+            # 用户输入了其他内容，取消执行后续代码
+            Write-Host "取消执行后续代码。"
+            exit
+        }
+    }
+    Invoke-Expression $command
+    
+}
 function Start-HTTPServer
 {
     <#
