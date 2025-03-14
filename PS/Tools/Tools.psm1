@@ -990,7 +990,7 @@ www.domain2.com
         $LD3 = "*"    ,
         $user,
     
-        $php = 84
+        $php = 74
     )
     $domains = @($domains) -join "`n"
 
