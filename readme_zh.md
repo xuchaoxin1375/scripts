@@ -21,7 +21,18 @@
 
 ### 常用powershell模块在线运行🎈
 
+#### Deploy系列
+
 - 参考文档:[Deploy/readme.md](PS/Deploy/readme.md)
+
+#### Tools系列
+
+- ```powershell
+  irm https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Tools/Tools.psm1|iex
+  
+  ```
+
+  
 
 ## 一键部署此项目
 

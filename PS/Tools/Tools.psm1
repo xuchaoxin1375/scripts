@@ -833,6 +833,39 @@ function Set-OpenWithVscode
     }
     Write-Host "Completed.Refresh Explorer to see changes."
 }
+
+function Get-LineDataFromMultilineString
+{
+    <# 
+    .SYNOPSIS
+    将多行字符串按行分割，并返回数组
+    对于数组输入也可以处理
+    .EXAMPLE
+    Get-LineDataFromMultilineString -Data @"
+    line1
+    line2
+    "@
+
+    #>
+    [cmdletbinding(DefaultParameterSetName = "Trim")]
+    param (
+        $Data,
+        [parameter(ParameterSetName = "Trim")]
+        $TrimPattern = "",
+        [parameter(ParameterSetName = "NoTrim")]
+        [switch]$KeepLine
+    )
+    # 统一成字符串处理
+    $Data = @($Data) -join "`n"
+
+    $lines = $Data -split "`r?`n|," 
+    if(!$KeepLine)
+    {
+        $lines = $lines | ForEach-Object { $_.trim($TrimPattern) }
+    }
+    return $lines
+    
+}
 function Get-BatchSiteDBCreateLines
 {
     <# 
@@ -1018,8 +1051,14 @@ www.domain2.com
     $lines | Set-Clipboard
     Write-Host "`nlines copied to clipboard!" -ForegroundColor Cyan
 }
-function Get-BatchSiteBuilderLines-DF
+function Start-BatchSiteBuilderLines-DF
 {
+    <# 
+    .SYNOPSIS
+    组织调用批量建站的命令
+    .NOTES
+    生成的sql文件位于桌面(可以自动执行)
+    #>
     param(
         $user,
         $domains,
@@ -1064,6 +1103,23 @@ function Get-BatchSiteBuilderLines-DF
         
     }
 
+    
+}
+
+
+function Start-GoogleIndexSearch
+{
+    param (
+        $domains
+    )
+    $domains = Get-LineDataFromMultilineString $domains 
+    foreach ($domain in $domains)
+    {
+        $cmd = "https://www.google.com/search?q=site:$domain"
+        Write-Host $cmd
+        Start-Process $cmd
+    
+    }
     
 }
 function New-LocalMysqlDB
