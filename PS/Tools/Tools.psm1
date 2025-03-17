@@ -894,7 +894,7 @@ domain2.com
         $MySqlUser = "root",
 
         # 置空表示不输出sql文件
-        $SqlFielSavePath = "$home\Desktop\BatchSiteDBCreate-$SiteOwner.sql",
+        $SqlFilePath = "$home\Desktop\BatchSiteDBCreate-$SiteOwner.sql",
 
         [Parameter(ParameterSetName = "UseKey")]
         $MySqlkey = $env:DF_MysqlKey,
@@ -937,9 +937,9 @@ domain2.com
         $lines.AddRange($sqlLines) 
         # $line | Invoke-Expression
     }
-    if($SqlFielSavePath)
+    if($SqlFilePath)
     {
-        $sqlLines | Out-File $SqlFielSavePath -Encoding utf8   
+        $sqlLines | Out-File $SqlFilePath -Encoding utf8   
     }
     return $lines
     
@@ -1051,6 +1051,75 @@ www.domain2.com
     $lines | Set-Clipboard
     Write-Host "`nlines copied to clipboard!" -ForegroundColor Cyan
 }
+function Import-MysqlFile
+{
+    <# 
+    .SYNOPSIS
+    向指定mysql服务器导入mysql文件(运行sql文件)
+    .NOTES
+    可以配置默认导入主机和用户等信息
+    导入的文件路径是必填的
+
+    #>
+    param (
+        $server,
+        $SqlFilePath,
+        $MySqlUser = "root",
+        $key = $env:DF_MySqlKey,
+        $DatabaseName = ""
+    )
+    if(Test-Path $SqlFilePath)
+    {
+        
+        Write-Verbose "File exist!" -Verbose
+    
+        $expression = "cmd /c `" mysql -u $MySqlUser -h $server -p$key $DatabaseName < ```"$SqlFilePath```" `""
+        Write-Host $expression
+        Invoke-Expression $expression
+        # cmd /c $expression
+        
+    }
+}
+function Export-MysqlFile
+{
+    <# 
+    .synopsis
+    导出mysql数据库到文件
+    .DESCRIPTION
+    #>    
+    [CmdletBinding()]
+    param (
+        $DatabaseName,    
+        $SqlFilePath,
+
+        $server = $env:DF_SERVER1,
+        $MySqlUser = "root",
+        $key = $env:DF_MySqlKey,
+        [switch]$Force
+
+    )
+    if(Test-Path $SqlFilePath)
+    {
+        Write-Warning "File already exist!"
+        Write-Verbose "try to rename the old file!(as .bak);" -Verbose
+
+        Rename-Item $SqlFilePath "$SqlFilePath.bak.$(Get-Date -Format 'yyyyMMdd-hhmmss')" -Force:$Force -Verbose
+        # try
+        # {
+        Write-Verbose "The old file has been renamed to $SqlFilePath.bak" -Verbose
+        # }
+        # catch
+        # {
+        #     Write-Warning "Failed to rename the old file!(because the $SqlFilePath.bak is also already exist !)"
+        #     Write-Warning "Please check and move the file path or delete the old file manually if it will no longer be used."
+        #     return
+        # }
+    }
+
+    $expression = "  mysqldump -u $MySqlUser -h $server -p$key '$DatabaseName' > $SqlFilePath "
+    Write-Verbose $expression
+    Invoke-Expression $expression
+}
 function Start-BatchSiteBuilderLines-DF
 {
     <# 
@@ -1065,7 +1134,7 @@ function Start-BatchSiteBuilderLines-DF
         $server = $env:DF_SERVER1,
         $MySqlUser = "root",
         $MySqlkey = "",
-        $SqlFielSavePath = "$home\Desktop\BatchSiteDBCreate-$user.sql"
+        $SqlFilePath = "$home\Desktop\BatchSiteDBCreate-$user.sql"
     )
     $siteExpressions = Get-BatchSiteBuilderLines -user $user -domains $domains
     # $siteExpressions | Set-Clipboard
@@ -1092,16 +1161,8 @@ function Start-BatchSiteBuilderLines-DF
     {
         $password = ""
     }
-    if(Test-Path $sqlFielSavePath)
-    {
-        
-        Write-Verbose "File exist!" -Verbose
-        $expression = "cmd /c `" mysql -u $MySqlUser -h $server $password < ```"$sqlFielSavePath```" `""
-        Write-Host $expression
-        Invoke-Expression $expression
-        # cmd /c $expression
-        
-    }
+   
+    Import-MysqlFile -MySqlUser $MySqlUser -server $server -key $password -SqlFilePath $SqlFilePath
 
     
 }
