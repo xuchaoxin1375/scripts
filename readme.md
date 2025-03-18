@@ -12,7 +12,7 @@ irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsMod
 
 Details:
 
-更具体的说明查看此文档：[部署说明](./PS/Deploy/Readme.md)
+更具体的说明查看此文档：[部署说明](./PS/Deploy/readme.md)
 
 ## 详情
 
