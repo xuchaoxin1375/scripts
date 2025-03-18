@@ -866,6 +866,99 @@ function Get-LineDataFromMultilineString
     return $lines
     
 }
+function Update-WpUrl
+{
+
+    <# 
+    .SYNOPSIS
+    更新 WordPress 数据库中的站点地址
+    .DESCRIPTION
+    一般用于网站迁移,需要修改数据库中的站点地址,一般需要修改wp_options表中的'home'和'siteurl'选项
+
+    
+    #>
+    param(
+        $OldDomain,
+        $NewDomain,
+        $DatabaseName = $NewDomain,
+        # 以下参数继承自 Import-MysqlFile 
+        $server,
+        # $SqlFilePath,
+        $MySqlUser = "root",
+        $key = $env:DF_MySqlKey
+    )
+    $sql = @"
+-- 定义旧域名和新域名变量
+
+--
+/* 
+修改下面的变量,注意带上[http://+域名或ip],其他做法容易翻车
+ */
+SET
+    @old_domain = CONVERT(
+        'http://$OldDomain' USING utf8mb4
+    ) COLLATE utf8mb4_unicode_520_ci;
+
+SET
+    @new_domain = CONVERT(
+        'http://$NewDomain' USING utf8mb4
+    ) COLLATE utf8mb4_unicode_520_ci;
+"@ + @'
+-- 更新 wp_options 表中的 'home' 和 'siteurl' 选项
+UPDATE wp_options
+SET
+    option_value =
+REPLACE (
+        option_value,
+        @old_domain,
+        @new_domain
+    )
+WHERE
+    option_name IN ('home', 'siteurl');
+
+-- 更新 wp_posts 表中的 'post_content' 和 'guid' 字段
+UPDATE wp_posts
+SET
+    post_content =
+REPLACE (
+        post_content,
+        @old_domain,
+        @new_domain
+    ),
+    guid =
+REPLACE (
+        guid,
+        @old_domain,
+        @new_domain
+    );
+
+-- 更新 wp_comments 表中的 'comment_content' 和 'comment_author_url' 字段
+UPDATE wp_comments
+SET
+    comment_content =
+REPLACE (
+        comment_content,
+        @old_domain,
+        @new_domain
+    ),
+    comment_author_url =
+REPLACE (
+        comment_author_url,
+        @old_domain,
+        @new_domain
+    );
+
+ALTER TABLE `wp_terms`
+CHANGE `name` `name` VARCHAR(8000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci NULL DEFAULT NULL;
+
+ALTER TABLE `wp_terms`
+CHANGE `slug` `slug` VARCHAR(8000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '';
+'@
+    $sqlPath = "$env:TEMP/update-wp-url.sql"
+    $sql | Out-File $sqlPath
+    Import-MysqlFile -server $server -SqlFilePath $sqlPath -MySqlUser $MySqlUser -key $key -DatabaseName $DatabaseName 
+
+}
 function Get-BatchSiteDBCreateLines
 {
     <# 
@@ -944,6 +1037,87 @@ domain2.com
     return $lines
     
 }
+
+function Get-DomainUserTuple
+{
+    <# 
+    .SYNOPSIS
+    解析从 Excel 粘贴的 "域名" "用户名" 简表，并根据提供的字典翻译用户名。
+
+    .NOTES
+    示例字典：
+    $SiteOwnersDict = @{
+        "郑" = "zw"
+        "李" = "lyz"
+    }
+
+    示例输入：
+    $Table = @"
+    www.d1.com    郑
+    www.d2.com    李
+    www.wer.com    郑
+    www.abc.com    郑
+    "@
+
+    示例输出：
+    @{
+        Domain = "www.d1.com"
+        User   = "zw"
+    },
+    @{
+        Domain = "www.d2.com"
+        User   = "lyz"
+    }
+    #>
+    [CmdletBinding()]
+    param(
+        # 包含域名和用户名的多行字符串
+        [Alias("DomainLines")]
+        [string]$Table = @"
+www.d1.com    郑
+www.d2.com    李
+"@,
+
+        # 表结构，默认是 "域名,用户名"
+        [string]$Structure = "Domain,User",
+
+        # 用户名转换字典
+        [hashtable]$SiteOwnersDict = $SiteOwnersDict
+    )
+
+    # 解析表头结构
+    $columns = $Structure -split ','
+    $column_number = $columns.Count
+
+    # 解析行数据
+    $lines = $Table -split "`r?`n" | Where-Object { $_ -match "\S" }
+
+    $result = @()
+
+    foreach ($line in $lines)
+    {
+        # 拆分每一行（假设使用制表符或多个空格分隔）
+        $parts = $line -split "\s+"
+
+        if ($parts.Count -ne $column_number)
+        {
+            Write-Warning "$line does not match the expected structure:[$structure],pass it,Check it!"
+            continue
+        }
+
+        # 构造哈希表
+        $entry = @{
+            $columns[0] = $parts[0]
+            $columns[1] = $SiteOwnersDict[$parts[1]] ?? $parts[1]  # 如果字典里没有，就保留原用户名
+        }
+
+        $result += $entry
+    }
+
+    return $result
+}
+
+
 function Get-BatchSiteBuilderLines
 {
     <# 
@@ -1021,7 +1195,7 @@ domain1.com
 www.domain2.com
 "@,
         $LD3 = "*"    ,
-        $user,
+        [Alias("SiteOwner")]$User,
     
         $php = 74
     )
@@ -1056,6 +1230,32 @@ function Import-MysqlFile
     <# 
     .SYNOPSIS
     向指定mysql服务器导入mysql文件(运行sql文件)
+    
+    .PARAMETER server
+    写入操作对于数据库影响较大,因此此命令设计为你必须要指定主机(mysql服务器,比如本地(localhost),或则远程的某个服务)
+    .PARAMETER SqlFilePath
+    要导入的sql文件路径
+    .PARAMETER MySqlUser
+    mysql用户名,默认为root
+    .PARAMETER key
+    mysql密码
+    你也可以不指定密码,而在mysql中配置文件(比如my.ini或my.cnf)中设置密码,实现免手动指定密码操作数据库
+    默认为读取环境变量DF_MysqlKey,指定此参数时,会以你的输入为准,但是这不安全
+
+    .PARAMETER DatabaseName
+    如果你指定此参数,那么命令会认为你想要将sql文件导入到指定数据库名
+    默认为"",表示你想要执行的语句(sql文件)不要求你后期指定数据库名字,
+    例如,你的sql是一些查询数据库基本信息的语句,或者是创建数据库的语句,你不需要在命令行中指定一个数据库
+ 
+
+    .EXAMPLE
+    Import-MysqlFile -server localhost -SqlFilePath "C:\Users\admin\Desktop\test.sql" -MySqlUser root -key "123456" -DatabaseName "test"
+    .EXAMPLE
+    #⚡️[Administrator@CXXUDESK][~\Desktop][20:50:51][UP:3.52Days]
+    PS> Import-MysqlFile -server localhost -DatabaseName 6.fr -SqlFilePath C:\sites\wp_sites_cxxu\base_sqls\6.es.sql
+    VERBOSE: File exist!
+    cmd /c " mysql -u root -h localhost -p15a58524d3bd2e49 6.fr < `"C:\sites\wp_sites_cxxu\base_sqls\6.es.sql`" "
+    mysql: [Warning] Using a password on the command line interface can be insecure.
     .NOTES
     可以配置默认导入主机和用户等信息
     导入的文件路径是必填的
@@ -1072,8 +1272,15 @@ function Import-MysqlFile
     {
         
         Write-Verbose "File exist!" -Verbose
-    
-        $expression = "cmd /c `" mysql -u $MySqlUser -h $server -p$key $DatabaseName < ```"$SqlFilePath```" `""
+        if($MySqlkey)
+        {
+            $key = " -p$MySqlkey"
+        }
+        else
+        {
+            $key = ""
+        }
+        $expression = "cmd /c `" mysql -u $MySqlUser -h $server $key $DatabaseName < ```"$SqlFilePath```" `""
         Write-Host $expression
         Invoke-Expression $expression
         # cmd /c $expression
@@ -1129,7 +1336,7 @@ function Start-BatchSiteBuilderLines-DF
     生成的sql文件位于桌面(可以自动执行)
     #>
     param(
-        $user,
+        [Alias("SiteOwner")]$User,
         $domains,
         $server = $env:DF_SERVER1,
         $MySqlUser = "root",
@@ -1153,14 +1360,7 @@ function Start-BatchSiteBuilderLines-DF
     #     $line | Invoke-Expression
     # }
     Write-Warning "Running the sql file (by cmd /c ... ),wait a moment please..."
-    if($MySqlkey)
-    {
-        $password = " -p$MySqlkey"
-    }
-    else
-    {
-        $password = ""
-    }
+
    
     Import-MysqlFile -MySqlUser $MySqlUser -server $server -key $password -SqlFilePath $SqlFilePath
 
