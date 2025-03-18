@@ -959,84 +959,6 @@ CHANGE `slug` `slug` VARCHAR(8000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode
     Import-MysqlFile -server $server -SqlFilePath $sqlPath -MySqlUser $MySqlUser -key $key -DatabaseName $DatabaseName 
 
 }
-function Get-BatchSiteDBCreateLines
-{
-    <# 
-    .SYNOPSIS
-    获取批量站点数据库创建命令行
-    .DESCRIPTION
-    默认生成两种命令行,一种是可以直接在shell中执行,另一种是保存到sql文件中,最后调用mysql命令行来执行
-    第一种使用起来简单,但是开销大,而且构造语句的过程中相对比较麻烦,需要考虑powershell对特殊字符的解释
-    第二种命令简短,而且符号包裹更少,运行开销较小,理论上比第一种快;但是powershell对于mysql命令行执行
-    sql文件也相对麻烦,需要用一些技巧
-
-    #>
-    [CmdletBinding()]
-    param (
-        $domains = @"
-domain1.com
-domain2.com
-"@,
-        # 指明网站的创建或归属者,涉及到网站数据库名字和网站根目录的区分
-        $SiteOwner,
-
-        #可以配置系统环境变量 df_server,可以是ip或域名
-        $server = $env:DF_SERVER1, 
-        # 对于wordpress,一般使用utf8mb4_general_ci
-        $collate = 'utf8mb4_general_ci',
-        $MySqlUser = "root",
-
-        # 置空表示不输出sql文件
-        $SqlFilePath = "$home\Desktop\BatchSiteDBCreate-$SiteOwner.sql",
-
-        [Parameter(ParameterSetName = "UseKey")]
-        $MySqlkey = $env:DF_MysqlKey,
-        [parameter(ParameterSetName = "UseKey")]
-        [switch]$UseKey
-    )
-    $domains = @($domains) -join "`n"
-    $domains = $domains.trim() -split "`r?`n|," | Where-Object { $_.Length }
-    # $lines = [System.Collections.ArrayList]@()
-    # $sqlLines = [System.Collections.ArrayList]@()
-    $lines = New-Object System.Collections.Generic.List[string]
-    $sqlLines = New-Object System.Collections.Generic.List[string]
-
-    $password = ""
-    if($PSCmdlet.ParameterSetName -eq "UseKey")
-    {
-
-        if($UseKey -and $MySqlkey)
-        {
-            $password = " -p$MySqlkey"
-        }
-
-    }
-
-    Write-Verbose "读取的域名规范化(移除多余的空白和`www.`,使数据库名字结构统一)" -Verbose
-    foreach ($domain in $domains)
-    {
-        $domain = $domain.Trim() -replace "www.", "" 
-        $line = "mysql -u$mysqlUser -h $server $password -e 'CREATE DATABASE ``${SiteOwner}_$domain`` CHARACTER SET utf8mb4 COLLATE $collate;' "
-        $sqlLine = 'CREATE DATABASE ' + " ``${SiteOwner}_$domain`` CHARACTER SET utf8mb4 COLLATE $collate;"
-
-        Write-Verbose $line
-        Write-Verbose $sqlLine
-
-        $lines.Add($line) > $null
-        $sqlLines.Add($sqlLine) > $null
-
-        # 两组前后分开,合并返回
-        # $lines = $lines + $sqlLine
-        $lines.AddRange($sqlLines) 
-        # $line | Invoke-Expression
-    }
-    if($SqlFilePath)
-    {
-        $sqlLines | Out-File $SqlFilePath -Encoding utf8   
-    }
-    return $lines
-    
-}
 
 function Get-DomainUserTuple
 {
@@ -1055,8 +977,7 @@ function Get-DomainUserTuple
     $Table = @"
     www.d1.com    郑
     www.d2.com    李
-    www.wer.com    郑
-    www.abc.com    郑
+
     "@
 
     示例输出：
@@ -1076,10 +997,11 @@ function Get-DomainUserTuple
         [string]$Table = @"
 www.d1.com    郑
 www.d2.com    李
+
 "@,
 
         # 表结构，默认是 "域名,用户名"
-        [string]$Structure = "Domain,User",
+        [string]$Structure = $DFTableStructure,
 
         # 用户名转换字典
         [hashtable]$SiteOwnersDict = $SiteOwnersDict
@@ -1117,6 +1039,99 @@ www.d2.com    李
     return $result
 }
 
+function Get-BatchSiteDBCreateLines
+{
+    <# 
+    .SYNOPSIS
+    获取批量站点数据库创建命令行
+    .DESCRIPTION
+    默认生成两种命令行,一种是可以直接在shell中执行,另一种是保存到sql文件中,最后调用mysql命令行来执行
+    第一种使用起来简单,但是开销大,而且构造语句的过程中相对比较麻烦,需要考虑powershell对特殊字符的解释
+    第二种命令简短,而且符号包裹更少,运行开销较小,理论上比第一种快;但是powershell对于mysql命令行执行
+    sql文件也相对麻烦,需要用一些技巧
+
+    #>
+    [CmdletBinding()]
+    param (
+        [Alias("Domain")]$Domains = @"
+domain1.com
+domain2.com
+"@,
+        # 指明网站的创建或归属者,涉及到网站数据库名字和网站根目录的区分
+        [Alias("SiteOwner")]$User,
+        
+        [switch]$SingleDomainMode,
+        #可以配置系统环境变量 df_server,可以是ip或域名
+        $server = $env:DF_SERVER1, 
+        # 对于wordpress,一般使用utf8mb4_general_ci
+        $collate = 'utf8mb4_general_ci',
+        $MySqlUser = "root",
+
+        # 置空表示不输出sql文件(如果不想要生成sql文件，请指定此参数并传入一个空字符串""作为参数)
+        $SqlFilePath = "$home\Desktop\BatchSiteDBCreate-$User.sql",
+        
+        [Parameter(ParameterSetName = "UseKey")]
+        $MySqlkey = $env:DF_MysqlKey,
+        [parameter(ParameterSetName = "UseKey")]
+        [switch]$UseKey
+    )
+    $domains = @($domains) -join "`n"
+    $domains = $domains.trim() -split "`r?`n|," | Where-Object { $_.Length }
+    # $lines = [System.Collections.ArrayList]@()
+    # $sqlLines = [System.Collections.ArrayList]@()
+    $ShellLines = New-Object System.Collections.Generic.List[string]
+    $sqlLines = New-Object System.Collections.Generic.List[string]
+        
+    $password = ""
+    if($PSCmdlet.ParameterSetName -eq "UseKey")
+    {
+            
+        if($UseKey -and $MySqlkey)
+        {
+            $password = " -p$MySqlkey"
+        }
+            
+    }
+        
+    Write-Verbose "读取的域名规范化(移除多余的空白和`www.`,使数据库名字结构统一)" 
+    foreach ($domain in $domains)
+    {
+        $domain = $domain.Trim() -replace "www.", "" 
+        $ShellLine = "mysql -u$mysqlUser -h $server $password -e 'CREATE DATABASE ``${User}_$domain`` CHARACTER SET utf8mb4 COLLATE $collate;' "
+        $sqlLine = 'CREATE DATABASE ' + " ``${User}_$domain`` CHARACTER SET utf8mb4 COLLATE $collate;"
+            
+        Write-Verbose $ShellLine
+        Write-Verbose $sqlLine
+
+        $ShellLines.Add($ShellLine) > $null
+        $sqlLines.Add($sqlLine) > $null
+            
+        # 两组前后分开处理,但是合并返回
+        # $ShellLines = $ShellLines + $sqlLine
+        # $lines = $ShellLines.AddRange($sqlLines) 
+            
+        $lines = @($ShellLines, $sqlLines)
+            
+        # $line | Invoke-Expression
+    }
+    if($SqlFilePath)
+    {
+        Write-Verbose "Try add sqlLine:`n`t[$sqlLines]`nto .sql file:`n`t[$SqlFilePath]" 
+
+        if($SingleDomainMode)
+        {
+            $sqlLines >> $SqlFilePath
+        }
+        else
+        {
+
+            $sqlLines | Out-File $SqlFilePath -Encoding utf8   
+        }
+    }
+    return $lines
+    
+}
+
 
 function Get-BatchSiteBuilderLines
 {
@@ -1149,7 +1164,7 @@ function Get-BatchSiteBuilderLines
     .EXAMPLE
     #测试命令行
 
-Get-BatchSiteBuilderLines  -user zw -domains @"
+Get-BatchSiteBuilderLines  -user zw -Domains @"
             domain1.com
             domain2.com
             domain3.com
@@ -1190,15 +1205,16 @@ Get-BatchSiteBuilderLines  -user zw -domains @"
     [CmdletBinding()]
     param (
         # 使用多行字符串,相比于直接使用字符串,在脚本中可以省略去引号的书写
-        $domains = @"
+        [Alias("Domain")]$Domains = @"
 domain1.com
 www.domain2.com
 "@,
+        [switch]$SingleDomainMode,
         $LD3 = "*"    ,
         [Alias("SiteOwner")]$User,
-    
         $php = 74
     )
+
     $domains = @($domains) -join "`n"
 
     # 统一成字符串处理
@@ -1218,13 +1234,91 @@ www.domain2.com
         $line = "$domain,$LD3.$domain`t|/www/wwwroot/$user/$domain`t|0|0|$php" -replace "//", "/" 
        
         $line = $line.Trim() 
-        Write-Host $line
+        Write-Verbose $line 
         $lines.Add($line) > $null
     }
 
-    $lines | Set-Clipboard
-    Write-Host "`nlines copied to clipboard!" -ForegroundColor Cyan
+    # $lines | Set-Clipboard
+    # Write-Host "`nlines copied to clipboard!" -ForegroundColor Cyan
+    return $lines
 }
+
+function Start-BatchSiteBuilderLines-DF
+{
+    <# 
+    .SYNOPSIS
+    组织调用批量建站的命令
+    .NOTES
+    生成的sql文件位于桌面(可以自动执行)
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Alias("SiteOwner")]$User,
+        $Domains,
+        $server = $env:DF_SERVER1, 
+        $MySqlUser = "root",
+        $MySqlkey = "",
+        $SqlFileDir = "$home/desktop",
+        $SqlFilePath = "$sqlFileDir/BatchSiteDBCreate-$user.sql",
+        $Table = "",
+        $Structure = $DFTableStructure
+        # [switch]$TableMode
+    )
+
+    # 处理域名参数
+
+    # 获取宝塔建站语句
+    $siteExpressions = ""
+    if($Table)
+    {
+        Write-Verbose "TableMode!" 
+        $tuples = Get-DomainUserTuple -Table $Table
+        # 在Table输入模式下,你需要在生成sql文件之前,移除旧sql文件(如果有的话)
+        # Remove-Item $SqlFilePath -Verbose -ErrorAction SilentlyContinue
+        $SqlFilePath = "$sqlFileDir/BatchSiteDBCreate-$(Get-Date -Format 'yyyy-MM-dd-hh').sql"
+
+        foreach ($tuple in $tuples)
+        {
+            Write-Verbose $tuple.GetEnumerator() #-Verbose
+
+            $BtLine = Get-BatchSiteBuilderLines @tuple 
+            $siteExpressions += $BtLine + "`n"
+            
+            $dbLine = Get-BatchSiteDBCreateLines @tuple -SingleDomainMode -SqlFilePath $SqlFilePath
+            $dbExpressions += $dbLine
+
+            # Pause 
+        }
+    }
+    else
+    {
+
+        $siteExpressions = Get-BatchSiteBuilderLines -SiteOwner $user -Domains $domains
+        $dbExpressions = Get-BatchSiteDBCreateLines -Domains $domains -SiteOwner $user
+    }
+    
+    Write-Host $siteExpressions
+    Write-Host "[$sqlfilepath] will be executed!..."
+    Pause
+
+
+
+    Write-Warning "Please Check the sql lines,especially the siteOwner is exactly what you want!"
+    Write-Output $dbExpressions
+    # Pause
+
+    # foreach ($line in $dbExpressions)
+    # {
+    #     $line | Invoke-Expression
+    # }
+    Write-Warning "Running the sql file (by cmd /c ... ),wait a moment please..."
+
+    # 执行sql导入前这里要求用户确认
+    Import-MysqlFile -MySqlUser $MySqlUser -server $server -key $password -SqlFilePath $SqlFilePath -Confirm:$confirm 
+
+    
+}
+
 function Import-MysqlFile
 {
     <# 
@@ -1261,17 +1355,19 @@ function Import-MysqlFile
     导入的文件路径是必填的
 
     #>
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         $server,
         $SqlFilePath,
         $MySqlUser = "root",
         $key = $env:DF_MySqlKey,
-        $DatabaseName = ""
+        $DatabaseName = "",
+        [switch]$Force
     )
     if(Test-Path $SqlFilePath)
     {
         
-        Write-Verbose "File exist!" -Verbose
+        Write-Verbose "File exist!" 
         if($MySqlkey)
         {
             $key = " -p$MySqlkey"
@@ -1282,8 +1378,18 @@ function Import-MysqlFile
         }
         $expression = "cmd /c `" mysql -u $MySqlUser -h $server $key $DatabaseName < ```"$SqlFilePath```" `""
         Write-Host $expression
-        Invoke-Expression $expression
-        # cmd /c $expression
+        
+        if($Force -or -not $Confirm)
+        {
+            $ConfirmPreference = "None"
+            # cmd /c $expression
+        }
+        if($PSCmdlet.ShouldProcess($expression))
+        {
+
+            Invoke-Expression $expression
+        }
+
         
     }
 }
@@ -1327,51 +1433,12 @@ function Export-MysqlFile
     Write-Verbose $expression
     Invoke-Expression $expression
 }
-function Start-BatchSiteBuilderLines-DF
-{
-    <# 
-    .SYNOPSIS
-    组织调用批量建站的命令
-    .NOTES
-    生成的sql文件位于桌面(可以自动执行)
-    #>
-    param(
-        [Alias("SiteOwner")]$User,
-        $domains,
-        $server = $env:DF_SERVER1,
-        $MySqlUser = "root",
-        $MySqlkey = "",
-        $SqlFilePath = "$home\Desktop\BatchSiteDBCreate-$user.sql"
-    )
-    $siteExpressions = Get-BatchSiteBuilderLines -user $user -domains $domains
-    # $siteExpressions | Set-Clipboard
-    Write-Host $siteExpressions
-
-    # Pause
-    $dbExpressions = Get-BatchSiteDBCreateLines -domains $domains -SiteOwner $user
-
-
-    Write-Warning "Please Check the sql lines,especially the siteOwner is exactly what you want!"
-    Write-Output $dbExpressions
-    # Pause
-
-    # foreach ($line in $dbExpressions)
-    # {
-    #     $line | Invoke-Expression
-    # }
-    Write-Warning "Running the sql file (by cmd /c ... ),wait a moment please..."
-
-   
-    Import-MysqlFile -MySqlUser $MySqlUser -server $server -key $password -SqlFilePath $SqlFilePath
-
-    
-}
 
 
 function Start-GoogleIndexSearch
 {
     param (
-        $domains
+        $Domains
     )
     $domains = Get-LineDataFromMultilineString $domains 
     foreach ($domain in $domains)
