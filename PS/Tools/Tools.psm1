@@ -960,7 +960,7 @@ CHANGE `slug` `slug` VARCHAR(8000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode
 
 }
 
-function Get-DomainUserTuple
+function Get-DomainUserTupleFromTable
 {
     <# 
     .SYNOPSIS
@@ -977,6 +977,11 @@ function Get-DomainUserTuple
     $Table = @"
     www.d1.com    郑
     www.d2.com    李
+ www.soinpurete.com郑玮
+ www.ustensilesinnovants.com郑玮
+ www.deporteesvida.com李宇哲
+ www.deportealegria.com李宇哲
+ www.activedeportes.com李宇哲
 
     "@
 
@@ -1012,14 +1017,18 @@ www.d2.com    李
     $column_number = $columns.Count
 
     # 解析行数据
+    $Table = $Table -replace '(?:https?:\/\/)?(?:www\.)?([a-zA-Z0-9-]+(?:\.[a-zA-Z]{2,})+)', '$1 '
+    Write-Verbose "`n$Table" 
     $lines = $Table -split "`r?`n" | Where-Object { $_ -match "\S" }
+    Write-Verbose "line number: $($lines.Count)"
 
     $result = @()
 
     foreach ($line in $lines)
     {
         # 拆分每一行（假设使用制表符或多个空格分隔）
-        $parts = $line -split "\s+"
+        $parts = $line.Trim() -split "\s+"
+        # $parts = $line.Trim()
 
         if ($parts.Count -ne $column_number)
         {
@@ -1272,9 +1281,9 @@ function Start-BatchSiteBuilderLines-DF
     if($Table)
     {
         Write-Verbose "TableMode!" 
-        $tuples = Get-DomainUserTuple -Table $Table
+        $tuples = Get-DomainUserTupleFromTable -Table $Table
         # 在Table输入模式下,你需要在生成sql文件之前,移除旧sql文件(如果有的话)
-        # Remove-Item $SqlFilePath -Verbose -ErrorAction SilentlyContinue
+        Remove-Item $SqlFilePath -Verbose -ErrorAction SilentlyContinue -Confirm
         $SqlFilePath = "$sqlFileDir/BatchSiteDBCreate-$(Get-Date -Format 'yyyy-MM-dd-hh').sql"
 
         foreach ($tuple in $tuples)
@@ -1299,9 +1308,9 @@ function Start-BatchSiteBuilderLines-DF
     
     Write-Host $siteExpressions
     Write-Host "[$sqlfilepath] will be executed!..."
+    Get-Content $sqlfilepath|Get-ContentNL -AsString 
+
     Pause
-
-
 
     Write-Warning "Please Check the sql lines,especially the siteOwner is exactly what you want!"
     Write-Output $dbExpressions
@@ -1450,7 +1459,7 @@ function Start-GoogleIndexSearch
     }
     
 }
-function New-LocalMysqlDB
+function New-MysqlDB
 {
     param (
         $Name,
