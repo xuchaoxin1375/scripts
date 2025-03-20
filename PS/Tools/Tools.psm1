@@ -1308,7 +1308,7 @@ function Start-BatchSiteBuilderLines-DF
     
     Write-Host $siteExpressions
     Write-Host "[$sqlfilepath] will be executed!..."
-    Get-Content $sqlfilepath|Get-ContentNL -AsString 
+    Get-Content $sqlfilepath | Get-ContentNL -AsString 
 
     Pause
 
@@ -1443,7 +1443,45 @@ function Export-MysqlFile
     Invoke-Expression $expression
 }
 
+function Get-UrlFromMarkdownUrl
+{
+    param(
+        $Urls
+    )
+    $Urls = $Urls -replace '\[.*?\]\((.*)\)', '$1' -split "`r?`n" | Where-Object { $_ }
+    return $Urls
+}
+function Get-CRLFChecker
+{
+    <# 
+    .SYNOPSIS
+    将问文本文件中的回车符,换行符都显示出来
+    .DESCRIPTION
+    多行文本将被视为一行,CR,LF(\r,\n)将被显示为[CR],[LF]
+    #>
+    param (
+        $Path,
+        [switch]$ConvertToLFStyle
+    )
+    $raw = Get-Content $Path -Raw
+    $res = $raw -replace "`r", "[CR]" -replace "`n", "[LF]" 
+    $res | Select-String -Pattern "\[CR\]|\[LF\]" -AllMatches 
 
+    if($ConvertToLFStyle)
+    {
+        $fileName = Split-Path $Path -LeafBase
+        $fileDir = Split-Path $Path -Parent
+        $fileExtension = Split-Path $Path -Extension
+
+        $res = $raw -replace "`r","`n"
+        $LFFile = "$fileDir/$fileName.LF$fileExtension"
+        $res | Out-File $LFFile -Encoding utf8
+        Write-Verbose "File has been converted to LF style![$LFFile]" -Verbose
+        
+        return $res
+
+    }
+}
 function Start-GoogleIndexSearch
 {
     param (
