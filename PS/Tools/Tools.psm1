@@ -1218,6 +1218,8 @@ Get-BatchSiteBuilderLines  -user zw -Domains @"
 domain1.com
 www.domain2.com
 "@,
+        #网站根目录,例如 wordpress 
+        $SiteRoot = "",
         [switch]$SingleDomainMode,
         $LD3 = "*"    ,
         [Alias("SiteOwner")]$User,
@@ -1240,7 +1242,8 @@ www.domain2.com
     {
         Write-Verbose "[$domain]"
         $domain = $domain.Trim() -replace "www.", ""
-        $line = "$domain,$LD3.$domain`t|/www/wwwroot/$user/$domain`t|0|0|$php" -replace "//", "/" 
+        $site = "/www/wwwroot/$user/$domain/$siteRoot".Trim('/')
+        $line = "$domain,$LD3.$domain`t|$site `t|0|0|$php" -replace "//", "/" 
        
         $line = $line.Trim() 
         Write-Verbose $line 
@@ -1266,10 +1269,12 @@ function Start-BatchSiteBuilderLines-DF
         $Domains,
         $server = $env:DF_SERVER1, 
         $MySqlUser = "root",
-        $MySqlkey = "",
+        [Alias("Key")]$MySqlkey = "",
         $SqlFileDir = "$home/desktop",
         $SqlFilePath = "$sqlFileDir/BatchSiteDBCreate-$user.sql",
         $Table = "",
+        # 域名后追加的网站根目录,比如wordpress
+        $siteRoot = "",
         $Structure = $DFTableStructure
         # [switch]$TableMode
     )
@@ -1289,8 +1294,14 @@ function Start-BatchSiteBuilderLines-DF
         foreach ($tuple in $tuples)
         {
             Write-Verbose $tuple.GetEnumerator() #-Verbose
-
-            $BtLine = Get-BatchSiteBuilderLines @tuple 
+            $tupleplus = @{}
+            $tupleJson = $tuple | ConvertTo-Json | ConvertFrom-Json
+            $tupleJson.PSObject.properties | ForEach-Object {
+                $tupleplus[$_.Name] = $_.Value
+            }
+            $tupleplus.add("SiteRoot", $siteRoot)
+            # $tupleplus.add("SiteRoot", $siteRoot)
+            $BtLine = Get-BatchSiteBuilderLines @tupleplus
             $siteExpressions += $BtLine + "`n"
             
             $dbLine = Get-BatchSiteDBCreateLines @tuple -SingleDomainMode -SqlFilePath $SqlFilePath
