@@ -1338,7 +1338,62 @@ function Start-BatchSiteBuilderLines-DF
 
     
 }
+function Get-MysqlDbInfo
+{
+    <# 
+    .SYNOPSIS
+    获取mysql数据库信息
+    .DESCRIPTION
+    默认判断数据库是否存在
+    如果表存在,可以指定是否显示数据库中的表
+    .NOTES
+    如果你不想要输出超过一定长度,那么可以配合管道符|select -First n 使用,例如n取5时,显示前5行输出
 
+    .example
+    #⚡️[Administrator@CXXUDESK][C:\sites\wp_sites_cxxu\2.fr\wp-content\plugins][23:13:34][UP:7.62Days]
+    PS> Get-MysqlDbInfo -Name 1.fr -Server localhost -ShowTables -Verbose |select -First 5
+    VERBOSE: check 1.fr database on [localhost]
+    VERBOSE: mysql -h localhost -u root  -e "SHOW DATABASES LIKE '1.fr';"
+    Database '1.fr' exist! ...
+    VERBOSE: mysql -h localhost -u root  -e "SHOW TABLES FROM ``1.fr``;"
+    VERBOSE: Show tables in 1.fr database....
+    Tables_in_1.fr
+    wp_actionscheduler_actions
+    wp_actionscheduler_claims
+    wp_actionscheduler_groups
+    wp_actionscheduler_logs
+    #>
+    [cmdletbinding()]
+    param (
+        [alias('DatabaseName')]$Name,
+        $Server = 'localhost',
+        [switch]$ShowTables
+    )
+    $db_name_inline = "'$Name'"
+    $CheckDBCmd = "mysql -h $Server -u $MySQLUser $key -e `"SHOW DATABASES LIKE $db_name_inline;`""
+    Write-Verbose "check $Name database on [$Server]"
+    Write-Verbose $CheckDBCmd 
+    $res = $CheckDBCmd | Invoke-Expression
+
+    if ($res -match $Name)
+    {
+        Write-Host "Database '$Name' exist! ..."
+        if($ShowTables)
+        {
+            $ShowTablesCmd = "mysql -h $Server -u $MySQLUser $key -e `"SHOW TABLES FROM ````$Name````;`""
+            Write-Verbose $ShowTablesCmd 
+
+            Write-Verbose "Show tables in $Name database...." -Verbose
+            $ShowTablesCmd | Invoke-Expression
+        }
+    }
+    else
+    {
+        Write-Warning "Database '$Name' Does not exist!"
+      
+    }
+    return $res
+}
 function Import-MysqlFile
 {
     <# 
@@ -1377,17 +1432,23 @@ function Import-MysqlFile
     #>
     [CmdletBinding(SupportsShouldProcess)]
     param (
-        $server,
+        $Server = "localhost",
         $SqlFilePath,
         $MySqlUser = "root",
         $key = $env:DF_MySqlKey,
         $DatabaseName = "",
         [switch]$Force
     )
+
+    # $db_name_inline = "'$DatabaseName'"
+    # Write-Verbose "$databaseName"
+    # Write-Verbose "$db_name_inline"
+    
     if(Test-Path $SqlFilePath)
     {
         
-        Write-Verbose "File exist!" 
+        Write-Verbose "Use Mysql server host: $server"
+        Write-Verbose "Sql File exist!" 
         if($MySqlkey)
         {
             $key = " -p$MySqlkey"
@@ -1396,23 +1457,62 @@ function Import-MysqlFile
         {
             $key = ""
         }
+
+        # 如果数据库不存在,则提示创建数据库
+        # $db_name_inline_creater = "````$DatabaseName````"
+        # $db_name_inline = "'$DatabaseName'"
+        # Write-Verbose "$databaseName"
+        # Write-Verbose "$db_name_inline"
+
+        # Pause
+
+        # 查询数据库是否存在
+        # $CheckDBCmd = "mysql -h $Server -u $MySQLUser $key -e `"SHOW DATABASES LIKE $db_name_inline;`""
+        # $CreateDBCmd = "mysql -h $Server -u $MySQLUser $key -e `"CREATE DATABASE $db_name_inline_creater;`""
+        
+        # Write-Verbose $CheckDBCmd -Verbose
+        # Write-Verbose $CreateDBCmd -Verbose
+        
+        # return 
+
+        # $DBExists = Invoke-Expression $CheckDBCmd
+
+        $DBExists = Get-MysqlDbInfo -Name $DatabaseName -Server $server
+
+        if(!$DBExists)
+        {
+
+            # Write-Host "数据库不存在!"
+            if($PSCmdlet.ShouldProcess($Server, "Create Database: $DatabaseName ?"))
+            {
+               
+                # Invoke-Expression $CreateDBCmd
+                New-MysqlDB -Name $DatabaseName -server $server -Confirm:$false
+            }
+        }
+        else
+        {
+            # todo
+            # Get-MysqlDbDescription -Name $DatabaseName -Server $server
+        }
+
         $expression = "cmd /c `" mysql -u $MySqlUser -h $server $key $DatabaseName < ```"$SqlFilePath```" `""
-        Write-Host $expression
+        Write-Verbose $expression 
+
         
         if($Force -or -not $Confirm)
         {
             $ConfirmPreference = "None"
             # cmd /c $expression
         }
-        if($PSCmdlet.ShouldProcess($expression))
+        if($PSCmdlet.ShouldProcess($server, $expression))
         {
 
             Invoke-Expression $expression
         }
-
-        
     }
 }
+
 function Export-MysqlFile
 {
     <# 
@@ -1511,6 +1611,92 @@ function Start-GoogleIndexSearch
 }
 function New-MysqlDB
 {
+    <# 
+    .SYNOPSIS
+    创建mysql数据库
+    .DESCRIPTION
+    如果数据库不存在,则创建数据库,否则提示数据库已存在
+    使用-Confirm参数,可以提示用户确认是否创建数据库,更加适合测试阶段
+
+    .PARAMETER Name
+    数据库名称
+    .PARAMETER Server
+    数据库服务器地址
+    .PARAMETER CharSet
+    数据库字符集,默认为utf8mb4
+    .PARAMETER Collate
+    数据库排序规则,默认为utf8mb4_general_ci
+    #>
+<# 
+   .EXAMPLE
+   #⚡️[Administrator@CXXUDESK][C:\sites\wp_sites_cxxu\2.fr\wp-content\plugins][23:19:09][UP:7.62Days]
+    PS> Import-MysqlFile -Server localhost -SqlFilePath C:\sites\wp_sites_cxxu\base_sqls\2.de.sql -DatabaseName c.d -Confirm -Verbose
+    VERBOSE: Use Mysql server host: localhost
+    VERBOSE: Sql File exist!
+    VERBOSE: check c.d database on [localhost]
+    VERBOSE: mysql -h localhost -u root  -e "SHOW DATABASES LIKE 'c.d';"
+    WARNING: Database 'c.d' Does not exist!
+
+    Confirm
+    Are you sure you want to perform this action?
+    Performing the operation "Create Database: c.d ?" on target "localhost".
+    [Y] Yes  [A] Yes to All  [N] No  [L] No to All  [S] Suspend  [?] Help (default is "Y"):
+    VERBOSE:  mysql -uroot -h localhost -e 'CREATE DATABASE `c.d` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci; show databases like "c.d";'
+    +----------------+
+    | Database (c.d) |
+    +----------------+
+    | c.d            |
+    +----------------+
+    VERBOSE: check c.d database on [localhost]
+    VERBOSE: mysql -h localhost -u root  -e "SHOW DATABASES LIKE 'c.d';"
+    Database 'c.d' exist! ...
+    Database (c.d)
+    c.d
+    VERBOSE: cmd /c " mysql -u root -h localhost  c.d < `"C:\sites\wp_sites_cxxu\base_sqls\2.de.sql`" "
+
+    Confirm
+    Are you sure you want to perform this action?
+    Performing the operation "cmd /c " mysql -u root -h localhost  c.d <
+    `"C:\sites\wp_sites_cxxu\base_sqls\2.de.sql`" "" on target "localhost".
+    [Y] Yes  [A] Yes to All  [N] No  [L] No to All  [S] Suspend  [?] Help (default is "Y"):
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param (
+        $Name,
+        $Server = 'localhost',
+        $CharSet = 'utf8mb4',
+        $Collate = "utf8mb4_general_ci"
+    )
+  
+    
+    $command = " mysql -uroot -h $server -e 'CREATE DATABASE ``$Name`` CHARACTER SET $CharSet COLLATE $collate; show databases like `"$Name`";' "  
+    Write-Verbose $command 
+
+    # 提示用户输入
+    # $userInput = Read-Host "Do you want to remove the database $Name? (Y/N)"
+    # $userInput = $userInput.ToLower()
+    # 判断用户输入是否为空（即回车）
+    # if ([string]::IsNullOrEmpty($userInput) -or $userInput -eq 'y'){
+    # 用户按了回车，继续执行后续代码            
+    # }
+    # else
+    # {
+    #     # 用户输入了其他内容，取消执行后续代码
+    #     Write-Host "取消执行后续代码。"
+    #     exit
+    # }
+        
+    if($pscmdlet.ShouldProcess($server, "Create Database $Name ?"))
+    {
+        Invoke-Expression $command
+        Get-MysqlDbInfo -Name $Name -Server $server
+    }
+    
+    
+}
+function Remove-MysqlDB
+{
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         $Name,
         $server = 'localhost',
@@ -1518,32 +1704,14 @@ function New-MysqlDB
         $collate = "utf8mb4_general_ci",
         [switch]$Remove
     )
-    if(!$Remove)
+    $command = " mysql -uroot -h $server -e '  DROP DATABASE IF EXISTS ``$Name``;  show databases like `"$Name`";' "  
+    Write-Verbose $command -Verbose
+    if($PSCmdlet.ShouldProcess($Name, "Remove Database $Name ?"))
     {
 
-        $command = " mysql -uroot -h $server -e 'CREATE DATABASE ``$Name`` CHARACTER SET $CharSet COLLATE $collate; show databases like `"$Name`";' "  
-        Write-Verbose $command -Verbose
+        Invoke-Expression $command
+
     }
-    else
-    {
-        # 提示用户输入
-        $userInput = Read-Host "Do you want to remove the database $Name? (Y/N)"
-        $userInput = $userInput.ToLower()
-        # 判断用户输入是否为空（即回车）
-        if ([string]::IsNullOrEmpty($userInput) -or $userInput -eq 'y')
-        {
-            # 用户按了回车，继续执行后续代码            
-            $command = " mysql -uroot -h $server -e '  DROP DATABASE IF EXISTS ``$Name``;  show databases like `"$Name`";' "  
-        }
-        else
-        {
-            # 用户输入了其他内容，取消执行后续代码
-            Write-Host "取消执行后续代码。"
-            exit
-        }
-    }
-    Invoke-Expression $command
-    
 }
 function Start-HTTPServer
 {
