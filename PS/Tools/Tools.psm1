@@ -1473,9 +1473,10 @@ function Get-CRLFChecker
         $fileDir = Split-Path $Path -Parent
         $fileExtension = Split-Path $Path -Extension
 
-        $res = $raw -replace "`r","`n"
+        $res = $raw -replace "`r", "`n"
         $LFFile = "$fileDir/$fileName.LF$fileExtension"
-        $res | Out-File $LFFile -Encoding utf8
+        $res | Out-File $LFFile -Encoding utf8 -NoNewline
+        
         Write-Verbose "File has been converted to LF style![$LFFile]" -Verbose
         
         return $res
