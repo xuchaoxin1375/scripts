@@ -55,14 +55,21 @@ function Install-Scoop
     Write-Output 'if failed ,please try the proxy to reconnect the https://get.scoop'
 }
 
-function scp_to_host
+
+function Push-ByScp
 {
-    param(
-        $source_opt = '$linuxShellScripts',
-        $user_host = 'cxxu@u20',
-        $target_path = '~'
+    [CmdletBinding()]
+    param (
+        $Server,
+        $SourcePath,
+        $DestinationPath,
+        [alias("ScpUser")]$User
     )
-    scp -r $source_opt $user_host`:$target_path
+    $expression = "scp -r $SourcePath $User@${Server}:$DestinationPath"
+    Write-Verbose $expression
+    # Pause
+    Invoke-Expression $expression
+    
 }
 function scp_to_ali
 {

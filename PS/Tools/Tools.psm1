@@ -1142,7 +1142,7 @@ domain2.com
 }
 
 
-function Get-BatchSiteBuilderLines
+function    Get-BatchSiteBuilderLines
 {
     <# 
     .SYNOPSIS
