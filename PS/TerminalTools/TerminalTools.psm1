@@ -58,17 +58,21 @@ function Install-Scoop
 
 function Push-ByScp
 {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         $Server,
         $SourcePath,
-        $DestinationPath,
+        [alias('Target')]$DestinationPath,
         [alias("ScpUser")]$User
     )
     $expression = "scp -r $SourcePath $User@${Server}:$DestinationPath"
     Write-Verbose $expression
     # Pause
-    Invoke-Expression $expression
+    if($PSCmdlet.ShouldProcess($server, $expression))
+    {
+
+        Invoke-Expression $expression
+    }
     
 }
 function scp_to_ali

@@ -877,6 +877,7 @@ function Update-WpUrl
 
     
     #>
+    [cmdletbinding(SupportsShouldProcess)]
     param(
         $OldDomain,
         $NewDomain,
@@ -887,6 +888,7 @@ function Update-WpUrl
         $MySqlUser = "root",
         $key = $env:DF_MySqlKey
     )
+    Write-Verbose "Updating WordPress database:[$DatabaseName] from [$OldDomain] to [$NewDomain]" -Verbose
     $sql = @"
 -- 定义旧域名和新域名变量
 
@@ -956,7 +958,9 @@ CHANGE `slug` `slug` VARCHAR(8000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode
 '@
     $sqlPath = "$env:TEMP/update-wp-url.sql"
     $sql | Out-File $sqlPath
-    Import-MysqlFile -server $server -SqlFilePath $sqlPath -MySqlUser $MySqlUser -key $key -DatabaseName $DatabaseName 
+    Write-Verbose $sql 
+    
+    Import-MysqlFile -Server $server -SqlFilePath $sqlPath -MySqlUser $MySqlUser -key $key -DatabaseName $DatabaseName 
 
 }
 
@@ -994,12 +998,13 @@ function Get-DomainUserTupleFromTable
     param(
         # 包含域名和用户名的多行字符串
         [Alias("DomainLines")]
+        # 检查输入的参数是否为文件路径,如果是尝试解析,否则视为多行字符串表格输入
         [string]$Table = @"
 www.d1.com    郑
 www.d2.com    李
 
 "@,
-
+        [ValidateSet("Auto", "FromFile", "MultiLineString")]$TableMode = 'Auto',
         # 表结构，默认是 "域名,用户名"
         [string]$Structure = $DFTableStructure,
 
@@ -1012,10 +1017,26 @@ www.d2.com    李
     $column_number = $columns.Count
 
     # 解析行数据
+    if($TableMode -In @('Auto', 'FromFile') -and (Test-Path $Table))
+    {
+        Write-Host "Try parse table from file:[$Table]" -ForegroundColor Cyan
+        $Table = Get-Content $Table -Raw
+    }
+    else
+    {
+        # 读取多行字符串表格
+        Write-Host "parsing table from multiline string" -ForegroundColor Cyan
+    }
+
+
     $Table = $Table -replace '(?:https?:\/\/)?(?:www\.)?([a-zA-Z0-9-]+(?:\.[a-zA-Z]{2,})+)', '$1 '
     Write-Verbose "`n$Table" 
-    $lines = $Table -split "`r?`n" | Where-Object { $_ -match "\S" }
-    Write-Verbose "line number: $($lines.Count)"
+    # 按换行符拆分,并且过滤掉空行
+    $lines = $Table -split "`r?`n" | Where-Object { $_ -match "\S" -and $_ -notmatch "^\s*#" }
+    Write-Verbose "valid line number: $($lines.Count)"
+    $parts_number = (@($lines)[0] -split "\s+" | Where-Object { $_ }).Count
+    Write-Verbose "number of line parts: $($parts_number)"
+    $fields_number = [Math]::Min($column_number, $parts_number)
 
     $result = @()
 
@@ -1025,17 +1046,41 @@ www.d2.com    李
         $parts = $line.Trim() -split "\s+"
         # $parts = $line.Trim()
 
-        if ($parts.Count -ne $column_number)
-        {
-            Write-Warning "$line does not match the expected structure:[$structure],pass it,Check it!"
-            continue
-        }
-
+        # if ($parts.Count -ne $column_number)
+        # {
+        #     Write-Warning "$line does not match the expected structure:[$structure],pass it,Check it!"
+        #     continue
+        # }
+        $entry = @{}
         # 构造哈希表
-        $entry = @{
-            $columns[0] = $parts[0]
-            $columns[1] = $SiteOwnersDict[$parts[1]] ?? $parts[1]  # 如果字典里没有，就保留原用户名
+        for ($i = 0; $i -lt $fields_number; $i++)
+        {
+            Write-Verbose $columns[$i]
+            if($columns[$i] -eq "User")
+            {
+                # Write-Verbose
+                $UserName = $parts[$i]
+                $NameAbbr = $SiteOwnersDict[$parts[$i]]
+                Write-Verbose "Try translate user: $UserName=> $NameAbbr"
+                if($NameAbbr)
+                {
+
+                    $parts[$i] = $NameAbbr
+                }
+                else
+                {
+                    Write-Error "translate user name failed,please check the dictionary"
+                    Pause
+                    exit
+                }
+            }
+            $entry[$columns[$i]] = $parts[$i]
         }
+        Write-Verbose $entry.GetEnumerator()
+        # $entry = @{
+        #     $columns[0] = $parts[0]
+        #     $columns[1] = $SiteOwnersDict[$parts[1]] ?? $parts[1]  # 如果字典里没有，就保留原用户名
+        # }
 
         $result += $entry
     }
@@ -1237,7 +1282,8 @@ www.domain2.com
     {
         Write-Verbose "[$domain]"
         $domain = $domain.Trim() -replace "www.", ""
-        $site = "/www/wwwroot/$user/$domain/$siteRoot".Trim('/')
+        # 注意trimEnd('/')而不是trim('/')开头的`/`是linux根目录,要保留的!
+        $site = "/www/wwwroot/$user/$domain/$siteRoot".TrimEnd('/') 
         $line = "$domain,$LD3.$domain`t|$site `t|0|0|$php" -replace "//", "/" 
        
         $line = $line.Trim() 
@@ -1269,7 +1315,10 @@ function Start-BatchSiteBuilderLines-DF
         $SqlFilePath = "$sqlFileDir/BatchSiteDBCreate-$user.sql",
         $Table = "",
         # 域名后追加的网站根目录,比如wordpress
-        $siteRoot = "",
+        $SiteRoot = "wordpress",
+        [ValidateSet("Auto", "FromFile", "MultiLineString")]$TableMode = 'Auto',
+
+        # $Structure = "Domain,Owner,OldDomain"
         $Structure = $DFTableStructure
         # [switch]$TableMode
     )
@@ -1283,8 +1332,8 @@ function Start-BatchSiteBuilderLines-DF
         Write-Verbose "TableMode!" 
         $tuples = Get-DomainUserTupleFromTable -Table $Table
         # 在Table输入模式下,你需要在生成sql文件之前,移除旧sql文件(如果有的话)
-        Remove-Item $SqlFilePath -Verbose -ErrorAction SilentlyContinue -Confirm
         $SqlFilePath = "$sqlFileDir/BatchSiteDBCreate-$(Get-Date -Format 'yyyy-MM-dd-hh').sql"
+        Remove-Item $SqlFilePath -Verbose -ErrorAction SilentlyContinue -Confirm
 
         foreach ($tuple in $tuples)
         {
@@ -1329,7 +1378,7 @@ function Start-BatchSiteBuilderLines-DF
     Write-Warning "Running the sql file (by cmd /c ... ),wait a moment please..."
 
     # 执行sql导入前这里要求用户确认
-    Import-MysqlFile -MySqlUser $MySqlUser -server $server -key $password -SqlFilePath $SqlFilePath -Confirm:$confirm 
+    Import-MysqlFile -MySqlUser $MySqlUser -Server $server -key $password -SqlFilePath $SqlFilePath -Confirm:$confirm 
 
     
 }
@@ -1482,7 +1531,7 @@ function Import-MysqlFile
             {
                
                 # Invoke-Expression $CreateDBCmd
-                New-MysqlDB -Name $DatabaseName -server $server -Confirm:$false
+                New-MysqlDB -Name $DatabaseName -Server $server -Confirm:$false
             }
         }
         else
@@ -1622,7 +1671,7 @@ function New-MysqlDB
     .PARAMETER Collate
     数据库排序规则,默认为utf8mb4_general_ci
     #>
-<# 
+    <# 
    .EXAMPLE
    #⚡️[Administrator@CXXUDESK][C:\sites\wp_sites_cxxu\2.fr\wp-content\plugins][23:19:09][UP:7.62Days]
     PS> Import-MysqlFile -Server localhost -SqlFilePath C:\sites\wp_sites_cxxu\base_sqls\2.de.sql -DatabaseName c.d -Confirm -Verbose
