@@ -977,11 +977,6 @@ function Get-DomainUserTupleFromTable
     $Table = @"
     www.d1.com    郑
     www.d2.com    李
- www.soinpurete.com郑玮
- www.ustensilesinnovants.com郑玮
- www.deporteesvida.com李宇哲
- www.deportealegria.com李宇哲
- www.activedeportes.com李宇哲
 
     "@
 

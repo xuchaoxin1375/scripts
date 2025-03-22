@@ -79,12 +79,18 @@ function Update-PwshVars
     
     $PwshVarFilesCore = @(
         'VarSet1',
-        'Varset2'
+        'Varset2', 
+        # 'GlobalConfig'
+        ,
+        'ConstantString'
     )
     $PwshVarFilesFast = @(
         'VarSet1', 
-        'VarSet2',
+        'VarSet2'
+        # ,
         'GlobalConfig'
+        # ,
+        'ConstantString'
     )
     $PwshVarFilesEnhance = @(
         'VarSet3', 
@@ -99,7 +105,10 @@ function Update-PwshVars
     #注意字符串末尾没有反斜杠,拼接路径的时候需要加一个斜杠
     #🎈在需要添加新的环境变量配置文件时,只需要在PwshVarFiles中追加即可
     # 单独导入长字符串,手动声明为$global:变量
-    . "$PSScriptRoot\VarLongStrings.ps1" 
+
+    $express = ". `"$PSScriptRoot\VarLongStrings.ps1`""
+    Write-Verbose "executing $express"
+    Invoke-Expression $express
     
 
     # $PwshVarFiles = ($Fast ) ? $PwshVarFilesFast : $PwshVarFilesFull

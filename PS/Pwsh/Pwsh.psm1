@@ -1567,7 +1567,7 @@ function Set-Owner
     .SYNOPSIS
     设置指定目录或文件的所有者
     .EXAMPLE
-    默认讲所有者设置为当前用户,域和用户名定义在VarSet1中,如果不导入,可以通过[System.Environment]::UserDomainName,[System.Environment]::UserName  或者简单通过$env:ComputerName和whoami命令获取
+    默认将所有者设置为当前用户,域和用户名定义在VarSet1中,如果不导入,可以通过[System.Environment]::UserDomainName,[System.Environment]::UserName  或者简单通过$env:ComputerName和whoami命令获取
     #>
 
     param(
