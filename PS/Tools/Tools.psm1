@@ -1599,7 +1599,7 @@ function Start-GoogleIndexSearch
     param (
         $Domains
     )
-    $domains = Get-LineDataFromMultilineString $domains 
+    $domains = Get-LineDataFromMultilineString -Data $Domains 
     foreach ($domain in $domains)
     {
         $cmd = "https://www.google.com/search?q=site:$domain"
