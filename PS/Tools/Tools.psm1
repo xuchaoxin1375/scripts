@@ -1446,8 +1446,11 @@ function Get-MysqlDbInfo
     param (
         [alias('DatabaseName')]$Name,
         $Server = 'localhost',
+        $MySQLUser = 'root',
+        $key = "",
         [switch]$ShowTables
     )
+    $key = Get-MysqlKeyInline $key
     $db_name_inline = "'$Name'"
     $CheckDBCmd = "mysql -h $Server -u $MySQLUser $key -e `"SHOW DATABASES LIKE $db_name_inline;`""
     Write-Verbose "check [$Name] database on [$Server]"
@@ -1610,7 +1613,7 @@ function Export-MysqlFile
     [CmdletBinding()]
     param (
         $DatabaseName,    
-        $SqlFilePath,
+        $SqlFilePath = "$base_sqls/$DatabaseName.sql",
 
         $server = $env:DF_SERVER1,
         $MySqlUser = "root",
@@ -1696,6 +1699,26 @@ function Start-GoogleIndexSearch
     }
     
 }
+function Get-MysqlKeyInline
+{
+    <# 
+    .SYNOPSIS
+    将mysql密码转换为-p参数形式,便于嵌入到mysql命令行中
+    #>
+    param (
+        $Key = ''
+    )
+    if($key)
+    {
+        return " -p$key"
+    }
+    else
+    {
+        return ""
+    }
+
+    
+}
 function New-MysqlDB
 {
     <# 
@@ -1751,12 +1774,14 @@ function New-MysqlDB
     param (
         $Name,
         $Server = 'localhost',
+        $User = 'root',
+        $MysqlKey = '',
         $CharSet = 'utf8mb4',
         $Collate = "utf8mb4_general_ci"
     )
-  
-    
-    $command = " mysql -uroot -h $server -e 'CREATE DATABASE ``$Name`` CHARACTER SET $CharSet COLLATE $collate; show databases like `"$Name`";' "  
+    $key = Get-MysqlKeyInline -Key $MysqlKey
+
+    $command = " mysql -uroot -h $server $key -e 'CREATE DATABASE ``$Name`` CHARACTER SET $CharSet COLLATE $collate; show databases like `"$Name`";' "  
     Write-Verbose $command 
 
     # 提示用户输入
@@ -1776,7 +1801,7 @@ function New-MysqlDB
     if($pscmdlet.ShouldProcess($server, "Create Database $Name ?"))
     {
         Invoke-Expression $command
-        Get-MysqlDbInfo -Name $Name -Server $server
+        Get-MysqlDbInfo -Name $Name -Server $server -MySQLUser $User -key $MysqlKey 
     }
     
     
