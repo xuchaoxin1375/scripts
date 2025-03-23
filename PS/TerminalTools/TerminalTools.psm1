@@ -58,15 +58,21 @@ function Install-Scoop
 
 function Push-ByScp
 {
+    <# 
+.SYNOPSIS
+使用scp命令上传文件到服务器
+
+
+#>
     [CmdletBinding(SupportsShouldProcess)]
     param (
         $Server,
+        [alias("ScpUser")]$User='root',
         $SourcePath,
-        [alias('Target')]$DestinationPath,
-        [alias("ScpUser")]$User
+        [alias('Target')]$DestinationPath=$env:DF_SERVER1
     )
     $expression = "scp -r $SourcePath $User@${Server}:$DestinationPath"
-    Write-Verbose $expression
+    Write-Verbose $expression 
     # Pause
     if($PSCmdlet.ShouldProcess($server, $expression))
     {

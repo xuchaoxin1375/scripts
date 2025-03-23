@@ -1014,7 +1014,7 @@ www.d2.com    李
 
     # 解析表头结构
     $columns = $Structure -split ','
-    $column_number = $columns.Count
+    $structureFieldsNumber = $columns.Count
 
     # 解析行数据
     if($TableMode -In @('Auto', 'FromFile') -and (Test-Path $Table))
@@ -1026,6 +1026,8 @@ www.d2.com    李
     {
         # 读取多行字符串表格
         Write-Host "parsing table from multiline string" -ForegroundColor Cyan
+        Write-Warning "If the lines are not separated by comma,space,semicolon,etc,it may not work correctly! check it carefully "
+
     }
 
 
@@ -1034,9 +1036,22 @@ www.d2.com    李
     # 按换行符拆分,并且过滤掉空行
     $lines = $Table -split "`r?`n" | Where-Object { $_ -match "\S" -and $_ -notmatch "^\s*#" }
     Write-Verbose "valid line number: $($lines.Count)"
-    $parts_number = (@($lines)[0] -split "\s+" | Where-Object { $_ }).Count
-    Write-Verbose "number of line parts: $($parts_number)"
-    $fields_number = [Math]::Min($column_number, $parts_number)
+
+    # 尝试数据分隔处理(尤其是针对行内没有空格的情况,这里尝试为其添加分隔符)
+    $lines = $lines -replace '([\u4e00-\u9fa5]+)', ' $1 ' -replace '(Override|Lazy)', ' $1 '
+    # 根据常用的分隔符将行内划分为多段
+    $lines = @($lines)
+    Write-Verbose "Query the the number of line parts with the max parts:"
+    foreach ($line in $lines)
+    {
+
+        $linePartsNumber = ($line -split "\s+|,|;" | Where-Object { $_ }).Count
+        Write-Debug "number of line parts: $($linePartsNumber)"
+    }
+
+    Write-Verbose "Query result:$linePartsNumber"
+
+    $fieldsNumber = [Math]::Min($structureFieldsNumber, $linePartsNumber)
 
     $result = @()
 
@@ -1046,14 +1061,14 @@ www.d2.com    李
         $parts = $line.Trim() -split "\s+"
         # $parts = $line.Trim()
 
-        # if ($parts.Count -ne $column_number)
+        # if ($parts.Count -ne $structureFieldsNumber)
         # {
         #     Write-Warning "$line does not match the expected structure:[$structure],pass it,Check it!"
         #     continue
         # }
         $entry = @{}
         # 构造哈希表
-        for ($i = 0; $i -lt $fields_number; $i++)
+        for ($i = 0; $i -lt $fieldsNumber; $i++)
         {
             Write-Verbose $columns[$i]
             if($columns[$i] -eq "User")
@@ -1088,101 +1103,9 @@ www.d2.com    李
     return $result
 }
 
-function Get-BatchSiteDBCreateLines
-{
-    <# 
-    .SYNOPSIS
-    获取批量站点数据库创建命令行
-    .DESCRIPTION
-    默认生成两种命令行,一种是可以直接在shell中执行,另一种是保存到sql文件中,最后调用mysql命令行来执行
-    第一种使用起来简单,但是开销大,而且构造语句的过程中相对比较麻烦,需要考虑powershell对特殊字符的解释
-    第二种命令简短,而且符号包裹更少,运行开销较小,理论上比第一种快;但是powershell对于mysql命令行执行
-    sql文件也相对麻烦,需要用一些技巧
-
-    #>
-    [CmdletBinding()]
-    param (
-        [Alias("Domain")]$Domains = @"
-domain1.com
-domain2.com
-"@,
-        # 指明网站的创建或归属者,涉及到网站数据库名字和网站根目录的区分
-        [Alias("SiteOwner")]$User,
-        
-        [switch]$SingleDomainMode,
-        #可以配置系统环境变量 df_server,可以是ip或域名
-        $server = $env:DF_SERVER1, 
-        # 对于wordpress,一般使用utf8mb4_general_ci
-        $collate = 'utf8mb4_general_ci',
-        $MySqlUser = "root",
-
-        # 置空表示不输出sql文件(如果不想要生成sql文件，请指定此参数并传入一个空字符串""作为参数)
-        $SqlFilePath = "$home\Desktop\BatchSiteDBCreate-$User.sql",
-        
-        [Parameter(ParameterSetName = "UseKey")]
-        $MySqlkey = $env:DF_MysqlKey,
-        [parameter(ParameterSetName = "UseKey")]
-        [switch]$UseKey
-    )
-    $domains = @($domains) -join "`n"
-    $domains = $domains.trim() -split "`r?`n|," | Where-Object { $_.Length }
-    # $lines = [System.Collections.ArrayList]@()
-    # $sqlLines = [System.Collections.ArrayList]@()
-    $ShellLines = New-Object System.Collections.Generic.List[string]
-    $sqlLines = New-Object System.Collections.Generic.List[string]
-        
-    $password = ""
-    if($PSCmdlet.ParameterSetName -eq "UseKey")
-    {
-            
-        if($UseKey -and $MySqlkey)
-        {
-            $password = " -p$MySqlkey"
-        }
-            
-    }
-        
-    Write-Verbose "读取的域名规范化(移除多余的空白和`www.`,使数据库名字结构统一)" 
-    foreach ($domain in $domains)
-    {
-        $domain = $domain.Trim() -replace "www.", "" 
-        $ShellLine = "mysql -u$mysqlUser -h $server $password -e 'CREATE DATABASE ``${User}_$domain`` CHARACTER SET utf8mb4 COLLATE $collate;' "
-        $sqlLine = 'CREATE DATABASE ' + " ``${User}_$domain`` CHARACTER SET utf8mb4 COLLATE $collate;"
-            
-        Write-Verbose $ShellLine
-        Write-Verbose $sqlLine
-
-        $ShellLines.Add($ShellLine) > $null
-        $sqlLines.Add($sqlLine) > $null
-            
-        # 两组前后分开处理,但是合并返回
-        # $ShellLines = $ShellLines + $sqlLine
-        # $lines = $ShellLines.AddRange($sqlLines) 
-            
-        $lines = @($ShellLines, $sqlLines)
-            
-        # $line | Invoke-Expression
-    }
-    if($SqlFilePath)
-    {
-        Write-Verbose "Try add sqlLine:`n`t[$sqlLines]`nto .sql file:`n`t[$SqlFilePath]" 
-
-        if($SingleDomainMode)
-        {
-            $sqlLines >> $SqlFilePath
-        }
-        else
-        {
-
-            $sqlLines | Out-File $SqlFilePath -Encoding utf8   
-        }
-    }
-    return $lines
-    
-}
 
 
-function    Get-BatchSiteBuilderLines
+function Get-BatchSiteBuilderLines
 {
     <# 
     .SYNOPSIS
@@ -1210,6 +1133,8 @@ function    Get-BatchSiteBuilderLines
     domain2.com
     domain3.com
 
+    #>
+    <# 
     .EXAMPLE
     #测试命令行
 
@@ -1219,37 +1144,28 @@ Get-BatchSiteBuilderLines  -user zw -Domains @"
             domain3.com
 "@
 #回车执行
-#>
-    <# 
+
     .EXAMPLE
-    
-    #⚡️[Administrator@CXXUDESK][~\Desktop][20:48:14][UP:9.14Days]
+    单行字符串内用逗号分割域名,生成批量建站语句
     PS> Get-BatchSiteBuilderLines -user zw "a.com,b.com"
     a.com,*.a.com   |/www/wwwroot/zw/a.com  |0|0|84
     b.com,*.b.com   |/www/wwwroot/zw/b.com  |0|0|84
-
-    #⚡️[Administrator@CXXUDESK][~\Desktop][20:48:15][UP:9.14Days]
-    PS> Get-BatchSiteBuilderLines -user zw @"
-    >> a.com
-    >> b.com
-    >> "@
-    a.com,*.a.com   |/www/wwwroot/zw/a.com  |0|0|84
-    b.com,*.b.com   |/www/wwwroot/zw/b.com  |0|0|84
     .EXAMPLE
-    #⚡️[Administrator@CXXUDESK][~\Desktop][20:48:58][UP:9.14Days]
+    命令行中输入域名字符串构成的数组作为-Domains参数值;
+    使用 SiteRoot参数来指明网站根目录(域名目录下的子目录,根据需要指定或不指定)
+    在命令行中,字符串数组中的字符串可以不用引号包裹,而且数组也可以不用@()来包裹(如果要用@()包裹字符串,那么反而需要你对每个数组元素用引号包裹)
+    PS> Get-BatchSiteBuilderLines -Domains a.com,b.com -SiteRoot wordpress
+    a.com,*.a.com   |/www/wwwroot/a.com/wordpress   |0|0|74
+    b.com,*.b.com   |/www/wwwroot/b.com/wordpress   |0|0|74
+
+    .EXAMPLE
+    使用@()数组作为Domains的参数值,这时候要为每个字符串用引号包裹,否则会报错
     PS> Get-BatchSiteBuilderLines -user zw @(
     >> 'a.com'
     >> 'b.com')
     a.com,*.a.com   |/www/wwwroot/zw/a.com  |0|0|84
     b.com,*.b.com   |/www/wwwroot/zw/b.com  |0|0|84
 
-    #⚡️[Administrator@CXXUDESK][~\Desktop][20:49:13][UP:9.14Days]
-    PS> Get-BatchSiteBuilderLines -user zw @(
-    >> 'a.com'
-    >> 'b.com'
-    >> )
-    a.com,*.a.com   |/www/wwwroot/zw/a.com  |0|0|84
-    b.com,*.b.com   |/www/wwwroot/zw/b.com  |0|0|84
     #> 
     [CmdletBinding()]
     param (
@@ -1261,8 +1177,10 @@ www.domain2.com
         #网站根目录,例如 wordpress 
         $SiteRoot = "",
         [switch]$SingleDomainMode,
+        # 三级域名,默认为`*`,常见的还有`www`
         $LD3 = "*"    ,
         [Alias("SiteOwner")]$User,
+        # php版本,默认为74(兼容一些老的php插件)
         $php = 74
     )
 
@@ -1296,7 +1214,110 @@ www.domain2.com
     return $lines
 }
 
-function Start-BatchSiteBuilderLines-DF
+function Get-BatchSiteDBCreateLines
+{
+    <# 
+    .SYNOPSIS
+    获取批量站点数据库创建命令行
+    .DESCRIPTION
+    默认生成两种命令行,一种是可以直接在shell中执行,另一种是保存到sql文件中,最后调用mysql命令行来执行
+    第一种使用起来简单,但是开销大,而且构造语句的过程中相对比较麻烦,需要考虑powershell对特殊字符的解释
+    第二种命令简短,而且符号包裹更少,运行开销较小,理论上比第一种快;但是powershell对于mysql命令行执行
+    sql文件也相对麻烦,需要用一些技巧
+
+    #>
+    [CmdletBinding()]
+    param (
+        [Alias("Domain")]$Domains = @"
+domain1.com
+domain2.com
+"@,
+        # 指明网站的创建或归属者,涉及到网站数据库名字和网站根目录的区分
+        [Alias("SiteOwner")]$User,
+        # 单域名模式:每次调用此函数指输入一个配置行(一个站点的配置信息);
+        # 适合与Start-BatchSiteBuilderLine-DF的Table参数配合使用
+        [switch]$SingleDomainMode,
+        #可以配置系统环境变量 df_server,可以是ip或域名
+        $server = $env:DF_SERVER1, 
+        # 对于wordpress,一般使用utf8mb4_general_ci
+        $collate = 'utf8mb4_general_ci',
+        $MySqlUser = "root",
+
+        # 置空表示不输出sql文件(如果不想要生成sql文件，请指定此参数并传入一个空字符串""作为参数)
+        # 在非单行模式(SingleDomainMode)下,默认生成的sql文件名为 BatchSiteDBCreate-[User].sql
+        # 否则$User参数生成的SqlFile里的语句可能包含多个用户名,建议手动指定文件路径参数,
+        # 而且文件名应该更有概括性,比如将$User用当前时间代替
+        $SqlFilePath = "$home\Desktop\BatchSiteDBCreate-$User.sql",
+        
+        [Parameter(ParameterSetName = "UseKey")]
+        # 控制是否使用明文mysql密码
+        $MySqlkey = $env:DF_MysqlKey,
+        [parameter(ParameterSetName = "UseKey")]
+        [switch]$UseKey
+    )
+    $domains = @($domains) -join "`n"
+    $domains = $domains.trim() -split "`r?`n|," | Where-Object { $_.Length }
+
+    # $lines = [System.Collections.ArrayList]@()
+    # $sqlLines = [System.Collections.ArrayList]@()
+    $ShellLines = New-Object System.Collections.Generic.List[string]
+    $sqlLines = New-Object System.Collections.Generic.List[string]
+        
+    $password = ""
+    if($PSCmdlet.ParameterSetName -eq "UseKey")
+    {
+            
+        if($UseKey -and $MySqlkey)
+        {
+            $password = " -p$MySqlkey"
+        }
+            
+    }
+        
+    Write-Verbose "读取的域名规范化(移除多余的空白和`www.`,使数据库名字结构统一)" 
+    # 默认处理的是非单行模式,也就是认为Domain参数包含了一组域名配置,逐个解析
+    # 如果是单行模式也没关系,上面的处理将$domains确保数组化
+    # 这里将试图生成两种语句:一种是适合于shell中直接执行mysql语句;另一种是适合保存到sql文件中的普通sql语句
+    foreach ($domain in $domains)
+    {
+        $domain = $domain.Trim() -replace "www.", "" 
+
+        $ShellLine = "mysql -u$mysqlUser -h $server $password -e 'CREATE DATABASE ``${User}_$domain`` CHARACTER SET utf8mb4 COLLATE $collate;' "
+        $sqlLine = 'CREATE DATABASE ' + " ``${User}_$domain`` CHARACTER SET utf8mb4 COLLATE $collate;"
+            
+        Write-Verbose $ShellLine
+        Write-Verbose $sqlLine
+
+        $ShellLines.Add($ShellLine) > $null
+        $sqlLines.Add($sqlLine) > $null
+            
+        # 两组前后分开处理,但是合并返回
+        # $ShellLines = $ShellLines + $sqlLine
+        # $lines = $ShellLines.AddRange($sqlLines) 
+            
+        # $lines = @($ShellLines, $sqlLines)
+            
+        # $line | Invoke-Expression
+    }
+    # 是否将sql语句写入到文件
+    if($SqlFilePath)
+    {
+        Write-Verbose "Try add sqlLine:`n`t[$sqlLines]`nto .sql file:`n`t[$SqlFilePath]" 
+        # 根据是否使用单行模式来决定是:追加式写入或覆盖式创建/写入
+        if($SingleDomainMode)
+        {
+            $sqlLines >> $SqlFilePath
+        }
+        else
+        {
+
+            $sqlLines | Out-File $SqlFilePath -Encoding utf8   
+        }
+    }
+    return $sqlLines
+    
+}
+function Start-BatchSitesBuild
 {
     <# 
     .SYNOPSIS
@@ -1313,13 +1334,16 @@ function Start-BatchSiteBuilderLines-DF
         [Alias("Key")]$MySqlkey = "",
         $SqlFileDir = "$home/desktop",
         $SqlFilePath = "$sqlFileDir/BatchSiteDBCreate-$user.sql",
+        # 读取表格形式的数据,可以从文件中读取多行表格数据,每行一个配置,列间用空格或逗号分隔
         $Table = "",
         # 域名后追加的网站根目录,比如wordpress
         $SiteRoot = "wordpress",
         [ValidateSet("Auto", "FromFile", "MultiLineString")]$TableMode = 'Auto',
 
         # $Structure = "Domain,Owner,OldDomain"
-        $Structure = $DFTableStructure
+        $Structure = $DFTableStructure,
+        # 是否将批量建站语句自动输出到剪切板
+        [switch]$ToClipboard
         # [switch]$TableMode
     )
 
@@ -1327,13 +1351,15 @@ function Start-BatchSiteBuilderLines-DF
 
     # 获取宝塔建站语句
     $siteExpressions = ""
+    $dbExpressions = ""
     if($Table)
     {
         Write-Verbose "TableMode!" 
         $tuples = Get-DomainUserTupleFromTable -Table $Table
         # 在Table输入模式下,你需要在生成sql文件之前,移除旧sql文件(如果有的话)
         $SqlFilePath = "$sqlFileDir/BatchSiteDBCreate-$(Get-Date -Format 'yyyy-MM-dd-hh').sql"
-        Remove-Item $SqlFilePath -Verbose -ErrorAction SilentlyContinue -Confirm
+
+        # Remove-Item $SqlFilePath -Verbose -ErrorAction SilentlyContinue -Confirm
 
         foreach ($tuple in $tuples)
         {
@@ -1348,8 +1374,8 @@ function Start-BatchSiteBuilderLines-DF
             $BtLine = Get-BatchSiteBuilderLines @tupleplus
             $siteExpressions += $BtLine + "`n"
             
-            $dbLine = Get-BatchSiteDBCreateLines @tuple -SingleDomainMode -SqlFilePath $SqlFilePath
-            $dbExpressions += $dbLine
+            $dbLine = Get-BatchSiteDBCreateLines @tuple -SingleDomainMode -SqlFilePath "" #关闭写入文件,采用返回值模式
+            $dbExpressions += $dbLine + "`n"
 
             # Pause 
         }
@@ -1360,14 +1386,23 @@ function Start-BatchSiteBuilderLines-DF
         $siteExpressions = Get-BatchSiteBuilderLines -SiteOwner $user -Domains $domains
         $dbExpressions = Get-BatchSiteDBCreateLines -Domains $domains -SiteOwner $user
     }
-    
+    # 查看宝塔建站语句|写入剪切板
     Write-Host $siteExpressions
-    Write-Host "[$sqlfilepath] will be executed!..."
-    Get-Content $sqlfilepath | Get-ContentNL -AsString 
+    if($ToClipboard)
+    {
+        $siteExpressions | Set-Clipboard
+    }
+    $dbExpressions | Set-Content $SqlFilePath -Encoding utf8 -NoNewline
 
-    Pause
+    Write-Host "[$sqlfilepath] will be executed!..."
+    # Get-Content $sqlfilepath | Get-ContentNL -AsString 
+    $SqlLinesTable = Get-Content $sqlfilepath | Format-DoubleColumn | Out-String
+    # Write-Host $SqlLinesTable -ForegroundColor Cyan
+    Write-Verbose $SqlLinesTable -Verbose
 
     Write-Warning "Please Check the sql lines,especially the siteOwner is exactly what you want!"
+    # Pause
+
     Write-Output $dbExpressions
     # Pause
 
@@ -1415,7 +1450,7 @@ function Get-MysqlDbInfo
     )
     $db_name_inline = "'$Name'"
     $CheckDBCmd = "mysql -h $Server -u $MySQLUser $key -e `"SHOW DATABASES LIKE $db_name_inline;`""
-    Write-Verbose "check $Name database on [$Server]"
+    Write-Verbose "check [$Name] database on [$Server]"
     Write-Verbose $CheckDBCmd 
     $res = $CheckDBCmd | Invoke-Expression
 
@@ -1480,6 +1515,10 @@ function Import-MysqlFile
         $SqlFilePath,
         $MySqlUser = "root",
         $key = $env:DF_MySqlKey,
+        # 数据库名字;数据库sql导入有两大类,一类不需要指定数据库就可以直接执行的sql;一类是针对特定数据库执行的sql
+        # 例如某份sql中是一批数据库创建语句,那么你不需要指定某个数据库名直接就可以执行(如果要创建的数据库已经存在,mysql会提示你对应的数据库已经存在)
+        # 而有的sql是数据库的备份sql文件,你应该指定一个数据库名称,然后执行导入操作;
+        # 一般而言,这两类数据库sql不能混放在同一个sql文件中
         $DatabaseName = "",
         [switch]$Force
     )
@@ -1520,24 +1559,28 @@ function Import-MysqlFile
         # return 
 
         # $DBExists = Invoke-Expression $CheckDBCmd
-
-        $DBExists = Get-MysqlDbInfo -Name $DatabaseName -Server $server
-
-        if(!$DBExists)
+        # 如果用户指定了数据库名称,则检查该数据库是否已经存在,并给出测试结果;否则认为要导入的sql不需要事先指定数据库名字
+        if($DatabaseName)
         {
 
-            # Write-Host "数据库不存在!"
-            if($PSCmdlet.ShouldProcess($Server, "Create Database: $DatabaseName ?"))
+            $DBExists = Get-MysqlDbInfo -Name $DatabaseName -Server $server
+            
+            if(!$DBExists)
             {
-               
-                # Invoke-Expression $CreateDBCmd
-                New-MysqlDB -Name $DatabaseName -Server $server -Confirm:$false
+                
+                # Write-Host "数据库不存在!"
+                if($PSCmdlet.ShouldProcess($Server, "Create Database: $DatabaseName ?"))
+                {
+                    
+                    # Invoke-Expression $CreateDBCmd
+                    New-MysqlDB -Name $DatabaseName -Server $server -Confirm:$false
+                }
             }
-        }
-        else
-        {
-            # todo
-            # Get-MysqlDbDescription -Name $DatabaseName -Server $server
+            else
+            {
+                # Get-MysqlDbDescription -Name $DatabaseName -Server $server
+                Get-MysqlDbInfo -Name $DatabaseName -Server $server -ShowTables | Select-Object -First 5
+            }
         }
 
         $expression = "cmd /c `" mysql -u $MySqlUser -h $server $key $DatabaseName < ```"$SqlFilePath```" `""
