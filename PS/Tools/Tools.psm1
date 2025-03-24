@@ -1498,6 +1498,10 @@ function Import-MysqlFile
     默认为"",表示你想要执行的语句(sql文件)不要求你后期指定数据库名字,
     例如,你的sql是一些查询数据库基本信息的语句,或者是创建数据库的语句,你不需要在命令行中指定一个数据库
  
+    数据库名字;数据库sql导入有两大类,一类不需要指定数据库就可以直接执行的sql;一类是针对特定数据库执行的sql
+    例如某份sql中是一批数据库创建语句,那么你不需要指定某个数据库名直接就可以执行(如果要创建的数据库已经存在,mysql会提示你对应的数据库已经存在)
+    而有的sql是数据库的备份sql文件,你应该指定一个数据库名称,然后执行导入操作;
+    一般而言,这两类数据库sql不能混放在同一个sql文件中
 
     .EXAMPLE
     Import-MysqlFile -server localhost -SqlFilePath "C:\Users\admin\Desktop\test.sql" -MySqlUser root -key "123456" -DatabaseName "test"
@@ -1515,34 +1519,21 @@ function Import-MysqlFile
     [CmdletBinding(SupportsShouldProcess)]
     param (
         $Server = "localhost",
-        $SqlFilePath,
         $MySqlUser = "root",
         $key = $env:DF_MySqlKey,
-        # 数据库名字;数据库sql导入有两大类,一类不需要指定数据库就可以直接执行的sql;一类是针对特定数据库执行的sql
-        # 例如某份sql中是一批数据库创建语句,那么你不需要指定某个数据库名直接就可以执行(如果要创建的数据库已经存在,mysql会提示你对应的数据库已经存在)
-        # 而有的sql是数据库的备份sql文件,你应该指定一个数据库名称,然后执行导入操作;
-        # 一般而言,这两类数据库sql不能混放在同一个sql文件中
-        $DatabaseName = "",
+        [alias("File", "Path")]$SqlFilePath,
+        [alias("Name")]$DatabaseName = "",
         [switch]$Force
     )
 
-    # $db_name_inline = "'$DatabaseName'"
-    # Write-Verbose "$databaseName"
-    # Write-Verbose "$db_name_inline"
+
     
     if(Test-Path $SqlFilePath)
     {
         
         Write-Verbose "Use Mysql server host: $server"
         Write-Verbose "Sql File exist!" 
-        if($MySqlkey)
-        {
-            $key = " -p$MySqlkey"
-        }
-        else
-        {
-            $key = ""
-        }
+        $key = Get-MysqlKeyInline $key
 
         # 如果数据库不存在,则提示创建数据库
         # $db_name_inline_creater = "````$DatabaseName````"
