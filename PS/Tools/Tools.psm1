@@ -1058,6 +1058,7 @@ www.d2.com    李
     # 解析表头结构
     $columns = $Structure -split ','
     $structureFieldsNumber = $columns.Count
+    Write-Debug "structureFieldsNumber:[$structureFieldsNumber]"
 
     # 解析行数据
     if($TableMode -In @('Auto', 'FromFile') -and (Test-Path $Table))
@@ -1085,16 +1086,22 @@ www.d2.com    李
     # 根据常用的分隔符将行内划分为多段
     $lines = @($lines)
     Write-Verbose "Query the the number of line parts with the max parts..."
+    $maxLinePartsNumber=0
     foreach ($line in $lines)
     {
+        Write-Debug "line:[$line]"
 
         $linePartsNumber = ($line -split "\s+|,|;" | Where-Object { $_ }).Count
         Write-Debug "number of line parts: $($linePartsNumber)"
+        if ($linePartsNumber -gt $maxLinePartsNumber) {
+            $maxLinePartsNumber = $linePartsNumber
+        }
+        
     }
 
-    Write-Verbose "Query result:$linePartsNumber"
+    Write-Verbose "Query result:$maxLinePartsNumber"
 
-    $fieldsNumber = [Math]::Min($structureFieldsNumber, $linePartsNumber)
+    $fieldsNumber = [Math]::Min($structureFieldsNumber, $maxLinePartsNumber)
     Write-Verbose "The number of fields of the dicts will be generated is: $fieldsNumber"
     $result = [System.Collections.ArrayList]@()
 
