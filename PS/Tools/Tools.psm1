@@ -883,7 +883,7 @@ function Update-WpUrl
         $NewDomain,
         $DatabaseName = $NewDomain,
         # 以下参数继承自 Import-MysqlFile 
-        $server="localhost",
+        $server = "localhost",
         # $SqlFilePath,
         $MySqlUser = "root",
         $key = $env:DF_MySqlKey
@@ -1086,14 +1086,15 @@ www.d2.com    李
     # 根据常用的分隔符将行内划分为多段
     $lines = @($lines)
     Write-Verbose "Query the the number of line parts with the max parts..."
-    $maxLinePartsNumber=0
+    $maxLinePartsNumber = 0
     foreach ($line in $lines)
     {
         Write-Debug "line:[$line]"
 
         $linePartsNumber = ($line -split "\s+|,|;" | Where-Object { $_ }).Count
         Write-Debug "number of line parts: $($linePartsNumber)"
-        if ($linePartsNumber -gt $maxLinePartsNumber) {
+        if ($linePartsNumber -gt $maxLinePartsNumber)
+        {
             $maxLinePartsNumber = $linePartsNumber
         }
         
@@ -1720,24 +1721,35 @@ function Get-CRLFChecker
         [switch]$ConvertToLFStyle
     )
     $raw = Get-Content $Path -Raw
-    $res = $raw -replace "`r", "[CR]" -replace "`n", "[LF]" 
-    $res | Select-String -Pattern "\[CR\]|\[LF\]" -AllMatches 
+    $isCRLFStyle = $raw -match "`r"
+    if($isCRLFStyle)
+    {
+        Write-Host "The file: [$Path] is CRLF style file(with carriage char)!"
+    }
+    else
+    {
+        Write-Host "The file: [$Path] is LF style file(without carriage char)!"
 
+    }
+
+    $res = $raw -replace "`n", "[LF]" -replace "`r", "[CR]"
+    
     if($ConvertToLFStyle)
     {
         $fileName = Split-Path $Path -LeafBase
         $fileDir = Split-Path $Path -Parent
         $fileExtension = Split-Path $Path -Extension
-
-        $res = $raw -replace "`r", "`n"
+        
+        # 移除CR回车符
+        $res = $raw -replace "`r", ""
+        
         $LFFile = "$fileDir/$fileName.LF$fileExtension"
         $res | Out-File $LFFile -Encoding utf8 -NoNewline
         
         Write-Verbose "File has been converted to LF style![$LFFile]" -Verbose
-        
-        return $res
-
+        $res = $res -replace "`n", "[LF]"
     }
+    $res | Select-String -Pattern "\[CR\]|\[LF\]" -AllMatches 
 }
 function Start-GoogleIndexSearch
 {
