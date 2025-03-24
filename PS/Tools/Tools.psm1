@@ -963,7 +963,40 @@ CHANGE `slug` `slug` VARCHAR(8000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode
     Import-MysqlFile -Server $server -SqlFilePath $sqlPath -MySqlUser $MySqlUser -key $key -DatabaseName $DatabaseName 
 
 }
+function Get-DictViewInArray
+{
+    <# 
+    .SYNOPSIS
+    查看字典数组中每个字典的取值
+    .EXAMPLE
+    $array = @(
+        @{ Name = "Alice"; Age = 25; City = "New York" },
+        @{ Name = "Bob"; Age = 30; City = "Los Angeles" },
+        @{ Name = "Charlie"; Age = 35; City = "Chicago" }
+    )
 
+    Get-DictViewInArray -DictsArray $array
+
+    #>
+    param (
+        $DictsArray
+    )
+    Write-Host $DictsArray
+    # $DictsArray.Gettype()
+    # $DictsArray.Count
+    # $DictsArray | Get-TypeCxxu
+
+    foreach ($dict in $DictsArray)
+    {
+        Write-Output "----- Dictionary -----"
+        # Write-Output $dict
+        # 遍历哈希表的键值对
+        foreach ($key in $dict.Keys)
+        {
+            Write-Output "$key : $($dict[$key])"
+        }
+    }
+}
 function Get-DomainUserTupleFromTable
 {
     <# 
@@ -1006,15 +1039,16 @@ www.d2.com    李
 "@,
         [ValidateSet("Auto", "FromFile", "MultiLineString")]$TableMode = 'Auto',
         # 表结构，默认是 "域名,用户名"
-        [string]$Structure = $SiteOwnersDict.DFTableStructure,
+        $Structure = $SiteOwnersDict.DFTableStructure,
 
         # 用户名转换字典
         $SiteOwnersDict = $SiteOwnersDict
     )
 
+    # 谨慎使用write-output和孤立表达式,他们会在函数结束时加入返回值一起返回,导致不符合预期的情况
     #检查siteOwnersDict
-    Write-Output $SiteOwnersDict
-    $SiteOwnersDict.GetEnumerator()
+    Write-Host $SiteOwnersDict
+    #write-verbose $SiteOwnersDict.GetEnumerator()
 
     if(!$SiteOwnersDict)
     {
@@ -1050,7 +1084,7 @@ www.d2.com    李
     $lines = $lines -replace '([\u4e00-\u9fa5]+)', ' $1 ' -replace '(Override|Lazy)', ' $1 '
     # 根据常用的分隔符将行内划分为多段
     $lines = @($lines)
-    Write-Verbose "Query the the number of line parts with the max parts:"
+    Write-Verbose "Query the the number of line parts with the max parts..."
     foreach ($line in $lines)
     {
 
@@ -1061,8 +1095,8 @@ www.d2.com    李
     Write-Verbose "Query result:$linePartsNumber"
 
     $fieldsNumber = [Math]::Min($structureFieldsNumber, $linePartsNumber)
-
-    $result = @()
+    Write-Verbose "The number of fields of the dicts will be generated is: $fieldsNumber"
+    $result = [System.Collections.ArrayList]@()
 
     foreach ($line in $lines)
     {
@@ -1093,21 +1127,28 @@ www.d2.com    李
                 }
                 else
                 {
-                    Write-Error "translate user name [$UserName] failed,please check the dictionary"
+                    Write-Error "Translate user name [$UserName] failed,please check the dictionary"
                     Pause
                     exit
                 }
             }
             $entry[$columns[$i]] = $parts[$i]
         }
-        Write-Verbose $entry.GetEnumerator()
+        # 查看当前行生成的字典
+        # $DictKeyValuePairs = $entry.GetEnumerator() 
+        # Write-Verbose "dict:$DictKeyValuePairs"
         # $entry = @{
         #     $columns[0] = $parts[0]
         #     $columns[1] = $SiteOwnersDict[$parts[1]] ?? $parts[1]  # 如果字典里没有，就保留原用户名
         # }
 
-        $result += $entry
+        # 当前字典插入到数组中
+        # $result += $entry
+        $result.Add($entry) >$null
     }
+    Write-Verbose "$($result.Count) dicts was generated."
+    
+    # Get-DictViewInArray $result
 
     return $result
 }
@@ -1367,7 +1408,7 @@ function Start-BatchSitesBuild
         Write-Verbose "TableMode!" 
 
         $tuples = Get-DomainUserTupleFromTable -Table $Table -Structure $Structure -SiteOwnersDict $SiteOwnersDict -TableMode $TableMode
-        
+        Write-Debug "tuples: $tuples"
         # 在Table输入模式下,你需要在生成sql文件之前,移除旧sql文件(如果有的话)
         $SqlFilePath = "$sqlFileDir/BatchSiteDBCreate-$(Get-Date -Format 'yyyy-MM-dd-hh').sql"
 
@@ -1382,8 +1423,9 @@ function Start-BatchSitesBuild
             $tupleJson.PSObject.properties | ForEach-Object {
                 $tupleplus[$_.Name] = $_.Value
             }
+
             $tupleplus.add("SiteRoot", $siteRoot)
-            # $tupleplus.add("SiteRoot", $siteRoot)
+
             Write-Debug "tupleplus:$($tupleplus.GetEnumerator())" -Debug
 
             $BtLine = Get-BatchSiteBuilderLines @tupleplus
