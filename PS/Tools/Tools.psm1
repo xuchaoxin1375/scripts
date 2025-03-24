@@ -883,7 +883,7 @@ function Update-WpUrl
         $NewDomain,
         $DatabaseName = $NewDomain,
         # 以下参数继承自 Import-MysqlFile 
-        $server,
+        $server="localhost",
         # $SqlFilePath,
         $MySqlUser = "root",
         $key = $env:DF_MySqlKey
@@ -1630,7 +1630,7 @@ function Import-MysqlFile
             else
             {
                 # Get-MysqlDbDescription -Name $DatabaseName -Server $server
-                Get-MysqlDbInfo -Name $DatabaseName -Server $server -ShowTables | Select-Object -First 5
+                Get-MysqlDbInfo -Name $DatabaseName -Server $server -key $key -ShowTables | Select-Object -First 5
             }
         }
 
@@ -1640,7 +1640,7 @@ function Import-MysqlFile
         
         if($Force -or -not $Confirm)
         {
-            $ConfirmPreference = "None"
+            $ConfirmPreference = "None" 
             # cmd /c $expression
         }
         if($PSCmdlet.ShouldProcess($server, $expression))
