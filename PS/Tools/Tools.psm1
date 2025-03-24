@@ -1006,14 +1006,18 @@ www.d2.com    李
 "@,
         [ValidateSet("Auto", "FromFile", "MultiLineString")]$TableMode = 'Auto',
         # 表结构，默认是 "域名,用户名"
-        [string]$Structure = $DFTableStructure,
+        [string]$Structure = $SiteOwnersDict.DFTableStructure,
 
         # 用户名转换字典
         $SiteOwnersDict = $SiteOwnersDict
     )
 
     #检查siteOwnersDict
-    if(!$SiteOwnersDict){
+    Write-Output $SiteOwnersDict
+    $SiteOwnersDict.GetEnumerator()
+
+    if(!$SiteOwnersDict)
+    {
         Write-Error "SiteOwnersDict is empty,please check this parameter!"
         exit
     }
@@ -1089,7 +1093,7 @@ www.d2.com    李
                 }
                 else
                 {
-                    Write-Error "translate user name failed,please check the dictionary"
+                    Write-Error "translate user name [$UserName] failed,please check the dictionary"
                     Pause
                     exit
                 }
@@ -1345,6 +1349,7 @@ function Start-BatchSitesBuild
         $SiteRoot = "wordpress",
         [ValidateSet("Auto", "FromFile", "MultiLineString")]$TableMode = 'Auto',
 
+        $SiteOwnersDict = $SiteOwnersDict,
         # $Structure = "Domain,Owner,OldDomain"
         $Structure = $DFTableStructure,
         # 是否将批量建站语句自动输出到剪切板
@@ -1360,7 +1365,9 @@ function Start-BatchSitesBuild
     if($Table)
     {
         Write-Verbose "TableMode!" 
-        $tuples = Get-DomainUserTupleFromTable -Table $Table
+
+        $tuples = Get-DomainUserTupleFromTable -Table $Table -Structure $Structure -SiteOwnersDict $SiteOwnersDict -TableMode $TableMode
+        
         # 在Table输入模式下,你需要在生成sql文件之前,移除旧sql文件(如果有的话)
         $SqlFilePath = "$sqlFileDir/BatchSiteDBCreate-$(Get-Date -Format 'yyyy-MM-dd-hh').sql"
 
@@ -1377,6 +1384,8 @@ function Start-BatchSitesBuild
             }
             $tupleplus.add("SiteRoot", $siteRoot)
             # $tupleplus.add("SiteRoot", $siteRoot)
+            Write-Debug "tupleplus:$($tupleplus.GetEnumerator())" -Debug
+
             $BtLine = Get-BatchSiteBuilderLines @tupleplus
             $siteExpressions += $BtLine + "`n"
             
@@ -1398,7 +1407,7 @@ function Start-BatchSitesBuild
     {
         $siteExpressions | Set-Clipboard
     }
-    $dbExpressions | Set-Content $SqlFilePath -Encoding utf8 -NoNewline
+    $dbExpressions.Trim() | Set-Content $SqlFilePath -Encoding utf8 -NoNewline
 
     Write-Host "[$sqlfilepath] will be executed!..."
     # Get-Content $sqlfilepath | Get-ContentNL -AsString 
