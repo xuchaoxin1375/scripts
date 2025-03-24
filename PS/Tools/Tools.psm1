@@ -1009,9 +1009,14 @@ www.d2.com    李
         [string]$Structure = $DFTableStructure,
 
         # 用户名转换字典
-        [hashtable]$SiteOwnersDict = $SiteOwnersDict
+        $SiteOwnersDict = $SiteOwnersDict
     )
 
+    #检查siteOwnersDict
+    if(!$SiteOwnersDict){
+        Write-Error "SiteOwnersDict is empty,please check this parameter!"
+        exit
+    }
     # 解析表头结构
     $columns = $Structure -split ','
     $structureFieldsNumber = $columns.Count
@@ -1365,6 +1370,7 @@ function Start-BatchSitesBuild
         {
             Write-Verbose $tuple.GetEnumerator() #-Verbose
             $tupleplus = @{}
+
             $tupleJson = $tuple | ConvertTo-Json | ConvertFrom-Json
             $tupleJson.PSObject.properties | ForEach-Object {
                 $tupleplus[$_.Name] = $_.Value
