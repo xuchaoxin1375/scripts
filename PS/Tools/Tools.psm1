@@ -997,7 +997,7 @@ function Get-DictViewInArray
         }
     }
 }
-function Get-DomainUserTupleFromTable
+function Get-DomainUserDictFromTable
 {
     <# 
     .SYNOPSIS
@@ -1047,7 +1047,8 @@ www.d2.com    李
 
     # 谨慎使用write-output和孤立表达式,他们会在函数结束时加入返回值一起返回,导致不符合预期的情况
     #检查siteOwnersDict
-    Write-Host $SiteOwnersDict
+    Write-Verbose "SiteOwnersDict:"
+    Write-Verbose $SiteOwnersDict
     #write-verbose $SiteOwnersDict.GetEnumerator()
 
     if(!$SiteOwnersDict)
@@ -1413,33 +1414,38 @@ function Start-BatchSitesBuild
     $dbExpressions = ""
     if($Table)
     {
-        Write-Verbose "TableMode!" 
+        Write-Verbose "You use tableMode!(Read parameters from table string or file only!)" 
 
-        $tuples = Get-DomainUserTupleFromTable -Table $Table -Structure $Structure -SiteOwnersDict $SiteOwnersDict -TableMode $TableMode
-        Write-Debug "tuples: $tuples"
+        $dicts = Get-DomainUserDictFromTable -Table $Table -Structure $Structure -SiteOwnersDict $SiteOwnersDict -TableMode $TableMode
+        # Write-Debug "dicts: $dicts"
+        Get-DictViewInArray @($dicts)
+
         # 在Table输入模式下,你需要在生成sql文件之前,移除旧sql文件(如果有的话)
+        # 生成的sql文件名带有日期(可能包含多个用户的新建数据库的语句)
         $SqlFilePath = "$sqlFileDir/BatchSiteDBCreate-$(Get-Date -Format 'yyyy-MM-dd-hh').sql"
 
         # Remove-Item $SqlFilePath -Verbose -ErrorAction SilentlyContinue -Confirm
 
-        foreach ($tuple in $tuples)
+        foreach ($dict in $dicts)
         {
-            Write-Verbose $tuple.GetEnumerator() #-Verbose
-            $tupleplus = @{}
+            Write-Verbose $dict.GetEnumerator() #-Verbose
+            # $dictplus = @{}
 
-            $tupleJson = $tuple | ConvertTo-Json | ConvertFrom-Json
-            $tupleJson.PSObject.properties | ForEach-Object {
-                $tupleplus[$_.Name] = $_.Value
-            }
+            # $dictJson = $dict | ConvertTo-Json | ConvertFrom-Json
+            # $dictJson.PSObject.properties | ForEach-Object {
+            #     $dictplus[$_.Name] = $_.Value
+            # }
+            
+            $dictplus = $dict.clone()
 
-            $tupleplus.add("SiteRoot", $siteRoot)
+            $dictplus.add("SiteRoot", $siteRoot)
 
-            Write-Debug "tupleplus:$($tupleplus.GetEnumerator())" -Debug
+            Write-Debug "dictplus:$($dictplus.GetEnumerator())" -Debug
 
-            $BtLine = Get-BatchSiteBuilderLines @tupleplus
+            $BtLine = Get-BatchSiteBuilderLines @dictplus
             $siteExpressions += $BtLine + "`n"
             
-            $dbLine = Get-BatchSiteDBCreateLines @tuple -SingleDomainMode -SqlFilePath "" #关闭写入文件,采用返回值模式
+            $dbLine = Get-BatchSiteDBCreateLines @dict -SingleDomainMode -SqlFilePath "" #关闭写入文件,采用返回值模式
             $dbExpressions += $dbLine + "`n"
 
             # Pause 
@@ -1671,7 +1677,7 @@ function Export-MysqlFile
         $DatabaseName,    
         $SqlFilePath = "$base_sqls/$DatabaseName.sql",
 
-        $server = $env:DF_SERVER1,
+        $server = "localhost",
         $MySqlUser = "root",
         $key = $env:DF_MySqlKey,
         [switch]$Force
