@@ -83,10 +83,18 @@ function Get-CsvTailRows-Archived
     }
 
     Write-Host "处理完成，结果已保存为!(默认所在目录和源文件${InputFile})同目录: $(Resolve-Path $OutputFile)"
-    $row | Select-Object -First 3 | Format-Table ; Write-Host "....";
+    Get-CsvPreview $rows
+}
+function Get-CsvPreview
+{
+    param (
+        $csv,
+        $FirstLineNumbers = 3
+    )
+    $row | Select-Object -First $FirstLineNumbers | Format-Table ; 
+    Write-Host "....";
     Write-Host "Totol lines:$($row.count)"
 }
-
 function Get-CsvTailRows
 {
     <#
@@ -366,11 +374,126 @@ function Get-CsvTailRowsGUI
     [void]$form.ShowDialog()
 }
 
+function Export-NewCSvFromRange
+{
+    <# 
+    .SYNOPSIS
+    从csv文件中截取中间片段(第m行到第n行),将选中的区间保存为新文件
+
+    .DESCRIPTION
+    该函数允许用户从指定的CSV文件中截取一段数据（从第m行到第n行），并将截取的数据保存为一个新的CSV文件。
+    默认情况下，截取操作是左闭右开的（即包含起始行，但不包含结束行）。可以通过-IncludeEnd参数来改变为闭区间（即包含起始行和结束行）。
+
+    .PARAMETER Path
+    指定要处理的CSV文件的路径。
+
+    .PARAMETER StartRow
+    指定截取的起始行号（从0开始计数）。
+
+    .PARAMETER EndRow
+    指定截取的结束行号（从0开始计数）。
+
+    .PARAMETER IncludeEnd
+    如果指定此参数，截取操作将包含结束行（闭区间）。默认情况下，不包含结束行（左闭右开）。
+
+    .PARAMETER CsvDirectory
+    指定CSV文件所在的目录。如果未指定，则使用当前目录。
+
+    .PARAMETER OutputDirectory
+    指定新CSV文件的输出目录。如果未指定，则使用当前目录。
+
+    .EXAMPLE
+    Export-NewCSvFromRange -Path "data.csv" -StartRow 10 -EndRow 20
+    从"data.csv"文件中截取第10行到第19行（不包括第20行），并将结果保存为新的CSV文件。
+
+    .EXAMPLE
+    Export-NewCSvFromRange -Path "data.csv" -StartRow 10 -EndRow 20 -IncludeEnd
+    从"data.csv"文件中截取第10行到第20行（包括第20行），并将结果保存为新的CSV文件。
+
+    .NOTES
+    作者: Your Name
+    创建日期: 2023-10-01
+    #>
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        
+        [Parameter(Mandatory = $true, ParameterSetName = 'Range')]
+        [int]$StartRow,
+        
+        [Parameter(Mandatory = $true, ParameterSetName = 'Range')]
+        [int]$EndRow,
+        
+        [switch]$IncludeEnd,
+        
+        # [string]$CsvDirectory,
+        
+        [string]$Output = ""
+    )
+
+    $fileBaseName = Split-Path $Path -LeafBase
+    $OutputDirectory = Split-Path $Path
+
+    # 导入CSV文件
+    $csv = Import-Csv $Path
+
+    # 确定结束行的索引
+    if ($IncludeEnd)
+    {
+        $EndIndex = $EndRow
+    }
+    else
+    {
+        $EndIndex = $EndRow - 1
+    }
+
+    # 截取指定范围的行
+    
+    # 读取表头行 (Header)：直接从文件中获取第一行文本
+    try
+    {
+
+        $headerLine = Get-Content -Path $Path -Encoding UTF8 -TotalCount 1
+
+    }
+    catch
+    {
+        Write-Error "读取表头失败: $_"
+        return
+    }
+    $selectedRows = $csv[${StartRow}..${EndIndex}]
+
+    Write-Output $selectedRows
+    # return
+    # $newCsv = @($headerLine, $selectedRows)
+
+    # 如果用户没有指定输出文件路径,那么生成默认输出文件路径
+    if(!$Output)
+    {
+        Write-Verbose "The output file path is not specified, use the default path."
+        $Output = Join-Path -Path $OutputDirectory -ChildPath "${fileBaseName}_${StartRow}-${EndRow}.csv"
+    }
+
+    # 将截取的数据导出为新的CSV文件
+    # Remove-Item $Output -ErrorAction SilentlyContinue -Verbose
+    Write-Host "header:`n[$headerLine]" -ForegroundColor Cyan
+    # $headerLine | Export-Csv -Path $Output  -NoTypeInformation -Encoding utf8 -Force
+    Set-Content -Path $Output -Value $headerLine -Encoding UTF8 -Force
+    $selectedRows | Export-Csv -Path $Output -Append -Force -NoTypeInformation -Encoding utf8 
+
+    Get-CsvPreview $selectedRows
+
+    Write-Output "新的CSV文件已保存到: $Output"
+}
+
+
 function Export-NewCSVFile
 {
     param (
 
+        # [parameter(parametersetname = "SKU")]
         $StoppedSku = $StoppedSku,
+ 
         # 默认sku的对齐位数为7位数(不够的前头补零)
         $DigitBits = 7,
         $CsvDirectory,
