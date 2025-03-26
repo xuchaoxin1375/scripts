@@ -89,11 +89,12 @@ function Get-CsvPreview
 {
     param (
         $csv,
-        $FirstLineNumbers = 3
+        $FirstLineNumbers = 3,
+        $propertyNames = @("SKU", "Name")
     )
-    $row | Select-Object -First $FirstLineNumbers | Format-Table ; 
+    $csv | Select-Object -Property $propertyNames | Select-Object -First $FirstLineNumbers | Format-Table ; 
     Write-Host "....";
-    Write-Host "Totol lines:$($row.count)"
+    Write-Host "Totol lines:$($csv.count)"
 }
 function Get-CsvTailRows
 {
@@ -424,7 +425,7 @@ function Export-NewCSvFromRange
         [Parameter(Mandatory = $true, ParameterSetName = 'Range')]
         [int]$EndRow,
         
-        [switch]$IncludeEnd,
+        [switch]$ExcludeEndRow,
         
         # [string]$CsvDirectory,
         
@@ -438,13 +439,14 @@ function Export-NewCSvFromRange
     $csv = Import-Csv $Path
 
     # 确定结束行的索引
-    if ($IncludeEnd)
+    if ($ExcludeEndRow)
     {
-        $EndIndex = $EndRow
+        $EndIndex = $EndRow - 1
+        $EndRow-=1
     }
     else
     {
-        $EndIndex = $EndRow - 1
+        $EndIndex = $EndRow
     }
 
     # 截取指定范围的行
@@ -461,9 +463,13 @@ function Export-NewCSvFromRange
         Write-Error "读取表头失败: $_"
         return
     }
-    $selectedRows = $csv[${StartRow}..${EndIndex}]
+    # 由于表头和从0计数的关系,需要做偏移
+    $StartIndex = $StartRow - 1
+    $EndIndex = $EndIndex -1
+    Write-Verbose "StartIndex: $StartIndex, EndIndex: $EndIndex"
+    $selectedRows = $csv[${StartIndex}..${EndIndex}]
 
-    Write-Output $selectedRows
+    # Write-Output $selectedRows
     # return
     # $newCsv = @($headerLine, $selectedRows)
 
