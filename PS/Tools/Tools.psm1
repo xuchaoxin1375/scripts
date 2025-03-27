@@ -442,7 +442,7 @@ function Export-NewCSvFromRange
     if ($ExcludeEndRow)
     {
         $EndIndex = $EndRow - 1
-        $EndRow-=1
+        $EndRow -= 1
     }
     else
     {
@@ -465,7 +465,7 @@ function Export-NewCSvFromRange
     }
     # 由于表头和从0计数的关系,需要做偏移
     $StartIndex = $StartRow - 1
-    $EndIndex = $EndIndex -1
+    $EndIndex = $EndIndex - 1
     Write-Verbose "StartIndex: $StartIndex, EndIndex: $EndIndex"
     $selectedRows = $csv[${StartIndex}..${EndIndex}]
 
@@ -491,7 +491,141 @@ function Export-NewCSvFromRange
 
     Write-Output "新的CSV文件已保存到: $Output"
 }
+function Set-CloudflareCredentials
+{
+    <# 
+    .SYNOPSIS
+    设置cloudflare API的授权信息(临时地)
+    如果要长期有效或者简便起见,可以通过系统界面来设置环境变量
+    例如:
 
+    $env:CF_API_TOKEN = "your_api_token"
+    或者传统的
+    $env:CF_API_KEY = "your_api_key"
+    #>
+    param (
+        [string]$ApiToken,
+        [string]$ApiKey,
+        [string]$ApiEmail
+    )
+    
+    if ($ApiToken)
+    {
+        $env:CF_API_TOKEN = $ApiToken
+        Write-Output "Cloudflare API Token 已配置"
+    }
+    elseif ($ApiKey -and $ApiEmail)
+    {
+        $env:CF_API_KEY = $ApiKey
+        $env:CF_API_EMAIL = $ApiEmail
+        Write-Output "Cloudflare API Key 和 Email 已配置"
+    }
+    else
+    {
+        Write-Error "请提供 API Token 或 API Key + Email"
+    }
+}
+function Get-CloudflareZoneID
+{
+    <# 
+    # todo
+    #>
+    [CmdletBinding()]
+    param (
+        [string]$Domain, # 要查询的域名
+        [string]$Email = $env:CF_API_EMAIL, # Cloudflare 账户 Email
+        [string]$APIKey = $env:cf_api_key # Cloudflare 全局 API Key
+    )
+    Write-Verbose "Domain: $Domain" 
+    Write-Verbose "Email: $Email" 
+    Write-Verbose "APIKey: $APIKey" 
+    # 执行 flarectl 命令获取域名列表
+    $output = flarectl zone list 
+
+    # 查找对应的 Zone ID
+    $zoneID = $output | Select-String -Pattern "$Domain" 
+    # | ForEach-Object { ($_ -split '\s+')[0] }
+
+    Write-Verbose "ZoneID: $zoneID"
+
+    # 返回 Zone ID
+    if ($zoneID)
+    {
+        Write-Output $zoneID
+    }
+    else
+    {
+        Write-Output "Error: Zone ID for '$Domain' not found!"
+    }
+}
+
+function Set-CloudflareDNSZoneRecords
+{
+    <# 
+    .SYNOPSIS
+    利用cloudflare API设置域名的DNS记录
+    这里通过flarectl命令行工具来操作
+    .DESCRIPTION
+    你需要配置环境变量才能够以简洁的方式使用flarectl命令行工具
+    根据授权方式不同,有不同的配置api key/api token
+    例如使用传统的api key
+    配置两个环境变量:
+    CF_API_EMAIL
+    CF_API_KEY
+
+    .NOTES
+    如果没有安装flarectl工具,请到官网或者github对应项目下载(可执行文件只在个别release中提供,请耐心寻找)
+    cloudflare推荐使用新式地api token,而非旧式的api key,因此如果你要使用api key,可能更不容易找到入口
+    api key的形式是否被启用,请查看cloudflare的官方文档
+    如果没有被弃用,可以参考如下链接到你的cloudflare账号中找到设置入口
+    https://dash.cloudflare.com/profile/api-tokens    
+    注意,查看global api token的权限,可能会让你输入cloudflare的登录密码(如果你是使用google账号登录的,
+    那么可能需要退出登录,回到cloudflare登入页面,输入邮箱(google gmial),然后点击忘记密码,
+    这可以让你通过google邮箱来设定/重置你的密码,即便你从未设置过密码)
+    #>
+    [CmdletBinding()]
+    param (
+        # 
+        $Domains,
+        $Type = 'A' ,
+        [alias('IP', 'Content')]$Value = $env:DF_SERVER1
+        # $DefaultDNSRecord = $true,
+    )
+    if(Test-Path $Domains)
+    {
+        $Domains = Get-Content $Domains
+    }
+ 
+    $Domains | ForEach-Object {
+     
+        $domain = $_.ToLower()
+
+        Write-Verbose "尝试创建域名[$domain] (如果不存在的话)..."
+        flarectl zone create --zone "$domain" *> $null # 创建域名
+
+        Write-Verbose "Setting DNS record for domain: $domain" 
+        if ($type -eq "MX")
+        {
+            # 比较少用
+            $priority = $record
+            Write-Output "Adding MX record: $domain -> $value (Priority: $priority)"
+            flarectl dns create --zone "$domain" --name "$domain" --type "$type" --content "$value" --priority "$priority"
+        }
+        else
+        {
+            # 常用类型
+            # 一次性添加两条:一条*和$domain;记得启用代理选项保护ip
+            "*", "$domain" | ForEach-Object {
+                Write-Host "Adding DNS record: $domain|$_ -> $value ($type)"
+                flarectl dns create --zone "$domain" --name $_ --type "$type" --content "$value" --proxy
+            }
+            
+            Pause
+            # flarectl dns create --zone "$domain" --name "*" --type "$type" --content "$value"
+        }
+    }
+
+}
 
 function Export-NewCSVFile
 {

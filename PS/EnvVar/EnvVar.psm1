@@ -564,6 +564,10 @@ Number Scope Name Value
     {
 
         # $NewValue = Convert-Path $NewValue #足够简单,但是无法兼容和解决$NewValue路径尚不存在的情况
+        # 校准当前路径
+        [System.IO.Directory]::SetCurrentDirectory((Get-Location))
+        # 兼容绝对路径和相对路径地解析给定路径值(绝对路径也可以正确解析);
+        # 如果要其他方法,需要判断是否为相对路径,然后再进行拼接{Join-Path -Path (Get-Location) -ChildPath ".\myfolder\mysubfolder"}
         $NewValueFullPath = [system.io.path]::GetFullPath($NewValue) #调用.net方法获取绝对路径
         Write-Verbose "[$NewValue] resolved to [$NewValueFullPath] "
         $NewValue = $NewValueFullPath
