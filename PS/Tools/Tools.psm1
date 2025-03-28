@@ -532,21 +532,29 @@ function Get-CloudflareZoneID
     #>
     [CmdletBinding()]
     param (
-        [string]$Domain, # 要查询的域名
+        [alias("Zone")][string]$Domain, # 要查询的域名
         [string]$Email = $env:CF_API_EMAIL, # Cloudflare 账户 Email
         [string]$APIKey = $env:cf_api_key # Cloudflare 全局 API Key
     )
+    $env:CF_API_EMAIL = $env:CF_API_EMAIL
+    $env:cf_api_key = $env:cf_api_key
     Write-Verbose "Domain: $Domain" 
     Write-Verbose "Email: $Email" 
     Write-Verbose "APIKey: $APIKey" 
     # 执行 flarectl 命令获取域名列表
     $output = flarectl zone list 
-
+    $output = $output | Out-String
+    $zoneRecords = $output -Split "`r?`n" | Where-Object { $_.Trim() }
+    Write-Verbose "$output"
     # 查找对应的 Zone ID
-    $zoneID = $output | Select-String -Pattern "$Domain" 
+    $zoneRecord = $zoneRecords | Where-Object { $_ -match $Domain }
+    # Write-Host $zoneRecord
+    Write-Verbose "[$zoneRecord]"
+
+    $zoneID = $zoneRecord -replace '^\s*(\w+).*', '$1'
     # | ForEach-Object { ($_ -split '\s+')[0] }
 
-    Write-Verbose "ZoneID: $zoneID"
+    # Write-Verbose "ZoneID: $zoneID"
 
     # 返回 Zone ID
     if ($zoneID)
