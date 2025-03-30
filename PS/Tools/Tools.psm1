@@ -92,8 +92,20 @@ function Get-CsvPreview
         $FirstLineNumbers = 3,
         $propertyNames = @("SKU", "Name")
     )
-    $csv | Select-Object -Property $propertyNames | Select-Object -First $FirstLineNumbers | Format-Table ; 
-    Write-Host "....";
+    $res = $csv | Select-Object -Property $propertyNames | Select-Object -First $FirstLineNumbers | Format-Table ; 
+
+    # Write-Host "....";
+    if($csv.count -gt $FirstLineNumbers)
+    {
+        Write-Output $res
+        $last = $csv | Select-Object -Property $propertyNames | Select-Object -Last 1 | Format-Table -HideTableHeaders
+        Write-Host "...." 
+        Write-Output $last
+    }
+    else
+    {
+        Write-Output $res
+    }
     Write-Host "Totol lines:$($csv.count)"
 }
 function Get-CsvTailRows
@@ -375,122 +387,6 @@ function Get-CsvTailRowsGUI
     [void]$form.ShowDialog()
 }
 
-function Export-NewCSvFromRange
-{
-    <# 
-    .SYNOPSIS
-    从csv文件中截取中间片段(第m行到第n行),将选中的区间保存为新文件
-
-    .DESCRIPTION
-    该函数允许用户从指定的CSV文件中截取一段数据（从第m行到第n行），并将截取的数据保存为一个新的CSV文件。
-    默认情况下，截取操作是左闭右开的（即包含起始行，但不包含结束行）。可以通过-IncludeEnd参数来改变为闭区间（即包含起始行和结束行）。
-
-    .PARAMETER Path
-    指定要处理的CSV文件的路径。
-
-    .PARAMETER StartRow
-    指定截取的起始行号（从0开始计数）。
-
-    .PARAMETER EndRow
-    指定截取的结束行号（从0开始计数）。
-
-    .PARAMETER IncludeEnd
-    如果指定此参数，截取操作将包含结束行（闭区间）。默认情况下，不包含结束行（左闭右开）。
-
-    .PARAMETER CsvDirectory
-    指定CSV文件所在的目录。如果未指定，则使用当前目录。
-
-    .PARAMETER OutputDirectory
-    指定新CSV文件的输出目录。如果未指定，则使用当前目录。
-
-    .EXAMPLE
-    Export-NewCSvFromRange -Path "data.csv" -StartRow 10 -EndRow 20
-    从"data.csv"文件中截取第10行到第19行（不包括第20行），并将结果保存为新的CSV文件。
-
-    .EXAMPLE
-    Export-NewCSvFromRange -Path "data.csv" -StartRow 10 -EndRow 20 -IncludeEnd
-    从"data.csv"文件中截取第10行到第20行（包括第20行），并将结果保存为新的CSV文件。
-
-    .NOTES
-    作者: Your Name
-    创建日期: 2023-10-01
-    #>
-    param (
-        [Parameter(Mandatory = $true)]
-        [string]$Path,
-        
-        [Parameter(Mandatory = $true, ParameterSetName = 'Range')]
-        [int]$StartRow,
-        
-        [Parameter(Mandatory = $true, ParameterSetName = 'Range')]
-        [int]$EndRow,
-        
-        [switch]$ExcludeEndRow,
-        
-        # [string]$CsvDirectory,
-        
-        [string]$Output = ""
-    )
-
-    $fileBaseName = Split-Path $Path -LeafBase
-    $OutputDirectory = Split-Path $Path
-
-    # 导入CSV文件
-    $csv = Import-Csv $Path
-
-    # 确定结束行的索引
-    if ($ExcludeEndRow)
-    {
-        $EndIndex = $EndRow - 1
-        $EndRow -= 1
-    }
-    else
-    {
-        $EndIndex = $EndRow
-    }
-
-    # 截取指定范围的行
-    
-    # 读取表头行 (Header)：直接从文件中获取第一行文本
-    try
-    {
-
-        $headerLine = Get-Content -Path $Path -Encoding UTF8 -TotalCount 1
-
-    }
-    catch
-    {
-        Write-Error "读取表头失败: $_"
-        return
-    }
-    # 由于表头和从0计数的关系,需要做偏移
-    $StartIndex = $StartRow - 1
-    $EndIndex = $EndIndex - 1
-    Write-Verbose "StartIndex: $StartIndex, EndIndex: $EndIndex"
-    $selectedRows = $csv[${StartIndex}..${EndIndex}]
-
-    # Write-Output $selectedRows
-    # return
-    # $newCsv = @($headerLine, $selectedRows)
-
-    # 如果用户没有指定输出文件路径,那么生成默认输出文件路径
-    if(!$Output)
-    {
-        Write-Verbose "The output file path is not specified, use the default path."
-        $Output = Join-Path -Path $OutputDirectory -ChildPath "${fileBaseName}_${StartRow}-${EndRow}.csv"
-    }
-
-    # 将截取的数据导出为新的CSV文件
-    # Remove-Item $Output -ErrorAction SilentlyContinue -Verbose
-    Write-Host "header:`n[$headerLine]" -ForegroundColor Cyan
-    # $headerLine | Export-Csv -Path $Output  -NoTypeInformation -Encoding utf8 -Force
-    Set-Content -Path $Output -Value $headerLine -Encoding UTF8 -Force
-    $selectedRows | Export-Csv -Path $Output -Append -Force -NoTypeInformation -Encoding utf8 
-
-    Get-CsvPreview $selectedRows
-
-    Write-Output "新的CSV文件已保存到: $Output"
-}
 function Set-CloudflareCredentials
 {
     <# 
@@ -590,27 +486,53 @@ function Set-CloudflareDNSZoneRecords
     注意,查看global api token的权限,可能会让你输入cloudflare的登录密码(如果你是使用google账号登录的,
     那么可能需要退出登录,回到cloudflare登入页面,输入邮箱(google gmial),然后点击忘记密码,
     这可以让你通过google邮箱来设定/重置你的密码,即便你从未设置过密码)
+
+    默认清空下,函数添加三条A类记录
     #>
     [CmdletBinding()]
     param (
         # 
         $Domains,
+        [switch]$DomainFromDFTable,
         $Type = 'A' ,
-        [alias('IP', 'Content')]$Value = $env:DF_SERVER1
+        [alias('IP', 'Content')]
+        $Value = $env:DF_SERVER1
+        ,
         # $DefaultDNSRecord = $true,
+        $RecordNames = @("www", "*"),
+        [switch]$No2LDDomain,
+        # 考虑到安全性,分为两个步骤(添加域名,然后你更该域名供应商管理面板更新dns,最后回到cloudflare进行域名的dns记录(ip解析)添加)
+        # 第一遍运行不带下面参数的命令;第二遍运行带$AddRecordAtOnce参数的命令
+
+        # 添加完域名后,是否立即添加对应的DNS记录(默认不添加)
+        [switch]$AddRecordAtOnce,
+        # 仅添加域名的DNS记录,不检查域名是否被添加(如果域名尚未被添加到cloudflare,那么添加dns记录就会失败跳过)
+        [switch]$AddRecordOnly
     )
     if(Test-Path $Domains)
     {
-        $Domains = Get-Content $Domains
+        if($DomainFromDFTable)
+        {
+            $res = Get-DomainUserDictFromTable -Table $Domains
+            $Domains = $res | ForEach-Object { $_.Domain }
+        }
+        else
+        {
+
+            $Domains = Get-Content $Domains
+        }
     }
  
     $Domains | ForEach-Object {
      
         $domain = $_.ToLower()
+        if(!$AddRecordOnly)
+        {
 
-        Write-Verbose "尝试创建域名[$domain] (如果不存在的话)..."
-        flarectl zone create --zone "$domain" *> $null # 创建域名
-
+            Write-Verbose "尝试创建域名[$domain] (如果不存在的话)..."
+            flarectl zone create --zone "$domain" *> $null # 创建域名
+        }
+        
         Write-Verbose "Setting DNS record for domain: $domain" 
         if ($type -eq "MX")
         {
@@ -621,15 +543,24 @@ function Set-CloudflareDNSZoneRecords
         }
         else
         {
-            # 常用类型
-            # 一次性添加两条:一条*和$domain;记得启用代理选项保护ip
-            "*", "$domain" | ForEach-Object {
-                Write-Host "Adding DNS record: $domain|$_ -> $value ($type)"
-                flarectl dns create --zone "$domain" --name $_ --type "$type" --content "$value" --proxy
+            if($AddRecordAtOnce -or $AddRecordOnly)
+            {
+
+                # 常用类型
+                # 一次性添加两条:一条*和$domain;记得启用代理选项保护ip
+                if(!$No2LDDomain)
+                {
+                    $RecordNames += $domain
+                }
+                
+                $RecordNames | ForEach-Object {
+                    Write-Host "Adding DNS record: $domain|$_ -> $value ($type)"
+                    flarectl dns create --zone "$domain" --name $_ --type "$type" --content "$value" --proxy
+                }
+                
+                # Pause
+                # flarectl dns create --zone "$domain" --name "*" --type "$type" --content "$value"
             }
-            
-            Pause
-            # flarectl dns create --zone "$domain" --name "*" --type "$type" --content "$value"
         }
     }
 
@@ -845,6 +776,277 @@ SK0053924-U
     Pause 
 }
 
+# function Export-NewCSvFromRange
+# {
+#     <# 
+#     .SYNOPSIS
+#     从csv文件中截取中间片段(第m行到第n行),将选中的区间保存为新文件
+
+#     .DESCRIPTION
+#     该函数允许用户从指定的CSV文件中截取一段数据（从第m行到第n行），并将截取的数据保存为一个新的CSV文件。
+#     默认情况下，截取操作是左闭右开的（即包含起始行，但不包含结束行）。可以通过-IncludeEnd参数来改变为闭区间（即包含起始行和结束行）。
+
+#     .PARAMETER Path
+#     指定要处理的CSV文件的路径。
+
+#     .PARAMETER StartRow
+#     指定截取的起始行号（从0开始计数）。
+
+#     .PARAMETER EndRow
+#     指定截取的结束行号（从0开始计数）。
+
+#     .PARAMETER IncludeEnd
+#     如果指定此参数，截取操作将包含结束行（闭区间）。默认情况下，不包含结束行（左闭右开）。
+
+#     .PARAMETER CsvDirectory
+#     指定CSV文件所在的目录。如果未指定，则使用当前目录。
+
+#     .PARAMETER OutputDirectory
+#     指定新CSV文件的输出目录。如果未指定，则使用当前目录。
+
+#     .EXAMPLE
+#     Export-NewCSvFromRange -Path "data.csv" -StartRow 10 -EndRow 20
+#     从"data.csv"文件中截取第10行到第19行（不包括第20行），并将结果保存为新的CSV文件。
+
+#     .EXAMPLE
+#     Export-NewCSvFromRange -Path "data.csv" -StartRow 10 -EndRow 20 -IncludeEnd
+#     从"data.csv"文件中截取第10行到第20行（包括第20行），并将结果保存为新的CSV文件。
+
+#     .NOTES
+#     作者: Your Name
+#     创建日期: 2023-10-01
+#     #>
+#     param (
+#         [Parameter(Mandatory = $true)]
+#         [string]$Path,
+        
+#         [Parameter(Mandatory = $true, ParameterSetName = 'Range')]
+#         [int]$StartRow,
+        
+#         [Parameter(Mandatory = $true, ParameterSetName = 'Range')]
+#         [int]$EndRow,
+        
+#         [switch]$ExcludeEndRow,
+        
+#         # [string]$CsvDirectory,
+        
+#         [string]$Output = ""
+#     )
+
+#     $fileBaseName = Split-Path $Path -LeafBase
+#     $OutputDirectory = Split-Path $Path
+
+#     # 导入CSV文件
+#     $csv = Import-Csv $Path
+
+#     # 确定结束行的索引
+#     if ($ExcludeEndRow)
+#     {
+#         $EndIndex = $EndRow - 1
+#         $EndRow -= 1
+#     }
+#     else
+#     {
+#         $EndIndex = $EndRow
+#     }
+
+#     # 截取指定范围的行
+    
+#     # 读取表头行 (Header)：直接从文件中获取第一行文本
+#     try
+#     {
+
+#         $headerLine = Get-Content -Path $Path -Encoding UTF8 -TotalCount 1
+
+#     }
+#     catch
+#     {
+#         Write-Error "读取表头失败: $_"
+#         return
+#     }
+#     # 由于表头和从0计数的关系,需要做偏移
+#     $StartIndex = $StartRow - 1
+#     $EndIndex = $EndIndex - 1
+#     Write-Verbose "StartIndex: $StartIndex, EndIndex: $EndIndex"
+#     $selectedRows = $csv[${StartIndex}..${EndIndex}]
+
+#     # Write-Output $selectedRows
+#     # return
+#     # $newCsv = @($headerLine, $selectedRows)
+
+#     # 如果用户没有指定输出文件路径,那么生成默认输出文件路径
+#     if(!$Output)
+#     {
+#         Write-Verbose "The output file path is not specified, use the default path."
+#         $Output = Join-Path -Path $OutputDirectory -ChildPath "${fileBaseName}_${StartRow}-${EndRow}.csv"
+#     }
+
+#     # 将截取的数据导出为新的CSV文件
+#     # Remove-Item $Output -ErrorAction SilentlyContinue -Verbose
+#     Write-Host "header:`n[$headerLine]" -ForegroundColor Cyan
+#     # $headerLine | Export-Csv -Path $Output  -NoTypeInformation -Encoding utf8 -Force
+#     Set-Content -Path $Output -Value $headerLine -Encoding UTF8 -Force
+#     $selectedRows | Export-Csv -Path $Output -Append -Force -NoTypeInformation -Encoding utf8 
+
+#     Get-CsvPreview $selectedRows
+
+#     Write-Output "新的CSV文件已保存到: $Output"
+# }
+function Export-NewCSvFromRange
+{
+    <#
+    .SYNOPSIS
+    从CSV文件中截取中间片段(第m行到第n行),将选中的区间保存为新文件。
+
+    .DESCRIPTION
+    该函数允许用户从指定的CSV文件中截取一段数据（从第m行到第n行），并将截取的数据保存为一个新的CSV文件。
+    默认情况下，截取操作是左闭右开的（即包含起始行，但不包含结束行）。可以通过-IncludeEnd参数来改变为闭区间（即包含起始行和结束行）。
+    如果仅提供 StartRow 参数，则返回从 StartRow 到文件末尾的所有行。
+
+    .PARAMETER Path
+    指定要处理的CSV文件的路径。
+
+    .PARAMETER StartRow
+    指定截取的起始行号（从0开始计数）。
+
+    .PARAMETER EndRow
+    指定截取的结束行号（从0开始计数）。如果未提供，则默认截取到文件末尾。
+
+    .PARAMETER IncludeEnd
+    如果指定此参数，截取操作将包含结束行（闭区间）。默认情况下，不包含结束行（左闭右开）。
+
+    .PARAMETER Output
+    指定新CSV文件的输出路径。如果未指定，则使用默认路径。
+
+    .EXAMPLE
+    Export-NewCSvFromRange -Path "data.csv" -StartRow 10 -EndRow 20
+    从"data.csv"文件中截取第10行到第19行（不包括第20行），并将结果保存为新的CSV文件。
+
+    .EXAMPLE
+    Export-NewCSvFromRange -Path "data.csv" -StartRow 10 -EndRow 20 -IncludeEnd
+    从"data.csv"文件中截取第10行到第20行（包括第20行），并将结果保存为新的CSV文件。
+
+    .EXAMPLE
+    Export-NewCSvFromRange -Path "data.csv" -StartRow 10
+    从"data.csv"文件中截取第10行到文件末尾，并将结果保存为新的CSV文件。
+
+
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+
+        [Parameter(Mandatory = $true)]
+        [int]$StartRow,
+
+        [Parameter(Mandatory = $false)]
+        [int]$EndRow = "",
+
+
+
+        [string]$Output = ""
+    )
+
+    # 检查输入文件是否存在
+    if (-not (Test-Path -Path $Path))
+    {
+        Write-Error "文件不存在: $Path"
+        return
+    }
+
+    # 导入CSV文件
+    try
+    {
+        $csv = Import-Csv -Path $Path
+    }
+    catch
+    {
+        Write-Error "无法导入CSV文件: $_"
+        return
+    }
+
+    # 获取总行数(不包括表头行)
+    $totalRows = $csv.Count
+
+    # 验证 StartRow 是否合法
+    if ($StartRow -lt 1 -or $StartRow -gt $totalRows)
+    {
+        Write-Error "StartRow 超出范围。文件[$Path]行数限制:有效范围为 1 到 $($totalRows)"
+        return
+    }
+
+    # 如果未提供 EndRow，则设置为最后一行
+    # if (-not $PSBoundParameters.ContainsKey('EndRow'))
+    if(!$Endrow)
+    {
+        $EndRow = $totalRows
+    }
+    else
+    {
+        # 验证 EndRow 是否合法
+        if ($EndRow -lt $StartRow -or $EndRow -gt $totalRows)
+        {
+            Write-Error "EndRow 超出范围或小于 StartRow。有效范围为 $StartRow 到 $($totalRows)"
+            return
+        }
+    }
+    # 计算实际索引范围
+    $StartIndex = $StartRow - 1
+    $EndIndex = $EndRow - 1
+
+    # $EndIndex = [math]::Min($EndIndex, $totalRows - 1)
+
+    # 截取指定范围的行
+    $selectedRows = $csv[$StartIndex..$EndIndex]
+
+    # 获取表头
+    try
+    {
+        $headerLine = Get-Content -Path $Path -Encoding UTF8 -TotalCount 1
+        Write-Verbose $headerLine
+    }
+    catch
+    {
+        Write-Error "读取表头失败: $_"
+        return
+    }
+
+    # 如果未指定输出文件路径，生成默认路径
+    if (-not $Output)
+    {
+        Write-Verbose "未指定输出文件路径，使用默认路径。"
+        
+        $fileBaseName = [System.IO.Path]::GetFileNameWithoutExtension($Path)
+        $outputDirectory = Split-Path -Path $Path
+        Write-Verbose "OutputDirectory: $outputDirectory"
+
+        $Output = Join-Path -Path $outputDirectory -ChildPath "${fileBaseName}_${StartRow}-${EndRow}.csv"
+        $fullPath = [System.IO.Path]::GetFullPath( $Output)
+        Write-Verbose "Output: [$fullPath]"
+    }
+
+    # 写入新文件
+    try
+    {
+        # 写入表头
+        Set-Content -Path $Output -Value $headerLine -Encoding UTF8 -Force
+        # Pause
+        # 写入选定的行
+        if ($selectedRows.Count -gt 0)
+        {
+            $selectedRows | Export-Csv -Path $Output -Append -Force -NoTypeInformation -Encoding UTF8
+        }
+    }
+    catch
+    {
+        Write-Error "写入文件失败: $_"
+        return
+    }
+    Get-CsvPreview $selectedRows
+
+    Write-Output "新的CSV文件已保存到: [$fullPath]"
+}
 
 function Get-CsvRowsByPercentage
 {
@@ -1234,11 +1436,11 @@ CHANGE `slug` `slug` VARCHAR(8000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode
     Import-MysqlFile -Server $server -SqlFilePath $sqlPath -MySqlUser $MySqlUser -key $key -DatabaseName $DatabaseName 
 
 }
-function Get-DictViewInArray
+function Get-DictView
 {
     <# 
     .SYNOPSIS
-    查看字典数组中每个字典的取值
+    以友好的方式查看字典的取值或字典数组中每个字典的取值
     .EXAMPLE
     $array = @(
         @{ Name = "Alice"; Age = 25; City = "New York" },
@@ -1246,26 +1448,27 @@ function Get-DictViewInArray
         @{ Name = "Charlie"; Age = 35; City = "Chicago" }
     )
 
-    Get-DictViewInArray -DictsArray $array
+    Get-DictView -Dicts $array
 
     #>
     param (
-        $DictsArray
+        [alias("Dict")]$Dicts
     )
-    Write-Host $DictsArray
-    # $DictsArray.Gettype()
-    # $DictsArray.Count
-    # $DictsArray | Get-TypeCxxu
-
-    foreach ($dict in $DictsArray)
+    Write-Host $Dicts
+    # $Dicts.Gettype()
+    # $Dicts.Count
+    # $Dicts | Get-TypeCxxu
+    $i = 1
+    foreach ($dict in @($Dicts))
     {
-        Write-Output "----- Dictionary -----"
+        Write-Host "----- Dictionary$($i++) -----"
         # Write-Output $dict
         # 遍历哈希表的键值对
         foreach ($key in $dict.Keys)
         {
-            Write-Output "$key : $($dict[$key])"
+            Write-Host "$key : $($dict[$key])"
         }
+        Write-Host "----- End of Dictionary$($i-1) -----`n"
     }
 }
 function Get-DomainUserDictFromTable
@@ -1319,7 +1522,13 @@ www.d2.com    李
     # 谨慎使用write-output和孤立表达式,他们会在函数结束时加入返回值一起返回,导致不符合预期的情况
     #检查siteOwnersDict
     Write-Verbose "SiteOwnersDict:"
-    Write-Verbose $SiteOwnersDict
+    # $dictParis = $SiteOwnersDict.GetEnumerator()
+    # Write-Verbose 
+    if($VerbosePreference)
+    {
+
+        Get-DictView -Dicts $SiteOwnersDict
+    }
     #write-verbose $SiteOwnersDict.GetEnumerator()
 
     if(!$SiteOwnersDict)
@@ -1428,7 +1637,7 @@ www.d2.com    李
     }
     Write-Verbose "$($result.Count) dicts was generated."
     
-    # Get-DictViewInArray $result
+    # Get-DictView $result
 
     return $result
 }
@@ -1689,7 +1898,7 @@ function Start-BatchSitesBuild
 
         $dicts = Get-DomainUserDictFromTable -Table $Table -Structure $Structure -SiteOwnersDict $SiteOwnersDict -TableMode $TableMode
         # Write-Debug "dicts: $dicts"
-        Get-DictViewInArray @($dicts)
+        Get-DictView @($dicts)
 
         # 在Table输入模式下,你需要在生成sql文件之前,移除旧sql文件(如果有的话)
         # 生成的sql文件名带有日期(可能包含多个用户的新建数据库的语句)
