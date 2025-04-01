@@ -463,12 +463,16 @@ function Get-CloudflareZoneID
     }
 }
 
-function Set-CloudflareDNSZoneRecords
+function Add-CloudflareZoneDNSRecords
 {
     <# 
     .SYNOPSIS
     利用cloudflare API设置域名的DNS记录
     这里通过flarectl命令行工具来操作
+    
+    默认情况下(不使用额外参数),此命令会尝试从读取到的域名列表添加cloudflare账户中,但是dns不会默认立即添加,除非使用-AddRecordAtOnce参数
+    此外,如果你的cloudflare验证了你的账号对dns的所有权,那么你可以利用此函数的-AddRecordOnly参数,添加dns记录到对应的域名解析记录
+
     .DESCRIPTION
     你需要配置环境变量才能够以简洁的方式使用flarectl命令行工具
     根据授权方式不同,有不同的配置api key/api token
@@ -493,7 +497,8 @@ function Set-CloudflareDNSZoneRecords
     param (
         # 
         $Domains,
-        [switch]$DomainFromDFTable,
+        # 使用私人模式DF
+        [switch]$DF,
         $Type = 'A' ,
         [alias('IP', 'Content')]
         $Value = $env:DF_SERVER1
@@ -511,7 +516,8 @@ function Set-CloudflareDNSZoneRecords
     )
     if(Test-Path $Domains)
     {
-        if($DomainFromDFTable)
+        Write-Host "Mode:$DF"
+        if($DF)
         {
             $res = Get-DomainUserDictFromTable -Table $Domains
             $Domains = $res | ForEach-Object { $_.Domain }
@@ -522,7 +528,8 @@ function Set-CloudflareDNSZoneRecords
             $Domains = Get-Content $Domains
         }
     }
- 
+    Write-Host "Domains: $Domains"
+    Pause
     $Domains | ForEach-Object {
      
         $domain = $_.ToLower()
@@ -550,10 +557,11 @@ function Set-CloudflareDNSZoneRecords
                 # 一次性添加两条:一条*和$domain;记得启用代理选项保护ip
                 if(!$No2LDDomain)
                 {
-                    $RecordNames += $domain
+                    $RecordNamesForIt = $RecordNames.clone()
+                    $RecordNamesForIt += $domain
                 }
                 
-                $RecordNames | ForEach-Object {
+                $RecordNamesForIt | ForEach-Object {
                     Write-Host "Adding DNS record: $domain|$_ -> $value ($type)"
                     flarectl dns create --zone "$domain" --name $_ --type "$type" --content "$value" --proxy
                 }
@@ -709,28 +717,12 @@ function Export-NewCSVFilesFromSKU
 
     .Example
 
-    #⚡️[Administrator@CXXUDESK][C:\repos\LocoySpider\数据处理\csv上传中断处理][21:37:47][UP:2.99Days]
-    PS> .\Get-NewCsvFiles.ps1 -Prefix ""
-
-    正在处理文件: C:\Users\Administrator\Downloads\pro_csv\outinfo\p3.csv
-    VERBOSE: 分割行号为:9823
-    VERBOSE: StartRow:9823
-    处理完成，结果已保存到: C:\Users\Administrator\Downloads\pro_csv\outinfo\p3_SK0029823-U+.csv
-    C:\Users\Administrator\Downloads\pro_csv\outinfo
-
-    SKU         Name
-    ---         ----
-    SK0029823-U Paquet de tissus viscose 382
-    SK0029824-U Paquet de tissus viscose 381
-    SK0029825-U Paquet de tissus viscose 383
-
-    ....
-    Totol data lines:177
     #>
     <# 
 
 
     #>
+    [cmdletbinding()]
     param(
         # $StoppedSku_list = @( "" ) ,
         #支持配置多个批处理,比如:"SK0049823-U, SK0019823-U, SK0029823-U"
@@ -2104,6 +2096,11 @@ function Import-MysqlFile
         # return 
 
         # $DBExists = Invoke-Expression $CheckDBCmd
+        if(!$DatabaseName -and $SqlFilePath)
+        {
+            Write-Warning "You did not specify the database name! sql file path Leafbase name will be the default database name!"
+            $DatabaseName = Split-Path $SqlFilePath -LeafBase
+        }
         # 如果用户指定了数据库名称,则检查该数据库是否已经存在,并给出测试结果;否则认为要导入的sql不需要事先指定数据库名字
         if($DatabaseName)
         {
