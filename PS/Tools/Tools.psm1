@@ -462,7 +462,20 @@ function Get-CloudflareZoneID
         Write-Output "Error: Zone ID for '$Domain' not found!"
     }
 }
-
+function Get-CloudflareDnsInfoOfZone
+{
+    [CmdletBinding()]
+    param(
+        [parameter(ValueFromPipeline = $true)]
+        $Domain
+    )
+    process
+    {
+        Write-Verbose "processing domain: $Domain"
+        $item = flarectl.exe dns list --zone $Domain
+        return $item + "`n"
+    }
+}
 function Add-CloudflareZoneDNSRecords
 {
     <# 
@@ -924,18 +937,18 @@ function Export-NewCSvFromRange
 
 
     #>
-    [CmdletBinding()]
+    [CmdletBinding(DefaultParameterSetName = 'Range')]
     param (
         [Parameter(Mandatory = $true)]
         [string]$Path,
 
-        [Parameter(Mandatory = $true)]
+        [Parameter(parameterSetName = 'StartToEnd')]
         [int]$StartRow,
 
-        [Parameter(Mandatory = $false)]
+        [Parameter(parameterSetName = 'StartToEnd')]
         [int]$EndRow = "",
-
-
+        [parameter(ParameterSetName = 'Range')]
+        $Range,
 
         [string]$Output = ""
     )
@@ -960,6 +973,18 @@ function Export-NewCSvFromRange
 
     # 获取总行数(不包括表头行)
     $totalRows = $csv.Count
+    
+    $range = @($Range)
+    if($range.Count -eq 2)
+    {
+        $StartRow = $range[0]
+        $EndRow = $range[1]
+    }
+    elseif($range.Count -eq 1)
+    {
+        $StartRow = $range[0]
+    }
+
 
     # 验证 StartRow 是否合法
     if ($StartRow -lt 1 -or $StartRow -gt $totalRows)
@@ -2236,14 +2261,30 @@ function Get-CRLFChecker
 }
 function Start-GoogleIndexSearch
 {
+    <# 
+    .SYNOPSIS
+    使用谷歌搜索引擎搜索指定域名的相关网页的收录情况
+    
+    需要手动点开tool,查看收录数量
+    如果没有被google收录,则查询结果为空
+    
+    .DESCRIPTION
+    #>
     param (
-        $Domains
+        $Domains,
+        # 等待时间毫秒
+        $RandomRange = @(1000, 3000)
     )
     $domains = Get-LineDataFromMultilineString -Data $Domains 
     foreach ($domain in $domains)
     {
+        
         $cmd = "https://www.google.com/search?q=site:$domain"
         Write-Host $cmd
+        $randInterval = [System.Random]::new().Next($RandomRange[0], $RandomRange[1])
+        Write-Verbose "Waiting $randInterval ms..."
+        Start-Sleep -Milliseconds $randInterval
+
         Start-Process $cmd
     
     }

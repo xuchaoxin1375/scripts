@@ -1391,7 +1391,7 @@ function Push-ReposesConfiged
     Update-PwshEnvIfNotYet -Mode Vars
 
     #如果是主PC,则执行云端同步操作(push)
-    Write-Host 'try to update the configs and blogs...' -BackgroundColor Yellow
+    Write-Host 'try to push the reposes...' -BackgroundColor Yellow
     # 获取repos目录下所有子目录路径
     # $repoDirs = Get-ChildItem -Path $repos -Directory
     
