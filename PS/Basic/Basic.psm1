@@ -1380,9 +1380,9 @@ function Push-ReposesConfiged
     本函数一般不会直接调用,而是配合其他函数调用
     #>
     param(
-        $repoDirs = $CommonRepos
-        # $CxxuRepos = $CxxuRepos,
-        # $CxxuComputers = $CxxuComputers
+        $repoDirs = $CommonRepos,
+        $CxxuRepos = $CxxuRepos,
+        $CxxuComputers = $CxxuComputers
     )
     #记录当前路径
     Push-Location
@@ -1394,7 +1394,10 @@ function Push-ReposesConfiged
     Write-Host 'try to push the reposes...' -BackgroundColor Yellow
     # 获取repos目录下所有子目录路径
     # $repoDirs = Get-ChildItem -Path $repos -Directory
-    
+    if(Test-CxxuComputer){
+        $repoDirs += $CxxuRepos
+    }
+
     # $repoDirs #指定配置需要同步的仓库目录
   
     # git 不支持多线程并行,所以只能够串行(用不上-parallel参数)
@@ -1473,6 +1476,18 @@ function Set-DoubleOwnerOfRepos
     }
     
 }
+function Test-CxxuComputer
+{
+    <# 
+    .SYNOPSIS
+    测试当前机器是否为Cxxu所属或使用的设备
+    #>
+    param (
+    )
+    return $env:COMPUTERNAME -in @($CxxuComputers)
+
+    
+}
 function Update-ReposesConfiged
 {
     <# 
@@ -1503,7 +1518,7 @@ function Update-ReposesConfiged
     # $repoDirs = Get-ChildItem -Path $repos -Directory
     
     $repoDirs = $CommonRepos
-    if($env:COMPUTERNAME -in @($CxxuComputers))
+    if(Test-CxxuComputer)
     {
         $repoDirs += $CxxuRepos
     }
