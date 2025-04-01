@@ -1380,20 +1380,27 @@ function Push-ReposesConfiged
     本函数一般不会直接调用,而是配合其他函数调用
     #>
     param(
-        $repoDirs = $CommonReposes
+        $repoDirs = $CommonRepos,
+        $CxxuRepos = $CxxuRepos,
+        $CxxuComputers = $CxxuComputers
     )
     #记录当前路径
     Push-Location
 
+    # 将相关配置变量导入到当前shell中
     Update-PwshEnvIfNotYet -Mode Vars
+    
     #如果是主PC,则执行云端同步操作(push)
     Write-Host 'try to update the configs and blogs...' -BackgroundColor Yellow
     # 获取repos目录下所有子目录路径
     # $repoDirs = Get-ChildItem -Path $repos -Directory
     
     # $repoDirs #指定配置需要同步的仓库目录
-    $repoDirs = $CommonReposes
-
+    $repoDirs = $CommonRepos
+    if($env:COMPUTERNAME -in $CxxuComputers)
+    {
+        $repoDirs += $CxxuRepos
+    }
     # git 不支持多线程并行,所以只能够串行(用不上-parallel参数)
     foreach ($repoDir in $repoDirs)
     {
@@ -1404,6 +1411,7 @@ function Push-ReposesConfiged
         # 执行任务
         if (Test-Path -Path '.git')
         {
+            # 每次对单个仓库执行更新操作
             gitUpdateReposSimply
         }
         Write-SeparatorLine
@@ -1488,7 +1496,7 @@ function Update-ReposesConfiged
 
     # 导入环境变量(当前么有导入过),以便本函数确定默认值,即哪些仓库需要同步
     Update-PwshEnvIfNotYet -Mode Vars
-    $repoDirs = ($reposDirs) ? $repoDirs : $CommonReposes
+    $repoDirs = ($reposDirs) ? $repoDirs : $CommonRepos
     
     Write-Verbose "$repoDirs will be try to update." -Verbose
     # 获取repos目录下所有子目录路径
