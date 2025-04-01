@@ -1380,27 +1380,23 @@ function Push-ReposesConfiged
     本函数一般不会直接调用,而是配合其他函数调用
     #>
     param(
-        $repoDirs = $CommonRepos,
-        $CxxuRepos = $CxxuRepos,
-        $CxxuComputers = $CxxuComputers
+        $repoDirs = $CommonRepos
+        # $CxxuRepos = $CxxuRepos,
+        # $CxxuComputers = $CxxuComputers
     )
     #记录当前路径
     Push-Location
 
     # 将相关配置变量导入到当前shell中
     Update-PwshEnvIfNotYet -Mode Vars
-    
+
     #如果是主PC,则执行云端同步操作(push)
     Write-Host 'try to update the configs and blogs...' -BackgroundColor Yellow
     # 获取repos目录下所有子目录路径
     # $repoDirs = Get-ChildItem -Path $repos -Directory
     
     # $repoDirs #指定配置需要同步的仓库目录
-    $repoDirs = $CommonRepos
-    if($env:COMPUTERNAME -in $CxxuComputers)
-    {
-        $repoDirs += $CxxuRepos
-    }
+  
     # git 不支持多线程并行,所以只能够串行(用不上-parallel参数)
     foreach ($repoDir in $repoDirs)
     {
@@ -1488,7 +1484,11 @@ function Update-ReposesConfiged
     #>
     [CmdletBinding()]
     param(
-        $repoDirs = '',
+        # $repoDirs = '',
+        $repoDirs = $CommonRepos,
+        $CxxuRepos = $CxxuRepos,
+        # 默认读取GlobalConfig中的配置,也可以通过命令行覆盖这个列表(传入$env:ComputerName就可以临时地获取拉取CxxuRepos仓库的权限)
+        $CxxuComputers = $CxxuComputers,
         [switch]$Force
     )
     #记录当前路径
@@ -1502,6 +1502,11 @@ function Update-ReposesConfiged
     # 获取repos目录下所有子目录路径
     # $repoDirs = Get-ChildItem -Path $repos -Directory
     
+    $repoDirs = $CommonRepos
+    if($env:COMPUTERNAME -in @($CxxuComputers))
+    {
+        $repoDirs += $CxxuRepos
+    }
 
     foreach ($repoDir in $repoDirs)
     {
