@@ -1395,7 +1395,8 @@ function Push-ReposesConfiged
     if(!$repoDirs)
     {
         $repoDirs = $CommonRepos + $CxxuRepos
-        Write-Verbose $repoDirs
+        # Write-Verbose $repoDirs
+        Write-Verbose $repoDirs.GetEnumerator() -Verbose
     }
 
     #如果是主PC,则执行云端同步操作(push)
