@@ -511,7 +511,7 @@ function Add-CloudflareZoneDNSRecords
         # 
         $Domains,
         # 使用私人模式DF
-        [switch]$DF,
+        [switch]$Common,
         $Type = 'A' ,
         [alias('IP', 'Content')]
         $Value = $env:DF_SERVER1
@@ -527,19 +527,16 @@ function Add-CloudflareZoneDNSRecords
         # 仅添加域名的DNS记录,不检查域名是否被添加(如果域名尚未被添加到cloudflare,那么添加dns记录就会失败跳过)
         [switch]$AddRecordOnly
     )
+   
     if(Test-Path $Domains)
     {
+        $Domains = Get-Content $Domains -Raw
+    }
+    if(!$Common)
+    {
         Write-Host "Mode:$DF"
-        if($DF)
-        {
-            $res = Get-DomainUserDictFromTable -Table $Domains
-            $Domains = $res | ForEach-Object { $_.Domain }
-        }
-        else
-        {
-
-            $Domains = Get-Content $Domains
-        }
+        $res = Get-DomainUserDictFromTable -Table $Domains
+        $Domains = $res | ForEach-Object { $_.Domain }
     }
     Write-Host "Domains: $Domains"
     Pause
@@ -1981,7 +1978,7 @@ function Start-BatchSitesBuild
     Write-Warning "Running the sql file (by cmd /c ... ),wait a moment please..."
 
     # 执行sql导入前这里要求用户确认
-    Import-MysqlFile -MySqlUser $MySqlUser -Server $server -key $password -SqlFilePath $SqlFilePath -Confirm:$confirm 
+    Import-MysqlFile -MySqlUser $MySqlUser -Server $server -key $MySqlkey -SqlFilePath $SqlFilePath -Confirm:$confirm 
 
     
 }
@@ -2121,10 +2118,11 @@ function Import-MysqlFile
         # return 
 
         # $DBExists = Invoke-Expression $CheckDBCmd
-        if(!$DatabaseName -and $SqlFilePath)
+        if(!$DatabaseName )
         {
-            Write-Warning "You did not specify the database name! sql file path Leafbase name will be the default database name!"
-            $DatabaseName = Split-Path $SqlFilePath -LeafBase
+            Write-Warning "You did not specify the database name!"
+            # write-warning "The sql file path Leafbase name will be the default database name!"
+            # $DatabaseName = Split-Path $SqlFilePath -LeafBase
         }
         # 如果用户指定了数据库名称,则检查该数据库是否已经存在,并给出测试结果;否则认为要导入的sql不需要事先指定数据库名字
         if($DatabaseName)

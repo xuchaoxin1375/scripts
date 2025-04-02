@@ -1122,7 +1122,8 @@ function Get-Size
         $PSStyle.Progress.View = 'Classic'
         $i = 0
         # $PSStyle.Progress.View = 'Minimal'
-        $count = (Get-ChildItem $Path).count
+        $items = Get-ChildItem $path
+        $count = $items.count
         Write-Verbose "$count Path(s) will be processed" # Cyan
     }
 
@@ -1135,16 +1136,16 @@ function Get-Size
             # 增加write-progress支持
                 
             # Write-Verbose "Calculating size of directory $item"
-            if ($count -gt 1)
-            {
+            # if ($count -gt 1)
+            # {
 
-                $Completed = ($i / $count) * 100
-                # 精度控制
-                $Completed = [math]::Round($Completed, 1)
-                # Write-Host $i 
-                Write-Progress -Activity "Calculating size of $item" -Status "Progress: $Completed %" -PercentComplete $Completed
-                $i += 1
-            }
+            #     $Completed = ($i / $count) * 100
+            #     # 精度控制
+            #     $Completed = [math]::Round($Completed, 1)
+            #     Write-Host "$i ,$Completed"
+            #     Write-Progress -Activity "Calculating size of $item" -Status "Progress: $Completed %" -PercentComplete $Completed
+            #     $i += 1
+            # }
             # 模拟耗时逻辑检查进度条功能
             # Start-Sleep -Milliseconds 500
 
