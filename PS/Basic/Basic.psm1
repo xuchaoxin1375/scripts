@@ -1379,8 +1379,9 @@ function Push-ReposesConfiged
     仓库依赖于powershell环境变量,可以在这里做一次导入判断处理
     本函数一般不会直接调用,而是配合其他函数调用
     #>
+    [CmdletBinding()]
     param(
-        $repoDirs = $CommonRepos + $CxxuRepos
+        $repoDirs = ""
 
         # $repoDirs = $CommonRepos,
         # $CxxuRepos = $CxxuRepos,
@@ -1388,9 +1389,14 @@ function Push-ReposesConfiged
     )
     #记录当前路径
     Push-Location
-
     # 将相关配置变量导入到当前shell中
     Update-PwshEnvIfNotYet -Mode Vars
+    # 执行仓库目录处理
+    if(!$repoDirs)
+    {
+        $repoDirs = $CommonRepos + $CxxuRepos
+        Write-Verbose $repoDirs
+    }
 
     #如果是主PC,则执行云端同步操作(push)
     Write-Host 'try to push the reposes...' -BackgroundColor Yellow
