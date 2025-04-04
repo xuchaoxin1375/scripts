@@ -3216,6 +3216,12 @@ function Set-PythonPipSource
         $mirror = 'https://pypi.tuna.tsinghua.edu.cn/simple'
     )
     pip config set global.index-url $mirror
+    $config="$env:APPDATA/pip/pip.ini"
+    if(Test-Path $config)
+    {
+        Get-Content $config
+    }
+    pip config list
 }
 function Get-MsysSourceScript
 {
