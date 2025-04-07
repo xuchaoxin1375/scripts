@@ -2017,7 +2017,7 @@ function Import-MysqlFile
         if($DatabaseName)
         {
 
-            $DBExists = Get-MysqlDbInfo -Name $DatabaseName -Server $server -MySQLUser $key
+            $DBExists = Get-MysqlDbInfo -Name $DatabaseName -Server $server -MySQLUser $MySqlUser -key $key
             
             if(!$DBExists)
             {
@@ -2027,7 +2027,7 @@ function Import-MysqlFile
                 {
                     
                     # Invoke-Expression $CreateDBCmd
-                    New-MysqlDB -Name $DatabaseName -Server $server -MysqlKey $key -Confirm:$false
+                    New-MysqlDB -Name $DatabaseName -Server $server -MySqlUser $MySqlUser -MysqlKey $key -Confirm:$false
                 }
             }
             else
@@ -2252,14 +2252,14 @@ function New-MysqlDB
     param (
         $Name,
         $Server = 'localhost',
-        $User = 'root',
+        [alias("User")]$MySqlUser = 'root',
         $MysqlKey = '',
         $CharSet = 'utf8mb4',
         $Collate = "utf8mb4_general_ci"
     )
     $key = Get-MysqlKeyInline -Key $MysqlKey
 
-    $command = " mysql -uroot -h $server $key -e 'CREATE DATABASE ``$Name`` CHARACTER SET $CharSet COLLATE $collate; show databases like `"$Name`";' "  
+    $command = " mysql -u$MySqlUser -h $server $key -e 'CREATE DATABASE ``$Name`` CHARACTER SET $CharSet COLLATE $collate; show databases like `"$Name`";' "  
     Write-Verbose $command 
 
     # 提示用户输入
@@ -2279,7 +2279,7 @@ function New-MysqlDB
     if($pscmdlet.ShouldProcess($server, "Create Database $Name ?"))
     {
         Invoke-Expression $command
-        Get-MysqlDbInfo -Name $Name -Server $server -MySQLUser $User -key $MysqlKey 
+        Get-MysqlDbInfo -Name $Name -Server $server -MySQLUser $MySqlUser -key $MysqlKey 
     }
     
     
