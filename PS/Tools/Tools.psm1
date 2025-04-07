@@ -1262,7 +1262,7 @@ function Update-WpUrl
         $server = "localhost",
         # $SqlFilePath,
         $MySqlUser = "root",
-        $key = $env:DF_MySqlKey
+        [Alias('MySqlKey')]$key = $env:DF_MySqlKey
     )
     Write-Verbose "Updating WordPress database:[$DatabaseName] from [$OldDomain] to [$NewDomain]" -Verbose
     $sql = @"
@@ -1974,7 +1974,7 @@ function Import-MysqlFile
     param (
         $Server = "localhost",
         $MySqlUser = "root",
-        $key = $env:DF_MySqlKey,
+        [Alias("MySqlKey")]$key = $env:DF_MySqlKey,
         [alias("File", "Path")]$SqlFilePath,
         [alias("Name")]$DatabaseName = "",
         [switch]$Force
@@ -2017,7 +2017,7 @@ function Import-MysqlFile
         if($DatabaseName)
         {
 
-            $DBExists = Get-MysqlDbInfo -Name $DatabaseName -Server $server
+            $DBExists = Get-MysqlDbInfo -Name $DatabaseName -Server $server -MySQLUser $key
             
             if(!$DBExists)
             {
@@ -2027,7 +2027,7 @@ function Import-MysqlFile
                 {
                     
                     # Invoke-Expression $CreateDBCmd
-                    New-MysqlDB -Name $DatabaseName -Server $server -Confirm:$false
+                    New-MysqlDB -Name $DatabaseName -Server $server -MysqlKey $key -Confirm:$false
                 }
             }
             else
