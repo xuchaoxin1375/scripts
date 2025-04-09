@@ -583,7 +583,21 @@ function Add-CloudflareZoneDNSRecords
     }
 
 }
-
+function Get-CloudflareZoneInfoFromTable
+{
+    <# 
+    .SYNOPSIS
+    查询cloudflare中的域名信息
+    从表格中获取域名列表,并获取对应的域名,从而获取相应的信息,比如激活状态等
+    #>
+    [CmdletBinding()]
+    param(
+        [alias('Domain')]$Table = "$home/desktop/table.conf"
+    )
+    Write-Host $Table
+    $info = Get-DomainUserDictFromTable -Table $Table 
+    $info | ForEach-Object { $_.domain } | ForEach-Object { flarectl zone info $_ }
+}
 function Export-NewCSVFile
 {
     param (
@@ -1460,7 +1474,7 @@ www.d2.com    李
 
 
     # $Table = $Table -replace '(?:https?:\/\/)?(?:www\.)?([a-zA-Z0-9-]+(?:\.[a-zA-Z]{2,})+)', '$1 '
-    $Table=$Table -replace '\b(?:https?:\/\/)?([\w.-]+\.[a-zA-Z]{2,})(?:\/|\s|$)', '$1 '
+    $Table = $Table -replace '\b(?:https?:\/\/)?([\w.-]+\.[a-zA-Z]{2,})(?:\/|\s|$)', '$1 '
     
     Write-Verbose "`n$Table" 
     # 按换行符拆分,并且过滤掉空行
@@ -3218,7 +3232,7 @@ function Set-PythonPipSource
         $mirror = 'https://pypi.tuna.tsinghua.edu.cn/simple'
     )
     pip config set global.index-url $mirror
-    $config="$env:APPDATA/pip/pip.ini"
+    $config = "$env:APPDATA/pip/pip.ini"
     if(Test-Path $config)
     {
         Get-Content $config
