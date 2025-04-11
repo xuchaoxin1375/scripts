@@ -1369,6 +1369,7 @@ function Test-MainPC
     return (Get-MatherBoardInfo).SerialNumber -eq $PC1
 
 }
+
 function Push-ReposesConfiged
 {
     <# 
@@ -1493,11 +1494,15 @@ function Test-CxxuComputer
     测试当前机器是否为Cxxu所属或使用的设备
     #>
     param (
+        $CxxuComputers = $CxxuComputers
     )
+    Update-PwshvarsIfNotYet
+    # Update-PwshEnvIfNotYet
     return $env:COMPUTERNAME -in @($CxxuComputers)
 
     
 }
+
 function Update-ReposesConfiged
 {
     <# 

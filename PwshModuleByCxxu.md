@@ -288,12 +288,14 @@ Add-CxxuPsModuleToProfile
 
 - 通常使用属性会更加方便,而且会使得相关脚本更加易于维护和鲁棒.
 
-## 响应性能说明👺
+## 响应性能说明👺🎈
 
 - powershell本身相比于其他shell的启动速度是明显慢的,如果载入过程中有过多的任务,会导致加速速度更慢
 - 因此本模块集采用了灵活的设计,通过自动导入来降低载入速度的影响
 - 默认情况下,配置好自动导入模块路径到`$PsModulePath`后,powershell的启动速度不会受到影响,只有当调用模块中的少数耗时函数或者环境导入函数,才会占用明显的时间,例如`init`函数,或者`p`函数
 - 相同配置下,在windows10下的载入速度可能比win11要快
+- 对于使用conda的同学,如果默认使用conda(base),可能对pwsh的加载速度产生影响
+- 部分用户(比如amd cpu),可以考虑运行` Add-CxxuPsModuleToProfile`命令将相关语句添加到pwsh的配置文件Profile中,这可能会提高加载速度(比如使用windows terminal的情况下,如果在windows terminal中添加启动参数或命令,可能会对pwsh的启动速度造成影响,尤其是amd cpu的用户)
 
 ### 加载pwsh环境任务或配置的最新进展
 
