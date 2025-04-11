@@ -361,7 +361,7 @@ function New-Shortcut
         #     return
         # }
 
-        Write-Host "Try Consider the targetPath as a callable name: ${Detail} " Cyan
+        Write-Host "Try Consider the targetPath as a callable name: ${Detail} " -ForegroundColor Cyan
     }
 
  
@@ -446,7 +446,7 @@ function New-Shortcut
     Remove-Variable WshShell
 
     Write-Host ''
-    Write-Host 'Check action result:' Cyan
+    Write-Host 'Check action result:' -ForegroundColor Cyan
     # debug
     Get-ShortcutLinkInfo $Path
 }

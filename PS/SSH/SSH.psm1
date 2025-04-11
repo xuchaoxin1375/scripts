@@ -68,7 +68,7 @@ type $authorized_keys #查看修改后的授权公钥文件
 #重启ssh服务以生效配置
 Restart-Service sshd
 '@ 
-    Write-Host $script Cyan
+    Write-Host $script -ForegroundColor Cyan
     if ($PassThru)
     {
 
@@ -266,7 +266,6 @@ function Get-SSHPreRunPubkeyVarsScript
 '@
     
     Write-Host $pubkey
-    # Write-Host $script Cyan
     # $script | Invoke-Expression -Verbose #外部脚本无法访问
     return $script
 

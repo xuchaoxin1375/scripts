@@ -25,7 +25,7 @@ function Confirm-Restart
         default
         {
             # 用户输入了其他内容，不重启
-            Write-Host 'No action taken. The computer will not restart.' Cyan
+            Write-Host 'No action taken. The computer will not restart.' -ForegroundColor Cyan
         }
     }
 }
@@ -39,7 +39,7 @@ function Get-CredentialGuardStatus
 
     )
     $res = (Get-CimInstance -ClassName Win32_DeviceGuard -Namespace root\Microsoft\Windows\DeviceGuard).SecurityServicesRunning
-    Write-Host 'The Value 1 means Credential Guard is enabled; Value 0 means it is disabled.' Cyan
+    Write-Host 'The Value 1 means Credential Guard is enabled; Value 0 means it is disabled.' -ForegroundColor Cyan
     Write-Host 'The result is: ' -NoNewline -ForegroundColor Magenta
     return $res
 }

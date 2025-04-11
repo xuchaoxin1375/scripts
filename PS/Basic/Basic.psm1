@@ -1550,7 +1550,7 @@ function Update-ReposesConfiged
         }
         # 切换到当前仓库目录
         Set-Location -Path "$repos\$repoDir"
-        Write-Host "$repos\$repoDir" Cyan
+        Write-Host "$repos\$repoDir" 
 
         # 执行任务
         if (Test-Path -Path '.git')
@@ -1568,7 +1568,7 @@ function Update-ReposesConfiged
             # 如果想要完全一样,那么执行以下清理命令(清除未跟踪的文件或目录)
             # git clean -fd
 
-            Write-Host "$reposDir was try to updated." Cyan
+            Write-Host "$reposDir was try to updated." -ForegroundColor Cyan
     
         }
 

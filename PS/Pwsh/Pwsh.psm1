@@ -595,7 +595,7 @@ function Write-HostIp
     )
     $ip = Get-IpAddressForPrompt 
     # Return $ip
-    Write-Host (('[' + $ip + ']')) Cyan -NoNewline
+    Write-Host (('[' + $ip + ']')) -ForegroundColor Cyan -NoNewline
 }
 function write-PermissoinLevel
 {
@@ -1124,7 +1124,7 @@ function Get-Size
         # $PSStyle.Progress.View = 'Minimal'
         $items = Get-ChildItem $path
         $count = $items.count
-        Write-Verbose "$count Path(s) will be processed" # Cyan
+        Write-Verbose "$count Path(s) will be processed" 
     }
 
     process
@@ -1294,7 +1294,7 @@ function Get-ItemSizeSorted
             $verbose = $using:verbose
             if ($verbose)
             {
-                Write-Host $item Cyan
+                Write-Host $item -ForegroundColor Cyan
             }
             return $item
         } -ThrottleLimit $ThrottleLimit
@@ -1906,7 +1906,7 @@ function Update-PowerShell
         # 替换为加速链接(配合IDM发挥效果)
         $downloadUrl = Get-SpeedUpUri $downloadUrl
         
-        Write-Host $downloadUrl Cyan
+        Write-Host $downloadUrl -ForegroundColor Cyan
         $installerPath = "$env:userprofile\Downloads\pwsh7Last.msi"
 
         Write-Host "Downloading PowerShell installer from $downloadUrl..."

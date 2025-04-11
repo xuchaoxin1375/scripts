@@ -677,7 +677,7 @@ Number Scope Name Value
         if ($EnvVar -eq 'Path')
         {
             $CurrentValue = $env:Path  
-            # $env:Path -split ';' |Write-Host Cyan
+            # $env:Path -split ';' |Write-Host 
             $NewValueFull = Remove-RedundantSemicolon "$NewValue;$CurrentValue"
         }
 

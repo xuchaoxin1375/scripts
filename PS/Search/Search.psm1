@@ -420,7 +420,7 @@ function Disable-Service
 
         if ($info.Status -eq 'Stopped' -and $info.StartType -eq 'Disabled')
         {
-            Write-Host 'Service is already disabled and stopped!' Cyan
+            Write-Host 'Service is already disabled and stopped!' -ForegroundColor Cyan
             return
         }
 
