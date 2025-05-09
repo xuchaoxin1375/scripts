@@ -6,6 +6,8 @@ import csv
 import os
 import re
 import sqlite3
+import sys
+import threading
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from logging import debug, error, info, warning
@@ -30,6 +32,7 @@ SMALL_CATEGORY_THRESHOLD = 30
 SEPARATOR = ">"
 LOWEST_PRICE = 1
 HIGHEST_PRICE = 10000
+cnt_lock = threading.Lock()
 
 
 class SQLiteDB:
@@ -63,6 +66,8 @@ class SQLiteDB:
         self.category_statistic = {}
         self.attr_subset_pattern = re.compile(r".*#.*")
         self.attr_superset_pattern = re.compile(r".*#.*\|.*")
+        # 处理进度(产品数据条数)
+        self.progress = 0
 
     def get_selected_fields(
         self,
@@ -104,51 +109,65 @@ class SQLiteDB:
         # self.data_rows += rows
         return rows
 
-    def get_data_from_db(self, db_path, fields=""):
+    def get_data_init(self, db_path, fields="", count_rows_only=False):
         """从单个数据库获取数据的辅助函数"""
         info("read data from %s...", db_path)
         rows = []
         unique_rows = []
         try:
-            with sqlite3.connect(str(db_path)) as conn:
-                # 设置SQLite性能优化参数
-                conn.execute("PRAGMA journal_mode=WAL")
-                conn.execute("PRAGMA synchronous=OFF")
-                conn.execute("PRAGMA cache_size=-10000")  # 10MB缓存
-                conn.row_factory = sqlite3.Row
-                rows = self.get_selected_fields(
-                    connection=conn, fields=fields, empty_check=True
-                )
+            rows = self.get_data_from_db(db_path, fields)
+            if count_rows_only:
+                self.db_reports[db_path] = {
+                    "total_raw": len(rows),
+                    "total_unique": None,
+                }
+                return []
+
         except sqlite3.Error as e:
-            error("Jump process:[%s] file is not a valid db file. Error: %s", db_path, e)
+            error(
+                "Jump process:[%s] file is not a valid db file. Error: %s", db_path, e
+            )
             return []
         else:
             # 数据处理操作
             # 去重:产品名和图片同时重复的记录只保留一条(仅排除两者都重复的情况)
-            handler_dict = defaultdict(dict)  # 存储{product_img: {name: count}}的结构
+            handler_dict = defaultdict(
+                dict
+            )  # 存储单元结构: {product_img: {name: count}}的结构
             name_field = DBProductFields.NAME.value
             img_field = DBProductFields.IMAGES.value
-            sku_field = DBProductFields.SKU.value
+            # sku_field = DBProductFields.SKU.value
             # sku=DBProductFields.SKU.value
-            for row in rows:
+            # 访问内存中的数据行
+            for i, row in enumerate(rows):
                 # product_name = row[name_field]
                 # product_img=row[img_field]
-                product_sku = row[sku_field]
+                # product_sku = row[sku_field]
                 product_name = row[name_field]
                 product_img = row[img_field]
-                product_info = f"{{name:{product_name};sku:{product_sku}}}"
+                # product_info = f"{{name:{product_name};sku:{product_sku}}}"
                 names = handler_dict.get(product_img, {})
+                # 进度计数器
+                with cnt_lock:
+                    self.progress += 1
+                    info("progress: {{%s}}", self.progress)
                 # 检查重复
                 if product_name in names:
                     warning(
-                        "Jump:product:[%s]: duplicated name & image, skip this record!",
-                        product_info,
+                        "Jump:product:[%s] of [%s]: duplicated name & image, skip this record!",
+                        i,
+                        db_path,
                     )
                     continue
                 else:
                     # 当前产品尚未统计过,更新统计计数器
                     unique_rows.append(row)
-                    info("info: duplicated image, but different name, keep records")
+                    info(
+                        "keep:product:[%s] of [%s]: duplicated image, but different name, keep records",
+                        i,
+                        db_path,
+                    )
+
                 handler_dict[product_img][product_name] = (
                     handler_dict[product_img].get(product_name, 0) + 1
                 )
@@ -160,7 +179,24 @@ class SQLiteDB:
         }
         return unique_rows
 
-    def get_data_from_dbs(self, dbs, max_workers=16, fields=""):
+    def get_data_from_db(self, db_path, fields):
+        """从单个数据库获取数据
+        :param db_path: sqlite文件路径
+        :param fields: 字段列表或字符串
+        """
+        with sqlite3.connect(str(db_path)) as conn:
+            # 设置SQLite性能优化参数
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=OFF")
+            conn.execute("PRAGMA cache_size=-10000")  # 10MB缓存
+            conn.row_factory = sqlite3.Row
+            rows = self.get_selected_fields(
+                connection=conn, fields=fields, empty_check=True
+            )
+
+        return rows
+
+    def get_data_from_dbs(self, dbs, max_workers=8, fields="", count_rows_only=False):
         """
         使用多线程从多个SQLite数据库并行读取数据
 
@@ -180,7 +216,12 @@ class SQLiteDB:
             batch = dbs[i : i + batch_size]
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = [
-                    executor.submit(self.get_data_from_db, db_file, fields=fields)
+                    executor.submit(
+                        self.get_data_init,
+                        db_file,
+                        fields=fields,
+                        count_rows_only=count_rows_only,
+                    )
                     for db_file in batch
                 ]
             # 收集结果
@@ -248,16 +289,26 @@ class SQLiteDB:
             debug("SKU: %s-> %s", rows[idx][sku], new_sku)
             rows[idx][sku] = new_sku
 
-    def get_data(self, dbs, get_dict_row=True):
+    def get_data(self, dbs, get_dict_row=True, count_rows_only=False):
         """从缓存或数据库中获取数据
         如果缓存中上不存在数据,则从数据库中读取数据并缓存到self.data_rows中
 
         """
 
         if not self.db_rows:
-            self.db_rows = self.get_data_from_dbs(dbs)
+            self.db_rows = self.get_data_from_dbs(
+                dbs=dbs, count_rows_only=count_rows_only
+            )
         if get_dict_row:
             self.db_rows = [dict(db_row) for db_row in self.db_rows]
+        if count_rows_only:
+            reports = self.db_reports
+            cnt = 0
+            for v in reports.values():
+                cnt += v["total_raw"]
+            info("total rows: %s", cnt)
+            info(str(self.db_reports))
+            sys.exit(0)  # 只统计行数,不做数据处理,立即退出程序(0表示正常退出)
         return self.db_rows
 
     def get_products_with_attribute_values(self, dbs):
@@ -275,7 +326,7 @@ class SQLiteDB:
         self,
         dbs,
         check_invalid_attribute_subset=True,
-        check_invalid_attribute_supperset=True,
+        check_invalid_attribute_supperset=False,
     ):
         """
         获取所有具有属性值的产品的字段简化的字典列表
@@ -284,6 +335,16 @@ class SQLiteDB:
         3. attribute_values
         4. page_url
         支持通过开关参数执行不规范属性值数据分类
+        后面两个参数在大量不规范的属性值数据时,可能会导致导出缓慢,占用cpu资源
+        (虽然设置了开关,主要用于测试和确认导出速度的瓶颈,提醒读者检查采集数据是否有重大问题)
+
+
+        :param dbs: SQLite文件路径列表
+        :param check_invalid_attribute_subset: 是否检查不规范的属性值子集(属性值中包含#号);
+            对于包含大量不规范属性值的数据可能导致导出缓慢,占用cpu资源
+        :param check_invalid_attribute_supperset: 是否检查不规范的属性值超集(属性值中包含#号和|号)
+            对于包含大量不规范属性值的数据可能导致导出缓慢,占用cpu资源
+
 
         """
         rows_with_attribute = self.get_products_with_attribute_values(dbs=dbs)
@@ -310,8 +371,10 @@ class SQLiteDB:
 
     def empty_invalid_attribute_subset(self, dbs, remove=False):
         """移除显然不合规范的属性值
+
         :param remove: 是否移除产品,而不仅仅是将属性值置空,默认为False,仅置空
-        :return list
+
+        :return: 处理后的数据库行列表
 
         采用合适的方式批量置空或移除列表中的元素
         """
@@ -387,7 +450,9 @@ class SQLiteDB:
         if value and not p.match(value):
             warning(
                 "atypical or non-standard  attribute value: {name=%s;sku=%s;value=%s}",
-                name, sku, value
+                name,
+                sku,
+                value,
             )
             self.invalid_attribute_supperset.append(row)
         return self.invalid_attribute_supperset
@@ -608,7 +673,7 @@ class SQLiteDB:
             debug("processsing:category: %s of row...", category)
 
             if category == "!" or category == "热卖":
-                warning("warn:category: %s of row to hotsale...", category)
+                warning("warn:category: [%s] of row to hotsale...", category)
                 self.update_hotsale(
                     row=row,
                     hot_class=hot_class,
@@ -630,7 +695,7 @@ class SQLiteDB:
             # cat_static_bakview=list(category_statistic.items())
             for category, cat_set in category_statistic.items():
                 # cat_set = category_statistic[category]
-                info("Info:category: %s, count: %s", category, cat_set['count'])
+                info("Info:category: %s, count: %s", category, cat_set["count"])
                 if cat_set["count"] < self.category_threshold:
                     product_dict_lst = cat_set["product_lst"]
                     # 事先为小类分配生成一个类似热销的分类
@@ -647,7 +712,8 @@ class SQLiteDB:
                         # self.db_rows[row_index][cat] = new_cat
                         info(
                             "Info:change small category to hotsale: %s->%s",
-                            category, new_cat
+                            category,
+                            new_cat,
                         )
             # 方案1:手动逐步处理
             # 将此类中的产品数据行移动(并入)到热销类别的产品集中
@@ -753,4 +819,3 @@ class SQLiteDB:
             writer.writerows(reader)
         # 替换原文件
         os.replace(temp_file, file_path)
-

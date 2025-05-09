@@ -25,7 +25,7 @@ except Exception as e:
 file_handler = logging.FileHandler(LOG_FILE, mode="w", encoding="utf-8")
 console_handler = logging.StreamHandler()
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.WARNING,
     format="%(levelname)s - %(message)s",
     handlers=[file_handler, console_handler],
 )
@@ -63,10 +63,10 @@ CATEGORIES_THRESHOLD = 30
 
 # 根据你的采集器安装目录以及采集存放的db目录来填写🎈(末尾不要有\,前面可以有)
 DATA_DIR = Path(r"C:\火车采集器V10.27\Data")
-DATA_DIR = Path(r"S:\test_dbs")
+DATA_DIR = Path(r"C:\Users\Administrator\Downloads\test_dbs")
 
-START = 133
-END = 152
+START = 150
+END = 150
 
 # 枚举出db文件路径
 rng = range(START, END + 1)
@@ -104,12 +104,17 @@ if __name__ == "__main__":
     print(f"开始执行(日志文件位于{LOG_FILE},绝对路径为:{os.path.abspath(LOG_FILE)})...")
     ## 1. 实例化SQLiteDB对象
     db = SQLiteDB(language=LANGUAGE, category_threshold=CATEGORIES_THRESHOLD)
-    ## 2. 读取数据库数据(包含了基本的数据处理)
-    db.get_data(dbs=dbs)
+    ## 2. 读取数据库数据(根据count_rows_only参数,可以只统计行数,而不做初步的数据处理;正式使用是要改成False!)🎈
+    db.get_data(dbs=dbs, count_rows_only=False)
+
     ## 3. 对sku进行第一次编号(可选)
     # db.number_sku(dbs=dbs, sku_suffix=LANGUAGE)
     ## 4. 获取产品属性值(包括分析不规范属性值的子集和超集,可以自行通过参数控制)
-    db.get_attribute_of_products(dbs=dbs)
+    db.get_attribute_of_products(
+        dbs=dbs,
+        check_invalid_attribute_subset=False,
+        check_invalid_attribute_supperset=False,
+    )
     ## 5. 检查属性值是否存在不规范的子集或超集(主要是子集,新手可能要注意一下超集)
     # check_iterable(db.invalid_attribute_supperset) #新手使用
     if db.invalid_attribute_subset:
@@ -144,7 +149,7 @@ if __name__ == "__main__":
     ## 6.统计并处理产品分类(包括合并小分类,分配热销类);可以用data wragger查看cats统计结果
     cats = db.get_category_statistic(hot_class=LanguagesHotSaleX)  # type: ignore
     ## 7.更新产品数据(描述等)🎈
-    db.update_products(dbs=dbs, sku_suffix=LANGUAGE)
+    db.update_products(dbs=dbs, sku_suffix=LANGUAGE, strict_mode=False)
     ## 8.导出csv文件
     db.export_csv(
         dbs=dbs, out_dir="./", split_files_size=10000, img_mode=ImageMode.NAME_AS_URL

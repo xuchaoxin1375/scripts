@@ -16,6 +16,8 @@
 - woodf.py
 - wooenums.py
 - woosqlitedb.py
+- filenamehandler.py
+- ...
 
 这些没有下划线的py文件是模块,它们不直接使用
 
@@ -64,7 +66,8 @@ pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
 
 ### magic库的检查
 
-- 上面的安装依赖操作可能无法一次性顺利安装magic库
+- 上面的安装依赖操作可能无法一次性顺利安装magic库,可以考虑使用其他库代替或者关闭此功能(需要调整代码)
+- 优化:todo
 
 ```python
 #⚡️[Administrator@CXXUDESK][C:\Share\df\wp_sites\wp_migration][11:49:13][UP:17.08Days]
@@ -83,28 +86,10 @@ In [3]:
 
 
 
-## 采集数据的发布和处理|csv导出功能
+## 采集数据的发布和处理|csv导出功能🎈
 
-- woo_get_csv.py负责的任务,可以检查数据以及导出csv文件
+- 为了节约篇幅,另见单独的说明: [ReadMe@get_csv.md](ReadMe@get_csv.md) 
 
-- ```python
-  SKU = "SKU"
-  NAME = "Name"
-  CATEGORIES = "Categories"
-  REGULAR_PRICE = "Regular price"
-  SALE_PRICE = "Sale price"
-  
-  IMAGES = "Images"
-  img_URL = "ImagesUrl"
-  ATTRIBUTE_VALUES = "Attribute 1 value(s)"
-  TAGS = "Tags"
-  DESCRIPTION = "Description"
-  PAGE_URL = "PageUrl"
-  
-  ATTRIBUTE_NAME = "Attribute 1 name"
-  ```
-
-  
 
 ### 功能设计
 
@@ -153,7 +138,7 @@ In [3]:
 
 这些枚举值定义在专门的python模块中
 
-## 上传数据
+## 上传数据到wordpress站🎈
 
 woo_uploader.py负责的任务,可以多线程或者按批上传数据到wp站
 
