@@ -1,0 +1,64 @@
+
+
+     1  小红        女  20  BeiJing         China
+     2  小明        男  22  ChongQing       China
+     3  花花        女  30  HeBei           China
+     4  Jane        女  29  Los Angeles     America
+     5  Maecheal    男  30  Washington      America
+     6  山本        男  25  Nagasaki        Japan
+     7  村上春树    男  40  Hiroshima       Japan
+     8  贝爷        男  35  Paris           Franch
+
+aªáàâãäå...
+
+a
+-b__ 
+B+
+23c~
+b
+B
+d
+e
+bad
+bed
+bid
+
+abode
+bad
+bed
+bit
+bid
+byte
+body
+
+foolin1
+asb
+2fj apples
+iwpeij =sdjf'/`hello hello
+sldjfp982linux apples hello
+123
+
+L82637834872061501239
+L83637834872061511251
+L84637834872061521729
+L85637834872061531253
+L86637834872061531253
+L87637834872061543390
+L88637834872061543390
+L89637834872061553069
+L90637834872061564965
+L91637834872061574806
+L92637834872061584797
+L93637834872061595208
+L94637834872061597156
+L95637834872061607141
+L96637834872061617478
+L97637834872061627133
+
+# Default settings
+ZSH="${ZSH:-$HOME/.oh-my-zsh}"
+REPO=${REPO:-ohmyzsh/ohmyzsh}
+REMOTE=${REMOTE:-https://github.com/${REPO}.git}
+BRANCH=${BRANCH:-master}
+
+hello world! sed cxxu learing!  apples

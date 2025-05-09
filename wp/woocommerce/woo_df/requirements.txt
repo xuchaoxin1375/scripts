@@ -1,0 +1,9 @@
+requests
+python-magic-bin
+pandas
+openpyxl
+woocommerce
+concurrent-log-handler
+mysql-connector-python
+notebook
+beautifulsoup4

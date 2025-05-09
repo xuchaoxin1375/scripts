@@ -1,0 +1,514 @@
+"""
+共用函数或工具库
+"""
+
+# %%
+import csv
+import os
+import queue
+import re
+import threading
+from datetime import datetime
+from logging import debug, error, info
+from typing import List, Optional, Union
+from urllib.parse import unquote, urlparse
+
+from bs4 import BeautifulSoup
+
+import requests
+
+csv.field_size_limit(int(1e7))  # 允许csv文件最大为10MB
+COMMON_SEPARATORS = [",", ";", r"\s+"]
+URL_SEPARATORS = [
+    r"\s+",
+    ">",
+    # ";",
+    # ",",
+]
+URL_SEP_PATTERN = "|".join(URL_SEPARATORS)
+COMMON_SEP_PATTERN = "|".join(COMMON_SEPARATORS)
+EMAIL_PATTERN = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
+HTTP_S_URL_CONS_PATTERN = r'https?://[^\s"<>]+'
+URL_SEP_REGEXP = re.compile(URL_SEP_PATTERN)
+COMMON_SEP_REGEXP = re.compile(COMMON_SEP_PATTERN)
+
+
+def remove_empty_html_tags(html: str, tags=None) -> str:
+    """
+    移除 HTML 中无内容的标签（如 <span></span> 或仅包含空白字符的标签对）。
+    可指定要处理的标签类型，默认处理所有标签。
+
+    Args:
+        html (str): 输入的 HTML 字符串。
+        tags (list, optional): 需要处理的标签名列表（如 ['span', 'div']），
+            若为 None，则处理所有标签。
+
+    Returns:
+        str: 处理后的 HTML 字符串。
+    """
+    if not html:
+        return html
+
+    # 如果没有指定标签，则创建一个通用模式匹配所有标签
+    if tags is None:
+        # 匹配所有空标签或只包含空白字符的标签
+        pattern = r"<([a-zA-Z][a-zA-Z0-9]*)[^>]*>\s*</\1>"
+    else:
+        # 匹配指定标签列表中的空标签
+        tag_pattern = "|".join(tags)
+        pattern = rf"<({tag_pattern})[^>]*>\s*</\1>"
+
+    # 持续替换直到没有更多匹配项
+    prev_html = ""
+    current_html = html
+
+    while prev_html != current_html:
+        prev_html = current_html
+        current_html = re.sub(pattern, "", current_html)
+
+    return current_html
+
+
+def remove_empty_html_tags_bybs(html: str, tags=None) -> str:
+    """
+    移除 HTML 中无内容的标签（如 <span></span> 或仅包含空白字符的标签对）。
+    可指定要处理的标签类型，默认处理所有标签。
+
+    依赖于 BeautifulSoup 库
+
+    Args:
+        html (str): 输入的 HTML 字符串。
+        tags (list, optional): 需要处理的标签名列表（如 ['span', 'div']），
+            若为 None，则处理所有标签。
+
+    Returns:
+        str: 处理后的 HTML 字符串。
+
+    Examples:
+    >>> test_html = '<li><span class="x">   </span>   <div> <div>Detail</div> <div> <span> </span> <span> </span> </div> </div> <div><div> <p>No buckle</li> <li>Adjustable from 30 to 52</li> </ul> <p><b>FABRIC TECH:</b></p> <p>100% nylon</p> <p>ITEM #: PG-13736</p> </div></div> </li> <li> <div> <br>
+    '
+    >>> remove_empty_html_tags_bybs(test_html)
+
+    """
+
+    if not html:
+        return html
+
+    # 使用 BeautifulSoup 解析 HTML
+    soup = BeautifulSoup(html, "html.parser")
+
+    # 持续查找并移除空标签，直到没有更多可移除的标签
+    changed = True
+    while changed:
+        changed = False
+
+        # 确定要处理的标签
+        elements = soup.find_all(tags) if tags else soup.find_all()
+
+        for element in elements:
+            # 检查元素是否为空（只包含空白字符）
+            if (
+                element.name
+                and (not element.get_text(strip=True))
+                and not element.find_all()
+            ):
+                element.extract()  # 移除空元素
+                changed = True
+
+    return str(soup)
+
+
+def get_user_choice_csv_fields(selected_ids, reader_headers):
+    """询问用户选择csv文件中的要选择csv中的哪些列
+    读取并打印csv的表头,列出供用户选择,并返回列号列表
+
+    :param selected_ids: 已经记住的列号列表
+    :param reader_headers: csv文件中的表头
+    :return: 选择的列号列表
+
+    """
+    for idx, header in enumerate(reader_headers):
+        print(f"{idx}. {header}")
+
+    ipt = input(
+        "请输入需要下载的图片的列号,如果只有一列,则视为图片url列,"
+        "如果指定两列,则第一列视为指定的下载的文件保存的名字,第二列为需要下载的URL,输入的列号间用空格/逗号隔开: "
+    )
+    selectedx = re.split(COMMON_SEP_PATTERN, ipt.strip())
+    if isinstance(selected_ids, list):
+        selected_ids += selectedx
+    info("You selected: %s", selectedx)
+    return selected_ids
+
+
+def split_multi(
+    s: str,
+    seps: Optional[Union[str, List[str]]] = None,
+    ignore_empty: bool = True,
+    strip_items: bool = True,
+    case_sensitive: bool = True,
+) -> List[str]:
+    """
+    根据多个分隔符分割字符串，支持灵活参数控制。
+
+    Args:
+        s (str): 待分割的字符串。
+        seps (str | List[str] | None): 分隔符字符串或分隔符列表。
+            - None: 默认使用逗号、分号、冒号和任意空白符。
+            - str: 单个分隔符或正则表达式。
+            - List[str]: 多个分隔符，将自动组合为正则表达式。
+        ignore_empty (bool): 是否忽略分割后得到的空字符串，默认True。
+        strip_items (bool): 是否去除每个分割项的首尾空白，默认True。
+        case_sensitive (bool): 分隔符是否区分大小写，默认True。
+
+    Returns:
+        List[str]: 分割后的字符串列表。
+
+    Examples:
+        >>> split_multi("a, b; c :d   e")
+        ['a', 'b', 'c', 'd', 'e']
+
+        >>> split_multi("a|b|c", seps="|")
+        ['a', 'b', 'c']
+
+
+        >>> split_multi("a, b; c :d   e", seps=[",", ";", ":"," "], ignore_empty=True)
+        ['a', 'b', 'c', 'd', 'e']
+
+        >>> split_multi("a, b; c :d   e", seps=[",", ";", ":"," "], ignore_empty=False)
+        ['a', '', 'b', '', 'c', '', 'd', '', '', 'e']
+
+        >>> split_multi("a,,b", seps=",", ignore_empty=False)
+        ['a', '', 'b']
+
+        >>> split_multi("A,B,a", seps="a", case_sensitive=False)
+        ['','B,','']
+
+    """
+    if seps is None:
+        # 默认分隔符：逗号、分号、冒号、任意空白符
+        pattern = r"[,\s;:]+"
+    elif isinstance(seps, str):
+        pattern = seps if len(seps) > 1 and seps.startswith("[") else re.escape(seps)
+    elif isinstance(seps, list):
+        pattern = "|".join(re.escape(sep) for sep in seps)
+    else:
+        raise ValueError("seps 参数必须为 None、str 或 List[str]")
+
+    flags = 0 if case_sensitive else re.IGNORECASE
+    items = re.split(pattern, s, flags=flags)
+    if strip_items:
+        items = [item.strip() for item in items]
+    if ignore_empty:
+        items = [item for item in items if item]
+    return items
+
+
+def get_filebasename_from_url(url):
+    """从URL中提取文件名(basename with extension)
+    Args:
+        url: 要被解析的URL或文件路径
+    例如: https://www.example.com/file.txt -> file.txt
+
+    """
+    parsed_url = urlparse(url)
+    path = unquote(parsed_url.path)
+    filename = os.path.basename(path)
+    return filename
+
+
+def extract_secondary_domain(url):
+    """
+    根据提供的url,或者域名,提取二级域名
+
+    Args:
+        url (str): 待处理的URL或域名
+
+    Returns:
+        str: 提取的二级域名，如果提取失败则返回空字符串
+
+    Raises:
+        None
+
+    Example:
+        >>> extract_secondary_domain('https://www.example.com/path/to/page.html')
+        'example.com'
+        >>> extract_secondary_domain('https://www.example.co.uk/')
+        'co.uk'
+        >>> extract_secondary_domain('https://www.example.com')
+        'example.com'
+    """
+    url = str(url).strip().lower()
+    if not url:
+        return ""
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+    try:
+        parsed = urlparse(url)
+        domain = parsed.netloc
+    except Exception:
+        return ""
+    parts = [p for p in domain.split(".") if p]
+    if len(parts) >= 2:
+        return ".".join(parts[-2:])
+    return domain
+
+
+def find_existing_x_directory(dir_roots, dir_base):
+    """
+    返回第一个存在的目录
+    """
+
+    for root in dir_roots:
+        path = f"{root }/{dir_base}"
+        if os.path.exists(path):
+            return path
+    return None
+
+
+# 日志消息队列
+log_queue = queue.Queue()
+# 分类缓存锁categories_cache_lock
+cat_lock = threading.Lock()
+# 使用时间会影响日志输出的性能(比没有时间或者直接print要慢得多,在大量打印的情况下会拖累速度)
+
+LOG_HEADER = ["SKU", "Name", "id", "Status", "message", "datetime"]
+
+
+def get_data_from_csv(args, lines, reader, url_field, name_filed):
+    """
+    将读取的csv文件中的图片名字和图片链接
+    """
+    for line in reader:
+        img_names = line.get(name_filed, "")
+        img_urls = line.get(url_field, "")
+        get_data_line_name_url_from_csv(args, lines, img_names, img_urls)
+
+
+def get_data_line_name_url_from_csv(args, lines, img_names, img_urls):
+    """
+    将读取的csv文件中的图片名字和图片链接,处理单行
+    """
+    if img_urls:
+        # img_names = img_names.split(",")
+        # img_urls = img_urls.split(",")
+        img_names = COMMON_SEP_REGEXP.split(img_names)
+        img_urls = split_urls(img_urls)
+    if args.name_url_pairs:
+        for img_name, img_url in zip(img_names, img_urls):
+            img_name = img_name.strip()
+            img_url = img_url.strip()
+            lines.append(
+                # {
+                #     "img_name": img_name,
+                #     "img_url": img_url,
+                # }
+                (img_name, img_url)
+            )
+    else:
+        lines.extend(img_urls)
+
+
+def split_urls(urls):
+    """将url构成的字符串解析成一个个url字符串构成的列表
+
+    编写合适的正则表达式来提取url
+    1. 匹配以http://或https://开头的URL
+    2. 考虑url间的分隔串,如',','>',空白字符等
+    :param urls: 要被解析的URL字符串
+    例如输入
+    :return: 解析后的URL列表
+
+    多个url构成的长串处理例子
+
+    """
+    matches = re.findall(HTTP_S_URL_CONS_PATTERN, urls)
+    return matches
+
+
+def parse_dbs_from_str(dbs_str):
+    """解析数据库文件路径字符串,返回一个列表
+
+    :param dbs_str: 数据库文件路径字符串(一般建议使用r-string),支持逗号分隔,换行分隔,分号分隔
+    例如输入
+    :return: 数据库文件路径列表
+    返回内容示例
+    ['C:\\火车采集器V10.27\\Data\\a\\SpiderResult.db3',
+    'C:\\火车采集器V10.27\\Data\\b\\SpiderResult.db3',
+    'C:\\火车采集器V10.27\\Data\\c\\SpiderResult.db3',
+    '...',
+    'C:\\火车采集器V10.27\\Data\\z\\SpiderResult.db3']
+    """
+    dbs = dbs_str.replace("\n", ",").replace(";", ",").split(",")
+    dbs = [db for db in dbs if db.strip() != ""]
+    return dbs
+
+
+def remove_sensitive_info(text, try_remove_phone=False):
+    """移除文本中的敏感信息，如邮箱地址、网址
+    (电话号码容易误伤,默认不过滤)
+
+    可以使用regex101 (for python)进行在线测试
+
+    1. 在HTTP和HTTPS URL中，允许出现的字符包括但不限于字母（a-z, A-Z）、数字（0-9）、特殊字符（如-, _, ., ~）、以及URL编码后的一些字符（如%20表示空格）。
+    为了保守地过滤掉一段文本中的HTTPS链接，可以使用正则表达式来匹配URL的结构，但尽量减少误伤其他文本。
+
+
+    """
+    # 移除邮箱地址
+    text = re.sub(EMAIL_PATTERN, "", text)
+
+    # [保守]地移除HTTP(S)链接
+    text = re.sub(HTTP_S_URL_CONS_PATTERN, "", text)
+
+    # 移除纯域名
+    text = re.sub(r"\b(?:www\.)?[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:/[^\s]*)?", "", text)
+
+    # 移除欧美电话号码(容易误杀,不建议用,电话号码留着问题也不大)
+    if try_remove_phone:
+        text = re.sub(
+            r"\b(?:\+?\d{1,3}[-.\s]?)?(?:\(?\d{2,4}\)?[-.\s]?)?\d{3,4}[-.\s]?\d{4}\b",
+            "",
+            text,
+        )
+
+    return text
+
+
+def check_iterable(it):
+    """逐行打印可迭代对象
+    检查参数it是否为可迭代对象,如果是,则逐行打印每个元素
+    否则,打印it本身,并报告其类型是不可迭代的
+    例如一行一个字典
+    """
+    if hasattr(it, "__iter__"):
+        if len(it):
+            info(f"total {len(it)} items.")
+            for i, item in enumerate(it, 1):
+                info(f"row{i}: {item}")
+    else:
+        error(f"Error: {it} is not iterable.")
+
+
+def download_img_to_local(img_url, product_sku):
+    """
+    下载远程图片并保存到本地
+    :param url: 图片的URL
+    :param product_sku: 产品的SKU，用于命名本地图片
+    :return: 本地图片路径
+    """
+    local_filename = f"{product_sku}.jpg"
+    with requests.get(img_url, stream=True, timeout=10) as r:
+        r.raise_for_status()
+        with open(local_filename, "wb") as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                f.write(chunk)
+    return local_filename
+
+
+def split_list(lst, n):
+    """将可迭代容器(例如列表)平均分为n份,返回分割后的列表
+    尽可能的平均分配比较好,如果前n-1份数量相同,且
+    将余数元素都放到最后一份可能会导致最后一份元素过多(最坏情况下是平均份的近两倍)
+    方案1:推荐
+    设你要均分为n份,每份的基本大小为size=len(lst)//n,余数为r=len(lst)%n,且一定有(r<n)
+    那么前r份每份含有size+1个元素，后n-r份每份含有size个元素
+    此方案可以保证,任意两份所分得的元素数量差不会超过1
+    如果n大于lst的元素数量,那么前len(lst)份每份含有1个元素,后n-len(lst)份每份含有0个元素(空列表)
+
+    方案2:不推荐
+    如果容器中元素长度为L=len(lst),k为L/n的余数,则将最后k个元素归入最后一份
+
+    Parameters
+    ----------
+    lst : list
+        需要被分割的容器列表
+    n : int
+        需要被分割的份数(平均)
+
+    Returns
+    -------
+    list
+        分割后的列表的列表
+    Examples
+    --------
+    split_list(list(range(1,11)), 4)
+
+
+    """
+    result = []
+    size, r = divmod(len(lst), n)
+    info(f"size: {size}, r: {r}")
+
+    size_r = size + 1
+    for i in range(r):
+        start = i * size_r
+        end = (i + 1) * size_r
+        result.append(lst[start:end])
+    start = (size + 1) * r
+
+    for i in range(r, n):
+        end = start + size
+        result.append(lst[start:end])
+        start = end
+
+    return result
+
+
+def log_worker(log_file="./"):
+    """后台日志记录线程
+    利用循环不断尝试从全局日志队列中获取日志条目,然后写入到日志文件中
+    log_header 参考:["Timestamp", "RecordID", "Status", "Details", "ProcessingTime"]
+
+    """
+    info(f"Log worker started.logs will be written to: {log_file}🎈")
+    while True:
+        log_entry = log_queue.get()
+        debug(f"Log worker got log entry: {log_entry}")
+        if log_entry is None:  # 终止信号
+            break
+        try:
+            # 检查路径(目录)存在,若不存在则创建
+            log_dir = os.path.dirname(log_file)
+            if not os.path.exists(log_dir):
+                os.makedirs(log_dir)
+            # 写入日志文件
+            with open(log_file, "a", newline="", encoding="utf-8") as f:
+
+                writer = csv.writer(f)
+                # 如果文件为空，写入标题行
+                if f.tell() == 0:
+                    writer.writerow(LOG_HEADER)
+                writer.writerow(log_entry)
+        except Exception as e:
+            error(f"Error:Log write failed: {e}")
+        finally:
+            log_queue.task_done()
+
+
+def log_upload(sku, name, product_id, status, msg=""):
+    """将日志加入到日志消息队列中
+    表头结构由常量LOG_HEADER定义,元素顺序与LOG_HEADER一致,或者使用关键字参数传参
+    """
+    log_entry = [
+        sku,
+        name,
+        product_id,
+        status,
+        msg,
+        datetime.now().isoformat(),
+    ]
+    log_queue.put(log_entry)
+    debug(f"Log preview:{log_entry}")
+    return log_entry
+
+
+def cleanup_log_thread(q_thread):
+    """清理函数，等待队列处理完成并停止工作线程"""
+    log_queue.join()  # 等待所有日志项处理完成
+    log_queue.put(None)  # 发送终止信号
+    q_thread.join()  # 等待线程结束
+    info("log_thread(daemon) end.")
+
+
+##

@@ -1,0 +1,114 @@
+
+
+@REM 使用路径解析取字符串的表达式也是可以的
+@REM 禁止将python设置为别名,否则anaconda中的python将会无法使用正确的版本!🎈;正确的做法是使用环境变量,而且应该配置在Path的头部,否则windowsAppStore会先被扫描到,导致无法启动已安装的python版本而总是跳转到应用商店
+smmv "$smmv_home\SmmvSplitterPortable"
+ffmpeg  "$ffmpeg_bin\ffmpeg"
+adb "$adb_home\adb.exe"
+adrive "$adrive_home\adrive.exe"
+alist "$alist_home\alist"
+aria2c "$aria2_home\aria2c.exe" #主要使用scoop 安装,或者配置aria2所在目录到环境变量Path中
+axmath "$axmath\axmath"
+baiduTranslation "$baiduTranslation_home\百度翻译.exe"
+bebo "$bebo_home\BeBO课程平台.exe"
+br "$exes\broot.exe"
+calibre "$calibre_home\calibre.exe"
+windhawk "$windhawk_portable_home\windhawk.exe"
+
+chfs "$chfs_home\chfs.exe"
+clash "$clash_home\clash for windows"
+; clash 'Clash for Windows.lnk'
+Verge "$Verge_home\clash*Verge.exe"
+ctrl control
+designer_qt "$pyside6\designer"
+dingtalk "$dingtalk_bin\dingTalk"
+dism++ "$dismPlusPlus\Dism++x64.exe"
+# ditto "$ditto_Home\ditto"
+drawio "$cp\draw.io\draw.io.exe"
+dts $dts_home\lowGui.exe 
+edge "$edge_home\msedge.exe"
+edge_beta "$edge_beta_home\msedge.exe"
+edgep "$edge_portable_home\msedge.exe"
+endnote "$endnote_home\endnote.exe"
+et "$exes\everything" 
+eu Update-PwshVars
+filecxx "$exes\filecxx_downloader\fileu.exe"
+; firefox $fireFox_home\firefox.exe 
+fleet "$fleet_home\c*\*\fleet"
+foobar "$foobar_home\foobar_CN\foobar2000.exe"
+geogebra  "$Geogebra_home\GeoGebraCalculator"
+git_pwsh $git_home\bin\git
+git_bash_inline $gitdir\bin\bash.exe
+git_bash_standalone $gitdir\git-bash.exe
+git_cmd_exe $gitdir\git-cmd.exe 
+git_shell git_bash_inline
+idea idea_Ultimate
+idea_Community "$idea_community_bin\idea64.exe"
+idea_Ultimate "$idea_Ultimate_bin\idea64.exe"
+idm "$IDM_home\IDMan"
+fdm "$fdm_home\FDM"
+Thunder "$thunder_home\Program\Thunder.exe"
+lingoes "$lingoes_home/lingoes"
+memorymaster "$pcmaster_home\memorymaster"
+miflash "$miflash_home\*MiFlash.exe"
+miflash_unlock "$android_root_roms\miflash_unlock*\miflash_unlock.exe"
+msys2_shell "$msys2_home\msys2_shell.cmd"
+NetRepair "$netmon\360NetRepair"
+NetSpeed360 "$software360_home\360Safe\netmon\360SpeedTest"
+@REM node "$node_home/node.exe"
+@REM npm "$node_home/npm.ps1"
+nvm "$nvm_home\nvm"
+nssm "$nssm_home\nssm"
+nssm "$nssm_home\nssm"
+onedrive $env:onedrive_home\OneDrive.exe 
+opensmile "$opensmile_bin\SMILExtract.exe"
+pandoc "$pandoc_home\pandoc.exe"
+pcmaster "$pcmaster_home\pcmaster"
+pdf_pdg2pic  "$exes\00_书籍解压合成工具包\2.PDG合成PDF工具（常用）\Pdg2Pic.exe"
+pdfxeditor "$pdfxeditor_home\pdfxedit"
+picgoUI $env:LOCALAPPDATA\programs\picgo\picgo.exe 
+pixpin "$pixpin_home\pixpin"
+plan_taskSchedule taskschd
+potplayer "$potplayer_home\potplayerMini64"
+; py python.exe
+TencentQQ "$qq_home\qq.exe" 
+mydockfinder "$Mydockfinder_home\Mydockfinder1.9.9\dock_64.exe"
+
+@REM wt "$windowsTerminal_home\wt.exe"
+qq_legcy "$qq_legcy_home\QQScLauncher.exe"
+qtdesigner designer_qt
+; quicker "$quicker_home\quicker"
+safe360 "$Safe360_home\360safe.exe"
+sandbox_Ctrl "$sandboxie_home\SbieCtrl.exe"
+sandbox_Man "$sandboxie_home\sandMan.exe"
+sandbox_start "$sandboxie_home\start.exe"
+# snipaste "$snipaste_home\snipaste"
+sogouSettings "$sogouInputMethodShortcuts_home\设置.lnk"
+sogouWizard "$sogouWizard\sgWizard.exe"
+sound sndVol
+texstudio "$exes\texstudio-4.3.1-win-portable-qt6\texstudio"
+tomcat $env:tomcatBin\startup.bat 
+tomcatShutdown $env:tomcatBin\shutdown.bat 
+# trafficMonitor "$trafficMonitor_home\trafficMonitor"
+#部分软件逐渐用scoop安装的版本代替
+# typora "$typora_home\typora.exe"
+
+updf "$pdfTools_home\updf.exe" 
+vmware_workstation "$vmware_home\vmware.exe"
+vmware "vmware_workstation"
+vmplayer "$vmware_home\vmplayer.exe"
+vpn_easyConnect_zjgsu "C:\Program Files (x86)\Sangfor\SSL\EasyConnect\EasyConnect.exe"
+wechat "$wechat_home\wechat.exe"
+winget_Raw "$windowsApps_user\winget.exe" #windows自带的winget的安装路径(我们可以用scoop安装,就不用管它)
+winxray $winxray_home/winxray 
+word "$cp\Microsoft Office\root\Office16\WINWORD.EXE"
+; youdaoDict "C:\Users\cxxu\AppData\Local\youdao\dict\Application\YoudaoDict.exe"
+handle "$exes\handle\handle64.exe"
+
+@REM SevenZipGUI (rvpa "$sevenZip_home\2*\7zFM.exe")
+autorunsc "$autoruns_home\autorunsc64.exe"
+autoruns "$autoruns_home\autoruns64.exe"
+CC "$CC_home\CC.exe"
+RainMeter "$rainmeter_home\rainmeter.exe"
+KwMusic "$kwMusic_home\KwMusic.exe"
+RAMMap "$exes\RAMMap\RAMMap.exe"
