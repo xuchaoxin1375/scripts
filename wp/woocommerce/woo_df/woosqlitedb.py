@@ -11,7 +11,7 @@ import threading
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from logging import debug, error, info, warning
-
+from pathlib import Path
 from comutils import get_filebasename_from_url, remove_sensitive_info, split_urls
 
 # from filenamehandler import FileNameHandler
@@ -150,13 +150,18 @@ class SQLiteDB:
                 # 进度计数器
                 with cnt_lock:
                     self.progress += 1
-                    info("progress: {{%s}}", self.progress)
+                    # info("progress: {{%s}}", self.progress)
+                    print(f"progress: {self.progress}")
                 # 检查重复
+
+                dbp = Path(db_path)
+                # 获取父目录的名称
+                db_id = dbp.parent.name  # 输出: 'c'
                 if product_name in names:
                     warning(
                         "Jump:product:[%s] of [%s]: duplicated name & image, skip this record!",
                         i,
-                        db_path,
+                        db_id,
                     )
                     continue
                 else:
@@ -165,7 +170,7 @@ class SQLiteDB:
                     info(
                         "keep:product:[%s] of [%s]: duplicated image, but different name, keep records",
                         i,
-                        db_path,
+                        db_id,
                     )
 
                 handler_dict[product_img][product_name] = (
@@ -430,7 +435,7 @@ class SQLiteDB:
         value = row[DBProductFields.ATTRIBUTE_VALUES.value]
         p = re.compile(r".*#.*")
         if value and not p.match(value):
-            error("Invalid attribute value: %s", value)
+            debug("Invalid attribute value: %s", value)
             self.invalid_attribute_subset.append(row)
         return self.invalid_attribute_subset
 
@@ -475,6 +480,9 @@ class SQLiteDB:
         # if not hot_sale_category:
         hot_sale_category = hot_class.get_one_hot_sale_names(language=language)
         row[cat_field] = hot_sale_category
+
+        debug("change:category [%s]->[%s]  ",row[cat_field], hot_sale_category)
+
         return hot_sale_category
 
     def get_lines_lst(self, dbs):
@@ -673,7 +681,7 @@ class SQLiteDB:
             debug("processsing:category: %s of row...", category)
 
             if category == "!" or category == "热卖":
-                warning("warn:category: [%s] of row to hotsale...", category)
+                # debug("warn:category: [%s] of row to a best-saler category  ...", category)
                 self.update_hotsale(
                     row=row,
                     hot_class=hot_class,

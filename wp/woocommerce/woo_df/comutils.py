@@ -382,12 +382,13 @@ def check_iterable(it):
     例如一行一个字典
     """
     if hasattr(it, "__iter__"):
+        print(f"total {len(it)} items.")
         if len(it):
-            info(f"total {len(it)} items.")
             for i, item in enumerate(it, 1):
-                info(f"row{i}: {item}")
+                # 将这些不规范的产品带序号地列出来
+                print(f"row {i}: {item}")
     else:
-        error(f"Error: {it} is not iterable.")
+        error(f"[{it}] is not iterable.(or empty result)")
 
 
 def download_img_to_local(img_url, product_sku):

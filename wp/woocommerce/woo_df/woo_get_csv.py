@@ -8,6 +8,7 @@ import os
 from datetime import datetime
 from logging import info
 from pathlib import Path
+import sys
 
 # from random import random
 from comutils import check_iterable  # , parse_dbs_from_str
@@ -65,8 +66,8 @@ CATEGORIES_THRESHOLD = 30
 DATA_DIR = Path(r"C:\火车采集器V10.27\Data")
 DATA_DIR = Path(r"C:\Users\Administrator\Downloads\test_dbs")
 
-START = 150
-END = 150
+START = 140
+END = 141
 
 # 枚举出db文件路径
 rng = range(START, END + 1)
@@ -112,7 +113,7 @@ if __name__ == "__main__":
     ## 4. 获取产品属性值(包括分析不规范属性值的子集和超集,可以自行通过参数控制)
     db.get_attribute_of_products(
         dbs=dbs,
-        check_invalid_attribute_subset=False,
+        check_invalid_attribute_subset=True,
         check_invalid_attribute_supperset=False,
     )
     ## 5. 检查属性值是否存在不规范的子集或超集(主要是子集,新手可能要注意一下超集)
@@ -129,10 +130,13 @@ if __name__ == "__main__":
         print(
             "Note:如果在notebook中运行,将会在顶部弹出一个输入框,请输入选项序号并回车;\n如果在终端中运行,请直接输入选项序号并回车"
         )
-        choice = input("选择选项(序号值)并继续:")
+        TRY_COUNT = 1
         while True:
+            choice = input(f"第{TRY_COUNT}次尝试,选择选项(序号值)并继续:")
+            print(f"你选择了{choice}")
+            TRY_COUNT += 1
             if choice == "0":
-                exit()
+                sys.exit()
             elif choice == "1":
                 db.empty_invalid_attribute_subset(dbs=dbs, remove=False)
                 break
@@ -140,7 +144,10 @@ if __name__ == "__main__":
                 db.empty_invalid_attribute_subset(dbs=dbs, remove=True)
                 break
             elif choice == "3":
+                print("查看可能不规范属性值的产品(如果有统计的话)")
+                # check_iterable(db.invalid_attribute_subset)
                 check_iterable(db.invalid_attribute_supperset)
+
             else:
                 print("输入非法,请重新输入")
         db.empty_invalid_attribute_subset(dbs=dbs, remove=False)
