@@ -60,6 +60,9 @@ function New-Shortcut
 
     .EXAMPLE
     为一个目录创建桌面快捷资源管理器快捷方式
+    New-Shortcut -Path $desktop/woo_df -TargetPath $scripts\wp\woocommerce\woo_df -Verbose -Force
+    
+    下面的方案效果类似,但是有区别,比如许多右键打开目录的选项都不适用
     New-Shortcut -Path $desktop\woo_df -TargetPath explorer.exe -Arguments $scripts\wp\woocommerce\woo_df -TargetPathAsAppName -Verbose -Force
     
 
