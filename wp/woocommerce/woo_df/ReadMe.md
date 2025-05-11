@@ -84,6 +84,26 @@ Out[2]: <CDLL 'C:\ProgramData\scoop\apps\miniconda3\current\Lib\site-packages\ma
 In [3]:
 ```
 
+## 向桌面添加脚本|模块所在目录
+
+打开powershell 7(pwsh),执行以下命令行
+
+### 添加符号链接(junction)
+
+```powershell
+New-Item -ItemType Junction -Path "$desktop/woo_df" -Target $scripts/wp/woocommerce/woo_df -Verbose
+```
+
+这里的`$desktop/woo_df`也可以替换成你喜欢的位置,默认会再桌面生成`woo_df`符号
+
+### 添加快捷方式(shortcut)
+
+也可以添加快捷方式
+
+```powershell
+New-Shortcut -Path $desktop\woo_df -TargetPath explorer.exe -Arguments $scripts\wp\woocommerce\woo_df -TargetPathAsAppName -Verbose -Force
+```
+
 
 
 ## 采集数据的发布和处理|csv导出功能🎈

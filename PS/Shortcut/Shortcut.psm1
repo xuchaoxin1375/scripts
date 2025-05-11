@@ -58,9 +58,10 @@ function New-Shortcut
     在此参数作用下,这里利用了`gcm`命令来解析TargetPath,解析成功的前提是`TargetPath`是存在的路径,
     或者是通过path环境变量配置过路径,能够在命令行直接打开的文件(通常是可执行文件.exe,.msc等),比如说,notepad就是合法的取值
 
-    #>
-
-    <# 
+    .EXAMPLE
+    为一个目录创建桌面快捷资源管理器快捷方式
+    New-Shortcut -Path $desktop\woo_df -TargetPath explorer.exe -Arguments $scripts\wp\woocommerce\woo_df -TargetPathAsAppName -Verbose -Force
+    
 
     .EXAMPLE
     
@@ -197,9 +198,7 @@ function New-Shortcut
     .EXAMPLE
     设置scoop安装的typora为markdown文件所在目录的打开方式
     PS> New-Shortcut -Path $HOME\desktop\Mathx -TargetPath typora.exe -Arguments C:\repos\blogs\Courses\Math\ -IconLocation C:\ProgramData\scoop\apps\typora\current\resources\assets\app.ico -Force -TargetPathAsAppName
-    
-    #>
-    <# 
+
     .EXAMPLE
     #创建一个任务管理器的快捷方式,直接指定taskmger作为TargetPath(需要配合ResolveTargetPath选项),默认打开最大化 显示创建过程中的信息,强制创建
     PS> new-Shortcut -Path tsk -TargetPath taskmgr -WindowStyle Maximized -Force -ResolveTargetPath
@@ -249,8 +248,7 @@ function New-Shortcut
     TargetPath       : C:\WINDOWS\system32\taskmgr.exe
     WindowStyle      : 7
     WorkingDirectory :
-    #>
-    <# 
+  
     .EXAMPLE
     创建声音设置控制面板(sound)
     PS> New-Shortcut -Path $home/desktop/snd -TargetPath control -Arguments '/name Microsoft.sound'
