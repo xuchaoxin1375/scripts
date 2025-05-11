@@ -50,9 +50,9 @@ UPLOAD_MODE = UploadMode.TRY_CREATE_ONLY
 
 # 日志文件路径,可作为存档,恢复上传断点🎈
 CSV_DIR = CSV_DIR.strip("/")
-TIME_STR = datetime.now().strftime("%Y%m") #日起精度自己控制(%Y%m%d-%H-%M-%S)
+TIME_STR = datetime.now().strftime("%Y%m") #日期精度自己控制(%Y%m%d-%H-%M-%S)
 LOG_FILE_UPLOAD = f"{CSV_DIR}/log/upload-{domain}-{TIME_STR}.csv"
-LOG_FILE_UPLOAD_BAK = f"C:/log/upload-{domain}.csv"
+# LOG_FILE_UPLOAD_BAK = f"C:/log/upload-{domain}.csv"
 # LOG_FILE_UPLOAD_FAIL=f"{CSV_DIR}/log/upload_fail-{domain}-{time_str}.csv"
 
 
@@ -121,7 +121,7 @@ if __name__ == "__main__":
     #     upload_mode=UploadMode.RESUME_FROM_LOG_FILE,#如果要从数据库中恢复,则使用UploadMode.RESUME_FROM_DATABASE
     #     prepare_categories=True,
     #     batch_mode=True,
-    #     log_file=r"" #填写正确的日志[文件(.log)]路径(不是目录或文件夹,否则会报错(pemission denied))
+    #     log_file=r"" # 如果是RESUME_FROM_LOG_FILE模式,请填写正确的日志[文件(.log)]路径!
     # )
 
     ## 结尾清理log_thread(适合于从命令行中执行时使用)

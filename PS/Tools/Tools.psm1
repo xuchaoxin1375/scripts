@@ -1288,27 +1288,49 @@ function Update-WpUrl
         $server = "localhost",
         # $SqlFilePath,
         $MySqlUser = "root",
-        [Alias('MySqlKey')]$key = $env:DF_MySqlKey
+        [Alias('MySqlKey')]$key = $env:DF_MySqlKey,
+        [Alias('WWW')][switch]$Start3w,
+        $protocol = "https"
+        
     )
+    if ($Start3w)
+    {
+        # 将domain.com,http(s)://domain.com,http(s)://www.domain.com统一规范化为$protocol://www.domain.com
+        $NewUrl3w = $NewDomain.Trim() -replace '^(https?://)?(www\.)?', "${protocol}://www."
+        Write-Verbose "Change:[$NewDomain] to:[$NewUrl3w]" -Verbose
+        $new = $NewUrl3w
+    }else{
+        # 将domain.com,http(s)://domain.com,http(s)://www.domain.com统一规范化为$protocol://newdomain.com
+        $new=$NewDomain.Trim() -replace '^(https?://)?(www\.)?', "${protocol}://"
+    }
+    $Olds = 'http', 'https' | ForEach-Object { $_ + '://' + ($OldDomain.Trim()) }
     Write-Verbose "Updating WordPress database:[$DatabaseName] from [$OldDomain] to [$NewDomain]" -Verbose
-    $sql = @"
+    $sql = ""
+    foreach ($old in $Olds)
+    {
+        
+    
+        $url_var_sql = @"
 -- 定义旧域名和新域名变量
 
 --
 /* 
-修改下面的变量,注意带上[http://+域名或ip],其他做法容易翻车
+修改下面的变量,注意带上[http(s)://+域名或ip],其他做法容易翻车
  */
 SET
     @old_domain = CONVERT(
-        'http://$OldDomain' USING utf8mb4
+        '$Old' USING utf8mb4
     ) COLLATE utf8mb4_unicode_520_ci;
 
 SET
     @new_domain = CONVERT(
-        'http://$NewDomain' USING utf8mb4
+        '$New' USING utf8mb4
     ) COLLATE utf8mb4_unicode_520_ci;
-"@ + @'
+
+"@ 
+        $replace_sql = @'
 -- 更新 wp_options 表中的 'home' 和 'siteurl' 选项
+
 UPDATE wp_options
 SET
     option_value =
@@ -1320,44 +1342,61 @@ REPLACE (
 WHERE
     option_name IN ('home', 'siteurl');
 
--- 更新 wp_posts 表中的 'post_content' 和 'guid' 字段
-UPDATE wp_posts
-SET
-    post_content =
-REPLACE (
-        post_content,
-        @old_domain,
-        @new_domain
-    ),
-    guid =
-REPLACE (
-        guid,
-        @old_domain,
-        @new_domain
-    );
-
--- 更新 wp_comments 表中的 'comment_content' 和 'comment_author_url' 字段
-UPDATE wp_comments
-SET
-    comment_content =
-REPLACE (
-        comment_content,
-        @old_domain,
-        @new_domain
-    ),
-    comment_author_url =
-REPLACE (
-        comment_author_url,
-        @old_domain,
-        @new_domain
-    );
-
-ALTER TABLE `wp_terms`
-CHANGE `name` `name` VARCHAR(8000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci NULL DEFAULT NULL;
-
-ALTER TABLE `wp_terms`
-CHANGE `slug` `slug` VARCHAR(8000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '';
 '@
+        $sql += ($url_var_sql + $replace_sql)
+    }
+#     $common = @'
+# -- 更新 wp_options 表中的 'home' 和 'siteurl' 选项
+
+# UPDATE wp_options
+# SET
+#     option_value =
+# REPLACE (
+#         option_value,
+#         @old_domain,
+#         @new_domain
+#     )
+# WHERE
+#     option_name IN ('home', 'siteurl');
+
+# -- 更新 wp_posts 表中的 'post_content' 和 'guid' 字段
+# UPDATE wp_posts
+# SET
+#     post_content =
+# REPLACE (
+#         post_content,
+#         @old_domain,
+#         @new_domain
+#     ),
+#     guid =
+# REPLACE (
+#         guid,
+#         @old_domain,
+#         @new_domain
+#     );
+
+# -- 更新 wp_comments 表中的 'comment_content' 和 'comment_author_url' 字段
+# UPDATE wp_comments
+# SET
+#     comment_content =
+# REPLACE (
+#         comment_content,
+#         @old_domain,
+#         @new_domain
+#     ),
+#     comment_author_url =
+# REPLACE (
+#         comment_author_url,
+#         @old_domain,
+#         @new_domain
+#     );
+
+# ALTER TABLE `wp_terms`
+# CHANGE `name` `name` VARCHAR(8000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci NULL DEFAULT NULL;
+
+# ALTER TABLE `wp_terms`
+# CHANGE `slug` `slug` VARCHAR(8000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '';
+# '@
     $sqlPath = "$env:TEMP/update-wp-url.sql"
     $sql | Out-File $sqlPath
     Write-Verbose $sql 
@@ -1650,7 +1689,7 @@ www.domain2.com
         $SiteRoot = "",
         [switch]$SingleDomainMode,
         # 三级域名,默认为`*`,常见的还有`www`
-        $LD3 = "*"    ,
+        $LD3 = "*,www"    ,
         [Alias("SiteOwner")]$User,
         # php版本,默认为74(兼容一些老的php插件)
         $php = 74
@@ -1674,7 +1713,11 @@ www.domain2.com
         $domain = $domain.Trim() -replace 'www\.', ""
         # 注意trimEnd('/')而不是trim('/')开头的`/`是linux根目录,要保留的!
         $site = "/www/wwwroot/$user/$domain/$siteRoot".TrimEnd('/') 
-        $line = "$domain,$LD3.$domain`t|$site `t|0|0|$php" -replace "//", "/" 
+        $ld3domain = $LD3 -split "," 
+        Write-Verbose "ld3domain:[$ld3domain]"
+        $ld3domain = $ld3domain | ForEach-Object { "$_.$domain" } 
+        $ld3domain = $ld3domain -join ","
+        $line = "$domain,$ld3domain`t|$site `t|0|0|$php" -replace "//", "/" 
        
         $line = $line.Trim() 
         Write-Verbose $line 
@@ -1816,7 +1859,8 @@ function Start-BatchSitesBuild
         # $Structure = "Domain,Owner,OldDomain"
         $Structure = $DFTableStructure,
         # 是否将批量建站语句自动输出到剪切板
-        [switch]$ToClipboard
+        [switch]$ToClipboard,
+        [switch]$KeepSqlFile
         # [switch]$TableMode
     )
 
@@ -1899,7 +1943,10 @@ function Start-BatchSitesBuild
     # 执行sql导入前这里要求用户确认
     Import-MysqlFile -Server $server -MySqlUser $MySqlUser -key $MySqlkey -SqlFilePath $SqlFilePath -Confirm:$confirm 
 
-    
+    if(! $KeepSqlFile)
+    {
+        Remove-Item $SqlFilePath -Force -Verbose
+    }
 }
 function Get-PSConsoleHostHistory
 {

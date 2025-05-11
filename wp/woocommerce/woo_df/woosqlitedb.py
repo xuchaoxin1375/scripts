@@ -159,7 +159,7 @@ class SQLiteDB:
                 db_id = dbp.parent.name  # 输出: 'c'
                 if product_name in names:
                     warning(
-                        "Jump:product:[%s] of [%s]: duplicated name & image, skip this record!",
+                        "Jump:product:[%s] of [%s db]: duplicated name & image, skip this record!",
                         i,
                         db_id,
                     )
@@ -168,7 +168,7 @@ class SQLiteDB:
                     # 当前产品尚未统计过,更新统计计数器
                     unique_rows.append(row)
                     info(
-                        "keep:product:[%s] of [%s]: duplicated image, but different name, keep records",
+                        "keep:product:[%s] of [%s db]: duplicated image, but different name, keep records",
                         i,
                         db_id,
                     )

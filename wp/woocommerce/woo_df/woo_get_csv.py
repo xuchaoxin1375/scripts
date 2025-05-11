@@ -64,10 +64,9 @@ CATEGORIES_THRESHOLD = 30
 
 # 根据你的采集器安装目录以及采集存放的db目录来填写🎈(末尾不要有\,前面可以有)
 DATA_DIR = Path(r"C:\火车采集器V10.27\Data")
-DATA_DIR = Path(r"C:\Users\Administrator\Downloads\test_dbs")
 
-START = 140
-END = 141
+START = 196
+END = 196
 
 # 枚举出db文件路径
 rng = range(START, END + 1)
