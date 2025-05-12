@@ -580,6 +580,7 @@ but different name, keep records",
         extra_fields=None,
         hot_class=LanguagesHotSale,
         language="",
+        req_response=False
     ):
         """
         获取产品数据行的字段补充和修改后的字典形式数据，每行数据作为字典返回,服务于导出到csv的阶段预备
@@ -595,8 +596,11 @@ but different name, keep records",
 
         :param extra_fields: 可选参数，包含额外键值对的字典(还可以是其他形式的键值对,比如元组等)
         :param lang: 语言代码，默认为"US"
+        :param img_mode: 图片处理模式,默认为ImageMode.NAME_AS_URL,即图片链接直接作为图片名
+        :param hot_class: 热销分类类,默认为LanguagesHotSale,即语言热销词
+        :param req_response: 如果直接从response中获取文件类型失败，是否需要针对url发起网络请求获取响应来计算文件类型
 
-        return: list[dict] 返回字段扩充后的数据行的列表
+        :return: list[dict] 返回字段扩充后的数据行的列表
         """
         language = language or self.language
         rows = self._get_lines_dict_raw(dbs=dbs, extra_fields=extra_fields)
@@ -644,7 +648,7 @@ but different name, keep records",
                     sku = row[sku_field]
                     # 基于sku,编号命名该产品的多个图片(如果有多图的话)
                     img_names = [
-                        f"{sku}-{i}.{self._get_img_extension(img_url)}"
+                        f"{sku}-{i}.{self._get_img_extension(img_url=img_url,req_response=req_response)}"
                         for i, img_url in enumerate(img_url_lst)
                     ]
                 elif img_mode == ImageMode.NMAE_FROM_URL:
