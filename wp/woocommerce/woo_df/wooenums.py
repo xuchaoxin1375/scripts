@@ -11,26 +11,26 @@ class EnumIt(Enum):
     """增加两个方法的Enum子类,方便列出枚举成员名称和值"""
 
     @classmethod
-    def get_all_fields_value(cls, extend_fields=None):
+    def get_all_fields_value(cls, exclude_field="", extend_fields=None):
         """获取所有字段取值列表
 
         :param extend_fields: 额外字段列表
         :return: 所有字段取值列表
         """
         # return cls._member_names_
-        values = [field.value for field in cls]
+        values = [field.value for field in cls if field.value != exclude_field]
         if isinstance(extend_fields, list):
             values.extend(extend_fields)
         return values
 
     @classmethod
-    def get_all_fields_name(cls, extend_fields=None):
+    def get_all_fields_name(cls, exclude_field="", extend_fields=None):
         """获取所有字段名称列表
 
         :param extend_fields: 额外字段列表
         :return: 所有字段名称列表
         """
-        names = [field.name for field in cls]
+        names = [field.name for field in cls if field.value != exclude_field]
         if isinstance(extend_fields, list):
             names.extend(extend_fields)
 
@@ -216,7 +216,6 @@ class LanguagesHotSale(EnumItRc):
         "Notre sélection",
         "Offre du jour",
     ]
-
 
 
 class UploadMode(Enum):

@@ -101,7 +101,7 @@ New-Item -ItemType Junction -Path "$desktop/woo_df" -Target $scripts/wp/woocomme
 也可以添加快捷方式
 
 ```powershell
-New-Shortcut -Path $desktop\woo_df -TargetPath explorer.exe -Arguments $scripts\wp\woocommerce\woo_df -TargetPathAsAppName -Verbose -Force
+New-Shortcut -Path $desktop\woo_df -TargetPath  $scripts\wp\woocommerce\woo_df  -Verbose -Force
 ```
 
 

@@ -14,7 +14,6 @@ from logging import debug, error, info, warning
 from pathlib import Path
 from comutils import get_filebasename_from_url, remove_sensitive_info, split_urls
 
-# from filenamehandler import FileNameHandler
 from wooenums import (
     CSVProductFields,
     DBProductFields,
@@ -44,8 +43,12 @@ class SQLiteDB:
     def __init__(self, language="US", category_threshold=SMALL_CATEGORY_THRESHOLD):
         self.language = language
         # 默认缓存变量(从DB文件中读取)
-        self.field_names_full = DBProductFields.get_all_fields_name()
-        self.field_values_full = DBProductFields.get_all_fields_value()
+        self.field_names_full = DBProductFields.get_all_fields_name(
+            exclude_field=DBProductFields.SKU.name
+        )
+        self.field_values_full = DBProductFields.get_all_fields_value(
+            exclude_field=DBProductFields.SKU.value
+        )
         self.category_threshold = category_threshold
         # 缓存从数据库中读出来的数据行(记录),默认情况下仅存储业务需要的行以及字段
         self.db_rows = []
@@ -93,6 +96,7 @@ class SQLiteDB:
             fields = self.field_values_full
         if isinstance(fields, (list, tuple)):
             fields_str = ", ".join(fields)
+            fields_str = fields_str.replace("", "")
         else:
             fields_str = fields
         sql = f"SELECT {fields_str} FROM {table}"
@@ -291,7 +295,7 @@ class SQLiteDB:
         sku = DBProductFields.SKU.value
         for idx, _ in enumerate(iterable=rows):
             new_sku = f"SK{idx+1:07d}-{sku_suffix}"
-            debug("SKU: %s-> %s", rows[idx][sku], new_sku)
+            debug("SKU: %s-> %s", rows[idx].get(sku, ""), new_sku)
             rows[idx][sku] = new_sku
 
     def get_data(self, dbs, get_dict_row=True, count_rows_only=False):
@@ -355,7 +359,8 @@ class SQLiteDB:
         rows_with_attribute = self.get_products_with_attribute_values(dbs=dbs)
         for row in rows_with_attribute:
             name = row[DBProductFields.NAME.value]
-            sku: str = row[DBProductFields.SKU.value]
+            # sku: str = row[DBProductFields.SKU.value]
+            sku = row.get(DBProductFields.SKU.value, "")
             attribute_values = row[DBProductFields.ATTRIBUTE_VALUES.value]
             page_url = row[DBProductFields.PAGE_URL.value]
             item = {
@@ -481,7 +486,7 @@ class SQLiteDB:
         hot_sale_category = hot_class.get_one_hot_sale_names(language=language)
         row[cat_field] = hot_sale_category
 
-        debug("change:category [%s]->[%s]  ",row[cat_field], hot_sale_category)
+        debug("change:category [%s]->[%s]  ", row[cat_field], hot_sale_category)
 
         return hot_sale_category
 

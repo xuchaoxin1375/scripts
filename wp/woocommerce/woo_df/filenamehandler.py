@@ -6,7 +6,7 @@ import hashlib
 import mimetypes
 import os
 import re
-from logging import debug, warning
+from logging import debug, warning, error
 from urllib.parse import unquote, urlparse
 import requests
 import magic
@@ -269,7 +269,8 @@ class FileNameHandler:
                 response.raw.seek(0)
                 chunk = response.raw.read(2048)
             except requests.RequestException as e:
-                raise ValueError(f"网络请求失败: {e}") from e
+                # raise ValueError(f"网络请求失败: {e}") from e
+                error("网络请求失败: %s", e)
 
         if not chunk:
             raise ValueError("无法从响应中读取数据")
