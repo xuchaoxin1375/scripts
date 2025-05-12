@@ -51,19 +51,21 @@ python img_downloader.py -i urls.txt -o ./images
 
 ### 完整参数说明
 
+有两种方式
+
+请在脚本所在目录,运行如下命令查看用法
+
 ```bash
 python img_downloader.py -h
 ```
 
-参数列表：
+或者用绝对路径引用此脚本
 
-- `-i, --input`: 包含图片URL的输入文件，每行一个URL（必需）
-- `-o, --output-dir`: 图片保存目录（默认: ./images）
-- `-w, --workers`: 下载线程数（默认: 10）
-- `-t, --timeout`: 下载超时时间，单位秒（默认: 30）
-- `-r, --retry`: 下载失败重试次数（默认: 3）
-- `-n, --name-url-pairs`: 输入文件包含文件名和URL对，格式为"文件名 URL"，以空格分隔
-- `-v, --verbose`: 显示详细日志
+```powershell
+python C:\repos\scripts\wp\woocommerce\woo_df\image_downloader.py -h
+```
+
+
 
 ### 指定文件名下载🎈
 
@@ -277,6 +279,12 @@ PS> python c:\Share\df\LocoySpider\woocommerce\woo_df\imgdown.py  -c  -i .\woo_d
 2025-04-30 22:32:03,352 - root - INFO - 失败: 0 张图片
 2025-04-30 22:32:03,352 - root - INFO - 耗时: 1.02 秒
 2025-04-30 22:32:03,352 - root - INFO - ==================================================
+```
+
+### 无后缀扩展名的图片url下载
+
+```
+
 ```
 
 

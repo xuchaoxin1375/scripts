@@ -170,7 +170,7 @@ class FileNameHandler:
 
     # @staticmethod
     # @classmethod
-    def get_file_extension(self, url, response=None, defualt_ext=""):
+    def get_file_extension(self, url, response=None, defualt_ext="", req_response=True):
         """
         根据响应头、URL或默认值确定资源的文件扩展名。
 
@@ -189,20 +189,23 @@ class FileNameHandler:
             - 如果所有方法均失败，则返回提供的默认扩展名。
         """
         ext = ""
-        if response and "Content-Type" in response.headers:
-            ext = self.get_file_extension_from_content_type(
-                response.headers["Content-Type"]
-            )
+        try:
+            if response and "Content-Type" in response.headers:
+                ext = self.get_file_extension_from_content_type(
+                    response.headers["Content-Type"]
+                )
 
-        if not ext:
-            ext = self.get_file_extension_from_url(url)
+            if not ext:
+                ext = self.get_file_extension_from_url(url=url)
 
-        if not ext:
-            ext = self.get_file_extension_from_url_magic(response=response)
+            if not ext:
+                ext = self.get_file_extension_from_response_magic(
+                    url=url, response=response, req_response=req_response
+                )
 
-        if not ext:
-            ext = defualt_ext
-
+        except Exception as e:
+            error("无法确定文件扩展名,使用默认扩展名: %s ", defualt_ext)
+            error("Error: %s", e)
         return ext
 
     @staticmethod
@@ -221,7 +224,9 @@ class FileNameHandler:
         return basename
 
     # @staticmethod
-    def get_file_extension_from_url_magic(self, url="", response=None, prefix_dot=True):
+    def get_file_extension_from_response_magic(
+        self, url="", response=None, req_response=True, prefix_dot=True
+    ):
         """获取文件类型(基于magic库)
 
         两个参数至少且通常只选择一个,如果不一致则优先选择response
@@ -229,6 +234,7 @@ class FileNameHandler:
         Args:
             url (str, optional): 文件URL地址
             response (requests.Response, optional): 预获取的响应对象
+            req_response (bool): 如果直接从response中获取文件类型失败，是否需要针对url发起网络请求获取响应，默认为True
             prefix_dot (bool): 是否在扩展名前加点号，默认为True
 
         Returns:
@@ -246,7 +252,7 @@ class FileNameHandler:
 
         chunk = None
 
-        # 优先使用 response
+        # 优先使用 response (此时url参数不会生效)
         if response is not None:
             try:
                 # 尝试从原始流中读取前2048字节
@@ -257,14 +263,14 @@ class FileNameHandler:
                 # 将无法使用seek(0)，则从content中提取前2048字节
                 debug(f"get file type from response exception:{e}")
                 chunk = response.content[:2048]
-        else:
+        elif req_response:
             # 如果没有提供response，则针对url发起请求
+            if not url:
+                raise ValueError("response为空,则必须提供url参数")
             try:
                 # 使用 self.session 实现连接复用
                 # response = requests.get(
-                response = self.session.get(
-                    url=url, stream=True, timeout=30
-                )  # 移除对 self.session 的依赖
+                response = self.session.get(url=url, stream=True, timeout=30)
                 response.raise_for_status()
                 response.raw.seek(0)
                 chunk = response.raw.read(2048)
@@ -273,7 +279,9 @@ class FileNameHandler:
                 error("网络请求失败: %s", e)
 
         if not chunk:
-            raise ValueError("无法从响应中读取数据")
+            raise ValueError(
+                f"无法从响应中读取数据或响应为空 req_response: {req_response}"
+            )
 
         # 使用 python-magic 检测类型
         mime = magic.from_buffer(chunk, mime=True)

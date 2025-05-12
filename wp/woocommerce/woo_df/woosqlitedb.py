@@ -172,7 +172,8 @@ class SQLiteDB:
                     # 当前产品尚未统计过,更新统计计数器
                     unique_rows.append(row)
                     info(
-                        "keep:product:[%s] of [%s db]: duplicated image, but different name, keep records",
+                        "keep:product:[%s] of [%s db]: duplicated image, \
+but different name, keep records",
                         i,
                         db_id,
                     )
@@ -608,7 +609,7 @@ class SQLiteDB:
                 continue
             # 数据处理:产品分类(将分类取值为非常规值做一个恰当的转换,比如热销这类的此)
             category = row[CSVProductFields.CATEGORIES.name]
-            if not category or category == "!" or category == "热卖":
+            if self.is_need_update_category(category):
                 self.update_hotsale(row=row, hot_class=hot_class, language=language)
             # 将计算到的价格数据写入到对应的字典(不存在指定字段时会创建,即数据行row字典对象中写入对应key:value)
             row[CSVProductFields.SALE_PRICE.name] = sale_price
@@ -654,7 +655,7 @@ class SQLiteDB:
             expanded_rows.append(row)
         return expanded_rows
 
-    def _get_img_extension(self, img_url):
+    def _get_img_extension(self, img_url,req_response=False):
         """
         尝试获取图片文件的后缀名
         (处理单个图片链接,可以配合循环批量处理)
@@ -664,7 +665,7 @@ class SQLiteDB:
         # if not img_url:
         #     return ""
         # return img_url.split(".")[-1]
-        res = fh.get_file_extension(img_url)
+        res = fh.get_file_extension(url=img_url,req_response=req_response)
         return res
 
     def split_list_average(self, lst, n):
@@ -685,7 +686,7 @@ class SQLiteDB:
             category = row[DBProductFields.CATEGORIES.value]
             debug("processsing:category: %s of row...", category)
 
-            if category == "!" or category == "热卖":
+            if self.is_need_update_category(category):
                 # debug("warn:category: [%s] of row to a best-saler category  ...", category)
                 self.update_hotsale(
                     row=row,
@@ -745,6 +746,15 @@ class SQLiteDB:
             self.category_statistic = {}
             self.get_category_statistic(change_small_to_hotsale=False)
         return self.category_statistic
+
+    def is_need_update_category(self, category):
+        """判断是否需要更新分类
+        当分类为空,或者是"!",或者是"热卖"时,需要更新分类
+
+        :param category: 分类名称
+        :return: True/False
+        """
+        return not category or category == "!" or category == "热卖"
 
     def export_csv(
         self,
