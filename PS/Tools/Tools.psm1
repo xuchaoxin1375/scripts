@@ -1299,9 +1299,11 @@ function Update-WpUrl
         $NewUrl3w = $NewDomain.Trim() -replace '^(https?://)?(www\.)?', "${protocol}://www."
         Write-Verbose "Change:[$NewDomain] to:[$NewUrl3w]" -Verbose
         $new = $NewUrl3w
-    }else{
+    }
+    else
+    {
         # 将domain.com,http(s)://domain.com,http(s)://www.domain.com统一规范化为$protocol://newdomain.com
-        $new=$NewDomain.Trim() -replace '^(https?://)?(www\.)?', "${protocol}://"
+        $new = $NewDomain.Trim() -replace '^(https?://)?(www\.)?', "${protocol}://"
     }
     $Olds = 'http', 'https' | ForEach-Object { $_ + '://' + ($OldDomain.Trim()) }
     Write-Verbose "Updating WordPress database:[$DatabaseName] from [$OldDomain] to [$NewDomain]" -Verbose
@@ -1345,58 +1347,58 @@ WHERE
 '@
         $sql += ($url_var_sql + $replace_sql)
     }
-#     $common = @'
-# -- 更新 wp_options 表中的 'home' 和 'siteurl' 选项
+    #     $common = @'
+    # -- 更新 wp_options 表中的 'home' 和 'siteurl' 选项
 
-# UPDATE wp_options
-# SET
-#     option_value =
-# REPLACE (
-#         option_value,
-#         @old_domain,
-#         @new_domain
-#     )
-# WHERE
-#     option_name IN ('home', 'siteurl');
+    # UPDATE wp_options
+    # SET
+    #     option_value =
+    # REPLACE (
+    #         option_value,
+    #         @old_domain,
+    #         @new_domain
+    #     )
+    # WHERE
+    #     option_name IN ('home', 'siteurl');
 
-# -- 更新 wp_posts 表中的 'post_content' 和 'guid' 字段
-# UPDATE wp_posts
-# SET
-#     post_content =
-# REPLACE (
-#         post_content,
-#         @old_domain,
-#         @new_domain
-#     ),
-#     guid =
-# REPLACE (
-#         guid,
-#         @old_domain,
-#         @new_domain
-#     );
+    # -- 更新 wp_posts 表中的 'post_content' 和 'guid' 字段
+    # UPDATE wp_posts
+    # SET
+    #     post_content =
+    # REPLACE (
+    #         post_content,
+    #         @old_domain,
+    #         @new_domain
+    #     ),
+    #     guid =
+    # REPLACE (
+    #         guid,
+    #         @old_domain,
+    #         @new_domain
+    #     );
 
-# -- 更新 wp_comments 表中的 'comment_content' 和 'comment_author_url' 字段
-# UPDATE wp_comments
-# SET
-#     comment_content =
-# REPLACE (
-#         comment_content,
-#         @old_domain,
-#         @new_domain
-#     ),
-#     comment_author_url =
-# REPLACE (
-#         comment_author_url,
-#         @old_domain,
-#         @new_domain
-#     );
+    # -- 更新 wp_comments 表中的 'comment_content' 和 'comment_author_url' 字段
+    # UPDATE wp_comments
+    # SET
+    #     comment_content =
+    # REPLACE (
+    #         comment_content,
+    #         @old_domain,
+    #         @new_domain
+    #     ),
+    #     comment_author_url =
+    # REPLACE (
+    #         comment_author_url,
+    #         @old_domain,
+    #         @new_domain
+    #     );
 
-# ALTER TABLE `wp_terms`
-# CHANGE `name` `name` VARCHAR(8000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci NULL DEFAULT NULL;
+    # ALTER TABLE `wp_terms`
+    # CHANGE `name` `name` VARCHAR(8000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci NULL DEFAULT NULL;
 
-# ALTER TABLE `wp_terms`
-# CHANGE `slug` `slug` VARCHAR(8000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '';
-# '@
+    # ALTER TABLE `wp_terms`
+    # CHANGE `slug` `slug` VARCHAR(8000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '';
+    # '@
     $sqlPath = "$env:TEMP/update-wp-url.sql"
     $sql | Out-File $sqlPath
     Write-Verbose $sql 
@@ -3121,6 +3123,80 @@ function Set-ExplorerSoftwareIcons
         explorer.exe
     }
 }
+
+function Get-StylePathByDotNet
+{
+    <# 
+    .SYNOPSIS
+    将给定的路径字符串转换为指定系统风格的路径
+    默认为Windows风格，可选Linux风格
+
+    调用.Net api处理,会展开成绝对路径(如果路径不存在,则会基于当前目录构造路径)
+    这可能不是你想要的,那么可以考虑用另一个命令:Get-StylePath
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+
+        [ValidateSet("Windows", "Linux")]
+        [string]$Style = "windows"
+    )
+
+    # 1. 先获取完整路径，确保是绝对路径（可处理 .、..）
+    $fullPath = [System.IO.Path]::GetFullPath($Path)
+
+    # 2. 使用 Uri 来标准化路径
+    $uri = New-Object System.Uri($fullPath)
+
+    switch ($Style)
+    {
+        "Windows"
+        {
+            # Windows 风格: 返回本地路径（反斜杠）
+            $convertedPath = $uri.LocalPath
+        }
+        "Linux"
+        {
+            # Linux 风格: 将 Windows 路径转为 Uri，然后手动改为 /
+            $linuxStyle = $uri.LocalPath -replace '\\', '/'
+            $convertedPath = $linuxStyle
+        }
+    }
+    Write-Verbose "convert process(by dotnet): $path -> $convertedPath"
+    return $convertedPath
+}
+function Get-StylePath
+{
+    [CmdletBinding()]
+    param(
+        [string]$Path,
+
+        [ValidateSet("Windows", "Linux")]
+        [string]$Style = "Windows"
+    )
+
+    # 去掉左右多余空格
+    $normalizedPath = $Path.Trim()
+
+    switch ($Style)
+    {
+        "Windows"
+        {
+            # 替换所有正斜杠为反斜杠
+            $convertedPath = $normalizedPath -replace '/', '\'
+        }
+        "Linux"
+        {
+            # 替换所有反斜杠为正斜杠
+            $convertedPath = $normalizedPath -replace '\\', '/'
+        }
+    }
+    Write-Verbose "convert process: $path -> $convertedPath"
+    return $convertedPath
+}
+
+
 function pow
 {
     [CmdletBinding()]

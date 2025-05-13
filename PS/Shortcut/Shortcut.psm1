@@ -408,6 +408,7 @@ function New-Shortcut
     # Write-Host -BackgroundColor Green $TargetPath
 
     # 设置对象
+    $TargetPath = Get-StylePath $TargetPath -Verbose
     $WshShell = New-Object -ComObject WScript.Shell
     $Shortcut = $WshShell.createShortcut($Path)
     $Shortcut.TargetPath = $TargetPath
