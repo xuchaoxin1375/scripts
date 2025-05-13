@@ -15,8 +15,6 @@ from comutils import check_iterable  # , parse_dbs_from_str
 from wooenums import ImageMode, EnumItRc, LanguagesHotSale
 from woosqlitedb import SQLiteDB
 
-# 小分类阈值,小于该阈值的分类将被视为小分类,将其分配到热销类(或其近义词);设置为0表示不处理分类
-SMALL_CATEGORY_THRESHOLD = 30
 # 确保日志目录存在
 LOG_DIR = "./log"
 LOG_FILE = f"{LOG_DIR}/log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
@@ -28,7 +26,7 @@ except Exception as e:
 file_handler = logging.FileHandler(LOG_FILE, mode="w", encoding="utf-8")
 console_handler = logging.StreamHandler()
 logging.basicConfig(
-    level=logging.WARNING,#日志级别🎈
+    level=logging.DEBUG,#日志级别🎈
     format="%(levelname)s - %(message)s",
     handlers=[file_handler, console_handler],
 )
@@ -56,8 +54,8 @@ class LanguagesHotSaleX(EnumItRc):
 LOWEST_PRICE = 1
 HIGHEST_PRICE = 10000
 LANGUAGE = LanguagesHotSaleX.US.name
-# 限制产品数量少的分类,将其分配到热销类(或其近义词)
-CATEGORIES_THRESHOLD = 30
+# 限制产品数量少的分类,将其分配到热销类(或其近义词);设置为0表示不处理分类
+CATEGORIES_THRESHOLD = 0
 # -----------------------------------------------------------
 # 指定db文件来源的方案有多种,这里主推方案1,更加简便,但是方案2更加灵活;如果需要解开注释进行配置
 
@@ -67,8 +65,8 @@ CATEGORIES_THRESHOLD = 30
 # 根据你的采集器安装目录以及采集存放的db目录来填写🎈(末尾不要有\,前面可以有)
 DATA_DIR = Path(r"C:\火车采集器V10.27\Data")
 
-START = 202
-END = 202
+START = 200
+END = 200
 
 # 枚举出db文件路径
 rng = range(START, END + 1)

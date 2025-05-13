@@ -334,7 +334,7 @@ $ArchiveSuffix=".$(Get-Date -Format yyMMdd-hh)"
         [switch]$CheckParams
     )
 
-    $domain = $domain.ToLower().replace("www.", "").replace(".com", "").trim() + ".com"
+    $domain = $domain.ToLower().replace("www.", "") # .replace(".com", "").trim() + ".com"
     Write-Verbose "Params Check Mode is: $CheckParams" -Verbose
 
     if($CheckParams)

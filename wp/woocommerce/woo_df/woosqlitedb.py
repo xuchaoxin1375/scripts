@@ -25,7 +25,7 @@ from filenamehandler import FileNameHandler
 fh = FileNameHandler()
 csv.field_size_limit(int(1e7))  # 设置为 10MB 或更高（单位：字节）
 
-# info = print
+# 小分类阈值,小于该阈值的分类将被视为小分类
 SMALL_CATEGORY_THRESHOLD = 30
 # 配置切割不同url的分隔符(小心选择分隔符,例如逗号和分号是有可能出现在url中的),这里选择">"作为分隔符
 SEPARATOR = ">"
