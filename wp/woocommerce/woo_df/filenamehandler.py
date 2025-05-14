@@ -6,18 +6,31 @@ import hashlib
 import mimetypes
 import os
 import re
-from logging import debug, warning, error
+import logging
+
+# from logging import debug, warning, error
 from urllib.parse import unquote, urlparse
 import requests
 import magic
 
+logger = logging.getLogger(__name__)
+TIMEOUT = 30
 
-class FileNameHandler:
+# 配置日志格式，包括函数名
+handler = logging.StreamHandler()
+formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(funcName)s: %(message)s")
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+
+# 让所有日志方法都用本logger
+debug = logger.debug
+warning = logger.warning
+error = logger.error
+
+
+class FilenameHandler:
     """文件名(扩展名)处理器"""
-
-    def __init__(self):
-        # 使用 session 实现连接复用
-        self.session = requests.Session()
 
     # 类属性
     MIME_TO_EXT = {
@@ -58,6 +71,11 @@ class FileNameHandler:
         # 可以继续添加更多映射
     }
 
+    def __init__(self):
+        # 使用 session 实现连接复用
+        self.session = requests.Session()
+        self.mgc = magic.Magic(mime=True)
+
     @staticmethod
     def get_file_extension_from_mime(mime, prefix_dot=True):
         """根据MIME类型获取文件扩展名
@@ -71,14 +89,14 @@ class FileNameHandler:
 
         例如: image/jpeg -> jpeg(或.jpeg)
         """
-        ext = FileNameHandler.MIME_TO_EXT.get(mime, "")
+        ext = FilenameHandler.MIME_TO_EXT.get(mime, "")
         if prefix_dot:
             return ext
         else:
             return ext[1:] if ext.startswith(".") else ext
 
     @staticmethod
-    def get_file_extension_from_url(url: str) -> str:
+    def get_file_extension_from_url_str(url: str) -> str:
         """从URL中提取文件扩展名
 
         先解析出url路径部分,然后针对此部分字符串尝试截取扩展名
@@ -97,7 +115,8 @@ class FileNameHandler:
         _, ext = os.path.splitext(path)
         if ext and ext.startswith("."):
             return ext.lower()
-
+        else:
+            debug("URL字符串缺少后缀特征,无法从中提取文件扩展名:%s", url)
         return ""
 
     @staticmethod
@@ -107,7 +126,7 @@ class FileNameHandler:
         :param content_type: HTTP响应头中的Content-Type,常见的值比如"image/jpeg"等
         :return: 文件扩展名
         """
-        debug(f"Content-Type: [{content_type}]")
+        debug("Content-Type:%s", content_type)
         if not content_type:
             return ""
         # 使用mimetypes模块获取扩展名,例如将"image/jpeg"转换为".jpg"
@@ -131,15 +150,15 @@ class FileNameHandler:
         return mime_map.get(content_type, "")
 
     # @staticmethod
-    def generate_filename_from_url(
+    def get_filename_from_url_str(
         self,
         url: str,
         response=None,
-        default_ext="",  # 修复拼写错误
+        default_ext="",
         invalid_chars_regex=r'[\\/*?:"<>|]',
         default_char="_",
     ) -> str:
-        r"""生成文件名,尽可能分配一个合适的后缀名,如果么有则将default_ext作为后缀名
+        r"""尝试解析url字符串生成文件名(包括后缀名),尽可能分配一个合适的后缀名,如果没有则将default_ext作为后缀名
 
         :param url: 图片URL
         :param response: requests响应对象
@@ -151,7 +170,7 @@ class FileNameHandler:
         注意,文件名(windows中不允许:   \/:*?"<>|  这9个基本字符)
         """
         # 尝试从URL中提取文件名
-        filename = FileNameHandler.get_filebasename_from_url_or_path(url)
+        filename = FilenameHandler.get_filebasename_from_url_or_path(url)
 
         # 检查上述尝试生成的文件名
         ## 如果URL中没有有效的文件名,并检查是否有后缀名(文件扩展名)，如果没有文件名,使用URL的哈希值作为文件名
@@ -159,7 +178,7 @@ class FileNameHandler:
             url_hash = hashlib.md5(url.encode()).hexdigest()
 
             # 尝试获取文件扩展名
-            ext = self.get_file_extension(url, response, default_ext)
+            ext = self.get_file_extension(url, response, default_ext=default_ext)
 
             filename = f"{url_hash}{ext}"
 
@@ -170,7 +189,7 @@ class FileNameHandler:
 
     # @staticmethod
     # @classmethod
-    def get_file_extension(self, url, response=None, defualt_ext="", req_response=True):
+    def get_file_extension(self, url, response=None, default_ext="", req_response=True):
         """
         根据响应头、URL或默认值确定资源的文件扩展名。
 
@@ -192,20 +211,30 @@ class FileNameHandler:
         try:
             if response and "Content-Type" in response.headers:
                 ext = self.get_file_extension_from_content_type(
-                    response.headers["Content-Type"]
+                    content_type=response.headers["Content-Type"]
                 )
 
             if not ext:
-                ext = self.get_file_extension_from_url(url=url)
-
+                ext = self.get_file_extension_from_url_str(url=url)
             if not ext:
+                # 发送请求获取响应Content-Type来分析文件类型
+                debug("发送 HEAD 请求获取 Content-Type: %s", url)
+                response = self.session.head(url=url, stream=True, timeout=30)
+                response.raise_for_status()  # 确保请求成功
+                ext = self.get_file_extension_from_content_type(
+                    content_type=response.headers.get("Content-Type", "")
+                )
+            if not ext:
+                # 二进制文件分析
                 ext = self.get_file_extension_from_response_magic(
                     url=url, response=response, req_response=req_response
                 )
 
         except Exception as e:
-            error("无法确定文件扩展名,使用默认扩展名: %s ", defualt_ext)
             error("Error: %s", e)
+            error("无法确定文件扩展名,使用默认扩展名: %s ", default_ext)
+        if not ext:
+            ext = default_ext
         return ext
 
     @staticmethod
@@ -223,9 +252,102 @@ class FileNameHandler:
         basename, _ = os.path.splitext(filename)
         return basename
 
+    def get_file_mimetype_from_url_by_magic(self, url, chunk_size=2048):
+        """
+        使用流式下载方式获取 URL 资源的前几个字节，并通过 python-magic 判断文件的 MIME 类型。
+
+        该方法适用于大文件或需要节省内存的场景。仅下载第一个数据块即可完成类型识别，
+        不会将整个文件加载到内存中。
+
+        Args:
+            url (str): 需要检测的文件资源 URL。
+            chunk_size (int, optional): 用于判断类型的初始数据块大小，默认为 2048 字节。
+
+        Returns:
+            str: 返回文件的 MIME 类型（如 'image/jpeg', 'application/pdf' 等）。
+
+        Raises:
+            Exception: 如果 HTTP 请求失败。
+            ValueError: 如果无法从响应中读取任何数据（chunk 为空）。
+
+        Example:
+            >>> url = "https://example.com/path/to/image.jpg"
+            >>> get_file_type_from_url_streaming(url)
+            'image/jpeg'
+        """
+        with requests.get(url, stream=True, timeout=TIMEOUT) as response:
+
+            response.raise_for_status()
+
+            # 读取第一个 chunk 来检测文件类型
+            chunk = next(response.iter_content(chunk_size=chunk_size), None)
+            if not chunk:
+                raise ValueError("无法从响应中读取数据或响应为空")
+
+            mime = self.mgc.from_buffer(chunk)
+            return mime
+
+    def extract_chunk_from_response(self, response, chunk_size=2048):
+        """
+        从 requests.Response 对象中提取指定大小的数据块（chunk）用于文件类型检测。
+
+        优先尝试从原始响应流 (`response.raw`) 中读取数据并支持重复读取（通过 seek）。
+        如果原始流不可用，则回退到从 `response.content` 中提取前 `chunk_size` 字节。
+
+        Args:
+            response (requests.Response): HTTP 响应对象。
+            chunk_size (int): 要提取的数据块大小，默认为 2048 字节。
+
+        Returns:
+            bytes: 提取的二进制数据块。
+
+        Raises:
+            ValueError: 如果 response 为 None 或无法从中读取任何数据。
+
+        Example:
+            >>> res = requests.get("https://example.com/image.jpg", stream=True)
+            >>> chunk = handler.extract_chunk_from_response(res)
+            >>> mime = magic.from_buffer(chunk)
+        """
+
+        if not isinstance(response, requests.Response):
+            raise ValueError("response 参数必须是一个有效的 requests.Response 对象")
+
+        chunk = None
+
+        # 尝试从原始流中读取（适用于流式下载）
+        try:
+            if hasattr(response, "raw") and hasattr(response.raw, "seek"):
+                response.raw.seek(0)  # 可重复读取
+                chunk = response.raw.read(chunk_size)
+        except Exception as e:
+            debug("无法从 response.raw 读取数据：%s", e)
+
+        # 回退：尝试从 content 中提取数据
+        if not chunk:
+            debug("response.raw 不可用，尝试从 response.content 获取数据")
+            chunk = getattr(response, "content", b"")[:chunk_size]
+
+        if not chunk:
+            raise ValueError("无法从提供的 response 中读取任何数据")
+
+        return chunk
+
+    def get_file_mimetype_from_response(self, response, chunck_size=2048):
+        """获取response中判断资源类型
+        Args:
+            response (requests.Response): HTTP 响应对象。
+        Returns:
+            str: 返回文件的 MIME 类型（如 'image/jpeg'等）。
+
+        """
+        chunk = self.extract_chunk_from_response(response, chunk_size=chunck_size)
+        mime = self.mgc.from_buffer(chunk)
+        return mime
+
     # @staticmethod
     def get_file_extension_from_response_magic(
-        self, url="", response=None, req_response=True, prefix_dot=True
+        self, url="", response=None, req_response=True, prefix_dot=True, chunk_size=2048
     ):
         """获取文件类型(基于magic库)
 
@@ -248,44 +370,28 @@ class FileNameHandler:
             raise ValueError("必须提供url或response参数")
 
         if url and response is not None:
-            warning("同时提供了url和response参数，将优先使用response进行计算")
+            warning("同时提供了url和response参数，将优先使用response进行计算,url参数将被忽略")
 
-        chunk = None
 
-        # 优先使用 response (此时url参数不会生效)
+        mime = ""
         if response is not None:
-            try:
-                # 尝试从原始流中读取前2048字节
-                response.raw.seek(0)  # 确保从头开始读
-                chunk = response.raw.read(2048)
-            except (AttributeError, OSError, ValueError) as e:
-                # 如果无法读取 raw stream(比如response是有stream=False的get方法获取的情况下
-                # 将无法使用seek(0)，则从content中提取前2048字节
-                debug(f"get file type from response exception:{e}")
-                chunk = response.content[:2048]
+            # 优先使用 response (此时url参数不会生效)
+            mime = self.get_file_mimetype_from_response(
+                response, chunck_size=chunk_size
+            )
         elif req_response:
             # 如果没有提供response，则针对url发起请求
             if not url:
                 raise ValueError("response为空,则必须提供url参数")
-            try:
-                # 使用 self.session 实现连接复用
-                # response = requests.get(
-                response = self.session.get(url=url, stream=True, timeout=30)
-                response.raise_for_status()
-                response.raw.seek(0)
-                chunk = response.raw.read(2048)
-            except requests.RequestException as e:
-                # raise ValueError(f"网络请求失败: {e}") from e
-                error("网络请求失败: %s", e)
 
-        if not chunk:
-            raise ValueError(
-                f"无法从响应中读取数据或响应为空 req_response: {req_response}"
-            )
+            debug("尝试发送请求获取Response并读取前2KB数据来判断文件类型")
+            mime = self.get_file_mimetype_from_url_by_magic(url)
+
+   
 
         # 使用 python-magic 检测类型
-        mime = magic.from_buffer(chunk, mime=True)
-        extension = FileNameHandler.get_file_extension_from_mime(
-            mime, prefix_dot=prefix_dot
+        # mime = magic.from_buffer(chunk, mime=True)
+        extension = FilenameHandler.get_file_extension_from_mime(
+            mime=mime, prefix_dot=prefix_dot
         )
         return extension

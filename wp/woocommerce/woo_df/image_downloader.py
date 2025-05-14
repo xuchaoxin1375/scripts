@@ -16,10 +16,10 @@ from comutils import (
     # split_multi,
 )
 from imgdown import ImageDownloader, USER_AGENTS
-from filenamehandler import FileNameHandler as fh
+from filenamehandler import FilenameHandler as fh
 from wooenums import CSVProductFields
 
-
+DEAFULT_EXT = ".webp"
 csv.field_size_limit(int(1e7))  # 允许csv文件最大为10MB
 # 或者根据实际类定义位置调整导入路径
 IMG_DIR = "./images"
@@ -35,12 +35,14 @@ exception = logger.exception
 if not logger.handlers:
     console_handler = logging.StreamHandler()
     console_formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        fmt="%(asctime)s [%(levelname)s] %(funcName)s: %(message)s"
     )
     console_handler.setFormatter(console_formatter)
     logger.addHandler(console_handler)
 # 默认 INFO，main() 里根据 -v 再调整
-logger.setLevel(logging.INFO)
+# logger.setLevel(logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
+debug("Logger initialized %s", logging.getLevelName(logger.level))
 
 
 def parse_image_sources(file, args, lines, selected_ids=None):
@@ -205,7 +207,9 @@ def main():
     # 设置日志级别
     if args.verbose:
         logger.setLevel(logging.DEBUG)
-
+    # 打印当前的日志级别:
+    print(f"当前日志级别: {logging.getLevelName(logger.level)}")
+    debug("当前日志级别: %s", logging.getLevelName(logger.level))
     # 读取输入文件
     lines = []
     if args.test_url:
@@ -284,12 +288,13 @@ def main():
         )
 
     # 下载图片
-    ## 是否使用自定义文件名
     if args.name_url_pairs:
-        # 解析文件名和URL对
+        # 解析文件名和URL对(使用自定义文件名)
         try:
             downloader.download_with_names(
-                name_url_pairs=lines, output_dir=args.output_dir
+                name_url_pairs=lines,
+                output_dir=args.output_dir,
+                default_ext=DEAFULT_EXT,
             )
         except Exception as e:
             exception("下载过程中发生错误: %s", str(e))
@@ -301,7 +306,9 @@ def main():
                 error("没有有效的URL")
                 return 1
 
-            downloader.download(lines, args.output_dir)
+            downloader.download_only_url(
+                urls=lines, output_dir=args.output_dir, default_ext=DEAFULT_EXT
+            )
         except Exception as e:
             exception("下载过程中发生错误: %s", str(e))
             return 1

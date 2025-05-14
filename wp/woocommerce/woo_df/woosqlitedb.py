@@ -20,9 +20,9 @@ from wooenums import (
     ImageMode,
     LanguagesHotSale,
 )
-from filenamehandler import FileNameHandler
+from filenamehandler import FilenameHandler
 
-fh = FileNameHandler()
+fh = FilenameHandler()
 csv.field_size_limit(int(1e7))  # 设置为 10MB 或更高（单位：字节）
 
 # 小分类阈值,小于该阈值的分类将被视为小分类

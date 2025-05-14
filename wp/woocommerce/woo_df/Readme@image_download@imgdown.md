@@ -281,10 +281,13 @@ PS> python c:\Share\df\LocoySpider\woocommerce\woo_df\imgdown.py  -c  -i .\woo_d
 2025-04-30 22:32:03,352 - root - INFO - ==================================================
 ```
 
-### 无后缀扩展名的图片url下载
+### 无后缀扩展名的图片url下载🎈
 
 ```
 
+https://medias.yves-rocher.fr/medias/?context=bWFzdGVyfGltYWdlc3w0ODAxN3xpbWFnZS9qcGVnfHN5c19tYXN0ZXIvaW1hZ2VzL2gzMC9oYTgvOTg2NTM5MzM0MDQ0NnxjNDY5Zjc2OTdhMDkyODc0OGRkNjVjNDUwNWNmYmFiMWQ2NWQxZjlhMzFkNzg0NGJmMWQ1N2I2MWE5MzBmNzcw&twic=v1/resize=1200/background=white
+https://target.scene7.com/is/image/Target/GUEST_6c8cad53-1980-4e8f-ab19-6730ff673ac0
+https://target.scene7.com/is/image/Target/GUEST_558f70b0-1039-41b7-aeb7-fdba3ecba42a
 ```
 
 

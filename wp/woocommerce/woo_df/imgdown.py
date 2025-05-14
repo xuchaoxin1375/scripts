@@ -30,18 +30,19 @@ import random
 import re
 import threading
 import time
-from logging import debug, error, exception, info, warning
+from logging import debug, error, exception, warning
 from typing import Any, Dict, List, Optional
 
 import requests
-from filenamehandler import FileNameHandler
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+
+from filenamehandler import FilenameHandler
 
 IMG_DIR = "./images"
 # 自定义日志格式
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-
+# ...existing code...
 # 创建当前模块专属的日志记录器
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)  # 设置默认日志级别
@@ -50,7 +51,7 @@ logger.setLevel(logging.INFO)  # 设置默认日志级别
 if not logger.handlers:
     # 控制台日志处理器
     console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
+    console_handler.setLevel(logging.NOTSET)  # 改为 NOTSET，跟随logger级别
     console_formatter = logging.Formatter(LOG_FORMAT)
     console_handler.setFormatter(console_formatter)
     logger.addHandler(console_handler)
@@ -58,14 +59,15 @@ if not logger.handlers:
     # 文件日志处理器
     try:
         file_handler = logging.FileHandler("img_downloader.log", encoding="utf-8")
-        file_handler.setLevel(logging.INFO)
+        file_handler.setLevel(logging.NOTSET)  # 改为 NOTSET，跟随logger级别
         file_formatter = logging.Formatter(LOG_FORMAT)
         file_handler.setFormatter(file_formatter)
         logger.addHandler(file_handler)
     except Exception as e:
         logger.warning("无法创建文件日志处理器: %s", e)
+# ...existing code...
 # 文件名处理器
-fh = FileNameHandler()
+fh = FilenameHandler()
 # 配置使用的User-Agent(过长可以用括号包裹配合+号分隔字符串)
 
 # 预设多个常见浏览器的 User-Agent
@@ -175,11 +177,11 @@ class DownloadStatistics:
         summary = self.get_summary()
         logger.info("=" * 50)
         logger.info("下载统计摘要:")
-        logger.info("总计: %d 张图片", summary['total'])
-        logger.info("成功: %d 张图片", summary['success'])
-        logger.info("下载时跳过: %d 张图片", summary['skipped'])
-        logger.info("失败: %d 张图片", summary['failed'])
-        logger.info("耗时: %.2f 秒", summary['elapsed_time'])
+        logger.info("总计: %d 张图片", summary["total"])
+        logger.info("成功: %d 张图片", summary["success"])
+        logger.info("下载时跳过: %d 张图片", summary["skipped"])
+        logger.info("失败: %d 张图片", summary["failed"])
+        logger.info("耗时: %.2f 秒", summary["elapsed_time"])
 
         if summary["failed"] > 0:
             logger.info("失败的URL:")
@@ -266,8 +268,9 @@ class ImageDownloader:
         self,
         url: str,
         output_dir: str,
-        filename: Optional[str] = None,
+        filename="",
         try_get_ext=True,
+        default_ext="",
         override=False,
         retry_gap=1,
     ) -> bool:
@@ -282,7 +285,7 @@ class ImageDownloader:
             url: 图片URL
             output_dir: 输出目录
             filename: 自定义文件名，如果为None则自动生成
-            try_get_ext: 如果filename缺少扩展名,是否尝获取文件扩展名
+            try_get_ext: 如果filename缺少扩展名,是否尝获取文件扩展名(不保证一定返回扩展名)
             override: 是否覆盖已存在文件(如果不覆盖则跳过)
             retry_gap: 失败重试间隔(秒)
 
@@ -296,11 +299,32 @@ class ImageDownloader:
             current_index = self.stats.task_index
         logger.info(
             "downloading (%d/%d): %s:%s ",
-            current_index, self.stats.total, filename, url
+            current_index,
+            self.stats.total,
+            filename,
+            url,
         )
-        # 如果传入的文件名没有扩展名,且在try_get_ext为True时,则尝试补全扩展名
-        if try_get_ext:
-            filename = self.complete_extension(filename, url)
+        # 如果传入的文件名没有扩展名,且在try_get_ext为True时,则[尝试]补全扩展名
+        filename = filename.rstrip(".")
+        if filename:
+            _, ext = os.path.splitext(filename)
+            # ext = ext.strip(".")
+            if not ext:
+                debug("指定文件名缺少扩展名")
+                if try_get_ext:
+                    raw_name = filename
+                    filename = self.complete_extension(
+                        filename=filename, url=url, default_ext=default_ext
+                    )
+                    debug(
+                        "已尝试补全文件扩展名: %s -> %s",
+                        raw_name,
+                        filename,
+                    )
+            else:
+                debug("文件名包含扩展名:%s", ext)
+        else:
+            debug("未指定文件名,尝试从URL中获取")
 
         # 配置下载中如果出现失败的重试循环(次数由retry_times指定)
         for attempt in range(self.retry_times):
@@ -318,17 +342,17 @@ class ImageDownloader:
                 )
                 response.raise_for_status()
 
-                content_type = response.headers.get("Content-Type", "")
-                if not content_type.startswith("image/"):
-                    error("响应不是图片类型: %s -> Content-Type=%s", url, content_type)
-                    self.stats.add_failed(url, name=filename or "")
-                    return False
+                # 检查response是否是图片类型
+                # if not self._is_image_response(response=response):
+                #     return False
 
-                debug("下载图片: %s (尝试 %d/%d)", url, attempt+1, self.retry_times)
+                debug("下载图片: %s (尝试 %d/%d)", url, attempt + 1, self.retry_times)
                 # 如果用户没有指定文件名,则按照默认策略生成文件名
-                debug("获得文件名: %s", filename)
                 if not filename:
-                    filename = fh.generate_filename_from_url(url=url, response=response)
+                    filename = fh.get_filename_from_url_str(
+                        url=url, response=response, default_ext=default_ext
+                    )
+                debug("获得文件名: [%s]", filename)
 
                 # 确保输出目录存在(如果路径尚不存在则逐级创建,否则略过,也不报错)
                 os.makedirs(output_dir, exist_ok=True)
@@ -347,7 +371,9 @@ class ImageDownloader:
                                 f.write(chunk)
 
                     file_size = os.path.getsize(file_path)
-                    logger.info("成功下载: %s -> %s (%d 字节)", url, file_path, file_size)
+                    logger.info(
+                        "成功下载: %s -> %s (%d 字节)", url, file_path, file_size
+                    )
                     self.stats.add_success()
                 return True
 
@@ -355,7 +381,10 @@ class ImageDownloader:
                 # 如果是应为请求异常导致的下载失败,这在这里捕获;
                 warning(
                     "下载失败 (尝试 %d/%d): %s, 错误: %s",
-                    attempt+1, self.retry_times, url, str(e)
+                    attempt + 1,
+                    self.retry_times,
+                    url,
+                    str(e),
                 )
                 # 如果还有重试的机会,则等待一段时间后回到循环再重试
                 if attempt < self.retry_times - 1:
@@ -371,20 +400,39 @@ class ImageDownloader:
 
         return False
 
-    def complete_extension(self, filename, url):
+    def _is_image_response(self, response):
+        """检查response是否是图片类型"""
+        content_type = response.headers.get("Content-Type", "")
+        if not content_type.startswith("image/"):
+            # error("响应不是图片类型: %s -> Content-Type=%s", url, content_type)
+            # self.stats.add_failed(url=url, name=filename or "")
+            return False
+
+    def complete_extension(self, filename, url, default_ext=""):
         """补全文件扩展名
+
         Args:
             url:文件资源的url(当filename缺少扩展名时,尝试从对应文件的url中获取)
+
         如果输入的filename没有扩展名,则尝试补全扩展名
         如果已经有扩展名,则返回原本地filename
+        如果文件名为空,则返回空字符串
+
         """
         _, ext = os.path.splitext(p=filename or "")
-        if filename and not ext:
-            ext = fh.get_file_extension(url=url)
-            filename = f"{filename}{ext}"
+        debug("filename: [%s], ext:[ %s]", filename, ext)
+        if not ext:
+            # 文件名非空但是扩展名为空时尝试获取扩展名
+            if filename:
+                ext = fh.get_file_extension(url=url, default_ext=default_ext)
+                filename = f"{filename}{ext}"
+            else:
+                debug("缺少文件名和扩展名")
         return filename
 
-    def download(self, urls: List[Any], output_dir: str = IMG_DIR) -> Dict[str, Any]:
+    def download_only_url(
+        self, urls: List[Any], output_dir: str = IMG_DIR, default_ext=""
+    ) -> Dict[str, Any]:
         """
         下载多张图片
 
@@ -409,7 +457,12 @@ class ImageDownloader:
             max_workers=self.max_workers
         ) as executor:
             future_to_url = {
-                executor.submit(self._download_single_image, url, output_dir): url
+                executor.submit(
+                    self._download_single_image,
+                    url,
+                    output_dir,
+                    default_ext=default_ext,
+                ): url
                 for url in urls
             }
 
@@ -429,7 +482,10 @@ class ImageDownloader:
         return self.stats.get_summary()
 
     def download_with_names(
-        self, name_url_pairs: List[Any], output_dir: str = IMG_DIR
+        self,
+        name_url_pairs: List[Any],
+        output_dir: str = IMG_DIR,
+        default_ext="",
     ) -> Dict[str, Any]:
         """
         使用自定义文件名下载多张图片
@@ -461,6 +517,7 @@ class ImageDownloader:
                     url=url,
                     output_dir=output_dir,
                     filename=filename,
+                    default_ext=default_ext,
                 ): (filename, url)
                 for filename, url in name_url_pairs
             }
