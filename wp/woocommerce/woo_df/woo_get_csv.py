@@ -28,7 +28,7 @@ except Exception as e:
 file_handler = logging.FileHandler(LOG_FILE, mode="w", encoding="utf-8")
 console_handler = logging.StreamHandler()
 logging.basicConfig(
-    level=logging.WARNING,#日志级别🎈
+    level=logging.WARNING,  # 日志级别🎈
     format="%(levelname)s - %(message)s",
     handlers=[file_handler, console_handler],
 )
@@ -105,7 +105,12 @@ for file in sorted(dbs):
 if __name__ == "__main__":
     print(f"开始执行(日志文件位于{LOG_FILE},绝对路径为:{os.path.abspath(LOG_FILE)})...")
     ## 1. 实例化SQLiteDB对象
-    db = SQLiteDB(language=LANGUAGE, category_threshold=CATEGORIES_THRESHOLD)
+    db = SQLiteDB(
+        language=LANGUAGE,
+        category_threshold=CATEGORIES_THRESHOLD,
+        lowest_price=LOWEST_PRICE,
+        highest_price=HIGHEST_PRICE,
+    )
     ## 2. 读取数据库数据(根据count_rows_only参数,可以只统计行数,而不做初步的数据处理;正式使用是要改成False!)🎈
     db.get_data(dbs=dbs, count_rows_only=False)
 

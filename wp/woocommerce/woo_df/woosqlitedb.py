@@ -40,7 +40,13 @@ class SQLiteDB:
 
     """
 
-    def __init__(self, language="US", category_threshold=SMALL_CATEGORY_THRESHOLD):
+    def __init__(
+        self,
+        language="US",
+        category_threshold=SMALL_CATEGORY_THRESHOLD,
+        lowest_price=LOWEST_PRICE,
+        highest_price=HIGHEST_PRICE,
+    ):
         self.language = language
         # 默认缓存变量(从DB文件中读取)
         self.field_names_full = DBProductFields.get_all_fields_name(
@@ -49,6 +55,8 @@ class SQLiteDB:
         self.field_values_full = DBProductFields.get_all_fields_value(
             exclude_field=DBProductFields.SKU.value
         )
+        self.lowest_price = lowest_price
+        self.highest_price = highest_price
         self.category_threshold = category_threshold
         # 缓存从数据库中读出来的数据行(记录),默认情况下仅存储业务需要的行以及字段
         self.db_rows = []
@@ -538,9 +546,7 @@ but different name, keep records",
             lines.append(line_dict)
         return lines
 
-    def get_sale_price(
-        self, price, lowest_price=LOWEST_PRICE, highest_price=HIGHEST_PRICE
-    ):
+    def get_sale_price(self, price):
         """获取产品折扣价格
         1.价格小于100的打3折
         2.价格100到300的打0.25折
@@ -549,6 +555,8 @@ but different name, keep records",
         :param row: 数据库行
         :return: 折扣价格(如果返回0,表示这个产品初始价格过于低或过高,这个产品要过滤掉,由调用者处理)
         """
+        lowest_price = self.lowest_price
+        highest_price = self.highest_price
         try:
             price = float(price)
         except ValueError:
@@ -580,7 +588,7 @@ but different name, keep records",
         extra_fields=None,
         hot_class=LanguagesHotSale,
         language="",
-        req_response=False
+        req_response=False,
     ):
         """
         获取产品数据行的字段补充和修改后的字典形式数据，每行数据作为字典返回,服务于导出到csv的阶段预备
@@ -659,7 +667,7 @@ but different name, keep records",
             expanded_rows.append(row)
         return expanded_rows
 
-    def _get_img_extension(self, img_url,req_response=False):
+    def _get_img_extension(self, img_url, req_response=False):
         """
         尝试获取图片文件的后缀名
         (处理单个图片链接,可以配合循环批量处理)
@@ -669,7 +677,7 @@ but different name, keep records",
         # if not img_url:
         #     return ""
         # return img_url.split(".")[-1]
-        res = fh.get_file_extension(url=img_url,req_response=req_response)
+        res = fh.get_file_extension(url=img_url, req_response=req_response)
         return res
 
     def split_list_average(self, lst, n):

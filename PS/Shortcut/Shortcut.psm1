@@ -283,7 +283,7 @@ function New-Shortcut
         [string]$Path = '.',
 
         # 快捷方式指向的目标(目录或文件,可以是课执行程序文件或代码文件)
-        [string]$TargetPath,
+        [alias('Destination')][string]$TargetPath,
 
         # 快捷方式启动参数(当TargetPath为可执行程序时并且接受命令行参数时有用)
         [string]$Arguments = '',

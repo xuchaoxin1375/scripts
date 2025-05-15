@@ -1085,7 +1085,7 @@ function New-Junction
 {
     param(
         $Path,
-        $Target
+        [alias('Destination')]$Target
     )
     # Write-Host 'if failed(access Denied), please run the terminal with administor permission.(考虑到部署的门槛，scoope未必可用，您需要手动打开带有管理员权限的terminal进行操作（而不在这里使用sudo;这里提供了参数，您可以传入sudo选项）'
     if (Test-Path $path)

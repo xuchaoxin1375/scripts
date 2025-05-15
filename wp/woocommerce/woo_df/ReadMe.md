@@ -56,7 +56,8 @@ pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
 安装依赖的命令为:
 
 ```bash
- pip install -r ".\woo_df\requirements.txt"
+pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple #修改pip源
+pip install -r ".\woo_df\requirements.txt" #注意修改requirements.txt的路径为你自己的实际路径🎈
 ```
 
 - 注意:具体的requirements.txt路径根据自己的实际情况指定,尤其是当前工作目录会影响到指定目录值

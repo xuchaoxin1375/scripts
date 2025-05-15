@@ -43,6 +43,7 @@ from comutils import cat_lock, log_upload, split_list
 
 # 核心库(需要安装)
 from woocommerce import API
+
 csv.field_size_limit(int(1e7))  # 允许csv文件最大为10MB
 # from requests.exceptions import ConnectTimeout, ReadTimeout, Timeout, RequestException
 
@@ -53,6 +54,24 @@ __all__ = [
     "ProgressTracker",
     "FetchMode",
 ]
+
+
+MAX_WORKERS_FETCH = 10
+# 定义 WooCommerce API 端点常量字符串
+# 根据api的规范,rest api(get/post/put/delete)中的路径字符串被形参被称为"endpoint"
+CATEGORIES_ENDPOINT = "products/categories"
+CATEGORIES_TOTALS_ENDPOINT = "reports/categories/totals"
+
+
+PRODUCTS_ENDPOINT = "products"
+PRODUCTS_TOTALS_ENDPOINT = "reports/products/totals"
+PRODUCT_BATCH_ENDPOINT = "products/batch"
+
+SYSTEM_STATUS_ENDPOINT = "system_status"
+# 默认选择的上传模式:
+UPLOAD_MODE = UploadMode.TRY_CREATE_ONLY
+
+LOG_HEADER = ["SKU", "Name", "id", "Status", "message", "datetime"]
 
 
 class ProgressTracker:
@@ -84,23 +103,6 @@ class ProgressTracker:
         """获取更新后的进度字符串,便于统一格式"""
         self.update_progress(count_type=count_type)
         return f"[{self.progress_count}({self.success_count} success, {self.fail_count} fail)]"
-
-
-# 定义 WooCommerce API 端点常量字符串
-# 根据api的规范,rest api(get/post/put/delete)中的路径字符串被形参被称为"endpoint"
-CATEGORIES_ENDPOINT = "products/categories"
-CATEGORIES_TOTALS_ENDPOINT = "reports/categories/totals"
-
-
-PRODUCTS_ENDPOINT = "products"
-PRODUCTS_TOTALS_ENDPOINT = "reports/products/totals"
-PRODUCT_BATCH_ENDPOINT = "products/batch"
-
-SYSTEM_STATUS_ENDPOINT = "system_status"
-# 默认选择的上传模式:
-UPLOAD_MODE = UploadMode.TRY_CREATE_ONLY
-
-LOG_HEADER = ["SKU", "Name", "id", "Status", "message", "datetime"]
 
 
 class WC(API):
@@ -339,7 +341,9 @@ class WC(API):
         max_workers : int
             最大线程数
         """
-        return max(min(tasks, max_workers), 1)
+        debug("tasks: %s, max_workers: %s", tasks, max_workers)
+        workers_number=max(min(tasks, max_workers), 1)
+        return workers_number
 
     def prepare_categories(self, csv_files, max_workers=50, use_lock=False):
         """从文件创建分类
@@ -422,9 +426,9 @@ class WC(API):
 
     def fetch_existing_products(
         self,
-        page=1,
+        # page=1,
         page_size=100,
-        max_workers=10,
+        max_workers_fetch=MAX_WORKERS_FETCH,
         fetch_mode=FetchMode.FROM_CACHE,
         log_file="",
     ):
@@ -435,15 +439,17 @@ class WC(API):
         max_workers : int, optional
             最大并发线程数, by default 10
             设置过大可能会导致ConnectionError
-        mode : str, optional
+        fetc_mode : str, optional
 
             1.FetchMode.FROM_CACHE,则从缓存中获取(速度快,但是未必是最新情况,不一定包含全部产品);
 
             2.FetchMode.FROM_DATABASE,则调用api查询数据库获取(速度慢,尽量不用), by default FetchMode.FROM_CACHE
 
             3.FetchMode.FROM_LOG_FILE,从日志中恢复商品上传进度(读档),速度最快,优先考虑
+        max_workers_fetch : int, optional
+            最大线程数, by default MAX_WORKERS_FETCH
         log_file : str, optional
-            日志文件路径, by default ""
+            可选,日志文件路径, by default ""
 
 
         示例输出:
@@ -459,9 +465,9 @@ class WC(API):
                             (There is no cached products.)"
                 )
                 self.fetch_existing_products(
-                    page=1,
+                    # page=1,
                     page_size=page_size,
-                    max_workers=max_workers,
+                    max_workers_fetch=max_workers_fetch,
                     fetch_mode=FetchMode.FROM_DATABASE,
                 )
             else:
@@ -469,44 +475,53 @@ class WC(API):
 
         elif fetch_mode == FetchMode.FROM_DATABASE:
 
-            pages = self.get_product_pages_count()
-            # 选择一个合理的线程数(超过页数就没有必要了,但是也不能小于1)
-            workers = self.get_worker_number(pages, max_workers)
-
-            info(f"Fetching products with {workers} workers...")
-
-            with ThreadPoolExecutor(max_workers=workers) as executor:
-                futures = []
-                for page in range(1, pages + 1):
-                    futures.append(
-                        executor.submit(self.get_product_page, page, page_size)
-                    )
-                for future in as_completed(futures):
-                    response = future.result()
-                    if not response.ok:
-                        error(
-                            f"Error fetching products: {self.get_code_message(response)}"
-                        )
-                        break
-                    info(f"Parsing fetched products page {page}...")
-                    products = response.json()
-                    for product in products:
-                        product_id = product.get("id")
-                        name = product.get("name")
-                        sku = product.get("sku")
-                        if sku:
-                            self.existing_products_sku[sku] = product_id
-                        self.existing_products[product_id] = [name, sku]
-                        info(
-                            f"OK:Get product:{{id:{product_id};name:{name};sku:[{sku}]}}"
-                        )
+            self.get_product_from_db(
+                page_size=page_size, max_workers_fetch=max_workers_fetch
+            )
         elif fetch_mode == FetchMode.FROM_LOG_FILE:
-            self.load_upload_log_data(log_file)
+            self.load_upload_log_data(log_file=log_file)
         else:
             error(f"Invalid mode: {fetch_mode}")
         # 返回值还可以选择:self.existing_products_sku,self.existing_products
         # 或者干脆不返回值,后面要用直接访问两个对象的缓存容器属性
         return self.existing_products
+
+    def get_product_from_db(self, page_size, max_workers_fetch):
+        """从数据库中获取所有产品(逐页读取产品,每页产品有数量限制)
+
+        :param page_size: 每页产品数量
+        :param max_workers_fetch: 读取产品的最大线程数
+
+        """
+        pages = self.get_product_pages_count()
+        info("Total product pages: %s", pages)
+        # 选择一个合理的线程数(超过页数就没有必要了,但是也不能小于1)
+        workers = self.get_worker_number(tasks=pages, max_workers=max_workers_fetch)
+
+        info(f"Fetching products with {workers} concurrent workers...")
+
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = []
+            for page in range(1, pages + 1):
+                futures.append(executor.submit(self.get_product_page, page, page_size))
+            for future in as_completed(futures):
+                response = future.result()
+                if not response.ok:
+                    error(f"Error fetching products: {self.get_code_message(response)}")
+                    break
+                info(f"Parsing fetched products page {page}...")
+                products = response.json()
+                for product in products:
+                    product_id = product.get("id")
+                    name = product.get("name")
+                    sku = product.get("sku")
+                    # 考虑到有些历史站可能存在缺少sku的产品,因此这里先判断读取的产品sku是否存在
+                    if sku:
+                        self.existing_products_sku[sku] = product_id
+                    self.existing_products[product_id] = [name, sku]
+                    info(f"OK:Get product:{{id:{product_id};name:{name};sku:[{sku}]}}")
+                if len(products) == 0:
+                    warning("No products found in this page.")
 
     def get_categories_page(self, page=1, page_size=100):
         """获取第page页的分类"""
@@ -1431,10 +1446,10 @@ class WC(API):
         csv_files: list[str],
         max_workers,
         max_workers_per_file=1,
+        max_workers_fetch=MAX_WORKERS_FETCH,
         batch_size=10,
-        upload_mode=UPLOAD_MODE,
-        # fetch_mode=FetchMode.NO_FETCH,
         batch_mode=True,
+        upload_mode=UPLOAD_MODE,
         filtered_mode=True,
         prepare_categories=True,
         log_file="",
@@ -1446,6 +1461,10 @@ class WC(API):
 
         :param csv_files  csv文件列表,使用r""字符串,这样兼容正反斜杠
         :param max_workers: 并发线程数
+        :param max_workers_per_file: 每个文件上传的线程数
+        :param max_workers_fetch: 用于获取已存在产品数据的线程数
+        :param batch_size: 分批构造数据发送的批大小(只有使用batch_mode=True时才有效)
+
         :param upload_mode: 上传模式,使用UploadMode中的枚举值
         :param batch_mode: 是否使用分批构造数据发送的模式(默认使用,可以降低请求压力,降低发生:
             - [WinError 10055] 由于系统缓冲区空间不足或队列已满，不能执行套接字上的操作的错误)
@@ -1482,22 +1501,24 @@ class WC(API):
             if upload_mode == UploadMode.RESUME_FROM_DATABASE:
                 # 尝试从wp站数据库中读取已上传的数据,并写入缓存容器
                 self.fetch_existing_categories()  # mode=FetchMode.FROM_DATABASE
-                self.fetch_existing_products()
+                self.fetch_existing_products(max_workers_fetch=max_workers_fetch)
             elif upload_mode == UploadMode.RESUME_FROM_LOG_FILE:
                 # 从日志文件中读取已上传的数据,并写入缓存容器
                 # to verify
                 self.fetch_existing_products(
-                    fetch_mode=FetchMode.FROM_LOG_FILE, log_file=log_file
+                    fetch_mode=FetchMode.FROM_LOG_FILE,
+                    log_file=log_file,
+                    max_workers_fetch=max_workers_fetch,
                 )
 
             # 数据文件处理和上传策略(并发方式)
             ## 方案1:计算出尚未上传的产品(集中处理)
             if filtered_mode:
-                if UPLOAD_MODE==UploadMode.TRY_CREATE_ONLY:
-                    fetch_mode=FetchMode.NO_FETCH
+                if UPLOAD_MODE == UploadMode.TRY_CREATE_ONLY:
+                    fetch_mode = FetchMode.NO_FETCH
                 else:
-                    fetch_mode=FetchMode.FROM_CACHE
-                self.get_products_need_to_uploaded(csv_files,fetch_mode=fetch_mode)
+                    fetch_mode = FetchMode.FROM_CACHE
+                self.get_products_need_to_uploaded(csv_files, fetch_mode=fetch_mode)
                 self.process_csv(
                     filtered_rows=self.products_need_to_upload,
                     max_workers=max_workers,

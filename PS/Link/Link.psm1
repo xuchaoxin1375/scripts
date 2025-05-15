@@ -22,7 +22,7 @@ function New-HardLink
     [CmdletBinding()]
     param(
         $Path ,
-        [String]$Target 
+        [alias('Destination')][String]$Target 
     )
     # 下面这段判断处理可有可无
     <# if ($Target.ToString().StartsWith(".\")) {
