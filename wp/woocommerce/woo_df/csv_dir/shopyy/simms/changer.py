@@ -47,6 +47,7 @@ m = [
 
 # %%
 import itertools
+from itertools import zip_longest
 import logging
 import os
 import re
@@ -162,12 +163,25 @@ def parse_attrs(s):
         return ([], [])
 
 
+def parse_images(imgs):
+    """解析图片"""
+    if imgs:
+        # imgs=imgs.replace('"',"")
+        res = re.findall(r'"(.*?)"', imgs)
+        debug("images: %s", res)
+        return res
+        # res = ",".join(res)
+        # return res
+
+
 # 应用解析函数并展开
 rows = []
 for idx, row in df.iterrows():
     debug("processing row: %s", (idx + 1))
     attr = row["Attribute 1 value(s)"]
     names, values = parse_attrs(attr)
+    images=parse_images(row["Images"])
+    z=zip_longest(values,images)
     for i, value_group in enumerate(iterable=values, start=1):
         # 每个属性选项组占用一行(生成一个字典)
         d = {}
@@ -176,19 +190,23 @@ for idx, row in df.iterrows():
         # 商品首行
         if i == 1:
             d["Title"] = row["Name"]
-            d["Product Category"] = row["Categories"]
+            # d["Product Category"] = row["Categories"]
+            d["Type"] = row["Categories"]
             d["Body (HTML)"] = row["Description"]
-            d["Image Src"] = row["Images"]
+            # d["Image Src"] = row["Images"]
+            d["Image Src"] = img
+            d["Image Position"] = "1"
+            d["Published"] = "TRUE"
         # 同款商品的每一行都要有的
         d["Handle"] = row["SKU"]
-        d["Variant Compare At Price"] = row["Regular price"]
-        d["Variant Price"] = row["Sale price"]
+        d["Variant Compare At Price"] = round(row["Regular price"], 2)
+        d["Variant Price"] = round(row["Sale price"], 2)
         # 填充属性相关字段
         for j, name in enumerate(names, start=1):
             # if add_attr_name:
-            if i==1:
+            if i == 1:
                 d[f"Option{j} Name"] = name
-                add_attr_name=False
+                add_attr_name = False
             else:
                 d[f"Option{j} Name"] = ""
             d[f"Option{j} Value"] = value_group[j - 1]
@@ -196,6 +214,7 @@ for idx, row in df.iterrows():
         rows.append(d)
 variants = pd.DataFrame(rows, columns=all_columns)
 variants
+variants.to_csv("changed_demo.csv")
 
 ##
 

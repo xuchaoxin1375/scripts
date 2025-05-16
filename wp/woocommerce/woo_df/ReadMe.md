@@ -172,7 +172,7 @@ woo_uploader.py负责的任务,可以多线程或者按批上传数据到wp站
 - 由于代码被拆分成多个文件,所以运行时,命令行的工作目录要定位到这些脚本文件的目录中
 
 
-### 环境变量
+### 配置python环境变量🎈
 
 - 将模块添加到环境变量可以解除该限制
 
@@ -181,7 +181,7 @@ woo_uploader.py负责的任务,可以多线程或者按批上传数据到wp站
   - 例如,使用`setx PYTHONPATH "module_path"`(将引号内容替换为模块所在目录)
 
     ```bash
-    PS> setx PYTHONPATH C:\repos\DF_LocoySpider\woocommerce\woo_df\
+    PS> setx PYTHONPATH C:\repos\scripts\wp\woocommerce\woo_df\
     
     成功: 指定的值已得到保存。
     ```
@@ -189,7 +189,7 @@ woo_uploader.py负责的任务,可以多线程或者按批上传数据到wp站
     powershell也可以
 
     ```powershell
-    [System.Environment]::SetEnvironmentVariable("PYTHONPATH", "C:\repos\DF_LocoySpider\woocommerce\woo_df\", [System.EnvironmentVariableTarget]::Machine)
+    [System.Environment]::SetEnvironmentVariable("PYTHONPATH", "C:\repos\scripts\wp\woocommerce\woo_df\", [System.EnvironmentVariableTarget]::Machine)
     ```
 
 
@@ -268,5 +268,5 @@ setx PYTHONPATH C:\repos\scripts\wp\woocommerce\woo_df
 
 利用快捷键`alt+shift+o`可以整理导入的包
 
-使用`organize imports`指令也可以pai'xu
+使用`organize imports`指令也可以排序
 
