@@ -13,30 +13,13 @@
  'PageUrl',
  'Description']
 
-# 模板
+# shopify模板中的大致字段
 原始列: ['Handle', 'Title', 'Body (HTML)', 'Vendor', 'Product Category', 'Type', 'Tags', 'Published',
 'Option1 Name', 'Option1 Value', 'Option2 Name', 'Option2 Value', 'Option3 Name', 'Option3 Value',
 'Variant SKU', 'Variant Grams', 'Variant Inventory Tracker', 'Variant Inventory Qty', 'Variant Inventory Policy', 'Variant Fulfillment Service', 'Variant Price', 'Variant Compare At Price', 'Variant Requires Shipping', 'Variant Taxable', 'Variant Barcode', 'Image Src', 'Image Position', 'Image Alt Text', 'Gift Card', 'Variant Image', 'Variant Tax Code', 'Cost per item', 'Included / International', 'Status']
 
-可能要填写的列:
-['Handle', 'Title', 'Body (HTML)', 'Product Category', 'Tags', 'Published',
-'Option1 Name', 'Option1 Value', 'Option2 Name', 'Option2 Value', 'Option3 Name', 'Option3 Value',
-'Variant Grams', 'Variant Inventory Tracker', 'Variant Inventory Qty', 'Variant Inventory Policy', 'Variant Fulfillment Service',
-'Variant Price',
-'Variant Requires Shipping', 'Variant Taxable', 'Image Src', 'Image Position',
-'Gift Card', 'Variant Image', 'Included / International', 'Status'
-]
-精选的列:
-[
-'Handle',
-'Vendor',
-'Published',
-# 'Option1 Name',
-# 'Option1 Value',
-'Published',
-'Variant Grams',
 
-]
+
 # 笛卡尔积测试
 m = [
     ["Watermelon", "Neptune"],
@@ -64,7 +47,8 @@ script_path = os.path.abspath(__file__)
 d = os.path.dirname(script_path)
 os.chdir(d)
 
-SOURCE = r"./simms-eu.demo.csv"
+# SOURCE = r"./simms-eu.demo.csv"
+SOURCE=r""
 TEMPLATE_SHOPIFY = r"C:\repos\scripts\wp\woocommerce\woo_df\csv_dir\shopyy\templates\product_template_shopify_empty.csv"
 df = pd.read_csv(SOURCE)
 dft = pd.read_csv(TEMPLATE_SHOPIFY)
@@ -177,48 +161,61 @@ def parse_images(imgs):
 # 应用解析函数并展开
 rows = []
 for idx, row in df.iterrows():
-    debug("processing row: %s", (idx + 1))
+    debug("processing row: %s", idx)
     attr = row["Attribute 1 value(s)"]
     names, values = parse_attrs(attr)
-    images=parse_images(row["Images"])
-    z=zip_longest(values,images)
-    for i, value_group in enumerate(iterable=values, start=1):
+    images = parse_images(row["Images"]) or []
+    z = zip_longest(values, images, fillvalue="")
+    for expand_line_idx, (value_group, img) in enumerate(z, start=1):
+        # for i, value_group in enumerate(iterable=values, start=1):
         # 每个属性选项组占用一行(生成一个字典)
         d = {}
+        debug("expand_line_idx: %s, value_group: %s, img: %s", expand_line_idx, value_group, img)
         # add_attr_name=True
         # 遍历names构造字典(字典中k:v数量取决于names的长度)
         # 商品首行
-        if i == 1:
+        if expand_line_idx == 1:
             d["Title"] = row["Name"]
             # d["Product Category"] = row["Categories"]
             d["Type"] = row["Categories"]
             d["Body (HTML)"] = row["Description"]
             # d["Image Src"] = row["Images"]
-            d["Image Src"] = img
-            d["Image Position"] = "1"
+            # d["Image Src"] = img
+            # d["Image Position"] = "1"
             d["Published"] = "TRUE"
         # 同款商品的每一行都要有的
         d["Handle"] = row["SKU"]
         d["Variant Compare At Price"] = round(row["Regular price"], 2)
         d["Variant Price"] = round(row["Sale price"], 2)
-        # 填充属性相关字段
-        for j, name in enumerate(names, start=1):
+        # 多图情况
+        d["Image Src"] = img
+        d["Image Position"] = str(expand_line_idx)
+        # 在当前行(attr_line_order行内)填充属性相关字段(option1~option3)
+        options = zip(names, value_group)
+        for option_order, (name, value) in enumerate(options, start=1):
             # if add_attr_name:
-            if i == 1:
-                d[f"Option{j} Name"] = name
-                add_attr_name = False
+            debug(
+                "attr_line_order: %s, option_order(in line): %s, name: %s,value: %s",
+                expand_line_idx,
+                option_order,
+                name,  # size,color等
+                value,
+            )
+            if expand_line_idx == 1:
+                # 每组数据(一款产品占有一组数据行)的首行才添加属性名称,例如:size,color等
+                # debug("Head line of this product[%s],")
+                d[f"Option{option_order} Name"] = name
             else:
-                d[f"Option{j} Name"] = ""
-            d[f"Option{j} Value"] = value_group[j - 1]
+                d[f"Option{option_order} Name"] = ""
+            d[f"Option{option_order} Value"] = value_group[option_order - 1]
         debug("check row(d): %s", d)
         rows.append(d)
+
 variants = pd.DataFrame(rows, columns=all_columns)
+##
 variants
+##
+variants[['Image Src','Image Position']]
+##
 variants.to_csv("changed_demo.csv")
 
-##
-
-# df.rename(columns=exist_fiels_map, inplace=True)
-# # 移除不需要的列
-# df.drop(columns=["Attribute 1 name", "Attribute 1 value(s)","ImagesUrl","PageUrl", "Tags"], inplace=True)
-##
