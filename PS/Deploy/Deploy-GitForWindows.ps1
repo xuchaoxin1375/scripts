@@ -1,13 +1,16 @@
 # $github_mirror="https://gh-proxy.com"
+
 Invoke-RestMethod 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy.psm1' | Invoke-Expression
+
 # get functions or commands about mirror operations!
 Get-Command *mirror* 
+
 #check commands usage (syntax)
 Get-Command Get-AvailableGithubMirrors -Syntax #use this is enough in general cases
 Get-Command Get-SelectedMirror -Syntax
 
 $github_mirror = Get-SelectedMirror   
-Write-Verbose "Selected mirror: $github_mirror" -Verbose
+Write-Verbose "Selected mirror: ${github_mirror}" -Verbose
 function Deploy-GitForwindows
 {
     <# 
