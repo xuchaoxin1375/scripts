@@ -22,6 +22,7 @@ from datetime import datetime
 
 from comutils import log_worker
 from woodf import WC
+
 # from woodf_dev import WC
 from wooenums import UploadMode
 
@@ -42,15 +43,15 @@ CSV_DIR = r"S:\csv_demo\current"
 MAX_WORKERS_FILES = 1  # 同时上传的文件数(一般不超过7);
 MAX_WORKERS_PER_FILE = 1  # 每份文件上传的线程数
 TIME_OUT = 500  # 如果是批上传,可以考虑调大些,防止响应体过大时间不足导致报错
-BATCH_SIZE = 50  # 每次上传的产品数量
+BATCH_SIZE = 7  # 每批上传的产品数量(如果上传不顺利,可以适当调小些,反之可以调大些,美国产品数据反爬普遍比较严,一般考虑调小,避免过多的524错误)
 
 
 # 默认选择的上传模式🎈:
-UPLOAD_MODE = UploadMode.TRY_CREATE_ONLY
+UPLOAD_MODE = UploadMode.FLEXIBLE
 
 # 日志文件路径,可作为存档,恢复上传断点🎈
 CSV_DIR = CSV_DIR.strip("/")
-TIME_STR = datetime.now().strftime("%Y%m") #日期精度自己控制(%Y%m%d-%H-%M-%S)
+TIME_STR = datetime.now().strftime("%Y%m")  # 日期精度自己控制(%Y%m%d-%H-%M-%S)
 LOG_FILE_UPLOAD = f"{CSV_DIR}/log/upload-{domain}-{TIME_STR}.csv"
 # LOG_FILE_UPLOAD_BAK = f"C:/log/upload-{domain}.csv"
 # LOG_FILE_UPLOAD_FAIL=f"{CSV_DIR}/log/upload_fail-{domain}-{time_str}.csv"
@@ -112,17 +113,11 @@ if __name__ == "__main__":
         prepare_categories=True,
         batch_mode=True,
         batch_size=BATCH_SIZE,
+        # 如果是RESUME_FROM_LOG_FILE模式,请填写正确的日志[文件(.log)]路径!
+        log_file=LOG_FILE_UPLOAD,
     )
 
-    ## 从日志文件中恢复上传进度(主要注意upload_mode)
-    # wc.process_csvs(
-    #     csv_files=files,
-    #     max_workers=MAX_WORKERS_FILES,
-    #     upload_mode=UploadMode.RESUME_FROM_LOG_FILE,#如果要从数据库中恢复,则使用UploadMode.RESUME_FROM_DATABASE
-    #     prepare_categories=True,
-    #     batch_mode=True,
-    #     log_file=r"" # 如果是RESUME_FROM_LOG_FILE模式,请填写正确的日志[文件(.log)]路径!
-    # )
+
 
     ## 结尾清理log_thread(适合于从命令行中执行时使用)
     # cleanup_log_thread(log_thread)

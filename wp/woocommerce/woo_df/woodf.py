@@ -342,7 +342,7 @@ class WC(API):
             最大线程数
         """
         debug("tasks: %s, max_workers: %s", tasks, max_workers)
-        workers_number=max(min(tasks, max_workers), 1)
+        workers_number = max(min(tasks, max_workers), 1)
         return workers_number
 
     def prepare_categories(self, csv_files, max_workers=50, use_lock=False):
@@ -1459,7 +1459,7 @@ class WC(API):
         使用self.products_need_to_upload来直接跳过已存在的产品的方案时,
         可以用适当的参数自行分被调用self.get_products_need_to_uploaded()和self.process_csv()
 
-        :param csv_files  csv文件列表,使用r""字符串,这样兼容正反斜杠
+        :param csv_files:  csv文件列表,使用r""字符串,这样兼容正反斜杠
         :param max_workers: 并发线程数
         :param max_workers_per_file: 每个文件上传的线程数
         :param max_workers_fetch: 用于获取已存在产品数据的线程数
@@ -1486,11 +1486,22 @@ class WC(API):
         csv_size = csv.field_size_limit()
         print(f"CSV field size limit: {csv_size}")
         try:
-            # 检查路径参数(如果有的话)
-            if log_file and not os.path.exists(log_file):
-                error(f"Log file '{log_file}' not found.")
-                sys.exit(-1)
-            # 是否事先准备好分类
+            # 上传模式定型
+            if upload_mode == UploadMode.FLEXIBLE:
+                if not os.path.exists(log_file):
+                    warning(f"Log '[{log_file}]' not found.")
+
+                    warning(
+                        "切换上传模式为普通上传:[%s]->[%s]",
+                        upload_mode,
+                        UploadMode.TRY_CREATE_ONLY,
+                    )
+                    upload_mode = UploadMode.TRY_CREATE_ONLY
+                else:
+                    upload_mode = UploadMode.RESUME_FROM_LOG_FILE
+     
+            info("Determined Upload Mode: [%s]", upload_mode)
+            # 根据配置是否事先准备好分类
             if prepare_categories:
                 self.prepare_categories(csv_files)
             else:
@@ -1524,7 +1535,7 @@ class WC(API):
                     max_workers=max_workers,
                     upload_mode=upload_mode,
                     batch_mode=batch_mode,
-                    batch_size=batch_size
+                    batch_size=batch_size,
                 )
             else:
                 # 方案2:逐个文件处理(分散处理)

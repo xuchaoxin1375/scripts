@@ -126,7 +126,9 @@ class CSVProductFields(EnumIt):
         return img_mode in [ImageMode.NAME_FROM_SKU, ImageMode.NMAE_FROM_URL]
 
     @classmethod
-    def get_all_fields_name(cls, extend_fields=None, img_mode=ImageMode.NAME_AS_URL):
+    def get_all_fields_name(
+        cls, exclude_field="", extend_fields=None, img_mode=ImageMode.NAME_AS_URL
+    ):
         """
         根据模式的不同返回不同的CSV字段名称列表
         :param img_mode: 是否将图片是否仅存放图片名称而不是存放链接
@@ -137,13 +139,17 @@ class CSVProductFields(EnumIt):
         """
         res = []
         if cls.is_img_url_needed(img_mode):
-            res = super().get_all_fields_name(extend_fields=extend_fields)
+            res = super().get_all_fields_name(
+                exclude_field=exclude_field, extend_fields=extend_fields
+            )
         else:
             res = [field.name for field in cls if field.name not in ["img_URL"]]
         return res
 
     @classmethod
-    def get_all_fields_value(cls, extend_fields=None, img_mode=ImageMode.NAME_AS_URL):
+    def get_all_fields_value(
+        cls, exclude_field="", extend_fields=None, img_mode=ImageMode.NAME_AS_URL
+    ):
         """根据模式的不同返回不同的CSV字段取值列表
 
         :param img_mode: 是否将图片是否仅存放图片名称而不是存放链接,参考get_all_fields_name方法的说明
@@ -151,7 +157,9 @@ class CSVProductFields(EnumIt):
         """
         res = []
         if cls.is_img_url_needed(img_mode):
-            res = super().get_all_fields_value(extend_fields=extend_fields)
+            res = super().get_all_fields_value(
+                exclude_field=exclude_field, extend_fields=extend_fields
+            )
         else:
             res = [field.value for field in cls if field.name not in ["img_URL"]]
         return res
@@ -164,7 +172,7 @@ class LanguagesHotSale(EnumItRc):
 
     US = [
         "New Arrival",
-        "Hot-selling",
+        "Best Sellers",
         "Promotion",
         "Flash Deal",
         "Best Value",
@@ -229,30 +237,34 @@ class UploadMode(Enum):
         RESUME_FROM_LOG: 从日志文件恢复上传进度
 
     模式详细说明：
-    1. JUMP_IF_EXIST (推荐默认)
+    1. FLEXIBLE (默认模式)
+       - 尝试从log文件恢复进度，如果log文件不存在,则认为是首次上传
+       - 是下面的基础模式RESUME_FROM_LOG到TRY_CREATE_ONLY的自动选择模式
+    2. JUMP_IF_EXIST
        - 跳过已存在的商品
        - 比TRY_CREATE_ONLY有更好的性能表现
        - 适用场景：常规上传
-    2. TRY_CREATE_ONLY
+    3. TRY_CREATE_ONLY
        - 仅创建新商品
        - 遇到SKU冲突时直接跳过
        - 适用场景：首次上传或确定无重复SKU时
 
-    3. UPDATE_IF_EXIST (强制更新)
+    4. UPDATE_IF_EXIST (强制更新)
        - 自动更新已存在的商品
        - 适用场景：需要覆盖更新商品信息时
 
-    4. RESUME_FROM_DB (断点续传)
+    5. RESUME_FROM_DB (断点续传)
        - 从WooCommerce数据库读取已上传记录
        - 优点：100%准确
        - 缺点：首次查询较慢
 
-    5. RESUME_FROM_LOG (快速恢复)
+    6. RESUME_FROM_LOG (快速恢复)
        - 从本地日志文件恢复进度
        - 优点：恢复速度极快
        - 要求：必须使用此代码生成的日志文件,指定log日志文件路径
     """
 
+    FLEXIBLE = "flexible"
     JUMP_IF_EXIST = "jump_if_exist"
     TRY_CREATE_ONLY = "try_create_only"
     UPDATE_IF_EXIST = "update_if_exist"
