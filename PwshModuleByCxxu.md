@@ -26,6 +26,11 @@
 ## 自动部署(一键运行脚本)👺👺
 
 参考仓库内的一键部署文档: [一键部署](./PS/Deploy/readme.md)
+quick look:
+
+```powershell
+irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1'|iex
+```
 
 ## 手动部署(备用)
 

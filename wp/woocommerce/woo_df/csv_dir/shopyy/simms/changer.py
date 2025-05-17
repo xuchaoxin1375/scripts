@@ -47,8 +47,8 @@ script_path = os.path.abspath(__file__)
 d = os.path.dirname(script_path)
 os.chdir(d)
 
-# SOURCE = r"./simms-eu.demo.csv"
-SOURCE=r""
+SOURCE = r"./simms-eu.demo.csv"
+# SOURCE=r"./simms-eu.shop.csv"
 TEMPLATE_SHOPIFY = r"C:\repos\scripts\wp\woocommerce\woo_df\csv_dir\shopyy\templates\product_template_shopify_empty.csv"
 df = pd.read_csv(SOURCE)
 dft = pd.read_csv(TEMPLATE_SHOPIFY)
@@ -80,19 +80,21 @@ df[attr_fields_shopify] = ""
 
 
 # df.info()
-def replace_separators(s):
+def replace_separators(s, repl=","):
     """替换字符串中的分隔符"""
     pattern = r"/|-"
-    res = re.sub(pattern, ">", s)
+    res = re.sub(pattern, repl=repl, string=s)
     return res
 
 
 ##
 # 分类
 # df['Categories'].str.replace('/|-','>' )
+
 s_cat = df["Categories"].apply(replace_separators)
 df["Categories"] = s_cat
-
+# df["Tags"] = s_cat
+# df["Type"]=s_cat.str.rsplit(',')[-1]
 
 ##
 # 价格
@@ -170,18 +172,25 @@ for idx, row in df.iterrows():
         # for i, value_group in enumerate(iterable=values, start=1):
         # 每个属性选项组占用一行(生成一个字典)
         d = {}
-        debug("expand_line_idx: %s, value_group: %s, img: %s", expand_line_idx, value_group, img)
+        debug(
+            "expand_line_idx: %s, value_group: %s, img: %s",
+            expand_line_idx,
+            value_group,
+            img,
+        )
         # add_attr_name=True
         # 遍历names构造字典(字典中k:v数量取决于names的长度)
         # 商品首行
         if expand_line_idx == 1:
             d["Title"] = row["Name"]
             # d["Product Category"] = row["Categories"]
-            d["Type"] = row["Categories"]
+            # d["Type"] = row["Categories"]
             d["Body (HTML)"] = row["Description"]
             # d["Image Src"] = row["Images"]
             # d["Image Src"] = img
             # d["Image Position"] = "1"
+            d["Tags"] = row["Categories"]
+            d["Type"] = row["Categories"].rsplit(",")[-1]
             d["Published"] = "TRUE"
         # 同款商品的每一行都要有的
         d["Handle"] = row["SKU"]
@@ -212,10 +221,13 @@ for idx, row in df.iterrows():
         rows.append(d)
 
 variants = pd.DataFrame(rows, columns=all_columns)
+# 添加collection列
+variants["Collection"] = variants["Tags"]
 ##
 variants
 ##
-variants[['Image Src','Image Position']]
+variants[["Tags", "Type", "Collection", "Image Src", "Image Position"]]
 ##
-variants.to_csv("changed_demo.csv")
 
+# variants.to_csv("simms-eu.shop.shopify.csv")
+variants.to_csv("changed_demo.csv")

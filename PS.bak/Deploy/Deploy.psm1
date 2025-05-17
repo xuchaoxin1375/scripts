@@ -55,7 +55,54 @@ $GithubMirrors = $GithubMirrors + $GithubMirrorsTest + $GithubMirrorsInString
 $GithubMirrors = $GithubMirrors | Where-Object { $_ }#移除空串
 $GithubMirrors = $GithubMirrors | ForEach-Object { $_.trim('/') } | Sort-Object #统一链接风格(去除末尾的`/`如果有的话)
 $GithubMirrors = $GithubMirrors | Select-Object -Unique # Get-Unique #移除重复条目(注意get-Unique要求被处理数组是有序的,否则无效,可以用select -unique更通用)
+function Test-MirrorAvailability
+{
+    <# 
+    .SYNOPSIS
+    测试指定链接是否在规定时间内相应
+    .NOTES
+    此函数主要用来辅助Test-LinksLinearly和Test-LinksParallel调用
+    .DESCRIPTION
+    如果及时正确相应,将链接打印为绿色,否则打印为红色
+    #>
+    [CmdletBinding()]
+    param (
+        [string]$Url,
+        $TimeoutSec = 6
+    )
 
+    try
+    {
+        # 使用 Invoke-WebRequest 检查可用性
+        # 方案1
+        $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -Method Head -TimeoutSec $TimeOutSec -ErrorAction Stop
+        $availability = $response.StatusCode -eq 200
+
+        #方案2
+        # $response = Test-Connection -ComputerName "gh-proxy.com" -Count 1
+        # $availability = $response
+        
+    }
+    catch
+    {
+        $availability = $false
+    }
+    if ($VerbosePreference)
+    {
+
+        if ($availability)
+        {
+
+            Write-Host "Mirror $Url is available" -ForegroundColor Green
+        }
+        else
+        {
+
+            Write-Host "Mirror $Url is not available" -ForegroundColor Red
+        }
+    }
+    return   $availability
+}
 function Test-LinksLinearly
 {
     <# 
@@ -76,7 +123,7 @@ function Test-LinksLinearly
         $All
     )
     $availableMirrors = @()
-    
+    Write-Debug "Testing Links Linearly...🎈"
     foreach ($mirror in $Mirrors)
     {
         # $Mirrors | ForEach-Object {
@@ -126,6 +173,7 @@ function Test-LinksParallel
         $ThrottleLimits = 16
         # $First = 5
     )
+    Write-Debug "Testing Links in Parallel way...🎈"" 
     # 如果不是powershell 7报错
     if ($host.Version.Major -lt 7)
     {
@@ -194,54 +242,7 @@ function Test-LinksParallel
     }
     return $availableMirrors
 }
-function Test-MirrorAvailability
-{
-    <# 
-    .SYNOPSIS
-    测试指定链接是否在规定时间内相应
-    .NOTES
-    此函数主要用来辅助Test-LinksLinearly和Test-LinksParallel调用
-    .DESCRIPTION
-    如果及时正确相应,将链接打印为绿色,否则打印为红色
-    #>
-    [CmdletBinding()]
-    param (
-        [string]$Url,
-        $TimeoutSec = 6
-    )
 
-    try
-    {
-        # 使用 Invoke-WebRequest 检查可用性
-        # 方案1
-        $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -Method Head -TimeoutSec $TimeOutSec -ErrorAction Stop
-        $availability = $response.StatusCode -eq 200
-
-        #方案2
-        # $response = Test-Connection -ComputerName "gh-proxy.com" -Count 1
-        # $availability = $response
-        
-    }
-    catch
-    {
-        $availability = $false
-    }
-    if ($VerbosePreference)
-    {
-
-        if ($availability)
-        {
-
-            Write-Host "Mirror $Url is available" -ForegroundColor Green
-        }
-        else
-        {
-
-            Write-Host "Mirror $Url is not available" -ForegroundColor Red
-        }
-    }
-    return   $availability
-}
 function Get-AvailableGithubMirrors
 {
     <#
