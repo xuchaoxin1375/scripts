@@ -1524,6 +1524,7 @@ class WC(API):
                     max_workers=max_workers,
                     upload_mode=upload_mode,
                     batch_mode=batch_mode,
+                    batch_size=batch_size
                 )
             else:
                 # 方案2:逐个文件处理(分散处理)

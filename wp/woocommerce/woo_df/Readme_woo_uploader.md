@@ -217,7 +217,19 @@ for sku in prouducts_sku:
 
 ### 具体类型
 
-1. **JSONDecodeError** :
+1. **Failed to resolve domain (11001)**:
+
+   域名解析错误,可能和网站部署的方式有关,如果没有证书,或者证书不正确,或者cloudflare设置的加密模式不当(灵活模式/完全模式,目前看来完全模式比较稳,默认情况下大多都是完全模式)
+
+   ```bash
+   Failed to resolve 'domain.com'([Errno 11001]getaddrinfo failed)
+   ```
+
+   也让同事帮忙测试一下,如果别人可以连上,而自己却不行,则你可以尝试修改DNS为常用dns,比如8.8.8.8或1.1.1.1(修改方法可以百度);或者重启一下计算机
+
+   
+
+2. **JSONDecodeError** :
 
    > 调用api时爆出html源码片段或404
    >
@@ -227,9 +239,9 @@ for sku in prouducts_sku:
    - 证书没有绑定
    - 固定链接
 
-2. **FileNotFoundError** :提供的产品数据文件路径错误,或者相对路径无法被正确识别(使用绝对路径比较稳妥)
+3. **FileNotFoundError** :提供的产品数据文件路径错误,或者相对路径无法被正确识别(使用绝对路径比较稳妥)
 
-3. **ConnectionError**:由于目标计算机积极拒绝，无法连接
+4. **ConnectionError**:由于目标计算机积极拒绝，无法连接
 
    这可能是你的网站没有正常运行,尤其是本地测试的计算机重启后,要检查相关组件(比如apache/nginx,mysql)是否正常启动,网站是否能够正常访问)
 

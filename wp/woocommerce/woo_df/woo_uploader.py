@@ -31,7 +31,7 @@ from wooenums import UploadMode
 # 本地开发和测试域名:http://wp.com
 protocal = "http"  # 协议,一般是https(适用于正式上传),http(适用于本地脚本调试/开发)
 domain = "wp.com"  # 域名
-url = f"{protocal}://{domain}"  # http://域名 (不要有多余的路径)
+url = f"{protocal}://{domain}"  # 不要有多余的路径
 consumer_key = "ck_cea9b0730bbda84628674625dc206495ddf62fc7"
 consumer_secret = "cs_ba0185c197dc041ad8ba91915886395404badcb9"
 
@@ -39,7 +39,7 @@ consumer_secret = "cs_ba0185c197dc041ad8ba91915886395404badcb9"
 
 CSV_DIR = r"S:\csv_demo\current"
 
-MAX_WORKERS_FILES = 2  # 同时上传的文件数(一般不超过7);
+MAX_WORKERS_FILES = 1  # 同时上传的文件数(一般不超过7);
 MAX_WORKERS_PER_FILE = 1  # 每份文件上传的线程数
 TIME_OUT = 500  # 如果是批上传,可以考虑调大些,防止响应体过大时间不足导致报错
 BATCH_SIZE = 50  # 每次上传的产品数量
