@@ -58,10 +58,91 @@ function Test-LinksLinearly
 {
  
 }
+
 function Test-LinksParallel
 {
- 
+    <# 
+    .SYNOPSIS
+    为powershell 7+设计的并行测试链接是否能够在指定时间内响应
+    #>
+    [CmdletBinding()]
+    param (
+        $Mirrors = $GithubMirrors,
+        $TimeOutSec = 6,
+        $ThrottleLimits = 16
+        # $First = 5
+    )
+    Write-Debug "Test links parallel...🎈" -Debug
+    # 检查镜像测试命令是否可用
+    Get-Command Test-MirrorAvailability
+    # 如果不是powershell 7报错
+    if ($host.Version.Major -lt 7)
+    {
+        Throw 'PowerShell 7 or higher is required to run parallel foreach!'
+        # return 
+    }
+    $availableMirrors = @()
+    # 为了能够让$TimeOutSec能够被传递到子进程,这里使用了$env:来扩大其作用域
+    # $env:TimeOutSec = $TimeOutSec
+    # powershell提供了更好的方式访问并行scriptblock外的变量,使用$using: 这个关键字
+    #然而这个关键字引用的变量无法更改(只读),可以考虑用.Net线程安全容器,或者用$env:来实现共享局部环境变量
+    # $Envbak = $env:StopLoop
+    # $env:StopLoop = 0
+    # 创建线程安全容器(队列)
+    $mirs = [System.Collections.Concurrent.ConcurrentQueue[Object]]::new()
+    # $mirs.Enqueue('First_Demo')
+    # Write-Host $mirs
+    # 并行执行链接测试
+    $Mirrors | ForEach-Object -Parallel {
+        # if ([int]$env:StopLoop)
+        # {
+        #     return
+        # }
+        # Write-verbose $_
+        #引用外部变量,并且赋值给简化的临时变量,方便后续引用(直接在-Parallel中引用外部变量是不合期望的)
+        $mirs = $using:mirs
+        $TimeOutSec = $using:TimeOutSec
+        # $First = $using:First
+        #  并行方案里用First参数指定前n个意义不大,而且会让代码变得复杂
+        # Write-Verbose "mirs.cout=$($mirs.Count)" -Verbose
+        # if ($mirs.Count -ge $First)
+        # {
+        #     # Write-Host $First
+        #     Write-Verbose "The available links enough the $First !" -Verbose
+        #     return
+        # }
+         
+
+        $mirror = $_
+        # Write-Debug "`$TimeOutSec=$env:TimeOutSec" -Debug #parallel 参数$DebugPreference无法起作用
+        # 测试链接是否可用
+        if (Test-MirrorAvailability -Url $mirror -TimeoutSec $TimeOutSec)
+        {
+            Write-Host "`t $_" -ForegroundColor Green
+            # Write-Output $mirror
+
+            #写入队列
+            $mirs.Enqueue($mirror)
+            # 查看$mirs队列长度
+            # $mirs.Count, $mirs
+
+        }
+        else
+        {
+            Write-Verbose "$mirror is not available "
+            Write-Host "`t $mirror." -ForegroundColor Red
+        }
+
+    } -ThrottleLimit $ThrottleLimits 
+
+    $availableMirrors = $mirs #.ToArray()
+    if ($availableMirrors.Count -eq 0)
+    {
+        throw 'No mirrors are available!'
+    }
+    return $availableMirrors
 }
+
 function Test-MirrorAvailability
 {
 }
