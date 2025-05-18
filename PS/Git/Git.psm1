@@ -248,6 +248,98 @@ function Test-MirrorAvailability
 }
 function Get-AvailableGithubMirrors
 {
+    <#
+    .SYNOPSIS
+    列出流行的或可能可用的 GitHub 加速镜像站。
+    列表中的镜像站可能会过期，可用性不做稳定性和可用性保证。
+
+    .DESCRIPTION
+    这里采用了多线程的方式来加速对不同镜像链接的可用性进行检查
+    并且更容易获取其中相应最快的可用的镜像站,这是通过串行检查无法直接达到的效果
+    .EXAMPLE
+    
+
+    .NOTES
+    推荐使用 aria2 等多线程下载工具来加速下载，让镜像加速效果更加明显。
+ 
+    .LINK
+    # 镜像站搜集和参考
+    https://ghproxy.link/
+    https://github-mirror.us.kg/
+    https://github.com/hunshcn/gh-proxy/issues/116
+    #>
+    [CmdletBinding()]
+    param(
+        $Mirrors = $GithubMirrors,
+        $ThrottleLimits = 16,
+        $TimeOutSec = 6,
+        [switch]$ListView,
+        [switch]$PassThru,
+        [switch]$SkipCheckAvailability,
+        # 是否启用串行地试探镜像可访问性(默认是并行试探)
+        [switch]
+        # [parameter(ParameterSetName = 'Serial')]
+        [Alias('Serial')]$Linearly,
+        # [parameter(ParameterSetName = 'Serial')]
+        $First = 5
+    )
+    
+    # 检查镜像站的可用性
+   
+
+    Write-Host 'Checking available Mirrors...'
+    $availableMirrors = $Mirrors
+    # 检查可用的镜像列表
+    if (!$SkipCheckAvailability)
+    {
+        $psVersion = $host.Version.Major 
+        # 默认尝试并行测试
+        if ($psVersion -lt 7 -and !$Linearly)
+        {
+
+            Write-Host 'PowerShell 7 or higher is required to run parallel foreach!' -ForegroundColor Red
+            Write-Host 'Testing Links Linearly...'
+            $Linearly = $true
+        }
+        if ($Linearly ) #-or $PSVersion -lt 7
+        {
+            #简单起见,这里仅简单调用 Test-LinksLinearly的Frist参数集语法,而不做分支判断
+            $availableMirrors = Test-LinksLinearly -Mirrors $Mirrors -TimeOutSec $TimeOutSec -First $First -Verbose:$VerbosePreference
+        }
+        else
+        {
+        
+            $availableMirrors = Test-LinksParallel -Mirrors $Mirrors -TimeOutSec $TimeOutSec -ThrottleLimits $ThrottleLimits -Verbose:$VerbosePreference 
+        }
+    } 
+
+    # Start-Sleep $TimeOutSec
+    # 显示可用的镜像
+    Write-Host "`nAvailable Mirrors:"
+    # 空白镜像保留(作为返回值)
+    $availableMirrors = @('') + $availableMirrors
+
+    # 按序号列举展示
+    Write-Host ' 0: Use No Mirror' -NoNewline
+    $index = 1
+    $availableMirrors | ForEach-Object {
+        # $index = [array]::IndexOf($availableMirrors, $_)
+        # if($availableMirrors[$index] -eq ""){continue}
+        if ($_.Trim())
+        {
+
+            Write-Host " ${index}: $_" -NoNewline
+            $index += 1
+        }
+   
+        
+        Write-Host ''
+    }
+
+    if ($PassThru)
+    {
+        return $availableMirrors
+    }
 }
 
 function Get-SelectedMirror
