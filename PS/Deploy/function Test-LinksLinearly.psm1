@@ -189,6 +189,7 @@ function Test-MirrorAvailability
     }
     return   $availability
 }
+
 function Get-AvailableGithubMirrors
 {
     <#
@@ -220,16 +221,12 @@ function Get-AvailableGithubMirrors
         [switch]$PassThru,
         [switch]$SkipCheckAvailability,
         # 是否启用串行地试探镜像可访问性(默认是并行试探)
-        [switch]
         # [parameter(ParameterSetName = 'Serial')]
-        [Alias('Serial')]$Linearly,
+        [switch][Alias('Serial')]$Linearly,
         # [parameter(ParameterSetName = 'Serial')]
         $First = 5
     )
     
-    # 检查镜像站的可用性
-   
-
     Write-Host 'Checking available Mirrors...'
     $availableMirrors = $Mirrors
     # 检查可用的镜像列表
