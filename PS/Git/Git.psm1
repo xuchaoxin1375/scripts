@@ -248,7 +248,9 @@ function Test-MirrorAvailability
 }
 function Get-AvailableGithubMirrors
 {
-    Get-Command *mirror* 
+    # Get-Command *mirror* 
+    Write-Warning "Checking available Mirrors..."
+    Test-MirrorAvailability www.baidu.com 
 }
 
 function Get-SelectedMirror
