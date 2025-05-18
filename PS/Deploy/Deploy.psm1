@@ -76,7 +76,7 @@ function Test-LinksLinearly
         $All
     )
     $availableMirrors = @()
-    Write-Debug "Test links linearly...🎈"
+    Write-Debug "Test links linearly...🎈" -Debug
     foreach ($mirror in $Mirrors)
     {
         # $Mirrors | ForEach-Object {
@@ -126,7 +126,7 @@ function Test-LinksParallel
         $ThrottleLimits = 16
         # $First = 5
     )
-    Write-Debug "Test links linearly...🎈"
+    Write-Debug "Test links linearly...🎈" -Debug
     # 检查镜像测试命令是否可用
     Get-Command Test-MirrorAvailability
     # 如果不是powershell 7报错
