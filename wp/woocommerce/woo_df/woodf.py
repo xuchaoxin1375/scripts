@@ -23,7 +23,6 @@ from math import ceil
 
 # from datetime import datetime
 # import queue
-import sys
 from logging import info, debug, warning, error
 import os
 
@@ -35,7 +34,7 @@ import copy
 import pickle
 
 # import requests
-
+from datetime import datetime
 from requests import Response
 
 from wooenums import FetchMode, UploadMode, CSVProductFields
@@ -72,6 +71,24 @@ SYSTEM_STATUS_ENDPOINT = "system_status"
 UPLOAD_MODE = UploadMode.TRY_CREATE_ONLY
 
 LOG_HEADER = ["SKU", "Name", "id", "Status", "message", "datetime"]
+
+# # 创建 logs 目录（如果不存在）
+# LOG_WOO_DF = "logs"
+# os.makedirs(LOG_WOO_DF, exist_ok=True)
+
+# # 生成带时间戳的日志文件名
+# LOG_FILE_WOO_DF = f"woodf_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+# log_file_path = os.path.join(LOG_WOO_DF, LOG_FILE_WOO_DF)
+
+# # 配置 logging
+# logging.basicConfig(
+#     level=logging.INFO,  # 设置全局日志级别（INFO 及以上会被记录）
+#     format="%(asctime)s [%(levelname)s] %(module)s.%(funcName)s: %(message)s",
+#     handlers=[
+#         logging.FileHandler(log_file_path, encoding="utf-8"),  # 输出到日志文件
+#         logging.StreamHandler(),  # 输出到控制台
+#     ],
+# )
 
 
 class ProgressTracker:
@@ -361,7 +378,7 @@ class WC(API):
         categories = self.get_all_categories_from_file(csv_files)
 
         workers = self.get_worker_number(len(categories), max_workers)
-        info(f"with {workers} workers(threads) create categories...")
+        debug("with %s workers(threads) create categories...",workers)
 
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = [
@@ -430,6 +447,7 @@ class WC(API):
         page_size=100,
         max_workers_fetch=MAX_WORKERS_FETCH,
         fetch_mode=FetchMode.FROM_CACHE,
+        item_type=None,
         log_file="",
     ):
         """获取所有现有产品的 SKU 和 ID
@@ -479,7 +497,7 @@ class WC(API):
                 page_size=page_size, max_workers_fetch=max_workers_fetch
             )
         elif fetch_mode == FetchMode.FROM_LOG_FILE:
-            self.load_upload_log_data(log_file=log_file)
+            self.load_upload_log_data(log_file=log_file, item_type=item_type)
         else:
             error(f"Invalid mode: {fetch_mode}")
         # 返回值还可以选择:self.existing_products_sku,self.existing_products
@@ -705,27 +723,43 @@ class WC(API):
         pages = ceil(self.get_product_count(product_type="simple") / page_size)
         return pages
 
-    def load_upload_log_data(self, log_file):
+    def load_upload_log_data(self, log_file, item_type=None):
         """从日志文件中恢复商品上传进度(读档)
         日志文件被设计为csv格式,主要包含SKU,Name,status等列
         主要筛选出sku,name这两列,同时仅筛选上传成功的记录(OK)
+
+        Args:
+            log_file (str): 日志文件路径
+            item_type list[str]: 日志文件中记录的类型,默认为None,表示全部类型
+
+
 
         Note:
         如果发现导入的数据量(行数)和log文件中的记录数不一致(OK行的行数)不一致,可能是由于调试期间产生的具有重复sku的记录,字典(key)会自动去重(顶替掉)
         """
         info(f"Loading log data from {log_file}...")
+        info(f"item_type:{item_type}")
         with open(log_file, "r", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
+                # info(f"loading product: {row}")
                 sku = row.get("SKU")
                 name = row.get("Name")
                 status = row.get("Status")
                 product_id = row.get("id")
                 # 从日志中读入操作(上传/更新)成功的记录
-                if status == "OK":
+                if item_type is None:
+                    # info(f"load product: {sku}; \tStatus: {status}🎈")
                     self.existing_products_sku[sku] = product_id
                     self.existing_products[product_id] = [name, sku]
-                debug(f"loading product: {sku};\tid:{product_id}; \tStatus: {status}")
+                else:
+                    if status in item_type:
+                        debug(f"load product: {sku}; \tStatus: {status}")
+                        self.existing_products_sku[sku] = product_id
+                        self.existing_products[product_id] = [name, sku]
+                    else:
+                        debug(f"Skip product: {sku}; \tStatus: {status}")
+                # debug(f"loading product: {sku};\tid:{product_id}; \tStatus: {status}")
 
     def get_custom_attribute(self, product_data, name="mycustom"):
         """获取(构造)自定属性数据
@@ -972,13 +1006,18 @@ class WC(API):
                         msg="Product created.",
                     )
                 else:
-                    error(f"Failed: create product: {product_info.get('error')}")
+                    message = product_info.get("error", "")
+                    error(f"Failed: create product: {message}")
+                    if "product_invalid_sku" in str(message):
+                        status = "InvalidSKU"
+                    else:
+                        status = "Failed"
                     log_upload(
                         sku,
                         name,
                         product_id=None,
-                        status="Failed",
-                        msg=product_info.get("error", ""),
+                        status=status,
+                        msg=message,
                     )
         except Exception as e:
             error(f"Exception:Failed to batch update products🧨: {e}")
@@ -1238,7 +1277,7 @@ class WC(API):
         for product_id in ids:
             self.delete_product(product_id=product_id)
 
-    def delete_all_products(self, max_workers=50):
+    def delete_all_products(self, max_workers=10):
         """
         删除所有产品。
         通过遍历所有产品,然后逐个删除(调用delete_product方法)
@@ -1272,15 +1311,14 @@ class WC(API):
             self.upload_product(row, upload_mode=upload_mode)
 
     def get_products_need_to_uploaded(
-        self, csv_files, fetch_mode=FetchMode.FROM_DATABASE
+        self, csv_files, fetch_mode=FetchMode.FROM_DATABASE, item_type=None
     ):
         """获取还未上传的产品"""
-        # to verify
         if not self.product_from_file:
             self.product_from_file = self.get_rows_from_csvs(csv_files)
         if not self.existing_products_sku:
-            self.fetch_existing_products(fetch_mode=fetch_mode)
-        # 以接近O(n)的时间复杂度计算还未上传的产品(利用哈希表的快速查找特性,把O(nxm)降低到O(n))
+            self.fetch_existing_products(fetch_mode=fetch_mode, item_type=item_type)
+        # 以接近O(n)的时间复杂度计算还未上传的产品(利用哈希表的快速查找特性,把O(n*m)降低到O(n))
         for product_data in self.product_from_file:
             sku = product_data.get("SKU")
             if not self.existing_products_sku.get(sku, None):
@@ -1453,6 +1491,7 @@ class WC(API):
         filtered_mode=True,
         prepare_categories=True,
         log_file="",
+        item_type=None,
     ):
         """从 CSV 文件列表读取数据并上传产品
         处理多个csv文件
@@ -1499,7 +1538,7 @@ class WC(API):
                     upload_mode = UploadMode.TRY_CREATE_ONLY
                 else:
                     upload_mode = UploadMode.RESUME_FROM_LOG_FILE
-     
+
             info("Determined Upload Mode: [%s]", upload_mode)
             # 根据配置是否事先准备好分类
             if prepare_categories:
@@ -1520,6 +1559,7 @@ class WC(API):
                     fetch_mode=FetchMode.FROM_LOG_FILE,
                     log_file=log_file,
                     max_workers_fetch=max_workers_fetch,
+                    item_type=item_type,
                 )
 
             # 数据文件处理和上传策略(并发方式)
@@ -1529,7 +1569,9 @@ class WC(API):
                     fetch_mode = FetchMode.NO_FETCH
                 else:
                     fetch_mode = FetchMode.FROM_CACHE
-                self.get_products_need_to_uploaded(csv_files, fetch_mode=fetch_mode)
+                self.get_products_need_to_uploaded(
+                    csv_files, fetch_mode=fetch_mode, item_type=item_type
+                )
                 self.process_csv(
                     filtered_rows=self.products_need_to_upload,
                     max_workers=max_workers,

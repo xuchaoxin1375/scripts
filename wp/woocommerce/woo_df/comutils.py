@@ -15,6 +15,7 @@ from urllib.parse import unquote, urlparse
 
 from bs4 import BeautifulSoup
 
+import pandas as pd
 import requests
 
 csv.field_size_limit(int(1e7))  # 允许csv文件最大为10MB
@@ -31,6 +32,109 @@ EMAIL_PATTERN = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
 HTTP_S_URL_CONS_PATTERN = r'https?://[^\s"<>]+'
 URL_SEP_REGEXP = re.compile(URL_SEP_PATTERN)
 COMMON_SEP_REGEXP = re.compile(COMMON_SEP_PATTERN)
+
+
+def merge_csv_files(
+    directory: str, out_file="", remove_old_files=False, encoding: str = "utf-8"
+) -> pd.DataFrame:
+    """
+    读取指定目录下的所有 CSV 文件并合并为一个结构统一的 DataFrame。
+
+    Args:
+        directory (str): 存放 CSV 文件的目录路径。
+        out_file (str, optional): 合并后的 CSV 文件的输出路径，留空则不输出。
+        remove_old_files (bool, optional): 是否删除原有 CSV 文件，默认为 True。
+        encoding (str, optional): CSV 文件的编码格式，默认为 'utf-8'。
+
+    Returns:
+        pd.DataFrame: 合并后的 DataFrame。如果目录中没有 CSV 文件，则返回一个空的 DataFrame。
+
+    Examples:
+        >>> merged_df = merge_csv_files(r'./csv_demo')
+        >>> print(merged_df)
+    """
+    # 获取所有 .csv 文件的绝对路径
+    csv_files = [
+        os.path.join(directory, file)
+        for file in os.listdir(directory)
+        if file.endswith(".csv")
+    ]
+
+    if not csv_files:
+        return pd.DataFrame()
+
+    # 读取所有 CSV 文件到 DataFrame 列表
+    dfs = [pd.read_csv(file, encoding=encoding) for file in csv_files]
+
+    if remove_old_files:
+        for file in csv_files:
+            os.remove(file)
+    # 合并所有的 DataFrame
+    merged_df = pd.concat(dfs, ignore_index=True)
+    if out_file:
+        merged_df.to_csv(out_file, index=False, encoding=encoding)
+
+    return merged_df
+
+
+def remove_duplicate_rows(csv_file, subset=None, inplace=True):
+    """移除csv文件中的重复行,默认直接修改原文件
+    例如sku重复的行，只保留一条
+
+    Args:
+        csv_file (str): 待处理的 CSV 文件路径。
+        inplace (bool, optional): 是否直接修改原文件，默认为 True。
+
+    """
+    print(f"remove duplicate rows in subset [{subset}] from {csv_file}")
+    df = pd.DataFrame()
+    if os.path.exists(csv_file):
+        df = pd.read_csv(csv_file)
+        df.drop_duplicates(subset=subset, inplace=inplace)
+        df.to_csv(csv_file, index=False)
+    else:
+        error(f"{csv_file} not exists")
+    return df
+
+
+def merge_csv_naive(csv_dir, out_file="", remove_old_files=False):
+    """读取指定目录下的所有csv文件，并合并成一个csv文件
+    注意,如果csv的格式不同(比如具有不同的列名,无法使用此函数合并)
+
+    Args:
+        csv_dir (str): csv文件所在目录
+        out_file  : 是否将合并的数据输出成新的csv文件,参数为非空文件名时输出到文件,否则不输出到文件
+        remove_old_files: 是否删除原有csv文件,默认删除
+
+    Returns:
+        tuple: 合并后的csv文件的标头行和数据行构成的元组
+
+    """
+    lines = []
+    fieldnames = []
+    csv_files = [
+        os.path.join(csv_dir, f) for f in os.listdir(csv_dir) if f.endswith(".csv")
+    ]
+    for csv_file in csv_files:
+        with open(csv_file, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            fieldnames = reader.fieldnames
+            for row in reader:
+                lines.append(row)
+    if remove_old_files:
+        for csv_file in csv_files:
+            os.remove(csv_file)
+    if out_file:
+        with open(
+            os.path.join(csv_dir, out_file), "w", encoding="utf-8", newline=""
+        ) as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames or [])
+            writer.writeheader()
+            for row in lines:
+                writer.writerow(row)
+        # return os.path.join(csv_dir, )
+
+    return fieldnames, lines
 
 
 def remove_empty_html_tags(html: str, tags=None) -> str:

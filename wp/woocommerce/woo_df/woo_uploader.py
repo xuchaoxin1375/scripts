@@ -20,11 +20,11 @@ import os
 import threading
 from datetime import datetime
 
-from comutils import log_worker
+from comutils import log_worker, merge_csv_files, remove_duplicate_rows
 from woodf import WC
 
 # from woodf_dev import WC
-from wooenums import UploadMode
+from wooenums import UploadMode,CSVProductFields
 
 # from requests.exceptions import ConnectTimeout, ReadTimeout, Timeout, RequestException
 
@@ -51,12 +51,14 @@ UPLOAD_MODE = UploadMode.FLEXIBLE
 
 # 日志文件路径,可作为存档,恢复上传断点🎈
 CSV_DIR = CSV_DIR.strip("/")
-TIME_STR = datetime.now().strftime("%Y%m")  # 日期精度自己控制(%Y%m%d-%H-%M-%S)
-LOG_FILE_UPLOAD = f"{CSV_DIR}/log/upload-{domain}-{TIME_STR}.csv"
+TIME_STR = datetime.now().strftime("%Y")  # 日期精度自己控制(%Y%m%d-%H-%M-%S)
+LOG_FILE_DIR = f"{CSV_DIR}/log"
+LOG_FILE_UPLOAD = f"{LOG_FILE_DIR}/upload-{domain}-{TIME_STR}.csv"
 # LOG_FILE_UPLOAD_BAK = f"C:/log/upload-{domain}.csv"
 # LOG_FILE_UPLOAD_FAIL=f"{CSV_DIR}/log/upload_fail-{domain}-{time_str}.csv"
-
-
+# 计算Log文件路径所在目录,将它们合并成一个文件
+merge_csv_files(LOG_FILE_DIR, remove_old_files=True, out_file=LOG_FILE_UPLOAD)
+remove_duplicate_rows(LOG_FILE_UPLOAD,subset=CSVProductFields.SKU.value) #去除重复行(SKU重复)
 # 主推方案:获取指定目录下的csv文件列表
 files_from_dir = os.listdir(CSV_DIR)
 dir_csv_files = [os.path.join(CSV_DIR, f) for f in files_from_dir if f.endswith(".csv")]
@@ -115,9 +117,8 @@ if __name__ == "__main__":
         batch_size=BATCH_SIZE,
         # 如果是RESUME_FROM_LOG_FILE模式,请填写正确的日志[文件(.log)]路径!
         log_file=LOG_FILE_UPLOAD,
+        item_type=["OK","Failed","InvalidSKU"]
     )
-
-
 
     ## 结尾清理log_thread(适合于从命令行中执行时使用)
     # cleanup_log_thread(log_thread)
