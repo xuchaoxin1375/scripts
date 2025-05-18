@@ -129,6 +129,8 @@ function Test-LinksParallel
     Write-Debug "Test links parallel...🎈" -Debug
     # 检查镜像测试命令是否可用
     Get-Command Test-MirrorAvailability
+    $s = Get-Command Test-MirrorAvailability | Out-String
+    Write-Host $s -ForegroundColor Cyan
     # 如果不是powershell 7报错
     if ($host.Version.Major -lt 7)
     {
@@ -301,17 +303,17 @@ function Get-AvailableGithubMirrors
             $Linearly = $true
         }
 
-        $availableMirrors = Test-LinksLinearly -Mirrors $Mirrors -TimeOutSec $TimeOutSec -First $First -Verbose:$VerbosePreference
-        # if ($Linearly ) #-or $PSVersion -lt 7
-        # {
-        #     #简单起见,这里仅简单调用 Test-LinksLinearly的Frist参数集语法,而不做分支判断
-        #     $availableMirrors = Test-LinksLinearly -Mirrors $Mirrors -TimeOutSec $TimeOutSec -First $First -Verbose:$VerbosePreference
-        # }
-        # else
-        # {
+        # $availableMirrors = Test-LinksLinearly -Mirrors $Mirrors -TimeOutSec $TimeOutSec -First $First -Verbose:$VerbosePreference
+        if ($Linearly ) #-or $PSVersion -lt 7
+        {
+            #简单起见,这里仅简单调用 Test-LinksLinearly的Frist参数集语法,而不做分支判断
+            $availableMirrors = Test-LinksLinearly -Mirrors $Mirrors -TimeOutSec $TimeOutSec -First $First -Verbose:$VerbosePreference
+        }
+        else
+        {
         
-        #     $availableMirrors = Test-LinksParallel -Mirrors $Mirrors -TimeOutSec $TimeOutSec -ThrottleLimits $ThrottleLimits -Verbose:$VerbosePreference 
-        # }
+            $availableMirrors = Test-LinksParallel -Mirrors $Mirrors -TimeOutSec $TimeOutSec -ThrottleLimits $ThrottleLimits -Verbose:$VerbosePreference 
+        }
     } 
 
     # Start-Sleep $TimeOutSec
