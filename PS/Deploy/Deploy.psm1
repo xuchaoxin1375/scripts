@@ -1,7 +1,13 @@
+<# 
+.SYNOPSIS
+临时部署此模块
 
+Invoke-RestMethod 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy.psm1' | Invoke-Expression
+.DESCRIPTION
 
 #如果你懒得添加引号,那么将镜像链接逐个添加到下面的多行字符串中,即便包含了引号或者双引号逗号也都能够正确处理
 # 配置一个相对稳定的镜像源(出了源的贡献者,还有可能被 墙,因此还是要定期检查)
+#>
 # 可用列表检查 https://yishijie.gitlab.io/ziyuan/
 $global:github_mirror = "https://gh-proxy.com"
 # Set-Variable -Name github-mirror -Value "https://gh-proxy.com"  -Scope Global
