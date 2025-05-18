@@ -4,6 +4,7 @@ function Get-CxxuPsModulePackage
     <# 
     .SYNOPSIS
     Github目前允许用户没有登录的情况下开源仓库包
+    当主要方案无法成功下载部分代码时,尝试用github等其他的线路来下载
     #>
     [CmdletBinding()]
     param(
@@ -344,6 +345,12 @@ function Install-CxxuPsModules-Deprecated
 # }
 function Remove-CxxuPsModulesEnvVars
 {
+    <# 
+    .SYNOPSIS
+    供调试时使用
+    移除CxxuPsModules的环境变量设置,包括PsModulePath,CxxuPsModulePath,Path中相关的设置,便于恢复相关的环境变量到初始状态
+
+    #>
     param (
         
     )
