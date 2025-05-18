@@ -244,6 +244,7 @@ function Test-MirrorAvailability
             Write-Host "Mirror $Url is not available" -ForegroundColor Red
         }
     }
+    Write-Warning "$Url : $availability"
     return   $availability
 }
 function Get-AvailableGithubMirrors
