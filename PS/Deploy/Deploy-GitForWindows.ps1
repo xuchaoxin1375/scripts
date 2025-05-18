@@ -8,7 +8,7 @@ Invoke-RestMethod 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/De
 # $github_mirror="https://gh-proxy.com"
 ## 导入其他模块
 # 方案1:iex执行
-# Invoke-RestMethod 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy.psm1' | Invoke-Expression 
+Invoke-RestMethod 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy.psm1' | Invoke-Expression 
 Invoke-RestMethod https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Git/Git.psm1 | Invoke-Expression
 
 # 方案2:下载 Deploy.psm1 到临时目录
