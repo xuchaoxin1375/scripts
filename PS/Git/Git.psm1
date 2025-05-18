@@ -303,17 +303,19 @@ function Get-AvailableGithubMirrors
             $Linearly = $true
         }
 
-        # $availableMirrors = Test-LinksLinearly -Mirrors $Mirrors -TimeOutSec $TimeOutSec -First $First -Verbose:$VerbosePreference
-        if ($Linearly ) #-or $PSVersion -lt 7
-        {
-            #简单起见,这里仅简单调用 Test-LinksLinearly的Frist参数集语法,而不做分支判断
-            $availableMirrors = Test-LinksLinearly -Mirrors $Mirrors -TimeOutSec $TimeOutSec -First $First -Verbose:${VerbosePreference}
-        }
-        else
-        {
+        $availableMirrors = Test-LinksLinearly -Mirrors $Mirrors -TimeOutSec $TimeOutSec -First $First -Verbose:$VerbosePreference
+        # 对于pwsh7直接使用Teset-LinksParallel有点问题(部署完毕后才会正常使用),暂时不知道为什么,估计是pwsh7的bug
+        # 目前windows powershell 5.1和powershell 7都可以正常线性方案(因此暂时注释掉下面的分支判断代码)
+        # if ($Linearly ) #-or $PSVersion -lt 7
+        # {
+        #     #简单起见,这里仅简单调用 Test-LinksLinearly的Frist参数集语法,而不做分支判断
+        #     $availableMirrors = Test-LinksLinearly -Mirrors $Mirrors -TimeOutSec $TimeOutSec -First $First -Verbose:${VerbosePreference}
+        # }
+        # else
+        # {
         
-            $availableMirrors = Test-LinksParallel -Mirrors $Mirrors -TimeOutSec $TimeOutSec -ThrottleLimits $ThrottleLimits 
-        }
+        #     $availableMirrors = Test-LinksParallel -Mirrors $Mirrors -TimeOutSec $TimeOutSec -ThrottleLimits $ThrottleLimits 
+        # }
     } 
 
     # Start-Sleep $TimeOutSec

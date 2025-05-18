@@ -38,8 +38,7 @@ function Get-CxxuPsModulePackage
 
 #导入 Deploy-GitForWindows 命令(适合独立部署用户使用),分开放置确保灵活性
 Invoke-RestMethod 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-GitForWindows.ps1' | Invoke-Expression
-# pwsh(7)可能有的版本有bug,尝试显式通过Deploy.psm1导入
-# Invoke-RestMethod 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy.psm1' | Invoke-Expression
+
 
 function Deploy-CxxuPsModules
 {
@@ -297,17 +296,19 @@ function Deploy-CxxuPsModules
     #添加基础环境自动执行任务到$profile中
     # Add-CxxuPsModuleToProfile
     Write-Warning 'Please use powershell7 use full feature of the CxxuPsModules!' 
-    if ($host.Version.Major -lt 7)
+    $PwshAvailability = Get-Command pwsh -ErrorAction SilentlyContinue
+    if(! $PwshAvailability)
+    # if ($host.Version.Major -lt 7)
     {
         $continue = $PSCmdlet.ShouldProcess("Install-Pwsh7Portable", 'Install pwsh7 portable')
         if ($continue)
         {
 
             Invoke-RestMethod 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-Pwsh7Portable.ps1' | Invoke-Expression
-            #检查模块设置效果
-            Start-Process -FilePath pwsh -ArgumentList '-noe -c p'
         }
     }
+    #检查模块设置效果
+    Start-Process -FilePath pwsh -ArgumentList '-noe -c p'
 }
 
 function Install-CxxuPsModules-Deprecated
