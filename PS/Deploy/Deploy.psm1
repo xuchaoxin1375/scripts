@@ -126,7 +126,7 @@ function Test-LinksParallel
         $ThrottleLimits = 16
         # $First = 5
     )
-    Write-Debug "Test links linearly...🎈" -Debug
+    Write-Debug "Test links parallel...🎈" -Debug
     # 检查镜像测试命令是否可用
     Get-Command Test-MirrorAvailability
     # 如果不是powershell 7报错
