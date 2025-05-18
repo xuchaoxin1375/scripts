@@ -6,14 +6,17 @@ Invoke-RestMethod 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/De
 此脚本文件用于部署Git for Windows到windows系统,可以自动下载最新版本的Git for Windows安装包,也可以指定下载链接,也可以指定本地安装包路径进行部署
 #>
 # $github_mirror="https://gh-proxy.com"
-# Invoke-RestMethod 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy.psm1' | Invoke-Expression #对于pwsh7兼容性不好
+## 导入其他模块
+# 方案1:iex执行
+# Invoke-RestMethod 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy.psm1' | Invoke-Expression 
+Invoke-RestMethod https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Git/Git.psm1 | Invoke-Expression
 
-# 下载 Deploy.psm1 到临时目录
-$deployModulePath = Join-Path $env:TEMP 'Deploy.psm1'
-Invoke-WebRequest 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy.psm1' -OutFile $deployModulePath -UseBasicParsing
+# 方案2:下载 Deploy.psm1 到临时目录
+# $deployModulePath = Join-Path $env:TEMP 'Deploy.psm1'
+# Invoke-WebRequest 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy.psm1' -OutFile $deployModulePath -UseBasicParsing
 
-# 导入模块
-Import-Module $deployModulePath -Force
+# # 导入模块
+# Import-Module $deployModulePath -Force
 
 # list functions or commands about mirror operations!
 Get-Command *mirror* 
