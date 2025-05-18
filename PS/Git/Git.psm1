@@ -307,12 +307,12 @@ function Get-AvailableGithubMirrors
         if ($Linearly ) #-or $PSVersion -lt 7
         {
             #简单起见,这里仅简单调用 Test-LinksLinearly的Frist参数集语法,而不做分支判断
-            $availableMirrors = Test-LinksLinearly -Mirrors $Mirrors -TimeOutSec $TimeOutSec -First $First -Verbose:$VerbosePreference
+            $availableMirrors = Test-LinksLinearly -Mirrors $Mirrors -TimeOutSec $TimeOutSec -First $First -Verbose:${VerbosePreference}
         }
         else
         {
         
-            $availableMirrors = Test-LinksParallel -Mirrors $Mirrors -TimeOutSec $TimeOutSec -ThrottleLimits $ThrottleLimits -Verbose:$VerbosePreference 
+            $availableMirrors = Test-LinksParallel -Mirrors $Mirrors -TimeOutSec $TimeOutSec -ThrottleLimits $ThrottleLimits 
         }
     } 
 
