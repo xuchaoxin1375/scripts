@@ -9,7 +9,7 @@ Invoke-RestMethod 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/De
 # 配置一个相对稳定的镜像源(出了源的贡献者,还有可能被 墙,因此还是要定期检查)
 #>
 # 可用列表检查 https://yishijie.gitlab.io/ziyuan/
-$global:github_mirror = "https://gh-proxy.com"
+$github_mirror = "https://gh-proxy.com"
 # Set-Variable -Name github-mirror -Value "https://gh-proxy.com"  -Scope Global
 
 $GithubMirrors = @(
