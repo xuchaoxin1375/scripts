@@ -27,6 +27,12 @@
 
 参考仓库内的一键部署文档: [一键部署](./PS/Deploy/readme.md)
 
+quick look:
+
+```powershell
+irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1'|iex
+```
+
 ## 手动部署(备用)
 
 尽量使用上述的一键部署方案,除非失败,那么尝试手动部署(成功率高)
