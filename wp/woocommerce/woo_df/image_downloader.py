@@ -23,7 +23,7 @@ DEAFULT_EXT = ".webp"
 csv.field_size_limit(int(1e7))  # 允许csv文件最大为10MB
 # 或者根据实际类定义位置调整导入路径
 IMG_DIR = "./images"
-selected_csv_field_ids = []
+selected_csv_field_ids: list[str] = []
 # 日志配置
 logger = logging.getLogger("ImageDownloader")
 info = logger.info
@@ -40,8 +40,7 @@ if not logger.handlers:
     console_handler.setFormatter(console_formatter)
     logger.addHandler(console_handler)
 # 默认 INFO，main() 里根据 -v 再调整
-# logger.setLevel(logging.INFO)
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 debug("Logger initialized %s", logging.getLevelName(logger.level))
 
 
@@ -59,17 +58,19 @@ def parse_image_sources(file, args, lines, selected_ids=None):
     """
 
     try:
-        with open(file, "r", encoding="utf-8") as f:
+        with open(file=file, mode="r", encoding="utf-8") as f:
             if args.from_specific_csv:
-                reader = csv.DictReader(f)
+                # DF团队特定csv文件格式
+                csv_dict_reader = csv.DictReader(f)
                 name_field = CSVProductFields.IMAGES.value
                 url_field = CSVProductFields.IMAGES_URL.value
-                get_data_from_csv(args, lines, reader, url_field, name_field)
+
+                get_data_from_csv(args, lines, csv_dict_reader, url_field, name_field)
 
             elif args.from_csv:
                 # 针对一般的含有图片链接的csv文件,更加灵活(也能够处理上面的情况,但是上面专用分支会更加快捷)
-                reader = csv.DictReader(f)
-                reader_headers = reader.fieldnames or []
+                csv_dict_reader = csv.DictReader(f)
+                reader_headers = csv_dict_reader.fieldnames or []
                 fmt_consistent = args.format_consistent
                 debug("Use selected_ids: %s", selected_ids)
                 debug("Use fmt_consistent: %s", fmt_consistent)
@@ -77,7 +78,7 @@ def parse_image_sources(file, args, lines, selected_ids=None):
                     # 格式一致且指定了列号,直接使用记住的参数(不需要每个文件都询问)
                     pass
                 else:
-                    # 打印出csv文件中所有字段名,让用户选择
+                    # 打印出csv文件中所有字段名,让用户选择🎈
                     selected_ids = get_user_choice_csv_fields(
                         selected_ids, reader_headers
                     )
@@ -94,7 +95,7 @@ def parse_image_sources(file, args, lines, selected_ids=None):
                 else:
                     raise ValueError("请按照正确的格式输入列号")
 
-                get_data_from_csv(args, lines, reader, url_field, name_field)
+                get_data_from_csv(args, lines, csv_dict_reader, url_field, name_field)
 
             else:
                 for line in f:
@@ -223,6 +224,11 @@ def main():
             parse_image_sources(
                 file=file, args=args, lines=lines, selected_ids=selected_csv_field_ids
             )
+        if lines:
+            print(f"读取行数: {len(lines)}")
+        else:
+            error("读取行数为0,请检查参数")
+            exit(1)
     elif args.dir_input:
         # 处理目录输入(遍历目录下的文件,转换到文件处理的情况)
         dirs = args.dir_input
@@ -232,7 +238,17 @@ def main():
             exit(1)
         else:
             for d in dirs:
+                if not os.path.exists(d):
+                    error("指定的目录不存在: %s", dirs)
+                    sys.exit(1)
+                else:
+                    print(f"处理目录: [{d}]")
                 for file in os.listdir(d):
+                    info("处理文件: %s", file)
+                    _, ext = os.path.splitext(file)
+                    if ext not in [".csv", ".txt"]:
+                        debug("忽略非csv或txt文件: %s", file)
+                        continue
                     file = os.path.abspath(os.path.join(d, file))
                     parse_image_sources(
                         file=file,

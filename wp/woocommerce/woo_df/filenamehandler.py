@@ -189,7 +189,9 @@ class FilenameHandler:
 
     # @staticmethod
     # @classmethod
-    def get_file_extension(self, url, response=None, default_ext="", req_response=True):
+    def get_file_extension(
+        self, url, response=None, default_ext="", req_response=True, prefix_dot=True
+    ):
         """
         根据响应头、URL或默认值确定资源的文件扩展名。
 
@@ -227,7 +229,7 @@ class FilenameHandler:
             if not ext:
                 # 二进制文件分析
                 ext = self.get_file_extension_from_response_magic(
-                    url=url, response=response, req_response=req_response
+                    url=url, response=response, req_response=req_response,prefix_dot=prefix_dot
                 )
 
         except Exception as e:
@@ -235,6 +237,9 @@ class FilenameHandler:
             error("无法确定文件扩展名,使用默认扩展名: %s ", default_ext)
         if not ext:
             ext = default_ext
+        ext = ext.strip(".")
+        if prefix_dot:
+            ext = f".{ext}"
         return ext
 
     @staticmethod
@@ -370,8 +375,9 @@ class FilenameHandler:
             raise ValueError("必须提供url或response参数")
 
         if url and response is not None:
-            warning("同时提供了url和response参数，将优先使用response进行计算,url参数将被忽略")
-
+            warning(
+                "同时提供了url和response参数，将优先使用response进行计算,url参数将被忽略"
+            )
 
         mime = ""
         if response is not None:
@@ -386,8 +392,6 @@ class FilenameHandler:
 
             debug("尝试发送请求获取Response并读取前2KB数据来判断文件类型")
             mime = self.get_file_mimetype_from_url_by_magic(url)
-
-   
 
         # 使用 python-magic 检测类型
         # mime = magic.from_buffer(chunk, mime=True)

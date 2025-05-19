@@ -120,7 +120,11 @@ class CSVProductFields(EnumIt):
     def is_img_url_needed(cls, img_mode):
         """判断指定的图片模式是否需要img_URL = "ImagesUrl"字段
 
-        默认情况下仅有IMAGES = "Images"字段,仅存放图片链接;
+        Args:
+            img_mode (ImageMode): 图片模式
+
+        Returns:
+            bool: 是否需要
 
         """
         return img_mode in [ImageMode.NAME_FROM_SKU, ImageMode.NMAE_FROM_URL]
@@ -131,9 +135,9 @@ class CSVProductFields(EnumIt):
     ):
         """
         根据模式的不同返回不同的CSV字段名称列表
-        :param img_mode: 是否将图片是否仅存放图片名称而不是存放链接
-            1. ImageMode.NAME_AS_URL时,图片相关字段仅有Images,其他情况有Images,ImagesUrl字段;返回12个字段(可能会变更)
-            2. ImageMode.NAME_FROM_SKU,ImageMode.NMAE_FROM_URL时,的差别在于,
+        :param img_mode: 是否让图片字段仅存放图片名称而不是存放链接
+            1. `ImageMode.NAME_AS_URL`时,图片相关字段仅有Images,其他情况有Images,ImagesUrl字段;返回12个字段(可能会变更)
+            2. `ImageMode.NAME_FROM_SKU`,`ImageMode.NMAE_FROM_URL`时,的差别在于,
                Images字段的取值是sku(变体)还是仅取决于url的文件名截取;返回11个字段(可能会变更)
         :return: 对应模式下DB-CSV中间字段名称列表,例如["SKU","NAME",...]
         """
@@ -143,7 +147,8 @@ class CSVProductFields(EnumIt):
                 exclude_field=exclude_field, extend_fields=extend_fields
             )
         else:
-            res = [field.name for field in cls if field.name not in ["img_URL"]]
+            # 不返回ImagesUrl字段,其他字段返回
+            res = [field.name for field in cls if field.name not in ["ImagesUrl"]]
         return res
 
     @classmethod
@@ -161,7 +166,8 @@ class CSVProductFields(EnumIt):
                 exclude_field=exclude_field, extend_fields=extend_fields
             )
         else:
-            res = [field.value for field in cls if field.name not in ["img_URL"]]
+            img_url = CSVProductFields.IMAGES_URL.name
+            res = [field.value for field in cls if field.name not in [img_url]]
         return res
 
 

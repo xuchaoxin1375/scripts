@@ -379,23 +379,46 @@ cat_lock = threading.Lock()
 LOG_HEADER = ["SKU", "Name", "id", "Status", "message", "datetime"]
 
 
-def get_data_from_csv(args, lines, reader, url_field, name_filed):
+def get_data_from_csv(args, lines, reader, url_field, name_field):
     """
     将读取的csv文件中的图片名字和图片链接
+
+    Args:
+        args: 命令行参数
+        lines: 图片数据列表,存储解析出来的结果(url或name+url)
+        reader: csv文件读取器
+        url_field: 图片链接所在的列名
+        name_field: 图片名字所在的列名
     """
     for line in reader:
-        img_names = line.get(name_filed, "")
+        # debug("Processing line: %s", line)
+        img_names = line.get(name_field, "")
         img_urls = line.get(url_field, "")
-        get_data_line_name_url_from_csv(args, lines, img_names, img_urls)
+        get_data_line_name_url_from_csv(
+            args, lines, img_names=img_names, img_urls=img_urls
+        )
 
 
 def get_data_line_name_url_from_csv(args, lines, img_names, img_urls):
     """
     将读取的csv文件中的图片名字和图片链接,处理单行
     """
+    # 为了兼容旧的表格规范,这里要计算一下img_urls字段取值
+    # img_urls = img_urls or img_names
+    line_info = f"[[{img_names}] and [{img_urls}]]"
+    if not img_urls:
+        if img_names:
+            img_urls = img_names
+            img_names = ""
+        else:
+            error(f"img_urls and img_names are both empty, skip this line: {line_info}")
+
+    info(f"Get data: {line_info}")
+
     if img_urls:
         # img_names = img_names.split(",")
         # img_urls = img_urls.split(",")
+
         img_names = COMMON_SEP_REGEXP.split(img_names)
         img_urls = split_urls(img_urls)
     if args.name_url_pairs:
@@ -410,6 +433,7 @@ def get_data_line_name_url_from_csv(args, lines, img_names, img_urls):
                 (img_name, img_url)
             )
     else:
+        info("url only:[%s]", img_urls)
         lines.extend(img_urls)
 
 

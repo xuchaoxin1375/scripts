@@ -1,5 +1,6 @@
-function Deploy-Wp{
-<# 
+function Deploy-Wp
+{
+    <# 
 .SYNOPSIS
 对宝塔自动部署本地已有的wordpress模板网站进行快速建站
 每次可以建一个站,批量建站(可以配置一个列表,然后将脚本循环运行)
@@ -87,25 +88,25 @@ mysql -u root dbname < /www/wwwroot/4.de.sql -p
 
 
 #>
-[cmdletbinding(SupportsShouldProcess)]
-param(
+    [cmdletbinding(SupportsShouldProcess)]
+    param(
 
-    $Table = "$home/desktop/table.conf",
-    [ValidateSet("Auto", "FromFile", "MultiLineString")]$TableMode = 'Auto',
-    $Server = $env:DF_SERVER1,
-    $MysqlUser = "root",
-    $MysqlKey = "$env:df_mysqlkey",
+        $Table = "$home/desktop/table.conf",
+        [ValidateSet("Auto", "FromFile", "MultiLineString")]$TableMode = 'Auto',
+        $Server = $env:DF_SERVER1,
+        $MysqlUser = "rootx",
+        $MysqlKey = "$env:df_mysqlkey",
 
-    $Structure = "Domain,User,TemplateDomain,DeployMode",
-    $StructureCore = "Domain,User",
-    $SpiderTeam = $SpiderTeam,
-    $RewriteRules = "$wp_migration/RewriteRules.LF.conf",
-    [switch]$CheckParams,
-    [switch]$DelayToRun
-)
-function Deploy-SiteToServer
-{
-    <# 
+        $Structure = "Domain,User,TemplateDomain,DeployMode",
+        $StructureCore = "Domain,User",
+        $SpiderTeam = $SpiderTeam,
+        $RewriteRules = "$wp_migration/RewriteRules.LF.conf",
+        [switch]$CheckParams,
+        [switch]$DelayToRun
+    )
+    function Deploy-SiteToServer
+    {
+        <# 
 .SYNOPSIS
 部署本地wordpress模板网站到服务器
 .DESCRIPTION
@@ -260,227 +261,227 @@ $ArchiveSuffix=".$(Get-Date -Format yyMMdd-hh)"
 例如: C:\Users\Administrator\AppData\Local\Temp\wp_deploy.ps1
 
 #>
-    [CmdletBinding(SupportsShouldProcess)]
-    param(
+        [CmdletBinding(SupportsShouldProcess)]
+        param(
 
 
-        #建站信息配置(服务器站点信息);这个部分有3个变量必须要要注意
-        [alias('SiteOwner')]$User = "  lyz  ".trim(),
+            #建站信息配置(服务器站点信息);这个部分有3个变量必须要要注意
+            [alias('SiteOwner')]$User = "  lyz  ".trim(),
 
-        [alias('FormalDomain', 'NewDomain')]$Domain = @"           
+            [alias('FormalDomain', 'NewDomain')]$Domain = @"           
 
    DeporteAlegria.com  
 
 "@,
-        [alias("LocalDomain", "OldDomain", "Template")]$TemplateDomain = "    ".trim(),
+            [alias("LocalDomain", "OldDomain", "Template")]$TemplateDomain = "    ".trim(),
 
-        # 次要信息
+            # 次要信息
   
-        [alias('SSHUser')]$ServerUser = "root",
-        $Server = $Server,
+            [alias('SSHUser')]$ServerUser = "root",
+            $Server = $Server,
     
-        # 本地模板网站根目录备份和导出
-        # 🎈
-        $SiteDir = "$wp_sites/$TemplateDomain",
+            # 本地模板网站根目录备份和导出
+            # 🎈
+            $SiteDir = "$wp_sites/$TemplateDomain",
 
-        $ArchiveSuffix = "", 
-        # $ArchiveSuffix=".$(Get-Date -Format yyMMdd-hh)" ,
-        $ArchiveFormat = "7z",
-        # 🎈
-        $SiteDirArchive = "${SiteDir}${ArchiveSuffix}.${ArchiveFormat}",
+            $ArchiveSuffix = "", 
+            # $ArchiveSuffix=".$(Get-Date -Format yyMMdd-hh)" ,
+            $ArchiveFormat = "7z",
+            # 🎈
+            $SiteDirArchive = "${SiteDir}${ArchiveSuffix}.${ArchiveFormat}",
    
-        $SiteDirArchiveName = (Split-Path $SiteDirArchive -Leaf),
-        $SiteArchiveBaseName = (Split-Path $SiteDirArchive -LeafBase),
+            $SiteDirArchiveName = (Split-Path $SiteDirArchive -Leaf),
+            $SiteArchiveBaseName = (Split-Path $SiteDirArchive -LeafBase),
 
-        # 🎈
-        [alias('LocalDBName')]$OldDBName = $TemplateDomain,
-        # 🎈
-        [alias('LocalDBFile')]$OldDbFile = "$base_sqls/$OldDBName.sql",
-        # 配置目录体积界限(单位MB),超出这个范围的怀疑目录有问题
-        $MinSize = 10,
-        $MaxSize = 500,
-        # 服务器网站目录和配置文件相关配置
-        $ServerSitesHome = '/www/wwwroot',
+            # 🎈
+            [alias('LocalDBName')]$OldDBName = $TemplateDomain,
+            # 🎈
+            [alias('LocalDBFile')]$OldDbFile = "$base_sqls/$OldDBName.sql",
+            # 配置目录体积界限(单位MB),超出这个范围的怀疑目录有问题
+            $MinSize = 10,
+            $MaxSize = 500,
+            # 服务器网站目录和配置文件相关配置
+            $ServerSitesHome = '/www/wwwroot',
 
-        #格式例如: /www/wwwroot/lyz/pasoadeporte.com
-        $ServerUserSitesHome = "$ServerSitesHome/$User",
+            #格式例如: /www/wwwroot/lyz/pasoadeporte.com
+            $ServerUserSitesHome = "$ServerSitesHome/$User",
         
-        $ServerDBFile = "$ServerSitesHome/$OldDBName.sql",
-        $ServerSiteDirArchive = "$ServerSitesHome/$SiteDirArchiveName",
-        $ServerUserDomainDir = "$ServerUserSitesHome/$domain",
+            $ServerDBFile = "$ServerSitesHome/$OldDBName.sql",
+            $ServerSiteDirArchive = "$ServerSitesHome/$SiteDirArchiveName",
+            $ServerUserDomainDir = "$ServerUserSitesHome/$domain",
 
-        # 下面的路径是根据7z的解压行为特点,自动构造的,一般不需要修改(压缩包将作为解压后的目录名,要更改名字,你根据此名来更改(mv))
-        $ServerSitePack = "${ServerUserDomainDir}/SitePack",
-        $ServerSiteDirExpanded = "${ServerSitePack}/$SiteArchiveBaseName",
-        # 服务器数据库名称
-        $ServerDBName = "${User}_${domain}",
+            # 下面的路径是根据7z的解压行为特点,自动构造的,一般不需要修改(压缩包将作为解压后的目录名,要更改名字,你根据此名来更改(mv))
+            $ServerSitePack = "${ServerUserDomainDir}/SitePack",
+            $ServerSiteDirExpanded = "${ServerSitePack}/$SiteArchiveBaseName",
+            # 服务器数据库名称
+            $ServerDBName = "${User}_${domain}",
 
-        #格式例如: /www/wwwroot/lyz/pasoadeporte.com/wordpress
-        $ServerSiteRoot = "$ServerUserDomainDir/wordpress",
+            #格式例如: /www/wwwroot/lyz/pasoadeporte.com/wordpress
+            $ServerSiteRoot = "$ServerUserDomainDir/wordpress",
 
-        $ServerWpConfigFile = "$ServerSiteRoot/wp-config.php",
+            $ServerWpConfigFile = "$ServerSiteRoot/wp-config.php",
     
 
-        #本地模板网站数据库信息;移除现有的版本(sql文件和7z压缩包),重新导出配套文件(部署最新版本)
-        [validateset('Override', 'Lazy')]$DeployMode = 'Lazy',
+            #本地模板网站数据库信息;移除现有的版本(sql文件和7z压缩包),重新导出配套文件(部署最新版本)
+            [validateset('Override', 'Lazy')]$DeployMode = 'Lazy',
 
     
     
-        # 生成的bash脚本(要推送到服务器执行)
-        $BashFileName = 'wp_deploy.sh',
-        $BashScriptFile = "$env:TEMP/$BashFileName",
+            # 生成的bash脚本(要推送到服务器执行)
+            $BashFileName = 'wp_deploy.sh',
+            $BashScriptFile = "$env:TEMP/$BashFileName",
 
-        # $SpiderTeam = $SpiderTeam,
-        [switch]$CheckParams
-    )
+            # $SpiderTeam = $SpiderTeam,
+            [switch]$CheckParams
+        )
 
-    $domain = $domain.ToLower().replace("www.", "") # .replace(".com", "").trim() + ".com"
-    Write-Verbose "Params Check Mode is: $CheckParams" -Verbose
+        $domain = $domain.ToLower().replace("www.", "") # .replace(".com", "").trim() + ".com"
+        Write-Verbose "Params Check Mode is: $CheckParams" -Verbose
 
-    if($CheckParams)
-    {
-        Write-Verbose "请检查如下关键目录是否配置正确(如果不正确,请回头修改参数;对于不存在的文件,脚本将尝试创建或生成!):" -Verbose
-
-     
-
-        Write-Host "网站归属人员: $User"
-        Write-Host "网站域名: $Domain"
-        Write-Host "本地模板站点域名(本地旧域名): $TemplateDomain"
-
-        Write-Host "本地站点目录: $SiteDir"
-        Write-Host "站点归档文件(压缩包)路径: $SiteDirArchive"
-        Write-Host "本地模板数据库名称: $OldDBName"
-        Write-Host "本地模板数据库备份sql文件路径: $OldDbFile"
-
-        Write-Host "-----自动构造可自定义的重要参数------"
-        Write-Host "服务器站点总目录: $ServerSitesHome"
-        Write-Host "服务器站点根目录(例如域名目录domain.com的子目录wordpress): $ServerSiteRoot"
-        Write-Host "服务器站点归档文件路径: $ServerSiteDirArchive"
-        Write-Host "服务器数据库备份文件sql文件路径: $ServerDBFile"
-        
-        Write-Host "服务器数据库名称: $ServerDBName"
-
-        Write-Host "-----通信鉴权组------"
-
-        Write-Host "服务器服务器地址: $Server"
-        Write-Host "MySQL密钥: $MysqlKey"
-        Write-Host "服务器站点主目录: $ServerSitesHome"
-        Write-Host "用户站点主目录: $ServerUserSitesHome"
-        Write-Host "用户站点域名目录: $ServerUserDomainDir"
-        Write-Host "站点(wp)配置文件路径: $ServerWpConfigFile"
-
-        Write-Host "------备份和bash脚本文件上传位置组"
-
-        
-        Write-Host "站点归档文件名: $SiteDirArchiveName"
-        Write-Host "站点归档文件基名: $SiteArchiveBaseName"
-        Write-Host "站点归档解压后的默认名": $ServerSiteDirExpanded
-        
-        Write-Host "生成的Bash脚本文件名: $BashFileName"
-        Write-Host "生成的Bash脚本文件路径: $BashScriptFile"
-    }
-
-    Pause
-
-    # ====================================
-
-    #处理备份文件(保险期间,下面的语句执行前,确保旧文件不再使用,或者做好了必要备份)
-    if($DeployMode -eq 'Override')
-    {
-        # 移除旧文件
-        Remove-Item $OldDbFile -ErrorAction SilentlyContinue -Verbose -Confirm
-        Remove-Item $SiteDirArchive -ErrorAction SilentlyContinue -Verbose -Confirm
-        
-    }
-    # 如果对应的备份文件不存在,则尝试重新生成
-    if(!(Test-Path $SiteDirArchive))
-    {
-        #打包压缩本地网站目录(最新版本);使用7z打包压缩率高,上传服务器的速度快(要求你本地安装了7-zip,可以用scoop安装或其他方式安装)
-        Write-Warning "${SiteDirArchive} does not exist,try to generate it..."
-        if($ArchiveFormat -eq "7z")
+        if($CheckParams)
         {
+            Write-Verbose "请检查如下关键目录是否配置正确(如果不正确,请回头修改参数;对于不存在的文件,脚本将尝试创建或生成!):" -Verbose
 
      
-            if(Get-Command 7z -ErrorAction SilentlyContinue)
+
+            Write-Host "网站归属人员: $User"
+            Write-Host "网站域名: $Domain"
+            Write-Host "本地模板站点域名(本地旧域名): $TemplateDomain"
+
+            Write-Host "本地站点目录: $SiteDir"
+            Write-Host "站点归档文件(压缩包)路径: $SiteDirArchive"
+            Write-Host "本地模板数据库名称: $OldDBName"
+            Write-Host "本地模板数据库备份sql文件路径: $OldDbFile"
+
+            Write-Host "-----自动构造可自定义的重要参数------"
+            Write-Host "服务器站点总目录: $ServerSitesHome"
+            Write-Host "服务器站点根目录(例如域名目录domain.com的子目录wordpress): $ServerSiteRoot"
+            Write-Host "服务器站点归档文件路径: $ServerSiteDirArchive"
+            Write-Host "服务器数据库备份文件sql文件路径: $ServerDBFile"
+        
+            Write-Host "服务器数据库名称: $ServerDBName"
+
+            Write-Host "-----通信鉴权组------"
+
+            Write-Host "服务器服务器地址: $Server"
+            Write-Host "MySQL密钥: $MysqlKey"
+            Write-Host "服务器站点主目录: $ServerSitesHome"
+            Write-Host "用户站点主目录: $ServerUserSitesHome"
+            Write-Host "用户站点域名目录: $ServerUserDomainDir"
+            Write-Host "站点(wp)配置文件路径: $ServerWpConfigFile"
+
+            Write-Host "------备份和bash脚本文件上传位置组"
+
+        
+            Write-Host "站点归档文件名: $SiteDirArchiveName"
+            Write-Host "站点归档文件基名: $SiteArchiveBaseName"
+            Write-Host "站点归档解压后的默认名": $ServerSiteDirExpanded
+        
+            Write-Host "生成的Bash脚本文件名: $BashFileName"
+            Write-Host "生成的Bash脚本文件路径: $BashScriptFile"
+        }
+
+        Pause
+
+        # ====================================
+
+        #处理备份文件(保险期间,下面的语句执行前,确保旧文件不再使用,或者做好了必要备份)
+        if($DeployMode -eq 'Override')
+        {
+            # 移除旧文件
+            Remove-Item $OldDbFile -ErrorAction SilentlyContinue -Verbose -Confirm
+            Remove-Item $SiteDirArchive -ErrorAction SilentlyContinue -Verbose -Confirm
+        
+        }
+        # 如果对应的备份文件不存在,则尝试重新生成
+        if(!(Test-Path $SiteDirArchive))
+        {
+            #打包压缩本地网站目录(最新版本);使用7z打包压缩率高,上传服务器的速度快(要求你本地安装了7-zip,可以用scoop安装或其他方式安装)
+            Write-Warning "${SiteDirArchive} does not exist,try to generate it..."
+            if($ArchiveFormat -eq "7z")
             {
-                # 判断该目录是否存在,以及初步判断该目录体积是否像一个正常的wp站,尤其是不是一个空站,
-                # 或者存在不必要的文件导致目录体积过大,应该暂时离开,进行排查
-                if(Test-Path $SiteDir)
+
+     
+                if(Get-Command 7z -ErrorAction SilentlyContinue)
                 {
-                    Get-ChildItem $SiteDir | Select-Object fullname | Out-String | Write-Verbose 
-
-                    # $size = Get-ItemSizeSorted $SiteDir
-                    $list = Get-ChildItem $SiteDir | Select-Object -ExpandProperty fullname
-                    Write-Host $list 
-                    $sizeReportDetail = $size | Out-String
-                    Write-Verbose "SiteDir size: $sizeReportDetail" -Verbose
-                    $size = (Get-Size $siteDir -Unit MB).size
-                    # Write-Host "SiteDir size: $($size|Out-String)"
-
-                    if($size -gt $MaxSize -or $size -lt $MinSize)
+                    # 判断该目录是否存在,以及初步判断该目录体积是否像一个正常的wp站,尤其是不是一个空站,
+                    # 或者存在不必要的文件导致目录体积过大,应该暂时离开,进行排查
+                    if(Test-Path $SiteDir)
                     {
-                        Write-Error "SiteDir size is too large or too small, please check it first!"
-                        exit
+                        Get-ChildItem $SiteDir | Select-Object fullname | Out-String | Write-Verbose 
+
+                        # $size = Get-ItemSizeSorted $SiteDir
+                        $list = Get-ChildItem $SiteDir | Select-Object -ExpandProperty fullname
+                        Write-Host $list 
+                        $sizeReportDetail = $size | Out-String
+                        Write-Verbose "SiteDir size: $sizeReportDetail" -Verbose
+                        $size = (Get-Size $siteDir -Unit MB).size
+                        # Write-Host "SiteDir size: $($size|Out-String)"
+
+                        if($size -gt $MaxSize -or $size -lt $MinSize)
+                        {
+                            Write-Error "SiteDir size is too large or too small, please check it first!"
+                            exit
                 
+                        }
+                        7z a -t7z $SiteDirArchive $SiteDir
                     }
-                    7z a -t7z $SiteDirArchive $SiteDir
-                }
-            }
-            else
-            {
-                Write-Warning "7z(7-zip) command not found, please install 7-zip and add it to PATH"
-                if($PSCmdlet.ShouldProcess($SiteDir, "Generate zip archive"))
-                {
-                    $ArchiveFormat = "zip"
                 }
                 else
                 {
-                    exit
-                }
-            }   
-        }
-        # 如果7z命令不存在,且用户愿意换用zip,则尝试使用zip打包压缩本地网站目录(默认使用powershell自带的Compress-Archive,有一定局限性,但是一般够用)
-        if($ArchiveFormat -eq "zip")
-        {
-            Compress-Archive -Path $SiteDir -DestinationPath $SiteDirArchive -Force 
+                    Write-Warning "7z(7-zip) command not found, please install 7-zip and add it to PATH"
+                    if($PSCmdlet.ShouldProcess($SiteDir, "Generate zip archive"))
+                    {
+                        $ArchiveFormat = "zip"
+                    }
+                    else
+                    {
+                        exit
+                    }
+                }   
+            }
+            # 如果7z命令不存在,且用户愿意换用zip,则尝试使用zip打包压缩本地网站目录(默认使用powershell自带的Compress-Archive,有一定局限性,但是一般够用)
+            if($ArchiveFormat -eq "zip")
+            {
+                Compress-Archive -Path $SiteDir -DestinationPath $SiteDirArchive -Force 
             
-        }
+            }
     
-    }if (!(Test-Path $OldDbFile))
-    {
-        #导出本地网站的对应数据库
-        Write-Warning "${OldDbFile} does not exist,try to export it..." 
-        New-Item -type directory -Path $base_sqls -Force -ErrorAction SilentlyContinue -Verbose
-        Export-MysqlFile -DatabaseName $OldDBName -server localhost -MySqlUser $MysqlUser -key $MysqlKey -SqlFilePath $OldDbFile
-    }
+        }if (!(Test-Path $OldDbFile))
+        {
+            #导出本地网站的对应数据库
+            Write-Warning "${OldDbFile} does not exist,try to export it..." 
+            New-Item -type directory -Path $base_sqls -Force -ErrorAction SilentlyContinue -Verbose
+            Export-MysqlFile -DatabaseName $OldDBName -server localhost -MySqlUser $MysqlUser -key $MysqlKey -SqlFilePath $OldDbFile
+        }
 
 
-    #将网站文件包上传到服务器
-    Push-ByScp -Server $Server -User $ServerUser -Source $SiteDirArchive -DestinationPath $ServerSitesHome -Confirm
-    # 将数据库备份文件上传到服务器
-    Push-ByScp -Server $Server -User $ServerUser -Source $OldDbFile -DestinationPath $ServerSitesHome -Confirm
+        #将网站文件包上传到服务器
+        Push-ByScp -Server $Server -User $ServerUser -Source $SiteDirArchive -DestinationPath $ServerSitesHome -Confirm
+        # 将数据库备份文件上传到服务器
+        Push-ByScp -Server $Server -User $ServerUser -Source $OldDbFile -DestinationPath $ServerSitesHome -Confirm
 
-    # 解压网站文件包到服务器对应目录的命令行构造(不会立即执行!)
-    if($ArchiveFormat -eq "7z")
-    {
+        # 解压网站文件包到服务器对应目录的命令行构造(不会立即执行!)
+        if($ArchiveFormat -eq "7z")
+        {
 
-        $ExpandArchiveCmd = "7z x $ServerSiteDirArchive -o${ServerUserDomainDir}/SitePack -y"
-        # 解压后的目录标记为:$ServerSiteDirExpanded
-    }
-    else
-    {
-        # 这里使用unzip解压zip,7z可用的话也可以解压zip
-        $ExpandArchiveCmd = "unzip $ServerSiteDirArchive -d $ServerUserDomainDir/SitePack"
-    }
-    Write-Verbose "ExpandArchiveCmd: $ExpandArchiveCmd will be executed on server"
+            $ExpandArchiveCmd = "7z x $ServerSiteDirArchive -o${ServerUserDomainDir}/SitePack -y"
+            # 解压后的目录标记为:$ServerSiteDirExpanded
+        }
+        else
+        {
+            # 这里使用unzip解压zip,7z可用的话也可以解压zip
+            $ExpandArchiveCmd = "unzip $ServerSiteDirArchive -d $ServerUserDomainDir/SitePack"
+        }
+        Write-Verbose "ExpandArchiveCmd: $ExpandArchiveCmd will be executed on server"
 
-    # 通过ssh远程执行命令行(推荐放到bash脚本中执行)
-    # ssh $ServerUser@$Server "7z x $ServerSiteDirArchive -o$ServerUserDomainDir -y"
+        # 通过ssh远程执行命令行(推荐放到bash脚本中执行)
+        # ssh $ServerUser@$Server "7z x $ServerSiteDirArchive -o$ServerUserDomainDir -y"
 
-    # =========================
+        # =========================
 
-    # 定义bash脚本
-    $bash_script = @"
+        # 定义bash脚本
+        $bash_script = @"
 
 # 解压网站根目录到合适的位置(在服务器调用7z执行命令;目录不存在时,7z会自动创建)
 if [ -d "$ServerSiteDirExpanded" ]; then
@@ -569,92 +570,92 @@ chmod -R 755 $ServerSiteRoot
 chown -R www:www $ServerSiteRoot
 "@
 
-    # 转为LF风格shell文件
-    $bash_script = $bash_script -replace "`r`n", "`n"
+        # 转为LF风格shell文件
+        $bash_script = $bash_script -replace "`r`n", "`n"
 
 
-    $bash_script | Set-Content -NoNewline $BashScriptFile
-    # Get-CRLFChecker -Path $BashScriptFile
-    Write-Host "请检查bash脚本:`n=============================================="
-    # Write-Host $bash_script 
-    $bash_script | Get-ContentNL -AsString
-    Write-Host "===================================================="
-    if(!$PSCmdlet.ShouldProcess($BashScriptFile, "Continue?"))
-    {
-        exit
+        $bash_script | Set-Content -NoNewline $BashScriptFile
+        # Get-CRLFChecker -Path $BashScriptFile
+        Write-Host "请检查bash脚本:`n=============================================="
+        # Write-Host $bash_script 
+        $bash_script | Get-ContentNL -AsString
+        Write-Host "===================================================="
+        if(!$PSCmdlet.ShouldProcess($BashScriptFile, "Continue?"))
+        {
+            exit
+        }
+        #将本地备份的数据库导入到服务器对应的数据库中(耗时比较久,可以考虑使用navicat来加速,或者寻找更高效的方法,比如上传sql文件到服务器,然后让服务器自己导入,写入上述bash脚本片段中)
+        # Import-MysqlFile -server $Server -MySqlUser $MysqlUser -DatabaseName $ServerDBName -SqlFilePath $OldDbFile
+
+        #推送伪静态配置文件到服务器
+        Push-ByScp -Server $Server -User $ServerUser -Source $RewriteRules -DestinationPath "/www/server/panel/vhost/rewrite/$domain.conf" -Verbose -Confirm
+
+        #将脚本推送到服务器去执行(每轮执行自动更新,无需确认)
+        Push-ByScp -Server $Server -User $ServerUser -Source $BashScriptFile -DestinationPath $ServerSitesHome -Confirm:$false
+
+        ssh $ServerUser@$Server "bash $ServerSitesHome/$BashFileName" 
+
+        #修改服务器中对应数据库中域名为正式域名(url/domain)
+        Update-WpUrl -server $Server -MySqlUser $MysqlUser -key $MysqlKey -OldDomain $TemplateDomain -NewDomain $domain -DatabaseName $ServerDBName -Verbose -Start3w -protocol "https" -Confirm:$false
+
+        # 通过ssh 直接执行bash脚本(不推荐,复制语句容易出问题)
+        # $bash_script | ssh $ServerUser@$Server "bash -s"
     }
-    #将本地备份的数据库导入到服务器对应的数据库中(耗时比较久,可以考虑使用navicat来加速,或者寻找更高效的方法,比如上传sql文件到服务器,然后让服务器自己导入,写入上述bash脚本片段中)
-    # Import-MysqlFile -server $Server -MySqlUser $MysqlUser -DatabaseName $ServerDBName -SqlFilePath $OldDbFile
-
-    #推送伪静态配置文件到服务器
-    Push-ByScp -Server $Server -User $ServerUser -Source $RewriteRules -DestinationPath "/www/server/panel/vhost/rewrite/$domain.conf" -Verbose -Confirm
-
-    #将脚本推送到服务器去执行(每轮执行自动更新,无需确认)
-    Push-ByScp -Server $Server -User $ServerUser -Source $BashScriptFile -DestinationPath $ServerSitesHome -Confirm:$false
-
-    ssh $ServerUser@$Server "bash $ServerSitesHome/$BashFileName" 
-
-    #修改服务器中对应数据库中域名为正式域名(url/domain)
-    Update-WpUrl -server $Server -MySqlUser $MysqlUser -key $MysqlKey -OldDomain $TemplateDomain -NewDomain $domain -DatabaseName $ServerDBName -Verbose -Start3w -Protocol "https" -Confirm:$false
-
-    # 通过ssh 直接执行bash脚本(不推荐,复制语句容易出问题)
-    # $bash_script | ssh $ServerUser@$Server "bash -s"
-}
-function Start-Deploysites
-{
-    <# 
+    function Start-Deploysites
+    {
+        <# 
     .SYNOPSIS
      批量部署网站到服务器(调度现有命令)
     #>
-    param (
+        param (
         
-    )
-    # 导入字典
-    $SiteOwnersDict = . $SpiderTeam 
-    Write-Verbose "Check SiteOwnerDict availibility" -Verbose
-    Write-Verbose $SiteOwnersDict -Verbose
-    # Pause
-    # $Dict = $SiteOwnersDict.GetEnumerator()
-    # $Dict
-    # Write-Host "[$($Dict|Out-String)]" -ForegroundColor Cyan
+        )
+        # 导入字典
+        $SiteOwnersDict = . $SpiderTeam 
+        Write-Verbose "Check SiteOwnerDict availibility" -Verbose
+        Write-Verbose $SiteOwnersDict -Verbose
+        # Pause
+        # $Dict = $SiteOwnersDict.GetEnumerator()
+        # $Dict
+        # Write-Host "[$($Dict|Out-String)]" -ForegroundColor Cyan
 
-    # 伪静态配置内容检查
-    if(Test-Path $RewriteRules)
-    {
-        Get-CRLFChecker $RewriteRules
-        
-    }
-    else
-    {
-        Write-Warning "RewriteRules file does not exist: [$RewriteRules], please check it first!"
-        Pause
-    }
-    $res = Get-DomainUserDictFromTable -Table $Table -Structure $Structure -SiteOwnersDict $SiteOwnersDict -Verbose:$false
-    # write-host $res
-    Get-DictView -Dicts $res 
-    # Pause
-    # return $res
-
-    Start-BatchSitesBuild -server $Server -MySqlUser $MySqlUser -MySqlkey $MysqlKey -Table $Table -TableMode $TableMode -Structure $StructureCore -SiteOwnersDict $SiteOwnersDict -SiteRoot "wordpress" -ToClipboard -Verbose:$false
-    
-    foreach($item in @($res))
-    {
-        $DeployMode = $item.DeployMode
-        Write-Host "sturcture:[$structure]" -ForegroundColor Cyan
-        if(!$DeployMode)
+        # 伪静态配置内容检查
+        if(Test-Path $RewriteRules)
         {
-            $DeployMode = 'Lazy'
+            Get-CRLFChecker $RewriteRules
+        
         }
-        Write-Verbose "DeployMode: [$DeployMode]" -Verbose
-        # if($PSCmdlet.ShouldProcess($item.Domain, "Deploy to server"))
-        # {
-        # }
-        Deploy-SiteToServer -User $item.User -domain $item.Domain -TemplateDomain $item.TemplateDomain -DeployMode $DeployMode -CheckParams:$checkParams
+        else
+        {
+            Write-Warning "RewriteRules file does not exist: [$RewriteRules], please check it first!"
+            Pause
+        }
+        $res = Get-DomainUserDictFromTable -Table $Table -Structure $Structure -SiteOwnersDict $SiteOwnersDict -Verbose:$false
+        # write-host $res
+        Get-DictView -Dicts $res 
+        # Pause
+        # return $res
+
+        Start-BatchSitesBuild -server $Server -MySqlUser $MySqlUser -MySqlkey $MysqlKey -Table $Table -TableMode $TableMode -Structure $StructureCore -SiteOwnersDict $SiteOwnersDict -SiteRoot "wordpress" -ToClipboard -Verbose:$false
+    
+        foreach($item in @($res))
+        {
+            $DeployMode = $item.DeployMode
+            Write-Host "sturcture:[$structure]" -ForegroundColor Cyan
+            if(!$DeployMode)
+            {
+                $DeployMode = 'Lazy'
+            }
+            Write-Verbose "DeployMode: [$DeployMode]" -Verbose
+            # if($PSCmdlet.ShouldProcess($item.Domain, "Deploy to server"))
+            # {
+            # }
+            Deploy-SiteToServer -User $item.User -domain $item.Domain -TemplateDomain $item.TemplateDomain -DeployMode $DeployMode -CheckParams:$checkParams
+        }
     }
-}
-# 是否立即执行脚本
-if(!$DelayToRun)
-{
-    start-Deploysites
-}
+    # 是否立即执行脚本
+    if(!$DelayToRun)
+    {
+        start-Deploysites
+    }
 }

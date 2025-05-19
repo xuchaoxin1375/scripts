@@ -656,7 +656,7 @@ but different name, keep records",
                     sku = row[sku_field]
                     # 基于sku,编号命名该产品的多个图片(如果有多图的话)
                     img_names = [
-                        f"{sku}-{i}.{self._get_img_extension(img_url=img_url,req_response=req_response)}"
+                        f"{sku}-{i}.{self._get_img_extension(img_url=img_url,req_response=req_response,prefix_dot=False)}"
                         for i, img_url in enumerate(img_url_lst)
                     ]
                 elif img_mode == ImageMode.NMAE_FROM_URL:
@@ -667,7 +667,7 @@ but different name, keep records",
             expanded_rows.append(row)
         return expanded_rows
 
-    def _get_img_extension(self, img_url, req_response=False):
+    def _get_img_extension(self, img_url, req_response=False,prefix_dot=False):
         """
         尝试获取图片文件的后缀名
         (处理单个图片链接,可以配合循环批量处理)
@@ -677,7 +677,7 @@ but different name, keep records",
         # if not img_url:
         #     return ""
         # return img_url.split(".")[-1]
-        res = fh.get_file_extension(url=img_url, req_response=req_response)
+        res = fh.get_file_extension(url=img_url, req_response=req_response,prefix_dot=prefix_dot)
         return res
 
     def split_list_average(self, lst, n):
@@ -790,7 +790,7 @@ but different name, keep records",
         header = CSVProductFields.get_all_fields_name(img_mode=img_mode)
         header_for_woo = CSVProductFields.get_all_fields_value(img_mode=img_mode)
         warning("Info:csv header: %s", header_for_woo)
-        # 准备好字段
+        # 准备好数据🎈
         lines = self.get_lines_dict_for_csv(dbs=dbs, img_mode=img_mode)
 
         # self._export_csv(file_path, header, lines)
