@@ -10,6 +10,7 @@
 
 - 无论是本地(http用于测试开发)还是正式站(https正式部署),都要确保相应网站服务都正常
 - 尤其是本地,如果重启了计算机,网站服务可能被停掉了,你需要启用他们,比如通过小皮建站,那么请检查小皮工具箱中的相关组件是否正常工作,被测试的网站能否正常打开
+- 一定要确保后台可以进入(部分情况下首页打得开,但是后台打不开,api也是无法工作的)
 
 ### 首先需要安装python
 
@@ -40,7 +41,27 @@ pip install woocommerce
 
 调用`wc.get_product_count()`方法或者`wc.get_system_status()`方法检查
 
+### 链接测试代码段🎈
 
+```python
+from woodf import WC
+
+protocal = "http"  # 协议,一般是https(适用于正式上传),http(适用于本地脚本调试/开发)
+domain = "wp.com"  # 域名
+url = f"{protocal}://{domain}"  # 不要有多余的路径
+consumer_key = "ck_d27091399219c406fb6f420f498aecfb8e6fe812"
+consumer_secret = "cs_5bbfa3135dd9ff605f920f8c888b3036e0a69ec7"
+
+wc = WC(
+    api_consumer_key=consumer_key,
+    api_consumer_secret=consumer_secret,
+    api_url=url,
+    timeout=30,
+)
+# 检查woo鉴权和链接(返回-1表示链接失败)
+wc.get_product_count()
+ 
+```
 
 
 
@@ -202,7 +223,7 @@ for sku in prouducts_sku:
 
 ## FAQ🎈
 
-### 常见错误类型
+### 常见错误类型🎈
 
 由于以下几类原因:
 
@@ -210,10 +231,38 @@ for sku in prouducts_sku:
 
 - csv目录配置
 
-- 网站设置不当(https/证书/伪静态/固定链接设置等相关配置)
+- 网站设置不当(https/证书/伪静态/**固定链接**设置等相关配置)
 
 
 > 比如没有绑定证书(虽然cloudflare这种服务商启用代理服务后,可能会让你的网站自带https访问属性,但是这种方式经过试验暂时不是很稳定,因此仍然建议用专门的证书绑定(手动或者自动都可以)))
+
+### 固定链接设置
+
+- 经过试验,固定链接不能随便设置,一般推荐使用**文章名**(日期和名称型本地测试发现api无法工作,走https的上线站似乎可以)
+
+- 固定链接结构
+
+  朴素
+  http://wp.com/?p=123
+
+
+  日期和名称型
+  http://wp.com/2025/05/19/sample-post/
+
+
+  月份和名称型
+  http://wp.com/2025/05/sample-post/
+
+
+  数字型
+  http://wp.com/archives/123
+
+
+  文章名
+  http://wp.com/sample-post/
+
+
+  自定义结构
 
 ### 具体类型
 

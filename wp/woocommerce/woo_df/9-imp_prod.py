@@ -290,7 +290,7 @@ class WooCommerceProductImporter:
             f'a:6:{{s:4:"name";s:{len(attribute_name)}:"{attribute_name}";'
             f's:5:"value";{serialized_value}'
             f's:8:"position";i:0;'
-            f's:10:"is_visible";i:1;'
+            f's:10:"is_visible";i:0;'
             f's:12:"is_variation";i:0;'
             f's:11:"is_taxonomy";i:0;}}}}'
         )

@@ -33,12 +33,13 @@ from wooenums import UploadMode,CSVProductFields
 protocal = "http"  # 协议,一般是https(适用于正式上传),http(适用于本地脚本调试/开发)
 domain = "wp.com"  # 域名
 url = f"{protocal}://{domain}"  # 不要有多余的路径
-consumer_key = "ck_cea9b0730bbda84628674625dc206495ddf62fc7"
-consumer_secret = "cs_ba0185c197dc041ad8ba91915886395404badcb9"
+consumer_key = "ck_d27091399219c406fb6f420f498aecfb8e6fe812"
+consumer_secret = "cs_5bbfa3135dd9ff605f920f8c888b3036e0a69ec7"
 
 # 这里指定目录,不是文件!🎈(指定文件请到备用方案2中指定)
 
-CSV_DIR = r"S:\csv_demo\current"
+# CSV_DIR = r"S:\csv_demo\current"
+CSV_DIR = r"S:\grandwagonsupply"
 
 MAX_WORKERS_FILES = 1  # 同时上传的文件数(一般不超过7);
 MAX_WORKERS_PER_FILE = 1  # 每份文件上传的线程数
