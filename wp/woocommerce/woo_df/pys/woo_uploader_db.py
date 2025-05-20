@@ -14,8 +14,14 @@ import pymysql
 from tqdm import tqdm
 from unidecode import unidecode
 
-IMG_DIR = r"D:\template\domain.com\images"  # 图片目录
-CSV_DIR = r"D:\wp_template\domain.com"  # CSV文件目录
+IMG_DIR = r"  D:\template\domain.com\images  ".strip()  # 图片目录
+CSV_DIR = r"  D:\wp_template\domain.com      ".strip()  # CSV文件目录
+
+DB_NAME = "domain.com"  # 数据库名
+
+DB_HOST = "localhost"  # 数据库主机名
+DB_USER = "root"  # 数据库用户名
+PASSWORD = "15a58524d3bd2e49"  # 数据库密码
 
 
 class WooCommerceProductImporter:
@@ -669,10 +675,10 @@ class WooCommerceProductImporter:
 if __name__ == "__main__":
     # 数据库配置
     db_config = {
-        "host": "localhost",
-        "user": "test123",
-        "password": "test123",
-        "database": "test123",
+        "host": DB_HOST,
+        "user": DB_USER,
+        "database": DB_NAME,
+        "password": PASSWORD,
         "charset": "utf8mb4",
         "connect_timeout": 900,  # 增加连接超时时间
         "read_timeout": 1600,  # 增加读取超时时间

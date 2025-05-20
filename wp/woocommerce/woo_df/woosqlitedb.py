@@ -102,7 +102,7 @@ def remove_items_without_img(csv_dir, img_dir, backup_dir="backup_csvs"):
                 shutil.copy(file, backup_file_path)  # 复制文件到备份目录
             # 判断每个IMAGE字段中的图片在指定目录下是否存在,不存在的过滤移除
             df = df[
-                df[IMAGE_URL].apply(lambda x: os.path.exists(os.path.join(img_dir, x)))
+                df[IMAGES].apply(lambda x: os.path.exists(os.path.join(img_dir, x)))
             ]
 
             # 将过滤后的数据保存回原文件
