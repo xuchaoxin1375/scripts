@@ -12,15 +12,12 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from logging import debug, error, info, warning
 from pathlib import Path
-from comutils import get_filebasename_from_url, remove_sensitive_info, split_urls
 
-from wooenums import (
-    CSVProductFields,
-    DBProductFields,
-    ImageMode,
-    LanguagesHotSale,
-)
+import pandas as pd
+
+from comutils import get_filebasename_from_url, remove_sensitive_info, split_urls
 from filenamehandler import FilenameHandler
+from wooenums import CSVProductFields, DBProductFields, ImageMode, LanguagesHotSale
 
 fh = FilenameHandler()
 csv.field_size_limit(int(1e7))  # 设置为 10MB 或更高（单位：字节）
@@ -32,6 +29,40 @@ SEPARATOR = ">"
 LOWEST_PRICE = 1
 HIGHEST_PRICE = 10000
 cnt_lock = threading.Lock()
+
+IMAGES = CSVProductFields.IMAGES.name
+IMAGE_URL = CSVProductFields.IMAGES_URL.name
+
+
+def update_image_fields_from_legacy(csv_file):
+    """更新图片字段
+    针对只有Images字段但是缺失ImagesUrl字段的产品图片字段更新/补全完整(主要为兼容老csv格式准备的)
+    这种里针对Images包含了图片url的情况，然后ImagesUrl字段取代Images字段，Images字段会更新为图片名
+
+    """
+    df = pd.read_csv(csv_file)
+    # fh = FilenameHandler()
+    if IMAGE_URL in df.columns and df[IMAGE_URL].notnull().any():
+        print("ImagesUrl field already exists, no need to update.")
+        return  # 相关字段已经存在,不需要更新
+    df[IMAGE_URL] = df[IMAGES]
+    df[IMAGES] = df[IMAGES].apply(fh.get_filename_from_url)
+    df.to_csv(csv_file, index=False)
+
+
+def update_image_fields(csv_dir):
+    """将指定文件夹中的csv文件中的图片字段更新
+    循环调用 `update_image_fields_from_legacy` 函数更新指定文件夹中的csv文件中的图片字段
+
+    """
+    # 检查相关字段是否已经存在
+
+    for file in os.listdir(csv_dir):
+        file = os.path.abspath(file)
+        # update_image_fields(file)
+        if file.endswith(".csv"):
+            print("Updating image fields for:%s ", file)
+            update_image_fields_from_legacy(file)
 
 
 class SQLiteDB:
@@ -656,7 +687,10 @@ but different name, keep records",
                     sku = row[sku_field]
                     # 基于sku,编号命名该产品的多个图片(如果有多图的话)
                     img_names = [
-                        f"{sku}-{i}.{self._get_img_extension(img_url=img_url,req_response=req_response,prefix_dot=False)}"
+                        f"{sku}-{i}"
+                        + self._get_img_extension(
+                            img_url=img_url, req_response=req_response, prefix_dot=False
+                        )
                         for i, img_url in enumerate(img_url_lst)
                     ]
                 elif img_mode == ImageMode.NMAE_FROM_URL:
@@ -667,7 +701,7 @@ but different name, keep records",
             expanded_rows.append(row)
         return expanded_rows
 
-    def _get_img_extension(self, img_url, req_response=False,prefix_dot=False):
+    def _get_img_extension(self, img_url, req_response=False, prefix_dot=False):
         """
         尝试获取图片文件的后缀名
         (处理单个图片链接,可以配合循环批量处理)
@@ -677,7 +711,9 @@ but different name, keep records",
         # if not img_url:
         #     return ""
         # return img_url.split(".")[-1]
-        res = fh.get_file_extension(url=img_url, req_response=req_response,prefix_dot=prefix_dot)
+        res = fh.get_file_extension(
+            url=img_url, req_response=req_response, prefix_dot=prefix_dot
+        )
         return res
 
     def split_list_average(self, lst, n):

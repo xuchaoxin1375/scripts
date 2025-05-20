@@ -13,35 +13,35 @@ __date__ = "2025-04-07"
 
 # %%
 
+import copy
+import csv
+import html
+
+# 其他模块
+import json
+
 # 请安装必要的库(主要是woocomece库要下载,也可以自行提取,大多是自带无需下载的库)
 # from typing import Literal
 import logging
+import os
+import pickle
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# import threading
+# import requests
 from math import ceil
 
 # from datetime import datetime
 # import queue
-from logging import info, debug, warning, error
-import os
+from logging import debug, error, info, warning
 
-# 其他模块
-import json
-import csv
-import html
-import copy
-import pickle
-
-# import requests
-from datetime import datetime
-from requests import Response
-
-from wooenums import FetchMode, UploadMode, CSVProductFields
-from comutils import cat_lock, log_upload, split_list
+# import threading
 
 # 核心库(需要安装)
 from woocommerce import API
+from requests import Response
+
+from comutils import cat_lock, log_upload, split_list
+from wooenums import CSVProductFields, FetchMode, UploadMode
 
 csv.field_size_limit(int(1e7))  # 允许csv文件最大为10MB
 # from requests.exceptions import ConnectTimeout, ReadTimeout, Timeout, RequestException
@@ -343,6 +343,7 @@ class WC(API):
             with open(file, mode="r", encoding="utf-8") as f:
                 reader = csv.DictReader(f)
                 for row in reader:
+                    info(f"Reading categories from {file} of row [{row}]")
                     categories.add(row[CSVProductFields.CATEGORIES.value])
         return categories
 
@@ -378,7 +379,7 @@ class WC(API):
         categories = self.get_all_categories_from_file(csv_files)
 
         workers = self.get_worker_number(len(categories), max_workers)
-        debug("with %s workers(threads) create categories...",workers)
+        debug("with %s workers(threads) create categories...", workers)
 
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = [

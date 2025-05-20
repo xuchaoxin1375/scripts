@@ -14,16 +14,13 @@ __date__ = "2025-04-07"
 import copy
 import csv
 import html
-
 # 其他模块
 import json
-
 # 请安装必要的库(主要是woocomece库要下载,也可以自行提取,大多是自带无需下载的库)
 # from typing import Literal
 import logging
 import os
 import pickle
-
 # from datetime import datetime
 # import queue
 import sys
@@ -33,18 +30,17 @@ from math import ceil
 from time import time
 from urllib.parse import urlencode
 
-from comutils import cat_lock, log_upload, split_list
-
 # import threading
 from requests import Response, Session
 from requests.adapters import HTTPAdapter
 from requests.auth import HTTPBasicAuth
-from wooenums import CSVProductFields, FetchMode, UploadMode
 from urllib3.util.retry import Retry
-
+from woocommerce import API
 # woocommerce库
 from woocommerce.oauth import OAuth
-from woocommerce import API
+
+from comutils import cat_lock, log_upload, split_list
+from wooenums import CSVProductFields, DBProductFields, FetchMode, UploadMode
 
 csv.field_size_limit(int(1e7))  # 允许csv文件最大为10MB
 # 核心库(需要安装)
@@ -416,7 +412,7 @@ class WC(API):
             with open(file, mode="r", encoding="utf-8") as f:
                 reader = csv.DictReader(f)
                 for row in reader:
-                    categories.add(row[CSVProductFields.CATEGORIES.value])
+                    categories.add(row[DBProductFields.CATEGORIES.value])
         return categories
 
     def get_worker_number(self, tasks, max_workers):
@@ -1508,15 +1504,6 @@ class WC(API):
             self.batch_concurrent_execute(max_workers, rows, batch_size=batch_size)
         else:
             self.orderd_concurrent_execute(max_workers, upload_mode, rows)
-
-    # def process_csvs_safe(self, *args, **kwargs):
-    #     """
-    #     安全的csv处理函数,用于防止因为异常导致程序中断
-    #     """
-    #     try:
-    #         self._process_csvs(*args, **kwargs)
-    #     except Exception as e:
-    #         error(f"Error occurred in {e}")
 
     def process_csvs(
         self,

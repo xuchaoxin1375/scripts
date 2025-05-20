@@ -34,28 +34,11 @@ logging.basicConfig(
 )
 
 
-##
-class LanguagesHotSaleX(EnumItRc):
-    """对LanguagesHotSale枚举类的复刻,但是允许你修改下面的配置来调整和控制热销的返回值
-
-    例如,我希望修改美国(US)产品数据中返回热卖的允许词汇列表,则修改下面US的取值(代替默认取值,默认取值来自于LanguagesHotSale枚举类)
-
-    US = ["Best-Sellers","Featured","Top-Sellers"]
-
-    """
-
-    US = LanguagesHotSale.US.value
-    UK = LanguagesHotSale.UK.value
-    IT = LanguagesHotSale.IT.value
-    DE = LanguagesHotSale.DE.value
-    ES = LanguagesHotSale.ES.value
-    FR = LanguagesHotSale.FR.value
-
 
 # 产品价格区间(打折前不在此区间的产品将被过滤掉)
 LOWEST_PRICE = 1
 HIGHEST_PRICE = 10000
-LANGUAGE = LanguagesHotSaleX.US.name
+LANGUAGE = LanguagesHotSale.US.name
 # 限制产品数量少的分类,将其分配到热销类(或其近义词)
 CATEGORIES_THRESHOLD = 30
 # -----------------------------------------------------------
@@ -65,10 +48,28 @@ CATEGORIES_THRESHOLD = 30
 #   例如获取170-180编号采集文件夹下的db文件
 
 # 根据你的采集器安装目录以及采集存放的db目录来填写🎈(末尾不要有\,前面可以有)
-DATA_DIR = Path(r"C:\火车采集器V10.27\Data")
+# DATA_DIR = Path(r"C:\火车采集器V10.27\Data")
 
-START = 177
-END = 177
+DATA_DIR = Path(r"S:\test_db")
+
+START = 558
+END = 558
+
+##
+class LanguagesHotSaleX(EnumItRc):
+    """对LanguagesHotSale枚举类的复刻,但是允许你修改下面的配置来调整和控制热销的返回值
+
+    例如,我希望修改美国(US)产品数据中返回热卖的允许词汇列表,则修改下面US的取值(代替默认取值,默认取值来自于LanguagesHotSale枚举类)
+
+    US = ["Best-Sellers","Featured","Top-Sellers"]
+
+    """
+    US = LanguagesHotSale.US.value
+    UK = LanguagesHotSale.UK.value
+    IT = LanguagesHotSale.IT.value
+    DE = LanguagesHotSale.DE.value
+    ES = LanguagesHotSale.ES.value
+    FR = LanguagesHotSale.FR.value
 
 # 枚举出db文件路径
 rng = range(START, END + 1)

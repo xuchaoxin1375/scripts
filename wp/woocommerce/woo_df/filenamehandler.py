@@ -150,7 +150,7 @@ class FilenameHandler:
         return mime_map.get(content_type, "")
 
     # @staticmethod
-    def get_filename_from_url_str(
+    def get_filename_from_url(
         self,
         url: str,
         response=None,
@@ -169,7 +169,7 @@ class FilenameHandler:
 
         注意,文件名(windows中不允许:   \/:*?"<>|  这9个基本字符)
         """
-        # 尝试从URL中提取文件名
+        # 尝试从URL中提取文件名(无扩展名)
         filename = FilenameHandler.get_filebasename_from_url_or_path(url)
 
         # 检查上述尝试生成的文件名
@@ -229,7 +229,10 @@ class FilenameHandler:
             if not ext:
                 # 二进制文件分析
                 ext = self.get_file_extension_from_response_magic(
-                    url=url, response=response, req_response=req_response,prefix_dot=prefix_dot
+                    url=url,
+                    response=response,
+                    req_response=req_response,
+                    prefix_dot=prefix_dot,
                 )
 
         except Exception as e:
@@ -243,7 +246,7 @@ class FilenameHandler:
         return ext
 
     @staticmethod
-    def get_filebasename_from_url_or_path(url):
+    def get_filebasename_from_url_or_path(url, extension=False):
         """从URL中提取文件名(basename without extension)
         Args:
             url: 要被解析的URL或文件路径
@@ -253,8 +256,11 @@ class FilenameHandler:
         """
         parsed_url = urlparse(url)
         path = unquote(parsed_url.path)
-        filename = os.path.basename(path)
-        basename, _ = os.path.splitext(filename)
+        filename = os.path.basename(path)  # 这里的basename是带扩展名的(如果有的话)
+        basename = filename
+        if not extension:
+            basename, _ = os.path.splitext(filename)
+
         return basename
 
     def get_file_mimetype_from_url_by_magic(self, url, chunk_size=2048):

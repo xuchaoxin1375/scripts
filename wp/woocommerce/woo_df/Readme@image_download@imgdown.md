@@ -197,10 +197,15 @@ python img_downloader.py -i name_url_pairs.txt -o ./downloaded_images -n
 ### 作为模块导入使用
 
 ```python
+#导入下载器
 from imgdownn import ImageDownloader
 
 # 创建下载器实例
 downloader = ImageDownloader(max_workers=10)
+
+```
+
+```python
 
 # 下载URL列表
 urls = [
@@ -210,6 +215,8 @@ urls = [
 ]
 downloader.download(urls, output_dir='./downloaded_images')
 ```
+
+
 
 ### 配置代理|python命令行环境代理
 
@@ -223,7 +230,7 @@ downloader.download(urls, output_dir='./downloaded_images')
 $env:HTTP_PROXY="http://127.0.0.1:7897"; $env:HTTPS_PROXY="http://127.0.0.1:7897"
 ```
 
-![image-20250430222606850](assets/image-20250430222606850.png)
+
 
 ### 命令行使用示例🎈
 
