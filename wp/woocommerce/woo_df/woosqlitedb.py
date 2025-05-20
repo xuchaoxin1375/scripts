@@ -55,10 +55,8 @@ def update_image_fields(csv_dir):
     循环调用 `update_image_fields_from_legacy` 函数更新指定文件夹中的csv文件中的图片字段
 
     """
-    # 检查相关字段是否已经存在
     print(csv_dir)
     for file in os.listdir(csv_dir):
-        # file = os.path.abspath(file)
         file = os.path.abspath(os.path.join(csv_dir, file))
 
         # print(file)
@@ -66,6 +64,19 @@ def update_image_fields(csv_dir):
         if file.endswith(".csv"):
             print(f"Updating image fields for:{file} ")
             update_image_fields_from_legacy(file)
+
+
+def update_image_fields_extension(csv_dir, extension="webp"):
+    """将指定文件夹中的csv文件中的图片字段的值的后缀名改为指定格式"""
+    print(csv_dir)
+    for file in os.listdir(csv_dir):
+        file = os.path.abspath(os.path.join(csv_dir, file))
+        if file.endswith(".csv"):
+            print(f"Updating image fields extension for:{file} ")
+            df = pd.read_csv(file)
+            df[IMAGES] = df[IMAGES].str.rsplit(".", n=1).str[0] + f".{extension}"
+            df.to_csv(file, index=False)
+    
 
 
 class SQLiteDB:
