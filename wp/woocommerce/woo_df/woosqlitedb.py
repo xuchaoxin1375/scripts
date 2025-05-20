@@ -79,13 +79,13 @@ def update_image_fields_extension(csv_dir, extension="webp"):
             df.to_csv(file, index=False)
 
 
-def remove_items_without_img(csv_dir, backup_dir="backup_csvs"):
+def remove_items_without_img(csv_dir, img_dir, backup_dir="backup_csvs"):
     """删除csv文件中没有图片的产品
-    
+
     Args:
         csv_dir (str): csv文件所在目录
         backup_dir (str, optional): 备份目录,如果为空串,则不备份. Defaults to "".
-    
+
     """
     print(csv_dir)
     for file in os.listdir(csv_dir):
@@ -102,9 +102,8 @@ def remove_items_without_img(csv_dir, backup_dir="backup_csvs"):
                 shutil.copy(file, backup_file_path)  # 复制文件到备份目录
             # 判断每个IMAGE字段中的图片在指定目录下是否存在,不存在的过滤移除
             df = df[
-                df[IMAGE_URL].apply(lambda x: os.path.exists(os.path.join(csv_dir, x)))
+                df[IMAGE_URL].apply(lambda x: os.path.exists(os.path.join(img_dir, x)))
             ]
-
 
             # 将过滤后的数据保存回原文件
             df.to_csv(file, index=False)
