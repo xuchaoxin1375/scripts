@@ -549,9 +549,7 @@ echo "Importing database backup file to server...🎈"
 mysql -u$MysqlUser -p$MysqlKey -h localhost $ServerDBName < $ServerDBFile
 "@ + @'
 
-#配置强制使用https
-
-# sed -ri "/\/\*\* Sets up WordPress vars and included files. \*/i \
+#sed配置强制使用https (这里使用sed 的行前插入指令i,在匹配到的指定前插入一段内容)
 
 sed -ri "/\/\* That's all, stop editing! Happy publishing. \*/i \
 define('FORCE_SSL_ADMIN', true);\n\
