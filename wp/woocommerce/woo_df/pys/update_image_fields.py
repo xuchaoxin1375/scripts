@@ -2,7 +2,7 @@
 
 import os
 import pandas as pd
-from woosqlitedb import update_image_fields, update_image_fields_extension
+from woosqlitedb import update_image_fields, update_image_fields_extension,remove_items_without_img
 from wooenums import ImageMode, CSVProductFields, DBProductFields, LanguagesHotSale
 
 IMAGE = CSVProductFields.IMAGES.value
@@ -12,3 +12,4 @@ CSV_DIR = os.path.abspath(CSV_DIR)
 # print(CSV_DIR)
 update_image_fields(CSV_DIR)
 update_image_fields_extension(CSV_DIR, extension="webp")
+remove_items_without_img(CSV_DIR, backup_dir="backup_csvs")

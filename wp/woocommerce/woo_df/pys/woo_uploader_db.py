@@ -14,6 +14,9 @@ import pymysql
 from tqdm import tqdm
 from unidecode import unidecode
 
+IMG_DIR = r"D:\template\domain.com\images"  # 图片目录
+CSV_DIR = r"D:\wp_template\domain.com"  # CSV文件目录
+
 
 class WooCommerceProductImporter:
     def __init__(
@@ -420,9 +423,7 @@ class WooCommerceProductImporter:
             "width": width,
             "height": height,
             "file": f"{year}/{formatted_month}/{file_name}",
-            "filesize": (
-                os.path.getsize(img_path) if os.path.exists(img_path) else 0
-            ),
+            "filesize": (os.path.getsize(img_path) if os.path.exists(img_path) else 0),
             "sizes": {},  # WordPress 默认缩略图信息
             "img_meta": {
                 "aperture": "0",
@@ -682,10 +683,17 @@ if __name__ == "__main__":
     # 创建导入器实例
     importer = WooCommerceProductImporter(
         db_config=db_config,
-        img_dir=r"D:\站群\2025\采集\04月份\36\04",
+        img_dir=IMG_DIR,  # 图片目录
         max_workers=20,
         batch_size=100,
     )
 
     # 执行导入
-    importer.import_products("output.csv")
+
+    for csv_file in os.listdir(CSV_DIR):
+        if csv_file.endswith(".csv"):
+            p = os.path.abspath(os.path.join(CSV_DIR, csv_file))
+            print(f"processing file:{p}")
+            importer.import_products(p)
+
+    # importer.import_products("product_data.csv")

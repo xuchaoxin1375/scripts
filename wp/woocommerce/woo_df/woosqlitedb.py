@@ -12,6 +12,7 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from logging import debug, error, info, warning
 from pathlib import Path
+import shutil
 
 import pandas as pd
 
@@ -76,7 +77,37 @@ def update_image_fields_extension(csv_dir, extension="webp"):
             df = pd.read_csv(file)
             df[IMAGES] = df[IMAGES].str.rsplit(".", n=1).str[0] + f".{extension}"
             df.to_csv(file, index=False)
+
+
+def remove_items_without_img(csv_dir, backup_dir="backup_csvs"):
+    """删除csv文件中没有图片的产品
     
+    Args:
+        csv_dir (str): csv文件所在目录
+        backup_dir (str, optional): 备份目录,如果为空串,则不备份. Defaults to "".
+    
+    """
+    print(csv_dir)
+    for file in os.listdir(csv_dir):
+        file = os.path.abspath(os.path.join(csv_dir, file))
+        if file.endswith(".csv"):
+            print(f"Removing items without image for:{file} ")
+            df = pd.read_csv(file)
+            # 根据需要备份文件
+            if backup_dir:
+                # 复制文件file到backup_dir目录下备用
+
+                os.makedirs(backup_dir, exist_ok=True)  # 确保备份目录存在
+                backup_file_path = os.path.join(backup_dir, os.path.basename(file))
+                shutil.copy(file, backup_file_path)  # 复制文件到备份目录
+            # 判断每个IMAGE字段中的图片在指定目录下是否存在,不存在的过滤移除
+            df = df[
+                df[IMAGE_URL].apply(lambda x: os.path.exists(os.path.join(csv_dir, x)))
+            ]
+
+
+            # 将过滤后的数据保存回原文件
+            df.to_csv(file, index=False)
 
 
 class SQLiteDB:
