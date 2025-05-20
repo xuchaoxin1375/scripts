@@ -413,7 +413,7 @@ def get_data_line_name_url_from_csv(args, lines, img_names, img_urls):
         else:
             error(f"img_urls and img_names are both empty, skip this line: {line_info}")
 
-    info(f"Get data: {line_info}")
+    debug(f"Get data: {line_info}")
 
     if img_urls:
         # img_names = img_names.split(",")

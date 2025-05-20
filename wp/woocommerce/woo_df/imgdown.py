@@ -349,7 +349,7 @@ class ImageDownloader:
                 debug("下载图片: %s (尝试 %d/%d)", url, attempt + 1, self.retry_times)
                 # 如果用户没有指定文件名,则按照默认策略生成文件名
                 if not filename:
-                    filename = fh.get_filename_from_url_str(
+                    filename = fh.get_filename_from_url(
                         url=url, response=response, default_ext=default_ext
                     )
                 debug("获得文件名: [%s]", filename)
