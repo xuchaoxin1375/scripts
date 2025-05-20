@@ -30,8 +30,8 @@ LOWEST_PRICE = 1
 HIGHEST_PRICE = 10000
 cnt_lock = threading.Lock()
 
-IMAGES = CSVProductFields.IMAGES.name
-IMAGE_URL = CSVProductFields.IMAGES_URL.name
+IMAGES = CSVProductFields.IMAGES.value
+IMAGE_URL = CSVProductFields.IMAGES_URL.value
 
 
 def update_image_fields_from_legacy(csv_file):
@@ -56,12 +56,15 @@ def update_image_fields(csv_dir):
 
     """
     # 检查相关字段是否已经存在
-
+    print(csv_dir)
     for file in os.listdir(csv_dir):
-        file = os.path.abspath(file)
+        # file = os.path.abspath(file)
+        file = os.path.abspath(os.path.join(csv_dir, file))
+
+        # print(file)
         # update_image_fields(file)
         if file.endswith(".csv"):
-            print("Updating image fields for:%s ", file)
+            print(f"Updating image fields for:{file} ")
             update_image_fields_from_legacy(file)
 
 
