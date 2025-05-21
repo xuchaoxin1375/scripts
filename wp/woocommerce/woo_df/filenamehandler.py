@@ -170,12 +170,13 @@ class FilenameHandler:
 
         注意,文件名(windows中不允许:   \/:*?"<>|  这9个基本字符)
         """
-        # 尝试从URL中提取文件名(无扩展名)
-        filename = FilenameHandler.get_filebasename_from_url_or_path(url)
+        # 首先尝试从URL中提取文件名
+        filename = FilenameHandler.get_filebasename_from_url_or_path(url,extension=True)
 
-        # 检查上述尝试生成的文件名
+        # 检查上述尝试生成(构造)的文件名
         ## 如果URL中没有有效的文件名,并检查是否有后缀名(文件扩展名)，如果没有文件名,使用URL的哈希值作为文件名
         if not filename or filename == "/" or "." not in filename:
+            print("not valid filename(empty or no extension), use url hash as filename!")
             url_hash = hashlib.md5(url.encode()).hexdigest()
 
             # 尝试获取文件扩展名

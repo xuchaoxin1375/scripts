@@ -473,7 +473,7 @@ class ImageDownloader:
                         # response=response,
                         default_ext=default_ext,
                     )
-                debug("获得文件名: [%s]", filename)
+                info("获得文件名🎈: [%s]", filename)
 
                 # 确保输出目录存在(如果路径尚不存在则逐级创建,否则略过,也不报错)
                 os.makedirs(output_dir, exist_ok=True)
@@ -486,7 +486,7 @@ class ImageDownloader:
                     self.stats.add_skipped()
                     return True
                 elif self.use_shutil:
-                    print("使用shutil(curl)下载图片")
+                    # print("使用shutil(curl)下载图片")
                     # 目前使用curl下载图片(将来可能扩展)
                     res = download_by_curl(
                         url,
@@ -497,7 +497,6 @@ class ImageDownloader:
                     if res:
                         self.stats.add_success()
                 else:
-                    print("使用py下载")
                     # 通过python发送get请求获取包含文件(图片)的响应
                     # (酌情启用stream参数可以实现流式下载,减少内存占用,配合后面的iter_content方法使用)
                     response = self.session.get(
@@ -508,6 +507,7 @@ class ImageDownloader:
                         # proxies={"https": self.get_proxy()},  # 使用代理
                     )
                     response.raise_for_status()
+
                     self.download_by_py(url, response=response, file_path=file_path)
                     self.stats.add_success()
                 return True
