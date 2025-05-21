@@ -28,10 +28,14 @@ import logging
 import os
 import random
 import re
+import shutil
+import subprocess
 import threading
 import time
-from logging import debug, error, exception, warning
+
+# from logging import exception
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -46,7 +50,12 @@ LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 # 创建当前模块专属的日志记录器
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)  # 设置默认日志级别
-
+fh = FilenameHandler()
+info = logger.info
+debug = logger.debug
+warning = logger.warning
+error = logger.error
+exception = logger.exception
 # 防止重复添加 handler
 if not logger.handlers:
     # 控制台日志处理器
@@ -101,6 +110,123 @@ COMMON_SEP_REGEXP = re.compile(COMMON_SEP_PATTERN)
 logger.info("SEP_PATTERN: %s", URL_SEP_PATTERN)
 # 有些网站需要登录才能访问资源。你可以手动获取登录后的 Cookie，并在每次请求中携带。
 COOKIES = {"sessionid": "abc123xyz", "csrftoken": "csrf_token_here"}
+
+
+def download_by_curl(
+    url: str,
+    output_file="",
+    output_dir="./",
+    use_remote_name: bool = False,  # 新增参数：是否使用远程文件名
+    user_agent: str = "Mozilla/5.0",
+    timeout: int = 30,
+    silent: bool = False,
+    extra_args: Optional[list] = None,
+    reset_cwd=False,  # 发生工作目录转换下载后,是否回到原目录
+) -> bool:
+    """
+        使用系统 curl 命令下载图片（或其他文件）。
+
+        Args:
+            url (str): 要下载的文件 URL。
+            output_path (str): 本地保存路径。如果 use_remote_name 为 True，则应为保存目录。
+            output_dir (str): 本地保存目录。如果 use_remote_name 为 True时有用
+            user_agent (str): 请求头中的 User-Agent 字符串。
+            timeout (int): 请求超时时间（秒）。
+            silent (bool): 是否静默执行（不输出进度信息）。
+            use_remote_name (bool): 是否使用远程文件名保存（即添加 -O 参数）。
+            extra_args (Optional[list]): 其他要传给 curl 的额外参数列表。
+
+        Returns:
+            bool: 下载成功返回 True，失败返回 False。
+
+        Raises:
+            FileNotFoundError: 如果 curl 不在系统 PATH 中。
+            PermissionError: 如果没有写入目标路径的权限。
+        Examples:
+        # 使用服务器返回的文件名字
+        download_with_curl(
+            url=r"https://brigade-hocare.com/5944-large_default/lot-de-2-glissieres-inox-cambro-pour-dw585.jpg",
+            use_remote_name=True,
+            )
+        # 指定保存路径
+        download_with_curl(
+        url=r"https://brigade-hocare.com/5944-large_default/lot-de-2-glissieres-inox-cambro-pour-dw585.jpg",
+        output_file=r"C:/Users/Administrator/Pictures/xyz123.jpg"
+    )
+    """
+
+    cwd = os.getcwd()  # 记录当前工作目录
+    print(f"当前工作目录: {cwd}")
+    # 检查 curl 是否可用
+    if not shutil.which("curl"):
+        raise FileNotFoundError("curl 命令未找到，请确保已安装并添加到系统 PATH")
+
+    # 如果不使用远程文件名，则确保输出目录存在，并拼接文件名
+    if not use_remote_name:
+        # 确保输出目录存在
+        output_dir = os.path.dirname(output_file)
+        os.makedirs(output_dir, exist_ok=True)
+    else:
+        # 使用远程文件名,确认输出目录存在
+        os.makedirs(output_dir, exist_ok=True)
+        # 将工作目录转换到输出目录
+        os.chdir(output_dir)
+        parsed_url = urlparse(url)
+        # 这里计算的文件名仅供参考
+        output_file = os.path.basename(parsed_url.path)
+        output_file = os.path.abspath(os.path.join(output_dir, output_file))
+        print(f"使用远程文件名, 计算的文件名(basename供参考): {output_file}")
+        # output_file = os.path.basename(url)
+
+    # 构建 curl 命令参数(基础参数,建议移动到函数默认参数中)
+    cmd = ["curl", "-f", "--retry", "3", "--retry-delay", "5"]
+
+    # 添加 User-Agent
+    cmd += ["-A", user_agent]
+
+    # 添加超时
+    cmd += ["--max-time", str(timeout)]
+
+    # 静默模式
+    if silent:
+        cmd += ["--silent"]
+    else:
+        cmd += ["--progress-bar"]
+
+    # 添加 -O 参数（使用远程文件名）
+    if use_remote_name:
+        cmd += ["-O"]
+    else:
+        if not output_file:
+            raise ValueError("output_path 不能为空")
+
+        cmd += ["-o", output_file]
+
+    # 添加额外参数
+    if extra_args:
+        cmd += extra_args
+
+    # 添加 URL 最后
+    cmd += [url]
+
+    try:
+        debug(f"正在下载: {url}")
+        subprocess.run(cmd, check=True)
+        if use_remote_name:
+            info(f"文件已保存至(仅供参考): {output_file}")
+        else:
+            info(f"文件已保存至: {output_file}")
+        return True
+    except subprocess.CalledProcessError as e:
+        error(f"curl 执行失败，错误码: {e.returncode}")
+        return False
+    except PermissionError as pe:
+        raise PermissionError(f"无权写入路径: {output_file}") from pe
+    finally:
+        # 下载完成后,是否回到原目录
+        if reset_cwd:
+            os.chdir(cwd)  # 回到原目录
+            print(f"已回到原目录: {cwd}")
 
 
 class DownloadStatistics:
@@ -197,12 +323,13 @@ class ImageDownloader:
         self,
         max_workers: int = 10,
         timeout: int = 30,
-        retry_times: int = 2,
+        retry_times: int = 1,
         user_agent: Optional[str] = None,
         cookies: Optional[Dict[str, str]] = None,
         verify_ssl: bool = True,
         proxies=None,
         proxy_strategy="round_robin",
+        use_shutil=False,
     ):
         """
         初始化图片下载器
@@ -223,6 +350,7 @@ class ImageDownloader:
         self.retry_times = retry_times
         self.verify_ssl = verify_ssl
         self.cookies = cookies
+        self.use_shutil = use_shutil
         self.stats = DownloadStatistics()
         if retry_times < 1:
             warning("retry_times smaller than 1, no retry will be performed.")
@@ -273,6 +401,7 @@ class ImageDownloader:
         default_ext="",
         override=False,
         retry_gap=1,
+        # use_shutil=False,
     ) -> bool:
         """
         下载单张图片
@@ -357,23 +486,23 @@ class ImageDownloader:
                 # 确保输出目录存在(如果路径尚不存在则逐级创建,否则略过,也不报错)
                 os.makedirs(output_dir, exist_ok=True)
 
-                # 保存图片(写入二进制文件)
+                # 保存图片(写入二进制文件)🎈
                 file_path = os.path.join(output_dir, filename)
                 if os.path.exists(file_path) and not override:
                     logger.info("文件已存在,跳过: %s", file_path)
                     self.stats.add_skipped()
                     return True
-                else:
-                    with open(file_path, "wb") as f:
-                        # 分块写入响应内容
-                        for chunk in response.iter_content(chunk_size=8192):
-                            if chunk:
-                                f.write(chunk)
-
-                    file_size = os.path.getsize(file_path)
-                    logger.info(
-                        "成功下载: %s -> %s (%d 字节)", url, file_path, file_size
+                elif self.use_shutil:
+                    # 目前使用curl下载图片(将来可能扩展)
+                    download_by_curl(
+                        url,
+                        output_file=file_path,
+                        output_dir=output_dir,
+                        timeout=self.timeout,
                     )
+                else:
+
+                    self.download_by_py(url, response=response, file_path=file_path)
                     self.stats.add_success()
                 return True
 
@@ -399,6 +528,17 @@ class ImageDownloader:
                     return False
 
         return False
+
+    def download_by_py(self, url, response, file_path):
+        """使用python的库下载图片(操作比较原始和底层)"""
+        with open(file_path, "wb") as f:
+            # 分块写入响应内容
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+
+        file_size = os.path.getsize(file_path)
+        logger.info("成功下载: %s -> %s (%d 字节)", url, file_path, file_size)
 
     def _is_image_response(self, response):
         """检查response是否是图片类型"""

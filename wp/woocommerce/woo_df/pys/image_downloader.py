@@ -174,6 +174,12 @@ def parse_arguments_for_imgdown():
         "-o", "--output-dir", default=IMG_DIR, help="图片保存目录 (默认: ./images)"
     )
     parser.add_argument(
+        "-U","--use-curl",
+        default=False,
+        action="store_true",
+        help="使用curl下载图片(默认: False)",
+    )
+    parser.add_argument(
         "-w", "--workers", type=int, default=10, help="下载线程数 (默认: 10)"
     )
     parser.add_argument(
@@ -207,7 +213,7 @@ def main():
 
     # 设置日志级别
     if args.verbose:
-        logger.setLevel(logging.DEBUG)
+        logger.setLevel(logging.INFO)
     # 打印当前的日志级别:
     print(f"当前日志级别: {logging.getLevelName(logger.level)}")
     debug("当前日志级别: %s", logging.getLevelName(logger.level))
@@ -263,6 +269,7 @@ def main():
         timeout=args.timeout,
         retry_times=args.retry,
         user_agent=args.user_agent,
+        use_shutil=args.use_curl,
     )
     # 过滤已有图片,扫描出尚未下载的图片
     # 这里不关心文件名后缀的差异,比较basename
