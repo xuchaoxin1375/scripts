@@ -48,12 +48,12 @@ CATEGORIES_THRESHOLD = 30
 #   例如获取170-180编号采集文件夹下的db文件
 
 # 根据你的采集器安装目录以及采集存放的db目录来填写🎈(末尾不要有\,前面可以有)
-# DATA_DIR = Path(r"C:\火车采集器V10.27\Data")
+DATA_DIR = Path(r"C:\火车采集器V10.27\Data")
+# DATA_DIR = Path(r"S:\test_db")
 
-DATA_DIR = Path(r"S:\test_db")
 
-START = 558
-END = 558
+START = 177
+END = 177
 
 ##
 class LanguagesHotSaleX(EnumItRc):

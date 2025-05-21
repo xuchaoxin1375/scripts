@@ -7,3 +7,7 @@ concurrent-log-handler
 mysql-connector-python
 notebook
 beautifulsoup4
+pymysql
+phpserialize
+unidecode
+tqdm

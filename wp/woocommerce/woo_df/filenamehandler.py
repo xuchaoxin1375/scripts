@@ -256,7 +256,7 @@ class FilenameHandler:
             "ximage.jpg" -> "ximage"
             "path/to/file.txt" -> "file"
         """
-        parsed_url = urlparse(url)
+        parsed_url = urlparse(str(url))
         path = unquote(parsed_url.path)
         filename = os.path.basename(path)  # 这里的basename是带扩展名的(如果有的话)
         basename = filename

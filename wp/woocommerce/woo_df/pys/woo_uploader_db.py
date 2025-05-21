@@ -7,12 +7,13 @@ import re
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-
+import time
 import pandas as pd
 import phpserialize
 import pymysql
 from tqdm import tqdm
 from unidecode import unidecode
+from PIL import Image
 
 IMG_DIR = r"  D:\template\domain.com\images  ".strip()  # 图片目录
 CSV_DIR = r"  D:\wp_template\domain.com      ".strip()  # CSV文件目录
@@ -336,12 +337,13 @@ class WooCommerceProductImporter:
 
         if not os.path.exists(img_path):
             print(f"警告: 图片文件不存在 - {img_path}")
+            time.sleep(1)  # 延迟1秒，避免频繁访问文件系统
             return
 
         # 获取当前年月
         year = datetime.now().year
-        month = datetime.now().month
-        formatted_month = "{:02}".format(month)
+        # month = datetime.now().month
+        # formatted_month = "{:02}".format(month)
         # 插入附件记录
 
         cursor.execute(
@@ -359,7 +361,8 @@ class WooCommerceProductImporter:
                 os.path.splitext(img_file)[0],
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                f"/wp-content/uploads/{year}/{formatted_month}/{img_file}",
+                # f"/wp-content/uploads/{year}/{formatted_month}/{img_file}",
+                f"/wp-content/uploads/{year}/{img_file}",
                 product_id,
             ),
         )
@@ -368,7 +371,6 @@ class WooCommerceProductImporter:
         # 插入附件元数据
         # 获取图片实际尺寸
         try:
-            from PIL import Image
 
             with Image.open(img_path) as img:
                 width, height = img.size

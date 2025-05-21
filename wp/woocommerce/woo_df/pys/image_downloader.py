@@ -327,7 +327,7 @@ def main():
         # 直接下载URL列表中的图片
         try:
             if not lines:
-                error("没有有效的URL")
+                warning("没有有效的URL")
                 return 1
 
             downloader.download_only_url(

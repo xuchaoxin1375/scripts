@@ -148,7 +148,8 @@ class CSVProductFields(EnumIt):
             )
         else:
             # 不返回ImagesUrl字段,其他字段返回
-            res = [field.name for field in cls if field.name not in ["ImagesUrl"]]
+            img_url = CSVProductFields.IMAGES_URL.name
+            res = [field.name for field in cls if field.name not in [img_url]]
         return res
 
     @classmethod

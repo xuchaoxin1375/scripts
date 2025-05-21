@@ -19,6 +19,8 @@ import pandas as pd
 from comutils import get_filebasename_from_url, remove_sensitive_info, split_urls
 from filenamehandler import FilenameHandler
 from wooenums import CSVProductFields, DBProductFields, ImageMode, LanguagesHotSale
+IMAGES = CSVProductFields.IMAGES.value
+IMAGE_URL = CSVProductFields.IMAGES_URL.value
 
 fh = FilenameHandler()
 csv.field_size_limit(int(1e7))  # 设置为 10MB 或更高（单位：字节）
@@ -31,8 +33,6 @@ LOWEST_PRICE = 1
 HIGHEST_PRICE = 10000
 cnt_lock = threading.Lock()
 
-IMAGES = CSVProductFields.IMAGES.value
-IMAGE_URL = CSVProductFields.IMAGES_URL.value
 
 
 def update_image_fields_from_legacy(csv_file):
