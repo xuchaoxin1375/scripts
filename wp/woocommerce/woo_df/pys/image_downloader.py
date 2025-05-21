@@ -174,7 +174,8 @@ def parse_arguments_for_imgdown():
         "-o", "--output-dir", default=IMG_DIR, help="图片保存目录 (默认: ./images)"
     )
     parser.add_argument(
-        "-U","--use-curl",
+        "-U",
+        "--use-shutil",
         default=False,
         action="store_true",
         help="使用curl下载图片(默认: False)",
@@ -262,14 +263,14 @@ def main():
                         lines=lines,
                         selected_ids=selected_csv_field_ids,
                     )
-
+    print(f"use shutil:{args.use_shutil}🎈")
     # 创建下载器
     downloader = ImageDownloader(
         max_workers=args.workers,
         timeout=args.timeout,
         retry_times=args.retry,
         user_agent=args.user_agent,
-        use_shutil=args.use_curl,
+        use_shutil=args.use_shutil,
     )
     # 过滤已有图片,扫描出尚未下载的图片
     # 这里不关心文件名后缀的差异,比较basename

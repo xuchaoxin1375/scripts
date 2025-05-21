@@ -156,7 +156,7 @@ def download_by_curl(
     """
 
     cwd = os.getcwd()  # 记录当前工作目录
-    print(f"当前工作目录: {cwd}")
+    print(f"当前工作目录(curl): {cwd}")
     # 检查 curl 是否可用
     if not shutil.which("curl"):
         raise FileNotFoundError("curl 命令未找到，请确保已安装并添加到系统 PATH")
@@ -454,22 +454,12 @@ class ImageDownloader:
                 debug("文件名包含扩展名:%s", ext)
         else:
             debug("未指定文件名,尝试从URL中获取")
-
         # 配置下载中如果出现失败的重试循环(次数由retry_times指定)
         for attempt in range(self.retry_times):
             # 如果某次尝试下载成功,则直接返回True(结束此下载任务)
             try:
                 # # 模拟用户行为：每次请求前添加随机等待,在失败后指数退避
                 # time.sleep(random.uniform(0.5, 2))
-                # 下载图片(酌情启用stream参数可以实现流式下载,减少内存占用,配合后面的iter_content方法使用)
-                response = self.session.get(
-                    url=url,
-                    timeout=self.timeout,
-                    verify=self.verify_ssl,
-                    stream=True,
-                    # proxies={"https": self.get_proxy()},  # 使用代理
-                )
-                response.raise_for_status()
 
                 # 检查response是否是图片类型
                 # if not self._is_image_response(response=response):
@@ -479,7 +469,9 @@ class ImageDownloader:
                 # 如果用户没有指定文件名,则按照默认策略生成文件名
                 if not filename:
                     filename = fh.get_filename_from_url(
-                        url=url, response=response, default_ext=default_ext
+                        url=url,
+                        # response=response,
+                        default_ext=default_ext,
                     )
                 debug("获得文件名: [%s]", filename)
 
@@ -487,21 +479,35 @@ class ImageDownloader:
                 os.makedirs(output_dir, exist_ok=True)
 
                 # 保存图片(写入二进制文件)🎈
+
                 file_path = os.path.join(output_dir, filename)
                 if os.path.exists(file_path) and not override:
                     logger.info("文件已存在,跳过: %s", file_path)
                     self.stats.add_skipped()
                     return True
                 elif self.use_shutil:
+                    print("使用shutil(curl)下载图片")
                     # 目前使用curl下载图片(将来可能扩展)
-                    download_by_curl(
+                    res = download_by_curl(
                         url,
                         output_file=file_path,
                         output_dir=output_dir,
                         timeout=self.timeout,
                     )
+                    if res:
+                        self.stats.add_success()
                 else:
-
+                    print("使用py下载")
+                    # 通过python发送get请求获取包含文件(图片)的响应
+                    # (酌情启用stream参数可以实现流式下载,减少内存占用,配合后面的iter_content方法使用)
+                    response = self.session.get(
+                        url=url,
+                        timeout=self.timeout,
+                        verify=self.verify_ssl,
+                        stream=True,
+                        # proxies={"https": self.get_proxy()},  # 使用代理
+                    )
+                    response.raise_for_status()
                     self.download_by_py(url, response=response, file_path=file_path)
                     self.stats.add_success()
                 return True
