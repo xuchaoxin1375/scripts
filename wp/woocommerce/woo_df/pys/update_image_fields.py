@@ -12,9 +12,9 @@ from wooenums import ImageMode, CSVProductFields, DBProductFields, LanguagesHotS
 IMAGE = CSVProductFields.IMAGES.value
 
 IMG_DIR = r"S:/grandwagonsupply/images/"  # 修改图片文件所在目录
-CSV_DIR = r"S:/grandwagonsupply/"  # 修改csv文件所在目录
+CSV_DIR = r"S:/"  # 修改csv文件所在目录
 CSV_DIR = os.path.abspath(CSV_DIR)
 # print(CSV_DIR)
-update_image_fields(CSV_DIR)
+# update_image_fields(CSV_DIR)
 update_image_fields_extension(CSV_DIR, extension="webp")
 remove_items_without_img(CSV_DIR, img_dir=IMG_DIR, backup_dir="backup_csvs")

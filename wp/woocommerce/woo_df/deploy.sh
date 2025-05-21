@@ -2,8 +2,8 @@
 #!/bin/bash
 
 # === 配置参数 ===
-# CURRENT_DIR=$(pwd)                    # 当前工作目录
-CURRENT_DIR="/srv/uploads/uploader/files"  
+# CURRENT_DIR=$(pwd)                    
+CURRENT_DIR="/srv/uploads/uploader/files"  #采集员上传文件的存放位置/根目录
 TARGET_ROOT="/www/wwwroot"           # WordPress 网站根目录
 # STOP_EDITING_LINE="stop editing"     # wp-config.php 中的关键提示行
 STOP_EDITING_LINE='Add any custom values between this line and the "stop editing" line'
@@ -131,10 +131,16 @@ for user_dir in */; do
 
         # === 创建目标目录并移动内容 ===
         target_dir="$TARGET_ROOT/$username/$domain_name/wordpress"
+
+        # 如果目标目录已存在，则删除
+        if [ -d "$target_dir" ]; then
+            echo "🧹 删除已存在的目标目录: $target_dir"
+            rm -rf "$target_dir"
+        fi
+
         mkdir -p "$target_dir"
 
         echo "🚚 移动解压后的内容到目标路径: $target_dir"
-        # cp -r "$extracted_dir"/. "$target_dir/"
         mv "$extracted_dir"/* "$target_dir/"
 
         # === 修改 wp-config.php 文件 ===

@@ -74,7 +74,8 @@ class FilenameHandler:
     def __init__(self):
         # 使用 session 实现连接复用
         self.session = requests.Session()
-        self.mgc = magic.Magic(mime=True)
+        # python3.13可能不兼容(magic.Magic)(库:python-magic-bin)
+        # self.mgc = magic.Magic(mime=True)
 
     @staticmethod
     def get_file_extension_from_mime(mime, prefix_dot=True):
@@ -295,7 +296,8 @@ class FilenameHandler:
             if not chunk:
                 raise ValueError("无法从响应中读取数据或响应为空")
 
-            mime = self.mgc.from_buffer(chunk)
+            # mime = self.mgc.from_buffer(chunk)
+            mime = magic.from_buffer(chunk, mime=True)
             return mime
 
     def extract_chunk_from_response(self, response, chunk_size=2048):
@@ -353,7 +355,7 @@ class FilenameHandler:
 
         """
         chunk = self.extract_chunk_from_response(response, chunk_size=chunck_size)
-        mime = self.mgc.from_buffer(chunk)
+        mime = magic.from_buffer(chunk)
         return mime
 
     # @staticmethod
