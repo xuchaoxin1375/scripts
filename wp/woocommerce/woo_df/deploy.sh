@@ -159,13 +159,29 @@ extract_archive() {
     local archive_file="$1"
     local extract_dir="$2"
     
+    # 检查目标目录是否已存在
+    if [ -d "$extract_dir" ] && [ "$(ls -A $extract_dir)" ]; then
+        echo "⚠️ 警告: 目标目录 $extract_dir 已存在且不为空"
+        read -p "是否覆盖现有目录? (y/n): " answer
+        case "$answer" in
+            [yY]|[yY][eE][sS])
+                echo "🗑️ 正在清空目录: $extract_dir"
+                rm -rf "$extract_dir"/*
+                ;;
+            *)
+                echo "⏭️ 跳过解压: $archive_file"
+                return 0
+                ;;
+        esac
+    fi
+    
     # 确保目标目录存在
     mkdir -p "$extract_dir"
     
     if [[ "$archive_file" == *.zip ]]; then
         echo "🔍 正在解压 ZIP 文件: $archive_file"
-        # 使用 -o 参数强制覆盖已存在的文件，避免交互式提示
-        if ! unzip -q -o "$archive_file" -d "$extract_dir"; then
+        # 统一使用7z解压
+        if ! 7z x -y "$archive_file" -o"$extract_dir"; then
             echo "❌ 解压 ZIP 文件失败: $archive_file"
             return 1
         fi

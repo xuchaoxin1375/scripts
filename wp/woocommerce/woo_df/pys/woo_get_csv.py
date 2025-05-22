@@ -17,30 +17,20 @@ from woosqlitedb import SQLiteDB
 
 # 小分类阈值,小于该阈值的分类将被视为小分类,将其分配到热销类(或其近义词);设置为0表示不处理分类
 SMALL_CATEGORY_THRESHOLD = 30
-# 确保日志目录存在
-LOG_DIR = "./log"
-LOG_FILE = f"{LOG_DIR}/log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-try:
-    os.makedirs(LOG_DIR, exist_ok=True)  # 自动创建目录（如果不存在）
-except Exception as e:
-    print(f"无法创建日志目录 {LOG_DIR}: {e}")
-    LOG_DIR = "."  # 如果失败则使用当前目录
-file_handler = logging.FileHandler(LOG_FILE, mode="w", encoding="utf-8")
-console_handler = logging.StreamHandler()
-logging.basicConfig(
-    level=logging.WARNING,  # 日志级别🎈
-    format="%(levelname)s - %(message)s",
-    handlers=[file_handler, console_handler],
-)
-
-
-
+# 配置图片字段导出模式
+IMAGE_MODE=ImageMode.NMAE_FROM_URL
 # 产品价格区间(打折前不在此区间的产品将被过滤掉)
 LOWEST_PRICE = 1
 HIGHEST_PRICE = 10000
 LANGUAGE = LanguagesHotSale.US.name
 # 限制产品数量少的分类,将其分配到热销类(或其近义词)
 CATEGORIES_THRESHOLD = 30
+
+# 确保日志目录存在
+LOG_DIR = "./log"
+LOG_FILE = f"{LOG_DIR}/log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+
+
 # -----------------------------------------------------------
 # 指定db文件来源的方案有多种,这里主推方案1,更加简便,但是方案2更加灵活;如果需要解开注释进行配置
 
@@ -50,26 +40,9 @@ CATEGORIES_THRESHOLD = 30
 # 根据你的采集器安装目录以及采集存放的db目录来填写🎈(末尾不要有\,前面可以有)
 DATA_DIR = Path(r"C:\火车采集器V10.27\Data")
 # DATA_DIR = Path(r"S:\test_db")
-
-
 START = 177
-END = 177
 
-##
-class LanguagesHotSaleX(EnumItRc):
-    """对LanguagesHotSale枚举类的复刻,但是允许你修改下面的配置来调整和控制热销的返回值
-
-    例如,我希望修改美国(US)产品数据中返回热卖的允许词汇列表,则修改下面US的取值(代替默认取值,默认取值来自于LanguagesHotSale枚举类)
-
-    US = ["Best-Sellers","Featured","Top-Sellers"]
-
-    """
-    US = LanguagesHotSale.US.value
-    UK = LanguagesHotSale.UK.value
-    IT = LanguagesHotSale.IT.value
-    DE = LanguagesHotSale.DE.value
-    ES = LanguagesHotSale.ES.value
-    FR = LanguagesHotSale.FR.value
+END = START  #如果只导出一个db文件,则不需要改动END的取值
 
 # 枚举出db文件路径
 rng = range(START, END + 1)
@@ -101,7 +74,33 @@ for file in sorted(dbs):
 
 ##
 
+class LanguagesHotSaleX(EnumItRc):
+    """对LanguagesHotSale枚举类的复刻,但是允许你修改下面的配置来调整和控制热销的返回值
 
+    例如,我希望修改美国(US)产品数据中返回热卖的允许词汇列表,则修改下面US的取值(代替默认取值,默认取值来自于LanguagesHotSale枚举类)
+
+    US = ["Best-Sellers","Featured","Top-Sellers"]
+
+    """
+    US = LanguagesHotSale.US.value
+    UK = LanguagesHotSale.UK.value
+    IT = LanguagesHotSale.IT.value
+    DE = LanguagesHotSale.DE.value
+    ES = LanguagesHotSale.ES.value
+    FR = LanguagesHotSale.FR.value
+
+try:
+    os.makedirs(LOG_DIR, exist_ok=True)  # 自动创建目录（如果不存在）
+except Exception as e:
+    print(f"无法创建日志目录 {LOG_DIR}: {e}")
+    LOG_DIR = "."  # 如果失败则使用当前目录
+file_handler = logging.FileHandler(LOG_FILE, mode="w", encoding="utf-8")
+console_handler = logging.StreamHandler()
+logging.basicConfig(
+    level=logging.WARNING,  # 日志级别🎈
+    format="%(levelname)s - %(message)s",
+    handlers=[file_handler, console_handler],
+)
 # 使用示例
 if __name__ == "__main__":
     print(f"开始执行(日志文件位于{LOG_FILE},绝对路径为:{os.path.abspath(LOG_FILE)})...")
@@ -166,5 +165,5 @@ if __name__ == "__main__":
     db.update_products(dbs=dbs, sku_suffix=LANGUAGE, strict_mode=False)
     ## 8.导出csv文件
     db.export_csv(
-        dbs=dbs, out_dir="./", split_files_size=10000, img_mode=ImageMode.NAME_AS_URL
+        dbs=dbs, out_dir="./", split_files_size=10000, img_mode=IMAGE_MODE
     )
