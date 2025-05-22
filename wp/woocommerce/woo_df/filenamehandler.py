@@ -21,7 +21,7 @@ handler = logging.StreamHandler()
 formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(funcName)s: %(message)s")
 handler.setFormatter(formatter)
 logger.addHandler(handler)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 # 让所有日志方法都用本logger
 debug = logger.debug
@@ -117,7 +117,10 @@ class FilenameHandler:
         if ext and ext.startswith("."):
             return ext.lower()
         else:
-            debug("URL字符串缺少后缀特征,无法从中提取文件扩展名:%s", url)
+            debug(
+                "URL字符串缺少后缀特征,无法从中提取文件扩展名:[%s],注意检查输入源中此链接",
+                url,
+            )
         return ""
 
     @staticmethod
@@ -158,6 +161,7 @@ class FilenameHandler:
         default_ext="",
         invalid_chars_regex=r'[\\/*?:"<>|]',
         default_char="_",
+        req_response=False,
     ) -> str:
         r"""尝试解析url字符串生成文件名(包括后缀名),尽可能分配一个合适的后缀名,如果没有则将default_ext作为后缀名
 
@@ -171,16 +175,24 @@ class FilenameHandler:
         注意,文件名(windows中不允许:   \/:*?"<>|  这9个基本字符)
         """
         # 首先尝试从URL中提取文件名
-        filename = FilenameHandler.get_filebasename_from_url_or_path(url,extension=True)
+        filename = FilenameHandler.get_filebasename_from_url_or_path(
+            url, extension=True
+        )
 
         # 检查上述尝试生成(构造)的文件名
         ## 如果URL中没有有效的文件名,并检查是否有后缀名(文件扩展名)，如果没有文件名,使用URL的哈希值作为文件名
         if not filename or filename == "/" or "." not in filename:
-            print("not valid filename(empty or no extension), use url hash as filename!")
-            url_hash = hashlib.md5(url.encode()).hexdigest()
+            debug(
+                "not valid filename(empty or no extension), use url hash as filename!"
+            )
+            url_hash = hashlib.md5(
+                url.encode()
+            ).hexdigest()  # md5哈希不可逆(但是优点是长度比较固定),后续可能会更改成可逆
 
             # 尝试获取文件扩展名
-            ext = self.get_file_extension(url, response, default_ext=default_ext)
+            ext = self.get_file_extension(
+                url, response, default_ext=default_ext, req_response=req_response
+            )
 
             filename = f"{url_hash}{ext}"
 
@@ -192,7 +204,7 @@ class FilenameHandler:
     # @staticmethod
     # @classmethod
     def get_file_extension(
-        self, url, response=None, default_ext="", req_response=True, prefix_dot=True
+        self, url, response=None, default_ext="", req_response=False, prefix_dot=True
     ):
         """
         根据响应头、URL或默认值确定资源的文件扩展名。
@@ -200,7 +212,7 @@ class FilenameHandler:
         Args:
             url (str): 资源的URL。
             response (object): HTTP响应对象，可能包含带有内容类型信息的头部。
-            defualt_ext (str): 如果无法确定扩展名，则使用的默认文件扩展名。
+            defualt_ext (str): 如果无法确定扩展名，则使用的默认文件扩展名,比如webp(.webp)效果一样。
 
         Returns:
             str: 确定的文件扩展名，如果所有方法均失败，则返回默认扩展名。
@@ -220,7 +232,7 @@ class FilenameHandler:
 
             if not ext:
                 ext = self.get_file_extension_from_url_str(url=url)
-            if not ext:
+            if not ext and req_response:
                 # 发送请求获取响应Content-Type来分析文件类型
                 debug("发送 HEAD 请求获取 Content-Type: %s", url)
                 response = self.session.head(url=url, stream=True, timeout=30)
