@@ -2,9 +2,10 @@
 
 import os
 from collections import Counter
-
+import shutil
 import numpy as np
 from PIL import Image
+from tqdm import tqdm
 
 # 设置目标目录
 IMG_DIR = r"C:/sharetemp/Checker"  # 请替换为你的图片目录
@@ -13,7 +14,7 @@ IMG_DIR = r"C:/sharetemp/Checker"  # 请替换为你的图片目录
 MAX_SIZE = 110
 
 # 图片文件扩展名
-image_extensions = [".jpg", ".jpeg", ".png", ".gif"]
+image_extensions = [".jpg", ".jpeg"]
 
 # 列出大小不超过 110 KB 的图片文件
 filtered_files = []
@@ -40,7 +41,14 @@ for root, _, files in os.walk(IMG_DIR):
                 filtered_files.append(file_path)
 
 # 第二步：对符合条件的文件检查图片内容是否符合废图特征
-for file_path in filtered_files:
+total_files = len(filtered_files)
+print(f"开始处理 {total_files} 张图片...")
+
+# 创建 checking 目录（如果不存在）
+checking_dir = os.path.join(IMG_DIR, "checking")
+os.makedirs(checking_dir, exist_ok=True)
+
+for idx, file_path in enumerate(tqdm(filtered_files, desc="处理进度")):
     try:
         # 加载图片
         with Image.open(file_path) as img:
@@ -52,41 +60,31 @@ for file_path in filtered_files:
             height = img.height
 
             # 将图片分成上下两部分
-            # 上半部分：上半部分高度
             upper_half = pixels[: height // 2, :, :]
-            # 下半部分：下半部分高度
             lower_half = pixels[height // 2 :, :, :]
 
             # 检查下半部分是否为纯色
-            # 将 RGB 值展平并计算颜色直方图
             lower_colors = lower_half.reshape(-1, 3)
             lower_colors_tuple = [tuple(color) for color in lower_colors]
             lower_color_counts = Counter(lower_colors_tuple)
 
-            # 如果颜色种类不超过 1 种，认为下半部分是纯色
             if len(lower_color_counts) <= 1:
-                print(f"图片 {file_path} 的下半部分是纯色。")
+                print(f"\n✅ 图片 {file_path} 的下半部分是纯色。")
 
-                # 检查上半部分是否不是纯色
                 upper_colors = upper_half.reshape(-1, 3)
                 upper_colors_tuple = [tuple(color) for color in upper_colors]
                 upper_color_counts = Counter(upper_colors_tuple)
 
-                # 如果颜色种类超过 1 种，认为上半部分不是纯色
                 if len(upper_color_counts) > 1:
-                    print(f"图片 {file_path} 的上半部分不是纯色。")
-                    remove_files.append(file_path)
+                    print(
+                        f"✅ 图片 {file_path} 的上半部分不是纯色，判定为废图。正在移动到 checking 目录..."
+                    )
+                    new_file_path = os.path.join(checking_dir, os.path.basename(file_path))
+                    shutil.move(file_path, new_file_path)
+                    print(f"✅ 已移动文件: {file_path} -> {new_file_path}")
     except Exception as e:
-        # 加载图片失败，认为图片不完整或损坏
-        print(f"图片 {file_path} 加载失败，可能是损坏的图片: {str(e)}")
-        remove_files.append(file_path)
-
-# 打印需要移除的文件
-print("\n需要移除的文件：")
-for file in remove_files:
-    print(file)
-
-# 如果需要移除这些文件，可以取消以下注释
-for file in remove_files:
-    os.remove(file)
-    print(f"移除了文件: {file}")
+        print(f"\n⚠️ 图片 {file_path} 加载失败，可能是损坏的图片: {str(e)}")
+        print(f"✅ 正在移动损坏的图片到 checking 目录...")
+        new_file_path = os.path.join(checking_dir, os.path.basename(file_path))
+        shutil.move(file_path, new_file_path)
+        print(f"✅ 已移动损坏图片: {file_path} -> {new_file_path}")
