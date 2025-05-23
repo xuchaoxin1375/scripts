@@ -10,8 +10,8 @@ from tqdm import tqdm
 # 设置目标目录
 IMG_DIR = r"C:/sharetemp/Checker"  # 请替换为你的图片目录
 
-# 过滤条件：文件大小不超过 110 KB
-MAX_SIZE = 110
+# 过滤条件：文件大小不超过 MAX_SIZE KB
+MAX_SIZE = 60
 
 # 图片文件扩展名
 image_extensions = [".jpg", ".jpeg"]

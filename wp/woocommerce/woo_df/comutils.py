@@ -391,11 +391,11 @@ def get_data_from_csv(args, lines, reader, url_field, name_field):
         name_field: 图片名字所在的列名
     """
     for line in reader:
-        # debug("Processing line: %s", line)
+        debug("Processing line: %s", line)
         img_names = line.get(name_field, "")
         img_urls = line.get(url_field, "")
         get_data_line_name_url_from_csv(
-            args, lines, img_names=img_names, img_urls=img_urls
+            args=args, lines=lines, img_names=img_names, img_urls=img_urls
         )
 
 
@@ -411,7 +411,7 @@ def get_data_line_name_url_from_csv(args, lines, img_names, img_urls):
             img_urls = img_names
             img_names = ""
         else:
-            error(f"img_urls and img_names are both empty, skip this line: {line_info}")
+            error(f"img_urls and img_names are both empty, skip this line: {lines}")
 
     debug(f"Get data: {line_info}")
 
