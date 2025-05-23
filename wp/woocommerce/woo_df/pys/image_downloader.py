@@ -202,6 +202,13 @@ def parse_arguments_for_imgdown():
     parser.add_argument("--cookie-file", help="包含Cookies的JSON文件路径")
 
     parser.add_argument("-v", "--verbose", action="store_true", help="显示详细日志")
+    parser.add_argument(
+        "-x",
+        "--compress-quality",
+        type=int,
+        default=0,
+        help="压缩图片为webp格式的quality参数(1-100),取0表示不压缩",
+    )
 
     return parser.parse_args()
 
@@ -271,6 +278,7 @@ def main():
         retry_times=args.retry,
         user_agent=args.user_agent,
         use_shutil=args.use_shutil,
+        compress_quality=args.compress_quality,
     )
     # 过滤已有图片,扫描出尚未下载的图片
     # 这里不关心文件名后缀的差异,比较basename

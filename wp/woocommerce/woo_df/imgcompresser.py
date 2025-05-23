@@ -195,13 +195,13 @@ if __name__ == "__main__":
     # compressor.compress_image('S:/imgs_demo/', 'xoutput.webp', quality=20)
 
     # 批量压缩示例
-    results = compressor.batch_compress(
-        # input_dir='./images',
-        input_dir=r"S:/imgs_demo/",
-        output_dir="./compressed",
-        output_format="webp",
-        skip_existing=False,
-        quality=20,
-        max_workers=10,
-    )
-    print(f"批量处理结果: {results}")
+    # results = compressor.batch_compress(
+    #     # input_dir='./images',
+    #     input_dir=r"S:/imgs_demo/",
+    #     output_dir="./compressed",
+    #     output_format="webp",
+    #     skip_existing=False,
+    #     quality=20,
+    #     max_workers=10,
+    # )
+    # print(f"批量处理结果: {results}")

@@ -332,6 +332,7 @@ class ImageDownloader:
         verify_ssl: bool = True,
         proxies=None,
         proxy_strategy="round_robin",
+        compress_quality=20,
         use_shutil=False,
     ):
         """
@@ -347,6 +348,7 @@ class ImageDownloader:
             proxies: 代理设置,格式为{'http': 'http://proxy.example.com:8080',
                 'https': 'https://proxy.example.com:8080'}
             proxy_strategy: 代理选择策略,可选值为'round_robin'（轮询）和'random'（随机）
+            compress_quality: 压缩图片质量(1-100),取0表示不压缩
         """
         self.max_workers = max_workers
         self.timeout = timeout
@@ -355,6 +357,7 @@ class ImageDownloader:
         self.cookies = cookies
         self.use_shutil = use_shutil
         self.stats = DownloadStatistics()
+        self.compress_quality = compress_quality
         if retry_times < 1:
             warning("retry_times smaller than 1, no retry will be performed.")
         # 初始化会话
@@ -404,7 +407,7 @@ class ImageDownloader:
         default_ext="",
         override=False,
         retry_gap=1,
-        compress=True,
+        # compress_quality=20,
         # use_shutil=False,
     ):
         """
@@ -421,6 +424,7 @@ class ImageDownloader:
             try_get_ext: 如果filename缺少扩展名,是否尝获取文件扩展名(不保证一定返回扩展名)
             override: 是否覆盖已存在文件(如果不覆盖则跳过)
             retry_gap: 失败重试间隔(秒)
+            compress_quality: 压缩图片质量(1-100)
 
         Returns:
             bool: 下载是否成功
@@ -459,7 +463,7 @@ class ImageDownloader:
                         # response=response,
                         default_ext=default_ext,
                     )
-                info("获得文件名🎈: [%s]", filename)
+                debug("获得文件名🎈: [%s]", filename)
 
                 # 确保输出目录存在(如果路径尚不存在则逐级创建,否则略过,也不报错)
                 os.makedirs(output_dir, exist_ok=True)
@@ -496,10 +500,19 @@ class ImageDownloader:
 
                     self.download_by_py(url, response=response, file_path=file_path)
                     self.stats.add_success()
+                # 执行压缩任务
+                quality = self.compress_quality
+                if quality:
+                    # 判断下载的图片大小是否高于100KB,如果是则压缩图片
+                    if os.path.getsize(file_path) < 100 * 2**10:
+                        debug("图片小于100KB,使用高quality压缩")
+                        quality = 70
 
-                if compress:
+                    # else:
                     ic.compress_image(
-                        input_path=file_path, output_path=file_path, quality=20
+                        input_path=file_path,
+                        output_path=file_path,
+                        quality=quality,
                     )
                 # return True
                 return file_path
