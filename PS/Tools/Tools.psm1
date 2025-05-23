@@ -18,22 +18,49 @@ function Compress-Tar
 
 .PARAMETER Directory
     要打包的目录路径。
-
+.EXAMPLE
+PS> Compress-Tar -Directory C:/sites/wp_sites/1.de
+VERBOSE: 正在打包目录: C:/sites/wp_sites/1.de
+VERBOSE: 执行: tar -c  -f C:\Users\Administrator\Desktop/1.de.tar -C C:/sites/wp_sites/1.de .
+VERBOSE: 打包完成，输出文件: C:\Users\Administrator\Desktop/1.de.tar
+.EXAMPLE
+#⚡️[Administrator@CXXUDESK][~\Desktop][10:09:51][UP:4.91Days]
+PS> Compress-Tar -Directory C:/sites/wp_sites/1.de -OutputFile C:\sites\wp_sites\domain.com.tar -Debug
+VERBOSE: 正在打包目录: C:/sites/wp_sites/1.de
+VERBOSE: 执行: tar -c  -f C:\sites\wp_sites\domain.com.tar -C C:/sites/wp_sites/1.de .
+VERBOSE: 打包完成，输出文件: C:\sites\wp_sites\domain.com.tar
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
+        [alias("SiteDirectory")]
         [string]$Directory,
 
-        [Parameter(Mandatory = $true)]
-        [string]$OutputFile
+        # [Parameter(Mandatory = $true)]
+        [string]$OutputFile = "",
+        [switch]$GUI
         
     )
+    if ($GUI)
+    {
+        Show-Command Compress-Tar 
+ 
+        return
+    }
     $v = if ($VerbosePreference) { "-v" } else { "" }
-    Write-Verbose "正在打包目录: $Directory ([$v])" -Verbose
+    Write-Verbose "正在打包目录: $Directory " -Verbose
+    $dirName = Split-Path $Directory -Leaf
+    if ($OutputFile -eq "")
+    {
+        Write-Debug "输出文件名未指定，使用默认值: ${dirName}.tar"
+        $DefaultOutputDir = [Environment]::GetFolderPath("Desktop")
+        Write-Debug "默认存放路径为桌面:$DefaultOutputDir" 
+        $OutputFile = "$DefaultOutputDir/${dirName}.tar"
+    }
     $exp = "tar -c $v -f $OutputFile -C $Directory ."
-    Write-Verbose "正在执行: $exp" -Verbose
+    Write-Verbose "执行: [$exp]" -Verbose
     Invoke-Expression $exp
+    Write-Verbose "打包完成，输出文件: $OutputFile" -Verbose
 }
 function Get-CsvTailRows-Archived
 {
