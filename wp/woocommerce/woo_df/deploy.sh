@@ -1,4 +1,3 @@
-
 #!/bin/bash
 
 # === 配置参数 ===
@@ -80,8 +79,9 @@ insert_https_config() {
     # fi
 
     # 使用 awk 查找包含 "stop editing" 的那一行号(第一次出现)
-    local STOP_LINE=$(awk -v search="$STOP_EDITING_LINE" '$0 ~ search {print NR}' "$wp_config_path" | head -n 1)
-
+    
+    local STOP_LINE
+    STOP_LINE=$(awk -v search="$STOP_EDITING_LINE" '$0 ~ search {print NR}' "$wp_config_path" | head -n 1)
     if [ -n "$STOP_LINE" ]; then
         sed -i "${STOP_LINE}a\\n$HTTPS_CONFIG_LINE" "$wp_config_path" 
         echo "✅ HTTPS 配置已插入。"
@@ -153,42 +153,63 @@ EOF
         return 1
     fi
 }
+# === 函数：检查并处理指定的目录(如果已经存在询问是否移除,否则不处理该目录) ===
+# 参数:
+#   $1 - 目标目录路径
+#   $2 - 操作描述（用于提示信息）
+# 返回值:
+#   0 - 继续操作
+#   1 - 跳过操作
+check_and_handle_directory() {
+    local target_dir="$1"
+    local operation_desc="$2"
+    
+    # 检查目标目录是否已存在且不为空
+    if [ -d "$target_dir" ] && [ "$(ls -A "$target_dir")" ]; then
+        echo "⚠️ 警告: 目标目录 $target_dir 已存在且不为空"
+        while true; do
+            echo -n "是否覆盖现有目录以继续${operation_desc}? (y/n): "
+            read -r answer
+            case "$answer" in
+                [yY]|[yY][eE][sS])
+                    echo "🗑️ 正在清空目录: $target_dir"
+                    rm -rf "${target_dir}"/*
+                    return 0  
+                    ;;
+                [nN]|[nN][oO])
+                    echo "⏭️ 保留${operation_desc}"
+                    return 1  
+                    ;;
+                *)
+                    echo "无效输入，请输入 'y' (是) 或 'n' (否)."
+                    ;;
+            esac
+        done
+    fi
+    
+    # 目录不存在或为空，直接继续
+    return 0
+}
 
 # === 函数：解压压缩文件 ===
 extract_archive() {
     local archive_file="$1"
-    local extract_dir="$2"
-    
-    # 检查目标目录是否已存在
-    if [ -d "$extract_dir" ] && [ "$(ls -A $extract_dir)" ]; then
-        echo "⚠️ 警告: 目标目录 $extract_dir 已存在且不为空"
-        read -p "是否覆盖现有目录? (y/n): " answer
-        case "$answer" in
-            [yY]|[yY][eE][sS])
-                echo "🗑️ 正在清空目录: $extract_dir"
-                rm -rf "$extract_dir"/*
-                ;;
-            *)
-                echo "⏭️ 跳过解压: $archive_file"
-                return 0
-                ;;
-        esac
-    fi
+    local target_dir="$2"
     
     # 确保目标目录存在
-    mkdir -p "$extract_dir"
+    mkdir -p "$target_dir"
     
     if [[ "$archive_file" == *.zip ]]; then
         echo "🔍 正在解压 ZIP 文件: $archive_file"
         # 统一使用7z解压
-        if ! 7z x -y "$archive_file" -o"$extract_dir"; then
+        if ! 7z x -y "$archive_file" -o"$target_dir"; then
             echo "❌ 解压 ZIP 文件失败: $archive_file"
             return 1
         fi
     elif [[ "$archive_file" == *.7z ]]; then
         echo "🔍 正在解压 7z 文件: $archive_file"
-        # 7z 默认会覆盖文件，但添加 -y 参数以确保不会有交互式提示
-        if ! 7z x -y "$archive_file" -o"$extract_dir"; then
+        # 添加 -bsp1 参数以显示进度
+        if ! 7z x -y -bsp1 "$archive_file" -o"$target_dir"; then
             echo "❌ 解压 7z 文件失败: $archive_file"
             return 1
         fi
@@ -218,30 +239,40 @@ deploy_site() {
     echo "📦 正在处理网站: $domain_name"
     
     # === 解压操作 ===
-    local extracted_dir="$PACK_ROOT/$username/$domain_name"
-    if ! extract_archive "$PACK_ROOT/$username/$archive_file" "$extracted_dir"; then
+    local extracted_domain_dir="$PACK_ROOT/$username/$domain_name"
+    # local extracted_domain_dir="$TARGET_ROOT/$username/$domain_name/wordpress"
+    check_and_handle_directory "$extracted_domain_dir" "解压"
+    if ! extract_archive "$PACK_ROOT/$username/$archive_file" "$extracted_domain_dir"; then
         echo "❌ 解压失败，跳过部署: $domain_name"
         return 1
     fi
     
-    if [ ! -d "$extracted_dir" ]; then
-        echo "❌ 解压后目录不存在: $extracted_dir"
+    if [ ! -d "$extracted_domain_dir" ]; then
+        echo "❌ 解压后目录不存在: $extracted_domain_dir"
         return 1
     fi
     
-    # === 创建目标目录并移动内容 ===
-    local target_dir="$TARGET_ROOT/$username/$domain_name/wordpress"
-    
-    # 如果目标目录已存在，则删除
-    if [ -d "$target_dir" ]; then
-        echo "🧹 删除已存在的目标目录: $target_dir"
-        rm -rf "$target_dir"
+    # === 检查并导入对应的 SQL 文件 ===
+    local sql_file="$PACK_ROOT/$username/$domain_name.sql"
+    if [ -f "$sql_file" ]; then
+        import_sql_file "$domain_name" "$username" "$sql_file"
+    else
+        echo "⚠️ 未找到 SQL 文件: $sql_file"
+        # 尝试查找其他可能的 SQL 文件名格式
+        # local alt_sql_file="$PACK_ROOT/$username/${domain_name}*.sql"
+        # if [ -f "$alt_sql_file" ]; then
+        #     echo "🔍 找到替代 SQL 文件: $alt_sql_file"
+        #     import_sql_file "$domain_name" "$username" "$alt_sql_file"
+        # fi
     fi
+    # === 站点根目录:创建目标目录并移动内容 ===
+    local target_dir="$extracted_domain_dir/wordpress"
     
-    mkdir -p "$target_dir"
+    check_and_handle_directory "$target_dir" "移动根目录"
     
     echo "🚚 移动解压后的内容到目标路径: $target_dir"
-    mv "$extracted_dir"/* "$target_dir/" || {
+    # mv "$extracted_domain_dir"/* "$target_dir/" || {
+    mv "${extracted_domain_dir}/${domain_name}" "$target_dir/" || {
         echo "❌ 移动文件失败"
         return 1
     }
@@ -266,19 +297,7 @@ deploy_site() {
         echo "⚠️ 未找到 wp-config.php 文件，跳过 HTTPS 配置"
     fi
     
-    # === 检查并导入对应的 SQL 文件 ===
-    local sql_file="$PACK_ROOT/$username/$domain_name.sql"
-    if [ -f "$sql_file" ]; then
-        import_sql_file "$domain_name" "$username" "$sql_file"
-    else
-        echo "⚠️ 未找到 SQL 文件: $sql_file"
-        # 尝试查找其他可能的 SQL 文件名格式
-        # local alt_sql_file="$PACK_ROOT/$username/${domain_name}*.sql"
-        # if [ -f "$alt_sql_file" ]; then
-        #     echo "🔍 找到替代 SQL 文件: $alt_sql_file"
-        #     import_sql_file "$domain_name" "$username" "$alt_sql_file"
-        # fi
-    fi
+
     
     # === 写入伪静态规则 ===
     write_rewrite_rules "$domain_name"
@@ -296,25 +315,23 @@ process_sql_file() {
     
     # 获取域名（去掉.sql.zip或.sql.7z后缀）
     local domain_name="${archive_file%.sql.*}"
-    echo "📦 正在处理SQL备份: $domain_name"
+    echo "📦 正在处理网站 $domain_name 的SQL备份文件 $archive_file"
     
-    # 创建临时目录用于解压
-    local temp_dir="$PACK_ROOT/$username/temp_sql_extract"
-    mkdir -p "$temp_dir"
+    local user_dir="$PACK_ROOT/$username"
     
     # 解压SQL备份文件
-    if ! extract_archive "$PACK_ROOT/$username/$archive_file" "$temp_dir"; then
+    if ! extract_archive "$user_dir/$archive_file" "$user_dir"; then
         echo "❌ 解压SQL备份文件失败: $archive_file"
-        rm -rf "$temp_dir"
+        rm -rf "$user_dir"
         return 1
     fi
     
     # 查找解压后的SQL文件
-    local sql_files=($(find "$temp_dir" -name "*.sql" -type f))
+    local sql_files=($(find "$user_dir" -name "*.sql" -type f))
     
     if [ ${#sql_files[@]} -eq 0 ]; then
         echo "❌ 在解压后的目录中未找到SQL文件"
-        rm -rf "$temp_dir"
+        rm -rf "$user_dir"
         return 1
     fi
     
@@ -392,7 +409,7 @@ for user_dir in "${user_dirs[@]}"; do
         echo "ℹ️ 未找到SQL备份文件"
     fi
 
-    # 然后处理WordPress站点文件（排除SQL备份文件）
+    # 然后处理WordPress站点文件（过滤sql压缩文件SQL备份文件）
     site_archives=()
     for archive in *.zip *.7z; do
         if [[ -f "$archive" && "$archive" != *.sql.* ]]; then
@@ -403,14 +420,14 @@ for user_dir in "${user_dirs[@]}"; do
     if [ ${#site_archives[@]} -eq 0 ] || [ ! -f "${site_archives[0]}" ]; then
         echo "⚠️ 在目录 $username 中没有找到有效的WordPress站点压缩包。跳过..."
         cd "$PACK_ROOT"
-        continue
+        # continue
     fi
     
     for archive_file in "${site_archives[@]}"; do
         if [ ! -f "$archive_file" ]; then
             continue
         fi
-        
+        # 调用部署函数deploy_site进行部署
         if deploy_site "$username" "$archive_file"; then
             ((deployed_sites++))
         else

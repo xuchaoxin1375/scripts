@@ -6,7 +6,35 @@ function Get-CxxuPsModuleVersoin
     Get-RepositoryVersion -Repository $scripts
     
 }
+function Compress-Tar
+{
+    <# 
+    .SYNOPSIS
+    将指定目录下的所有文件打包为tar格式的包文件
 
+.DESCRIPTION
+    该脚本将指定目录下的所有文件打包为tar格式的文件，并保存到指定目录中。
+    
+
+.PARAMETER Directory
+    要打包的目录路径。
+
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Directory,
+
+        [Parameter(Mandatory = $true)]
+        [string]$OutputFile
+        
+    )
+    $v = if ($VerbosePreference) { "-v" } else { "" }
+    Write-Verbose "正在打包目录: $Directory ([$v])" -Verbose
+    $exp = "tar -c $v -f $OutputFile -C $Directory ."
+    Write-Verbose "正在执行: $exp" -Verbose
+    Invoke-Expression $exp
+}
 function Get-CsvTailRows-Archived
 {
     <#

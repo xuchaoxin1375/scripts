@@ -337,7 +337,7 @@ class WooCommerceProductImporter:
 
         if not os.path.exists(img_path):
             print(f"警告: 图片文件不存在 - {img_path}")
-            time.sleep(1)  # 延迟1秒，避免频繁访问文件系统
+            time.sleep(0.1)  # 延迟0.1秒，避免频繁访问文件系统
             return
 
         # 获取当前年月

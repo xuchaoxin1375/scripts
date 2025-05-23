@@ -11,3 +11,4 @@ pymysql
 phpserialize
 unidecode
 tqdm
+pillow-avif-plugin
