@@ -7,6 +7,7 @@ import logging
 import os
 from typing import Optional, Tuple
 from PIL import Image
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # %%
 
@@ -40,7 +41,7 @@ class ImageCompressor:
         self,
         input_path: str,
         output_path: str,
-        quality: int = 85,
+        quality: int = 20,
         optimize: bool = True,
         keep_exif: bool = False,
     ) -> Tuple[bool, str]:
@@ -109,11 +110,12 @@ class ImageCompressor:
         input_dir: str,
         output_dir: str,
         output_format: str = "webp",
-        quality: int = 85,
+        quality: int = 20,
         skip_existing: bool = True,
+        max_workers: int = 10,
     ) -> dict:
         """
-        批量压缩目录中的图片
+        批量压缩目录中的图片(多线程版本)
 
         Args:
             input_dir: 输入目录
@@ -121,6 +123,7 @@ class ImageCompressor:
             output_format: 输出格式(webp/jpg/png)
             quality: 压缩质量
             skip_existing: 是否跳过已存在的输出文件
+            max_workers: 最大线程数
 
         Returns:
             处理结果统计
@@ -132,29 +135,41 @@ class ImageCompressor:
 
         supported_formats = (".jpg", ".jpeg", ".png")
 
-        for filename in os.listdir(input_dir):
+        def process_file(filename, task_id=0):
+            print(f"task_id:{task_id} processing {filename}...")
             if filename.lower().endswith(supported_formats):
                 input_path = os.path.join(input_dir, filename)
                 output_filename = f"{os.path.splitext(filename)[0]}.{output_format}"
                 output_path = os.path.join(output_dir, output_filename)
 
-                results["total"] += 1
-
                 if skip_existing and os.path.exists(output_path):
-                    results["skipped"] += 1
-                    results["details"].append(f"跳过已存在文件: {output_path}")
-                    continue
+                    return "skipped", f"跳过已存在文件: {output_path}"
 
                 success, msg = self.compress_image(
                     input_path, output_path, quality=quality
                 )
+                return "success" if success else "failed", msg
+            return None
 
-                if success:
-                    results["success"] += 1
-                else:
-                    results["failed"] += 1
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = []
+            filenames = os.listdir(input_dir)
+            for task_id, filename in enumerate(filenames):
+                # print(f"task_id:{idx} start...")
+                futures.append(executor.submit(process_file, filename, task_id))
+                results["total"] += 1
 
-                results["details"].append(msg)
+            for future in as_completed(futures):
+                result = future.result()
+                if result:
+                    status, msg = result
+                    if status == "skipped":
+                        results["skipped"] += 1
+                    elif status == "success":
+                        results["success"] += 1
+                    else:
+                        results["failed"] += 1
+                    results["details"].append(msg)
 
         return results
 
@@ -177,14 +192,16 @@ if __name__ == "__main__":
     compressor = ImageCompressor()
 
     # 单文件压缩示例
-    compressor.compress_image('S:/imgs_demo/swan-5838427.jpg', 'xoutput.webp', quality=30)
+    # compressor.compress_image('S:/imgs_demo/', 'xoutput.webp', quality=20)
 
     # 批量压缩示例
-    # results = compressor.batch_compress(
-    #     # input_dir='./images',
-    #     input_dir=r"S:/imgs_demo/",
-    #     output_dir="./compressed",
-    #     output_format="webp",
-    #     quality=50,
-    # )
-    # print(f"批量处理结果: {results}")
+    results = compressor.batch_compress(
+        # input_dir='./images',
+        input_dir=r"S:/imgs_demo/",
+        output_dir="./compressed",
+        output_format="webp",
+        skip_existing=False,
+        quality=20,
+        max_workers=10,
+    )
+    print(f"批量处理结果: {results}")

@@ -42,6 +42,9 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from filenamehandler import FilenameHandler
+from imgcompresser import ImageCompressor
+
+ic = ImageCompressor()
 
 IMG_DIR = "./images"
 # 自定义日志格式
@@ -401,8 +404,9 @@ class ImageDownloader:
         default_ext="",
         override=False,
         retry_gap=1,
+        compress=True,
         # use_shutil=False,
-    ) -> bool:
+    ):
         """
         下载单张图片
 
@@ -435,25 +439,7 @@ class ImageDownloader:
         )
         # 如果传入的文件名没有扩展名,且在try_get_ext为True时,则[尝试]补全扩展名
         filename = filename.rstrip(".")
-        if filename:
-            _, ext = os.path.splitext(filename)
-            # ext = ext.strip(".")
-            if not ext:
-                debug("指定文件名缺少扩展名")
-                if try_get_ext:
-                    raw_name = filename
-                    filename = self.complete_extension(
-                        filename=filename, url=url, default_ext=default_ext
-                    )
-                    debug(
-                        "已尝试补全文件扩展名: %s -> %s",
-                        raw_name,
-                        filename,
-                    )
-            else:
-                debug("文件名包含扩展名:%s", ext)
-        else:
-            debug("未指定文件名,尝试从URL中获取")
+        filename = self.prepare_filename(url, filename, try_get_ext, default_ext)
         # 配置下载中如果出现失败的重试循环(次数由retry_times指定)
         for attempt in range(self.retry_times):
             # 如果某次尝试下载成功,则直接返回True(结束此下载任务)
@@ -510,7 +496,13 @@ class ImageDownloader:
 
                     self.download_by_py(url, response=response, file_path=file_path)
                     self.stats.add_success()
-                return True
+
+                if compress:
+                    ic.compress_image(
+                        input_path=file_path, output_path=file_path, quality=20
+                    )
+                # return True
+                return file_path
 
             except requests.exceptions.RequestException as e:
                 # 如果是应为请求异常导致的下载失败,这在这里捕获;
@@ -534,6 +526,29 @@ class ImageDownloader:
                     return False
 
         return False
+
+    def prepare_filename(self, url, filename, try_get_ext, default_ext):
+        """准备文件名,用于指定下载保存文件"""
+        if filename:
+            _, ext = os.path.splitext(filename)
+            # ext = ext.strip(".")
+            if not ext:
+                debug("指定文件名缺少扩展名")
+                if try_get_ext:
+                    raw_name = filename
+                    filename = self.complete_extension(
+                        filename=filename, url=url, default_ext=default_ext
+                    )
+                    debug(
+                        "已尝试补全文件扩展名: %s -> %s",
+                        raw_name,
+                        filename,
+                    )
+            else:
+                debug("文件名包含扩展名:%s", ext)
+        else:
+            debug("未指定文件名,尝试从URL中获取")
+        return filename
 
     def download_by_py(self, url, response, file_path):
         """使用python的库下载图片(操作比较原始和底层)"""
