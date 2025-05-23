@@ -61,6 +61,53 @@ VERBOSE: 打包完成，输出文件: C:\sites\wp_sites\domain.com.tar
     Write-Verbose "执行: [$exp]" -Verbose
     Invoke-Expression $exp
     Write-Verbose "打包完成，输出文件: $OutputFile" -Verbose
+    return $OutputFile
+}
+function Get-WpSitePacks
+{
+    <# 
+    .SYNOPSIS
+    获取WordPress站点的打包文件以及对应的数据库sql文件
+    .NOTES
+    为了最方便地使用此脚本自动打包和导出WordPress站点，需要满足以下条件：
+    1.站点根目录命名为域名,例如domain.com
+    2.站点配套的数据库在创建取名的时候就要是和上述domain.com一致,
+        以便于用脚本自动导出,速度很快,但要配置mysql.exe所在路径(mysql安装路径下的bin目录)到环境变量PATH中
+    满足上述两点的情况下,脚本可以正确解析域名,然后根据域名自动导出对应的sql文件并压缩
+
+    #>
+    [cmdletbinding()]
+    param(
+        [parameter(Mandatory = $true, ValueFromPipeline = $true)]
+        [Alias('Directory')]$SiteDirecotry,
+        $DatabaseName = "",
+        $DatabaseKey = "root",
+        $OutputDir = "$home/Desktop"
+
+
+    )
+    # 尝试从站点根目录解析站点域名
+    $Domain = $SiteDirecotry.Split("/")[-1]
+    Write-Debug "[+] Domain: $Domain"
+
+    $key = Get-MysqlKeyInline -Key $DatabaseKey
+    $SqlFile = "$OutputDir/${Domain}.sql"
+    $SqlFileArchive = "$SqlFile.zip"
+    Write-Debug "[+] Trying to export database file to $SqlFile"
+    # 导出数据库文件并压缩
+    if ($DatabaseName -eq "")
+    {
+        $DatabaseName = $Domain
+        Write-Host "数据库名称未指定，使用默认值: $DatabaseName"
+    }
+    Export-MysqlFile -server localhost -DatabaseName $DatabaseName -key $key -SqlFilePath $SqlFile
+    Compress-Archive -Path $SqlFile -DestinationPath $SqlFileArchive -Force
+    # 打包站点目录
+    $SitePackArchive = Compress-Tar -Directory $SiteDirecotry 
+    # 列出已经打包的文件
+    Get-ChildItem $SqlFileArchive $SitePackArchive
+    # 移除数据库sql文件
+    Remove-Item $SqlFile -Verbose
 }
 function Get-CsvTailRows-Archived
 {
@@ -2361,7 +2408,11 @@ function Get-MysqlKeyInline
 {
     <# 
     .SYNOPSIS
-    将mysql密码转换为-p参数形式,便于嵌入到mysql命令行中
+    将mysql密码转换为-p参数形式,便于嵌入到mysql命令行中,例如key为123456,则返回-p123456
+    .EXAMPLE
+    PS C:\repos\scripts> $key=Get-MysqlKeyInline -Key "123456"
+    PS C:\repos\scripts> $key
+        -p123456
     #>
     param (
         $Key = ''
