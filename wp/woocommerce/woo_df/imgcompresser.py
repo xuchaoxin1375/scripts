@@ -17,11 +17,13 @@ from typing import Dict, List, Optional, Tuple
 from PIL import Image
 
 QUALITY_DEFAULT = 80
+QUALITY_DEFAULT_STRONG = 20
 COMPRESS_TRHESHOLD_KB = 0  # 只对指定大小以上的图片文件进行压缩(取值为0时全部压缩)
 
 K = 2**10
 COMPRESS_TRHESHOLD_B = COMPRESS_TRHESHOLD_KB * K
 COMPRESS_TRHESHOLD = COMPRESS_TRHESHOLD_B
+DEFAULT_QUALITY_RULE = "0,50,70 ; 50,200,40 ; 200,10000,20"
 
 
 class ImageCompressor:
@@ -44,7 +46,13 @@ class ImageCompressor:
     >>> results = compressor.batch_compress("./images", "./compressed", "webp")
     """
 
-    def __init__(self, compress_threshold=COMPRESS_TRHESHOLD, logger=None):
+    def __init__(
+        self,
+        compress_threshold=COMPRESS_TRHESHOLD,
+        quality_rule="",
+        logger=None,
+        skip_format="",
+    ):
         """
         初始化压缩器
 
@@ -53,8 +61,9 @@ class ImageCompressor:
         """
         self.logger = logger or logging.getLogger(__name__)
         self._compress_threshold = compress_threshold
-
         # self.compress_threshold = compress_threshold
+        self.quality_rule = quality_rule  # 用于不同大小区间的质量规则
+        self.skip_format = skip_format.lower().split(",")
 
     @property
     def compress_threshold(self):
@@ -79,7 +88,7 @@ class ImageCompressor:
             input_path: 输入图片路径
             output_path: 输出图片路径(可选)
             output_format: 输出格式(webp/jpg/png, 可选)
-            quality: 压缩质量(1-100)
+            quality: 压缩质量(1-100);如果初始化ImageCompressor时设置了quality_rule或compress_threshold,则此参数会被部分情况或完全被覆盖
             optimize: 是否启用优化
             keep_exif: 是否保留EXIF信息
             overwrite: 是否覆盖已存在文件
@@ -90,11 +99,23 @@ class ImageCompressor:
         try:
             if not os.path.exists(input_path):
                 return False, f"输入文件不存在: {input_path}"
+            input_format = os.path.splitext(input_path)[1].lower()
+            if input_format.strip(".") in self.skip_format:
+                msg = f"跳过格式: {input_format}|file:{input_path}"
+                self.logger.info(msg)
+                return True, msg
+
             # 验证是否需要执行压缩(过小不压缩或者用高quality微压)
             original_size = os.path.getsize(input_path)
-            ct = self.compress_threshold  # 取0则不跳过(全部压缩)
+            ct: int = self.compress_threshold  # 取0则不跳过(全部压缩)
+            if self.quality_rule:
+                quality = get_quality_from_rule(
+                    rule=self.quality_rule,
+                    size=original_size,
+                    default_quality=QUALITY_DEFAULT_STRONG,
+                )
             # debug(f"对比:{original_size} vs {ct}")
-            if ct and original_size < ct:
+            elif ct and original_size < ct:
                 msg = f"文件大小({original_size/1024:.2f}KB)过小,微压(quality={quality_for_small_file})"
                 self.logger.info(msg)
                 quality = quality_for_small_file
@@ -111,7 +132,7 @@ class ImageCompressor:
                 if not output_path and not output_format:
                     # 只提供输入路径的情况下,解析输入路径
                     output_path = input_path
-                    output_format = os.path.splitext(input_path)[1].lower()
+                    output_format = input_format
                 elif not output_path:
                     # 未提供输出路径(但是提供了输出格式)
                     base, _ = os.path.splitext(input_path)
@@ -222,6 +243,7 @@ class ImageCompressor:
         supported_formats = (".jpg", ".jpeg", ".png", ".webp")
 
         def process_file(filename: str) -> Optional[Tuple[str, str]]:
+            """内部函数"""
             if filename.lower().endswith(supported_formats):
                 input_path = os.path.join(input_dir, filename)
                 base_name = os.path.splitext(filename)[0]
@@ -267,7 +289,8 @@ def setup_logging(level=logging.INFO, log_file=None, log_format=None):
     设置日志记录器。
 
     Args:
-        level (int): 日志级别，例如logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR, logging.CRITICAL。
+        level (int): 日志级别，
+        例如logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR, logging.CRITICAL。
 
         log_file (str): 如果指定，则将日志输出到该文件；否则输出到控制台。
 
@@ -351,23 +374,76 @@ def parse_args():
         "--compress-threshold",
         type=int,
         default=COMPRESS_TRHESHOLD_KB,
-        help="压缩阈值(KB), 小于该阈值的图片不压缩",
+        help="压缩阈值(KB), 小于该阈值的图片微压(quality=70)"
+        "(取值为0表示不设置压缩门槛全部压缩),取值越大,压缩力度越轻,反之越高"
+        "(此选项是quality-rule的简化版,更多需求可以通过quality-rule更灵活地调整)",
     )
     parser.add_argument(
+        "-r",
         "--quality-rule",
         type=str,
-        help="对不同大小图像区间采用不同的quality值的指定规则,例如'50,200,70' 表示50到200KB区间的图片设置quality=70`,多个区间用空格分隔(TODO)",
+        default="",
+        help="对不同大小图像区间采用不同的quality值的指定规则"
+        "例如'50,200,40' 表示50到200KB区间的图片设置quality=70`,多个区间用分号(;)分隔\n 如果使用 `auto`则使用内部的推荐值 ",
+    )
+    parser.add_argument(
+        "-s",
+        "--skip-format",
+        default="",
+        help="跳过指定格式的图片(jpg/png/webp)压缩,多个格式用逗号分隔",
     )
     parser.add_argument("-v", "--verbose", action="store_true", help="显示详细输出")
     return parser.parse_args()
+
+
+def get_quality_from_rule(rule, size, default_quality=20):
+    """
+    解析规则字符串，返回对应尺寸的质量参数。
+
+    参数:
+        rule (str): 规则字符串，如 "50,100,40;100,200,30"
+            其中每个区间用分号分隔，每个区间由三个整数组成，分别表示区间最小值，区间最大值，和对应的质量值。
+            如 "50,100,40;100,200,30" 表示 50KB~100KB 区间的图片质量为40，100KB~200KB 区间的图片质量为30。
+        size (int): 要查询的尺寸
+        default_quality (int): 默认质量值，若未匹配到任何规则则返回此值
+
+    返回:
+        int: 对应的质量值
+    """
+    if not rule or not isinstance(rule, str):
+        return default_quality
+    if rule.lower() == "auto":
+        rule = DEFAULT_QUALITY_RULE
+    q = default_quality
+    try:
+        for segment in rule.split(";"):
+            segment = segment.strip()
+            if not segment:
+                continue
+            parts = segment.split(",")
+            if len(parts) != 3:
+                continue
+            range_min, range_max, quality = map(int, parts)
+            range_min, range_max = range_min * K, range_max * K
+            # range_min <= size and size < range_max
+            if range_min <= size < range_max:
+                q = quality
+                print(f"规则解析: [{range_min}, {range_max}],size:{size} 质量: {q}")
+
+    except ValueError as e:
+        print(f"规则解析错误: {e}")
+    return q
 
 
 def main():
     """命令行入口"""
     args = parse_args()
     setup_logging(args.verbose)
-
-    compressor = ImageCompressor(compress_threshold=args.compress_threshold)
+    compressor = ImageCompressor(
+        compress_threshold=args.compress_threshold,
+        quality_rule=args.quality_rule,
+        skip_format=args.skip_format,
+    )
 
     try:
         # 分两种情况处理input(文件或目录),以决定调用单处理还是批处理

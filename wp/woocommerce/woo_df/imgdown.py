@@ -44,7 +44,6 @@ from urllib3.util.retry import Retry
 from filenamehandler import FilenameHandler
 from imgcompresser import ImageCompressor
 
-ic = ImageCompressor()
 
 IMG_DIR = "./images"
 # 自定义日志格式
@@ -333,6 +332,7 @@ class ImageDownloader:
         proxies=None,
         proxy_strategy="round_robin",
         compress_quality=20,
+        quality_rule="",
         use_shutil=False,
     ):
         """
@@ -341,7 +341,7 @@ class ImageDownloader:
         Args:
             max_workers: 最大工作线程数
             timeout: 下载超时时间（秒）
-            retry_times: 下载失败重试次数(设置为1表示只给1次下载机会,不做额外重试,如果是0,则不做真正的下载)
+            retry_times: 下载失败重试次数
             user_agent: 自定义User-Agent
             cookies: 自定义Cookie
             verify_ssl: 是否验证SSL证书(启用会提高安全性，但会降低下载速度)
@@ -358,8 +358,10 @@ class ImageDownloader:
         self.use_shutil = use_shutil
         self.stats = DownloadStatistics()
         self.compress_quality = compress_quality
-        if retry_times < 1:
-            warning("retry_times smaller than 1, no retry will be performed.")
+        self.quality_rule = quality_rule
+        self.ic = ImageCompressor(quality_rule=quality_rule)
+        # if retry_times < 1:
+        #     warning("retry_times smaller than 1, no retry will be performed.")
         # 初始化会话
         self.session = requests.Session()
         # 创建具有重试策略的适配器
@@ -445,7 +447,7 @@ class ImageDownloader:
         filename = filename.rstrip(".")
         filename = self.prepare_filename(url, filename, try_get_ext, default_ext)
         # 配置下载中如果出现失败的重试循环(次数由retry_times指定)
-        for attempt in range(self.retry_times):
+        for attempt in range(self.retry_times + 1):
             # 如果某次尝试下载成功,则直接返回True(结束此下载任务)
             try:
                 # # 模拟用户行为：每次请求前添加随机等待,在失败后指数退避
@@ -502,17 +504,20 @@ class ImageDownloader:
                     self.stats.add_success()
                 # 执行压缩任务
                 quality = self.compress_quality
-                if quality:
+                if quality or self.quality_rule:
                     # 判断下载的图片大小是否高于100KB,如果是则压缩图片
-                    if os.path.getsize(file_path) < 100 * 2**10:
-                        debug("图片小于100KB,使用高quality压缩")
-                        quality = 70
+                    # if os.path.getsize(file_path) < 100 * 2**10:
+                    #     debug("图片小于100KB,使用高quality压缩")
+                    #     quality = 70
 
                     # else:
-                    ic.compress_image(
+                    print("尝试压缩图片")
+                    self.ic.compress_image(
                         input_path=file_path,
-                        output_path=file_path,
+                        # output_path=file_path,
+                        output_format="webp",
                         quality=quality,
+                        overwrite=True,
                     )
                 # return True
                 return file_path

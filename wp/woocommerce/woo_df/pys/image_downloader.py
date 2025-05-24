@@ -180,14 +180,13 @@ def parse_arguments_for_imgdown():
         action="store_true",
         help="使用curl下载图片(默认: False)",
     )
+    parser.add_argument("-w", "--workers", type=int, default=10, help="下载线程数")
     parser.add_argument(
-        "-w", "--workers", type=int, default=10, help="下载线程数 (默认: 10)"
+        "-t", "--timeout", type=int, default=30, help="下载超时时间，单位秒"
     )
+    parser.add_argument("-r", "--retry", type=int, default=0, help="下载失败重试次数 ")
     parser.add_argument(
-        "-t", "--timeout", type=int, default=30, help="下载超时时间，单位秒 (默认: 30)"
-    )
-    parser.add_argument(
-        "-r", "--retry", type=int, default=2, help="下载失败重试次数 (默认: 1)"
+        "-R", "--quality-rule", default="auto", help="压缩图片的质量规则(默认:auto)"
     )
     parser.add_argument(
         "-u", "--user-agent", default=USER_AGENTS[0], help="自定义User-Agent"
@@ -279,6 +278,7 @@ def main():
         user_agent=args.user_agent,
         use_shutil=args.use_shutil,
         compress_quality=args.compress_quality,
+        quality_rule=args.quality_rule,
     )
     # 过滤已有图片,扫描出尚未下载的图片
     # 这里不关心文件名后缀的差异,比较basename

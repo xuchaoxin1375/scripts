@@ -12,4 +12,5 @@ phpserialize
 unidecode
 tqdm
 pillow-avif-plugin
+# dotenv
 # opencv-python
