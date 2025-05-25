@@ -331,8 +331,11 @@ class ImageDownloader:
         verify_ssl: bool = True,
         proxies=None,
         proxy_strategy="round_robin",
+        override=False,
         compress_quality=20,
         quality_rule="",
+        output_format="webp",
+        remove_original=False,
         use_shutil=False,
     ):
         """
@@ -349,6 +352,8 @@ class ImageDownloader:
                 'https': 'https://proxy.example.com:8080'}
             proxy_strategy: 代理选择策略,可选值为'round_robin'（轮询）和'random'（随机）
             compress_quality: 压缩图片质量(1-100),取0表示不压缩
+            quality_rule: 压缩图片规则(默认使用ic.compress_image的默认规则)
+            output_format: 压缩图片格式(默认使用webp)
         """
         self.max_workers = max_workers
         self.timeout = timeout
@@ -359,7 +364,14 @@ class ImageDownloader:
         self.stats = DownloadStatistics()
         self.compress_quality = compress_quality
         self.quality_rule = quality_rule
-        self.ic = ImageCompressor(quality_rule=quality_rule)
+        self.output_format = output_format
+        self.remove_original = remove_original
+        self.override = override
+
+        self.ic = ImageCompressor(
+            quality_rule=quality_rule, remove_original=remove_original
+        )
+
         # if retry_times < 1:
         #     warning("retry_times smaller than 1, no retry will be performed.")
         # 初始化会话
@@ -407,8 +419,8 @@ class ImageDownloader:
         filename="",
         try_get_ext=True,
         default_ext="",
-        override=False,
         retry_gap=1,
+        # override=False,
         # compress_quality=20,
         # use_shutil=False,
     ):
@@ -446,6 +458,7 @@ class ImageDownloader:
         # 如果传入的文件名没有扩展名,且在try_get_ext为True时,则[尝试]补全扩展名
         filename = filename.rstrip(".")
         filename = self.prepare_filename(url, filename, try_get_ext, default_ext)
+        override = self.override
         # 配置下载中如果出现失败的重试循环(次数由retry_times指定)
         for attempt in range(self.retry_times + 1):
             # 如果某次尝试下载成功,则直接返回True(结束此下载任务)
@@ -515,7 +528,7 @@ class ImageDownloader:
                     self.ic.compress_image(
                         input_path=file_path,
                         # output_path=file_path,
-                        output_format="webp",
+                        output_format=self.output_format,
                         quality=quality,
                         overwrite=True,
                     )

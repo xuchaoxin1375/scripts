@@ -52,18 +52,25 @@ class ImageCompressor:
         quality_rule="",
         logger=None,
         skip_format="",
+        remove_original=False,
     ):
         """
         初始化压缩器
 
         Args:
             logger: 可选的日志记录器
+            compress_threshold: 压缩阈值(单位:KB)
+            quality_rule: 质量规则(格式: "size_range_min1,size_range_max1,
+                quality1;size_range_min2,size_range_max2,quality2;...")
+            skip_format: 跳过格式(jpg/png/webp)
+            remove_original: 是否移除原始文件
         """
         self.logger = logger or logging.getLogger(__name__)
         self._compress_threshold = compress_threshold
         # self.compress_threshold = compress_threshold
         self.quality_rule = quality_rule  # 用于不同大小区间的质量规则
-        self.skip_format = skip_format.lower().split(",")
+        self.skip_format_name = skip_format.lower().split(",")
+        self.remove_original = remove_original  # 是否尽可能移除原始文件
 
     @property
     def compress_threshold(self):
@@ -88,7 +95,8 @@ class ImageCompressor:
             input_path: 输入图片路径
             output_path: 输出图片路径(可选)
             output_format: 输出格式(webp/jpg/png, 可选)
-            quality: 压缩质量(1-100);如果初始化ImageCompressor时设置了quality_rule或compress_threshold,则此参数会被部分情况或完全被覆盖
+            quality: 压缩质量(1-100);
+                如果初始化ImageCompressor时设置了quality_rule或compress_threshold,则此参数会被部分情况或完全被覆盖
             optimize: 是否启用优化
             keep_exif: 是否保留EXIF信息
             overwrite: 是否覆盖已存在文件
@@ -100,7 +108,8 @@ class ImageCompressor:
             if not os.path.exists(input_path):
                 return False, f"输入文件不存在: {input_path}"
             input_format = os.path.splitext(input_path)[1].lower()
-            if input_format.strip(".") in self.skip_format:
+            input_format_name = input_format.strip(".")
+            if input_format_name in self.skip_format_name:
                 msg = f"跳过格式: {input_format}|file:{input_path}"
                 self.logger.info(msg)
                 return True, msg
@@ -128,7 +137,7 @@ class ImageCompressor:
                 exif = img.info.get("exif") if keep_exif else None
                 save_kwargs = {"quality": quality, "optimize": optimize}
 
-                # 确定输出路径和格式(后续要根据目标格式做针对性处理)
+                # 确定输出格式和输出路径(后续要根据目标格式做针对性处理),如果传入的参数缺失值的话
                 if not output_path and not output_format:
                     # 只提供输入路径的情况下,解析输入路径
                     output_path = input_path
@@ -141,7 +150,7 @@ class ImageCompressor:
                     # 未提供输出格式(但是提供了输出路径)
                     output_format = os.path.splitext(output_path)[1].lower()
                 else:
-                    # 同时提供输出路径和格式
+                    # 同时提供输出路径和格式,格式一致则继续运行,否则报错
                     _, format_from_output_path = os.path.splitext(output_path)
                     ext1 = format_from_output_path.lower().lstrip(".")
                     ext2 = output_format.lower().lstrip(".")
@@ -173,6 +182,14 @@ class ImageCompressor:
                     img = img.convert("RGB")
 
                 img.save(output_path, **save_kwargs)
+                output_format_name = output_format.strip(".")
+                print(
+                    f"存储模式:remove_original:{self.remove_original} \
+格式变化: {input_format_name} -> {output_format_name}"
+                )
+                if self.remove_original and input_format_name != output_format_name:
+                    os.remove(input_path)
+                    print(f"删除原始文件: {input_path}")
 
             # 计算压缩结果
 
@@ -392,6 +409,12 @@ def parse_args():
         default="",
         help="跳过指定格式的图片(jpg/png/webp)压缩,多个格式用逗号分隔",
     )
+    parser.add_argument(
+        "-k",
+        "--remove-original",
+        action="store_true",
+        help="移除原始文件(如果压缩后的格式和原格式不同时,保留源文件,但如果压缩前后格式相同且在同一目录下,则源文件会被覆盖)",
+    )
     parser.add_argument("-v", "--verbose", action="store_true", help="显示详细输出")
     return parser.parse_args()
 
@@ -443,6 +466,7 @@ def main():
         compress_threshold=args.compress_threshold,
         quality_rule=args.quality_rule,
         skip_format=args.skip_format,
+        remove_original=args.remove_original,
     )
 
     try:

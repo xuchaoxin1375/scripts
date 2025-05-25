@@ -120,7 +120,7 @@ def parse_image_sources(file, args, lines, selected_ids=None):
         return False
 
 
-def parse_arguments_for_imgdown():
+def parse_args():
     """解析命令行参数
 
     利用parser.add_argument()方法添加命令行参数，并解析命令行参数
@@ -173,6 +173,7 @@ def parse_arguments_for_imgdown():
     parser.add_argument(
         "-o", "--output-dir", default=IMG_DIR, help="图片保存目录 (默认: ./images)"
     )
+    parser.add_argument("-O", "--override",action="store_true", default=False, help="是否覆盖已有图片")
     parser.add_argument(
         "-U",
         "--use-shutil",
@@ -208,6 +209,12 @@ def parse_arguments_for_imgdown():
         default=0,
         help="压缩图片为webp格式的quality参数(1-100),取0表示不压缩",
     )
+    parser.add_argument(
+        "-k",
+        "--remove-original",
+        action="store_true",
+        help="保留压缩后的原始图片",
+    )
 
     return parser.parse_args()
 
@@ -216,7 +223,7 @@ def main():
     """主函数"""
 
     # 解析命令行用户传输进来的参数,像字典一样使用它
-    args = parse_arguments_for_imgdown()
+    args = parse_args()
 
     # 设置日志级别
     if args.verbose:
@@ -279,6 +286,8 @@ def main():
         use_shutil=args.use_shutil,
         compress_quality=args.compress_quality,
         quality_rule=args.quality_rule,
+        remove_original=args.remove_original,
+        override=args.override,
     )
     # 过滤已有图片,扫描出尚未下载的图片
     # 这里不关心文件名后缀的差异,比较basename
@@ -289,7 +298,7 @@ def main():
             args.output_dir,
             args.output_dir,
         )
-    else:
+    elif not args.override:
         # 如果指定的存放目录存在
         img_names_existed = os.listdir(args.output_dir)
         img_names_existed = [os.path.splitext(name)[0] for name in img_names_existed]
