@@ -47,6 +47,16 @@ url的分隔符不能随便取,比如逗号是不可靠的,有的url中本身包
 
 ## 使用方法
 
+### 使用powershell下载
+
+```
+Get-WpImages [[-Path] <Object>] [[-Directory] <Object>] 
+```
+
+其中第一个参数`-Path`指定包含url的文件(比如csv所在目录)
+
+第二个参数是图片要下载到哪个目录下
+
 ### 作为命令行工具使用
 
 基本用法：
@@ -164,10 +174,10 @@ downloader = ImageDownloader(
 
 ## 使用示例🎈
 
-通过绝对路径的方式来调用脚本
+### 通过绝对路径的方式来调用脚本
 
 ```bash
-py C:\repos\scripts\wp\woocommerce\woo_df\pys\image_downloader.py -c -n -R auto -k -d .\csvy\ -o ./ccc -O
+python C:\repos\scripts\wp\woocommerce\woo_df\pys\image_downloader.py -c -n -R auto -k -d .\csvy\ -o ./ccc 
 ```
 
 从csv文件(`-c`),且这里输入的csv文件(或csv文件所在目录)格式都相同,其中有Images,ImagesUrl两列(`-n`解析图片链接和要保存的文件名)
@@ -181,6 +191,8 @@ py C:\repos\scripts\wp\woocommerce\woo_df\pys\image_downloader.py -c -n -R auto 
 `-o`表示下载的图片要存放到哪个目录
 
 `-O`表示如果指定的保存目录已经存在要下载的图片,则覆盖(重新下载处理,这主要用户测试),默认情况下(没有`-O`会跳过已经有或下载过的图片,避免重复下载)
+
+
 
 ### 准备URL列表文件
 

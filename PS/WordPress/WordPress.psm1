@@ -1,3 +1,20 @@
+
+function Get-WpImages
+{
+    <# 
+    .SYNOPSIS
+    获取WordPress网站的图片列表
+    #>
+    [CmdletBinding()]
+    param(
+        [Alias('CSVPath')]$Path,
+        [Alias('OutputDir')]$Directory,
+        $ImageDownloader = "$pys\image_downloader.py"
+    )
+
+    python $ImageDownloader -c -n -R auto -k -d $Path -o $Directory
+}
+
 function Deploy-Wp
 {
     <# 
