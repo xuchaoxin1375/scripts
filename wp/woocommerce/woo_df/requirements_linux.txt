@@ -1,5 +1,5 @@
 requests
-python-magic-bin
+python-magic
 pandas
 openpyxl
 woocommerce

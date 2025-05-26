@@ -6,7 +6,7 @@ DEFAULT_PACK_ROOT="/srv/uploads/uploader/files"
 DEFAULT_DB_USER="root"
 DEFAULT_DB_PASSWORD="15a58524d3bd2e49"
 DB_HOST="localhost"                  # 数据库主机
-PACK_ROOT="/www/wwwroot"           # WordPress 网站根目录
+# PACK_ROOT="/www/wwwroot"           # WordPress 网站根目录
 STOP_EDITING_LINE='Add any custom values between this line and the "stop editing" line'
 HTTPS_CONFIG_LINE="\$_SERVER['HTTPS'] = 'on'; define('FORCE_SSL_LOGIN', true); define('FORCE_SSL_ADMIN', true);"
 
@@ -61,8 +61,8 @@ check_commands() {
     fi
 }
 
-# === 函数：插入 HTTPS 配置到 wp-config.php 的正确位置 ===
-insert_https_config() {
+# === 函数：修改wp-config.php ===
+update_wp_config() {
     local wp_config_path="$1"
 
     if [ ! -f "$wp_config_path" ]; then
@@ -85,7 +85,7 @@ insert_https_config() {
     if [ -n "$STOP_LINE" ]; then
         sed -i "${STOP_LINE}a\\n$HTTPS_CONFIG_LINE" "$wp_config_path" 
         sed -ri   "s/(define\(\s*'DB_HOST',)(.*)\)/\1'${DB_HOST}')/"
-        sed -ri   "s/(define\(\s*'DB_NAME',)(.*)\)/\1'${username}_$domain')/"
+        sed -ri   "s/(define\(\s*'DB_NAME',)(.*)\)/\1'$db_name')/"
         sed -ri   "s/(define\(\s*'DB_USER',)(.*)\)/\1'${DB_USER}')/"
         sed -ri   "s/(define\(\s*'DB_PASSWORD',)(.*)\)/\1'${DB_PASSWORD}')/"
         echo "✅ wp-config.php 配置已插入。"
@@ -203,24 +203,49 @@ extract_archive() {
     # 确保目标目录存在
     mkdir -p "$target_dir"
     
-    if [[ "$archive_file" == *.zip ]]; then
-        echo "🔍 正在解压 ZIP 文件: $archive_file"
-        # 统一使用7z解压
-        if ! 7z x -y "$archive_file" -o"$target_dir"; then
-            echo "❌ 解压 ZIP 文件失败: $archive_file"
-            return 1
-        fi
-    elif [[ "$archive_file" == *.7z ]]; then
-        echo "🔍 正在解压 7z 文件: $archive_file"
-        # 添加 -bsp1 参数以显示进度
-        if ! 7z x -y -bsp1 "$archive_file" -o"$target_dir"; then
-            echo "❌ 解压 7z 文件失败: $archive_file"
-            return 1
-        fi
-    else
-        echo "❌ 不支持的压缩文件格式: $archive_file"
+    echo "🔍 正在解压文件: $archive_file"
+    # 使用7z解压，支持各种格式
+    if ! 7z x -y "$archive_file" -o"$target_dir"; then
+        echo "❌ 解压失败: $archive_file"
         return 1
     fi
+    # 修改后的完整片段
+    # if [[ "$archive_file" == *.zip ]]; then
+    #     echo "🔍 正在解压 ZIP 文件: $archive_file"
+    #     # 统一使用7z解压
+    #     if ! 7z x -y "$archive_file" -o"$target_dir"; then
+    #         echo "❌ 解压 ZIP 文件失败: $archive_file"
+    #         return 1
+    #     fi
+    # elif [[ "$archive_file" == *.7z ]]; then
+    #     echo "🔍 正在解压 7z 文件: $archive_file"
+    #     # 添加 -bsp1 参数以显示进度
+    #     if ! 7z x -y -bsp1 "$archive_file" -o"$target_dir"; then
+    #         echo "❌ 解压 7z 文件失败: $archive_file"
+    #         return 1
+    #     fi
+    # elif [[ "$archive_file" == *.tar ]]; then
+    #     echo "🔍 正在解压 TAR 文件: $archive_file"
+    #     if ! tar xf "$archive_file" -C "$target_dir"; then
+    #         echo "❌ 解压 TAR 文件失败: $archive_file"
+    #         return 1
+    #     fi
+    # elif [[ "$archive_file" == *.tar.gz || "$archive_file" == *.tgz ]]; then
+    #     echo "🔍 正在解压 TAR.GZ 文件: $archive_file"
+    #     if ! tar zxf "$archive_file" -C "$target_dir"; then
+    #         echo "❌ 解压 TAR.GZ 文件失败: $archive_file"
+    #         return 1
+    #     fi
+    # elif [[ "$archive_file" == *.tar.bz2 ]]; then
+    #     echo "🔍 正在解压 TAR.BZ2 文件: $archive_file"
+    #     if ! tar jxf "$archive_file" -C "$target_dir"; then
+    #         echo "❌ 解压 TAR.BZ2 文件失败: $archive_file"
+    #         return 1
+    #     fi
+    # else
+    #     echo "❌ 不支持的压缩文件格式: $archive_file"
+    #     return 1
+    # fi
     
     return 0
 }
@@ -260,6 +285,13 @@ deploy_site() {
     local sql_file="$PACK_ROOT/$username/$domain_name.sql"
     if [ -f "$sql_file" ]; then
         import_sql_file "$domain_name" "$username" "$sql_file"
+            # === 配置数据库===
+        local db_name="${username}_${domain}"
+        mysql -uroot -h localhost -P3306 -p15a58524d3bd2e49 $db_name -e "
+    UPDATE wp_options
+    SET option_value = 'https://www.${domain_name}'
+    WHERE option_name IN ('home', 'siteurl');
+    "
     else
         echo "⚠️ 未找到 SQL 文件: $sql_file"
         # 尝试查找其他可能的 SQL 文件名格式
@@ -296,13 +328,12 @@ deploy_site() {
     # === 修改 wp-config.php 文件 ===
     local wp_config_path="$target_dir/wp-config.php"
     if [ -f "$wp_config_path" ]; then
-        insert_https_config "$wp_config_path"
+        update_wp_config "$wp_config_path"
     else
         echo "⚠️ 未找到 wp-config.php 文件，跳过 HTTPS 配置"
     fi
     
 
-    
     # === 写入伪静态规则 ===
     write_rewrite_rules "$domain_name"
     
@@ -352,7 +383,7 @@ process_sql_file() {
     # fi
 }
 
-# === 主程序开始 ===
+# === 主程序开始 🎈===
 
 # 检查必要的命令
 check_commands
@@ -394,7 +425,7 @@ for user_dir in "${user_dirs[@]}"; do
     
     # 首先处理SQL备份文件(将所有站点的sql文件都解压,然后逐个导入到对应的数据库)
     # 数据库名字:调用process_sql_file进行处理
-    sql_archives=($(ls *.sql.zip *.sql.7z 2>/dev/null))
+    sql_archives=($(ls *.sql.zip *.sql.7z  2>/dev/null))
     if [ -f "${sql_archives[0]}" ]; then
         echo "🔍 找到SQL备份文件，优先处理"
         
@@ -415,7 +446,7 @@ for user_dir in "${user_dirs[@]}"; do
 
     # 然后处理WordPress站点文件（过滤sql压缩文件SQL备份文件）
     site_archives=()
-    for archive in *.zip *.7z; do
+    for archive in *.zip *.7z *.tar ; do
         if [[ -f "$archive" && "$archive" != *.sql.* ]]; then
             site_archives+=("$archive")
         fi

@@ -378,7 +378,19 @@ cat_lock = threading.Lock()
 
 LOG_HEADER = ["SKU", "Name", "id", "Status", "message", "datetime"]
 
-
+# 统计处理后的各个csv文件分别有多少条数据
+def count_lines_csv(CSV_DIR):
+    """统计csv的数据行数"""
+    TOTAL = 0
+    for file in os.listdir(CSV_DIR):
+        if not file.endswith(".csv"):
+            continue
+        file = os.path.join(CSV_DIR, file)
+        df = pd.read_csv(file)
+        TOTAL += len(df)
+        print(file, len(df))
+    
+    return TOTAL
 def get_data_from_csv(args, lines, reader, url_field, name_field):
     """
     将读取的csv文件中的图片名字和图片链接

@@ -396,7 +396,7 @@ def parse_args():
         "(此选项是quality-rule的简化版,更多需求可以通过quality-rule更灵活地调整)",
     )
     parser.add_argument(
-        "-r",
+        "-R",
         "--quality-rule",
         type=str,
         default="",
