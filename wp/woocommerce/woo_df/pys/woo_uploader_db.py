@@ -384,7 +384,8 @@ class WooCommerceProductImporter:
             (
                 attachment_id,
                 "_wp_attached_file",
-                f"{year}/{formatted_month}/{img_file}",
+                # f"{year}/{formatted_month}/{img_file}",
+                f"{year}/{img_file}",
             ),
             (
                 attachment_id,

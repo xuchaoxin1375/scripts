@@ -1,1 +1,1 @@
-define( 'DB_NAME','zsh_1.de'); 
+define( 'DB_NAME','zsh_'); 

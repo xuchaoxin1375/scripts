@@ -28,8 +28,9 @@ import logging
 import os
 import random
 import re
-import shutil
+
 import subprocess
+import shutil
 import threading
 import time
 
@@ -114,9 +115,51 @@ logger.info("SEP_PATTERN: %s", URL_SEP_PATTERN)
 COOKIES = {"sessionid": "abc123xyz", "csrftoken": "csrf_token_here"}
 
 
+def download_by_iwr(url, output_path, user_agent=None, timeout=30, verify_ssl=True):
+    """
+    使用 PowerShell 的 Invoke-WebRequest 下载指定 URL 到本地文件。
+
+    :param url: 下载链接
+    :param output_path: 保存到的本地文件路径
+    :param user_agent: 可选，自定义 User-Agent
+    :param timeout: 超时时间（秒）
+    :param verify_ssl: 是否校验证书
+    :return: True/False
+
+    """
+    # 构造 PowerShell 命令
+    cmd = [
+        "pwsh",
+        "-NoProfile",
+        "-Command",
+        "Invoke-WebRequest",
+        f"-Uri '{url}'",
+        f"-OutFile '{output_path}'",
+        f"-TimeoutSec {timeout}",
+    ]
+    if user_agent:
+        cmd.append(f"-Headers @{{'User-Agent'='{user_agent}'}}")
+    if not verify_ssl:
+        cmd.append("-SkipCertificateCheck")
+    # 合并为单行字符串
+    ps_command = " ".join(cmd)
+    try:
+        result = subprocess.run(
+            ps_command, shell=True, capture_output=True, text=True, check=False
+        )
+        if result.returncode == 0:
+            return True
+        else:
+            error("Invoke-WebRequest 下载失败: %s", result.stderr.strip())
+            return False
+    except Exception as e:
+        error("调用 Invoke-WebRequest 失败: %s", e)
+        return False
+
+
 def download_by_curl(
     url: str,
-    output_file="",
+    output_path="",
     output_dir="./",
     use_remote_name: bool = False,  # 新增参数：是否使用远程文件名
     user_agent: str = "Mozilla/5.0",
@@ -166,7 +209,7 @@ def download_by_curl(
     # 如果不使用远程文件名，则确保输出目录存在，并拼接文件名
     if not use_remote_name:
         # 确保输出目录存在
-        output_dir = os.path.dirname(output_file)
+        output_dir = os.path.dirname(output_path)
         os.makedirs(output_dir, exist_ok=True)
     else:
         # 使用远程文件名,确认输出目录存在
@@ -175,9 +218,9 @@ def download_by_curl(
         os.chdir(output_dir)
         parsed_url = urlparse(url)
         # 这里计算的文件名仅供参考
-        output_file = os.path.basename(parsed_url.path)
-        output_file = os.path.abspath(os.path.join(output_dir, output_file))
-        print(f"使用远程文件名, 计算的文件名(basename供参考): {output_file}")
+        output_path = os.path.basename(parsed_url.path)
+        output_path = os.path.abspath(os.path.join(output_dir, output_path))
+        print(f"使用远程文件名, 计算的文件名(basename供参考): {output_path}")
         # output_file = os.path.basename(url)
 
     # 构建 curl 命令参数(基础参数,建议移动到函数默认参数中)
@@ -199,10 +242,10 @@ def download_by_curl(
     if use_remote_name:
         cmd += ["-O"]
     else:
-        if not output_file:
+        if not output_path:
             raise ValueError("output_path 不能为空")
 
-        cmd += ["-o", output_file]
+        cmd += ["-o", output_path]
 
     # 添加额外参数
     if extra_args:
@@ -215,15 +258,15 @@ def download_by_curl(
         debug(f"正在下载: {url}")
         subprocess.run(cmd, check=True)
         if use_remote_name:
-            info(f"文件已保存至(仅供参考): {output_file}")
+            info(f"文件已保存至(仅供参考): {output_path}")
         else:
-            info(f"文件已保存至: {output_file}")
+            info(f"文件已保存至: {output_path}")
         return True
     except subprocess.CalledProcessError as e:
         error(f"curl 执行失败，错误码: {e.returncode}")
         return False
     except PermissionError as pe:
-        raise PermissionError(f"无权写入路径: {output_file}") from pe
+        raise PermissionError(f"无权写入路径: {output_path}") from pe
     finally:
         # 下载完成后,是否回到原目录
         if reset_cwd:
@@ -491,14 +534,23 @@ class ImageDownloader:
                     self.stats.add_skipped()
                     return True
                 elif self.use_shutil:
-                    # print("使用shutil(curl)下载图片")
-                    # 目前使用curl下载图片(将来可能扩展)
-                    res = download_by_curl(
-                        url,
-                        output_file=file_path,
-                        output_dir=output_dir,
-                        timeout=self.timeout,
-                    )
+                    res = False
+                    if self.use_shutil == "curl":
+                        # print("使用shutil(curl)下载图片")
+                        # 目前使用curl下载图片(将来可能扩展)
+                        res = download_by_curl(
+                            url=url,
+                            output_path=file_path,
+                            output_dir=output_dir,
+                            timeout=self.timeout,
+                        )
+                    elif self.use_shutil == "iwr":
+                        # print("使用shutil(iwr)下载图片")
+                        res = download_by_iwr(
+                            url=url,
+                            output_path=file_path,
+                            timeout=self.timeout,
+                        )
                     if res:
                         self.stats.add_success()
                 else:

@@ -4,7 +4,7 @@
 # 默认值
 DEFAULT_PACK_ROOT="/srv/uploads/uploader/files"
 DEFAULT_DB_USER="root"
-DEFAULT_DB_PASS="15a58524d3bd2e49"
+DEFAULT_DB_PASSWORD="15a58524d3bd2e49"
 DB_HOST="localhost"                  # 数据库主机
 PACK_ROOT="/www/wwwroot"           # WordPress 网站根目录
 STOP_EDITING_LINE='Add any custom values between this line and the "stop editing" line'
@@ -27,7 +27,7 @@ while [[ "$#" -gt 0 ]]; do
     case $1 in
         --pack-root) PACK_ROOT="$2"; shift ;;
         --db-user) DB_USER="$2"; shift ;;
-        --db-pass) DB_PASS="$2"; shift ;;
+        --db-pass) DB_PASSWORD="$2"; shift ;;
         --user-dir) USER_DIR="$2"; shift ;;  # 指定用户目录,则将工作范围缩小到该目录下
         --help) show_help ;;
         *) echo "未知参数: $1"; exit 1 ;;
@@ -38,7 +38,7 @@ done
 # 使用默认值或用户提供的值
 PACK_ROOT=${PACK_ROOT:-$DEFAULT_PACK_ROOT}
 DB_USER=${DB_USER:-$DEFAULT_DB_USER}
-DB_PASS=${DB_PASS:-$DEFAULT_DB_PASS}
+DB_PASSWORD=${DB_PASSWORD:-$DEFAULT_DB_PASSWORD}
 
 # 提示用户当前使用的 PACK_ROOT
 echo "使用 PACK_ROOT: $PACK_ROOT"
@@ -84,9 +84,11 @@ insert_https_config() {
     STOP_LINE=$(awk -v search="$STOP_EDITING_LINE" '$0 ~ search {print NR}' "$wp_config_path" | head -n 1)
     if [ -n "$STOP_LINE" ]; then
         sed -i "${STOP_LINE}a\\n$HTTPS_CONFIG_LINE" "$wp_config_path" 
-        sed -ri   "s/(define\(\s*'DB_NAME',)(.*)\)/\1'$username_$domain')/"
-        
-        echo "✅ HTTPS 配置已插入。"
+        sed -ri   "s/(define\(\s*'DB_HOST',)(.*)\)/\1'${DB_HOST}')/"
+        sed -ri   "s/(define\(\s*'DB_NAME',)(.*)\)/\1'${username}_$domain')/"
+        sed -ri   "s/(define\(\s*'DB_USER',)(.*)\)/\1'${DB_USER}')/"
+        sed -ri   "s/(define\(\s*'DB_PASSWORD',)(.*)\)/\1'${DB_PASSWORD}')/"
+        echo "✅ wp-config.php 配置已插入。"
         return 0
     else
         echo "⚠️ 未找到 'stop editing' 行，无法插入配置。请手动检查 wp-config.php。"
@@ -106,14 +108,14 @@ import_sql_file() {
     echo "📦 正在处理数据库: $db_name"
 
     # 创建数据库（如果不存在）
-    if ! echo "CREATE DATABASE IF NOT EXISTS \`${db_name}\`;" | mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS"; then
+    if ! echo "CREATE DATABASE IF NOT EXISTS \`${db_name}\`;" | mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASSWORD"; then
         echo "❌ 创建数据库失败，请检查数据库连接和权限。"
         return 1
     fi
 
     # 导入 SQL 文件
     echo "🚚 正在导入 SQL 文件: $sql_file 到数据库 $db_name"
-    if mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$db_name" < "$sql_file"; then
+    if mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASSWORD" "$db_name" < "$sql_file"; then
         echo "✅ 数据库 $db_name 成功导入。"
         return 0
     else

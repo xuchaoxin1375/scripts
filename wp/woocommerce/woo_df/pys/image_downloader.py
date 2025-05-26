@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import sys
+import subprocess
 
 # from logging import error, exception, info, warning, debug
 from comutils import (
@@ -173,13 +174,15 @@ def parse_args():
     parser.add_argument(
         "-o", "--output-dir", default=IMG_DIR, help="图片保存目录 (默认: ./images)"
     )
-    parser.add_argument("-O", "--override",action="store_true", default=False, help="是否覆盖已有图片")
+    parser.add_argument(
+        "-O", "--override", action="store_true", default=False, help="是否覆盖已有图片"
+    )
     parser.add_argument(
         "-U",
         "--use-shutil",
-        default=False,
-        action="store_true",
-        help="使用curl下载图片(默认: False)",
+        default="",
+        # action="store_true",
+        help="使用外部命令行工具下载图片(curl或iwr)",
     )
     parser.add_argument("-w", "--workers", type=int, default=10, help="下载线程数")
     parser.add_argument(
@@ -187,7 +190,7 @@ def parse_args():
     )
     parser.add_argument("-r", "--retry", type=int, default=0, help="下载失败重试次数 ")
     parser.add_argument(
-        "-R", "--quality-rule", default="auto", help="压缩图片的质量规则(默认:auto)"
+        "-R", "--quality-rule", default="auto", help="压缩图片的质量规则"
     )
     parser.add_argument(
         "-u", "--user-agent", default=USER_AGENTS[0], help="自定义User-Agent"
@@ -217,6 +220,7 @@ def parse_args():
     )
 
     return parser.parse_args()
+
 
 
 def main():
@@ -276,7 +280,7 @@ def main():
                         lines=lines,
                         selected_ids=selected_csv_field_ids,
                     )
-    print(f"use shutil:{args.use_shutil}🎈")
+    debug(f"use shutil:{args.use_shutil}🎈")
     # 创建下载器
     downloader = ImageDownloader(
         max_workers=args.workers,

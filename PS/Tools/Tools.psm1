@@ -86,10 +86,11 @@ function Get-WpSitePacks
 
 
     )
-    # 尝试从站点根目录解析站点域名
-    $Domain = $SiteDirecotry.Split("/")[-1]
+    # 尝试从站点根目录字符串解析站点域名
+    # $Domain = $SiteDirecotry.Split("/")[-1]
+    $Domain = Split-Path $SiteDirecotry -Leaf
     Write-Debug "[+] Domain: $Domain"
-
+    # return 
     $key = Get-MysqlKeyInline -Key $DatabaseKey
     $SqlFile = "$OutputDir/${Domain}.sql"
     $SqlFileArchive = "$SqlFile.zip"
