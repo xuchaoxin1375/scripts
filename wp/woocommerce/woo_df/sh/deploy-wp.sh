@@ -313,10 +313,7 @@ deploy_site() {
     else
         echo "ℹ️ 未找到 wps-hide-login.bak 目录，跳过重命名"
     fi
-    # 设置目录权限和所有者
-    echo "🔒 设置目录权限和所有者"
-    chmod -R 755 "$target_dir"
-    chown -R www:www "$target_dir"
+
     
     # 检查是否为有效的 WordPress 目录
     if [ -f "$target_dir/wp-config-sample.php" ] || [ -f "$target_dir/wp-config.php" ] || [ -d "$target_dir/wp-content" ]; then
@@ -333,7 +330,11 @@ deploy_site() {
         echo "⚠️ 未找到 wp-config.php 文件，跳过 HTTPS 配置"
     fi
     
-
+    # 设置目录权限和所有者
+    echo "🔒 设置目录权限和所有者"
+    chmod -R 755 "$target_dir"
+    chown -R www:www "$target_dir"
+    
     # === 写入伪静态规则 ===
     write_rewrite_rules "$domain_name"
     
