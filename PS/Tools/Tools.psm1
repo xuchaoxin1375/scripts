@@ -82,8 +82,8 @@ function Get-WpSitePacks
         [Alias('Directory')]$SiteDirecotry,
         $DatabaseName = "",
         $DatabaseKey = $env:MySqlKey_LOCAL,
-        $OutputDir = "$home/Desktop"
-
+        $OutputDir = "$home/Desktop",
+        [ValidateSet('zip', '7z')]$ArchiveMode = 'zip'
 
     )
     # 尝试从站点根目录字符串解析站点域名
@@ -93,8 +93,12 @@ function Get-WpSitePacks
     # return 
     $key = Get-MysqlKeyInline -Key $DatabaseKey
     $SqlFile = "$OutputDir/${Domain}.sql"
-    $SqlFileArchive = "$SqlFile.zip"
-    $SitePackArchive = "$OutputDir/${Domain}.zip"
+    $SqlFileArchiveZip = "$SqlFile.zip"
+    $SqlFileArchive7z = "$SqlFile.7z"
+    $SitePackArchiveZip = "$OutputDir/${Domain}.zip"
+    $SitePackArchive7z = "$OutputDir/${Domain}.7z"
+    $SitePackArchive = ""
+    $SqlFileArchive = ""
     Write-Debug "[+] Trying to export database file to $SqlFile"
     # 导出数据库文件并压缩
     if ($DatabaseName -eq "")
@@ -103,12 +107,39 @@ function Get-WpSitePacks
         Write-Host "数据库名称未指定，使用默认值: $DatabaseName"
     }
     Export-MysqlFile -server localhost -DatabaseName $DatabaseName -key $key -SqlFilePath $SqlFile
-    Compress-Archive -Path $SqlFile -DestinationPath $SqlFileArchive -Force
+    # Compress-Archive -Path $SqlFile -DestinationPath $SqlFileArchiveZip -Force
     # 打包站点目录
+
+    if($ArchiveMode -eq '7z')
+    {
+
+        $Have7z = Get-Command 7z -ErrorAction SilentlyContinue
+        if (! $Have7z)
+        {
+            Write-Host "7z命令行工具未找到,请安装7z命令行工具,或者将其添加到环境变量PATH中"
+            exit
+        }
+        else
+        {
+            7z a -t7z $SqlFileArchive7z $SqlFile
+            7z a -t7z $SitePackArchive7z $SiteDirecotry
+            $SitePackArchive = $SitePackArchive7z
+            $SqlFileArchive = $SqlFileArchive7z
+        }
+    }
+    elseif ($ArchiveMode -eq 'zip')
+    {
+        Write-Host "使用默认的zip打包方式"
+        Compress-Archive -Path $SqlFile -DestinationPath $SqlFileArchiveZip -Force
+        Compress-Archive -Path $SiteDirecotry -DestinationPath $SitePackArchiveZip -Force
+        $SitePackArchive = $SitePackArchiveZip
+        $SqlFileArchive = $SqlFileArchiveZip
+    }
     # $SitePackArchive = Compress-Tar -Directory $SiteDirecotry 
-    Compress-Archive -Path $SiteDirecotry -DestinationPath $SitePackArchive -Force
+
     # 列出已经打包的文件
-    Get-ChildItem $SqlFileArchive $SitePackArchive
+    Get-ChildItem $SqlFileArchive 
+    Get-ChildItem $SitePackArchive
     # 移除数据库sql文件
     Remove-Item $SqlFile -Verbose
 }
