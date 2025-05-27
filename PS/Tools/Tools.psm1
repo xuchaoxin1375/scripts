@@ -81,7 +81,7 @@ function Get-WpSitePacks
         [parameter(Mandatory = $true, ValueFromPipeline = $true)]
         [Alias('Directory')]$SiteDirecotry,
         $DatabaseName = "",
-        $DatabaseKey = "root",
+        $DatabaseKey = $env:MySqlKey_LOCAL,
         $OutputDir = "$home/Desktop"
 
 
@@ -94,6 +94,7 @@ function Get-WpSitePacks
     $key = Get-MysqlKeyInline -Key $DatabaseKey
     $SqlFile = "$OutputDir/${Domain}.sql"
     $SqlFileArchive = "$SqlFile.zip"
+    $SitePackArchive = "$OutputDir/${Domain}.zip"
     Write-Debug "[+] Trying to export database file to $SqlFile"
     # 导出数据库文件并压缩
     if ($DatabaseName -eq "")
@@ -104,7 +105,8 @@ function Get-WpSitePacks
     Export-MysqlFile -server localhost -DatabaseName $DatabaseName -key $key -SqlFilePath $SqlFile
     Compress-Archive -Path $SqlFile -DestinationPath $SqlFileArchive -Force
     # 打包站点目录
-    $SitePackArchive = Compress-Tar -Directory $SiteDirecotry 
+    # $SitePackArchive = Compress-Tar -Directory $SiteDirecotry 
+    Compress-Archive -Path $SiteDirecotry -DestinationPath $SitePackArchive -Force
     # 列出已经打包的文件
     Get-ChildItem $SqlFileArchive $SitePackArchive
     # 移除数据库sql文件

@@ -35,11 +35,12 @@ domain = "wp.com"  # 域名
 url = f"{protocal}://{domain}"  # 不要有多余的路径
 consumer_key = "ck_d27091399219c406fb6f420f498aecfb8e6fe812"
 consumer_secret = "cs_5bbfa3135dd9ff605f920f8c888b3036e0a69ec7"
+##
 
 # 这里指定目录,不是文件!🎈(指定文件请到备用方案2中指定)
 
-# CSV_DIR = r"S:\csv_demo\current"
-CSV_DIR = r"S:\grandwagonsupply"
+CSV_DIR = r"C:\repos\scripts\wp\woocommerce\woo_df\csv_dir"
+# CSV_DIR = r"S:\grandwagonsupply"
 
 MAX_WORKERS_FILES = 1  # 同时上传的文件数(一般不超过7);
 MAX_WORKERS_PER_FILE = 1  # 每份文件上传的线程数
@@ -57,9 +58,13 @@ LOG_FILE_DIR = f"{CSV_DIR}/log"
 LOG_FILE_UPLOAD = f"{LOG_FILE_DIR}/upload-{domain}-{TIME_STR}.csv"
 # LOG_FILE_UPLOAD_BAK = f"C:/log/upload-{domain}.csv"
 # LOG_FILE_UPLOAD_FAIL=f"{CSV_DIR}/log/upload_fail-{domain}-{time_str}.csv"
+
 # 计算Log文件路径所在目录,将它们合并成一个文件
-merge_csv_files(LOG_FILE_DIR, remove_old_files=True, out_file=LOG_FILE_UPLOAD)
-remove_duplicate_rows(LOG_FILE_UPLOAD,subset=CSVProductFields.SKU.value) #去除重复行(SKU重复)
+merge_csv_files(directory=LOG_FILE_DIR, remove_old_files=True, out_file=LOG_FILE_UPLOAD)
+##
+remove_duplicate_rows(file=LOG_FILE_UPLOAD,subset=CSVProductFields.SKU.value) #去除重复行(SKU重复)
+
+
 # 主推方案:获取指定目录下的csv文件列表
 files_from_dir = os.listdir(CSV_DIR)
 dir_csv_files = [os.path.join(CSV_DIR, f) for f in files_from_dir if f.endswith(".csv")]
@@ -84,6 +89,7 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
+##
 
 # 主函数
 if __name__ == "__main__":
@@ -123,3 +129,5 @@ if __name__ == "__main__":
 
     ## 结尾清理log_thread(适合于从命令行中执行时使用)
     # cleanup_log_thread(log_thread)
+
+##

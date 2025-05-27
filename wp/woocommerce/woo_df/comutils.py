@@ -53,6 +53,7 @@ def merge_csv_files(
         >>> merged_df = merge_csv_files(r'./csv_demo')
         >>> print(merged_df)
     """
+    os.makedirs(directory, exist_ok=True)
     # 获取所有 .csv 文件的绝对路径
     csv_files = [
         os.path.join(directory, file)
@@ -77,7 +78,7 @@ def merge_csv_files(
     return merged_df
 
 
-def remove_duplicate_rows(csv_file, subset=None, inplace=True):
+def remove_duplicate_rows(file, subset=None, inplace=True):
     """移除csv文件中的重复行,默认直接修改原文件
     例如sku重复的行，只保留一条
 
@@ -86,14 +87,14 @@ def remove_duplicate_rows(csv_file, subset=None, inplace=True):
         inplace (bool, optional): 是否直接修改原文件，默认为 True。
 
     """
-    print(f"remove duplicate rows in subset [{subset}] from {csv_file}")
+    print(f"remove duplicate rows in subset [{subset}] from {file}")
     df = pd.DataFrame()
-    if os.path.exists(csv_file):
-        df = pd.read_csv(csv_file)
+    if os.path.exists(file):
+        df = pd.read_csv(file)
         df.drop_duplicates(subset=subset, inplace=inplace)
-        df.to_csv(csv_file, index=False)
+        df.to_csv(file, index=False)
     else:
-        error(f"{csv_file} not exists")
+        print(f"{file} not exists")
     return df
 
 
@@ -378,6 +379,7 @@ cat_lock = threading.Lock()
 
 LOG_HEADER = ["SKU", "Name", "id", "Status", "message", "datetime"]
 
+
 # 统计处理后的各个csv文件分别有多少条数据
 def count_lines_csv(CSV_DIR):
     """统计csv的数据行数"""
@@ -389,8 +391,10 @@ def count_lines_csv(CSV_DIR):
         df = pd.read_csv(file)
         TOTAL += len(df)
         print(file, len(df))
-    
+
     return TOTAL
+
+
 def get_data_from_csv(args, lines, reader, url_field, name_field):
     """
     将读取的csv文件中的图片名字和图片链接

@@ -5,6 +5,7 @@
 DEFAULT_PACK_ROOT="/srv/uploads/uploader/files"
 DEFAULT_DB_USER="root"
 DEFAULT_DB_PASSWORD="15a58524d3bd2e49"
+SERVER_SITE_HOME="/www/wwwroot"
 DB_HOST="localhost"                  # 数据库主机
 # PACK_ROOT="/www/wwwroot"           # WordPress 网站根目录
 STOP_EDITING_LINE='Add any custom values between this line and the "stop editing" line'
@@ -83,11 +84,13 @@ update_wp_config() {
     local STOP_LINE
     STOP_LINE=$(awk -v search="$STOP_EDITING_LINE" '$0 ~ search {print NR}' "$wp_config_path" | head -n 1)
     if [ -n "$STOP_LINE" ]; then
-        sed -i "${STOP_LINE}a\\n$HTTPS_CONFIG_LINE" "$wp_config_path" 
-        sed -ri   "s/(define\(\s*'DB_HOST',)(.*)\)/\1'${DB_HOST}')/"
-        sed -ri   "s/(define\(\s*'DB_NAME',)(.*)\)/\1'$db_name')/"
-        sed -ri   "s/(define\(\s*'DB_USER',)(.*)\)/\1'${DB_USER}')/"
-        sed -ri   "s/(define\(\s*'DB_PASSWORD',)(.*)\)/\1'${DB_PASSWORD}')/"
+
+        sed -i "${STOP_LINE}a$HTTPS_CONFIG_LINE" "$wp_config_path" 
+
+        sed -ri   "s/(define\(\s*'DB_HOST',)(.*)\)/\1'${DB_HOST}')/" "$wp_config_path" 
+        sed -ri   "s/(define\(\s*'DB_NAME',)(.*)\)/\1'$db_name')/" "$wp_config_path" 
+        sed -ri   "s/(define\(\s*'DB_USER',)(.*)\)/\1'${DB_USER}')/" "$wp_config_path" 
+        sed -ri   "s/(define\(\s*'DB_PASSWORD',)(.*)\)/\1'${DB_PASSWORD}')/" "$wp_config_path" 
         echo "✅ wp-config.php 配置已插入。"
         return 0
     else
@@ -157,43 +160,8 @@ EOF
         return 1
     fi
 }
-# === 函数：检查并处理指定的目录(如果已经存在询问是否移除,否则不处理该目录) ===
-# 参数:
-#   $1 - 目标目录路径
-#   $2 - 操作描述（用于提示信息）
-# 返回值:
-#   0 - 继续操作
-#   1 - 跳过操作
-check_and_handle_directory() {
-    local target_dir="$1"
-    local operation_desc="$2"
-    
-    # 检查目标目录是否已存在且不为空
-    if [ -d "$target_dir" ] && [ "$(ls -A "$target_dir")" ]; then
-        echo "⚠️ 警告: 目标目录 $target_dir 已存在且不为空"
-        while true; do
-            echo -n "是否覆盖现有目录以继续${operation_desc}? (y/n): "
-            read -r answer
-            case "$answer" in
-                [yY]|[yY][eE][sS])
-                    echo "🗑️ 正在清空目录: $target_dir"
-                    rm -rf "${target_dir}"/*
-                    return 0  
-                    ;;
-                [nN]|[nN][oO])
-                    echo "⏭️ 保留${operation_desc}"
-                    return 1  
-                    ;;
-                *)
-                    echo "无效输入，请输入 'y' (是) 或 'n' (否)."
-                    ;;
-            esac
-        done
-    fi
-    
-    # 目录不存在或为空，直接继续
-    return 0
-}
+
+
 
 # === 函数：解压压缩文件 ===
 extract_archive() {
@@ -267,27 +235,47 @@ deploy_site() {
     
     echo "📦 正在处理网站: $domain_name"
     
-    # === 解压操作 ===
-    local extracted_domain_dir="$PACK_ROOT/$username/$domain_name"
-    # local extracted_domain_dir="$TARGET_ROOT/$username/$domain_name/wordpress"
-    check_and_handle_directory "$extracted_domain_dir" "解压"
-    if ! extract_archive "$PACK_ROOT/$username/$archive_file" "$extracted_domain_dir"; then
-        echo "❌ 解压失败，跳过部署: $domain_name"
-        return 1
-    fi
+    # === 解压站点压缩包 ===
+    # local extracted_domain_dir="$PACK_ROOT/$username/$domain_name"
+    local site_dir_archive="$PACK_ROOT/$username/$archive_file"
+    local site_domain_home="$SERVER_SITE_HOME/$username/$domain_name"
+    local site_expanded_dir="$site_domain_home/$domain_name"
+    local target_dir="$site_domain_home/wordpress"
     
-    if [ ! -d "$extracted_domain_dir" ]; then
-        echo "❌ 解压后目录不存在: $extracted_domain_dir"
-        return 1
+    #如果存在同名目录,则询问用户是否覆盖
+    if [ -d "$site_expanded_dir" ]; then
+        echo "⚠️ 目标目录已存在: $site_expanded_dir"
+        echo "是否覆盖现有目录? (yY/n): "
+        read -r response
+        if [[ "$response" != "y" && "$response" != "Y" ]]; then
+            echo "用户选择不覆盖，跳过此解压步骤: $domain_name"
+        else
+            echo "用户选择覆盖现有目录: $site_expanded_dir"
+            rm -rf "$site_expanded_dir"  # 删除现有目录
+            if ! extract_archive "$site_dir_archive" "$site_domain_home"; then
+                echo "❌ 解压失败，跳过部署: $domain_name"
+                return 1
+            fi
+            mv  "$site_expanded_dir"/* "$target_dir" -f  # 移动新目录内容到目标目录
+
+        fi
+    else
+        if ! extract_archive "$site_dir_archive" "$site_domain_home"; then
+            echo "❌ 解压失败，跳过部署: $domain_name"
+            return 1
+        fi
+        mkdir -p "$target_dir"
+        mv  "$site_expanded_dir"/* "$target_dir" -f  # 移动新目录内容到目标目录
     fi
+
     
     # === 检查并导入对应的 SQL 文件 ===
     local sql_file="$PACK_ROOT/$username/$domain_name.sql"
     if [ -f "$sql_file" ]; then
         import_sql_file "$domain_name" "$username" "$sql_file"
-            # === 配置数据库===
-        local db_name="${username}_${domain}"
-        mysql -uroot -h localhost -P3306 -p15a58524d3bd2e49 $db_name -e "
+        # === 配置数据库===
+        local db_name="${username}_${domain_name}"
+        mysql -uroot -h localhost -P3306 -p"$DB_PASSWORD" "$db_name" -e "
     UPDATE wp_options
     SET option_value = 'https://www.${domain_name}'
     WHERE option_name IN ('home', 'siteurl');
@@ -302,17 +290,29 @@ deploy_site() {
         # fi
     fi
     # === 站点根目录:创建目标目录并移动内容 ===
-    local target_dir="$extracted_domain_dir/wordpress"
-    
-    check_and_handle_directory "$target_dir" "移动根目录"
-    
-    echo "🚚 移动解压后的内容到目标路径: $target_dir"
-    # mv "$extracted_domain_dir"/* "$target_dir/" || {
-    mv "${extracted_domain_dir}/${domain_name}" "$target_dir/" || {
-        echo "❌ 移动文件失败"
-        return 1
-    }
-    
+    # echo "📂 正在移动网站根目录到目标目录: $target_dir"
+    # # 检查目标目录是否存在,如果存在则发出提示,并且移除旧目录,然后在移动新目录
+    # if [ -d "$target_dir" ]; then
+    #     echo "⚠️ 目标目录已存在: $target_dir"
+    #     echo "正在尝试移除旧目录..."
+    #     rm -rf "$target_dir" || {
+    #         echo "!未完全删除旧目录: $target_dir"
+    #     }
+    # fi
+    # echo "移动新目录内容到目标目录: $target_dir"
+    # mv "$extracted_domain_dir"/* "$target_dir" -f
+    # 正式移动网站根目录到目标目录
+
+    # 将可能阻碍登录后台wps-hide-login.bak这个插件目录改为wps-hide-login
+    local plugins_dir="$target_dir/wp-content/plugins"
+    local wps_hide_login_dir="$plugins_dir/wps-hide-login"
+    local wps_hide_login_dir_bak="${wps_hide_login_dir}.bak"
+    if [ -d "$wps_hide_login_dir_bak" ]; then
+        echo "🔄 重命名 wps-hide-login.bak 为 wps-hide-login"
+        mv "$target_dir/wps-hide-login.bak" "$target_dir/wps-hide-login"
+    else
+        echo "ℹ️ 未找到 wps-hide-login.bak 目录，跳过重命名"
+    fi
     # 设置目录权限和所有者
     echo "🔒 设置目录权限和所有者"
     chmod -R 755 "$target_dir"
@@ -357,7 +357,6 @@ process_sql_file() {
     # 解压SQL备份文件
     if ! extract_archive "$user_dir/$archive_file" "$user_dir"; then
         echo "❌ 解压SQL备份文件失败: $archive_file"
-        rm -rf "$user_dir"
         return 1
     fi
     
@@ -366,7 +365,6 @@ process_sql_file() {
     
     if [ ${#sql_files[@]} -eq 0 ]; then
         echo "❌ 在解压后的目录中未找到SQL文件"
-        rm -rf "$user_dir"
         return 1
     fi
     
@@ -425,7 +423,7 @@ for user_dir in "${user_dirs[@]}"; do
     
     # 首先处理SQL备份文件(将所有站点的sql文件都解压,然后逐个导入到对应的数据库)
     # 数据库名字:调用process_sql_file进行处理
-    sql_archives=($(ls *.sql.zip *.sql.7z  2>/dev/null))
+    sql_archives=($(ls *.sql.zip *.sql.7z *.sql.tar 2>/dev/null))
     if [ -f "${sql_archives[0]}" ]; then
         echo "🔍 找到SQL备份文件，优先处理"
         
@@ -441,7 +439,7 @@ for user_dir in "${user_dirs[@]}"; do
             fi
         done
     else
-        echo "ℹ️ 未找到SQL备份文件"
+        echo "ℹ️ 未找到SQL压缩文件,跳过解压步骤"
     fi
 
     # 然后处理WordPress站点文件（过滤sql压缩文件SQL备份文件）
