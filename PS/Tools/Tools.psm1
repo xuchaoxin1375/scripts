@@ -80,12 +80,24 @@ function Get-WpSitePacks
     param(
         [parameter(Mandatory = $true, ValueFromPipeline = $true)]
         [Alias('Directory')]$SiteDirecotry,
+        $Domain = "",
         $DatabaseName = "",
         $DatabaseKey = $env:MySqlKey_LOCAL,
         $OutputDir = "$home/Desktop",
         [ValidateSet('zip', '7z')]$ArchiveMode = 'zip'
 
     )
+
+    if ($Domain)
+    {
+        $SiteParentdir = Split-Path $SiteDirecotry -Parent
+        $SiteDirecotryOld = $SiteDirecotry
+        $SiteDirecotry = Join-Path $SiteParentdir $Domain
+        Write-Host $SiteDirecotryOld -ForegroundColor Cyan
+        Write-Host $SiteDirecotry -ForegroundColor Cyan
+        Move-Item $SiteDirecotryOld $SiteDirecotry -Force -Verbose
+        Write-Debug "[+] SiteDirecotry: $SiteDirecotry"
+    }
     # 尝试从站点根目录字符串解析站点域名
     # $Domain = $SiteDirecotry.Split("/")[-1]
     $Domain = Split-Path $SiteDirecotry -Leaf

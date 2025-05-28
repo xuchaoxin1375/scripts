@@ -24,6 +24,7 @@ K = 2**10
 COMPRESS_TRHESHOLD_B = COMPRESS_TRHESHOLD_KB * K
 COMPRESS_TRHESHOLD = COMPRESS_TRHESHOLD_B
 DEFAULT_QUALITY_RULE = "0,50,70 ; 50,200,40 ; 200,10000,20"
+COMPRESS_FOR_FORMATS = (".jpg", ".jpeg", ".png", ".webp")
 
 
 class ImageCompressor:
@@ -52,6 +53,7 @@ class ImageCompressor:
         quality_rule="",
         logger=None,
         skip_format="",
+        compress_for_format=None,
         remove_original=False,
     ):
         """
@@ -71,6 +73,9 @@ class ImageCompressor:
         self.quality_rule = quality_rule  # 用于不同大小区间的质量规则
         self.skip_format_name = (skip_format or "").lower().split(",")
         self.remove_original = remove_original  # 是否尽可能移除原始文件
+        # 仅压缩列出的格式的图片,如果为空,则压缩可能受支持的图片
+        self.compress_for_format = compress_for_format
+        print(f"压缩白名单: {self.compress_for_format}")
 
     @property
     def compress_threshold(self):
@@ -107,8 +112,16 @@ class ImageCompressor:
         try:
             if not os.path.exists(input_path):
                 return False, f"输入文件不存在: {input_path}"
+            self.logger.info(f"开始压缩: {input_path}")
             input_format = os.path.splitext(input_path)[1].lower()
             input_format_name = input_format.strip(".")
+            self.logger.info(f"输入格式:{input_format}-> {input_format_name}")
+            if self.compress_for_format:
+
+                if input_format_name not in self.compress_for_format:
+                    msg = f"不在白名单的格式,跳过: {input_format}|file:{input_path}"
+                    self.logger.info(msg)
+                    return True, msg
             if input_format_name in self.skip_format_name:
                 msg = f"跳过格式: {input_format}|file:{input_path}"
                 self.logger.info(msg)
@@ -258,11 +271,12 @@ class ImageCompressor:
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
-        supported_formats = (".jpg", ".jpeg", ".png", ".webp")
+ 
 
         def process_file(filename: str) -> Optional[Tuple[str, str]]:
             """内部函数"""
-            if filename.lower().endswith(supported_formats):
+            # 判断给定的文件是否为受支持的图片格式文件
+            if filename.lower().endswith(COMPRESS_FOR_FORMATS):
                 input_path = os.path.join(input_dir, filename)
                 base_name = os.path.splitext(filename)[0]
                 output_filename = f"{base_name}.{output_format.lstrip('.')}"
@@ -284,7 +298,7 @@ class ImageCompressor:
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = []
             for filename in os.listdir(input_dir):
-                futures.append(executor.submit(process_file, filename))
+                futures.append(executor.submit(self.compress_image, filename))
                 results["total"] += 1
 
             for future in as_completed(futures):
