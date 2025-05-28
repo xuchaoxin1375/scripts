@@ -137,6 +137,8 @@ class ImageCompressor:
                 exif = img.info.get("exif") if keep_exif else None
                 save_kwargs = {"quality": quality, "optimize": optimize}
 
+                # output_format = output_format or ""
+
                 # 确定输出格式和输出路径(后续要根据目标格式做针对性处理),如果传入的参数缺失值的话
                 if not output_path and not output_format:
                     # 只提供输入路径的情况下,解析输入路径
@@ -218,9 +220,9 @@ class ImageCompressor:
         output_dir: str = "",
         output_format: str = "webp",
         quality: int = QUALITY_DEFAULT,
-        skip_existing: bool = True,
-        max_workers: int = 10,
         overwrite: bool = False,
+        # skip_existing: bool = True,
+        max_workers: int = 10,
     ) -> Dict[str, int | List[str]]:
         """
         批量压缩目录中的图片(多线程版本)
@@ -230,9 +232,8 @@ class ImageCompressor:
             output_dir: 输出目录
             output_format: 输出格式(webp/jpg/png)
             quality: 压缩质量(1-100)
-            skip_existing: 是否跳过已存在的输出文件
-            max_workers: 最大线程数
             overwrite: 是否覆盖已存在文件
+            max_workers: 最大线程数
 
         Returns:
             处理结果统计: {
@@ -267,7 +268,7 @@ class ImageCompressor:
                 output_filename = f"{base_name}.{output_format.lstrip('.')}"
                 output_path = os.path.join(output_dir, output_filename)
 
-                if skip_existing and os.path.exists(output_path) and not overwrite:
+                if os.path.exists(output_path) and not overwrite:
                     return "skipped", f"跳过已存在文件: {output_path}"
 
                 success, msg = self.compress_image(
@@ -340,7 +341,6 @@ def setup_logging(level=logging.INFO, log_file=None, log_format=None):
     logger.addHandler(handler)
 
 
-
 def get_quality_from_rule(rule, size, default_quality=20):
     """
     解析规则字符串，返回对应尺寸的质量参数。
@@ -378,8 +378,6 @@ def get_quality_from_rule(rule, size, default_quality=20):
     except ValueError as e:
         print(f"规则解析错误: {e}")
     return q
-
-
 
 
 if __name__ == "__main__":

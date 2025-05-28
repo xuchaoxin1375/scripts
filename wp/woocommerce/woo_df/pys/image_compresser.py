@@ -33,8 +33,8 @@ def parse_args():
         "-f",
         "--format",
         choices=["webp", "jpg", "png"],
-        default="webp",
-        help="输出格式(webp/jpg/png)",
+        # default="",
+        help="输出格式(webp/jpg/png),默认为原格式,不做格式转换",
     )
     parser.add_argument(
         "-q",
@@ -103,17 +103,19 @@ def main():
     """命令行入口"""
     args = parse_args()
     setup_logging(args.verbose)
+    skip_format=args.skip_format or ""
+    print(f"type:{type(skip_format)};value:[{skip_format}]")
     compressor = ImageCompressor(
         compress_threshold=args.compress_threshold,
         quality_rule=args.quality_rule,
-        skip_format=args.skip_format,
+        skip_format=skip_format,
         remove_original=args.remove_original,
     )
 
     try:
         # 分两种情况处理input(文件或目录),以决定调用单处理还是批处理
         if os.path.isfile(args.input):
-            # 单文件处理
+            # 单文件处理(压缩完一个图片后就退出程序exit)
             output_path = (
                 args.output or os.path.splitext(args.input)[0] + f".{args.format}"
             )
@@ -141,7 +143,6 @@ def main():
                 out_dir,
                 output_format=args.format,
                 quality=args.quality,
-                skip_existing=not args.overwrite,
                 max_workers=args.max_workers,
                 overwrite=args.overwrite,
             )
