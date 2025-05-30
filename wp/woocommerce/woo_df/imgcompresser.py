@@ -81,7 +81,7 @@ class ImageCompressor:
         self.fake_format = fake_format
         self.process_when_size_reduced = process_when_size_reduced
         self.opl = OperationLogger()
-        
+
         self.opl.start()
         print(f"压缩白名单: {self.compress_for_format}")
 
@@ -248,10 +248,12 @@ class ImageCompressor:
                 msg = "文件大小未减少,不覆盖原文件"
             else:
                 # 理想情况:处理后的文件体积变小
+                print(f"处理后的文件体积变小,覆盖原文件: {output_path}")
                 ratio = (new_size / original_size - 1) * 100
                 size_trend = "+" if ratio > 0 else "-"
                 msg = (
-                    f"体积变换({size_trend}): {ratio:.2f}%",
+                    "✅",
+                    f"体积变化({size_trend}): {ratio:.2f}%",
                     f"原始大小: {original_size/1024:.2f}KB, ",
                     f"压缩后: {new_size/1024:.2f}KB, ",
                     f"压缩成功: {input_path} -> {output_path}\n",
@@ -264,12 +266,13 @@ class ImageCompressor:
                     print(f"删除原始文件: {input_path}")
                 # 将临时文件重命名为输出文件
                 if overwrite:
-                    os.remove(output_path)
+                    if os.path.exists(output_path):
+                        os.remove(output_path)
                 os.rename(temp_output_path, output_path)
 
                 self.logger.info(msg)
                 opl.log_success()
-            # 检查 tmp 文件是否存在,如果存在,删除
+            # 检查 tmp 文件是否存在,如果存在,删除(安全语句)
             if os.path.exists(temp_output_path):
                 os.remove(temp_output_path)
 

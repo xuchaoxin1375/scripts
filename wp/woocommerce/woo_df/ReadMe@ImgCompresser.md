@@ -37,8 +37,23 @@
 
 下面用的参数和选项针对我们的业务配置的
 
+### 压缩服务器上的图片
+
+主要针对老方法(api上传的图片未经过处理的情况)
+
+参数序列`-R auto -p -F  -O`
+
+此外主要关心
+
 ```python
-py C:\repos\scripts\wp\woocommerce\woo_df\pys\image_compresser.py C:\Users\Administrator\Pictures\imgs_demo   -R auto -p -F  -O
+
+py C:\repos\scripts\wp\woocommerce\woo_df\pys\image_compresser.py   -R auto -p -F  -O -i C:\Users\Administrator\Pictures\imgs_demo
+```
+
+### 本地方法
+
+```bash
+-R auto -p -F  -O -k -f webp -i
 ```
 
 
