@@ -63,6 +63,18 @@ VERBOSE: 打包完成，输出文件: C:\sites\wp_sites\domain.com.tar
     Write-Verbose "打包完成，输出文件: $OutputFile" -Verbose
     return $OutputFile
 }
+function Get-7zCommand
+{
+    param (
+    )
+    $Have7z = Get-Command 7z -ErrorAction SilentlyContinue
+    if (! $Have7z)
+    {
+        Write-Host "7z命令行工具未找到,请安装7z命令行工具,或者将其添加到环境变量PATH中"
+        exit
+    }
+    return $Have7z
+}
 function Get-WpSitePacks
 {
     <# 
@@ -84,7 +96,7 @@ function Get-WpSitePacks
         $DatabaseName = "",
         $DatabaseKey = $env:MySqlKey_LOCAL,
         $OutputDir = "$home/Desktop",
-        [ValidateSet('zip', '7z')]$ArchiveMode = 'zip'
+        [ValidateSet('zip', '7z', 'tar')]$ArchiveMode = 'zip'
 
     )
 
@@ -107,8 +119,10 @@ function Get-WpSitePacks
     $SqlFile = "$OutputDir/${Domain}.sql"
     $SqlFileArchiveZip = "$SqlFile.zip"
     $SqlFileArchive7z = "$SqlFile.7z"
+    $SqlFileArchiveTar = "$SqlFile.tar"
     $SitePackArchiveZip = "$OutputDir/${Domain}.zip"
     $SitePackArchive7z = "$OutputDir/${Domain}.7z"
+    $SitePackArchiveTar = "$OutputDir/${Domain}.tar"
     $SitePackArchive = ""
     $SqlFileArchive = ""
     Write-Debug "[+] Trying to export database file to $SqlFile"
@@ -122,16 +136,10 @@ function Get-WpSitePacks
     # Compress-Archive -Path $SqlFile -DestinationPath $SqlFileArchiveZip -Force
     # 打包站点目录
 
+
     if($ArchiveMode -eq '7z')
     {
-
-        $Have7z = Get-Command 7z -ErrorAction SilentlyContinue
-        if (! $Have7z)
-        {
-            Write-Host "7z命令行工具未找到,请安装7z命令行工具,或者将其添加到环境变量PATH中"
-            exit
-        }
-        else
+        if(Get-7zCommand)
         {
             7z a -t7z $SqlFileArchive7z $SqlFile
             7z a -t7z $SitePackArchive7z $SiteDirecotry
@@ -147,11 +155,28 @@ function Get-WpSitePacks
         $SitePackArchive = $SitePackArchiveZip
         $SqlFileArchive = $SqlFileArchiveZip
     }
+    elseif($ArchiveMode -eq 'tar')
+    {
+        if(Get-7zCommand)
+        {
+
+            Write-Host "使用tar打包方式"
+            7z a -ttar $SqlFileArchiveTar $SqlFile 
+            7z a -ttar $SitePackArchiveTar $SiteDirecotry
+            $SitePackArchive = $SitePackArchiveTar
+            $SqlFileArchive = $SqlFileArchiveTar
+        }
+    }
+    else
+    {
+        Write-Error "不支持的打包方式: $ArchiveMode"
+        return
+    }
     # $SitePackArchive = Compress-Tar -Directory $SiteDirecotry 
 
     # 列出已经打包的文件
-    Get-ChildItem $SqlFileArchive 
-    Get-ChildItem $SitePackArchive
+    Get-Item $SqlFileArchive 
+    Get-Item $SitePackArchive
     # 移除数据库sql文件
     Remove-Item $SqlFile -Verbose
 }
@@ -2419,6 +2444,22 @@ function Get-CRLFChecker
         $res = $res -replace "`n", "[LF]"
     }
     $res | Select-String -Pattern "\[CR\]|\[LF\]" -AllMatches 
+}
+function Get-SiteMapIndexUrls
+{
+    <# 
+    .SYNOPSIS
+    获取指定列表中的网站地图的urls
+    
+    .PARAMETER DomainLists
+    指定网站地图的urls,可以是一个文件
+
+    #>
+    [CmdletBinding()]
+    param (
+        $DomainLists
+    )
+    Get-Content $DomainLists | ForEach-Object { "`t$_`t https://$_/sitemap_index.xml " } | Get-ContentNL -AsString 
 }
 function Start-GoogleIndexSearch
 {

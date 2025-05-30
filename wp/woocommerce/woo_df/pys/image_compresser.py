@@ -16,7 +16,7 @@ COMPRESS_TRHESHOLD_KB = 0  # 只对指定大小以上的图片文件进行压缩
 K = 2**10
 COMPRESS_TRHESHOLD_B = COMPRESS_TRHESHOLD_KB * K
 COMPRESS_TRHESHOLD = COMPRESS_TRHESHOLD_B
-DEFAULT_QUALITY_RULE = "0,50,70 ; 50,200,40 ; 200,10000,20"
+DEFAULT_QUALITY_RULE = "0,50,70 ; 50,200,40 ; 200,10000,30"
 
 
 def parse_args():
@@ -25,9 +25,23 @@ def parse_args():
         description="图片压缩与转换工具",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("input", help="输入文件或目录路径")
+    # parser.add_argument(
+    #     "input",
+    #     nargs="?",  # 可选
+    #     default=None,
+    #     help="输入文件或目录路径"
+    # )
     parser.add_argument(
-        "-o", "--output", default="compressed", help="输出文件或目录路径(默认设置为输入目录下的compressed目录)"
+        "-i",
+        "--input",
+        dest="input",  # 映射到 args.input
+        help="输入文件或目录路径 (可选参数形式)",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        default="./",
+        help="输出文件或目录路径(如果放空,且input是目录,则默认输出目录为input目录)",
     )
     parser.add_argument(
         "-f",
@@ -80,7 +94,7 @@ def parse_args():
         "-R",
         "--quality-rule",
         type=str,
-        default="auto",
+        # default="auto",
         help="对不同大小图像区间采用不同的quality值的指定规则"
         "例如'50,200,40' 表示50到200KB区间的图片设置quality=70`,多个区间用分号(;)分隔\n 如果使用 `auto`则使用内部的推荐值 ",
     )
@@ -95,6 +109,18 @@ def parse_args():
         action="store_true",
         help="移除原始文件(如果压缩后的格式和原格式不同时,保留源文件,但如果压缩前后格式相同且在同一目录下,则源文件会被覆盖)",
     )
+    parser.add_argument(
+        "-F",
+        "--fake-format",
+        action="store_true",  # 默认不启用,指定此参数启用fake-format
+        help="假装输出格式与输入格式相同,但实际上输出的是空白图片,用于测试压缩效果",
+    )
+    parser.add_argument(
+        "-p",
+        "--process-when-size-reduced",
+        action="store_true",
+        help="当图片大小减少时才保留压缩结果",
+    )
     parser.add_argument("-v", "--verbose", action="store_true", help="显示详细输出")
     return parser.parse_args()
 
@@ -103,26 +129,30 @@ def main():
     """命令行入口"""
     args = parse_args()
     setup_logging(args.verbose)
-    skip_format=args.skip_format or ""
+    skip_format = args.skip_format or ""
     print(f"type:{type(skip_format)};value:[{skip_format}]")
     compressor = ImageCompressor(
         compress_threshold=args.compress_threshold,
         quality_rule=args.quality_rule,
         skip_format=skip_format,
         remove_original=args.remove_original,
+        fake_format=args.fake_format,
+        process_when_size_reduced=args.process_when_size_reduced,
     )
-
+    fmt = args.format or ""
+    print(f"type:{type(fmt)};value:[{fmt}]")
     try:
         # 分两种情况处理input(文件或目录),以决定调用单处理还是批处理
         if os.path.isfile(args.input):
             # 单文件处理(压缩完一个图片后就退出程序exit)
-            output_path = (
-                args.output or os.path.splitext(args.input)[0] + f".{args.format}"
-            )
+            # output_path = (
+            #     args.output or os.path.splitext(args.input)[0] + f".{args.format}"
+            # )
+            output_path = args.output
             success, msg = compressor.compress_image(
                 args.input,
                 output_path,
-                output_format=args.format,
+                output_format=fmt,
                 quality=args.quality,
                 optimize=args.optimize,
                 keep_exif=args.keep_exif,
@@ -132,26 +162,24 @@ def main():
             sys.exit(0 if success else 1)
         elif os.path.isdir(args.input):
             # 批量处理
-            out_dir = args.output or os.path.join(args.input, args.output)
-            if not args.output:
+            output = args.output.strip(".").rstrip("/")
+            out_dir = output or args.input
+            if not output:
                 # print("!批量处理时必须指定输出目录", file=sys.stderr)
                 # sys.exit(1)
-                print(f"批量处理没有指定输出目录,使用默认目录{out_dir}")
+                print(f"批量处理没有指定输出目录🎈,使用默认目录{out_dir}")
 
             results = compressor.batch_compress(
-                args.input,
-                out_dir,
-                output_format=args.format,
+                input_dir=args.input,
+                output_dir=out_dir,
+                output_format=fmt,
                 quality=args.quality,
                 max_workers=args.max_workers,
                 overwrite=args.overwrite,
             )
             print("\n批量处理结果:")
-            print(f"总文件数: {results['total']}")
-            print(f"成功: {results['success']}")
-            print(f"失败: {results['failed']}")
-            print(f"跳过: {results['skipped']}")
-            sys.exit(0 if results["failed"] == 0 else 1)
+            results.get_report()
+
         else:
             print(f"错误: 输入路径不存在 {args.input}", file=sys.stderr)
             sys.exit(1)

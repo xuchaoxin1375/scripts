@@ -171,7 +171,7 @@ extract_archive() {
     # 确保目标目录存在
     mkdir -p "$target_dir"
     
-    echo "🔍 正在解压文件: $archive_file"
+    echo "🔍 正在解压文件: $archive_file -> $target_dir/..."
     # 使用7z解压，支持各种格式
     if ! 7z x -y "$archive_file" -o"$target_dir"; then
         echo "❌ 解压失败: $archive_file"
@@ -227,7 +227,7 @@ deploy_site() {
     # 先去掉 .zip 或 .7z 扩展名
     local domain_name="${archive_file%.*}"
     
-    # 检查是否以 .sql 结尾，如果是则去掉 .sql 后缀
+    # 分析sql文件是属于哪一个域名站点(检查是否以 .sql 结尾，如果是则去掉 .sql 后缀,获得sql所属的域名信息)
     if [[ "$domain_name" == *.sql ]]; then
         echo "⚠️ 检测到文件名包含 .sql 后缀，将其从域名中移除"
         domain_name="${domain_name%.sql}"
@@ -238,24 +238,34 @@ deploy_site() {
     # === 解压站点压缩包 ===
     # local extracted_domain_dir="$PACK_ROOT/$username/$domain_name"
     local site_dir_archive="$PACK_ROOT/$username/$archive_file"
-    local site_domain_home="$SERVER_SITE_HOME/$username/$domain_name"
+    
+    local site_domain_home="$SERVER_SITE_HOME/$username/$domain_name" #例如:/www/wwwroot/zsh/domain.com #对于用7z打包domain.com为目录名的7z包,解压后得到domain.com目录 7z x $site_dir_archive -o$site_domain_home 执行结果得到目录$site_domain_home/domain.com,为了便于引用,将其赋值给变量$site_expanded_dir,表示解压后得到的目录
     local site_expanded_dir="$site_domain_home/$domain_name"
     local target_dir="$site_domain_home/wordpress"
-    
+    # 尝试清空目标目录,以便后续干净插入新内容
+    # mkdir -p "$target_dir"
+    if [ -d "$target_dir" ]; then
+        rm -rf "$target_dir" # 删除网站根目录
+    else
+        mkdir -p "$target_dir" # 创建网站根目录
+    fi
     #如果存在同名目录,则询问用户是否覆盖
     if [ -d "$site_expanded_dir" ]; then
-        echo "⚠️ 目标目录已存在: $site_expanded_dir"
+        echo "⚠️ 检测到相关目录已存在: $site_expanded_dir"
         echo "是否覆盖现有目录? (yY/n): "
         read -r response
         if [[ "$response" != "y" && "$response" != "Y" ]]; then
             echo "用户选择不覆盖，跳过此解压步骤: $domain_name"
         else
-            echo "用户选择覆盖现有目录: $site_expanded_dir"
+            echo "⚠️用户选择覆盖现有目录: $site_expanded_dir"
+            echo "正在删除现有目录并解压新内容 (预计得到目录:$site_expanded_dir) ..."
             rm -rf "$site_expanded_dir"  # 删除现有目录
+            
             if ! extract_archive "$site_dir_archive" "$site_domain_home"; then
                 echo "❌ 解压失败，跳过部署: $domain_name"
                 return 1
             fi
+            
             mv  "$site_expanded_dir"/* "$target_dir" -f  # 移动新目录内容到目标目录
 
         fi
@@ -264,7 +274,7 @@ deploy_site() {
             echo "❌ 解压失败，跳过部署: $domain_name"
             return 1
         fi
-        mkdir -p "$target_dir"
+        
         mv  "$site_expanded_dir"/* "$target_dir" -f  # 移动新目录内容到目标目录
     fi
 

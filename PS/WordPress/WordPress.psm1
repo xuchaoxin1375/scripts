@@ -14,7 +14,27 @@ function Get-WpImages
 
     python $ImageDownloader -c -n -R auto -k -d $Path -o $Directory
 }
-
+function update-WpBaseSql
+{
+    <# 
+    .SYNOPSIS
+    更新本地wordpress模板站的mysql数据库文件
+    .DESCRIPTION
+    $Range = @(1, 2, 4, 6, 7),
+    $Country = @('us', 'fr', 'de', 'es', 'it')
+    .EXAMPLE
+    PS> update-WpBaseSql -Range 1,2,4,6,7 -Country us,fr,de,es,it
+    #>
+    param(
+        $Range = @(1, 2, 4, 6, 7),
+        $Country = @('us', 'fr', 'de', 'es', 'it')
+    )
+    foreach($c in $Country)
+    {
+        $Range | ForEach-Object { Export-MysqlFile -DatabaseName "$_.${c}" -key $env:MySqlKey_LOCAL -SqlFilePath C:\sites\wp_sites\base_sqls\$_.${c}.sql }
+    }
+    
+}
 function Deploy-Wp
 {
     <# 

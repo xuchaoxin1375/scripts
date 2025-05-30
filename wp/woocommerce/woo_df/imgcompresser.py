@@ -8,23 +8,23 @@
 
 """
 
-import argparse
-import sys
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Dict, List, Optional, Tuple
+
 from PIL import Image
 
+from operationlogger import OperationLogger
+
 QUALITY_DEFAULT = 70
-QUALITY_DEFAULT_STRONG = 20
+QUALITY_DEFAULT_STRONG = 30
 COMPRESS_TRHESHOLD_KB = 0  # 只对指定大小以上的图片文件进行压缩(取值为0时全部压缩)
 
 K = 2**10
 COMPRESS_TRHESHOLD_B = COMPRESS_TRHESHOLD_KB * K
 COMPRESS_TRHESHOLD = COMPRESS_TRHESHOLD_B
-DEFAULT_QUALITY_RULE = "0,50,70 ; 50,200,40 ; 200,10000,20"
-COMPRESS_FOR_FORMATS = (".jpg", ".jpeg", ".png", ".webp")
+DEFAULT_QUALITY_RULE = "0,50,70 ; 50,200,40 ; 200,10000,40"
+COMPRESS_FOR_FORMATS = ("jpg", "jpeg", "png", "webp")
 
 
 class ImageCompressor:
@@ -53,8 +53,10 @@ class ImageCompressor:
         quality_rule="",
         logger=None,
         skip_format="",
-        compress_for_format=None,
+        fake_format=False,
+        compress_for_format=COMPRESS_FOR_FORMATS,
         remove_original=False,
+        process_when_size_reduced=True,
     ):
         """
         初始化压缩器
@@ -65,6 +67,7 @@ class ImageCompressor:
             quality_rule: 质量规则(格式: "size_range_min1,size_range_max1,
                 quality1;size_range_min2,size_range_max2,quality2;...")
             skip_format: 跳过格式(jpg/png/webp)
+            fake_format:处理后的图片如果体积不减小,是否丢弃处理结果,直接修改原图后缀
             remove_original: 是否移除原始文件
         """
         self.logger = logger or logging.getLogger(__name__)
@@ -75,6 +78,11 @@ class ImageCompressor:
         self.remove_original = remove_original  # 是否尽可能移除原始文件
         # 仅压缩列出的格式的图片,如果为空,则压缩可能受支持的图片
         self.compress_for_format = compress_for_format
+        self.fake_format = fake_format
+        self.process_when_size_reduced = process_when_size_reduced
+        self.opl = OperationLogger()
+        
+        self.opl.start()
         print(f"压缩白名单: {self.compress_for_format}")
 
     @property
@@ -87,12 +95,13 @@ class ImageCompressor:
         input_path: str,
         output_path: str = "",
         output_format: str = "",
+        # fake_format=True,
         quality: int = QUALITY_DEFAULT,
         quality_for_small_file: int = 70,
-        optimize: bool = True,
+        optimize: bool = False,
         keep_exif: bool = True,
         overwrite: bool = False,
-    ) -> Tuple[bool, str]:
+    ):
         """
         压缩或转换图片
 
@@ -109,22 +118,26 @@ class ImageCompressor:
         Returns:
             (成功状态, 消息)
         """
+        opl = self.opl
         try:
             if not os.path.exists(input_path):
                 return False, f"输入文件不存在: {input_path}"
-            self.logger.info(f"开始压缩: {input_path}")
-            input_format = os.path.splitext(input_path)[1].lower()
-            input_format_name = input_format.strip(".")
-            self.logger.info(f"输入格式:{input_format}-> {input_format_name}")
-            if self.compress_for_format:
+            self.logger.info(f"开始压缩: {[input_path]}")
+            _, input_format = os.path.splitext(input_path)
+            # input_format = os.path.splitext(input_path)[1].lower()
+            input_format_name = input_format.lower().strip(".")
+            self.logger.info(f"输入格式:{input_format}")
 
+            if self.compress_for_format:
                 if input_format_name not in self.compress_for_format:
                     msg = f"不在白名单的格式,跳过: {input_format}|file:{input_path}"
                     self.logger.info(msg)
+                    opl.log_skip()
                     return True, msg
             if input_format_name in self.skip_format_name:
                 msg = f"跳过格式: {input_format}|file:{input_path}"
                 self.logger.info(msg)
+                opl.log_skip()
                 return True, msg
 
             # 验证是否需要执行压缩(过小不压缩或者用高quality微压)
@@ -141,10 +154,48 @@ class ImageCompressor:
                 msg = f"文件大小({original_size/1024:.2f}KB)过小,微压(quality={quality_for_small_file})"
                 self.logger.info(msg)
                 quality = quality_for_small_file
-                # return True, msg
             # 验证质量参数
             quality = max(1, min(100, quality))
 
+            # 确定输出格式和输出路径(后续要根据目标格式做针对性处理)
+            # 直接决定输出文件的格式的是output_path,如果用户传入output_format,最终也会通过拼接路径的方式体现在output_path的后缀上
+            if output_path and output_format:
+                # 同时提供输出路径和格式,格式一致则继续运行,否则报错
+                print(f"同时提供了输出路径和格式:[{output_path}] ,[{output_format}]")
+                _, format_from_output_path = os.path.splitext(output_path)
+                print(f"🎈输出和格式:[{output_path}] ,[{output_format}]")
+                ext1 = format_from_output_path.lower().lstrip(".")
+                ext2 = output_format.lower().lstrip(".")
+                if ext1 != ext2:
+                    self.logger.error("同时提供输出路径和格式,格式矛盾:")
+                    print(f"{ext1} vs {ext2}")
+                    raise ValueError("输出路径中的格式和指定格式矛盾")
+
+            elif output_format:
+                # 提供了输出格式
+                print(f"仅提供了输出格式:[{output_format}]")
+                base, _ = os.path.splitext(input_path)
+                output_path = f"{base}.{output_format.lower().lstrip('.')}"
+            elif output_path:
+                # 提供了输出路径
+                print(f"仅提供了输出路径:[{output_path}]")
+            elif not output_path and not output_format:
+                print(f"未提供输出路径和格式")
+                output_path = input_path
+            else:
+                print(f"输出参数错误")
+            output_base, output_format = os.path.splitext(output_path)
+            output_format_name = output_format.lower().strip(".")
+            self.logger.info(f"输出格式:{output_format}")
+            # 检查输出文件是否已存在
+            if os.path.exists(output_path):
+                # 不要急着在这里删除文件,否则后续文件操作没有文件可用
+                if not overwrite:
+                    opl.log_skip()
+                    return (
+                        False,
+                        f"输出文件已存在,默认取消压缩: {output_path} (使用--overwrite覆盖)",
+                    )
             with Image.open(input_path) as img:
                 # 保留EXIF信息
                 exif = img.info.get("exif") if keep_exif else None
@@ -152,36 +203,8 @@ class ImageCompressor:
 
                 # output_format = output_format or ""
 
-                # 确定输出格式和输出路径(后续要根据目标格式做针对性处理),如果传入的参数缺失值的话
-                if not output_path and not output_format:
-                    # 只提供输入路径的情况下,解析输入路径
-                    output_path = input_path
-                    output_format = input_format
-                elif not output_path:
-                    # 未提供输出路径(但是提供了输出格式)
-                    base, _ = os.path.splitext(input_path)
-                    output_path = f"{base}.{output_format.lower().lstrip('.')}"
-                elif not output_format:
-                    # 未提供输出格式(但是提供了输出路径)
-                    output_format = os.path.splitext(output_path)[1].lower()
-                else:
-                    # 同时提供输出路径和格式,格式一致则继续运行,否则报错
-                    _, format_from_output_path = os.path.splitext(output_path)
-                    ext1 = format_from_output_path.lower().lstrip(".")
-                    ext2 = output_format.lower().lstrip(".")
-                    if ext1 != ext2:
-                        self.logger.error("同时提供输出路径和格式,格式矛盾:")
-                        print(f"{ext1} vs {ext2}")
-                        raise ValueError("输出路径中的格式和指定格式矛盾")
-
-                # 检查输出文件是否已存在
-                if os.path.exists(output_path) and not overwrite:
-                    return (
-                        False,
-                        f"输出文件已存在,默认取消压缩: {output_path} (使用--overwrite覆盖)",
-                    )
-
                 # 格式特定参数
+                # print(f"输出格式: {output_format}🎈")
                 if output_format == ".webp":
                     save_kwargs["method"] = 6  # 最高质量编码方法
                 elif output_format == ".png":
@@ -195,48 +218,79 @@ class ImageCompressor:
                 # 转换图像模式为兼容格式
                 if output_format in (".jpg", ".jpeg", ".webp") and img.mode != "RGB":
                     img = img.convert("RGB")
+                # 为了检测膨胀,先保存到临时文件(后缀要保留)
+                temp_output_path = f"{output_base}.tmp.{output_format_name}"
+                # 保存更改的图片🎈
+                img.save(temp_output_path, **save_kwargs)
+                self.logger.info(f"保存临时文件: {temp_output_path}")
 
-                img.save(output_path, **save_kwargs)
                 output_format_name = output_format.strip(".")
                 print(
                     f"存储模式:remove_original:{self.remove_original} \
 格式变化: {input_format_name} -> {output_format_name}"
                 )
-                if self.remove_original and input_format_name != output_format_name:
-                    os.remove(input_path)
-                    print(f"删除原始文件: {input_path}")
 
             # 计算压缩结果
+            msg = ""
+            new_size = os.path.getsize(filename=temp_output_path)
+            if self.process_when_size_reduced and new_size >= original_size:
+                print(
+                    f"压缩后文件大小未减少,不覆盖原文件(大小变化:{original_size}->{new_size})"
+                )
+                os.remove(temp_output_path)
+                opl.log_skip()
+                # 图片后缀更改,不覆盖原文件
+                fake_format = self.fake_format
+                if input_format_name != output_format_name and fake_format:
+                    print("仅更改源文件(input_path)的后缀格式,而不做实际转换")
+                    print(f"格式文件变化:{input_path}->{output_path}")
+                    os.rename(input_path, output_path)
+                msg = "文件大小未减少,不覆盖原文件"
+            else:
+                # 理想情况:处理后的文件体积变小
+                ratio = (new_size / original_size - 1) * 100
+                size_trend = "+" if ratio > 0 else "-"
+                msg = (
+                    f"体积变换({size_trend}): {ratio:.2f}%",
+                    f"原始大小: {original_size/1024:.2f}KB, ",
+                    f"压缩后: {new_size/1024:.2f}KB, ",
+                    f"压缩成功: {input_path} -> {output_path}\n",
+                    f"压缩参数: quality={quality}",
+                )
+                # 根据需要移除原始文件
+                # if self.remove_original and input_format_name != output_format_name:
+                if self.remove_original:
+                    os.remove(input_path)
+                    print(f"删除原始文件: {input_path}")
+                # 将临时文件重命名为输出文件
+                if overwrite:
+                    os.remove(output_path)
+                os.rename(temp_output_path, output_path)
 
-            new_size = os.path.getsize(output_path)
-            ratio = (1 - new_size / original_size) * 100
+                self.logger.info(msg)
+                opl.log_success()
+            # 检查 tmp 文件是否存在,如果存在,删除
+            if os.path.exists(temp_output_path):
+                os.remove(temp_output_path)
 
-            msg = (
-                f"节省: {ratio:.2f}%"
-                f"原始大小: {original_size/1024:.2f}KB, "
-                f"压缩后: {new_size/1024:.2f}KB, "
-                f"压缩成功: {input_path} -> {output_path}\n"
-                f"压缩参数: quality={quality}"
-            )
-
-            self.logger.info(msg)
             return True, msg
 
         except Exception as e:
             error_msg = f"处理图片失败: {str(e)}"
             self.logger.error(error_msg)
+            opl.log_failure(item=input_path, error=error_msg)
             return False, error_msg
 
     def batch_compress(
         self,
         input_dir: str,
         output_dir: str = "",
-        output_format: str = "webp",
+        output_format: str = "",
         quality: int = QUALITY_DEFAULT,
         overwrite: bool = False,
         # skip_existing: bool = True,
         max_workers: int = 10,
-    ) -> Dict[str, int | List[str]]:
+    ):
         """
         批量压缩目录中的图片(多线程版本)
 
@@ -257,63 +311,47 @@ class ImageCompressor:
                 "details": 详细结果列表
             }
         """
-        results: Dict = {
-            "total": 0,
-            "success": 0,
-            "failed": 0,
-            "skipped": 0,
-            "details": [],
-        }
 
         if not os.path.exists(input_dir):
             raise FileNotFoundError(f"输入目录不存在: {input_dir}")
 
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
-
- 
-
-        def process_file(filename: str) -> Optional[Tuple[str, str]]:
-            """内部函数"""
-            # 判断给定的文件是否为受支持的图片格式文件
-            if filename.lower().endswith(COMPRESS_FOR_FORMATS):
-                input_path = os.path.join(input_dir, filename)
-                base_name = os.path.splitext(filename)[0]
-                output_filename = f"{base_name}.{output_format.lstrip('.')}"
-                output_path = os.path.join(output_dir, output_filename)
-
-                if os.path.exists(output_path) and not overwrite:
-                    return "skipped", f"跳过已存在文件: {output_path}"
-
-                success, msg = self.compress_image(
-                    input_path,
-                    output_path,
-                    output_format=output_format,
-                    quality=quality,
-                    overwrite=overwrite,
-                )
-                return "success" if success else "failed", msg
-            return None
+        os.makedirs(output_dir, exist_ok=True)
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = []
             for filename in os.listdir(input_dir):
-                futures.append(executor.submit(self.compress_image, filename))
-                results["total"] += 1
+                if filename.lower().endswith(COMPRESS_FOR_FORMATS):
+
+                    input_path = os.path.join(input_dir, filename)
+                    base_name, input_format = os.path.splitext(filename)
+
+                    # output_format = output_format or input_format
+                    output_format_now = output_format or input_format
+                    output_format_name = output_format_now.lower().lstrip(".")
+
+                    output_filename = f"{base_name}.{output_format_name}"
+                    output_path = os.path.join(output_dir, output_filename)
+                    output_path = os.path.abspath(output_path)
+                    print(
+                        f"格式信息预设: [{input_format} -> {output_format_now}];{input_path}->{output_path}"
+                    )
+                    futures.append(
+                        executor.submit(
+                            self.compress_image,
+                            input_path=input_path,
+                            output_path=output_path,
+                            output_format=output_format_name,
+                            quality=quality,
+                            overwrite=overwrite,
+                        )
+                    )
+
+                    # results["total"] += 1
 
             for future in as_completed(futures):
-                result = future.result()
-                if result:
-                    status, msg = result
-                    if status == "skipped":
-                        results["skipped"] += 1
-                    elif status == "success":
-                        results["success"] += 1
-                    else:
-                        results["failed"] += 1
-                    results["details"].append(msg)
+                future.result()
 
-        return results
+        return self.opl
 
 
 def setup_logging(level=logging.INFO, log_file=None, log_format=None):

@@ -1,11 +1,5 @@
 [toc]
 
-
-
-
-
-[toc]
-
 ## 图片压缩模块
 
 摘要:
@@ -38,6 +32,16 @@
    - 详细输出模式(-v/--verbose)
    - 线程数控制(--max-workers)
    - 优化选项控制(--no-optimize)
+
+## 典型用例
+
+下面用的参数和选项针对我们的业务配置的
+
+```python
+py C:\repos\scripts\wp\woocommerce\woo_df\pys\image_compresser.py C:\Users\Administrator\Pictures\imgs_demo   -R auto -p -F  -O
+```
+
+
 
 ## 使用示例
 
