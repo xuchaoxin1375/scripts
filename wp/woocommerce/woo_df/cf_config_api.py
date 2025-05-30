@@ -25,7 +25,7 @@ DEFAULT_SECURITY_MODE = 1
 DESKTOP = r"C:/Users/Administrator/Desktop"
 DOMAINS_FILE = f"{DESKTOP}/cf_domains.csv"  # 域名和IP配置文件，格式: 域名,IP
 # DOMAINS_FILE = "domains.xlsx"  # 域名和IP配置文件，格式: 域名,IP
-SITE_TAGS_FILENAME = "cf_site_tags.txt"
+SITE_TAGS_FILENAME = f"{DESKTOP}/cf_site_tags.conf"
 
 
 THREADS = 5  # 并发线程数

@@ -50,6 +50,26 @@
 py C:\repos\scripts\wp\woocommerce\woo_df\pys\image_compresser.py   -R auto -p -F  -O -i C:\Users\Administrator\Pictures\imgs_demo
 ```
 
+linux服务器上的命令
+
+```bash
+python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -p -F  -O   -k -i
+```
+
+### 更新代码
+
+获取最新版本
+
+```bash
+[oh-my-zsh] Random theme 'junkfood' loaded
+#( 05/30/25@ 7:35AM )( root@wnx0020303 ):~
+   cd /repos/scripts
+#( 05/30/25@ 7:35AM )( root@wnx0020303 ):/repos/scripts@main✔
+   git pull origin main
+```
+
+
+
 ### 本地方法
 
 如果需要集中批量压缩,可以使用如下参数(`-i`后面更上需要处理的图片(文件夹)路径)
@@ -62,6 +82,8 @@ py C:\repos\scripts\wp\woocommerce\woo_df\pys\image_compresser.py   -R auto -p -
 #⚡️[Administrator@CXXUDESK][~\Desktop][14:50:16][UP:12.11Days]
 PS> py C:\repos\scripts\wp\woocommerce\woo_df\pys\image_compresser.py   -R auto -p -F  -O  -f webp -k -i C:\Users\Administrator\Pictures\imgs_demo
 ```
+
+
 
 
 
