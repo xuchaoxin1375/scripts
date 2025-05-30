@@ -40,7 +40,7 @@ def parse_args():
     parser.add_argument(
         "-o",
         "--output",
-        default="./",
+        # default="./",
         help="输出文件或目录路径(如果放空,且input是目录,则默认输出目录为input目录)",
     )
     parser.add_argument(
@@ -148,7 +148,10 @@ def main():
             # output_path = (
             #     args.output or os.path.splitext(args.input)[0] + f".{args.format}"
             # )
-            output_path = args.output
+            output_path = ""
+            if os.path.isfile(args.output or ""):
+                output_path = args.output
+
             success, msg = compressor.compress_image(
                 args.input,
                 output_path,
@@ -158,11 +161,12 @@ def main():
                 keep_exif=args.keep_exif,
                 overwrite=args.overwrite,
             )
-            print(msg)
+            # print(msg)
             sys.exit(0 if success else 1)
         elif os.path.isdir(args.input):
             # 批量处理
-            output = args.output.strip(".").rstrip("/")
+            # output = args.output.strip(".").rstrip("/")
+            output = args.output
             out_dir = output or args.input
             if not output:
                 # print("!批量处理时必须指定输出目录", file=sys.stderr)

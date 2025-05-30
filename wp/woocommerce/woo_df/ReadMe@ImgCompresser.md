@@ -52,8 +52,15 @@ py C:\repos\scripts\wp\woocommerce\woo_df\pys\image_compresser.py   -R auto -p -
 
 ### 本地方法
 
+如果需要集中批量压缩,可以使用如下参数(`-i`后面更上需要处理的图片(文件夹)路径)
+
 ```bash
 -R auto -p -F  -O -k -f webp -i
+```
+
+```bash
+#⚡️[Administrator@CXXUDESK][~\Desktop][14:50:16][UP:12.11Days]
+PS> py C:\repos\scripts\wp\woocommerce\woo_df\pys\image_compresser.py   -R auto -p -F  -O  -f webp -k -i C:\Users\Administrator\Pictures\imgs_demo
 ```
 
 
