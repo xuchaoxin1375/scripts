@@ -146,7 +146,7 @@ write_rewrite_rules() {
     cat <<EOF > "$rewrite_file"
 location /
 {
-    try_files \$uri \$uri/ /index.php?\$args;
+  try_files \$uri \$uri/ /index.php?\$args;
 }
 
 rewrite /wp-admin\$ \$scheme://\$host\$uri/ permanent;
