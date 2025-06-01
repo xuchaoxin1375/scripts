@@ -362,4 +362,4 @@ function Remove-CxxuPsModulesEnvVars
     Remove-EnvVarValue -EnvVar Path -ValueToRemove "$env:systemDrive\powershell\7"
     
 }
-# Deploy-CxxuPsModules -Verbose -Confirm
+Deploy-CxxuPsModules -Verbose -Confirm
