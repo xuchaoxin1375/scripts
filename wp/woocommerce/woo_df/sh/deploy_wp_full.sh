@@ -1,12 +1,15 @@
 #!/bin/bash
 
 # === 配置参数 ===
+# 依赖说明:主要依赖于外部的伪静态规则文件RewriteRules.LF.conf,以及7z解压工具
+# 在powershell中将词文件更新/推送到服务器(可以使用scp命令):
+# scp -r C:\repos\scripts\wp\woocommerce\woo_df\sh\deploy_wp_full.sh root@${env:DF_SERVER1}:"/www/wwwroot/deploy_wp_full.sh"
 # 默认值
 DEFAULT_PACK_ROOT="/srv/uploads/uploader/files"
 DEFAULT_DB_USER="root"
 DEFAULT_DB_PASSWORD="15a58524d3bd2e49"
 SERVER_SITE_HOME="/www/wwwroot"
-DB_HOST="localhost"                  # 数据库主机
+DB_HOST="localhost" # 数据库主机
 # PACK_ROOT="/www/wwwroot"           # WordPress 网站根目录
 STOP_EDITING_LINE='Add any custom values between this line and the "stop editing" line'
 HTTPS_CONFIG_LINE="\$_SERVER['HTTPS'] = 'on'; define('FORCE_SSL_LOGIN', true); define('FORCE_SSL_ADMIN', true);"
@@ -26,12 +29,27 @@ show_help() {
 # 命令行参数解析
 while [[ "$#" -gt 0 ]]; do
     case $1 in
-        --pack-root) PACK_ROOT="$2"; shift ;;
-        --db-user) DB_USER="$2"; shift ;;
-        --db-pass) DB_PASSWORD="$2"; shift ;;
-        --user-dir) USER_DIR="$2"; shift ;;  # 指定用户目录,则将工作范围缩小到该目录下
-        --help) show_help ;;
-        *) echo "未知参数: $1"; exit 1 ;;
+    --pack-root)
+        PACK_ROOT="$2"
+        shift
+        ;;
+    --db-user)
+        DB_USER="$2"
+        shift
+        ;;
+    --db-pass)
+        DB_PASSWORD="$2"
+        shift
+        ;;
+    --user-dir)
+        USER_DIR="$2"
+        shift
+        ;; # 指定用户目录,则将工作范围缩小到该目录下
+    --help) show_help ;;
+    *)
+        echo "未知参数: $1"
+        exit 1
+        ;;
     esac
     shift
 done
@@ -48,13 +66,13 @@ echo "使用 PACK_ROOT: $PACK_ROOT"
 check_commands() {
     local commands=("mysql" "unzip" "7z")
     local missing_commands=()
-    
+
     for cmd in "${commands[@]}"; do
-        if ! command -v "$cmd" &> /dev/null; then
+        if ! command -v "$cmd" &>/dev/null; then
             missing_commands+=("$cmd")
         fi
     done
-    
+
     if [ ${#missing_commands[@]} -gt 0 ]; then
         echo "❌ 错误: 以下命令未找到: ${missing_commands[*]}"
         echo "请安装缺少的命令后再运行此脚本。"
@@ -70,9 +88,9 @@ update_wp_config() {
         echo "❌ 错误：找不到 wp-config.php 文件：$wp_config_path"
         return 1
     fi
-    
+
     echo "正在修改 $wp_config_path ..."
-    
+
     # 检查配置是否已存在
     # if grep -q "FORCE_SSL_ADMIN" "$wp_config_path"; then
     #     echo "ℹ️ HTTPS 配置已存在，跳过修改。"
@@ -80,17 +98,17 @@ update_wp_config() {
     # fi
 
     # 使用 awk 查找包含 "stop editing" 的那一行号(第一次出现)
-    
+
     local STOP_LINE
     STOP_LINE=$(awk -v search="$STOP_EDITING_LINE" '$0 ~ search {print NR}' "$wp_config_path" | head -n 1)
     if [ -n "$STOP_LINE" ]; then
 
-        sed -i "${STOP_LINE}a$HTTPS_CONFIG_LINE" "$wp_config_path" 
+        sed -i "${STOP_LINE}a$HTTPS_CONFIG_LINE" "$wp_config_path"
 
-        sed -ri   "s/(define\(\s*'DB_HOST',)(.*)\)/\1'${DB_HOST}')/" "$wp_config_path" 
-        sed -ri   "s/(define\(\s*'DB_NAME',)(.*)\)/\1'$db_name')/" "$wp_config_path" 
-        sed -ri   "s/(define\(\s*'DB_USER',)(.*)\)/\1'${DB_USER}')/" "$wp_config_path" 
-        sed -ri   "s/(define\(\s*'DB_PASSWORD',)(.*)\)/\1'${DB_PASSWORD}')/" "$wp_config_path" 
+        sed -ri "s/(define\(\s*'DB_HOST',)(.*)\)/\1'${DB_HOST}')/" "$wp_config_path"
+        sed -ri "s/(define\(\s*'DB_NAME',)(.*)\)/\1'$db_name')/" "$wp_config_path"
+        sed -ri "s/(define\(\s*'DB_USER',)(.*)\)/\1'${DB_USER}')/" "$wp_config_path"
+        sed -ri "s/(define\(\s*'DB_PASSWORD',)(.*)\)/\1'${DB_PASSWORD}')/" "$wp_config_path"
         echo "✅ wp-config.php 配置已插入。"
         return 0
     else
@@ -118,7 +136,7 @@ import_sql_file() {
 
     # 导入 SQL 文件
     echo "🚚 正在导入 SQL 文件: $sql_file 到数据库 $db_name"
-    if mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASSWORD" "$db_name" < "$sql_file"; then
+    if mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASSWORD" "$db_name" <"$sql_file"; then
         echo "✅ 数据库 $db_name 成功导入。"
         return 0
     else
@@ -128,49 +146,69 @@ import_sql_file() {
 }
 
 # === 函数：写入伪静态规则到指定文件 ===
-write_rewrite_rules() {
+# write_rewrite_rules() {
+#     local domain="$1"
+#     local rewrite_file="/www/server/panel/vhost/rewrite/${domain}.conf"
+
+#     # 确保目录存在
+#     local rewrite_dir="$(dirname "$rewrite_file")"
+#     if [ ! -d "$rewrite_dir" ]; then
+#         echo "⚠️ 伪静态规则目录不存在，尝试创建: $rewrite_dir"
+#         mkdir -p "$rewrite_dir" || {
+#             echo "❌ 无法创建目录: $rewrite_dir"
+#             return 1
+#         }
+#     fi
+
+#     # 写入伪静态规则
+#     cat <<EOF >"$rewrite_file"
+# location /
+# {
+#   try_files \$uri \$uri/ /index.php?\$args;
+# }
+
+# rewrite /wp-admin\$ \$scheme://\$host\$uri/ permanent;
+# EOF
+
+#     if [ $? -eq 0 ]; then
+#         echo "✅ 伪静态规则已成功写入到 $rewrite_file"
+#         return 0
+#     else
+#         echo "❌ 写入伪静态规则失败，请检查权限或路径。"
+#         return 1
+#     fi
+# }
+# === 函数：设置伪静态规则文件(通过复制文件到指定位置) ===
+set_rewrte_rules_file() {
+    # 将/www/wwwroot/RewriteRules.LF.conf 赋值到被部署网站的对于伪静态文件存路径:"/www/server/panel/vhost/rewrite/${domain}.conf"
     local domain="$1"
-    local rewrite_file="/www/server/panel/vhost/rewrite/${domain}.conf"
-
-    # 确保目录存在
-    local rewrite_dir="$(dirname "$rewrite_file")"
-    if [ ! -d "$rewrite_dir" ]; then
-        echo "⚠️ 伪静态规则目录不存在，尝试创建: $rewrite_dir"
-        mkdir -p "$rewrite_dir" || {
-            echo "❌ 无法创建目录: $rewrite_dir"
+    local rewrite_template="/www/wwwroot/RewriteRules.LF.conf"
+    local rewrite_target="/www/server/panel/vhost/rewrite/${domain}.conf"
+    # 覆盖式将文件复制到目标位置
+    if [ -f "$rewrite_template" ]; then
+        # 强制性复制并详情输出，增加 -v 参数提升可读性，并添加错误处理
+        echo "🔄 正在复制伪静态规则文件到目标位置: $rewrite_target"
+        if cp -v "$rewrite_template" "$rewrite_target"; then
+            echo "✅ 伪静态规则文件已成功复制到: $rewrite_target"
+        else
+            echo "❌ 复制伪静态规则文件失败: 源文件=$rewrite_template, 目标=$rewrite_target"
             return 1
-        }
-    fi
-
-    # 写入伪静态规则
-    cat <<EOF > "$rewrite_file"
-location /
-{
-  try_files \$uri \$uri/ /index.php?\$args;
-}
-
-rewrite /wp-admin\$ \$scheme://\$host\$uri/ permanent;
-EOF
-
-    if [ $? -eq 0 ]; then
-        echo "✅ 伪静态规则已成功写入到 $rewrite_file"
-        return 0
+        fi
     else
-        echo "❌ 写入伪静态规则失败，请检查权限或路径。"
+        echo "⚠️ 未找到伪静态规则模板文件: $rewrite_template"
         return 1
     fi
+
 }
-
-
 
 # === 函数：解压压缩文件 ===
 extract_archive() {
     local archive_file="$1"
     local target_dir="$2"
-    
+
     # 确保目标目录存在
     mkdir -p "$target_dir"
-    
+
     echo "🔍 正在解压文件: $archive_file -> $target_dir/..."
     # 使用7z解压，支持各种格式
     if ! 7z x -y "$archive_file" -o"$target_dir"; then
@@ -214,7 +252,7 @@ extract_archive() {
     #     echo "❌ 不支持的压缩文件格式: $archive_file"
     #     return 1
     # fi
-    
+
     return 0
 }
 
@@ -222,23 +260,23 @@ extract_archive() {
 deploy_site() {
     local username="$1"
     local archive_file="$2"
-    
+
     # 获取不带扩展名的域名，处理可能包含 .sql 的情况
     # 先去掉 .zip 或 .7z 扩展名
     local domain_name="${archive_file%.*}"
-    
+
     # 分析sql文件是属于哪一个域名站点(检查是否以 .sql 结尾，如果是则去掉 .sql 后缀,获得sql所属的域名信息)
     if [[ "$domain_name" == *.sql ]]; then
         echo "⚠️ 检测到文件名包含 .sql 后缀，将其从域名中移除"
         domain_name="${domain_name%.sql}"
     fi
-    
+
     echo "📦 正在处理网站: $domain_name"
-    
+
     # === 解压站点压缩包 ===
     # local extracted_domain_dir="$PACK_ROOT/$username/$domain_name"
     local site_dir_archive="$PACK_ROOT/$username/$archive_file"
-    
+
     local site_domain_home="$SERVER_SITE_HOME/$username/$domain_name" #例如:/www/wwwroot/zsh/domain.com #对于用7z打包domain.com为目录名的7z包,解压后得到domain.com目录 7z x $site_dir_archive -o$site_domain_home 执行结果得到目录$site_domain_home/domain.com,为了便于引用,将其赋值给变量$site_expanded_dir,表示解压后得到的目录
     local site_expanded_dir="$site_domain_home/$domain_name"
     local target_dir="$site_domain_home/wordpress"
@@ -259,14 +297,14 @@ deploy_site() {
         else
             echo "⚠️用户选择覆盖现有目录: $site_expanded_dir"
             echo "正在删除现有目录并解压新内容 (预计得到目录:$site_expanded_dir) ..."
-            rm -rf "$site_expanded_dir"  # 删除现有目录
-            
+            rm -rf "$site_expanded_dir" # 删除现有目录
+
             if ! extract_archive "$site_dir_archive" "$site_domain_home"; then
                 echo "❌ 解压失败，跳过部署: $domain_name"
                 return 1
             fi
-            
-            mv  "$site_expanded_dir"/* "$target_dir" -f  # 移动新目录内容到目标目录
+
+            mv "$site_expanded_dir"/* "$target_dir" -f # 移动新目录内容到目标目录
 
         fi
     else
@@ -274,11 +312,10 @@ deploy_site() {
             echo "❌ 解压失败，跳过部署: $domain_name"
             return 1
         fi
-        
-        mv  "$site_expanded_dir"/* "$target_dir" -f  # 移动新目录内容到目标目录
+
+        mv "$site_expanded_dir"/* "$target_dir" -f # 移动新目录内容到目标目录
     fi
 
-    
     # === 检查并导入对应的 SQL 文件 ===
     local sql_file="$PACK_ROOT/$username/$domain_name.sql"
     if [ -f "$sql_file" ]; then
@@ -324,14 +361,13 @@ deploy_site() {
         echo "ℹ️ 未找到 wps-hide-login.bak 目录，跳过重命名"
     fi
 
-    
     # 检查是否为有效的 WordPress 目录
     if [ -f "$target_dir/wp-config-sample.php" ] || [ -f "$target_dir/wp-config.php" ] || [ -d "$target_dir/wp-content" ]; then
         echo "✅ 检测到有效的 WordPress 目录结构"
     else
         echo "⚠️ 警告：目标目录可能不是有效的 WordPress 安装，未找到典型的 WordPress 文件"
     fi
-    
+
     # === 修改 wp-config.php 文件 ===
     local wp_config_path="$target_dir/wp-config.php"
     if [ -f "$wp_config_path" ]; then
@@ -339,15 +375,16 @@ deploy_site() {
     else
         echo "⚠️ 未找到 wp-config.php 文件，跳过 HTTPS 配置"
     fi
-    
+
     # 设置目录权限和所有者
     echo "🔒 设置目录权限和所有者"
     chmod -R 755 "$target_dir"
     chown -R www:www "$target_dir"
-    
+
     # === 写入伪静态规则 ===
-    write_rewrite_rules "$domain_name"
-    
+    # write_rewrite_rules "$domain_name"
+    set_rewrte_rules_file "$domain_name"
+
     echo "✅ 完成站点部署: $domain_name"
     return 0
 }
@@ -358,27 +395,27 @@ deploy_site() {
 process_sql_file() {
     local username="$1"
     local archive_file="$2"
-    
+
     # 获取域名（去掉.sql.zip或.sql.7z后缀）
     local domain_name="${archive_file%.sql.*}"
     echo "📦 正在处理网站 $domain_name 的SQL备份文件 $archive_file"
-    
+
     local user_dir="$PACK_ROOT/$username"
-    
+
     # 解压SQL备份文件
     if ! extract_archive "$user_dir/$archive_file" "$user_dir"; then
         echo "❌ 解压SQL备份文件失败: $archive_file"
         return 1
     fi
-    
+
     # 查找解压后的SQL文件
     local sql_files=($(find "$user_dir" -name "*.sql" -type f))
-    
+
     if [ ${#sql_files[@]} -eq 0 ]; then
         echo "❌ 在解压后的目录中未找到SQL文件"
         return 1
     fi
-    
+
     # 导入找到的第一个SQL文件
     # echo "🔍 找到SQL文件: ${sql_files[0]}"
     # if import_sql_file "$domain_name" "$username" "${sql_files[0]}"; then
@@ -400,7 +437,10 @@ check_commands
 echo "🚀 开始部署 WordPress 站点和数据库..."
 
 # 进入指定目录
-cd "$PACK_ROOT" || { echo "❌ 无法进入目录: $PACK_ROOT"; exit 1; }
+cd "$PACK_ROOT" || {
+    echo "❌ 无法进入目录: $PACK_ROOT"
+    exit 1
+}
 
 # 如果指定了用户目录，则仅处理该目录
 if [ -n "$USER_DIR" ]; then
@@ -431,18 +471,18 @@ for user_dir in "${user_dirs[@]}"; do
         echo "❌ 无法进入用户目录: $PACK_ROOT/$username"
         continue
     fi
-    
+
     # 首先处理SQL备份文件(将所有站点的sql文件都解压,然后逐个导入到对应的数据库)
     # 数据库名字:调用process_sql_file进行处理
     sql_archives=($(ls *.sql.zip *.sql.7z *.sql.tar 2>/dev/null))
     if [ -f "${sql_archives[0]}" ]; then
         echo "🔍 找到SQL备份文件，优先处理"
-        
+
         for sql_archive in "${sql_archives[@]}"; do
             if [ ! -f "$sql_archive" ]; then
                 continue
             fi
-            
+
             if process_sql_file "$username" "$sql_archive"; then
                 ((sql_backups_processed++))
             else
@@ -455,18 +495,18 @@ for user_dir in "${user_dirs[@]}"; do
 
     # 然后处理WordPress站点文件（过滤sql压缩文件SQL备份文件）
     site_archives=()
-    for archive in *.zip *.7z *.tar ; do
+    for archive in *.zip *.7z *.tar; do
         if [[ -f "$archive" && "$archive" != *.sql.* ]]; then
             site_archives+=("$archive")
         fi
     done
-    
+
     if [ ${#site_archives[@]} -eq 0 ] || [ ! -f "${site_archives[0]}" ]; then
         echo "⚠️ 在目录 $username 中没有找到有效的WordPress站点压缩包。跳过..."
         cd "$PACK_ROOT"
         # continue
     fi
-    
+
     for archive_file in "${site_archives[@]}"; do
         if [ ! -f "$archive_file" ]; then
             continue

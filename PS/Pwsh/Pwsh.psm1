@@ -299,6 +299,8 @@ function Add-CxxuPsModuleToProfile
     param (
         $ProfileLevel = $Profile
     )
+    # 确保文件存在
+    New-Item -ItemType File -Path $ProfileLevel -Force -Verbose -ErrorAction SilentlyContinue
     $pf = $ProfileLevel
     '# AutoRun commands from CxxuPsModules' + " $(Get-Date)" >> $pf
     {
