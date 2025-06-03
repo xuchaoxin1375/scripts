@@ -674,6 +674,34 @@ class WooCommerceProductImporter:
         finally:
             conn.close()
 
+    def update_product_slugs(self):
+        """更新所有产品的 slug，格式为 post_name-ID"""
+        update_sql = """
+        UPDATE wp_posts AS p
+        JOIN (
+            SELECT ID, post_name, 
+                LEFT(CONCAT(post_name, '-', ID), 200) AS new_slug 
+            FROM wp_posts 
+            WHERE post_type = 'product' AND post_status != 'trash'
+        ) AS sub ON p.ID = sub.ID
+        SET p.post_name = sub.new_slug
+        WHERE p.post_type = 'product';
+        """
+        self._execute_sql(update_sql)
+
+    def _execute_sql(self, sql):
+        conn = pymysql.connect(**self.db_config)
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(sql)
+                conn.commit()
+                print("✅ 成功更新产品 slug")
+        except Exception as e:
+            conn.rollback()
+            print(f"❌ 更新产品 slug 失败: {str(e)}")
+        finally:
+            conn.close()
+
 
 if __name__ == "__main__":
     # 数据库配置
@@ -696,13 +724,13 @@ if __name__ == "__main__":
         max_workers=20,
         batch_size=100,
     )
-
     # 执行导入
 
+    # importer.import_products("product_data.csv")
     for csv_file in os.listdir(CSV_DIR):
         if csv_file.endswith(".csv"):
             p = os.path.abspath(os.path.join(CSV_DIR, csv_file))
             print(f"processing file:{p}")
             importer.import_products(p)
 
-    # importer.import_products("product_data.csv")
+    importer.update_product_slugs()  # 处理重名产品被合并到同一个产品页面的问题

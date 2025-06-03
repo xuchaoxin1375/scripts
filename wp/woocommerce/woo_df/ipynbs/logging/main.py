@@ -9,7 +9,9 @@ def setup_logging(level=logging.DEBUG):
 
     # 创建一个顶级 logger
     # logger = logging.getLogger("myapp")
-    logger=logging.getLogger("myliblog")  # 使用库的顶级 logger 名称
+    logger = logging.getLogger(
+        "myliblog"
+    )  # 使用库的顶级 logger 名称,这样能够接收到子模块的日志信息(从而可以不必为每个子模块都创建 logger并配置handler)
     logger.setLevel(logging.DEBUG)  # 根 logger 级别为 DEBUG
 
     # 创建两个 handler：控制台 + 文件

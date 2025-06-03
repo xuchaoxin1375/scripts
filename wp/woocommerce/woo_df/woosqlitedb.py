@@ -19,6 +19,7 @@ import pandas as pd
 from comutils import get_filebasename_from_url, remove_sensitive_info, split_urls
 from filenamehandler import FilenameHandler
 from wooenums import CSVProductFields, DBProductFields, ImageMode, LanguagesHotSale
+
 IMAGES = CSVProductFields.IMAGES.value
 IMAGE_URL = CSVProductFields.IMAGES_URL.value
 
@@ -32,7 +33,6 @@ SEPARATOR = ">"
 LOWEST_PRICE = 1
 HIGHEST_PRICE = 10000
 cnt_lock = threading.Lock()
-
 
 
 def update_image_fields_from_legacy(csv_file):
@@ -102,7 +102,9 @@ def remove_items_without_img(csv_dir, img_dir, backup_dir="backup_csvs"):
                 shutil.copy(file, backup_file_path)  # 复制文件到备份目录
             # 判断每个IMAGE字段中的图片在指定目录下是否存在,不存在的过滤移除
             df = df[
-                df[IMAGES].apply(lambda x: os.path.exists(os.path.join(img_dir, x)))
+                df[IMAGES].apply(
+                    lambda x: os.path.exists(os.path.join(str(img_dir), str(x)))
+                )
             ]
 
             # 将过滤后的数据保存回原文件

@@ -23,7 +23,7 @@ COMPRESS_TRHESHOLD_KB = 0  # 只对指定大小以上的图片文件进行压缩
 K = 2**10
 COMPRESS_TRHESHOLD_B = COMPRESS_TRHESHOLD_KB * K
 COMPRESS_TRHESHOLD = COMPRESS_TRHESHOLD_B
-DEFAULT_QUALITY_RULE = "0,50,70 ; 50,200,40 ; 200,10000,40"
+DEFAULT_QUALITY_RULE = "0,50,70 ; 50,200,40 ; 200,10000,30"
 COMPRESS_FOR_FORMATS = ("jpg", "jpeg", "png", "webp")
 
 
@@ -54,6 +54,7 @@ class ImageCompressor:
         logger=None,
         skip_format="",
         fake_format=False,
+        # fake_webp
         compress_for_format=COMPRESS_FOR_FORMATS,
         remove_original=False,
         process_when_size_reduced=True,
@@ -95,7 +96,6 @@ class ImageCompressor:
         input_path: str,
         output_path: str = "",
         output_format: str = "",
-        # fake_format=True,
         quality: int = QUALITY_DEFAULT,
         quality_for_small_file: int = 70,
         optimize: bool = False,
@@ -336,7 +336,8 @@ class ImageCompressor:
                     output_path = os.path.join(output_dir, output_filename)
                     output_path = os.path.abspath(output_path)
                     print(
-                        f"格式信息预设: [{input_format} -> {output_format_now}];{input_path}->{output_path}"
+                        f"格式信息预设: [{input_format} -> {output_format_now}];"
+                        "{input_path}->{output_path}"
                     )
                     futures.append(
                         executor.submit(
