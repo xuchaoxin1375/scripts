@@ -116,6 +116,11 @@ def parse_args():
         help="假装输出格式与输入格式相同,但实际上输出的是空白图片,用于测试压缩效果",
     )
     parser.add_argument(
+        "-W",
+        "--fake-format-from-webp",
+        action="store_true",  # 默认不启用,指定此参数启用fake-format-from-webp
+    )
+    parser.add_argument(
         "-p",
         "--process-when-size-reduced",
         action="store_true",
@@ -137,6 +142,7 @@ def main():
         skip_format=skip_format,
         remove_original=args.remove_original,
         fake_format=args.fake_format,
+        fake_format_from_webp=args.fake_format_from_webp,
         process_when_size_reduced=args.process_when_size_reduced,
     )
     fmt = args.format or ""
@@ -152,7 +158,7 @@ def main():
             if os.path.isfile(args.output or ""):
                 output_path = args.output
 
-            success, msg = compressor.compress_image(
+            success, _ = compressor.compress_image(
                 args.input,
                 output_path,
                 output_format=fmt,
@@ -161,7 +167,7 @@ def main():
                 keep_exif=args.keep_exif,
                 overwrite=args.overwrite,
             )
-            # print(msg)
+            # print(_)
             sys.exit(0 if success else 1)
         elif os.path.isdir(args.input):
             # 批量处理
