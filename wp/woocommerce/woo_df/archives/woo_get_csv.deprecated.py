@@ -1,12 +1,8 @@
 """
 从LocoySpider数据库中获取产品数据并保存为woocommerce能够接受的csv文件
-
-setx LOCOY_SPIDER_DATA C:/火车采集器V10.27/Data
-
 """
 
 # %%
-import argparse  # 用于处理命令行参数
 import logging
 import os
 from datetime import datetime
@@ -19,138 +15,20 @@ from comutils import check_iterable  # , parse_dbs_from_str
 from wooenums import ImageMode, EnumItRc, LanguagesHotSale
 from woosqlitedb import SQLiteDB
 
-LOCOY_SPIDER_DATA = os.environ.get("LOCOY_SPIDER_DATA")
-if LOCOY_SPIDER_DATA is None:
-    raise ValueError(
-        r"请设置环境变量Locoy_Spider_Data为你的采集器数据目录路径,例如运行命令行: setx LOCOY_SPIDER_DATA C:\火车采集器V10.27\Data "
-    )
-
-
-def parse_args():
-    """解析命令行参数，提供灵活配置选项"""
-    parser = argparse.ArgumentParser(
-        description="导出LocoySpider数据库中的产品数据为Woocommerce兼容的CSV文件"
-    )
-
-    # 数据库相关参数
-    parser.add_argument(
-        "-d",
-        "--data-dir",
-        type=str,
-        default=LOCOY_SPIDER_DATA,
-        help="采集器数据目录路径",
-    )
-    parser.add_argument(
-        "-C",
-        "--language-country",
-        type=str,
-        # default="US",
-        required=True,
-        # choices=[language.name for language in LanguagesHotSale],
-        help=f"国家代码{LanguagesHotSale.get_all_fields_name()}",
-    )
-    parser.add_argument(
-        "-s",
-        "--start-id",
-        type=int,
-        required=True,
-        help="起始采集任务ID（必填项）",
-    )
-    parser.add_argument(
-        "-e",
-        "--end-id",
-        type=int,
-        default=None,
-        help="结束采集任务ID（默认与start-id相同）",
-    )
-
-    # 分类与价格过滤参数
-    parser.add_argument(
-        "-c",
-        "--category-threshold",
-        type=int,
-        default=30,
-        help="小分类阈值，低于此值的分类将被归入热销类（默认：30）",
-    )
-    parser.add_argument(
-        "-L",
-        "--lowest-price",
-        type=float,
-        default=1,
-        help="最低价格过滤标准（默认：1）",
-    )
-    parser.add_argument(
-        "-H",
-        "--highest-price",
-        type=float,
-        default=10000,
-        help="最高价格过滤标准（默认：10000）",
-    )
-
-    # 图片导出模式
-    parser.add_argument(
-        "-m",
-        "--image-mode",
-        type=str,
-        choices=[mode.name for mode in ImageMode],
-        default="NAME_FROM_URL",
-        help=f'图片字段导出模式，可选值: {", ".join(ImageMode.__members__.keys())}',
-    )
-
-    # 日志配置
-    parser.add_argument(
-        "--log-level",
-        type=str,
-        default="WARNING",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-        help="日志输出级别（默认：WARNING）",
-    )
-    parser.add_argument(
-        "-l",
-        "--log-file",
-        type=str,
-        help="日志文件路径（默认：./log/log_YYYYMMDD_HHMMSS.log）",
-    )
-
-    # 输出目录
-    parser.add_argument(
-        "-o",
-        "--output-dir",
-        type=str,
-        default="./",
-        help="导出CSV文件的输出目录（默认：当前目录）",
-    )
-    parser.add_argument(
-        "-S",
-        "--split-size",
-        type=int,
-        default=10000,
-        help="分割输出CSV文件的大小(default: 10000)",
-    )
-
-    return parser.parse_args()
-
-
-args = parse_args()  # 解析命令行参数
 # 小分类阈值,小于该阈值的分类将被视为小分类,将其分配到热销类(或其近义词);设置为0表示不处理分类
+SMALL_CATEGORY_THRESHOLD = 30
 # 配置图片字段导出模式
-# IMAGE_MODE = ImageMode.NAME_FROM_URL
-IMAGE_MODE = ImageMode[args.image_mode] or ImageMode.NAME_FROM_URL
+IMAGE_MODE=ImageMode.NMAE_FROM_URL
 # 产品价格区间(打折前不在此区间的产品将被过滤掉)
 LOWEST_PRICE = 1
 HIGHEST_PRICE = 10000
-# 国家和语言🎈
-# LANGUAGE = LanguagesHotSale.US.name
-LANGUAGE = args.language_country or LanguagesHotSale.US.name
-LANGUAGE = LANGUAGE.upper()
+LANGUAGE = LanguagesHotSale.US.name
 # 限制产品数量少的分类,将其分配到热销类(或其近义词)
 CATEGORIES_THRESHOLD = 30
 
 # 确保日志目录存在
 LOG_DIR = "./log"
-LOG_FILE = (
-    args.log_file or f"{LOG_DIR}/log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-)
+LOG_FILE = f"{LOG_DIR}/log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
 
 
 # -----------------------------------------------------------
@@ -160,15 +38,11 @@ LOG_FILE = (
 #   例如获取170-180编号采集文件夹下的db文件
 
 # 根据你的采集器安装目录以及采集存放的db目录来填写🎈(末尾不要有\,前面可以有)
+DATA_DIR = Path(r"   C:\火车采集器V10.27\Data   ".strip())
+# 连续的采集任务ID范围,例如从177到180,则START=177, END=180,如果仅导出一个ID,则只需要配置START, END可以不配置
+START = 177
 
-
-DATA_DIR = Path(args.data_dir.strip())
-START = -1  # 用于开发测试,通常使用命令行的参数传参
-END = START
-
-# 综合确定参数
-START = args.start_id or START
-END = args.end_id or END
+END = START  #如果只导出一个db文件,则不需要改动END的取值
 
 # 枚举出db文件路径
 rng = range(START, END + 1)
@@ -200,7 +74,6 @@ for file in sorted(dbs):
 
 ##
 
-
 class LanguagesHotSaleX(EnumItRc):
     """对LanguagesHotSale枚举类的复刻,但是允许你修改下面的配置来调整和控制热销的返回值
 
@@ -209,14 +82,12 @@ class LanguagesHotSaleX(EnumItRc):
     US = ["Best-Sellers","Featured","Top-Sellers"]
 
     """
-
     US = LanguagesHotSale.US.value
     UK = LanguagesHotSale.UK.value
     IT = LanguagesHotSale.IT.value
     DE = LanguagesHotSale.DE.value
     ES = LanguagesHotSale.ES.value
     FR = LanguagesHotSale.FR.value
-
 
 try:
     os.makedirs(LOG_DIR, exist_ok=True)  # 自动创建目录（如果不存在）
@@ -226,8 +97,8 @@ except Exception as e:
 file_handler = logging.FileHandler(LOG_FILE, mode="w", encoding="utf-8")
 console_handler = logging.StreamHandler()
 logging.basicConfig(
-    level=args.log_level.upper(),  # 使用用户提供的日志级别
-    format="%(levelname)s - %(funcName)s - %(message)s",
+    level=logging.WARNING,  # 日志级别🎈
+    format="%(levelname)s - %(message)s",
     handlers=[file_handler, console_handler],
 )
 # 使用示例
@@ -294,8 +165,5 @@ if __name__ == "__main__":
     db.update_products(dbs=dbs, sku_suffix=LANGUAGE, strict_mode=False)
     ## 8.导出csv文件
     db.export_csv(
-        dbs=dbs,
-        out_dir=args.output_dir,
-        split_files_size=10000,
-        img_mode=IMAGE_MODE,
+        dbs=dbs, out_dir="./", split_files_size=10000, img_mode=IMAGE_MODE
     )

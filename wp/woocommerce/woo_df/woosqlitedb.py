@@ -16,7 +16,12 @@ import shutil
 
 import pandas as pd
 
-from comutils import get_filebasename_from_url, remove_sensitive_info, split_urls
+from comutils import (
+    get_filebasename_from_url,
+    remove_sensitive_info,
+    split_urls,
+    count_lines_csv,
+)
 from filenamehandler import FilenameHandler
 from wooenums import CSVProductFields, DBProductFields, ImageMode, LanguagesHotSale
 
@@ -109,6 +114,30 @@ def remove_items_without_img(csv_dir, img_dir, backup_dir="backup_csvs"):
 
             # 将过滤后的数据保存回原文件
             df.to_csv(file, index=False)
+
+
+def process_image_csv(img_dir, csv_dir, backup_dir="backup_csvs"):
+    """更新CSV文件中的图片字段,设置格式为webp,并移除无图片的条目
+    请务必图片下载完毕后再执行本处理,否则csv文件内容将因为图片找不到而全部被移除
+
+    默认情况下执行此函数会进行备份,因此如果清空太多图片,则可以恢复备份文件
+
+    """
+    csv_dir = os.path.abspath(csv_dir)  # 计算绝对路径
+    print(csv_dir)
+
+    total_before = count_lines_csv(csv_dir)
+
+    update_image_fields(csv_dir)
+    update_image_fields_extension(csv_dir, extension="webp")
+    remove_items_without_img(csv_dir, img_dir=img_dir, backup_dir=backup_dir)
+
+    if backup_dir:
+        cwd = os.getcwd()
+        backup_dir = os.path.abspath(os.path.join(cwd, backup_dir))  # 计算绝对路径
+        print(f"csv文件备份到{backup_dir}")
+    total_after = count_lines_csv(csv_dir)
+    print(f"处理后剩余{total_after}条数据,减少了{total_before-total_after}条数据")
 
 
 class SQLiteDB:
@@ -739,7 +768,7 @@ but different name, keep records",
                         )
                         for i, img_url in enumerate(img_url_lst)
                     ]
-                elif img_mode == ImageMode.NMAE_FROM_URL:
+                elif img_mode == ImageMode.NAME_FROM_URL:
                     img_names = [get_filebasename_from_url(url) for url in img_url_lst]
 
                 row[img_field] = ",".join(img_names)

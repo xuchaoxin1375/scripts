@@ -381,18 +381,18 @@ LOG_HEADER = ["SKU", "Name", "id", "Status", "message", "datetime"]
 
 
 # 统计处理后的各个csv文件分别有多少条数据
-def count_lines_csv(CSV_DIR):
+def count_lines_csv(csv_dir):
     """统计csv的数据行数"""
-    TOTAL = 0
-    for file in os.listdir(CSV_DIR):
+    total = 0
+    for file in os.listdir(csv_dir):
         if not file.endswith(".csv"):
             continue
-        file = os.path.join(CSV_DIR, file)
+        file = os.path.join(csv_dir, file)
         df = pd.read_csv(file)
-        TOTAL += len(df)
+        total += len(df)
         print(file, len(df))
 
-    return TOTAL
+    return total
 
 
 def get_data_from_csv(args, lines, reader, url_field, name_field):

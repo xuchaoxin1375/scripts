@@ -58,12 +58,12 @@ class ImageMode(EnumIt):
     """图片名字取值模式
     Attributes:
         NAME_FROM_SKU: 根据SKU生成图片名称
-        NMAE_FROM_URL: 根据图片链接生成图片名称
+        NAME_FROM_URL: 根据图片链接生成图片名称
         NAME_AS_URL: 使用图片链接作为图片名称
     """
 
     NAME_FROM_SKU = "name_from_sku"
-    NMAE_FROM_URL = "name_from_url"
+    NAME_FROM_URL = "name_from_url"
     NAME_AS_URL = "name_as_url"
 
 
@@ -127,7 +127,7 @@ class CSVProductFields(EnumIt):
             bool: 是否需要
 
         """
-        return img_mode in [ImageMode.NAME_FROM_SKU, ImageMode.NMAE_FROM_URL]
+        return img_mode in [ImageMode.NAME_FROM_SKU, ImageMode.NAME_FROM_URL]
 
     @classmethod
     def get_all_fields_name(
@@ -137,7 +137,7 @@ class CSVProductFields(EnumIt):
         根据模式的不同返回不同的CSV字段名称列表
         :param img_mode: 是否让图片字段仅存放图片名称而不是存放链接
             1. `ImageMode.NAME_AS_URL`时,图片相关字段仅有Images,其他情况有Images,ImagesUrl字段;返回12个字段(可能会变更)
-            2. `ImageMode.NAME_FROM_SKU`,`ImageMode.NMAE_FROM_URL`时,的差别在于,
+            2. `ImageMode.NAME_FROM_SKU`,`ImageMode.NAME_FROM_URL`时,的差别在于,
                Images字段的取值是sku(变体)还是仅取决于url的文件名截取;返回11个字段(可能会变更)
         :return: 对应模式下DB-CSV中间字段名称列表,例如["SKU","NAME",...]
         """

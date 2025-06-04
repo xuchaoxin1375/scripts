@@ -1,31 +1,104 @@
 """
-数据库直插导入器
+wp woocommerce 数据库直插产品数据导入器
 """
 
 import os
+import random
+import argparse
 import re
+import string
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-import time
+
 import pandas as pd
 import phpserialize
 import pymysql
+from PIL import Image
 from tqdm import tqdm
 from unidecode import unidecode
-from PIL import Image
+from woosqlitedb import process_image_csv
 
-IMG_DIR = r"  D:\template\domain.com\images  ".strip()  # 图片目录
-CSV_DIR = r"  D:\wp_template\domain.com      ".strip()  # CSV文件目录
+IMG_DIR = r"    ".strip()  # 图片目录
+CSV_DIR = r"    ".strip()  # CSV文件目录
 
-DB_NAME = "domain.com"  # 数据库名
+DB_NAME = " "  # 数据库名🎈
 
 DB_HOST = "localhost"  # 数据库主机名
 DB_USER = "root"  # 数据库用户名
-PASSWORD = "15a58524d3bd2e49"  # 数据库密码
+PASSWORD = os.environ.get("MySqlKey_LOCAL")
+
+
+def parse_args():
+    """命令行方式使用本脚本"""
+    parser = argparse.ArgumentParser(
+        description="WooCommerce Product Importer CLI Tool"
+    )
+
+    parser.add_argument(
+        "-c",
+        "--csv-path",
+        type=str,
+        required=True,
+        help="Path to the CSV file or directory containing multiple CSV files",
+    )
+    parser.add_argument(
+        "-i",
+        "--img-dir",
+        type=str,
+        # default=IMG_DIR,
+        help="Directory containing product images",
+    )
+    parser.add_argument(
+        "--db-host",
+        type=str,
+        default=DB_HOST,
+        help=f"Database host (default: {DB_HOST})",
+    )
+    parser.add_argument(
+        "--db-user",
+        type=str,
+        default=DB_USER,
+        help=f"Database user (default: {DB_USER})",
+    )
+    parser.add_argument(
+        "--db-password",
+        type=str,
+        default=PASSWORD,
+        help=f"Database password (default: {PASSWORD})",
+    )
+    parser.add_argument(
+        "--db-name",
+        type=str,
+        # default=DB_NAME,
+        required=True,
+        help=f"Database name (default: {DB_NAME})",
+    )
+    parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=20,
+        help="Number of threads for parallel processing (default: 20)",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=100,
+        help="Number of products per batch (default: 100)",
+    )
+    parser.add_argument(
+        "--update-slugs",
+        action="store_true",
+        help="Whether to update product slugs after import",
+    )
+
+    return parser.parse_args()
 
 
 class WooCommerceProductImporter:
+    """WooCommerce产品导入器"""
+
     def __init__(
         self, db_config, img_dir="product_images", max_workers=4, batch_size=50
     ):
@@ -512,8 +585,6 @@ class WooCommerceProductImporter:
         slug = slug[:200]
         # 如果没有有效字符，使用随机字符串
         if not slug:
-            import random
-            import string
 
             slug = "".join(random.choices(string.ascii_lowercase + string.digits, k=8))
 
@@ -564,26 +635,6 @@ class WooCommerceProductImporter:
                         cursor.execute(update_query, (tag[0],))
 
                     print(f"成功将 {count} 个标签转为分类")
-
-                #     # 3. 更新WooCommerce查找表
-                #     cursor.execute("TRUNCATE TABLE wp_wc_product_meta_lookup")
-                #     cursor.execute("""
-                #         INSERT INTO wp_wc_product_meta_lookup (product_id, sku, min_price, max_price)
-                #         SELECT p.ID,
-                #             MAX(CASE WHEN pm.meta_key = '_sku' THEN pm.meta_value ELSE '' END),
-                #             MIN(CAST(COALESCE(NULLIF(pm2.meta_value, ''), '0') AS DECIMAL(10,2))),
-                #             MAX(CAST(COALESCE(NULLIF(pm2.meta_value, ''), '0') AS DECIMAL(10,2)))
-                #         FROM wp_posts p
-                #         LEFT JOIN wp_postmeta pm ON p.ID = pm.post_id AND pm.meta_key = '_sku'
-                #         LEFT JOIN wp_postmeta pm2 ON p.ID = pm2.post_id AND pm2.meta_key = '_price'
-                #         WHERE p.post_type = 'product'
-                #         GROUP BY p.ID
-                #     """)
-
-                #     print("WooCommerce查找表已更新")
-
-                # # 提交事务
-                # conn.commit()
 
         except Exception as e:
             conn.rollback()
@@ -704,33 +755,54 @@ class WooCommerceProductImporter:
 
 
 if __name__ == "__main__":
+    # 解析命令行参数
+    args = parse_args()
+    # 处理图片
+    csv_path = args.csv_path or CSV_DIR
+    img_dir = args.img_dir or IMG_DIR
+    process_image_csv(img_dir=img_dir, csv_dir=csv_path)
+    go = input("是否继续?(y/n) [default:y]").strip().lower()
+    if go not in ("", "y", "yes"):
+        print("操作已取消。")
+        exit()
+    else:
+        print("继续,开始导入产品数据到数据库...")
+
     # 数据库配置
     db_config = {
-        "host": DB_HOST,
-        "user": DB_USER,
-        "database": DB_NAME,
-        "password": PASSWORD,
+        "host": args.db_host,
+        "user": args.db_user,
+        "database": args.db_name,
+        "password": args.db_password,
         "charset": "utf8mb4",
-        "connect_timeout": 900,  # 增加连接超时时间
-        "read_timeout": 1600,  # 增加读取超时时间
-        "write_timeout": 1600,  # 增加写入超时时间
+        "connect_timeout": 900,
+        "read_timeout": 1600,
+        "write_timeout": 1600,
         "init_command": 'SET SESSION sql_mode="NO_ENGINE_SUBSTITUTION"',
     }
 
     # 创建导入器实例
     importer = WooCommerceProductImporter(
         db_config=db_config,
-        img_dir=IMG_DIR,  # 图片目录
-        max_workers=20,
-        batch_size=100,
+        img_dir=img_dir,
+        max_workers=args.max_workers,
+        batch_size=args.batch_size,
     )
-    # 执行导入
 
-    # importer.import_products("product_data.csv")
-    for csv_file in os.listdir(CSV_DIR):
-        if csv_file.endswith(".csv"):
-            p = os.path.abspath(os.path.join(CSV_DIR, csv_file))
-            print(f"processing file:{p}")
-            importer.import_products(p)
+    # 执行导入(针对输入的路径是文件还是文件夹采取针对性的导入)
+    if os.path.isfile(csv_path) and csv_path.endswith(".csv"):
+        print(f"Processing single CSV file: {csv_path}")
+        importer.import_products(csv_path)
+    elif os.path.isdir(csv_path):
+        for csv_file in os.listdir(csv_path):
+            if csv_file.endswith(".csv"):
+                p = os.path.abspath(os.path.join(csv_path, csv_file))
+                print(f"Processing file: {p}")
+                importer.import_products(p)
+    else:
+        print(
+            "Invalid CSV path provided. Please specify a valid CSV file or directory."
+        )
 
-    importer.update_product_slugs()  # 处理重名产品被合并到同一个产品页面的问题
+    if args.update_slugs:
+        importer.update_product_slugs()
