@@ -38,6 +38,11 @@ def parse_args():
         help="输入文件或目录路径 (可选参数形式)",
     )
     parser.add_argument(
+        "-I",
+        "--input-dirlist-file",
+        help="指定包含输入路径的列表文件,每行一个路径,用于批量处理多个目录",
+    )
+    parser.add_argument(
         "-o",
         "--output",
         # default="./",
@@ -116,21 +121,23 @@ def parse_args():
         help="移除原始文件(如果压缩后的格式和原格式不同时,保留源文件,但如果压缩前后格式相同且在同一目录下,则源文件会被覆盖)",
     )
     parser.add_argument(
-        "-F",
-        "--fake-format",
-        action="store_true",  # 默认不启用,指定此参数启用fake-format
-        help="假装输出格式与输入格式相同,但实际上输出的是空白图片,用于测试压缩效果",
-    )
-    parser.add_argument(
         "-W",
         "--fake-format-from-webp",
         action="store_true",  # 默认不启用,指定此参数启用fake-format-from-webp
+        help="fake_format_from_webp: 是否将图片压缩成webp,然后将文件后缀名改为指定的格式名"
+        "(考虑到图片压缩到webp压缩效果好,而且浏览器不会应为图片的格式后缀和真实格式不一致而渲染不出来,可以考虑此选项节约空间)",
     )
     parser.add_argument(
         "-p",
         "--process-when-size-reduced",
         action="store_true",
         help="当图片大小减少时才保留压缩结果",
+    )
+    parser.add_argument(
+        "-F",
+        "--fake-format",
+        action="store_true",  # 默认不启用,指定此参数启用fake-format
+        help="将图片的格式处理成与指定的输出格式相同(尤其是图片处理后体积变大的情况下,可能不会采用处理结果(采用-p选项),为了不增大体积,又要求图片格式为指定格式,可以考虑此选项)",
     )
     parser.add_argument("-v", "--verbose", action="store_true", help="显示详细输出")
     return parser.parse_args()
@@ -154,9 +161,22 @@ def main():
     )
     fmt = args.format or ""
     print(f"type:{type(fmt)};value:[{fmt}]")
+    input_path = args.input
+    if args.input_dirlist_file:
+        with open(args.input_dirlist_file, "r", encoding="utf-8") as f:
+            for line in f:
+                input_path = line.strip()
+                if not input_path:
+                    continue
+                process_input_task(args, compressor, fmt, input_path)
+    else:
+        process_input_task(args, compressor, fmt, input_path)
+
+
+def process_input_task(args, compressor, fmt, input_path):
+    """分两种情况处理input(文件或目录),以决定调用单处理还是批处理"""
     try:
-        # 分两种情况处理input(文件或目录),以决定调用单处理还是批处理
-        if os.path.isfile(args.input):
+        if os.path.isfile(input_path):
             # 单文件处理(压缩完一个图片后就退出程序exit)
             # output_path = (
             #     args.output or os.path.splitext(args.input)[0] + f".{args.format}"
@@ -166,7 +186,7 @@ def main():
                 output_path = args.output
 
             success, _ = compressor.compress_image(
-                args.input,
+                input_path,
                 output_path,
                 output_format=fmt,
                 quality=args.quality,
@@ -176,18 +196,18 @@ def main():
             )
             # print(_)
             sys.exit(0 if success else 1)
-        elif os.path.isdir(args.input):
+        elif os.path.isdir(input_path):
             # 批量处理
             # output = args.output.strip(".").rstrip("/")
             output = args.output
-            out_dir = output or args.input
+            out_dir = output or input_path
             if not output:
                 # print("!批量处理时必须指定输出目录", file=sys.stderr)
                 # sys.exit(1)
                 print(f"批量处理没有指定输出目录🎈,使用默认目录{out_dir}")
 
             results = compressor.batch_compress(
-                input_dir=args.input,
+                input_dir=input_path,
                 output_dir=out_dir,
                 output_format=fmt,
                 quality=args.quality,
