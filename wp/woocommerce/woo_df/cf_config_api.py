@@ -14,11 +14,13 @@ from cloudflare import Cloudflare
 from dotenv import load_dotenv
 
 load_dotenv()
-
+# 请事先确保(配置)下面引号中的环境变量,名字就是引号中的,取值根据自己的情况设置
 CLOUDFLARE_EMAIL = os.environ.get("CLOUDFLARE_EMAIL")
 CLOUDFLARE_API_KEY = os.environ.get("CLOUDFLARE_API_KEY")
 DEFAULT_FORWARD_EMAIL = os.environ.get("DEFAULT_FORWARD_EMAIL")
 DEFAULT_SERVER_IP = os.environ.get("DF_SERVER1")
+
+# 其他
 DEFAULT_SSL_MODE = "flexible"
 DEFAULT_SECURITY_MODE = 1
 
@@ -32,7 +34,6 @@ THREADS = 5  # 并发线程数
 API_TIMEOUT = 100  # API 请求超时时间（秒）
 
 load_dotenv()
-
 
 
 # 全局统计变量
@@ -643,7 +644,7 @@ def main():
         existing_domains = get_existing_domains()
 
         # 使用ThreadPoolExecutor执行多线程配置域名
-        w=2
+        w = 2
         # (不宜过多,容易429)
         print(f"使用{w}个线程配置域名...")
         with ThreadPoolExecutor(w) as executor:

@@ -1,3 +1,5 @@
+"""多模块日志示例"""
+
 import logging
 from myliblog import core
 from myliblog import utils

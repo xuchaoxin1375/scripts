@@ -287,7 +287,7 @@ deploy_site() {
     else
         mkdir -p "$target_dir" # 创建网站根目录
     fi
-    #如果存在同名目录,则询问用户是否覆盖
+    # 解压网站文件|如果存在同名目录,则询问用户是否覆盖
     if [ -d "$site_expanded_dir" ]; then
         echo "⚠️ 检测到相关目录已存在: $site_expanded_dir"
         echo "是否覆盖现有目录? (yY/n): "
@@ -313,7 +313,8 @@ deploy_site() {
             return 1
         fi
 
-        mv "$site_expanded_dir"/* "$target_dir" -f # 移动新目录内容到目标目录
+        # 移动新目录内容到目标目录🎈
+        mv "$site_expanded_dir"/* "$target_dir" -f 
     fi
 
     # === 检查并导入对应的 SQL 文件 ===
@@ -336,19 +337,7 @@ deploy_site() {
         #     import_sql_file "$domain_name" "$username" "$alt_sql_file"
         # fi
     fi
-    # === 站点根目录:创建目标目录并移动内容 ===
-    # echo "📂 正在移动网站根目录到目标目录: $target_dir"
-    # # 检查目标目录是否存在,如果存在则发出提示,并且移除旧目录,然后在移动新目录
-    # if [ -d "$target_dir" ]; then
-    #     echo "⚠️ 目标目录已存在: $target_dir"
-    #     echo "正在尝试移除旧目录..."
-    #     rm -rf "$target_dir" || {
-    #         echo "!未完全删除旧目录: $target_dir"
-    #     }
-    # fi
-    # echo "移动新目录内容到目标目录: $target_dir"
-    # mv "$extracted_domain_dir"/* "$target_dir" -f
-    # 正式移动网站根目录到目标目录
+
 
     # 将可能阻碍登录后台wps-hide-login.bak这个插件目录改为wps-hide-login
     local plugins_dir="$target_dir/wp-content/plugins"

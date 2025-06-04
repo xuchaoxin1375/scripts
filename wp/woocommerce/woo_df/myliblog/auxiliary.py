@@ -3,18 +3,21 @@
 import logging
 
 # 创建日志记录器
-module_logger = logging.getLogger("myliblog.auxiliary")
+# module_logger = logging.getLogger("myliblog.auxiliary")
+module_logger = logging.getLogger(__name__)
 
 
 class Auxiliary:
     """This is a class that does something."""
 
     def __init__(self):
-        self.logger = logging.getLogger("myliblog.auxiliary.Auxiliary")
+        # self.logger = logging.getLogger("myliblog.auxiliary.Auxiliary")
+        # self.logger = logging.getLogger(__name__+".Auxiliary")
+        self.logger = module_logger.getChild("Auxiliary")
         self.logger.debug(
             "Auxiliary instance created with logger: %s", self.logger.name
         )
-        self.logger.info('creating an instance of Auxiliary')
+        self.logger.info("creating an instance of Auxiliary")
 
     def do_something(self):
         """This method does something and logs the process."""

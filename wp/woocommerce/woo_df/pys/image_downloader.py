@@ -6,7 +6,6 @@ import logging
 import os
 import re
 import sys
-import subprocess
 
 # from logging import error, exception, info, warning, debug
 from comutils import (
@@ -222,7 +221,6 @@ def parse_args():
     return parser.parse_args()
 
 
-
 def main():
     """主函数"""
 
@@ -305,6 +303,7 @@ def main():
     elif not args.override:
         # 如果指定的存放目录存在
         img_names_existed = os.listdir(args.output_dir)
+        # 默认情况下,对比重复下载时,我们只关心文件名,不关心后缀
         img_names_existed = [os.path.splitext(name)[0] for name in img_names_existed]
         # 记录过滤前的待下载图片数量
         total_num_raw = len(lines)
@@ -315,6 +314,8 @@ def main():
                 for name, _ in lines
                 if fh.get_filebasename_from_url_or_path(name) not in img_names_existed
             ]
+            print(lines)
+            # return
         else:
             # 从URL列表中解析出名字
             lines = [
