@@ -13,7 +13,7 @@
 第一次使用,需要先安装依赖,打开命令行窗口,执行:
 
 ```powershell
-pip install -r $env:requirements.txt
+pip install -r $woo_df/requirements.txt
 
 ```
 
@@ -23,6 +23,7 @@ pip install -r $env:requirements.txt
 setx PYTHONPATH C:\repos\scripts\wp\woocommerce\woo_df
 setx LOCOY_SPIDER_DATA "C:\火车采集器V10.27\Data"
 setx PYS C:\repos\scripts\wp\woocommerce\woo_df\pys
+setx WOO_DF C:\repos\scripts\wp\woocommerce\woo_df
 ```
 
 将引号中的路径替换为你的采集对应的路径
@@ -88,22 +89,42 @@ d----            2025/5/7    15:11                05
 python $pys\woo_uploader_db.py -c $csv_path -i $img_dir 
 ```
 
-## 整合🎈
+## 小结🎈
 
-图片下载并压缩成webp格式后
+
 
 ```powershell
+
 #导出csv
-python $pys\woo_get_csv.py -s $start -e $end -C $language
+python $pys\woo_get_csv.py --start-id  $start_id --end-id $end_id --language-country $language
 #下载并处理图片
-python $pys\image_downloader.py -c -n -R auto -k  -o $o -d $d
+python $pys\image_downloader.py -c -n -R auto -k   --output-dir $output_dir --dir-input $dir_input
 #导入产品数据到数据库中
-python $pys\woo_uploader_db.py -c $csv_path -i $img_dir 
+python $pys\woo_uploader_db.py  --csv-path $csv_path --img-dir $img_dir 
 ```
 
 查看帮助(选项含义不清楚的可以使用`-h`参数,上述命令都支持这个选项和方式来获取命令行的选项说明),例如
 
 ```powershell
 python $pys\woo_get_csv.py
+```
+
+```
+ls $env:Locoy_Spider_Data
+```
+
+```
+#⚡️[Administrator@CXXUDESK][~\Desktop][17:20:54][UP:17.21Days]
+PS> python $pys\woo_get_csv.py --start-id  176 --end-id 177 --language-country us
+开始执行(日志文件位于./log/log_20250604_172109.log,绝对路径为:C:\Users\Administrator\Desktop\log\log_20250604_172109.log)...
+ERROR:root:Jump process:[C:/火车采集器V10.27/Data/176/SpiderResult.db3] file is not a valid db file. Error: no such column: 产品名称
+progress: 1
+progress: 2
+progress: 3
+progress: 4
+progress: 5
+progress: 6
+progress: 7
+progress: 8
 ```
 
