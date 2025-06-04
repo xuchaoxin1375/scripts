@@ -44,6 +44,12 @@ def parse_args():
         help="输出文件或目录路径(如果放空,且input是目录,则默认输出目录为input目录)",
     )
     parser.add_argument(
+        "-A",
+        "--recurse",
+        action="store_true",
+        help="递归处理目录(连所有层级同子目录一起处理)",
+    )
+    parser.add_argument(
         "-f",
         "--format",
         choices=["webp", "jpg", "png"],
@@ -144,6 +150,7 @@ def main():
         fake_format=args.fake_format,
         fake_format_from_webp=args.fake_format_from_webp,
         process_when_size_reduced=args.process_when_size_reduced,
+        recurse=args.recurse,
     )
     fmt = args.format or ""
     print(f"type:{type(fmt)};value:[{fmt}]")

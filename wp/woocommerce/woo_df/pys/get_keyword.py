@@ -11,6 +11,8 @@ import warnings
 
 import pandas as pd
 
+from comutils import get_domain_name_from_str
+
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 
 orders_file = r"C:/users/Administrator/Downloads/2025-06-03 08_49_52-order数据.xlsx"
@@ -21,26 +23,17 @@ p = re.compile(r"([-\w]+\.){1,2}[-\w]+")
 # df.info()
 
 
-def extract_domain(url):
-    """
-    # 测试URL列表
-    urls = ['www.domain.com', 'https://www.dom-ain.com', 'domain-test.com', 'http://domain.com', 'https://domain.com/']
-    """
-    # 使用正则表达式提取域名
-    match = re.search(r"(?:https?://)?(?:www\.)?([^/]+)", url)
-    if match:
-        return match.group(1)
-    return None
+
 
 
 df1 = df[["产品名称", "域名"]].copy()
-df1["域名"] = df1["域名"].apply(extract_domain)
+df1["域名"] = df1["域名"].apply(get_domain_name_from_str)
 df1.drop_duplicates(subset=["产品名称"], inplace=True)
 # 使用在线表格下载下来的excel表格格式肯能不符标准规范,可以用office excel打开(启用编辑)然后保存(会尝试保存为标准excel格式)
 df2 = pd.read_excel(domain_table)
 # df2.info()
 df2 = df2[["域名", "国家"]].copy()
-df2["域名"] = df2["域名"].apply(extract_domain)
+df2["域名"] = df2["域名"].apply(get_domain_name_from_str)
 
 
 # 连接df1和df2,依据为相同的域名

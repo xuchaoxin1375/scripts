@@ -58,6 +58,7 @@ class ImageCompressor:
         compress_for_format=COMPRESS_FOR_FORMATS,
         remove_original=False,
         process_when_size_reduced=True,
+        recurse=False,
     ):
         """
         初始化压缩器
@@ -84,6 +85,7 @@ class ImageCompressor:
         self.fake_format_from_webp = fake_format_from_webp
         self.process_when_size_reduced = process_when_size_reduced
         self.opl = OperationLogger()
+        self.recurse = recurse
 
         self.opl.start()
         print(f"压缩白名单: {self.compress_for_format}")
@@ -318,10 +320,10 @@ class ImageCompressor:
             # 提供了输出路径
             print(f"仅提供了输出路径:[{output_path}]")
         elif not output_path and not output_format:
-            print(f"未提供输出路径和格式")
+            print("未提供输出路径和格式")
             output_path = input_path
         else:
-            print(f"输出参数错误")
+            print("输出参数错误")
         return output_path
 
     def batch_compress(
@@ -362,11 +364,27 @@ class ImageCompressor:
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = []
-            for filename in os.listdir(input_dir):
-                if filename.lower().endswith(COMPRESS_FOR_FORMATS):
+            files = []
+            # 处理递归情况
+            if self.recurse:
+                for root, _, fs in os.walk(input_dir):
+                    # 遍历各级目录中的文件
+                    # for filename in files:
+                    #     file_path = os.path.join(root, filename)
+                    #     files.append(file_path)
+                    files_now = [os.path.join(root, filename) for filename in fs]
+                    files.extend(files_now)
+                # print(f"递归处理: {files}")
+            else:
+                files = os.listdir(input_dir)
+                files = [os.path.join(input_dir, filename) for filename in files]
+                # input_path = os.path.join(input_dir, filename)
 
-                    input_path = os.path.join(input_dir, filename)
-                    base_name, input_format = os.path.splitext(filename)
+            # for filename in os.listdir(input_dir):
+            for input_path in files:
+                if input_path.lower().endswith(COMPRESS_FOR_FORMATS):
+
+                    base_name, input_format = os.path.splitext(input_path)
 
                     # output_format = output_format or input_format
                     output_format_now = output_format or input_format
@@ -377,7 +395,7 @@ class ImageCompressor:
                     output_path = os.path.abspath(output_path)
                     print(
                         f"格式信息预设: [{input_format} -> {output_format_now}];"
-                        "{input_path}->{output_path}"
+                        f"{input_path}->{output_path}"
                     )
                     futures.append(
                         executor.submit(

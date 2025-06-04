@@ -53,7 +53,7 @@ py C:\repos\scripts\wp\woocommerce\woo_df\pys\image_compresser.py   -R auto -p -
 linux服务器上的命令
 
 ```bash
-python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -p -F  -O   -k -i
+python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -p -F  -O -W  -k -i
 ```
 
 ### 更新代码

@@ -34,6 +34,44 @@ URL_SEP_REGEXP = re.compile(URL_SEP_PATTERN)
 COMMON_SEP_REGEXP = re.compile(COMMON_SEP_PATTERN)
 
 
+def walk_with_depth(root_dir, depth=None):
+    """
+    递归遍历目录，支持指定递归深度和过滤目录/文件。
+
+    Args:
+        root_dir (str): 根目录路径。
+        depth (int, optional): 遍历的最大深度，默认为 None（无限制）。
+ 
+    Example:
+        >>> test_dir=r"C:/ShareTemp/imgs_demo"
+        >>> walk_with_depth(test_dir,depth=1 )
+    """
+
+    dirs = []
+    files = []
+    def walker(path, current_depth):
+        if depth is not None and current_depth > depth:
+            return
+
+        try:
+            entries = os.listdir(path)
+        except PermissionError:
+            # 忽略无法访问的目录
+            return
+
+        for entry in entries:
+            full_path = os.path.join(path, entry)
+
+            if os.path.isdir(full_path):
+                dirs.append(full_path)
+                walker(full_path, current_depth + 1)
+            else:
+                files.append(full_path)
+
+    walker(root_dir, 1)
+    return dirs, files
+
+
 def merge_csv_files(
     directory: str, out_file="", remove_old_files=False, encoding: str = "utf-8"
 ) -> pd.DataFrame:
@@ -307,6 +345,21 @@ def split_multi(
     if ignore_empty:
         items = [item for item in items if item]
     return items
+
+
+def get_domain_name_from_str(url):
+    """
+    从字符串中提取域名,结构形如 "二级域名.顶级域名",即SLD.TLD;
+    仅提取一个域名,适合于对于一个字符串中仅包含一个确定的域名的情况
+    例如,对于更长的结构,"子域名.二级域名.顶级域名"则会丢弃子域名,前缀带有http(s)的部分也会被移除
+    # 测试URL列表
+    urls = ['www.domain.com', 'https://www.dom-ain.com', 'domain-test.com', 'http://domain.com', 'https://domain.com/']
+    """
+    # 使用正则表达式提取域名
+    match = re.search(r"(?:https?://)?(?:www\.)?([^/]+)", url)
+    if match:
+        return match.group(1)
+    return None
 
 
 def get_filebasename_from_url(url):
