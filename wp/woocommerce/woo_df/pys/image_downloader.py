@@ -188,9 +188,7 @@ def parse_args():
         "-t", "--timeout", type=int, default=30, help="下载超时时间，单位秒"
     )
     parser.add_argument("-r", "--retry", type=int, default=0, help="下载失败重试次数 ")
-    parser.add_argument(
-        "-R", "--quality-rule", default="auto", help="压缩图片的质量规则"
-    )
+    parser.add_argument("-R", "--quality-rule", help="压缩图片的质量规则")
     parser.add_argument(
         "-u", "--user-agent", default=USER_AGENTS[0], help="自定义User-Agent"
     )
@@ -295,11 +293,7 @@ def main():
     # 这里不关心文件名后缀的差异,比较basename
     ## 读取指定目录下的图片(只列出名字)
     if not os.path.exists(args.output_dir):
-        warning(
-            "指定的输出目录%s不存在: %s(将尝试自动创建)",
-            args.output_dir,
-            args.output_dir,
-        )
+        warning("指定的输出目录[%s]不存在(将尝试自动创建)", args.output_dir)
     elif not args.override:
         # 如果指定的存放目录存在
         img_names_existed = os.listdir(args.output_dir)

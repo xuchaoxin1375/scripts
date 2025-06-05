@@ -758,13 +758,14 @@ but different name, keep records",
                 # img_url_lst = img_urls.replace(">", " ").split()
                 img_url_lst = split_urls(img_urls)
                 img_names = []
+                # 以sku命名图片🎈
                 if img_mode == ImageMode.NAME_FROM_SKU:
                     sku = row[sku_field]
                     # 基于sku,编号命名该产品的多个图片(如果有多图的话)
                     img_names = [
                         f"{sku}-{i}"
                         + self._get_img_extension(
-                            img_url=img_url, req_response=req_response, prefix_dot=False
+                            img_url=img_url, req_response=req_response, prefix_dot=True
                         )
                         for i, img_url in enumerate(img_url_lst)
                     ]

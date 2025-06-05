@@ -34,6 +34,31 @@ URL_SEP_REGEXP = re.compile(URL_SEP_PATTERN)
 COMMON_SEP_REGEXP = re.compile(COMMON_SEP_PATTERN)
 
 
+def get_paths(input_dir: str, recurse: bool = False):
+    """
+    获取指定目录下的所有路径(绝对路径)
+    其中包括了文件和子目录
+
+    Args:
+        input_dir (str): 要遍历的目录路径。
+        recurse (bool): 是否递归遍历子目录，默认为 False。
+
+    Returns:
+        List[str]: 所有文件的完整路径列表。
+    """
+    files = []
+
+    if recurse:
+        for root, _, fs in os.walk(input_dir):
+            files.extend([os.path.join(root, filename) for filename in fs])
+    else:
+        files = [
+            os.path.join(input_dir, filename) for filename in os.listdir(input_dir)
+        ]
+
+    return files
+
+
 def walk_with_depth(root_dir, depth=None):
     """
     递归遍历目录，支持指定递归深度和过滤目录/文件。
@@ -41,7 +66,7 @@ def walk_with_depth(root_dir, depth=None):
     Args:
         root_dir (str): 根目录路径。
         depth (int, optional): 遍历的最大深度，默认为 None（无限制）。
- 
+
     Example:
         >>> test_dir=r"C:/ShareTemp/imgs_demo"
         >>> walk_with_depth(test_dir,depth=1 )
@@ -49,6 +74,7 @@ def walk_with_depth(root_dir, depth=None):
 
     dirs = []
     files = []
+
     def walker(path, current_depth):
         if depth is not None and current_depth > depth:
             return

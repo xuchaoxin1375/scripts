@@ -174,9 +174,11 @@ def main():
         process_input_task(args, compressor, fmt, input_path)
 
 
-def process_input_task(args, compressor, fmt, input_path):
+def process_input_task(args, compressor: ImageCompressor, fmt, input_path):
     """分两种情况处理input(文件或目录),以决定调用单处理还是批处理"""
     try:
+        compressor.opl.init_status(input_path)
+        
         if os.path.isfile(input_path):
             # 单文件处理(压缩完一个图片后就退出程序exit)
             # output_path = (
@@ -196,7 +198,7 @@ def process_input_task(args, compressor, fmt, input_path):
                 overwrite=args.overwrite,
             )
             # print(_)
-            sys.exit(0 if success else 1)
+            # sys.exit(0 if success else 1)
         elif os.path.isdir(input_path):
             # 批量处理
             # output = args.output.strip(".").rstrip("/")
@@ -215,12 +217,14 @@ def process_input_task(args, compressor, fmt, input_path):
                 max_workers=args.max_workers,
                 overwrite=args.overwrite,
             )
-            print("\n批量处理结果:")
-            results.get_report()
+            print("\n处理结果报告:")
+            results.end_and_report()
 
         else:
             print(f"跳过此行(路径不存在或非路径串) {args.input}", file=sys.stderr)
             # sys.exit(1)
+        # results.end_and_report()
+
     except Exception as e:
         print(f"发生错误: {str(e)}", file=sys.stderr)
         sys.exit(1)

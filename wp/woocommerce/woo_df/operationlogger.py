@@ -33,16 +33,15 @@ class OperationLogger:
         """结束记录并返回摘要"""
         self.end_time = time.time()
         duration = self.end_time - self.start_time  # type: ignore
+
+        # 使用 __dict__ 获取对象的所有实例变量
         summary = {
             "start_time": datetime.fromtimestamp(self.start_time).isoformat(),
             "end_time": datetime.fromtimestamp(self.end_time).isoformat(),
             "duration": round(duration, 2),
-            "total": self.total,
-            "success": self.success,
-            "failure": self.failure,
-            "skipped": self.skipped,
-            "failures_count": len(self.failures_log),
+            **self.__dict__,  # 将 OperationLogger 的所有属性合并到 summary 中
         }
+
         return summary
 
     def log_success(self):
@@ -77,15 +76,27 @@ class OperationLogger:
             json.dump(self.failures_log, f, indent=2, ensure_ascii=False)
         return filename
 
-    def get_report(self):
+    def end_and_report(self):
         """打印操作日志的摘要"""
         res = self.end()
+        # 使用字典的风格打印摘要
         print(res)
+        # 打印操作日志的摘要
         print(f"操作结束，共耗时 {self.end_time - self.start_time} 秒")
         print(f"总操作数：{self.total}")
         print(f"成功操作数：{self.success}")
         print(f"失败操作数：{self.failure}")
         print(f"跳过操作数：{self.skipped}")
+
+    def init_status(self):
+        """将记录器状态初始化"""
+        self.start_time = time.time()
+        self.end_time = self.start_time
+        self.total = 0
+        self.success = 0
+        self.failure = 0
+        self.skipped = 0
+        self.failures_log = []
 
 
 def get_thread_logger():

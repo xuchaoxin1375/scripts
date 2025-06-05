@@ -13,7 +13,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from PIL import Image
-
+from comutils import get_paths
 from operationlogger import OperationLogger
 
 QUALITY_DEFAULT = 70
@@ -25,6 +25,43 @@ COMPRESS_TRHESHOLD_B = COMPRESS_TRHESHOLD_KB * K
 COMPRESS_TRHESHOLD = COMPRESS_TRHESHOLD_B
 DEFAULT_QUALITY_RULE = "0,50,70 ; 50,200,40 ; 200,10000,30"
 COMPRESS_FOR_FORMATS = ("jpg", "jpeg", "png", "webp")
+
+
+class ImageCompressorLogger(OperationLogger):
+    """图片压缩日志记录器
+    添加了图片路径(目录)压缩前后的大小计算和报告
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.size_before = 0
+        self.size_after = 0
+
+    def get_size(self, path):
+        """计算规定路径(文件或目录占用的磁盘大小)"""
+        self.size_before = os.path.getsize(path)
+        return self.size_before
+
+    def get_size_changed(self, path):
+        """计算此轮压缩节约的空间大小"""
+        self.size_after = os.path.getsize(path)
+        return self.size_after - self.size_before
+
+    def init_status(self, path):
+        """初始化压缩前后大小记录(对于多个目录压缩分别统计size变换的情况很有用)"""
+        super().init_status()
+        self.size_before = os.path.getsize(path)
+        self.size_after = self.size_before
+
+    def end(self):
+        """结束压缩记录"""
+        summary = super().end()
+        summary = {
+            **summary,
+            "size_before": self.size_before,
+            "size_after": self.size_after,
+        }
+        return summary
 
 
 class ImageCompressor:
@@ -84,9 +121,11 @@ class ImageCompressor:
         self.fake_format = fake_format
         self.fake_format_from_webp = fake_format_from_webp
         self.process_when_size_reduced = process_when_size_reduced
-        self.opl = OperationLogger()
+        # self.opl = OperationLogger()
+        self.opl = ImageCompressorLogger()
         self.recurse = recurse
 
+        # self.opl.init_status()
         self.opl.start()
         print(f"压缩白名单: {self.compress_for_format}")
 
@@ -156,7 +195,8 @@ class ImageCompressor:
                 output_path=output_path,
                 output_format=output_format,
             )
-
+            print(f"输出文件: {output_path}")
+            
             output_base, output_format = os.path.splitext(output_path)
             output_format_name = output_format.lower().strip(".")
             self.logger.info(f"输出格式:{output_format}")
@@ -365,37 +405,17 @@ class ImageCompressor:
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = []
             files = []
-            # 处理递归情况
-            if self.recurse:
-                for root, _, fs in os.walk(input_dir):
-                    # 遍历各级目录中的文件
-                    # for filename in files:
-                    #     file_path = os.path.join(root, filename)
-                    #     files.append(file_path)
-                    files_now = [os.path.join(root, filename) for filename in fs]
-                    files.extend(files_now)
-                # print(f"递归处理: {files}")
-            else:
-                files = os.listdir(input_dir)
-                files = [os.path.join(input_dir, filename) for filename in files]
-                # input_path = os.path.join(input_dir, filename)
+
+            files = get_paths(input_dir=input_dir, recurse=self.recurse)
 
             # for filename in os.listdir(input_dir):
             for input_path in files:
                 if input_path.lower().endswith(COMPRESS_FOR_FORMATS):
 
-                    base_name, input_format = os.path.splitext(input_path)
-
-                    # output_format = output_format or input_format
-                    output_format_now = output_format or input_format
-                    output_format_name = output_format_now.lower().lstrip(".")
-
-                    output_filename = f"{base_name}.{output_format_name}"
-                    output_path = os.path.join(output_dir, output_filename)
-                    output_path = os.path.abspath(output_path)
-                    print(
-                        f"格式信息预设: [{input_format} -> {output_format_now}];"
-                        f"{input_path}->{output_path}"
+                    output_format_name, output_path = self._get_output_info(
+                        output_dir=output_dir,
+                        output_format=output_format,
+                        input_path=input_path,
                     )
                     futures.append(
                         executor.submit(
@@ -408,12 +428,28 @@ class ImageCompressor:
                         )
                     )
 
-                    # results["total"] += 1
-
             for future in as_completed(futures):
                 future.result()
 
         return self.opl
+
+    def _get_output_info(self, output_dir, output_format, input_path):
+        """确定输出格式和输出路径"""
+        base_name, input_format = os.path.splitext(input_path)
+
+        # output_format = output_format or input_format
+        output_format_now = output_format or input_format
+        output_format_name = output_format_now.lower().lstrip(".")
+
+        output_filename = f"{base_name}.{output_format_name}"
+        output_path = os.path.join(output_dir, output_filename)
+        output_path = os.path.abspath(output_path)
+        print(
+            f"格式信息预设: [{input_format} -> {output_format_now}];"
+            f"{input_path}->{output_path}"
+        )
+
+        return output_format_name, output_path
 
 
 def setup_logging(level=logging.INFO, log_file=None, log_format=None):
