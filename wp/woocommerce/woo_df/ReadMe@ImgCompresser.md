@@ -53,8 +53,16 @@ py C:\repos\scripts\wp\woocommerce\woo_df\pys\image_compresser.py   -R auto -p -
 linux服务器上的命令
 
 ```bash
-python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -p -F  -O -W  -k -i
+python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -p -F  -O -W  -k -i "输入要被处理路径"
 ```
+
+批量对指定站点目录压缩(使用包含目录列表的文件作为输入)
+
+```bash
+python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -p -F  -O -W  -k  -A -I /www/wwwroot/pys/test_compress.txt
+```
+
+
 
 ### 更新代码
 

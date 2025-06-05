@@ -87,6 +87,7 @@ def parse_args():
         help="覆盖已存在的输出文件",
     )
     parser.add_argument(
+        "-w",
         "--max-workers",
         type=int,
         default=10,
@@ -218,8 +219,8 @@ def process_input_task(args, compressor, fmt, input_path):
             results.get_report()
 
         else:
-            print(f"错误: 输入路径不存在 {args.input}", file=sys.stderr)
-            sys.exit(1)
+            print(f"跳过此行(路径不存在或非路径串) {args.input}", file=sys.stderr)
+            # sys.exit(1)
     except Exception as e:
         print(f"发生错误: {str(e)}", file=sys.stderr)
         sys.exit(1)
