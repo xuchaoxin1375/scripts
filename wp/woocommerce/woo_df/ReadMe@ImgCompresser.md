@@ -39,6 +39,8 @@
 
 ## 服务器部署代码🎈
 
+
+
 ### 第一次获取代码
 
 ```bash
@@ -46,6 +48,22 @@ git clone https://gitee.com/xuchaoxin1375/scripts.git /repos/scripts
 ```
 
 之后不需要再执行此命令,如果要更行代码,执行以下命令
+
+配置环境变量
+
+对于bash
+
+```bash
+ echo 'export PYTHONPATH="/repos/scripts/wp/woocommerce/woo_df:$PYTHONPATH"' >> ~/.bashrc
+```
+
+对于zsh
+
+```bash
+ echo 'export PYTHONPATH="/repos/scripts/wp/woocommerce/woo_df:$PYTHONPATH"' >> ~/.zshrc
+```
+
+
 
 ### 更新代码
 

@@ -196,7 +196,7 @@ class ImageCompressor:
                 output_format=output_format,
             )
             print(f"输出文件: {output_path}")
-            
+
             output_base, output_format = os.path.splitext(output_path)
             output_format_name = output_format.lower().strip(".")
             self.logger.info(f"输出格式:{output_format}")
@@ -237,7 +237,10 @@ class ImageCompressor:
             # 计算压缩结果
             msg = ""
             new_size = os.path.getsize(filename=temp_output_path)
-            if self.process_when_size_reduced and new_size >= original_size:
+            expand = new_size >= original_size
+            size_trend = "+" if expand else "-"
+            icon_trend = "🔼" if expand else "✅"
+            if self.process_when_size_reduced and expand:
                 print(
                     f"压缩后文件大小未减少,不覆盖原文件(大小变化:{original_size}->{new_size})"
                 )
@@ -252,12 +255,13 @@ class ImageCompressor:
                     os.rename(input_path, output_path)
                 msg = "文件大小未减少,不覆盖原文件"
             else:
-                # 理想情况:处理后的文件体积变小
-                print(f"处理后的文件体积变小,覆盖原文件: {output_path}")
+                print("不关心体积变化,执行处理操作")
+                if new_size < original_size:
+                    # 理想情况:处理后的文件体积变小
+                    print(f"处理后的文件体积变小,覆盖原文件: {output_path}")
                 ratio = (new_size / original_size - 1) * 100
-                size_trend = "+" if ratio > 0 else "-"
                 msg = (
-                    "✅",
+                    icon_trend,
                     f"体积变化({size_trend}): {ratio:.2f}%",
                     f"原始大小: {original_size/1024:.2f}KB, ",
                     f"压缩后: {new_size/1024:.2f}KB, ",
@@ -331,7 +335,7 @@ class ImageCompressor:
             self.logger.info(msg)
             quality = quality_for_small_file
             # 验证质量参数
-        quality = max(1, min(100, quality))
+        quality = max(0, min(100, quality))
         return quality
 
     def _get_output_path(self, input_path, output_path, output_format):

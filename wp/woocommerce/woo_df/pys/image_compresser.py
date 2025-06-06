@@ -45,8 +45,12 @@ def parse_args():
     parser.add_argument(
         "-o",
         "--output",
-        # default="./",
-        help="输出文件或目录路径(如果放空,且input是目录,则默认输出目录为input目录)",
+        default="",
+        help="输出文件或目录路径:"
+        "如果放空,且input是文件,则默认不执行图片处理(直接覆盖原图可能不是用户希望的,如果需要,请配合-O选项强制覆盖)"
+        "如果放空,且input是目录,则默认输出目录为input目录;"
+        "如果非空,且input是文件,则此参数表示输出文件的路径;"
+        "如果非空,且input是目录,则此参数表示输出目录的路径;",
     )
     parser.add_argument(
         "-A",
@@ -64,7 +68,7 @@ def parse_args():
     parser.add_argument(
         "-q",
         "--quality",
-        type=int,
+        type=float,
         default=QUALITY_DEFAULT,
         help="压缩质量(1-100)",
     )
@@ -178,15 +182,22 @@ def process_input_task(args, compressor: ImageCompressor, fmt, input_path):
     """分两种情况处理input(文件或目录),以决定调用单处理还是批处理"""
     try:
         compressor.opl.init_status(input_path)
-        
+
         if os.path.isfile(input_path):
             # 单文件处理(压缩完一个图片后就退出程序exit)
             # output_path = (
             #     args.output or os.path.splitext(args.input)[0] + f".{args.format}"
             # )
-            output_path = ""
-            if os.path.isfile(args.output or ""):
+            # output_path = ""
+
+            if args.output:
                 output_path = args.output
+            else:
+                output_path = input_path
+                
+            # if os.path.isfile(args.output or ""):
+            #     output_path = args.output
+            # print(output_path,"🎈!!!")
 
             success, _ = compressor.compress_image(
                 input_path,
