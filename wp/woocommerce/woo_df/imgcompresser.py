@@ -15,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from PIL import Image
 from comutils import get_paths
 from operationlogger import OperationLogger
+from pathsize import get_size, format_size
 
 QUALITY_DEFAULT = 70
 QUALITY_DEFAULT_STRONG = 30
@@ -56,11 +57,16 @@ class ImageCompressorLogger(OperationLogger):
     def end(self):
         """结束压缩记录"""
         summary = super().end()
-        summary = {
-            **summary,
-            "size_before": self.size_before,
-            "size_after": self.size_after,
-        }
+        if self.size_before and self.size_after:
+            size_changed = self.size_after - self.size_before
+            size_changed_percent = (size_changed / self.size_before) * 100
+            summary = {
+                **summary,
+                "size_before": format_size(self.size_before),
+                "size_after": format_size(self.size_after),
+                "size_changed": size_changed,
+                "size_changed_percent": f"{size_changed_percent:.2f}%",
+            }
         return summary
 
 
@@ -421,6 +427,8 @@ class ImageCompressor:
 
         if not os.path.exists(input_dir):
             raise FileNotFoundError(f"输入目录不存在: {input_dir}")
+        # 计算目录初始大小
+        self.opl.size_before = get_size(input_dir)
 
         os.makedirs(output_dir, exist_ok=True)
 
@@ -452,7 +460,7 @@ class ImageCompressor:
 
             for future in as_completed(futures):
                 future.result()
-
+        self.opl.size_after = get_size(input_dir)
         return self.opl
 
     def _get_output_info(self, output_dir, output_format, input_path):

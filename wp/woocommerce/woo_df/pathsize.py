@@ -14,6 +14,7 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
 
+
 def format_size(size_in_bytes):
     """
     将字节大小转换为易读的单位（KB、MB、GB 等）
@@ -65,7 +66,7 @@ def get_directory_size(path):
     return total_size
 
 
-def get_file_or_directory_size(path):
+def get_size(path):
     """
     获取指定路径的磁盘占用大小（支持文件和目录）
 
@@ -99,7 +100,7 @@ def main():
     input_path = sys.argv[1]
 
     try:
-        total_bytes = get_file_or_directory_size(input_path)
+        total_bytes = get_size(input_path)
         formatted_size = format_size(total_bytes)
         print(f"📦 '{input_path}' 的总磁盘占用大小为：{formatted_size}")
     except Exception as e:
