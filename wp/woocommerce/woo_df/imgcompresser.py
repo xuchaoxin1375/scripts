@@ -96,6 +96,7 @@ class ImageCompressor:
         remove_original=False,
         process_when_size_reduced=True,
         recurse=False,
+        resize_threshold=None,
     ):
         """
         初始化压缩器
@@ -109,6 +110,7 @@ class ImageCompressor:
             fake_format:处理后的图片如果体积不减小,是否丢弃处理结果,直接修改原图后缀
             fake_format_from_webp: 是否将图片压缩成webp,然后将文件后缀名改为指定的格式名(考虑到图片压缩到webp压缩效果好,而且浏览器不会应为图片的格式后缀和真实格式不一致而渲染不出来,可以考虑此选项节约空间)
             remove_original: 是否移除原始文件
+            resize_threshold: 分辨率阈值(宽, 高)，超过该阈值的图片将被缩小;放空不做分辨率调整
         """
         self.logger = logger or logging.getLogger(__name__)
         self._compress_threshold = compress_threshold
@@ -124,6 +126,7 @@ class ImageCompressor:
         # self.opl = OperationLogger()
         self.opl = ImageCompressorLogger()
         self.recurse = recurse
+        self.resize_threshold = resize_threshold
 
         # self.opl.init_status()
         self.opl.start()
@@ -205,17 +208,30 @@ class ImageCompressor:
                 # 不要急着在这里删除文件,否则后续文件操作没有文件可用
                 if not overwrite:
                     opl.log_skip()
-                    return (
-                        False,
-                        f"输出文件已存在,默认取消压缩: {output_path} (使用--overwrite覆盖)",
-                    )
+                    msg = f"[⚠️]输出文件已存在,默认取消压缩: {output_path} (使用-O/--overwrite覆盖)"
+                    # print(msg)
+                    self.logger.warning(msg)
+                    return (False, msg)
             with Image.open(input_path) as img:
                 # 保留EXIF信息
                 exif = img.info.get("exif") if keep_exif else None
                 save_kwargs = self._get_compress_args(
                     output_format, quality, optimize, exif
                 )
-
+                # 调整分辨率
+                old_wh = img.size
+                new_wh = old_wh
+                if self.resize_threshold:
+                    max_width, max_height = self.resize_threshold
+                    width, height = img.size
+                    if width > max_width or height > max_height:
+                        # 按比例缩小图片
+                        # 分别计算宽度和高度需要收缩的比例,然后取较小值作为最终的等比例缩小因子
+                        ratio = min(max_width / width, max_height / height)
+                        new_wh = (int(width * ratio), int(height * ratio))
+                        # 调用resize方法调整图片分辨率
+                        img = img.resize(new_wh, Image.Resampling.LANCZOS)
+                        self.logger.info(f"调整分辨率: {img.size}")
                 # 转换图像模式为兼容格式
                 if output_format in (".jpg", ".jpeg", ".webp") and img.mode != "RGB":
                     img = img.convert("RGB")
@@ -267,6 +283,7 @@ class ImageCompressor:
                     f"压缩后: {new_size/1024:.2f}KB, ",
                     f"压缩成功: {input_path} -> {output_path}\n",
                     f"压缩参数: quality={quality}",
+                    f"分辨率变化:{old_wh}->{new_wh} ; 分辨率限制:{self.resize_threshold}",
                 )
 
                 # if self.remove_original and input_format_name != output_format_name:
@@ -300,6 +317,7 @@ class ImageCompressor:
             if os.path.exists(output_path):
                 os.remove(output_path)
                 # 重名名时,参数dst直接使用前面计算好的output_path,而不是再构造output_path
+
         os.rename(src=temp_output_path, dst=output_path)
 
     def _get_compress_args(self, output_format, quality, optimize, exif):

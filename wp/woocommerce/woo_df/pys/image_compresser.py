@@ -144,6 +144,15 @@ def parse_args():
         action="store_true",  # 默认不启用,指定此参数启用fake-format
         help="将图片的格式处理成与指定的输出格式相同(尤其是图片处理后体积变大的情况下,可能不会采用处理结果(采用-p选项),为了不增大体积,又要求图片格式为指定格式,可以考虑此选项)",
     )
+    parser.add_argument(
+        "-r",
+        "--resize-threshold",
+        type=int,
+        nargs=2,
+        # type=str,
+        # default=(1066, 800),
+        help="分辨率阈值(宽, 高)，超过该阈值的图片将被缩小;放空不做分辨率调整",
+    )
     parser.add_argument("-v", "--verbose", action="store_true", help="显示详细输出")
     return parser.parse_args()
 
@@ -162,6 +171,7 @@ def main():
         fake_format=args.fake_format,
         fake_format_from_webp=args.fake_format_from_webp,
         process_when_size_reduced=args.process_when_size_reduced,
+        resize_threshold=args.resize_threshold,
         recurse=args.recurse,
     )
     fmt = args.format or ""
@@ -194,7 +204,7 @@ def process_input_task(args, compressor: ImageCompressor, fmt, input_path):
                 output_path = args.output
             else:
                 output_path = input_path
-                
+
             # if os.path.isfile(args.output or ""):
             #     output_path = args.output
             # print(output_path,"🎈!!!")

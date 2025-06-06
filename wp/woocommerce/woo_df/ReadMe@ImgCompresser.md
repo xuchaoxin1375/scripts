@@ -33,9 +33,41 @@
    - 线程数控制(--max-workers)
    - 优化选项控制(--no-optimize)
 
+### 图片分辨率调整
 
+```python
+# resampling filters (also defined in Imaging.h)
+class Resampling(IntEnum):
+    NEAREST = 0
+    BOX = 4
+    BILINEAR = 2
+    HAMMING = 5
+    BICUBIC = 3
+    LANCZOS = 1
+```
 
+这段代码定义了一个名为`Resampling`的枚举类，它继承自`IntEnum`，表示图像重采样(缩放/变换)时使用的不同滤波方法。每种方法都有一个对应的整数值：
 
+1. `NEAREST`(最近邻) = 0
+   - 最简单的插值方法，直接取最近的像素值
+   - 速度快但质量较低，可能出现锯齿
+2. `BILINEAR`(双线性) = 2
+   - 通过对周围4个像素进行线性加权计算
+   - 质量较好，速度适中
+3. `BICUBIC`(双三次) = 3
+   - 使用周围16个像素进行三次插值
+   - 质量更高但计算量更大
+4. `LANCZOS`(兰索斯) = 1
+   - 使用高质量的重采样滤波器
+   - 能很好地保留细节但计算成本高
+5. `BOX`(盒式) = 4
+   - 简单的平均滤波器
+   - 适用于缩小图像
+6. `HAMMING`(汉明) = 5
+   - 使用汉明窗函数
+   - 平衡了振铃效应和锐度
+
+ 
 
 ## 服务器部署代码🎈
 
