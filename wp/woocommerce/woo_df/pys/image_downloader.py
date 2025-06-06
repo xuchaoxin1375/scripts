@@ -19,6 +19,7 @@ from imgdown import ImageDownloader, USER_AGENTS
 from filenamehandler import FilenameHandler as fh
 from wooenums import CSVProductFields
 
+RESIZE_THRESHOLD = (1000, 800)
 DEAFULT_EXT = ".webp"
 csv.field_size_limit(int(1e7))  # 允许csv文件最大为10MB
 # 或者根据实际类定义位置调整导入路径
@@ -206,6 +207,7 @@ def parse_args():
         "-x",
         "--compress-quality",
         type=int,
+        
         default=0,
         help="压缩图片为webp格式的quality参数(1-100),取0表示不压缩",
     )
@@ -214,6 +216,13 @@ def parse_args():
         "--remove-original",
         action="store_true",
         help="保留压缩后的原始图片",
+    )
+    parser.add_argument(
+        "--resize-threshold",
+        type=int,
+        nargs=2,
+        # default=RESIZE_THRESHOLD,
+        help="指定图片等比例缩放后的最大尺寸(宽,高),单位px;放空表示不调整分辨率",
     )
 
     return parser.parse_args()
@@ -288,6 +297,7 @@ def main():
         quality_rule=args.quality_rule,
         remove_original=args.remove_original,
         override=args.override,
+        resize_threshold=args.resize_threshold,
     )
     # 过滤已有图片,扫描出尚未下载的图片
     # 这里不关心文件名后缀的差异,比较basename

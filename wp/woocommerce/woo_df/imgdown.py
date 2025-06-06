@@ -47,6 +47,7 @@ from imgcompresser import ImageCompressor
 
 
 IMG_DIR = "./images"
+RESIZE_THRESHOLD = 1000, 800  # 图片尺寸小于这个阈值则不调整分辨率(宽*高)
 # 自定义日志格式
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 # ...existing code...
@@ -380,6 +381,7 @@ class ImageDownloader:
         output_format="webp",
         remove_original=False,
         use_shutil=False,
+        resize_threshold=RESIZE_THRESHOLD,
     ):
         """
         初始化图片下载器
@@ -412,7 +414,9 @@ class ImageDownloader:
         self.override = override
 
         self.ic = ImageCompressor(
-            quality_rule=quality_rule, remove_original=remove_original
+            quality_rule=quality_rule,
+            remove_original=remove_original,
+            resize_threshold=resize_threshold,
         )
 
         # if retry_times < 1:

@@ -151,7 +151,8 @@ def parse_args():
         nargs=2,
         # type=str,
         # default=(1066, 800),
-        help="分辨率阈值(宽, 高)，超过该阈值的图片将被缩小;放空不做分辨率调整",
+        help="输入两个整数(空格分开)分被作为图片的分辨率阈值(宽, 高)，超过该阈值的图片将被缩小;放空不做分辨率调整"
+        "(注意不是将图片设置为指定分辨率,而是等比例收缩到指定分辨率以内);",
     )
     parser.add_argument("-v", "--verbose", action="store_true", help="显示详细输出")
     return parser.parse_args()
