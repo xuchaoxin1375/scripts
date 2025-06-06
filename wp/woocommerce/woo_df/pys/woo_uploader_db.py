@@ -66,14 +66,14 @@ def parse_args():
         "--db-password",
         type=str,
         default=PASSWORD,
-        help=f"Database password (default: {PASSWORD})",
+        help=f"Database password (default: {PASSWORD or "建议:配置数据库密码到环境变量比较方便(临时指定也是允许的)"})",
     )
     parser.add_argument(
         "--db-name",
         type=str,
         # default=DB_NAME,
         required=True,
-        help=f"Database name (default: {DB_NAME})",
+        help="Database name",
     )
     parser.add_argument(
         "--max-workers",

@@ -33,38 +33,26 @@
    - 线程数控制(--max-workers)
    - 优化选项控制(--no-optimize)
 
-## 典型用例
 
-下面用的参数和选项针对我们的业务配置的
 
-### 压缩服务器上的图片
 
-主要针对老方法(api上传的图片未经过处理的情况)
 
-参数序列`-R auto -p -F  -O`
+## 服务器部署代码🎈
 
-此外主要关心
-
-```python
-
-py C:\repos\scripts\wp\woocommerce\woo_df\pys\image_compresser.py   -R auto -p -F  -O -i C:\Users\Administrator\Pictures\imgs_demo
-```
-
-linux服务器上的命令
+### 第一次获取代码
 
 ```bash
-python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -p -F  -O -W  -k -i "输入要被处理路径"
+git clone https://gitee.com/xuchaoxin1375/scripts.git /repos/scripts
 ```
 
-批量对指定站点目录压缩(使用包含目录列表的文件作为输入)
-
-```bash
-python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -p -F  -O -W  -k  -A -I /www/wwwroot/pys/test_compress.txt
-```
-
-
+之后不需要再执行此命令,如果要更行代码,执行以下命令
 
 ### 更新代码
+
+```bash
+cd /repos/scripts
+git pull origin main
+```
 
 获取最新版本
 
@@ -77,6 +65,28 @@ python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -
 ```
 
 
+
+### 压缩服务器上的图片🎈
+
+主要针对老方法(api上传的图片未经过处理的情况)
+
+参数序列`-R auto -p -F  -O`
+
+linux服务器上的命令(测试单个链接)
+
+```bash
+python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -p -F  -O -W  -k -i "输入要被处理路径"
+```
+
+批量对指定站点目录压缩(使用包含目录列表的文件作为输入)
+
+```bash
+python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -p -F  -O -W  -k  -A -I /www/wwwroot/pys/test_compress.txt
+```
+
+## 典型用例
+
+下面用的参数和选项针对我们的业务配置的
 
 ### 本地方法
 
@@ -107,7 +117,9 @@ PS> py C:\repos\scripts\wp\woocommerce\woo_df\pys\image_compresser.py   -R auto 
 >
 > 第二类是不理想的情况,比如直接下载不了(比如403等反爬行为);
 >
-> 另外还可能是伪成功的,下载器提示下载成功,对应的路径也确实出现了对应名字的文件,但是其体积是不正常的,比如只有0MB,这种情况下也算做下载
+> 另外还可能是伪成功的,下载器提示下载成功,对应的路径也确实出现了对应名字的文件,但是其体积是不正常的,比如只有0MB,这种情况下也算做下载失败的情况,需要你专门检查本地的文件是否正常
+>
+> 图片不正常可以考虑开代理(将代理的环境变量复制到powershell中),然后重新尝试(也可以用curl或者iwr 命令来测试单个图片连接)
 
 ## 使用示例
 

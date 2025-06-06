@@ -30,6 +30,14 @@ setx WOO_DF C:\repos\scripts\wp\woocommerce\woo_df
 
 配置完以后关闭所有命令行窗口,以及vscode窗口(如果有用到vscode的话)再重新打开才会生效	
 
+### mysql配置到Path环境变量
+
+找到mysql.exe所在目录,然后将此目录添加到path环境变量中
+
+
+
+## 主要步骤
+
 ### 导出csv
 
 - 将`$start`和`$end`替换为采集器中的你需要导出的数据的对应任务的id
@@ -91,40 +99,25 @@ python $pys\woo_uploader_db.py -c $csv_path -i $img_dir
 
 ## 小结🎈
 
-
+下面几个命令分步执行,不要连着执行
 
 ```powershell
 
-#导出csv
-python $pys\woo_get_csv.py --start-id  $start_id --end-id $end_id --language-country $language
-#下载并处理图片
+#导出csv 输出路径的参数--output-dir
+python $pys\woo_get_csv.py --start-id  $start_id --end-id $end_id --language-country $language --output-dir $output_dir
+#下载并处理图片(下载过程中或者下载完毕要抽查看看是否有破图或者不完整的图,如果比较多要警惕)
 python $pys\image_downloader.py -c -n -R auto -k   --output-dir $output_dir --dir-input $dir_input
+
 #导入产品数据到数据库中
-python $pys\woo_uploader_db.py  --csv-path $csv_path --img-dir $img_dir 
+python $pys\woo_uploader_db.py  --csv-path $csv_path --img-dir $img_dir --db-name $domain_db
+
+# 打包成压缩包(如果安装了7z,还支持更多种格式,默认打包成zip)
+Get-WpSitePacks -SiteDirecotry $site_dir
 ```
 
 查看帮助(选项含义不清楚的可以使用`-h`参数,上述命令都支持这个选项和方式来获取命令行的选项说明),例如
 
 ```powershell
-python $pys\woo_get_csv.py
-```
-
-```
-ls $env:Locoy_Spider_Data
-```
-
-```
-#⚡️[Administrator@CXXUDESK][~\Desktop][17:20:54][UP:17.21Days]
-PS> python $pys\woo_get_csv.py --start-id  176 --end-id 177 --language-country us
-开始执行(日志文件位于./log/log_20250604_172109.log,绝对路径为:C:\Users\Administrator\Desktop\log\log_20250604_172109.log)...
-ERROR:root:Jump process:[C:/火车采集器V10.27/Data/176/SpiderResult.db3] file is not a valid db file. Error: no such column: 产品名称
-progress: 1
-progress: 2
-progress: 3
-progress: 4
-progress: 5
-progress: 6
-progress: 7
-progress: 8
+python $pys\woo_get_csv.py -h
 ```
 
