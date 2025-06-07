@@ -206,9 +206,6 @@ def process_input_task(args, compressor: ImageCompressor, fmt, input_path):
             else:
                 output_path = input_path
 
-            # if os.path.isfile(args.output or ""):
-            #     output_path = args.output
-            # print(output_path,"🎈!!!")
 
             success, _ = compressor.compress_image(
                 input_path,

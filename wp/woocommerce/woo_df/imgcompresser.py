@@ -8,14 +8,17 @@
 
 """
 
+# %%
+
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from PIL import Image
+
 from comutils import get_paths
 from operationlogger import OperationLogger
-from pathsize import get_size, format_size
+from pathsize import format_size, get_size
 
 QUALITY_DEFAULT = 70
 QUALITY_DEFAULT_STRONG = 30
@@ -25,9 +28,14 @@ K = 2**10
 COMPRESS_TRHESHOLD_B = COMPRESS_TRHESHOLD_KB * K
 COMPRESS_TRHESHOLD = COMPRESS_TRHESHOLD_B
 DEFAULT_QUALITY_RULE = "0,50,70 ; 50,200,40 ; 200,10000,30"
-COMPRESS_FOR_FORMATS = ("jpg", "jpeg", "png", "webp")
 
 
+COMPRESS_FOR_FORMATS_NAME = ("jpg", "jpeg", "png", "webp", "tif","tiff")
+COMPRESS_FOR_FORMATS = ("." + f for f in COMPRESS_FOR_FORMATS_NAME)
+# COMPRESS_FOR_FORMATS = map(lambda f: "." + f, COMPRESS_FOR_FORMATS_NAME)
+
+
+##
 class ImageCompressorLogger(OperationLogger):
     """图片压缩日志记录器
     添加了图片路径(目录)压缩前后的大小计算和报告
@@ -98,7 +106,7 @@ class ImageCompressor:
         skip_format="",
         fake_format=False,
         fake_format_from_webp=False,
-        compress_for_format=COMPRESS_FOR_FORMATS,
+        compress_for_format=COMPRESS_FOR_FORMATS_NAME,
         remove_original=False,
         process_when_size_reduced=True,
         recurse=False,
@@ -440,7 +448,7 @@ class ImageCompressor:
 
             # for filename in os.listdir(input_dir):
             for input_path in files:
-                if input_path.lower().endswith(COMPRESS_FOR_FORMATS):
+                if input_path.lower().endswith(COMPRESS_FOR_FORMATS_NAME):
 
                     output_format_name, output_path = self._get_output_info(
                         output_dir=output_dir,
