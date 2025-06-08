@@ -75,7 +75,7 @@ def update_image_fields(csv_dir):
             update_image_fields_from_legacy(file)
 
 
-def update_image_fields_extension(csv_dir, extension="webp"):
+def update_image_fields_extension(csv_dir, extension=".webp"):
     """将指定文件夹中的csv文件中的图片字段的值的后缀名改为指定格式"""
     print(csv_dir)
     for file in os.listdir(csv_dir):
@@ -93,6 +93,7 @@ def update_image_fields_extension(csv_dir, extension="webp"):
             # df[IMAGES] = df[IMAGES].str.rsplit(".", n=1).str[0] + f".{extension}"
 
             df.to_csv(file, index=False)
+            return df
 
 
 def remove_items_without_img(csv_dir, img_dir, backup_dir="backup_csvs"):
@@ -140,7 +141,7 @@ def process_image_csv(img_dir, csv_dir, backup_dir="backup_csvs"):
     total_before = count_lines_csv(csv_dir)
 
     update_image_fields(csv_dir)
-    update_image_fields_extension(csv_dir, extension="webp")
+    update_image_fields_extension(csv_dir, extension=".webp")
     # debug
     # return
     remove_items_without_img(csv_dir, img_dir=img_dir, backup_dir=backup_dir)
