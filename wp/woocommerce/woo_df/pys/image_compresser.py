@@ -3,7 +3,7 @@
 """
 
 import argparse
-import logging
+ 
 import os
 import sys
 
@@ -207,7 +207,8 @@ def process_input_task(args, compressor: ImageCompressor, fmt, input_path):
                 output_path = input_path
 
 
-            success, _ = compressor.compress_image(
+            # success, _ =
+            compressor.compress_image(
                 input_path,
                 output_path,
                 output_format=fmt,

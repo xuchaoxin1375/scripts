@@ -13,6 +13,7 @@
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from io import BytesIO
 
 from PIL import Image
 
@@ -30,7 +31,7 @@ COMPRESS_TRHESHOLD = COMPRESS_TRHESHOLD_B
 DEFAULT_QUALITY_RULE = "0,50,70 ; 50,200,40 ; 200,10000,30"
 
 # image extension / format names
-SUPPORT_IMAGE_FORMATS_NAME = ("jpg", "jpeg", "png", "webp", "tif", "tiff","gif")
+SUPPORT_IMAGE_FORMATS_NAME = ("jpg", "jpeg", "png", "webp", "tif", "tiff", "gif")
 SUPPORT_IMAGE_FORMATS = ("." + f for f in SUPPORT_IMAGE_FORMATS_NAME)
 # COMPRESS_FOR_FORMATS = map(lambda f: "." + f, COMPRESS_FOR_FORMATS_NAME)
 
@@ -161,6 +162,7 @@ class ImageCompressor:
         optimize: bool = False,
         keep_exif: bool = True,
         overwrite: bool = False,
+        resize_compensate_quality=10,
     ):
         """
         压缩或转换图片
@@ -209,7 +211,7 @@ class ImageCompressor:
                 output_format=output_format,
             )
             print(f"输出文件: {output_path}")
-
+            # self.logger.info(f"输出文件: {output_path}🎈")
             output_base, output_format = os.path.splitext(output_path)
             output_format_name = output_format.lower().strip(".")
             self.logger.info(f"输出格式:{output_format}")
@@ -222,6 +224,7 @@ class ImageCompressor:
                     # print(msg)
                     self.logger.warning(msg)
                     return (False, msg)
+            # return
             with Image.open(input_path) as img:
                 # 保留EXIF信息
                 exif = img.info.get("exif") if keep_exif else None
@@ -236,23 +239,44 @@ class ImageCompressor:
                 if self.fake_format_from_webp:
                     output_format_name = "webp"
                 temp_output_path = f"{output_base}.tmp.{output_format_name}"
+                self.logger.debug(f"临时文件: {temp_output_path}")
 
-
-                if old_wh != new_wh:
+                resized_file_size = 0
+                need_resize = old_wh != new_wh
+                if need_resize:
                     self.logger.debug(
                         f"分辨率变化:{old_wh}->{new_wh} ; 分辨率限制:{self.resize_threshold}"
                     )
                     # 保存临时图片以便计算调整分辨率后的大小,从而分配quality参数
-                    # return 
-                    img.save(temp_output_path, exif=exif)
-                    original_size = os.path.getsize(temp_output_path)
-                    self.logger.debug(f"降分辨率后的文件大小: {original_size}")
-                # 确定最终的quality(依赖于原尺寸)
+                    # 硬盘方案:先保存临时文件到硬盘,然后计算大小
+                    # img.save(temp_output_path)
+                    # resized_file_size = os.path.getsize(temp_output_path)
+
+                    # 内存方案:保存临时文件到内存中,避免重复读写硬盘
+                    buffer = BytesIO()
+                    # 将img流保存到临时的buffer中,再额外指定format
+                    img.save(buffer, format=output_format_name)
+                    resized_file_size = buffer.tell()  # 获取内存缓冲区大小
+
+                    self.logger.debug(
+                        f"降分辨率前后的文件大小变化: {format_size(original_size)}->{format_size(resized_file_size)}"
+                    )
+                    # self.logger.debug(f"估算文件大小: {original_size} bytes")
+                    buffer.close()  # 清理内存
+                    # original_size = resized_file_size
+                # 确定最终的quality(依赖于最新的文件大小评估,尤其是分辨率变化后)
                 quality = self._get_quality(
                     quality,
                     quality_for_small_file=quality_for_small_file,
-                    original_size=original_size,
+                    original_size=resized_file_size or original_size,
                 )
+                # 一般缩小分辨率后,quality需要基于规则适当提高
+                if need_resize:
+                    new_quality = quality + resize_compensate_quality
+                    self.logger.debug(
+                        f"补偿quality调整: {quality}+{resize_compensate_quality}={new_quality}"
+                    )
+                    quality = new_quality
                 # 参数设定
                 save_kwargs = self._get_compress_args(
                     output_format=output_format,
@@ -261,7 +285,7 @@ class ImageCompressor:
                     exif=exif,
                 )
 
-                # 保存更改的图片🎈
+                # 根据最终确定的参数,保存更改的图片🎈
                 img.save(temp_output_path, **save_kwargs)
                 self.logger.info(f"保存临时文件: {temp_output_path}")
 
@@ -397,7 +421,7 @@ class ImageCompressor:
         quality = max(0, min(100, quality))
         return quality
 
-    def _get_output_path(self, input_path, output_path, output_format):
+    def _get_output_path(self, input_path: str, output_path: str, output_format):
         """
         确定输出格式和输出路径(后续要根据目标格式做针对性处理)
         注意:直接决定输出文件的格式的是output_path,如果用户传入output_format,最终也会通过拼接路径的方式体现在output_path的后缀上
