@@ -103,9 +103,14 @@ class FilenameHandler:
         先解析出url路径部分,然后针对此部分字符串尝试截取扩展名
         如果截取失败,则返回空字符串
 
-        效果:例如:"https://www.example.com/file.txt" -> ".txt"
-        :param url: 图片URL
+        :param url: 文件资源URL
         :return: 文件扩展名
+
+        Examples:
+            >>> get_file_extension_from_url_str("https://example.com/path/to/image.jpg")
+            '.jpg'
+            >>> get_file_extension_from_url_str("https://example.com/path/to/image.keepit")
+            '.keepit'
         """
         parsed_url = urlparse(url)
         # 百分号解码url路径字符串为单字符
@@ -122,6 +127,30 @@ class FilenameHandler:
                 url,
             )
         return ""
+
+    def get_image_extension_from_url_str(
+        self,
+        url: str,
+        support_image_formats=("jpg", "jpeg", "png", "webp", "tif", "tiff", "gif"),
+    ) -> str:
+        """从URL中提取图片扩展名
+        依赖于support_image_formats参数的指定
+
+        Examples:
+            >>> get_image_extension_from_url_str("https://example.com/path/to/image.jpg")
+            '.jpg'
+
+            >>> url=r"https://res.cloudinary.com/8r10.086_01"
+            >>> get_image_extension_from_url_str(url)
+            ""
+            
+        """
+        # SUPPORT_IMAGE_FORMATS_NAME = ("jpg", "jpeg", "png", "webp", "tif", "tiff", "gif")
+        ext_candidate = self.get_file_extension_from_url_str(url)
+        if ext_candidate.strip(".") in support_image_formats:
+            return ext_candidate
+        else:
+            return ""
 
     @staticmethod
     def get_file_extension_from_content_type(content_type: str) -> str:
@@ -208,6 +237,7 @@ class FilenameHandler:
     ):
         """
         根据响应头、URL或默认值确定资源的文件扩展名。
+        一般来说,response参数优先级最高(最准确,如果需要的话),其次是url(最快速),最后是default_ext(兜底)
 
         Args:
             url (str): 资源的URL。
@@ -222,6 +252,10 @@ class FilenameHandler:
             - 如果无法从响应头中确定扩展名，则尝试从URL中提取。
             - 如果仍然无法确定扩展名，则使用备用方法`get_file_extension_from_url_magic`推断扩展名。
             - 如果所有方法均失败，则返回提供的默认扩展名。
+        Examples:
+            >>> get_file_extension("https://example.com/path/to/document.txt")
+            '.txt'
+
         """
         ext = ""
         try:
@@ -231,7 +265,9 @@ class FilenameHandler:
                 )
 
             if not ext:
+                # 尝试从URL中提取文件扩展名🎈
                 ext = self.get_file_extension_from_url_str(url=url)
+
             if not ext and req_response:
                 # 发送请求获取响应Content-Type来分析文件类型
                 debug("发送 HEAD 请求获取 Content-Type: %s", url)

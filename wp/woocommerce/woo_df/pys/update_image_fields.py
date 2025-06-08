@@ -5,7 +5,7 @@ from woosqlitedb import process_image_csv
 
 
 IMG_DIR = r"      ".strip()  # 修改图片文件所在目录
-CSV_DIR = r"      ".strip()  # 修改csv文件所在目录
+CSV_DIR = r"      S:/".strip()  # 修改csv文件所在目录
 
 
 if __name__ == "__main__":

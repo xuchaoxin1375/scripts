@@ -12,16 +12,22 @@ from datetime import datetime
 from logging import debug, error, info
 from typing import List, Optional, Union
 from urllib.parse import unquote, urlparse
-
-from bs4 import BeautifulSoup
-
+from pandas import Series
 import pandas as pd
 import requests
+from bs4 import BeautifulSoup
 
+SUPPORT_IMAGE_FORMATS_NAME = ("jpg", "jpeg", "png", "webp", "tif", "tiff", "gif")
+SUPPORT_IMAGE_FORMATS = ("." + f for f in SUPPORT_IMAGE_FORMATS_NAME)
 csv.field_size_limit(int(1e7))  # 允许csv文件最大为10MB
-COMMON_SEPARATORS = [",", ";", r"\s+"]
+# 有些图片的url中可能包含空格!
+COMMON_SEPARATORS = [
+    ",",
+    ";",
+    #  , r"\s+"
+]
 URL_SEPARATORS = [
-    r"\s+",
+    # r"\s+",
     ">",
     # ";",
     # ",",
@@ -29,7 +35,9 @@ URL_SEPARATORS = [
 URL_SEP_PATTERN = "|".join(URL_SEPARATORS)
 COMMON_SEP_PATTERN = "|".join(COMMON_SEPARATORS)
 EMAIL_PATTERN = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
-HTTP_S_URL_CONS_PATTERN = r'https?://[^\s"<>]+'
+# 提取网址的正则表达式(部分情况下url中包含空白字符(比如空格)),对于采集多个图片url的时候有关
+# HTTP_S_URL_CONS_PATTERN = r'https?://[^\s"<>]+'
+HTTP_S_URL_CONS_PATTERN = r'https?://[^"<>]+'
 URL_SEP_REGEXP = re.compile(URL_SEP_PATTERN)
 COMMON_SEP_REGEXP = re.compile(COMMON_SEP_PATTERN)
 
@@ -388,6 +396,58 @@ def get_domain_name_from_str(url):
     return None
 
 
+def set_image_extension(
+    series: Series,
+    default_image_format=".webp",
+    supported_image_formats=SUPPORT_IMAGE_FORMATS_NAME,
+):
+    """
+    批量设置图片字段列的图片格式
+    如果image字段列中的文件名字符串以常见的图片格式结尾,则丢弃后缀仅保留文件名,否则认为这个字符串不带格式扩展名,保留原样
+
+    此函数针对于文件名中包含`.`但是后面跟随的并不是文件格式(尤其是图片的判断)的情况
+    例如某个图片的文件名是`123.fieldskeepit`,这时候如果直接用`os.path.splitext`这种方法会将`fieldskeepit`作为文件格式,然而这不是一个格式名字(扩展名)
+    针对图片文件,许多图片没有给出文件格式,这时候使用此函数可以将大部分情况做正确的处理得到不带格式的图片名(这依赖于supported_image_formats的配置的完善程度)
+
+    通过指定默认格式,可以为图片文件指定一个默认格式(现在的图片软件和浏览器基本都能够自动识别图片真实格式并渲染,因此后缀名和图片实际编码格式对不上往往不影响显示),这对于某些业务是很有用的,简单有效
+
+    :param series: 图片字段列
+    :param default_image_format: 默认图片格式(例如'.webp',注意`.`号)
+    :param supported_image_formats: 支持的图片格式列表
+    :return: 处理后的图片字段列series对象
+
+    """
+
+    res = (
+        series.apply(get_image_filebasename(supported_image_formats))
+        + f"{default_image_format}"
+    )
+
+    return res
+
+
+def get_image_filebasename(supported_image_formats=SUPPORT_IMAGE_FORMATS_NAME):
+    """得到不带格式的图片名
+    这依赖于supported_image_formats的配置的完善程度
+
+    :param supported_image_formats: 支持的图片格式列表
+    :return: 用来计算不带格式扩展名图片名的lambda函数
+
+    Examples:
+        >>> get_image_filebasename()('abc.jpg')
+        'abc'
+        >>> get_image_filebasename()('abc.xxx')
+        'abc.xxx'
+        >>> get_image_filebasename(['png', 'jpg'])('abc.png')
+        'abc'
+        >>> get_image_filebasename(['png', 'jpg'])('abc.png.jpg')
+        'abc.png'
+    """
+    return lambda x: (
+        x.rsplit(".", 1)[0] if x.split(".")[-1] in supported_image_formats else x
+    )
+
+
 def get_filebasename_from_url(url):
     """从URL中提取文件名(basename with extension)
     Args:
@@ -399,6 +459,44 @@ def get_filebasename_from_url(url):
     path = unquote(parsed_url.path)
     filename = os.path.basename(path)
     return filename
+
+
+def complete_image_file_extension(
+    file,
+    default_extension="",
+    supported_image_formats_name=SUPPORT_IMAGE_FORMATS_NAME,
+    force_default_fmt=False,
+):
+    """补全文件名字符串的图片格式扩展名
+    如果文件本身有扩展名,则不做处理
+    如果文件本身没有扩展名,且指定了默认扩展名,否则为其配置指定的扩展名
+
+    Args:
+        file: 文件名字符串
+        default_extension: 默认扩展名
+        supported_image_formats: 支持的图片格式列表
+
+    Examples:
+        >>> complete_image_file_extension("abc")
+        'abc'
+        >>> complete_image_file_extension("abc.png")
+        'abc.png'
+        >>> complete_image_file_extension("abc.jpg",default_extension=".webp")
+        'abc.jpg'
+        >>> complete_image_file_extension("abc.jpg",default_extension=".webp",force_fmt=True)
+        'abc.webp'
+        >>> complete_image_file_extension("abcjpg",default_extension=".webp")
+        'abcjpg.webp'
+
+    """
+    supported_image_formats = tuple(("." + f for f in supported_image_formats_name))
+    if file.endswith(supported_image_formats) and not force_default_fmt:
+        return file
+    else:
+        return (
+            get_image_filebasename(supported_image_formats_name)(file)
+            + default_extension
+        )
 
 
 def extract_secondary_domain(url):

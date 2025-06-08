@@ -5,6 +5,7 @@
 import csv
 import os
 import re
+import shutil
 import sqlite3
 import sys
 import threading
@@ -12,15 +13,17 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from logging import debug, error, info, warning
 from pathlib import Path
-import shutil
 
 import pandas as pd
 
 from comutils import (
+    SUPPORT_IMAGE_FORMATS_NAME,
+    complete_image_file_extension,
+    count_lines_csv,
     get_filebasename_from_url,
     remove_sensitive_info,
+    set_image_extension,
     split_urls,
-    count_lines_csv,
 )
 from filenamehandler import FilenameHandler
 from wooenums import CSVProductFields, DBProductFields, ImageMode, LanguagesHotSale
@@ -80,7 +83,15 @@ def update_image_fields_extension(csv_dir, extension="webp"):
         if file.endswith(".csv"):
             print(f"Updating image fields extension for:{file} ")
             df = pd.read_csv(file)
-            df[IMAGES] = df[IMAGES].str.rsplit(".", n=1).str[0] + f".{extension}"
+
+            # 如果原后缀是常见图片格式,比如jpg,png,gif,webp,tif,gif这种则替换后缀为指定格式
+            df[IMAGES] = set_image_extension(
+                df[IMAGES],
+                default_image_format=extension,
+                supported_image_formats=SUPPORT_IMAGE_FORMATS_NAME,
+            )
+            # df[IMAGES] = df[IMAGES].str.rsplit(".", n=1).str[0] + f".{extension}"
+
             df.to_csv(file, index=False)
 
 
@@ -130,6 +141,8 @@ def process_image_csv(img_dir, csv_dir, backup_dir="backup_csvs"):
 
     update_image_fields(csv_dir)
     update_image_fields_extension(csv_dir, extension="webp")
+    # debug
+    # return
     remove_items_without_img(csv_dir, img_dir=img_dir, backup_dir=backup_dir)
 
     if backup_dir:
@@ -695,6 +708,7 @@ but different name, keep records",
         hot_class=LanguagesHotSale,
         language="",
         req_response=False,
+        default_extension=".webp",
     ):
         """
         获取产品数据行的字段补充和修改后的字典形式数据，每行数据作为字典返回,服务于导出到csv的阶段预备
@@ -763,14 +777,28 @@ but different name, keep records",
                     sku = row[sku_field]
                     # 基于sku,编号命名该产品的多个图片(如果有多图的话)
                     img_names = [
-                        f"{sku}-{i}"
-                        + self._get_img_extension(
-                            img_url=img_url, req_response=req_response, prefix_dot=True
+                        complete_image_file_extension(
+                            file=f"{sku}-{i}"
+                            + fh.get_image_extension_from_url_str(url=img_url),
+
+                            # + self._get_img_extension(
+                            #     img_url=img_url,
+                            #     req_response=req_response,
+                            #     prefix_dot=True,
+                            # ),
+                            
+                            default_extension=default_extension,
                         )
                         for i, img_url in enumerate(img_url_lst)
                     ]
                 elif img_mode == ImageMode.NAME_FROM_URL:
-                    img_names = [get_filebasename_from_url(url) for url in img_url_lst]
+                    img_names = [
+                        complete_image_file_extension(
+                            get_filebasename_from_url(url),
+                            default_extension=default_extension,
+                        )
+                        for url in img_url_lst
+                    ]
 
                 row[img_field] = ",".join(img_names)
             # 扩充数据行字典
@@ -787,6 +815,7 @@ but different name, keep records",
         # if not img_url:
         #     return ""
         # return img_url.split(".")[-1]
+
         res = fh.get_file_extension(
             url=img_url, req_response=req_response, prefix_dot=prefix_dot
         )
@@ -887,6 +916,7 @@ but different name, keep records",
         img_mode=ImageMode.NAME_AS_URL,
         split_files_size=10000,
         average_split_files=0,
+        default_extension=".webp",
     ):
         """
         导出csv文件
@@ -903,7 +933,9 @@ but different name, keep records",
         header_for_woo = CSVProductFields.get_all_fields_value(img_mode=img_mode)
         warning("Info:csv header: %s", header_for_woo)
         # 准备好数据🎈
-        lines = self.get_lines_dict_for_csv(dbs=dbs, img_mode=img_mode)
+        lines = self.get_lines_dict_for_csv(
+            dbs=dbs, img_mode=img_mode, default_extension=default_extension
+        )
 
         # self._export_csv(file_path, header, lines)
         # self.update_csv_header_inplace(file_path, header_for_woo)

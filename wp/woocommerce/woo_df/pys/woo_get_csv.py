@@ -19,6 +19,7 @@ from comutils import check_iterable  # , parse_dbs_from_str
 from wooenums import ImageMode, EnumItRc, LanguagesHotSale
 from woosqlitedb import SQLiteDB
 
+
 LOCOY_SPIDER_DATA = os.environ.get("LOCOY_SPIDER_DATA")
 if LOCOY_SPIDER_DATA is None:
     raise ValueError(
@@ -62,6 +63,14 @@ def parse_args():
         type=int,
         default=None,
         help="结束采集任务ID（默认与start-id相同）",
+    )
+    parser.add_argument(
+        "-f",
+        "-fmt",
+        "--default-extension",
+        type=str,
+        # default=DEFAULT_EXTENSION
+        help="配置默认图片文件扩展名",
     )
 
     # 分类与价格过滤参数
@@ -133,9 +142,12 @@ def parse_args():
 
 args = parse_args()  # 解析命令行参数
 # 小分类阈值,小于该阈值的分类将被视为小分类,将其分配到热销类(或其近义词);设置为0表示不处理分类
+
+DEFAULT_IMAGE_EXTENSION = args.default_extension or ""
 # 配置图片字段导出模式
 # IMAGE_MODE = ImageMode.NAME_FROM_URL
 IMAGE_MODE = ImageMode[args.image_mode] or ImageMode.NAME_FROM_URL
+
 # 产品价格区间(打折前不在此区间的产品将被过滤掉)
 LOWEST_PRICE = 1
 HIGHEST_PRICE = 10000
@@ -168,7 +180,7 @@ END = START
 
 # 综合确定参数
 START = args.start_id or START
-END = args.end_id or END
+END = args.end_id or START
 
 # 枚举出db文件路径
 rng = range(START, END + 1)
@@ -298,4 +310,5 @@ if __name__ == "__main__":
         out_dir=args.output_dir,
         split_files_size=10000,
         img_mode=IMAGE_MODE,
+        default_extension=DEFAULT_IMAGE_EXTENSION,
     )

@@ -120,18 +120,19 @@ git pull origin main
 
 主要针对老方法(api上传的图片未经过处理的情况)
 
-参数序列`-R auto -p -F  -O`
+参数序列`-R auto -p -F  -O -W  -k -A -r 1000 800 `
 
 linux服务器上的命令(测试单个链接)
 
 ```bash
-python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -p -F  -O -W  -k -i "输入要被处理路径"
+
+python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -p -F  -O -W  -k -A -r 1000 800 -i "替换此串为要被处理路径" . 
 ```
 
 批量对指定站点目录压缩(使用包含目录列表的文件作为输入)
 
 ```bash
-python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -p -F  -O -W  -k  -A -I /www/wwwroot/pys/test_compress.txt
+python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -p -F  -O -W  -k  -A -r 1000 800 -I "/www/wwwroot/pys/test_compress.txt"
 ```
 
 ## 典型用例
@@ -143,12 +144,13 @@ python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -
 如果需要集中批量压缩,可以使用如下参数(`-i`后面更上需要处理的图片(文件夹)路径)
 
 ```bash
--R auto -p -F  -O -k -f webp -i
+-R auto -p -F  -O -k -f webp  -r 1000 800  -i
+
 ```
 
 ```bash
 #⚡️[Administrator@CXXUDESK][~\Desktop][14:50:16][UP:12.11Days]
-PS> py C:\repos\scripts\wp\woocommerce\woo_df\pys\image_compresser.py   -R auto -p -F  -O  -f webp -k -i C:\Users\Administrator\Pictures\imgs_demo
+PS> py C:\repos\scripts\wp\woocommerce\woo_df\pys\image_compresser.py   -R auto -p -F  -O -k -f webp  -r 1000 800  -i C:\Users\Administrator\Pictures\imgs_demo
 ```
 
 
