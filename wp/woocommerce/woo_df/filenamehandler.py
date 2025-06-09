@@ -143,7 +143,7 @@ class FilenameHandler:
             >>> url=r"https://res.cloudinary.com/8r10.086_01"
             >>> get_image_extension_from_url_str(url)
             ""
-            
+
         """
         # SUPPORT_IMAGE_FORMATS_NAME = ("jpg", "jpeg", "png", "webp", "tif", "tiff", "gif")
         ext_candidate = self.get_file_extension_from_url_str(url)
@@ -456,3 +456,18 @@ class FilenameHandler:
             mime=mime, prefix_dot=prefix_dot
         )
         return extension
+
+    def get_file_extension_from_file_by_magic(self, file_path):
+        """
+        获取文件扩展名,使用magic库
+        Args:
+            file_path (str): 文件路径
+
+        Returns:
+            str: 文件扩展名
+        """
+        with open(file_path, "rb") as f:
+            chunk = f.read(2048)
+            mime = magic.from_buffer(chunk, mime=True)
+            extension = FilenameHandler.get_file_extension_from_mime(mime=mime)
+            return extension

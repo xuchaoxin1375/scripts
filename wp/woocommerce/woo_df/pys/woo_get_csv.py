@@ -136,13 +136,13 @@ def parse_args():
         default=10000,
         help="分割输出CSV文件的大小(default: 10000)",
     )
+    parser.add_argument("-k", "--sku-suffix", type=str, help="自定义SKU后缀")
 
     return parser.parse_args()
 
 
 args = parse_args()  # 解析命令行参数
 # 小分类阈值,小于该阈值的分类将被视为小分类,将其分配到热销类(或其近义词);设置为0表示不处理分类
-
 DEFAULT_IMAGE_EXTENSION = args.default_extension or ""
 # 配置图片字段导出模式
 # IMAGE_MODE = ImageMode.NAME_FROM_URL
@@ -155,6 +155,9 @@ HIGHEST_PRICE = 10000
 # LANGUAGE = LanguagesHotSale.US.name
 LANGUAGE = args.language_country or LanguagesHotSale.US.name
 LANGUAGE = LANGUAGE.upper()
+# sku后缀自定义
+SKU_SUFFIX = args.sku_suffix or LANGUAGE
+
 # 限制产品数量少的分类,将其分配到热销类(或其近义词)
 CATEGORIES_THRESHOLD = 30
 
@@ -303,7 +306,7 @@ if __name__ == "__main__":
     ## 6.统计并处理产品分类(包括合并小分类,分配热销类);可以用data wragger查看cats统计结果
     cats = db.get_category_statistic(hot_class=LanguagesHotSaleX)  # type: ignore
     ## 7.更新产品数据(描述等)🎈
-    db.update_products(dbs=dbs, sku_suffix=LANGUAGE, strict_mode=False)
+    db.update_products(dbs=dbs, sku_suffix=SKU_SUFFIX, strict_mode=False)
     ## 8.导出csv文件
     db.export_csv(
         dbs=dbs,

@@ -104,7 +104,7 @@ python $pys\woo_uploader_db.py -c $csv_path -i $img_dir
 ```powershell
 
 #导出csv 输出路径的参数--output-dir
-python $pys\woo_get_csv.py --start-id  $start_id --end-id $end_id --language-country $language --output-dir $output_dir
+python $pys\woo_get_csv.py -fmt .webp --start-id  $start_id --end-id $end_id --language-country $language --output-dir $output_dir --sku-suffi $sku_suffix
 #下载并处理图片(下载过程中或者下载完毕要抽查看看是否有破图或者不完整的图,如果比较多要警惕)
 python $pys\image_downloader.py -c -n -R auto -k  -r 1000 800 --output-dir $output_dir --dir-input $dir_input
 

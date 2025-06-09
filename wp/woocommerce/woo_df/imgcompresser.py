@@ -23,13 +23,17 @@ from pathsize import format_size, get_size
 
 QUALITY_DEFAULT = 70
 QUALITY_DEFAULT_STRONG = 30
-COMPRESS_TRHESHOLD_KB = 0  # 只对指定大小以上的图片文件进行压缩(取值为0时全部压缩)
 
+# 只对指定大小以上的图片文件进行压缩(取值为0时全部压缩)
 K = 2**10
+# 直观的KB单位指定(默认0则处理所有大小的图片)
+COMPRESS_TRHESHOLD_KB = 0
+# 转换为默认的字节单位
 COMPRESS_TRHESHOLD_B = COMPRESS_TRHESHOLD_KB * K
 COMPRESS_TRHESHOLD = COMPRESS_TRHESHOLD_B
-DEFAULT_QUALITY_RULE = "0,50,70 ; 50,200,40 ; 200,10000,30"
 
+# 默认的quality规则
+DEFAULT_QUALITY_RULE = "0,50,75 ; 50,200,40 ; 200,10000,30"
 # image extension / format names
 SUPPORT_IMAGE_FORMATS_NAME = ("jpg", "jpeg", "png", "webp", "tif", "tiff", "gif")
 SUPPORT_IMAGE_FORMATS = ("." + f for f in SUPPORT_IMAGE_FORMATS_NAME)
@@ -149,7 +153,10 @@ class ImageCompressor:
 
     @property
     def compress_threshold(self):
-        """返回字节压缩阈值"""
+        """返回字节压缩阈值
+        单位是字节数(B)
+        例如1KB则返回1024
+        """
         return self._compress_threshold * K
 
     def compress_image(
@@ -162,7 +169,7 @@ class ImageCompressor:
         optimize: bool = False,
         keep_exif: bool = True,
         overwrite: bool = False,
-        resize_compensate_quality=10,
+        resize_compensate_quality=5,
     ):
         """
         压缩或转换图片
@@ -204,7 +211,12 @@ class ImageCompressor:
 
             original_size = os.path.getsize(input_path)
             self.logger.debug(f"原始文件大小: {original_size}")
-
+            ct: int = self.compress_threshold  # 取0则不跳过(全部压缩)
+            if ct and original_size < ct:
+                msg = f"文件大小({format_size(original_size)})小于压缩阈值({format_size(ct)}),跳过: {input_path}"
+                self.logger.info(msg)
+                opl.log_skip()
+                return True, msg
             output_path = self._get_output_path(
                 input_path=input_path,
                 output_path=output_path,
@@ -253,23 +265,40 @@ class ImageCompressor:
                     # resized_file_size = os.path.getsize(temp_output_path)
 
                     # 内存方案:保存临时文件到内存中,避免重复读写硬盘
+                    # 特殊处理JPG格式
+                    # if output_format_name.lower() in ("jpg", "jpeg"):
+                    #     save_kwargs["subsampling"] = 0  # 无损压缩
                     buffer = BytesIO()
                     # 将img流保存到临时的buffer中,再额外指定format
+                    # debug
+                    print(f"格式: {output_format_name}")
+                    # output_format_name = "jpeg"
+                    if output_format_name == "jpg":
+                        output_format_name = "jpeg"
                     img.save(buffer, format=output_format_name)
                     resized_file_size = buffer.tell()  # 获取内存缓冲区大小
+
+                    # buffer.close()  # 清理内存
 
                     self.logger.debug(
                         f"降分辨率前后的文件大小变化: {format_size(original_size)}->{format_size(resized_file_size)}"
                     )
                     # self.logger.debug(f"估算文件大小: {original_size} bytes")
-                    buffer.close()  # 清理内存
-                    # original_size = resized_file_size
                 # 确定最终的quality(依赖于最新的文件大小评估,尤其是分辨率变化后)
-                quality = self._get_quality(
-                    quality,
-                    quality_for_small_file=quality_for_small_file,
-                    original_size=resized_file_size or original_size,
-                )
+                # quality = self._get_quality(
+                #     quality,
+                #     quality_for_small_file=quality_for_small_file,
+                #     original_size=resized_file_size or original_size,
+                # )
+                resized_file_size = resized_file_size or original_size
+
+                if self.quality_rule:
+                    quality = get_quality_from_rule(
+                        rule=self.quality_rule,
+                        # size=original_size,
+                        size=resized_file_size,
+                        default_quality=QUALITY_DEFAULT_STRONG,
+                    )
                 # 一般缩小分辨率后,quality需要基于规则适当提高
                 if need_resize:
                     new_quality = quality + resize_compensate_quality
@@ -302,24 +331,25 @@ class ImageCompressor:
             size_trend = "+" if expand else "-"
             icon_trend = "🔼" if expand else "✅"
             if self.process_when_size_reduced and expand:
-                print(
-                    f"压缩后文件大小未减少,不覆盖原文件(大小变化:{original_size}->{new_size})"
-                )
+                # 不需要处理图片的情况
                 # 移除临时文件🎈
                 os.remove(temp_output_path)
                 opl.log_skip()
-                # 图片后缀更改,不覆盖原文件
+                # 根据需要做图片后缀更改,不覆盖原文件
                 fake_format = self.fake_format
                 if input_format_name != output_format_name and fake_format:
                     print("仅更改源文件(input_path)的后缀格式,而不做实际转换")
                     print(f"格式文件变化:{input_path}->{output_path}")
                     os.rename(input_path, output_path)
-                msg = "文件大小未减少,不覆盖原文件"
+                msg = f"压缩后文件大小未减少,不覆盖原文件(大小变化:{original_size}->{new_size})"
+                print(msg)
             else:
-                print("不关心体积变化,执行处理操作")
-                if new_size < original_size:
+                # 需要替换源文件的情况
+                if not expand:
                     # 理想情况:处理后的文件体积变小
                     print(f"处理后的文件体积变小,覆盖原文件: {output_path}")
+                else:
+                    print("不关心体积变化,执行压缩")
                 ratio = (new_size / original_size - 1) * 100
                 msg = (
                     icon_trend,

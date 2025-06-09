@@ -91,7 +91,8 @@ def update_image_fields_extension(csv_dir, extension=".webp"):
                 supported_image_formats=SUPPORT_IMAGE_FORMATS_NAME,
             )
             # df[IMAGES] = df[IMAGES].str.rsplit(".", n=1).str[0] + f".{extension}"
-
+            # 打印前10行查看修改效果
+            print(df.head(10))
             df.to_csv(file, index=False)
             return df
 
@@ -781,13 +782,11 @@ but different name, keep records",
                         complete_image_file_extension(
                             file=f"{sku}-{i}"
                             + fh.get_image_extension_from_url_str(url=img_url),
-
                             # + self._get_img_extension(
                             #     img_url=img_url,
                             #     req_response=req_response,
                             #     prefix_dot=True,
                             # ),
-                            
                             default_extension=default_extension,
                         )
                         for i, img_url in enumerate(img_url_lst)

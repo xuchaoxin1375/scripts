@@ -3,7 +3,7 @@
 """
 
 import argparse
- 
+
 import os
 import sys
 
@@ -102,8 +102,8 @@ def parse_args():
         "--compress-threshold",
         type=int,
         default=COMPRESS_TRHESHOLD_KB,
-        help="压缩阈值(KB), 小于该阈值的图片微压(quality=70)"
-        "(取值为0表示不设置压缩门槛全部压缩),取值越大,压缩力度越轻,反之越高"
+        help="压缩阈值(KB), 小于该阈值的图片跳过处理"
+        "(取值为0表示不设置压缩门槛全部压缩)"
         "(此选项是quality-rule的简化版,更多需求可以通过quality-rule更灵活地调整)",
     )
     parser.add_argument(
@@ -118,6 +118,11 @@ def parse_args():
         "-s",
         "--skip-format",
         help="跳过指定格式的图片(jpg/png/webp)压缩,多个格式用逗号分隔",
+    )
+    parser.add_argument(
+        "-b",
+        "--skip-small",
+        help="跳过处理小于指定分辨率大小的图片(KB)压缩,多个大小用逗号分隔(todo)",
     )
     parser.add_argument(
         "-k",
@@ -205,7 +210,6 @@ def process_input_task(args, compressor: ImageCompressor, fmt, input_path):
                 output_path = args.output
             else:
                 output_path = input_path
-
 
             # success, _ =
             compressor.compress_image(
