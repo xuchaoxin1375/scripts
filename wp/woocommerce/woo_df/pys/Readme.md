@@ -109,7 +109,7 @@ python $pys\woo_get_csv.py --start-id  $start_id --end-id $end_id --language-cou
 python $pys\image_downloader.py -c -n -R auto -k  -r 1000 800 --output-dir $output_dir --dir-input $dir_input
 
 #导入产品数据到数据库中
-python $pys\woo_uploader_db.py  --csv-path $csv_path --img-dir $img_dir --db-name $domain_db
+python $pys\woo_uploader_db.py --update-slugs  --csv-path $csv_path --img-dir $img_dir --db-name $domain_db 
 
 # 打包成压缩包(如果安装了7z,还支持更多种格式,默认打包成zip)
 Get-WpSitePacks -SiteDirecotry $site_dir

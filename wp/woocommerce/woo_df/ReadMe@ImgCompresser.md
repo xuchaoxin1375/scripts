@@ -2,38 +2,196 @@
 
 ## 图片压缩模块
 
-摘要:
-
-- 支持PNG、JPG压缩和WEBP格式转换
+- 支持PNG、JPG压缩和WEBP格式转换,分辨率调整(等比例缩放)
 
 - 通常将jpg,png转换为webp会有较好的效果，尤其是png->webp的效果最明显
 
 - 支持命令行参数调用和程序化调用
 
+- ...
+
   
 
-## 功能特点
+## linux服务器部署代码🎈
 
-1. 命令行支持:
-   - 添加了完整的命令行参数解析
-   - 支持单文件处理和批量处理
-   - 添加了详细的帮助信息
-   - 支持多种输出格式选择(webp/jpg/png)
-   - 添加了覆盖选项(--overwrite)
 
-2. 代码规范:
-   - 类型提示
-   - 错误处理
-   - 日志记录
-   - 改进的性能(多线程处理)
 
-3. 其他
-   - EXIF信息保留控制
-   - 详细输出模式(-v/--verbose)
-   - 线程数控制(--max-workers)
-   - 优化选项控制(--no-optimize)
+### 安装python和pip
 
-### 图片分辨率调整
+以ubuntu为例,通常自带python,但是pip可能不可以用
+
+现在建议使用python3.11以上的版本,连同pip一起安装
+
+```bash
+# 更新系统包索引
+sudo apt update
+sudo apt install -y software-properties-common
+
+# 添加 deadsnakes 仓库
+sudo add-apt-repository ppa:deadsnakes/ppa
+sudo apt update
+
+# 安装 Python 3.12
+sudo apt install -y python3.12
+
+# 可选：设置 python3 默认版本为 3.12（慎用）
+sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
+
+# 检查安装成功
+python3.12 --version
+
+# 有些情况下 pip 需要单独安装
+sudo apt install -y python3.12-venv python3.12-dev
+
+# 手动安装 pip（如果缺失）
+curl -sS https://bootstrap.pypa.io/get-pip.py | sudo python3.12
+python3.12 -m pip --version
+
+```
+
+### 安装git
+
+系统一般自带,如果不存在,使用以下命令行安装
+
+```bash
+sudo apt install git
+
+```
+
+
+
+### 第一次获取代码
+
+将代码克隆到默认目录下`/repos/scripts`的git命令行
+
+```bash
+git clone https://gitee.com/xuchaoxin1375/scripts.git /repos/scripts
+
+```
+
+之后不需要再执行此命令,如果要更行代码,执行以下命令
+
+### 配置环境变量
+
+根据自己的情况选择配置命令行(通常默认bash)
+
+#### 对于bash
+
+```bash
+ echo 'export PYTHONPATH="/repos/scripts/wp/woocommerce/woo_df:$PYTHONPATH"' >> ~/.bashrc
+```
+
+#### 对于zsh
+
+```bash
+ echo 'export PYTHONPATH="/repos/scripts/wp/woocommerce/woo_df:$PYTHONPATH"' >> ~/.zshrc
+```
+
+
+
+### 更新代码
+
+```bash
+cd /repos/scripts
+git pull origin main
+
+```
+
+获取最新版本
+
+```bash
+[oh-my-zsh] Random theme 'junkfood' loaded
+#( 05/30/25@ 7:35AM )( root@wnx0020303 ):~
+   cd /repos/scripts
+#( 05/30/25@ 7:35AM )( root@wnx0020303 ):/repos/scripts@main✔
+   git pull origin main
+```
+
+
+
+### linux压缩服务器上的图片🎈
+
+
+
+### 推荐的命令行和参数
+
+主要针对老方法(api上传的图片未经过处理的情况),以及其他未压缩过图片的站点
+
+参数序列`-R auto -p -F  -O -W  -k -A -r 1000 800 `
+
+linux服务器上的命令(测试单个链接)
+
+```bash
+
+python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -p -F  -O -W  -k -A -r 1000 800 -i "替换此串为要被处理路径" . 
+```
+
+批量对指定站点目录压缩(使用包含目录列表的文件作为输入)
+
+```bash
+python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -p -F  -O -W  -k  -A -r 1000 800 -I "/www/wwwroot/pys/test_compress.txt"
+```
+
+
+
+## windows本地压缩
+
+下面用的参数和选项针对我们的业务配置的
+
+需要的软件环境一样,python和git,缺少的分别安装即可(联想应用商店可以快速下载git和python)
+
+### 配置python 模块环境变量
+
+```cmd
+setx PYTHONPATH C:\repos\scripts\wp\woocommerce\woo_df
+
+```
+
+利用git获取代码
+
+```
+git clone https://gitee.com/xuchaoxin1375/scripts.git C:/repos/scripts
+```
+
+配置完上述内容,重启命令行窗口或者新开一个命令行窗口使其生效,如果有开启的vscode这种的也要重启窗口生效
+
+
+
+如果需要集中批量压缩,可以使用如下参数(`-i`后面更上需要处理的图片(文件夹)路径)
+
+```bash
+-R auto -p -F  -O -k -f webp  -r 1000 800  -i
+
+```
+
+```bash
+#⚡️[Administrator@CXXUDESK][~\Desktop][14:50:16][UP:12.11Days]
+PS> py C:\repos\scripts\wp\woocommerce\woo_df\pys\image_compresser.py   -R auto -p -F  -O -k -f webp  -r 1000 800  -i C:\Users\Administrator\Pictures\imgs_demo
+```
+
+
+
+## FAQ
+
+### 图片处理失败🎈
+
+通常对于jpg,png,webp这三种最常见的格式有良好的兼容性
+
+但是如果图片本身是不完整或者打开是一个破图,那么压缩通常会失败
+
+> 在我们的业务中,产品图片下载后就会进行压缩,如果下载环节下载的图片是不正常的(比如使用图片查看器或者系统自带的照片程序或者浏览器看图渲染不出来或者不正常,说明问题很可能出现在下载环节)
+>
+> 图片下载的结果有几类,理想情况下图片下载成功(并且能够被打开和顺利渲染出来);
+>
+> 第二类是不理想的情况,比如直接下载不了(比如403等反爬行为);
+>
+> 另外还可能是伪成功的,下载器提示下载成功,对应的路径也确实出现了对应名字的文件,但是其体积是不正常的,比如只有0MB,这种情况下也算做下载失败的情况,需要你专门检查本地的文件是否正常
+>
+> 图片不正常可以考虑开代理(将代理的环境变量复制到powershell中),然后重新尝试(也可以用curl或者iwr 命令来测试单个图片连接)
+
+
+
+## 图片分辨率调整
 
 ```python
 # resampling filters (also defined in Imaging.h)
@@ -69,135 +227,9 @@ class Resampling(IntEnum):
 
  
 
-## 服务器部署代码🎈
-
-
-
-### 第一次获取代码
-
-```bash
-git clone https://gitee.com/xuchaoxin1375/scripts.git /repos/scripts
-```
-
-之后不需要再执行此命令,如果要更行代码,执行以下命令
-
-配置环境变量
-
-对于bash
-
-```bash
- echo 'export PYTHONPATH="/repos/scripts/wp/woocommerce/woo_df:$PYTHONPATH"' >> ~/.bashrc
-```
-
-对于zsh
-
-```bash
- echo 'export PYTHONPATH="/repos/scripts/wp/woocommerce/woo_df:$PYTHONPATH"' >> ~/.zshrc
-```
-
-
-
-### 更新代码
-
-```bash
-cd /repos/scripts
-git pull origin main
-```
-
-获取最新版本
-
-```bash
-[oh-my-zsh] Random theme 'junkfood' loaded
-#( 05/30/25@ 7:35AM )( root@wnx0020303 ):~
-   cd /repos/scripts
-#( 05/30/25@ 7:35AM )( root@wnx0020303 ):/repos/scripts@main✔
-   git pull origin main
-```
-
-
-
-### 压缩服务器上的图片🎈
-
-主要针对老方法(api上传的图片未经过处理的情况)
-
-参数序列`-R auto -p -F  -O -W  -k -A -r 1000 800 `
-
-linux服务器上的命令(测试单个链接)
-
-```bash
-
-python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -p -F  -O -W  -k -A -r 1000 800 -i "替换此串为要被处理路径" . 
-```
-
-批量对指定站点目录压缩(使用包含目录列表的文件作为输入)
-
-```bash
-python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -p -F  -O -W  -k  -A -r 1000 800 -I "/www/wwwroot/pys/test_compress.txt"
-```
-
-## 典型用例
-
-下面用的参数和选项针对我们的业务配置的
-
-### 本地方法
-
-如果需要集中批量压缩,可以使用如下参数(`-i`后面更上需要处理的图片(文件夹)路径)
-
-```bash
--R auto -p -F  -O -k -f webp  -r 1000 800  -i
-
-```
-
-```bash
-#⚡️[Administrator@CXXUDESK][~\Desktop][14:50:16][UP:12.11Days]
-PS> py C:\repos\scripts\wp\woocommerce\woo_df\pys\image_compresser.py   -R auto -p -F  -O -k -f webp  -r 1000 800  -i C:\Users\Administrator\Pictures\imgs_demo
-```
-
-
-
-## FAQ
-
-### 图片处理失败🎈
-
-通常对于jpg,png,webp这三种最常见的格式有良好的兼容性
-
-但是如果图片本身是不完整或者打开是一个破图,那么压缩通常会失败
-
-> 在我们的业务中,产品图片下载后就会进行压缩,如果下载环节下载的图片是不正常的(比如使用图片查看器或者系统自带的照片程序或者浏览器看图渲染不出来或者不正常,说明问题很可能出现在下载环节)
->
-> 图片下载的结果有几类,理想情况下图片下载成功(并且能够被打开和顺利渲染出来);
->
-> 第二类是不理想的情况,比如直接下载不了(比如403等反爬行为);
->
-> 另外还可能是伪成功的,下载器提示下载成功,对应的路径也确实出现了对应名字的文件,但是其体积是不正常的,比如只有0MB,这种情况下也算做下载失败的情况,需要你专门检查本地的文件是否正常
->
-> 图片不正常可以考虑开代理(将代理的环境变量复制到powershell中),然后重新尝试(也可以用curl或者iwr 命令来测试单个图片连接)
-
-## 使用示例
-
-1. **单文件转换**:
-   ```bash
-   python image_compressor.py input.jpg -o output.webp -q 85
-   ```
-
-2. **批量转换目录**:
-   ```bash
-   python image_compressor.py ./images -o ./compressed -f webp --overwrite
-   ```
-
-3. **高质量JPEG压缩**:
-   ```bash
-   python image_compressor.py input.png -o output.jpg -q 90 --no-exif
-   ```
-
-4. **详细输出模式**:
-   ```bash
-   python image_compressor.py input.jpg -o output.webp -v
-   ```
-
 ## PIL库的简单介绍
 
-在 Python 的 PIL（Pillow）库中，`Image.save()` 方法用于将图像保存到文件。这个方法非常灵活，支持多种格式和参数。
+在 Python 的 PIL（Pillow）库中，`Image.save()` 方法用于将图像保存到文件。
 
 ---
 

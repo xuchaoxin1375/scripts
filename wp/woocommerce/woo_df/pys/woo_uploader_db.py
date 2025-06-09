@@ -88,6 +88,7 @@ def parse_args():
         help="Number of products per batch (default: 100)",
     )
     parser.add_argument(
+        "-u",
         "--update-slugs",
         action="store_true",
         help="Whether to update product slugs after import",
