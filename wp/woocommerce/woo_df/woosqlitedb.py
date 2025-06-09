@@ -43,6 +43,15 @@ HIGHEST_PRICE = 10000
 cnt_lock = threading.Lock()
 
 
+def check_df_empty(df):
+    """检查dataframe数据是否为空"""
+    if df.shape[0] == 0:
+        print("No data in dataframe, skip processing.")
+        return True
+    else:
+        return False
+
+
 def update_image_fields_from_legacy(csv_file):
     """更新图片字段
     针对只有Images字段但是缺失ImagesUrl字段的产品图片字段更新/补全完整(主要为兼容老csv格式准备的)
@@ -50,10 +59,13 @@ def update_image_fields_from_legacy(csv_file):
 
     """
     df = pd.read_csv(csv_file)
+    # 如果df中一行数据都没有,则跳过
+    if check_df_empty(df):
+        return False
     # fh = FilenameHandler()
     if IMAGE_URL in df.columns and df[IMAGE_URL].notnull().any():
         print("ImagesUrl field already exists, no need to update.")
-        return  # 相关字段已经存在,不需要更新
+        return False  # 相关字段已经存在,不需要更新
     df[IMAGE_URL] = df[IMAGES]
     df[IMAGES] = df[IMAGES].apply(fh.get_filename_from_url)
     df.to_csv(csv_file, index=False)
@@ -84,7 +96,8 @@ def update_image_fields_extension(csv_dir, extension=".webp"):
         if file.endswith(".csv"):
             print(f"Updating image fields extension for:{file} ")
             df = pd.read_csv(file)
-
+            if check_df_empty(df):
+                continue
             # 如果原后缀是常见图片格式,比如jpg,png,gif,webp,tif,gif这种则替换后缀为指定格式
             df[IMAGES] = set_image_extension(
                 df[IMAGES],
@@ -113,6 +126,8 @@ def remove_items_without_img(csv_dir, img_dir, backup_dir="backup_csvs"):
         if file.endswith(".csv"):
             print(f"Removing items without image for:{file} ")
             df = pd.read_csv(file)
+            if check_df_empty(df):
+                continue
             # 根据需要备份文件
             if backup_dir:
                 # 复制文件file到backup_dir目录下备用
@@ -145,8 +160,8 @@ def process_image_csv(img_dir, csv_dir, backup_dir="backup_csvs"):
 
     update_image_fields(csv_dir)
     update_image_fields_extension(csv_dir, extension=".webp")
-    # debug
-    # return
+
+    # return # debug
     remove_items_without_img(csv_dir, img_dir=img_dir, backup_dir=backup_dir)
 
     if backup_dir:

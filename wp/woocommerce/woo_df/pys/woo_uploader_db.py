@@ -761,6 +761,7 @@ if __name__ == "__main__":
     # 处理图片
     csv_path = args.csv_path or CSV_DIR
     img_dir = args.img_dir or IMG_DIR
+    # 对csv做必要的处理🎈
     process_image_csv(img_dir=img_dir, csv_dir=csv_path)
     go = input("是否继续?(y/n) [default:y]").strip().lower()
     if go not in ("", "y", "yes"):

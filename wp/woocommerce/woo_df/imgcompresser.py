@@ -165,7 +165,7 @@ class ImageCompressor:
         output_path: str = "",
         output_format: str = "",
         quality: int = QUALITY_DEFAULT,
-        quality_for_small_file: int = 70,
+        # quality_for_small_file: int = 70,
         optimize: bool = False,
         keep_exif: bool = True,
         overwrite: bool = False,
@@ -272,7 +272,7 @@ class ImageCompressor:
                     # 将img流保存到临时的buffer中,再额外指定format
                     # debug
                     print(f"格式: {output_format_name}")
-                    # output_format_name = "jpeg"
+                    # 规范jpg名字为jpeg(PIL库的需要)
                     if output_format_name == "jpg":
                         output_format_name = "jpeg"
                     img.save(buffer, format=output_format_name)
