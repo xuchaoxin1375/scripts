@@ -94,7 +94,7 @@ def update_image_fields_extension(csv_dir, extension=".webp"):
             # 打印前10行查看修改效果
             print(df.head(10))
             df.to_csv(file, index=False)
-            return df
+    return df
 
 
 def remove_items_without_img(csv_dir, img_dir, backup_dir="backup_csvs"):

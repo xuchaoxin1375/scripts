@@ -101,10 +101,14 @@ python $pys\woo_uploader_db.py -c $csv_path -i $img_dir
 
 下面几个命令分步执行,不要连着执行
 
+建议复制下面的命令行保存为文本文件(后缀改为`.ps1`),然后用vscode编辑
+
+> 可以安装个powershell插件,有高亮显示
+
 ```powershell
 
 #导出csv 输出路径的参数--output-dir
-python $pys\woo_get_csv.py -fmt .webp --start-id  $start_id --end-id $end_id --language-country $language --output-dir $output_dir --sku-suffi $sku_suffix
+python $pys\woo_get_csv.py -fmt .webp --start-id  $start_id --end-id $end_id --language-country $language --output-dir $output_dir --sku-suffix $sku_suffix
 #下载并处理图片(下载过程中或者下载完毕要抽查看看是否有破图或者不完整的图,如果比较多要警惕)
 python $pys\image_downloader.py -c -n -R auto -k  -r 1000 800 --output-dir $output_dir --dir-input $dir_input
 
