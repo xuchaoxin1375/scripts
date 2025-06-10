@@ -419,7 +419,7 @@ def set_image_extension(
     """
 
     res = (
-        series.apply(get_image_filebasename(supported_image_formats))
+        series.astype(str).apply(get_image_filebasename(supported_image_formats))
         + f"{default_image_format}"
     )
 
@@ -431,7 +431,7 @@ def get_image_filebasename(supported_image_formats=SUPPORT_IMAGE_FORMATS_NAME):
     这依赖于supported_image_formats的配置的完善程度
 
     :param supported_image_formats: 支持的图片格式列表
-    :return: 用来计算不带格式扩展名图片名的lambda函数
+    :return: 用来计算不带格式扩展名图片名的lambda函数,其参数必须是字符串,否则抛出异常(比如x是个浮点数,就会因为没有split方法报错)
 
     Examples:
         >>> get_image_filebasename()('abc.jpg')
@@ -443,6 +443,7 @@ def get_image_filebasename(supported_image_formats=SUPPORT_IMAGE_FORMATS_NAME):
         >>> get_image_filebasename(['png', 'jpg'])('abc.png.jpg')
         'abc.png'
     """
+
     return lambda x: (
         x.rsplit(".", 1)[0] if x.split(".")[-1] in supported_image_formats else x
     )

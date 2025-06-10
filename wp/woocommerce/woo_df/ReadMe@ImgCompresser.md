@@ -191,7 +191,7 @@ dust .
 
 #### 分析网站目录
 
-dust有很多选项可以用,比如`-X`可以排除指定目录或文件不加入统计,详情使用`dust -h`
+dust(跨平台,linux,windows,macos都可以用)有很多选项可以用,比如`-X`可以排除指定目录或文件不加入统计,详情使用`dust -h`
 
 统计`/www`目录
 
@@ -199,7 +199,162 @@ dust有很多选项可以用,比如`-X`可以排除指定目录或文件不加�
 dust /www/
 ```
 
+使用选项来分析指定目录(如果主要关心网站根目录或图片占用)
 
+```bash
+dust -n 1000 -p /www/wwwroot/
+```
+
+针对性分析目录(使用正则选项)
+
+```bash
+dust . -n 500 -b -p -e wp-content/uploads
+```
+
+### 高级用法
+
+### 深度约束
+
+```bash
+dust . -n 500 -b -p -d 2
+```
+
+约束`-d`取值1,2的效果分别如下
+
+```bash
+# root @ wnx0020303 in /www/wwwroot/lyz [7:13:56]
+$ dust . -n 500 -b -p -d 1
+865M   ┌── ./teilehub.com
+953M   ├── ./AutoToros.com
+995M   ├── ./petvitabella.com
+1.0G   ├── ./www.hogarjoy.com
+1.0G   ├── ./carpartseuropa.com
+1.1G   ├── ./deportealegria.com
+1.1G   ├── ./teilefast.com
+1.1G   ├── ./www.hogarhaven.com
+1.2G   ├── ./homelicht.com
+1.2G   ├── ./prolampen.com
+1.2G   ├── ./MecanicaTop.com
+1.2G   ├── ./medbeauty24.com
+1.3G   ├── ./mdecineesthtique.com
+1.3G   ├── ./IberianGear.com
+1.4G   ├── ./fahrzeugfit.com
+1.4G   ├── ./deporteesvida.com
+1.5G   ├── ./lapasindeportiva.com
+1.5G   ├── ./www.hogarpatio.com
+1.6G   ├── ./animalitop.com
+2.1G   ├── ./deutschekfzparts.com
+2.1G   ├── ./glamwear24.com
+2.4G   ├── ./activedeportes.com
+2.8G   ├── ./pasoadeporte.com
+ 32G ┌─┴ .
+
+```
+
+
+
+```bash
+
+# root @ wnx0020303 in /www/wwwroot/lyz [7:12:11]
+$ dust . -n 500 -b -p -d 2
+....
+1.5G   ├─┴ ./lapasindeportiva.com
+4.0K   │ ┌── ./www.hogarpatio.com/.htaccess
+4.0K   │ ├── ./www.hogarpatio.com/.user.ini
+4.0K   │ ├── ./www.hogarpatio.com/404.html
+4.0K   │ ├── ./www.hogarpatio.com/index.html
+1.5G   │ ├── ./www.hogarpatio.com/wordpress
+1.5G   ├─┴ ./www.hogarpatio.com
+1.6G   │ ┌── ./animalitop.com/wordpress
+1.6G   ├─┴ ./animalitop.com
+8.0K   │ ┌── ./deutschekfzparts.com/5.de
+2.1G   │ ├── ./deutschekfzparts.com/wordpress
+2.1G   ├─┴ ./deutschekfzparts.com
+2.1G   │ ┌── ./glamwear24.com/wordpress
+2.1G   ├─┴ ./glamwear24.com
+4.0K   │ ┌── ./activedeportes.com/.htaccess
+4.0K   │ ├── ./activedeportes.com/.user.ini
+4.0K   │ ├── ./activedeportes.com/404.html
+4.0K   │ ├── ./activedeportes.com/index.html
+2.4G   │ ├── ./activedeportes.com/wordpress
+2.4G   ├─┴ ./activedeportes.com
+4.0K   │ ┌── ./pasoadeporte.com/.htaccess
+4.0K   │ ├── ./pasoadeporte.com/.user.ini
+4.0K   │ ├── ./pasoadeporte.com/404.html
+4.0K   │ ├── ./pasoadeporte.com/index.html
+2.8G   │ ├── ./pasoadeporte.com/wordpress
+2.8G   ├─┴ ./pasoadeporte.com
+ 32G ┌─┴ .
+
+```
+
+
+
+### 正则匹配
+
+又例如,在windows下我要分析当前目录下所有wordpress的2025年上传的文件占用(其他目录的占用不关心或不需要加入统计报告中)
+
+使用`-e`正则匹配会大大降低速度,因此要酌情使用
+
+注意windows下的路径`\\`
+
+> 则可以使用命令`dust . -n 20 -b -p -e wp-content\\uploads\\2025`
+
+其中`-n`是要显示的行数,可以适当调大一些,比如我有100个站,那么设置值为300~500
+
+```cmd
+
+#⚡️[Administrator@CXXUDESK][C:\sites\wp_sites][15:04:27][UP:23.12Days]
+PS> dust . -n 20 -b -p -e wp-content\\uploads\\2025
+5.3M       ┌── .\\2.es\\wp-content\\uploads
+5.3M     ┌─┴ .\\2.es\\wp-content
+5.3M   ┌─┴ .\\2.es
+5.4M   │     ┌── .\\2.de\\wp-content\\uploads\\2025
+5.4M   │   ┌─┴ .\\2.de\\wp-content\\uploads
+5.4M   │ ┌─┴ .\\2.de\\wp-content
+5.4M   ├─┴ .\\2.de
+5.4M   │     ┌── .\\2.us\\wp-content\\uploads\\2025
+5.4M   │   ┌─┴ .\\2.us\\wp-content\\uploads
+5.4M   │ ┌─┴ .\\2.us\\wp-content
+5.4M   ├─┴ .\\2.us
+6.6M   ├── .\\Temp
+7.9M   │     ┌── .\\1.de\\wp-content\\uploads\\2025
+7.9M   │   ┌─┴ .\\1.de\\wp-content\\uploads
+7.9M   │ ┌─┴ .\\1.de\\wp-content
+7.9M   ├─┴ .\\1.de
+8.3M   │     ┌── .\\1.us\\wp-content\\uploads\\2025
+8.3M   │   ┌─┴ .\\1.us\\wp-content\\uploads
+8.3M   │ ┌─┴ .\\1.us\\wp-content
+8.3M   ├─┴ .\\1.us
+ 76M ┌─┴ .
+
+```
+
+
+
+### windows上分析磁盘占用
+
+dust项目可以在windows上运行,使用scoop可以方便地安装和使用
+
+```cmd
+#⚡️[Administrator@CXXUDESK][C:\sites\wp_sites\1.de\wp-content\uploads][15:00:17][UP:23.12Days]
+PS> dust -n 10 -b -p -e wp-content\\uploads\\2025  C:\sites\wp_sites\1.de\
+2.4M         ┌── C:\\sites\\wp_sites\\1.de\\wp-content\\uploads\\2025\\03
+378K         │ ┌── C:\\sites\\wp_sites\\1.de\\wp-content\\uploads\\2025\\02\\tissu-jersey-imprime-attrape-reves-colores-sur-fond-bleu-fonce.jpg
+389K         │ ├── C:\\sites\\wp_sites\\1.de\\wp-content\\uploads\\2025\\02\\baumwolljersey-malomi-panel_MAL-SCHMETTERLING_2.jpg
+544K         │ ├── C:\\sites\\wp_sites\\1.de\\wp-content\\uploads\\2025\\02\\tissu-pour-pull-a-impression-numerique-motif-serpent-brun.jpg
+764K         │ ├── C:\\sites\\wp_sites\\1.de\\wp-content\\uploads\\2025\\02\\tissu-pour-pull-a-impression-numerique-coeurs-fraises-et-motifs-geometriques-sur-fond-noir.png
+836K         │ ├── C:\\sites\\wp_sites\\1.de\\wp-content\\uploads\\2025\\02\\baumwoll-popeline-georgine-pink_132.041-3006_2.jpg
+5.3M         ├─┴ C:\\sites\\wp_sites\\1.de\\wp-content\\uploads\\2025\\02
+7.9M       ┌─┴ C:\\sites\\wp_sites\\1.de\\wp-content\\uploads\\2025
+7.9M     ┌─┴ C:\\sites\\wp_sites\\1.de\\wp-content\\uploads
+7.9M   ┌─┴ C:\\sites\\wp_sites\\1.de\\wp-content
+7.9M ┌─┴ C:\\sites\\wp_sites\\1.de
+```
+
+
+
+#### 运行示例
 
 ![image-20250610090805343](assets/image-20250610090805343.png)
 
@@ -266,6 +421,21 @@ dust使用阶梯式的结构呈现统计结果,从左往右,在同一个竖线�
 ```bash
 cd /www/server/data
 rm  mysql-bin.0* -v
+```
+
+### 清除wc-import目录
+
+对于早期用wp后台自带的woocommerce 上传csv的方式导入产品,会将csv文件上传到服务器,这些文件会占用空间,建议删除掉
+
+执行以下脚本进行扫描和删除
+
+```bash
+#!/bin/bash
+
+# 查找并删除所有 wp-content/uploads/wc-imports 目录
+find /www/wwwroot/ -type d -path "*/wp-content/uploads/wc-imports" -print -exec rm -rf {} +
+
+echo "所有 wp-content/uploads/wc-imports 目录已删除。"
 ```
 
 

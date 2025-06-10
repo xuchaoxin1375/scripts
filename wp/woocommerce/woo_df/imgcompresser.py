@@ -455,7 +455,15 @@ class ImageCompressor:
     def _get_output_path(self, input_path: str, output_path: str, output_format):
         """
         确定输出格式和输出路径(后续要根据目标格式做针对性处理)
+
         注意:直接决定输出文件的格式的是output_path,如果用户传入output_format,最终也会通过拼接路径的方式体现在output_path的后缀上
+        
+        
+        如果输出路径指定,则根据此值,解析并返回输出格式和输出路径
+        如果输出路径没有指定:根据是否指定输出格式来判断
+            1.指定输出格式,则文件名和输入路径同名,后缀改为输出格式
+            2.没有指定输出格式,则使用输出路径和输入路径同名,后缀也一样
+        
         """
         if output_path and output_format:
             # 同时提供输出路径和格式,格式一致则继续运行,否则报错
