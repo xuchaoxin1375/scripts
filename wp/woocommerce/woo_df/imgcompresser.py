@@ -217,6 +217,7 @@ class ImageCompressor:
                 self.logger.info(msg)
                 opl.log_skip()
                 return True, msg
+            # 计算最终的输出路径字符串
             output_path = self._get_output_path(
                 input_path=input_path,
                 output_path=output_path,
@@ -518,7 +519,7 @@ class ImageCompressor:
             raise FileNotFoundError(f"输入目录不存在: {input_dir}")
         # 计算目录初始大小
         self.opl.size_before = get_size(input_dir)
-
+        
         os.makedirs(output_dir, exist_ok=True)
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -553,7 +554,17 @@ class ImageCompressor:
         return self.opl
 
     def _get_output_info(self, output_dir, output_format, input_path):
-        """确定输出格式和输出路径"""
+        """确定输出格式和输出路径(适用于压缩包含图片的目录的情况)
+
+        Args:
+            output_dir: 输出目录
+            output_format: 输出格式(webp/jpg/png)
+            input_path: 输入路径
+
+        Returns:
+            output_format_name: 输出格式名称
+            output_path: 输出路径
+        """
         base_name, input_format = os.path.splitext(input_path)
 
         # output_format = output_format or input_format

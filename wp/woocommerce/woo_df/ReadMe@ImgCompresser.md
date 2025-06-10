@@ -172,7 +172,7 @@ python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -
 python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -p -F  -O -W  -k  -A -r 1000 800  -T -I "/www/wwwroot/pys/test_compress.txt" 
 ```
 
-### 推荐的目录或文件磁盘占用分析工具
+### 推荐的目录或文件磁盘占用分析工具🎈
 
 dust是一个开源的多线程的磁盘占用分析工具,功能丰富[bootandy/dust: A more intuitive version of du in rust](https://github.com/bootandy/dust)
 
@@ -191,9 +191,73 @@ dust .
 
 #### 分析网站目录
 
-```
+dust有很多选项可以用,比如`-X`可以排除指定目录或文件不加入统计,详情使用`dust -h`
+
+统计`/www`目录
+
+```bash
 dust /www/
 ```
+
+
+
+![image-20250610090805343](assets/image-20250610090805343.png)
+
+```bash
+#( 06/10/25@ 1:11AM )( root@wnx0020303 ):/www
+   ls -1
+backup
+disk.pl
+dk_project
+php_session
+reserve_space.pl
+server
+wwwlogs
+wwwroot
+```
+
+也可以分析目录下的文件,找出最大的若干文件,比如分析图片目录下的大图片
+
+```bash
+2.0M   │ ├── DEQ24WES01349-212821_9855ed452a90910a37946f424c898fda_dtl_1.jpg
+2.0M   │ ├── DEQ23WES96579-196424_2a28521b8cf3ffd47babb064c1dbebb6_dtl_1.jpg
+2.0M   │ ├── DEQ24WES52409-213672_7b6dee3dd136c78767d17db01f4cba0e_dtl_1.jpg
+2.0M   │ ├── DEQ24WES72918-213646_caeca0f2194923374585dcde25563424_dtl_1.jpg
+2.0M   │ ├── cf4751dea6115b066030897e37dcb87e.png
+2.0M   │ ├── DEQ23WES42485-193055_678c4877ffb8441a271d13d25df42919_dtl_1.jpg
+2.0M   │ ├── DEQ22WES06371-189112_4bd79f39db8ed78822983ae95462ad92_dtl_1.jpg
+2.1M   │ ├── DEQ15ERI30291-39509_7e36adad6175bd3fa937e6ca941b60d4_dtl_1_17e914d9-cfd5-4e54-a748-54c1da80a319.jpg
+2.1M   │ ├── DEQ23WES57486-201067_e6554a3af9e9248cb1ab4b1366ae442f_dtl_1.jpg
+2.1M   │ ├── adc4c0881c8cd6713c7a6d9edfc17efa.jpg
+2.1M   │ ├── DEQ23WES26495-202938_32f845b59616eac143efb462b2777033_dtl_1.jpg
+2.2M   │ ├── DEQ24WES41977-210565_ac38e0d0c821ad582964312840c7c888_dtl_1.jpg
+2.2M   │ ├── DEQ23WES96953-201068_c5cfec61887f9843f7053f6264674085_dtl_1.jpg
+2.2M   │ ├── DEQ23WES17747-196412_7a46dd716741a5422c0103521e96f583_dtl_1.jpg
+2.2M   │ ├── DEQ24WES09509-221828_09d77095389a7a49c655bec8f3d2c82e_dtl_1.jpg
+2.4M   │ ├── DEQ24WES09179-221815_67005f08925c307093c736afb1f88d32_dtl_1.jpg
+2.7M   │ ├── ada0a087c68e5a983551041dcebc0d83.jpg
+2.7M   │ ├── f570637490b0c4e7e0fa42273928d3d9.jpg
+3.5M   │ ├── 08383c999c0b1c3a41db39a4264fbf47.jpg
+ 14M   │ ├── interior-7537974.jpg
+ 16M   │ ├── bc633a3e763e916886c97f95a77b6dd7.jpg
+8.0G   ├─┴ 02
+ 12G ┌─┴ .
+
+```
+
+
+
+#### 识读dust的输出报告
+
+dust使用阶梯式的结构呈现统计结果,从左往右,在同一个竖线向右生成的同一级阶梯表示他们属于同一个目录下,例如`dust /www/`分析后,左侧的第一个数字表示`/www`占用的总大小
+
+它的下一级(包含了`backup  disk.pl  dk_project  php_session  reserve_space.pl  server  wwwlogs  wwwroot`这些内容)
+
+其中`wwwroot`占用了331G,它的下一级`zw`,也就是`/www/wwwroot/zw`这个目录占用了`127G`
+
+默认情况下,大目录(文件)显示在下面,小目录(文件)显示在上面
+
+
 
 ### 清除宝塔中mysql二进制日志文件
 

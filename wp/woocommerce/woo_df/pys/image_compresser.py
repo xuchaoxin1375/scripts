@@ -204,12 +204,12 @@ def process_input_task(args, compressor: ImageCompressor, fmt, input_path):
             # output_path = (
             #     args.output or os.path.splitext(args.input)[0] + f".{args.format}"
             # )
-            # output_path = ""
+            output_path = args.output or ""
 
-            if args.output:
-                output_path = args.output
-            else:
-                output_path = input_path
+            # if args.output:
+            #     output_path = args.output
+            # else:
+            #     output_path = input_path
 
             # success, _ =
             compressor.compress_image(
