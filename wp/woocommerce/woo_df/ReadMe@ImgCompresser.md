@@ -49,6 +49,33 @@ python3.12 -m pip --version
 
 ```
 
+#### 安装python依赖包
+
+> 对于国内网络环境,建议配置国内源(比如清华源)来加速依赖包的下载(国外的服务器本身就有加速效果,可以不用配置)
+
+```cmd
+# 通常对本地windows系统配置下面这条命令即可(服务器不用配)
+pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+```
+
+---
+
+然后根据情况,执行下面的某一条pip命令
+
+对于linux系统
+
+```bash
+pip install -r /repos/scripts/wp/woocommerce/woo_df/requirements_linux.txt
+```
+
+对于windows系统
+
+```bash
+pip install -r C:\repos\scripts\wp\woocommerce\woo_df\requirements.txt
+```
+
+
+
 ### 安装git
 
 系统一般自带,如果不存在,使用以下命令行安装
@@ -109,7 +136,7 @@ git pull origin main
 
 
 
-### linux压缩服务器上的图片🎈
+## linux压缩服务器上的图片🎈
 
 
 
@@ -119,6 +146,9 @@ git pull origin main
 
 参数序列`-R auto -p -F  -O -W  -k -A -r 1000 800 `
 
+- 批量压缩多个目录,可以使用`-I`指定包含这些要压缩的目录的文本文件
+- 跳过小图压缩,可以使用`-T`;小图压缩节约的空间比较有限,如果为了快速,可以考虑跳过小图,比如50KB以上才压缩);或者二压缩也可以考虑使用`-T`来针对性处理大图(比如版本更新,支持分辨率缩小,这时候二次运行建议使用`-T`)
+
 linux服务器上的命令(测试单个链接)
 
 ```bash
@@ -126,10 +156,52 @@ linux服务器上的命令(测试单个链接)
 python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -p -F  -O -W  -k -A -r 1000 800 -i "替换此串为要被处理路径" . 
 ```
 
-批量对指定站点目录压缩(使用包含目录列表的文件作为输入)
+### 批量对指定站点目录压缩
+
+使用包含目录列表的文件作为输入
 
 ```bash
 python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -p -F  -O -W  -k  -A -r 1000 800 -I "/www/wwwroot/pys/test_compress.txt"
+```
+
+### 跳过小图压缩
+
+- 同上,追加`-T `并指定一个整数(表示KB数,对于不小于该大小的图片才处理)
+
+```bash
+python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -p -F  -O -W  -k  -A -r 1000 800  -T -I "/www/wwwroot/pys/test_compress.txt" 
+```
+
+### 推荐的目录或文件磁盘占用分析工具
+
+dust是一个开源的多线程的磁盘占用分析工具,功能丰富[bootandy/dust: A more intuitive version of du in rust](https://github.com/bootandy/dust)
+
+对于ubuntu系统
+
+```bash
+cd ~
+# 下载链接请到项目的release页面获取最新链接,下面的链接作为例子,下载后保存为dust.deb文件
+wget -O dust.deb https://github.com/bootandy/dust/releases/download/v1.2.1/du-dust_1.2.1-1_amd64.deb
+sudo dpkg -i dust.deb
+rm dust.deb -v #移除安装包
+#简单用例
+dust .
+
+```
+
+#### 分析网站目录
+
+```
+dust /www/
+```
+
+### 清除宝塔中mysql二进制日志文件
+
+宝塔中首页数据库配置mysql,里面的二进制日志功能会占用大量磁盘,可以考虑关闭,然后用下面的命令移除掉这些备份文件
+
+```bash
+cd /www/server/data
+rm  mysql-bin.0* -v
 ```
 
 

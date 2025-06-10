@@ -218,6 +218,7 @@ def parse_args():
         help="保留压缩后的原始图片",
     )
     parser.add_argument(
+        "-rs",
         "--resize-threshold",
         type=int,
         nargs=2,
