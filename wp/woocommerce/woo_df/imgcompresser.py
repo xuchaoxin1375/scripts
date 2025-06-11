@@ -246,7 +246,8 @@ class ImageCompressor:
                 img, old_wh, new_wh = self.resize_resolution(img)
 
                 # 转换图像模式为兼容格式
-                if output_format in (".jpg", ".jpeg", ".webp") and img.mode != "RGB":
+                # if output_format in (".jpg", ".jpeg", ".webp") and img.mode != "RGB":
+                if output_format in (".jpg", ".jpeg") and img.mode != "RGB":
                     img = img.convert("RGB")
                 # 为了检测分辨率调整膨胀变化,先保存到临时文件(后缀要保留)
                 if self.fake_format_from_webp:
@@ -309,6 +310,7 @@ class ImageCompressor:
                     quality = new_quality
                 # 参数设定
                 save_kwargs = self._get_compress_args(
+                    img=img,
                     output_format=output_format,
                     quality=quality,
                     optimize=optimize,
@@ -416,7 +418,7 @@ class ImageCompressor:
 
         os.rename(src=temp_output_path, dst=output_path)
 
-    def _get_compress_args(self, output_format, quality, optimize, exif):
+    def _get_compress_args(self, img, output_format, quality, optimize, exif):
         save_kwargs = {"quality": quality, "optimize": optimize}
 
         # output_format = output_format or ""
@@ -429,6 +431,8 @@ class ImageCompressor:
             save_kwargs["compress_level"] = 9  # 最高压缩级别
         elif output_format in (".jpg", ".jpeg"):
             save_kwargs["progressive"] = True  # 渐进式JPEG
+        if output_format in (".png", ".webp") and img.mode in ("RGBA", "LA"):
+            save_kwargs["transparency"] = img.info.get("transparency")
 
         if exif:
             save_kwargs["exif"] = exif
@@ -457,13 +461,13 @@ class ImageCompressor:
         确定输出格式和输出路径(后续要根据目标格式做针对性处理)
 
         注意:直接决定输出文件的格式的是output_path,如果用户传入output_format,最终也会通过拼接路径的方式体现在output_path的后缀上
-        
-        
+
+
         如果输出路径指定,则根据此值,解析并返回输出格式和输出路径
         如果输出路径没有指定:根据是否指定输出格式来判断
             1.指定输出格式,则文件名和输入路径同名,后缀改为输出格式
             2.没有指定输出格式,则使用输出路径和输入路径同名,后缀也一样
-        
+
         """
         if output_path and output_format:
             # 同时提供输出路径和格式,格式一致则继续运行,否则报错
@@ -527,7 +531,7 @@ class ImageCompressor:
             raise FileNotFoundError(f"输入目录不存在: {input_dir}")
         # 计算目录初始大小
         self.opl.size_before = get_size(input_dir)
-        
+
         os.makedirs(output_dir, exist_ok=True)
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:

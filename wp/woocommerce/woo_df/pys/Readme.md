@@ -97,13 +97,13 @@ d----            2025/5/7    15:11                05
 python $pys\woo_uploader_db.py -c $csv_path -i $img_dir 
 ```
 
-## 小结🎈
+## 总结🎈
 
 下面几个命令分步执行,不要连着执行
 
 建议复制下面的命令行保存为文本文件(后缀改为`.ps1`),然后用vscode编辑
 
-> 可以安装个powershell插件,有高亮显示
+> 可以在vscode中安装个powershell插件,有高亮显示
 
 ```powershell
 
@@ -119,7 +119,11 @@ python $pys\woo_uploader_db.py --update-slugs  --csv-path $csv_path --img-dir $i
 Get-WpSitePacks -SiteDirecotry $site_dir
 ```
 
-> 如果需要额外压缩图片,可以使用
+图片下载情况比较复杂,有些顺利的可以用上述默认选项,如果下载不顺利，可以用其他选项来修改下载策略,比如使用代理,使用不同的下载引擎(curl,iwr)
+
+
+
+> 如果需要额外压缩图片,可以单独使用`image_compress.py`来压缩,详情另见上一级目录中的对应的readme文档
 
 查看帮助(选项含义不清楚的可以使用`-h`参数,上述命令都支持这个选项和方式来获取命令行的选项说明),例如
 

@@ -207,7 +207,6 @@ def parse_args():
         "-x",
         "--compress-quality",
         type=int,
-        
         default=0,
         help="压缩图片为webp格式的quality参数(1-100),取0表示不压缩",
     )
