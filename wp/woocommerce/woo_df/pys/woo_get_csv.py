@@ -65,6 +65,13 @@ def parse_args():
         help="结束采集任务ID（默认与start-id相同）",
     )
     parser.add_argument(
+        "-E",
+        "--exclude-ids",
+        # type=
+        type=str,
+        help="排除的采集任务ID，多个ID用逗号分隔",
+    )
+    parser.add_argument(
         "-f",
         "-fmt",
         "--default-extension",
@@ -188,7 +195,14 @@ END = args.end_id or START
 # 枚举出db文件路径
 rng = range(START, END + 1)
 dbs = []
+exclude_ids = []
+if args.exclude_ids:
+    exclude_ids = [int(i) for i in args.exclude_ids.split(",")]
+
 for dir_num in rng:
+    if dir_num in exclude_ids:
+        print(f"跳过 ID: {dir_num}任务")
+        continue
     # 构造db文件路径(不一定存在)
     db_file = DATA_DIR / str(dir_num) / "SpiderResult.db3"
     # 确保文件存在,才加入到列表中
@@ -269,9 +283,9 @@ if __name__ == "__main__":
     ## 5. 检查属性值是否存在不规范的子集或超集(主要是子集,新手可能要注意一下超集)
     # check_iterable(db.invalid_attribute_supperset) #新手使用
     if db.invalid_attribute_subset:
-        info("产品属性值存在不规范的子集")
+        print("产品属性值存在不规范的子集")
         check_iterable(db.invalid_attribute_subset)
-        info(f"共有{len(db.invalid_attribute_subset)}个属性值显然不规范的产品")
+        print(f"共有{len(db.invalid_attribute_subset)}个属性值显然不规范的产品")
         # 请观察不规范属性值的数量多不多(如果不多,直接运行置空或者移除这部分属性值操作)
         # (按需执行)是否将不规范的属性值置为空(不一定合适,可能需要你重新采集该网站,尤其是不规范属性值过多的情况下)
         print(

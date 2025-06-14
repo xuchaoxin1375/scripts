@@ -411,25 +411,32 @@ class ShopifyDownloader:
         log(f"开始采集产品URL，共 {len(sitemap_urls)} 个sitemap...", 1)
         all_product_urls = []
 
-        # 使用单线程或多线程采集，根据URL_THREADS设置
-        if self.url_threads <= 1:
-            # 单线程采集，显示详细进度
-            for i, sitemap_url in enumerate(sitemap_urls, 1):
-                log(f"[{i}/{len(sitemap_urls)}] 采集sitemap: {sitemap_url}", 2)
-                urls = self.get_product_urls(sitemap_url)
-                all_product_urls.extend(urls)
+        # 使用多线程验证URL是否已采集过，但保持原有采集线程数
+        verification_threads = 10  # 使用10个线程进行验证
 
-                # 每处理完一个sitemap就保存状态
-                self.save_collection_status(status_file)
+        # 检查哪些sitemap需要采集
+        sitemap_to_collect = []
+        for sitemap_url in sitemap_urls:
+            if (
+                sitemap_url not in self.collection_status
+                or self.collection_status[sitemap_url].get("status", 0) != 1
+            ):
+                sitemap_to_collect.append(sitemap_url)
+            else:
+                log(f"跳过已采集的sitemap: {sitemap_url}", 1)
+                # 将已采集的URL添加到列表中
+                if (
+                    isinstance(self.collection_status[sitemap_url], dict)
+                    and "urls" in self.collection_status[sitemap_url]
+                ):
+                    all_product_urls.extend(self.collection_status[sitemap_url]["urls"])
 
-                # 检查是否中断
-                if self.interrupted:
-                    log(f"检测到中断信号，停止URL采集", 1)
-                    break
-        else:
-            # 多线程采集
-            with ThreadPoolExecutor(max_workers=self.url_threads) as executor:
-                results = list(executor.map(self.get_product_urls, sitemap_urls))
+        if sitemap_to_collect:
+            log(f"需要采集的sitemap: {len(sitemap_to_collect)}/{len(sitemap_urls)}", 1)
+
+            # 使用多线程采集需要的sitemap
+            with ThreadPoolExecutor(max_workers=verification_threads) as executor:
+                results = list(executor.map(self.get_product_urls, sitemap_to_collect))
                 for urls in results:
                     all_product_urls.extend(urls)
 
@@ -438,8 +445,10 @@ class ShopifyDownloader:
                         log(f"检测到中断信号，停止URL采集", 1)
                         break
 
-            # 多线程采集完成后保存状态
+            # 采集完成后保存状态
             self.save_collection_status(status_file)
+        else:
+            log("所有sitemap已采集，使用缓存数据", 1)
 
         if not all_product_urls:
             log(f"未找到产品URL: {site_url}", 1)
@@ -450,6 +459,7 @@ class ShopifyDownloader:
         self.stats["total_products"] += len(all_product_urls)
 
         log(f"找到 {len(all_product_urls)} 个产品URL", 1)
+        log("正在准备下载任务，请稍候...", 1)
 
         # 检查是否中断
         if self.interrupted:
@@ -462,79 +472,107 @@ class ShopifyDownloader:
         success_count = 0
         downloaded_files = []
 
-        # 创建下载任务，只下载状态为0的
+        # 优化：创建下载任务时使用更高效的方法
         download_tasks = []
+        # 创建URL到sitemap的映射，避免重复查找
+        url_to_sitemap = {}
+        for sitemap_url, info in self.collection_status.items():
+            if isinstance(info, dict) and "urls" in info:
+                for url in info["urls"]:
+                    url_to_sitemap[url] = sitemap_url
+
+        # 使用映射快速创建下载任务
         for url in all_product_urls:
             m = re.search(r"/products/([^/]+)", url)
             if m:
                 filename = f"{m.group(1)}.json"
-                # 查找该url属于哪个sitemap
+                sitemap_url = url_to_sitemap.get(url)
+
                 need_download = True
-                for sitemap_url, info in self.collection_status.items():
+                if sitemap_url:
+                    info = self.collection_status.get(sitemap_url, {})
                     if (
                         isinstance(info, dict)
-                        and "urls" in info
-                        and url in info["urls"]
+                        and "json_status" in info
+                        and info["json_status"].get(filename, 0) == 1
                     ):
-                        if (
-                            "json_status" in info
-                            and info["json_status"].get(filename, 0) == 1
-                        ):
-                            # 已经下载成功，跳过
-                            need_download = False
-                        break
+                        # 已经下载成功，跳过
+                        need_download = False
+
                 if need_download:
                     download_tasks.append((url, save_dir, site_url))
 
-        with ThreadPoolExecutor(max_workers=self.download_threads) as executor:
-            # 改进任务提交方式，使用map直接提交任务
-            futures = []
+        total_tasks = len(download_tasks)
+        log(
+            f"需要下载 {total_tasks} 个文件，已跳过 {len(all_product_urls) - total_tasks} 个已下载文件",
+            1,
+        )
 
-            # 批量提交任务
-            for task in download_tasks:
-                # 使用submit可以更好地控制每个任务
-                futures.append(executor.submit(self.download_json, *task))
+        # 如果任务太多，分批处理以减少内存使用
+        batch_size = 5000  # 每批处理的任务数
+        for batch_start in range(0, len(download_tasks), batch_size):
+            batch_end = min(batch_start + batch_size, len(download_tasks))
+            current_batch = download_tasks[batch_start:batch_end]
 
-            total = len(futures)
-            completed = 0
+            log(
+                f"处理批次 {batch_start//batch_size + 1}/{(len(download_tasks) + batch_size - 1)//batch_size}，"
+                f"任务 {batch_start+1}-{batch_end} (共{len(download_tasks)})",
+                1,
+            )
 
-            # 使用as_completed处理已完成的任务，提高效率
-            for future in concurrent.futures.as_completed(futures):
-                completed += 1
-                try:
-                    result, filename = future.result(timeout=30)  # 设置30秒超时
-                    if result:
-                        success_count += 1
-                        if filename:
-                            # 格式化文件名为 http://wp.test/json/子文件夹名/文件名 的形式
-                            formatted_filename = (
-                                f"http://wp.test/json/{folder_name}/{filename}"
-                            )
-                            downloaded_files.append(formatted_filename)
-                except concurrent.futures.TimeoutError:
-                    log(f"下载任务超时", 0)
-                except Exception as e:
-                    log(f"下载任务异常: {e}", 0)
+            with ThreadPoolExecutor(max_workers=self.download_threads) as executor:
+                # 批量提交任务
+                futures = []
+                for task in current_batch:
+                    futures.append(executor.submit(self.download_json, *task))
 
-                # 显示进度
-                log(
-                    f"进度: {completed}/{total} ({completed/total*100:.1f}%)",
-                    1,
-                    end="\r",
-                )
+                completed = 0
 
-                # 每下载10个文件保存一次状态
-                if completed % 10 == 0:
-                    self.save_collection_status(status_file)
+                # 使用as_completed处理已完成的任务，提高效率
+                for future in concurrent.futures.as_completed(futures):
+                    completed += 1
+                    try:
+                        result, filename = future.result(timeout=30)  # 设置30秒超时
+                        if result:
+                            success_count += 1
+                            if filename:
+                                # 格式化文件名为 http://wp.test/json/子文件夹名/文件名 的形式
+                                formatted_filename = f"http://{LOCAL_DOMAIN}/json/{folder_name}/{filename}"
+                                downloaded_files.append(formatted_filename)
+                    except concurrent.futures.TimeoutError:
+                        log(f"下载任务超时", 0)
+                    except Exception as e:
+                        log(f"下载任务异常: {e}", 0)
 
-                # 检查是否中断
-                if self.interrupted and completed % 5 == 0:  # 每5个任务检查一次
-                    log(f"\n检测到中断信号，将在完成当前批次后停止", 0)
-                    # 取消剩余任务
-                    for f in futures:
-                        if not f.done():
-                            f.cancel()
-                    break
+                    # 显示进度
+                    current_progress = batch_start + completed
+                    total_progress = len(download_tasks)
+                    log(
+                        f"进度: {current_progress}/{total_progress} ({current_progress/total_progress*100:.1f}%)",
+                        1,
+                        end="\r",
+                    )
+
+                    # 每下载50个文件保存一次状态
+                    if completed % 50 == 0:
+                        self.save_collection_status(status_file)
+
+                    # 检查是否中断
+                    if self.interrupted and completed % 5 == 0:  # 每5个任务检查一次
+                        log(f"\n检测到中断信号，将在完成当前批次后停止", 0)
+                        # 取消剩余任务
+                        for f in futures:
+                            if not f.done():
+                                f.cancel()
+                        break
+
+            # 每批次结束后保存状态
+            self.save_collection_status(status_file)
+
+            # 如果被中断，退出批处理循环
+            if self.interrupted:
+                log("\n处理被中断，停止后续批次", 1)
+                break
 
         # 记录下载的文件名
         self.file_records[site_url] = downloaded_files
@@ -546,7 +584,7 @@ class ShopifyDownloader:
                 for filename, status in info["json_status"].items():
                     if status == 1:
                         finished_files.append(
-                            f"http://wp.test/json/{folder_name}/{filename}"
+                            f"http://{LOCAL_DOMAIN}/json/{folder_name}/{filename}"
                         )
 
         # 将文件名保存到TXT文件
@@ -596,7 +634,7 @@ class ShopifyDownloader:
 
         return site_stats
 
-    def read_data(self, excel_file):
+    def read_excel(self, excel_file):
         """从Excel文件读取网站URL和子文件夹名
 
         Args:
@@ -740,7 +778,7 @@ class ShopifyDownloader:
         site_data = []
 
         if excel_file:
-            site_data = self.read_data(excel_file)
+            site_data = self.read_excel(excel_file)
         elif urls:
             # 对于命令行提供的URLs，使用域名作为子文件夹名
             site_data = [(url.strip(), None) for url in urls if url.strip()]

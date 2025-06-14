@@ -194,7 +194,16 @@ function Set-PSReadLinesAdvanced
 
     Set-PSReadLineOption -PredictionSource HistoryAndPlugin # 设置预测文本来源为历史和插件
     Set-PSReadLineOption -PredictionViewStyle ListView -BellStyle None  #使用视图列表显示预测后选
+    # listView列表设置
+    Set-PSReadLineOption -MaximumHistoryCount 3000  # 可选：增大历史记录总数
+    Set-PSReadLineOption -CompletionQueryItems 100  # 可选：增大自动完成候选列表数量
+    Set-PSReadLineOption -HistorySearchCursorMovesToEnd
+
+    # Set-PSReadLineOption -PredictionViewStyle MenuView
     
+
+    # 设置建议窗口高度为 30 行
+
     <# set colors #>
     Set-PSReadLineOption -Colors @{'inlineprediction' = '#d0d0cb' }#grayLight(grayDark #babbb4)
     <# suggestion list #>

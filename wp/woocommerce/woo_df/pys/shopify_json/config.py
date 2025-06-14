@@ -1,19 +1,26 @@
+"""
+
+请先准备好shopify网址列表
+"""
+
 # 配置区域 - 直接在这里修改路径和设置
 # ===================================================
 # Excel文件路径 - 包含网站URL和保存路径的Excel文件
-
-WP_SITES = r"C:/sites/wp_sites/shopify.com"
-JSON_PATH = rf"{WP_SITES}/json"
-EXCEL_FILE_PATH = rf"{WP_SITES}/domains.xlsx"
+LOCAL_DOMAIN = r"spy.com"
+WP_SITES_DIR = rf"C:/sites/wp_sites/{LOCAL_DOMAIN}"
+JSON_DIR = rf"{WP_SITES_DIR}/json"
+# 域名文件路径 - 包含所有shopify域名的Excel文件
+SPIDER_TASKS = r"C:\Users\Administrator\Desktop\spider_tasks"
+EXCEL_FILE_PATH = rf"{WP_SITES_DIR}/domains.xlsx"
 
 # 默认保存路径 - 当Excel中没有指定保存路径时使用
-DEFAULT_SAVE_PATH = JSON_PATH
+DEFAULT_SAVE_PATH = JSON_DIR
 
 # 文件列表保存路径 - 所有文件列表TXT文件的保存目录
-FILES_LIST_PATH = JSON_PATH
+FILES_LIST_PATH = JSON_DIR
 
 # 状态文件目录 - 每个站点一个status文件
-STATUS_DIR = rf"{JSON_PATH}/status"
+STATUS_DIR = rf"{JSON_DIR}/status"
 
 
 # 线程设置

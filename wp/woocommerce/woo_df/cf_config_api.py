@@ -100,7 +100,7 @@ def get_or_create_zone(domain):
         retry_delay = 5  # 每次等待5秒
         activated = False
 
-        log(f"等待域名 {domain} 激活 (最多 {max_retries*retry_delay} 秒)...")
+        log(f"等待域名 {domain} 激活 (最多尝试 {max_retries*retry_delay} 秒)...")
 
         # 首先等待一小段时间让系统处理
         time.sleep(3)
@@ -255,7 +255,7 @@ def deal_forward(zone_id, domain, forward_email):
         # print("1result", result)
         if hasattr(result, "errors") and result.errors:
             batchadd = []
-            print("获取邮件路由设置时出错:", result.errors)
+            print("注意路由设置:", result.errors)
             for error in result.errors:
                 # print(error)
                 if error["code"] in ["mx.missing", "spf.missing", "dkim.missing"]:
