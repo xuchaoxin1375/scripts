@@ -41,7 +41,7 @@ Get-WpSitePacks -SiteDirecotry $site_dir
 例如,下载图片
 
 ```powershell
-python $pys\image_downloader.py -c -n -R auto -k  -rs 1000 800  --output-dir $desktop\my_wp_sites\wild-ridgegear.com\wp-content\uploads --dir-input $Desktop\data_output\wild-ridgegear.com
+python $pys\image_downloader.py -c -n -R auto -k  -rs 1000 800  --output-dir $desktop\my_wp_sites\wild-ridgegear.com\wp-content\uploads\2025 --dir-input $Desktop\data_output\wild-ridgegear.com
 ```
 
 
@@ -79,7 +79,20 @@ python $pys\image_compresser.py -R auto -p -F  -O -k -f webp  -r 1000 800  -s we
 python $pys\woo_get_csv.py -h
 ```
 
+## 本地wordpress站点批量复制
 
+- 这包括网站根目录的复制,模板数据库的导入以及配置文件的修改
+- 但是直接访问还不行,需要自己到小皮里面根据网站根目录创建网站后,才能用http协议访问
+
+批量复制站点的命令使用起来很简单,命令是用powershell写的,需要安装pwsh(7)和相应的模块(已经安装过的可以跳过此步骤)
+
+[scripts: 实用脚本集合,以powershell模块为主(针对powershell 7开发) 支持一键部署,改善windows下的shell实用体验](https://gitee.com/xuchaoxin1375/scripts)
+
+> 推荐使用git命令快速部署
+
+```powershell
+Deploy-WpSitesLocal -table $Desktop\my_table.conf -WpSitesTemplatesDir $wp_sites -MyWpSitesHomeDir $desktop/my_wp_sites
+```
 
 
 

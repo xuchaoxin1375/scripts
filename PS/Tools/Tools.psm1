@@ -1662,26 +1662,25 @@ www.d2.com    李
         $Structure = $SiteOwnersDict.DFTableStructure,
 
         # 用户名转换字典
-        $SiteOwnersDict = $SiteOwnersDict
+        $SiteOwnersDict = $siteOwnersDict
     )
-
-    # 谨慎使用write-output和孤立表达式,他们会在函数结束时加入返回值一起返回,导致不符合预期的情况
-    #检查siteOwnersDict
-    Write-Verbose "SiteOwnersDict:"
-    # $dictParis = $SiteOwnersDict.GetEnumerator()
-    # Write-Verbose 
+    if (!$SiteOwnersDict ){
+        write-warning "用户名转换字典缺失"
+        
+    }else{
+        write-host "$SiteOwnersDict"
+        # 谨慎使用write-output和孤立表达式,他们会在函数结束时加入返回值一起返回,导致不符合预期的情况
+        #检查siteOwnersDict
+        Write-Verbose "SiteOwnersDict:"
+        # $dictParis = $SiteOwnersDict.GetEnumerator()
+    }
     if($VerbosePreference)
     {
 
         Get-DictView -Dicts $SiteOwnersDict
     }
-    #write-verbose $SiteOwnersDict.GetEnumerator()
 
-    if(!$SiteOwnersDict)
-    {
-        Write-Error "SiteOwnersDict is empty,please check this parameter!"
-        exit
-    }
+
     # 解析表头结构
     $columns = $Structure -split ','
     $structureFieldsNumber = $columns.Count
@@ -2475,6 +2474,7 @@ function Deploy-WpSitesLocal
         $table = "$desktop/my_table.conf",
         $WpSitesTemplatesDir = $wp_sites,
         $MyWpSitesHomeDir = "$env:USERPROFILE/Desktop/my_wp_sites",
+        $TableStructure = "Domain,User,Template",
         $DBKey = $env:MySqlKey_LOCAL
     )
     Write-Debug $table
@@ -2482,7 +2482,7 @@ function Deploy-WpSitesLocal
     Write-Debug $MyWpSitesHomeDir
     Write-Debug $DBKey
     Get-Content $table 
-    $rows = Get-DomainUserDictFromTable -Table $table -Structure "Domain,User,Template"
+    $rows = Get-DomainUserDictFromTable -Table $table -Structure $TableStructure
 
     foreach ($row in $rows)
     {
