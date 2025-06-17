@@ -38,9 +38,32 @@ Get-WpSitePacks -SiteDirecotry $site_dir
 
 图片下载情况比较复杂,有些顺利的可以用上述默认选项,如果下载不顺利，可以用其他选项来修改下载策略,比如使用代理,使用不同的下载引擎(curl,iwr)
 
+### 压缩图片
+
+命令
+
+```powershell
+python $pys\image_compresser.py 
+```
+
+基本参数
+
+```py
+-R auto -p -F  -O -k -f webp  -r 1000 800  -i
+```
+
 
 
 > 如果需要额外压缩图片,可以单独使用`image_compress.py`来压缩,详情另见上一级目录中的对应的readme文档
+
+```powershell
+python $pys\image_compresser.py -R auto -p -F  -O -k -f webp  -r 1000 800  -s webp -i .  #默认压缩当前目录,跳过webp图片的压缩(对于混合目录一般压缩过另一半没压缩的情况)
+```
+
+-   [ReadMe@image_compresser@ImgCompresser.md](..\ReadMe@image_compresser@ImgCompresser.md) 
+
+
+### 查看命令行帮助
 
 查看帮助(选项含义不清楚的可以使用`-h`参数,上述命令都支持这个选项和方式来获取命令行的选项说明),例如
 

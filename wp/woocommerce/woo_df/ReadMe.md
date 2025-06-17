@@ -132,7 +132,8 @@ woo_uploader.py负责的任务,可以多线程或者按批上传数据到wp站
 
 下面是详细文档(和此文档存放在同一个目录中)
 
--  [Readme_woo_uploader.md](Readme_woo_uploader.md) 
+-   [Readme@woo_uploader_api.md](Readme@woo_uploader_api.md) 
+-   [Readme@woo_uploader_db.md](Readme@woo_uploader_db.md) 
 
 ## 脚本和模块的使用🎈
 
