@@ -2474,7 +2474,7 @@ function Deploy-WpSitesLocal
         $table = "$desktop/my_table.conf",
         $WpSitesTemplatesDir = $wp_sites,
         $MyWpSitesHomeDir = "$env:USERPROFILE/Desktop/my_wp_sites",
-        $TableStructure = "Domain,User,Template",
+        $TableStructure = "Domain,UserNameCN,Template",
         $DBKey = $env:MySqlKey_LOCAL
     )
     Write-Debug $table
