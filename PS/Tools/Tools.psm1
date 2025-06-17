@@ -1664,11 +1664,14 @@ www.d2.com    李
         # 用户名转换字典
         $SiteOwnersDict = $siteOwnersDict
     )
-    if (!$SiteOwnersDict ){
-        write-warning "用户名转换字典缺失"
+    if (!$SiteOwnersDict )
+    {
+        Write-Warning "用户名转换字典缺失"
         
-    }else{
-        write-host "$SiteOwnersDict"
+    }
+    else
+    {
+        Write-Host "$SiteOwnersDict"
         # 谨慎使用write-output和孤立表达式,他们会在函数结束时加入返回值一起返回,导致不符合预期的情况
         #检查siteOwnersDict
         Write-Verbose "SiteOwnersDict:"
@@ -2462,6 +2465,33 @@ function Get-SiteMapIndexUrls
     )
     Get-Content $DomainLists | ForEach-Object { "`t$_`t https://$_/sitemap_index.xml " } | Get-ContentNL -AsString 
 }
+function Get-MainDomain {
+    <#
+    .SYNOPSIS
+    获取主域名
+    从给定的 URL 中提取二级域名和顶级域名部分（即主域名），忽略协议 (http:// 或 https://) 和子域名（如 www.、xyz. 等）
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
+        [string]$Url
+    )
+
+    process {
+        # 去除协议部分（http:// 或 https://）
+        $hostPart = ($Url -replace '^[a-zA-Z0-9+.-]+://', '') -split '/' | Select-Object -First 1
+
+        # 分割域名部分
+        $parts = $hostPart -split '\.' | Where-Object { $_ }
+
+        # 处理简单情况（例如 domain.com 或 www.domain.com）
+        if ($parts.Count -ge 2) {
+            return "$($parts[-2]).$($parts[-1])"
+        }
+
+        return $null
+    }
+}
 function Deploy-WpSitesLocal
 {
     <# 
@@ -2474,7 +2504,7 @@ function Deploy-WpSitesLocal
         $table = "$desktop/my_table.conf",
         $WpSitesTemplatesDir = $wp_sites,
         $MyWpSitesHomeDir = "$env:USERPROFILE/Desktop/my_wp_sites",
-        $TableStructure = "Domain,UserNameCN,Template",
+        $TableStructure = "Domain,User,Template",
         $DBKey = $env:MySqlKey_LOCAL
     )
     Write-Debug $table
@@ -2482,8 +2512,11 @@ function Deploy-WpSitesLocal
     Write-Debug $MyWpSitesHomeDir
     Write-Debug $DBKey
     Get-Content $table 
-    $rows = Get-DomainUserDictFromTable -Table $table -Structure $TableStructure
-
+    # $rows = Get-DomainUserDictFromTable -Table $table -Structure $TableStructure
+    
+    $rows = Get-Content $table |?{$_ -notmatch "^\s*#"}| ForEach-Object { $l = $_ -split '\s+'; @{'domain' = ($l[0]|Get-MainDomain); 'user' = $l[1]; 'template' = $l[2] } }
+    write-output $rows
+    
     foreach ($row in $rows)
     {
         $domain = $row.Domain
@@ -2498,8 +2531,12 @@ function Deploy-WpSitesLocal
         }
         # Pause
         # Copy-Item -Path $path/* -Destination $destination  -Force 
-        Copy-Item -Path $path -Destination $MyWpSitesHomeDir -Force -Recurse
-        Move-Item -Path $MyWpSitesHomeDir/$template -Destination $destination -Force -Verbose
+        Copy-Item -Path $path -Destination $MyWpSitesHomeDir -Force -Recurse -whatif:$WhatIfPreference
+        $template_temp="$MyWpSitesHomeDir/$template"
+        if(Test-Path $template_temp){
+
+            Move-Item -Path $template_temp -Destination $destination -Force -Verbose -whatif:$WhatIfPreference
+        }
 
         $wp_config = "$destination/wp-config.php"
         Write-Debug $wp_config
