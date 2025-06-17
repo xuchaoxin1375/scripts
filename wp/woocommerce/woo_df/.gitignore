@@ -2,3 +2,5 @@ cf_site_tags.txt
 !csv_dir
 *.xml
 *.xlsx
+*.db
+*.db3

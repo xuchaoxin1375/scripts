@@ -8,9 +8,9 @@ setx LOCOY_SPIDER_DATA C:/火车采集器V10.27/Data
 # %%
 import argparse  # 用于处理命令行参数
 import logging
+from logging import info
 import os
 from datetime import datetime
-from logging import info
 from pathlib import Path
 import sys
 
@@ -19,6 +19,7 @@ from comutils import check_iterable  # , parse_dbs_from_str
 from wooenums import ImageMode, EnumItRc, LanguagesHotSale
 from woosqlitedb import SQLiteDB
 
+WOOSQLITEDB_LOGGER = "woosqlitedb"
 
 LOCOY_SPIDER_DATA = os.environ.get("LOCOY_SPIDER_DATA")
 if LOCOY_SPIDER_DATA is None:
@@ -48,7 +49,7 @@ def parse_args():
         # default="US",
         required=True,
         # choices=[language.name for language in LanguagesHotSale],
-        help=f"国家代码{LanguagesHotSale.get_all_fields_name()}",
+        help=f"大写的C选项,表示[国家/语言]代码{LanguagesHotSale.get_all_fields_name()}",
     )
     parser.add_argument(
         "-s",
@@ -252,15 +253,25 @@ try:
 except Exception as e:
     print(f"无法创建日志目录 {LOG_DIR}: {e}")
     LOG_DIR = "."  # 如果失败则使用当前目录
-file_handler = logging.FileHandler(LOG_FILE, mode="w", encoding="utf-8")
-console_handler = logging.StreamHandler()
-logging.basicConfig(
-    level=args.log_level.upper(),  # 使用用户提供的日志级别
-    format="%(levelname)s - %(funcName)s - %(message)s",
-    handlers=[file_handler, console_handler],
-)
+
+
+def set_log():
+    """配置日志记录器"""
+    fh = logging.FileHandler(LOG_FILE, mode="w", encoding="utf-8")
+    ch = logging.StreamHandler()
+    level = args.log_level.upper()  # 使用用户提供的日志级别
+    logging.basicConfig(
+        level=level,
+        format="%(levelname)s - %(funcName)s - %(message)s",
+        handlers=[fh, ch],
+    )
+    db_logger = logging.getLogger(WOOSQLITEDB_LOGGER)
+    db_logger.setLevel(level=level)
+
+
 # 使用示例
 if __name__ == "__main__":
+    set_log()
     print(f"开始执行(日志文件位于{LOG_FILE},绝对路径为:{os.path.abspath(LOG_FILE)})...")
     ## 1. 实例化SQLiteDB对象
     db = SQLiteDB(

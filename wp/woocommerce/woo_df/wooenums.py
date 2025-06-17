@@ -1,5 +1,17 @@
 """
 WooCommerce 脚本用到的枚举类
+
+db3数据库中的重点字段
+1. 产品名称
+2. 产品价格
+3. 产品图片
+4. 产品描述
+5. 产品面包屑
+6. 品牌
+7. 产品型号
+8. 属性值1
+9. PageUrl
+
 """
 
 # %%
@@ -60,16 +72,29 @@ class ImageMode(EnumIt):
         NAME_FROM_SKU: 根据SKU生成图片名称
         NAME_FROM_URL: 根据图片链接生成图片名称
         NAME_AS_URL: 使用图片链接作为图片名称
+        NAME_MIX: SKU+时间戳+产品名称(todo)
     """
 
     NAME_FROM_SKU = "name_from_sku"
     NAME_FROM_URL = "name_from_url"
     NAME_AS_URL = "name_as_url"
+    # NAME_MIX_SKU_URL
+    NAME_MIX = "name_mix"
 
 
 class DBProductFields(EnumIt):
     """产品字段枚举
     每行定义了一个枚举成员,左侧是name,右侧是value
+    Attributes:
+        NAME: 产品名称
+        CATEGORIES: 产品面包屑
+        REGULAR_PRICE: 产品价格
+        IMAGES: 产品图片
+        ATTRIBUTE_VALUES: 属性值1
+        TAGS: 品牌
+        SKU: 产品型号
+        DESCRIPTION: 产品描述
+        PAGE_URL: PageUrl
     """
 
     NAME = "产品名称"
@@ -127,7 +152,11 @@ class CSVProductFields(EnumIt):
             bool: 是否需要
 
         """
-        return img_mode in [ImageMode.NAME_FROM_SKU, ImageMode.NAME_FROM_URL]
+        return img_mode in [
+            ImageMode.NAME_FROM_SKU,
+            ImageMode.NAME_FROM_URL,
+            ImageMode.NAME_MIX,
+        ]
 
     @classmethod
     def get_all_fields_name(
@@ -139,6 +168,7 @@ class CSVProductFields(EnumIt):
             1. `ImageMode.NAME_AS_URL`时,图片相关字段仅有Images,其他情况有Images,ImagesUrl字段;返回12个字段(可能会变更)
             2. `ImageMode.NAME_FROM_SKU`,`ImageMode.NAME_FROM_URL`时,的差别在于,
                Images字段的取值是sku(变体)还是仅取决于url的文件名截取;返回11个字段(可能会变更)
+                而`ImageMode.NAME_MIX`时,是SKU+时间戳+产品名称的模式,和前两种类似
         :return: 对应模式下DB-CSV中间字段名称列表,例如["SKU","NAME",...]
         """
         res = []

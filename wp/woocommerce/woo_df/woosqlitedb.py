@@ -1,5 +1,8 @@
 """
 读取火车头采集器中的数据,并将其写入到sqlite数据库中
+模块采用了日志logging模块进行日志记录
+使用woosqlitedb作为日志名,外部调用者可以创建此名称的日志记录器,从而修改日志行为(比如日志级别)
+
 """
 
 import csv
@@ -11,7 +14,10 @@ import sys
 import threading
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from logging import debug, error, info, warning
+import logging
+import time
+
+# from logging import debug, error, info, warning
 from pathlib import Path
 
 import pandas as pd
@@ -25,13 +31,40 @@ from comutils import (
     set_image_extension,
     split_urls,
 )
+
 from filenamehandler import FilenameHandler
 from wooenums import CSVProductFields, DBProductFields, ImageMode, LanguagesHotSale
 
 IMAGES = CSVProductFields.IMAGES.value
 IMAGE_URL = CSVProductFields.IMAGES_URL.value
+DEFAULT_TABLE = "Content"
 
-fh = FilenameHandler()
+
+def set_log(name=__name__):
+    """配置模块级的日志对象"""
+    lgr = logging.getLogger(name)
+    # 作为一个模块,可以不显式设置Handler和Formatter
+    formatter = logging.Formatter(
+        fmt="[%(levelname)s] %(name)s:%(funcName)s-%(message)s"  # %(asctime)s:%(lineno)d
+    )
+    # fh=logging.FileHandler("woosqlitedb.log", mode="a", encoding="utf-8")
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.WARNING)
+    ch.setFormatter(formatter)
+    lgr.addHandler(ch)
+    return lgr
+
+
+# 配置日志缩写
+logger = set_log(__name__)
+
+debug = logger.debug
+info = logger.info
+warning = logger.warning
+error = logger.error
+
+
+fnh = FilenameHandler()
 csv.field_size_limit(int(1e7))  # 设置为 10MB 或更高（单位：字节）
 
 # 小分类阈值,小于该阈值的分类将被视为小分类
@@ -67,7 +100,7 @@ def update_image_fields_from_legacy(csv_file):
         print("ImagesUrl field already exists, no need to update.")
         return False  # 相关字段已经存在,不需要更新
     df[IMAGE_URL] = df[IMAGES]
-    df[IMAGES] = df[IMAGES].apply(fh.get_filename_from_url)
+    df[IMAGES] = df[IMAGES].apply(fnh.get_filename_from_url)
     df.to_csv(csv_file, index=False)
 
 
@@ -219,50 +252,155 @@ class SQLiteDB:
         )  # 为了兼容|,>两种符号分割属性选项
         # 处理进度(产品数据条数)
         self.progress = 0
+        # 新增：启用 WAL 模式和 PRAGMA 设置以优化性能
+        self.pragma_settings = {
+            "journal_mode": "WAL",
+            "synchronous": "NORMAL",
+            "cache_size": -10000,
+        }
+
+    # def close_db(self):
+    #     """关闭数据库连接"""
+    #     self.conn.close()
 
     def get_selected_fields(
         self,
         connection,
-        table="Content",
+        table=DEFAULT_TABLE,
         empty_check=True,
         fields="",
         where=None,
         params=None,
+        batch_size=1000,
+        as_iterator=False,
     ):
         """
-        获取表中指定字段
+        获取表中指定字段，支持分批读取超大数据库
+
+        改进点：
+        1. 支持分批读取 (batch_size)
+        2. 添加流式处理模式 (as_iterator)
+        3. 优化内存管理
+        4. 保持与现有调用的兼容性
+
         :param connection: 数据库连接
         :param table: 表名
         :param fields: 字段列表或字符串
         :param where: WHERE条件语句（不含WHERE关键字）
         :param params: 条件参数
         :param empty_check: 是否过滤掉数据库中空行(比如没有产品名称为空的行)
-        :return: 结果列表
+        :param batch_size: 每批读取的行数 (默认1000)
+        :param as_iterator: 是否返回生成器迭代器 (默认为False，保持兼容性)
+        :return: 结果列表 或 生成器迭代器
         """
         # 构造查询语句
         if not fields:
             fields = self.field_values_full
+
         if isinstance(fields, (list, tuple)):
             fields_str = ", ".join(fields)
-            fields_str = fields_str.replace("", "")
         else:
             fields_str = fields
+
         sql = f"SELECT {fields_str} FROM {table}"
+
+        # 添加WHERE条件
         if where:
             sql += f" WHERE {where}"
-        # 获取查询指针
-        cursor = connection.cursor()
-        cursor.execute(sql, params or ())
-        rows = cursor.fetchall()  # sqlite3.Row对象的列表
 
+        # 获取查询游标(使用完记得关闭游标)
+        cursor = connection.cursor()
+
+        cursor.execute(sql, params or ())
+
+        # 分批处理函数
+        def process_batch():
+            while True:
+                # 获取一批数据
+                rows = cursor.fetchmany(batch_size)
+                if not rows:
+                    break
+
+                # 空行检查
+                if empty_check:
+                    name_field = DBProductFields.NAME.value
+                    rows = [row for row in rows if row[name_field]]
+
+                yield rows
+
+        # 流式处理模式：返回生成器
+        if as_iterator:
+            return process_batch()
+
+        # 兼容模式：一次性返回生成器中的所有数据(耗尽生成器)
+        if batch_size > 0:
+            # 分批读取并合并结果
+            all_rows = []
+            for batch in process_batch():
+                all_rows.extend(batch)
+            return all_rows
+
+        # 普通模式：一次性读取所有数据(使用fetchall()一次性读取所有数据)
+        rows = cursor.fetchall()
         if empty_check:
-            # 检查行的名字字段是否为空(需要过滤掉)
-            rows = [row for row in rows if row[DBProductFields.NAME.value]]
-        # self.data_rows += rows
+            name_field = DBProductFields.NAME.value
+            rows = [row for row in rows if row.get(name_field)]
+        # 关闭游标
+        cursor.close()
         return rows
 
+    # def get_selected_fields_deprecated(
+    #     self,
+    #     connection,
+    #     table="Content",
+    #     empty_check=True,
+    #     fields="",
+    #     where=None,
+    #     params=None,
+    # ):
+    #     """
+    #     获取表中指定字段
+    #     采用半封装的sql语句构造的方式进行查询
+
+    #     todo:改进此函数,使其能够处理超大的db3数据库,防止一次性处理,并相应改进此函数的调用者代码
+
+    #     :param connection: 数据库连接
+    #     :param table: 表名
+    #     :param fields: 字段列表或字符串
+    #     :param where: WHERE条件语句（不含WHERE关键字）
+    #     :param params: 条件参数
+    #     :param empty_check: 是否过滤掉数据库中空行(比如没有产品名称为空的行)
+    #     :return: 结果列表
+    #     """
+    #     # 构造查询语句
+    #     # 构造要查询的字段字符串
+    #     if not fields:
+    #         fields = self.field_values_full
+    #     if isinstance(fields, (list, tuple)):
+    #         fields_str = ", ".join(fields)
+    #     else:
+    #         fields_str = fields
+    #     sql = f"SELECT {fields_str} FROM {table}"
+    #     # 构造条件部分
+    #     if where:
+    #         sql += f" WHERE {where}"
+    #     # 获取查询指针
+    #     cursor = connection.cursor()
+    #     cursor.execute(sql, params or ())
+    #     # 获取查询结果
+    #     rows = cursor.fetchall()  # sqlite3.Row对象的列表
+
+    #     if empty_check:
+    #         # 检查行的名字字段是否为空(需要过滤掉)
+    #         rows = [row for row in rows if row[DBProductFields.NAME.value]]
+    #     # self.data_rows += rows
+    #     return rows
+
     def get_data_init(self, db_path, fields="", count_rows_only=False):
-        """从单个数据库获取数据的辅助函数"""
+        """从单个数据库获取初步处理过的数据
+
+        此函数调用get_data_from_db()获取所有特定字段的行
+        """
         info("read data from %s...", db_path)
         rows = []
         unique_rows = []
@@ -270,7 +408,7 @@ class SQLiteDB:
             rows = self.get_data_from_db(db_path, fields)
             if count_rows_only:
                 self.db_reports[db_path] = {
-                    "total_raw": len(rows),
+                    "total_raw": len(list(rows)),
                     "total_unique": None,
                 }
                 return []
@@ -281,66 +419,100 @@ class SQLiteDB:
             )
             return []
         else:
-            # 数据处理操作
-            # 去重:产品名和图片同时重复的记录只保留一条(仅排除两者都重复的情况)
-            handler_dict = defaultdict(
-                dict
-            )  # 存储单元结构: {product_img: {name: count}}的结构
-            name_field = DBProductFields.NAME.value
-            img_field = DBProductFields.IMAGES.value
-            # sku_field = DBProductFields.SKU.value
-            # sku=DBProductFields.SKU.value
-            # 访问内存中的数据行
-            for i, row in enumerate(rows):
-                # product_name = row[name_field]
-                # product_img=row[img_field]
-                # product_sku = row[sku_field]
-                product_name = row[name_field]
-                product_img = row[img_field]
-                # product_info = f"{{name:{product_name};sku:{product_sku}}}"
-                names = handler_dict.get(product_img, {})
-                # 进度计数器
-                with cnt_lock:
-                    self.progress += 1
-                    # info("progress: {{%s}}", self.progress)
-                    print(f"progress: {self.progress}")
-                # 检查重复
+            # 初步数据处理操作
 
-                dbp = Path(db_path)
-                # 获取父目录的名称
-                db_id = dbp.parent.name  # 输出: 'c'
-                if product_name in names:
-                    warning(
-                        "Jump:product:[%s] of [%s db]: duplicated name & image, skip this record!",
-                        i,
-                        db_id,
-                    )
-                    continue
-                else:
-                    # 当前产品尚未统计过,更新统计计数器
-                    unique_rows.append(row)
-                    info(
-                        "keep:product:[%s] of [%s db]: duplicated image, \
-but different name, keep records",
-                        i,
-                        db_id,
-                    )
-
-                handler_dict[product_img][product_name] = (
-                    handler_dict[product_img].get(product_name, 0) + 1
-                )
+            unique_rows = self.remove_duplicate_rows(db_path, rows)
 
             # print(handler_dict)
         self.db_reports[db_path] = {
-            "total_raw": len(rows),
+            "total_raw": len(list(rows)),
             "total_unique": len(unique_rows),
         }
         return unique_rows
 
+    def remove_duplicate_rows(self, db_path, rows, strict_mode=False):
+        """去重:产品名和图片同时重复的记录只保留一条(仅排除两者都重复的情况)
+
+        访问内存中的数据行
+        handler_dict # 存储单元结构: {product_img: {product_name: count}}的结构
+        # 想要访问count,表达式为handler_dict[product_img][product_name]
+
+        Args:
+            db_path: sqlite文件路径
+            rows: 数据库行数据
+            strict_mode:是否只根据产品名去重,比较严格,可能会误伤许多产品数据(但是这种产品相似度度高,效果可能不好一般也不建议保留)
+                (如果为False,则只当产品名和图片链接同时重复才去重,会保留更多数据,但是对于跨站产品重复的情况无法良好处理)
+        """
+        unique_rows = []
+        dd = defaultdict(dict)  # 访问dd的某个尚不存在的属性(key)时,会返回一个dict
+
+        name_field = DBProductFields.NAME.value
+        img_field = DBProductFields.IMAGES.value
+
+        for i, row in enumerate(rows):
+
+            product_name = row[name_field]
+            product_img = row[img_field]
+            # product_info = f"{{name:{product_name};sku:{product_sku}}}"
+            # names_dict = dd.get(product_img, {})
+            # names=dd[product_img]
+            product_img_dict = dd[product_name]
+
+            # 进度计数器
+            with cnt_lock:
+                self.progress += 1
+                # info("progress: {{%s}}", self.progress)
+                print(f"progress: {self.progress}")
+                # 检查重复
+
+            # 获取处理过程的详细信息
+            # 数据库文件所在父目录的编号名称
+            dbp = Path(db_path)
+            db_id = dbp.parent.name
+            # 去重策略
+            if (strict_mode and product_img_dict) or (product_img in product_img_dict):
+                self.duplicate_warning(i, row, db_id)
+                continue
+            # if strict_mode and product_img_dict:
+            #     self.duplicate_warning(i, row, db_id)
+            #     continue
+            # if product_img in product_img_dict:
+            #     self.duplicate_warning(i, row, db_id)
+            #     continue
+            else:
+                # 当前产品尚未统计过,更新统计计数器
+                unique_rows.append(row)
+                info(
+                    "keep:product:[%s] of [%s db]: duplicated name, \
+but different image, keep records [%s]",
+                    i,
+                    db_id,
+                    (row[name_field], row[img_field]),
+                )
+
+            # dd[product_img][product_name] = dd[product_img].get(product_name, 0) + 1
+            dd[product_name][product_img] = dd[product_name].get(product_img, 0) + 1
+        return unique_rows
+
+    def duplicate_warning(self, i, row, db_id):
+        """显示重复产品警告"""
+        warning(
+            "Jump:product:[%s] of [%s db]: duplicated name & image, skip this record [%s]!",
+            i,
+            db_id,
+            (row[DBProductFields.NAME.value], row[DBProductFields.IMAGES.value]),
+        )
+
     def get_data_from_db(self, db_path, fields):
-        """从单个数据库获取数据
+        """从单个数据库获取制定字段的全部数据
+
+        警告:此函数及其依赖未做有效的超大数据库优化,对于几十个GB的sqlite文件,处理可能卡顿甚至得不到有效响应
+        对于超大数据库,暂时不能直接用此方法处理,需要额外的优化
+        (通常需要采集环节检查是否可以删减不必要的字段,通常可以有效降低db文件大小,使其能够处理)
+
         :param db_path: sqlite文件路径
-        :param fields: 字段列表或字符串
+        :param fields: 序号查询的字段列表或字符串
+        :return: 结果列表
         """
         with sqlite3.connect(str(db_path)) as conn:
             # 设置SQLite性能优化参数
@@ -349,9 +521,9 @@ but different name, keep records",
             conn.execute("PRAGMA cache_size=-10000")  # 10MB缓存
             conn.row_factory = sqlite3.Row
             rows = self.get_selected_fields(
-                connection=conn, fields=fields, empty_check=True
+                connection=conn, table=DEFAULT_TABLE, fields=fields, empty_check=True
             )
-
+        conn.close()
         return rows
 
     def get_data_from_dbs(self, dbs, max_workers=8, fields="", count_rows_only=False):
@@ -674,7 +846,6 @@ but different name, keep records",
             'PAGE_URL': 'https://it.birdshopchristina.com/de/products/naamloos-10sep-_21-36'
         }
         """
-        # results = self.get_selected_fields(connection)
         rows = self.get_data(dbs=dbs)
         lines = []
         for row in rows:
@@ -800,7 +971,7 @@ but different name, keep records",
                     img_names = [
                         complete_image_file_extension(
                             file=f"{sku}-{i}"
-                            + fh.get_image_extension_from_url_str(url=img_url),
+                            + fnh.get_image_extension_from_url_str(url=img_url),
                             # + self._get_img_extension(
                             #     img_url=img_url,
                             #     req_response=req_response,
@@ -811,12 +982,25 @@ but different name, keep records",
                         for i, img_url in enumerate(img_url_lst)
                     ]
                 elif img_mode == ImageMode.NAME_FROM_URL:
+                    # 从url中获取图片名称
                     img_names = [
                         complete_image_file_extension(
-                            get_filebasename_from_url(url),
+                            get_filebasename_from_url(img_url),
                             default_extension=default_extension,
                         )
-                        for url in img_url_lst
+                        for img_url in img_url_lst
+                    ]
+                elif img_mode == ImageMode.NAME_MIX:
+                    # 混合sku和时间戳以及url中的图片名称
+                    sku = row[sku_field]
+                    # 计算批次时间戳
+                    timestamp = int(time.time())
+                    img_names = [
+                        complete_image_file_extension(
+                            file=f"{sku}-{i}-{timestamp}-{get_filebasename_from_url(img_url)}",
+                            default_extension=default_extension,
+                        )
+                        for i, img_url in enumerate(img_url_lst)
                     ]
 
                 row[img_field] = ",".join(img_names)
@@ -835,7 +1019,7 @@ but different name, keep records",
         #     return ""
         # return img_url.split(".")[-1]
 
-        res = fh.get_file_extension(
+        res = fnh.get_file_extension(
             url=img_url, req_response=req_response, prefix_dot=prefix_dot
         )
         return res
@@ -856,7 +1040,7 @@ but different name, keep records",
         product_dict_lst = self.db_rows
         for idx, row in enumerate(product_dict_lst):
             category = row[DBProductFields.CATEGORIES.value]
-            debug("processsing:category: %s of row...", category)
+            debug("processsing category: %s of row", category)
 
             if self.is_need_update_category(category):
                 # debug("warn:category: [%s] of row to a best-saler category  ...", category)
@@ -973,6 +1157,7 @@ but different name, keep records",
         for i, file_rows in enumerate(file_rows_lst):
             os.makedirs(out_dir, exist_ok=True)
             file_path = os.path.join(out_dir, f"p{i+1}.csv")
+            file_path = os.path.abspath(file_path)
             self._export_csv(file_path=file_path, header=header, rows=file_rows)
 
             self._update_csv_header_inplace(
@@ -996,6 +1181,7 @@ but different name, keep records",
             # # 将csv的表头字段名字调整为符合woocommerce的要求
             # writer_woo=csv.DictWriter(f, fieldnames=header_for_woo)
             # writer_woo.writeheader()
+        info(f"export csv file to [{file_path}]")
 
     def _update_csv_header_inplace(self, file_path, new_headers):
         """
@@ -1018,3 +1204,20 @@ but different name, keep records",
             writer.writerows(reader)
         # 替换原文件
         os.replace(temp_file, file_path)
+        # 预览前5行数据
+        print(f"Preview of {file_path}:")
+        preview = pd.read_csv(file_path, nrows=5)[
+            [
+                CSVProductFields.SKU.value,
+                CSVProductFields.IMAGES.value,
+                CSVProductFields.CATEGORIES.value,
+                # CSVProductFields.IMAGES_URL.value,
+            ]
+        ].head()
+        print(preview)
+
+
+if __name__ == "__main__":
+    print("Welcome to use this woosqlitedb module!")
+    logger.info("This module contain logging usage!")
+    logger.warning("In default case,only warning messages will be printed!")

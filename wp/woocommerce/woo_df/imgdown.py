@@ -54,7 +54,7 @@ LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 # 创建当前模块专属的日志记录器
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)  # 设置默认日志级别
-fh = FilenameHandler()
+fnh = FilenameHandler()
 info = logger.info
 debug = logger.debug
 warning = logger.warning
@@ -80,7 +80,7 @@ if not logger.handlers:
         logger.warning("无法创建文件日志处理器: %s", e)
 # ...existing code...
 # 文件名处理器
-fh = FilenameHandler()
+fnh = FilenameHandler()
 # 配置使用的User-Agent(过长可以用括号包裹配合+号分隔字符串)
 
 # 预设多个常见浏览器的 User-Agent
@@ -520,7 +520,7 @@ class ImageDownloader:
                 debug("下载图片: %s (尝试 %d/%d)", url, attempt + 1, self.retry_times)
                 # 如果用户没有指定文件名,则按照默认策略生成文件名
                 if not filename:
-                    filename = fh.get_filename_from_url(
+                    filename = fnh.get_filename_from_url(
                         url=url,
                         # response=response,
                         default_ext=default_ext,
@@ -672,7 +672,7 @@ class ImageDownloader:
         if not ext:
             # 文件名非空但是扩展名为空时尝试获取扩展名
             if filename:
-                ext = fh.get_file_extension(url=url, default_ext=default_ext)
+                ext = fnh.get_file_extension(url=url, default_ext=default_ext)
                 filename = f"{filename}{ext}"
             else:
                 debug("缺少文件名和扩展名")

@@ -1,20 +1,35 @@
 """多模块日志示例"""
 
 import logging
-from myliblog import core
-from myliblog import utils
-from myliblog import auxiliary
+
+# 测试日志行为的模块myliblog
+from myliblog import auxiliary, core, utils
+
+LOG_FILE = "main_cu.log"
+# 配置pythonpath环境变量(将myliblog目录添加到PYTHONPATH环境变量中)后可以直接导入模块
+# import auxiliary
+# import core
+# import utils
 
 
 def setup_logging(level=logging.DEBUG):
     """设置日志级别"""
 
-    # 创建一个顶级 logger
-    # logger = logging.getLogger("myapp")
-    logger = logging.getLogger(
-        "myliblog"
-    )  # 使用库的顶级 logger 名称,这样能够接收到子模块的日志信息(从而可以不必为每个子模块都创建 logger并配置handler)
-    logger.setLevel(logging.DEBUG)  # 根 logger 级别为 DEBUG
+    # 创建不同名称的日志记录器查看效果上差异
+
+    # 1.普通的日志记录器名:myapp
+    # lgr = logging.getLogger("myapp")
+    # 或
+    lgr = logging.getLogger(__name__)
+
+    # 2.引用自模块myliblog的日志记录器名:myliblog
+    # lgr = logging.getLogger("myliblog")
+
+    # 3.根日志记录器名:root
+    lgr = logging.getLogger()
+
+    # 设置日志级别
+    lgr.setLevel(logging.DEBUG)
 
     # 创建两个 handler：控制台 + 文件
     # 控制台的日志级别为 INFO
@@ -22,23 +37,23 @@ def setup_logging(level=logging.DEBUG):
     console_handler.setLevel(level=level)
 
     # 文件的日志级别为 DEBUG
-    file_handler = logging.FileHandler("app.log", mode="w", encoding="utf-8")
+    file_handler = logging.FileHandler(LOG_FILE, mode="w", encoding="utf-8")
     file_handler.setLevel(logging.DEBUG)
 
     # 定义格式器
     formatter = logging.Formatter(
-        fmt="%(asctime)s - %(name)s - %(funcName)s - %(levelname)s - %(message)s"
+        fmt="%(asctime)s - %(name)s -[main_cu fmt:%(funcName)s - %(lineno)d]- %(levelname)s - %(message)s"
     )
     console_handler.setFormatter(formatter)
     file_handler.setFormatter(formatter)
 
     # 添加 handler 到根 logger
-    logger.addHandler(console_handler)
-    logger.addHandler(file_handler)
+    lgr.addHandler(console_handler)
+    lgr.addHandler(file_handler)
 
     # 可选：关闭 propagate，防止重复输出
-    logger.propagate = False
-    return logger
+    lgr.propagate = False
+    return lgr
 
 
 if __name__ == "__main__":
@@ -48,13 +63,11 @@ if __name__ == "__main__":
     logger_core = logging.getLogger("myliblog.core")
     logger_utils = logging.getLogger("myliblog.utils")
     logger_auxiliary = logging.getLogger("myliblog.auxiliary")
-    # logger.propagate = False
-    # logger.propagate = False
 
     # 获取被调用模块的logger对象后,可以通过该对象设置模块代码中的日志行为,比如级别
     logger_core.setLevel(logging.ERROR)  # 设置 core 模块的日志级别为 ERROR
     logger_utils.setLevel(logging.INFO)
-    # logger_auxiliary.setLevel(logging.INFO)
+    logger_auxiliary.setLevel(logging.WARNING)
 
     logger.debug("This is a debug message!")
     logger.info("This is an info message!")
@@ -64,4 +77,4 @@ if __name__ == "__main__":
     logger.info("(2) Running Module utils")
     utils.helper()  # 输出 Info 日志
     logger.info("(3) Running Module auxiliary")
-    auxiliary.some_function()  # ?控制台没有输出日志
+    auxiliary.some_function()  # 输出 Warning 日志

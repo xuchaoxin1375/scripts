@@ -135,7 +135,7 @@ class ImageCompressor:
         self._compress_threshold = compress_threshold
         # self.compress_threshold = compress_threshold
         self.quality_rule = quality_rule  # 用于不同大小区间的质量规则
-        self.skip_format_name = (skip_format or "").lower().split(",")
+        self.skip_format_names = (skip_format or "").lower().split(",")
         self.remove_original = remove_original  # 是否尽可能移除原始文件
         # 仅压缩列出的格式的图片,如果为空,则压缩可能受支持的图片
         self.compress_for_format = compress_for_format
@@ -203,7 +203,7 @@ class ImageCompressor:
                     self.logger.info(msg)
                     opl.log_skip()
                     return True, msg
-            if input_format_name in self.skip_format_name:
+            if input_format_name in self.skip_format_names:
                 msg = f"跳过格式: {input_format}|file:{input_path}"
                 self.logger.info(msg)
                 opl.log_skip()

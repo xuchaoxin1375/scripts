@@ -7,7 +7,10 @@ import argparse
 import os
 import sys
 
-from imgcompresser import ImageCompressor, setup_logging
+from imgcompresser import ImageCompressor, setup_logging, SUPPORT_IMAGE_FORMATS
+
+SUPPORT_IMAGE_FORMATS = list(SUPPORT_IMAGE_FORMATS)
+
 
 QUALITY_DEFAULT = 70
 QUALITY_DEFAULT_STRONG = 20
@@ -22,7 +25,7 @@ DEFAULT_QUALITY_RULE = "0,50,70 ; 50,200,40 ; 200,10000,30"
 def parse_args():
     """解析命令行参数"""
     parser = argparse.ArgumentParser(
-        description="图片压缩与转换工具",
+        description="图片压缩与转换工具(制定输入的方式有两个参数,-I优先级高,-i允许制定当文件或者目录)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     # parser.add_argument(
@@ -34,7 +37,8 @@ def parse_args():
     parser.add_argument(
         "-i",
         "--input",
-        dest="input",  # 映射到 args.input
+        # dest="input",  # 映射到 args.input
+        default=".",# 如果不提供输入参数,默认压缩当前目录中的图片
         help="输入文件或目录路径 (可选参数形式)",
     )
     parser.add_argument(
@@ -117,7 +121,7 @@ def parse_args():
     parser.add_argument(
         "-s",
         "--skip-format",
-        help="跳过指定格式的图片(jpg/png/webp)压缩,多个格式用逗号分隔",
+        help="跳过指定格式的图片(jpg/png/webp/...)压缩,多个格式用逗号分隔",
     )
     parser.add_argument(
         "-b",
@@ -168,7 +172,7 @@ def main():
     args = parse_args()
     setup_logging(args.verbose)
     skip_format = args.skip_format or ""
-    print(f"type:{type(skip_format)};value:[{skip_format}]")
+    print(f"skip_format:[{skip_format}]")
     compressor = ImageCompressor(
         compress_threshold=args.compress_threshold,
         quality_rule=args.quality_rule,
@@ -181,7 +185,7 @@ def main():
         recurse=args.recurse,
     )
     fmt = args.format or ""
-    print(f"type:{type(fmt)};value:[{fmt}]")
+    print(f"target fmt:[{fmt}]")
     input_path = args.input
     if args.input_dirlist_file:
         with open(args.input_dirlist_file, "r", encoding="utf-8") as f:
