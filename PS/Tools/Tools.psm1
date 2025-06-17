@@ -1455,7 +1455,9 @@ function Update-WpUrl
     #>
     [cmdletbinding(SupportsShouldProcess)]
     param(
+        [parameter(Mandatory = $true)]
         $OldDomain,
+        [parameter(Mandatory = $true)]
         $NewDomain,
         $DatabaseName = $NewDomain,
         # 以下参数继承自 Import-MysqlFile 
@@ -2460,6 +2462,66 @@ function Get-SiteMapIndexUrls
         $DomainLists
     )
     Get-Content $DomainLists | ForEach-Object { "`t$_`t https://$_/sitemap_index.xml " } | Get-ContentNL -AsString 
+}
+function Deploy-WpSitesLocal
+{
+    <# 
+    .SYNOPSIS
+    批量部署本地Wordpress网站
+    从已有的模板中拷贝网站根目录和数据到新的域名
+    #>
+    [cmdletbinding(SupportsShouldProcess)]
+    param (
+        $table = "$desktop/my_table.conf",
+        $WpSitesTemplatesDir = $wp_sites,
+        $MyWpSitesHomeDir = "$env:USERPROFILE/Desktop/my_wp_sites",
+        $DBKey = $env:MySqlKey_LOCAL
+    )
+    Write-Debug $table
+    Write-Debug $WpSitesTemplatesDir
+    Write-Debug $MyWpSitesHomeDir
+    Write-Debug $DBKey
+    Get-Content $table 
+    $rows = Get-DomainUserDictFromTable -Table $table -Structure "Domain,User,Template"
+
+    foreach ($row in $rows)
+    {
+        $domain = $row.Domain
+        $template = $row.Template
+
+        $path = "$WpSitesTemplatesDir/$template"
+        $destination = "$MyWpSitesHomeDir/$domain"
+        if(Test-Path $destination)
+        {
+            Write-Verbose "Removing $destination" -Verbose
+            remove $destination -Force -Recurse 
+        }
+        # Pause
+        # Copy-Item -Path $path/* -Destination $destination  -Force 
+        Copy-Item -Path $path -Destination $MyWpSitesHomeDir -Force -Recurse
+        Move-Item -Path $MyWpSitesHomeDir/$template -Destination $destination -Force -Verbose
+
+        $wp_config = "$destination/wp-config.php"
+        Write-Debug $wp_config
+        if (Test-Path $wp_config)
+        {
+
+            $s = Get-Content $wp_config -Raw
+            Write-Debug "modify the wp-config.php file : the db name"
+            $ns = $s -replace "(define\(\s*'DB_NAME')(.*)\)", "`$1,'$domain')" -replace "(define\(\s*'DB_PASSWORD')(.*)\)", "`$1,'$DBKey')"
+            # Write-output $ns
+            $ns > $wp_config
+        }
+        else
+        {
+            Write-Error "wp-config.php file not found in $destination"
+            Pause
+        }
+        # 导入数据库并执行基础的修改
+        Import-MysqlFile -Server localhost -key $DBKey -SqlFilePath "$WpSitesTemplatesDir/base_sqls/$template.sql" -DatabaseName $domain -Confirm:$ConfirmPreference
+        Update-WpUrl -server localhost -key $DBKey -NewDomain $domain -OldDomain $template -Confirm:$ConfirmPreference
+        
+    }
 }
 function Start-GoogleIndexSearch
 {

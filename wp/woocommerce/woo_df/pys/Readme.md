@@ -24,10 +24,10 @@
 
 ```powershell
 # 1导出csv 输出路径的参数--output-dir;此外,如果要排除区间中的个别任务,则追加使用-E选项指定编号(多个编号逗号隔开)字符串"a,b,..",就可以排除任务编号a,b,...
-python $pys\woo_get_csv.py -fmt .webp --start-id  $start_id --end-id $end_id  --language-country $language --output-dir $output_dir --sku-suffix $sku_suffix 
+python $pys\woo_get_csv.py -fmt .webp --start-id  $start_id --end-id $end_id --image-mode NAME_FROM_SKU --language-country $language --output-dir $output_dir --sku-suffix $sku_suffix 
 
 # 2下载并处理图片(下载过程中或者下载完毕要抽查看看是否有破图或者不完整的图,如果比较多要警惕)--image-mode {NAME_FROM_SKU,NAME_FROM_URL,NAME_AS_URL}
-python $pys\image_downloader.py -c -n -R auto -k  -rs 1000 800 --image-mode NAME_FROM_SKU --output-dir $output_dir --dir-input $dir_input
+python $pys\image_downloader.py -c -n -R auto -k  -rs 1000 800  --output-dir $output_dir --dir-input $dir_input
 
 # 3导入产品数据到数据库中
 python $pys\woo_uploader_db.py --update-slugs  --csv-path $csv_path --img-dir $img_dir --db-name $domain_db 
@@ -37,6 +37,14 @@ Get-WpSitePacks -SiteDirecotry $site_dir
 ```
 
 图片下载情况比较复杂,有些顺利的可以用上述默认选项,如果下载不顺利，可以用其他选项来修改下载策略,比如使用代理,使用不同的下载引擎(curl,iwr)
+
+例如,下载图片
+
+```powershell
+python $pys\image_downloader.py -c -n -R auto -k  -rs 1000 800  --output-dir $desktop\my_wp_sites\wild-ridgegear.com\wp-content\uploads --dir-input $Desktop\data_output\wild-ridgegear.com
+```
+
+
 
 ### 压缩图片
 
@@ -107,7 +115,7 @@ setx MySqlKey_LOCAL ""
 
 
 
-## 主要步骤
+## 主要步骤和细节
 
 ### 导出csv
 
