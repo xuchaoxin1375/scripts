@@ -8,7 +8,7 @@ import os
 import sys
 
 from imgcompresser import ImageCompressor, setup_logging, SUPPORT_IMAGE_FORMATS
-
+# todo 
 SUPPORT_IMAGE_FORMATS = list(SUPPORT_IMAGE_FORMATS)
 
 

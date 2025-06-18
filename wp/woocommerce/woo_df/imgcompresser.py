@@ -35,7 +35,16 @@ COMPRESS_TRHESHOLD = COMPRESS_TRHESHOLD_B
 # 默认的quality规则
 DEFAULT_QUALITY_RULE = "0,50,75 ; 50,200,40 ; 200,10000,30"
 # image extension / format names
-SUPPORT_IMAGE_FORMATS_NAME = ("jpg", "jpeg", "png", "webp", "tif", "tiff", "gif")
+SUPPORT_IMAGE_FORMATS_NAME = (
+    "jpg",
+    "jpeg",
+    "png",
+    "webp",
+    "heic",
+    "tif",
+    "tiff",
+    "gif",
+)
 SUPPORT_IMAGE_FORMATS = ("." + f for f in SUPPORT_IMAGE_FORMATS_NAME)
 # COMPRESS_FOR_FORMATS = map(lambda f: "." + f, COMPRESS_FOR_FORMATS_NAME)
 

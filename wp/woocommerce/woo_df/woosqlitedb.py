@@ -200,7 +200,9 @@ def process_image_csv(img_dir, csv_dir, backup_dir="backup_csvs"):
     if backup_dir:
         cwd = os.getcwd()
         backup_dir = os.path.abspath(os.path.join(cwd, backup_dir))  # 计算绝对路径
-        print(f"csv文件备份到{backup_dir}")
+        print("="*50)
+        print(f"csv文件备份到{backup_dir}🎈")
+        print("="*50)
     total_after = count_lines_csv(csv_dir)
     print(f"处理后剩余{total_after}条数据,减少了{total_before-total_after}条数据")
 

@@ -46,7 +46,9 @@ python $pys\image_downloader.py -c -n -R auto -k  -rs 1000 800  --output-dir $de
 
 
 
-### 压缩图片
+### 单独压缩图片🎈
+
+可以选择单独压缩已有的图片
 
 命令
 
@@ -60,9 +62,9 @@ python $pys\image_compresser.py
 -R auto -p -F  -O -k -f webp  -r 1000 800  -i
 ```
 
-
-
 > 如果需要额外压缩图片,可以单独使用`image_compress.py`来压缩,详情另见上一级目录中的对应的readme文档
+
+例如:
 
 ```powershell
 python $pys\image_compresser.py -R auto -p -F  -O -k -f webp  -r 1000 800  -s webp -i .  #默认压缩当前目录,跳过webp图片的压缩(对于混合目录一般压缩过另一半没压缩的情况)
@@ -105,26 +107,7 @@ pip install -r $woo_df/requirements.txt
 
 ```
 
-配置采集器的数据存储路径
-
-```cmd
-setx PYTHONPATH C:\repos\scripts\wp\woocommerce\woo_df
-setx LOCOY_SPIDER_DATA "C:\火车采集器V10.27\Data"
-setx PYS C:\repos\scripts\wp\woocommerce\woo_df\pys
-setx WOO_DF C:\repos\scripts\wp\woocommerce\woo_df
-setx MySqlKey_LOCAL ""
-
-```
-
-将引号中的路径替换为你的采集对应的路径
-
-> ### 请等待所有命令执行完毕,等到shell能够继续相应的回车键为止!
-
-配置完以后关闭所有命令行窗口,以及vscode窗口(如果有用到vscode的话)再重新打开才会生效	
-
-### mysql配置到Path环境变量
-
-找到mysql.exe所在目录,然后将此目录添加到path环境变量中
+配置环境变量(另见本仓库其他说明文档)
 
 
 

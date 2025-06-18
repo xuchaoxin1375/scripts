@@ -2465,7 +2465,8 @@ function Get-SiteMapIndexUrls
     )
     Get-Content $DomainLists | ForEach-Object { "`t$_`t https://$_/sitemap_index.xml " } | Get-ContentNL -AsString 
 }
-function Get-MainDomain {
+function Get-MainDomain
+{
     <#
     .SYNOPSIS
     获取主域名
@@ -2477,7 +2478,8 @@ function Get-MainDomain {
         [string]$Url
     )
 
-    process {
+    process
+    {
         # 去除协议部分（http:// 或 https://）
         $hostPart = ($Url -replace '^[a-zA-Z0-9+.-]+://', '') -split '/' | Select-Object -First 1
 
@@ -2485,7 +2487,8 @@ function Get-MainDomain {
         $parts = $hostPart -split '\.' | Where-Object { $_ }
 
         # 处理简单情况（例如 domain.com 或 www.domain.com）
-        if ($parts.Count -ge 2) {
+        if ($parts.Count -ge 2)
+        {
             return "$($parts[-2]).$($parts[-1])"
         }
 
@@ -2505,7 +2508,10 @@ function Deploy-WpSitesLocal
         $WpSitesTemplatesDir = $wp_sites,
         $MyWpSitesHomeDir = "$env:USERPROFILE/Desktop/my_wp_sites",
         $TableStructure = "Domain,User,Template",
-        $DBKey = $env:MySqlKey_LOCAL
+        $DBKey = $env:MySqlKey_LOCAL,
+        $NginxConfDir = $env:NGINX_CONF_DIR,
+        $SiteImageDir = "wp-content/uploads/2025",
+        $CsvDir = "$Desktop/data_output"
     )
     Write-Debug $table
     Write-Debug $WpSitesTemplatesDir
@@ -2514,8 +2520,8 @@ function Deploy-WpSitesLocal
     Get-Content $table 
     # $rows = Get-DomainUserDictFromTable -Table $table -Structure $TableStructure
     
-    $rows = Get-Content $table |?{$_ -notmatch "^\s*#"}| ForEach-Object { $l = $_ -split '\s+'; @{'domain' = ($l[0]|Get-MainDomain); 'user' = $l[1]; 'template' = $l[2] } }
-    write-output $rows
+    $rows = Get-Content $table | Where-Object { $_ -notmatch "^\s*#" } | ForEach-Object { $l = $_ -split '\s+'; @{'domain' = ($l[0] | Get-MainDomain); 'user' = $l[1]; 'template' = $l[2] } }
+    Write-Output $rows
     
     foreach ($row in $rows)
     {
@@ -2531,23 +2537,55 @@ function Deploy-WpSitesLocal
         }
         # Pause
         # Copy-Item -Path $path/* -Destination $destination  -Force 
-        Copy-Item -Path $path -Destination $MyWpSitesHomeDir -Force -Recurse -whatif:$WhatIfPreference
-        $template_temp="$MyWpSitesHomeDir/$template"
-        if(Test-Path $template_temp){
+        Copy-Item -Path $path -Destination $MyWpSitesHomeDir -Force -Recurse -WhatIf:$WhatIfPreference
+        $template_temp = "$MyWpSitesHomeDir/$template"
+        if(Test-Path $template_temp)
+        {
 
-            Move-Item -Path $template_temp -Destination $destination -Force -Verbose -whatif:$WhatIfPreference
+            Move-Item -Path $template_temp -Destination $destination -Force -Verbose -WhatIf:$WhatIfPreference
         }
 
         $wp_config = "$destination/wp-config.php"
         Write-Debug $wp_config
         if (Test-Path $wp_config)
         {
-
+            # 更新wp-config.php文件
             $s = Get-Content $wp_config -Raw
             Write-Debug "modify the wp-config.php file : the db name"
             $ns = $s -replace "(define\(\s*'DB_NAME')(.*)\)", "`$1,'$domain')" -replace "(define\(\s*'DB_PASSWORD')(.*)\)", "`$1,'$DBKey')"
             # Write-output $ns
             $ns > $wp_config
+            # 配置本地网站对应的nginx.conf文件(比如使用小皮的nginx环境)
+            # $tpl = "$NginxConfDir/tpl.conf"
+            $tpl = "$repos/config/nginx_template.conf"
+            Write-Debug $tpl
+            if (!(Test-Path $tpl))
+            {
+                Write-Error "nginx tpl.conf file not found in $NginxConfDir"
+                # return 
+            }
+            else
+            {
+                $tpl_content = Get-Content $tpl -Raw
+                $tpl_content = $tpl_content -replace "domain.com", $domain
+                $tpl_content > "$NginxConfDir/${domain}_80.conf" #对于https协议,则为 _443.conf
+                Write-Verbose $tpl_content -Verbose
+            }
+            Write-Warning "please restart nginx service to apply the new nginx.conf file!🎈"
+            # 导出命令行
+            $CsvDirHome = "$CsvDir/$domain"
+            $ImgDir = "$destination/$SiteImageDir"
+            $scripts = @"
+# =========[$domain]:[$destination]=============
+python $pys\image_downloader.py -c -n -R auto -k  -rs 1000 800  --output-dir $ImgDir --dir-input $CsvDirHome
+
+python $pys\woo_uploader_db.py --update-slugs  --csv-path $CsvDirHome --img-dir $ImgDir --db-name $domain 
+
+Get-WpSitePacks -SiteDirecotry $destination
+
+
+"@
+            $scripts >> "$desktop/scripts_$(Get-DateTimeNumber).ps1"
         }
         else
         {
