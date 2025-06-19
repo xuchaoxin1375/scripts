@@ -2539,7 +2539,8 @@ function Deploy-WpSitesLocal
         $MyWpSitesHomeDir = "$env:USERPROFILE/Desktop/my_wp_sites",
         $TableStructure = "Domain,User,Template",
         $DBKey = $env:MySqlKey_LOCAL,
-        $NginxConfDir = "$scripts/Config",
+        $NginxConfDir = "$env:nginx_conf_dir", # 例如:C:\phpstudy_pro\Extensions\Nginx1.25.2\conf\vhosts
+        $NginxConfTemplate = "$scripts/Config/nginx_template.conf",
         $SiteImageDir = "wp-content/uploads/2025",
         $CsvDir = "$Desktop/data_output"
     )
@@ -2589,18 +2590,20 @@ function Deploy-WpSitesLocal
             $ns > $wp_config
             # 配置本地网站对应的nginx.conf文件(比如使用小皮的nginx环境)
             # $tpl = "$NginxConfDir/tpl.conf"
-            $tpl = "$NginxConfDir/nginx_template.conf"
+            $tpl = "$NginxConfTemplate"
             Write-Debug $tpl
             if (!(Test-Path $tpl))
             {
-                Write-Error "nginx tpl.conf file not found in $NginxConfDir"
+                Write-Error "nginx tpl.conf file not found in path: $NginxConfTemplate"
                 # return 
             }
             else
             {
                 $tpl_content = Get-Content $tpl -Raw
                 $tpl_content = $tpl_content -replace "domain.com", $domain
-                $tpl_content > "$NginxConfDir/${domain}_80.conf" #对于https协议,则为 _443.conf
+                $nginx_target = "$NginxConfDir/${domain}_80.conf"
+                $tpl_content > $nginx_target #对于https协议,则为 _443.conf
+                Write-Debug "nginx 配置内容将被写入到文件:[ $nginx_target]"
                 Write-Verbose $tpl_content -Verbose
             }
             Write-Warning "please restart nginx service to apply the new nginx.conf file!🎈"
