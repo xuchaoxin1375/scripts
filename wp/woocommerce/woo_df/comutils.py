@@ -17,7 +17,7 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 
-SUPPORT_IMAGE_FORMATS_NAME = ("jpg", "jpeg", "png", "webp", "tif", "tiff", "gif")
+SUPPORT_IMAGE_FORMATS_NAME = ("jpg", "jpeg", "png", "webp", "tif","heic", "tiff", "gif")
 SUPPORT_IMAGE_FORMATS = ("." + f for f in SUPPORT_IMAGE_FORMATS_NAME)
 csv.field_size_limit(int(1e7))  # 允许csv文件最大为10MB
 # 有些图片的url中可能包含空格!

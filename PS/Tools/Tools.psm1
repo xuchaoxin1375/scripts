@@ -2625,7 +2625,7 @@ Get-WpSitePacks -SiteDirecotry $destination
         }
         # 导入数据库并执行基础的修改
         Import-MysqlFile -Server localhost -key $DBKey -SqlFilePath "$WpSitesTemplatesDir/base_sqls/$template.sql" -DatabaseName $domain -Confirm:$ConfirmPreference
-        Update-WpUrl -server localhost -key $DBKey -NewDomain $domain -OldDomain $template -Confirm:$ConfirmPreference
+        Update-WpUrl -server localhost -key $DBKey -NewDomain $domain -OldDomain $template -protocol http -Confirm:$ConfirmPreference
         
 
     }
