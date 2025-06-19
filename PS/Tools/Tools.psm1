@@ -2548,6 +2548,7 @@ function Deploy-WpSitesLocal
     Write-Debug $MyWpSitesHomeDir
     Write-Debug $DBKey
     Get-Content $table 
+    New-Item -ItemType Directory -Path $MyWpSitesHomeDir -ErrorAction SilentlyContinue -Verbose
     # $rows = Get-DomainUserDictFromTable -Table $table -Structure $TableStructure
     
     $rows = Get-Content $table | Where-Object { $_ -notmatch "^\s*#" } | ForEach-Object { $l = $_ -split '\s+'; @{'domain' = ($l[0] | Get-MainDomain); 'user' = $l[1]; 'template' = $l[2] } }
