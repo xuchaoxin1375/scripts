@@ -2539,7 +2539,7 @@ function Deploy-WpSitesLocal
         $MyWpSitesHomeDir = "$env:USERPROFILE/Desktop/my_wp_sites",
         $TableStructure = "Domain,User,Template",
         $DBKey = $env:MySqlKey_LOCAL,
-        $NginxConfDir = $env:NGINX_CONF_DIR,
+        $NginxConfDir = "$scripts/Config",
         $SiteImageDir = "wp-content/uploads/2025",
         $CsvDir = "$Desktop/data_output"
     )
@@ -2563,11 +2563,12 @@ function Deploy-WpSitesLocal
         if(Test-Path $destination)
         {
             Write-Verbose "Removing $destination" -Verbose
-            remove $destination -Force -Recurse 
+            Remove-Item $destination -Force -Recurse 
         }
         # Pause
         # Copy-Item -Path $path/* -Destination $destination  -Force 
         Copy-Item -Path $path -Destination $MyWpSitesHomeDir -Force -Recurse -WhatIf:$WhatIfPreference
+        Pause
         $template_temp = "$MyWpSitesHomeDir/$template"
         if(Test-Path $template_temp)
         {
@@ -2587,7 +2588,7 @@ function Deploy-WpSitesLocal
             $ns > $wp_config
             # 配置本地网站对应的nginx.conf文件(比如使用小皮的nginx环境)
             # $tpl = "$NginxConfDir/tpl.conf"
-            $tpl = "$repos/config/nginx_template.conf"
+            $tpl = "$NginxConfDir/nginx_template.conf"
             Write-Debug $tpl
             if (!(Test-Path $tpl))
             {
@@ -2626,7 +2627,15 @@ Get-WpSitePacks -SiteDirecotry $destination
         Import-MysqlFile -Server localhost -key $DBKey -SqlFilePath "$WpSitesTemplatesDir/base_sqls/$template.sql" -DatabaseName $domain -Confirm:$ConfirmPreference
         Update-WpUrl -server localhost -key $DBKey -NewDomain $domain -OldDomain $template -Confirm:$ConfirmPreference
         
+
     }
+
+    # 修改(追加新行到hosts文件(127.0.0.1  $domain)
+    # 可以考虑定期清理hosts文件!
+    Write-Debug "Modify hosts file [$hosts]"
+    "127.0.0.1  $domain" >> $hosts
+    # 重启(重载)nginx服务器
+    Restart-Nginx -Debug
 }
 function Start-GoogleIndexSearch
 {
