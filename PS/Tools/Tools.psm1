@@ -2495,6 +2495,36 @@ function Get-MainDomain
         return $null
     }
 }
+function Restart-Nginx
+{
+    <# 
+    .SYNOPSIS
+    重启Nginx
+    #>
+    [CmdletBinding()]
+    param(
+
+        $nginx_home = $env:NGINX_HOME
+    
+    )
+    Write-Debug "nginx_home: $nginx_home"
+    if (!$nginx_home)
+    {
+        Write-Warning "Nginx home directory was not set , please set the environment variable NGINX_HOME to your nginx home directory!"
+    }
+    $item = Get-Item -Path "$nginx_home/nginx.exe".Trim("/").Trim("\") -ErrorAction Stop
+    Write-Debug "nginx.exe path:$($item.FullName)"
+    $nginx_availibity = Get-Command nginx -ErrorAction SilentlyContinue
+    if(!$nginx_availibity)
+    {
+        Write-wanring "Nginx is not found in your system,please install (if not yet) and configure it(nginx executable dir) to Path environment!"
+    }
+    Write-Verbose "Restart Nginx..." -Verbose
+    Write-Verbose "Nginx.exe -s reload" -Verbose
+    Start-Process -WorkingDirectory $nginx_home -FilePath "nginx.exe" -ArgumentList "-s", "reload" -Wait -NoNewWindow
+    Write-Verbose "Nginx.exe -s stop" -Verbose
+
+}
 function Deploy-WpSitesLocal
 {
     <# 

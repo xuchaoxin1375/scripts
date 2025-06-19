@@ -14,6 +14,18 @@ function Get-WpImages
 
     python $ImageDownloader -c -n -R auto -k -d $Path -o $Directory
 }
+function import-WpSqlBatch
+{
+    param(
+        $Range = @(1, 2, 4, 6, 7),
+        $Country = @('us', 'fr', 'de', 'es', 'it')
+    )
+    foreach($c in $Country)
+    {
+        # Import-MysqlFile -SqlFilePath C:\sites\wp_sites\base_sqls\1.de.sql -DatabaseName "1.de" -MySqlUser root -key $env:MySqlKey_LOCAL  -verbose
+        $Range | ForEach-Object { Import-MysqlFile -SqlFilePath C:\sites\wp_sites\base_sqls\$_.${c}.sql -DatabaseName "$_.${c}" -MySqlUser root -key $env:MySqlKey_LOCAL }
+    }
+}
 function update-WpBaseSql
 {
     <# 

@@ -21,6 +21,8 @@ setx MySqlKey_LOCAL "  "
 setx LOCOY_SPIDER_DATA "C:\火车采集器V10.27\Data"
 setx phpstudy_extensions "C:\phpstudy_pro\extensions"
 setx nginx_conf_dir "C:\phpstudy_pro\Extensions\Nginx1.25.2\conf\vhosts"
+# setx nginx_home "C:\phpstudy_pro\extensions\Nginx1.25.2"
+
 
 ```
 
@@ -30,7 +32,9 @@ setx nginx_conf_dir "C:\phpstudy_pro\Extensions\Nginx1.25.2\conf\vhosts"
 
 配置完以后关闭所有命令行窗口,以及vscode窗口(如果有用到vscode的话)再重新打开才会生效	
 
-### mysql配置到Path环境变量
+### 配置软件目录到Path环境变量
+
+### mysql.exe
 
 找到mysql.exe所在目录,然后将此目录添加到path环境变量中
 
@@ -46,5 +50,13 @@ $newPath = [Environment]::GetEnvironmentVariable("PATH", [EnvironmentVariableTar
 
 [Environment]::SetEnvironmentVariable("PATH", $newPath, [EnvironmentVariableTarget]::User)
 
+```
+
+### nginx.exe
+
+```powershell
+$nginx_home = "C:\phpstudy_pro\extensions\Nginx1.25.2"
+setx nginx_home $nginx_home
+Add-EnvVar -EnvVar Path -NewValue '%nginx_home%' 
 ```
 
