@@ -2631,13 +2631,12 @@ Get-WpSitePacks -SiteDirecotry $destination
         Import-MysqlFile -Server localhost -key $DBKey -SqlFilePath "$WpSitesTemplatesDir/base_sqls/$template.sql" -DatabaseName $domain -Confirm:$ConfirmPreference
         Update-WpUrl -server localhost -key $DBKey -NewDomain $domain -OldDomain $template -protocol http -Confirm:$ConfirmPreference
         
-
+        # 修改(追加当前域名映射新行)到hosts文件(127.0.0.1  $domain)
+        "127.0.0.1  $domain" >> $hosts
     }
 
-    # 修改(追加新行到hosts文件(127.0.0.1  $domain)
     # 可以考虑定期清理hosts文件!
     Write-Debug "Modify hosts file [$hosts]"
-    "127.0.0.1  $domain" >> $hosts
     # 重启(重载)nginx服务器
     Restart-Nginx -Debug
 }
