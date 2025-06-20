@@ -2530,18 +2530,20 @@ function Deploy-WpSitesLocal
     <# 
     .SYNOPSIS
     批量部署本地Wordpress网站
-    从已有的模板中拷贝网站根目录和数据到新的域名
+    从已有的模板中拷贝网站根目录和数据到新的域名,包括数据库的导入和修改,并且配置对应站的nginx.htaccess文件和conf文件
+
+
     #>
     [cmdletbinding(SupportsShouldProcess)]
     param (
-        $table = "$desktop/my_table.conf",
+        $Table = "$desktop/my_table.conf",
         $WpSitesTemplatesDir = $wp_sites,
         $MyWpSitesHomeDir = "$env:USERPROFILE/Desktop/my_wp_sites",
         $TableStructure = "Domain,User,Template",
         $DBKey = $env:MySqlKey_LOCAL,
         $NginxConfDir = "$env:nginx_conf_dir", # 例如:C:\phpstudy_pro\Extensions\Nginx1.25.2\conf\vhosts
         $NginxConfTemplate = "$scripts/Config/nginx_template.conf",
-        $SiteImageDir = "wp-content/uploads/2025",
+        $SiteImageDirRelative = "wp-content/uploads/2025",
         $CsvDir = "$Desktop/data_output"
     )
     Write-Debug $table
@@ -2609,7 +2611,7 @@ function Deploy-WpSitesLocal
             Write-Warning "please restart nginx service to apply the new nginx.conf file!🎈"
             # 导出命令行
             $CsvDirHome = "$CsvDir/$domain"
-            $ImgDir = "$destination/$SiteImageDir"
+            $ImgDir = "$destination/$SiteImageDirRelative"
             $scripts = @"
 # =========[$domain]:[$destination]=============
 python $pys\image_downloader.py -c -n -R auto -k  -rs 1000 800  --output-dir $ImgDir --dir-input $CsvDirHome
@@ -2620,7 +2622,7 @@ Get-WpSitePacks -SiteDirecotry $destination
 
 
 "@
-            $scripts >> "$desktop/scripts_$(Get-DateTimeNumber).ps1"
+            $scripts >> "$desktop/scripts_$(Get-Date -format "yyyyMMdd-HHmm").ps1"
         }
         else
         {

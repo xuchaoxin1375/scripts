@@ -749,10 +749,15 @@ function Get-DateTimeNumber
 {
     <# 
     .SYNOPSIS
-    获取时间,格式为yyyyMMDDHHmmss (仅包含数字)
+    获取时间,格式为yyyyMMDDHHmm (仅包含数字)
+    HH 是24小时制
+    hh 是12小时制
     获取时间不是很常用,这里给它标记一下
     #>
-    $res = Get-Date -Format 'yyyyMMddHHmmss'
+    param(
+        $Format = "yyyyMMddHHmm"
+    )
+    $res = Get-Date -Format $Format
     return $res
 }
 function Get-DateTime

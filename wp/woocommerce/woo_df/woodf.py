@@ -343,7 +343,7 @@ class WC(API):
             with open(file, mode="r", encoding="utf-8") as f:
                 reader = csv.DictReader(f)
                 for row in reader:
-                    info(f"Reading categories from {file} of row [{row}]")
+                    # debug(f"Reading categories from {file} of row [{row}]")
                     categories.add(row[CSVProductFields.CATEGORIES.value])
         return categories
 
