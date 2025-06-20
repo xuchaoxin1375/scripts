@@ -23,6 +23,8 @@
 > 可以在vscode中安装个powershell插件,有高亮显示
 
 ```powershell
+# 0批量复制站点并创建对应的目录(第一次使用前请查看对应文档)
+Deploy-WpSitesLocal
 # 1导出csv 输出路径的参数--output-dir;此外,如果要排除区间中的个别任务,则追加使用-E选项指定编号(多个编号逗号隔开)字符串"a,b,..",就可以排除任务编号a,b,...
 python $pys\woo_get_csv.py -fmt .webp --start-id  $start_id --end-id $end_id --image-mode NAME_FROM_SKU --language-country $language --output-dir $output_dir --sku-suffix $sku_suffix 
 
@@ -36,15 +38,23 @@ python $pys\woo_uploader_db.py --update-slugs  --csv-path $csv_path --img-dir $i
 Get-WpSitePacks -SiteDirecotry $site_dir
 ```
 
+### 关于下图
+
 图片下载情况比较复杂,有些顺利的可以用上述默认选项,如果下载不顺利，可以用其他选项来修改下载策略,比如使用代理,使用不同的下载引擎(curl,iwr)
 
-例如,下载图片
+例如,windows下载图片
 
 ```powershell
 python $pys\image_downloader.py -c -n -R auto -k  -rs 1000 800  --output-dir $desktop\my_wp_sites\wild-ridgegear.com\wp-content\uploads\2025 --dir-input $Desktop\data_output\wild-ridgegear.com
 ```
 
+或者windwos由于ip或者代理不行,或者想要节约代理流量,可以把任务委托到服务器上去下载(只要把包含图片链接的文件比如csv上传到服务器上,然后管理员调用下载命令行进行下载任务)
 
+```bash
+python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_downloader.py -c -n -R auto -k  -rs 1000 800  -o images -d . -U curl -w 1 
+```
+
+这里从`-o`开始是根据情况指定,比如`-w 1`针对比反爬验证的情况,下载比较慢
 
 ### 单独压缩图片🎈
 
@@ -81,45 +91,6 @@ python $pys\image_compresser.py -R auto -p -F  -O -k -f webp  -r 1000 800  -s we
 python $pys\woo_get_csv.py -h
 ```
 
-## 本地wordpress站点批量复制🎈
-
-- 这包括网站根目录的复制,模板数据库的导入以及配置文件的修改,使用的服务器是nginx(1.25版本,其他版本类似,但是要改个别地方) (apache暂不支持)
-- 理论上使用本文提供的批量部署脚本,部署结束后,就可以直接访问站点(旨在尽可能绕开小皮实现批量本地建站)
-  - 如果不行,先尝试重启小皮中的`nginx`服务,如果有报错的根据提示解决报错(通常是某个站由于被移动或者删除而其配置找不到了,导致不能顺利重启服务),然后新开一个浏览器隐私模式,用http链接访问本地网站
-  - 如果还是不行,可以考虑重置小皮的nginx配置为默认配置,然后重试
-  - 最后如果还是不行,暂退一步,用小皮普通的建站方法,即根据网站根目录创建对应的网站,然后重试访问本地网站
-
-
-### 配置环境🎈
-
-查看环境变量配置文档 [Readme@Env.md](..\Readme@Env.md) ,将尚未配置的命令行修改成用户自己的实际情况,然后分别执行,这样可以让命令的调用更加简单,少写许多参数
-
-批量复制站点的命令使用起来很简单,命令是用powershell写的,需要安装pwsh(7)和相应的模块(已经安装过的可以跳过此步骤)
-
-[scripts: 实用脚本集合,以powershell模块为主(针对powershell 7开发) 支持一键部署,改善windows下的shell实用体验](https://gitee.com/xuchaoxin1375/scripts)
-
-> 推荐使用git命令快速部署
-
-### 命令行
-
-最简单的使用方式就是配合默认配置,就是在桌面创建一个`my_table.conf`配置文件,然后命令行会在桌面创建`my_wp_sites`用来存放本地的wordpress站点根目录
-
-在这种情况下,只需要直接调用powershell命令`deploy-wpsiteslocal`而不需要带参数
-
-```powershell
-Deploy-WpSitesLocal
-```
-
-如果需要更加个性化指定参数(完整的参数有不少,包括可以指定nginx相关的目录),可以使用`help Deploy-WpSitesLocal`获取帮助,常见的参数有:
-
-1. Table
-2. WpSitesTemplatesDir
-3. MyWpSitesHomeDir
-
-```powershell
-Deploy-WpSitesLocal -table $Desktop\my_table.conf -WpSitesTemplatesDir $wp_sites -MyWpSitesHomeDir $desktop/my_wp_sites
-```
-
 
 
 ## 安装依赖(第一次使用必看)🎈
@@ -136,6 +107,14 @@ pip install -r $woo_df/requirements.txt
 
 
 ## 主要步骤和细节
+
+
+
+### 本地wordpress站点批量复制🎈
+
+节约篇幅,详情另见它文 [ReadMe@Deploy-WpSitesLocal.md](..\ReadMe@Deploy-WpSitesLocal.md) 
+
+
 
 ### 导出csv
 

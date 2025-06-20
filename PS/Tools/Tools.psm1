@@ -2532,13 +2532,43 @@ function Deploy-WpSitesLocal
     批量部署本地Wordpress网站
     从已有的模板中拷贝网站根目录和数据到新的域名,包括数据库的导入和修改,并且配置对应站的nginx.htaccess文件和conf文件
 
+    .PARAMETER Table
+    包含表格信息的配置文本文件,默认格式为每行包含[域名,用户名,模板名],以空格分隔
+
+    .PARAMETER WpSitesTemplatesDir
+    本地Wordpress网站[模板]目录,脚本将会从这个目录下面拷贝模板站目录到指定位置(MyWpSitesHomeDir),默认值为"$env:USERPROFILE/Desktop/wp_sites_templates"
+
+    .PARAMETER MyWpSitesHomeDir
+    本地各个Wordpress网站根目录聚集的目录,用来保存从WpSitesTemplatesDir拷贝的网站目录,这里保存的各个网站根目录,是之后装修的对象,默认值为"$env:USERPROFILE/Desktop/my_wp_sites"
+
+    .PARAMETER DBKey
+    mysql密码
+
+    .PARAMETER NginxConfDir
+    nginx配置文件目录
+
+    .PARAMETER NginxConfTemplate
+    nginx配置文件模板
+
+    .PARAMETER SiteImageDirRelative
+    网站图片目录相对路径
+
+    .PARAMETER CsvDir
+    csv数据输出目录,如果不存在,将会创建该目录
+
+    .PARAMETER Confirm
+    确认提示,默认值为$false
+
+
 
     #>
     [cmdletbinding(SupportsShouldProcess)]
     param (
+        # 主要参数
         $Table = "$desktop/my_table.conf",
         $WpSitesTemplatesDir = $wp_sites,
-        $MyWpSitesHomeDir = "$env:USERPROFILE/Desktop/my_wp_sites",
+        $MyWpSitesHomeDir = "$Desktop/my_wp_sites",
+        # 一般不需要更改的参数
         $TableStructure = "Domain,User,Template",
         $DBKey = $env:MySqlKey_LOCAL,
         $NginxConfDir = "$env:nginx_conf_dir", # 例如:C:\phpstudy_pro\Extensions\Nginx1.25.2\conf\vhosts
@@ -2609,9 +2639,10 @@ function Deploy-WpSitesLocal
                 Write-Verbose $tpl_content -Verbose
             }
             Write-Warning "please restart nginx service to apply the new nginx.conf file!🎈"
-            # 导出命令行
+            # 导出命令行,创建对应的目录(如果没有的话)
             $CsvDirHome = "$CsvDir/$domain"
             $ImgDir = "$destination/$SiteImageDirRelative"
+            New-Item -ItemType Directory -Path $CsvDirHome -ErrorAction SilentlyContinue -Verbose
             $scripts = @"
 # =========[$domain]:[$destination]=============
 python $pys\image_downloader.py -c -n -R auto -k  -rs 1000 800  --output-dir $ImgDir --dir-input $CsvDirHome
@@ -2622,7 +2653,7 @@ Get-WpSitePacks -SiteDirecotry $destination
 
 
 "@
-            $scripts >> "$desktop/scripts_$(Get-Date -format "yyyyMMdd-HHmm").ps1"
+            $scripts >> "$desktop/scripts_$(Get-Date -Format "yyyyMMdd-HHmm").ps1"
         }
         else
         {
