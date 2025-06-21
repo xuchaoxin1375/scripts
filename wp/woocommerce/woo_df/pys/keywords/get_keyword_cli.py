@@ -19,7 +19,7 @@ import warnings
 
 import pandas as pd
 
-from comutils import get_domain_name_from_str
+from comutils import get_main_domain_name_from_str
 
 # 当前时间
 now = time.strftime("%Y-%m-%d %H_%M", time.localtime())
@@ -156,12 +156,12 @@ def main():
     # 处理订单文件
     df = pd.read_excel(orders_file)
     df1 = df[["产品名称", "域名"]].copy()
-    df1["域名"] = df1["域名"].apply(get_domain_name_from_str)
+    df1["域名"] = df1["域名"].apply(get_main_domain_name_from_str)
     df1.drop_duplicates(subset=["产品名称"], inplace=True)
 
     # 获取域名-国家映射
     df2 = merge_excel_files(domain_table_path, add_source=add_source)
-    df2["域名"] = df2["域名"].apply(get_domain_name_from_str)
+    df2["域名"] = df2["域名"].apply(get_main_domain_name_from_str)
 
     # 联表查询
     df_final = pd.merge(df1, df2, on="域名", how="inner")

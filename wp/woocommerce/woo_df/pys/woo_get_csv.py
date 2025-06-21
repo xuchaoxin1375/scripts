@@ -154,7 +154,7 @@ args = parse_args()  # 解析命令行参数
 DEFAULT_IMAGE_EXTENSION = args.default_extension or ""
 # 配置图片字段导出模式
 # IMAGE_MODE = ImageMode.NAME_FROM_URL
-IMAGE_MODE = ImageMode[args.image_mode] or ImageMode.NAME_FROM_URL
+IMAGE_MODE = ImageMode[args.image_mode] or ImageMode.NAME_MIX
 
 # 产品价格区间(打折前不在此区间的产品将被过滤掉)
 LOWEST_PRICE = 1

@@ -18,7 +18,7 @@ import warnings
 
 import pandas as pd
 
-# from comutils import get_domain_name_from_str
+# from comutils import get_main_domain_name_from_str
 
 
 # 当前时间
@@ -56,7 +56,7 @@ def normalize_columns(df):
     return df[["域名", "国家"]]
 
 
-def get_domain_name_from_str(url):
+def get_main_domain_name_from_str(url):
     """
     从字符串中提取域名,结构形如 "二级域名.顶级域名",即SLD.TLD;
     仅提取一个域名,适合于对于一个字符串中仅包含一个确定的域名的情况
@@ -184,7 +184,7 @@ def main():
     # p = re.compile(r"([-\w]+\.){1,2}[-\w]+")
     # df.info()
     df1 = df[["产品名称", "域名"]].copy()
-    df1["域名"] = df1["域名"].apply(get_domain_name_from_str)
+    df1["域名"] = df1["域名"].apply(get_main_domain_name_from_str)
     df1.drop_duplicates(subset=["产品名称"], inplace=True)
 
     # 使用在线表格下载下来的excel表格格式肯能不符标准规范,可以用office excel打开(启用编辑)然后保存(会尝试保存为标准excel格式)
@@ -192,7 +192,7 @@ def main():
     df2 = merge_excel_files(DOMAIN_TABLE_PATH)
     # df2.info()
     df2 = df2[["域名", "国家"]].copy()
-    df2["域名"] = df2["域名"].apply(get_domain_name_from_str)
+    df2["域名"] = df2["域名"].apply(get_main_domain_name_from_str)
 
     # 连接df1和df2,依据为相同的域名
     df = pd.merge(df1, df2, on="域名", how="inner")

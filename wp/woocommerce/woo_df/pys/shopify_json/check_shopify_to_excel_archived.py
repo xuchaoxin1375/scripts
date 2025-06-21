@@ -10,7 +10,7 @@ from openpyxl.styles import Font
 import pandas as pd
 from config import *
 
-domain_file = rf"{SPIDER_TASKS}/domains.txt"
+domain_file_txt = rf"{SPIDER_TASKS}/domains.txt"
 domain_file_excel = rf"{SPIDER_TASKS}/domains.xlsx"
 check_result_file = rf"{SPIDER_TASKS}/shopify_result.xlsx"
 
@@ -47,13 +47,39 @@ def check_domain(index, domain):
 
 # def get_domain_list(filename):
 #     """从表格文件中获取域名列表"""
-    
+
+
+def get_data_from_file(filename, format="txt"):
+    """读取文件数据
+
+    Args:
+        filename: 文件名
+        format: 文件格式，支持excel、txt
+    """
+    domain_list = []
+    if format == "excel" or filename.endswith(".xlsx"):
+        df = pd.read_excel(filename)
+        dl = df.iloc[:, 0].dropna().to_list()
+        domain_list.extend(dl)
+    elif format == "txt" or filename.endswith(".txt"):
+        with open(filename, "r", encoding="utf-8") as f:
+            dl = [line.strip() for line in f if line.strip()]
+            domain_list.extend(dl)
+    else:
+        raise ValueError("不支持的文件格式,支持excel、txt格式")
+    # 提取url中的主域名
+    from comutils import get_main_domain_name_from_str
+
+    domain_list = [get_main_domain_name_from_str(domain) for domain in domain_list]
+    return domain_list
+
 
 def check_domains_multithread(filename, max_threads=10):
     """多线程检查"""
-    with open(filename, "r", encoding="utf-8") as f:
-        domain_list = [line.strip() for line in f if line.strip()]
-
+    # 读取域名列表
+    # with open(filename, "r", encoding="utf-8") as f:
+    #     domain_list = [line.strip() for line in f if line.strip()]
+    domain_list = get_data_from_file(filename)
     results_dict = {}
     lock = Lock()
 
@@ -96,4 +122,4 @@ def check_domains_multithread(filename, max_threads=10):
 
 
 if __name__ == "__main__":
-    check_domains_multithread(domain_file, max_threads=10)
+    check_domains_multithread(domain_file_excel, max_threads=10)

@@ -277,7 +277,206 @@ function Set-PsExtension
     
 }
 
+function Get-NonEmptySubdirectories
+{
+    
+    <#
+.SYNOPSIS
+    获取指定路径或管道输入中的非空子目录。
 
+.DESCRIPTION
+    该函数用于查找一个目录下的所有非空子目录（即包含文件或其他子目录的目录）。
+    支持直接指定路径或通过管道传入目录对象。
+    可选择递归搜索所有层级目录。
+
+.PARAMETER Path
+    [必需，位置0] 要检查的根目录路径。
+
+.PARAMETER InputObject
+    [管道输入] 接收来自管道的 [System.IO.DirectoryInfo] 对象（如 Get-ChildItem -Directory 的输出）。
+
+.PARAMETER Recurse
+    [可选] 如果指定此参数，则递归搜索所有嵌套层级的子目录；否则仅检查第一级子目录。
+
+.EXAMPLE
+    # 示例1：获取当前目录下所有非空的一级子目录
+    Get-NonEmptySubdirectories -Path "C:\Example\Path"
+
+    # 示例2：获取当前目录下所有层级中非空的子目录
+    Get-NonEmptySubdirectories -Path "C:\Example\Path" -Recurse
+
+    # 示例3：通过管道获取非空目录
+    Get-ChildItem "C:\Example\Path" -Directory | Get-NonEmptySubdirectories
+
+.INPUTS
+    [string] 指定一个存在的目录路径。
+    [System.IO.DirectoryInfo[]] 来自管道的对象（如 Get-ChildItem -Directory 输出）
+
+.OUTPUTS
+    [string[]] 返回一个或多个非空子目录的完整路径。
+#>
+    [CmdletBinding(DefaultParameterSetName = 'Path')]
+    param (
+        [Parameter(Mandatory = $true, Position = 0, ParameterSetName = 'Path')]
+        [string]$Path,
+
+        [Parameter(ValueFromPipeline = $true, ParameterSetName = 'Pipeline')]
+        [System.IO.DirectoryInfo[]]$InputObject,
+
+        [switch]$Recurse
+    )
+
+    begin
+    {
+        $directories = @()
+    }
+
+    process
+    {
+        if ($PSCmdlet.ParameterSetName -eq 'Path')
+        {
+            if (-not (Test-Path -Path $Path))
+            {
+                Write-Error "路径不存在: $Path"
+                return
+            }
+
+            $getChildItemParams = @{
+                Path      = $Path
+                Directory = $true
+            }
+            if ($Recurse)
+            {
+                $getChildItemParams['Recurse'] = $true
+            }
+
+            $directories += Get-ChildItem @getChildItemParams
+        }
+        else
+        {
+            foreach ($dir in $InputObject)
+            {
+                $directories += $dir
+            }
+        }
+    }
+
+    end
+    {
+        foreach ($dir in $directories)
+        {
+            $items = Get-ChildItem -Path $dir.FullName -Force -ErrorAction SilentlyContinue
+            if ($null -ne $items)
+            {
+                $dir.FullName
+            }
+        }
+    }
+}
+
+
+function Remove-EmptyDirectories {
+    <#
+.SYNOPSIS
+    删除一个或多个空目录。
+
+.DESCRIPTION
+    该函数用于删除一个目录中的所有空子目录。默认仅检查一级子目录，也可以通过 -Recurse 递归查找。
+    支持从路径或管道输入目录对象。
+    空目录是指不包含任何文件或子目录的目录（即使有隐藏文件也被视为“非空”）。
+
+.PARAMETER Path
+    [必需，位置0] 要检查并从中删除空目录的根路径。
+
+.PARAMETER InputObject
+    [管道输入] 接收来自管道的 [System.IO.DirectoryInfo] 对象（如 Get-ChildItem -Directory 的输出）。
+
+.PARAMETER Recurse
+    [可选] 如果指定此参数，则递归检查所有层级的子目录。
+
+.PARAMETER Force
+    [可选] 删除具有隐藏或只读属性的目录。
+
+.PARAMETER WhatIf
+    显示将要执行的操作，但不实际执行删除。
+
+.PARAMETER Confirm
+    在删除每个目录前提示确认。
+
+.EXAMPLE
+    # 删除 C:\Temp 中的所有空子目录（不递归）
+    Remove-EmptyDirectories -Path "C:\Temp"
+
+    # 删除 C:\Temp 中所有层级的空目录
+    Remove-EmptyDirectories -Path "C:\Temp" -Recurse
+
+    # 删除所有名称为 temp 的子目录
+    Get-ChildItem "C:\Projects" -Directory -Recurse | Where-Object Name -eq "temp" | Remove-EmptyDirectories -Force
+
+.INPUTS
+    [string] 指定一个存在的目录路径。
+    [System.IO.DirectoryInfo[]] 来自管道的对象（如 Get-ChildItem -Directory 输出）
+
+.OUTPUTS
+    无输出，除非使用 Write-Verbose 或 Write-Warning。
+#>
+    [CmdletBinding(DefaultParameterSetName = 'Path', SupportsShouldProcess)]
+    param (
+        [Parameter(Mandatory = $true, Position = 0, ParameterSetName = 'Path')]
+        [string]$Path,
+
+        [Parameter(ValueFromPipeline = $true, ParameterSetName = 'Pipeline')]
+        [System.IO.DirectoryInfo[]]$InputObject,
+
+        [switch]$Recurse,
+        [switch]$Force
+    )
+
+    begin {
+        $directories = @()
+    }
+
+    process {
+        if ($PSCmdlet.ParameterSetName -eq 'Path') {
+            if (-not (Test-Path -Path $Path)) {
+                Write-Error "路径不存在: $Path"
+                return
+            }
+
+            $getChildItemParams = @{
+                Path       = $Path
+                Directory  = $true
+            }
+            if ($Recurse) {
+                $getChildItemParams['Recurse'] = $true
+            }
+
+            $directories += Get-ChildItem @getChildItemParams
+        }
+        else {
+            foreach ($dir in $InputObject) {
+                $directories += $dir
+            }
+        }
+    }
+
+    end {
+        foreach ($dir in $directories) {
+            try {
+                $items = Get-ChildItem -Path $dir.FullName -Force -ErrorAction Stop
+                if ($null -eq $items) {
+                    if ($PSCmdlet.ShouldProcess($dir.FullName, "删除空目录")) {
+                        [System.IO.Directory]::Delete($dir.FullName, $false)
+                        Write-Verbose "已删除空目录: $($dir.FullName)"
+                    }
+                }
+            }
+            catch {
+                Write-Warning "无法访问目录 '$($dir.FullName)': $_"
+            }
+        }
+    }
+}
 function Add-CxxuPsModuleToProfile
 
 {

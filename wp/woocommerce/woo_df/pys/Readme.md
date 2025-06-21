@@ -25,6 +25,18 @@
 ```powershell
 # 0批量复制站点并创建对应的目录(第一次使用前请查看对应文档)
 Deploy-WpSitesLocal
+
+```
+
+运行完毕后,桌面(默认路径)会生成一份`script...ps1`文件,建议使用vscode打开,然后逐条执行其中的命令即可
+
+每个本地站点通过域名分割,和创建的table(my_table.conf)文件中的域名是对应的,这些命令行形如下一节介绍的格式
+
+### 命令行步骤
+
+使用上面的本地批量建站会生成下面格式的命令行,当然也可以手动修改下面的命令行
+
+```powershell
 # 1导出csv 输出路径的参数--output-dir;此外,如果要排除区间中的个别任务,则追加使用-E选项指定编号(多个编号逗号隔开)字符串"a,b,..",就可以排除任务编号a,b,...
 python $pys\woo_get_csv.py -fmt .webp --start-id  $start_id --end-id $end_id --image-mode NAME_FROM_SKU --language-country $language --output-dir $output_dir --sku-suffix $sku_suffix 
 
@@ -37,6 +49,8 @@ python $pys\woo_uploader_db.py --update-slugs  --csv-path $csv_path --img-dir $i
 # 4打包成压缩包(如果安装了7z,还支持更多种格式,默认打包成zip)
 Get-WpSitePacks -SiteDirecotry $site_dir
 ```
+
+
 
 ### 关于下图
 

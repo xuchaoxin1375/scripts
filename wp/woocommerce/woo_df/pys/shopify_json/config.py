@@ -5,13 +5,14 @@
 
 # 配置区域 - 直接在这里修改路径和设置
 # ===================================================
-# Excel文件路径 - 包含网站URL和保存路径的Excel文件
-LOCAL_DOMAIN = r"spy.com"
+# Excel文件路径 - 包含shopify的网站URL和保存路径的Excel文件
+LOCAL_DOMAIN = r"wp.test"
 WP_SITES_DIR = rf"C:/sites/wp_sites/{LOCAL_DOMAIN}"
 JSON_DIR = rf"{WP_SITES_DIR}/json"
 # 域名文件路径 - 包含所有shopify域名的Excel文件
 SPIDER_TASKS = r"C:\Users\Administrator\Desktop\spider_tasks"
-EXCEL_FILE_PATH = rf"{WP_SITES_DIR}/domains.xlsx"
+# EXCEL_FILE_PATH = rf"{WP_SITES_DIR}/domains_shopify.xlsx"
+EXCEL_FILE_PATH = rf"{SPIDER_TASKS}/domains_shopify.xlsx"
 
 # 默认保存路径 - 当Excel中没有指定保存路径时使用
 DEFAULT_SAVE_PATH = JSON_DIR
@@ -32,3 +33,6 @@ DOWNLOAD_THREADS = 30  # JSON下载线程数
 # 1: 显示基本进度信息（默认）
 # 2: 显示详细进度和调试信息
 LOG_LEVEL = 1
+# 默认正则表达式设置
+DEFAULT_INCLUDE_REGEX = r'\.[a-z]{2,}\/sitemap_products_'  # 默认包含的正则表达式
+DEFAULT_EXCLUDE_REGEX = r'\.[a-z]{2,}\/[a-z\-]{2,}\/sitemap_products_'  # 默认排除的正则表达式

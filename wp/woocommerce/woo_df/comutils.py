@@ -17,7 +17,16 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 
-SUPPORT_IMAGE_FORMATS_NAME = ("jpg", "jpeg", "png", "webp", "tif","heic", "tiff", "gif")
+SUPPORT_IMAGE_FORMATS_NAME = (
+    "jpg",
+    "jpeg",
+    "png",
+    "webp",
+    "tif",
+    "heic",
+    "tiff",
+    "gif",
+)
 SUPPORT_IMAGE_FORMATS = ("." + f for f in SUPPORT_IMAGE_FORMATS_NAME)
 csv.field_size_limit(int(1e7))  # 允许csv文件最大为10MB
 # 有些图片的url中可能包含空格!
@@ -32,6 +41,10 @@ URL_SEPARATORS = [
     # ";",
     # ",",
 ]
+URL_MAIN_DOMAIN_PATTERN = r"(?:https?://)?(?:[\w-]+\.)*([^/]+[.][^/]+)/?"
+URL_MAIN_DOMAIN_NAME_PATTERN = (
+    r"(https?://)?([\w-]+\.)*(?P<main_domain>[^/]+[.][^/]+)/?"
+)
 URL_SEP_PATTERN = "|".join(URL_SEPARATORS)
 COMMON_SEP_PATTERN = "|".join(COMMON_SEPARATORS)
 EMAIL_PATTERN = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
@@ -381,19 +394,23 @@ def split_multi(
     return items
 
 
-def get_domain_name_from_str(url):
+def get_main_domain_name_from_str(url):
     """
     从字符串中提取域名,结构形如 "二级域名.顶级域名",即SLD.TLD;
+
     仅提取一个域名,适合于对于一个字符串中仅包含一个确定的域名的情况
     例如,对于更长的结构,"子域名.二级域名.顶级域名"则会丢弃子域名,前缀带有http(s)的部分也会被移除
+
+    Examples:
     # 测试URL列表
-    urls = ['www.domain.com', 'https://www.dom-ain.com', 'domain-test.com', 'http://domain.com', 'https://domain.com/']
+    urls = ['www.domain.com', 'https://www.dom-ain.com','https://sports.whh.cn.com', 'domain-test.com',
+    'http://domain.com', 'https://domain.com/','# https://domain.com']
     """
     # 使用正则表达式提取域名
-    match = re.search(r"(?:https?://)?(?:www\.)?([^/]+)", url)
+    match = re.search(URL_MAIN_DOMAIN_PATTERN, url)
     if match:
-        return match.group(1)
-    return None
+        return match.group(1) or ""
+    return ""
 
 
 def set_image_extension(

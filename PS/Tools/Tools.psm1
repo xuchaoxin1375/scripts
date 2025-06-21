@@ -2525,6 +2525,22 @@ function Restart-Nginx
     Write-Verbose "Nginx.exe -s stop" -Verbose
 
 }
+function Update-WpSitesRobots
+{
+    <# 
+    .SYNOPSIS
+    更新Wordpress网站robots.txt文件
+    主要是修改(追加)sitemap地址到robots.txt文件中,适配对应的域名
+    #>
+    [CmdletBinding()]
+    param(
+        $Path,
+        $Domain
+    )
+    "Sitemap: https://$Domain/sitemap_index.xml" >> $Path
+    "Sitemap: https://$Domain/sitemap_more.xml" >> $Path
+
+}
 function Deploy-WpSitesLocal
 {
     <# 
@@ -2620,6 +2636,11 @@ function Deploy-WpSitesLocal
             $ns = $s -replace "(define\(\s*'DB_NAME')(.*)\)", "`$1,'$domain')" -replace "(define\(\s*'DB_PASSWORD')(.*)\)", "`$1,'$DBKey')"
             # Write-output $ns
             $ns > $wp_config
+
+            # 更新robots.txt文件
+            $robots="$destination/robots.txt"
+            Write-Verbose "Update the robots.txt file [$robots]"
+            Update-WpSitesRobots -Path $robots -Domain $domain
             # 配置本地网站对应的nginx.conf文件(比如使用小皮的nginx环境)
             # $tpl = "$NginxConfDir/tpl.conf"
             $tpl = "$NginxConfTemplate"
@@ -2631,6 +2652,7 @@ function Deploy-WpSitesLocal
             }
             else
             {
+                # 配置本地站点根目录对应的nginx配置文件
                 $tpl_content = Get-Content $tpl -Raw
                 $tpl_content = $tpl_content -replace "domain.com", $domain
                 $nginx_target = "$NginxConfDir/${domain}_80.conf"
@@ -2639,10 +2661,11 @@ function Deploy-WpSitesLocal
                 Write-Verbose $tpl_content -Verbose
             }
             Write-Warning "please restart nginx service to apply the new nginx.conf file!🎈"
-            # 导出命令行,创建对应的目录(如果没有的话)
+            # 导出后续步骤要用到的命令行,创建对应的目录(如果没有的话)
             $CsvDirHome = "$CsvDir/$domain"
             $ImgDir = "$destination/$SiteImageDirRelative"
             New-Item -ItemType Directory -Path $CsvDirHome -ErrorAction SilentlyContinue -Verbose
+            
             $scripts = @"
 # =========[$domain]:[$destination]=============
 python $pys\image_downloader.py -c -n -R auto -k  -rs 1000 800  --output-dir $ImgDir --dir-input $CsvDirHome
