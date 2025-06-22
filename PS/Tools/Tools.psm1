@@ -2537,8 +2537,11 @@ function Update-WpSitesRobots
         $Path,
         $Domain
     )
+    
+    "`n" >> $Path
     "Sitemap: https://$Domain/sitemap_index.xml" >> $Path
     "Sitemap: https://$Domain/sitemap_more.xml" >> $Path
+    "Sitemap: https://$Domain/sitemap_new.xml" >> $Path
 
 }
 function Deploy-WpSitesLocal
@@ -2589,6 +2592,7 @@ function Deploy-WpSitesLocal
         $DBKey = $env:MySqlKey_LOCAL,
         $NginxConfDir = "$env:nginx_conf_dir", # 例如:C:\phpstudy_pro\Extensions\Nginx1.25.2\conf\vhosts
         $NginxConfTemplate = "$scripts/Config/nginx_template.conf",
+        $NginxHtaccessTemplate = "$scripts/Config/nginx.htaccess.conf",
         $SiteImageDirRelative = "wp-content/uploads/2025",
         $CsvDir = "$Desktop/data_output"
     )
@@ -2618,7 +2622,6 @@ function Deploy-WpSitesLocal
         # Pause
         # Copy-Item -Path $path/* -Destination $destination  -Force 
         Copy-Item -Path $path -Destination $MyWpSitesHomeDir -Force -Recurse -WhatIf:$WhatIfPreference
-        Pause
         $template_temp = "$MyWpSitesHomeDir/$template"
         if(Test-Path $template_temp)
         {
@@ -2638,9 +2641,13 @@ function Deploy-WpSitesLocal
             $ns > $wp_config
 
             # 更新robots.txt文件
-            $robots="$destination/robots.txt"
+            $robots = "$destination/robots.txt"
             Write-Verbose "Update the robots.txt file [$robots]"
             Update-WpSitesRobots -Path $robots -Domain $domain
+            # 显式复制wordpress的nginx.htaccess文件(包含伪静态配置),
+            # 理论上会自动把模板站中的对应文件一同复制,但是个别情况复制的文件内容为空,
+            # 且考虑到统一覆盖的便利性,这里将nginx.htaccess文件(内容)放到一个固定的位置,然后统一读取和复制此文件到目标位置
+            Copy-Item -Path $NginxHtaccessTemplate -Destination $destination/nginx.htaccess -Force 
             # 配置本地网站对应的nginx.conf文件(比如使用小皮的nginx环境)
             # $tpl = "$NginxConfDir/tpl.conf"
             $tpl = "$NginxConfTemplate"
@@ -2660,6 +2667,7 @@ function Deploy-WpSitesLocal
                 Write-Debug "nginx 配置内容将被写入到文件:[ $nginx_target]"
                 Write-Verbose $tpl_content -Verbose
             }
+            
             Write-Warning "please restart nginx service to apply the new nginx.conf file!🎈"
             # 导出后续步骤要用到的命令行,创建对应的目录(如果没有的话)
             $CsvDirHome = "$CsvDir/$domain"
@@ -2676,7 +2684,7 @@ Get-WpSitePacks -SiteDirecotry $destination
 
 
 "@
-            $scripts >> "$desktop/scripts_$(Get-Date -Format "yyyyMMdd-HHmm").ps1"
+            $scripts >> "$desktop/scripts_$(Get-Date -Format "yyyyMMdd-HH").ps1"
         }
         else
         {

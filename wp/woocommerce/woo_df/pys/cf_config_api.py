@@ -4,6 +4,7 @@ import os
 import random
 import sys
 import threading
+import re
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -12,6 +13,7 @@ import pandas as pd
 import requests
 from cloudflare import Cloudflare
 from dotenv import load_dotenv
+from comutils import get_main_domain_name_from_str
 
 load_dotenv()
 # 请事先确保(配置)下面引号中的环境变量,名字就是引号中的,取值根据自己的情况设置
@@ -25,7 +27,14 @@ DEFAULT_SSL_MODE = "flexible"
 DEFAULT_SECURITY_MODE = 1
 
 DESKTOP = r"C:/Users/Administrator/Desktop"
-DOMAINS_FILE = f"{DESKTOP}/cf_domains.csv"  # 域名和IP配置文件，格式: 域名,IP
+
+# 通用格式:采用table.conf中的第一列数据作为要配置的域名
+CF_DOMAINS_TABLE_CONF = f"{DESKTOP}/table.conf"
+# 完整专用格式
+CF_DOMAINS_CSV = f"{DESKTOP}/cf_domains.csv"  # 域名和IP配置文件，格式: 域名,IP
+# 选择其中一个🎈
+CF_DOMAINS_FILE = CF_DOMAINS_CSV
+
 # DOMAINS_FILE = "domains.xlsx"  # 域名和IP配置文件，格式: 域名,IP
 SITE_TAGS_FILENAME = f"{DESKTOP}/cf_site_tags.conf"
 
@@ -43,19 +52,51 @@ lock = threading.Lock()
 
 
 def load_domains_from_file(filename):
-    """从Excel文件加载域名、IP、邮箱前缀和转发邮件地址"""
+    """从Excel,csv,conf文件加载域名、IP、邮箱前缀和转发邮件地址"""
     domains_info = []
+    df = pd.DataFrame()
     try:
-        # 读取Excel文件
-        df = pd.read_csv(filename, keep_default_na=False)
+        # 读取表格文件
+        # csv情况:
+        if filename.endswith(".csv"):
+            df = pd.read_csv(filename, keep_default_na=False)
+        elif filename.endswith(".xlsx"):
+            df = pd.read_excel(filename, keep_default_na=False)
+        elif filename.endswith(".conf") or filename.endswith(".txt"):
+            with open(CF_DOMAINS_TABLE_CONF, "r", encoding="utf-8") as f:
+
+                lines = f.readlines()
+                domains = []
+                for line in lines:
+                    # line.split(" ")
+                    # 数量不定的空白作为分隔符
+                    parts = re.split(r"\s+", line)
+                    domain = parts[0].strip()
+                    if not re.match(r"\w+", domain):
+                        print(f"忽略行: {line}")
+                        continue
+                    domain = get_main_domain_name_from_str(domain)
+                    domains.append(domain)
+                    # print(parts)
+                    # print(domain)
+                all_columns = ["domain", "ip", "forward", "security", "ssl", "Note"]
+                df = pd.DataFrame({"domain": domains}, columns=all_columns)
+                df.fillna("", inplace=True)
+        else:
+            raise ValueError("文件格式错误")
+        # debug
+        # print(df)
+        # exit(0)
+        # df = df.dropna(subset=["domain"])
+        df = df[df["domain"].notna() & (df["domain"] != "")]
 
         for _, row in df.iterrows():
-            domain = row.get("domain").strip()
-
+            domain = row.get("domain", "").strip()
             # 检查域名和IP是否为空
             if domain:
                 domains_info.append(row)
-
+        # print(domains_info)
+        print(df)
     except Exception as e:
         print(f"读取域名Excel文件出错: {str(e)}")
         sys.exit(1)
@@ -545,8 +586,14 @@ def main():
         choices=["add_zone", "configure"],
         help="执行操作: add_zone(只添加域名) 或 configure(配置已添加的域名)",
     )
-
+    parser.add_argument(
+        "-f",
+        "--file",
+        default=CF_DOMAINS_FILE,
+        help="域名配置文件,专用格式csv文件,共用格式conf文件",
+    )
     args = parser.parse_args()
+    file = args.file # or CF_DOMAINS_FILE
 
     global CLOUDFLARE_EMAIL, CLOUDFLARE_API_KEY, client, curl_headers, ACCOUNT_ID, existing_domains, processed_count, success_count
 
@@ -600,7 +647,7 @@ def main():
                 sys.exit(0)
 
     # 加载域名列表🎈
-    domains = load_domains_from_file(DOMAINS_FILE)
+    domains = load_domains_from_file(file)
     if not domains:
         print("输入文件中未找到域名")
         sys.exit(1)
