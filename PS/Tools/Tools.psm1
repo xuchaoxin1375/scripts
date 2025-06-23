@@ -180,7 +180,154 @@ function Get-WpSitePacks
     # 移除数据库sql文件
     Remove-Item $SqlFile -Verbose
 }
+function Get-MoreSites
+{
+    <# 
+    .SYNOPSIS
+    根据指定url(域名列表)生成友站外链的html代码片段和sitemap.xml 片段,并输出对应的文件
 
+    #>
+    [CmdletBinding()]
+    param (
+        [string]$InputFile = "urls.txt",
+        [string]$HtmlOutputFile = "$desktop/more.html",
+        # 考虑到分割,所以这里仅指定SitemapBaseName,index++作为后缀
+        [string]$SitemapBaseName = "$desktop/sitemap_more",
+        [int]$MaxUrlsPerSitemap = 50000
+        # [string]$SitemapIndexFile = "sitemap_index.xml",
+        # [string]$BaseUrlForSitemaps = "https://yourdomain.com" 
+    )
+
+    if (-not (Test-Path $InputFile))
+    {
+        Write-Error "❌ 输入文件 '$InputFile' 不存在。"
+        return
+    }
+
+    # 初始化内容
+    $htmlContent = @()
+    $sitemaps = @()
+    $urlCount = 0
+    $fileIndex = 1
+    $currentXml = @()
+    $domainSitemaps = @{}
+    $simpleLinks = @()
+
+    # XML 初始化
+    $currentXml += '<?xml version="1.0" encoding="UTF-8"?>'
+    $currentXml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+
+    # 处理每个 URL
+    Get-Content $InputFile | ForEach-Object {
+        $url = $_.Trim()
+        if ($url -match '^https?://([^/]+)')
+        {
+            $domain = $matches[1]
+            $baseDomain = ($domain -split '\.')[-2..-1] -join '.'  # 提取主域
+
+            # 构建 sitemap 链接
+            $sitemapLink = "https://www.$baseDomain/sitemap_index.xml" 
+
+            # 记录每个域名的sitemap
+            if (-not $domainSitemaps.ContainsKey($baseDomain)) {
+                $domainSitemaps[$baseDomain] = $sitemapLink
+            }
+
+            # 简单链接列表
+            $simpleLinks += "    <li><a href=`"$url`" target=`"_blank`" rel=`"noopener`">$url</a></li>"
+
+            # XML 输出
+            $currentXml += "    <url>"
+            $currentXml += "        <loc>$sitemapLink</loc>"
+            $currentXml += "        <changefreq>daily</changefreq>"
+            $currentXml += "        <priority>1.0</priority>"
+            $currentXml += "        <lastmod>$(Get-Date -Format yyyy-MM-dd)</lastmod>"
+            $currentXml += "    </url>"
+
+            $urlCount++
+            if ($urlCount -ge $MaxUrlsPerSitemap)
+            {
+                $currentXml += '</urlset>'
+                $xmlFileName = "$SitemapBaseName`_$fileIndex.xml"
+                $currentXml | Out-File -FilePath $xmlFileName -Encoding utf8
+                Write-Host "✅ 已生成 sitemap: $xmlFileName"
+                $sitemaps += $xmlFileName
+
+                # 重置
+                $urlCount = 0
+                $fileIndex++
+                $currentXml = @()
+                $currentXml += '<?xml version="1.0" encoding="UTF-8"?>'
+                $currentXml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+            }
+        }
+    }
+
+    # 写入最后一个未满的 sitemap 文件
+    if ($urlCount -gt 0)
+    {
+        $currentXml += '</urlset>'
+        $xmlFileName = "$SitemapBaseName`_$fileIndex.xml"
+        $currentXml | Out-File -FilePath $xmlFileName -Encoding utf8
+        Write-Host "✅ 已生成 sitemap: $xmlFileName"
+        $sitemaps += $xmlFileName
+    }
+
+    # 生成HTML内容 - 简单链接列表
+    # $htmlContent += '<h2>网站列表</h2>'
+    $htmlContent += '<ul>'
+    $htmlContent += $simpleLinks
+    $htmlContent += '</ul>'
+    $htmlContent += "`n`n"
+    # 生成HTML内容 - JSON-LD结构化数据
+    # $htmlContent += '<h2>sitemap JSON-LD</h2>'
+    $htmlContent += '<script type="application/ld+json">'
+    $htmlContent += @"
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "url": "/",
+  "potentialAction": {
+    "@type": "SiteMap",
+    "target": [
+"@
+
+    $first = $true
+    foreach ($sitemap in $domainSitemaps.Values) {
+        if (-not $first) {
+            $htmlContent += ","
+        }
+        $htmlContent += "      `"$sitemap`""
+        $first = $false
+    }
+
+    $htmlContent += @"
+    ]
+  }
+}
+"@
+    $htmlContent += '</script>'
+
+    # 生成HTML内容 - 站点地图链接部分
+    $htmlContent += '<h2>XML maps</h2>'
+    $htmlContent += '<div class="footer-sitemaps">'
+    # $htmlContent += '  <h3>maps</h3>'
+    $htmlContent += '  <ul>'
+    
+    foreach ($domain in $domainSitemaps.Keys) {
+        $sitemapUrl = $domainSitemaps[$domain]
+        $displayName = ($domain -split '\.')[0] -replace '-|_', ' '  # 美化显示名称
+        $displayName = (Get-Culture).TextInfo.ToTitleCase($displayName.ToLower())
+        $htmlContent += "    <li><a href=`"$sitemapUrl`">$displayName XML maps</a></li>"
+    }
+    
+    $htmlContent += '  </ul>'
+    $htmlContent += '</div>'
+
+    # 写入 HTML 文件
+    $htmlContent | Out-File -FilePath $HtmlOutputFile -Encoding utf8
+    Write-Host "✅ 已生成 HTML 链接文件: $HtmlOutputFile"
+}
 function Get-CsvTailRows-Archived
 {
     <#
@@ -1657,7 +1804,8 @@ www.d1.com    郑
 www.d2.com    李
 
 "@,
-        [ValidateSet("Auto", "FromFile", "MultiLineString")]$TableMode = 'Auto',
+        [ValidateSet("Auto", "FromFile", "MultiLineString")]
+        $TableMode = 'Auto',
         # 表结构，默认是 "域名,用户名"
         $Structure = $SiteOwnersDict.DFTableStructure,
 
@@ -1799,6 +1947,9 @@ function Get-BatchSiteBuilderLines
     <# 
     .SYNOPSIS
     获取批量站点生成器的生成命令行(宝塔面板专用)
+    
+    仅处理单个用户的站点,如果要处理多个用户,请在外部调用此函数并做额外处理
+
     功能比较基础,暂时只接收域名列表(字符串),不处理专门格式的输入数据,否则会导致错误解析
 
     .DESCRIPTION
@@ -1865,6 +2016,7 @@ Get-BatchSiteBuilderLines  -user zw -Domains @"
 domain1.com
 www.domain2.com
 "@,
+        $Table = "",
         #网站根目录,例如 wordpress 
         $SiteRoot = "",
         [switch]$SingleDomainMode,
@@ -2010,6 +2162,49 @@ domain2.com
         }
     }
     return $sqlLines
+    
+}
+function Get-BatchSiteBuilderLinesFromTable
+{
+    [CmdletBinding()]
+    param(
+        $Table,
+        $Structure = "Domain,User",
+        $SiteOwnersDict = $SiteOwnersDict,
+        $SiteRoot = "wordpress"
+    )
+
+    Write-Verbose "You use tableMode!(Read parameters from table string or file only!)" 
+
+    $dicts = Get-DomainUserDictFromTable -Table $Table -Structure $Structure -SiteOwnersDict $SiteOwnersDict  
+    # Write-Debug "dicts: $dicts"
+    # Get-DictView @($dicts)
+
+    foreach ($dict in $dicts)
+    {
+        Write-Verbose $dict.GetEnumerator() #-Verbose
+        # $dictplus = @{}
+
+        # $dictJson = $dict | ConvertTo-Json | ConvertFrom-Json
+        # $dictJson.PSObject.properties | ForEach-Object {
+        #     $dictplus[$_.Name] = $_.Value
+        # }
+            
+        $dictplus = $dict.clone()
+
+        $dictplus.add("SiteRoot", $siteRoot)
+
+        Write-Debug "dictplus:$($dictplus.GetEnumerator())" 
+
+        $BtLine = Get-BatchSiteBuilderLines @dictplus
+        $siteExpressions += $BtLine + "`n"
+            
+
+        # Pause 
+    }
+    $siteExpressions | Set-Clipboard
+    Write-Verbose "scripts written to clipboard!`n" -Verbose
+    return $siteExpressions
     
 }
 function Start-BatchSitesBuild
