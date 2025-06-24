@@ -2761,6 +2761,27 @@ function Update-WpSitesRobots
     "Sitemap: https://$Domain/sitemap_new.xml" >> $Path
 
 }
+function Get-PortAndProcess
+{
+    <# 
+    .SYNOPSIS
+    获取指定端口号的进程信息,支持通配符(字符串)
+    .DESCRIPTION
+    如果需要后续使用得到的信息,配合管道符select使用即可
+    .EXAMPLE
+    PS> Get-PortAndProcess 900*
+
+    LocalAddress LocalPort RemoteAddress RemotePort  State OwningProcess ProcessName
+    ------------ --------- ------------- ----------  ----- ------------- -----------
+    127.0.0.1         9002 0.0.0.0                0 Listen         18908 xp.cn_cgi
+    #>
+    param (
+        $Port
+    )
+    $res = Get-NetTCPConnection | Where-Object { $_.LocalPort -like $Port } | Select-Object LocalAddress, LocalPort, RemoteAddress, RemotePort, State, OwningProcess, @{Name = 'ProcessName'; Expression = { (Get-Process -Id $_.OwningProcess).Name } } 
+    return $res
+    
+}
 function Deploy-WpSitesLocal
 {
     <# 
@@ -2804,12 +2825,14 @@ function Deploy-WpSitesLocal
         $Table = "$desktop/my_table.conf",
         $WpSitesTemplatesDir = $wp_sites,
         $MyWpSitesHomeDir = "$Desktop/my_wp_sites",
+        # 可以配置环境变量来设置
+        $CgiPort = "$env:CgiPort",
         # 一般不需要更改的参数
         $TableStructure = "Domain,User,Template",
         $DBKey = $env:MySqlKey_LOCAL,
         $NginxConfDir = "$env:nginx_conf_dir", # 例如:C:\phpstudy_pro\Extensions\Nginx1.25.2\conf\vhosts
         $NginxConfTemplate = "$scripts/Config/nginx_template.conf",
-        $NginxHtaccessTemplate = "$scripts/Config/nginx.htaccess.conf",
+        $NginxHtaccessTemplate = "$scripts/Config/nginx.htaccess",
         $SiteImageDirRelative = "wp-content/uploads/2025",
         $CsvDir = "$Desktop/data_output"
     )
@@ -2820,7 +2843,21 @@ function Deploy-WpSitesLocal
     Get-Content $table 
     New-Item -ItemType Directory -Path $MyWpSitesHomeDir -ErrorAction SilentlyContinue -Verbose
     # $rows = Get-DomainUserDictFromTable -Table $table -Structure $TableStructure
-    
+
+    # 始终不提示确认，即使用户没指定 -Confirm:$false
+    if (-not $PSBoundParameters.ContainsKey('Confirm'))
+    {
+        $ConfirmPreference = 'None'
+    }
+    if(!$CgiPort)
+    {
+        # $CgiPort = 9000
+        $Info = Get-PortAndProcess -Port 900* 
+        Write-Host $Info
+        $CgiPort = $Info | Select-Object -First 1 -ExpandProperty LocalPort -ErrorAction Stop
+        Write-Host $CgiPort
+        Write-Debug "CgiPort environment variable not set, Try auto get port value $CgiPort"
+    }
     $rows = Get-Content $table | Where-Object { $_ -notmatch "^\s*#" } | ForEach-Object { $l = $_ -split '\s+'; @{'domain' = ($l[0] | Get-MainDomain); 'user' = $l[1]; 'template' = $l[2] } }
     Write-Output $rows
     
@@ -2838,7 +2875,7 @@ function Deploy-WpSitesLocal
         }
         # Pause
         # Copy-Item -Path $path/* -Destination $destination  -Force 
-        Copy-Item -Path $path -Destination $MyWpSitesHomeDir -Force -Recurse -WhatIf:$WhatIfPreference
+        Copy-Item -Path $path -Destination $MyWpSitesHomeDir -Force -Recurse -WhatIf:$WhatIfPreference 
         $template_temp = "$MyWpSitesHomeDir/$template"
         if(Test-Path $template_temp)
         {
@@ -2878,7 +2915,8 @@ function Deploy-WpSitesLocal
             {
                 # 配置本地站点根目录对应的nginx配置文件
                 $tpl_content = Get-Content $tpl -Raw
-                $tpl_content = $tpl_content -replace "domain.com", $domain
+                $tpl_content = $tpl_content -replace "domain.com", $domain 
+                $tpl_content = $tpl_content -replace "CgiPort", $CgiPort
                 $nginx_target = "$NginxConfDir/${domain}_80.conf"
                 $tpl_content > $nginx_target #对于https协议,则为 _443.conf
                 Write-Debug "nginx 配置内容将被写入到文件:[ $nginx_target]"
@@ -2910,8 +2948,8 @@ Get-WpSitePacks -SiteDirecotry $destination
             Pause
         }
         # 导入数据库并执行基础的修改
-        Import-MysqlFile -Server localhost -key $DBKey -SqlFilePath "$WpSitesTemplatesDir/base_sqls/$template.sql" -DatabaseName $domain -Confirm:$ConfirmPreference
-        Update-WpUrl -server localhost -key $DBKey -NewDomain $domain -OldDomain $template -protocol http -Confirm:$ConfirmPreference
+        Import-MysqlFile -Server localhost -key $DBKey -SqlFilePath "$WpSitesTemplatesDir/base_sqls/$template.sql" -DatabaseName $domain  
+        Update-WpUrl -server localhost -key $DBKey -NewDomain $domain -OldDomain $template -protocol http  
         
         # 修改(追加当前域名映射新行)到hosts文件(127.0.0.1  $domain)
         "127.0.0.1  $domain" >> $hosts

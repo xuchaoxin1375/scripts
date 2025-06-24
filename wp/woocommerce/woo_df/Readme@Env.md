@@ -58,5 +58,28 @@ $newPath = [Environment]::GetEnvironmentVariable("PATH", [EnvironmentVariableTar
 $nginx_home = "C:\phpstudy_pro\extensions\Nginx1.25.2"
 setx nginx_home $nginx_home
 Add-EnvVar -EnvVar Path -NewValue '%nginx_home%' 
+setx CgiPort 9000 #如果使用了小皮,并且xp.cn_cgi.exe接管进程的端口监听的端口建议配置一下
+```
+
+使用如下powershell命令查询相关信息
+
+```powershell
+$p=Get-NetTCPConnection |?{$_ -like '*900*'};$p;ps -Id $p.OwningProcess
+```
+
+例如我查询到的是9002端口,所属进程是`xp.cn_cgi`
+
+```powershell
+PS> $p=Get-NetTCPConnection |?{$_ -like '*900*'};$p;ps -Id $p.OwningProcess
+
+LocalAddress                        LocalPort RemoteAddress                       RemotePort State       AppliedSetting OwningProcess
+------------                        --------- -------------                       ---------- -----       -------------- -------------
+127.0.0.1                           9002      0.0.0.0                             0          Listen                     18908
+
+Id      : 18908
+Handles : 94
+CPU     : 0.015625
+SI      : 1
+Name    : xp.cn_cgi
 ```
 
