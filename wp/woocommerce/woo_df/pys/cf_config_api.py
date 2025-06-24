@@ -33,7 +33,7 @@ CF_DOMAINS_TABLE_CONF = f"{DESKTOP}/table.conf"
 # 完整专用格式
 CF_DOMAINS_CSV = f"{DESKTOP}/cf_domains.csv"  # 域名和IP配置文件，格式: 域名,IP
 # 选择其中一个🎈
-CF_DOMAINS_FILE = CF_DOMAINS_CSV
+CF_DOMAINS_FILE = CF_DOMAINS_TABLE_CONF
 
 # DOMAINS_FILE = "domains.xlsx"  # 域名和IP配置文件，格式: 域名,IP
 SITE_TAGS_FILENAME = f"{DESKTOP}/cf_site_tags.conf"

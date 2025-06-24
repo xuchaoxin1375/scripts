@@ -229,7 +229,8 @@ function Get-MoreSites
             $sitemapLink = "https://www.$baseDomain/sitemap_index.xml" 
 
             # 记录每个域名的sitemap
-            if (-not $domainSitemaps.ContainsKey($baseDomain)) {
+            if (-not $domainSitemaps.ContainsKey($baseDomain))
+            {
                 $domainSitemaps[$baseDomain] = $sitemapLink
             }
 
@@ -293,8 +294,10 @@ function Get-MoreSites
 "@
 
     $first = $true
-    foreach ($sitemap in $domainSitemaps.Values) {
-        if (-not $first) {
+    foreach ($sitemap in $domainSitemaps.Values)
+    {
+        if (-not $first)
+        {
             $htmlContent += ","
         }
         $htmlContent += "      `"$sitemap`""
@@ -314,7 +317,8 @@ function Get-MoreSites
     # $htmlContent += '  <h3>maps</h3>'
     $htmlContent += '  <ul>'
     
-    foreach ($domain in $domainSitemaps.Keys) {
+    foreach ($domain in $domainSitemaps.Keys)
+    {
         $sitemapUrl = $domainSitemaps[$domain]
         $displayName = ($domain -split '\.')[0] -replace '-|_', ' '  # 美化显示名称
         $displayName = (Get-Culture).TextInfo.ToTitleCase($displayName.ToLower())
@@ -903,6 +907,24 @@ function Add-CFZoneDNSRecords
         }
     }
 
+}
+function Add-CFZoneCheckActivation
+{
+    <# 
+    .SYNOPSIS
+    利用请求cf检查域名的激活状态
+    .Description
+    核心步骤是调用flarectl 命令行工具来执行检查
+    具体的命令为:
+    flarectl zone check --zone <domain>
+    但是这个命令在运行过程中可能会报错,但是实际测试下来应该是有效果,所以不用管这些错误,用将该命令的输出重定向到$null,也就是不管输出
+    而为了查看执行进度,使用write-host来输出域名,这样可以看到执行的进度
+    #>
+    [CmdletBinding()]
+    param (
+        $Table = "$desktop/table.conf"   
+    )
+    Get-Content $Table | ForEach-Object { ($_ -split '\s+')[0] | Get-MainDomain } | ForEach-Object { flarectl zone check --zone $_ *> $null; Write-Host $_ }
 }
 function Get-CFZoneInfoFromTable
 {
@@ -2879,6 +2901,7 @@ Get-WpSitePacks -SiteDirecotry $destination
 
 
 "@
+            Write-Host $scripts
             $scripts >> "$desktop/scripts_$(Get-Date -Format "yyyyMMdd-HH").ps1"
         }
         else
