@@ -1,1 +1,0 @@
-define( 'DB_NAME','zsh_'); 

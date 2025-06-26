@@ -83,8 +83,10 @@ if not logger.handlers:
 fnh = FilenameHandler()
 # 配置使用的User-Agent(过长可以用括号包裹配合+号分隔字符串)
 
-# 预设多个常见浏览器的 User-Agent
+# 预设多个常见浏览器的 User-Agent🎈
 USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
     #
@@ -163,7 +165,7 @@ def download_by_curl(
     output_path="",
     output_dir="./",
     use_remote_name: bool = False,  # 新增参数：是否使用远程文件名
-    user_agent: str = "Mozilla/5.0",
+    user_agent: str = USER_AGENTS[0],
     timeout: int = 30,
     silent: bool = False,
     extra_args: Optional[list] = None,
@@ -547,6 +549,7 @@ class ImageDownloader:
                             output_path=file_path,
                             output_dir=output_dir,
                             timeout=self.timeout,
+                            user_agent=self.headers["User-Agent"],
                         )
                     elif self.use_shutil == "iwr":
                         # print("使用shutil(iwr)下载图片")

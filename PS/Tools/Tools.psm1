@@ -2798,11 +2798,22 @@ function Approve-NginxValidVhostsConf
     foreach ($vhost in $vhosts)
     {
         $root_info = Get-Content $vhost | Select-String root | Select-Object -First 1
-        $root = $root_info -replace '.*"(.+)".*', '$1'
-        if (!($root.Trim()))
+        # 计算vhost配置文件中的站点根路径(如果不存在时跳过处理此配置)
+        if($root_info)
+        {
+            $root_info = $root_info.ToString().Trim()    
+            $root = $root_info -replace '.*"(.+)".*', '$1'
+            if(!$root)
+            {
+                Write-Warning "vhost: $($vhost.Name) root path is empty!" -WarningAction Continue
+                continue
+            }
+        }
+        else
         {
             continue
         }
+        # 根据得到的root路径来判断站点根目录是否存在
         if(Test-Path $root)
         {
             Write-Verbose "vhost: $($vhost.Name) root path: $root is valid(exist)!" -Verbose 
@@ -2970,7 +2981,7 @@ function Deploy-WpSitesLocal
             {
                 # 配置本地站点根目录对应的nginx配置文件
                 $tpl_content = Get-Content $tpl -Raw
-                $tpl_content = $tpl_content -replace "domain.com", $domain 
+                $tpl_content = $tpl_content -replace "domain.com", $domain #"`"$domain`"" 
                 $tpl_content = $tpl_content -replace "CgiPort", $CgiPort
                 $nginx_target = "$NginxConfDir/${domain}_80.conf"
                 $tpl_content > $nginx_target #对于https协议,则为 _443.conf
@@ -2984,7 +2995,7 @@ function Deploy-WpSitesLocal
             $ImgDir = "$destination/$SiteImageDirRelative"
             New-Item -ItemType Directory -Path $CsvDirHome -ErrorAction SilentlyContinue -Verbose
             
-            $scripts = @"
+            $script = @"
 # =========[$domain]:[$destination]=============
 python $pys\image_downloader.py -c -n -R auto -k  -rs 1000 800  --output-dir $ImgDir --dir-input $CsvDirHome
 
@@ -2995,7 +3006,10 @@ Get-WpSitePacks -SiteDirecotry $destination
 
 "@
             Write-Host $scripts
-            $scripts >> "$desktop/scripts_$(Get-Date -Format "yyyyMMdd-HH").ps1"
+            $scripts_dir = "$MyWpSitesHomeDir"
+            $script_path = "$scripts_dir/scripts_$(Get-Date -Format "yyyyMMdd").ps1"
+            $script >> $script_path
+            Write-Host "Script has been saved to: $script_path" -ForegroundColor Cyan
         }
         else
         {
@@ -3018,6 +3032,7 @@ Get-WpSitePacks -SiteDirecotry $destination
     Approve-NginxValidVhostsConf -NginxConfDir $NginxConfDir
     Restart-Nginx -Debug
 }
+
 function Add-NewDomainToHosts
 {
     <# 
@@ -3045,6 +3060,48 @@ function Add-NewDomainToHosts
         "$Ip  $domain" >> $hosts
     }
     return Select-String -Path $hosts -Pattern $domain 
+}
+
+
+function Get-HtmlFromLinks
+{
+    <# 
+    .SYNOPSIS
+
+    # 测试调用
+    Get-HtmlFromLinks -Path ame_links.txt -OutputDir amex
+    #>
+    param (
+        [parameter(Mandatory = $true)]
+        $Path,
+        [parameter(Mandatory = $true)]
+        $OutputDir,
+        $Agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", 
+        $TimeGap = 1
+    )
+    $i = 1
+    $Path = Get-Item $Path | Select-Object -ExpandProperty FullName
+    New-Item -ItemType Directory -Name $OutputDir -Force -Verbose -ErrorAction SilentlyContinue
+    Get-Content $Path | ForEach-Object {
+        $file = "$OutputDir/$(($_ -split "/")[-1]).html"
+        curl.exe -A $Agent `
+            -L $_ `
+            -o $file
+    
+        # $s>"ames/$(($_ -split "/")[-1]).html"
+        Write-Host "Downloaded($i): $_ "
+        $i++
+        Start-Sleep $TimeGap
+    }
+
+    $result_file_dir = (Split-Path $Path -Parent).ToString()
+    $result_file_name = (Split-Path $Path -LeafBase).ToString() + '@local_links.txt'
+    Write-Verbose "Result file: $result_file_dir\$result_file_name" -Verbose
+    $output = "$result_file_dir\$result_file_name"
+
+    # 生成本地页面url文件列表
+    Get-ChildItem $OutputDir | ForEach-Object { "http://localhost:5500/$OutputDir/$(Split-Path $_ -Leaf)" } | Out-File -FilePath "$output"
+    # 采集 http[参数] -> http[参数1]
 }
 function Start-GoogleIndexSearch
 {
