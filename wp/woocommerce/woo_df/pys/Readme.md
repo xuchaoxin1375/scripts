@@ -181,6 +181,25 @@ d----           2025/4/22    16:16                04
 d----            2025/5/7    15:11                05
 ```
 
+#### FAQ 和已知问题
+
+解决进程占用的问题,可以考虑使用sleep,延迟一些防止操作冲突
+
+```bash
+ERROR:imgcompresser:处理图片失败: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\Administrator\\Desktop/my_wp_sites/summitandsea24.com/wp-content/uploads/2025\\HHA_Nytryx_Pro_X119_1.tmp.webp' -> 'C:\\Users\\Administrator\\Desktop/my_wp_sites/summitandsea24.com/wp-content/uploads/2025\\HHA_Nytryx_Pro_X119_1.webp'
+```
+
+#### curl 22
+
+错误码22可能对应多种可能,具体的http错误需要看`curl: (22) ...error:`,常见的是404或者403,前者说明图片过期了,后者需要注意,可能是ip被静止,可以考虑更换节点,降低线程数(比如2线程)
+
+```bash
+curl: (22) The requested URL returned error: 404
+
+2025-06-26 08:36:26,919 - imgdown - ERROR - curl 执行失败，错误码: 22
+ERROR:imgdown:curl 执行失败，错误码: 22
+```
+
 
 
 ### 导入产品数据

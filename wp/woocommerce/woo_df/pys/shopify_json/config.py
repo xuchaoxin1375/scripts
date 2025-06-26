@@ -12,7 +12,7 @@ JSON_DIR = rf"{WP_SITES_DIR}/json"
 # 域名文件路径 - 包含所有shopify域名的Excel文件
 SPIDER_TASKS = r"C:\Users\Administrator\Desktop\spider_tasks"
 # EXCEL_FILE_PATH = rf"{WP_SITES_DIR}/domains_shopify.xlsx"
-EXCEL_FILE_PATH = rf"{SPIDER_TASKS}/domains_shopify.xlsx"
+EXCEL_FILE_PATH = rf"{SPIDER_TASKS}/domains.xlsx"
 
 # 默认保存路径 - 当Excel中没有指定保存路径时使用
 DEFAULT_SAVE_PATH = JSON_DIR

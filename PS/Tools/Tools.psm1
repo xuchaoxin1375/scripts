@@ -2782,6 +2782,43 @@ function Get-PortAndProcess
     return $res
     
 }
+function Approve-NginxValidVhostsConf
+{
+    <# 
+    .SYNOPSIS
+    扫描nginx vhosts目录中的各个站点配置文件(尤其是所指的站点路径)是否存在(有效)
+    如果无效,则会将对应的vhosts中的站点配置文件移除,从而避免nginx启动或重载而受阻
+    #>
+    [CmdletBinding()]
+    param(
+        $NginxConfDir = "$env:nginx_conf_dir" # 例如:C:\phpstudy_pro\Extensions\Nginx1.25.2\conf\vhosts
+    )
+    $vhosts = Get-ChildItem $NginxConfDir -Filter "*.conf" 
+    Write-Verbose "Checking vhosts in $NginxConfDir" -Verbose
+    foreach ($vhost in $vhosts)
+    {
+        $root_info = Get-Content $vhost | Select-String root | Select-Object -First 1
+        $root = $root_info -replace '.*"(.+)".*', '$1'
+        if (!($root.Trim()))
+        {
+            continue
+        }
+        if(Test-Path $root)
+        {
+            Write-Verbose "vhost: $($vhost.Name) root path: $root is valid(exist)!" -Verbose 
+        }
+        else
+        {
+            Write-Warning "vhost: $($vhost.Name) root path: $root is invalid(not exist)!" -WarningAction Continue
+            Remove-Item $vhost.FullName -Force -Verbose
+            # Write-Host "Removed invalid vhost file: $($vhost.FullName)" -ForegroundColor Red
+            # if($PSCmdlet.ShouldProcess("Remove vhost file: $($vhost.FullName)"))
+            # {
+            # }
+        }
+    }
+
+}
 function Deploy-WpSitesLocal
 {
     <# 
@@ -2841,6 +2878,7 @@ function Deploy-WpSitesLocal
     Write-Debug $MyWpSitesHomeDir
     Write-Debug $DBKey
     Get-Content $table 
+
     New-Item -ItemType Directory -Path $MyWpSitesHomeDir -ErrorAction SilentlyContinue -Verbose
     # $rows = Get-DomainUserDictFromTable -Table $table -Structure $TableStructure
 
@@ -2858,9 +2896,13 @@ function Deploy-WpSitesLocal
         Write-Host $CgiPort
         Write-Debug "CgiPort environment variable not set, Try auto get port value $CgiPort"
     }
+    # 解析批量表格中的各条待处理任务
     $rows = Get-Content $table | Where-Object { $_ -notmatch "^\s*#" } | ForEach-Object { $l = $_ -split '\s+'; @{'domain' = ($l[0] | Get-MainDomain); 'user' = $l[1]; 'template' = $l[2] } }
     Write-Output $rows
-    
+    Write-Warning "Please check the parameter table list above,especially the domain and template name!" -WarningAction Inquire
+    # Pause
+
+    # 逐条数据解析出各个参数,并处理任务
     foreach ($row in $rows)
     {
         $domain = $row.Domain
@@ -2868,10 +2910,23 @@ function Deploy-WpSitesLocal
 
         $path = "$WpSitesTemplatesDir/$template"
         $destination = "$MyWpSitesHomeDir/$domain"
+        # 这里要加一层域名验证
+        if ($domain -and $domain -like "*.*")
+        {
+            Write-Verbose "processing domain: [$domain]" -Verbose
+        }
+        else
+        {
+            Write-Error "Invalid domain name: [$domain]. Please check the table file: $table" -WarningAction Stop
+            Pause
+            # exit #会导致shell窗口直接关闭,不推荐使用exit
+            return $False
+        }
+        # 检查目标路径是否已经存在已经覆盖处理
         if(Test-Path $destination)
         {
-            Write-Verbose "Removing $destination" -Verbose
-            Remove-Item $destination -Force -Recurse 
+            Write-Verbose "Removing $destination" -Verbose 
+            Remove-Item $destination -Force -Recurse -Confirm:$true
         }
         # Pause
         # Copy-Item -Path $path/* -Destination $destination  -Force 
@@ -2952,13 +3007,44 @@ Get-WpSitePacks -SiteDirecotry $destination
         Update-WpUrl -server localhost -key $DBKey -NewDomain $domain -OldDomain $template -protocol http  
         
         # 修改(追加当前域名映射新行)到hosts文件(127.0.0.1  $domain)
-        "127.0.0.1  $domain" >> $hosts
+        Add-NewDomainToHosts -Domain $domain
+
+
     }
 
     # 可以考虑定期清理hosts文件!
     Write-Debug "Modify hosts file [$hosts]"
     # 重启(重载)nginx服务器
+    Approve-NginxValidVhostsConf -NginxConfDir $NginxConfDir
     Restart-Nginx -Debug
+}
+function Add-NewDomainToHosts
+{
+    <# 
+    .SYNOPSIS
+    添加域名映射到hosts文件中
+    .DESCRIPTION
+    如果hosts文件中已经存在该域名的映射,则不再添加,否则添加到文件末尾
+    #>
+    param (
+        [parameter(Mandatory = $true)]
+        $Domain,
+        $Ip = "127.0.0.1",
+        [switch]$Force
+    )
+    # $hsts = Get-Content $hosts
+    # if ($hsts| Where-Object { $_ -match $domain }){}
+    $exist = Select-String -Path $hosts -Pattern $domain
+    if ($exist -and !$Force)
+    {
+        Write-Verbose "Domain [$domain] already exist in hosts file!" -Verbose
+    }
+    else
+    {
+
+        "$Ip  $domain" >> $hosts
+    }
+    return Select-String -Path $hosts -Pattern $domain 
 }
 function Start-GoogleIndexSearch
 {
