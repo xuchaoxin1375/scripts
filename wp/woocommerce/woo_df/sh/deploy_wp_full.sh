@@ -373,7 +373,10 @@ deploy_site() {
     # === 写入伪静态规则 ===
     # write_rewrite_rules "$domain_name"
     set_rewrte_rules_file "$domain_name"
-
+    # 重启nginx以便让伪静态生效
+    echo "🔄 重启 nginx 以便让伪静态生效"
+    nginx -s reload
+    
     echo "✅ 完成站点部署: $domain_name"
     return 0
 }

@@ -2717,11 +2717,14 @@ function Restart-Nginx
     <# 
     .SYNOPSIS
     重启Nginx
+    为了提高重启的成功率,这里会检查nginx的vhosts目录中的相关配置关联的各个目录是否都存在,如果不存在,则会移除相应的vhosts配置文件(避免因此而重启失败)
+    Approve-NginxValidVhostsConf -NginxConfDir $NginxConfDir
     #>
     [CmdletBinding()]
     param(
 
-        $nginx_home = $env:NGINX_HOME
+        $nginx_home = $env:NGINX_HOME,
+        $NginxConfDir = $env:nginx_conf_dir
     
     )
     Write-Debug "nginx_home: $nginx_home"
@@ -2737,6 +2740,10 @@ function Restart-Nginx
         Write-wanring "Nginx is not found in your system,please install (if not yet) and configure it(nginx executable dir) to Path environment!"
     }
     Write-Verbose "Restart Nginx..." -Verbose
+    
+    # Approve-NginxValidVhostsConf
+    Approve-NginxValidVhostsConf -NginxConfDir $NginxConfDir
+
     Write-Verbose "Nginx.exe -s reload" -Verbose
     Start-Process -WorkingDirectory $nginx_home -FilePath "nginx.exe" -ArgumentList "-s", "reload" -Wait -NoNewWindow
     Write-Verbose "Nginx.exe -s stop" -Verbose
@@ -2996,7 +3003,7 @@ function Deploy-WpSitesLocal
             New-Item -ItemType Directory -Path $CsvDirHome -ErrorAction SilentlyContinue -Verbose
             
             $script = @"
-# =========[$domain]:[$destination]=============
+# =========[http://$domain]:[$destination]=============
 python $pys\image_downloader.py -c -n -R auto -k  -rs 1000 800  --output-dir $ImgDir --dir-input $CsvDirHome
 
 python $pys\woo_uploader_db.py --update-slugs  --csv-path $CsvDirHome --img-dir $ImgDir --db-name $domain 
@@ -3029,7 +3036,7 @@ Get-WpSitePacks -SiteDirecotry $destination
     # 可以考虑定期清理hosts文件!
     Write-Debug "Modify hosts file [$hosts]"
     # 重启(重载)nginx服务器
-    Approve-NginxValidVhostsConf -NginxConfDir $NginxConfDir
+    
     Restart-Nginx -Debug
 }
 

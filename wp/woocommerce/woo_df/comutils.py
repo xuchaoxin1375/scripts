@@ -42,6 +42,7 @@ URL_SEPARATORS = [
     # ",",
 ]
 URL_MAIN_DOMAIN_PATTERN = r"(?:https?://)?(?:[\w-]+\.)*([^/]+[.][^/]+)/?"
+# (https?://)?([\w-]+\.)*([^/]+[.][^/]+)/?
 URL_MAIN_DOMAIN_NAME_PATTERN = (
     r"(https?://)?([\w-]+\.)*(?P<main_domain>[^/]+[.][^/]+)/?"
 )
