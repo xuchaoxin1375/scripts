@@ -26,6 +26,24 @@ function import-WpSqlBatch
         $Range | ForEach-Object { Import-MysqlFile -SqlFilePath C:\sites\wp_sites\base_sqls\$_.${c}.sql -DatabaseName "$_.${c}" -MySqlUser root -key $env:MySqlKey_LOCAL }
     }
 }
+function Deploy-WpServer-DF1
+{
+    <# 
+    .SYNOPSIS
+    利用screen部署WordPress到DF1服务器,将任务推到后台运行,运行中途允许你使用screen -r $user命令查看运行状态
+    所有任务结束后会自动退出screen(自动移除)
+    #>
+    param (
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('zsh', 'zw', 'xcx')]
+        $User
+
+    )
+    ssh root@$env:DF_SERVER1 "screen -dmS $user bash -c ' chmod +x /deploy.sh;/deploy.sh --user-dir $user;screen -XS $user quit ;exec bash'"
+    # 检查此时的screen任务
+    ssh root@$env:DF_SERVER1 "screen -ls $user"
+    
+}
 function update-WpBaseSql
 {
     <# 

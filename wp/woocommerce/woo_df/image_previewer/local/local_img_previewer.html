@@ -429,17 +429,17 @@
             <div class="settings-grid">
                  <div class="control-group">
                     <label for="grid-cols-slider" class="label-with-value">
-                        <span>列数 (c):</span><span id="grid-cols-value-display">5</span>
+                        <span>列数 (c):</span><span id="grid-cols-value-display">10</span>
                     </label>
                     <div class="slider-container input-group">
-                        <input type="range" id="grid-cols-slider" min="1" max="20" value="5">
-                        <input type="number" id="grid-cols-input" min="1" max="20" value="5">
+                        <input type="range" id="grid-cols-slider" min="1" max="20" value="10">
+                        <input type="number" id="grid-cols-input" min="1" max="20" value="10">
                     </div>
                 </div>
 
                 <div class="control-group">
                     <label for="batch-size-slider" class="label-with-value">
-                        <span id="batch-or-page-size-label">每批/页数量 (N):</span><span id="batch-size-value-display">25</span>
+                        <span id="batch-or-page-size-label">每批/页数量 (N):</span><span id="batch-size-value-display">100</span>
                     </label>
                      <div class="slider-container input-group">
                         <input type="range" id="batch-size-slider" min="5" max="10000" value="25" step="5">
@@ -463,7 +463,7 @@
                 <div class="control-group toggle-switch">
                     <label for="toggle-auto-collapse">自动收起工具栏:</label>
                     <label class="switch">
-                        <input type="checkbox" id="toggle-auto-collapse" checked>
+                        <input type="checkbox" id="toggle-auto-collapse" >
                         <span class="slider-toggle"></span>
                     </label>
                 </div>
@@ -605,9 +605,9 @@
         let isLoadingMore = false; // For infinite scroll
         let currentLightboxIndex = -1; // Index within sampledAndSortedFiles
         let currentRotation = 0;
-        const DEFAULT_MAX_SAMPLE_NUMBER = 500;
+        const DEFAULT_MAX_SAMPLE_NUMBER = 100;
         let debounceTimeout = null;
-        const DEBOUNCE_DELAY = 500; // ms
+        const DEBOUNCE_DELAY = 100; // ms
 
         let currentNavigationMode = 'pagination';
         let currentPage = 1;
