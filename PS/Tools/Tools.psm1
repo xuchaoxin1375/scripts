@@ -3107,7 +3107,8 @@ function Get-HtmlFromLinks
     $output = "$result_file_dir\$result_file_name"
 
     # 生成本地页面url文件列表
-    Get-ChildItem $OutputDir | ForEach-Object { "http://localhost:5500/$OutputDir/$(Split-Path $_ -Leaf)" } | Out-File -FilePath "$output"
+    # Get-ChildItem $OutputDir | ForEach-Object { "http://localhost:5500/$OutputDir/$(Split-Path $_ -Leaf)" } | Out-File -FilePath "$output"
+    Get-UrlListFromDir -
     # 采集 http[参数] -> http[参数1]
 }
 function Start-GoogleIndexSearch
@@ -3693,6 +3694,54 @@ function Get-CharacterEncodingsGUI
     # 显示窗口
     [void]$form.ShowDialog()
 }
+function Get-UrlListFromDir
+{
+    <# 
+    .SYNOPSIS
+    列出指定目录下的所有URL,构造合适成适合采集的链接列表,并输出到文件
+    #>
+    [cmdletbinding()]
+    param(
+        # html文件所在路径
+        $Path,
+        $Hst = "local",
+        $Port = "80",
+        # Url中的路径部分(也可以先输出,然后根据结果调整html所在位置)
+        $UrlPath = "",
+        # 输出文件路径(如果不指定,则默认输出到$Path的同级别目录下)
+        $Output = "",
+        [switch]$LocTagMode
+    )
+    if(Test-Path -Path $Path -PathType Container)
+    {
+        $DirBaseName = Split-Path $Path -Leaf
+    }
+    else
+    {
+        Write-Error "Path [$Path] does not exist or is not a directory!"
+        return
+    }
+    # 生成本地页面url文件列表
+    $res = Get-ChildItem $Path | ForEach-Object { 
+        $url = "http://${hst}:${Port}/$DirBaseName/$(Split-Path $_ -Leaf)" 
+        if($LocTagMode)
+        {
+            $url = "<loc>$url</loc>"
+        }
+        $url
+    } 
+    if(!$Output)
+    {
+        $Output = "$Path/../$(Split-Path $Path -Leaf).txt"
+    }
+    $res | Out-File -FilePath "$output"
+    Write-Verbose "Output to file: $output" -Verbose
+    # 采集 http[参数] -> http[参数1]
+    # 预览前10行
+    $preview = Get-Content $output | Select-Object -First 10 | Out-String
+    Write-Verbose "Preview: $preview" -Verbose
+    return $res    
+}
 
 
 function regex_tk_tool
@@ -3725,6 +3774,58 @@ function Get-RepositoryVersion
 function Set-Defender
 {
     . "$PSScriptRoot\..\..\cmd\WDC.bat"
+}
+function Get-UrlFromSitemap
+{
+    <# 
+    .SYNOPSIS
+    从站点地图（sitemap）文件中提取URL。
+    
+    .DESCRIPTION
+    该函数读取sitemap文件，并使用正则表达式提取其中的URL。它可以通过管道接收输入，并支持指定URL的匹配模式。
+    
+    .PARAMETER Path
+    指定sitemap文件的路径。该参数支持从管道或通过属性名称从管道接收输入。
+    
+    .PARAMETER UrlPattern
+    指定用于匹配URL的正则表达式模式。默认值为"<loc>(.*?)</loc>"，这是针对大多数sitemap.xml文件中URL格式的通用模式。
+    
+    .EXAMPLE
+    Get-UrlFromSitemap -Path "C:\sitemap.xml"
+    从C:\sitemap.xml文件中提取URL，默认使用"<loc>(.*?)</loc>"作为匹配模式。
+    
+    .EXAMPLE
+    # 从管道接收sitemap文件路径
+    "C:\sitemap.xml" | Get-UrlFromSitemap -UrlPattern "<url>(.*?)</url>"
+    从C:\sitemap.xml文件中提取URL，使用"<url>(.*?)</url>"作为匹配模式。
+
+    .EXAMPLE
+    # 从多个sitemap文件中提取URL，并将结果输出到文件
+    PS> ls Sitemap*.xml|Get-UrlFromSitemap |Out-File links.1.txt
+    Pattern to match URLs: <loc>(.*?)</loc>
+    Processing sitemap at path: C:\sites\wp_sites\local\maps\Sitemap1.xml [C:\sites\wp_sites\local\maps\Sitemap1.xml]
+    Processing sitemap at path: C:\sites\wp_sites\local\maps\Sitemap2.xml [C:\sites\wp_sites\local\maps\Sitemap2.xml]
+
+    #>
+    [CmdletBinding()]
+    param (
+        [parameter(ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
+        $Path,
+        $UrlPattern = "<loc>(.*?)</loc>"
+    )
+    begin
+    {
+        Write-Host "Pattern to match URLs: $UrlPattern" -ForegroundColor Cyan
+    }
+    process
+    {
+        $abs = Get-Item $Path | Select-Object -ExpandProperty FullName
+        Write-Host "Processing sitemap at path: $Path [$abs]"
+
+        $content = Get-Content $Path -Raw
+        $ms = [regex]::Matches($content, $UrlPattern)
+        $ms | ForEach-Object { $_.Groups[1].Value }
+    }
 }
 function Format-IndexObject
 {
