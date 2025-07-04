@@ -873,6 +873,7 @@ but different image, keep records [%s]",
         try:
             price = float(price)
         except ValueError:
+            error(f"price [{price}] is not a float: %s", price)
             return 0
         # 移除过低或过高价产品
         if price > highest_price:

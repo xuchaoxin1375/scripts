@@ -3020,7 +3020,7 @@ function Deploy-WpSitesLocal
             
             $script = @"
 # =========[http://$domain]:[$destination]=============
-python $pys\image_downloader.py -c -n -R auto -k  -rs 1000 800  --output-dir $ImgDir --dir-input $CsvDirHome
+python $pys\image_downloader.py -c -n -R auto -k  -rs 1000 800  --output-dir $ImgDir --dir-input $CsvDirHome -f .jpg -w 5 -U curl
 
 python $pys\woo_uploader_db.py --update-slugs  --csv-path $CsvDirHome --img-dir $ImgDir --db-name $domain 
 

@@ -150,7 +150,6 @@ def parse_args():
 
 
 args = parse_args()  # 解析命令行参数
-# 小分类阈值,小于该阈值的分类将被视为小分类,将其分配到热销类(或其近义词);设置为0表示不处理分类
 DEFAULT_IMAGE_EXTENSION = args.default_extension or ""
 # 配置图片字段导出模式
 # IMAGE_MODE = ImageMode.NAME_FROM_URL
@@ -166,6 +165,7 @@ LANGUAGE = LANGUAGE.upper()
 # sku后缀自定义
 SKU_SUFFIX = args.sku_suffix or LANGUAGE
 
+# 小分类阈值,小于该阈值的分类将被视为小分类,将其分配到热销类(或其近义词);设置为0表示不处理分类
 # 限制产品数量少的分类,将其分配到热销类(或其近义词)
 CATEGORIES_THRESHOLD = 30
 
