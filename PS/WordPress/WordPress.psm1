@@ -44,6 +44,62 @@ function Deploy-WpServer-DF1
     ssh root@$env:DF_SERVER1 "screen -ls $user"
     
 }
+function Get-WpSitesLocalImagesCount
+{
+    [CmdletBinding()]
+    param (
+        [Alias('Root', "Directory")]$Path = "$desktop/my_wp_sites",
+        $Pattern = "2025",
+        $Depth = 4
+    )
+
+    # 记录开始时间
+    $startTime = Get-Date
+
+    # 获取所有匹配的目录
+    $directories = Get-ChildItem -Path $Path -Recurse -Directory -Depth $Depth -Filter $Pattern
+
+    if ($directories.Count -eq 0)
+    {
+        Write-Warning "未找到符合 Pattern='$Pattern' 的目录"
+        return
+    }
+
+    Write-Verbose "开始并行处理 $($directories.Count) 个目录..." -Verbose
+
+    # 并行统计每个目录中的文件数量
+    $results = $directories | ForEach-Object -Parallel {
+        $dir = $_.FullName
+        $stopWatch = [System.Diagnostics.Stopwatch]::StartNew()
+
+        $count = (Get-ChildItem -Path $dir -Recurse -File | Measure-Object).Count
+
+        $stopWatch.Stop()
+        $duration = $stopWatch.Elapsed.ToString("g")
+
+        # 构建结果对象
+        $result = [PSCustomObject]@{
+            Directory = $dir
+            Count     = $count
+        }
+
+        # 立即输出完成信息（verbose）
+        $msg = "[完成] 目录: $dir | 文件数: $count | 耗时: $duration" 
+        # Write-Verbose $msg-Verbose
+        Write-Host $msg
+
+        return $result
+    } -ThrottleLimit 8
+
+    # 按文件数量排序输出结果
+    $sortedResults = $results | Sort-Object -Property Count
+
+    # 总体耗时报告
+    $totalDuration = (Get-Date) - $startTime
+    Write-Verbose "✅ 完成全部目录统计，总耗时: $($totalDuration.ToString("g"))" -Verbose
+
+    return $sortedResults
+}
 function update-WpBaseSql
 {
     <# 

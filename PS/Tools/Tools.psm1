@@ -765,7 +765,7 @@ function Get-CFZoneID
     # 执行 flarectl 命令获取域名列表
     $output = flarectl zone list 
     $output = $output | Out-String
-    $zoneRecords = $output -Split "`r?`n" | Where-Object { $_.Trim() }
+    $zoneRecords = $output -split "`r?`n" | Where-Object { $_.Trim() }
     Write-Verbose "$output"
     # 查找对应的 Zone ID
     $zoneRecord = $zoneRecords | Where-Object { $_ -match $Domain }
@@ -1860,7 +1860,7 @@ www.d2.com    李
     Write-Debug "structureFieldsNumber:[$structureFieldsNumber]"
 
     # 解析行数据
-    if($TableMode -In @('Auto', 'FromFile') -and (Test-Path $Table))
+    if($TableMode -in @('Auto', 'FromFile') -and (Test-Path $Table))
     {
         Write-Host "Try parse table from file:[$Table]" -ForegroundColor Cyan
         $Table = Get-Content $Table -Raw
@@ -2896,8 +2896,24 @@ function Deploy-WpSitesLocal
     Write-Debug $MyWpSitesHomeDir
     Write-Debug $DBKey
     Get-Content $table 
-
     New-Item -ItemType Directory -Path $MyWpSitesHomeDir -ErrorAction SilentlyContinue -Verbose
+    # 启动必要的服务
+    Restart-Nginx -Debug
+    # Restart-Service 
+    # 检查nginx和mysql服务是否正常运行
+    $nginx_status = Get-Process nginx
+    $mysqld_status = Get-Process mysqld
+    if(!$nginx_status)
+    {
+        Write-Host "Nginx服务未正常启动" -ForegroundColor Red
+        return
+    }
+    if(!$mysqld_status)
+    {
+        Write-Host "Mysql服务未正常启动" -ForegroundColor Red
+        return
+    }
+
     # $rows = Get-DomainUserDictFromTable -Table $table -Structure $TableStructure
 
     # 始终不提示确认，即使用户没指定 -Confirm:$false
@@ -3074,7 +3090,7 @@ function Get-HtmlFromLinks
 {
     <# 
     .SYNOPSIS
-
+    TODO
     # 测试调用
     Get-HtmlFromLinks -Path ame_links.txt -OutputDir amex
     #>
@@ -3108,7 +3124,7 @@ function Get-HtmlFromLinks
 
     # 生成本地页面url文件列表
     # Get-ChildItem $OutputDir | ForEach-Object { "http://localhost:5500/$OutputDir/$(Split-Path $_ -Leaf)" } | Out-File -FilePath "$output"
-    Get-UrlListFromDir -
+    # Get-UrlListFromDir -
     # 采集 http[参数] -> http[参数1]
 }
 function Start-GoogleIndexSearch
@@ -3698,7 +3714,7 @@ function Get-UrlListFromDir
 {
     <# 
     .SYNOPSIS
-    列出指定目录下的所有URL,构造合适成适合采集的链接列表,并输出到文件
+    列出指定目录下的所有html文件,构造合适成适合采集的url链接列表,并输出到文件
     #>
     [cmdletbinding()]
     param(
@@ -3785,7 +3801,8 @@ function Get-UrlFromSitemap
     该函数读取sitemap文件，并使用正则表达式提取其中的URL。它可以通过管道接收输入，并支持指定URL的匹配模式。
     
     .PARAMETER Path
-    指定sitemap文件的路径。该参数支持从管道或通过属性名称从管道接收输入。
+    指定sitemap文件(.xml文件)的路径。该参数支持从管道或通过属性名称从管道接收输入。
+    
     
     .PARAMETER UrlPattern
     指定用于匹配URL的正则表达式模式。默认值为"<loc>(.*?)</loc>"，这是针对大多数sitemap.xml文件中URL格式的通用模式。
@@ -4168,7 +4185,7 @@ function pow
     
 # }
 
-Function Set-ScreenResolutionAndOrientation-AntiwiseClock
+function Set-ScreenResolutionAndOrientation-AntiwiseClock
 { 
     <#  :cmd header for PowerShell script
     @   set dir=%~dp0
@@ -4793,7 +4810,7 @@ function Test-DirectoryEmpty
         [switch]$CheckNoFile
     )
 
-    if (-Not (Test-Path -Path $directoryPath))
+    if (-not (Test-Path -Path $directoryPath))
     {
         throw "The directory path '$directoryPath' does not exist."
     }
@@ -4824,7 +4841,7 @@ function Update-Json
     )
     
     # 如果配置文件不存在，创建一个空的JSON文件
-    if (-Not (Test-Path $Path))
+    if (-not (Test-Path $Path))
     {
         Write-Verbose "Configuration file '$Path' does not exist. Creating a new one."
         $emptyConfig = @{}
@@ -4849,7 +4866,7 @@ function Update-Json
     else
     {
         # 检查键是否存在，并动态添加新键
-        if (-Not $config.PSObject.Properties[$Key])
+        if (-not $config.PSObject.Properties[$Key])
         {
             $config | Add-Member -MemberType NoteProperty -Name $Key -Value $Value
         }
