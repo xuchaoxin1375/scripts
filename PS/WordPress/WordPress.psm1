@@ -44,6 +44,184 @@ function Deploy-WpServer-DF1
     ssh root@$env:DF_SERVER1 "screen -ls $user"
     
 }
+function Get-ShopifyProductJsonUrl
+{
+    <#
+.SYNOPSIS
+    解析给定的Shopify网站URL,查找并提取所有产品的.json链接。
+
+.DESCRIPTION
+    该函数首先访问给定URL下的 /sitemap.xml 文件,这是一个站点地图索引。
+    然后,它会查找所有指向产品站点地图(通常包含 "_products_" 字符串)的链接。
+    接着,它会访问每一个产品站点地图,并提取其中列出的所有产品URL。
+    最后,为每个产品URL附加".json"后缀,并输出一个包含源站点和最终URL的自定义对象。
+    此函数完全支持管道输入,可以轻松地进行批量处理。
+
+.PARAMETER Url
+    一个或多个Shopify网站的URL。此参数接受管道输入。可以是单个URL字符串,也可以是URL字符串数组。
+
+.EXAMPLE
+    PS C:\> Get-ShopifyProductJsonUrl -Url 'https://pwrpux.com'
+
+    SourceSite   ProductJsonUrl
+    ----------   --------------
+    pwrpux.com   https://pwrpux.com/products/the-original.json
+    pwrpux.com   https://pwrpux.com/products/the-original-refill-3-pack.json
+    ...
+
+    描述: 处理单个URL。
+
+.EXAMPLE
+    PS C:\> 'https://pwrpux.com', 'https://ca.shop.gymshark.com' | Get-ShopifyProductJsonUrl
+
+    描述: 通过管道传递一个URL数组来批量处理两个网站。
+
+.EXAMPLE
+    PS C:\> Get-Content -Path .\sites.txt | Get-ShopifyProductJsonUrl -Verbose
+
+    描述: 从一个名为 sites.txt 的文件中读取URL列表 (每行一个URL),
+    然后通过管道将其传递给函数进行处理。-Verbose开关会显示详细的操作过程,便于调试。
+
+.EXAMPLE
+    PS C:\> 'https://pwrpux.com' | Get-ShopifyProductJsonUrl | Export-Csv -Path .\product_links.csv -NoTypeInformation
+
+    描述: 获取一个网站的所有产品JSON链接,并将结果导出为CSV文件。
+
+.NOTES
+    - 依赖于 Invoke-WebRequest, 因此需要有效的网络连接。
+    - 使用了try/catch块来处理网络请求失败或XML解析错误,增强了脚本的健壮性。
+    - 输出为PSCustomObject,方便进行排序、筛选(Where-Object)或导出(Export-Csv)等后续操作。
+#>
+
+    [CmdletBinding()]
+    param (
+        [
+        Parameter(Mandatory = $true,
+            ValueFromPipeline = $true,
+            Position = 0,
+            HelpMessage = "请输入一个或多个Shopify网站的URL"
+        )   
+        ]
+        [string[]]$Url,
+        [alias('Wrapper')]$Tag = "loc",
+        $Destination = ".",
+        [switch]$OutFiles
+    )
+
+    begin
+    {
+        Write-Verbose "函数开始执行。"
+        $successList = [System.Collections.Generic.List[string]]::new()
+        $failedList = [System.Collections.Generic.List[string]]::new()
+        if ($OutFiles -and (-not (Test-Path $Destination)))
+        {
+            New-Item -Path $Destination -ItemType Directory -Force -ErrorAction SilentlyContinue -Verbose
+        }
+    }
+
+    process
+    {
+        # 循环处理从管道或参数传入的每一个URL
+        foreach ($singleUrl in $Url)
+        {
+            try
+            {
+                # 1. 构造URI对象并获取主站点地图URL
+                $uri = [System.Uri]$singleUrl
+                # $mainSitemapUrl="$singleurl/sitemap.xml"
+                $mainSitemapUrl = "$($uri.Scheme)://$($uri.Host)/sitemap.xml"
+
+                Write-Verbose "正在处理站点: $($uri.Host)"
+                Write-Verbose "正在获取主站点地图: $mainSitemapUrl"
+
+                # 2. 获取并解析主站点地图 (sitemap.xml)
+                # 使用[xml]强制类型转换,将返回的文本内容解析为XML对象
+                $mainSitemapXml = [xml](Invoke-WebRequest -Uri $mainSitemapUrl -ErrorAction Stop -UseBasicParsing).Content
+
+                # 3. 查找所有产品相关的子站点地图URL(有些大站不止一个站点地图)
+                # sitemapindex -> sitemap -> loc
+                $productSitemapUrls = $mainSitemapXml.sitemapindex.sitemap |
+                Where-Object { $_.loc -like '*_products_*.xml*' } |
+                Select-Object -ExpandProperty loc
+
+                if (-not $productSitemapUrls)
+                {
+                    Write-Warning "在 $($uri.Host) 上未找到任何产品相关的站点地图。"
+                    continue # 继续处理下一个URL
+                }
+                # 收集所有产品相关的.json链接写入文件(如果需要)
+                # $jsonUrls = [System.Collections.Generic.List[string]]::new()
+                
+                # 4. 遍历所有找到的产品站点地图URL,逐个地图解析处理
+                foreach ($productSitemapUrl in $productSitemapUrls)
+                {
+                    Write-Verbose "正在获取产品子站点地图: $productSitemapUrl"
+                    # 5. 获取并解析产品子站点地图
+                    $productSitemapXml = [xml](Invoke-WebRequest -Uri $productSitemapUrl -ErrorAction Stop -UseBasicParsing).Content
+
+                    # 6. 提取所有产品链接并构造.json链接
+                    # urlset -> url -> loc
+                    $productUrls = $productSitemapXml.urlset.url.loc
+                    
+                    $cnt = 0
+                    foreach ($productUrl in $productUrls)
+                    {
+                        $productUrl = $productUrl.TrimEnd('/') # 去掉末尾的斜杠
+                        if($productUrl -eq $Url)
+                        {
+                            # 跳过主站点url
+                            continue
+                        }
+                        # 7. 输出结构化对象
+                        if ($Tag)
+                        {
+                            $productJsonUrl = "<$Tag>${productUrl}.json</$Tag>"
+                        }
+                        else
+                        {
+                            $productJsonUrl = "$productUrl.json"
+                        }
+                        # 构造单条jsonurl结果
+                        if($OutFiles)
+                        {
+                            
+                            $file = Join-Path $Destination "$($uri.Host).txt"
+                            $productJsonUrl | Out-File -FilePath $file -Encoding utf8 -Force -Append
+                        }
+                        [PSCustomObject]@{
+                            SourceSite     = $uri.Host
+                            ProductJsonUrl = $productJsonUrl
+                        }
+                        $cnt += 1
+                    }
+                    Write-Verbose "在 $productSitemapUrl 中找到 $cnt 个产品链接。" -Verbose
+                }
+
+                # 记录成功处理的站点
+                $successList.Add($singleUrl)
+            
+            }
+            catch
+            {
+                # 统一的错误处理,使调试更容易
+                Write-Error "处理输入站点URL '$singleUrl' 时发生: $($_.Exception.Message);跳过处理,可能不是shopify站点"
+                # 记录失败处理的站点
+                $failedList.Add($singleUrl)
+            
+            }
+        }
+    }
+
+    end
+    {
+        Write-Verbose "====全部执行完毕====="
+        Write-Verbose "成功处理 $($successList.Count) 个站点,失败 $($failedList.Count) 个站点。"
+        $nl = [System.Environment]::NewLine
+        Write-Verbose "成功列表:${nl}$($successList -join $nl)"
+        Write-Verbose "失败列表:${nl}$($failedList -join $nl)"
+    }
+}
+
 function Get-WpSitesLocalImagesCount
 {
     [CmdletBinding()]

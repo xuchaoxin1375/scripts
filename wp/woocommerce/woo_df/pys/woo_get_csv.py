@@ -161,9 +161,12 @@ HIGHEST_PRICE = 10000
 # 国家和语言🎈
 # LANGUAGE = LanguagesHotSale.US.name
 LANGUAGE = args.language_country or LanguagesHotSale.US.name
+# 获取当前的日期时间字符串
+NOW_STR = datetime.now().strftime("%Y%m%d-%H%M%S")
 LANGUAGE = LANGUAGE.upper()
+DEFAULT_SUFFIX = LANGUAGE + NOW_STR
 # sku后缀自定义
-SKU_SUFFIX = args.sku_suffix or LANGUAGE
+SKU_SUFFIX = args.sku_suffix or DEFAULT_SUFFIX
 
 # 小分类阈值,小于该阈值的分类将被视为小分类,将其分配到热销类(或其近义词);设置为0表示不处理分类
 # 限制产品数量少的分类,将其分配到热销类(或其近义词)

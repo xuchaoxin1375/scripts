@@ -16,37 +16,57 @@
 
 ---
 
-下面几个命令分步执行,不要连着执行
-
-建议复制下面的命令行保存为文本文件(后缀改为`.ps1`),然后用vscode编辑
+### 批量创建本地wp站点(nginx站点)
 
 > 可以在vscode中安装个powershell插件,有高亮显示
 
 ```powershell
-# 0批量复制站点并创建对应的目录(第一次使用前请查看对应文档)
+# 批量复制站点并创建对应的目录(第一次使用前请查看对应文档)
 Deploy-WpSitesLocal
 
 ```
 
-运行完毕后,桌面(默认路径)会生成一份`script...ps1`文件,建议使用vscode打开,然后逐条执行其中的命令即可
+运行完毕后,桌面(默认路径)会生成一份`script...ps1`文件(同一天生成的本地站点配套的命令行会写入到同一个文件中,默认放在桌面的`my_wp_sites`目录中)
 
-每个本地站点通过域名分割,和创建的table(my_table.conf)文件中的域名是对应的,这些命令行形如下一节介绍的格式
+> 建议使用vscode打开,然后**逐条执行**其中的命令即可(分步执行而不建议一口气执行)
 
-### 命令行步骤
+### 配置文件
 
-使用上面的本地批量建站会生成下面格式的命令行,当然也可以手动修改下面的命令行
+每个本地站点通过域名分割,和创建的table(默认查找桌面的文件`my_table.conf`)文件中的域名是对应的,这些命令行形如下一节介绍的格式
+
+### 一批数据导出CSV文件的命令
+
+导出csv 输出路径的参数`--output-dir`;
+
+如果要排除区间中的个别任务,则追加使用`-E`选项指定编号(多个编号逗号隔开)字符串`"a,b,.."`,就可以排除任务编号`a,b,...`;
+
+其中`-f .jpg`表明,当图片url后缀不是白名单图片类型,就会默认加上后缀`.jpg`
 
 ```powershell
-# 1导出csv 输出路径的参数--output-dir;此外,如果要排除区间中的个别任务,则追加使用-E选项指定编号(多个编号逗号隔开)字符串"a,b,..",就可以排除任务编号a,b,...
-python $pys\woo_get_csv.py -fmt .webp --start-id  $start_id --end-id $end_id --image-mode NAME_FROM_SKU --language-country $language --output-dir $output_dir --sku-suffix $sku_suffix 
 
-# 2下载并处理图片(下载过程中或者下载完毕要抽查看看是否有破图或者不完整的图,如果比较多要警惕)--image-mode {NAME_FROM_SKU,NAME_FROM_URL,NAME_AS_URL}
+python $pys\woo_get_csv.py -fmt .webp --start-id  $start_id --end-id $end_id --image-mode NAME_FROM_SKU --language-country $language --output-dir $output_dir --sku-suffix $sku_suffix -f .jpg 
+```
+
+
+
+### 每个站要单独执行的命令行步骤
+
+使用上面的本地批量建站会**自动**生成下面格式的命令行
+
+> 当然也可以**手动修改**下面的命令行,如果确实需要手动编辑,则建议复制下面的命令行保存为文本文件(后缀改为`.ps1`),然后用vscode编辑
+
+下面几个命令分步执行,不要连着执行
+
+```powershell
+
+
+# 下载并处理图片(下载过程中或者下载完毕要抽查看看是否有破图或者不完整的图,如果比较多要警惕)--image-mode {NAME_FROM_SKU,NAME_FROM_URL,NAME_AS_URL}
 python $pys\image_downloader.py -c -n -R auto -k  -rs 1000 800  --output-dir $output_dir --dir-input $dir_input
 
-# 3导入产品数据到数据库中
+# 导入产品数据到数据库中
 python $pys\woo_uploader_db.py --update-slugs  --csv-path $csv_path --img-dir $img_dir --db-name $domain_db 
 
-# 4打包成压缩包(如果安装了7z,还支持更多种格式,默认打包成zip)
+# 打包成压缩包(如果安装了7z,还支持更多种格式,默认打包成zip)
 Get-WpSitePacks -SiteDirecotry $site_dir
 ```
 

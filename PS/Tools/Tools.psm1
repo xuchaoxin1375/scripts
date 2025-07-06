@@ -1630,7 +1630,7 @@ function Update-WpUrl
         $NewDomain,
         $DatabaseName = $NewDomain,
         # 以下参数继承自 Import-MysqlFile 
-        $server = "localhost",
+        $Server = "localhost",
         # $SqlFilePath,
         $MySqlUser = "root",
         [Alias('MySqlKey')]$key = $env:DF_MySqlKey,
@@ -1748,7 +1748,7 @@ WHERE
     $sql | Out-File $sqlPath
     Write-Verbose $sql 
     
-    Import-MysqlFile -Server $server -SqlFilePath $sqlPath -MySqlUser $MySqlUser -key $key -DatabaseName $DatabaseName 
+    Import-MysqlFile -Server $Server -SqlFilePath $sqlPath -MySqlUser $MySqlUser -key $key -DatabaseName $DatabaseName 
 
 }
 function Get-DictView
@@ -2107,7 +2107,7 @@ domain2.com
         # 适合与Start-BatchSiteBuilderLine-DF的Table参数配合使用
         [switch]$SingleDomainMode,
         #可以配置系统环境变量 df_server,可以是ip或域名
-        $server = $env:DF_SERVER1, 
+        $Server = $env:DF_SERVER1, 
         # 对于wordpress,一般使用utf8mb4_general_ci
         $collate = 'utf8mb4_general_ci',
         $MySqlUser = "root",
@@ -2151,7 +2151,7 @@ domain2.com
     {
         $domain = $domain.Trim() -replace "www\.", "" 
 
-        $ShellLine = "mysql -u$mysqlUser -h $server $password -e 'CREATE DATABASE ``${User}_$domain`` CHARACTER SET utf8mb4 COLLATE $collate;' "
+        $ShellLine = "mysql -u$mysqlUser -h $Server $password -e 'CREATE DATABASE ``${User}_$domain`` CHARACTER SET utf8mb4 COLLATE $collate;' "
         $sqlLine = 'CREATE DATABASE ' + " ``${User}_$domain`` CHARACTER SET utf8mb4 COLLATE $collate;"
             
         Write-Verbose $ShellLine
@@ -2241,7 +2241,7 @@ function Start-BatchSitesBuild
     param(
         [Alias("SiteOwner")]$User,
         $Domains,
-        $server = $env:DF_SERVER1, 
+        $Server = $env:DF_SERVER1, 
         $MySqlUser = "root",
         [Alias("Key")]$MySqlkey = "",
         $SqlFileDir = "$home/desktop",
@@ -2338,7 +2338,7 @@ function Start-BatchSitesBuild
     Write-Warning "Running the sql file (by cmd /c ... ),wait a moment please..."
 
     # 执行sql导入前这里要求用户确认
-    Import-MysqlFile -Server $server -MySqlUser $MySqlUser -key $MySqlkey -SqlFilePath $SqlFilePath -Confirm:$confirm 
+    Import-MysqlFile -Server $Server -MySqlUser $MySqlUser -key $MySqlkey -SqlFilePath $SqlFilePath -Confirm:$confirm 
 
     if(! $KeepSqlFile)
     {
@@ -2504,7 +2504,7 @@ function Import-MysqlFile
     if(Test-Path $SqlFilePath)
     {
         
-        Write-Verbose "Use Mysql server host: $server"
+        Write-Verbose "Use Mysql server host: $Server"
         Write-Verbose "Sql File exist!" 
         $key = Get-MysqlKeyInline $key
 
@@ -2536,7 +2536,7 @@ function Import-MysqlFile
         if($DatabaseName)
         {
 
-            $DBExists = Get-MysqlDbInfo -Name $DatabaseName -Server $server -Port $Port -MySQLUser $MySqlUser -key $key
+            $DBExists = Get-MysqlDbInfo -Name $DatabaseName -Server $Server -Port $Port -MySQLUser $MySqlUser -key $key
             
             if(!$DBExists)
             {
@@ -2546,17 +2546,17 @@ function Import-MysqlFile
                 {
                     
                     # Invoke-Expression $CreateDBCmd
-                    New-MysqlDB -Name $DatabaseName -Server $server -Port $Port -MySqlUser $MySqlUser -MysqlKey $key -Confirm:$false
+                    New-MysqlDB -Name $DatabaseName -Server $Server -Port $Port -MySqlUser $MySqlUser -MysqlKey $key -Confirm:$false
                 }
             }
             else
             {
-                # Get-MysqlDbDescription -Name $DatabaseName -Server $server
-                Get-MysqlDbInfo -Name $DatabaseName -Server $server -Port $Port -key $key -ShowTables | Select-Object -First 5
+                # Get-MysqlDbDescription -Name $DatabaseName -Server $Server
+                Get-MysqlDbInfo -Name $DatabaseName -Server $Server -Port $Port -key $key -ShowTables | Select-Object -First 5
             }
         }
 
-        $expression = "cmd /c `" mysql -h $server -P $Port -u $MySqlUser  $key $DatabaseName < ```"$SqlFilePath```" `""
+        $expression = "cmd /c `" mysql -h $Server -P $Port -u $MySqlUser  $key $DatabaseName < ```"$SqlFilePath```" `""
         Write-Verbose $expression 
 
         
@@ -2565,14 +2565,95 @@ function Import-MysqlFile
             $ConfirmPreference = "None" 
             # cmd /c $expression
         }
-        if($PSCmdlet.ShouldProcess($server, $expression))
+        if($PSCmdlet.ShouldProcess($Server, $expression))
         {
 
             Invoke-Expression $expression
         }
     }
 }
+function Remove-MysqlDB
+{
+    <# 
+    .SYNOPSIS
+    删除指定的mysql数据库
+    .DESCRIPTION
+    删除指定的mysql数据库尤其是批量删除通常是一个危险操作,这里使用风险缓解的询问措施(将影响级别调整到'High',默认情况下会要求用户输入确认以继续执行相关操作)
+    .EXAMPLE
+    从文件中读取数据库名,并删除数据库
+    $dbs=Get-DomainUserDictFromTableLite |select -ExpandProperty domain
+    通过管道服务的形式,将数据库名数组中指定的数据库传递给Remove-MysqlDB命令逐个进行移除
+    $dbs|Remove-MysqlDB  -Force
+    #>
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = "High")]
+    param (
+        $Server = "localhost",
+        $MySqlUser = "root",
+        [Alias("MySqlKey")]$key = $env:MySqlKey_LOCAL,
+        [alias("P")]$Port = 3306,
+        [Parameter(Mandatory = $true, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
+        [alias("Name")]
+        $DatabaseName,
+        [switch]$Force
+    )
+    begin
+    {
+        Write-Verbose "Use Mysql server host: $Server"
+        Write-Verbose "start remove database $DatabaseName"
+    }
+    process
+    {
 
+        # DROP DATABASE [IF EXISTS] database_name;
+        $key = Get-MysqlKeyInline $key
+        $command = " mysql -u$MySqlUser -h $Server -P $Port $key -e 'DROP DATABASE IF EXISTS ``$DatabaseName`` ; ' "  
+        Write-Verbose $command 
+        if($Force -and -not $Confirm)
+        {
+            $ConfirmPreference = "None"
+        }
+        if($PSCmdlet.ShouldProcess($DatabaseName, "Remove Database $DatabaseName ?"))
+        {
+            
+            # 将mysql的执行输出丢弃
+            Invoke-Expression $command *> $null
+            
+        }
+        Write-Verbose "Database $DatabaseName has been tried to be removed!" -Verbose
+    }
+    
+}
+function Remove-MysqlIsolatedDB
+{
+    <# 
+    .SYNOPSIS
+  网站根目录不存在的网站配套的mysql数据库删除
+  .NOTES
+  这是一个特定专用函数
+    #>
+    [CmdletBinding(SupportsShouldProcess = $true)]
+    param(
+        $SitesDir = $my_wp_sites
+    )
+    $domains = Get-DomainUserDictFromTableLite | Select-Object -ExpandProperty domain
+    $toBeRemoveNames = [System.Collections.Generic.List[string]]::new()
+    # 检查对应网站根目录是否存在
+    foreach ($domain in $domains)
+    {
+        $site_root = "$SitesDir/$domain"
+        if(Test-Path $site_root)
+        {
+            Write-Host "网站根目录存在: $site_root"
+        }
+        else
+        {
+            <# Action when all if and elseif conditions are false #>
+            Write-Host "网站根目录不存在: $site_root,将被移除同名数据库"
+            $toBeRemoveNames.Add($domain)
+        }
+    }
+    $toBeRemoveNames | Remove-MysqlDB 
+}
 function Export-MysqlFile
 {
     <# 
@@ -2585,7 +2666,7 @@ function Export-MysqlFile
         $DatabaseName,    
         $SqlFilePath = "$base_sqls/$DatabaseName.sql",
 
-        $server = "localhost",
+        $Server = "localhost",
         [alias("P")]$Port = 3306,
         $MySqlUser = "root",
         $key = $env:DF_MySqlKey,
@@ -2610,7 +2691,7 @@ function Export-MysqlFile
         # }
     }
 
-    $expression = "  mysqldump   -h $server -P $Port -u $MySqlUser -p$key '$DatabaseName' > $SqlFilePath "
+    $expression = "  mysqldump   -h $Server -P $Port -u $MySqlUser -p$key '$DatabaseName' > $SqlFilePath "
     Write-Verbose $expression
     Invoke-Expression $expression
 }
@@ -2712,6 +2793,38 @@ function Get-MainDomain
         return $null
     }
 }
+function Move-ItemFromCsvPathFields
+{
+    <# 
+    .SYNOPSIS
+    将csv文件中的指定字段移动到指定目录
+    .PARAMETER Path
+    csv文件路径
+    .PARAMETER Fields
+    要移动的字段名(暂时支持1个字段)
+    .PARAMETER SourceDir
+    需要被移动的文件所在目录
+    .PARAMETER Destination
+    文件要被移动到的目标目录
+
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param (
+        [Parameter(Mandatory = $true, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
+        $Path,
+        $Fields = 'Images',
+        
+        $SourceDir,
+        [Alias('TargetDir')]$Destination
+    )
+    # $csv = Import-Csv $CsvPath
+    process
+    {
+        Write-Verbose "Processing file: $Path" -Verbose
+        Import-Csv $Path | Select-Object -ExpandProperty 'Images' | ForEach-Object { Move-Item -Path $SourceDir/$_ -Destination $Destination }
+    }
+
+}
 function Restart-Nginx
 {
     <# 
@@ -2737,7 +2850,7 @@ function Restart-Nginx
     $nginx_availibity = Get-Command nginx -ErrorAction SilentlyContinue
     if(!$nginx_availibity)
     {
-        Write-wanring "Nginx is not found in your system,please install (if not yet) and configure it(nginx executable dir) to Path environment!"
+        Write-Warning "Nginx is not found in your system,please install (if not yet) and configure it(nginx executable dir) to Path environment!"
     }
     Write-Verbose "Restart Nginx..." -Verbose
     
@@ -2763,11 +2876,12 @@ function Update-WpSitesRobots
     )
     
     "`n" >> $Path
-    "Sitemap: https://$Domain/sitemap_index.xml" >> $Path
-    "Sitemap: https://$Domain/sitemap_more.xml" >> $Path
-    "Sitemap: https://$Domain/sitemap_new.xml" >> $Path
+    "Sitemap: https://www.$Domain/sitemap_index.xml" >> $Path
+    "Sitemap: https://www.$Domain/sitemap_more.xml" >> $Path
+    "Sitemap: https://www.$Domain/sitemap_new.xml" >> $Path
 
 }
+
 function Get-PortAndProcess
 {
     <# 
@@ -2813,6 +2927,7 @@ function Approve-NginxValidVhostsConf
             if(!$root)
             {
                 Write-Warning "vhost: $($vhost.Name) root path is empty!" -WarningAction Continue
+                # 处理下一个
                 continue
             }
         }
@@ -2823,7 +2938,7 @@ function Approve-NginxValidVhostsConf
         # 根据得到的root路径来判断站点根目录是否存在
         if(Test-Path $root)
         {
-            Write-Verbose "vhost: $($vhost.Name) root path: $root is valid(exist)!" -Verbose 
+            Write-Verbose "vhost: $($vhost.Name) root path: $root is valid(exist)!"  
         }
         else
         {
@@ -2836,6 +2951,26 @@ function Approve-NginxValidVhostsConf
         }
     }
 
+}
+function Get-DomainUserDictFromTableLite
+{
+    <# 
+    .SYNOPSIS
+    简单地从约定的配置文本(包含多列数据,每一列用空白字符隔开)中提取各列(字段)的数据
+
+
+    #>
+    param(
+        # [Parameter(Mandatory = $true)]
+        [Alias('Path')]$Table = "$env:USERPROFILE/Desktop/my_table.conf"
+    )
+    Get-Content $Table | Where-Object { $_ -notmatch "^\s*#" } | ForEach-Object { 
+        $l = $_ -split '\s+'
+        @{'domain'     = ($l[0] | Get-MainDomain);
+            'user'     = $l[1];
+            'template' = $l[2] 
+        } 
+    }
 }
 function Deploy-WpSitesLocal
 {
@@ -2871,8 +3006,6 @@ function Deploy-WpSitesLocal
     .PARAMETER Confirm
     确认提示,默认值为$false
 
-
-
     #>
     [cmdletbinding(SupportsShouldProcess)]
     param (
@@ -2898,7 +3031,7 @@ function Deploy-WpSitesLocal
     Get-Content $table 
     New-Item -ItemType Directory -Path $MyWpSitesHomeDir -ErrorAction SilentlyContinue -Verbose
     # 启动必要的服务
-    Restart-Nginx -Debug
+    Restart-Nginx 
     # Restart-Service 
     # 检查nginx和mysql服务是否正常运行
     $nginx_status = Get-Process nginx
@@ -2931,7 +3064,9 @@ function Deploy-WpSitesLocal
         Write-Debug "CgiPort environment variable not set, Try auto get port value $CgiPort"
     }
     # 解析批量表格中的各条待处理任务
-    $rows = Get-Content $table | Where-Object { $_ -notmatch "^\s*#" } | ForEach-Object { $l = $_ -split '\s+'; @{'domain' = ($l[0] | Get-MainDomain); 'user' = $l[1]; 'template' = $l[2] } }
+    # $rows = Get-Content $table | Where-Object { $_ -notmatch "^\s*#" } | ForEach-Object { $l = $_ -split '\s+'; @{'domain' = ($l[0] | Get-MainDomain); 'user' = $l[1]; 'template' = $l[2] } }
+    $rows = Get-DomainUserDictFromTableLite -Table $table
+    # 利用write-output将结果输出到控制台,方便查看
     Write-Output $rows
     Write-Warning "Please check the parameter table list above,especially the domain and template name!" -WarningAction Inquire
     # Pause
@@ -2959,8 +3094,8 @@ function Deploy-WpSitesLocal
         # 检查目标路径是否已经存在已经覆盖处理
         if(Test-Path $destination)
         {
-            Write-Verbose "Removing $destination" -Verbose 
-            Remove-Item $destination -Force -Recurse -Confirm:$true
+            Write-Verbose "Removing $destination(Enter 'A' to Continue)" -Verbose 
+            Remove-Item $destination -Force -Recurse -Confirm:$Confirm
         }
         # Pause
         # Copy-Item -Path $path/* -Destination $destination  -Force 
@@ -3020,7 +3155,7 @@ function Deploy-WpSitesLocal
             
             $script = @"
 # =========[http://$domain]:[$destination]=============
-python $pys\image_downloader.py -c -n -R auto -k  -rs 1000 800  --output-dir $ImgDir --dir-input $CsvDirHome -f .jpg -w 5 -U curl
+python $pys\image_downloader.py -c -n -R auto -k  -rs 1000 800  --output-dir $ImgDir --dir-input $CsvDirHome -w 5 -U curl
 
 python $pys\woo_uploader_db.py --update-slugs  --csv-path $CsvDirHome --img-dir $ImgDir --db-name $domain 
 
@@ -3245,7 +3380,7 @@ function New-MysqlDB
     )
     $key = Get-MysqlKeyInline -Key $MysqlKey
 
-    $command = " mysql -u$MySqlUser -h $server -P $Port $key -e 'CREATE DATABASE ``$Name`` CHARACTER SET $CharSet COLLATE $collate; show databases like `"$Name`";' "  
+    $command = " mysql -u$MySqlUser -h $Server -P $Port $key -e 'CREATE DATABASE ``$Name`` CHARACTER SET $CharSet COLLATE $collate; show databases like `"$Name`";' "  
     Write-Verbose $command 
 
     # 提示用户输入
@@ -3262,33 +3397,15 @@ function New-MysqlDB
     #     exit
     # }
         
-    if($pscmdlet.ShouldProcess($server, "Create Database $Name ?"))
+    if($pscmdlet.ShouldProcess($Server, "Create Database $Name ?"))
     {
         Invoke-Expression $command
-        Get-MysqlDbInfo -Name $Name -Server $server -Port $Port -MySQLUser $MySqlUser -key $MysqlKey 
+        Get-MysqlDbInfo -Name $Name -Server $Server -Port $Port -MySQLUser $MySqlUser -key $MysqlKey 
     }
     
     
 }
-function Remove-MysqlDB
-{
-    [CmdletBinding(SupportsShouldProcess)]
-    param (
-        $Name,
-        $server = 'localhost',
-        $CharSet = 'utf8mb4',
-        $collate = "utf8mb4_general_ci",
-        [switch]$Remove
-    )
-    $command = " mysql -uroot -h $server -e '  DROP DATABASE IF EXISTS ``$Name``;  show databases like `"$Name`";' "  
-    Write-Verbose $command -Verbose
-    if($PSCmdlet.ShouldProcess($Name, "Remove Database $Name ?"))
-    {
 
-        Invoke-Expression $command
-
-    }
-}
 function Start-HTTPServer
 {
     <#

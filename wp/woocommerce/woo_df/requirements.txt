@@ -14,5 +14,10 @@ tqdm
 pillow
 pillow-avif-plugin
 cloudflare
+
+# 浏览器爬虫(配合 playwright install 下载对应的浏览器)
+playwright
+playwright_stealth
+
 # dotenv
 # opencv-python

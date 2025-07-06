@@ -43,6 +43,7 @@ SUPPORT_IMAGE_FORMATS_NAME = (
     "heic",
     "tif",
     "tiff",
+    "bmp",
     "gif",
 )
 SUPPORT_IMAGE_FORMATS = ("." + f for f in SUPPORT_IMAGE_FORMATS_NAME)
