@@ -2996,7 +2996,7 @@ function Remove-WpSitesLocal
     foreach ($domain in $domains)
     {
         $siteRoot = "$SitesDir/$domain"
-        $job = Start-ThreadJob -Name "Remove:$domain" -ArgumentList $siteRoot, $NginxConfDir -ScriptBlock {
+        $job = Start-ThreadJob -Name "Remove:$domain"  -ScriptBlock {
             param($Path)
             Remove-Item -Path $Path -Recurse -Force -ErrorAction SilentlyContinue
             Write-Host "Removed site root: $Path" 
