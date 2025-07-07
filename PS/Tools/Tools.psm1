@@ -2972,6 +2972,44 @@ function Get-DomainUserDictFromTableLite
         } 
     }
 }
+function Remove-WpSitesLocal
+{
+    <# 
+    .SYNOPSIS
+    批量删除本地Wordpress网站
+    建议在建下一批网站之前执行这个清理操作!
+    
+    .DESCRIPTION
+    默认读取my_table.conf文件中配置的网站域名,然后逐个执行以下操作
+    - 删除网站根目录
+    - 删除数据库
+    - 删除nginx配置文件(调用Restart-Nginx也可以触发此动作)
+    #>
+    param(
+        $Table = "$desktop/my_table.conf",
+        $SitesDir = $my_wp_sites,
+        $NginxConfDir = "$env:nginx_conf_dir"
+    )
+    $domains = Get-DomainUserDictFromTableLite -Table $Table | Select-Object -ExpandProperty domain
+    # 多线程删除网站根目录
+    $jobs = @()
+    foreach ($domain in $domains)
+    {
+        $siteRoot = "$SitesDir/$domain"
+        $job = Start-ThreadJob -Name "Remove:$domain" -ArgumentList $siteRoot, $NginxConfDir -ScriptBlock {
+            param($Path)
+            Remove-Item -Path $Path -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Host "Removed site root: $Path" 
+        } -ArgumentList $siteRoot
+        $jobs += $job
+    }
+    $jobs | Wait-Job
+    $jobs | Receive-Job
+    $jobs | Remove-Job
+    # 尝试删除数据库
+    Remove-MysqlIsolatedDB -SitesDir $SitesDir
+    Approve-NginxValidVhostsConf -NginxConfDir $NginxConfDir
+}
 function Deploy-WpSitesLocal
 {
     <# 
