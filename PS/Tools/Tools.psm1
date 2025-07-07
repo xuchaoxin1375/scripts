@@ -2663,37 +2663,53 @@ function Export-MysqlFile
     #>    
     [CmdletBinding()]
     param (
-        $DatabaseName,    
-        $SqlFilePath = "$base_sqls/$DatabaseName.sql",
+        [Parameter(Mandatory = $true, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
+        [alias('Name')]$DatabaseName,    
+        $OutputDir = $base_sqls,
+        $SqlFilePath = "$OutputDir/$DatabaseName.sql",
 
         $Server = "localhost",
         [alias("P")]$Port = 3306,
         $MySqlUser = "root",
-        $key = $env:DF_MySqlKey,
-        [switch]$Force
+        $key = $env:MySqlKey_LOCAL,
+        [switch]$Force,
+        # 默认执行备份,使用此选项禁用备份
+        [switch]$NoBackup
 
     )
-    if(Test-Path $SqlFilePath)
-    {
-        Write-Warning "File already exist!"
-        Write-Verbose "try to rename the old file!(as .bak);" -Verbose
-
-        Rename-Item $SqlFilePath "$SqlFilePath.bak.$(Get-Date -Format 'yyyyMMdd-hhmmss')" -Force:$Force -Verbose
-        # try
-        # {
-        Write-Verbose "The old file has been renamed to $SqlFilePath.bak" -Verbose
-        # }
-        # catch
-        # {
-        #     Write-Warning "Failed to rename the old file!(because the $SqlFilePath.bak is also already exist !)"
-        #     Write-Warning "Please check and move the file path or delete the old file manually if it will no longer be used."
-        #     return
-        # }
+    begin
+    { 
+        Write-Verbose "Use Mysql server host: $Server"
+        Write-Verbose "Start Export database $DatabaseName "
     }
+    process
+    {
+        if(Test-Path $SqlFilePath)
+        {
+            Write-Warning "File already exist!"
+            if(!$NoBackup)
+            {
+                # 默认执行备份
+                Write-Verbose "try to rename the old file!(as .bak);" -Verbose
 
-    $expression = "  mysqldump   -h $Server -P $Port -u $MySqlUser -p$key '$DatabaseName' > $SqlFilePath "
-    Write-Verbose $expression
-    Invoke-Expression $expression
+                Rename-Item $SqlFilePath "$SqlFilePath.bak.$(Get-Date -Format 'yyyyMMdd-hhmmss')" -Force:$Force -Verbose
+                # try
+                # {
+                Write-Verbose "The old file has been renamed to $SqlFilePath.bak" -Verbose
+                # }
+                # catch
+                # {
+                #     Write-Warning "Failed to rename the old file!(because the $SqlFilePath.bak is also already exist !)"
+                #     Write-Warning "Please check and move the file path or delete the old file manually if it will no longer be used."
+                #     return
+                # }
+            }
+        }
+
+        $expression = "  mysqldump   -h $Server -P $Port -u $MySqlUser -p$key '$DatabaseName' > $SqlFilePath "
+        Write-Verbose $expression
+        Invoke-Expression $expression
+    }
 }
 
 function Get-UrlFromMarkdownUrl
@@ -2996,7 +3012,7 @@ function Remove-WpSitesLocal
     foreach ($domain in $domains)
     {
         $siteRoot = "$SitesDir/$domain"
-        $job = Start-ThreadJob -Name "Remove:$domain"  -ScriptBlock {
+        $job = Start-ThreadJob -Name "Remove:$domain" -ScriptBlock {
             param($Path)
             Remove-Item -Path $Path -Recurse -Force -ErrorAction SilentlyContinue
             Write-Host "Removed site root: $Path" 
