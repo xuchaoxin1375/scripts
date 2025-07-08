@@ -32,16 +32,22 @@ function Deploy-WpServer-DF1
     .SYNOPSIS
     利用screen部署WordPress到DF1服务器,将任务推到后台运行,运行中途允许你使用screen -r $user命令查看运行状态
     所有任务结束后会自动退出screen(自动移除)
+
+    服务器上应该预先执行:
+    ln -s /repos/scripts/wp/woocommerce/woo_df/sh/deploy_wp_full.sh /deploy.sh
+    这样可以用/deploy.sh来方便指定部署脚本所在位置
     #>
     param (
+        $Directory = "/srv/uploads/uploader/files",
+        # [ValidateSet('zsh', 'zw', 'xcx')]
         [Parameter(Mandatory = $true)]
-        [ValidateSet('zsh', 'zw', 'xcx')]
         $User
 
     )
-    ssh root@$env:DF_SERVER1 "screen -dmS $user bash -c ' chmod +x /deploy.sh;/deploy.sh --user-dir $user;screen -XS $user quit ;exec bash'"
+    ssh root@$env:DF_SERVER1 "screen -dmS $user bash -c ' chmod +x /deploy.sh;/deploy.sh --user-dir $user --pack-root $Directory;screen -XS $user quit ;exec bash'"
     # 检查此时的screen任务
-    ssh root@$env:DF_SERVER1 "screen -ls $user"
+    $tips = 'ssh root@$env:DF_SERVER1 "screen -ls $user"'
+    Write-Verbose "running command:  $tips to check screen tasks."
     
 }
 function Get-ShopifyProductJsonUrl-Archived
@@ -656,7 +662,7 @@ function Get-ShopifyProductJsonUrl
         [string]$UserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
         
         [alias('Wrapper')]
-        [string]$Tag='loc',
+        [string]$Tag = 'loc',
 
         [string]$Destination = ".",
 
@@ -668,7 +674,8 @@ function Get-ShopifyProductJsonUrl
         Write-Verbose "函数开始执行。引擎模式: $Engine。启用智能会话缓存。"
         
         $curlPath = Get-Command curl.exe -ErrorAction SilentlyContinue
-        if (-not $curlPath -and ($Engine -ne 'Iwr')) {
+        if (-not $curlPath -and ($Engine -ne 'Iwr'))
+        {
             Write-Warning "未找到 curl.exe。引擎 '$Engine' 模式下的 Curl 功能将不可用。"
         }
         
@@ -678,7 +685,8 @@ function Get-ShopifyProductJsonUrl
         $failedList = [System.Collections.Generic.List[string]]::new()
 
         # --- 内部请求函数，已集成智能缓存逻辑 ---
-        function Invoke-RequestWithRetry {
+        function Invoke-RequestWithRetry
+        {
             param(
                 [string]$Uri,
                 [string]$RequestEngine,
@@ -695,44 +703,54 @@ function Get-ShopifyProductJsonUrl
             $maxAttemptsPerEngine = [math]::Min($Retries, $proxyRotation.Count)
 
             # 1. 智能尝试：优先使用缓存的成功配置
-            if ($Cache.ContainsKey($hst)) {
+            if ($Cache.ContainsKey($hst))
+            {
                 $cachedConfig = $Cache[$hst]
                 $cachedProxyDisplay = if ($cachedConfig.Proxy) { "'$($cachedConfig.Proxy)'" } else { '直连' }
                 Write-Verbose "发现主机 '$host' 的缓存配置。优先尝试引擎: '$($cachedConfig.Engine)', 代理: $cachedProxyDisplay"
 
-                try {
-                    if ($cachedConfig.Engine -eq 'Iwr') {
-                        $iwrParams = @{ Uri = $Uri; UseBasicParsing = $true; ErrorAction = 'Stop'; UserAgent = $UA;TimeoutSec = $TimeoutSec }
+                try
+                {
+                    if ($cachedConfig.Engine -eq 'Iwr')
+                    {
+                        $iwrParams = @{ Uri = $Uri; UseBasicParsing = $true; ErrorAction = 'Stop'; UserAgent = $UA; TimeoutSec = $TimeoutSec }
                         if ($cachedConfig.Proxy) { $iwrParams.Proxy = $cachedConfig.Proxy }
                         $response = Invoke-WebRequest @iwrParams
                         Write-Verbose "缓存配置请求成功！"
                         return $response.Content
                     }
-                    elseif ($cachedConfig.Engine -eq 'Curl' -and $CurlExecutable) {
+                    elseif ($cachedConfig.Engine -eq 'Curl' -and $CurlExecutable)
+                    {
                         $curlArgs = @('-sL', '--connect-timeout', $Timeout, '--max-time', $Timeout, '-A', $UA)
                         if ($cachedConfig.Proxy) { $curlArgs += '--proxy', $cachedConfig.Proxy }
                         $curlArgs += $Uri
                         $result = & $CurlExecutable.Source @curlArgs | Out-String
-                        if ($LASTEXITCODE -eq 0) {
+                        if ($LASTEXITCODE -eq 0)
+                        {
                             Write-Verbose "缓存配置请求成功！"
                             return $result
                         }
                         throw "Curl使用缓存配置失败 (退出码: $LASTEXITCODE)。"
                     }
-                } catch {
+                }
+                catch
+                {
                     Write-Warning "缓存的配置此次请求失败: $($_.Exception.Message)。将回退到标准重试流程。"
                 }
             }
 
             # 2. 标准重试流程 (仅当智能尝试失败或无缓存时执行)
             # --- 引擎 1: Invoke-WebRequest ---
-            if ($RequestEngine -in ('Auto', 'Iwr')) {
+            if ($RequestEngine -in ('Auto', 'Iwr'))
+            {
                 Write-Verbose "使用引擎 [Invoke-WebRequest] 开始标准重试流程..."
-                for ($i = 0; $i -lt $maxAttemptsPerEngine; $i++) {
+                for ($i = 0; $i -lt $maxAttemptsPerEngine; $i++)
+                {
                     $currentProxy = $proxyRotation[$i]
                     $proxyDisplay = if ($currentProxy) { "'$currentProxy'" } else { '直连' }
                     
-                    try {
+                    try
+                    {
                         Write-Verbose "IWR 尝试 $($i+1)/$maxAttemptsPerEngine 使用代理 $proxyDisplay"
                         $iwrParams = @{ Uri = $Uri; UseBasicParsing = $true; ErrorAction = 'Stop'; UserAgent = $UA }
                         if ($currentProxy) { $iwrParams.Proxy = $currentProxy }
@@ -741,32 +759,40 @@ function Get-ShopifyProductJsonUrl
                         Write-Verbose "IWR 请求成功。为 '$host' 缓存配置 (Proxy: $proxyDisplay)"
                         $Cache[$hst] = @{ Engine = 'Iwr'; Proxy = $currentProxy }
                         return $response.Content
-                    } catch { 
+                    }
+                    catch
+                    { 
                         Write-Warning "IWR 尝试 $($i+1) 失败: $($_.Exception.Message)" 
                     }
                 }
             }
 
             # --- 引擎 2: curl.exe ---
-            if ($RequestEngine -in ('Auto', 'Curl') -and $CurlExecutable) {
+            if ($RequestEngine -in ('Auto', 'Curl') -and $CurlExecutable)
+            {
                 Write-Verbose "使用引擎 [curl.exe] 开始标准重试流程..."
-                for ($i = 0; $i -lt $maxAttemptsPerEngine; $i++) {
+                for ($i = 0; $i -lt $maxAttemptsPerEngine; $i++)
+                {
                     $currentProxy = $proxyRotation[$i]
                     $proxyDisplay = if ($currentProxy) { "'$currentProxy'" } else { '直连' }
 
-                    try {
+                    try
+                    {
                         Write-Verbose "Curl 尝试 $($i+1)/$maxAttemptsPerEngine 使用代理 $proxyDisplay"
                         $curlArgs = @('-sL', '--connect-timeout', $Timeout, '--max-time', $Timeout, '-A', $UA)
                         if ($currentProxy) { $curlArgs += '--proxy', $currentProxy }
                         $curlArgs += $Uri
                         $result = & $CurlExecutable.Source @curlArgs | Out-String
-                        if ($LASTEXITCODE -eq 0) {
+                        if ($LASTEXITCODE -eq 0)
+                        {
                             Write-Verbose "Curl 请求成功。为 '$host' 缓存配置 (Proxy: $proxyDisplay)"
                             $Cache[$hst] = @{ Engine = 'Curl'; Proxy = $currentProxy }
                             return $result
                         }
                         Write-Warning "Curl 尝试 $($i+1) 失败 (退出码: $LASTEXITCODE)。"
-                    } catch { 
+                    }
+                    catch
+                    { 
                         Write-Warning "Curl 尝试 $($i+1) 发生脚本错误: $($_.Exception.Message)" 
                     }
                 }
@@ -777,13 +803,17 @@ function Get-ShopifyProductJsonUrl
         
         $allUrls = [System.Collections.Generic.List[string]]::new()
         if ($Url) { $allUrls.AddRange($Url) }
-        if ($UrlsFromFile -and (Test-Path $UrlsFromFile)) {
+        if ($UrlsFromFile -and (Test-Path $UrlsFromFile))
+        {
             Write-Verbose "正在从文件 '$UrlsFromFile' 中读取URL列表..."
-            $allUrls.AddRange((Get-Content $UrlsFromFile))
+            $content = Get-Content $UrlsFromFile #$content是Object[]数组
+            
+            $allUrls.AddRange([String[]]$content)
         }
         $allUrls = $allUrls | Select-Object -Unique | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
         Write-Verbose "将要处理 $($allUrls.Count) 个唯一的URL。"
-        if ($OutFiles -and (-not (Test-Path $Destination))) {
+        if ($OutFiles -and (-not (Test-Path $Destination)))
+        {
             New-Item -Path $Destination -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
         }
     }
@@ -800,13 +830,13 @@ function Get-ShopifyProductJsonUrl
                 
                 # 每次调用都传入同一个缓存对象
                 $requestParams = @{
-                    RequestEngine    = $Engine
-                    Cache            = $hostSuccessCache
-                    Proxies          = $Proxy
-                    Retries          = $RetryCount
-                    UA               = $UserAgent
-                    Timeout          = $TimeoutSec
-                    CurlExecutable   = $curlPath
+                    RequestEngine  = $Engine
+                    Cache          = $hostSuccessCache
+                    Proxies        = $Proxy
+                    Retries        = $RetryCount
+                    UA             = $UserAgent
+                    Timeout        = $TimeoutSec
+                    CurlExecutable = $curlPath
                 }
                 
                 $requestParams.Uri = $mainSitemapUrl
@@ -814,10 +844,11 @@ function Get-ShopifyProductJsonUrl
                 [xml]$mainSitemapXml = $mainSitemapXmlContent
 
                 $productSitemapUrls = $mainSitemapXml.sitemapindex.sitemap |
-                    Where-Object { $_.loc -like '*_products_*.xml*' } |
-                    Select-Object -ExpandProperty loc
+                Where-Object { $_.loc -like '*_products_*.xml*' } |
+                Select-Object -ExpandProperty loc
 
-                if (-not $productSitemapUrls) {
+                if (-not $productSitemapUrls)
+                {
                     Write-Warning "在 $($uri.Host) 上未找到任何产品相关的站点地图。主站点地图已获取，但内容不符合预期。"
                     $successList.Add($singleUrl) # 标记为成功因为主sitemap已获取
                     continue
@@ -833,7 +864,8 @@ function Get-ShopifyProductJsonUrl
                     $productUrls = $productSitemapXml.urlset.url.loc
                     $productCount = 0
 
-                    foreach ($productUrl in $productUrls) {
+                    foreach ($productUrl in $productUrls)
+                    {
                         $trimmedProductUrl = $productUrl.TrimEnd('/')
                         if ($trimmedProductUrl -like "*/collections*" -or $trimmedProductUrl -eq $uri.AbsoluteUri.TrimEnd('/')) { continue }
                         
@@ -846,7 +878,8 @@ function Get-ShopifyProductJsonUrl
                             ProductJsonUrl = $finalJsonUrl
                         }
 
-                        if ($OutFiles) {
+                        if ($OutFiles)
+                        {
                             $file = Join-Path $Destination "$($uri.Host).txt"
                             $finalJsonUrl | Out-File -FilePath $file -Encoding utf8 -Append
                         }
@@ -873,10 +906,12 @@ function Get-ShopifyProductJsonUrl
         Write-Verbose "---"
         Write-Verbose "全部执行完毕"
         Write-Verbose "成功处理 $($successList.Count) 个站点, 失败 $($failedList.Count) 个站点。"
-        if ($successList.Count -gt 0) {
+        if ($successList.Count -gt 0)
+        {
             Write-Verbose "成功列表:${nl}$($successList -join $nl)"
         }
-        if ($failedList.Count -gt 0) {
+        if ($failedList.Count -gt 0)
+        {
             Write-Warning "失败列表:${nl}$($failedList -join $nl)"
         }
     }
@@ -1412,7 +1447,7 @@ $ArchiveSuffix=".$(Get-Date -Format yyMMdd-hh)"
             #导出本地网站的对应数据库
             Write-Warning "${OldDbFile} does not exist,try to export it..." 
             New-Item -type directory -Path $base_sqls -Force -ErrorAction SilentlyContinue -Verbose
-            Export-MysqlFile -DatabaseName $OldDBName -server localhost -MySqlUser $MysqlUser -key $MysqlKey -SqlFilePath $OldDbFile
+            Export-MysqlFile -DatabaseName $OldDBName -Server localhost -MySqlUser $MysqlUser -key $MysqlKey -SqlFilePath $OldDbFile
         }
 
 
@@ -1554,7 +1589,7 @@ chown -R www:www $ServerSiteRoot
         ssh $ServerUser@$Server "bash $ServerSitesHome/$BashFileName" 
 
         #修改服务器中对应数据库中域名为正式域名(url/domain)
-        Update-WpUrl -server $Server -MySqlUser $MysqlUser -key $MysqlKey -OldDomain $TemplateDomain -NewDomain $domain -DatabaseName $ServerDBName -Verbose -Start3w -protocol "https" -Confirm:$false
+        Update-WpUrl -Server $Server -MySqlUser $MysqlUser -key $MysqlKey -OldDomain $TemplateDomain -NewDomain $domain -DatabaseName $ServerDBName -Verbose -Start3w -protocol "https" -Confirm:$false
 
         # 通过ssh 直接执行bash脚本(不推荐,复制语句容易出问题)
         # $bash_script | ssh $ServerUser@$Server "bash -s"
@@ -1594,7 +1629,7 @@ chown -R www:www $ServerSiteRoot
         # Pause
         # return $res
 
-        Start-BatchSitesBuild -server $Server -MySqlUser $MySqlUser -MySqlkey $MysqlKey -Table $Table -TableMode $TableMode -Structure $StructureCore -SiteOwnersDict $SiteOwnersDict -SiteRoot "wordpress" -ToClipboard -Verbose:$false
+        Start-BatchSitesBuild -Server $Server -MySqlUser $MySqlUser -MySqlkey $MysqlKey -Table $Table -TableMode $TableMode -Structure $StructureCore -SiteOwnersDict $SiteOwnersDict -SiteRoot "wordpress" -ToClipboard -Verbose:$false
     
         foreach($item in @($res))
         {
