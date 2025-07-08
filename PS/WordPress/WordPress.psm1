@@ -47,7 +47,7 @@ function Deploy-WpServer-DF1
     ssh root@$env:DF_SERVER1 "screen -dmS $user bash -c ' chmod +x /deploy.sh;/deploy.sh --user-dir $user --pack-root $Directory;screen -XS $user quit ;exec bash'"
     # 检查此时的screen任务
     $tips = 'ssh root@$env:DF_SERVER1 "screen -ls $user"'
-    Write-Verbose "running command:  $tips to check screen tasks."
+    Write-Verbose "running command:  $tips to check screen tasks." -Verbose
     
 }
 function Get-ShopifyProductJsonUrl-Archived

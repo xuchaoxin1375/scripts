@@ -2190,7 +2190,7 @@ function Get-BatchSiteBuilderLinesFromTable
 {
     [CmdletBinding()]
     param(
-        $Table,
+        $Table="$Desktop/table.conf",
         $Structure = "Domain,User",
         $SiteOwnersDict = $SiteOwnersDict,
         $SiteRoot = "wordpress"
