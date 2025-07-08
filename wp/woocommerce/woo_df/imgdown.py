@@ -146,6 +146,7 @@ def download_by_iwr(url, output_path, user_agent=None, timeout=30, verify_ssl=Tr
         cmd.append("-SkipCertificateCheck")
     # 合并为单行字符串
     ps_command = " ".join(cmd)
+    logger.debug("PowerShell 命令: %s", ps_command)
     try:
         result = subprocess.run(
             ps_command, shell=True, capture_output=True, text=True, check=False

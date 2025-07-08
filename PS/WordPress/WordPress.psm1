@@ -38,17 +38,19 @@ function Deploy-WpServer-DF1
     这样可以用/deploy.sh来方便指定部署脚本所在位置
     #>
     param (
-        $Directory = "/srv/uploads/uploader/files",
         # [ValidateSet('zsh', 'zw', 'xcx')]
         $User,
-        $DBUser="root",
-        $DBKey=$env:MySqlKey_LOCAL
+        $Directory = "/srv/uploads/uploader/files",
+        $DBUser = "root",
+        $ServerUser = 'root',
+        $DBKey = $env:MySqlKey_LOCAL
 
 
     )
-    ssh root@$env:DF_SERVER1 "screen -dmS $user bash -c ' chmod +x /deploy.sh;/deploy.sh --pack-root $Directory --user-dir $user --db-user $DBUser --db-key $DBKey  ;screen -XS $user quit ;exec bash'"
+    ssh ${ServerUser}@$env:DF_SERVER1 "screen -dmS $user bash -c ' chmod +x /deploy.sh;/deploy.sh --pack-root $Directory --user-dir $user --db-user $DBUser --db-pass $DBKey  ;screen -XS $user quit ;exec bash'"
     # 检查此时的screen任务
-    $tips = 'ssh root@$env:DF_SERVER1 "screen -ls $user"'
+    $tips = "ssh ${ServerUser}@$env:DF_SERVER1 'screen -ls $user'"
+    $tips | Invoke-Expression
     Write-Verbose "running command:  $tips to check screen tasks." -Verbose
     
 }
