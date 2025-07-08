@@ -44,7 +44,7 @@ function Deploy-WpServer-DF1
     ssh root@$env:DF_SERVER1 "screen -ls $user"
     
 }
-function Get-ShopifyProductJsonUrl
+function Get-ShopifyProductJsonUrl-Archived
 {
     <#
 .SYNOPSIS
@@ -56,11 +56,22 @@ function Get-ShopifyProductJsonUrl
     接着,它会访问每一个产品站点地图,并提取其中列出的所有产品URL。
     最后,为每个产品URL附加".json"后缀,并输出一个包含源站点和最终URL的自定义对象。
     此函数完全支持管道输入,可以轻松地进行批量处理。
+.NOTES
+常用参数组合:
+-Destination "$desktop/localhost/$(get-date -format 'MMdd')" -OutFiles -Verbose
+
 
 .PARAMETER Url
     一个或多个Shopify网站的URL。此参数接受管道输入。可以是单个URL字符串,也可以是URL字符串数组。
 
 .EXAMPLE
+# 适当配置代理可以提高判断正确率(比如有些站禁止你所在地区的ip,从而返回403这类错误,影响到代码对站点的类型(是否为shopify)的判断)
+Set-Proxy 7897
+# 执行站点地图转换
+Get-ShopifyProductJsonUrl -UrlsFromFile 'abc.txt' -Destination "$desktop/localhost" -OutFiles 
+
+.EXAMPLE
+# 单挑链接处理
     PS C:\> Get-ShopifyProductJsonUrl -Url 'https://pwrpux.com'
 
     SourceSite   ProductJsonUrl
@@ -96,13 +107,17 @@ function Get-ShopifyProductJsonUrl
     [CmdletBinding()]
     param (
         [
-        Parameter(Mandatory = $true,
+        Parameter(
+            # Mandatory = $true,
             ValueFromPipeline = $true,
             Position = 0,
             HelpMessage = "请输入一个或多个Shopify网站的URL"
         )   
         ]
+        # 输入的URL(可以是数组)
         [string[]]$Url,
+        # 另一种输入url的方式:可以是包含url的文本文件(每行一个),函数会尝试将此参数解释为文件路径,如果不是,则将其作为url字符串(数组)处理
+        [alias('Table', 'Path', 'File')]$UrlsFromFile = "",
         [alias('Wrapper')]$Tag = "loc",
         $Destination = ".",
         [switch]$OutFiles
@@ -117,11 +132,20 @@ function Get-ShopifyProductJsonUrl
         {
             New-Item -Path $Destination -ItemType Directory -Force -ErrorAction SilentlyContinue -Verbose
         }
+        if(Test-Path $UrlsFromFile)
+        {
+            Write-Verbose "使用Table模式将优先从url配置文件中读取url(要求格式为每行一个url),并且Url参数取值将被忽略."
+            Write-Verbose "正在尝试从文件$UrlsFromFile 中读取url列表"
+            $Url = Get-Content $UrlsFromFile 
+            $msg = $Url | Format-DoubleColumn | Out-String
+            Write-Verbose "读取到以下url列表:`n $msg"
+        }
     }
 
     process
     {
         # 循环处理从管道或参数传入的每一个URL
+        # 使用foreach主要为了支持使用参数传入多个URL的情况
         foreach ($singleUrl in $Url)
         {
             try
@@ -136,7 +160,21 @@ function Get-ShopifyProductJsonUrl
 
                 # 2. 获取并解析主站点地图 (sitemap.xml)
                 # 使用[xml]强制类型转换,将返回的文本内容解析为XML对象
-                $mainSitemapXml = [xml](Invoke-WebRequest -Uri $mainSitemapUrl -ErrorAction Stop -UseBasicParsing).Content
+                # 方案1:使用iwr
+                # $mainSitemapXml = [xml](Invoke-WebRequest -Uri $mainSitemapUrl -ErrorAction Stop -UseBasicParsing).Content
+                # 方案2:使用curl
+                # [xml]$mainSitemapXml = curl.exe -s $mainSitemapUrl | Out-String
+                $tmpFile = "$env:TEMP/sitemap.xml"
+                curl.exe -o $tmpFile $mainSitemapUrl #使用-s参数静默模式,不输出任何信息
+
+                if (Test-Path $tmpFile)
+                {
+                    [xml]$mainSitemapXml = Get-Content -Path $tmpFile
+                }
+                else
+                {
+                    Write-Error "无法下载站点地图 XML 文件。"
+                }
 
                 # 3. 查找所有产品相关的子站点地图URL(有些大站不止一个站点地图)
                 # sitemapindex -> sitemap -> loc
@@ -158,6 +196,7 @@ function Get-ShopifyProductJsonUrl
                     Write-Verbose "正在获取产品子站点地图: $productSitemapUrl"
                     # 5. 获取并解析产品子站点地图
                     $productSitemapXml = [xml](Invoke-WebRequest -Uri $productSitemapUrl -ErrorAction Stop -UseBasicParsing).Content
+                    # [xml]$mainSitemapXml = curl.exe  $productSitemapUrl | Out-String
 
                     # 6. 提取所有产品链接并构造.json链接
                     # urlset -> url -> loc
@@ -214,14 +253,634 @@ function Get-ShopifyProductJsonUrl
 
     end
     {
-        Write-Verbose "====全部执行完毕====="
-        Write-Verbose "成功处理 $($successList.Count) 个站点,失败 $($failedList.Count) 个站点。"
-        $nl = [System.Environment]::NewLine
-        Write-Verbose "成功列表:${nl}$($successList -join $nl)"
-        Write-Verbose "失败列表:${nl}$($failedList -join $nl)"
+        $nl = [System.Environment]::NewLine 
+        Write-Verbose "====全部执行完毕=====" -Verbose
+        Write-Verbose "成功处理 $($successList.Count) 个站点,失败 $($failedList.Count) 个站点。" -Verbose
+        Write-Verbose "成功列表:${nl}$($successList -join $nl)" -Verbose
+        Write-Verbose "失败列表:${nl}$($failedList -join $nl)" -Verbose
     }
 }
+function Get-ShopifyProductJsonUrl-Archived2
+{
+    <#
+.SYNOPSIS
+    解析给定的Shopify网站URL，查找并提取所有产品的.json链接。支持双下载引擎(IWR/Curl)、自动重试和代理切换。
 
+.DESCRIPTION
+    该函数通过访问网站的 /sitemap.xml 文件来发现产品链接。
+    它内置了一个强大的网络请求模块，支持两种下载引擎：PowerShell原生的Invoke-WebRequest (IWR) 和 curl.exe。
+    默认使用'Auto'模式：首先用IWR尝试所有重试和代理，如果全部失败，则自动切换到curl.exe再次尝试，最大化成功率。
+    成功获取站点地图后，它会解析出所有产品URL，附加".json"后缀，并输出结构化对象。
+
+.PARAMETER Url
+    一个或多个Shopify网站的URL。此参数接受管道输入。
+
+.PARAMETER UrlsFromFile
+    提供一个包含URL列表的文本文件路径（每行一个URL）。
+
+.PARAMETER Engine
+    选择用于下载内容的引擎。
+    - 'Auto' (默认): 先用 IWR 尝试，失败后自动回退到 Curl.exe。
+    - 'Iwr':  仅使用 PowerShell 的 Invoke-WebRequest。
+    - 'Curl': 仅使用 curl.exe (如果可用)。
+    [ValidateSet('Auto', 'Iwr', 'Curl')]
+
+.PARAMETER TimeoutSec
+    为 curl.exe 设置的超时时间（秒）。默认为 60 秒。
+
+.PARAMETER Proxy
+    用于重试的代理服务器地址数组。默认为: @('http://localhost:7897', 'http://localhost:8800')。
+
+.PARAMETER RetryCount
+    每个引擎的最大请求尝试次数。默认为3次。
+
+.PARAMETER UserAgent
+    指定在Web请求中使用的用户代理字符串。
+
+.PARAMETER Tag
+    一个可选的字符串，用于将输出的JSON URL包裹起来。
+
+.PARAMETER Destination
+    如果使用 -OutFiles 开关，则指定保存结果文件的目录。
+
+.PARAMETER OutFiles
+    一个开关参数，用于将结果按站点保存到文本文件。
+
+.EXAMPLE
+    # 使用默认的自动引擎回退模式，处理单个URL并显示详细过程
+    'https://pwrpux.com' | Get-ShopifyProductJsonUrl -Verbose
+
+.EXAMPLE
+    # 强制使用 curl.exe 引擎，并设置30秒超时，从文件读取URL并输出到桌面
+    Get-ShopifyProductJsonUrl -UrlsFromFile 'sites.txt' -Engine Curl -TimeoutSec 30 -OutFiles -Destination "$env:USERPROFILE\Desktop\ShopifyLinks"
+
+.EXAMPLE
+    # 仅使用Invoke-WebRequest，并指定一个自定义代理
+    Get-ShopifyProductJsonUrl -Url 'https://ca.shop.gymshark.com' -Engine Iwr -Proxy 'http://127.0.0.1:1080'
+
+.NOTES
+    - curl.exe 必须存在于系统的PATH环境变量中才能被 'Curl' 或 'Auto' 模式使用。
+    - 'Auto' 模式提供了最高的成功率，因为它结合了两种引擎的优点。
+    - 内部通过检查 curl.exe 的退出码 ($LASTEXITCODE) 来确保可靠的错误判断。
+#>
+
+    [CmdletBinding()]
+    param (
+        [Parameter(ValueFromPipeline = $true, Position = 0)]
+        [string[]]$Url,
+
+        [alias('Table', 'Path', 'File')]
+        [string]$UrlsFromFile,
+
+        [ValidateSet('Auto', 'Iwr', 'Curl')]
+        [string]$Engine = 'Auto',
+
+        [int]$TimeoutSec = 60,
+
+        [string[]]$Proxy = @('http://localhost:7897', 'http://localhost:8800'),
+
+        [int]$RetryCount = 3,
+
+        [string]$UserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+        
+        [alias('Wrapper')]
+        [string]$Tag,
+
+        [string]$Destination = ".",
+
+        [switch]$OutFiles
+    )
+
+    begin
+    {
+        Write-Verbose "函数开始执行。引擎模式: $Engine"
+        
+        $curlPath = Get-Command curl.exe -ErrorAction SilentlyContinue
+        if (-not $curlPath -and ($Engine -ne 'Iwr'))
+        {
+            Write-Warning "未找到 curl.exe。引擎 '$Engine' 模式下的 Curl 功能将不可用。"
+        }
+        
+        # 定义一个内部函数来处理带重试和代理切换的Web请求
+        function Invoke-RequestWithRetry
+        {
+            param(
+                [string]$Uri,
+                [string]$RequestEngine,
+                [string[]]$Proxies,
+                [int]$Retries,
+                [string]$UA,
+                [int]$Timeout,
+                [System.Management.Automation.CommandInfo]$CurlExecutable
+            )
+            
+            # 将 $null 添加到代理列表的开头，以便第一次尝试不使用代理
+            $proxyRotation = @($null) + $Proxies
+            $maxAttemptsPerEngine = [math]::Min($Retries, $proxyRotation.Count)
+
+            # --- 引擎 1: Invoke-WebRequest ---
+            if ($RequestEngine -in ('Auto', 'Iwr'))
+            {
+                Write-Verbose "使用引擎 [Invoke-WebRequest] 尝试获取 '$Uri'..."
+                for ($i = 0; $i -lt $maxAttemptsPerEngine; $i++)
+                {
+                    $currentProxy = $proxyRotation[$i]
+                    $attempt = $i + 1
+                    
+                    $iwrParams = @{ Uri = $Uri; UseBasicParsing = $true; ErrorAction = 'Stop'; UserAgent = $UA }
+                    if ($currentProxy)
+                    {
+                        $iwrParams.Proxy = $currentProxy
+                        Write-Verbose "IWR 尝试 #$attempt/$maxAttemptsPerEngine 使用代理 $currentProxy"
+                    }
+                    else
+                    {
+                        Write-Verbose "IWR 尝试 #$attempt/$maxAttemptsPerEngine (直连)"
+                    }
+
+                    try
+                    {
+                        $response = Invoke-WebRequest @iwrParams
+                        Write-Verbose "IWR 请求成功。"
+                        return $response.Content
+                    }
+                    catch { Write-Warning "IWR 尝试 #$attempt 失败: $($_.Exception.Message)" }
+                }
+                Write-Warning "使用 Invoke-WebRequest 的所有尝试均失败。"
+            }
+
+            # --- 引擎 2: curl.exe ---
+            if ($RequestEngine -in ('Auto', 'Curl'))
+            {
+                if (-not $CurlExecutable)
+                {
+                    Write-Warning "跳过 Curl 引擎，因为未找到 curl.exe。"
+                }
+                else
+                {
+                    Write-Verbose "使用引擎 [curl.exe] 尝试获取 '$Uri'..."
+                    for ($i = 0; $i -lt $maxAttemptsPerEngine; $i++)
+                    {
+                        $currentProxy = $proxyRotation[$i]
+                        $attempt = $i + 1
+
+                        $curlArgs = @('-sL', # Silent, Follow redirects
+                            '--connect-timeout', $Timeout,
+                            '--max-time', $Timeout,
+                            '-A', $UA)
+                        if ($currentProxy)
+                        {
+                            $curlArgs += '--proxy', $currentProxy
+                            Write-Verbose "Curl 尝试 #$attempt/$maxAttemptsPerEngine 使用代理 $currentProxy"
+                        }
+                        else
+                        {
+                            Write-Verbose "Curl 尝试 #$attempt/$maxAttemptsPerEngine (直连)"
+                        }
+                        $curlArgs += $Uri
+
+                        try
+                        {
+                            # 执行并捕获输出, 检查退出码
+                            $result = & $CurlExecutable.Source @curlArgs | Out-String
+                            if ($LASTEXITCODE -eq 0)
+                            {
+                                Write-Verbose "Curl 请求成功。"
+                                return $result
+                            }
+                            else
+                            {
+                                Write-Warning "Curl 尝试 #$attempt 失败 (退出码: $LASTEXITCODE)。"
+                            }
+                        }
+                        catch { Write-Warning "Curl 尝试 #$attempt 发生脚本错误: $($_.Exception.Message)" }
+                    }
+                    Write-Warning "使用 curl.exe 的所有尝试均失败。"
+                }
+            }
+            
+            # 如果所有引擎的所有尝试都失败了，则抛出最终异常
+            throw "经过所有引擎和重试后，无法获取'$Uri'。"
+        }
+
+        $allUrls = [System.Collections.Generic.List[string]]::new()
+        $successList = [System.Collections.Generic.List[string]]::new()
+        $failedList = [System.Collections.Generic.List[string]]::new()
+
+        if ($Url) { $allUrls.AddRange($Url) }
+        if ($UrlsFromFile -and (Test-Path $UrlsFromFile))
+        {
+            Write-Verbose "正在从文件 '$UrlsFromFile' 中读取URL列表..."
+            $allUrls.AddRange((Get-Content $UrlsFromFile))
+        }
+        $allUrls = $allUrls | Select-Object -Unique
+        Write-Verbose "将要处理 $($allUrls.Count) 个唯一的URL。"
+
+        if ($OutFiles -and (-not (Test-Path $Destination)))
+        {
+            Write-Verbose "目标目录 '$Destination' 不存在，正在创建..."
+            New-Item -Path $Destination -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
+        }
+    }
+
+    process
+    {
+        foreach ($singleUrl in $allUrls)
+        {
+            if (-not $singleUrl) { continue }
+
+            try
+            {
+                $uri = [System.Uri]$singleUrl
+                $mainSitemapUrl = "$($uri.Scheme)://$($uri.Host)/sitemap.xml"
+                Write-Verbose "===== 开始处理站点: $($uri.Host) ====="
+                
+                $requestParams = @{
+                    Uri            = $mainSitemapUrl
+                    RequestEngine  = $Engine
+                    Proxies        = $Proxy
+                    Retries        = $RetryCount
+                    UA             = $UserAgent
+                    Timeout        = $TimeoutSec
+                    CurlExecutable = $curlPath
+                }
+                $mainSitemapXmlContent = Invoke-RequestWithRetry @requestParams
+                [xml]$mainSitemapXml = $mainSitemapXmlContent
+
+                $productSitemapUrls = $mainSitemapXml.sitemapindex.sitemap |
+                Where-Object { $_.loc -like '*_products_*.xml*' } |
+                Select-Object -ExpandProperty loc
+
+                if (-not $productSitemapUrls)
+                {
+                    Write-Warning "在 $($uri.Host) 上未找到任何产品相关的站点地图。可能不是Shopify站点或结构不同。"
+                    $failedList.Add($singleUrl)
+                    continue
+                }
+
+                foreach ($productSitemapUrl in $productSitemapUrls)
+                {
+                    Write-Verbose "正在处理产品子站点地图: $productSitemapUrl"
+                    $requestParams.Uri = $productSitemapUrl
+                    $productSitemapXmlContent = Invoke-RequestWithRetry @requestParams
+                    [xml]$productSitemapXml = $productSitemapXmlContent
+                    
+                    $productUrls = $productSitemapXml.urlset.url.loc
+                    $productCount = 0
+
+                    foreach ($productUrl in $productUrls)
+                    {
+                        $trimmedProductUrl = $productUrl.TrimEnd('/')
+                        if ($trimmedProductUrl -like "*/collections*" -or $trimmedProductUrl -eq $uri.AbsoluteUri.TrimEnd('/')) { continue }
+                        
+                        $productCount++
+                        $finalJsonUrl = "$($trimmedProductUrl).json"
+                        if ($Tag) { $finalJsonUrl = "<$Tag>$finalJsonUrl</$Tag>" }
+                        
+                        [PSCustomObject]@{
+                            SourceSite     = $uri.Host
+                            ProductJsonUrl = $finalJsonUrl
+                        }
+
+                        if ($OutFiles)
+                        {
+                            $file = Join-Path $Destination "$($uri.Host).txt"
+                            $finalJsonUrl | Out-File -FilePath $file -Encoding utf8 -Append
+                        }
+                    }
+                    Write-Verbose "在 $productSitemapUrl 中找到 $productCount 个有效产品链接。"
+                }
+                $successList.Add($singleUrl)
+            }
+            catch
+            {
+                Write-Error "处理URL '$singleUrl' 时发生严重错误: $($_.Exception.Message)"
+                $failedList.Add($singleUrl)
+            }
+            finally { Write-Verbose "===== 完成处理站点: $($uri.Host) =====" }
+        }
+    }
+
+    end
+    {
+        $nl = [System.Environment]::NewLine
+        Write-Verbose "---"
+        Write-Verbose "全部执行完毕"
+        Write-Verbose "成功处理 $($successList.Count) 个站点, 失败 $($failedList.Count) 个站点。"
+        if ($successList.Count -gt 0)
+        {
+            Write-Verbose "成功列表:${nl}$($successList -join $nl)"
+        }
+        if ($failedList.Count -gt 0)
+        {
+            Write-Warning "失败列表:${nl}$($failedList -join $nl)"
+        }
+    }
+}
+function Get-ShopifyProductJsonUrl
+{
+    <#
+.SYNOPSIS
+    解析Shopify网站URL，智能提取所有产品的.json链接，支持会话缓存、双引擎、自动重试和代理切换。
+
+.DESCRIPTION
+    此函数实现了智能会话缓存：当成功请求一个主机后，它会“记住”所用的引擎（IWR/Curl）和代理。
+    在处理该主机的后续请求（如多级站点地图）时，会优先使用已知的成功配置，极大提升处理效率。
+    如果优先尝试失败，它会自动回退到包含双引擎切换和代理轮询的完整重试逻辑，确保最高的成功率。
+
+.PARAMETER Url
+    一个或多个Shopify网站的URL。此参数接受管道输入。
+
+.PARAMETER UrlsFromFile
+    提供一个包含URL列表的文本文件路径（每行一个URL）。
+
+.PARAMETER Engine
+    选择用于下载内容的引擎。
+    - 'Auto' (默认): 先用 IWR 尝试，失败后自动回退到 Curl.exe。
+    - 'Iwr':  仅使用 PowerShell 的 Invoke-WebRequest。
+    - 'Curl': 仅使用 curl.exe (如果可用)。
+    [ValidateSet('Auto', 'Iwr', 'Curl')]
+
+.PARAMETER TimeoutSec
+    为 curl.exe 设置的超时时间（秒）。默认为 60 秒。
+
+.PARAMETER Proxy
+    用于重试的代理服务器地址数组。默认为: @('http://localhost:7897', 'http://localhost:8800')。
+
+.PARAMETER RetryCount
+    每个引擎的最大请求尝试次数。默认为3次。
+
+.PARAMETER UserAgent
+    指定在Web请求中使用的用户代理字符串。
+
+.PARAMETER Tag
+    一个可选的字符串，用于将输出的JSON URL包裹起来。
+
+.PARAMETER Destination
+    如果使用 -OutFiles 开关，则指定保存结果文件的目录。
+
+.PARAMETER OutFiles
+    一个开关参数，用于将结果按站点保存到文本文件。
+
+.EXAMPLE
+    # 智能处理一个大型网站，-Verbose会显示缓存命中和更新过程
+    'https://ca.shop.gymshark.com' | Get-ShopifyProductJsonUrl -Verbose
+
+.EXAMPLE
+    # 强制使用 curl 引擎处理文件中的站点列表
+    Get-ShopifyProductJsonUrl -UrlsFromFile 'sites.txt' -Engine Curl -Destination ".\ShopifyLinks" -OutFiles
+
+.NOTES
+    - 核心优势：对每个主机（域名）的成功连接方法进行缓存，避免对同一站点的重复试错。
+    - 在处理包含数十个产品站点地图的大型Shopify商店时，此优化效果尤为显著。
+    - 依然保留了双引擎回退和代理重试的健壮性作为后备方案。
+#>
+
+    [CmdletBinding()]
+    param (
+        [Parameter(ValueFromPipeline = $true, Position = 0)]
+        [string[]]$Url,
+
+        [alias('Table', 'Path', 'File')]
+        [string]$UrlsFromFile,
+
+        [ValidateSet('Auto', 'Iwr', 'Curl')]
+        [string]$Engine = 'Auto',
+
+        [int]$TimeoutSec = 10,
+
+        [string[]]$Proxy = @('http://localhost:7897', 'http://localhost:8800'),
+
+        [int]$RetryCount = 3,
+
+        [string]$UserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+        
+        [alias('Wrapper')]
+        [string]$Tag='loc',
+
+        [string]$Destination = ".",
+
+        [switch]$OutFiles
+    )
+
+    begin
+    {
+        Write-Verbose "函数开始执行。引擎模式: $Engine。启用智能会话缓存。"
+        
+        $curlPath = Get-Command curl.exe -ErrorAction SilentlyContinue
+        if (-not $curlPath -and ($Engine -ne 'Iwr')) {
+            Write-Warning "未找到 curl.exe。引擎 '$Engine' 模式下的 Curl 功能将不可用。"
+        }
+        
+        # 初始化主机成功配置缓存
+        $hostSuccessCache = @{}
+        $successList = [System.Collections.Generic.List[string]]::new()
+        $failedList = [System.Collections.Generic.List[string]]::new()
+
+        # --- 内部请求函数，已集成智能缓存逻辑 ---
+        function Invoke-RequestWithRetry {
+            param(
+                [string]$Uri,
+                [string]$RequestEngine,
+                [hashtable]$Cache,
+                [string[]]$Proxies,
+                [int]$Retries,
+                [string]$UA,
+                [int]$Timeout,
+                [System.Management.Automation.CommandInfo]$CurlExecutable
+            )
+            
+            $hst = ([System.Uri]$Uri).Host
+            $proxyRotation = @($null) + $Proxies
+            $maxAttemptsPerEngine = [math]::Min($Retries, $proxyRotation.Count)
+
+            # 1. 智能尝试：优先使用缓存的成功配置
+            if ($Cache.ContainsKey($hst)) {
+                $cachedConfig = $Cache[$hst]
+                $cachedProxyDisplay = if ($cachedConfig.Proxy) { "'$($cachedConfig.Proxy)'" } else { '直连' }
+                Write-Verbose "发现主机 '$host' 的缓存配置。优先尝试引擎: '$($cachedConfig.Engine)', 代理: $cachedProxyDisplay"
+
+                try {
+                    if ($cachedConfig.Engine -eq 'Iwr') {
+                        $iwrParams = @{ Uri = $Uri; UseBasicParsing = $true; ErrorAction = 'Stop'; UserAgent = $UA;TimeoutSec = $TimeoutSec }
+                        if ($cachedConfig.Proxy) { $iwrParams.Proxy = $cachedConfig.Proxy }
+                        $response = Invoke-WebRequest @iwrParams
+                        Write-Verbose "缓存配置请求成功！"
+                        return $response.Content
+                    }
+                    elseif ($cachedConfig.Engine -eq 'Curl' -and $CurlExecutable) {
+                        $curlArgs = @('-sL', '--connect-timeout', $Timeout, '--max-time', $Timeout, '-A', $UA)
+                        if ($cachedConfig.Proxy) { $curlArgs += '--proxy', $cachedConfig.Proxy }
+                        $curlArgs += $Uri
+                        $result = & $CurlExecutable.Source @curlArgs | Out-String
+                        if ($LASTEXITCODE -eq 0) {
+                            Write-Verbose "缓存配置请求成功！"
+                            return $result
+                        }
+                        throw "Curl使用缓存配置失败 (退出码: $LASTEXITCODE)。"
+                    }
+                } catch {
+                    Write-Warning "缓存的配置此次请求失败: $($_.Exception.Message)。将回退到标准重试流程。"
+                }
+            }
+
+            # 2. 标准重试流程 (仅当智能尝试失败或无缓存时执行)
+            # --- 引擎 1: Invoke-WebRequest ---
+            if ($RequestEngine -in ('Auto', 'Iwr')) {
+                Write-Verbose "使用引擎 [Invoke-WebRequest] 开始标准重试流程..."
+                for ($i = 0; $i -lt $maxAttemptsPerEngine; $i++) {
+                    $currentProxy = $proxyRotation[$i]
+                    $proxyDisplay = if ($currentProxy) { "'$currentProxy'" } else { '直连' }
+                    
+                    try {
+                        Write-Verbose "IWR 尝试 $($i+1)/$maxAttemptsPerEngine 使用代理 $proxyDisplay"
+                        $iwrParams = @{ Uri = $Uri; UseBasicParsing = $true; ErrorAction = 'Stop'; UserAgent = $UA }
+                        if ($currentProxy) { $iwrParams.Proxy = $currentProxy }
+                        $response = Invoke-WebRequest @iwrParams
+                        
+                        Write-Verbose "IWR 请求成功。为 '$host' 缓存配置 (Proxy: $proxyDisplay)"
+                        $Cache[$hst] = @{ Engine = 'Iwr'; Proxy = $currentProxy }
+                        return $response.Content
+                    } catch { 
+                        Write-Warning "IWR 尝试 $($i+1) 失败: $($_.Exception.Message)" 
+                    }
+                }
+            }
+
+            # --- 引擎 2: curl.exe ---
+            if ($RequestEngine -in ('Auto', 'Curl') -and $CurlExecutable) {
+                Write-Verbose "使用引擎 [curl.exe] 开始标准重试流程..."
+                for ($i = 0; $i -lt $maxAttemptsPerEngine; $i++) {
+                    $currentProxy = $proxyRotation[$i]
+                    $proxyDisplay = if ($currentProxy) { "'$currentProxy'" } else { '直连' }
+
+                    try {
+                        Write-Verbose "Curl 尝试 $($i+1)/$maxAttemptsPerEngine 使用代理 $proxyDisplay"
+                        $curlArgs = @('-sL', '--connect-timeout', $Timeout, '--max-time', $Timeout, '-A', $UA)
+                        if ($currentProxy) { $curlArgs += '--proxy', $currentProxy }
+                        $curlArgs += $Uri
+                        $result = & $CurlExecutable.Source @curlArgs | Out-String
+                        if ($LASTEXITCODE -eq 0) {
+                            Write-Verbose "Curl 请求成功。为 '$host' 缓存配置 (Proxy: $proxyDisplay)"
+                            $Cache[$hst] = @{ Engine = 'Curl'; Proxy = $currentProxy }
+                            return $result
+                        }
+                        Write-Warning "Curl 尝试 $($i+1) 失败 (退出码: $LASTEXITCODE)。"
+                    } catch { 
+                        Write-Warning "Curl 尝试 $($i+1) 发生脚本错误: $($_.Exception.Message)" 
+                    }
+                }
+            }
+            
+            throw "经过所有引擎和重试后，无法获取'$Uri'。"
+        }
+        
+        $allUrls = [System.Collections.Generic.List[string]]::new()
+        if ($Url) { $allUrls.AddRange($Url) }
+        if ($UrlsFromFile -and (Test-Path $UrlsFromFile)) {
+            Write-Verbose "正在从文件 '$UrlsFromFile' 中读取URL列表..."
+            $allUrls.AddRange((Get-Content $UrlsFromFile))
+        }
+        $allUrls = $allUrls | Select-Object -Unique | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        Write-Verbose "将要处理 $($allUrls.Count) 个唯一的URL。"
+        if ($OutFiles -and (-not (Test-Path $Destination))) {
+            New-Item -Path $Destination -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
+        }
+    }
+
+    process
+    {
+        foreach ($singleUrl in $allUrls)
+        {
+            try
+            {
+                $uri = [System.Uri]$singleUrl
+                $mainSitemapUrl = "$($uri.Scheme)://$($uri.Host)/sitemap.xml"
+                Write-Verbose "===== 开始处理站点: $($uri.Host) ====="
+                
+                # 每次调用都传入同一个缓存对象
+                $requestParams = @{
+                    RequestEngine    = $Engine
+                    Cache            = $hostSuccessCache
+                    Proxies          = $Proxy
+                    Retries          = $RetryCount
+                    UA               = $UserAgent
+                    Timeout          = $TimeoutSec
+                    CurlExecutable   = $curlPath
+                }
+                
+                $requestParams.Uri = $mainSitemapUrl
+                $mainSitemapXmlContent = Invoke-RequestWithRetry @requestParams
+                [xml]$mainSitemapXml = $mainSitemapXmlContent
+
+                $productSitemapUrls = $mainSitemapXml.sitemapindex.sitemap |
+                    Where-Object { $_.loc -like '*_products_*.xml*' } |
+                    Select-Object -ExpandProperty loc
+
+                if (-not $productSitemapUrls) {
+                    Write-Warning "在 $($uri.Host) 上未找到任何产品相关的站点地图。主站点地图已获取，但内容不符合预期。"
+                    $successList.Add($singleUrl) # 标记为成功因为主sitemap已获取
+                    continue
+                }
+
+                foreach ($productSitemapUrl in $productSitemapUrls)
+                {
+                    Write-Verbose "正在处理产品子站点地图: $productSitemapUrl"
+                    $requestParams.Uri = $productSitemapUrl
+                    $productSitemapXmlContent = Invoke-RequestWithRetry @requestParams
+                    [xml]$productSitemapXml = $productSitemapXmlContent
+                    
+                    $productUrls = $productSitemapXml.urlset.url.loc
+                    $productCount = 0
+
+                    foreach ($productUrl in $productUrls) {
+                        $trimmedProductUrl = $productUrl.TrimEnd('/')
+                        if ($trimmedProductUrl -like "*/collections*" -or $trimmedProductUrl -eq $uri.AbsoluteUri.TrimEnd('/')) { continue }
+                        
+                        $productCount++
+                        $finalJsonUrl = "$($trimmedProductUrl).json"
+                        if ($Tag) { $finalJsonUrl = "<$Tag>$finalJsonUrl</$Tag>" }
+                        
+                        [PSCustomObject]@{
+                            SourceSite     = $uri.Host
+                            ProductJsonUrl = $finalJsonUrl
+                        }
+
+                        if ($OutFiles) {
+                            $file = Join-Path $Destination "$($uri.Host).txt"
+                            $finalJsonUrl | Out-File -FilePath $file -Encoding utf8 -Append
+                        }
+                    }
+                    Write-Verbose "在 $productSitemapUrl 中找到 $productCount 个有效产品链接。"
+                }
+                $successList.Add($singleUrl)
+            }
+            catch
+            {
+                Write-Error "处理URL '$singleUrl' 时发生严重错误: $($_.Exception.Message)"
+                $failedList.Add($singleUrl)
+            }
+            finally 
+            {
+                Write-Verbose "===== 完成处理站点: $($uri.Host) ====="
+            }
+        }
+    }
+
+    end
+    {
+        $nl = [System.Environment]::NewLine
+        Write-Verbose "---"
+        Write-Verbose "全部执行完毕"
+        Write-Verbose "成功处理 $($successList.Count) 个站点, 失败 $($failedList.Count) 个站点。"
+        if ($successList.Count -gt 0) {
+            Write-Verbose "成功列表:${nl}$($successList -join $nl)"
+        }
+        if ($failedList.Count -gt 0) {
+            Write-Warning "失败列表:${nl}$($failedList -join $nl)"
+        }
+    }
+}
 function Get-WpSitesLocalImagesCount
 {
     [CmdletBinding()]

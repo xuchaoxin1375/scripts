@@ -452,10 +452,12 @@ def add_zone_only(info):
 
 def configure_zone(info):
     """对已添加的域名进行配置
-    功能开关配置入口
+    总配置函数,第二个环节的组织者,功能开关配置入口
+    
     """
     global processed_count, success_count
-
+    # 随机延时3秒以上,防止过于密集访问api
+    time.sleep(random.randint(3, 7))
     try:
         # 读取数据字段🎈
         domain = info.get("domain").strip().lower()
@@ -691,8 +693,8 @@ def main():
         existing_domains = get_existing_domains()
 
         # 使用ThreadPoolExecutor执行多线程配置域名
-        w = 2
-        # (不宜过多,容易429)
+        w = 1
+        # (不宜过多,容易429,而且可能导致网站证书请求频率过高使得访问https链接提示ssl证书错误)
         print(f"使用{w}个线程配置域名...")
         with ThreadPoolExecutor(w) as executor:
             futures = [executor.submit(configure_zone, record) for record in domains]
