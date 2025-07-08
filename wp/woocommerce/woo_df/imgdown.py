@@ -132,13 +132,16 @@ def download_by_iwr(url, output_path, user_agent=None, timeout=30, verify_ssl=Tr
     """
     # 构造 PowerShell 命令
     cmd = [
-        "pwsh",
+        # "pwsh",
+        "powershell.exe",
         "-NoProfile",
         "-Command",
+        '"',
         "Invoke-WebRequest",
         f"-Uri '{url}'",
         f"-OutFile '{output_path}'",
         f"-TimeoutSec {timeout}",
+        '"'
     ]
     if user_agent:
         cmd.append(f"-Headers @{{'User-Agent'='{user_agent}'}}")
@@ -147,6 +150,8 @@ def download_by_iwr(url, output_path, user_agent=None, timeout=30, verify_ssl=Tr
     # 合并为单行字符串
     ps_command = " ".join(cmd)
     logger.debug("PowerShell 命令: %s", ps_command)
+    msg = f"🎈PowerShell 命令:  {ps_command}"
+    print(msg)
     try:
         result = subprocess.run(
             ps_command, shell=True, capture_output=True, text=True, check=False
