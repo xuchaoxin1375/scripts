@@ -341,7 +341,7 @@ function Get-ShopifyProductJsonUrl
         [ValidateSet('Auto', 'Iwr', 'Curl')]
         [string]$Engine = 'Auto',
 
-        [int]$TimeoutSec = 5,
+        [int]$TimeoutSec = 10,
 
         [string[]]$Proxy = @('http://localhost:7897', 'http://localhost:8800'),
 

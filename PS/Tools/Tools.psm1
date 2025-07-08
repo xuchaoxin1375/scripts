@@ -3084,7 +3084,17 @@ function Deploy-WpSitesLocal
     Write-Debug $WpSitesTemplatesDir
     Write-Debug $MyWpSitesHomeDir
     Write-Debug $DBKey
-    Get-Content $table 
+    Get-Content $table
+    # 检查关键目录
+    if(!(Test-Path $WpSitesTemplatesDir)){
+        Write-Error "Wordpress templates directory not found: $WpSitesTemplatesDir"
+        return
+    }
+
+    if(!(Test-Path $NginxConfDir)){
+        Write-Error "Nginx conf directory not found: $NginxConfDir"
+        return 
+    }
     New-Item -ItemType Directory -Path $MyWpSitesHomeDir -ErrorAction SilentlyContinue -Verbose
     # 启动必要的服务
     Restart-Nginx 
@@ -3199,7 +3209,7 @@ function Deploy-WpSitesLocal
                 $tpl_content = $tpl_content -replace "CgiPort", $CgiPort
                 $nginx_target = "$NginxConfDir/${domain}_80.conf"
                 $tpl_content > $nginx_target #对于https协议,则为 _443.conf
-                Write-Debug "nginx 配置内容将被写入到文件:[ $nginx_target]"
+                Write-Debug "nginx 配置内容将被写入到文件:[ $nginx_target]" -Debug
                 Write-Verbose $tpl_content -Verbose
             }
             
