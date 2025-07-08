@@ -138,6 +138,8 @@ pip install -r $woo_df/requirements.txt
 
 配置环境变量(另见本仓库其他说明文档)
 
+ [Readme@Env.md](..\Readme@Env.md) 
+
 
 
 ## 主要步骤和细节

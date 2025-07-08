@@ -3067,6 +3067,8 @@ function Deploy-WpSitesLocal
         $Table = "$desktop/my_table.conf",
         $WpSitesTemplatesDir = $wp_sites,
         $MyWpSitesHomeDir = "$Desktop/my_wp_sites",
+        # 数据库文件(sql文件所在目录)
+        $SqlFileDir="$WpSitesTemplatesDir/base_sqls",
         # 可以配置环境变量来设置
         $CgiPort = "$env:CgiPort",
         # 一般不需要更改的参数
@@ -3229,7 +3231,7 @@ Get-WpSitePacks -SiteDirecotry $destination
             Pause
         }
         # 导入数据库并执行基础的修改
-        Import-MysqlFile -Server localhost -key $DBKey -SqlFilePath "$WpSitesTemplatesDir/base_sqls/$template.sql" -DatabaseName $domain  
+        Import-MysqlFile -Server localhost -key $DBKey -SqlFilePath "$SqlFileDir/$template.sql" -DatabaseName $domain  
         Update-WpUrl -server localhost -key $DBKey -NewDomain $domain -OldDomain $template -protocol http  
         
         # 修改(追加当前域名映射新行)到hosts文件(127.0.0.1  $domain)

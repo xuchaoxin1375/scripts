@@ -8,7 +8,7 @@
 
 例如,配置采集器的数据存储路径(建议使用powershell运行)
 
-> 喜欢使用D盘的注意按需更改""中的值
+> ###喜欢使用D盘的注意按需更改""中的值
 
 ```cmd
 setx PYTHONPATH C:\repos\scripts\wp\woocommerce\woo_df
@@ -32,7 +32,9 @@ setx nginx_conf_dir "C:\phpstudy_pro\Extensions\Nginx1.25.2\conf\vhosts"
 
 配置完以后关闭所有命令行窗口,以及vscode窗口(如果有用到vscode的话)再重新打开才会生效	
 
-### 配置软件目录到Path环境变量
+## 配置软件目录到Path环境变量
+
+备份环境变量
 
 ### mysql.exe
 
@@ -61,13 +63,15 @@ Add-EnvVar -EnvVar Path -NewValue '%nginx_home%'
 setx CgiPort 9000 #如果使用了小皮,并且xp.cn_cgi.exe接管进程的端口监听的端口建议配置一下
 ```
 
+### 端口查询
+
 使用如下powershell命令查询相关信息
 
 ```powershell
 $p=Get-NetTCPConnection |?{$_ -like '*900*'};$p;ps -Id $p.OwningProcess
 ```
 
-例如我查询到的是9002端口,所属进程是`xp.cn_cgi`
+例如:我查询到的是9002端口,所属进程是`xp.cn_cgi`
 
 ```powershell
 PS> $p=Get-NetTCPConnection |?{$_ -like '*900*'};$p;ps -Id $p.OwningProcess
@@ -83,3 +87,29 @@ SI      : 1
 Name    : xp.cn_cgi
 ```
 
+## 检查配置🎈
+
+检查mysql.exe是否能够访问,并且看看是否能够登录到交互shell中
+
+```powershell
+mysql -uroot -h 127.0.0.1 -proot -P 3306 -p$env:mysqlkey_local
+```
+
+例如我们查询已经存在的数据库"show databases; "
+
+```powershell
+mysql -uroot -h 127.0.0.1 -proot -P 3306 -p$env:mysqlkey_local -e "show databases;"
+```
+
+如果顺利,会输出:
+
+```powershell
+PS> mysql -uroot -h 127.0.0.1 -proot -P 3306 -p15a58524d3bd2e49 -e "show databases;"
+mysql: [Warning] Using a password on the command line interface can be insecure.
++--------------------+
+| Database           |
++--------------------+
+| information_schema |
+```
+
+如果有ERROR,说明密码错误,检查环境变量`mysqlkey_local`配置是否有误
