@@ -40,11 +40,13 @@ function Deploy-WpServer-DF1
     param (
         $Directory = "/srv/uploads/uploader/files",
         # [ValidateSet('zsh', 'zw', 'xcx')]
-        [Parameter(Mandatory = $true)]
-        $User
+        $User,
+        $DBUser="root",
+        $DBKey=$env:MySqlKey_LOCAL
+
 
     )
-    ssh root@$env:DF_SERVER1 "screen -dmS $user bash -c ' chmod +x /deploy.sh;/deploy.sh --user-dir $user --pack-root $Directory;screen -XS $user quit ;exec bash'"
+    ssh root@$env:DF_SERVER1 "screen -dmS $user bash -c ' chmod +x /deploy.sh;/deploy.sh --pack-root $Directory --user-dir $user --db-user $DBUser --db-key $DBKey  ;screen -XS $user quit ;exec bash'"
     # 检查此时的screen任务
     $tips = 'ssh root@$env:DF_SERVER1 "screen -ls $user"'
     Write-Verbose "running command:  $tips to check screen tasks." -Verbose
