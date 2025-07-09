@@ -2451,7 +2451,7 @@ function Copy-Robocopy
     Executing: robocopy ".\dir4" ".\dir1\dir4"  /E /MT:16 /R:1 /W:1
 
 #>
-    [CmdletBinding(SupportsShouldProcess = $true)]
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
     param (
         #第一批参数
         [Parameter(Mandatory = $true, Position = 0)]
@@ -2469,6 +2469,8 @@ function Copy-Robocopy
         $Wait = 1,
         [string]$LogFile = "",
         $LogPreviewEncodings = 'ansi',
+        # 不询问直接执行所有步骤
+        [switch]$Force,
 
         # 第二批
         $ExcludeDirs = '',
@@ -2515,20 +2517,24 @@ function Copy-Robocopy
     $SN = Split-Path -Path $Source -Leaf
     $DN = Split-Path -Path $Destination -Leaf
 
-    Write-Verbose "$SN,$DN"
-    if ($SN -ne $DN)
+    Write-Verbose "$SN,$DN" 
+    if ($Force -and !$Confirm)
     {
-        # Write-Verbose "$($Source.name) -ne $($destination.name)"
-
-        $msg = 'The Destination directory name is different from the Source directory name! Create the Same Name Directory?'
-        # $continue = Confirm-UserContinue -Description 
-        $continue = $PSCmdlet.ShouldProcess($Destination, $msg)
-        if ($continue)
-        {
-            $Destination = Join-Path $Destination $SN
-            Write-Verbose "$Destination" -Verbose
-        }
+        $ConfirmPreference = 'none'
     }
+    # if ($SN -ne $DN)
+    # {
+    #     # Write-Verbose "$($Source.name) -ne $($destination.name)"
+
+    #     $msg = 'The Destination directory name is different from the Source directory name! Create the Same Name Directory?'
+    #     # $continue = Confirm-UserContinue -Description 
+    #     $continue = $PSCmdlet.ShouldProcess($Destination, $msg)
+    #     if ($continue)
+    #     {
+    #         $Destination = Join-Path $Destination $SN
+    #         Write-Verbose "$Destination" -Verbose
+    #     }
+    # }
 
     #debug
     # return
@@ -2593,11 +2599,14 @@ function Copy-Robocopy
     # 重试次数和间隔限制
     $robocopyCmd += " /R:$Retry /W:$Wait"
 
-    # Invoke the robocopy command
-    Write-Warning "Executing: $robocopyCmd" -WarningAction Inquire
+
+    if($PSCmdlet.ShouldProcess($Destination, "Executing: $robocopyCmd"))
+    {
+
+        Invoke-Expression $robocopyCmd
+    }
     
-    Invoke-Expression $robocopyCmd
-    Write-Verbose "Set LogPreviewEncodings to Preview log in specified way(utf-8,ansi,gbk,etc)"
+    Write-Verbose "Set LogPreviewEncodings to Preview log in specified way(utf-8,ansi,gbk,etc)" -Verbose
     # 预览日志总结
     if($LogFile -and (Test-Path $LogFile))
     {

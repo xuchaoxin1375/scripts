@@ -3177,7 +3177,8 @@ function Deploy-WpSitesLocal
         }
         # Pause
         # Copy-Item -Path $path/* -Destination $destination  -Force 
-        Copy-Item -Path $path -Destination $MyWpSitesHomeDir -Force -Recurse -WhatIf:$WhatIfPreference 
+        # Copy-Item -Path $path -Destination $MyWpSitesHomeDir -Force -Recurse -WhatIf:$WhatIfPreference 
+        Copy-Robocopy -Source $path -Destination $destination -Force -Recurse 
         $template_temp = "$MyWpSitesHomeDir/$template"
         if(Test-Path $template_temp)
         {
