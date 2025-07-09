@@ -9,6 +9,7 @@ DEFAULT_PACK_ROOT="/srv/uploads/uploader/files"
 DEFAULT_DB_USER="root"
 DEFAULT_DB_PASSWORD="15a58524d3bd2e49"
 SERVER_SITE_HOME="/www/wwwroot"
+LOG_FILE_DIR="/srv/uploads/uploader/files"
 DB_HOST="localhost" # 数据库主机
 # PACK_ROOT="/www/wwwroot"           # WordPress 网站根目录
 STOP_EDITING_LINE='Add any custom values between this line and the "stop editing" line'
@@ -54,7 +55,7 @@ while [[ "$#" -gt 0 ]]; do
     shift
 done
 # 定义日志文件路径
-LOG_FILE="/srv/uploads/uploader/files/deploy_wp_$($USER_DIR)_$(date +%Y%m%d_%H%M%S).log"
+LOG_FILE="$LOG_FILE_DIR/deploy_wp_$($USER_DIR)_$(date +%Y%m%d_%H%M%S).log"
 LOG_DIR=$(dirname "$LOG_FILE") #获取日志文件字符串的目录,然后创建这个目录(如果不存在的话)
 mkdir -p "$LOG_DIR"
 # 重定向标准输出和标准错误到日志文件

@@ -132,7 +132,7 @@ function Get-WpSitePacks
         $DatabaseName = $Domain
         Write-Host "数据库名称未指定，使用默认值: $DatabaseName"
     }
-    Export-MysqlFile -server localhost -DatabaseName $DatabaseName -key $key -SqlFilePath $SqlFile
+    Export-MysqlFile -Server localhost -DatabaseName $DatabaseName -key $key -SqlFilePath $SqlFile
     # Compress-Archive -Path $SqlFile -DestinationPath $SqlFileArchiveZip -Force
     # 打包站点目录
 
@@ -908,7 +908,8 @@ function Add-CFZoneDNSRecords
     }
 
 }
-function Add-CFZoneConfig{
+function Add-CFZoneConfig
+{
     <# 
     .SYNOPSIS
     利用cloudflare API配置cloudflare账户(包括ssl加密方式(灵活)等并且配置邮箱转发和安全选项启用)
@@ -2200,7 +2201,7 @@ function Get-BatchSiteBuilderLinesFromTable
 {
     [CmdletBinding()]
     param(
-        $Table="$Desktop/table.conf",
+        $Table = "$Desktop/table.conf",
         $Structure = "Domain,User",
         $SiteOwnersDict = $SiteOwnersDict,
         $SiteRoot = "wordpress"
@@ -3078,7 +3079,7 @@ function Deploy-WpSitesLocal
         $WpSitesTemplatesDir = $wp_sites,
         $MyWpSitesHomeDir = "$Desktop/my_wp_sites",
         # 数据库文件(sql文件所在目录)
-        $SqlFileDir="$WpSitesTemplatesDir/base_sqls",
+        $SqlFileDir = "$WpSitesTemplatesDir/base_sqls",
         # 可以配置环境变量来设置
         $CgiPort = "$env:CgiPort",
         # 一般不需要更改的参数
@@ -3098,12 +3099,14 @@ function Deploy-WpSitesLocal
     Write-Debug $DBKey
     Get-Content $table
     # 检查关键目录
-    if(!(Test-Path $WpSitesTemplatesDir)){
+    if(!(Test-Path $WpSitesTemplatesDir))
+    {
         Write-Error "Wordpress templates directory not found: $WpSitesTemplatesDir"
         return
     }
 
-    if(!(Test-Path $NginxConfDir)){
+    if(!(Test-Path $NginxConfDir))
+    {
         Write-Error "Nginx conf directory not found: $NginxConfDir"
         return 
     }
@@ -3178,7 +3181,10 @@ function Deploy-WpSitesLocal
         # Pause
         # Copy-Item -Path $path/* -Destination $destination  -Force 
         # Copy-Item -Path $path -Destination $MyWpSitesHomeDir -Force -Recurse -WhatIf:$WhatIfPreference 
-        Copy-Robocopy -Source $path -Destination $destination -Force -Recurse -LogFile "$env:TEMP/$(get-date -format 'yyyyMMdd')robocopy.log"
+        # 使用robocopy多线程拷贝
+        $robocopyLog = "$env:TEMP/$(Get-Date -Format 'yyyyMMdd')robocopy.log"
+        # Write-Verbose "Use robocopy to copy files from $path to $destination "
+        Copy-Robocopy -Source $path -Destination $destination -Force -Recurse -LogFile $robocopyLog 
         $template_temp = "$MyWpSitesHomeDir/$template"
         if(Test-Path $template_temp)
         {
@@ -3223,7 +3229,7 @@ function Deploy-WpSitesLocal
                 $nginx_target = "$NginxConfDir/${domain}_80.conf"
                 $tpl_content > $nginx_target #对于https协议,则为 _443.conf
                 Write-Debug "nginx 配置内容将被写入到文件:[ $nginx_target]" -Debug
-                Write-Verbose $tpl_content -Verbose
+                Write-Debug $tpl_content 
             }
             
             Write-Warning "please restart nginx service to apply the new nginx.conf file!🎈"
@@ -3255,7 +3261,7 @@ Get-WpSitePacks -SiteDirecotry $destination
         }
         # 导入数据库并执行基础的修改
         Import-MysqlFile -Server localhost -key $DBKey -SqlFilePath "$SqlFileDir/$template.sql" -DatabaseName $domain  
-        Update-WpUrl -server localhost -key $DBKey -NewDomain $domain -OldDomain $template -protocol http  
+        Update-WpUrl -Server localhost -key $DBKey -NewDomain $domain -OldDomain $template -protocol http  
         
         # 修改(追加当前域名映射新行)到hosts文件(127.0.0.1  $domain)
         Add-NewDomainToHosts -Domain $domain
