@@ -908,6 +908,16 @@ function Add-CFZoneDNSRecords
     }
 
 }
+function Add-CFZoneConfig{
+    <# 
+    .SYNOPSIS
+    利用cloudflare API配置cloudflare账户(包括ssl加密方式(灵活)等并且配置邮箱转发和安全选项启用)
+    #>
+    param(
+
+    )
+    python $pys/cf_config_api.py configure
+}
 function Add-CFZoneCheckActivation
 {
     <# 
@@ -3077,6 +3087,8 @@ function Deploy-WpSitesLocal
         $NginxConfDir = "$env:nginx_conf_dir", # 例如:C:\phpstudy_pro\Extensions\Nginx1.25.2\conf\vhosts
         $NginxConfTemplate = "$scripts/Config/nginx_template.conf",
         $NginxHtaccessTemplate = "$scripts/Config/nginx.htaccess",
+        # nginx.exe所在目录的完整路径(如果Path中的%nginx_home%没有被正确解析,可以指定完整路径)
+        # $NginxHome="",
         $SiteImageDirRelative = "wp-content/uploads/2025",
         $CsvDir = "$Desktop/data_output"
     )

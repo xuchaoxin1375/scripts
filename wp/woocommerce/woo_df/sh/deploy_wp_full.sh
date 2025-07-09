@@ -210,8 +210,8 @@ extract_archive() {
     mkdir -p "$target_dir"
 
     echo "🔍 正在解压文件: $archive_file -> $target_dir/..."
-    # 使用7z解压，支持各种格式
-    if ! 7z x -y "$archive_file" -o"$target_dir"; then
+    # 使用7z解压，支持各种格式(使用多线程解压64线程)
+    if ! 7z x -mmt64 -y "$archive_file" -o"$target_dir"; then
         echo "❌ 解压失败: $archive_file"
         return 1
     fi

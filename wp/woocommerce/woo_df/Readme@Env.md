@@ -36,11 +36,29 @@ setx nginx_conf_dir "C:\phpstudy_pro\Extensions\Nginx1.25.2\conf\vhosts"
 
 备份环境变量
 
+执行以下命令进行环境备份和导出
+
+例如,将环境变量导出为csv文件到桌面(方便查看)
+
+```powershell
+Backup-EnvsByPwsh $desktop
+
+```
+
+或者导出为注册表备份(更加方便恢复)
+
+```powershell
+Backup-EnvsRegistry -Dir $desktop 
+
+```
+
+
+
 ### mysql.exe
 
 找到mysql.exe所在目录,然后将此目录添加到path环境变量中
 
-下面的**powershell**命令行仅供参考
+下面的**powershell**命令行仅供参考(注意路径的修改,运行需要一点时间,请耐心等待)
 
 ```powershell
 
@@ -59,8 +77,12 @@ $newPath = [Environment]::GetEnvironmentVariable("PATH", [EnvironmentVariableTar
 ```powershell
 $nginx_home = "C:\phpstudy_pro\extensions\Nginx1.25.2"
 setx nginx_home $nginx_home
-Add-EnvVar -EnvVar Path -NewValue '%nginx_home%' 
-setx CgiPort 9000 #如果使用了小皮,并且xp.cn_cgi.exe接管进程的端口监听的端口建议配置一下
+#Add-EnvVar -EnvVar Path -NewValue '%nginx_home%' 
+Add-EnvVar -EnvVar Path -NewValue $nginx_home
+
+#如果使用了小皮,并且xp.cn_cgi.exe接管进程的端口监听的端口建议配置一下
+setx CgiPort 9000 # 可能是9001或者9002
+
 ```
 
 ### 端口查询
