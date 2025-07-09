@@ -3178,7 +3178,7 @@ function Deploy-WpSitesLocal
         # Pause
         # Copy-Item -Path $path/* -Destination $destination  -Force 
         # Copy-Item -Path $path -Destination $MyWpSitesHomeDir -Force -Recurse -WhatIf:$WhatIfPreference 
-        Copy-Robocopy -Source $path -Destination $destination -Force -Recurse 
+        Copy-Robocopy -Source $path -Destination $destination -Force -Recurse -LogFile "$env:TEMP/$(get-date -format 'yyyyMMdd')robocopy.log"
         $template_temp = "$MyWpSitesHomeDir/$template"
         if(Test-Path $template_temp)
         {
