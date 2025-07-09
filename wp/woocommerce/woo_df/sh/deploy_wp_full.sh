@@ -53,7 +53,12 @@ while [[ "$#" -gt 0 ]]; do
     esac
     shift
 done
-
+# 定义日志文件路径
+LOG_FILE="/srv/uploads/uploader/files/deploy_wp_$($USER_DIR)_$(date +%Y%m%d_%H%M%S).log"
+LOG_DIR=$(dirname "$LOG_FILE") #获取日志文件字符串的目录,然后创建这个目录(如果不存在的话)
+mkdir -p "$LOG_DIR"
+# 重定向标准输出和标准错误到日志文件
+exec > >(tee -a "$LOG_FILE") 2>&1
 # 使用默认值或用户提供的值
 PACK_ROOT=${PACK_ROOT:-$DEFAULT_PACK_ROOT}
 DB_USER=${DB_USER:-$DEFAULT_DB_USER}
@@ -145,39 +150,6 @@ import_sql_file() {
     fi
 }
 
-# === 函数：写入伪静态规则到指定文件 ===
-# write_rewrite_rules() {
-#     local domain="$1"
-#     local rewrite_file="/www/server/panel/vhost/rewrite/${domain}.conf"
-
-#     # 确保目录存在
-#     local rewrite_dir="$(dirname "$rewrite_file")"
-#     if [ ! -d "$rewrite_dir" ]; then
-#         echo "⚠️ 伪静态规则目录不存在，尝试创建: $rewrite_dir"
-#         mkdir -p "$rewrite_dir" || {
-#             echo "❌ 无法创建目录: $rewrite_dir"
-#             return 1
-#         }
-#     fi
-
-#     # 写入伪静态规则
-#     cat <<EOF >"$rewrite_file"
-# location /
-# {
-#   try_files \$uri \$uri/ /index.php?\$args;
-# }
-
-# rewrite /wp-admin\$ \$scheme://\$host\$uri/ permanent;
-# EOF
-
-#     if [ $? -eq 0 ]; then
-#         echo "✅ 伪静态规则已成功写入到 $rewrite_file"
-#         return 0
-#     else
-#         echo "❌ 写入伪静态规则失败，请检查权限或路径。"
-#         return 1
-#     fi
-# }
 # === 函数：设置伪静态规则文件(通过复制文件到指定位置) ===
 set_rewrte_rules_file() {
     # 将/www/wwwroot/RewriteRules.LF.conf 赋值到被部署网站的对于伪静态文件存路径:"/www/server/panel/vhost/rewrite/${domain}.conf"
@@ -215,43 +187,7 @@ extract_archive() {
         echo "❌ 解压失败: $archive_file"
         return 1
     fi
-    # 修改后的完整片段
-    # if [[ "$archive_file" == *.zip ]]; then
-    #     echo "🔍 正在解压 ZIP 文件: $archive_file"
-    #     # 统一使用7z解压
-    #     if ! 7z x -y "$archive_file" -o"$target_dir"; then
-    #         echo "❌ 解压 ZIP 文件失败: $archive_file"
-    #         return 1
-    #     fi
-    # elif [[ "$archive_file" == *.7z ]]; then
-    #     echo "🔍 正在解压 7z 文件: $archive_file"
-    #     # 添加 -bsp1 参数以显示进度
-    #     if ! 7z x -y -bsp1 "$archive_file" -o"$target_dir"; then
-    #         echo "❌ 解压 7z 文件失败: $archive_file"
-    #         return 1
-    #     fi
-    # elif [[ "$archive_file" == *.tar ]]; then
-    #     echo "🔍 正在解压 TAR 文件: $archive_file"
-    #     if ! tar xf "$archive_file" -C "$target_dir"; then
-    #         echo "❌ 解压 TAR 文件失败: $archive_file"
-    #         return 1
-    #     fi
-    # elif [[ "$archive_file" == *.tar.gz || "$archive_file" == *.tgz ]]; then
-    #     echo "🔍 正在解压 TAR.GZ 文件: $archive_file"
-    #     if ! tar zxf "$archive_file" -C "$target_dir"; then
-    #         echo "❌ 解压 TAR.GZ 文件失败: $archive_file"
-    #         return 1
-    #     fi
-    # elif [[ "$archive_file" == *.tar.bz2 ]]; then
-    #     echo "🔍 正在解压 TAR.BZ2 文件: $archive_file"
-    #     if ! tar jxf "$archive_file" -C "$target_dir"; then
-    #         echo "❌ 解压 TAR.BZ2 文件失败: $archive_file"
-    #         return 1
-    #     fi
-    # else
-    #     echo "❌ 不支持的压缩文件格式: $archive_file"
-    #     return 1
-    # fi
+  
 
     return 0
 }

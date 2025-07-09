@@ -375,7 +375,8 @@ function Get-NonEmptySubdirectories
 }
 
 
-function Remove-EmptyDirectories {
+function Remove-EmptyDirectories
+{
     <#
 .SYNOPSIS
     删除一个或多个空目录。
@@ -432,46 +433,59 @@ function Remove-EmptyDirectories {
         [switch]$Force
     )
 
-    begin {
+    begin
+    {
         $directories = @()
     }
 
-    process {
-        if ($PSCmdlet.ParameterSetName -eq 'Path') {
-            if (-not (Test-Path -Path $Path)) {
+    process
+    {
+        if ($PSCmdlet.ParameterSetName -eq 'Path')
+        {
+            if (-not (Test-Path -Path $Path))
+            {
                 Write-Error "路径不存在: $Path"
                 return
             }
 
             $getChildItemParams = @{
-                Path       = $Path
-                Directory  = $true
+                Path      = $Path
+                Directory = $true
             }
-            if ($Recurse) {
+            if ($Recurse)
+            {
                 $getChildItemParams['Recurse'] = $true
             }
 
             $directories += Get-ChildItem @getChildItemParams
         }
-        else {
-            foreach ($dir in $InputObject) {
+        else
+        {
+            foreach ($dir in $InputObject)
+            {
                 $directories += $dir
             }
         }
     }
 
-    end {
-        foreach ($dir in $directories) {
-            try {
+    end
+    {
+        foreach ($dir in $directories)
+        {
+            try
+            {
                 $items = Get-ChildItem -Path $dir.FullName -Force -ErrorAction Stop
-                if ($null -eq $items) {
-                    if ($PSCmdlet.ShouldProcess($dir.FullName, "删除空目录")) {
+                if ($null -eq $items)
+                {
+                    if ($PSCmdlet.ShouldProcess($dir.FullName, "删除空目录"))
+                    {
                         [System.IO.Directory]::Delete($dir.FullName, $false)
                         Write-Verbose "已删除空目录: $($dir.FullName)"
                     }
                 }
             }
-            catch {
+            catch
+            {
                 Write-Warning "无法访问目录 '$($dir.FullName)': $_"
             }
         }
@@ -1627,7 +1641,7 @@ function Prompt
         'short2' { PromptShort2 }
         'short' { PromptShort }
         'Default' { PromptDefault }
-        Default { PromptDefault }
+        default { PromptDefault }
     }
     return 'PS> '
     # 如果追求纯净,可以返回空字符串或者tab缩进
@@ -1758,7 +1772,7 @@ function Install-ScoopByLocalProxy
             Write-Host 'Installing scoop in proxy channel...'
             Get-ProxySettings
         }
-        Default {}
+        default {}
     }
     Invoke-Expression (New-Object net.webclient).downloadstring('https://get.scoop.sh')
     
@@ -2226,7 +2240,7 @@ function Test-PsEnvMode
         $Value = 1
     }
 
-    Return $PsEnvMode -ge $Value
+    return $PsEnvMode -ge $Value
 }
 function Confirm-UserContinue
 {
@@ -2415,14 +2429,29 @@ function Copy-Robocopy
     如果需要输出日志,使用LogFile参数指定日志文件
     .EXAMPLE
     #robocopy 原生用法常见语法用例举例
-    robocopy C:\source\folder\path\ D:\destination\folder\path\ /E /ZB /R:5 /W:5 /V /MT:32
+    #1:将复制过程的输出重定向到指定文件中(始终推荐使用LOG参数指定日志输出,经验表明,日志输出到屏幕会对性能有重大影响(可达10倍以上))
+    PS> Robocopy.exe .\7.us\ .\rb1 /E /B /MT:8  /LOG:07091121
+      日志文件: C:\sites\wp_sites\07091121
+
+    #2: 适用于从网络复制的场景,增加更多参数(重试,详细日志级别等)
+    robocopy C:\source\folder\path\ D:\destination\folder\path\ /E  /MT:32  /ZB /R:5 /W:5 /V /LOG:C:\log\robocopy.log
+    
+    参数	含义	推荐用途
+    /E	复制所有子目录，包括空目录	确保完整复制整个目录结构
+    /V	显示详细信息（包括跳过文件）	调试或审计用
+    /MT[:n]	多线程复制（默认 8，最大 128）	提升 I/O 性能
+    /ZB :: 使用可重新启动模式；如果拒绝访问，请使用备份模式。(效果是/Z /B)
+        使用可重启模式 + 强制权限访问	网络复制 + 克服锁定文件(需要管理员权限才能访问某些受保护的系统文件)
+    /R:n	失败重试次数（默认 1000000）	控制失败后的尝试次数
+    /W:n	重试等待时间（秒）	避免频繁失败冲击资源
+
     .ExAMPLE
     PS C:\Users\cxxu\Desktop> copy-Robocopy -Source .\dir4 -Destination .\dir1\ -Recurse
     The Destination directory name is different from the Source directory name! Create the Same Name Directory? {Continue? [y/n]} : y
     Executing: robocopy ".\dir4" ".\dir1\dir4"  /E /MT:16 /R:1 /W:1
 
 #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess = $true)]
     param (
         #第一批参数
         [Parameter(Mandatory = $true, Position = 0)]
@@ -2438,6 +2467,8 @@ function Copy-Robocopy
         # 控制失败时重试的次数和时间间隔(一般不用重试,基本上都是权限问题或者符号所指的连接无法访问或找不到)
         $Retry = 1,
         $Wait = 1,
+        [string]$LogFile = "",
+        $LogPreviewEncodings = 'ansi',
 
         # 第二批
         $ExcludeDirs = '',
@@ -2454,17 +2485,18 @@ function Copy-Robocopy
 
         [switch]$V,
 
-        [string]$LogFile,
-
-
         [string[]]$OtherArgumentList
     )
-   
+    if(!$LogFile)
+    {
+        Write-Warning "No LogFile specified, the output will be displayed on the console and the speed will be affected seriously!"
+        Write-Warning "Stop and restart with -LogFile <logFilePath> is recommended!(such as '-LogFile C:\log\robocopy.log')" -WarningAction Inquire
+    }
     # Construct the robocopy command
     # 确保source和destination都是目录
     if (Test-Path $Source -PathType Leaf)
     {
-        Throw 'Source must be a Directory!'
+        throw 'Source must be a Directory!'
     }if (Test-Path $Destination -PathType Leaf)
     {
         throw 'Destination must be a Directory!'
@@ -2488,7 +2520,9 @@ function Copy-Robocopy
     {
         # Write-Verbose "$($Source.name) -ne $($destination.name)"
 
-        $continue = Confirm-UserContinue -Description 'The Destination directory name is different from the Source directory name! Create the Same Name Directory?'
+        $msg = 'The Destination directory name is different from the Source directory name! Create the Same Name Directory?'
+        # $continue = Confirm-UserContinue -Description 
+        $continue = $PSCmdlet.ShouldProcess($Destination, $msg)
         if ($continue)
         {
             $Destination = Join-Path $Destination $SN
@@ -2555,13 +2589,20 @@ function Copy-Robocopy
     # 默认使用(每个参数前有一个空格分割)
     $robocopyCmd += " /MT:$Threads"
     #默认启用自动重连(断点续传)
-    $robocopyCmd += ' /z' 
+    $robocopyCmd += ' /ZB' 
     # 重试次数和间隔限制
     $robocopyCmd += " /R:$Retry /W:$Wait"
 
     # Invoke the robocopy command
-    Write-Host "Executing: $robocopyCmd"
+    Write-Warning "Executing: $robocopyCmd" -WarningAction Inquire
+    
     Invoke-Expression $robocopyCmd
+    Write-Verbose "Set LogPreviewEncodings to Preview log in specified way(utf-8,ansi,gbk,etc)"
+    # 预览日志总结
+    if($LogFile -and (Test-Path $LogFile))
+    {
+        Get-Content $logFile -Encoding $LogPreviewEncodings | Select-Object -Last 13
+    }
 }
 
 
