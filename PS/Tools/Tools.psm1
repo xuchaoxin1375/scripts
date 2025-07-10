@@ -96,7 +96,7 @@ function Get-WpSitePacks
         $DatabaseName = "",
         $DatabaseKey = $env:MySqlKey_LOCAL,
         $OutputDir = "$home/Desktop",
-        [ValidateSet('zip', '7z', 'tar')]$ArchiveMode = 'zip'
+        [ValidateSet('zip', '7z', 'tar')]$ArchiveMode = 'zip',
         $Threads7z = 16
 
     )
