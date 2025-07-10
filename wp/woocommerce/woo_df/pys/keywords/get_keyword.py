@@ -108,58 +108,6 @@ def merge_excel_files(table_path, add_source=True):
         )
 
 
-# def merge_excel_files(table_path, add_source=True):
-#     """
-#     合并指定目录下所有包含"域名"和"国家"列的.xlsx文件到一个DataFrame中。
-
-#     参数:
-#         directory (str): 包含Excel文件的目录路径。
-#         add_source (bool): 是否增加"文件来源"列，默认不增加。
-
-#     返回:
-#         pd.DataFrame: 合并后的DataFrame，包含"域名"和"国家"列。
-#     """
-#     all_data = []
-#     if os.path.isfile(table_path):
-#         if table_path.endswith(".xlsx"):
-#             data = get_data_from_table(table_path, add_source=add_source)
-#             all_data.extend(data)
-#     else:
-#         for file in os.listdir(table_path):
-#             if file.endswith(".xlsx"):
-#                 file_path = os.path.join(table_path, file)
-#                 data = get_data_from_table(file_path=file_path, add_source=add_source)
-#                 all_data.extend(data)
-
-#     if all_data:
-#         merged_df = pd.concat(all_data, ignore_index=True)
-#         merged_df.to_excel(MERGED_TABLES, index=False)
-#         return merged_df
-#     else:
-#         print("没有找到符合条件的表格文件。")
-#         return pd.DataFrame(
-#             columns=["域名", "国家"] + (["文件来源"] if add_source else [])
-#         )
-
-
-# def get_data_from_table(file_path, add_source):
-#     """从单个表格文件中获取数据"""
-#     all_data = []
-#     try:
-#         df = pd.read_excel(file_path)
-#         # 检查是否包含所需的列
-#         if "域名" in df.columns and "国家" in df.columns:
-#             current_df = df[["域名", "国家"]].copy()
-#             if add_source:
-#                 current_df["文件来源"] = file_path  # 添加来源文件名
-#             all_data.append(current_df)
-
-#         else:
-#             print(f"警告：文件 {file_path} 缺少必要的列，跳过该文件。")
-#     except Exception as e:
-#         print(f"读取文件 {file_path} 出错: {e}")
-#     return all_data
-
 
 def get_data_from_table(file_path, add_source=False):
     """从单个表格文件中获取数据，并处理不同命名的列"""
@@ -218,3 +166,55 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# def merge_excel_files(table_path, add_source=True):
+#     """
+#     合并指定目录下所有包含"域名"和"国家"列的.xlsx文件到一个DataFrame中。
+
+#     参数:
+#         directory (str): 包含Excel文件的目录路径。
+#         add_source (bool): 是否增加"文件来源"列，默认不增加。
+
+#     返回:
+#         pd.DataFrame: 合并后的DataFrame，包含"域名"和"国家"列。
+#     """
+#     all_data = []
+#     if os.path.isfile(table_path):
+#         if table_path.endswith(".xlsx"):
+#             data = get_data_from_table(table_path, add_source=add_source)
+#             all_data.extend(data)
+#     else:
+#         for file in os.listdir(table_path):
+#             if file.endswith(".xlsx"):
+#                 file_path = os.path.join(table_path, file)
+#                 data = get_data_from_table(file_path=file_path, add_source=add_source)
+#                 all_data.extend(data)
+
+#     if all_data:
+#         merged_df = pd.concat(all_data, ignore_index=True)
+#         merged_df.to_excel(MERGED_TABLES, index=False)
+#         return merged_df
+#     else:
+#         print("没有找到符合条件的表格文件。")
+#         return pd.DataFrame(
+#             columns=["域名", "国家"] + (["文件来源"] if add_source else [])
+#         )
+
+
+# def get_data_from_table(file_path, add_source):
+#     """从单个表格文件中获取数据"""
+#     all_data = []
+#     try:
+#         df = pd.read_excel(file_path)
+#         # 检查是否包含所需的列
+#         if "域名" in df.columns and "国家" in df.columns:
+#             current_df = df[["域名", "国家"]].copy()
+#             if add_source:
+#                 current_df["文件来源"] = file_path  # 添加来源文件名
+#             all_data.append(current_df)
+
+#         else:
+#             print(f"警告：文件 {file_path} 缺少必要的列，跳过该文件。")
+#     except Exception as e:
+#         print(f"读取文件 {file_path} 出错: {e}")
+#     return all_data

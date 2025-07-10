@@ -97,6 +97,7 @@ function Get-WpSitePacks
         $DatabaseKey = $env:MySqlKey_LOCAL,
         $OutputDir = "$home/Desktop",
         [ValidateSet('zip', '7z', 'tar')]$ArchiveMode = 'zip'
+        $Threads7z = 16
 
     )
 
@@ -141,8 +142,11 @@ function Get-WpSitePacks
     {
         if(Get-7zCommand)
         {
-            7z a -t7z $SqlFileArchive7z $SqlFile
-            7z a -t7z $SitePackArchive7z $SiteDirecotry
+            $cmd1 = "7z a -t7z -mmt${Threads7z} $SqlFileArchive7z $SqlFile"
+            $cmd2 = "7z a -t7z -mmt${Threads7z} $SitePackArchive7z $SiteDirecotry"
+            $cmd1 | Invoke-Expression
+            $cmd2 | Invoke-Expression
+            
             $SitePackArchive = $SitePackArchive7z
             $SqlFileArchive = $SqlFileArchive7z
         }
@@ -3184,7 +3188,7 @@ function Deploy-WpSitesLocal
         # 使用robocopy多线程拷贝
         $robocopyLog = "$env:TEMP/$(Get-Date -Format 'yyyyMMdd')robocopy.log"
         # Write-Verbose "Use robocopy to copy files from $path to $destination "
-        Copy-Robocopy -Source $path -Destination $destination -Force -Recurse -LogFile $robocopyLog 
+        Copy-Robocopy -Source $path -Destination $destination -Force -Recurse -LogFile $robocopyLog -Threads 32
         $template_temp = "$MyWpSitesHomeDir/$template"
         if(Test-Path $template_temp)
         {
@@ -3210,7 +3214,7 @@ function Deploy-WpSitesLocal
             # 显式复制wordpress的nginx.htaccess文件(包含伪静态配置),
             # 理论上会自动把模板站中的对应文件一同复制,但是个别情况复制的文件内容为空,
             # 且考虑到统一覆盖的便利性,这里将nginx.htaccess文件(内容)放到一个固定的位置,然后统一读取和复制此文件到目标位置
-            Copy-Item -Path $NginxHtaccessTemplate -Destination $destination/nginx.htaccess -Force 
+            Copy-Item -Path $NginxHtaccessTemplate -Destination $destination/nginx.htaccess -Force -Verbose 
             # 配置本地网站对应的nginx.conf文件(比如使用小皮的nginx环境)
             # $tpl = "$NginxConfDir/tpl.conf"
             $tpl = "$NginxConfTemplate"
