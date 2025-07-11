@@ -54,7 +54,7 @@ function Deploy-WpServer-DF1
     Write-Verbose "running command:  $tips to check screen tasks." -Verbose
     
 }
-function Get-ShopifyProductJsonUrl-Archived
+function Get-XXXShopifyProductJsonUrl-Archived
 {
     <#
 .SYNOPSIS
@@ -74,44 +74,6 @@ function Get-ShopifyProductJsonUrl-Archived
 .PARAMETER Url
     一个或多个Shopify网站的URL。此参数接受管道输入。可以是单个URL字符串,也可以是URL字符串数组。
 
-.EXAMPLE
-# 适当配置代理可以提高判断正确率(比如有些站禁止你所在地区的ip,从而返回403这类错误,影响到代码对站点的类型(是否为shopify)的判断)
-Set-Proxy 7897
-# 执行站点地图转换
-Get-ShopifyProductJsonUrl -UrlsFromFile 'abc.txt' -Destination "$desktop/localhost" -OutFiles 
-
-.EXAMPLE
-# 单挑链接处理
-    PS C:\> Get-ShopifyProductJsonUrl -Url 'https://pwrpux.com'
-
-    SourceSite   ProductJsonUrl
-    ----------   --------------
-    pwrpux.com   https://pwrpux.com/products/the-original.json
-    pwrpux.com   https://pwrpux.com/products/the-original-refill-3-pack.json
-    ...
-
-    描述: 处理单个URL。
-
-.EXAMPLE
-    PS C:\> 'https://pwrpux.com', 'https://ca.shop.gymshark.com' | Get-ShopifyProductJsonUrl
-
-    描述: 通过管道传递一个URL数组来批量处理两个网站。
-
-.EXAMPLE
-    PS C:\> Get-Content -Path .\sites.txt | Get-ShopifyProductJsonUrl -Verbose
-
-    描述: 从一个名为 sites.txt 的文件中读取URL列表 (每行一个URL),
-    然后通过管道将其传递给函数进行处理。-Verbose开关会显示详细的操作过程,便于调试。
-
-.EXAMPLE
-    PS C:\> 'https://pwrpux.com' | Get-ShopifyProductJsonUrl | Export-Csv -Path .\product_links.csv -NoTypeInformation
-
-    描述: 获取一个网站的所有产品JSON链接,并将结果导出为CSV文件。
-
-.NOTES
-    - 依赖于 Invoke-WebRequest, 因此需要有效的网络连接。
-    - 使用了try/catch块来处理网络请求失败或XML解析错误,增强了脚本的健壮性。
-    - 输出为PSCustomObject,方便进行排序、筛选(Where-Object)或导出(Export-Csv)等后续操作。
 #>
 
     [CmdletBinding()]
@@ -323,6 +285,46 @@ function Get-ShopifyProductJsonUrl
 .EXAMPLE
     # 强制使用 curl 引擎处理文件中的站点列表
     Get-ShopifyProductJsonUrl -UrlsFromFile 'sites.txt' -Engine Curl -Destination ".\ShopifyLinks" -OutFiles
+
+
+.EXAMPLE
+# 适当配置代理可以提高判断正确率(比如有些站禁止你所在地区的ip,从而返回403这类错误,影响到代码对站点的类型(是否为shopify)的判断)
+Set-Proxy 7897
+# 执行站点地图转换
+Get-ShopifyProductJsonUrl -UrlsFromFile 'abc.txt' -Destination "$desktop/localhost" -OutFiles 
+
+.EXAMPLE
+# 单挑链接处理
+    PS C:\> Get-ShopifyProductJsonUrl -Url 'https://pwrpux.com'
+
+    SourceSite   ProductJsonUrl
+    ----------   --------------
+    pwrpux.com   https://pwrpux.com/products/the-original.json
+    pwrpux.com   https://pwrpux.com/products/the-original-refill-3-pack.json
+    ...
+
+    描述: 处理单个URL。
+
+.EXAMPLE
+    PS C:\> 'https://pwrpux.com', 'https://ca.shop.gymshark.com' | Get-ShopifyProductJsonUrl
+
+    描述: 通过管道传递一个URL数组来批量处理两个网站。
+
+.EXAMPLE
+    PS C:\> Get-Content -Path .\sites.txt | Get-ShopifyProductJsonUrl -Verbose
+
+    描述: 从一个名为 sites.txt 的文件中读取URL列表 (每行一个URL),
+    然后通过管道将其传递给函数进行处理。-Verbose开关会显示详细的操作过程,便于调试。
+
+.EXAMPLE
+    PS C:\> 'https://pwrpux.com' | Get-ShopifyProductJsonUrl | Export-Csv -Path .\product_links.csv -NoTypeInformation
+
+    描述: 获取一个网站的所有产品JSON链接,并将结果导出为CSV文件。
+
+.NOTES
+    - 依赖于 Invoke-WebRequest, 因此需要有效的网络连接。
+    - 使用了try/catch块来处理网络请求失败或XML解析错误,增强了脚本的健壮性。
+    - 输出为PSCustomObject,方便进行排序、筛选(Where-Object)或导出(Export-Csv)等后续操作。
 
 .NOTES
     - 核心优势：对每个主机（域名）的成功连接方法进行缓存，避免对同一站点的重复试错。

@@ -141,3 +141,5 @@ function Deploy-GitForwindows
 
 #检查当前命令是否可用
 Get-Command Deploy-GitForwindows -Syntax
+
+Deploy-GitForwindows

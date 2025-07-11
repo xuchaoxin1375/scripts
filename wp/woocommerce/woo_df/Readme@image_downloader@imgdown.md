@@ -4,7 +4,7 @@
 
 ## abstract
 
-基于python的图片下载器,集成curl的下载方式(python有时候下不动,需要curl下,或者powershell调用invoke-webrequest下载)
+基于python的图片下载器,集成curl的下载方式(python有时候下不动,需要`curl`下,或者`powershell`调用`iwr`(`invoke-webrequest`的缩写)下载)
 
 
 
@@ -47,7 +47,7 @@ url的分隔符不能随便取,比如逗号是不可靠的,有的url中本身包
 
 ## 使用方法
 
-### 使用powershell下载
+### 使用powershell下载(deprecated)
 
 ```
 Get-WpImages [[-Path] <Object>] [[-Directory] <Object>] 
