@@ -66,9 +66,7 @@ function Get-XXXShopifyProductJsonUrl-Archived
     接着,它会访问每一个产品站点地图,并提取其中列出的所有产品URL。
     最后,为每个产品URL附加".json"后缀,并输出一个包含源站点和最终URL的自定义对象。
     此函数完全支持管道输入,可以轻松地进行批量处理。
-.NOTES
-常用参数组合:
--Destination "$desktop/localhost/$(get-date -format 'MMdd')" -OutFiles -Verbose
+
 
 
 .PARAMETER Url
@@ -277,6 +275,9 @@ function Get-ShopifyProductJsonUrl
 
 .PARAMETER OutFiles
     一个开关参数，用于将结果按站点保存到文本文件。
+.EXAMPLE
+    # 典型用法🎈
+    Get-ShopifyProductJsonUrl -Destination "$desktop/localhost/$(get-date -format 'MMdd')" -OutFiles -Verbose -UrlsFromFile 'C:\Users\Administrator\desktop\your_urls.txt' 
 
 .EXAMPLE
     # 智能处理一个大型网站，-Verbose会显示缓存命中和更新过程
@@ -321,6 +322,9 @@ Get-ShopifyProductJsonUrl -UrlsFromFile 'abc.txt' -Destination "$desktop/localho
 
     描述: 获取一个网站的所有产品JSON链接,并将结果导出为CSV文件。
 
+.NOTES
+    常用参数组合:
+    -Destination "$desktop/localhost/$(get-date -format 'MMdd')" -OutFiles -Verbose
 .NOTES
     - 依赖于 Invoke-WebRequest, 因此需要有效的网络连接。
     - 使用了try/catch块来处理网络请求失败或XML解析错误,增强了脚本的健壮性。
