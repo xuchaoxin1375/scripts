@@ -14,6 +14,8 @@
 
 为了查阅方便,将总结放到头部,第一次运行请查看[安装依赖]一节
 
+如果没有特殊提示,请始终在powershell(pwsh7)中运行命令,否则会失败
+
 ---
 
 ### 批量创建本地wp站点(nginx站点)
@@ -44,7 +46,18 @@ Deploy-WpSitesLocal
 
 ```powershell
 
-python $pys\woo_get_csv.py -fmt .webp --start-id  $start_id --end-id $end_id --image-mode NAME_FROM_SKU --language-country $language --output-dir $output_dir --sku-suffix $sku_suffix -f .jpg 
+python $pys\woo_get_csv.py -f .webp --start-id  $start_id --end-id $end_id  --language-country $language --output-dir $output_dir --sku-suffix $sku_suffix 
+```
+
+例如:
+
+- 导出采集器中任务id范围为`354-378`的所有采集到的数据,并且这批数据是同类产品(户外),比如都是**美国**(US)市场,导出的csv存放到指定目录:桌面的`outdoor_us_0711`目录中(后缀0711表示导出的日期是7月11号)
+
+- 并且,如果遇到图片链接后缀难以判断出图片类型时,将图片名称使用默认后缀扩展名`.webp`(即便图片实际上是其他编码格式也没关系,这不影响浏览器的显示)
+- 命令行如下(对上面的选项进行了缩写,比如`-s`和`--start-id`等价)
+
+```powershell
+python $pys\woo_get_csv.py -f .webp -s 354 -e 378  -C US  -o $desktop/outdoor_us_0711
 ```
 
 

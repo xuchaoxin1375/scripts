@@ -1,7 +1,7 @@
 """文件名处理模块
 用于对从url下载的文件,生成或补全文件名(扩展名)
 """
-
+#%%
 import hashlib
 import mimetypes
 import os
@@ -471,3 +471,5 @@ class FilenameHandler:
             mime = magic.from_buffer(chunk, mime=True)
             extension = FilenameHandler.get_file_extension_from_mime(mime=mime)
             return extension
+
+##

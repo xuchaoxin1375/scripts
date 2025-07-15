@@ -594,7 +594,7 @@ def count_lines_csv(csv_dir):
 
 def get_data_from_csv(args, lines, reader, url_field, name_field):
     """
-    将读取的csv文件中的图片名字和图片链接
+    读取的csv文件中的图片名字和图片链接
 
     Args:
         args: 命令行参数
@@ -607,6 +607,7 @@ def get_data_from_csv(args, lines, reader, url_field, name_field):
         debug("Processing line: %s", line)
         img_names = line.get(name_field, "")
         img_urls = line.get(url_field, "")
+        # 将处理结果保存到img_names和img_urls中
         get_data_line_name_url_from_csv(
             args=args, lines=lines, img_names=img_names, img_urls=img_urls
         )
@@ -615,6 +616,12 @@ def get_data_from_csv(args, lines, reader, url_field, name_field):
 def get_data_line_name_url_from_csv(args, lines, img_names, img_urls):
     """
     将读取的csv文件中的图片名字和图片链接,处理单行
+
+    Args:
+        args: 命令行参数
+        lines: 图片数据列表,存储解析出来的结果(name,url)
+        img_names: 图片名字
+        img_urls: 图片链接
     """
     # 为了兼容旧的表格规范,这里要计算一下img_urls字段取值
     # img_urls = img_urls or img_names
@@ -632,7 +639,8 @@ def get_data_line_name_url_from_csv(args, lines, img_names, img_urls):
         # img_names = img_names.split(",")
         # img_urls = img_urls.split(",")
 
-        img_names = COMMON_SEP_REGEXP.split(img_names)
+        # img_names = COMMON_SEP_REGEXP.split(img_names)
+        img_names = URL_SEP_REGEXP.split(img_names)
         img_urls = split_urls(img_urls)
     if args.name_url_pairs:
         for img_name, img_url in zip(img_names, img_urls):

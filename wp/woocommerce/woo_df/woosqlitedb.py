@@ -19,6 +19,7 @@ import time
 
 # from logging import debug, error, info, warning
 from pathlib import Path
+from tqdm import tqdm
 
 import pandas as pd
 
@@ -41,16 +42,28 @@ DEFAULT_TABLE = "Content"
 
 
 def set_log(name=__name__):
-    """配置模块级的日志对象"""
+    """配置模块级的日志对象
+    包括默认的日志格式和日志级别(WARNING)
+    默认返回console handler
+
+    Args:
+        name (str, optional): 日志名称. Defaults to __name__.
+
+    Returns:
+        logging.Logger: 日志对象
+    """
     lgr = logging.getLogger(name)
+    lgr.setLevel(logging.WARNING)
     # 作为一个模块,可以不显式设置Handler和Formatter
     formatter = logging.Formatter(
-        fmt="[%(levelname)s] %(name)s:%(funcName)s-%(message)s"  # %(asctime)s:%(lineno)d
+        fmt="[%(levelname)s] %(name)s:%(module)s.%(funcName)s-%(message)s"  # %(asctime)s:%(lineno)d
     )
     # fh=logging.FileHandler("woosqlitedb.log", mode="a", encoding="utf-8")
     ch = logging.StreamHandler()
-    ch.setLevel(logging.WARNING)
     ch.setFormatter(formatter)
+    # ch.setLevel(logging.WARNING)
+    # 作为一个模块,一般不设置日志文件handler
+    # fh=logging.FileHandler("woosqlitedb.log", mode="a", encoding="utf-8")
     lgr.addHandler(ch)
     return lgr
 
@@ -200,9 +213,9 @@ def process_image_csv(img_dir, csv_dir, backup_dir="backup_csvs"):
     if backup_dir:
         cwd = os.getcwd()
         backup_dir = os.path.abspath(os.path.join(cwd, backup_dir))  # 计算绝对路径
-        print("="*50)
+        print("=" * 50)
         print(f"csv文件备份到{backup_dir}🎈")
-        print("="*50)
+        print("=" * 50)
     total_after = count_lines_csv(csv_dir)
     print(f"处理后剩余{total_after}条数据,减少了{total_before-total_after}条数据")
 
@@ -398,10 +411,18 @@ class SQLiteDB:
     #     # self.data_rows += rows
     #     return rows
 
-    def get_data_init(self, db_path, fields="", count_rows_only=False):
+    def get_data_init(
+        self, db_path, fields="", strict_mode=False, count_rows_only=False
+    ):
         """从单个数据库获取初步处理过的数据
 
         此函数调用get_data_from_db()获取所有特定字段的行
+
+        Args:
+            db_path: sqlite文件路径
+            fields: 需要查询的字段列表或字符串
+            strict_mode:是否只根据产品名去重(如果是会移任何同名产品而不考虑图片链接,可能造成数据大大减少)
+            count_rows_only:是否只返回行数,不返回数据,用于快速统计采集的数据有多少
         """
         info("read data from %s...", db_path)
         rows = []
@@ -423,7 +444,9 @@ class SQLiteDB:
         else:
             # 初步数据处理操作
 
-            unique_rows = self.remove_duplicate_rows(db_path, rows)
+            unique_rows = self.remove_duplicate_rows(
+                db_path, rows, strict_mode=strict_mode
+            )
 
             # print(handler_dict)
         self.db_reports[db_path] = {
@@ -433,7 +456,9 @@ class SQLiteDB:
         return unique_rows
 
     def remove_duplicate_rows(self, db_path, rows, strict_mode=False):
-        """去重:产品名和图片同时重复的记录只保留一条(仅排除两者都重复的情况)
+        """产品去重:
+        默认情况下,产品名和图片同时重复的记录只保留一条(仅排除两者都重复的情况)
+        如果严格模式,则仅比较产品名,忽略图片的比较
 
         访问内存中的数据行
         handler_dict # 存储单元结构: {product_img: {product_name: count}}的结构
@@ -442,7 +467,78 @@ class SQLiteDB:
         Args:
             db_path: sqlite文件路径
             rows: 数据库行数据
-            strict_mode:是否只根据产品名去重,比较严格,可能会误伤许多产品数据(但是这种产品相似度度高,效果可能不好一般也不建议保留)
+            strict_mode:是否只根据产品名去重
+                为True时比较严格(不允许同名产品存在,哪怕图片链接不一样也要移除),可能会误伤许多产品数据(但是这种产品相似度度高,效果可能不好一般也不建议保留)
+                (如果为False,则只当产品名和图片链接同时重复才去重,会保留更多数据,但是对于跨站产品重复的情况无法良好处理)
+        """
+
+        unique_rows = []
+        dd = defaultdict(dict)  # 访问dd的某个尚不存在的属性(key)时,会返回一个dict
+
+        name_field = DBProductFields.NAME.value
+        img_field = DBProductFields.IMAGES.value
+
+        # 添加tqdm进度条，显示百分比
+        for i, row in tqdm(
+            enumerate(rows), total=len(rows), desc="去重进度", unit="行"
+        ):
+            product_name = row[name_field]
+            product_img = row[img_field]
+            # product_info = f"{{name:{product_name};sku:{product_sku}}}"
+            # names_dict = dd.get(product_img, {})
+            # names=dd[product_img]
+            product_img_dict = dd[product_name]
+
+            # 进度计数器
+            with cnt_lock:
+                self.progress += 1
+                debug("progress: {{%s}}", self.progress)
+                # print(f"progress: {self.progress}")
+                # 检查重复
+
+            # 获取处理过程的详细信息
+            # 数据库文件所在父目录的编号名称
+            dbp = Path(db_path)
+            db_id = dbp.parent.name
+            # 去重策略
+            if (strict_mode and product_img_dict) or (product_img in product_img_dict):
+                self.duplicate_warning(i, row, db_id)
+                continue
+            # if strict_mode and product_img_dict:
+            #     self.duplicate_warning(i, row, db_id)
+            #     continue
+            # if product_img in product_img_dict:
+            #     self.duplicate_warning(i, row, db_id)
+            #     continue
+            else:
+                # 当前产品尚未统计过,更新统计计数器
+                unique_rows.append(row)
+                info(
+                    "keep:product:[%s] of [%s db]: duplicated name, \
+    but different image, keep records [%s]",
+                    i,
+                    db_id,
+                    (row[name_field], row[img_field]),
+                )
+
+            # dd[product_img][product_name] = dd[product_img].get(product_name, 0) + 1
+            dd[product_name][product_img] = dd[product_name].get(product_img, 0) + 1
+        return unique_rows
+
+    def remove_duplicate_rows_bak(self, db_path, rows, strict_mode=False):
+        """产品去重:
+        默认情况下,产品名和图片同时重复的记录只保留一条(仅排除两者都重复的情况)
+        如果严格模式,则仅比较产品名,忽略图片的比较
+
+        访问内存中的数据行
+        handler_dict # 存储单元结构: {product_img: {product_name: count}}的结构
+        # 想要访问count,表达式为handler_dict[product_img][product_name]
+
+        Args:
+            db_path: sqlite文件路径
+            rows: 数据库行数据
+            strict_mode:是否只根据产品名去重
+                为True时比较严格(不允许同名产品存在,哪怕图片链接不一样也要移除),可能会误伤许多产品数据(但是这种产品相似度度高,效果可能不好一般也不建议保留)
                 (如果为False,则只当产品名和图片链接同时重复才去重,会保留更多数据,但是对于跨站产品重复的情况无法良好处理)
         """
         unique_rows = []
@@ -463,8 +559,8 @@ class SQLiteDB:
             # 进度计数器
             with cnt_lock:
                 self.progress += 1
-                # info("progress: {{%s}}", self.progress)
-                print(f"progress: {self.progress}")
+                debug("progress: {{%s}}", self.progress)
+                # print(f"progress: {self.progress}")
                 # 检查重复
 
             # 获取处理过程的详细信息
@@ -499,21 +595,21 @@ but different image, keep records [%s]",
     def duplicate_warning(self, i, row, db_id):
         """显示重复产品警告"""
         warning(
-            "Jump:product:[%s] of [%s db]: duplicated name & image, skip this record [%s]!",
+            "Jump:product:[%s] of [%s db]: duplicated product, skip this record [%s]!",
             i,
             db_id,
             (row[DBProductFields.NAME.value], row[DBProductFields.IMAGES.value]),
         )
 
     def get_data_from_db(self, db_path, fields):
-        """从单个数据库获取制定字段的全部数据
+        """从单个数据库获取指定字段的全部数据
 
         警告:此函数及其依赖未做有效的超大数据库优化,对于几十个GB的sqlite文件,处理可能卡顿甚至得不到有效响应
         对于超大数据库,暂时不能直接用此方法处理,需要额外的优化
         (通常需要采集环节检查是否可以删减不必要的字段,通常可以有效降低db文件大小,使其能够处理)
 
         :param db_path: sqlite文件路径
-        :param fields: 序号查询的字段列表或字符串
+        :param fields: 需要查询的字段列表或字符串
         :return: 结果列表
         """
         with sqlite3.connect(str(db_path)) as conn:
@@ -528,16 +624,22 @@ but different image, keep records [%s]",
         conn.close()
         return rows
 
-    def get_data_from_dbs(self, dbs, max_workers=8, fields="", count_rows_only=False):
+    def get_data_from_dbs(
+        self, dbs, max_workers=8, fields="", strict_mode=False, count_rows_only=False
+    ):
         """
         使用多线程从多个SQLite数据库并行读取数据
 
-        参数:
+        Args:
             dbs: SQLite文件路径列表
+            max_workers: 最大线程数
+            fields: 需要查询的字段列表或字符串
             query: SQL查询语句
             max_workers: 最大线程数
+            strict_mode: 是否仅比较产品名,同名产品将被移除只保留一个
+            count_rows_only: 是否只返回行数,不返回数据,用于快速统计采集的数据有多少
 
-        返回:
+        Returns:
             list: 合并后的数据列表
         """
 
@@ -552,6 +654,7 @@ but different image, keep records [%s]",
                         self.get_data_init,
                         db_file,
                         fields=fields,
+                        strict_mode=strict_mode,
                         count_rows_only=count_rows_only,
                     )
                     for db_file in batch
@@ -606,7 +709,7 @@ but different image, keep records [%s]",
             self.remove_sensitive_info_from_description(dbs=dbs)
         return self.db_rows
 
-    def number_sku(self, dbs, sku_suffix=None):
+    def number_sku(self, dbs, sku_suffix=None, strict_mode=False):
         """
         统一编号(number)数据库中产品型号
         经过必要数据筛选(去重和超低价过滤后),编制统一的产品价格
@@ -614,22 +717,30 @@ but different image, keep records [%s]",
         if sku_suffix is None:
             sku_suffix = self.language
 
-        rows = self.get_data(dbs=dbs)
+        rows = self.get_data(dbs=dbs, strict_mode=strict_mode)
         sku = DBProductFields.SKU.value
         for idx, _ in enumerate(iterable=rows):
             new_sku = f"SK{idx+1:07d}-{sku_suffix}"
             debug("SKU: %s-> %s", rows[idx].get(sku, ""), new_sku)
             rows[idx][sku] = new_sku
 
-    def get_data(self, dbs, get_dict_row=True, count_rows_only=False):
+    def get_data(
+        self, dbs, get_dict_row=True, strict_mode=False, count_rows_only=False
+    ):
         """从缓存或数据库中获取数据
         如果缓存中上不存在数据,则从数据库中读取数据并缓存到self.data_rows中
+
+        Args:
+            dbs: SQLite文件路径列表
+            get_dict_row: 是否返回字典形式的行,默认为True
+            strict_mode: 是否仅比价产品名,同名产品将被移除只保留一个
+            count_rows_only: 是否只返回行数,不返回数据,用于快速统计采集的数据有多少
 
         """
 
         if not self.db_rows:
             self.db_rows = self.get_data_from_dbs(
-                dbs=dbs, count_rows_only=count_rows_only
+                dbs=dbs, strict_mode=strict_mode, count_rows_only=count_rows_only
             )
         if get_dict_row:
             self.db_rows = [dict(db_row) for db_row in self.db_rows]
@@ -638,6 +749,7 @@ but different image, keep records [%s]",
             cnt = 0
             for v in reports.values():
                 cnt += v["total_raw"]
+            print(f"total rows: {cnt}")
             info("total rows: %s", cnt)
             info(str(self.db_reports))
             sys.exit(0)  # 只统计行数,不做数据处理,立即退出程序(0表示正常退出)
@@ -873,7 +985,7 @@ but different image, keep records [%s]",
         try:
             price = float(price)
         except ValueError:
-            msg=f"price [{price}] is not a float"
+            msg = f"price [{price}] is not a float"
             error(msg)
             return 0
         # 移除过低或过高价产品
@@ -1209,7 +1321,7 @@ but different image, keep records [%s]",
         # 替换原文件
         os.replace(temp_file, file_path)
         # 预览前5行数据
-        print(f"Preview of {file_path}:")
+        print(f"Preview of {file_path}(total lines:{len(pd.read_csv(file_path))}):")
         preview = pd.read_csv(file_path, nrows=5)[
             [
                 CSVProductFields.SKU.value,

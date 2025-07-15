@@ -100,10 +100,13 @@ USER_AGENTS = [
     "(KHTML, like Gecko) Chrome/41.0.2227.1 Safari/537.36",
 ]
 
-# 要注意`:`分号不要用,url的协议名比如https://就带有冒号,而逗号也有风险,部分链接包含逗号!
+# 要注意很多常用的普通分割符号都不要用于分割url,例如分号,逗号,甚至空格;
+# 比如url的协议名比如https://就带有冒号,而逗号也有风险,部分链接包含逗号!
+# 如果需要,可以考虑在调用此下载之前将separator进行配置
+# 或者,如果你已经使用逗号做url分割(虽然这不是推荐方式,而且有些url本身包含逗号就容易造成混淆),可以事先将`,`替换为`>`
 URL_SEPARATORS = [
-    r"\s+",
     ">",
+    # r"\s+",
     # ";",
     # ",",
 ]
@@ -504,15 +507,16 @@ class ImageDownloader:
             # 在释放锁之前,获取当前下载的进度(退出后用self.stats.task_index获取的进度往往是不正确的)
             current_index = self.stats.task_index
         logger.info(
-            "downloading (%d/%d): %s:%s ",
+            "⛏ downloading(%d/%d): [%s] -> (%s) ",
             current_index,
             self.stats.total,
-            filename,
             url,
+            filename,
         )
         # 如果传入的文件名没有扩展名,且在try_get_ext为True时,则[尝试]补全扩展名
         filename = filename.rstrip(".")
         filename = self.prepare_filename(url, filename, try_get_ext, default_ext)
+        # debug("filename: [%s]", filename)
         override = self.override
         # 配置下载中如果出现失败的重试循环(次数由retry_times指定)
         for attempt in range(self.retry_times + 1):
@@ -691,7 +695,9 @@ class ImageDownloader:
         self, urls: List[Any], output_dir: str = IMG_DIR, default_ext=""
     ) -> Dict[str, Any]:
         """
-        下载多张图片
+        仅根据给定的url下载图片
+
+        另一个函数download_with_names()可以指定自定义文件名下载图片
 
         Args:
             urls: 图片URL列表
@@ -709,7 +715,7 @@ class ImageDownloader:
         # 创建输出目录
         os.makedirs(output_dir, exist_ok=True)
 
-        # 使用线程池下载图片
+        # 使用线程池多线程下载图片
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=self.max_workers
         ) as executor:
@@ -746,6 +752,7 @@ class ImageDownloader:
     ) -> Dict[str, Any]:
         """
         使用自定义文件名下载多张图片
+        另一个函数：download_only_url()仅根据url下载图片
 
         Args:
             name_url_pairs: (文件名, URL)元组列表
@@ -773,7 +780,7 @@ class ImageDownloader:
                     self._download_single_image,
                     url=url,
                     output_dir=output_dir,
-                    filename=filename,
+                    filename=filename, #此参数取值来自对可迭代对象name_url_pairs解析出来的filename,url元组中的第一个分量
                     default_ext=default_ext,
                 ): (filename, url)
                 for filename, url in name_url_pairs

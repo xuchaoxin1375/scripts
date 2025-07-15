@@ -8,7 +8,8 @@ setx LOCOY_SPIDER_DATA C:/火车采集器V10.27/Data
 # %%
 import argparse  # 用于处理命令行参数
 import logging
-from logging import info
+
+# from logging import info
 import os
 from datetime import datetime
 from pathlib import Path
@@ -18,6 +19,7 @@ import sys
 from comutils import check_iterable  # , parse_dbs_from_str
 from wooenums import ImageMode, EnumItRc, LanguagesHotSale
 from woosqlitedb import SQLiteDB
+
 
 WOOSQLITEDB_LOGGER = "woosqlitedb"
 
@@ -118,12 +120,13 @@ def parse_args():
     parser.add_argument(
         "--log-level",
         type=str,
-        default="WARNING",
+        default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-        help="日志输出级别（默认：WARNING）",
+        help="日志输出级别(输出到日志文件中的级别);为了减少性能损耗,输出到控制台的级别为WARNING",
     )
     parser.add_argument(
         "-l",
+        "-lf",
         "--log-file",
         type=str,
         help="日志文件路径（默认：./log/log_YYYYMMDD_HHMMSS.log）",
@@ -144,7 +147,26 @@ def parse_args():
         default=10000,
         help="分割输出CSV文件的大小(default: 10000)",
     )
-    parser.add_argument("-k", "--sku-suffix", type=str, help="自定义SKU后缀")
+    parser.add_argument(
+        "-R",
+        "--strict-mode",
+        "--remove-duplicates-on-name",
+        action="store_true",
+        help="去除名称重复的产品(即便图片链接不同)",
+    )
+    parser.add_argument(
+        "-count",
+        "--count-rows-only",
+        action="store_true",
+        help="仅统计行数,不导出csv文件",
+    )
+
+    parser.add_argument(
+        "-k",
+        "--sku-suffix",
+        type=str,
+        help="自定义SKU后缀(可以通过指定LANGUAGE+NOW_STR)结构的后缀来强制让两批不同时间导出的csv数据中的sku时间部分相同,例如图片下好了,但是发现采集规则错误重新采集了一遍(注意数量是否不变),图片已经下好了,就可以用这个方法指定后缀匹配图片名)",
+    )
 
     return parser.parse_args()
 
@@ -161,7 +183,8 @@ HIGHEST_PRICE = 10000
 # 国家和语言🎈
 # LANGUAGE = LanguagesHotSale.US.name
 LANGUAGE = args.language_country or LanguagesHotSale.US.name
-# 获取当前的日期时间字符串
+
+# 获取当前的日期时间字符串(开放可以指定NOW_STR的参数,这样允许用户控制某个时间点导出的数据sku后缀为指定值,可以用来修复数据而不改变其他,比如现有的图片对应关系)
 NOW_STR = datetime.now().strftime("%Y%m%d-%H%M%S")
 LANGUAGE = LANGUAGE.upper()
 DEFAULT_SUFFIX = LANGUAGE + NOW_STR
@@ -229,7 +252,7 @@ for dir_num in rng:
 if len(dbs) == 0:
     raise ValueError("没有找到有效的db文件")
 for file in sorted(dbs):
-    info(file)
+    logging.info(file)
 
 ##
 
@@ -259,23 +282,64 @@ except Exception as e:
 
 
 def set_log():
-    """配置日志记录器"""
-    fh = logging.FileHandler(LOG_FILE, mode="w", encoding="utf-8")
+    """配置日志记录器
+
+    可以考虑到日志输出到控制台对程序性能的影响,可以考虑分开设置:
+    让输出到控制台的级别为WARNING,而输出到文件的级别为INFO或DEBUG
+
+    """
+
+    # 作为主调用脚本(应用程序),使用root级别的默认logger
+    logger = logging.getLogger()
+    # 定义handler
     ch = logging.StreamHandler()
-    level = args.log_level.upper()  # 使用用户提供的日志级别
-    logging.basicConfig(
-        level=level,
-        format="%(levelname)s - %(funcName)s - %(message)s",
-        handlers=[fh, ch],
+    fh = logging.FileHandler(LOG_FILE, mode="w", encoding="utf-8")
+    # 定义日志格式
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s -%(funcName)s- %(levelname)s - %(message)s"
     )
-    db_logger = logging.getLogger(WOOSQLITEDB_LOGGER)
-    db_logger.setLevel(level=level)
+    ch.setFormatter(formatter)
+    fh.setFormatter(formatter)
+    # 日志级别设置
+    # 解析用户提供的日志级别
+    level_str = args.log_level.upper()  # 用户指定的日志文件中的日志级别
+    level = getattr(logging, level_str, None)
+    if not isinstance(level, int):
+        raise ValueError(f"Invalid log level: {level_str}")
+
+    logger.setLevel(logging.DEBUG)
+    ch.setLevel(logging.WARNING)  # 输出控制台的级别设置为WARNING
+
+    fh.setLevel(level)
+
+    print("Handlers before adding:")
+    for h in logging.getLogger().handlers:
+        print(h, h.level)
+    # logger = logging.getLogger()
+    for h in logger.handlers[:]:  # 使用切片复制列表避免修改时迭代出错
+        logger.removeHandler(h)
+
+    logger.addHandler(ch)
+    logger.addHandler(fh)
+    # logging.basicConfig(
+    #     level=level,
+    #     format="%(levelname)s - %(funcName)s - %(message)s",
+    #     handlers=[fh, ch],
+    # )
+    # 对调用的woosqlitedb的日志级别进行设置(通常保持默认级别(WARNING即可))
+    # db_logger = logging.getLogger(WOOSQLITEDB_LOGGER)
+    # db_logger.setLevel(level=level)
+    # db_logger.addFilter()
+
+    return logger
 
 
 # 使用示例
 if __name__ == "__main__":
-    set_log()
-    print(f"开始执行(日志文件位于{LOG_FILE},绝对路径为:{os.path.abspath(LOG_FILE)})...")
+    lgr = set_log()
+    lgr.info(
+        f"开始执行(日志文件位于{LOG_FILE},绝对路径为:{os.path.abspath(LOG_FILE)})..."
+    )
     ## 1. 实例化SQLiteDB对象
     db = SQLiteDB(
         language=LANGUAGE,
@@ -284,7 +348,9 @@ if __name__ == "__main__":
         highest_price=HIGHEST_PRICE,
     )
     ## 2. 读取数据库数据(根据count_rows_only参数,可以只统计行数,而不做初步的数据处理;正式使用是要改成False!)🎈
-    db.get_data(dbs=dbs, count_rows_only=False)
+    db.get_data(
+        dbs=dbs, strict_mode=args.strict_mode, count_rows_only=args.count_rows_only
+    )
 
     ## 3. 对sku进行第一次编号(可选)
     # db.number_sku(dbs=dbs, sku_suffix=LANGUAGE)
@@ -330,7 +396,7 @@ if __name__ == "__main__":
                 print("输入非法,请重新输入")
         db.empty_invalid_attribute_subset(dbs=dbs, remove=False)
     else:
-        info("未发现不规范的产品属性值,默认继续执行...")
+        logging.info("未发现不规范的产品属性值,默认继续执行...")
     ## 6.统计并处理产品分类(包括合并小分类,分配热销类);可以用data wragger查看cats统计结果
     cats = db.get_category_statistic(hot_class=LanguagesHotSaleX)  # type: ignore
     ## 7.更新产品数据(描述等)🎈
@@ -343,3 +409,5 @@ if __name__ == "__main__":
         img_mode=IMAGE_MODE,
         default_extension=DEFAULT_IMAGE_EXTENSION,
     )
+
+##

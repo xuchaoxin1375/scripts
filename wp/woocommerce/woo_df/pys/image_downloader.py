@@ -236,7 +236,7 @@ def main():
 
     # 设置日志级别
     if args.verbose:
-        logger.setLevel(logging.INFO)
+        logger.setLevel(logging.DEBUG)
     # 打印当前的日志级别:
     print(f"当前日志级别: {logging.getLevelName(logger.level)}")
     debug("当前日志级别: %s", logging.getLevelName(logger.level))
@@ -250,16 +250,19 @@ def main():
         files = args.file_input
         # files = split_multi(files)
         for file in files:
+            # 解析所有需要被处理的文件,将结果保存在lines变量中
             parse_image_sources(
                 file=file, args=args, lines=lines, selected_ids=selected_csv_field_ids
             )
+            
         if lines:
             print(f"读取行数: {len(lines)}")
+          
         else:
             error("读取行数为0,请检查参数")
             exit(1)
     elif args.dir_input:
-        # 处理目录输入(遍历目录下的文件,转换到文件处理的情况)
+        # 处理目录输入(遍历目录下的文件,转换到文件处理的情况)🎈
         dirs = args.dir_input
         # dirs = split_multi(dirs)
         if not dirs:
@@ -279,13 +282,15 @@ def main():
                         debug("忽略非csv或txt文件: %s", file)
                         continue
                     file = os.path.abspath(os.path.join(d, file))
+                    # 解析所有需要被处理文件,将结果保存在lines变量中🎈
                     parse_image_sources(
                         file=file,
                         args=args,
                         lines=lines,
                         selected_ids=selected_csv_field_ids,
                     )
-    debug(f"use shutil:{args.use_shutil}🎈")
+                    # print(lines,"🎈🎈")
+    debug(f"use shutil:{args.use_shutil}")
     # 创建下载器
     downloader = ImageDownloader(
         max_workers=args.workers,
@@ -305,6 +310,7 @@ def main():
     if not os.path.exists(args.output_dir):
         warning("指定的输出目录[%s]不存在(将尝试自动创建)", args.output_dir)
     elif not args.override:
+        # 查询指定目录下的已有图片以及去重处理
         # 如果指定的存放目录存在
         img_names_existed = os.listdir(args.output_dir)
         # 默认情况下,对比重复下载时,我们只关心文件名,不关心后缀
@@ -316,9 +322,9 @@ def main():
             lines = [
                 (name, _)
                 for name, _ in lines
-                if fh.get_filebasename_from_url_or_path(name) not in img_names_existed
+                if fh.get_filebasename_from_url_or_path(name) not in img_names_existed #这里进行查重,仅比较图片名字(不包括后缀,使用对应的函数截取图片基名)
             ]
-            print(lines)
+            # print(lines,"🎈🎈")
             # return
         else:
             # 从URL列表中解析出名字

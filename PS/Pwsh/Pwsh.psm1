@@ -2505,9 +2505,14 @@ function Copy-Robocopy
     }
 
     Write-Host 'checking directory name...'
-    #向用户展示参数设置
+    #向用户展示参数设置🎈
     # $PSBoundParameters  
-    # 这里要求$source和$destination在函数参数定义出不可以定为String类型,会导致Get-PsIOItemInfo返回值无法正确赋值
+    # 注意,$source和$destination在函数参数定义时不可以定为String类型,会导致Get-PsIOItemInfo返回值无法正确赋值
+    Write-Debug "Source: $Source"
+    Write-Debug "Destination: $Destination"
+    if($Files){
+        Write-Debug "Files: $Files"
+    }
     # $Source = Get-PsIOItemInfo $Source
     # $destination = Get-PsIOItemInfo $Destination
 
