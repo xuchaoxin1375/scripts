@@ -20,6 +20,10 @@
 
 ### 批量创建本地wp站点(nginx站点)
 
+批量创建本地站点只需要一个命令,关键是配置文件
+
+
+
 > 可以在vscode中安装个powershell插件,有高亮显示
 
 ```powershell
@@ -28,13 +32,97 @@ Deploy-WpSitesLocal
 
 ```
 
-运行完毕后,桌面(默认路径)会生成一份`script...ps1`文件(同一天生成的本地站点配套的命令行会写入到同一个文件中,默认放在桌面的`my_wp_sites`目录中)
+运行完毕后,桌面(默认路径)会生成一份`script...ps1`文件(同一天生成的本地站点配套的命令行会写入到同一个文件中,默认放在桌面的配置文件`my_wp_sites`目录中),同时还会生成一个目录`data_ouput`
 
-> 建议使用vscode打开,然后**逐条执行**其中的命令即可(分步执行而不建议一口气执行)
+#### 配置文件my_table.conf
 
-### 配置文件
+每个本地站点通过域名分割,和创建的table(默认查找桌面的文件`my_table.conf`)文件中的域名是对应的
 
-每个本地站点通过域名分割,和创建的table(默认查找桌面的文件`my_table.conf`)文件中的域名是对应的,这些命令行形如下一节介绍的格式
+my_table.conf中的内容示例:
+
+```
+https://lebenlshop.com	采集员1	2.de
+https://wundeshop.com	采集员1	7.de
+```
+
+#### 输出目录my_wp_sites
+
+执行完`deploy-wpsitelocal`命令后,最重要的本地模板站根目录集中存放在`my_wp_sites`目录下(默认位于桌面)
+
+```powershell
+#⚡️[Administrator@CXXUDESK][~\Desktop\my_wp_sites][23:38:50][UP:17.41Days]
+PS> tree_lsd -depth_opt 1
+ .
+├── ...
+├──  lebenlshop.com
+└──  wundeshop.com
+├──  scripts_....ps1
+```
+
+这里还附带一个脚本,同一天执行的批量本地建站生成的配套脚本会存放到同一份`scripts_....ps1`中
+
+```powershell
+# =========[http://lebenlshop.com]:[C:\Users\Administrator\Desktop/my_wp_sites/lebenlshop.com]=============
+python C:\repos\scripts\wp\woocommerce\woo_df\pys\image_downloader.py -c -n -R auto -k  -rs 1000 800  --output-dir C:\Users\Administrator\Desktop/my_wp_sites/lebenlshop.com/wp-content/uploads/2025 --dir-input C:\Users\Administrator\Desktop/data_output/lebenlshop.com -w 5 -U curl
+
+python C:\repos\scripts\wp\woocommerce\woo_df\pys\woo_uploader_db.py --update-slugs  --csv-path C:\Users\Administrator\Desktop/data_output/lebenlshop.com --img-dir C:\Users\Administrator\Desktop/my_wp_sites/lebenlshop.com/wp-content/uploads/2025 --db-name lebenlshop.com 
+
+Get-WpSitePacks -SiteDirecotry C:\Users\Administrator\Desktop/my_wp_sites/lebenlshop.com
+
+
+# =========[http://wundeshop.com]:[C:\Users\Administrator\Desktop/my_wp_sites/wundeshop.com]=============
+....
+
+```
+
+
+
+#### 输出目录data_output
+
+此外,还会生成对应的`data_output`,内部含有`my_table.conf`中配置的域名文件夹,将导出的csv文件分配(移动)到对应的目录中(每个域名文件夹中存放6份~7份csv)
+
+这个步骤需要手动分配!
+
+例如
+
+```powershell
+
+#⚡️[Administrator@CXXUDESK][~\Desktop\data_output][23:30:54][UP:17.4Days]
+PS> tree_lsd
+ .
+├──  lebenlshop.com
+│   ├──  p1+.csv
+│   ├──  p1.csv
+│   ├──  p2+.csv
+│   ├──  p2.csv
+│   ├──  p3+.csv
+│   ├──  p3.csv
+│   └──  p4.csv
+└──  wundeshop.com
+    ├──  p4+.csv
+    ├──  p5+.csv
+    ├──  p5.csv
+    ├──  p6+.csv
+    ├──  p6.csv
+    ├──  p7.csv
+    └──  p8.csv
+```
+
+### 清理本地已经上线站点🎈
+
+网站上传并解压上线后,就可以删除本地网站相关的目录和配置
+
+配套的命令为
+
+```powershell
+Remove-WpSitesLocal 
+```
+
+> 注意,网站上线后,数据库,根目录,系统hosts,服务器软件配置(nginx中的vhosts中的conf文件需要对应删除以保持系统环境的干净)
+>
+> 尤其是系统hosts文件,如果上线后还留有本地站点hosts配置,可能会因为缓存影响到网站的部分元素加载异常,比如首页广告图不显示等问题,上述命令将自动清理这些残留;
+>
+> 清理过程需要一定的时间(大量图片小文件删除需要时间),个别环节需要用户交互确认删除
 
 ### 一批数据导出CSV文件的命令
 
@@ -224,9 +312,9 @@ d----            2025/5/7    15:11                05
 ERROR:imgcompresser:处理图片失败: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\Administrator\\Desktop/my_wp_sites/summitandsea24.com/wp-content/uploads/2025\\HHA_Nytryx_Pro_X119_1.tmp.webp' -> 'C:\\Users\\Administrator\\Desktop/my_wp_sites/summitandsea24.com/wp-content/uploads/2025\\HHA_Nytryx_Pro_X119_1.webp'
 ```
 
-#### curl 22
+#### curl 错误
 
-错误码22可能对应多种可能,具体的http错误需要看`curl: (22) ...error:`,常见的是404或者403,前者说明图片过期了,后者需要注意,可能是ip被静止,可以考虑更换节点,降低线程数(比如2线程)
+常见错误码22可能对应多种可能,具体的http错误需要看`curl: (22) ...error:`,常见的是404或者403,前者说明图片过期了,后者需要注意,可能是ip被静止,可以考虑更换节点,降低线程数(比如2线程)
 
 ```bash
 curl: (22) The requested URL returned error: 404
@@ -235,7 +323,7 @@ curl: (22) The requested URL returned error: 404
 ERROR:imgdown:curl 执行失败，错误码: 22
 ```
 
-
+也有28这类错误
 
 ### 导入产品数据
 

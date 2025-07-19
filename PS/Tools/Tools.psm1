@@ -3003,6 +3003,87 @@ function Get-DomainUserDictFromTableLite
         } 
     }
 }
+function Remove-LineInFile
+{
+    <# 
+    .SYNOPSIS
+    将指定文件中包含特定模式的行删除
+    .DESCRIPTION
+    例如,可以删除hosts文件中包含特定域名的行
+    .PARAMETER Path
+    文件路径,例如系统hosts文件
+    .PARAMETER Pattern
+    要删除的行的模式
+    # .PARAMETER Inplace
+    # 是否直接修改文件,默认为false,即只打印删除的行
+    .PARAMETER Encoding
+    文件编码,默认为utf8
+
+    .EXAMPLE
+    PS> Remove-LineInFile -Path $hosts -Pattern whh123.com -Debug
+    开始处理文件: C:\WINDOWS\System32\drivers\etc\hosts
+    DEBUG: Removed line: 127.0.0.1  whh123.com
+    WARNING: modify file: C:\WINDOWS\System32\drivers\etc\hosts,using -Inplace parameter (encoding: utf8)
+
+    Confirm
+    Continue with this operation?
+    [Y] Yes  [A] Yes to All  [H] Halt Command  [S] Suspend  [?] Help (default is "Y"):
+    
+    #>
+    [CmdletBinding()]
+    param (
+        $Path,
+        [parameter(Mandatory = $true, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
+        $Pattern,
+        [switch]$Inplace,
+        $Encoding = 'utf8'
+    )
+    begin
+    {
+        if (!(Test-Path $Path))
+        {
+            Write-Error "文件不存在: $Path"
+            return
+        }
+        else
+        {
+            Write-Host "开始处理文件: $Path"
+            $lines = Get-Content $Path
+            # 转换为可变列表
+            $lineList = [System.Collections.Generic.List[string]]$lines
+        }
+    }
+    process
+    {
+
+        foreach ($line in $lines)
+        {
+            if ($line -match $Pattern)
+            {
+                $lineList.Remove($line) > $null
+                Write-Debug "Removed line: $line"
+            }
+        }
+    }
+    end
+    {
+    
+        # 将结果写回文件中
+        # if($Inplace)
+        # {
+        # }
+
+        Write-Warning "modify file: ${Path},using -Inplace parameter (encoding: $Encoding)" -WarningAction Inquire
+
+        $lineList | Out-File "${Path}" -Encoding $Encoding
+
+        # else
+        # {
+        #     Write-Debug "To modify the $Path file, please use the -Inplace parameter."
+        # }
+    }
+    
+}
 function Remove-WpSitesLocal
 {
     <# 
@@ -3041,9 +3122,11 @@ function Remove-WpSitesLocal
     $jobs | Wait-Job
     $jobs | Receive-Job
     $jobs | Remove-Job
-    # 尝试删除数据库
+    # 尝试删除数据库及其相关配置
     Remove-MysqlIsolatedDB -SitesDir $SitesDir
     Approve-NginxValidVhostsConf -NginxConfDir $NginxConfDir
+    $domains | Remove-LineInFile -Path $hosts -Debug
+    
 }
 
 
@@ -3103,9 +3186,12 @@ function Get-FileFromUrl
     {
         # 1. 关键修复：强制使用TLS 1.2/1.3协议，解决 "WebClient request" 错误
         # 这是解决您问题的核心代码。
-        try {
+        try
+        {
             [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12, [System.Net.SecurityProtocolType]::Tls13
-        } catch {
+        }
+        catch
+        {
             Write-Warning "无法设置 TLS 1.3，继续使用 TLS 1.2。这在旧版 .NET Framework 中是正常的。"
             [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
         }
@@ -3122,7 +3208,7 @@ function Get-FileFromUrl
         $urlList = switch ($PSCmdlet.ParameterSetName)
         {
             'FileInput' { Get-Content -Path $InputFile }
-            'UrlInput'  { $Url }
+            'UrlInput' { $Url }
         }
         # 过滤掉空行
         $urlList = $urlList | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
@@ -3190,7 +3276,8 @@ function Get-FileFromUrl
                         # 输出具体的HTTP错误码，如 404 Not Found, 403 Forbidden
                         $errorMessage += " - 错误原因: HTTP $statusCode ($statusDescription)"
                     }
-                    else {
+                    else
+                    {
                         # 网络层面的问题，如DNS解析失败
                         $errorMessage += " - 错误原因: $($_.Exception.Message)"
                     }
