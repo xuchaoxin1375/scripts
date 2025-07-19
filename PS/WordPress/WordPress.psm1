@@ -339,7 +339,7 @@ Get-ShopifyProductJsonUrl -UrlsFromFile 'abc.txt' -Destination "$desktop/localho
     [CmdletBinding()]
     param (
         [Parameter(ValueFromPipeline = $true, Position = 0)]
-        [string[]]$Url,
+        [Object[]]$Url,
 
         [alias('Table', 'Path', 'File')]
         [string]$UrlsFromFile,
@@ -496,6 +496,7 @@ Get-ShopifyProductJsonUrl -UrlsFromFile 'abc.txt' -Destination "$desktop/localho
             throw "经过所有引擎和重试后，无法获取'$Uri'。"
         }
         
+        # url字符串的列表
         $allUrls = [System.Collections.Generic.List[string]]::new()
         if ($Url) { $allUrls.AddRange($Url) }
         if ($UrlsFromFile -and (Test-Path $UrlsFromFile))

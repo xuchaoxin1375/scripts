@@ -3,6 +3,7 @@
 
 """
 多线程图片下载器
+Todo: 允许忽略证书过期的下载
 
 这个模块提供了一个高效的多线程图片下载器，可以同时下载多张图片，
 支持各种图片链接格式，并提供下载统计和日志功能。
@@ -182,6 +183,7 @@ def download_by_curl(
 ) -> bool:
     """
         使用系统 curl 命令下载图片（或其他文件）。
+        (使用-k来强制忽略证书验证https证书过期)
 
         Args:
             url (str): 要下载的文件 URL。
@@ -192,6 +194,7 @@ def download_by_curl(
             silent (bool): 是否静默执行（不输出进度信息）。
             use_remote_name (bool): 是否使用远程文件名保存（即添加 -O 参数）。
             extra_args (Optional[list]): 其他要传给 curl 的额外参数列表。
+            
 
         Returns:
             bool: 下载成功返回 True，失败返回 False。
@@ -236,7 +239,8 @@ def download_by_curl(
         # output_file = os.path.basename(url)
 
     # 构建 curl 命令参数(基础参数,建议移动到函数默认参数中)
-    cmd = ["curl", "-f", "--retry", "3", "--retry-delay", "5"]
+
+    cmd = ["curl", "-f", "--retry", "3", "--retry-delay", "5","-k"]
 
     # 添加 User-Agent
     cmd += ["-A", user_agent]

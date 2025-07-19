@@ -243,3 +243,14 @@ ERROR:imgdown:curl 执行失败，错误码: 22
 python $pys\woo_uploader_db.py -c $csv_path -i $img_dir 
 ```
 
+## 其他有用的命令行
+
+### 删除目录中的非webp文件🎈
+
+powershell中在图片目录下执行:
+
+```powershell
+ls -File |?{$_ -notlike '*.webp'}|rm -Verbose
+
+```
+

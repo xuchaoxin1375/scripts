@@ -2689,7 +2689,7 @@ function Export-MysqlFile
         $key = $env:MySqlKey_LOCAL,
         [switch]$Force,
         # 默认执行备份,使用此选项禁用备份
-        [switch]$NoBackup
+        [switch]$Backup
 
     )
     begin
@@ -2701,10 +2701,10 @@ function Export-MysqlFile
     {
         if(Test-Path $SqlFilePath)
         {
-            Write-Warning "File already exist!"
-            if(!$NoBackup)
+            Write-Warning "File already exist!New files will override the old ones!"
+            if($Backup)
             {
-                # 默认执行备份
+                # 执行备份
                 Write-Verbose "try to rename the old file!(as .bak);" -Verbose
 
                 Rename-Item $SqlFilePath "$SqlFilePath.bak.$(Get-Date -Format 'yyyyMMdd-hhmmss')" -Force:$Force -Verbose
@@ -3022,6 +3022,10 @@ function Remove-WpSitesLocal
         $NginxConfDir = "$env:nginx_conf_dir"
     )
     $domains = Get-DomainUserDictFromTableLite -Table $Table | Select-Object -ExpandProperty domain
+    # Write-Host $domains
+    $msg = $domains | Format-DoubleColumn | Out-String
+    Write-Verbose $msg -Verbose
+    Write-Warning "准备并行删除相关本地站点,配套配置和数据库" -WarningAction Inquire
     # 多线程删除网站根目录
     $jobs = @()
     foreach ($domain in $domains)
@@ -3040,6 +3044,171 @@ function Remove-WpSitesLocal
     # 尝试删除数据库
     Remove-MysqlIsolatedDB -SitesDir $SitesDir
     Approve-NginxValidVhostsConf -NginxConfDir $NginxConfDir
+}
+
+
+function Get-FileFromUrl
+{
+    <#
+    .SYNOPSIS
+    高效地批量下载指定的URL资源。
+    .DESCRIPTION
+    使用 PowerShell 7+ 的 ForEach-Object -Parallel 特性，实现轻量级、高效率的并发下载。
+    自动处理现代网站所需的TLS 1.2/1.3安全协议，并提供更详细的错误报告。
+    .PARAMETER Url
+    通过管道接收一个或多个URL。
+    .PARAMETER InputFile
+    指定包含URL列表的文本文件路径（每行一个URL）。此参数不能与通过管道传递的Url同时使用。
+    .PARAMETER OutputDirectory
+    指定资源下载的目标目录。默认为当前用户的桌面。
+    .PARAMETER Force
+    如果目标文件已存在，则强制覆盖。默认不覆盖。
+    .PARAMETER UserAgent
+    自定义HTTP请求的User-Agent。默认为一个通用的浏览器标识，以避免被服务器屏蔽。
+    .PARAMETER ThrottleLimit
+    指定最大并发线程数。默认为5。
+    .EXAMPLE
+    # 示例 1: 从文件读取URL列表并下载
+    PS> Get-FileFromUrl -InputFile "C:\temp\urls.txt" -OutputDirectory "C:\Downloads"
+
+    # 示例 2: 通过管道传递URL
+    PS> "https://example.com/file1.zip", "https://example.com/file2.zip" | Get-FileFromUrl
+
+    # 示例 3: 从文件读取，并设置并发数为10，同时强制覆盖已存在的文件
+    PS> Get-Content "urls.txt" | Get-FileFromUrl -ThrottleLimit 10 -Force
+    #>
+    [CmdletBinding(DefaultParameterSetName = 'UrlInput')]
+    param
+    (
+        [Parameter(Mandatory = $true, ValueFromPipeline = $true, ParameterSetName = 'UrlInput')]
+        [string[]]$Url,
+
+        [Parameter(Mandatory = $true, ParameterSetName = 'FileInput')]
+        [string]$InputFile,
+
+        [Parameter()]
+        [string]$OutputDirectory = "$env:USERPROFILE\Desktop",
+
+        [Parameter()]
+        [switch]$Force,
+
+        [Parameter()]
+        [string]$UserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
+
+        [Parameter()]
+        [int]$ThrottleLimit = 5
+    )
+
+    begin
+    {
+        # 1. 关键修复：强制使用TLS 1.2/1.3协议，解决 "WebClient request" 错误
+        # 这是解决您问题的核心代码。
+        try {
+            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12, [System.Net.SecurityProtocolType]::Tls13
+        } catch {
+            Write-Warning "无法设置 TLS 1.3，继续使用 TLS 1.2。这在旧版 .NET Framework 中是正常的。"
+            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+        }
+
+
+        # 2. 优化：如果输出目录不存在，则创建它
+        if (-not (Test-Path -Path $OutputDirectory))
+        {
+            Write-Verbose "正在创建输出目录: $OutputDirectory"
+            New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
+        }
+
+        # 3. 优化：整合URL输入源
+        $urlList = switch ($PSCmdlet.ParameterSetName)
+        {
+            'FileInput' { Get-Content -Path $InputFile }
+            'UrlInput'  { $Url }
+        }
+        # 过滤掉空行
+        $urlList = $urlList | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+
+        Write-Host "准备下载 $($urlList.Count) 个文件，最大并发数: $ThrottleLimit..." -ForegroundColor Green
+    }
+
+    process
+    {
+        # 4. 核心改进：使用 ForEach-Object -Parallel 替代 Start-Job
+        # 它更轻量、启动更快，资源消耗远低于为每个任务启动一个新进程的 Start-Job。
+        # 注意：此功能需要 PowerShell 7 或更高版本。
+        $urlList | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
+            # 在并行脚本块中，必须使用 $using: 来引用外部作用域的变量
+            $currentUrl = $_
+            $ErrorActionPreference = 'Stop' # 确保 try/catch 在线程中能可靠捕获错误
+
+            try
+            {
+                # 从URL解析文件名，并进行URL解码
+                $fileName = [System.Uri]::UnescapeDataString(($currentUrl | Split-Path -Leaf))
+                if ([string]::IsNullOrWhiteSpace($fileName))
+                {
+                    # 如果URL以'/'结尾或无法解析文件名，则生成一个唯一文件名
+                    $fileName = "file_$([guid]::NewGuid())"
+                    Write-Warning "URL '$currentUrl' 未包含有效文件名，已自动保存为 '$fileName'。"
+                }
+
+                $outputPath = Join-Path -Path $using:OutputDirectory -ChildPath $fileName
+
+                if (Test-Path -Path $outputPath -PathType Leaf)
+                {
+                    if ($using:Force)
+                    {
+                        # 使用线程ID标识输出，方便调试
+                        Write-Host "[线程 $($([System.Threading.Thread]::CurrentThread.ManagedThreadId))] 强制覆盖旧文件: $outputPath" -ForegroundColor Yellow
+                        Remove-Item -Path $outputPath -Force
+                    }
+                    else
+                    {
+                        Write-Warning "[线程 $($([System.Threading.Thread]::CurrentThread.ManagedThreadId))] 跳过已存在的文件: $fileName"
+                        return # 跳出当前循环，继续下一个
+                    }
+                }
+
+                Write-Host "[线程 $($([System.Threading.Thread]::CurrentThread.ManagedThreadId))] -> 开始下载: $currentUrl"
+
+                # 5. 现代化改进：使用 Invoke-WebRequest 替代老旧的 WebClient
+                # Invoke-WebRequest 是现代的、功能更强大的下载工具。
+                Invoke-WebRequest -Uri $currentUrl -OutFile $outputPath -UserAgent $using:UserAgent
+
+                Write-Host "[线程 $($([System.Threading.Thread]::CurrentThread.ManagedThreadId))] ✅ 下载成功: $fileName" -ForegroundColor Cyan
+            }
+            catch
+            {
+                # 6. 错误处理改进：提供更详细的错误信息
+                $errorMessage = "[线程 $($([System.Threading.Thread]::CurrentThread.ManagedThreadId))] ❌ 下载失败: $currentUrl"
+                if ($_ -is [System.Net.WebException])
+                {
+                    $response = $_.Exception.Response
+                    if ($null -ne $response)
+                    {
+                        $statusCode = [int]$response.StatusCode
+                        $statusDescription = $response.StatusDescription
+                        # 输出具体的HTTP错误码，如 404 Not Found, 403 Forbidden
+                        $errorMessage += " - 错误原因: HTTP $statusCode ($statusDescription)"
+                    }
+                    else {
+                        # 网络层面的问题，如DNS解析失败
+                        $errorMessage += " - 错误原因: $($_.Exception.Message)"
+                    }
+                }
+                else
+                {
+                    # 其他类型的错误
+                    $errorMessage += " - 错误原因: $($_.Exception.Message)"
+                }
+                Write-Error $errorMessage
+            }
+        }
+    }
+
+    end
+    {
+        Write-Host "🎉 所有下载任务已处理完毕。" -ForegroundColor Green
+    }
 }
 function Deploy-WpSitesLocal
 {

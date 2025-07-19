@@ -78,8 +78,8 @@ def parse_args():
     parser.add_argument(
         "--max-workers",
         type=int,
-        default=20,
-        help="Number of threads for parallel processing (default: 20)",
+        default=50,
+        help="Number of threads for parallel processing ",
     )
     parser.add_argument(
         "--batch-size",
