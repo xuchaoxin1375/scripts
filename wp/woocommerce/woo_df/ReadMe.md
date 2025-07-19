@@ -57,7 +57,7 @@ pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
 
 ```bash
 pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple #修改pip源
-pip install -r ".\woo_df\requirements.txt" #注意修改requirements.txt的路径为你自己的实际路径🎈
+pip install -r "$woo_df\requirements.txt" #注意修改requirements.txt的路径为你自己的实际路径(如果遇到编码报错(gbk)则注释或移除对应的中文)🎈
 ```
 
 - 注意:具体的requirements.txt路径根据自己的实际情况指定,尤其是当前工作目录会影响到指定目录值
@@ -85,24 +85,27 @@ Out[2]: <CDLL 'C:\ProgramData\scoop\apps\miniconda3\current\Lib\site-packages\ma
 In [3]:
 ```
 
-## 向桌面添加脚本|模块所在目录
+## 向桌面添加脚本|模块所在目录🎈
 
 打开powershell 7(pwsh),执行以下命令行
+
+- `$woo_df`变量对应的是模块目录
+- `$pys`变量对应的是用户脚本目录
 
 ### 添加符号链接(junction)
 
 ```powershell
-New-Item -ItemType Junction -Path "$desktop/woo_df" -Target $scripts/wp/woocommerce/woo_df -Verbose
+New-Item -ItemType Junction -Path "$desktop/pys" -Target $pys -Verbose
 ```
 
-这里的`$desktop/woo_df`也可以替换成你喜欢的位置,默认会再桌面生成`woo_df`符号
+这里的`$desktop/pys`也可以替换成你喜欢的位置,默认会再桌面生成`pys`符号
 
 ### 添加快捷方式(shortcut)
 
 也可以添加快捷方式
 
 ```powershell
-New-Shortcut -Path $desktop\woo_df -TargetPath  $scripts\wp\woocommerce\woo_df  -Verbose -Force
+New-Shortcut -Path "$desktop/pys" -TargetPath  $pys  -Verbose -Force
 ```
 
 ## 脚本集功能设计说明
@@ -159,8 +162,7 @@ woo_uploader.py负责的任务,可以多线程或者按批上传数据到wp站
     [System.Environment]::SetEnvironmentVariable("PYTHONPATH", "C:\repos\scripts\wp\woocommerce\woo_df\", [System.EnvironmentVariableTarget]::Machine)
     ```
 
-
-#### 从CxxuPwshModule仓库配置
+#### 从CxxuPwshModule仓库配置🎈
 
 部署git仓库(推荐方式)
 

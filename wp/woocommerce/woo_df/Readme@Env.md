@@ -81,7 +81,7 @@ setx nginx_home $nginx_home
 Add-EnvVar -EnvVar Path -NewValue $nginx_home
 
 #如果使用了小皮,并且xp.cn_cgi.exe接管进程的端口监听的端口建议配置一下
-setx CgiPort 9000 # 可能是9001或者9002
+setx CgiPort 9001 # 可能是9001或者9002
 
 ```
 
@@ -91,6 +91,8 @@ setx CgiPort 9000 # 可能是9001或者9002
 
 ```powershell
 $p=Get-NetTCPConnection |?{$_ -like '*900*'};$p;ps -Id $p.OwningProcess
+ps -Id $p.OwningProcess
+
 ```
 
 例如:我查询到的是9002端口,所属进程是`xp.cn_cgi`
@@ -114,19 +116,19 @@ Name    : xp.cn_cgi
 检查mysql.exe是否能够访问,并且看看是否能够登录到交互shell中
 
 ```powershell
-mysql -uroot -h 127.0.0.1 -proot -P 3306 -p$env:mysqlkey_local
+mysql -uroot  -proot -P 3306 -p"$env:mysqlkey_local"
 ```
 
 例如我们查询已经存在的数据库"show databases; "
 
 ```powershell
-mysql -uroot -h 127.0.0.1 -proot -P 3306 -p$env:mysqlkey_local -e "show databases;"
+mysql -uroot -proot -P 3306 -p"$env:mysqlkey_local" -e "show databases;"
 ```
 
 如果顺利,会输出:
 
 ```powershell
-PS> mysql -uroot -h 127.0.0.1 -proot -P 3306 -p15a58524d3bd2e49 -e "show databases;"
+PS> mysql -uroot  -P 3306 -e "show databases;" #配置了免密登录的话可以不用指定-h,-p参数
 mysql: [Warning] Using a password on the command line interface can be insecure.
 +--------------------+
 | Database           |
