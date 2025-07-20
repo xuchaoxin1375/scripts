@@ -3084,6 +3084,25 @@ function Remove-LineInFile
     }
     
 }
+function Rename-FileName
+{
+    [CmdletBinding()]
+    param(
+        $Path,
+        [alias('RegularExpression')]$Pattern,
+        [alias('Substitute')]$Replacement
+    )
+    
+    Get-ChildItem $Path | ForEach-Object { 
+        # 无后缀(扩展名)的文件基名
+        # $leafBase = (Split-Path -LeafBase $_).ToString()
+        # 包含扩展名的文件名
+        $name = $_.Name
+        $newName = $name -replace $Pattern, $Replacement
+        Rename-Item -Path $_ -NewName $newName -Verbose 
+    }
+
+}
 function Remove-WpSitesLocal
 {
     <# 

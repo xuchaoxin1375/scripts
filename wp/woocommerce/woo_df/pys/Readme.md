@@ -16,6 +16,65 @@
 
 如果没有特殊提示,请始终在powershell(pwsh7)中运行命令,否则会失败
 
+
+
+### 一批数据导出CSV文件的命令(一切始于导出的csv)
+
+> 导出的csv数量关系到要申请的域名的数量,导出过程中会移除不规范的数据或者同名同图片链接的数据,直接估计采集器中的采集数量是不可靠的!
+>
+> 将csv的数量除以6或者7,至少是6,得到的结果就是这批数据要申请的域名数量,因为下载图片以及图片质量检查人为移除过程中通常有损耗
+>
+> 然后就可以去构思域名填写表格并批量部署本地站点了
+
+导出csv 输出路径的参数`--output-dir`;
+
+### woo_get_csv.py
+
+其中`-f .jpg`表明,当图片url后缀不是白名单图片类型,就会默认加上后缀`.jpg`
+
+```powershell
+python $pys\woo_get_csv.py -f .webp --start-id  $start_id --end-id $end_id  --language-country $language --output-dir $output_dir --sku-suffix $sku_suffix 
+```
+
+#### 跳过导出尚未采集完毕的任务(-E)
+
+如果要排除区间中的个别任务,则追加使用`-E`选项指定编号(多个编号逗号隔开)字符串`"a,b,.."`,就可以排除任务编号`a,b,...`;
+
+#### 严格去重复
+
+将产品名相同的产品视为重复,去重只保留一个(即便图片链接不同也移除掉),可以使用`-R`
+
+默认情况下产品名和图片链接同时相同才会视为重复,可以尽可能保留更多的产品数据
+
+
+
+#### 使用示例
+
+例如:
+
+- 导出采集器中任务id范围为`354-378`的所有采集到的数据,并且这批数据是同类产品(户外),比如都是**美国**(US)市场,导出的csv存放到指定目录:桌面的`outdoor_us_0711`目录中(后缀0711表示导出的日期是7月11号)
+
+- 并且,如果遇到图片链接后缀难以判断出图片类型时,将图片名称使用默认后缀扩展名`.webp`(即便图片实际上是其他编码格式也没关系,这不影响浏览器的显示)
+- 命令行如下(对上面的选项进行了缩写,比如`-s`和`--start-id`等价)
+
+```powershell
+python $pys\woo_get_csv.py -f .webp -s 354 -e 378  -C US  -o $desktop/outdoor_us_0711
+```
+
+又比如,导出397~448区间中的任务,跳过446号任务(通常是因为采集任务没有结束或者已知数据有问题要跳过),使用了`-R`表示严格去重复
+
+```powershell
+python $pys\woo_get_csv.py -f .webp -s 397 -e 448 -E 446  -C US  -o $desktop/bike_us_0713 -R
+```
+
+只导出一个任务,可以省略`-e`
+
+```
+python $pys\woo_get_csv.py -f .webp -s 474  -C US  -o $desktop/outdoor_us_0720
+```
+
+
+
 ---
 
 ### 批量创建本地wp站点(nginx站点)
@@ -124,29 +183,7 @@ Remove-WpSitesLocal
 >
 > 清理过程需要一定的时间(大量图片小文件删除需要时间),个别环节需要用户交互确认删除
 
-### 一批数据导出CSV文件的命令
 
-导出csv 输出路径的参数`--output-dir`;
-
-如果要排除区间中的个别任务,则追加使用`-E`选项指定编号(多个编号逗号隔开)字符串`"a,b,.."`,就可以排除任务编号`a,b,...`;
-
-其中`-f .jpg`表明,当图片url后缀不是白名单图片类型,就会默认加上后缀`.jpg`
-
-```powershell
-
-python $pys\woo_get_csv.py -f .webp --start-id  $start_id --end-id $end_id  --language-country $language --output-dir $output_dir --sku-suffix $sku_suffix 
-```
-
-例如:
-
-- 导出采集器中任务id范围为`354-378`的所有采集到的数据,并且这批数据是同类产品(户外),比如都是**美国**(US)市场,导出的csv存放到指定目录:桌面的`outdoor_us_0711`目录中(后缀0711表示导出的日期是7月11号)
-
-- 并且,如果遇到图片链接后缀难以判断出图片类型时,将图片名称使用默认后缀扩展名`.webp`(即便图片实际上是其他编码格式也没关系,这不影响浏览器的显示)
-- 命令行如下(对上面的选项进行了缩写,比如`-s`和`--start-id`等价)
-
-```powershell
-python $pys\woo_get_csv.py -f .webp -s 354 -e 378  -C US  -o $desktop/outdoor_us_0711
-```
 
 
 
@@ -156,7 +193,7 @@ python $pys\woo_get_csv.py -f .webp -s 354 -e 378  -C US  -o $desktop/outdoor_us
 
 > 当然也可以**手动修改**下面的命令行,如果确实需要手动编辑,则建议复制下面的命令行保存为文本文件(后缀改为`.ps1`),然后用vscode编辑
 
-下面几个命令分步执行,不要连着执行
+下面几个命令分步执行,不要连着执行(仅供参考)
 
 ```powershell
 
@@ -331,6 +368,40 @@ ERROR:imgdown:curl 执行失败，错误码: 22
 python $pys\woo_uploader_db.py -c $csv_path -i $img_dir 
 ```
 
+## 常见问题@FAQ
+
+### 网站上线后首页广告图无法显示
+
+如果装修的时候确实设置了首页广告图通常在其他设备浏览器可以看到显示是正常的
+
+装修网站所用的浏览器可能会因为原来的站被删除,但是hosts中仍然配置了本地站的映射,导致浏览上线的网站(https)中广告图(仍然是http链接,而且优先读取缓存过的图片资源,但是实际位置被删除从而显示为空)
+
+办法有两类:
+
+- 移除hosts文件中对应的域名解析(使用`Remove-WpSiteLocal`可以自动处理)
+- 修改根目录中的模板中css路径
+
+### 本地网站打不开(502/503)
+
+- 502错误可能是因为nginx(或小皮转发端口)的服务端口配置不正确,使用命令查询(通常是9001或9002),也可以分被尝试这两个端口(修改对应的vhosts文件conf配置,并且重启nginx来生效修改)
+
+  ```powershell
+   $p=Get-NetTCPConnection |?{$_ -like '*900*'};$p;ps -Id $p.OwningProcess|ft
+   ps -Id $p.OwningProcess|ft
+   
+  ```
+
+- 503错误通常是代理软件引起的错误,需要正确配置
+
+  - 默认情况下,不建议开启代理软件的系统代理设置,浏览器中代理配置(比如proxyify插件中切换到关闭选项,暂时不走代理看看是不是代理引起的)
+  - 例如Quik Q,在设置->高级设置->启动以下开关:(如果已经都设置了相应开关,则重启该软件然后再次检查能否访问本地站)
+    1. 系统hosts优先
+    2. 断连优化
+    3. 代理规则配置127.0.0.1
+    4. 不自动开机系统代理(关键)
+    5. 网络异常时断开链接
+  - 类似的小猫咪代理通常不会影响本地站的访问,但是也可能出bug,可能需要重启小猫咪,同时要保证对应的线路延迟检测不是error
+
 ## 其他有用的命令行
 
 ### 删除目录中的非webp文件🎈
@@ -340,5 +411,28 @@ powershell中在图片目录下执行:
 ```powershell
 ls -File |?{$_ -notlike '*.webp'}|rm -Verbose
 
+```
+
+### 将jpg图片后缀重命名为webp
+
+powershell进入到制定目录(需要被重命名文件所在的目录)下,然后执行以下命令
+
+```powershell
+# 标准写法(Rename-Item 位于管道符之后,且-newName的参数是代码块,使用$_.Name获取文件名字符串)
+# 其中'\.jpg$'是正则表达式,匹配文件名中的后缀部分(\.是小数点的转义,表示.号本身,作为一个整体,$号表示仅匹配字符串的结尾的情况)
+ls -File |Rename-Item -NewName {$_.Name -replace '\.jpg$','.webp' }
+```
+
+另一种更加直白的写法
+
+```powershell
+ls *.jpg|%{ rni -Path $_ -NewName ((Split-Path -LeafBase $_).ToString()+".webp") -Verbose}
+
+```
+
+对于第一种写法,可以方便地扩展更多的用法,例如将文件名(内部非边缘)中的`.php`字符串替换为`_php`(wordpress中图片路径包含`.php`时,会被解释为php脚本,导致错误解释,可以按如下方法替换文件名,如果文件名本身就一`.php`结尾,则保留不变)
+
+```powershell
+ls -File |Rename-Item -NewName {$_.Name -replace '(\.php)(?!$)','_php' }
 ```
 

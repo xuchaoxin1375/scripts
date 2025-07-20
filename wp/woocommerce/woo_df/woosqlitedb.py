@@ -150,6 +150,7 @@ def update_image_fields_extension(csv_dir, extension=".webp"):
                 default_image_format=extension,
                 supported_image_formats=SUPPORT_IMAGE_FORMATS_NAME,
             )
+
             # df[IMAGES] = df[IMAGES].str.rsplit(".", n=1).str[0] + f".{extension}"
             # 打印前10行查看修改效果
             print(df.head(10))
@@ -511,6 +512,7 @@ class SQLiteDB:
             #     self.duplicate_warning(i, row, db_id)
             #     continue
             else:
+
                 # 当前产品尚未统计过,更新统计计数器
                 unique_rows.append(row)
                 info(
@@ -523,7 +525,12 @@ class SQLiteDB:
 
             # dd[product_img][product_name] = dd[product_img].get(product_name, 0) + 1
             dd[product_name][product_img] = dd[product_name].get(product_img, 0) + 1
+
         return unique_rows
+
+    def process_forbidden_words(self, s, pattern=".php", replacement="_"):
+        """替换字符串中包含的禁词"""
+        return re.sub(pattern, replacement, s)
 
     def remove_duplicate_rows_bak(self, db_path, rows, strict_mode=False):
         """产品去重:
@@ -744,6 +751,8 @@ but different image, keep records [%s]",
             )
         if get_dict_row:
             self.db_rows = [dict(db_row) for db_row in self.db_rows]
+
+
         if count_rows_only:
             reports = self.db_reports
             cnt = 0
@@ -1120,6 +1129,10 @@ but different image, keep records [%s]",
                     ]
 
                 row[img_field] = ",".join(img_names)
+                if img_mode in [ImageMode.NAME_FROM_URL, ImageMode.NAME_MIX]:
+                    # 将图片名中的禁词移除
+                    img_field = CSVProductFields.IMAGES.name
+                    row[img_field] = self.process_forbidden_words(row[img_field])
             # 扩充数据行字典
             expanded_rows.append(row)
         return expanded_rows
