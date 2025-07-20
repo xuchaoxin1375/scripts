@@ -2507,83 +2507,87 @@ function Import-MysqlFile
     param (
         $Server = "localhost",
         $MySqlUser = "root",
-        [Alias("MySqlKey")]$key = $env:DF_MySqlKey,
+        [Alias("MySqlKey")]$key = $env:MySqlKey_LOCAL,
         [alias("File", "Path")]$SqlFilePath,
+        [parameter(ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
         [alias("Name")]$DatabaseName = "",
         [alias("P")]$Port = 3306,
         [switch]$Force
     )
 
-
-    
-    if(Test-Path $SqlFilePath)
+    process
     {
-        
-        Write-Verbose "Use Mysql server host: $Server"
-        Write-Verbose "Sql File exist!" 
-        $key = Get-MysqlKeyInline $key
-
-        # 如果数据库不存在,则提示创建数据库
-        # $db_name_inline_creater = "````$DatabaseName````"
-        # $db_name_inline = "'$DatabaseName'"
-        # Write-Verbose "$databaseName"
-        # Write-Verbose "$db_name_inline"
-
-        # Pause
-
-        # 查询数据库是否存在
-        # $CheckDBCmd = "mysql -h $Server -u $MySQLUser $key -e `"SHOW DATABASES LIKE $db_name_inline;`""
-        # $CreateDBCmd = "mysql -h $Server -u $MySQLUser $key -e `"CREATE DATABASE $db_name_inline_creater;`""
-        
-        # Write-Verbose $CheckDBCmd -Verbose
-        # Write-Verbose $CreateDBCmd -Verbose
-        
-        # return 
-
-        # $DBExists = Invoke-Expression $CheckDBCmd
-        if(!$DatabaseName )
+   
+        if(Test-Path $SqlFilePath)
         {
-            Write-Warning "You did not specify the database name!"
-            # write-warning "The sql file path Leafbase name will be the default database name!"
-            # $DatabaseName = Split-Path $SqlFilePath -LeafBase
-        }
-        # 如果用户指定了数据库名称,则检查该数据库是否已经存在,并给出测试结果;否则认为要导入的sql不需要事先指定数据库名字
-        if($DatabaseName)
-        {
+        
+            Write-Verbose "Use Mysql server host: $Server"
+            Write-Verbose "Sql File exist!" 
+            $key = Get-MysqlKeyInline $key
 
-            $DBExists = Get-MysqlDbInfo -Name $DatabaseName -Server $Server -Port $Port -MySQLUser $MySqlUser -key $key
-            
-            if(!$DBExists)
+            # 如果数据库不存在,则提示创建数据库
+            # $db_name_inline_creater = "````$DatabaseName````"
+            # $db_name_inline = "'$DatabaseName'"
+            # Write-Verbose "$databaseName"
+            # Write-Verbose "$db_name_inline"
+
+            # Pause
+
+            # 查询数据库是否存在
+            # $CheckDBCmd = "mysql -h $Server -u $MySQLUser $key -e `"SHOW DATABASES LIKE $db_name_inline;`""
+            # $CreateDBCmd = "mysql -h $Server -u $MySQLUser $key -e `"CREATE DATABASE $db_name_inline_creater;`""
+        
+            # Write-Verbose $CheckDBCmd -Verbose
+            # Write-Verbose $CreateDBCmd -Verbose
+        
+            # return 
+
+            # $DBExists = Invoke-Expression $CheckDBCmd
+            if(!$DatabaseName )
             {
-                
-                # Write-Host "数据库不存在!"
-                if($PSCmdlet.ShouldProcess($Server, "Create Database: $DatabaseName ?"))
+                Write-Warning "You did not specify the database name!"
+                # write-warning "The sql file path Leafbase name will be the default database name!"
+                # $DatabaseName = Split-Path $SqlFilePath -LeafBase
+            }
+            # 如果用户指定了数据库名称,则检查该数据库是否已经存在,并给出测试结果;否则认为要导入的sql不需要事先指定数据库名字
+            if($DatabaseName)
+            {
+
+                $DBExists = Get-MysqlDbInfo -Name $DatabaseName -Server $Server -Port $Port -MySQLUser $MySqlUser -key $key
+            
+                if(!$DBExists)
                 {
+                
+                    # Write-Host "数据库不存在!"
+                    if($PSCmdlet.ShouldProcess($Server, "Create Database: $DatabaseName ?"))
+                    {
                     
-                    # Invoke-Expression $CreateDBCmd
-                    New-MysqlDB -Name $DatabaseName -Server $Server -Port $Port -MySqlUser $MySqlUser -MysqlKey $key -Confirm:$false
+                        # Invoke-Expression $CreateDBCmd
+                        New-MysqlDB -Name $DatabaseName -Server $Server -Port $Port -MySqlUser $MySqlUser -MysqlKey $key -Confirm:$false
+                    }
+                }
+                else
+                {
+                    # Get-MysqlDbDescription -Name $DatabaseName -Server $Server
+                    Get-MysqlDbInfo -Name $DatabaseName -Server $Server -Port $Port -key $key -ShowTables | Select-Object -First 5
                 }
             }
-            else
-            {
-                # Get-MysqlDbDescription -Name $DatabaseName -Server $Server
-                Get-MysqlDbInfo -Name $DatabaseName -Server $Server -Port $Port -key $key -ShowTables | Select-Object -First 5
-            }
-        }
-
-        $expression = "cmd /c `" mysql -h $Server -P $Port -u $MySqlUser  $key $DatabaseName < ```"$SqlFilePath```" `""
-        Write-Verbose $expression 
+            # 忽略执行失败的sql,强制继续执行剩余sql(比如批量切换数据库中各个表的引擎,部分表无法顺利切换,可以利用-f跳过错误的部分)
+            $ForceSql = if($Force) { "-f" } else { "" }
+            $expression = "cmd /c `" mysql -h $Server -P $Port -u $MySqlUser  $key $ForceSql $DatabaseName < ```"$SqlFilePath```" `""
+            Write-Verbose $expression 
 
         
-        if($Force -or -not $Confirm)
-        {
-            $ConfirmPreference = "None" 
-            # cmd /c $expression
-        }
-        if($PSCmdlet.ShouldProcess($Server, $expression))
-        {
+            if($Force -or -not $Confirm)
+            {
+                $ConfirmPreference = "None" 
+                # cmd /c $expression
+            }
+            if($PSCmdlet.ShouldProcess($Server, $expression))
+            {
 
-            Invoke-Expression $expression
+                Invoke-Expression $expression
+            }
         }
     }
 }
