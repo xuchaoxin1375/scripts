@@ -2416,7 +2416,130 @@ function Start-VscodeSSh
     )
     code --folder-uri "vscode-remote://ssh-remote+$Server/$Path"
 }
+function Remove-RobocopyMirEmpty
+{
+    <# 
+    .SYNOPSIS
+    使用 RoboCopy 多线程快速删除文件夹及其内容。
 
+    .DESCRIPTION
+    此函数利用 RoboCopy 的 /mir 参数和多线程能力快速删除文件夹及其所有内容。
+    比传统的 Remove-Item 或 cmd 的 rd/del 命令在处理大量文件时更高效。
+
+    .PARAMETER Path
+    指定要删除的文件夹路径。支持相对路径和绝对路径。
+
+    .PARAMETER ThreadCount
+    指定 RoboCopy 使用的线程数。默认值为 32，可根据系统性能调整。
+
+    .PARAMETER WhatIf
+    显示将要执行的操作，但不实际执行删除。
+
+    .PARAMETER Confirm
+    在执行删除前提示确认。
+
+    .EXAMPLE
+    Remove-RobocopyMirEmpty -Path "C:\LargeFolder"
+    删除 C:\LargeFolder 及其所有内容。
+
+    .EXAMPLE
+    Remove-RobocopyMirEmpty -Path ".\TempFiles" -ThreadCount 64 -WhatIf
+    模拟使用64个线程删除当前目录下的 TempFiles 文件夹。
+
+    .NOTES
+    文件名: Remove-RobocopyMirEmpty.ps1
+    日期: $(Get-Date -Format 'yyyy-MM-dd')
+
+    .LINK
+    https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/robocopy
+    #>
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
+    param (
+        [Parameter(Mandatory = $true, Position = 0, ValueFromPipeline = $true)]
+        [ValidateNotNullOrEmpty()]
+        [ValidateScript({
+                if (-not (Test-Path -Path $_ -PathType Container))
+                {
+                    throw "路径 '$_' 不存在或不是文件夹"
+                }
+                $true
+            })]
+        [string]$Path,
+
+        [Parameter()]
+        [ValidateRange(1, 128)]
+        [int]$ThreadCount = 32,
+        $logFile = "C:/temp/robocopy_mir_empty.log"
+    )
+
+    begin
+    {
+        # 创建临时空目录
+        $emptyDir = Join-Path -Path $env:TEMP -ChildPath "RoboCopyEmpty_$(New-Guid)"
+        $null = New-Item -Path $emptyDir -ItemType Directory -Force
+    }
+
+    process
+    {
+        try
+        {
+            $fullPath = Convert-Path -Path $Path 
+            
+
+            if ($PSCmdlet.ShouldProcess($fullPath, "删除文件夹及其所有内容"))
+            {
+                Write-Verbose "正在使用 RoboCopy 删除文件夹: $fullPath (线程数: $ThreadCount)"
+                
+                # 执行 RoboCopy 删除操作
+                $robocopyArgs = @(
+                    "'$emptyDir'"
+                    "'$fullPath'"
+                    "/mir"          # 镜像空目录
+                    "/mt:$ThreadCount" # 多线程
+                    "/log:'$logFile'"
+                    # "/nfl"          # 不记录文件名
+                    # "/ndl"          # 不记录目录名
+                    # "/njh"          # 无作业头
+                    # "/njs"          # 无作业摘要
+                    # "/ns"           # 无大小
+                    # "/nc"          # 无类别
+                )
+                $argsStr = $robocopyArgs -join "  "
+                # $process = Start-Process -FilePath "robocopy.exe" -ArgumentList $robocopyArgs -NoNewWindow -Wait -PassThru
+                $cmd = "Robocopy.exe $argsStr" 
+                Write-Verbose $cmd -Verbose
+
+                $cmd | Invoke-Expression
+
+                if ($process.ExitCode -ge 8)
+                {
+                    Write-Warning "RoboCopy 完成但可能有错误 (退出代码: $($process.ExitCode))"
+                }
+                else
+                {
+                    Write-Verbose "RoboCopy 成功完成 (退出代码: $($process.ExitCode))"
+                }
+
+                # 删除空文件夹
+                Remove-Item -Path $fullPath -Force -ErrorAction SilentlyContinue
+            }
+        }
+        catch
+        {
+            Write-Error "删除文件夹时出错: $_"
+            throw
+        }
+    }
+
+    end
+    {
+        # 清理临时空目录
+        if (Test-Path -Path $emptyDir)
+        {
+            Remove-Item -Path $emptyDir -Force -Recurse -ErrorAction SilentlyContinue
+        }
+    }
+}
 function Copy-Robocopy
 {
     <# 
@@ -2510,7 +2633,8 @@ function Copy-Robocopy
     # 注意,$source和$destination在函数参数定义时不可以定为String类型,会导致Get-PsIOItemInfo返回值无法正确赋值
     Write-Debug "Source: $Source"
     Write-Debug "Destination: $Destination"
-    if($Files){
+    if($Files)
+    {
         Write-Debug "Files: $Files"
     }
     # $Source = Get-PsIOItemInfo $Source
@@ -2609,6 +2733,7 @@ function Copy-Robocopy
     {
 
         Invoke-Expression $robocopyCmd
+        
     }
     
     Write-Verbose "Set LogPreviewEncodings to Preview log in specified way(utf-8,ansi,gbk,etc)" -Verbose

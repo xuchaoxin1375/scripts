@@ -9,7 +9,6 @@ DEFAULT_PACK_ROOT="/srv/uploads/uploader/files"
 DEFAULT_DB_USER="root"
 DEFAULT_DB_PASSWORD="15a58524d3bd2e49"
 SERVER_SITE_HOME="/www/wwwroot"
-LOG_FILE_DIR="/srv/uploads/uploader/files"
 DB_HOST="localhost" # 数据库主机
 # PACK_ROOT="/www/wwwroot"           # WordPress 网站根目录
 STOP_EDITING_LINE='Add any custom values between this line and the "stop editing" line'
@@ -54,12 +53,22 @@ while [[ "$#" -gt 0 ]]; do
     esac
     shift
 done
+
 # 定义日志文件路径
-LOG_FILE="$LOG_FILE_DIR/deploy_wp_$($USER_DIR)_$(date +%Y%m%d_%H%M%S).log"
-LOG_DIR=$(dirname "$LOG_FILE") #获取日志文件字符串的目录,然后创建这个目录(如果不存在的话)
-mkdir -p "$LOG_DIR"
+# LOG_FILE="/srv/uploads/uploader/files/deploy_wp_$($USER_DIR)_$(date +%Y%m%d_%H%M%S).log"
+# LOG_DIR=$(dirname "$LOG_FILE") #获取日志文件字符串的目录,然后创建这个目录(如果不存在的话)
+# mkdir -p "$LOG_DIR"
 # 重定向标准输出和标准错误到日志文件
-exec > >(tee -a "$LOG_FILE") 2>&1
+# exec > >(tee -a "$LOG_FILE") 2>&1
+
+# ========语法(默认值设置)======
+# 如果变量未定义或为空，可以设置默认值：
+# 使用 ${}扩展语法, ${} 是 参数扩展（Parameter Expansion） 的语法，用于对变量进行操作，包括获取值、字符串处理、默认值设置等
+# 语法	             说明
+# ${var-default}	如果 var 未定义，使用 default
+# ${var:-default}	如果 var 未定义 或为空，使用 default
+
+
 # 使用默认值或用户提供的值
 PACK_ROOT=${PACK_ROOT:-$DEFAULT_PACK_ROOT}
 DB_USER=${DB_USER:-$DEFAULT_DB_USER}
@@ -173,7 +182,18 @@ set_rewrte_rules_file() {
     fi
 
 }
+# ==获取字符串中主域名.顶级域名的部分
+get_main_domain() {
+    local s="$1"
 
+    if [[ "$s" == *.*.* ]]; then
+        local a="${s%%.*}"
+        local b="${s#*.}"; b="${b%%.*}"
+        echo "$a.$b"
+    else
+        echo "$s"
+    fi
+}
 # === 函数：解压压缩文件 ===
 extract_archive() {
     local archive_file="$1"
@@ -183,11 +203,66 @@ extract_archive() {
     mkdir -p "$target_dir"
 
     echo "🔍 正在解压文件: $archive_file -> $target_dir/..."
-    # 使用7z解压，支持各种格式(使用多线程解压64线程)
-    if ! 7z x -mmt64 -y "$archive_file" -o"$target_dir"; then
-        echo "❌ 解压失败: $archive_file"
-        return 1
-    fi
+
+case "${archive_file##*.}" in
+    zip)
+        unzip -q "$archive_file" -d "$target_dir"
+        ;;
+    gz|tgz)
+        tar -xzf "$archive_file" -C "$target_dir"
+        ;;
+    bz2|tbz2)
+        tar -xjf "$archive_file" -C "$target_dir"
+        ;;
+    lz4)
+        # 使用 mktemp 创建唯一临时文件名
+        temp_output_file=$(mktemp -u)
+
+        # 纠正域名提取:target_dir (将domain.com.tar)
+
+        echo "🔍 正在解压 LZ4 文件: $archive_file"
+
+        # 解压 .lz4 到临时文件
+        if ! lz4 -d "$archive_file" "$temp_output_file"; then
+            echo "❌ 解压 LZ4 文件失败: $archive_file"
+            rm -f "$temp_output_file" -v
+            return 1
+        fi
+
+        # 解包 .tar 文件
+        if ! tar -xf "$temp_output_file" -C "$target_dir"; then
+            echo "❌ 解包 TAR 文件失败: $temp_output_file"
+            rm -f "$temp_output_file" -v 
+            return 1
+        fi
+
+        # 清理临时文件
+        rm -f "$temp_output_file" -v
+        ;;
+    tar)
+        echo "🔍 正在解包 TAR 文件: $archive_file"
+        if ! tar -xf "$archive_file" -C "$target_dir"; then
+            echo "❌ 解包 TAR 文件失败: $archive_file"
+            return 1
+        fi
+        ;;
+    *)
+        7z x "$archive_file" -o"$target_dir"
+        ;;
+esac
+    # 如果输入的包是zip,则使用unzip解压zip包
+    # if [ "${archive_file##*.}" = "zip" ]; then
+    #     unzip -q "$archive_file" -d "$target_dir"
+    # else
+    #     7z x "$archive_file" -o"$target_dir"
+    # fi
+
+    # 其他格式使用7z几乎通杀:
+    # 使用7z解压，支持各种格式(对于解压任务,使用多线程解压线程效果似乎没什么)
+    # if ! 7z x -mmt32 -y "$archive_file" -o"$target_dir"; then
+    #     echo "❌ 解压失败: $archive_file"
+    #     return 1
+    # fi
   
 
     return 0
@@ -314,7 +389,7 @@ deploy_site() {
     echo "🔄 重启 nginx 以便让伪静态生效"
     nginx -s reload
     
-    echo "✅ 完成站点部署: $domain_name"
+    echo "✅ 完成站点部署: $domain_name ( 检查/访问: https://www.$domain_name )"
     return 0
 }
 
@@ -373,6 +448,7 @@ cd "$PACK_ROOT" || {
 
 # 如果指定了用户目录，则仅处理该目录
 if [ -n "$USER_DIR" ]; then
+    # 指定单目录时,将单个目录包装成数组(单个元素),便于后续统一两种情况为数组处理
     user_dirs=("$USER_DIR")
     echo "🔍 仅处理指定用户目录: $USER_DIR"
 else
@@ -390,7 +466,7 @@ failed_sites=0
 sql_backups_processed=0
 
 for user_dir in "${user_dirs[@]}"; do
-    # 去掉末尾斜杠，得到用户名缩写
+    # 去掉末尾斜杠(如果有的话)，得到用户名缩写
     username="${user_dir%/}"
 
     echo "📂 正在处理站点人员名所属目录: $username"
@@ -403,7 +479,7 @@ for user_dir in "${user_dirs[@]}"; do
 
     # 首先处理SQL备份文件(将所有站点的sql文件都解压,然后逐个导入到对应的数据库)
     # 数据库名字:调用process_sql_file进行处理
-    sql_archives=($(ls *.sql.zip *.sql.7z *.sql.tar 2>/dev/null))
+    sql_archives=($(ls *.sql.zip *.sql.7z *.sql.tar *.sql.lz4 2>/dev/null))
     if [ -f "${sql_archives[0]}" ]; then
         echo "🔍 找到SQL备份文件，优先处理"
 
@@ -424,7 +500,7 @@ for user_dir in "${user_dirs[@]}"; do
 
     # 然后处理WordPress站点文件（过滤sql压缩文件SQL备份文件）
     site_archives=()
-    for archive in *.zip *.7z *.tar; do
+    for archive in *.zip *.7z *.tar *.lz4; do
         if [[ -f "$archive" && "$archive" != *.sql.* ]]; then
             site_archives+=("$archive")
         fi
@@ -452,7 +528,7 @@ for user_dir in "${user_dirs[@]}"; do
     cd "$PACK_ROOT"
 done
 
-echo "🎉 部署完成！站点: $deployed_sites, SQL备份: $sql_backups_processed, 失败: $failed_sites"
+echo "🎉 部署完成！解压站点根目录数量:[$deployed_sites] , 解压SQL备份: $sql_backups_processed, 失败: $failed_sites"
 
 if [ $failed_sites -gt 0 ]; then
     echo "⚠️ 有 $failed_sites 个操作失败，请检查日志。"

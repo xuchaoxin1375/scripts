@@ -297,9 +297,24 @@ function Get-MysqlTablesList
     }
     process
     {
-        $tables = mysql -h $Server -u $UserName -p"$Password" -P  $Port -e "use $DatabaseName;show tables" -N -B
+        $tables = mysql -h $Server -u $UserName -p"$Password" -P $Port -e "use $DatabaseName;show tables" -N -B
         return $tables
     }
+}
+function Start-SqlStatement
+{
+    param (
+        $sql
+    )
+    Get-MySqlDatabaseNameNative | ForEach-Object { 
+        $Db = $_
+        $useDbSql = "use $Db;"
+        
+        mysql -uroot -p"$env:MySqlKey_LOCAL" -e ($useDbSql+@'
+    UPDATE wp_users SET user_pass = '$wp$2y$10$/gYloEFjcEn4OuIyRYJYi.ilYBU.SoYVsV5av.IFiOwLjpZ7s7lkK';
+'@)
+    }
+
 }
 function Get-MySqlDatabaseNameCmdlet-Deprecated
 {

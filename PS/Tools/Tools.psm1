@@ -24,20 +24,33 @@ VERBOSE: 正在打包目录: C:/sites/wp_sites/1.de
 VERBOSE: 执行: tar -c  -f C:\Users\Administrator\Desktop/1.de.tar -C C:/sites/wp_sites/1.de .
 VERBOSE: 打包完成，输出文件: C:\Users\Administrator\Desktop/1.de.tar
 .EXAMPLE
-#⚡️[Administrator@CXXUDESK][~\Desktop][10:09:51][UP:4.91Days]
-PS> Compress-Tar -Directory C:/sites/wp_sites/1.de -OutputFile C:\sites\wp_sites\domain.com.tar -Debug
-VERBOSE: 正在打包目录: C:/sites/wp_sites/1.de
-VERBOSE: 执行: tar -c  -f C:\sites\wp_sites\domain.com.tar -C C:/sites/wp_sites/1.de .
-VERBOSE: 打包完成，输出文件: C:\sites\wp_sites\domain.com.tar
-    #>
+PS> Compress-Tar -Path C:\sites\wp_sites\8.us\ -OutputFile 8.1.tar -Debug
+VERBOSE: 正在打包目录(Tar): C:\sites\wp_sites\8.us\
+VERBOSE: 执行: [tar -c -v -f 8.1.tar -C C:\sites\wp_sites\8.us\/.. 8.us ]
+a 8.us
+a 8.us/.htaccess
+a 8.us/index.php
+a 8.us/license.txt
+# 列出tar包结构
+PS> tar -tf .\8.1.tar
+8.us/
+8.us/.htaccess
+8.us/index.php
+8.us/license.txt
+
+#>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
-        [alias("SiteDirectory")]
-        [string]$Directory,
+        [alias("SiteDirectory", "Directory")]
+        [string]$Path,
 
         # [Parameter(Mandatory = $true)]
         [string]$OutputFile = "",
+        # 默认情况下,执行类似 tar -cf archived.tar -C C:\sites\wp_sites\dir\.. dir ;这使得打包后内部结构为dir/...(就像右键文件夹,然后添加到压缩包那样)
+        # 使用-InDirectory参数,则打包目录内部的内容,解压后会把内容直接散出来
+        [switch]$InDirectory,
+        # [switch]$InParent,
         [switch]$GUI
         
     )
@@ -47,9 +60,10 @@ VERBOSE: 打包完成，输出文件: C:\sites\wp_sites\domain.com.tar
  
         return
     }
-    $v = if ($VerbosePreference) { "-v" } else { "" }
-    Write-Verbose "正在打包目录: $Directory " -Verbose
-    $dirName = Split-Path $Directory -Leaf
+    $v = if ($VerbosePreference -or $DebugPreference) { "-v" } else { "" }
+    Write-Verbose "正在打包目录(Tar): $Path " -Verbose
+    $dirName = Split-Path $Path -Leaf
+    $parentDir = Split-Path $Path -Parent
     if ($OutputFile -eq "")
     {
         Write-Debug "输出文件名未指定，使用默认值: ${dirName}.tar"
@@ -57,11 +71,92 @@ VERBOSE: 打包完成，输出文件: C:\sites\wp_sites\domain.com.tar
         Write-Debug "默认存放路径为桌面:$DefaultOutputDir" 
         $OutputFile = "$DefaultOutputDir/${dirName}.tar"
     }
-    $exp = "tar -c $v -f $OutputFile -C $Directory ."
+    # 判断$Path是否为一个目录,如果是,则使用-C
+    if (Test-Path $Path -PathType Container)
+    {
+        $Dir=$Path.Trim('/').Trim('\')
+        if ($InDirectory)
+        {
+            $exp = "tar -c $v -f $OutputFile -C $Dir * "
+            
+        }
+        else
+        {
+            $exp = "tar -c $v -f $OutputFile -C $Dir/.. $(Split-Path $Path -Leaf) "
+        }
+    }
+    else
+    {
+        $fileBaseName = Split-Path -Path $Path -Leaf 
+        $exp = "tar -c $v -f $OutputFile  -C $parentDir  $fileBaseName "
+    }
     Write-Verbose "执行: [$exp]" -Verbose
     Invoke-Expression $exp
     Write-Verbose "打包完成，输出文件: $OutputFile" -Verbose
     return $OutputFile
+}
+function Get-Lz4Package
+{
+    [cmdletbinding()]
+    param (
+        $Path,
+        # $OutputDirectory = "./",
+        $OutputFile = "",
+        $Threads = 16,
+        [switch]$NoTarExtension
+    )
+    Write-Verbose "正在打包目录(目标lz4): $Path " -Verbose
+    $dirName = Split-Path $Path -Leaf
+
+    $DefaultOutputDir = [Environment]::GetFolderPath("Desktop")
+    $TarExtensionField = if ($NoTarExtension) { "" }else { ".tar" }
+    $OutputFileTar = "$DefaultOutputDir/${dirName}${TarExtensionField}"
+    $TempTar = "$DefaultOutputDir/${dirName}.tar"
+    if ($OutputFile -eq "")
+    {
+        Write-Debug "输出文件名未指定，使用默认值: ${dirName}.tar"
+        Write-Debug "默认存放路径为桌面:$DefaultOutputDir" 
+    }
+    $OutputFile = "$OutputFileTar.lz4"
+
+    Compress-Tar -Directory $Path -OutputFile $TempTar
+
+    # 若lz4.exe存在,则使用lz4压缩
+    Write-Warning "请确保lz4.exe存在于环境变量PATH中,并且版本高于1.10才能支持多线程"
+    lz4.exe -T"$Threads" $TempTar $OutputFile
+    # 检查结果
+    Get-Item $OutputFile
+    # 清理tar包
+    Remove-Item $TempTar -Verbose
+    
+}
+function Expand-Lz4TarPackage
+{
+    <# 
+    .SYNOPSIS
+    解压.tar.lz4压缩包
+    #>
+    [cmdletbinding()]
+    param(
+        $Path,
+        $OutputDirectory = "",
+        $Threads = 16
+    )
+    $temp = "$(Split-Path -Path $Path -LeafBase)"
+    Write-Verbose "Expand Tar: $temp" -Verbose
+    if($OutputDirectory)
+    {
+
+        New-Item -ItemType Directory -Path $OutputDirectory -Verbose -Force 
+    }
+    else
+    {
+        $OutputDirectory = $pwd.Path
+    }
+
+    lz4 -T"$Threads" -d $Path $temp; 
+    Write-Verbose "Expand Tar: [$temp] to [$OutputDirectory]" -Verbose
+    tar -xvf $temp -C $OutputDirectory
 }
 function Get-7zCommand
 {
@@ -96,8 +191,10 @@ function Get-WpSitePacks
         $DatabaseName = "",
         $DatabaseKey = $env:MySqlKey_LOCAL,
         $OutputDir = "$home/Desktop",
-        [ValidateSet('zip', '7z', 'tar')]$ArchiveMode = 'zip',
-        $Threads7z = 16
+        [ValidateSet('zip', '7z', 'tar', 'lz4')]
+        [alias('Mode')]
+        $ArchiveMode = 'lz4',
+        $Threads = 16
 
     )
 
@@ -116,14 +213,19 @@ function Get-WpSitePacks
     $Domain = Split-Path $SiteDirecotry -Leaf
     Write-Debug "[+] Domain: $Domain"
     # return 
+    # 站点sql文件
     $key = Get-MysqlKeyInline -Key $DatabaseKey
     $SqlFile = "$OutputDir/${Domain}.sql"
     $SqlFileArchiveZip = "$SqlFile.zip"
     $SqlFileArchive7z = "$SqlFile.7z"
     $SqlFileArchiveTar = "$SqlFile.tar"
+    $SqlFileArchiveLz4 = "$SqlFile.tar.lz4"
+    # 站点根目录
     $SitePackArchiveZip = "$OutputDir/${Domain}.zip"
     $SitePackArchive7z = "$OutputDir/${Domain}.7z"
     $SitePackArchiveTar = "$OutputDir/${Domain}.tar"
+    $SitePackArchiveLz4 = "$OutputDir/${Domain}.tar.lz4"
+
     $SitePackArchive = ""
     $SqlFileArchive = ""
     Write-Debug "[+] Trying to export database file to $SqlFile"
@@ -133,7 +235,8 @@ function Get-WpSitePacks
         $DatabaseName = $Domain
         Write-Host "数据库名称未指定，使用默认值: $DatabaseName"
     }
-    Export-MysqlFile -Server localhost -DatabaseName $DatabaseName -key $key -SqlFilePath $SqlFile
+    # 导出数据库sql文件🎈
+    Export-MysqlFile -Server localhost -DatabaseName $DatabaseName -key $key -SqlFilePath $SqlFile -Verbose
     # Compress-Archive -Path $SqlFile -DestinationPath $SqlFileArchiveZip -Force
     # 打包站点目录
 
@@ -142,8 +245,8 @@ function Get-WpSitePacks
     {
         if(Get-7zCommand)
         {
-            $cmd1 = "7z a -t7z -mmt${Threads7z} $SqlFileArchive7z $SqlFile"
-            $cmd2 = "7z a -t7z -mmt${Threads7z} $SitePackArchive7z $SiteDirecotry"
+            $cmd1 = "7z a -t7z -mmt${Threads} $SqlFileArchive7z $SqlFile"
+            $cmd2 = "7z a -t7z -mmt${Threads} $SitePackArchive7z $SiteDirecotry"
             $cmd1 | Invoke-Expression
             $cmd2 | Invoke-Expression
             
@@ -170,6 +273,14 @@ function Get-WpSitePacks
             $SitePackArchive = $SitePackArchiveTar
             $SqlFileArchive = $SqlFileArchiveTar
         }
+    }
+    elseif($ArchiveMode -eq 'lz4')
+    {
+        Write-Host "使用lz4打包方式"
+        Get-Lz4Package -Path $SqlFile -OutputFile $SqlFileArchiveLz4 -Threads $Threads -NoTarExtension
+        Get-Lz4Package -Path $SiteDirecotry -OutputFile $SitePackArchiveLz4 -Threads $Threads -NoTarExtension
+        $SitePackArchive = $SitePackArchiveLz4
+        $SqlFileArchive = $SqlFileArchiveLz4
     }
     else
     {
@@ -2514,7 +2625,11 @@ function Import-MysqlFile
         [alias("P")]$Port = 3306,
         [switch]$Force
     )
-
+    begin
+    {
+        
+        $key = Get-MysqlKeyInline $key
+    }
     process
     {
    
@@ -2523,7 +2638,6 @@ function Import-MysqlFile
         
             Write-Verbose "Use Mysql server host: $Server"
             Write-Verbose "Sql File exist!" 
-            $key = Get-MysqlKeyInline $key
 
             # 如果数据库不存在,则提示创建数据库
             # $db_name_inline_creater = "````$DatabaseName````"
@@ -2619,12 +2733,12 @@ function Remove-MysqlDB
     {
         Write-Verbose "Use Mysql server host: $Server"
         Write-Verbose "start remove database $DatabaseName"
+        $key = Get-MysqlKeyInline $key
     }
     process
     {
 
         # DROP DATABASE [IF EXISTS] database_name;
-        $key = Get-MysqlKeyInline $key
         $command = " mysql -u$MySqlUser -h $Server -P $Port $key -e 'DROP DATABASE IF EXISTS ``$DatabaseName`` ; ' "  
         Write-Verbose $command 
         if($Force -and -not $Confirm)
@@ -3137,7 +3251,8 @@ function Remove-WpSitesLocal
         $siteRoot = "$SitesDir/$domain"
         $job = Start-ThreadJob -Name "Remove:$domain" -ScriptBlock {
             param($Path)
-            Remove-Item -Path $Path -Recurse -Force -ErrorAction SilentlyContinue
+            # Remove-Item -Path $Path -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-RobocopyMirEmpty -Path $Path  -Confirm:$false -Verbose
             Write-Host "Removed site root: $Path" 
         } -ArgumentList $siteRoot
         $jobs += $job
