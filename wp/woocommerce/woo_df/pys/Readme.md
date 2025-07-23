@@ -436,3 +436,7 @@ ls *.jpg|%{ rni -Path $_ -NewName ((Split-Path -LeafBase $_).ToString()+".webp")
 ls -File |Rename-Item -NewName {$_.Name -replace '(\.php)(?!$)','_php' }
 ```
 
+```
+ls -File |Rename-Item -NewName {$_.Name -replace '(\.php)(?!$)','_php' }
+```
+

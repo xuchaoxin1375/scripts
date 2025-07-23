@@ -290,7 +290,7 @@ function Get-WpSitePacks
     # $SitePackArchive = Compress-Tar -Directory $SiteDirecotry 
 
     # 列出已经打包的文件
-    Get-Item $OutputDir/$SqlFileArchive 
+    Get-Item $OutputDir/$SqlFileArchive  
     Get-Item $OutputDir/$SitePackArchive
     # 移除数据库sql文件
     Remove-Item $SqlFile -Verbose

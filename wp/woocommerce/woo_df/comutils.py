@@ -474,6 +474,8 @@ def get_filebasename_from_url(url):
         url: 要被解析的URL或文件路径
     例如: https://www.example.com/file.txt -> file.txt
 
+    http://shopunitedgoods.com/ddcks%252000013__22568.1681078784.386.513.webp
+
     """
     parsed_url = urlparse(url)
     path = unquote(parsed_url.path)

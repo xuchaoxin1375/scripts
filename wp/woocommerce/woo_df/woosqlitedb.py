@@ -1096,7 +1096,7 @@ but different image, keep records [%s]",
                     img_names = [
                         complete_image_file_extension(
                             file=f"{sku}-{i}"
-                            + fnh.get_image_extension_from_url_str(url=img_url),
+                            + fnh.get_image_extension_from_url_str(url=img_url).replace('%','_'),
                             # + self._get_img_extension(
                             #     img_url=img_url,
                             #     req_response=req_response,
@@ -1110,7 +1110,7 @@ but different image, keep records [%s]",
                     # 从url中获取图片名称
                     img_names = [
                         complete_image_file_extension(
-                            get_filebasename_from_url(img_url),
+                            get_filebasename_from_url(img_url).replace('%','_'),
                             default_extension=default_extension,
                         )
                         for img_url in img_url_lst
