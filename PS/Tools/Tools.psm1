@@ -3251,8 +3251,8 @@ function Remove-WpSitesLocal
         $siteRoot = "$SitesDir/$domain"
         $job = Start-ThreadJob -Name "Remove:$domain" -ScriptBlock {
             param($Path)
-            # Remove-Item -Path $Path -Recurse -Force -ErrorAction SilentlyContinue
-            Remove-RobocopyMirEmpty -Path $Path  -Confirm:$false -Verbose
+            Remove-Item -Path $Path -Recurse -Force -ErrorAction SilentlyContinue
+            # Remove-RobocopyMirEmpty -Path $Path  -Confirm:$false -Verbose
             Write-Host "Removed site root: $Path" 
         } -ArgumentList $siteRoot
         $jobs += $job
