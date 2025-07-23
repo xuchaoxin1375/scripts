@@ -1122,7 +1122,7 @@ but different image, keep records [%s]",
                     timestamp = int(time.time())
                     img_names = [
                         complete_image_file_extension(
-                            file=f"{sku}-{i}-{timestamp}-{get_filebasename_from_url(img_url)}",
+                            file=f"{sku}-{i}-{timestamp}-{get_filebasename_from_url(img_url).replace('%','_')}",
                             default_extension=default_extension,
                         )
                         for i, img_url in enumerate(img_url_lst)
