@@ -2496,6 +2496,8 @@ function Remove-RobocopyMirEmpty
                     "'$fullPath'"
                     "/mir"          # 镜像空目录
                     "/mt:$ThreadCount" # 多线程
+                    "/E" #递归处理
+
                     "/log:'$logFile'"
                     # "/nfl"          # 不记录文件名
                     # "/ndl"          # 不记录目录名

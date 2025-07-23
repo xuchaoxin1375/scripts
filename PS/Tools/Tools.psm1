@@ -191,7 +191,7 @@ function Get-WpSitePacks
         $DatabaseName = "",
         $DatabaseKey = $env:MySqlKey_LOCAL,
         $OutputDir = "$home/Desktop",
-        [ValidateSet('zip', '7z', 'tar', 'lz4')]
+        [ValidateSet('zip', '7z', 'tar', 'lz4','zstd')]
         [alias('Mode')]
         $ArchiveMode = 'lz4',
         $Threads = 16
@@ -290,8 +290,8 @@ function Get-WpSitePacks
     # $SitePackArchive = Compress-Tar -Directory $SiteDirecotry 
 
     # 列出已经打包的文件
-    Get-Item $SqlFileArchive 
-    Get-Item $SitePackArchive
+    Get-Item $OutputDir/$SqlFileArchive 
+    Get-Item $OutputDir/$SitePackArchive
     # 移除数据库sql文件
     Remove-Item $SqlFile -Verbose
 }
