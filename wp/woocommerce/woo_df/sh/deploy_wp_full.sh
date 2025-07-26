@@ -268,18 +268,18 @@ esac
     return 0
 }
 
-# === 函数：部署单个站点 ===
+# === 函数：部署单个站点(解压网站根目录到指定目录,并且找到并导入对应的.sql文件(sql文件在前置步骤中解压完毕)) ===
 deploy_site() {
     local username="$1"
     local archive_file="$2"
 
     # 获取不带扩展名的域名，处理可能包含 .sql 的情况
-    # 先去掉 .zip 或 .7z 扩展名
+    # 先去掉 .zip 或 .7z ,lz4等 扩展名
     local domain_name="${archive_file%.*}"
 
     # 分析sql文件是属于哪一个域名站点(检查是否以 .sql 结尾，如果是则去掉 .sql 后缀,获得sql所属的域名信息)
     if [[ "$domain_name" == *.sql ]]; then
-        echo "⚠️ 检测到文件名包含 .sql 后缀，将其从域名中移除"
+        echo "⚠️ 检测到文件名包含 .sql 后缀，将其从名称字符串中移除获取其对应(所属)的域名"
         domain_name="${domain_name%.sql}"
     fi
 
@@ -292,6 +292,7 @@ deploy_site() {
     local site_domain_home="$SERVER_SITE_HOME/$username/$domain_name" #例如:/www/wwwroot/zsh/domain.com #对于用7z打包domain.com为目录名的7z包,解压后得到domain.com目录 7z x $site_dir_archive -o$site_domain_home 执行结果得到目录$site_domain_home/domain.com,为了便于引用,将其赋值给变量$site_expanded_dir,表示解压后得到的目录
     local site_expanded_dir="$site_domain_home/$domain_name"
     local target_dir="$site_domain_home/wordpress"
+
     # 尝试清空目标目录,以便后续干净插入新内容
     # mkdir -p "$target_dir"
     if [ -d "$target_dir" ]; then
@@ -333,6 +334,11 @@ deploy_site() {
     local sql_file="$PACK_ROOT/$username/$domain_name.sql"
     if [ -f "$sql_file" ]; then
         import_sql_file "$domain_name" "$username" "$sql_file"
+        # 删除数据库文件.sql(已导入)
+        echo "🗑️ 删除数据库文件: $sql_file"
+        rm -f "$sql_file" -v
+        
+
         # === 配置数据库===
         local db_name="${username}_${domain_name}"
         mysql -uroot -h localhost -P3306 -p"$DB_PASSWORD" "$db_name" -e "
@@ -382,6 +388,8 @@ deploy_site() {
     chmod -R 755 "$target_dir"
     chown -R www:www "$target_dir"
 
+
+
     # === 写入伪静态规则 ===
     # write_rewrite_rules "$domain_name"
     set_rewrte_rules_file "$domain_name"
@@ -393,9 +401,10 @@ deploy_site() {
     return 0
 }
 
-# === 函数：查找并处理SQL备份文件 ===
+# === 函数：查找并处理SQL备份文件🎈 ===
 # 此函数会分析传入的用户名和sql包文件名(针对一个站),构造对应的数据库名,并检查对应的文件是否存在
 # 如果存在,则解压sql文件压缩包,如果存在多个
+
 process_sql_file() {
     local username="$1"
     local archive_file="$2"
@@ -404,10 +413,11 @@ process_sql_file() {
     local domain_name="${archive_file%.sql.*}"
     echo "📦 正在处理网站 $domain_name 的SQL备份文件 $archive_file"
 
-    local user_dir="$PACK_ROOT/$username"
-
     # 解压SQL备份文件
-    if ! extract_archive "$user_dir/$archive_file" "$user_dir"; then
+    local user_dir="$PACK_ROOT/$username"
+    sql_archive="$user_dir/$archive_file"
+
+    if ! extract_archive "$sql_archive" "$user_dir"; then
         echo "❌ 解压SQL备份文件失败: $archive_file"
         return 1
     fi
@@ -465,10 +475,16 @@ deployed_sites=0
 failed_sites=0
 sql_backups_processed=0
 
+# ==========按照用户名(目录)逐个用户地处理====
 for user_dir in "${user_dirs[@]}"; do
     # 去掉末尾斜杠(如果有的话)，得到用户名缩写
     username="${user_dir%/}"
-
+    # 创建用于归档已经使用过的文件的目录(移动到当前user文件的deployed目录中,例如 为用户zsh /srv/uploads/uploader/files/zsh下的deployed目录中,如果不存在,则创建此目录 )
+    echo "📦 创建用于归档已经使用过的文件的目录deployed目录"
+    deployed_dir="$DEFAULT_PACK_ROOT/$username/deployed/"
+    if [ ! -d "$deployed_dir" ]; then
+        mkdir -p "$deployed_dir"
+    fi
     echo "📂 正在处理站点人员名所属目录: $username"
 
     # 进入用户目录
@@ -482,7 +498,7 @@ for user_dir in "${user_dirs[@]}"; do
     sql_archives=($(ls *.sql.zip *.sql.7z *.sql.tar *.sql.lz4 2>/dev/null))
     if [ -f "${sql_archives[0]}" ]; then
         echo "🔍 找到SQL备份文件，优先处理"
-
+        # 处理全部待部署网站的数据库文件🎈
         for sql_archive in "${sql_archives[@]}"; do
             if [ ! -f "$sql_archive" ]; then
                 continue
@@ -490,6 +506,9 @@ for user_dir in "${user_dirs[@]}"; do
 
             if process_sql_file "$username" "$sql_archive"; then
                 ((sql_backups_processed++))
+                # 归档已用过的sql压缩包文件
+                echo "🗑️ 归档已用过的sql压缩包文件: $sql_archive"
+                mv "$sql_archive" "$DEFAULT_PACK_ROOT/$username/deployed/" -f -v
             else
                 ((failed_sites++))
             fi
@@ -516,14 +535,25 @@ for user_dir in "${user_dirs[@]}"; do
         if [ ! -f "$archive_file" ]; then
             continue
         fi
-        # 调用部署函数deploy_site进行部署
+    
+        # 调用部署函数deploy_site进行部署🎈
         if deploy_site "$username" "$archive_file"; then
+            # 更新计数器
             ((deployed_sites++))
+
+            # 移动文件(本轮被解压过的站点根目录压缩包文件和数据库压缩包文件)到deployed目录中
+         
+            mv "$archive_file" "$deployed_dir" -f
+
         else
             ((failed_sites++))
         fi
     done
-
+    # 更改deployed文件夹权限
+    echo "🔒 更改deployed文件夹权限(设置目录权限和所有者)"
+    chmod -R 755 "$deployed_dir"
+    chown -R uploader:uploader "$deployed_dir"
+    
     # 返回上级目录
     cd "$PACK_ROOT"
 done

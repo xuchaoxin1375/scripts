@@ -74,7 +74,7 @@ PS> tar -tf .\8.1.tar
     # 判断$Path是否为一个目录,如果是,则使用-C
     if (Test-Path $Path -PathType Container)
     {
-        $Dir=$Path.Trim('/').Trim('\')
+        $Dir = $Path.Trim('/').Trim('\')
         if ($InDirectory)
         {
             $exp = "tar -c $v -f $OutputFile -C $Dir * "
@@ -97,32 +97,47 @@ PS> tar -tf .\8.1.tar
 }
 function Get-Lz4Package
 {
+    <# 
+    .SYNOPSIS
+    使用lz4归档(压缩)文件夹或目录的过程需通常需要分为2个步骤(因为lz4只能压缩文件,而不能直接压缩文件夹)
+    1.使用tar将目录打包为tar文件(得到单个文件),使用tar将文件夹打包为单个文件的速度比较快,而不用zip这种压缩打包的方式
+    2.使用lz4压缩tar文件得到.tar.lz4文件(或者可以使用开关参数控制是否将.tar这个次后缀添加到压缩文件中)
+    #>
     [cmdletbinding()]
     param (
         $Path,
         # $OutputDirectory = "./",
         $OutputFile = "",
         $Threads = 16,
+        # 控制是否在中间文件包中使用tar次后缀
         [switch]$NoTarExtension
     )
     Write-Verbose "正在打包目录(目标lz4): $Path " -Verbose
     $dirName = Split-Path $Path -Leaf
 
+    # 默认输出目录为桌面
     $DefaultOutputDir = [Environment]::GetFolderPath("Desktop")
+    # 判断是否将.tar添加到输出文件名中
     $TarExtensionField = if ($NoTarExtension) { "" }else { ".tar" }
+
     $OutputFileTar = "$DefaultOutputDir/${dirName}${TarExtensionField}"
+    # 临时tar文件(被lz4压缩后将会被删除)
     $TempTar = "$DefaultOutputDir/${dirName}.tar"
+    # 未指定输出路径时构造输出路径(包括输出目录和文件名)
     if ($OutputFile -eq "")
     {
         Write-Debug "输出文件名未指定，使用默认值: ${dirName}.tar"
         Write-Debug "默认存放路径为桌面:$DefaultOutputDir" 
     }
+    # 确定完整的输出文件路径
     $OutputFile = "$OutputFileTar.lz4"
 
+    # 开始处理文件夹的打包(打包到tar临时文件)
     Compress-Tar -Directory $Path -OutputFile $TempTar
 
     # 若lz4.exe存在,则使用lz4压缩
     Write-Warning "请确保lz4.exe存在于环境变量PATH中,并且版本高于1.10才能支持多线程"
+    # 将临时tar包文件压缩成lz4格式
     lz4.exe -T"$Threads" $TempTar $OutputFile
     # 检查结果
     Get-Item $OutputFile
@@ -191,7 +206,7 @@ function Get-WpSitePacks
         $DatabaseName = "",
         $DatabaseKey = $env:MySqlKey_LOCAL,
         $OutputDir = "$home/Desktop",
-        [ValidateSet('zip', '7z', 'tar', 'lz4','zstd')]
+        [ValidateSet('zip', '7z', 'tar', 'lz4', 'zstd')]
         [alias('Mode')]
         $ArchiveMode = 'lz4',
         $Threads = 16
@@ -219,12 +234,12 @@ function Get-WpSitePacks
     $SqlFileArchiveZip = "$SqlFile.zip"
     $SqlFileArchive7z = "$SqlFile.7z"
     $SqlFileArchiveTar = "$SqlFile.tar"
-    $SqlFileArchiveLz4 = "$SqlFile.tar.lz4"
+    $SqlFileArchiveLz4 = "$SqlFile.lz4"
     # 站点根目录
     $SitePackArchiveZip = "$OutputDir/${Domain}.zip"
     $SitePackArchive7z = "$OutputDir/${Domain}.7z"
     $SitePackArchiveTar = "$OutputDir/${Domain}.tar"
-    $SitePackArchiveLz4 = "$OutputDir/${Domain}.tar.lz4"
+    $SitePackArchiveLz4 = "$OutputDir/${Domain}.lz4"
 
     $SitePackArchive = ""
     $SqlFileArchive = ""
@@ -281,6 +296,7 @@ function Get-WpSitePacks
         Get-Lz4Package -Path $SiteDirecotry -OutputFile $SitePackArchiveLz4 -Threads $Threads -NoTarExtension
         $SitePackArchive = $SitePackArchiveLz4
         $SqlFileArchive = $SqlFileArchiveLz4
+        Write-Debug $SitePackArchive -Debug
     }
     else
     {
@@ -290,8 +306,8 @@ function Get-WpSitePacks
     # $SitePackArchive = Compress-Tar -Directory $SiteDirecotry 
 
     # 列出已经打包的文件
-    Get-Item $OutputDir/$SqlFileArchive  
-    Get-Item $OutputDir/$SitePackArchive
+    Get-Item $SqlFileArchive  
+    Get-Item $SitePackArchive
     # 移除数据库sql文件
     Remove-Item $SqlFile -Verbose
 }
@@ -2941,38 +2957,6 @@ function Get-MainDomain
 
         return $null
     }
-}
-function Move-ItemFromCsvPathFields
-{
-    <# 
-    .SYNOPSIS
-    将csv文件中的指定字段移动到指定目录
-    .PARAMETER Path
-    csv文件路径
-    .PARAMETER Fields
-    要移动的字段名(暂时支持1个字段)
-    .PARAMETER SourceDir
-    需要被移动的文件所在目录
-    .PARAMETER Destination
-    文件要被移动到的目标目录
-
-    #>
-    [CmdletBinding(SupportsShouldProcess)]
-    param (
-        [Parameter(Mandatory = $true, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
-        $Path,
-        $Fields = 'Images',
-        
-        $SourceDir,
-        [Alias('TargetDir')]$Destination
-    )
-    # $csv = Import-Csv $CsvPath
-    process
-    {
-        Write-Verbose "Processing file: $Path" -Verbose
-        Import-Csv $Path | Select-Object -ExpandProperty 'Images' | ForEach-Object { Move-Item -Path $SourceDir/$_ -Destination $Destination }
-    }
-
 }
 function Restart-Nginx
 {

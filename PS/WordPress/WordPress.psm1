@@ -1,4 +1,102 @@
 
+function Update-WpPlugins-DF1
+{
+    <# 
+.SYNOPSIS
+    建议配置免密登录，避免每次都输入密码(ssh 密钥注册)
+.DESCRIPTION
+    这里直接上传插件文件夹(你需要手动解压,插件可能是zip或者tar.gz)
+    也可以添加逻辑来支持上传压缩文件(todo)
+    或者指定目录后,添加一个压缩成zip/7z的命令,然后推送到服务器上,最后调用解压和目录复制逻辑
+
+.EXAMPLE
+Update-WpPlugins-DF1 -plugin_dir_local C:\share\df\wp_sites\wp_plugins_functions\price_pay\mallpay 
+#>
+    param(
+
+        $server = $env:DF_SERVER1,               # 服务器IP地址
+        $username = "root"        ,      # 服务器用户名
+        # $password = ""              # 服务器密码（不推荐明文存储,配置ssh密钥登录更安全）
+        $remoteDirectory = "/www/wwwroot"       , # 服务器目标目录
+        $plugin_dir_local = "$wp_plugins\price_pay\mallpay",   # 本地插件目录路径🎈
+        $bashScript = "update_wp_plugin.sh",
+        [switch]$Dry
+    )
+    
+    $plugin_dir_name = (Split-Path $plugin_dir_local -Leaf) # 🎈
+    $plugin_dir = "$remoteDirectory/$plugin_dir_name"  # 服务器目标插件目录🎈
+    # 上传文件到服务器
+    Write-Verbose "Uploading file to server..." -Verbose
+    scp -r $plugin_dir_local $username@${server}:"$remoteDirectory" 
+
+
+    Write-Verbose "Executing updating script...(this need several seconds, please wait...)" -Verbose
+    # 执行PHP脚本
+    # ssh $username@$server "php $remoteDirectory/$phpScript $remoteDirectory $plugin_dir "
+
+    # 执行高性能的bash脚本
+    $dryRun = if($Dry) { "--dry-run" }else { "" }
+    $cmd = "  ssh $username@$server bash $remoteDirectory/wp-plugin-update/$bashScript --workdir $remoteDirectory --source $plugin_dir $dryRun " 
+    Write-Verbose "Executing command: $cmd" -Verbose
+    Start-Sleep 2
+    $cmd | Invoke-Expression
+    Write-Verbose "Done." -Verbose
+    
+}
+function Move-ItemImagesFromCsvPathFields
+{
+    <# 
+    .SYNOPSIS
+    将csv文件中的指定字段移动到指定目录
+    .PARAMETER Path
+    csv文件路径
+    .PARAMETER Fields
+    要移动的字段名(暂时支持1个字段)
+    .PARAMETER SourceDir
+    需要被移动的文件所在目录
+    .PARAMETER Destination
+    文件要被移动到的目标目录
+
+    #>
+    [CmdletBinding(SupportsShouldProcess = $true, DefaultParameterSetName = "UsePath")]
+    param (
+        [Parameter(Mandatory = $true, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
+        $Path,
+        $Fields = 'Images',
+        
+        [Parameter(ParameterSetName = "UsePath")]
+        $SourceDir,
+        [Parameter(ParameterSetName = "UsePath")]
+        [Alias('TargetDir')]$Destination,
+
+        [Parameter(ParameterSetName = "UseDomainNamePair")]
+        [string[]]$UseDomainNamePair,
+
+        $WorkingDirectory = "$my_wp_sites",
+        $YearField = (Get-Date -Format 'yyyy'),
+        # 是否忽略图后缀名,仅匹配文件名前缀并移动对应文件
+        [switch]$IgnoreExtension
+    )
+    # $csv = Import-Csv $CsvPath
+    process
+    {
+        Write-Verbose "Processing file: $Path" -Verbose
+        if($PSCmdlet.ParameterSetName -eq "UseDomainNamePair" -and $UseDomainNamePair)
+        {
+            $midPath = "wp-content/uploads/$YearField"
+            $SourceDir = "$WorkingDirectory/$($UseDomainNamePair[0])/$midPath"
+            $Destination = "$WorkingDirectory/$($UseDomainNamePair[1])/$midPath"
+        }
+        $values = Import-Csv $Path | Select-Object -ExpandProperty $Fields
+        if ($IgnoreExtension)
+        {
+            Write-Verbose '忽略图片文件后缀(速度会比较慢),可以配合  Get-WpSitesLocalImagesCount 查看'
+            $values = $values | ForEach-Object { $_ -replace '\.\w+$', '.*' }
+        }
+        $values | ForEach-Object { Move-Item -Path $SourceDir/$_ -Destination $Destination -Verbose:$VerbosePreference -ErrorAction SilentlyContinue }
+    }
+
+}
 function Get-WpImages
 {
     <# 

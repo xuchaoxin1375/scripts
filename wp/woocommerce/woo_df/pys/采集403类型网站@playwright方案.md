@@ -16,7 +16,7 @@
 
 ```powershell
 #⚡️[Administrator@CXXUDESK][~\Desktop\localhost\esd.equipment][14:19:34][UP:21.02Days]
-PS> py C:\Users\Administrator\Desktop\localhost\get_htmls_from_urls_multi_thread.py .\L1.txt  -p http://localhost:8800 -o links 
+PS> python C:\Users\Administrator\Desktop\localhost\get_htmls_from_urls_multi_thread.py .\L1.txt  -p http://localhost:8800 -o links 
 开始下载 25 个URL到目录: links\20250723_142014
 设置: 超时=30s, 延迟=1.0-3.0s
 并发数=3, 重试次数=3, 浏览器窗口模式=隐藏
@@ -30,5 +30,28 @@ PS> py C:\Users\Administrator\Desktop\localhost\get_htmls_from_urls_multi_thread
 [5/25] 成功下载: https://esd.equipment/media/sitemap/sitemap_esd_de-1-6.xml -> links\20250723_142014\esd.equipment\media_sitemap_sitemap_esd_de-1-6.xml.html
 [6/25] 成功下载: https://esd.equipment/media/sitemap/sitemap_esd_de-1-7.xml -> links\20250723_142014\esd.equipment\media_sitemap_sitemap_esd_de-1-7.xml.html
 [7/25] 成功下载: https://esd.equipment/media/sitemap/sitemap_esd_de-1-8.xml -> links\20250723_142014\esd.equipment\media_sitemap_sitemap_esd_de-1-8.xml.html
+```
+
+解析各个底层站点地图中包含的产品url,分别保存到.txt文件中(每个txt文件都是包含一系列url的文本文件,每行一个url)
+
+```powershell
+PS> $i=1;ls *.xml.*|%{Get-UrlFromSitemap -Path  $_ > "X$i.txt";$i+=1 }
+Pattern to match URLs: <loc>(.*?)</loc>
+Processing sitemap at path: C:\Users\Administrator\Desktop\localhost\esd.equipment\xmls\media_sitemap_sitemap_esd_de-1-10.xml.html [C:\Users\Administrator\Desktop\localhost\esd.equipment\xmls\media_sitemap_sitemap_esd_de-1-10.xml.html]
+Pattern to match URLs: <loc>(.*?)</loc>
+Processing sitemap at path: C:\Users\Administrator\Desktop\localhost\esd.equipment\xmls\media_sitemap_sitemap_esd_de-1-11.xml.html [C:\Users\Administrator\Desktop\localhost\esd.equipment\xmls\media_sitemap_sitemap_esd_de-1-11.xml.html]
+...
+```
+
+将下载保存目录下的所有txt传递给脚本进行下载
+
+```powershell
+ls *txt|%{py C:\Users\Administrator\Desktop\localhost\get_htmls_from_urls_multi_thread.py $_  -p http://localhost:8800 -o links -c 5}
+```
+
+将下载好的html文件组织到一个文本文件中(编制索引),从而让采集器能够通过对应本地url读取这个索引文本文件,获取所有(本地)产品页链接以进行后续内容采集
+
+```powershell
+Get-UrlListFromDir -Path .\part0-17\ -LocTagMode -Hst localhost -Output esd.equipment1.urls.txt
 ```
 

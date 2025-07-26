@@ -28,6 +28,8 @@
 
 导出csv 输出路径的参数`--output-dir`;
 
+> 导出的时候千万要注意语言/国家
+
 ### woo_get_csv.py
 
 其中`-f .jpg`表明,当图片url后缀不是白名单图片类型,就会默认加上后缀`.jpg`
@@ -35,6 +37,8 @@
 ```powershell
 python $pys\woo_get_csv.py -f .webp --start-id  $start_id --end-id $end_id  --language-country $language --output-dir $output_dir --sku-suffix $sku_suffix 
 ```
+
+> 再次强调,导出的时候千万注意对应的国家,涉及到默认产品分类(面包屑)分配词语的单词所属语种,使用`--language-country`或者缩写`-C`来指定,比如美国用`US`,德国`DE`,...
 
 #### 跳过导出尚未采集完毕的任务(-E)
 
@@ -403,6 +407,24 @@ python $pys\woo_uploader_db.py -c $csv_path -i $img_dir
   - 类似的小猫咪代理通常不会影响本地站的访问,但是也可能出bug,可能需要重启小猫咪,同时要保证对应的线路延迟检测不是error
 
 ## 其他有用的命令行
+
+### 网站间的数据分配调整
+
+假设用户在本地建立了4个网站(a.com,b.com,c.com,d.com)
+
+每份分配了7份csv(每份1万来算,共有7万数据),但是某个站的图片下载异常(比如链接失效,或者下载图片都是破图或者压根就打不开或下不动),这种情况下,如果图片异常的数量达到2万以上,意味着这个站(比如a.com)数据将不够
+
+如果其他站(比如b.com)数据比较充裕(下载图片后,数量损失不超过1万),可以考虑将其中的一份csv移动到a.com中调节
+
+移动分为两部分,首先一个是移动图片(这个工程量比较大,如果图片名是按照有序编号sku开头,可以将图片按照名字排序,然后指定区间内sku的图批量选中,剪切到另一个站,再把csv移动到对应到站的csv目录中)
+
+其中移动图片的方案还可以通过命令行方式移动`Move-ItemFromCsvPathFields -Path ... -SourceDir ... -Destination ...`
+
+```bash
+Move-ItemFromCsvPathFields -Path C:\Users\Administrator\Desktop\data_output\marineboltstore.com\p31.csv -SourceDir C:\Users\Administrator\Desktop\my_wp_sites\boattableworks.com\wp-content\uploads\2025 -Destination C:\Users\Administrator\Desktop\my_wp_sites\marineboltstore.com\wp-content\uploads\2025\
+```
+
+
 
 ### 删除目录中的非webp文件🎈
 
