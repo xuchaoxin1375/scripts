@@ -76,7 +76,7 @@ function Test-LinksParallel
     # 如果不是powershell 7报错
     if ($host.Version.Major -lt 7)
     {
-        Throw 'PowerShell 7 or higher is required to run parallel foreach!'
+        throw 'PowerShell 7 or higher is required to run parallel foreach!'
         # return 
     }
     $availableMirrors = @()
@@ -141,6 +141,9 @@ function Test-LinksParallel
     return $availableMirrors
 }
 
+
+
+
 function Test-MirrorAvailability
 {
     <# 
@@ -154,7 +157,7 @@ function Test-MirrorAvailability
     [CmdletBinding()]
     param (
         [string]$Url,
-        $TimeoutSec = 6
+        $TimeoutSec = 15
     )
 
     try

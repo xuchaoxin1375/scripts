@@ -42,8 +42,6 @@ SITE_TAGS_FILENAME = f"{DESKTOP}/cf_site_tags.conf"
 THREADS = 5  # 并发线程数
 API_TIMEOUT = 100  # API 请求超时时间（秒）
 
-load_dotenv()
-
 
 # 全局统计变量
 processed_count = 0
@@ -64,7 +62,6 @@ def load_domains_from_file(filename):
             df = pd.read_excel(filename, keep_default_na=False)
         elif filename.endswith(".conf") or filename.endswith(".txt"):
             with open(CF_DOMAINS_TABLE_CONF, "r", encoding="utf-8") as f:
-
                 lines = f.readlines()
                 domains = []
                 for line in lines:

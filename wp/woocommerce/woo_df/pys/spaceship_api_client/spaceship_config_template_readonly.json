@@ -1,0 +1,9 @@
+{
+    "api_key": "your_short_api_key",
+    "api_secret": "your_secret_long_string",
+    "nameserver1": "your_ns1",
+    "nameserver2": "your_ns2",
+    "take": 100,
+    "skip": 0,
+    "order_by": "expirationDate"
+}
