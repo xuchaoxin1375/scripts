@@ -1040,6 +1040,33 @@ function Add-CFZoneDNSRecords
     }
 
 }
+function Update-SSNameServers
+{
+    <# 
+    .SYNOPSIS
+    调用Python脚本更新Spaceship域名的DNS服务器信息
+    .DESCRIPTION
+    核心步骤是调用python脚本来执行更新
+    PS> py .\update_nameservers.py -h
+    usage: update_nameservers.py [-h] [-d DOMAINS_FILE] [-c CONFIG] [--dry-run] [-v]
+
+    批量更新SpaceShip域名的Nameservers
+
+    options:
+    -h, --help            show this help message and exit
+    -d DOMAINS_FILE, --domains-file DOMAINS_FILE
+                            域名和nameserver配置文件路径 (csv/xlsx/conf)
+    -c CONFIG, --config CONFIG
+                            SpaceShip API配置文件路径 (json)
+    --dry-run             仅预览将要修改的内容,不实际提交API
+    -v, --verbose         显示详细日志
+    #>
+    [CmdletBinding()]
+    param (
+    )
+    python $pys/spaceship_api_client/update_nameservers.py 
+    
+}
 function Add-CFZoneConfig
 {
     <# 
