@@ -97,7 +97,7 @@ PS> python .\update_nameservers.py -d C:\Users\Administrator\Desktop\table.conf 
 6   arpro24.com  aitana.ns.cloudflare.com  jeremy.ns.cloudflare.com
 7  oce.com  aitana.ns.cloudflare.com  jeremy.ns.cloudflare.com
 
-h.com after {'provider': 'custom', 'hosts': ['aitana.ns.cloudflare.com', 'jeremy.ns.cloudflare.com']}
+hsch.com after {'provider': 'custom', 'hosts': ['aitana.ns.cloudflare.com', 'jeremy.ns.cloudflare.com']}
 guwahl.com after {'provider': 'custom', 'hosts': ['aitana.ns.cloudflare.com', 'jeremy.ns.cloudflare.com']}
 ...
 ```

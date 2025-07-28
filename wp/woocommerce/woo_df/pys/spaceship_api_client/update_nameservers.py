@@ -3,10 +3,11 @@
 方便起见,下面用SS表示SpaceShip
 """
 
+import argparse
 import json
 import os
 import re
-import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
 from spaceship_api import APIClient
 
@@ -22,20 +23,9 @@ SS_DOMAIN_NS_PATH = (
 # 选择其中一个🎈
 SS_DOMAINS_FILE = SS_DOMAINS_TABLE_CONF
 
-# 如果环境变量中配置了SP_KEY和SP_SECRET,则使用环境变量的值,否则使用配置文件中的值
-SS_KEY = os.environ.get("SP_KEY")
-SS_SECRET = os.environ.get("SP_SECRET")
-if SS_KEY and SS_SECRET:
-    key = SS_KEY
-    secret = SS_SECRET
 
-with open(SS_CONFIG_PATH, "r", encoding="utf-8") as f:
-    config = json.load(f)
-key = config["api_key"]
-secret = config["api_secret"]
-NS1 = config["nameserver1"]
-NS2 = config["nameserver2"]
-api = APIClient(key, secret)
+URL_MAIN_DOMAIN_PATTERN = r"(?:https?://)?(?:[\w-]+\.)*([^/]+[.][^/]+)/?"
+
 
 # 核心任务:将一批域名(已经购买)的域名服务器(nameservers)替换为指定值
 # 域名配置在一个excel或者csv文件中,包含两列,第一列是域名,第二列是要自定义的域名服务器(nameservers)
@@ -55,7 +45,6 @@ def get_main_domain_name_from_str(url):
     'http://domain.com', 'https://domain.com/','# https://domain.com']
     """
     # 使用正则表达式提取域名
-    URL_MAIN_DOMAIN_PATTERN = r"(?:https?://)?(?:[\w-]+\.)*([^/]+[.][^/]+)/?"
     match = re.search(URL_MAIN_DOMAIN_PATTERN, url)
     if match:
         return match.group(1) or ""
@@ -97,12 +86,27 @@ def read_data(file_path):
     return df
 
 
-def get_data(file_path):
-    """读入的数据,执行必要的处理"""
+def get_data(file_path, config):
+    """读入的数据,执行必要的处理
+
+    Args:
+        file_path (str): 文件路径
+        config (dict): 配置参数
+
+    Returns:
+        pd.DataFrame: 处理后的数据
+
+
+    """
 
     df = read_data(file_path)
     # 如果nameserver1字段为空,则设置默认值为x,nameserver2字段为空,则设置默认值为y
-    df_filled = df.fillna({"nameserver1": NS1, "nameserver2": NS2})
+    df_filled = df.fillna(
+        {
+            "nameserver1": config.get("nameserver1"),
+            "nameserver2": config.get("nameserver2"),
+        }
+    )
     # 移除边缘的空格(试验表明,如果nameserver边缘有多余的空格,会导致api调用失败(422错误))
     df_filled["domain"] = df_filled["domain"].astype(str).str.strip()
     df_filled["nameserver1"] = df_filled["nameserver1"].astype(str).str.strip()
@@ -110,23 +114,18 @@ def get_data(file_path):
     return df_filled
 
 
-# def update_nameservers(df):
-#     """更新域名的域名服务器"""
-#     for row in df.to_dict("records"):
-#         # 遍历dataframe行的方法中，性能和可读性最高
-#         domain = row["domain"]
-#         nameserver1 = row["nameserver1"]
-#         nameserver2 = row["nameserver2"]
-#         # print(f"Parameters: {{Domain: {domain}, NS1: {nameserver1}, NS2: {nameserver2}}}")
-#         before = api.get_nameservers(domain)
-#         print(domain, "before", before)
-#         result = api.update_nameservers(domain, "custom", [nameserver1, nameserver2])
-#         print(domain, "after", result)
-
-
 def parse_args():
-    """ 命令行参数解析 """
-    parser = argparse.ArgumentParser(description="批量更新SpaceShip域名的Nameservers")
+    """命令行参数解析"""
+    parser = argparse.ArgumentParser(
+        description="批量更新SpaceShip域名的Nameservers\n\n"
+        "示例: python update_nameservers.py -d domains.csv -c config.json --threads 8 --dry-run -v\n"
+        "参数说明:\n"
+        "  -d, --domains-file   域名和nameserver配置文件路径 (csv/xlsx/conf)\n"
+        "  -c, --config        SpaceShip API配置文件路径 (json)\n"
+        "  --threads           并发线程数 (默认: 4)\n"
+        "  --dry-run           仅预览将要修改的内容,不实际提交API\n"
+        "  -v, --verbose       显示详细日志\n"
+    )
     parser.add_argument(
         "-d",
         "--domains-file",
@@ -141,6 +140,7 @@ def parse_args():
         default=SS_CONFIG_PATH,
         help="SpaceShip API配置文件路径 (json)",
     )
+    parser.add_argument("--threads", type=int, default=4, help="并发线程数 (默认: 4)")
     parser.add_argument(
         "--dry-run", action="store_true", help="仅预览将要修改的内容,不实际提交API"
     )
@@ -148,43 +148,75 @@ def parse_args():
     return parser.parse_args()
 
 
-def load_config(config_path):
+def get_auth(config_path):
+    """加载配置
+    读取配置文件和环境变量中相关值
+
+    Args:
+        config_path (str): 配置文件路径
+    Returns:
+        dict: 配置信息
+
+    key,secret优先级按照以下顺序(高优先级的值会覆盖低优先级的配置中对应的字段值):
+    1. 环境变量 - 最高优先级
+    2. 配置文件 - 默认值
+    3. 程序默认值（如果有）
+
+    """
+    # 如果环境变量中配置了SP_KEY和SP_SECRET,则使用环境变量的值,否则使用配置文件中的值
+    key = os.environ.get("SP_KEY")
+    secret = os.environ.get("SP_SECRET")
+    # 从json配置文件中读取鉴权配置
     with open(config_path, "r", encoding="utf-8") as f:
         config = json.load(f)
-    return config
+
+    if key and secret:
+        config["api_key"] = key
+        config["api_secret"] = secret
+
+    return config or {}
 
 
-def update_nameservers(df, api, dry_run=False, verbose=False):
-    """更新域名的域名服务器"""
-    for row in df.to_dict("records"):
+def update_nameservers(df, api, dry_run=False, verbose=False, threads=4):
+    """使用线程池批量更新域名的域名服务器"""
+
+    def task(row):
         domain = row["domain"]
         nameserver1 = row["nameserver1"]
         nameserver2 = row["nameserver2"]
-        before = api.get_nameservers(domain)
-        if verbose:
-            print(domain, "before", before)
-        if dry_run:
-            print(
-                f"[DRY-RUN] Would update {domain} to NS: {nameserver1}, {nameserver2}"
-            )
-        else:
-            result = api.update_nameservers(
-                domain, "custom", [nameserver1, nameserver2]
-            )
-            print(domain, "after", result)
+        try:
+            before = api.get_nameservers(domain)
+            if verbose:
+                print(domain, "before", before)
+            if dry_run:
+                print(
+                    f"[DRY-RUN] Would update {domain} to NS: {nameserver1}, {nameserver2}"
+                )
+            else:
+                result = api.update_nameservers(
+                    domain, "custom", [nameserver1, nameserver2]
+                )
+                print(domain, "after", result)
+        except Exception as e:
+            print(f"[ERROR] {domain}: {e}")
+
+    records = df.to_dict("records")
+    with ThreadPoolExecutor(max_workers=threads) as executor:
+        futures = [executor.submit(task, row) for row in records]
+        for future in as_completed(futures):
+            future.result()
 
 
 def main():
+    """主函数"""
     args = parse_args()
-    config = load_config(args.config)
-    global NS1, NS2, api
-    NS1 = config["nameserver1"]
-    NS2 = config["nameserver2"]
-    api = APIClient(config["api_key"], config["api_secret"])
-    df = get_data(args.domains_file)
+    config = get_auth(args.config)
+    api = APIClient(config.get("api_key"), config.get("api_secret"))
+    df = get_data(args.domains_file, config)
     print(df)
-    # return
-    update_nameservers(df, api, dry_run=args.dry_run, verbose=args.verbose)
+    update_nameservers(
+        df, api, dry_run=args.dry_run, verbose=args.verbose, threads=args.threads
+    )
 
 
 if __name__ == "__main__":
