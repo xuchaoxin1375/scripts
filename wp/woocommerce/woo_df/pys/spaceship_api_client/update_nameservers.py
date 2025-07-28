@@ -1,15 +1,45 @@
 """
-从spaceship_config.json文件中读取配置信息
+更新spaceship中域名的域名服务器(nameservers)
+读取配置文件spaceship_config.json中的信息,获取API_KEY和API_SECRET,并创建APIClient对象,完成配置
+
 方便起见,下面用SS表示SpaceShip
+
+配置文件(json)内容示例
+{
+    "api_key": "your_short_api_key",
+    "api_secret": "your_secret_long_string",
+    "accounts": [
+        {
+            "account1": {
+                "api_key": "your_short_api_key1",
+                "api_secret": "your_secret_long_string1"
+            }
+        },
+        {
+            "account2": {
+                "api_key": "your_short_api_key2",
+                "api_secret": "your_secret_long_string2"
+            }
+        }
+    ],
+    "nameserver1": "your_ns1",
+    "nameserver2": "your_ns2",
+    "take": 100,
+    "skip": 0,
+    "order_by": "expirationDate"
+}
 """
 
 import argparse
-import json
-import os
+# import json
+# import os
+# import sys
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
 import pandas as pd
-from spaceship_api import APIClient
+
+from spaceship_api import APIClient, get_auth
 
 DESKTOP = r"C:/Users/Administrator/Desktop"
 # 鉴权信息配置文件(json格式)
@@ -37,11 +67,13 @@ def get_main_domain_name_from_str(url):
     从字符串中提取域名,结构形如 "二级域名.顶级域名",即SLD.TLD;
 
     仅提取一个域名,适合于对于一个字符串中仅包含一个确定的域名的情况
-    例如,对于更长的结构,"子域名.二级域名.顶级域名"则会丢弃子域名,前缀带有http(s)的部分也会被移除
+    例如,对于更长的结构,"子域名.二级域名.顶级域名"则会丢弃子域名,
+    前缀带有http(s)的部分也会被移除
 
     Examples:
     # 测试URL列表
-    urls = ['www.domain.com', 'https://www.dom-ain.com','https://sports.whh.cn.com', 'domain-test.com',
+    urls = ['www.domain.com', 'https://www.dom-ain.com',
+    'https://sports.whh.cn.com', 'domain-test.com',
     'http://domain.com', 'https://domain.com/','# https://domain.com']
     """
     # 使用正则表达式提取域名
@@ -145,36 +177,19 @@ def parse_args():
         "--dry-run", action="store_true", help="仅预览将要修改的内容,不实际提交API"
     )
     parser.add_argument("-v", "--verbose", action="store_true", help="显示详细日志")
+    parser.add_argument(
+        "-a",
+        "--account",
+        type=str,
+        default="",
+        help="指定SpaceShip账号(用户名),默认置空时则读取默认密钥组",
+    )
+    parser.add_argument(
+        "--list-accounts",
+        action="store_true",
+        help="列出配置文件中的账号,并退出",
+    )
     return parser.parse_args()
-
-
-def get_auth(config_path):
-    """加载配置
-    读取配置文件和环境变量中相关值
-
-    Args:
-        config_path (str): 配置文件路径
-    Returns:
-        dict: 配置信息
-
-    key,secret优先级按照以下顺序(高优先级的值会覆盖低优先级的配置中对应的字段值):
-    1. 环境变量 - 最高优先级
-    2. 配置文件 - 默认值
-    3. 程序默认值（如果有）
-
-    """
-    # 如果环境变量中配置了SP_KEY和SP_SECRET,则使用环境变量的值,否则使用配置文件中的值
-    key = os.environ.get("SP_KEY")
-    secret = os.environ.get("SP_SECRET")
-    # 从json配置文件中读取鉴权配置
-    with open(config_path, "r", encoding="utf-8") as f:
-        config = json.load(f)
-
-    if key and secret:
-        config["api_key"] = key
-        config["api_secret"] = secret
-
-    return config or {}
 
 
 def update_nameservers(df, api, dry_run=False, verbose=False, threads=4):
@@ -210,7 +225,7 @@ def update_nameservers(df, api, dry_run=False, verbose=False, threads=4):
 def main():
     """主函数"""
     args = parse_args()
-    config = get_auth(args.config)
+    config = get_auth(args.config, args)
     api = APIClient(config.get("api_key"), config.get("api_secret"))
     df = get_data(args.domains_file, config)
     print(df)

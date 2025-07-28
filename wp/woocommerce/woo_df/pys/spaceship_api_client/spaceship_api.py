@@ -11,12 +11,18 @@ https://spaceship.dev/api/
 
 这里APIClient可以作为一个模块单独存放
 而main函数可以分离出去
+此外,APIClient内的请求不做重试处理,外部调用api对象的时候自行添加配置重试代码
+
 """
 
 import argparse
+
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import os
 import sys
+import time
+
 import requests
 
 
@@ -28,6 +34,8 @@ class APIClient:
         self.api_key = api_key
         self.api_secret = api_secret
         self.base_url = "https://spaceship.dev/api/v1"
+        self.domains_in_all_accounts = []
+        self.suspended_domains = []
 
     def _headers(self):
         """生成请求头"""
@@ -55,10 +63,195 @@ class APIClient:
             print(f"API请求失败: {e}", file=sys.stderr)
             return None
 
-    def list_domains(self, take=10, skip=0, order_by="expirationDate"):
-        """列出域名列表"""
+    def _list_domains(self, take=10, skip=0, order_by="expirationDate"):
+        """列出域名列表
+        调用默认的api一次请求只能列出一部分,并且返回的数据形式是json风格
+        这里增加一些代码让其能够以更灵活的方式获取数据,满足更多需求
+
+        """
         params = {"take": take, "skip": skip, "orderBy": order_by}
         return self._request("GET", "/domains", params=params)
+
+    def list_domains(self, take=0, skip=0, order_by="expirationDate"):
+        """列出域名列表
+        调用默认的api一次请求只能列出一部分,并且返回的数据形式是json风格
+        这里增加一些代码让其能够以更灵活的方式获取数据,满足更多需求
+        此方法将take的大小扩展到尽可能大(而不仅限于100),主要用于获取全部域名中的前take个域名
+
+        Args:
+            take (int, optional): 表示最多获取的域名数量.此值为0时表示尽可能多获取
+            skip (int, optional): 跳过数量.
+            order_by (str, optional): 排序字段. Defaults to "expirationDate".
+            # get_all (bool, optional): 是否返回尽可能多的数据. Defaults to False.
+
+        Returns:
+            { "items": [...],"total": ...}
+            返回的json包含两个子对象
+        """
+        all_domains = []
+        # if get_all:
+        # 获取全部域名
+        # 配置单次请求默认参数
+        skip_in_fetch = 0
+        take_per_fetch = 100
+        # 循环调用list_domains直到所有域名被获取
+        while True:
+            resp = self._list_domains(take_per_fetch, skip_in_fetch, order_by)
+
+            if not resp or "items" not in resp:
+                break
+            if isinstance(resp, dict):
+                items = resp.get("items", [])
+            else:
+                items = []
+
+            # 如果本轮获取的域名数组(items)非空,则添加到总的items中
+            all_domains.extend(items)
+
+            # print(len(items), "🎈", items)
+            # 确定下一轮要请求要跳过多少个(已经请求过的)域名(或者从第几个域名后开始新一轮的请求)
+            skip_in_fetch += len(items)
+
+            # 如果累计获取的户名的总数已经不少于需要的数量(take),也可以离开循环
+            if take and (len(all_domains) >= take + skip):
+                break
+            # 如果本轮获取的域名数量小于指定数量,则说明本轮是最后一轮请求,可以离开并结束循环;
+            if len(items) < take_per_fetch:
+                break
+        # 截取需要的数量(跳过前skip个)
+        all_domains = all_domains[-take:]
+        # 将获取的数据构造成规定的格式
+        result = {"items": all_domains, "total": len(all_domains)}
+        # else:
+        #     result = self._list_domains(take, skip, order_by)
+
+        return result
+
+    def list_domains_names_only(self, take=10, skip=0, order_by="expirationDate"):
+        """列出域名列表，只输出域名
+        Args:
+            take (int, optional): 获取的域名数量. Defaults to 10.
+            skip (int, optional): 跳过数量. Defaults to 0.
+        Returns:
+            list: 域名列表
+        """
+        domains = self.list_domains(take=take, skip=skip, order_by=order_by)
+        names = []
+        if "items" in domains:
+            if isinstance(domains, dict):
+                domains_info = domains.get("items", [])
+                for domain in domains_info:
+                    # print(name)
+                    names.append(domain.get("name", ""))
+            else:
+                print(type(names))
+        return names
+
+    # def list_suspended_domains(self, config=None, output=""):
+    #     """检查当前账号中的域名哪些被停用,比如被怀疑滥用(abuse)
+
+    #     如果要检查全部配置文件中有配置的账号的域名是否被停用
+    #     首先调用list_domains_from_all_accounts获取所有账号的域名列表,然后遍历查找
+
+    #     """
+    #     if not config:  # 如果没有配置,则默认检查当前账号
+    #         domains = self.list_domains(take=0)
+    #         if "items" in domains:
+    #             for domain in domains["items"]:
+    #                 if domain.get("suspensions", ""):
+    #                     self.suspended_domains.append(domain)
+    #     else:  # 如果有配置,则检查配置文件中所有账号的域名是否被停用
+    #         domains_in_all_accounts = self.list_domains_from_all_accounts(
+    #             config, "", names_only=False
+    #         )
+    #         for account in domains_in_all_accounts:
+    #             for domain in account["domains"]["items"]:
+    #                 if domain.get("suspensions", ""):
+    #                     self.suspended_domains.append(domain)
+    #     # 处理计算结果:self.suspended_domains
+    #     if output:
+    #         with open(output, "w", encoding="utf-8") as f:
+    #             json.dump(self.suspended_domains, f, ensure_ascii=False, indent=2)
+    #     return self.suspended_domains
+    def list_suspended_domains(self, mode="current", config=None, output=""):
+        """检查域名被停用情况
+        Args:
+            mode (str): 'current' 检查当前账号, 'all' 检查所有账号
+            config (dict): 配置,仅'all'时需要
+            output (str): 输出文件路径,为空则仅输出到屏幕
+        """
+        self.suspended_domains = []
+        if mode == "current":
+            domains = self.list_domains(take=0)
+            if "items" in domains:
+                for domain in domains["items"]:
+                    if domain.get("suspensions", ""):
+                        self.suspended_domains.append(domain)
+        elif mode == "all":
+            if config:
+                domains_in_all_accounts = self.list_domains_from_all_accounts(
+                    config, "", names_only=False
+                )
+                for account in domains_in_all_accounts:
+                    for domain in account["domains"]["items"]:
+                        if domain.get("suspensions", ""):
+                            item = {"account": account["account"], "domain": domain}
+                            self.suspended_domains.append(item)
+            else:
+                print("未提供 config，无法检查所有账号", file=sys.stderr)
+        else:
+            print("mode 参数必须为 'current' 或 'all'", file=sys.stderr)
+            return []
+
+        if output:
+            print(f"被停用的域名信息文件将被保存到{output}")
+            with open(output, "w", encoding="utf-8") as f:
+                json.dump(self.suspended_domains, f, ensure_ascii=False, indent=2)
+        return self.suspended_domains
+
+    def list_domains_from_all_accounts(self, config, output, names_only=False):
+        """从配置文件中读取所有账号信息,并发获取各个账号中的全部域名列表(只获取域名名字)"""
+        if output:
+            print(f"文件将被保存到{output}")
+
+        accounts = config.get("accounts", [])
+        results = []
+
+        def fetch_domains(account):
+            """获取指定账号的域名列表
+            内部会创建临时的APIClient对象,防止线程间覆盖self.api_key/secret
+            Args:
+                account (dict): 账号信息
+            Returns:
+                dict: 包含账号名称和域名列表统计信息的字典
+            """
+            account_name = account.get("account", "")
+            api_key = account.get("api_key", "")
+            api_secret = account.get("api_secret", "")
+            print(
+                f"正在获取{account_name},信息{api_key, api_secret}账号中的域名列表..."
+            )
+            # 创建临时client防止线程间覆盖self.api_key/secret
+            client = APIClient(api_key, api_secret)
+            if names_only:
+                domains = client.list_domains_names_only(take=0, skip=0)
+            else:
+                domains = client.list_domains(take=0, skip=0)
+            print(f"\t完成{account_name}账号域名列表的获取")
+            # 返回指定格式的字典
+            return {"account": account_name, "domains": domains, "total": len(domains)}
+
+        with ThreadPoolExecutor(max_workers=min(8, len(accounts))) as executor:
+            futures = [executor.submit(fetch_domains, account) for account in accounts]
+            for future in as_completed(futures):
+                results.append(future.result())
+
+        self.domains_in_all_accounts = results
+        # 根据需要尝试写入结果到文件
+        if output:
+            with open(output, "w", encoding="utf-8") as f:
+                json.dump(self.domains_in_all_accounts, f, ensure_ascii=False, indent=2)
+        return self.domains_in_all_accounts
 
     def get_domain(self, domain):
         """查询域名详情"""
@@ -69,7 +262,11 @@ class APIClient:
         返回: nameservers对象（dict或list），未找到时返回None
         """
         domain_info = self._request("GET", f"/domains/{domain}")
-        if domain_info and isinstance(domain_info, dict) and "nameservers" in domain_info:
+        if (
+            domain_info
+            and isinstance(domain_info, dict)
+            and "nameservers" in domain_info
+        ):
             return domain_info["nameservers"]
         print("未找到nameservers信息")
         return None
@@ -193,15 +390,101 @@ class APIClient:
 
 
 def load_config(config_path):
-    """加载配置文件"""
+    """加载配置文件
+    注意,使用get_auth获取更加完整的逻辑
+    """
     if not os.path.exists(config_path):
         return {}
     with open(config_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
+# def get_auth(args, config):
+#     """获取API认证信息"""
+#     return {
+#         "api_key": args.api_key or config.get("api_key"),
+#         "api_secret": args.api_secret or config.get("api_secret"),
+#     }
+def get_auth(config_path, args=None):
+    """加载配置
+    读取配置文件和环境变量中相关值
+
+    Args:
+        config_path (str): 配置文件路径
+    Returns:
+        dict: 配置信息
+
+    key,secret优先级按照以下顺序(高优先级的值会覆盖低优先级的配置中对应的字段值):
+
+    0. 命令行参数 - 最高优先级
+    1. 环境变量 - 优先级
+    2. 配置文件 - 默认值
+    3. 程序默认值（如果有）
+
+    """
+
+    key, secret = "", ""
+    # 从json配置文件中读取鉴权配置
+    with open(config_path, "r", encoding="utf-8") as f:
+        config = json.load(f)
+    if args and getattr(args, "list_accounts", None):
+        # 列出配置文件中的账号信息
+        accounts = config.get("accounts", {})
+        for i, account in enumerate(accounts, start=1):
+            name = account.get("account")
+            print(f"{i}. {name}")
+        exit(0)
+    # 根据arg.account参数来决定是否进入选择模式
+    if args and args.account:
+        # 读取配置文件中的账号信息
+        # 列出配置文件中的账号
+
+        accounts = config.get("accounts", {})
+        names = []
+        for i, account in enumerate(accounts, start=1):
+            name = account.get("account")
+            names.append(name)
+            print(f"{i}. {name}")
+            # account.
+        # 选择账号
+        if args.account in names:
+            account_name_idx = names.index(args.account) + 1
+        else:
+            account_name_idx = input(f"请输入选择的账号(1-{len(accounts)}): ")
+            account_name_idx = int(account_name_idx)
+        if account_name_idx < 1 or account_name_idx > len(accounts):
+            print("无效的账号选择")
+            sys.exit(1)
+        else:
+            account = accounts[account_name_idx - 1]
+            key = account.get("api_key")
+            secret = account.get("api_secret")
+            print(f"选择的账号: {account_name_idx} - {account['account']} 🎈")
+    # 如果环境变量中配置了SP_KEY和SP_SECRET,则使用环境变量的值,否则使用配置文件中的值
+    key_env = os.environ.get("SP_KEY")
+    secret_env = os.environ.get("SP_SECRET")
+    if key_env and secret_env:
+        key = key_env
+        secret = secret_env
+
+    # 最高优先级的命令行参数
+    if args:
+        if hasattr(args, "api_key") and hasattr(args, "api_secret"):
+            if args.api_key and args.api_secret:
+                key = args.api_key
+                secret = args.api_secret
+
+    # 确定最终使用的key和secret
+    if key and secret:
+        config["api_key"] = key
+        config["api_secret"] = secret
+    # print(f"API Key: {key},API Secret: {secret}")
+
+    return config or {}
+
+
 def parse_args():
-    """ 解析命令行参数 """
+    """解析命令行参数"""
     parser = argparse.ArgumentParser(
         description="Spaceship API Client: 多子命令支持，域名/DNS/联系人管理"
     )
@@ -218,6 +501,7 @@ def parse_args():
     subparsers = parser.add_subparsers(dest="command", required=True, help="功能命令")
     # 域名相关
     parser_list_domains = subparsers.add_parser("list-domains", help="列出域名列表")
+
     parser_list_domains.add_argument("--take", type=int, default=10, help="返回条数")
     parser_list_domains.add_argument("--skip", type=int, default=0, help="跳过条数")
     parser_list_domains.add_argument(
@@ -227,7 +511,20 @@ def parse_args():
         "--names_only", action="store_true", help="只输出域名，每行一个"
     )
     parser_list_domains.add_argument(
-        "--all", action="store_true", help="列出全部域名（忽略take/skip参数）"
+        "--all", action="store_true", help="列出全部域名（不与take参数同时使用）"
+    )
+    parser_list_domains.add_argument(
+        "--from_all_accounts",
+        # action="store_true",
+        required=False,
+        default="",
+        help="列出所有账号中的域名,指定值作为输出文件名,缺省则输出到屏幕,内容过长可能会显示不全!",
+    )
+    parser_list_domains.add_argument(
+        "--list_suspended_domains",
+        nargs="+",
+        default=[],
+        help="列出被停用的域名: current|all [输出文件路径]",
     )
     # Nameservers相关
     parser_get_nameservers = subparsers.add_parser(
@@ -410,53 +707,40 @@ def parse_args():
     parser_get_async.add_argument(
         "--operation_id", type=str, required=True, help="异步操作ID"
     )
+    # 多账户管理
+    parser.add_argument(
+        "-a",
+        "--account",
+        type=str,
+        default="",
+        help="指定SpaceShip账号(用户名),默认置空时则读取默认密钥组",
+    )
+    parser.add_argument(
+        "--list-accounts",
+        action="store_true",
+        help="列出配置文件中的账号,并退出",
+    )
     return parser.parse_args()
 
 
-def get_auth(args, config):
-    """获取API认证信息"""
-    return {
-        "api_key": args.api_key or config.get("api_key"),
-        "api_secret": args.api_secret or config.get("api_secret"),
-    }
-
-
 def main():
-    """ 主函数,主要负责命令行参数解析和API客户端初始化和调用 """
+    """主函数,主要负责命令行参数解析和API客户端初始化和调用"""
     args = parse_args()
-    config = load_config(args.config)
-    auth = get_auth(args, config)
+    # config = load_config(args.config)
+    # auth = get_auth(args, config)
+    auth = get_auth(args.config, args)
     if not auth["api_key"] or not auth["api_secret"]:
         print("API Key 和 Secret 必须指定 (命令行或配置文件)", file=sys.stderr)
         sys.exit(1)
     client = APIClient(auth["api_key"], auth["api_secret"])
     if args.command == "list-domains":
         if getattr(args, "all", False):
-            # 获取全部域名
-            all_domains = []
-            # 配置单次请求默认参数
-            skip = 0
-            take = 100
-            # 循环调用list_domains直到所有域名
-            while True:
-                resp = client.list_domains(take, skip, args.order_by)
-                if not resp or "items" not in resp:
-                    break
-                if isinstance(resp, dict):
-                    items = resp.get("items", [])
-                else:
-                    items = []
-                if not items:
-                    break
-                all_domains.extend(items)
-                skip += len(items)
-                if len(items) < take:
-                    break
-            result = {"items": all_domains, "total": len(all_domains)}
-        else:
-            result = client.list_domains(args.take, args.skip, args.order_by)
+            # 获取当前账号下的尽可能多的域名
+            result = client.list_domains(take=0, skip=args.skip, order_by=args.order_by)
+            # print(result,'🎈')
+
         if getattr(args, "names_only", False):
-            # 只输出域名，每行一个
+            # 只输出域名，每行一个(与上一步相关联)
             if result and "items" in result:
                 if isinstance(result, dict):
                     items_list = result.get("items", [])
@@ -472,9 +756,42 @@ def main():
             else:
                 print("")
             return
-        else:
-            print(json.dumps(result, ensure_ascii=False, indent=2))
+        if getattr(args, "from_all_accounts", False):
+            # 列出所有账号中的域名
+            result = client.list_domains_from_all_accounts(auth, args.from_all_accounts)
+            print(result)
             return
+            # 将导出的字典数据存储成json文件
+        if (
+            getattr(args, "list_suspended_domains", None)
+            and len(args.list_suspended_domains) > 0
+        ):
+            mode = (
+                args.list_suspended_domains[0]
+                if args.list_suspended_domains[0] in ["current", "all"]
+                else "current"
+            )
+            output = (
+                args.list_suspended_domains[1]
+                if len(args.list_suspended_domains) > 1
+                else ""
+            )
+            if mode == "all":
+                result = client.list_suspended_domains(
+                    mode="all", config=auth, output=output
+                )
+            else:
+                result = client.list_suspended_domains(mode="current", output=output)
+            if not output:
+                print(json.dumps(result, ensure_ascii=False, indent=2))
+            return
+        else:
+            # 所有选项分支都没有命中时,执行默认操作
+            result = client.list_domains(args.take, args.skip, args.order_by)
+            # print(json.dumps(result, ensure_ascii=False, indent=2))
+            print(result)  # 打印未格式还的json
+            return
+
     elif args.command == "get-domain":
         result = client.get_domain(args.domain)
     elif args.command == "get-nameservers":
