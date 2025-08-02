@@ -752,7 +752,6 @@ but different image, keep records [%s]",
         if get_dict_row:
             self.db_rows = [dict(db_row) for db_row in self.db_rows]
 
-
         if count_rows_only:
             reports = self.db_reports
             cnt = 0
@@ -839,12 +838,12 @@ but different image, keep records [%s]",
         sku_field = DBProductFields.SKU.value
         name_field = DBProductFields.NAME.value
         attribute_field = DBProductFields.ATTRIBUTE_VALUES.value
-        # 基于self.invalid_attribute_subset构造字典
+        # 基于self.invalid_attribute_subset填充字典
         invalid_dict = self.invalid_index_dict
         for item in self.invalid_attribute_subset:
             invalid_dict[item[sku_field]] = f"[{item[name_field]}]"
 
-        # 遍历数据库行,处理显然不合规范的属性值
+        # 遍历数据库行,处理显然不合规范的属性值(运行可能报错,等待修复 TODO)
         if remove:
             # 移除不规范属性值的产品
             # 方案1:使用列表推导式创建新列表
@@ -997,6 +996,10 @@ but different image, keep records [%s]",
             msg = f"price [{price}] is not a float"
             error(msg)
             return 0
+        except Exception as e:
+            msg = f"price [{price}] is not a float,{e}"
+            error(msg)
+            return 0
         # 移除过低或过高价产品
         if price > highest_price:
             return 0
@@ -1096,7 +1099,9 @@ but different image, keep records [%s]",
                     img_names = [
                         complete_image_file_extension(
                             file=f"{sku}-{i}"
-                            + fnh.get_image_extension_from_url_str(url=img_url).replace('%','_'),
+                            + fnh.get_image_extension_from_url_str(url=img_url).replace(
+                                "%", "_"
+                            ),
                             # + self._get_img_extension(
                             #     img_url=img_url,
                             #     req_response=req_response,
@@ -1110,7 +1115,7 @@ but different image, keep records [%s]",
                     # 从url中获取图片名称
                     img_names = [
                         complete_image_file_extension(
-                            get_filebasename_from_url(img_url).replace('%','_'),
+                            get_filebasename_from_url(img_url).replace("%", "_"),
                             default_extension=default_extension,
                         )
                         for img_url in img_url_lst

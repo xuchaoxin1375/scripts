@@ -14,6 +14,7 @@
 setx PYTHONPATH C:\repos\scripts\wp\woocommerce\woo_df
 setx PYS C:\repos\scripts\wp\woocommerce\woo_df\pys
 setx WOO_DF C:\repos\scripts\wp\woocommerce\woo_df
+setx PsModulePath C:/repos/scripts/PS
 
 # 根据情况修改本地mysql密码
 setx MySqlKey_LOCAL "  "

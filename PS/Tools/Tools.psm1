@@ -1040,6 +1040,96 @@ function Add-CFZoneDNSRecords
     }
 
 }
+# Get-Content ./urls.txt | Where-Object { $_.Trim() } | ForEach-Object -Parallel { $hostname = $_; Invoke-WebRequest $_ | Select-Object StatusCode, StatusDescription, @{Name = 'Host'; Expression = { $hostname } } } -ThrottleLimit 500
+
+function Test-UrlOrHostAvailability
+{
+    [CmdletBinding(DefaultParameterSetName = 'FromFile')]
+    param (
+        [parameter(Mandatory = $true, ParameterSetName = 'FromFile')]
+        $Path,
+        [parameter(Mandatory = $true, ParameterSetName = 'FromUrls')]
+        $Urls,
+        $TimeOutSec = 30
+    )
+    
+    # 分被检查读入的数据行是否为空或者注释行(过滤掉这些行)
+    if($PSCmdlet.ParameterSetName -eq 'FromFile' )
+    {
+        $Urls = Get-Content $Path
+    }
+
+    @($Urls) | ForEach-Object { $_.Trim() } |
+    Where-Object { $_ -and $_ -notmatch '^\s*#' } |
+    ForEach-Object -Parallel {
+        # 设置 TLS（支持 HTTPS）
+        # [System.Net.ServicePointManager]::SecurityProtocol = 
+        # [System.Net.SecurityProtocolType]::Tls12 -bor  
+        # [System.Net.SecurityProtocolType]::Tls13
+        
+        $url = $_
+        $uri = $null
+        
+        # 提取 Host
+        try
+        {
+            $uri = [System.Uri]$url
+            if (-not $uri.Scheme -in @('http', 'https'))
+            {
+                $uri = $null
+            }
+        }
+        catch
+        {
+            # 无效 URL,可能确实协议部分(比如http(s))
+        }
+    
+        $hostName = if ($uri) { $uri.Host } else { $url }
+        # 定义要返回的数据对象的原型
+        $result = [ordered]@{
+            Host              = $url
+            ResolvedHost      = $hostName
+            StatusCode        = $null
+            StatusDescription = $null
+            Error             = $null
+        }
+    
+        try
+        {
+            # 发送head请求轻量判断网站的可用性(但是有些网站不支持Head请求,会引起报错,后面会用get请求重试)
+            $TimeOutSec=$using:TimeOutSec
+            $response = Invoke-WebRequest -Uri $url -Method HEAD -TimeoutSec $TimeOutSec -ErrorAction Stop -SkipCertificateCheck
+            # 填写返回数据对象中对应的字段
+            $result.StatusCode = $response.StatusCode
+            $result.StatusDescription = $response.StatusDescription
+        }
+        catch
+        {
+            # 如果异常类型是 WebCmdletWebResponseException, 尝试 fallback 到 GET
+            if ($_.Exception.GetType().Name -eq 'WebCmdletWebResponseException')
+            {
+                $resp = $_.Exception.Response
+                $result.StatusCode = $resp.StatusCode.value__
+                $result.StatusDescription = $resp.StatusDescription
+            }
+            else
+            {
+                $result.Error = $_.Exception.Message -replace '\r?\n', ' ' -replace '^\s+|\s+$', ''
+            }
+        }
+        # 将字典类型指定为PSCustomObject类型返回
+        [PSCustomObject]$result
+    
+    } -ThrottleLimit 32 |
+    Select-Object Host, ResolvedHost, StatusCode, StatusDescription,
+    @{ Name = "Remark"; Expression = {
+            if ($_.Error) { "❌ $($_.Error)" }
+            elseif ($_.StatusCode -ge 200 -and $_.StatusCode -lt 300) { "✅ OK" }
+            elseif ($_.StatusCode -ge 400) { "🔴 Failed ($($_.StatusCode))" }
+            else { "🟡 Other ($($_.StatusCode))" }
+        }
+    } 
+}
 function Update-SSNameServers
 {
     <# 
@@ -2213,7 +2303,7 @@ www.domain2.com
         $SiteRoot = "",
         [switch]$SingleDomainMode,
         # 三级域名,默认为`*`,常见的还有`www`
-        $LD3 = "*,www"    ,
+        $LD3 = "www,*"    ,
         [Alias("SiteOwner")]$User,
         # php版本,默认为74(兼容一些老的php插件)
         $php = 74

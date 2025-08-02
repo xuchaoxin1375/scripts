@@ -57,6 +57,7 @@ pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
 
 ```bash
 pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple #修改pip源
+$env:PYTHONIOENCODING="utf-8" #在powershell中配置临时变量,解决gbk编码问题(包含中文的情况)
 pip install -r "$woo_df\requirements.txt" #注意修改requirements.txt的路径为你自己的实际路径(如果遇到编码报错(gbk)则注释或移除对应的中文)🎈
 ```
 
@@ -65,7 +66,7 @@ pip install -r "$woo_df\requirements.txt" #注意修改requirements.txt的路径
 
 - 或者可以使用拖转文件的方式或指定绝对路径的方式来指定requirements.txt文件都可以
 
-### magic库的检查
+### magic库的检查(可选)
 
 - 上面的安装依赖操作可能无法一次性顺利安装magic库,可以考虑使用其他库代替或者关闭此功能(需要调整代码)
 - 优化:todo
@@ -138,60 +139,78 @@ woo_uploader.py负责的任务,可以多线程或者按批上传数据到wp站
 -   [Readme@woo_uploader_api.md](Readme@woo_uploader_api.md) 
 -   [Readme@woo_uploader_db.md](Readme@woo_uploader_db.md) 
 
-## 脚本和模块的使用🎈
+## 脚本和模块环境配置和使用🎈
 
 - 由于代码被拆分成多个文件,所以运行时,命令行的工作目录要定位到这些脚本文件的目录中
 
 ### 配置python环境变量🎈
 
-- 将模块添加到环境变量可以解除该限制
+将模块添加到环境变量可以解除该限制
 
-  - 在windows系统上,可以通过一下命令行类配置python模块,从而使得相关模块全局可用
+- 在windows系统上,可以通过一下命令行类配置python模块,从而使得相关模块全局可用
 
-  - 例如,使用`setx PYTHONPATH "module_path"`(将引号内容替换为模块所在目录)
+- 例如,使用`setx PYTHONPATH "module_path"`(将引号内容替换为模块所在目录)
 
-    ```bash
-    PS> setx PYTHONPATH C:\repos\scripts\wp\woocommerce\woo_df\
-    
-    成功: 指定的值已得到保存。
-    ```
+  ```bash
+  PS> setx PYTHONPATH C:\repos\scripts\wp\woocommerce\woo_df\
+  
+  成功: 指定的值已得到保存。
+  ```
 
-    powershell也可以
+  powershell也可以
 
-    ```powershell
-    [System.Environment]::SetEnvironmentVariable("PYTHONPATH", "C:\repos\scripts\wp\woocommerce\woo_df\", [System.EnvironmentVariableTarget]::Machine)
-    ```
+  ```powershell
+  [System.Environment]::SetEnvironmentVariable("PYTHONPATH", "C:\repos\scripts\wp\woocommerce\woo_df\", [System.EnvironmentVariableTarget]::Machine)
+  ```
 
-#### 从CxxuPwshModule仓库配置🎈
-
-部署git仓库(推荐方式)
-
-> [scripts: 实用脚本集合,以powershell模块为主(针对powershell 7开发) 支持一键部署,改善windows下的shell实用体验](https://gitee.com/xuchaoxin1375/scripts)
-
-1. 一键部署(已经部署过的可以跳过)
-
-```powershell
-irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1'|iex
-
-```
-
-2. 如果已经安装了git(和powershell7),那么直接执行:
-
-   ```bash
-   git clone https://gitee.com/xuchaoxin1375/scripts.git C:/repos/scripts
-   ```
-
-   
-
-3. 然后可以执行以下语句(配置pythonpath环境变量)
+然后可以执行以下语句(配置pythonpath环境变量)
 
 ```powershell
 setx PYTHONPATH C:\repos\scripts\wp\woocommerce\woo_df
 ```
 
-#### 检查配置
+
+
+### 配置powershell7+模块🎈
+
+从CxxuPwshModule仓库配置命令行环境
+
+部署git仓库(推荐方式)
+
+> [scripts: 实用脚本集合,以powershell模块为主(针对powershell 7开发) 支持一键部署,改善windows下的shell实用体验](https://gitee.com/xuchaoxin1375/scripts)
+
+一键部署(已经部署过的可以跳过)
+
+```powershell
+irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1'|iex
+
+
+```
+
+如果已经安装了git(和powershell7),那么直接执行(记得最后一行要回车):
+
+```bash
+git clone https://gitee.com/xuchaoxin1375/scripts.git C:/repos/scripts
+setx PsModulePath C:/repos/scripts/PS
+
+```
+
+最后,启动一个全新的powershell窗口,将如下执行自动环境导入的语句运行
+
+```powershell
+Add-CxxuPsModuleToProfile #今后将自动加载powershell环境
+
+
+```
+
+
+
+## 检查配置
 
 - 配置完后,请全新打开一个命令行(powershell/cmd),以便检查配置是否生效
+
+
+### python环境检查
 
 - 如果成功,打开python交互模式,运行`import woo`不会报错,否则说明配置失败
 
@@ -209,6 +228,20 @@ setx PYTHONPATH C:\repos\scripts\wp\woocommerce\woo_df
                      woocommerce  woosqlitedb
   
   ```
+
+### powershell(pwsh)环境检查
+
+观察命令行提示符是否为带时间样式的提示符
+
+```powershell
+#⚡️[Administrator@CXXUDESK][~\Desktop][17:42:24][UP:28.16Days]
+PS>
+```
+
+而不是只有`PS >`
+
+
+
 
 
 ### 推荐用vscode使用脚本🎈
