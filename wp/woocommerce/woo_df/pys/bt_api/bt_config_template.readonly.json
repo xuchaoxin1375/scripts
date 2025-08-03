@@ -1,0 +1,12 @@
+{
+    "servers": {
+        "server1": {
+            "bt_key": "your_bt_key_here",
+            "bt_panel": "your_bt_panel_url(example: http://127.0.0.1:8888)"
+        },
+        "server2": {
+            "bt_key": "  ...  ",
+            "bt_panel": "  ...  "
+        }
+    }
+}

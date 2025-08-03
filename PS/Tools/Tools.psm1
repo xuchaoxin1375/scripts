@@ -138,14 +138,24 @@ function Get-Lz4Package
 
     # 若lz4.exe存在,则使用lz4压缩
     Write-Warning "请确保lz4.exe存在于环境变量PATH中,并且版本高于1.10才能支持多线程"
+
     # 将临时tar包文件压缩成lz4格式
-    lz4.exe -T"$Threads" $TempTar $OutputFile
+    if(Test-CommandAvailability lz4)
+    {
+        lz4.exe -T"$Threads" $TempTar $OutputFile
+    }
+    else
+    {
+        Write-Error "lz4.exe not found, please add it to the environment variable PATH or specify the path to lz4.exe"
+        return False
+    }
     # 检查结果
     Get-Item $OutputFile
     # 清理tar包
     Remove-Item $TempTar -Verbose
     
 }
+
 function Expand-Lz4TarPackage
 {
     <# 
@@ -169,301 +179,176 @@ function Expand-Lz4TarPackage
     {
         $OutputDirectory = $pwd.Path
     }
-
-    lz4 -T"$Threads" -d $Path $temp; 
-    Write-Verbose "Expand Tar: [$temp] to [$OutputDirectory]" -Verbose
-    tar -xvf $temp -C $OutputDirectory
-}
-function Get-7zCommand
-{
-    param (
-    )
-    $Have7z = Get-Command 7z -ErrorAction SilentlyContinue
-    if (! $Have7z)
+    if(Test-CommandAvailability lz4)
     {
-        Write-Host "7z命令行工具未找到,请安装7z命令行工具,或者将其添加到环境变量PATH中"
-        exit
-    }
-    return $Have7z
-}
-function Get-WpSitePacks
-{
-    <# 
-    .SYNOPSIS
-    获取WordPress站点的打包文件以及对应的数据库sql文件
-    .NOTES
-    为了最方便地使用此脚本自动打包和导出WordPress站点，需要满足以下条件：
-    1.站点根目录命名为域名,例如domain.com
-    2.站点配套的数据库在创建取名的时候就要是和上述domain.com一致,
-        以便于用脚本自动导出,速度很快,但要配置mysql.exe所在路径(mysql安装路径下的bin目录)到环境变量PATH中
-    满足上述两点的情况下,脚本可以正确解析域名,然后根据域名自动导出对应的sql文件并压缩
 
-    #>
-    [cmdletbinding()]
-    param(
-        [parameter(Mandatory = $true, ValueFromPipeline = $true)]
-        [Alias('Directory')]$SiteDirecotry,
-        $Domain = "",
-        $DatabaseName = "",
-        $DatabaseKey = $env:MySqlKey_LOCAL,
-        $OutputDir = "$home/Desktop",
-        [ValidateSet('zip', '7z', 'tar', 'lz4', 'zstd')]
-        [alias('Mode')]
-        $ArchiveMode = 'lz4',
-        $Threads = 16
-
-    )
-
-    if ($Domain)
-    {
-        $SiteParentdir = Split-Path $SiteDirecotry -Parent
-        $SiteDirecotryOld = $SiteDirecotry
-        $SiteDirecotry = Join-Path $SiteParentdir $Domain
-        Write-Host $SiteDirecotryOld -ForegroundColor Cyan
-        Write-Host $SiteDirecotry -ForegroundColor Cyan
-        Move-Item $SiteDirecotryOld $SiteDirecotry -Force -Verbose
-        Write-Debug "[+] SiteDirecotry: $SiteDirecotry"
-    }
-    # 尝试从站点根目录字符串解析站点域名
-    # $Domain = $SiteDirecotry.Split("/")[-1]
-    $Domain = Split-Path $SiteDirecotry -Leaf
-    Write-Debug "[+] Domain: $Domain"
-    # return 
-    # 站点sql文件
-    $key = Get-MysqlKeyInline -Key $DatabaseKey
-    $SqlFile = "$OutputDir/${Domain}.sql"
-    $SqlFileArchiveZip = "$SqlFile.zip"
-    $SqlFileArchive7z = "$SqlFile.7z"
-    $SqlFileArchiveTar = "$SqlFile.tar"
-    $SqlFileArchiveLz4 = "$SqlFile.lz4"
-    # 站点根目录
-    $SitePackArchiveZip = "$OutputDir/${Domain}.zip"
-    $SitePackArchive7z = "$OutputDir/${Domain}.7z"
-    $SitePackArchiveTar = "$OutputDir/${Domain}.tar"
-    $SitePackArchiveLz4 = "$OutputDir/${Domain}.lz4"
-
-    $SitePackArchive = ""
-    $SqlFileArchive = ""
-    Write-Debug "[+] Trying to export database file to $SqlFile"
-    # 导出数据库文件并压缩
-    if ($DatabaseName -eq "")
-    {
-        $DatabaseName = $Domain
-        Write-Host "数据库名称未指定，使用默认值: $DatabaseName"
-    }
-    # 导出数据库sql文件🎈
-    Export-MysqlFile -Server localhost -DatabaseName $DatabaseName -key $key -SqlFilePath $SqlFile -Verbose
-    # Compress-Archive -Path $SqlFile -DestinationPath $SqlFileArchiveZip -Force
-    # 打包站点目录
-
-
-    if($ArchiveMode -eq '7z')
-    {
-        if(Get-7zCommand)
-        {
-            $cmd1 = "7z a -t7z -mmt${Threads} $SqlFileArchive7z $SqlFile"
-            $cmd2 = "7z a -t7z -mmt${Threads} $SitePackArchive7z $SiteDirecotry"
-            $cmd1 | Invoke-Expression
-            $cmd2 | Invoke-Expression
-            
-            $SitePackArchive = $SitePackArchive7z
-            $SqlFileArchive = $SqlFileArchive7z
-        }
-    }
-    elseif ($ArchiveMode -eq 'zip')
-    {
-        Write-Host "使用默认的zip打包方式"
-        Compress-Archive -Path $SqlFile -DestinationPath $SqlFileArchiveZip -Force
-        Compress-Archive -Path $SiteDirecotry -DestinationPath $SitePackArchiveZip -Force
-        $SitePackArchive = $SitePackArchiveZip
-        $SqlFileArchive = $SqlFileArchiveZip
-    }
-    elseif($ArchiveMode -eq 'tar')
-    {
-        if(Get-7zCommand)
-        {
-
-            Write-Host "使用tar打包方式"
-            7z a -ttar $SqlFileArchiveTar $SqlFile 
-            7z a -ttar $SitePackArchiveTar $SiteDirecotry
-            $SitePackArchive = $SitePackArchiveTar
-            $SqlFileArchive = $SqlFileArchiveTar
-        }
-    }
-    elseif($ArchiveMode -eq 'lz4')
-    {
-        Write-Host "使用lz4打包方式"
-        Get-Lz4Package -Path $SqlFile -OutputFile $SqlFileArchiveLz4 -Threads $Threads -NoTarExtension
-        Get-Lz4Package -Path $SiteDirecotry -OutputFile $SitePackArchiveLz4 -Threads $Threads -NoTarExtension
-        $SitePackArchive = $SitePackArchiveLz4
-        $SqlFileArchive = $SqlFileArchiveLz4
-        Write-Debug $SitePackArchive -Debug
+        lz4 -T"$Threads" -d $Path $temp; 
     }
     else
     {
-        Write-Error "不支持的打包方式: $ArchiveMode"
-        return
+        Write-Error "lz4.exe not found, please add it to the environment variable PATH or specify the path to lz4.exe"
+        return False
     }
-    # $SitePackArchive = Compress-Tar -Directory $SiteDirecotry 
-
-    # 列出已经打包的文件
-    Get-Item $SqlFileArchive  
-    Get-Item $SitePackArchive
-    # 移除数据库sql文件
-    Remove-Item $SqlFile -Verbose
+    Write-Verbose "Expand Tar: [$temp] to [$OutputDirectory]" -Verbose
+    tar -xvf $temp -C $OutputDirectory
 }
-function Get-MoreSites
+function Get-ZstdPackage
 {
     <# 
     .SYNOPSIS
-    根据指定url(域名列表)生成友站外链的html代码片段和sitemap.xml 片段,并输出对应的文件
+    使用zstd归档(压缩)文件夹或目录的过程需通常需要分为2个步骤(因为zstd只能压缩文件,而不能直接压缩文件夹)
+    .DESCRIPTION
+    zstd算法达到了当前的帕累托最优,是当前最先进算法中的首选方法,在速度设置为`-1`时,速度接近lz4,如果使用`--fast`参数可以更快更接近lz4,而压缩程度会得到明显提高
+    zstd的另一个优势是较早支持多线程压缩/解压,而且支持zstd格式的软件更多,win11较新版本原生支持zstd格式,7z标准版和增强版都支持解压zstd,后者还支持创建(打包成zstd)
+    使用起来比lz4更加方便和友好
+    .NOTES
+    默认使用的压缩参数如下(速度偏好)
+    线程数默认按照逻辑核心数来设置
+    -T0 --auto-threads=logical -f -1
+    如果需要更加灵活和自定义的zstd压缩参数,请使用原zstd命令行工具压缩
+    也可以配合Compress-Tar或者直接使用tar命令,将目录打包为tar文件,然后压缩为zstd格式
+    .NOTES
 
+    1.使用tar将目录打包为tar文件(得到单个文件),使用tar将文件夹打包为单个文件的速度比较快,而不用zip这种压缩打包的方式
+    2.使用zstd压缩tar文件得到.tar.zst文件(或者可以使用开关参数控制是否将.tar这个次后缀添加到压缩文件中)
+    #>
+    [cmdletbinding()]
+    param (
+        $Path,
+        # $OutputDirectory = "./",
+        $OutputFile = "",
+        # 设置线程为0时,表示自动根据核心数量设置线程数
+        $Threads = 0,
+        # 自动设置线程数时(Threads=0)时,要使用逻辑核心数还是物理核心数;默认使用逻辑核心数(可以选择物理核心数模式)
+        [ValidateSet('physical', 'logical')]$AutoThreads = "logical",
+        # 压缩级别,默认为3,推荐范围为1-19,如果使用额外参数--ultra,级别可以达到22,但是很慢,不太推荐,值越高压缩率越高,但压缩速度也会变慢
+        [ValidateRange(1, 22)]
+        $CompressionLevel = 3,
+        # 控制是否在中间文件包中使用tar次后缀
+        [switch]$NoTarExtension
+    )
+    Write-Verbose "正在打包目录(目标zstd): $Path " -Verbose
+    $dirName = Split-Path $Path -Leaf
+
+    # 默认输出目录为桌面
+    $DefaultOutputDir = [Environment]::GetFolderPath("Desktop")
+    # 判断是否将.tar添加到输出文件名中
+    $TarExtensionField = if ($NoTarExtension) { "" }else { ".tar" }
+
+    $OutputFileTar = "$DefaultOutputDir/${dirName}${TarExtensionField}"
+    # 临时tar文件(被zstd压缩后将会被删除)
+    $TempTar = "$DefaultOutputDir/${dirName}.tar"
+    # 未指定输出路径时构造输出路径(包括输出目录和文件名)
+    if ($OutputFile -eq "")
+    {
+        Write-Debug "输出文件名未指定，使用默认值: ${dirName}.tar"
+        Write-Debug "默认存放路径为桌面:$DefaultOutputDir" 
+    }
+    # 确定完整的输出文件路径
+    $OutputFile = "$OutputFileTar.zst"
+
+    # 开始处理文件夹的打包(打包到tar临时文件)
+    Compress-Tar -Directory $Path -OutputFile $TempTar
+
+    # 若zstd.exe存在,则使用zstd压缩
+    Write-Warning "请确保zstd.exe存在于环境变量PATH中,并且版本尽可能高(1.5.7+)获得更好的压缩效率"
+
+    # 将临时tar包文件压缩成zstd格式
+    if(Test-CommandAvailability zstd)
+    {
+        
+        $cmd = "zstd -T$Threads --auto-threads=$AutoThreads --ultra -f  -$CompressionLevel $TempTar -o $OutputFile"
+        Write-Verbose "executeing:[ $cmd  ]" -Verbose
+        $cmd | Invoke-Expression
+    }
+    else
+    {
+        Write-Error "zstd.exe not found, please add it to the environment variable PATH or specify the path to zstd.exe"
+        return False
+    }
+    # 检查结果
+    Get-Item $OutputFile
+    # 清理tar包
+    Remove-Item $TempTar -Verbose
+    
+}
+function Expand-ZstdTarPackage
+{
+    <# 
+    .SYNOPSIS
+    解压.tar.zst压缩包
+    #>
+    [cmdletbinding()]
+    param(
+        $Path,
+        $OutputDirectory = "",
+        $Threads = 0,
+        # 自动设置线程数时(Threads=0)时,要使用逻辑核心数还是物理核心数;默认使用逻辑核心数(可以选择物理核心数模式)
+        [ValidateSet('physical', 'logical')]$AutoThreads = "logical"
+    )
+    $temp = "$(Split-Path -Path $Path -LeafBase)"
+    Write-Verbose "Expand Tar: $temp" -Verbose
+    if($OutputDirectory)
+    {
+
+        New-Item -ItemType Directory -Path $OutputDirectory -Verbose -Force 
+    }
+    else
+    {
+        $OutputDirectory = $pwd.Path
+    }
+    if(Test-CommandAvailability zstd)
+    {
+
+        # zstd -T"$Threads" -d $Path $temp; 
+        zstd -T"$Threads" --auto-threads=$AutoThreads -f -d $Path -o $temp;
+    }
+    else
+    {
+        Write-Error "zstd.exe not found, please add it to the environment variable PATH or specify the path to zstd.exe"
+        return False
+    }
+    Write-Verbose "Expand Tar: [$temp] to [$OutputDirectory]" -Verbose
+    tar -xvf $temp -C $OutputDirectory
+}
+function Test-CommandAvailability
+{
+    <# 
+    .SYNOPSIS
+    测试命令是否可用,并根据gcm的测试结果给出提示,在命令不存在的情况下不报错,而是给出提示
+    主要简化gcm命令的编写
+    .DESCRIPTION
+    命令行程序可用的情况下,想要获取其路径,可以访问返回结果的.Source属性
+    .PARAMETER CommandName
+    命令名称
+    
+    .EXAMPLE
+    # 测试命令不存在
+    PS> Test-CommandAvailability 7zip
+    WARNING: The 7zip is not available. Please install it or add it to the environment variable PATH.
+    .EXAMPLE
+    # 测试命令存在
+    PS> Test-CommandAvailability 7z
+
+    CommandType     Name                                               Version    Source
+    -----------     ----                                               -------    ------
+    Application     7z.exe                                             0.0.0.0    C:\ProgramData\scoop\shims\7z.exe
     #>
     [CmdletBinding()]
     param (
-        [string]$InputFile = "urls.txt",
-        [string]$HtmlOutputFile = "$desktop/more.html",
-        # 考虑到分割,所以这里仅指定SitemapBaseName,index++作为后缀
-        [string]$SitemapBaseName = "$desktop/sitemap_more",
-        [int]$MaxUrlsPerSitemap = 50000
-        # [string]$SitemapIndexFile = "sitemap_index.xml",
-        # [string]$BaseUrlForSitemaps = "https://yourdomain.com" 
+        [Parameter(Mandatory = $true)]
+        [string]$CommandName
     )
-
-    if (-not (Test-Path $InputFile))
+    $command = Get-Command $CommandName -ErrorAction SilentlyContinue
+    if (! $command)
     {
-        Write-Error "❌ 输入文件 '$InputFile' 不存在。"
-        return
+        Write-Warning "The $CommandName is not available. Please try a another similar name or install it or add it to the environment variable PATH."
+        return $null
     }
-
-    # 初始化内容
-    $htmlContent = @()
-    $sitemaps = @()
-    $urlCount = 0
-    $fileIndex = 1
-    $currentXml = @()
-    $domainSitemaps = @{}
-    $simpleLinks = @()
-
-    # XML 初始化
-    $currentXml += '<?xml version="1.0" encoding="UTF-8"?>'
-    $currentXml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
-
-    # 处理每个 URL
-    Get-Content $InputFile | ForEach-Object {
-        $url = $_.Trim()
-        if ($url -match '^https?://([^/]+)')
-        {
-            $domain = $matches[1]
-            $baseDomain = ($domain -split '\.')[-2..-1] -join '.'  # 提取主域
-
-            # 构建 sitemap 链接
-            $sitemapLink = "https://www.$baseDomain/sitemap_index.xml" 
-
-            # 记录每个域名的sitemap
-            if (-not $domainSitemaps.ContainsKey($baseDomain))
-            {
-                $domainSitemaps[$baseDomain] = $sitemapLink
-            }
-
-            # 简单链接列表
-            $simpleLinks += "    <li><a href=`"$url`" target=`"_blank`" rel=`"noopener`">$url</a></li>"
-
-            # XML 输出
-            $currentXml += "    <url>"
-            $currentXml += "        <loc>$sitemapLink</loc>"
-            $currentXml += "        <changefreq>daily</changefreq>"
-            $currentXml += "        <priority>1.0</priority>"
-            $currentXml += "        <lastmod>$(Get-Date -Format yyyy-MM-dd)</lastmod>"
-            $currentXml += "    </url>"
-
-            $urlCount++
-            if ($urlCount -ge $MaxUrlsPerSitemap)
-            {
-                $currentXml += '</urlset>'
-                $xmlFileName = "$SitemapBaseName`_$fileIndex.xml"
-                $currentXml | Out-File -FilePath $xmlFileName -Encoding utf8
-                Write-Host "✅ 已生成 sitemap: $xmlFileName"
-                $sitemaps += $xmlFileName
-
-                # 重置
-                $urlCount = 0
-                $fileIndex++
-                $currentXml = @()
-                $currentXml += '<?xml version="1.0" encoding="UTF-8"?>'
-                $currentXml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
-            }
-        }
-    }
-
-    # 写入最后一个未满的 sitemap 文件
-    if ($urlCount -gt 0)
-    {
-        $currentXml += '</urlset>'
-        $xmlFileName = "$SitemapBaseName`_$fileIndex.xml"
-        $currentXml | Out-File -FilePath $xmlFileName -Encoding utf8
-        Write-Host "✅ 已生成 sitemap: $xmlFileName"
-        $sitemaps += $xmlFileName
-    }
-
-    # 生成HTML内容 - 简单链接列表
-    # $htmlContent += '<h2>网站列表</h2>'
-    $htmlContent += '<ul>'
-    $htmlContent += $simpleLinks
-    $htmlContent += '</ul>'
-    $htmlContent += "`n`n"
-    # 生成HTML内容 - JSON-LD结构化数据
-    # $htmlContent += '<h2>sitemap JSON-LD</h2>'
-    $htmlContent += '<script type="application/ld+json">'
-    $htmlContent += @"
-{
-  "@context": "https://schema.org",
-  "@type": "WebSite",
-  "url": "/",
-  "potentialAction": {
-    "@type": "SiteMap",
-    "target": [
-"@
-
-    $first = $true
-    foreach ($sitemap in $domainSitemaps.Values)
-    {
-        if (-not $first)
-        {
-            $htmlContent += ","
-        }
-        $htmlContent += "      `"$sitemap`""
-        $first = $false
-    }
-
-    $htmlContent += @"
-    ]
-  }
+    return $command
 }
-"@
-    $htmlContent += '</script>'
 
-    # 生成HTML内容 - 站点地图链接部分
-    $htmlContent += '<h2>XML maps</h2>'
-    $htmlContent += '<div class="footer-sitemaps">'
-    # $htmlContent += '  <h3>maps</h3>'
-    $htmlContent += '  <ul>'
-    
-    foreach ($domain in $domainSitemaps.Keys)
-    {
-        $sitemapUrl = $domainSitemaps[$domain]
-        $displayName = ($domain -split '\.')[0] -replace '-|_', ' '  # 美化显示名称
-        $displayName = (Get-Culture).TextInfo.ToTitleCase($displayName.ToLower())
-        $htmlContent += "    <li><a href=`"$sitemapUrl`">$displayName XML maps</a></li>"
-    }
-    
-    $htmlContent += '  </ul>'
-    $htmlContent += '</div>'
 
-    # 写入 HTML 文件
-    $htmlContent | Out-File -FilePath $HtmlOutputFile -Encoding utf8
-    Write-Host "✅ 已生成 HTML 链接文件: $HtmlOutputFile"
-}
 function Get-CsvTailRows-Archived
 {
     <#
@@ -1097,7 +982,7 @@ function Test-UrlOrHostAvailability
         try
         {
             # 发送head请求轻量判断网站的可用性(但是有些网站不支持Head请求,会引起报错,后面会用get请求重试)
-            $TimeOutSec=$using:TimeOutSec
+            $TimeOutSec = $using:TimeOutSec
             $response = Invoke-WebRequest -Uri $url -Method HEAD -TimeoutSec $TimeOutSec -ErrorAction Stop -SkipCertificateCheck
             # 填写返回数据对象中对应的字段
             $result.StatusCode = $response.StatusCode
@@ -1154,7 +1039,7 @@ function Update-SSNameServers
     [CmdletBinding()]
     param (
     )
-    python $pys/spaceship_api_client/update_nameservers.py 
+    python $pys/spaceship_api/update_nameservers.py 
     
 }
 function Add-CFZoneConfig
@@ -1166,7 +1051,7 @@ function Add-CFZoneConfig
     param(
 
     )
-    python $pys/cf_config_api.py configure
+    python $pys/cf_api/cf_config_api.py configure
 }
 function Add-CFZoneCheckActivation
 {
@@ -1213,6 +1098,37 @@ function Get-CFDNSDomains
     )
     
 }
+function Deploy-BatchSiteBTOnline
+{
+    <# 
+    .SYNOPSIS
+    批量部署空站点到宝塔面板(借助宝塔api和python脚本)
+     #>
+    python $pys/bt_api/create_sites.py 
+}
+function Start-SleepWithProgress
+{
+    <# 
+    .SYNOPSIS
+    显示进度条等待指定时间
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [int]$Seconds
+    )
+
+    for ($i = 0; $i -le $Seconds; $i++)
+    {
+        $percentComplete = ($i / $Seconds) * 100
+        # 保留2位小数
+        $percentComplete = [math]::Round($percentComplete, 2)
+        Write-Progress -Activity "Waiting..." -Status "$i seconds elapsed of $Seconds ($percentComplete%)" -PercentComplete $percentComplete
+        Start-Sleep -Seconds 1
+    }
+
+    Write-Progress -Activity "Waiting..." -Completed
+}
+
 function Export-NewCSVFile
 {
     param (
@@ -1871,146 +1787,7 @@ function Get-LineDataFromMultilineString
     return $lines
     
 }
-function Update-WpUrl
-{
 
-    <# 
-    .SYNOPSIS
-    更新 WordPress 数据库中的站点地址
-    .DESCRIPTION
-    一般用于网站迁移,需要修改数据库中的站点地址,一般需要修改wp_options表中的'home'和'siteurl'选项
-
-    
-    #>
-    [cmdletbinding(SupportsShouldProcess)]
-    param(
-        [parameter(Mandatory = $true)]
-        $OldDomain,
-        [parameter(Mandatory = $true)]
-        $NewDomain,
-        $DatabaseName = $NewDomain,
-        # 以下参数继承自 Import-MysqlFile 
-        $Server = "localhost",
-        # $SqlFilePath,
-        $MySqlUser = "root",
-        [Alias('MySqlKey')]$key = $env:DF_MySqlKey,
-        [Alias('WWW')][switch]$Start3w,
-        $protocol = "https"
-        
-    )
-    if ($Start3w)
-    {
-        # 将domain.com,http(s)://domain.com,http(s)://www.domain.com统一规范化为$protocol://www.domain.com
-        $NewUrl3w = $NewDomain.Trim() -replace '^(https?://)?(www\.)?', "${protocol}://www."
-        Write-Verbose "Change:[$NewDomain] to:[$NewUrl3w]" -Verbose
-        $new = $NewUrl3w
-    }
-    else
-    {
-        # 将domain.com,http(s)://domain.com,http(s)://www.domain.com统一规范化为$protocol://newdomain.com
-        $new = $NewDomain.Trim() -replace '^(https?://)?(www\.)?', "${protocol}://"
-    }
-    $Olds = 'http', 'https' | ForEach-Object { $_ + '://' + ($OldDomain.Trim()) }
-    Write-Verbose "Updating WordPress database:[$DatabaseName] from [$OldDomain] to [$NewDomain]" -Verbose
-    $sql = ""
-    foreach ($old in $Olds)
-    {
-        
-    
-        $url_var_sql = @"
--- 定义旧域名和新域名变量
-
---
-/* 
-修改下面的变量,注意带上[http(s)://+域名或ip],其他做法容易翻车
- */
-SET
-    @old_domain = CONVERT(
-        '$Old' USING utf8mb4
-    ) COLLATE utf8mb4_unicode_520_ci;
-
-SET
-    @new_domain = CONVERT(
-        '$New' USING utf8mb4
-    ) COLLATE utf8mb4_unicode_520_ci;
-
-"@ 
-        $replace_sql = @'
--- 更新 wp_options 表中的 'home' 和 'siteurl' 选项
-
-UPDATE wp_options
-SET
-    option_value =
-REPLACE (
-        option_value,
-        @old_domain,
-        @new_domain
-    )
-WHERE
-    option_name IN ('home', 'siteurl');
-
-'@
-        $sql += ($url_var_sql + $replace_sql)
-    }
-    #     $common = @'
-    # -- 更新 wp_options 表中的 'home' 和 'siteurl' 选项
-
-    # UPDATE wp_options
-    # SET
-    #     option_value =
-    # REPLACE (
-    #         option_value,
-    #         @old_domain,
-    #         @new_domain
-    #     )
-    # WHERE
-    #     option_name IN ('home', 'siteurl');
-
-    # -- 更新 wp_posts 表中的 'post_content' 和 'guid' 字段
-    # UPDATE wp_posts
-    # SET
-    #     post_content =
-    # REPLACE (
-    #         post_content,
-    #         @old_domain,
-    #         @new_domain
-    #     ),
-    #     guid =
-    # REPLACE (
-    #         guid,
-    #         @old_domain,
-    #         @new_domain
-    #     );
-
-    # -- 更新 wp_comments 表中的 'comment_content' 和 'comment_author_url' 字段
-    # UPDATE wp_comments
-    # SET
-    #     comment_content =
-    # REPLACE (
-    #         comment_content,
-    #         @old_domain,
-    #         @new_domain
-    #     ),
-    #     comment_author_url =
-    # REPLACE (
-    #         comment_author_url,
-    #         @old_domain,
-    #         @new_domain
-    #     );
-
-    # ALTER TABLE `wp_terms`
-    # CHANGE `name` `name` VARCHAR(8000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci NULL DEFAULT NULL;
-
-    # ALTER TABLE `wp_terms`
-    # CHANGE `slug` `slug` VARCHAR(8000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '';
-    # '@
-    $sqlPath = "$env:TEMP/update-wp-url.sql"
-    $sql | Out-File $sqlPath
-    Write-Verbose $sql 
-    
-    Import-MysqlFile -Server $Server -SqlFilePath $sqlPath -MySqlUser $MySqlUser -key $key -DatabaseName $DatabaseName 
-
-}
 function Get-DictView
 {
     <# 
@@ -2605,380 +2382,6 @@ function Start-BatchSitesBuild
         Remove-Item $SqlFilePath -Force -Verbose
     }
 }
-function Get-PSConsoleHostHistory
-{
-    <# 
-    .SYNOPSIS
-    读取powershell上运行的历史命令行并返回
-    可以配合其他过滤工具来查找命令
-    .EXAMPLE
-    PS> Get-PSConsoleHostHistory|sls group
-
-    mysql --defaults-group-suffix=_remote1
-    mysql --defaults-group-suffix=df_server1
-    mysql --defaults-group-suffix=remote1
-    mysql --defaults-group-suffix=_remote1
-    mysql --defaults-group-suffix=_df_server1
-    mysql --defaults-group-suffix=_df_server1
-    mysql --defaults-group-suffix=_df_server1
-    mysql --defaults-group-suffix=_df_server1
-    Get-PowershellConsoleHostHistory|sls group
-    Get-PSConsoleHostHistory|sls group
-    .EXAMPLE
-    PS> Get-PSConsoleHostHistory|sls mysql.*default |Get-ContentNL -AsString
-    1:mysql --defaults-group-suffix=_remote1
-    2:mysql --defaults-group-suffix=df_server1
-    3:mysql --defaults-group-suffix=remote1
-    4:mysql --defaults-group-suffix=_remote1
-    5:mysql --defaults-group-suffix=_df_server1
-    6:mysql --defaults-group-suffix=_df_server1
-    7:mysql --defaults-group-suffix=_df_server1
-    8:mysql --defaults-group-suffix=_df_server1
-    9:mysqld --install MySQL55 --defaults-file="C:\phpstudy_pro\Extensions\MySQL5.5.29\my.ini"
-    .EXAMPLE
-    #⚡️[Administrator@CXXUDESK][~\AppData\Roaming\Microsoft\Windows\PowerShell\PSReadLine][9:43:35][UP:3.54Days]
-    PS> Get-PSConsoleHostHistory|sls mysql.*default
-
-    mysql --defaults-group-suffix=_remote1
-    mysql --defaults-group-suffix=df_server1
-    mysql --defaults-group-suffix=remote1
-    mysql --defaults-group-suffix=_remote1
-    mysql --defaults-group-suffix=_df_server1
-    #>
-    $res = Get-Content $PSConsoleHostHistory
-    return $res
-}
-function Get-MysqlDbInfo
-{
-    <# 
-    .SYNOPSIS
-    获取mysql数据库信息
-    .DESCRIPTION
-    默认判断数据库是否存在
-    如果表存在,可以指定是否显示数据库中的表
-    .NOTES
-    如果你不想要输出超过一定长度,那么可以配合管道符|select -First n 使用,例如n取5时,显示前5行输出
-
-    .example
-    #⚡️[Administrator@CXXUDESK][C:\sites\wp_sites_cxxu\2.fr\wp-content\plugins][23:13:34][UP:7.62Days]
-    PS> Get-MysqlDbInfo -Name 1.fr -Server localhost -ShowTables -Verbose |select -First 5
-    VERBOSE: check 1.fr database on [localhost]
-    VERBOSE: mysql -h localhost -u root  -e "SHOW DATABASES LIKE '1.fr';"
-    Database '1.fr' exist! ...
-    VERBOSE: mysql -h localhost -u root  -e "SHOW TABLES FROM ``1.fr``;"
-    VERBOSE: Show tables in 1.fr database....
-    Tables_in_1.fr
-    wp_actionscheduler_actions
-    wp_actionscheduler_claims
-    wp_actionscheduler_groups
-    wp_actionscheduler_logs
-    #>
-    [cmdletbinding()]
-    param (
-        [alias('DatabaseName')]$Name,
-        $Server = 'localhost',
-        [Alias("P")]$Port = 3306,
-        $MySQLUser = 'root',
-        $key = "",
-        [switch]$ShowTables
-    )
-    $key = Get-MysqlKeyInline $key
-    $db_name_inline = "'$Name'"
-    $CheckDBCmd = "mysql -h $Server -P $Port -u $MySQLUser $key -e `"SHOW DATABASES LIKE $db_name_inline;`""
-    Write-Verbose "check [$Name] database on [$Server]"
-    Write-Verbose $CheckDBCmd 
-    $res = $CheckDBCmd | Invoke-Expression
-
-    if ($res -match $Name)
-    {
-        Write-Host "Database '$Name' exist! ..."
-        if($ShowTables)
-        {
-            $ShowTablesCmd = "mysql -h $Server -P $Port -u $MySQLUser $key -e `"SHOW TABLES FROM ````$Name````;`""
-            Write-Verbose $ShowTablesCmd 
-
-            Write-Verbose "Show tables in $Name database...." -Verbose
-            $ShowTablesCmd | Invoke-Expression
-        }
-    }
-    else
-    {
-        Write-Warning "Database '$Name' Does not exist!"
-      
-    }
-    return $res
-}
-function Import-MysqlFile
-{
-    <# 
-    .SYNOPSIS
-    向指定mysql服务器导入mysql文件(运行sql文件)
-    
-    .PARAMETER server
-    写入操作对于数据库影响较大,因此此命令设计为你必须要指定主机(mysql服务器,比如本地(localhost),或则远程的某个服务)
-    .PARAMETER SqlFilePath
-    要导入的sql文件路径
-    .PARAMETER MySqlUser
-    mysql用户名,默认为root
-    .PARAMETER key
-    mysql密码
-    你也可以不指定密码,而在mysql中配置文件(比如my.ini或my.cnf)中设置密码,实现免手动指定密码操作数据库
-    默认为读取环境变量DF_MysqlKey,指定此参数时,会以你的输入为准,但是这不安全
-
-    .PARAMETER DatabaseName
-    如果你指定此参数,那么命令会认为你想要将sql文件导入到指定数据库名
-    默认为"",表示你想要执行的语句(sql文件)不要求你后期指定数据库名字,
-    例如,你的sql是一些查询数据库基本信息的语句,或者是创建数据库的语句,你不需要在命令行中指定一个数据库
- 
-    数据库名字;数据库sql导入有两大类,一类不需要指定数据库就可以直接执行的sql;一类是针对特定数据库执行的sql
-    例如某份sql中是一批数据库创建语句,那么你不需要指定某个数据库名直接就可以执行(如果要创建的数据库已经存在,mysql会提示你对应的数据库已经存在)
-    而有的sql是数据库的备份sql文件,你应该指定一个数据库名称,然后执行导入操作;
-    一般而言,这两类数据库sql不能混放在同一个sql文件中
-
-    .EXAMPLE
-    Import-MysqlFile -server localhost -SqlFilePath "C:\Users\admin\Desktop\test.sql" -MySqlUser root -key "123456" -DatabaseName "test"
-    .EXAMPLE
-    #⚡️[Administrator@CXXUDESK][~\Desktop][20:50:51][UP:3.52Days]
-    PS> Import-MysqlFile -server localhost -DatabaseName 6.fr -SqlFilePath C:\sites\wp_sites_cxxu\base_sqls\6.es.sql
-    VERBOSE: File exist!
-    cmd /c " mysql -u root -h localhost -p15a58524d3bd2e49 6.fr < `"C:\sites\wp_sites_cxxu\base_sqls\6.es.sql`" "
-    mysql: [Warning] Using a password on the command line interface can be insecure.
-    .NOTES
-    可以配置默认导入主机和用户等信息
-    导入的文件路径是必填的
-
-    #>
-    [CmdletBinding(SupportsShouldProcess)]
-    param (
-        $Server = "localhost",
-        $MySqlUser = "root",
-        [Alias("MySqlKey")]$key = $env:MySqlKey_LOCAL,
-        [alias("File", "Path")]$SqlFilePath,
-        [parameter(ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
-        [alias("Name")]$DatabaseName = "",
-        [alias("P")]$Port = 3306,
-        [switch]$Force
-    )
-    begin
-    {
-        
-        $key = Get-MysqlKeyInline $key
-    }
-    process
-    {
-   
-        if(Test-Path $SqlFilePath)
-        {
-        
-            Write-Verbose "Use Mysql server host: $Server"
-            Write-Verbose "Sql File exist!" 
-
-            # 如果数据库不存在,则提示创建数据库
-            # $db_name_inline_creater = "````$DatabaseName````"
-            # $db_name_inline = "'$DatabaseName'"
-            # Write-Verbose "$databaseName"
-            # Write-Verbose "$db_name_inline"
-
-            # Pause
-
-            # 查询数据库是否存在
-            # $CheckDBCmd = "mysql -h $Server -u $MySQLUser $key -e `"SHOW DATABASES LIKE $db_name_inline;`""
-            # $CreateDBCmd = "mysql -h $Server -u $MySQLUser $key -e `"CREATE DATABASE $db_name_inline_creater;`""
-        
-            # Write-Verbose $CheckDBCmd -Verbose
-            # Write-Verbose $CreateDBCmd -Verbose
-        
-            # return 
-
-            # $DBExists = Invoke-Expression $CheckDBCmd
-            if(!$DatabaseName )
-            {
-                Write-Warning "You did not specify the database name!"
-                # write-warning "The sql file path Leafbase name will be the default database name!"
-                # $DatabaseName = Split-Path $SqlFilePath -LeafBase
-            }
-            # 如果用户指定了数据库名称,则检查该数据库是否已经存在,并给出测试结果;否则认为要导入的sql不需要事先指定数据库名字
-            if($DatabaseName)
-            {
-
-                $DBExists = Get-MysqlDbInfo -Name $DatabaseName -Server $Server -Port $Port -MySQLUser $MySqlUser -key $key
-            
-                if(!$DBExists)
-                {
-                
-                    # Write-Host "数据库不存在!"
-                    if($PSCmdlet.ShouldProcess($Server, "Create Database: $DatabaseName ?"))
-                    {
-                    
-                        # Invoke-Expression $CreateDBCmd
-                        New-MysqlDB -Name $DatabaseName -Server $Server -Port $Port -MySqlUser $MySqlUser -MysqlKey $key -Confirm:$false
-                    }
-                }
-                else
-                {
-                    # Get-MysqlDbDescription -Name $DatabaseName -Server $Server
-                    Get-MysqlDbInfo -Name $DatabaseName -Server $Server -Port $Port -key $key -ShowTables | Select-Object -First 5
-                }
-            }
-            # 忽略执行失败的sql,强制继续执行剩余sql(比如批量切换数据库中各个表的引擎,部分表无法顺利切换,可以利用-f跳过错误的部分)
-            $ForceSql = if($Force) { "-f" } else { "" }
-            $expression = "cmd /c `" mysql -h $Server -P $Port -u $MySqlUser  $key $ForceSql $DatabaseName < ```"$SqlFilePath```" `""
-            Write-Verbose $expression 
-
-        
-            if($Force -or -not $Confirm)
-            {
-                $ConfirmPreference = "None" 
-                # cmd /c $expression
-            }
-            if($PSCmdlet.ShouldProcess($Server, $expression))
-            {
-
-                Invoke-Expression $expression
-            }
-        }
-    }
-}
-function Remove-MysqlDB
-{
-    <# 
-    .SYNOPSIS
-    删除指定的mysql数据库
-    .DESCRIPTION
-    删除指定的mysql数据库尤其是批量删除通常是一个危险操作,这里使用风险缓解的询问措施(将影响级别调整到'High',默认情况下会要求用户输入确认以继续执行相关操作)
-    .EXAMPLE
-    从文件中读取数据库名,并删除数据库
-    $dbs=Get-DomainUserDictFromTableLite |select -ExpandProperty domain
-    通过管道服务的形式,将数据库名数组中指定的数据库传递给Remove-MysqlDB命令逐个进行移除
-    $dbs|Remove-MysqlDB  -Force
-    #>
-    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = "High")]
-    param (
-        $Server = "localhost",
-        $MySqlUser = "root",
-        [Alias("MySqlKey")]$key = $env:MySqlKey_LOCAL,
-        [alias("P")]$Port = 3306,
-        [Parameter(Mandatory = $true, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
-        [alias("Name")]
-        $DatabaseName,
-        [switch]$Force
-    )
-    begin
-    {
-        Write-Verbose "Use Mysql server host: $Server"
-        Write-Verbose "start remove database $DatabaseName"
-        $key = Get-MysqlKeyInline $key
-    }
-    process
-    {
-
-        # DROP DATABASE [IF EXISTS] database_name;
-        $command = " mysql -u$MySqlUser -h $Server -P $Port $key -e 'DROP DATABASE IF EXISTS ``$DatabaseName`` ; ' "  
-        Write-Verbose $command 
-        if($Force -and -not $Confirm)
-        {
-            $ConfirmPreference = "None"
-        }
-        if($PSCmdlet.ShouldProcess($DatabaseName, "Remove Database $DatabaseName ?"))
-        {
-            
-            # 将mysql的执行输出丢弃
-            Invoke-Expression $command *> $null
-            
-        }
-        Write-Verbose "Database $DatabaseName has been tried to be removed!" -Verbose
-    }
-    
-}
-function Remove-MysqlIsolatedDB
-{
-    <# 
-    .SYNOPSIS
-  网站根目录不存在的网站配套的mysql数据库删除
-  .NOTES
-  这是一个特定专用函数
-    #>
-    [CmdletBinding(SupportsShouldProcess = $true)]
-    param(
-        $SitesDir = $my_wp_sites
-    )
-    $domains = Get-DomainUserDictFromTableLite | Select-Object -ExpandProperty domain
-    $toBeRemoveNames = [System.Collections.Generic.List[string]]::new()
-    # 检查对应网站根目录是否存在
-    foreach ($domain in $domains)
-    {
-        $site_root = "$SitesDir/$domain"
-        if(Test-Path $site_root)
-        {
-            Write-Host "网站根目录存在: $site_root"
-        }
-        else
-        {
-            <# Action when all if and elseif conditions are false #>
-            Write-Host "网站根目录不存在: $site_root,将被移除同名数据库"
-            $toBeRemoveNames.Add($domain)
-        }
-    }
-    $toBeRemoveNames | Remove-MysqlDB 
-}
-function Export-MysqlFile
-{
-    <# 
-    .synopsis
-    导出mysql数据库到文件
-    .DESCRIPTION
-    #>    
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory = $true, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
-        [alias('Name')]$DatabaseName,    
-        $OutputDir = $base_sqls,
-        $SqlFilePath = "$OutputDir/$DatabaseName.sql",
-
-        $Server = "localhost",
-        [alias("P")]$Port = 3306,
-        $MySqlUser = "root",
-        $key = $env:MySqlKey_LOCAL,
-        [switch]$Force,
-        # 默认执行备份,使用此选项禁用备份
-        [switch]$Backup
-
-    )
-    begin
-    { 
-        Write-Verbose "Use Mysql server host: $Server"
-        Write-Verbose "Start Export database $DatabaseName "
-    }
-    process
-    {
-        if(Test-Path $SqlFilePath)
-        {
-            Write-Warning "File already exist!New files will override the old ones!"
-            if($Backup)
-            {
-                # 执行备份
-                Write-Verbose "try to rename the old file!(as .bak);" -Verbose
-
-                Rename-Item $SqlFilePath "$SqlFilePath.bak.$(Get-Date -Format 'yyyyMMdd-hhmmss')" -Force:$Force -Verbose
-                # try
-                # {
-                Write-Verbose "The old file has been renamed to $SqlFilePath.bak" -Verbose
-                # }
-                # catch
-                # {
-                #     Write-Warning "Failed to rename the old file!(because the $SqlFilePath.bak is also already exist !)"
-                #     Write-Warning "Please check and move the file path or delete the old file manually if it will no longer be used."
-                #     return
-                # }
-            }
-        }
-
-        $expression = "  mysqldump   -h $Server -P $Port -u $MySqlUser -p$key '$DatabaseName' > $SqlFilePath "
-        Write-Verbose $expression
-        Invoke-Expression $expression
-    }
-}
-
 function Get-UrlFromMarkdownUrl
 {
     param(
@@ -3113,25 +2516,6 @@ function Restart-Nginx
     Write-Verbose "Nginx.exe -s stop" -Verbose
 
 }
-function Update-WpSitesRobots
-{
-    <# 
-    .SYNOPSIS
-    更新Wordpress网站robots.txt文件
-    主要是修改(追加)sitemap地址到robots.txt文件中,适配对应的域名
-    #>
-    [CmdletBinding()]
-    param(
-        $Path,
-        $Domain
-    )
-    
-    "`n" >> $Path
-    "Sitemap: https://www.$Domain/sitemap_index.xml" >> $Path
-    "Sitemap: https://www.$Domain/sitemap_more.xml" >> $Path
-    "Sitemap: https://www.$Domain/sitemap_new.xml" >> $Path
-
-}
 
 function Get-PortAndProcess
 {
@@ -3217,9 +2601,11 @@ function Get-DomainUserDictFromTableLite
     )
     Get-Content $Table | Where-Object { $_ -notmatch "^\s*#" } | ForEach-Object { 
         $l = $_ -split '\s+'
+        $title = ($_ -split '\d+\.\w{1,5}')[-1].trim()
         @{'domain'     = ($l[0] | Get-MainDomain);
             'user'     = $l[1];
-            'template' = $l[2] 
+            'template' = $l[2] ;
+            'title'    = $title;
         } 
     }
 }
@@ -3323,52 +2709,6 @@ function Rename-FileName
     }
 
 }
-function Remove-WpSitesLocal
-{
-    <# 
-    .SYNOPSIS
-    批量删除本地Wordpress网站
-    建议在建下一批网站之前执行这个清理操作!
-    
-    .DESCRIPTION
-    默认读取my_table.conf文件中配置的网站域名,然后逐个执行以下操作
-    - 删除网站根目录
-    - 删除数据库
-    - 删除nginx配置文件(调用Restart-Nginx也可以触发此动作)
-    #>
-    param(
-        $Table = "$desktop/my_table.conf",
-        $SitesDir = $my_wp_sites,
-        $NginxConfDir = "$env:nginx_conf_dir"
-    )
-    $domains = Get-DomainUserDictFromTableLite -Table $Table | Select-Object -ExpandProperty domain
-    # Write-Host $domains
-    $msg = $domains | Format-DoubleColumn | Out-String
-    Write-Verbose $msg -Verbose
-    Write-Warning "准备并行删除相关本地站点,配套配置和数据库" -WarningAction Inquire
-    # 多线程删除网站根目录
-    $jobs = @()
-    foreach ($domain in $domains)
-    {
-        $siteRoot = "$SitesDir/$domain"
-        $job = Start-ThreadJob -Name "Remove:$domain" -ScriptBlock {
-            param($Path)
-            Remove-Item -Path $Path -Recurse -Force -ErrorAction SilentlyContinue
-            # Remove-RobocopyMirEmpty -Path $Path  -Confirm:$false -Verbose
-            Write-Host "Removed site root: $Path" 
-        } -ArgumentList $siteRoot
-        $jobs += $job
-    }
-    $jobs | Wait-Job
-    $jobs | Receive-Job
-    $jobs | Remove-Job
-    # 尝试删除数据库及其相关配置
-    Remove-MysqlIsolatedDB -SitesDir $SitesDir
-    Approve-NginxValidVhostsConf -NginxConfDir $NginxConfDir
-    $domains | Remove-LineInFile -Path $hosts -Debug
-    
-}
-
 
 function Get-FileFromUrl
 {
@@ -3537,244 +2877,7 @@ function Get-FileFromUrl
         Write-Host "🎉 所有下载任务已处理完毕。" -ForegroundColor Green
     }
 }
-function Deploy-WpSitesLocal
-{
-    <# 
-    .SYNOPSIS
-    批量部署本地Wordpress网站
-    从已有的模板中拷贝网站根目录和数据到新的域名,包括数据库的导入和修改,并且配置对应站的nginx.htaccess文件和conf文件
 
-    .PARAMETER Table
-    包含表格信息的配置文本文件,默认格式为每行包含[域名,用户名,模板名],以空格分隔
-
-    .PARAMETER WpSitesTemplatesDir
-    本地Wordpress网站[模板]目录,脚本将会从这个目录下面拷贝模板站目录到指定位置(MyWpSitesHomeDir),默认值为"$env:USERPROFILE/Desktop/wp_sites_templates"
-
-    .PARAMETER MyWpSitesHomeDir
-    本地各个Wordpress网站根目录聚集的目录,用来保存从WpSitesTemplatesDir拷贝的网站目录,这里保存的各个网站根目录,是之后装修的对象,默认值为"$env:USERPROFILE/Desktop/my_wp_sites"
-
-    .PARAMETER DBKey
-    mysql密码
-
-    .PARAMETER NginxConfDir
-    nginx配置文件目录
-
-    .PARAMETER NginxConfTemplate
-    nginx配置文件模板
-
-    .PARAMETER SiteImageDirRelative
-    网站图片目录相对路径
-
-    .PARAMETER CsvDir
-    csv数据输出目录,如果不存在,将会创建该目录
-
-    .PARAMETER Confirm
-    确认提示,默认值为$false
-
-    #>
-    [cmdletbinding(SupportsShouldProcess)]
-    param (
-        # 主要参数
-        $Table = "$desktop/my_table.conf",
-        $WpSitesTemplatesDir = $wp_sites,
-        $MyWpSitesHomeDir = "$Desktop/my_wp_sites",
-        # 数据库文件(sql文件所在目录)
-        $SqlFileDir = "$WpSitesTemplatesDir/base_sqls",
-        # 可以配置环境变量来设置
-        $CgiPort = "$env:CgiPort",
-        # 一般不需要更改的参数
-        $TableStructure = "Domain,User,Template",
-        $DBKey = $env:MySqlKey_LOCAL,
-        $NginxConfDir = "$env:nginx_conf_dir", # 例如:C:\phpstudy_pro\Extensions\Nginx1.25.2\conf\vhosts
-        $NginxConfTemplate = "$scripts/Config/nginx_template.conf",
-        $NginxHtaccessTemplate = "$scripts/Config/nginx.htaccess",
-        # nginx.exe所在目录的完整路径(如果Path中的%nginx_home%没有被正确解析,可以指定完整路径)
-        # $NginxHome="",
-        $SiteImageDirRelative = "wp-content/uploads/2025",
-        $CsvDir = "$Desktop/data_output"
-    )
-    Write-Debug $table
-    Write-Debug $WpSitesTemplatesDir
-    Write-Debug $MyWpSitesHomeDir
-    Write-Debug $DBKey
-    Get-Content $table
-    # 检查关键目录
-    if(!(Test-Path $WpSitesTemplatesDir))
-    {
-        Write-Error "Wordpress templates directory not found: $WpSitesTemplatesDir"
-        return
-    }
-
-    if(!(Test-Path $NginxConfDir))
-    {
-        Write-Error "Nginx conf directory not found: $NginxConfDir"
-        return 
-    }
-    New-Item -ItemType Directory -Path $MyWpSitesHomeDir -ErrorAction SilentlyContinue -Verbose
-    # 启动必要的服务
-    Restart-Nginx 
-    # Restart-Service 
-    # 检查nginx和mysql服务是否正常运行
-    $nginx_status = Get-Process nginx
-    $mysqld_status = Get-Process mysqld
-    if(!$nginx_status)
-    {
-        Write-Host "Nginx服务未正常启动" -ForegroundColor Red
-        return
-    }
-    if(!$mysqld_status)
-    {
-        Write-Host "Mysql服务未正常启动" -ForegroundColor Red
-        return
-    }
-
-    # $rows = Get-DomainUserDictFromTable -Table $table -Structure $TableStructure
-
-    # 始终不提示确认，即使用户没指定 -Confirm:$false
-    if (-not $PSBoundParameters.ContainsKey('Confirm'))
-    {
-        $ConfirmPreference = 'None'
-    }
-    if(!$CgiPort)
-    {
-        # $CgiPort = 9000
-        $Info = Get-PortAndProcess -Port 900* 
-        Write-Host $Info
-        $CgiPort = $Info | Select-Object -First 1 -ExpandProperty LocalPort -ErrorAction Stop
-        Write-Host $CgiPort
-        Write-Debug "CgiPort environment variable not set, Try auto get port value $CgiPort"
-    }
-    # 解析批量表格中的各条待处理任务
-    # $rows = Get-Content $table | Where-Object { $_ -notmatch "^\s*#" } | ForEach-Object { $l = $_ -split '\s+'; @{'domain' = ($l[0] | Get-MainDomain); 'user' = $l[1]; 'template' = $l[2] } }
-    $rows = Get-DomainUserDictFromTableLite -Table $table
-    # 利用write-output将结果输出到控制台,方便查看
-    Write-Output $rows
-    Write-Warning "Please check the parameter table list above,especially the domain and template name!" -WarningAction Inquire
-    # Pause
-
-    # 逐条数据解析出各个参数,并处理任务
-    foreach ($row in $rows)
-    {
-        $domain = $row.Domain
-        $template = $row.Template
-
-        $path = "$WpSitesTemplatesDir/$template"
-        $destination = "$MyWpSitesHomeDir/$domain"
-        # 这里要加一层域名验证
-        if ($domain -and $domain -like "*.*")
-        {
-            Write-Verbose "processing domain: [$domain]" -Verbose
-        }
-        else
-        {
-            Write-Error "Invalid domain name: [$domain]. Please check the table file: $table" -WarningAction Stop
-            Pause
-            # exit #会导致shell窗口直接关闭,不推荐使用exit
-            return $False
-        }
-        # 检查目标路径是否已经存在已经覆盖处理
-        if(Test-Path $destination)
-        {
-            Write-Verbose "Removing $destination(Enter 'A' to Continue)" -Verbose 
-            Remove-Item $destination -Force -Recurse -Confirm:$Confirm
-        }
-        # Pause
-        # Copy-Item -Path $path/* -Destination $destination  -Force 
-        # Copy-Item -Path $path -Destination $MyWpSitesHomeDir -Force -Recurse -WhatIf:$WhatIfPreference 
-        # 使用robocopy多线程拷贝
-        $robocopyLog = "$env:TEMP/$(Get-Date -Format 'yyyyMMdd')robocopy.log"
-        # Write-Verbose "Use robocopy to copy files from $path to $destination "
-        Copy-Robocopy -Source $path -Destination $destination -Force -Recurse -LogFile $robocopyLog -Threads 32
-        $template_temp = "$MyWpSitesHomeDir/$template"
-        if(Test-Path $template_temp)
-        {
-
-            Move-Item -Path $template_temp -Destination $destination -Force -Verbose -WhatIf:$WhatIfPreference
-        }
-
-        $wp_config = "$destination/wp-config.php"
-        Write-Debug $wp_config
-        if (Test-Path $wp_config)
-        {
-            # 更新wp-config.php文件
-            $s = Get-Content $wp_config -Raw
-            Write-Debug "modify the wp-config.php file : the db name"
-            $ns = $s -replace "(define\(\s*'DB_NAME')(.*)\)", "`$1,'$domain')" -replace "(define\(\s*'DB_PASSWORD')(.*)\)", "`$1,'$DBKey')"
-            # Write-output $ns
-            $ns > $wp_config
-
-            # 更新robots.txt文件
-            $robots = "$destination/robots.txt"
-            Write-Verbose "Update the robots.txt file [$robots]"
-            Update-WpSitesRobots -Path $robots -Domain $domain
-            # 显式复制wordpress的nginx.htaccess文件(包含伪静态配置),
-            # 理论上会自动把模板站中的对应文件一同复制,但是个别情况复制的文件内容为空,
-            # 且考虑到统一覆盖的便利性,这里将nginx.htaccess文件(内容)放到一个固定的位置,然后统一读取和复制此文件到目标位置
-            Copy-Item -Path $NginxHtaccessTemplate -Destination $destination/nginx.htaccess -Force -Verbose 
-            # 配置本地网站对应的nginx.conf文件(比如使用小皮的nginx环境)
-            # $tpl = "$NginxConfDir/tpl.conf"
-            $tpl = "$NginxConfTemplate"
-            Write-Debug $tpl
-            if (!(Test-Path $tpl))
-            {
-                Write-Error "nginx tpl.conf file not found in path: $NginxConfTemplate"
-                # return 
-            }
-            else
-            {
-                # 配置本地站点根目录对应的nginx配置文件
-                $tpl_content = Get-Content $tpl -Raw
-                $tpl_content = $tpl_content -replace "domain.com", $domain #"`"$domain`"" 
-                $tpl_content = $tpl_content -replace "CgiPort", $CgiPort
-                $nginx_target = "$NginxConfDir/${domain}_80.conf"
-                $tpl_content > $nginx_target #对于https协议,则为 _443.conf
-                Write-Debug "nginx 配置内容将被写入到文件:[ $nginx_target]" -Debug
-                Write-Debug $tpl_content 
-            }
-            
-            Write-Warning "please restart nginx service to apply the new nginx.conf file!🎈"
-            # 导出后续步骤要用到的命令行,创建对应的目录(如果没有的话)
-            $CsvDirHome = "$CsvDir/$domain"
-            $ImgDir = "$destination/$SiteImageDirRelative"
-            New-Item -ItemType Directory -Path $CsvDirHome -ErrorAction SilentlyContinue -Verbose
-            
-            $script = @"
-# =========[http://$domain]:[$destination]=============
-python $pys\image_downloader.py -c -n -R auto -k  -rs 1000 800  --output-dir $ImgDir --dir-input $CsvDirHome -w 5 -U curl
-
-python $pys\woo_uploader_db.py --update-slugs  --csv-path $CsvDirHome --img-dir $ImgDir --db-name $domain 
-
-Get-WpSitePacks -SiteDirecotry $destination
-
-
-"@
-            Write-Host $scripts
-            $scripts_dir = "$MyWpSitesHomeDir"
-            $script_path = "$scripts_dir/scripts_$(Get-Date -Format "yyyyMMdd").ps1"
-            $script >> $script_path
-            Write-Host "Script has been saved to: $script_path" -ForegroundColor Cyan
-        }
-        else
-        {
-            Write-Error "wp-config.php file not found in $destination"
-            Pause
-        }
-        # 导入数据库并执行基础的修改
-        Import-MysqlFile -Server localhost -key $DBKey -SqlFilePath "$SqlFileDir/$template.sql" -DatabaseName $domain  
-        Update-WpUrl -Server localhost -key $DBKey -NewDomain $domain -OldDomain $template -protocol http  
-        
-        # 修改(追加当前域名映射新行)到hosts文件(127.0.0.1  $domain)
-        Add-NewDomainToHosts -Domain $domain
-
-
-    }
-
-    # 可以考虑定期清理hosts文件!
-    Write-Debug "Modify hosts file [$hosts]"
-    # 重启(重载)nginx服务器
-    
-    Restart-Nginx -Debug
-}
 
 function Add-NewDomainToHosts
 {
@@ -5738,6 +4841,7 @@ function Get-Json
     <#
 .SYNOPSIS
     Reads a specific property from a JSON string or JSON file. If no property is specified, returns the entire JSON object.
+    调用powershell中的ConvertFrom-Json cmdlet处理
 
 .DESCRIPTION
     This function reads a JSON string or JSON file and extracts the value of a specified property. If no property is specified, it returns the entire JSON object.

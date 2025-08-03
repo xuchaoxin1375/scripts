@@ -1,4 +1,380 @@
 
+
+function Get-PSConsoleHostHistory
+{
+    <# 
+    .SYNOPSIS
+    读取powershell上运行的历史命令行并返回
+    可以配合其他过滤工具来查找命令
+    .EXAMPLE
+    PS> Get-PSConsoleHostHistory|sls group
+
+    mysql --defaults-group-suffix=_remote1
+    mysql --defaults-group-suffix=df_server1
+    mysql --defaults-group-suffix=remote1
+    mysql --defaults-group-suffix=_remote1
+    mysql --defaults-group-suffix=_df_server1
+    mysql --defaults-group-suffix=_df_server1
+    mysql --defaults-group-suffix=_df_server1
+    mysql --defaults-group-suffix=_df_server1
+    Get-PowershellConsoleHostHistory|sls group
+    Get-PSConsoleHostHistory|sls group
+    .EXAMPLE
+    PS> Get-PSConsoleHostHistory|sls mysql.*default |Get-ContentNL -AsString
+    1:mysql --defaults-group-suffix=_remote1
+    2:mysql --defaults-group-suffix=df_server1
+    3:mysql --defaults-group-suffix=remote1
+    4:mysql --defaults-group-suffix=_remote1
+    5:mysql --defaults-group-suffix=_df_server1
+    6:mysql --defaults-group-suffix=_df_server1
+    7:mysql --defaults-group-suffix=_df_server1
+    8:mysql --defaults-group-suffix=_df_server1
+    9:mysqld --install MySQL55 --defaults-file="C:\phpstudy_pro\Extensions\MySQL5.5.29\my.ini"
+    .EXAMPLE
+    #⚡️[Administrator@CXXUDESK][~\AppData\Roaming\Microsoft\Windows\PowerShell\PSReadLine][9:43:35][UP:3.54Days]
+    PS> Get-PSConsoleHostHistory|sls mysql.*default
+
+    mysql --defaults-group-suffix=_remote1
+    mysql --defaults-group-suffix=df_server1
+    mysql --defaults-group-suffix=remote1
+    mysql --defaults-group-suffix=_remote1
+    mysql --defaults-group-suffix=_df_server1
+    #>
+    $res = Get-Content $PSConsoleHostHistory
+    return $res
+}
+function Get-MysqlDbInfo
+{
+    <# 
+    .SYNOPSIS
+    获取mysql数据库信息
+    .DESCRIPTION
+    默认判断数据库是否存在
+    如果表存在,可以指定是否显示数据库中的表
+    .NOTES
+    如果你不想要输出超过一定长度,那么可以配合管道符|select -First n 使用,例如n取5时,显示前5行输出
+
+    .example
+    #⚡️[Administrator@CXXUDESK][C:\sites\wp_sites_cxxu\2.fr\wp-content\plugins][23:13:34][UP:7.62Days]
+    PS> Get-MysqlDbInfo -Name 1.fr -Server localhost -ShowTables -Verbose |select -First 5
+    VERBOSE: check 1.fr database on [localhost]
+    VERBOSE: mysql -h localhost -u root  -e "SHOW DATABASES LIKE '1.fr';"
+    Database '1.fr' exist! ...
+    VERBOSE: mysql -h localhost -u root  -e "SHOW TABLES FROM ``1.fr``;"
+    VERBOSE: Show tables in 1.fr database....
+    Tables_in_1.fr
+    wp_actionscheduler_actions
+    wp_actionscheduler_claims
+    wp_actionscheduler_groups
+    wp_actionscheduler_logs
+    #>
+    [cmdletbinding()]
+    param (
+        [alias('DatabaseName')]$Name,
+        $Server = 'localhost',
+        [Alias("P")]$Port = 3306,
+        $MySQLUser = 'root',
+        $key = "",
+        [switch]$ShowTables
+    )
+    $key = Get-MysqlKeyInline $key
+    $db_name_inline = "'$Name'"
+    $CheckDBCmd = "mysql -h $Server -P $Port -u $MySQLUser $key -e `"SHOW DATABASES LIKE $db_name_inline;`""
+    Write-Verbose "check [$Name] database on [$Server]"
+    Write-Verbose $CheckDBCmd 
+    $res = $CheckDBCmd | Invoke-Expression
+
+    if ($res -match $Name)
+    {
+        Write-Host "Database '$Name' exist! ..."
+        if($ShowTables)
+        {
+            $ShowTablesCmd = "mysql -h $Server -P $Port -u $MySQLUser $key -e `"SHOW TABLES FROM ````$Name````;`""
+            Write-Verbose $ShowTablesCmd 
+
+            Write-Verbose "Show tables in $Name database...." -Verbose
+            $ShowTablesCmd | Invoke-Expression
+        }
+    }
+    else
+    {
+        Write-Warning "Database '$Name' Does not exist!"
+      
+    }
+    return $res
+}
+
+function Import-MysqlFile
+{
+    <# 
+    .SYNOPSIS
+    向指定mysql服务器导入mysql文件(运行sql文件)
+    
+    .PARAMETER server
+    写入操作对于数据库影响较大,因此此命令设计为你必须要指定主机(mysql服务器,比如本地(localhost),或则远程的某个服务)
+    .PARAMETER SqlFilePath
+    要导入的sql文件路径
+    .PARAMETER MySqlUser
+    mysql用户名,默认为root
+    .PARAMETER key
+    mysql密码
+    你也可以不指定密码,而在mysql中配置文件(比如my.ini或my.cnf)中设置密码,实现免手动指定密码操作数据库
+    默认为读取环境变量DF_MysqlKey,指定此参数时,会以你的输入为准,但是这不安全
+
+    .PARAMETER DatabaseName
+    如果你指定此参数,那么命令会认为你想要将sql文件导入到指定数据库名
+    默认为"",表示你想要执行的语句(sql文件)不要求你后期指定数据库名字,
+    例如,你的sql是一些查询数据库基本信息的语句,或者是创建数据库的语句,你不需要在命令行中指定一个数据库
+ 
+    数据库名字;数据库sql导入有两大类,一类不需要指定数据库就可以直接执行的sql;一类是针对特定数据库执行的sql
+    例如某份sql中是一批数据库创建语句,那么你不需要指定某个数据库名直接就可以执行(如果要创建的数据库已经存在,mysql会提示你对应的数据库已经存在)
+    而有的sql是数据库的备份sql文件,你应该指定一个数据库名称,然后执行导入操作;
+    一般而言,这两类数据库sql不能混放在同一个sql文件中
+
+    .EXAMPLE
+    Import-MysqlFile -server localhost -SqlFilePath "C:\Users\admin\Desktop\test.sql" -MySqlUser root -key "123456" -DatabaseName "test"
+    .EXAMPLE
+    #⚡️[Administrator@CXXUDESK][~\Desktop][20:50:51][UP:3.52Days]
+    PS> Import-MysqlFile -server localhost -DatabaseName 6.fr -SqlFilePath C:\sites\wp_sites_cxxu\base_sqls\6.es.sql
+    VERBOSE: File exist!
+    cmd /c " mysql -u root -h localhost -p15a58524d3bd2e49 6.fr < `"C:\sites\wp_sites_cxxu\base_sqls\6.es.sql`" "
+    mysql: [Warning] Using a password on the command line interface can be insecure.
+    .NOTES
+    可以配置默认导入主机和用户等信息
+    导入的文件路径是必填的
+
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param (
+        $Server = "localhost",
+        $MySqlUser = "root",
+        [Alias("MySqlKey")]$key = $env:MySqlKey_LOCAL,
+        [alias("File", "Path")]$SqlFilePath,
+        [parameter(ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
+        [alias("Name")]$DatabaseName = "",
+        [alias("P")]$Port = 3306,
+        [switch]$Force
+    )
+    begin
+    {
+        
+        $key = Get-MysqlKeyInline $key
+    }
+    process
+    {
+   
+        if(Test-Path $SqlFilePath)
+        {
+        
+            Write-Verbose "Use Mysql server host: $Server"
+            Write-Verbose "Sql File exist!" 
+
+            # 如果数据库不存在,则提示创建数据库
+            # $db_name_inline_creater = "````$DatabaseName````"
+            # $db_name_inline = "'$DatabaseName'"
+            # Write-Verbose "$databaseName"
+            # Write-Verbose "$db_name_inline"
+
+            # Pause
+
+            # 查询数据库是否存在
+            # $CheckDBCmd = "mysql -h $Server -u $MySQLUser $key -e `"SHOW DATABASES LIKE $db_name_inline;`""
+            # $CreateDBCmd = "mysql -h $Server -u $MySQLUser $key -e `"CREATE DATABASE $db_name_inline_creater;`""
+        
+            # Write-Verbose $CheckDBCmd -Verbose
+            # Write-Verbose $CreateDBCmd -Verbose
+        
+            # return 
+
+            # $DBExists = Invoke-Expression $CheckDBCmd
+            if(!$DatabaseName )
+            {
+                Write-Warning "You did not specify the database name!"
+                # write-warning "The sql file path Leafbase name will be the default database name!"
+                # $DatabaseName = Split-Path $SqlFilePath -LeafBase
+            }
+            # 如果用户指定了数据库名称,则检查该数据库是否已经存在,并给出测试结果;否则认为要导入的sql不需要事先指定数据库名字
+            if($DatabaseName)
+            {
+
+                $DBExists = Get-MysqlDbInfo -Name $DatabaseName -Server $Server -Port $Port -MySQLUser $MySqlUser -key $key
+            
+                if(!$DBExists)
+                {
+                
+                    # Write-Host "数据库不存在!"
+                    if($PSCmdlet.ShouldProcess($Server, "Create Database: $DatabaseName ?"))
+                    {
+                    
+                        # Invoke-Expression $CreateDBCmd
+                        New-MysqlDB -Name $DatabaseName -Server $Server -Port $Port -MySqlUser $MySqlUser -MysqlKey $key -Confirm:$false
+                    }
+                }
+                else
+                {
+                    # Get-MysqlDbDescription -Name $DatabaseName -Server $Server
+                    Get-MysqlDbInfo -Name $DatabaseName -Server $Server -Port $Port -key $key -ShowTables | Select-Object -First 5
+                }
+            }
+            # 忽略执行失败的sql,强制继续执行剩余sql(比如批量切换数据库中各个表的引擎,部分表无法顺利切换,可以利用-f跳过错误的部分)
+            $ForceSql = if($Force) { "-f" } else { "" }
+            $expression = "cmd /c `" mysql -h $Server -P $Port -u $MySqlUser  $key $ForceSql $DatabaseName < ```"$SqlFilePath```" `""
+            Write-Verbose $expression 
+
+        
+            if($Force -or -not $Confirm)
+            {
+                $ConfirmPreference = "None" 
+                # cmd /c $expression
+            }
+            if($PSCmdlet.ShouldProcess($Server, $expression))
+            {
+
+                Invoke-Expression $expression
+            }
+        }
+    }
+}
+function Remove-MysqlDB
+{
+    <# 
+    .SYNOPSIS
+    删除指定的mysql数据库
+    .DESCRIPTION
+    删除指定的mysql数据库尤其是批量删除通常是一个危险操作,这里使用风险缓解的询问措施(将影响级别调整到'High',默认情况下会要求用户输入确认以继续执行相关操作)
+    .EXAMPLE
+    从文件中读取数据库名,并删除数据库
+    $dbs=Get-DomainUserDictFromTableLite |select -ExpandProperty domain
+    通过管道服务的形式,将数据库名数组中指定的数据库传递给Remove-MysqlDB命令逐个进行移除
+    $dbs|Remove-MysqlDB  -Force
+    #>
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = "High")]
+    param (
+        $Server = "localhost",
+        $MySqlUser = "root",
+        [Alias("MySqlKey")]$key = $env:MySqlKey_LOCAL,
+        [alias("P")]$Port = 3306,
+        [Parameter(Mandatory = $true, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
+        [alias("Name")]
+        $DatabaseName,
+        [switch]$Force
+    )
+    begin
+    {
+        Write-Verbose "Use Mysql server host: $Server"
+        Write-Verbose "start remove database $DatabaseName"
+        $key = Get-MysqlKeyInline $key
+    }
+    process
+    {
+
+        # DROP DATABASE [IF EXISTS] database_name;
+        $command = " mysql -u$MySqlUser -h $Server -P $Port $key -e 'DROP DATABASE IF EXISTS ``$DatabaseName`` ; ' "  
+        Write-Verbose $command 
+        if($Force -and -not $Confirm)
+        {
+            $ConfirmPreference = "None"
+        }
+        if($PSCmdlet.ShouldProcess($DatabaseName, "Remove Database $DatabaseName ?"))
+        {
+            
+            # 将mysql的执行输出丢弃
+            Invoke-Expression $command *> $null
+            
+        }
+        Write-Verbose "Database $DatabaseName has been tried to be removed!" -Verbose
+    }
+    
+}
+function Remove-MysqlIsolatedDB
+{
+    <# 
+    .SYNOPSIS
+  网站根目录不存在的网站配套的mysql数据库删除
+  .NOTES
+  这是一个特定专用函数
+    #>
+    [CmdletBinding(SupportsShouldProcess = $true)]
+    param(
+        $SitesDir = $my_wp_sites
+    )
+    $domains = Get-DomainUserDictFromTableLite | Select-Object -ExpandProperty domain
+    $toBeRemoveNames = [System.Collections.Generic.List[string]]::new()
+    # 检查对应网站根目录是否存在
+    foreach ($domain in $domains)
+    {
+        $site_root = "$SitesDir/$domain"
+        if(Test-Path $site_root)
+        {
+            Write-Host "网站根目录存在: $site_root"
+        }
+        else
+        {
+            <# Action when all if and elseif conditions are false #>
+            Write-Host "网站根目录不存在: $site_root,将被移除同名数据库"
+            $toBeRemoveNames.Add($domain)
+        }
+    }
+    $toBeRemoveNames | Remove-MysqlDB 
+}
+function Export-MysqlFile
+{
+    <# 
+    .synopsis
+    导出mysql数据库到文件
+    .DESCRIPTION
+    #>    
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
+        [alias('Name')]$DatabaseName,    
+        $OutputDir = $base_sqls,
+        $SqlFilePath = "$OutputDir/$DatabaseName.sql",
+
+        $Server = "localhost",
+        [alias("P")]$Port = 3306,
+        $MySqlUser = "root",
+        $key = $env:MySqlKey_LOCAL,
+        [switch]$Force,
+        # 默认执行备份,使用此选项禁用备份
+        [switch]$Backup
+
+    )
+    begin
+    { 
+        Write-Verbose "Use Mysql server host: $Server"
+        Write-Verbose "Start Export database $DatabaseName "
+    }
+    process
+    {
+        if(Test-Path $SqlFilePath)
+        {
+            Write-Warning "File already exist!New files will override the old ones!"
+            if($Backup)
+            {
+                # 执行备份
+                Write-Verbose "try to rename the old file!(as .bak);" -Verbose
+
+                Rename-Item $SqlFilePath "$SqlFilePath.bak.$(Get-Date -Format 'yyyyMMdd-hhmmss')" -Force:$Force -Verbose
+                # try
+                # {
+                Write-Verbose "The old file has been renamed to $SqlFilePath.bak" -Verbose
+                # }
+                # catch
+                # {
+                #     Write-Warning "Failed to rename the old file!(because the $SqlFilePath.bak is also already exist !)"
+                #     Write-Warning "Please check and move the file path or delete the old file manually if it will no longer be used."
+                #     return
+                # }
+            }
+        }
+
+        $expression = "  mysqldump   -h $Server -P $Port -u $MySqlUser -p$key '$DatabaseName' > $SqlFilePath "
+        Write-Verbose $expression
+        Invoke-Expression $expression
+    }
+}
+
 function Get-MySqlDatabaseNameDotNet
 {
     <#
@@ -301,8 +677,13 @@ function Get-MysqlTablesList
         return $tables
     }
 }
-function Start-SqlStatement
+function Start-SqlStatementTemplate
 {
+    <# 
+    多个数据库批量执行一段sql指令
+    比如读取本地mysql数据库中所有数据库,然后对这些数据执行同一段sql语句的模板
+    替换...为你要执行的sql语句
+    #>
     param (
         $sql
     )
@@ -310,9 +691,14 @@ function Start-SqlStatement
         $Db = $_
         $useDbSql = "use $Db;"
         
-        mysql -uroot -p"$env:MySqlKey_LOCAL" -e ($useDbSql+@'
-    UPDATE wp_users SET user_pass = '$wp$2y$10$/gYloEFjcEn4OuIyRYJYi.ilYBU.SoYVsV5av.IFiOwLjpZ7s7lkK';
-'@)
+        mysql -uroot -p"$env:MySqlKey_LOCAL" -e ($useDbSql + $sql)
+        <# 
++@'
+
+        ....
+'@
+) 
+#>
     }
 
 }

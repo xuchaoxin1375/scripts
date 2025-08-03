@@ -1,4 +1,835 @@
 
+function Remove-WpSitesLocal
+{
+    <# 
+    .SYNOPSIS
+    批量删除本地Wordpress网站
+    建议在建下一批网站之前执行这个清理操作!
+    
+    .DESCRIPTION
+    默认读取my_table.conf文件中配置的网站域名,然后逐个执行以下操作
+    - 删除网站根目录
+    - 删除数据库
+    - 删除nginx配置文件(调用Restart-Nginx也可以触发此动作)
+    #>
+    param(
+        $Table = "$desktop/my_table.conf",
+        $SitesDir = $my_wp_sites,
+        $NginxConfDir = "$env:nginx_conf_dir"
+    )
+    $domains = Get-DomainUserDictFromTableLite -Table $Table | Select-Object -ExpandProperty domain
+    # Write-Host $domains
+    $msg = $domains | Format-DoubleColumn | Out-String
+    Write-Verbose $msg -Verbose
+    Write-Warning "准备并行删除相关本地站点,配套配置和数据库" -WarningAction Inquire
+    # 多线程删除网站根目录
+    $jobs = @()
+    foreach ($domain in $domains)
+    {
+        $siteRoot = "$SitesDir/$domain"
+        $job = Start-ThreadJob -Name "Remove:$domain" -ScriptBlock {
+            param($Path)
+            Remove-Item -Path $Path -Recurse -Force -ErrorAction SilentlyContinue
+            # Remove-RobocopyMirEmpty -Path $Path  -Confirm:$false -Verbose
+            Write-Host "Removed site root: $Path" 
+        } -ArgumentList $siteRoot
+        $jobs += $job
+    }
+    $jobs | Wait-Job
+    $jobs | Receive-Job
+    $jobs | Remove-Job
+    # 尝试删除数据库及其相关配置
+    Remove-MysqlIsolatedDB -SitesDir $SitesDir
+    Approve-NginxValidVhostsConf -NginxConfDir $NginxConfDir
+    $domains | Remove-LineInFile -Path $hosts -Debug
+    
+}
+
+
+function Get-WpSitePacks
+{
+    <# 
+    .SYNOPSIS
+    获取WordPress站点的打包文件以及对应的数据库sql文件
+    .NOTES
+    为了最方便地使用此脚本自动打包和导出WordPress站点，需要满足以下条件：
+    1.站点根目录命名为域名,例如domain.com
+    2.站点配套的数据库在创建取名的时候就要是和上述domain.com一致,
+        以便于用脚本自动导出,速度很快,但要配置mysql.exe所在路径(mysql安装路径下的bin目录)到环境变量PATH中
+    满足上述两点的情况下,脚本可以正确解析域名,然后根据域名自动导出对应的sql文件并压缩
+
+    #>
+    [cmdletbinding()]
+    param(
+        [parameter(Mandatory = $true, ValueFromPipeline = $true)]
+        [Alias('Directory')]$SiteDirecotry,
+        $Domain = "",
+        $DatabaseName = "",
+        $DatabaseKey = $env:MySqlKey_LOCAL,
+        $OutputDir = "$home/Desktop",
+        [ValidateSet('zip', '7z', 'tar', 'lz4', 'zstd')]
+        [alias('Mode')]
+        $ArchiveMode = 'zstd',
+        $CompressionLevel = 3,
+        $Threads = 16
+
+    )
+
+    if ($Domain)
+    {
+        $SiteParentdir = Split-Path $SiteDirecotry -Parent
+        $SiteDirecotryOld = $SiteDirecotry
+        $SiteDirecotry = Join-Path $SiteParentdir $Domain
+        Write-Host $SiteDirecotryOld -ForegroundColor Cyan
+        Write-Host $SiteDirecotry -ForegroundColor Cyan
+        Move-Item $SiteDirecotryOld $SiteDirecotry -Force -Verbose
+        Write-Debug "[+] SiteDirecotry: $SiteDirecotry"
+    }
+    # 尝试从站点根目录字符串解析站点域名
+    # $Domain = $SiteDirecotry.Split("/")[-1]
+    $Domain = Split-Path $SiteDirecotry -Leaf
+    Write-Debug "[+] Domain: $Domain"
+    # return 
+    # 站点sql文件
+    $key = Get-MysqlKeyInline -Key $DatabaseKey
+    $SqlFile = "$OutputDir/${Domain}.sql"
+    $SqlFileArchiveZip = "$SqlFile.zip"
+    $SqlFileArchive7z = "$SqlFile.7z"
+    $SqlFileArchiveTar = "$SqlFile.tar"
+    $SqlFileArchiveLz4 = "$SqlFile.lz4"
+    $SqlFileArchiveZstd = "$SqlFile.zst"
+    # 站点根目录
+    $SitePackArchiveZip = "$OutputDir/${Domain}.zip"
+    $SitePackArchive7z = "$OutputDir/${Domain}.7z"
+    $SitePackArchiveTar = "$OutputDir/${Domain}.tar"
+    $SitePackArchiveLz4 = "$OutputDir/${Domain}.lz4"
+    $SitePackArchiveZstd = "$OutputDir/${Domain}.zst"
+
+    $SitePackArchive = ""
+    $SqlFileArchive = ""
+    Write-Debug "[+] Trying to export database file to $SqlFile"
+    # 导出数据库文件并压缩
+    if ($DatabaseName -eq "")
+    {
+        $DatabaseName = $Domain
+        Write-Host "数据库名称未指定，使用默认值: $DatabaseName"
+    }
+    # 导出数据库sql文件🎈
+    Export-MysqlFile -Server localhost -DatabaseName $DatabaseName -key $key -SqlFilePath $SqlFile -Verbose
+    # Compress-Archive -Path $SqlFile -DestinationPath $SqlFileArchiveZip -Force
+    # 打包站点目录
+
+
+    if($ArchiveMode -eq '7z')
+    {
+        if(Test-CommandAvailability 7z)
+        {
+            $cmd1 = "7z a -t7z -mmt${Threads} $SqlFileArchive7z $SqlFile"
+            $cmd2 = "7z a -t7z -mmt${Threads} $SitePackArchive7z $SiteDirecotry"
+            $cmd1 | Invoke-Expression
+            $cmd2 | Invoke-Expression
+            
+            $SitePackArchive = $SitePackArchive7z
+            $SqlFileArchive = $SqlFileArchive7z
+        }
+    }
+    elseif ($ArchiveMode -eq 'zip')
+    {
+        Write-Host "使用默认的zip打包方式"
+        Compress-Archive -Path $SqlFile -DestinationPath $SqlFileArchiveZip -Force
+        Compress-Archive -Path $SiteDirecotry -DestinationPath $SitePackArchiveZip -Force
+        $SitePackArchive = $SitePackArchiveZip
+        $SqlFileArchive = $SqlFileArchiveZip
+    }
+    elseif($ArchiveMode -eq 'tar')
+    {
+        if(Test-CommandAvailability 7z)
+        {
+
+            Write-Host "使用tar打包方式"
+            7z a -ttar $SqlFileArchiveTar $SqlFile 
+            7z a -ttar $SitePackArchiveTar $SiteDirecotry
+            $SitePackArchive = $SitePackArchiveTar
+            $SqlFileArchive = $SqlFileArchiveTar
+        }
+    }
+    elseif($ArchiveMode -eq 'lz4')
+    {
+        Write-Host "使用lz4打包方式"
+        Get-Lz4Package -Path $SqlFile -OutputFile $SqlFileArchiveLz4 -Threads $Threads -NoTarExtension
+        Get-Lz4Package -Path $SiteDirecotry -OutputFile $SitePackArchiveLz4 -Threads $Threads -NoTarExtension
+        $SitePackArchive = $SitePackArchiveLz4
+        $SqlFileArchive = $SqlFileArchiveLz4
+        Write-Debug $SitePackArchive -Debug
+    }
+    elseif($ArchiveMode -eq "zstd")
+    {
+        Write-Host "使用zstd打包方式"
+        Get-ZstdPackage -Path $SqlFile -OutputFile $SqlFileArchiveZstd -Threads $Threads -CompressionLevel $CompressionLevel -NoTarExtension
+        Get-ZstdPackage -Path $SiteDirecotry -OutputFile $SitePackArchiveZstd -Threads $Threads -CompressionLevel $CompressionLevel -NoTarExtension
+        $SitePackArchive = $SitePackArchiveZstd
+        $SqlFileArchive = $SqlFileArchiveZstd
+        Write-Debug $SitePackArchive -Debug
+    }
+    else
+    {
+        Write-Error "不支持的打包方式: $ArchiveMode"
+        return
+    }
+    # $SitePackArchive = Compress-Tar -Directory $SiteDirecotry 
+
+    # 列出已经打包的文件
+    Get-Item $SqlFileArchive  
+    Get-Item $SitePackArchive
+    # 移除数据库sql文件
+    Remove-Item $SqlFile -Verbose
+}
+function Get-MoreSites
+{
+    <# 
+    .SYNOPSIS
+    根据指定url(域名列表)生成友站外链的html代码片段和sitemap.xml 片段,并输出对应的文件
+
+    #>
+    [CmdletBinding()]
+    param (
+        [string]$InputFile = "urls.txt",
+        [string]$HtmlOutputFile = "$desktop/more.html",
+        # 考虑到分割,所以这里仅指定SitemapBaseName,index++作为后缀
+        [string]$SitemapBaseName = "$desktop/sitemap_more",
+        [int]$MaxUrlsPerSitemap = 50000
+        # [string]$SitemapIndexFile = "sitemap_index.xml",
+        # [string]$BaseUrlForSitemaps = "https://yourdomain.com" 
+    )
+
+    if (-not (Test-Path $InputFile))
+    {
+        Write-Error "❌ 输入文件 '$InputFile' 不存在。"
+        return
+    }
+
+    # 初始化内容
+    $htmlContent = @()
+    $sitemaps = @()
+    $urlCount = 0
+    $fileIndex = 1
+    $currentXml = @()
+    $domainSitemaps = @{}
+    $simpleLinks = @()
+
+    # XML 初始化
+    $currentXml += '<?xml version="1.0" encoding="UTF-8"?>'
+    $currentXml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+
+    # 处理每个 URL
+    Get-Content $InputFile | ForEach-Object {
+        $url = $_.Trim()
+        if ($url -match '^https?://([^/]+)')
+        {
+            $domain = $matches[1]
+            $baseDomain = ($domain -split '\.')[-2..-1] -join '.'  # 提取主域
+
+            # 构建 sitemap 链接
+            $sitemapLink = "https://www.$baseDomain/sitemap_index.xml" 
+
+            # 记录每个域名的sitemap
+            if (-not $domainSitemaps.ContainsKey($baseDomain))
+            {
+                $domainSitemaps[$baseDomain] = $sitemapLink
+            }
+
+            # 简单链接列表
+            $simpleLinks += "    <li><a href=`"$url`" target=`"_blank`" rel=`"noopener`">$url</a></li>"
+
+            # XML 输出
+            $currentXml += "    <url>"
+            $currentXml += "        <loc>$sitemapLink</loc>"
+            $currentXml += "        <changefreq>daily</changefreq>"
+            $currentXml += "        <priority>1.0</priority>"
+            $currentXml += "        <lastmod>$(Get-Date -Format yyyy-MM-dd)</lastmod>"
+            $currentXml += "    </url>"
+
+            $urlCount++
+            if ($urlCount -ge $MaxUrlsPerSitemap)
+            {
+                $currentXml += '</urlset>'
+                $xmlFileName = "$SitemapBaseName`_$fileIndex.xml"
+                $currentXml | Out-File -FilePath $xmlFileName -Encoding utf8
+                Write-Host "✅ 已生成 sitemap: $xmlFileName"
+                $sitemaps += $xmlFileName
+
+                # 重置
+                $urlCount = 0
+                $fileIndex++
+                $currentXml = @()
+                $currentXml += '<?xml version="1.0" encoding="UTF-8"?>'
+                $currentXml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+            }
+        }
+    }
+
+    # 写入最后一个未满的 sitemap 文件
+    if ($urlCount -gt 0)
+    {
+        $currentXml += '</urlset>'
+        $xmlFileName = "$SitemapBaseName`_$fileIndex.xml"
+        $currentXml | Out-File -FilePath $xmlFileName -Encoding utf8
+        Write-Host "✅ 已生成 sitemap: $xmlFileName"
+        $sitemaps += $xmlFileName
+    }
+
+    # 生成HTML内容 - 简单链接列表
+    # $htmlContent += '<h2>网站列表</h2>'
+    $htmlContent += '<ul>'
+    $htmlContent += $simpleLinks
+    $htmlContent += '</ul>'
+    $htmlContent += "`n`n"
+    # 生成HTML内容 - JSON-LD结构化数据
+    # $htmlContent += '<h2>sitemap JSON-LD</h2>'
+    $htmlContent += '<script type="application/ld+json">'
+    $htmlContent += @"
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "url": "/",
+  "potentialAction": {
+    "@type": "SiteMap",
+    "target": [
+"@
+
+    $first = $true
+    foreach ($sitemap in $domainSitemaps.Values)
+    {
+        if (-not $first)
+        {
+            $htmlContent += ","
+        }
+        $htmlContent += "      `"$sitemap`""
+        $first = $false
+    }
+
+    $htmlContent += @"
+    ]
+  }
+}
+"@
+    $htmlContent += '</script>'
+
+    # 生成HTML内容 - 站点地图链接部分
+    $htmlContent += '<h2>XML maps</h2>'
+    $htmlContent += '<div class="footer-sitemaps">'
+    # $htmlContent += '  <h3>maps</h3>'
+    $htmlContent += '  <ul>'
+    
+    foreach ($domain in $domainSitemaps.Keys)
+    {
+        $sitemapUrl = $domainSitemaps[$domain]
+        $displayName = ($domain -split '\.')[0] -replace '-|_', ' '  # 美化显示名称
+        $displayName = (Get-Culture).TextInfo.ToTitleCase($displayName.ToLower())
+        $htmlContent += "    <li><a href=`"$sitemapUrl`">$displayName XML maps</a></li>"
+    }
+    
+    $htmlContent += '  </ul>'
+    $htmlContent += '</div>'
+
+    # 写入 HTML 文件
+    $htmlContent | Out-File -FilePath $HtmlOutputFile -Encoding utf8
+    Write-Host "✅ 已生成 HTML 链接文件: $HtmlOutputFile"
+}
+function Deploy-WpSitesLocal
+{
+    <# 
+    .SYNOPSIS
+    批量部署本地Wordpress网站
+    从已有的模板中拷贝网站根目录和数据到新的域名,包括数据库的导入和修改,并且配置对应站的nginx.htaccess文件和conf文件
+
+    .PARAMETER Table
+    包含表格信息的配置文本文件,默认格式为每行包含[域名,用户名,模板名],以空格分隔
+
+    .PARAMETER WpSitesTemplatesDir
+    本地Wordpress网站[模板]目录,脚本将会从这个目录下面拷贝模板站目录到指定位置(MyWpSitesHomeDir),默认值为"$env:USERPROFILE/Desktop/wp_sites_templates"
+
+    .PARAMETER MyWpSitesHomeDir
+    本地各个Wordpress网站根目录聚集的目录,用来保存从WpSitesTemplatesDir拷贝的网站目录,这里保存的各个网站根目录,是之后装修的对象,默认值为"$env:USERPROFILE/Desktop/my_wp_sites"
+
+    .PARAMETER DBKey
+    mysql密码
+
+    .PARAMETER NginxConfDir
+    nginx配置文件目录
+
+    .PARAMETER NginxConfTemplate
+    nginx配置文件模板
+
+    .PARAMETER SiteImageDirRelative
+    网站图片目录相对路径
+
+    .PARAMETER CsvDir
+    csv数据输出目录,如果不存在,将会创建该目录
+
+    .PARAMETER Confirm
+    确认提示,默认值为$false
+
+    #>
+    [cmdletbinding(SupportsShouldProcess)]
+    param (
+        # 主要参数
+        $Table = "$desktop/my_table.conf",
+        $WpSitesTemplatesDir = $wp_sites,
+        $MyWpSitesHomeDir = "$Desktop/my_wp_sites",
+        # 数据库文件(sql文件所在目录)
+        $SqlFileDir = "$WpSitesTemplatesDir/base_sqls",
+        # 可以配置环境变量来设置
+        $CgiPort = "$env:CgiPort",
+        # 一般不需要更改的参数
+        $TableStructure = "Domain,User,Template",
+        $DBKey = $env:MySqlKey_LOCAL,
+        $NginxConfDir = "$env:nginx_conf_dir", # 例如:C:\phpstudy_pro\Extensions\Nginx1.25.2\conf\vhosts
+        $NginxConfTemplate = "$scripts/Config/nginx_template.conf",
+        $NginxHtaccessTemplate = "$scripts/Config/nginx.htaccess",
+        # nginx.exe所在目录的完整路径(如果Path中的%nginx_home%没有被正确解析,可以指定完整路径)
+        # $NginxHome="",
+        $SiteImageDirRelative = "wp-content/uploads/2025",
+        $CsvDir = "$Desktop/data_output"
+    )
+    Write-Debug $table
+    Write-Debug $WpSitesTemplatesDir
+    Write-Debug $MyWpSitesHomeDir
+    Write-Debug $DBKey
+    Get-Content $table
+    # 检查关键目录
+    if(!(Test-Path $WpSitesTemplatesDir))
+    {
+        Write-Error "Wordpress templates directory not found: $WpSitesTemplatesDir"
+        return
+    }
+
+    if(!(Test-Path $NginxConfDir))
+    {
+        Write-Error "Nginx conf directory not found: $NginxConfDir"
+        return 
+    }
+    New-Item -ItemType Directory -Path $MyWpSitesHomeDir -ErrorAction SilentlyContinue -Verbose
+    # 启动必要的服务
+    Restart-Nginx 
+    # Restart-Service 
+    # 检查nginx和mysql服务是否正常运行
+    $nginx_status = Get-Process nginx
+    $mysqld_status = Get-Process mysqld
+    if(!$nginx_status)
+    {
+        Write-Error "Nginx服务未正常启动" 
+        return
+    }
+    if(!$mysqld_status)
+    {
+        Write-Error "Mysql服务未正常启动" 
+        return
+    }
+
+    # $rows = Get-DomainUserDictFromTable -Table $table -Structure $TableStructure
+
+    # 始终不提示确认，即使用户没指定 -Confirm:$false
+    if (-not $PSBoundParameters.ContainsKey('Confirm'))
+    {
+        $ConfirmPreference = 'None'
+    }
+    if(!$CgiPort)
+    {
+        # $CgiPort = 9000
+        $Info = Get-PortAndProcess -Port 900* 
+        Write-Host $Info
+        $CgiPort = $Info | Select-Object -First 1 -ExpandProperty LocalPort -ErrorAction Stop
+        Write-Host $CgiPort
+        Write-Debug "CgiPort environment variable not set, Try auto get port value $CgiPort"
+    }
+    # 解析批量表格中的各条待处理任务🎈
+    # $rows = Get-Content $table | Where-Object { $_ -notmatch "^\s*#" } | ForEach-Object { $l = $_ -split '\s+'; @{'domain' = ($l[0] | Get-MainDomain); 'user' = $l[1]; 'template' = $l[2] } }
+    $rows = Get-DomainUserDictFromTableLite -Table $table
+    # 利用write-output将结果输出到控制台,方便查看
+    Write-Output $rows
+    Write-Warning "Please check the parameter table list above,especially the domain and template name!" -WarningAction Inquire
+    # Pause
+
+    # 逐条数据解析出各个参数,并处理任务
+    foreach ($row in $rows)
+    {
+        $domain = $row.Domain
+        $template = $row.Template
+
+        $path = "$WpSitesTemplatesDir/$template"
+        $destination = "$MyWpSitesHomeDir/$domain"
+        # 这里要加一层域名验证
+        if ($domain -and $domain -like "*.*")
+        {
+            Write-Verbose "processing domain: [$domain]" -Verbose
+        }
+        else
+        {
+            Write-Error "Invalid domain name: [$domain]. Please check the table file: $table" -WarningAction Stop
+            Pause
+            # exit #会导致shell窗口直接关闭,不推荐使用exit
+            return $False
+        }
+        # 检查目标路径是否已经存在已经覆盖处理
+        if(Test-Path $destination)
+        {
+            Write-Verbose "Removing $destination(Enter 'A' to Continue)" -Verbose 
+            Remove-Item $destination -Force -Recurse -Confirm:$Confirm
+        }
+        # Pause
+        # Copy-Item -Path $path/* -Destination $destination  -Force 
+        # Copy-Item -Path $path -Destination $MyWpSitesHomeDir -Force -Recurse -WhatIf:$WhatIfPreference 
+        # 使用robocopy多线程拷贝
+        $robocopyLog = "$env:TEMP/$(Get-Date -Format 'yyyyMMdd')robocopy.log"
+        # Write-Verbose "Use robocopy to copy files from $path to $destination "
+        Copy-Robocopy -Source $path -Destination $destination -Force -Recurse -LogFile $robocopyLog -Threads 32
+        $template_temp = "$MyWpSitesHomeDir/$template"
+        if(Test-Path $template_temp)
+        {
+
+            Move-Item -Path $template_temp -Destination $destination -Force -Verbose -WhatIf:$WhatIfPreference
+        }
+
+        $wp_config = "$destination/wp-config.php"
+        Write-Debug $wp_config
+        if (Test-Path $wp_config)
+        {
+            # 更新wp-config.php文件
+            $s = Get-Content $wp_config -Raw
+            Write-Debug "modify the wp-config.php file : the db name"
+            $ns = $s -replace "(define\(\s*'DB_NAME')(.*)\)", "`$1,'$domain')" -replace "(define\(\s*'DB_PASSWORD')(.*)\)", "`$1,'$DBKey')"
+            # Write-output $ns
+            $ns > $wp_config
+
+            # 更新robots.txt文件
+            $robots = "$destination/robots.txt"
+            Write-Verbose "Update the robots.txt file [$robots]"
+            Update-WpSitesRobots -Path $robots -Domain $domain
+            # 显式复制wordpress的nginx.htaccess文件(包含伪静态配置),
+            # 理论上会自动把模板站中的对应文件一同复制,但是个别情况复制的文件内容为空,
+            # 且考虑到统一覆盖的便利性,这里将nginx.htaccess文件(内容)放到一个固定的位置,然后统一读取和复制此文件到目标位置
+            Copy-Item -Path $NginxHtaccessTemplate -Destination $destination/nginx.htaccess -Force -Verbose 
+            # 配置本地网站对应的nginx.conf文件(比如使用小皮的nginx环境)
+            # $tpl = "$NginxConfDir/tpl.conf"
+            $tpl = "$NginxConfTemplate"
+            Write-Debug $tpl
+            if (!(Test-Path $tpl))
+            {
+                Write-Error "nginx tpl.conf file not found in path: $NginxConfTemplate"
+                # return 
+            }
+            else
+            {
+                # 配置本地站点根目录对应的nginx配置文件
+                $tpl_content = Get-Content $tpl -Raw
+                $tpl_content = $tpl_content -replace "domain.com", $domain #"`"$domain`"" 
+                $tpl_content = $tpl_content -replace "CgiPort", $CgiPort
+                $nginx_target = "$NginxConfDir/${domain}_80.conf"
+                $tpl_content > $nginx_target #对于https协议,则为 _443.conf
+                Write-Debug "nginx 配置内容将被写入到文件:[ $nginx_target]" -Debug
+                Write-Debug $tpl_content 
+            }
+            
+            Write-Warning "please restart nginx service to apply the new nginx.conf file!🎈"
+            # 导出后续步骤要用到的命令行,创建对应的目录(如果没有的话)
+            $CsvDirHome = "$CsvDir/$domain"
+            $ImgDir = "$destination/$SiteImageDirRelative"
+            New-Item -ItemType Directory -Path $CsvDirHome -ErrorAction SilentlyContinue -Verbose
+            
+            $script = @"
+# =========[    http://$domain  ]:[ cd    $destination    ]=============
+
+# 下载图片
+python $pys\image_downloader.py -c -n -R auto -k  -rs 1000 800  --output-dir $ImgDir --dir-input $CsvDirHome -w 5 -U curl
+
+# 导入产品数据到数据库
+python $pys\woo_uploader_db.py --update-slugs  --csv-path $CsvDirHome --img-dir $ImgDir --db-name $domain 
+
+# 打包网站
+Get-WpSitePacks -SiteDirecotry $destination
+
+
+"@
+            Write-Host $scripts
+            $scripts_dir = "$MyWpSitesHomeDir"
+            $script_path = "$scripts_dir/scripts_$(Get-Date -Format "yyyyMMdd").ps1"
+            "" >> $script_path
+            # 检查是否重复写入
+            if (Get-Content $script_path | Select-String -Pattern $domain)
+            {
+                Write-Warning "This site [$domain] already exist in the script file,ignore it!"
+            }
+            else
+            {
+
+                $script >> $script_path
+            }
+            Write-Host "Script has been saved to: $script_path" -ForegroundColor Cyan
+        }
+        else
+        {
+            Write-Error "wp-config.php file not found in $destination"
+            Pause
+        }
+        # 导入数据库并执行基础的修改
+        Import-MysqlFile -Server localhost -key $DBKey -SqlFilePath "$SqlFileDir/$template.sql" -DatabaseName $domain  
+        Update-WpUrl -Server localhost -key $DBKey -NewDomain $domain -OldDomain $template -protocol http  
+        
+        # 修改(追加当前域名映射新行)到hosts文件(127.0.0.1  $domain)
+        Add-NewDomainToHosts -Domain $domain
+
+
+    }
+
+    # 可以考虑定期清理hosts文件!
+    Write-Debug "Modify hosts file [$hosts]"
+    # 重启(重载)nginx服务器
+    
+    Restart-Nginx -Debug
+}
+function Deploy-WpSitesOnline
+{
+    <# 
+    .SYNOPSIS
+    部署空网站到宝塔面板服务器线上环境
+    .DESCRIPTION
+    核心步骤是调用python脚本来执行部署
+    
+    #>
+    [CmdletBinding()]
+    param(
+        $WaitTimeBasic = 180,
+        $MaxRetryTimes = 5,
+        $RetryGap = 30
+    )
+    # 创建宝塔空站点
+    Deploy-BatchSiteBTOnline
+    # 添加域名解析到cf
+    Add-CFZoneDNSRecords -AddRecordAtOnce
+    # 更新spaceship域名的nameservers
+    Update-SSNameServers
+    # 让cf立即检查域名的激活
+    Add-CFZoneCheckActivation
+    Write-Warning "等待3到5分钟让cf激活域名保护(不保证成功,大多数情况下可以),基础等待时间$WaitTimeBasic 秒,后续检查是否全部激活,否则循环等待,每次30秒,最多等待5轮"
+    # Start-Sleep 180
+    Start-SleepWithProgress -Seconds $WaitTimeBasic
+    # 检查域名激活状态
+    while (True )
+    {
+        
+        $info = Get-CFZoneInfoFromTable
+        
+        if($info | Select-String 'pending')
+        {
+            Write-Host "存在域名未激活,请稍后${RetryGap}重试" -ForegroundColor Cyan
+            
+            if($MaxRetryTimes -gt 0)
+            {
+                Write-Error "Max retry times  exhuasted, exit"
+                return False
+            }
+        }
+        else
+        {
+            Write-Host '所有域名均已激活' -ForegroundColor Green
+            break
+        }
+        # Start-Sleep 30
+        Start-SleepWithProgress $RetryGap
+    }
+    # 配置cf域名解析,邮箱转发和代理保护
+    Add-CFZoneConfig
+
+
+
+}
+function Update-WpSitesRobots
+{
+    <# 
+    .SYNOPSIS
+    更新Wordpress网站robots.txt文件
+    主要是修改(追加)sitemap地址到robots.txt文件中,适配对应的域名
+    #>
+    [CmdletBinding()]
+    param(
+        $Path,
+        $Domain
+    )
+    
+    "`n" >> $Path
+    "Sitemap: https://www.$Domain/sitemap_index.xml" >> $Path
+    "Sitemap: https://www.$Domain/sitemap_more.xml" >> $Path
+    "Sitemap: https://www.$Domain/sitemap_new.xml" >> $Path
+
+}
+function Update-WPTitle
+{
+    <# 
+    .SYNOPSIS
+    更新Wordpress网站的标题
+     #>
+    [cmdletbinding(SupportsShouldProcess)]
+    param(
+
+        [parameter(Mandatory = $true)]
+        $DatabaseName ,
+        [parameter(Mandatory = $true)]
+        [alias('Title')]
+        $NewTitle,
+        # 以下参数继承自 Import-MysqlFile 
+        $Server = "localhost",
+        # $SqlFilePath,
+        $MySqlUser = "root",
+        [Alias('MySqlKey')]$key = $env:MySqlKey_LOCAL
+    )
+    $key = Get-MysqlKeyInline $key
+    #  mysql -h localhost -u root  -p15a58524d3bd2e49 -e  "use 1.de;  UPDATE wp_options SET option_value = `'1.de.titlex`' WHERE option_name = `'blogname`';"
+    $cmd = " mysql -h $Server -u $MySqlUser $key -e " + " `"use $DatabaseName; UPDATE wp_options SET option_value = '$NewTitle' WHERE option_name = 'blogname';`"" 
+    Write-Warning $cmd
+    $cmd | Invoke-Expression
+
+}
+function Update-WpUrl
+{
+
+    <# 
+    .SYNOPSIS
+    更新 WordPress 数据库中的站点地址
+    .DESCRIPTION
+    一般用于网站迁移,需要修改数据库中的站点地址,一般需要修改wp_options表中的'home'和'siteurl'选项
+
+    
+    #>
+    [cmdletbinding(SupportsShouldProcess)]
+    param(
+        [parameter(Mandatory = $true)]
+        $OldDomain,
+        [parameter(Mandatory = $true)]
+        $NewDomain,
+        $DatabaseName = $NewDomain,
+        # 以下参数继承自 Import-MysqlFile 
+        $Server = "localhost",
+        # $SqlFilePath,
+        $MySqlUser = "root",
+        [Alias('MySqlKey')]$key = $env:DF_MySqlKey,
+        [Alias('WWW')][switch]$Start3w,
+        $protocol = "https"
+        
+    )
+    if ($Start3w)
+    {
+        # 将domain.com,http(s)://domain.com,http(s)://www.domain.com统一规范化为$protocol://www.domain.com
+        $NewUrl3w = $NewDomain.Trim() -replace '^(https?://)?(www\.)?', "${protocol}://www."
+        Write-Verbose "Change:[$NewDomain] to:[$NewUrl3w]" -Verbose
+        $new = $NewUrl3w
+    }
+    else
+    {
+        # 将domain.com,http(s)://domain.com,http(s)://www.domain.com统一规范化为$protocol://newdomain.com
+        $new = $NewDomain.Trim() -replace '^(https?://)?(www\.)?', "${protocol}://"
+    }
+    $Olds = 'http', 'https' | ForEach-Object { $_ + '://' + ($OldDomain.Trim()) }
+    Write-Verbose "Updating WordPress database:[$DatabaseName] from [$OldDomain] to [$NewDomain]" -Verbose
+    $sql = ""
+    foreach ($old in $Olds)
+    {
+        
+    
+        $url_var_sql = @"
+-- 定义旧域名和新域名变量
+
+--
+/* 
+修改下面的变量,注意带上[http(s)://+域名或ip],其他做法容易翻车
+ */
+SET
+    @old_domain = CONVERT(
+        '$Old' USING utf8mb4
+    ) COLLATE utf8mb4_unicode_520_ci;
+
+SET
+    @new_domain = CONVERT(
+        '$New' USING utf8mb4
+    ) COLLATE utf8mb4_unicode_520_ci;
+
+"@ 
+        $replace_sql = @'
+-- 更新 wp_options 表中的 'home' 和 'siteurl' 选项
+
+UPDATE wp_options
+SET
+    option_value =
+REPLACE (
+        option_value,
+        @old_domain,
+        @new_domain
+    )
+WHERE
+    option_name IN ('home', 'siteurl');
+
+'@
+        $sql += ($url_var_sql + $replace_sql)
+    }
+    #     $common = @'
+    # -- 更新 wp_options 表中的 'home' 和 'siteurl' 选项
+
+    # UPDATE wp_options
+    # SET
+    #     option_value =
+    # REPLACE (
+    #         option_value,
+    #         @old_domain,
+    #         @new_domain
+    #     )
+    # WHERE
+    #     option_name IN ('home', 'siteurl');
+
+    # -- 更新 wp_posts 表中的 'post_content' 和 'guid' 字段
+    # UPDATE wp_posts
+    # SET
+    #     post_content =
+    # REPLACE (
+    #         post_content,
+    #         @old_domain,
+    #         @new_domain
+    #     ),
+    #     guid =
+    # REPLACE (
+    #         guid,
+    #         @old_domain,
+    #         @new_domain
+    #     );
+
+    # -- 更新 wp_comments 表中的 'comment_content' 和 'comment_author_url' 字段
+    # UPDATE wp_comments
+    # SET
+    #     comment_content =
+    # REPLACE (
+    #         comment_content,
+    #         @old_domain,
+    #         @new_domain
+    #     ),
+    #     comment_author_url =
+    # REPLACE (
+    #         comment_author_url,
+    #         @old_domain,
+    #         @new_domain
+    #     );
+
+    # ALTER TABLE `wp_terms`
+    # CHANGE `name` `name` VARCHAR(8000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci NULL DEFAULT NULL;
+
+    # ALTER TABLE `wp_terms`
+    # CHANGE `slug` `slug` VARCHAR(8000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '';
+    # '@
+    $sqlPath = "$env:TEMP/update-wp-url.sql"
+    $sql | Out-File $sqlPath
+    Write-Verbose $sql 
+    
+    Import-MysqlFile -Server $Server -SqlFilePath $sqlPath -MySqlUser $MySqlUser -key $key -DatabaseName $DatabaseName 
+
+}
 function Update-WpPlugins-DF1
 {
     <# 
@@ -805,8 +1636,8 @@ function Deploy-Wp
 .PARAMETER Table
 指定表格数据,可以是自动模式(默认),从文件读取,或者直接输入多行字符串
 例如:
-www.ustensilesparfaits.com	郑玮	3.fr
-www.raumhorizont.com	郑玮	4.de
+www.domain1.com	zw	3.fr
+www.domain2.com	zw	4.de
 
 
 .PARAMETER SpiderTeam

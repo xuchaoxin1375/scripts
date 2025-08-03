@@ -79,7 +79,7 @@ echo "使用 PACK_ROOT: $PACK_ROOT"
 
 # === 函数：检查必要的命令是否存在 ===
 check_commands() {
-    local commands=("mysql" "unzip" "7z")
+    local commands=("mysql" "unzip" "7z" "lz4" "zstd" "tar")
     local missing_commands=()
 
     for cmd in "${commands[@]}"; do
@@ -172,6 +172,8 @@ set_rewrte_rules_file() {
         echo "🔄 正在复制伪静态规则文件到目标位置: $rewrite_target"
         if cp -v "$rewrite_template" "$rewrite_target"; then
             echo "✅ 伪静态规则文件已成功复制到: $rewrite_target"
+            echo "修改伪静态文件[$rewrite_target]的标志位使其无法被轻易修改或覆盖(比如宝塔添加对应目录下的站点时可以不被覆盖伪静态规则)"
+            chattr +i "$rewrite_target"  -V
         else
             echo "❌ 复制伪静态规则文件失败: 源文件=$rewrite_template, 目标=$rewrite_target"
             return 1
@@ -222,21 +224,46 @@ case "${archive_file##*.}" in
 
         echo "🔍 正在解压 LZ4 文件: $archive_file"
 
-        # 解压 .lz4 到临时文件
+        echo "解压 .lz4 到临时文件"
         if ! lz4 -d "$archive_file" "$temp_output_file"; then
             echo "❌ 解压 LZ4 文件失败: $archive_file"
             rm -f "$temp_output_file" -v
             return 1
         fi
 
-        # 解包 .tar 文件
+        echo  "解包 .tar 文件 $temp_output_file"
         if ! tar -xf "$temp_output_file" -C "$target_dir"; then
             echo "❌ 解包 TAR 文件失败: $temp_output_file"
             rm -f "$temp_output_file" -v 
             return 1
         fi
 
-        # 清理临时文件
+        
+        echo "清理临时文件 $temp_output_file"
+        rm -f "$temp_output_file" -v
+        ;;
+    zst|zstd)
+        # 使用 mktemp 创建唯一临时文件名
+        temp_output_file=$(mktemp -u)
+
+
+        echo "🔍 正在解压 zstd 文件: $archive_file"
+
+        echo "解压 .zst 到临时文件"
+        if ! zstd -d "$archive_file" -o "$temp_output_file"; then
+            echo "❌ 解压 zstd 文件失败: $archive_file"
+            rm -f "$temp_output_file" -v
+            return 1
+        fi
+
+      echo  "解包 .tar 文件 $temp_output_file"
+        if ! tar -xf "$temp_output_file" -C "$target_dir"; then
+            echo "❌ 解包 TAR 文件失败: $temp_output_file"
+            rm -f "$temp_output_file" -v 
+            return 1
+        fi
+
+       echo "清理临时文件 $temp_output_file"
         rm -f "$temp_output_file" -v
         ;;
     tar)
@@ -301,25 +328,29 @@ deploy_site() {
         mkdir -p "$target_dir" # 创建网站根目录
     fi
     # 解压网站文件|如果存在同名目录,则询问用户是否覆盖
-    if [ -d "$site_expanded_dir" ]; then
+        if [ -d "$site_expanded_dir" ]; then
         echo "⚠️ 检测到相关目录已存在: $site_expanded_dir"
-        echo "是否覆盖现有目录? (yY/n): "
-        read -r response
-        if [[ "$response" != "y" && "$response" != "Y" ]]; then
-            echo "用户选择不覆盖，跳过此解压步骤: $domain_name"
-        else
-            echo "⚠️用户选择覆盖现有目录: $site_expanded_dir"
-            echo "正在删除现有目录并解压新内容 (预计得到目录:$site_expanded_dir) ..."
-            rm -rf "$site_expanded_dir" # 删除现有目录
 
-            if ! extract_archive "$site_dir_archive" "$site_domain_home"; then
-                echo "❌ 解压失败，跳过部署: $domain_name"
-                return 1
-            fi
+        # echo "是否覆盖现有目录? (yY/n): "
+        # read -r response
+        # if [[ "$response" != "y" && "$response" != "Y" ]]; then
+        #     echo "用户选择不覆盖，跳过此解压步骤: $domain_name"
+        # else
+        #     echo "⚠️用户选择覆盖现有目录: $site_expanded_dir"
+              #覆盖逻辑段存放在此
 
-            mv "$site_expanded_dir"/* "$target_dir" -f # 移动新目录内容到目标目录
+        # fi
+        # 覆盖逻辑段(begin)
+        echo "正在删除现有目录并解压新内容 (预计得到目录:$site_expanded_dir) ..."
+        rm -rf "$site_expanded_dir" # 删除现有目录
 
+        if ! extract_archive "$site_dir_archive" "$site_domain_home"; then
+            echo "❌ 解压失败，跳过部署: $domain_name"
+            return 1
         fi
+
+        mv "$site_expanded_dir"/* "$target_dir" -f # 移动新目录内容到目标目录
+        # 覆盖逻辑点(end)
     else
         if ! extract_archive "$site_dir_archive" "$site_domain_home"; then
             echo "❌ 解压失败，跳过部署: $domain_name"
@@ -495,7 +526,7 @@ for user_dir in "${user_dirs[@]}"; do
 
     # 首先处理SQL备份文件(将所有站点的sql文件都解压,然后逐个导入到对应的数据库)
     # 数据库名字:调用process_sql_file进行处理
-    sql_archives=($(ls *.sql.zip *.sql.7z *.sql.tar *.sql.lz4 2>/dev/null))
+    sql_archives=($(ls *.sql.zip *.sql.7z *.sql.tar *.sql.lz4 *.sql.zst 2>/dev/null))
     if [ -f "${sql_archives[0]}" ]; then
         echo "🔍 找到SQL备份文件，优先处理"
         # 处理全部待部署网站的数据库文件🎈
@@ -517,9 +548,9 @@ for user_dir in "${user_dirs[@]}"; do
         echo "ℹ️ 未找到SQL压缩文件,跳过解压步骤"
     fi
 
-    # 然后处理WordPress站点文件（过滤sql压缩文件SQL备份文件）
+    # 然后处理WordPress站点文件（过滤出非sql压缩备份文件,得到网站根目录包文件）
     site_archives=()
-    for archive in *.zip *.7z *.tar *.lz4; do
+    for archive in *.zip *.7z *.tar *.lz4 *.zst; do
         if [[ -f "$archive" && "$archive" != *.sql.* ]]; then
             site_archives+=("$archive")
         fi
