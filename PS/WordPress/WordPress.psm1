@@ -595,10 +595,14 @@ function Deploy-WpSitesOnline
     部署空网站到宝塔面板服务器线上环境
     .DESCRIPTION
     核心步骤是调用python脚本来执行部署
+    .NOTES
+    注意,使用前请配置各个服务器的ssh免密登录 
     
     #>
     [CmdletBinding()]
     param(
+        [alias('Host', 'Server', 'Ip')]
+        $HostName = $env:DF_SERVER1,
         $WaitTimeBasic = 100,
         $MaxRetryTimes = 15,
         $RetryGap = 30
@@ -614,7 +618,7 @@ function Deploy-WpSitesOnline
     Write-Warning "等待2到5分钟让cf激活域名保护(不保证成功,大多数情况下可以),基础等待时间$WaitTimeBasic 秒,后续检查是否全部激活,否则循环等待,每次30秒,最多等待5轮"
     Start-SleepWithProgress -Seconds $WaitTimeBasic
     # 重启nginx 
-    
+    Restart-NginxOnHost -HostName $HostName
     # 检查域名激活状态
     while ($True )
     {

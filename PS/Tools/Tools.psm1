@@ -824,17 +824,26 @@ function Restart-NginxOnHost
 .SYNOPSIS
 重启指定主机的Nginx服务
 默认仅重载nginx
+.NOTES
+强烈建议配置ssh免密登录
 
 
 #>
     [CmdletBinding()]
     param(
         [parameter(ValueFromPipeline = $true)]
-        [alias('Host', 'Server', 'Ip')]$HostName=$env:DF_SERVER1,
+        [alias('Host', 'Server', 'Ip')]
+        $HostName=$env:DF_SERVER1,
+        [alias("ScpUser")]$User='root',
         [switch]$Force
-        
+
     )
-    ssh root@
+    if ($Force) {
+        ssh $User@$HostName " pkill -9 nginx ; nginx "
+    }
+    else{
+        ssh $User@$HostName "nginx -t && nginx -s reload"
+    }
 
 }
 function Add-CFZoneDNSRecords
