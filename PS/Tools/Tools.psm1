@@ -818,6 +818,25 @@ function Get-CFDnsInfoOfZone
         return $item + "`n"
     }
 }
+function Restart-NginxOnHost
+{
+    <# 
+.SYNOPSIS
+重启指定主机的Nginx服务
+默认仅重载nginx
+
+
+#>
+    [CmdletBinding()]
+    param(
+        [parameter(ValueFromPipeline = $true)]
+        [alias('Host', 'Server', 'Ip')]$HostName=$env:DF_SERVER1,
+        [switch]$Force
+        
+    )
+    ssh root@
+
+}
 function Add-CFZoneDNSRecords
 {
     <# 
@@ -851,7 +870,7 @@ function Add-CFZoneDNSRecords
     [CmdletBinding()]
     param (
         # 
-        $Domains,
+        $Domains = "C:\Users\Administrator\Desktop\table.conf",
         # 使用私人模式DF
         [switch]$Common,
         $Type = 'A' ,

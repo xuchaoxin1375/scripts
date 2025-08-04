@@ -599,8 +599,8 @@ function Deploy-WpSitesOnline
     #>
     [CmdletBinding()]
     param(
-        $WaitTimeBasic = 180,
-        $MaxRetryTimes = 5,
+        $WaitTimeBasic = 100,
+        $MaxRetryTimes = 15,
         $RetryGap = 30
     )
     # 创建宝塔空站点
@@ -611,11 +611,12 @@ function Deploy-WpSitesOnline
     Update-SSNameServers
     # 让cf立即检查域名的激活
     Add-CFZoneCheckActivation
-    Write-Warning "等待3到5分钟让cf激活域名保护(不保证成功,大多数情况下可以),基础等待时间$WaitTimeBasic 秒,后续检查是否全部激活,否则循环等待,每次30秒,最多等待5轮"
-    # Start-Sleep 180
+    Write-Warning "等待2到5分钟让cf激活域名保护(不保证成功,大多数情况下可以),基础等待时间$WaitTimeBasic 秒,后续检查是否全部激活,否则循环等待,每次30秒,最多等待5轮"
     Start-SleepWithProgress -Seconds $WaitTimeBasic
+    # 重启nginx 
+    
     # 检查域名激活状态
-    while (True )
+    while ($True )
     {
         
         $info = Get-CFZoneInfoFromTable
