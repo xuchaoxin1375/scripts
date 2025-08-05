@@ -71,7 +71,9 @@ function Get-WpSitePacks
         [alias('Mode')]
         $ArchiveMode = 'zstd',
         $CompressionLevel = 3,
-        $Threads = 16
+        $Threads = 16,
+        #是否宽容处理导出的数据库大小(异常检查),默认情况下，数据库导出文件如果低于1MB,则会报错(数据库大概率异常,可能是系统数据库损坏或丢失)
+        [Switch]$Permissive
 
     )
 
@@ -116,6 +118,17 @@ function Get-WpSitePacks
     }
     # 导出数据库sql文件🎈
     Export-MysqlFile -Server localhost -DatabaseName $DatabaseName -key $key -SqlFilePath $SqlFile -Verbose
+    if(!$Permissive)
+    {
+        Write-Host "检查数据库大小是否异常"
+        $SqlFileSize = Get-Item $SqlFile | Select-Object -ExpandProperty Length
+        if ($SqlFileSize -lt 1MB)
+        {
+            Write-Host "数据库文件过小，请检查！确定没错,可以使用--permissive参数跳过此检查"
+            return False
+        }
+        
+    }
     # Compress-Archive -Path $SqlFile -DestinationPath $SqlFileArchiveZip -Force
     # 打包站点目录
 
@@ -335,6 +348,26 @@ function Get-MoreSites
     # 写入 HTML 文件
     $htmlContent | Out-File -FilePath $HtmlOutputFile -Encoding utf8
     Write-Host "✅ 已生成 HTML 链接文件: $HtmlOutputFile"
+}
+function Confirm-EnvForWp
+{
+    <# 
+    .SYNOPSIS
+    检查部署本地wordpress所需要的环境
+    .DESCRIPTION
+    检查必要的环境变量是否配置,以及取值是否有效
+    检查指定程序是否可以成功调用
+    #>
+    param (
+        
+    )
+    Write-Verbose "检查环境变量"
+    vars=@(
+        $env:PYTHONPATH, $env:PYS, $env:WOO_DF, $env:PsModulePath, $env:LOCOY_SPIDER_DATA,
+        $env:phpstudy_extensions,$env:nginx_conf_dir
+    )
+
+    
 }
 function Deploy-WpSitesLocal
 {

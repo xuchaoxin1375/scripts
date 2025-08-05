@@ -11,22 +11,25 @@
 > ###喜欢使用D盘的注意按需更改""中的值(强烈建议不要设置D盘,diskmgmt删除该盘,然后扩展C盘,尤其总共不足1TB的情况下便于管理)
 
 ```cmd
+# 创建常用软件目录
+New-Item -ItemType Directory -Path C:/exes
+
+# 基础环境变量配置
 setx PYTHONPATH C:\repos\scripts\wp\woocommerce\woo_df
 setx PYS C:\repos\scripts\wp\woocommerce\woo_df\pys
 setx WOO_DF C:\repos\scripts\wp\woocommerce\woo_df
 setx PsModulePath C:/repos/scripts/PS
 setx exes C:/exes
-# 创建常用软件目录(配置da)
-New-Item -ItemType Directory -Path C:/exes
-# 根据情况修改本地mysql密码🎈
-setx MySqlKey_LOCAL "  "
-# D盘用户注意按需更改,还有软件版本也要注意(日后如果更新软件,或其他导致目录变更的情况,要注意修改环境变量(使用gui方案))
+
+
+# 辅助环境变量配置(D盘用户注意按需更改),还有软件版本也要注意(日后如果更新软件,或其他导致目录变更的情况,要注意修改环境变量(使用gui方案))
 setx LOCOY_SPIDER_DATA "C:\火车采集器V10.27\Data" #🎈
 setx phpstudy_extensions "C:\phpstudy_pro\extensions"
 setx nginx_conf_dir "C:\phpstudy_pro\Extensions\Nginx1.25.2\conf\vhosts"
 # setx nginx_home "C:\phpstudy_pro\extensions\Nginx1.25.2"
 
-
+# 根据情况修改本地mysql密码🎈
+setx MySqlKey_LOCAL "  "
 ```
 
 将引号中的路径替换为你的采集对应的路径
