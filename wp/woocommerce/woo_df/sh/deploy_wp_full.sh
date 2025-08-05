@@ -512,7 +512,7 @@ for user_dir in "${user_dirs[@]}"; do
     username="${user_dir%/}"
     # 创建用于归档已经使用过的文件的目录(移动到当前user文件的deployed目录中,例如 为用户zsh /srv/uploads/uploader/files/zsh下的deployed目录中,如果不存在,则创建此目录 )
     echo "📦 创建用于归档已经使用过的文件的目录deployed目录"
-    deployed_dir="$DEFAULT_PACK_ROOT/$username/deployed/"
+    deployed_dir="$PACK_ROOT/$username/deployed/"
     if [ ! -d "$deployed_dir" ]; then
         mkdir -p "$deployed_dir"
     fi
@@ -558,7 +558,7 @@ for user_dir in "${user_dirs[@]}"; do
 
     if [ ${#site_archives[@]} -eq 0 ] || [ ! -f "${site_archives[0]}" ]; then
         echo "⚠️ 在目录 $username 中没有找到有效的WordPress站点压缩包。跳过..."
-        cd "$PACK_ROOT"
+        cd "$PACK_ROOT" || exit
         # continue
     fi
 
@@ -586,7 +586,7 @@ for user_dir in "${user_dirs[@]}"; do
     chown -R uploader:uploader "$deployed_dir"
     
     # 返回上级目录
-    cd "$PACK_ROOT"
+    cd "$PACK_ROOT" || exit
 done
 
 echo "🎉 部署完成！解压站点根目录数量:[$deployed_sites] , 解压SQL备份: $sql_backups_processed, 失败: $failed_sites"
