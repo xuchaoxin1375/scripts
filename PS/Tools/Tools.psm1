@@ -822,8 +822,12 @@ function Restart-NginxOnHost
 {
     <# 
 .SYNOPSIS
-重启指定主机的Nginx服务
-默认仅重载nginx
+更新nginx配置并使其生效
+通过重启指定主机的Nginx服务配置
+
+默认仅重载nginx配置
+强制可以杀死nginx进程再启动nginx
+
 .NOTES
 强烈建议配置ssh免密登录
 
@@ -838,6 +842,8 @@ function Restart-NginxOnHost
         [switch]$Force
 
     )
+    # 更新各个网站vhost的配置(宝塔nginx vhost配置文件路径)
+    ssh $User@$HostName " chmod +x /update_nginx_vhosts_conf.sh;/update_nginx_vhosts_conf.sh -d /www/server/panel/vhost/nginx --days 1 "
     if ($Force)
     {
         ssh $User@$HostName " pkill -9 nginx ; nginx "

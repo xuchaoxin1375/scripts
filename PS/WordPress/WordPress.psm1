@@ -736,8 +736,8 @@ function Deploy-WpSitesOnline
     param(
         [alias('Host', 'Server', 'Ip')]
         $HostName = $env:DF_SERVER1,
-        $WaitTimeBasic = 100,
-        $MaxRetryTimes = 15,
+        $WaitTimeBasic = 60,
+        $MaxRetryTimes = 20,
         $RetryGap = 30
     )
     # 创建宝塔空站点
