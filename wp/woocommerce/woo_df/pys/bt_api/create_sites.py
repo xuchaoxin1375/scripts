@@ -18,9 +18,9 @@
 import json
 import re
 
-from comutils import get_main_domain_name_from_str
-
 from btapi import BTApi
+
+from comutils import get_main_domain_name_from_str
 
 DESKTOP = "C:/users/Administrator/Desktop/"
 BT_CONFIG = f"{DESKTOP}/bt_config.json"

@@ -37,6 +37,8 @@ sudo timedatectl set-timezone Asia/Shanghai
 ```bash
 # 这里配置脚本文件(.sh)的可执行属性
 chmod +x /repos/scripts/wp/woocommerce/woo_df/sh/*
+# 让指定目录下所有脚本文件(.sh)可执行
+find /repos/scripts/wp/woocommerce/woo_df/sh/ -type f \( -name "*.sh" -o -name "*.bash" \) -exec chmod +x {} \;
 
 # 配置单个脚本可执行属性
 #chmod +x /repos/scripts/wp/woocommerce/woo_df/sh/deploy_wp_full.sh
@@ -51,6 +53,7 @@ chmod +x /repos/scripts/wp/woocommerce/woo_df/sh/*
 ln -s /repos/scripts/wp/woocommerce/woo_df/sh/deploy_wp_full.sh /deploy.sh -f
 ln -s /repos/scripts/wp/woocommerce/woo_df/sh/deploy_wp_full.sh /www/wwwroot/deploy_wp_full.sh -f
 ln -s /repos/scripts/wp/woocommerce/woo_df/sh /www/wwwroot/sh -f
+ln -s /repos/scripts/wp/woocommerce/woo_df/sh/nginx_conf/update_nginx_vhosts_conf.sh /update_nginx_vhosts_conf.sh -f
 ```
 
 
@@ -138,12 +141,12 @@ fi
 echo "🎉 代码同步完成：$TARGET_DIR"
 
 
-#更新脚本可执行属性
-chmod +x /repos/scripts/wp/woocommerce/woo_df/sh/*
+# 让指定目录下所有脚本文件(.sh)可执行
+find /repos/scripts/wp/woocommerce/woo_df/sh/ -type f \( -name "*.sh" -o -name "*.bash" \) -exec chmod +x {} \;
 # 更新符号链接
 ln -s /repos/scripts/wp/woocommerce/woo_df/sh/deploy_wp_full.sh /deploy.sh -f
 ln -s /repos/scripts/wp/woocommerce/woo_df/sh/deploy_wp_full.sh /www/wwwroot/deploy_wp_full.sh -f
 ln -s /repos/scripts/wp/woocommerce/woo_df/sh /www/wwwroot/sh -f
-
+ln -s /repos/scripts/wp/woocommerce/woo_df/sh/nginx_conf/update_nginx_vhosts_conf.sh /update_nginx_vhosts_conf.sh -f
 ```
 
