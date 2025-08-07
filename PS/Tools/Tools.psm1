@@ -147,7 +147,7 @@ function Get-Lz4Package
     else
     {
         Write-Error "lz4.exe not found, please add it to the environment variable PATH or specify the path to lz4.exe"
-        return False
+        return $False
     }
     # 检查结果
     Get-Item $OutputFile
@@ -187,7 +187,7 @@ function Expand-Lz4TarPackage
     else
     {
         Write-Error "lz4.exe not found, please add it to the environment variable PATH or specify the path to lz4.exe"
-        return False
+        return $False
     }
     Write-Verbose "Expand Tar: [$temp] to [$OutputDirectory]" -Verbose
     tar -xvf $temp -C $OutputDirectory
@@ -264,7 +264,7 @@ function Get-ZstdPackage
     else
     {
         Write-Error "zstd.exe not found, please add it to the environment variable PATH or specify the path to zstd.exe"
-        return False
+        return $False
     }
     # 检查结果
     Get-Item $OutputFile
@@ -306,7 +306,7 @@ function Expand-ZstdTarPackage
     else
     {
         Write-Error "zstd.exe not found, please add it to the environment variable PATH or specify the path to zstd.exe"
-        return False
+        return $False
     }
     Write-Verbose "Expand Tar: [$temp] to [$OutputDirectory]" -Verbose
     tar -xvf $temp -C $OutputDirectory
@@ -833,15 +833,17 @@ function Restart-NginxOnHost
     param(
         [parameter(ValueFromPipeline = $true)]
         [alias('Host', 'Server', 'Ip')]
-        $HostName=$env:DF_SERVER1,
-        [alias("ScpUser")]$User='root',
+        $HostName = $env:DF_SERVER1,
+        [alias("ScpUser")]$User = 'root',
         [switch]$Force
 
     )
-    if ($Force) {
+    if ($Force)
+    {
         ssh $User@$HostName " pkill -9 nginx ; nginx "
     }
-    else{
+    else
+    {
         ssh $User@$HostName "nginx -t && nginx -s reload"
     }
 
@@ -1097,7 +1099,7 @@ function Add-CFZoneCheckActivation
     param (
         $Table = "$desktop/table.conf"   
     )
-    Get-Content $Table | ForEach-Object { ($_ -split '\s+')[0] | Get-MainDomain } | ForEach-Object { flarectl zone check --zone $_ *> $null; Write-Host $_ }
+    Get-Content $Table | Where-Object { $_.Trim() } | ForEach-Object { ($_ -split '\s+')[0] | Get-MainDomain } | ForEach-Object { flarectl zone check --zone $_ *> $null; Write-Host $_ }
 }
 function Get-CFZoneInfoFromTable
 {
@@ -2627,7 +2629,7 @@ function Get-DomainUserDictFromTableLite
         # [Parameter(Mandatory = $true)]
         [Alias('Path')]$Table = "$env:USERPROFILE/Desktop/my_table.conf"
     )
-    Get-Content $Table | Where-Object { $_ -notmatch "^\s*#" } | ForEach-Object { 
+    Get-Content $Table|?{$_.Trim()} | Where-Object { $_ -notmatch "^\s*#" } | ForEach-Object { 
         $l = $_ -split '\s+'
         $title = ($_ -split '\d+\.\w{1,5}')[-1].trim()
         @{'domain'     = ($l[0] | Get-MainDomain);

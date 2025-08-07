@@ -38,6 +38,15 @@ setx MySqlKey_LOCAL "  "
 
 配置完以后关闭所有命令行窗口,以及vscode窗口(如果有用到vscode的话)再重新打开才会生效	
 
+然后执行以下powershell命令检查是否可以通过检查🎈
+
+```powershell
+Confirm-WpEnvironment
+
+```
+
+
+
 ## 配置软件目录到Path环境变量
 
 备份环境变量
@@ -125,10 +134,10 @@ Name    : xp.cn_cgi
 mysql -uroot  -proot -P 3306 -p"$env:mysqlkey_local"
 ```
 
-例如我们查询已经存在的数据库"show databases; "
+例如我们查询已经存在的数据库"show databases; ",或者查看内置的`mysql`中的表
 
 ```powershell
-mysql -uroot -proot -P 3306 -p"$env:mysqlkey_local" -e "show databases;"
+mysql -uroot -p"$env:MySqlKey_LOCAL" -P 3306 -e "use mysql;show tables;"
 ```
 
 如果顺利,会输出:

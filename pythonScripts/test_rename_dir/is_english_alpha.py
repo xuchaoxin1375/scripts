@@ -14,7 +14,7 @@ def  is_eng_alpha2(char):
         return True
     else:
         print("char is not english alpha")
-        return False
+        return $False
 if __name__=="__main__":
     is_eng_alpha2(eng_alpha)
     is_eng_alpha2(chinese_alpha)

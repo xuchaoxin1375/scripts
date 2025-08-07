@@ -15,7 +15,7 @@ pillow
 pillow-avif-plugin
 cloudflare
 
-# 浏览器爬虫(配合 playwright install 下载对应的浏览器)
+# please run:[  playwright install  ] this command in your terminal to install playwright browser automation tool
 playwright
 playwright_stealth
 

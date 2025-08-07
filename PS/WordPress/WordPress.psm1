@@ -125,7 +125,7 @@ function Get-WpSitePacks
         if ($SqlFileSize -lt 1MB)
         {
             Write-Host "数据库文件过小，请检查！确定没错,可以使用--permissive参数跳过此检查"
-            return False
+            return $False
         }
         
     }
@@ -349,7 +349,7 @@ function Get-MoreSites
     $htmlContent | Out-File -FilePath $HtmlOutputFile -Encoding utf8
     Write-Host "✅ 已生成 HTML 链接文件: $HtmlOutputFile"
 }
-function Confirm-EnvForWp
+function Confirm-WpEnvironment
 {
     <# 
     .SYNOPSIS
@@ -358,16 +358,116 @@ function Confirm-EnvForWp
     检查必要的环境变量是否配置,以及取值是否有效
     检查指定程序是否可以成功调用
     #>
+    [cmdletbinding()]
     param (
         
     )
-    Write-Verbose "检查环境变量"
-    vars=@(
-        $env:PYTHONPATH, $env:PYS, $env:WOO_DF, $env:PsModulePath, $env:LOCOY_SPIDER_DATA,
-        $env:phpstudy_extensions,$env:nginx_conf_dir
-    )
-
+    Write-Verbose "检查wordpress本地建站部署所需的环境"
+    #检查密钥类的环境变量是否配置
+    if($env:MySqlKey_LOCAL)
+    {
+        Write-Host "MySqlKey_LOCAL: $env:MySqlKey_LOCAL"
+    }
+    else
+    {
+        Write-Host "请配置环境变量: MySqlKey_LOCAL" -ForegroundColor Red
+    }
+    $Dirs = @{
+        pys                 = $env:PYS
+        woo_df              = $env:WOO_DF
+        locoy_spider_data   = $env:LOCOY_SPIDER_DATA
+        phpstudy_extensions = $env:phpstudy_extensions
+        nginx_conf_dir      = $env:nginx_conf_dir
+    }
     
+    # 检查上述变量(目录)是否存在,不存在则报错并退出
+    foreach ($var in $Dirs.Keys)
+    {
+        Write-Debug "正在检测环境变量: $var"
+        if (-not $Dirs[$var])
+        {
+            Write-Error "❌ 缺少必要环境变量:[ $var]"
+            return $false
+        }
+        else 
+        {
+            if (-not (Test-Path $Dirs[$var]))
+            {
+                
+                Write-Error "❌ 环境变量[ $var ]指定的目录不存在"
+                return $false
+            }
+            else
+            {
+                Write-Verbose "环境变量[ $var ]指定的目录存在: $Dirs[$var]" -Verbose
+            }
+        }
+    }
+    # 检查多值环境变量
+    $multiValueVars = @{
+        # psmodulepath = $env:PsModulePath #能够运行此函数,此变量一定是配好了的,用不着此函数检查此环境变量
+        pythonpath = $env:PYTHONPATH
+    }
+    Write-Debug "正在检测环境变量: $var`n============="
+    foreach ($var in $multiValueVars.Keys)
+    {
+        Write-Debug "正在检测环境变量: $var`n***********"
+        if (-not $multiValueVars[$var])
+        {
+            Write-Error "❌ 缺少必要环境变量:[ $var]"
+            return $false
+        }
+        else 
+        {
+            $values = $multiValueVars[$var] -split ';'
+            Write-Debug "环境变量[ $var ]的值: $($values|Out-String)"
+            foreach ($value in $values)
+            {
+                if(-not $value.Trim())
+                {
+                    continue
+                }
+                if (-not (Test-Path $value))
+                {
+                    Write-Error "❌ 环境变量[ $var ]对应的[ $value ]不是目录或者是无效的"
+                    return $false
+                }
+            }
+        }
+    }
+    
+    # 检查基本命令行软件(mysql,nginx,php)是否存在且可以直接调用
+    $cmds = @(
+        'mysql',
+        'nginx',
+        'php'
+    )
+    $cmds | ForEach-Object {
+        if(!(Test-CommandAvailability $_))
+        {
+            Write-Error "❌ 缺少$_命令行软件"
+            return $false
+        }
+        else
+        {
+            Write-Host "✅ 检测到 $_ 命令行软件:$(Get-Command $_)"
+        }
+
+    }
+    # 检查mysql及其密码是否搭配
+    $res = mysql -uroot -p"$env:MySqlKey_LOCAL" -P 3306 -e "use mysql;show tables;"
+    $res = ($res -join "`n")
+    Write-Debug $res.ToString()
+    if($LASTEXITCODE)
+    {
+        Write-Error "❌ MySql数据库密码错误"
+        return $false
+    }
+    else
+    {
+        Write-Host "✅ MySql数据库密码正确"
+    }
+
 }
 function Deploy-WpSitesLocal
 {
@@ -662,10 +762,10 @@ function Deploy-WpSitesOnline
         {
             Write-Host "存在域名未激活,请稍后${RetryGap}重试" -ForegroundColor Cyan
             
-            if($MaxRetryTimes -gt 0)
+            if($MaxRetryTimes -le 0)
             {
                 Write-Error "Max retry times  exhuasted, exit"
-                return False
+                return $False
             }
         }
         else
@@ -673,7 +773,7 @@ function Deploy-WpSitesOnline
             Write-Host '所有域名均已激活' -ForegroundColor Green
             break
         }
-        # Start-Sleep 30
+
         Start-SleepWithProgress $RetryGap
     }
     # 配置cf域名解析,邮箱转发和代理保护

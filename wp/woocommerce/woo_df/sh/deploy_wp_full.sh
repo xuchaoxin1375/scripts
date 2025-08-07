@@ -172,8 +172,8 @@ set_rewrte_rules_file() {
         echo "🔄 正在复制伪静态规则文件到目标位置: $rewrite_target"
         if cp -v "$rewrite_template" "$rewrite_target"; then
             echo "✅ 伪静态规则文件已成功复制到: $rewrite_target"
-            echo "修改伪静态文件[$rewrite_target]的标志位使其无法被轻易修改或覆盖(比如宝塔添加对应目录下的站点时可以不被覆盖伪静态规则)"
-            chattr +i "$rewrite_target"  -V
+            # echo "修改伪静态文件[$rewrite_target]的标志位使其无法被轻易修改或覆盖(比如宝塔添加对应目录下的站点时可以不被覆盖伪静态规则),但是宝塔api创建站点的操作将会执行失败"
+            # chattr +i "$rewrite_target"  -V
         else
             echo "❌ 复制伪静态规则文件失败: 源文件=$rewrite_template, 目标=$rewrite_target"
             return 1
@@ -652,11 +652,15 @@ process_sql_file() {
 }
 
 # === 主程序开始 🎈===
+# 在脚本开头定义
+log() {
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1"
+}
+
+log "🚀 ==================开始部署 WordPress 站点和数据库...==================================================="
 
 # 检查必要的命令
 check_commands
-
-echo "🚀 开始部署 WordPress 站点和数据库..."
 
 # 进入指定目录
 cd "$PACK_ROOT" || {
@@ -766,7 +770,7 @@ for user_dir in "${user_dirs[@]}"; do
     cd "$PACK_ROOT" || exit
 done
 
-echo "🎉 部署完成！解压站点根目录数量:[$deployed_sites] , 解压SQL备份: $sql_backups_processed, 失败: $failed_sites"
+log "=========部署完成！解压站点根目录数量:[$deployed_sites] , 解压SQL备份: $sql_backups_processed, 失败: $failed_sites========================"
 
 if [ $failed_sites -gt 0 ]; then
     echo "⚠️ 有 $failed_sites 个操作失败，请检查日志。"

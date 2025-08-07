@@ -38,7 +38,7 @@ export default function App() {
       },
       error: () => message.error("CSV解析失败")
     });
-    return false;
+    return False;
   };
 
   const handleSample = () => {
