@@ -95,8 +95,8 @@ def parse_args():
         "-L",
         "--lowest-price",
         type=float,
-        default=1,
-        help="最低价格过滤标准（默认：1）",
+        default=0.5,
+        help="最低价格过滤标准（默认：0.5）",
     )
     parser.add_argument(
         "-H",
@@ -178,8 +178,8 @@ DEFAULT_IMAGE_EXTENSION = args.default_extension or ""
 IMAGE_MODE = ImageMode[args.image_mode] or ImageMode.NAME_MIX
 
 # 产品价格区间(打折前不在此区间的产品将被过滤掉)
-LOWEST_PRICE = 1
-HIGHEST_PRICE = 10000
+LOWEST_PRICE = args.lowest_price
+HIGHEST_PRICE = args.highest_price
 # 国家和语言🎈
 # LANGUAGE = LanguagesHotSale.US.name
 LANGUAGE = args.language_country or LanguagesHotSale.US.name

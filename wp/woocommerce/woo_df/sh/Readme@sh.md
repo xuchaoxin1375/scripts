@@ -141,7 +141,7 @@ fi
 echo "🎉 代码同步完成：$TARGET_DIR"
 
 
-# 让指定目录下所有脚本文件(.sh)可执行
+# 让指定目录下所有脚本文件(.sh)可执行🎈
 find /repos/scripts/wp/woocommerce/woo_df/sh/ -type f \( -name "*.sh" -o -name "*.bash" \) -exec chmod +x {} \;
 # 更新符号链接
 ln -s /repos/scripts/wp/woocommerce/woo_df/sh/deploy_wp_full.sh /deploy.sh -f
@@ -150,3 +150,12 @@ ln -s /repos/scripts/wp/woocommerce/woo_df/sh /www/wwwroot/sh -f
 ln -s /repos/scripts/wp/woocommerce/woo_df/sh/nginx_conf/update_nginx_vhosts_conf.sh /update_nginx_vhosts_conf.sh -f
 ```
 
+## 定时自动任务crontab
+
+使用`crontab -e`选择编辑器编辑自动任务,添加以下内容(可以自定义执行时间)
+
+```bash
+0 * * * * /www/wwwroot/sh/deploy_wp_schd.sh
+```
+
+注意脚本`deploy_wp_schd.sh`这个脚本的可执行权限(每次更新代码,上面的代码会尝试自动修改这些文件的可执行权限)

@@ -884,7 +884,7 @@ function Add-CFZoneDNSRecords
 
     默认清空下,函数添加三条A类记录
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         # 
         $Domains = "C:\Users\Administrator\Desktop\table.conf",
@@ -903,7 +903,9 @@ function Add-CFZoneDNSRecords
         # 添加完域名后,是否立即添加对应的DNS记录(默认不添加)
         [switch]$AddRecordAtOnce,
         # 仅添加域名的DNS记录,不检查域名是否被添加(如果域名尚未被添加到cloudflare,那么添加dns记录就会失败跳过)
-        [switch]$AddRecordOnly
+        [switch]$AddRecordOnly,
+        # 强制执行,不进行确认
+        [switch]$Force
     )
    
     if(Test-Path $Domains)
@@ -917,7 +919,22 @@ function Add-CFZoneDNSRecords
         $Domains = $res | ForEach-Object { $_.Domain }
     }
     Write-Host "Domains: $Domains"
-    Pause
+    # $Domains | Format-DoubleColumn
+
+    if ($Force -and -not $Confirm) #或 if ($Force -and !$Confirm)
+    {
+        # 将消息确认级别设置为关闭,即将询问偏好设置为低,让用户不需要再交互确认后续的动作,直接执行
+        $ConfirmPreference = 'None'
+    }
+    if($PSCmdlet.ShouldProcess("Cloudflare DNS Records", "Add DNS records for domains"))
+    {
+        Write-Host "start add dns records..."
+    }
+    else
+    {
+        Write-Host "Skipped"
+        return
+    }
     $Domains | ForEach-Object {
      
         $domain = $_.ToLower()
@@ -1914,7 +1931,8 @@ www.d2.com    李
     }
     else
     {
-        Write-Host "$SiteOwnersDict"
+        # Write-Host "$SiteOwnersDict"
+        Get-DictView $SiteOwnersDict
         # 谨慎使用write-output和孤立表达式,他们会在函数结束时加入返回值一起返回,导致不符合预期的情况
         #检查siteOwnersDict
         Write-Verbose "SiteOwnersDict:"
@@ -2635,7 +2653,7 @@ function Get-DomainUserDictFromTableLite
         # [Parameter(Mandatory = $true)]
         [Alias('Path')]$Table = "$env:USERPROFILE/Desktop/my_table.conf"
     )
-    Get-Content $Table|?{$_.Trim()} | Where-Object { $_ -notmatch "^\s*#" } | ForEach-Object { 
+    Get-Content $Table | Where-Object { $_.Trim() } | Where-Object { $_ -notmatch "^\s*#" } | ForEach-Object { 
         $l = $_ -split '\s+'
         $title = ($_ -split '\d+\.\w{1,5}')[-1].trim()
         @{'domain'     = ($l[0] | Get-MainDomain);

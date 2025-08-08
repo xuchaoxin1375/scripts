@@ -25,7 +25,9 @@ import time
 
 import requests
 
-
+DESKTOP = r"C:/Users/Administrator/Desktop"
+# 默认配置文件路径
+DEFAULT_CONFIG_PATH = os.path.join(DESKTOP, "spaceship_config.json")
 class APIClient:
     """spaceship 域名管理API封装客户端程序"""
 
@@ -495,7 +497,8 @@ def parse_args():
     parser.add_argument(
         "--config",
         type=str,
-        default="spaceship_config.json",
+        default=DEFAULT_CONFIG_PATH,
+        # default="spaceship_config.json",
         help="配置文件路径，默认spaceship_config.json",
     )
     subparsers = parser.add_subparsers(dest="command", required=True, help="功能命令")
