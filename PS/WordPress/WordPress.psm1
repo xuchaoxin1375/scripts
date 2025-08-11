@@ -584,11 +584,13 @@ function Deploy-WpSitesLocal
     Write-Warning "Please check the parameter table list above,especially the domain and template name!" -WarningAction Inquire
     # Pause
 
-    # 逐条数据解析出各个参数,并处理任务
+    # 逐条数据解析出各个参数,并处理任务🎈
     foreach ($row in $rows)
     {
         $domain = $row.Domain
         $template = $row.Template
+        $title=$row.Title
+        Write-Debug "Processing domain: [$domain], template: [$template],with title: [$title]"
 
         $path = "$WpSitesTemplatesDir/$template"
         $destination = "$MyWpSitesHomeDir/$domain"
@@ -623,7 +625,7 @@ function Deploy-WpSitesLocal
 
             Move-Item -Path $template_temp -Destination $destination -Force -Verbose -WhatIf:$WhatIfPreference
         }
-
+        # 修改wp-config.php配置文件以及robots文件🎈
         $wp_config = "$destination/wp-config.php"
         Write-Debug $wp_config
         if (Test-Path $wp_config)
@@ -671,7 +673,8 @@ function Deploy-WpSitesLocal
             New-Item -ItemType Directory -Path $CsvDirHome -ErrorAction SilentlyContinue -Verbose
             
             $script = @"
-# =========[    http://$domain  ]:[ cd    $destination    ]=============
+# =========[    http://$domain/login  ]:[ cd    $destination    ]=>[图片目录:   explorer $destination/wp-content/uploads/2025 ]==========
+ ]=============
 
 # 下载图片
 python $pys\image_downloader.py -c -n -R auto -k  -rs 1000 800  --output-dir $ImgDir --dir-input $CsvDirHome -w 5 -U curl
@@ -708,6 +711,7 @@ Get-WpSitePacks -SiteDirecotry $destination
         # 导入数据库并执行基础的修改
         Import-MysqlFile -Server localhost -key $DBKey -SqlFilePath "$SqlFileDir/$template.sql" -DatabaseName $domain  
         Update-WpUrl -Server localhost -key $DBKey -NewDomain $domain -OldDomain $template -protocol http  
+        Update-WpTitle -Server localhost -key $DBKey -NewTitle $title -DatabaseName $domain  
         
         # 修改(追加当前域名映射新行)到hosts文件(127.0.0.1  $domain)
         Add-NewDomainToHosts -Domain $domain
@@ -801,7 +805,7 @@ function Update-WpSitesRobots
     "Sitemap: https://www.$Domain/sitemap_new.xml" >> $Path
 
 }
-function Update-WPTitle
+function Update-WpTitle
 {
     <# 
     .SYNOPSIS

@@ -50,9 +50,7 @@ python $pys\woo_get_csv.py -f .webp --start-id  $start_id --end-id $end_id  --la
 
 默认情况下产品名和图片链接同时相同才会视为重复,可以尽可能保留更多的产品数据
 
-
-
-#### 使用示例
+#### 使用示例🎈
 
 例如:
 
@@ -62,7 +60,17 @@ python $pys\woo_get_csv.py -f .webp --start-id  $start_id --end-id $end_id  --la
 - 命令行如下(对上面的选项进行了缩写,比如`-s`和`--start-id`等价)
 
 ```powershell
-python $pys\woo_get_csv.py -f .webp -s 354 -e 378  -C US  -o $desktop/outdoor_us_0711
+$type='  品类  '.trim()
+$country='  DE  '.trim()
+python $pys\woo_get_csv.py -f .webp -s 354 -e 378  -C $country  -o $desktop/$type-$country-$(date -format MMdd-hh-mm-ss)
+```
+
+例如
+
+```powershell
+$type='  家居  '.trim()
+$country='  DE  '.trim()
+python $pys\woo_get_csv.py -f .webp -s 521 -e 527  -C $country  -o $desktop/$type-$country-$(date -format MMdd-hh-mm-ss)
 ```
 
 又比如,导出397~448区间中的任务,跳过446号任务(通常是因为采集任务没有结束或者已知数据有问题要跳过),使用了`-R`表示严格去重复
@@ -70,6 +78,18 @@ python $pys\woo_get_csv.py -f .webp -s 354 -e 378  -C US  -o $desktop/outdoor_us
 ```powershell
 python $pys\woo_get_csv.py -f .webp -s 397 -e 448 -E 446  -C US  -o $desktop/bike_us_0713 -R
 ```
+
+等到被上一轮排除的446任务id结束采集,就可以单独导出(可以在输出路径追加单独导出的id编号)
+
+```powershell
+py $pys\woo_get_csv.py -f .webp -s 501  -C DE  -o $desktop/百货-DE-0808.501
+```
+
+
+
+---
+
+
 
 只导出一个任务,可以省略`-e`
 

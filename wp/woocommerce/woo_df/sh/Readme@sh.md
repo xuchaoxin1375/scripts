@@ -159,3 +159,65 @@ ln -s /repos/scripts/wp/woocommerce/woo_df/sh/nginx_conf/update_nginx_vhosts_con
 ```
 
 注意脚本`deploy_wp_schd.sh`这个脚本的可执行权限(每次更新代码,上面的代码会尝试自动修改这些文件的可执行权限)
+
+## nginx公共配置文件com.conf
+
+对于宝塔用户,可以在`/www/server/nginx/conf`目录下创建一个`com.conf`的配置文件
+
+> 在相关配套脚本的作用下,会在创建站点的时候一并往站点的vhost目录(`/www/server/panel/vhost/nginx/`目录下的`<domain.xxx>.conf`)下配置文件插入一行引用此`com.conf`的指令
+
+下面是基本`com.conf`的基本指令内容,可以根据需要统一在这个配置文件中修改;
+
+每次有需求修改完成后需要重载nginx配置才能逐渐生效`nginx -t && nginx -s reload` (如果语法有误,会报错,如果通过检测,就会重载配置)
+
+```bash
+# --- 拦截 xmlrpc.php ---
+# location = /xmlrpc.php {
+#     deny all;
+#     # 返回 444 断开连接（比 403 更隐蔽）
+#     # return 444;
+# }
+location = /xmlrpc.php {
+    deny all;
+    return 403;
+}
+
+# 精确匹配：/wp-admin
+location = /wp-admin {
+    return 403;
+}
+# 粗暴禁止访问或跳转到/wp-login.php,部分情况会拦住自己人,如有特殊需要,可以临时开放
+# 通常,配合wps-hide-login通常都可以完美让自己人使用专门的后台入口顺利登录(如果被拦截,可能是该插件没启用或者目录名称被改动导致插件失效)
+location = /wp-login.php{
+    return 403;
+}
+
+
+
+# --- 保护 wp-cron.php（可选）---
+# 正常应由内部触发，不建议公开访问
+location = /wp-cron.php {
+    # deny all;  # 如果你用系统 cron 替代
+    allow 127.0.0.1;  # 只允许本地或 Cloudflare（谨慎）
+    # allow 172.68.0.0/16;  # Cloudflare IP 段（可选）
+    deny all;
+}
+
+# --- 可选：拦截高频 bot 请求 ---
+# location / {
+#     limit_req zone=bots nodelay;
+#     # 正常流量继续
+#     try_files $uri $uri/ /index.php?$args;
+# }
+
+  
+```
+
+### 为指定目录重命名
+
+例如,为`wps-hide-login.bak`(临时被禁用的插件)重命名为`wps-hide-login`的命令行:
+
+```powershell
+Get-ChildItem . -Recurse -Depth 5 -filter 'wps-hide-login.bak' -Directory|%{Rename-Item $_ -NewName ($_ -replace '\.bak$','' ) -Verbose}
+```
+
