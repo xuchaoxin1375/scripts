@@ -742,14 +742,16 @@ function Deploy-WpSitesOnline
         $HostName = $env:DF_SERVER1,
         $WaitTimeBasic = 60,
         $MaxRetryTimes = 20,
-        $RetryGap = 30
+        $RetryGap = 30,
+        $SpaceshipConfig="$Desktop/spaceship_config.json"
+
     )
     # 创建宝塔空站点
     Deploy-BatchSiteBTOnline
     # 添加域名解析到cf
     Add-CFZoneDNSRecords -AddRecordAtOnce
     # 更新spaceship域名的nameservers
-    Update-SSNameServers
+    Update-SSNameServers -Config 
     # 让cf立即检查域名的激活
     Add-CFZoneCheckActivation
     Write-Warning "等待2到5分钟让cf激活域名保护(不保证成功,大多数情况下可以),基础等待时间$WaitTimeBasic 秒,后续检查是否全部激活,否则循环等待,每次30秒,最多等待5轮"

@@ -74,6 +74,8 @@ $ /deploy.sh --help
 
 ## 综合脚本
 
+为了方便期间,将脚本组织成一个脚本文件`update_repos.sh`
+
 ```bash
 #初次下载代码
 #git clone --depth 1 https://gitee.com/xuchaoxin1375/scripts.git /repos/scripts
@@ -213,11 +215,73 @@ location = /wp-cron.php {
   
 ```
 
-### 为指定目录重命名
+## 有用的指令
+
+使用powershell(跨平台的pwsh)方案执行以下任务,记录备用
+
+### 批量重命名wps-hide-login目录
 
 例如,为`wps-hide-login.bak`(临时被禁用的插件)重命名为`wps-hide-login`的命令行:
 
 ```powershell
 Get-ChildItem . -Recurse -Depth 5 -filter 'wps-hide-login.bak' -Directory|%{Rename-Item $_ -NewName ($_ -replace '\.bak$','' ) -Verbose}
 ```
+
+### 批量激活wp网站插件
+
+首先扫描出所有wordpress站的根目录
+
+#### 本地windows端
+
+批量激活插件(比如`wps-hide-login`)
+
+首先`cd`到所有网站所在的总目录,然后扫描各个站点根目录(根据情况修改管道符前面的命令)
+
+```powershell
+#⚡️[Administrator@CXXUDESK][C:\sites\wp_sites][14:41:03][UP:6.97Days]
+PS> ls *.* -Directory|%{cd $_;wp plugin activate wps-hide-login ;cd -}
+
+```
+
+详细步骤:
+
+- 为了获取插件名以便设置(启用/禁用/更新),可以使用`wp plugin list`命令行列出所有插件的标准名字
+
+```bash
+$ sudo -u www wp plugin list
++---------------------------------------+----------+-----------+-----------------+----------------+-------------+
+| name                                  | status   | update    | version         | update_version | auto_update |
++---------------------------------------+----------+-----------+-----------------+----------------+-------------+
+| astra-addon                           | active   | available | 4.8.14          | 4.11.6         | off         |
+| clowns-discount                       | active   | none      | Current Version |                | off         |
+| mallpay                               | active   | none      | 2.0             |                | off         |
+| elementor                             | active   | available | 3.27.7          | 3.31.1         | off         |
+| elementor-pro                         | active   | available | 3.27.4          | 3.30.0         | off         |
+| paypal-online-payment-for-woocommerce | active   | none      | 1.1.0           |                | off         |
+| astra-pro-sites                       | inactive | available | 4.4.11          | 4.4.34         | off         |
+| wp-card-tpay                          | active   | none      | 1.2             |                | off         |
+| woocommerce                           | active   | available | 9.6.2           | 10.0.4         | off         |
+| wps-hide-login                        | inactive | available | 1.9.17.1        | 1.9.17.2       | off         |
+| wordpress-seo                         | active   | available | 25.2            | 25.6           | off         |
+| yunzipaycc-for-woocommerce            | active   | none      | 1.0.0           |                | off         |
+| custom-shortcodes                     | must-use |           |                 |                | off         |
++---------------------------------------+----------+-----------+-----------------+----------------+-------------+
+```
+
+
+
+- 扫描所有网站根目录
+
+  ```powershell
+  $dirs=Get-ChildItem -Recurse -Directory -Depth 2 -Path */wordpress |select -ExpandProperty FullName;$dirs
+  
+  ```
+
+- 并行激活
+
+  ```bash
+  $dirs|% -Parallel {cd $_;sudo -u www wp plugin activate wps-hide-login } -ThrottleLimit 10
+  ```
+
+  
 

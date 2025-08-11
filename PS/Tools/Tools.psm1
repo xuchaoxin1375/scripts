@@ -888,8 +888,9 @@ function Add-CFZoneDNSRecords
     param (
         # 
         $Domains = "C:\Users\Administrator\Desktop\table.conf",
-        # 使用私人模式DF
+        # 默认使用私人模式DF,启用Common开关变成通用模式
         [switch]$Common,
+        # 域名添加模式
         $Type = 'A' ,
         [alias('IP', 'Content')]
         $Value = $env:DF_SERVER1
@@ -914,12 +915,20 @@ function Add-CFZoneDNSRecords
     }
     if(!$Common)
     {
-        Write-Host "Mode:$DF"
+        Write-Host "Mode:DF"
         $res = Get-DomainUserDictFromTable -Table $Domains
         $Domains = $res | ForEach-Object { $_.Domain }
     }
+    # 遍历检查解析出来的域名
+    # $domains | ForEach-Object {
+        
+    #     Write-Host "Domains: $_"
+    # }
     Write-Host "Domains: $Domains"
-    # $Domains | Format-DoubleColumn
+
+    $msg=$Domains | Format-DoubleColumn|Out-String
+    Write-Host $msg
+    # pause
 
     if ($Force -and -not $Confirm) #或 if ($Force -and !$Confirm)
     {
@@ -938,11 +947,14 @@ function Add-CFZoneDNSRecords
     $Domains | ForEach-Object {
      
         $domain = $_.ToLower()
+        Write-Host "正在处理域名:$_"
+        # 默认情况下总是尝试先创建域名(无论是否已经存在),使用AddRecordOnly参数时则不创建域名
         if(!$AddRecordOnly)
         {
 
             Write-Verbose "尝试创建域名[$domain] (如果不存在的话)..."
-            flarectl zone create --zone "$domain" *> $null # 创建域名
+            flarectl zone create --zone "$domain" 
+            # flarectl zone create --zone "$domain" *> $null # 创建域名
         }
         
         Write-Verbose "Setting DNS record for domain: $domain" 
@@ -958,7 +970,7 @@ function Add-CFZoneDNSRecords
             if($AddRecordAtOnce -or $AddRecordOnly)
             {
 
-                # 常用类型
+                # 常用类型DNS记录的添加
                 # 一次性添加两条:一条*和$domain;记得启用代理选项保护ip
                 if(!$No2LDDomain)
                 {
@@ -1091,8 +1103,9 @@ function Update-SSNameServers
     #>
     [CmdletBinding()]
     param (
+        $Config="$desktop/spaceship_config.json"
     )
-    python $pys/spaceship_api/update_nameservers.py 
+    python $pys/spaceship_api/update_nameservers.py  -c $Config 
     
 }
 function Add-CFZoneConfig
@@ -1922,7 +1935,8 @@ www.d2.com    李
         $Structure = $SiteOwnersDict.DFTableStructure,
 
         # 用户名转换字典
-        $SiteOwnersDict = $siteOwnersDict
+        $SiteOwnersDict = $siteOwnersDict,
+        [switch]$KeepWWW
     )
     if (!$SiteOwnersDict )
     {
@@ -1967,6 +1981,9 @@ www.d2.com    李
 
     # $Table = $Table -replace '(?:https?:\/\/)?(?:www\.)?([a-zA-Z0-9-]+(?:\.[a-zA-Z]{2,})+)', '$1 '
     $Table = $Table -replace '\b(?:https?:\/\/)?([\w.-]+\.[a-zA-Z]{2,})(?:\/|\s|$)', '$1 '
+    if(!$KeepWWW){
+        $Table = $Table -replace 'www\.', ''
+    }
     
     Write-Verbose "`n$Table" 
     # 按换行符拆分,并且过滤掉空行

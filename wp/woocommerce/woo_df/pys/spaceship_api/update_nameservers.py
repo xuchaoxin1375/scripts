@@ -42,8 +42,8 @@ import pandas as pd
 from spaceship_api import APIClient, get_auth
 
 DESKTOP = r"C:/Users/Administrator/Desktop"
-# 鉴权信息配置文件(json格式)
-SS_CONFIG_PATH = r"C:/sites/wp_sites/spaceship_config.json"
+# 默认的鉴权信息配置文件(json格式)
+SS_CONFIG_PATH = r"C:/Users/Administrator/Desktop/spaceship_config.json"
 
 # 域名和名称服务器配置表(二选一)
 SS_DOMAINS_TABLE_CONF = f"{DESKTOP}/table.conf"  # 简化格式的配置文件(只关注域名所在列,其他列数据被忽略,默认设置的NS1和NS2从配置文件中读取)
@@ -170,7 +170,7 @@ def parse_args():
         "--config",
         type=str,
         default=SS_CONFIG_PATH,
-        help="SpaceShip API配置文件路径 (json)",
+        help=f"SpaceShip API配置文件路径 (json),默认值:f{SS_CONFIG_PATH}",
     )
     parser.add_argument("--threads", type=int, default=4, help="并发线程数 (默认: 4)")
     parser.add_argument(
