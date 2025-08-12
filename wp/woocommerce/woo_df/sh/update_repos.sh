@@ -1,3 +1,4 @@
+#!/bin/bash
 #初次下载代码
 #git clone --depth 1 https://gitee.com/xuchaoxin1375/scripts.git /repos/scripts
 
@@ -6,7 +7,6 @@
 #git reset --hard origin/main
 #git pull
 
-#!/bin/bash
 
 # === 配置变量 ===
 REPO_URL="https://gitee.com/xuchaoxin1375/scripts.git"
@@ -70,4 +70,4 @@ find /repos/scripts/wp/woocommerce/woo_df/sh/ -type f \( -name "*.sh" -o -name "
 ln -s /repos/scripts/wp/woocommerce/woo_df/sh/deploy_wp_full.sh /deploy.sh -f
 ln -s /repos/scripts/wp/woocommerce/woo_df/sh/deploy_wp_full.sh /www/wwwroot/deploy_wp_full.sh -f
 ln -s /repos/scripts/wp/woocommerce/woo_df/sh /www/wwwroot/sh -f
-ln -s /repos/scripts/wp/woocommerce/woo_df/sh/nginx_conf/update_nginx_vhosts_conf.sh /update_nginx_vhosts_conf.sh -f
+ln -s /repos/scripts/wp/woocommerce/woo_df/sh/update_repos.sh /update_repos.sh -f
