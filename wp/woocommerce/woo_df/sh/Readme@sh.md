@@ -75,7 +75,19 @@ $ /deploy.sh --help
 
 ## 综合脚本
 
-为了方便期间,将脚本组织成一个脚本文件`update_repos.sh`
+为了方便期间,将脚本组织成一个脚本文件`update_repos.sh`,下面有两段代码
+
+较长的王政代码第一次运行后,就可以用简化版本
+
+### 简化版本
+
+!第一次运行需要完整版本
+
+```bash
+ln -s /repos/scripts/wp/woocommerce/woo_df/sh/update_repos.sh /update_repos.sh -f
+```
+
+### 完整版本
 
 ```bash
 #!/bin/bash
@@ -152,7 +164,7 @@ find /repos/scripts/wp/woocommerce/woo_df/sh/ -type f \( -name "*.sh" -o -name "
 ln -s /repos/scripts/wp/woocommerce/woo_df/sh /www/sh -f
 ln -s /repos/scripts/wp/woocommerce/woo_df/sh/deploy_wp_full.sh /deploy.sh -f
 ln -s /repos/scripts/wp/woocommerce/woo_df/sh/deploy_wp_full.sh /www/wwwroot/deploy_wp_full.sh -f
-
+ln -s /repos/scripts/wp/woocommerce/woo_df/sh/update_repos.sh /update_repos.sh -f
  
 
 ```

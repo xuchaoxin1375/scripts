@@ -453,6 +453,7 @@ def get_image_filebasename(supported_image_formats=SUPPORT_IMAGE_FORMATS_NAME):
     :return: 用来计算不带格式扩展名图片名的lambda函数,其参数必须是字符串,否则抛出异常(比如x是个浮点数,就会因为没有split方法报错)
 
     Examples:
+        from comutils import get_image_filebasename
         >>> get_image_filebasename()('abc.jpg')
         'abc'
         >>> get_image_filebasename()('abc.xxx')
@@ -464,7 +465,7 @@ def get_image_filebasename(supported_image_formats=SUPPORT_IMAGE_FORMATS_NAME):
     """
 
     return lambda x: (
-        x.rsplit(".", 1)[0] if x.split(".")[-1] in supported_image_formats else x
+        x.rsplit(".", 1)[0] if x.split(".")[-1].lower() in supported_image_formats else x
     )
 
 
