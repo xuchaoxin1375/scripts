@@ -674,7 +674,7 @@ function Deploy-WpSitesLocal
             
             $script = @"
 # =========[    http://$domain/login  ]:[ cd    $destination    ]=>[图片目录:   explorer $destination/wp-content/uploads/2025 ]==========
- ]=============
+
 
 # 下载图片
 python $pys\image_downloader.py -c -n -R auto -k  -rs 1000 800  --output-dir $ImgDir --dir-input $CsvDirHome -w 5 -U curl
@@ -751,7 +751,7 @@ function Deploy-WpSitesOnline
     # 添加域名解析到cf
     Add-CFZoneDNSRecords -AddRecordAtOnce
     # 更新spaceship域名的nameservers
-    Update-SSNameServers -Config 
+    Update-SSNameServers -Config $SpaceshipConfig
     # 让cf立即检查域名的激活
     Add-CFZoneCheckActivation
     Write-Warning "等待2到5分钟让cf激活域名保护(不保证成功,大多数情况下可以),基础等待时间$WaitTimeBasic 秒,后续检查是否全部激活,否则循环等待,每次30秒,最多等待5轮"

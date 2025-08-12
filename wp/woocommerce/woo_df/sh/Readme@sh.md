@@ -52,8 +52,9 @@ find /repos/scripts/wp/woocommerce/woo_df/sh/ -type f \( -name "*.sh" -o -name "
 ```bash
 ln -s /repos/scripts/wp/woocommerce/woo_df/sh/deploy_wp_full.sh /deploy.sh -f
 ln -s /repos/scripts/wp/woocommerce/woo_df/sh/deploy_wp_full.sh /www/wwwroot/deploy_wp_full.sh -f
-ln -s /repos/scripts/wp/woocommerce/woo_df/sh /www/wwwroot/sh -f
-ln -s /repos/scripts/wp/woocommerce/woo_df/sh/nginx_conf/update_nginx_vhosts_conf.sh /update_nginx_vhosts_conf.sh -f
+ln -s /repos/scripts/wp/woocommerce/woo_df/sh /www/sh -f
+ 
+
 ```
 
 
@@ -145,22 +146,29 @@ echo "🎉 代码同步完成：$TARGET_DIR"
 
 # 让指定目录下所有脚本文件(.sh)可执行🎈
 find /repos/scripts/wp/woocommerce/woo_df/sh/ -type f \( -name "*.sh" -o -name "*.bash" \) -exec chmod +x {} \;
+
 # 更新符号链接
 ln -s /repos/scripts/wp/woocommerce/woo_df/sh/deploy_wp_full.sh /deploy.sh -f
 ln -s /repos/scripts/wp/woocommerce/woo_df/sh/deploy_wp_full.sh /www/wwwroot/deploy_wp_full.sh -f
-ln -s /repos/scripts/wp/woocommerce/woo_df/sh /www/wwwroot/sh -f
-ln -s /repos/scripts/wp/woocommerce/woo_df/sh/nginx_conf/update_nginx_vhosts_conf.sh /update_nginx_vhosts_conf.sh -f
+ln -s /repos/scripts/wp/woocommerce/woo_df/sh /www/sh -f
+ 
+
 ```
 
-## 定时自动任务crontab
+## 定时自动任务crontab🎈
 
 使用`crontab -e`选择编辑器编辑自动任务,添加以下内容(可以自定义执行时间)
 
 ```bash
-0 * * * * /www/wwwroot/sh/deploy_wp_schd.sh
+0 * * * * bash /www/sh/deploy_wp_schd.sh #定时部署解压wp站(每个小时0分的时候执行一次)
+*/5 * * * * bash /www/sh/run-all-wp-cron.sh #定时执行wp-cron(每5分钟执行1次)
 ```
 
 注意脚本`deploy_wp_schd.sh`这个脚本的可执行权限(每次更新代码,上面的代码会尝试自动修改这些文件的可执行权限)
+
+利用系统的crontab定时执行wp-cron,这里的脚本利用了`wp-cli`命令行工具来触发,而不需要通过http链接触发,执行后有日志文件
+
+
 
 ## nginx公共配置文件com.conf
 
@@ -283,5 +291,35 @@ $ sudo -u www wp plugin list
   $dirs|% -Parallel {cd $_;sudo -u www wp plugin activate wps-hide-login } -ThrottleLimit 10
   ```
 
-  
+### 禁用wp定时任务wp-cron
+
+powershell批量修改本地wp站点的`wp-config.php`（也可以考虑尝试wp-cli配置）
+
+```bash
+
+using namespace System.Collections.Generic
+$configs = Get-ChildItem $wp_sites/*.* -Depth 2 -File -Filter wp-config.php | Select-Object -ExpandProperty FullName 
+
+$configs | ForEach-Object {
+    
+    #修改单个wp-config.php内容(不立刻回写)
+    # $Path = ".\wp-config.php"
+    $Path = $_
+    $strList = [System.Collections.Generic.List[string]]::new()
+    Get-Content $Path | ForEach-Object { 
+        if( $_ -match '.*Add any custom.*')
+        {
+            $t = $_ + @"
+
+define('DISABLE_WP_CRON', true);#禁用wp-cron任务,使用系统定时任务代替
+
+"@
+        }
+        else { $t = $_ } 
+        $strList.Add($t)
+
+    } 
+    $strList | Set-Content -Path $Path -Encoding UTF8 -Force 
+}
+```
 
