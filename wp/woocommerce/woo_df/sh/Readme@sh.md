@@ -170,7 +170,35 @@ ln -s /repos/scripts/wp/woocommerce/woo_df/sh /www/sh -f
 
 
 
-## nginx公共配置文件com.conf
+## nginx配置
+
+### 总配置nginx.conf
+
+放在`http{}`块中
+
+```nginx
+# 可选：针对可疑 User-Agent 或空 User-Agent 限流
+map $http_user_agent $allow_access {
+    default 0;
+
+    # 允许常见浏览器
+    "~*chrome"     1;
+    "~*firefox"    1;
+    "~*safari"     1;
+    "~*edge"       1;
+    "~*opera"      1;
+
+    # 允许 Google / Bing
+    "~*googlebot"  1;
+    "~*bingbot"    1;
+    # 允许 wp定时任务请求
+    "~*wordpress"   1;
+}
+```
+
+
+
+### 公共配置文件com.conf
 
 对于宝塔用户,可以在`/www/server/nginx/conf`目录下创建一个`com.conf`的配置文件
 
@@ -181,31 +209,53 @@ ln -s /repos/scripts/wp/woocommerce/woo_df/sh /www/sh -f
 每次有需求修改完成后需要重载nginx配置才能逐渐生效`nginx -t && nginx -s reload` (如果语法有误,会报错,如果通过检测,就会重载配置)
 
 ```bash
+
+
+
 # --- 拦截 xmlrpc.php ---
-# location = /xmlrpc.php {
-#     deny all;
-#     # 返回 444 断开连接（比 403 更隐蔽）
-#     # return 444;
-# }
 location = /xmlrpc.php {
     deny all;
-    return 403;
+    # 返回 444 断开连接（比 403 更隐蔽）
+    return 444;
+    # return 403;
 }
 
 # 精确匹配：/wp-admin
 location = /wp-admin {
     return 403;
 }
-# 粗暴禁止访问或跳转到/wp-login.php,部分情况会拦住自己人,如有特殊需要,可以临时开放
-# 通常,配合wps-hide-login通常都可以完美让自己人使用专门的后台入口顺利登录(如果被拦截,可能是该插件没启用或者目录名称被改动导致插件失效)
+# 粗暴禁止访问或跳转到/wp-login.php,配置不当的话部分情况会拦住自己人,如有特殊需要,可以临时开放
+# (通常正确安装并激活wps-hide-login后不会被此规则拦截,自己人使用约定的入口url可以登录后台)
 location = /wp-login.php{
     return 403;
 }
+# 拒绝非 Google/Bing 爬虫
+if ($allow_access = 0) {
+    return 444; # 直接断开连接
+}
+# if ($allowed_bot = 0) {
+#     return 403;
+# }
+# --- 保护 wp-login.php ---
+# location = /wp-login.php {
+#     limit_req zone=wplogin burst=1 nodelay;
+
+#     # 可选：仅允许特定 IP 登录（推荐！）
+#     # allow 192.168.1.100;   # 你的办公 IP
+#     # deny all;
+
+#     # 允许 POST（登录提交），但限制频率
+#     # try_files $uri =404;
+#     # include /etc/nginx/fastcgi_params;
+#     # fastcgi_pass php_backend;
+#     # fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+# }
 
 
 
 # --- 保护 wp-cron.php（可选）---
 # 正常应由内部触发，不建议公开访问
+
 location = /wp-cron.php {
     # deny all;  # 如果你用系统 cron 替代
     allow 127.0.0.1;  # 只允许本地或 Cloudflare（谨慎）
