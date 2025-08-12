@@ -569,9 +569,11 @@ deploy_site() {
     local plugins_dir="$target_dir/wp-content/plugins"
     local wps_hide_login_dir="$plugins_dir/wps-hide-login"
     local wps_hide_login_dir_bak="${wps_hide_login_dir}.bak"
+
     if [ -d "$wps_hide_login_dir_bak" ]; then
         echo "🔄 重命名 wps-hide-login.bak 为 wps-hide-login"
-        mv "$target_dir/wps-hide-login.bak" "$target_dir/wps-hide-login"
+        # mv "$target_dir/wps-hide-login.bak" "$target_dir/wps-hide-login"
+        mv "$wps_hide_login_dir_bak" "$wps_hide_login_dir"
     else
         echo "ℹ️ 未找到 wps-hide-login.bak 目录，跳过重命名"
     fi
@@ -720,7 +722,7 @@ for user_dir in "${user_dirs[@]}"; do
                 ((sql_backups_processed++))
                 # 归档已用过的sql压缩包文件
                 echo "🗑️ 归档已用过的sql压缩包文件: $sql_archive"
-                mv "$sql_archive" "$DEFAULT_PACK_ROOT/$username/deployed/" -f -v
+                mv "$sql_archive" "$PACK_ROOT/$username/deployed/" -f -v
             else
                 ((failed_sites++))
             fi

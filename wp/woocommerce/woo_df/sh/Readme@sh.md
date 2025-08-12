@@ -78,6 +78,7 @@ $ /deploy.sh --help
 为了方便期间,将脚本组织成一个脚本文件`update_repos.sh`
 
 ```bash
+#!/bin/bash
 #初次下载代码
 #git clone --depth 1 https://gitee.com/xuchaoxin1375/scripts.git /repos/scripts
 
@@ -86,7 +87,7 @@ $ /deploy.sh --help
 #git reset --hard origin/main
 #git pull
 
-#!/bin/bash
+
 
 # === 配置变量 ===
 REPO_URL="https://gitee.com/xuchaoxin1375/scripts.git"
@@ -148,9 +149,10 @@ echo "🎉 代码同步完成：$TARGET_DIR"
 find /repos/scripts/wp/woocommerce/woo_df/sh/ -type f \( -name "*.sh" -o -name "*.bash" \) -exec chmod +x {} \;
 
 # 更新符号链接
+ln -s /repos/scripts/wp/woocommerce/woo_df/sh /www/sh -f
 ln -s /repos/scripts/wp/woocommerce/woo_df/sh/deploy_wp_full.sh /deploy.sh -f
 ln -s /repos/scripts/wp/woocommerce/woo_df/sh/deploy_wp_full.sh /www/wwwroot/deploy_wp_full.sh -f
-ln -s /repos/scripts/wp/woocommerce/woo_df/sh /www/sh -f
+
  
 
 ```
