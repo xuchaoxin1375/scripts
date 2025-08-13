@@ -677,19 +677,24 @@ function Get-MysqlTablesList
         return $tables
     }
 }
-function Start-SqlStatementTemplate
+function Start-MySqlStatementForAllDatabasesTemplate
 {
     <# 
-    多个数据库批量执行一段sql指令
+    .SYNOPSIS
+    批量地为多个数据库批量执行一段sql指令
+    .DESCRIPTION
     比如读取本地mysql数据库中所有数据库,然后对这些数据执行同一段sql语句的模板
-    替换...为你要执行的sql语句
+    .NOTES
+    注意参数sql语句比较复杂的时候,建议使用多行字符串
+
+    或者读取原码,替换...为你要执行的sql语句
     #>
     param (
-        $sql
+        $Sql
     )
     Get-MySqlDatabaseNameNative | ForEach-Object { 
         $Db = $_
-        $useDbSql = "use $Db;"
+        $useDbSql = "use $Db; "
         
         mysql -uroot -p"$env:MySqlKey_LOCAL" -e ($useDbSql + $sql)
         <# 
