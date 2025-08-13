@@ -70,7 +70,7 @@ python $pys\woo_get_csv.py -f .webp -s 354 -e 378  -C $country  -o $desktop/$typ
 ```powershell
 $type='  家居  '.trim()
 $country='  DE  '.trim()
-python $pys\woo_get_csv.py -f .webp -s 521 -e 527  -C $country  -o $desktop/$type-$country-$(date -format MMdd-hh-mm-ss)
+python $pys\woo_get_csv.py -f .webp -s 528 -e 542    -E 524 -C $country  -o $desktop/$type-$country-$(date -format MMdd-hh-mm-ss)
 ```
 
 又比如,导出397~448区间中的任务,跳过446号任务(通常是因为采集任务没有结束或者已知数据有问题要跳过),使用了`-R`表示严格去重复
@@ -93,7 +93,7 @@ py $pys\woo_get_csv.py -f .webp -s 501  -C DE  -o $desktop/百货-DE-0808.501
 
 只导出一个任务,可以省略`-e`
 
-```
+```powershell
 python $pys\woo_get_csv.py -f .webp -s 474  -C US  -o $desktop/outdoor_us_0720
 ```
 

@@ -105,7 +105,13 @@ def parse_args():
         default=10000,
         help="最高价格过滤标准（默认：10000）",
     )
+    parser.add_argument(
+        "--limit-sale",
+        type=float,
+        default=298.98,
+        help="限制最高售价",
 
+    )
     # 图片导出模式
     parser.add_argument(
         "-m",
@@ -184,12 +190,15 @@ HIGHEST_PRICE = args.highest_price
 # LANGUAGE = LanguagesHotSale.US.name
 LANGUAGE = args.language_country or LanguagesHotSale.US.name
 
+LIMIT_SALE = args.limit_sale or 298.98
+
 # 获取当前的日期时间字符串(开放可以指定NOW_STR的参数,这样允许用户控制某个时间点导出的数据sku后缀为指定值,可以用来修复数据而不改变其他,比如现有的图片对应关系)
 NOW_STR = datetime.now().strftime("%Y%m%d-%H%M%S")
 LANGUAGE = LANGUAGE.upper()
 DEFAULT_SUFFIX = LANGUAGE + NOW_STR
 # sku后缀自定义
 SKU_SUFFIX = args.sku_suffix or DEFAULT_SUFFIX
+
 
 # 小分类阈值,小于该阈值的分类将被视为小分类,将其分配到热销类(或其近义词);设置为0表示不处理分类
 # 限制产品数量少的分类,将其分配到热销类(或其近义词)
@@ -408,6 +417,7 @@ if __name__ == "__main__":
         split_files_size=10000,
         img_mode=IMAGE_MODE,
         default_extension=DEFAULT_IMAGE_EXTENSION,
+        limit_sale=LIMIT_SALE,
     )
 
 

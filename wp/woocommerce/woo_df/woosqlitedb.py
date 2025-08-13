@@ -979,12 +979,12 @@ but different image, keep records [%s]",
             lines.append(line_dict)
         return lines
 
-    def get_sale_price(self, price):
+    def get_sale_price(self, price, limit_sale=298.98):
         """获取产品折扣价格
         1.价格小于100的打3折
         2.价格100到300的打0.25折
         3.价格大于300的先打0.2折
-        4.价格大于300的打完0.2折后。价格还大于300的价格设置为299.99
+        4.价格大于300的打完0.2折后。价格还大于300的价格设置为上限值
         :param row: 数据库行
         :return: 折扣价格(如果返回0,表示这个产品初始价格过于低或过高,这个产品要过滤掉,由调用者处理)
         """
@@ -1014,7 +1014,7 @@ but different image, keep records [%s]",
         elif price >= 300:
             sale_price = price * 0.2
             if sale_price > 300:
-                sale_price = 299.99
+                sale_price = limit_sale
 
         # 保留2位小数
         sale_price = round(sale_price, 2)
@@ -1027,6 +1027,7 @@ but different image, keep records [%s]",
         extra_fields=None,
         hot_class=LanguagesHotSale,
         language="",
+        limit_sale=298.98,
         req_response=False,
         default_extension=".webp",
     ):
@@ -1056,7 +1057,7 @@ but different image, keep records [%s]",
         for row in rows:
             # 数据处理:特价
             price = row[DBProductFields.REGULAR_PRICE.name]
-            sale_price = self.get_sale_price(price)
+            sale_price = self.get_sale_price(price, limit_sale=limit_sale)
             if sale_price == 0:
                 continue
             # 数据处理:产品分类(将分类取值为非常规值做一个恰当的转换,比如热销这类的此)
@@ -1253,6 +1254,7 @@ but different image, keep records [%s]",
         img_mode=ImageMode.NAME_AS_URL,
         split_files_size=10000,
         average_split_files=0,
+        limit_sale=298.98,
         default_extension=".webp",
     ):
         """
@@ -1271,7 +1273,10 @@ but different image, keep records [%s]",
         warning("Info:csv header: %s", header_for_woo)
         # 准备好数据🎈
         lines = self.get_lines_dict_for_csv(
-            dbs=dbs, img_mode=img_mode, default_extension=default_extension
+            dbs=dbs,
+            img_mode=img_mode,
+            default_extension=default_extension,
+            limit_sale=limit_sale,
         )
 
         # self._export_csv(file_path, header, lines)
