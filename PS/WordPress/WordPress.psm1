@@ -709,7 +709,9 @@ Get-WpSitePacks -SiteDirecotry $destination
             Pause
         }
         # 导入数据库并执行基础的修改
-        Import-MysqlFile -Server localhost -key $DBKey -SqlFilePath "$SqlFileDir/$template.sql" -DatabaseName $domain  
+        $sqlFile="$SqlFileDir/$template.sql"
+        
+        Import-MysqlFile -Server localhost -key $DBKey -SqlFilePath $sqlFile -DatabaseName $domain  
         Update-WpUrl -Server localhost -key $DBKey -NewDomain $domain -OldDomain $template -protocol http  
         Update-WpTitle -Server localhost -key $DBKey -NewTitle $title -DatabaseName $domain  
         

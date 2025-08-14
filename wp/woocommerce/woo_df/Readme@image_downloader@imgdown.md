@@ -262,19 +262,31 @@ downloader.download(urls, output_dir='./downloaded_images')
 
 
 
-### 配置代理 python命令行环境代理
+### 配置代理 python命令行环境代理🎈
 
 部分网站的图片直接下不动,需要走代理
 
-如果是powershell下,打开cfw/verge,可以赋值代理环境变量下载图片
+如果是powershell下,打开cfw/verge,或者其他代理软件,可以赋值代理环境变量下载图片
 
 得到的命令行形如:(配置临时生效,如果要长期生效,需要修改用户或系统级环境变量)
+
+常用的端口为`8800`或`7897`
 
 ```powershell
 $env:HTTP_PROXY="http://127.0.0.1:7897"; $env:HTTPS_PROXY="http://127.0.0.1:7897"
 ```
 
+或者使用专门的powershell指令
 
+```powershell
+set-proxy -port <port>
+```
+
+例如`set-proxy -port 8800`回车执行,然后再执行图片下载命令
+
+#### 自动化(todo)
+
+自动切换网络代理环境可以在下载脚本中实现,等待后续更新!
 
 ### 命令行使用示例🎈
 

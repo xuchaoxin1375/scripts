@@ -233,6 +233,11 @@ function Import-MysqlFile
                 Invoke-Expression $expression
             }
         }
+        else
+        {
+            Write-Error "Sql File $SqlFilePath not exist!"
+            return $False
+        }
     }
 }
 function Remove-MysqlDB
