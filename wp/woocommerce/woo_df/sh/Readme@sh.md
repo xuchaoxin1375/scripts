@@ -79,12 +79,12 @@ $ /deploy.sh --help
 
 较长的王政代码第一次运行后,就可以用简化版本
 
-### 简化版本
+### 简化版本🎈
 
-!第一次运行需要完整版本
+!第一次运行需要完整版本,之后可以运行以下命令更新代码
 
 ```bash
-ln -s /repos/scripts/wp/woocommerce/woo_df/sh/update_repos.sh /update_repos.sh -f
+bash /www/sh/update_repos.sh 
 ```
 
 ### 完整版本

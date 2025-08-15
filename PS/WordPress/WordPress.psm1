@@ -775,6 +775,7 @@ function Deploy-WpSitesOnline
                 Write-Error "Max retry times  exhuasted, exit"
                 return $False
             }
+            Write-Output $info
         }
         else
         {
