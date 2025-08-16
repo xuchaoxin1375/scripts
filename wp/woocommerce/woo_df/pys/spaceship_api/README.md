@@ -64,6 +64,24 @@ python spaceship_api.py [子命令] [参数]
 python spaceship_api.py list-domains --all
 ```
 
+#### 查询被停用的域名
+
+从所有账号查询
+
+```bash
+python C:\repos\scripts\wp\woocommerce\woo_df\pys\spaceship_api\spaceship_api.py list-domains --list_suspended_domains all $desktop/suspend.json --brief
+```
+
+#### 查询已购买的域名在哪个账号上
+
+假设我有多个spaceship账号,但是最近购买的域名忘记是哪个账号买的,可以利用这些账号的api配置文件并发查询,快速获取结果
+
+```bash
+python C:\repos\scripts\wp\woocommerce\woo_df\pys\spaceship_api\spaceship_api.py get-domain  --from_all_accounts --domain wohnperle.com     
+```
+
+
+
 ### 2. 查询某域名详情
 
 ```cmd

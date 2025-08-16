@@ -85,6 +85,12 @@ python $pys\woo_get_csv.py -f .webp -s 397 -e 448 -E 446  -C US  -o $desktop/bik
 py $pys\woo_get_csv.py -f .webp -s 501  -C DE  -o $desktop/百货-DE-0808.501
 ```
 
+```powershell
+$type='  家居  '.trim()
+$country='  DE  '.trim()
+python $pys\woo_get_csv.py -f .webp -s 524 -C $country  -o $desktop/$type-$country-$(date -format MMdd-hh-mm-ss)
+```
+
 
 
 ---

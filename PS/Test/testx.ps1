@@ -1,30 +1,32 @@
-<# 
-.SYNOPSIS
-    建议配置免密登录，避免每次都输入密码(ssh 密钥注册)
-.DESCRIPTION
-    这里直接上传插件文件夹(你需要手动解压,插件可能是zip或者tar.gz)
-    也可以添加逻辑来支持上传压缩文件(todo)
+function Demo
+{
+    param(
+        [string]$Name,
+        [int]$Age
+    )
 
-#>
-# 定义变量(修改这些变量)
-$server = $env:DF_SERVER1               # 服务器IP地址
-$username = "root"              # 服务器用户名
-# $password = ""              # 服务器密码（不推荐明文存储）
-$plugin_dir_local = "W:\wp_sites\wp_plugins\price_pay\gbpay_cvv"   # 本地文件路径🎈
-$phpScript = "install_plugin_cli.php"          # 要执行的PHP脚本
+    Write-Host "0.绑定到的参数:"
+    Write-Output "Name = $Name"
+    Write-Output "Age = $Age"
 
-$remoteDirectory = "/www/wwwroot"        # 服务器目标目录
-$plugin_dir = "/www/wwwroot/gbpay_cvv"    # 服务器目标插件目录
+    Write-Output "1.`$args (未绑定参数): $args"
+    Write-Output "2.`$PSBoundParameters (绑定参数哈希): $($PSBoundParameters.GetEnumerator()|Out-String)"
+    Write-Output "3.`$MyInvocation (调用上下文): $($MyInvocation.Line)"
+    # 检查管道输入
+    if($input)
+    {
+        Write-Output "4.管道输入:"
+        $i=1
+        foreach($item in $input)
+        {
+            Write-Host "pipe input item($i):$item"
+            $i++
+        }
+    }
+}
 
-
-
-# 上传文件到服务器
-Write-Output "Uploading file to server..."
-scp -r $plugin_dir_local $username@${server}:"$remoteDirectory" 
-
-
-# 执行PHP脚本
-Write-Output "Executing PHP script...(this need several minutes...)"
-ssh $username@$server "php $remoteDirectory/$phpScript $remoteDirectory $plugin_dir "
-
-Write-Output "Done."
+# 调用(其中显式参数-Name和Alice对应,而第二个参数30隐式绑定到Age参数,最后多出来的`-Extra X`不会绑定到函数Demo中声明的任何参数,会被$args参数所捕获)
+#例1
+Demo -Name Alice 30 -Extra "X"
+#例2
+'a','b','c'|Demo -Name Alice 30 -Extra "X"

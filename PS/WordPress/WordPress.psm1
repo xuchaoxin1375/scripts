@@ -12,21 +12,51 @@ function Remove-WpSitesLocal
     - 删除数据库
     - 删除nginx配置文件(调用Restart-Nginx也可以触发此动作)
     #>
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
     param(
         $Table = "$desktop/my_table.conf",
         $SitesDir = $my_wp_sites,
-        $NginxConfDir = "$env:nginx_conf_dir"
+        $NginxConfDir = "$env:nginx_conf_dir",
+        [switch]$Force
     )
     $domains = Get-DomainUserDictFromTableLite -Table $Table | Select-Object -ExpandProperty domain
     # Write-Host $domains
     $msg = $domains | Format-DoubleColumn | Out-String
     Write-Verbose $msg -Verbose
-    Write-Warning "准备并行删除相关本地站点,配套配置和数据库" -WarningAction Inquire
+    if ($Force -and !$PSBoundParameters.ContainsKey('Confirm') )
+    {
+        $ConfirmPreference = "None"
+    }
+    Write-Warning "准备并行删除相关本地站点,配套配置和数据库(如果有已经下载到网站根目录的图片也会一并删除,如果要保留图片请移动图片目录到其他位置!!!)"
+
+    Get-WpSitesLocalImagesCount
+    
+    Write-Warning "继续删除?" -WarningAction Inquire
+
     # 多线程删除网站根目录
     $jobs = @()
     foreach ($domain in $domains)
     {
         $siteRoot = "$SitesDir/$domain"
+        # 正式删除前,检查一下站点目录下是否存在大量图片或文件(可能是已经下载好图片了),提示用户是否进行备份后再删除(默认停止操作)
+        # $imgDir = "$siteRoot/wp-content/uploads"
+        # $imgCount = (Get-ChildItem $imgDir -Recurse -File | Measure-Object).Count
+        # if ($imgCount -gt 1000)
+        # {
+        #     write-warning "站点目录下的uploads中存在大量($imgCount)个图片或文件,请确认是否进行备份后再删除" 
+        #     if($PSCmdlet.ShouldProcess($imgDir, "删除网站目录及其相关配置"))
+        #     {
+        #         Write-Host "删除网站目录及其相关配置(start-threadjob)..." 
+        #     }
+        #     else
+        #     {
+        #         Write-Host "取消删除网站目录及其相关配置..."
+        #         continue
+        #     }
+        # }else{
+        #     Write-Host "网站图片目录不足1000张, 删除网站目录及其相关配置(start-job)..."
+        # }
+
         $job = Start-ThreadJob -Name "Remove:$domain" -ScriptBlock {
             param($Path)
             Remove-Item -Path $Path -Recurse -Force -ErrorAction SilentlyContinue
@@ -589,7 +619,7 @@ function Deploy-WpSitesLocal
     {
         $domain = $row.Domain
         $template = $row.Template
-        $title=$row.Title
+        $title = $row.Title
         Write-Debug "Processing domain: [$domain], template: [$template],with title: [$title]"
 
         $path = "$WpSitesTemplatesDir/$template"
@@ -673,17 +703,17 @@ function Deploy-WpSitesLocal
             New-Item -ItemType Directory -Path $CsvDirHome -ErrorAction SilentlyContinue -Verbose
             
             $script = @"
-# =========[    http://$domain/login  ]:[ cd    $destination    ]=>[图片目录:   explorer $destination/wp-content/uploads/2025 ]==========
+# =========[    http://$domain/login  ]:[ cd  $destination  ]=>[图片目录: explorer $destination/wp-content/uploads/2025 ]==========
 
 
 # 下载图片
 python $pys\image_downloader.py -c -n -R auto -k  -rs 1000 800  --output-dir $ImgDir --dir-input $CsvDirHome -w 5 -U curl
 
 # 导入产品数据到数据库
-python $pys\woo_uploader_db.py --update-slugs  --csv-path $CsvDirHome --img-dir $ImgDir --db-name $domain 
+python $pys\woo_uploader_db.py --update-slugs  --csv-path $CsvDirHome --img-dir $ImgDir --db-name $domain --max-workers 20
 
 # 打包网站
-Get-WpSitePacks -SiteDirecotry $destination
+Get-WpSitePacks -SiteDirecotry $destination -Mode zstd
 
 
 "@
@@ -709,7 +739,7 @@ Get-WpSitePacks -SiteDirecotry $destination
             Pause
         }
         # 导入数据库并执行基础的修改
-        $sqlFile="$SqlFileDir/$template.sql"
+        $sqlFile = "$SqlFileDir/$template.sql"
         
         Import-MysqlFile -Server localhost -key $DBKey -SqlFilePath $sqlFile -DatabaseName $domain  
         Update-WpUrl -Server localhost -key $DBKey -NewDomain $domain -OldDomain $template -protocol http  
@@ -745,7 +775,7 @@ function Deploy-WpSitesOnline
         $WaitTimeBasic = 60,
         $MaxRetryTimes = 20,
         $RetryGap = 30,
-        $SpaceshipConfig="$Desktop/spaceship_config.json"
+        $SpaceshipConfig = "$Desktop/spaceship_config.json"
 
     )
     # 创建宝塔空站点

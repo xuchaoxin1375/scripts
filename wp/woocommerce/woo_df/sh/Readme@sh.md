@@ -87,6 +87,14 @@ $ /deploy.sh --help
 bash /www/sh/update_repos.sh 
 ```
 
+或者直接
+
+```bash
+/update_repos.sh
+```
+
+
+
 ### 完整版本
 
 ```bash
