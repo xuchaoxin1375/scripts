@@ -33,14 +33,38 @@ DEFAULT_CONFIG_PATH = os.path.join(DESKTOP, "spaceship_config.json")
 class APIClient:
     """spaceship 域名管理API封装客户端程序"""
 
-    def __init__(self, api_key, api_secret, account="Default"):
+    def __init__(self, api_key="", api_secret="", account="", auth=None, timeout=30):
         """初始化API客户端"""
-        self.account = account
-        self.api_key = api_key
-        self.api_secret = api_secret
+        # 配置文件中所有账号信息(如果有读取配置文件的话),字典形式存储可以提高查找效率
+        self.auth = auth
+        self.accounts = {}
+        self.accounts = self.get_accounts()
+
+        # 默认账号信息
+        self.account = account or auth.get("account")
+        self.api_key = api_key or self.accounts.get(self.account).get("api_key")
+        self.api_secret = api_secret or self.accounts.get(self.account).get(
+            "api_secret"
+        )
+        # 其他配置
         self.base_url = "https://spaceship.dev/api/v1"
         self.domains_in_all_accounts = []
         self.suspended_domains = []
+        self.timeout = timeout
+
+    def get_accounts(self):
+        """获取配置文件中所有账号信息的易于检索的字典形式"""
+        if self.auth:
+            accounts = self.auth["accounts"]
+            # 定义账号速查字典结构
+            self.accounts = {
+                accunt["account"]: {
+                    "api_key": accunt["api_key"],
+                    "api_secret": accunt["api_secret"],
+                }
+                for accunt in accounts
+            }
+        return self.accounts
 
     def _headers(self):
         """生成请求头"""
@@ -57,7 +81,7 @@ class APIClient:
         url = f"{self.base_url}{endpoint}"
         # 发送请求
         response = requests.request(
-            method, url, headers=self._headers(), timeout=10, **kwargs
+            method, url, headers=self._headers(), timeout=self.timeout, **kwargs
         )
         # 不成功则抛出异常
         response.raise_for_status()
@@ -282,36 +306,58 @@ class APIClient:
         return self.domains_in_all_accounts
 
     def get_domain(self, domain):
-        """查询域名详情"""
+        """查询域名详情
+
+        Args:
+            domain (str): 域名
+
+        Returns:
+            dict|None: 域名信息，未找到返回None
+
+        """
         # return self._request("GET", f"/domains/{domain}")
         # 增加异常处理
+        # print('查询域名详情')
         res = None
         try:
             res = self._request("GET", f"/domains/{domain}")
-            print(f"account:{self.account}:API请求成功!")
-        except Exception :
+            print(f"account:{self.account}:API请求{domain}成功!")
+        except Exception:
             print(
-                f"account:{self.account}:API请求失败或目标不存在于此账户: ",
+                f"\taccount:{self.account}:API请求失败或目标{domain}不存在于此账户: ",
                 file=sys.stderr,
             )
+        # if res:
+        #     print(res)
         return res
 
-    def get_domain_from_all_accounts(self, domain, config):
+    def get_domain_from_all_accounts(self, domain, auth):
         """
         并行从所有账号中检索指定域名信息，优先用当前client（默认配置），失败后并发检索所有账号，检索到即返回。
+        通常这个方法的性能和get_domain差不多,大多数情况下,基本上都能在默认账号下查找到所需要的域名信息。
+        毕竟,购买一批域名分成几个账号是比较少见的情况;
+
+        用例:在调用update_nameservers这类方法时,可以先调用此方法检查一下域名购买在哪个账号中,然后根据获取的账号信息修改域名服务器nameservers
+
         Args:
             domain (str): 要检索的域名
             config (dict): 配置字典，需包含accounts
         Returns:
-            dict or None: 域名信息，未找到返回None
+            dict|None: 域名信息，未找到返回None
         """
         # 1. 先用当前client尝试
         result = self.get_domain(domain)
-        if result and isinstance(result, dict) and result.get("name", "") == domain:
-            return {"account": "default", "domain_info": result}
+        if result:
+            res = {"account": self.account, "domain_info": result}
+            print(f"当前账户{self.account}中找到{domain}域名信息🎈:{res}")
+            return res
+        else:
+            print(f"当前账户{self.account}中未找到{domain}域名信息")
+        print(result,"报告于get_domain_from_all_accounts")
 
         # 2. 并发遍历accounts
-        accounts = config.get("accounts", [])
+        auth = auth or self.auth
+        accounts = auth.get("accounts", [])
         with ThreadPoolExecutor(max_workers=min(16, len(accounts))) as executor:
             # 构造future_to_account字典,便于后续检索任务信息
             future_to_account = {}
@@ -322,8 +368,9 @@ class APIClient:
                 api_secret = account.get("api_secret")
                 if not api_key or not api_secret:
                     continue
+                # 构造对应账号的api实例
                 client = APIClient(api_key, api_secret, account=account_name)
-                # 提交executor发送查询请求
+                # 提交executor发送查询请求🎈
                 future = executor.submit(client.get_domain, domain)
                 # 记录到future信息字典,future作为key,account_name作为value,可以快速检索查询任务对应的账号
                 future_to_account[future] = account_name
@@ -332,11 +379,7 @@ class APIClient:
                 account_name = future_to_account[future]
                 try:
                     result = future.result()
-                    if (
-                        result
-                        and isinstance(result, dict)
-                        and result.get("name", "") == domain
-                    ):
+                    if result:
                         return {"account": account_name, "domain_info": result}
                 except Exception:
                     continue
@@ -347,22 +390,58 @@ class APIClient:
         """获取域名的nameservers信息
         返回: nameservers对象（dict或list），未找到时返回None
         """
-        domain_info = self._request("GET", f"/domains/{domain}")
-        if (
-            domain_info
-            and isinstance(domain_info, dict)
-            and "nameservers" in domain_info
-        ):
+        domain_info = None
+        try:
+            domain_info = self._request("GET", f"/domains/{domain}")
+        except Exception:
+            print(
+                f"\taccount:{self.account}:API请求失败或目标不存在于此账户: ",
+                file=sys.stderr,
+            )
+        if domain_info:
             return domain_info["nameservers"]
-        print("未找到nameservers信息")
+        # print("此账号下未找到nameservers信息")
         return None
 
-    def update_nameservers(self, domain, provider, hosts: list[str] | None = None):
+    def update_nameservers(
+        self, domain, provider, hosts: list[str] | None = None, auth=None
+    ):
         """更新域名的nameservers信息
+        如果需要并行请求,请在外部调用时使用多线程等技术
+
         :param domain: 域名
         :param provider: nameservers提供商（basic/custom）
         :param hosts: nameserver主机列表（仅provider为custom时需要）
         """
+        # 在执行nameservers更新操作前,先检查域名购买于哪个账号下(如果不是默认账号,会修改api实例的api_key和api_secret来实现账号切换),然后在该账号下进行操作
+        auth = auth or self.auth
+        # 检查domain存在于哪个账号下
+        domain_info = self.get_domain_from_all_accounts(domain, auth)
+        # print(f"查找结果:{domain_info}🎈",f"\n{type(domain_info)}")
+        if not domain_info:
+            print(f"未找到{domain}域名信息", file=sys.stderr)
+            account = domain_info["account"]
+            print(f"默认账号信息发生切换：{self.account} -> {account} ")
+            self.account = account
+
+            if account != "default":
+                print(f"域名{domain}不在默认账号下,而在{account}账号下")
+                if not self.accounts:
+                    self.get_accounts()
+                # 读取查询到的account_name对应的api_key和api_secret
+                ## 方案1:构造api对象来更新域名服务器
+                ## 方案2:直接修改当前api实例的api_key和api_secret(开销较小)
+
+                self.api_key = self.accounts[account]["api_key"]
+                self.api_secret = self.accounts[account]["api_secret"]
+            # return None
+        else:
+            print(f"域名{domain}在配置文件的某个已有账号{domain_info['account']}中找到")
+            # 切换api实例中的账号信息
+            self.account = domain_info["account"]
+            self.api_key=self.accounts[self.account]["api_key"]
+            self.api_secret=self.accounts[self.account]["api_secret"]
+        # print('dbg')
         payload = {"provider": provider}
         if provider == "custom" and hosts:
             payload["hosts"] = hosts
@@ -486,7 +565,7 @@ def load_config(config_path):
 
 
 # def get_auth(args, config):
-#     """获取API认证信息"""
+#     """减缓的获取API认证信息"""
 #     return {
 #         "api_key": args.api_key or config.get("api_key"),
 #         "api_secret": args.api_secret or config.get("api_secret"),
@@ -495,10 +574,12 @@ def get_auth(config_path, args=None):
     """加载配置
     读取配置文件和环境变量中相关值
 
+    最终返回从配置文件中读取的信息,对于key,secret,会根据优先级决定最终配置
+
     Args:
         config_path (str): 配置文件路径
     Returns:
-        dict: 配置信息
+        dict: 最终读取并处理后得到的完整的配置信息
 
     key,secret优先级按照以下顺序(高优先级的值会覆盖低优先级的配置中对应的字段值):
 
@@ -829,11 +910,11 @@ def main():
     args = parse_args()
     # config = load_config(args.config)
     # auth = get_auth(args, config)
-    auth = get_auth(args.config, args)
+    auth = get_auth(config_path=args.config, args=args)
     if not auth["api_key"] or not auth["api_secret"]:
         print("API Key 和 Secret 必须指定 (命令行或配置文件)", file=sys.stderr)
         sys.exit(1)
-    client = APIClient(auth["api_key"], auth["api_secret"])
+    client = APIClient(auth["api_key"], auth["api_secret"], auth=auth)
     # 解析命令行参数🎈(子命令+对应选项)
     if args.command == "list-domains":
         print("正在获取域名列表,请稍后...")
@@ -912,9 +993,7 @@ def main():
     elif args.command == "get-domain":
         from_all_accounts = getattr(args, "from_all_accounts", False)
         if from_all_accounts:
-            result = client.get_domain_from_all_accounts(
-                domain=args.domain, config=auth
-            )
+            result = client.get_domain_from_all_accounts(domain=args.domain, auth=auth)
         else:
             result = client.get_domain(args.domain)
 

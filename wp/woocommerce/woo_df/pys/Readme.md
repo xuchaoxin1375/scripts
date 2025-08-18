@@ -62,15 +62,15 @@ python $pys\woo_get_csv.py -f .webp --start-id  $start_id --end-id $end_id  --la
 ```powershell
 $type='  品类  '.trim()
 $country='  DE  '.trim()
-python $pys\woo_get_csv.py -f .webp -s 354 -e 378  -C $country  -o $desktop/$type-$country-$(date -format MMdd-hh-mm-ss)
+python $pys\woo_get_csv.py -f .webp -s ? -e ?  -C $country  -o $desktop/$type-$country-$(date -format MMdd-hh-mm-ss)
 ```
 
 例如
 
 ```powershell
-$type='  家居  '.trim()
-$country='  DE  '.trim()
-python $pys\woo_get_csv.py -f .webp -s 543 -e 557    -E 524 -C $country  -o $desktop/$type-$country-$(date -format MMdd-hh-mm-ss)
+$type='  汽配  '.trim()
+$country='  IT  '.trim()
+python $pys\woo_get_csv.py -f .webp -s 559 -e 569    -C $country  -o $desktop/$type-$country-$(date -format MMdd-hh-mm-ss)
 ```
 
 又比如,导出397~448区间中的任务,跳过446号任务(通常是因为采集任务没有结束或者已知数据有问题要跳过),使用了`-R`表示严格去重复

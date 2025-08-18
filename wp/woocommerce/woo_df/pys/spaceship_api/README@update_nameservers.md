@@ -85,7 +85,7 @@ PS> py .\update_nameservers.py
 执行输出示例
 
 ```bash
-#⚡️[Administrator@CXXUDESK][C:\repos\scripts\wp\woocommerce\woo_df\pys\spaceship_api_client][22:12:58][UP:25.35Days]
+#⚡️[Administrator@CXXUDESK][C:\repos\scripts\wp\woocommerce\woo_df\pys\spaceship_api][22:12:58][UP:25.35Days]
 PS> python .\update_nameservers.py -d C:\Users\Administrator\Desktop\table.conf -c C:\sites\wp_sites\spaceship_config.json   
                domain               nameserver1               nameserver2
 0     hsch.com  aitana.ns.cloudflare.com  jeremy.ns.cloudflare.com
@@ -105,7 +105,7 @@ guwahl.com after {'provider': 'custom', 'hosts': ['aitana.ns.cloudflare.com', 'j
 或者配置默认值后的无参数调用(输出是一样的)
 
 ```powershell
-#⚡️[Administrator@CXXUDESK][C:\repos\scripts\wp\woocommerce\woo_df\pys\spaceship_api_client][22:35:36][UP:25.36Days]
+#⚡️[Administrator@CXXUDESK][C:\repos\scripts\wp\woocommerce\woo_df\pys\spaceship_api][22:35:36][UP:25.36Days]
 PS> py .\update_nameservers.py 
 ...
 ```

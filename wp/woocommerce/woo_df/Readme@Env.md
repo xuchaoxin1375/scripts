@@ -38,6 +38,16 @@ setx MySqlKey_LOCAL "  "
 
 配置完以后关闭所有命令行窗口,以及vscode窗口(如果有用到vscode的话)再重新打开才会生效	
 
+其他可选配置(spaceship_api模块)
+
+```powershell
+ Add-EnvVar -Name pythonpath -NewValue $pys/spaceship_api
+```
+
+
+
+### 环境自检
+
 然后执行以下powershell命令检查是否可以通过检查🎈
 
 ```powershell

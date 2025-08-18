@@ -97,6 +97,8 @@ In [3]:
 
 ```powershell
 New-Item -ItemType Junction -Path "$desktop/pys" -Target $pys -Verbose
+New-Junction C:/pys -Target $pys
+New-Junction C:/woo_df -Target $woo_df 
 ```
 
 这里的`$desktop/pys`也可以替换成你喜欢的位置,默认会再桌面生成`pys`符号

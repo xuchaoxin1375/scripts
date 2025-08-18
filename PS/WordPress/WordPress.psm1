@@ -703,7 +703,7 @@ function Deploy-WpSitesLocal
             New-Item -ItemType Directory -Path $CsvDirHome -ErrorAction SilentlyContinue -Verbose
             
             $script = @"
-# =========[    http://$domain/login  ]:[ cd  $destination  ]=>[图片目录: explorer $destination/wp-content/uploads/2025 ]==========
+# =========[    http://$domain/login  ]:[ cd  $destination  ]=>[图片目录: explorer $destination\wp-content\uploads\2025 ]==========
 
 
 # 下载图片
@@ -772,54 +772,94 @@ function Deploy-WpSitesOnline
     param(
         [alias('Host', 'Server', 'Ip')]
         $HostName = $env:DF_SERVER1,
+        [alias('Table')]$FromTable = "$Desktop/table.conf",
         $WaitTimeBasic = 60,
         $MaxRetryTimes = 20,
         $RetryGap = 30,
+        [alias('DomainTable')]$ToTable = "$Desktop/domains_nameservers.csv",
         $SpaceshipConfig = "$Desktop/spaceship_config.json"
 
     )
-    # 创建宝塔空站点
-    Deploy-BatchSiteBTOnline
-    # 添加域名解析到cf
+
+    # 添加域名解析到cf(第一步执行)
     Add-CFZoneDNSRecords -AddRecordAtOnce
-    # 更新spaceship域名的nameservers
-    Update-SSNameServers -Config $SpaceshipConfig
+    # 更新spaceship域名的nameservers(cf添加后立即执行spaceship的nameservers更新)
+    Get-CFZoneNameServersTable -FromTable $FromTable
+    Update-SSNameServers -Config $SpaceshipConfig -Table $ToTable
     # 让cf立即检查域名的激活
     Add-CFZoneCheckActivation
-    Write-Warning "等待2到5分钟让cf激活域名保护(不保证成功,大多数情况下可以),基础等待时间$WaitTimeBasic 秒,后续检查是否全部激活,否则循环等待,每次30秒,最多等待5轮"
-    Start-SleepWithProgress -Seconds $WaitTimeBasic
+    
+    # 配置cf域名解析,邮箱转发和代理保护
+    # Add-CFZoneConfig
+    # 创建宝塔空站点
+    Deploy-BatchSiteBTOnline
     # 重启nginx 
     Restart-NginxOnHost -HostName $HostName
+    # 等待环节
+    Write-Warning "等待2到5分钟让cf激活域名保护(不保证成功,大多数情况下可以),基础等待时间$WaitTimeBasic 秒,后续检查是否全部激活,否则循环等待,每次$RetryGap 秒,最多等待$MaxRetryTimes 轮"
+    Start-SleepWithProgress -Seconds $WaitTimeBasic
+    $retryTimes = $MaxRetryTimes
     # 检查域名激活状态
     while ($True )
     {
         
-        $info = Get-CFZoneInfoFromTable
-        
-        if($info | Select-String 'pending')
-        {
-            Write-Host "存在域名未激活,请稍后${RetryGap}重试" -ForegroundColor Cyan
+        # $info = Get-CFZoneInfoFromTable 
+        # if($info | Select-String 'pending')
+        # {
+        #     Write-Host "存在域名未激活,请稍后${RetryGap}重试" -ForegroundColor Cyan
             
-            if($MaxRetryTimes -le 0)
+        #     if($MaxRetryTimes -le 0)
+        #     {
+        #         Write-Error "Max retry times  exhuasted, exit"
+        #         return $False
+        #     }
+        #     Write-Output $info
+        # }
+        # else
+        # {
+        #     Write-Host '所有域名均已激活' -ForegroundColor Green
+        #     break
+        # }
+
+        $info = Get-CFZoneInfoFromTable -Json | ConvertFrom-Json
+        $domianCount = $info.Count
+        $activeCount = 0
+        foreach ($item in $info)
+        {
+            if ($item.status -eq "active")
+            {
+                $activeCount++
+            }
+        }
+        if($activeCount -eq $domianCount)
+        {
+            Write-Host "All domains are active" -ForegroundColor Green
+            return $True
+        }
+        else
+        {
+            Write-Host "There are $activeCount domains active, $domianCount domains total, please wait for $RetryGap seconds and retry" -ForegroundColor Cyan
+            
+            
+            $completed = [math]::Round($activeCount / $domianCount * 100, 2)
+            Write-Progress -Activity "Waiting for domain activation" -Status "There are $activeCount / $domianCount domains active  ($completed% completed)" -PercentComplete $completed 
+            if($retryTimes -eq 0)
             {
                 Write-Error "Max retry times  exhuasted, exit"
                 return $False
             }
+            else
+            {
+                Write-Host "Remanining retry times: $retryTimes"
+            }
             Write-Output $info
+            Start-SleepWithProgress $RetryGap
+            $retryTimes--
         }
-        else
-        {
-            Write-Host '所有域名均已激活' -ForegroundColor Green
-            break
-        }
-
-        Start-SleepWithProgress $RetryGap
+        
     }
     # 配置cf域名解析,邮箱转发和代理保护
     Add-CFZoneConfig
-
-
-
 }
 function Update-WpSitesRobots
 {
@@ -846,7 +886,7 @@ function Update-WpTitle
     .SYNOPSIS
     更新Wordpress网站的标题
      #>
-    [cmdletbinding(SupportsShouldProcess)]
+    [cmdletbinding()]
     param(
 
         [parameter(Mandatory = $true)]

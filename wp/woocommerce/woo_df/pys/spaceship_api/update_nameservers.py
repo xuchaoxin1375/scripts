@@ -1,8 +1,15 @@
 """
+
 更新spaceship中域名的域名服务器(nameservers)
 读取配置文件spaceship_config.json中的信息,获取API_KEY和API_SECRET,并创建APIClient对象,完成配置
 
 方便起见,下面用SS表示SpaceShip
+---
+# powershell命令行:
+    python $pys/spaceship_api/update_nameservers.py -h
+
+# 执行nameservers更新操作
+    python $pys/spaceship_api/update_nameservers.py -c $Desktop/spaceship_config.json -f $Desktop/domains_nameservers.csv -v
 
 配置文件(json)内容示例
 {
@@ -31,6 +38,7 @@
 """
 
 import argparse
+
 # import json
 # import os
 # import sys
@@ -46,12 +54,12 @@ DESKTOP = r"C:/Users/Administrator/Desktop"
 SS_CONFIG_PATH = r"C:/Users/Administrator/Desktop/spaceship_config.json"
 
 # 域名和名称服务器配置表(二选一)
-SS_DOMAINS_TABLE_CONF = f"{DESKTOP}/table.conf"  # 简化格式的配置文件(只关注域名所在列,其他列数据被忽略,默认设置的NS1和NS2从配置文件中读取)
-SS_DOMAIN_NS_PATH = (
-    rf"{DESKTOP}/domains_nameservers.csv"  # 完整格式的专用配置文件(准确)
-)
+# 格式1:简化格式的配置文件(只关注域名所在列,其他列数据被忽略,默认设置的NS1和NS2从配置文件中读取)
+SS_DOMAINS_TABLE_CONF = f"{DESKTOP}/table.conf"
+# 格式2:完整格式的专用配置文件(准确)
+SS_DOMAIN_NS_PATH = rf"{DESKTOP}/domains_nameservers.csv"
 # 选择其中一个🎈
-SS_DOMAINS_FILE = SS_DOMAINS_TABLE_CONF
+SS_DOMAINS_FILE = SS_DOMAIN_NS_PATH
 
 
 URL_MAIN_DOMAIN_PATTERN = r"(?:https?://)?(?:[\w-]+\.)*([^/]+[.][^/]+)/?"
@@ -159,11 +167,13 @@ def parse_args():
         "  -v, --verbose       显示详细日志\n"
     )
     parser.add_argument(
+        "-f",
+        "-t",
         "-d",
         "--domains-file",
         type=str,
         default=SS_DOMAINS_TABLE_CONF,
-        help="域名和nameserver配置文件路径 (csv/xlsx/conf)",
+        help="域名和nameserver配置文件路径 (csv/xlsx/conf);几个短选项效果和长选项相同",
     )
     parser.add_argument(
         "-c",
@@ -172,7 +182,9 @@ def parse_args():
         default=SS_CONFIG_PATH,
         help=f"SpaceShip API配置文件路径 (json),默认值:f{SS_CONFIG_PATH}",
     )
-    parser.add_argument("--threads", type=int, default=4, help="并发线程数 (默认: 4)")
+    parser.add_argument(
+        "-w", "--threads", type=int, default=4, help="最大并发线程数 (默认: 4)"
+    )
     parser.add_argument(
         "--dry-run", action="store_true", help="仅预览将要修改的内容,不实际提交API"
     )
@@ -192,8 +204,10 @@ def parse_args():
     return parser.parse_args()
 
 
-def update_nameservers(df, api, dry_run=False, verbose=False, threads=4):
-    """使用线程池批量更新域名的域名服务器"""
+def update_nameservers(df, api: APIClient, dry_run=False, verbose=False, threads=4):
+    """使用线程池批量更新域名的域名服务器
+    调用api.update_nameservers方法,更新域名的域名服务器
+    """
 
     def task(row):
         domain = row["domain"]
@@ -208,6 +222,7 @@ def update_nameservers(df, api, dry_run=False, verbose=False, threads=4):
                     f"[DRY-RUN] Would update {domain} to NS: {nameserver1}, {nameserver2}"
                 )
             else:
+                # 更新nameservers🎈
                 result = api.update_nameservers(
                     domain, "custom", [nameserver1, nameserver2]
                 )
@@ -225,9 +240,9 @@ def update_nameservers(df, api, dry_run=False, verbose=False, threads=4):
 def main():
     """主函数"""
     args = parse_args()
-    config = get_auth(args.config, args)
-    api = APIClient(config.get("api_key"), config.get("api_secret"))
-    df = get_data(args.domains_file, config)
+    auth = get_auth(args.config, args)
+    api = APIClient(auth=auth)
+    df = get_data(args.domains_file, auth)
     print(df)
     update_nameservers(
         df, api, dry_run=args.dry_run, verbose=args.verbose, threads=args.threads
