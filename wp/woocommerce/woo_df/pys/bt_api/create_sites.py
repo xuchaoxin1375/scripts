@@ -15,12 +15,16 @@
 # import pybtpanel
 
 
+# import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import re
-
-from btapi import BTApi
+import threading
+import time
 
 from comutils import get_main_domain_name_from_str
+
+from btapi import BTApi
 
 DESKTOP = "C:/users/Administrator/Desktop/"
 BT_CONFIG = f"{DESKTOP}/bt_config.json"
@@ -66,8 +70,10 @@ def _parse_site_to_add(file):
                 url = parts[0]
                 domain = get_main_domain_name_from_str(url)
                 user = parts[1]
-                if(not domain):
-                    print(f"不规范的域名字段:[domain:{domain};line:{line}],跳过此条配置🎈")
+                if not domain:
+                    print(
+                        f"不规范的域名字段:[domain:{domain};line:{line}],跳过此条配置🎈"
+                    )
                     continue
                 data = {
                     "domain": domain,
@@ -119,20 +125,37 @@ def set_rewrite(bt_api: BTApi, site_name, rewrite_rule=REWRITE_CONTENT_WP):
 
 
 def add_sites(bt_api: BTApi, config_file, set_rewrite_rule=True):
-    """批量添加站点
-    从文件中读取并解析站点信息，并批量添加到宝塔面板
-    Args：
-        file:站点信息文件(table.conf)
-
     """
-    for item in parse_site_to_add(config_file):
+    并行批量添加站点
+    """
+
+    sites = parse_site_to_add(config_file)
+    total = len(sites)
+    print(f"共解析到{total}个站点，开始并行添加...")
+
+    lock = threading.Lock()
+
+    def _add_single_site(item, idx=0):
+        """添加单个站点的内置函数
+        (api有专门的单个站点添加接口,这里为了方便供多线程并发调用以及信息统计,专供内部调用)
+        Args:
+            item: 站点信息
+            idx: 索引，用于打印进度
+
+        Returns:
+            tuple:站点域名, 是否成功, 错误信息
+
+        """
         domain = item["domain"]
         domain1 = f"www.{domain}"
         domain2 = f"*.{domain}"
         domainlist = [domain1, domain2]
         user = item["user"]
         path = f"/www/wwwroot/{user}/{domain}/wordpress"
+        msg_prefix = f"[{idx+1}/{total}] {domain}"
         try:
+            with lock:
+                print(f"{msg_prefix} -> 正在添加站点...")
             bt_api.add_site(
                 webname={"domain": domain, "domainlist": domainlist, "count": 0},
                 path=path,
@@ -149,17 +172,44 @@ def add_sites(bt_api: BTApi, config_file, set_rewrite_rule=True):
                 datauser="your_db_user",
                 datapassword="your_db_password",
             )
-            print(f"添加站点成功:[{domain}]")
-            # 配置wp伪静态
+            with lock:
+                print(f"{msg_prefix} -> 添加站点成功！")
             if set_rewrite_rule:
                 try:
                     set_rewrite(bt_api, domain, rewrite_rule=REWRITE_CONTENT_WP)
-                    print(f"配置wp伪静态成功:[{domain}]")
+                    with lock:
+                        print(f"{msg_prefix} -> 配置wp伪静态成功！")
                 except Exception as e:
-                    print(f"配置wp伪静态失败:[{domain}],error:[{e}]")
-
+                    with lock:
+                        print(f"{msg_prefix} -> 配置wp伪静态失败: {e}")
+            return (domain, True, None)
         except Exception as e:
-            print(f"添加站点失败:[{domain}],error:[{e}]")
+            with lock:
+                print(f"{msg_prefix} -> 添加站点失败: {e}")
+            return (domain, False, str(e))
+
+    results = []
+    start_time = time.time()
+    # 使用线程池并发执行任务🎈
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        future_to_idx = {
+            executor.submit(_add_single_site, item, idx): idx
+            for idx, item in enumerate(sites)
+        }
+        for future in as_completed(future_to_idx):
+            res = future.result()
+            results.append(res)
+    elapsed = time.time() - start_time
+
+    # 统计结果
+    print(f"\n批量添加完成，总耗时: {elapsed:.2f} 秒")
+    success = [d for d, ok, _ in results if ok]
+    failed = [(d, err) for d, ok, err in results if not ok]
+    print(f"成功: {len(success)} 个, 失败: {len(failed)} 个")
+    if failed:
+        print("失败站点:")
+        for d, err in failed:
+            print(f"  {d}: {err}")
 
 
 if __name__ == "__main__":

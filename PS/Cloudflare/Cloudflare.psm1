@@ -74,17 +74,23 @@ function Get-CFZoneID
         Write-Output "Error: Zone ID for '$Domain' not found!"
     }
 }
-function Get-CFDnsInfoOfZone
+function Get-CFZoneDnsInfo
 {
+    <# 
+    .SYNOPSIS
+    获取域名的DNS信息
+    #>
     [CmdletBinding()]
     param(
         [parameter(ValueFromPipeline = $true)]
-        $Domain
+        $Domain,
+        [switch]$Json
     )
     process
     {
         Write-Verbose "processing domain: $Domain"
-        $item = flarectl.exe dns list --zone $Domain
+        $j = if($json) { '--json' }else { '' }
+        $item = flarectl.exe $j dns list --zone $Domain 
         return $item + "`n"
     }
 }

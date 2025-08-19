@@ -690,7 +690,7 @@ def main():
         existing_domains = get_existing_domains()
 
         # 使用ThreadPoolExecutor执行多线程配置域名
-        w = 1
+        w = 3
         # (不宜过多,容易429,而且可能导致网站证书请求频率过高使得访问https链接提示ssl证书错误)
         print(f"使用{w}个线程配置域名...")
         with ThreadPoolExecutor(w) as executor:

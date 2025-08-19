@@ -789,8 +789,8 @@ function Deploy-WpSitesOnline
     # 让cf立即检查域名的激活
     Add-CFZoneCheckActivation
     
-    # 配置cf域名解析,邮箱转发和代理保护
-    # Add-CFZoneConfig
+    # 配置cf域名解析,邮箱转发和代理保护(位置1)
+    Add-CFZoneConfig
     # 创建宝塔空站点
     Deploy-BatchSiteBTOnline
     # 重启nginx 
@@ -852,14 +852,16 @@ function Deploy-WpSitesOnline
             {
                 Write-Host "Remanining retry times: $retryTimes"
             }
-            Write-Output $info
+            # 打印本轮查询激活情况的结果
+            # Write-Output $info
+            Write-Host $info
             Start-SleepWithProgress $RetryGap
             $retryTimes--
         }
         
     }
-    # 配置cf域名解析,邮箱转发和代理保护
-    Add-CFZoneConfig
+    # 配置cf域名解析,邮箱转发和代理保护(位置2,暂时使用位置1)
+    # Add-CFZoneConfig
 }
 function Update-WpSitesRobots
 {
