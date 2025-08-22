@@ -71,7 +71,7 @@ python C:\repos\scripts\wp\woocommerce\woo_df\pys\spaceship_api\spaceship_api.py
 假设我有多个spaceship账号,但是最近购买的域名忘记是哪个账号买的,可以利用这些账号的api配置文件并发查询,快速获取结果
 
 ```bash
-python C:\repos\scripts\wp\woocommerce\woo_df\pys\spaceship_api\spaceship_api.py get-domain  --from_all_accounts --domain wohnperle.com     
+python C:\repos\scripts\wp\woocommerce\woo_df\pys\spaceship_api\spaceship_api.py get-domain  --from_all_accounts --domain example.com     
 ```
 
 
@@ -178,7 +178,7 @@ python spaceship_api.py list-dns --domain example.com
 更多命令和参数请使用 `-h` 查看帮助。
 - 查询联系人：
   ```bash
-  python spaceship_api.py get-contact --contact_id 1ZdMXpapqp9sle5dl8BlppTJXAzf5
+  python spaceship_api.py get-contact --contact_id 1ZdMXpapqp9...Azf5
   ```
 
 ### 异步操作

@@ -48,23 +48,18 @@ setx PsModulePath C:/repos/scripts/PS
 
 - 小组人员拼音映射
 
-  创建一个`spiderTeam.json`配置文件,便于将人员名字映射成拼音缩写(或者其他规则也行)
+  创建一个`spiderTeam.json`配置文件,便于将人员名字映射成拼音缩写(或者其他规则也行),例如
 
   ```json
   {
-      "徐超信": "xcx",
-      "郑玮": "zw",
-      "曾世涵": "zsh",
-      "程佳奇": "cjq",
-      "余贤杰": "yxj",
-      "郑麟杰": "zlj",
-      "Bsite": "Bsite",
+      "张三": "zs",
+      "李四": "ls",
       "DFTableStructure": "Domain,User"
   }
   ```
-
   
-
+  
+  
 - 相关api的配置(宝塔,cloudflare,spaceship提供的密钥组合)
 
   - 其中宝塔和spaceship的密钥填写在各自的json配置文件中(写在配置文件中的好处是便于多账号管理和切换),务必存放在本地,不要上传到可能泄露的地方
@@ -81,8 +76,8 @@ setx PsModulePath C:/repos/scripts/PS
 - 域名表(默认位置为桌面的`table.conf`文件中),最少3列,最多4列,分别是[域名/url,域名申请人,模板代号,网站标题)
 
   ```conf
-  https://www.domain1.com	郑*	7.es	Descubre libros que ....undo
-  https://www.domain2.com	曾*	2.us	
+  https://www.domain1.com	张三	7.es	Descubre libros que ....undo
+  https://www.domain2.com	李四	2.us	
   ```
 
   其中网站标题是可选的,如果有,则在本地批量部署的时候会将其设置为站点标题,例如上述例子配置了2个站,第一个站域名是`domain1.com`,人员是'郑*',将使用`7.es`这个模板,站点标题为`Descubre libros que ....undo`
