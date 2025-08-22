@@ -145,7 +145,7 @@ def download_by_iwr(url, output_path, user_agent=None, timeout=30, verify_ssl=Tr
         f"-Uri '{url}'",
         f"-OutFile '{output_path}'",
         f"-TimeoutSec {timeout}",
-        '"'
+        '"',
     ]
     if user_agent:
         cmd.append(f"-Headers @{{'User-Agent'='{user_agent}'}}")
@@ -194,7 +194,7 @@ def download_by_curl(
             silent (bool): 是否静默执行（不输出进度信息）。
             use_remote_name (bool): 是否使用远程文件名保存（即添加 -O 参数）。
             extra_args (Optional[list]): 其他要传给 curl 的额外参数列表。
-            
+
 
         Returns:
             bool: 下载成功返回 True，失败返回 False。
@@ -240,7 +240,9 @@ def download_by_curl(
 
     # 构建 curl 命令参数(基础参数,建议移动到函数默认参数中)
 
-    cmd = ["curl", "-f", "--retry", "3", "--retry-delay", "5","-k"]
+    cmd = ["curl", "-f", "--retry", "3", "--retry-delay", "5"]
+    # 忽略证书安全检查
+    cmd += ["-k", "--ssl-no-revoke"]
 
     # 添加 User-Agent
     cmd += ["-A", user_agent]
@@ -784,7 +786,7 @@ class ImageDownloader:
                     self._download_single_image,
                     url=url,
                     output_dir=output_dir,
-                    filename=filename, #此参数取值来自对可迭代对象name_url_pairs解析出来的filename,url元组中的第一个分量
+                    filename=filename,  # 此参数取值来自对可迭代对象name_url_pairs解析出来的filename,url元组中的第一个分量
                     default_ext=default_ext,
                 ): (filename, url)
                 for filename, url in name_url_pairs

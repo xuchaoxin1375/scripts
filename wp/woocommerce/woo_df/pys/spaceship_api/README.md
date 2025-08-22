@@ -6,13 +6,7 @@
 1. 获取 Spaceship API Key 和 API Secret。
    - 登录 Spaceship 官网，进入 [API 管理页面](https://www.spaceship.com/zh/application/api-manager/)，创建并复制 API Key 和 Secret。
 2. 配置 API 信息。
-   - 推荐将 API 信息保存到 `spaceship_config.json` 文件，格式如下：
-     ```json
-     {
-       "api_key": "你的APIKey",
-       "api_secret": "你的APISecret"
-     }
-     ```
+   - 推荐将 API 信息保存到 `spaceship_config.json` 文件，格式参考[spaceship_config_template_readonly.json](./spaceship_config_template_readonly.json)
    - 或者每次命令行加参数 `--api_key` 和 `--api_secret`。
 
 3. 官方api和文档:[Spaceship public API documentation.](https://docs.spaceship.dev/)

@@ -136,20 +136,21 @@ New-Shortcut -Path "$desktop/pys" -TargetPath  $pys  -Verbose -Force
 
 woo_uploader.py负责的任务,可以多线程或者按批上传数据到wp站
 
-下面是详细文档(和此文档存放在同一个目录中)
+下面是详细文档(和此文档存放在同一个目录中),共有两种方案,一种走api(速度相对慢),另一种是db(直接将本地数据导入到wordPress数据库中,是主力方案)
 
 -   [Readme@woo_uploader_api.md](Readme@woo_uploader_api.md) 
--   [Readme@woo_uploader_db.md](Readme@woo_uploader_db.md) 
+-   [Readme@woo_uploader_db.md🎈](Readme@woo_uploader_db.md) 
 
 ## 脚本和模块环境配置和使用🎈
 
 - 由于代码被拆分成多个文件,所以运行时,命令行的工作目录要定位到这些脚本文件的目录中
+- 为了更加方便使用,需要配置一些环境变量
 
 ### 配置python环境变量🎈
 
 将模块添加到环境变量可以解除该限制
 
-- 在windows系统上,可以通过一下命令行类配置python模块,从而使得相关模块全局可用
+- 在windows系统上,可以通过以下命令行类配置python模块,从而使得相关模块全局可用
 
 - 例如,使用`setx PYTHONPATH "module_path"`(将引号内容替换为模块所在目录)
 
@@ -207,7 +208,7 @@ Add-CxxuPsModuleToProfile #今后将自动加载powershell环境
 
 
 
-## 检查配置
+## 检查配置(可选但是推荐)🎈
 
 - 配置完后,请全新打开一个命令行(powershell/cmd),以便检查配置是否生效
 
@@ -246,9 +247,11 @@ PS>
 
 
 
-### 推荐用vscode使用脚本🎈
+### 推荐用vscode编辑器🎈
 
 这不是必须的,但是可以提升使用体验,便于排查可能出现的问题
+
+使用vscode编辑配置文件(.conf,.json,.ps1,py)等文件体验比普通的传统文本编辑器要好,不仅有高亮,还有代码排版对齐和错误检查(json)等功能,另外对于csv文件的查看和编辑也提供了支持(配合相应的插件)
 
 #### 推荐在vscode中使用,还可以配合插件
 
@@ -260,11 +263,32 @@ PS>
 
 #### csv的查看和编辑以及数据统计分析插件
 
-- [IntelliCode - Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=VisualStudioExptTeam.vscodeintellicode)
+注意,csv默认打开方式建议设置为`Text Editor (Built-in)`
+
 - [Edit CSV - Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=janisdd.vscode-edit-csv)
 - [Jupyter - Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=ms-toolsai.jupyter)
 - [Data Wrangler - Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=ms-toolsai.datawrangler)
 - [Rainbow CSV - Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=mechatroner.rainbow-csv)
+
+### html预览和微http服务器插件
+
+[Live Preview - Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=ms-vscode.live-server)
+
+### ai插件
+
+还有一些ai辅助插件,编写一些脚本可以提供方便,起草脚本框架,修改或改进代码错误,编写测试用例等
+
+- [IntelliCode - Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=VisualStudioExptTeam.vscodeintellicode)
+
+- [GitHub Copilot Chat - Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=GitHub.copilot-chat) 有免费额度
+- [Lingma - Alibaba Cloud AI Coding Assistant - Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=Alibaba-Cloud.tongyi-lingma)
+- [Fitten Code: Faster and Better AI Assistant - Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=FittenTech.Fitten-Code) 具有上下文更改联动提示
+
+### 其他
+
+[Path Autocomplete - Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=ionutvmi.path-autocomplete)
+
+[PowerShell - Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=ms-vscode.PowerShell)
 
 ### vscode中导包排序isort
 

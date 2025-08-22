@@ -295,7 +295,7 @@ location = /wp-cron.php {
   
 ```
 
-## 有用的指令
+## 有用的指令🎈
 
 使用powershell(跨平台的pwsh)方案执行以下任务,记录备用
 
@@ -313,7 +313,9 @@ Get-ChildItem . -Recurse -Depth 5 -filter 'wps-hide-login.bak' -Directory|%{Rena
 
 #### 本地windows端
 
-批量激活插件(比如`wps-hide-login`)
+### 批量激活插件
+
+例如,激活`wps-hide-login`插件
 
 首先`cd`到所有网站所在的总目录,然后扫描各个站点根目录(根据情况修改管道符前面的命令)
 
@@ -362,6 +364,70 @@ $ sudo -u www wp plugin list
   ```bash
   $dirs|% -Parallel {cd $_;sudo -u www wp plugin activate wps-hide-login } -ThrottleLimit 10
   ```
+
+### 批量停用并卸载插件
+
+```powershell
+#⚡️[Administrator@CXXUDESK][~\Desktop][11:33:02][UP:1.88Days]
+PS> ls -path $wp_sites/*.* -Directory|%{wp plugin uninstall 'plugin_name' --deactivate  --path=$_ }
+```
+
+这里使用`wp plugin uninstall <plugin_name> --deactivate  --path=..`来完整移除插件(`--deactivate`表示如果插件还未被停用时,先停用再删除,如果被卸载的插件仍然活跃,会卸载失败)
+
+默认情况下,插件目录也会被删除,除非使用`--skip-delete`选项保留目录(通常也没有这个需求)
+
+此外`wp plugin delete `也不常用,因为这个命令仅仅删除插件目录,但是其他痕迹会保留
+
+### 移除wp-content/uploads目录中多余的目录
+
+假设我的所有网站都放在目录`$wp_sites`下,那么下面的语句可以删除uploads目录中指定的`itemname`目录
+
+```powershell
+ls -Recurse -Directory -Filter <itemname> -Depth 3|?{$_.FullName -like '*wp-content\uploads\*'}|Remove-Item -Verbose
+```
+
+
+
+### 检查语言包
+
+假设当前目录为某个wordpress根目录,查看该站中的已安装的语言可以这么做:
+
+查看已经安装(但是尚未启用)的核心语言包
+
+```powershell
+#⚡️[Administrator@CXXUDESK][C:\sites\wp_sites\2.es]
+PS> wp language core list --format=json | ConvertFrom-Json | Where-Object { $_.status -eq "installed" }|ft
+
+language english_name            native_name             status    update    updated
+-------- ------------            -----------             ------    ------    -------
+de_DE    German                  Deutsch                 installed available 2025-08-13 20:50:37
+en_US    English (United States) English (United States) installed none
+fr_FR    French (France)         Français                installed none      2025-07-22 21:56:43
+zh_CN    Chinese (China)         简体中文                installed none      2025-07-29 06:55:14
+
+```
+
+多余的语言包会占用额外的空间,通常我们保留该网站面向的业务市场语言,以及后台管理员习惯的语言就行了
+
+如果是英语市场,则其他语言可以全部移除(中文可以酌情保留,便于web后台操作)
+
+例如,如果上述模板是一个西班牙语的,那么其他语言可以酌情删除(英语可能删不掉)
+
+查看已经安装(但是尚未启用)以及已经被激活启用的语言包
+
+```powershell
+
+#⚡️[Administrator@CXXUDESK][C:\sites\wp_sites\2.es][15:26:54][UP:2.04Days]
+PS> wp language core list --format=json | ConvertFrom-Json | Where-Object { $_.status -ne 'uninstalled' }|ft
+
+language english_name            native_name             status    update updated
+-------- ------------            -----------             ------    ------ -------
+en_US    English (United States) English (United States) installed none
+es_ES    Spanish (Spain)         Español                 active    none   2025-07-09 10:04:44
+zh_CN    Chinese (China)         简体中文                installed none   2025-07-29 06:55:14
+```
+
+​	
 
 ### 禁用wp定时任务wp-cron
 

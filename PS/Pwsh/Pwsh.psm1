@@ -81,6 +81,7 @@ function init
         $res = Measure-Command { Invoke-Expression $line -OutVariable out }
         Write-Output $out #从Measure-commnd 内部获取输出
 
+
         $time = [int]$res.TotalMilliseconds
         # Write-Host "time: $time " -ForegroundColor Magenta
         # 整理为表格对象(总结报告加载情况)
@@ -100,6 +101,14 @@ function init
         $report | Sort-Object Time -Descending | Format-Table -AutoSize
     }
 
+    # 其他自定义绑定的任务🎈
+    if(Test-CommandAvailability zoxide)
+    {
+
+        Invoke-Expression (& { (zoxide init powershell | Out-String) })
+    }
+
+    # 耗时统计
     $endTime = Get-Date
     $loadTime = $endTime - $startTime
     $loadTime = $loadTime.Totalmilliseconds

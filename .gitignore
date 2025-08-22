@@ -13,6 +13,8 @@ images/
 *.svg
 *.ico
 *.csv
+*.xlsx
+*.xls
 
 # 记得从git移除这些不需要的文件
 # Python 补充

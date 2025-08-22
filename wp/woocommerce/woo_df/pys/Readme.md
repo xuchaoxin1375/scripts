@@ -70,8 +70,12 @@ python $pys\woo_get_csv.py -f .webp -s ? -e ?  -C $country  -o $desktop/$type-$c
 ```powershell
 $type='  汽配  '.trim()
 $country='  IT  '.trim()
-python $pys\woo_get_csv.py -f .webp -s 559 -e 569    -C $country  -o $desktop/$type-$country-$(date -format MMdd-hh-mm-ss)
+python $pys\woo_get_csv.py -f .webp -s 570 -e 572    -C $country  -o $desktop/$type-$country-$(date -format MMdd-hh-mm-ss)
 ```
+
+---
+
+
 
 又比如,导出397~448区间中的任务,跳过446号任务(通常是因为采集任务没有结束或者已知数据有问题要跳过),使用了`-R`表示严格去重复
 
@@ -81,14 +85,12 @@ python $pys\woo_get_csv.py -f .webp -s 397 -e 448 -E 446  -C US  -o $desktop/bik
 
 等到被上一轮排除的446任务id结束采集,就可以单独导出(可以在输出路径追加单独导出的id编号)
 
-```powershell
-py $pys\woo_get_csv.py -f .webp -s 501  -C DE  -o $desktop/百货-DE-0808.501
-```
+#### 单独导出
 
 ```powershell
-$type='  家居  '.trim()
-$country='  DE  '.trim()
-python $pys\woo_get_csv.py -f .webp -s 524 -C $country  -o $desktop/$type-$country-$(date -format MMdd-hh-mm-ss)
+$type='  汽配  '.trim()
+$country='  IT  '.trim()
+python $pys\woo_get_csv.py -f .webp -s 562 -C $country  -o $desktop/$type-$country-$(date -format MMdd-hh-mm-ss)
 ```
 
 
@@ -461,7 +463,7 @@ ls -File |?{$_ -notlike '*.webp'}|rm -Verbose
 
 ```
 
-### 将jpg图片后缀重命名为webp
+### 将jpg,png图片后缀重命名为webp
 
 powershell进入到制定目录(需要被重命名文件所在的目录)下,然后执行以下命令
 
@@ -474,7 +476,7 @@ ls -File |Rename-Item -NewName {$_.Name -replace '\.jpg$','.webp' }
 另一种更加直白的写法
 
 ```powershell
-ls *.jpg|%{ rni -Path $_ -NewName ((Split-Path -LeafBase $_).ToString()+".webp") -Verbose}
+ls *.jpg,*.png|%{ rni -Path $_ -NewName ((Split-Path -LeafBase $_).ToString()+".webp") -Verbose}
 
 ```
 
@@ -490,3 +492,58 @@ ls -File |Rename-Item -NewName {$_.Name -replace '(\.php)(?!$)','_php' }
 ls *%*| Rename-Item -NewName { $_.Name -replace '%','_' } -Verbose
 ```
 
+### wp-cli相关命令
+
+例如批量操作插件(安装/卸载/更新/禁用/启用,或者管理员账号密码更新)的完整和标准操作,可以利用wp命令行来执行
+
+相关用例另见它文 [sh/Readme@sh](../sh/Readme@sh.md)
+
+### 批量下载gz(sitemap gz)
+
+```powershell
+$domain='it.e-mossa.eu';
+$links='$desktop\linkx.txt';
+
+$dir=$localhost/$domain; #要下载保存的目录🎈(建议是桌面的localhost目录,可以用$localhost代替)
+New-Item -ItemType Directory -Path $dir;
+cd $dir;
+cat $links |%{curl -O $_ }
+```
+
+在下载的gz目录`$dir`中执行解压命令(这里使用7z解压)
+
+```powershell
+
+ls *gz|%{7z x $_ }
+# 移除gz文件
+rm *.gz
+#将目录汇总的xml文件列入到一个maps.xml中
+PS> Get-UrlListFromDir . -hst localhost -LocTagMode > maps.xml
+
+
+
+```
+
+根据上述步骤,查看本地localhost的服务中对应链接是否可以访问(如果可以,说明`maps.xml`的url构造正确)
+
+然后再检查`maps.xml`中的`<loc>`标签中的链接是否也可以访问(如果不能访问在检查`localhost`中对应的目录和站点地图文件`xml`文件路径是否正确)
+
+```powershell
+PS> curl http://localhost/it.e-mossa.eu/maps.xml
+<loc>http://localhost:80/it.e-mossa.eu/maps.xml</loc>
+<loc>http://localhost:80/it.e-mossa.eu/sitemap-https-2-1.xml</loc>
+<loc>http://localhost:80/it.e-mossa.eu/sitemap-https-2-10.xml</loc>
+<loc>http://localhost:80/it.e-mossa.eu/sitemap-https-2-2.xml</loc>
+<loc>http://localhost:80/it.e-mossa.eu/sitemap-https-2-3.xml</loc>
+<loc>http://localhost:80/it.e-mossa.eu/sitemap-https-2-4.xml</loc>
+<loc>http://localhost:80/it.e-mossa.eu/sitemap-https-2-5.xml</loc>
+<loc>http://localhost:80/it.e-mossa.eu/sitemap-https-2-6.xml</loc>
+<loc>http://localhost:80/it.e-mossa.eu/sitemap-https-2-7.xml</loc>
+<loc>http://localhost:80/it.e-mossa.eu/sitemap-https-2-8.xml</loc>
+```
+
+```powershell
+curl http://localhost/it.e-mossa.eu/sitemap-https-2-1.xml
+```
+
+如果也有正常原码输出说明本地可以采集了,根据链接`http://localhost/it.e-mossa.eu/maps.xml`采集就行

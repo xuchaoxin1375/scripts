@@ -1986,9 +1986,8 @@ mysql -u root dbname < /www/wwwroot/4.de.sql -p
 $SpiderTeam=C:\sites\wp_sites\SpiderTeam.ps1
 内容格式举例:
 $SiteOwnersDict = @{
-    "郑玮"             = "zw"
-    "李宇哲"            = "lyz"
-    "徐超信"            = "xcx"
+    "郑五"             = "zw"
+    "张三"            = "zs"
     DFTableStructure = "Domains,User"
 }
 return $SiteOwnersDict

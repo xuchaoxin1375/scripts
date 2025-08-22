@@ -3615,7 +3615,7 @@ function Get-CharacterEncodingsGUI
     # 显示窗口
     [void]$form.ShowDialog()
 }
-function Get-UrlListFromDir
+function Get-UrlsListFileFromDir
 {
     <# 
     .SYNOPSIS
@@ -3625,7 +3625,7 @@ function Get-UrlListFromDir
     param(
         # html文件所在路径
         $Path,
-        $Hst = "local",
+        $Hst = "localhost",
         $Port = "80",
         # Url中的路径部分(也可以先输出,然后根据结果调整html所在位置)
         $UrlPath = "",

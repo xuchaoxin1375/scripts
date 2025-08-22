@@ -160,7 +160,7 @@ git pull origin main
 
 
 
-## linux压缩服务器上的图片🎈
+## 原地压缩@压缩服务器上的图片🎈
 
 
 
