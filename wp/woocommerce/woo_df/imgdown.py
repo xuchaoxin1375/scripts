@@ -12,7 +12,7 @@ Todo: 允许忽略证书过期的下载
     # 作为模块导入使用
     from img_downloader import ImageDownloader
 
-    downloader = ImageDownloader(max_workers=10, timeout=30)
+    downloader = ImageDownloader(max_workers=10)
     urls = ['http://example.com/image1.jpg', 'https://example.com/image2.png']
     downloader.download(urls, output_dir='./images')
 
@@ -46,6 +46,7 @@ from urllib3.util.retry import Retry
 from filenamehandler import FilenameHandler
 from imgcompresser import ImageCompressor
 
+TIMEOUT = 60
 
 IMG_DIR = "./images"
 RESIZE_THRESHOLD = 1000, 800  # 图片尺寸小于这个阈值则不调整分辨率(宽*高)
@@ -122,7 +123,7 @@ logger.info("SEP_PATTERN: %s", URL_SEP_PATTERN)
 COOKIES = {"sessionid": "abc123xyz", "csrftoken": "csrf_token_here"}
 
 
-def download_by_iwr(url, output_path, user_agent=None, timeout=30, verify_ssl=True):
+def download_by_iwr(url, output_path, user_agent=None, timeout=60, verify_ssl=True):
     """
     使用 PowerShell 的 Invoke-WebRequest 下载指定 URL 到本地文件。
 
@@ -176,7 +177,7 @@ def download_by_curl(
     output_dir="./",
     use_remote_name: bool = False,  # 新增参数：是否使用远程文件名
     user_agent: str = USER_AGENTS[0],
-    timeout: int = 30,
+    timeout: int = 60,
     silent: bool = False,
     extra_args: Optional[list] = None,
     reset_cwd=False,  # 发生工作目录转换下载后,是否回到原目录
@@ -385,7 +386,7 @@ class ImageDownloader:
     def __init__(
         self,
         max_workers: int = 10,
-        timeout: int = 30,
+        timeout: int = 60,
         retry_times: int = 1,
         user_agent: Optional[str] = None,
         cookies: Optional[Dict[str, str]] = None,

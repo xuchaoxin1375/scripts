@@ -40,9 +40,11 @@ python $pys\woo_get_csv.py -f .webp --start-id  $start_id --end-id $end_id  --la
 
 > 再次强调,导出的时候千万注意对应的国家,涉及到默认产品分类(面包屑)分配词语的单词所属语种,使用`--language-country`或者缩写`-C`来指定,比如美国用`US`,德国`DE`,...
 
-#### 跳过导出尚未采集完毕的任务(-E)
+#### 跳过导出尚未采集完毕的任务(-E)🎈
 
 如果要排除区间中的个别任务,则追加使用`-E`选项指定编号(多个编号逗号隔开)字符串`"a,b,.."`,就可以排除任务编号`a,b,...`;
+
+> 如果一批网站采集中有几个数据量很大或者限制你线程数1采集很慢拖了很久,那么这几个就给他标记起来暂时跳过导出,不必等他们采集完,因为有些网站图片链接可能会过期,尽快把已经有的数据导出并下载图片也不用担心这周可以建站的数量不够!
 
 #### 严格去重复(-R)
 
@@ -61,29 +63,33 @@ python $pys\woo_get_csv.py -f .webp --start-id  $start_id --end-id $end_id  --la
 
 ```powershell
 $type='  品类  '.trim()
-$country='  DE  '.trim()
-python $pys\woo_get_csv.py -f .webp -s ? -e ?  -C $country  -o $desktop/$type-$country-$(date -format MMdd-hh-mm-ss)
-```
-
-##### 常规导出区间
-
-```powershell
-$type='  汽配  '.trim()
-$country='  IT  '.trim()
-python $pys\woo_get_csv.py -f .webp -s 570 -e 572    -C $country  -o $desktop/$type-$country-$(date -format MMdd-hh-mm-ss)
+$country='  国家代号(US/DE/FR/ES/IT/...)  '.trim()
+$start=
+$end=
+$exclude='0' #如果需要排除,将0修改为你需要的id(多个id用逗号分隔)
+python $pys\woo_get_csv.py -f .webp -s $start -e $end  -C $country -E $exclude -o "$desktop/$type-$country-$(date -format MMdd-hh-mm-ss)-[$start-$end]"
 ```
 
 ---
 
-##### 跳过指定任务id
+##### 实例
 
-又比如,导出397~448区间中的任务,跳过446号任务(通常是因为采集任务没有结束或者已知数据有问题要跳过),使用了`-R`表示严格去重复
-
-```powershell
-python $pys\woo_get_csv.py -f .webp -s 397 -e 448 -E 446  -C US  -o $desktop/bike_us_0713 -R
-```
+例如,导出397~448区间中的任务,跳过446号任务(通常是因为采集任务没有结束或者已知数据有问题要跳过),使用了`-R`表示严格去重复
 
 等到被上一轮排除的446任务id结束采集,就可以单独导出(可以在输出路径追加单独导出的id编号)
+
+
+
+```powershell
+$type='  汽配  '.trim()
+$country='  ES '.trim()
+$start=573
+$end=602
+$exclude='574,575,583' 
+python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -o "$desktop/$type-$country-$(date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]"
+```
+
+
 
 ##### 单独导出
 

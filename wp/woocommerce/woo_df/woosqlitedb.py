@@ -39,6 +39,7 @@ from wooenums import CSVProductFields, DBProductFields, ImageMode, LanguagesHotS
 IMAGES = CSVProductFields.IMAGES.value
 IMAGE_URL = CSVProductFields.IMAGES_URL.value
 DEFAULT_TABLE = "Content"
+MAX_IMG_NAME_LENGTH = 100
 
 
 def set_log(name=__name__):
@@ -1128,7 +1129,10 @@ but different image, keep records [%s]",
                     timestamp = int(time.time())
                     img_names = [
                         complete_image_file_extension(
-                            file=f"{sku}-{i}-{timestamp}-{get_filebasename_from_url(img_url).replace('%','_')}",
+                            # 将过长的图片名截断防止wordpress加载图片失败
+                            file=f"{sku}-{i}-{timestamp}-{get_filebasename_from_url(img_url).replace('%','_')}"[
+                                :MAX_IMG_NAME_LENGTH
+                            ],
                             default_extension=default_extension,
                         )
                         for i, img_url in enumerate(img_url_lst)

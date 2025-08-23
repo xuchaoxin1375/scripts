@@ -22,6 +22,7 @@ from woosqlitedb import SQLiteDB
 
 
 WOOSQLITEDB_LOGGER = "woosqlitedb"
+DEFAULT_CSV_LINES=5000
 
 LOCOY_SPIDER_DATA = os.environ.get("LOCOY_SPIDER_DATA")
 if LOCOY_SPIDER_DATA is None:
@@ -102,8 +103,8 @@ def parse_args():
         "-H",
         "--highest-price",
         type=float,
-        default=10000,
-        help="最高价格过滤标准（默认：10000）",
+        default=20000,
+        help="最高价格过滤标准（默认：20000）",
     )
     parser.add_argument(
         "--limit-sale",
@@ -150,8 +151,8 @@ def parse_args():
         "-S",
         "--split-size",
         type=int,
-        default=10000,
-        help="分割输出CSV文件的大小(default: 10000)",
+        default=DEFAULT_CSV_LINES,
+        help=f"分割输出CSV文件的大小(default: {DEFAULT_CSV_LINES})",
     )
     parser.add_argument(
         "-R",
