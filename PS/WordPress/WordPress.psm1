@@ -826,7 +826,7 @@ function Deploy-WpSitesOnline
         # }
 
         $info = Get-CFZoneInfoFromTable -Json | ConvertFrom-Json
-        $domianCount = $info.Count
+        $domainCount = $info.Count
         $activeCount = 0
         foreach ($item in $info)
         {
@@ -835,18 +835,18 @@ function Deploy-WpSitesOnline
                 $activeCount++
             }
         }
-        if($activeCount -eq $domianCount)
+        if($activeCount -eq $domainCount)
         {
             Write-Host "All domains are active" -ForegroundColor Green
             return $True
         }
         else
         {
-            Write-Host "There are $activeCount domains active, $domianCount domains total, please wait for $RetryGap seconds and retry" -ForegroundColor Cyan
+            Write-Host "There are $activeCount domains active, $domainCount domains total, please wait for $RetryGap seconds and retry" -ForegroundColor Cyan
             
             
-            $completed = [math]::Round($activeCount / $domianCount * 100, 2)
-            Write-Progress -Activity "Waiting for domain activation" -Status "There are $activeCount / $domianCount domains active  ($completed% completed)" -PercentComplete $completed 
+            $completed = [math]::Round($activeCount / $domainCount * 100, 2)
+            Write-Progress -Activity "Waiting for domain activation" -Status "There are $activeCount / $domainCount domains active  ($completed% completed)" -PercentComplete $completed 
             if($retryTimes -eq 0)
             {
                 Write-Error "Max retry times  exhuasted, exit"

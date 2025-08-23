@@ -544,12 +544,12 @@ deploy_site() {
             return 1
         fi
 
-        # 移动新目录内容到目标目录🎈
-        mv "$site_expanded_dir"/* "$target_dir" -f 
+        # mv "$site_expanded_dir"/* "$target_dir" -f 
     fi
     # 如果上述操作没有出错(return 1没有执行),则执行文件归档操作
     echo "顺利解压网站归档文件[$archive_file],移动网站压缩包到[$DEPLOYED_DIR]🎈"
     mv "$archive_file" "$DEPLOYED_DIR" -f
+    echo "移动解压后的目录[$site_expanded_dir]内容到目标目录wordpress[$target_dir]🎈"
     mv "$site_expanded_dir"/* "$target_dir" -f # 移动新目录内容到目标目录
 
     # === 检查并导入对应的 SQL 文件 ===
