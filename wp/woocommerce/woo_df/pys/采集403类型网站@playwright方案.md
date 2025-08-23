@@ -32,6 +32,51 @@ PS> python C:\Users\Administrator\Desktop\localhost\get_htmls_from_urls_multi_th
 [7/25] 成功下载: https://esd.equipment/media/sitemap/sitemap_esd_de-1-8.xml -> links\20250723_142014\esd.equipment\media_sitemap_sitemap_esd_de-1-8.xml.html
 ```
 
+### 下载站点地图
+
+被cloudflare保护的网站的站点(不放称这种站为X站)地图(sitemap.xml通常被cloudflare保护,普通的采集器可能仍然无法采集(403错误))
+
+如果测试X站的某个具体的页面可以被无头浏览器下载(比如playwright的脚本下载),那么这个站基本就可确定可以使用此无头浏览器脚本方案来下载网站的网页原码到本地采集(图片一般使用curl+代理+UA模拟可以下载下来,再次也可以用无头浏览器下载)
+
+可以使用命令行`Get-UrlFromSitemap .\total_catalog_products.xml`这个命令将总级站点地图中的各个子集站点地图url抽出来
+
+```
+PS> Get-UrlFromSitemap .\catalog.xml
+Pattern to match URLs: <loc>(.*?)</loc>
+Processing sitemap at path: .\catalog.xml [C:\Users\Administrator\Desktop\localhost\0822\catalog.xml]
+https://www.trodo.it/site_map/sitemap_prod_1.xml
+https://www.trodo.it/site_map/sitemap_prod_10.xml
+https://www.trodo.it/site_map/sitemap_prod_100.xml
+https://www.trodo.it/site_map/sitemap_prod_101.xml
+....
+
+```
+
+将抽出来的子集站点地图url保存到一个文本文件中,比如`sitemap_urls.txt`
+
+```powershell
+PS C:\Users\Administrator\Desktop\localhost> py .\get_htmls_from_urls_multi_thread.py .\sitemap_urls.txt -p http://localhost:8800 -c 5   
+开始下载 106 个URL到目录: downloads\20250822_211603
+设置: 超时=30s, 延迟=1.0-3.0s
+并发数=5, 重试次数=3, 浏览器窗口模式=隐藏  
+代理配置: http://localhost:8800
+[INIT] 总URL数: 106, 待下载: 106, 已下载: 0
+[CONFIG] 使用代理服务器: http://localhost:8800
+[2/106] 成功下载: https://www.trodo.it/site_map/sitemap_prod_10.xml -> downloads\20250822_211603\www.trodo.it\site_map_sitemap_prod_10.xml.html
+[5/106] 成功下载: https://www.trodo.it/site_map/sitemap_prod_102.xml -> downloads\20250822_211603\www.trodo.it\site_map_sitemap_prod_102.xml.html
+[3/106] 成功下载: https://www.trodo.it/site_map/sitemap_prod_100.xml -> downloads\20250822_211603\www.trodo.it\site_map_sitemap_prod_100.xml.html
+[4/106] 成功下载: https://www.trodo.it/site_map/sitemap_prod_101.xml -> downloads\20250822_211603\www.trodo.it\site_map_sitemap_prod_101.xml.html
+[1/106] 成功下载: https://www.trodo.it/site_map/sitemap_prod_1.xml -> downloads\20250822_211603\www.trodo.it\site_map_sitemap_prod_1.xml.html
+[9/106] 成功下载: https://www.trodo.it/site_map/sitemap_prod_106.xml -> downloads\20250822_211603\www.trodo.it\site_map_sitemap_prod_106.xml.html
+[6/106] 成功下载: https://www.trodo.it/site_map/sitemap_prod_103.xml -> downloads\20250822_211603\www.trodo.it\site_map_sitemap_prod_103.xml.html
+```
+
+
+
+### 解析站点地图中的url
+
+可以用脚本(命令行)解析,或者用采集器来解析
+
 解析各个底层站点地图中包含的产品url,分别保存到.txt文件中(每个txt文件都是包含一系列url的文本文件,每行一个url)
 
 ```powershell
@@ -43,15 +88,47 @@ Processing sitemap at path: C:\Users\Administrator\Desktop\localhost\esd.equipme
 ...
 ```
 
+### 下载各个网页的url->html文件
+
 将下载保存目录下的所有txt传递给脚本进行下载
 
 ```powershell
-ls *txt|%{py C:\Users\Administrator\Desktop\localhost\get_htmls_from_urls_multi_thread.py $_  -p http://localhost:8800 -o links -c 5}
+ls *txt|%{py C:\Users\Administrator\Desktop\localhost\get_htmls_from_urls_multi_thread.py $_  -p http://localhost:8800 -o links -c 2 -d 2-5}
 ```
+
+### 本地html文件编成xml文件
 
 将下载好的html文件组织到一个文本文件中(编制索引),从而让采集器能够通过对应本地url读取这个索引文本文件,获取所有(本地)产品页链接以进行后续内容采集
 
 ```powershell
 Get-UrlListFromDir -Path .\part0-17\ -LocTagMode -Hst localhost -Output esd.equipment1.urls.txt
+```
+
+## 脚本参数
+
+```bash
+PS C:\Users\Administrator\Desktop\localhost> py .\get_htmls_from_urls_multi_thread.py  -h
+usage: get_htmls_from_urls_multi_thread.py [-h] [-o OUTPUT] [-t TIMEOUT] [-d DELAY] [--headless] [-p PROXY] [-c CONCURRENCY] [-r RETRIES] input_file
+
+智能网页下载工具(支持断点续传和自适应策略)
+
+positional arguments:
+  input_file            包含URL列表的文件路径
+
+options:
+  -h, --help            show this help message and exit
+  -o OUTPUT, --output OUTPUT
+                        输出目录 (默认: downloads)
+  -t TIMEOUT, --timeout TIMEOUT
+                        每个请求超时时间(秒) (默认: 30)
+  -d DELAY, --delay DELAY
+                        请求之间的随机延迟范围(秒) (默认: 1.0-3.0)
+  --headless            隐藏浏览器窗口,即无头模式(默认显示)
+  -p PROXY, --proxy PROXY
+                        代理服务器配置(格式: [protocol://]host:port 如 http://127.0.0.1:8080)
+  -c CONCURRENCY, --concurrency CONCURRENCY
+                        最大并发工作线程数 (默认: 3)
+  -r RETRIES, --retries RETRIES
+                        失败重试次数 (默认: 3)
 ```
 

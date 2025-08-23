@@ -773,7 +773,7 @@ function Deploy-WpSitesOnline
         [alias('Host', 'Server', 'Ip')]
         $HostName = $env:DF_SERVER1,
         [alias('Table')]$FromTable = "$Desktop/table.conf",
-        $WaitTimeBasic = 60,
+        $WaitTimeBasic = 0,
         $MaxRetryTimes = 20,
         $RetryGap = 30,
         [alias('DomainTable')]$ToTable = "$Desktop/domains_nameservers.csv",
@@ -796,7 +796,11 @@ function Deploy-WpSitesOnline
     # 重启nginx 
     Restart-NginxOnHost -HostName $HostName
     # 等待环节
-    Write-Warning "等待2到5分钟让cf激活域名保护(不保证成功,大多数情况下可以),基础等待时间$WaitTimeBasic 秒,后续检查是否全部激活,否则循环等待,每次$RetryGap 秒,最多等待$MaxRetryTimes 轮"
+    Write-Warning "等待2到5分钟让cf激活域名保护(不保证成功,大多数情况下可以),后续检查是否全部激活,否则循环等待,每次$RetryGap 秒,最多等待$MaxRetryTimes 轮"
+    if($WaitTimeBasic)
+    {
+        write-warning"基础等待时间$WaitTimeBasic 秒"
+    }
     Start-SleepWithProgress -Seconds $WaitTimeBasic
     $retryTimes = $MaxRetryTimes
     # 检查域名激活状态

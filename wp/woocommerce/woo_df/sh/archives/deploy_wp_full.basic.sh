@@ -337,8 +337,7 @@ extract_archive() {
         local cmd="$1"
         shift
         echo "🧪 正在验证归档完整性..."
-        # if ! "$cmd" --test "$@" >/dev/null 2>&1; then
-        if ! "$cmd" --test "$@" ; then
+        if ! "$cmd" --test "$@" >/dev/null 2>&1; then
             echo "❌ 归档文件损坏或格式不支持: $archive_file"
             return 1
         fi
@@ -499,7 +498,7 @@ deploy_site() {
         domain_name="${domain_name%.sql}"
     fi
 
-    log "📦 正在处理网站: $domain_name ============"
+    echo "📦 正在处理网站: $domain_name"
 
     # === 解压站点压缩包 ===
     # local extracted_domain_dir="$PACK_ROOT/$username/$domain_name"
@@ -536,8 +535,7 @@ deploy_site() {
             echo "❌ 解压失败，跳过部署: $domain_name"
             return 1
         fi
-        # 归档网站压缩包🎈
-        mv "$archive_file" "$DEPLOYED_DIR" -f
+
         mv "$site_expanded_dir"/* "$target_dir" -f # 移动新目录内容到目标目录
         # 覆盖逻辑点(end)
     else
@@ -553,8 +551,6 @@ deploy_site() {
     # === 检查并导入对应的 SQL 文件 ===
     local sql_file="$PACK_ROOT/$username/$domain_name.sql"
     if [ -f "$sql_file" ]; then
-        echo "🔍 找到 SQL 文件并导入数据库: $sql_file"
-        # 将导入环节放到前面去执行,可以并行导入sql文件提高效率
         import_sql_file "$domain_name" "$username" "$sql_file"
         # 删除数据库文件.sql(已导入)
         echo "🗑️ 删除数据库文件: $sql_file"
@@ -578,7 +574,7 @@ deploy_site() {
         # fi
     fi
 
-    # 站点根目录配置文件和插件相关检车和更改-------------------
+
     # 将可能阻碍登录后台wps-hide-login.bak这个插件目录改为wps-hide-login
     local plugins_dir="$target_dir/wp-content/plugins"
     local wps_hide_login_dir="$plugins_dir/wps-hide-login"
@@ -621,13 +617,14 @@ deploy_site() {
     echo "🔄 重启 nginx 以便让伪静态生效"
     nginx -s reload
     
-    echo "✅ 完成站点部署: $domain_name ==============( 检查/访问: https://www.$domain_name )=============="
+    echo "✅ 完成站点部署: $domain_name ( 检查/访问: https://www.$domain_name )"
     return 0
 }
 
 # === 函数：查找并处理SQL备份文件🎈 ===
 # 此函数会分析传入的用户名和sql包文件名(针对一个站),构造对应的数据库名,并检查对应的文件是否存在
 # 如果存在,则解压sql文件压缩包,如果存在多个
+
 process_sql_file() {
     local username="$1"
     local archive_file="$2"
@@ -672,7 +669,7 @@ log() {
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1"
 }
 
-log "🚀 ==================开始部署 WordPress 站点和数据库...================="
+log "🚀 ==================开始部署 WordPress 站点和数据库...==================================================="
 
 # 检查必要的命令
 check_commands
@@ -702,7 +699,7 @@ deployed_sites=0
 failed_sites=0
 sql_backups_processed=0
 
-# ==========按照用户名(目录)逐个用户地处理🎈====
+# ==========按照用户名(目录)逐个用户地处理====
 for user_dir in "${user_dirs[@]}"; do
     # 去掉末尾斜杠(如果有的话)，得到用户名缩写
     username="${user_dir%/}"
@@ -727,31 +724,19 @@ for user_dir in "${user_dirs[@]}"; do
     sql_archives=($(ls *.sql.zip *.sql.7z *.sql.tar *.sql.lz4 *.sql.zst 2>/dev/null))
     if [ -f "${sql_archives[0]}" ]; then
         echo "🔍 找到SQL备份文件，优先处理"
-        echo  "处理全部待部署网站的数据库文件🎈(使用&和wait并行处理)"
-        # 并行处理SQL备份文件
-        pids=()
-        sql_archive_names=()
+        # 处理全部待部署网站的数据库文件🎈
         for sql_archive in "${sql_archives[@]}"; do
             if [ ! -f "$sql_archive" ]; then
                 continue
             fi
-            process_sql_file "$username" "$sql_archive" &
-            pids+=("$!")
-            sql_archive_names+=("$sql_archive")
-        done
-        # 等待所有后台任务完成，并统计成功/失败
-        for i in "${!pids[@]}"; do
-            pid="${pids[$i]}"
-            sql_archive="${sql_archive_names[$i]}"
-            if wait "$pid"; then
+
+            if process_sql_file "$username" "$sql_archive"; then
                 ((sql_backups_processed++))
                 # 归档已用过的sql压缩包文件
                 echo "🗑️ 归档已用过的sql压缩包文件: $sql_archive"
-                # mv "$sql_archive" "$PACK_ROOT/$username/deployed/" -f -v
-                mv "$sql_archive" "$DEPLOYED_DIR" -f -v
+                mv "$sql_archive" "$PACK_ROOT/$username/deployed/" -f -v
             else
                 ((failed_sites++))
-                echo "❌ SQL备份文件处理失败: $sql_archive"
             fi
         done
     else
@@ -772,32 +757,22 @@ for user_dir in "${user_dirs[@]}"; do
         # continue
     fi
 
-    # 并行处理站点部署
-    deploy_pids=()
-    deploy_archive_names=()
     for archive_file in "${site_archives[@]}"; do
         if [ ! -f "$archive_file" ]; then
             continue
         fi
-        # 后台执行部署任务
-        deploy_site "$username" "$archive_file" &
-        deploy_pids+=("$!")
-        deploy_archive_names+=("$archive_file")
-    done
-    # 等待所有后台部署任务完成，并统计成功/失败
-    for i in "${!deploy_pids[@]}"; do
-        pid="${deploy_pids[$i]}"
-        archive_file="${deploy_archive_names[$i]}"
-        if wait "$pid"; then
+    
+        # 调用部署函数deploy_site进行部署🎈
+        if deploy_site "$username" "$archive_file"; then
+            # 更新计数器
             ((deployed_sites++))
-            # 可在此处添加归档逻辑（如需）
-            
-            # 例如:移动文件(本轮被解压过的站点根目录压缩包文件和数据库压缩包文件)到deployed目录中
-            # 如果没有成功解压(比如文件完整性检测不通过则跳过)
-            # mv "$archive_file" "$deployed_dir" -f #如果放在这里移动,则没有顺利解压也会被归档
+
+            # 移动文件(本轮被解压过的站点根目录压缩包文件和数据库压缩包文件)到deployed目录中
+         
+            mv "$archive_file" "$deployed_dir" -f
+
         else
             ((failed_sites++))
-            echo "❌ 站点部署失败: $archive_file"
         fi
     done
     # 更改deployed文件夹权限

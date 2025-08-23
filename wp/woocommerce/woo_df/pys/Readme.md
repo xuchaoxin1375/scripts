@@ -44,7 +44,7 @@ python $pys\woo_get_csv.py -f .webp --start-id  $start_id --end-id $end_id  --la
 
 如果要排除区间中的个别任务,则追加使用`-E`选项指定编号(多个编号逗号隔开)字符串`"a,b,.."`,就可以排除任务编号`a,b,...`;
 
-#### 严格去重复
+#### 严格去重复(-R)
 
 将产品名相同的产品视为重复,去重只保留一个(即便图片链接不同也移除掉),可以使用`-R`
 
@@ -65,7 +65,7 @@ $country='  DE  '.trim()
 python $pys\woo_get_csv.py -f .webp -s ? -e ?  -C $country  -o $desktop/$type-$country-$(date -format MMdd-hh-mm-ss)
 ```
 
-例如
+##### 常规导出区间
 
 ```powershell
 $type='  汽配  '.trim()
@@ -75,7 +75,7 @@ python $pys\woo_get_csv.py -f .webp -s 570 -e 572    -C $country  -o $desktop/$t
 
 ---
 
-
+##### 跳过指定任务id
 
 又比如,导出397~448区间中的任务,跳过446号任务(通常是因为采集任务没有结束或者已知数据有问题要跳过),使用了`-R`表示严格去重复
 
@@ -85,7 +85,7 @@ python $pys\woo_get_csv.py -f .webp -s 397 -e 448 -E 446  -C US  -o $desktop/bik
 
 等到被上一轮排除的446任务id结束采集,就可以单独导出(可以在输出路径追加单独导出的id编号)
 
-#### 单独导出
+##### 单独导出
 
 ```powershell
 $type='  汽配  '.trim()
@@ -99,7 +99,7 @@ python $pys\woo_get_csv.py -f .webp -s 562 -C $country  -o $desktop/$type-$count
 
 
 
-只导出一个任务,可以省略`-e`
+如果只导出一个任务,可以省略`-e`
 
 ```powershell
 python $pys\woo_get_csv.py -f .webp -s 474  -C US  -o $desktop/outdoor_us_0720
