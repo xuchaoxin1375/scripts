@@ -536,11 +536,9 @@ deploy_site() {
             echo "❌ 解压失败，跳过部署: $domain_name"
             return 1
         fi
-        # 归档网站压缩包🎈
-        mv "$archive_file" "$DEPLOYED_DIR" -f
-        mv "$site_expanded_dir"/* "$target_dir" -f # 移动新目录内容到目标目录
         # 覆盖逻辑点(end)
     else
+        # 纯净解压(未检测到预先存在或残留的目录)
         if ! extract_archive "$site_dir_archive" "$site_domain_home"; then
             echo "❌ 解压失败，跳过部署: $domain_name"
             return 1
@@ -549,6 +547,10 @@ deploy_site() {
         # 移动新目录内容到目标目录🎈
         mv "$site_expanded_dir"/* "$target_dir" -f 
     fi
+    # 如果上述操作没有出错(return 1没有执行),则执行文件归档操作
+    echo "顺利解压网站归档文件[$archive_file],移动网站压缩包到[$DEPLOYED_DIR]🎈"
+    mv "$archive_file" "$DEPLOYED_DIR" -f
+    mv "$site_expanded_dir"/* "$target_dir" -f # 移动新目录内容到目标目录
 
     # === 检查并导入对应的 SQL 文件 ===
     local sql_file="$PACK_ROOT/$username/$domain_name.sql"
