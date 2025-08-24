@@ -5,10 +5,11 @@
 # 在powershell中将词文件更新/推送到服务器(可以使用scp命令):
 # scp -r C:\repos\scripts\wp\woocommerce\woo_df\sh\deploy_wp_full.sh root@${env:DF_SERVER1}:"/www/wwwroot/deploy_wp_full.sh"
 # 默认值
-DEFAULT_PACK_ROOT="/srv/uploads/uploader/files"
+UPLOADER_DIR="/srv/uploads/uploader"
+DEFAULT_PACK_ROOT="$UPLOADER_DIR/files"
 DEFAULT_DB_USER="root"
 DEFAULT_DB_PASSWORD="15a58524d3bd2e49"
-DEFAULT_DEPLOYED_DIR="$DEFAULT_PACK_ROOT/deployed_all"
+DEFAULT_DEPLOYED_DIR="$UPLOADER_DIR/deployed_all"
 SERVER_SITE_HOME="/www/wwwroot"
 
 DB_HOST="localhost" # 数据库主机
@@ -547,7 +548,7 @@ deploy_site() {
         # mv "$site_expanded_dir"/* "$target_dir" -f 
     fi
     # 如果上述操作没有出错(return 1没有执行),则执行文件归档操作
-    echo "顺利解压网站归档文件[$archive_file],移动网站压缩包到[$DEPLOYED_DIR]🎈"
+    echo "备份:顺利解压网站归档文件[$archive_file],移动网站压缩包到[$DEPLOYED_DIR]🎈"
     mv "$archive_file" "$DEPLOYED_DIR" -f
     echo "移动解压后的目录[$site_expanded_dir]内容到目标目录wordpress[$target_dir]🎈"
     mv "$site_expanded_dir"/* "$target_dir" -f # 移动新目录内容到目标目录

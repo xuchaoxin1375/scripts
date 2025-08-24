@@ -82,7 +82,7 @@ python $pys\woo_get_csv.py -f .webp -s $start -e $end  -C $country -E $exclude -
 
 ```powershell
 $type='  汽配  '.trim()
-$country='  ES '.trim()
+$country='  IT '.trim()
 $start=573
 $end=602
 $exclude='574,575,583' 
@@ -97,6 +97,15 @@ python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -
 $type='  汽配  '.trim()
 $country='  IT  '.trim()
 python $pys\woo_get_csv.py -f .webp -s 562 -C $country  -o $desktop/$type-$country-$(date -format MMdd-hh-mm-ss)
+```
+
+```powershell
+$type='  汽配  '.trim()
+$country='  IT '.trim()
+$start=583
+$end=583
+$exclude=''
+python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -o "$desktop/$type-$country-$(date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]"
 ```
 
 

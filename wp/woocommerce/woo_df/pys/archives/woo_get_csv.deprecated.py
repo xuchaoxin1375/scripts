@@ -18,10 +18,10 @@ from woosqlitedb import SQLiteDB
 # 小分类阈值,小于该阈值的分类将被视为小分类,将其分配到热销类(或其近义词);设置为0表示不处理分类
 SMALL_CATEGORY_THRESHOLD = 30
 # 配置图片字段导出模式
-IMAGE_MODE=ImageMode.NMAE_FROM_URL
+IMAGE_MODE = ImageMode.NAME_FROM_URL
 # 产品价格区间(打折前不在此区间的产品将被过滤掉)
 LOWEST_PRICE = 1
-HIGHEST_PRICE = 10000
+HIGHEST_PRICE = 20000
 LANGUAGE = LanguagesHotSale.US.name
 # 限制产品数量少的分类,将其分配到热销类(或其近义词)
 CATEGORIES_THRESHOLD = 30
@@ -42,7 +42,7 @@ DATA_DIR = Path(r"   C:\火车采集器V10.27\Data   ".strip())
 # 连续的采集任务ID范围,例如从177到180,则START=177, END=180,如果仅导出一个ID,则只需要配置START, END可以不配置
 START = 177
 
-END = START  #如果只导出一个db文件,则不需要改动END的取值
+END = START  # 如果只导出一个db文件,则不需要改动END的取值
 
 # 枚举出db文件路径
 rng = range(START, END + 1)
@@ -74,6 +74,7 @@ for file in sorted(dbs):
 
 ##
 
+
 class LanguagesHotSaleX(EnumItRc):
     """对LanguagesHotSale枚举类的复刻,但是允许你修改下面的配置来调整和控制热销的返回值
 
@@ -82,12 +83,14 @@ class LanguagesHotSaleX(EnumItRc):
     US = ["Best-Sellers","Featured","Top-Sellers"]
 
     """
+
     US = LanguagesHotSale.US.value
     UK = LanguagesHotSale.UK.value
     IT = LanguagesHotSale.IT.value
     DE = LanguagesHotSale.DE.value
     ES = LanguagesHotSale.ES.value
     FR = LanguagesHotSale.FR.value
+
 
 try:
     os.makedirs(LOG_DIR, exist_ok=True)  # 自动创建目录（如果不存在）
@@ -165,5 +168,8 @@ if __name__ == "__main__":
     db.update_products(dbs=dbs, sku_suffix=LANGUAGE, strict_mode=False)
     ## 8.导出csv文件
     db.export_csv(
-        dbs=dbs, out_dir="./", split_files_size=10000, img_mode=IMAGE_MODE
+        dbs=dbs,
+        out_dir="./",
+        # split_files_size=10000,
+        img_mode=IMAGE_MODE,
     )

@@ -22,7 +22,8 @@ from woosqlitedb import SQLiteDB
 
 
 WOOSQLITEDB_LOGGER = "woosqlitedb"
-DEFAULT_CSV_LINES=5000
+DEFAULT_CSV_LINES = 5000
+
 
 LOCOY_SPIDER_DATA = os.environ.get("LOCOY_SPIDER_DATA")
 if LOCOY_SPIDER_DATA is None:
@@ -111,7 +112,6 @@ def parse_args():
         type=float,
         default=298.98,
         help="限制最高售价",
-
     )
     # 图片导出模式
     parser.add_argument(
@@ -415,10 +415,8 @@ if __name__ == "__main__":
     db.export_csv(
         dbs=dbs,
         out_dir=args.output_dir,
-        split_files_size=10000,
+        split_files_size=DEFAULT_CSV_LINES,
         img_mode=IMAGE_MODE,
         default_extension=DEFAULT_IMAGE_EXTENSION,
         limit_sale=LIMIT_SALE,
     )
-
-
