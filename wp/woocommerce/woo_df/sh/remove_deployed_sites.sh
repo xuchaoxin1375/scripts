@@ -3,4 +3,4 @@
 # 0 0 * * 0 bash /www/sh/remove_deployed_sites.sh
 
 # 此脚本的命令如下
-rm -rf /srv/uploads/uploader/files/deployed 
+rm -rf /srv/uploads/uploader/deployed 
