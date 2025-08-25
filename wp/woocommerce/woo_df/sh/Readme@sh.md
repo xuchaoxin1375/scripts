@@ -8,6 +8,18 @@
 
 相关命令行以ubuntu/debian系为例
 
+### 服务器上需要事先安装的东西
+
+包括压缩包解压工具等,如果有就跳过
+
+假设服务器为ubuntu
+
+```bash
+sudo apt install p7zip-full p7zip-rar -y #获取7z命令(完整安装)
+```
+
+
+
 ### 获取或更新脚本代码
 
 ```bash

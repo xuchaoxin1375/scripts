@@ -30,7 +30,74 @@
 
 9. PageUrl
 
-   
+
+#### 热销分类词
+
+产品分类根据经验来看不是那么重要,但是没有分类会让网站也没显得单调
+
+在导出时(woo_get_csv.py),可以指定一个语言/国家参数,会自动为没有分类的产品分配一个通用分类名
+
+以美国为例,可设置`New Arrival`,`Best Sellers`,`Promotion`
+
+```python
+    """
+    US = [
+        "New Arrival",
+        "Best Sellers",
+        "Promotion",
+        # "Flash Deal",
+        # "Best Value",
+        # "Editor's Pick",
+        # "Today’s Special",
+    ]
+    UK = [
+        "New In",
+        "Best Seller",
+        "Special Offer",
+        # "Flash Sale",
+        # "Great Value",
+        # "Top Picks",
+        # "Today’s Deal",
+    ]
+    IT = [
+        "Novità",
+        "Più venduti",
+        "Offerta speciale",
+        # "Offerta lampo",
+        # "Miglior valore",
+        # "Scelti per te",
+        # "Offerta del giorno",
+    ]
+    DE = [
+        "Neuheiten",
+        "Bestseller",
+        "Sonderangebot",
+        # "Blitzangebot",
+        # "Top Preis",
+        # "Empfehlung",
+        # "Angebot des Tages",
+    ]
+    ES = [
+        "Novedades",
+        "Más vendido",
+        "Promoción",
+        # "Oferta flash",
+        # "Mejor valor",
+        # "Selección",
+        # "Oferta del día",
+    ]
+    FR = [
+        "Nouveautés",
+        "Meilleures ventes",
+        "Promotion",
+        # "Vente flash",
+        # "Bon plan",
+        # "Notre sélection",
+        # "Offre du jour",
+    ]
+```
+
+
 
 
 ### 相关枚举值或者csv字段名参考
@@ -57,6 +124,8 @@ ATTRIBUTE_NAME = "Attribute 1 name"
 
 
 ## 去重算法细节说明
+
+> 使用pandas库可以轻松完成去重复任务,下面是手工设计去重代码的方案说明
 
 检查**产品图片**(通常指的是**图片链接(url)**),方便起见,下面统称**图片**)和**产品名**同时重复的情况下,移除掉重复的产品的算法中我们使用字典(或其子类)这类数据结构来实现(为了便于讨论,称此结构的实例为`d`)
 
