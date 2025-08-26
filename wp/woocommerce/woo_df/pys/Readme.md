@@ -67,7 +67,7 @@ $country='  国家代号(US/DE/FR/ES/IT/...)  '.trim()
 $start=
 $end=
 $exclude='0' #如果需要排除,将0修改为你需要的id(多个id用逗号分隔)
-python $pys\woo_get_csv.py -f .webp -s $start -e $end  -C $country -E $exclude -o "$desktop/$type-$country-$(date -format MMdd-hh-mm-ss)-[$start-$end]"
+python $pys\woo_get_csv.py -f .webp -s $start -e $end  -C $country -E $exclude -o "$desktop/$type-$country-$(date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]"
 ```
 
 ---
@@ -99,12 +99,14 @@ $country='  IT  '.trim()
 python $pys\woo_get_csv.py -f .webp -s 562 -C $country  -o $desktop/$type-$country-$(date -format MMdd-hh-mm-ss)
 ```
 
+或者更完整的
+
 ```powershell
 $type='  汽配  '.trim()
 $country='  IT '.trim()
-$start=583
-$end=583
-$exclude=''
+$start=604
+$end=$start 
+$exclude='0'
 python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -o "$desktop/$type-$country-$(date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]"
 ```
 
@@ -496,7 +498,7 @@ ls -File |?{$_ -notlike '*.webp'}|rm -Verbose
 
 ```
 
-### 将jpg,png图片后缀重命名为webp
+### 将jpg,png图片后缀重命名为webp🎈
 
 powershell进入到制定目录(需要被重命名文件所在的目录)下,然后执行以下命令
 
@@ -524,6 +526,15 @@ ls -File |Rename-Item -NewName {$_.Name -replace '(\.php)(?!$)','_php' }
 ```powershell
 ls *%*| Rename-Item -NewName { $_.Name -replace '%','_' } -Verbose
 ```
+
+### 将后缀缺失的文件添加默认后缀.webp
+
+```powershell
+Get-ChildItem | Where-Object { $_ -notlike "*.webp" } | ForEach-Object { Rename-Item -Path $_ -NewName ($_.Name + ".webp") -Verbose }
+
+```
+
+
 
 ### wp-cli相关命令
 

@@ -771,18 +771,19 @@ function Deploy-WpSitesOnline
     [CmdletBinding()]
     param(
         [alias('Host', 'Server', 'Ip')]
-        $HostName = $env:DF_SERVER1,
+        $HostName = $env:DF_SERVER,
         [alias('Table')]$FromTable = "$Desktop/table.conf",
         $WaitTimeBasic = 0,
         $MaxRetryTimes = 20,
         $RetryGap = 30,
+        
         [alias('DomainTable')]$ToTable = "$Desktop/domains_nameservers.csv",
         $SpaceshipConfig = "$Desktop/spaceship_config.json"
 
     )
 
     # 添加域名解析到cf(第一步执行)
-    Add-CFZoneDNSRecords -AddRecordAtOnce
+    Add-CFZoneDNSRecords -AddRecordAtOnce -IP $HostName
     # 更新spaceship域名的nameservers(cf添加后立即执行spaceship的nameservers更新)
     Get-CFZoneNameServersTable -FromTable $FromTable
     Update-SSNameServers -Config $SpaceshipConfig -Table $ToTable

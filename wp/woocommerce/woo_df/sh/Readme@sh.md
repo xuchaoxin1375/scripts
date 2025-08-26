@@ -85,11 +85,27 @@ $ /deploy.sh --help
 
 ```
 
+### 创建文件上传专用权限用户
+
+文件上传方案有不少,比如sftp,webdav,后者会更现代化一些,前者支持的软件会更广泛一些
+
+对于sftp,可以创建一个专门用来上传文件到指定文件夹的用户`uploader`
+
+对于webdav可以使用`openlist`来部署相关服务
+
+现在介绍sftp的方案,运行脚本创建`uploader`用户和`/srv/uploads/uploader/files`目录,并授予`uploader`读写此目录的权限
+
+```bash
+bash /www/sh/adduser_uploader.sh
+```
+
+
+
 ## 综合脚本
 
 为了方便期间,将脚本组织成一个脚本文件`update_repos.sh`,下面有两段代码
 
-较长的王政代码第一次运行后,就可以用简化版本
+较长的完整代码第一次运行后,之后就可以用简化版本
 
 ### 简化版本🎈
 
@@ -182,10 +198,10 @@ find /repos/scripts/wp/woocommerce/woo_df/sh/ -type f \( -name "*.sh" -o -name "
 
 # 更新符号链接
 ln -s /repos/scripts/wp/woocommerce/woo_df/sh /www/sh -f
-ln -s /repos/scripts/wp/woocommerce/woo_df/sh/deploy_wp_full.sh /deploy.sh -f
-ln -s /repos/scripts/wp/woocommerce/woo_df/sh/deploy_wp_full.sh /www/wwwroot/deploy_wp_full.sh -f
-ln -s /repos/scripts/wp/woocommerce/woo_df/sh/update_repos.sh /update_repos.sh -f
- 
+ln -s /www/sh/deploy_wp_full.sh /deploy.sh -f
+ln -s /www/sh/deploy_wp_full.sh /www/wwwroot/deploy_wp_full.sh -f
+ln -s /www/sh/update_repos.sh /update_repos.sh -f
+ln -s /www/sh/nginx_conf/com.conf /www/server/nginx/conf/com.conf-f
 
 ```
 
@@ -194,15 +210,18 @@ ln -s /repos/scripts/wp/woocommerce/woo_df/sh/update_repos.sh /update_repos.sh -
 使用`crontab -e`选择编辑器编辑自动任务,添加以下内容(可以自定义执行时间)
 
 ```bash
-0 * * * * bash /www/sh/deploy_wp_schd.sh #定时部署解压wp站(每个小时0分的时候执行一次)
-*/5 * * * * bash /www/sh/run-all-wp-cron.sh #定时执行wp-cron(每5分钟执行1次)
+0 0 */2 * * bash /www/sh/clean_logs.bash
+0 0 * * 0 bash /www/sh/remove_deployed_sites.sh
+# */30 * * * * pkill -9 nginx;nginx
+0 * * * * bash /www/sh/deploy_wp_schd.sh
+*/2 * * * * bash /www/sh/run-all-wp-cron.sh
 ```
 
 注意脚本`deploy_wp_schd.sh`这个脚本的可执行权限(每次更新代码,上面的代码会尝试自动修改这些文件的可执行权限)
 
 利用系统的crontab定时执行wp-cron,这里的脚本利用了`wp-cli`命令行工具来触发,而不需要通过http链接触发,执行后有日志文件
 
-
+[Linux crontab 命令 ](https://www.runoob.com/linux/linux-comm-crontab.html)
 
 ## nginx配置
 
@@ -242,6 +261,16 @@ map $http_user_agent $allow_access {
 
 每次有需求修改完成后需要重载nginx配置才能逐渐生效`nginx -t && nginx -s reload` (如果语法有误,会报错,如果通过检测,就会重载配置)
 
+为网站插入公用nginx配置片段的批量处理脚本:`/www/sh/nginx_conf/update_nginx_vhosts_conf.sh`
+
+基础的公用配置(完整版)存放在`/www/sh/nginx_conf/com.conf`文件中,
+
+```
+
+```
+
+其内容片段如下
+
 ```bash
 
 
@@ -267,25 +296,6 @@ location = /wp-login.php{
 if ($allow_access = 0) {
     return 444; # 直接断开连接
 }
-# if ($allowed_bot = 0) {
-#     return 403;
-# }
-# --- 保护 wp-login.php ---
-# location = /wp-login.php {
-#     limit_req zone=wplogin burst=1 nodelay;
-
-#     # 可选：仅允许特定 IP 登录（推荐！）
-#     # allow 192.168.1.100;   # 你的办公 IP
-#     # deny all;
-
-#     # 允许 POST（登录提交），但限制频率
-#     # try_files $uri =404;
-#     # include /etc/nginx/fastcgi_params;
-#     # fastcgi_pass php_backend;
-#     # fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-# }
-
-
 
 # --- 保护 wp-cron.php（可选）---
 # 正常应由内部触发，不建议公开访问
@@ -307,7 +317,7 @@ location = /wp-cron.php {
   
 ```
 
-## 有用的指令🎈
+## 一些有用的指令🎈
 
 使用powershell(跨平台的pwsh)方案执行以下任务,记录备用
 

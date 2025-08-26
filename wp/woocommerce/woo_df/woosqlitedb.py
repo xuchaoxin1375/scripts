@@ -234,6 +234,7 @@ class SQLiteDB:
         category_threshold=SMALL_CATEGORY_THRESHOLD,
         lowest_price=LOWEST_PRICE,
         highest_price=HIGHEST_PRICE,
+        max_img_name_length=MAX_IMG_NAME_LENGTH,
     ):
         self.language = language
         # 默认缓存变量(从DB文件中读取)
@@ -243,6 +244,7 @@ class SQLiteDB:
         self.field_values_full = DBProductFields.get_all_fields_value(
             exclude_field=DBProductFields.SKU.value
         )
+        self.max_img_name_length = max_img_name_length
         self.lowest_price = lowest_price
         self.highest_price = highest_price
         self.category_threshold = category_threshold
@@ -1055,6 +1057,7 @@ but different image, keep records [%s]",
         language = language or self.language
         rows = self._get_lines_dict_raw(dbs=dbs, extra_fields=extra_fields)
         expanded_rows = []
+        # print(f"[{default_extension}]🎁")
         for row in rows:
             # 数据处理:特价
             price = row[DBProductFields.REGULAR_PRICE.name]
@@ -1127,11 +1130,12 @@ but different image, keep records [%s]",
                     sku = row[sku_field]
                     # 计算批次时间戳
                     timestamp = int(time.time())
+                    # print(f"[{default_extension}]🎁")
                     img_names = [
                         complete_image_file_extension(
-                            # 将过长的图片名截断防止wordpress加载图片失败
+                            # 将过长的图片名截断防止wordpress加载图片失败🎈
                             file=f"{sku}-{i}-{timestamp}-{get_filebasename_from_url(img_url).replace('%','_')}"[
-                                :MAX_IMG_NAME_LENGTH
+                                : self.max_img_name_length
                             ],
                             default_extension=default_extension,
                         )
@@ -1280,6 +1284,7 @@ but different image, keep records [%s]",
             dbs=dbs,
             img_mode=img_mode,
             default_extension=default_extension,
+            # default_extension='.webp',
             limit_sale=limit_sale,
         )
 

@@ -465,7 +465,9 @@ def get_image_filebasename(supported_image_formats=SUPPORT_IMAGE_FORMATS_NAME):
     """
 
     return lambda x: (
-        x.rsplit(".", 1)[0] if x.split(".")[-1].lower() in supported_image_formats else x
+        x.rsplit(".", 1)[0]
+        if x.split(".")[-1].lower() in supported_image_formats
+        else x
     )
 
 

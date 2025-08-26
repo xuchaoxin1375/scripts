@@ -29,7 +29,8 @@ from btapi import BTApi
 DESKTOP = "C:/users/Administrator/Desktop/"
 BT_CONFIG = f"{DESKTOP}/bt_config.json"
 TEAM_JSON = r"C:/sites/wp_sites/SpiderTeam.json"
-DEFAULT_SERVER_NAME = "cxxu_df1"
+# 参数化🎈
+DEFAULT_SERVER_NAME = "cxxu_df2"
 TABLE_CONF = f"{DESKTOP}/table.conf"
 
 REWRITE_CONTENT_WP = r"""

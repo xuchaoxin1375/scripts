@@ -67,7 +67,9 @@ echo "🎉 代码同步完成：$TARGET_DIR"
 # 让指定目录下所有脚本文件(.sh)可执行🎈
 find /repos/scripts/wp/woocommerce/woo_df/sh/ -type f \( -name "*.sh" -o -name "*.bash" \) -exec chmod +x {} \;
 # 更新符号链接
-ln -s /repos/scripts/wp/woocommerce/woo_df/sh/deploy_wp_full.sh /deploy.sh -f
-ln -s /repos/scripts/wp/woocommerce/woo_df/sh/deploy_wp_full.sh /www/wwwroot/deploy_wp_full.sh -f
-ln -s /repos/scripts/wp/woocommerce/woo_df/sh /www/wwwroot/sh -f
-ln -s /repos/scripts/wp/woocommerce/woo_df/sh/update_repos.sh /update_repos.sh -f
+
+ln -s /repos/scripts/wp/woocommerce/woo_df/sh /www/sh -f
+ln -s /www/sh/deploy_wp_full.sh /deploy.sh -f
+ln -s /www/sh/deploy_wp_full.sh /www/wwwroot/deploy_wp_full.sh -f
+ln -s /www/sh/update_repos.sh /update_repos.sh -f
+ln -s /www/sh/nginx_conf/com.conf /www/server/nginx/conf/com.conf-f

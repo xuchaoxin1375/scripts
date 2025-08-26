@@ -15,7 +15,12 @@
 New-Item -ItemType Directory -Path C:/exes
 
 # 基础环境变量配置
-setx PYTHONPATH C:\repos\scripts\wp\woocommerce\woo_df
+setx PYTHONPATH2 @"
+C:\repos\scripts\wp\woocommerce\woo_df;
+C:\repos\scripts\wp\woocommerce\woo_df\pys\bt_api;
+C:\repos\scripts\wp\woocommerce\woo_df\pys\cf_api;
+C:\repos\scripts\wp\woocommerce\woo_df\pys\spaceship_api;
+"@
 setx PYS C:\repos\scripts\wp\woocommerce\woo_df\pys
 setx WOO_DF C:\repos\scripts\wp\woocommerce\woo_df
 setx PsModulePath C:/repos/scripts/PS

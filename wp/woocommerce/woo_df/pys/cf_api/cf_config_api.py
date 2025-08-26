@@ -1,33 +1,39 @@
 """cf 域名配置器"""
-
+import argparse
+import json
+import logging
 import os
 import random
+import re
 import sys
 import threading
-import re
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import argparse
+
 import pandas as pd
 import requests
 from cloudflare import Cloudflare
-from dotenv import load_dotenv
 from comutils import get_main_domain_name_from_str
+from dotenv import load_dotenv
+
+# 配置日志
+logger = logging.getLogger(name=__name__)
+logger.setLevel(logging.INFO)
+# 创建一个handler
+ch = logging.StreamHandler()
+ch.setLevel(logging.INFO)
+# 定义handler的输出格式
+formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+ch.setFormatter(formatter)
+
 
 load_dotenv()
-# 请事先确保(配置)下面引号中的环境变量,名字就是引号中的,取值根据自己的情况设置
-CLOUDFLARE_EMAIL = os.environ.get("CLOUDFLARE_EMAIL")
-CLOUDFLARE_API_KEY = os.environ.get("CLOUDFLARE_API_KEY")
-DEFAULT_FORWARD_EMAIL = os.environ.get("DEFAULT_FORWARD_EMAIL")
-DEFAULT_SERVER_IP = os.environ.get("DF_SERVER1")
-
-# 其他
-DEFAULT_SSL_MODE = "flexible"
-DEFAULT_SECURITY_MODE = 1
+# 配置默认的配置组(一个服务器配一个默认的cloudflare账号)
+CONFIG_GROUP = "cxxu_df2"
 
 DESKTOP = r"C:/Users/Administrator/Desktop"
-
+CONFIG_PATH = f"{DESKTOP}/bt_config.json"
 # 通用格式:采用table.conf中的第一列数据作为要配置的域名
 CF_DOMAINS_TABLE_CONF = f"{DESKTOP}/table.conf"
 # 完整专用格式
@@ -47,6 +53,45 @@ API_TIMEOUT = 100  # API 请求超时时间（秒）
 processed_count = 0
 success_count = 0
 lock = threading.Lock()
+
+
+def load_config(config_path) -> dict:
+    """加载配置文件(json)
+    Args:
+        config_path: 配置文件路径
+    Returns:
+         config: 配置字典
+
+    """
+    if not os.path.exists(config_path):
+        logger.warning(f"{config_path} 文件不存在")
+    with open(config_path, "r", encoding="utf-8") as f:
+        return json.load(f) or {}
+    return {}
+
+
+config = load_config(config_path=CONFIG_PATH)
+servers=config.get("servers", {})
+# config_group
+auth = servers.get(CONFIG_GROUP, {})
+account = auth.get("cf_account", {})
+cg = config.get(CONFIG_GROUP)
+default = config.get("default", {}).get("cf", {})
+# 请事先确保(配置)下面引号中的环境变量,名字就是引号中的,取值根据自己的情况设置🎈
+# CLOUDFLARE_EMAIL = os.environ.get("CLOUDFLARE_EMAIL")
+# CLOUDFLARE_API_KEY = os.environ.get("CLOUDFLARE_API_KEY")
+# DEFAULT_FORWARD_EMAIL = os.environ.get("DEFAULT_FORWARD_EMAIL")
+# DEFAULT_SERVER_IP = os.environ.get("DF_SERVER1")
+
+CLOUDFLARE_EMAIL = account.get("cf_api_email")
+CLOUDFLARE_API_KEY = account.get("cf_api_key")
+DEFAULT_FORWARD_EMAIL = default.get("default_forward_email")
+DEFAULT_SERVER_IP = auth.get("ip")
+
+# 其他
+DEFAULT_SSL_MODE = default.get("ssl_mode") or "flexible"
+
+DEFAULT_SECURITY_MODE = default.get("security_mode") or 1
 
 
 def load_domains_from_file(filename):
@@ -95,7 +140,7 @@ def load_domains_from_file(filename):
         # print(domains_info)
         print(df)
     except Exception as e:
-        print(f"读取域名Excel文件出错: {str(e)}")
+        print(f"读取域名表格文件出错: {str(e)}")
         sys.exit(1)
 
     return domains_info
@@ -450,7 +495,7 @@ def add_zone_only(info):
 def configure_zone(info):
     """对已添加的域名进行配置
     总配置函数,第二个环节的组织者,功能开关配置入口
-    
+
     """
     global processed_count, success_count
     # 随机延时3秒以上,防止过于密集访问api
@@ -592,7 +637,7 @@ def main():
         help="域名配置文件,专用格式csv文件,共用格式conf文件",
     )
     args = parser.parse_args()
-    file = args.file # or CF_DOMAINS_FILE
+    file = args.file  # or CF_DOMAINS_FILE
 
     global CLOUDFLARE_EMAIL, CLOUDFLARE_API_KEY, client, curl_headers, ACCOUNT_ID, existing_domains, processed_count, success_count
 

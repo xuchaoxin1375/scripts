@@ -134,7 +134,7 @@ function Add-CFZoneDNSRecords
         # 域名添加模式
         $Type = 'A' ,
         [alias('IP', 'Content')]
-        $Value = $env:DF_SERVER1
+        $Value = $env:DF_SERVER
         ,
         # $DefaultDNSRecord = $true,
         $RecordNames = @("www", "*"),

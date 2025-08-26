@@ -23,6 +23,7 @@ from woosqlitedb import SQLiteDB
 
 WOOSQLITEDB_LOGGER = "woosqlitedb"
 DEFAULT_CSV_LINES = 5000
+MAX_IMG_NAME_LENGTH = 100
 
 
 LOCOY_SPIDER_DATA = os.environ.get("LOCOY_SPIDER_DATA")
@@ -121,6 +122,13 @@ def parse_args():
         choices=[mode.name for mode in ImageMode],
         default=ImageMode.NAME_MIX.name,
         help=f'图片字段导出模式，可选值: {", ".join(ImageMode.__members__.keys())}',
+    )
+    parser.add_argument(
+        "-ml",
+        "--max-image-name-length",
+        type=int,
+        default=MAX_IMG_NAME_LENGTH,
+        help=f"图片文件名最大长度(default: {MAX_IMG_NAME_LENGTH})",
     )
 
     # 日志配置
@@ -356,6 +364,7 @@ if __name__ == "__main__":
         category_threshold=CATEGORIES_THRESHOLD,
         lowest_price=LOWEST_PRICE,
         highest_price=HIGHEST_PRICE,
+        max_img_name_length=args.max_image_name_length,
     )
     ## 2. 读取数据库数据(根据count_rows_only参数,可以只统计行数,而不做初步的数据处理;正式使用是要改成False!)🎈
     db.get_data(
