@@ -240,9 +240,12 @@ function Add-CFZoneConfig
     目前只要cloudflare账户添加了域名(即便还没有验证和激活),也可以进行此环节的配置
     #>
     param(
-
+        $Account,
+        $Ip="",
+        $CfConfig = "$desktop\cf_config.json",
+        $Table = "$desktop/table.conf"
     )
-    python $pys/cf_api/cf_config_api.py configure
+    python $pys/cf_api/cf_config_api.py configure -c $CfConfig -f $Table -a $Account -ip $ip
 }
 function Add-CFZoneCheckActivation
 {
@@ -258,8 +261,16 @@ function Add-CFZoneCheckActivation
     #>
     [CmdletBinding()]
     param (
-        $Table = "$desktop/table.conf"   
+        $Account = "account2",
+        $Table = "$desktop/table.conf",
+        $ConfigPath = "$desktop/cf_config.json"
     )
+    $config = Get-Content $ConfigPath | ConvertFrom-Json
+    $account = $config."accounts"."$Account"
+    Set-CFCredentials -ApiKey $account.cf_api_key -ApiEmail $account.cf_api_email
+    # 查看当前的环境变量
+    # Get-ChildItem env:cf*
+
     Get-Content $Table | Where-Object { $_.Trim() } | ForEach-Object { ($_ -split '\s+')[0] | Get-MainDomain } | ForEach-Object { flarectl zone check --zone $_ *> $null; Write-Host $_ }
 }
 function Get-CFZoneInfoFromTable

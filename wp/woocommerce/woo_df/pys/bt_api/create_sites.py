@@ -21,7 +21,7 @@ import json
 import re
 import threading
 import time
-
+import argparse
 from comutils import get_main_domain_name_from_str
 
 from btapi import BTApi
@@ -30,7 +30,6 @@ DESKTOP = "C:/users/Administrator/Desktop/"
 BT_CONFIG = f"{DESKTOP}/bt_config.json"
 TEAM_JSON = r"C:/sites/wp_sites/SpiderTeam.json"
 # 参数化🎈
-DEFAULT_SERVER_NAME = "cxxu_df2"
 TABLE_CONF = f"{DESKTOP}/table.conf"
 
 REWRITE_CONTENT_WP = r"""
@@ -49,6 +48,37 @@ def get_config(conf_path):
     with open(conf_path, "r", encoding="utf-8") as f:
         data = json.load(f)
     return data
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="批量添加宝塔站点")
+    parser.add_argument(
+        "-c",
+        "--config",
+        type=str,
+        default=BT_CONFIG,
+        help="宝塔配置文件路径,默认读取桌面bt_config.json",
+    )
+    parser.add_argument(
+        "-f",
+        "--file",
+        type=str,
+        default=TABLE_CONF,
+        help="待添加站点配置文件路径,默认读取桌面table.conf",
+    )
+    parser.add_argument(
+        "-s",
+        "--server",
+        type=str,
+        help="指定要操作的服务器名称,例如server1,server2,可用的名字定义在对应配置文件中的servers块",
+    )
+    parser.add_argument(
+        "-r",
+        "--norewrite",
+        action="store_true",
+        help="不为添加的站点设置伪静态规则,默认会设置为wordpress的伪静态规则",
+    )
+    return parser.parse_args()
 
 
 def _parse_site_to_add(file):
@@ -213,15 +243,21 @@ def add_sites(bt_api: BTApi, config_file, set_rewrite_rule=True):
             print(f"  {d}: {err}")
 
 
-if __name__ == "__main__":
-    # 读取宝塔密钥配置文件
+def main():
     config = get_config(BT_CONFIG)
-    auth = config["servers"][DEFAULT_SERVER_NAME]
-    bt_key = auth["bt_key"]
-    bt_url = auth["bt_panel"]
+    args = parse_args()
+    servers = config["servers"]
+    server = servers.get(args.server)
+    bt_key = server.get("bt_key")
+    bt_url = server.get("bt_panel")
     # print(key,bt_url)
 
     print("开始获取宝塔面板信息")
     api = BTApi(bt_url, bt_key)
     print(api.get_diskinfo())
     add_sites(api, TABLE_CONF)
+
+
+if __name__ == "__main__":
+    # 读取宝塔密钥配置文件
+    main()

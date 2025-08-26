@@ -5,7 +5,7 @@ PATTERN="*.conf"                                   # 文件匹配模式
 JUMP_MARKER="#CUSTOM"                              # 检查是否存在此标记，存在则跳过
 INSERT_MARKER="#CERT-APPLY-CHECK--START"           # 在此标记前插入内容
 DAYS=""                                            # 🔧 [新增] 默认不限制时间
-
+WORK_DIR="/www/server/panel/vhost/nginx"           # 默认工作目录
 # === 显示用法 ===
 usage() {
     cat << EOF
@@ -80,9 +80,13 @@ while [[ $# -gt 0 ]]; do
 done
 
 # === 验证输入 ===
+# if [[ -z "$FILE" && -z "$DIR" ]]; then
+#     echo "❌ 必须指定 -f 或 -d"
+#     usage
+# fi
 if [[ -z "$FILE" && -z "$DIR" ]]; then
-    echo "❌ 必须指定 -f 或 -d"
-    usage
+    echo "ℹ️ 未指定 -f 或 -d，默认使用 WORK_DIR: $WORK_DIR"
+    DIR="$WORK_DIR"
 fi
 
 if [[ -n "$FILE" && ! -f "$FILE" ]]; then

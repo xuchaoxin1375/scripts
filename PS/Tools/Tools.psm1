@@ -878,7 +878,7 @@ function Update-SSNameServers
     #>
     [CmdletBinding()]
     param (
-        $Table="$desktop/domains_nameservers.csv",
+        $Table = "$desktop/domains_nameservers.csv",
         $Config = "$desktop/spaceship_config.json"
     )
     python $pys/spaceship_api/update_nameservers.py -f $Table -c $Config 
@@ -890,8 +890,13 @@ function Deploy-BatchSiteBTOnline
     <# 
     .SYNOPSIS
     批量部署空站点到宝塔面板(借助宝塔api和python脚本)
-     #>
-    python $pys/bt_api/create_sites.py 
+    #>
+    param(
+        $Server,
+        $ServerConfig = "$desktop/bt_config.json",
+        $Table = "$desktop/table.conf"
+    )
+    python $pys/bt_api/create_sites.py -c $ServerConfig -s $Server -f $Table
 }
 function Start-SleepWithProgress
 {

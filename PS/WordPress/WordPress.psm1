@@ -770,32 +770,65 @@ function Deploy-WpSitesOnline
     #>
     [CmdletBinding()]
     param(
+        # 解析当前批次域名要部署到的服务器(使用定义在配置文件中的服务器名称来指定,比如server1,server2,...)
         [alias('Host', 'Server', 'Ip')]
-        $HostName = $env:DF_SERVER,
-        [alias('Table')]$FromTable = "$Desktop/table.conf",
-        $WaitTimeBasic = 0,
-        $MaxRetryTimes = 20,
-        $RetryGap = 30,
-        
-        [alias('DomainTable')]$ToTable = "$Desktop/domains_nameservers.csv",
-        $SpaceshipConfig = "$Desktop/spaceship_config.json"
+        $HostName ,
+        # 当前批次域名要绑定到哪个cloudflare账号(账号名字定义在)
+        [alias('Account')]
+        $CfAccount = "account1",
 
+        
+        # 本批次要部署的网站域名表
+        [alias('Table')]$FromTable = "$Desktop/table.conf",
+        # 域名绑定cf后解析cf返回的查询结果来传递给spaceship更新域名的nameservers的中间表格
+        [alias('DomainTable')]$ToTable = "$Desktop/domains_nameservers.csv",
+
+        # 记录spaceship账号信息的配置文件路径
+        $SpaceshipConfig = "$Desktop/spaceship_config.json",
+        # 记录cf账号和密钥信息的配置文件路径
+        $CfConfig = "$Desktop/cf_config.json",
+        # 记录服务器账号信息的配置文件路径
+        $ServerConfig = "$Desktop/bt_config.json",
+        
+
+
+        # 基础等待时间(秒),默认0秒
+        $WaitTimeBasic = 0,
+        # 最大重试次数,默认20
+        $MaxRetryTimes = 20,
+        # 重试间隔时间(秒),默认30秒
+        $RetryGap = 30
+
+    
     )
+    # 读取cf配置文件,确定要使用的cf账号换静(根据cf账号和密钥设置当前cf相关环境变量)
+    $config = Get-Content $CfConfig | ConvertFrom-Json
+    $account = $config."accounts"."$CfAccount"
+    Set-CFCredentials -ApiKey $account.cf_api_key -ApiEmail $account.cf_api_email
+
+    Get-ChildItem env:cf*
+    # 解析服务器配置
+    $serversConfig = Get-Content $ServerConfig | ConvertFrom-Json
+    $servers=$serversConfig.servers
+    $hst = $servers."$HostName".ip
+    Write-Verbose "Deploy to server: $HostName,IP:$hst"
+
 
     # 添加域名解析到cf(第一步执行)
-    Add-CFZoneDNSRecords -AddRecordAtOnce -IP $HostName
-    # 更新spaceship域名的nameservers(cf添加后立即执行spaceship的nameservers更新)
+    Add-CFZoneDNSRecords -AddRecordAtOnce -IP $hst
+    # 从待部署域名列表更新spaceship域名的nameservers(cf添加后立即执行spaceship的nameservers更新)
     Get-CFZoneNameServersTable -FromTable $FromTable
+    # 更新spaceship的nameservers
     Update-SSNameServers -Config $SpaceshipConfig -Table $ToTable
     # 让cf立即检查域名的激活
-    Add-CFZoneCheckActivation
+    Add-CFZoneCheckActivation -Account $CfAccount -ConfigPath $CfConfig
     
     # 配置cf域名解析,邮箱转发和代理保护(位置1)
-    Add-CFZoneConfig
+    Add-CFZoneConfig -CfConfig $CfConfig -Account $CfAccount -Table $FromTable
     # 创建宝塔空站点
-    Deploy-BatchSiteBTOnline
+    Deploy-BatchSiteBTOnline -Server $HostName -ServerConfig $ServerConfig -Table $FromTable
     # 重启nginx 
-    Restart-NginxOnHost -HostName $HostName
+    Restart-NginxOnHost -HostName $hst
     # 等待环节
     Write-Warning "等待2到5分钟让cf激活域名保护(不保证成功,大多数情况下可以),后续检查是否全部激活,否则循环等待,每次$RetryGap 秒,最多等待$MaxRetryTimes 轮"
     if($WaitTimeBasic)

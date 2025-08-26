@@ -1,4 +1,5 @@
 """cf 域名配置器"""
+
 import argparse
 import json
 import logging
@@ -33,7 +34,8 @@ load_dotenv()
 CONFIG_GROUP = "cxxu_df2"
 
 DESKTOP = r"C:/Users/Administrator/Desktop"
-CONFIG_PATH = f"{DESKTOP}/bt_config.json"
+# CONFIG_PATH = f"{DESKTOP}/bt_config.json"
+CONFIG_PATH = f"{DESKTOP}/cf_config.json"
 # 通用格式:采用table.conf中的第一列数据作为要配置的域名
 CF_DOMAINS_TABLE_CONF = f"{DESKTOP}/table.conf"
 # 完整专用格式
@@ -70,28 +72,78 @@ def load_config(config_path) -> dict:
     return {}
 
 
-config = load_config(config_path=CONFIG_PATH)
-servers=config.get("servers", {})
-# config_group
-auth = servers.get(CONFIG_GROUP, {})
-account = auth.get("cf_account", {})
-cg = config.get(CONFIG_GROUP)
-default = config.get("default", {}).get("cf", {})
-# 请事先确保(配置)下面引号中的环境变量,名字就是引号中的,取值根据自己的情况设置🎈
+def parse_args():
+    parser = argparse.ArgumentParser(description="Cloudflare域名管理工具")
+    parser.add_argument(
+        "action",
+        nargs="?",
+        choices=["add_zone", "configure"],
+        help="执行操作: add_zone(只添加域名) 或 configure(配置已添加的域名)",
+    )
+    parser.add_argument(
+        "-c",
+        "--cf-config",
+        default=CONFIG_PATH,
+        help=f"Cloudflare配置信息文件(Default:{CONFIG_PATH})",
+    )
+    parser.add_argument(
+        "-f",
+        "--file",
+        default=CF_DOMAINS_FILE,
+        help="域名配置文件,专用格式csv文件,共用格式conf文件",
+    )
+    parser.add_argument(
+        "-ip",
+        "--ip-address",
+        help="指定添加dns时解析到的服务器IP地址",
+    )
+    parser.add_argument(
+        "-a",
+        "--account",
+        help="Cloudflare账户,例如account1,account2等,具体可用账户名配置在cf_config.json文件中",
+    )
+    args = parser.parse_args()
+    return args
+
+
+args = parse_args()
+config = load_config(config_path=args.cf_config)
+accounts = config.get("accounts", {})
+account = accounts.get(args.account, {})
+# account_name=account.get("account", "")
+CF_EMAIL = account.get("cf_api_email")
+CF_API_KEY = account.get("cf_api_key")
+# 账号优先解析的服务器ip地址🎈
+DEFAULT_SERVER_IP = args.ip_address or account.get("default_server_ip")
+
+DEFAULT_FORWARD_EMAIL = config.get("default_forward_email")
+DEFAULT_SSL_MODE = config.get("ssl_mode") or "flexible"
+DEFAULT_SECURITY_MODE = config.get("security_mode") or 1
+
+# 通用格式
+
+# 普通环境变量,名字就是引号中的,取值根据自己的情况设置🎈
 # CLOUDFLARE_EMAIL = os.environ.get("CLOUDFLARE_EMAIL")
 # CLOUDFLARE_API_KEY = os.environ.get("CLOUDFLARE_API_KEY")
 # DEFAULT_FORWARD_EMAIL = os.environ.get("DEFAULT_FORWARD_EMAIL")
 # DEFAULT_SERVER_IP = os.environ.get("DF_SERVER1")
+# 另一种综合配置文件中读取cf配置
+# servers=config.get("servers", {})
+# # config_group
+# auth = servers.get(CONFIG_GROUP, {})
+# account = auth.get("cf_account", {})
+# default = config.get("default", {}).get("cf", {})
 
-CLOUDFLARE_EMAIL = account.get("cf_api_email")
-CLOUDFLARE_API_KEY = account.get("cf_api_key")
-DEFAULT_FORWARD_EMAIL = default.get("default_forward_email")
-DEFAULT_SERVER_IP = auth.get("ip")
+
+# CF_EMAIL = account.get("cf_api_email")
+# CF_API_KEY = account.get("cf_api_key")
+# DEFAULT_FORWARD_EMAIL = default.get("default_forward_email")
+# DEFAULT_SERVER_IP = auth.get("ip")
 
 # 其他
-DEFAULT_SSL_MODE = default.get("ssl_mode") or "flexible"
+# DEFAULT_SSL_MODE = default.get("ssl_mode") or "flexible"
 
-DEFAULT_SECURITY_MODE = default.get("security_mode") or 1
+# DEFAULT_SECURITY_MODE = default.get("security_mode") or 1
 
 
 def load_domains_from_file(filename):
@@ -623,37 +675,24 @@ def get_existing_domains():
 
 def main():
     """主函数入口"""
-    parser = argparse.ArgumentParser(description="Cloudflare域名管理工具")
-    parser.add_argument(
-        "action",
-        nargs="?",
-        choices=["add_zone", "configure"],
-        help="执行操作: add_zone(只添加域名) 或 configure(配置已添加的域名)",
-    )
-    parser.add_argument(
-        "-f",
-        "--file",
-        default=CF_DOMAINS_FILE,
-        help="域名配置文件,专用格式csv文件,共用格式conf文件",
-    )
-    args = parser.parse_args()
+    args = parse_args()
     file = args.file  # or CF_DOMAINS_FILE
 
-    global CLOUDFLARE_EMAIL, CLOUDFLARE_API_KEY, client, curl_headers, ACCOUNT_ID, existing_domains, processed_count, success_count
+    global CF_EMAIL, CF_API_KEY, client, curl_headers, ACCOUNT_ID, existing_domains, processed_count, success_count
 
-    if not CLOUDFLARE_EMAIL or not CLOUDFLARE_API_KEY:
+    if not CF_EMAIL or not CF_API_KEY:
         print("请设置环境变量 CLOUDFLARE_EMAIL 和 CLOUDFLARE_API_KEY")
         sys.exit(1)
 
     client = Cloudflare(
-        api_email=CLOUDFLARE_EMAIL,
-        api_key=CLOUDFLARE_API_KEY,
+        api_email=CF_EMAIL,
+        api_key=CF_API_KEY,
     )
 
     curl_headers = {
         "Content-Type": "application/json",
-        "X-Auth-Email": CLOUDFLARE_EMAIL,
-        "X-Auth-Key": CLOUDFLARE_API_KEY,
+        "X-Auth-Email": CF_EMAIL,
+        "X-Auth-Key": CF_API_KEY,
     }
 
     ACCOUNT_ID = get_account_id()
