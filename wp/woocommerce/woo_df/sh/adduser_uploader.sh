@@ -34,10 +34,18 @@ chmod 755 "$USER_HOME"
 
 chown "$USERNAME":"$USERNAME" "$UPLOAD_DIR"
 
-# 检查 SSH 配置是否已有该用户规则
+
+# 只为 uploader 用户添加 SFTP 限制，不影响 root
 SSHD_CONFIG="/etc/ssh/sshd_config"
 MATCH_BLOCK="Match User $USERNAME"
 
+# 移除全局 ForceCommand internal-sftp（如果有）
+if grep -q '^ForceCommand internal-sftp' "$SSHD_CONFIG"; then
+    echo "检测到全局 ForceCommand internal-sftp，已注释以避免影响 root 登录"
+    sed -i 's/^ForceCommand internal-sftp/#ForceCommand internal-sftp/' "$SSHD_CONFIG"
+fi
+
+# 检查是否已有该用户的 Match 块
 if grep -q "$MATCH_BLOCK" "$SSHD_CONFIG"; then
     echo "SSH 配置中已存在用户规则，跳过写入"
 else
@@ -51,6 +59,7 @@ $MATCH_BLOCK
     X11Forwarding no
 EOF
 fi
+
 # 让uploader可以读写USER_HOME目录
 chmod +x "$USER_HOME"
 
