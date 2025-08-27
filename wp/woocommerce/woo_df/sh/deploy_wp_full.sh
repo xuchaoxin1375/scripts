@@ -713,12 +713,12 @@ for user_dir in "${user_dirs[@]}"; do
     # 创建用于归档已经使用过的文件的目录(移动到当前user文件的deployed目录中,例如 为用户zsh /srv/uploads/uploader/files/zsh下的deployed目录中,如果不存在,则创建此目录 )
 
     # 创建全局归档目录
-    # deployed_dir="$PACK_ROOT/$username/deployed/"
     # deployed_dir="$DEPLOYED_DIR"
 
-    # if [ ! -d "$deployed_dir" ]; then
-    #     mkdir -p "$deployed_dir"
-    # fi
+    deployed_dir="$PACK_ROOT/$username/deployed/"
+    if [ ! -d "$deployed_dir" ]; then
+        mkdir -p "$deployed_dir"
+    fi
 
     echo "📂 正在处理站点人员名所属目录: $username"
 
