@@ -235,8 +235,10 @@ class SQLiteDB:
         lowest_price=LOWEST_PRICE,
         highest_price=HIGHEST_PRICE,
         max_img_name_length=MAX_IMG_NAME_LENGTH,
+        yy=False
     ):
         self.language = language
+        self.yy = yy
         # 默认缓存变量(从DB文件中读取)
         self.field_names_full = DBProductFields.get_all_fields_name(
             exclude_field=DBProductFields.SKU.name
@@ -982,6 +984,23 @@ but different image, keep records [%s]",
             lines.append(line_dict)
         return lines
 
+    def get_sale_price_yy(self, price, limit_sale=169.99):
+        """临时的新价格处理方案
+        1.原价*0.5,如果折后仍然高于169,则限制为169
+
+        """
+        try:
+            price = float(price)
+        except ValueError:
+            msg = f"price [{price}] is not a float"
+            error(msg)
+        sale_price = price * 0.5
+        if sale_price > limit_sale:
+            sale_price = limit_sale
+        # 保留2位小数
+        sale_price = round(sale_price, 2)
+        return sale_price
+
     def get_sale_price(self, price, limit_sale=298.98):
         """获取产品折扣价格
         1.价格小于100的打3折
@@ -1061,7 +1080,10 @@ but different image, keep records [%s]",
         for row in rows:
             # 数据处理:特价
             price = row[DBProductFields.REGULAR_PRICE.name]
-            sale_price = self.get_sale_price(price, limit_sale=limit_sale)
+            if self.yy:
+                sale_price = self.get_sale_price_yy(price, limit_sale=limit_sale)
+            else:
+                sale_price = self.get_sale_price(price, limit_sale=limit_sale)
             if sale_price == 0:
                 continue
             # 数据处理:产品分类(将分类取值为非常规值做一个恰当的转换,比如热销这类的此)
@@ -1264,6 +1286,7 @@ but different image, keep records [%s]",
         average_split_files=0,
         limit_sale=298.98,
         default_extension=".webp",
+
     ):
         """
         导出csv文件

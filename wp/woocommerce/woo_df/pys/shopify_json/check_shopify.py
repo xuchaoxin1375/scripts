@@ -40,8 +40,9 @@ PLATFORM_MARKERS = {
     "PrestaShop": ["prestashop", "modules/"],
     "OpenCart": ["opencart", "catalog/view/theme/"],
     "Wix": ["wix", "static.wixstatic.com"],
-    "Squarespace": ["squarespace", "assets.squarespace.com"]
+    "Squarespace": ["squarespace", "assets.squarespace.com"],
 }
+
 
 def get_robots_txt(url):
     """获取网站的robots.txt文件内容"""
@@ -54,6 +55,7 @@ def get_robots_txt(url):
     except requests.RequestException:
         return None
 
+
 def detect_platform(url):
     """检测电商独立站所属平台"""
     robots_content = get_robots_txt(url)
@@ -62,7 +64,7 @@ def detect_platform(url):
             for marker in markers:
                 if marker in robots_content.lower():
                     return platform
-    
+
     # 如果robots.txt方法不可用，尝试其他备用方法
     try:
         response = requests.get(url, timeout=10)
@@ -74,16 +76,18 @@ def detect_platform(url):
                     return platform
     except requests.RequestException:
         pass
-    
+
     return "未知平台"
+
 
 def main():
     parser = argparse.ArgumentParser(description="检查电商独立站所属平台")
     parser.add_argument("url", help="电商独立站的URL")
     args = parser.parse_args()
-    
+
     platform = detect_platform(args.url)
     print(f"检测到的平台: {platform}")
+
 
 if __name__ == "__main__":
     main()
