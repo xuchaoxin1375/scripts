@@ -545,11 +545,12 @@ deploy_site() {
             return 1
         fi
 
-        # mv "$site_expanded_dir"/* "$target_dir" -f 
     fi
     # 如果上述操作没有出错(return 1没有执行),则执行文件归档操作
-    echo "备份:顺利解压网站归档文件[$archive_file],移动网站压缩包到[$DEPLOYED_DIR]🎈"
-    mv "$archive_file" "$DEPLOYED_DIR" -f
+    echo "<<<归档:顺利解压网站归档文件[$archive_file]>>>"
+    deployed_dir="$PACK_ROOT/$username/deployed/"
+    mv "$archive_file" "$deployed_dir" -f
+    # mv "$archive_file" "$DEPLOYED_DIR" -f
     echo "移动解压后的目录[$site_expanded_dir]内容到目标目录wordpress[$target_dir]🎈"
     mv "$site_expanded_dir"/* "$target_dir" -f # 移动新目录内容到目标目录
 
@@ -710,13 +711,15 @@ for user_dir in "${user_dirs[@]}"; do
     # 去掉末尾斜杠(如果有的话)，得到用户名缩写
     username="${user_dir%/}"
     # 创建用于归档已经使用过的文件的目录(移动到当前user文件的deployed目录中,例如 为用户zsh /srv/uploads/uploader/files/zsh下的deployed目录中,如果不存在,则创建此目录 )
-    # echo "📦 创建用于归档已经使用过的文件的用户专属目录deployed目录"(不便管理,暂时弃用,改为统一目录归档)
-    # deployed_dir="$PACK_ROOT/$username/deployed/"
-    deployed_dir="$DEPLOYED_DIR"
 
-    if [ ! -d "$deployed_dir" ]; then
-        mkdir -p "$deployed_dir"
-    fi
+    # 创建全局归档目录
+    # deployed_dir="$PACK_ROOT/$username/deployed/"
+    # deployed_dir="$DEPLOYED_DIR"
+
+    # if [ ! -d "$deployed_dir" ]; then
+    #     mkdir -p "$deployed_dir"
+    # fi
+
     echo "📂 正在处理站点人员名所属目录: $username"
 
     # 进入用户目录
@@ -749,9 +752,10 @@ for user_dir in "${user_dirs[@]}"; do
             if wait "$pid"; then
                 ((sql_backups_processed++))
                 # 归档已用过的sql压缩包文件
-                echo "🗑️ 归档已用过的sql压缩包文件: $sql_archive"
-                # mv "$sql_archive" "$PACK_ROOT/$username/deployed/" -f -v
-                mv "$sql_archive" "$DEPLOYED_DIR" -f -v
+                echo "<<<归档:已用过的sql压缩包文件: $sql_archive >>>"
+                deployed_dir="$PACK_ROOT/$username/deployed/"
+                mv "$sql_archive" "$deployed_dir" -f -v
+                # mv "$sql_archive" "$DEPLOYED_DIR" -f -v
             else
                 ((failed_sites++))
                 echo "❌ SQL备份文件处理失败: $sql_archive"
@@ -795,9 +799,6 @@ for user_dir in "${user_dirs[@]}"; do
             ((deployed_sites++))
             # 可在此处添加归档逻辑（如需）
             
-            # 例如:移动文件(本轮被解压过的站点根目录压缩包文件和数据库压缩包文件)到deployed目录中
-            # 如果没有成功解压(比如文件完整性检测不通过则跳过)
-            # mv "$archive_file" "$deployed_dir" -f #如果放在这里移动,则没有顺利解压也会被归档
         else
             ((failed_sites++))
             echo "❌ 站点部署失败: $archive_file"
