@@ -1,4 +1,9 @@
 """PTDF woocommerce csv file to shopify(shopyy) format changer
+documents:
+https://help.shopify.com/zh-CN/manual/products/import-export/using-csv#csv-file-description
+# product template csv file:
+https://help.shopify.com/csv/product_template.csv
+
 # DF woocommerce fields
 ['SKU',
  'Name',
@@ -20,12 +25,13 @@
 
 
 
-# 笛卡尔积测试
+# 笛卡尔积测试(使用itertools.product可以轻松实现笛卡尔积)
 m = [
     ["Watermelon", "Neptune"],
     ["XS", "S", "M", "L", "XL", "2XL"],
     ["big", "little", "medium"],
 ]
+
 """
 
 # %%
@@ -39,7 +45,7 @@ from logging import debug, error, info, warning
 import pandas as pd
 
 logging.basicConfig(
-    level=logging.DEBUG, format=" %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format=" %(name)s - %(levelname)s - %(message)s"
 )
 print(os.getcwd())
 # 将工作目录设置为脚本所在目录
@@ -48,15 +54,17 @@ d = os.path.dirname(script_path)
 os.chdir(d)
 
 # SOURCE = r"./simms-eu.demo.csv"
-SOURCE=r""
-TEMPLATE_SHOPIFY = r"C:\repos\scripts\wp\woocommerce\woo_df\csv_dir\shopyy\templates\product_template_shopify_empty.csv"
-df = pd.read_csv(SOURCE)
+SOURCE = r"./telescope/p1.csv"
+# shopify产品模板可以从:https://help.shopify.com/csv/product_template.csv 下载
+TEMPLATE_SHOPIFY = r"C:\repos\scripts\wp\woocommerce\woo_df\csv_dir\shopyy\templates\shopify_product_template_empty.csv"
+# df = pd.read_csv(SOURCE)
+df = pd.read_csv(SOURCE).fillna("")
 dft = pd.read_csv(TEMPLATE_SHOPIFY)
 # 获取所有字段名
 all_columns = dft.columns.tolist()
 
 # 已有字段的映射🎈(从df_woo格式到shopify csv格式)
-exist_fiels_map = {
+exist_fields_map = {
     "SKU": "Handle",
     "Name": "Title",
     "Categories": "Product Category",
@@ -80,23 +88,26 @@ df[attr_fields_shopify] = ""
 
 
 # df.info()
-def replace_separators(s):
-    """替换字符串中的分隔符"""
-    pattern = r"/|-"
-    res = re.sub(pattern, ">", s)
-    return res
-
+##
+# 分类处理(可选)
+# 部分类shopify模板的分类(categories)可以从url中提取,分类的单词之间使用'-'符号分隔,可以用这类的方法替换为`>`
+# def replace_separators(s):
+#     """替换字符串中的分隔符
+#     将`|`或则`-`替换为`>`
+#     """
+#     pattern = r"/|-"
+#     res = re.sub(pattern, ">", s)
+#     return res
 
 ##
-# 分类
 # df['Categories'].str.replace('/|-','>' )
-s_cat = df["Categories"].apply(replace_separators)
-df["Categories"] = s_cat
+# s_cat = df["Categories"].apply(replace_separators)
+# df["Categories"] = s_cat
 
 
 ##
 # 价格
-df["Sale price"] = df["Regular price"] * 0.2
+# df["Sale price"] = df["Regular price"] * 0.2
 s_sale_price = df["Sale price"]
 ##
 # 属性值
@@ -104,7 +115,7 @@ attrs = df["Attribute 1 value(s)"]
 # attr_lines = [attr for attr in attrs]
 
 
-def parse_attrs(s):
+def parse_attrs(s: str):
     """解析属性值
 
     Examples:
@@ -148,14 +159,15 @@ def parse_attrs(s):
 
 
 def parse_images(imgs):
-    """解析图片"""
+    """解析图片
+    将多图url构成的字符串根据合适的规则分割或提取出一个个图片url字符串构成的列表
+    """
     if imgs:
         # imgs=imgs.replace('"',"")
-        res = re.findall(r'"(.*?)"', imgs)
+        # res = re.findall(r'"(.*?)"', imgs)
+        res = imgs.split(">")
         debug("images: %s", res)
         return res
-        # res = ",".join(res)
-        # return res
 
 
 # 应用解析函数并展开
@@ -163,14 +175,21 @@ rows = []
 for idx, row in df.iterrows():
     debug("processing row: %s", idx)
     attr = row["Attribute 1 value(s)"]
-    names, values = parse_attrs(attr)
+    # debug(f"attr: {attr}")
+    # continue
+    names, values = parse_attrs(attr or "")
     images = parse_images(row["Images"]) or []
     z = zip_longest(values, images, fillvalue="")
     for expand_line_idx, (value_group, img) in enumerate(z, start=1):
         # for i, value_group in enumerate(iterable=values, start=1):
         # 每个属性选项组占用一行(生成一个字典)
         d = {}
-        debug("expand_line_idx: %s, value_group: %s, img: %s", expand_line_idx, value_group, img)
+        debug(
+            "expand_line_idx: %s, value_group: %s, img: %s",
+            expand_line_idx,
+            value_group,
+            img,
+        )
         # add_attr_name=True
         # 遍历names构造字典(字典中k:v数量取决于names的长度)
         # 商品首行
@@ -185,8 +204,9 @@ for idx, row in df.iterrows():
             d["Published"] = "TRUE"
         # 同款商品的每一行都要有的
         d["Handle"] = row["SKU"]
-        d["Variant Compare At Price"] = round(row["Regular price"], 2)
-        d["Variant Price"] = round(row["Sale price"], 2)
+        # d["Variant Compare At Price"] = round(row["Regular price"], 2)
+        d["Variant Compare At Price"] = round(float(row["Regular price"]), 2)
+        d["Variant Price"] = round(float(row["Sale price"]), 2)
         # 多图情况
         d["Image Src"] = img
         d["Image Position"] = str(expand_line_idx)
@@ -215,7 +235,6 @@ variants = pd.DataFrame(rows, columns=all_columns)
 ##
 variants
 ##
-variants[['Image Src','Image Position']]
+variants[["Image Src", "Image Position"]]
 ##
 variants.to_csv("changed_demo.csv")
-
