@@ -34,8 +34,10 @@
 
 其中`-f .jpg`表明,当图片url后缀不是白名单图片类型,就会默认加上后缀`.jpg`
 
+而产品描述的长度如果过短可能是采集到`<br>`这种标签,可以通过`-dl`指定一个最短描述字符串长度(比如取10),描述长度低于此长度的产品会被丢弃)
+
 ```powershell
-python $pys\woo_get_csv.py -f .webp --start-id  $start_id --end-id $end_id  --language-country $language --output-dir $output_dir --sku-suffix $sku_suffix 
+python $pys\woo_get_csv.py -f .webp --start-id  $start_id --end-id $end_id  --language-country $language --output-dir $output_dir --sku-suffix $sku_suffix -dl 10
 ```
 
 > 再次强调,导出的时候千万注意对应的国家,涉及到默认产品分类(面包屑)分配词语的单词所属语种,使用`--language-country`或者缩写`-C`来指定,比如美国用`US`,德国`DE`,...
@@ -52,7 +54,7 @@ python $pys\woo_get_csv.py -f .webp --start-id  $start_id --end-id $end_id  --la
 
 默认情况下产品名和图片链接同时相同才会视为重复,可以尽可能保留更多的产品数据
 
-#### 使用示例🎈
+#### 完整推荐的使用示例🎈
 
 例如:
 
@@ -67,7 +69,7 @@ $country='  国家代号(US/DE/FR/ES/IT/...)  '.trim()
 $start=
 $end=
 $exclude='0' #如果需要排除,将0修改为你需要的id(多个id用逗号分隔)
-python $pys\woo_get_csv.py -f .webp -s $start -e $end  -C $country -E $exclude -o "$desktop/$type-$country-$(date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]"
+python $pys\woo_get_csv.py -f .webp -s $start -e $end  -C $country -E $exclude -o "$desktop/$type-$country-$(date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]" -dl 10
 ```
 
 ---
@@ -86,20 +88,14 @@ $country='  IT '.trim()
 $start=573
 $end=602
 $exclude='574,575,583' 
-python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -o "$desktop/$type-$country-$(date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]"
+python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -o "$desktop/$type-$country-$(date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]" -dl 10
 ```
 
 
 
 ##### 单独导出
 
-```powershell
-$type='  汽配  '.trim()
-$country='  IT  '.trim()
-python $pys\woo_get_csv.py -f .webp -s 562 -C $country  -o $desktop/$type-$country-$(date -format MMdd-hh-mm-ss)
-```
 
-或者更完整的
 
 ```powershell
 $type='  汽配  '.trim()
@@ -107,19 +103,7 @@ $country='  IT '.trim()
 $start=604
 $end=$start 
 $exclude='0'
-python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -o "$desktop/$type-$country-$(date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]" -dl 100
-```
-
-
-
----
-
-
-
-如果只导出一个任务,可以省略`-e`
-
-```powershell
-python $pys\woo_get_csv.py -f .webp -s 474  -C US  -o $desktop/outdoor_us_0720
+python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -o "$desktop/$type-$country-$(date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]" -dl 10
 ```
 
 
