@@ -235,10 +235,12 @@ class SQLiteDB:
         lowest_price=LOWEST_PRICE,
         highest_price=HIGHEST_PRICE,
         max_img_name_length=MAX_IMG_NAME_LENGTH,
-        yy=False
+        desc_min_len=0,
+        yy=False,
     ):
         self.language = language
         self.yy = yy
+        self.desc_min_len = desc_min_len
         # 默认缓存变量(从DB文件中读取)
         self.field_names_full = DBProductFields.get_all_fields_name(
             exclude_field=DBProductFields.SKU.name
@@ -427,7 +429,7 @@ class SQLiteDB:
         Args:
             db_path: sqlite文件路径
             fields: 需要查询的字段列表或字符串
-            strict_mode:是否只根据产品名去重(如果是会移任何同名产品而不考虑图片链接,可能造成数据大大减少)
+            strict_mode:是否只根据产品名去重(如果是仅根据同名产品而不考虑图片链接,可能造成数据大大减少)
             count_rows_only:是否只返回行数,不返回数据,用于快速统计采集的数据有多少
         """
         info("read data from %s...", db_path)
@@ -483,6 +485,7 @@ class SQLiteDB:
 
         name_field = DBProductFields.NAME.value
         img_field = DBProductFields.IMAGES.value
+        desc_field = DBProductFields.DESCRIPTION.value
 
         # 添加tqdm进度条，显示百分比
         for i, row in tqdm(
@@ -490,6 +493,7 @@ class SQLiteDB:
         ):
             product_name = row[name_field]
             product_img = row[img_field]
+            product_desc = row[desc_field]
             # product_info = f"{{name:{product_name};sku:{product_sku}}}"
             # names_dict = dd.get(product_img, {})
             # names=dd[product_img]
@@ -518,6 +522,10 @@ class SQLiteDB:
             #     continue
             else:
 
+                # 如果产品描述长度不足要求,则丢弃此条数据
+                if self.desc_min_len and len(product_desc) < self.desc_min_len:
+                    warning("product:[%s] description length is less than %s, drop it", i, self.desc_min_len)
+                    continue
                 # 当前产品尚未统计过,更新统计计数器
                 unique_rows.append(row)
                 info(
@@ -1286,7 +1294,6 @@ but different image, keep records [%s]",
         average_split_files=0,
         limit_sale=298.98,
         default_extension=".webp",
-
     ):
         """
         导出csv文件

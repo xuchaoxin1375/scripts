@@ -242,7 +242,7 @@ function Add-CFZoneConfig
     param(
         $Account,
         $Ip="",
-        $CfConfig = "$desktop\cf_config.json",
+        $CfConfig = "$cf_config",
         $Table = "$desktop/table.conf"
     )
     python $pys/cf_api/cf_config_api.py configure -c $CfConfig -f $Table -a $Account -ip $ip
@@ -263,7 +263,7 @@ function Add-CFZoneCheckActivation
     param (
         $Account = "account2",
         $Table = "$desktop/table.conf",
-        $ConfigPath = "$desktop/cf_config.json"
+        $ConfigPath = "$cf_config"
     )
     $config = Get-Content $ConfigPath | ConvertFrom-Json
     $account = $config."accounts"."$Account"

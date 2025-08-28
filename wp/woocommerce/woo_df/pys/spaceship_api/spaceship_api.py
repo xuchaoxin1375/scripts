@@ -26,8 +26,9 @@ import time
 import requests
 
 DESKTOP = r"C:/Users/Administrator/Desktop"
+DEPLOY_CONFIGS=f"{DESKTOP}/deploy_configs"
 # 默认配置文件路径
-DEFAULT_CONFIG_PATH = os.path.join(DESKTOP, "spaceship_config.json")
+DEFAULT_CONFIG_PATH = os.path.join(DEPLOY_CONFIGS, "spaceship_config.json")
 
 
 class APIClient:

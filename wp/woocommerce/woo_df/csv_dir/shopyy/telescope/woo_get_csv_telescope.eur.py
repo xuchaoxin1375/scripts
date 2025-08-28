@@ -53,6 +53,7 @@ class LanguagesHotSaleX(EnumItRc):
 # 产品价格区间(打折前不在此区间的产品将被过滤掉)
 LOWEST_PRICE = 1
 HIGHEST_PRICE = 10000
+# 🎈
 LANGUAGE = LanguagesHotSaleX.UK.name
 # 限制产品数量少的分类,将其分配到热销类(或其近义词);设置为0表示不处理分类
 CATEGORIES_THRESHOLD = 0
@@ -64,7 +65,7 @@ CATEGORIES_THRESHOLD = 0
 
 # 根据你的采集器安装目录以及采集存放的db目录来填写🎈(末尾不要有\,前面可以有)
 DATA_DIR = Path(r"C:\火车采集器V10.27\Data")
-
+# 🎈
 START = 605
 END = 605
 

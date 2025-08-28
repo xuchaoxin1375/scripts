@@ -879,7 +879,7 @@ function Update-SSNameServers
     [CmdletBinding()]
     param (
         $Table = "$desktop/domains_nameservers.csv",
-        $Config = "$desktop/spaceship_config.json"
+        $Config = "$spaceship_config"
     )
     python $pys/spaceship_api/update_nameservers.py -f $Table -c $Config 
     
@@ -893,7 +893,7 @@ function Deploy-BatchSiteBTOnline
     #>
     param(
         $Server,
-        $ServerConfig = "$desktop/bt_config.json",
+        $ServerConfig = "$server_config",
         $Table = "$desktop/table.conf"
     )
     python $pys/bt_api/create_sites.py -c $ServerConfig -s $Server -f $Table

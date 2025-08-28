@@ -9,13 +9,23 @@
             "api_secret": "your_secret_long_string1"
         },
         {
-            "account": "account2",
-            "api_key": "your_short_api_key2",
-            "api_secret": "your_secret_long_string2"
+            "account": "",
+            "api_key": "",
+            "api_secret": ""
         }
     ],
-    "nameserver1": "your_ns1",
-    "nameserver2": "your_ns2",
+    "nameserver1": "",
+    "nameserver2": "",
+    "nameservers": {
+        "group1": {
+            "nameserver1": "",
+            "nameserver2": ""
+        },
+        "group2": {
+            "nameserver1": "",
+            "nameserver2": ""
+        }
+    },
     "take": 100,
     "skip": 0,
     "order_by": "expirationDate"

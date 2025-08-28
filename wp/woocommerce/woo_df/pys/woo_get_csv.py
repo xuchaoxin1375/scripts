@@ -182,6 +182,13 @@ def parse_args():
         type=str,
         help="自定义SKU后缀(可以通过指定LANGUAGE+NOW_STR)结构的后缀来强制让两批不同时间导出的csv数据中的sku时间部分相同,例如图片下好了,但是发现采集规则错误重新采集了一遍(注意数量是否不变),图片已经下好了,就可以用这个方法指定后缀匹配图片名)",
     )
+    parser.add_argument(
+        "-dl",
+        "--desc-min-len",
+        type=int,
+        default=0,
+        help="最小描述长度(默认:0,不限制)",
+    )
 
     return parser.parse_args()
 
@@ -365,6 +372,7 @@ if __name__ == "__main__":
         lowest_price=LOWEST_PRICE,
         highest_price=HIGHEST_PRICE,
         max_img_name_length=args.max_image_name_length,
+        desc_min_len=args.desc_min_len,
     )
     ## 2. 读取数据库数据(根据count_rows_only参数,可以只统计行数,而不做初步的数据处理;正式使用是要改成False!)🎈
     db.get_data(

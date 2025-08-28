@@ -232,9 +232,13 @@ for idx, row in df.iterrows():
         rows.append(d)
 
 variants = pd.DataFrame(rows, columns=all_columns)
+# 添加额外的专辑列(可选)
+variants['Collection']=variants['Type']
 ##
 variants
 ##
 variants[["Image Src", "Image Position"]]
 ##
-variants.to_csv("changed_demo.csv")
+variants.to_csv("changed_1.csv", index=False)
+
+##

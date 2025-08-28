@@ -3,8 +3,8 @@
 调用封装好的宝塔api客户端BTApi
 注意首先登录宝塔页面配置ip白名单,使用ip查询当前网络所处属的公网ip段,并添加到白名单中,其他ip发送的请求都会失败,即便密钥和宝塔面板地址是正确的也不行
 
-配置宝塔密钥和面板地址,请拷贝bt_config_template.json到你私密的目录下,修改其中的内容,
-然后可以更改正式的名字,配置此代码中的BT_CONFIG变量(默认尝试读取Administrator用户桌面上的bt_config.json文件)
+配置宝塔密钥和面板地址,请拷贝server_config_template.json到你私密的目录下,修改其中的内容,
+然后可以更改正式的名字,配置此代码中的server_config变量(默认尝试读取Administrator用户桌面上的deploy_configs/server_config.json文件)
 
 注意,宝塔面板地址填写的是面板地址,如:http://192.168.1.1:8888,而不是http://192.168.1.1也不需要端口号后面的私密字符串，写到端口为止
 
@@ -27,7 +27,7 @@ from comutils import get_main_domain_name_from_str
 from btapi import BTApi
 
 DESKTOP = "C:/users/Administrator/Desktop/"
-BT_CONFIG = f"{DESKTOP}/bt_config.json"
+server_config = f"{DESKTOP}/deploy_configs/server_config.json"
 TEAM_JSON = r"C:/sites/wp_sites/SpiderTeam.json"
 # 参数化🎈
 TABLE_CONF = f"{DESKTOP}/table.conf"
@@ -56,8 +56,8 @@ def parse_args():
         "-c",
         "--config",
         type=str,
-        default=BT_CONFIG,
-        help="宝塔配置文件路径,默认读取桌面bt_config.json",
+        default=server_config,
+        help="宝塔配置文件路径,默认读取桌面server_config.json",
     )
     parser.add_argument(
         "-f",
@@ -244,7 +244,7 @@ def add_sites(bt_api: BTApi, config_file, set_rewrite_rule=True):
 
 
 def main():
-    config = get_config(BT_CONFIG)
+    config = get_config(server_config)
     args = parse_args()
     servers = config["servers"]
     server = servers.get(args.server)

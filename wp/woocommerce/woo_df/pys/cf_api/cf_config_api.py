@@ -34,8 +34,11 @@ load_dotenv()
 CONFIG_GROUP = "cxxu_df2"
 
 DESKTOP = r"C:/Users/Administrator/Desktop"
-# CONFIG_PATH = f"{DESKTOP}/bt_config.json"
-CONFIG_PATH = f"{DESKTOP}/cf_config.json"
+# CONFIG_PATH = f"{DESKTOP}/deploy_configs/server_config.json"
+DESKTOP = r"C:/Users/Administrator/Desktop"
+DEPLOY_CONFIGS=f"{DESKTOP}/deploy_configs"
+# 默认配置文件路径
+CONFIG_PATH = f"{DEPLOY_CONFIGS}/cf_config.json"
 # 通用格式:采用table.conf中的第一列数据作为要配置的域名
 CF_DOMAINS_TABLE_CONF = f"{DESKTOP}/table.conf"
 # 完整专用格式

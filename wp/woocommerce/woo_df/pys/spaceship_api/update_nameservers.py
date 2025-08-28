@@ -9,7 +9,7 @@
     python $pys/spaceship_api/update_nameservers.py -h
 
 # 执行nameservers更新操作
-    python $pys/spaceship_api/update_nameservers.py -c $Desktop/spaceship_config.json -f $Desktop/domains_nameservers.csv -v
+    python $pys/spaceship_api/update_nameservers.py -c $Desktop/deploy_configs/spaceship_config.json -f $Desktop/domains_nameservers.csv -v
 
 配置文件(json)内容示例
 {
@@ -51,7 +51,10 @@ from spaceship_api import APIClient, get_auth
 
 DESKTOP = r"C:/Users/Administrator/Desktop"
 # 默认的鉴权信息配置文件(json格式)
-SS_CONFIG_PATH = r"C:/Users/Administrator/Desktop/spaceship_config.json"
+DESKTOP = r"C:/Users/Administrator/Desktop"
+DEPLOY_CONFIGS = f"{DESKTOP}/deploy_configs"
+# 默认配置文件路径
+SS_CONFIG_PATH = rf"{DEPLOY_CONFIGS}/spaceship_config.json"
 
 # 域名和名称服务器配置表(二选一)
 # 格式1:简化格式的配置文件(只关注域名所在列,其他列数据被忽略,默认设置的NS1和NS2从配置文件中读取)

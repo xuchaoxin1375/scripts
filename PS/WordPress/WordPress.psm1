@@ -784,11 +784,11 @@ function Deploy-WpSitesOnline
         [alias('DomainTable')]$ToTable = "$Desktop/domains_nameservers.csv",
 
         # 记录spaceship账号信息的配置文件路径
-        $SpaceshipConfig = "$Desktop/spaceship_config.json",
+        $SpaceshipConfig = "$spaceship_config",
         # 记录cf账号和密钥信息的配置文件路径
-        $CfConfig = "$Desktop/cf_config.json",
+        $CfConfig = "$cf_config",
         # 记录服务器账号信息的配置文件路径
-        $ServerConfig = "$Desktop/bt_config.json",
+        $ServerConfig = "$server_config",
         
 
 
