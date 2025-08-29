@@ -234,7 +234,7 @@ for idx, row in df.iterrows():
 variants = pd.DataFrame(rows, columns=all_columns)
 # 添加额外的专辑列(可选)
 variants['Collection']=variants['Type']
-##
+## 
 variants
 ##
 variants[["Image Src", "Image Position"]]

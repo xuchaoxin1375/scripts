@@ -202,6 +202,7 @@ ln -s /www/sh/deploy_wp_full.sh /deploy.sh -f
 ln -s /www/sh/deploy_wp_full.sh /www/wwwroot/deploy_wp_full.sh -f
 ln -s /www/sh/update_repos.sh /update_repos.sh -f
 ln -s /www/sh/nginx_conf/com.conf /www/server/nginx/conf/com.conf -f
+ln -s /www/sh/nginx_conf/update_nginx_vhosts_conf.sh /update_nginx_vhosts_conf.sh -f
 
 ```
 
