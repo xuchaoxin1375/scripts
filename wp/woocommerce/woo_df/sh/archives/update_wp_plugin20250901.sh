@@ -8,7 +8,6 @@ usage() {
     echo "  --remove <插件名列表>    要移除的插件名，多个用逗号分隔"
     echo "  --user <用户名>          WordPress 站点所属用户名（可选，不指定则处理所有用户）"
     echo "  --workdir <工作目录>     网站根工作目录，默认为 /www/wwwroot"
-    echo "  --plugin-type           插件类型(如果是must类型,则将被处理的插件视为强制执行插件),放到wp-content目录下;默认为common类型,普通插件,放到wp-content/plugins目录下"
     echo "  --dry-run                预览操作，不实际执行"
     echo "  --blacklist <文件>       指定黑名单文件（每行一个域名）"
     echo "  --whitelist <文件>       指定白名单文件（每行一个域名，只操作这些域名）"
@@ -22,13 +21,10 @@ REMOVE_PLUGINS=""
 USER_NAME=""
 WORKDIR="/www/wwwroot"
 DRY_RUN=false
-COMMON_PLUGINS_HOME="wp-content/plugins"
-MUST_PLUGINS_HOME="wp-content"
 BLACKLIST_FILE=""
 WHITELIST_FILE=""
 LOG_FILE=""
 
-PLUGIN_TYPE="common"
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --source) SOURCE_DIR="$2"; shift ;;
@@ -38,14 +34,6 @@ while [[ "$#" -gt 0 ]]; do
         --dry-run) DRY_RUN=true ;;
         --blacklist) BLACKLIST_FILE="$2"; shift ;;
         --whitelist) WHITELIST_FILE="$2"; shift ;;
-        --plugin-type)
-            if [[ "$2" == "must" ]]; then
-                PLUGIN_TYPE="must"
-            else
-                PLUGIN_TYPE="common"
-            fi
-            shift
-            ;;
         --log) LOG_FILE="$2"; shift ;;
         *) usage ;;
     esac
@@ -142,26 +130,15 @@ for site in $SITE_PATHS; do
 
     # 覆盖插件模式
     if [[ -n "$SOURCE_DIR" ]]; then
-        PLUGIN_BASENAME="$(basename "$SOURCE_DIR")"
-        if [[ "$PLUGIN_TYPE" == "must" ]]; then
-            TARGET_DIR="$site/$MUST_PLUGINS_HOME/$PLUGIN_BASENAME"
-            # 确保 mu-plugins 目录存在
-            if ! $DRY_RUN; then
-                mkdir -p "$site/$MUST_PLUGINS_HOME"
-            fi
-            TYPE_DESC="(must-use plugin)"
-        else
-            TARGET_DIR="$site/$COMMON_PLUGINS_HOME/$PLUGIN_BASENAME"
-            TYPE_DESC="(common plugin)"
-        fi
+        TARGET_DIR="$site/wp-content/plugins/$(basename "$SOURCE_DIR")"
         if $DRY_RUN; then
-            log_action "[DRY RUN] 将覆盖 $SOURCE_DIR 到 $TARGET_DIR $TYPE_DESC"
+            log_action "[DRY RUN] 将覆盖 $SOURCE_DIR 到 $TARGET_DIR"
         else
-            if [[ -e "$TARGET_DIR" ]]; then
-                log_action "删除已存在: $TARGET_DIR"
+            if [[ -d "$TARGET_DIR" ]]; then
+                log_action "删除已存在目录: $TARGET_DIR"
                 rm -rf "$TARGET_DIR"
             fi
-            log_action "覆盖 $SOURCE_DIR 到 $TARGET_DIR $TYPE_DESC"
+            log_action "覆盖 $SOURCE_DIR 到 $TARGET_DIR"
             cp -r "$SOURCE_DIR" "$TARGET_DIR"
         fi
     fi
@@ -170,7 +147,7 @@ for site in $SITE_PATHS; do
     if [[ -n "$REMOVE_PLUGINS" ]]; then
         IFS=',' read -ra PLUGIN_LIST <<< "$REMOVE_PLUGINS"
         for plugin in "${PLUGIN_LIST[@]}"; do
-            REMOVE_DIR="$site/$COMMON_PLUGINS_HOME/$plugin"
+            REMOVE_DIR="$site/wp-content/plugins/$plugin"
             if [[ -d "$REMOVE_DIR" ]]; then
                 if $DRY_RUN; then
                     log_action "[DRY RUN] 将移除插件目录: $REMOVE_DIR"

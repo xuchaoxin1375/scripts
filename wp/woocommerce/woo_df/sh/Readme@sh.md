@@ -158,9 +158,13 @@ cat $sh\update_repos.sh
 
 ### 总配置nginx.conf
 
-文件位置:`$woo_df\sh\nginx_conf\nginx.conf`
+文件位置:`$sh\nginx_conf\nginx.conf`
 
-服务器中原文件位置:`/www/sh/nginx_conf/nginx.conf`
+服务器中文件位置:`/www/sh/nginx_conf/nginx.conf`
+
+如果将仓库中的`nginx.conf`配置文件覆盖调用原配置文件(比如使用符号链接将文件从仓库位置指向到nginx配置文件路径)是一个有风险的行为
+
+此外,在宝塔中,如果还用了免费防火墙(作者:民国三年一场雨)可能会和限流配置的片段产生冲突,目前看来这个防火墙功能很弱,效果不佳,不太有用,需要nginx限流配置或拦截非法请求的可以自己编写nginx配置,更加灵活
 
 ### 公共配置文件com.conf
 
