@@ -125,86 +125,15 @@ bash /www/sh/update_repos.sh
 
 ### 完整版本
 
-```bash
-#!/bin/bash
-#初次下载代码
-#git clone --depth 1 https://gitee.com/xuchaoxin1375/scripts.git /repos/scripts
+文件位置:`$woo_df\sh\update_repos.sh`
 
-# 强制更新代码(放弃已有更改)
-#git fetch origin
-#git reset --hard origin/main
-#git pull
+查看完整代码:
 
-
-
-# === 配置变量 ===
-REPO_URL="https://gitee.com/xuchaoxin1375/scripts.git"
-TARGET_DIR="/repos/scripts"
-BRANCH="main"  # 或 "master"，根据实际情况调整
-
-# === 确保父目录存在 ===
-mkdir -p "$(dirname "$TARGET_DIR")"
-
-echo "🚀 正在同步仓库到最新版本: $TARGET_DIR"
-
-# === 判断目录是否存在，决定是克隆还是更新 ===
-if [ ! -d "$TARGET_DIR/.git" ]; then
-    # 目录不存在或不是 Git 仓库：执行浅克隆
-    echo "📁 未检测到 Git 仓库，正在执行浅克隆..."
-    rm -rf "$TARGET_DIR"  # 防止存在非 Git 目录（如普通文件夹）
-    git clone --depth 1 "$REPO_URL" "$TARGET_DIR"
-    if [ $? -ne 0 ]; then
-        echo "❌ 克隆失败，请检查网络或仓库地址"
-        exit 1
-    fi
-    echo "✅ 克隆成功"
-else
-    # 已存在 Git 仓库：进入目录并强制更新
-    echo "🔁 检测到现有仓库，正在强制更新到最新版本..."
-
-    (
-        cd "$TARGET_DIR" || { echo "❌ 无法进入目录: $TARGET_DIR"; exit 1; }
-
-        # 确保是预期的仓库（可选安全检查）
-        # CURRENT_URL=$(git config --get remote.origin.url)
-        # if [ "$CURRENT_URL" != "$REPO_URL" ]; then
-        #     echo "⚠️ 仓库地址不匹配，预期: $REPO_URL，实际: $CURRENT_URL"
-        #     exit 1
-        # fi
-
-        # 获取最新提交信息前先 fetch
-        git fetch origin "$BRANCH"
-
-        if [ $? -ne 0 ]; then
-            echo "❌ 获取远程更新失败"
-            exit 1
-        fi
-
-        # 重置到远程分支最新提交
-        git reset --hard origin/"$BRANCH"
-
-        # 可选：再次 pull 以确保（虽然 reset --hard 后 pull 不必要，但可刷新）
-        # git pull --depth 1 origin "$BRANCH"
-
-        echo "✅ 仓库已强制更新到 origin/$BRANCH 最新版本"
-    )
-fi
-
-echo "🎉 代码同步完成：$TARGET_DIR"
-
-
-# 让指定目录下所有脚本文件(.sh)可执行🎈
-find /repos/scripts/wp/woocommerce/woo_df/sh/ -type f \( -name "*.sh" -o -name "*.bash" \) -exec chmod +x {} \;
-
-# 更新符号链接
-ln -s /repos/scripts/wp/woocommerce/woo_df/sh /www/sh -f
-ln -s /www/sh/deploy_wp_full.sh /deploy.sh -f
-ln -s /www/sh/deploy_wp_full.sh /www/wwwroot/deploy_wp_full.sh -f
-ln -s /www/sh/update_repos.sh /update_repos.sh -f
-ln -s /www/sh/nginx_conf/com.conf /www/server/nginx/conf/com.conf -f
-ln -s /www/sh/nginx_conf/update_nginx_vhosts_conf.sh /update_nginx_vhosts_conf.sh -f
-
+```powershell
+cat $sh\update_repos.sh
 ```
+
+
 
 ## 定时自动任务crontab🎈
 
@@ -212,6 +141,7 @@ ln -s /www/sh/nginx_conf/update_nginx_vhosts_conf.sh /update_nginx_vhosts_conf.s
 
 ```bash
 0 0 */2 * * bash /www/sh/clean_logs.bash
+0 3 * * * bash /www/sh/nginx_conf/update_cf_ip_configs.sh
 0 0 * * 0 bash /www/sh/remove_deployed_sites.sh
 # */30 * * * * pkill -9 nginx;nginx
 0 * * * * bash /www/sh/deploy_wp_schd.sh
@@ -228,29 +158,9 @@ ln -s /www/sh/nginx_conf/update_nginx_vhosts_conf.sh /update_nginx_vhosts_conf.s
 
 ### 总配置nginx.conf
 
-放在`http{}`块中
+文件位置:`$woo_df\sh\nginx_conf\nginx.conf`
 
-```nginx
-# 可选：针对可疑 User-Agent 或空 User-Agent 限流
-map $http_user_agent $allow_access {
-    default 0;
-
-    # 允许常见浏览器
-    "~*chrome"     1;
-    "~*firefox"    1;
-    "~*safari"     1;
-    "~*edge"       1;
-    "~*opera"      1;
-
-    # 允许 Google / Bing
-    "~*googlebot"  1;
-    "~*bingbot"    1;
-    # 允许 wp定时任务请求
-    "~*wordpress"   1;
-}
-```
-
-
+服务器中原文件位置:`/www/sh/nginx_conf/nginx.conf`
 
 ### 公共配置文件com.conf
 
@@ -264,59 +174,9 @@ map $http_user_agent $allow_access {
 
 为网站插入公用nginx配置片段的批量处理脚本:`/www/sh/nginx_conf/update_nginx_vhosts_conf.sh`
 
-基础的公用配置(完整版)存放在`/www/sh/nginx_conf/com.conf`文件中,
-
-```
-
-```
-
-其内容片段如下
-
-```bash
+基础的公用配置(完整版)存放在`/www/sh/nginx_conf/com.conf`文件中
 
 
-
-# --- 拦截 xmlrpc.php ---
-location = /xmlrpc.php {
-    deny all;
-    # 返回 444 断开连接（比 403 更隐蔽）
-    return 444;
-    # return 403;
-}
-
-# 精确匹配：/wp-admin
-location = /wp-admin {
-    return 403;
-}
-# 粗暴禁止访问或跳转到/wp-login.php,配置不当的话部分情况会拦住自己人,如有特殊需要,可以临时开放
-# (通常正确安装并激活wps-hide-login后不会被此规则拦截,自己人使用约定的入口url可以登录后台)
-location = /wp-login.php{
-    return 403;
-}
-# 拒绝非 Google/Bing 爬虫
-if ($allow_access = 0) {
-    return 444; # 直接断开连接
-}
-
-# --- 保护 wp-cron.php（可选）---
-# 正常应由内部触发，不建议公开访问
-
-location = /wp-cron.php {
-    # deny all;  # 如果你用系统 cron 替代
-    allow 127.0.0.1;  # 只允许本地或 Cloudflare（谨慎）
-    # allow 172.68.0.0/16;  # Cloudflare IP 段（可选）
-    deny all;
-}
-
-# --- 可选：拦截高频 bot 请求 ---
-# location / {
-#     limit_req zone=bots nodelay;
-#     # 正常流量继续
-#     try_files $uri $uri/ /index.php?$args;
-# }
-
-  
-```
 
 ## 一些有用的指令🎈
 
