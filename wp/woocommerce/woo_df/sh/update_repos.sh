@@ -63,6 +63,8 @@ fi
 
 echo "🎉 代码同步完成：$TARGET_DIR"
 
+# 创建或更新nginx配置的必要的文件
+bash /www/sh/nginx_conf/update_nginx_vhosts_conf.sh
 
 # 让指定目录下所有脚本文件(.sh)可执行🎈
 find /repos/scripts/wp/woocommerce/woo_df/sh/ -type f \( -name "*.sh" -o -name "*.bash" \) -exec chmod +x {} \;
