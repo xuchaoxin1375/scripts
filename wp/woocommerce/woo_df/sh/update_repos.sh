@@ -77,5 +77,5 @@ ln -s /www/sh/update_repos.sh /update_repos.sh -fv
 ln -s /www/sh/nginx_conf/update_nginx_vhosts_conf.sh /update_nginx_vhosts_conf.sh -fv
 # 配置文件软链接
 ln -s /www/sh/nginx_conf/com.conf /www/server/nginx/conf/com.conf -fv
-ln -s /www/sh/nginx_conf/nginx.conf /www/server/nginx/conf/nginx.conf -fv
+# ln -s /www/sh/nginx_conf/nginx.conf /www/server/nginx/conf/nginx.conf -fv
 

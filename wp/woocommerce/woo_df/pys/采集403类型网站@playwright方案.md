@@ -40,7 +40,7 @@ PS> python C:\Users\Administrator\Desktop\localhost\get_htmls_from_urls_multi_th
 
 可以使用命令行`Get-UrlFromSitemap .\total_catalog_products.xml`这个命令将总级站点地图中的各个子集站点地图url抽出来
 
-```
+```powershell
 PS> Get-UrlFromSitemap .\catalog.xml
 Pattern to match URLs: <loc>(.*?)</loc>
 Processing sitemap at path: .\catalog.xml [C:\Users\Administrator\Desktop\localhost\0822\catalog.xml]
@@ -49,10 +49,12 @@ https://www.trodo.it/site_map/sitemap_prod_10.xml
 https://www.trodo.it/site_map/sitemap_prod_100.xml
 https://www.trodo.it/site_map/sitemap_prod_101.xml
 ....
-
+#也有可能是一些.gz文件的链接,同样下载下来
 ```
 
-将抽出来的子集站点地图url保存到一个文本文件中,比如`sitemap_urls.txt`
+将抽出来的子集站点地图url保存到一个文本文件中,比如`sitemap_urls.txt` (或`sitemap_gz.txt`)
+
+下载这些站点地图(或其压缩包),和下载产品网页类似,也可以调用浏览器下载站点地图文件或其压缩包(共用一个下载脚本)
 
 ```powershell
 PS C:\Users\Administrator\Desktop\localhost> py .\get_htmls_from_urls_multi_thread.py .\sitemap_urls.txt -p http://localhost:8800 -c 5   
@@ -69,6 +71,10 @@ PS C:\Users\Administrator\Desktop\localhost> py .\get_htmls_from_urls_multi_thre
 [1/106] 成功下载: https://www.trodo.it/site_map/sitemap_prod_1.xml -> downloads\20250822_211603\www.trodo.it\site_map_sitemap_prod_1.xml.html
 [9/106] 成功下载: https://www.trodo.it/site_map/sitemap_prod_106.xml -> downloads\20250822_211603\www.trodo.it\site_map_sitemap_prod_106.xml.html
 [6/106] 成功下载: https://www.trodo.it/site_map/sitemap_prod_103.xml -> downloads\20250822_211603\www.trodo.it\site_map_sitemap_prod_103.xml.html
+```
+
+```
+
 ```
 
 

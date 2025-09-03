@@ -2,7 +2,53 @@
 
 ## 配置通用的环境变量
 
-适用于windows系统的环境变量配置
+
+
+### python依赖包安装
+
+查看woo_df目录下的requirements.txt,根据该文件的要求进行安装依赖
+
+在这之前,建议将pip源更换为国内加速源,比如清华源,执行以下命令即可配置(powershell或者cmd/bash都可以)
+
+```bash
+pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+```
+
+安装依赖的命令为:
+
+```bash
+pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple #修改pip源
+$env:PYTHONIOENCODING="utf-8" #在powershell中配置临时变量,解决gbk编码问题(包含中文的情况)
+pip install -r "$woo_df\requirements.txt" #注意修改requirements.txt的路径为你自己的实际路径(如果遇到编码报错(gbk)则注释或移除对应的中文)🎈
+```
+
+- 注意:具体的requirements.txt路径根据自己的实际情况指定,尤其是当前工作目录会影响到指定目录值
+
+
+- 或者可以使用拖转文件的方式或指定绝对路径的方式来指定requirements.txt文件都可以
+
+### magic库的检查(可选)
+
+- 上面的安装依赖操作可能无法一次性顺利安装magic库,可以考虑使用其他库代替或者关闭此功能(需要调整代码)
+
+```python
+#⚡️[Administrator@CXXUDESK][C:\Share\df\wp_sites\wp_migration][11:49:13][UP:17.08Days]
+PS> ipython
+Python 3.12.7 | packaged by Anaconda, Inc. | (main, Oct  4 2024, 13:17:27) [MSC v.1929 64 bit (AMD64)]
+Type 'copyright', 'credits' or 'license' for more information
+IPython 8.31.0 -- An enhanced Interactive Python. Type '?' for help.
+
+In [1]: import magic
+
+In [2]: magic.libmagic
+Out[2]: <CDLL 'C:\ProgramData\scoop\apps\miniconda3\current\Lib\site-packages\magic\libmagic\libmagic.dll', handle 7ffa0b140000 at 0x27dff8c99d0>
+
+In [3]:
+```
+
+
+
+### 适用于windows系统的环境变量配置
 
 下面采用命令行`setx`的方式配置,用户也可以选择使用系统的图形界面配置环境变量
 
