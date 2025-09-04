@@ -1087,7 +1087,7 @@ WHERE
     Import-MysqlFile -Server $Server -SqlFilePath $sqlPath -MySqlUser $MySqlUser -key $key -DatabaseName $DatabaseName 
 
 }
-function Update-WpPlugins-DF1
+function Update-WpPlugins-DF
 {
     <# 
 .SYNOPSIS
@@ -1107,7 +1107,8 @@ Update-WpPlugins-DF1 -plugin_dir_local C:\share\df\wp_sites\wp_plugins_functions
         # $password = ""              # 服务器密码（不推荐明文存储,配置ssh密钥登录更安全）
         $remoteDirectory = "/www/wwwroot"       , # 服务器目标目录
         $plugin_dir_local = "$wp_plugins\price_pay\mallpay",   # 本地插件目录路径🎈
-        $bashScript = "update_wp_plugin.sh",
+        
+        $bashScript = "/www/sh/wp-plugin-update/update_wp_plugin.sh",
         [switch]$Dry
     )
     
@@ -1124,7 +1125,7 @@ Update-WpPlugins-DF1 -plugin_dir_local C:\share\df\wp_sites\wp_plugins_functions
 
     # 执行高性能的bash脚本
     $dryRun = if($Dry) { "--dry-run" }else { "" }
-    $cmd = "  ssh $username@$server bash $remoteDirectory/wp-plugin-update/$bashScript --workdir $remoteDirectory --source $plugin_dir $dryRun " 
+    $cmd = "  ssh $username@$server bash $bashScript --workdir $remoteDirectory --source $plugin_dir $dryRun " 
     Write-Verbose "Executing command: $cmd" -Verbose
     Start-Sleep 2
     $cmd | Invoke-Expression

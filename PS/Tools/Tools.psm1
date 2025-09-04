@@ -896,7 +896,7 @@ function Deploy-BatchSiteBTOnline
         $ServerConfig = "$server_config",
         $Table = "$desktop/table.conf"
     )
-    python $pys/bt_api/create_sites.py -c $ServerConfig -s $Server -f $Table
+    python $pys/bt_api/create_sites.py -c $ServerConfig -s $Server -f $Table -r
 }
 function Start-SleepWithProgress
 {

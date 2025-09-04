@@ -261,6 +261,26 @@ python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_downloader.py -c -n -R au
 
 这里从`-o`开始是根据情况指定,比如`-w 1`针对比反爬验证的情况,下载比较慢
 
+#### 测试图片下载🎈
+
+如果有一个网站很难采集,或者访问容易人机验证(或403),可以考虑打开一个产品,然后产品图片链接,用测试命令行测试一下看看能否下载
+
+不行的话换一下代理,或者更换下载引擎(-U curl或iwr)
+
+例如:
+
+```powershell
+python $pys\image_downloader.py -i 'https://img95.699pic.com/photo/50076/2408.jpg_wh860.jpg' -O -o $desktop
+```
+
+会下载测试链接`https://img95.699pic.com/photo/50076/2408.jpg_wh860.jpg`到桌面
+
+### 打开图片链接时遇到cloudflare的人机验证
+
+这种图片受到防护,但是也未必下不动,可以尝试多更换代理后重试
+
+
+
 #### 要保存的图片名过长导致下载失败
 
 在导出数据到csv文件时候,可以选择导出模式(主要是图片模式),

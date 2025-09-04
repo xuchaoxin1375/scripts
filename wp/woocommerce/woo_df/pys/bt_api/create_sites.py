@@ -10,24 +10,31 @@
 
 这种情况下,即便代码泄露,其他ip的人也无法通过密钥访问你的宝塔
 
+基本使用
+# 向server2添加登记在配置文件 $desktop/table.conf中的站点(域名)
+PS>    py $pys/bt_api/create_sites.py -s server2 -r -c $desktop/table.conf
+
+
 """
 
 # import pybtpanel
 
 
-# import concurrent.futures
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import argparse
 import json
+import os
 import re
 import threading
 import time
-import argparse
-from comutils import get_main_domain_name_from_str
+
+# import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from btapi import BTApi
+from comutils import get_main_domain_name_from_str
 
-DESKTOP = "C:/users/Administrator/Desktop/"
-server_config = f"{DESKTOP}/deploy_configs/server_config.json"
+DESKTOP = "C:/users/Administrator/Desktop"
+SERVER_CONFIG = f"{DESKTOP}/deploy_configs/server_config.json"
 TEAM_JSON = r"C:/sites/wp_sites/SpiderTeam.json"
 # 参数化🎈
 TABLE_CONF = f"{DESKTOP}/table.conf"
@@ -51,32 +58,42 @@ def get_config(conf_path):
 
 
 def parse_args():
+    """解析命令行参数"""
     parser = argparse.ArgumentParser(description="批量添加宝塔站点")
     parser.add_argument(
         "-c",
         "--config",
         type=str,
-        default=server_config,
-        help="宝塔配置文件路径,默认读取桌面server_config.json",
+        default=SERVER_CONFIG,
+        help=f"宝塔配置文件路径,默认读取{SERVER_CONFIG}",
     )
     parser.add_argument(
         "-f",
         "--file",
         type=str,
         default=TABLE_CONF,
-        help="待添加站点配置文件路径,默认读取桌面table.conf",
+        help=f"待添加站点配置文件路径,默认读取桌面{TABLE_CONF}",
     )
     parser.add_argument(
         "-s",
         "--server",
         type=str,
+        required=True,
         help="指定要操作的服务器名称,例如server1,server2,可用的名字定义在对应配置文件中的servers块",
     )
     parser.add_argument(
         "-r",
-        "--norewrite",
+        "--rewrite",
         action="store_true",
-        help="不为添加的站点设置伪静态规则,默认会设置为wordpress的伪静态规则",
+        help="为添加的站点设置伪静态规则",
+    )
+    parser.add_argument(
+        "-p",
+        "--proxy",
+        type=str,
+        default="",
+        help="可选，设置http或socks5代理;默认情况下,会清空当前环境的代理设置; \
+            如果需要走代理请显式指定,但对于配置宝塔而言通常不指定代理;例如：http://127.0.0.1:7890 或 socks5://127.0.0.1:8800",
     )
     return parser.parse_args()
 
@@ -165,6 +182,7 @@ def add_sites(bt_api: BTApi, config_file, set_rewrite_rule=True):
     print(f"共解析到{total}个站点，开始并行添加...")
 
     lock = threading.Lock()
+    create_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
     def _add_single_site(item, idx=0):
         """添加单个站点的内置函数
@@ -194,7 +212,7 @@ def add_sites(bt_api: BTApi, config_file, set_rewrite_rule=True):
                 site_type="PHP",
                 php_version="74",
                 port=80,
-                ps="by api",
+                ps=f"by api@[{create_time}]",
                 ftp=False,
                 ftp_username="",
                 ftp_password="",
@@ -222,7 +240,7 @@ def add_sites(bt_api: BTApi, config_file, set_rewrite_rule=True):
     results = []
     start_time = time.time()
     # 使用线程池并发执行任务🎈
-    with ThreadPoolExecutor(max_workers=6) as executor:
+    with ThreadPoolExecutor() as executor:
         future_to_idx = {
             executor.submit(_add_single_site, item, idx): idx
             for idx, item in enumerate(sites)
@@ -243,19 +261,24 @@ def add_sites(bt_api: BTApi, config_file, set_rewrite_rule=True):
             print(f"  {d}: {err}")
 
 
+
 def main():
-    config = get_config(server_config)
+    """入口函数"""
     args = parse_args()
+    config = get_config(args.config)
     servers = config["servers"]
     server = servers.get(args.server)
     bt_key = server.get("bt_key")
     bt_url = server.get("bt_panel")
-    # print(key,bt_url)
 
-    print("开始获取宝塔面板信息")
+    # 这里以http代理为例，socks5可用requests库的socks支持
+    os.environ["HTTP_PROXY"] = args.proxy
+    os.environ["HTTPS_PROXY"] = args.proxy
+
+    print("开始尝试链接宝塔并获取面板信息")
     api = BTApi(bt_url, bt_key)
-    print(api.get_diskinfo())
-    add_sites(api, TABLE_CONF)
+    # check_connection(api)
+    add_sites(api, config_file=args.file, set_rewrite_rule=args.rewrite)
 
 
 if __name__ == "__main__":

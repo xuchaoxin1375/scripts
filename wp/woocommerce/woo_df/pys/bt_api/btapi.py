@@ -5,6 +5,7 @@ import hashlib
 import json
 import requests
 import urllib3
+import os
 
 urllib3.disable_warnings()
 
@@ -18,6 +19,8 @@ class BTApi:
         if bt_panel:
             self.__BT_PANEL = bt_panel
             self.__BT_KEY = bt_key
+        # 配置完立即检查是否可以连接到服务器
+        self.check_connection()
 
     def __get_md5(self, s):
         """
@@ -60,8 +63,32 @@ class BTApi:
         response = requests.post(
             url, data=requests_data, headers=headers, timeout=timeout, verify=False
         )
-
+        response.raise_for_status()
         return response.text
+
+    def check_connection(self):
+        """检查和宝塔服务器的链接是否正常
+
+        如果失败则抛出异常停止后续操作!
+        """
+        info = self.get_systeminfo()
+        # type(res)
+        print(info)
+
+        # 如果获取成功,可能没有'status'字段,如果失败,则有status:False
+        version = info.get("version")
+        if version:
+            print(f"获取服务器信息成功,配置正确,宝塔版本:{version}")
+        else:
+
+            # status = res.get("status")
+            # if getattr(res, "status") and status is False:
+            print(
+                "获取服务器信息失败,请检查错误,或者ip配置(白名单是否配置了当前ip或者是否使用了多余的代理导致白名单ip失效)"
+            )
+            print(f"HTTP_PROXY:{os.environ.get('HTTP_PROXY')}")
+            print(f"HTTPS_PROXY:{os.environ.get('HTTPS_PROXY')}")
+            raise ConnectionError("获取服务器信息失败,请检查错误")
 
     def get_logs(self):
         """
