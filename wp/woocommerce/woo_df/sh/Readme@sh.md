@@ -16,6 +16,18 @@
 
 ```bash
 sudo apt install p7zip-full p7zip-rar -y #获取7z命令(完整安装)
+sudo apt install parallel #并行执行命令的
+```
+
+wp-cli命令行工具 [WP-CLI | WP-CLI | WP-CLI](https://wp-cli.org/zh-cn/#安装)
+
+```bash
+curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
+php wp-cli.phar --info
+chmod +x wp-cli.phar
+sudo mv wp-cli.phar /usr/local/bin/wp
+wp --info
+
 ```
 
 
