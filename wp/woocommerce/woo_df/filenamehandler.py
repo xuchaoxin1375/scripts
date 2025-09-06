@@ -145,7 +145,7 @@ class FilenameHandler:
             ""
 
         """
-        # SUPPORT_IMAGE_FORMATS_NAME = ("jpg", "jpeg", "png", "webp", "tif", "tiff", "gif")
+        
         ext_candidate = self.get_file_extension_from_url_str(url)
         if ext_candidate.strip(".") in support_image_formats:
             return ext_candidate

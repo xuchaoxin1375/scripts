@@ -194,23 +194,38 @@ cat $sh\update_repos.sh
 Get-ChildItem . -Recurse -Depth 5 -filter 'wps-hide-login.bak' -Directory|%{Rename-Item $_ -NewName ($_ -replace '\.bak$','' ) -Verbose}
 ```
 
+### 批量查询插件状态信息
+
+```powershell
+
+ls -path $wp_sites/*.* -Directory|% -Parallel {write-host "$_";wp plugin status woocommerce --path=$_} -ThrottleLimit 32
+```
+
+
+
 ### 批量激活wp网站插件
 
 首先扫描出所有wordpress站的根目录
 
-#### 本地windows端
+
 
 ### 批量激活插件
+
+#### windows
 
 例如,激活`wps-hide-login`插件
 
 首先`cd`到所有网站所在的总目录,然后扫描各个站点根目录(根据情况修改管道符前面的命令)
+
+或者使用`--path`参数更优雅
 
 ```powershell
 #⚡️[Administrator@CXXUDESK][C:\sites\wp_sites][14:41:03][UP:6.97Days]
 PS> ls *.* -Directory|%{cd $_;wp plugin activate wps-hide-login ;cd -}
 
 ```
+
+#### linux
 
 详细步骤:
 
@@ -251,6 +266,48 @@ $ sudo -u www wp plugin list
   ```bash
   $dirs|% -Parallel {cd $_;sudo -u www wp plugin activate wps-hide-login } -ThrottleLimit 10
   ```
+
+### 更新插件
+
+#### 更新单个插件
+
+```powershell
+#⚡️[Administrator@CXXUDESK][C:\sites\wp_sites\1.us][18:08:38][UP:19.15Days]
+PS> wp plugin update woocommerce
+Enabling Maintenance mode...
+Downloading update from https://downloads.wordpress.org/plugin/woocommerce.10.1.2.zip...
+Unpacking the update...
+Installing the latest version...
+Removing the old version of the plugin...
+Plugin updated successfully.
+Disabling Maintenance mode...
++-------------+-------------+-------------+---------+
+| name        | old_version | new_version | status  |
++-------------+-------------+-------------+---------+
+| woocommerce | 9.8.2       | 10.1.2      | Updated |
++-------------+-------------+-------------+---------+
+Success: Updated 1 of 1 plugins.
+```
+
+
+
+#### 批量更新插件
+
+比如批量更新woocommerce这个核心电商插件
+
+更新本地模板为例
+
+```powershell
+ls -path $wp_sites/*.* -Directory|%{wp plugin update woocommerce --path=$_ }
+```
+
+或者使用更高效的并行更新:
+
+```powershell
+ls -path $wp_sites/*.* -Directory|% -Parallel {wp plugin update woocommerce --path=$_ } -ThrottleLimit 5
+```
+
+> 并行更新对于打印的中文内容可能会乱码,这不重要,提示success就行
 
 ### 批量停用并卸载插件
 

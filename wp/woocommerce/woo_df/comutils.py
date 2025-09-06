@@ -22,11 +22,12 @@ SUPPORT_IMAGE_FORMATS_NAME = (
     "jpeg",
     "png",
     "webp",
-    "tif",
     "heic",
+    "tif",
     "tiff",
     "bmp",
     "gif",
+    "avif"
 )
 SUPPORT_IMAGE_FORMATS = ("." + f for f in SUPPORT_IMAGE_FORMATS_NAME)
 csv.field_size_limit(int(1e7))  # 允许csv文件最大为10MB

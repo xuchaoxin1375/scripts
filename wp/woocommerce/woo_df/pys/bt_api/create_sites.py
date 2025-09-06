@@ -195,9 +195,11 @@ def add_sites(bt_api: BTApi, config_file, set_rewrite_rule=True):
             tuple:站点域名, 是否成功, 错误信息
 
         """
+        # 构造站点域名(domain.com,www.domain.com,*.domain.com)
         domain = item["domain"]
         domain1 = f"www.{domain}"
         domain2 = f"*.{domain}"
+        # 域名列表
         domainlist = [domain1, domain2]
         user = item["user"]
         path = f"/www/wwwroot/{user}/{domain}/wordpress"
@@ -259,7 +261,6 @@ def add_sites(bt_api: BTApi, config_file, set_rewrite_rule=True):
         print("失败站点:")
         for d, err in failed:
             print(f"  {d}: {err}")
-
 
 
 def main():

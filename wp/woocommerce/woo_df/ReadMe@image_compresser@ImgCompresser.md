@@ -11,12 +11,82 @@
 - ...
 
 
-### 局限性说明
+### 图片格式选择
+
+现代化图片格式主要有webp和avif,它们分别诞生于2010年和2019年,最大的特点是前者兼容性很好,后者在文件体积的压制上有优势
+
+综合考虑之下,目前我们选择webp作为首选的图片格式
+
+实验表明,即便下载到的图片已经是webp或者avif,它们都可以进一步被本文配套的代码进一步压缩,因此代码默认情况下不会跳过webp,avif图片的处理,对于webp图片,会尝试压缩成更小的webp,对于avif图片,则会转换成webp
+
+> 需要注意的是,avif由于相对较新,许多软件不支持,windows10系统需要安装对应的功能扩展包才能查看,而honeyview这类看图软件也无法打开avif图片;
+>
+> 此外,在python代码中,处理avif格式的图片需要显式`import pillow_avif`  # 必须导入以启用 AVIF 支持(但无需调用)
+>
+> 不过虽然webp图片相对于avif更加容易被打开(特别是软件不是很新的情况下),但对于ltsc这类精简版的windows系统默认的看图软件是可能需要安装webp功能扩展才能查看
+
+单从这套代码压缩同一个jpg图片(x.jpg->x.webp以及x.jpg->x.avif),压缩成webp格式可以节约的磁盘占用更加显著,因此我们用webp
+
+### 特性说明
 
 - 此模可以压缩绝大多数图片,甚至可以将gif转换并压缩成图片
+
+  - 支持的常见格式包括(但不限于):
+
+    ```python
+    SUPPORT_IMAGE_FORMATS_NAME = (
+        "jpg",
+        "jpeg",
+        "png",
+        "webp",
+        "heic",
+        "tif",
+        "tiff",
+        "bmp",
+        "gif",
+        "avif"
+    )
+    ```
+
+    
+  - 具体的格式可通过以下python代码查询(通过修改`comutils.py`文件可以增加更多格式,但是现在的格式配置几乎满足所有常见图片格式需求,基本不用改动)
+
+    ```python
+    from comutils import SUPPORT_IMAGE_FORMATS_NAME
+    print(SUPPORT_IMAGE_FORMATS_NAME)
+    ```
+
+    
+
 - 然而,个别情况会压缩失败,不过这可能是图片本身不完整(因为下载过程中发生错误),或者下载的是个破图,都会导致压缩失败
   - 这其中有一些图片虽然python的PIL库无法直接正确处理,但是可考虑用其他专门的图片处理程序来压缩(比如xnconvert,但是我们主要还是用python压缩,它更灵活,压缩速度更快,而且跨平台,只有在极端情况下会压缩不了)
   - 总之可以互补两种方式,先用python处理图片(而且可以边下边压缩,会保存成webp格式),剩下的图片(如果比较多)可以尝试用xnconvert来处理
+
+### 基本用例
+
+本文配套的图片压缩命令行基本用例,具体可以查看`image_compresser.py`的使用帮助
+
+不过大多数情况下不需要自己编写压缩命令行,本地建站时会生成好配套的命令行
+
+```bash
+PS> py C:\repos\scripts\wp\woocommerce\woo_df\pys\image_compresser.py -i .\y.jpg -o y2.avif
+skip_format:[]
+压缩白名单: ('jpg', 'jpeg', 'png', 'webp', 'heic', 'tif', 'tiff', 'bmp', 'gif', 'avif')
+target fmt:[]
+2025-09-06 16:54:57,916 - imgcompresser - INFO - 开始压缩: ['.\\y.jpg']
+2025-09-06 16:54:57,916 - imgcompresser - INFO - 输入格式:.jpg
+2025-09-06 16:54:57,916 - imgcompresser - DEBUG - 原始文件大小: 3522498
+仅提供了输出路径:[y2.avif]
+输出文件: y2.avif
+2025-09-06 16:54:57,916 - imgcompresser - INFO - 输出格式:.avif
+2025-09-06 16:54:57,930 - imgcompresser - DEBUG - 临时文件: y2.tmp.avif
+2025-09-06 16:54:59,079 - imgcompresser - INFO - 保存临时文件: y2.tmp.avif
+存储模式:remove_original:False 格式变化: jpg -> avif
+处理后的文件体积变小,覆盖原文件: y2.avif
+2025-09-06 16:54:59,080 - imgcompresser - INFO - ('✅', '体积变化(-): -62.36%', '原始大小: 3439.94KB, ', '压缩后: 1294.80KB, ', '压缩成功: .\\y.jpg -> y2.avif\n', '压缩参数: quality=70', '分辨率变化:(4096, 2656)->(4096, 2656) ; 分辨率限制:None')
+```
+
+
 
 ### 移除破图或假图
 
@@ -73,7 +143,7 @@ python3.12 -m pip --version
 
 ```
 
-#### 安装python依赖包
+### 安装python依赖
 
 > 对于国内网络环境,建议配置国内源(比如清华源)来加速依赖包的下载(国外的服务器本身就有加速效果,可以不用配置)
 
@@ -196,7 +266,7 @@ python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -
 python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -p -F  -O -W  -k  -A -r 1000 800  -T -I "/www/wwwroot/pys/test_compress.txt" 
 ```
 
-### 推荐的目录或文件磁盘占用分析工具🎈
+## 推荐的目录或文件磁盘占用分析工具🎈
 
 dust是一个开源的多线程的磁盘占用分析工具,功能丰富[bootandy/dust: A more intuitive version of du in rust](https://github.com/bootandy/dust)
 
@@ -213,7 +283,7 @@ dust .
 
 ```
 
-#### 分析网站目录
+### 分析网站目录
 
 dust(跨平台,linux,windows,macos都可以用)有很多选项可以用,比如`-X`可以排除指定目录或文件不加入统计,详情使用`dust -h`
 
@@ -380,7 +450,7 @@ PS> dust -n 10 -b -p -e wp-content\\uploads\\2025  C:\sites\wp_sites\1.de\
 
 #### 运行示例
 
-![image-20250610090805343](assets/image-20250610090805343.png)
+
 
 ```bash
 #( 06/10/25@ 1:11AM )( root@wnx0020303 ):/www
@@ -556,115 +626,3 @@ class Resampling(IntEnum):
    - 平衡了振铃效应和锐度
 
  
-
-## PIL库的简单介绍
-
-在 Python 的 PIL（Pillow）库中，`Image.save()` 方法用于将图像保存到文件。
-
----
-
-### 📌 基本语法：
-
-```python
-img.save(fp, format=None, **params)
-```
-
----
-
-### ✅ 参数说明：
-
-| 参数名     | 类型                                        | 说明                                                         |
-| ---------- | ------------------------------------------- | ------------------------------------------------------------ |
-| `fp`       | 文件路径（字符串）或文件对象（file object） | 指定要保存的文件路径或已经打开的文件对象。例如 `'image.jpg'` 或 `open('image.png', 'wb')` |
-| `format`   | 字符串（可选）                              | 强制指定保存的图像格式（如 `'PNG'`, `'JPEG'` 等）。如果不指定，会根据文件扩展名自动判断；如果没有扩展名或无法识别，则抛出异常。 |
-| `**params` | 关键字参数                                  | 不同格式支持的额外参数，比如 JPEG 支持 `quality`、PNG 支配 `optimize` 和 `compress_level` 等 |
-
----
-
-### 常见格式及其参数
-
-### 1. **JPEG / JPG**
-
-```python
-img.save('output.jpg', 'JPEG', quality=85, optimize=True, progressive=True)
-```
-
-- `quality`: 图像质量，范围从 1（最差）到 95（最好），默认是 75。
-- `optimize`: 是否优化颜色数，通常设为 `True` 可减小文件体积。
-- `progressive`: 是否保存为渐进式 JPEG（网页加载更平滑）。
-
----
-
-### 2. **PNG**
-
-```python
-img.save('output.png', 'PNG', optimize=True, compress_level=9)
-```
-
-- `optimize`: 是否尝试优化压缩（默认 `False`），设为 `True` 可能会增加处理时间但减小体积。
-- `compress_level`: 压缩级别，0（无压缩）~9（最大压缩），默认是 6。
-
----
-
-### 3. **GIF**
-
-```python
-img.save('output.gif', save_all=True, append_images=images[1:], loop=0, duration=100, disposal=2)
-```
-
-- `save_all`: 保存所有帧（用于多帧图像，如动图）
-- `append_images`: 要追加保存的图像帧列表（必须是 Image 对象组成的列表）
-- `loop`: 动画循环次数，0 表示无限循环
-- `duration`: 每帧显示时间（毫秒）
-- `disposal`: 如何处理帧之间的清除方式（0-3）
-
----
-
-### 4. **TIFF**
-
-```python
-img.save('output.tiff', compression="tiff_deflate")
-```
-
-- `compression`: 压缩方式，可以是 `"none"`, `"tiff_lzw"`, `"tiff_deflate"` 等。
-
----
-
-### 5. **WebP**
-
-```python
-img.save('output.webp', 'WEBP', quality=80, lossless=False)
-```
-
-- `quality`: 质量值（有损压缩时使用）
-- `lossless`: 是否使用无损压缩（布尔值）
-
----
-
-### 🔍示例代码
-
-```python
-from PIL import Image
-
-# 打开图像
-img = Image.open('input.jpg')
-
-# 保存为 JPEG，设置质量为 90
-img.save('output.jpg', 'JPEG', quality=90)
-
-# 保存为 PNG，并启用压缩优化
-img.save('output.png', 'PNG', optimize=True, compress_level=9)
-
-# 保存为 GIF 动图
-frames = [frame.convert('P') for frame in ImageSequence.Iterator(img)]
-frames[0].save('animation.gif', save_all=True, append_images=frames[1:], duration=200, loop=0)
-```
-
----
-
-### 📚 官方文档参考
-
-- Pillow 文档：https://pillow.readthedocs.io/en/stable/reference/Image.html#PIL.Image.Image.save
-
----
-
