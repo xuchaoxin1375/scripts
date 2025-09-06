@@ -809,7 +809,7 @@ function Deploy-WpSitesOnline
     Get-ChildItem env:cf*
     # 解析服务器配置
     $serversConfig = Get-Content $ServerConfig | ConvertFrom-Json
-    $servers=$serversConfig.servers
+    $servers = $serversConfig.servers
     $hst = $servers."$HostName".ip
     Write-Verbose "Deploy to server: $HostName,IP:$hst"
 
@@ -1855,7 +1855,7 @@ function Get-WpSitesLocalImagesCount
 
     return $sortedResults
 }
-function update-WpBaseSql
+function Backup-WpBaseSql
 {
     <# 
     .SYNOPSIS
@@ -1868,7 +1868,7 @@ function update-WpBaseSql
     #>
     param(
         $Range = @(1, 2, 4, 6, 7),
-        $Country = @('us', 'fr', 'de', 'es', 'it')
+        $Country = @('us', 'uk', 'fr', 'de', 'es', 'it')
     )
     foreach($c in $Country)
     {

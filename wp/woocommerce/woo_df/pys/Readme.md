@@ -106,6 +106,15 @@ $exclude='0'
 python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -o "$desktop/$type-$country-$(date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]" -dl 10
 ```
 
+```powershell
+$type='  娱乐  '.trim()
+$country='  US '.trim()
+$start=622
+$end=$start 
+$exclude='0'
+python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -o "$desktop/$type-$country-$(date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]" -dl 10
+```
+
 
 
 ---
@@ -275,7 +284,7 @@ python $pys\image_downloader.py -i 'https://img95.699pic.com/photo/50076/2408.jp
 
 会下载测试链接`https://img95.699pic.com/photo/50076/2408.jpg_wh860.jpg`到桌面
 
-### 打开图片链接时遇到cloudflare的人机验证
+#### 打开图片链接时遇到cloudflare的人机验证
 
 这种图片受到防护,但是也未必下不动,可以尝试多更换代理后重试
 
@@ -291,7 +300,7 @@ python $pys\image_downloader.py -i 'https://img95.699pic.com/photo/50076/2408.jp
 
 如果使用`NAME_FROM_SKU`,文件名最为规整,问题最少;(但是缺少了原url中包含的文件名信息)
 
-如果使用`NAME_MIX`或`NAME_FROM_URL`,由于设计到截取url中的路径文件名,可能遇到许多细节问题.
+如果使用`NAME_MIX`或`NAME_FROM_URL`,由于涉及到截取url中的路径文件名,可能遇到许多细节问题.
 
 在windows系统中,默认情况下文件名的最大长度允许260个字符左右,少数图片链接中的文件名很长(超过了这个上限,即便图片链接没有做反爬或防盗,也无法保存下来,除非把保存的文件名缩短)
 
@@ -566,7 +575,7 @@ ls *gz|%{7z x $_ }
 # 移除gz文件
 rm *.gz
 #将目录汇总的xml文件列入到一个maps.xml中
-PS> Get-UrlListFromDir . -hst localhost -LocTagMode > maps.xml
+Get-UrlListFromDir . -hst localhost -LocTagMode > maps.xml
 
 
 

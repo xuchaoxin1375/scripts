@@ -2,6 +2,28 @@
 
 ## abstract
 
+采集403的网站难度不一
+
+需要注意的是,即便采集了数据,也要考虑图片是否能够下载,尤其是有人机验证的情况下,如果采集可以采集,那么图片下载方面使用采集器下载应该也没问题,但是如果单独下载图片链接,可能会比较麻烦
+
+这种情况下使用火车头下载或许会比较有优势
+
+如果网站的cloudflare的保护不高,即便你当前的网络访问该网站资源需要人机验证,那么考虑可能是ip不干净或被cf列入异常ip,你可以尝试更换代理(ip,特别是小众的代理服务,可能比专门的代理服务的ip更加好用)来访问网站或下载图片,这种方案的成功率不错
+
+### 请求头方案(cookie+ua+refer)
+
+对于403的网站,首先尝试简单的方案,就是cookie方案
+
+部分网站使用cloudflare的防护类型允许通过cookie+ua+referer的方案来获取访问权限
+
+首先使用浏览器访问该网站(目的是进行第一次人机验证),然后打开浏览器开发者工具中的网络(重载网页以获取cookie等数据),复制出来其中的cookie,ua,referer
+
+如果网站配置的cloudflare防护中配置了有效期(比如通过第一次人机验证后,需要再次人机验证的时间间隔)你可能只能采集到一部分数据
+
+> 这种修改UA的方案(修改为google爬虫或者较新的浏览器UA)还可以让火车头通过"浏览器已过期(Your browser is out of date.)"的错误
+
+### 无头浏览器方案(playwright)
+
 - 本文介绍如何采集常见的容易报403错误的网站
   1. 本文暂时仅讨论存在站点地图,但是火车头无法采集站点地图(sitemap)的时候会403的方案(并且这里的方案也不能保证可以解决所有此类型的网站)
   2. 另一类是没有站点地图,而且采集器首页打开就会403,这种难度最大,暂时不讨论
@@ -112,29 +134,5 @@ Get-UrlListFromDir -Path .\part0-17\ -LocTagMode -Hst localhost -Output esd.equi
 
 ## 脚本参数
 
-```bash
-PS C:\Users\Administrator\Desktop\localhost> py .\get_htmls_from_urls_multi_thread.py  -h
-usage: get_htmls_from_urls_multi_thread.py [-h] [-o OUTPUT] [-t TIMEOUT] [-d DELAY] [--headless] [-p PROXY] [-c CONCURRENCY] [-r RETRIES] input_file
 
-智能网页下载工具(支持断点续传和自适应策略)
-
-positional arguments:
-  input_file            包含URL列表的文件路径
-
-options:
-  -h, --help            show this help message and exit
-  -o OUTPUT, --output OUTPUT
-                        输出目录 (默认: downloads)
-  -t TIMEOUT, --timeout TIMEOUT
-                        每个请求超时时间(秒) (默认: 30)
-  -d DELAY, --delay DELAY
-                        请求之间的随机延迟范围(秒) (默认: 1.0-3.0)
-  --headless            隐藏浏览器窗口,即无头模式(默认显示)
-  -p PROXY, --proxy PROXY
-                        代理服务器配置(格式: [protocol://]host:port 如 http://127.0.0.1:8080)
-  -c CONCURRENCY, --concurrency CONCURRENCY
-                        最大并发工作线程数 (默认: 3)
-  -r RETRIES, --retries RETRIES
-                        失败重试次数 (默认: 3)
-```
 
