@@ -189,6 +189,12 @@ def parse_args():
         default=0,
         help="最小描述长度(默认:0,不限制)",
     )
+    parser.add_argument(
+        "-nad",
+        "--name-as-desc",
+        action="store_true",
+        help="将产品名称作为产品描述(仅当原始的描述短于最小描述长度标准时才会生效)",
+    )
 
     return parser.parse_args()
 
@@ -373,6 +379,7 @@ if __name__ == "__main__":
         highest_price=HIGHEST_PRICE,
         max_img_name_length=args.max_image_name_length,
         desc_min_len=args.desc_min_len,
+        name_as_desc=args.name_as_desc,
     )
     ## 2. 读取数据库数据(根据count_rows_only参数,可以只统计行数,而不做初步的数据处理;正式使用是要改成False!)🎈
     db.get_data(

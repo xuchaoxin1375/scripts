@@ -16,7 +16,7 @@
 
 ```bash
 sudo apt install p7zip-full p7zip-rar -y #获取7z命令(完整安装)
-sudo apt install parallel #并行执行命令的
+sudo apt install parallel #并行执行命令的工具
 ```
 
 wp-cli命令行工具 [WP-CLI | WP-CLI | WP-CLI](https://wp-cli.org/zh-cn/#安装)
@@ -320,6 +320,32 @@ ls -path $wp_sites/*.* -Directory|% -Parallel {wp plugin update woocommerce --pa
 ```
 
 > 并行更新对于打印的中文内容可能会乱码,这不重要,提示success就行
+
+### 主题
+
+#### 检查多余主题
+
+```powershell
+ls -path $wp_sites/*.* -Directory|% -Parallel {wp theme list --path=$_ } -ThrottleLimit 16
+```
+
+
+
+#### 更新主题
+
+> 有时核心插件更新会更新一些模板文件(比如woocommerce更新引起的模板文件更新),这时可能需要你更新最新主题来兼容最新版本的woocommerce插件带来的变化
+
+```powershell
+ls -path $wp_sites/*.* -Directory|% -Parallel {wp theme update --all --path=$_ } -ThrottleLimit 5
+```
+
+### 更新wordpress核心
+
+```powershell
+ls -path $wp_sites/*.* -Directory|% -Parallel {wp core update  --path=$_ } -ThrottleLimit 32
+```
+
+
 
 ### 批量停用并卸载插件
 

@@ -236,11 +236,14 @@ class SQLiteDB:
         highest_price=HIGHEST_PRICE,
         max_img_name_length=MAX_IMG_NAME_LENGTH,
         desc_min_len=0,
+        # 如果产品描述字符很短,则将产品名称(标题)作为产品描述
+        name_as_desc=True,
         yy=False,
     ):
         self.language = language
         self.yy = yy
         self.desc_min_len = desc_min_len
+        self.name_as_desc = name_as_desc
         # 默认缓存变量(从DB文件中读取)
         self.field_names_full = DBProductFields.get_all_fields_name(
             exclude_field=DBProductFields.SKU.name
@@ -275,7 +278,7 @@ class SQLiteDB:
         )  # 为了兼容|,>两种符号分割属性选项
         # 处理进度(产品数据条数)
         self.progress = 0
-        # 新增：启用 WAL 模式和 PRAGMA 设置以优化性能
+        # 启用 WAL 模式和 PRAGMA 设置以优化性能
         self.pragma_settings = {
             "journal_mode": "WAL",
             "synchronous": "NORMAL",
@@ -298,13 +301,7 @@ class SQLiteDB:
         as_iterator=False,
     ):
         """
-        获取表中指定字段，支持分批读取超大数据库
-
-        改进点：
-        1. 支持分批读取 (batch_size)
-        2. 添加流式处理模式 (as_iterator)
-        3. 优化内存管理
-        4. 保持与现有调用的兼容性
+        获取表中指定字段
 
         :param connection: 数据库连接
         :param table: 表名
@@ -356,68 +353,24 @@ class SQLiteDB:
             return process_batch()
 
         # 兼容模式：一次性返回生成器中的所有数据(耗尽生成器)
+        rows = []
         if batch_size > 0:
             # 分批读取并合并结果
-            all_rows = []
             for batch in process_batch():
-                all_rows.extend(batch)
-            return all_rows
+                rows.extend(batch)
+            return rows
 
         # 普通模式：一次性读取所有数据(使用fetchall()一次性读取所有数据)
-        rows = cursor.fetchall()
+        # rows = cursor.fetchall()
+
+        # 转换Row对象为可写的字典
+        # rows = [dict(row) for row in rows]
         if empty_check:
             name_field = DBProductFields.NAME.value
             rows = [row for row in rows if row.get(name_field)]
         # 关闭游标
         cursor.close()
         return rows
-
-    # def get_selected_fields_deprecated(
-    #     self,
-    #     connection,
-    #     table="Content",
-    #     empty_check=True,
-    #     fields="",
-    #     where=None,
-    #     params=None,
-    # ):
-    #     """
-    #     获取表中指定字段
-    #     采用半封装的sql语句构造的方式进行查询
-
-    #     todo:改进此函数,使其能够处理超大的db3数据库,防止一次性处理,并相应改进此函数的调用者代码
-
-    #     :param connection: 数据库连接
-    #     :param table: 表名
-    #     :param fields: 字段列表或字符串
-    #     :param where: WHERE条件语句（不含WHERE关键字）
-    #     :param params: 条件参数
-    #     :param empty_check: 是否过滤掉数据库中空行(比如没有产品名称为空的行)
-    #     :return: 结果列表
-    #     """
-    #     # 构造查询语句
-    #     # 构造要查询的字段字符串
-    #     if not fields:
-    #         fields = self.field_values_full
-    #     if isinstance(fields, (list, tuple)):
-    #         fields_str = ", ".join(fields)
-    #     else:
-    #         fields_str = fields
-    #     sql = f"SELECT {fields_str} FROM {table}"
-    #     # 构造条件部分
-    #     if where:
-    #         sql += f" WHERE {where}"
-    #     # 获取查询指针
-    #     cursor = connection.cursor()
-    #     cursor.execute(sql, params or ())
-    #     # 获取查询结果
-    #     rows = cursor.fetchall()  # sqlite3.Row对象的列表
-
-    #     if empty_check:
-    #         # 检查行的名字字段是否为空(需要过滤掉)
-    #         rows = [row for row in rows if row[DBProductFields.NAME.value]]
-    #     # self.data_rows += rows
-    #     return rows
 
     def get_data_init(
         self, db_path, fields="", strict_mode=False, count_rows_only=False
@@ -437,6 +390,8 @@ class SQLiteDB:
         unique_rows = []
         try:
             rows = self.get_data_from_db(db_path, fields)
+            # Row对象转换为字典
+            rows=[dict(row) for row in rows]
             if count_rows_only:
                 self.db_reports[db_path] = {
                     "total_raw": len(list(rows)),
@@ -452,7 +407,7 @@ class SQLiteDB:
         else:
             # 初步数据处理操作
 
-            unique_rows = self.remove_duplicate_rows(
+            unique_rows = self.clean_rows(
                 db_path, rows, strict_mode=strict_mode
             )
 
@@ -463,7 +418,7 @@ class SQLiteDB:
         }
         return unique_rows
 
-    def remove_duplicate_rows(self, db_path, rows, strict_mode=False):
+    def clean_rows(self, db_path, rows, strict_mode=False):
         """产品去重:
         默认情况下,产品名和图片同时重复的记录只保留一条(仅排除两者都重复的情况)
         如果严格模式,则仅比较产品名,忽略图片的比较
@@ -522,10 +477,19 @@ class SQLiteDB:
             #     continue
             else:
 
-                # 如果产品描述长度不足要求,则丢弃此条数据
+                # 如果产品描述长度不足要求,则根据情况用产品名称覆盖(代替描述)或者丢弃此条数据
                 if self.desc_min_len and len(product_desc) < self.desc_min_len:
-                    warning("product:[%s] description length is less than %s, drop it", i, self.desc_min_len)
-                    continue
+                    warning(
+                        "product:[%s] description length is less than %s",
+                        i,
+                        self.desc_min_len,
+                    )
+                    if self.name_as_desc:
+                        row[desc_field] = product_name
+                        info("product:[%s] description is replaced by product name", i)
+                    else:
+                        warning("product:[%s] record is dropped.", i)
+                        continue
                 # 当前产品尚未统计过,更新统计计数器
                 unique_rows.append(row)
                 info(

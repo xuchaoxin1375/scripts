@@ -109,10 +109,10 @@ python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -
 ```powershell
 $type='  娱乐  '.trim()
 $country='  US '.trim()
-$start=622
+$start=625
 $end=$start 
 $exclude='0'
-python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -o "$desktop/$type-$country-$(date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]" -dl 10
+python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -o "$desktop/$type-$country-$(date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]" -dl 10 -nad
 ```
 
 
