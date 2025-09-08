@@ -31,6 +31,16 @@
 > 
 > ```
 
+但是为了支持多服务器多cloudflare账号,且为了准确添加站点到指定服务器上,现在需要用户指定服务器和cloudflare账户
+
+为了支持多服务器之间的灵活选择和切换,请在相关的配置文件(cf_config.json和server_config.json)中填写必要的信息(账号名,密钥,api key等)
+
+例如
+
+```powershell
+Deploy-WpSitesOnline -HostName server2 -CfAccount account2 
+```
+
 此命令依赖于如下配置
 
 ### 代码下载或克隆

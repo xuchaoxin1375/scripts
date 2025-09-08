@@ -85,8 +85,8 @@ python $pys\woo_get_csv.py -f .webp -s $start -e $end  -C $country -E $exclude -
 ```powershell
 $type='  汽配  '.trim()
 $country='  IT '.trim()
-$start=573
-$end=602
+$start=609
+$end=631
 $exclude='574,575,583' 
 python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -o "$desktop/$type-$country-$(date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]" -dl 10
 ```
@@ -107,12 +107,24 @@ python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -
 ```
 
 ```powershell
-$type='  娱乐  '.trim()
+$type='  服装  '.trim()
 $country='  US '.trim()
 $start=625
-$end=$start 
+$end=$start
 $exclude='0'
 python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -o "$desktop/$type-$country-$(date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]" -dl 10 -nad
+
+```
+
+#### 统计产品数量
+
+```powershell
+$type='  统计  '.trim()
+$country='  US '.trim()
+$start=641
+$end=654
+$exclude='0'
+python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -o "$desktop/$type-$country-$(date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]"  -count
 ```
 
 
@@ -549,7 +561,7 @@ Get-ChildItem | Where-Object { $_ -notlike "*.webp" } | ForEach-Object { Rename-
 
 
 
-### wp-cli相关命令
+### wp-cli相关命令🎈
 
 例如批量操作插件(安装/卸载/更新/禁用/启用,或者管理员账号密码更新)的完整和标准操作,可以利用wp命令行来执行
 
