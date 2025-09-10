@@ -107,10 +107,10 @@ python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -
 ```
 
 ```powershell
-$type='  服装  '.trim()
-$country='  US '.trim()
-$start=625
-$end=$start
+$type='  房车  '.trim()
+$country='  Uk '.trim()
+$start=641
+$end=676
 $exclude='0'
 python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -o "$desktop/$type-$country-$(date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]" -dl 10 -nad
 
@@ -122,7 +122,7 @@ python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -
 $type='  统计  '.trim()
 $country='  US '.trim()
 $start=641
-$end=654
+$end=676
 $exclude='0'
 python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -o "$desktop/$type-$country-$(date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]"  -count
 ```

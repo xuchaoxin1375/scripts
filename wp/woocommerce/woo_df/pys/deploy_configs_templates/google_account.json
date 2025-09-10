@@ -1,0 +1,18 @@
+{
+    "accounts": {
+        "account1": {
+            "account": " ",
+            "password": " ",
+            "secondary_email": " ",
+            "recovery_code": [
+  
+
+            ]
+        },
+        "account2": {
+            "account": " ",
+            "password": " ",
+            "secondary_email": " "
+        }
+    }
+}

@@ -2,7 +2,7 @@
 
 # ===== 配置区 =====
 # 要查找的订单总金额
-ORDER_TOTAL="28.13"
+ORDER_TOTAL="45.46"
 
 # 数据库连接信息
 DB_USER="root"
@@ -62,3 +62,4 @@ while read -r DB_NAME; do
 done < "$TMP_DB_LIST"
 
 echo "✅ 查询完成，结果已保存至: $OUTPUT_FILE"
+cat $OUTPUT_FILE

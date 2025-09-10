@@ -18,10 +18,11 @@ from io import BytesIO
 from PIL import Image
 import pillow_avif  # 必须导入以启用 AVIF 支持(不需要显式调用,导入即可) # noqa: F401  pylint: disable=unused-import
 
-from comutils import get_paths,SUPPORT_IMAGE_FORMATS_NAME
+from comutils import get_paths, SUPPORT_IMAGE_FORMATS_NAME
 from operationlogger import OperationLogger
 from pathsize import format_size, get_size
 
+Image.MAX_IMAGE_PIXELS = int(1e10)#允许处理最大10B=100亿像素的图片(默认只支持1.7亿左右的像素)
 QUALITY_DEFAULT = 70
 QUALITY_DEFAULT_STRONG = 30
 

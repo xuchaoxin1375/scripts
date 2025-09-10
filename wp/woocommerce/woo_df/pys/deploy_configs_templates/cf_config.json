@@ -1,0 +1,23 @@
+{
+    "ssl_mode": " ",
+    "security_mode": 1,
+    "default_forward_email": " ",
+    "accounts": {
+        "account1": {
+            "account": " ",
+            "password": " ",
+            "cf_api_email": " ",
+            "cf_api_key": " ",
+            "is_global_key": true,
+            "default_server_ip": " "
+        },
+        "account2": {
+            "account": " ",
+            "password": " ",
+            "cf_api_email": " ",
+            "cf_api_key": " ",
+            "is_global_key": true,
+            "default_server_ip": " "
+        }
+    }
+}
