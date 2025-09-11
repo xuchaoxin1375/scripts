@@ -439,7 +439,7 @@ if __name__ == "__main__":
     db.export_csv(
         dbs=dbs,
         out_dir=args.output_dir,
-        split_files_size=DEFAULT_CSV_LINES,
+        split_files_size=args.split_size,
         img_mode=IMAGE_MODE,
         default_extension=DEFAULT_IMAGE_EXTENSION,
         limit_sale=LIMIT_SALE,
