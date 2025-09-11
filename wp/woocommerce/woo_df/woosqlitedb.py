@@ -284,6 +284,8 @@ class SQLiteDB:
             "synchronous": "NORMAL",
             "cache_size": -10000,
         }
+        # 计算批次时间戳
+        self.stamp= int(time.time())
 
     # def close_db(self):
     #     """关闭数据库连接"""
@@ -391,7 +393,7 @@ class SQLiteDB:
         try:
             rows = self.get_data_from_db(db_path, fields)
             # Row对象转换为字典
-            rows=[dict(row) for row in rows]
+            rows = [dict(row) for row in rows]
             if count_rows_only:
                 self.db_reports[db_path] = {
                     "total_raw": len(list(rows)),
@@ -407,9 +409,7 @@ class SQLiteDB:
         else:
             # 初步数据处理操作
 
-            unique_rows = self.clean_rows(
-                db_path, rows, strict_mode=strict_mode
-            )
+            unique_rows = self.clean_rows(db_path, rows, strict_mode=strict_mode)
 
             # print(handler_dict)
         self.db_reports[db_path] = {
@@ -1122,13 +1122,14 @@ but different image, keep records [%s]",
                 elif img_mode == ImageMode.NAME_MIX:
                     # 混合sku和时间戳以及url中的图片名称
                     sku = row[sku_field]
-                    # 计算批次时间戳
-                    timestamp = int(time.time())
+                    
                     # print(f"[{default_extension}]🎁")
                     img_names = [
                         complete_image_file_extension(
                             # 将过长的图片名截断防止wordpress加载图片失败🎈
-                            file=f"{sku}-{i}-{timestamp}-{get_filebasename_from_url(img_url).replace('%','_')}"[
+                            # .replace('%','_')
+                            file=f"{sku}-{i}-{self.stamp}-"
+                            f"-{re.sub(r'[=:%?]','_',get_filebasename_from_url(img_url))}"[
                                 : self.max_img_name_length
                             ],
                             default_extension=default_extension,

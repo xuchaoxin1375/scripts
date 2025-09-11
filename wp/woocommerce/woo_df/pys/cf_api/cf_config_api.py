@@ -167,9 +167,9 @@ def load_domains_from_file(filename):
                 for line in lines:
                     # line.split(" ")
                     # 数量不定的空白作为分隔符
-                    parts = re.split(r"\s+", line)
+                    parts = re.split(r"\s+", line.strip())
                     domain = parts[0].strip()
-                    if not re.match(r"\w+", domain):
+                    if not re.match(r"\s*\w+", domain):
                         print(f"忽略行: {line}")
                         continue
                     domain = get_main_domain_name_from_str(domain)

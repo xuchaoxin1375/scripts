@@ -3,12 +3,16 @@
 """
 
 import argparse
-
 import os
 import sys
 
-from imgcompresser import ImageCompressor, setup_logging, SUPPORT_IMAGE_FORMATS
-# todo 
+from imgcompresser import (
+    # DEFAULT_QUALITY_RULE,
+    SUPPORT_IMAGE_FORMATS,
+    ImageCompressor,
+    setup_logging,
+)
+
 SUPPORT_IMAGE_FORMATS = list(SUPPORT_IMAGE_FORMATS)
 
 
@@ -19,7 +23,6 @@ COMPRESS_TRHESHOLD_KB = 0  # 只对指定大小以上的图片文件进行压缩
 K = 2**10
 COMPRESS_TRHESHOLD_B = COMPRESS_TRHESHOLD_KB * K
 COMPRESS_TRHESHOLD = COMPRESS_TRHESHOLD_B
-DEFAULT_QUALITY_RULE = "0,50,70 ; 50,200,40 ; 200,10000,30"
 
 
 def parse_args():
@@ -38,7 +41,7 @@ def parse_args():
         "-i",
         "--input",
         # dest="input",  # 映射到 args.input
-        default=".",# 如果不提供输入参数,默认压缩当前目录中的图片
+        default=".",  # 如果不提供输入参数,默认压缩当前目录中的图片
         help="输入文件或目录路径 (可选参数形式)",
     )
     parser.add_argument(
@@ -74,7 +77,7 @@ def parse_args():
         "--quality",
         type=float,
         default=QUALITY_DEFAULT,
-        help="压缩质量(1-100)",
+        help=f"压缩质量(1-100),default={QUALITY_DEFAULT}",
     )
     parser.add_argument(
         "--no-optimize",
@@ -116,7 +119,7 @@ def parse_args():
         type=str,
         # default="auto",
         help="对不同大小图像区间采用不同的quality值的指定规则"
-        "例如'50,200,40' 表示50到200KB区间的图片设置quality=70`,多个区间用分号(;)分隔\n 如果使用 `auto`则使用内部的推荐值 ",
+        "例如'50,200,40' 表示50到200KB区间的图片设置quality=40,多个区间用分号(;)分隔\n 如果使用 `auto`则使用内部的推荐值 ",
     )
     parser.add_argument(
         "-s",

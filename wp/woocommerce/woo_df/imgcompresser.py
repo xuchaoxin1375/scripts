@@ -167,7 +167,6 @@ class ImageCompressor:
         output_path: str = "",
         output_format: str = "",
         quality: int = QUALITY_DEFAULT,
-        # quality_for_small_file: int = 70,
         optimize: bool = False,
         keep_exif: bool = True,
         overwrite: bool = False,

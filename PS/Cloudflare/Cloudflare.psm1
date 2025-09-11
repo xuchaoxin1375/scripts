@@ -128,7 +128,7 @@ function Add-CFZoneDNSRecords
     [CmdletBinding(SupportsShouldProcess)]
     param (
         # 
-        $Domains = "C:\Users\Administrator\Desktop\table.conf",
+        $Domains = "$Desktop\table.conf",
         # 默认使用私人模式DF,启用Common开关变成通用模式
         [switch]$Common,
         # 域名添加模式
@@ -271,7 +271,7 @@ function Add-CFZoneCheckActivation
     # 查看当前的环境变量
     # Get-ChildItem env:cf*
 
-    Get-Content $Table | Where-Object { $_.Trim() } | ForEach-Object { ($_ -split '\s+')[0] | Get-MainDomain } | ForEach-Object { flarectl zone check --zone $_ *> $null; Write-Host $_ }
+    Get-Content $Table | Where-Object { $_.Trim() } | ForEach-Object { ($_.trim() -split '\s+')[0] | Get-MainDomain } | ForEach-Object { flarectl zone check --zone $_ *> $null; Write-Host $_ }
 }
 function Get-CFZoneInfoFromTable
 {

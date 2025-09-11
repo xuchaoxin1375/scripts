@@ -120,7 +120,7 @@ def parse_args():
         "--image-mode",
         type=str,
         choices=[mode.name for mode in ImageMode],
-        default=ImageMode.NAME_MIX.name,
+        # default=ImageMode.NAME_MIX.name,
         help=f'图片字段导出模式，可选值: {", ".join(ImageMode.__members__.keys())}',
     )
     parser.add_argument(
@@ -203,7 +203,7 @@ args = parse_args()  # 解析命令行参数
 DEFAULT_IMAGE_EXTENSION = args.default_extension or ""
 # 配置图片字段导出模式
 # IMAGE_MODE = ImageMode.NAME_FROM_URL
-IMAGE_MODE = ImageMode[args.image_mode] or ImageMode.NAME_MIX
+IMAGE_MODE = ImageMode[args.image_mode] or ImageMode.NAME_FROM_SKU
 
 # 产品价格区间(打折前不在此区间的产品将被过滤掉)
 LOWEST_PRICE = args.lowest_price
