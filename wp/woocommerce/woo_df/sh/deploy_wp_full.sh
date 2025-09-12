@@ -308,8 +308,13 @@ extract_archive_without_check() {
 
     return 0
 }
-
+# ====仅检测原生tar格式文件====
+is_plain_tar_file() {
+    local file_path="$1"
+    [[ -f "$file_path" ]] && [[ $(file -b --mime-type "$file_path") == "application/x-tar" ]]
+}
 # === 函数：解压压缩文件（带完整性检查）===
+# 将压缩文件解压到指定位置(目录)
 extract_archive() {
     local archive_file="$1"
     local target_dir="$2"
@@ -417,13 +422,15 @@ extract_archive() {
             ;;
 
         zst|zstd)
+        # 这里是特化任务,根据团队规范,默认上传的包实际格式是tar.zst,即便后缀只有.zst而不是.tar.zst,其解压zst层后得到的文件是tar文件(二进制文件)
+        # 在这个分支中,首先解压zst层,然后将解压后的内部tar文件再调用tar解压,得到文件(夹)
             echo "🧪 正在验证 ZSTD 文件完整性..."
             if ! zstd -t "$archive_file" >/dev/null 2>&1; then
                 echo "❌ ZSTD 文件损坏或格式错误: $archive_file"
                 return 1
             fi
             echo "✅ ZSTD 文件完整性验证通过"
-
+            # 解压结果保存成一个临时文件(tar格式的二进制文件)
             temp_output_file=$(mktemp -u)
             echo "📦 正在解压 ZSTD 文件..."
             if ! zstd -T0 -d "$archive_file" -o "$temp_output_file"; then
@@ -432,9 +439,16 @@ extract_archive() {
                 return 1
             fi
 
-            echo "🧪 正在验证内部 TAR 文件完整性..."
+            echo "🧪 正在验证内部文件 (是否为TAR 文件以及tar文件完整性)..."
+            
+            if is_plain_tar_file "example.tar"; then
+                echo "是原生tar文件"
+            else
+                echo "不是原生tar文件"
+            fi
+
             if ! tar -tf "$temp_output_file" >/dev/null 2>&1; then
-                echo "❌ 内部 TAR 文件损坏"
+                echo "❌ 内部 TAR 文件损坏或者文件不是tar文件"
                 rm -f "$temp_output_file"
                 return 1
             fi
@@ -631,7 +645,7 @@ deploy_site() {
 
 # === 函数：查找并处理SQL备份文件🎈 ===
 # 此函数会分析传入的用户名和sql包文件名(针对一个站),构造对应的数据库名,并检查对应的文件是否存在
-# 如果存在,则解压sql文件压缩包,如果存在多个
+# 如果存在,则解压sql文件压缩包,如果不存在,则报错
 process_sql_file() {
     local username="$1"
     local archive_file="$2"
@@ -643,7 +657,7 @@ process_sql_file() {
     # 解压SQL备份文件
     local user_dir="$PACK_ROOT/$username"
     sql_archive="$user_dir/$archive_file"
-
+    # 解压sql文件包
     if ! extract_archive "$sql_archive" "$user_dir"; then
         echo "❌ 解压SQL备份文件失败: $archive_file"
         return 1
