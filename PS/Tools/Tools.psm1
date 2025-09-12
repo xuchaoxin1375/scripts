@@ -898,6 +898,23 @@ function Deploy-BatchSiteBTOnline
     )
     python $pys/bt_api/create_sites.py -c $ServerConfig -s $Server -f $Table -r
 }
+function ssh-copy-id-ps
+{   
+    param(
+        [string]$userAtMachine, 
+        $args
+    )
+    $publicKey = "$ENV:USERPROFILE/.ssh/id_rsa.pub"
+    if (!(Test-Path "$publicKey"))
+    {
+        Write-Error "ERROR: failed to open ID file '$publicKey': No such file"            
+    }
+    else
+    {
+        & Get-Content "$publicKey" | ssh $args $userAtMachine "umask 077; test -d .ssh || mkdir .ssh ; cat >> .ssh/authorized_keys || exit 1"      
+    }
+}
+
 function Start-SleepWithProgress
 {
     <# 

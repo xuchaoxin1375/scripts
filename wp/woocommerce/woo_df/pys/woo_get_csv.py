@@ -120,7 +120,7 @@ def parse_args():
         "--image-mode",
         type=str,
         choices=[mode.name for mode in ImageMode],
-        # default=ImageMode.NAME_MIX.name,
+        default=ImageMode.NAME_FROM_SKU.name,
         help=f'图片字段导出模式，可选值: {", ".join(ImageMode.__members__.keys())}',
     )
     parser.add_argument(
