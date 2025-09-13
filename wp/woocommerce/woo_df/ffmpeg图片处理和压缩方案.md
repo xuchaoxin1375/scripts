@@ -15,7 +15,7 @@
 ### ffmpeg版本检查
 
 ```bash
-ffm
+ffmpeg -h
 ffmpeg -version
 
 ```

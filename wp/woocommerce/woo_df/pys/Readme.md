@@ -523,6 +523,21 @@ ls -File |?{$_ -notlike '*.webp'}|rm -Verbose
 
 ```
 
+使用bash删除jpg,png图片
+
+```bash
+rm *.jpg *.png
+```
+
+使用bash删除非webp图片
+
+```bash
+shopt -s extglob
+rm !(*.webp) 2>/dev/null && echo "已删除所有非 webp 文件" || echo "没有找到非 webp 文件或权限不足"
+```
+
+
+
 ### 将jpg,png图片后缀重命名为webp🎈
 
 powershell进入到制定目录(需要被重命名文件所在的目录)下,然后执行以下命令

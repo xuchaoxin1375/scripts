@@ -261,10 +261,6 @@ python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -
 
 - 同上,追加`-T `并指定一个整数(表示KB数,对于不小于该大小的图片才处理)
 
-```bash
-python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -p -F  -O -W  -k  -A -r 1000 800  -T -I "/www/wwwroot/pys/test_compress.txt" 
-```
-
 
 
 

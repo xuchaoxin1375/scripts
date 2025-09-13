@@ -166,6 +166,12 @@ def parse_args():
         help="输入两个整数(空格分开)分被作为图片的分辨率阈值(宽, 高)，超过该阈值的图片将被缩小;放空不做分辨率调整"
         "(注意不是将图片设置为指定分辨率,而是等比例收缩到指定分辨率以内);",
     )
+    parser.add_argument(
+        "-sti",
+        "--skip-truncated-image",
+        action="store_true",
+        help="跳过处理输入图片为截断或破损的图片(默认尽可能处理图片)",
+    )
     parser.add_argument("-v", "--verbose", action="store_true", help="显示详细输出")
     return parser.parse_args()
 
@@ -186,6 +192,7 @@ def main():
         process_when_size_reduced=args.process_when_size_reduced,
         resize_threshold=args.resize_threshold,
         recurse=args.recurse,
+        skip_truncated_image=args.skip_truncated_image,
     )
     fmt = args.format or ""
     print(f"target fmt:[{fmt}]")

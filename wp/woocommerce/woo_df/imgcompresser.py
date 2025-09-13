@@ -14,6 +14,7 @@ import logging
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
+
 # from wand.image import Image as WandImage
 from PIL import Image, ImageFile
 import pillow_avif  # 必须导入以启用 AVIF 支持(不需要显式调用,导入即可) # noqa: F401  pylint: disable=unused-import
@@ -121,6 +122,7 @@ class ImageCompressor:
         process_when_size_reduced=True,
         recurse=False,
         resize_threshold=None,
+        skip_truncated_image=False,
     ):
         """
         初始化压缩器
@@ -130,11 +132,12 @@ class ImageCompressor:
             compress_threshold: 压缩阈值(单位:KB)
             quality_rule: 质量规则(格式: "size_range_min1,size_range_max1,
                 quality1;size_range_min2,size_range_max2,quality2;...")
-            skip_format: 跳过格式(jpg/png/webp)
+            skip_format: 需要跳过处理的图片格式(jpg/png/webp/...)
             fake_format:处理后的图片如果体积不减小,是否丢弃处理结果,直接修改原图后缀
             fake_format_from_webp: 是否将图片压缩成webp,然后将文件后缀名改为指定的格式名(考虑到图片压缩到webp压缩效果好,而且浏览器不会应为图片的格式后缀和真实格式不一致而渲染不出来,可以考虑此选项节约空间)
             remove_original: 是否移除原始文件
             resize_threshold: 分辨率阈值(宽, 高)，超过该阈值的图片将被缩小;放空不做分辨率调整
+            skip_truncated_image: 是否跳过截断(破损或不完整)的图片(默认不跳尽可能处理)
         """
         self.logger = logger or logging.getLogger(__name__)
         self._compress_threshold = compress_threshold
@@ -150,6 +153,9 @@ class ImageCompressor:
         # self.opl = OperationLogger()
         self.opl = ImageCompressorLogger()
         self.recurse = recurse
+        
+        if skip_truncated_image:
+            ImageFile.LOAD_TRUNCATED_IMAGES = False
         self.resize_threshold = resize_threshold
 
         # self.opl.init_status()
