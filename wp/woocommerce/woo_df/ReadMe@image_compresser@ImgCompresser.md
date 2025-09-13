@@ -145,6 +145,8 @@ python3.12 -m pip --version
 ### 安装python依赖
 
 > 对于国内网络环境,建议配置国内源(比如清华源)来加速依赖包的下载(国外的服务器本身就有加速效果,可以不用配置)
+>
+> windows和linux系统有各自的依赖版本(个别库在不同系统上有名称差别)
 
 ```cmd
 # 通常对本地windows系统配置下面这条命令即可(服务器不用配)
@@ -155,13 +157,37 @@ pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
 
 然后根据情况,执行下面的某一条pip命令
 
-对于linux系统
+#### 对于linux系统
 
 ```bash
 pip install -r /repos/scripts/wp/woocommerce/woo_df/requirements_linux.txt
 ```
 
-对于windows系统
+如果pip不存在,请自行查阅资料并安装
+
+例如ubuntu系统
+
+```bash
+# 1. 更新包列表
+sudo apt update
+
+# 2. 安装 pip for Python 3
+sudo apt install python3-pip
+
+# 3. （可选）设置别名
+echo 'alias pip=pip3' >> ~/.bashrc
+source ~/.bashrc
+
+# 4. （可选）升级 pip
+pip3 install --upgrade pip
+
+# 5. （推荐）安装虚拟环境支持
+sudo apt install python3-venv
+```
+
+
+
+#### 对于windows系统
 
 ```bash
 pip install -r C:\repos\scripts\wp\woocommerce\woo_df\requirements.txt
@@ -191,9 +217,12 @@ git clone https://gitee.com/xuchaoxin1375/scripts.git /repos/scripts
 
 之后不需要再执行此命令,如果要更行代码,执行以下命令
 
-### 配置环境变量
+### 配置环境变量🎈
 
 根据自己的情况选择配置命令行(通常默认bash)
+
+> 注意,执行下面的代码后,要记得刷新配置文件,否则不会生效;最简单的方案就是source ~/.bashrc;source ~/.zshrc;
+> 或者再开一个bash/zsh会话
 
 #### 对于bash
 
@@ -260,10 +289,6 @@ python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -
 ### 跳过小图压缩
 
 - 同上,追加`-T `并指定一个整数(表示KB数,对于不小于该大小的图片才处理)
-
-
-
-
 
 ### 清除宝塔中mysql二进制日志文件
 

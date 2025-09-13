@@ -512,6 +512,20 @@ python $pys\woo_uploader_db.py -c $csv_path -i $img_dir
 Move-ItemFromCsvPathFields -Path C:\Users\Administrator\Desktop\data_output\marineboltstore.com\p31.csv -SourceDir C:\Users\Administrator\Desktop\my_wp_sites\boattableworks.com\wp-content\uploads\2025 -Destination C:\Users\Administrator\Desktop\my_wp_sites\marineboltstore.com\wp-content\uploads\2025\
 ```
 
+### 统计jpg,png图片或非webp图片数
+
+利用find来统计
+
+```bash
+find . -type f ! -name "*.webp" | wc -l
+```
+
+或者一个不太准确的方法(容易算错)
+
+```bash
+ls *png *jpg |wc -l
+```
+
 
 
 ### 删除目录中的非webp文件🎈
@@ -523,17 +537,27 @@ ls -File |?{$_ -notlike '*.webp'}|rm -Verbose
 
 ```
 
-使用bash删除jpg,png图片
+利用find删除
 
 ```bash
-rm *.jpg *.png
+find . -type f ! -name "*.webp" -delete
 ```
 
-使用bash删除非webp图片
+
+
+其他方案
+
+bash中删除非webp图片
 
 ```bash
 shopt -s extglob
-rm !(*.webp) 2>/dev/null && echo "已删除所有非 webp 文件" || echo "没有找到非 webp 文件或权限不足"
+rm !(*.webp) 
+```
+
+仅删除jpg,png图片
+
+```bash
+rm *.jpg *.png
 ```
 
 

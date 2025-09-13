@@ -72,7 +72,6 @@ find /repos/scripts/wp/woocommerce/woo_df/sh/ -type f \( -name "*.sh" -o -name "
 
 ln -s /repos/scripts/wp/woocommerce/woo_df/sh /www/sh -fv
 ln -s /www/sh/deploy_wp_full.sh /deploy.sh -fv
-ln -s /www/sh/deploy_wp_full.sh /www/wwwroot/deploy_wp_full.sh -fv
 ln -s /www/sh/update_repos.sh /update_repos.sh -fv
 ln -s /www/sh/nginx_conf/update_nginx_vhosts_conf.sh /update_nginx_vhosts_conf.sh -fv
 # 配置文件软链接

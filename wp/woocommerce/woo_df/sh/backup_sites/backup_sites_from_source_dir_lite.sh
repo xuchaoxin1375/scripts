@@ -100,7 +100,7 @@ backup_one_site() {
 
 	# 检查压缩包是否已存在
 	if [[ -f "$DEST_PATH" && $FORCE -eq 0 ]]; then
-		echo "[跳过] 发现已存在压缩包 $DEST_PATH，跳过站点 $DOMAIN 的备份。"
+		echo "[跳过] 发现已存在压缩包 $DEST_PATH，[user: $USERNAME],跳过站点 $DOMAIN 的备份。"
 		return 2  # 返回2表示跳过
 
 	else

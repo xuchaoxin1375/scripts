@@ -52,11 +52,31 @@ show_help() {
 
 # 从路径中提取用户名的函数
 extract_username() {
-	local wp_dir="$1"
-	# 从路径中提取用户名，格式为 /www/wwwroot/{username}/domain/wordpress
-	# 使用基于SRC_ROOT变量的更准确方法提取用户名
-	local src_root_escaped=$(echo "$SRC_ROOT" | sed 's/\//\\\//g')
-	echo "$wp_dir" | sed -E "s/${src_root_escaped}\/([^\/]+)\/.*/\1/"
+    local path="$1"
+    
+    # 使用 IFS 按 '/' 分割路径
+    IFS='/' read -ra parts <<< "$path"
+    
+    # 检查是否有至少 4 个部分（因为开头是 /，所以数组第一个元素为空）
+    # 例如：/www/wwwroot/xcx/ → ['', 'www', 'wwwroot', 'xcx', '']
+    # 我们需要第 4 个元素（索引为 3）作为“第三部分”
+    if [[ ${#parts[@]} -lt 4 ]]; then
+        echo "警报: 路径中不存在第三部分" >&2
+        echo ""
+        return 1
+    fi
+    
+    # 提取第三部分（索引为 3）
+    third_part="${parts[3]}"
+    
+    # 检查第三部分是否为空
+    if [[ -z "$third_part" ]]; then
+        echo "警报: 第三部分为空" >&2
+        echo ""
+        return 1
+    fi
+    
+    echo "$third_part"
 }
 
 # 定义检查用户是否在白名单中的函数
@@ -75,6 +95,7 @@ is_user_in_whitelist() {
 		return 1
 	fi
 }
+
 
 # 备份单个站点的函数
 backup_one_site() {
@@ -97,7 +118,7 @@ backup_one_site() {
 
 	# 检查压缩包是否已存在
 	if [[ -f "$DEST_PATH" && $FORCE -eq 0 ]]; then
-		echo "[跳过] 发现已存在压缩包 $DEST_PATH，跳过站点 $DOMAIN 的备份。"
+		echo "[跳过] 发现已存在压缩包 $DEST_PATH，[user: $USERNAME],跳过站点 $DOMAIN 的备份。"
 		return 2  # 返回2表示跳过
 
 	else
