@@ -12,6 +12,16 @@
 
 ---
 
+### ffmpeg版本检查
+
+```bash
+ffm
+ffmpeg -version
+
+```
+
+
+
 ##  单文件处理命令行
 
 推荐的默认命令行格式和参数
@@ -232,6 +242,4 @@ cwebp -q 75 -m 6 -preset photo input.png -o output.webp
 ```
 
 但 `ffmpeg` 已经非常强大，一般无需额外步骤。
-
----
 

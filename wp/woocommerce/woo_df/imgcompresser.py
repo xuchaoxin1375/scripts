@@ -14,15 +14,18 @@ import logging
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
-
-from PIL import Image
+# from wand.image import Image as WandImage
+from PIL import Image, ImageFile
 import pillow_avif  # 必须导入以启用 AVIF 支持(不需要显式调用,导入即可) # noqa: F401  pylint: disable=unused-import
-
 from comutils import get_paths, SUPPORT_IMAGE_FORMATS_NAME
 from operationlogger import OperationLogger
 from pathsize import format_size, get_size
 
-Image.MAX_IMAGE_PIXELS = int(1e10)#允许处理最大10B=100亿像素的图片(默认只支持1.7亿左右的像素)
+# 启用pillow基本的容错开关
+ImageFile.LOAD_TRUNCATED_IMAGES = True
+Image.MAX_IMAGE_PIXELS = int(
+    1e10
+)  # 允许处理最大10B=100亿像素的图片(默认只支持1.7亿左右的像素)
 QUALITY_DEFAULT = 70
 QUALITY_DEFAULT_STRONG = 30
 
@@ -319,7 +322,9 @@ class ImageCompressor:
                 )
 
                 # 根据最终确定的参数,保存更改的图片🎈
+                # 先尝试pillow库,如果失败尝试Wand库处理
                 img.save(temp_output_path, **save_kwargs)
+
                 self.logger.info(f"保存临时文件: {temp_output_path}")
 
                 output_format_name = output_format.strip(".")

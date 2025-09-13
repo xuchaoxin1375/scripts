@@ -13,5 +13,8 @@
         "*.stl": "json",
         "iostream": "cpp"
     },
-    "dotnet.defaultSolution": "ConsoleApp1.sln"
+    "dotnet.defaultSolution": "ConsoleApp1.sln",
+    "python-envs.defaultEnvManager": "ms-python.python:conda",
+    "python-envs.defaultPackageManager": "ms-python.python:conda",
+    "python-envs.pythonProjects": []
 }

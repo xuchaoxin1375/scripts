@@ -1105,8 +1105,8 @@ Update-WpPlugins-DF1 -plugin_dir_local C:\share\df\wp_sites\wp_plugins_functions
         $server = $env:DF_SERVER1,               # 服务器IP地址
         $username = "root"        ,      # 服务器用户名
         # $password = ""              # 服务器密码（不推荐明文存储,配置ssh密钥登录更安全）
-        $remoteDirectory = "/www/wwwroot"       , # 服务器目标目录
-        $plugin_dir_local = "$wp_plugins\price_pay\mallpay",   # 本地插件目录路径🎈
+        $plugin_dir_local = "",   # 本地插件目录路径🎈
+        $remoteDirectory = "/www/wp-plugins"       , # 服务器目标目录
         
         $bashScript = "/www/sh/wp-plugin-update/update_wp_plugin.sh",
         [switch]$Dry
