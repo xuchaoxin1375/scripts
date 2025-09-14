@@ -789,8 +789,6 @@ function Deploy-WpSitesOnline
         $CfConfig = "$cf_config",
         # 记录服务器账号信息的配置文件路径
         $ServerConfig = "$server_config",
-        
-
 
         # 基础等待时间(秒),默认0秒
         $WaitTimeBasic = 0,
@@ -801,11 +799,11 @@ function Deploy-WpSitesOnline
 
     
     )
-    # 读取cf配置文件,确定要使用的cf账号换静(根据cf账号和密钥设置当前cf相关环境变量)
-    $config = Get-Content $CfConfig | ConvertFrom-Json
-    $account = $config."accounts"."$CfAccount"
-    Set-CFCredentials -ApiKey $account.cf_api_key -ApiEmail $account.cf_api_email
-
+    # 读取cf配置文件,确定要使用的cf账号(根据cf账号和密钥设置当前cf相关环境变量)
+    # $config = Get-Content $CfConfig | ConvertFrom-Json
+    # $account = $config."accounts"."$CfAccount"
+    # Set-CFCredentials -ApiKey $account.cf_api_key -ApiEmail $account.cf_api_email
+    Set-CFCredentials -CfConfig $CfConfig -Account $CfAccount
     Get-ChildItem env:cf*
     # 解析服务器配置
     $serversConfig = Get-Content $ServerConfig | ConvertFrom-Json
@@ -841,26 +839,13 @@ function Deploy-WpSitesOnline
     while ($True )
     {
         
-        # $info = Get-CFZoneInfoFromTable 
-        # if($info | Select-String 'pending')
-        # {
-        #     Write-Host "存在域名未激活,请稍后${RetryGap}重试" -ForegroundColor Cyan
-            
-        #     if($MaxRetryTimes -le 0)
-        #     {
-        #         Write-Error "Max retry times  exhuasted, exit"
-        #         return $False
-        #     }
-        #     Write-Output $info
-        # }
-        # else
-        # {
-        #     Write-Host '所有域名均已激活' -ForegroundColor Green
-        #     break
-        # }
-
         $info = Get-CFZoneInfoFromTable -Json | ConvertFrom-Json
         $domainCount = $info.Count
+        if($domainCount -eq 0)
+        {
+            Write-Error "No domain found in table,exit"
+            return $False
+        }
         $activeCount = 0
         foreach ($item in $info)
         {
@@ -892,7 +877,13 @@ function Deploy-WpSitesOnline
             }
             # 打印本轮查询激活情况的结果
             # Write-Output $info
-            Write-Host $info
+            $info | ForEach-Object {
+                if ($_.Status -ne "active")
+                {
+                    Write-Host "Domain: $($_.name) is not active" -ForegroundColor Cyan
+                    Write-Host "`t:$_"
+                }
+            }
             Start-SleepWithProgress $RetryGap
             $retryTimes--
         }

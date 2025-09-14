@@ -168,9 +168,32 @@ backup_one_site() {
 		return 0
 	else
 		echo "正在备份站点 $WP_DIR，用户 $USERNAME，域名 $DOMAIN..."
+		echo "📦 正在打包 WordPress 文件（排除缓存和日志）..."
 		mkdir -p "$DEST_DIR"
-		tar -cf "$TAR_PATH" -C "$WP_DIR" .
-		zstd --rm "$TAR_PATH"
+		# tar -cf "$TAR_PATH" -C "$WP_DIR" .
+		# tar -cf "$TAR_PATH" -C "$WP_DIR/.." wordpress #完整备份
+		# 跳过不重要的内容的轻量备份(这里打包的文件夹指定为wordpress,
+		# 其他用户如果使用此套代码要注意原本的目录结构,可能需要自行调整tar打包的命令行)
+		tar --exclude='wp-content/cache' \
+			--exclude='wp-content/uploads/cache' \
+			--exclude='wp-content/uploads/wpo' \
+			--exclude='wp-content/uploads/wp-rocket' \
+			--exclude='wp-content/uploads/backupbuddy_temp' \
+			--exclude='wp-content/uploads/*-cache' \
+			--exclude='wp-content/updraft' \
+			--exclude='wp-content/ai1wm-backups' \
+			--exclude='wp-content/backups' \
+			--exclude='wp-content/tmp' \
+			--exclude='wp-content/upgrade' \
+			--exclude='wp-content/*.log' \
+			--exclude='wp-content/*.sql' \
+			--exclude='wp-content/*.zip' \
+			--exclude='wp-content/*.tar.gz' \
+			--exclude='wp-content/debug.log' \
+			-cf "$TAR_PATH" -C "$WP_DIR"/.. wordpress
+
+		
+		zstd -T0 --rm "$TAR_PATH"  -f -v #使用-v疑似会降低速度
 		mv "$TAR_PATH.zst" "$DEST_PATH"
 		
 		# 设置文件权限和所有者
@@ -205,7 +228,7 @@ backup_one_site() {
 					echo "检查当前sql归档文件类型:$SQL_DUMP_PATH ($(file -b "$SQL_DUMP_PATH"))"
 
 					echo "将$SQL_DUMP_PATH 压缩为 $ZST_SQL_DUMP_PATH"
-					zstd --rm "$SQL_DUMP_PATH" #默认添加后缀.zst
+					zstd -T0 --rm "$SQL_DUMP_PATH" -f #默认添加后缀.zst
 					echo "设置SQL文件权限(755)"
 					chmod 755 "$ZST_SQL_DUMP_PATH"
 					# chown uploader:uploader "$ZST_SQL_DUMP_PATH"

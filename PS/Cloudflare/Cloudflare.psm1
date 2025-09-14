@@ -4,19 +4,38 @@ function Set-CFCredentials
     <# 
     .SYNOPSIS
     设置cloudflare API的授权信息(临时地)
-    如果要长期有效或者简便起见,可以通过系统界面来设置环境变量
-    例如:
+    这对于有多个账号需要切换的场景比较有用
+    如果要长期有效或者简便起见,可以考虑在环境变量中配置相应名字的环境变量
 
+    例如:
     $env:CF_API_TOKEN = "your_api_token"
     或者传统的
     $env:CF_API_KEY = "your_api_key"
     #>
+    [CmdletBinding(DefaultParameterSetName = 'FromFile')]
     param (
+        [parameter(ParameterSetName = 'FromCliToken')]
         [string]$ApiToken,
+        [parameter(ParameterSetName = 'FromCliKey')]
         [string]$ApiKey,
-        [string]$ApiEmail
+        [parameter(ParameterSetName = 'FromCliToken')]
+        [parameter(ParameterSetName = 'FromCliKey')]
+        [string]$ApiEmail,
+        [parameter(ParameterSetName = 'FromFile')]
+        $CfConfig = "$deploy_configs/cf_config.json",
+        [parameter(ParameterSetName = 'FromFile', Mandatory = $true)]
+        $CfAccount
     )
-    
+    if($PSCmdlet.ParameterSetName -eq 'FromFile')
+    {
+        $config = Get-Content $CfConfig | ConvertFrom-Json
+        $account = $config."accounts"."$CfAccount"
+        $Apikey = $account.cf_api_key
+        $ApiEmail = $account.cf_api_email
+        
+
+    }
+
     if ($ApiToken)
     {
         $env:CF_API_TOKEN = $ApiToken
@@ -26,7 +45,8 @@ function Set-CFCredentials
     {
         $env:CF_API_KEY = $ApiKey
         $env:CF_API_EMAIL = $ApiEmail
-        Write-Output "Cloudflare API Key 和 Email 已配置"
+        Write-Output "Cloudflare API Key 和 Email 已配置($env:CF_API_EMAIL)"
+        flarectl user info # 测试是否成功
     }
     else
     {
@@ -185,7 +205,7 @@ function Add-CFZoneDNSRecords
         Write-Host "Skipped"
         return
     }
-    $Domains | ForEach-Object {
+    $Domains | ForEach-Object -Parallel {
      
         $domain = $_.ToLower()
         Write-Host "正在处理域名:$_"
@@ -193,18 +213,19 @@ function Add-CFZoneDNSRecords
         if(!$AddRecordOnly)
         {
 
-            Write-Verbose "尝试创建域名[$domain] (如果不存在的话)..."
+            Write-Host "尝试创建域名[$domain] (如果不存在的话)..."
             flarectl zone create --zone "$domain" 
             # flarectl zone create --zone "$domain" *> $null # 创建域名
         }
         
-        Write-Verbose "Setting DNS record for domain: $domain" 
+        Write-Host "Set DNS record for domain: $domain" 
         if ($type -eq "MX")
         {
             # 比较少用
             $priority = $record
-            Write-Output "Adding MX record: $domain -> $value (Priority: $priority)"
-            flarectl dns create --zone "$domain" --name "$domain" --type "$type" --content "$value" --priority "$priority"
+            Write-host "Adding MX record: $domain -> $value (Priority: $priority)"
+            $res=flarectl dns create --zone "$domain" --name "$domain" --type "$type" --content "$value" --priority "$priority"
+            Write-Host $res
         }
         else
         {
@@ -219,16 +240,18 @@ function Add-CFZoneDNSRecords
                     $RecordNamesForIt += $domain
                 }
                 
-                $RecordNamesForIt | ForEach-Object {
-                    Write-Host "Adding DNS record: $domain|$_ -> $value ($type)"
-                    flarectl dns create --zone "$domain" --name $_ --type "$type" --content "$value" --proxy
+               
+                foreach ($item in $RecordNamesForIt) {
+                    Write-Host "Adding DNS record: $domain|$item -> $value ($type)"
+                    $res = flarectl --json dns create --zone "$domain" --name "$item" --type "$type" --content "$value" --proxy
+                    Write-Host $res
                 }
                 
                 # Pause
                 # flarectl dns create --zone "$domain" --name "*" --type "$type" --content "$value"
             }
         }
-    }
+    } -ThrottleLimit 5
 
 }
 
@@ -241,7 +264,7 @@ function Add-CFZoneConfig
     #>
     param(
         $Account,
-        $Ip="",
+        $Ip = "",
         $CfConfig = "$cf_config",
         $Table = "$desktop/table.conf"
     )

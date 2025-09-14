@@ -113,7 +113,7 @@ fi
 # ========== 🔄 构建 rsync 命令 ==========
 RSYNC_CMD=(
     rsync
-    -av
+    -avP
     # -z #压缩传输,如果已经是压缩包,可以不使用
     --prune-empty-dirs
     --include="*/"                  # 保留子目录结构（关键！）

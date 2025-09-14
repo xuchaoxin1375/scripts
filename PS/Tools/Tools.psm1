@@ -2723,7 +2723,7 @@ function Get-DomainUserDictFromTableLite
     )
     Get-Content $Table | Where-Object { $_.Trim() } | Where-Object { $_ -notmatch "^\s*#" } | ForEach-Object { 
         $l = $_ -split '\s+'
-        $title = ($_ -split '\d+\.\w{1,5}')[-1].trim()
+        $title = ($_ -split '\d+\.\w{1,5}')[-1].trim() -replace '"',''
         @{'domain'     = ($l[0] | Get-MainDomain);
             'user'     = $l[1];
             'template' = $l[2] ;
