@@ -67,12 +67,17 @@ function Push-ByScp
     [CmdletBinding(SupportsShouldProcess)]
     param (
         $Server,
-        [alias("ScpUser")]$User='root',
+
+        [alias("ScpUser")]
+        $User='root',
+ 
         $SourcePath,
-        [alias('Target')]$DestinationPath=$env:DF_SERVER1
+
+        [alias('TargetPath','Target')]
+        $DestinationPath=$env:DF_SERVER1
     )
     $expression = "scp -r $SourcePath $User@${Server}:$DestinationPath"
-    Write-Verbose $expression 
+    Write-Host $expression 
     # Pause
     if($PSCmdlet.ShouldProcess($server, $expression))
     {

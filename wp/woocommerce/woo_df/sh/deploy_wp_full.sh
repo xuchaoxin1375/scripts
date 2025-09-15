@@ -197,118 +197,118 @@ set_rewrte_rules_file() {
 
 }
 # ==获取字符串中主域名.顶级域名的部分
-get_main_domain() {
-    local s="$1"
+# get_main_domain() {
+#     local s="$1"
 
-    if [[ "$s" == *.*.* ]]; then
-        local a="${s%%.*}"
-        local b="${s#*.}"; b="${b%%.*}"
-        echo "$a.$b"
-    else
-        echo "$s"
-    fi
-}
+#     if [[ "$s" == *.*.* ]]; then
+#         local a="${s%%.*}"
+#         local b="${s#*.}"; b="${b%%.*}"
+#         echo "$a.$b"
+#     else
+#         echo "$s"
+#     fi
+# }
 # === 检查归档文件是否完整===
 
 # === 函数：解压压缩文件(不检查完整性) ===
-extract_archive_without_check() {
-    local archive_file="$1"
-    local target_dir="$2"
+# extract_archive_without_check() {
+#     local archive_file="$1"
+#     local target_dir="$2"
 
-    # 确保目标目录存在
-    mkdir -p "$target_dir"
+#     # 确保目标目录存在
+#     mkdir -p "$target_dir"
 
-    echo "🔍 正在解压文件: $archive_file -> $target_dir/..."
+#     echo "🔍 正在解压文件: $archive_file -> $target_dir/..."
 
-    case "${archive_file##*.}" in
-        zip)
-            unzip -q "$archive_file" -d "$target_dir"
-            ;;
-        gz|tgz)
-            tar -xzf "$archive_file" -C "$target_dir"
-            ;;
-        bz2|tbz2)
-            tar -xjf "$archive_file" -C "$target_dir"
-            ;;
-        lz4)
-            # 使用 mktemp 创建唯一临时文件名
-            temp_output_file=$(mktemp -u)
+#     case "${archive_file##*.}" in
+#         zip)
+#             unzip -q "$archive_file" -d "$target_dir"
+#             ;;
+#         gz|tgz)
+#             tar -xzf "$archive_file" -C "$target_dir"
+#             ;;
+#         bz2|tbz2)
+#             tar -xjf "$archive_file" -C "$target_dir"
+#             ;;
+#         lz4)
+#             # 使用 mktemp 创建唯一临时文件名
+#             temp_output_file=$(mktemp -u)
 
-            # 纠正域名提取:target_dir (将domain.com.tar)
+#             # 纠正域名提取:target_dir (将domain.com.tar)
 
-            echo "🔍 正在解压 LZ4 文件: $archive_file"
+#             echo "🔍 正在解压 LZ4 文件: $archive_file"
 
-            echo "解压 .lz4 到临时文件"
-            if ! lz4 -d "$archive_file" "$temp_output_file"; then
-                echo "❌ 解压 LZ4 文件失败: $archive_file"
-                rm -f "$temp_output_file" -v
-                return 1
-            fi
+#             echo "解压 .lz4 到临时文件"
+#             if ! lz4 -d "$archive_file" "$temp_output_file"; then
+#                 echo "❌ 解压 LZ4 文件失败: $archive_file"
+#                 rm -f "$temp_output_file" -v
+#                 return 1
+#             fi
 
-            echo  "解包 .tar 文件 $temp_output_file"
-            if ! tar -xf "$temp_output_file" -C "$target_dir"; then
-                echo "❌ 解包 TAR 文件失败: $temp_output_file"
-                rm -f "$temp_output_file" -v 
-                return 1
-            fi
+#             echo  "解包 .tar 文件 $temp_output_file"
+#             if ! tar -xf "$temp_output_file" -C "$target_dir"; then
+#                 echo "❌ 解包 TAR 文件失败: $temp_output_file"
+#                 rm -f "$temp_output_file" -v 
+#                 return 1
+#             fi
 
             
-            echo "清理临时文件 $temp_output_file"
-            rm -f "$temp_output_file" -v
-            ;;
-        zst|zstd)
-            # 使用 mktemp 创建唯一临时文件名
-            temp_output_file=$(mktemp -u)
+#             echo "清理临时文件 $temp_output_file"
+#             rm -f "$temp_output_file" -v
+#             ;;
+#         zst|zstd)
+#             # 使用 mktemp 创建唯一临时文件名
+#             temp_output_file=$(mktemp -u)
 
 
-            echo "🔍 正在解压 zstd 文件: $archive_file"
+#             echo "🔍 正在解压 zstd 文件: $archive_file"
 
-            echo "解压 .zst 到临时文件"
-            if ! zstd -d "$archive_file" -o "$temp_output_file"; then
-                echo "❌ 解压 zstd 文件失败: $archive_file"
-                rm -f "$temp_output_file" -v
-                return 1
-            fi
+#             echo "解压 .zst 到临时文件"
+#             if ! zstd -d "$archive_file" -o "$temp_output_file"; then
+#                 echo "❌ 解压 zstd 文件失败: $archive_file"
+#                 rm -f "$temp_output_file" -v
+#                 return 1
+#             fi
 
-        echo  "解包 .tar 文件 $temp_output_file"
-            if ! tar -xf "$temp_output_file" -C "$target_dir"; then
-                echo "❌ 解包 TAR 文件失败: $temp_output_file"
-                rm -f "$temp_output_file" -v 
-                return 1
-            fi
+#         echo  "解包 .tar 文件 $temp_output_file"
+#             if ! tar -xf "$temp_output_file" -C "$target_dir"; then
+#                 echo "❌ 解包 TAR 文件失败: $temp_output_file"
+#                 rm -f "$temp_output_file" -v 
+#                 return 1
+#             fi
 
-        echo "清理临时文件 $temp_output_file"
-            rm -f "$temp_output_file" -v
-            ;;
-        tar)
-            echo "🔍 正在解包 TAR 文件: $archive_file"
-            if ! tar -xf "$archive_file" -C "$target_dir"; then
-                echo "❌ 解包 TAR 文件失败: $archive_file"
-                return 1
-            fi
-            ;;
-        *)
-            7z x "$archive_file" -o"$target_dir"
-            ;;
-    esac
-    # 如果输入的包是zip,则使用unzip解压zip包
-    # if [ "${archive_file##*.}" = "zip" ]; then
-    #     unzip -q "$archive_file" -d "$target_dir"
-    # else
-    #     7z x "$archive_file" -o"$target_dir"
-    # fi
+#         echo "清理临时文件 $temp_output_file"
+#             rm -f "$temp_output_file" -v
+#             ;;
+#         tar)
+#             echo "🔍 正在解包 TAR 文件: $archive_file"
+#             if ! tar -xf "$archive_file" -C "$target_dir"; then
+#                 echo "❌ 解包 TAR 文件失败: $archive_file"
+#                 return 1
+#             fi
+#             ;;
+#         *)
+#             7z x "$archive_file" -o"$target_dir"
+#             ;;
+#     esac
+#     # 如果输入的包是zip,则使用unzip解压zip包
+#     # if [ "${archive_file##*.}" = "zip" ]; then
+#     #     unzip -q "$archive_file" -d "$target_dir"
+#     # else
+#     #     7z x "$archive_file" -o"$target_dir"
+#     # fi
 
-    # 其他格式使用7z几乎通杀:
-    # 使用7z解压，支持各种格式(对于解压任务,使用多线程解压线程效果似乎没什么)
-    # if ! 7z x -mmt32 -y "$archive_file" -o"$target_dir"; then
-    #     echo "❌ 解压失败: $archive_file"
-    #     return 1
-    # fi
+#     # 其他格式使用7z几乎通杀:
+#     # 使用7z解压，支持各种格式(对于解压任务,使用多线程解压线程效果似乎没什么)
+#     # if ! 7z x -mmt32 -y "$archive_file" -o"$target_dir"; then
+#     #     echo "❌ 解压失败: $archive_file"
+#     #     return 1
+#     # fi
   
 
-    return 0
-}
-# ====仅检测原生tar格式文件====
+#     return 0
+# }
+# # ====仅检测原生tar格式文件====
 is_plain_tar_file() {
     local file_path="$1"
     [[ -f "$file_path" ]] && [[ $(file -b --mime-type "$file_path") == "application/x-tar" ]]
@@ -441,7 +441,7 @@ extract_archive() {
 
             echo "🧪 正在验证内部文件 (是否为TAR 文件以及tar文件完整性)..."
             
-            if is_plain_tar_file "example.tar"; then
+            if is_plain_tar_file "$temp_output_file"; then
                 echo "是原生tar文件"
             else
                 echo "不是原生tar文件"

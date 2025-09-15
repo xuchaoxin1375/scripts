@@ -269,8 +269,9 @@ def main():
     config = get_config(args.config)
     servers = config["servers"]
     server = servers.get(args.server)
-    bt_key = server.get("bt_key")
-    bt_url = server.get("bt_panel")
+    bt=server.get("bt",{})
+    bt_key = server.get("bt_key") or bt.get("bt_key")
+    bt_url = server.get("bt_panel") or bt.get("bt_panel")
 
     # 这里以http代理为例，socks5可用requests库的socks支持
     os.environ["HTTP_PROXY"] = args.proxy

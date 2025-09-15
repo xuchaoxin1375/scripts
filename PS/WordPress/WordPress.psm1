@@ -892,6 +892,56 @@ function Deploy-WpSitesOnline
     # 配置cf域名解析,邮箱转发和代理保护(位置2,暂时使用位置1)
     # Add-CFZoneConfig
 }
+function Get-ServerList
+{
+    <# 
+    .SYNOPSIS
+        读取服务器配置(json文件)
+    .DESCRIPTION
+        读取服务器配置(json文件),返回服务器列表
+        返回的数据是powershell的PSObject对象(数组),可以方便地遍历服务器
+
+    .NOTES
+        如果json文件结构有变,可能要更新此代码以正确读取服务器配置列表
+    #>
+    param(
+        [alias('Config', "ServerConfig")]$Path = "$server_config",
+        # 跳过前若干个服务器(比如特殊用途的服务器),设为0表示返回全部服务器
+        $Skip = 1
+    )
+    $config = Get-Content $Path | ConvertFrom-Json
+    # Write-Output $config
+    $servers = $config.servers.PSObject.Properties.Value
+    # Write-Output $servers
+    
+    return $servers[$Skip..($servers.Length - 1)]
+    
+}
+function Update-WpFunctionsphpOnServers
+{
+    param (
+        $Path = "$wp_plugins/functions.php",
+        # 注意,Target目录在远程服务器上应该存在,否则scp上传会失败(scp不会创建缺失的中间路径目录),-r选在跟也不会帮助你创建缺失起始目录
+        $Target = "/www/",
+        $ServerConfig = $server_config
+    )
+    $servers = Get-ServerList -Path $ServerConfig
+    Write-Host "servers:$servers"
+    $servers.ip | ForEach-Object {
+        Write-Host "Updating functions.php to $_"
+        # Push-ByScp -Server $_ -SourcePath $Path -TargetPath $Target  -Verbose
+        scp -r $Path root@"$_":/www/
+        ssh root@$env:DF_SERVER1 "bash /www/sh/wp-functions-update/update_wp_functions.sh --src /www/functions.php"
+    } 
+    
+}
+function Update-WpPluginsDFOnServers
+{
+    param(
+        [Alias('PluginPath')]$Path 
+    )
+    Update-WpPluginsDFOnServer -PluginPath $Path
+}
 function Update-WpSitesRobots
 {
     <# 
@@ -1078,7 +1128,7 @@ WHERE
     Import-MysqlFile -Server $Server -SqlFilePath $sqlPath -MySqlUser $MySqlUser -key $key -DatabaseName $DatabaseName 
 
 }
-function Update-WpPlugins-DF
+function Update-WpPluginsDFOnServer
 {
     <# 
 .SYNOPSIS
@@ -1089,25 +1139,25 @@ function Update-WpPlugins-DF
     或者指定目录后,添加一个压缩成zip/7z的命令,然后推送到服务器上,最后调用解压和目录复制逻辑
 
 .EXAMPLE
-Update-WpPlugins-DF1 -plugin_dir_local C:\share\df\wp_sites\wp_plugins_functions\price_pay\mallpay 
+Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_pay\mallpay 
 #>
     param(
 
         $server = $env:DF_SERVER1,               # 服务器IP地址
         $username = "root"        ,      # 服务器用户名
         # $password = ""              # 服务器密码（不推荐明文存储,配置ssh密钥登录更安全）
-        $plugin_dir_local = "",   # 本地插件目录路径🎈
-        $remoteDirectory = "/www/wp-plugins"       , # 服务器目标目录
+        $PluginPath = "",   # 本地插件目录路径🎈
+        $remoteDirectory = "/www/"       , # 服务器目标目录
         
         $bashScript = "/www/sh/wp-plugin-update/update_wp_plugin.sh",
         [switch]$Dry
     )
     
-    $plugin_dir_name = (Split-Path $plugin_dir_local -Leaf) # 🎈
+    $plugin_dir_name = (Split-Path $PluginPath -Leaf) # 🎈
     $plugin_dir = "$remoteDirectory/$plugin_dir_name"  # 服务器目标插件目录🎈
     # 上传文件到服务器
     Write-Verbose "Uploading file to server..." -Verbose
-    scp -r $plugin_dir_local $username@${server}:"$remoteDirectory" 
+    scp -r $PluginPath $username@${server}:"$remoteDirectory" 
 
 
     Write-Verbose "Executing updating script...(this need several seconds, please wait...)" -Verbose

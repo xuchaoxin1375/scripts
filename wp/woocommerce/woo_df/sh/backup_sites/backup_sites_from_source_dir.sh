@@ -14,7 +14,7 @@
 # ./backup_sites_from_source_dir.sh --mysql-user myuser --mysql-pass mypassword
 # bash ./backup_sites_from_source_dir.sh --parallel --jobs 2 --whitelist valid_users.ini -u xcx --mysql-user myusername --mysql-pass password123
 # # 组合使用所有参数
-# ./backup_sites_from_source_dir.sh --mysql-host localhost --mysql-port 3306 --mysql-user root --mysql-pass password123
+# ./backup_sites_from_source_dir.sh -d /srv/uploads/uploader/files --mysql-host localhost --mysql-port 3306 --mysql-user root --mysql-pass password123
 
 SRC_ROOT="/www/wwwroot"
 DEST_ROOT="/srv/uploads/uploader/files"
@@ -33,8 +33,8 @@ MYSQL_PASS=""
 
 show_help() {
 	echo "用法: $0 [选项]"
-	echo "  -s, --src <src_root>     源目录 (默认: /www/wwwroot)"
-	echo "  -d, --dest <dest_root>   目标根目录 (默认: /srv/uploads/uploader/files)"
+	echo "  -s, --src <src_root>     网站根目录所在总目录 (默认: $SRC_ROOT)"
+	echo "  -d, --dest <dest_root>   目标根目录 (默认: $DEST_ROOT)"
 	echo "  -u, --user <username>    仅备份指定用户 (默认: 所有用户)"
 	echo "      --whitelist <file>   白名单文件，指定需要处理的用户 (默认: 无)"
 	echo "      --mysql-host <host>  MySQL主机地址"
