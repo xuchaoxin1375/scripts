@@ -937,10 +937,22 @@ function Update-WpFunctionsphpOnServers
 }
 function Update-WpPluginsDFOnServers
 {
+    <# 
+    .SYNOPSIS
+    批量更新服务器上的Wordpress插件目录
+    读取配置文件中的服务器列表,然后逐个服务器执行相同的处理
+    #>
     param(
-        [Alias('PluginPath')]$Path 
+        [Alias('PluginPath')]$Path ,
+        $ServerConfig = $server_config
     )
-    Update-WpPluginsDFOnServer -PluginPath $Path
+    $servers = Get-ServerList -Path $ServerConfig
+    # Write-Host "servers:$servers"
+    # return $servers
+    $servers.ip | ForEach-Object {
+        Write-Host "Updating plugins to $_"
+        Update-WpPluginsDFOnServer -server $_ -PluginPath $Path 
+    }
 }
 function Update-WpSitesRobots
 {
@@ -1143,12 +1155,12 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
 #>
     param(
 
-        $server = $env:DF_SERVER1,               # 服务器IP地址
+        [Alias('hst', 'Ip')]$server ,               # 服务器IP地址
         $username = "root"        ,      # 服务器用户名
         # $password = ""              # 服务器密码（不推荐明文存储,配置ssh密钥登录更安全）
-        $PluginPath = "",   # 本地插件目录路径🎈
-        $remoteDirectory = "/www/"       , # 服务器目标目录
-        
+        $PluginPath ,   # 本地插件目录路径🎈
+        $remoteDirectory = "/www"       , # 服务器目标目录
+        $WorkingDirectory="/www/wwwroot",
         $bashScript = "/www/sh/wp-plugin-update/update_wp_plugin.sh",
         [switch]$Dry
     )
@@ -1166,7 +1178,7 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
 
     # 执行高性能的bash脚本
     $dryRun = if($Dry) { "--dry-run" }else { "" }
-    $cmd = "  ssh $username@$server bash $bashScript --workdir $remoteDirectory --source $plugin_dir $dryRun " 
+    $cmd = "  ssh $username@$server bash $bashScript --workdir $workingDirectory --source $plugin_dir $dryRun " 
     Write-Verbose "Executing command: $cmd" -Verbose
     Start-Sleep 2
     $cmd | Invoke-Expression
@@ -1242,7 +1254,7 @@ function Get-WpImages
 
     python $ImageDownloader -c -n -R auto -k -d $Path -o $Directory
 }
-function import-WpSqlBatch
+function Import-WpSqlBatch
 {
     param(
         $Range = @(1, 2, 4, 6, 7),
@@ -1254,7 +1266,7 @@ function import-WpSqlBatch
         $Range | ForEach-Object { Import-MysqlFile -SqlFilePath C:\sites\wp_sites\base_sqls\$_.${c}.sql -DatabaseName "$_.${c}" -MySqlUser root -key $env:MySqlKey_LOCAL }
     }
 }
-function Deploy-WpServer-DF1
+function Deploy-WpServerDF
 {
     <# 
     .SYNOPSIS
@@ -1267,6 +1279,7 @@ function Deploy-WpServer-DF1
     #>
     param (
         # [ValidateSet('zsh', 'zw', 'xcx')]
+        $Server,
         $User,
         $Directory = "/srv/uploads/uploader/files",
         $DBUser = "root",
@@ -1275,9 +1288,9 @@ function Deploy-WpServer-DF1
 
 
     )
-    ssh ${ServerUser}@$env:DF_SERVER1 "screen -dmS $user bash -c ' chmod +x /deploy.sh;/deploy.sh --pack-root $Directory --user-dir $user --db-user $DBUser --db-pass $DBKey  ;screen -XS $user quit ;exec bash'"
+    ssh ${ServerUser}@$Server "screen -dmS $user bash -c ' chmod +x /deploy.sh;/deploy.sh --pack-root $Directory --user-dir $user --db-user $DBUser --db-pass $DBKey  ;screen -XS $user quit ;exec bash'"
     # 检查此时的screen任务
-    $tips = "ssh ${ServerUser}@$env:DF_SERVER1 'screen -ls $user'"
+    $tips = "ssh ${ServerUser}@$server 'screen -ls $user'"
     $tips | Invoke-Expression
     Write-Verbose "running command:  $tips to check screen tasks." -Verbose
     

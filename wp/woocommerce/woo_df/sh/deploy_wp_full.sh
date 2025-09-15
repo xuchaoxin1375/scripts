@@ -684,7 +684,7 @@ process_sql_file() {
     # fi
 }
 
-# === 主程序开始 🎈===
+# ================================================ 主程序开始 🎈=============================================
 # 在脚本开头定义
 log() {
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1"
@@ -701,7 +701,7 @@ cd "$PACK_ROOT" || {
     exit 1
 }
 
-# 如果指定了用户目录，则仅处理该目录
+# 如果指定了用户目录，则仅处理该目录,否则遍历所有子目录
 if [ -n "$USER_DIR" ]; then
     # 指定单目录时,将单个目录包装成数组(单个元素),便于后续统一两种情况为数组处理
     user_dirs=("$USER_DIR")
@@ -715,7 +715,7 @@ else
     fi
     echo "🔍 找到 ${#user_dirs[@]} 个用户目录"
 fi
-
+# 统计处理的站点数
 deployed_sites=0
 failed_sites=0
 sql_backups_processed=0
@@ -728,7 +728,7 @@ for user_dir in "${user_dirs[@]}"; do
 
     # 创建全局归档目录
     # deployed_dir="$DEPLOYED_DIR"
-
+    # 为当前用户创建归档目录(deployed)
     deployed_dir="$PACK_ROOT/$username/deployed/"
     if [ ! -d "$deployed_dir" ]; then
         mkdir -p "$deployed_dir"
