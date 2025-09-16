@@ -78,3 +78,5 @@ ln -s /www/sh/nginx_conf/update_nginx_vhosts_conf.sh /update_nginx_vhosts_conf.s
 ln -s /www/sh/nginx_conf/com.conf /www/server/nginx/conf/com.conf -fv
 # ln -s /www/sh/nginx_conf/nginx.conf /www/server/nginx/conf/nginx.conf -fv
 
+# 让nginx重新加载配置🎈
+nginx -t && nginx -s reload
