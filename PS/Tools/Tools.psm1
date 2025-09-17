@@ -893,10 +893,11 @@ function Deploy-BatchSiteBTOnline
     #>
     param(
         $Server,
+        $SitesHome,
         $ServerConfig = "$server_config",
         $Table = "$desktop/table.conf"
     )
-    python $pys/bt_api/create_sites.py -c $ServerConfig -s $Server -f $Table -r
+    python $pys/bt_api/create_sites.py -c $ServerConfig -s $Server -f $Table -r -w $SitesHome
 }
 function ssh-copy-id-ps
 {   

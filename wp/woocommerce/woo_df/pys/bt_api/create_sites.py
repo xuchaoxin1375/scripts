@@ -190,6 +190,7 @@ def add_sites(bt_api: BTApi, args):
     sites = parse_site_to_add(config_file)
     total = len(sites)
     print(f"共解析到{total}个站点，开始并行添加...")
+    print(f"站点总家目录:[{sites_home}]")
 
     lock = threading.Lock()
     create_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())

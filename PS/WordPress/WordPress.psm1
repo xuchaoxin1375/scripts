@@ -777,9 +777,13 @@ function Deploy-WpSitesOnline
         [alias('Account')]
         $CfAccount = "account1",
 
-        
+        # 要部署的网站在宝塔中的总目录(宝塔总目录,默认为/www/wwwroot)
+        [alias('wwwroot')]
+        $SitesHome = "/www/wwwroot",
+
         # 本批次要部署的网站域名表
         [alias('Table')]$FromTable = "$Desktop/table.conf",
+
         # 域名绑定cf后解析cf返回的查询结果来传递给spaceship更新域名的nameservers的中间表格
         [alias('DomainTable')]$ToTable = "$Desktop/domains_nameservers.csv",
 
@@ -824,7 +828,7 @@ function Deploy-WpSitesOnline
     # 配置cf域名解析,邮箱转发和代理保护(位置1)
     Add-CFZoneConfig -CfConfig $CfConfig -Account $CfAccount -Table $FromTable
     # 创建宝塔空站点
-    Deploy-BatchSiteBTOnline -Server $HostName -ServerConfig $ServerConfig -Table $FromTable
+    Deploy-BatchSiteBTOnline -Server $HostName -ServerConfig $ServerConfig -Table $FromTable  -SitesHome $SitesHome
     # 重启nginx 
     Restart-NginxOnHost -HostName $hst
     # 等待环节
