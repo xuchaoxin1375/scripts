@@ -95,6 +95,12 @@ def parse_args():
         help="可选，设置http或socks5代理;默认情况下,会清空当前环境的代理设置; \
             如果需要走代理请显式指定,但对于配置宝塔而言通常不指定代理;例如：http://127.0.0.1:7890 或 socks5://127.0.0.1:8800",
     )
+    parser.add_argument(
+        "-w",
+        "--sites-home",
+        default="/www/wwwroot",
+        help="可选，指定所有站点的总目录,宝塔默认为/www/wwwroot",
+    )
     return parser.parse_args()
 
 
@@ -172,10 +178,14 @@ def set_rewrite(bt_api: BTApi, site_name, rewrite_rule=REWRITE_CONTENT_WP):
     return res
 
 
-def add_sites(bt_api: BTApi, config_file, set_rewrite_rule=True):
+def add_sites(bt_api: BTApi, args):
     """
     并行批量添加站点
     """
+    config_file=args.file
+    print(f"开始解析配置文件:[{config_file}]")
+    set_rewrite_rule = args.rewrite
+    sites_home = args.sites_home
 
     sites = parse_site_to_add(config_file)
     total = len(sites)
@@ -202,7 +212,8 @@ def add_sites(bt_api: BTApi, config_file, set_rewrite_rule=True):
         # 域名列表
         domainlist = [domain1, domain2]
         user = item["user"]
-        path = f"/www/wwwroot/{user}/{domain}/wordpress"
+        # 控制网站根目录🎈
+        path = f"{sites_home}/{user}/{domain}/wordpress"
         msg_prefix = f"[{idx+1}/{total}] {domain}"
         try:
             with lock:
@@ -269,7 +280,7 @@ def main():
     config = get_config(args.config)
     servers = config["servers"]
     server = servers.get(args.server)
-    bt=server.get("bt",{})
+    bt = server.get("bt", {})
     bt_key = server.get("bt_key") or bt.get("bt_key")
     bt_url = server.get("bt_panel") or bt.get("bt_panel")
 
@@ -280,7 +291,7 @@ def main():
     print("开始尝试链接宝塔并获取面板信息")
     api = BTApi(bt_url, bt_key)
     # check_connection(api)
-    add_sites(api, config_file=args.file, set_rewrite_rule=args.rewrite)
+    add_sites(bt_api=api, args=args)
 
 
 if __name__ == "__main__":
