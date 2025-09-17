@@ -168,6 +168,7 @@ function Add-CFZoneDNSRecords
         # 仅添加域名的DNS记录,不检查域名是否被添加(如果域名尚未被添加到cloudflare,那么添加dns记录就会失败跳过)
         [switch]$AddRecordOnly,
         # 强制执行,不进行确认
+        [switch]$Parallel,
         [switch]$Force
     )
    
@@ -206,54 +207,111 @@ function Add-CFZoneDNSRecords
         Write-Host "Skipped"
         return
     }
-    $Domains | ForEach-Object -Parallel {
-     
-        $domain = $_.ToLower()
-        Write-Host "正在处理域名:$_"
-        # 默认情况下总是尝试先创建域名(无论是否已经存在),使用AddRecordOnly参数时则不创建域名
-        if(!$AddRecordOnly)
-        {
+    if($Parallel)
+    {
 
-            Write-Host "尝试创建域名[$domain] (如果不存在的话)..."
-            flarectl zone create --zone "$domain" 
-            # flarectl zone create --zone "$domain" *> $null # 创建域名
-        }
-        
-        Write-Host "Set DNS record for domain: $domain" 
-        if ($type -eq "MX")
-        {
-            # 比较少用
-            $priority = $record
-            Write-host "Adding MX record: $domain -> $value (Priority: $priority)"
-            $res=flarectl dns create --zone "$domain" --name "$domain" --type "$type" --content "$value" --priority "$priority"
-            Write-Host $res
-        }
-        else
-        {
-            if($AddRecordAtOnce -or $AddRecordOnly)
+    
+        $Domains | ForEach-Object -Parallel {
+     
+            $domain = $_.ToLower()
+            Write-Host "正在处理域名:$_"
+            # 默认情况下总是尝试先创建域名(无论是否已经存在),使用AddRecordOnly参数时则不创建域名
+            if(!$AddRecordOnly)
             {
 
-                # 常用类型DNS记录的添加
-                # 一次性添加两条:一条*和$domain;记得启用代理选项保护ip
-                if(!$No2LDDomain)
+                Write-Host "尝试创建域名[$domain] (如果不存在的话)..."
+                flarectl zone create --zone "$domain" 
+                # flarectl zone create --zone "$domain" *> $null # 创建域名
+            }
+        
+            Write-Host "Set DNS record for domain: $domain" 
+            if ($type -eq "MX")
+            {
+                # 比较少用
+                $priority = $record
+                Write-Host "Adding MX record: $domain -> $value (Priority: $priority)"
+                $res = flarectl dns create --zone "$domain" --name "$domain" --type "$type" --content "$value" --priority "$priority"
+                Write-Host $res
+            }
+            else
+            {
+                if($AddRecordAtOnce -or $AddRecordOnly)
                 {
-                    $RecordNamesForIt = $RecordNames.clone()
-                    $RecordNamesForIt += $domain
-                }
+
+                    # 常用类型DNS记录的添加
+                    # 一次性添加两条:一条*和$domain;记得启用代理选项保护ip
+                    if(!$No2LDDomain)
+                    {
+                        $RecordNamesForIt = $RecordNames.clone()
+                        $RecordNamesForIt += $domain
+                    }
                 
                
-                foreach ($item in $RecordNamesForIt) {
-                    Write-Host "Adding DNS record: $domain|$item -> $value ($type)"
-                    $res = flarectl --json dns create --zone "$domain" --name "$item" --type "$type" --content "$value" --proxy
-                    Write-Host $res
-                }
+                    foreach ($item in $RecordNamesForIt)
+                    {
+                        Write-Host "Adding DNS record: $domain|$item -> $value ($type)"
+                        $res = flarectl --json dns create --zone "$domain" --name "$item" --type "$type" --content "$value" --proxy
+                        Write-Host $res
+                    }
                 
-                # Pause
-                # flarectl dns create --zone "$domain" --name "*" --type "$type" --content "$value"
+                    # Pause
+                    # flarectl dns create --zone "$domain" --name "*" --type "$type" --content "$value"
+                }
+            }
+        } -ThrottleLimit 5
+    }
+    else
+    {
+        # 串行添加
+        $Domains | ForEach-Object {
+     
+            $domain = $_.ToLower()
+            Write-Host "正在处理域名:$_"
+            # 默认情况下总是尝试先创建域名(无论是否已经存在),使用AddRecordOnly参数时则不创建域名
+            if(!$AddRecordOnly)
+            {
+
+                Write-Host "尝试创建域名[$domain] (如果不存在的话)..."
+                flarectl zone create --zone "$domain" 
+                # flarectl zone create --zone "$domain" *> $null # 创建域名
+            }
+        
+            Write-Host "Set DNS record for domain: $domain" 
+            if ($type -eq "MX")
+            {
+                # 比较少用
+                $priority = $record
+                Write-Host "Adding MX record: $domain -> $value (Priority: $priority)"
+                $res = flarectl dns create --zone "$domain" --name "$domain" --type "$type" --content "$value" --priority "$priority"
+                Write-Host $res
+            }
+            else
+            {
+                if($AddRecordAtOnce -or $AddRecordOnly)
+                {
+
+                    # 常用类型DNS记录的添加
+                    # 一次性添加两条:一条*和$domain;记得启用代理选项保护ip
+                    if(!$No2LDDomain)
+                    {
+                        $RecordNamesForIt = $RecordNames.clone()
+                        $RecordNamesForIt += $domain
+                    }
+                
+               
+                    foreach ($item in $RecordNamesForIt)
+                    {
+                        Write-Host "Adding DNS record: $domain|$item -> $value ($type)"
+                        $res = flarectl --json dns create --zone "$domain" --name "$item" --type "$type" --content "$value" --proxy
+                        Write-Host $res
+                    }
+                
+                    # Pause
+                    # flarectl dns create --zone "$domain" --name "*" --type "$type" --content "$value"
+                }
             }
         }
-    } -ThrottleLimit 5
-
+    }
 }
 
 function Add-CFZoneConfig
