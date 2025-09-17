@@ -24,6 +24,7 @@ function Set-CFCredentials
         [parameter(ParameterSetName = 'FromFile')]
         $CfConfig = "$deploy_configs/cf_config.json",
         [parameter(ParameterSetName = 'FromFile', Mandatory = $true)]
+        [alias("Account")]
         $CfAccount
     )
     if($PSCmdlet.ParameterSetName -eq 'FromFile')
@@ -290,7 +291,7 @@ function Add-CFZoneCheckActivation
     )
     $config = Get-Content $ConfigPath | ConvertFrom-Json
     $account = $config."accounts"."$Account"
-    Set-CFCredentials -ApiKey $account.cf_api_key -ApiEmail $account.cf_api_email
+    Set-CFCredentials -ApiKey $account.cf_api_key -ApiEmail $account.cf_api_email -CfAccount $Account
     # 查看当前的环境变量
     # Get-ChildItem env:cf*
 
