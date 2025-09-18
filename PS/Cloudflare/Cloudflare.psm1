@@ -23,7 +23,8 @@ function Set-CFCredentials
         [string]$ApiEmail,
         [parameter(ParameterSetName = 'FromFile')]
         $CfConfig = "$deploy_configs/cf_config.json",
-        [parameter(ParameterSetName = 'FromFile', Mandatory = $true)]
+
+        # [parameter(ParameterSetName = 'FromFile', Mandatory = $true)]
         [alias("Account")]
         $CfAccount
     )

@@ -118,6 +118,8 @@ CF_EMAIL = account.get("cf_api_email")
 CF_API_KEY = account.get("cf_api_key")
 # 账号优先解析的服务器ip地址🎈
 DEFAULT_SERVER_IP = args.ip_address or account.get("default_server_ip")
+print(f"默认绑定域名到ip: {DEFAULT_SERVER_IP}")
+
 
 DEFAULT_FORWARD_EMAIL = config.get("default_forward_email")
 DEFAULT_SSL_MODE = config.get("ssl_mode") or "flexible"

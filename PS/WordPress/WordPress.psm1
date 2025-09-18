@@ -799,7 +799,8 @@ function Deploy-WpSitesOnline
         # 最大重试次数,默认20
         $MaxRetryTimes = 20,
         # 重试间隔时间(秒),默认30秒
-        $RetryGap = 30
+        $RetryGap = 30,
+        [switch]$Onebyone
 
     
     )
@@ -817,7 +818,7 @@ function Deploy-WpSitesOnline
 
 
     # 添加域名解析到cf(第一步执行)
-    Add-CFZoneDNSRecords -AddRecordAtOnce -IP $hst
+    Add-CFZoneDNSRecords -AddRecordAtOnce -IP $hst -Parallel:(!$Onebyone)
     # 从待部署域名列表更新spaceship域名的nameservers(cf添加后立即执行spaceship的nameservers更新)
     Get-CFZoneNameServersTable -FromTable $FromTable
     # 更新spaceship的nameservers
@@ -826,9 +827,9 @@ function Deploy-WpSitesOnline
     Add-CFZoneCheckActivation -Account $CfAccount -ConfigPath $CfConfig
     
     # 配置cf域名解析,邮箱转发和代理保护(位置1)
-    Add-CFZoneConfig -CfConfig $CfConfig -Account $CfAccount -Table $FromTable
+    Add-CFZoneConfig -CfConfig $CfConfig -Account $CfAccount -Table $FromTable -Ip $hst
     # 创建宝塔空站点
-    Deploy-BatchSiteBTOnline -Server $HostName -ServerConfig $ServerConfig -Table $FromTable  -SitesHome $SitesHome
+    Deploy-BatchSiteBTOnline -Server $HostName -ServerConfig $ServerConfig -Table $FromTable -SitesHome $SitesHome 
     # 重启nginx 
     Restart-NginxOnHost -HostName $hst
     # 等待环节
@@ -837,39 +838,44 @@ function Deploy-WpSitesOnline
     {
         write-warning"基础等待时间$WaitTimeBasic 秒"
     }
-    Start-SleepWithProgress -Seconds $WaitTimeBasic
+    # Start-SleepWithProgress -Seconds $WaitTimeBasic
     $retryTimes = $MaxRetryTimes
+    # 记录域名检查次数(查询域名激活的次数)
+    $checkTimes = 0
+    $domainsInfo = Get-CFZoneInfoFromTable -Json | ConvertFrom-Json
+    $domainCount = $domainsInfo.Count
+    $domainTotal = $domainCount
     # 检查域名激活状态
     while ($True )
     {
+        $checkTimes += 1
+        Write-Verbose "Checking domain activation status($checkTimes)"
+
         
-        $info = Get-CFZoneInfoFromTable -Json | ConvertFrom-Json
-        $domainCount = $info.Count
-        if($domainCount -eq 0)
-        {
-            Write-Error "No domain found in table,exit"
-            return $False
-        }
-        $activeCount = 0
-        foreach ($item in $info)
-        {
-            if ($item.status -eq "active")
+        $domainsInfo = $domainsInfo | ForEach-Object {
+            $item = $_
+            if ($item.status -ne "active")
             {
-                $activeCount++
+                Write-Warning "Domain $($item.Zone) is not active($($item.status)), please wait or check it."
             }
         }
-        if($activeCount -eq $domainCount)
+        $inactiveDomains = $domainsInfo.Zone
+        $inactiveCount = $domainsInfo.Count
+        $activeCount = $domainTotal - $inactiveCount
+        Write-Verbose "active: $activeCount;inactive: $inactiveCount" -Verbose
+
+        if($activeCount -eq $domainTotal)
         {
             Write-Host "All domains are active" -ForegroundColor Green
             return $True
         }
         else
         {
-            Write-Host "There are $activeCount domains active, $domainCount domains total, please wait for $RetryGap seconds and retry" -ForegroundColor Cyan
+            Write-Host "There are $inactiveCount domains is not active, please wait for $RetryGap seconds and retry" -ForegroundColor Cyan
             
             
-            $completed = [math]::Round($activeCount / $domainCount * 100, 2)
-            Write-Progress -Activity "Waiting for domain activation" -Status "There are $activeCount / $domainCount domains active  ($completed% completed)" -PercentComplete $completed 
+            $completed = [math]::Round($activeCount / $domainTotal * 100, 2)
+            Write-Progress -Activity "Waiting for domain activation" -Status "There are $activeCount / $domainTotal domains active  ($completed% completed)" -PercentComplete $completed 
             if($retryTimes -eq 0)
             {
                 Write-Error "Max retry times  exhuasted, exit"
@@ -879,19 +885,12 @@ function Deploy-WpSitesOnline
             {
                 Write-Host "Remanining retry times: $retryTimes"
             }
-            # 打印本轮查询激活情况的结果
-            # Write-Output $info
-            $info | ForEach-Object {
-                if ($_.Status -ne "active")
-                {
-                    Write-Host "Domain: $($_.name) is not active" -ForegroundColor Cyan
-                    Write-Host "`t:$_"
-                }
-            }
-            Start-SleepWithProgress $RetryGap
-            $retryTimes--
+
         }
-        
+        # 计算下一轮需要查询的域名(本轮未激活的域名)
+        $domainsInfo=$inactiveDomains | ForEach-Object { flarectl --json zone info --zone $_ | ConvertFrom-Json }
+        Start-SleepWithProgress $RetryGap
+        $retryTimes--
     }
     # 配置cf域名解析,邮箱转发和代理保护(位置2,暂时使用位置1)
     # Add-CFZoneConfig
@@ -1164,7 +1163,7 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
         # $password = ""              # 服务器密码（不推荐明文存储,配置ssh密钥登录更安全）
         $PluginPath ,   # 本地插件目录路径🎈
         $remoteDirectory = "/www"       , # 服务器目标目录
-        $WorkingDirectory="/www/wwwroot",
+        $WorkingDirectory = "/www/wwwroot",
         $bashScript = "/www/sh/wp-plugin-update/update_wp_plugin.sh",
         [switch]$Dry
     )

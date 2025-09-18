@@ -278,6 +278,7 @@ class BTApi:
     ):
         """
         创建网站
+        注意,宝塔api操作数据库的开关有bug,设置true似乎不生效
 
         Args:
             webname (dict): 网站主域名和域名列表，格式: {"domain":"domain.com","domainlist":[],"count":0}
@@ -316,8 +317,10 @@ class BTApi:
         requests_data["codeing"] = codeing
         requests_data["datauser"] = datauser
         requests_data["datapassword"] = datapassword
-
+        # print(f"数据库开关:{sql}")
         result = self.__http_post(url, requests_data)
+        print(json.loads(result))
+        
         return json.loads(result)
 
     def del_site(self, site_id, webname, path, database, ftp):

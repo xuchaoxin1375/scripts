@@ -893,7 +893,7 @@ function Deploy-BatchSiteBTOnline
     #>
     param(
         $Server,
-        $SitesHome,
+        $SitesHome='/www/wwwroot',
         $ServerConfig = "$server_config",
         $Table = "$desktop/table.conf"
     )
@@ -926,7 +926,14 @@ function Start-SleepWithProgress
         [Parameter(Mandatory = $true)]
         [int]$Seconds
     )
-
+    if($Seconds -le 0)
+    {
+        Write-Warning "The sleep time seconds is $Seconds,jump sleep!"
+        return $False
+    }
+    else{
+        Write-Host "Waiting for $Seconds seconds..."
+    }
     for ($i = 0; $i -le $Seconds; $i++)
     {
         $percentComplete = ($i / $Seconds) * 100
@@ -2724,7 +2731,7 @@ function Get-DomainUserDictFromTableLite
     )
     Get-Content $Table | Where-Object { $_.Trim() } | Where-Object { $_ -notmatch "^\s*#" } | ForEach-Object { 
         $l = $_ -split '\s+'
-        $title = ($_ -split '\d+\.\w{1,5}')[-1].trim() -replace '"',''
+        $title = ($_ -split '\d+\.\w{1,5}')[-1].trim() -replace '"', ''
         @{'domain'     = ($l[0] | Get-MainDomain);
             'user'     = $l[1];
             'template' = $l[2] ;
