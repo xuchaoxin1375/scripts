@@ -74,9 +74,11 @@ ln -s /repos/scripts/wp/woocommerce/woo_df/sh /www/sh -fv
 ln -s /www/sh/deploy_wp_full.sh /deploy.sh -fv
 ln -s /www/sh/update_repos.sh /update_repos.sh -fv
 ln -s /www/sh/nginx_conf/update_nginx_vhosts_conf.sh /update_nginx_vhosts_conf.sh -fv
-# 配置文件软链接
-ln -s /www/sh/nginx_conf/com.conf /www/server/nginx/conf/com.conf -fv
+# nginx配置文件软链接(这里如果用二级软连接和宝塔的一些操作(比如api)可能冲突,建议使用文件覆盖或则手动覆盖)
+# ln -s /www/sh/nginx_conf/com.conf /www/server/nginx/conf/com.conf -fv
 # ln -s /www/sh/nginx_conf/nginx.conf /www/server/nginx/conf/nginx.conf -fv
+cp /www/sh/nginx_conf/com.conf /www/server/nginx/conf/com.conf -fv
+# cp /www/sh/nginx_conf/nginx.conf /www/server/nginx/conf/nginx.conf -fv
 
 # 让nginx重新加载配置🎈
 nginx -t && nginx -s reload
