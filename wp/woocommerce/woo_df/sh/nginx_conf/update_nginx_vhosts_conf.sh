@@ -24,7 +24,8 @@ usage() {
     $0 -d /etc/nginx/conf.d -p "*.conf"
     $0 -d /www -p "domain*.conf" --jump-marker "#CUSTOM" --insert-marker "#INSERT-HERE"
     $0 -d /www -p "*.conf" --days 1                    # 仅处理最近1天修改的文件
-
+具体用例:(宝塔用户将所有网站的nginx配置检查com.conf的插入情况)🎈
+     /update_nginx_vhosts_conf.sh -d /www/server/panel/vhost/nginx/ 
 EOF
     exit 1
 }

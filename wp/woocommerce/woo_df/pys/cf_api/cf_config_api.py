@@ -688,6 +688,8 @@ def main():
     if not CF_EMAIL or not CF_API_KEY:
         print("请设置环境变量 CLOUDFLARE_EMAIL 和 CLOUDFLARE_API_KEY")
         sys.exit(1)
+    else:
+        print(f"已设置环境变量CF_EMAIL:{CF_EMAIL};CF_API_KEY:{CF_API_KEY}")
 
     client = Cloudflare(
         api_email=CF_EMAIL,

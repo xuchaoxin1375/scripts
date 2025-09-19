@@ -154,9 +154,10 @@ cat $sh\update_repos.sh
 ```bash
 0 0 */2 * * bash /www/sh/clean_logs.bash
 0 3 * * * bash /www/sh/nginx_conf/update_cf_ip_configs.sh
-0 0 * * 0 bash /www/sh/remove_deployed_sites.sh
+50 23 * * 0 bash /www/sh/remove_deployed_sites.sh
+30 22 * * * bash /www/sh/backup_sites/backup_site_pkgs.sh -s /srv/uploads/uploader/files -b 107.181.229.82 -d /www/wwwroot/xcx/s2
 # */30 * * * * pkill -9 nginx;nginx
-0 * * * * bash /www/sh/deploy_wp_schd.sh
+*/30 * * * * bash /www/sh/deploy_wp_schd.sh
 */2 * * * * bash /www/sh/run-all-wp-cron.sh
 ```
 
@@ -191,5 +192,4 @@ cat $sh\update_repos.sh
 为网站插入公用nginx配置片段的批量处理脚本:`/www/sh/nginx_conf/update_nginx_vhosts_conf.sh`
 
 基础的公用配置(完整版)存放在`/www/sh/nginx_conf/com.conf`文件中
-
 
