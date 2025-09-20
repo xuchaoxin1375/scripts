@@ -127,8 +127,9 @@ function Import-MysqlFile
     例如,你的sql是一些查询数据库基本信息的语句,或者是创建数据库的语句,你不需要在命令行中指定一个数据库
  
     数据库名字;数据库sql导入有两大类,一类不需要指定数据库就可以直接执行的sql;一类是针对特定数据库执行的sql
-    例如某份sql中是一批数据库创建语句,那么你不需要指定某个数据库名直接就可以执行(如果要创建的数据库已经存在,mysql会提示你对应的数据库已经存在)
-    而有的sql是数据库的备份sql文件,你应该指定一个数据库名称,然后执行导入操作;
+    例如:
+    1.某份sql中是一批数据库创建语句,那么你不需要指定某个数据库名直接就可以执行(如果要创建的数据库已经存在,mysql会提示你对应的数据库已经存在)
+    2.有的sql是数据库的备份sql文件,你应该指定一个数据库名称,然后执行导入操作;
     一般而言,这两类数据库sql不能混放在同一个sql文件中
 
     .EXAMPLE
@@ -682,6 +683,7 @@ function Get-MysqlTablesList
         return $tables
     }
 }
+
 function Start-MySqlStatementForAllDatabasesTemplate
 {
     <# 
@@ -691,24 +693,48 @@ function Start-MySqlStatementForAllDatabasesTemplate
     比如读取本地mysql数据库中所有数据库,然后对这些数据执行同一段sql语句的模板
     .NOTES
     注意参数sql语句比较复杂的时候,建议使用多行字符串
+    此外,虽然此函数支持链接远程数据库进行批量操作,但是操作效率低,比本地数据库慢得多
+    因为实现方式是遍历所有mysql数据库(比如每个站点的数据库列出),然后逐个利用mysql -e选项执行sql语句,
+    这意味着每操作一个数据库,就要连接一次数据库
+    因此,通常建议如果要操作服务器上的数据库,则建议在服务器上编写相应的脚本批量操作效率更高
 
-    或者读取原码,替换...为你要执行的sql语句
+    或者读取原码,替换...为你要执行的sql语句,可以使用@''@包裹多行sql
+    +@'
+        ....
+    '@
+    .EXAMPLE
+    本地数据库(免密登录直接执行sql语句)
+    不给任何参数时,尝试本地免密登录mysql并执行show tables;语句
+    Start-MySqlStatementForAllDatabasesTemplate 
+    也可以简单追加-Sql指定要执行的sql语句
+    .EXAMPLE
+    本地数据库(完整参数输入)
+    Start-MySqlStatementForAllDatabasesTemplate -Server localhost -MysqlUser root -Mysqlkey $env:MySqlKey_LOCAL -Sql @'
+    select * from wp_options WHERE option_name LIKE 'woocommerce_flat_rate_%_settings';
+'@
+    .EXAMPLE
+    远程数据库(完整参数输入)
+     Start-MySqlStatementForAllDatabasesTemplate -Server $env:DF_SERVER -MysqlUser rootx -Mysqlkey $env:MySqlKey_DF2  -Sql @'
+select * from wp_options WHERE option_name LIKE 'woocommerce_flat_rate_%_settings';
+'@
     #>
     param (
-        $Sql
+        $Server = "localhost",
+        $MysqlUser = "root",
+        $Mysqlkey = $env:MySqlKey_LOCAL,
+        $Port = 3306,
+        $Sql='show tables;'
     )
-    Get-MySqlDatabaseNameNative | ForEach-Object { 
-        $Db = $_
-        $useDbSql = "use $Db; "
-        
-        mysql -uroot -p"$env:MySqlKey_LOCAL" -e ($useDbSql + $sql)
-        <# 
-+@'
+    $dbs = Get-MySqlDatabaseNameNative -Server $Server -User $MysqlUser -Password $Mysqlkey -Port $Port
 
-        ....
-'@
-) 
-#>
+    $key = Get-MysqlKeyInline $Mysqlkey
+    $dbs | ForEach-Object { 
+        $Db = $_
+        Write-Host "Querying database [$Db]" -ForegroundColor Cyan
+
+        $useDbSql = "use $Db; "
+        mysql -u $MysqlUser -h $Server $key -P $Port -e $($useDbSql + $Sql)
+        # Write-Host $cmd
     }
 
 }

@@ -9,6 +9,7 @@
 push pushToAndroid
 win winget
 posh oh-my-posh
+
 tree_show show-tree
 tree_py tr_py 
 calendar get-calendar 

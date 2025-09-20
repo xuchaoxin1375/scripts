@@ -8,3 +8,4 @@ src Get-SourceCode
 ue Update-PwshEnvIfNotYet
 Add-SSNameServers Update-SSNameServers
 nlps Get-ContentNL
+Set-PSRLO Set-PSReadLineOption

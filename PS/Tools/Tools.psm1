@@ -3126,7 +3126,7 @@ function Get-MysqlKeyInline
     )
     if($key)
     {
-        return " -p$key"
+        return "-p$key"
     }
     else
     {
