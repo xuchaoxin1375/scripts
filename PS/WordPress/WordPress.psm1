@@ -199,8 +199,8 @@ function Get-WpSitePacks
     elseif($ArchiveMode -eq 'lz4')
     {
         Write-Host "使用lz4打包方式"
-        Get-Lz4Package -Path $SqlFile -OutputFile $SqlFileArchiveLz4 -Threads $Threads -NoTarExtension
-        Get-Lz4Package -Path $SiteDirecotry -OutputFile $SitePackArchiveLz4 -Threads $Threads -NoTarExtension
+        Compress-Lz4Package -Path $SqlFile -OutputFile $SqlFileArchiveLz4 -Threads $Threads -NoTarExtension
+        Compress-Lz4Package -Path $SiteDirecotry -OutputFile $SitePackArchiveLz4 -Threads $Threads -NoTarExtension
         $SitePackArchive = $SitePackArchiveLz4
         $SqlFileArchive = $SqlFileArchiveLz4
         Write-Debug $SitePackArchive -Debug
@@ -208,8 +208,8 @@ function Get-WpSitePacks
     elseif($ArchiveMode -eq "zstd")
     {
         Write-Host "使用zstd打包方式"
-        Get-ZstdPackage -Path $SqlFile -OutputFile $SqlFileArchiveZstd -Threads $Threads -CompressionLevel $CompressionLevel -NoTarExtension
-        Get-ZstdPackage -Path $SiteDirecotry -OutputFile $SitePackArchiveZstd -Threads $Threads -CompressionLevel $CompressionLevel -NoTarExtension
+        Compress-ZstdPackage -Path $SqlFile -OutputFile $SqlFileArchiveZstd -Threads $Threads -CompressionLevel $CompressionLevel -NoTarExtension
+        Compress-ZstdPackage -Path $SiteDirecotry -OutputFile $SitePackArchiveZstd -Threads $Threads -CompressionLevel $CompressionLevel -NoTarExtension
         $SitePackArchive = $SitePackArchiveZstd
         $SqlFileArchive = $SqlFileArchiveZstd
         Write-Debug $SitePackArchive -Debug

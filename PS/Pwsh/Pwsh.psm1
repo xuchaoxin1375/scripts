@@ -35,10 +35,9 @@ function init
     }
 
     $startTime = Get-Date
-
     Set-LastUpdateTime
     $tasks = {
-        # 导入图标模块
+        # 导入图标模块(建议放到extension部分中)
         # Import-TerminalIcons
         # 补全模块PSReadline及其相关配置
         Set-PSReadLinesCommon
@@ -175,6 +174,55 @@ function p
         pwsh -noe -noprofile -c { init -Force -InformationAction continue }
     }
 }
+function Confirm-ModuleInstalled
+{
+    <# 
+    .SYNOPSIS
+    判断检查指定模块是否已经安装可用,如果不可用则尝试安装该模块(使用comfirm动作包装)
+
+    #>
+    [cmdletbinding(SupportsShouldProcess, ConfirmImpact = 'High')]
+    param(
+        [Parameter(Mandatory = $true)][string]
+        [alias('ModuleName')]$Name, 
+        [ValidateSet('CurrentUser', 'AllUsers')]$Scope = 'CurrentUser',
+        [switch]$Install,
+        [switch]$Import
+    )
+    $moduleAvailability = Get-Module -ListAvailable -Name $name #查询一个要几十毫秒
+    if ($moduleAvailability)
+    {
+        Write-Verbose "Module $Name is already installed"
+    }
+    elseif($Install)
+    {
+        if($PSCmdlet.ShouldProcess($Name, 'Install Module'))
+        {
+        
+            try
+            {
+                Install-Module -Name $Name -Scope $Scope -Force -ErrorAction Stop
+                $moduleAvailability = Get-Module -ListAvailable -Name $name #再次查询
+            }
+            catch
+            {
+                Write-Warning "Install-Module 失败: $($_.Exception.Message)"
+                return $False
+            }
+        }
+    }
+    else
+    {
+        return $False
+    }
+    if($moduleAvailability -and $Import)
+    {
+        Import-Module $Name
+    }
+    return $True
+
+
+}
 function Set-PsExtension
 {
     <# 
@@ -190,12 +238,17 @@ function Set-PsExtension
         # 要安装的模块列表
         #按照实用性排序
         $modules = @(
-            #第一梯队
+
+            # 补全模块
             'CompletionPredictor'
-            # 'ZLocation'
-            #第二梯队
-            'z'
-            # 'Terminal-Icons'
+            # 'PsCompletions' #这里导入此模块会报错(可能有冲突,请在其他位置导入此模块)
+            
+            # 目录跳转
+            # 'ZLocation' 使用更加强大和通用的zoxide替代(跨平台高性能方案,无需通过powershell导入)
+            # 'z'
+            
+            # 美化模块
+            # 'Terminal-Icons' #速度较慢,不默认启用
         ),
         # 安装模块的范围
         [ValidateSet('CurrentUser', 'AllUsers')]$Scope = 'CurrentUser',
@@ -234,16 +287,8 @@ function Set-PsExtension
         # $AvailableModules = Get-Module -ListAvailable #性能不佳，不做-Name的话会耗费几百毫秒
         foreach ($module in $modules)
         {
-            # 获取指定模块是否可用
-            $moduleAvailability = Get-Module -ListAvailable -Name $module #查询一个要几十毫秒
-            if ($moduleAvailability)
-            {
-                Write-Verbose "Module $module is already installed"
-            }
-            else
-            {
-                Install-Module -Name $module -Scope $Scope -Force
-            }
+            # 检查指定模块是否可用,如果不可用则尝试安装该模块(使用comfirm动作包装)
+            Confirm-ModuleInstalled -Name $module -Scope $Scope -Install
 
             # Write-Verbose "Importing module $module" -Verbose
             # $moduleAvailability | Import-Module 
@@ -526,9 +571,10 @@ function Add-CxxuPsModuleToProfile
     $pf = $ProfileLevel
     '# AutoRun commands from CxxuPsModules' + " $(Get-Date)" >> $pf
     {
-        # p -NoNewShell
-        # init *>$null
         init
+        # 全局补全模块需要特殊处理,放在profile中
+        Confirm-ModuleInstalled -Name PsCompletions -Install *> $null
+        Import-Module PSCompletions
         
         $res = Get-Command 'scoop-search' -ErrorAction SilentlyContinue
         if ($res)
@@ -715,22 +761,23 @@ function Enable-PoshGit
 }
 
 
-function New-PromptStyle
+function Set-PsPromptStyle
 {
     <# 
     .SYNOPSIS
     设置powershell提示符,这里的方案是不影响Prompt函数的
     但是不适合编写复杂的Prompt,可读性不佳
+
     复杂Prompt可以通过另一个方案:PsPrompt配合环境变量来实现
     两种方案中,第二种方案会覆盖掉本方案,但是可以将本方案打包,作为PsPrompt的一个版本
     .EXAMPLE
-    PS [cxxu\Desktop] > New-PromptStyle  -Short
+    PS [cxxu\Desktop] > Set-PsPromptStyle  -Short
     .EXAMPLE
-    PS [Desktop] >  New-PromptStyle  -Simple
+    PS [Desktop] >  Set-PsPromptStyle  -Simple
     .EXAMPLE
-    PS>New-PromptStyle  -Default
+    PS>Set-PsPromptStyle  -Default
     .EXAMPLE
-    PS [C:\Users\cxxu\Desktop] > New-PromptStyle
+    PS [C:\Users\cxxu\Desktop] > Set-PsPromptStyle
     .EXAMPLE
     PS BAT [12:08:27 AM] [C:\Users\cxxu\Desktop]
     [🔋 100%] MEM:82.62% [6.49/xx] GB > 

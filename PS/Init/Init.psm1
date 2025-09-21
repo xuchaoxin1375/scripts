@@ -163,22 +163,25 @@ function Import-TerminalIcons
 {
     [cmdletbinding()]
     param()
-    if (!(Get-Module -ListAvailable -Name Terminal-Icons))
-    {
-        Write-Host 'Terminal-Icons module not Found!'
-        $r = Read-Host -Prompt 'Try to install it ? (estimate 5-10s) [y/n]'
-        if ($r.ToUpper() -eq 'Y')
-        {
+    <#     
+    # if (!(Get-Module -ListAvailable -Name Terminal-Icons))
+    # {
+    #     Write-Host 'Terminal-Icons module not Found!'
+    #     $r = Read-Host -Prompt 'Try to install it ? (estimate 5-10s) [y/n]'
+    #     if ($r.ToUpper() -eq 'Y')
+    #     {
 
-            Install-Module Terminal-Icons -Force
+    #         Install-Module Terminal-Icons -Force
             
-        }
-        else
-        {
-            # 用户拒绝安装，直接退出
-            return
-        }
-    }
+    #     }
+    #     else
+    #     {
+    #         # 用户拒绝安装，直接退出
+    #         return
+    #     }
+    # } 
+#>
+    Confirm-ModuleInstalled -ModuleName Terminal-Icons -install
     # 导入模块（这里确保已经安装上了模块）
     Import-Module Terminal-Icons -ErrorAction Ignore
 }

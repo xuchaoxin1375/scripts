@@ -96,7 +96,7 @@ PS> tar -tf .\8.1.tar
     Write-Verbose "打包完成，输出文件: $OutputFile" -Verbose
     return $OutputFile
 }
-function Get-Lz4Package
+function Compress-Lz4Package
 {
     <# 
     .SYNOPSIS
@@ -192,7 +192,7 @@ function Expand-Lz4TarPackage
     Write-Verbose "Expand Tar: [$temp] to [$OutputDirectory]" -Verbose
     tar -xvf $temp -C $OutputDirectory
 }
-function Get-ZstdPackage
+function Compress-ZstdPackage
 {
     <# 
     .SYNOPSIS
