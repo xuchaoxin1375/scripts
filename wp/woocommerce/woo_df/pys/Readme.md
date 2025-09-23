@@ -83,11 +83,11 @@ python $pys\woo_get_csv.py -f .webp -s $start -e $end  -C $country -E $exclude -
 
 
 ```powershell
-$type='  汽配  '.trim()
-$country='  IT '.trim()
-$start=609
-$end=631
-$exclude='574,575,583' 
+$type='  医疗美容  '.trim()
+$country='  es '.trim()
+$start=677
+$end=715
+$exclude='0' 
 python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -o "$desktop/$type-$country-$(date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]" -dl 10
 ```
 
@@ -116,7 +116,9 @@ python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -
 
 ```
 
-#### 统计产品数量
+#### 统计产品数量🎈
+
+使用`-count`选项(开关)
 
 ```powershell
 $type='  统计  '.trim()

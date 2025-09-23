@@ -51,10 +51,15 @@ function Get-MysqlDbInfo
     .DESCRIPTION
     默认判断数据库是否存在
     如果表存在,可以指定是否显示数据库中的表
+    函数会返回查询到的结果,如果不存在,返回结果是假值
     .NOTES
     如果你不想要输出超过一定长度,那么可以配合管道符|select -First n 使用,例如n取5时,显示前5行输出
-
-    .example
+    .EXAMPLE
+    询问mysql数据库中是否名为1.dex的数据库存在
+    PS> Get-MysqlDbInfo 1.dex
+        WARNING: Database '1.dex' Does not exist!
+    .Example
+    询问mysql数据库中是否名为1.fr的数据库存在,并显示其中的表(可以配合管道符|select -First n 仅显示前n行)
     #⚡️[Administrator@CXXUDESK][C:\sites\wp_sites_cxxu\2.fr\wp-content\plugins][23:13:34][UP:7.62Days]
     PS> Get-MysqlDbInfo -Name 1.fr -Server localhost -ShowTables -Verbose |select -First 5
     VERBOSE: check 1.fr database on [localhost]
@@ -77,9 +82,9 @@ function Get-MysqlDbInfo
         $key = "",
         [switch]$ShowTables
     )
-    $key = Get-MysqlKeyInline $key
+    $keyInline = Get-MysqlKeyInline $key
     $db_name_inline = "'$Name'"
-    $CheckDBCmd = "mysql -h $Server -P $Port -u $MySQLUser $key -e `"SHOW DATABASES LIKE $db_name_inline;`""
+    $CheckDBCmd = "mysql -h $Server -P $Port -u $MySQLUser $keyInline -e `"SHOW DATABASES LIKE $db_name_inline;`""
     Write-Verbose "check [$Name] database on [$Server]"
     Write-Verbose $CheckDBCmd 
     $res = $CheckDBCmd | Invoke-Expression
@@ -89,7 +94,7 @@ function Get-MysqlDbInfo
         Write-Host "Database '$Name' exist! ..."
         if($ShowTables)
         {
-            $ShowTablesCmd = "mysql -h $Server -P $Port -u $MySQLUser $key -e `"SHOW TABLES FROM ````$Name````;`""
+            $ShowTablesCmd = "mysql -h $Server -P $Port -u $MySQLUser $keyInline -e `"SHOW TABLES FROM ````$Name````;`""
             Write-Verbose $ShowTablesCmd 
 
             Write-Verbose "Show tables in $Name database...." -Verbose
@@ -159,7 +164,7 @@ function Import-MysqlFile
     begin
     {
         
-        $key = Get-MysqlKeyInline $key
+        $keyInline = Get-MysqlKeyInline $key
     }
     process
     {
@@ -219,7 +224,7 @@ function Import-MysqlFile
             }
             # 忽略执行失败的sql,强制继续执行剩余sql(比如批量切换数据库中各个表的引擎,部分表无法顺利切换,可以利用-f跳过错误的部分)
             $ForceSql = if($Force) { "-f" } else { "" }
-            $expression = "cmd /c `" mysql -h $Server -P $Port -u $MySqlUser  $key $ForceSql $DatabaseName < ```"$SqlFilePath```" `""
+            $expression = "cmd /c `" mysql -h $Server -P $Port -u $MySqlUser  $keyInline $ForceSql $DatabaseName < ```"$SqlFilePath```" `""
             Write-Verbose $expression 
 
         
@@ -269,13 +274,13 @@ function Remove-MysqlDB
     {
         Write-Verbose "Use Mysql server host: $Server"
         Write-Verbose "start remove database $DatabaseName"
-        $key = Get-MysqlKeyInline $key
+        $keyInline = Get-MysqlKeyInline $key
     }
     process
     {
 
         # DROP DATABASE [IF EXISTS] database_name;
-        $command = " mysql -u$MySqlUser -h $Server -P $Port $key -e 'DROP DATABASE IF EXISTS ``$DatabaseName`` ; ' "  
+        $command = " mysql -u$MySqlUser -h $Server -P $Port $keyInline -e 'DROP DATABASE IF EXISTS ``$DatabaseName`` ; ' "  
         Write-Verbose $command 
         if($Force -and -not $Confirm)
         {
@@ -289,6 +294,7 @@ function Remove-MysqlDB
             
         }
         Write-Verbose "Database $DatabaseName has been tried to be removed!" -Verbose
+        Get-MysqlDbInfo -Name $DatabaseName -Server $Server -Port $Port -key $key
     }
     
 }
@@ -297,6 +303,7 @@ function Remove-MysqlIsolatedDB
     <# 
     .SYNOPSIS
   网站根目录不存在的网站配套的mysql数据库删除
+  这是一个专用函数,针对本地wp等批量建站工具链的一个清理工具(数据库用户和密码无需填写,但是需要配置数据库默认行为或者调用的remove-mysqldb命令行的默认参数)
   .NOTES
   这是一个特定专用函数
     #>
@@ -374,8 +381,10 @@ function Export-MysqlFile
                 # }
             }
         }
-
-        $expression = "  mysqldump   -h $Server -P $Port -u $MySqlUser -p$key '$DatabaseName' > $SqlFilePath "
+        Write-Warning "key: [$key](before)"
+        $key = Get-MysqlKeyInline $key
+        Write-Warning "key: [$key](after)"
+        $expression = "mysqldump   -h $Server -P $Port -u $MySqlUser $key '$DatabaseName' > $SqlFilePath "
         Write-Verbose $expression
         Invoke-Expression $expression
     }
@@ -853,39 +862,6 @@ function Start-MysqlConnectionFromConfig
     Write-Debug "Executing command: $cmd" -Debug
     $cmd | Invoke-Expression
 }
-function mysqlRootLocal
-{
-    $cli = "mysql $mysqlPrompt -u root -p1"
-    Invoke-Expression $cli
 
-}
-function mysqlLocal
-{
-    param (
-        $userName
-    )
-    $cli = " mysql $mysqlPrompt -u $userName -p1"
-    Invoke-Expression $cli
-}
-function mysqlRemote
-{
-    param (
-        $userName,
-        $p = '1'
-    )
-    $cli = "mysql $mysqlPrompt -u $userName -p$p"
-    Invoke-Expression $cli
-}
-function mysqlCxxuAli
-{
-    $cli = " mysql $mysqlPrompt -u cxxu -h $AliCloudServerIP -p1"
-    Invoke-Expression $cli
-}
-function mysqlRootAli
-{
-    param (
-    )
-    $cli = "  mysql $mysqlPrompt -u root -h $AliCloudServerIP -p1"
-    Invoke-Expression $cli
 
-}
+

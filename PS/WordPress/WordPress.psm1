@@ -123,7 +123,7 @@ function Get-WpSitePacks
     Write-Debug "[+] Domain: $Domain"
     # return 
     # 站点sql文件
-    $key = Get-MysqlKeyInline -Key $DatabaseKey
+    
     $SqlFile = "$OutputDir/${Domain}.sql"
     $SqlFileArchiveZip = "$SqlFile.zip"
     $SqlFileArchive7z = "$SqlFile.7z"
@@ -147,7 +147,7 @@ function Get-WpSitePacks
         Write-Host "数据库名称未指定，使用默认值: $DatabaseName"
     }
     # 导出数据库sql文件🎈
-    Export-MysqlFile -Server localhost -DatabaseName $DatabaseName -key $key -SqlFilePath $SqlFile -Verbose
+    Export-MysqlFile -Server localhost -DatabaseName $DatabaseName -key $DatabaseKey -SqlFilePath $SqlFile -Verbose
     if(!$Permissive)
     {
         Write-Host "检查数据库大小是否异常"
