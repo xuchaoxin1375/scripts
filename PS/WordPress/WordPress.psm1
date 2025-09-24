@@ -741,9 +741,9 @@ Get-WpSitePacks -SiteDirecotry $destination -Mode zstd
         # 导入数据库并执行基础的修改
         $sqlFile = "$SqlFileDir/$template.sql"
         
-        Import-MysqlFile -Server localhost -key $DBKey -SqlFilePath $sqlFile -DatabaseName $domain  
-        Update-WpUrl -Server localhost -key $DBKey -NewDomain $domain -OldDomain $template -protocol http  
-        Update-WpTitle -Server localhost -key $DBKey -NewTitle $title -DatabaseName $domain  
+        Import-MysqlFile -Server localhost -key $DBKey -SqlFilePath $sqlFile -DatabaseName $domain  -Verbose:$verbosePreference
+        Update-WpUrl -Server localhost -key $DBKey -NewDomain $domain -OldDomain $template -protocol http  -Verbose:$VerbosePreference
+        Update-WpTitle -Server localhost -key $DBKey -NewTitle $title -DatabaseName $domain  -Verbose:$VerbosePreference
         
         # 修改(追加当前域名映射新行)到hosts文件(127.0.0.1  $domain)
         Add-NewDomainToHosts -Domain $domain

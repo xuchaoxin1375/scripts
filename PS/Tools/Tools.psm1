@@ -893,7 +893,7 @@ function Deploy-BatchSiteBTOnline
     #>
     param(
         $Server,
-        $SitesHome='/www/wwwroot',
+        $SitesHome = '/www/wwwroot',
         $ServerConfig = "$server_config",
         $Table = "$desktop/table.conf"
     )
@@ -931,7 +931,8 @@ function Start-SleepWithProgress
         Write-Warning "The sleep time seconds is $Seconds,jump sleep!"
         return $False
     }
-    else{
+    else
+    {
         Write-Host "Waiting for $Seconds seconds..."
     }
     for ($i = 0; $i -le $Seconds; $i++)
@@ -3043,9 +3044,31 @@ function Get-HtmlFromLinks
 {
     <# 
     .SYNOPSIS
-    TODO
-    # 测试调用
-    Get-HtmlFromLinks -Path ame_links.txt -OutputDir amex
+    批量下载url
+    .DESCRIPTION
+    主要用法是通过指定保存了url链接的文本文件,读取其中的url,然后串行或者并行下载url资源(比如html文件或其他资源)
+    可以配合管道符或者循环来批量下载多个文件.特别适合下载站点地图中的url资源
+
+    下载的资源带有任务启动时的时间信息,尽量避免覆盖
+
+    .PARAMETER Path
+    指定包含url链接的文本文件路径
+    .PARAMETER OutputDir
+    指定资源下载的目标目录
+    .PARAMETER Agent
+    自定义HTTP请求的User-Agent。默认为一个通用的浏览器标识，以避免被服务器屏蔽。
+    .PARAMETER TimeGap
+    下载间隔时间,单位秒
+    .PARAMETER Threads
+    并发线程数,默认为0,即串行下载
+    .EXAMPLE
+    # 典型用法:
+    PS> Get-HtmlFromLinks -Path ame_links.txt -OutputDir amex
+    .EXAMPLE
+    # 批量下载多个文件,通过ls 过滤出txt文件,并排除X1.txt这个部分,使用10个线程下载
+    ls *.txt -Exclude X1.txt |%{Get-HtmlFromLinks -Path $_ -OutputDir htmls4ed -Threads 10 }
+    .NOTES
+    下载网站资源或者网页源代码往往是比较占用磁盘空间的,建议不要直接将文件下载到系统盘(如果条件允许,请下载到其他分区或者硬盘上),除非你确定当前磁盘空间充足或者下载的资源很少,否则长时间不注意可能塞满系统盘导致卡顿甚至崩溃
     #>
     param (
         [parameter(Mandatory = $true)]
@@ -3053,27 +3076,54 @@ function Get-HtmlFromLinks
         [parameter(Mandatory = $true)]
         $OutputDir,
         $Agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", 
-        $TimeGap = 1
+        $TimeGap = 1,
+        $Threads = 0
     )
-    $i = 1
+    $dt = Get-DateTimeNumber
     $Path = Get-Item $Path | Select-Object -ExpandProperty FullName
     New-Item -ItemType Directory -Name $OutputDir -Force -Verbose -ErrorAction SilentlyContinue
-    Get-Content $Path | ForEach-Object {
-        $file = "$OutputDir/$(($_ -split "/")[-1]).html"
-        curl.exe -A $Agent `
-            -L $_ `
-            -o $file
-    
-        # $s>"ames/$(($_ -split "/")[-1]).html"
-        Write-Host "Downloaded($i): $_ "
-        $i++
-        Start-Sleep $TimeGap
+
+    # 串行下载
+    if(!$Threads)
+    {
+        
+        $i = 1
+        Get-Content $Path | ForEach-Object {
+            $file = "$OutputDir/$(($_ -split "/")[-1])-$dt-$i.html"
+            curl.exe -A $Agent `
+                -L $_ `
+                -o $file
+            
+            # $s>"ames/$(($_ -split "/")[-1]).html"
+            Write-Host "Downloaded($i):[ $_ ]-> $file"
+            $i++
+            Start-Sleep $TimeGap
+        } 
     }
+    else
+    {
+        
+        # 并行版(简单带有计数)
+        $counter = [ref]0
+    
+        Get-Content $Path | ForEach-Object -Parallel {
+            $index = [System.Threading.Interlocked]::Increment($using:counter)
+            $file = "$using:OutputDir/$(($_ -split "/")[-1])-$using:dt-$index.html"
+        
+            curl.exe -A $using:Agent -L $_ -o $file
+        
+            Write-Host "Downloaded($index): [ $_ ] -> $file"
+            Start-Sleep $using:TimeGap
+        } -ThrottleLimit $threads
+    
+        Write-Host "`nTotal downloaded: $($counter.Value) files"
+    }
+
 
     $result_file_dir = (Split-Path $Path -Parent).ToString()
     $result_file_name = (Split-Path $Path -LeafBase).ToString() + '@local_links.txt'
     Write-Verbose "Result file: $result_file_dir\$result_file_name" -Verbose
-    $output = "$result_file_dir\$result_file_name"
+    # $output = "$result_file_dir\$result_file_name"
 
     # 生成本地页面url文件列表
     # Get-ChildItem $OutputDir | ForEach-Object { "http://localhost:5500/$OutputDir/$(Split-Path $_ -Leaf)" } | Out-File -FilePath "$output"
