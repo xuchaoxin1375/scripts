@@ -3695,6 +3695,46 @@ function Get-CharacterEncodingsGUI
     # 显示窗口
     [void]$form.ShowDialog()
 }
+function Get-CharCount
+{
+    <#
+.SYNOPSIS
+    计算字符串中指定字符出现的次数。
+
+.DESCRIPTION
+    Get-CharCount 函数通过比较原字符串和移除指定字符后的字符串长度差，来计算指定字符在输入字符串中出现的次数。
+
+.PARAMETER InputString
+    需要检查的输入字符串。
+
+.PARAMETER Char
+    需要计算出现次数的字符。
+
+.EXAMPLE
+    Get-CharCount -InputString "Hello World" -Char "l"
+    返回值为 3，因为字符 "l" 在 "Hello World" 中出现了 3 次。
+
+.EXAMPLE
+    Get-CharCount -InputString "PowerShell" -Char "e"
+    返回值为 2，因为字符 "e" 在 "PowerShell" 中出现了 2 次。
+
+.INPUTS
+    System.String
+    可以通过管道传递字符串。
+
+.OUTPUTS
+    System.Int32
+    返回指定字符在输入字符串中出现的次数。
+
+.NOTES
+    函数通过计算原字符串长度与移除指定字符后字符串长度的差值来确定字符出现次数。
+#>
+    param(
+        [string]$InputString,
+        [string]$Char
+    )
+    return $InputString.Length - ($InputString.Replace($Char, "")).Length
+}
 function Get-UrlsListFileFromDir
 {
     <# 
@@ -3707,41 +3747,82 @@ function Get-UrlsListFileFromDir
         $Path,
         $Hst = "localhost",
         $Port = "80",
-        # Url中的路径部分(也可以先输出,然后根据结果调整html所在位置)
-        $UrlPath = "",
+        # Url中的路径部分(也可以先预览输出,然后根据结果调整html所在位置),如果不指定,程序会尝试为你推测一个默认值
+        $htmlDirSegment = "",
         # 输出文件路径(如果不指定,则默认输出到$Path的同级别目录下)
         $Output = "",
-        [switch]$LocTagMode
+        
+        # 预览生成的本地站点url格式
+        [switch]$Preview,
+        [switch]$LocTagMode,
+        # 输出(返回)结果传递
+        [switch]$PassThru
     )
     if(Test-Path -Path $Path -PathType Container)
     {
-        $DirBaseName = Split-Path $Path -Leaf
+        $oldPath = $Path
+        $Path = $Path -replace "\\", "/"
+        $Path = $Path.Trim("/")
+        Write-Verbose "[$oldPath]->[$Path] 处理目录"
+        
+        # 如果有2级以上的目录,则取最后2级目录名作为站点名
+        if((Get-CharCount -InputString $Path -Char '/') -ge 2)
+        {
+            $parent = Split-Path $path -Parent   
+            $lastTwoLevels = Split-Path $parent -Leaf
+            $lastLevel = Split-Path $path -Leaf
+            $DirBaseName = Join-Path $lastTwoLevels $lastLevel
+        }
+        else
+        {       
+            $DirBaseName = Split-Path $Path -Leaf
+        }
+        # Write-Output $DirBaseName
     }
     else
     {
         Write-Error "Path [$Path] does not exist or is not a directory!"
         return
     }
+    if(!$htmlDirSegment)
+    {
+
+        $htmlDirSegment = $DirBaseName
+    }
     # 生成本地页面url文件列表
-    $res = Get-ChildItem $Path | ForEach-Object { 
-        $url = "http://${hst}:${Port}/$DirBaseName/$(Split-Path $_ -Leaf)" 
+    $files = Get-ChildItem $Path -File
+    # $res = Get-ChildItem $Path | ForEach-Object { 
+    $res = foreach($file in $files)
+    {
+        $url = "http://${hst}:${Port}/$htmlDirSegment/$(Split-Path $file -Leaf)" -replace '\\', '/'
         if($LocTagMode)
         {
             $url = "<loc>$url</loc>"
+        }
+        # 如果是预览模式,则输出第一条路径后停止程序
+        if($Preview)
+        {
+            Write-Host "预览url格式: $url"
+            return 
         }
         $url
     } 
     if(!$Output)
     {
+        # 默认的文件输出路径
         $Output = "$Path/../$(Split-Path $Path -Leaf).txt"
     }
+    # 输出到文件
     $res | Out-File -FilePath "$output"
     Write-Verbose "Output to file: $output" -Verbose
     # 采集 http[参数] -> http[参数1]
     # 预览前10行
-    $preview = Get-Content $output | Select-Object -First 10 | Out-String
-    Write-Verbose "Preview: $preview" -Verbose
-    return $res    
+    $previewLines = Get-Content $output | Select-Object -First 10 | Out-String
+    Write-Verbose "Preview: $previewLines" -Verbose
+    Write-Verbose "...."
+    if ($PassThru) {
+        return $res    
+    }
 }
 
 

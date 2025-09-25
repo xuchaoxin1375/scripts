@@ -58,7 +58,7 @@ cat $links |%{curl -O $_ }
 
 #### 批量解压gz
 
-在下载的gz目录`$dir`中执行解压命令(这里使用7z解压)
+在下载的gz目录`$dir`中执行解压命令(这里使用7z解压,windows10+也自带tar命令,也能处理gzip压缩格式)
 
 ```powershell
 ls *gz|%{7z x $_ }
@@ -274,13 +274,15 @@ Processing sitemap at path: C:\Users\Administrator\Desktop\localhost\www.speedin
 
 这种方案下载能力相对弱一些,但是操作简单一些
 
+```powershell
+ls *.txt |%{Get-HtmlFromLinks -Path $_ -OutputDir htmls -Threads 10 }
 ```
 
-```
-
-
+> 暂时不支持断点进度恢复,重新下载会丢失进度!
 
 ### python调用playwright方案下载
+
+如果curl方案下不动,则可以尝试无头浏览器方案
 
 将下载保存目录下的所有txt传递给脚本进行下载
 
@@ -288,13 +290,38 @@ Processing sitemap at path: C:\Users\Administrator\Desktop\localhost\www.speedin
 ls *txt|%{py C:\Users\Administrator\Desktop\localhost\get_htmls_from_urls_multi_thread.py $_  -p http://localhost:8800 -o links -c 2 -d 2-5}
 ```
 
-## 本地html文件编成xml文件
+## 本地html文件编成xml文件(local_urls.txt)
 
 将下载好的html文件组织到一个文本文件中(编制索引),从而让采集器能够通过对应本地url读取这个索引文本文件,获取所有(本地)产品页链接以进行后续内容采集
 
+下面以前面下载的网站`www.speedingparts.de`为例,假设html文件都保存在`$localhost\www.speedingparts.de\htmls`目录下
+
+在编制成本地网站(localhost)的url前,我们可以先运行试探命令,构造出来的url看看是否符合需要(注意最后的`-Preview`选项)
+
 ```powershell
-Get-UrlListFromDir -Path .\part0-17\ -LocTagMode -Hst localhost -Output esd.equipment1.urls.txt
+Get-UrlsListFileFromDir -Path $localhost\www.speedingparts.de\htmls -LocTagMode -Hst localhost -Output $localhost/www.speedingparts.de/local_urls.txt
 ```
+
+得到的预览格式比如`预览url格式: <loc>http://localhost:80/www.speedingparts.de/htmls/-10-female-o-ring-aluminum-weld-bung.html-202509242047-1952.html</loc>`,检查并访问其中的http链接,如果路径正确就可以去掉`-Preview`参数正式生成
+
+否则说明路径片段有误,需要手动指定`-HtmlDirSegment`参数指定新的url中间片段.
+
+例如指定中间路径为`CustomDirSeg/htmls-dir`,效果如下
+
+```powershell
+Get-UrlsListFileFromDir -Path $localhost\www.speedingparts.de\htmls -LocTagMode -Hst localhost -Output $localhost/www.speedingparts.de/local_urls.txt -htmlDirSegment CustomDirSeg/htmls-dir -Preview
+预览url格式: <loc>http://localhost:80/CustomDirSeg/htmls-dir/-10-female-o-ring-aluminum-weld-bung.html-202509242047-1952.html</loc>
+```
+
+最理想的情况下是该命令正确猜测你的html文件存放路径,就不需要指定`-HtmlDirSegment`参数
+
+## 源码和url匹配
+
+下载到本地的源码使用浏览器预览往往样式丢失,排版不如原网站渲染出来的直观
+
+因此通常我先打开源站的某个一个产品页,然后拷贝该页面的链接中的尾部(url中的最后一个`/`之后的部分)
+
+然后vscode打开保存html文件的目录,将这个名字到`local_urls.txt`中搜索,找到本地版本的url,在采集器中采集此产品
 
 ## 脚本参数
 

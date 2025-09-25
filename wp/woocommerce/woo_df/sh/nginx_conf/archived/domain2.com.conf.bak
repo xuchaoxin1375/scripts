@@ -12,11 +12,8 @@ server
     root /www/wwwroot/zw/domain2.com/wordpress;
 
     
-
-    
     #CUSTOM-CONFIG-START
     include /www/server/nginx/conf/com.conf;
-    include /www/server/nginx/conf/limit_rate.conf;
     #CUSTOM-CONFIG-END
 
     #CERT-APPLY-CHECK--START
