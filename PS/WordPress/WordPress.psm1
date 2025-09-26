@@ -34,7 +34,6 @@ function Remove-WpSitesLocal
     Write-Warning "继续删除?" -WarningAction Inquire
 
     # 多线程删除网站根目录
-    $jobs = @()
     foreach ($domain in $domains)
     {
         $siteRoot = "$SitesDir/$domain"
@@ -57,17 +56,11 @@ function Remove-WpSitesLocal
         #     Write-Host "网站图片目录不足1000张, 删除网站目录及其相关配置(start-job)..."
         # }
 
-        $job = Start-ThreadJob -Name "Remove:$domain" -ScriptBlock {
-            param($Path)
-            Remove-Item -Path $Path -Recurse -Force -ErrorAction SilentlyContinue
-            # Remove-RobocopyMirEmpty -Path $Path  -Confirm:$false -Verbose
-            Write-Host "Removed site root: $Path" 
-        } -ArgumentList $siteRoot
-        $jobs += $job
+        Remove-Item -Path $siteRoot -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Host "Removed site root: $Path" 
+
     }
-    $jobs | Wait-Job
-    $jobs | Receive-Job
-    $jobs | Remove-Job
+
     # 尝试删除数据库及其相关配置
     Remove-MysqlIsolatedDB -SitesDir $SitesDir
     Approve-NginxValidVhostsConf -NginxConfDir $NginxConfDir
@@ -741,9 +734,9 @@ Get-WpSitePacks -SiteDirecotry $destination -Mode zstd
         # 导入数据库并执行基础的修改
         $sqlFile = "$SqlFileDir/$template.sql"
         
-        Import-MysqlFile -Server localhost -key $DBKey -SqlFilePath $sqlFile -DatabaseName $domain  -Verbose:$verbosePreference
-        Update-WpUrl -Server localhost -key $DBKey -NewDomain $domain -OldDomain $template -protocol http  -Verbose:$VerbosePreference
-        Update-WpTitle -Server localhost -key $DBKey -NewTitle $title -DatabaseName $domain  -Verbose:$VerbosePreference
+        Import-MysqlFile -Server localhost -key $DBKey -SqlFilePath $sqlFile -DatabaseName $domain -Verbose:$verbosePreference
+        Update-WpUrl -Server localhost -key $DBKey -NewDomain $domain -OldDomain $template -protocol http -Verbose:$VerbosePreference
+        Update-WpTitle -Server localhost -key $DBKey -NewTitle $title -DatabaseName $domain -Verbose:$VerbosePreference
         
         # 修改(追加当前域名映射新行)到hosts文件(127.0.0.1  $domain)
         Add-NewDomainToHosts -Domain $domain
@@ -888,7 +881,7 @@ function Deploy-WpSitesOnline
 
         }
         # 计算下一轮需要查询的域名(本轮未激活的域名)
-        $domainsInfo=$inactiveDomains | ForEach-Object { flarectl --json zone info --zone $_ | ConvertFrom-Json }
+        $domainsInfo = $inactiveDomains | ForEach-Object { flarectl --json zone info --zone $_ | ConvertFrom-Json }
         Start-SleepWithProgress $RetryGap
         $retryTimes--
     }

@@ -8,6 +8,16 @@ https://locoy.com/download
 https://www.locoy.com/LocoySpider_V10.28_Build20250507.zip
 
 # 配置powershell环境🎈
+#方案1: 手动安装powershell和git软件,然后执行以下语句快速部署基本powershell(pwsh)
+git clone https://gitee.com/xuchaoxin1375/scripts.git C:/repos/scripts
+$p="C:\repos\scripts\PS" #这里修改为您下载的模块所在目录,这里的取值作为示范
+$env:PSModulePath=";$p"
+Add-EnvVar -EnvVar PsModulePath -NewValue $p -Verbose #这里$p上上面定义的
+Add-CxxuPsModuleToProfile
+pwsh #启动一个新pwsh会话查看效果
+
+
+#方案2: 一键安装方案(不稳定,容易失败)
 Invoke-RestMethod 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1' | Invoke-Expression
 Add-CxxuPsModuleToProfile
 
@@ -43,7 +53,7 @@ scoop install lz4
 scoop install clash-verge-rev # 小猫咪飞机场代理软件
 # 资源监控软件
 scoop install trafficmonitor #状态栏资源和流量监控(建议直接从exes分享,而不是scoop安装部署插件比较麻烦)
-
+scoop install liberationMono-NF -g # 推荐的字体，可以让终端显示更多的符号
 
 # 安装完vscode,可选的配置右键vscode打开文件夹
 Invoke-RestMethod https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Tools/Tools.psm1 | Invoke-Expression ; 
