@@ -934,7 +934,7 @@ function Update-WpFunctionsphpOnServers
         Write-Host "Updating functions.php to $_"
         # Push-ByScp -Server $_ -SourcePath $Path -TargetPath $Target  -Verbose
         scp -r $Path root@"$_":/www/
-        ssh root@$env:DF_SERVER1 "bash /www/sh/wp-functions-update/update_wp_functions.sh --src /www/functions.php"
+        ssh root@$_ "bash /www/sh/wp-functions-update/update_wp_functions.sh --src /www/functions.php"
     } 
     
 }
@@ -1171,7 +1171,7 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
     $plugin_dir_name = (Split-Path $PluginPath -Leaf) # 🎈
     $plugin_dir = "$remoteDirectory/$plugin_dir_name"  # 服务器目标插件目录🎈
     # 上传文件到服务器
-    Write-Verbose "Uploading file to server..." -Verbose
+    Write-Verbose "Uploading file to server[$server]..." -Verbose
     scp -r $PluginPath $username@${server}:"$remoteDirectory" 
 
 
