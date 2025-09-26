@@ -1201,7 +1201,13 @@ function Move-ItemImagesFromCsvPathFields
     需要被移动的文件所在目录
     .PARAMETER Destination
     文件要被移动到的目标目录
+    .PARAMETER UseDomainNamePair
+    使用一组域名(字符串数组)来简单指定从哪个站的图片目录移动到另一个站的图片目录
 
+    .EXAMPLE
+    $fromDomain="f.com"
+    $toDomain="t.com"
+    Move-ItemImagesFromCsvPathFields -Path $Desktop\data_output\$fromDomain\"p36.csv" -UseDomainNamePair $fromDomain,$toDomain -Verbose -IgnoreExtension
     #>
     [CmdletBinding(SupportsShouldProcess = $true, DefaultParameterSetName = "UsePath")]
     param (
@@ -1231,11 +1237,12 @@ function Move-ItemImagesFromCsvPathFields
             $midPath = "wp-content/uploads/$YearField"
             $SourceDir = "$WorkingDirectory/$($UseDomainNamePair[0])/$midPath"
             $Destination = "$WorkingDirectory/$($UseDomainNamePair[1])/$midPath"
+            Write-Host "源目录: [$SourceDir] -> [$Destination]" 
         }
         $values = Import-Csv $Path | Select-Object -ExpandProperty $Fields
         if ($IgnoreExtension)
         {
-            Write-Verbose '忽略图片文件后缀(速度会比较慢),可以配合  Get-WpSitesLocalImagesCount 查看'
+            Write-Warning '忽略图片文件后缀(速度会比较慢),可以配合  Get-WpSitesLocalImagesCount 查看' 
             $values = $values | ForEach-Object { $_ -replace '\.\w+$', '.*' }
         }
         $values | ForEach-Object { Move-Item -Path $SourceDir/$_ -Destination $Destination -Verbose:$VerbosePreference -ErrorAction SilentlyContinue }

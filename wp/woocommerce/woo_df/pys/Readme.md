@@ -83,12 +83,12 @@ python $pys\woo_get_csv.py -f .webp -s $start -e $end  -C $country -E $exclude -
 
 
 ```powershell
-$type='  医疗美容  '.trim()
-$country='  es '.trim()
-$start=677
-$end=715
+$type='  汽车  '.trim()
+$country='  DE '.trim()
+$start=717
+$end=722
 $exclude='0' 
-python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -o "$desktop/$type-$country-$(date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]" -dl 10
+python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -o "$desktop/$type-$country-$(get-date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]" -dl 10 -nad
 ```
 
 
@@ -100,7 +100,7 @@ python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -
 ```powershell
 $type='  汽车  '.trim()
 $country='  DE '.trim()
-$start=716
+$start=717
 $end=$start 
 $exclude='0'
 python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -o "$desktop/$type-$country-$(get-date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]" -dl 10 -nad
@@ -496,3 +496,30 @@ python $pys\woo_uploader_db.py -c $csv_path -i $img_dir
     5. 网络异常时断开链接
   - 类似的小猫咪代理通常不会影响本地站的访问,但是也可能出bug,可能需要重启小猫咪,同时要保证对应的线路延迟检测不是error
 
+### 本地站点打不开或则总是跳转到https链接
+
+由于操作系统(windows)或者小皮工具箱的bug,可能会遇到本地站点创建结束后(没有报错)却打不开
+
+即便不绕过小皮新建站点,使用小皮创建的本地站点也可能打不开,会尝试跳转到公网
+
+
+
+这种情况下可以尝试ping一下本地站点的域名,如果ping的结果不是`127.0.0.1`,说明系统内部可能有错误,可以尝试重启,但是不一定有用
+
+例如我本地用小皮建了一个`1.de`的本地站点,通常正常情况下,小皮新建完站点后会同步修改系统`hosts`文件(C:/WINDOWS/System32/drivers/etc/hosts)
+
+首先尝试检查`hosts`文件,看看127.0.0.1 相关行是否存在,并且检查是否被被意外注释掉(#开头会导致映射失效)
+
+```powershell
+PS> ping 1.de
+
+正在 Ping 1.de [83.243.59.78] 具有 32 字节的数据:
+来自 83.243.59.78 的回复: 字节=32 时间=203ms TTL=49
+来自 83.243.59.78 的回复: 字节=32 时间=202ms TTL=49
+```
+
+这意味着网站可能无法打开
+
+但是浏览器中情况又有一定的区别,可能可以打开本地站点
+
+可以尝试更改DNS服务器(命令行中输入ncpa.cpl打开设置入口)
