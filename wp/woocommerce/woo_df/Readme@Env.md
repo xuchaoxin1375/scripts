@@ -48,7 +48,7 @@ In [3]:
 
 
 
-### 适用于windows系统的环境变量配置
+## 适用于windows系统的环境变量配置
 
 下面采用命令行`setx`的方式配置,用户也可以选择使用系统的图形界面配置环境变量
 
@@ -97,18 +97,9 @@ setx MySqlKey_LOCAL "  "
 
 
 
-### 环境自检
-
-然后执行以下powershell命令检查是否可以通过检查🎈
-
-```powershell
-Confirm-WpEnvironment
-
-```
 
 
-
-## 配置软件目录到Path环境变量
+### 配置软件目录到Path环境变量
 
 备份环境变量
 
@@ -138,7 +129,8 @@ Backup-EnvsRegistry -Dir $desktop
 
 ```powershell
 
-$MYSQL_BIN_HOME = "C:\phpstudy_pro\extensions\MySQL5.7.26\bin"
+#$MYSQL_BIN_HOME = "C:\phpstudy_pro\extensions\MySQL5.7.26\bin" #弃用5.7,现在使用8+的版本
+$MYSQL_BIN_HOME = "C:\phpstudy_pro\extensions\MySQL8.0.12\bin"
 # setx MYSQL_BIN_HOME $MYSQL_BIN_HOME
 [Environment]::SetEnvironmentVariable("MYSQL_BIN_HOME", $MYSQL_BIN_HOME, [EnvironmentVariableTarget]::User)
 
@@ -161,7 +153,7 @@ setx CgiPort 9001 # 可能是9001或者9002
 
 ```
 
-### 端口查询
+#### 端口查询
 
 使用如下powershell命令查询相关信息
 
@@ -186,6 +178,24 @@ CPU     : 0.015625
 SI      : 1
 Name    : xp.cn_cgi
 ```
+
+### php命令行(可选)
+
+```powershell
+$PHP_HOME='C:\phpstudy_pro\Extensions\php\php7.4.3nts'
+setx php_home $php_home
+Add-EnvVar -EnvVar Path -NewValue $php_home
+```
+
+### 服务器环境相关变量模板(可选)
+
+```bat
+Add-EnvVar -EnvVar DF_SERVER1 -NewValue 192.168...
+Add-EnvVar -EnvVar DF_SERVER2 -NewValue 192.168...
+Add-EnvVar -EnvVar DF_SERVER3 -NewValue 192.168...
+```
+
+
 
 ## 检查配置🎈
 
@@ -213,3 +223,13 @@ mysql: [Warning] Using a password on the command line interface can be insecure.
 ```
 
 如果有ERROR,说明密码错误,检查环境变量`mysqlkey_local`配置是否有误
+
+## 环境自检👺
+
+然后执行以下powershell命令检查是否可以通过检查🎈
+
+```powershell
+Confirm-WpEnvironment
+
+```
+

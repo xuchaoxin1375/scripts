@@ -8,14 +8,14 @@
 
 相关命令行以ubuntu/debian系为例
 
-### 服务器上需要事先安装的东西
+### 服务器上需要事先安装的东西👺
 
 包括压缩包解压工具等,如果有就跳过
 
 假设服务器为ubuntu
 
 ```bash
-sudo apt install p7zip-full p7zip-rar -y #获取7z命令(完整安装)
+sudo apt install p7zip-full p7zip-rar lz4 zstd git -y #获取7z命令(完整安装)
 sudo apt install parallel #并行执行命令的工具
 ```
 
@@ -32,10 +32,17 @@ wp --info
 
 
 
-### 获取或更新脚本代码
+### git 获取或更新脚本代码
+
+这里使用浅克隆提高速度并节约资源
 
 ```bash
 git clone --depth 1 https://gitee.com/xuchaoxin1375/scripts.git /repos/scripts
+
+# 配置更新代码的脚本的符号链接
+ln -s /repos/scripts/wp/woocommerce/woo_df/sh /www/sh -fv
+# 使用简短的更新代码仓库的命令
+bash /www/sh/update_repos.sh
 ```
 
 如果仅更新脚本仓库,则可以
@@ -74,8 +81,7 @@ find /repos/scripts/wp/woocommerce/woo_df/sh/ -type f \( -name "*.sh" -o -name "
 ### 配置符号链接
 
 ```bash
-ln -s /repos/scripts/wp/woocommerce/woo_df/sh/deploy_wp_full.sh /deploy.sh -f
-ln -s /repos/scripts/wp/woocommerce/woo_df/sh/deploy_wp_full.sh /www/wwwroot/deploy_wp_full.sh -f
+
 ln -s /repos/scripts/wp/woocommerce/woo_df/sh /www/sh -f
  
 
