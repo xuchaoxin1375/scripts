@@ -206,11 +206,11 @@ python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_downloader.py -c -n -R au
 
 等图片下载完毕后,可以导入新的产品数据(csv)到网站数据库中
 
+```bash
+python3 /repos/scripts/wp/woocommerce/woo_df/pys/woo_uploader_db.py --update-slugs  --csv-path /srv/uploads/uploader/files/xcx/test.com --img-dir /www/wwwroot/xcx/test.com/wordpress/wp-content/uploads/2025 --db-name xcx_test.com --max-workers 20 --db-password <yourpassword> --db-host localhost
 ```
 
-```
-
-
+如果提示`root@127.0.0.1`access deny,可以尝试创建一个`root@127.0.0.1`的用户
 
 #### 输出目录data_output
 

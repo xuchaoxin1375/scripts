@@ -159,14 +159,17 @@ cat $sh\update_repos.sh
 
 使用`crontab -e`选择编辑器编辑自动任务,添加以下内容(可以自定义执行时间)
 
+> 新服务器上不要直接用,尤其注意修改备份命令的的参数
+
 ```bash
+# 修改-b参数为备份服务器(ip),修改"server?"为对应的目录(比如s1,s2,...)
+30 22 * * * bash /www/sh/backup_sites/backup_site_pkgs.sh -s /srv/uploads/uploader/files -b "backupIp" -d /www/wwwroot/xcx/"server?"
 0 0 */2 * * bash /www/sh/clean_logs.bash
 0 3 * * * bash /www/sh/nginx_conf/update_cf_ip_configs.sh
 50 23 * * 0 bash /www/sh/remove_deployed_sites.sh
-30 22 * * * bash /www/sh/backup_sites/backup_site_pkgs.sh -s /srv/uploads/uploader/files -b 107.181.229.82 -d /www/wwwroot/xcx/s2
-# */30 * * * * pkill -9 nginx;nginx
 */30 * * * * bash /www/sh/deploy_wp_schd.sh
 */2 * * * * bash /www/sh/run-all-wp-cron.sh
+# */30 * * * * pkill -9 nginx;nginx
 ```
 
 注意脚本`deploy_wp_schd.sh`这个脚本的可执行权限(每次更新代码,上面的代码会尝试自动修改这些文件的可执行权限)
