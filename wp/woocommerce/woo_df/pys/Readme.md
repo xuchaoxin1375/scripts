@@ -83,10 +83,10 @@ python $pys\woo_get_csv.py -f .webp -s $start -e $end  -C $country -E $exclude -
 
 
 ```powershell
-$type='  汽车  '.trim()
-$country='  DE '.trim()
-$start=717
-$end=722
+$type='  宠物  '.trim()
+$country='  IT '.trim()
+$start=632
+$end=638
 $exclude='0' 
 python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -o "$desktop/$type-$country-$(get-date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]" -dl 10 -nad
 ```
@@ -187,6 +187,26 @@ Get-WpSitePacks -SiteDirecotry C:\Users\Administrator\Desktop/my_wp_sites/lebenl
 
 # =========[http://wundeshop.com]:[C:\Users\Administrator\Desktop/my_wp_sites/wundeshop.com]=============
 ....
+
+```
+
+#### 服务器上下载图片和导入数据
+
+> 服务器上的代码和本地的是同一套(通过/update_repos.sh更新同步代码),可以为数据补充提供类似的本地建站的操作方法
+
+少数情况下需要补数据的情况下,可以讲csv上传到合适的目录下,然后调用对应的脚本进行下载图片到指定目录下(这个过程和本地建站中的图片下载环节十分相似)
+
+我以网站`xcx`用户要对网站`test.com`补充数据为例(具体路径根据具体情况进行调整和修改),主要是csv目录路径`--dir-input`和图片保存输出路径`--output-dir `
+
+```bash
+python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_downloader.py -c -n -R auto -k  -rs 1000 800  --output-dir /www/wwwroot/xcx/test.com/wordpress/wp-content/uploads/2025 --dir-input /srv/uploads/uploader/files/xcx/test.com\ -w 10 
+```
+
+仍然可以通过`-U curl`选择curl下载引擎
+
+等图片下载完毕后,可以导入新的产品数据(csv)到网站数据库中
+
+```
 
 ```
 

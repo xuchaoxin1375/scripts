@@ -61,7 +61,7 @@ In [3]:
 New-Item -ItemType Directory -Path C:/exes
 
 # 基础环境变量配置
-setx PYTHONPATH2 @"
+setx PYTHONPATH @"
 C:\repos\scripts\wp\woocommerce\woo_df;
 C:\repos\scripts\wp\woocommerce\woo_df\pys\bt_api;
 C:\repos\scripts\wp\woocommerce\woo_df\pys\cf_api;
