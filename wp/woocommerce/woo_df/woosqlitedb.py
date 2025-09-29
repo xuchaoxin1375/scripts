@@ -1007,7 +1007,7 @@ but different image, keep records [%s]",
             sale_price = price * 0.25
         elif price >= 300:
             sale_price = price * 0.2
-            if sale_price > 300:
+            if sale_price >= 300:
                 sale_price = limit_sale
 
         # 保留2位小数
