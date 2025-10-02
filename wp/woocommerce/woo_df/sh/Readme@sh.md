@@ -15,7 +15,7 @@
 假设服务器为ubuntu
 
 ```bash
-sudo apt install p7zip-full p7zip-rar lz4 zstd git -y #获取7z命令(完整安装)
+sudo apt install p7zip-full p7zip-rar lz4 zstd unzip git -y #获取7z命令(完整安装)
 sudo apt install parallel #并行执行命令的工具
 ```
 

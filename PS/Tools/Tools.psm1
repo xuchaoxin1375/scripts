@@ -1537,12 +1537,12 @@ function Split-TextFileByLines
         if ($PSCmdlet.ParameterSetName -eq "Lines")
         {
             Write-Verbose "按行数分割模式，每个文件最大: $Lines 行"
-            $result = Split-FileByLines -Path $sourcePath -Lines $Lines -Destination $Destination -Prefix $Prefix -SuffixFormat $SuffixFormat -Encoding $Encoding
+            $result = Split-FileByLines_ -Path $sourcePath -Lines $Lines -Destination $Destination -Prefix $Prefix -SuffixFormat $SuffixFormat -Encoding $Encoding
         }
         else
         {
             Write-Verbose "平均分割模式，分割成 $Average 个文件"
-            $result = Split-FileAverageByLines -Path $sourcePath -Count $Average -Destination $Destination -Prefix $Prefix -SuffixFormat $SuffixFormat -Encoding $Encoding
+            $result = Split-FileAverageByLines_ -Path $sourcePath -Count $Average -Destination $Destination -Prefix $Prefix -SuffixFormat $SuffixFormat -Encoding $Encoding
         }
         
         Write-Verbose "分割完成，共生成 $($result.Count) 个文件"
@@ -1555,7 +1555,7 @@ function Split-TextFileByLines
     }
 }
 
-function Split-FileByLines
+function Split-FileByLines_
 {
     param(
         [string]$Path,
@@ -1575,7 +1575,7 @@ function Split-FileByLines
     try
     {
         $reader = New-Object System.IO.StreamReader($Path)
-        $writer = CreateNewPartFile -Destination $Destination -Prefix $Prefix -SuffixFormat $SuffixFormat -Index $currentFileIndex -Extension ([System.IO.Path]::GetExtension($Path)) -Encoding $Encoding
+        $writer = CreateNewPartFile_ -Destination $Destination -Prefix $Prefix -SuffixFormat $SuffixFormat -Index $currentFileIndex -Extension ([System.IO.Path]::GetExtension($Path)) -Encoding $Encoding
         $files += $writer.BaseStream.Name
         $currentFileIndex++
         
@@ -1588,7 +1588,7 @@ function Split-FileByLines
             if ($currentLineCount -gt $Lines -and $currentLineCount -gt 1)
             {
                 $writer.Close()
-                $writer = CreateNewPartFile -Destination $Destination -Prefix $Prefix -SuffixFormat $SuffixFormat -Index $currentFileIndex -Extension ([System.IO.Path]::GetExtension($Path)) -Encoding $Encoding
+                $writer = CreateNewPartFile_ -Destination $Destination -Prefix $Prefix -SuffixFormat $SuffixFormat -Index $currentFileIndex -Extension ([System.IO.Path]::GetExtension($Path)) -Encoding $Encoding
                 $files += $writer.BaseStream.Name
                 $currentFileIndex++
                 $currentLineCount = 1 # 重置行计数器，并将当前行写入新文件
@@ -1606,8 +1606,13 @@ function Split-FileByLines
     return Get-Item $files
 }
 
-function Split-FileAverageByLines
+function Split-FileAverageByLines_
 {
+    <# 
+    .SYNOPSIS
+    将文本文件平均分割成n份
+    
+    #>
     param(
         [string]$Path,
         [int]$Count,
@@ -1656,7 +1661,7 @@ function Split-FileAverageByLines
             }
             
             # 创建新文件
-            $writer = CreateNewPartFile -Destination $Destination -Prefix $Prefix -SuffixFormat $SuffixFormat -Index $i -Extension ([System.IO.Path]::GetExtension($Path)) -Encoding $Encoding
+            $writer = CreateNewPartFile_ -Destination $Destination -Prefix $Prefix -SuffixFormat $SuffixFormat -Index $i -Extension ([System.IO.Path]::GetExtension($Path)) -Encoding $Encoding
             $files += $writer.BaseStream.Name
             
             # 写入指定行数的内容
@@ -1679,7 +1684,7 @@ function Split-FileAverageByLines
     return Get-Item $files
 }
 
-function CreateNewPartFile
+function CreateNewPartFile_
 {
     param(
         [string]$Destination,
@@ -1716,7 +1721,251 @@ function CreateNewPartFile
     }
 }
 
+function Get-SourceFromLinksList
+{
+    <#
+    .SYNOPSIS
+        从包含 URL 的文本文件中批量下载文件（如 .gz 或 .xml）到指定目录。
 
+    .DESCRIPTION
+        该函数读取一个包含下载链接的文本文件，使用 curl（即 Invoke-WebRequest 的别名或系统 curl）下载每个文件，
+        并保存到以域名命名的子目录中。支持自动创建目录、HTTP 重定向和自定义 User-Agent。
+
+    .PARAMETER Domain
+        目标站点域名（用于创建子目录，也用于日志或组织结构）。
+
+    .PARAMETER LinksFile
+        包含待下载链接的文本文件路径（每行一个 URL）。
+
+    .PARAMETER BaseDirectory
+        保存下载文件的基础目录（默认为当前用户的桌面下的 'localhost' 文件夹）。
+
+    .PARAMETER UserAgent
+        可选：自定义 User-Agent 字符串，用于模拟浏览器请求。
+
+    .EXAMPLE
+        Get-SourceFromLinksList -Domain "www.speedingparts.de" -LinksFile "C:\localhost\L1.urls"
+
+    .NOTES
+        - 函数使用系统 curl（需确保 curl 在 PATH 中），而非 PowerShell 的 Invoke-WebRequest，
+          以保持与原始脚本行为一致（支持 -L 和 -O）。
+        - 若需跨平台兼容性，可改用 Invoke-WebRequest，但需重写下载逻辑。
+    #>
+
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$Domain,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateScript({
+                if (-not (Test-Path $_ -PathType Leaf))
+                {
+                    throw "链接文件 '$_' 不存在。"
+                }
+                return $true
+            })]
+        [string]$LinksFile,
+
+        [Parameter(Mandatory = $false)]
+        [string]$BaseDirectory = "$([Environment]::GetFolderPath('Desktop'))\localhost",
+
+        [Parameter(Mandatory = $false)]
+        [string]$UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+    )
+
+    # 构建目标目录路径
+    $TargetDir = Join-Path -Path $BaseDirectory -ChildPath $Domain
+
+    # 创建目录（若不存在）
+    if (-not (Test-Path $TargetDir))
+    {
+        New-Item -ItemType Directory -Path $TargetDir -Force | Out-Null
+    }
+    $LinksFile = Get-Item $LinksFile | Select-Object -ExpandProperty FullName
+    # 切换到目标目录
+    Push-Location $TargetDir
+
+    try
+    {
+        # 读取链接文件并逐行下载
+        Get-Content $LinksFile | ForEach-Object {
+            if ($_ -match '^\s*$') { return }  # 跳过空行
+            if ($_ -match '^\s*#') { return } # 跳过注释行（以 # 开头）
+
+            Write-Host "正在下载: $_"
+            if ($UserAgent)
+            {
+                curl -L -O $_ -A $UserAgent
+            }
+            else
+            {
+                curl -L -O $_
+            }
+        }
+    }
+    finally
+    {
+        Pop-Location
+    }
+}
+function Expand-GzFile
+{
+    <# 
+    .SYNOPSIS
+    解压指定目录下的所有 .gz 文件。
+    .DESCRIPTION
+    如果通过管道符传递扫描到的gz文件,则直接解压这些文件
+    否则,默认情况下,该函数遍历指定目录下的所有文件，并检查文件扩展名是否为 .gz，如果是则解压到指定目录下(目录不存在时自动创建)。
+    
+    默认优先使用 7z 解压，如果 7z 不可用则使用 gzip 解压。
+    
+    .PARAMETER Path
+    要解压的 .gz 文件路径或包含 .gz 文件的目录路径。默认为当前目录。
+    
+    .PARAMETER Destination
+    解压后的文件存放目录。默认为文件所在目录。
+    
+    .PARAMETER Force
+    是否覆盖已存在的文件。
+    .EXAMPLE
+    # [Administrator@CXXUDESK][~\Desktop\localhost\fahrwerk-24.de][15:41:59][UP:3.82Days]
+    PS> ls *gz|Expand-GzFile
+    .EXAMPLE
+    Expand-GzFile -Path "C:\archive\*.gz"
+    解压指定路径下的所有 .gz 文件
+    
+    .EXAMPLE
+    Get-ChildItem -Path "C:\Downloads" -Filter "*.gz" | Expand-GzFile
+    通过管道传递 .gz 文件进行解压
+    
+    .EXAMPLE
+    Expand-GzFile -Path "C:\archive" -Destination "C:\extracted"
+    将目录中的所有 .gz 文件解压到指定目录
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
+        [Alias("FullName")]
+        [string[]]$Path = ".",
+        
+        [string]$Destination = "",
+        
+        [switch]$Force
+    )
+    
+    begin
+    {
+        # 检查可用的解压工具
+        # $7zAvailable = Test-CommandAvailability 7z
+        # $gzipAvailable = Test-CommandAvailability gzip
+        $7zAvailable = Get-Command 7z -ErrorAction SilentlyContinue
+        $gzipAvailable = Get-Command gzip -ErrorAction SilentlyContinue
+        
+        if (-not $7zAvailable -and -not $gzipAvailable)
+        {
+            Write-Error "系统中未找到 7z 或 gzip 命令，请安装 7-Zip 或 gzip 工具后再使用此功能。"
+            return
+        }
+        
+        # 优先使用 7z，如果不可用则使用 gzip
+        $decompressor = if ($7zAvailable) { "7z" } else { "gzip" }
+        Write-Verbose "使用解压工具: $decompressor"
+    }
+    
+    process
+    {
+        foreach ($item in $Path)
+        {
+            if (Test-Path -Path $item -PathType Container)
+            {
+                # 如果是目录，则获取该目录下所有 .gz 文件
+                $gzFiles = Get-ChildItem -Path $item -Filter "*.gz" -File
+            }
+            elseif (Test-Path -Path $item -PathType Leaf)
+            {
+                # 如果是文件，则直接使用
+                $gzFiles = Get-Item -Path $item
+            }
+            else
+            {
+                Write-Warning "路径不存在或无效: $item"
+                continue
+            }
+            
+            foreach ($file in $gzFiles)
+            {
+                # 确定输出目录
+                if ([string]::IsNullOrEmpty($Destination))
+                {
+                    $outputDir = Split-Path -Path $file.FullName -Parent
+                }
+                else
+                {
+                    $outputDir = $Destination
+                    # 确保输出目录存在
+                    if (-not (Test-Path -Path $outputDir -PathType Container))
+                    {
+                        New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+                    }
+                }
+                
+                # 构造输出文件路径
+                $outputFileName = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
+                $outputFilePath = Join-Path -Path $outputDir -ChildPath $outputFileName
+                
+                # 检查文件是否已存在
+                if (Test-Path -Path $outputFilePath -PathType Leaf)
+                {
+                    if ($Force)
+                    {
+                        Write-Verbose "覆盖已存在的文件: $outputFilePath"
+                        Remove-Item -Path $outputFilePath -Force
+                    }
+                    else
+                    {
+                        Write-Warning "文件已存在，跳过解压: $outputFilePath (使用 -Force 参数覆盖)"
+                        continue
+                    }
+                }
+                
+                try
+                {
+                    Write-Verbose "正在解压: $($file.FullName) -> $outputFilePath"
+                    
+                    if ($decompressor -eq "7z")
+                    {
+                        # 使用 7z 解压
+                        $result = 7z x "$($file.FullName)" -o"$outputDir" -y
+                        if ($LASTEXITCODE)
+                        {
+                            Write-Warning "7z 解压可能失败: $($file.FullName)"
+                        }
+                    }
+                    else
+                    {
+                        # 使用 gzip 解压
+                        gzip -d -c "$($file.FullName)" > "$outputFilePath"
+                    }
+                    
+                    if (Test-Path -Path $outputFilePath -PathType Leaf)
+                    {
+
+                        Write-Verbose "成功解压: $outputFilePath" -Verbose
+                    }
+                    else
+                    {
+                        Write-Warning "解压可能失败，输出文件不存在: $outputFilePath"
+                    }
+                }
+                catch
+                {
+                    Write-Error "解压文件失败: $($file.FullName) 错误: $_"
+                }
+            }
+        }
+    }
+}
 function Set-OpenWithVscode
 {
     <# 
@@ -3820,7 +4069,8 @@ function Get-UrlsListFileFromDir
     $previewLines = Get-Content $output | Select-Object -First 10 | Out-String
     Write-Verbose "Preview: $previewLines" -Verbose
     Write-Verbose "...."
-    if ($PassThru) {
+    if ($PassThru)
+    {
         return $res    
     }
 }

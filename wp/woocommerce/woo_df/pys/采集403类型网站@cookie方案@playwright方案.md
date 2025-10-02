@@ -38,64 +38,7 @@
 - 这种比较难采集的站步骤会繁琐一些,但是逻辑还是清晰的,本文尽可能清晰地描述操作步骤,并且举例说明,给出配套的工具
 - 暂时以命令行操作为主,流程比较固定
 
-### 批量下载xml或gz(sitemap gz)
 
-```powershell
-# 配置两个参数
-$domain='it.e-mossa.eu';#采集目标站点
-$links='$desktop\linkx.txt';#包含gz或.xml链接的文本文件
-
-#调用curl下载gz或xml到指定目录中
-$dir=$localhost/$domain; #要下载保存的目录🎈(建议是桌面的localhost目录,可以用$localhost代替)
-New-Item -ItemType Directory -Path $dir;
-cd $dir;
-cat $links |%{curl -O $_ }
-```
-
-如果下载的是gz,那么可能是压缩包(也可能不是),如果是压缩包,需要批量压缩
-
-如果curl下载不动gz,则考虑使用浏览器(playwright下载)
-
-#### 批量解压gz
-
-在下载的gz目录`$dir`中执行解压命令(这里使用7z解压,windows10+也自带tar命令,也能打包gzip压缩格式但是无法解压gzip)
-
-可以使`gzip`命令(windows可以下载git获取git中的gzip.exe工具,然后使用`gzip -d -S .gzip`(如果后缀不是`.gz`而是`.gzip`,或者`gzip -d .gz`)
-
-```powershell
-ls *gz|%{7z x $_ }
-# 移除gz文件
-rm *.gz
-#将目录汇总的xml文件列入到一个maps.xml中
-Get-UrlListFromDir . -hst localhost -LocTagMode > maps.xml
-
-
-
-```
-
-根据上述步骤,查看本地localhost的服务中对应链接是否可以访问(如果可以,说明`maps.xml`的url构造正确)
-
-然后再检查`maps.xml`中的`<loc>`标签中的链接是否也可以访问(如果不能访问在检查`localhost`中对应的目录和站点地图文件`xml`文件路径是否正确)
-
-```powershell
-PS> curl http://localhost/it.e-mossa.eu/maps.xml
-<loc>http://localhost:80/it.e-mossa.eu/maps.xml</loc>
-<loc>http://localhost:80/it.e-mossa.eu/sitemap-https-2-1.xml</loc>
-<loc>http://localhost:80/it.e-mossa.eu/sitemap-https-2-10.xml</loc>
-<loc>http://localhost:80/it.e-mossa.eu/sitemap-https-2-2.xml</loc>
-<loc>http://localhost:80/it.e-mossa.eu/sitemap-https-2-3.xml</loc>
-<loc>http://localhost:80/it.e-mossa.eu/sitemap-https-2-4.xml</loc>
-<loc>http://localhost:80/it.e-mossa.eu/sitemap-https-2-5.xml</loc>
-<loc>http://localhost:80/it.e-mossa.eu/sitemap-https-2-6.xml</loc>
-<loc>http://localhost:80/it.e-mossa.eu/sitemap-https-2-7.xml</loc>
-<loc>http://localhost:80/it.e-mossa.eu/sitemap-https-2-8.xml</loc>
-```
-
-```powershell
-curl http://localhost/it.e-mossa.eu/sitemap-https-2-1.xml
-```
-
-如果也有正常原码输出说明本地可以采集了,根据链接`http://localhost/it.e-mossa.eu/maps.xml`采集就行
 
 ### 利用无头浏览器playwright下载
 
@@ -183,19 +126,7 @@ Get-UrlFromSitemap C:\Users\Administrator\Desktop\localhost\L1.xml > $localhost\
 
 #### 使用curl下载🎈
 
-```powershell
-# 配置两个参数
-$domain='www.speedingparts.de';#采集目标站点
-$links="$localhost\L1.urls";#包含gz或.xml链接的文本文件
-
-#调用curl下载gz或xml到指定目录中
-$dir="$localhost\$domain"; #要下载保存的目录🎈(建议是桌面的localhost目录,可以用$localhost代替)
-New-Item -ItemType Directory -Path $dir -ErrorAction SilentlyContinue ;
-
-cd $dir;
-cat $links |%{curl -L -O $_ -A $agent} # 使用-L选项追踪301等跳转,提高抓取能力;使用-A 选项提供伪装用户的浏览器UA,可以绕过一些基础的反爬设置
-
-```
+放到最后一节
 
 
 
@@ -324,8 +255,4 @@ Get-UrlsListFileFromDir -Path $localhost\www.speedingparts.de\htmls -LocTagMode 
 因此通常我先打开源站的某个一个产品页,然后拷贝该页面的链接中的尾部(url中的最后一个`/`之后的部分)
 
 然后vscode打开保存html文件的目录,将这个名字到`local_urls.txt`中搜索,找到本地版本的url,在采集器中采集此产品
-
-## 脚本参数
-
-
 
