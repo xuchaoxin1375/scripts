@@ -1826,7 +1826,7 @@ function Install-ScoopByLocalProxy
         {
             Set-Proxy -Status on
             Write-Host 'Installing scoop in proxy channel...'
-            Get-ProxySettings
+            Get-ProxyEnvVarSettings
         }
         default {}
     }

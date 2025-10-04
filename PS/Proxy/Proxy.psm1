@@ -1,9 +1,13 @@
-function  Get-ProxySettings
+function  Get-ProxyEnvVarSettings
 {
     if ($env:http_proxy -or $env:https_proxy)
     {
         Write-Host "`$env:http_proxy=$env:http_proxy" -ForegroundColor DarkBlue
         Write-Host "`$env:https_proxy=$env:https_proxy" -ForegroundColor DarkYellow
+    }
+    elseif ($env:all_proxy)
+    {
+        Write-Host "`$env:all_proxy=$env:all_proxy" -ForegroundColor DarkCyan
     }
     else
     {
@@ -11,7 +15,62 @@ function  Get-ProxySettings
     }
     
 }
+function Get-ProxySystemSettings
+{
+    <# 
+    .SYNOPSIS
+    获取系统代理设置
+    .DESCRIPTION
+    通过查看注册表来获取系统代理设置,可供代理环境检查
+    .PARAMETER Full
+    是否获取完整的注册表信息,默认只获取核心的代理设置
+    #>
+    param (
+        [switch]$Full
+    )
+    $InternetProxyRegPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings"
 
+    $info = Get-ItemProperty -Path $InternetProxyRegPath 
+    $core = $info | Select-Object proxyEnable, proxyServer, ProxyOverride 
+    $res = if($Full) { $info }else { $core }
+    return $res
+
+}
+function Set-ProxySystemSettings
+{
+    <# 
+    .SYNOPSIS
+    设置系统代理
+    .DESCRIPTION
+    通过设置注册表来设置系统代理
+    .PARAMETER ProxyEnabled
+    是否启用代理,1表示启用,0表示禁用
+    .PARAMETER Proxy
+    完整的代理地址,例如http://localhost:7890
+    .NOTES
+    此函数允许修改系统代理的三个参数,取值例如:
+    ProxyEnable   : 1
+    ProxyServer   : 127.0.0.1:7890
+    ProxyOverride : <local>;localhost;127.*;10.*;172.16.*;172.17.*;172.18.*;172.19.*;172
+                    .20.*;172.21.*;172.22.*;172.23.*;172.24.*;172.25.*;172.26.*;172.27.*
+                    ;172.28.*;172.29.*;172.30.*;172.31.*;192.168.*
+    #>
+    param (
+        [ValidateSet(0, 1)]$ProxyEnabled = 1,
+
+        [parameter(Mandatory = $true)]
+        $Proxy,
+        $ProxyOverride = ''
+     
+    )
+    $InternetProxyRegPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings"
+    Set-ItemProperty -Path $InternetProxyRegPath -Name ProxyEnable -Value $ProxyEnabled
+    Set-ItemProperty -Path $InternetProxyRegPath -Name ProxyServer -Value $Proxy
+    if($ProxyOverride)
+    {
+        Set-ItemProperty -Path $InternetProxyRegPath -Name ProxyOverride -Value $ProxyOverride
+    }
+}
 function Test-Proxy
 {
     param (
