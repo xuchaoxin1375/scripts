@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CSV图片抽样展示</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/antd@4.24.13/dist/antd.min.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css" />
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: linear-gradient(120deg, #e0e7ff 0%, #f5f5f5 100%);
+      min-height: 100vh;
+      font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif;
+    }
+    .container {
+      max-width: 1280px;
+      margin: 40px auto 32px auto;
+      background: #fff;
+      padding: 36px 36px 32px 36px;
+      border-radius: 18px;
+      box-shadow: 0 8px 32px #0002, 0 1.5px 8px #0001;
+      min-height: 700px;
+    }
+    h2 {
+      font-size: 2.2rem;
+      font-weight: 700;
+      color: #2d3a4b;
+      letter-spacing: 2px;
+      margin-bottom: 24px;
+      text-align: center;
+      text-shadow: 0 2px 8px #b3b3b3;
+    }
+    .ant-upload, #folderInput {
+      width: 100%;
+      margin-bottom: 18px;
+    }
+    .file-list {
+      margin: 18px 0 10px 0;
+      padding: 12px 18px;
+      background: #f0f4ff;
+      border-radius: 8px;
+      font-size: 1.08rem;
+      color: #2d3a4b;
+      box-shadow: 0 1px 4px #0001;
+    }
+    .file-list label {
+      margin-right: 24px;
+      cursor: pointer;
+    }
+    #fieldSelect {
+      margin-top: 18px;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      background: #f8fafc;
+      padding: 14px 18px;
+      border-radius: 8px;
+      box-shadow: 0 1px 4px #0001;
+    }
+    #fieldSelect label {
+      font-weight: 500;
+      color: #2d3a4b;
+    }
+    #sampleBtn {
+      background: linear-gradient(90deg, #6366f1 0%, #60a5fa 100%);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 7px 22px;
+      font-size: 1.08rem;
+      font-weight: 600;
+      box-shadow: 0 2px 8px #6366f133;
+      transition: background 0.2s;
+      cursor: pointer;
+    }
+    #sampleBtn:hover {
+      background: linear-gradient(90deg, #4f46e5 0%, #2563eb 100%);
+    }
+    .image-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 22px;
+      margin-top: 32px;
+    }
+    .image-card {
+      background: #f8fafc;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 2px 12px #0001;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      transition: box-shadow 0.2s, transform 0.2s;
+      position: relative;
+      border: 1.5px solid #e0e7ff;
+    }
+    .image-card:hover {
+      box-shadow: 0 8px 32px #6366f133, 0 2px 8px #0001;
+      transform: translateY(-4px) scale(1.03);
+      border-color: #6366f1;
+    }
+    .img-loading {
+      width: 100%;
+      height: 180px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #e0e7ff;
+      border-bottom: 1px solid #dbeafe;
+    }
+    .image-card img {
+      width: 100%;
+      height: 180px;
+      object-fit: contain;
+      background: #e0e7ff;
+      border-bottom: 1px solid #dbeafe;
+      transition: filter 0.2s;
+      cursor: zoom-in;
+    }
+    .image-card .url {
+      font-size: 12px;
+      word-break: break-all;
+      padding: 10px 8px 8px 8px;
+      color: #64748b;
+      text-align: center;
+      min-height: 36px;
+    }
+    .ant-pagination {
+      margin-top: 32px;
+      text-align: center;
+    }
+    #pagination {
+      margin-top: 32px;
+      text-align: center;
+      font-size: 1.08rem;
+    }
+    #pagination button {
+      background: #6366f1;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      padding: 5px 16px;
+      margin: 0 6px;
+      font-size: 1rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #pagination button:disabled {
+      background: #c7d2fe;
+      color: #fff;
+      cursor: not-allowed;
+    }
+    #pagination select {
+      margin-left: 10px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      border: 1px solid #cbd5e1;
+      font-size: 1rem;
+    }
+    #modal {
+      display: none;
+      position: fixed;
+      left: 0; top: 0;
+      width: 100vw; height: 100vh;
+      background: rgba(30,41,59,0.85);
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      animation: fadeIn 0.3s;
+    }
+    #modalImg {
+      max-width: 92vw;
+      max-height: 92vh;
+      box-shadow: 0 8px 32px #0008;
+      border-radius: 16px;
+      border: 4px solid #fff;
+      background: #fff;
+      animation: popIn 0.3s;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; } to { opacity: 1; }
+    }
+    @keyframes popIn {
+      from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; }
+    }
+    .ant-spin-dot-item {
+      background: #6366f1 !important;
+    }
+    @media (max-width: 700px) {
+      .container { padding: 8px 2vw; }
+      .image-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
+      .image-card img, .img-loading { height: 90px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2><i class="fa-solid fa-image" style="color:#6366f1;margin-right:12px;"></i>CSV图片抽样展示</h2>
+    <input type="file" id="folderInput" webkitdirectory directory multiple />
+    <div id="fileList" class="file-list"></div>
+    <div id="fieldSelect" style="margin-top:16px;display:none;">
+      <label>图片字段: <select id="imgField"></select></label>
+      <label style="margin-left:16px;">抽样比例(%) <input type="number" id="percent" min="0.1" max="100" step="0.1" value="1" style="width:60px;" /></label>
+      <button id="sampleBtn"><i class="fa-solid fa-wand-magic-sparkles"></i> 抽样并展示</button>
+    </div>
+    <div id="result"></div>
+    <div id="pagination"></div>
+    <div id="modal">
+      <img id="modalImg" src="" />
+    </div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script>
+    let csvFiles = [];
+    let csvData = [];
+    let sampleUrls = [];
+    let page = 1, pageSize = 100;
+    let totalPages = 1;
+    const folderInput = document.getElementById('folderInput');
+    const fileListDiv = document.getElementById('fileList');
+    const fieldSelect = document.getElementById('fieldSelect');
+    const imgField = document.getElementById('imgField');
+    const percentInput = document.getElementById('percent');
+    const sampleBtn = document.getElementById('sampleBtn');
+    const result = document.getElementById('result');
+    const pagination = document.getElementById('pagination');
+    const modal = document.getElementById('modal');
+    const modalImg = document.getElementById('modalImg');
+
+    folderInput.addEventListener('change', function(e) {
+      csvFiles = Array.from(e.target.files).filter(f => f.name.toLowerCase().endsWith('.csv'));
+      if (!csvFiles.length) {
+        fileListDiv.innerHTML = '<span style="color:red">未检测到csv文件</span>';
+        fieldSelect.style.display = 'none';
+        result.innerHTML = '';
+        pagination.innerHTML = '';
+        return;
+      }
+      let html = '<b>请选择CSV文件（夹）：</b>';
+      csvFiles.forEach((f, idx) => {
+        html += `<label><input type='radio' name='csvfile' value='${idx}' ${idx===0?'checked':''}/> ${f.webkitRelativePath||f.name}</label>`;
+      });
+      fileListDiv.innerHTML = html;
+      fieldSelect.style.display = 'none';
+      result.innerHTML = '';
+      pagination.innerHTML = '';
+      // 自动加载第一个csv
+      loadCsvFile(0);
+      document.querySelectorAll('input[name="csvfile"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+          loadCsvFile(parseInt(this.value));
+        });
+      });
+    });
+
+    function loadCsvFile(idx) {
+      const file = csvFiles[idx];
+      if (!file) return;
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: function(res) {
+          csvData = res.data;
+          if (!csvData.length) { alert('CSV无数据'); fieldSelect.style.display='none'; return; }
+          // 优先查找 images 或 ImageUrl 字段
+          const keys = Object.keys(csvData[0]);
+          let defaultField = keys.find(k => k.toLowerCase() === 'images') || keys.find(k => k.toLowerCase() === 'imageurl');
+          imgField.innerHTML = '';
+          keys.forEach(f => {
+            let opt = document.createElement('option');
+            opt.value = f; opt.textContent = f;
+            imgField.appendChild(opt);
+          });
+          if (defaultField) imgField.value = defaultField;
+          fieldSelect.style.display = '';
+          result.innerHTML = '';
+          pagination.innerHTML = '';
+        },
+        error: function() { alert('CSV解析失败'); fieldSelect.style.display='none'; }
+      });
+    }
+
+    sampleBtn.addEventListener('click', function() {
+      const field = imgField.value;
+      const percent = parseFloat(percentInput.value) || 1;
+      if (!field) { alert('请选择图片字段'); return; }
+      const urls = csvData.map(row => row[field]).filter(Boolean);
+      if (!urls.length) { alert('该字段无有效图片链接'); return; }
+      // 随机抽样
+      const n = Math.max(1, Math.floor(urls.length * percent / 100));
+      sampleUrls = urls.slice().sort(() => 0.5 - Math.random()).slice(0, n);
+      page = 1;
+      totalPages = Math.ceil(sampleUrls.length / pageSize);
+      renderGrid();
+      renderPagination();
+    });
+
+    function renderGrid() {
+      if (!sampleUrls.length) { result.innerHTML = ''; return; }
+      const paged = sampleUrls.slice((page-1)*pageSize, page*pageSize);
+      let html = `<div style='margin:16px 0;'>共抽取 ${sampleUrls.length} 张图片</div>`;
+      html += '<div class="image-grid">';
+      paged.forEach((url, idx) => {
+        html += `<div class="image-card">
+          <div class="img-loading" id="img-loading-${idx}" style="width:100%;height:160px;display:flex;align-items:center;justify-content:center;background:#eee;">
+            <span class=\"ant-spin ant-spin-spinning\" style=\"font-size:28px;\"><span class=\"ant-spin-dot ant-spin-dot-spin\"><i class=\"ant-spin-dot-item\"></i><i class=\"ant-spin-dot-item\"></i><i class=\"ant-spin-dot-item\"></i><i class=\"ant-spin-dot-item\"></i></span></span>
+          </div>
+          <img src="${url}" alt="img" style="cursor:pointer;display:none;" onload="onSingleImgLoad(${idx})" onerror="onSingleImgLoad(${idx})" onclick="showModal('${encodeURIComponent(url)}')" />
+          <div class="url">${url}</div>
+        </div>`;
+      });
+      html += '</div>';
+      result.innerHTML = html;
+    }
+    window.onSingleImgLoad = function(idx) {
+      var loading = document.getElementById('img-loading-' + idx);
+      if (loading) loading.style.display = 'none';
+      var img = loading && loading.nextElementSibling;
+      if (img) img.style.display = '';
+    }
+
+    function renderPagination() {
+      if (sampleUrls.length <= pageSize) { pagination.innerHTML = ''; return; }
+      let html = `<button onclick="gotoPage(${page-1})" ${page<=1?'disabled':''}>上一页</button> `;
+      html += `第 ${page} / ${totalPages} 页 `;
+      html += `<button onclick="gotoPage(${page+1})" ${page>=totalPages?'disabled':''}>下一页</button> `;
+      html += `<select onchange="changePageSize(this.value)">`;
+      [12,100,200,500].forEach(sz => {
+        html += `<option value="${sz}"${sz==pageSize?' selected':''}>每页${sz}张</option>`;
+      });
+      html += '</select>';
+      pagination.innerHTML = html;
+    }
+
+    window.gotoPage = function(p) {
+      if (p<1||p>totalPages) return;
+      page = p;
+      renderGrid();
+      renderPagination();
+    }
+    window.changePageSize = function(sz) {
+      pageSize = parseInt(sz);
+      totalPages = Math.ceil(sampleUrls.length / pageSize);
+      page = 1;
+      renderGrid();
+      renderPagination();
+    }
+    window.showModal = function(url) {
+      modal.style.display = 'flex';
+      modalImg.src = decodeURIComponent(url);
+    }
+    modal.addEventListener('click', function() {
+      modal.style.display = 'none';
+      modalImg.src = '';
+    });
+  </script>
+</body>
+</html>

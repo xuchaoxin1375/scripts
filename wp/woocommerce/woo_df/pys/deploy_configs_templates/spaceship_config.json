@@ -1,0 +1,22 @@
+{
+    "account": " ",
+    "api_key": " ",
+    "api_secret": " ",
+    "accounts": [
+        {
+            "account": " ",
+            "api_key": " ",
+            "api_secret": " "
+        },
+        {
+            "account": " ",
+            "api_key": " ",
+            "api_secret": " "
+        }
+    ],
+    "nameserver1": "  ",
+    "nameserver2": " ",
+    "take": 100,
+    "skip": 0,
+    "order_by": "expirationDate"
+}

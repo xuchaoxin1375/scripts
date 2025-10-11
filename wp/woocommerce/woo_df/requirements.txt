@@ -1,0 +1,23 @@
+requests
+python-magic-bin
+pandas
+openpyxl
+woocommerce
+concurrent-log-handler
+mysql-connector-python
+notebook
+beautifulsoup4
+pymysql
+phpserialize
+unidecode
+tqdm
+pillow
+Wand
+pillow-avif-plugin
+cloudflare
+# please run:[  playwright install  ] this command in your terminal to install playwright browser automation tool
+playwright
+playwright_stealth
+
+# dotenv
+# opencv-python

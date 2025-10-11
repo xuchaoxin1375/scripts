@@ -1,0 +1,59 @@
+log
+*.log
+*.pkl
+*cache*
+# 图片
+imgs/
+images/
+*.jpg
+*.jpeg
+*.webp
+*.png
+*.gif
+*.svg
+*.ico
+*.csv
+*.xlsx
+*.xls
+
+# 记得从git移除这些不需要的文件
+# Python 补充
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+# 打包文件
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+
+# 安装日志
+pip-log.txt
+pip-delete-this-directory.txt
+
+# 单元测试/覆盖率
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/

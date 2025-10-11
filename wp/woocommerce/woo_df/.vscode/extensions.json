@@ -1,0 +1,10 @@
+{
+    "recommendations": [
+        "janisdd.vscode-edit-csv",
+        "ms-toolsai.datawrangler",
+        "visualstudioexptteam.vscodeintellicode",
+        "ms-toolsai.jupyter",
+        "ms-python.python",
+        "ionutvmi.path-autocomplete"
+    ]
+}

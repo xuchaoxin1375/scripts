@@ -1,0 +1,70 @@
+{
+    "default": {
+        "bt_ssl": true,
+        "ssh": {
+            "port": ""
+        },
+        "mysql": {
+            "root_localhost": "root",
+            "root_password": "",
+            "root_all": "",
+            "mysql_port": "3306"
+        },
+        "cf": {
+            "ssl_mode": "flexible",
+            "security_mode": 1,
+            "default_forward_email":""
+        }
+    },
+    "servers": {
+        "server1": {
+            "ip": "",
+            "bt_key": "",
+            "bt_panel": "https://....:xxx",
+            "bt_ssl": true,
+            "mysql": {
+                "root_localhost": "root",
+                "root_password": "",
+                "root_all": "",
+                "root_all_password": "",
+                "port": "3306"
+            },
+            "ssh": {
+                "port": ""
+            },
+            "openlist": {},
+            "cf_account": {
+                "cf_api_email": "",
+                "cf_api_key": "",
+                "is_global_key": true
+            }
+        },
+        "server2": {
+            "ip": "",
+            "bt_key": "",
+            "bt_panel": "https://....:xxx",
+            "bt_ssl": true,
+            "mysql": {
+                "root_localhost": "root",
+                "root_password": "",
+                "root_all": "",
+                "root_all_password": "",
+                "port": "3306"
+            },
+            "ssh": {
+                "port": ""
+            },
+            "openlist": {
+                "port": "5244",
+                "admin": "",
+                "password": "",
+                "config_file": "/opt/openlist/data/config.json"
+            },
+            "cf_account": {
+                "cf_api_email": "",
+                "cf_api_key": "",
+                "is_global_key": true
+            }
+        }
+    }
+}

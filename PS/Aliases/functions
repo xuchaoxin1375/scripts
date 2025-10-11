@@ -1,0 +1,131 @@
+
+#format:
+#   aliaseName rawName 
+# Remove-Alias -Name rm 
+# Set-Alias cxxuAli "@$AliCloudServerIP"
+# 如果需要批量删除set-alias,可以使用编辑器的替换功能(最为简便)
+#---------------------------😀😀😀----------------------
+
+push pushToAndroid
+win winget
+posh oh-my-posh
+
+tree_show show-tree
+tree_py tr_py 
+calendar get-calendar 
+#  tree_pwsh tree_pwsh
+#  tree_lsd  tree_lsd
+tg telegram
+
+
+# 由于应用商店需要特殊权限,不太适合用命令行启动
+# store_exe "$store\WinStore.App.exe"
+#busybox指令集中提供的linux风格的命令
+#后缀使用_b来表示区分
+RLF removeLF
+curl_b curl.exe 
+e exit
+ali cxxuAli
+restart reboot
+# djmi pmgmi
+touch New-File
+# dj django-admin
+# mk pmgmk
+cfw clash_run
+aria2rpc Start-Aria2Rpc
+# qq qq_run
+src Get-SourceCode
+sdir Get-ItemMatchedPattern
+sfile searchFiles
+sf searchFiles
+scontent searchContentWithSpecifiedFiles
+^ select-object 
+run run_silently
+#使用一个符号来代替select-object；类似的我们还可以用~或者代替select
+
+# powershell默认的别名中还有%代替foreach-object;?代替where-object
+#查询那个符号是否被powershell占用,可以用gcm <Punctuation>来查询,如果返回的是：
+# The term '~' is not recognized as a name of a cmdlet, function, script file, or executable program.就说明没有被占用，可以分配
+
+tasks_CLI_bottom btm
+bgp Start-ProcessHidden
+updateWifiConnect wifi_wlan_connect
+searchContent searchContentWithSpecifiedFiles 
+contentSearch searchContentWithSpecifiedFiles
+mobaxTerm "$mobaxterm\MobaXterm_Personal_22.0.exe"
+Navicat_exe $navicat_home\navicat.exe
+wr write
+ec write
+Get-UserReply Confirm-UserContinue
+Remove-ToRecycleBinDir Move-ToRecycleBinDir
+rm Move-ToRecycleBinDir
+nl catn
+aliasTest Write-SeparatorLine
+speed netSpeed.exe
+gdt Get-Date
+rsv Remove-Service
+rec recycleItem
+hardlink New-HardLink
+hard New-HardLink
+SymbolickLink New-SymbolicLink
+junction New-Junction 
+softlink New-Junction
+soft softlink
+volumeMixer sndVol.exe
+htop ntop
+#  antlr4 C:\repos\principlesOfCompilers\antlr-4.9.3-complete.jar
+stop Stop-Process
+pkill stopByName
+
+sublime $sublime_text\sublime_text 
+pkt cpt 
+w where.exe
+whereis where.exe
+
+; ca catn
+pscatn Get-contentNL
+
+
+disk_info drivers_diskInfo
+imgs pictures_ 
+
+v nvim 
+vim nvim
+read read-host 
+as androidstudio 
+ipSetDns ncpa.cpl 
+; t touch 
+t typora.exe
+outFile out-file 
+add gd 
+modules psPS 
+y yarnNode 
+ip ipconfig 
+ipv4 ipv 
+; p start-pwshinit0
+; p 
+startup Start-StartupTasks
+testls desktop 
+l ls 
+py python 
+installModule Install-Module 
+import Import-Module 
+get Get-Command 
+ep 'explorer ' 
+dt_ desktop_
+dk_ Desktop_ 
+rename Rename-Item 
+r rename 
+dls_ downloads_ 
+dcs_ documents_ 
+pts pictures 
+ps Get-Process 
+
+spa SystemPropertiesAdvanced.exe 
+cf_ configs_ 
+sd systemDesign_Go 
+learn repos 
+help Get-help
+h get-help 
+#  newGitCreationLink "https://gitee.com/projects/new/" 
+

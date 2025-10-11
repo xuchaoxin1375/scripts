@@ -1,0 +1,152 @@
+{
+    "product": {
+        "id": 6922089201859,
+        "title": "Explore Scientific APO FCD-100 ALU - ED 102 (Triplet)",
+        "body_html": "\u003Cp\u003E\u003Cstrong\u003EThis highly corrected 102mm triplet Apochromat (three-lens refractor) with a light weight outer tube and 2.5\" HEXAFOC precision focuser offers tack sharp stars, contrast and detail and a substantial 714mm focal length.\u003C/strong\u003E\u003Cbr data-mce-fragment=\"1\"\u003E\u003Cbr data-mce-fragment=\"1\"\u003EWith the new Explore Scientific FCD-100 ALU Hex, the color and clarity of this telescope sets new standards for refractors in this class. The optical design achieves a polystrehl of 0.97 - (a value that represents the highest correction) making this small excellent Apochromat a very versatile device. The fast aperture ratio of f/7 allows for shorter exposure times in astrophotography, resulting in high image sharpness and excellent contrast making observations of targets such as the North American Nebula or the Andromeda Galaxy just as clean and sharp as planetary observations. Refractors at this focal length (particularly Triplets), many smaller deep sky objects frame up extremely well allowing even more detail to be seen on targets such as M51, M57 and many more. This scope is also extremely light and compact - as the dew protection cap can be inserted to save space.\u003C/p\u003E\n\u003Cp\u003EThe state-of-the-art glass optics and meticulous production techniques have meant that these telescopes offer observation quality at the highest level. The high-quality 2.5\" HEXAFOC focuser with 1:10 reduction completes the setup of this all round device - and due to the large diameter of the focuser (65mm), no vignetting occurs even in astrophotography using larger sensors.\u003Cbr data-mce-fragment=\"1\"\u003E\u003Cbr data-mce-fragment=\"1\"\u003E\u003Cstrong\u003ETelescope Spec:\u003C/strong\u003E\u003Cbr data-mce-fragment=\"1\"\u003E\u003C/p\u003E\n\u003Cul\u003E\n\u003Cli\u003EAperture: 102mm\u003C/li\u003E\n\u003Cli\u003EFocal length: 714mm\u003C/li\u003E\n\u003Cli\u003EAperture ratio: f/7\u003C/li\u003E\n\u003Cli\u003ETube weight: 4 kg\u003C/li\u003E\n\u003Cli\u003EMax mag: x 200\u003C/li\u003E\n\u003Cli\u003EFront lens: HOYA FCD-100\u003C/li\u003E\n\u003Cli\u003EFocus position: 150mm from plug-in connection\u003C/li\u003E\n\u003Cli\u003EThree-lens apochromat with two air gaps and central FCD-100 element\u003C/li\u003E\n\u003C/ul\u003E\n\u003Cstrong\u003EWeight &amp; Dimensions:\u003C/strong\u003E\u003Cbr data-mce-fragment=\"1\"\u003E\n\u003Cul\u003E\n\u003Cli\u003ENet weight of optical tube (incl. accessories): 5.4 kg\u003C/li\u003E\n\u003Cli\u003ETotal length: 56 cm\u003C/li\u003E\n\u003Cli\u003ETotal width: 10.6 cm\u003C/li\u003E\n\u003Cli\u003ETotal height: 10.6 cm\u003C/li\u003E\n\u003C/ul\u003E\n\u003Cem\u003EWhats included:\u003C/em\u003E\u003Cbr data-mce-fragment=\"1\"\u003E\n\u003Col\u003E\n\u003Cli\u003EOTA\u003C/li\u003E\n\u003Cli\u003E2\" 99% zenith mirror\u003C/li\u003E\n\u003Cli\u003ETwo extension sleeves for focuser\u003C/li\u003E\n\u003Cli\u003ETube clamps with dovetail rail and carrying handle\u003C/li\u003E\n\u003Cli\u003EDust caps for lens &amp; focuser\u003C/li\u003E\n\u003Cli\u003Euniversal viewfinder shoe\u003C/li\u003E\n\u003C/ol\u003E\n\u003Cp\u003EDownload the Explore Scientific ED APO Manual \u003Ca href=\"https://cdn.shopify.com/s/files/1/0596/1924/6275/files/Explore_Scientific_ED_APO_Manual.pdf?v=1631447636\" title=\"Explore Scientific ED APO Telescope Manual\"\u003Ehere\u003C/a\u003E\u003C/p\u003E",
+        "vendor": "Explore Scientific",
+        "product_type": "4\" - Refractor",
+        "created_at": "2021-09-13T15:26:26+02:00",
+        "handle": "explore-scientific-apo-fcd-100-alu-ed-102-triplet",
+        "updated_at": "2025-08-27T08:50:11+02:00",
+        "published_at": "2021-09-13T15:36:27+02:00",
+        "template_suffix": "",
+        "published_scope": "web",
+        "tags": "Explore Scientific, Refreactor, Triplet",
+        "variants": [
+            {
+                "id": 40661863563459,
+                "product_id": 6922089201859,
+                "title": "Default Title",
+                "price": "1570.59",
+                "sku": "0112108",
+                "position": 1,
+                "compare_at_price": "",
+                "fulfillment_service": "manual",
+                "inventory_management": "shopify",
+                "option1": "Default Title",
+                "option2": null,
+                "option3": null,
+                "created_at": "2021-09-13T15:26:26+02:00",
+                "updated_at": "2025-08-27T08:50:11+02:00",
+                "taxable": true,
+                "barcode": "4007922032658",
+                "grams": 10000,
+                "image_id": null,
+                "weight": 10,
+                "weight_unit": "kg",
+                "requires_shipping": true,
+                "price_currency": "EUR",
+                "compare_at_price_currency": ""
+            }
+        ],
+        "options": [
+            {
+                "id": 8861484417219,
+                "product_id": 6922089201859,
+                "name": "Title",
+                "position": 1,
+                "values": [
+                    "Default Title"
+                ]
+            }
+        ],
+        "images": [
+            {
+                "id": 29730356723907,
+                "product_id": 6922089201859,
+                "position": 1,
+                "created_at": "2021-09-13T15:36:05+02:00",
+                "updated_at": "2021-09-13T15:36:09+02:00",
+                "alt": null,
+                "width": 800,
+                "height": 800,
+                "src": "https://cdn.shopify.com/s/files/1/0596/1924/6275/products/ExploreScientificED102AP_TripletALU_5.jpg?v=1631540169",
+                "variant_ids": []
+            },
+            {
+                "id": 29730357084355,
+                "product_id": 6922089201859,
+                "position": 2,
+                "created_at": "2021-09-13T15:36:05+02:00",
+                "updated_at": "2021-09-13T15:36:11+02:00",
+                "alt": null,
+                "width": 3520,
+                "height": 3280,
+                "src": "https://cdn.shopify.com/s/files/1/0596/1924/6275/products/ExploreScientificED102AP_TripletALU_4.jpg?v=1631540171",
+                "variant_ids": []
+            },
+            {
+                "id": 29730356986051,
+                "product_id": 6922089201859,
+                "position": 3,
+                "created_at": "2021-09-13T15:36:05+02:00",
+                "updated_at": "2021-09-13T15:36:11+02:00",
+                "alt": null,
+                "width": 4134,
+                "height": 1672,
+                "src": "https://cdn.shopify.com/s/files/1/0596/1924/6275/products/ExploreScientificED102AP_TripletALU_6.jpg?v=1631540171",
+                "variant_ids": []
+            },
+            {
+                "id": 29730356887747,
+                "product_id": 6922089201859,
+                "position": 4,
+                "created_at": "2021-09-13T15:36:05+02:00",
+                "updated_at": "2021-09-13T15:36:10+02:00",
+                "alt": null,
+                "width": 3880,
+                "height": 3280,
+                "src": "https://cdn.shopify.com/s/files/1/0596/1924/6275/products/ExploreScientificED102AP_TripletALU_3.jpg?v=1631540170",
+                "variant_ids": []
+            },
+            {
+                "id": 29730357280963,
+                "product_id": 6922089201859,
+                "position": 5,
+                "created_at": "2021-09-13T15:36:05+02:00",
+                "updated_at": "2021-09-13T15:36:11+02:00",
+                "alt": null,
+                "width": 3307,
+                "height": 2582,
+                "src": "https://cdn.shopify.com/s/files/1/0596/1924/6275/products/ExploreScientificED102AP_TripletALU_2.jpg?v=1631540171",
+                "variant_ids": []
+            },
+            {
+                "id": 29730357313731,
+                "product_id": 6922089201859,
+                "position": 6,
+                "created_at": "2021-09-13T15:36:05+02:00",
+                "updated_at": "2021-09-13T15:36:12+02:00",
+                "alt": null,
+                "width": 2160,
+                "height": 1549,
+                "src": "https://cdn.shopify.com/s/files/1/0596/1924/6275/products/ExploreScientificED102AP_TripletALU_1.jpg?v=1631540172",
+                "variant_ids": []
+            },
+            {
+                "id": 29730356920515,
+                "product_id": 6922089201859,
+                "position": 7,
+                "created_at": "2021-09-13T15:36:05+02:00",
+                "updated_at": "2021-09-13T15:36:10+02:00",
+                "alt": null,
+                "width": 2160,
+                "height": 1413,
+                "src": "https://cdn.shopify.com/s/files/1/0596/1924/6275/products/ExploreScientificED102AP_TripletALU_7.jpg?v=1631540170",
+                "variant_ids": []
+            }
+        ],
+        "image": {
+            "id": 29730356723907,
+            "product_id": 6922089201859,
+            "position": 1,
+            "created_at": "2021-09-13T15:36:05+02:00",
+            "updated_at": "2021-09-13T15:36:09+02:00",
+            "alt": null,
+            "width": 800,
+            "height": 800,
+            "src": "https://cdn.shopify.com/s/files/1/0596/1924/6275/products/ExploreScientificED102AP_TripletALU_5.jpg?v=1631540169",
+            "variant_ids": []
+        }
+    }
+}

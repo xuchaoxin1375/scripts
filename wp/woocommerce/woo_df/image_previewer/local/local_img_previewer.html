@@ -1,0 +1,1269 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高级图片抽查与浏览工具 v3</title>
+    <style>
+        :root {
+            --primary-color: #3498db;
+            --secondary-color: #2c3e50;
+            --light-gray: #ecf0f1;
+            --medium-gray: #bdc3c7;
+            --dark-gray: #7f8c8d;
+            --background-color: #f4f7f6;
+            --card-background: #fff;
+            --text-color: #333;
+            --shadow-color: rgba(0, 0, 0, 0.1);
+            --error-color: #e74c3c;
+            --success-color: #2ecc71;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        .header-controls {
+            background-color: var(--card-background);
+            padding: 15px 25px;
+            box-shadow: 0 2px 10px var(--shadow-color);
+            z-index: 100;
+            position: sticky;
+            top: 0;
+            transition: padding 0.3s ease-out; /* Added for smooth collapse */
+        }
+        .header-controls.collapsed {
+            padding-top: 5px;
+            padding-bottom: 5px;
+        }
+
+        .header-controls.collapsed .controls-grid,
+        .header-controls.collapsed .settings-grid,
+        .header-controls.collapsed hr,
+        .header-controls.collapsed h1 {
+            display: none;
+        }
+
+        .main-container {
+            padding: 20px;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .container-fluid {
+            max-width: 1600px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        h1 {
+            text-align: center;
+            color: var(--secondary-color);
+            margin: 0 0 15px 0;
+            font-size: 1.8em;
+        }
+
+        .controls-grid, .settings-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+            gap: 15px 20px;
+            align-items: flex-end;
+            margin-bottom: 15px;
+        }
+        .settings-grid { margin-top: 10px; }
+
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .control-group label, .toggle-switch label {
+            font-weight: 600;
+            color: #555;
+            font-size: 0.9em;
+            margin-bottom: 0;
+        }
+        .control-group .label-with-value { display: flex; justify-content: space-between; align-items: center; }
+
+
+        .control-group input[type="file"],
+        .control-group input[type="number"],
+        .control-group input[type="range"],
+        .control-group select,
+        .control-group button {
+            padding: 10px;
+            border: 1px solid var(--medium-gray);
+            border-radius: 5px;
+            font-size: 0.95em;
+            box-sizing: border-box;
+        }
+        .control-group input[type="file"] { padding: 8px; }
+        .control-group input[type="range"] { padding: 0; width: 100%;}
+
+        .control-group button {
+            background-color: var(--primary-color);
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            border: none;
+        }
+        .control-group button.secondary-button {
+            background-color: var(--secondary-color);
+        }
+        .control-group button.secondary-button:hover {
+            background-color: #1a252f;
+        }
+        .control-group button:hover { background-color: #2980b9; }
+        .control-group button:disabled { background-color: var(--medium-gray); cursor: not-allowed;}
+
+
+        .sampling-options, .navigation-options { display: flex; gap: 10px; align-items: center; margin-top: 5px; }
+        .sampling-options input[type="radio"], .navigation-options input[type="radio"] { margin-right: 3px; }
+
+        .slider-container { display: flex; flex-direction: column; gap: 5px; }
+        .slider-container .input-group { display: flex; align-items: center; gap: 10px;}
+        .slider-container input[type="number"] { width: 70px; text-align: center; padding: 8px;}
+        .slider-container input[type="range"] { flex-grow: 1; }
+
+
+        #image-grid {
+            display: grid;
+            gap: 15px;
+            padding: 10px;
+            flex-grow: 1;
+            overflow-y: auto;
+            border: 1px solid var(--light-gray);
+            border-radius: 5px;
+            background-color: var(--card-background);
+            min-height: 400px; /* Ensure some height */
+            padding-bottom: 70px; /* Add padding for sticky pagination */
+        }
+
+        .thumbnail-item {
+            background-color: #fdfdfd;
+            border: 1px solid var(--light-gray);
+            border-radius: 4px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            display: flex; /* For vertical centering if info is short */
+            flex-direction: column;
+        }
+
+        .thumbnail-item img {
+            display: block;
+            width: 100%;
+            height: 150px;
+            object-fit: cover;
+            cursor: pointer;
+            transition: opacity 0.2s ease-in-out;
+        }
+        .thumbnail-item img:hover { opacity: 0.85; }
+
+        .thumbnail-info {
+            padding: 8px;
+            font-size: 0.75em;
+            background-color: #f9f9f9;
+            border-top: 1px solid var(--light-gray);
+            max-height: 0;
+            overflow: hidden;
+            opacity: 0;
+            transition: max-height 0.3s ease-out, opacity 0.3s ease-out, padding 0.3s ease-out;
+            flex-shrink: 0; /* Prevent info from shrinking if image is tall */
+        }
+        .thumbnail-info.visible {
+            max-height: 100px; /* Adjust as needed */
+            opacity: 1;
+            padding: 8px;
+        }
+        .thumbnail-info p { margin: 3px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;}
+        .thumbnail-info .name {font-weight: bold;}
+
+        .placeholder, .status-message, .loading-indicator {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width:100%;
+            padding: 20px;
+            color: var(--dark-gray);
+            font-size: 1.1em;
+            text-align: center;
+        }
+        .status-message { font-style: italic; font-size: 0.9em; margin-top: 10px; }
+        .loading-indicator { display: none; } /* Initially hidden */
+
+        .pagination-controls {
+            display: none; /* Hidden by default, shown for pagination mode */
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-top: 20px;
+            padding: 10px;
+            background-color: var(--card-background);
+            border-radius: 5px;
+            box-shadow: 0 -1px 5px var(--shadow-color);
+            position: sticky; /* Make it sticky */
+            bottom: 0;        /* Stick to the bottom of its scrolling container (main-container) */
+            z-index: 50;      /* Ensure it's above the grid content but below lightbox */
+        }
+        .pagination-controls button, .pagination-controls span {
+            padding: 8px 12px;
+            border: 1px solid var(--medium-gray);
+            border-radius: 4px;
+            background-color: #fff;
+            cursor: pointer;
+        }
+        .pagination-controls button:disabled {
+            background-color: var(--light-gray);
+            cursor: not-allowed;
+            color: var(--dark-gray);
+        }
+        .pagination-controls span { cursor: default; font-weight: bold; }
+
+
+        /* Toggle Switch CSS */
+        .toggle-switch { display: flex; flex-direction: column; gap: 8px; }
+        .switch { position: relative; display: inline-block; width: 50px; height: 24px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider-toggle { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 24px; }
+        .slider-toggle:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider-toggle { background-color: var(--primary-color); }
+        input:checked + .slider-toggle:before { transform: translateX(26px); }
+
+        /* Lightbox Modal CSS */
+        .lightbox-modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden; /* Prevent body scroll when modal is open */
+            background-color: rgba(0,0,0,0.85);
+            align-items: center;
+            justify-content: center;
+        }
+        .lightbox-content-wrapper { /* New wrapper for scrolling long info */
+            display: flex;
+            flex-direction: column;
+            max-width: 90vw;
+            max-height: 90vh;
+            overflow-y: auto;
+            background-color: var(--secondary-color); /* Dark background for content area */
+            border-radius: 5px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.4);
+        }
+
+        .lightbox-image-container {
+            text-align: center; /* Center the image */
+            padding: 10px;
+        }
+        .lightbox-content-wrapper img {
+            max-width: 100%;
+            max-height: calc(90vh - 160px); /* Adjust based on controls and info height */
+            object-fit: contain;
+            border-radius: 4px;
+            transition: transform 0.3s ease-in-out;
+        }
+        .lightbox-info-panel {
+            padding: 10px 15px;
+            background-color: rgba(0,0,0,0.3);
+            color: var(--light-gray);
+            font-size: 0.9em;
+            max-height: 100px; /* Limit height and make scrollable if needed */
+            overflow-y: auto;
+        }
+        .lightbox-info-panel p { margin: 4px 0; }
+        .lightbox-info-panel strong { color: var(--primary-color); }
+
+        .lightbox-main-controls { /* Renamed from lightbox-controls */
+            text-align: center;
+            padding: 10px 0;
+            background-color: rgba(0,0,0,0.5);
+        }
+        .lightbox-main-controls button {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            margin: 0 5px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .lightbox-main-controls button:hover { background-color: #2980b9; }
+        .lightbox-main-controls .copy-feedback {
+            display: inline-block;
+            margin-left: 10px;
+            color: var(--success-color);
+            font-size: 0.9em;
+        }
+
+
+        .lightbox-close {
+            position: absolute;
+            top: 10px; /* Adjusted for wrapper */
+            right: 15px; /* Adjusted for wrapper */
+            color: #f1f1f1;
+            font-size: 35px;
+            font-weight: bold;
+            transition: 0.3s;
+            cursor: pointer;
+            z-index: 1010;
+        }
+        .lightbox-close:hover, .lightbox-close:focus { color: var(--medium-gray); text-decoration: none; }
+
+        .lightbox-nav {
+            position: absolute;
+            top: 50%;
+            left:0; right:0; /* Ensure it spans width */
+            width: auto; /* Overrides 100% to fit within modal padding */
+            display: flex;
+            justify-content: space-between;
+            transform: translateY(-50%);
+            z-index: 1005;
+            padding: 0 5px; /* Padding for nav buttons from edge */
+        }
+        .lightbox-nav button {
+            background-color: rgba(0,0,0,0.5);
+            color: white;
+            border: none;
+            font-size: 24px;
+            padding: 10px 15px;
+            cursor: pointer;
+            border-radius: 4px;
+            /* margin: 0 10px; Removed for padding approach */
+        }
+        .lightbox-nav button:hover { background-color: rgba(0,0,0,0.8); }
+        .lightbox-nav button:disabled { background-color: rgba(0,0,0,0.2); cursor: not-allowed; }
+
+
+        .footer { text-align: center; margin-top: auto; padding: 15px; font-size: 0.9em; color: var(--dark-gray); background-color: var(--light-gray);}
+
+        .scroll-buttons {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 900; /* Below lightbox, above most other things */
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .scroll-buttons button {
+            background-color: var(--secondary-color);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            font-size: 20px;
+            cursor: pointer;
+            box-shadow: 0 2px 5px var(--shadow-color);
+            display: none; /* Hidden by default */
+            align-items: center; /* Center icon */
+            justify-content: center; /* Center icon */
+            padding: 0; /* Remove padding if icon is text */
+        }
+        .scroll-buttons button:hover { background-color: #1a252f; }
+    </style>
+</head>
+<body>
+    <div class="header-controls">
+        <div class="container-fluid">
+            <h1>🖼️ 高级图片抽查与浏览工具</h1>
+            <button id="toggle-header-btn" style="position: absolute; top: 15px; right: 25px; padding: 8px 12px; font-size: 0.9em; background-color: var(--secondary-color); color: white; border: none; border-radius: 5px; cursor: pointer;">收起工具栏</button>
+            <div class="controls-grid">
+                <div class="control-group">
+                    <label for="folder-input">1. 选择图片文件夹:</label>
+                    <input type="file" id="folder-input" webkitdirectory directory multiple>
+                    <p id="selected-folder-name" style="font-size: 0.85em; color: var(--dark-gray); margin-top: 5px; min-height: 1.2em;"></p>
+                </div>
+
+                <div class="control-group">
+                    <label>2. 抽查方式:</label>
+                    <div class="sampling-options">
+                        <!-- 配置默认的抽查方式 checked标记-->
+                        <input type="radio" id="sample-by-number" name="sample-type" value="number" >
+                        <label for="sample-by-number">数量</label>
+                        <input type="radio" id="sample-by-percentage" name="sample-type" value="percentage" checked>
+                        <label for="sample-by-percentage">百分比</label>
+                    </div>
+                    <div class="slider-container" style="margin-top: 5px;">
+                        <label for="sample-value-slider" class="label-with-value">
+                            <span>值:</span><span id="sample-value-display">20</span>
+                        </label>
+                        <div class="input-group">
+                           <input type="range" id="sample-value-slider" min="1" max="100" value="20" step="1">
+                           <input type="number" id="sample-value-input" min="1" max="100" value="20" step="1">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label for="sort-criteria">3. 排序方式:</label>
+                    <select id="sort-criteria">
+                        <option value="name-asc">名称 (A-Z)</option>
+                        <option value="name-desc">名称 (Z-A)</option>
+                        <option value="size-asc">大小 (小-大)</option>
+                        <option value="size-desc">大小 (大-小)</option>
+                        <option value="date-asc">日期 (旧-新)</option>
+                        <option value="date-desc">日期 (新-旧)</option>
+                        <option value="random">随机 (抽样后)</option>
+                    </select>
+                </div>
+                 <div class="control-group">
+                    <label for="apply-settings-manually">4. 应用设置:</label>
+                    <button id="apply-settings-manually" class="secondary-button">手动应用所有设置</button>
+                </div>
+            </div>
+            <hr style="border: none; border-top: 1px solid var(--light-gray); margin: 15px 0;">
+            <div class="settings-grid">
+                 <div class="control-group">
+                    <label for="grid-cols-slider" class="label-with-value">
+                        <span>列数 (c):</span><span id="grid-cols-value-display">10</span>
+                    </label>
+                    <div class="slider-container input-group">
+                        <input type="range" id="grid-cols-slider" min="1" max="20" value="10">
+                        <input type="number" id="grid-cols-input" min="1" max="20" value="10">
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label for="batch-size-slider" class="label-with-value">
+                        <span id="batch-or-page-size-label">每批/页数量 (N):</span><span id="batch-size-value-display">100</span>
+                    </label>
+                     <div class="slider-container input-group">
+                        <input type="range" id="batch-size-slider" min="5" max="10000" value="25" step="5">
+                        <input type="number" id="batch-size-input" min="5" max="10000" value="25" step="5">
+                    </div>
+                </div>
+                 <div class="control-group">
+                    <label>浏览模式:</label>
+                    <div class="navigation-options">
+                        <input type="radio" id="nav-pagination" name="navigation-mode" value="pagination" checked>
+                        <label for="nav-pagination">分页导航</label>
+                    </div>
+                </div>
+                <div class="control-group toggle-switch">
+                    <label for="toggle-info">显示缩略图信息:</label>
+                    <label class="switch">
+                        <input type="checkbox" id="toggle-info">
+                        <span class="slider-toggle"></span>
+                    </label>
+                </div>
+                <div class="control-group toggle-switch">
+                    <label for="toggle-auto-collapse">自动收起工具栏:</label>
+                    <label class="switch">
+                        <input type="checkbox" id="toggle-auto-collapse" >
+                        <span class="slider-toggle"></span>
+                    </label>
+                </div>
+                <div class="control-group toggle-switch">
+                    <label for="toggle-auto-load-next">滚动到底部自动加载下一页:</label>
+                    <label class="switch">
+                        <input type="checkbox" id="toggle-auto-load-next">
+                        <span class="slider-toggle"></span>
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="main-container container-fluid">
+        <div id="image-grid">
+            <div class="placeholder">请先选择文件夹并设置参数。若已选择，参数更改后会自动应用。</div>
+        </div>
+        <div id="loading-indicator" class="loading-indicator">🔄 正在加载更多图片...</div>
+        <div id="pagination-controls" class="pagination-controls">
+            <button id="prev-page" disabled>&laquo; 上一页</button>
+            <span id="page-info">第 0 / 0 页</span>
+            <button id="next-page" disabled>下一页 &raquo;</button>
+            <!-- 新增跳转页码输入框和按钮 -->
+            <input type="number" id="goto-page-input" min="1" value="1" style="width:60px; margin-left:10px;">
+            <button id="goto-page-btn">跳转</button>
+            <input type="range" id="page-slider" min="1" value="1" style="flex-grow: 1; margin-left: 10px;">
+            <span id="page-slider-value" style="min-width: 60px; text-align: right;">第 1 页</span>
+        </div>
+        <div id="status-message" class="status-message"></div>
+    </div>
+
+    <div id="lightbox-modal" class="lightbox-modal">
+        <span class="lightbox-close" id="lightbox-close-button">&times;</span>
+        <div class="lightbox-nav">
+            <button id="lightbox-prev">&laquo;</button>
+            <button id="lightbox-next">&raquo;</button>
+        </div>
+        <div class="lightbox-content-wrapper">
+            <div class="lightbox-image-container">
+                <img id="lightbox-image" src="#" alt="Enlarged Image">
+            </div>
+            <div class="lightbox-info-panel">
+                <p><strong>文件名:</strong> <span id="lightbox-info-filename">-</span></p>
+                <p><strong>尺寸:</strong> <span id="lightbox-info-dimensions">-</span></p>
+                <p><strong>大小:</strong> <span id="lightbox-info-size">-</span></p>
+                <p><strong>修改日期:</strong> <span id="lightbox-info-date">-</span></p>
+            </div>
+            <div class="lightbox-main-controls">
+                <button id="lightbox-rotate">旋转 ↻</button>
+                <button id="lightbox-download">下载 ⇩</button>
+                <button id="lightbox-copy-filename">复制文件名 ❐</button>
+                <span class="copy-feedback" id="copy-filename-feedback"></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>高级图片抽查工具 - 原生 HTML, CSS & JavaScript</p>
+    </div>
+
+    <div class="scroll-buttons">
+        <button id="scroll-to-top-btn" title="回到顶部">↑</button>
+        <button id="scroll-to-bottom-btn" title="回到底部">↓</button>
+    </div>
+
+    <script>
+        // Element References (grouped for clarity)
+        // File & Sampling
+        const folderInputElement = document.getElementById('folder-input');
+        const sampleByNumberRadio = document.getElementById('sample-by-number');
+        const sampleByPercentageRadio = document.getElementById('sample-by-percentage');
+        const sampleValueSlider = document.getElementById('sample-value-slider');
+        const sampleValueInput = document.getElementById('sample-value-input');
+        const sampleValueDisplay = document.getElementById('sample-value-display');
+        const sortCriteriaElement = document.getElementById('sort-criteria');
+        const applySettingsManuallyButton = document.getElementById('apply-settings-manually');
+
+        // Layout & Display
+        const gridColsSlider = document.getElementById('grid-cols-slider');
+        const gridColsInput = document.getElementById('grid-cols-input');
+        const gridColsValueDisplay = document.getElementById('grid-cols-value-display');
+        const batchSizeSlider = document.getElementById('batch-size-slider');
+        const batchSizeInput = document.getElementById('batch-size-input');
+        const batchSizeValueDisplay = document.getElementById('batch-size-value-display');
+        const batchOrPageSizeLabel = document.getElementById('batch-or-page-size-label');
+        const toggleInfoElement = document.getElementById('toggle-info');
+
+        // Navigation
+        const navPaginationRadio = document.getElementById('nav-pagination');
+        const paginationControlsElement = document.getElementById('pagination-controls');
+        const prevPageButton = document.getElementById('prev-page');
+        const nextPageButton = document.getElementById('next-page');
+        const pageInfoElement = document.getElementById('page-info');
+        const gotoPageInput = document.getElementById('goto-page-input');
+        const gotoPageBtn = document.getElementById('goto-page-btn');
+        const pageSlider = document.getElementById('page-slider');
+        const pageSliderValue = document.getElementById('page-slider-value');
+
+        // Grid & Status
+        const imageGridElement = document.getElementById('image-grid');
+        const statusMessageElement = document.getElementById('status-message');
+        const loadingIndicatorElement = document.getElementById('loading-indicator');
+
+        // Lightbox
+        const lightboxModal = document.getElementById('lightbox-modal');
+        const lightboxImage = document.getElementById('lightbox-image');
+        const lightboxCloseButton = document.getElementById('lightbox-close-button');
+        const lightboxPrevButton = document.getElementById('lightbox-prev');
+        const lightboxNextButton = document.getElementById('lightbox-next');
+        const lightboxRotateButton = document.getElementById('lightbox-rotate');
+        const lightboxDownloadButton = document.getElementById('lightbox-download');
+        const lightboxCopyFilenameButton = document.getElementById('lightbox-copy-filename');
+        const copyFilenameFeedback = document.getElementById('copy-filename-feedback');
+        const lightboxInfoFilename = document.getElementById('lightbox-info-filename');
+        const lightboxInfoDimensions = document.getElementById('lightbox-info-dimensions');
+        const lightboxInfoSize = document.getElementById('lightbox-info-size');
+        const lightboxInfoDate = document.getElementById('lightbox-info-date');
+
+        // Header Toggle
+        const headerControlsElement = document.querySelector('.header-controls');
+        const toggleHeaderBtn = document.getElementById('toggle-header-btn');
+        const autoCollapseToggleElement = document.getElementById('toggle-auto-collapse');
+        const autoLoadNextToggleElement = document.getElementById('toggle-auto-load-next');
+
+        // Scroll Buttons
+        const scrollToTopBtn = document.getElementById('scroll-to-top-btn');
+        const scrollToBottomBtn = document.getElementById('scroll-to-bottom-btn');
+
+        // State Variables
+        let allImageFiles = []; // All files loaded from the folder
+        let sampledAndSortedFiles = []; // Files after sampling and current sorting
+        let displayedItems = []; // Files currently visible in the grid (subset of sampledAndSortedFiles for pagination)
+
+        let renderedThumbnailsCount = 0; // For infinite scroll, items actually in DOM
+        let currentBatchSize = parseInt(batchSizeInput.value);
+        let currentGridCols = parseInt(gridColsInput.value);
+        let isInfoVisible = toggleInfoElement.checked;
+        let isLoadingMore = false; // For infinite scroll
+        let currentLightboxIndex = -1; // Index within sampledAndSortedFiles
+        let currentRotation = 0;
+        const DEFAULT_MAX_SAMPLE_NUMBER = 100;
+        let debounceTimeout = null;
+        const DEBOUNCE_DELAY = 100; // ms
+
+        let currentNavigationMode = 'pagination';
+        let currentPage = 1;
+        let totalPages = 0;
+        let autoCollapseTimer = null;
+        let isAutoCollapseEnabled = true;
+        let isAutoLoadNextPageEnabled = false;
+        let isLoadingNextPageAutomatically = false; // Flag to prevent multiple triggers
+
+        const validImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/svg+xml'];
+
+        // --- Debounce Function ---
+        function debounce(func, delay) {
+            return function(...args) {
+                clearTimeout(debounceTimeout);
+                debounceTimeout = setTimeout(() => func.apply(this, args), delay);
+            };
+        }
+        const debouncedProcessAndDisplay = debounce(processAndDisplayImages, DEBOUNCE_DELAY);
+
+        // --- Event Listeners ---
+        folderInputElement.addEventListener('change', handleFolderSelection);
+        applySettingsManuallyButton.addEventListener('click', () => processAndDisplayImages(true)); // true for manual trigger
+
+        // Controls that trigger automatic (debounced) updates
+        [sampleByNumberRadio, sampleByPercentageRadio, sampleValueSlider, sampleValueInput, sortCriteriaElement,
+         gridColsSlider, gridColsInput, batchSizeSlider, batchSizeInput, navPaginationRadio
+        ].forEach(el => {
+            const eventType = (el.type === 'range' || el.type === 'select-one' || el.type === 'radio') ? 'change' : 'input';
+            el.addEventListener(eventType, handleChangeWithAutoApply);
+        });
+
+        function handleChangeWithAutoApply(event) {
+            // Update related input/slider if one changes
+            if (event.target === sampleValueSlider) sampleValueInput.value = event.target.value;
+            if (event.target === sampleValueInput) sampleValueSlider.value = event.target.value;
+            if (event.target === gridColsSlider) gridColsInput.value = event.target.value;
+            if (event.target === gridColsInput) gridColsSlider.value = event.target.value;
+            if (event.target === batchSizeSlider) batchSizeInput.value = event.target.value;
+            if (event.target === batchSizeInput) batchSizeSlider.value = event.target.value;
+
+            // Update display values for sliders
+            sampleValueDisplay.textContent = sampleValueInput.value;
+            gridColsValueDisplay.textContent = gridColsInput.value;
+            batchSizeValueDisplay.textContent = batchSizeInput.value;
+
+            if (event.target.name === "sample-type") updateSampleValueControls();
+
+            triggerAutoCollapse(); // Add auto-collapse trigger
+            debouncedProcessAndDisplay();
+        }
+
+
+        toggleInfoElement.addEventListener('change', (e) => {
+            isInfoVisible = e.target.checked;
+            document.querySelectorAll('.thumbnail-info').forEach(infoEl => {
+                infoEl.classList.toggle('visible', isInfoVisible);
+            });
+            triggerAutoCollapse(); // Add auto-collapse trigger
+        });
+
+        imageGridElement.addEventListener('click', handleGridClick);
+        imageGridElement.addEventListener('scroll', () => {
+            handleImageGridScroll();
+        });
+
+        // Pagination buttons
+        prevPageButton.addEventListener('click', () => {
+            if (currentPage > 1) {
+                currentPage--;
+                renderCurrentPage();
+            }
+        });
+        nextPageButton.addEventListener('click', () => {
+            if (currentPage < totalPages) {
+                currentPage++;
+                renderCurrentPage();
+            }
+        });
+        // 跳转到指定页码功能
+        gotoPageBtn.addEventListener('click', () => {
+            if (currentNavigationMode !== 'pagination') return;
+            let page = parseInt(gotoPageInput.value);
+            if (isNaN(page)) return;
+            totalPages = Math.ceil(sampledAndSortedFiles.length / currentBatchSize);
+            page = Math.max(1, Math.min(page, totalPages));
+            if (page !== currentPage) {
+                currentPage = page;
+                renderCurrentPage();
+                pageSlider.value = currentPage; // Sync slider
+                pageSliderValue.textContent = `第 ${currentPage} 页`;
+            }
+            gotoPageInput.value = currentPage; // Ensure input is also synced
+        });
+        gotoPageInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') gotoPageBtn.click();
+        });
+
+
+        // Lightbox Listeners
+        lightboxCloseButton.addEventListener('click', closeLightbox);
+        lightboxPrevButton.addEventListener('click', () => showLightboxImage(currentLightboxIndex - 1));
+        lightboxNextButton.addEventListener('click', () => showLightboxImage(currentLightboxIndex + 1));
+        lightboxRotateButton.addEventListener('click', rotateLightboxImage);
+        lightboxDownloadButton.addEventListener('click', downloadLightboxImage);
+        lightboxCopyFilenameButton.addEventListener('click', copyLightboxFilename);
+        document.addEventListener('keydown', (e) => {
+            if (lightboxModal.style.display === 'flex') {
+                if (e.key === "Escape") closeLightbox();
+                if (e.key === "ArrowLeft") showLightboxImage(currentLightboxIndex - 1);
+                if (e.key === "ArrowRight") showLightboxImage(currentLightboxIndex + 1);
+            }
+        });
+
+        // Header Toggle Listener
+        toggleHeaderBtn.addEventListener('click', () => {
+            if (autoCollapseTimer) { // Clear auto-collapse timer if manual action
+                clearTimeout(autoCollapseTimer);
+                autoCollapseTimer = null;
+            }
+            headerControlsElement.classList.toggle('collapsed');
+            if (headerControlsElement.classList.contains('collapsed')) {
+                toggleHeaderBtn.textContent = '展开工具栏';
+            } else {
+                toggleHeaderBtn.textContent = '收起工具栏';
+            }
+        });
+
+        autoCollapseToggleElement.addEventListener('change', (e) => {
+            isAutoCollapseEnabled = e.target.checked;
+            if (!isAutoCollapseEnabled && autoCollapseTimer) {
+                clearTimeout(autoCollapseTimer);
+                autoCollapseTimer = null;
+            }
+        });
+
+        autoLoadNextToggleElement.addEventListener('change', (e) => {
+            isAutoLoadNextPageEnabled = e.target.checked;
+        });
+
+        // --- Core Functions ---
+        function handleFolderSelection(event) {
+            allImageFiles = Array.from(event.target.files).filter(file => validImageTypes.includes(file.type));
+            updateSampleValueControls();
+            if (allImageFiles.length > 0) {
+                // Extract more complete folder path
+                let displayedPath = "";
+                if (event.target.files[0] && event.target.files[0].webkitRelativePath) {
+                    const firstFilePath = event.target.files[0].webkitRelativePath;
+                    const lastSlashIndex = firstFilePath.lastIndexOf('/');
+                    if (lastSlashIndex > -1) {
+                        displayedPath = firstFilePath.substring(0, lastSlashIndex);
+                    } else { // Should not happen if a folder is selected with files
+                        displayedPath = firstFilePath.split('/')[0]; // Fallback to just the folder name
+                    }
+                }
+                document.getElementById('selected-folder-name').textContent = displayedPath ? `已选: ${displayedPath}` : '已选择文件夹';
+                statusMessageElement.textContent = `已加载 ${allImageFiles.length} 张图片。参数更改后会自动应用。`;
+                applySettingsManuallyButton.disabled = false;
+                processAndDisplayImages(); // Automatically process after folder selection
+            } else {
+                document.getElementById('selected-folder-name').textContent = '';
+                statusMessageElement.textContent = '未在所选目录中找到有效的图片文件。';
+                allImageFiles = [];
+                sampledAndSortedFiles = [];
+                clearImageGrid();
+                imageGridElement.innerHTML = '<div class="placeholder">未找到图片。</div>';
+                applySettingsManuallyButton.disabled = true;
+                updatePaginationUI(); // Reset pagination if no files
+            }
+        }
+
+        function updateSampleValueControls() {
+            const currentVal = parseInt(sampleValueInput.value);
+            if (sampleByNumberRadio.checked) {
+                const maxFiles = allImageFiles.length > 0 ? allImageFiles.length : DEFAULT_MAX_SAMPLE_NUMBER;
+                sampleValueSlider.min = 1;
+                sampleValueSlider.max = maxFiles;
+                sampleValueInput.min = 1;
+                sampleValueInput.max = maxFiles;
+                if (currentVal > maxFiles || sampleValueInput.dataset.previousType === 'percentage') {
+                    const newVal = Math.min(20, maxFiles);
+                    sampleValueSlider.value = newVal;
+                    sampleValueInput.value = newVal;
+                }
+                sampleValueInput.dataset.previousType = 'number';
+            } else { // Percentage
+                sampleValueSlider.min = 1;
+                sampleValueSlider.max = 100;
+                sampleValueInput.min = 1;
+                sampleValueInput.max = 100;
+                 if (sampleValueInput.dataset.previousType === 'number' || currentVal > 100) {
+                    sampleValueSlider.value = Math.min(currentVal, 100) > 100 ? 10 : Math.min(currentVal,100) ;
+                    sampleValueInput.value = sampleValueSlider.value;
+                }
+                sampleValueInput.dataset.previousType = 'percentage';
+            }
+            sampleValueDisplay.textContent = sampleValueInput.value;
+        }
+
+        function updateNavigationMode() {
+            currentNavigationMode = 'pagination'; // Hardcoded to pagination
+            paginationControlsElement.style.display = 'flex';
+            batchOrPageSizeLabel.textContent = "每页数量 (N):";
+            imageGridElement.removeEventListener('scroll', handleInfiniteScroll); // Ensure infinite scroll is disabled
+            // No need to call processAndDisplayImages here, the event listener already does.
+        }
+
+
+        function processAndDisplayImages(isManualTrigger = false) {
+            if (allImageFiles.length === 0 && !isManualTrigger) { // Don't process if no files unless manually triggered
+                 if (imageGridElement.children.length === 0 ||
+                    (imageGridElement.children.length === 1 && imageGridElement.firstElementChild.classList.contains('placeholder'))) {
+                     imageGridElement.innerHTML = '<div class="placeholder">请先选择图片文件夹。</div>';
+                 }
+                return;
+            }
+            if (allImageFiles.length === 0 && isManualTrigger) {
+                alert("请先选择一个包含图片的文件夹。");
+                return;
+            }
+
+
+            // 1. Update current settings from UI
+            currentGridCols = parseInt(gridColsInput.value) || 5;
+            currentBatchSize = parseInt(batchSizeInput.value) || 25;
+            imageGridElement.style.gridTemplateColumns = `repeat(${currentGridCols}, 1fr)`;
+
+
+            // 2. Perform Sampling
+            const sampleType = document.querySelector('input[name="sample-type"]:checked').value;
+            let countToSample = parseInt(sampleValueInput.value);
+
+            if (isNaN(countToSample) || countToSample <= 0) {
+                statusMessageElement.textContent = '抽查数量/百分比无效。';
+                sampledAndSortedFiles = [];
+                clearImageGrid();
+                updatePaginationUI();
+                return;
+            }
+
+            let tempFiles = [...allImageFiles];
+            if (sampleType === 'percentage') {
+                if (countToSample > 100) countToSample = 100; // Cap at 100%
+                countToSample = Math.max(1, Math.round((countToSample / 100) * tempFiles.length));
+            }
+            if (countToSample > tempFiles.length) countToSample = tempFiles.length;
+
+            // Initial shuffle for sampling if not sorting by random later
+            if (sortCriteriaElement.value !== 'random') {
+                 tempFiles.sort(() => 0.5 - Math.random());
+            }
+            sampledAndSortedFiles = tempFiles.slice(0, countToSample);
+
+            // 3. Perform Sorting
+            const [criteria, order] = sortCriteriaElement.value.split('-');
+            if (criteria === 'random') {
+                sampledAndSortedFiles.sort(() => 0.5 - Math.random());
+            } else {
+                sampledAndSortedFiles.sort((a, b) => {
+                    let valA, valB;
+                    switch (criteria) {
+                        case 'name': valA = a.name.toLowerCase(); valB = b.name.toLowerCase(); break;
+                        case 'size': valA = a.size; valB = b.size; break;
+                        case 'date': valA = a.lastModified; valB = b.lastModified; break;
+                        default: return 0;
+                    }
+                    if (valA < valB) return order === 'asc' ? -1 : 1;
+                    if (valA > valB) return order === 'asc' ? 1 : -1;
+                    return 0;
+                });
+            }
+
+            // 4. Clear previous display and reset counters
+            clearImageGrid();
+            renderedThumbnailsCount = 0;
+            currentPage = 1;
+
+
+            // 5. Render based on navigation mode
+            if (sampledAndSortedFiles.length === 0 && allImageFiles.length > 0) {
+                imageGridElement.innerHTML = '<div class="placeholder">根据当前参数，未能抽查到图片。</div>';
+                statusMessageElement.textContent = '未能抽查到图片。';
+                updatePaginationUI();
+                return;
+            } else if (sampledAndSortedFiles.length === 0 && allImageFiles.length === 0) {
+                 imageGridElement.innerHTML = '<div class="placeholder">请选择文件夹并应用设置。</div>';
+                 statusMessageElement.textContent = '请选择文件夹。';
+                 updatePaginationUI();
+                 return;
+            }
+
+
+            if (currentNavigationMode === 'pagination') {
+                totalPages = Math.ceil(sampledAndSortedFiles.length / currentBatchSize);
+                totalPages = Math.max(1, totalPages); // Ensure totalPages is at least 1 if there are items
+                renderCurrentPage();
+            } else { // Infinite scroll logic removed
+                // loadNextBatch();
+            }
+            statusMessageElement.textContent = `已抽查并排序 ${sampledAndSortedFiles.length} 张图片。`;
+
+            handleImageGridScroll();
+            isLoadingNextPageAutomatically = false; // Reset flag after page render
+        }
+
+
+        function clearImageGrid() {
+            imageGridElement.innerHTML = '';
+            // Any existing blob URLs for thumbnails are revoked when the img.onload happens or in createThumbnailElement
+        }
+
+        // --- Infinite Scroll & Pagination Shared Rendering ---
+        function renderThumbnails(filesToRender, startIndexOffset = 0) {
+            const fragment = document.createDocumentFragment();
+            filesToRender.forEach((file, index) => {
+                // The actual index in sampledAndSortedFiles is startIndexOffset + index
+                const actualFileIndex = sampledAndSortedFiles.indexOf(file);
+                if (actualFileIndex !== -1) { // Ensure file is found (should always be)
+                    const thumbItem = createThumbnailElement(file, actualFileIndex);
+                    fragment.appendChild(thumbItem);
+                }
+            });
+            imageGridElement.appendChild(fragment);
+        }
+
+
+        // --- Infinite Scroll Specific ---
+        // function loadNextBatch() { ... } // Removed function
+
+        // function handleInfiniteScroll() { ... } // Removed function
+
+        // --- Pagination Specific ---
+        function renderCurrentPage() {
+            if (sampledAndSortedFiles.length === 0) {
+                clearImageGrid();
+                imageGridElement.innerHTML = '<div class="placeholder">无图片可显示。</div>';
+                updatePaginationUI();
+                scrollToTopBtn.style.display = 'none'; // Hide scroll buttons if no content
+                scrollToBottomBtn.style.display = 'none';
+                return;
+            }
+            clearImageGrid();
+            const startIndex = (currentPage - 1) * currentBatchSize;
+            const endIndex = Math.min(startIndex + currentBatchSize, sampledAndSortedFiles.length);
+            displayedItems = sampledAndSortedFiles.slice(startIndex, endIndex);
+
+            renderThumbnails(displayedItems, startIndex);
+            updatePaginationUI();
+            imageGridElement.scrollTop = 0; // Scroll to top after page render
+            // Trigger scroll event manually once after rendering to check button visibility
+            handleImageGridScroll();
+
+            // 跳转页码输入框同步
+            gotoPageInput.value = currentPage;
+            pageSlider.value = currentPage; // Sync slider
+            pageSliderValue.textContent = `第 ${currentPage} 页`;
+        }
+
+        function updatePaginationUI() {
+            if (currentNavigationMode !== 'pagination' || sampledAndSortedFiles.length === 0) {
+                pageInfoElement.textContent = `第 0 / 0 页`;
+                prevPageButton.disabled = true;
+                nextPageButton.disabled = true;
+                gotoPageInput.value = 1;
+                gotoPageInput.max = 1;
+                gotoPageInput.disabled = true;
+                gotoPageBtn.disabled = true;
+                pageSlider.min = 1;
+                pageSlider.max = 1;
+                pageSlider.value = 1;
+                pageSlider.disabled = true;
+                pageSliderValue.textContent = `第 1 页`;
+                if (currentNavigationMode === 'pagination') paginationControlsElement.style.display = 'flex';
+                scrollToTopBtn.style.display = 'none'; // Also hide on empty/reset
+                scrollToBottomBtn.style.display = 'none';
+                return;
+            }
+            paginationControlsElement.style.display = 'flex';
+            totalPages = Math.ceil(sampledAndSortedFiles.length / currentBatchSize);
+            totalPages = Math.max(1, totalPages); // Ensure at least 1 page if items exist
+            currentPage = Math.max(1, Math.min(currentPage, totalPages)); // Clamp currentPage
+
+            pageInfoElement.textContent = `第 ${currentPage} / ${totalPages} 页`;
+            prevPageButton.disabled = currentPage === 1;
+            nextPageButton.disabled = currentPage === totalPages;
+            gotoPageInput.value = currentPage;
+            gotoPageInput.max = totalPages;
+            gotoPageInput.disabled = false;
+            gotoPageBtn.disabled = false;
+            pageSlider.min = 1;
+            pageSlider.max = totalPages;
+            pageSlider.value = currentPage;
+            pageSlider.disabled = totalPages <= 1;
+            pageSliderValue.textContent = `第 ${currentPage} 页`;
+        }
+
+        // Event listener for the page slider
+        pageSlider.addEventListener('input', () => {
+            pageSliderValue.textContent = `第 ${pageSlider.value} 页`;
+        });
+
+        pageSlider.addEventListener('change', () => {
+            const targetPage = parseInt(pageSlider.value);
+            if (targetPage !== currentPage) {
+                currentPage = targetPage;
+                renderCurrentPage();
+                gotoPageInput.value = currentPage; // Sync input field
+            }
+        });
+
+        function createThumbnailElement(file, actualIndexInSampledArray) {
+            const itemDiv = document.createElement('div');
+            itemDiv.className = 'thumbnail-item';
+            itemDiv.dataset.index = actualIndexInSampledArray; // Use actual index for lightbox
+
+            const img = document.createElement('img');
+            const objectURL = URL.createObjectURL(file);
+            img.src = objectURL;
+            img.alt = file.name;
+            img.loading = 'lazy';
+
+            const infoDiv = document.createElement('div');
+            infoDiv.className = 'thumbnail-info';
+            if (isInfoVisible) {
+                infoDiv.classList.add('visible');
+            }
+
+            const pName = document.createElement('p');
+            pName.className = 'name';
+            pName.textContent = file.name;
+            pName.title = file.name;
+            infoDiv.appendChild(pName);
+
+            const pSize = document.createElement('p');
+            pSize.textContent = `大小: ${(file.size / 1024).toFixed(2)} KB`;
+            infoDiv.appendChild(pSize);
+
+            const pDim = document.createElement('p');
+            pDim.textContent = '尺寸: 加载中...';
+            infoDiv.appendChild(pDim);
+
+            img.onload = () => {
+                pDim.textContent = `尺寸: ${img.naturalWidth} x ${img.naturalHeight}`;
+                URL.revokeObjectURL(objectURL); // Revoke after image is loaded and dimensions are read
+            };
+            img.onerror = () => {
+                pDim.textContent = '尺寸: 无法加载';
+                URL.revokeObjectURL(objectURL); // Also revoke on error
+            };
+
+            itemDiv.appendChild(img);
+            itemDiv.appendChild(infoDiv);
+            return itemDiv;
+        }
+
+
+        function handleGridClick(event) {
+            const targetItem = event.target.closest('.thumbnail-item');
+            if (targetItem && targetItem.dataset.index !== undefined) {
+                const index = parseInt(targetItem.dataset.index);
+                if (!isNaN(index) && index >=0 && index < sampledAndSortedFiles.length) {
+                    openLightbox(index);
+                } else {
+                    console.error("Invalid index for lightbox:", targetItem.dataset.index);
+                }
+            }
+        }
+
+        // --- Lightbox Functions ---
+        let lightboxObjectURL = null; // Store current lightbox blob URL to revoke it
+
+        function openLightbox(index) {
+            if (index < 0 || index >= sampledAndSortedFiles.length) return;
+
+            if (lightboxObjectURL) { // Revoke previous if any
+                URL.revokeObjectURL(lightboxObjectURL);
+                lightboxObjectURL = null;
+            }
+
+            currentLightboxIndex = index;
+            currentRotation = 0;
+            lightboxImage.style.transform = `rotate(0deg)`;
+
+            const file = sampledAndSortedFiles[currentLightboxIndex];
+            lightboxObjectURL = URL.createObjectURL(file); // Create new URL for lightbox
+            lightboxImage.src = lightboxObjectURL;
+            lightboxImage.alt = file.name;
+
+            // Populate info panel
+            lightboxInfoFilename.textContent = file.name;
+            lightboxInfoSize.textContent = `${(file.size / 1024).toFixed(2)} KB`;
+            lightboxInfoDate.textContent = new Date(file.lastModified).toLocaleDateString();
+
+            // Get dimensions once image is loaded into lightbox
+            const tempImg = new Image();
+            tempImg.onload = () => {
+                lightboxInfoDimensions.textContent = `${tempImg.naturalWidth} x ${tempImg.naturalHeight}`;
+            };
+            tempImg.onerror = () => {
+                lightboxInfoDimensions.textContent = "无法获取";
+            };
+            tempImg.src = lightboxObjectURL; // Use the same object URL
+
+            lightboxModal.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+
+            lightboxPrevButton.disabled = currentLightboxIndex === 0;
+            lightboxNextButton.disabled = currentLightboxIndex === sampledAndSortedFiles.length - 1;
+            copyFilenameFeedback.textContent = ''; // Clear previous feedback
+        }
+
+        function closeLightbox() {
+            if (lightboxObjectURL) {
+                URL.revokeObjectURL(lightboxObjectURL);
+                lightboxObjectURL = null;
+            }
+            lightboxImage.src = "#"; // Clear src
+            lightboxImage.alt = "";
+            lightboxModal.style.display = 'none';
+            document.body.style.overflow = 'auto';
+            currentLightboxIndex = -1;
+        }
+
+        function showLightboxImage(index) {
+            if (index < 0 || index >= sampledAndSortedFiles.length) return;
+            openLightbox(index); // openLightbox now handles revoking previous URL
+        }
+
+        function rotateLightboxImage() {
+            currentRotation = (currentRotation + 90) % 360;
+            lightboxImage.style.transform = `rotate(${currentRotation}deg)`;
+        }
+
+        function downloadLightboxImage() {
+            if (currentLightboxIndex === -1 || !sampledAndSortedFiles[currentLightboxIndex]) return;
+            const file = sampledAndSortedFiles[currentLightboxIndex];
+            const a = document.createElement('a');
+            // Create a fresh URL for download to avoid issues if lightboxObjectURL was revoked
+            const downloadUrl = URL.createObjectURL(file);
+            a.href = downloadUrl;
+            a.download = file.name;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(downloadUrl), 100); // Clean up download URL
+        }
+
+        function copyLightboxFilename() {
+            if (currentLightboxIndex === -1 || !sampledAndSortedFiles[currentLightboxIndex]) return;
+            const filename = sampledAndSortedFiles[currentLightboxIndex].name;
+            navigator.clipboard.writeText(filename).then(() => {
+                copyFilenameFeedback.textContent = "已复制!";
+                setTimeout(() => copyFilenameFeedback.textContent = '', 2000);
+            }).catch(err => {
+                copyFilenameFeedback.textContent = "复制失败!";
+                console.error('Failed to copy filename: ', err);
+                // Fallback for older browsers or insecure contexts (less common now)
+                try {
+                    const textArea = document.createElement("textarea");
+                    textArea.value = filename;
+                    textArea.style.position = "fixed"; // Invisible
+                    document.body.appendChild(textArea);
+                    textArea.focus();
+                    textArea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    copyFilenameFeedback.textContent = "已复制 (fallback)!";
+                    setTimeout(() => copyFilenameFeedback.textContent = '', 2000);
+                } catch (e) {
+                    copyFilenameFeedback.textContent = "复制失败 (fallback)!";
+                     console.error('Fallback copy failed: ', e);
+                }
+            });
+        }
+
+        function collapseHeader() {
+            if (!headerControlsElement.classList.contains('collapsed')) {
+                headerControlsElement.classList.add('collapsed');
+                toggleHeaderBtn.textContent = '展开工具栏';
+            }
+            if (autoCollapseTimer) {
+                clearTimeout(autoCollapseTimer);
+                autoCollapseTimer = null;
+            }
+        }
+
+        function triggerAutoCollapse() {
+            if (isAutoCollapseEnabled && !headerControlsElement.classList.contains('collapsed')) {
+                if (autoCollapseTimer) {
+                    clearTimeout(autoCollapseTimer);
+                }
+                autoCollapseTimer = setTimeout(collapseHeader, 1000); // 1 second
+            }
+        }
+
+        // Scroll buttons functionality
+        scrollToTopBtn.addEventListener('click', () => {
+            imageGridElement.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+
+        scrollToBottomBtn.addEventListener('click', () => {
+            imageGridElement.scrollTo({ top: imageGridElement.scrollHeight, behavior: 'smooth' });
+        });
+
+        function handleImageGridScroll() {
+            if (imageGridElement.scrollHeight > imageGridElement.clientHeight) {
+                scrollToTopBtn.style.display = 'flex';
+                scrollToBottomBtn.style.display = 'flex';
+
+                // Auto load next page if enabled and scrolled to bottom
+                if (isAutoLoadNextPageEnabled && 
+                    !isLoadingNextPageAutomatically &&
+                    currentPage < totalPages &&
+                    (imageGridElement.scrollTop + imageGridElement.clientHeight >= imageGridElement.scrollHeight - 50)) { // 50px tolerance
+                    isLoadingNextPageAutomatically = true; // Set flag
+                    console.log("Auto loading next page...");
+                    nextPageButton.click();
+                }
+
+            } else {
+                scrollToTopBtn.style.display = 'none';
+                scrollToBottomBtn.style.display = 'none';
+            }
+        }
+
+        // --- Initial Setup ---
+        function initialize() {
+            applySettingsManuallyButton.disabled = true; // Disabled until folder is selected
+            document.getElementById('selected-folder-name').textContent = '';
+            isAutoCollapseEnabled = autoCollapseToggleElement.checked; // Initialize based on DOM state
+            isAutoLoadNextPageEnabled = autoLoadNextToggleElement.checked;
+            updateNavigationMode(); // Set initial navigation mode UI
+            updateSampleValueControls(); // Initialize sample value controls correctly
+            handleGridParamsChange(); // Set initial grid columns from default input values
+            handleImageGridScroll(); // Initial check for scroll buttons
+
+            // Sync display values with initial input values for all sliders
+            sampleValueDisplay.textContent = sampleValueInput.value;
+            gridColsValueDisplay.textContent = gridColsInput.value;
+            gridColsSlider.value = gridColsInput.value; // Sync slider position
+            batchSizeValueDisplay.textContent = batchSizeInput.value;
+            batchSizeSlider.value = batchSizeInput.value; // Sync slider position
+
+            updatePaginationUI(); // Initialize pagination display
+            imageGridElement.innerHTML = '<div class="placeholder">请先选择图片文件夹。参数更改后会自动应用。</div>';
+        }
+        // Helper to call from event listeners that should update grid columns
+        function handleGridParamsChange() {
+            currentGridCols = parseInt(gridColsInput.value) || 5;
+            imageGridElement.style.gridTemplateColumns = `repeat(${currentGridCols}, 1fr)`;
+        }
+
+
+        initialize();
+
+    </script>
+</body>
+</html>

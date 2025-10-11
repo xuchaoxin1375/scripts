@@ -1,0 +1,17 @@
+requests
+python-magic
+pandas
+openpyxl
+woocommerce
+concurrent-log-handler
+mysql-connector-python
+notebook
+beautifulsoup4
+pymysql
+phpserialize
+unidecode
+tqdm
+pillow
+pillow-avif-plugin
+# dotenv
+# opencv-python

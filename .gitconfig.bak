@@ -1,0 +1,15 @@
+
+[user]
+	email = 838808930@qq.com
+	name = cxxu_11
+# [credential]
+# 	helper = cache --timeout 100000
+[credential]
+	helper = wincred
+[credential "helperselector"]
+	selected = <no helper>
+[init]
+	defualtBranch = main
+	defaultBranch = main
+[http "https://github.com"]
+	proxy = socks5://127.0.0.1:1080

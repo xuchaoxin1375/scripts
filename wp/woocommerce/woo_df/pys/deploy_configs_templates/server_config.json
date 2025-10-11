@@ -1,0 +1,78 @@
+{
+    "default": {
+        "bt_ssl": true,
+        "ssh": {
+            "port": " "
+        },
+        "mysql": {
+            "root_localhost": " ",
+            "root_password": " ",
+            "root_all": " ",
+            "mysql_port": " "
+        },
+        "cf": {
+            "ssl_mode": " ",
+            "security_mode": 1,
+            "default_forward_email": " "
+        }
+    },
+    "servers": {
+        "server1": {
+            "ip": " ",
+            "bt_key": " ",
+            "bt_panel": " ",
+            "bt_account": " ",
+            "bt_password": " ",
+            "bt_ssl": true,
+            "mysql": {
+                "root_localhost": " ",
+                "root_password": " ",
+                "root_all": " ",
+                "root_all_password": " ",
+                "port": " "
+            },
+            "ssh": {
+                "port": " ",
+                "user": " ",
+                "password": " "
+            },
+            "openlist": {},
+            "cf_account": {
+                "cf_api_email": " ",
+                "cf_api_key": " ",
+                "is_global_key": true
+            }
+        },
+        "server2": {
+            "ip": " ",
+            "bt_key": " ",
+            "bt_panel": " ",
+            "bt_account": " ",
+            "bt_password": " ",
+            "bt_ssl": true,
+            "mysql": {
+                "root_localhost": " ",
+                "root_password": " ",
+                "root_all": " ",
+                "root_all_password": " ",
+                "port": " "
+            },
+            "ssh": {
+                "port": " ",
+                "user": " ",
+                "password": " "
+            },
+            "openlist": {
+                "port": " ",
+                "admin": " ",
+                "password": " ",
+                "config_file": " "
+            },
+            "cf_account": {
+                "cf_api_email": " ",
+                "cf_api_key": " ",
+                "is_global_key": true
+            }
+        }
+    }
+}

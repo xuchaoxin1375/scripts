@@ -1,0 +1,104 @@
+{
+    "product": {
+        "id": 8158912151705,
+        "title": "1000 pcs 1/4'' x 3/8'' Nickel Silver Rivet Posts #Z4196PS",
+        "body_html": "<p>1000 pcs 6mm (3/8\"x1/4\") nickel silver semi-tubular metal rivet posts. Ideal for your leather project and other materials. Special blowout price while supplies last.</p>\n<ul>\n<li>chromed nickel finish</li>\n<li>extra durable rivet</li>\n<li>for leather or other thin materials</li>\n<li>for your next craft project</li>\n</ul>\n<center>\n<p><strong><span style=\"color: #ff0000;\">IMPORTANT SPECIFICATIONS:</span></strong></p>\n</center>\n<p><strong>MADE IN USA:</strong> This item is American Made and sorted by our Jamin Leather's® talented manufacturing staff or company partner.<br><br><strong>COLOR:</strong> silver</p>\n<p> </p>",
+        "vendor": "Jamin Leather® Craft Supplies",
+        "product_type": "",
+        "created_at": "2024-07-24T01:54:48-04:00",
+        "handle": "1-4-x-3-8-nickel-silver-rivet-posts-1000-pcs",
+        "updated_at": "2025-06-11T03:23:03-04:00",
+        "published_at": "2019-10-17T17:13:40-04:00",
+        "template_suffix": null,
+        "published_scope": "global",
+        "tags": "Craft-Supplies, UPOIZL1OS371, UPORPU3J0587, UPOXNIGK3693",
+        "variants": [
+            {
+                "id": 44652062408857,
+                "product_id": 8158912151705,
+                "title": "Default",
+                "price": "14.00",
+                "sku": "Z4196PS",
+                "position": 2,
+                "compare_at_price": "66.00",
+                "fulfillment_service": "manual",
+                "inventory_management": "shopify",
+                "option1": "Default",
+                "option2": null,
+                "option3": null,
+                "created_at": "2024-07-24T01:54:53-04:00",
+                "updated_at": "2025-06-11T03:23:03-04:00",
+                "taxable": true,
+                "barcode": "647267340489",
+                "grams": 907,
+                "image_id": null,
+                "weight": 2.0,
+                "weight_unit": "lb",
+                "requires_shipping": true,
+                "price_currency": "SGD",
+                "compare_at_price_currency": "SGD"
+            }
+        ],
+        "options": [
+            {
+                "id": 10316553257113,
+                "product_id": 8158912151705,
+                "name": "Title",
+                "position": 1,
+                "values": [
+                    "Default"
+                ]
+            }
+        ],
+        "images": [
+            {
+                "id": 39043854074009,
+                "product_id": 8158912151705,
+                "position": 1,
+                "created_at": "2024-07-24T01:54:48-04:00",
+                "updated_at": "2024-07-24T01:54:50-04:00",
+                "alt": "1000 pcs 1/4'' x 3/8'' Nickel Silver Rivet Posts #Z4196PS",
+                "width": 1024,
+                "height": 1024,
+                "src": "https://cdn.shopify.com/s/files/1/0645/7786/3833/files/file_048df75c-9e24-420f-b38a-0fe4bc8418b3.jpg?v=1721800490",
+                "variant_ids": []
+            },
+            {
+                "id": 39043853975705,
+                "product_id": 8158912151705,
+                "position": 2,
+                "created_at": "2024-07-24T01:54:48-04:00",
+                "updated_at": "2024-07-24T01:54:49-04:00",
+                "alt": "1000 pcs 1/4'' x 3/8'' Nickel Silver Rivet Posts #Z4196PS",
+                "width": 380,
+                "height": 298,
+                "src": "https://cdn.shopify.com/s/files/1/0645/7786/3833/files/file_ce0e381c-7125-476c-81a5-18427e2cb594.jpg?v=1721800489",
+                "variant_ids": []
+            },
+            {
+                "id": 39043854041241,
+                "product_id": 8158912151705,
+                "position": 3,
+                "created_at": "2024-07-24T01:54:48-04:00",
+                "updated_at": "2024-07-24T01:54:50-04:00",
+                "alt": "1000 pcs 1/4'' x 3/8'' Nickel Silver Rivet Posts #Z4196PS",
+                "width": 1024,
+                "height": 1024,
+                "src": "https://cdn.shopify.com/s/files/1/0645/7786/3833/files/file_118af94c-0f66-4660-b0a6-ffea60c3c867.jpg?v=1721800490",
+                "variant_ids": []
+            }
+        ],
+        "image": {
+            "id": 39043854074009,
+            "product_id": 8158912151705,
+            "position": 1,
+            "created_at": "2024-07-24T01:54:48-04:00",
+            "updated_at": "2024-07-24T01:54:50-04:00",
+            "alt": "1000 pcs 1/4'' x 3/8'' Nickel Silver Rivet Posts #Z4196PS",
+            "width": 1024,
+            "height": 1024,
+            "src": "https://cdn.shopify.com/s/files/1/0645/7786/3833/files/file_048df75c-9e24-420f-b38a-0fe4bc8418b3.jpg?v=1721800490",
+            "variant_ids": []
+        }
+    }
+}

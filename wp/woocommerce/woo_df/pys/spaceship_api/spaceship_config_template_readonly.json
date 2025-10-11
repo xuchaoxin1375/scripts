@@ -1,0 +1,32 @@
+{
+    "account":"default_account_name",
+    "api_key": "your_short_api_key",
+    "api_secret": "your_secret_long_string",
+    "accounts": [
+        {
+            "account": "account1",
+            "api_key": "your_short_api_key1",
+            "api_secret": "your_secret_long_string1"
+        },
+        {
+            "account": "",
+            "api_key": "",
+            "api_secret": ""
+        }
+    ],
+    "nameserver1": "",
+    "nameserver2": "",
+    "nameservers": {
+        "group1": {
+            "nameserver1": "",
+            "nameserver2": ""
+        },
+        "group2": {
+            "nameserver1": "",
+            "nameserver2": ""
+        }
+    },
+    "take": 100,
+    "skip": 0,
+    "order_by": "expirationDate"
+}
