@@ -1305,12 +1305,49 @@ function Deploy-Typora
 {
     <# 
     .SYNOPSIS
-    部署typora:包括激活和主题以及快捷键配置
+    导入部分typora配置
+    .DESCRIPTION
+    部署typora:包括主题以及快捷键配置导入
+    可选的老版本typora破解补丁打入
+    可选设置markdown文件的默认打开方式(调用assoc和ftype命令进行设置,这会改动注册表)
+
+
+    .Parameter TyporaHome
+    指定typora安装目录
+    .Parameter InstalledByScoop
+    指定typora是否是通过scoop安装的,否则检查默认安装目录
+    .Notes
+    可能需要管理员权限运行
+    细节设置(自动保存,关闭语法检查,选择指定主题等不会还原需要手动选择)
     .Notes
     部署需要在具有pwshEnv环境的命令行下执行,否则会先导入环境变量,然后进行下一步
+    如果使用的版本是已经自带激活的,就可以不使用PatchWinmm开关导入补丁,避免多余的副作用
+    .Notes
+    较新版本的typroa设置选项中提供了资源管理器右键菜单选项,可以右键新建markdown文件(md)
+    https://support.typora.io/New-File-in-Context/
+    typora安装版可能会注册打开方式:
+        Typora.markdown="C:\Program Files\Typora\Typora.exe" "%1"
+        Typora.md="C:\Program Files\Typora\Typora.exe" "%1"
+        Typora.mdown="C:\Program Files\Typora\Typora.exe" "%1"
+        Typora.mkd="C:\Program Files\Typora\Typora.exe" "%1"
+        Typora.mmd="C:\Program Files\Typora\Typora.exe" "%1"
+        Typora.text="C:\Program Files\Typora\Typora.exe" "%1"
+
+    有的魔改版本提供了注册了格式关联,右键菜单打开方式的bat脚本
+    但是注意,如果是用户创建的通过typora打开指定目录的快捷方式
+    (这里头的打开方式已经被写死在快捷方式的属性中,不会受markdown本体打开方式设置的影响),
+    尤其是对于安装了多个不同版本的typora的环境下
+
+    .EXAMPLE
+    为通过scoop安装的typora进行部署
+    Deploy-Typora -TyporaHome $scoop_home\apps\typora\current
     #>
     param(
-        [switch]$InstalledByScoop
+        [switch]$InstalledByScoop,
+        $TyporaHome = "$scoop_home\apps\typora\current",
+        $Typora_Config = "$home\AppData\Roaming\typora\conf",
+        [switch]$PatchWinmm,
+        [swithc]$OpenWithTypora
     )
 
 
@@ -1347,25 +1384,27 @@ function Deploy-Typora
     Write-Host 'continue to deploy...' -BackgroundColor Yellow
 
     # 开始建立链接(使用symboliclink支持跨分区的链接文件夹和文件通吃)
-    ##部署主题
-    if ($InstalledByScoop)
+
+    # 设置注册.md扩展名为文件类型MarkdownFile
+    # 这里的.md是标准markdown文件的扩展名,而MarkdownFile是可以宽松自定义的名字，也可以是别的名字,但是要注意在后面的ftype命令中使用同一个文件类型名字
+    cmd /c assoc .md=MarkdownFile 
+
+
+    # 注册Markdown文件的打开方式(其中MarkdownFile是上面assoc命令设置的文件类型名)🎈
+    # 这个命令不会设置默认打开方式,只是注册了打开方式,除非此前没有其他程序注册打开方式
+    if($OpenWithTypora)
     {
-        $typora_home = "$scoop_global\apps\typora\current"
-        # $Typora_Scoop_Themes,
-        # $Typora_Themes
-        # $Typora_Scoop_Config
-        # $Typora_Config = "$scoop_global/apps/typora/current"
-        
-        # 设置默认打开方式
-        cmd /c assoc .md=MarkdownFile #这里的MarkdownFile是自定义的名字，也可以是别的名字,注意在ftype中使用同一个文件类型名字
-        cmd /c ftype MarkdownFile=C:\ProgramData\scoop\apps\typora\current\Typora.exe %1 
+
+        cmd /c ftype MarkdownFile=$TyporaHome\Typora.exe %1 
+        # 如果要取消,可以使用下面的命令:(=后面留空即可),但是可能不会完全取消,需要检查是否有同地位的注册语句关联相同后缀,设置后可以用新的值覆盖
+        cmd /c ftype MarkdownFile= 
+
     }
-    $winmm = "$typora_home\winmm.dll"
-    $patcher = "$configs\typora\winmm.dll"
+
     $items = @($Typora_Themes , $Typora_Config)
     # 移除原有的相关目录,以便能够创建新的符号链接
     $items | ForEach-Object {
-
+        
         Remove-Item -Path $_ -Recurse -Force -Verbose
     } 
     # 按照原来的位置创建新的符号链接
@@ -1375,8 +1414,14 @@ function Deploy-Typora
     New-Item -ItemType SymbolicLink -Path $Typora_Config -Target $Typora_Config_backup -Force -Verbose
         
     # New-Item -ItemType SymbolicLink -Path $Typora_Config -Target $Typora_Config_backup -Force -Verbose
-    # 打入破解补丁(不一定对所有版本通用)
-    New-Item -ItemType SymbolicLink -Path $winmm -Value $patcher -Force
+    if($PatchWinmm)
+    {
+            
+        $winmm = "$TyporaHome\winmm.dll"
+        $patcher = "$configs\typora\winmm.dll"
+        # 打入破解补丁(替换winmm.dll)不一定对所有版本通用(最高1.9.5)
+        New-Item -ItemType SymbolicLink -Path $winmm -Value $patcher -Force
+    }
 
     
     $Note = @'
@@ -1854,8 +1899,10 @@ function Deploy-WtSettings
         if(Test-Path $WtScoopConfig)
         {
             Write-Verbose "$WtScoopConfig exist"
-        }else{
-            $WtScoopConfig="$scoop_home\apps\windows-terminal\current\settings\settings.json"
+        }
+        else
+        {
+            $WtScoopConfig = "$scoop_home\apps\windows-terminal\current\settings\settings.json"
             Write-Verbose "$wtScoopConfig does not exist,try another candidate path:[$wtScoopConfig]"
 
         }
