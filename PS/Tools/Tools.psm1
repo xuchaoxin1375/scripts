@@ -6,6 +6,106 @@ function Get-CxxuPsModuleVersoin
     Get-RepositoryVersion -Repository $scripts
     
 }
+# 清理mysql日志释放空间
+function Add-LinesAfterMark
+{
+    <# 
+    .SYNOPSIS
+        在指定的 Mark 后添加配置行，如果配置行已存在则跳过。
+        如果配置项不存在，则添加该配置项并保存。
+    .PARAMETER Path
+        配置文件路径。
+    .PARAMETER Mark
+        配置项的标记。内容将插入其后
+    .PARAMETER ConfigLine
+        要添加的配置行。
+
+    .EXAMPLE
+    # 调用示例
+    if($env:MYSQL_HOME){
+        $mysql_home = $env:MYSQL_HOME
+    }elseif($env:MYSQL_BIN_HOME){
+        $mysql_home="$env:MYSQL_BIN_HOME/../"
+    }
+
+    mysql -uroot -p"$env:MySqlKey_LOCAL" -e "PURGE BINARY LOGS BEFORE '2050-11-01 00:00:00';"
+    Add-LinesAfterMark -Path "$mysql_bin_home\..\my.ini" -Mark "[mysqld]" -ConfigLine "skip-log-bin"
+    Remove-Item "$mysql_home\data\binlog*.0*" -Force -Confirm
+    mysql -uroot -p"$env:MySqlKey_LOCAL" -e "show binary logs;"
+    
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        
+        [Parameter(Mandatory = $true)]
+        [alias("Tag")]
+        [string]$Mark,
+        
+        [Parameter(Mandatory = $true)]
+        [alias("Lines","NewLines","Content")]
+        [string]$ConfigLine
+    )
+    
+    # 首先检查配置项是否已经存在
+    $content = Get-Content $Path
+    if ($content -contains $ConfigLine)
+    {
+        Write-Host "配置项 '$ConfigLine' 已存在，跳过处理"
+        return
+    }
+    
+    # 使用 StreamReader 和 StreamWriter 实现高性能读写
+    $tempFile = [System.IO.Path]::GetTempFileName()
+    
+    $reader = $null
+    $writer = $null
+    
+    try
+    {
+        $reader = [System.IO.File]::OpenText($Path)
+        $writer = [System.IO.File]::CreateText($tempFile)
+        $MarkFound = $false
+        
+        while (-not $reader.EndOfStream)
+        {
+            $line = $reader.ReadLine()
+            $writer.WriteLine($line)
+            
+            # 检查是否匹配目标 Mark 且尚未添加配置
+            if (-not $MarkFound -and $line -eq $Mark)
+            {
+                $writer.WriteLine($ConfigLine)
+                $MarkFound = $true
+            }
+        }
+        
+        # 关闭资源
+        $reader.Close()
+        $writer.Close()
+        
+        # 替换原文件
+        [System.IO.File]::Copy($tempFile, $Path, $true)
+        Write-Host "成功添加配置项 '$ConfigLine'"
+    }
+    catch
+    {
+        # 如果发生错误，确保清理资源
+        if ($reader  ) { $reader.Close() }
+        if ($writer  ) { $writer.Close() }
+        throw
+    }
+    finally
+    {
+        # 清理临时文件
+        if (Test-Path $tempFile)
+        {
+            Remove-Item $tempFile -Force
+        }
+    }
+}
+
 
 function Compress-Tar
 {

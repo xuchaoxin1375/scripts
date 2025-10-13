@@ -136,8 +136,11 @@ mysql和nginx路径配置到path中
 ```powershell
 
 #$MYSQL_BIN_HOME = "C:\phpstudy_pro\extensions\MySQL5.7.26\bin" #弃用5.7,现在使用8+的版本
-$MYSQL_BIN_HOME = "C:\phpstudy_pro\extensions\MySQL8.0.12\bin"
-# setx MYSQL_BIN_HOME $MYSQL_BIN_HOME
+$MYSQL_HOME="C:\phpstudy_pro\extensions\MySQL8.0.12"
+$MYSQL_BIN_HOME = "$MYSQL_HOME\bin"
+setx MYSQL_HOME $MYSQL_HOME
+setx MYSQL_BIN_HOME $MYSQL_BIN_HOME
+
 [Environment]::SetEnvironmentVariable("MYSQL_BIN_HOME", $MYSQL_BIN_HOME, [EnvironmentVariableTarget]::User)
 
 $newPath = [Environment]::GetEnvironmentVariable("PATH", [EnvironmentVariableTarget]::User) + ";%MYSQL_BIN_HOME%"

@@ -50,15 +50,31 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ================== 邮箱来源 ==================
+
+# 兼容Windows换行，去除首尾空白，跳过空行和#开头行，提高容错能力
 if [[ -n "$ARG_EMAIL_FILE" ]]; then
     if [[ ! -f "$ARG_EMAIL_FILE" ]]; then
         echo "❌ 邮箱文件不存在: $ARG_EMAIL_FILE"
         exit 1
     fi
-    while IFS= read -r line; do
-        line="$(echo "$line" | xargs)"   # 去掉首尾空格
-        # 跳过空行、注释行（忽略前导空格）、无@行
-        if [[ -z "$line" ]] || [[ "$line" =~ ^[[:space:]]*# ]] || [[ "$line" != *"@"* ]]; then
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        # 去除Windows换行符和首尾空白
+        line="$(echo "$line" | tr -d '\r' | xargs)"
+        # 跳过空行、#开头（忽略前导空格）、无@行
+        if [[ -z "$line" ]]; then
+            continue
+        fi
+        # 判断是否为注释行（允许前导空格）
+        if [[ "$line" =~ ^[[:space:]]*# ]]; then
+            continue
+        fi
+        # 跳过无@的行
+        if [[ "$line" != *"@"* ]]; then
+            continue
+        fi
+        # 简单邮箱格式校验（可选）
+        if ! [[ "$line" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
+            echo "⚠️  跳过格式异常的邮箱: $line" >&2
             continue
         fi
         EMAILS+=("$line")
@@ -128,4 +144,4 @@ for EMAIL in "${EMAILS[@]}"; do
 done
 
 echo "🎈 查询完成，结果已保存至: $OUTPUT_FILE"
-cat "$OUTPUT_FILE"# 
+cat "$OUTPUT_FILE"

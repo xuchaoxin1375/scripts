@@ -492,6 +492,7 @@ function Confirm-WpEnvironment
     }
 
 }
+
 function Deploy-WpSitesLocal
 {
     <# 
@@ -915,6 +916,16 @@ function Get-ServerList
 }
 function Update-WpFunctionsphpOnServers
 {
+    <# 
+    .SYNOPSIS
+    批量更新服务器上的Wordpress函数文件
+    .PARAMETER Path
+    函数文件路径,默认值为"$wp_plugins/functions.php"
+    .PARAMETER Target
+    上传文件到目标目录,默认值为"/www/"
+    .PARAMETER ServerConfig
+    服务器配置文件路径,默认值为"$server_config"
+    #>
     param (
         $Path = "$wp_plugins/functions.php",
         # 注意,Target目录在远程服务器上应该存在,否则scp上传会失败(scp不会创建缺失的中间路径目录),-r选在跟也不会帮助你创建缺失起始目录
@@ -922,13 +933,34 @@ function Update-WpFunctionsphpOnServers
         $ServerConfig = $server_config
     )
     $servers = Get-ServerList -Path $ServerConfig
-    Write-Host "servers:$servers"
     $servers.ip | ForEach-Object {
         Write-Host "Updating functions.php to $_"
         # Push-ByScp -Server $_ -SourcePath $Path -TargetPath $Target  -Verbose
         scp -r $Path root@"$_":/www/
         ssh root@$_ "bash /www/sh/wp-functions-update/update_wp_functions.sh --src /www/functions.php"
     } 
+    
+}
+function Get-WpOrdersByEmailOnServers
+{
+    param (
+        [Alias('Email')]$Path = "$desktop/emails.txt",
+        $ServerConfig = $server_config,
+        $scriptPath = "/www/sh/check_order_email.sh"
+    )
+    $servers = Get-ServerList -Path $ServerConfig
+    foreach ($server in $servers.ip)
+    {
+        Write-Host "Getting orders from $($server)"
+        $fileName = Split-Path $Path -Leaf
+        # Get-WpOrdersByEmail -Email $Path -Server $server
+        scp -r $Path root@"$server":/www/
+        $fileOnServer = "/www/$fileName"
+        ssh root@$server "bash $scriptPath -f $fileOnServer -o /www/found_orders.txt"
+    }
+    foreach ($server in $servers.ip){
+        ssh root@$server "cat /www/found_orders.txt"
+    }
     
 }
 function Update-WpPluginsDFOnServers

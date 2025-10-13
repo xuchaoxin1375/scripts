@@ -4,7 +4,7 @@
 注意管理员权限powershell窗口运行🎈
 
 ```powershell
-Deploy-SmbSharing -Path C:\share\df\LocoySpider -ShareName df -Permission Read -SmbUser reader -SmbUserkey readonly
+Deploy-SmbSharing -Path C:\share\df\ -ShareName df -Permission Read -SmbUser reader -SmbUserkey readonly
 ```
 ```powershell
 Deploy-SmbSharing -Path C:\shareTemp -ShareName dfc -Permission change -SmbUser shareTemp -SmbUserkey 1
