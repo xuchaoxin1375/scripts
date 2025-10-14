@@ -1343,11 +1343,11 @@ function Deploy-Typora
     Deploy-Typora -TyporaHome $scoop_home\apps\typora\current
     #>
     param(
-        [switch]$InstalledByScoop,
+        # [switch]$InstalledByScoop,
         $TyporaHome = "$scoop_home\apps\typora\current",
         $Typora_Config = "$home\AppData\Roaming\typora\conf",
         [switch]$PatchWinmm,
-        [swithc]$OpenWithTypora
+        [switch]$OpenWithTypora
     )
 
 
