@@ -26,7 +26,7 @@ import time
 import requests
 
 DESKTOP = r"C:/Users/Administrator/Desktop"
-DEPLOY_CONFIGS=f"{DESKTOP}/deploy_configs"
+DEPLOY_CONFIGS = f"{DESKTOP}/deploy_configs"
 # 默认配置文件路径
 DEFAULT_CONFIG_PATH = os.path.join(DEPLOY_CONFIGS, "spaceship_config.json")
 
@@ -52,6 +52,8 @@ class APIClient:
         self.domains_in_all_accounts = []
         self.suspended_domains = []
         self.timeout = timeout
+        # 是否通过用户选择的方式指定账号(如果是,则查询域名时就尝试其他账号)
+        self.account_select_by_user = False
 
     def get_accounts(self):
         """获取配置文件中所有账号信息的易于检索的字典形式"""
@@ -322,12 +324,14 @@ class APIClient:
         res = None
         try:
             res = self._request("GET", f"/domains/{domain}")
-            print(f"account:{self.account}:API请求{domain}成功!")
+            if res:
+                print(f"account:{self.account}:API请求{domain}成功!")
         except Exception:
             print(
                 f"\taccount:{self.account}:API请求失败或目标{domain}不存在于此账户: ",
                 file=sys.stderr,
             )
+
         # if res:
         #     print(res)
         return res
@@ -626,9 +630,11 @@ def get_auth(config_path, args=None):
             sys.exit(1)
         else:
             account = accounts[account_name_idx - 1]
+            
             key = account.get("api_key")
             secret = account.get("api_secret")
             print(f"选择的账号: {account_name_idx} - {account['account']} 🎈")
+            config["account_select_by_user"] = True
     # 如果环境变量中配置了SP_KEY和SP_SECRET,则使用环境变量的值,否则使用配置文件中的值
     key_env = os.environ.get("SP_KEY")
     secret_env = os.environ.get("SP_SECRET")

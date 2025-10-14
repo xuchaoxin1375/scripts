@@ -947,18 +947,32 @@ function Get-WpOrdersByEmailOnServers
         [Alias('Email')]$Path = "$desktop/emails.txt",
         $ServerConfig = $server_config,
         $scriptPath = "/www/sh/check_order_email.sh"
+        
     )
     $servers = Get-ServerList -Path $ServerConfig
+    foreach ($server in $servers)
+    {
+        $ip = $server.ip
+        Write-Host "Getting orders from $($ip)"
+        $fileName = Split-Path $Path -Leaf
+        $fileOnServer = "/www/$fileName"
+        # Get-WpOrdersByEmail -Email $Path -Server $server
+        $mysql = $server.mysql
+
+        $user = $mysql.root_localhost
+        $password = $mysql.root_password
+        # $port = $mysql.port
+        
+        Write-Host "Check orders on $ip with user:$user,password:$password"
+        Write-Host "Email file: $fileOnServer on server"
+
+        scp -r $Path root@"$ip":/www/
+
+
+        ssh root@$ip "cat -n $fileOnServer && bash $scriptPath -f $fileOnServer -o /www/found_orders.txt -u $user -p '$password'"
+    }
     foreach ($server in $servers.ip)
     {
-        Write-Host "Getting orders from $($server)"
-        $fileName = Split-Path $Path -Leaf
-        # Get-WpOrdersByEmail -Email $Path -Server $server
-        scp -r $Path root@"$server":/www/
-        $fileOnServer = "/www/$fileName"
-        ssh root@$server "bash $scriptPath -f $fileOnServer -o /www/found_orders.txt"
-    }
-    foreach ($server in $servers.ip){
         ssh root@$server "cat /www/found_orders.txt"
     }
     
