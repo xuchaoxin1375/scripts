@@ -1,4 +1,5 @@
 requests
+types-requests
 python-magic-bin
 pandas
 openpyxl
@@ -15,9 +16,9 @@ pillow
 Wand
 pillow-avif-plugin
 cloudflare
+
 # please run:[  playwright install  ] this command in your terminal to install playwright browser automation tool
 playwright
 playwright_stealth
-
 # dotenv
 # opencv-python

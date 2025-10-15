@@ -3,6 +3,7 @@ spaceship 域名管理API封装客户端程序
 支持常用的域名管理功能,详情查看配套的readme文档
 最核心的功能是域名列举,域名信息查看和域名服务器(nameservers)的修改(这对于cloudflare配置来说是重要的)
 
+
 开发参考spaceship API文档:
 https://docs.spaceship.dev/
 
@@ -12,6 +13,11 @@ https://spaceship.dev/api/
 这里APIClient可以作为一个模块单独存放
 而main函数可以分离出去
 此外,APIClient内的请求不做重试处理,外部调用api对象的时候自行添加配置重试代码
+
+FAQ:
+1.域名被取消(最严重的一级,不仅仅是被封(suspend)),api可能查询不到
+2.运行此命令的环境(尤其是代理如果配置不当)可能会影响api请求,导致查询不到内容(即使你确定域名存在且正常)
+
 
 """
 
@@ -24,8 +30,11 @@ import sys
 import time
 
 import requests
+print("spaceship_api_client version:1.0")
+# 跨平台兼容的方法
+home = os.environ.get("USERPROFILE") or os.environ.get("HOME")
 
-DESKTOP = r"C:/Users/Administrator/Desktop"
+DESKTOP = rf"{home}/Desktop"
 DEPLOY_CONFIGS = f"{DESKTOP}/deploy_configs"
 # 默认配置文件路径
 DEFAULT_CONFIG_PATH = os.path.join(DEPLOY_CONFIGS, "spaceship_config.json")
@@ -630,7 +639,7 @@ def get_auth(config_path, args=None):
             sys.exit(1)
         else:
             account = accounts[account_name_idx - 1]
-            
+
             key = account.get("api_key")
             secret = account.get("api_secret")
             print(f"选择的账号: {account_name_idx} - {account['account']} 🎈")
@@ -671,8 +680,7 @@ def parse_args():
         "--config",
         type=str,
         default=DEFAULT_CONFIG_PATH,
-        # default="spaceship_config.json",
-        help="配置文件路径，默认spaceship_config.json",
+        help="配置文件路径",
     )
     subparsers = parser.add_subparsers(dest="command", required=True, help="功能命令")
     # 域名相关
