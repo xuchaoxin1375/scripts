@@ -2,6 +2,9 @@
 .SYNOPSIS 
 本地wordpress模板functions.php批量覆盖
 递归查找合适的目录将functions.php插件复制到其中
+.EXAMPLE
+. $desktop/update_functions.ps1 -wp_sites_dir $wp_sites -verbose  # -function_file ./functions.php 
+. $desktop/update_functions.ps1 -wp_sites_dir $my_wp_sites -verbose  # -function_file ./functions.php 
 
 #>
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
