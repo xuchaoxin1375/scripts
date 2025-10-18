@@ -213,6 +213,8 @@ ls *.txt |%{Get-HtmlFromLinks -Path $_ -OutputDir htmls -Threads 10 }
 
 > 暂时不支持断点进度恢复,重新下载会丢失进度!
 
+另外还有一个命令`Get-SourceFromLinksList`功能类似,但是单线程,适合对线程限制的网站
+
 ### python调用playwright方案下载
 
 如果curl方案下不动,则可以尝试无头浏览器方案

@@ -123,7 +123,9 @@ logger.info("SEP_PATTERN: %s", URL_SEP_PATTERN)
 COOKIES = {"sessionid": "abc123xyz", "csrftoken": "csrf_token_here"}
 
 
-def download_by_iwr(url, output_path, user_agent=None, timeout=TIMEOUT, verify_ssl=True):
+def download_by_iwr(
+    url, output_path, user_agent=None, timeout=TIMEOUT, verify_ssl=True
+):
     """
     使用 PowerShell 的 Invoke-WebRequest 下载指定 URL 到本地文件。
 
@@ -241,7 +243,11 @@ def download_by_curl(
 
     # 构建 curl 命令参数(基础参数,建议移动到函数默认参数中)
 
-    cmd = ["curl", "-f", "--retry", "3", "--retry-delay", "5"]
+    cmd = [
+        "curl",
+        "-f",
+        #    , "--retry", "1", "--retry-delay", "2"
+    ]
     # 忽略证书安全检查
     cmd += ["-k", "--ssl-no-revoke"]
 

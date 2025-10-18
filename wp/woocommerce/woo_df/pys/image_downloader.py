@@ -254,10 +254,10 @@ def main():
             parse_image_sources(
                 file=file, args=args, lines=lines, selected_ids=selected_csv_field_ids
             )
-            
+
         if lines:
             print(f"读取行数: {len(lines)}")
-          
+
         else:
             error("读取行数为0,请检查参数")
             exit(1)
@@ -322,7 +322,8 @@ def main():
             lines = [
                 (name, _)
                 for name, _ in lines
-                if fh.get_filebasename_from_url_or_path(name) not in img_names_existed #这里进行查重,仅比较图片名字(不包括后缀,使用对应的函数截取图片基名)
+                if fh.get_filebasename_from_url_or_path(name)
+                not in img_names_existed  # 这里进行查重,仅比较图片名字(不包括后缀,使用对应的函数截取图片基名)
             ]
             # print(lines,"🎈🎈")
             # return

@@ -44,7 +44,7 @@ function Add-LinesAfterMark
         [string]$Mark,
         
         [Parameter(Mandatory = $true)]
-        [alias("Lines","NewLines","Content")]
+        [alias("Lines", "NewLines", "Content")]
         [string]$ConfigLine
     )
     
@@ -474,7 +474,7 @@ function Compress-ZstdPackageDev
 
     $OutputFileTar = "$DefaultOutputDir/${dirName}${TarExtensionField}"
     # 临时tar文件(被zstd压缩后将会被删除)
-    $tempraw="$DefaultOutputDir/${dirName}"
+    $tempraw = "$DefaultOutputDir/${dirName}"
     $TempTar = "$tempraw.tar" # compress-tar 打包文件(而非目录)时可能因为参数会跳过处理,后缀不一定是tar文件,建议判断被压缩对象然后分情况处理
     # 未指定输出路径时构造输出路径(包括输出目录和文件名)
     if ($OutputFile -eq "")
@@ -489,11 +489,13 @@ function Compress-ZstdPackageDev
     if (Test-Path $Path -PathType Container)
     {
         Compress-Tar -Directory $Path -OutputFile $TempTar 
-        $tempfile=$TempTar
-    }else{
+        $tempfile = $TempTar
+    }
+    else
+    {
         Write-Warning "Path is not a directory, skip tar single file: $Path"
         Copy-Item $Path $tempraw -Verbose -Force
-        $tempfile=$tempraw
+        $tempfile = $tempraw
     }
 
     # 若zstd.exe存在,则使用zstd压缩
@@ -1021,6 +1023,8 @@ function Test-UrlOrHostAvailability
         $Path,
         [parameter(Mandatory = $true, ParameterSetName = 'FromUrls')]
         $Urls,
+        $UserAgent = $agent,
+        $Method = 'Head',
         $TimeOutSec = 30
     )
     
@@ -1069,7 +1073,9 @@ function Test-UrlOrHostAvailability
         {
             # 发送head请求轻量判断网站的可用性(但是有些网站不支持Head请求,会引起报错,后面会用get请求重试)
             $TimeOutSec = $using:TimeOutSec
-            $response = Invoke-WebRequest -Uri $url -Method HEAD -TimeoutSec $TimeOutSec -ErrorAction Stop -SkipCertificateCheck
+            $UserAgent = $using:UserAgent
+            $Method = $using:Method
+            $response = Invoke-WebRequest -Uri $url -UserAgent $UserAgent -Method $Method -TimeoutSec $TimeOutSec -ErrorAction Stop -SkipCertificateCheck -Verbose:$VerbosePreference
             # 填写返回数据对象中对应的字段
             $result.StatusCode = $response.StatusCode
             $result.StatusDescription = $response.StatusDescription
@@ -1108,6 +1114,7 @@ function Update-SSNameServers
     调用Python脚本更新Spaceship域名的DNS服务器信息
     .DESCRIPTION
     核心步骤是调用python脚本来执行更新
+    .NOTES
     PS> py .\update_nameservers.py -h
     usage: update_nameservers.py [-h] [-d DOMAINS_FILE] [-c CONFIG] [--dry-run] [-v]
 
@@ -1121,6 +1128,12 @@ function Update-SSNameServers
                             SpaceShip API配置文件路径 (json)
     --dry-run             仅预览将要修改的内容,不实际提交API
     -v, --verbose         显示详细日志
+    
+    .EXAMPLE
+
+    # Set-CFCredentials -CfAccount account2
+    # Get-CFZoneNameServersTable -FromTable $desktop/table-s2.conf
+    # Update-SSNameServers -Table $desktop/domains_nameservers.csv -Verbose
     #>
     [CmdletBinding()]
     param (

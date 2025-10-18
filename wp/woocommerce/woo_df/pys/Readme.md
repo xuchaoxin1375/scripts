@@ -74,7 +74,7 @@ python $pys\woo_get_csv.py -f .webp -s $start -e $end  -C $country -E $exclude -
 
 ---
 
-##### 普通导出示例
+##### 普通导出示例🎈
 
 例如,导出397~448区间中的任务,跳过446号任务(通常是因为采集任务没有结束或者已知数据有问题要跳过),使用了`-R`表示严格去重复
 
@@ -83,10 +83,10 @@ python $pys\woo_get_csv.py -f .webp -s $start -e $end  -C $country -E $exclude -
 
 
 ```powershell
-$type='  汽车  '.trim()
-$country='  DE '.trim()
-$start=723
-$end=735
+$type=' 家居生活  '.trim()
+$country='  US '.trim()
+$start=746
+$end=764
 $exclude='728' 
 python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -o "$desktop/$type-$country-$(get-date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]" -dl 10 -nad
 ```
@@ -107,10 +107,10 @@ python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -
 ```
 
 ```powershell
-$type='  房车  '.trim()
-$country='  Uk '.trim()
-$start=641
-$end=676
+$type='  汽车  '.trim()
+$country='  DE '.trim()
+$start=743
+$end=$start
 $exclude='0'
 python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -o "$desktop/$type-$country-$(get-date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]" -dl 10 -nad
 
