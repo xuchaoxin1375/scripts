@@ -74,11 +74,15 @@ find /repos/scripts/wp/woocommerce/woo_df/sh/ -type f \( -name "*.sh" -o -name "
 if [ -L "/www/sh" ]; then
     echo "Removing existing symbolic link /www/sh"
     rm -rfv "/www/sh"
+
 else
     echo "/www/sh does not exist or is not a symbolic link"
 fi
 
+rm -rfv /www/pys
+
 ln -s /repos/scripts/wp/woocommerce/woo_df/sh /www/sh -fv
+ln -s /repos/scripts/wp/woocommerce/woo_df/pys /www/pys -fv
 # 文件的符号链接
 ln -s /www/sh/deploy_wp_full.sh /deploy.sh -fv
 ln -s /www/sh/update_repos.sh /update_repos.sh -fv

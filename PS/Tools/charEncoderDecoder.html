@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unicode/HTML/转义字符/哈希 编解码器 (全屏优化版)</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/js-md5@0.7.3/src/md5.min.js"></script>
+    
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        html, body {
+            height: 100%;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f5f5ff;
+            padding: 10px; 
+        }
+        
+        .container {
+            max-width: 1000px; 
+            margin: 0 auto;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            height: 100%; 
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 15px; 
+            color: #2c3e50;
+            flex-shrink: 0; 
+        }
+
+        .instructions {
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            flex-shrink: 0; 
+        }
+        .instructions summary {
+            font-weight: bold;
+            padding: 10px 15px;
+            cursor: pointer;
+            outline: none;
+            color: #495057;
+        }
+        .instructions ul {
+            padding: 0 15px 15px 35px; 
+            font-size: 13px;
+            color: #555;
+            line-height: 1.7;
+        }
+        .instructions li {
+            margin-top: 5px;
+        }
+        .instructions ul ul {
+            padding-top: 5px;
+            padding-bottom: 0;
+        }
+        
+        .control-group {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            gap: 10px;
+            flex-shrink: 0; 
+        }
+        
+        label {
+            font-weight: bold;
+            margin-right: 10px;
+            min-width: 60px;
+        }
+        
+        select, button {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        select {
+            width: 200px;
+            flex: 1;
+            min-width: 180px;
+        }
+        
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            margin: 0 5px;
+        }
+        
+        button:hover {
+            background-color: #2980b9;
+        }
+        
+        button:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+        
+        .button-group {
+            display: flex;
+            justify-content: center;
+            margin: 15px 0;
+            flex-wrap: wrap;
+            gap: 8px;
+            flex-shrink: 0; 
+        }
+        
+        textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 14px;
+            resize: none; 
+            flex: 1; 
+        }
+        
+        .input-area, .output-area {
+            display: flex;
+            flex-direction: column;
+            flex: 1; 
+            min-height: 100px; 
+        }
+
+        .input-area {
+            margin-bottom: 15px;
+        }
+        
+        .output-area {
+            /* [修改] 移除 position: relative */
+        }
+        
+        /* [新增] 输出区域的头部, 用于放置 Lable 和 Button */
+        .output-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px; /* 文本框上方的间距 */
+        }
+
+        .output-wrapper {
+            /* [修改] 移除 position: relative */
+            flex: 1; 
+            display: flex; 
+        }
+
+        .output-area textarea {
+            background-color: #f8f9fa;
+        }
+        
+        /* [修改] 复制按钮样式 */
+        .copy-btn {
+            /* 移除 position: absolute, top, right, z-index */
+            background-color: #27ae60;
+            padding: 5px 10px;
+            font-size: 12px;
+            margin-left: 10px; /* 与 Lable 保持一点距离 */
+            flex-shrink: 0; /* 防止按钮在 flex 布局中被压缩 */
+        }
+        
+        .copy-btn:hover {
+            background-color: #219653;
+        }
+        
+        .info-text {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-top: 5px;
+        }
+        
+        .status {
+            text-align: center;
+            margin-top: 10px;
+            font-size: 14px;
+            color: #7f8c8d;
+            min-height: 1.2em;
+            flex-shrink: 0; 
+        }
+        
+        .auto-decode-toggle {
+            display: flex;
+            align-items: center;
+            margin-left: 20px;
+        }
+        
+        .auto-decode-toggle label {
+            font-weight: normal;
+            margin-left: 5px;
+            min-width: auto;
+        }
+        
+        /* ========== 移动端响应式布局 ========== */
+        @media (max-width: 768px) {
+            
+            html, body {
+                height: auto;
+                padding: 0;
+            }
+            
+            .container {
+                height: auto;
+                min-height: 100vh; 
+                border-radius: 0;
+                box-shadow: none;
+                padding: 15px; 
+            }
+
+            .control-group {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            select {
+                width: 100%;
+                margin-top: 5px;
+            }
+            
+            .button-group {
+                flex-direction: column;
+            }
+            
+            button {
+                width: 100%;
+                margin: 5px 0;
+            }
+            
+            .auto-decode-toggle {
+                margin-left: 0;
+                margin-top: 10px;
+            }
+
+            .input-area, .output-area {
+                flex: 0 1 auto; 
+                min-height: 0;  
+            }
+
+            .output-wrapper {
+                flex: none; 
+                display: block; 
+            }
+
+            textarea {
+                flex: none; 
+                height: 30vh; 
+                min-height: 150px; 
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Unicode/HTML/转义字符/哈希 编解码器</h1>
+        
+        <details class="instructions">
+            <summary>使用说明 (点击展开)</summary>
+            <ul>
+                <li><strong>自动 (Auto):</strong> 默认启用实时处理。粘贴文本后，工具会尝试自动检测并解码 (Base64, URL, Hex, JS/HTML 实体)。</li>
+                <li><strong>选择模式:</strong> 你可以手动选择特定模式进行编码或解码。</li>
+                <li><strong>实时处理:</strong> 勾选后，在输入框中键入时会实时处理。
+                    <ul>
+                        <li>对于解码模式 (如 Base64, JS, HTML)，它会实时解码。</li>
+                        <li>对于哈希模式 (如 MD5, SHA-1)，它会实时生成哈希结果。</li>
+                    </ul>
+                </li>
+                <li><strong>哈希 (Hash):</strong> MD5, SHA-1, SHA-256 是单向哈希，只能编码 (生成)，无法解码。</li>
+            </ul>
+        </details>
+
+        <div class="control-group">
+            <label for="mode">模式:</label>
+            <select id="mode">
+                <option value="auto">Auto (Detect)</option>
+                <option value="js">JS (\uXXXX)</option>
+                <option value="html">HTML (&#...;)</option>
+                <option value="mix">Mix (JS+HTML)</option>
+                <option value="common">Common (\n, \t, etc.)</option>
+                <option value="base64">Base64</option>
+                <option value="url">URL 编码</option>
+                <option value="hex">Hex (十六进制)</option>
+                <option value="md5">MD5 (Hash)</option>
+                <option value="sha1">SHA-1 (Hash)</option>
+                <option value="sha256">SHA-256 (Hash)</option>
+            </select>
+            
+            <div class="auto-decode-toggle">
+                <input type="checkbox" id="auto-decode" checked>
+                <label for="auto-decode">实时处理</label>
+            </div>
+        </div>
+        
+        <div class="input-area">
+            <label for="input">输入文本:</label>
+            <textarea id="input" placeholder="在此输入要编码或解码的文本..."></textarea>
+            <div class="info-text">支持 Unicode (\uXXXX)、HTML 实体、Base64、URL 编码、Hex 及哈希生成</div>
+        </div>
+        
+        <div class="button-group">
+            <button id="decode">解码</button>
+            <button id="encode">编码</button>
+            <button id="clear">清空</button>
+        </div>
+        
+        <div class="output-area">
+            <div class="output-header">
+                <label for="output">输出结果:</label>
+                <button class="copy-btn" id="copy" style="width: auto;">复制结果</button>
+            </div>
+            <div class="output-wrapper">
+                <textarea id="output" readonly></textarea>
+            </div>
+            <div class="info-text">输出区域为只读，防止意外修改</div>
+        </div>
+        
+        <div class="status" id="status"></div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const modeSelect = document.getElementById('mode');
+            const inputTextarea = document.getElementById('input');
+            const outputTextarea = document.getElementById('output');
+            const decodeButton = document.getElementById('decode');
+            const encodeButton = document.getElementById('encode');
+            const clearButton = document.getElementById('clear');
+            const copyButton = document.getElementById('copy');
+            const autoDecodeCheckbox = document.getElementById('auto-decode');
+            const statusDiv = document.getElementById('status');
+            
+            let autoDecodeTimeout = null;
+
+            // ========== 工具函数 ==========
+            function b64EncodeUnicode(str) {
+                return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, function(match, p1) {
+                    return String.fromCharCode('0x' + p1);
+                }));
+            }
+
+            function b64DecodeUnicode(str) {
+                return decodeURIComponent(Array.prototype.map.call(atob(str), function(c) {
+                    return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+                }).join(''));
+            }
+
+            function hexEncode(str) {
+                const encoder = new TextEncoder();
+                const data = encoder.encode(str);
+                return Array.from(data).map(b => b.toString(16).padStart(2, '0')).join('');
+            }
+
+            function hexDecode(hex) {
+                hex = hex.replace(/\s/g, ''); 
+                if (!/^[0-9a-fA-F]*$/.test(hex) || hex.length % 2 !== 0) {
+                    throw new Error('无效的十六进制字符串');
+                }
+                const bytes = new Uint8Array(hex.length / 2);
+                for (let i = 0; i < hex.length; i += 2) {
+                    bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
+                }
+                const decoder = new TextDecoder('utf-8');
+                return decoder.decode(bytes);
+            }
+
+            async function hashText(str, algorithm) {
+                if (algorithm === 'MD5') {
+                    if (typeof md5 === 'undefined') {
+                        throw new Error('MD5 库 (js-md5) 未加载');
+                    }
+                    return md5(str); 
+                }
+                const encoder = new TextEncoder();
+                const data = encoder.encode(str);
+                const hashBuffer = await crypto.subtle.digest(algorithm, data);
+                const hashArray = Array.from(new Uint8Array(hashBuffer));
+                return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+            }
+
+            // ========== 编解码函数 ==========
+            function decodeText(text, mode) {
+                if (!text || text.trim() === '') return '';
+                
+                switch (mode) {
+                    case 'js':
+                        return text.replace(/\\u([0-9a-fA-F]{4})/g, (match, p1) =>
+                            String.fromCharCode(parseInt(p1, 16))
+                        );
+                    case 'html':
+                        const txt = document.createElement('textarea');
+                        txt.innerHTML = text;
+                        return txt.value;
+                    case 'mix':
+                        let mixResult = text;
+                        mixResult = mixResult.replace(/\\u([0-9a-fA-F]{4})/g, (match, p1) =>
+                            String.fromCharCode(parseInt(p1, 16))
+                        );
+                        const mixTxt = document.createElement('textarea');
+                        mixTxt.innerHTML = mixResult;
+                        mixResult = mixTxt.value;
+                        return mixResult;
+                    case 'common':
+                        return text
+                            .replace(/\\\\/g, '\\')
+                            .replace(/\\"/g, '"')
+                            .replace(/\\'/g, "'")
+                            .replace(/\\n/g, '\n')
+                            .replace(/\\r/g, '\r')
+                            .replace(/\\t/g, '\t')
+                            .replace(/\\b/g, '\b')
+                            .replace(/\\f/g, '\f');
+                    case 'base64':
+                        try {
+                            return b64DecodeUnicode(text.trim());
+                        } catch (e) {
+                            throw new Error('Base64 解码失败：' + e.message);
+                        }
+                    case 'url':
+                        try {
+                            return decodeURIComponent(text.replace(/\+/g, ' '));
+                        } catch (e) {
+                            throw new Error('URL 解码失败：' + e.message);
+                        }
+                    case 'hex':
+                        try {
+                            return hexDecode(text);
+                        } catch (e) {
+                            throw new Error('Hex 解码失败：' + e.message);
+                        }
+                    case 'md5':
+                    case 'sha1':
+                    case 'sha256':
+                        throw new Error(`"${mode.toUpperCase()}" 是单向哈希，无法解码`);
+                    default:
+                        return text;
+                }
+            }
+
+            async function encodeText(text, mode) {
+                if (!text && !['md5', 'sha1', 'sha256'].includes(mode)) {
+                     if (!text || text.trim() === '') return '';
+                }
+                
+                switch (mode) {
+                    case 'js':
+                        return Array.from(text).map(c => {
+                            const code = c.codePointAt(0);
+                            if (code <= 0xFFFF) {
+                                return '\\u' + code.toString(16).padStart(4, '0');
+                            } else {
+                                const high = Math.floor((code - 0x10000) / 0x400) + 0xD800;
+                                const low = ((code - 0x10000) % 0x400) + 0xDC00;
+                                return '\\u' + high.toString(16).padStart(4, '0') +
+                                       '\\u' + low.toString(16).padStart(4, '0');
+                            }
+                        }).join('');
+                    case 'html':
+                        return Array.from(text).map(c => '&#' + c.codePointAt(0) + ';').join('');
+                    case 'common':
+                        return text
+                            .replace(/\\/g, '\\\\')
+                            .replace(/"/g, '\\"')
+                            .replace(/'/g, "\\'")
+                            .replace(/\n/g, '\\n')
+                            .replace(/\r/g, '\\r')
+                            .replace(/\t/g, '\\t')
+                            .replace(/\b/g, '\\b')
+                            .replace(/\f/g, '\\f');
+                    case 'base64':
+                        return b64EncodeUnicode(text);
+                    case 'url':
+                        return encodeURIComponent(text); 
+                    case 'hex':
+                        return hexEncode(text);
+                    case 'md5':
+                        return await hashText(text, 'MD5');
+                    case 'sha1':
+                        return await hashText(text, 'SHA-1');
+                    case 'sha256':
+                        return await hashText(text, 'SHA-256');
+                    default:
+                        throw new Error(`不支持的编码模式: ${mode}`);
+                }
+            }
+
+            function detectEncodingMode(text) {
+                if (!text || text.trim() === '') return null;
+                const trimmed = text.trim();
+                
+                if (/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(trimmed) && trimmed.length > 4) {
+                    try {
+                        b64DecodeUnicode(trimmed);
+                        return 'base64';
+                    } catch (e) {}
+                }
+                if (/%[0-9A-Fa-f]{2}/.test(text) || /\+/.test(text)) {
+                    try {
+                        decodeURIComponent(text.replace(/\+/g, ' '));
+                        return 'url';
+                    } catch (e) {}
+                }
+                const hexClean = text.replace(/\s/g, '');
+                if (/^[0-9a-fA-F]+$/.test(hexClean) && hexClean.length % 2 === 0 && hexClean.length > 4) {
+                    try {
+                        hexDecode(hexClean);
+                        return 'hex';
+                    } catch(e) {}
+                }
+                const jsCount = (text.match(/\\u[0-9a-fA-F]{4}/g) || []).length;
+                const htmlCount = (text.match(/&#x[0-9a-fA-F]+;|&#\d+;/g) || []).length;
+                if (jsCount > 0 || htmlCount > 0) {
+                    return 'mix_text';
+                }
+                return null;
+            }
+
+            async function performDecode() {
+                const input = inputTextarea.value;
+                if (!input || input.trim() === '') {
+                    outputTextarea.value = '';
+                    updateStatus('输入为空');
+                    return;
+                }
+                const mode = modeSelect.value;
+                try {
+                    let result;
+                    if (mode === 'auto') {
+                        const detected = detectEncodingMode(input);
+                        if (detected === null) {
+                            result = input;
+                            updateStatus('未检测到可解码格式，直接输出原文');
+                        } else if (detected === 'mix_text') {
+                            result = decodeText(input, 'mix');
+                            updateStatus(`自动检测到 JS/HTML (混合解码)`);
+                        } else {
+                            result = decodeText(input, detected);
+                            updateStatus(`自动检测到 ${getModeName(detected)} 格式`);
+                        }
+                    } else {
+                        result = decodeText(input, mode);
+                        updateStatus(`已解码 ${getModeName(mode)}`);
+                    }
+                    outputTextarea.value = result;
+                } catch (error) {
+                    outputTextarea.value = `解码错误: ${error.message}`;
+                    updateStatus(`解码错误: ${error.message}`, true);
+                }
+            }
+
+            async function performEncode() {
+                const input = inputTextarea.value;
+                const mode = modeSelect.value;
+                
+                if (!input && !['md5', 'sha1', 'sha256'].includes(mode)) {
+                    outputTextarea.value = '';
+                    updateStatus('输入为空');
+                    return;
+                }
+                
+                try {
+                    const result = await encodeText(input, mode);
+                    outputTextarea.value = result;
+                    updateStatus(`已${['md5', 'sha1', 'sha256'].includes(mode) ? '生成' : '编码为'} ${getModeName(mode)}`);
+                } catch (error) {
+                    outputTextarea.value = `编码错误: ${error.message}`;
+                    updateStatus(`编码错误: ${error.message}`, true);
+                }
+            }
+
+            function getModeName(mode) {
+                const names = {
+                    'js': 'JS Unicode',
+                    'html': 'HTML 实体',
+                    'mix': '混合编码',
+                    'common': '转义字符',
+                    'base64': 'Base64',
+                    'url': 'URL 编码',
+                    'hex': '十六进制',
+                    'md5': 'MD5 哈希',
+                    'sha1': 'SHA-1 哈希',
+                    'sha256': 'SHA-256 哈希'
+                };
+                return names[mode] || mode;
+            }
+
+            function updateStatus(message, isError = false) {
+                statusDiv.textContent = message;
+                statusDiv.style.color = isError ? '#e74c3c' : '#7f8c8d';
+            }
+
+            function updateButtonStates() {
+                const mode = modeSelect.value;
+                const isHash = ['md5', 'sha1', 'sha256'].includes(mode);
+                const noEncode = ['auto', 'mix'];
+                const noDecode = isHash;
+                encodeButton.disabled = noEncode.includes(mode);
+                encodeButton.title = encodeButton.disabled ? '此模式不支持编码' : '';
+                encodeButton.textContent = isHash ? '生成哈希' : '编码';
+                decodeButton.disabled = noDecode;
+                decodeButton.title = decodeButton.disabled ? '哈希模式不支持解码' : '';
+            }
+
+            async function copyToClipboard() {
+                const textToCopy = outputTextarea.value;
+                if (!textToCopy) {
+                    updateStatus('没有内容可复制', true);
+                    return;
+                }
+                try {
+                    await navigator.clipboard.writeText(textToCopy);
+                    updateStatus('结果已复制到剪贴板');
+                    copyButton.textContent = '已复制!';
+                } catch (err) {
+                    console.warn('现代剪贴板 API 失败，尝试后备方案...', err);
+                    try {
+                        outputTextarea.select();
+                        document.execCommand('copy');
+                        updateStatus('结果已复制到剪贴板 (后备)');
+                        copyButton.textContent = '已复制!';
+                    } catch (fallbackErr) {
+                        updateStatus('复制失败，请手动复制', true);
+                        console.error('后备方案 execCommand 失败:', fallbackErr);
+                    }
+                } finally {
+                    setTimeout(() => {
+                        copyButton.textContent = '复制结果';
+                    }, 1500);
+                }
+            }
+
+            decodeButton.addEventListener('click', performDecode);
+            encodeButton.addEventListener('click', performEncode);
+            clearButton.addEventListener('click', () => {
+                inputTextarea.value = '';
+                outputTextarea.value = '';
+                updateStatus('已清空');
+            });
+            copyButton.addEventListener('click', copyToClipboard);
+            
+            inputTextarea.addEventListener('input', () => {
+                if (autoDecodeCheckbox.checked) {
+                    if (autoDecodeTimeout) clearTimeout(autoDecodeTimeout);
+                    
+                    const mode = modeSelect.value;
+                    const isHash = ['md5', 'sha1', 'sha256'].includes(mode);
+                    
+                    if (isHash) {
+                        autoDecodeTimeout = setTimeout(performEncode, 300);
+                    } else {
+                        autoDecodeTimeout = setTimeout(performDecode, 300);
+                    }
+                }
+            });
+            
+            modeSelect.addEventListener('change', () => {
+                updateButtonStates();
+                
+                if (autoDecodeCheckbox.checked) {
+                    const mode = modeSelect.value;
+                    const isHash = ['md5', 'sha1', 'sha256'].includes(mode);
+                    
+                    if (isHash) {
+                        performEncode();
+                    } else {
+                        performDecode();
+                    }
+                }
+            });
+
+            updateButtonStates();
+            updateStatus('准备就绪 - 实时处理已启用');
+        });
+    </script>
+</body>
+</html>

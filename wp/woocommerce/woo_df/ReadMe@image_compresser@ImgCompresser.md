@@ -278,6 +278,8 @@ linux服务器上的命令(测试单个链接)
 python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -p -F  -O -W  -k -A -r 1000 800 -i "替换此串为要被处理路径" . 
 ```
 
+如果要保留分辨率压缩,可以取消上述命令行中的`-r 1000 800`
+
 ### 批量对指定站点目录压缩
 
 使用包含目录列表的文件作为输入
@@ -286,9 +288,41 @@ python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -
 python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -p -F  -O -W  -k  -A -r 1000 800 -I "/www/wwwroot/pys/test_compress.txt"
 ```
 
-### 跳过小图压缩
+### 跳过小图压缩|针对性压缩大图
 
 - 同上,追加`-T `并指定一个整数(表示KB数,对于不小于该大小的图片才处理)
+
+不过,也可以支持更灵活的指定方式,可以配合`-I`选项通过一个文本文件来批量指定需要压缩的图片文件或者包含图片文件的目录(也就是说文件路径和目录路径都是支持的,如果脚本遍历每个路径,如果识别到的路径是图片文件,直接压缩,否则尝试找到指定目录路径中下的图片进行处理)
+
+例如,我使用某个查找脚本(比如linux系统上的find,支持按照复杂的条件查找,比如图片大小,修改时间等筛选出一批需要压缩的文件)
+
+> 虽然本文提供的脚本也支持基本的大小过滤和格式过滤,但是使用专门的工具会更灵活,能满足更加复杂的需求
+
+现在,假设我想要找出所有的站点中指定目录下的大小超过300k的png图片,然后对它们进行针对性压缩
+
+不妨使用find命令查找并输出目标文件列表
+
+> 假设当前目录为`/www/`找到的文件列表会输出到`imgs.txt`文件中
+
+```bash
+#!/bin/bash
+
+ROOT="/www/wwwroot"
+
+find "$ROOT" \
+  -path "*/wordpress/wp-content/uploads/2025/*.png" \
+  -size +300k \
+  -type f \
+  | tee imgs.txt
+```
+
+如果网站和文件数量很多,上述过程可能需要几分钟
+
+```bash
+python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -p -F  -O -W  -k -w 64 -T 200 -I imgs.txt 
+```
+
+如果图片数量多,并且破图多,上述脚本可能会需要比较长时间处理(注意,如果要控制图片分辨率,可以使用`-r`,不过如果要压缩的包含网站首页广告图,就要注意分辨率不能轻易调小,可能导致位置观感不佳)
 
 ### 清除宝塔中mysql二进制日志文件
 

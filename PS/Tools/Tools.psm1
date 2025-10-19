@@ -4203,6 +4203,346 @@ function Get-CharacterEncodingsGUI
     # 显示窗口
     [void]$form.ShowDialog()
 }
+
+function Show-UnicodeConverterWindow
+{
+    <#
+    .SYNOPSIS
+        显示一个图形界面窗口，用于Unicode、HTML和转义字符的编码和解码。
+
+    .DESCRIPTION
+        该函数创建一个Windows Forms图形界面，允许用户输入文本并将其编码或解码为不同的格式，
+        包括Unicode (\uXXXX)、HTML实体 (&#xxxx;) 和常见的转义字符序列。
+
+    .PARAMETER None
+        此函数没有参数。
+
+    .EXAMPLE
+        Show-UnicodeConverterWindow
+        打开Unicode转换器窗口。
+
+    .NOTES
+        功能特性:
+        - 支持多种编码/解码模式:
+          * 自动检测 (Auto Detect)
+          * JavaScript Unicode (\uXXXX)
+          * HTML实体 (&#xxxx; 和 &#xXXXX;)
+          * 混合模式 (JS+HTML)
+          * 常见转义字符 (\n, \t, \r, \", \', \\ 等)
+        - 实时预览转换结果
+        - 支持窗口大小调整
+        - 只读输出区域，防止意外修改
+
+    .LINK
+        https://en.wikipedia.org/wiki/List_of_XML_and_HTML_character_entity_references
+        https://en.wikipedia.org/wiki/Unicode
+
+    .INPUTS
+        None - 此函数不接受管道输入。
+
+    .OUTPUTS
+        None - 此函数不返回值，而是显示一个交互式窗口。
+    #>
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = "Unicode / HTML / 转义字符 编解码"
+    $form.Size = New-Object System.Drawing.Size(880, 640)
+    $form.StartPosition = "CenterScreen"
+    $form.MinimumSize = New-Object System.Drawing.Size(620, 470)
+    $form.AutoScaleMode = "Font"
+
+    # 模式标签
+    $labelMode = New-Object System.Windows.Forms.Label
+    $labelMode.Text = "模式:"
+    $labelMode.Location = New-Object System.Drawing.Point(20, 20)
+    $labelMode.Size = New-Object System.Drawing.Size(60, 25)
+
+    # 模式下拉框（新增 Mix 和 Common）
+    $comboBoxMode = New-Object System.Windows.Forms.ComboBox
+    $comboBoxMode.Location = New-Object System.Drawing.Point(80, 20)
+    $comboBoxMode.Size = New-Object System.Drawing.Size(200, 25)
+    $comboBoxMode.DropDownStyle = "DropDownList"
+    $comboBoxMode.Items.AddRange(@(
+            "Auto (Detect)",
+            "JS (\uXXXX)",
+            "HTML",
+            "Mix (JS+HTML)",
+            "Common (\n, \t, etc.)"
+        ))
+    $comboBoxMode.SelectedIndex = 0  # 默认 Auto
+
+    # 输入区域
+    $labelInput = New-Object System.Windows.Forms.Label
+    $labelInput.Text = "输入文本:"
+    $labelInput.Location = New-Object System.Drawing.Point(20, 60)
+    $labelInput.Size = New-Object System.Drawing.Size(100, 20)
+
+    $textBoxInput = New-Object System.Windows.Forms.TextBox
+    $textBoxInput.Multiline = $true
+    $textBoxInput.ScrollBars = "Vertical"
+    $textBoxInput.Font = New-Object System.Drawing.Font("Consolas", 10)
+    $textBoxInput.Location = New-Object System.Drawing.Point(20, 85)
+    $textBoxInput.Size = New-Object System.Drawing.Size(820, 140)
+    $textBoxInput.Anchor = "Top, Left, Right"
+
+    # 按钮
+    $buttonDecode = New-Object System.Windows.Forms.Button
+    $buttonDecode.Text = "解码"
+    $buttonDecode.Location = New-Object System.Drawing.Point(290, 240)
+    $buttonDecode.Size = New-Object System.Drawing.Size(100, 32)
+
+    $buttonEncode = New-Object System.Windows.Forms.Button
+    $buttonEncode.Text = "编码"
+    $buttonEncode.Location = New-Object System.Drawing.Point(470, 240)
+    $buttonEncode.Size = New-Object System.Drawing.Size(100, 32)
+
+    # 输出区域
+    $labelOutput = New-Object System.Windows.Forms.Label
+    $labelOutput.Text = "输出结果:"
+    $labelOutput.Location = New-Object System.Drawing.Point(20, 290)
+    $labelOutput.Size = New-Object System.Drawing.Size(100, 20)
+
+    $textBoxOutput = New-Object System.Windows.Forms.TextBox
+    $textBoxOutput.Multiline = $true
+    $textBoxOutput.ReadOnly = $true
+    $textBoxOutput.ScrollBars = "Vertical"
+    $textBoxOutput.Font = New-Object System.Drawing.Font("Consolas", 10)
+    $textBoxOutput.BackColor = [System.Drawing.Color]::WhiteSmoke
+    $textBoxOutput.Location = New-Object System.Drawing.Point(20, 315)
+    $textBoxOutput.Size = New-Object System.Drawing.Size(820, 170)
+    $textBoxOutput.Anchor = "Top, Left, Right, Bottom"
+
+    # ✅ 修复 Resize 事件
+    $form.add_Resize({
+            $w = $form.ClientSize.Width
+            $h = $form.ClientSize.Height
+            $textBoxInput.Width = $w - 40
+            $textBoxOutput.Width = $w - 40
+            $textBoxOutput.Height = $h - 340
+            $centerX = ($w - 220) / 2
+            $buttonDecode.Left = $centerX - 55
+            $buttonEncode.Left = $centerX + 55
+        })
+
+    # ========== 核心解码函数 ==========
+    function Decode-Text
+    {
+        param([string]$Text, [string]$Mode)
+
+        if ([string]::IsNullOrWhiteSpace($Text)) { return "" }
+
+        switch ($Mode)
+        {
+            "JS (\uXXXX)"
+            {
+                $result = $Text
+                while ($result -match '\\u([0-9a-fA-F]{4})')
+                {
+                    $char = [char][Convert]::ToInt32($matches[1], 16)
+                    $result = $result -replace [regex]::Escape($matches[0]), $char
+                }
+                return $result
+            }
+
+            "HTML"
+            {
+                $result = $Text
+                # 先处理十六进制
+                while ($result -match '&#x([0-9a-fA-F]+);')
+                {
+                    $char = [char][Convert]::ToInt32($matches[1], 16)
+                    $result = $result -replace [regex]::Escape($matches[0]), $char
+                }
+                # 再处理十进制
+                while ($result -match '&#(\d+);')
+                {
+                    $char = [char][int]$matches[1]
+                    $result = $result -replace [regex]::Escape($matches[0]), $char
+                }
+                return $result
+            }
+
+            "Mix (JS+HTML)"
+            {
+                $result = $Text
+                # 先解 JS
+                while ($result -match '\\u([0-9a-fA-F]{4})')
+                {
+                    $char = [char][Convert]::ToInt32($matches[1], 16)
+                    $result = $result -replace [regex]::Escape($matches[0]), $char
+                }
+                # 再解 HTML（十进制和十六进制）
+                while ($result -match '&#x([0-9a-fA-F]+);')
+                {
+                    $char = [char][Convert]::ToInt32($matches[1], 16)
+                    $result = $result -replace [regex]::Escape($matches[0]), $char
+                }
+                while ($result -match '&#(\d+);')
+                {
+                    $char = [char][int]$matches[1]
+                    $result = $result -replace [regex]::Escape($matches[0]), $char
+                }
+                return $result
+            }
+
+            "Common (\n, \t, etc.)"
+            {
+                $result = $Text
+                # 注意：必须按顺序，避免干扰（如先处理 \\）
+                $result = $result -replace '\\\\', '\'        # \\ → \
+                $result = $result -replace '\\"', '"'         # \" → "
+                $result = $result -replace "\\'", "'"         # \' → '
+                $result = $result -replace '\\n', "`n"        # \n → 换行
+                $result = $result -replace '\\r', "`r"        # \r → 回车
+                $result = $result -replace '\\t', "`t"        # \t → 制表符
+                $result = $result -replace '\\b', "`b"        # \b → 退格
+                $result = $result -replace '\\f', "`f"        # \f → 换页
+                return $result
+            }
+
+            default
+            {
+                # Auto 模式由调用方处理，此处不触发
+                return $Text
+            }
+        }
+    }
+
+    # ========== 编码函数（仅 JS/HTML） ==========
+    function Encode-Text
+    {
+        param([string]$Text, [string]$Mode)
+
+        if ([string]::IsNullOrWhiteSpace($Text)) { return "" }
+
+        if ($Mode -eq "JS (\uXXXX)")
+        {
+            -join ($Text.ToCharArray() | ForEach-Object {
+                    $code = [int]$_
+                    if ($code -le 0xFFFF)
+                    {
+                        "\u{0:x4}" -f $code
+                    }
+                    else
+                    {
+                        $high = 0xD800 + (($code - 0x10000) -shr 10)
+                        $low = 0xDC00 + (($code - 0x10000) -band 0x3FF)
+                        "\u{0:x4}\u{1:x4}" -f $high, $low
+                    }
+                })
+        }
+        elseif ($Mode -eq "HTML")
+        {
+            -join ($Text.ToCharArray() | ForEach-Object { "&#$( [int]$_ );" })
+        }
+        else
+        {
+            throw "Unsupported encode mode: $Mode"
+        }
+    }
+
+    # ========== Auto 检测 ==========
+    function Detect-EncodingMode
+    {
+        param([string]$Text)
+
+        if ([string]::IsNullOrWhiteSpace($Text)) { return $null }
+
+        $jsCount = ([regex]::Matches($Text, '\\u[0-9a-fA-F]{4}')).Count
+        $htmlCount = ([regex]::Matches($Text, '&#x[0-9a-fA-F]+;|&#\d+;')).Count
+
+        if ($jsCount -eq 0 -and $htmlCount -eq 0)
+        {
+            return $null
+        }
+
+        if ($jsCount -ge $htmlCount)
+        {
+            return "JS (\uXXXX)"
+        }
+        else
+        {
+            return "HTML"
+        }
+    }
+
+    # ========== 按钮事件 ==========
+    $buttonDecode.Add_Click({
+            $input = $textBoxInput.Text
+            if ([string]::IsNullOrWhiteSpace($input))
+            {
+                $textBoxOutput.Text = ""
+                return
+            }
+
+            $mode = $comboBoxMode.SelectedItem
+
+            if ($mode -eq "Auto (Detect)")
+            {
+                $detected = Detect-EncodingMode -Text $input
+                if ($null -eq $detected)
+                {
+                    $textBoxOutput.Text = $input
+                }
+                else
+                {
+                    $result = Decode-Text -Text $input -Mode $detected
+                    $textBoxOutput.Text = $result
+                }
+            }
+            else
+            {
+                $result = Decode-Text -Text $input -Mode $mode
+                $textBoxOutput.Text = $result
+            }
+        })
+
+    $buttonEncode.Add_Click({
+            $input = $textBoxInput.Text
+            if ([string]::IsNullOrWhiteSpace($input))
+            {
+                $textBoxOutput.Text = ""
+                return
+            }
+
+            $mode = $comboBoxMode.SelectedItem
+
+            if ($mode -notin @("JS (\uXXXX)", "HTML"))
+            {
+                [System.Windows.Forms.MessageBox]::Show(
+                    "编码仅支持 'JS' 或 'HTML' 模式。",
+                    "模式不支持",
+                    "OK",
+                    "Warning"
+                )
+                return
+            }
+
+            try
+            {
+                $result = Encode-Text -Text $input -Mode $mode
+                $textBoxOutput.Text = $result
+            }
+            catch
+            {
+                $textBoxOutput.Text = "编码错误: $($_.Exception.Message)"
+            }
+        })
+
+    # 添加控件
+    $form.Controls.AddRange(@(
+            $labelMode, $comboBoxMode,
+            $labelInput, $textBoxInput,
+            $buttonDecode, $buttonEncode,
+            $labelOutput, $textBoxOutput
+        ))
+
+    [void]$form.ShowDialog()
+}
+
+
 function Get-CharCount
 {
     <#
