@@ -94,7 +94,7 @@ def get_main_domain_name_from_str(url):
     return ""
 
 
-# 读取excel 或 csv 文件
+# 读取表格数据(从excel 或 csv 文件文件读取数据)
 def read_data(file_path):
     """读取数据
     根据文件名判断使用pd.csv还是pd.excel亦或是普通的.conf文件等其他普通文本文件

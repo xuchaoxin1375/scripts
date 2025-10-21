@@ -27,7 +27,7 @@ SUPPORT_IMAGE_FORMATS_NAME = (
     "tiff",
     "bmp",
     "gif",
-    "avif"
+    "avif",
 )
 SUPPORT_IMAGE_FORMATS = ("." + f for f in SUPPORT_IMAGE_FORMATS_NAME)
 csv.field_size_limit(int(1e7))  # 允许csv文件最大为10MB
@@ -122,11 +122,12 @@ def walk_with_depth(root_dir, depth=None):
     return dirs, files
 
 
-def merge_csv_files(
+def merge_table_files(
     directory: str, out_file="", remove_old_files=False, encoding: str = "utf-8"
 ) -> pd.DataFrame:
     """
     读取指定目录下的所有 CSV 文件并合并为一个结构统一的 DataFrame。
+    如果有结构相同的excel表格.xlsx(xls)或者csv,excel表格文件混合存放但是表头一样,也可以读取并合并
 
     Args:
         directory (str): 存放 CSV 文件的目录路径。
@@ -138,25 +139,26 @@ def merge_csv_files(
         pd.DataFrame: 合并后的 DataFrame。如果目录中没有 CSV 文件，则返回一个空的 DataFrame。
 
     Examples:
-        >>> merged_df = merge_csv_files(r'./csv_demo')
+        >>> merged_df = merge_table_files(r'./csv_demo')
         >>> print(merged_df)
     """
     os.makedirs(directory, exist_ok=True)
     # 获取所有 .csv 文件的绝对路径
-    csv_files = [
+    table_files = [
         os.path.join(directory, file)
         for file in os.listdir(directory)
-        if file.endswith(".csv")
+        if file.endswith(".csv") or file.endswith(".xlsx") or file.endswith(".xls")
     ]
 
-    if not csv_files:
+    if not table_files:
         return pd.DataFrame()
 
     # 读取所有 CSV 文件到 DataFrame 列表
-    dfs = [pd.read_csv(file, encoding=encoding) for file in csv_files]
+    # dfs = [pd.read_csv(file, encoding=encoding) for file in csv_files]
+    dfs = [read_table_data(file, encoding=encoding) for file in table_files]
 
     if remove_old_files:
-        for file in csv_files:
+        for file in table_files:
             os.remove(file)
     # 合并所有的 DataFrame
     merged_df = pd.concat(dfs, ignore_index=True)
@@ -189,6 +191,7 @@ def remove_duplicate_rows(file, subset=None, inplace=True):
 def merge_csv_naive(csv_dir, out_file="", remove_old_files=False):
     """读取指定目录下的所有csv文件，并合并成一个csv文件
     注意,如果csv的格式不同(比如具有不同的列名,无法使用此函数合并)
+    仅使用python自带的csv模块,而不依赖于pandas
 
     Args:
         csv_dir (str): csv文件所在目录
@@ -446,6 +449,27 @@ def set_image_extension(
     return res
 
 
+# 读取表格数据(从excel 或 csv 文件文件读取数据)
+def read_table_data(file_path, encoding="utf-8"):
+    """读取数据
+    根据文件名判断使用pd.csv还是pd.excel亦或是普通的.conf文件等其他普通文本文件
+
+    Args:
+        file_path (str): 文件路径
+        encoding (str, optional): 文件编码. Defaults to "utf-8".对csv文件有效,excel文件读取无此参数
+    Returns:
+        pd.DataFrame: 数据
+    """
+    df = pd.DataFrame()
+    if file_path.endswith(".csv"):
+        df = pd.read_csv(file_path, encoding=encoding)
+    elif file_path.endswith(".xlsx") or file_path.endswith(".xls"):
+        df = pd.read_excel(file_path)
+    else:
+        raise ValueError("不支持的文件格式")
+    return df
+
+
 def get_image_filebasename(supported_image_formats=SUPPORT_IMAGE_FORMATS_NAME):
     """得到不带格式的图片名
     这依赖于supported_image_formats的配置的完善程度
@@ -600,7 +624,7 @@ def count_lines_csv(csv_dir):
 
 def get_data_from_csv(args, lines, reader, url_field, name_field):
     """
-    读取的csv文件中的图片名字和图片链接
+    从csv reader对象中读取图片名字和图片链接字段,并写入结果到lines中
 
     Args:
         args: 命令行参数

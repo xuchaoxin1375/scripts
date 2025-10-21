@@ -20,7 +20,7 @@ import os
 import threading
 from datetime import datetime
 
-from comutils import log_worker, merge_csv_files, remove_duplicate_rows
+from comutils import log_worker, merge_table_files, remove_duplicate_rows
 # 核心库
 from woodf import WC
 
@@ -61,7 +61,7 @@ LOG_FILE_UPLOAD = f"{LOG_FILE_DIR}/upload-{domain}-{TIME_STR}.csv"
 # LOG_FILE_UPLOAD_FAIL=f"{CSV_DIR}/log/upload_fail-{domain}-{time_str}.csv"
 
 # 计算Log文件路径所在目录,将它们合并成一个文件
-merge_csv_files(directory=LOG_FILE_DIR, remove_old_files=True, out_file=LOG_FILE_UPLOAD)
+merge_table_files(directory=LOG_FILE_DIR, remove_old_files=True, out_file=LOG_FILE_UPLOAD)
 ##
 remove_duplicate_rows(file=LOG_FILE_UPLOAD,subset=CSVProductFields.SKU.value) #去除重复行(SKU重复)
 

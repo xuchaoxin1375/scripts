@@ -592,7 +592,9 @@ class WooCommerceProductImporter:
         return slug
 
     def convert_tags_to_categories(self):
-        """将只有标签没有分类的产品的标签转为分类"""
+        """将只有标签没有分类的产品的标签转为分类(可选,如果已经保证了总是有分类,可以跳过此步骤)
+        
+        """
         print("开始将只有标签的产品转为分类...")
         conn = pymysql.connect(**self.db_config)
         try:
@@ -651,8 +653,9 @@ class WooCommerceProductImporter:
         try:
             with conn.cursor() as cursor:
 
-                # 3. 将只有标签的产品转为分类
-                self.convert_tags_to_categories()
+                # 将只有标签的产品转为分类
+                # self.convert_tags_to_categories()
+                
                 # 1. 更新分类计数（确保准确）
                 cursor.execute(
                     """
