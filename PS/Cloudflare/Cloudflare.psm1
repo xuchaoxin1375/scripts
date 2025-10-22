@@ -327,6 +327,7 @@ function Add-CFZoneConfig
     利用cloudflare API配置cloudflare账户(包括ssl加密方式(灵活)等并且配置邮箱转发和安全选项启用)
     目前只要cloudflare账户添加了域名(即便还没有验证和激活),也可以进行此环节的配置
     #>
+    [CmdletBinding()]
     param(
         $Account,
         $Ip = "",
@@ -336,6 +337,8 @@ function Add-CFZoneConfig
     Write-Host "正在配置cloudflare域名邮箱转发和安全选项开关..."
     Write-Output $PSBoundParameters
     Get-DomainUserDictFromTableLite -Table $Table
+    Write-Verbose "调用python脚本cf_config_api.py设置域名配置..."
+
     python $pys/cf_api/cf_config_api.py configure -c $CfConfig -f $Table -a $Account -ip $ip
 }
 function Add-CFZoneCheckActivation

@@ -849,10 +849,14 @@ function Deploy-ScoopStartMenuAppsStarter
     .NOTES
     # 需要以管理员权限运行此脚本
     #>
-
+    [CmdletBinding()]
+    param(
+        
+        $scoopAppsPath = '%USERPROFILE%\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Scoop Apps',
+        $ScoopAppsG = '$scoop_global\Microsoft\Windows\Start Menu\Programs\Scoop Apps'
+    )
     # 定义 Scoop Apps 目录路径
     $scoopAppsPathEx = [System.Environment]::ExpandEnvironmentVariables('%USERPROFILE%\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Scoop Apps')
-    $scoopAppsPath = '%USERPROFILE%\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Scoop Apps'
 
     # 修改用户 PATH 环境变量
     $userPath = [System.Environment]::GetEnvironmentVariable('PATH', 'User')
@@ -882,7 +886,6 @@ function Deploy-ScoopStartMenuAppsStarter
     }
     #全局安装的GUI软件添加到Path(系统级Path)
     $systemPath = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine')
-    $ScoopAppsG = 'C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Scoop Apps'
     if ($systemPath -notlike "*$ScoopAppsG*")
     {
 

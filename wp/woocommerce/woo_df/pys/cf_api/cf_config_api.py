@@ -33,9 +33,12 @@ load_dotenv()
 # 配置默认的配置组(一个服务器配一个默认的cloudflare账号)
 CONFIG_GROUP = "cxxu_df2"
 
-DESKTOP = r"C:/Users/Administrator/Desktop"
+# DESKTOP = r"C:/Users/Administrator/Desktop"
+import os
+
+# USER_HOME=os.environ.get('userprofile')
+DESKTOP = os.path.expanduser("~/Desktop")
 # CONFIG_PATH = f"{DESKTOP}/deploy_configs/server_config.json"
-DESKTOP = r"C:/Users/Administrator/Desktop"
 DEPLOY_CONFIGS = f"{DESKTOP}/deploy_configs"
 # 默认配置文件路径
 CONFIG_PATH = f"{DEPLOY_CONFIGS}/cf_config.json"
@@ -116,6 +119,13 @@ args = parse_args()
 config = load_config(config_path=args.cf_config)
 accounts = config.get("accounts", {})
 account = accounts.get(args.account, {})
+# 检查配置信息:
+# print(f"Cloudflare全部配置信息:{config}")
+if account:
+    print(f"Cloudflare账户选择为:{args.account}")
+else:
+    print(f"未找到Cloudflare账户:{args.account},请检查账号名是否错误!")
+
 # account_name=account.get("account", "")
 CF_EMAIL = account.get("cf_api_email")
 CF_API_KEY = account.get("cf_api_key")
@@ -689,12 +699,12 @@ def main():
     file = args.file  # or CF_DOMAINS_FILE
 
     global CF_EMAIL, CF_API_KEY, client, curl_headers, ACCOUNT_ID, existing_domains, processed_count, success_count
-
+    print(f"当前环境变量CF_EMAIL:{CF_EMAIL};CF_API_KEY:{CF_API_KEY}")
     if not CF_EMAIL or not CF_API_KEY:
-        print("请设置环境变量 CLOUDFLARE_EMAIL 和 CLOUDFLARE_API_KEY")
+        print("error:请设置环境变量 CF_EMAIL 和 CF_API_KEY")
         sys.exit(1)
-    else:
-        print(f"已设置环境变量CF_EMAIL:{CF_EMAIL};CF_API_KEY:{CF_API_KEY}")
+    # else:
+    #     print(f"当前环境变量CF_EMAIL:{CF_EMAIL};CF_API_KEY:{CF_API_KEY}")
 
     client = Cloudflare(
         api_email=CF_EMAIL,

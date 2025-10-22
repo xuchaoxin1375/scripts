@@ -124,7 +124,7 @@ Get-UrlFromSitemap C:\Users\Administrator\Desktop\localhost\L1.xml > $localhost\
 
 从一级url(L1.urls)中的链接下载站点子集地图(更具体的站点地图)
 
-#### 使用curl下载🎈
+#### 使用curl下载
 
 放到最后一节
 
@@ -155,7 +155,7 @@ PS C:\Users\Administrator\Desktop\localhost> py .\get_htmls_from_urls_multi_thre
 
 
 
-### 解析各个子级站点地图中的url
+## 解析站点地图xml中的url(批量从xml文件中抽取url)
 
 可以用脚本(命令行)解析,或者用采集器来解析
 
@@ -173,8 +173,11 @@ $sitemap_pattern = '*xml*' #可以根据你下载的站点地图文件名更改
 
 $i = 1; 
 Get-ChildItem $sitemap_pattern| ForEach-Object {
-    Get-UrlFromSitemap -Path $_ > "X$i.txt"; 
+	$url_file="X$i.txt"
+	Get-UrlFromSitemap -Path $_ > $url_file ; 
     $i += 1 
+    $path= gi $url_file
+    write-host $path.fullname -ForegroundColor Green
 }
 ```
 
@@ -199,7 +202,7 @@ Processing sitemap at path: C:\Users\Administrator\Desktop\localhost\www.speedin
 
 在下载并解析完成后,工作目录中会有一些`.txt`文件,里面包含的是产品页链接的话,就可以进行下一步操作
 
-## 下载产品页html
+## 下载产品页html🎈
 
 各个网页的url->html文件
 

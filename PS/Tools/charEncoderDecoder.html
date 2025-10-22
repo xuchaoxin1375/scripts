@@ -73,15 +73,24 @@
             padding-bottom: 0;
         }
         
+        /* [修改] control-group 布局, 改为垂直堆叠 */
         .control-group {
             display: flex;
-            align-items: center;
+            flex-direction: column;  /* 垂直排列 */
+            align-items: flex-start; /* 左对齐 */
             margin-bottom: 15px;
-            flex-wrap: wrap;
             gap: 10px;
             flex-shrink: 0; 
         }
         
+        /* [新增] 为 select 元素添加一个包裹, 方便布局 */
+        .mode-select-wrapper {
+            display: flex;
+            align-items: center;
+            width: 100%;
+            gap: 10px; /* 保持 label 和 select 的间距 */
+        }
+
         label {
             font-weight: bold;
             margin-right: 10px;
@@ -95,9 +104,10 @@
             font-size: 14px;
         }
         
+        /* [修改] select 样式, 让它在 wrapper 内自适应 */
         select {
-            width: 200px;
-            flex: 1;
+            /* width: 200px; */ /* 移除固定宽度 */
+            flex: 1; /* 占据剩余空间 */
             min-width: 180px;
         }
         
@@ -151,20 +161,14 @@
             margin-bottom: 15px;
         }
         
-        .output-area {
-            /* [修改] 移除 position: relative */
-        }
-        
-        /* [新增] 输出区域的头部, 用于放置 Lable 和 Button */
         .output-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 5px; /* 文本框上方的间距 */
+            margin-bottom: 5px; 
         }
 
         .output-wrapper {
-            /* [修改] 移除 position: relative */
             flex: 1; 
             display: flex; 
         }
@@ -173,14 +177,12 @@
             background-color: #f8f9fa;
         }
         
-        /* [修改] 复制按钮样式 */
         .copy-btn {
-            /* 移除 position: absolute, top, right, z-index */
             background-color: #27ae60;
             padding: 5px 10px;
             font-size: 12px;
-            margin-left: 10px; /* 与 Lable 保持一点距离 */
-            flex-shrink: 0; /* 防止按钮在 flex 布局中被压缩 */
+            margin-left: 10px; 
+            flex-shrink: 0; 
         }
         
         .copy-btn:hover {
@@ -205,10 +207,20 @@
         .auto-decode-toggle {
             display: flex;
             align-items: center;
-            margin-left: 20px;
+            margin-left: 0; /* [修改] 移除左边距 */
         }
         
         .auto-decode-toggle label {
+            font-weight: normal;
+            margin-left: 5px;
+            min-width: auto;
+        }
+        .remove-backslash-toggle {
+            display: flex;
+            align-items: center;
+            margin-left: 0; /* [修改] 移除左边距 */
+        }
+        .remove-backslash-toggle label {
             font-weight: normal;
             margin-left: 5px;
             min-width: auto;
@@ -231,8 +243,7 @@
             }
 
             .control-group {
-                flex-direction: column;
-                align-items: flex-start;
+                /* 样式已在桌面版中统一为 column, 此处无需重复 */
             }
             
             select {
@@ -240,6 +251,13 @@
                 margin-top: 5px;
             }
             
+            /* [新增] 移动端下, .mode-select-wrapper 也改为垂直 */
+            .mode-select-wrapper {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 5px;
+            }
+
             .button-group {
                 flex-direction: column;
             }
@@ -251,12 +269,12 @@
             
             .auto-decode-toggle {
                 margin-left: 0;
-                margin-top: 10px;
+                margin-top: 10px; /* 保留移动端的上边距 */
             }
 
             .input-area, .output-area {
                 flex: 0 1 auto; 
-                min-height: 0;  
+                min-height: 0; 
             }
 
             .output-wrapper {
@@ -292,24 +310,30 @@
         </details>
 
         <div class="control-group">
-            <label for="mode">模式:</label>
-            <select id="mode">
-                <option value="auto">Auto (Detect)</option>
-                <option value="js">JS (\uXXXX)</option>
-                <option value="html">HTML (&#...;)</option>
-                <option value="mix">Mix (JS+HTML)</option>
-                <option value="common">Common (\n, \t, etc.)</option>
-                <option value="base64">Base64</option>
-                <option value="url">URL 编码</option>
-                <option value="hex">Hex (十六进制)</option>
-                <option value="md5">MD5 (Hash)</option>
-                <option value="sha1">SHA-1 (Hash)</option>
-                <option value="sha256">SHA-256 (Hash)</option>
-            </select>
+            <div class="mode-select-wrapper">
+                <label for="mode">模式:</label>
+                <select id="mode">
+                    <option value="auto">Auto (Detect)</option>
+                    <option value="js">Unicode (\uXXXX)</option>
+                    <option value="html">HTML (&#...;)</option>
+                    <option value="mix">Mix (Unicode+HTML)</option>
+                    <option value="common">Common (\n, \t, etc.)</option>
+                    <option value="base64">Base64</option>
+                    <option value="url">URL 编码</option>
+                    <option value="hex">Hex (十六进制)</option>
+                    <option value="md5">MD5 (Hash)</option>
+                    <option value="sha1">SHA-1 (Hash)</option>
+                    <option value="sha256">SHA-256 (Hash)</option>
+                </select>
+            </div>
             
             <div class="auto-decode-toggle">
                 <input type="checkbox" id="auto-decode" checked>
                 <label for="auto-decode">实时处理</label>
+            </div>
+            <div class="remove-backslash-toggle">
+                <input type="checkbox" id="remove-backslashes">
+                <label for="remove-backslashes">移除(输出结果中的)反斜杠 (\)</label>
             </div>
         </div>
         
@@ -350,6 +374,7 @@
             const copyButton = document.getElementById('copy');
             const autoDecodeCheckbox = document.getElementById('auto-decode');
             const statusDiv = document.getElementById('status');
+            const removeBackslashesCheckbox = document.getElementById('remove-backslashes');
             
             let autoDecodeTimeout = null;
 
@@ -536,8 +561,10 @@
                 return null;
             }
 
+            // [修改] 更改 "移除反斜杠" 的逻辑, 应用于解码 *后*
             async function performDecode() {
                 const input = inputTextarea.value;
+                // const sanitizedInput = sanitizeInput(input); // [移除]
                 if (!input || input.trim() === '') {
                     outputTextarea.value = '';
                     updateStatus('输入为空');
@@ -547,21 +574,25 @@
                 try {
                     let result;
                     if (mode === 'auto') {
-                        const detected = detectEncodingMode(input);
-                        if (detected === null) {
-                            result = input;
-                            updateStatus('未检测到可解码格式，直接输出原文');
-                        } else if (detected === 'mix_text') {
-                            result = decodeText(input, 'mix');
-                            updateStatus(`自动检测到 JS/HTML (混合解码)`);
-                        } else {
-                            result = decodeText(input, detected);
-                            updateStatus(`自动检测到 ${getModeName(detected)} 格式`);
-                        }
+                        let mixDecoded = decodeText(input, 'mix'); // [修改] 使用原始 input
+                        result = decodeText(mixDecoded, 'common');
                     } else {
-                        result = decodeText(input, mode);
-                        updateStatus(`已解码 ${getModeName(mode)}`);
+                        result = decodeText(input, mode); // [修改] 使用原始 input
                     }
+                    
+                    // [新逻辑] 在解码后应用“移除反斜杠”
+                    const removeBackslashes = removeBackslashesCheckbox && removeBackslashesCheckbox.checked;
+                    if (removeBackslashes) {
+                        result = result.replace(/\\/g, '');
+                    }
+
+                    // [修改] 统一更新状态
+                    let statusMsg = mode === 'auto' ? '自动模式：已执行混合解码和转义字符解码' : `已解码 ${getModeName(mode)}`;
+                    if (removeBackslashes) {
+                        statusMsg += ' 并移除了反斜杠';
+                    }
+                    updateStatus(statusMsg);
+
                     outputTextarea.value = result;
                 } catch (error) {
                     outputTextarea.value = `解码错误: ${error.message}`;
@@ -569,8 +600,10 @@
                 }
             }
 
+            // [修改] 更改 "移除反斜杠" 的逻辑, 应用于编码 *后*
             async function performEncode() {
                 const input = inputTextarea.value;
+                // const sanitizedInput = sanitizeInput(input); // [移除]
                 const mode = modeSelect.value;
                 
                 if (!input && !['md5', 'sha1', 'sha256'].includes(mode)) {
@@ -580,14 +613,36 @@
                 }
                 
                 try {
-                    const result = await encodeText(input, mode);
+                    // [修改] 使用原始 input
+                    const target = ['md5', 'sha1', 'sha256'].includes(mode) ? input : input;
+                    let result = await encodeText(target, mode);
+                    
+                    // [新逻辑] 在编码后应用“移除反斜杠”
+                    const removeBackslashes = removeBackslashesCheckbox && removeBackslashesCheckbox.checked;
+                    if (removeBackslashes) {
+                        result = result.replace(/\\/g, '');
+                    }
+
+                    // [修改] 统一更新状态
+                    let statusMsg = `已${['md5', 'sha1', 'sha256'].includes(mode) ? '生成' : '编码为'} ${getModeName(mode)}`;
+                    if (removeBackslashes) {
+                        statusMsg += ' 并移除了反斜杠';
+                    }
+                    updateStatus(statusMsg);
+                    
                     outputTextarea.value = result;
-                    updateStatus(`已${['md5', 'sha1', 'sha256'].includes(mode) ? '生成' : '编码为'} ${getModeName(mode)}`);
                 } catch (error) {
                     outputTextarea.value = `编码错误: ${error.message}`;
                     updateStatus(`编码错误: ${error.message}`, true);
                 }
             }
+
+            // [移除] sanitizeInput 函数
+            /*
+            function sanitizeInput(text) {
+                // ...
+            }
+            */
 
             function getModeName(mode) {
                 const names = {
