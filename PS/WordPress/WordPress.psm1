@@ -985,15 +985,33 @@ function Update-WpPluginsDFOnServers
     读取配置文件中的服务器列表,然后逐个服务器执行相同的处理
     #>
     param(
-        [Alias('PluginPath')]$Path ,
+        # 本地插件目录路径🎈
+        [parameter(ParameterSetName = 'Path')]
+        [Alias('PluginPath')]
+        $Path ,
+        # 插件名称(服务器上插件路径的最后一级目录名)
+        [parameter(ParameterSetName = 'Name')]
+        $PluginName,
+        # 删除插件
+        [parameter(ParameterSetName = 'Name')]
+        [switch]$RemovePlugin,
         $ServerConfig = $server_config
     )
     $servers = Get-ServerList -Path $ServerConfig
     # Write-Host "servers:$servers"
     # return $servers
     $servers.ip | ForEach-Object {
-        Write-Host "Updating plugins to $_"
-        Update-WpPluginsDFOnServer -server $_ -PluginPath $Path 
+        if($PSCmdlet.ParameterSetName -eq 'Path')
+        {
+            
+            Write-Host "Updating plugins to $_"
+            Update-WpPluginsDFOnServer -server $_ -PluginPath $Path 
+        }
+        elseif($PSCmdlet.ParameterSetName -eq 'Name' -and $RemovePlugin)
+        {
+            Write-Host "remove plugins[$PluginName] in $_"
+            Update-WpPluginsDFOnServer -server $_ -PluginName $PluginName -RemovePlugin
+        }
     }
 }
 function Update-WpSitesRobots
@@ -1195,15 +1213,25 @@ function Update-WpPluginsDFOnServer
 .EXAMPLE
 Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_pay\mallpay 
 #>
+    [cmdletbinding()]
     param(
 
         [Alias('hst', 'Ip')]$server ,               # 服务器IP地址
-        $username = "root"        ,      # 服务器用户名
+        $Username = "root"        ,      # 服务器用户名
         # $password = ""              # 服务器密码（不推荐明文存储,配置ssh密钥登录更安全）
-        $PluginPath ,   # 本地插件目录路径🎈
-        $remoteDirectory = "/www"       , # 服务器目标目录
+        
+        # 本地插件目录路径🎈
+        [parameter(ParameterSetName = 'Path')]
+        $PluginPath ,  
+        # 插件名称(服务器上插件路径的最后一级目录名)
+        [parameter(ParameterSetName = 'Name')]
+        $PluginName,
+        
+        $RemoteDirectory = "/www"       , # 服务器目标目录
         $WorkingDirectory = "/www/wwwroot",
-        $bashScript = "/www/sh/wp-plugin-update/update_wp_plugin.sh",
+        $BashScript = "/www/sh/wp-plugin-update/update_wp_plugin.sh",
+        # 移除插件而非安装(更新)插件
+        [switch]$RemovePlugin,
         [switch]$Dry
     )
     
@@ -1220,7 +1248,17 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
 
     # 执行高性能的bash脚本
     $dryRun = if($Dry) { "--dry-run" }else { "" }
-    $cmd = "  ssh $username@$server bash $bashScript --workdir $workingDirectory --source $plugin_dir $dryRun " 
+    if($PSCmdlet.ParameterSetName -eq 'Path')
+    {
+
+        $cmd = "  ssh $username@$server bash $bashScript --workdir $workingDirectory --source $plugin_dir $dryRun " 
+    }
+    elseif($PSCmdlet.ParameterSetName -eq 'Name' -and $RemovePlugin)
+    {
+        # bash update_wp_plugin.sh --remove mallpay --whitelist whitelist.conf
+        $cmd = "  ssh $username@$server bash $bashScript --workdir $workingDirectory --remove $PluginName $dryRun " 
+    }
+    
     Write-Verbose "Executing command: $cmd" -Verbose
     Start-Sleep 2
     $cmd | Invoke-Expression
