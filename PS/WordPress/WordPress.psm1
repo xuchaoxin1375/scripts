@@ -16,7 +16,7 @@ function Remove-WpSitesLocal
     param(
         $Table = "$desktop/my_table.conf",
         $SitesDir = $my_wp_sites,
-        $NginxConfDir = "$env:nginx_conf_dir",
+        $NginxVhostsDir = "$env:nginx_conf_dir",
         [switch]$Force
     )
     $domains = Get-DomainUserDictFromTableLite -Table $Table | Select-Object -ExpandProperty domain
@@ -63,7 +63,7 @@ function Remove-WpSitesLocal
 
     # 尝试删除数据库及其相关配置
     Remove-MysqlIsolatedDB -SitesDir $SitesDir
-    Approve-NginxValidVhostsConf -NginxConfDir $NginxConfDir
+    Approve-NginxValidVhostsConf -NginxVhostsDir $NginxVhostsDir
     $domains | Remove-LineInFile -Path $hosts -Debug
     
 }
@@ -512,10 +512,10 @@ function Deploy-WpSitesLocal
     .PARAMETER DBKey
     mysql密码
 
-    .PARAMETER NginxConfDir
+    .PARAMETER NginxVhostsDir
     nginx配置文件目录
 
-    .PARAMETER NginxConfTemplate
+    .PARAMETER NginxVhostConfigTemplate
     nginx配置文件模板
 
     .PARAMETER SiteImageDirRelative
@@ -541,8 +541,10 @@ function Deploy-WpSitesLocal
         # 一般不需要更改的参数
         $TableStructure = "Domain,User,Template",
         $DBKey = $env:MySqlKey_LOCAL,
-        $NginxConfDir = "$env:nginx_conf_dir", # 例如:C:\phpstudy_pro\Extensions\Nginx1.25.2\conf\vhosts
-        $NginxConfTemplate = "$scripts/Config/nginx_template.conf",
+        $NginxVhostsDir = "$env:nginx_vhosts_dir", # 例如:C:\phpstudy_pro\Extensions\Nginx1.25.2\conf\vhosts
+        $NginxConfDir= "$env:nginx_conf_dir",
+        $NginxVhostConfigTemplate = "$scripts/Config/nginx_template.conf",
+        $NginxConfigTemplate = "$scripts/Config/nginx_template.conf",
         $NginxHtaccessTemplate = "$scripts/Config/nginx.htaccess",
         # nginx.exe所在目录的完整路径(如果Path中的%nginx_home%没有被正确解析,可以指定完整路径)
         # $NginxHome="",
@@ -561,9 +563,9 @@ function Deploy-WpSitesLocal
         return
     }
 
-    if(!(Test-Path $NginxConfDir))
+    if(!(Test-Path $NginxVhostsDir))
     {
-        Write-Error "Nginx conf directory not found: $NginxConfDir"
+        Write-Error "Nginx conf directory not found: $NginxVhostsDir"
         return 
     }
     New-Item -ItemType Directory -Path $MyWpSitesHomeDir -ErrorAction SilentlyContinue -Verbose
@@ -670,12 +672,11 @@ function Deploy-WpSitesLocal
             # 且考虑到统一覆盖的便利性,这里将nginx.htaccess文件(内容)放到一个固定的位置,然后统一读取和复制此文件到目标位置
             Copy-Item -Path $NginxHtaccessTemplate -Destination $destination/nginx.htaccess -Force -Verbose 
             # 配置本地网站对应的nginx.conf文件(比如使用小皮的nginx环境)
-            # $tpl = "$NginxConfDir/tpl.conf"
-            $tpl = "$NginxConfTemplate"
+            $tpl = "$NginxVhostConfigTemplate"
             Write-Debug $tpl
             if (!(Test-Path $tpl))
             {
-                Write-Error "nginx tpl.conf file not found in path: $NginxConfTemplate"
+                Write-Error "nginx tpl.conf file not found in path: $NginxVhostConfigTemplate"
                 # return 
             }
             else
@@ -684,12 +685,15 @@ function Deploy-WpSitesLocal
                 $tpl_content = Get-Content $tpl -Raw
                 $tpl_content = $tpl_content -replace "domain.com", $domain #"`"$domain`"" 
                 $tpl_content = $tpl_content -replace "CgiPort", $CgiPort
-                $nginx_target = "$NginxConfDir/${domain}_80.conf"
+                $nginx_target = "$NginxVhostsDir/${domain}_80.conf"
                 $tpl_content > $nginx_target #对于https协议,则为 _443.conf
                 Write-Debug "nginx 配置内容将被写入到文件:[ $nginx_target]" -Debug
                 Write-Debug $tpl_content 
             }
-            
+            if(Test-Path $NginxConfigTemplate)
+            {
+                Copy-Item -Path $NginxConfigTemplate -Destination $NginxConfDir -Verbose -Force
+            }
             Write-Warning "please restart nginx service to apply the new nginx.conf file!🎈"
             # 导出后续步骤要用到的命令行,创建对应的目录(如果没有的话)
             $CsvDirHome = "$CsvDir/$domain"

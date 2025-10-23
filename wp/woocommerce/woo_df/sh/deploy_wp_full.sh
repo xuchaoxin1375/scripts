@@ -2,7 +2,7 @@
 
 # === 配置参数 ===
 # 依赖说明:主要依赖于外部的伪静态规则文件RewriteRules.LF.conf,以及7z解压工具
-# 在powershell中将词文件更新/推送到服务器(可以使用scp命令):
+# 在powershell中将此文件更新/推送到服务器(可以使用scp命令):
 # scp -r C:\repos\scripts\wp\woocommerce\woo_df\sh\deploy_wp_full.sh root@${env:DF_SERVER1}:"/www/wwwroot/deploy_wp_full.sh"
 # 默认值
 UPLOADER_DIR="/srv/uploads/uploader"

@@ -83,6 +83,27 @@ Backup-EnvsRegistry -Dir $desktop
 ```cmd
 # 创建常用软件目录
 New-Item -ItemType Directory -Path C:/exes -ErrorAction SilentlyContinue
+# 根据情况修改采集器Data目录🎈
+$phpstudy_home="C:\phpstudy_pro"
+
+# 设置nginx信息🎈
+# 根据nginx版本修改下面的版本号(默认为1.25.2)
+$nginx_home="$phpstudy_extensions\Nginx1.25.2"
+# 根据采集器安装目录修改
+$locoy_spider_home="C:\火车采集器V10.27"
+
+# 设置mysql信息🎈
+#$MYSQL_BIN_HOME = "$phpstudy_extensions\MySQL5.7.26\bin" #弃用5.7,现在使用8+的版本
+$mysql_home="$phpstudy_extensions\MySQL8.0.12"
+$mysql_bin = "$mysql_home\bin"
+# 根据情况修改本地mysql密码🎈
+setx MySqlKey_LOCAL "root"
+
+
+# =======下面的不需要修改===========
+$nginx_conf_dir="$nginx_home\conf"
+$nginx_vhosts_dir="$nginx_conf_dir\vhosts"
+$locoy_spider_data="$locoy_spider_home\Data"
 
 # 基础环境变量配置
 setx PYTHONPATH @"
@@ -98,15 +119,23 @@ setx exes C:/exes
 
 
 # 辅助环境变量配置(D盘用户注意按需更改),还有软件版本也要注意(日后如果更新软件,或其他导致目录变更的情况,要注意修改环境变量(使用gui方案))
+setx LOCOY_SPIDER_DATA $locoy_spider_data 
 
-setx phpstudy_extensions "C:\phpstudy_pro\extensions"
-setx nginx_conf_dir "C:\phpstudy_pro\Extensions\Nginx1.25.2\conf\vhosts"
-# setx nginx_home "C:\phpstudy_pro\extensions\Nginx1.25.2"
+setx phpstudy_extensions $phpstudy_extensions
+setx nginx_home $nginx_home
+setx nginx_conf_dir $nginx_conf_dir
+setx nginx_vhosts_dir $nginx_vhosts_dir
 
-# 根据情况修改采集器Data目录🎈
-setx LOCOY_SPIDER_DATA "C:\火车采集器V10.27\Data" #🎈
-# 根据情况修改本地mysql密码🎈
-setx MySqlKey_LOCAL "root"
+
+setx MYSQL_HOME $mysql_home
+setx MYSQL_BIN_HOME $mysql_home
+
+# ==配置常用软件所在目录到path===
+#Add-EnvVar -EnvVar Path -NewValue '%nginx_home%' 
+Add-EnvVar -EnvVar Path -NewValue $nginx_home
+Add-EnvVar -EnvVar Path -NewValue $mysql_bin
+
+# END
 ```
 
 将引号中的路径替换为你的采集对应的路径
@@ -125,42 +154,9 @@ setx MySqlKey_LOCAL "root"
 
 ### 配置软件目录到Path环境变量👺
 
-mysql和nginx路径配置到path中
 
-#### mysql.exe
 
-找到mysql.exe所在目录,然后将此目录添加到path环境变量中
-
-下面的**powershell**命令行仅供参考(注意路径的修改,运行需要一点时间,请耐心等待)
-
-```powershell
-
-#$MYSQL_BIN_HOME = "C:\phpstudy_pro\extensions\MySQL5.7.26\bin" #弃用5.7,现在使用8+的版本
-$MYSQL_HOME="C:\phpstudy_pro\extensions\MySQL8.0.12"
-$MYSQL_BIN_HOME = "$MYSQL_HOME\bin"
-setx MYSQL_HOME $MYSQL_HOME
-setx MYSQL_BIN_HOME $MYSQL_BIN_HOME
-
-[Environment]::SetEnvironmentVariable("MYSQL_BIN_HOME", $MYSQL_BIN_HOME, [EnvironmentVariableTarget]::User)
-
-$newPath = [Environment]::GetEnvironmentVariable("PATH", [EnvironmentVariableTarget]::User) + ";%MYSQL_BIN_HOME%"
-
-[Environment]::SetEnvironmentVariable("PATH", $newPath, [EnvironmentVariableTarget]::User)
-
-```
-
-#### nginx.exe
-
-```powershell
-$nginx_home = "C:\phpstudy_pro\extensions\Nginx1.25.2"
-setx nginx_home $nginx_home
-#Add-EnvVar -EnvVar Path -NewValue '%nginx_home%' 
-Add-EnvVar -EnvVar Path -NewValue $nginx_home
-
-#如果使用了小皮,并且xp.cn_cgi.exe接管进程的端口监听的端口建议配置一下
-# setx CgiPort 9001 # 可能是9001或者9002
-
-```
+### CgiPort配置🎈
 
 #### 端口查询
 
@@ -168,14 +164,14 @@ Add-EnvVar -EnvVar Path -NewValue $nginx_home
 
 ```powershell
 $p=Get-NetTCPConnection |?{$_ -like '*900*'};$p;ps -Id $p.OwningProcess
-ps -Id $p.OwningProcess
+# ps -Id $p.OwningProcess #xp.cn_cgi进程
 
 ```
 
-例如:我查询到的是9002端口,所属进程是`xp.cn_cgi`
+例如:我查询到的是9002端口(LocalPort),所属进程是`xp.cn_cgi`
 
 ```powershell
-PS> $p=Get-NetTCPConnection |?{$_ -like '*900*'};$p;ps -Id $p.OwningProcess
+PS> $p=Get-NetTCPConnection |?{$_ -like '*900*'};$p; ps -Id $p.OwningProcess
 
 LocalAddress                        LocalPort RemoteAddress                       RemotePort State       AppliedSetting OwningProcess
 ------------                        --------- -------------                       ---------- -----       -------------- -------------
@@ -187,6 +183,29 @@ CPU     : 0.015625
 SI      : 1
 Name    : xp.cn_cgi
 ```
+
+
+
+```powershell
+
+#如果使用了小皮,并且xp.cn_cgi.exe接管进程的端口监听的端口建议配置一下
+# setx CgiPort 9001 # 可能是9001或者9002
+
+```
+
+### 添加Path变量备用方案:(可选)
+
+```powershell
+[Environment]::SetEnvironmentVariable("MYSQL_BIN_HOME", $MYSQL_BIN_HOME, [EnvironmentVariableTarget]::User)
+
+$newPath = [Environment]::GetEnvironmentVariable("PATH", [EnvironmentVariableTarget]::User) + ";%MYSQL_BIN_HOME%"
+
+[Environment]::SetEnvironmentVariable("PATH", $newPath, [EnvironmentVariableTarget]::User)
+```
+
+
+
+
 
 ### php命令行(可选)
 

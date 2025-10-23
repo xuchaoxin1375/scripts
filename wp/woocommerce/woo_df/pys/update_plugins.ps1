@@ -35,11 +35,15 @@ C:\share\df\wp_sites\wp_plugins_functions\update_plugins.ps1 -Depth 2 -WpSitesDi
 . $desktop/update_plugins.ps1 -Depth 1 -WpSitesDir $my_wp_sites    -RemovePluginsOfSites -PluginsToRemove paypal-online-payment-for-woocommerce
 .EXAMPLE
 更新或者安装插件
-$plugin_dir="$desktop/yunzipaycc-for-woocommerce" #采集员
-
-$plugin_dir="$wp_plugins\yunzipaycc-for-woocommerce" # 作者
+# 采集员版本
+$plugin_dir="$desktop/kuqipay-wordpress" 
 . $desktop/update_plugins.ps1 -WpSitesDir $my_wp_sites -PluginSources $plugin_dir
 # zw,zsh可以跳过下面语句
+. $desktop/update_plugins.ps1 -WpSitesDir $wp_sites -PluginSources $plugin_dir
+
+# 作者版本
+$plugin_dir="$wp_plugins/kuqipay-wordpress" 
+. $desktop/update_plugins.ps1 -WpSitesDir $my_wp_sites -PluginSources $plugin_dir
 . $desktop/update_plugins.ps1 -WpSitesDir $wp_sites -PluginSources $plugin_dir
 #>
 [cmdletbinding(SupportsShouldProcess)]
