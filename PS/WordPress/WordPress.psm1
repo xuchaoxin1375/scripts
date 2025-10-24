@@ -440,35 +440,19 @@ function Confirm-WpEnvironment
             Write-Error "❌ 缺少必要环境变量:[ $var]"
             return $false
         }
-        else 
-        {
-            $values = $multiValueVars[$var] -split ';'
-            Write-Debug "环境变量[ $var ]的值: $($values|Out-String)"
-            foreach ($value in $values)
-            {
-                if(-not $value.Trim())
-                {
-                    continue
-                }
-                if (-not (Test-Path $value))
-                {
-                    Write-Error "❌ 环境变量[ $var ]对应的[ $value ]不是目录或者是无效的"
-                    return $false
-                }
-            }
-        }
+
     }
     
     # 检查基本命令行软件(mysql,nginx,php)是否存在且可以直接调用
     $cmds = @(
         'mysql',
-        'nginx',
-        'php'
+        'nginx'
+        # 'php'
     )
     $cmds | ForEach-Object {
         if(!(Test-CommandAvailability $_))
         {
-            Write-Error "❌ 缺少$_命令行软件"
+            Write-Error "❌ 缺少[$_]命令行软件"
             return $false
         }
         else
@@ -543,7 +527,7 @@ function Deploy-WpSitesLocal
         $DBKey = $env:MySqlKey_LOCAL,
         $NginxVhostsDir = "$env:nginx_vhosts_dir", # 例如:C:\phpstudy_pro\Extensions\Nginx1.25.2\conf\vhosts
         $NginxConfDir= "$env:nginx_conf_dir",
-        $NginxVhostConfigTemplate = "$scripts/Config/nginx_template.conf",
+        $NginxVhostConfigTemplate = "$scripts/Config/nginx_vhost_template.conf",
         $NginxConfigTemplate = "$scripts/Config/nginx_template.conf",
         $NginxHtaccessTemplate = "$scripts/Config/nginx.htaccess",
         # nginx.exe所在目录的完整路径(如果Path中的%nginx_home%没有被正确解析,可以指定完整路径)
@@ -692,7 +676,7 @@ function Deploy-WpSitesLocal
             }
             if(Test-Path $NginxConfigTemplate)
             {
-                Copy-Item -Path $NginxConfigTemplate -Destination $NginxConfDir -Verbose -Force
+                Copy-Item -Path $NginxConfigTemplate -Destination $NginxConfDir\nginx.conf -Verbose -Force
             }
             Write-Warning "please restart nginx service to apply the new nginx.conf file!🎈"
             # 导出后续步骤要用到的命令行,创建对应的目录(如果没有的话)

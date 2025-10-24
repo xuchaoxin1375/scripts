@@ -83,11 +83,11 @@ python $pys\woo_get_csv.py -f .webp -s $start -e $end  -C $country -E $exclude -
 
 
 ```powershell
-$type=' 家居生活  '.trim()
-$country='  US '.trim()
-$start=765
-$end=807
-$exclude='793' 
+$type=' 百货  '.trim()
+$country='  UK '.trim()
+$start=817
+$end=817
+$exclude='0' 
 python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -o "$desktop/$type-$country-$(get-date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]" -dl 10 -nad
 ```
 
@@ -98,9 +98,9 @@ python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -
 
 
 ```powershell
-$type='  汽车  '.trim()
-$country='  DE '.trim()
-$start=728
+$type='  百货  '.trim()
+$country='  UK '.trim()
+$start=819
 $end=$start 
 $exclude='0'
 python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -o "$desktop/$type-$country-$(get-date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]" -dl 10 -nad # -

@@ -3216,7 +3216,7 @@ function Approve-NginxValidVhostsConf
         }
         else
         {
-            Write-Warning "vhost: $($vhost.Name) root path: $root is invalid(not exist)!" -WarningAction Continue
+            Write-Warning "vhost:[ $($vhost.Name) ] root path:[ $root ] is invalid(not exist)!" -WarningAction Continue
             Remove-Item $vhost.FullName -Force -Verbose
             # Write-Host "Removed invalid vhost file: $($vhost.FullName)" -ForegroundColor Red
             # if($PSCmdlet.ShouldProcess("Remove vhost file: $($vhost.FullName)"))
