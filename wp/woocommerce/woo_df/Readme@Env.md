@@ -82,7 +82,7 @@ Backup-EnvsRegistry -Dir $desktop
 
 ```cmd
 # 创建常用软件目录
-New-Item -ItemType Directory -Path C:/exes -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Path C:/exes , C:/sites -ErrorAction SilentlyContinue 
 # 根据情况修改采集器Data目录🎈
 $phpstudy_home="C:\phpstudy_pro"
 $phpstudy_extensions="$phpstudy_home\Extensions"

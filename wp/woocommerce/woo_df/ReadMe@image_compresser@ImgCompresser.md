@@ -298,6 +298,8 @@ python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -
 
 > 虽然本文提供的脚本也支持基本的大小过滤和格式过滤,但是使用专门的工具会更灵活,能满足更加复杂的需求
 
+#### 案例:扫描所有网站里的大图并压缩
+
 现在,假设我想要找出所有的站点中指定目录下的大小超过300k的png图片,然后对它们进行针对性压缩
 
 不妨使用find命令查找并输出目标文件列表
@@ -306,7 +308,7 @@ python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -
 
 ```bash
 #!/bin/bash
-
+cd /
 ROOT="/www/wwwroot"
 
 find "$ROOT" \
