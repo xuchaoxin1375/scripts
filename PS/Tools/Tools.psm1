@@ -3186,6 +3186,7 @@ function Approve-NginxValidVhostsConf
     #>
     [CmdletBinding()]
     param(
+        [alias('NginxVhostsDir')]
         $NginxVhostConfDir = "$env:nginx_conf_dir" # 例如:C:\phpstudy_pro\Extensions\Nginx1.25.2\conf\vhosts
     )
     $vhosts = Get-ChildItem $NginxVhostConfDir -Filter "*.conf" 

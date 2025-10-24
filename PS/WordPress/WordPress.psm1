@@ -63,7 +63,7 @@ function Remove-WpSitesLocal
 
     # 尝试删除数据库及其相关配置
     Remove-MysqlIsolatedDB -SitesDir $SitesDir
-    Approve-NginxValidVhostsConf -NginxVhostsDir $NginxVhostsDir
+    Approve-NginxValidVhostsConf -NginxVhostConfDir $NginxVhostsDir
     $domains | Remove-LineInFile -Path $hosts -Debug
     
 }
