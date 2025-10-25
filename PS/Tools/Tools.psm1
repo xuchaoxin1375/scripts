@@ -1002,7 +1002,11 @@ function Restart-NginxOnHost
 
     )
     # 更新各个网站vhost的配置(宝塔nginx vhost配置文件路径)
-    ssh $User@$HostName " chmod +x /update_nginx_vhosts_conf.sh;/update_nginx_vhosts_conf.sh -d /www/server/panel/vhost/nginx --days 1 "
+    ssh $User@$HostName @"
+    bash /update_nginx_vhosts_conf.sh;/update_nginx_vhosts_conf.sh -d /www/server/panel/vhost/nginx --days 1 
+    bash /www/sh/nginx_conf/update_nginx_vhosts_log_format.sh -d /www/server/panel/vhost/nginx 
+"@
+    
     if ($Force)
     {
         ssh $User@$HostName " pkill -9 nginx ; nginx "

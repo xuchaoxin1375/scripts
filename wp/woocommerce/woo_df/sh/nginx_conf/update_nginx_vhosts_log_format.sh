@@ -1,4 +1,6 @@
 #!/bin/bash
+# 用例:
+# bash ./update_nginx_vhosts_log_format.sh -d /www/server/panel/vhost/nginx # --dry-run
 
 # 默认工作目录为当前目录
 WORK_DIR="."
