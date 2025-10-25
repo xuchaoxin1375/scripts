@@ -100,7 +100,7 @@ python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -
 ```powershell
 $type='  百货  '.trim()
 $country='  UK '.trim()
-$start=819
+$start=836
 $end=$start 
 $exclude='0'
 python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -o "$desktop/$type-$country-$(get-date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]" -dl 10 -nad # -
@@ -116,7 +116,7 @@ python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -
 
 ```
 
-#### 图片名后缀时间戳对齐导出
+#### 图片名后缀时间戳对齐导出🎈
 
 > 分析现有的某个图片,观察其中的[国家代号-时间戳]后缀部分,例如:`SK0789145-US20251019-210314-0.webp`,提取关键信息:`US20251019-210314`(最后的`-0.webp`部分不要),将其作为`-k`选项的参数进行导出
 

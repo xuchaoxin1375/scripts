@@ -308,7 +308,7 @@ python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -
 
 ```bash
 #!/bin/bash
-cd /
+cd /www/
 ROOT="/www/wwwroot"
 
 find "$ROOT" \
