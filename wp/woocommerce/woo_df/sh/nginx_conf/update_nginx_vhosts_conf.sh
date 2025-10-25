@@ -202,7 +202,7 @@ process_file() {
         echo "🔔 已包含自定义配置，准备更新..."
         
         # 备份原文件
-        cp "$conf_file" "${conf_file}.bak.$(date +%Y%m%d%H%M%S)"
+        cp "$conf_file" "${conf_file}.bak" # .$(date +%Y%m%d%H%M%S)
         
         # 删除现有的自定义配置块
         remove_custom_block "$conf_file"

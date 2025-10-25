@@ -1,4 +1,5 @@
 
+
 function Set-CFCredentials
 {
     <# 
@@ -15,6 +16,10 @@ function Set-CFCredentials
     Set-CFCredentials -CfAccount account2
     .EXAMPLE
     Set-CFCredentials -CfAccount account2 -CfConfig $deploy_configs/cf_config.json
+    .NOTES
+    查看可以用的cfaccount名字,可以打开cf_config.json文件查看
+    cat $cf_config
+
     #>
     [CmdletBinding(DefaultParameterSetName = 'FromFile')]
     param (
@@ -30,7 +35,10 @@ function Set-CFCredentials
 
         # [parameter(ParameterSetName = 'FromFile', Mandatory = $true)]
         [alias("Account")]
-        $CfAccount
+        $CfAccount,
+        # 测试配置信息有效性测试方案
+        [ValidateSet('Curl', 'Flarectl')]
+        $TestBy = 'Curl'
     )
     if($PSCmdlet.ParameterSetName -eq 'FromFile')
     {
@@ -38,21 +46,82 @@ function Set-CFCredentials
         $account = $config."accounts"."$CfAccount"
         $Apikey = $account.cf_api_key
         $ApiEmail = $account.cf_api_email
+        $ApiToken = $account.cf_api_token
         
-
+        # 检查 CfAccount 是否存在于配置文件中(账号代号可用性检查)
+        $availableCfAccountCodes = Get-CFAccountsCodeDF
+        if ($CfAccount -notin $availableCfAccountCodes)
+        {
+            Write-Error "请检查你的输入,没有对应的CfAccount: $CfAccount"
+            Write-Host "可用的CfAccount代码有: $availableCfAccountCodes"
+            return $false
+        }
     }
-
     if ($ApiToken)
     {
         $env:CF_API_TOKEN = $ApiToken
-        Write-Output "Cloudflare API Token 已配置"
+        $env:CLOUDFLARE_API_TOKEN = $ApiToken
+        $global:CLOUDFLARE_API_TOKEN = $ApiToken
+        Write-Host "Cloudflare API Token 已配置"
+
+        Write-Host "CLOUDFLARE_API_TOKEN = $ApiToken"
+
+        # 测试配置信息是否能成功获取信息
+        curl.exe "https://api.cloudflare.com/client/v4/user/tokens/verify" -H "Authorization: Bearer $ApiToken" 
+    
     }
-    elseif ($ApiKey -and $ApiEmail)
+    if ($ApiKey -and $ApiEmail)
     {
+        # 
+        
         $env:CF_API_KEY = $ApiKey
+        $env:CLOUDFLARE_API_KEY = $ApiKey
+        $global:CLOUDFLARE_API_KEY = $ApiKey
+        
         $env:CF_API_EMAIL = $ApiEmail
-        Write-Output "Cloudflare API Key 和 Email 已配置($env:CF_API_EMAIL)"
-        flarectl user info # 测试是否成功
+        $env:CLOUDFLARE_EMAIL = $ApiEmail
+        $global:CLOUDFLARE_EMAIL = $ApiEmail
+
+        Write-Output "Cloudflare API Key 和 Email 已配置:($env:CF_API_EMAIL)&($env:CF_API_KEY)"
+
+        # 测试配置信息是否能成功获取信息
+        # 方案1:curl
+        if($TestBy -eq 'Curl')
+        {
+            Write-Host "Testing curl command..."
+            $userInfo = curl https://api.cloudflare.com/client/v4/user -H "X-Auth-Email: $CLOUDFLARE_EMAIL" -H "X-Auth-Key: $CLOUDFLARE_API_KEY"
+            $userID = ($userInfo | ConvertFrom-Json).result.id
+            
+        }
+        elseif($TestBy -eq 'Flarectl')
+        {
+
+            # 方案2
+            if(Get-Command flarectl -ErrorAction SilentlyContinue)
+            {
+                Write-Host "Testing flarectl command..."
+                # flarectl user info 
+                $userInfo = flarectl --json user info 
+                $userID = $userInfo | ConvertFrom-Json | Select-Object -ExpandProperty id
+            }
+            else
+            {
+                Write-Warning "flarectl command not found in PATH. Please ensure flarectl is installed and available in your system PATH."
+            }
+        }
+
+        
+        $env:ACCOUNT_ID = $userID
+        $global:ACCOUNT_ID = $userID
+        Write-Host @"
+        ACCOUNT_ID = $userID
+        CLOUDFLARE_API_KEY = $ApiKey
+        CLOUDFLARE_EMAIL = $ApiEmail
+        
+        CLOUDFLARE_API_TOKEN = $ApiToken
+    
+        
+"@
     }
     else
     {

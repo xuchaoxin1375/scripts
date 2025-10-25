@@ -526,7 +526,7 @@ function Deploy-WpSitesLocal
         $TableStructure = "Domain,User,Template",
         $DBKey = $env:MySqlKey_LOCAL,
         $NginxVhostsDir = "$env:nginx_vhosts_dir", # 例如:C:\phpstudy_pro\Extensions\Nginx1.25.2\conf\vhosts
-        $NginxConfDir= "$env:nginx_conf_dir",
+        $NginxConfDir = "$env:nginx_conf_dir",
         $NginxVhostConfigTemplate = "$scripts/Config/nginx_vhost_template.conf",
         $NginxConfigTemplate = "$scripts/Config/nginx_template.conf",
         $NginxHtaccessTemplate = "$scripts/Config/nginx.htaccess",
@@ -877,6 +877,34 @@ function Deploy-WpSitesOnline
     # 配置cf域名解析,邮箱转发和代理保护(位置2,暂时使用位置1)
     # Add-CFZoneConfig
 }
+function Get-CFAccountsCodeDF
+{
+    <# 
+    .SYNOPSIS
+        获取已配置的可用的cf账号代号(名字)列表
+        注意代号是cf账号(邮箱)的简写,例如account1,a1,甚至直接使用数字编号1,1-1,2-1等
+    .DESCRIPTION
+        读取DF约定格式的cf_config.json配置文件中的特定属性并获取cf账号列表
+        返回powershell数组
+    .NOTES
+        如果json文件结构有变,可能要更新此代码以正确读取账号列表
+    .EXAMPLE
+        #⚡️[Administrator@CXXUDESK][~\Desktop][18:22:38] PS >
+        Get-CFAccountsCodeDF
+
+        account1
+        account2
+        account2-1
+        account3
+        account4
+    #>
+    param (
+        $CfConfig = "$cf_config"
+    )
+    $config = Get-Content $CfConfig | ConvertFrom-Json
+    return $config.accounts.psobject.properties.name
+    
+}
 function Get-ServerList
 {
     <# 
@@ -898,7 +926,10 @@ function Get-ServerList
     # Write-Output $config
     $servers = $config.servers.PSObject.Properties.Value
     # Write-Output $servers
-    
+    if($Skip -eq 1)
+    {
+        Write-Warning "Skipping the first $Skip server."
+    }
     return $servers[$Skip..($servers.Length - 1)]
     
 }
