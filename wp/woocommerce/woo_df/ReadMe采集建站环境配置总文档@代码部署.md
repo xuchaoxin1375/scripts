@@ -87,12 +87,13 @@ woo_uploader.py负责的任务,可以多线程或者按批上传数据到wp站
 ```powershell
 irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1'|iex
 
-
 ```
 
-如果已经安装了git(和powershell7),那么直接执行(记得最后一行要回车):
+### 直接克隆/强制覆盖代码🎈
 
-```bash
+前提:已经安装了git(和powershell7),那么直接执行(记得最后一行要回车):
+
+```powershell
 git clone https://gitee.com/xuchaoxin1375/scripts.git C:/repos/scripts
 setx PsModulePath C:/repos/scripts/PS
 

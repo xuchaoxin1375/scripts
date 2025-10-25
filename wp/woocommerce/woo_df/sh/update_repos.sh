@@ -13,6 +13,51 @@ REPO_URL="https://gitee.com/xuchaoxin1375/scripts.git"
 TARGET_DIR="/repos/scripts"
 BRANCH="main"  # 或 "master"，根据实际情况调整
 
+# CLI flags
+FORCE=0
+
+print_usage() {
+    cat <<EOF
+Usage: $(basename "$0") [options]
+
+Options:
+  -f, --force    强制执行（用于覆盖 nginx.conf 并跳过交互或保护性检查）
+  -h, --help     显示本帮助信息并退出
+
+This script will clone or update the git repository at $TARGET_DIR and
+update several symlinks and nginx configuration files. Use --force to
+allow the script to backup and overwrite /www/server/nginx/conf/nginx.conf
+when applicable.
+EOF
+}
+
+# Parse args (simple POSIX-compatible loop)
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        -f|--force)
+            FORCE=1
+            shift
+            ;;
+        -h|--help)
+            print_usage
+            exit 0
+            ;;
+        --) # end of options
+            shift
+            break
+            ;;
+        -*)
+            echo "Unknown option: $1"
+            print_usage
+            exit 2
+            ;;
+        *)
+            # positional arg (not used) – ignore for now
+            shift
+            ;;
+    esac
+done
+
 # === 确保父目录存在 ===
 mkdir -p "$(dirname "$TARGET_DIR")"
 
@@ -94,6 +139,25 @@ ln -s /www/sh/nginx_conf/update_nginx_vhosts_conf.sh /update_nginx_vhosts_conf.s
 cp /www/sh/nginx_conf/com.conf /www/server/nginx/conf/com.conf -fv
 # cp /www/sh/nginx_conf/limit_rate.conf /www/server/nginx/conf/limit_rate.conf -fv
 cp /www/sh/nginx_conf/nginx.conf /www/server/nginx/conf/nginx.repos.conf -fv
+# todo
+# 如果启用了 --force 选项,则备份宝塔的 nginx.conf 文件 (/www/server/nginx/conf/nginx.conf)
+# 并使用 /www/sh/nginx_conf/nginx.conf 覆盖宝塔的 nginx.conf 文件
+if [ "$FORCE" -eq 1 ]; then
+    NGINX_CONF_DIR="/www/server/nginx/conf"
+    NGINX_CONF_FILE="$NGINX_CONF_DIR/nginx.conf"
+    BACKUP_TS=$(date +%Y%m%d) # %H%M%S
+    if [ -f "$NGINX_CONF_FILE" ]; then
+        echo "🔒 Force enabled: backing up existing nginx.conf to ${NGINX_CONF_FILE}.bak.${BACKUP_TS}"
+        cp -fv "$NGINX_CONF_FILE" "${NGINX_CONF_FILE}.bak.${BACKUP_TS}"
+    else
+        echo "ℹ️ No existing nginx.conf to backup at $NGINX_CONF_FILE"
+    fi
+
+    echo "🔁 Overwriting $NGINX_CONF_FILE with /www/sh/nginx_conf/nginx.conf"
+    cp -fv /www/sh/nginx_conf/nginx.conf "$NGINX_CONF_FILE"
+# else
+#     echo "ℹ️ --force not set: skipping overwrite of /www/server/nginx/conf/nginx.conf"
+fi
 
 # 让nginx重新加载配置🎈
 nginx -t && nginx -s reload
