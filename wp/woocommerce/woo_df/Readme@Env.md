@@ -90,7 +90,7 @@ $phpstudy_extensions="$phpstudy_home\Extensions"
 # 设置nginx信息🎈
 # 根据nginx版本修改下面的版本号(默认为1.25.2)
 $nginx_home="$phpstudy_extensions\Nginx1.25.2"
-# 根据采集器安装目录修改
+# 根据采集器安装目录修改🎈
 $locoy_spider_home="C:\火车采集器V10.27"
 
 # 设置mysql信息🎈
@@ -136,7 +136,9 @@ setx MYSQL_BIN_HOME $mysql_home
 #Add-EnvVar -EnvVar Path -NewValue '%nginx_home%' 
 Add-EnvVar -EnvVar Path -NewValue $nginx_home
 Add-EnvVar -EnvVar Path -NewValue $mysql_bin
-
+# 注册mysqld服务
+# $mysql_home=if($MYSQL_HOME){$mysql_home}else{$env:MYSQL_HOME}
+mysqld --install MySQL80 --defaults-file="$MYSQL_HOME\my.ini"
 # END
 ```
 

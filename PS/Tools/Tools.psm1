@@ -3122,6 +3122,25 @@ function Get-MainDomain
         return $null
     }
 }
+function Start-XpNginx
+{
+    [CmdletBinding()]
+    param(
+        $NginxHome = $env:NGINX_HOME,
+        $NginxConf = $nginx_conf
+    )
+    Write-Debug "nginx_home: $nginx_home"
+    if (!$nginx_home)
+    {
+        Write-Warning "Nginx home directory was not set , please set the environment variable NGINX_HOME to your nginx home directory!"
+    }
+    $Res = Start-Process -FilePath nginx -ArgumentList "-p $NginxHome -c $NginxConf" -PassThru -Verbose 
+    # Get-Process $Res.Id
+    Write-Host "Wait for nginx to start and check process status..."
+    $Res = Get-Process *nginx* 
+    return $Res
+    # $item = Get-Item -Path "$nginx_home/ngin
+}
 function Restart-Nginx
 {
     <# 
@@ -3153,7 +3172,7 @@ function Restart-Nginx
     
     # Approve-NginxValidVhostsConf
     Approve-NginxValidVhostsConf -NginxVhostConfDir $NginxVhostConfDir
-
+    
     Write-Verbose "Nginx.exe -s reload" -Verbose
     Start-Process -WorkingDirectory $nginx_home -FilePath "nginx.exe" -ArgumentList "-s", "reload" -Wait -NoNewWindow
     Write-Verbose "Nginx.exe -s stop" -Verbose
@@ -3191,7 +3210,7 @@ function Approve-NginxValidVhostsConf
     [CmdletBinding()]
     param(
         [alias('NginxVhostsDir')]
-        $NginxVhostConfDir = "$env:nginx_conf_dir" # 例如:C:\phpstudy_pro\Extensions\Nginx1.25.2\conf\vhosts
+        $NginxVhostConfDir = "$env:nginx_vhosts_dir" # 例如:C:\phpstudy_pro\Extensions\Nginx1.25.2\conf\vhosts
     )
     $vhosts = Get-ChildItem $NginxVhostConfDir -Filter "*.conf" 
     Write-Verbose "Checking vhosts in $NginxVhostConfDir" -Verbose

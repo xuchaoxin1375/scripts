@@ -16,7 +16,7 @@ function Remove-WpSitesLocal
     param(
         $Table = "$desktop/my_table.conf",
         $SitesDir = $my_wp_sites,
-        $NginxVhostsDir = "$env:nginx_conf_dir",
+        $NginxVhostsDir = "$env:nginx_vhosts_dir",
         [switch]$Force
     )
     $domains = Get-DomainUserDictFromTableLite -Table $Table | Select-Object -ExpandProperty domain
@@ -476,7 +476,38 @@ function Confirm-WpEnvironment
     }
 
 }
-
+function Get-XpCgiPort
+{
+    param (
+    )
+    $p = Get-NetTCPConnection | Where-Object { $_ -like '*900*' };
+    if($p)
+    {
+        $process = Get-Process -Id $p.OwningProcess | Out-String
+        Write-Host $process
+    }
+    else
+    {
+        Write-Error "未找到相关进程"
+    }
+    # Write-Host $p
+    return $p
+}
+function Start-XpCgi
+{
+    [CmdletBinding()]
+    param (
+        $CgiPath = "$env:PHPSTUDY_HOME/COM/xp.cn_cgi.exe",
+        $PhpPath = "$env:php_home\php-cgi.exe",
+        $CgiPort = 9002,
+        $CgiArgs = "1+16"
+    )
+    $cmd = "$CgiPath  $phpPath $CgiPort $CgiArgs"
+    Write-Host "启动xp.cn_cgi进程: $cmd"
+    $cmd | Invoke-Expression
+    Write-Host "CGI进程检查..."
+    Get-Process *xp.cn_cgi*
+}
 function Deploy-WpSitesLocal
 {
     <# 
@@ -553,10 +584,17 @@ function Deploy-WpSitesLocal
         return 
     }
     New-Item -ItemType Directory -Path $MyWpSitesHomeDir -ErrorAction SilentlyContinue -Verbose
-    # 启动必要的服务
+    
+    if(Test-Path $NginxConfigTemplate)
+    {
+        Copy-Item -Path $NginxConfigTemplate -Destination $NginxConfDir\nginx.conf -Verbose -Force
+    }
+    # 部署前检查或启动必要的服务
     Restart-Nginx 
-    # Restart-Service 
-    # 检查nginx和mysql服务是否正常运行
+    # Restart-Service MySQL80
+    Restart-Service MySQL* -Verbose
+
+    # 检查nginx/mysql服务是否正常运行
     $nginx_status = Get-Process nginx
     $mysqld_status = Get-Process mysqld
     if(!$nginx_status)
@@ -674,10 +712,7 @@ function Deploy-WpSitesLocal
                 Write-Debug "nginx 配置内容将被写入到文件:[ $nginx_target]" -Debug
                 Write-Debug $tpl_content 
             }
-            if(Test-Path $NginxConfigTemplate)
-            {
-                Copy-Item -Path $NginxConfigTemplate -Destination $NginxConfDir\nginx.conf -Verbose -Force
-            }
+         
             Write-Warning "please restart nginx service to apply the new nginx.conf file!🎈"
             # 导出后续步骤要用到的命令行,创建对应的目录(如果没有的话)
             $CsvDirHome = "$CsvDir/$domain"
