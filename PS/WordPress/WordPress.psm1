@@ -480,74 +480,86 @@ function Get-XpCgiPort
 {
     <# 
     .SYNOPSIS
-    查询xp.cn_cgi监听的端口信息(通常为9000以上的端口)
+    查询xp.cn_cgi监听的端口信息
+    如果指定端口,则优先使用指定的端口查询相关进程(通常为9000以上的端口)
 
     .DESCRIPTION
-    获取xp.cn_cgi进程端口,并返回进程对象
+    获取xp.cn_cgi进程端口,并返回包含端口属性的对象
 
     #>
     [cmdletbinding()]
     param (
         [alias('xpCgiProcess')]
         [parameter(ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
-        $Process
+        $Process,
+        # 指定端口的优先级更高
+        $ByPort = ''
     )
     # $p = Get-NetTCPConnection | Where-Object { $_ -like '*900*' };
-    if($Process)
+    if($ByPort)
     {
-        Write-Verbose "通过管道传入xp.cn_cgi进程对象" -Verbose
-        $xpCgiProcess = $Process
+        $p = Get-NetTCPConnection | Where-Object { $_ -like '*900*' } | Select-Object -First 1
+        return $p
     }
     else
     {
-        Write-Verbose "检查xp.cn_cgi进程是否已经存在..."
-        $xpCgiProcess = Get-Process *xp.cn_cgi* -ErrorAction SilentlyContinue
-    }
-    # $xpCgiProcess = Get-Process *xp.cn_cgi* -ErrorAction SilentlyContinue
-    if($xpCgiProcess)
-    {
-        Write-Verbose "xp.cn_cgi进程已经存在!" -Verbose
-        Write-Verbose "$($xpCgiProcess | Out-String)" -Verbose
-        # 考虑到有的情况下会运行多个xp.cn_cgi进程,这里需要遍历进程
-        $xpCgiProcess = @($xpCgiProcess)
-        if($xpCgiProcess.Count -gt 1)
-        {
-            Write-Warning "检测到多个xp.cn_cgi进程,将找出第一个可用进程信息..." 
-        }
-        $i = 0
-        $info = $null
-        foreach ($Process in $xpCgiProcess)
-        {
-            Write-Verbose "进程[$i]信息: ID=$($Process.Id), Name=$($Process.ProcessName)" -Verbose
-            $item = Get-NetTCPConnection | Where-Object { $_.OwningProcess -eq $Process.Id } | Select-Object LocalAddress, LocalPort, State, OwningProcess
 
-            # if($i -eq 0) #部分进程无法查询到监听端口,第一个进程不够可靠,可能是空的
-            if($item)
+        if($Process)
+        {
+            Write-Verbose "通过管道传入xp.cn_cgi进程对象" -Verbose
+            $xpCgiProcess = $Process
+        }
+        else
+        {
+            Write-Verbose "检查xp.cn_cgi进程是否已经存在..."
+            $xpCgiProcess = Get-Process *xp.cn_cgi* -ErrorAction SilentlyContinue
+        }
+        # $xpCgiProcess = Get-Process *xp.cn_cgi* -ErrorAction SilentlyContinue
+        if($xpCgiProcess)
+        {
+            Write-Verbose "xp.cn_cgi进程已经存在!" -Verbose
+            Write-Verbose "$($xpCgiProcess | Out-String)" -Verbose
+            # 考虑到有的情况下会运行多个xp.cn_cgi进程,这里需要遍历进程
+            $xpCgiProcess = @($xpCgiProcess)
+            if($xpCgiProcess.Count -gt 1)
             {
-                $info = $item
-                Write-Host "查询到第一个监听端口的xp_cn.cgi进程信息:"
-                Write-Host $info
-                # 查询到第一个后跳出循环(节约时间)
-                break
+                Write-Warning "检测到多个xp.cn_cgi进程,将找出第一个可用进程信息..." 
             }
-
-            $i += 1
+            $i = 0
+            $info = $null
+            foreach ($Process in $xpCgiProcess)
+            {
+                Write-Verbose "进程[$i]信息: ID=$($Process.Id), Name=$($Process.ProcessName)" -Verbose
+                $item = Get-NetTCPConnection | Where-Object { $_.OwningProcess -eq $Process.Id } | Select-Object LocalAddress, LocalPort, State, OwningProcess
+                
+                # if($i -eq 0) #部分进程无法查询到监听端口,第一个进程不够可靠,可能是空的
+                if($item)
+                {
+                    $info = $item
+                    Write-Host "查询到第一个监听端口的xp_cn.cgi进程信息:"
+                    Write-Host $info
+                    # 查询到第一个后跳出循环(节约时间)
+                    break
+                }
+                
+                $i += 1
+            }
+            # $info = Get-NetTCPConnection | Where-Object { $_.OwningProcess -eq $xpCgiProcess.Id } | Select-Object LocalAddress, LocalPort, State, OwningProcess #| Out-String
+            # Write-Host "现有进程信息:`n $info"
         }
-        # $info = Get-NetTCPConnection | Where-Object { $_.OwningProcess -eq $xpCgiProcess.Id } | Select-Object LocalAddress, LocalPort, State, OwningProcess #| Out-String
-        # Write-Host "现有进程信息:`n $info"
-    }
-    else
-    {
-        Write-Error "xp.cn_cgi进程尚不存在"
-    }
-    if($info)
-    {
-        
-        return $info
-    }
-    else
-    {
-        return $False
+        else
+        {
+            Write-Error "xp.cn_cgi进程尚不存在"
+        }
+        if($info)
+        {
+            
+            return $info
+        }
+        else
+        {
+            return $False
+        }
     }
 
 }
@@ -635,7 +647,7 @@ function Start-XpCgi
     {
         Write-Host "xp.cn_cgi进程已经存在"
         # $info = Get-NetTCPConnection | Where-Object { $_.OwningProcess -eq $xpCgiProcess.Id } | Select-Object LocalAddress, LocalPort, State, OwningProcess | Out-String
-        $info = Get-XpCgiPort 
+        $info = Get-XpCgiPort -ByPort 900*
         Write-Host "现有进程信息:`n $info"
         if($Force)
         {
@@ -755,10 +767,16 @@ function Deploy-WpSitesLocal
     Start-XpNginx
     Start-Service MySQL* -Verbose -ErrorAction SilentlyContinue
     $cgi = Start-XpCgi -CgiPort $CgiPort -Force:$Force #确保xp.cn_cgi进程启动
+    if(!$cgi)
+    {
+        Write-Error "xp.cn_cgi进程启动失败,请检查相关配置和日志"
+        return $False
+    }
 
-    if($CgiPort){
+    if($CgiPort)
+    {
         $cgiExist = Get-XpCgiPort
-        $portExsit=$cgiExist.LocalPort
+        $portExsit = $cgiExist.LocalPort
         if($portExsit -ne $CgiPort)
         {
             Write-Warning "指定的CgiPort端口[$CgiPort]和现有进程监听的端口[$portExsit]不一致"
@@ -771,11 +789,7 @@ function Deploy-WpSitesLocal
         Write-Host "CGI服务已启动,注意当前进程监听的端口: $CgiPort " -ForegroundColor Cyan
         Write-Host "如果和指定端口不一致,可以考虑追加-Force参数重新启动CGI服务,让其监听指定端口(如果端口未被占用的话)" 
     }
-    else
-    {
-        Write-Error "CGI服务启动失败,请检查相关进程或监听端口冲突问题" 
-        return $False
-    }
+ 
     # 检查nginx/mysql服务是否正常运行
     $nginx_status = Get-Process nginx
     $mysqld_status = Get-Process mysqld
