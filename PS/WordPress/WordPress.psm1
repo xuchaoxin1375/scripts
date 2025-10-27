@@ -512,7 +512,7 @@ function Get-XpCgiPort
         $xpCgiProcess = @($xpCgiProcess)
         if($xpCgiProcess.Count -gt 1)
         {
-            Write-Warning "检测到多个xp.cn_cgi进程,将逐个列出端口信息..." 
+            Write-Warning "检测到多个xp.cn_cgi进程,将找出第一个可用进程信息..." 
         }
         $i = 0
         $info = $null
@@ -525,8 +525,10 @@ function Get-XpCgiPort
             if($item)
             {
                 $info = $item
-                Write-Host "第一个可以查询到监听端口的xp_cn.cgi进程信息:"
+                Write-Host "查询到第一个监听端口的xp_cn.cgi进程信息:"
                 Write-Host $info
+                # 查询到第一个后跳出循环(节约时间)
+                break
             }
 
             $i += 1
@@ -609,7 +611,8 @@ function Start-XpCgi
 
     .PARAMETER CgiArgs
     xp.cn_cgi进程参数,默认值为"1+16"
-
+    .NOTES
+    系统可能有多个xp.cn_cgi进程,get-process 可能会查到多个进程(数组),使用返回结果时需要注意数据类型
     .EXAMPLE
     Start-XpCgi
 
@@ -643,7 +646,7 @@ function Start-XpCgi
         }
         else
         {
-            # 直接返回现有进程信息
+            # 直接返回现有进程信息(可能是进程对象或进程数组)
             return $xpCgiProcess
         }
     }
@@ -751,9 +754,18 @@ function Deploy-WpSitesLocal
     # 部署前检查或启动必要的服务(nginx,mysql,xp.cn_cgi)
     Start-XpNginx
     Start-Service MySQL* -Verbose -ErrorAction SilentlyContinue
-    $cgi = Start-XpCgi -CgiPort $CgiPort -Force:$Force
+    $cgi = Start-XpCgi -CgiPort $CgiPort -Force:$Force #确保xp.cn_cgi进程启动
 
-    if($cgi)
+    if($CgiPort){
+        $cgiExist = Get-XpCgiPort
+        $portExsit=$cgiExist.LocalPort
+        if($portExsit -ne $CgiPort)
+        {
+            Write-Warning "指定的CgiPort端口[$CgiPort]和现有进程监听的端口[$portExsit]不一致"
+        }
+    }
+    # 如果未指定CgiPort,则尝试自动获取CGI服务监听的端口(如果相关进程没有启动,则先启动进程)
+    if(!$CgiPort)
     {
         $CgiPort = $Cgi | Get-XpCgiPort | Select-Object -ExpandProperty LocalPort
         Write-Host "CGI服务已启动,注意当前进程监听的端口: $CgiPort " -ForegroundColor Cyan
