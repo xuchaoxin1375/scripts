@@ -495,7 +495,7 @@ function Get-XpCgiPort
     # $p = Get-NetTCPConnection | Where-Object { $_ -like '*900*' };
     if($Process)
     {
-        Write-Debug "通过管道传入xp.cn_cgi进程对象"
+        Write-Verbose "通过管道传入xp.cn_cgi进程对象" -Verbose
         $xpCgiProcess = $Process
     }
     else
@@ -506,18 +506,51 @@ function Get-XpCgiPort
     # $xpCgiProcess = Get-Process *xp.cn_cgi* -ErrorAction SilentlyContinue
     if($xpCgiProcess)
     {
-        Write-Verbose "xp.cn_cgi进程已经存在"
-        Write-Verbose "$($xpCgiProcess | Out-String)"
-        $info = Get-NetTCPConnection | Where-Object { $_.OwningProcess -eq $xpCgiProcess.Id } | Select-Object LocalAddress, LocalPort, State, OwningProcess #| Out-String
+        Write-Verbose "xp.cn_cgi进程已经存在!" -Verbose
+        Write-Verbose "$($xpCgiProcess | Out-String)" -Verbose
+        # 考虑到有的情况下会运行多个xp.cn_cgi进程,这里需要遍历进程
+        $xpCgiProcess = @($xpCgiProcess)
+        if($xpCgiProcess.Count -gt 1)
+        {
+            Write-Warning "检测到多个xp.cn_cgi进程,将逐个列出端口信息..." 
+        }
+        $i = 0
+        $info = $null
+        foreach ($Process in $xpCgiProcess)
+        {
+            Write-Verbose "进程[$i]信息: ID=$($Process.Id), Name=$($Process.ProcessName)" -Verbose
+            $item = Get-NetTCPConnection | Where-Object { $_.OwningProcess -eq $Process.Id } | Select-Object LocalAddress, LocalPort, State, OwningProcess
+
+            # if($i -eq 0) #部分进程无法查询到监听端口,第一个进程不够可靠,可能是空的
+            if($item)
+            {
+                $info = $item
+                Write-Host "第一个可以查询到监听端口的xp_cn.cgi进程信息:"
+                Write-Host $info
+            }
+
+            $i += 1
+        }
+        # $info = Get-NetTCPConnection | Where-Object { $_.OwningProcess -eq $xpCgiProcess.Id } | Select-Object LocalAddress, LocalPort, State, OwningProcess #| Out-String
         # Write-Host "现有进程信息:`n $info"
     }
     else
     {
         Write-Error "xp.cn_cgi进程尚不存在"
     }
+    $info = $item
+    if($info)
+    {
+        
+        return $info
+    }
+    else
+    {
+        return $False
+    }
 
-    return $info
 }
+
 function Stop-phpCgi
 {
     <# 
