@@ -538,7 +538,6 @@ function Get-XpCgiPort
     {
         Write-Error "xp.cn_cgi进程尚不存在"
     }
-    $info = $item
     if($info)
     {
         
