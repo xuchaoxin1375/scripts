@@ -124,7 +124,7 @@ fi
 is_new_site() {
     local file="$1"
     # 使用 find 检查文件是否在 NEW_SITE_DAYS 天内修改过
-    if find "$file" -type f -mtime "-$NEW_SITE_DAYS" -print -quit | grep -q .; then
+    if find "$file" -maxdepth 1 -type f -mtime "-$NEW_SITE_DAYS" -print -quit | grep -q .; then
         return 0  # 是新站点
     else
         return 1  # 是老站点

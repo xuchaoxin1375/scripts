@@ -26,6 +26,8 @@ usage() {
     $0 -d /www -p "*.conf" --days 1                    # 仅处理最近1天修改的文件
 具体用例:(宝塔用户将所有网站的nginx配置检查com.conf的插入情况)🎈
   bash  /update_nginx_vhosts_conf.sh -d /www/server/panel/vhost/nginx/ 
+
+共用配置文件路径: /www/server/nginx/conf/com.conf 请将配置写入其中
 EOF
     exit 1
 }

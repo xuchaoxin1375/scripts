@@ -724,7 +724,7 @@ function Deploy-WpSitesLocal
         # 数据库文件(sql文件所在目录)
         $SqlFileDir = "$WpSitesTemplatesDir/base_sqls",
         # 可以配置环境变量来设置
-        $CgiPort = "$env:CgiPort",
+        $CgiPort = "$env:CgiPort", 
         # 一般不需要更改的参数
         $TableStructure = "Domain,User,Template",
         $DBKey = $env:MySqlKey_LOCAL,
@@ -960,7 +960,7 @@ Get-WpSitePacks -SiteDirecotry $destination -Mode zstd
     Write-Debug "Modify hosts file [$hosts]"
     # 重启(重载)nginx服务器
     
-    Restart-Nginx -Debug
+    Restart-Nginx -Force:$Force
 }
 function Deploy-WpSitesOnline
 {
@@ -1047,7 +1047,7 @@ function Deploy-WpSitesOnline
     $retryTimes = $MaxRetryTimes
     # 记录域名检查次数(查询域名激活的次数)
     $checkTimes = 0
-    $domainsInfo = Get-CFZoneInfoFromTable -Json | ConvertFrom-Json
+    $domainsInfo = Get-CFZoneInfoFromTable -Json -Table $FromTable | ConvertFrom-Json
     $domainCount = $domainsInfo.Count
     $domainTotal = $domainCount
     # 检查域名激活状态

@@ -19,6 +19,9 @@ function Set-CFCredentials
     .NOTES
     查看可以用的cfaccount名字,可以打开cf_config.json文件查看
     cat $cf_config
+    .Notes
+    部分情况下,此命令修改CF相关环境变量会失败,如果出现这种情况,请手动设置环境变量,或者新开一个powershell窗口再试
+    TODO:添加flarectl 读取环境变量后返回用户信息与指定账号对比检验
 
     #>
     [CmdletBinding(DefaultParameterSetName = 'FromFile')]
@@ -62,7 +65,7 @@ function Set-CFCredentials
         $env:CF_API_TOKEN = $ApiToken
         $env:CLOUDFLARE_API_TOKEN = $ApiToken
         $global:CLOUDFLARE_API_TOKEN = $ApiToken
-        Write-Host "Cloudflare API Token 已配置"
+        Write-Host "Cloudflare API Token 已配置($env:CF_API_TOKEN)"
 
         Write-Host "CLOUDFLARE_API_TOKEN = $ApiToken"
 
@@ -73,14 +76,14 @@ function Set-CFCredentials
     if ($ApiKey -and $ApiEmail)
     {
         # 
+        $env:CF_API_EMAIL = $ApiEmail
+        $env:CLOUDFLARE_EMAIL = $ApiEmail
+        $global:CLOUDFLARE_EMAIL = $ApiEmail
         
         $env:CF_API_KEY = $ApiKey
         $env:CLOUDFLARE_API_KEY = $ApiKey
         $global:CLOUDFLARE_API_KEY = $ApiKey
         
-        $env:CF_API_EMAIL = $ApiEmail
-        $env:CLOUDFLARE_EMAIL = $ApiEmail
-        $global:CLOUDFLARE_EMAIL = $ApiEmail
 
         Write-Output "Cloudflare API Key 和 Email 已配置:($env:CF_API_EMAIL)&($env:CF_API_KEY)"
 
@@ -95,11 +98,11 @@ function Set-CFCredentials
         }
         elseif($TestBy -eq 'Flarectl')
         {
-
-            # 方案2
+            # 方案2 flarectl
+            Write-Debug "相关环境变量取值:CF_API_EMAIL=$env:CF_API_EMAIL; CF_API_KEY=$env:CF_API_KEY"
             if(Get-Command flarectl -ErrorAction SilentlyContinue)
             {
-                Write-Host "Testing flarectl command..."
+                Write-Host "Testing connection by flarectl command..."
                 # flarectl user info 
                 $userInfo = flarectl --json user info 
                 $userID = $userInfo | ConvertFrom-Json | Select-Object -ExpandProperty id
@@ -113,20 +116,20 @@ function Set-CFCredentials
         
         $env:ACCOUNT_ID = $userID
         $global:ACCOUNT_ID = $userID
+        # 打印配置信息,也可以供bash复制粘贴使用
         Write-Host @"
-        ACCOUNT_ID = $userID
-        CLOUDFLARE_API_KEY = $ApiKey
         CLOUDFLARE_EMAIL = $ApiEmail
+        CLOUDFLARE_API_KEY = $ApiKey
+        ACCOUNT_ID = $userID
         
-        CLOUDFLARE_API_TOKEN = $ApiToken
-    
-        
+        CLOUDFLARE_API_TOKEN = $ApiToken      
 "@
     }
     else
     {
         Write-Error "请提供 API Token 或 API Key + Email"
     }
+    return $userInfo
 }
 function Get-CFZoneID
 {

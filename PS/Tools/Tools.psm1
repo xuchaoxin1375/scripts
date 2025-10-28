@@ -3153,7 +3153,9 @@ function Restart-Nginx
     param(
 
         $nginx_home = $env:NGINX_HOME,
-        $NginxVhostConfDir = $env:nginx_vhosts_dir
+        $NginxVhostConfDir = $env:nginx_vhosts_dir,
+        # 终止所有nginx进程后再重启
+        [switch]$Force
     
     )
     Write-Debug "nginx_home: $nginx_home"
@@ -3172,11 +3174,31 @@ function Restart-Nginx
     
     # Approve-NginxValidVhostsConf
     Approve-NginxValidVhostsConf -NginxVhostConfDir $NginxVhostConfDir
-    
-    Write-Verbose "Nginx.exe -s reload" -Verbose
-    Start-Process -WorkingDirectory $nginx_home -FilePath "nginx.exe" -ArgumentList "-s", "reload" -Wait -NoNewWindow
-    Write-Verbose "Nginx.exe -s stop" -Verbose
+    if($Force)
+    {
+        Write-Verbose "Force stop all nginx processes..." -Verbose
+        $nginx_processes = Get-Process *nginx* -ErrorAction SilentlyContinue
+        if($nginx_processes)
+        {
+            $nginx_processes | Stop-Process -Force -Verbose
+            Write-Verbose "Start nginx.exe..." -Verbose
+            $p = Start-Process -WorkingDirectory $nginx_home -FilePath "nginx.exe" -ArgumentList "-c", "$nginx_conf" -NoNewWindow # -PassThru
+            # 重新扫描nginx进程(而不是使用上面的Start-Process返回的进程对象,进程创建失败时,这不太准确)
+            return Get-Process nginx*
+            # Start-XpNginx 
+        }
+        else
+        {
+            Write-Verbose "No nginx processes found to stop." -Verbose
+        }
+    }
+    else
+    {
 
+        Write-Verbose "Nginx.exe -s reload" -Verbose
+        Start-Process -WorkingDirectory $nginx_home -FilePath "nginx.exe" -ArgumentList "-s", "reload" -Wait -NoNewWindow
+        Write-Verbose "Nginx.exe -s stop" -Verbose
+    }
 }
 
 function Get-PortAndProcess
@@ -3608,13 +3630,22 @@ function Get-HtmlFromLinks
         [parameter(Mandatory = $true)]
         $OutputDir,
         $Agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", 
+        $proxy = "",
         $TimeGap = 1,
         $Threads = 0
     )
     $dt = Get-DateTimeNumber
     $Path = Get-Item $Path | Select-Object -ExpandProperty FullName
     New-Item -ItemType Directory -Name $OutputDir -Force -Verbose -ErrorAction SilentlyContinue
-
+    if($proxy)
+    {
+        Write-Verbose "Using proxy: $proxy" -Verbose
+        $proxyinline = "-x $proxy"
+    }
+    else
+    {
+        $proxyinline = ""
+    }
     # 串行下载
     if(!$Threads)
     {
@@ -3622,9 +3653,10 @@ function Get-HtmlFromLinks
         $i = 1
         Get-Content $Path | ForEach-Object {
             $file = "$OutputDir/$(($_ -split "/")[-1])-$dt-$i.html"
-            curl.exe -A $Agent `
-                -L $_ `
-                -o $file
+            $cmd = "curl.exe -A '$Agent' -L  -k $proxyinline -o $file $_" 
+            $cmd | Invoke-Expression
+            Write-Host "$cmd"
+            Start-Sleep 1
             
             # $s>"ames/$(($_ -split "/")[-1]).html"
             Write-Host "Downloaded($i):[ $_ ]-> $file"
@@ -3641,8 +3673,11 @@ function Get-HtmlFromLinks
         Get-Content $Path | ForEach-Object -Parallel {
             $index = [System.Threading.Interlocked]::Increment($using:counter)
             $file = "$using:OutputDir/$(($_ -split "/")[-1])-$using:dt-$index.html"
-        
-            curl.exe -A $using:Agent -L $_ -o $file
+            
+            # curl.exe -A $using:Agent -L  -k -o $file $_  -x $using:proxy
+
+            $cmd = "curl.exe -A '$using:Agent' -L  -k $using:proxyinline -o $file $_" 
+            $cmd | Invoke-Expression
         
             Write-Host "Downloaded($index): [ $_ ] -> $file"
             Start-Sleep $using:TimeGap

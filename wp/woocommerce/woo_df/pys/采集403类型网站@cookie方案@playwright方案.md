@@ -155,21 +155,21 @@ PS C:\Users\Administrator\Desktop\localhost> py .\get_htmls_from_urls_multi_thre
 
 
 
-## 解析站点地图xml中的url(批量从xml文件中抽取url)
+## 解析站点地图xml中的url(批量从xml文件中抽取url)🎈
 
-可以用脚本(命令行)解析,或者用采集器来解析
+方案有两类:可以用脚本(命令行)解析(倾向于不同的xml抽取到各自对应的url集合文件txt中),或者用采集器来解析(倾向于聚合到同一个txt)
 
-> 和上一节类似,如果`Get-UrlfromSitemap`解析不出来或者报错,可以用采集器来解析并导出
+> 和上一节类似,如果命令`Get-UrlfromSitemap`解析不出来或者报错,可以用采集器来解析并导出
 
 解析各个底层站点地图中包含的产品url,分别保存到.txt文件中(每个txt文件都是包含一系列url的文本文件,每行一个url)
 
-首先将工作目录cd到站点地图所在的目录,否则找不到文件
+**首先将工作目录cd到站点地图所在的目录**,否则找不到文件
 
 > 例如上例中`~\Desktop\localhost\www.speedingparts.de`
 
 ```powershell
 # 首先将工作目录cd到站点地图所在的目录,否则找不到文件
-$sitemap_pattern = '*xml*' #可以根据你下载的站点地图文件名更改
+$sitemap_pattern = '*xml*' #可选修改:可以根据你下载的站点地图文件名更改
 
 $i = 1; 
 Get-ChildItem $sitemap_pattern| ForEach-Object {
@@ -204,14 +204,18 @@ Processing sitemap at path: C:\Users\Administrator\Desktop\localhost\www.speedin
 
 ## 下载产品页html🎈
 
-各个网页的url->html文件
+获取到包含各个网页的url的文本文件后,开始下载其中的url,得到html文件
 
-### curl
+### shell命令行方案
 
-这种方案下载能力相对弱一些,但是操作简单一些
+这种方案下载能力相对弱一些,但是操作简单一些,可以事先用一个被采集站的链接试验下载,如果能够成功,则使用此方案
+
+相关命令(powershell)是curl的包装,内置了一些参数,也可以直接用curl试探下载html的url
+
+也可以考虑用python写一个控制多线程功能完善一些
 
 ```powershell
-ls *.txt |%{Get-HtmlFromLinks -Path $_ -OutputDir htmls -Threads 10 }
+ls *.txt |%{Get-HtmlFromLinks -Path $_ -OutputDir htmls -Threads 16 }
 ```
 
 > 暂时不支持断点进度恢复,重新下载会丢失进度!
@@ -244,7 +248,9 @@ Get-UrlsListFileFromDir -Path $localhost\www.speedingparts.de\htmls -LocTagMode 
 
 否则说明路径片段有误,需要手动指定`-HtmlDirSegment`参数指定新的url中间片段.
 
-例如指定中间路径为`CustomDirSeg/htmls-dir`,效果如下
+例如:
+
+指定中间路径为`CustomDirSeg/htmls-dir`,效果如下
 
 ```powershell
 Get-UrlsListFileFromDir -Path $localhost\www.speedingparts.de\htmls -LocTagMode -Hst localhost -Output $localhost/www.speedingparts.de/local_urls.txt -htmlDirSegment CustomDirSeg/htmls-dir -Preview
@@ -252,6 +258,26 @@ Get-UrlsListFileFromDir -Path $localhost\www.speedingparts.de\htmls -LocTagMode 
 ```
 
 最理想的情况下是该命令正确猜测你的html文件存放路径,就不需要指定`-HtmlDirSegment`参数
+
+又比如:
+
+```powershell
+#⚡️[Administrator@CXXUDESK][~\Desktop\localhost\swiss][15:04:28] PS >
+ Get-UrlsListFileFromDir .\htmls\ -LocTagMode -htmlDirSegment swiss/htmls -Output ../swiss.xml
+VERBOSE: Output to file: ../swiss.xml
+VERBOSE: Preview: <loc>http://localhost:80/swiss/htmls/-202510281409-1.html</loc>
+<loc>http://localhost:80/swiss/htmls/0849-popline-ballpoint-pen-202510281409-364.html</loc>
+<loc>http://localhost:80/swiss/htmls/14-3-spare-cutting-blade-202510281409-116.html</loc>
+<loc>http://localhost:80/swiss/htmls/14-small-ergonimic-secateur-202510281409-115.html</loc>
+<loc>http://localhost:80/swiss/htmls/160s-small-secateur-202510281409-117.html</loc>
+<loc>http://localhost:80/swiss/htmls/19056-202510281409-536.html</loc>
+<loc>http://localhost:80/swiss/htmls/19068-202510281409-537.html</loc>
+<loc>http://localhost:80/swiss/htmls/19167-202510281409-539.html</loc>
+<loc>http://localhost:80/swiss/htmls/19197-202510281409-546.html</loc>
+<loc>http://localhost:80/swiss/htmls/2-3-spare-cutting-blade-202510281409-120.html</loc>
+```
+
+
 
 ## 源码和url匹配
 

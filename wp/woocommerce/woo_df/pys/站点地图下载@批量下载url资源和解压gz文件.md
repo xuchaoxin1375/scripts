@@ -2,7 +2,18 @@
 
 ## 批量下载xml或gz(sitemap gz)👺
 
-### 相关命令
+有两类方案,或者混合使用两种方案
+
+## 可视化方案
+
+- 利用采集器将站点地图中的连接采集下来(如果有多语言的记得过滤出来产品相关的链接(比如包含Product的链接))
+- 导出采集器中采集到的网址到一个文本文件
+- 复制出来文本文件中的链接,然后有若干方案下载
+  - 使用motrix或者freedownloadmanager(fdm),可以批量下载或者从文件导入链接下载
+  - 用浏览器插件(随便一个可以网页或https链接批量打开/多开的插件),将文本文件中的链接粘贴到插件中打开这些链接,浏览器就会下载这些压缩包(比如gzip,gz等)
+- 然后将这些文件放到一个统一的目录中,比如用被采集网站的域名命名,然后用7z批量打开和解压
+
+## 命令行方案及其相关命令
 
 批量下载(获取url中的资源,比如下载html或则文件,gz文件等)
 
@@ -32,7 +43,13 @@ VERBOSE: 成功解压: C:\Users\Administrator\Desktop\localhost\fahrwerk-24.de\s
 
 ### 基本原理核心代码段参考
 
-### 批量下载gz的url资源
+### 抽取gz资源的url
+
+先获取到包含各个gz链接的url列表文本文件,比如命名为`domain.com.urls`或者`L1.urls`
+
+### 批量下载gz或.xml文件的url资源
+
+
 
 ```bash
 # 配置两个参数
@@ -44,7 +61,7 @@ $dir="$localhost\$domain"; #要下载保存的目录🎈(建议是桌面的local
 New-Item -ItemType Directory -Path $dir -ErrorAction SilentlyContinue ;
 
 cd $dir;
-cat $links |%{curl -L -O $_ -A $agent} # 使用-L选项追踪301等跳转,提高抓取能力;使用-A 选项提供伪装用户的浏览器UA,可以绕过一些基础的反爬设置
+cat $links |%{curl -L -A $agent -O $_ } # 使用-L选项追踪301等跳转,提高抓取能力;使用-A 选项提供伪装用户的浏览器UA,可以绕过一些基础的反爬设置
 
 ```
 
@@ -64,6 +81,7 @@ cat $links |%{curl -L -O $_ -A $agent} # 使用-L选项追踪301等跳转,提高
 ls *gz|%{7z x $_ }
 # 移除gz文件
 rm *.gz
+
 #将目录汇总的xml文件列入到一个maps.xml中
 Get-UrlListFromDir . -hst localhost -LocTagMode > maps.xml
 
@@ -217,3 +235,8 @@ VERBOSE: Preview: <loc>http://localhost:80/fahr.de/9d0e95af9be5423a91abe77013aec
 ```
 
 现在,将`http://localhost/fahr.de.txt`这个链接填入下机器采集本地站中的第一级站点地图
+
+## 后续下一步
+
+获得了可以本地采集的站点地图(可以采集到所有产品链接),下一步另见它文(403类型采集)
+
