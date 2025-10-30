@@ -1667,14 +1667,15 @@ function Get-CsvRowsByPercentage
 
     Write-Host "处理完成，结果已保存到: $OutputFile"
 }
-function Split-TextFileByLines
+function Split-TextFile
 {
     <#
     .SYNOPSIS
         将文本文件按指定行数或平均分割成多个文件。
     
     .DESCRIPTION
-        Split-TextFileByLines 函数可以将一个大的文本文件按照行数分割成多个较小的文件。支持两种分割模式：
+        Split-TextFile 函数可以将一个大的文本文件按照行数分割成多个较小的文件。
+        支持两种分割模式：
         1. 按行数分割：根据指定的行数限制分割文件
         2. 平均分割：将文件尽可能均匀地分割成指定数量的文件
     

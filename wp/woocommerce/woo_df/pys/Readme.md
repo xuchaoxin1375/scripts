@@ -54,7 +54,7 @@ python $pys\woo_get_csv.py -f .webp --start-id  $start_id --end-id $end_id  --la
 
 默认情况下产品名和图片链接同时相同才会视为重复,可以尽可能保留更多的产品数据
 
-#### 完整推荐的使用示例🎈
+#### 导出命令模板
 
 例如:
 
@@ -83,10 +83,10 @@ python $pys\woo_get_csv.py -f .webp -s $start -e $end  -C $country -E $exclude -
 
 
 ```powershell
-$type=' 百货  '.trim()
+$type=' 百货/建筑  '.trim()
 $country='  UK '.trim()
-$start=817
-$end=817
+$start=882
+$end=888
 $exclude='0' 
 python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -o "$desktop/$type-$country-$(get-date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]" -dl 10 -nad
 ```

@@ -352,7 +352,7 @@ echo "所有 wp-content/uploads/wc-imports 目录已删除。"
 
 
 
-## windows本地压缩
+## windows本地压缩🎈
 
 下面用的参数和选项针对我们的业务配置的
 
@@ -384,7 +384,24 @@ git clone https://gitee.com/xuchaoxin1375/scripts.git C:/repos/scripts
 
 ```bash
 #⚡️[Administrator@CXXUDESK][~\Desktop][14:50:16][UP:12.11Days]
-PS> py C:\repos\scripts\wp\woocommerce\woo_df\pys\image_compresser.py   -R auto -p -F  -O -k -f webp  -r 1000 800  -i C:\Users\Administrator\Pictures\imgs_demo
+PS> python C:\repos\scripts\wp\woocommerce\woo_df\pys\image_compresser.py   -R auto -p -F  -O -k -f webp  -r 1000 800  -i C:\Users\Administrator\Pictures\imgs_demo
+```
+
+### 压缩指定目录中的jpg,png为webp
+
+```powershell
+ls *jpg,*png|% FullName > $home/jpn.txt ;
+python C:\repos\scripts\wp\woocommerce\woo_df\pys\image_compresser.py   -R auto -p -F  -O -k -f webp  -r 1000 800  -I $home/jpn.txt
+
+```
+
+### 把指定目录中文件后缀为.jpg,.png批量修改为.webp
+
+定位到图片所在目录,然后可以在文件资源管理器地址栏中输入`pwsh`,执行:
+
+```powershell
+ls -File |Rename-Item -NewName {$_.Name -replace '\.jpg$','.webp' } -force
+
 ```
 
 
