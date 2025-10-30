@@ -154,7 +154,7 @@ class WooCommerceProductImporter:
                         print(f"处理批次失败: {str(e)}")
 
         # 后期处理
-        self._post_import_processing()
+        # self.post_import_processing()
         elapsed = (datetime.now() - start_time).total_seconds()
         print(f"\n导入完成，耗时 {elapsed:.2f} 秒")
 
@@ -646,7 +646,7 @@ class WooCommerceProductImporter:
         finally:
             conn.close()
 
-    def _post_import_processing(self):
+    def post_import_processing(self):
         """导入后处理（增强版）"""
         print("正在执行后期处理...")
         conn = pymysql.connect(**self.db_config)
@@ -822,6 +822,9 @@ if __name__ == "__main__":
         print(
             "Invalid CSV path provided. Please specify a valid CSV file or directory."
         )
+
+    # 后期处理
+    importer.post_import_processing()
 
     if args.update_slugs:
         importer.update_product_slugs()

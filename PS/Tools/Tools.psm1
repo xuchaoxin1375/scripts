@@ -3227,7 +3227,7 @@ function Approve-NginxValidVhostsConf
 {
     <# 
     .SYNOPSIS
-    扫描nginx vhosts目录中的各个站点配置文件(尤其是所指的站点路径)是否存在(有效)
+    扫描nginx vhosts目录中的各个站点配置文件是否有效(尤其是所指的站点路径)
     如果无效,则会将对应的vhosts中的站点配置文件移除,从而避免nginx启动或重载而受阻
     #>
     [CmdletBinding()]
@@ -3256,12 +3256,23 @@ function Approve-NginxValidVhostsConf
         {
             continue
         }
+        $removeVhost = $true
         # 根据得到的root路径来判断站点根目录是否存在
         if(Test-Path $root)
         {
             Write-Verbose "vhost: $($vhost.Name) root path: $root is valid(exist)!"  
+            # 保险起见,再检查内部的标准文件wp-config.php是否存在(部分情况下,目录没有移除干净或者被其他进程占用,这种情况下仅仅根据网站根目录是否存在是不够准确的,当然,此时系统内部可能积累了许多错误,建议重启计算机)
+            if(Test-Path "$root/wp-config.php")
+            {
+                Write-Verbose "vhost: $($vhost.Name) wp-config.php exists in root path: $root"  
+                $removeVhost = $false
+            }
+            else
+            {
+                Write-Warning "vhost: $($vhost.Name) wp-config.php NOT exists in root path: $root!" -WarningAction Continue
+            }
         }
-        else
+        if($removeVhost)
         {
             Write-Warning "vhost:[ $($vhost.Name) ] root path:[ $root ] is invalid(not exist)!" -WarningAction Continue
             Remove-Item $vhost.FullName -Force -Verbose

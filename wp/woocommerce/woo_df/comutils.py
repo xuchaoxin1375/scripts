@@ -470,6 +470,50 @@ def read_table_data(file_path, encoding="utf-8"):
     return df
 
 
+def read_table(file_path, header=0, encoding=None):
+    """读取表格数据,根据文件后缀读取文件(csv,xlsx,xls)
+
+    Args:
+        file_path (str): 文件路径
+        header (int, optional): 表头行数. Defaults to 0.
+        encoding (str, optional): 文件编码. 对csv文件有效,excel文件读取无此参数
+            默认尝试多个编码(gbk,utf-8,gb2312),也可以指定编码(不推荐)
+
+    Returns:
+        pd.DataFrame: 数据
+
+
+    """
+    if file_path.endswith(".csv"):
+        # 对于csv文件,有不同编码情况,如果gbk读取失败,尝试utf-8,gb2312
+        if encoding:
+            try:
+                df = pd.read_csv(file_path, encoding=encoding, header=header)
+            except UnicodeDecodeError as e:
+                raise ValueError(
+                    f"csv文件读取失败: 使用指定编码{encoding}读取失败"
+                ) from e
+        else:
+            enc_candidates = ["utf-8", "gbk", "gb2312"]
+            last_exc = None
+            for enc in enc_candidates:
+                try:
+                    df = pd.read_csv(file_path, encoding=enc, header=header)
+                    last_exc = None
+                    break
+                except UnicodeDecodeError as e:
+                    # 捕获错误并继续尝试下一个编码
+                    last_exc = e
+            if last_exc is not None:
+                raise ValueError("csv文件读取失败: 无法识别文件编码") from last_exc
+
+    elif file_path.endswith((".xlsx", ".xls")):
+        df = pd.read_excel(file_path, header=header)
+    else:
+        raise ValueError("不支持的文件格式")
+    return df
+
+
 def get_image_filebasename(supported_image_formats=SUPPORT_IMAGE_FORMATS_NAME):
     """得到不带格式的图片名
     这依赖于supported_image_formats的配置的完善程度

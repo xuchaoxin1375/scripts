@@ -60,26 +60,84 @@ rmx(){
   return 0
 }
 
-# 进程监控函数
+# 进程监控函数psm
 psm() {
+    # 1. 检查帮助选项
+    if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+        # 使用 'cat << EOF' 来格式化多行帮助文本
+        cat << EOF
+用法: psm [排序字段] [行数]
+
+功能:
+  显示当前系统的进程状态, 类似于 top, 但提供了高精度的内存百分比计算。
+
+参数:
+  [排序字段]   (可选) 指定 'ps' 命令用于排序的字段。
+               必须包含 '-' (降序) 或 '+' (升序)。
+               注意: 按内存排序请使用 '-rss'。
+               (为了方便, '-mem' 或 '-%mem' 会被自动转换为 '-rss')
+               默认: -%cpu
+
+  [行数]       (可选) 指定显示进程的行数 (不包括表头)。
+               默认: 20
+
+选项:
+  -h, --help   显示此帮助信息并退出。
+
+示例:
+  psm            # 按 CPU 降序显示前 20 个进程
+  psm -rss 10    # 按 RSS 内存占用降序显示前 10 个进程
+  psm +pid 50    # 按 PID 升序显示前 50 个进程
+EOF
+        return 0 # 成功退出函数
+    fi
+
+    # 2. 处理函数参数
     local sort_field="${1:--%cpu}"
     local lines="${2:-20}"
-    
-    ps -eo user,pid,%cpu,%mem,rss,vsz,nlwp,stat,start_time,cmd --sort="$sort_field" | head -n "$((lines+1))" | awk '
+
+    # 3. 智能处理内存排序
+    #    如果用户输入 -%mem 或 -mem, 自动帮他转换为 -rss
+    if [[ "$sort_field" == "-%mem" || "$sort_field" == "-mem" ]]; then
+        sort_field="-rss"
+    fi
+
+    # 4. 获取总内存 (KiB)
+    local total_mem_kb=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+
+    # 4.1. 检查是否成功获取
+    if [ -z "$total_mem_kb" ] || [ "$total_mem_kb" -eq 0 ]; then
+        echo "错误: 无法从 /proc/meminfo 读取总内存。" >&2
+        return 1
+    fi
+
+    # 5. 执行 ps 和 awk 命令 (核心逻辑不变)
+    ps -eo user,pid,%cpu,rss,vsz,nlwp,stat,start_time,cmd --sort="$sort_field" | \
+    head -n "$((lines+1))" | \
+    awk -v total_mem="$total_mem_kb" '
     NR==1 {
+        # 表头
         printf "%-12s %-8s %-6s %-6s %-12s %-12s %-6s %-8s %-10s %-s\n",
-               $1,$2,$3,$4,"RSS(MB)","VSZ(MB)",$7,$8,$9,"CMD";
+               $1,$2,$3,"%MEM","RSS(MB)","VSZ(MB)",$6,$7,$8,"CMD";
         next
     }
     {
-        rss_mb=$5/1024; vsz_mb=$6/1024;
-        cmd=$10; for(i=11;i<=NF;i++) cmd=cmd" "$i;
+        # 字段索引: $3=%CPU, $4=RSS(KiB), $5=VSZ(KiB), $6=NLWP, ...
+
+        # 手动计算 %MEM
+        mem_perc = ($4 / total_mem) * 100;
+        
+        rss_mb=$4/1024; 
+        vsz_mb=$5/1024;
+        
+        cmd=$9; for(i=10;i<=NF;i++) cmd=cmd" "$i;
         if(length(cmd)>50) cmd=substr(cmd,1,47)"...";
-        printf "%-12s %-8s %-6.1f %-6.1f %-12.1f %-12.1f %-6s %-8s %-10s %-s\n",
-               $1,$2,$3,$4,rss_mb,vsz_mb,$7,$8,$9,cmd
+        
+        # 打印格式化输出, %MEM 使用 %.2f (保留两位小数)
+        printf "%-12s %-8s %-6.1f %-6.2f %-12.1f %-12.1f %-6s %-8s %-10s %-s\n",
+               $1,$2,$3,mem_perc,rss_mb,vsz_mb,$6,$7,$8,cmd
     }'
 }
-
 # 为常用情况创建别名
 alias pscpu='psm -%cpu'
 alias psmem='psm -%mem'
