@@ -49,7 +49,7 @@ VERBOSE: 成功解压: C:\Users\Administrator\Desktop\localhost\fahrwerk-24.de\s
 
 ### 批量下载gz或.xml文件的url资源
 
-
+通常使用curl下载
 
 ```bash
 # 配置两个参数

@@ -126,16 +126,16 @@ Get-UrlFromSitemap C:\Users\Administrator\Desktop\localhost\L1.xml > $localhost\
 
 #### 使用curl下载
 
-放到最后一节
+另见它文
 
-
+ [站点地图下载@批量下载url资源和解压gz文件.md](站点地图下载@批量下载url资源和解压gz文件.md) 
 
 #### 使用playwright下载
 
 下载这些站点地图(或其压缩包),和下载产品网页类似,也可以调用浏览器下载站点地图文件或其压缩包(共用一个下载脚本)
 
 ```powershell
-PS C:\Users\Administrator\Desktop\localhost> py .\get_htmls_from_urls_multi_thread.py .\sitemap_urls.txt -p http://localhost:8800 -c 5   
+PS C:\Users\Administrator\Desktop\localhost> python .\get_htmls_from_urls_multi_thread.py .\sitemap_urls.txt -p http://localhost:8800 -c 5   
 开始下载 106 个URL到目录: downloads\20250822_211603
 设置: 超时=30s, 延迟=1.0-3.0s
 并发数=5, 重试次数=3, 浏览器窗口模式=隐藏  
@@ -158,6 +158,8 @@ PS C:\Users\Administrator\Desktop\localhost> py .\get_htmls_from_urls_multi_thre
 ## 解析站点地图xml中的url(批量从xml文件中抽取url)🎈
 
 方案有两类:可以用脚本(命令行)解析(倾向于不同的xml抽取到各自对应的url集合文件txt中),或者用采集器来解析(倾向于聚合到同一个txt)
+
+这里通常用shell方案,用不上playwright,因为此步骤要被解析的内容已经下载到本地了
 
 > 和上一节类似,如果命令`Get-UrlfromSitemap`解析不出来或者报错,可以用采集器来解析并导出
 
@@ -217,6 +219,12 @@ Processing sitemap at path: C:\Users\Administrator\Desktop\localhost\www.speedin
 ```powershell
 ls *.txt |%{Get-HtmlFromLinks -Path $_ -OutputDir htmls -Threads 16 }
 ```
+这里的线程数如果开高了可能会被阻止,可以先尝试用代理配合一个高线程数,如果不行,再将线程数降低,比如5,甚至2,1
+
+配置代理的使用案例
+```powershell
+ls *.txt |%{Get-HtmlFromLinks -Path $_ -OutputDir htmls -proxy http://localhost:10808 -Threads 5 }
+```
 
 > 暂时不支持断点进度恢复,重新下载会丢失进度!
 
@@ -229,7 +237,7 @@ ls *.txt |%{Get-HtmlFromLinks -Path $_ -OutputDir htmls -Threads 16 }
 将下载保存目录下的所有txt传递给脚本进行下载
 
 ```powershell
-ls *txt|%{py C:\Users\Administrator\Desktop\localhost\get_htmls_from_urls_multi_thread.py $_  -p http://localhost:8800 -o links -c 2 -d 2-5}
+ls *txt|%{python C:\Users\Administrator\Desktop\localhost\get_htmls_from_urls_multi_thread.py $_  -p http://localhost:8800 -o links -c 2 -d 2-5}
 ```
 
 ## 本地html文件编成xml文件(local_urls.txt)

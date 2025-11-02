@@ -154,6 +154,15 @@ def get_data(file_path, config):
     df_filled["domain"] = df_filled["domain"].astype(str).str.strip()
     df_filled["nameserver1"] = df_filled["nameserver1"].astype(str).str.strip()
     df_filled["nameserver2"] = df_filled["nameserver2"].astype(str).str.strip()
+    # 清理domain字段中的多余部分(部分手动编辑的表格中,domain字段可能包含http(s)前缀,需要移除)
+    df_filled["domain"] = df_filled["domain"].apply(get_main_domain_name_from_str)
+    swarn = df_filled["domain"].str.contains("www", regex=False)
+    if swarn.any():
+        domains_to_modify = df_filled.loc[swarn, "domain"]
+        for domain in domains_to_modify:
+            new_domain = domain.split("www.", 1)[-1]
+            print(f"[WARNING] {domain} contains 'www.', trimming to: {new_domain}")
+
     return df_filled
 
 
@@ -207,7 +216,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def update_nameservers(df, api: APIClient, dry_run=False, verbose=False, threads=4):
+def update_nameservers(df, api: APIClient, dry_run=False, verbose=False, threads=8):
     """使用线程池批量更新域名的域名服务器
     调用api.update_nameservers方法,更新域名的域名服务器
     """

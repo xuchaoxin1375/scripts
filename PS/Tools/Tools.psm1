@@ -3702,12 +3702,13 @@ function Get-HtmlFromLinks
     $result_file_dir = (Split-Path $Path -Parent).ToString()
     $result_file_name = (Split-Path $Path -LeafBase).ToString() + '@local_links.txt'
     Write-Verbose "Result file: $result_file_dir\$result_file_name" -Verbose
-    # $output = "$result_file_dir\$result_file_name"
+    $output = "$result_file_dir\$result_file_name"
 
     # 生成本地页面url文件列表
-    # Get-ChildItem $OutputDir | ForEach-Object { "http://localhost:5500/$OutputDir/$(Split-Path $_ -Leaf)" } | Out-File -FilePath "$output"
-    # Get-UrlListFromDir -
+    Get-ChildItem $OutputDir | ForEach-Object { "<loc> http://localhost:5500/$OutputDir/$(Split-Path $_ -Leaf) </loc>" } | Out-File -FilePath "$output"
+    # Get-UrlListFromDir 
     # 采集 http[参数] -> http[参数1]
+    Get-Content $output | Select-Object -First 10
 }
 function Start-GoogleIndexSearch
 {
@@ -4659,6 +4660,9 @@ function Get-UrlsListFileFromDir
     <# 
     .SYNOPSIS
     列出指定目录下的所有html文件,构造合适成适合采集的url链接列表,并输出到文件
+    .EXAMPLE
+    #⚡️[Administrator@CXXUDESK][~\Desktop\localhost][17:44:10] PS >
+    Get-UrlsListFileFromDir .\litecraft\htmls\  -LocTagMode -htmlDirSegment litecraft/htmls  -Output $localhost/alliance.loc.xml.txt
     #>
     [cmdletbinding()]
     param(
@@ -4734,6 +4738,7 @@ function Get-UrlsListFileFromDir
     # 输出到文件
     $res | Out-File -FilePath "$output"
     Write-Verbose "Output to file: $output" -Verbose
+    Write-Host "访问本地站点地图链接形如: http://${hst}:${Port}/$(Split-Path $Output -Leaf)"
     # 采集 http[参数] -> http[参数1]
     # 预览前10行
     $previewLines = Get-Content $output | Select-Object -First 10 | Out-String
