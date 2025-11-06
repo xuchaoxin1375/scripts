@@ -210,20 +210,20 @@ Processing sitemap at path: C:\Users\Administrator\Desktop\localhost\www.speedin
 
 ### shell命令行方案
 
-这种方案下载能力相对弱一些,但是操作简单一些,可以事先用一个被采集站的链接试验下载,如果能够成功,则使用此方案
+这种方案下载能力相对弱一些(有些js加载的网页就没法下到关键源码),但是操作简单一些,可以事先用一个被采集站的链接试验下载,如果能够成功,则使用此方案
 
 相关命令(powershell)是curl的包装,内置了一些参数,也可以直接用curl试探下载html的url
 
 也可以考虑用python写一个控制多线程功能完善一些
 
 ```powershell
-ls *.txt |%{Get-HtmlFromLinks -Path $_ -OutputDir htmls -Threads 16 }
+ls *.txt |%{Get-SourceFromUrls -Path $_ -OutputDir htmls -Threads 16 }
 ```
 这里的线程数如果开高了可能会被阻止,可以先尝试用代理配合一个高线程数,如果不行,再将线程数降低,比如5,甚至2,1
 
 配置代理的使用案例
 ```powershell
-ls *.txt |%{Get-HtmlFromLinks -Path $_ -OutputDir htmls -proxy http://localhost:10808 -Threads 5 }
+ls *.txt |%{Get-SourceFromUrls -Path $_ -OutputDir htmls -proxy http://localhost:10808 -Threads 5 }
 ```
 
 > 暂时不支持断点进度恢复,重新下载会丢失进度!

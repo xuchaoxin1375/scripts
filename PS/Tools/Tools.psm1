@@ -1985,94 +1985,6 @@ function CreateNewPartFile_
     }
 }
 
-function Get-SourceFromLinksList
-{
-    <#
-    .SYNOPSIS
-        从包含 URL 的文本文件中批量下载文件（如 .gz 或 .xml）到指定目录。
-
-    .DESCRIPTION
-        该函数读取一个包含下载链接的文本文件，使用 curl（即 Invoke-WebRequest 的别名或系统 curl）下载每个文件，
-        并保存到以域名命名的子目录中。支持自动创建目录、HTTP 重定向和自定义 User-Agent。
-
-    .PARAMETER Domain
-        目标站点域名（用于创建子目录，也用于日志或组织结构）。
-
-    .PARAMETER LinksFile
-        包含待下载链接的文本文件路径（每行一个 URL）。
-
-    .PARAMETER BaseDirectory
-        保存下载文件的基础目录（默认为当前用户的桌面下的 'localhost' 文件夹）。
-
-    .PARAMETER UserAgent
-        可选：自定义 User-Agent 字符串，用于模拟浏览器请求。
-
-    .EXAMPLE
-        Get-SourceFromLinksList -Domain "www.speedingparts.de" -LinksFile "C:\localhost\L1.urls"
-
-    .NOTES
-        - 函数使用系统 curl（需确保 curl 在 PATH 中），而非 PowerShell 的 Invoke-WebRequest，
-          以保持与原始脚本行为一致（支持 -L 和 -O）。
-        - 若需跨平台兼容性，可改用 Invoke-WebRequest，但需重写下载逻辑。
-    #>
-
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory = $true)]
-        [string]$Domain,
-
-        [Parameter(Mandatory = $true)]
-        [ValidateScript({
-                if (-not (Test-Path $_ -PathType Leaf))
-                {
-                    throw "链接文件 '$_' 不存在。"
-                }
-                return $true
-            })]
-        [string]$LinksFile,
-
-        [Parameter(Mandatory = $false)]
-        [string]$BaseDirectory = "$([Environment]::GetFolderPath('Desktop'))\localhost",
-
-        [Parameter(Mandatory = $false)]
-        [string]$UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-    )
-
-    # 构建目标目录路径
-    $TargetDir = Join-Path -Path $BaseDirectory -ChildPath $Domain
-
-    # 创建目录（若不存在）
-    if (-not (Test-Path $TargetDir))
-    {
-        New-Item -ItemType Directory -Path $TargetDir -Force | Out-Null
-    }
-    $LinksFile = Get-Item $LinksFile | Select-Object -ExpandProperty FullName
-    # 切换到目标目录
-    Push-Location $TargetDir
-
-    try
-    {
-        # 读取链接文件并逐行下载
-        Get-Content $LinksFile | ForEach-Object {
-            if ($_ -match '^\s*$') { return }  # 跳过空行
-            if ($_ -match '^\s*#') { return } # 跳过注释行（以 # 开头）
-
-            Write-Host "正在下载: $_"
-            if ($UserAgent)
-            {
-                curl -L -O $_ -A $UserAgent
-            }
-            else
-            {
-                curl -L -O $_
-            }
-        }
-    }
-    finally
-    {
-        Pop-Location
-    }
-}
 function Expand-GzFile
 {
     <# 
@@ -3606,11 +3518,99 @@ function Add-NewDomainToHosts
 }
 
 
-function Get-HtmlFromLinks
+function Get-SourceFromLinks
+{
+    <#
+    .SYNOPSIS
+        从包含 URL 的文本文件中批量下载文件（如 .gz 或 .xml）到指定目录。
+
+    .DESCRIPTION
+        该函数读取一个包含下载链接的文本文件，使用 curl（即 Invoke-WebRequest 的别名或系统 curl）下载每个文件，
+        并保存到以域名命名的子目录中。支持自动创建目录、HTTP 重定向和自定义 User-Agent。
+
+    .PARAMETER Domain
+        目标站点域名（用于创建子目录，也用于日志或组织结构）。
+
+    .PARAMETER LinksFile
+        包含待下载链接的文本文件路径（每行一个 URL）。
+
+    .PARAMETER BaseDirectory
+        保存下载文件的基础目录（默认为当前用户的桌面下的 'localhost' 文件夹）。
+
+    .PARAMETER UserAgent
+        可选：自定义 User-Agent 字符串，用于模拟浏览器请求。
+
+    .EXAMPLE
+        Get-SourceFromLinksList -Domain "www.speedingparts.de" -LinksFile "C:\localhost\L1.urls"
+
+    .NOTES
+        - 函数使用系统 curl（需确保 curl 在 PATH 中），而非 PowerShell 的 Invoke-WebRequest，
+          以保持与原始脚本行为一致（支持 -L 和 -O）。
+        - 若需跨平台兼容性，可改用 Invoke-WebRequest，但需重写下载逻辑。
+    #>
+
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$Domain,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateScript({
+                if (-not (Test-Path $_ -PathType Leaf))
+                {
+                    throw "链接文件 '$_' 不存在。"
+                }
+                return $true
+            })]
+        [string]$LinksFile,
+
+        [Parameter(Mandatory = $false)]
+        [string]$BaseDirectory = "$([Environment]::GetFolderPath('Desktop'))\localhost",
+
+        [Parameter(Mandatory = $false)]
+        [string]$UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+    )
+
+    # 构建目标目录路径
+    $TargetDir = Join-Path -Path $BaseDirectory -ChildPath $Domain
+
+    # 创建目录（若不存在）
+    if (-not (Test-Path $TargetDir))
+    {
+        New-Item -ItemType Directory -Path $TargetDir -Force | Out-Null
+    }
+    $LinksFile = Get-Item $LinksFile | Select-Object -ExpandProperty FullName
+    # 切换到目标目录
+    Push-Location $TargetDir
+
+    try
+    {
+        # 读取链接文件并逐行下载
+        Get-Content $LinksFile | ForEach-Object {
+            if ($_ -match '^\s*$') { return }  # 跳过空行
+            if ($_ -match '^\s*#') { return } # 跳过注释行（以 # 开头）
+
+            Write-Host "正在下载: $_"
+            if ($UserAgent)
+            {
+                curl -L -O $_ -A $UserAgent
+            }
+            else
+            {
+                curl -L -O $_
+            }
+        }
+    }
+    finally
+    {
+        Pop-Location
+    }
+}
+function Get-SourceFromUrls
 {
     <# 
     .SYNOPSIS
-    批量下载url
+    批量下载url指定的资源,通常是html
     .DESCRIPTION
     主要用法是通过指定保存了url链接的文本文件,读取其中的url,然后串行或者并行下载url资源(比如html文件或其他资源)
     可以配合管道符或者循环来批量下载多个文件.特别适合下载站点地图中的url资源
@@ -3629,10 +3629,10 @@ function Get-HtmlFromLinks
     并发线程数,默认为0,即串行下载
     .EXAMPLE
     # 典型用法:
-    PS> Get-HtmlFromLinks -Path ame_links.txt -OutputDir amex
+    PS> Get-SourceFromUrls -Path ame_links.txt -OutputDir amex
     .EXAMPLE
     # 批量下载多个文件,通过ls 过滤出txt文件,并排除X1.txt这个部分,使用10个线程下载
-    ls *.txt -Exclude X1.txt |%{Get-HtmlFromLinks -Path $_ -OutputDir htmls4ed -Threads 10 }
+    ls *.txt -Exclude X1.txt |%{Get-SourceFromUrls -Path $_ -OutputDir htmls4ed -Threads 10 }
     .NOTES
     下载网站资源或者网页源代码往往是比较占用磁盘空间的,建议不要直接将文件下载到系统盘(如果条件允许,请下载到其他分区或者硬盘上),除非你确定当前磁盘空间充足或者下载的资源很少,否则长时间不注意可能塞满系统盘导致卡顿甚至崩溃
     #>
@@ -3664,7 +3664,8 @@ function Get-HtmlFromLinks
         
         $i = 1
         Get-Content $Path | ForEach-Object {
-            $file = "$OutputDir/$(($_ -split "/")[-1])-$dt-$i.html"
+            # $file = "$OutputDir/$(($_ -split "/")[-1])-$dt-$i.html"
+            $file = "$OutputDir/$(($_ -split "/")[-1])"
             $cmd = "curl.exe -A '$Agent' -L  -k $proxyinline -o $file $_" 
             $cmd | Invoke-Expression
             Write-Host "$cmd"
@@ -3684,7 +3685,8 @@ function Get-HtmlFromLinks
     
         Get-Content $Path | ForEach-Object -Parallel {
             $index = [System.Threading.Interlocked]::Increment($using:counter)
-            $file = "$using:OutputDir/$(($_ -split "/")[-1])-$using:dt-$index.html"
+            # $file = "$using:OutputDir/$(($_ -split "/")[-1])-$using:dt-$index.html"
+            $file = "$using:OutputDir/$(($_ -split "/")[-1])"
             
             # curl.exe -A $using:Agent -L  -k -o $file $_  -x $using:proxy
 
