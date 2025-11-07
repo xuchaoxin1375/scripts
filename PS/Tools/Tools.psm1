@@ -5078,7 +5078,7 @@ function Set-ExplorerSoftwareIcons
     }
 }
 
-function Get-StylePathByDotNet
+function Get-PathStyleByDotNet
 {
     <# 
     .SYNOPSIS
@@ -5091,6 +5091,7 @@ function Get-StylePathByDotNet
     [CmdletBinding()]
     param (
         [Parameter(Mandatory = $true)]
+        [alias('Input')]
         [string]$Path,
 
         [ValidateSet("Windows", "Linux")]
@@ -5120,37 +5121,71 @@ function Get-StylePathByDotNet
     Write-Verbose "convert process(by dotnet): $path -> $convertedPath"
     return $convertedPath
 }
-function Get-StylePath
+function Get-PathStyle
 {
+    <# 
+    .SYNOPSIS
+    将给定的字符串(通常是path或uri路径)转换为指定风格的字符串
+    .DESCRIPTION
+    windows(反斜杠)风格:将路径中的/(1个或多个连续的`/`)替换为单个\ (注意,可以使用DoubleBackSlash选项,它将`/`以及单独的`\`替换为`\\`)
+    posix/uri(正斜杠)风格:将路径中的\(1个或多个连续的`\`)替换为单个/
+    .PARAMETER Path
+    待转换的路径字符串
+    .PARAMETER Style
+    转换的风格,可选"Windows"或"posix"
+    .NOTES
+    此命令使用正则表达式来匹配路径中的斜杠，并将其替换为指定的风格。
+    .EXAMPLE
+    PS C:\> Get-PathStyle -Path "C:\Users\example\Documents\file.txt" -Style "Windows"
+    C:\Users\example\Documents\file.txt
+
+    #>
     [CmdletBinding()]
     param(
-        [string]$Path,
+        [Parameter(ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
+        # [alias('Input')]
+        # [string]
+        $Path,
 
-        [ValidateSet("Windows", "Linux")]
-        [string]$Style = "Windows"
+        [ValidateSet("Windows", "posix")]
+        [string]$Style = "Windows",
+        [switch]$DoubleBackSlash
     )
 
     # 去掉左右多余空格
-    $normalizedPath = $Path.Trim()
-
-    switch ($Style)
+    begin
     {
-        "Windows"
-        {
-            # 替换所有正斜杠为反斜杠
-            $convertedPath = $normalizedPath -replace '/', '\'
-        }
-        "Linux"
-        {
-            # 替换所有反斜杠为正斜杠
-            $convertedPath = $normalizedPath -replace '\\', '/'
-        }
+        $normalizedPath = $Path.Trim()
+        Write-Debug "normalize path: [$normalizedPath]" -Debug
     }
-    Write-Verbose "convert process: $path -> $convertedPath"
-    return $convertedPath
+    process
+    {
+        switch ($Style)
+        {
+            "Windows"
+            {
+                # 替换所有正斜杠为反斜杠
+                $separator = '/'
+                if($DoubleBackSlash)
+                {
+                    $separator = '\\'
+                }
+                $convertedPath = $normalizedPath -replace '/+|\+', $separator 
+            }
+            "posix"
+            {
+                # 替换所有反斜杠为正斜杠
+                $convertedPath = $normalizedPath -replace '/+|\+', '/'
+            }
+        }
+        Write-Verbose "convert process: $path -> $convertedPath"
+    }end
+    {
+        return $convertedPath
+    }
 }
-
-
+    
+    
 function pow
 {
     [CmdletBinding()]

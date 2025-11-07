@@ -46,7 +46,7 @@ mv ~/$newname ~/.local/bin/$newname -fv
 # 尝试为所有用户创建软链接(可能需要权限)
 # 添加权限检查和sudo
 if [ -w /usr/local/bin ]; then
-    ln -s ~/.local/bin/$newname /usr/local/bin/$newname -fv
+    sudo ln -s ~/.local/bin/$newname /usr/local/bin/$newname -fv
 else
     echo "需要管理员权限才能创建软链接到 /usr/local/bin/"
     # 或者提示用户手动执行: sudo ln -s ~/.local/bin/$newname /usr/local/bin/$newname
