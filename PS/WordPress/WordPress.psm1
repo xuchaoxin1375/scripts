@@ -492,14 +492,28 @@ function Get-XpCgiPort
         [alias('xpCgiProcess')]
         [parameter(ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
         $Process,
-        # 指定端口的优先级更高
-        $ByPort = ''
+        # 指定端口的优先级更高,如果希望以进程监听端口优先,则显示指定此参数为$null
+        $ByPort = '900*'
     )
     # $p = Get-NetTCPConnection | Where-Object { $_ -like '*900*' };
     if($ByPort)
     {
-        $p = Get-NetTCPConnection | Where-Object { $_ -like '*900*' } | Select-Object -First 1
-        return $p
+        Write-Warning "ByPort is fast,but may not accurate!"
+        $ports_info = Get-NetTCPConnection | Where-Object { $_.LocalPort -like $ByPort } # | Select-Object -First 1
+        Write-Host "$($ports_info|Out-String)"
+        Write-Host "反向校验相关进程尝试找出是否名为xp.cn_cgi"
+        # $ports_info | ForEach-Object {
+        foreach ($port_info in $ports_info){
+            $p = (Get-Process -Id $port_info.OwningProcess)
+            if( $p.ProcessName -eq 'xp.cn_cgi' )
+            {
+                Write-Verbose "找到满足条件的进程:name=$($p.ProcessName),id=$($p.Id),port=$($port_info.LocalPort)"
+                return $port_info
+            }else{
+                Write-Verbose "进程:name=$($p.ProcessName),id=$($p.Id),port=$($port_info.LocalPort) 不满足条件"
+            }
+        }
+
     }
     else
     {
@@ -612,7 +626,7 @@ function Start-XpCgi
     启动xp.cn_cgi进程,并检查进程是否启动成功
     此过程会打印进程监听的端口信息和进程信息(如果启动成功,则返回进程对象)
 
-    .PARAMETER CgiPath
+    .PARAMETER XpCgiPath
     xp.cn_cgi进程路径,默认值为"$env:PHPSTUDY_HOME/COM/xp.cn_cgi.exe"
 
     .PARAMETER PhpPath
@@ -629,13 +643,13 @@ function Start-XpCgi
     Start-XpCgi
 
     .EXAMPLE
-    Start-XpCgi -CgiPath "D:\PHPSTUDY_HOME\COM\xp.cn_cgi.exe" 
+    Start-XpCgi -XpCgiPath "D:\PHPSTUDY_HOME\COM\xp.cn_cgi.exe" 
 
     #>
     [CmdletBinding(SupportsShouldProcess = $true)]
     param (
-        $CgiPath = "$env:PHPSTUDY_HOME/COM/xp.cn_cgi.exe",
-        $PhpPath = "$env:php_home\php-cgi.exe",
+        $XpCgiPath = "$env:PHPSTUDY_HOME/COM/xp.cn_cgi.exe",
+        $phpCgiPath = "$env:php_home\php-cgi.exe",
         $CgiPort = 9002,
         $CgiArgs = "1+16",
         # 如果已经存在xp.cn_cgi进程,是否关闭后重新启动(发生更改的情况下通常要一并重启nginx使得更改生效)
@@ -667,12 +681,13 @@ function Start-XpCgi
         Write-Host "xp.cn_cgi进程尚不存在,准备启动..."
     }
     # 创建并启动xp.cn_cgi进程
-    $cmd = "$CgiPath  $phpPath $CgiPort $CgiArgs"
+    $cmd = "$XpCgiPath  $phpCgiPath $CgiPort $CgiArgs"
     Write-Host "启动xp.cn_cgi进程: $cmd"
     # $cmd | Invoke-Expression
-    Start-Process -FilePath $CgiPath -ArgumentList "$PhpPath $CgiPort $CgiArgs" -NoNewWindow -Verbose
+    # 使用start-process启动进程(隐藏窗口)
+    Start-Process -FilePath $XpCgiPath -ArgumentList "$phpCgiPath $CgiPort $CgiArgs" -NoNewWindow -Verbose
     Write-Host "CGI进程检查..."
-    $info = Get-XpCgiPort 
+    $info = Get-XpCgiPort -ByPort '900*'
     Write-Host "现有进程端口监听信息:`n $info"
 
     Write-Warning "清理php-cgi进程占用的端口..."
@@ -766,28 +781,32 @@ function Deploy-WpSitesLocal
     # 部署前检查或启动必要的服务(nginx,mysql,xp.cn_cgi)
     Start-XpNginx
     Start-Service MySQL* -Verbose -ErrorAction SilentlyContinue
-    $cgi = Start-XpCgi -CgiPort $CgiPort -Force:$Force #确保xp.cn_cgi进程启动
-    if(!$cgi)
-    {
-        Write-Error "xp.cn_cgi进程启动失败,请检查相关配置和日志"
-        return $False
-    }
-
+    
     if($CgiPort)
     {
-        $cgiExist = Get-XpCgiPort
-        $portExsit = $cgiExist.LocalPort
-        if($portExsit -ne $CgiPort)
+        # 确保xp.cn_cgi进程启动(如果已经存在nginx进程,则返回进程对象)
+        $cgi = Start-XpCgi -CgiPort $CgiPort -Force:$Force 
+        if(!$cgi)
         {
-            Write-Warning "指定的CgiPort端口[$CgiPort]和现有进程监听的端口[$portExsit]不一致"
+            Write-Error "xp.cn_cgi进程启动失败,请检查相关配置和日志"
+            return $False
+        }
+        $cgiExist = Get-XpCgiPort -ByPort 900*
+        $portExsit = $cgiExist.LocalPort
+        if($portExsit -and ($portExsit -ne $CgiPort))
+        {
+            Write-Warning "指定的CgiPort端口[$CgiPort]和现有进程监听的端口[$portExsit]不一致,以指定值[$CgiPort]进行部署配置文件"
+            Write-Host "如果和指定端口不一致,可以考虑追加-Force参数重新启动CGI服务,让其监听指定端口(如果端口未被占用的话)" 
         }
     }
     # 如果未指定CgiPort,则尝试自动获取CGI服务监听的端口(如果相关进程没有启动,则先启动进程)
     if(!$CgiPort)
     {
-        $CgiPort = $Cgi | Get-XpCgiPort | Select-Object -ExpandProperty LocalPort
+        Write-Warning "未指定CgiPort,也没有配置CgiPort环境变量,建议检查xp.ini中的端口指示(注意php版本对应,通常为9000系列端口),并配置环境变量"
+        Get-Content $phpstudy_ini
+        Write-Warning "现在尝试扫描现有xp_cgi进程监听的端口号..."
+        $CgiPort = $Cgi | Get-XpCgiPort -ByPort 900* | Select-Object -ExpandProperty LocalPort
         Write-Host "CGI服务已启动,注意当前进程监听的端口: $CgiPort " -ForegroundColor Cyan
-        Write-Host "如果和指定端口不一致,可以考虑追加-Force参数重新启动CGI服务,让其监听指定端口(如果端口未被占用的话)" 
     }
  
     # 检查nginx/mysql服务是否正常运行
@@ -958,7 +977,7 @@ Get-WpSitePacks -SiteDirecotry $destination -Mode zstd
 
     # 可以考虑定期清理hosts文件!
     Write-Debug "Modify hosts file [$hosts]"
-    # 重启(重载)nginx服务器
+    # 重启(重载)nginx服务器(如果重载不能生效,请使用-Force参数强制重启)
     
     Restart-Nginx -Force:$Force
 }

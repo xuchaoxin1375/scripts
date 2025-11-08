@@ -3037,15 +3037,40 @@ function Get-MainDomain
 }
 function Start-XpNginx
 {
+    <# 
+    .SYNOPSIS
+    启动 Nginx 服务(phpstudy工具箱安装),如果已经存在nginx进程则直接返回
+
+    #>
     [CmdletBinding()]
     param(
         $NginxHome = $env:NGINX_HOME,
-        $NginxConf = $nginx_conf
+        $NginxConf = $nginx_conf,
+        [switch]$Force
     )
     Write-Debug "nginx_home: $nginx_home"
     if (!$nginx_home)
     {
         Write-Warning "Nginx home directory was not set , please set the environment variable NGINX_HOME to your nginx home directory!"
+    }
+    Write-Verbose "check existing nginx process..."
+    $nginx_process = Get-Process -Name nginx -ErrorAction SilentlyContinue
+    if($nginx_process)
+    {
+        Write-Host "nginx process already exists!"
+        if($force)
+        {
+            Write-Host "kill nginx process and restart..."
+            $nginx_process | Stop-Process -Force
+        }
+        else
+        {
+            return $nginx_process
+        }
+    }
+    else
+    {
+        Write-Verbose "nginx process not exists yet, starting nginx..."
     }
     $Res = Start-Process -FilePath nginx -ArgumentList "-p $NginxHome -c $NginxConf" -PassThru -Verbose 
     # Get-Process $Res.Id
@@ -3144,8 +3169,11 @@ function Approve-NginxValidVhostsConf
     #>
     [CmdletBinding()]
     param(
+        # 典型nginx配置文件路径:C:\phpstudy_pro\Extensions\Nginx1.25.2\conf\vhosts,
         [alias('NginxVhostsDir')]
-        $NginxVhostConfDir = "$env:nginx_vhosts_dir" # 例如:C:\phpstudy_pro\Extensions\Nginx1.25.2\conf\vhosts
+        $NginxVhostConfDir = "$env:nginx_vhosts_dir" ,
+        # 对于nginx服务器的网站,内部应该有标准文件(比如nginx.htaccess),如果要求是wordpress网站,内部要求有wp-config.php文件
+        $KeyPath = "*.htaccess"
     )
     $vhosts = Get-ChildItem $NginxVhostConfDir -Filter "*.conf" 
     Write-Verbose "Checking vhosts in $NginxVhostConfDir" -Verbose
@@ -3172,26 +3200,26 @@ function Approve-NginxValidVhostsConf
         # 根据得到的root路径来判断站点根目录是否存在
         if(Test-Path $root)
         {
+
+            # $removeVhost = $false
             Write-Verbose "vhost: $($vhost.Name) root path: $root is valid(exist)!"  
-            # 保险起见,再检查内部的标准文件wp-config.php是否存在(部分情况下,目录没有移除干净或者被其他进程占用,这种情况下仅仅根据网站根目录是否存在是不够准确的,当然,此时系统内部可能积累了许多错误,建议重启计算机)
-            if(Test-Path "$root/wp-config.php")
+
+            # 保险起见,再检查内部的nginx访问控制标准文件nginx.htaccess是否存在(部分情况下,目录没有移除干净或者被其他进程占用,这种情况下仅仅根据网站根目录是否存在是不够准确的,当然,此时系统内部可能积累了许多错误,建议重启计算机)
+            if(Test-Path "$root/$KeyPath")
             {
-                Write-Verbose "vhost: $($vhost.Name) wp-config.php exists in root path: $root"  
+                Write-Verbose "vhost: $($vhost.Name) $KeyPath exists in root path: $root"  
                 $removeVhost = $false
             }
             else
             {
-                Write-Warning "vhost: $($vhost.Name) wp-config.php NOT exists in root path: $root!" -WarningAction Continue
+                Write-Warning "vhost: $($vhost.Name) $KeyPath NOT exists in root path: $root!" -WarningAction Continue
             }
         }
         if($removeVhost)
         {
             Write-Warning "vhost:[ $($vhost.Name) ] root path:[ $root ] is invalid(not exist)!" -WarningAction Continue
             Remove-Item $vhost.FullName -Force -Verbose
-            # Write-Host "Removed invalid vhost file: $($vhost.FullName)" -ForegroundColor Red
-            # if($PSCmdlet.ShouldProcess("Remove vhost file: $($vhost.FullName)"))
-            # {
-            # }
+
         }
     }
 
@@ -5098,7 +5126,7 @@ function Get-PathStyleByDotNet
         [string]$Style = "windows"
     )
 
-    # 1. 先获取完整路径，确保是绝对路径（可处理 .、..）
+    # 1. 先获取完整路径，确保是绝对路径（可处理 ...）
     $fullPath = [System.IO.Path]::GetFullPath($Path)
 
     # 2. 使用 Uri 来标准化路径
@@ -5136,9 +5164,15 @@ function Get-PathStyle
     .NOTES
     此命令使用正则表达式来匹配路径中的斜杠，并将其替换为指定的风格。
     .EXAMPLE
-    PS C:\> Get-PathStyle -Path "C:\Users\example\Documents\file.txt" -Style "Windows"
-    C:\Users\example\Documents\file.txt
-
+     "C:/a//b//c\d\\e"|Get-PathStyle
+    C:/a/b/c/d/e
+    .EXAMPLE
+    #⚡️[Administrator@CXXUDESK][C:\repos\scripts\wp\woocommerce\woo_df\sh][16:33:46] PS >
+    "C:/a//b//c\d\\e/"|Get-PathStyle -Style posix
+    C:/a/b/c/d/e/
+    #⚡️[Administrator@CXXUDESK][C:\repos\scripts\wp\woocommerce\woo_df\sh][16:33:58] PS >
+    "C:/a//b//c\d\\e/"|Get-PathStyle -Style Windows -DoubleBackSlash
+    C:\\a\\b\\c\\d\\e\\
     #>
     [CmdletBinding()]
     param(
@@ -5152,30 +5186,32 @@ function Get-PathStyle
         [switch]$DoubleBackSlash
     )
 
-    # 去掉左右多余空格
-    begin
-    {
-        $normalizedPath = $Path.Trim()
-        Write-Debug "normalize path: [$normalizedPath]" -Debug
-    }
     process
     {
+        # 对每个管道输入项进行处理
+        if ($null -eq $Path)
+        {
+            return 
+        }
+        # 去掉左右多余空格
+        $normalizedPath = $Path.Trim()
+        Write-Debug "normalize path: [$normalizedPath]" 
         switch ($Style)
         {
             "Windows"
             {
                 # 替换所有正斜杠为反斜杠
-                $separator = '/'
+                $separator = '\'
                 if($DoubleBackSlash)
                 {
                     $separator = '\\'
                 }
-                $convertedPath = $normalizedPath -replace '/+|\+', $separator 
+                $convertedPath = $normalizedPath -replace '[/\\]+', $separator # \号本身在正则中需要转义为\\
             }
             "posix"
             {
                 # 替换所有反斜杠为正斜杠
-                $convertedPath = $normalizedPath -replace '/+|\+', '/'
+                $convertedPath = $normalizedPath -replace '[/\\]+', '/'
             }
         }
         Write-Verbose "convert process: $path -> $convertedPath"

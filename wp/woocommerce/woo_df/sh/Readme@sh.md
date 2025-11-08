@@ -12,14 +12,20 @@
 
 包括压缩包解压工具等,如果有就跳过
 
-假设服务器为ubuntu
+#### 通用软件包
+
+假设服务器为ubuntu,一键安装命令行
 
 ```bash
 sudo apt install p7zip-full p7zip-rar lz4 zstd unzip git -y #获取7z命令(完整安装)
 sudo apt install parallel #并行执行命令的工具
 ```
 
+#### wordpress相关
+
 wp-cli命令行工具 [WP-CLI | WP-CLI | WP-CLI](https://wp-cli.org/zh-cn/#安装)
+
+一键安装wp-cli命令行
 
 ```bash
 curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
@@ -36,7 +42,10 @@ wp --info
 
 这里使用浅克隆提高速度并节约资源
 
+> 如果之前git clone过旧版本,或者想要重新clone,移除掉现有目录`/repos/scripts`
+
 ```bash
+# rm /repos/scripts -rf 
 git clone --depth 1 https://gitee.com/xuchaoxin1375/scripts.git /repos/scripts
 
 # 配置更新代码的脚本的符号链接
@@ -80,17 +89,6 @@ find /repos/scripts/wp/woocommerce/woo_df/sh/ -type f \( -name "*.sh" -o -name "
 
 
 
-### 配置符号链接
-
-```bash
-
-ln -s /repos/scripts/wp/woocommerce/woo_df/sh /www/sh -f
- 
-
-```
-
-
-
 ### 部署wp网站
 
 ```bash
@@ -121,28 +119,6 @@ bash /www/sh/adduser_uploader.sh
 
 
 
-## 综合脚本
-
-为了方便期间,将脚本组织成一个脚本文件`update_repos.sh`,下面有两段代码
-
-较长的完整代码第一次运行后,之后就可以用简化版本
-
-### 简化版本🎈
-
-!第一次运行需要完整版本,之后可以运行以下命令更新代码
-
-```bash
-bash /www/sh/update_repos.sh 
-```
-
-或者直接
-
-```bash
-/update_repos.sh
-```
-
-
-
 ### 完整版本
 
 文件位置:`$woo_df\sh\update_repos.sh`
@@ -159,11 +135,15 @@ cat $sh\update_repos.sh
 
 使用`crontab -e`选择编辑器编辑自动任务,添加以下内容(可以自定义执行时间)
 
-> 新服务器上不要直接用,尤其注意修改备份命令的的参数
+如果不清楚crontab,可以参考[Linux crontab 命令 ](https://www.runoob.com/linux/linux-comm-crontab.html)
+
+> 新服务器上不要直接用,尤其注意修改备份命令的参数
+>
+> 其他服务器管理员可能不需要全部的自动任务,按需选择使用
 
 ```bash
 # 修改-b参数为备份服务器(ip),修改"server?"为对应的目录(比如s1,s2,...)
-30 22 * * * bash /www/sh/backup_sites/backup_site_pkgs.sh -s /srv/uploads/uploader/files -b "backupIp" -d /www/wwwroot/xcx/"server?"
+30 22 * * * bash /www/sh/backup_sites/backup_site_pkgs.sh -s /srv/uploads/uploader/files -b <backupIp> -d </www/wwwroot/xcx/server?> #修改<>内的值为具体情况
 0 0 */2 * * bash /www/sh/clean_logs.bash
 0 3 * * * bash /www/sh/nginx_conf/update_cf_ip_configs.sh
 50 23 * * 0 bash /www/sh/remove_deployed_sites.sh
@@ -176,7 +156,7 @@ cat $sh\update_repos.sh
 
 利用系统的crontab定时执行wp-cron,这里的脚本利用了`wp-cli`命令行工具来触发,而不需要通过http链接触发,执行后有日志文件(记得定期删除(todo))
 
-[Linux crontab 命令 ](https://www.runoob.com/linux/linux-comm-crontab.html)
+
 
 ## nginx配置
 
@@ -204,3 +184,54 @@ cat $sh\update_repos.sh
 
 基础的公用配置(完整版)存放在`/www/sh/nginx_conf/com.conf`文件中
 
+## nginx 日志文件过多问题🎈
+
+如果服务器上运行很多网站(数百个),可能会遇到如下格式报错
+
+```bash
+nginx: [emerg] open() "/www/wwwlogs/xxx.com.error.log" failed (24: Too many open files)
+```
+
+方案不唯一,这里提供一个方案,如果不行请参考其他方法
+
+### 修改系统级 limits.conf
+
+适用于非 systemd 或传统 init,systemd的系统经过试验应该也可以,如果不行请使用其他方案
+
+1. 编辑 `/etc/security/limits.conf`：
+
+   ```bash
+   sudo vi /etc/security/limits.conf
+   ```
+
+   如果你习惯其他编辑器也可以,比如nano,vim,msedit或者vscode远程编辑
+
+   如果用宝塔面板这类工具也可以在浏览器中编辑
+
+2. 添加以下行（假设 Nginx 以 `www-data` 或 `nginx` 用户运行，根据实际情况调整）：
+
+   ```conf
+   * soft nofile 65536
+   * hard nofile 65536
+   root soft nofile 65536
+   root hard nofile 65536
+   nginx soft nofile 65536
+   nginx hard nofile 65536
+   ```
+
+   > 同时确保 PAM 启用了 limits（大多数现代系统默认启用）。
+
+关闭当前终端链接,然后新开终端链接刷新环境(否则上述修改可能无效!)
+
+在新的终端会话中重载nginx配置
+
+## 配置限流
+
+1. 清理免费防火墙(建议清理,很鸡肋,防止和自定义防火墙冲突)
+2. git clone 代码目录得到/www/sh;(如果有古老版本的代码仓库目录`/repos/scripts`,可以手动清理掉)
+3. 覆盖同个目录(/www/server/nginx/conf)下的2个conf文件`com.conf`和`nginx.conf`
+4. 运行同个目录下的两个.sh脚本
+   - `update_nginx_vhosts_conf.sh`(作用是向`/www/server/panel/vhost/nginx`里的各个站的.conf插入include ...com.conf),
+   - `update_cf_ip_configs.sh`(需要配置定期运行拉取cf公布的ip列表,可借助corntab定期运行)
+5. 增大打开的文件数量限制(针对站点多的服务器),方法之一是修改`/etc/security/limits.conf` 文件
+6. 新开一个终端(让上一步修改生效),重启nginx
