@@ -9,6 +9,7 @@ import queue
 import re
 import threading
 from datetime import datetime
+from time import time
 from logging import debug, error, info
 from typing import List, Optional, Union
 from urllib.parse import unquote, urlparse
@@ -56,6 +57,22 @@ EMAIL_PATTERN = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
 HTTP_S_URL_CONS_PATTERN = r'https?://[^"<>]+'
 URL_SEP_REGEXP = re.compile(URL_SEP_PATTERN)
 COMMON_SEP_REGEXP = re.compile(COMMON_SEP_PATTERN)
+
+
+def get_now_time_str():
+    """获取当前时间字符串(时分秒)
+    适合于创建文件名使用,年月日--时分秒@时间戳
+    格式: 2023-07-05--12-34-56@
+    """
+    timestamp = int(time())
+    return datetime.now().strftime("%Y-%m-%d--%H-%M-%S") + f"@{timestamp}"
+
+
+def get_desktop_path():
+    """获取当前用户桌面路径
+    尤其是windows用户
+    """
+    return os.path.join(os.path.expanduser("~"), "Desktop")
 
 
 def get_paths(input_dir: str, recurse: bool = False):

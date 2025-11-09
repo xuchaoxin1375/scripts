@@ -1,7 +1,8 @@
 """文件名处理模块
 用于对从url下载的文件,生成或补全文件名(扩展名)
 """
-#%%
+
+# %%
 import hashlib
 import mimetypes
 import os
@@ -145,7 +146,7 @@ class FilenameHandler:
             ""
 
         """
-        
+
         ext_candidate = self.get_file_extension_from_url_str(url)
         if ext_candidate.strip(".") in support_image_formats:
             return ext_candidate
@@ -190,6 +191,7 @@ class FilenameHandler:
         default_ext="",
         invalid_chars_regex=r'[\\/*?:"<>|]',
         default_char="_",
+        limit_length=200,
         req_response=False,
     ) -> str:
         r"""尝试解析url字符串生成文件名(包括后缀名),尽可能分配一个合适的后缀名,如果没有则将default_ext作为后缀名
@@ -227,6 +229,9 @@ class FilenameHandler:
 
         # 清理文件名中的非法字符
         filename = re.sub(invalid_chars_regex, default_char, filename)
+        # 部分情况下文件名很长,在windows系统上,默认允许的文件名长度有限,大约250个字符
+        if limit_length and len(filename) > 250:
+            filename = filename[:250]
 
         return filename
 
@@ -471,5 +476,6 @@ class FilenameHandler:
             mime = magic.from_buffer(chunk, mime=True)
             extension = FilenameHandler.get_file_extension_from_mime(mime=mime)
             return extension
+
 
 ##

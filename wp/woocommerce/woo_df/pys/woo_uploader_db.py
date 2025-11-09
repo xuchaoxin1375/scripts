@@ -11,6 +11,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from comutils import get_desktop_path, get_now_time_str
 
 import pandas as pd
 import phpserialize
@@ -592,9 +593,7 @@ class WooCommerceProductImporter:
         return slug
 
     def convert_tags_to_categories(self):
-        """将只有标签没有分类的产品的标签转为分类(可选,如果已经保证了总是有分类,可以跳过此步骤)
-        
-        """
+        """将只有标签没有分类的产品的标签转为分类(可选,如果已经保证了总是有分类,可以跳过此步骤)"""
         print("开始将只有标签的产品转为分类...")
         conn = pymysql.connect(**self.db_config)
         try:
@@ -655,7 +654,7 @@ class WooCommerceProductImporter:
 
                 # 将只有标签的产品转为分类
                 # self.convert_tags_to_categories()
-                
+
                 # 1. 更新分类计数（确保准确）
                 cursor.execute(
                     """
@@ -731,9 +730,9 @@ class WooCommerceProductImporter:
 
     def update_product_slugs(self):
         """更新所有产品的 slug，格式为 post_name-ID
-    -- 通常wp数据库限制slug长度200字符(打满不是很好,可能会遇到404),这里先将长度限制到180,然后做后缀id拼接防止重复slug处理(冗余的20位保存id绰绰有余)
-    -- 在产品导入环节中执行的slug规范化处理,长度限制以及id后缀区分同名产品(testing...)
-        
+        -- 通常wp数据库限制slug长度200字符(打满不是很好,可能会遇到404),这里先将长度限制到180,然后做后缀id拼接防止重复slug处理(冗余的20位保存id绰绰有余)
+        -- 在产品导入环节中执行的slug规范化处理,长度限制以及id后缀区分同名产品(testing...)
+
 
         """
         update_sql = """
@@ -778,6 +777,8 @@ if __name__ == "__main__":
     # 处理图片
     csv_path = args.csv_path or CSV_DIR
     img_dir = args.img_dir or IMG_DIR
+    desktop = get_desktop_path()
+    backup_csv_dir = os.path.join(desktop, f"backup_csvs/{get_now_time_str()}")
     # 对csv做必要的处理🎈
     process_image_csv(img_dir=img_dir, csv_dir=csv_path)
     go = input("是否继续?(y/n) [default:y]").strip().lower()

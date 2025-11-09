@@ -511,7 +511,7 @@ class ImageDownloader:
             # 在释放锁之前,获取当前下载的进度(退出后用self.stats.task_index获取的进度往往是不正确的)
             current_index = self.stats.task_index
         logger.info(
-            "⛏ downloading(%d/%d): [%s] -> (%s) ",
+            "@downloading(%d/%d): [%s] -> (%s) ",
             current_index,
             self.stats.total,
             url,

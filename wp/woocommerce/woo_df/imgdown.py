@@ -71,15 +71,15 @@ if not logger.handlers:
     console_handler.setFormatter(console_formatter)
     logger.addHandler(console_handler)
 
-    # 文件日志处理器
-    try:
-        file_handler = logging.FileHandler("img_downloader.log", encoding="utf-8")
-        file_handler.setLevel(logging.NOTSET)  # 改为 NOTSET，跟随logger级别
-        file_formatter = logging.Formatter(LOG_FORMAT)
-        file_handler.setFormatter(file_formatter)
-        logger.addHandler(file_handler)
-    except Exception as e:
-        logger.warning("无法创建文件日志处理器: %s", e)
+    # 文件日志处理器(作为模块被调用一般不需要默认日志输出到文件!)
+    # try:
+    #     file_handler = logging.FileHandler("img_downloader.log", encoding="utf-8")
+    #     file_handler.setLevel(logging.NOTSET)  # 改为 NOTSET，跟随logger级别
+    #     file_formatter = logging.Formatter(LOG_FORMAT)
+    #     file_handler.setFormatter(file_formatter)
+    #     logger.addHandler(file_handler)
+    # except Exception as e:
+    #     logger.warning("无法创建文件日志处理器: %s", e)
 # ...existing code...
 # 文件名处理器
 fnh = FilenameHandler()
@@ -338,10 +338,11 @@ class DownloadStatistics:
         """设置总下载数量"""
         self.total = total
 
-    def finish(self):
+    def finish(self, record_faild=True):
         """完成下载，记录结束时间"""
         self.end_time = time.time()
-        self.save_failed_urls()
+        if record_faild:
+            self.save_failed_urls()
 
     def save_failed_urls(self, file_path="failed_urls.txt"):
         """保存失败的URL到文件,供后续此重试"""
@@ -404,6 +405,7 @@ class ImageDownloader:
         quality_rule="",
         output_format="webp",
         remove_original=False,
+        record_failed=False,
         use_shutil=False,
         resize_threshold=RESIZE_THRESHOLD,
     ):
@@ -436,7 +438,8 @@ class ImageDownloader:
         self.output_format = output_format
         self.remove_original = remove_original
         self.override = override
-
+        # 记录下载失败的图片链接到文本文件中
+        self.record_failed = record_failed
         self.ic = ImageCompressor(
             quality_rule=quality_rule,
             remove_original=remove_original,
@@ -524,18 +527,23 @@ class ImageDownloader:
 
         # 保存图片(写入二进制文件)🎈
 
+        filename = filename.rstrip(".")
+        filename = self.prepare_filename(url, filename, try_get_ext, default_ext)
+
         file_path = os.path.join(output_dir, filename)
+        if filename:
+            # 如果传入的文件名没有扩展名,且在try_get_ext为True时,则[尝试]补全扩展名
+            logger.info("保存文件: %s", file_path)
+        else:
+            logger.info("没有指定文件名,自动命名")
         logger.info(
-            "⛏ downloading(%d/%d): [%s] -> (%s) ",  
+            "🚀@downloading(%d/%d): [%s]\n->[%s] ",
             current_index,
             self.stats.total,
             url,
             # filename,
             file_path,
         )
-        # 如果传入的文件名没有扩展名,且在try_get_ext为True时,则[尝试]补全扩展名
-        filename = filename.rstrip(".")
-        filename = self.prepare_filename(url, filename, try_get_ext, default_ext)
         # debug("filename: [%s]", filename)
         override = self.override
         # 配置下载中如果出现失败的重试循环(次数由retry_times指定)
@@ -641,8 +649,8 @@ class ImageDownloader:
 
         return False
 
-    def prepare_filename(self, url, filename, try_get_ext, default_ext):
-        """准备文件名,用于指定下载保存文件"""
+    def prepare_filename(self, url, filename, try_get_ext=True, default_ext=""):
+        """准备文件名,用于指定下载要保存的文件名"""
         if filename:
             _, ext = os.path.splitext(filename)
             # ext = ext.strip(".")
@@ -661,7 +669,9 @@ class ImageDownloader:
             else:
                 debug("文件名包含扩展名:%s", ext)
         else:
+            filename = fnh.get_filename_from_url(url, default_ext=default_ext)
             debug("未指定文件名,尝试从URL中获取")
+
         return filename
 
     def download_by_py(self, url, response, file_path):
@@ -753,7 +763,7 @@ class ImageDownloader:
                     self.stats.add_failed(url)
 
         # 完成下载，打印统计信息
-        self.stats.finish()
+        self.stats.finish(record_faild=self.record_failed)
         self.stats.print_summary()
 
         return self.stats.get_summary()
@@ -815,7 +825,7 @@ class ImageDownloader:
                     self.stats.add_failed(url=url, name=filename)
 
         # 完成下载，打印统计信息
-        self.stats.finish()
+        self.stats.finish(record_faild=self.record_failed)
         self.stats.print_summary()
 
         return self.stats.get_summary()

@@ -128,6 +128,7 @@ def parse_args():
     长选项--开头,例如--workers,指出参数将会绑定到相应的变量上,经过parse_args()解析,将构造对应的参数包
     """
     parser = argparse.ArgumentParser(description="多线程图片下载器")
+    # 关于输入的参数(图片链接)的若干形式
     parser.add_argument(
         "-i",
         "--test-url",
@@ -141,17 +142,18 @@ def parse_args():
         help="包含图片URL的输入[文件],允许指定多个文件",
     )
     parser.add_argument(
-        "-a",
-        "--format-consistent",
-        action="store_true",
-        help="所有输入文件是否为相同的格式(如果是,可以避免多次询问文件格式)",
-    )
-    parser.add_argument(
         "-d",
         "--dir-input",
         nargs="+",
         required=False,
         help="包含图片URL的文件所在[目录(文件夹)]，允许指定多个目录(todo)",
+    )
+    # 关于输入的额外属性描述相关参数
+    parser.add_argument(
+        "-a",
+        "--format-consistent",
+        action="store_true",
+        help="所有输入文件是否为相同的格式(如果是,可以避免多次询问文件格式)",
     )
     parser.add_argument(
         "-c",
@@ -171,12 +173,17 @@ def parse_args():
         action="store_true",  # 开关式参数
         help=f'输入文件包含文件名和URL对，格式为"文件名 URL"，以[{URL_SEPARATORS}]中指定的符号分隔',
     )
+    # 输出参数和控制
     parser.add_argument(
         "-o", "--output-dir", default=IMG_DIR, help="图片保存目录 (默认: ./images)"
+        "此下载器设计为批量下载,如果要指定文件的保存名字,需要在批量输入(比如表格文件)中指定每个图片的保存名"
+        "对于单个下载图片链接的测试行为,此选项应该将理解为输出目录而不是单个输出文件路径"
+        "可以考虑增加-op选项,用来针对下载单个图片链接时指定保存文件名(todo)"
     )
     parser.add_argument(
         "-O", "--override", action="store_true", default=False, help="是否覆盖已有图片"
     )
+    # 下载方案控制
     parser.add_argument(
         "-U",
         "--use-shutil",

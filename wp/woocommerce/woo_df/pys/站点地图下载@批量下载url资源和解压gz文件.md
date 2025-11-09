@@ -17,35 +17,22 @@
 
 批量下载(获取url中的资源,比如下载html或则文件,gz文件等)
 
-- `Get-SourceFromLinksList`
+### 从站点地图抽取url
 
-用例:(指定)
+包括多级站点地图,比如抽取gz资源的url,或子级站点地图url
 
-```bash
-Get-UrlsListFileFromDir -Path ./ -LocTagMode  -Output sitemap.txt
-```
+抽出的url列表保存到文本文件,后缀可以命名为`.urls`或`.urls.txt`,如果是gz文件的url,可以更具体为`.gz.urls`或`.gz.urls.txt`
 
-批量解压
-
-- `Expand-GzFile`
+- `Get-UrlFromSitemap `
 
 用例
 
-```bash
-# [Administrator@CXXUDESK][~\Desktop\localhost\fahrwerk-24.de][15:41:59][UP:3.82Days]
-PS> ls *gz|Expand-GzFile
-VERBOSE: 成功解压: C:\Users\Administrator\Desktop\localhost\fahrwerk-24.de\sitemap_0.xml
-VERBOSE: 成功解压: C:\Users\Administrator\Desktop\localhost\fahrwerk-24.de\sitemap_1.xml
-...
+```powershell
+Get-UrlFromSitemap -Path .\toms.xml > toms.gz.urls
+
 ```
 
 
-
-### 基本原理核心代码段参考
-
-### 抽取gz资源的url
-
-先获取到包含各个gz链接的url列表文本文件,比如命名为`domain.com.urls`或者`L1.urls`
 
 ### 批量下载gz或.xml文件的url资源
 
@@ -53,15 +40,15 @@ VERBOSE: 成功解压: C:\Users\Administrator\Desktop\localhost\fahrwerk-24.de\s
 
 ```bash
 # 配置两个参数
-$domain='www.speedingparts.de';#采集目标站点
-$links="$localhost\L1.urls";#包含gz或.xml链接的文本文件
+$domain='toms';#采集目标站点
+$links="$localhost\toms.gz.urls";#包含gz或.xml链接的文本文件
 
 #调用curl下载gz或xml到指定目录中
 $dir="$localhost\$domain"; #要下载保存的目录🎈(建议是桌面的localhost目录,可以用$localhost代替)
 New-Item -ItemType Directory -Path $dir -ErrorAction SilentlyContinue ;
 
 cd $dir;
-cat $links |%{curl -L -A $agent -O $_ } # 使用-L选项追踪301等跳转,提高抓取能力;使用-A 选项提供伪装用户的浏览器UA,可以绕过一些基础的反爬设置
+cat $links |%{curl -L -k -A $agent  -O $_ } # 使用-L选项追踪301等跳转,提高抓取能力;使用-A 选项提供伪装用户的浏览器UA,可以绕过一些基础的反爬设置
 
 ```
 
@@ -71,25 +58,68 @@ cat $links |%{curl -L -A $agent -O $_ } # 使用-L选项追踪301等跳转,提�
 
 如果curl下载不动gz,则考虑使用浏览器(playwright下载)
 
-### 批量解压gz
+### 批量解压
 
-在下载的gz目录`$dir`中执行解压命令(这里使用7z解压,windows10+也自带tar命令,也能打包gzip压缩格式但是无法解压gzip)
+使用命令:`Expand-GzFile`(调用`7z x`解压)
 
-可以使`gzip`命令(windows可以下载git获取git中的gzip.exe工具,然后使用`gzip -d -S .gzip`(如果后缀不是`.gz`而是`.gzip`,或者`gzip -d .gz`)
+用例
 
 ```powershell
-ls *gz|%{7z x $_ }
+ls *gz|Expand-GzFile
+# 查看当前目录
+ls
 # 移除gz文件
-rm *.gz
+rm *gz -confirm
+# 查看最终结果
+ls 
+```
 
-#将目录汇总的xml文件列入到一个maps.xml中
-Get-UrlListFromDir . -hst localhost -LocTagMode > maps.xml
+
+
+批量解压gz:
+
+> 在下载的gz目录`$dir`中执行解压命令(这里使用7z解压,windows10+也自带tar命令,也能打包gzip压缩格式但是无法解压gzip)
+>
+> 可以使`gzip`命令(windows可以下载git获取git中的gzip.exe工具,然后使用`gzip -d -S .gzip`(如果后缀不是`.gz`而是`.gzip`,或者`gzip -d .gz`)
+>
 
 
 
+
+
+### 创建本地html文件的建议站点地图
+
+使用`Get-UrlsListFileFromDir`命令将指定目录(路径)下的所有文件组织成一份本地的站点地图`sitemap.txt`便于采集器采集
+
+用例:(指定)
+
+```bash
+Get-UrlsListFileFromDir -Path ./ -LocTagMode  -Output sitemap.txt
 ```
 
 根据上述步骤,查看本地localhost的服务中对应链接是否可以访问(如果可以,说明`maps.xml`的url构造正确)
+
+案例:
+
+```powershell
+#⚡️[Administrator@CXXUDESK][~\Desktop\localhost\toms][11:16:45] PS >
+ Get-UrlsListFileFromDir -Path . -LocTagMode -htmlDirSegment toms -Output $localhost/toms.xmls.txt
+VERBOSE: Output to file: C:\Users\Administrator\Desktop/localhost/toms.xmls.txt
+访问本地站点地图链接形如: http://localhost:80/toms.xmls.txt
+VERBOSE: Preview: <loc>http://localhost:80/toms/freshop_sitemap1.xml</loc>
+<loc>http://localhost:80/toms/freshop_sitemap2.xml</loc>
+<loc>http://localhost:80/toms/freshop_sitemap3.xml</loc>
+```
+
+该命令会提示生成的本地站点地图链接,例如上面的
+
+```powershell
+访问本地站点地图链接形如: http://localhost:80/toms.xmls.txt
+```
+
+访问此链接,如果显示出正确内容,就可以尝试采集了
+
+### 测试采集
 
 然后再检查`maps.xml`中的`<loc>`标签中的链接是否也可以访问(如果不能访问在检查`localhost`中对应的目录和站点地图文件`xml`文件路径是否正确)
 
@@ -114,19 +144,6 @@ curl http://localhost/it.e-mossa.eu/sitemap-https-2-1.xml
 如果也有正常原码输出说明本地可以采集了,根据链接`http://localhost/it.e-mossa.eu/maps.xml`采集就行
 
 
-
-### 编制本地的站点地图
-
-使用`Get-UrlsListFileFromDir`命令将指定目录(路径)下的所有文件组织成一份本地的站点地图`sitemap.txt`便于采集器采集
-
-```powershell
-PS> Get-UrlsListFileFromDir -Path . -Output sitemap.txt
-VERBOSE: Output to file: sitemap.txt
-VERBOSE: Preview: http://localhost:80/fahrwerk-24.de/sitemap_0.xml
-http://localhost:80/fahrwerk-24.de/sitemap_1.xml
-...
-
-```
 
 ## 完整案例
 

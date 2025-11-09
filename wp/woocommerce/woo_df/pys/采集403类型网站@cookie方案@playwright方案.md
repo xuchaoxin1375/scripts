@@ -38,6 +38,21 @@
 - 这种比较难采集的站步骤会繁琐一些,但是逻辑还是清晰的,本文尽可能清晰地描述操作步骤,并且举例说明,给出配套的工具
 - 暂时以命令行操作为主,流程比较固定
 
+#### 安装说明
+
+初次安装,执行
+
+```powershell
+pip install playwright
+playwright install # 默认安装chrome
+```
+
+如果发现安装完后,命令行中无法直接调用`playwright`(上述第二个语句报错),可以尝试卸载`playwright`再重新安装
+
+```powershell
+pip uninstall playwright
+```
+
 
 
 ### 利用无头浏览器playwright下载
