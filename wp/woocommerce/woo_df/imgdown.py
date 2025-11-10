@@ -183,11 +183,14 @@ def download_by_curl(
     timeout: int = TIMEOUT,
     silent: bool = False,
     extra_args: Optional[list] = None,
+    curl_insecure=False,
     reset_cwd=False,  # 发生工作目录转换下载后,是否回到原目录
 ) -> bool:
     """
         使用系统 curl 命令下载图片（或其他文件）。
         (使用-k来强制忽略证书验证https证书过期)
+        -k, --insecure     Allow insecure server connections
+        --ssl-no-revoke     Disable cert revocation checks (Schannel)
 
         Args:
             url (str): 要下载的文件 URL。
@@ -251,8 +254,10 @@ def download_by_curl(
     ]
     # 添加跟踪跳转
     cmd += ["-L"]
-    # 忽略证书安全检查
-    cmd += ["-k", "--ssl-no-revoke"]
+    # 忽略证书安全检查(慎用,可能会引起部分网络环境无法下载图片(403))
+    if(curl_insecure):
+        cmd += ["-k", "--ssl-no-revoke"]
+
 
     # 添加 User-Agent
     cmd += ["-A", user_agent]
@@ -410,6 +415,7 @@ class ImageDownloader:
         record_failed=False,
         use_shutil=False,
         ps_version="powershell",
+        curl_insecure=False,
         resize_threshold=RESIZE_THRESHOLD,
     ):
         """
@@ -442,6 +448,7 @@ class ImageDownloader:
         self.remove_original = remove_original
         self.override = override
         self.ps_version = ps_version
+        self.curl_insecure=curl_insecure
         # 记录下载失败的图片链接到文本文件中
         self.record_failed = record_failed
         self.ic = ImageCompressor(
@@ -587,6 +594,7 @@ class ImageDownloader:
                             output_dir=output_dir,
                             timeout=self.timeout,
                             user_agent=self.headers["User-Agent"],
+                            curl_insecure=self.curl_insecure,
                         )
                     elif self.use_shutil == "iwr":
                         # print("使用shutil(iwr)下载图片")

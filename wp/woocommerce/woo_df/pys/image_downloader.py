@@ -211,6 +211,12 @@ def parse_args():
         help="PowerShell版本，可选值：powershell、pwsh",
     )
     parser.add_argument(
+        "-ci",
+        "--curl-insecure",
+        action="store_true",
+        help="忽略curl证书验证和检查(为curl启用-k,--ssl-no-revoke)",
+    )
+    parser.add_argument(
         "-s",
         "--verify-ssl",
         action="store_true",
@@ -321,6 +327,7 @@ def main():
         override=args.override,
         resize_threshold=args.resize_threshold,
         ps_version=args.ps_version,
+        curl_insecure=args.curl_insecure
     )
     # 过滤已有图片,扫描出尚未下载的图片
     # 这里不关心文件名后缀的差异,比较basename
