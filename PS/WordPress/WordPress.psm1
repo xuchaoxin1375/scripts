@@ -838,7 +838,7 @@ function Deploy-WpSitesLocal
     Write-Output $rows | Format-Table
     Write-Warning "Please check the parameter table list above,especially the domain and template name!" -WarningAction Inquire
     # Pause
-
+    $order=1
     # 逐条数据解析出各个参数,并处理任务🎈
     foreach ($row in $rows)
     {
@@ -927,11 +927,11 @@ function Deploy-WpSitesLocal
             New-Item -ItemType Directory -Path $CsvDirHome -ErrorAction SilentlyContinue -Verbose
             
             $script = @"
-# =========[    http://$domain/login  ]:[ cd  $destination  ]=>[图片目录: explorer $destination\wp-content\uploads\2025 ]==========
+# =========[($order)    http://$domain/login  ]:[ cd  $destination  ]=>[图片目录: explorer $destination\wp-content\uploads\2025 ]==========
 
 
 # 下载图片
-python $pys\image_downloader.py -c -n -R auto -k  -rs 1000 800  --output-dir $ImgDir --dir-input $CsvDirHome -w 5 -U curl
+python $pys\image_downloader.py -c -n -R auto -k  -rs 1000 800  --output-dir $ImgDir --dir-input $CsvDirHome -ps pwsh -w 5 -U curl 
 
 # 导入产品数据到数据库
 python $pys\woo_uploader_db.py --update-slugs  --csv-path $CsvDirHome --img-dir $ImgDir --db-name $domain --max-workers 20
@@ -941,6 +941,8 @@ Get-WpSitePacks -SiteDirecotry $destination -Mode zstd
 
 
 "@
+            # 更新计数器$order
+            $order++
             Write-Host $scripts
             $scripts_dir = "$MyWpSitesHomeDir"
             $script_path = "$scripts_dir/scripts_$(Get-Date -Format "yyyyMMdd").ps1"

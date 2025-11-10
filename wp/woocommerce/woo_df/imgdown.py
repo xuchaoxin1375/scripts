@@ -465,10 +465,10 @@ class ImageDownloader:
             "User-Agent": user_agent or random.choice(USER_AGENTS),
             # "Referer": f"https://{random.choice(['google.com', 'bing.com'])}/",
             # "Accept-Language": "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7",
-            # "Accept-Language": "en-US,en;q=0.9",
-            # "Accept-Encoding": "gzip, deflate, br",
-            # "Accept": "text/html,application/xhtml+xml,application/xml;\
-            #     q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Accept": "text/html,application/xhtml+xml,application/xml;\
+                q=0.9,image/avif,image/webp,*/*;q=0.8",
         }
         self.proxies = proxies or []
         self.proxy_strategy = proxy_strategy
