@@ -246,15 +246,16 @@ def download_by_curl(
 
     cmd = [
         "curl",
-        "-f",
+        "-f",# 慎用
         #    , "--retry", "1", "--retry-delay", "2"
     ]
+    # 添加跟踪跳转
+    cmd += ["-L"]
     # 忽略证书安全检查
     cmd += ["-k", "--ssl-no-revoke"]
 
     # 添加 User-Agent
     cmd += ["-A", user_agent]
-
     # 添加超时
     cmd += ["--max-time", str(timeout)]
 
@@ -281,7 +282,7 @@ def download_by_curl(
     cmd += [url]
 
     try:
-        debug(f"正在下载: {url}")
+        info(f"正在下载: {url}\n> [{" ".join(cmd)}] ")
         subprocess.run(cmd, check=True)
         if use_remote_name:
             info(f"文件已保存至(仅供参考): {output_path}")
