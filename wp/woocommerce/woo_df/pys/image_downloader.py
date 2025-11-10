@@ -175,10 +175,13 @@ def parse_args():
     )
     # 输出参数和控制
     parser.add_argument(
-        "-o", "--output-dir", default=IMG_DIR, help="图片保存目录 (默认: ./images)"
+        "-o",
+        "--output-dir",
+        default=IMG_DIR,
+        help="图片保存目录 (默认: ./images)"
         "此下载器设计为批量下载,如果要指定文件的保存名字,需要在批量输入(比如表格文件)中指定每个图片的保存名"
         "对于单个下载图片链接的测试行为,此选项应该将理解为输出目录而不是单个输出文件路径"
-        "可以考虑增加-op选项,用来针对下载单个图片链接时指定保存文件名(todo)"
+        "可以考虑增加-op选项,用来针对下载单个图片链接时指定保存文件名(todo)",
     )
     parser.add_argument(
         "-O", "--override", action="store_true", default=False, help="是否覆盖已有图片"
@@ -199,6 +202,13 @@ def parse_args():
     parser.add_argument("-R", "--quality-rule", help="压缩图片的质量规则")
     parser.add_argument(
         "-u", "--user-agent", default=USER_AGENTS[0], help="自定义User-Agent"
+    )
+    parser.add_argument(
+        "-ps",
+        "--ps-version",
+        default="powershell",
+        choices=["powershell", "pwsh"],
+        help="PowerShell版本，可选值：powershell、pwsh",
     )
     parser.add_argument(
         "-s",
@@ -310,6 +320,7 @@ def main():
         remove_original=args.remove_original,
         override=args.override,
         resize_threshold=args.resize_threshold,
+        ps_version=args.ps_version,
     )
     # 过滤已有图片,扫描出尚未下载的图片
     # 这里不关心文件名后缀的差异,比较basename

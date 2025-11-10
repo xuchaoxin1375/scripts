@@ -25,14 +25,60 @@
 
 - `Get-UrlFromSitemap `
 
-用例
+#### 单个抽取
 
 ```powershell
 Get-UrlFromSitemap -Path .\toms.xml > toms.gz.urls
 
 ```
 
+### 解析站点地图xml中的url(批量从xml文件中抽取url)🎈
 
+方案有两类:可以用脚本(命令行)解析(倾向于不同的xml抽取到各自对应的url集合文件txt中),或者用采集器来解析(倾向于聚合到同一个txt)
+
+这里通常用shell方案,用不上playwright,因为此步骤要被解析的内容已经下载到本地了
+
+> 和上一节类似,如果命令`Get-UrlfromSitemap`解析不出来或者报错,可以用采集器来解析并导出
+
+解析各个底层站点地图中包含的产品url,分别保存到.txt文件中(每个txt文件都是包含一系列url的文本文件,每行一个url)
+
+**首先将工作目录cd到站点地图所在的目录**,否则找不到文件
+
+> 例如上例中`~\Desktop\localhost\www.speedingparts.de`
+
+```powershell
+# 首先将工作目录cd到站点地图所在的目录,否则找不到文件
+$sitemap_pattern = '*xml*' #可选修改:可以根据你下载的站点地图文件名更改
+
+$i = 1; 
+Get-ChildItem $sitemap_pattern| ForEach-Object {
+	$url_file="X$i.txt"
+	Get-UrlFromSitemap -Path $_ > $url_file ; 
+    $i += 1 
+    $path= gi $url_file
+    write-host $path.fullname -ForegroundColor Green
+}
+```
+
+例如运行后:
+
+```powershell
+#⚡️[Administrator@CXXUDESK][~\Desktop\localhost\www.speedingparts.de][16:06:44][UP:1.07Days]
+PS> Get-ChildItem $sitemap_pattern| ForEach-Object {
+>>     Get-UrlFromSitemap -Path $_ > "X$i.txt";
+>>     $i += 1
+>> }
+Pattern to match URLs: <loc>(.*?)</loc>
+Processing sitemap at path: C:\Users\Administrator\Desktop\localhost\www.speedingparts.de\sitemap_categories_de.1.xml.gz [C:\Users\Administrator\Desktop\localhost\www.speedingparts.de\sitemap_categories_de.1.xml.gz]
+Pattern to match URLs: <loc>(.*?)</loc>
+Processing sitemap at path: C:\Users\Administrator\Desktop\localhost\www.speedingparts.de\sitemap_galleries_de.1.xml.gz [C:\Users\Administrator\Desktop\localhost\www.speedingparts.de\sitemap_galleries_de.1.xml.gz]
+Pattern to match URLs: <loc>(.*?)</loc>
+Processing sitemap at path: C:\Users\Administrator\Desktop\localhost\www.speedingparts.de\sitemap_manufacturers.1.xml.gz [C:\Users\Administrator\Desktop\localhost\www.speedingparts.de\sitemap_manufacturers.1.xml.gz]
+Pattern to match URLs: <loc>(.*?)</loc>
+Processing sitemap at path: C:\Users\Administrator\Desktop\localhost\www.speedingparts.de\sitemap_products_de.1.xml.gz
+```
+
+在下载并解析完成后,工作目录中会有一些`.txt`文件,里面包含的是产品页链接的话,就可以进行下一步操作
 
 ### 批量下载gz或.xml文件的url资源
 
@@ -52,7 +98,14 @@ cat $links |%{curl -L -k -A $agent  -O $_ } # 使用-L选项追踪301等跳转,�
 
 ```
 
+配置代理:可以使用curl的`-x`选项指定,例如
 
+```powershell
+#
+cat $links |%{curl -L -k -A $agent -x http://localhost:10808  -O $_ }
+```
+
+或者使用`set-proxy -port 10808`这种方式指定代理,然后重新尝试
 
 如果下载的是gz,那么可能是压缩包(也可能不是),如果是压缩包,需要批量压缩
 

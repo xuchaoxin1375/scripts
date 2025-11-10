@@ -46,6 +46,48 @@ Out[2]: <CDLL 'C:\ProgramData\scoop\apps\miniconda3\current\Lib\site-packages\ma
 In [3]:
 ```
 
+### scoop包管理(可选)
+
+scoop可以方便管理许多命令行工具,除了官方安装方法,这里使用本地安装的方案(scoop本身和通过scoop已经安装好的一些工具打包,便于直接迁移环境)
+
+> 简单起见,设置`C:/scoop`目录为scoop基本家目录
+
+```powershell
+$scoop_home='C:/scoop'
+$scoop_shims="$scoop_home/shims"
+setx scoop $scoop_home
+# 添加关键路径到Path变量
+Add-EnvVar -EnvVar Path -NewValue $scoop_shims
+```
+
+查看或编辑scoop配置文件
+
+```powershell
+$scoop_config="~/.config/scoop/config.json"
+```
+
+可以用`scoop config`逐项配置,也可以直接批量写入配置
+
+> 内部制定了使用本地代理`localhost:10808`
+
+```powershell
+$config=@'
+{
+  "last_update": "2025-10-28T10:01:57.4765046+08:00",
+  "proxy": "localhost:10808",
+  "scoop_repo": "https://github.com/ScoopInstaller/Scoop",
+  "scoop_branch": "master",
+  "aria2-enabled": true,
+  "aria2-options": "-s 16 -x 16 -k 1M --retry-wait=2 --async-dns false"
+}
+'@
+$config >  $scoop_config
+# 检查配置
+cat $scoop_config
+# 更新scoop
+scoop update scoop
+```
+
 
 
 ## 适用于windows系统的环境变量配置
@@ -87,6 +129,7 @@ New-Item -ItemType Directory -Path C:/exes , C:/sites -ErrorAction SilentlyConti
 $phpstudy_home="C:\phpstudy_pro"
 $phpstudy_extensions="$phpstudy_home\Extensions"
 
+
 # 设置nginx信息🎈
 # 根据nginx版本修改下面的版本号(默认为1.25.2)
 $nginx_home="$phpstudy_extensions\Nginx1.25.2"
@@ -99,6 +142,7 @@ $mysql_home="$phpstudy_extensions\MySQL8.0.12"
 $mysql_bin = "$mysql_home\bin"
 # 根据情况修改本地mysql密码🎈(小皮数据库默认密码为root)
 setx MySqlKey_LOCAL "root"
+
 
 
 # =======下面的不需要修改===========
@@ -160,7 +204,7 @@ mysqld --install MySQL80 --defaults-file="$MYSQL_HOME\my.ini"
 
 
 
-### CgiPort配置🎈
+### CgiPort端口号配置🎈
 
 #### 端口查询
 

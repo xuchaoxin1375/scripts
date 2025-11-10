@@ -89,17 +89,11 @@ fnh = FilenameHandler()
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    #
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    "(KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0",
     #
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/535.11 "
-    "(KHTML, like Gecko) Chrome/41.0.2227.0 Safari/537.36",
-    #
-    "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/41.0.2227.0 Safari/537.36",
-    #
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/41.0.2227.1 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:144.0) Gecko/20100101 Firefox/144.0",
 ]
 
 # 要注意很多常用的普通分割符号都不要用于分割url,例如分号,逗号,甚至空格;
@@ -124,7 +118,12 @@ COOKIES = {"sessionid": "abc123xyz", "csrftoken": "csrf_token_here"}
 
 
 def download_by_iwr(
-    url, output_path, user_agent=None, timeout=TIMEOUT, verify_ssl=True
+    url,
+    output_path,
+    user_agent=None,
+    timeout=TIMEOUT,
+    verify_ssl=True,
+    ps_version="pwsh",
 ):
     """
     使用 PowerShell 的 Invoke-WebRequest 下载指定 URL 到本地文件。
@@ -138,9 +137,11 @@ def download_by_iwr(
 
     """
     # 构造 PowerShell 命令
+
     cmd = [
-        # "pwsh",
-        "powershell.exe",
+        ps_version,
+        # "pwsh",#pwsh(powershell7+)部分情况下会和windows powershell(5)有效果上的差别,比如前者可以下载,后者会失败
+        # "powershell.exe",
         "-NoProfile",
         "-Command",
         '"',
@@ -157,7 +158,7 @@ def download_by_iwr(
     # 合并为单行字符串
     ps_command = " ".join(cmd)
     logger.debug("PowerShell 命令: %s", ps_command)
-    msg = f"🎈PowerShell 命令:  {ps_command}"
+    msg = f"🎈PowerShell 命令[UA={user_agent}]:  {ps_command}"
     print(msg)
     try:
         result = subprocess.run(
@@ -407,6 +408,7 @@ class ImageDownloader:
         remove_original=False,
         record_failed=False,
         use_shutil=False,
+        ps_version="powershell",
         resize_threshold=RESIZE_THRESHOLD,
     ):
         """
@@ -438,6 +440,7 @@ class ImageDownloader:
         self.output_format = output_format
         self.remove_original = remove_original
         self.override = override
+        self.ps_version = ps_version
         # 记录下载失败的图片链接到文本文件中
         self.record_failed = record_failed
         self.ic = ImageCompressor(
@@ -460,11 +463,12 @@ class ImageDownloader:
         # 设置User-Agent
         self.headers = {
             "User-Agent": user_agent or random.choice(USER_AGENTS),
-            "Referer": f"https://{random.choice(['google.com', 'bing.com'])}/",
-            "Accept-Language": "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Accept": "text/html,application/xhtml+xml,application/xml;\
-                q=0.9,image/avif,image/webp,*/*;q=0.8",
+            # "Referer": f"https://{random.choice(['google.com', 'bing.com'])}/",
+            # "Accept-Language": "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7",
+            # "Accept-Language": "en-US,en;q=0.9",
+            # "Accept-Encoding": "gzip, deflate, br",
+            # "Accept": "text/html,application/xhtml+xml,application/xml;\
+            #     q=0.9,image/avif,image/webp,*/*;q=0.8",
         }
         self.proxies = proxies or []
         self.proxy_strategy = proxy_strategy
@@ -588,7 +592,9 @@ class ImageDownloader:
                         res = download_by_iwr(
                             url=url,
                             output_path=file_path,
+                            # user_agent=self.headers["User-Agent"],
                             timeout=self.timeout,
+                            ps_version=self.ps_version,
                         )
                     if res:
                         self.stats.add_success()
