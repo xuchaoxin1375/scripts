@@ -503,13 +503,16 @@ function Get-XpCgiPort
         Write-Host "$($ports_info|Out-String)"
         Write-Host "反向校验相关进程尝试找出是否名为xp.cn_cgi"
         # $ports_info | ForEach-Object {
-        foreach ($port_info in $ports_info){
+        foreach ($port_info in $ports_info)
+        {
             $p = (Get-Process -Id $port_info.OwningProcess)
             if( $p.ProcessName -eq 'xp.cn_cgi' )
             {
                 Write-Verbose "找到满足条件的进程:name=$($p.ProcessName),id=$($p.Id),port=$($port_info.LocalPort)"
                 return $port_info
-            }else{
+            }
+            else
+            {
                 Write-Verbose "进程:name=$($p.ProcessName),id=$($p.Id),port=$($port_info.LocalPort) 不满足条件"
             }
         }
@@ -838,19 +841,20 @@ function Deploy-WpSitesLocal
     Write-Output $rows | Format-Table
     Write-Warning "Please check the parameter table list above,especially the domain and template name!" -WarningAction Inquire
     # Pause
-    $order=1
+    $order = 1
     # 逐条数据解析出各个参数,并处理任务🎈
     foreach ($row in $rows)
     {
         $domain = $row.Domain
         $template = $row.Template
         $title = $row.Title
-        Write-Debug "Processing domain: [$domain], template: [$template],with title: [$title]"
+        $removeMall = $row.RemoveMall
+        Write-Debug "Processing domain: [$domain], template: [$template],with title: [$title],mall remove: [$removeMall]"
 
         $path = "$WpSitesTemplatesDir/$template"
         $destination = "$MyWpSitesHomeDir/$domain"
         # 这里要加一层域名验证
-        if ($domain -and $domain -like "*.*")
+        if ($domain -and $domain -like "*.*" -and $domain.trim() -notlike "www\.*")
         {
             Write-Verbose "processing domain: [$domain]" -Verbose
         }
@@ -874,6 +878,11 @@ function Deploy-WpSitesLocal
         $robocopyLog = "$env:TEMP/$(Get-Date -Format 'yyyyMMdd')robocopy.log"
         # Write-Verbose "Use robocopy to copy files from $path to $destination "
         Copy-Robocopy -Source $path -Destination $destination -Force -Recurse -LogFile $robocopyLog -Threads 32
+        # 根据需要移除mallpay🎈
+        if($removeMall)
+        {
+            Remove-Item "$destination/wp-content/plugins/mallpay" -Force -Recurse -Verbose #-WhatIf:$WhatIfPreference
+        }
         $template_temp = "$MyWpSitesHomeDir/$template"
         if(Test-Path $template_temp)
         {

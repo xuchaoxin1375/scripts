@@ -3238,11 +3238,14 @@ function Get-DomainUserDictFromTableLite
     )
     Get-Content $Table | Where-Object { $_.Trim() } | Where-Object { $_ -notmatch "^\s*#" } | ForEach-Object { 
         $l = $_ -split '\s+'
-        $title = ($_ -split '\d+\.\w{1,5}')[-1].trim() -replace '"', ''
-        @{'domain'     = ($l[0] | Get-MainDomain);
-            'user'     = $l[1];
-            'template' = $l[2] ;
-            'title'    = $title;
+        $title = ($_ -split '\d+\.\w{1,5}')[-1].trim().TrimEnd('1') -replace '"', ''
+        # 如果行以'\s+1'结尾,则返回$true
+        $removeMall = if($_ -match '.*\s+1\s*$') { $true }else { $false }
+        @{'domain'        = ($l[0] | Get-MainDomain);
+            'user'        = $l[1];
+            'template'    = $l[2] ;
+            'title'       = $title;
+            'removeMall' = $removeMall;
         } 
     }
 }
@@ -3740,6 +3743,7 @@ function Get-SourceFromUrls
     # 采集 http[参数] -> http[参数1]
     Get-Content $output | Select-Object -First 10
 }
+
 function Start-GoogleIndexSearch
 {
     <# 
@@ -3767,7 +3771,7 @@ function Start-GoogleIndexSearch
         Start-Sleep -Milliseconds $randInterval
 
         Start-Process $cmd
-    
+        
     }
     
 }

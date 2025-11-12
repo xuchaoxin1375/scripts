@@ -780,7 +780,7 @@ if __name__ == "__main__":
     desktop = get_desktop_path()
     backup_csv_dir = os.path.join(desktop, f"backup_csvs/{get_now_time_str()}")
     # 对csv做必要的处理🎈
-    process_image_csv(img_dir=img_dir, csv_dir=csv_path)
+    process_image_csv(img_dir=img_dir, csv_dir=csv_path,backup_dir=backup_csv_dir)
     go = input("是否继续?(y/n) [default:y]").strip().lower()
     if go not in ("", "y", "yes"):
         print("操作已取消。")

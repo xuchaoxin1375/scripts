@@ -61,7 +61,7 @@ pip uninstall playwright
 
 ```powershell
 #⚡️[Administrator@CXXUDESK][~\Desktop\localhost\esd.equipment][14:19:34][UP:21.02Days]
-PS> python C:\Users\Administrator\Desktop\localhost\get_htmls_from_urls_multi_thread.py .\L1.txt  -p http://localhost:8800 -o links 
+PS> python C:\Users\Administrator\Desktop\localhost\get_html.py .\L1.txt  -p http://localhost:8800 -o links 
 开始下载 25 个URL到目录: links\20250723_142014
 设置: 超时=30s, 延迟=1.0-3.0s
 并发数=3, 重试次数=3, 浏览器窗口模式=隐藏
@@ -150,7 +150,7 @@ Get-UrlFromSitemap C:\Users\Administrator\Desktop\localhost\L1.xml > $localhost\
 下载这些站点地图(或其压缩包),和下载产品网页类似,也可以调用浏览器下载站点地图文件或其压缩包(共用一个下载脚本)
 
 ```powershell
-PS C:\Users\Administrator\Desktop\localhost> python .\get_htmls_from_urls_multi_thread.py .\sitemap_urls.txt -p http://localhost:8800 -c 5   
+PS C:\Users\Administrator\Desktop\localhost> python .\get_html.py .\sitemap_urls.txt -p http://localhost:8800 -c 5   
 开始下载 106 个URL到目录: downloads\20250822_211603
 设置: 超时=30s, 延迟=1.0-3.0s
 并发数=5, 重试次数=3, 浏览器窗口模式=隐藏  
@@ -252,7 +252,7 @@ ls *.txt |%{Get-SourceFromUrls -Path $_ -OutputDir htmls -proxy http://localhost
 将下载保存目录下的所有txt传递给脚本进行下载
 
 ```powershell
-ls *txt|%{python C:\Users\Administrator\Desktop\localhost\get_htmls_from_urls_multi_thread.py $_  -p http://localhost:8800 -o links -c 2 -d 2-5}
+ls *txt|%{python C:\Users\Administrator\Desktop\localhost\get_html.py $_  -p http://localhost:8800 -o links -c 2 -d 2-5}
 ```
 
 ## 本地html文件编成xml文件(local_urls.txt)
