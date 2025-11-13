@@ -1,5 +1,5 @@
 """
-
+@last update:20251113-2110
 简单使用示例:(更多细节查看相关文档)
 推荐使用pwsh作为命令行环境(预设$localhost为当前桌面上的localhost目录)
 ls *.txt|%{python $localhost/get_html.py $_ -o htmls -p $localhost/proxies_nolimit.conf -c 2 -r 1 -t 100 -d 1-3 }
@@ -12,12 +12,13 @@ import os
 import random
 import logging
 import json
+import sys
 import re
 from urllib.parse import urlparse
 from datetime import datetime
 from playwright.async_api import async_playwright
 import unicodedata
-import time  # 引入 time 模块用于计时
+import time
 
 # 强制设置Python输出编码为utf-8，防止Windows终端乱码
 os.environ["PYTHONIOENCODING"] = "utf-8"
@@ -38,17 +39,10 @@ class UnicodeSafeStreamHandler(logging.StreamHandler):
             self.handleError(record)
 
 
-class WebSourceDownloader:
-    """网络资源下载器
-    典型资源为html,gz,xml等
-    主要用于:(不保证一定可行,结合代理池(可以是自己维护一个小型的代理池)可以提高成功率和效率,尽管这不是必须的)
-    1.下载js动态加载详情页的情况
-    2.检测客户端是否可以执行js的网页,如果无法执行js就禁止访问(403),比如cloudflare提供的较高等级的防护网站(注意线程数控制不宜过高)
-    """
-
+class SmartDownloader:
     def __init__(
         self,
-        output_dir,  # 现在是持久化的子目录
+        output_dir,
         timeout,
         delay_range,
         headless,
@@ -69,32 +63,30 @@ class WebSourceDownloader:
         self.max_concurrency = max_concurrency
         self.current_concurrency = max_concurrency
         self.max_retries = max_retries
-        self.input_file = input_file  # 保存输入文件路径
+        self.input_file = input_file
 
         # 确保输出目录存在
         os.makedirs(self.output_dir, exist_ok=True)
 
         # 初始化日志目录 (始终在输出目录下的 _logs)
         self.log_dir = os.path.join(self.output_dir, "_logs")
-        os.makedirs(self.log_dir, exist_ok=True)  # 确保日志目录存在
+        os.makedirs(self.log_dir, exist_ok=True)
 
         # 初始化日志系统
         self._setup_logging()
 
         # 状态管理
         self.state = {
-            "completed": {},
-            "failed": {},
+            "completed": {},  # 键是 URL，值是 True (或失败信息)
+            "failed": {},  # 键是 URL，值是 True (或失败信息)
             "total_count": 0,
             "success_count": 0,
             "fail_count": 0,
         }
-        self._load_state()  # 尝试加载现有状态
+        self._load_state()
 
     def _setup_logging(self):
         """配置日志系统"""
-        # 注意: self.log_dir 已在 __init__ 中设置并创建
-
         self.logger = logging.getLogger("SmartDownloader")
         self.logger.setLevel(logging.INFO)
 
@@ -103,7 +95,6 @@ class WebSourceDownloader:
             self.logger.handlers.clear()
 
         # 文件日志处理器(UTF-8编码)
-        # 注意: 使用固定文件名 download.log，以便在一个工作目录下查找
         file_handler = logging.FileHandler(
             os.path.join(self.log_dir, "download.log"), encoding="utf-8"
         )
@@ -127,17 +118,21 @@ class WebSourceDownloader:
         self.logger.addHandler(console_handler)
 
     def _load_state(self):
-        """加载下载状态 (从持久化目录加载)"""
+        """加载下载状态 (精简加载)"""
         state_file = os.path.join(self.log_dir, "download_state.json")
         if os.path.exists(state_file):
             try:
                 with open(state_file, "r", encoding="utf-8") as f:
-                    # 仅加载已完成和失败的状态
                     loaded_state = json.load(f)
-                    self.state["completed"] = loaded_state.get("completed", {})
-                    self.state["failed"] = loaded_state.get("failed", {})
 
-                    # 重新计算 success_count 和 fail_count
+                    # **精简优化: 仅加载 URL 列表，值统一设置为 True**
+                    self.state["completed"] = {
+                        url: True for url in loaded_state.get("completed", {}).keys()
+                    }
+                    self.state["failed"] = {
+                        url: True for url in loaded_state.get("failed", {}).keys()
+                    }
+
                     self.state["success_count"] = len(self.state["completed"])
                     self.state["fail_count"] = len(self.state["failed"])
 
@@ -152,13 +147,14 @@ class WebSourceDownloader:
                 )
 
     def _save_state(self):
-        """保存下载状态 (到持久化目录)"""
+        """保存下载状态 (精简保存: 只记录 URL 键)"""
         state_file = os.path.join(self.log_dir, "download_state.json")
         try:
-            # 仅保存需要持久化的关键信息
+            # **精简优化: 只保存 URL 键的列表，或以 URL 为键，True 为值的字典**
             state_to_save = {
-                "completed": self.state["completed"],
-                "failed": self.state["failed"],
+                # 记录 URL 集合，值设为 True，以保持字典结构，方便 future-proof
+                "completed": {url: True for url in self.state["completed"].keys()},
+                "failed": {url: True for url in self.state["failed"].keys()},
                 "total_count": self.state["total_count"],
             }
             with open(state_file, "w", encoding="utf-8") as f:
@@ -168,11 +164,10 @@ class WebSourceDownloader:
 
     def _sanitize_filename(self, filename):
         """清理文件名中的特殊字符"""
-        # 替换特殊字符为下划线
         filename = unicodedata.normalize("NFKD", filename)
         filename = filename.encode("ascii", "ignore").decode("ascii")
         filename = re.sub(r"[^\w\-_.]", "_", filename)
-        return filename[:200]  # 限制文件名长度
+        return filename[:200]
 
     def get_progress(self, index):
         """获取进度信息"""
@@ -189,27 +184,20 @@ class WebSourceDownloader:
     ):
         """下载单个URL"""
 
-        # 限制 URL 长度，最多 100 个字符用于日志显示
-        # display_url = url[:100] + '...' if len(url) > 100 else url
-        display_url = url
-
-        # 记录请求开始时间
+        display_url = url[:100] + "..." if len(url) > 100 else url
         start_time = time.time()
 
         try:
-            # 生成安全文件名和路径 (文件路径逻辑不变，但现在 self.output_dir 是固定目录)
+            # 文件路径生成逻辑不变
             parsed = urlparse(url)
             path = parsed.path[1:] if parsed.path.startswith("/") else parsed.path
             domain_dir = self._sanitize_filename(parsed.netloc)
-            # 生成基础文件名
             base_filename = self._sanitize_filename(path) if path else "index"
-            # 使用 URL 哈希值作为唯一标识，避免重跑时文件名冲突
             url_hash = str(abs(hash(url)))[:8]
-            # 文件名中不再包含时间戳，但包含哈希值
             filename = f"{base_filename}-{url_hash}.html"
             output_path = os.path.join(self.output_dir, domain_dir, filename)
 
-            # 检查是否已下载 (这是断点续传的关键)
+            # 检查是否已下载 (断点续传的关键)
             if url in self.state["completed"]:
                 self.logger.info(
                     f"跳过已完成: {display_url}",
@@ -217,7 +205,6 @@ class WebSourceDownloader:
                 )
                 return True
 
-            # 确保目录存在
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
             if proxy_info is None:
@@ -230,21 +217,17 @@ class WebSourceDownloader:
                     extra={"progress": self.get_progress(index)},
                 )
 
-                # 使用Playwright访问页面（复用page），使用 networkidle 确保 JS 内容加载
                 await page.goto(
                     url, timeout=self.timeout * 1000, wait_until="networkidle"
                 )
 
-                # 获取完整HTML
                 content = await page.content()
-                # 计算耗时
                 elapsed_time = time.time() - start_time
                 time_info = f"{elapsed_time:.2f}s"
 
-                # 保存文件 (文件名中不再包含时间戳，如果文件已存在会被覆盖，但由于前面有状态检查，这里不会发生)
                 with open(output_path, "w", encoding="utf-8") as f:
                     f.write(content)
-                # 记录文件大小
+
                 try:
                     size_bytes = os.path.getsize(output_path)
                     size_kb = size_bytes / 1024.0
@@ -252,19 +235,14 @@ class WebSourceDownloader:
                 except Exception:
                     size_info = "未知大小"
 
-                # 更新状态：将此URL标记为完成
-                self.state["completed"][url] = {
-                    "path": output_path,
-                    "timestamp": datetime.now().isoformat(),
-                    "size": size_bytes if "size_bytes" in locals() else None,
-                }
-                # 如果这个URL之前在失败列表中，将其移除
+                # 更新状态：只记录 URL
+                self.state["completed"][url] = True
                 self.state["failed"].pop(url, None)
 
                 self.state["success_count"] += 1
                 self._save_state()
 
-                # 成功日志增加耗时
+                # 成功日志
                 self.logger.info(
                     f"成功下载: {display_url} -> {output_path} [大小: {size_info}] [耗时: {time_info}] [代理: {proxy_info}] [源文件: {os.path.basename(self.input_file)}]",
                     extra={"progress": self.get_progress(index)},
@@ -279,7 +257,7 @@ class WebSourceDownloader:
         except Exception as e:
             error_msg = str(e)
             if retry_count < self.max_retries:
-                # 自适应调整策略
+                # 重试逻辑不变
                 adjust_delay = min(5, self.delay_range[1] * (retry_count + 1))
                 self.logger.warning(
                     f"下载失败({retry_count + 1}/{self.max_retries}), {error_msg}. 将在{adjust_delay:.1f}秒后重试...",
@@ -296,13 +274,8 @@ class WebSourceDownloader:
                     proxy_info=proxy_info,
                 )
             else:
-                # 最终失败
-                self.state["failed"][url] = {
-                    "error": error_msg,
-                    "timestamp": datetime.now().isoformat(),
-                    "retries": retry_count + 1,
-                }
-                # 确保失败列表只包含真正失败的URL
+                # 最终失败：只记录 URL
+                self.state["failed"][url] = True
                 self.state["completed"].pop(url, None)
 
                 self.state["fail_count"] += 1
@@ -311,7 +284,7 @@ class WebSourceDownloader:
                     f"最终失败: {display_url} (错误: {error_msg})",
                     extra={"progress": self.get_progress(index)},
                 )
-                # 自适应降低并发数
+                # 自适应降低并发数逻辑不变
                 if self.current_concurrency > 1:
                     self.current_concurrency = max(
                         1, int(self.current_concurrency * 0.8)
@@ -323,7 +296,7 @@ class WebSourceDownloader:
                 return False
 
     async def worker(self, context, page, queue, worker_id, proxy_info="直连"):
-        """工作线程函数: 使用传入的 context 和 page 复用浏览器标签"""
+        """工作线程函数"""
         try:
             while True:
                 index, url = await queue.get()
@@ -336,7 +309,6 @@ class WebSourceDownloader:
                         worker_id=worker_id,
                         proxy_info=proxy_info,
                     )
-                    # 随机延迟
                     if self.delay_range[0] > 0 or self.delay_range[1] > 0:
                         delay = random.uniform(*self.delay_range)
                         await asyncio.sleep(delay)
@@ -347,16 +319,14 @@ class WebSourceDownloader:
 
     async def run(self, urls):
         """运行下载任务"""
-        # 更新总任务数
         self.state["total_count"] = len(urls)
-        # 不再在每次run时重置 success_count/fail_count，它们在 load_state 时已经从文件中加载
-        # 但我们需要确保它们与当前加载的状态匹配
+
+        # 重新根据状态文件计算成功和失败数 (以防用户手动修改状态文件)
         self.state["success_count"] = len(self.state["completed"])
         self.state["fail_count"] = len(self.state["failed"])
         self._save_state()
 
-        # 过滤已完成的URL
-        # 仅将不在 completed 或 failed 列表中的 URL 放入待下载队列
+        # 过滤已完成和已失败的 URL
         pending_urls = [
             url
             for url in urls
@@ -364,7 +334,6 @@ class WebSourceDownloader:
         ]
         pending_count = len(pending_urls)
 
-        # 修正已下载URL的计算逻辑 (已下载 + 已失败 = 已处理)
         processed_count = self.state["success_count"] + self.state["fail_count"]
 
         self.logger.info(
@@ -379,7 +348,6 @@ class WebSourceDownloader:
             return
 
         async with async_playwright() as p:
-            # ... (浏览器启动配置不变)
             launch_options = {
                 "headless": self.headless,
                 "args": [
@@ -390,21 +358,17 @@ class WebSourceDownloader:
 
             browser = await p.chromium.launch(**launch_options)
 
-            # 记录代理配置信息
             if self.proxy_configs:
                 proxy_info = "、".join([p or "直连" for p in self.proxy_configs])
                 self.logger.info(
                     f"[CONFIG] 代理配置: {proxy_info}", extra={"progress": "CONFIG"}
                 )
 
-            # 创建任务队列
             queue = asyncio.Queue()
-            # 仅将待下载的 URL 放入队列，索引基于总URL列表
             for index, url in enumerate(urls, 1):
                 if url in pending_urls:
                     await queue.put((index, url))
 
-            # 根据待下载数量调整并发数
             actual_workers = min(self.max_concurrency, pending_count)
             if actual_workers != self.max_concurrency:
                 self.logger.info(
@@ -413,11 +377,9 @@ class WebSourceDownloader:
                 )
             self.current_concurrency = actual_workers
 
-            # 为每个 worker 创建一个复用的 context 和 page
             worker_slots = []
             for i in range(self.current_concurrency):
                 worker_proxy = self._get_proxy_for_worker(i)
-                # ... (Context/Page创建逻辑不变)
                 if worker_proxy:
                     ctx = await browser.new_context(
                         user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
@@ -434,17 +396,14 @@ class WebSourceDownloader:
                 pg = await ctx.new_page()
                 worker_slots.append((ctx, pg, proxy_info))
 
-            # 创建工作线程
             workers = []
             for i, (ctx, pg, proxy_info) in enumerate(worker_slots):
                 workers.append(
                     asyncio.create_task(self.worker(ctx, pg, queue, i, proxy_info))
                 )
 
-            # 等待所有任务完成
             await queue.join()
 
-            # ... (关闭线程和浏览器逻辑不变)
             for w in workers:
                 w.cancel()
             await asyncio.gather(*workers, return_exceptions=True)
@@ -459,7 +418,6 @@ class WebSourceDownloader:
                 except:
                     pass
 
-            # 最终统计
             self.logger.info(
                 f"下载完成: 成功 {self.state['success_count']}/{len(urls)}, 失败 {self.state['fail_count']}",
                 extra={"progress": "DONE"},
@@ -468,7 +426,6 @@ class WebSourceDownloader:
 
 def read_urls_from_file(file_path):
     """从文件读取URL列表，自动检测编码"""
-    # ... (函数体不变)
     encodings = ["utf-8", "gbk", "gb2312", "latin1"]
     for enc in encodings:
         try:
@@ -486,7 +443,6 @@ def read_urls_from_file(file_path):
 
 def read_proxies_from_file(file_path):
     """从文件读取代理列表，自动检测编码"""
-    # ... (函数体不变)
     if not file_path:
         return []
     encodings = ["utf-8", "gbk", "gb2312", "latin1"]
@@ -521,7 +477,6 @@ def main():
     parser = argparse.ArgumentParser(
         description="智能网页下载工具(支持断点续传和自适应策略)"
     )
-    # ... (参数定义不变)
     parser.add_argument("input_file", help="包含URL列表的文件路径")
     parser.add_argument(
         "-o",
@@ -564,7 +519,7 @@ def main():
 
     args = parser.parse_args()
 
-    # **关键修改: 基于输入文件确定输出目录，实现断点续传**
+    # 基于输入文件确定输出目录，实现断点续传
     input_basename = os.path.basename(args.input_file)
     # 使用文件名（不含扩展名）作为子目录名
     input_name_safe = (
@@ -572,7 +527,6 @@ def main():
     )
     # 最终的输出目录是 output_root / input_name_safe
     output_dir = os.path.join(args.output, input_name_safe)
-    # **关键修改结束**
 
     # 读取URL
     urls = read_urls_from_file(args.input_file)
@@ -600,8 +554,8 @@ def main():
                 print(f"  - {proxy}")
 
     # 创建下载器实例
-    downloader = WebSourceDownloader(
-        output_dir=output_dir,  # 传入固定的输出目录
+    downloader = SmartDownloader(
+        output_dir=output_dir,
         timeout=args.timeout,
         delay_range=args.delay,
         headless=args.headless,
@@ -617,7 +571,6 @@ def main():
 
 
 if __name__ == "__main__":
-    # 确保安装了Playwright
     try:
         import re
         from playwright.async_api import async_playwright
