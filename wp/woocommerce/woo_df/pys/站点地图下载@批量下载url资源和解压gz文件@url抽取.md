@@ -17,13 +17,32 @@
 
 批量下载(获取url中的资源,比如下载html或则文件,gz文件等)
 
-### 从站点地图抽取url
+### 从站点地图(xml)抽取url
 
 包括多级站点地图,比如抽取gz资源的url,或子级站点地图url
 
+> 也可以用采集器可视化操作提取url.
+
+方案有两类:可以用脚本(命令行)解析(倾向于不同的xml抽取到各自对应的url集合文件txt中),或者用采集器来解析(倾向于聚合到同一个txt)
+
+这里通常用shell方案,用不上playwright,因为此步骤要被解析的内容已经下载到本地了
+
 抽出的url列表保存到文本文件,后缀可以命名为`.urls`或`.urls.txt`,如果是gz文件的url,可以更具体为`.gz.urls`或`.gz.urls.txt`
 
-- `Get-UrlFromSitemap `
+> 和上一节类似,如果命令`Get-UrlfromSitemap`解析不出来或者报错,可以用采集器来解析并导出
+
+解析各个底层站点地图中包含的产品url,分别保存到`.txt`文件中(每个txt文件都是包含一系列url的文本文件,每行一个url)
+
+**首先将工作目录cd到站点地图所在的目录**,否则找不到文件
+
+> 例:`~\Desktop\localhost\www.speedingparts.de`
+
+```powershell
+# 首先将工作目录cd到站点地图所在的目录,否则找不到文件
+$sitemap_pattern = '*xml*' #可选修改:可以根据你下载的站点地图文件名更改
+```
+
+
 
 #### 单个抽取
 
@@ -32,22 +51,12 @@ Get-UrlFromSitemap -Path .\toms.xml > toms.gz.urls
 
 ```
 
-### 解析站点地图xml中的url(批量从xml文件中抽取url)🎈
+#### 批量从xml文件中抽取url
 
-方案有两类:可以用脚本(命令行)解析(倾向于不同的xml抽取到各自对应的url集合文件txt中),或者用采集器来解析(倾向于聚合到同一个txt)
 
-这里通常用shell方案,用不上playwright,因为此步骤要被解析的内容已经下载到本地了
-
-> 和上一节类似,如果命令`Get-UrlfromSitemap`解析不出来或者报错,可以用采集器来解析并导出
-
-解析各个底层站点地图中包含的产品url,分别保存到.txt文件中(每个txt文件都是包含一系列url的文本文件,每行一个url)
-
-**首先将工作目录cd到站点地图所在的目录**,否则找不到文件
-
-> 例如上例中`~\Desktop\localhost\www.speedingparts.de`
 
 ```powershell
-# 首先将工作目录cd到站点地图所在的目录,否则找不到文件
+# 首先将工作目录cd到站点地图所在的目录,否则找不到文件或者we
 $sitemap_pattern = '*xml*' #可选修改:可以根据你下载的站点地图文件名更改
 
 $i = 1; 
@@ -126,7 +135,7 @@ ls *txt|%{python $localhost/get_html.py $_ -o $domain/htmls -p $localhost\proxie
 
 ```powershell
 $domain='nissanwholesaledirect.com'
-ls ni's*txt|%{python $localhost/get_html.py $_ -o $domain/htmls -p $localhost\proxies.conf --allow-direct -c 3 -r 1 -t 120 -d 1-3 }
+ls nissan*txt|%{python $localhost/get_html.py $_ -o $domain/htmls -p $localhost\proxies.conf --allow-direct -c 3 -r 1 -t 120 -d 1-3 }
 ```
 
 
@@ -156,7 +165,7 @@ ls
 > 可以使`gzip`命令(windows可以下载git获取git中的gzip.exe工具,然后使用`gzip -d -S .gzip`(如果后缀不是`.gz`而是`.gzip`,或者`gzip -d .gz`)
 >
 
-
+解压完毕后得到一系列`.xml`文件,从这些文件中提取url(其他章节介绍过)
 
 
 
