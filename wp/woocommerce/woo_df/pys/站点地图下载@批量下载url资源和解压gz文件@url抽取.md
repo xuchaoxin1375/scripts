@@ -82,7 +82,11 @@ Processing sitemap at path: C:\Users\Administrator\Desktop\localhost\www.speedin
 
 ### 批量下载gz或.xml文件的url资源
 
-通常使用curl下载
+方案有2种:
+
+使用curl下载或无头浏览器下载(比如playwright)
+
+#### curl方案
 
 ```bash
 # 配置两个参数
@@ -110,6 +114,22 @@ cat $links |%{curl -L -k -A $agent -x http://localhost:10808  -O $_ }
 如果下载的是gz,那么可能是压缩包(也可能不是),如果是压缩包,需要批量压缩
 
 如果curl下载不动gz,则考虑使用浏览器(playwright下载)
+
+#### playwright
+
+```powershell
+$domain='demo.com' #修改为待采集网站的域名
+ls *txt|%{python $localhost/get_html.py $_ -o $domain/htmls -p $localhost\proxies.conf --allow-direct -c 3 -r 1 -t 120 -d 1-3 }
+```
+
+例如
+
+```powershell
+$domain='nissanwholesaledirect.com'
+ls ni's*txt|%{python $localhost/get_html.py $_ -o $domain/htmls -p $localhost\proxies.conf --allow-direct -c 3 -r 1 -t 120 -d 1-3 }
+```
+
+
 
 ### 批量解压
 
@@ -304,7 +324,7 @@ VERBOSE: Preview: <loc>http://localhost:80/fahr.de/9d0e95af9be5423a91abe77013aec
 <loc>http://localhost:80/fahr.de/9d0e95af9be5423a91abe77013aecc49-sitemap-www-fahrwerkonline-de-8.xml</loc>
 ```
 
-现在,将`http://localhost/fahr.de.txt`这个链接填入下机器采集本地站中的第一级站点地图
+现在,将`http://localhost/fahr.de.txt`这个链接填入采集器汇总,采集本地站中的第一级站点地图
 
 ## 后续下一步
 

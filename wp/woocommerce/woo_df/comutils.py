@@ -417,22 +417,38 @@ def split_multi(
     return items
 
 
-def get_main_domain_name_from_str(url):
+def get_main_domain_name_from_str(url, normalize=True):
     """
     从字符串中提取域名,结构形如 "二级域名.顶级域名",即SLD.TLD;
+    对于提取部分的正则,如果允许英文"字母,-,数字")(对于简单容忍其他字符的域名,使用([^/]+)代替([\\w]+)这个部分
 
     仅提取一个域名,适合于对于一个字符串中仅包含一个确定的域名的情况
     例如,对于更长的结构,"子域名.二级域名.顶级域名"则会丢弃子域名,前缀带有http(s)的部分也会被移除
 
+    Args:
+        url (str): 待处理的URL字符串
+        normalize (bool, optional): 是否进行规范化处理(移除空格,并且将字母小写化处理). Defaults to True.
+
+
     Examples:
     # 测试URL列表
-    urls = ['www.domain.com', 'https://www.dom-ain.com','https://sports.whh.cn.com', 'domain-test.com',
-    'http://domain.com', 'https://domain.com/','# https://domain.com']
+urls = ['www.domain1.com', 'https://www.dom-ain2.com','https://sports.whh3.cn.com', 'domain-test4.com','http://domain5.com', 'https://domain6.com/','# https://domain7.com','http://','https://www8./','https:/www9']
+for url in urls:
+    domain = get_main_domain_name_from_str(url)
+    print(domain)
     """
     # 使用正则表达式提取域名
-    match = re.search(URL_MAIN_DOMAIN_PATTERN, url)
+    url = str(url)
+    # 清理常见的无效url
+    url = re.sub(r"https?:/*w*\.?/?", "", url)
+    # 尝试提取英文域名
+    match = re.search(r"(?:https?://)?(?:www\.)?([\w]+)", url)
     if match:
-        return match.group(1) or ""
+        res = match.group(1)
+        if normalize:
+            # 字母小写并且移除空白
+            res = re.sub(r"\s+", "", res).lower()
+        return res
     return ""
 
 
@@ -487,7 +503,7 @@ def read_table_data(file_path, encoding="utf-8"):
     return df
 
 
-def read_table(file_path, header=0, encoding=None):
+def read_table(file_path, header=0, encoding=None, default_columns=None):
     """读取表格数据,根据文件后缀读取文件(csv,xlsx,xls)
 
     Args:
@@ -495,12 +511,22 @@ def read_table(file_path, header=0, encoding=None):
         header (int, optional): 表头行数. Defaults to 0.
         encoding (str, optional): 文件编码. 对csv文件有效,excel文件读取无此参数
             默认尝试多个编码(gbk,utf-8,gb2312),也可以指定编码(不推荐)
+        default_columns (list, optional): 默认列名. 如果要读取的文件不存在,则根据此参数列出的表头构造一个仅有表头的dataframe. Defaults to None.
 
     Returns:
         pd.DataFrame: 数据
 
+    Examples:
+        read_table(f"ab.csv", header=0,default_columns=['domain','name'])
 
     """
+    # 如果文件不存在,则返回指定表头的dataframe
+    if not os.path.exists(file_path):
+        if default_columns:
+            return pd.DataFrame(columns=default_columns)
+        else:
+            raise FileNotFoundError(f"文件不存在: {file_path}")
+
     if file_path.endswith(".csv"):
         # 对于csv文件,有不同编码情况,如果gbk读取失败,尝试utf-8,gb2312
         if encoding:
