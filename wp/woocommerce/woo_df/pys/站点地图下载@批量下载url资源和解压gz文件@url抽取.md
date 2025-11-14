@@ -56,7 +56,7 @@ Get-UrlFromSitemap -Path .\toms.xml > toms.gz.urls
 
 
 ```powershell
-# 首先将工作目录cd到站点地图所在的目录,否则找不到文件或者we
+# 首先将工作目录cd到站点地图所在的目录,否则找不到文件或者文件错误
 $sitemap_pattern = '*xml*' #可选修改:可以根据你下载的站点地图文件名更改
 
 $i = 1; 

@@ -255,7 +255,9 @@ ls *.txt |%{Get-SourceFromUrls -Path $_ -OutputDir htmls -proxy http://localhost
 ls *txt|%{python C:\Users\Administrator\Desktop\localhost\get_html.py $_  -p http://localhost:8800 -o links -c 2 -d 2-5}
 ```
 
-## 本地html文件编成xml文件(local_urls.txt)
+## 本地html文件编成xml.txt文件(domain.com.xml.txt)
+
+> 推荐以`域名.xml.txt`的格式命名,这里使用`.xml.txt`而不是`.xml`,是为了更好区分源站下载下来的xml和本地生成的站点地图的区别
 
 将下载好的html文件组织到一个文本文件中(编制索引),从而让采集器能够通过对应本地url读取这个索引文本文件,获取所有(本地)产品页链接以进行后续内容采集
 
@@ -263,44 +265,24 @@ ls *txt|%{python C:\Users\Administrator\Desktop\localhost\get_html.py $_  -p htt
 
 在编制成本地网站(localhost)的url前,我们可以先运行试探命令,构造出来的url看看是否符合需要(注意最后的`-Preview`选项)
 
-```powershell
-Get-UrlsListFileFromDir -Path $localhost\www.speedingparts.de\htmls -LocTagMode -Hst localhost -Output $localhost/www.speedingparts.de/local_urls.txt
-```
-
-得到的预览格式比如`预览url格式: <loc>http://localhost:80/www.speedingparts.de/htmls/-10-female-o-ring-aluminum-weld-bung.html-202509242047-1952.html</loc>`,检查并访问其中的http链接,如果路径正确就可以去掉`-Preview`参数正式生成
-
-否则说明路径片段有误,需要手动指定`-HtmlDirSegment`参数指定新的url中间片段.
-
-例如:
-
-指定中间路径为`CustomDirSeg/htmls-dir`,效果如下
+> 这里我们使用的命令是`Get-SitemapFromLocalhtmls`,它可以帮助我们(递归)扫描某个目录下的所有html文件并且编制成一个本地版本的简化站点地图
 
 ```powershell
-Get-UrlsListFileFromDir -Path $localhost\www.speedingparts.de\htmls -LocTagMode -Hst localhost -Output $localhost/www.speedingparts.de/local_urls.txt -htmlDirSegment CustomDirSeg/htmls-dir -Preview
-预览url格式: <loc>http://localhost:80/CustomDirSeg/htmls-dir/-10-female-o-ring-aluminum-weld-bung.html-202509242047-1952.html</loc>
+#⚡️[Administrator@CXXUDESK][C:\repos\scripts][19:25:38]{Git:main} PS >
+ Get-SitemapFromLocalhtmls -Path $localhost/test.com/ -HstRoot $localhost -LocTagMode -Preview          
+未指定输出文件路径,尝试解析默认路径:[local_test.com]
+
+[Output] C:/Users/Administrator/Desktop/localhost/local_test.com.xml.txt
+
+Preview First 5 Lines
+<loc> http://localhost:80/test.com/htmls/v1/www.nissanwholesaledirect.com/oem-parts_nissan-cyl-master-46010n0900-88602679.html </loc>
+<loc> http://localhost:80/test.com/htmls/v1/www.nissanwholesaledirect.com/oem-parts_nissan-cyl-master-brk-46010m7900-54876288.html </loc>
+<loc> http://localhost:80/test.com/htmls/v1/www.nissanwholesaledirect.com/oem-parts_nissan-cylinder-master-46010n0100-16186003.html </loc>
+<loc> http://localhost:80/test.com/htmls/v1/www.nissanwholesaledirect.com/oem-parts_nissan-cylinder-master-46010n0110-50542742.html </loc>
+<loc> http://localhost:80/test.com/htmls/v1/www.nissanwholesaledirect.com/oem-parts_nissan-cylinder-master-46010n0905-34954578.html </loc>
 ```
 
-最理想的情况下是该命令正确猜测你的html文件存放路径,就不需要指定`-HtmlDirSegment`参数
-
-又比如:
-
-```powershell
-#⚡️[Administrator@CXXUDESK][~\Desktop\localhost\swiss][15:04:28] PS >
- Get-UrlsListFileFromDir .\htmls\ -LocTagMode -htmlDirSegment swiss/htmls -Output ../swiss.xml
-VERBOSE: Output to file: ../swiss.xml
-VERBOSE: Preview: <loc>http://localhost:80/swiss/htmls/-202510281409-1.html</loc>
-<loc>http://localhost:80/swiss/htmls/0849-popline-ballpoint-pen-202510281409-364.html</loc>
-<loc>http://localhost:80/swiss/htmls/14-3-spare-cutting-blade-202510281409-116.html</loc>
-<loc>http://localhost:80/swiss/htmls/14-small-ergonimic-secateur-202510281409-115.html</loc>
-<loc>http://localhost:80/swiss/htmls/160s-small-secateur-202510281409-117.html</loc>
-<loc>http://localhost:80/swiss/htmls/19056-202510281409-536.html</loc>
-<loc>http://localhost:80/swiss/htmls/19068-202510281409-537.html</loc>
-<loc>http://localhost:80/swiss/htmls/19167-202510281409-539.html</loc>
-<loc>http://localhost:80/swiss/htmls/19197-202510281409-546.html</loc>
-<loc>http://localhost:80/swiss/htmls/2-3-spare-cutting-blade-202510281409-120.html</loc>
-```
-
-
+得到的预览格式比如`预览url格式: <loc>http://localhost:80/www.speedingparts.de/htmls/-10-female-o-ring-aluminum-weld-bung.html-202509242047-1952.html</loc>`,检查并访问其中的http链接
 
 ## 源码和url匹配
 

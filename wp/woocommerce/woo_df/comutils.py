@@ -17,6 +17,7 @@ from pandas import Series
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
+import unicodedata
 
 SUPPORT_IMAGE_FORMATS_NAME = (
     "jpg",
@@ -98,6 +99,33 @@ def get_paths(input_dir: str, recurse: bool = False):
         ]
 
     return files
+
+
+def sanitize_filename(filename, length_limit=200):
+    """移除文件名中的特殊字符,并执行ascii化和长度限制,是的文件名中的各个字符都允许出现在系统文件名规范中
+    注意,ascii字符也不都能作为文件名,因此最后使用一个正则替换兜底
+    基本效果:
+    1.全角->半角
+    2.重音符号去除重音(比如é)->e
+    3.移除非ASCII字符
+    这个处理可能使得原来一批文件中的文件名的唯一性丢失
+    实际应用中,可以配合添加后缀(例如日期-时间)来使文件名具有唯一性
+
+    Example:
+    test="测试文件ＡＢＣ caféﬁ.txt"
+    print(sanitize_filename(test))
+    """
+    # 1. Unicode标准化
+    filename = unicodedata.normalize("NFKD", filename)
+    # print(f"NFKD标准化后: {repr(filename)}")
+
+    # 2. 移除非ASCII字符,配合Unicode标准化,可以去除重音字符的重音符号
+    filename = filename.encode("ascii", "ignore").decode("ascii")
+
+    # 3. 替换非法字符
+    filename = re.sub(r"[^\w\-_.]", "_", filename)
+
+    return filename[:length_limit]
 
 
 def walk_with_depth(root_dir, depth=None):
@@ -419,32 +447,32 @@ def split_multi(
 
 def get_main_domain_name_from_str(url, normalize=True):
     """
-    从字符串中提取域名,结构形如 "二级域名.顶级域名",即SLD.TLD;
-    对于提取部分的正则,如果允许英文"字母,-,数字")(对于简单容忍其他字符的域名,使用([^/]+)代替([\\w]+)这个部分
+        从字符串中提取域名,结构形如 "二级域名.顶级域名",即SLD.TLD;
+        对于提取部分的正则,如果允许英文"字母,-,数字")(对于简单容忍其他字符的域名,使用([^/]+)代替([\\w]+)这个部分
 
-    仅提取一个域名,适合于对于一个字符串中仅包含一个确定的域名的情况
-    例如,对于更长的结构,"子域名.二级域名.顶级域名"则会丢弃子域名,前缀带有http(s)的部分也会被移除
+        仅提取一个域名,适合于对于一个字符串中仅包含一个确定的域名的情况
+        例如,对于更长的结构,"子域名.二级域名.顶级域名"则会丢弃子域名,前缀带有http(s)的部分也会被移除
 
-    Args:
-        url (str): 待处理的URL字符串
-        normalize (bool, optional): 是否进行规范化处理(移除空格,并且将字母小写化处理). Defaults to True.
+        Args:
+            url (str): 待处理的URL字符串
+            normalize (bool, optional): 是否进行规范化处理(移除空格,并且将字母小写化处理). Defaults to True.
 
 
-    Examples:
-    # 测试URL列表
-urls = ['www.domain1.com', 'https://www.dom-ain2.com','https://sports.whh3.cn.com', 'domain-test4.com','http://domain5.com', 'https://domain6.com/','# https://domain7.com','http://','https://www8./','https:/www9']
-for url in urls:
-    domain = get_main_domain_name_from_str(url)
-    print(domain)
+        Examples:
+        # 测试URL列表
+    urls = ['www.domain1.com', 'https://www.dom-ain2.com','https://sports.whh3.cn.com', 'domain-test4.com','http://domain5.com', 'https://domain6.com/','# https://domain7.com','http://','https://www8./','https:/www9']
+    for url in urls:
+        domain = get_main_domain_name_from_str(url)
+        print(domain)
     """
     # 使用正则表达式提取域名
     url = str(url)
     # 清理常见的无效url
     url = re.sub(r"https?:/*w*\.?/?", "", url)
     # 尝试提取英文域名
-    match = re.search(r"(?:https?://)?(?:www\.)?([\w]+)", url)
+    match = re.search(r"(?:https?://)?(?:www\.)?((\w+.?)+)", url)
     if match:
-        res = match.group(1)
+        res = match.group(1).strip("/")
         if normalize:
             # 字母小写并且移除空白
             res = re.sub(r"\s+", "", res).lower()

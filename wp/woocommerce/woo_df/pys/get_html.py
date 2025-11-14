@@ -1,5 +1,5 @@
 """
-@last update:20251113-2110
+@last update:20251114
 简单使用示例:(更多细节查看相关文档)
 推荐使用pwsh作为命令行环境(预设$localhost为当前桌面上的localhost目录)
 ls *.txt|%{python $localhost/get_html.py $_ -o htmls -p $localhost/proxies_nolimit.conf -c 2 -r 1 -t 100 -d 1-3 }
@@ -39,7 +39,14 @@ class UnicodeSafeStreamHandler(logging.StreamHandler):
             self.handleError(record)
 
 
-class SmartDownloader:
+class WebSourceDownloader:
+    """网络资源下载器
+    典型资源为html,gz,xml等
+    主要用于:(不保证一定可行,结合代理池(可以是自己维护一个小型的代理池)可以提高成功率和效率,尽管这不是必须的)
+    1.下载js动态加载详情页的情况
+    2.检测客户端是否可以执行js的网页,如果无法执行js就禁止访问(403),比如cloudflare提供的较高等级的防护网站(注意线程数控制不宜过高)
+    """
+
     def __init__(
         self,
         output_dir,
@@ -75,7 +82,7 @@ class SmartDownloader:
         # 初始化日志系统
         self._setup_logging()
 
-        # 状态管理
+        # 状态管理(定义状态信息数据格式标准,可导出为json)
         self.state = {
             "completed": {},  # 键是 URL，值是 True (或失败信息)
             "failed": {},  # 键是 URL，值是 True (或失败信息)
@@ -87,7 +94,7 @@ class SmartDownloader:
 
     def _setup_logging(self):
         """配置日志系统"""
-        self.logger = logging.getLogger("SmartDownloader")
+        self.logger = logging.getLogger("__main__")
         self.logger.setLevel(logging.INFO)
 
         # 清除已有的handlers，防止重复日志
@@ -98,10 +105,11 @@ class SmartDownloader:
         file_handler = logging.FileHandler(
             os.path.join(self.log_dir, "download.log"), encoding="utf-8"
         )
+        fmt = "%(asctime)s [%(levelname)s] [%(progress)s] %(message)s"
         file_handler.setFormatter(
             logging.Formatter(
-                "%(asctime)s [%(levelname)-7s] [%(progress)s] %(message)s",
-                datefmt="%Y-%m-%d %H:%M:%S",
+                fmt,
+                datefmt="%Y-%m-%d%H:%M:%S",
             )
         )
 
@@ -109,7 +117,7 @@ class SmartDownloader:
         console_handler = UnicodeSafeStreamHandler()
         console_handler.setFormatter(
             logging.Formatter(
-                "%(asctime)s [%(levelname)-7s] [%(progress)s] %(message)s",
+                fmt,
                 datefmt="%H:%M:%S",
             )
         )
@@ -124,18 +132,18 @@ class SmartDownloader:
             try:
                 with open(state_file, "r", encoding="utf-8") as f:
                     loaded_state = json.load(f)
+                    self.state = loaded_state
 
-                    # **精简优化: 仅加载 URL 列表，值统一设置为 True**
-                    self.state["completed"] = {
-                        url: True for url in loaded_state.get("completed", {}).keys()
-                    }
-                    self.state["failed"] = {
-                        url: True for url in loaded_state.get("failed", {}).keys()
-                    }
+                    # # **仅加载 URL 列表，值统一设置为 True**
+                    # self.state["completed"] = {
+                    #     url: True for url in loaded_state.get("completed", {}).keys()
+                    # }
+                    # self.state["failed"] = {
+                    #     url: True for url in loaded_state.get("failed", {}).keys()
+                    # }
 
-                    self.state["success_count"] = len(self.state["completed"])
-                    self.state["fail_count"] = len(self.state["failed"])
-
+                    # self.state["success_count"] = len(self.state["completed"])
+                    # self.state["fail_count"] = len(self.state["failed"])
                 self.logger.info(
                     f"成功加载上次进度: 已完成 {self.state['success_count']} 个, 失败 {self.state['fail_count']} 个。",
                     extra={"progress": "RESUME"},
@@ -145,28 +153,43 @@ class SmartDownloader:
                     f"加载状态文件失败或文件格式错误: {str(e)}。将从零开始。",
                     extra={"progress": "INIT"},
                 )
+        else:
+            self.logger.info(
+                "未找到上次进度文件,将从零开始。", extra={"progress": "INIT"}
+            )
+        return self.state
 
     def _save_state(self):
-        """保存下载状态 (精简保存: 只记录 URL 键)"""
+        """更新/保存下载状态 (精简保存: 主要记录 URL 键)
+        读取对象中存储的关于状态的属性,组织成既定的格式保存为 JSON 文件
+        这些状态属性有其他调用进行维护以及修改
+
+        当前版本对于状态文件读写会比较频繁,并且随着下载的url数量越来越多,执行的速度也会越来越慢,因为状态的信息量会随着下载数量的增多而增多,写入量也越大,可以考虑用普通文笔文件或者csv来简化流程
+        """
         state_file = os.path.join(self.log_dir, "download_state.json")
         try:
             # **精简优化: 只保存 URL 键的列表，或以 URL 为键，True 为值的字典**
-            state_to_save = {
-                # 记录 URL 集合，值设为 True，以保持字典结构，方便 future-proof
-                "completed": {url: True for url in self.state["completed"].keys()},
-                "failed": {url: True for url in self.state["failed"].keys()},
-                "total_count": self.state["total_count"],
-            }
+            # state_to_save = {
+            #     # 记录 URL 集合，值设为 True，以保持字典结构，方便 future-proof
+            #     "completed": {url: True for url in self.state["completed"].keys()},
+            #     "failed": {url: True for url in self.state["failed"].keys()},
+            #     "total_count": self.state["total_count"],
+            # }
+            state_to_save = self.state
             with open(state_file, "w", encoding="utf-8") as f:
                 json.dump(state_to_save, f, indent=2, ensure_ascii=False)
         except Exception as e:
             self.logger.error(f"保存状态文件失败: {str(e)}", extra={"progress": "SAVE"})
 
     def _sanitize_filename(self, filename):
-        """清理文件名中的特殊字符"""
+        """清理文件名中的特殊字符
+        (避免特殊字符导致文件名相对操作系统非法导致保存失败)
+        """
         filename = unicodedata.normalize("NFKD", filename)
+        # 移除非ASCII字符(此时所有字符都满足系统文件名的要求,但还要注意长度)
         filename = filename.encode("ascii", "ignore").decode("ascii")
         filename = re.sub(r"[^\w\-_.]", "_", filename)
+        # 限制文件名长度200字符返回
         return filename[:200]
 
     def get_progress(self, index):
@@ -182,9 +205,12 @@ class SmartDownloader:
     async def download_url(
         self, context, page, url, index, retry_count=0, worker_id=0, proxy_info=None
     ):
-        """下载单个URL"""
+        """下载单个URL
+        控制文件输出路径🎈
+        """
 
-        display_url = url[:100] + "..." if len(url) > 100 else url
+        # display_url = url[:100] + "..." if len(url) > 100 else url
+        display_url = url
         start_time = time.time()
 
         try:
@@ -318,10 +344,13 @@ class SmartDownloader:
             pass
 
     async def run(self, urls):
-        """运行下载任务"""
+        """运行下载任务🎈
+        url下载任务的基本执行单位
+        """
         self.state["total_count"] = len(urls)
 
         # 重新根据状态文件计算成功和失败数 (以防用户手动修改状态文件)
+        # 统计completed字段中的键值对数量作为进度数量(计数器)
         self.state["success_count"] = len(self.state["completed"])
         self.state["fail_count"] = len(self.state["failed"])
         self._save_state()
@@ -473,7 +502,8 @@ def parse_delay_range(delay_str):
         raise argparse.ArgumentTypeError("延迟范围格式应为'min-max'，如'1.0-3.0'")
 
 
-def main():
+def parse_args():
+    """设置并解析命令行参数"""
     parser = argparse.ArgumentParser(
         description="智能网页下载工具(支持断点续传和自适应策略)"
     )
@@ -513,15 +543,18 @@ def main():
     parser.add_argument(
         "-c", "--concurrency", type=int, default=3, help="最大并发工作线程数 (默认: 3)"
     )
-    parser.add_argument(
-        "-r", "--retries", type=int, default=3, help="失败重试次数 (默认: 3)"
-    )
+    parser.add_argument("-r", "--retries", type=int, default=2, help="失败重试次数")
 
     args = parser.parse_args()
+    return args
 
-    # 基于输入文件确定输出目录，实现断点续传
+
+def main():
+    args = parse_args()
+    # 构造输出路径
+    ## 基于输入文件（包含待下载的url的txt文本文件）确定输出目录，实现断点续传
     input_basename = os.path.basename(args.input_file)
-    # 使用文件名（不含扩展名）作为子目录名
+    ## 使用文件名（不含扩展名）作为子目录名
     input_name_safe = (
         input_basename.split(".")[0] if "." in input_basename else input_basename
     )
@@ -554,7 +587,7 @@ def main():
                 print(f"  - {proxy}")
 
     # 创建下载器实例
-    downloader = SmartDownloader(
+    downloader = WebSourceDownloader(
         output_dir=output_dir,
         timeout=args.timeout,
         delay_range=args.delay,

@@ -3241,10 +3241,10 @@ function Get-DomainUserDictFromTableLite
         $title = ($_ -split '\d+\.\w{1,5}')[-1].trim().TrimEnd('1') -replace '"', ''
         # 如果行以'\s+1'结尾,则返回$true
         $removeMall = if($_ -match '.*\s+1\s*$') { $true }else { $false }
-        @{'domain'        = ($l[0] | Get-MainDomain);
-            'user'        = $l[1];
-            'template'    = $l[2] ;
-            'title'       = $title;
+        @{'domain'       = ($l[0] | Get-MainDomain);
+            'user'       = $l[1];
+            'template'   = $l[2] ;
+            'title'      = $title;
             'removeMall' = $removeMall;
         } 
     }
@@ -4689,7 +4689,113 @@ function Get-CharCount
     )
     return $InputString.Length - ($InputString.Replace($Char, "")).Length
 }
-function Get-UrlsListFileFromDir
+function Get-SitemapFromLocalhtmls
+{
+    <# 
+    .SYNOPSIS
+    扫描指定目录下的所有html文件,构造合适成适合采集的url链接列表,并输出到指定文件
+    .PARAMETER Path
+    待扫描的目录
+    .PARAMETER Hst
+    站点域名(通常本地localhost)
+    .PARAMETER Output
+    输出文件路径
+    .PARAMETER LocTagMode
+    是否使用<loc>标签包裹url,默认不使用
+    .PARAMETER htmlDirSegment
+    html所在路径,通常为空,程序会尝试自动获取
+    .PARAMETER Preview
+    预览生成的url列表,不输出文件
+    .PARAMETER PassThru
+    输出结果传递,返回结果
+    .EXAMPLE
+    
+    #>
+    [CmdletBinding()]
+    param (
+        [alias('Directory')]
+        $Path,
+        $Hst = "localhost",
+        $Port = "80",
+        # Url中的路径部分(也可以先预览输出,然后根据结果调整html所在位置),如果不指定,程序会尝试为你推测一个默认值
+        $HstRoot = "$home/desktop/localhost",
+        # 输出文件路径(如果不指定,则默认输出到$Path的同级别目录下)
+        $Output = "",
+        
+        # 预览生成的本地站点url格式
+        [switch]$Preview,
+        [switch]$LocTagMode,
+        # 输出(返回)结果传递
+        [switch]$PassThru
+    )
+    # 判断$Path是否为$HstRoot的子目录,如果不是则抛出异常结束此命令
+    if (!(Test-Path -Path $Path -PathType Container))
+    {
+        throw "Path '$Path' is not a valid directory."
+    }
+    # 分别获取$path和$HstRoot的绝对路径字符串,对比前缀
+    $absHstRoot = [System.IO.Path]::GetFullPath($HstRoot) -replace "\\", "/"
+    $absPath = [System.IO.Path]::GetFullPath($Path) -replace "\\", "/"
+    # return $absPath,$absHstRoot
+    if($absPath -notlike "$absHstRoot*")
+    {
+        throw "Path '$Path' is not a subdirectory of '$HstRoot'."
+    }
+    else
+    {
+        Write-Verbose "[$Path] is a subdirectory of [$HstRoot]."
+    }
+    
+    # 确定默认输出目录尝试自动计算一个合理目录名(参考输入目录)
+    if ($Output -eq "")
+    {
+        # $absPath.Substring($absHstRoot.Length).Trim('\')
+        $absPath = $absPath + '/' #确保输出目录有/便于界定提取的值
+        $outputDir = $absPath -replace "$absHstRoot/(.*?)/+", '$1'
+        Write-Host "未指定输出文件路径,尝试解析默认路径:[local_$outputDir]" -ForegroundColor 'cyan'
+        $Output = "$absHstRoot/local_$outputDir.xml.txt"
+    }
+    # 清空老数据
+    if(Test-Path $Output){
+        Remove-Item $Output -Force -Verbose -Confirm
+    }
+    $htmls = Get-ChildItem $Path -Filter *.html -Recurse
+    foreach ($html in $htmls)
+    {
+        $abshtml = $html.FullName
+        $P = $abshtml.Substring($absHstRoot.Length) -replace '\\', "/"
+        # Write-Host [$abshtml]
+        # Write-Host [$absHstRoot]
+        # Write-Host [$absPath]
+        # Write-Host [$P]
+
+        # 分步方案
+        $url = "http://${Hst}:${Port}/$($P.Trim('/'))"
+        # 一步到位
+        # $url = "http://${Hst}:${Port}/$htmlDirSegment/$P" -Replace "(?=[^:])[/\\]+", "/"
+        if ($LocTagMode)
+        {
+            $url = "<loc> $url </loc>"
+        }
+        # Write-Host $url
+
+        # 写入到文件中
+        $url | Out-File -FilePath $Output -Append -Encoding utf8 -Verbose:$VerbosePreference
+ 
+    }
+    Write-Host "[Output] $Output" -ForegroundColor 'cyan'
+    if($Preview)
+    {
+        Write-Host "Preview First 5 Lines"
+        Get-Content $Output | Select-Object -First 5 | Write-Host -ForegroundColor 'yellow'
+    }
+    if($PassThru)
+    {
+        return Get-Content $Output
+    }
+    
+}
+function Get-UrlListFileFromDir
 {
     <# 
     .SYNOPSIS
