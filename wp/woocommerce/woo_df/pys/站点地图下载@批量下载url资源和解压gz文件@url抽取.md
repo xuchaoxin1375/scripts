@@ -171,35 +171,40 @@ ls
 
 ### 创建本地html文件的建议站点地图
 
-使用`Get-UrlsListFileFromDir`命令将指定目录(路径)下的所有文件组织成一份本地的站点地图`sitemap.txt`便于采集器采集
+使用`Get-SitemapFromLocalhtmls`命令为指定目录下的所有html文件编制本地简化版的站点地图(`.xml.txt`)文件
 
-用例:(指定)
-
-```bash
-Get-UrlsListFileFromDir -Path ./ -LocTagMode  -Output sitemap.txt
-```
-
-根据上述步骤,查看本地localhost的服务中对应链接是否可以访问(如果可以,说明`maps.xml`的url构造正确)
-
-案例:
+为该命令其指定一个目录参数即可
 
 ```powershell
-#⚡️[Administrator@CXXUDESK][~\Desktop\localhost\toms][11:16:45] PS >
- Get-UrlsListFileFromDir -Path . -LocTagMode -htmlDirSegment toms -Output $localhost/toms.xmls.txt
-VERBOSE: Output to file: C:\Users\Administrator\Desktop/localhost/toms.xmls.txt
-访问本地站点地图链接形如: http://localhost:80/toms.xmls.txt
-VERBOSE: Preview: <loc>http://localhost:80/toms/freshop_sitemap1.xml</loc>
-<loc>http://localhost:80/toms/freshop_sitemap2.xml</loc>
-<loc>http://localhost:80/toms/freshop_sitemap3.xml</loc>
+ Get-SitemapFromLocalhtmls -Path $localhost/test.com/ -HstRoot $localhost -LocTagMode -Preview
 ```
 
-该命令会提示生成的本地站点地图链接,例如上面的
+输出案例
 
 ```powershell
-访问本地站点地图链接形如: http://localhost:80/toms.xmls.txt
+ Get-SitemapFromLocalhtmls -Path $localhost/test.com/ -HstRoot $localhost -LocTagMode -Preview
+未指定输出文件路径,尝试解析默认路径:[local_test.com]
+
+Confirm
+Are you sure you want to perform this action?
+Performing the operation "Remove File" on target
+"C:\Users\Administrator\Desktop\localhost\local_test.com.xml.txt".
+[Y] Yes  [A] Yes to All  [N] No  [L] No to All  [S] Suspend  [?] Help (default is "Y"):
+[Output] C:/Users/Administrator/Desktop/localhost/local_test.com.xml.txt
+--------默认output的参考http链接-----------------
+
+http://localhost:80/local_test.com.xml.txt
+
+-------------------------
+Preview First 5 Lines
+<loc> http://localhost:80/test.com/htmls/v1/www.nissanwholesaledirect.com/oem-parts_nissan-cyl-master-46010n0900-88602679.html </loc>
+<loc> http://localhost:80/test.com/htmls/v1/www.nissanwholesaledirect.com/oem-parts_nissan-cyl-master-brk-46010m7900-54876288.html </loc>
+<loc> http://localhost:80/test.com/htmls/v1/www.nissanwholesaledirect.com/oem-parts_nissan-cylinder-master-46010n0100-16186003.html </loc>
+<loc> http://localhost:80/test.com/htmls/v1/www.nissanwholesaledirect.com/oem-parts_nissan-cylinder-master-46010n0110-50542742.html </loc>
+<loc> http://localhost:80/test.com/htmls/v1/www.nissanwholesaledirect.com/oem-parts_nissan-cylinder-master-46010n0905-34954578.html </loc>
 ```
 
-访问此链接,如果显示出正确内容,就可以尝试采集了
+如果指示**默认output的参考http链接**,则将其中的链接作为c
 
 ### 测试采集
 

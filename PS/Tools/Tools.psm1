@@ -4753,10 +4753,14 @@ function Get-SitemapFromLocalhtmls
         $absPath = $absPath + '/' #确保输出目录有/便于界定提取的值
         $outputDir = $absPath -replace "$absHstRoot/(.*?)/+", '$1'
         Write-Host "未指定输出文件路径,尝试解析默认路径:[local_$outputDir]" -ForegroundColor 'cyan'
-        $Output = "$absHstRoot/local_$outputDir.xml.txt"
+        $sitemapName="local_$outputDir.xml.txt"
+        $Output = "$absHstRoot/$sitemapName"
+    }else{
+        Write-Host "非默认路径,如果需要,请自行构造本地站点地图的http链接"
     }
     # 清空老数据
-    if(Test-Path $Output){
+    if(Test-Path $Output)
+    {
         Remove-Item $Output -Force -Verbose -Confirm
     }
     $htmls = Get-ChildItem $Path -Filter *.html -Recurse
@@ -4784,6 +4788,12 @@ function Get-SitemapFromLocalhtmls
  
     }
     Write-Host "[Output] $Output" -ForegroundColor 'cyan'
+    if($sitemapName){
+
+        Write-Host '--------默认output的参考http链接-----------------'
+        Write-Host "`nhttp://${Hst}:${Port}/$($sitemapName) `n" -ForegroundColor 'cyan'
+        Write-Host '-------------------------'
+    }
     if($Preview)
     {
         Write-Host "Preview First 5 Lines"
