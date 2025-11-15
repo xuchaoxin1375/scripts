@@ -8,6 +8,9 @@ import urllib3
 import os
 
 urllib3.disable_warnings()
+TIME_OUT = 30
+DEFAULT_RETRIES = 3
+DEFAULT_BACKOFF = 1
 
 
 class BTApi:
@@ -15,10 +18,13 @@ class BTApi:
     宝塔api常用接口功能封装
     """
 
-    def __init__(self, bt_panel=None, bt_key=None):
+    def __init__(self, bt_panel=None, bt_key=None, retries=None, backoff=None):
         if bt_panel:
             self.__BT_PANEL = bt_panel
             self.__BT_KEY = bt_key
+        # 重试配置（可在实例化时覆盖）
+        self._retries = DEFAULT_RETRIES if retries is None else retries
+        self._backoff = DEFAULT_BACKOFF if backoff is None else backoff
         # 配置完立即检查是否可以连接到服务器
         self.check_connection()
 
@@ -49,25 +55,54 @@ class BTApi:
         }
         return requests_data
 
-    def __http_post(self, url, requests_data, timeout=1800):
+    def __http_post(self, url, requests_data, timeout=TIME_OUT, retries=None, backoff=None):
         """
-        发送POST请求，忽略SSL验证(因为自签的原因)
-        :param url:
-        :param requests_json:
-        :param timeout:
+        发送POST请求，带简单重试机制，忽略SSL验证(因为自签的原因)
 
+        :param url: 请求的URL
+        :param requests_json: 请求的关联数组
+        :param timeout: 超时时间
+        :param retries: 最大重试次数（可选，默认为实例配置或模块默认）
+        :param backoff: 基础退避时间（秒），采用指数退避：backoff * (2**(attempt-1))
         """
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
-        # 使用requests发送POST请求并禁用SSL验证
-        response = requests.post(
-            url, data=requests_data, headers=headers, timeout=timeout, verify=False
-        )
-        response.raise_for_status()
-        return response.text
+        if retries is None:
+            retries = getattr(self, "_retries", DEFAULT_RETRIES)
+        if backoff is None:
+            backoff = getattr(self, "_backoff", DEFAULT_BACKOFF)
+
+        attempt = 0
+        while True:
+            try:
+                # 使用requests发送POST请求并禁用SSL验证
+                response = requests.post(
+                    url, data=requests_data, headers=headers, timeout=timeout, verify=False
+                )
+                response.raise_for_status()
+                return response.text
+            except requests.exceptions.RequestException as e:
+                # 对于明确的客户端错误(4xx)，通常不应重试
+                if isinstance(e, requests.exceptions.HTTPError):
+                    status_code = e.response.status_code if e.response is not None else None
+                    if status_code and 400 <= status_code < 500:
+                        raise
+
+                attempt += 1
+                if attempt > retries:
+                    # 达到最大重试次数，向上抛出最后一次异常
+                    raise
+
+                # 指数退避
+                sleep_time = backoff * (2 ** (attempt - 1))
+                try:
+                    time.sleep(sleep_time)
+                except Exception:
+                    # 如果sleep被中断，继续下一次尝试或抛出
+                    pass
 
     def check_connection(self):
-        """检查和宝塔服务器的链接是否正常
+        """检查和宝塔服务器的链接是否正常 
 
         如果失败则抛出异常停止后续操作!
         """
@@ -275,6 +310,7 @@ class BTApi:
         codeing="utf8mb4",
         datauser="",
         datapassword="",
+        time_out=TIME_OUT,
     ):
         """
         创建网站
@@ -318,9 +354,9 @@ class BTApi:
         requests_data["datauser"] = datauser
         requests_data["datapassword"] = datapassword
         # print(f"数据库开关:{sql}")
-        result = self.__http_post(url, requests_data)
+        result = self.__http_post(url, requests_data, timeout=time_out)
         print(json.loads(result))
-        
+
         return json.loads(result)
 
     def del_site(self, site_id, webname, path, database, ftp):
