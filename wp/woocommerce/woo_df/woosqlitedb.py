@@ -31,6 +31,7 @@ from comutils import (
     remove_sensitive_info,
     set_image_extension,
     split_urls,
+    get_now_time_str
 )
 
 from filenamehandler import FilenameHandler
@@ -1299,7 +1300,7 @@ but different image, keep records [%s]",
 
         for i, file_rows in enumerate(file_rows_lst):
             os.makedirs(out_dir, exist_ok=True)
-            file_path = os.path.join(out_dir, f"p{i+1}.csv")
+            file_path = os.path.join(out_dir, f"p{i+1}-{get_now_time_str()}.csv")
             file_path = os.path.abspath(file_path)
             self._export_csv(file_path=file_path, header=header, rows=file_rows)
 

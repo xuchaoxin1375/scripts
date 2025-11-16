@@ -3011,6 +3011,9 @@ function Get-MainDomain
     .SYNOPSIS
     获取主域名
     从给定的 URL 中提取二级域名和顶级域名部分（即主域名），忽略协议 (http:// 或 https://) 和子域名（如 www.、xyz. 等）
+    执行域名规范化:(todo)
+    如果某个域名存在大写字母,则抛出警告
+    将域名中的所有字母转换为小写(对于写入vhosts文件比较关键)
     #>
     [CmdletBinding()]
     param (
@@ -3029,7 +3032,16 @@ function Get-MainDomain
         # 处理简单情况（例如 domain.com 或 www.domain.com）
         if ($parts.Count -ge 2)
         {
-            return "$($parts[-2]).$($parts[-1])"
+            $resRaw = "$($parts[-2]).$($parts[-1])"
+            # 如果存在大写字母,则抛出警告
+            if ($resRaw -cmatch '[A-Z]')
+            {
+                Write-Warning "原域名字符串包含大写字母:[$resRaw]"
+            }
+            $resNormalized = $resRaw.ToLower().Trim()
+            Write-Warning "已执行域名规范化(小写化字母):[$resRaw] -> [$resNormalized]"
+            
+            return $resNormalized
         }
 
         return $null
@@ -3229,8 +3241,6 @@ function Get-DomainUserDictFromTableLite
     <# 
     .SYNOPSIS
     简单地从约定的配置文本(包含多列数据,每一列用空白字符隔开)中提取各列(字段)的数据
-
-
     #>
     param(
         # [Parameter(Mandatory = $true)]
@@ -3527,6 +3537,7 @@ function Add-NewDomainToHosts
     .DESCRIPTION
     如果hosts文件中已经存在该域名的映射,则不再添加,否则添加到文件末尾
     #>
+    [CmdletBinding()]
     param (
         [parameter(Mandatory = $true)]
         $Domain,
@@ -3535,17 +3546,20 @@ function Add-NewDomainToHosts
     )
     # $hsts = Get-Content $hosts
     # if ($hsts| Where-Object { $_ -match $domain }){}
-    $exist = Select-String -Path $hosts -Pattern $domain
+    $checkExist = { Select-String -Path $hosts -Pattern "\b$domain\b" }
+    $exist = & $checkExist
     if ($exist -and !$Force)
     {
-        Write-Verbose "Domain [$domain] already exist in hosts file!" -Verbose
+        
+        Write-Warning "Domain [$domain] already exist in hosts file!" 
     }
     else
     {
-
+        Write-Host "Adding [$domain] to hosts file..."
         "$Ip  $domain" >> $hosts
     }
-    return Select-String -Path $hosts -Pattern $domain 
+    # return Select-String -Path $hosts -Pattern $domain 
+    return & $checkExist
 }
 
 
@@ -4689,6 +4703,45 @@ function Get-CharCount
     )
     return $InputString.Length - ($InputString.Replace($Char, "")).Length
 }
+function Get-RelativePath
+{
+    <# 
+    .SYNOPSIS
+    计算路径a相对于路径b的相对路径(如果a是b的子目录的话)
+    通常输入的两个路径都是绝对路径,这样允许被比较计算的路径可以是上不存在的路径
+
+    .DESCRIPTION
+    计算前需要将路径转换为统一目录分隔符(层级分隔符)
+    系统分隔符 [System.IO.Path]::DirectorySeparatorChar
+    根据通用性(兼容windows,linux路径),建议用`/`代替`\`
+
+    .PARAMETER Path
+    待处理的路径
+    .PARAMETER BasePath
+    基础路径
+
+
+    .EXAMPLE
+    Get-RelativePath -Path "C:\Users/Administrator\Desktop/test.txt" -BasePath "C:\Users\Administrator"
+    结果为: Desktop/test.txt
+
+    #>
+    [CmdletBinding()]
+    param (
+        $Path,
+        $BasePath
+    )
+    if ($Path -eq $BasePath)
+    {
+        return "."
+    }
+    $Path = $Path.Replace("\", "/").Trim("/")
+    $BasePath = $BasePath.Replace("\", "/").trim("/")
+    Write-Verbose "Path: $Path"
+    Write-Verbose "BasePath: $BasePath"
+    $Path = $Path.Replace($BasePath, "").Trim("/")
+    return $Path
+}
 function Get-SitemapFromLocalhtmls
 {
     <# 
@@ -4721,10 +4774,13 @@ function Get-SitemapFromLocalhtmls
         $HstRoot = "$home/desktop/localhost",
         # 输出文件路径(如果不指定,则默认输出到$Path的同级别目录下)
         $Output = "",
-        
+        # 输出到文件时,每个文件最多n条url;对于html很多的情况下,适当分割成多个文件有利于提高采集器的检索速度
+        $LinesOfEach = 1000,
+        $ext = ".xml.txt",
         # 预览生成的本地站点url格式
         [switch]$Preview,
         [switch]$LocTagMode,
+        
         # 输出(返回)结果传递
         [switch]$PassThru
     )
@@ -4734,36 +4790,74 @@ function Get-SitemapFromLocalhtmls
         throw "Path '$Path' is not a valid directory."
     }
     # 分别获取$path和$HstRoot的绝对路径字符串,对比前缀
-    $absHstRoot = [System.IO.Path]::GetFullPath($HstRoot) -replace "\\", "/"
-    $absPath = [System.IO.Path]::GetFullPath($Path) -replace "\\", "/"
+    $Path = Get-Item $Path | Select-Object -ExpandProperty FullName
+    $HstRoot = Get-Item $HstRoot | Select-Object -ExpandProperty FullName
+    $absHstRoot = $HstRoot.ToLower() -replace "\\", "/"
+    $absPath = $Path.ToLower() -replace "\\", "/"
+    # 计算多级站点地图子级站点地图存放目录(不一定用上)
+    $mapsDir = "$absPath/maps"
+    if($LinesOfEach)
+    {
+        # 清空可能已经存在的文件
+        if(Test-Path $mapsDir)
+        {
+
+            Remove-Item $mapsDir -ErrorAction SilentlyContinue #-Confirm
+        }
+        mkdir $mapsDir -ErrorAction SilentlyContinue -Verbose
+    }
     # return $absPath,$absHstRoot
     if($absPath -notlike "$absHstRoot*")
     {
-        throw "Path '$Path' is not a subdirectory of '$HstRoot'."
+        Write-Warning "Path '$absPath' is not a subdirectory of '$absHstRoot'."
+
     }
     else
     {
         Write-Verbose "[$Path] is a subdirectory of [$HstRoot]."
     }
     
+    $absPathSlash = $absPath + '/' #确保输出目录有/便于界定提取的值
+    $outputParentDefault = $absPathSlash -replace "$absHstRoot/(.*?)/+", '$1'
+    Write-Host "用户未指定输出文件路径,尝试解析默认路径:[local_$outputParentDefault]" -ForegroundColor 'yellow'
+    $sitemapNameBaseDefault = "local_$outputParentDefault"
     # 确定默认输出目录尝试自动计算一个合理目录名(参考输入目录)
     if ($Output -eq "")
     {
         # $absPath.Substring($absHstRoot.Length).Trim('\')
-        $absPath = $absPath + '/' #确保输出目录有/便于界定提取的值
-        $outputDir = $absPath -replace "$absHstRoot/(.*?)/+", '$1'
-        Write-Host "未指定输出文件路径,尝试解析默认路径:[local_$outputDir]" -ForegroundColor 'cyan'
-        $sitemapName="local_$outputDir.xml.txt"
-        $Output = "$absHstRoot/$sitemapName"
-    }else{
-        Write-Host "非默认路径,如果需要,请自行构造本地站点地图的http链接"
+        # $OutputDefault = "$absHstRoot/${sitemapNameBaseDefault}${ext}"
+        # $Output = $OutputDefault
+        if ($LinesOfEach) {
+            $postfix="_index"
+        }else{
+            $postfix=""
+        }
+        $sitemapIndexPath = "$absHstRoot/${sitemapNameBaseDefault}${postfix}${ext}"
     }
-    # 清空老数据
-    if(Test-Path $Output)
+    else
     {
-        Remove-Item $Output -Force -Verbose -Confirm
+
+        Write-Host "非默认路径,如果需要,请自行构造本地站点地图的http链接"
+        $sitemapIndexPath = $Output
     }
+
+    # # 清空老数据(靠后处理)
+    Remove-Item $sitemapIndexPath -Force -Verbose -Confirm -ErrorAction SilentlyContinue
+    Write-Host "开始扫描html文件(文件数量多时需要一定时间)..."
     $htmls = Get-ChildItem $Path -Filter *.html -Recurse
+    Write-Host "待处理html文件数:[$($htmls.Count)]"
+
+    if($LinesOfEach)
+    {
+        Write-Host "将会得到子级站点地图文件数:[$([math]::Ceiling($htmls.Count/$LinesOfEach))]"
+    }
+    $sitemapSubIdx = 0
+    $lineIdx = 0
+    # 输出路径的相关部分
+    # $filebase = Split-Path ${Output} -LeafBase
+    # $ext = Split-Path ${Output} -Extension # .txt
+
+    # 遍历处理html文件
     foreach ($html in $htmls)
     {
         $abshtml = $html.FullName
@@ -4774,7 +4868,7 @@ function Get-SitemapFromLocalhtmls
         # Write-Host [$P]
 
         # 分步方案
-        $url = "http://${Hst}:${Port}/$($P.Trim('/'))"
+        $url = "http://${Hst}:${Port}/$($P.Trim('/'))" -replace '\\', "/"
         # 一步到位
         # $url = "http://${Hst}:${Port}/$htmlDirSegment/$P" -Replace "(?=[^:])[/\\]+", "/"
         if ($LocTagMode)
@@ -4784,16 +4878,58 @@ function Get-SitemapFromLocalhtmls
         # Write-Host $url
 
         # 写入到文件中
-        $url | Out-File -FilePath $Output -Append -Encoding utf8 -Verbose:$VerbosePreference
- 
-    }
-    Write-Host "[Output] $Output" -ForegroundColor 'cyan'
-    if($sitemapName){
+        if($LinesOfEach)
+        {
+            $lineIdx++
 
-        Write-Host '--------默认output的参考http链接-----------------'
-        Write-Host "`nhttp://${Hst}:${Port}/$($sitemapName) `n" -ForegroundColor 'cyan'
-        Write-Host '-------------------------'
+            # 计算待编号的子级站点地图文件名
+            # $sitemapSub = "${filebase}_${sitemapSubIdx}${ext}"
+            # $sitemapSub = "${sitemapNameBaseDefault}_${sitemapSubIdx}${ext}"
+            $sitemapSub = "local_${sitemapSubIdx}${ext}"
+            $sitemapSub = "$mapsDir/$sitemapSub"
+            # 计算相对网站根目录的相对路径
+            $sitemapSubUrlRelative = Get-RelativePath -Path $sitemapSub -BasePath $absHstRoot -Verbose:$VerbosePreference
+            Write-Debug "Writing lines to file:[$sitemapSub]" -Debug
+            
+            $url | Out-File -FilePath $sitemapSub -Append -Encoding utf8 -Verbose:$VerbosePreference 
+
+            if($lineIdx % $LinesOfEach -eq 0)
+            {
+                Write-Host "更新SitemapIndex文件:[$sitemapIndexPath]"
+                $sitemapSubUrl = "http://${Hst}:${Port}/$sitemapSubUrlRelative" -replace '\\', "/"
+                if($LocTagMode)
+                {
+                    $sitemapSubUrl = "<loc> $sitemapSubUrl </loc>"
+                }
+                $sitemapSubUrl | Out-File -FilePath $sitemapIndexPath -Append -Encoding utf8 -Verbose:$VerbosePreference
+                Write-Host "更新子级站点地图文件编号:[$sitemapSubIdx]"
+                $sitemapSubIdx++
+            }
+
+        }
+        else
+        {
+            # 单独一份
+            $url | Out-File -FilePath $sitemapIndexPath -Append -Encoding utf8 -Verbose:$VerbosePreference
+        }
     }
+    if($sitemapIndexPath)
+    {
+        Write-Host "[Output(Sitemap/SitemapIndex)] $sitemapIndexPath" -ForegroundColor 'cyan'
+        $OutputUrl = "http://${Hst}:${Port}/$(Get-RelativePath -Path $sitemapIndexPath -BasePath $absHstRoot)"
+        Write-Host '--------默认output的参考http链接-----------------'
+        Write-Host "`n$outputUrl `n" -ForegroundColor 'cyan'
+        Write-Host '-------------------------'
+        if($LinesOfEach)
+        {
+            Write-Host "这是一个二级站点地图,注意分二级抽取url"
+        }
+        else
+        {
+            Write-Host "这是一个一级站点地图,可以直接抽取其中的url"
+        }
+    }
+    $Output = $sitemapIndexPath
     if($Preview)
     {
         Write-Host "Preview First 5 Lines"
