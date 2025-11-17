@@ -356,7 +356,7 @@ class ImageCompressor:
                     print("仅更改源文件(input_path)的后缀格式,而不做实际转换")
                     print(f"格式文件变化:{input_path}->{output_path}")
                     os.rename(input_path, output_path)
-                msg = f"压缩后文件大小未减少,不覆盖原文件(大小变化:{original_size}->{new_size})"
+                msg = f" 🟰  压缩后文件大小未减少,不覆盖原文件(大小变化:{original_size}->{new_size})"
                 print(msg)
             else:
                 # 需要替换源文件的情况

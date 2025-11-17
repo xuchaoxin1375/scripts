@@ -4889,7 +4889,7 @@ function Get-SitemapFromLocalhtmls
             $sitemapSub = "$mapsDir/$sitemapSub"
             # 计算相对网站根目录的相对路径
             $sitemapSubUrlRelative = Get-RelativePath -Path $sitemapSub -BasePath $absHstRoot -Verbose:$VerbosePreference
-            Write-Debug "Writing lines to file:[$sitemapSub]" -Debug
+            Write-Debug "Writing lines to file:[$sitemapSub]" 
             
             $url | Out-File -FilePath $sitemapSub -Append -Encoding utf8 -Verbose:$VerbosePreference 
 

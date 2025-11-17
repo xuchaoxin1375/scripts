@@ -98,9 +98,9 @@ python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -
 
 
 ```powershell
-$type='  食品  '.trim()
+$type='  汽配  '.trim()
 $country='  US '.trim()
-$start=974
+$start=977
 $end=$start 
 $exclude='0'
 python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -o "$desktop/$type-$country-$(get-date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]" -dl 10 -nad # 
@@ -203,21 +203,70 @@ PS> tree_lsd -depth_opt 1
 
 这里还附带一个脚本,同一天执行的批量本地建站生成的配套脚本会存放到同一份`scripts_....ps1`中
 
+### 本地建站三部曲命令行模板🎈
+
 ```powershell
-# =========[http://lebenlshop.com]:[C:\Users\Administrator\Desktop/my_wp_sites/lebenlshop.com]=============
-python C:\repos\scripts\wp\woocommerce\woo_df\pys\image_downloader.py -c -n -R auto -k  -rs 1000 800  --output-dir C:\Users\Administrator\Desktop/my_wp_sites/lebenlshop.com/wp-content/uploads/2025 --dir-input C:\Users\Administrator\Desktop/data_output/lebenlshop.com -w 5 -U curl
 
-python C:\repos\scripts\wp\woocommerce\woo_df\pys\woo_uploader_db.py --update-slugs  --csv-path C:\Users\Administrator\Desktop/data_output/lebenlshop.com --img-dir C:\Users\Administrator\Desktop/my_wp_sites/lebenlshop.com/wp-content/uploads/2025 --db-name lebenlshop.com 
-
-Get-WpSitePacks -SiteDirecotry C:\Users\Administrator\Desktop/my_wp_sites/lebenlshop.com
+# =========[(1)    http://xit.com/login  ]:[ cd  C:\Users\Administrator\Desktop/my_wp_sites/xit.com  ]=>[图片目录: explorer C:\Users\Administrator\Desktop/my_wp_sites/xit.com\wp-content\uploads\2025 ]==========
 
 
-# =========[http://wundeshop.com]:[C:\Users\Administrator\Desktop/my_wp_sites/wundeshop.com]=============
-....
+# 下载图片(可以在构思域名前提前下载,分配好csv就可以创建临时域名开始下载,比如1.com,2.com,...)
+python C:\repos/scripts/wp/woocommerce/woo_df/pys\image_downloader.py -c -n -R auto -k  -rs 1000 800  --output-dir C:\Users\Administrator\Desktop/my_wp_sites/xit.com/wp-content/uploads/2025 --dir-input C:\Users\Administrator\Desktop/data_output/xit.com -F -ps pwsh -w 5 -U curl 
+
+# 导入产品数据到数据库
+python C:\repos/scripts/wp/woocommerce/woo_df/pys\woo_uploader_db.py --update-slugs  --csv-path C:\Users\Administrator\Desktop/data_output/xit.com --img-dir C:\Users\Administrator\Desktop/my_wp_sites/xit.com/wp-content/uploads/2025 --db-name xit.com --max-workers 20
+
+# 打包网站
+Get-WpSitePacks -SiteDirecotry C:\Users\Administrator\Desktop/my_wp_sites/xit.com -Mode zstd
+
+
 
 ```
 
-#### 服务器上下载图片和导入数据
+此外还有配套的清理旧站点命令行`Remove-WpSitesLocal`
+
+下载图片(可以在构思域名前提前下载,分配好csv就可以创建临时域名开始下载,比如1.com,2.com,...)
+
+```powershell
+$domain="4.com"
+python $pys\image_downloader.py -c -n -R auto -k  -rs 1000 800  --output-dir $my_wp_sites/$domain/wp-content/uploads/2025 --dir-input $Desktop/data_output/$domain -ps pwsh -w 5 -U curl 
+```
+
+
+
+#### 输出目录data_output
+
+此外,还会生成对应的`data_output`,内部含有`my_table.conf`中配置的域名文件夹,将导出的csv文件分配(移动)到对应的目录中(每个域名文件夹中存放6份~7份csv)
+
+这个步骤需要手动分配!
+
+例如
+
+```powershell
+#⚡️[Administrator@CXXUDESK][~\Desktop\data_output][23:30:54][UP:17.4Days]
+PS> tree_lsd
+ .
+├──  lebenlshop.com
+│   ├──  p1+.csv
+│   ├──  p1.csv
+│   ├──  p2+.csv
+│   ├──  p2.csv
+│   ├──  p3+.csv
+│   ├──  p3.csv
+│   └──  p4.csv
+└──  wundeshop.com
+    ├──  p4+.csv
+    ├──  p5+.csv
+    ├──  p5.csv
+    ├──  p6+.csv
+    ├──  p6.csv
+    ├──  p7.csv
+    └──  p8.csv
+```
+
+
+
+## 服务器上下载图片和导入数据
 
 > 服务器上的代码和本地的是同一套(通过/update_repos.sh更新同步代码),可以为数据补充提供类似的本地建站的操作方法
 
@@ -239,36 +288,7 @@ python3 /repos/scripts/wp/woocommerce/woo_df/pys/woo_uploader_db.py --update-slu
 
 如果提示`root@127.0.0.1`access deny,可以尝试创建一个`root@127.0.0.1`的用户
 
-#### 输出目录data_output
 
-此外,还会生成对应的`data_output`,内部含有`my_table.conf`中配置的域名文件夹,将导出的csv文件分配(移动)到对应的目录中(每个域名文件夹中存放6份~7份csv)
-
-这个步骤需要手动分配!
-
-例如
-
-```powershell
-
-#⚡️[Administrator@CXXUDESK][~\Desktop\data_output][23:30:54][UP:17.4Days]
-PS> tree_lsd
- .
-├──  lebenlshop.com
-│   ├──  p1+.csv
-│   ├──  p1.csv
-│   ├──  p2+.csv
-│   ├──  p2.csv
-│   ├──  p3+.csv
-│   ├──  p3.csv
-│   └──  p4.csv
-└──  wundeshop.com
-    ├──  p4+.csv
-    ├──  p5+.csv
-    ├──  p5.csv
-    ├──  p6+.csv
-    ├──  p6.csv
-    ├──  p7.csv
-    └──  p8.csv
-```
 
 ### 清理本地已经上线站点🎈
 

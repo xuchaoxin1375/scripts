@@ -940,7 +940,7 @@ function Deploy-WpSitesLocal
 
 
 # 下载图片
-python $pys\image_downloader.py -c -n -R auto -k  -rs 1000 800  --output-dir $ImgDir --dir-input $CsvDirHome -ps pwsh -w 5 -U curl 
+python $pys\image_downloader.py -c -n -R auto -k  -rs 1000 800  --output-dir $ImgDir --dir-input $CsvDirHome -F -ps pwsh -w 5 -U curl 
 
 # 导入产品数据到数据库
 python $pys\woo_uploader_db.py --update-slugs  --csv-path $CsvDirHome --img-dir $ImgDir --db-name $domain --max-workers 20

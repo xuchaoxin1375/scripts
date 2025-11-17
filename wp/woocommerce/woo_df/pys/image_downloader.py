@@ -204,6 +204,12 @@ def parse_args():
         "-u", "--user-agent", default=USER_AGENTS[0], help="自定义User-Agent"
     )
     parser.add_argument(
+        "-F",
+        "--fake-format",
+        action="store_true",
+        help="在体积没有缩小的情况下,将原图片的后缀更改为指定的输出格式相同",
+    )
+    parser.add_argument(
         "-ps",
         "--ps-version",
         default="powershell",
@@ -327,7 +333,8 @@ def main():
         override=args.override,
         resize_threshold=args.resize_threshold,
         ps_version=args.ps_version,
-        curl_insecure=args.curl_insecure
+        curl_insecure=args.curl_insecure,
+        fake_format=args.fake_format,
     )
     # 过滤已有图片,扫描出尚未下载的图片
     # 这里不关心文件名后缀的差异,比较basename

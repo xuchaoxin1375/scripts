@@ -417,6 +417,7 @@ class ImageDownloader:
         ps_version="powershell",
         curl_insecure=False,
         resize_threshold=RESIZE_THRESHOLD,
+        fake_format=True,
     ):
         """
         初始化图片下载器
@@ -451,10 +452,12 @@ class ImageDownloader:
         self.curl_insecure=curl_insecure
         # 记录下载失败的图片链接到文本文件中
         self.record_failed = record_failed
+        # 根据常见业务需要,使用指定的参数构造图片压缩器🎈
         self.ic = ImageCompressor(
             quality_rule=quality_rule,
             remove_original=remove_original,
             resize_threshold=resize_threshold,
+            fake_format=fake_format,
         )
 
         # if retry_times < 1:

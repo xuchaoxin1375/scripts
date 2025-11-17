@@ -373,7 +373,7 @@ git clone https://gitee.com/xuchaoxin1375/scripts.git C:/repos/scripts
 
 配置完上述内容,重启命令行窗口或者新开一个命令行窗口使其生效,如果有开启的vscode这种的也要重启窗口生效
 
-
+### 批量压缩
 
 如果需要集中批量压缩,可以使用如下参数(`-i`后面更上需要处理的图片(文件夹)路径)
 
@@ -384,10 +384,12 @@ git clone https://gitee.com/xuchaoxin1375/scripts.git C:/repos/scripts
 
 ```bash
 #⚡️[Administrator@CXXUDESK][~\Desktop][14:50:16][UP:12.11Days]
-PS> python C:\repos\scripts\wp\woocommerce\woo_df\pys\image_compresser.py   -R auto -p -F  -O -k -f webp  -r 1000 800  -i C:\Users\Administrator\Pictures\imgs_demo
+PS> python C:\repos\scripts\wp\woocommerce\woo_df\pys\image_compresser.py   -R auto -p -F  -O -k -f webp  -r 1000 800  -i <imgs_demo_dir>
 ```
 
-### 压缩指定目录中的jpg,png为webp
+### 压缩指定目录中的jpg,png为webp🎈
+
+可以配合powershell完成此任务
 
 ```powershell
 ls *jpg,*png|% FullName > $home/jpn.txt ;
