@@ -111,6 +111,22 @@ cat $links |%{curl -L -k -A $agent  -O $_ } # 使用-L选项追踪301等跳转,�
 
 ```
 
+或
+
+```powershell
+# 配置两个参数
+$domain='por';#采集目标站点
+$links="index.txt";#包含gz或.xml链接的文本文件
+
+#调用curl下载gz或xml到指定目录中
+$dir="$localhost\$domain"; #要下载保存的目录🎈(建议是桌面的localhost目录,可以用$localhost代替)
+New-Item -ItemType Directory -Path $dir -ErrorAction SilentlyContinue ;
+
+cd $dir;
+cat $links |%{curl -L -k -A $agent  -O $_ } # 使用-L选项追踪301等跳转,提高抓取能力;使用-A 选项提供伪装用户的浏览器UA,可以绕过一些基础的反爬设置
+
+```
+
 配置代理:可以使用curl的`-x`选项指定,例如
 
 ```powershell
