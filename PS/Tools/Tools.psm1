@@ -4749,14 +4749,56 @@ function Get-SitemapFromGzIndex
         $Path,
         $Pattern = '<loc[^>]*>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</loc>',
         $OutputDir = "",
-        $proxy = $null
+        $UserAgent = $agent,
+        $proxy = $null,
+        [ValidateSet('iwr', 'curl.exe', 'curl')]
+        [alias('RequestClient', 'RequestBy')]
+        $DownloadMethod = 'iwr', #默认使用powershell 内置的Invoke-WebRequest(iwr)
+        # 删除下载的gz文件
+        $RemoveGz = $true
     )
     # 下载链接对应的资源文件(.xml),抽取其中的url
-    # test url
-    $res = Invoke-WebRequest -Uri $Url -UseBasicParsing -Proxy $proxy -Verbose
-    $content = $res.Content 
+    $DownloadMethod = $DownloadMethod.trim('.exe').tolower()
+    Write-Verbose "DownloadMethod: [$DownloadMethod]"
+    function _request_url
+    {
+        # param (
+        #     $Url
+        # )
+        Write-Verbose "Requesting url: [$Url] by [$DownloadMethod]"
+        if ($DownloadMethod -eq 'iwr')
+        {
+            $res = Invoke-WebRequest -Uri $Url -UseBasicParsing -Proxy $proxy -UserAgent $UserAgent -Verbose
+            $content = $res.Content
+        }
+        elseif ($DownloadMethod -eq 'curl')
+        {
+            $content = curl.exe -L -A $UserAgent
+        }
+        return $content
+    }
+    function _download_url
+    {
+        param (
+            $Url,
+            $OutputFile
+        )
+        Write-Verbose "Downloading url: [$Url] by [$DownloadMethod]"
+        if ($DownloadMethod -eq 'iwr')
+        {
+            Invoke-WebRequest -Uri $Url -UseBasicParsing -Proxy $proxy -UserAgent $UserAgent -OutFile $OutputFile -Verbose
+        }
+        elseif ($DownloadMethod -eq 'curl')
+        {
+            curl.exe -L -A $UserAgent $Url -o $OutputFile
+        }
+    }
+    # $res = Invoke-WebRequest -Uri $Url -UseBasicParsing -Proxy $proxy -Verbose
+    # $content = $res.Content 
+    $res = _request_url  
+
     $sitemapSubUrls = $content | Get-UrlsFromSitemapStr -pattern $Pattern
-    # 获取当前时间信息
+    # 获取当前时间信息,用于构造默认文件名
     $datetime = Get-DateTimeNumber
     # 默认保存文件目录
     if($OutputDir -eq "")
@@ -4772,7 +4814,8 @@ function Get-SitemapFromGzIndex
         # 保存gz地图文件
         $ArchivedFile = "$OutputDir/$sitemapIdx-$($datetime).xml.gz"
         
-        Invoke-WebRequest -Uri $url -UseBasicParsing -OutFile $ArchivedFile -Proxy $proxy
+        # Invoke-WebRequest -Uri $url -UseBasicParsing -OutFile $ArchivedFile -Proxy $proxy
+        _download_url $url $ArchivedFile
         # 解压gz文件
         # 7z x 方案
         $7z = Get-Command 7z -ErrorAction SilentlyContinue
@@ -4788,6 +4831,10 @@ function Get-SitemapFromGzIndex
         }
 
         $sitemapIdx += 1
+    }
+    if($RemoveGz)
+    {
+        Remove-Item $OutputDir/*.gz -Verbose
     }
 
 }
@@ -4806,7 +4853,7 @@ function Get-SitemapFromLocalFiles
     是否使用<loc>标签包裹url,默认不使用
     .PARAMETER htmlDirSegment
     html所在路径,通常为空,程序会尝试自动获取
-    .PARAMETER ExtIn
+    .PARAMETER Pattern
     输入文件扩展名,默认为.html,也可以设置为.htm,.xml等其他后缀
     如果是任意文件(甚至没有扩展名),则可以设置为*
 
@@ -4822,7 +4869,7 @@ function Get-SitemapFromLocalFiles
     [CmdletBinding()]
     param (
         [alias('Directory')]
-        $Path,
+        $Path = ".",
         $Hst = "localhost",
         $Port = "80",
         # Url中的路径部分(也可以先预览输出,然后根据结果调整html所在位置),如果不指定,程序会尝试为你推测一个默认值
@@ -4831,7 +4878,7 @@ function Get-SitemapFromLocalFiles
         $Output = "",
         # 输出到文件时,每个文件最多n条url;对于html很多的情况下,适当分割成多个文件有利于提高采集器的检索速度
         $LinesOfEach = 1000,
-        $ExtIn = '.html',
+        $Pattern = '*.html',
         $ExtOut = ".xml.txt",
         # 预览生成的本地站点url格式
         [switch]$Preview,
@@ -4844,6 +4891,17 @@ function Get-SitemapFromLocalFiles
     if (!(Test-Path -Path $Path -PathType Container))
     {
         throw "Path '$Path' is not a valid directory."
+    }
+    if($Path -eq $HstRoot)
+    {
+        Write-Error "Current working path '$Path' is equal to '$HstRoot'. This will cause mess problems."
+        Write-Host "Chose or cd to another directory as [Path] value"
+    }
+    # 合理意图推测
+    if($Pattern -match '.*\.xml'){
+        Write-Warning "用户当前可能仅仅是要收集xml(比如从gz中解压出来的.xml)"
+        Write-Warning "将LinesOfEach调整为0,使得站点地图组织不用多余分级"
+        $LinesOfEach = 0
     }
     # 分别获取$path和$HstRoot的绝对路径字符串,对比前缀
     $Path = Get-Item $Path | Select-Object -ExpandProperty FullName
@@ -4902,13 +4960,19 @@ function Get-SitemapFromLocalFiles
 
     # # 清空老数据(靠后处理)
     Remove-Item $sitemapIndexPath -Force -Verbose -Confirm -ErrorAction SilentlyContinue
-    Write-Host "开始扫描html文件(文件数量多时需要一定时间)..."
-    $htmls = Get-ChildItem $Path -Filter *.html -Recurse
-    Write-Host "待处理html文件数:[$($htmls.Count)]"
+    Write-Host "[🚀]开始扫描html文件(文件数量多时需要一定时间)..."
+    $files = Get-ChildItem $Path -Filter $Pattern -Recurse
+    $fileCount = $files.Count
+    if($fileCount -eq 0){
+        Write-Error "未找到符合模式[$Pattern]的文件,请检查输入参数$Pattern"
+    }else{
+
+       Write-Host "待处理html文件数:[$fileCount]"
+    }
 
     if($LinesOfEach)
     {
-        Write-Host "将会得到子级站点地图文件数:[$([math]::Ceiling($htmls.Count/$LinesOfEach))]"
+        Write-Host "将会得到子级站点地图文件数:[$([math]::Ceiling($files.Count/$LinesOfEach))]"
     }
     $sitemapSubIdx = 0
     $lineIdx = 0
@@ -4917,9 +4981,9 @@ function Get-SitemapFromLocalFiles
     # $ext = Split-Path ${Output} -Extension # .txt
 
     # 遍历处理html文件
-    foreach ($html in $htmls)
+    foreach ($file in $files)
     {
-        $abshtml = $html.FullName
+        $abshtml = $file.FullName
         $P = $abshtml.Substring($absHstRoot.Length) -replace '\\', "/"
         # Write-Host [$abshtml]
         # Write-Host [$absHstRoot]
@@ -4929,7 +4993,7 @@ function Get-SitemapFromLocalFiles
         # 分步方案
         $url = "http://${Hst}:${Port}/$($P.Trim('/'))" -replace '\\', "/"
         # 一步到位
-        # $url = "http://${Hst}:${Port}/$htmlDirSegment/$P" -Replace "(?=[^:])[/\\]+", "/"
+        # $url = "http://${Hst}:${Port}/$file/DirSegment/$P" -Replace "(?=[^:])[/\\]+", "/"
         if (!$NoLocTag)
         {
             $url = "<loc> $url </loc>"
@@ -4950,7 +5014,7 @@ function Get-SitemapFromLocalFiles
                 $sitemapSubPath = "$mapsDir/$sitemapSubName"
                 # 计算相对网站根目录的相对路径
                 $sitemapSubUrlRelative = Get-RelativePath -Path $sitemapSubPath -BasePath $absHstRoot -Verbose:$VerbosePreference
-                
+
                 # Write-Debug "更新SitemapIndex文件:[$sitemapIndexPath]"
                 Write-Host "当前子级站点地图文件编号:[$sitemapSubIdx]"
                 Write-Debug "当前写入的子级站点地图:[$sitemapSubPath]"
