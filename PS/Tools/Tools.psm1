@@ -4836,7 +4836,9 @@ function Get-SitemapFromGzIndex
     {
         Remove-Item $OutputDir/*.gz -Verbose
     }
-
+    Write-Host "编制本地站点地图SitemapIndex"
+    Get-SitemapFromLocalFiles -Path $OutputDir -Pattern *.xml
+    
 }
 function Get-SitemapFromLocalFiles
 {
@@ -4968,7 +4970,7 @@ function Get-SitemapFromLocalFiles
         Write-Error "未找到符合模式[$Pattern]的文件,请检查输入参数$Pattern"
     }else{
 
-       Write-Host "待处理html文件数:[$fileCount]"
+       Write-Host "待处理被匹配到的文件数:[$fileCount]"
     }
 
     if($LinesOfEach)
