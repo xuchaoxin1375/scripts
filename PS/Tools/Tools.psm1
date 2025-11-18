@@ -4932,8 +4932,9 @@ function Get-SitemapFromLocalFiles
     }
     
     $absPathSlash = $absPath + '/' #确保输出目录有/便于界定提取的值
-    $outputParentDefault = $absPathSlash -replace "$absHstRoot/(.*?)/+", '$1'
-    Write-Host "用户未指定输出文件路径,尝试解析默认路径:[local_$outputParentDefault]" -ForegroundColor 'yellow'
+    Write-Debug "待处理目录绝对路径:[$absPath]"
+    $outputParentDefault = $absPathSlash -replace "$absHstRoot/(.*?)/(?:.*)", '$1'
+    Write-Host "用户未指定输出文件路径,尝试解析默认路径:[$outputParentDefault]" -ForegroundColor 'yellow'
     $sitemapNameBaseDefault = "local_$outputParentDefault"
     # 确定默认输出目录尝试自动计算一个合理目录名(参考输入目录)
     if ($Output -eq "")
