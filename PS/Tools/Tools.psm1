@@ -4795,7 +4795,7 @@ function Get-SitemapFromGzIndex
     }
     # $res = Invoke-WebRequest -Uri $Url -UseBasicParsing -Proxy $proxy -Verbose
     # $content = $res.Content 
-    $res = _request_url  
+    $content = _request_url  
 
     $sitemapSubUrls = $content | Get-UrlsFromSitemapStr -pattern $Pattern
     # 获取当前时间信息,用于构造默认文件名
