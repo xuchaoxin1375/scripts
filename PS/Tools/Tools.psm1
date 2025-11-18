@@ -4891,7 +4891,7 @@ function Get-SitemapFromLocalFiles
         {
             $postfix = ""
         }
-        $sitemapIndexPath = "$absHstRoot/${sitemapNameBaseDefault}${postfix}${ext}"
+        $sitemapIndexPath = "$absHstRoot/${sitemapNameBaseDefault}${postfix}${extOut}"
     }
     else
     {
@@ -4939,32 +4939,41 @@ function Get-SitemapFromLocalFiles
         # 写入到文件中
         if($LinesOfEach)
         {
-            $lineIdx++
-
             # 计算待编号的子级站点地图文件名
             # $sitemapSub = "${filebase}_${sitemapSubIdx}${ext}"
             # $sitemapSub = "${sitemapNameBaseDefault}_${sitemapSubIdx}${ext}"
-            $sitemapSubName = "local_${sitemapSubIdx}${ExtOut}"
-            $sitemapSub = "$mapsDir/$sitemapSubName"
-            # 计算相对网站根目录的相对路径
-            $sitemapSubUrlRelative = Get-RelativePath -Path $sitemapSub -BasePath $absHstRoot -Verbose:$VerbosePreference
-            Write-Debug "Writing lines to file:[$sitemapSub]" 
             
-            $url | Out-File -FilePath $sitemapSub -Append -Encoding utf8 -Verbose:$VerbosePreference 
-
+            # 计算子级站点地图文件名称并写入到SitemapIndex文件
             if($lineIdx % $LinesOfEach -eq 0)
             {
-                Write-Host "更新SitemapIndex文件:[$sitemapIndexPath]"
+                $sitemapSubName = "local_${sitemapSubIdx}${ExtOut}"
+                $sitemapSubPath = "$mapsDir/$sitemapSubName"
+                # 计算相对网站根目录的相对路径
+                $sitemapSubUrlRelative = Get-RelativePath -Path $sitemapSubPath -BasePath $absHstRoot -Verbose:$VerbosePreference
+                
+                # Write-Debug "更新SitemapIndex文件:[$sitemapIndexPath]"
+                Write-Host "当前子级站点地图文件编号:[$sitemapSubIdx]"
+                Write-Debug "当前写入的子级站点地图:[$sitemapSubPath]"
                 $sitemapSubUrl = "http://${Hst}:${Port}/$sitemapSubUrlRelative" -replace '\\', "/"
+                Write-Debug "将被写入到SitemapIndex文件中的内容:[$sitemapSubUrl]"
                 if(!$NoLocTag)
                 {
                     $sitemapSubUrl = "<loc> $sitemapSubUrl </loc>"
                 }
+                # 子级站点地图的url写入到SitemapIndex文件
                 $sitemapSubUrl | Out-File -FilePath $sitemapIndexPath -Append -Encoding utf8 -Verbose:$VerbosePreference
-                Write-Host "更新子级站点地图文件编号:[$sitemapSubIdx]"
                 $sitemapSubIdx++
             }
 
+           
+
+            Write-Debug "Writing line to file:[$sitemapSubPath]" 
+            
+            $url | Out-File -FilePath $sitemapSubPath -Append -Encoding utf8 -Verbose:$VerbosePreference 
+            
+            $lineIdx++
+            
+            
         }
         else
         {
