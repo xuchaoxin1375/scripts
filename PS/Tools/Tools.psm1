@@ -2989,22 +2989,7 @@ function Get-CRLFChecker
     }
     $res | Select-String -Pattern "\[CR\]|\[LF\]" -AllMatches 
 }
-function Get-SiteMapIndexUrls
-{
-    <# 
-    .SYNOPSIS
-    获取指定列表中的网站地图的urls
-    
-    .PARAMETER DomainLists
-    指定网站地图的urls,可以是一个文件
 
-    #>
-    [CmdletBinding()]
-    param (
-        $DomainLists
-    )
-    Get-Content $DomainLists | ForEach-Object { "`t$_`t https://$_/sitemap_index.xml " } | Get-ContentNL -AsString 
-}
 function Get-MainDomain
 {
     <#
@@ -4742,7 +4727,71 @@ function Get-RelativePath
     $Path = $Path.Replace($BasePath, "").Trim("/")
     return $Path
 }
-function Get-SitemapFromLocalhtmls
+function Get-SitemapFromGzIndex
+{
+    <# 
+    .SYNOPSIS
+    解析包含一系列gz文件url的索引级站点地图(.xml)
+    下载解析到的gz(有时候是.gzip)链接(url)对应的压缩包,批量解压它们,得到一系列的.xml文件(通常,到了这一层的.xml包含的内容是html文件)
+
+    .NOTES
+    此方案不保证处理所有情况,尤其是带有反爬的情况,xml文件可能无法用简单脚本下载,就需要手动处理,或者借助于无头浏览器进行下载
+    .EXAMPLE
+    $Url = 'https://www.eopticians.co.uk/sitemap.xml'
+    #>
+    [CmdletBinding()]
+    param(
+        [parameter(ParameterSetName = 'FromUrl')]
+        [alias('IndexUrl')]
+        $Url,
+        [parameter(ParameterSetName = 'FromFile')]
+        [alias('XmlFile')]
+        $Path,
+        $Pattern = '<loc[^>]*>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</loc>',
+        $OutputDir = "",
+        $proxy = $null
+    )
+    # 下载链接对应的资源文件(.xml),抽取其中的url
+    # test url
+    $res = Invoke-WebRequest -Uri $Url -UseBasicParsing -Proxy $proxy -Verbose
+    $content = $res.Content 
+    $sitemapSubUrls = $content | Get-UrlsFromSitemapStr -pattern $Pattern
+    # 获取当前时间信息
+    $datetime = Get-DateTimeNumber
+    # 默认保存文件目录
+    if($OutputDir -eq "")
+    {
+        $OutputDir = "$localhost/$datetime"
+    }
+    # 确保输出目录存在
+    mkdir -Path $OutputDir -Force -ErrorAction SilentlyContinue
+    # 下载并保存子级站点地图文件
+    $sitemapIdx = 1
+    foreach ($url in $sitemapSubUrls)
+    {
+        # 保存gz地图文件
+        $ArchivedFile = "$OutputDir/$sitemapIdx-$($datetime).xml.gz"
+        
+        Invoke-WebRequest -Uri $url -UseBasicParsing -OutFile $ArchivedFile -Proxy $proxy
+        # 解压gz文件
+        # 7z x 方案
+        $7z = Get-Command 7z -ErrorAction SilentlyContinue
+        if ($7z)
+        {
+            $cmd = "7z x $ArchivedFile -o$OutputDir" 
+            Write-Verbose $cmd
+            $cmd | Invoke-Expression
+        }
+        else
+        {
+            Write-Host "7z不可用,请确保7z已安装并且配置安装目录到环境变量Path"
+        }
+
+        $sitemapIdx += 1
+    }
+
+}
+function Get-SitemapFromLocalFiles
 {
     <# 
     .SYNOPSIS
@@ -4753,10 +4802,16 @@ function Get-SitemapFromLocalhtmls
     站点域名(通常本地localhost)
     .PARAMETER Output
     输出文件路径
-    .PARAMETER LocTagMode
+    .PARAMETER NoLocTag
     是否使用<loc>标签包裹url,默认不使用
     .PARAMETER htmlDirSegment
     html所在路径,通常为空,程序会尝试自动获取
+    .PARAMETER ExtIn
+    输入文件扩展名,默认为.html,也可以设置为.htm,.xml等其他后缀
+    如果是任意文件(甚至没有扩展名),则可以设置为*
+
+    .PARAMETER ExtOut
+    输出文件扩展名,默认为.xml.txt
     .PARAMETER Preview
     预览生成的url列表,不输出文件
     .PARAMETER PassThru
@@ -4776,10 +4831,11 @@ function Get-SitemapFromLocalhtmls
         $Output = "",
         # 输出到文件时,每个文件最多n条url;对于html很多的情况下,适当分割成多个文件有利于提高采集器的检索速度
         $LinesOfEach = 1000,
-        $ext = ".xml.txt",
+        $ExtIn = '.html',
+        $ExtOut = ".xml.txt",
         # 预览生成的本地站点url格式
         [switch]$Preview,
-        [switch]$LocTagMode,
+        [switch]$NoLocTag,
         
         # 输出(返回)结果传递
         [switch]$PassThru
@@ -4827,10 +4883,13 @@ function Get-SitemapFromLocalhtmls
         # $absPath.Substring($absHstRoot.Length).Trim('\')
         # $OutputDefault = "$absHstRoot/${sitemapNameBaseDefault}${ext}"
         # $Output = $OutputDefault
-        if ($LinesOfEach) {
-            $postfix="_index"
-        }else{
-            $postfix=""
+        if ($LinesOfEach)
+        {
+            $postfix = "_index"
+        }
+        else
+        {
+            $postfix = ""
         }
         $sitemapIndexPath = "$absHstRoot/${sitemapNameBaseDefault}${postfix}${ext}"
     }
@@ -4871,7 +4930,7 @@ function Get-SitemapFromLocalhtmls
         $url = "http://${Hst}:${Port}/$($P.Trim('/'))" -replace '\\', "/"
         # 一步到位
         # $url = "http://${Hst}:${Port}/$htmlDirSegment/$P" -Replace "(?=[^:])[/\\]+", "/"
-        if ($LocTagMode)
+        if (!$NoLocTag)
         {
             $url = "<loc> $url </loc>"
         }
@@ -4885,8 +4944,8 @@ function Get-SitemapFromLocalhtmls
             # 计算待编号的子级站点地图文件名
             # $sitemapSub = "${filebase}_${sitemapSubIdx}${ext}"
             # $sitemapSub = "${sitemapNameBaseDefault}_${sitemapSubIdx}${ext}"
-            $sitemapSub = "local_${sitemapSubIdx}${ext}"
-            $sitemapSub = "$mapsDir/$sitemapSub"
+            $sitemapSubName = "local_${sitemapSubIdx}${ExtOut}"
+            $sitemapSub = "$mapsDir/$sitemapSubName"
             # 计算相对网站根目录的相对路径
             $sitemapSubUrlRelative = Get-RelativePath -Path $sitemapSub -BasePath $absHstRoot -Verbose:$VerbosePreference
             Write-Debug "Writing lines to file:[$sitemapSub]" 
@@ -4897,7 +4956,7 @@ function Get-SitemapFromLocalhtmls
             {
                 Write-Host "更新SitemapIndex文件:[$sitemapIndexPath]"
                 $sitemapSubUrl = "http://${Hst}:${Port}/$sitemapSubUrlRelative" -replace '\\', "/"
-                if($LocTagMode)
+                if(!$NoLocTag)
                 {
                     $sitemapSubUrl = "<loc> $sitemapSubUrl </loc>"
                 }
@@ -4941,100 +5000,7 @@ function Get-SitemapFromLocalhtmls
     }
     
 }
-function Get-UrlListFileFromDir
-{
-    <# 
-    .SYNOPSIS
-    列出指定目录下的所有html文件,构造合适成适合采集的url链接列表,并输出到文件
-    .EXAMPLE
-    #⚡️[Administrator@CXXUDESK][~\Desktop\localhost][17:44:10] PS >
-    Get-UrlsListFileFromDir .\litecraft\htmls\  -LocTagMode -htmlDirSegment litecraft/htmls  -Output $localhost/alliance.loc.xml.txt
-    #>
-    [cmdletbinding()]
-    param(
-        # html文件所在路径
-        $Path,
-        $Hst = "localhost",
-        $Port = "80",
-        # Url中的路径部分(也可以先预览输出,然后根据结果调整html所在位置),如果不指定,程序会尝试为你推测一个默认值
-        $htmlDirSegment = "",
-        # 输出文件路径(如果不指定,则默认输出到$Path的同级别目录下)
-        $Output = "",
-        
-        # 预览生成的本地站点url格式
-        [switch]$Preview,
-        [switch]$LocTagMode,
-        # 输出(返回)结果传递
-        [switch]$PassThru
-    )
-    if(Test-Path -Path $Path -PathType Container)
-    {
-        $oldPath = $Path
-        $Path = $Path -replace "\\", "/"
-        $Path = $Path.Trim("/")
-        Write-Verbose "[$oldPath]->[$Path] 处理目录"
-        
-        # 如果有2级以上的目录,则取最后2级目录名作为站点名
-        if((Get-CharCount -InputString $Path -Char '/') -ge 2)
-        {
-            $parent = Split-Path $path -Parent   
-            $lastTwoLevels = Split-Path $parent -Leaf
-            $lastLevel = Split-Path $path -Leaf
-            $DirBaseName = Join-Path $lastTwoLevels $lastLevel
-        }
-        else
-        {       
-            $DirBaseName = Split-Path $Path -Leaf
-        }
-        # Write-Output $DirBaseName
-    }
-    else
-    {
-        Write-Error "Path [$Path] does not exist or is not a directory!"
-        return
-    }
-    if(!$htmlDirSegment)
-    {
 
-        $htmlDirSegment = $DirBaseName
-    }
-    # 生成本地页面url文件列表
-    $files = Get-ChildItem $Path -File
-    # $res = Get-ChildItem $Path | ForEach-Object { 
-    $res = foreach($file in $files)
-    {
-        $url = "http://${hst}:${Port}/$htmlDirSegment/$(Split-Path $file -Leaf)" -replace '\\', '/'
-        if($LocTagMode)
-        {
-            $url = "<loc>$url</loc>"
-        }
-        # 如果是预览模式,则输出第一条路径后停止程序
-        if($Preview)
-        {
-            Write-Host "预览url格式: $url"
-            return 
-        }
-        $url
-    } 
-    if(!$Output)
-    {
-        # 默认的文件输出路径
-        $Output = "$Path/../$(Split-Path $Path -Leaf).txt"
-    }
-    # 输出到文件
-    $res | Out-File -FilePath "$output"
-    Write-Verbose "Output to file: $output" -Verbose
-    Write-Host "访问本地站点地图链接形如: http://${hst}:${Port}/$(Split-Path $Output -Leaf)"
-    # 采集 http[参数] -> http[参数1]
-    # 预览前10行
-    $previewLines = Get-Content $output | Select-Object -First 10 | Out-String
-    Write-Verbose "Preview: $previewLines" -Verbose
-    Write-Verbose "...."
-    if ($PassThru)
-    {
-        return $res    
-    }
-}
 
 
 function regex_tk_tool
@@ -5120,6 +5086,68 @@ function Get-UrlFromSitemap
         $ms = [regex]::Matches($content, $UrlPattern)
         $ms | ForEach-Object { $_.Groups[1].Value }
     }
+}
+function Get-UrlsFromSitemapStr
+{
+    <# 
+    
+    .SYNOPSIS
+    从字符串(通常针对站点地图源码)中提取url
+    支持管道服输入
+    .DESCRIPTION
+    借助于Select-String 配合-AllMatches参数进行提取
+    可以考虑使用.Net api实现,例如[regex]::Matches()
+    .PARAMETER Content
+    站点地图源码
+    .PARAMETER Pattern
+    要匹配提取url的正则表达式,通常不需要手动指定,如果有特殊需要,手动指定
+    # 使用正则表达式匹配 loc 标签中的 URL，支持普通文本和 CDATA 格式
+    # 这里使用了多组非捕获组(?:)
+    # 备用正则表达式(需要在合适的地方手动安排\s*,通常不用,除非url中包含未编码的空格)
+    # $Pattern = '<loc[^>]*>\s*(?:<!\[\s*CDATA\[\s*)?(.*?)(?:\s*\]\]>)?\s*</loc>'
+    .EXAMPLE
+    $c1 = Get-Content Sitemap1.xml -Raw
+    $c2 = Get-Content Sitemap2.xml -Raw
+    # 支持数组方式批量输入多个字符串进行解析
+    $c1,$c2|Get-UrlsFromSitemapStr
+
+    #>
+    param(
+        [Parameter(Mandatory = $true, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
+        [alias('XmlContent')]
+        [string]$Content,
+        $pattern = '<loc[^>]*>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</loc>'
+    )
+    
+    begin
+    {
+        
+        $urls = [System.Collections.ArrayList]@()
+        $idx = 1
+    }
+    process
+    {
+        # 清空空白字符,让正则表达式可以不用考虑空格带来的影响,使得表达式更加简化和高效
+        Write-Verbose "Processing String [$($idx)]"
+        $Content = $Content -replace "[\s\r\n]+", "" 
+        Write-Debug "[$Content]" 
+        $idx++
+        $urlsCurrent = [System.Collections.ArrayList]@()
+        Select-String -Pattern $pattern -InputObject $Content -AllMatches | 
+        ForEach-Object { $_.Matches } | 
+        ForEach-Object { 
+            $urlsCurrent += $_.Groups[1].Value.Trim() 
+        }
+        Write-Verbose "Extracted URLs: $urlsCurrent"
+        $urls.AddRange( $urlsCurrent)
+        
+    }
+    end
+    {
+        
+        return $urls
+    }
+
 }
 function Format-IndexObject
 {

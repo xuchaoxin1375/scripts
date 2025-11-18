@@ -191,8 +191,9 @@ def parse_args():
         "-U",
         "--use-shutil",
         default="",
+        choices=["request", "curl", "iwr", "playwright"],
         # action="store_true",
-        help="使用外部命令行工具下载图片(curl或iwr)",
+        help="使用python 请求或外部工具下载图片(request,curl,iwr,playwright)",
     )
     parser.add_argument("-w", "--workers", type=int, default=10, help="下载线程数")
     parser.add_argument(
@@ -326,7 +327,8 @@ def main():
         timeout=args.timeout,
         retry_times=args.retry,
         user_agent=args.user_agent,
-        use_shutil=args.use_shutil,
+        use_shutil=args.use_shutil,  # deprecated
+        download_method=args.use_shutil,
         compress_quality=args.compress_quality,
         quality_rule=args.quality_rule,
         remove_original=args.remove_original,
