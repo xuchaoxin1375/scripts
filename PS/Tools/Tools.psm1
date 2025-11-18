@@ -4752,7 +4752,7 @@ function Get-SitemapFromGzIndex
         $UserAgent = $agent,
         $proxy = $null,
         [ValidateSet('iwr', 'curl.exe', 'curl')]
-        [alias('RequestClient', 'RequestBy')]
+        [alias('RequestClient', 'RequestBy', 'U')]
         $DownloadMethod = 'iwr', #默认使用powershell 内置的Invoke-WebRequest(iwr)
         # 删除下载的gz文件
         $RemoveGz = $true
@@ -4805,6 +4805,11 @@ function Get-SitemapFromGzIndex
     {
         $OutputDir = "$localhost/$datetime"
     }
+    else
+    {
+        Write-Host "当前工作目录为:$(Get-Location)"
+        Write-Warning "用户指定保存目录: [$OutputDir],尽量让保存目录位于[$localhost]内,保持统一性"
+    }
     # 确保输出目录存在
     mkdir -Path $OutputDir -Force -ErrorAction SilentlyContinue
     # 下载并保存子级站点地图文件
@@ -4838,7 +4843,7 @@ function Get-SitemapFromGzIndex
     }
     Write-Host "编制本地站点地图SitemapIndex"
     Get-SitemapFromLocalFiles -Path $OutputDir -Pattern *.xml
-    
+    # 
 }
 function Get-SitemapFromLocalFiles
 {
@@ -4900,7 +4905,8 @@ function Get-SitemapFromLocalFiles
         Write-Host "Chose or cd to another directory as [Path] value"
     }
     # 合理意图推测
-    if($Pattern -match '.*\.xml'){
+    if($Pattern -match '.*\.xml')
+    {
         Write-Warning "用户当前可能仅仅是要收集xml(比如从gz中解压出来的.xml)"
         Write-Warning "将LinesOfEach调整为0,使得站点地图组织不用多余分级"
         $LinesOfEach = 0
@@ -4925,7 +4931,8 @@ function Get-SitemapFromLocalFiles
     # return $absPath,$absHstRoot
     if($absPath -notlike "$absHstRoot*")
     {
-        Write-Warning "Path '$absPath' is not a subdirectory of '$absHstRoot'."
+        Write-Error "Path '$absPath' is not a subdirectory of '$absHstRoot'."
+        return $False
 
     }
     else
@@ -4934,7 +4941,8 @@ function Get-SitemapFromLocalFiles
     }
     
     $absPathSlash = $absPath + '/' #确保输出目录有/便于界定提取的值
-    Write-Debug "待处理目录绝对路径:[$absPath]"
+    Write-Verbose "待处理目录绝对路径:[$absPath]"
+    Write-Debug "$absPathSlash -replace `"$absHstRoot/(.*?)/(?:.*)`""
     $outputParentDefault = $absPathSlash -replace "$absHstRoot/(.*?)/(?:.*)", '$1'
     Write-Host "用户未指定输出文件路径,尝试解析默认路径:[$outputParentDefault]" -ForegroundColor 'yellow'
     $sitemapNameBaseDefault = "local_$outputParentDefault"
@@ -4963,14 +4971,17 @@ function Get-SitemapFromLocalFiles
 
     # # 清空老数据(靠后处理)
     Remove-Item $sitemapIndexPath -Force -Verbose -Confirm -ErrorAction SilentlyContinue
-    Write-Host "[🚀]开始扫描html文件(文件数量多时需要一定时间)..."
+    Write-Host "[🚀]开始扫描[$Pattern]文件(文件数量多时需要一定时间)..."
     $files = Get-ChildItem $Path -Filter $Pattern -Recurse
     $fileCount = $files.Count
-    if($fileCount -eq 0){
+    if($fileCount -eq 0)
+    {
         Write-Error "未找到符合模式[$Pattern]的文件,请检查输入参数$Pattern"
-    }else{
+    }
+    else
+    {
 
-       Write-Host "待处理被匹配到的文件数:[$fileCount]"
+        Write-Host "待处理被匹配到的文件数:[$fileCount]"
     }
 
     if($LinesOfEach)
