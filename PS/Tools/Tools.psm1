@@ -1672,12 +1672,14 @@ function Split-TextFile
     <#
     .SYNOPSIS
         将文本文件按指定行数或平均分割成多个文件。
+        支持指定输出文件的编号格式化
     
     .DESCRIPTION
         Split-TextFile 函数可以将一个大的文本文件按照行数分割成多个较小的文件。
         支持两种分割模式：
         1. 按行数分割：根据指定的行数限制分割文件
         2. 平均分割：将文件尽可能均匀地分割成指定数量的文件
+        输出文件编号格式化借助于[string]::Format() 或 -f操作符
     
     .PARAMETER Path
         指定要分割的源文件路径。
@@ -1696,6 +1698,11 @@ function Split-TextFile
     
     .PARAMETER SuffixFormat
         指定分割后文件的后缀格式。默认为 "part{0:000}"。
+        具体数值字符串格式化语法参考LINKS一节列出的链接,其基础用例如下:
+        [string]::Format("var1={0:0000.000},var2={1:0.000}",123.12342,123.11)
+        var1=0123.123,var2=123.110
+        总之,{}内分用:分成两部分{:},":"前面是引用后面的变量的位置索引,
+        ":"后是格式化数值的规则字符串
     
     .PARAMETER Encoding
         指定输出文件的编码格式。默认为 UTF8。
@@ -1718,8 +1725,16 @@ function Split-TextFile
     .OUTPUTS
         System.IO.FileInfo[]
     
- 
         该函数会保持原文本文件的行完整性，不会将单行内容分割到不同文件中。
+    .EXAMPLE
+    指定输出文件名格式(数字索引编号写在`{0:}`中冒号之后0表示默认,如果增加0的个数,可以用来对齐低数值的情况比如000可以将1格式化为001)
+    Split-TextFile -Path .\local_abe1.xml.txt -Destination $local/abe1s -SuffixFormat 'part{0:0}' -Lines 10
+
+    .LINK
+    相关参考
+    自定义数值格式字符串
+    - https://learn.microsoft.com/zh-cn/dotnet/standard/base-types/custom-numeric-format-strings
+    - https://learn.microsoft.com/en-us/dotnet/standard/base-types/formatting-types#custom-format-strings
     #>
     [CmdletBinding(DefaultParameterSetName = "Lines")]
     param(
@@ -1757,11 +1772,12 @@ function Split-TextFile
             })]
         [int]$Average,
         
+        [alias('OutputDir')]
         [string]$Destination,
         
         [string]$Prefix,
         
-        [string]$SuffixFormat = "part{0:000}",
+        [string]$SuffixFormat = "part{0:0}",
         
         $Encoding = "UTF8"
     )
@@ -1770,7 +1786,7 @@ function Split-TextFile
     $sourceFile = Get-Item -Path $Path
     $sourcePath = $sourceFile.FullName
     $sourceName = $sourceFile.BaseName
-    $sourceExtension = $sourceFile.Extension
+    # $sourceExtension = $sourceFile.Extension
     
     # 设置默认前缀
     if (-not $Prefix)
@@ -1950,6 +1966,13 @@ function Split-FileAverageByLines_
 
 function CreateNewPartFile_
 {
+    <# 
+    .SYNOPSIS
+    文本文件划分切割辅助函数
+    创建一个新的分片文件
+    提供文件名格式化设定支持
+
+     #>
     param(
         [string]$Destination,
         [string]$Prefix,
@@ -1958,9 +1981,12 @@ function CreateNewPartFile_
         [string]$Extension,
         $Encoding
     )
-    
+    # 输出路径/文件名格式化构造
+    ## 格式化编号🎈
     $suffix = [string]::Format($SuffixFormat, $Index)
+    ## 构造文件名
     $fileName = "{0}.{1}{2}" -f $Prefix, $suffix, $Extension
+    ## 拼接完整路径
     $fullPath = Join-Path $Destination $fileName
     
     # 根据编码创建相应的 StreamWriter
@@ -3732,7 +3758,7 @@ function Get-SourceFromUrls
 
 
     $result_file_dir = (Split-Path $Path -Parent).ToString()
-    $result_file_name = (Split-Path $Path -LeafBase).ToString() + '@local_links.txt'
+    $result_file_name = (Split-Path $Path -LeafBase).ToString() + '@links_local.txt'
     Write-Verbose "Result file: $result_file_dir\$result_file_name" -Verbose
     $output = "$result_file_dir\$result_file_name"
 
@@ -4688,6 +4714,98 @@ function Get-CharCount
     )
     return $InputString.Length - ($InputString.Replace($Char, "")).Length
 }
+function Compress-PathDots
+{
+    <# 
+    .SYNOPSIS
+    压缩路径,将路径中的多个连续的斜杠或反斜杠替换为单个/,并且将/../和/./压缩
+    .DESCRIPTION
+    分为两类
+    # 对于/./?的压缩: a/./b/.-> a/b/
+    # 对于/../?或处于结尾的/..的压缩: /a/p/../b/c/p/../d/p/.. -> /a/b/c/d
+    .PARAMETER Path
+    输入路径或者字符串
+
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true, ValueFromPipeline, ValueFromPipelineByPropertyName)]
+        [string]$Path
+    )
+    begin
+    {
+        Write-Verbose "Compress path dots and remove redundant slashes..."
+    }
+    process
+    {
+        $Path = $Path.Replace("\\", "/").Trim("/")
+        # 对于/./?的压缩: a/./b/.-> a/b/
+        if($Path -match '/[.]/')
+        {
+            Write-Debug "Compress /./? in path [$Path] ,for example: a/./b/.-> a/b/"
+            $Path = $Path -replace '/[.]/', '/'  #-replace '/+','/' #.ToLower()
+        }
+        # 对于/../的压缩: /a/p/../b/c/p/../d/e -> /a/b/c/d/e
+        if($Path -match '/[.]{2}/?')
+        {
+            Write-Debug "Compress /../? in path [$Path] ,for example: /a/p/../b/c/p/../d/p/.. -> /a/b/c/d/"
+            $Path = $Path -replace '(.*?)([^/]*)/[.]{2}/?', '$1'
+        }
+        $res=$Path -replace '[\\/]+', '/'
+        return $res.TrimEnd(".")
+    }
+}
+function Get-AbsPath
+{
+    <# 
+    .SYNOPSIS
+    将输入路径转换为规范化的绝对路径,即便原路径本身就是绝对路径
+    此外,允许尚未存在的路径参与计算判断
+    .DESCRIPTION
+    此函数尝试识别输入路径的类型,然后转换为规范化的绝对路径
+    如果输入是相对路径,则会默认基于当前工作路径转换为绝对路径,当然,也可以指定BasePath参数来指定转换的基准路径
+    .EXAMPLE
+     Get-AbsPath -Path absdef
+        c:/users/administrator/desktop/absdef
+    .EXAMPLE
+     Get-AbsPath -Path absdef -BasePath C:/
+        c:/absdef
+    .EXAMPLE
+     Get-AbsPath -Path ../abs -BasePath C:/users/home/a/b
+        C:/users/home/a/abs
+    .EXAMPLE
+     Get-AbsPath -Path ../abs -BasePath C:/users/home/../a/b -NoCompressDots
+        C:/users/home/../a/b/../abs
+    #>
+    [CmdletBinding()]
+    param(
+        [string]$Path,
+        [string]$BasePath = $(Get-Location).Path,
+        [switch]$NoCompressDots
+    )
+    if($Path -match "^(\w:|/)")
+    {
+        Write-Debug "Path [$Path] looks like a absolute path"
+    }
+    elseif($Path -match "^[^\\/]" -or $Path -match "^[\\/]\.")
+    {
+        Write-Debug "Path [$Path] looks like a relative path"
+        Write-Verbose "convert relative path to absolute path"
+        $Path = Join-Path -Path $BasePath -ChildPath $Path
+    }
+    else
+    {
+        Write-Warning "Path [$Path] likes like a invalid path!!!"
+    }
+    $res = $Path.Replace("\", "/").Trim("/")
+    # 酌情美化
+    if(!$NoCompressDots)
+    {
+        $res = Compress-PathDots -Path $res
+
+    }
+    return $res
+}
 function Get-RelativePath
 {
     <# 
@@ -4707,9 +4825,16 @@ function Get-RelativePath
 
 
     .EXAMPLE
+    可以得到理想结果的情况
     Get-RelativePath -Path "C:\Users/Administrator\Desktop/test.txt" -BasePath "C:\Users\Administrator"
     结果为: Desktop/test.txt
-
+    .EXAMPLE
+    非理想结果和异常处理1(绝对路径)
+    Get-RelativePath -Path "C:/Users/Administrator/Desktop" -BasePath "C:/Users/Administrator/localhost"
+    .EXAMPLE
+    非理想结果和异常处理2(相对路径)
+    cd $desktop
+    Get-RelativePath -Path ./imgs -BasePath "C:/Users/Administrator/localhost"
     #>
     [CmdletBinding()]
     param (
@@ -4720,13 +4845,37 @@ function Get-RelativePath
     {
         return "."
     }
-    $Path = $Path.Replace("\", "/").Trim("/")
-    $BasePath = $BasePath.Replace("\", "/").trim("/")
+    # 构造绝对路径(如果$Path是相对路径的话),规范两个绝对路径(全部小写并且路径内目录分隔符统一为/)
+    $Path = Get-AbsPath -Path $Path
+    $BasePath = Get-AbsPath -Path $BasePath
+    # 规范化
+    $Path = $Path.Replace("\", "/").Trim("/") | Compress-PathDots
+    $BasePath = $BasePath.Replace("\", "/").trim("/") | Compress-PathDots
     Write-Verbose "Path: $Path"
     Write-Verbose "BasePath: $BasePath"
-    $Path = $Path.Replace($BasePath, "").Trim("/")
-    return $Path
+    # 比较两个已经规范化的绝对路径(相似性检测,比如-match或者-like)
+    if ("$Path" -like "$BasePath*")
+    {
+        Write-Verbose "Path is a child of BasePath"
+    }
+    else
+    {
+        Write-Error "Path [$Path] is not a child of BasePath [$BasePath]"
+        return $false
+    }
+    # 如果相似性通过,则进行提取
+    # $cmd = "'$Path'.Replace('$BasePath', '').Trim('/')"
+    # Write-Verbose "cmd: $cmd"
+    # $rel=$cmd | Invoke-Expression
+
+    $rel = $Path.Replace($BasePath, '').Trim('/')
+    if($rel -eq "")
+    {
+        $rel = "."
+    }
+    return $rel
 }
+
 function Get-SitemapFromGzIndex
 {
     <# 
@@ -4738,6 +4887,10 @@ function Get-SitemapFromGzIndex
     此方案不保证处理所有情况,尤其是带有反爬的情况,xml文件可能无法用简单脚本下载,就需要手动处理,或者借助于无头浏览器进行下载
     .EXAMPLE
     $Url = 'https://www.eopticians.co.uk/sitemap.xml'
+    Get-SitemapFromGzIndex -Url $Url -OutputDir $localhost/eop
+    .EXAMPLE
+    set-proxy -port 8800
+    Get-SitemapFromGzIndex -Url https://www.abebooks.co.uk/sitemap.bdp_index.xml -OutputDir $localhost/abe1 -U curl 
     #>
     [CmdletBinding()]
     param(
@@ -4748,6 +4901,7 @@ function Get-SitemapFromGzIndex
         [alias('XmlFile')]
         $Path,
         $Pattern = '<loc[^>]*>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</loc>',
+        [alias('Destination')]
         $OutputDir = "",
         $UserAgent = $agent,
         $proxy = $null,
@@ -4757,6 +4911,21 @@ function Get-SitemapFromGzIndex
         # 删除下载的gz文件
         $RemoveGz = $true
     )
+    # 合理推测推荐行为:提取用户指定路径中的某个部分拼接到$localhost目录下作为子目录
+    
+    if($OutputDir)
+    {
+        # 判断子目录
+        if(Get-RelativePath -Path $OutputDir -BasePath $localhost)
+        {
+            Write-Debug "OutputDir: [$OutputDir] is a child of $localhost,This is a good choice."    
+        }else{
+            Write-Warning "OutputDir: [$OutputDir] is not a child of $localhost,This is a bad choice."
+            Write-Warning "尝试截取[$outputDir]的最后一级目录名拼接到[$localhost]目录下作为子目录"
+            $LeafDir=Split-Path -Path $OutputDir -LeafBase
+            $OutputDir = Join-Path -Path $localhost -ChildPath $LeafDir
+        }
+    }
     # 下载链接对应的资源文件(.xml),抽取其中的url
     $DownloadMethod = $DownloadMethod.trim('.exe').tolower()
     Write-Verbose "DownloadMethod: [$DownloadMethod]"
@@ -4773,7 +4942,7 @@ function Get-SitemapFromGzIndex
         }
         elseif ($DownloadMethod -eq 'curl')
         {
-            $content = curl.exe -L -A $UserAgent
+            $content = curl.exe -L -A $UserAgent $Url
         }
         return $content
     }
@@ -4873,7 +5042,7 @@ function Get-SitemapFromLocalFiles
     .EXAMPLE
     
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess = $true)]
     param (
         [alias('Directory')]
         $Path = ".",
@@ -4902,8 +5071,12 @@ function Get-SitemapFromLocalFiles
     if($Path -eq $HstRoot)
     {
         Write-Error "Current working path '$Path' is equal to '$HstRoot'. This will cause mess problems."
+        
+        return $False
         Write-Host "Chose or cd to another directory as [Path] value"
     }
+    # 大致判断当前将会生成一级还是二级站点地图(顶级地图为index站点地图)
+    $isIndex = if($LinesOfEach) { $true }else { $false }
     # 合理意图推测
     if($Pattern -match '.*\.xml')
     {
@@ -4945,7 +5118,7 @@ function Get-SitemapFromLocalFiles
     Write-Debug "$absPathSlash -replace `"$absHstRoot/(.*?)/(?:.*)`""
     $outputParentDefault = $absPathSlash -replace "$absHstRoot/(.*?)/(?:.*)", '$1'
     Write-Host "用户未指定输出文件路径,尝试解析默认路径:[$outputParentDefault]" -ForegroundColor 'yellow'
-    $sitemapNameBaseDefault = "local_$outputParentDefault"
+    $sitemapNameBaseDefault = "${outputParentDefault}_local"
     # 确定默认输出目录尝试自动计算一个合理目录名(参考输入目录)
     if ($Output -eq "")
     {
@@ -5024,7 +5197,7 @@ function Get-SitemapFromLocalFiles
             # 计算子级站点地图文件名称并写入到SitemapIndex文件
             if($lineIdx % $LinesOfEach -eq 0)
             {
-                $sitemapSubName = "local_${sitemapSubIdx}${ExtOut}"
+                $sitemapSubName = "${sitemapSubIdx}_local${ExtOut}"
                 $sitemapSubPath = "$mapsDir/$sitemapSubName"
                 # 计算相对网站根目录的相对路径
                 $sitemapSubUrlRelative = Get-RelativePath -Path $sitemapSubPath -BasePath $absHstRoot -Verbose:$VerbosePreference
@@ -5066,7 +5239,7 @@ function Get-SitemapFromLocalFiles
         Write-Host '--------默认output的参考http链接-----------------'
         Write-Host "`n$outputUrl `n" -ForegroundColor 'cyan'
         Write-Host '-------------------------'
-        if($LinesOfEach)
+        if($isIndex)
         {
             Write-Host "这是一个二级站点地图,注意分二级抽取url"
         }

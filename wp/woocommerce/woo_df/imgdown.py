@@ -29,7 +29,7 @@ import logging
 import os
 import random
 import re
-from playwright.async_api import async_playwright, Playwright
+
 import subprocess
 import shutil
 import threading
@@ -305,120 +305,6 @@ def download_by_curl(
             print(f"已回到原目录: {cwd}")
 
 
-async def download_by_playwright_async(
-    url: str,
-    output_path: str,
-    user_agent: str = USER_AGENTS[0],
-    timeout: int = TIMEOUT,
-    silent: bool = False,
-    extra_args: Optional[list] = None,
-) -> bool:
-    """
-    使用 Playwright 框架异步下载图片（或其他文件）。
-
-    Args:
-        url (str): 要下载的文件 URL。
-        output_path (str): 本地保存路径。
-        user_agent (str): 浏览器 User-Agent 字符串。
-        timeout (int): 请求超时时间（秒）。
-        silent (bool): 是否静默执行。
-                       True:  运行无头浏览器，不打印日志。
-                       False: 运行有头浏览器，打印详细日志。
-        extra_args (Optional[list]): 传给浏览器启动项的额外参数列表。
-
-    Returns:
-        bool: 下载成功返回 True，失败返回 False。
-    """
-
-    # --- 1. 参数处理 ---
-
-    # Playwright 的超时时间以毫秒为单位，我们将其从秒转换
-    playwright_timeout_ms = timeout * 1000
-
-    # 'silent' 参数控制是否使用 'headless' 模式以及是否打印日志
-    # silent=True -> headless=True (无头模式)
-    # silent=False -> headless=False (有头模式，会弹窗)
-    is_headless = silent
-
-    if not silent:
-        print(f"🚀 [Playwright] 任务开始: {url}")
-
-    # --- 2. 确保输出目录存在 ---
-    try:
-        output_dir = os.path.dirname(output_path)
-        # 如果 output_dir 为空字符串 (即保存在当前目录)，os.makedirs 会报错
-        if output_dir:
-            os.makedirs(output_dir, exist_ok=True)
-    except Exception as e:
-        if not silent:
-            print(f"❌ [Playwright] 创建目录失败: {e}")
-        return False
-
-    # --- 3. 执行 Playwright 核心逻辑 ---
-
-    # 使用 async with 语句来自动管理 Playwright 实例的生命周期
-    async with async_playwright() as p:
-        browser = None  # 在 try 块之外定义，确保 finally 中可以访问
-        try:
-            # 启动浏览器 (我们默认使用 chromium)
-            browser = await p.chromium.launch(headless=is_headless, args=extra_args)
-
-            # 创建一个新的浏览器上下文 (Context)
-            # 可以在这里设置 User-Agent, Cookies, Viewport 等
-            context = await browser.new_context(user_agent=user_agent)
-
-            # 在上下文中打开一个新页面
-            page = await context.new_page()
-
-            if not silent:
-                print(f"Navigating to {url}...")
-
-            # 核心步骤：导航到目标 URL
-            # page.goto() 会返回一个 Response 对象
-            response = await page.goto(
-                url,
-                timeout=playwright_timeout_ms,
-                wait_until="load",  # 等待资源完全加载
-            )
-
-            # 检查响应是否成功
-            if response is None or not response.ok:
-                status = response.status if response else "N/A"
-                if not silent:
-                    print(f"❌ [Playwright] 导航失败。状态码: {status}")
-                return False
-
-            if not silent:
-                print(
-                    f"✅ [Playwright] 导航成功 (状态码: {response.status}). 正在读取响应体..."
-                )
-
-            # 从响应中获取原始的二进制数据
-            file_bytes = await response.body()
-
-            # --- 4. 保存文件 ---
-            with open(output_path, "wb") as f:
-                f.write(file_bytes)
-
-            if not silent:
-                print(f"✅ [Playwright] 文件保存成功: {output_path}")
-
-            return True
-
-        except Exception as e:
-            # 捕获所有可能的异常 (如超时、SSL错误、导航错误等)
-            if not silent:
-                print(f"❌ [Playwright] 发生意外错误: {e}")
-            return False
-
-        finally:
-            # 无论成功还是失败，最后都确保关闭浏览器
-            if browser:
-                await browser.close()
-                if not silent:
-                    print("Browser closed.")
-
-
 class DownloadStatistics:
     """下载统计类，用于记录和展示下载统计信息"""
 
@@ -526,12 +412,12 @@ class ImageDownloader:
         output_format="webp",
         remove_original=False,
         record_failed=False,
-        use_shutil=False,  # deprecated
+        use_shutil=False,
+        download_method="request",
         ps_version="powershell",
         curl_insecure=False,
         resize_threshold=RESIZE_THRESHOLD,
         fake_format=True,
-        download_method: str = "requests",  # 新增参数: 可选"requests"|"curl"|"iwr"|"playwright"
     ):
         """
         初始化图片下载器
@@ -556,6 +442,7 @@ class ImageDownloader:
         self.verify_ssl = verify_ssl
         self.cookies = cookies
         self.use_shutil = use_shutil
+        self.download_method = download_method
         self.stats = DownloadStatistics()
         self.compress_quality = compress_quality
         self.quality_rule = quality_rule
@@ -564,7 +451,6 @@ class ImageDownloader:
         self.override = override
         self.ps_version = ps_version
         self.curl_insecure = curl_insecure
-        self.download_method = download_method
         # 记录下载失败的图片链接到文本文件中
         self.record_failed = record_failed
         # 根据常见业务需要,使用指定的参数构造图片压缩器🎈
@@ -624,6 +510,9 @@ class ImageDownloader:
         try_get_ext=True,
         default_ext="",
         retry_gap=1,
+        # override=False,
+        # compress_quality=20,
+        # use_shutil=False,
     ):
         """
         下载单张图片
@@ -653,10 +542,13 @@ class ImageDownloader:
         os.makedirs(output_dir, exist_ok=True)
 
         # 保存图片(写入二进制文件)🎈
+
         filename = filename.rstrip(".")
         filename = self.prepare_filename(url, filename, try_get_ext, default_ext)
+
         file_path = os.path.join(output_dir, filename)
         if filename:
+            # 如果传入的文件名没有扩展名,且在try_get_ext为True时,则[尝试]补全扩展名
             logger.info("保存文件: %s", file_path)
         else:
             logger.info("没有指定文件名,自动命名")
@@ -665,16 +557,28 @@ class ImageDownloader:
             current_index,
             self.stats.total,
             url,
+            # filename,
             file_path,
         )
+        # debug("filename: [%s]", filename)
         override = self.override
-
+        # 配置下载中如果出现失败的重试循环(次数由retry_times指定)
         for attempt in range(self.retry_times + 1):
+            # 如果某次尝试下载成功,则直接返回True(结束此下载任务)
             try:
+                # # 模拟用户行为：每次请求前添加随机等待,在失败后指数退避
+                # time.sleep(random.uniform(0.5, 2))
+
+                # 检查response是否是图片类型
+                # if not self._is_image_response(response=response):
+                #     return False
+
                 debug("下载图片: %s (尝试 %d/%d)", url, attempt + 1, self.retry_times)
+                # 如果用户没有指定文件名,则按照默认策略生成文件名
                 if not filename:
                     filename = fnh.get_filename_from_url(
                         url=url,
+                        # response=response,
                         default_ext=default_ext,
                     )
                 debug("获得文件名🎈: [%s]", filename)
@@ -683,70 +587,66 @@ class ImageDownloader:
                     logger.info("文件已存在,跳过: %s", file_path)
                     self.stats.add_skipped()
                     return True
-
-                # 新增: 根据download_method选择下载方式
-                method = self.download_method.lower()
-                if method == "curl":
-                    res = download_by_curl(
-                        url=url,
-                        output_path=file_path,
-                        output_dir=output_dir,
-                        timeout=self.timeout,
-                        user_agent=self.headers["User-Agent"],
-                        curl_insecure=self.curl_insecure,
-                    )
-                    if res:
-                        self.stats.add_success()
-                elif method == "iwr":
-                    res = download_by_iwr(
-                        url=url,
-                        output_path=file_path,
-                        timeout=self.timeout,
-                        ps_version=self.ps_version,
-                    )
-                    if res:
-                        self.stats.add_success()
-                elif method == "playwright":
-                    # Playwright为异步,需同步调用
-                    print("使用Playwright下载")
-                    import asyncio
-
-                    res = asyncio.run(
-                        download_by_playwright_async(
+                elif self.use_shutil:
+                    res = False
+                    if self.use_shutil == "curl":
+                        # print("使用shutil(curl)下载图片")
+                        # 目前使用curl下载图片(将来可能扩展)
+                        res = download_by_curl(
                             url=url,
                             output_path=file_path,
-                            user_agent=self.headers["User-Agent"],
+                            output_dir=output_dir,
                             timeout=self.timeout,
-                            silent=False,
+                            user_agent=self.headers["User-Agent"],
+                            curl_insecure=self.curl_insecure,
                         )
-                    )
+                    elif self.use_shutil == "iwr":
+                        # print("使用shutil(iwr)下载图片")
+                        res = download_by_iwr(
+                            url=url,
+                            output_path=file_path,
+                            # user_agent=self.headers["User-Agent"],
+                            timeout=self.timeout,
+                            ps_version=self.ps_version,
+                        )
                     if res:
                         self.stats.add_success()
                 else:
-                    # 默认requests方式
+                    # 通过python发送get请求获取包含文件(图片)的响应
+                    # (酌情启用stream参数可以实现流式下载,减少内存占用,配合后面的iter_content方法使用)
                     response = self.session.get(
                         url=url,
                         timeout=self.timeout,
                         verify=self.verify_ssl,
                         stream=True,
+                        # proxies={"https": self.get_proxy()},  # 使用代理
                     )
                     response.raise_for_status()
+
                     self.download_by_py(url, response=response, file_path=file_path)
                     self.stats.add_success()
-
                 # 执行压缩任务
                 quality = self.compress_quality
                 if quality or self.quality_rule:
+                    # 判断下载的图片大小是否高于100KB,如果是则压缩图片
+                    # if os.path.getsize(file_path) < 100 * 2**10:
+                    #     debug("图片小于100KB,使用高quality压缩")
+                    #     quality = 70
+
+                    # else:
                     print("尝试压缩图片")
                     self.ic.compress_image(
                         input_path=file_path,
+                        # output_path=file_path,
                         output_format=self.output_format,
                         quality=quality,
                         overwrite=True,
                     )
+                # return True
                 return file_path
 
-            except Exception as e:
+            except requests.exceptions.RequestException as e:
+                # 如果是应为请求异常导致的下载失败,这在这里捕获;
                 warning(
                     "下载失败 (尝试 %d/%d): %s, 错误: %s",
                     attempt + 1,
@@ -754,15 +654,18 @@ class ImageDownloader:
                     url,
                     str(e),
                 )
+                # 如果还有重试的机会,则等待一段时间后回到循环再重试
                 if attempt < self.retry_times - 1:
                     wait_time = retry_gap * (2**attempt) + random.uniform(0, 1)
                     time.sleep(wait_time)
                 else:
+                    # 尝试次机会用完,直接报错并返回False
                     wait_time = retry_gap * (2**attempt) + random.uniform(0, 1)
                     time.sleep(wait_time)
                     error("下载失败: %s, 错误: %s", url, str(e))
                     self.stats.add_failed(url, name=filename or "")
                     return False
+
         return False
 
     def prepare_filename(self, url, filename, try_get_ext=True, default_ext=""):

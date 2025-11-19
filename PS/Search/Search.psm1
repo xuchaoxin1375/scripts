@@ -46,7 +46,7 @@ function Get-ItemMatchedPattern
     Write-Host 'Start searching...'
     $res = Get-ChildItem @gciParams 
     | Sort-Object -Property $SortProperty -Descending 
-    | Select-Object Name, parent,Directory, LastAccessTime, LastWriteTime
+    | Select-Object Name, parent, Directory, LastAccessTime, LastWriteTime
 
     # 进一步过滤
     if ($First)
