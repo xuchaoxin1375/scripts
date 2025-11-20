@@ -3069,6 +3069,8 @@ function Start-XpNginx
     param(
         $NginxHome = $env:NGINX_HOME,
         $NginxConf = $nginx_conf,
+        $ErrorLog = "$env:TEMP/nginx_error.log",
+        # 启动 Nginx 时尝试关闭已有进程然后启动
         [switch]$Force
     )
     Write-Debug "nginx_home: $nginx_home"
@@ -3095,11 +3097,53 @@ function Start-XpNginx
     {
         Write-Verbose "nginx process not exists yet, starting nginx..."
     }
-    $Res = Start-Process -FilePath nginx -ArgumentList "-p $NginxHome -c $NginxConf" -PassThru -Verbose 
+    # 清理可能潜在的错误
+    Approve-NginxValidVhostsConf -NginxVhostConfDir $env:nginx_vhosts_dir
+    # 启动nginx前对配置文件语法检查
+    $Test = Start-Process -FilePath nginx `
+        -ArgumentList "-p $NginxHome -c $NginxConf -t" `
+        -NoNewWindow ` # 不启动新窗口,将命令运行结果直接输出到前台
+        -Wait `
+        -PassThru
+    if ($Test.ExitCode -eq 0)
+    {
+        # 启动 Nginx(隐藏窗口)
+        $proc = Start-Process -FilePath nginx -ArgumentList "-p $NginxHome -c $NginxConf" -PassThru -Verbose -RedirectStandardError $ErrorLog
+        $exitCode = $proc.ExitCode
+        # 如果进程退出代码不为 0（表示出错），或者错误日志有内容，则显示错误
+        if ($exitCode -and $exitCode -ne 0 ) 
+        {
+            Write-Warning "Nginx 启动可能遇到错误"
+            if((Test-Path $ErrorLog) -and (Get-Item $ErrorLog).Length -gt 0)
+            {
+                Get-Content $ErrorLog | Write-Error
+                # 清空错误日志,避免下次误报
+                Remove-Item $ErrorLog -Verbose
+            }
+        }
+        else
+        {
+            Write-Host "Nginx 启动指令已发送。"
+        }
+        Write-Host "try start nginx process $($proc.Id)"
+    }
+    else
+    {
+        Write-Error "Nginx 配置检查失败，请查看上方错误信息。"
+    }
     # Get-Process $Res.Id
     Write-Host "Wait for nginx to start and check process status..."
-    $Res = Get-Process *nginx* 
-    return $Res
+    Start-Sleep 1
+    $resLive = Get-Process nginx
+    if($resLive)
+    {
+
+        return $resLive
+    }
+    else
+    {
+        return $False
+    }
     # $item = Get-Item -Path "$nginx_home/ngin
 }
 function Restart-Nginx
@@ -4751,7 +4795,7 @@ function Compress-PathDots
             Write-Debug "Compress /../? in path [$Path] ,for example: /a/p/../b/c/p/../d/p/.. -> /a/b/c/d/"
             $Path = $Path -replace '(.*?)([^/]*)/[.]{2}/?', '$1'
         }
-        $res=$Path -replace '[\\/]+', '/'
+        $res = $Path -replace '[\\/]+', '/'
         return $res.TrimEnd(".")
     }
 }
@@ -4919,10 +4963,12 @@ function Get-SitemapFromGzIndex
         if(Get-RelativePath -Path $OutputDir -BasePath $localhost)
         {
             Write-Debug "OutputDir: [$OutputDir] is a child of $localhost,This is a good choice."    
-        }else{
+        }
+        else
+        {
             Write-Warning "OutputDir: [$OutputDir] is not a child of $localhost,This is a bad choice."
             Write-Warning "尝试截取[$outputDir]的最后一级目录名拼接到[$localhost]目录下作为子目录"
-            $LeafDir=Split-Path -Path $OutputDir -LeafBase
+            $LeafDir = Split-Path -Path $OutputDir -LeafBase
             $OutputDir = Join-Path -Path $localhost -ChildPath $LeafDir
         }
     }
