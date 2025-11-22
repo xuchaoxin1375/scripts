@@ -1,0 +1,184 @@
+{
+    "+auto-direct-10808": {
+        "color": "#ca0",
+        "defaultProfileName": "direct",
+        "name": "auto-direct-10808",
+        "profileType": "SwitchProfile",
+        "revision": "19aa60318dc",
+        "rules": [
+            {
+                "condition": {
+                    "conditionType": "UrlWildcardCondition",
+                    "pattern": "http://*"
+                },
+                "profileName": "direct"
+            },
+            {
+                "condition": {
+                    "conditionType": "UrlWildcardCondition",
+                    "pattern": "https://*"
+                },
+                "profileName": "https10808"
+            }
+        ]
+    },
+    "+auto-direct-7897": {
+        "color": "#fa8",
+        "defaultProfileName": "direct",
+        "name": "auto-direct-7897",
+        "profileType": "SwitchProfile",
+        "revision": "19aa60bd226",
+        "rules": [
+            {
+                "condition": {
+                    "conditionType": "UrlWildcardCondition",
+                    "pattern": "http://*"
+                },
+                "profileName": "direct"
+            },
+            {
+                "condition": {
+                    "conditionType": "UrlWildcardCondition",
+                    "pattern": "https://*"
+                },
+                "profileName": "https7897"
+            }
+        ]
+    },
+    "+auto-direct-8800": {
+        "color": "#9ce",
+        "defaultProfileName": "direct",
+        "name": "auto-direct-8800",
+        "profileType": "SwitchProfile",
+        "revision": "19aa60b701e",
+        "rules": [
+            {
+                "condition": {
+                    "conditionType": "UrlWildcardCondition",
+                    "pattern": "http://*"
+                },
+                "profileName": "direct"
+            },
+            {
+                "condition": {
+                    "conditionType": "UrlWildcardCondition",
+                    "pattern": "https://*"
+                },
+                "profileName": "https8800"
+            }
+        ]
+    },
+    "+https10808": {
+        "bypassList": [
+            {
+                "conditionType": "BypassCondition",
+                "pattern": "127.0.0.1"
+            },
+            {
+                "conditionType": "BypassCondition",
+                "pattern": "[::1]"
+            },
+            {
+                "conditionType": "BypassCondition",
+                "pattern": "localhost"
+            },
+            {
+                "conditionType": "BypassCondition",
+                "pattern": "*.cn"
+            },
+            {
+                "conditionType": "BypassCondition",
+                "pattern": "*.test"
+            }
+        ],
+        "color": "#9ce",
+        "fallbackProxy": {
+            "host": "localhost",
+            "port": 10808,
+            "scheme": "http"
+        },
+        "name": "https10808",
+        "profileType": "FixedProfile",
+        "revision": "19aa9545f9f"
+    },
+    "+https7897": {
+        "bypassList": [
+            {
+                "conditionType": "BypassCondition",
+                "pattern": "127.0.0.1"
+            },
+            {
+                "conditionType": "BypassCondition",
+                "pattern": "[::1]"
+            },
+            {
+                "conditionType": "BypassCondition",
+                "pattern": "localhost"
+            },
+            {
+                "conditionType": "BypassCondition",
+                "pattern": "*.cn"
+            },
+            {
+                "conditionType": "BypassCondition",
+                "pattern": "*.test"
+            }
+        ],
+        "color": "#5b5",
+        "fallbackProxy": {
+            "host": "localhost",
+            "port": 7897,
+            "scheme": "http"
+        },
+        "name": "https7897",
+        "profileType": "FixedProfile",
+        "revision": "19aa9546c21"
+    },
+    "+https8800": {
+        "bypassList": [
+            {
+                "conditionType": "BypassCondition",
+                "pattern": "127.0.0.1"
+            },
+            {
+                "conditionType": "BypassCondition",
+                "pattern": "[::1]"
+            },
+            {
+                "conditionType": "BypassCondition",
+                "pattern": "localhost"
+            },
+            {
+                "conditionType": "BypassCondition",
+                "pattern": "*.cn"
+            },
+            {
+                "conditionType": "BypassCondition",
+                "pattern": "*.test"
+            }
+        ],
+        "color": "#5b5",
+        "fallbackProxy": {
+            "host": "localhost",
+            "port": 8800,
+            "scheme": "http"
+        },
+        "name": "https8800",
+        "profileType": "FixedProfile",
+        "revision": "19aa95479a8"
+    },
+    "-addConditionsToBottom": false,
+    "-confirmDeletion": true,
+    "-downloadInterval": 1440,
+    "-enableQuickSwitch": false,
+    "-monitorWebRequests": true,
+    "-quickSwitchProfiles": [],
+    "-refreshOnProfileChange": true,
+    "-revertProxyChanges": true,
+    "-showConditionTypes": 1,
+    "-showExternalProfile": true,
+    "-showInspectMenu": true,
+    "-showResultProfileOnActionBadgeText": false,
+    "-startupProfileName": "",
+    "schemaVersion": 2
+}
