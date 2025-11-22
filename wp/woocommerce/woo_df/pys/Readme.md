@@ -83,10 +83,10 @@ python $pys\woo_get_csv.py -f .webp -s $start -e $end  -C $country -E $exclude -
 
 
 ```powershell
-$type=' 食品  '.trim()
-$country='  US '.trim()
-$start=969
-$end=972
+$type=' 百货  '.trim()
+$country='  UK '.trim()
+$start=999
+$end=1011
 $exclude='0' 
 python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -o "$desktop/$type-$country-$(get-date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]" -dl 10 -nad
 ```

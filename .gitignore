@@ -15,6 +15,14 @@ images/
 *.csv
 *.xlsx
 *.xls
+*.zip
+*.gz
+*.zst
+*.tar
+*.rar
+*.pdf
+*.docx
+*.doc
 
 # 记得从git移除这些不需要的文件
 # Python 补充
