@@ -42,7 +42,7 @@ python $pys\woo_get_csv.py -f .webp --start-id  $start_id --end-id $end_id  --la
 
 > 再次强调,导出的时候千万注意对应的国家,涉及到默认产品分类(面包屑)分配词语的单词所属语种,使用`--language-country`或者缩写`-C`来指定,比如美国用`US`,德国`DE`,...
 
-#### 跳过导出尚未采集完毕的任务(-E)🎈
+#### 跳过导出尚未采集完毕的任务(-E)
 
 如果要排除区间中的个别任务,则追加使用`-E`选项指定编号(多个编号逗号隔开)字符串`"a,b,.."`,就可以排除任务编号`a,b,...`;
 
@@ -54,7 +54,7 @@ python $pys\woo_get_csv.py -f .webp --start-id  $start_id --end-id $end_id  --la
 
 默认情况下产品名和图片链接同时相同才会视为重复,可以尽可能保留更多的产品数据
 
-#### 导出命令模板
+### 导出csv命令模板🎈
 
 例如:
 
@@ -83,10 +83,10 @@ python $pys\woo_get_csv.py -f .webp -s $start -e $end  -C $country -E $exclude -
 
 
 ```powershell
-$type=' 百货  '.trim()
+$type=' 书籍  '.trim()
 $country='  UK '.trim()
-$start=999
-$end=1011
+$start=998
+$end=$start
 $exclude='0' 
 python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -o "$desktop/$type-$country-$(get-date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]" -dl 10 -nad
 ```
@@ -98,9 +98,9 @@ python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -
 
 
 ```powershell
-$type='  食品  '.trim()
-$country='  US '.trim()
-$start=974
+$type='  书籍  '.trim()
+$country='  UK '.trim()
+$start=990
 $end=$start 
 $exclude='0'
 python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -o "$desktop/$type-$country-$(get-date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]" -dl 10 -nad # 

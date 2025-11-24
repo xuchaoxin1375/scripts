@@ -762,7 +762,22 @@ function Deploy-WpSitesLocal
     Write-Debug $WpSitesTemplatesDir
     Write-Debug $MyWpSitesHomeDir
     Write-Debug $DBKey
-    Get-Content $table
+    # 配置文件规范化
+    $content = Get-Content $table -Raw
+    # 列数检查(空白字符作为列分隔符)
+    foreach ($line in $content.Split("`n"))
+    {
+        $parts = $line.Trim() -split '\s+'
+        Write-Debug "parts: $parts" -Debug
+        $n = $parts.Length
+        if($n -gt 1 -and $n -lt 3)
+        {
+            Write-Error "Invalid table structure: '[$line]'. Please check the table file.(columns: $n < 3)"
+            return $parts
+        }
+    }
+    $content = $content.ToLower() -replace 'https://', 'http://' -replace 'www.', ''
+    $content | Set-Content $Table -Verbose -Force
     # 检查关键目录
     if(!(Test-Path $WpSitesTemplatesDir))
     {
@@ -991,6 +1006,8 @@ Get-WpSitePacks -SiteDirecotry $destination -Mode zstd
     # 重启(重载)nginx服务器(如果重载不能生效,请使用-Force参数强制重启)
     
     Restart-Nginx -Force:$Force
+    # 打开输出的脚本
+    Start-Process $script_path
 }
 function Deploy-WpSitesOnline
 {

@@ -1003,9 +1003,9 @@ function Restart-NginxOnHost
     )
     # 更新各个网站vhost的配置(宝塔nginx vhost配置文件路径)
     ssh $User@$HostName @"
-    bash /update_nginx_vhosts_conf.sh;/update_nginx_vhosts_conf.sh -d /www/server/panel/vhost/nginx --days 1 
-    bash /www/sh/nginx_conf/update_nginx_vhosts_log_format.sh -d /www/server/panel/vhost/nginx 
+    bash /update_nginx_vhosts_conf.sh -d /www/server/panel/vhost/nginx --days 1 
 "@
+    # bash /www/sh/nginx_conf/update_nginx_vhosts_log_format.sh -d /www/server/panel/vhost/nginx 
     
     if ($Force)
     {
@@ -3103,7 +3103,7 @@ function Start-XpNginx
     $Test = Start-Process -FilePath nginx `
         -ArgumentList "-p $NginxHome -c $NginxConf -t" `
         -NoNewWindow ` # 不启动新窗口,将命令运行结果直接输出到前台
-        -Wait `
+    -Wait `
         -PassThru
     if ($Test.ExitCode -eq 0)
     {
@@ -3205,7 +3205,119 @@ function Restart-Nginx
         Write-Verbose "Nginx.exe -s stop" -Verbose
     }
 }
+function ConvertTo-LowerCase
+{
+    <# 
+    .SYNOPSIS
+    将文本文件中的字符串转换为小写
+    .DESCRIPTION
+    实现有两类,一类简单但是不适合处理超大文件(一口气读取全部文本,可能会爆内存)
+    另一类是流式处理,适合处理超大文件
+    这里采用后者
 
+    .NOTES
+    推荐方案:
+    Goal: Handle very large files without loading entire file into memory.
+    How it works now: Streams input line-by-line using System.IO.StreamReader / StreamWriter, preserves detected encoding, supports multiple files and pipeline input, and atomically replaces the original file by writing to a temp file and moving it into place.
+
+    [System.IO.File]::Open 提供了对文件操作的最大灵活性，适用于：
+    需要控制文件共享行为（如日志文件被多个进程写入）
+    处理二进制数据（如图像、加密文件）
+    大文件流式读写（避免一次性加载到内存）
+    精确控制文件创建/覆盖逻辑
+    注意读写流的创建和对流的读写操作,以及结束读写时流的清理
+    .NOTES
+    简单方案:
+    $content = Get-Content $Path -Raw
+    return $content.ToLower() | Set-Content $Path -Verbose -PassThru
+    
+    .EXAMPLE
+    ConvertTo-LowerCase -Path "C:\test.txt"
+    .EXAMPLE
+    "C:\test.txt" | ConvertTo-LowerCase
+    #>
+    param (
+        [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
+        [string[]] $Path
+    )
+
+    process
+    {
+        foreach ($p in $Path)
+        {
+            if (-not (Test-Path -Path $p -PathType Leaf))
+            {
+                Write-Warning "Path [$p] not found or is not a file,processing next path if needed."
+                continue
+            }
+
+            $temp = [System.IO.Path]::GetTempFileName()
+            # 创建文件输入流(open待处理文本文件)
+            $inStream = [System.IO.File]::Open($p, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
+            try
+            {
+                # 为输入流创建流读取器
+                $reader = New-Object System.IO.StreamReader($inStream, $true)
+                try
+                {
+                    # 创建文件输出流(create)
+                    $outStream = [System.IO.File]::Open($temp, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+
+                    $encoding = $reader.CurrentEncoding
+                    try
+                    {
+                        # 为输出流创建流写入器
+                        $writer = New-Object System.IO.StreamWriter($outStream, $encoding)
+                        try
+                        {
+                            while (-not $reader.EndOfStream)
+                            {
+                                $line = $reader.ReadLine()
+                                if ($null -ne $line)
+                                {
+                                    $writer.WriteLine($line.ToLower())
+                                }
+                                else
+                                {
+                                    $writer.WriteLine('')
+                                }
+                            }
+                        }
+                        finally
+                        {
+                            $writer.Flush()
+                            $writer.Close()
+                        }
+                    }
+                    finally
+                    {
+                        $outStream.Close()
+                    }
+                }
+                finally
+                {
+                    $reader.Close()
+                }
+            }
+            finally
+            {
+                $inStream.Close()
+            }
+            # 当前文件处理完毕,将临时文件覆盖旧文件
+            try
+            {
+                Move-Item -Path $temp -Destination $p -Force
+                Write-Verbose "Converted to lower-case: $p" -Verbose
+                Get-Item $p
+            }
+            catch
+            {
+                Remove-Item -Path $temp -ErrorAction SilentlyContinue
+                throw
+            }
+        }
+    }
+}
 function Get-PortAndProcess
 {
     <# 
