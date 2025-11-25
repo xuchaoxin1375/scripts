@@ -136,6 +136,9 @@ ln -s /www/sh/nginx_conf/update_nginx_vhosts_conf.sh /update_nginx_vhosts_conf.s
 # ln -s /www/sh/nginx_conf/com.conf /www/server/nginx/conf/com.conf -fv
 # ln -s /www/sh/nginx_conf/nginx.conf /www/server/nginx/conf/nginx.conf -fv
 
+if [ -f /www/server/nginx/conf/com.conf ]; then
+    rm  /www/server/nginx/conf/com.conf -fv
+fi
 cp /www/sh/nginx_conf/com.conf /www/server/nginx/conf/com.conf -fv
 # cp /www/sh/nginx_conf/limit_rate.conf /www/server/nginx/conf/limit_rate.conf -fv
 cp /www/sh/nginx_conf/nginx.conf /www/server/nginx/conf/nginx.repos.conf -fv
