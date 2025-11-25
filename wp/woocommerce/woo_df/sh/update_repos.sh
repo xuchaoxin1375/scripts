@@ -163,11 +163,13 @@ fi
 nginx -t && nginx -s reload
 
 # fail2ban配置文件
-if [ -d /etc/fail2ban/filter.d.repos/ ];then
-    rm -rfv /etc/fail2ban/filter.d.repos/
+# 如果/etc/fail2ban/filter.d.repos事先存在则先删除
+if [ -d "/etc/fail2ban/filter.d.repos" ]; then
+    echo "🗑️  删除已存在的符号链接或目录: /etc/fail2ban/filter.d.repos"
+    rm -rfv "/etc/fail2ban/filter.d.repos"
 fi
 # 仓库中的fail2ban配置目录软链接到/etc/fail2ban/下(便于编辑器内编辑时参考)
-ln -s /www/sh/fail2ban/filter.d/ /etc/fail2ban/filter.d.repos/ -fv
+ln -s /www/sh/fail2ban/filter.d/ /etc/fail2ban/filter.d.repos -fv
 # 为常用的nginx配置文件软链接
 ln -s /www/sh/fail2ban/filter.d/nginx-warn.conf /etc/fail2ban/filter.d/nginx-warn.conf -fv
 ln -s /www/sh/fail2ban/jail.d/nginx-cf-warn.conf /etc/fail2ban/jail.d/nginx-cf-warn.local -fv
