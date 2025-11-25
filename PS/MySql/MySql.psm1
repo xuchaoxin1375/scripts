@@ -865,3 +865,115 @@ function Start-MysqlConnectionFromConfig
 
 
 
+function Get-MysqlKeyInline
+{
+    <# 
+    .SYNOPSIS
+    将mysql密码转换为-p参数形式,便于嵌入到mysql命令行中,例如key为123456,则返回-p123456
+    .EXAMPLE
+    PS C:\repos\scripts> $key=Get-MysqlKeyInline -Key "123456"
+    PS C:\repos\scripts> $key
+        -p123456
+    #>
+    param (
+        $Key = ''
+    )
+    if($key)
+    {
+        return "-p$key"
+    }
+    else
+    {
+        return ""
+    }
+
+    
+}
+function New-MysqlDB
+{
+    <# 
+    .SYNOPSIS
+    创建mysql数据库
+    .DESCRIPTION
+    如果数据库不存在,则创建数据库,否则提示数据库已存在
+    使用-Confirm参数,可以提示用户确认是否创建数据库,更加适合测试阶段
+
+    .PARAMETER Name
+    数据库名称
+    .PARAMETER Server
+    数据库服务器地址
+    .PARAMETER CharSet
+    数据库字符集,默认为utf8mb4
+    .PARAMETER Collate
+    数据库排序规则,默认为utf8mb4_general_ci
+    #>
+    <# 
+   .EXAMPLE
+   #⚡️[Administrator@CXXUDESK][C:\sites\wp_sites_cxxu\2.fr\wp-content\plugins][23:19:09][UP:7.62Days]
+    PS> Import-MysqlFile -Server localhost -SqlFilePath C:\sites\wp_sites_cxxu\base_sqls\2.de.sql -DatabaseName c.d -Confirm -Verbose
+    VERBOSE: Use Mysql server host: localhost
+    VERBOSE: Sql File exist!
+    VERBOSE: check c.d database on [localhost]
+    VERBOSE: mysql -h localhost -u root  -e "SHOW DATABASES LIKE 'c.d';"
+    WARNING: Database 'c.d' Does not exist!
+
+    Confirm
+    Are you sure you want to perform this action?
+    Performing the operation "Create Database: c.d ?" on target "localhost".
+    [Y] Yes  [A] Yes to All  [N] No  [L] No to All  [S] Suspend  [?] Help (default is "Y"):
+    VERBOSE:  mysql -uroot -h localhost -e 'CREATE DATABASE `c.d` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci; show databases like "c.d";'
+    +----------------+
+    | Database (c.d) |
+    +----------------+
+    | c.d            |
+    +----------------+
+    VERBOSE: check c.d database on [localhost]
+    VERBOSE: mysql -h localhost -u root  -e "SHOW DATABASES LIKE 'c.d';"
+    Database 'c.d' exist! ...
+    Database (c.d)
+    c.d
+    VERBOSE: cmd /c " mysql -u root -h localhost  c.d < `"C:\sites\wp_sites_cxxu\base_sqls\2.de.sql`" "
+
+    Confirm
+    Are you sure you want to perform this action?
+    Performing the operation "cmd /c " mysql -u root -h localhost  c.d <
+    `"C:\sites\wp_sites_cxxu\base_sqls\2.de.sql`" "" on target "localhost".
+    [Y] Yes  [A] Yes to All  [N] No  [L] No to All  [S] Suspend  [?] Help (default is "Y"):
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param (
+        $Name,
+        $Server = 'localhost',
+        [alias("P")]$Port = 3306,
+        [alias("User")]$MySqlUser = 'root',
+        $MysqlKey = '',
+        $CharSet = 'utf8mb4',
+        $Collate = "utf8mb4_general_ci"
+    )
+    $key = Get-MysqlKeyInline -Key $MysqlKey
+
+    $command = " mysql -u$MySqlUser -h $Server -P $Port $key -e 'CREATE DATABASE ``$Name`` CHARACTER SET $CharSet COLLATE $collate; show databases like `"$Name`";' "  
+    Write-Verbose $command 
+
+    # 提示用户输入
+    # $userInput = Read-Host "Do you want to remove the database $Name? (Y/N)"
+    # $userInput = $userInput.ToLower()
+    # 判断用户输入是否为空（即回车）
+    # if ([string]::IsNullOrEmpty($userInput) -or $userInput -eq 'y'){
+    # 用户按了回车，继续执行后续代码            
+    # }
+    # else
+    # {
+    #     # 用户输入了其他内容，取消执行后续代码
+    #     Write-Host "取消执行后续代码。"
+    #     exit
+    # }
+        
+    if($pscmdlet.ShouldProcess($Server, "Create Database $Name ?"))
+    {
+        Invoke-Expression $command
+        Get-MysqlDbInfo -Name $Name -Server $Server -Port $Port -MySQLUser $MySqlUser -key $MysqlKey 
+    }
+    
+    
+}

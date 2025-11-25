@@ -1284,6 +1284,7 @@ function Update-WpPluginsDFOnServers
         # 删除插件
         [parameter(ParameterSetName = 'Name')]
         [switch]$RemovePlugin,
+
         $ServerConfig = $server_config
     )
     $servers = Get-ServerList -Path $ServerConfig
@@ -1513,36 +1514,38 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
         [parameter(ParameterSetName = 'Path')]
         $PluginPath ,  
         # 插件名称(服务器上插件路径的最后一级目录名)
-        [parameter(ParameterSetName = 'Name')]
+        [parameter(ParameterSetName = 'RemoveByName')]
         $PluginName,
         
         $RemoteDirectory = "/www"       , # 服务器目标目录
         $WorkingDirectory = "/www/wwwroot",
         $BashScript = "/www/sh/wp-plugin-update/update_wp_plugin.sh",
         # 移除插件而非安装(更新)插件
+        [parameter(ParameterSetName = 'RemoveByName')]
         [switch]$RemovePlugin,
         [switch]$Dry
     )
     
-    $plugin_dir_name = (Split-Path $PluginPath -Leaf) # 🎈
-    $plugin_dir = "$remoteDirectory/$plugin_dir_name"  # 服务器目标插件目录🎈
-    # 上传文件到服务器
-    Write-Verbose "Uploading file to server[$server]..." -Verbose
-    scp -r $PluginPath $username@${server}:"$remoteDirectory" 
 
-
-    Write-Verbose "Executing updating script...(this need several seconds, please wait...)" -Verbose
-    # 执行PHP脚本
-    # ssh $username@$server "php $remoteDirectory/$phpScript $remoteDirectory $plugin_dir "
-
+    
     # 执行高性能的bash脚本
     $dryRun = if($Dry) { "--dry-run" }else { "" }
     if($PSCmdlet.ParameterSetName -eq 'Path')
     {
+        $plugin_dir_name = (Split-Path $PluginPath -Leaf) # 🎈
+        $plugin_dir = "$remoteDirectory/$plugin_dir_name"  # 服务器目标插件目录🎈
+        # 上传文件到服务器
+        Write-Verbose "Uploading file to server[$server]..." -Verbose
+        scp -r $PluginPath $username@${server}:"$remoteDirectory" 
+        
+        
+        Write-Verbose "Executing updating script...(this need several seconds, please wait...)" -Verbose
+        # 执行PHP脚本
+        # ssh $username@$server "php $remoteDirectory/$phpScript $remoteDirectory $plugin_dir "
 
         $cmd = "  ssh $username@$server bash $bashScript --workdir $workingDirectory --source $plugin_dir $dryRun " 
     }
-    elseif($PSCmdlet.ParameterSetName -eq 'Name' -and $RemovePlugin)
+    elseif($PSCmdlet.ParameterSetName -eq 'RemoveByName' -and $RemovePlugin)
     {
         # bash update_wp_plugin.sh --remove mallpay --whitelist whitelist.conf
         $cmd = "  ssh $username@$server bash $bashScript --workdir $workingDirectory --remove $PluginName $dryRun " 

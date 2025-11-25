@@ -85,7 +85,7 @@ python $pys\woo_get_csv.py -f .webp -s $start -e $end  -C $country -E $exclude -
 ```powershell
 $type=' 书籍  '.trim()
 $country='  UK '.trim()
-$start=998
+$start=995
 $end=$start
 $exclude='0' 
 python $pys\woo_get_csv.py -f .webp -s $start -e $end -E $exclude -C $country  -o "$desktop/$type-$country-$(get-date -format MMdd-hh-mm-ss)-[$start-$end]-E[$exclude]" -dl 10 -nad
