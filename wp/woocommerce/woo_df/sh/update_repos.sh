@@ -174,3 +174,10 @@ ln -s /www/sh/fail2ban/ $f2b_repos -fv
 # 为常用的nginx配置文件软链接
 ln -s /www/sh/fail2ban/filter.d/nginx-warn.conf /etc/fail2ban/filter.d/nginx-warn.conf -fv
 ln -s /www/sh/fail2ban/jail.d/nginx-cf-warn.conf /etc/fail2ban/jail.d/nginx-cf-warn.local -fv
+# 如果cloudflare.local不存在,则创建此文件的软链接,否则跳过此步(避免将已有配置覆盖,尤其是cf的账号和密钥信息)
+# 不同服务器使用的cf账号通常不同,并且有的服务器可能用到多个cf账号,这就需要服务器管理员基于此文件(或者fail2ban自带的action.d克隆几个名称相似但不同的cloduflare*.conf和cloudflare*.local文件组合,不过更改只需要更改.local即可,克隆的.conf文件不需要更改,只是文件名不同了)
+# 多余多账号cf,还需考虑对应jail中的action引用的变化(名称跟着变化),也是使用个类似定义的jail section
+# 配置结果:通过fail2ban-client reload一下,相关jail的最终配置会被打印,如果和预期不同,考虑配置文件间的覆盖关系
+if [ ! -f /etc/fail2ban/action.d/cloudflare.local ]; then
+    ln -s /www/sh/fail2ban/action.d/cloudflare.conf /etc/fail2ban/action.d/cloudflare.local -fv
+fi
