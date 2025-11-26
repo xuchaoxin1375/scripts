@@ -167,7 +167,7 @@ nginx -t && nginx -s reload
 
 # fail2ban配置文件
 # 如果/etc/fail2ban/fai2ban.repos事先存在则先删除
-f2b_repos='/etc/fail2ban/fai2ban.repos'
+f2b_repos='/etc/fail2ban/fail2ban.repos'
 if [ -d $f2b_repos ]; then
     echo "🗑️  删除已存在的符号链接或目录: $f2b_repos"
     rm -rfv "$f2b_repos"
@@ -175,7 +175,10 @@ fi
 # 仓库中的fail2ban配置目录软链接到/etc/fail2ban/下(便于编辑器内编辑时参考)
 ln -s /www/sh/fail2ban/ $f2b_repos -fv
 # 为常用的nginx配置文件软链接
+# 自定义过滤器
 ln -s /www/sh/fail2ban/filter.d/nginx-warn.conf /etc/fail2ban/filter.d/nginx-warn.conf -fv
+ln -s /www/sh/fail2ban/filter.d/nginx-warn-499.conf /etc/fail2ban/filter.d/nginx-warn-499.conf -fv 
+# 自定义监狱
 ln -s /www/sh/fail2ban/jail.d/nginx-cf-warn.conf /etc/fail2ban/jail.d/nginx-cf-warn.local -fv
 # 如果cloudflare.local不存在,则创建此文件的软链接,否则跳过此步(避免将已有配置覆盖,尤其是cf的账号和密钥信息)
 # 不同服务器使用的cf账号通常不同,并且有的服务器可能用到多个cf账号,这就需要服务器管理员基于此文件(或者fail2ban自带的action.d克隆几个名称相似但不同的cloduflare*.conf和cloudflare*.local文件组合,不过更改只需要更改.local即可,克隆的.conf文件不需要更改,只是文件名不同了)
