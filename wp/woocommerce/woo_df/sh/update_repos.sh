@@ -192,7 +192,7 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
     # 自定义监狱
     # 如果相关文件已存在,则跳过覆盖(cp -n)
     #复制命令行参考
-    $cf_basic='/www/sh/fail2ban/action.d/cloudflare-basic-action.conf'
+    cf_basic='/www/sh/fail2ban/action.d/cloudflare-basic-action.conf'
     # 根据需要复制对应数量文件(注意编号)
     cp -nv $cf_basic /etc/fail2ban/action.d/cloudflare1.local
     cp -nv $cf_basic /etc/fail2ban/action.d/cloudflare2.local
