@@ -4,13 +4,13 @@
 
 ## fail2ban自定义配置文件说明
 
-这里有3个目录`action.d,filter.d,jail.d` ,分被用于存放fail2ban中的定义`action,filter,jail`的自定义配置文件
+这里有3个目录`action.d`,`filter.d`,`jail.d` ,分被用于存放fail2ban中`action,filter,jail`三中角色的自定义配置文件.
 
-这些目录中的配置文件承担的角色不同,并且不能独立工作,需要依赖于fail2ban安装时向`/etc/fail2ban`目录中内置的基础模板
+这些目录中的配置文件承担的角色不同,并且**不能独立工作**,需要依赖于fail2ban安装自带的`/etc/fail2ban`目录中内置的基础模板
 
-fail2ban的使用主要是jail(监狱,理解为**封禁规则**)的定义
+fail2ban的使用主要是`jail`(监狱,理解为**封禁规则**)的定义
 
-而封禁规则的定义包括两个部分:
+而封禁规则(jail)的定义包括两个部分:
 
 - 定义违禁行为(filter)
 - 定义违禁后要执行的制裁操作(action)
