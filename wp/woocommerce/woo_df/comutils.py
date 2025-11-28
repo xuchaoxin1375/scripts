@@ -816,8 +816,16 @@ def split_urls(urls):
     多个url构成的长串处理例子
 
     """
-    matches = re.findall(HTTP_S_URL_CONS_PATTERN, urls)
+
+    if(urls):
+        matches = re.findall(HTTP_S_URL_CONS_PATTERN, urls)
+    else:
+        print("ERROR!!!,urls is invalid")
+        matches=[]
     return matches
+
+    # matches = re.findall(HTTP_S_URL_CONS_PATTERN, urls)
+    # return matches
 
 
 def parse_dbs_from_str(dbs_str):

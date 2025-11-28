@@ -1086,6 +1086,9 @@ but different image, keep records [%s]",
                 ## 由于采集器暂时仅采集图片链接,存放产品图片存放的取值赋值给图片链接字段,所以直接引用原图片字段即可
                 img_urls = row[img_field]
                 row[img_url_field] = img_urls
+                if not img_urls:
+                    error("Empty image url for row:", row)
+                    img_urls=""
 
                 # 2.处理图名字段(考虑多图,从图片链接解析入手判断图片数量以及图片名取名和编号)
                 ## 考虑到可能会采集多个图片,这里预设图片链接之间的分隔符可能是">"," ",为了便于统一处理,将">"替换为空格,然后利用split分割
