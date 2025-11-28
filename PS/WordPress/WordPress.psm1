@@ -776,8 +776,11 @@ function Deploy-WpSitesLocal
             return $parts
         }
     }
-    $content = $content.ToLower() -replace 'https://', 'http://' -replace 'www.', ''
+    $content = $content -replace 'https://', 'http://' -replace 'www.', '' -replace 'http://(.*)com', {$_.Value.ToLower()} 
+    
     $content | Set-Content $Table -Verbose -Force
+    # debug
+    # return $content
     # 检查关键目录
     if(!(Test-Path $WpSitesTemplatesDir))
     {

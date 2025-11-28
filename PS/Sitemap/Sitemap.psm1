@@ -227,7 +227,7 @@ function Get-SitemapFromGzIndex
         [alias('RequestClient', 'RequestBy', 'U')]
         $DownloadMethod = 'iwr', #默认使用powershell 内置的Invoke-WebRequest(iwr)
         # 删除下载的gz文件
-        $RemoveGz = $true
+        [switch]$RemoveGz 
     )
     # 合理推测推荐行为:提取用户指定路径中的某个部分拼接到$localhost目录下作为子目录
     
@@ -318,6 +318,7 @@ function Get-SitemapFromGzIndex
             $cmd = "7z x $ArchivedFile -o$OutputDir" 
             Write-Verbose $cmd
             $cmd | Invoke-Expression
+            # todo:检查文件是否是压缩或归档文件而不是普通的文本文件,测试或者检查响应码
         }
         else
         {
