@@ -40,13 +40,18 @@ fail2ban的模板配置文件为我们考虑到这个需求,在`/etc/fail2ban/ac
 如果你只用到1个cloudflare账号,那么可以在`/etc/fail2ban/action.d`目录中新建一个`cloudflare.local`,然后针对性填写cloudflare的api密钥和账号邮箱
 
 ```ini
-# cloudflare.local
+# cloudflare-i.conf
+# 引用 fail2ban自带action模板中的cloudflare.conf 文件,并填写你的 Cloudflare API Key 和 Email
+[INCLUDES]
+before = cloudflare.conf
+
 [Init]
 
 # 不要有多余的引号,这反而会影响配置的解析(填写的时候注意顺序,key和email不要反了)
 cftoken = YOUR_CF_API_KEY
 
 cfuser = YOUR_CF_EMAIL
+
 
 
 

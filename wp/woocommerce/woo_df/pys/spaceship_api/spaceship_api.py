@@ -38,12 +38,12 @@ DESKTOP = rf"{home}/Desktop"
 DEPLOY_CONFIGS = f"{DESKTOP}/deploy_configs"
 # 默认配置文件路径
 DEFAULT_CONFIG_PATH = os.path.join(DEPLOY_CONFIGS, "spaceship_config.json")
-
+TIMEOUT=120  # 默认请求超时时间(秒)
 
 class APIClient:
     """spaceship 域名管理API封装客户端程序"""
 
-    def __init__(self, api_key="", api_secret="", account="", auth=None, timeout=60):
+    def __init__(self, api_key="", api_secret="", account="", auth=None, timeout=TIMEOUT):
         """初始化API客户端"""
         # 配置文件中所有账号信息(如果有读取配置文件的话),字典形式存储可以提高查找效率
         self.auth = auth or {}

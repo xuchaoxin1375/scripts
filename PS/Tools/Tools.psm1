@@ -924,7 +924,8 @@ function Approve-NginxValidVhostsConf
     Write-Verbose "Checking vhosts in $NginxVhostConfDir" -Verbose
     foreach ($vhost in $vhosts)
     {
-        $root_info = Get-Content $vhost | Select-String root | Select-Object -First 1
+        $root_info = Get-Content $vhost | Select-String "\s*root\s+" | Select-Object -First 1
+        Write-Debug "root line:[ $root_info ]" -Debug
         # 计算vhost配置文件中的站点根路径(如果不存在时跳过处理此配置)
         if($root_info)
         {
@@ -935,7 +936,11 @@ function Approve-NginxValidVhostsConf
                 Write-Warning "vhost: $($vhost.Name) root path is empty!" -WarningAction Continue
                 # 处理下一个
                 continue
+            }else{
+                Write-Verbose "vhost: $($vhost.Name) root path:[ $root ]" -Verbose
             }
+
+            # pause
         }
         else
         {
