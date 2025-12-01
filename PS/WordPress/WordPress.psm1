@@ -767,6 +767,10 @@ function Deploy-WpSitesLocal
     # 列数检查(空白字符作为列分隔符)
     foreach ($line in $content.Split("`n"))
     {
+        if($line -match '^\s*#')
+        {
+            continue
+        }
         $parts = $line.Trim() -split '\s+'
         Write-Debug "parts: $parts" -Debug
         $n = $parts.Length
