@@ -56,23 +56,39 @@ def normalize_columns(df):
     return df[["域名", "国家"]]
 
 
-def get_main_domain_name_from_str(url):
+def get_main_domain_name_from_str(url, normalize=True):
     """
-    从字符串中提取域名,结构形如 "二级域名.顶级域名",即SLD.TLD;
-    仅提取一个域名,适合于对于一个字符串中仅包含一个确定的域名的情况
-    例如,对于更长的结构,"子域名.二级域名.顶级域名"则会丢弃子域名,前缀带有http(s)的部分也会被移除
-    # 测试URL列表
-    urls = ['www.domain.com', 'https://www.dom-ain.com', 'domain-test.com', 'http://domain.com', 'https://domain.com/']
+        从字符串中提取域名,结构形如 "二级域名.顶级域名",即SLD.TLD;
+        对于提取部分的正则,如果允许英文"字母,-,数字")(对于简单容忍其他字符的域名,使用([^/]+)代替([\\w]+)这个部分
+
+        仅提取一个域名,适合于对于一个字符串中仅包含一个确定的域名的情况
+        例如,对于更长的结构,"子域名.二级域名.顶级域名"则会丢弃子域名,前缀带有http(s)的部分也会被移除
+
+        Args:
+            url (str): 待处理的URL字符串
+            normalize (bool, optional): 是否进行规范化处理(移除空格,并且将字母小写化处理). Defaults to True.
+
+
+        Examples:
+        # 测试URL列表
+    urls = ['www.domain1.com', 'https://www.dom-ain2.com','https://sports.whh3.cn.com', 'domain-test4.com','http://domain5.com', 'https://domain6.com/','# https://domain7.com','http://','https://www8./','https:/www9']
+    for url in urls:
+        domain = get_main_domain_name_from_str(url)
+        print(domain)
     """
     # 使用正则表达式提取域名
     url = str(url)
-    # print(f"原始URL: {url}")
-    match = re.search(r"(?:https?://)?(?:www\.)?([^/]+)", url)
+    # 清理常见的无效url部分
+    url = re.sub(r"https?:/*w*\.?/?", "", url)
+    # 尝试提取英文域名
+    match = re.search(r"(?:https?://)?(?:www\.)?((\w+.?)+)", url)
     if match:
-        res = match.group(1)
-        print(f"提取域名: {res}")
+        res = match.group(1).strip("/")
+        if normalize:
+            # 字母小写并且移除空白
+            res = re.sub(r"\s+", "", res).lower()
         return res
-    return None
+    return ""
 
 
 def merge_excel_files(table_path, add_source=True):
@@ -108,7 +124,6 @@ def merge_excel_files(table_path, add_source=True):
         )
 
 
-
 def get_data_from_table(file_path, add_source=False):
     """从单个表格文件中获取数据，并处理不同命名的列"""
     try:
@@ -133,6 +148,10 @@ def main():
     # df.info()
     df1 = df[["产品名称", "域名"]].copy()
     df1["域名"] = df1["域名"].apply(get_main_domain_name_from_str)
+    # 清理非法域名
+    df1["域名"] = (
+        df1["域名"].str.replace(r"https?:/*w*\.?/?", "", regex=True).str.strip()
+    )
     df1.drop_duplicates(subset=["产品名称"], inplace=True)
 
     # 使用在线表格下载下来的excel表格格式肯能不符标准规范,可以用office excel打开(启用编辑)然后保存(会尝试保存为标准excel格式)
@@ -143,7 +162,7 @@ def main():
     df2["域名"] = df2["域名"].apply(get_main_domain_name_from_str)
 
     # 连接df1和df2,依据为相同的域名
-    df = pd.merge(df1, df2, on="域名", how="inner")
+    df = pd.merge(df1, df2, on="域名", how="left")
     df.drop_duplicates(subset=["产品名称"], inplace=True)
     # 根据产品名称排序
     df.sort_values(by="产品名称", inplace=True)

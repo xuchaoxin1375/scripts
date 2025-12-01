@@ -467,7 +467,7 @@ def get_main_domain_name_from_str(url, normalize=True):
     """
     # 使用正则表达式提取域名
     url = str(url)
-    # 清理常见的无效url
+    # 清理常见的无效url部分
     url = re.sub(r"https?:/*w*\.?/?", "", url)
     # 尝试提取英文域名
     match = re.search(r"(?:https?://)?(?:www\.)?((\w+.?)+)", url)
