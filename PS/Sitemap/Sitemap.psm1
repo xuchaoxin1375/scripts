@@ -1,92 +1,4 @@
 
-function Get-SourceFromLinks
-{
-    <#
-    .SYNOPSIS
-        从包含 URL 的文本文件中批量下载文件（如 .gz 或 .xml）到指定目录。
-
-    .DESCRIPTION
-        该函数读取一个包含下载链接的文本文件，使用 curl（即 Invoke-WebRequest 的别名或系统 curl）下载每个文件，
-        并保存到以域名命名的子目录中。支持自动创建目录、HTTP 重定向和自定义 User-Agent。
-
-    .PARAMETER Domain
-        目标站点域名（用于创建子目录，也用于日志或组织结构）。
-
-    .PARAMETER LinksFile
-        包含待下载链接的文本文件路径（每行一个 URL）。
-
-    .PARAMETER BaseDirectory
-        保存下载文件的基础目录（默认为当前用户的桌面下的 'localhost' 文件夹）。
-
-    .PARAMETER UserAgent
-        可选：自定义 User-Agent 字符串，用于模拟浏览器请求。
-
-    .EXAMPLE
-        Get-SourceFromLinksList -Domain "www.speedingparts.de" -LinksFile "C:\localhost\L1.urls"
-
-    .NOTES
-        - 函数使用系统 curl（需确保 curl 在 PATH 中），而非 PowerShell 的 Invoke-WebRequest，
-          以保持与原始脚本行为一致（支持 -L 和 -O）。
-        - 若需跨平台兼容性，可改用 Invoke-WebRequest，但需重写下载逻辑。
-    #>
-
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory = $true)]
-        [string]$Domain,
-
-        [Parameter(Mandatory = $true)]
-        [ValidateScript({
-                if (-not (Test-Path $_ -PathType Leaf))
-                {
-                    throw "链接文件 '$_' 不存在。"
-                }
-                return $true
-            })]
-        [string]$LinksFile,
-
-        [Parameter(Mandatory = $false)]
-        [string]$BaseDirectory = "$localhost",
-
-        [Parameter(Mandatory = $false)]
-        [string]$UserAgent = $agent
-    )
-
-    # 构建目标目录路径
-    $TargetDir = Join-Path -Path $BaseDirectory -ChildPath $Domain
-
-    # 创建目录（若不存在）
-    if (-not (Test-Path $TargetDir))
-    {
-        New-Item -ItemType Directory -Path $TargetDir -Force | Out-Null
-    }
-    $LinksFile = Get-Item $LinksFile | Select-Object -ExpandProperty FullName
-    # 切换到目标目录
-    Push-Location $TargetDir
-
-    try
-    {
-        # 读取链接文件并逐行下载
-        Get-Content $LinksFile | ForEach-Object {
-            if ($_ -match '^\s*$') { return }  # 跳过空行
-            if ($_ -match '^\s*#') { return } # 跳过注释行（以 # 开头）
-
-            Write-Host "正在下载: $_"
-            if ($UserAgent)
-            {
-                curl -L -O $_ -A $UserAgent
-            }
-            else
-            {
-                curl -L -O $_
-            }
-        }
-    }
-    finally
-    {
-        Pop-Location
-    }
-}
 function Get-SourceFromUrls
 {
     <# 
@@ -167,8 +79,10 @@ function Get-SourceFromUrls
         Get-Content $Path | ForEach-Object -Parallel {
             $index = [System.Threading.Interlocked]::Increment($using:counter)
             # $file = "$using:OutputDir/$(($_ -split "/")[-1])-$using:dt-$index.html"
-            $file = "$using:OutputDir/$(($_ -split "/")[-1])"
-            
+            Write-Host "Processing $_"
+            $file = "$using:OutputDir/$(($_.trim('/') -split "/")[-1])"
+            # debug
+            # return "Debug:stop here.[$file]"
             # curl.exe -A $using:Agent -L  -k -o $file $_  -x $using:proxy
 
             $cmd = "curl.exe -A '$using:Agent' -L  -k $using:proxyinline -o $file $_" 
@@ -193,8 +107,13 @@ function Get-SourceFromUrls
     # 采集 http[参数] -> http[参数1]
     # Get-Content $output | Select-Object -First 10
 }
-
-function Get-SitemapFromGzIndex
+# function Get-SitemapFromUrl {
+#     param (
+#         OptionalParameters
+#     )
+    
+# }
+function Get-SitemapFromUrlIndex
 {
     <# 
     .SYNOPSIS
@@ -205,10 +124,10 @@ function Get-SitemapFromGzIndex
     此方案不保证处理所有情况,尤其是带有反爬的情况,xml文件可能无法用简单脚本下载,就需要手动处理,或者借助于无头浏览器进行下载
     .EXAMPLE
     $Url = 'https://www.eopticians.co.uk/sitemap.xml'
-    Get-SitemapFromGzIndex -Url $Url -OutputDir $localhost/eop
+    Get-SitemapFromUrlIndex -Url $Url -OutputDir $localhost/eop
     .EXAMPLE
     set-proxy -port 8800
-    Get-SitemapFromGzIndex -Url https://www.abebooks.co.uk/sitemap.bdp_index.xml -OutputDir $localhost/abe1 -U curl 
+    Get-SitemapFromUrlIndex -Url https://www.abebooks.co.uk/sitemap.bdp_index.xml -OutputDir $localhost/abe1 -U curl 
     #>
     [CmdletBinding()]
     param(
@@ -226,6 +145,8 @@ function Get-SitemapFromGzIndex
         [ValidateSet('iwr', 'curl.exe', 'curl')]
         [alias('RequestClient', 'RequestBy', 'U')]
         $DownloadMethod = 'iwr', #默认使用powershell 内置的Invoke-WebRequest(iwr)
+        # 下载的站点地图是否为gz文件(gzip压缩包)
+        [switch]$gz,
         # 删除下载的gz文件
         [switch]$RemoveGz 
     )
@@ -305,24 +226,34 @@ function Get-SitemapFromGzIndex
     $sitemapIdx = 1
     foreach ($url in $sitemapSubUrls)
     {
-        # 保存gz地图文件
-        $ArchivedFile = "$OutputDir/$sitemapIdx-$($datetime).xml.gz"
-        
-        # Invoke-WebRequest -Uri $url -UseBasicParsing -OutFile $ArchivedFile -Proxy $proxy
-        _download_url $url $ArchivedFile
-        # 解压gz文件
-        # 7z x 方案
-        $7z = Get-Command 7z -ErrorAction SilentlyContinue
-        if ($7z)
+        # 保存地图文件
+        $file = "$OutputDir/$sitemapIdx-$($datetime).xml"
+        $isGz = $gz -or $url.EndsWith(".gz") -or $url.EndsWith(".gzip") 
+        if($isGz)
         {
-            $cmd = "7z x $ArchivedFile -o$OutputDir" 
-            Write-Verbose $cmd
-            $cmd | Invoke-Expression
-            # todo:检查文件是否是压缩或归档文件而不是普通的文本文件,测试或者检查响应码
+
+            $file = "$file.gz"
         }
-        else
+        # Invoke-WebRequest -Uri $url -UseBasicParsing -OutFile $file -Proxy $proxy
+        _download_url $url $file
+        
+        if($isGz)
         {
-            Write-Host "7z不可用,请确保7z已安装并且配置安装目录到环境变量Path"
+
+            # 解压gz文件
+            # 7z x 方案
+            $7z = Get-Command 7z -ErrorAction SilentlyContinue
+            if ($7z)
+            {
+                $cmd = "7z x $file -o$OutputDir" 
+                Write-Verbose $cmd
+                $cmd | Invoke-Expression
+                # todo:检查文件是否是压缩或归档文件而不是普通的文本文件,测试或者检查响应码
+            }
+            else
+            {
+                Write-Host "7z不可用,请确保7z已安装并且配置安装目录到环境变量Path"
+            }
         }
 
         $sitemapIdx += 1
@@ -470,7 +401,7 @@ function Get-SitemapFromLocalFiles
     $fileCount = $files.Count
     if($fileCount -eq 0)
     {
-        Write-Error "未找到符合模式[$Pattern]的文件,请检查输入参数$Pattern"
+        Write-Error "未找到符合模式[$Pattern]的文件"
     }
     else
     {
@@ -627,8 +558,10 @@ function Get-UrlFromSitemap
         $Content,
         # 从文件中提取url
         [Parameter(ParameterSetName = 'FromFile', Position = 0)]
-        [alias('FilePath')]
+        # [alias('FilePath')]
         $Path,
+        [parameter(ParameterSetName = 'FromFile')]
+        [switch]$Recurse,
 
         # 在线url(站点地图链接)中直接获取content解析其中url
         [parameter(ParameterSetName = 'FromUrl')]
@@ -638,7 +571,8 @@ function Get-UrlFromSitemap
         [parameter(ParameterSetName = 'FromUrl')]
         $UserAgent = $agent,
         # 提取url的默认正则表达式模式
-        $Pattern = '<loc[^>]*>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</loc>'
+        $Pattern = '<loc[^>]*>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</loc>',
+        $Output = ""
     )
     
     begin
@@ -657,8 +591,18 @@ function Get-UrlFromSitemap
         }
         elseif($PSCmdlet.ParameterSetName -eq 'FromFile')
         {
-            Write-Verbose "Reading content from file: [$Path]"
-            $Content = Get-Content $Path -Raw
+            if(Test-Path $Path -PathType Container)
+            {
+                Write-Warning "[$Path] is a directory, try to parse all (.xml) files in the directory."
+                $Content = Get-Content "$Path/*.xml" -Verbose -Raw -Recurse:$Recurse
+                $Content = $Content -join "`n"
+            }
+            else
+            {
+
+                Write-Verbose "Reading content from file: [$Path]"
+                $Content = Get-Content $Path -Raw 
+            }
         }
         # 清空空白字符,让正则表达式可以不用考虑空格带来的影响,使得表达式更加简化和高效
         Write-Verbose "Processing String [$($idx)]"
@@ -678,6 +622,11 @@ function Get-UrlFromSitemap
     end
     {
         
+        if($Output)
+        {
+            Write-Host "Output URLs to file: $Output" -ForegroundColor Cyan
+            $urls | Out-File -FilePath $Output -Encoding utf8 -Verbose
+        }
         return $urls
     }
 

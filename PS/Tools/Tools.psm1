@@ -778,11 +778,7 @@ function Start-XpNginx
     # 清理可能潜在的错误
     Approve-NginxValidVhostsConf -NginxVhostConfDir $env:nginx_vhosts_dir
     # 启动nginx前对配置文件语法检查
-    $Test = Start-Process -FilePath nginx `
-        -ArgumentList "-p $NginxHome -c $NginxConf -t" `
-        -NoNewWindow ` # 不启动新窗口,将命令运行结果直接输出到前台
-    -Wait `
-        -PassThru
+    $Test = Start-Process -FilePath nginx -ArgumentList "-p $NginxHome -c $NginxConf -t" -NoNewWindow -Wait -PassThru
     if ($Test.ExitCode -eq 0)
     {
         # 启动 Nginx(隐藏窗口)
@@ -884,27 +880,64 @@ function Restart-Nginx
     }
 }
 
-function Get-PortAndProcess
+function Get-ProcessOfPort
 {
     <# 
     .SYNOPSIS
-    获取指定端口号的进程信息,支持通配符(字符串)
+    获取监听指定端口号的进程信息,端口号的指定支持通配符(字符串)
     .DESCRIPTION
+    默认查询状态处在正在"监听"的进程端口
     如果需要后续使用得到的信息,配合管道符select使用即可
     .EXAMPLE
-    PS> Get-PortAndProcess 900*
+    PS> Get-ProcessOfPort 900*
 
     LocalAddress LocalPort RemoteAddress RemotePort  State OwningProcess ProcessName
     ------------ --------- ------------- ----------  ----- ------------- -----------
     127.0.0.1         9002 0.0.0.0                0 Listen         18908 xp.cn_cgi
+    .EXAMPLE
+    #⚡️[Administrator@CXXUDESK][~\Desktop][14:24:50] PS >
+    Get-ProcessOfPort -Port *80* -ProcessName quickservice*
+
+    LocalAddress  : 127.0.0.1
+    LocalPort     : 8800
+    RemoteAddress : 0.0.0.0
+    RemotePort    : 0
+    State         : Listen
+    OwningProcess : 16256
+    ProcessName   : quickservice
+    
+    .EXAMPLE
+    #⚡️[Administrator@CXXUDESK][~\Desktop][8:58:27] PS >
+    Get-ProcessOfPort -ProcessName mysql*
+
+    LocalAddress  : ::
+    LocalPort     : 33060
+    RemoteAddress : ::
+    RemotePort    : 0
+    State         : Listen
+    OwningProcess : 5396
+    ProcessName   : mysqld
+
+   .EXAMPLE
+    # 查询mysql进程中所有处于established状态的连接
+    Get-ProcessOfPort -ProcessName mysql* -State '*establish*'
+
     #>
     param (
-        $Port
+        $Port = "*",
+        $State = 'Listen',
+        $ProcessName = "*"
     )
-    $res = Get-NetTCPConnection | Where-Object { $_.LocalPort -like $Port } | Select-Object LocalAddress, LocalPort, RemoteAddress, RemotePort, State, OwningProcess, @{Name = 'ProcessName'; Expression = { (Get-Process -Id $_.OwningProcess).Name } } 
+    if(!$Port -and !$ProcessName)
+    {
+        Write-Warning "Port or ProcessName should be specified to filter process!"
+        return $False
+    }
+    $res = Get-NetTCPConnection | Where-Object { $_.LocalPort -like $Port -and $_.State -like $State } | Select-Object LocalAddress, LocalPort, RemoteAddress, RemotePort, State, OwningProcess, @{Name = 'ProcessName'; Expression = { (Get-Process -Id $_.OwningProcess).Name } } | Where-Object { $_.ProcessName -like $ProcessName }
     return $res
     
 }
+
 function Approve-NginxValidVhostsConf
 {
     <# 
@@ -936,7 +969,9 @@ function Approve-NginxValidVhostsConf
                 Write-Warning "vhost: $($vhost.Name) root path is empty!" -WarningAction Continue
                 # 处理下一个
                 continue
-            }else{
+            }
+            else
+            {
                 Write-Verbose "vhost: $($vhost.Name) root path:[ $root ]" -Verbose
             }
 
@@ -958,7 +993,7 @@ function Approve-NginxValidVhostsConf
             if(Test-Path "$root/$KeyPath")
             {
                 Write-Verbose "vhost: $($vhost.Name) $KeyPath exists in root path: $root"  
-                $removeVhost = $false
+                $removeVhost = $falseget
             }
             else
             {
