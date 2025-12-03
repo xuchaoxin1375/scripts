@@ -18,21 +18,6 @@
 .PARAMETER CheckSpecifiedPluginsDirOnly
 只检查指定的插件目录,不清除旧插件,不更新/重新安装新插件
 
-
-.EXAMPLE
-# 更新指定插件(执行两个步骤:1.清除旧插件,2.安装新插件)
-W:\wp_sites\wp_plugins_function\update_plugins.ps1 -PluginSources @"
-W:\wp_sites\wp_plugins\price_pay\paypal-online-payment-for-woocommerce
-"@
-.EXAMPLE
-# 只清除指定插件
-C:\share\df\wp_sites\wp_plugins_functions\update_plugins.ps1 -Depth 2 -WpSitesDir $wp_sites  -RemovePluginsOfSites -PluginsToRemove paypal-online-payment-for-woocommerce
-C:\share\df\wp_sites\wp_plugins_functions\update_plugins.ps1 -Depth 2 -WpSitesDir $my_wp_sites  -RemovePluginsOfSites -PluginsToRemove paypal-online-payment-for-woocommerce
-.EXAMPLE
-
-移除指定插件:采集员:(将此ps1脚本放到桌面)然后执行下面两个语句(记得修改指定插件名称)
-. $desktop/update_plugins.ps1 -Depth 1 -WpSitesDir $wp_sites    -RemovePluginsOfSites -PluginsToRemove paypal-online-payment-for-woocommerce
-. $desktop/update_plugins.ps1 -Depth 1 -WpSitesDir $my_wp_sites    -RemovePluginsOfSites -PluginsToRemove paypal-online-payment-for-woocommerce
 .EXAMPLE
 更新或者安装插件🎈
 # 采集员版本
@@ -45,6 +30,22 @@ $plugin_dir="$desktop/wp-linkpayment-v2"
 $plugin_dir="$wp_plugins/wp-linkpayment-v2" 
 . $desktop/update_plugins.ps1 -WpSitesDir $my_wp_sites -PluginSources $plugin_dir
 . $desktop/update_plugins.ps1 -WpSitesDir $wp_sites -PluginSources $plugin_dir
+
+.EXAMPLE
+# 更新指定插件
+(执行两个步骤:1.清除旧插件,2.安装新插件)
+W:\wp_sites\wp_plugins_function\update_plugins.ps1 -PluginSources @"
+W:\wp_sites\wp_plugins\price_pay\paypal-online-payment-for-woocommerce
+"@
+.EXAMPLE
+# 只清除指定插件
+C:\share\df\wp_sites\wp_plugins_functions\update_plugins.ps1 -Depth 2 -WpSitesDir $wp_sites  -RemovePluginsOfSites -PluginsToRemove paypal-online-payment-for-woocommerce
+C:\share\df\wp_sites\wp_plugins_functions\update_plugins.ps1 -Depth 2 -WpSitesDir $my_wp_sites  -RemovePluginsOfSites -PluginsToRemove paypal-online-payment-for-woocommerce
+.EXAMPLE
+
+移除指定插件:采集员:(将此ps1脚本放到桌面)然后执行下面两个语句(记得修改指定插件名称)
+. $desktop/update_plugins.ps1 -Depth 1 -WpSitesDir $wp_sites    -RemovePluginsOfSites -PluginsToRemove paypal-online-payment-for-woocommerce
+. $desktop/update_plugins.ps1 -Depth 1 -WpSitesDir $my_wp_sites    -RemovePluginsOfSites -PluginsToRemove paypal-online-payment-for-woocommerce
 #>
 [cmdletbinding(SupportsShouldProcess)]
 param(
