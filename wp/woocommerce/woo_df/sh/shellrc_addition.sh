@@ -3,6 +3,7 @@
 
 
 # 引入预定义的别名
+source /www/sh/shell_vars.sh
 source /www/sh/shell_alias.sh
 # 使用windows环境下的编辑器时,例如vscode,注意换行符改为LF,避免多行命令被错误解释🎈
 mark='# Load additional shell configs'

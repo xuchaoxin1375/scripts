@@ -30,6 +30,7 @@ import sys
 import time
 
 import requests
+
 print("spaceship_api_client version:1.0")
 # 跨平台兼容的方法
 home = os.environ.get("USERPROFILE") or os.environ.get("HOME")
@@ -38,12 +39,15 @@ DESKTOP = rf"{home}/Desktop"
 DEPLOY_CONFIGS = f"{DESKTOP}/deploy_configs"
 # 默认配置文件路径
 DEFAULT_CONFIG_PATH = os.path.join(DEPLOY_CONFIGS, "spaceship_config.json")
-TIMEOUT=120  # 默认请求超时时间(秒)
+TIMEOUT = 120  # 默认请求超时时间(秒)
+
 
 class APIClient:
     """spaceship 域名管理API封装客户端程序"""
 
-    def __init__(self, api_key="", api_secret="", account="", auth=None, timeout=TIMEOUT):
+    def __init__(
+        self, api_key="", api_secret="", account="", auth=None, timeout=TIMEOUT
+    ):
         """初始化API客户端"""
         # 配置文件中所有账号信息(如果有读取配置文件的话),字典形式存储可以提高查找效率
         self.auth = auth or {}
@@ -114,7 +118,7 @@ class APIClient:
         #     print(f"account:{self.account}:API请求失败或目标不存在于此账户: {e}", file=sys.stderr)
         #     return None
 
-    def _list_domains(self, take=10, skip=0, order_by="expirationDate"):
+    def _list_domains(self, take=15, skip=0, order_by="expirationDate"):
         """列出域名列表
         调用默认的api一次请求只能列出一部分,并且返回的数据形式是json风格
         这里增加一些代码让其能够以更灵活的方式获取数据,满足更多需求
@@ -140,12 +144,20 @@ class APIClient:
             返回的json包含两个子对象
         """
         all_domains = []
-
+        if take == 0:
+            print("获取账号下的尽可能多的域名(take=0)")
         # 配置单次请求默认参数
         skip_in_fetch = 0
         take_per_fetch = 100
-        # 循环调用list_domains直到所有域名被获取
+        # 统计轮数
+        turn_idx = 1
+        # 循环调用self._list_domains直到所有域名被获取
         while True:
+            print(
+                f"account:{self.account}:正在进行第{turn_idx}轮域名请求,take_per_fetch:{take_per_fetch},skip_in_fetch:{skip_in_fetch}..."
+            )
+            print(f"目前共获取{len(all_domains)}个域名")
+            turn_idx += 1
             resp = self._list_domains(take_per_fetch, skip_in_fetch, order_by)
 
             if not resp or "items" not in resp:
@@ -154,7 +166,9 @@ class APIClient:
                 items = resp.get("items", [])
             else:
                 items = []
-
+            print(
+                f"本轮请求获取{len(items)}个域名:{items[0]['name']}...{items[-1]['name']}"
+            )
             # 如果本轮获取的域名数组(items)非空,则添加到总的items中
             all_domains.extend(items)
 
@@ -169,7 +183,10 @@ class APIClient:
             if len(items) < take_per_fetch:
                 break
         # 截取需要的数量(跳过前skip个)
-        all_domains = all_domains[-take:]
+        # all_domains = all_domains[-take:]
+        if take:
+            all_domains = all_domains[skip : skip + take]
+
         # 将获取的数据构造成规定的格式
         result = {"items": all_domains, "total": len(all_domains)}
         # else:
@@ -232,6 +249,8 @@ class APIClient:
             config (dict): 配置,仅'all'时需要
             output (str): 输出文件路径,为空则仅输出到屏幕
         """
+        if brief:
+            print(f"结果模式:brief")
         self.suspended_domains = []
         if mode == "current":
             domains = self.list_domains(take=0)
@@ -630,14 +649,17 @@ def get_auth(config_path, args=None):
             # account.
         # 选择账号
         if args.account in names:
+            # 直接提供有效账号名,则计算索引
             account_name_idx = names.index(args.account) + 1
         else:
+            # 未提供有效账号名,则列出可用账号供用户选择,并计算索引
             account_name_idx = input(f"请输入选择的账号(1-{len(accounts)}): ")
             account_name_idx = int(account_name_idx)
         if account_name_idx < 1 or account_name_idx > len(accounts):
             print("无效的账号选择")
             sys.exit(1)
         else:
+            # 根据索引选用账号信息
             account = accounts[account_name_idx - 1]
 
             key = account.get("api_key")
@@ -686,7 +708,7 @@ def parse_args():
     # 域名相关
     parser_list_domains = subparsers.add_parser("list-domains", help="列出域名列表")
 
-    parser_list_domains.add_argument("--take", type=int, default=10, help="返回条数")
+    parser_list_domains.add_argument("--take", type=int, default=12, help="返回条数")
     parser_list_domains.add_argument("--skip", type=int, default=0, help="跳过条数")
     parser_list_domains.add_argument(
         "--order_by", type=str, default="expirationDate", help="排序字段"
@@ -937,13 +959,14 @@ def main():
         brief = getattr(args, "brief", False)
 
         if getattr(args, "all", False):
-            # 获取当前账号下的尽可能多的域名
+            # print("获取账号下的尽可能多的域名")
             result = client.list_domains(take=0, skip=args.skip, order_by=args.order_by)
             # print(result,'🎈')
         else:
-            # 获取指定数量的域名(默认10个)
+            take = args.take
+            print(f"获取指定数量{take}的域名,非[all]模式")
             result = client.list_domains(
-                take=args.take, skip=args.skip, order_by=args.order_by
+                take=take, skip=args.skip, order_by=args.order_by
             )
 
         if getattr(args, "names_only", False):
@@ -1000,8 +1023,8 @@ def main():
                 print(json.dumps(result, ensure_ascii=False, indent=2))
             return
         else:
-            # 所有选项分支都没有命中时,执行默认操作
-            result = client.list_domains(args.take, args.skip, args.order_by)
+            
+            # result = client.list_domains(args.take, args.skip, args.order_by)
             # print(json.dumps(result, ensure_ascii=False, indent=2))
             print(result)  # 打印未格式还的json
             return
