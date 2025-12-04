@@ -1283,8 +1283,8 @@ function Update-WpPluginsDFOnServers
     param(
         # 本地插件目录路径🎈
         [parameter(ParameterSetName = 'Path')]
-        [Alias('PluginPath')]
-        $Path ,
+        [Alias('Path')]
+        $PluginPath ,
         # 插件名称(服务器上插件路径的最后一级目录名)
         [parameter(ParameterSetName = 'Name')]
         $PluginName,
@@ -1302,7 +1302,7 @@ function Update-WpPluginsDFOnServers
         {
             
             Write-Host "Updating plugins to $_"
-            Update-WpPluginsDFOnServer -server $_ -PluginPath $Path 
+            Update-WpPluginsDFOnServer -server $_ -PluginPath $PluginPath 
         }
         elseif($PSCmdlet.ParameterSetName -eq 'Name' -and $RemovePlugin)
         {

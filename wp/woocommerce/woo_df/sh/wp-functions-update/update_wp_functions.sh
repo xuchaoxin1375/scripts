@@ -1,12 +1,14 @@
 #!/bin/bash
-
+# 更新重点日志(todo):251204
+# 1.为参数WORKDIR提供接收单个或多个路径的支持,即允许指定1个或多个工作目录,默认为 /www/wwwroot,/wwwdata/wwwroot
+# 2.改进查找WordPress站点的逻辑,使用find命令提高灵活性
 # 用法说明
 usage() {
     echo "用法: $0 [--src <源文件>] [--workdir <工作目录>] [--user <用户名>] [--dry-run] [--blacklist <黑名单文件>] [--whitelist <白名单文件>] [--log <日志文件>]"
     echo "参数说明："
     echo "  --src <源文件>           要覆盖/补充的 functions.php 文件，默认为 /www/wwwroot/functions.php"
-    echo "  --workdir <工作目录>     网站根目录，默认为 /www/wwwroot"
-    echo "  --user <用户名>          仅处理指定用户名下的网站"
+    echo "  --workdir <工作目录>     网站根目录,可指定多个" #(改进此参数及其使用逻辑)
+    echo "  --user <用户名>          仅处理指定用户名称(不要求系统上真实存在此用户)下的网站"
     echo "  --dry-run                预览操作，不实际执行"
     echo "  --blacklist <文件>       黑名单文件（每行一个域名）"
     echo "  --whitelist <文件>       白名单文件（每行一个域名，只操作这些域名）"
@@ -15,8 +17,8 @@ usage() {
 }
 
 # 参数解析
-SRC_FILE="/www/wwwroot/functions.php"
-WORKDIR="/www/wwwroot"
+SRC_FILE="/www/functions.php"
+WORKDIR="/www/wwwroot,/wwwdata/wwwroot"
 USER_NAME=""
 DRY_RUN=false
 BLACKLIST_FILE=""
@@ -73,15 +75,32 @@ log_action() {
     echo "$msg"
     [[ -n "$LOG_FILE" ]] && echo "$msg" >> "$LOG_FILE"
 }
+# 老版本wordpress站路径匹配
+# if [[ -n "$USER_NAME" ]]; then
+#     SITE_PATHS="$WORKDIR/${USER_NAME}/*/wordpress"
+# else
+#     SITE_PATHS="$WORKDIR/*/*/wordpress"
+# fi
 
-# 查找所有 WordPress 站点
-if [[ -n "$USER_NAME" ]]; then
-    SITE_PATHS="$WORKDIR/${USER_NAME}/*/wordpress"
-else
-    SITE_PATHS="$WORKDIR/*/*/wordpress"
-fi
+# 使用find命令查找所有 WordPress 站点
 
-for site in $SITE_PATHS; do
+# 支持多个WORKDIR路径，逗号分隔
+IFS=',' read -ra WORKDIRS <<< "$WORKDIR"
+SITE_PATHS=()
+for dir in "${WORKDIRS[@]}"; do
+    # 若指定USER_NAME，则只查找该用户目录下的wordpress
+    if [[ -n "$USER_NAME" ]]; then
+        while IFS= read -r site; do
+            SITE_PATHS+=("$site")
+        done < <(find "$dir/$USER_NAME" -type d -maxdepth 2  -name wordpress 2>/dev/null)
+    else
+        while IFS= read -r site; do
+            SITE_PATHS+=("$site")
+        done < <(find "$dir" -type d -maxdepth 3 -name wordpress  2>/dev/null)
+    fi
+done
+
+for site in "${SITE_PATHS[@]}"; do
     [[ -d "$site" ]] || continue
     DOMAIN=$(basename "$(dirname "$site")")
     # 白名单优先
