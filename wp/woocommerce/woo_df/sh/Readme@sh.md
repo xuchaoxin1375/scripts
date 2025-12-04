@@ -8,7 +8,27 @@
 
 相关命令行以ubuntu/debian系为例
 
-### 服务器上需要事先安装的东西👺
+## shell配置文件环境预定义
+
+写入一些便于使用的shell配置,比如常用别名和函数,以及预定义变量
+
+```bash
+loading pre-defined variables...
+Loading pre-defined aliases...
+Configs shell configs already exists in /root/.zshrc, skipping insertion...
+Configs shell configs already exists in /root/.bashrc, skipping insertion...
+Loading additional shell config and functions...
+```
+
+具体要写入的配置通过一个脚本管理:`/www/sh/shellrc_addition.sh`,这里面统筹管理外部配置,包括专门定义变量的`shell_vars.sh`,专门定义别名的`shell_alias.sh`,当然将来可能还有更多东西
+
+不过共同点是使用source命令导入配置,并且要安排好顺序
+
+一定要注意,这些shell脚本的换行符(`LF`)不要选择`CRLF`,这容易导致解析错误`\r...`
+
+
+
+## 服务器上需要事先安装的东西👺
 
 包括压缩包解压工具等,如果有就跳过
 
