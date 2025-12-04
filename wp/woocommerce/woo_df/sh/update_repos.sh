@@ -122,8 +122,7 @@ fi
 
 # ===更新配置文件或模板===
 if [ "$UPDATE_CONFIG" -eq 1 ]; then
-    # 让指定目录下所有脚本文件(.sh)可执行🎈
-    find /repos/scripts/wp/woocommerce/woo_df/sh/ -type f \( -name "*.sh" -o -name "*.bash" \) -exec chmod +x {} \;
+
     bash /www/sh/nginx_conf/update_cf_ip_configs.sh
     # 更新符号链接
     # 目录的符号链接(需要小心处理避免出现循环符号链接).可以先移除再创建防止嵌套
@@ -200,3 +199,6 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
     cp -nv  /www/sh/fail2ban/jail.d/nginx-cf-warn.conf /etc/fail2ban/jail.d/nginx-cf-warn.local 
 
 fi
+
+# 让指定目录下所有脚本文件(.sh)可执行🎈
+find /repos/scripts/wp/woocommerce/woo_df/sh/ -type f \( -name "*.sh" -o -name "*.bash" \) -exec chmod +x {} \;
