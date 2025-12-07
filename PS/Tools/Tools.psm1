@@ -3322,9 +3322,13 @@ function Add-PythonAliasPy
     <# 
     .SYNOPSIS
     为当前用户添加Python的别名py
+    .DESCRIPTION
+    如果是通过scoop安装的python,会尝试创建shims目录下python.shim的符号链接
+    其余情况仅尝试创建python.exe的符号链接py.exe
     .PARAMETER pythonPath
-    指定Python的路径(可执行程序的完整路径)，如果为空，则默认使用当前用户的python.exe路径
+    可选的,指定Python的路径(可执行程序的完整路径)，如果为空，则默认使用gcm命令尝试获取当前用户的python.exe路径
     #>
+    [CmdletBinding()]
     param(
         $pythonPath = ""
     )
@@ -3332,10 +3336,23 @@ function Add-PythonAliasPy
     {
 
         $pythonPath = Get-Command python | Select-Object -ExpandProperty Source
+
     }
-    $dir = Split-Path $pythonPath -Parent
-    setx Path $dir
-    $env:path = $env:path + ";" + $dir
-    New-Item -ItemType HardLink -Path $dir/py.exe -Value $pythonPath -Force -Verbose -ErrorAction SilentlyContinue
+
+    $PythonParentDir = Split-Path $pythonPath -Parent
+    # 检查是否通过scoop安装python，需要特殊处理shim
+    if($pythonPath -like "*scoop*")
+    {
+        Write-Verbose "检测当前python版本可能通过scoop安装的python，正在验证scoop可用性"
+        if(Get-Command scoop -ErrorAction SilentlyContinue)
+        {
+            # Write-Host "scoop可用，正在获取python.exe真实路径"
+            # $pythonPath = scoop which python
+            New-Item -ItemType SymbolicLink -Path $PythonParentDir/py.shim -Target $PythonParentDir/python.shim -Verbose -Force
+        }
+    }
+    # $PythonParentDir = Split-Path $pythonPath -Parent
+    New-Item -ItemType SymbolicLink -Path $PythonParentDir/py.exe -Value $pythonPath -Force -Verbose -ErrorAction SilentlyContinue
 }
+
 Register-ArgumentCompleter -CommandName Get-Json -ParameterName Key -ScriptBlock ${function:Get-JsonItemCompleter}
