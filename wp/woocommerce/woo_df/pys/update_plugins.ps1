@@ -39,13 +39,15 @@ W:\wp_sites\wp_plugins\price_pay\paypal-online-payment-for-woocommerce
 "@
 .EXAMPLE
 # 只清除指定插件
-C:\share\df\wp_sites\wp_plugins_functions\update_plugins.ps1 -Depth 2 -WpSitesDir $wp_sites  -RemovePluginsOfSites -PluginsToRemove paypal-online-payment-for-woocommerce
-C:\share\df\wp_sites\wp_plugins_functions\update_plugins.ps1 -Depth 2 -WpSitesDir $my_wp_sites  -RemovePluginsOfSites -PluginsToRemove paypal-online-payment-for-woocommerce
+$plugin="wlstar"
+. $desktop/update_plugins.ps1 -Depth 2 -WpSitesDir $wp_sites  -RemovePluginsOfSites -PluginsToRemove $plugin
+. $desktop/update_plugins.ps1  -Depth 2 -WpSitesDir $my_wp_sites  -RemovePluginsOfSites -PluginsToRemove $plugin
 .EXAMPLE
 
 移除指定插件:采集员:(将此ps1脚本放到桌面)然后执行下面两个语句(记得修改指定插件名称)
-. $desktop/update_plugins.ps1 -Depth 1 -WpSitesDir $wp_sites    -RemovePluginsOfSites -PluginsToRemove paypal-online-payment-for-woocommerce
-. $desktop/update_plugins.ps1 -Depth 1 -WpSitesDir $my_wp_sites    -RemovePluginsOfSites -PluginsToRemove paypal-online-payment-for-woocommerce
+$plugin="fulupay-woocommerce"
+. $desktop/update_plugins.ps1 -Depth 1 -WpSitesDir $wp_sites    -RemovePluginsOfSites -PluginsToRemove $plugin
+. $desktop/update_plugins.ps1 -Depth 1 -WpSitesDir $my_wp_sites    -RemovePluginsOfSites -PluginsToRemove $plugin
 #>
 [cmdletbinding(SupportsShouldProcess)]
 param(

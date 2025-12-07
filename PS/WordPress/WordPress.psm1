@@ -780,7 +780,7 @@ function Deploy-WpSitesLocal
             return $parts
         }
     }
-    $content = $content -replace 'https://', 'http://' -replace 'www.', '' -replace 'http://(.*)com', {$_.Value.ToLower()} 
+    $content = $content -replace 'https://', 'http://' -replace 'www.', '' -replace 'http://(.*)com', { $_.Value.ToLower() } 
     
     $content | Set-Content $Table -Verbose -Force
     # debug
@@ -1224,16 +1224,19 @@ function Update-WpFunctionsphpOnServers
     #>
     param (
         $Path = "$wp_plugins/functions.php",
+        $BashScript = '/www/sh/wp-functions-update/update_wp_functions.sh',
         # 注意,Target目录在远程服务器上应该存在,否则scp上传会失败(scp不会创建缺失的中间路径目录),-r选在跟也不会帮助你创建缺失起始目录
-        $Target = "/www/",
+        $RemoteDirectory = "/www/",
+        $WorkingDirectory = "/www/wwwroot,/wwwdata/wwwroot",
         $ServerConfig = $server_config
     )
     $servers = Get-ServerList -Path $ServerConfig
     $servers.ip | ForEach-Object {
         Write-Host "Updating functions.php to $_"
         # Push-ByScp -Server $_ -SourcePath $Path -TargetPath $Target  -Verbose
-        scp -r $Path root@"$_":/www/
-        ssh root@$_ "bash /www/sh/wp-functions-update/update_wp_functions.sh --src /www/functions.php"
+        scp -r $Path root@"$_":$RemoteDirectory
+        $remoteFunctionsFile = "$RemoteDirectory/functions.php"
+        ssh root@$_ "bash $BashScript --src $remoteFunctionsFile --workdir $WorkingDirectory"
     } 
     
 }
@@ -1285,15 +1288,55 @@ function Update-WpPluginsDFOnServers
         [parameter(ParameterSetName = 'Path')]
         [Alias('Path')]
         $PluginPath ,
+        $WorkingDirectory = "/www/wwwroot,/wwwdata/wwwroot",
         # 插件名称(服务器上插件路径的最后一级目录名)
         [parameter(ParameterSetName = 'Name')]
         $PluginName,
+        $WhiteList = "",
+        $BlackList = "",
         # 删除插件
         [parameter(ParameterSetName = 'Name')]
         [switch]$RemovePlugin,
 
         $ServerConfig = $server_config
     )
+
+    if($WhiteList -and $BlackList)
+    {
+        Write-Error "WhiteList and BlackList can not be used together!"
+    }
+    elseif($WhiteList)
+    {
+        Write-Verbose "Using WhiteList...(only update plugins of sites(domain) in WhiteList)"
+        if (@($WhiteList).Count -gt 1)
+        {
+            Write-Verbose "There are more than one WhiteList, merging them..."
+            $mergeFile = "$desktop/WhiteList-$(Get-DateTimeNumber -Format "yyyyMMddHH" ).txt"
+            Get-Content $WhiteList -Raw | Out-File $mergeFile -Verbose
+        }
+        else
+        {
+            $mergeFile = $WhiteList
+        }
+        $domainListParam = "-WhiteList $mergeFile"
+    }
+    elseif($BlackList)
+    {
+        
+        Write-Verbose "Using BlackList...(skip updating plugins of sites(domain) in BlackList)"
+        if (@($BlackList).Count -gt 1)
+        {
+            Write-Verbose "There are more than one BlackList, merging them..."
+            $mergeFile = "$desktop/BlackList-$(Get-DateTimeNumber -Format "yyyyMMddHH" ).txt"
+            Get-Content $BlackList -Raw | Out-File $mergeFile -Verbose
+        }
+        else
+        {
+            $mergeFile = $BlackList
+        }
+        $domainListParam = "-BlackList $mergeFile"
+    }
+
     $servers = Get-ServerList -Path $ServerConfig
     # Write-Host "servers:$servers"
     # return $servers
@@ -1302,12 +1345,12 @@ function Update-WpPluginsDFOnServers
         {
             
             Write-Host "Updating plugins to $_"
-            Update-WpPluginsDFOnServer -server $_ -PluginPath $PluginPath 
+            "Update-WpPluginsDFOnServer -server $_ -WorkingDirectory '$workingDirectory' -PluginPath $PluginPath $domainListParam" | Invoke-Expression
         }
         elseif($PSCmdlet.ParameterSetName -eq 'Name' -and $RemovePlugin)
         {
             Write-Host "remove plugins[$PluginName] in $_"
-            Update-WpPluginsDFOnServer -server $_ -PluginName $PluginName -RemovePlugin
+            "Update-WpPluginsDFOnServer -server $_ -WorkingDirectory '$workingDirectory' -PluginName $PluginName -RemovePlugin $domainListParam" | Invoke-Expression
         }
     }
 }
@@ -1502,11 +1545,13 @@ function Update-WpPluginsDFOnServer
     <# 
 .SYNOPSIS
     建议配置免密登录，避免每次都输入密码(ssh 密钥注册)
+    
 .DESCRIPTION
     这里直接上传插件文件夹(你需要手动解压,插件可能是zip或者tar.gz)
     也可以添加逻辑来支持上传压缩文件(todo)
     或者指定目录后,添加一个压缩成zip/7z的命令,然后推送到服务器上,最后调用解压和目录复制逻辑
-
+.NOTES
+注意黑名单或白名单文本的换行符(LF),对于(CRLF)需要小心,可能会有意外的效果,这取决于服务器端的脚本实现(update_wp_plugin.sh)
 .EXAMPLE
 Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_pay\mallpay 
 #>
@@ -1525,8 +1570,11 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
         $PluginName,
         
         $RemoteDirectory = "/www"       , # 服务器目标目录
-        $WorkingDirectory = "/www/wwwroot",
+        # 工作目录,可以指定多个(通过逗号分隔,最终用引号包裹),尤其对于多个硬盘的服务器比较有用
+        $WorkingDirectory = "/www/wwwroot,/wwwdata/wwwroot",
         $BashScript = "/www/sh/wp-plugin-update/update_wp_plugin.sh",
+        $WhiteList = "",
+        $BlackList = "",
         # 移除插件而非安装(更新)插件
         [parameter(ParameterSetName = 'RemoveByName')]
         [switch]$RemovePlugin,
@@ -1534,9 +1582,49 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
     )
     
 
-    
+    function Get-DomainListParam
+    {
+        <# 
+        .SYNOPSIS
+        黑白名单文件参数构造和上传
+        #>
+        param(
+            $DomainList,
+            [ValidateSet('WhiteList', 'BlackList')]$ListType
+        )
+        Write-Verbose "Using $ListType ...(only update plugins of sites(domain) in $ListType)"
+        Write-Verbose "Uploading [$DomainList] file to server[$server]..." -Verbose
+        scp -r $DomainList $username@${server}:"$remoteDirectory" 
+        $domainListName = Split-Path -Leaf $DomainList
+        $DomainListPathRemote = "$remoteDirectory/$domainListName"
+        if($ListType -eq "BlackList")
+        {
+            $domainListParam = " --blacklist $DomainListPathRemote "
+        }
+        else
+        {
+            $domainListParam = " --whitelist $DomainListPathRemote "
+        }
+        return $domainListParam
+    }
     # 执行高性能的bash脚本
-    $dryRun = if($Dry) { "--dry-run" }else { "" }
+    $basicCmd = " ssh $username@$server bash $bashScript --workdir $workingDirectory "
+    $dryRunParam = if($Dry) { "--dry-run" }else { "" }
+    if($WhiteList -and $BlackList)
+    {
+        Write-Error "WhiteList and BlackList can not be used together!"
+        return $False
+    }
+    elseif($WhiteList)
+    {
+       
+        $domainListParam = Get-DomainListParam $WhiteList -ListType "WhiteList"
+    }
+    elseif($BlackList)
+    {
+
+        $domainListParam = Get-DomainListParam $BlackList -ListType BlackList
+    }
     if($PSCmdlet.ParameterSetName -eq 'Path')
     {
         $plugin_dir_name = (Split-Path $PluginPath -Leaf) # 🎈
@@ -1550,12 +1638,12 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
         # 执行PHP脚本
         # ssh $username@$server "php $remoteDirectory/$phpScript $remoteDirectory $plugin_dir "
 
-        $cmd = "  ssh $username@$server bash $bashScript --workdir $workingDirectory --source $plugin_dir $dryRun " 
+        $cmd = " $basicCmd --source $plugin_dir $domainListParam $dryRunParam " 
     }
     elseif($PSCmdlet.ParameterSetName -eq 'RemoveByName' -and $RemovePlugin)
     {
         # bash update_wp_plugin.sh --remove mallpay --whitelist whitelist.conf
-        $cmd = "  ssh $username@$server bash $bashScript --workdir $workingDirectory --remove $PluginName $dryRun " 
+        $cmd = " $basicCmd --remove $PluginName $domainListParam  $dryRunParam " 
     }
     
     Write-Verbose "Executing command: $cmd" -Verbose
