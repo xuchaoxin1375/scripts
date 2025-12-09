@@ -48,7 +48,7 @@ from imgcompresser import ImageCompressor
 from downbybrowser import BrowserDownloader
 
 # 异步调用浏览器下载方案的近义词
-BROWSER_DOWNLOADER = ["browser", "playwright"]
+BROWSER_DOWNLOADER = ["browser", "playwright","bro"]
 TIMEOUT = 120
 
 IMG_DIR = "./images"
