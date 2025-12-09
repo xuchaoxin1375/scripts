@@ -177,8 +177,8 @@ def download_by_iwr(
 def download_by_curl(
     url: str,
     output_path="",
-    output_dir="./",
-    use_remote_name: bool = False,  # 新增参数：是否使用远程文件名
+    use_remote_name: bool = False,
+    output_dir_for_remote_name="./",
     user_agent: str = USER_AGENTS[0],
     timeout: int = TIMEOUT,
     silent: bool = False,
@@ -194,12 +194,12 @@ def download_by_curl(
 
         Args:
             url (str): 要下载的文件 URL。
-            output_path (str): 本地保存路径。如果 use_remote_name 为 True，则应为保存目录。
+            output_path (str): 本地保存路径。
+            use_remote_name (bool): 是否使用远程文件名保存（即添加 -O 参数）。
             output_dir (str): 本地保存目录。如果 use_remote_name 为 True时有用
             user_agent (str): 请求头中的 User-Agent 字符串。
             timeout (int): 请求超时时间（秒）。
             silent (bool): 是否静默执行（不输出进度信息）。
-            use_remote_name (bool): 是否使用远程文件名保存（即添加 -O 参数）。
             extra_args (Optional[list]): 其他要传给 curl 的额外参数列表。
 
 
@@ -231,17 +231,17 @@ def download_by_curl(
     # 如果不使用远程文件名，则确保输出目录存在，并拼接文件名
     if not use_remote_name:
         # 确保输出目录存在
-        output_dir = os.path.dirname(output_path)
-        os.makedirs(output_dir, exist_ok=True)
+        output_dir_for_remote_name = os.path.dirname(output_path)
+        os.makedirs(output_dir_for_remote_name, exist_ok=True)
     else:
         # 使用远程文件名,确认输出目录存在
-        os.makedirs(output_dir, exist_ok=True)
+        os.makedirs(output_dir_for_remote_name, exist_ok=True)
         # 将工作目录转换到输出目录
-        os.chdir(output_dir)
+        os.chdir(output_dir_for_remote_name)
         parsed_url = urlparse(url)
         # 这里计算的文件名仅供参考
         output_path = os.path.basename(parsed_url.path)
-        output_path = os.path.abspath(os.path.join(output_dir, output_path))
+        output_path = os.path.abspath(os.path.join(output_dir_for_remote_name, output_path))
         print(f"使用远程文件名, 计算的文件名(basename供参考): {output_path}")
         # output_file = os.path.basename(url)
 
@@ -595,7 +595,7 @@ class ImageDownloader:
                         res = download_by_curl(
                             url=url,
                             output_path=file_path,
-                            output_dir=output_dir,
+                            output_dir_for_remote_name=output_dir,
                             timeout=self.timeout,
                             user_agent=self.headers["User-Agent"],
                             curl_insecure=self.curl_insecure,

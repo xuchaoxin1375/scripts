@@ -798,10 +798,15 @@ function Deploy-WpSitesLocal
         return 
     }
     New-Item -ItemType Directory -Path $MyWpSitesHomeDir -ErrorAction SilentlyContinue -Verbose
-    
-    if(Test-Path $NginxConfigTemplate)
+    # 覆盖小皮nginx配置文件(nginx.conf)
+    if(Test-Path $NginxConfigTemplate -and $NginxConfDir)
     {
         Copy-Item -Path $NginxConfigTemplate -Destination $NginxConfDir\nginx.conf -Verbose -Force
+    }
+    else
+    {
+        Write-Error "Nginx Path Environment Variable not found or invalid: [$NginxConfigTemplate] or [$NginxConfDir]"
+        return $False
     }
     # 部署前检查或启动必要的服务(nginx,mysql,xp.cn_cgi)
     Start-XpNginx

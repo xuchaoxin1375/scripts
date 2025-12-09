@@ -560,7 +560,7 @@ www.d2.com    李
         Get-DictView $SiteOwnersDict
         # 谨慎使用write-output和孤立表达式,他们会在函数结束时加入返回值一起返回,导致不符合预期的情况
         #检查siteOwnersDict
-        Write-Verbose "SiteOwnersDict:"
+        # Write-Verbose "SiteOwnersDict:"
         # $dictParis = $SiteOwnersDict.GetEnumerator()
     }
     if($VerbosePreference)
@@ -573,7 +573,7 @@ www.d2.com    李
     # 解析表头结构
     $columns = $Structure -split ','
     $structureFieldsNumber = $columns.Count
-    Write-Debug "structureFieldsNumber:[$structureFieldsNumber]"
+    Write-Verbose "structureFieldsNumber:[$structureFieldsNumber]" -Verbose
 
     # 解析行数据
     if($TableMode -in @('Auto', 'FromFile') -and (Test-Path $Table))
@@ -591,7 +591,8 @@ www.d2.com    李
 
 
     # $Table = $Table -replace '(?:https?:\/\/)?(?:www\.)?([a-zA-Z0-9-]+(?:\.[a-zA-Z]{2,})+)', '$1 '
-    $Table = $Table -replace '\b(?:https?:\/\/)?([\w.-]+\.[a-zA-Z]{2,})(?:\/|\s|$)', '$1 '
+    # 将网站url->域名
+    $Table = $Table -replace '\b(?:https?:\/\/)?([\w.-]+\.[a-zA-Z]{2,})(?:/|\s)(?:[^\w])', '$1 '
     if(!$KeepWWW)
     {
         $Table = $Table -replace 'www\.', ''
