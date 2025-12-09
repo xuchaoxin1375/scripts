@@ -45,7 +45,10 @@ from urllib3.util.retry import Retry
 
 from filenamehandler import FilenameHandler
 from imgcompresser import ImageCompressor
+from downbybrowser import BrowserDownloader
 
+# 异步调用浏览器下载方案的近义词
+BROWSER_DOWNLOADER = ["browser", "playwright"]
 TIMEOUT = 120
 
 IMG_DIR = "./images"
@@ -241,7 +244,9 @@ def download_by_curl(
         parsed_url = urlparse(url)
         # 这里计算的文件名仅供参考
         output_path = os.path.basename(parsed_url.path)
-        output_path = os.path.abspath(os.path.join(output_dir_for_remote_name, output_path))
+        output_path = os.path.abspath(
+            os.path.join(output_dir_for_remote_name, output_path)
+        )
         print(f"使用远程文件名, 计算的文件名(basename供参考): {output_path}")
         # output_file = os.path.basename(url)
 
@@ -418,6 +423,7 @@ class ImageDownloader:
         curl_insecure=False,
         resize_threshold=RESIZE_THRESHOLD,
         fake_format=True,
+        headless=False,
     ):
         """
         初始化图片下载器
@@ -460,6 +466,17 @@ class ImageDownloader:
             resize_threshold=resize_threshold,
             fake_format=fake_format,
         )
+        self.bd = BrowserDownloader(
+            headless=headless,
+            ic=self.ic,
+            # compress_quality=compress_quality,
+            # quality_rule=quality_rule,
+            # output_format=output_format,
+            # remove_original=remove_original,
+            # resize_threshold=resize_threshold,
+            # fake_format=fake_format,
+        )
+        self.headless = headless
 
         # if retry_times < 1:
         #     warning("retry_times smaller than 1, no retry will be performed.")
@@ -609,6 +626,16 @@ class ImageDownloader:
                             timeout=self.timeout,
                             ps_version=self.ps_version,
                         )
+                    elif self.use_shutil in ["browser", "playwright"]:
+                        browser = self.bd
+                        res = browser.batch_download(
+                            tasks=[(url, file_path)],
+                        )
+                        # res = download_by_browser(
+                        #     tasks=[(url, file_path)],
+                        #     timeout=self.timeout,
+                        # )
+
                     if res:
                         self.stats.add_success()
                 else:
@@ -625,7 +652,7 @@ class ImageDownloader:
 
                     self.download_by_py(url, response=response, file_path=file_path)
                     self.stats.add_success()
-                # 执行压缩任务
+                # 执行压缩任务🎈
                 quality = self.compress_quality
                 if quality or self.quality_rule:
                     # 判断下载的图片大小是否高于100KB,如果是则压缩图片
@@ -813,35 +840,42 @@ class ImageDownloader:
         # 创建输出目录
         os.makedirs(name=output_dir, exist_ok=True)
 
-        # 使用线程池下载图片
-        with concurrent.futures.ThreadPoolExecutor(
-            max_workers=self.max_workers
-        ) as executor:
-            # 使用字典解析式创建和存储任务{future: (filename, url)}
-            future_to_pair = {
-                executor.submit(
-                    self._download_single_image,
-                    url=url,
-                    output_dir=output_dir,
-                    filename=filename,  # 此参数取值来自对可迭代对象name_url_pairs解析出来的filename,url元组中的第一个分量
-                    default_ext=default_ext,
-                ): (filename, url)
-                for filename, url in name_url_pairs
-            }
+        # 普通同步方案:使用线程池下载图片
+        if self.use_shutil and self.use_shutil not in BROWSER_DOWNLOADER:
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=self.max_workers
+            ) as executor:
+                # 使用字典解析式创建和存储任务{future: (filename, url)}
+                future_to_pair = {
+                    executor.submit(
+                        self._download_single_image,
+                        url=url,
+                        output_dir=output_dir,
+                        filename=filename,  # 此参数取值来自对可迭代对象name_url_pairs解析出来的filename,url元组中的第一个分量
+                        default_ext=default_ext,
+                    ): (filename, url)
+                    for filename, url in name_url_pairs
+                }
 
-            for future in concurrent.futures.as_completed(fs=future_to_pair):
-                filename, url = future_to_pair[future]
-                try:
-                    future.result()
-                    # success = future.result()
-                    # if success:
-                    #     self.stats.add_success()
-                    # else:
-                    #     self.stats.add_failed(url)
-                except Exception as e:
-                    failed_dict = {filename: url}
-                    exception("处理%s下载时发生异常, 错误:%s", failed_dict, str(e))
-                    self.stats.add_failed(url=url, name=filename)
+                for future in concurrent.futures.as_completed(fs=future_to_pair):
+                    filename, url = future_to_pair[future]
+                    try:
+                        future.result()
+                        # success = future.result()
+                        # if success:
+                        #     self.stats.add_success()
+                        # else:
+                        #     self.stats.add_failed(url)
+                    except Exception as e:
+                        failed_dict = {filename: url}
+                        exception("处理%s下载时发生异常, 错误:%s", failed_dict, str(e))
+                        self.stats.add_failed(url=url, name=filename)
+        else:
+            # 异步方案(调用浏览器下载)
+            # for filename, url in name_url_pairs:
+            url_name_pairs = [(url, filename) for filename, url in name_url_pairs]
+            browser = self.bd
+            browser.batch_download(tasks=url_name_pairs, output_dir=output_dir)
 
         # 完成下载，打印统计信息
         self.stats.finish(record_faild=self.record_failed)

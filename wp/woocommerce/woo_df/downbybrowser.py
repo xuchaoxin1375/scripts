@@ -6,6 +6,7 @@ import re
 import shutil
 import unicodedata
 from typing import Any, Dict, List, Optional, Tuple, Union
+from imgcompresser import ImageCompressor  # 假设 imgcompresser.py 在同一环境
 from urllib.parse import urlparse
 
 from playwright.async_api import BrowserContext, Page, async_playwright
@@ -65,6 +66,14 @@ class BrowserDownloader:
         delay_range: Tuple[float, float] = (1.0, 3.0),
         max_concurrency: int = 3,
         max_retries: int = 2,
+        # 图片压缩相关参数
+        ic: ImageCompressor | None = None,
+        compress_quality: int = 0,
+        quality_rule: str = "",
+        output_format: str = "webp",
+        remove_original: bool = False,
+        resize_threshold: Tuple[int, int] = (1000, 800),
+        fake_format: bool = True,
     ):
         """
         初始化下载器。
@@ -75,12 +84,27 @@ class BrowserDownloader:
             delay_range: 每次下载任务之间随机延迟的时间范围 (min, max)。
             max_concurrency: 最大并发工作线程数。
             max_retries: 单个 URL 下载失败后的最大重试次数。
+            ic: 图片压缩器实例。
+            compress_quality: 图片压缩质量 (0-100)。0 表示不压缩 (或遵循 quality_rule)。
+            quality_rule: 基于文件大小的压缩规则 (如 '1M=80, 500K=90')。
+            output_format: 图片压缩后的输出格式 (如 'webp', 'jpeg')。
+            remove_original: 图片压缩后是否移除原始文件。
+            resize_threshold: 仅当图片宽度或高度超过此阈值时才进行调整大小 (宽, 高)。
+            fake_format: 是否允许压缩时伪造文件名扩展名 (如将 JPG 压缩为 WEBP 但保留 .jpg 扩展)。
         """
         self.headless = headless
         self.timeout = timeout
         self.delay_range = delay_range
         self.max_concurrency = max_concurrency
         self.max_retries = max_retries
+        # 图片压缩相关参数
+        self.ic = ic
+        self.compress_quality = compress_quality
+        self.output_format = output_format
+        # self.quality_rule = quality_rule
+        # self.remove_original = remove_original
+        # self.resize_threshold = resize_threshold
+        # self.fake_format = fake_format
 
     @staticmethod
     def _read_proxies(proxy_input: Optional[Union[str, List[str]]]) -> List[str]:
@@ -112,7 +136,6 @@ class BrowserDownloader:
         # 认为已经是代理列表
         return [p for p in proxy_input if p]
 
-    # ... (_get_proxy_config 保持不变) ...
     def _get_proxy_config(
         self, proxy_list: List[str], worker_id: int
     ) -> Optional[Dict[str, str]]:
@@ -125,16 +148,17 @@ class BrowserDownloader:
 
     async def _download_single_url(
         self,
-        page: Page,  # 接收复用的 page 对象
+        page: Page,  # 复用的 page 对象
         url: str,
         output_path: str,
-        user_agent: Optional[
-            str
-        ] = None,  # 新增 user_agent 参数，但实际上 Playwright Context 已经设置了
+        user_agent: Optional[str] = None,  # Playwright Context 已经设置了
         retry_count: int = 0,
         proxy_info: str = "直连",
     ) -> bool:
-        """核心下载逻辑：下载单个 URL 并保存到指定路径 (复用 Page)。"""
+        """
+        核心下载逻辑：下载单个 URL 并保存到指定路径 (复用 Page)。
+        下载完成后自动进行图片压缩处理（如启用）。
+        """
         start_time = asyncio.get_event_loop().time()
         display_url = url
 
@@ -193,6 +217,22 @@ class BrowserDownloader:
             logger.info(
                 f"成功下载: {display_url} [类型: {content_type}] [大小: {size_info}] [耗时: {time_info}]"
             )
+
+            # --- 图片压缩处理（如启用）---
+            # 仅对图片类型进行压缩
+            if self.ic and content_type.startswith("image/"):
+                try:
+                    logger.info(f"尝试压缩图片: {output_path}")
+                    self.ic.compress_image(
+                        input_path=output_path,
+                        output_format=self.output_format,
+                        quality=self.compress_quality,
+                        overwrite=True,
+                    )
+                    logger.info(f"图片压缩完成: {output_path}")
+                except Exception as e:
+                    logger.warning(f"图片压缩失败: {output_path}, 错误: {e}")
+
             return True
 
         except Exception as e:
@@ -220,6 +260,7 @@ class BrowserDownloader:
         while True:
             try:
                 # 任务数据结构: (url, output_path, user_agent)
+                # user_agent 实际上只在 context 初始化时生效，但保留字段以兼容未来的需求
                 url, output_path, user_agent = await queue.get()
                 try:
                     await self._download_single_url(
@@ -239,11 +280,14 @@ class BrowserDownloader:
 
     async def _run_async(
         self,
-        tasks,  # 任务包含 (url, output_path, user_agent)
+        tasks: List[
+            Tuple[str, str, Optional[str]]
+        ],  # 任务包含 (url, output_path, user_agent)
         proxy_input: Optional[Union[str, List[str]]] = None,
     ) -> None:
         """异步运行并发下载任务，实现 Context 和 Page 复用。"""
         proxy_list = self._read_proxies(proxy_input)
+        # 代理配置列表，如果 proxy_list 为空，则用 [None] 表示直连
         proxy_configs = proxy_list if proxy_list else [None]
 
         logger.info(
@@ -254,7 +298,7 @@ class BrowserDownloader:
             launch_options = {
                 "headless": self.headless,
                 "args": [
-                    "--disable-blink-features=AutomationControlled",
+                    "--disable-blink-features=AutomationControlled",  # 反爬虫伪装
                 ],
             }
 
@@ -264,13 +308,15 @@ class BrowserDownloader:
             for task in tasks:
                 await queue.put(task)
 
+            # 实际工作线程数不超过任务数和最大并发数
             actual_workers = min(self.max_concurrency, len(tasks))
+            # 存储 (Context, Page, 代理信息字符串)
             worker_slots: List[Tuple[BrowserContext, Page, str]] = []
 
             for i in range(actual_workers):
                 worker_proxy_url = proxy_configs[i % len(proxy_configs)]
 
-                # 默认 User Agent，如果任务提供了新的 UA，会在 Page.goto 时自动应用
+                # 默认 User Agent
                 default_user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 
                 context_args: Dict[str, Any] = {
@@ -284,6 +330,7 @@ class BrowserDownloader:
                 else:
                     p_info = "直连"
 
+                # 每个 worker 拥有自己的 Context 和 Page，以隔离 Session/Cookie/Cache/Proxy
                 ctx = await browser.new_context(**context_args)
                 pg = await ctx.new_page()
                 worker_slots.append((ctx, pg, p_info))
@@ -309,111 +356,127 @@ class BrowserDownloader:
             await browser.close()
             logger.info("所有下载任务已完成。")
 
+    def batch_download(
+        self,
+        tasks: List[Tuple[str, str]],
+        proxy_input: Optional[Union[str, List[str]]] = None,
+        output_dir: Optional[str] = None,
+    ):
+        """
+        [公共方法] 通过 Playwright 浏览器环境批量下载网络资源。
 
-def download_by_browser(
-    tasks: List[Tuple[str, str]],
-    headless: bool = True,
-    timeout: int = 30,
-    delay_range: Tuple[float, float] = (1.0, 3.0),
-    max_concurrency: int = 3,
-    max_retries: int = 2,
-    proxy_input = None,
-) -> None:
-    """
-    通过 Playwright 浏览器环境下载网络资源 (批量接口)。
+        所有下载参数 (headless, timeout, concurrency, retries, delay) 继承自 Downloader 实例。
 
-    Args:
-        tasks: 任务列表，每个元素是 (url, output_path) 的元组。
-        ... (其他参数同上) ...
-    """
-    if not tasks:
-        logger.warning("任务列表为空，无需下载。")
-        return
+        Args:
+            tasks: 任务列表，每个元素是 (url, output_path) 的元组。
+            proxy_input: 代理输入，可以是单个代理字符串、代理列表或代理文件路径。
+            output_dir: 可选，如果指定，将所有 output_path 仅为文件名的任务补全为 output_dir/filename。
+        Returns:
+            True 表示下载过程完成 (不代表所有任务成功)。
+        """
+        if not tasks:
+            logger.warning("任务列表为空，无需下载。")
+            return True
 
-    # 扩展任务列表以包含 user_agent (保持 None)
-    full_tasks = [(url, output_path, None) for url, output_path in tasks]
+        # 如果指定了 output_dir，则将所有 output_path 仅为文件名的任务补全为 output_dir/filename
+        processed_tasks = []
+        for url, output_path in tasks:
+            # 判断 output_path 是否为简单的文件名（没有目录分隔符且非绝对路径）
+            if (
+                output_dir
+                and (not os.path.isabs(output_path))
+                and (os.path.dirname(output_path) == "")
+            ):
+                # 仅为文件名，补全为 output_dir/filename
+                output_path = os.path.join(output_dir, output_path)
+            processed_tasks.append((url, output_path, None))  # None for user_agent
 
-    downloader = BrowserDownloader(
-        headless=headless,
-        timeout=timeout,
-        delay_range=delay_range,
-        max_concurrency=max_concurrency,
-        max_retries=max_retries,
-    )
+        logger.info(f"--- 启动批量链接下载任务 (总数: {len(processed_tasks)}) ---")
 
-    try:
-        asyncio.run(downloader._run_async(full_tasks, proxy_input))
-    except KeyboardInterrupt:
-        logger.warning("任务被用户中断。")
-    except Exception as e:
-        logger.error(f"下载任务发生致命错误: {e}")
+        try:
+            # 使用 self._run_async 启动异步下载
+            asyncio.run(self._run_async(processed_tasks, proxy_input))
+        except KeyboardInterrupt:
+            logger.warning("任务被用户中断。")
+        except Exception as e:
+            logger.error(f"下载任务发生致命错误: {e}")
+        return True
+
+    def single_download(
+        self,
+        url: str,
+        output_path: str = "",
+        use_remote_name: bool = False,
+        output_dir_for_remote_name: str = "./",
+        user_agent: Optional[str] = None,
+        proxy_input: Optional[Union[str, List[str]]] = None,
+        # 单个下载时，可以临时覆盖重试次数
+        retries: Optional[int] = None,
+    ) -> None:
+        """
+        [公共方法] 通过 Playwright 浏览器环境下载单个网络资源。
+
+        注意: 此方法将临时设置 max_concurrency=1 且 delay_range=(0.0, 0.0) 执行下载。
+
+        Args:
+            url: 必须填写的要请求的 URL。
+            output_path: 指定保存文件的完整路径。如果提供，它将覆盖 use_remote_name 的逻辑。
+            use_remote_name: 是否使用 URL 猜测的文件名作为保存文件名。
+            output_dir_for_remote_name: 如果 use_remote_name 为 True，指定保存的目录。
+            user_agent: 可选，为此次请求设置 User-Agent 字符串 (目前 Playwright 在 Context 级别设置，此处保留以备将来使用)。
+            proxy_input: 代理配置 (同 batch_download)。
+            retries: 可选，覆盖 Downloader 实例的 max_retries 设置。
+        """
+
+        # 1. 确定最终的保存路径 (output_path 优先)
+        final_output_path = output_path
+        if not final_output_path:
+            if use_remote_name:
+                # 猜测文件名
+                guessed_filename = _guess_filename_from_url(url)
+                final_output_path = os.path.join(
+                    output_dir_for_remote_name, guessed_filename
+                )
+            else:
+                # 如果两者都没有指定，默认保存到当前目录，文件名根据 URL 猜测
+                guessed_filename = _guess_filename_from_url(url)
+                final_output_path = os.path.join("./", guessed_filename)
+
+        # 2. 准备任务列表 (单个任务)
+        tasks = [
+            (url, final_output_path, user_agent)
+        ]  # 任务结构 (url, output_path, user_agent)
+
+        logger.info(f"--- 启动单个链接下载任务: {url} -> {final_output_path} ---")
+
+        # 3. 临时覆盖并发和延迟，创建临时 Downloader 实例来执行
+        # 使用 self 的配置，但固定并发=1，延迟=(0.0, 0.0)
+        temp_downloader = BrowserDownloader(
+            headless=self.headless,
+            timeout=self.timeout,
+            delay_range=(0.0, 0.0),  # 单个任务不需要延迟
+            max_concurrency=1,  # 单个任务固定并发为 1
+            max_retries=retries if retries is not None else self.max_retries,
+            # 继承图片压缩配置
+            compress_quality=self.compress_quality,
+            # quality_rule=self.quality_rule,
+            # output_format=self.output_format,
+            # remove_original=self.remove_original,
+            # resize_threshold=self.resize_threshold,
+            # fake_format=self.fake_format,
+        )
+
+        try:
+            # 4. 运行异步任务
+            asyncio.run(temp_downloader._run_async(tasks, proxy_input))
+            logger.info(f"单个链接下载完成: {final_output_path}")
+        except KeyboardInterrupt:
+            logger.warning("任务被用户中断。")
+        except Exception as e:
+            logger.error(f"下载任务发生致命错误: {e}")
 
 
-def download_by_browser_single(
-    url: str,
-    output_path: str = "",
-    use_remote_name: bool = False,
-    output_dir_for_remote_name: str = "./",
-    user_agent: Optional[str] = None,
-    timeout: int = 30,
-    headless: bool = True,
-    proxy_input: Optional[Union[str, List[str]]] = None,
-    retries: int = 2,
-) -> None:
-    """
-    通过 Playwright 浏览器环境下载单个网络资源。
-
-    Args:
-        url: 必须填写的要请求的 URL。
-        output_path: 指定保存文件的完整路径。如果提供，它将覆盖 use_remote_name 的逻辑。
-        use_remote_name: 是否使用 URL 猜测的文件名作为保存文件名。
-        output_dir_for_remote_name: 如果 use_remote_name 为 True，指定保存的目录。
-        user_agent: 可选，为此次请求设置 User-Agent 字符串。
-        timeout: 请求超时时间 (秒)。
-        headless: 是否启用无头模式。
-        proxy_input: 代理配置 (同 download_by_browser)。
-        retries: 单个 URL 下载失败后的最大重试次数。
-    """
-
-    # 1. 确定最终的保存路径 (output_path 优先)
-    final_output_path = output_path
-    if not final_output_path:
-        if use_remote_name:
-            # 猜测文件名
-            guessed_filename = _guess_filename_from_url(url)
-            final_output_path = os.path.join(
-                output_dir_for_remote_name, guessed_filename
-            )
-        else:
-            # 如果两者都没有指定，默认保存到当前目录，文件名根据 URL 猜测
-            guessed_filename = _guess_filename_from_url(url)
-            final_output_path = os.path.join("./", guessed_filename)
-
-    # 2. 准备任务列表 (单个任务)
-    tasks = [
-        (url, final_output_path, user_agent)
-    ]  # 任务结构 (url, output_path, user_agent)
-
-    logger.info(f"--- 启动单个链接下载任务 ---")
-
-    # 3. 实例化 Downloader (使用 max_concurrency=1，因为只有一个任务)
-    downloader = BrowserDownloader(
-        headless=headless,
-        timeout=timeout,
-        # 单个任务时，不进行延迟，或者只使用较短的固定延迟 (0, 0)
-        delay_range=(0.0, 0.0),
-        max_concurrency=1,
-        max_retries=retries,
-    )
-
-    try:
-        # 4. 运行异步任务
-        asyncio.run(downloader._run_async(tasks, proxy_input))
-        logger.info(f"单个链接下载完成: {final_output_path}")
-    except KeyboardInterrupt:
-        logger.warning("任务被用户中断。")
-    except Exception as e:
-        logger.error(f"下载任务发生致命错误: {e}")
+# --- 原始的测试函数现在使用 BrowserDownloader 实例 ---
 
 
 def test_batch_download():
@@ -436,10 +499,6 @@ def test_batch_download():
         (test_url_2, output_path_2),
         (test_url_3, output_path_3),
         (test_url_21, output_path_21),
-        # 添加更多任务以测试并发和复用
-        # ("https://example.com/1", os.path.join(output_dir, "example_1.html")),
-        # ("https://example.com/2", os.path.join(output_dir, "example_2.html")),
-        # ("https://example.com/3", os.path.join(output_dir, "example_3.html")),
     ]
 
     # 清理旧文件和目录以便测试
@@ -447,13 +506,22 @@ def test_batch_download():
         shutil.rmtree(output_dir, ignore_errors=True)
     os.makedirs(output_dir, exist_ok=True)
 
-    print("--- 启动并发下载任务 (无头模式，并发=3，Page 复用) ---")
-    download_by_browser(
-        tasks=download_tasks,
+    # 1. 实例化 Downloader，设置公共配置
+    downloader = BrowserDownloader(
         headless=False,
-        max_concurrency=3,  # 此时只启动 3 个 Page/Context，所有任务将共享这 3 个 Page
+        max_concurrency=3,
         delay_range=(0.5, 1.0),
+        max_retries=1,
+        # quality_rule="",
+    )
+
+    print("--- 启动并发下载任务 (无头模式，并发=3，Page 复用) ---")
+
+    # 2. 调用实例方法进行下载
+    downloader.batch_download(
+        tasks=download_tasks,
         proxy_input="http://127.0.0.1:8800",
+        output_dir=output_dir,  # 即使这里指定了 output_dir，但因为 tasks 中是完整路径，它不会生效
     )
 
 
@@ -466,26 +534,31 @@ def test_single_download():
     output_dir = "./browser_downloads_single_test"
 
     if os.path.exists(output_dir):
-
         shutil.rmtree(output_dir, ignore_errors=True)
     os.makedirs(output_dir, exist_ok=True)
+
+    # 1. 实例化 Downloader，设置公共配置 (例如，全局设置 headless=True)
+    downloader = BrowserDownloader(
+        headless=False,  # 可以全局设置
+        timeout=60,
+    )
 
     print("\n\n=== 示例 1: 指定完整 output_path (图片) ===")
     output_path_1 = os.path.join(output_dir, "bike24_test_011234.jpg")
 
-    download_by_browser_single(
+    # 2. 调用实例方法进行下载
+    downloader.single_download(
         url=test_url_1,
         output_path=output_path_1,
-        headless=False,
-        timeout=60,
+        # headless=False, # 可以继承或覆盖
+        # timeout=60, # 继承或覆盖
     )
 
     print("\n\n=== 示例 2: 使用 use_remote_name 猜测文件名 (HTML) ===")
-    download_by_browser_single(
+    downloader.single_download(
         url=test_url_4,
         use_remote_name=True,
         output_dir_for_remote_name=output_dir,
-        headless=False,
     )
 
 

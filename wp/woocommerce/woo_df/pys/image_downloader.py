@@ -22,9 +22,10 @@ from comutils import (
     get_data_from_csv,
     # split_multi,
 )
-from imgdown import ImageDownloader, USER_AGENTS
+from imgdown import ImageDownloader, USER_AGENTS,BROWSER_DOWNLOADER
 from filenamehandler import FilenameHandler as fh
 from wooenums import CSVProductFields
+
 
 RESIZE_THRESHOLD = (1000, 800)
 DEAFULT_EXT = ".webp"
@@ -198,7 +199,7 @@ def parse_args():
         "-U",
         "--use-shutil",
         default="",
-        choices=["request", "curl", "iwr", "playwright"],
+        choices=["request", "curl", "iwr"]+BROWSER_DOWNLOADER,
         # action="store_true",
         help="使用python 请求或外部工具下载图片(request,curl,iwr,playwright)",
     )
