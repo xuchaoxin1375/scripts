@@ -466,13 +466,25 @@ function Get-CRLFChecker
     <# 
     .SYNOPSIS
     将问文本文件中的回车符,换行符都显示出来
+    .PARAMETER Path
+    文件路径
+    .PARAMETER ConvertToLFStyle
+    是否将回车符\r转为换行符\n
+    .PARAMETER Replace
+    是否将回车符\r转为换行符\n,并保存到原文件中(需要ConvertToLFStyle参数启用的情况下才会生效)
+    
     .DESCRIPTION
     多行文本将被视为一行,CR,LF(\r,\n)将被显示为[CR],[LF]
+    .EXAMPLE
+    # 将readme.md文件中的回车符\r移除(保留换行符\n),使得文本文件LF化
+    Get-CRLFChecker .\readme.md -ConvertToLFStyle -Replace
     #>
     param (
         $Path,
-        [switch]$ConvertToLFStyle
+        [switch]$ConvertToLFStyle,
+        [switch]$Replace
     )
+    # 这里是关键,读取使用Raw方式读取,否则结果因为分割会丢失`\r`
     $raw = Get-Content $Path -Raw
     $isCRLFStyle = $raw -match "`r"
     if($isCRLFStyle)
@@ -484,7 +496,7 @@ function Get-CRLFChecker
         Write-Host "The file: [$Path] is LF style file(without carriage char)!"
 
     }
-
+    # 将回车,换行符替换为可见的标记,便于用户查看
     $res = $raw -replace "`n", "[LF]" -replace "`r", "[CR]"
     
     if($ConvertToLFStyle)
@@ -495,12 +507,22 @@ function Get-CRLFChecker
         
         # 移除CR回车符
         $res = $raw -replace "`r", ""
-        
+        # 写入经过LF化的新内容到新文件中
         $LFFile = "$fileDir/$fileName.LF$fileExtension"
         $res | Out-File $LFFile -Encoding utf8 -NoNewline
         
         Write-Verbose "File has been converted to LF style![$LFFile]" -Verbose
-        $res = $res -replace "`n", "[LF]"
+        if($Replace)
+        {
+            Write-Host "Replace the file: [$Path] with LF style file: [$LFFile]"
+            # 可选备份
+            # Move-Item $Path "$Path.bak" -Force -Verbose
+            # 覆盖原文件(LF化)
+            Move-Item $LFFile $Path -Force -Verbose
+        }
+        # 准备适合用户审阅的输出格式的字符串
+        $resDisplay = $res -replace "`n", "[LF]"
+        $res = $resDisplay
     }
     $res | Select-String -Pattern "\[CR\]|\[LF\]" -AllMatches 
 }
