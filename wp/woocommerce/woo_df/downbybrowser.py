@@ -8,7 +8,6 @@ import unicodedata
 from typing import Any, Dict, List, Optional, Tuple, Union
 from imgcompresser import ImageCompressor  # 假设 imgcompresser.py 在同一环境
 from urllib.parse import urlparse
-
 from playwright.async_api import BrowserContext, Page, async_playwright
 
 # 配置一个基本的logger，避免在外部调用时没有handler
@@ -63,17 +62,13 @@ class BrowserDownloader:
         self,
         headless: bool = True,
         timeout: int = 30,
-        delay_range: Tuple[float, float] = (1.0, 3.0),
+        delay_range: Tuple[float, float] = (0, 0),
         max_concurrency: int = 3,
-        max_retries: int = 2,
+        max_retries: int = 1,
         # 图片压缩相关参数
         ic: ImageCompressor | None = None,
         compress_quality: int = 0,
-        quality_rule: str = "",
         output_format: str = "webp",
-        remove_original: bool = False,
-        resize_threshold: Tuple[int, int] = (1000, 800),
-        fake_format: bool = True,
     ):
         """
         初始化下载器。
@@ -101,16 +96,12 @@ class BrowserDownloader:
         self.ic = ic
         self.compress_quality = compress_quality
         self.output_format = output_format
-        # self.quality_rule = quality_rule
-        # self.remove_original = remove_original
-        # self.resize_threshold = resize_threshold
-        # self.fake_format = fake_format
 
     @staticmethod
     def _read_proxies(proxy_input: Optional[Union[str, List[str]]]) -> List[str]:
         """
         从文件路径或直接的代理字符串中读取代理列表。
-        一个 None 或空列表/空字符串表示直连。
+        一个 None 或空列表/空字符串表示直连(取决于环境代理)。
         """
         if not proxy_input:
             return []
@@ -148,12 +139,13 @@ class BrowserDownloader:
 
     async def _download_single_url(
         self,
-        page: Page,  # 复用的 page 对象
+        page: Page,
         url: str,
         output_path: str,
-        user_agent: Optional[str] = None,  # Playwright Context 已经设置了
+        user_agent: Optional[str] = None,
         retry_count: int = 0,
         proxy_info: str = "直连",
+        progress_info: Optional[str] = None,
     ) -> bool:
         """
         核心下载逻辑：下载单个 URL 并保存到指定路径 (复用 Page)。
@@ -167,7 +159,7 @@ class BrowserDownloader:
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir, exist_ok=True)
 
-        # 检查是否已存在 (简单检查，不实现恢复机制)
+        # 检查是否已存在
         if (
             os.path.exists(output_path)
             and os.path.getsize(output_path) > 0
@@ -178,7 +170,7 @@ class BrowserDownloader:
 
         try:
             logger.info(
-                f"开始请求: {display_url} [代理: {proxy_info}] -> {os.path.basename(output_path)}"
+                f"🚀{progress_info if progress_info else ''} 开始请求: {display_url} [代理: {proxy_info}] -> {output_path} ".strip()
             )
 
             # 使用复用的 page 发起请求
@@ -191,7 +183,11 @@ class BrowserDownloader:
                 raise Exception("未获取到有效响应 (Response is None)")
 
             if response.status >= 400:
-                raise Exception(f"HTTP 状态码错误: {response.status}")
+                if response.status == 404:
+                    logger.error(f"404 未找到: {display_url}，直接放弃不重试。", extra={"progress": "FAIL"})
+                    return False
+                else:
+                    raise Exception(f"HTTP 状态码错误: {response.status}")
 
             content_type = (
                 response.headers.get("content-type", "").split(";")[0].strip().lower()
@@ -215,7 +211,7 @@ class BrowserDownloader:
             time_info = f"{elapsed_time:.2f}s"
 
             logger.info(
-                f"成功下载: {display_url} [类型: {content_type}] [大小: {size_info}] [耗时: {time_info}]"
+                f"{progress_info if progress_info else ''} 成功下载: {display_url} [类型: {content_type}] [大小: {size_info}] [耗时: {time_info}] ".strip()
             )
 
             # --- 图片压缩处理（如启用）---
@@ -255,19 +251,32 @@ class BrowserDownloader:
                 )
                 return False
 
-    async def _worker(self, page: Page, queue: asyncio.Queue, proxy_info: str) -> None:
-        """工作线程，复用 page 对象从队列中获取任务并执行下载。"""
+    async def _worker(
+        self,
+        page: Page,
+        queue: asyncio.Queue,
+        proxy_info: str,
+        completed_count: List[int],
+        total_tasks: int,
+        lock: asyncio.Lock,
+    ) -> None:
+        """工作线程，复用 page 对象从队列中获取任务并执行下载。进度信息融合到请求提示语句。"""
         while True:
             try:
-                # 任务数据结构: (url, output_path, user_agent)
-                # user_agent 实际上只在 context 初始化时生效，但保留字段以兼容未来的需求
                 url, output_path, user_agent = await queue.get()
+                progress_info = None
+                async with lock:
+                    completed_count[0] += 1
+                    progress_info = f"[{completed_count[0]}/{total_tasks}]"
                 try:
                     await self._download_single_url(
-                        page, url, output_path, user_agent, proxy_info=proxy_info
+                        page,
+                        url,
+                        output_path,
+                        user_agent,
+                        proxy_info=proxy_info,
+                        progress_info=progress_info,
                     )
-
-                    # 随机延迟
                     if self.delay_range[0] > 0 or self.delay_range[1] > 0:
                         delay = random.uniform(*self.delay_range)
                         await asyncio.sleep(delay)
@@ -280,68 +289,67 @@ class BrowserDownloader:
 
     async def _run_async(
         self,
-        tasks: List[
-            Tuple[str, str, Optional[str]]
-        ],  # 任务包含 (url, output_path, user_agent)
+        tasks: List[Tuple[str, str, Optional[str]]],
         proxy_input: Optional[Union[str, List[str]]] = None,
-    ) -> None:
+    ):
         """异步运行并发下载任务，实现 Context 和 Page 复用。"""
         proxy_list = self._read_proxies(proxy_input)
-        # 代理配置列表，如果 proxy_list 为空，则用 [None] 表示直连
-        proxy_configs = proxy_list if proxy_list else [None]
+        proxy_configs = proxy_list if proxy_list else [""]
 
         logger.info(
             f"配置: 并发={self.max_concurrency}, 代理池大小={len(proxy_configs)}"
         )
 
         async with async_playwright() as p:
-            launch_options = {
+            launch_options: Dict[str, Any] = {
                 "headless": self.headless,
                 "args": [
-                    "--disable-blink-features=AutomationControlled",  # 反爬虫伪装
+                    "--disable-blink-features=AutomationControlled",
                 ],
             }
 
             browser = await p.chromium.launch(**launch_options)
 
-            queue = asyncio.Queue()
+            queue: asyncio.Queue[Tuple[str, str, Optional[str]]] = asyncio.Queue()
             for task in tasks:
                 await queue.put(task)
 
-            # 实际工作线程数不超过任务数和最大并发数
             actual_workers = min(self.max_concurrency, len(tasks))
-            # 存储 (Context, Page, 代理信息字符串)
             worker_slots: List[Tuple[BrowserContext, Page, str]] = []
 
             for i in range(actual_workers):
                 worker_proxy_url = proxy_configs[i % len(proxy_configs)]
-
-                # 默认 User Agent
                 default_user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-
                 context_args: Dict[str, Any] = {
-                    "user_agent": default_user_agent,  # Context 级别的 UA
+                    "user_agent": default_user_agent,
                     "viewport": {"width": 1366, "height": 768},
                 }
-
                 if worker_proxy_url:
                     context_args["proxy"] = {"server": worker_proxy_url}
                     p_info = worker_proxy_url
                 else:
-                    p_info = "直连"
-
-                # 每个 worker 拥有自己的 Context 和 Page，以隔离 Session/Cookie/Cache/Proxy
+                    p_info = "环境代理"
                 ctx = await browser.new_context(**context_args)
                 pg = await ctx.new_page()
                 worker_slots.append((ctx, pg, p_info))
 
+            # 进度计数器和锁
+            completed_count = [0]  # 用列表包裹以便可变
+            total_tasks = len(tasks)
+            lock = asyncio.Lock()
+
             workers = []
             for ctx, pg, p_info in worker_slots:
-                workers.append(asyncio.create_task(self._worker(pg, queue, p_info)))
+                workers.append(
+                    asyncio.create_task(
+                        self._worker(
+                            pg, queue, p_info, completed_count, total_tasks, lock
+                        )
+                    )
+                )
 
-            await queue.join()  # 等待所有任务完成
+            await queue.join()
 
-            # 清理资源
             for w in workers:
                 w.cancel()
             await asyncio.gather(*workers, return_exceptions=True)
@@ -353,7 +361,6 @@ class BrowserDownloader:
                 except:
                     pass
 
-            await browser.close()
             logger.info("所有下载任务已完成。")
 
     def batch_download(
@@ -379,7 +386,7 @@ class BrowserDownloader:
             return True
 
         # 如果指定了 output_dir，则将所有 output_path 仅为文件名的任务补全为 output_dir/filename
-        processed_tasks = []
+        processed_tasks: List[Tuple[str, str, Optional[str]]] = []
         for url, output_path in tasks:
             # 判断 output_path 是否为简单的文件名（没有目录分隔符且非绝对路径）
             if (

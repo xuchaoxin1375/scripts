@@ -48,7 +48,7 @@ from imgcompresser import ImageCompressor
 from downbybrowser import BrowserDownloader
 
 # 异步调用浏览器下载方案的近义词
-BROWSER_DOWNLOADER = ["browser", "playwright","bro"]
+BROWSER_DOWNLOADER = ["browser", "playwright", "bro", "pro"]
 TIMEOUT = 120
 
 IMG_DIR = "./images"
@@ -447,7 +447,7 @@ class ImageDownloader:
         self.retry_times = retry_times
         self.verify_ssl = verify_ssl
         self.cookies = cookies
-        self.use_shutil = use_shutil
+        # self.download_method = use_shutil
         self.download_method = download_method
         self.stats = DownloadStatistics()
         self.compress_quality = compress_quality
@@ -469,6 +469,7 @@ class ImageDownloader:
         self.bd = BrowserDownloader(
             headless=headless,
             ic=self.ic,
+            max_concurrency=max_workers,
             # compress_quality=compress_quality,
             # quality_rule=quality_rule,
             # output_format=output_format,
@@ -604,9 +605,11 @@ class ImageDownloader:
                     logger.info("文件已存在,跳过: %s", file_path)
                     self.stats.add_skipped()
                     return True
-                elif self.use_shutil:
+                # elif self.use_shutil:
+                else:
                     res = False
-                    if self.use_shutil == "curl":
+
+                    if self.download_method == "curl":
                         # print("使用shutil(curl)下载图片")
                         # 目前使用curl下载图片(将来可能扩展)
                         res = download_by_curl(
@@ -617,7 +620,7 @@ class ImageDownloader:
                             user_agent=self.headers["User-Agent"],
                             curl_insecure=self.curl_insecure,
                         )
-                    elif self.use_shutil == "iwr":
+                    elif self.download_method == "iwr":
                         # print("使用shutil(iwr)下载图片")
                         res = download_by_iwr(
                             url=url,
@@ -626,7 +629,7 @@ class ImageDownloader:
                             timeout=self.timeout,
                             ps_version=self.ps_version,
                         )
-                    elif self.use_shutil in ["browser", "playwright"]:
+                    elif self.download_method in BROWSER_DOWNLOADER:
                         browser = self.bd
                         res = browser.batch_download(
                             tasks=[(url, file_path)],
@@ -635,23 +638,27 @@ class ImageDownloader:
                         #     tasks=[(url, file_path)],
                         #     timeout=self.timeout,
                         # )
+                    # elif self.use_shutil == "request":
+                    else:
+                        # 通过python发送get请求获取包含文件(图片)的响应
+                        # (酌情启用stream参数可以实现流式下载,减少内存占用,配合后面的iter_content方法使用)
+                        response = self.session.get(
+                            url=url,
+                            timeout=self.timeout,
+                            verify=self.verify_ssl,
+                            stream=True,
+                            # proxies={"https": self.get_proxy()},  # 使用代理
+                        )
+                        response.raise_for_status()
+
+                        res = self.download_by_py(
+                            url, response=response, file_path=file_path
+                        )
+                        # self.stats.add_success()
 
                     if res:
                         self.stats.add_success()
-                else:
-                    # 通过python发送get请求获取包含文件(图片)的响应
-                    # (酌情启用stream参数可以实现流式下载,减少内存占用,配合后面的iter_content方法使用)
-                    response = self.session.get(
-                        url=url,
-                        timeout=self.timeout,
-                        verify=self.verify_ssl,
-                        stream=True,
-                        # proxies={"https": self.get_proxy()},  # 使用代理
-                    )
-                    response.raise_for_status()
 
-                    self.download_by_py(url, response=response, file_path=file_path)
-                    self.stats.add_success()
                 # 执行压缩任务🎈
                 quality = self.compress_quality
                 if quality or self.quality_rule:
@@ -730,6 +737,7 @@ class ImageDownloader:
 
         file_size = os.path.getsize(file_path)
         logger.info("成功下载: %s -> %s (%d 字节)", url, file_path, file_size)
+        return file_size
 
     def _is_image_response(self, response):
         """检查response是否是图片类型"""
@@ -841,7 +849,7 @@ class ImageDownloader:
         os.makedirs(name=output_dir, exist_ok=True)
 
         # 普通同步方案:使用线程池下载图片
-        if self.use_shutil and self.use_shutil not in BROWSER_DOWNLOADER:
+        if self.download_method and self.download_method not in BROWSER_DOWNLOADER:
             with concurrent.futures.ThreadPoolExecutor(
                 max_workers=self.max_workers
             ) as executor:

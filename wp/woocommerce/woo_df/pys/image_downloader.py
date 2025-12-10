@@ -199,7 +199,7 @@ def parse_args():
         "-U",
         "--use-shutil",
         "--download-method",
-        default="",
+        default="request",
         choices=["request", "curl", "iwr"] + BROWSER_DOWNLOADER,
         # action="store_true",
         help=f"使用python 请求或外部工具下载图片(request,curl,iwr)以及浏览器方案playwright,统一词{BROWSER_DOWNLOADER}",
