@@ -220,7 +220,8 @@ def parse_args():
         help="在体积没有缩小的情况下,将原图片的后缀更改为指定的输出格式相同",
     )
     parser.add_argument(
-        "-h",
+        # 默认情况下，argparse.ArgumentParser会自动为帮助信息（help message）添加一个-h/--help选项，这导致了与这里不能新-h选项,否则发生冲突
+        "-H",
         "--headless",
         action="store_true",
         help="是否使用无头模式(不显示浏览器窗口)下载图片(当指定浏览器下载是有效)",
