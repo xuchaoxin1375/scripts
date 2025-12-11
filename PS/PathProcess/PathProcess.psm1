@@ -236,9 +236,23 @@ function Get-PathStyle
 
         [ValidateSet("Windows", "posix")]
         [string]$Style = "Windows",
-        [switch]$DoubleBackSlash
+        [switch]$DoubleBackSlash,
+        # 保留url协议链接(比如http://,https://)的双斜杠
+        # $Url2SlashPattern="https?://"
+        [alias('KeepUrlLikeParts')]
+        [switch]$KeepColon2Slash
     )
-
+        
+    begin
+    {
+        $separaterPattern = '[/\\]+'
+        # if($KeepColon2Slash)
+        # {
+        #     # 保留url协议链接://这个部分,其余的斜杠和反斜杠则被匹配并待替换
+        #     $separaterPattern = '(?)'
+        # }
+        
+    }
     process
     {
         # 对每个管道输入项进行处理
@@ -248,6 +262,12 @@ function Get-PathStyle
         }
         # 去掉左右多余空格
         $normalizedPath = $Path.Trim()
+        if ($KeepColon2Slash)
+        {
+            $tag = '__COLON_2SLASH__'
+            $colon2Slash = '://'
+            $normalizedPath = $normalizedPath -replace $colon2Slash, $tag
+        }
         Write-Debug "normalize path: [$normalizedPath]" 
         switch ($Style)
         {
@@ -259,13 +279,19 @@ function Get-PathStyle
                 {
                     $separator = '\\'
                 }
-                $convertedPath = $normalizedPath -replace '[/\\]+', $separator # \号本身在正则中需要转义为\\
+                $convertedPath = $normalizedPath -replace $separaterPattern, $separator # \号本身在正则中需要转义为\\
             }
             "posix"
             {
                 # 替换所有反斜杠为正斜杠
-                $convertedPath = $normalizedPath -replace '[/\\]+', '/'
+                $separator = '/'
+                $convertedPath = $normalizedPath -replace $separaterPattern, $separator
             }
+        }
+        # 替换标记
+        if($KeepColon2Slash)
+        {
+            $convertedPath = $convertedPath -replace $tag, $colon2Slash
         }
         Write-Verbose "convert process: $path -> $convertedPath"
     }end

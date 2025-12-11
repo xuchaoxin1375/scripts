@@ -799,7 +799,7 @@ function Deploy-WpSitesLocal
     }
     New-Item -ItemType Directory -Path $MyWpSitesHomeDir -ErrorAction SilentlyContinue -Verbose
     # 覆盖小皮nginx配置文件(nginx.conf)
-    if(Test-Path $NginxConfigTemplate -and $NginxConfDir)
+    if((Test-Path $NginxConfigTemplate) -and $NginxConfDir)
     {
         Copy-Item -Path $NginxConfigTemplate -Destination $NginxConfDir\nginx.conf -Verbose -Force
     }
@@ -976,7 +976,9 @@ python $pys\woo_uploader_db.py --update-slugs  --csv-path $CsvDirHome --img-dir 
 Get-WpSitePacks -SiteDirecotry $destination -Mode zstd
 
 
-"@
+"@| Get-PathStyle -Style posix -KeepColon2Slash
+
+            
             # 更新计数器$order
             $order++
             Write-Host $scripts
