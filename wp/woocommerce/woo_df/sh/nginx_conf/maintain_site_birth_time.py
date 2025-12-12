@@ -2,16 +2,17 @@ import os
 import pandas as pd
 from datetime import datetime
 import re
-# SITE_BIRTH_FILE = "/www/site_birth.csv"
-# SITE_TABLE = "/www/site_table.conf"
+
+SITE_BIRTH_CSV = "/www/site_birth.csv"
+SITE_TABLE_CONF = "/www/site_table.conf"
+# 本批次建站列表备份文件
+SITE_TABLE_BAK = "/www/site_table.conf.bak"
 
 # 网站创建日期记录表(csv)是记录累加的(各个批次的总和),而conf文件是覆盖的
-SITE_BIRTH_CSV = "./site_birth.csv"
-SITE_TABLE_CONF = "./site_table.conf"
-# 本批次建站列表备份文件(可选)
-SITE_TABLE_BAK = "./site_table.conf.bak"
+# SITE_BIRTH_CSV = "./site_birth.csv"
+# SITE_TABLE_CONF = "./site_table.conf"
 
-NGINX_VHOST_ROOT='/www/server/panel/vhost/nginx'
+NGINX_VHOST_ROOT = "/www/server/panel/vhost/nginx"
 
 # csv表头
 TABLE_HEADER = ["domain", "birth_time"]
@@ -54,3 +55,11 @@ print(f"site_birth_lines:{site_birth_lines}")
 df = pd.concat([df, pd.DataFrame(site_birth_lines)], ignore_index=True)
 df.to_csv(SITE_BIRTH_CSV, index=False)
 print(f"{df}")
+
+# 将表格文件备份(重命名的方式)
+# 移除旧备份文件(如果存在的话)
+if os.path.exists(SITE_TABLE_BAK):
+    os.remove(SITE_TABLE_BAK)
+    
+os.rename(SITE_TABLE_CONF, SITE_TABLE_BAK)
+# os.system(f"cp {SITE_TABLE_CONF} {SITE_TABLE_BAK}")

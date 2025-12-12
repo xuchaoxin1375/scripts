@@ -2,9 +2,11 @@ import os
 import pandas as pd
 from datetime import datetime
 import re
+# SITE_BIRTH_CSV = "./site_birth.csv"
+# SITE_TABLE_CONF = "./site_table.conf"
 
-SITE_BIRTH_CSV = "./site_birth.csv"
-SITE_TABLE_CONF = "./site_table.conf"
+SITE_BIRTH_CSV = "/www/site_birth.csv"
+SITE_TABLE_CONF = "/www/site_table.conf"
 # 本批次建站列表备份文件(可选)
 SITE_TABLE_BAK = "./site_table.conf.bak"
 
