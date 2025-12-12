@@ -153,8 +153,8 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
     fi
     cp /www/sh/nginx_conf/com.conf /www/server/nginx/conf/com.conf -fv
     cp /www/sh/nginx_conf/com_limit_rate.conf /www/server/nginx/conf/com_limit_rate.conf -fv
-    cp /www/sh/nginx_conf/com_limit_basic.conf /www/server/nginx/conf/com_basic.conf -fv
-    
+    cp /www/sh/nginx_conf/com_basic.conf /www/server/nginx/conf/com_basic.conf -fv
+
     cp /www/sh/nginx_conf/nginx.conf /www/server/nginx/conf/nginx.repos.conf -fv
     # todo
     # 如果启用了 --force 选项,则备份宝塔的 nginx.conf 文件 (/www/server/nginx/conf/nginx.conf)
