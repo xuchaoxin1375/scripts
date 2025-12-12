@@ -167,8 +167,10 @@ class APIClient:
             else:
                 items = []
             print(
-                f"本轮请求获取{len(items)}个域名:{items[0]['name']}...{items[-1]['name']}"
+                f"本轮请求获取{len(items)}个域名"
             )
+            # {items[0]['name']}...{items[-1]['name']}
+
             # 如果本轮获取的域名数组(items)非空,则添加到总的items中
             all_domains.extend(items)
 
@@ -964,7 +966,7 @@ def main():
             # print(result,'🎈')
         else:
             take = args.take
-            print(f"获取指定数量{take}的域名,非[all]模式")
+            print(f"非[all]模式,尝试获取指定数量{take}(个)域名")
             result = client.list_domains(
                 take=take, skip=args.skip, order_by=args.order_by
             )
