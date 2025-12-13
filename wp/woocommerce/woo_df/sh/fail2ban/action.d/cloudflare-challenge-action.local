@@ -1,0 +1,13 @@
+# 引用 fail2ban自带action模板中的cloudflare.conf 文件,并填写你的 Cloudflare API Key 和 Email
+[INCLUDES]
+before = cloudflare.conf
+
+# 修改actionban
+[Definition]
+actionban = curl -s -o /dev/null -X POST <_cf_api_prms> \
+            -d '{"mode":"challenge","configuration":{"target":"<cftarget>","value":"<ip>"},"notes":"Fail2Ban <name>"}' \
+            <_cf_api_url>
+
+
+
+

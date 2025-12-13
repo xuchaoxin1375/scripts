@@ -70,7 +70,7 @@ function Push-ByScp
 
         [alias("ScpUser")]
         $User='root',
- 
+        [alias("Path")]
         $SourcePath,
 
         [alias('TargetPath','Target')]

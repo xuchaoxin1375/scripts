@@ -23,22 +23,15 @@ bash和python脚本均可实现此任务,不过考虑到任务具有一定的复
 
 确定网站创建日期的基本方案有2种:
 
-- 每次创建网站的时候,顺便维护一个**建站日期表**,比如使用一个csv格式的文本文件(`SITE_BIRTH_CSV`),包含两个字段:域名,创建日期;(`domain,birth_time`)
+- 每次创建网站的时候,顺便维护一个**建站日期表**,比如使用一个csv格式的文本文件(`SITE_BIRTH_CSV`),包含两个字段(或可选的第三个字段):域名,创建日期;(`domain,birth_time,status`)
 
   ```csv
-  domain,birth_time
-  domain1.com,2025-10-10 18:07:17
-  domain2.com,2025-11-04 18:07:17
-  domain3.com,2025-11-12 18:07:17
-  domain4.com,2025-12-02 18:07:17
-  domain11.com,2025-12-12 18:09:22
-  domain13.com,2025-12-12 18:09:22
-  domain14.com,2025-12-12 18:09:22
-  domain15.com,2025-12-12 18:09:22
-  
+  domain,birth_time,status
+  domain1.com,2025-10-10 18:07:17,young
+  domain2.com,2025-11-04 18:07:17,young
   ```
 
-  
+  其中status可以让各个站的状态(新/老)更直观.
 
 - 利用系统的文件系统,`stat`命令查看文件的创建日期(`birth_time`),这个方案容易受到一些文件操作的影响,从而可靠性不佳
 

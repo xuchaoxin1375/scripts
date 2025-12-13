@@ -1096,6 +1096,8 @@ function Deploy-WpSitesOnline
     Add-CFZoneConfig -CfConfig $CfConfig -Account $CfAccount -Table $FromTable -Ip $hst
     # 创建宝塔空站点
     Deploy-BatchSiteBTOnline -Server $HostName -ServerConfig $ServerConfig -Table $FromTable -SitesHome $SitesHome 
+    # 上传本批次域名列表到对应服务器上
+    Push-ByScp -Server $HostName -Path $FromTable -Destination /www/site_table.conf
     # 重启nginx 
     Restart-NginxOnHost -HostName $hst
     # 等待环节
