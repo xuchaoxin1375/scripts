@@ -58,7 +58,12 @@ bash和python脚本均可实现此任务,不过考虑到任务具有一定的复
       #CUSTOM-CONFIG-END
   ```
 
-  
+
+### 选择csv记录建站日期的理由
+
+- 格式简单,一行表示一个网站的信息
+- 可以借助excel等表格软件快速批量手动填充操作,可视化排序等操作,或者pandas库批量计算处理
+- 新增字段简单,比json更容易更改
 
 ## 方案
 
@@ -138,3 +143,109 @@ server
 
 定期运行此脚本检查各个网站的配置文件,执行恰当的维护
 
+### 脚本的使用
+
+经过上述讨论,本文实现的脚本基于python操作csv,实现的一套功能相对完善的脚本
+
+大致的用法如下(以实际的脚本帮助输出为准,这里仅供参考)
+
+脚本实现两个方面的功能,一个是维护一个可靠的csv(建站日期表),另一方面实现基于该csv格式配套的读取计算操作,并根据计算结果更新需要更新的nginx站点配置文件,并可选的更新csv的status等更新日期
+
+> 对于update模式,提供了预览选项,可以在正式更新网站配置文件前看下哪些网站配置将发生变化
+
+```bash
+#⚡️[Administrator@CXXUDESK][~\Desktop\woo_df\sh][22:27:19] PS >
+ py .\nginx_conf\update_nginx_vhosts.py -h
+usage: update_nginx_vhosts.py [-h] {maintain,update} ...
+
+nginx站点配置批量管理工具: 维护日志或批量更新nginx虚拟主机配置文件。
+
+positional arguments:
+  {maintain,update}
+    maintain         维护站点创建日志文件(site_birth.csv)
+    update           批量更新nginx虚拟主机配置文件为新站/老站模式，并可同步更新建站日期表状态。
+
+options:
+  -h, --help         show this help message and exit
+```
+
+
+
+```bash
+#( 12/13/25@10:35PM )( root@s3 ):/www/sh/nginx_conf@main✗✗✗
+   py ./update_nginx_vhosts.py maintain -h
+usage: update_nginx_vhosts.py maintain [-h] [-d] [-k {first,last}]
+
+options:
+  -h, --help            show this help message and exit
+  -d, --drop-duplicate  删除重复项(默认保留第一个)
+  -k {first,last}, --keep {first,last}
+                        保留重复项中的哪一个(默认first)
+                        
+#( 12/13/25@10:20PM )( root@s3 ):/www/sh/nginx_conf@main✗✗✗
+   py ./update_nginx_vhosts.py update -h     
+usage: update_nginx_vhosts.py update [-h] [-m {old,young}] [-q] [-n] [-a] [-d DAYS] [--dry-run]
+
+options:
+  -h, --help            show this help message and exit
+  -m {old,young}, --mode {old,young}
+                        目标模式: old(老站) 或 young(新站)，默认old
+  -q, --only-status-changed
+                        仅当计算出来的状态和原日志中的状态不一致时才处理
+  -n, --no-update-log   不更新建站日期表(status/update_time)
+  -a, --all-sites       对所有站点强制切换到目标模式(不区分当前状态)
+  -d DAYS, --days DAYS  新老站天数阈值(默认14天)
+  --dry-run             仅打印将被处理的站点和配置文件,不做实际修改
+```
+
+#### 主要用途
+
+主要用来自动检测服务器上哪些站点随着时间的推移从新站变成老站,并将这些不在新(不在年轻)的站配置模式更改到老站模式
+
+关键部分在于定期扫描建站日期表(csv),根据扫描结果计算需要更新配置的站点配置文件,将计算出来的老站(尤其是从新站已经变成老站的这部分)配置文件检查并更新.
+
+> 这里实现了一个快速模式,借助于csv中的status字段的状态,如果已经是old,就不需要处理了,针对性更强(默认之前的处理都是可靠的,已经都将配置更改为老站模式配置)
+
+每次新建一批站点时,都应该经该批次的网站(域名)列表文件(site_table.conf)上传到服务指定位置(建议统一位置路径`/www/site_table.conf`)
+
+然后调用`update_nginx_vhosts.py`的 `maintain`子命令更新(维护)该服务器专属的**建站日期表**(csv)
+
+这样服务器定期调用`update_nginx_vhosts.py`的`update`子命令来扫描此csv文件并做必要的配置文件修改
+
+> 注意,每次修改完配置文件都要及时重载nginx配置,使其生效.
+>
+> ```bash
+> nginx -t && nginx -s reload
+> ```
+>
+> 
+
+#### 附加用途
+
+考虑到历史遗留问题,比如对一个老服务器不是此套代码,这需要手动干预某个环节,将老站的配置统一批量更改的需要,脚本提供了一些选项,供迁移使用.
+
+这个部分主要使用的`update`子命令,`maintain`子命令不怎么用
+
+例如,要把之前的服务器上的部分或者所有网站(从excel中拷贝对应的网站列表即可,还可以选择将建站日期一起),粘贴到csv文件中,这可以用excel编辑,或者vscode中的一些插件,比如`edit csv`像编辑表格一样容易
+
+然后使用类似`py ./update_nginx_vhosts.py update -m old -a`,使用`-a`选项将忽略csv中的`domain`列外的其他列,即不区分日期和状态,将csv中列出的所有站配置更改到mode指定的模式(比如`old`)
+
+### 定时运行
+
+crontab中添加行
+
+> 要在每天 00:00 运行脚本，`crontab` 的时间格式应为 `0 0 * * *`。
+
+```bash
+0 0 * * * python /www/sh/nginx_conf/update_nginx_vhosts.py update -m old
+```
+
+此外,`crontab` 任务不会直接在终端显示输出。为了方便调试和检查任务是否成功，建议将输出重定向到日志文件：
+
+```bash
+0 0 * * * python /www/sh/nginx_conf/update_nginx_vhosts.py update -m old >> /var/log/nginx_update.log 2>&1
+```
+
+> `maintain`子命令不需要定期运行,其只需要在新站创建的时候解析域名列表维护一下csv文件即可,这是`maintain`的运行时机.
+>
+> 可见,`maintain,update`两个子命令的相对独立性.

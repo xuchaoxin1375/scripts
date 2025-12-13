@@ -14,4 +14,7 @@ alias fbcs='fail2ban-client status'
 alias fbregex='fail2ban-regex'
 alias fbt='fail2ban-testcases'
 # windows端wsl的shell脚本目录快速跳转
-# alias wslsh="cd $wslsh"
+# python
+alias python=python3
+alias py=python3
+alias pip=pip3
