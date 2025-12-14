@@ -52,8 +52,9 @@ function Restart-NginxOnHost
 {
     <# 
 .SYNOPSIS
-更新nginx配置并使其生效
-通过重启指定主机的Nginx服务配置
+更新nginx配置(插入公共配置)
+调用相应脚本,维护指定服务器上的[建站日期表]
+重启指定主机的Nginx服务配置
 
 默认仅重载nginx配置
 强制可以杀死nginx进程再启动nginx
@@ -78,7 +79,9 @@ function Restart-NginxOnHost
 "@
     
     # bash /www/sh/nginx_conf/update_nginx_vhosts_log_format.sh -d /www/server/panel/vhost/nginx 
-    
+
+    # 维护服务器上的建站日期表(可以丢到后台运行)
+    ssh root@$HostName "python /www/sh/nginx_conf/update_nginx_vhosts.py maintain -d -k first"
     if ($Force)
     {
         ssh $User@$HostName " pkill -9 nginx ; nginx "
