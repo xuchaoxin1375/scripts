@@ -22,13 +22,13 @@ tg telegram
 # store_exe "$store\WinStore.App.exe"
 #busybox指令集中提供的linux风格的命令
 #后缀使用_b来表示区分
+
 RLF removeLF
 curl_b curl.exe 
 e exit
 ali cxxuAli
 restart reboot
 # djmi pmgmi
-touch New-File
 # dj django-admin
 # mk pmgmk
 cfw clash_run

@@ -1049,6 +1049,8 @@ function Deploy-WpSitesOnline
 
         # 本批次要部署的网站域名表
         [alias('Table')]$FromTable = "$Desktop/table.conf",
+        # 网站域名表在服务器上的路径
+        $RemoteSiteTable = '/www/site_table.conf',
 
         # 域名绑定cf后解析cf返回的查询结果来传递给spaceship更新域名的nameservers的中间表格
         [alias('DomainTable')]$ToTable = "$Desktop/domains_nameservers.csv",
@@ -1094,11 +1096,13 @@ function Deploy-WpSitesOnline
     
     # 配置cf域名解析,邮箱转发和代理保护(位置1)
     Add-CFZoneConfig -CfConfig $CfConfig -Account $CfAccount -Table $FromTable -Ip $hst
-    # 将以下命令丢到后台运行(start-job)
+
+    # 将以下命令丢到后台运行(start-job)🎈
+    
     # 创建宝塔空站点
     Deploy-BatchSiteBTOnline -Server $HostName -ServerConfig $ServerConfig -Table $FromTable -SitesHome $SitesHome 
     # 上传本批次域名列表到对应服务器上
-    Push-ByScp -Server $HostName -Path $FromTable -Destination /www/site_table.conf
+    Push-ByScp -Server $HostName -Path $FromTable -Destination $RemoteSiteTable
 
 
     # 重启nginx 

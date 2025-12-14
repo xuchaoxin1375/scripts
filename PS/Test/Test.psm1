@@ -51,6 +51,58 @@
     要求：PowerShell 7+
     HTTP 请求默认使用 HEAD 方法（节省带宽），失败时自动 fallback 到 GET。
 #>
+function push1by1
+{
+    <# 
+    .SYNOPSIS
+    测试后台作业特性:边计算边返回内容,并且便于模拟耗时任务,时间可以通过参数自行指定
+    每秒返回1个数字,默认返回10个数
+    .PARAMETER Count
+    运行时间,也是打印的数字数量(通常填正整数)
+    .PARAMETER ShowProgress
+    打印数字时显示总数,每个数的打印会以[$i/$Count]的格式打印,这种情况下,可以用来简单区分运行在不同后台作业的此函数
+    .PARAMETER ShowDateTime
+    打印日期时间
+    .DESCRIPTION
+    .NOTES
+    可以考虑支持打印时间
+    #>
+    [cmdletBinding()]
+    param(
+        $Count = 10,
+        $JobMark="",
+        [switch]$ShowProgress,
+        [switch]$ShowDateTime
+    )
+    if ($Count -and $Count.GetType().Name -match 'Int|Decimal|Double')
+    {
+        Write-Verbose "$Count 是数值类型 (通过名称匹配)"
+    }
+    else
+    {
+        Write-Output "[$Count] 不是数值类型"
+        return $False
+    }
+    for ($i = 0; $i -lt $Count; $i++)
+    {
+        Start-Sleep 1
+        $c = $i + 1
+        if($ShowProgress)
+        {
+            $res = "[$c/$Count]"
+        }else{
+            $res = $c
+        }
+        if($ShowDateTime){
+            $res="$res $(Get-Date -Format 'yyyy-MM-dd--HH-mm-ss.fff')"
+        }
+        if($JobMark){
+            $res="[$JobMark]: $res"
+        }
+        Write-Output $res
+        # return $i
+    }
+}
 function Test-HostBatch
 {
     [CmdletBinding()]
@@ -89,115 +141,135 @@ function Test-HostBatch
         }
     }
 
-end {
-    $inputs |
-    ForEach-Object { $_.Trim() } |
-    Where-Object { $_ -ne '' -and $_ -notmatch '^\s*#' } |
-    ForEach-Object -Parallel {
-        # =============== ✅ 关键：启用 TLS 1.2 + 1.3 ===============
-        [System.Net.ServicePointManager]::SecurityProtocol = 
+    end
+    {
+        $inputs |
+        ForEach-Object { $_.Trim() } |
+        Where-Object { $_ -ne '' -and $_ -notmatch '^\s*#' } |
+        ForEach-Object -Parallel {
+            # =============== ✅ 关键：启用 TLS 1.2 + 1.3 ===============
+            [System.Net.ServicePointManager]::SecurityProtocol = 
             [System.Net.SecurityProtocolType]::Tls12 -bor 
             [System.Net.SecurityProtocolType]::Tls13
 
-        $raw = $_
-        $isHttp = $raw -match '^https?://.+'
-        $hostname = $null
+            $raw = $_
+            $isHttp = $raw -match '^https?://.+'
+            $hostname = $null
 
-        $result = [ordered]@{
-            Host              = $raw
-            ResolvedHost      = $null
-            PingStatus        = 'Down'
-            PingLatency       = $null
-            IsHttpUrl         = $isHttp
-            StatusCode        = $null
-            StatusDescription = $null
-            Error             = $null
-        }
+            $result = [ordered]@{
+                Host              = $raw
+                ResolvedHost      = $null
+                PingStatus        = 'Down'
+                PingLatency       = $null
+                IsHttpUrl         = $isHttp
+                StatusCode        = $null
+                StatusDescription = $null
+                Error             = $null
+            }
 
-        # --- 提取主机 ---
-        if ($isHttp) {
-            try {
-                $uri = [System.Uri]$raw
-                $hostname = $uri.Host
-                if (-not $uri.Port) {
-                    $port = if ($uri.Scheme -eq 'https') { 443 } else { 80 }
-                } else {
-                    $port = $uri.Port
+            # --- 提取主机 ---
+            if ($isHttp)
+            {
+                try
+                {
+                    $uri = [System.Uri]$raw
+                    $hostname = $uri.Host
+                    if (-not $uri.Port)
+                    {
+                        $port = if ($uri.Scheme -eq 'https') { 443 } else { 80 }
+                    }
+                    else
+                    {
+                        $port = $uri.Port
+                    }
+                }
+                catch
+                {
+                    $result.Error = "无效 URL"
+                    return [PSCustomObject]$result
                 }
             }
-            catch {
-                $result.Error = "无效 URL"
+            else
+            {
+                $hostname = $raw
+            }
+
+            if ([string]::IsNullOrEmpty($hostname))
+            {
+                $result.Error = "无法提取主机名"
                 return [PSCustomObject]$result
             }
-        }
-        else {
-            $hostname = $raw
-        }
+            $result.ResolvedHost = $hostname
 
-        if ([string]::IsNullOrEmpty($hostname)) {
-            $result.Error = "无法提取主机名"
-            return [PSCustomObject]$result
-        }
-        $result.ResolvedHost = $hostname
-
-        # --- ICMP Ping ---
-        try {
-            $ping = Test-Connection -TargetName $hostname -Count 1 -TimeoutSeconds $using:TimeoutSeconds -ErrorAction Stop
-            $result.PingStatus = 'Up'
-            $result.PingLatency = $ping.Latency
-        }
-        catch {
-            $result.Error = "Ping 失败: $($_.Exception.Message)"
-        }
-
-        # --- HTTP(S) 状态码（使用 .NET 原生请求）---
-        if ($isHttp) {
-            $request = $null
-            try {
-                $uri = [System.Uri]$raw
-                $request = [System.Net.WebRequest]::Create($uri)
-                $request.Method = $using:Method
-                $request.Timeout = $using:TimeoutSeconds * 1000
-                $request.AllowAutoRedirect = $true  # 可选：跟随重定向
-
-                # 忽略证书错误（仅测试环境）
-                if ($request -is [System.Net.HttpWebRequest]) {
-                    $request.ServerCertificateValidationCallback = { $true }
-                }
-
-                $response = $request.GetResponse()
-                $result.StatusCode = $response.StatusCode.value__
-                $result.StatusDescription = $response.StatusDescription
-                $response.Close()
+            # --- ICMP Ping ---
+            try
+            {
+                $ping = Test-Connection -TargetName $hostname -Count 1 -TimeoutSeconds $using:TimeoutSeconds -ErrorAction Stop
+                $result.PingStatus = 'Up'
+                $result.PingLatency = $ping.Latency
             }
-            catch {
-                $ex = $_.Exception
+            catch
+            {
+                $result.Error = "Ping 失败: $($_.Exception.Message)"
+            }
 
-                # 👉 捕获 WebException 中的响应状态码
-                if ($ex -is [System.Net.WebException] -and $ex.Response) {
-                    $resp = $ex.Response
-                    $status = $resp.StatusCode.value__
-                    $desc = $resp.StatusDescription
-                    $result.StatusCode = $status
-                    $result.StatusDescription = $desc
+            # --- HTTP(S) 状态码（使用 .NET 原生请求）---
+            if ($isHttp)
+            {
+                $request = $null
+                try
+                {
+                    $uri = [System.Uri]$raw
+                    $request = [System.Net.WebRequest]::Create($uri)
+                    $request.Method = $using:Method
+                    $request.Timeout = $using:TimeoutSeconds * 1000
+                    $request.AllowAutoRedirect = $true  # 可选：跟随重定向
+
+                    # 忽略证书错误（仅测试环境）
+                    if ($request -is [System.Net.HttpWebRequest])
+                    {
+                        $request.ServerCertificateValidationCallback = { $true }
+                    }
+
+                    $response = $request.GetResponse()
+                    $result.StatusCode = $response.StatusCode.value__
+                    $result.StatusDescription = $response.StatusDescription
+                    $response.Close()
                 }
-                else {
-                    $msg = $ex.Message -replace '\r?\n', ' '
-                    if ($result.Error -eq $null) {
-                        $result.Error = "HTTP 错误: $msg"
+                catch
+                {
+                    $ex = $_.Exception
+
+                    # 👉 捕获 WebException 中的响应状态码
+                    if ($ex -is [System.Net.WebException] -and $ex.Response)
+                    {
+                        $resp = $ex.Response
+                        $status = $resp.StatusCode.value__
+                        $desc = $resp.StatusDescription
+                        $result.StatusCode = $status
+                        $result.StatusDescription = $desc
+                    }
+                    else
+                    {
+                        $msg = $ex.Message -replace '\r?\n', ' '
+                        if ($result.Error -eq $null)
+                        {
+                            $result.Error = "HTTP 错误: $msg"
+                        }
+                    }
+                }
+                finally
+                {
+                    if ($request -and $request.RequestUri.Scheme -eq 'https')
+                    {
+                        # 清理
+                        $request.ServicePoint.CloseConnectionGroup("")
                     }
                 }
             }
-            finally {
-                if ($request -and $request.RequestUri.Scheme -eq 'https') {
-                    # 清理
-                    $request.ServicePoint.CloseConnectionGroup("")
-                }
-            }
-        }
 
-        [PSCustomObject]$result
-    } -ThrottleLimit $ThrottleLimit |
-    Select-Object Host, ResolvedHost, PingStatus, PingLatency, IsHttpUrl, StatusCode, StatusDescription, Error
-}
+            [PSCustomObject]$result
+        } -ThrottleLimit $ThrottleLimit |
+        Select-Object Host, ResolvedHost, PingStatus, PingLatency, IsHttpUrl, StatusCode, StatusDescription, Error
+    }
 }
