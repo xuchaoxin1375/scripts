@@ -81,7 +81,9 @@ function Restart-NginxOnHost
     # bash /www/sh/nginx_conf/update_nginx_vhosts_log_format.sh -d /www/server/panel/vhost/nginx 
 
     # 维护服务器上的建站日期表(可以丢到后台运行)
-    ssh root@$HostName "python /www/sh/nginx_conf/update_nginx_vhosts.py maintain -d -k first"
+    $maintain = "python3 /www/sh/nginx_conf/maintain_nginx_vhosts.py maintain -d -k first"
+    Write-Verbose "维护域名列表[  $maintain ]"
+    ssh root@$HostName $maintain
     if ($Force)
     {
         ssh $User@$HostName " pkill -9 nginx ; nginx "

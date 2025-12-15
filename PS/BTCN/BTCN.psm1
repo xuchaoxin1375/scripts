@@ -539,10 +539,12 @@ function Deploy-BatchSiteBTOnline
     批量部署空站点到宝塔面板(借助宝塔api和python脚本)
     #>
     param(
+
         $Server,
+        $Script = "$pys/bt_api/create_sites.py",
         $SitesHome = '/www/wwwroot',
         $ServerConfig = "$server_config",
         $Table = "$desktop/table.conf"
     )
-    python $pys/bt_api/create_sites.py -c $ServerConfig -s $Server -f $Table -r -w $SitesHome
+    python $Script -c $ServerConfig -s $Server -f $Table -r -w $SitesHome
 }

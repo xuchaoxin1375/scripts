@@ -143,6 +143,11 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
     ln -s /www/sh/deploy_wp_full.sh /deploy.sh -fv
     ln -s /www/sh/update_repos.sh /update_repos.sh -fv
     ln -s /www/sh/nginx_conf/update_nginx_vhosts_conf.sh /update_nginx_vhosts_conf.sh -fv
+    # vim配置
+    ln -s  /www/sh/vimrc.vim ~/.vimrc -v
+    nvim_conf_dir="$HOME/.config/nvim"
+    [[ -d $nvim_conf_dir ]] || mkdir -p "$nvim_conf_dir"
+    ln -s /www/sh/vimrc.vim ~/.config/nvim/init.vim -v
 
     # ==nginx配置文件软链接(这里如果用二级软连接和宝塔的一些操作(比如api)可能冲突,建议使用文件覆盖或则手动覆盖)
     # ln -s /www/sh/nginx_conf/com.conf /www/server/nginx/conf/com.conf -fv

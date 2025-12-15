@@ -437,7 +437,7 @@ function Add-CFZoneCheckActivation
     # 查看当前的环境变量
     # Get-ChildItem env:cf*
 
-    Get-Content $Table | Where-Object { $_.Trim() } | ForEach-Object { ($_.trim() -split '\s+')[0] | Get-MainDomain } | ForEach-Object { flarectl zone check --zone $_ *> $null; Write-Host $_ }
+    Get-Content $Table | Where-Object { $_.Trim() } | ForEach-Object { ($_.trim() -split '\s+')[0] | Get-MainDomain } | ForEach-Object -Parallel { flarectl zone check --zone $_ *> $null; Write-Host $_ } -ThrottleLimit 5
 }
 function Get-CFZoneInfoFromTable
 {

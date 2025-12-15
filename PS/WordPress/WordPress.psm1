@@ -1084,6 +1084,7 @@ function Deploy-WpSitesOnline
     $hst = $servers."$HostName".ip
     Write-Verbose "Deploy to server: $HostName,IP:$hst"
 
+    Get-Job | Remove-Job -Verbose
 
     # 添加域名解析到cf(第一步执行)
     Add-CFZoneDNSRecords -AddRecordAtOnce -IP $hst -Parallel:(!$Onebyone) -Domains $FromTable
@@ -1100,11 +1101,29 @@ function Deploy-WpSitesOnline
     # 将以下命令丢到后台运行(start-job)🎈
     
     # 创建宝塔空站点
-    Deploy-BatchSiteBTOnline -Server $HostName -ServerConfig $ServerConfig -Table $FromTable -SitesHome $SitesHome 
+    # Deploy-BatchSiteBTOnline -Server $HostName -ServerConfig $ServerConfig -Table $FromTable -SitesHome $SitesHome 
+    # 后台运行
+    $deploySitesOnBTJob = Start-Job -ScriptBlock { Deploy-BatchSiteBTOnline -Script "$using:pys/bt_api/create_sites.py" -Server $using:HostName -ServerConfig $using:ServerConfig -Table $using:FromTable -SitesHome $using:SitesHome } -Name "DeployBTSites"
+    
+    Write-Host "后台作业 $($deploySitesOnBTJob.Name) 已启动，ID: $($deploySitesOnBTJob.Id)"
+
     # 上传本批次域名列表到对应服务器上
-    Push-ByScp -Server $HostName -Path $FromTable -Destination $RemoteSiteTable
+    # Push-ByScp -Server $HostName -Path $FromTable -Destination $RemoteSiteTable
+    $pushSiteTable = {
+        # 使用 $using: 修饰符访问父作用域的变量
+        param(
+            [string]$Server,
+            [string]$Path,
+            [string]$Destination
+        )
 
+        Push-ByScp -Server $Server -Path $Path -Destination $Destination
+    }
+    $pushSiteTableJob = Start-Job -ScriptBlock $pushSiteTable -ArgumentList $hst, $FromTable, $RemoteSiteTable -Name "PushSiteTable"
 
+    Write-Host "后台作业 $($pushSiteTableJob.Name) 已启动，ID: $($pushSiteTableJob.Id)"
+    Write-Host "等待后台作业完成"
+    Receive-Job $deploySitesOnBTJob, $pushSiteTableJob -Wait -Verbose
     # 重启nginx 
     Restart-NginxOnHost -HostName $hst
     # 等待环节

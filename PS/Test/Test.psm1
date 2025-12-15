@@ -85,7 +85,6 @@ function push1by1
     }
     for ($i = 0; $i -lt $Count; $i++)
     {
-        Start-Sleep 1
         $c = $i + 1
         if($ShowProgress)
         {
@@ -100,6 +99,7 @@ function push1by1
             $res="[$JobMark]: $res"
         }
         Write-Output $res
+        Start-Sleep 1
         # return $i
     }
 }

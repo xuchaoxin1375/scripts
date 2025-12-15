@@ -59,8 +59,11 @@ wp --info
 > 如果之前git clone过旧版本,或者想要重新clone,移除掉现有目录 `/repos/scripts`
 
 ```bash
+#! /bin/bash
+script_root='/repos/scripts'
+if [[ -d "$script_root" ]]; then { echo 'The target dir is already exist! remove old dir...' ; sudo rm "$script_root" -rf ; } ; fi
 # rm /repos/scripts -rf 
-git clone --depth 1 https://gitee.com/xuchaoxin1375/scripts.git /repos/scripts
+git clone --depth  1 https://gitee.com/xuchaoxin1375/scripts.git "$script_root"
 
 # 配置更新代码的脚本的符号链接
 ln -s /repos/scripts/wp/woocommerce/woo_df/sh /www/sh -fv
@@ -239,3 +242,24 @@ nginx: [emerg] open() "/www/wwwlogs/xxx.com.error.log" failed (24: Too many open
    - `update_cf_ip_configs.sh`(需要配置定期运行拉取cf公布的ip列表,可借助corntab定期运行)
 5. 增大打开的文件数量限制(针对站点多的服务器),方法之一是修改 `/etc/security/limits.conf` 文件
 6. 新开一个终端(让上一步修改生效),重启nginx
+
+## 终端文本编辑器
+
+- nano或msedit,后者虽然更加易用,但是目前稳定性不如前者,且需要手动安装
+- vim或neovim,强大的编辑器,这里简单添加一些默认配置来提高使用体验
+
+只要您的配置文件使用 **Vim Script (VimL)**，它在 Vim 和 Neovim 之间就是高度兼容的。只有涉及到各自独有的高级功能或编程语言（Lua）时，兼容性才会出现问题。
+
+```bash
+FILES
+       ~/.config/nvim/init.lua  User-local nvim Lua configuration file.
+
+       ~/.config/nvim           User-local nvim configuration directory.  See also XDG_CONFIG_HOME.
+
+       $VIM/sysinit.vim         System-global nvim configuration file.
+
+       $VIM                     System-global nvim runtime directory
+```
+
+配置项目存放在`vimrc.vim`中.
+

@@ -307,7 +307,7 @@ def update_sites_conf(
             days=days,
         )
     print(f"处理模式:({mode})")
-    print(f"域名列表预览:{domains}")
+    print(f"本次处理域名列表预览:{domains}")
     # return False
     vhost_confs = []
     for domain in domains:
@@ -449,7 +449,7 @@ def main():
             maintain_site_birth_log(site_birth_log=args.csv, site_table=args.site_table)
 
     elif args.command == "update":
-
+        print(f">开始时间:{datetime.now()}")
         update_sites_conf(
             site_birth_log=args.csv,
             nginx_vhost_root=args.workdir,
@@ -460,6 +460,7 @@ def main():
             only_status_changed=args.only_status_changed,
             days=args.days,
         )
+        print(f">结束时间:{datetime.now()}\n")
     else:
         print("未知命令，请使用 --help 查看用法。")
 
