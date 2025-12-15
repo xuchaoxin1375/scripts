@@ -65,6 +65,18 @@ bash和python脚本均可实现此任务,不过考虑到任务具有一定的复
 - 可以借助excel等表格软件快速批量手动填充操作,可视化排序等操作,或者pandas库批量计算处理
 - 新增字段简单,比json更容易更改
 
+### csv 字段说明
+
+目前csv中的表头说明如下
+
+- `domain`:取值为字符串,通常为`domain.com`格式,也兼容一般的包含域名的`url`,此字段为空的行会被跳过处理
+- `birth_time`:日期(时间),比较灵活,典型格式为`yyyy-MM-dd hh:mm:ss`或者更精确,也可以更简化`yyyy/MM/dd`
+
+辅助字段
+
+- `status`:取值为`young`或`old`,个别情况可以放空
+- `update_time`:同`birth_time`为时间,但是一般不要自己填写(没有意义),程序自动维护更新日期
+
 ## 方案
 
 每次建站,我们都默认为新站的配置文件(vhost)中的`.conf`插入默认严格的配置:`com.conf`以及其他限流相关的配置(比如`limits.conf`)
@@ -218,7 +230,6 @@ options:
 > nginx -t && nginx -s reload
 > ```
 >
-> 
 
 #### 附加用途
 
@@ -232,6 +243,8 @@ options:
 
 ### 定时运行
 
+#### 直接添加到crontab
+
 crontab中添加行
 
 > 要在每天 00:00 运行脚本，`crontab` 的时间格式应为 `0 0 * * *`。
@@ -243,9 +256,31 @@ crontab中添加行
 此外,`crontab` 任务不会直接在终端显示输出。为了方便调试和检查任务是否成功，建议将输出重定向到日志文件：
 
 ```bash
-0 0 * * * python /www/sh/nginx_conf/update_nginx_vhosts.py update -m old >> /var/log/nginx_update.log 2>&1
+0 0 * * * { python3 /www/sh/nginx_conf/maintain_nginx_vhosts.py update -m old >> /var/log/maintain_nginx_vhosts.log 2>&1 && nginx -t && nginx -s reload ; }
 ```
+
+这里要注意bash的`{ command ; }`边缘空格不能省略或删除
 
 > `maintain`子命令不需要定期运行,其只需要在新站创建的时候解析域名列表维护一下csv文件即可,这是`maintain`的运行时机.
 >
 > 可见,`maintain,update`两个子命令的相对独立性.
+
+#### 绑定nginx重载动作
+
+为例更方便管理,可以考虑新建一个`.sh`文件(比如存放于`/www/sh/nginx_conf/maintain_nginx_vhosts.sh`,然后编辑内容
+
+```bash
+#! /bin/bash
+# /usr/bin/python3 
+python3 /www/sh/nginx_conf/maintain_nginx_vhosts.py update -m old >> /var/log/maintain_nginx_vhosts.log 2>&1
+nginx -t && nginx -s reload
+```
+
+这样去绑定`maintain_nginx_vhosts.py`的运行和重载nginx
+
+这样crontab 中编辑
+
+```conf
+0 0 * * * bash /www/sh/nginx_conf/maintain_nginx_vhosts.sh
+```
+

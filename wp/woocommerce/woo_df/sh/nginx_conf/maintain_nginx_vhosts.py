@@ -72,7 +72,10 @@ def init_site_birth_log(site_birth_log=SITE_BIRTH_CSV, table_header=TABLE_HEADER
 
 
 def maintain_site_birth_log(
-    site_birth_log=SITE_BIRTH_CSV,site_table=SITE_TABLE_CONF, drop_duplicate=True, keep: DropKeep = "first"
+    site_birth_log=SITE_BIRTH_CSV,
+    site_table=SITE_TABLE_CONF,
+    drop_duplicate=True,
+    keep: DropKeep = "first",
 ):
     """维护csv文件
 
@@ -135,7 +138,8 @@ def maintain_site_birth_log(
     os.rename(site_table, SITE_TABLE_BAK)
 
     # 创建一个新的站点列表文件site_table,包含一句注释提醒:此域名列表已经处理并清空.
-    reset_message = f"# 此域名列表已在 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} 处理并清空。上一轮操作的备份文件路径[{SITE_TABLE_BAK}] \n请将新的待处理域名列表添加到此处。\n"
+    reset_message = f"# 此域名列表已在 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} 处理并清空。\
+    上一轮操作的备份文件路径[{SITE_TABLE_BAK}] \n请将新的待处理域名列表添加到此处。\n"
     try:
         with open(site_table, mode="w", encoding="utf-8") as f:
             f.write(reset_message)
@@ -146,9 +150,12 @@ def maintain_site_birth_log(
     # os.system(f"cp {site_table} {SITE_TABLE_BAK}")
 
 
-def set_config(vhost_config, switch_to="old", init_as="", replace=False):
+def set_config(
+    vhost_config, switch_to="old", init_as="", replace=False, remove_blank_lines=True
+):
     """新站转老站的配置修改
     可选:修改建站日期表中的行状态和更新日期字段
+    移除多余空行,避免大量空白
 
     参数:
         vhost_config: 虚拟主机配置文件
@@ -201,6 +208,10 @@ def set_config(vhost_config, switch_to="old", init_as="", replace=False):
                     INIT_INSERT_BEFORE_MARK,
                     init_as + "\n" + INIT_INSERT_BEFORE_MARK,
                 )
+            # 移除多余空行(将两个以上连续的空行(兼容中间夹杂其他空白字符的情况)简化为2个空行,避免大量空白)
+            if remove_blank_lines:
+                print(f"Remove redundant blank lines.")
+                config = re.sub(r"\n(\s*\n)+", "\n\n", config)
     except (FileNotFoundError, PermissionError) as e:
         print(f"读取配置文件失败(跳过处理此条目): {e}")
         return None
@@ -219,6 +230,7 @@ def get_filtered(
 ):
     """
     计算年轻站点,待后续处理相应的配置文件
+    记得移除处理domain字段为空的行,避免造成错误(健壮性)
 
     Args:
         site_birth_log:网站创建日期记录文件
@@ -234,6 +246,8 @@ def get_filtered(
     # 将birth_time列转换为datetime类型
     df["birth_time"] = pd.to_datetime(df["birth_time"])
     df["domain"] = df["domain"].str.strip()
+    # 移除域名字段为空的行
+    df = df[df["domain"].notna() & (df["domain"] != "")]
 
     # 获取当前时间
     # current_time = datetime.now()
@@ -272,6 +286,7 @@ def update_sites_conf(
     only_status_changed=True,
     dry_run=False,
     days=DAYS,
+    remove_blank_lines=True,
 ):
     """
     根据指定的状态的站(old/young),将配置文件做对应状态的更新
@@ -291,7 +306,9 @@ def update_sites_conf(
             only_status_changed=only_status_changed,
             days=days,
         )
-    print(f"域名列表:({mode})")
+    print(f"处理模式:({mode})")
+    print(f"域名列表预览:{domains}")
+    # return False
     vhost_confs = []
     for domain in domains:
         path = os.path.join(nginx_vhost_root, domain) + ".conf"
@@ -310,9 +327,13 @@ def update_sites_conf(
         # 更新状态和更新时间字段
         df.loc[df["domain"].isin(domains), "update_time"] = current_time
         df.loc[df["domain"].isin(domains), "status"] = mode
-
     for config in vhost_confs:
-        set_config(vhost_config=config, switch_to=mode, replace=True)
+        set_config(
+            vhost_config=config,
+            switch_to=mode,
+            replace=True,
+            remove_blank_lines=remove_blank_lines,
+        )
 
     if update_log and df is not None:
         df.to_csv(site_birth_log, index=False)
@@ -350,7 +371,7 @@ def parse_args():
         help="nginx虚拟主机配置文件根目录",
     )
     parser.add_argument(
-        "--domain-backup_dir",
+        "--domain-backup-dir",
         default=BACKUP_DIR,
         help="域名列表备份到指定目录(默认{BACKUP_DIR})",
     )
@@ -420,16 +441,18 @@ def main():
         if args.drop_duplicate:
             maintain_site_birth_log(
                 site_birth_log=args.csv,
-                site
+                site_table=args.site_table,
                 drop_duplicate=args.drop_duplicate,
                 keep=args.keep,
             )
         else:
-            maintain_site_birth_log(site_birth_log=args.csv)
+            maintain_site_birth_log(site_birth_log=args.csv, site_table=args.site_table)
 
     elif args.command == "update":
 
         update_sites_conf(
+            site_birth_log=args.csv,
+            nginx_vhost_root=args.workdir,
             mode=args.mode,
             update_log=not args.no_update_log,
             all_sites=args.all_sites,
