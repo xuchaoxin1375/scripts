@@ -71,7 +71,9 @@ def init_site_birth_log(site_birth_log=SITE_BIRTH_CSV, table_header=TABLE_HEADER
     return df
 
 
-def maintain_site_birth_log(drop_duplicate=True, keep: DropKeep = "first"):
+def maintain_site_birth_log(
+    site_birth_log=SITE_BIRTH_CSV,site_table=SITE_TABLE_CONF, drop_duplicate=True, keep: DropKeep = "first"
+):
     """维护csv文件
 
     Args:
@@ -80,15 +82,15 @@ def maintain_site_birth_log(drop_duplicate=True, keep: DropKeep = "first"):
             可用选项和pandas.DataFrame的drop_duplicates()方法一致
             first,last,False
     """
-    df = init_site_birth_log(SITE_BIRTH_CSV, TABLE_HEADER)
+    df = init_site_birth_log(site_birth_log, TABLE_HEADER)
     site_birth_lines = []
     # 检查文件是否存在
-    if os.path.exists(SITE_TABLE_CONF) is False:
-        print(f"域名列表文件不存在:{SITE_TABLE_CONF},结束操作.")
+    if os.path.exists(site_table) is False:
+        print(f"域名列表文件不存在:{site_table},结束操作.")
         return False
 
     try:
-        with open(SITE_TABLE_CONF, mode="r", encoding="utf-8") as f:
+        with open(site_table, mode="r", encoding="utf-8") as f:
             lines = f.readlines()
             # print(lines)
             for line in lines:
@@ -123,25 +125,25 @@ def maintain_site_birth_log(drop_duplicate=True, keep: DropKeep = "first"):
     if drop_duplicate:
         # 移除域名重复的行
         df.drop_duplicates(subset=["domain"], keep=keep)
-    df.to_csv(SITE_BIRTH_CSV, index=False)
+    df.to_csv(site_birth_log, index=False)
     print(f"{df}")
 
     # 将表格文件备份(重命名的方式)
     ## 移除旧备份文件(如果存在的话),防止多次检查域名列表而反复向建站记录表添加重复域名的记录(不过有去重处理,现在这是可选的)
     if os.path.exists(SITE_TABLE_BAK):
         os.remove(SITE_TABLE_BAK)
-    os.rename(SITE_TABLE_CONF, SITE_TABLE_BAK)
+    os.rename(site_table, SITE_TABLE_BAK)
 
-    # 创建一个新的站点列表文件SITE_TABLE_CONF,包含一句注释提醒:此域名列表已经处理并清空.
+    # 创建一个新的站点列表文件site_table,包含一句注释提醒:此域名列表已经处理并清空.
     reset_message = f"# 此域名列表已在 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} 处理并清空。上一轮操作的备份文件路径[{SITE_TABLE_BAK}] \n请将新的待处理域名列表添加到此处。\n"
     try:
-        with open(SITE_TABLE_CONF, mode="w", encoding="utf-8") as f:
+        with open(site_table, mode="w", encoding="utf-8") as f:
             f.write(reset_message)
-        print(f"已创建新的空站点列表文件: {SITE_TABLE_CONF}")
+        print(f"已创建新的空站点列表文件: {site_table}")
     except (FileNotFoundError, PermissionError) as e:
         print(f"警告: 创建新的站点列表文件失败: {e}")
     return True
-    # os.system(f"cp {SITE_TABLE_CONF} {SITE_TABLE_BAK}")
+    # os.system(f"cp {site_table} {SITE_TABLE_BAK}")
 
 
 def set_config(vhost_config, switch_to="old", init_as="", replace=False):
@@ -262,6 +264,8 @@ def get_filtered(
 
 
 def update_sites_conf(
+    site_birth_log=SITE_BIRTH_CSV,
+    nginx_vhost_root=NGINX_VHOST_ROOT,
     mode="old",
     update_log=True,
     all_sites=False,
@@ -279,10 +283,10 @@ def update_sites_conf(
         dry_run: 预览模式，仅打印将被处理的站点和配置文件，不做实际修改
     """
     if all_sites:
-        domains = get_filtered(SITE_BIRTH_CSV, mode="all", days=days)
+        domains = get_filtered(site_birth_log=site_birth_log, mode="all", days=days)
     else:
         domains = get_filtered(
-            SITE_BIRTH_CSV,
+            site_birth_log,
             mode=mode,
             only_status_changed=only_status_changed,
             days=days,
@@ -290,7 +294,7 @@ def update_sites_conf(
     print(f"域名列表:({mode})")
     vhost_confs = []
     for domain in domains:
-        path = os.path.join(NGINX_VHOST_ROOT, domain) + ".conf"
+        path = os.path.join(nginx_vhost_root, domain) + ".conf"
         vhost_confs.append(path)
 
     if dry_run:
@@ -302,7 +306,7 @@ def update_sites_conf(
     df = None
     if update_log:
         current_time = datetime.now()
-        df = pd.read_csv(SITE_BIRTH_CSV)
+        df = pd.read_csv(site_birth_log)
         # 更新状态和更新时间字段
         df.loc[df["domain"].isin(domains), "update_time"] = current_time
         df.loc[df["domain"].isin(domains), "status"] = mode
@@ -311,7 +315,7 @@ def update_sites_conf(
         set_config(vhost_config=config, switch_to=mode, replace=True)
 
     if update_log and df is not None:
-        df.to_csv(SITE_BIRTH_CSV, index=False)
+        df.to_csv(site_birth_log, index=False)
 
 
 def parse_args():
@@ -322,7 +326,34 @@ def parse_args():
         description="nginx站点配置批量管理工具: 维护日志或批量更新nginx虚拟主机配置文件。"
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
-
+    # 公共/全局配置项
+    parser.add_argument(
+        "-c",
+        "--csv",
+        "--site-birth-log",
+        default=SITE_BIRTH_CSV,
+        help=f"站点建站日期表(默认{SITE_BIRTH_CSV})",
+    )
+    parser.add_argument(
+        "-l",
+        "--site-table",
+        "--site-list",
+        "--domain-list",
+        default=SITE_TABLE_CONF,
+        help=f"新站批次的网站域名列表(默认{SITE_TABLE_CONF})",
+    )
+    parser.add_argument(
+        "-v",
+        "--workdir",
+        "--nginx-vhost-root",
+        default=NGINX_VHOST_ROOT,
+        help="nginx虚拟主机配置文件根目录",
+    )
+    parser.add_argument(
+        "--domain-backup_dir",
+        default=BACKUP_DIR,
+        help="域名列表备份到指定目录(默认{BACKUP_DIR})",
+    )
     # maintain 子命令
     parser_maintain = subparsers.add_parser(
         "maintain", help="维护站点创建日志文件(site_birth.csv)"
@@ -387,9 +418,14 @@ def main():
     args = parse_args()
     if args.command == "maintain":
         if args.drop_duplicate:
-            maintain_site_birth_log(drop_duplicate=args.drop_duplicate, keep=args.keep)
+            maintain_site_birth_log(
+                site_birth_log=args.csv,
+                site
+                drop_duplicate=args.drop_duplicate,
+                keep=args.keep,
+            )
         else:
-            maintain_site_birth_log()
+            maintain_site_birth_log(site_birth_log=args.csv)
 
     elif args.command == "update":
 
