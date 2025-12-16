@@ -1092,20 +1092,38 @@ function Deploy-WpSitesOnline
     Get-CFZoneNameServersTable -FromTable $FromTable
     # 更新spaceship的nameservers
     Update-SSNameServers -Config $SpaceshipConfig -Table $ToTable
+    
     # 让cf立即检查域名的激活
-    Add-CFZoneCheckActivation -Account $CfAccount -ConfigPath $CfConfig -Table $FromTable
-    
-    # 配置cf域名解析,邮箱转发和代理保护(位置1)
-    Add-CFZoneConfig -CfConfig $CfConfig -Account $CfAccount -Table $FromTable -Ip $hst
+    # Add-CFZoneCheckActivation -Account $CfAccount -ConfigPath $CfConfig -Table $FromTable
+    Start-ThreadJob -Name "CFZoneActivation" -ScriptBlock {
+        param ($Account, $ConfigPath, $Table)
 
-    # 将以下命令丢到后台运行(start-job)🎈
+        Add-CFZoneCheckActivation `
+            -Account $Account `
+            -ConfigPath $ConfigPath `
+            -Table $Table
+    } -ArgumentList $CfAccount, $CfConfig, $FromTable
+
+    # 配置cf域名解析,邮箱转发和代理保护(位置1)
+    # Add-CFZoneConfig -Account $CfAccount -CfConfig $CfConfig -Table $FromTable -Ip $hst
+    Start-ThreadJob -Name "CFZoneConfig" -ScriptBlock {  
+        param ($Account, $CfConfig, $Table, $Ip)
+        Write-Host "[Time:$(Get-DateTime)]CFZoneConfig..."
+        Add-CFZoneConfig `
+            -Account $Account `
+            -CfConfig $CfConfig `
+            -Table $Table `
+            -Ip $Ip
+    } -ArgumentList $CfAccount, $CfConfig, $FromTable, $hst
     
-    # 创建宝塔空站点
+    # 创建宝塔远程空站点创建
     # Deploy-BatchSiteBTOnline -Server $HostName -ServerConfig $ServerConfig -Table $FromTable -SitesHome $SitesHome 
-    # 后台运行
-    $deploySitesOnBTJob = Start-Job -ScriptBlock { Deploy-BatchSiteBTOnline -Script "$using:pys/bt_api/create_sites.py" -Server $using:HostName -ServerConfig $using:ServerConfig -Table $using:FromTable -SitesHome $using:SitesHome } -Name "DeployBTSites"
+    # 后台运行远程站点创建
+    $deploySitesOnBTJob = Start-ThreadJob -ScriptBlock { 
+        Write-Host "[Time:$(Get-DateTime)]Deploying sites on BT online..."
+        Deploy-BatchSiteBTOnline -Script "$using:pys/bt_api/create_sites.py" -Server $using:HostName -ServerConfig $using:ServerConfig -Table $using:FromTable -SitesHome $using:SitesHome 
+    } -Name "DeployBTSites"
     
-    Write-Host "后台作业 $($deploySitesOnBTJob.Name) 已启动，ID: $($deploySitesOnBTJob.Id)"
 
     # 上传本批次域名列表到对应服务器上
     # Push-ByScp -Server $HostName -Path $FromTable -Destination $RemoteSiteTable
@@ -1116,14 +1134,16 @@ function Deploy-WpSitesOnline
             [string]$Path,
             [string]$Destination
         )
-
+        Write-Host "[Time:$(Get-DateTime)]Pushing site table to server..."
         Push-ByScp -Server $Server -Path $Path -Destination $Destination
     }
-    $pushSiteTableJob = Start-Job -ScriptBlock $pushSiteTable -ArgumentList $hst, $FromTable, $RemoteSiteTable -Name "PushSiteTable"
+    $pushSiteTableJob = Start-ThreadJob -ScriptBlock $pushSiteTable -ArgumentList $hst, $FromTable, $RemoteSiteTable -Name "PushSiteTable"
 
-    Write-Host "后台作业 $($pushSiteTableJob.Name) 已启动，ID: $($pushSiteTableJob.Id)"
-    Write-Host "等待后台作业完成"
-    Receive-Job $deploySitesOnBTJob, $pushSiteTableJob -Wait -Verbose
+    Write-Host "等待后台作业完成..."
+    $jobs = Get-Job
+    Write-Host "$($jobs|Out-String)"
+    # Receive-Job $deploySitesOnBTJob, $pushSiteTableJob -Wait -Verbose
+    $jobs | Receive-Job -Wait -Verbose
     # 重启nginx 
     Restart-NginxOnHost -HostName $hst
     # 等待环节

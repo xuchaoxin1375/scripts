@@ -1,4 +1,5 @@
 #!/bin/bash
+# version: 20251216
 #初次下载代码
 #git clone --depth 1 https://gitee.com/xuchaoxin1375/scripts.git /repos/scripts
 
@@ -135,10 +136,12 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
         echo "/www/sh does not exist or is not a symbolic link"
     fi
 
-    rm -rfv /www/pys
+    # 兼容wsl 
+    [[ -d /mnt/c/repos/scripts/ ]] && ln -s -T /mnt/c/repos/scripts/ /repos/scripts
 
-    ln -s /repos/scripts/wp/woocommerce/woo_df/sh /www/sh -fv
-    ln -s /repos/scripts/wp/woocommerce/woo_df/pys /www/pys -fv
+
+    ln -s -T /repos/scripts/wp/woocommerce/woo_df/sh /www/sh  -fv # 使用-T选项防止嵌套,而-f选项配合-T是会将重复运行符号创建语句效果覆盖而不报错
+    ln -s -T /repos/scripts/wp/woocommerce/woo_df/pys /www/pys -fv
     # 脚本文件的符号链接
     ln -s /www/sh/deploy_wp_full.sh /deploy.sh -fv
     ln -s /www/sh/update_repos.sh /update_repos.sh -fv
@@ -195,17 +198,30 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
     ln -s /www/sh/fail2ban/ $f2b_repos -fv
     # 自定义过滤器
     cp /www/sh/fail2ban/filter.d/* /etc/fail2ban/filter.d/ -fv
-    # 自定义监狱
-    # 如果相关文件已存在,则跳过覆盖(cp -n)
-    #复制命令行参考
-    cf_basic='/www/sh/fail2ban/action.d/cloudflare-basic-action.conf'
-    cf_challenge='/www/sh/fail2ban/action.d/cloudflare-challenge-action.conf'
-    # 根据需要复制对应数量文件(注意编号)
-    cp -nv "$cf_challenge" /etc/fail2ban/action.d/cloudflare-challenge.local
-    cp -nv "$cf_basic" /etc/fail2ban/action.d/cloudflare1.local
-    cp -nv "$cf_basic" /etc/fail2ban/action.d/cloudflare2.local
+        
+    # fail2ban源配置文件(.conf)
+    cf_basic_tpl='/www/sh/fail2ban/action.d/cloudflare-tpl.conf'
     
-    cp -nv  /www/sh/fail2ban/jail.d/nginx-cf-warn.conf /etc/fail2ban/jail.d/nginx-cf-warn.local 
+    cf_mode_tpl='/www/sh/fail2ban/action.d/cloudflare-mode-tpl.conf'
+    nginx_cf_jail_tpl='/www/sh/fail2ban/jail.d/nginx-cf-warn.conf'
+    # 目标位置(.local)
+    cf_action1='/etc/fail2ban/action.d/cloudflare1.local'
+    cf_action2='/etc/fail2ban/action.d/cloudflare2.local'
+
+    cf_mode='/etc/fail2ban/action.d/cloudflare-mode.local'
+    nginx_cf_jail='/etc/fail2ban/jail.d/nginx-cf-warn.local'
+    # 根据需要复制对应数量文件(注意编号)
+    # 由于cp的-n参数在将来可能发生变化,且--update=none老版本cp可能不支持,所以这里使用判断语句
+    # 直接cp默认不覆盖,但是会打印报错信息,观感不好,尽管可以重定向错误信息输出到空,但这不是很好
+    # cp -nv "$cf_mode" /etc/fail2ban/action.d/cloudflare-mode.local
+    # cp -nv "$cf_basic" /etc/fail2ban/action.d/cloudflare1.local
+    # cp -nv "$cf_basic" /etc/fail2ban/action.d/cloudflare2.local
+
+    [[ -f "$cf_action1" ]] || cp -v "$cf_basic_tpl" "$cf_action1"
+    [[ -f "$cf_action2" ]] || cp -v "$cf_basic_tpl" "$cf_action2"
+    [[ -f "$cf_mode" ]] || cp -v "$cf_mode_tpl" "$cf_mode"
+    [[ -f "$nginx_cf_jail" ]] || cp -v  "$nginx_cf_jail_tpl" "$nginx_cf_jail"
+    
 
 fi
 

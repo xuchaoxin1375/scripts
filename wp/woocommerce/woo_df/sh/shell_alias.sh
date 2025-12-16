@@ -10,6 +10,8 @@ alias vim=nvim
 alias vi=vim
 # fail2ban系列命令缩写f2b或fb
 alias fbc='fail2ban-client'
+alias sfbc='sudo fail2ban-client' #非root用户使用,也兼容root用户使用
+
 alias fbcs='fail2ban-client status'
 alias fbregex='fail2ban-regex'
 alias fbt='fail2ban-testcases'

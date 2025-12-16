@@ -1,3 +1,8 @@
+"""
+调用浏览器下载资源
+注意:部分情况(某些网站,比如https://www.jegs.com)需要系统代理到合适的ip才能下载
+"""
+
 import asyncio
 import logging
 import os
@@ -184,7 +189,10 @@ class BrowserDownloader:
 
             if response.status >= 400:
                 if response.status == 404:
-                    logger.error(f"404 未找到: {display_url}，直接放弃不重试。", extra={"progress": "FAIL"})
+                    logger.error(
+                        f"404 未找到: {display_url}，直接放弃不重试。",
+                        extra={"progress": "FAIL"},
+                    )
                     return False
                 else:
                     raise Exception(f"HTTP 状态码错误: {response.status}")
