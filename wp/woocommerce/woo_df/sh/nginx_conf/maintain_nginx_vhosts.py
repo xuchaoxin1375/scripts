@@ -50,6 +50,41 @@ os.makedirs(BACKUP_DIR, exist_ok=True)
 SITE_TABLE_BAK = f"{BACKUP_DIR}/site_table.conf.bak.{datetime_forfilename}"
 
 
+def get_main_domain_name_from_str(url, normalize=True):
+    """
+        从字符串中提取域名,结构形如 "二级域名.顶级域名",即SLD.TLD;
+        对于提取部分的正则,如果允许英文"字母,-,数字")(对于简单容忍其他字符的域名,使用([^/]+)代替([\\w]+)这个部分
+
+        仅提取一个域名,适合于对于一个字符串中仅包含一个确定的域名的情况
+        例如,对于更长的结构,"子域名.二级域名.顶级域名"则会丢弃子域名,前缀带有http(s)的部分也会被移除
+
+        Args:
+            url (str): 待处理的URL字符串
+            normalize (bool, optional): 是否进行规范化处理(移除空格,并且将字母小写化处理). Defaults to True.
+
+
+        Examples:
+        # 测试URL列表
+    urls = ['www.domain1.com', 'https://www.dom-ain2.com','https://sports.whh3.cn.com', 'domain-test4.com','http://domain5.com', 'https://domain6.com/','# https://domain7.com','http://','https://www8./','https:/www9']
+    for url in urls:
+        domain = get_main_domain_name_from_str(url)
+        print(domain)
+    """
+    # 使用正则表达式提取域名
+    url = str(url)
+    # 清理常见的无效url部分
+    url = re.sub(r"https?:/*w*\.?/?", "", url)
+    # 尝试提取英文域名
+    match = re.search(r"(?:https?://)?(?:www\.)?((\w+.?)+)", url)
+    if match:
+        res = match.group(1).strip("/")
+        if normalize:
+            # 字母小写并且移除空白
+            res = re.sub(r"\s+", "", res).lower()
+        return res
+    return ""
+
+
 def init_site_birth_log(site_birth_log=SITE_BIRTH_CSV, table_header=TABLE_HEADER):
     """
     检查网站创建日期日志文件(csv)是否存在,如果不存在,则创建此文件,表头为domain,birth_time
@@ -68,6 +103,7 @@ def init_site_birth_log(site_birth_log=SITE_BIRTH_CSV, table_header=TABLE_HEADER
         else:
             print("日志文件为空,初始化表头...")
             df = pd.DataFrame(columns=table_header)
+    print(f"各个字段类型{df.dtypes}")
     return df
 
 
@@ -242,7 +278,7 @@ def get_filtered(
     """
     # 读取CSV文件
     df = pd.read_csv(site_birth_log)
-
+    df["domain"] = df["domain"].apply(get_main_domain_name_from_str)
     # 将birth_time列转换为datetime类型
     df["birth_time"] = pd.to_datetime(df["birth_time"])
     df["domain"] = df["domain"].str.strip()
@@ -272,6 +308,7 @@ def get_filtered(
     if only_status_changed and "status" in df.columns:
         filtered_df = filtered_df[filtered_df["status"] != mode]
     # print(filtered_df)
+    
     domains = filtered_df["domain"]
     domains = list(domains)
     return domains
@@ -286,7 +323,7 @@ def update_sites_conf(
     only_status_changed=True,
     dry_run=False,
     days=DAYS,
-    remove_blank_lines=True,
+    remove_vhosts_conf_blank_lines=True,
 ):
     """
     根据指定的状态的站(old/young),将配置文件做对应状态的更新
@@ -324,18 +361,28 @@ def update_sites_conf(
     if update_log:
         current_time = datetime.now()
         df = pd.read_csv(site_birth_log)
-        # 更新状态和更新时间字段
-        df.loc[df["domain"].isin(domains), "update_time"] = current_time
-        df.loc[df["domain"].isin(domains), "status"] = mode
+        # 兼容domain字段为url的情况
+        df["domain"] = df["domain"].apply(get_main_domain_name_from_str)
+        # 更新状态和更新时间字段(注意列字段类型处理)
+
+        if "status" in df.columns:
+            df["status"] = df["status"].astype("string")
+            df.loc[df["domain"].isin(domains), "status"] = mode
+        if "update_time" in df.columns:
+            df["update_time"] = df["update_time"].astype("object")
+            # df.loc[df["domain"].isin(domains), "update_time"] = current_time.strftime("%Y-%m-%d %H:%M:%S")
+            df.loc[df["domain"].isin(domains), "update_time"] = current_time
     for config in vhost_confs:
         set_config(
             vhost_config=config,
             switch_to=mode,
             replace=True,
-            remove_blank_lines=remove_blank_lines,
+            remove_blank_lines=remove_vhosts_conf_blank_lines,
         )
 
     if update_log and df is not None:
+        # 移除df中的空行或不规范的行(缺少域名字段值的行)
+        df = df[df["domain"].notna() & (df["domain"] != "")]
         df.to_csv(site_birth_log, index=False)
 
 
