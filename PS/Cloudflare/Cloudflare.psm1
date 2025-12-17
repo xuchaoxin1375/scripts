@@ -404,6 +404,7 @@ function Add-CFZoneConfig
         $Account,
         $Ip = "",
         $CfConfig = "$cf_config",
+        $script = "$pys/cf_api/cf_config_api.py",
         $Table = "$desktop/table.conf"
     )
     Write-Host "正在配置cloudflare域名邮箱转发和安全选项开关..."
@@ -411,7 +412,7 @@ function Add-CFZoneConfig
     Get-DomainUserDictFromTableLite -Table $Table
     Write-Verbose "调用python脚本cf_config_api.py设置域名配置..."
 
-    python $pys/cf_api/cf_config_api.py configure -c $CfConfig -f $Table -a $Account -ip $ip
+    python $script configure -c $CfConfig -f $Table -a $Account -ip $ip
 }
 function Add-CFZoneCheckActivation
 {

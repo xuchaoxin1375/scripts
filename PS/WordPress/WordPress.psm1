@@ -1097,24 +1097,27 @@ function Deploy-WpSitesOnline
     # Add-CFZoneCheckActivation -Account $CfAccount -ConfigPath $CfConfig -Table $FromTable
     Start-ThreadJob -Name "CFZoneActivation" -ScriptBlock {
         param ($Account, $ConfigPath, $Table)
-
+        Write-Host "[Time:$(Get-DateTime)]CFZoneActivation..."
         Add-CFZoneCheckActivation `
             -Account $Account `
             -ConfigPath $ConfigPath `
             -Table $Table
-    } -ArgumentList $CfAccount, $CfConfig, $FromTable
+        Write-Host "[Time:$(Get-DateTime)]CFZoneActivation done."
+    } -ArgumentList $CfAccount, $CfConfig, $FromTable -ThrottleLimit 5
 
     # 配置cf域名解析,邮箱转发和代理保护(位置1)
     # Add-CFZoneConfig -Account $CfAccount -CfConfig $CfConfig -Table $FromTable -Ip $hst
     Start-ThreadJob -Name "CFZoneConfig" -ScriptBlock {  
-        param ($Account, $CfConfig, $Table, $Ip)
+        param ($Account, $CfConfig, $Table, $script, $Ip)
         Write-Host "[Time:$(Get-DateTime)]CFZoneConfig..."
         Add-CFZoneConfig `
             -Account $Account `
             -CfConfig $CfConfig `
             -Table $Table `
+            -script $Script `
             -Ip $Ip
-    } -ArgumentList $CfAccount, $CfConfig, $FromTable, $hst
+        Write-Host "[Time:$(Get-DateTime)]CFZoneConfig done."
+    } -ArgumentList $CfAccount, $CfConfig, $FromTable, "$pys/cf_api/cf_config_api.py", $hst
     
     # 创建宝塔远程空站点创建
     # Deploy-BatchSiteBTOnline -Server $HostName -ServerConfig $ServerConfig -Table $FromTable -SitesHome $SitesHome 
@@ -1122,6 +1125,7 @@ function Deploy-WpSitesOnline
     $deploySitesOnBTJob = Start-ThreadJob -ScriptBlock { 
         Write-Host "[Time:$(Get-DateTime)]Deploying sites on BT online..."
         Deploy-BatchSiteBTOnline -Script "$using:pys/bt_api/create_sites.py" -Server $using:HostName -ServerConfig $using:ServerConfig -Table $using:FromTable -SitesHome $using:SitesHome 
+        Write-Host "[Time:$(Get-DateTime)]Deploying sites on BT online done."
     } -Name "DeployBTSites"
     
 
@@ -1136,6 +1140,7 @@ function Deploy-WpSitesOnline
         )
         Write-Host "[Time:$(Get-DateTime)]Pushing site table to server..."
         Push-ByScp -Server $Server -Path $Path -Destination $Destination
+        Write-Host "[Time:$(Get-DateTime)]Pushing site table to server done."
     }
     $pushSiteTableJob = Start-ThreadJob -ScriptBlock $pushSiteTable -ArgumentList $hst, $FromTable, $RemoteSiteTable -Name "PushSiteTable"
 

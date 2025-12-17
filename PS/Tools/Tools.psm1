@@ -547,6 +547,7 @@ www.d2.com    李
 
 "@,
         [ValidateSet("Auto", "FromFile", "MultiLineString")]
+        [alias("Mode")]
         $TableMode = 'Auto',
         # 表结构，默认是 "域名,用户名"
         $Structure = $SiteOwnersDict.DFTableStructure,
@@ -579,7 +580,7 @@ www.d2.com    李
     # 解析表头结构
     $columns = $Structure -split ','
     $structureFieldsNumber = $columns.Count
-    Write-Verbose "structureFieldsNumber:[$structureFieldsNumber]" -Verbose
+    Write-Verbose "structureFieldsNumber:[$structureFieldsNumber]:{$columns}" -Verbose
 
     # 解析行数据
     if($TableMode -in @('Auto', 'FromFile') -and (Test-Path $Table))
@@ -598,7 +599,8 @@ www.d2.com    李
 
     # $Table = $Table -replace '(?:https?:\/\/)?(?:www\.)?([a-zA-Z0-9-]+(?:\.[a-zA-Z]{2,})+)', '$1 '
     # 将网站url->域名
-    $Table = $Table -replace '\b(?:https?:\/\/)?([\w.-]+\.[a-zA-Z]{2,})(?:/|\s)(?:[^\w])', '$1 '
+    # $Table = $Table -replace '\b(?:https?://)?([\w.-]+\.[a-z-A-Z]{2,})(?:/|\s)(?:[^\w])', '$1 '
+    $Table = $Table -replace '(?:https?://)(?:w*\.)([\w.-]+(\.[\w.-]+)+)(?:/)', '$1 '
     if(!$KeepWWW)
     {
         $Table = $Table -replace 'www\.', ''

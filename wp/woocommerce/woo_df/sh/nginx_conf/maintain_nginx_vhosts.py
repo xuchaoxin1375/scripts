@@ -103,7 +103,7 @@ def init_site_birth_log(site_birth_log=SITE_BIRTH_CSV, table_header=TABLE_HEADER
         else:
             print("日志文件为空,初始化表头...")
             df = pd.DataFrame(columns=table_header)
-    print(f"各个字段类型{df.dtypes}")
+    # print(f"各个字段类型{df.dtypes}")
     return df
 
 
@@ -123,6 +123,9 @@ def maintain_site_birth_log(
     """
     df = init_site_birth_log(site_birth_log, TABLE_HEADER)
     site_birth_lines = []
+    # 参数检查
+    print(f"drop_duplicated={drop_duplicate}")
+    print(f"keep={keep}")
     # 检查文件是否存在
     if os.path.exists(site_table) is False:
         print(f"域名列表文件不存在:{site_table},结束操作.")
@@ -162,8 +165,8 @@ def maintain_site_birth_log(
     print(f"site_birth_lines:{site_birth_lines}")
     df = pd.concat([df, pd.DataFrame(site_birth_lines)], ignore_index=True)
     if drop_duplicate:
-        # 移除域名重复的行
-        df.drop_duplicates(subset=["domain"], keep=keep)
+        print("移除域名重复的行...")
+        df.drop_duplicates(subset=["domain"], keep=keep, inplace=True)
     df.to_csv(site_birth_log, index=False)
     print(f"{df}")
 
@@ -175,7 +178,7 @@ def maintain_site_birth_log(
 
     # 创建一个新的站点列表文件site_table,包含一句注释提醒:此域名列表已经处理并清空.
     reset_message = f"# 此域名列表已在 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} 处理并清空。\
-    上一轮操作的备份文件路径[{SITE_TABLE_BAK}] \n请将新的待处理域名列表添加到此处。\n"
+    上一轮操作的备份文件路径[{SITE_TABLE_BAK}] \n# 请将新的待处理域名列表添加/覆盖到此处。\n"
     try:
         with open(site_table, mode="w", encoding="utf-8") as f:
             f.write(reset_message)
@@ -308,7 +311,7 @@ def get_filtered(
     if only_status_changed and "status" in df.columns:
         filtered_df = filtered_df[filtered_df["status"] != mode]
     # print(filtered_df)
-    
+
     domains = filtered_df["domain"]
     domains = list(domains)
     return domains
