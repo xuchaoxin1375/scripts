@@ -140,7 +140,7 @@ process_file() {
     sed -i.bak "/$INSERT_MARKER/i\\
     \\
     #CUSTOM-CONFIG-START\\
-    include /www/server/nginx/conf/com.conf;\\
+    include /www/server/nginx/conf/com_basic.conf;\\
     #CUSTOM-CONFIG-END\\
 " "$conf_file"
 
