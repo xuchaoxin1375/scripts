@@ -600,7 +600,7 @@ www.d2.com    李
     # $Table = $Table -replace '(?:https?:\/\/)?(?:www\.)?([a-zA-Z0-9-]+(?:\.[a-zA-Z]{2,})+)', '$1 '
     # 将网站url->域名
     # $Table = $Table -replace '\b(?:https?://)?([\w.-]+\.[a-z-A-Z]{2,})(?:/|\s)(?:[^\w])', '$1 '
-    $Table = $Table -replace '(?:https?://)(?:w*\.)([\w.-]+(\.[\w.-]+)+)(?:/)', '$1 '
+    $Table = $Table -replace '(?:https?://)(?:w*\.)([\w.-]+(\.[\w.-]+)+)(?:/?)\s+', '$1 '
     if(!$KeepWWW)
     {
         $Table = $Table -replace 'www\.', ''
