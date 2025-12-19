@@ -336,7 +336,7 @@ def get_filtered(
     # 将birth_time列转换为datetime类型
     df["birth_time"] = pd.to_datetime(df["birth_time"])
     # 查看日期处理后的结果
-    print(df)
+    # print(df)
     df["domain"] = df["domain"].str.strip()
     # 移除域名字段为空的行
     df = df[df["domain"].notna() & (df["domain"] != "")]
@@ -586,7 +586,7 @@ def main():
             )
         elif args.update_status:
             res = update_status_on_site_birth_log(site_birth_log=args.csv)
-            # print(res)
+            print(res)
         else:
             maintain_site_birth_log(site_birth_log=args.csv, site_table=args.site_table)
 
