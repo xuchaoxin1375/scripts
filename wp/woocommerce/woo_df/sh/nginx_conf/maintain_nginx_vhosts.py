@@ -264,6 +264,18 @@ def set_config(
     return config
 
 
+def complete_columns(df, log_file=SITE_BIRTH_CSV):
+    """判断:如果df包含字段domain,但是不包含TABLE_HEADER中的其他字段,则给出警告,并尝试补全这些字段(默认填写空值)"""
+    if "domain" in df.columns and set(df.columns) != set(TABLE_HEADER):
+        print(
+            f"警告: 文件[{log_file}]中存在domain字段,但其余字段不完整,尝试补全({TABLE_HEADER})..."
+        )
+        df = df.reindex(columns=TABLE_HEADER)
+        # df.fillna("", inplace=True)
+        # print(df)
+    return df
+
+
 def get_filtered(
     site_birth_log=SITE_BIRTH_CSV, mode="old", only_status_changed=True, days=DAYS
 ):
@@ -276,14 +288,29 @@ def get_filtered(
         mode: 'young' or 'old'
         only_status_changed: 在基于建站日期满足指定模式外,还要求状态变更(比如从yong->old)作为附加过滤条件
         days: 默认为DAYS
-
-
     """
     # 读取CSV文件
     df = pd.read_csv(site_birth_log)
+    df = complete_columns(df, log_file=site_birth_log)
+    # # 判断:如果df包含字段domain,但是不包含TABLE_HEADER中的其他字段,则给出警告,并尝试补全这些字段(默认填写空值)
+    # if "domain" in df.columns and set(df.columns) != set(TABLE_HEADER):
+    #     print(
+    #         f"警告: 日志文件[{site_birth_log}]中存在domain字段,但其余字段不完整,尝试补全({TABLE_HEADER})..."
+    #     )
+    #     df = df.reindex(columns=TABLE_HEADER)
+    #     # df.fillna("", inplace=True)
+    #     print(df)
+
+    # 移除domain字段中包含http(s)的部分,只保留域名部分
     df["domain"] = df["domain"].apply(get_main_domain_name_from_str)
+    # 统一日期格式
+    df["birth_time"] = pd.to_datetime(df["birth_time"], format="mixed", errors="coerce")
+    df["birth_time"] = df["birth_time"].dt.strftime("%Y-%m-%d %H:%M:%S")  # type: ignore
+
     # 将birth_time列转换为datetime类型
     df["birth_time"] = pd.to_datetime(df["birth_time"])
+    # 查看日期处理后的结果
+    print(df)
     df["domain"] = df["domain"].str.strip()
     # 移除域名字段为空的行
     df = df[df["domain"].notna() & (df["domain"] != "")]
@@ -293,7 +320,6 @@ def get_filtered(
 
     # 过滤出合适的行
 
-    # 替换原有的 if-elif 段落（第98~102行）
     # 使用 pd.Timestamp 统一时间类型，并缓存时间差以提高效率
     current_timestamp = pd.Timestamp.now()
     age_in_days = (current_timestamp - df["birth_time"]).dt.days  # type: ignore
@@ -322,6 +348,7 @@ def update_sites_conf(
     nginx_vhost_root=NGINX_VHOST_ROOT,
     mode="old",
     update_log=True,
+    format_time=True,
     all_sites=False,
     only_status_changed=True,
     dry_run=False,
@@ -364,6 +391,7 @@ def update_sites_conf(
     if update_log:
         current_time = datetime.now()
         df = pd.read_csv(site_birth_log)
+        df = complete_columns(df, log_file=site_birth_log)
         # 兼容domain字段为url的情况
         df["domain"] = df["domain"].apply(get_main_domain_name_from_str)
         # 更新状态和更新时间字段(注意列字段类型处理)
@@ -386,7 +414,15 @@ def update_sites_conf(
     if update_log and df is not None:
         # 移除df中的空行或不规范的行(缺少域名字段值的行)
         df = df[df["domain"].notna() & (df["domain"] != "")]
+        if format_time:
+            # 确保保存到 CSV 之前日期格式是统一的字符串
+            if "birth_time" in df.columns:
+                df["birth_time"] = pd.to_datetime(
+                    df["birth_time"], format="mixed"
+                ).dt.strftime("%Y-%m-%d %H:%M:%S")
         df.to_csv(site_birth_log, index=False)
+
+    print(f"更新完成, 共处理了 {len(domains)} 个站点。")
 
 
 def parse_args():

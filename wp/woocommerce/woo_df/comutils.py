@@ -484,7 +484,7 @@ for url in urls:
     # 清理常见的无效url部分
     url = re.sub(r"https?:/*w*\.?/?", "", url)
     # 尝试提取英文域名(注意,\w匹配数字,字母,下划线,但不包括中划线,而域名中允许,因此这里使用[-\w+]表示域名中的可能的字符(小数点.比较特殊,单独处理)
-    match = re.search(r"(?:https?://)?(?:www\.)?(([-\w+]+\.)+[-\w+]+)", url)
+    match = re.search(r"(?:https?://)?(?:www\.)?(([-\w+]+\.)+[-\w+]+)/?", url)
     if match:
         res = match.group(1).strip("/")
         if normalize:
