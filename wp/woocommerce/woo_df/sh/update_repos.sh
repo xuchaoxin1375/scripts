@@ -1,5 +1,4 @@
 #!/bin/bash
-# version: 20251216
 #初次下载代码
 #git clone --depth 1 https://gitee.com/xuchaoxin1375/scripts.git /repos/scripts
 
@@ -8,6 +7,8 @@
 #git reset --hard origin/main
 #git pull
 
+version=20251218
+echo "当前脚本版本: $version"
 
 # 配置变量
 REPO_URL="https://gitee.com/xuchaoxin1375/scripts.git"
@@ -23,10 +24,12 @@ print_usage() {
         cat <<EOF
 Usage: $(basename "$0") [options]
 
+echo "script version: $version"
+
 Options:
     -c, --update-code    更新仓库代码（clone / reset /pull）
     -g, --update-config  更新配置文件和符号链接等（覆盖/创建/重载 nginx, fail2ban 等）
-    -f, --force          强制执行（用于覆盖 nginx.conf 并跳过交互或保护性检查）
+    -f, --force          强制执行,需要和-g配合使用才生效（用于覆盖 nginx.conf 并跳过交互或保护性检查）
     -h, --help           显示本帮助信息并退出
 
 If neither --update-code nor --update-config is specified, the script
@@ -164,7 +167,7 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
     cp /www/sh/nginx_conf/com_basic.conf /www/server/nginx/conf/com_basic.conf -fv
 
     cp /www/sh/nginx_conf/nginx.conf /www/server/nginx/conf/nginx.repos.conf -fv
-    # todo
+    
     # 如果启用了 --force 选项,则备份宝塔的 nginx.conf 文件 (/www/server/nginx/conf/nginx.conf)
     # 并使用 /www/sh/nginx_conf/nginx.conf 覆盖宝塔的 nginx.conf 文件
     if [ "$FORCE" -eq 1 ]; then

@@ -149,15 +149,24 @@ cat $sh\update_repos.sh
 > 其他服务器管理员可能不需要全部的自动任务,按需选择使用
 
 ```bash
-# 修改-b参数为备份服务器(ip),修改"server?"为对应的目录(比如s1,s2,...)
-30 22 * * * bash /www/sh/backup_sites/backup_site_pkgs.sh -s /srv/uploads/uploader/files -b <backupIp> -d </www/wwwroot/xcx/server?> #修改<>内的值为具体情况
-0 0 */2 * * bash /www/sh/clean_logs.bash
+# 需要针对每个服务修改的部分
+
+# 修改2个地方: -b参数为备份服务器(ip); -d参数指定要备份服务上的目录,主要是"server?"为对应的目录(比如s1,s2,...)
+30 22 * * * bash /www/sh/backup_sites/backup_site_pkgs.sh -s /srv/uploads/uploader/files -b <backupIp> -d /www/wwwroot/xcx/server? #修改"server?"值为具体情况
+
+
+# 通用部分(各个服务器共同的定时维护任务脚本)
+
+# */30 * * * * pkill -9 nginx;nginx
+0 0 */2 * * bash /www/sh/clean_logs.sh
 0 3 * * * bash /www/sh/nginx_conf/update_cf_ip_configs.sh
 50 23 * * 0 bash /www/sh/remove_deployed_sites.sh
 */30 * * * * bash /www/sh/deploy_wp_schd.sh
 */2 * * * * bash /www/sh/run-all-wp-cron.sh
-# */30 * * * * pkill -9 nginx;nginx
-0 0 * * * python /www/sh/nginx_conf/update_nginx_vhosts.py update -m old >> /var/log/nginx_update.log 2>&1
+
+## python脚本(适合复杂逻辑维护任务)
+0 0 * * * python3 /www/sh/nginx_conf/maintain_nginx_vhosts.py update -m old >> /var/log/nginx_update.log 2>&1
+
 
 ```
 
