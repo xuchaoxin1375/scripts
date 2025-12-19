@@ -447,37 +447,37 @@ def split_multi(
 
 def get_main_domain_name_from_str(url, normalize=True):
     """
-        从字符串中提取域名,结构形如 "二级域名.顶级域名",即SLD.TLD;
-        对于提取部分的正则,如果允许英文"字母,-,数字")(对于简单容忍其他字符的域名,使用([^/]+)代替([\\w]+)这个部分
+            从字符串中提取域名,结构形如 "二级域名.顶级域名",即SLD.TLD;
+            对于提取部分的正则,如果允许英文"字母,-,数字")(对于简单容忍其他字符的域名,使用([^/]+)代替([\\w]+)这个部分
 
-        仅提取一个域名,适合于对于一个字符串中仅包含一个确定的域名的情况
-        例如,对于更长的结构,"子域名.二级域名.顶级域名"则会丢弃子域名,前缀带有http(s)的部分也会被移除
+            仅提取一个域名,适合于对于一个字符串中仅包含一个确定的域名的情况
+            例如,对于更长的结构,"子域名.二级域名.顶级域名"则会丢弃子域名,前缀带有http(s)的部分也会被移除
 
-        Args:
-            url (str): 待处理的URL字符串
-            normalize (bool, optional): 是否进行规范化处理(移除空格,并且将字母小写化处理). Defaults to True.
+            Args:
+                url (str): 待处理的URL字符串
+                normalize (bool, optional): 是否进行规范化处理(移除空格,并且将字母小写化处理). Defaults to True.
 
 
-        Examples:
-# 测试URL列表
-urls = [
-    "www.domain1.com",
-    "domain--name.com",
-    "https://www.dom-ain2.com",
-    "https://sports.whh3.cn.com",
-    "domain-test4.com",
-    "http://domain5.com",
-    "https://domain6.com/",
-    "# https://domain7.com",
-    "http://",
-    "https://www8./",
-    "https:/www9",
-]
-for url in urls:
-    domain = get_main_domain_name_from_str(url)
-    print(domain)
+            Examples:
+    # 测试URL列表
+    urls = [
+        "www.domain1.com",
+        "domain--name.com",
+        "https://www.dom-ain2.com",
+        "https://sports.whh3.cn.com",
+        "domain-test4.com",
+        "http://domain5.com",
+        "https://domain6.com/",
+        "# https://domain7.com",
+        "http://",
+        "https://www8./",
+        "https:/www9",
+    ]
+    for url in urls:
+        domain = get_main_domain_name_from_str(url)
+        print(domain)
 
-# END
+    # END
     """
     # 使用正则表达式提取域名
     url = str(url)
@@ -516,11 +516,15 @@ def set_image_extension(
 
     """
 
+    # res = (
+    #     series.astype(str).apply(get_image_filebasename(supported_image_formats))
+    #     + f"{default_image_format}"
+    # )
     res = (
         series.astype(str).apply(get_image_filebasename(supported_image_formats))
         + f"{default_image_format}"
     )
-
+    
     return res
 
 
@@ -600,27 +604,37 @@ def read_table(file_path, header=0, encoding=None, default_columns=None):
 
 
 def get_image_filebasename(supported_image_formats=SUPPORT_IMAGE_FORMATS_NAME):
-    """得到不带格式的图片名
-    这依赖于supported_image_formats的配置的完善程度
+    """返回一个用于计算不带格式后缀(扩展名)的图片名的匿名函数对象(callable)
+    可以将此函数的返回值作为函数看待,并作为apply()的参数
+
+    效果依赖于supported_image_formats的配置的完善程度
 
     :param supported_image_formats: 支持的图片格式列表
     :return: 用来计算不带格式扩展名图片名的lambda函数,其参数必须是字符串,否则抛出异常(比如x是个浮点数,就会因为没有split方法报错)
 
     Examples:
         from comutils import get_image_filebasename
+        >>> get_image_filebasename()('abc')
+        'abc'
+
         >>> get_image_filebasename()('abc.jpg')
         'abc'
+
         >>> get_image_filebasename()('abc.xxx')
         'abc.xxx'
+
         >>> get_image_filebasename(['png', 'jpg'])('abc.png')
         'abc'
+
         >>> get_image_filebasename(['png', 'jpg'])('abc.png.jpg')
         'abc.png'
     """
 
     return lambda x: (
+        # x.rsplit(".", 1)[0]: 从右侧开始分割字符串，"只分割1次(有的文件名有包含多个.部分)"，取(索引为0的)第一部分（即最后一个点号之前的部分）,对应于文件名name.extension中的name部分
+        # x.split(".")[-1]和x.rsplit(".", 1)[-1]作用基本相同,但是后者性能高点,不会做多余的分割操作
         x.rsplit(".", 1)[0]
-        if x.split(".")[-1].lower() in supported_image_formats
+        if x.rsplit(".",1)[-1].lower() in supported_image_formats
         else x
     )
 
@@ -831,11 +845,11 @@ def split_urls(urls):
 
     """
 
-    if(urls):
+    if urls:
         matches = re.findall(HTTP_S_URL_CONS_PATTERN, urls)
     else:
         print("ERROR!!!,urls is invalid")
-        matches=[]
+        matches = []
     return matches
 
     # matches = re.findall(HTTP_S_URL_CONS_PATTERN, urls)

@@ -64,18 +64,32 @@ def get_main_domain_name_from_str(url, normalize=True):
 
 
         Examples:
-        # 测试URL列表
-    urls = ['www.domain1.com', 'https://www.dom-ain2.com','https://sports.whh3.cn.com', 'domain-test4.com','http://domain5.com', 'https://domain6.com/','# https://domain7.com','http://','https://www8./','https:/www9']
-    for url in urls:
-        domain = get_main_domain_name_from_str(url)
-        print(domain)
+# 测试URL列表
+urls = [
+    "www.domain1.com",
+    "domain--name.com",
+    "https://www.dom-ain2.com",
+    "https://sports.whh3.cn.com",
+    "domain-test4.com",
+    "http://domain5.com",
+    "https://domain6.com/",
+    "# https://domain7.com",
+    "http://",
+    "https://www8./",
+    "https:/www9",
+]
+for url in urls:
+    domain = get_main_domain_name_from_str(url)
+    print(domain)
+
+# END
     """
     # 使用正则表达式提取域名
     url = str(url)
     # 清理常见的无效url部分
     url = re.sub(r"https?:/*w*\.?/?", "", url)
-    # 尝试提取英文域名
-    match = re.search(r"(?:https?://)?(?:www\.)?((\w+.?)+)", url)
+    # 尝试提取英文域名(注意,\w匹配数字,字母,下划线,但不包括中划线,而域名中允许,因此这里使用[-\w+]表示域名中的可能的字符(小数点.比较特殊,单独处理)
+    match = re.search(r"(?:https?://)?(?:www\.)?(([-\w+]+\.)+[-\w+]+)/?", url)
     if match:
         res = match.group(1).strip("/")
         if normalize:
@@ -83,6 +97,7 @@ def get_main_domain_name_from_str(url, normalize=True):
             res = re.sub(r"\s+", "", res).lower()
         return res
     return ""
+
 
 
 def init_site_birth_log(site_birth_log=SITE_BIRTH_CSV, table_header=TABLE_HEADER):
