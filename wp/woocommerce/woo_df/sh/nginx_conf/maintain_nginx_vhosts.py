@@ -52,37 +52,37 @@ SITE_TABLE_BAK = f"{BACKUP_DIR}/site_table.conf.bak.{datetime_forfilename}"
 
 def get_main_domain_name_from_str(url, normalize=True):
     """
-        从字符串中提取域名,结构形如 "二级域名.顶级域名",即SLD.TLD;
-        对于提取部分的正则,如果允许英文"字母,-,数字")(对于简单容忍其他字符的域名,使用([^/]+)代替([\\w]+)这个部分
+            从字符串中提取域名,结构形如 "二级域名.顶级域名",即SLD.TLD;
+            对于提取部分的正则,如果允许英文"字母,-,数字")(对于简单容忍其他字符的域名,使用([^/]+)代替([\\w]+)这个部分
 
-        仅提取一个域名,适合于对于一个字符串中仅包含一个确定的域名的情况
-        例如,对于更长的结构,"子域名.二级域名.顶级域名"则会丢弃子域名,前缀带有http(s)的部分也会被移除
+            仅提取一个域名,适合于对于一个字符串中仅包含一个确定的域名的情况
+            例如,对于更长的结构,"子域名.二级域名.顶级域名"则会丢弃子域名,前缀带有http(s)的部分也会被移除
 
-        Args:
-            url (str): 待处理的URL字符串
-            normalize (bool, optional): 是否进行规范化处理(移除空格,并且将字母小写化处理). Defaults to True.
+            Args:
+                url (str): 待处理的URL字符串
+                normalize (bool, optional): 是否进行规范化处理(移除空格,并且将字母小写化处理). Defaults to True.
 
 
-        Examples:
-# 测试URL列表
-urls = [
-    "www.domain1.com",
-    "domain--name.com",
-    "https://www.dom-ain2.com",
-    "https://sports.whh3.cn.com",
-    "domain-test4.com",
-    "http://domain5.com",
-    "https://domain6.com/",
-    "# https://domain7.com",
-    "http://",
-    "https://www8./",
-    "https:/www9",
-]
-for url in urls:
-    domain = get_main_domain_name_from_str(url)
-    print(domain)
+            Examples:
+    # 测试URL列表
+    urls = [
+        "www.domain1.com",
+        "domain--name.com",
+        "https://www.dom-ain2.com",
+        "https://sports.whh3.cn.com",
+        "domain-test4.com",
+        "http://domain5.com",
+        "https://domain6.com/",
+        "# https://domain7.com",
+        "http://",
+        "https://www8./",
+        "https:/www9",
+    ]
+    for url in urls:
+        domain = get_main_domain_name_from_str(url)
+        print(domain)
 
-# END
+    # END
     """
     # 使用正则表达式提取域名
     url = str(url)
@@ -97,7 +97,6 @@ for url in urls:
             res = re.sub(r"\s+", "", res).lower()
         return res
     return ""
-
 
 
 def init_site_birth_log(site_birth_log=SITE_BIRTH_CSV, table_header=TABLE_HEADER):
@@ -128,7 +127,7 @@ def maintain_site_birth_log(
     drop_duplicate=True,
     keep: DropKeep = "first",
 ):
-    """维护csv文件
+    """维护csv文件(网站建站日期状态表)
 
     Args:
         drop_duplicate (bool, optional): 是否删除重复项. Defaults to True.
@@ -202,6 +201,27 @@ def maintain_site_birth_log(
         print(f"警告: 创建新的站点列表文件失败: {e}")
     return True
     # os.system(f"cp {site_table} {SITE_TABLE_BAK}")
+
+
+def update_status_on_site_birth_log(site_birth_log=SITE_BIRTH_CSV):
+    """根据网站时间(计算网站状态)更新csv中的status字段"""
+    df = pd.read_csv(site_birth_log)
+    youngs = []
+    olds = []
+    for mode in ["old", "young"]:
+        mode_df = get_filtered(site_birth_log=site_birth_log, mode=mode)
+        mode_domains = mode_df["domain"]
+        df.loc[df["domain"].isin(mode_domains), "status"] = mode
+        # youngs = mode_df["domain"]
+        # olds = mode_df["domain"]
+    # print(f"youngs:{youngs}")
+    # print(f"olds:{olds}")
+    # 将df中domain
+    df.loc[df["domain"].isin(youngs), "status"] = "young"
+    df.loc[df["domain"].isin(olds), "status"] = "old"
+
+    df.to_csv(site_birth_log, index=False)
+    return df
 
 
 def set_config(
@@ -292,7 +312,7 @@ def complete_columns(df, log_file=SITE_BIRTH_CSV):
 
 
 def get_filtered(
-    site_birth_log=SITE_BIRTH_CSV, mode="old", only_status_changed=True, days=DAYS
+    site_birth_log=SITE_BIRTH_CSV, mode="", only_status_changed=True, days=DAYS
 ):
     """
     计算年轻站点,待后续处理相应的配置文件
@@ -300,22 +320,13 @@ def get_filtered(
 
     Args:
         site_birth_log:网站创建日期记录文件
-        mode: 'young' or 'old'
+        mode: 'young' or 'old' or 'all'
         only_status_changed: 在基于建站日期满足指定模式外,还要求状态变更(比如从yong->old)作为附加过滤条件
         days: 默认为DAYS
     """
     # 读取CSV文件
     df = pd.read_csv(site_birth_log)
     df = complete_columns(df, log_file=site_birth_log)
-    # # 判断:如果df包含字段domain,但是不包含TABLE_HEADER中的其他字段,则给出警告,并尝试补全这些字段(默认填写空值)
-    # if "domain" in df.columns and set(df.columns) != set(TABLE_HEADER):
-    #     print(
-    #         f"警告: 日志文件[{site_birth_log}]中存在domain字段,但其余字段不完整,尝试补全({TABLE_HEADER})..."
-    #     )
-    #     df = df.reindex(columns=TABLE_HEADER)
-    #     # df.fillna("", inplace=True)
-    #     print(df)
-
     # 移除domain字段中包含http(s)的部分,只保留域名部分
     df["domain"] = df["domain"].apply(get_main_domain_name_from_str)
     # 统一日期格式
@@ -347,15 +358,16 @@ def get_filtered(
         filtered_df = df
         # print(f"warning mode: {mode} is not common mode,all domain will be returned!")
     else:
-        raise ValueError("Invalid mode. Expected 'young' or 'old'.")
+        raise ValueError("Invalid mode. Expected 'young' or 'old' or 'all'  ")
         # filtered_df = df
     if only_status_changed and "status" in df.columns:
         filtered_df = filtered_df[filtered_df["status"] != mode]
     # print(filtered_df)
 
-    domains = filtered_df["domain"]
-    domains = list(domains)
-    return domains
+    return filtered_df
+    # domains = filtered_df["domain"]
+    # domains = list(domains)
+    # return domains
 
 
 def update_sites_conf(
@@ -371,7 +383,8 @@ def update_sites_conf(
     remove_vhosts_conf_blank_lines=True,
 ):
     """
-    根据指定的状态的站(old/young),将配置文件做对应状态的更新
+    根据指定的状态(old/young),扫描网站并将配置文件(nginx vhost config)做对应的更新
+    注意,如果要维护csv文件,请到maintain子命令中做对应实现
 
     Args:
         mode: 将扫描出的待更新站点(配置)更新到'young' or 'old'模式
@@ -388,12 +401,23 @@ def update_sites_conf(
             only_status_changed=only_status_changed,
             days=days,
         )
+    # 将筛选出来的域名条目(行)的domain字段提取出来
+    domains = domains["domain"]
     print(f"处理模式:({mode})")
     print(f"本次处理域名列表预览:{domains}")
     # return False
     vhost_confs = []
     for domain in domains:
         path = os.path.join(nginx_vhost_root, domain) + ".conf"
+        # 备用路径
+        path1 = os.path.join(nginx_vhost_root, f"www.{domain}") + ".conf"
+        if os.path.exists(path):
+            print(f"找到配置文件{path}")
+        elif os.path.exists(path1):
+            print(f"找到配置文件{path1}")
+            path = path1
+        else:
+            print("未找到配置文件")
         vhost_confs.append(path)
 
     if dry_run:
@@ -403,6 +427,7 @@ def update_sites_conf(
         return
 
     df = None
+    # 根据需要,对csv文件做更新维护
     if update_log:
         current_time = datetime.now()
         df = pd.read_csv(site_birth_log)
@@ -414,10 +439,13 @@ def update_sites_conf(
         if "status" in df.columns:
             df["status"] = df["status"].astype("string")
             df.loc[df["domain"].isin(domains), "status"] = mode
+
         if "update_time" in df.columns:
             df["update_time"] = df["update_time"].astype("object")
             # df.loc[df["domain"].isin(domains), "update_time"] = current_time.strftime("%Y-%m-%d %H:%M:%S")
             df.loc[df["domain"].isin(domains), "update_time"] = current_time
+
+    # 遍历所有列出的配置文件路径,修改配置
     for config in vhost_confs:
         set_config(
             vhost_config=config,
@@ -435,6 +463,8 @@ def update_sites_conf(
                 df["birth_time"] = pd.to_datetime(
                     df["birth_time"], format="mixed"
                 ).dt.strftime("%Y-%m-%d %H:%M:%S")
+
+        # 保存更改到csv中
         df.to_csv(site_birth_log, index=False)
 
     print(f"更新完成, 共处理了 {len(domains)} 个站点。")
@@ -493,6 +523,13 @@ def parse_args():
         default="first",
         help="保留重复项中的哪一个(默认first)",
     )
+    parser_maintain.add_argument(
+        "-u",
+        "--update-status",
+        action="store_true",
+        help="根据birth_time距离现在时间(脚本运行时)的天数是young还是old来决定status字段的取值(刷新status字段)"
+        "update status field accroding days in (now_time - brith_time)",
+    )
 
     # update 子命令
     parser_update = subparsers.add_parser(
@@ -508,9 +545,9 @@ def parse_args():
     )
     parser_update.add_argument(
         "-q",
-        "--only-status-changed",
+        "--ignore-status",
         action="store_true",
-        help="仅当计算出来的状态和原日志中的状态不一致时才处理",
+        help="是否忽略status字段的取值来过滤出要操作的网站域名(通常建议不启用此选项,参考status状态,可以提高处理效率)",
     )
     parser_update.add_argument(
         "-n",
@@ -527,6 +564,7 @@ def parse_args():
     parser_update.add_argument(
         "-d", "--days", type=int, default=DAYS, help=f"新老站天数阈值(默认{DAYS}天)"
     )
+
     parser_update.add_argument(
         "--dry-run",
         action="store_true",
@@ -546,6 +584,9 @@ def main():
                 drop_duplicate=args.drop_duplicate,
                 keep=args.keep,
             )
+        elif args.update_status:
+            res = update_status_on_site_birth_log(site_birth_log=args.csv)
+            # print(res)
         else:
             maintain_site_birth_log(site_birth_log=args.csv, site_table=args.site_table)
 
@@ -558,7 +599,7 @@ def main():
             update_log=not args.no_update_log,
             all_sites=args.all_sites,
             dry_run=args.dry_run,
-            only_status_changed=args.only_status_changed,
+            only_status_changed=not args.ignore_status,
             days=args.days,
         )
         print(f">结束时间:{datetime.now()}\n")
