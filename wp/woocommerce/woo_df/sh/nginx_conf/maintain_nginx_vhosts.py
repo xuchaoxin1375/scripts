@@ -407,6 +407,7 @@ def update_sites_conf(
     print(f"本次处理域名列表预览:{domains}")
     # return False
     vhost_confs = []
+    # 构造配置文件路径(验证配置文件是否存在,存在才加入到待处理列表中)
     for domain in domains:
         path = os.path.join(nginx_vhost_root, domain) + ".conf"
         # 备用路径
@@ -427,7 +428,7 @@ def update_sites_conf(
         return
 
     df = None
-    # 根据需要,对csv文件做更新维护
+    # 根据需要,对csv文件做更新维护(注意,这个部分仅处理被过滤出来的条目,通常不会修改csv中的全部行)
     if update_log:
         current_time = datetime.now()
         df = pd.read_csv(site_birth_log)

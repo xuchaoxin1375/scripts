@@ -211,6 +211,10 @@ function Add-CFZoneDNSRecords
     CF_API_EMAIL
     CF_API_KEY
 
+    .EXAMPLE
+    Set-CFCredentials -Account account3-1
+    Add-CFZoneDNSRecords -Domains .\table-s3.conf -Parallel -Verbose -Debug
+
     .NOTES
     如果没有安装flarectl工具,请到官网或者github对应项目下载(可执行文件只在个别release中提供,请耐心寻找)
     cloudflare推荐使用新式地api token,而非旧式的api key,因此如果你要使用api key,可能更不容易找到入口
@@ -293,6 +297,7 @@ function Add-CFZoneDNSRecords
      
             $domain = $_.ToLower()
             Write-Host "正在处理域名:$_"
+            Write-Host "当前CF账号(环境变量)信息:$env:CF_API_EMAIL"
             # 默认情况下总是尝试先创建域名(无论是否已经存在),使用AddRecordOnly参数时则不创建域名
             if(!$AddRecordOnly)
             {
@@ -450,12 +455,18 @@ function Get-CFZoneInfoFromTable
     [CmdletBinding()]
     param(
         [alias('Domain')]$Table = "$home/desktop/table.conf",
-        [switch]$Json
+        [switch]$Json,
+        [alias('Threads')]$ThrottleLimit = 5
     )
     Write-Host $Table
     $info = Get-DomainUserDictFromTable -Table $Table 
     $jsonFormat = if($Json) { "--json" } else { "" }
-    $info | ForEach-Object { $_.domain } | ForEach-Object { "flarectl $JsonFormat zone info $_" | Invoke-Expression }
+    $res = $info | ForEach-Object { $_.domain } | ForEach-Object -Parallel { 
+        $item = "flarectl $using:JsonFormat zone info $_" | Invoke-Expression 
+        Write-Host $item 
+        Write-Output $item
+    } -ThrottleLimit $ThrottleLimit
+    return $res
 }
 function Get-CFZoneNameServersTable
 {
@@ -467,12 +478,15 @@ function Get-CFZoneNameServersTable
     2.解析'name servers'属性,并添加nameserver1和nameserver2两个属性
     3.保存到带有3列(zone,nameserver1,nameserver2)的表格中csv文件中,这个格式可以和配套的spaceship_api脚本配合使用,实现精准的域名服务器更改
     #>
+    [CmdletBinding()]
     param (
         $FromTable = "$Desktop\table.conf",
-        $ToTable = "$Desktop\domains_nameservers.csv"
+        $ToTable = "$Desktop\domains_nameservers.csv",
+        $Threads = 5
     )
-    $j = Get-CFZoneInfoFromTable -Table $FromTable -Json | ConvertFrom-Json  # | Select-Object 'zone', 'name servers'
-    $res = $j | ForEach-Object {
+    Write-Debug "CF account:[$env:CF_API_EMAIL]"
+    $j = Get-CFZoneInfoFromTable -Table $FromTable -Json -Threads $Threads | ConvertFrom-Json  # | Select-Object 'zone', 'name servers'
+    $res = $j | ForEach-Object -Parallel {
         $nameservers = $_.'Name Servers' -split ','
         $nameserver1, $nameserver2 = $nameservers[0].trim(), $nameservers[1].trim()
         # Write-Host $nameservers
@@ -480,7 +494,7 @@ function Get-CFZoneNameServersTable
         $_ | Add-Member -Name 'nameserver1' -Value $nameserver1 -MemberType NoteProperty
         $_ | Add-Member -Name 'nameserver2' -Value $nameserver2 -MemberType NoteProperty
         Write-Output $_
-    }
+    } -ThrottleLimit 5
     $core = $res | Select-Object 'domain', 'nameserver1', 'nameserver2' 
     $core | Export-Csv -Path $ToTable -NoTypeInformation -Encoding utf8 -Force
     Write-Host "Name servers table has been saved to $ToTable"

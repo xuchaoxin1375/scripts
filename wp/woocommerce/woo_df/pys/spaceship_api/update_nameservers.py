@@ -195,7 +195,7 @@ def parse_args():
         help=f"SpaceShip API配置文件路径 (json),默认值:f{SS_CONFIG_PATH}",
     )
     parser.add_argument(
-        "-w", "--threads", type=int, default=4, help="最大并发线程数 (默认: 4)"
+        "-w", "--threads", type=int, default=8, help="最大并发线程数"
     )
     parser.add_argument(
         "--dry-run", action="store_true", help="仅预览将要修改的内容,不实际提交API"

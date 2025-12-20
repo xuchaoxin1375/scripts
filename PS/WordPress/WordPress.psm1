@@ -1086,46 +1086,64 @@ function Deploy-WpSitesOnline
 
     Get-Job | Remove-Job -Verbose
 
+    # START SERIAL (串行,各步骤内局部并行,如果线程过多导致api错误(429),尤其是cloudflare api,则考虑降低线程数或者减少任务中的网站域名数量,分批部署)
     # 添加域名解析到cf(第一步执行)
     Add-CFZoneDNSRecords -AddRecordAtOnce -IP $hst -Parallel:(!$Onebyone) -Domains $FromTable
     # 从待部署域名列表更新spaceship域名的nameservers(cf添加后立即执行spaceship的nameservers更新)
     Get-CFZoneNameServersTable -FromTable $FromTable
-    # 更新spaceship的nameservers
-    Update-SSNameServers -Config $SpaceshipConfig -Table $ToTable
-    
+    # 更新spaceship的nameservers(后续的CFZoneActivation依赖于此域名DNS配置)
+    # Update-SSNameServers -Config $SpaceshipConfig -Table $ToTable
+    # END SERIAL
+
+    # START JOBS
     # 让cf立即检查域名的激活
     # Add-CFZoneCheckActivation -Account $CfAccount -ConfigPath $CfConfig -Table $FromTable
     Start-ThreadJob -Name "CFZoneActivation" -ScriptBlock {
-        param ($Account, $ConfigPath, $Table)
-        Write-Host "[Time:$(Get-DateTime)]CFZoneActivation..."
+        <# 
+        实验性局部串行,此小节包含两个任务(需要串行)
+        #>
+        param (
+            # part1
+            $Account, $ConfigPath, $Table,
+            # part2
+            $SpaceshipConfig, $ToTable
+        
+        )
+
+        # part1
+        Write-Host "[START TIME:$(Get-DateTime)]Update-SSNameServers..."
+        Update-SSNameServers -Config $SpaceshipConfig -Table $ToTable
+        Write-Host "[END TIME::$(Get-DateTime)]Update-SSNameServers done."
+        # part2
+        Write-Host "[START TIME:$(Get-DateTime)]CFZoneActivation..."
         Add-CFZoneCheckActivation `
             -Account $Account `
             -ConfigPath $ConfigPath `
             -Table $Table
-        Write-Host "[Time:$(Get-DateTime)]CFZoneActivation done."
-    } -ArgumentList $CfAccount, $CfConfig, $FromTable -ThrottleLimit 5
+        Write-Host "[END TIME::$(Get-DateTime)]CFZoneActivation done."
+    } -ArgumentList $CfAccount, $CfConfig, $FromTable , $SpaceshipConfig, $ToTable -ThrottleLimit 5
 
     # 配置cf域名解析,邮箱转发和代理保护(位置1)
     # Add-CFZoneConfig -Account $CfAccount -CfConfig $CfConfig -Table $FromTable -Ip $hst
     Start-ThreadJob -Name "CFZoneConfig" -ScriptBlock {  
         param ($Account, $CfConfig, $Table, $script, $Ip)
-        Write-Host "[Time:$(Get-DateTime)]CFZoneConfig..."
+        Write-Host "[START TIME:$(Get-DateTime)]CFZoneConfig..."
         Add-CFZoneConfig `
             -Account $Account `
             -CfConfig $CfConfig `
             -Table $Table `
             -script $Script `
             -Ip $Ip
-        Write-Host "[Time:$(Get-DateTime)]CFZoneConfig done."
+        Write-Host "[END TIME::$(Get-DateTime)]CFZoneConfig done."
     } -ArgumentList $CfAccount, $CfConfig, $FromTable, "$pys/cf_api/cf_config_api.py", $hst
     
     # 创建宝塔远程空站点创建
     # Deploy-BatchSiteBTOnline -Server $HostName -ServerConfig $ServerConfig -Table $FromTable -SitesHome $SitesHome 
     # 后台运行远程站点创建
-    $deploySitesOnBTJob = Start-ThreadJob -ScriptBlock { 
-        Write-Host "[Time:$(Get-DateTime)]Deploying sites on BT online..."
+    Start-ThreadJob -ScriptBlock { 
+        Write-Host "[START TIME:$(Get-DateTime)]Deploying sites on BT online..."
         Deploy-BatchSiteBTOnline -Script "$using:pys/bt_api/create_sites.py" -Server $using:HostName -ServerConfig $using:ServerConfig -Table $using:FromTable -SitesHome $using:SitesHome 
-        Write-Host "[Time:$(Get-DateTime)]Deploying sites on BT online done."
+        Write-Host "[END TIME::$(Get-DateTime)]Deploying sites on BT online done."
     } -Name "DeployBTSites"
     
 
@@ -1138,24 +1156,28 @@ function Deploy-WpSitesOnline
             [string]$Path,
             [string]$Destination
         )
-        Write-Host "[Time:$(Get-DateTime)]Pushing site table to server..."
+        Write-Host "[START TIME:$(Get-DateTime)]Pushing site table to server..."
         Push-ByScp -Server $Server -Path $Path -Destination $Destination
-        Write-Host "[Time:$(Get-DateTime)]Pushing site table to server done."
+        Write-Host "[END TIME::$(Get-DateTime)]Pushing site table to server done."
     }
-    $pushSiteTableJob = Start-ThreadJob -ScriptBlock $pushSiteTable -ArgumentList $hst, $FromTable, $RemoteSiteTable -Name "PushSiteTable"
+    Start-ThreadJob -ScriptBlock $pushSiteTable -ArgumentList $hst, $FromTable, $RemoteSiteTable -Name "PushSiteTable"
 
     Write-Host "等待后台作业完成..."
     $jobs = Get-Job
+    # 等待1~2秒在查看作业启动状态,看看各个任务的启动情况(这不会阻塞后台job的运行,可以放心等待)
+    Start-Sleep 2
     Write-Host "$($jobs|Out-String)"
     # Receive-Job $deploySitesOnBTJob, $pushSiteTableJob -Wait -Verbose
     $jobs | Receive-Job -Wait -Verbose
+    # END JOBS
+    
     # 重启nginx 
     Restart-NginxOnHost -HostName $hst
     # 等待环节
     Write-Warning "等待2到5分钟让cf激活域名保护(不保证成功,大多数情况下可以),后续检查是否全部激活,否则循环等待,每次$RetryGap 秒,最多等待$MaxRetryTimes 轮"
     if($WaitTimeBasic)
     {
-        write-warning"基础等待时间$WaitTimeBasic 秒"
+        Write-Warning "基础等待时间$WaitTimeBasic 秒"
     }
     # Start-SleepWithProgress -Seconds $WaitTimeBasic
     $retryTimes = $MaxRetryTimes
