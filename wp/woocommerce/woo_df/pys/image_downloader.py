@@ -42,6 +42,7 @@ logger = logging.getLogger("ImageDownloader")
 # imgdown_logger = logging.getLogger(__name__)
 # imgdown_logger = logging.getLogger("ImageDownloader.imgdown")
 imgdown_logger = logger.getChild("imgdown")
+# compresser_logger = logger.getChild("imgcompresser")
 
 
 # 设置日志级别(包括被引用模块的日志记录器日志级别,如果模块支持的话)
@@ -49,12 +50,12 @@ def set_loggers_level(level=LOG_LEVEL):
     """设置日志级别"""
     logger.setLevel(level)
     imgdown_logger.setLevel(level)
+    # compresser_logger.setLevel(level)
 
 
 set_loggers_level(LOG_LEVEL)
 
 
-# 可以考虑包装成函数
 def add_log_handler():
     """设置日志记录器的handler定义和绑定操作"""
     console_handler = logging.StreamHandler()

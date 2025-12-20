@@ -17,6 +17,7 @@ from io import BytesIO
 
 # from wand.image import Image as WandImage
 from PIL import Image, ImageFile
+
 # import pillow_avif  # 启用 AVIF 支持必须导入,太新的python版本可能安装不上库(不需要显式调用,导入即可) # noqa: F401  pylint: disable=unused-import
 from comutils import get_paths, SUPPORT_IMAGE_FORMATS_NAME
 from operationlogger import OperationLogger
@@ -45,8 +46,11 @@ DEFAULT_QUALITY_RULE = "0,50,75 ; 50,200,40 ; 200,10000,30"
 SUPPORT_IMAGE_FORMATS = ["." + f for f in SUPPORT_IMAGE_FORMATS_NAME]
 # COMPRESS_FOR_FORMATS = map(lambda f: "." + f, COMPRESS_FOR_FORMATS_NAME)
 
-
+# logger = logging.getLogger("ImageDownloader.imgcompresser")
 ##
+# logger = logging.getLogger('ImageDownloader.imgdown.imgcompresser')
+# logger.propagate = False  # 阻止向上传播到 root
+
 class ImageCompressorLogger(OperationLogger):
     """图片压缩日志记录器
     添加了图片路径(目录)压缩前后的大小计算和报告
@@ -161,6 +165,8 @@ class ImageCompressor:
         # self.opl.init_status()
         self.opl.start()
         print(f"压缩白名单: {self.compress_for_format}")
+        # self.logger.propagate = False
+        self.logger.info(f"[{__name__}]当前日志处理器:{logger.handlers}")  # type: ignore
 
     @property
     def compress_threshold(self):
@@ -375,7 +381,7 @@ class ImageCompressor:
                     f"压缩参数: quality={quality}",
                     f"分辨率变化:{old_wh}->{new_wh} ; 分辨率限制:{self.resize_threshold}",
                 )
-                msg=" ".join(msg_segs)
+                msg = " ".join(msg_segs)
 
                 # if self.remove_original and input_format_name != output_format_name:
                 self.process_after_compressed(
@@ -619,7 +625,7 @@ def setup_logging(level=logging.INFO, log_file=None, log_format=None):
 
         log_format (str): 自定义日志格式。
     """
-    logger = logging.getLogger()
+    # logger = logging.getLogger()
     logger.setLevel(level)
 
     # 清除之前的处理器
@@ -629,7 +635,7 @@ def setup_logging(level=logging.INFO, log_file=None, log_format=None):
 
     # 设置默认的日志格式
     if log_format is None:
-        log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        log_format = "%(asctime)s ~~ %(name)s - %(levelname)s - %(message)s"
 
     # 创建格式化器
     formatter = logging.Formatter(log_format)

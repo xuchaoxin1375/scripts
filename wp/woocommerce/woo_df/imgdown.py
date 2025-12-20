@@ -59,18 +59,11 @@ LOG_FORMAT = "%(asctime)s -- %(name)s - %(levelname)s - %(message)s"
 # 创建当前模块专属的日志记录器
 # logger = logging.getLogger(__name__)
 logger = logging.getLogger("ImageDownloader.imgdown")
+compresser_logger = logger.getChild("imgcompresser")
 logger.setLevel(logging.INFO)  # 设置默认日志级别
 fnh = FilenameHandler()
 
-# print("添加控制台日志处理器(handler)")
-# console_handler = logging.StreamHandler()
 
-# console_formatter = logging.Formatter(LOG_FORMAT)
-# console_handler.setFormatter(console_formatter)
-
-
-# # console_handler.setLevel(logging.NOTSET)  # 改为 NOTSET，跟随logger级别
-# logger.addHandler(console_handler)
 
 
 info = logger.info
@@ -78,6 +71,8 @@ debug = logger.debug
 warning = logger.warning
 error = logger.error
 exception = logger.exception
+
+
 
 
 def add_log_handler():
@@ -487,6 +482,7 @@ class ImageDownloader:
         self.record_failed = record_failed
         # 根据常见业务需要,使用指定的参数构造图片压缩器🎈
         self.ic = ImageCompressor(
+            logger=compresser_logger,
             quality_rule=quality_rule,
             remove_original=remove_original,
             resize_threshold=resize_threshold,
@@ -596,7 +592,7 @@ class ImageDownloader:
             info("保存文件: %s", file_path)
         else:
             info("没有指定文件名,自动命名")
-        debug(
+        info(
             "🚀@downloading(%d/%d): [%s]\n->[%s] ",
             current_index,
             self.stats.total,
