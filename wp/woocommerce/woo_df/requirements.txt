@@ -1,3 +1,5 @@
+pillow
+pillow-avif-plugin
 requests
 types-requests
 python-magic-bin
@@ -12,9 +14,7 @@ pymysql
 phpserialize
 unidecode
 tqdm
-pillow
 Wand
-pillow-avif-plugin
 cloudflare
 
 # please run:[  playwright install  ] this command in your terminal to install playwright browser automation tool

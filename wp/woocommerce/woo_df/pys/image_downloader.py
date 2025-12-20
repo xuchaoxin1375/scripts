@@ -22,6 +22,8 @@ from comutils import (
     get_data_from_csv,
     # split_multi,
 )
+
+# from woo_df.imgdown import ImageDownloader
 from imgdown import ImageDownloader, USER_AGENTS, BROWSER_DOWNLOADER
 from filenamehandler import FilenameHandler as fh
 from wooenums import CSVProductFields
@@ -29,27 +31,52 @@ from wooenums import CSVProductFields
 
 RESIZE_THRESHOLD = (1000, 800)
 DEAFULT_EXT = ".webp"
-csv.field_size_limit(int(1e7))  # 允许csv文件最大为10MB
+csv.field_size_limit(int(1e7))
 # 或者根据实际类定义位置调整导入路径
 IMG_DIR = "./images"
 selected_csv_field_ids: list[str] = []
 # 日志配置
+LOG_LEVEL = logging.INFO
 logger = logging.getLogger("ImageDownloader")
+# 接管imgdown模块的日志记录器
+# imgdown_logger = logging.getLogger(__name__)
+# imgdown_logger = logging.getLogger("ImageDownloader.imgdown")
+imgdown_logger = logger.getChild("imgdown")
+
+
+# 设置日志级别(包括被引用模块的日志记录器日志级别,如果模块支持的话)
+def set_loggers_level(level=LOG_LEVEL):
+    """设置日志级别"""
+    logger.setLevel(level)
+    imgdown_logger.setLevel(level)
+
+
+set_loggers_level(LOG_LEVEL)
+
+
+# 可以考虑包装成函数
+def add_log_handler():
+    """设置日志记录器的handler定义和绑定操作"""
+    console_handler = logging.StreamHandler()
+    console_formatter = logging.Formatter(
+        fmt="%(asctime)s == %(name)s - %(levelname)s %(funcName)s: %(message)s"
+    )
+    console_handler.setFormatter(console_formatter)
+    # 绑定到日志记录器
+    logger.addHandler(console_handler)
+
+
+add_log_handler()
+
+# imgdown_logger.addHandler(console_handler)
+# 默认 INFO，main() 里根据 -v 再调整
+# logging.basicConfig(level=logging.INFO)
 info = logger.info
 debug = logger.debug
 warning = logger.warning
 error = logger.error
 exception = logger.exception
 
-if not logger.handlers:
-    console_handler = logging.StreamHandler()
-    console_formatter = logging.Formatter(
-        fmt="%(asctime)s [%(levelname)s] %(funcName)s: %(message)s"
-    )
-    console_handler.setFormatter(console_formatter)
-    logger.addHandler(console_handler)
-# 默认 INFO，main() 里根据 -v 再调整
-logging.basicConfig(level=logging.INFO)
 debug("Logger initialized %s", logging.getLevelName(logger.level))
 
 
@@ -197,7 +224,6 @@ def parse_args():
     # 下载方案控制
     parser.add_argument(
         "-U",
-        "--use-shutil",
         "--download-method",
         default="request",
         choices=["request", "curl", "iwr"] + BROWSER_DOWNLOADER,
@@ -282,7 +308,8 @@ def main():
 
     # 设置日志级别
     if args.verbose:
-        logger.setLevel(logging.DEBUG)
+        # logger.setLevel(logging.DEBUG)
+        set_loggers_level(level=logging.DEBUG)
     # 打印当前的日志级别:
     print(f"当前日志级别: {logging.getLevelName(logger.level)}")
     debug("当前日志级别: %s", logging.getLevelName(logger.level))
@@ -336,15 +363,14 @@ def main():
                         selected_ids=selected_csv_field_ids,
                     )
                     # print(lines,"🎈🎈")
-    debug(f"use shutil:{args.use_shutil}")
+    debug(f"use shutil:{args.download_method}")
     # 创建下载器实例,控制下载器基本行为
     downloader = ImageDownloader(
         max_workers=args.workers,
         timeout=args.timeout,
         retry_times=args.retry,
         user_agent=args.user_agent,
-        use_shutil=args.use_shutil,  # deprecated
-        download_method=args.use_shutil,
+        download_method=args.download_method,
         compress_quality=args.compress_quality,
         quality_rule=args.quality_rule,
         remove_original=args.remove_original,

@@ -17,7 +17,7 @@ from io import BytesIO
 
 # from wand.image import Image as WandImage
 from PIL import Image, ImageFile
-import pillow_avif  # 必须导入以启用 AVIF 支持(不需要显式调用,导入即可) # noqa: F401  pylint: disable=unused-import
+# import pillow_avif  # 启用 AVIF 支持必须导入,太新的python版本可能安装不上库(不需要显式调用,导入即可) # noqa: F401  pylint: disable=unused-import
 from comutils import get_paths, SUPPORT_IMAGE_FORMATS_NAME
 from operationlogger import OperationLogger
 from pathsize import format_size, get_size
@@ -42,7 +42,7 @@ COMPRESS_TRHESHOLD = COMPRESS_TRHESHOLD_B
 DEFAULT_QUALITY_RULE = "0,50,75 ; 50,200,40 ; 200,10000,30"
 # image extension / format names
 
-SUPPORT_IMAGE_FORMATS = ("." + f for f in SUPPORT_IMAGE_FORMATS_NAME)
+SUPPORT_IMAGE_FORMATS = ["." + f for f in SUPPORT_IMAGE_FORMATS_NAME]
 # COMPRESS_FOR_FORMATS = map(lambda f: "." + f, COMPRESS_FOR_FORMATS_NAME)
 
 
@@ -153,7 +153,7 @@ class ImageCompressor:
         # self.opl = OperationLogger()
         self.opl = ImageCompressorLogger()
         self.recurse = recurse
-        
+
         if skip_truncated_image:
             ImageFile.LOAD_TRUNCATED_IMAGES = False
         self.resize_threshold = resize_threshold
@@ -366,7 +366,7 @@ class ImageCompressor:
                 else:
                     print("不关心体积变化,执行压缩")
                 ratio = (new_size / original_size - 1) * 100
-                msg = (
+                msg_segs = (
                     icon_trend,
                     f"体积变化({size_trend}): {ratio:.2f}%",
                     f"原始大小: {original_size/1024:.2f}KB, ",
@@ -375,6 +375,7 @@ class ImageCompressor:
                     f"压缩参数: quality={quality}",
                     f"分辨率变化:{old_wh}->{new_wh} ; 分辨率限制:{self.resize_threshold}",
                 )
+                msg=" ".join(msg_segs)
 
                 # if self.remove_original and input_format_name != output_format_name:
                 self.process_after_compressed(

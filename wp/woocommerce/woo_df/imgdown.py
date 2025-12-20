@@ -54,36 +54,63 @@ TIMEOUT = 120
 IMG_DIR = "./images"
 RESIZE_THRESHOLD = 1000, 800  # 图片尺寸小于这个阈值则不调整分辨率(宽*高)
 # 自定义日志格式
-LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-# ...existing code...
+LOG_FORMAT = "%(asctime)s -- %(name)s - %(levelname)s - %(message)s"
+
 # 创建当前模块专属的日志记录器
-logger = logging.getLogger(__name__)
+# logger = logging.getLogger(__name__)
+logger = logging.getLogger("ImageDownloader.imgdown")
 logger.setLevel(logging.INFO)  # 设置默认日志级别
 fnh = FilenameHandler()
+
+# print("添加控制台日志处理器(handler)")
+# console_handler = logging.StreamHandler()
+
+# console_formatter = logging.Formatter(LOG_FORMAT)
+# console_handler.setFormatter(console_formatter)
+
+
+# # console_handler.setLevel(logging.NOTSET)  # 改为 NOTSET，跟随logger级别
+# logger.addHandler(console_handler)
+
+
 info = logger.info
 debug = logger.debug
 warning = logger.warning
 error = logger.error
 exception = logger.exception
-# 防止重复添加 handler
-if not logger.handlers:
-    # 控制台日志处理器
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.NOTSET)  # 改为 NOTSET，跟随logger级别
-    console_formatter = logging.Formatter(LOG_FORMAT)
-    console_handler.setFormatter(console_formatter)
-    logger.addHandler(console_handler)
 
-    # 文件日志处理器(作为模块被调用一般不需要默认日志输出到文件!)
-    # try:
-    #     file_handler = logging.FileHandler("img_downloader.log", encoding="utf-8")
-    #     file_handler.setLevel(logging.NOTSET)  # 改为 NOTSET，跟随logger级别
-    #     file_formatter = logging.Formatter(LOG_FORMAT)
-    #     file_handler.setFormatter(file_formatter)
-    #     logger.addHandler(file_handler)
-    # except Exception as e:
-    #     logger.warning("无法创建文件日志处理器: %s", e)
-# ...existing code...
+
+def add_log_handler():
+    """
+    为模块中的日志对象添加/设置日志处理器
+    主要用于当本模块单独使用(比如测试部分api,在main()函数中执行任务时要打印特定日志,可以在本函数中定义日志处理器)
+
+    注意,本模块内,通常不要在main函数中调用此函数,尤其不要在模块级别执行此函数
+    否则,在外部程序调用此模块时,容易导致输出日志会导致重复!
+    考虑到logger对象设计的特殊性(配置继承和消息回传),handler重复加载就会导致输出重复
+    """
+    # 在设置handler之前,需使用print()打印日志
+    print(f"{__name__}:尝试添加控制台日志处理器(handler)")
+    if not logger.handlers:
+        console_handler = logging.StreamHandler()
+        console_formatter = logging.Formatter(LOG_FORMAT)
+        console_handler.setFormatter(console_formatter)
+
+        logger.addHandler(console_handler)
+
+        # 文件日志处理器(作为模块被调用一般不需要默认日志输出到文件!)
+        # try:
+        #     file_handler = logging.FileHandler("img_downloader.log", encoding="utf-8")
+        #     file_handler.setLevel(logging.NOTSET)  # 改为 NOTSET，跟随logger级别
+        #     file_formatter = logging.Formatter(LOG_FORMAT)
+        #     file_handler.setFormatter(file_formatter)
+        #     logger.addHandler(file_handler)
+        # except Exception as e:
+        #     logger.warning("无法创建文件日志处理器: %s", e)
+
+    info(f"当前日志处理器:{logger.handlers}")
+
+
 # 文件名处理器
 fnh = FilenameHandler()
 # 配置使用的User-Agent(过长可以用括号包裹配合+号分隔字符串)
@@ -115,7 +142,7 @@ COMMON_SEP_PATTERN = "|".join(COMMON_SEPARATORS)
 
 URL_SEP_REGEXP = re.compile(URL_SEP_PATTERN)
 COMMON_SEP_REGEXP = re.compile(COMMON_SEP_PATTERN)
-logger.info("SEP_PATTERN: %s", URL_SEP_PATTERN)
+info("SEP_PATTERN: %s", URL_SEP_PATTERN)
 # 有些网站需要登录才能访问资源。你可以手动获取登录后的 Cookie，并在每次请求中携带。
 COOKIES = {"sessionid": "abc123xyz", "csrftoken": "csrf_token_here"}
 
@@ -160,7 +187,7 @@ def download_by_iwr(
         cmd.append("-SkipCertificateCheck")
     # 合并为单行字符串
     ps_command = " ".join(cmd)
-    logger.debug("PowerShell 命令: %s", ps_command)
+    debug("PowerShell 命令: %s", ps_command)
     msg = f"🎈PowerShell 命令[UA={user_agent}]:  {ps_command}"
     print(msg)
     try:
@@ -357,8 +384,8 @@ class DownloadStatistics:
 
     def save_failed_urls(self, file_path="failed_urls.txt"):
         """保存失败的URL到文件,供后续此重试"""
-        logger.info("Saving failed URLs to %s", file_path)
-        logger.info("Failed URLs: [%s]", self.failed_urls)
+        info("Saving failed URLs to %s", file_path)
+        info("Failed URLs: [%s]", self.failed_urls)
         with open(file=file_path, mode="w", encoding="utf-8") as f:
             for url in self.failed_urls:
                 f.write(url + "\n")
@@ -383,19 +410,19 @@ class DownloadStatistics:
     def print_summary(self):
         """打印下载统计摘要"""
         summary = self.get_summary()
-        logger.info("=" * 50)
-        logger.info("下载统计摘要:")
-        logger.info("总计: %d 张图片", summary["total"])
-        logger.info("成功: %d 张图片", summary["success"])
-        logger.info("下载时跳过: %d 张图片", summary["skipped"])
-        logger.info("失败: %d 张图片", summary["failed"])
-        logger.info("耗时: %.2f 秒", summary["elapsed_time"])
+        info("=" * 50)
+        info("下载统计摘要:")
+        info("总计: %d 张图片", summary["total"])
+        info("成功: %d 张图片", summary["success"])
+        info("下载时跳过: %d 张图片", summary["skipped"])
+        info("失败: %d 张图片", summary["failed"])
+        info("耗时: %.2f 秒", summary["elapsed_time"])
 
         if summary["failed"] > 0:
-            logger.info("失败的URL:")
+            info("失败的URL:")
             for url in summary["failed_urls"]:
-                logger.info("  - %s", url)
-        logger.info("=" * 50)
+                info("  - %s", url)
+        info("=" * 50)
 
 
 class ImageDownloader:
@@ -417,7 +444,6 @@ class ImageDownloader:
         output_format="webp",
         remove_original=False,
         record_failed=False,
-        use_shutil=False,
         download_method="request",
         ps_version="powershell",
         curl_insecure=False,
@@ -567,10 +593,10 @@ class ImageDownloader:
         file_path = os.path.join(output_dir, filename)
         if filename:
             # 如果传入的文件名没有扩展名,且在try_get_ext为True时,则[尝试]补全扩展名
-            logger.info("保存文件: %s", file_path)
+            info("保存文件: %s", file_path)
         else:
-            logger.info("没有指定文件名,自动命名")
-        logger.info(
+            info("没有指定文件名,自动命名")
+        debug(
             "🚀@downloading(%d/%d): [%s]\n->[%s] ",
             current_index,
             self.stats.total,
@@ -602,7 +628,7 @@ class ImageDownloader:
                 debug("获得文件名🎈: [%s]", filename)
 
                 if os.path.exists(file_path) and not override:
-                    logger.info("文件已存在,跳过: %s", file_path)
+                    info("文件已存在,跳过: %s", file_path)
                     self.stats.add_skipped()
                     return True
                 # elif self.use_shutil:
@@ -736,7 +762,7 @@ class ImageDownloader:
                     f.write(chunk)
 
         file_size = os.path.getsize(file_path)
-        logger.info("成功下载: %s -> %s (%d 字节)", url, file_path, file_size)
+        info("成功下载: %s -> %s (%d 字节)", url, file_path, file_size)
         return file_size
 
     def _is_image_response(self, response):
@@ -784,7 +810,7 @@ class ImageDownloader:
         Returns:
             Dict: 下载统计信息
         """
-        logger.info("开始下载 %d 张图片到 %s", len(urls), output_dir)
+        info("开始下载 %d 张图片到 %s", len(urls), output_dir)
 
         # 初始化统计信息
         self.stats = DownloadStatistics()
@@ -839,7 +865,7 @@ class ImageDownloader:
         Returns:
             Dict: 下载统计信息
         """
-        logger.info("开始下载 %d 张图片到 %s", len(name_url_pairs), output_dir)
+        info("开始下载 %d 张图片到 %s", len(name_url_pairs), output_dir)
 
         # 初始化统计信息
         self.stats = DownloadStatistics()
@@ -894,4 +920,10 @@ class ImageDownloader:
 
 ##
 if __name__ == "__main__":
-    logger.info("Welcome to use this image downloader module!")
+    # logger.setLevel(logging.DEBUG)
+    add_log_handler()
+    info("Welcome to use this image downloader module!")
+    downloader = ImageDownloader()
+    downloader.download_only_url(
+        ["https://b0.bdstatic.com/8b62d936eb6f40ae9e464d4f6ebed6cd.jpg"]
+    )

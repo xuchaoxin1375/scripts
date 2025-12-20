@@ -8,12 +8,12 @@ import sys
 
 from imgcompresser import (
     # DEFAULT_QUALITY_RULE,
-    SUPPORT_IMAGE_FORMATS,
+    # SUPPORT_IMAGE_FORMATS,
     ImageCompressor,
     setup_logging,
 )
 
-SUPPORT_IMAGE_FORMATS = list(SUPPORT_IMAGE_FORMATS)
+# SUPPORT_IMAGE_FORMATS = list(SUPPORT_IMAGE_FORMATS)
 
 
 QUALITY_DEFAULT = 70
