@@ -1,6 +1,6 @@
 """
 图片压缩与转换模块
-详情查看Readme@ImgCompresser
+详情查看Readme@Imgcompressor
 功能摘要:
 支持PNG、JPG压缩和WEBP格式转换
 通常将jpg,png转换为webp会有较好的效果，尤其是png->webp的效果最明显
@@ -46,10 +46,15 @@ DEFAULT_QUALITY_RULE = "0,50,75 ; 50,200,40 ; 200,10000,30"
 SUPPORT_IMAGE_FORMATS = ["." + f for f in SUPPORT_IMAGE_FORMATS_NAME]
 # COMPRESS_FOR_FORMATS = map(lambda f: "." + f, COMPRESS_FOR_FORMATS_NAME)
 
-# logger = logging.getLogger("ImageDownloader.imgcompresser")
+# logger = logging.getLogger("ImageDownloader.imgcompressor")
+logger = logging.getLogger(__name__)
+debug = logger.debug
+info = logger.info
+warning = logger.warning
+error = logger.error
+critical = logger.critical
 ##
-# logger = logging.getLogger('ImageDownloader.imgdown.imgcompresser')
-# logger.propagate = False  # 阻止向上传播到 root
+
 
 class ImageCompressorLogger(OperationLogger):
     """图片压缩日志记录器
@@ -164,7 +169,7 @@ class ImageCompressor:
 
         # self.opl.init_status()
         self.opl.start()
-        print(f"压缩白名单: {self.compress_for_format}")
+        info(f"压缩白名单: {self.compress_for_format}")
         # self.logger.propagate = False
         self.logger.info(f"[{__name__}]当前日志处理器:{logger.handlers}")  # type: ignore
 
@@ -211,17 +216,17 @@ class ImageCompressor:
             _, input_format = os.path.splitext(input_path)
             # input_format = os.path.splitext(input_path)[1].lower()
             input_format_name = input_format.lower().strip(".")
-            self.logger.info(f"输入格式:{input_format}")
+            self.logger.debug(f"输入格式:{input_format}")
 
             if self.compress_for_format:
                 if input_format_name not in self.compress_for_format:
                     msg = f"不在白名单的格式,跳过: {input_format}|file:{input_path}"
-                    self.logger.info(msg)
+                    self.logger.debug(msg)
                     opl.log_skip()
                     return True, msg
             if input_format_name in self.skip_format_names:
                 msg = f"跳过格式: {input_format}|file:{input_path}"
-                self.logger.info(msg)
+                self.logger.debug(msg)
                 opl.log_skip()
                 return True, msg
 
@@ -239,18 +244,18 @@ class ImageCompressor:
                 output_path=output_path,
                 output_format=output_format,
             )
-            print(f"输出文件: {output_path}")
+            info(f"输出文件: {output_path}")
             # self.logger.info(f"输出文件: {output_path}🎈")
             output_base, output_format = os.path.splitext(output_path)
             output_format_name = output_format.lower().strip(".")
-            self.logger.info(f"输出格式:{output_format}")
+            self.logger.debug(f"输出格式:{output_format}")
             # 检查输出文件是否已存在
             if os.path.exists(output_path):
                 # 不要急着在这里删除文件,否则后续文件操作没有文件可用
                 if not overwrite:
                     opl.log_skip()
                     msg = f"[⚠️]输出文件已存在,默认取消压缩: {output_path} (使用-O/--overwrite覆盖)"
-                    # print(msg)
+
                     self.logger.warning(msg)
                     return (False, msg)
             # return
@@ -289,7 +294,7 @@ class ImageCompressor:
                     buffer = BytesIO()
                     # 将img流保存到临时的buffer中,再额外指定format
                     # debug
-                    print(f"格式: {output_format_name}")
+                    debug(f"格式: {output_format_name}")
                     # 规范jpg名字为jpeg(PIL库的需要)
                     if output_format_name == "jpg":
                         output_format_name = "jpeg"
@@ -340,7 +345,7 @@ class ImageCompressor:
                 self.logger.info(f"保存临时文件: {temp_output_path}")
 
                 output_format_name = output_format.strip(".")
-                print(
+                debug(
                     f"存储模式:remove_original:{self.remove_original} \
 格式变化: {input_format_name} -> {output_format_name}"
                 )
@@ -359,25 +364,25 @@ class ImageCompressor:
                 # 根据需要做图片后缀更改,不覆盖原文件
                 fake_format = self.fake_format
                 if input_format_name != output_format_name and fake_format:
-                    print("仅更改源文件(input_path)的后缀格式,而不做实际转换")
-                    print(f"格式文件变化:{input_path}->{output_path}")
+                    debug("仅更改源文件(input_path)的后缀格式,而不做实际转换")
+                    debug(f"格式文件变化:{input_path}->{output_path}")
                     os.rename(input_path, output_path)
                 msg = f" 🟰  压缩后文件大小未减少,不覆盖原文件(大小变化:{original_size}->{new_size})"
-                print(msg)
+                debug(msg)
             else:
                 # 需要替换源文件的情况
                 if not expand:
                     # 理想情况:处理后的文件体积变小
-                    print(f"处理后的文件体积变小,覆盖原文件: {output_path}")
+                    debug(f"处理后的文件体积变小,覆盖原文件: {output_path}")
                 else:
-                    print("不关心体积变化,执行压缩")
+                    debug("不关心体积变化,执行压缩")
                 ratio = (new_size / original_size - 1) * 100
                 msg_segs = (
                     icon_trend,
                     f"体积变化({size_trend}): {ratio:.2f}%",
                     f"原始大小: {original_size/1024:.2f}KB, ",
                     f"压缩后: {new_size/1024:.2f}KB, ",
-                    f"压缩成功: {input_path} -> {output_path}\n",
+                    f"压缩成功: {input_path} -> {output_path}",
                     f"压缩参数: quality={quality}",
                     f"分辨率变化:{old_wh}->{new_wh} ; 分辨率限制:{self.resize_threshold}",
                 )
@@ -417,7 +422,7 @@ class ImageCompressor:
                 new_wh = (int(width * ratio), int(height * ratio))
                 # 调用resize方法调整图片分辨率
                 img = img.resize(new_wh, Image.Resampling.LANCZOS)
-                self.logger.info(f"调整分辨率: {img.size}")
+                self.logger.debug(f"调整分辨率: {img.size}")
                 # 计算缩小分辨率后的图片大小
 
         return img, old_wh, new_wh
@@ -428,7 +433,7 @@ class ImageCompressor:
         """根据需要移除原始文件等操作🎈"""
         if self.remove_original:
             os.remove(input_path)
-            print(f"删除原始文件: {input_path}")
+            debug(f"删除原始文件: {input_path}")
             # 将临时文件重命名为输出文件🎈
         if overwrite:
             if os.path.exists(output_path):
@@ -443,7 +448,7 @@ class ImageCompressor:
         # output_format = output_format or ""
 
         # 格式特定参数
-        # print(f"输出格式: {output_format}🎈")
+        # debug(f"输出格式: {output_format}🎈")
         if output_format == ".webp":
             save_kwargs["method"] = 6  # 最高质量编码方法
         elif output_format == ".png":
@@ -490,29 +495,29 @@ class ImageCompressor:
         """
         if output_path and output_format:
             # 同时提供输出路径和格式,格式一致则继续运行,否则报错
-            print(f"同时提供了输出路径和格式:[{output_path}] ,[{output_format}]")
+            debug(f"同时提供了输出路径和格式:[{output_path}] ,[{output_format}]")
             _, format_from_output_path = os.path.splitext(output_path)
-            print(f"🎈输出和格式:[{output_path}] ,[{output_format}]")
+            debug(f"🎈输出和格式:[{output_path}] ,[{output_format}]")
             ext1 = format_from_output_path.lower().lstrip(".")
             ext2 = output_format.lower().lstrip(".")
             if ext1 != ext2:
                 self.logger.error("同时提供输出路径和格式,并且格式不一致(矛盾):")
-                print(f"{ext1} vs {ext2}")
+                self.logger.info(f"{ext1} vs {ext2}")
                 raise ValueError("输出路径中的格式和指定格式矛盾")
 
         elif output_format:
             # 提供了输出格式
-            print(f"仅提供了输出格式:[{output_format}]")
+            debug(f"仅提供了输出格式:[{output_format}]")
             base, _ = os.path.splitext(input_path)
             output_path = f"{base}.{output_format.lower().lstrip('.')}"
         elif output_path:
             # 提供了输出路径
-            print(f"仅提供了输出路径:[{output_path}]")
+            debug(f"仅提供了输出路径:[{output_path}]")
         elif not output_path and not output_format:
-            print("未提供输出路径和格式")
+            info("未提供输出路径和格式")
             output_path = input_path
         else:
-            print("输出参数错误")
+            error("输出参数错误")
         return output_path
 
     def batch_compress(
@@ -605,7 +610,7 @@ class ImageCompressor:
         output_filename = f"{base_name}.{output_format_name}"
         output_path = os.path.join(output_dir, output_filename)
         output_path = os.path.abspath(output_path)
-        print(
+        debug(
             f"格式信息预设: [{input_format} -> {output_format_now}];"
             f"{input_path}->{output_path}"
         )
@@ -684,13 +689,13 @@ def get_quality_from_rule(rule, size, default_quality=20):
             # range_min <= size and size < range_max
             if range_min <= size < range_max:
                 q = quality
-                print(f"规则解析: [{range_min}, {range_max}],size:{size} 质量: {q}")
+                debug(f"规则解析: [{range_min}, {range_max}],size:{size} 质量: {q}")
 
     except ValueError as e:
-        print(f"规则解析错误: {e}")
+        error(f"规则解析错误: {e}")
     return q
 
 
 if __name__ == "__main__":
     # main()
-    print("Welcome to use imgcompresser!")
+    print("Welcome to use imgcompressor!")

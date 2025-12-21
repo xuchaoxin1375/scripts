@@ -63,26 +63,26 @@
 
 ### 基本用例
 
-本文配套的图片压缩命令行基本用例,具体可以查看`image_compresser.py`的使用帮助
+本文配套的图片压缩命令行基本用例,具体可以查看`image_compressor.py`的使用帮助
 
 不过大多数情况下不需要自己编写压缩命令行,本地建站时会生成好配套的命令行
 
 ```bash
-PS> py C:\repos\scripts\wp\woocommerce\woo_df\pys\image_compresser.py -i .\y.jpg -o y2.avif
+PS> py C:\repos\scripts\wp\woocommerce\woo_df\pys\image_compressor.py -i .\y.jpg -o y2.avif
 skip_format:[]
 压缩白名单: ('jpg', 'jpeg', 'png', 'webp', 'heic', 'tif', 'tiff', 'bmp', 'gif', 'avif')
 target fmt:[]
-2025-09-06 16:54:57,916 - imgcompresser - INFO - 开始压缩: ['.\\y.jpg']
-2025-09-06 16:54:57,916 - imgcompresser - INFO - 输入格式:.jpg
-2025-09-06 16:54:57,916 - imgcompresser - DEBUG - 原始文件大小: 3522498
+2025-09-06 16:54:57,916 - imgcompressor - INFO - 开始压缩: ['.\\y.jpg']
+2025-09-06 16:54:57,916 - imgcompressor - INFO - 输入格式:.jpg
+2025-09-06 16:54:57,916 - imgcompressor - DEBUG - 原始文件大小: 3522498
 仅提供了输出路径:[y2.avif]
 输出文件: y2.avif
-2025-09-06 16:54:57,916 - imgcompresser - INFO - 输出格式:.avif
-2025-09-06 16:54:57,930 - imgcompresser - DEBUG - 临时文件: y2.tmp.avif
-2025-09-06 16:54:59,079 - imgcompresser - INFO - 保存临时文件: y2.tmp.avif
+2025-09-06 16:54:57,916 - imgcompressor - INFO - 输出格式:.avif
+2025-09-06 16:54:57,930 - imgcompressor - DEBUG - 临时文件: y2.tmp.avif
+2025-09-06 16:54:59,079 - imgcompressor - INFO - 保存临时文件: y2.tmp.avif
 存储模式:remove_original:False 格式变化: jpg -> avif
 处理后的文件体积变小,覆盖原文件: y2.avif
-2025-09-06 16:54:59,080 - imgcompresser - INFO - ('✅', '体积变化(-): -62.36%', '原始大小: 3439.94KB, ', '压缩后: 1294.80KB, ', '压缩成功: .\\y.jpg -> y2.avif\n', '压缩参数: quality=70', '分辨率变化:(4096, 2656)->(4096, 2656) ; 分辨率限制:None')
+2025-09-06 16:54:59,080 - imgcompressor - INFO - ('✅', '体积变化(-): -62.36%', '原始大小: 3439.94KB, ', '压缩后: 1294.80KB, ', '压缩成功: .\\y.jpg -> y2.avif\n', '压缩参数: quality=70', '分辨率变化:(4096, 2656)->(4096, 2656) ; 分辨率限制:None')
 ```
 
 
@@ -275,7 +275,7 @@ linux服务器上的命令(测试单个链接)
 
 ```bash
 
-python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -p -F  -O -W  -k -A -r 1000 800 -i "替换此串为要被处理路径" . 
+python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compressor.py   -R auto -p -F  -O -W  -k -A -r 1000 800 -i "替换此串为要被处理路径" . 
 ```
 
 如果要保留分辨率压缩,可以取消上述命令行中的`-r 1000 800`
@@ -285,7 +285,7 @@ python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -
 使用包含目录列表的文件作为输入
 
 ```bash
-python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -p -F  -O -W  -k  -A -r 1000 800 -I "/www/wwwroot/pys/test_compress.txt"
+python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compressor.py   -R auto -p -F  -O -W  -k  -A -r 1000 800 -I "/www/wwwroot/pys/test_compress.txt"
 ```
 
 ### 跳过小图压缩|针对性压缩大图
@@ -321,7 +321,7 @@ find "$ROOT" \
 如果网站和文件数量很多,上述过程可能需要几分钟
 
 ```bash
-python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compresser.py   -R auto -p -F  -O -W  -k -w 64 -T 200 -I imgs.txt 
+python3 /repos/scripts/wp/woocommerce/woo_df/pys/image_compressor.py   -R auto -p -F  -O -W  -k -w 64 -T 200 -I imgs.txt 
 ```
 
 如果图片数量多,并且破图多,上述脚本可能会需要比较长时间处理(注意,如果要控制图片分辨率,可以使用`-r`,不过如果要压缩的包含网站首页广告图,就要注意分辨率不能轻易调小,可能导致位置观感不佳)
@@ -384,7 +384,7 @@ git clone https://gitee.com/xuchaoxin1375/scripts.git C:/repos/scripts
 
 ```bash
 #⚡️[Administrator@CXXUDESK][~\Desktop][14:50:16][UP:12.11Days]
-PS> python C:\repos\scripts\wp\woocommerce\woo_df\pys\image_compresser.py   -R auto -p -F  -O -k -f webp  -r 1000 800  -i <imgs_demo_dir>
+PS> python C:\repos\scripts\wp\woocommerce\woo_df\pys\image_compressor.py   -R auto -p -F  -O -k -f webp  -r 1000 800  -i <imgs_demo_dir>
 ```
 
 ### 压缩指定目录中的jpg,png为webp🎈
@@ -393,7 +393,7 @@ PS> python C:\repos\scripts\wp\woocommerce\woo_df\pys\image_compresser.py   -R a
 
 ```powershell
 ls *jpg,*png|% FullName > $home/jpn.txt ;
-python C:\repos\scripts\wp\woocommerce\woo_df\pys\image_compresser.py   -R auto -p -F  -O -k -f webp  -r 1000 800  -I $home/jpn.txt
+python C:\repos\scripts\wp\woocommerce\woo_df\pys\image_compressor.py   -R auto -p -F  -O -k -f webp  -r 1000 800  -I $home/jpn.txt
 
 ```
 

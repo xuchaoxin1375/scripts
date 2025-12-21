@@ -37,12 +37,14 @@ IMG_DIR = "./images"
 selected_csv_field_ids: list[str] = []
 # 日志配置
 LOG_LEVEL = logging.INFO
-logger = logging.getLogger("ImageDownloader")
+# 此脚本为应用程序入口,适合设置为根日志记录器(root)
+logger = logging.getLogger("root")
+# logger=logging.getLogger("ImageDownloader") # 如果这里使用的是非root记录器,则可能出现消息被重复打印(不过格式可能不同罢了)
+
 # 接管imgdown模块的日志记录器
 # imgdown_logger = logging.getLogger(__name__)
 # imgdown_logger = logging.getLogger("ImageDownloader.imgdown")
 imgdown_logger = logger.getChild("imgdown")
-# compresser_logger = logger.getChild("imgcompresser")
 
 
 # 设置日志级别(包括被引用模块的日志记录器日志级别,如果模块支持的话)
@@ -50,10 +52,10 @@ def set_loggers_level(level=LOG_LEVEL):
     """设置日志级别"""
     logger.setLevel(level)
     imgdown_logger.setLevel(level)
-    # compresser_logger.setLevel(level)
+    # compressor_logger.setLevel(level)
 
 
-set_loggers_level(LOG_LEVEL)
+# set_loggers_level(LOG_LEVEL)
 
 
 def add_log_handler():
@@ -69,9 +71,7 @@ def add_log_handler():
 
 add_log_handler()
 
-# imgdown_logger.addHandler(console_handler)
 # 默认 INFO，main() 里根据 -v 再调整
-# logging.basicConfig(level=logging.INFO)
 info = logger.info
 debug = logger.debug
 warning = logger.warning
@@ -277,6 +277,10 @@ def parse_args():
 
     parser.add_argument("-v", "--verbose", action="store_true", help="显示详细日志")
     parser.add_argument(
+        "--loglevel",
+        help="日志级别,可选值:DEBUG,INFO,WARNING,ERROR,CRITICAL,不区分大小写",
+    )
+    parser.add_argument(
         "-x",
         "--compress-quality",
         type=int,
@@ -309,11 +313,19 @@ def main():
 
     # 设置日志级别
     if args.verbose:
-        # logger.setLevel(logging.DEBUG)
-        set_loggers_level(level=logging.DEBUG)
+        logger.setLevel(logging.DEBUG)
+        # set_loggers_level(level=logging.DEBUG)
+    if args.loglevel:
+        # 校验用户输入的日志级别是否是可用的合法值(转换为数字级别)
+        numeric_level = getattr(logging, args.loglevel.upper(), None)
+        if not isinstance(numeric_level, int):
+            raise ValueError(f"Invalid log level: {args.loglevel}")
+        logger.setLevel(numeric_level)
+        # logging.basicConfig(level=numeric_level)
+        # set_loggers_level(level=numeric_level)
+
     # 打印当前的日志级别:
-    print(f"当前日志级别: {logging.getLevelName(logger.level)}")
-    debug("当前日志级别: %s", logging.getLevelName(logger.level))
+    info("当前日志级别: %s", logging.getLevelName(logger.level))
     # 读取输入文件
     lines = []
     if args.test_url:
@@ -348,7 +360,7 @@ def main():
                     error("指定的目录不存在: %s", dirs)
                     sys.exit(1)
                 else:
-                    print(f"处理目录: [{d}]")
+                    info(f"处理目录: [{d}]")
                 for file in os.listdir(d):
                     info("处理文件: %s", file)
                     _, ext = os.path.splitext(file)

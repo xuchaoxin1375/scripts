@@ -11,7 +11,7 @@ import re
 import shutil
 import unicodedata
 from typing import Any, Dict, List, Optional, Tuple, Union
-from imgcompresser import ImageCompressor  # 假设 imgcompresser.py 在同一环境
+from imgcompressor import ImageCompressor  # 假设 imgcompressor.py 在同一环境
 from urllib.parse import urlparse
 from playwright.async_api import BrowserContext, Page, async_playwright
 

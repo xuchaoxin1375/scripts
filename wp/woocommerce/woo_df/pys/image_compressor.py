@@ -6,7 +6,7 @@ import argparse
 import os
 import sys
 
-from imgcompresser import (
+from imgcompressor import (
     # DEFAULT_QUALITY_RULE,
     # SUPPORT_IMAGE_FORMATS,
     ImageCompressor,

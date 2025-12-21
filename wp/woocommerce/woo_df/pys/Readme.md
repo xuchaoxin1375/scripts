@@ -396,7 +396,7 @@ python $pys\image_downloader.py -i 'https://img95.699pic.com/photo/50076/2408.jp
 命令
 
 ```powershell
-python $pys\image_compresser.py 
+python $pys\image_compressor.py 
 ```
 
 基本参数
@@ -410,10 +410,10 @@ python $pys\image_compresser.py
 例如:
 
 ```powershell
-python $pys\image_compresser.py -R auto -p -F  -O -k -f webp  -r 1000 800  -s webp -i .  #默认压缩当前目录,跳过webp图片的压缩(对于混合目录一般压缩过另一半没压缩的情况)
+python $pys\image_compressor.py -R auto -p -F  -O -k -f webp  -r 1000 800  -s webp -i .  #默认压缩当前目录,跳过webp图片的压缩(对于混合目录一般压缩过另一半没压缩的情况)
 ```
 
--   [ReadMe@image_compresser@ImgCompresser.md](..\ReadMe@image_compresser@ImgCompresser.md) 
+-   [ReadMe@image_compressor@Imgcompressor.md](..\ReadMe@image_compressor@Imgcompressor.md) 
 
 
 ### 查看命令行帮助
@@ -507,7 +507,7 @@ d----            2025/5/7    15:11                05
 解决进程占用的问题,可以考虑使用sleep,延迟一些防止操作冲突
 
 ```bash
-ERROR:imgcompresser:处理图片失败: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\Administrator\\Desktop/my_wp_sites/summitandsea24.com/wp-content/uploads/2025\\HHA_Nytryx_Pro_X119_1.tmp.webp' -> 'C:\\Users\\Administrator\\Desktop/my_wp_sites/summitandsea24.com/wp-content/uploads/2025\\HHA_Nytryx_Pro_X119_1.webp'
+ERROR:imgcompressor:处理图片失败: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\Administrator\\Desktop/my_wp_sites/summitandsea24.com/wp-content/uploads/2025\\HHA_Nytryx_Pro_X119_1.tmp.webp' -> 'C:\\Users\\Administrator\\Desktop/my_wp_sites/summitandsea24.com/wp-content/uploads/2025\\HHA_Nytryx_Pro_X119_1.webp'
 ```
 
 #### curl 错误
