@@ -441,7 +441,6 @@ class ImageDownloader:
         resize_threshold=RESIZE_THRESHOLD,
         fake_format=True,
         headless=False,
-        progress_recorder=None,
     ):
         """
         初始化图片下载器
@@ -522,8 +521,6 @@ class ImageDownloader:
         self.proxies = proxies or []
         self.proxy_strategy = proxy_strategy
         self.proxy_index = 0
-        # 进度记录器（可选）
-        self.progress_recorder = progress_recorder
 
     def get_proxy(self):
         """
@@ -679,20 +676,6 @@ class ImageDownloader:
 
                     if res:
                         self.stats.add_success()
-                        # 记录成功下载
-                        if self.progress_recorder:
-                            # 对于curl/iwr等方法，成功时假设是200
-                            http_code = 200
-                            if self.download_method == "request" and "response" in locals():
-                                http_code = response.status_code
-                            self.progress_recorder.record_success(
-                                url=url, filename=filename, http_code=http_code
-                            )
-                    else:
-                        # curl/iwr等方法返回False表示下载失败
-                        # 这里不记录，让异常处理部分统一处理
-                        # 但需要抛出异常以便进入异常处理流程
-                        raise Exception(f"下载失败: {url} (方法: {self.download_method})")
 
                 # 执行压缩任务🎈
                 quality = self.compress_quality
@@ -714,48 +697,6 @@ class ImageDownloader:
                 # return True
                 return file_path
 
-            except requests.exceptions.HTTPError as e:
-                # HTTP错误，可以获取状态码
-                http_code = None
-                if hasattr(e, "response") and e.response is not None:
-                    http_code = e.response.status_code
-                
-                # 如果是404等不可重试的状态码，直接记录并返回
-                if http_code == 404:
-                    warning("资源不存在 (404): %s", url)
-                    if self.progress_recorder:
-                        self.progress_recorder.record_failure(
-                            url=url, status="404", http_code=404, filename=filename or ""
-                        )
-                    self.stats.add_failed(url, name=filename or "")
-                    return False
-                
-                # 其他HTTP错误
-                warning(
-                    "下载失败 (尝试 %d/%d): %s, HTTP状态码: %s, 错误: %s",
-                    attempt + 1,
-                    self.retry_times,
-                    url,
-                    http_code or "未知",
-                    str(e),
-                )
-                # 如果还有重试的机会,则等待一段时间后回到循环再重试
-                if attempt < self.retry_times - 1:
-                    wait_time = retry_gap * (2**attempt) + random.uniform(0, 1)
-                    time.sleep(wait_time)
-                else:
-                    # 尝试次机会用完,直接报错并返回False
-                    wait_time = retry_gap * (2**attempt) + random.uniform(0, 1)
-                    time.sleep(wait_time)
-                    error("下载失败: %s, HTTP状态码: %s, 错误: %s", url, http_code or "未知", str(e))
-                    # 记录失败状态
-                    if self.progress_recorder:
-                        status = f"failed_{http_code}" if http_code else "failed"
-                        self.progress_recorder.record_failure(
-                            url=url, status=status, http_code=http_code, filename=filename or ""
-                        )
-                    self.stats.add_failed(url, name=filename or "")
-                    return False
             except requests.exceptions.RequestException as e:
                 # 如果是应为请求异常导致的下载失败,这在这里捕获;
                 warning(
@@ -774,11 +715,6 @@ class ImageDownloader:
                     wait_time = retry_gap * (2**attempt) + random.uniform(0, 1)
                     time.sleep(wait_time)
                     error("下载失败: %s, 错误: %s", url, str(e))
-                    # 记录失败状态
-                    if self.progress_recorder:
-                        self.progress_recorder.record_failure(
-                            url=url, status="failed", http_code=None, filename=filename or ""
-                        )
                     self.stats.add_failed(url, name=filename or "")
                     return False
 
@@ -866,12 +802,6 @@ class ImageDownloader:
         Returns:
             Dict: 下载统计信息
         """
-        # 如果有进度记录器，过滤已完成的URL
-        if self.progress_recorder:
-            urls = self.progress_recorder.filter_urls(urls)
-            if self.progress_recorder:
-                self.progress_recorder.print_statistics()
-
         info("开始下载 %d 张图片到 %s", len(urls), output_dir)
 
         # 初始化统计信息
@@ -927,12 +857,6 @@ class ImageDownloader:
         Returns:
             Dict: 下载统计信息
         """
-        # 如果有进度记录器，过滤已完成的URL
-        if self.progress_recorder:
-            name_url_pairs = self.progress_recorder.filter_name_url_pairs(name_url_pairs)
-            if self.progress_recorder:
-                self.progress_recorder.print_statistics()
-
         info("开始下载 %d 张图片到 %s", len(name_url_pairs), output_dir)
 
         # 初始化统计信息

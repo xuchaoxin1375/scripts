@@ -765,7 +765,7 @@ def count_lines_csv(csv_dir):
     return total
 
 
-def get_data_from_csv(args, lines, reader, url_field, name_field):
+def get_data_from_csv(args, lines, reader, url_field, name_field,log_length_limit=0):
     """
     从csv reader对象中读取图片名字和图片链接字段,并写入结果到lines中
 
@@ -777,7 +777,8 @@ def get_data_from_csv(args, lines, reader, url_field, name_field):
         name_field: 图片名字所在的列名
     """
     for line in reader:
-        debug("Processing line: %s", line)
+        if log_length_limit :
+            debug("Processing line: %s", str(line)[:log_length_limit])
         img_names = line.get(name_field, "")
         img_urls = line.get(url_field, "")
         # 将处理结果保存到img_names和img_urls中
@@ -786,7 +787,7 @@ def get_data_from_csv(args, lines, reader, url_field, name_field):
         )
 
 
-def get_data_line_name_url_from_csv(args, lines, img_names, img_urls):
+def get_data_line_name_url_from_csv(args, lines, img_names, img_urls,log_length_limit=0):
     """
     将读取的csv文件中的图片名字和图片链接,处理单行
 
@@ -806,7 +807,8 @@ def get_data_line_name_url_from_csv(args, lines, img_names, img_urls):
         else:
             error(f"img_urls and img_names are both empty, skip this line: {lines}")
 
-    debug(f"Get data: {line_info}")
+    if log_length_limit:
+        debug(f"Get data: {line_info}")
 
     if img_urls:
         # img_names = img_names.split(",")

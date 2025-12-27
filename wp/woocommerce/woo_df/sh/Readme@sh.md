@@ -165,7 +165,7 @@ cat $sh\update_repos.sh
 */2 * * * * bash /www/sh/run-all-wp-cron.sh
 
 ## python脚本(适合复杂逻辑维护任务)
-0 0 * * * python3 /www/sh/nginx_conf/maintain_nginx_vhosts.py update -m old >> /var/log/nginx_update.log 2>&1
+0 0 * * * python3 /www/sh/nginx_conf/maintain_nginx_vhosts.py update -m old >> /var/log/maintain_nginx_vhosts.log 2>&1
 
 
 ```

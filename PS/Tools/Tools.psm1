@@ -220,9 +220,10 @@ function Update-SSNameServers
     param (
         $Table = "$desktop/domains_nameservers.csv",
         $Config = "$spaceship_config",
+        $script="$pys/spaceship_api/update_nameservers.py",
         $Threads = 8
     )
-    python $pys/spaceship_api/update_nameservers.py -f $Table -c $Config -w $Threads
+    python $script -f $Table -c $Config -w $Threads
     
 }
 

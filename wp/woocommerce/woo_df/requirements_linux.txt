@@ -14,5 +14,5 @@ unidecode
 tqdm
 pillow
 pillow-avif-plugin
-# dotenv
+dotenv
 # opencv-python

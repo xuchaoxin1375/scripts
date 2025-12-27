@@ -327,7 +327,7 @@ class BrowserDownloader:
 
             for i in range(actual_workers):
                 worker_proxy_url = proxy_configs[i % len(proxy_configs)]
-                default_user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+                default_user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                 context_args: Dict[str, Any] = {
                     "user_agent": default_user_agent,
                     "viewport": {"width": 1366, "height": 768},

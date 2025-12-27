@@ -967,10 +967,10 @@ function Deploy-WpSitesLocal
 
 
 # 下载图片
-python $pys\image_downloader.py -c -n -R auto -k  -rs 1000 800  --output-dir $ImgDir --dir-input $CsvDirHome -F -ps pwsh -w 5 -U curl 
+python $pys\image_downloader.py -c -n -R auto -k  -rs 1000 800  --output-dir $ImgDir --dir-input $CsvDirHome -F -ps pwsh -w 5 # -U curl 
 
-# 导入产品数据到数据库
-python $pys\woo_uploader_db.py --update-slugs  --csv-path $CsvDirHome --img-dir $ImgDir --db-name $domain --max-workers 20
+# 导入产品数据到数据库(线程数不必太高,通常效果不明显)
+python $pys\woo_uploader_db.py --update-slugs  --csv-path $CsvDirHome --img-dir $ImgDir --db-name $domain --max-workers 2
 
 # 打包网站
 Get-WpSitePacks -SiteDirecotry $destination -Mode zstd
@@ -1085,7 +1085,11 @@ function Deploy-WpSitesOnline
     Write-Verbose "Deploy to server: $HostName,IP:$hst"
 
     Get-Job | Remove-Job -Verbose
-
+    # 让python使用utf-8编码,防止在powershell后台作业中(由receive-job接收的)输出非英文字符乱码
+    $env:PYTHONUTF8 = 1
+    $OutputEncoding = [System.Text.Encoding]::UTF8
+    # 设置控制台输出编码为 UTF-8
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
     # START SERIAL (串行,各步骤内局部并行,如果线程过多导致api错误(429),尤其是cloudflare api,则考虑降低线程数或者减少任务中的网站域名数量,分批部署)
     # 添加域名解析到cf(第一步执行)
     Add-CFZoneDNSRecords -AddRecordAtOnce -IP $hst -Parallel:(!$Onebyone) -Domains $FromTable
@@ -1106,13 +1110,14 @@ function Deploy-WpSitesOnline
             # part1
             $Account, $ConfigPath, $Table,
             # part2
-            $SpaceshipConfig, $ToTable
+            $SpaceshipConfig, $ToTable, $spaceshipScript
         
         )
-
+        $OutputEncoding = [System.Text.Encoding]::UTF8
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
         # part1
         Write-Host "[START TIME:$(Get-DateTime)]Update-SSNameServers..."
-        Update-SSNameServers -Config $SpaceshipConfig -Table $ToTable
+        Update-SSNameServers -Config $SpaceshipConfig -Table $ToTable -Script $spaceshipScript
         Write-Host "[END TIME::$(Get-DateTime)]Update-SSNameServers done."
         # part2
         Write-Host "[START TIME:$(Get-DateTime)]CFZoneActivation..."
@@ -1121,12 +1126,14 @@ function Deploy-WpSitesOnline
             -ConfigPath $ConfigPath `
             -Table $Table
         Write-Host "[END TIME::$(Get-DateTime)]CFZoneActivation done."
-    } -ArgumentList $CfAccount, $CfConfig, $FromTable , $SpaceshipConfig, $ToTable -ThrottleLimit 5
+    } -ArgumentList $CfAccount, $CfConfig, $FromTable , $SpaceshipConfig, $ToTable , "$pys/spaceship_api/update_nameservers.py" -ThrottleLimit 5
 
     # 配置cf域名解析,邮箱转发和代理保护(位置1)
     # Add-CFZoneConfig -Account $CfAccount -CfConfig $CfConfig -Table $FromTable -Ip $hst
     Start-ThreadJob -Name "CFZoneConfig" -ScriptBlock {  
         param ($Account, $CfConfig, $Table, $script, $Ip)
+        $OutputEncoding = [System.Text.Encoding]::UTF8
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
         Write-Host "[START TIME:$(Get-DateTime)]CFZoneConfig..."
         Add-CFZoneConfig `
             -Account $Account `
@@ -1141,6 +1148,7 @@ function Deploy-WpSitesOnline
     # Deploy-BatchSiteBTOnline -Server $HostName -ServerConfig $ServerConfig -Table $FromTable -SitesHome $SitesHome 
     # 后台运行远程站点创建
     Start-ThreadJob -ScriptBlock { 
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
         Write-Host "[START TIME:$(Get-DateTime)]Deploying sites on BT online..."
         Deploy-BatchSiteBTOnline -Script "$using:pys/bt_api/create_sites.py" -Server $using:HostName -ServerConfig $using:ServerConfig -Table $using:FromTable -SitesHome $using:SitesHome 
         Write-Host "[END TIME::$(Get-DateTime)]Deploying sites on BT online done."
@@ -1156,6 +1164,7 @@ function Deploy-WpSitesOnline
             [string]$Path,
             [string]$Destination
         )
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
         Write-Host "[START TIME:$(Get-DateTime)]Pushing site table to server..."
         Push-ByScp -Server $Server -Path $Path -Destination $Destination
         Write-Host "[END TIME::$(Get-DateTime)]Pushing site table to server done."
@@ -1168,7 +1177,7 @@ function Deploy-WpSitesOnline
     Start-Sleep 2
     Write-Host "$($jobs|Out-String)"
     # Receive-Job $deploySitesOnBTJob, $pushSiteTableJob -Wait -Verbose
-    $jobs | Receive-Job -Wait -Verbose
+    $jobs | Receive-Job -Wait 
     # END JOBS
     
     # 重启nginx 
@@ -1327,16 +1336,20 @@ function Get-WpOrdersByEmailOnServers
     param (
         [Alias('Email')]$Path = "$desktop/emails.txt",
         $ServerConfig = $server_config,
-        $scriptPath = "/www/sh/check_order_email.sh"
+        $WorkingDirectory = '/www/',
+        $scriptPath = "/www/sh/check_order_email.sh",
+        $log = "$desktop/orders.log"
         
     )
     $servers = Get-ServerList -Path $ServerConfig
+
+    $jobs = @()
     foreach ($server in $servers)
     {
         $ip = $server.ip
         Write-Host "Getting orders from $($ip)"
         $fileName = Split-Path $Path -Leaf
-        $fileOnServer = "/www/$fileName"
+        $fileOnServer = "$WorkingDirectory/$fileName"
         # Get-WpOrdersByEmail -Email $Path -Server $server
         $mysql = $server.mysql
 
@@ -1344,19 +1357,47 @@ function Get-WpOrdersByEmailOnServers
         $password = $mysql.root_password
         # $port = $mysql.port
         
-        Write-Host "Check orders on $ip with user:$user,password:$password"
+        Write-Host "Check orders on $ip with mysql user:$user,mysql password:$password"
         Write-Host "Email file: $fileOnServer on server"
 
-        scp -r $Path root@"$ip":/www/
+        # scp -r $Path root@"$ip":$WorkingDirectory
+        $jobs += Start-ThreadJob -ScriptBlock {
+            param($WorkingDirectory, $Path, $ip, $fileOnServer, $scriptPath, $user, $password, $log)
+            # 强制让当前 PowerShell 线程以 UTF-8 处理输入输出,否则容易出现乱码(尤其是非英文字符)
+            [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+            Write-Output "START TIME: [$(Get-DateTime)] on $ip"
+            Write-Host "start push file to server $ip..." 
+            scp -r $Path root@"$ip":$WorkingDirectory
+            Write-Host "start query orders on server $ip..." 
+            # 使用`-n`选项让后台作业能够顺利退出(否则可能需要手动输入输入回车回到前台.)
+            # 相关选项:-n关闭 STDIN,-T禁止分配伪终端（TTY）
+            ssh -n -T root@$ip "cat -n $fileOnServer && bash $scriptPath -f $fileOnServer -o /www/found_orders.txt -u $user -p '$password'" 
+            Write-Host "END TIME: $(Get-DateTime) on $ip"
+        } -ArgumentList $WorkingDirectory, $Path, $ip, $fileOnServer, $scriptPath, $user, $password, $log
 
-
-        ssh root@$ip "cat -n $fileOnServer && bash $scriptPath -f $fileOnServer -o /www/found_orders.txt -u $user -p '$password'"
     }
+    Write-Host "Waiting for jobs to complete..."
+    Start-Sleep 2
+    $jobs | Get-Job
+    Write-Host "checking logs..." 
+    # Get-Content $log -wait &
+    $jobs | Receive-Job -Wait | Tee-Object $log
+    # while ($jobs.Status -contains 'Running')
+    # {
+    #     $jobs | Receive-Job | Tee-Object $log -Append
+    #     Start-Sleep -Milliseconds 500
+    # }
+    # foreach ($job in $jobs)
+    # {
+    #     $job | Wait-Job | Receive-Job -Wait -Verbose
+    # }
+    # $jobs | Remove-Job 
+    Write-Host "--------[Getting results...]---------"
     foreach ($server in $servers.ip)
     {
-        ssh root@$server "cat /www/found_orders.txt"
+        $jobs += Start-ThreadJob -script { ssh root@$using:server "cat $using:WorkingDirectory/found_orders.txt" }
     }
-    
+    $jobs | Receive-Job -Wait -Verbose 
 }
 function Update-WpPluginsDFOnServers
 {
