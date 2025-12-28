@@ -28,7 +28,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 
 # 默认常量（可被命令行覆盖）
 DEFAULT_ORDERS_FILE = (
-    r"C:/users/Administrator/Downloads/2025-06-03 08_49_52-order数据.xlsx"
+    r"C:/users/Administrator/Downloads/order数据.xlsx"
 )
 DEFAULT_DOMAIN_TABLE_PATH = r"C:/users/Administrator/Desktop/me"
 DEFAULT_MERGED_TABLES = (

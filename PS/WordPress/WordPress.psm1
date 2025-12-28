@@ -753,7 +753,7 @@ function Deploy-WpSitesLocal
         $NginxHtaccessTemplate = "$scripts/Config/nginx.htaccess",
         # nginx.exe所在目录的完整路径(如果Path中的%nginx_home%没有被正确解析,可以指定完整路径)
         # $NginxHome="",
-        $SiteImageDirRelative = "wp-content/uploads/2025",
+        $SiteImageDirRelative = "wp-content/uploads/$((Get-Date).Year)",
         $CsvDir = "$Desktop/data_output",
         # 部分行为强制(比如xp.cn_cgi已经存在时,是否强制重启,可以重置监听端口)
         [switch]$Force
@@ -963,7 +963,7 @@ function Deploy-WpSitesLocal
             New-Item -ItemType Directory -Path $CsvDirHome -ErrorAction SilentlyContinue -Verbose
             
             $script = @"
-# =========[($order)    http://$domain/login  ]:[ cd  $destination  ]=>[图片目录: explorer $destination\wp-content\uploads\2025 ]==========
+# =========[($order)    http://$domain/login  ]:[ cd  $destination  ]=>[图片目录: explorer $destination\wp-content\uploads\$((Get-Date).Year) ]==========
 
 
 # 下载图片
@@ -1117,7 +1117,7 @@ function Deploy-WpSitesOnline
         [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
         # part1
         Write-Host "[START TIME:$(Get-DateTime)]Update-SSNameServers..."
-        Update-SSNameServers -Config $SpaceshipConfig -Table $ToTable -Script $spaceshipScript
+        Update-SSNameServers -Config $SpaceshipConfig -Table $ToTable -script $spaceshipScript
         Write-Host "[END TIME::$(Get-DateTime)]Update-SSNameServers done."
         # part2
         Write-Host "[START TIME:$(Get-DateTime)]CFZoneActivation..."
@@ -2480,7 +2480,7 @@ function Get-WpSitesLocalImagesCount
     [CmdletBinding()]
     param (
         [Alias('Root', "Directory")]$Path = "$desktop/my_wp_sites",
-        $Pattern = "2025",
+        $Pattern = (Get-Date).Year,
         $Depth = 4
     )
 
