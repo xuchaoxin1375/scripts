@@ -7,139 +7,6 @@ if ($current_token !== $access_token) {
     die('403 Forbidden');
 }
 
-function find_available_log_date_range()
-{
-    $log_files_list = glob("*success.log");
-    $all_dates = [];
-    foreach (($log_files_list ?? []) as $file) {
-        if (preg_match('/^(\d{4}-\d{2}-\d{2})success\.log$/', $file, $m)) {
-            $all_dates[] = $m[1];
-        }
-    }
-    sort($all_dates);
-    $min_date = $all_dates[0] ?? date('Y-m-d');
-    $max_date = $all_dates[count($all_dates) - 1] ?? date('Y-m-d');
-    return [$min_date, $max_date];
-}
-
-function validate_date_range($range_start, $range_end, $min_date, $max_date)
-{
-    $rs = trim((string)$range_start);
-    $re = trim((string)$range_end);
-    if ($rs === '' || $re === '') {
-        return '请选择开始/结束日期';
-    }
-    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $rs) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $re)) {
-        return '日期格式不正确';
-    }
-    if ($rs > $re) {
-        return '开始日期不能晚于结束日期';
-    }
-    if ($rs < $min_date || $re > $max_date) {
-        return '日期范围不在可用区间内：' . $min_date . ' ~ ' . $max_date;
-    }
-    return '';
-}
-
-function compute_range_revenue_days($range_start, $range_end)
-{
-    $revenue_days = [];
-    $cur = strtotime($range_start);
-    $end = strtotime($range_end);
-    while ($cur <= $end) {
-        $date = date('Y-m-d', $cur);
-        $success_file = $date . 'success.log';
-        $notify_file = $date . 'notify.log';
-        $usd_sum = 0;
-        $success_orders = [];
-        if (file_exists($success_file)) {
-            $lines = file($success_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-            foreach ($lines as $line) {
-                if (preg_match('/order_no=(\d+)/', $line, $m)) {
-                    $success_orders[$m[1]] = true;
-                }
-            }
-        }
-        if (file_exists($notify_file) && !empty($success_orders)) {
-            $lines = file($notify_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-            foreach ($lines as $line) {
-                if (preg_match('/"order_no":"(\d+)"/', $line, $m)) {
-                    $current_order_no = $m[1];
-                    if (!isset($success_orders[$current_order_no])) continue;
-                    unset($success_orders[$current_order_no]);
-                    if ($json = strstr($line, '{')) {
-                        $d = json_decode($json, true);
-                        if (isset($d['usd_amount']) && is_numeric($d['usd_amount'])) {
-                            $usd_sum += floatval($d['usd_amount']);
-                        } else {
-                            $amt = $d['amount'] ?? 0;
-                            $curc = $d['currency'] ?? '';
-                            $usd_sum += convert_to_usd($amt, $curc);
-                        }
-                    }
-                }
-            }
-        }
-        $revenue_days[] = [
-            'date' => $date,
-            'usd' => round($usd_sum, 2)
-        ];
-        $cur = strtotime('+1 day', $cur);
-    }
-    return $revenue_days;
-}
-
-function render_range_revenue_module($access_token, $view_mode, $range_start, $range_end, $min_date, $max_date, $revenue_days, $range_error)
-{
-    ob_start();
-    ?>
-    <div class="chart-container" id="revenueChartContainer" style="height: auto;">
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; gap:10px; flex-wrap:wrap;">
-            <span style="font-size:15px; font-weight:600; color:#6366f1;">📈 区间营收统计</span>
-            <form method="get" id="rangeRevenueForm" class="range-revenue-form" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                <input type="hidden" name="token" value="<?= htmlspecialchars($access_token) ?>">
-                <input type="hidden" name="mode" value="<?= htmlspecialchars($view_mode) ?>">
-                <div class="range-revenue-row">
-                    <span class="range-revenue-title">区间:</span>
-                    <input type="date" name="range_start" value="<?= htmlspecialchars($range_start) ?>" min="<?= htmlspecialchars($min_date) ?>" max="<?= htmlspecialchars($max_date) ?>" class="range-revenue-date">
-                    <span class="range-revenue-tilde">~</span>
-                    <input type="date" name="range_end" value="<?= htmlspecialchars($range_end ?: date('Y-m-d')) ?>" min="<?= htmlspecialchars($min_date) ?>" max="<?= htmlspecialchars($max_date) ?>" class="range-revenue-date">
-                </div>
-
-                <button type="submit" class="range-revenue-btn">查询</button>
-                <span id="rangeLabel" class="range-revenue-label"></span>
-
-                <div class="range-revenue-sliders">
-                    <input type="range" min="0" max="100" value="0" id="rangeStartSlider" style="flex:1;">
-                    <input type="range" min="0" max="100" value="100" id="rangeEndSlider" style="flex:1;">
-                </div>
-            </form>
-        </div>
-        <?php if ($range_error !== ''): ?>
-            <div id="rangeRevenueError" style="background:#fff7ed; border:1px solid #fdba74; color:#9a3412; padding:10px 12px; border-radius:10px; font-size:13px; margin-bottom:10px;">
-                <?= htmlspecialchars($range_error) ?>
-            </div>
-        <?php else: ?>
-            <div id="rangeRevenueError" style="display:none;"></div>
-        <?php endif; ?>
-        <div style="width:100%; height:180px; min-height:180px;">
-            <canvas id="revenueChart" style="width:100%; height:180px; min-height:180px;"></canvas>
-        </div>
-    </div>
-    <script>
-        window.__rangeRevenueData = <?php echo json_encode($revenue_days, JSON_UNESCAPED_UNICODE); ?>;
-        window.__rangeRevenueMeta = <?php echo json_encode([
-            'min_date' => $min_date,
-            'max_date' => $max_date,
-            'range_start' => $range_start,
-            'range_end' => $range_end,
-            'range_error' => $range_error,
-        ], JSON_UNESCAPED_UNICODE); ?>;
-    </script>
-    <?php
-    return ob_get_clean();
-}
-
 date_default_timezone_set('Asia/Shanghai');
 ini_set('memory_limit', '512M');
 
@@ -153,8 +20,6 @@ $next_date = date('Y-m-d', strtotime($log_date . ' +1 day'));
 
 $view_mode = $_GET['mode'] ?? 'analysis';
 $status_filter = $_GET['status'] ?? 'all';
-$owner_filter = trim((string)($_GET['owner'] ?? ''));
-$csv_selected = trim((string)($_GET['csv_file'] ?? ''));
 $amount_nonzero = isset($_GET['amount_nonzero']) ? (bool)$_GET['amount_nonzero'] : false;
 $group_by_domain = isset($_GET['group_by_domain']) ? (bool)$_GET['group_by_domain'] : false;
 $order_sort = $_GET['sort'] ?? 'time_desc';
@@ -296,18 +161,7 @@ if ($view_mode === 'analysis') {
             continue;
         }
     }
-    // 按站点营收(USD 参考)倒序排序
-    uasort($stats['domain_amount'], function ($a, $b) {
-        $sum_a = 0.0;
-        foreach (($a ?? []) as $cur => $v) {
-            $sum_a += convert_to_usd($v, $cur);
-        }
-        $sum_b = 0.0;
-        foreach (($b ?? []) as $cur => $v) {
-            $sum_b += convert_to_usd($v, $cur);
-        }
-        return $sum_b <=> $sum_a;
-    });
+    arsort($stats['domain_amount']); // 按站点数量初步排序
     $stats['unique_domains'] = count($stats['domain_amount']);
 
     uasort($analysis_data, function ($a, $b) {
@@ -354,268 +208,10 @@ function convert_to_usd($amount, $currency = '')
     return 0.0;
 }
 
-function normalize_domain_key($domain)
-{
-    $s = strtolower(trim((string)$domain));
-    $s = preg_replace('/^https?:\/\//', '', $s);
-    $s = preg_replace('/^www\./', '', $s);
-    $s = preg_replace('/[\/#\?].*$/', '', $s);
-    $s = trim($s, " \t\n\r\0\x0B.");
-    return $s;
-}
-
-function normalize_header_key($s)
-{
-    $s = strtolower(trim((string)$s));
-    // strip UTF-8 BOM / invisible prefix characters
-    $s = preg_replace('/^\xEF\xBB\xBF/', '', $s);
-    $s = preg_replace('/^[\x00-\x1F\x7F\x{200B}\x{FEFF}]+/u', '', $s);
-    $s = preg_replace('/\s+/', '', $s);
-    $s = str_replace(['（', '）', '：', ':', '-', '_', '　'], '', $s);
-    return $s;
-}
-
-function find_header_index($headers, $candidates)
-{
-    $map = [];
-    foreach ($headers as $idx => $h) {
-        $map[normalize_header_key($h)] = $idx;
-    }
-    foreach ($candidates as $c) {
-        $k = normalize_header_key($c);
-        if (isset($map[$k])) {
-            return $map[$k];
-        }
-    }
-    return null;
-}
-
-function list_csv_files_in_dir($dir)
-{
-    $res = [];
-    if (!is_dir($dir)) return $res;
-    $items = scandir($dir);
-    if (!is_array($items)) return $res;
-    foreach ($items as $f) {
-        if ($f === '.' || $f === '..') continue;
-        if (!preg_match('/\.csv$/i', $f)) continue;
-        $full = rtrim($dir, '/').'/'.$f;
-        if (is_file($full)) {
-            $res[] = $f;
-        }
-    }
-    sort($res);
-    return $res;
-}
-
-function resolve_selected_csv_path($dir, $csv_selected, $csv_files)
-{
-    if (is_string($csv_selected) && $csv_selected !== '') {
-        foreach ($csv_files as $f) {
-            if ($f === $csv_selected) {
-                $full = rtrim($dir, '/').'/'.$f;
-                if (is_file($full)) return $full;
-            }
-        }
-    }
-    if (!empty($csv_files)) {
-        $full = rtrim($dir, '/').'/'.$csv_files[0];
-        if (is_file($full)) return $full;
-    }
-    return '';
-}
-
-function load_domain_owner_map_from_csv($csv_file)
-{
-    $res = [
-        'map' => [],
-        'meta' => [
-            'has_people' => false,
-            'has_country' => false,
-            'has_category' => false,
-            'has_date' => false,
-            'headers' => [],
-            'total_rows' => 0,
-            'ok_rows' => 0,
-            'skipped_rows' => 0,
-            'dup_domains' => 0,
-        ],
-    ];
-    if (!is_string($csv_file) || $csv_file === '' || !file_exists($csv_file)) {
-        return $res;
-    }
-
-    $fh = fopen($csv_file, 'r');
-    if (!$fh) {
-        return $res;
-    }
-
-    $headers = fgetcsv($fh);
-    if (!is_array($headers) || empty($headers)) {
-        fclose($fh);
-        return $res;
-    }
-    $res['meta']['headers'] = $headers;
-
-    $domain_idx = find_header_index($headers, ['域名', '网站', '站点', 'domain', 'site']);
-    $people_idx = find_header_index($headers, ['数据采集员', '人员', '归属人员', '名字', '姓名', '采集员']);
-    $country_idx = find_header_index($headers, ['国家', '语言', '网站语言', '站点语言', 'lang', 'country']);
-    $category_idx = find_header_index($headers, ['内容', '产品类别', '产品分类', '品类', '类目', '类别', '产品', 'category', 'productcategory']);
-    $date_idx = find_header_index($headers, ['完成日期', '日期', '创建日期', '上线日期', '完成时间', '时间', 'date', 'createdate', 'created_at', 'updated_at']);
-
-    $res['meta']['has_people'] = ($people_idx !== null);
-    $res['meta']['has_country'] = ($country_idx !== null);
-    $res['meta']['has_category'] = ($category_idx !== null);
-    $res['meta']['has_date'] = ($date_idx !== null);
-
-    if ($domain_idx === null) {
-        fclose($fh);
-        return $res;
-    }
-
-    while (($row = fgetcsv($fh)) !== false) {
-        if (!is_array($row) || empty($row)) {
-            continue;
-        }
-        $res['meta']['total_rows']++;
-        $domain_raw = $row[$domain_idx] ?? '';
-        $domain_key = normalize_domain_key($domain_raw);
-        if ($domain_key === '') {
-            $res['meta']['skipped_rows']++;
-            continue;
-        }
-
-        $people = $people_idx !== null ? trim((string)($row[$people_idx] ?? '')) : '';
-        $country = $country_idx !== null ? trim((string)($row[$country_idx] ?? '')) : '';
-        $category = $category_idx !== null ? trim((string)($row[$category_idx] ?? '')) : '';
-        $date = $date_idx !== null ? trim((string)($row[$date_idx] ?? '')) : '';
-
-        if (isset($res['map'][$domain_key])) {
-            $res['meta']['dup_domains']++;
-            if ($res['map'][$domain_key]['people'] === '' && $people !== '') {
-                $res['map'][$domain_key]['people'] = $people;
-            }
-            if ($res['map'][$domain_key]['country'] === '' && $country !== '') {
-                $res['map'][$domain_key]['country'] = $country;
-            }
-            if (($res['map'][$domain_key]['category'] ?? '') === '' && $category !== '') {
-                $res['map'][$domain_key]['category'] = $category;
-            }
-            if (($res['map'][$domain_key]['date'] ?? '') === '' && $date !== '') {
-                $res['map'][$domain_key]['date'] = $date;
-            }
-            continue;
-        }
-
-        $res['map'][$domain_key] = [
-            'people' => $people,
-            'country' => $country,
-            'category' => $category,
-            'date' => $date,
-            'raw_domain' => (string)$domain_raw,
-        ];
-        $res['meta']['ok_rows']++;
-    }
-    fclose($fh);
-    return $res;
-}
-
-function list_people_from_domain_map($domain_owner_map)
-{
-    $set = [];
-    foreach (($domain_owner_map ?? []) as $dom => $info) {
-        $p = trim((string)($info['people'] ?? ''));
-        if ($p !== '') {
-            $set[$p] = true;
-        }
-    }
-    $arr = array_values(array_keys($set));
-    sort($arr);
-    return $arr;
-}
-
-function owner_match_filter($people_name, $owner_filter)
-{
-    $f = trim((string)$owner_filter);
-    if ($f === '') return true;
-    return trim((string)$people_name) === $f;
-}
-
-function get_owner_info_for_domain($domain, $domain_owner_map)
-{
-    $dom_key = normalize_domain_key($domain);
-    if ($dom_key === '' || !isset($domain_owner_map[$dom_key])) {
-        return null;
-    }
-    return $domain_owner_map[$dom_key];
-}
-
-function build_people_stats($analysis_data, $domain_owner_map)
-{
-    $stats = [
-        'people' => [],
-        'unmapped_orders' => 0,
-        'unmapped_domains' => [],
-    ];
-    foreach ($analysis_data as $no => $item) {
-        $domain_key = normalize_domain_key($item['domain'] ?? '');
-        $owner = ($domain_key !== '' && isset($domain_owner_map[$domain_key])) ? $domain_owner_map[$domain_key] : null;
-        $people_name = $owner ? trim((string)($owner['people'] ?? '')) : '';
-        $country = $owner ? trim((string)($owner['country'] ?? '')) : '';
-        if ($people_name === '') {
-            $people_name = '未归属';
-        }
-        if (!$owner) {
-            $stats['unmapped_orders']++;
-            if ($domain_key !== '') {
-                $stats['unmapped_domains'][$domain_key] = true;
-            }
-        }
-        if (!isset($stats['people'][$people_name])) {
-            $stats['people'][$people_name] = [
-                'orders_total' => 0,
-                'orders_success' => 0,
-                'usd_sum_success' => 0.0,
-                'countries' => [],
-            ];
-        }
-        $stats['people'][$people_name]['orders_total']++;
-        if ($country !== '') {
-            $stats['people'][$people_name]['countries'][$country] = true;
-        }
-        if (!empty($item['is_success'])) {
-            $stats['people'][$people_name]['orders_success']++;
-            $stats['people'][$people_name]['usd_sum_success'] += (float)($item['details']['usd_amt'] ?? 0);
-        }
-    }
-    foreach ($stats['people'] as $k => &$p) {
-        $p['countries'] = array_values(array_keys($p['countries']));
-        sort($p['countries']);
-    }
-    unset($p);
-
-    uasort($stats['people'], function ($a, $b) {
-        $cmp = ($b['usd_sum_success'] <=> $a['usd_sum_success']);
-        if ($cmp !== 0) return $cmp;
-        return ($b['orders_success'] <=> $a['orders_success']);
-    });
-
-    $stats['unmapped_domains'] = array_values(array_keys($stats['unmapped_domains']));
-    sort($stats['unmapped_domains']);
-    return $stats;
-}
-
-function render_order_list_items($analysis_data, $group_by_domain, $order_sort, $status_filter, $owner_filter, $csv_path)
+function render_order_list_items($analysis_data, $group_by_domain, $order_sort, $status_filter)
 {
     ob_start();
     $order_index = 1;
-
-    $csv_data = load_domain_owner_map_from_csv($csv_path);
-    $domain_owner_map = $csv_data['map'] ?? [];
-    $has_people = (bool)($csv_data['meta']['has_people'] ?? false);
-    $has_country = (bool)($csv_data['meta']['has_country'] ?? false);
-    $has_category = (bool)($csv_data['meta']['has_category'] ?? false);
-    $has_date = (bool)($csv_data['meta']['has_date'] ?? false);
 
     $sort_orders_inplace = function (&$orders) use ($order_sort) {
         uasort($orders, function ($a, $b) use ($order_sort) {
@@ -662,12 +258,6 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
         // 站点分组折叠
         $grouped = [];
         foreach ($analysis_data as $no => $item) {
-            $dom_key = normalize_domain_key($item['domain'] ?? '');
-            $owner = ($dom_key !== '' && isset($domain_owner_map[$dom_key])) ? $domain_owner_map[$dom_key] : null;
-            $people = $owner ? trim((string)($owner['people'] ?? '')) : '';
-            if (!owner_match_filter($people, $owner_filter)) {
-                continue;
-            }
             $grouped[$item['domain']][] = ['no' => $no, 'item' => $item];
         }
         $group_index = 1;
@@ -737,18 +327,6 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
             echo '<span style="font-size:14px; color:#fff; font-weight:bold; background:#6366f1; border-radius:6px; padding:2px 10px; margin-right:10px;">' . $group_index . '</span>';
             $group_index++;
             echo '<strong style="font-size:16px; color:#6366f1;">' . htmlspecialchars($domain) . '</strong>';
-            if ($has_people || $has_country) {
-                $dom_key = normalize_domain_key($domain);
-                $owner = ($dom_key !== '' && isset($domain_owner_map[$dom_key])) ? $domain_owner_map[$dom_key] : null;
-                $people = $owner ? trim((string)($owner['people'] ?? '')) : '';
-                $country = $owner ? trim((string)($owner['country'] ?? '')) : '';
-                if ($people !== '') {
-                    echo '<span class="badge badge-attempts" style="margin-left:10px; background:#eef2ff; color:#4f46e5;">人员:' . htmlspecialchars($people) . '</span>';
-                }
-                if ($has_country && $country !== '') {
-                    echo '<span class="badge badge-attempts" style="margin-left:6px; background:#ecfeff; color:#0e7490;">' . htmlspecialchars($country) . '</span>';
-                }
-            }
             echo '<span class="badge badge-attempts" style="margin-left:10px;">' . count($orders) . '条订单</span>';
             echo '<span style="margin-left:10px; color:#64748b; font-size:13px;">点击展开/收起</span>';
             echo '</div>';
@@ -765,28 +343,6 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
                 $order_index++;
                 echo '<strong style="font-size:15px;">' . htmlspecialchars($item['domain']) . '</strong>';
                 echo '<button type="button" class="copy-domain-btn" data-copy-domain="' . htmlspecialchars($item['domain']) . '">复制域名</button>';
-                if ($has_people || $has_country || $has_category || $has_date) {
-                    $dom_key = normalize_domain_key($item['domain'] ?? '');
-                    $owner = ($dom_key !== '' && isset($domain_owner_map[$dom_key])) ? $domain_owner_map[$dom_key] : null;
-                    $people = $owner ? trim((string)($owner['people'] ?? '')) : '';
-                    $country = $owner ? trim((string)($owner['country'] ?? '')) : '';
-                    $category = $owner ? trim((string)($owner['category'] ?? '')) : '';
-                    $date = $owner ? trim((string)($owner['date'] ?? '')) : '';
-                    if ($people !== '') {
-                        echo '<span class="badge badge-attempts" style="background:#eef2ff; color:#4f46e5;">人员:' . htmlspecialchars($people) . '</span>';
-                    } else {
-                        echo '<span class="badge badge-attempts" style="background:#fff7ed; color:#c2410c;">人员:未匹配</span>';
-                    }
-                    if ($has_country && $country !== '') {
-                        echo '<span class="badge badge-attempts" style="background:#ecfeff; color:#0e7490;">' . htmlspecialchars($country) . '</span>';
-                    }
-                    if ($has_category && $category !== '') {
-                        echo '<span class="badge badge-attempts" style="background:#f0fdf4; color:#166534;">' . htmlspecialchars($category) . '</span>';
-                    }
-                    if ($has_date && $date !== '') {
-                        echo '<span class="badge badge-attempts" style="background:#f1f5f9; color:#334155;">日期:' . htmlspecialchars($date) . '</span>';
-                    }
-                }
                 $notify_cnt = (int)($item['details']['notify_count'] ?? 0);
                 echo '<span class="badge badge-attempts">' . $notify_cnt . '条notify</span>';
                 echo '</div>';
@@ -847,25 +403,11 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
             echo '<div class="order-item" id="' . $group_id . '_wrap" style="border-left:5px solid ' . ($group_key == 'success' ? '#10b981' : '#ef4444') . '; margin-bottom:18px;">';
             echo '<div class="order-main" style="cursor:pointer;user-select:none;" onclick="var el=document.getElementById(\'' . $group_id . '\');el.style.display=(el.style.display==\'none\'?\'block\':\'none\');">';
             echo '<span style="font-size:15px; font-weight:bold; color:' . ($group_key == 'success' ? '#10b981' : '#ef4444') . ';">' . $group_titles[$group_key] . '</span>';
-            $filtered_cnt = 0;
-            foreach ($orders as $no0 => $it0) {
-                $oi0 = get_owner_info_for_domain($it0['domain'] ?? '', $domain_owner_map);
-                $p0 = $oi0 ? trim((string)($oi0['people'] ?? '')) : '';
-                if (owner_match_filter($p0, $owner_filter)) {
-                    $filtered_cnt++;
-                }
-            }
-            echo '<span class="badge badge-attempts" style="margin-left:10px;">' . $filtered_cnt . '条</span>';
+            echo '<span class="badge badge-attempts" style="margin-left:10px;">' . count($orders) . '条</span>';
             echo '<span style="margin-left:10px; color:#64748b; font-size:13px;">点击展开/收起</span>';
             echo '</div>';
             echo '<div id="' . $group_id . '" style="display:none;">';
             foreach ($orders as $no => $item) {
-                $dom_key = normalize_domain_key($item['domain'] ?? '');
-                $owner = ($dom_key !== '' && isset($domain_owner_map[$dom_key])) ? $domain_owner_map[$dom_key] : null;
-                $people = $owner ? trim((string)($owner['people'] ?? '')) : '';
-                if (!owner_match_filter($people, $owner_filter)) {
-                    continue;
-                }
                 $st_class = $item['is_success'] ? 'is-success' : (!empty($item['details']['err']) ? 'is-fail' : '');
                 echo '<div class="order-item ' . $st_class . '" style="margin-bottom:8px;">';
                 echo '<div class="order-main" onclick="toggleLog(\'log_' . $no . '\')">';
@@ -875,25 +417,6 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
                 $order_index++;
                 echo '<strong style="font-size:15px;">' . htmlspecialchars($item['domain']) . '</strong>';
                 echo '<button type="button" class="copy-domain-btn" data-copy-domain="' . htmlspecialchars($item['domain']) . '">复制域名</button>';
-                if ($has_people || $has_country || $has_category || $has_date) {
-                    $country = $owner ? trim((string)($owner['country'] ?? '')) : '';
-                    $category = $owner ? trim((string)($owner['category'] ?? '')) : '';
-                    $date = $owner ? trim((string)($owner['date'] ?? '')) : '';
-                    if ($people !== '') {
-                        echo '<span class="badge badge-attempts" style="background:#eef2ff; color:#4f46e5;">人员:' . htmlspecialchars($people) . '</span>';
-                    } else {
-                        echo '<span class="badge badge-attempts" style="background:#fff7ed; color:#c2410c;">人员:未匹配</span>';
-                    }
-                    if ($has_country && $country !== '') {
-                        echo '<span class="badge badge-attempts" style="background:#ecfeff; color:#0e7490;">' . htmlspecialchars($country) . '</span>';
-                    }
-                    if ($has_category && $category !== '') {
-                        echo '<span class="badge badge-attempts" style="background:#f0fdf4; color:#166534;">' . htmlspecialchars($category) . '</span>';
-                    }
-                    if ($has_date && $date !== '') {
-                        echo '<span class="badge badge-attempts" style="background:#f1f5f9; color:#334155;">日期:' . htmlspecialchars($date) . '</span>';
-                    }
-                }
                 $notify_cnt = (int)($item['details']['notify_count'] ?? 0);
                 echo '<span class="badge badge-attempts">' . $notify_cnt . '条notify</span>';
                 echo '</div>';
@@ -933,48 +456,7 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
 $is_partial_order_list = ($view_mode === 'analysis' && (($_GET['partial'] ?? '') === 'order_list'));
 if ($is_partial_order_list) {
     header('Content-Type: text/html; charset=UTF-8');
-    $csv_files = list_csv_files_in_dir(__DIR__);
-    $csv_path = resolve_selected_csv_path(__DIR__, $csv_selected, $csv_files);
-    echo render_order_list_items($analysis_data, $group_by_domain, $order_sort, $status_filter, $owner_filter, $csv_path);
-    exit;
-}
-
-$is_partial_range_revenue_json = ($view_mode === 'analysis' && (($_GET['partial'] ?? '') === 'range_revenue_json'));
-if ($is_partial_range_revenue_json) {
-    header('Content-Type: application/json; charset=UTF-8');
-    [$min_date0, $max_date0] = find_available_log_date_range();
-    $rs0 = (string)($_GET['range_start'] ?? '');
-    $re0 = (string)($_GET['range_end'] ?? '');
-    $range_error0 = validate_date_range($rs0, $re0, $min_date0, $max_date0);
-    $rev_days0 = [];
-    if ($range_error0 === '') {
-        $rev_days0 = compute_range_revenue_days($rs0, $re0);
-    }
-    echo json_encode([
-        'meta' => [
-            'min_date' => $min_date0,
-            'max_date' => $max_date0,
-            'range_start' => $rs0,
-            'range_end' => $re0,
-            'range_error' => $range_error0,
-        ],
-        'data' => $rev_days0,
-    ], JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
-$is_partial_range_revenue = ($view_mode === 'analysis' && (($_GET['partial'] ?? '') === 'range_revenue'));
-if ($is_partial_range_revenue) {
-    header('Content-Type: text/html; charset=UTF-8');
-    [$min_date0, $max_date0] = find_available_log_date_range();
-    $rs0 = (string)($_GET['range_start'] ?? '');
-    $re0 = (string)($_GET['range_end'] ?? '');
-    $range_error0 = validate_date_range($rs0, $re0, $min_date0, $max_date0);
-    $rev_days0 = [];
-    if ($range_error0 === '') {
-        $rev_days0 = compute_range_revenue_days($rs0, $re0);
-    }
-    echo render_range_revenue_module($access_token, $view_mode, $rs0, $re0, $min_date0, $max_date0, $rev_days0, $range_error0);
+    echo render_order_list_items($analysis_data, $group_by_domain, $order_sort, $status_filter);
     exit;
 }
 ?>
@@ -1339,42 +821,10 @@ if ($is_partial_range_revenue) {
 
             /* 防止内容溢出 */
             .side-panel {
-                width: 35%;
+                width: 350px;
                 position: sticky;
                 top: var(--sticky-side-top, 180px);
-                max-height: calc(100vh - var(--sticky-side-top, 180px) - 12px);
-                overflow: auto;
-                overscroll-behavior: contain;
             }
-        }
-
-        .collapsible-card-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 10px;
-            cursor: pointer;
-            user-select: none;
-        }
-
-        .collapsible-card-toggle {
-            border: 1px solid #e2e8f0;
-            background: #ffffff;
-            color: #0f172a;
-            border-radius: 10px;
-            padding: 6px 10px;
-            font-size: 12px;
-            font-weight: 800;
-            cursor: pointer;
-        }
-
-        .collapsible-card-toggle:hover {
-            border-color: #cbd5e1;
-            background: #f8fafc;
-        }
-
-        .collapsible-card-body.is-collapsed {
-            display: none;
         }
 
         .chart-container {
@@ -1551,7 +1001,7 @@ if ($is_partial_range_revenue) {
         .copy-domain-btn:hover {
             background: #111c33;
         }
-        
+        }
 
         /* 优化后的侧边栏列表 */
         .ranking-list {
@@ -1579,21 +1029,7 @@ if ($is_partial_range_revenue) {
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-            max-width: 260px;
-        }
-
-        .rank-num {
-            width: 26px;
-            flex: 0 0 26px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 12px;
-            font-weight: 900;
-            color: #64748b;
-            background: #f1f5f9;
-            border-radius: 8px;
-            height: 22px;
+            max-width: 180px;
         }
 
         .dom-val {
@@ -1713,105 +1149,120 @@ if ($is_partial_range_revenue) {
                 </div>
                 </div>
 
+                <div class="chart-container" id="revenueChartContainer">
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; gap:10px; flex-wrap:wrap;">
+                        <span style="font-size:15px; font-weight:600; color:#6366f1;">📈 区间营收统计</span>
+                        <form method="get" style="display:flex; align-items:center; gap:8px;">
+                            <input type="hidden" name="token" value="<?= $access_token ?>">
+                            <input type="hidden" name="mode" value="<?= $view_mode ?>">
+                            <label style="font-size:13px; color:#475569;">区间:
+                                <input type="date" name="range_start" value="<?= htmlspecialchars($range_start) ?>" min="<?= $min_date ?>" max="<?= $max_date ?>" style="margin:0 4px; padding:2px 6px; border-radius:6px; border:1px solid #e2e8f0;">
+                                ~
+                                <input type="date" name="range_end" value="<?= htmlspecialchars($range_end ?: date('Y-m-d')) ?>" min="<?= $min_date ?>" max="<?= $max_date ?>" style="margin:0 4px; padding:2px 6px; border-radius:6px; border:1px solid #e2e8f0;">
+                            </label>
+                            <button type="submit" style="padding:4px 12px; border-radius:6px; background:#6366f1; color:white; border:none; font-size:13px;">查询</button>
+                            <span id="rangeLabel" style="font-size:13px;"></span>
+                        </form>
+                    </div>
+                    <div style="width:100%;height:100%;min-height:180px;">
+                        <canvas id="revenueChart" style="width:100%;height:100%;min-height:180px;"></canvas>
+                    </div>
+                </div>
+
                 <?php
                 // ====== 多天营收统计 (与今日营收口径一致: 只统计 success.log 有的订单) ======
-                [$min_date, $max_date] = find_available_log_date_range();
+                // 统计所有可用日志日期（以 success.log 为准）
+                $log_files_list = glob("*success.log");
+                $all_dates = [];
+                foreach ($log_files_list as $file) {
+                    if (preg_match('/^(\d{4}-\d{2}-\d{2})success\\.log$/', $file, $m)) {
+                        $all_dates[] = $m[1];
+                    }
+                }
+                sort($all_dates);
+                $min_date = $all_dates[0] ?? date('Y-m-d');
+                $max_date = $all_dates[count($all_dates)-1] ?? date('Y-m-d');
+                // 区间参数
+                // 默认区间为前5天到今天
                 if (isset($_GET['range_start']) && isset($_GET['range_end'])) {
-                    $range_start = (string)$_GET['range_start'];
-                    $range_end = (string)$_GET['range_end'];
+                    $range_start = $_GET['range_start'];
+                    $range_end = $_GET['range_end'];
                 } else {
                     $max_date_ts = strtotime($max_date);
                     $range_start = date('Y-m-d', strtotime('-5 days', $max_date_ts));
                     $range_end = $max_date;
+                    // 若最早日志日期比默认区间还晚，则取最早日志日期
                     if ($range_start < $min_date) $range_start = $min_date;
                 }
-                $range_error = validate_date_range($range_start, $range_end, $min_date, $max_date);
+                // 生成区间内所有日期
                 $revenue_days = [];
-                if ($range_error === '') {
-                    $revenue_days = compute_range_revenue_days($range_start, $range_end);
+                $cur = strtotime($range_start);
+                $end = strtotime($range_end);
+                while ($cur <= $end) {
+                    $date = date('Y-m-d', $cur);
+                    $success_file = $date . 'success.log';
+                    $notify_file = $date . 'notify.log';
+                    $usd_sum = 0;
+                    $success_orders = [];
+                    if (file_exists($success_file)) {
+                        $lines = file($success_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+                        foreach ($lines as $line) {
+                            if (preg_match('/order_no=(\d+)/', $line, $m)) {
+                                $success_orders[$m[1]] = true;
+                            }
+                        }
+                    }
+                    if (file_exists($notify_file) && !empty($success_orders)) {
+                        $lines = file($notify_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+                        foreach ($lines as $line) {
+                            if (preg_match('/"order_no":"(\d+)"/', $line, $m)) {
+                                $current_order_no = $m[1];
+                                if (!isset($success_orders[$current_order_no])) continue;
+                                unset($success_orders[$current_order_no]);
+                                if ($json = strstr($line, '{')) {
+                                    $d = json_decode($json, true);
+                                    if (isset($d['usd_amount']) && is_numeric($d['usd_amount'])) {
+                                        $usd_sum += floatval($d['usd_amount']);
+                                    } else {
+                                        $amt = $d['amount'] ?? 0;
+                                        $curc = $d['currency'] ?? '';
+                                        $usd_sum += convert_to_usd($amt, $curc);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    $revenue_days[] = [
+                        'date' => $date,
+                        'usd' => round($usd_sum, 2)
+                    ];
+                    $cur = strtotime('+1 day', $cur);
                 }
                 ?>
 
-                <?= render_range_revenue_module($access_token, $view_mode, $range_start, $range_end, $min_date, $max_date, $revenue_days, $range_error) ?>
-
             <div class="main-layout">
                 <aside class="side-panel">
-                    <?php
-                    $csv_files = list_csv_files_in_dir(__DIR__);
-                    $csv_path = resolve_selected_csv_path(__DIR__, $csv_selected, $csv_files);
-                    $csv_data_for_side = load_domain_owner_map_from_csv($csv_path);
-                    $people_stats = build_people_stats($analysis_data, $csv_data_for_side['map'] ?? []);
-                    $people_has_people = (bool)($csv_data_for_side['meta']['has_people'] ?? false);
-                    $people_has_country = (bool)($csv_data_for_side['meta']['has_country'] ?? false);
-                    $people_list_for_filter = list_people_from_domain_map($csv_data_for_side['map'] ?? []);
-                    ?>
-                    <?php if ($people_has_people): ?>
-                        <div class="overview-card" style="height: auto; margin-bottom: 12px;" data-collapsible-card="people_summary">
-                            <div class="collapsible-card-header" data-collapsible-card-header>
-                                <h3 style="margin:0; font-size:16px; display:flex; align-items:center; gap:8px;">
-                                    <span style="background:#4f46e5; color:white; padding:4px; border-radius:6px;">👤</span>
-                                    人员业绩汇总
-                                </h3>
-                                <button type="button" class="collapsible-card-toggle" data-collapsible-card-toggle>收起</button>
-                            </div>
-                            <div class="collapsible-card-body" data-collapsible-card-body>
-                                <div style="color:#64748b; font-size:12px; margin-bottom:8px;">
-                                    映射来源: <?= $csv_path ? htmlspecialchars(basename($csv_path)) : '未选择' ?> · 未匹配订单: <?= (int)($people_stats['unmapped_orders'] ?? 0) ?>
-                                </div>
-                                <ul class="ranking-list">
-                                <?php if (empty($people_stats['people'])): ?>
-                                    <li style="color:#94a3b8; font-size:13px; text-align:center; padding:20px;">暂无人员数据</li>
-                                <?php endif; ?>
-                                <?php foreach (($people_stats['people'] ?? []) as $pname => $p): ?>
-                                    <li class="ranking-item" style="align-items:flex-start; gap:10px;">
-                                        <div style="min-width:0;">
-                                            <div class="dom-name" style="max-width: 220px;" title="<?= htmlspecialchars($pname) ?>"><?= htmlspecialchars($pname) ?></div>
-                                            <div style="font-size:12px; color:#94a3b8; margin-top:4px;">
-                                                总订单: <?= (int)($p['orders_total'] ?? 0) ?> · 成功: <?= (int)($p['orders_success'] ?? 0) ?>
-                                                <?php if ($people_has_country && !empty($p['countries'])): ?>
-                                                    · <?= htmlspecialchars(implode(',', $p['countries'])) ?>
-                                                <?php endif; ?>
-                                            </div>
-                                        </div>
-                                        <div style="text-align:right;">
-                                            <div class="dom-val">$<?= format_money((float)($p['usd_sum_success'] ?? 0)) ?></div>
-                                            <div style="font-size:11px; color:#94a3b8;">成功USD合计</div>
-                                        </div>
-                                    </li>
-                                <?php endforeach; ?>
-                                </ul>
-                            </div>
-                        </div>
-                    <?php endif; ?>
-
-                    <div class="overview-card" style="height: auto;" data-collapsible-card="domain_revenue">
-                        <div class="collapsible-card-header" data-collapsible-card-header>
-                            <h3 style="margin:0; font-size:16px; display:flex; align-items:center; gap:8px;">
-                                <span style="background:var(--primary); color:white; padding:4px; border-radius:6px;">💰</span>
-                                站点营收排行
-                            </h3>
-                            <button type="button" class="collapsible-card-toggle" data-collapsible-card-toggle>收起</button>
-                        </div>
-                        <div class="collapsible-card-body" data-collapsible-card-body>
-                            <ul class="ranking-list">
+                    <div class="overview-card" style="height: auto;">
+                        <h3 style="margin-top:0; font-size:16px; display:flex; align-items:center; gap:8px;">
+                            <span style="background:var(--primary); color:white; padding:4px; border-radius:6px;">💰</span>
+                            站点营收排行
+                        </h3>
+                        <ul class="ranking-list">
                             <?php if (empty($stats['domain_amount'])): ?>
                                 <li style="color:#94a3b8; font-size:13px; text-align:center; padding:20px;">今日暂无成交</li>
                             <?php endif; ?>
-                            <?php $rank_i = 1; foreach ($stats['domain_amount'] as $dom => $currs): ?>
+                            <?php foreach ($stats['domain_amount'] as $dom => $currs): ?>
                                 <li class="ranking-item">
-                                    <div style="display:flex; align-items:center; gap:10px; min-width:0; flex:1;">
-                                        <span class="rank-num"><?= $rank_i ?></span>
-                                        <span class="dom-name" style="max-width: 300px;" title="<?= htmlspecialchars($dom) ?>"><?= htmlspecialchars($dom) ?></span>
-                                    </div>
+                                    <span class="dom-name"
+                                        title="<?= htmlspecialchars($dom) ?>"><?= htmlspecialchars($dom) ?></span>
                                     <div style="text-align:right;">
                                         <?php foreach ($currs as $c => $v): ?>
                                             <div class="dom-val"><?= $c ?>             <?= format_money($v) ?></div>
                                         <?php endforeach; ?>
                                     </div>
                                 </li>
-                            <?php $rank_i++; endforeach; ?>
-                            </ul>
-                        </div>
+                            <?php endforeach; ?>
+                        </ul>
                     </div>
                 </aside>
                 <div class="content-area">
@@ -1827,23 +1278,6 @@ if ($is_partial_range_revenue) {
                             <form method="get" id="orderFilterForm" class="order-filter-controls">
                                 <input type="hidden" name="token" value="<?= $access_token ?>">
                                 <input type="hidden" name="date" value="<?= $log_date ?>">
-                                <?php if (!empty($csv_files)): ?>
-                                    <select name="csv_file" onchange="window.__ordersFilterChange ? window.__ordersFilterChange(this.form) : this.form.submit()"
-                                        style="padding:8px 12px; border-radius:10px; border:1px solid #e2e8f0; background:white; font-weight:600;">
-                                        <?php foreach ($csv_files as $f): ?>
-                                            <option value="<?= htmlspecialchars($f) ?>" <?= ($csv_selected === '' ? ($f === basename($csv_path)) : ($csv_selected === $f)) ? 'selected' : '' ?>><?= htmlspecialchars($f) ?></option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                <?php endif; ?>
-                                <?php if (!empty($people_list_for_filter)): ?>
-                                    <select name="owner" onchange="window.__ordersFilterChange ? window.__ordersFilterChange(this.form) : this.form.submit()"
-                                        style="padding:8px 12px; border-radius:10px; border:1px solid #e2e8f0; background:white; font-weight:600;">
-                                        <option value="" <?= $owner_filter === '' ? 'selected' : '' ?>>全部人员</option>
-                                        <?php foreach ($people_list_for_filter as $pname): ?>
-                                            <option value="<?= htmlspecialchars($pname) ?>" <?= $owner_filter === $pname ? 'selected' : '' ?>><?= htmlspecialchars($pname) ?></option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                <?php endif; ?>
                                 <select name="status" onchange="window.__ordersFilterChange ? window.__ordersFilterChange(this.form) : this.form.submit()"
                                     style="padding:8px 12px; border-radius:10px; border:1px solid #e2e8f0; background:white; font-weight:600;">
                                     <option value="all" <?= $status_filter == 'all' ? 'selected' : '' ?>>全部记录</option>
@@ -1871,7 +1305,7 @@ if ($is_partial_range_revenue) {
                         </div>
                     </div>
 
-                    <div class="order-list" id="orderListContainer"><?= render_order_list_items($analysis_data, $group_by_domain, $order_sort, $status_filter, $owner_filter, $csv_path) ?></div>
+                    <div class="order-list" id="orderListContainer"><?= render_order_list_items($analysis_data, $group_by_domain, $order_sort, $status_filter) ?></div>
                 </div>
 
 
@@ -2020,74 +1454,6 @@ if ($is_partial_range_revenue) {
             window.addEventListener('resize', updateStickyOffsets);
             document.addEventListener('DOMContentLoaded', updateStickyOffsets);
             updateStickyOffsets();
-        })();
-
-        (function() {
-            function setCollapsed(cardEl, collapsed) {
-                if (!cardEl) return;
-                const body = cardEl.querySelector('[data-collapsible-card-body]');
-                const btn = cardEl.querySelector('[data-collapsible-card-toggle]');
-                if (!body || !btn) return;
-
-                if (collapsed) {
-                    body.classList.add('is-collapsed');
-                    btn.textContent = '展开';
-                    cardEl.setAttribute('data-collapsed', '1');
-                } else {
-                    body.classList.remove('is-collapsed');
-                    btn.textContent = '收起';
-                    cardEl.setAttribute('data-collapsed', '0');
-                }
-            }
-
-            function init() {
-                document.querySelectorAll('[data-collapsible-card]').forEach(function(cardEl) {
-                    const key = cardEl.getAttribute('data-collapsible-card') || '';
-                    const storageKey = key ? ('orders3_collapsed_' + key) : '';
-                    let collapsed = false;
-
-                    if (storageKey) {
-                        try {
-                            collapsed = localStorage.getItem(storageKey) === '1';
-                        } catch (e) {
-                            collapsed = false;
-                        }
-                    }
-                    setCollapsed(cardEl, collapsed);
-
-                    const header = cardEl.querySelector('[data-collapsible-card-header]');
-                    const btn = cardEl.querySelector('[data-collapsible-card-toggle]');
-
-                    const toggle = function() {
-                        const nowCollapsed = (cardEl.getAttribute('data-collapsed') === '1');
-                        const next = !nowCollapsed;
-                        setCollapsed(cardEl, next);
-                        if (storageKey) {
-                            try { localStorage.setItem(storageKey, next ? '1' : '0'); } catch (e) {}
-                        }
-                    };
-
-                    if (btn) {
-                        btn.addEventListener('click', function(ev) {
-                            ev.preventDefault();
-                            ev.stopPropagation();
-                            toggle();
-                        });
-                    }
-                    if (header) {
-                        header.addEventListener('click', function(ev) {
-                            ev.preventDefault();
-                            toggle();
-                        });
-                    }
-                });
-            }
-
-            if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', init);
-            } else {
-                init();
-            }
         })();
         (function() {
             function isMobile() {
@@ -2315,32 +1681,15 @@ if ($is_partial_range_revenue) {
                 const status = fd.get('status') || 'all';
                 const sort = fd.get('sort') || 'time_desc';
                 const groupByDomain = !!fd.get('group_by_domain');
-                const owner = (fd.get('owner') || '').toString();
-                const csvFile = (fd.get('csv_file') || '').toString();
 
                 const isJumpStatus = (status === 'success' || status === 'fail');
                 const shouldJump = (!groupByDomain) && isJumpStatus && (window.event && window.event.target && window.event.target.name === 'status');
-                const triggerName = (window.event && window.event.target && window.event.target.name) ? window.event.target.name : '';
 
                 if (token) url.searchParams.set('token', token);
                 if (date) url.searchParams.set('date', date);
                 url.searchParams.set('mode', 'analysis');
                 url.searchParams.set('status', status);
                 url.searchParams.set('sort', sort);
-
-                if (owner) url.searchParams.set('owner', owner);
-                else url.searchParams.delete('owner');
-
-                if (csvFile) url.searchParams.set('csv_file', csvFile);
-                else url.searchParams.delete('csv_file');
-
-                // 切换 CSV 时，需要同时刷新：人员下拉、人员汇总、映射来源等（不只是订单列表）
-                if (triggerName === 'csv_file') {
-                    // 切换 CSV 通常会导致人员列表变化，顺便清理可能不再存在的 owner
-                    url.searchParams.delete('owner');
-                    location.href = url.toString();
-                    return;
-                }
 
                 if (fd.get('amount_nonzero')) url.searchParams.set('amount_nonzero', '1');
                 else url.searchParams.delete('amount_nonzero');
@@ -2414,54 +1763,18 @@ if ($is_partial_range_revenue) {
                 });
             };
         })();
-        // 多天营收统计图表：支持局部刷新（partial=range_revenue） + 双端滑块选择区间
-        function renderRevenueChartFromData(revenueData, opts) {
-            const canvas = document.getElementById('revenueChart');
-            if (!canvas || !revenueData || !Array.isArray(revenueData)) return;
-            const ctx = canvas.getContext('2d');
-
-            const data = revenueData;
-            const showLabel = (data.length <= 5);
-            const isPreview = !!(opts && opts.preview);
-            if (window.revenueChartInstance) {
-                try {
-                    const instCanvas = window.revenueChartInstance && window.revenueChartInstance.canvas;
-                    if (instCanvas && instCanvas !== canvas) {
-                        try { window.revenueChartInstance.destroy(); } catch (e3) {}
-                        window.revenueChartInstance = null;
-                    }
-                } catch (e4) {
-                    try { window.revenueChartInstance.destroy(); } catch (e5) {}
-                    window.revenueChartInstance = null;
-                }
-            }
-
-            if (window.revenueChartInstance) {
-                try {
-                    window.revenueChartInstance.data.labels = data.map(d => d.date);
-                    if (window.revenueChartInstance.data.datasets && window.revenueChartInstance.data.datasets[0]) {
-                        window.revenueChartInstance.data.datasets[0].data = data.map(d => d.usd);
-                        window.revenueChartInstance.data.datasets[0].pointRadius = isPreview ? 0 : 4;
-                    }
-                    if (window.revenueChartInstance.options && window.revenueChartInstance.options.plugins && window.revenueChartInstance.options.plugins.datalabels) {
-                        window.revenueChartInstance.options.plugins.datalabels.display = showLabel;
-                    }
-                    if (isPreview) {
-                        try {
-                            window.revenueChartInstance.update(0);
-                        } catch (e0) {
-                            window.revenueChartInstance.update();
-                        }
-                    } else {
-                        window.revenueChartInstance.update();
-                    }
-                    return;
-                } catch (e) {
-                    try { window.revenueChartInstance.destroy(); } catch (e2) {}
-                    window.revenueChartInstance = null;
-                }
-            }
-
+        // 多天营收统计图表（滑块已移除，默认全区间）
+        const revenueData = <?= json_encode($revenue_days) ?>;
+        const allDates = revenueData.map(d => d.date);
+        // 默认全区间
+        let startIdx = 0;
+        let endIdx = allDates.length - 1;
+        document.getElementById('rangeLabel').innerText = allDates[startIdx] + ' ~ ' + allDates[endIdx];
+        function renderRevenueChart(startIdx, endIdx) {
+            const data = revenueData.slice(startIdx, endIdx+1);
+            const ctx = document.getElementById('revenueChart').getContext('2d');
+            if (window.revenueChartInstance) window.revenueChartInstance.destroy();
+            let showLabel = (data.length <= 5);
             window.revenueChartInstance = new Chart(ctx, {
                 type: 'line',
                 data: {
@@ -2473,7 +1786,7 @@ if ($is_partial_range_revenue) {
                         backgroundColor: 'rgba(99,102,241,0.08)',
                         fill: true,
                         tension: 0.3,
-                        pointRadius: isPreview ? 0 : 4,
+                        pointRadius: 4,
                         pointBackgroundColor: '#6366f1',
                         pointBorderColor: '#fff',
                         borderWidth: 3
@@ -2482,13 +1795,12 @@ if ($is_partial_range_revenue) {
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    animation: isPreview ? false : undefined,
                     plugins: {
                         legend: { display: false },
                         tooltip: {
                             callbacks: {
                                 label: function(context) {
-                                    return '金额: $' + context.parsed.y.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                                    return '金额: $' + context.parsed.y.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
                                 }
                             }
                         },
@@ -2497,8 +1809,8 @@ if ($is_partial_range_revenue) {
                             color: '#222',
                             align: 'end',
                             anchor: 'end',
-                            formatter: function(value) {
-                                return value > 0 ? ('$' + value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })) : '';
+                            formatter: function(value, context) {
+                                return value > 0 ? '$' + value.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) : '';
                             }
                         }
                     },
@@ -2509,330 +1821,8 @@ if ($is_partial_range_revenue) {
                 }
             });
         }
-
-        function initRangeRevenueInteractions() {
-            const form = document.getElementById('rangeRevenueForm');
-            const container = document.getElementById('revenueChartContainer');
-            if (!form || !container) return;
-
-            const startInput = form.querySelector('input[name="range_start"]');
-            const endInput = form.querySelector('input[name="range_end"]');
-            const startSlider = document.getElementById('rangeStartSlider');
-            const endSlider = document.getElementById('rangeEndSlider');
-            const rangeLabel = document.getElementById('rangeLabel');
-
-            function parseDate(s) {
-                if (!s) return null;
-                const m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-                if (!m) return null;
-                return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-            }
-            function fmtDate(d) {
-                const y = d.getFullYear();
-                const m = String(d.getMonth() + 1).padStart(2, '0');
-                const dd = String(d.getDate()).padStart(2, '0');
-                return y + '-' + m + '-' + dd;
-            }
-            function daysBetween(a, b) {
-                const ms = 24 * 3600 * 1000;
-                const da = Date.UTC(a.getFullYear(), a.getMonth(), a.getDate());
-                const db = Date.UTC(b.getFullYear(), b.getMonth(), b.getDate());
-                return Math.round((db - da) / ms);
-            }
-            function addDays(d, days) {
-                const nd = new Date(d.getTime());
-                nd.setDate(nd.getDate() + days);
-                return nd;
-            }
-
-            function getCache() {
-                if (!window.__rangeRevenueCache) window.__rangeRevenueCache = {};
-                return window.__rangeRevenueCache;
-            }
-
-            function seedCacheFromData(arr) {
-                const cache = getCache();
-                if (!Array.isArray(arr)) return;
-                for (const d of arr) {
-                    if (!d || !d.date) continue;
-                    cache[d.date] = (typeof d.usd === 'number') ? d.usd : Number(d.usd || 0);
-                }
-            }
-
-            function buildSeriesFromCache(rs, re) {
-                const cache = getCache();
-                const out = [];
-                if (!rs || !re) return out;
-                let cur = new Date(rs.getTime());
-                const end = new Date(re.getTime());
-                while (cur <= end) {
-                    const key = fmtDate(cur);
-                    const v = (key in cache) ? cache[key] : 0;
-                    out.push({ date: key, usd: v });
-                    cur.setDate(cur.getDate() + 1);
-                }
-                return out;
-            }
-
-            function hasMissingInRange(rs, re) {
-                const cache = getCache();
-                if (!rs || !re) return false;
-                let cur = new Date(rs.getTime());
-                const end = new Date(re.getTime());
-                while (cur <= end) {
-                    const key = fmtDate(cur);
-                    if (!(key in cache)) return true;
-                    cur.setDate(cur.getDate() + 1);
-                }
-                return false;
-            }
-
-            function computeViewDataByInputs() {
-                const rs = parseDate(startInput ? startInput.value : '');
-                const re = parseDate(endInput ? endInput.value : '');
-                if (!rs || !re) return [];
-                return buildSeriesFromCache(rs, re);
-            }
-
-            let __localPreviewTimer = null;
-            function scheduleLocalPreviewRender() {
-                if (__localPreviewTimer) return;
-                __localPreviewTimer = requestAnimationFrame(function() {
-                    __localPreviewTimer = null;
-                    const view = computeViewDataByInputs();
-                    if (view && view.length) {
-                        renderRevenueChartFromData(view, { preview: true });
-                    } else {
-                        renderRevenueChartFromData(window.__rangeRevenueData || [], { preview: true });
-                    }
-                });
-            }
-
-            function getMeta() {
-                return window.__rangeRevenueMeta || {};
-            }
-
-            function syncSlidersFromInputs() {
-                if (!startInput || !endInput || !startSlider || !endSlider) return;
-                const meta = getMeta();
-                const minD = parseDate(meta.min_date);
-                const maxD = parseDate(meta.max_date);
-                const rs = parseDate(startInput.value);
-                const re = parseDate(endInput.value);
-                if (!minD || !maxD || !rs || !re) return;
-                const total = Math.max(1, daysBetween(minD, maxD));
-                const a = Math.max(0, Math.min(total, daysBetween(minD, rs)));
-                const b = Math.max(0, Math.min(total, daysBetween(minD, re)));
-                startSlider.value = String(Math.round((a / total) * 100));
-                endSlider.value = String(Math.round((b / total) * 100));
-                if (rangeLabel) rangeLabel.textContent = startInput.value + ' ~ ' + endInput.value;
-            }
-
-            function syncInputsFromSliders() {
-                if (!startInput || !endInput || !startSlider || !endSlider) return;
-                const meta = getMeta();
-                const minD = parseDate(meta.min_date);
-                const maxD = parseDate(meta.max_date);
-                if (!minD || !maxD) return;
-                const total = Math.max(1, daysBetween(minD, maxD));
-                let a = Number(startSlider.value || '0');
-                let b = Number(endSlider.value || '100');
-                if (a > b) {
-                    const tmp = a;
-                    a = b;
-                    b = tmp;
-                    startSlider.value = String(a);
-                    endSlider.value = String(b);
-                }
-                const startDay = Math.round((a / 100) * total);
-                const endDay = Math.round((b / 100) * total);
-                startInput.value = fmtDate(addDays(minD, startDay));
-                endInput.value = fmtDate(addDays(minD, endDay));
-                if (rangeLabel) rangeLabel.textContent = startInput.value + ' ~ ' + endInput.value;
-            }
-
-            let controller = null;
-            function fetchAndUpdate() {
-                const url = new URL(location.href);
-                const fd = new FormData(form);
-                const token = (fd.get('token') || '').toString();
-                const mode = (fd.get('mode') || 'analysis').toString();
-                const rs = (fd.get('range_start') || '').toString();
-                const re = (fd.get('range_end') || '').toString();
-
-                if (token) url.searchParams.set('token', token);
-                url.searchParams.set('mode', mode);
-                if (rs) url.searchParams.set('range_start', rs);
-                if (re) url.searchParams.set('range_end', re);
-
-                const fetchUrl = new URL(url.toString());
-                fetchUrl.searchParams.set('partial', 'range_revenue_json');
-
-                if (controller) controller.abort();
-                controller = new AbortController();
-
-                return fetch(fetchUrl.toString(), {
-                    method: 'GET',
-                    headers: { 'X-Requested-With': 'fetch' },
-                    signal: controller.signal
-                })
-                .then(function(r) { return r.json(); })
-                .then(function(payload) {
-                    if (!payload || typeof payload !== 'object') return;
-                    const meta = payload.meta || {};
-                    const data = payload.data || [];
-
-                    window.__rangeRevenueMeta = meta;
-                    window.__rangeRevenueData = Array.isArray(data) ? data : [];
-                    seedCacheFromData(window.__rangeRevenueData);
-
-                    if (meta && meta.range_start && startInput) startInput.value = meta.range_start;
-                    if (meta && meta.range_end && endInput) endInput.value = meta.range_end;
-                    if (rangeLabel && startInput && endInput) rangeLabel.textContent = startInput.value + ' ~ ' + endInput.value;
-
-                    const errEl = document.getElementById('rangeRevenueError');
-                    const errMsg = (meta && meta.range_error) ? String(meta.range_error) : '';
-                    if (errEl) {
-                        if (errMsg) {
-                            errEl.style.display = 'block';
-                            errEl.textContent = errMsg;
-                        } else {
-                            errEl.style.display = 'none';
-                            errEl.textContent = '';
-                        }
-                    }
-
-                    syncSlidersFromInputs();
-                    scheduleLocalPreviewRender();
-                })
-                .catch(function(err) {
-                    if (err && err.name === 'AbortError') return;
-                    location.href = url.toString();
-                });
-            }
-
-            let __rangeFetchTimer = null;
-            seedCacheFromData(window.__rangeRevenueData || []);
-
-            let __ensureTimer = null;
-            let __ensureLast = 0;
-            const __ensureWaitMs = 160;
-            let __ensureController = null;
-            function ensureRangeData() {
-                const rs = parseDate(startInput ? startInput.value : '');
-                const re = parseDate(endInput ? endInput.value : '');
-                if (!rs || !re) return;
-                if (!hasMissingInRange(rs, re)) return;
-
-                const url = new URL(location.href);
-                const fd = new FormData(form);
-                const token = (fd.get('token') || '').toString();
-                const mode = (fd.get('mode') || 'analysis').toString();
-                const rsStr = (fd.get('range_start') || '').toString();
-                const reStr = (fd.get('range_end') || '').toString();
-
-                if (token) url.searchParams.set('token', token);
-                url.searchParams.set('mode', mode);
-                if (rsStr) url.searchParams.set('range_start', rsStr);
-                if (reStr) url.searchParams.set('range_end', reStr);
-                url.searchParams.set('partial', 'range_revenue_json');
-
-                if (__ensureController) __ensureController.abort();
-                __ensureController = new AbortController();
-
-                fetch(url.toString(), {
-                    method: 'GET',
-                    headers: { 'X-Requested-With': 'fetch' },
-                    signal: __ensureController.signal
-                })
-                .then(function(r) { return r.json(); })
-                .then(function(payload) {
-                    if (!payload || typeof payload !== 'object') return;
-                    const data = payload.data || [];
-                    if (Array.isArray(data)) seedCacheFromData(data);
-                    scheduleLocalPreviewRender();
-                })
-                .catch(function(err) {
-                    if (err && err.name === 'AbortError') return;
-                });
-            }
-
-            function scheduleEnsureRangeData(forceNow) {
-                const now = Date.now();
-                if (forceNow) {
-                    if (__ensureTimer) {
-                        clearTimeout(__ensureTimer);
-                        __ensureTimer = null;
-                    }
-                    __ensureLast = now;
-                    ensureRangeData();
-                    return;
-                }
-                const elapsed = now - __ensureLast;
-                if (elapsed >= __ensureWaitMs) {
-                    __ensureLast = now;
-                    ensureRangeData();
-                    return;
-                }
-                if (__ensureTimer) return;
-                __ensureTimer = setTimeout(function() {
-                    __ensureTimer = null;
-                    __ensureLast = Date.now();
-                    ensureRangeData();
-                }, __ensureWaitMs - elapsed);
-            }
-
-            form.addEventListener('submit', function(ev) {
-                ev.preventDefault();
-                syncSlidersFromInputs();
-                fetchAndUpdate();
-            });
-            if (startInput) startInput.addEventListener('change', function() {
-                syncSlidersFromInputs();
-                scheduleLocalPreviewRender();
-                scheduleEnsureRangeData(true);
-            });
-            if (endInput) endInput.addEventListener('change', function() {
-                syncSlidersFromInputs();
-                scheduleLocalPreviewRender();
-                scheduleEnsureRangeData(true);
-            });
-
-            if (startSlider) {
-                startSlider.addEventListener('input', function() {
-                    syncInputsFromSliders();
-                    scheduleLocalPreviewRender();
-                    scheduleEnsureRangeData(false);
-                });
-                startSlider.addEventListener('change', function() {
-                    syncInputsFromSliders();
-                    scheduleLocalPreviewRender();
-                    scheduleFetchAndUpdate(true);
-                });
-            }
-            if (endSlider) {
-                endSlider.addEventListener('input', function() {
-                    syncInputsFromSliders();
-                    scheduleLocalPreviewRender();
-                    scheduleEnsureRangeData(false);
-                });
-                endSlider.addEventListener('change', function() {
-                    syncInputsFromSliders();
-                    scheduleLocalPreviewRender();
-                    scheduleFetchAndUpdate(true);
-                });
-            }
-
-            // 初始渲染 + 初始化联动
-            syncSlidersFromInputs();
-            renderRevenueChartFromData(window.__rangeRevenueData || []);
-        }
-
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initRangeRevenueInteractions);
-        } else {
-            initRangeRevenueInteractions();
-        }
+        // 初始渲染
+        renderRevenueChart(startIdx, endIdx);
 
         function escapeHtml(str) {
             return String(str)
