@@ -1,0 +1,48 @@
+
+#方案1
+# 使用SymbolicLink将文件重定向$config/user/.gitconfig ,这样的做法经过试验是维护和备份较为的方式,总体上符合直觉
+#方案2
+# 如果使用HardLink将文件链接到$home目录,可以通过编辑$configs仓库或者$home目录下的.gitconfig文件进行配置一次两个文件同时更新
+# 但是如果使用git config 修改了.gitconfig文件,会导致hardlink失效,导致无法自动同步修改
+# 这种情况下,要么配置deployGitconfig和backupGitconfig,要么软连接将整个用户家目录重定向到configs/User目录下
+#要么就坚持使用编辑器编辑.gitignore文件,而不用git config命令配置
+[user]
+	email = 838808930@qq.com
+	name = cxxu
+
+[init]
+	defaultBranch = main
+# 尽量不要浪费代理服务器的流量,使用镜像加速服务来克隆即可
+# [http "https://github.com"]
+# 	proxy = socks5://127.0.0.1:7980
+#将源github仓库的地址链接的https://插入gitclone.com,然后进行克隆即可
+	#加速文档说明:https://www.gitclone.com/docs/intro
+# [url "https://gitclone.com/"]
+# 	insteadOf = https://
+# 这里的永久性配置对于clone是方便的,但是对于push则是不友好的,需要cgit或者手动禁用
+#因此这里还是建议手动修改需要clone的目录,除非经常clone而很少push
+
+[safe]
+	# 简单指认所有仓库的安全配置(允许任意同盘符上的系统对同一个仓库目录操作)
+	directory=*
+	# 指定对特定的盘符指认安全配置
+	# directory = C:/*
+	# directory = D:/*
+	# directory = E:/*
+	
+	# 仅指定对特定的目录指认安全配置(配置繁琐,比较少考虑)
+	# directory=C:/repos/*
+	# directory=D:/repos/*
+	# directory = C:/repos/configs
+	
+[credential "https://gitee.com"]
+	provider = generic
+[credential]
+	helper = manager
+[pull]
+	rebase = true
+[credential "helperselector"]
+	selected = manager
+
+[core]
+	autocrlf = false

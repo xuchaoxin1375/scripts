@@ -220,7 +220,7 @@ function Update-SSNameServers
     param (
         $Table = "$desktop/domains_nameservers.csv",
         $Config = "$spaceship_config",
-        $script="$pys/spaceship_api/update_nameservers.py",
+        $script = "$pys/spaceship_api/update_nameservers.py",
         $Threads = 8
     )
     python $script -f $Table -c $Config -w $Threads
@@ -3341,16 +3341,19 @@ function Add-PythonAliasPy
     #>
     [CmdletBinding()]
     param(
-        $pythonPath = ""
+        $pythonPath = "",
+        $NewName = "py.exe"
     )
     if($pythonPath -eq "")
     {
 
         $pythonPath = Get-Command python | Select-Object -ExpandProperty Source
+        Write-Verbose "检测到当前python路径为：$pythonPath"
 
     }
 
     $PythonParentDir = Split-Path $pythonPath -Parent
+    Write-Verbose "准备在目录 $PythonParentDir 下创建py.exe符号链接"
     # 检查是否通过scoop安装python，需要特殊处理shim
     if($pythonPath -like "*scoop*")
     {
@@ -3363,7 +3366,17 @@ function Add-PythonAliasPy
         }
     }
     # $PythonParentDir = Split-Path $pythonPath -Parent
-    New-Item -ItemType SymbolicLink -Path $PythonParentDir/py.exe -Value $pythonPath -Force -Verbose -ErrorAction SilentlyContinue
+    $pyPath = "$PythonParentDir/$newName"
+    Write-Verbose "准备创建  指向 $pyPath 的符号链接(symbolic link 需要管理员权限)"
+    if ($NewName -notmatch ".*(\.exe|\.bat|\.cmd)")
+    {
+        Write-Warning "NewName参数没有以合适的扩展名结尾(.exe|.bat|.cmd)"
+    }
+    
+    New-Item -ItemType SymbolicLink -Path $pyPath -Target $pythonPath -Force -Verbose -ErrorAction Stop
+
+    Write-Host "检查名字为 $newName 的可执行文件列表:"
+    Get-Command $newName | Select-Object Path
 }
 
 Register-ArgumentCompleter -CommandName Get-Json -ParameterName Key -ScriptBlock ${function:Get-JsonItemCompleter}

@@ -79,12 +79,14 @@ for idx, file_path in enumerate(tqdm(filtered_files, desc="处理进度")):
                     print(
                         f"✅ 图片 {file_path} 的上半部分不是纯色，判定为废图。正在移动到 checking 目录..."
                     )
-                    new_file_path = os.path.join(checking_dir, os.path.basename(file_path))
+                    new_file_path = os.path.join(
+                        checking_dir, os.path.basename(file_path)
+                    )
                     shutil.move(file_path, new_file_path)
                     print(f"✅ 已移动文件: {file_path} -> {new_file_path}")
     except Exception as e:
         print(f"\n⚠️ 图片 {file_path} 加载失败，可能是损坏的图片: {str(e)}")
-        print(f"✅ 正在移动损坏的图片到 checking 目录...")
+        print("✅ 正在移动损坏的图片到 checking 目录...")
         new_file_path = os.path.join(checking_dir, os.path.basename(file_path))
         shutil.move(file_path, new_file_path)
         print(f"✅ 已移动损坏图片: {file_path} -> {new_file_path}")

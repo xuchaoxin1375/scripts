@@ -101,12 +101,60 @@ function init
     }
 
     # 其他自定义绑定的任务🎈
+    ## 加载时计算方案(耗费一定时间)
     if(Test-CommandAvailability zoxide)
     {
 
         Invoke-Expression (& { (zoxide init powershell | Out-String) })
     }
+    # if(Test-CommandAvailability uv)
+    # {
+    #     Invoke-Expression (& { uv generate-shell-completion powershell | Out-String })
+    # }
+    # if(Test-CommandAvailability ruff)
+    # {
+    #     Invoke-Expression (& { ruff generate-shell-completion powershell | Out-String })
+    # }
 
+    ## 缓存补全脚本方案(版本更新的情况下可能要清除缓存脚本文件重新生成)
+    # zoxide
+    if(Test-CommandAvailability zoxide)
+    {
+        $zoxideCompletionFile = "$HOME\.zoxide_completion.ps1"
+        if (!(Test-Path $zoxideCompletionFile))
+        {
+            zoxide init powershell > $zoxideCompletionFile
+        }
+        . $zoxideCompletionFile
+    }
+    # astral系列
+    # 检查 uv 是否存在且是否有缓存，如果没有或过时则更新
+    if(Test-CommandAvailability uv)
+    {
+        $uvCompletionFile = "$HOME\.uv_completion.ps1"
+        if (!(Test-Path $uvCompletionFile))
+        {
+            uv generate-shell-completion powershell > $uvCompletionFile
+        }
+        . $uvCompletionFile
+        # uvx
+        $uvxCompletionFile = "$HOME\.uvx_completion.ps1"
+        if(!(Test-Path $uvxCompletionFile))
+        {
+            uvx --generate-shell-completion powershell > $uvxCompletionFile
+        }
+        . $uvxCompletionFile
+    }
+    if(Test-CommandAvailability ruff)
+    {
+        $ruffCompletionFile = "$HOME\.ruff_completion.ps1"
+
+        if (!(Test-Path $ruffCompletionFile))
+        {
+            ruff generate-shell-completion powershell > $ruffCompletionFile
+        }
+        . $ruffCompletionFile
+    }
     # 耗时统计
     $endTime = Get-Date
     $loadTime = $endTime - $startTime
@@ -576,12 +624,12 @@ function Add-CxxuPsModuleToProfile
         # Confirm-ModuleInstalled -Name PsCompletions -Install *> $null
         # Import-Module PSCompletions
         
-        $res = Get-Command 'scoop-search' -ErrorAction SilentlyContinue
-        if ($res)
-        {
-            Write-Host 'scoop-search hook loaded!'
-            Invoke-Expression (&scoop-search --hook)
-        }
+        # $res = Get-Command 'scoop-search' -ErrorAction SilentlyContinue
+        # if ($res)
+        # {
+        #     Write-Host 'scoop-search hook loaded!'
+        #     Invoke-Expression (&scoop-search --hook)
+        # }
 
     }.ToString().Trim()>>$pf #向配置文件追加内容
     '# End AutoRun commands from CxxuPsModules' >> $pf
@@ -1698,7 +1746,7 @@ function Prompt
 
     switch ($env:PsPrompt)
     {
-        'Fast' { PromptFast return ""}
+        'Fast' { PromptFast return "" }
         'Brilliant' { PromptBrilliant }
         'Brilliant2' { PromptBrilliant2 }
         'Balance' { PromptBalance }

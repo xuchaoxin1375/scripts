@@ -1,5 +1,5 @@
 import queue
-from queue import Queue
+# from queue import Queue
 q = queue.Queue()
 q.put(1)
 q.put(2)

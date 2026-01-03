@@ -1275,6 +1275,23 @@ function Deploy-PicgoGUI
 {
     cpFVR
 }
+function Deploy-UVConfig
+{
+    param (
+        $ConfigDirectory = '~/.config/uv'
+    )
+    New-Item -ItemType Directory -Path $ConfigDirectory -ErrorAction SilentlyContinue
+    $configContent = @'
+[[index]]
+url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
+default = true
+'@
+    $config = "$ConfigDirectory/uv.toml"
+    # New-Item -ItemType File -Path $config -Verbose
+    Set-Content -Path $config -Value $configContent 
+
+    Get-Content $config
+}
 function Deploy-AndroidStudio_depends
 {
     param (
@@ -1802,7 +1819,7 @@ function Deploy-GitConfig
     #>
     Update-PwshEnvIfNotYet -Mode Vars
     # 使用硬链接会有权限问题,这里用复制文件的方式代替
-    $t = "$configs\user\.gitconfig"
+    $t = "$scripts\config\.gitconfig" # "$configs\user\.gitconfig"
     $p = "$home\.gitconfig"
     # Copy-Item $t $p -Force -Verbose
     # 使用符号链接支持跨分区

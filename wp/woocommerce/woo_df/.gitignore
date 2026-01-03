@@ -4,3 +4,4 @@ cf_site_tags.txt
 *.xlsx
 *.db
 *.db3
+.venv/
