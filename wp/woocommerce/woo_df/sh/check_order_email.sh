@@ -1,6 +1,6 @@
 #!/bin/bash
 set -euo pipefail
-
+echo "script version:20260104"
 # ================== 默认数据库连接信息 ==================
 DB_USER="root"
 DB_PASS="15a58524d3bd2e49"
@@ -50,31 +50,15 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ================== 邮箱来源 ==================
-
-# 兼容Windows换行，去除首尾空白，跳过空行和#开头行，提高容错能力
 if [[ -n "$ARG_EMAIL_FILE" ]]; then
     if [[ ! -f "$ARG_EMAIL_FILE" ]]; then
         echo "❌ 邮箱文件不存在: $ARG_EMAIL_FILE"
         exit 1
     fi
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        # 去除Windows换行符和首尾空白
-        line="$(echo "$line" | tr -d '\r' | xargs)"
-        # 跳过空行、#开头（忽略前导空格）、无@行
-        if [[ -z "$line" ]]; then
-            continue
-        fi
-        # 判断是否为注释行（允许前导空格）
-        if [[ "$line" =~ ^[[:space:]]*# ]]; then
-            continue
-        fi
-        # 跳过无@的行
-        if [[ "$line" != *"@"* ]]; then
-            continue
-        fi
-        # 简单邮箱格式校验（可选）
-        if ! [[ "$line" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
-            echo "⚠️  跳过格式异常的邮箱: $line" >&2
+    while IFS= read -r line; do
+        line="$(echo "$line" | xargs)"   # 去掉首尾空格
+        # 跳过空行、注释行（忽略前导空格）、无@行
+        if [[ -z "$line" ]] || [[ "$line" =~ ^[[:space:]]*# ]] || [[ "$line" != *"@"* ]]; then
             continue
         fi
         EMAILS+=("$line")
@@ -88,6 +72,7 @@ fi
 
 # ================== 执行查询 ==================
 true > "$OUTPUT_FILE"
+ls -l "$OUTPUT_FILE"
 echo "🔍 开始并行查询所有数据库 (线程数: $THREADS)..."
 
 mysql -u "$DB_USER" -p"$DB_PASS" -h "$DB_HOST" -Nse "
@@ -104,22 +89,89 @@ query_db() {
     DB_NAME="$1"
     EMAIL="$2"
 
-    TABLE_CHECK=$(mysql -u "$DB_USER" -p"$DB_PASS" -h "$DB_HOST" -Nse " \
-        SELECT COUNT(*) FROM information_schema.tables \
-        WHERE table_schema = '$DB_NAME' AND table_name = 'wp_wc_orders'; \
-    " 2>/dev/null || echo 0)
+    EMAIL_RAW="$(printf '%s' "$EMAIL" | xargs)"
+    EMAIL_NORM="$(printf '%s' "$EMAIL_RAW" | tr '[:upper:]' '[:lower:]')"
 
-    if [ "$TABLE_CHECK" -ne 1 ]; then
-        return
+    EMAIL_RAW_ESC=${EMAIL_RAW//"'"/"\\'"}
+    EMAIL_NORM_ESC=${EMAIL_NORM//"'"/"\\'"}
+
+    TABLES_LINE=$(mysql -u "$DB_USER" -p"$DB_PASS" -h "$DB_HOST" -Nse "
+        SELECT
+          (SELECT table_name FROM information_schema.tables WHERE table_schema = '$DB_NAME' AND table_name LIKE '%wc_orders%' ORDER BY (table_name = 'wp_wc_orders') DESC, table_name LIMIT 1) AS wc_orders,
+          (SELECT table_name FROM information_schema.tables WHERE table_schema = '$DB_NAME' AND table_name LIKE '%wc_order_addresses%' ORDER BY (table_name = 'wp_wc_order_addresses') DESC, table_name LIMIT 1) AS wc_order_addresses,
+          (SELECT table_name FROM information_schema.tables WHERE table_schema = '$DB_NAME' AND table_name LIKE '%postmeta%' ORDER BY (table_name = 'wp_postmeta') DESC, table_name LIMIT 1) AS postmeta,
+          (SELECT table_name FROM information_schema.tables WHERE table_schema = '$DB_NAME' AND table_name LIKE '%posts%' ORDER BY (table_name = 'wp_posts') DESC, table_name LIMIT 1) AS posts,
+          (SELECT table_name FROM information_schema.tables WHERE table_schema = '$DB_NAME' AND table_name LIKE '%users%' ORDER BY (table_name = 'wp_users') DESC, table_name LIMIT 1) AS users;
+    " 2>/dev/null | head -n 1 || true)
+
+    IFS=$'\t' read -r WC_ORDERS_TABLE WC_ADDR_TABLE POSTMETA_TABLE POSTS_TABLE USERS_TABLE <<< "${TABLES_LINE:-}"
+
+    build_sql() {
+        MODE="$1"
+        SQL_LOCAL="USE ${DB_NAME};"
+        HAS_SEGMENT_LOCAL=0
+
+        if [ "$MODE" = "exact" ]; then
+            BILLING_ADDR_CLAUSE="ba.email = '${EMAIL_RAW_ESC}'"
+            PM_EMAIL_CLAUSE="pm.meta_value = '${EMAIL_RAW_ESC}'"
+            USER_EMAIL_CLAUSE="u.user_email = '${EMAIL_RAW_ESC}'"
+        else
+            BILLING_ADDR_CLAUSE="LOWER(TRIM(ba.email)) = '${EMAIL_NORM_ESC}'"
+            PM_EMAIL_CLAUSE="LOWER(TRIM(pm.meta_value)) = '${EMAIL_NORM_ESC}'"
+            USER_EMAIL_CLAUSE="LOWER(TRIM(u.user_email)) = '${EMAIL_NORM_ESC}'"
+        fi
+
+        if [ -n "${WC_ORDERS_TABLE:-}" ] && [ -n "${WC_ADDR_TABLE:-}" ]; then
+            if [ "$HAS_SEGMENT_LOCAL" -eq 1 ]; then SQL_LOCAL+=" UNION ALL "; fi
+            SQL_LOCAL+="SELECT CONCAT('Order ID: ', o.id, ' | Created: ', o.date_created_gmt, ' | Status: ', o.status) FROM ${WC_ORDERS_TABLE} o JOIN ${WC_ADDR_TABLE} ba ON o.id = ba.order_id AND ba.address_type = 'billing' WHERE ${BILLING_ADDR_CLAUSE}"
+            HAS_SEGMENT_LOCAL=1
+        fi
+
+        if [ -n "${WC_ORDERS_TABLE:-}" ] && [ -n "${POSTMETA_TABLE:-}" ]; then
+            if [ "$HAS_SEGMENT_LOCAL" -eq 1 ]; then SQL_LOCAL+=" UNION ALL "; fi
+            SQL_LOCAL+="SELECT CONCAT('Order ID: ', o.id, ' | Created: ', o.date_created_gmt, ' | Status: ', o.status) FROM ${WC_ORDERS_TABLE} o JOIN ${POSTMETA_TABLE} pm ON pm.post_id = o.id WHERE pm.meta_key IN ('_billing_email','billing_email') AND ${PM_EMAIL_CLAUSE}"
+            HAS_SEGMENT_LOCAL=1
+        fi
+
+        if [ -n "${WC_ORDERS_TABLE:-}" ] && [ -n "${USERS_TABLE:-}" ]; then
+            if [ "$HAS_SEGMENT_LOCAL" -eq 1 ]; then SQL_LOCAL+=" UNION ALL "; fi
+            SQL_LOCAL+="SELECT CONCAT('Order ID: ', o.id, ' | Created: ', o.date_created_gmt, ' | Status: ', o.status) FROM ${WC_ORDERS_TABLE} o JOIN ${USERS_TABLE} u ON u.ID = o.customer_id WHERE ${USER_EMAIL_CLAUSE}"
+            HAS_SEGMENT_LOCAL=1
+        fi
+
+        if [ -n "${POSTMETA_TABLE:-}" ] && [ -n "${POSTS_TABLE:-}" ]; then
+            if [ "$HAS_SEGMENT_LOCAL" -eq 1 ]; then SQL_LOCAL+=" UNION ALL "; fi
+            SQL_LOCAL+="SELECT CONCAT('Order ID: ', p.ID, ' | Created: ', p.post_date_gmt, ' | Status: ', p.post_status) FROM ${POSTS_TABLE} p JOIN ${POSTMETA_TABLE} pm ON pm.post_id = p.ID WHERE p.post_type IN ('shop_order','shop_order_refund') AND pm.meta_key IN ('_billing_email','billing_email') AND ${PM_EMAIL_CLAUSE}"
+            HAS_SEGMENT_LOCAL=1
+        fi
+
+        if [ -n "${POSTMETA_TABLE:-}" ] && [ -n "${POSTS_TABLE:-}" ] && [ -n "${USERS_TABLE:-}" ]; then
+            if [ "$HAS_SEGMENT_LOCAL" -eq 1 ]; then SQL_LOCAL+=" UNION ALL "; fi
+            SQL_LOCAL+="SELECT CONCAT('Order ID: ', p.ID, ' | Created: ', p.post_date_gmt, ' | Status: ', p.post_status) FROM ${POSTS_TABLE} p JOIN ${POSTMETA_TABLE} pm_user ON pm_user.post_id = p.ID AND pm_user.meta_key IN ('_customer_user','customer_user') JOIN ${USERS_TABLE} u ON u.ID = pm_user.meta_value WHERE p.post_type IN ('shop_order','shop_order_refund') AND ${USER_EMAIL_CLAUSE}"
+            HAS_SEGMENT_LOCAL=1
+        fi
+
+        if [ "$HAS_SEGMENT_LOCAL" -ne 1 ]; then
+            echo ""
+            return
+        fi
+
+        echo "$SQL_LOCAL"
+    }
+
+    SQL_EXACT=$(build_sql "exact")
+    if [ -n "$SQL_EXACT" ]; then
+        RESULT=$(mysql -u "$DB_USER" -p"$DB_PASS" -h "$DB_HOST" -Nse "$SQL_EXACT" 2>/dev/null)
+    else
+        RESULT=""
     fi
 
-    RESULT=$(mysql -u "$DB_USER" -p"$DB_PASS" -h "$DB_HOST" -Nse " \
-        USE $DB_NAME; \
-        SELECT CONCAT('Order ID: ', o.id, ' | Created: ', o.date_created_gmt, ' | Status: ', o.status)
-        FROM wp_wc_orders o
-        LEFT JOIN wp_wc_order_addresses ba ON o.id = ba.order_id AND ba.address_type = 'billing'
-        WHERE ba.email = '$EMAIL';
-    " 2>/dev/null)
+    if [ -z "$RESULT" ]; then
+        SQL_NORM=$(build_sql "norm")
+        if [ -n "$SQL_NORM" ]; then
+            RESULT=$(mysql -u "$DB_USER" -p"$DB_PASS" -h "$DB_HOST" -Nse "$SQL_NORM" 2>/dev/null)
+        fi
+    fi
 
     if [ -n "$RESULT" ]; then
         echo "✅ 数据库: $DB_NAME 找到邮箱 $EMAIL 的订单"

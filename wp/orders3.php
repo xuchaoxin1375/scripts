@@ -300,10 +300,13 @@ function render_range_revenue_module($access_token, $view_mode, $range_start, $r
 {
     ob_start();
     ?>
-    <div class="chart-container" id="revenueChartContainer" style="height: auto;">
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; gap:10px; flex-wrap:wrap;">
+    <div class="chart-container" id="revenueChartContainer" style="height: auto;" data-collapsible-card="range_revenue">
+        <div class="collapsible-card-header" data-collapsible-card-header style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; gap:10px; flex-wrap:wrap;">
             <span style="font-size:15px; font-weight:600; color:#6366f1;">📈 区间营收统计</span>
-            <form method="get" id="rangeRevenueForm" class="range-revenue-form" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <button type="button" class="collapsible-card-toggle" data-collapsible-card-toggle>收起</button>
+        </div>
+        <div class="collapsible-card-body" data-collapsible-card-body>
+            <form method="get" id="rangeRevenueForm" class="range-revenue-form" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
                 <input type="hidden" name="token" value="<?= htmlspecialchars($access_token) ?>">
                 <input type="hidden" name="mode" value="<?= htmlspecialchars($view_mode) ?>">
                 <div class="range-revenue-row">
@@ -321,16 +324,16 @@ function render_range_revenue_module($access_token, $view_mode, $range_start, $r
                     <input type="range" min="0" max="100" value="100" id="rangeEndSlider" style="flex:1;">
                 </div>
             </form>
-        </div>
-        <?php if ($range_error !== ''): ?>
-            <div id="rangeRevenueError" style="background:#fff7ed; border:1px solid #fdba74; color:#9a3412; padding:10px 12px; border-radius:10px; font-size:13px; margin-bottom:10px;">
-                <?= htmlspecialchars($range_error) ?>
+            <?php if ($range_error !== ''): ?>
+                <div id="rangeRevenueError" style="background:#fff7ed; border:1px solid #fdba74; color:#9a3412; padding:10px 12px; border-radius:10px; font-size:13px; margin-bottom:10px;">
+                    <?= htmlspecialchars($range_error) ?>
+                </div>
+            <?php else: ?>
+                <div id="rangeRevenueError" style="display:none;"></div>
+            <?php endif; ?>
+            <div style="width:100%; height:180px; min-height:180px;">
+                <canvas id="revenueChart" style="width:100%; height:180px; min-height:180px;"></canvas>
             </div>
-        <?php else: ?>
-            <div id="rangeRevenueError" style="display:none;"></div>
-        <?php endif; ?>
-        <div style="width:100%; height:180px; min-height:180px;">
-            <canvas id="revenueChart" style="width:100%; height:180px; min-height:180px;"></canvas>
         </div>
     </div>
     <script>
@@ -1144,6 +1147,8 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
             }
         }
 
+        // 对每个站点内部订单排序，并按排序字段对站点分组本身进行排序（取每组排序后第一条作为代表）
+        $sorted_groups = [];
         foreach ($grouped as $domain => $orders) {
             usort($orders, function ($a, $b) use ($order_sort, $domain_owner_map) {
                 $ia = $a['item'];
@@ -1205,25 +1210,102 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
                 if ($cmp !== 0) return $cmp;
                 return strcmp($get_time($ib), $get_time($ia));
             });
+            $sorted_groups[] = ['domain' => $domain, 'orders' => $orders, 'rep' => ($orders[0]['item'] ?? null)];
+        }
+
+        usort($sorted_groups, function ($ga, $gb) use ($order_sort, $domain_owner_map) {
+            $ia = $ga['rep'] ?? [];
+            $ib = $gb['rep'] ?? [];
+
+            $get_amt = function ($x) {
+                $v = $x['details']['amt'] ?? 0;
+                return is_numeric($v) ? (float)$v : 0.0;
+            };
+            $get_attempts = function ($x) {
+                $v = $x['attempts'] ?? 0;
+                return is_numeric($v) ? (int)$v : 0;
+            };
+            $get_time = function ($x) {
+                return (string)($x['time'] ?? '');
+            };
+            $get_site_date_ts = function ($x) use ($domain_owner_map) {
+                $dom = (string)($x['domain'] ?? '');
+                $key = normalize_domain_key($dom);
+                $date = ($key !== '' && isset($domain_owner_map[$key])) ? (string)($domain_owner_map[$key]['date'] ?? '') : '';
+                return parse_site_date_to_ts($date);
+            };
+
+            switch ($order_sort) {
+                case 'site_date_asc':
+                    $ta = $get_site_date_ts($ia);
+                    $tb = $get_site_date_ts($ib);
+                    if ($ta === 0 && $tb !== 0) { $cmp = 1; break; }
+                    if ($tb === 0 && $ta !== 0) { $cmp = -1; break; }
+                    $cmp = $ta <=> $tb;
+                    break;
+                case 'site_date_desc':
+                    $ta = $get_site_date_ts($ia);
+                    $tb = $get_site_date_ts($ib);
+                    if ($ta === 0 && $tb !== 0) { $cmp = 1; break; }
+                    if ($tb === 0 && $ta !== 0) { $cmp = -1; break; }
+                    $cmp = $tb <=> $ta;
+                    break;
+                case 'amt_asc':
+                    $cmp = $get_amt($ia) <=> $get_amt($ib);
+                    break;
+                case 'amt_desc':
+                    $cmp = $get_amt($ib) <=> $get_amt($ia);
+                    break;
+                case 'attempts_asc':
+                    $cmp = $get_attempts($ia) <=> $get_attempts($ib);
+                    break;
+                case 'attempts_desc':
+                    $cmp = $get_attempts($ib) <=> $get_attempts($ia);
+                    break;
+                case 'time_asc':
+                    $cmp = strcmp($get_time($ia), $get_time($ib));
+                    break;
+                case 'time_desc':
+                default:
+                    $cmp = strcmp($get_time($ib), $get_time($ia));
+                    break;
+            }
+            if ($cmp !== 0) return $cmp;
+            return strcmp($get_time($ib), $get_time($ia));
+        });
+
+        foreach ($sorted_groups as $g) {
+            $domain = $g['domain'];
+            $orders = $g['orders'];
             echo '<div class="order-item" style="border-left:5px solid #6366f1; margin-bottom:18px;">';
             echo '<div class="order-main" onclick="document.getElementById(\'group_' . md5($domain) . '\').style.display = (document.getElementById(\'group_' . md5($domain) . '\').style.display==\'none\'?\'block\':\'none\');">';
             echo '<span style="font-size:14px; color:#fff; font-weight:bold; background:#6366f1; border-radius:6px; padding:2px 10px; margin-right:10px;">' . $group_index . '</span>';
             $group_index++;
             echo '<strong style="font-size:16px; color:#6366f1;">' . htmlspecialchars($domain) . '</strong>';
+            echo '<div class="order-tags">';
             if ($has_people || $has_country) {
                 $dom_key = normalize_domain_key($domain);
                 $owner = ($dom_key !== '' && isset($domain_owner_map[$dom_key])) ? $domain_owner_map[$dom_key] : null;
                 $people = $owner ? trim((string)($owner['people'] ?? '')) : '';
                 $country = $owner ? trim((string)($owner['country'] ?? '')) : '';
+                $category = $owner ? trim((string)($owner['category'] ?? '')) : '';
+                $site_date = $owner ? trim((string)($owner['date'] ?? '')) : '';
                 if ($people !== '') {
                     echo '<span class="badge badge-attempts" style="margin-left:10px; background:#eef2ff; color:#4f46e5;">人员:' . htmlspecialchars($people) . '</span>';
                 }
                 if ($has_country && $country !== '') {
                     echo '<span class="badge badge-attempts" style="margin-left:6px; background:#ecfeff; color:#0e7490;">' . htmlspecialchars($country) . '</span>';
                 }
+                if ($has_category && $category !== '') {
+                    echo '<span class="badge badge-attempts" style="margin-left:6px; background:#f0fdf4; color:#166534;">内容:' . htmlspecialchars($category) . '</span>';
+                }
+                if ($has_date && $site_date !== '') {
+                    echo '<span class="badge badge-attempts" style="margin-left:6px; background:#f1f5f9; color:#334155;">建站日期:' . htmlspecialchars($site_date) . '</span>';
+                }
             }
             echo '<span class="badge badge-attempts" style="margin-left:10px;">' . count($orders) . '条订单</span>';
             echo '<span style="margin-left:10px; color:#64748b; font-size:13px;">点击展开/收起</span>';
+            echo '</div>';
             echo '</div>';
             echo '<div id="group_' . md5($domain) . '" style="display:none;">';
             foreach ($orders as $order) {
@@ -1233,7 +1315,7 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
                 echo '<div class="order-item ' . $st_class . '" style="margin-bottom:8px;">';
                 echo '<div class="order-main" onclick="toggleLog(\'log_' . $no . '\')">';
                 echo '<div style="flex:1;">';
-                echo '<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">';
+                echo '<div class="order-tags" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">';
                 echo '<span style="font-size:13px; color:#64748b; font-weight:bold; background:#f1f5f9; border-radius:6px; padding:2px 8px; margin-right:6px;">' . $order_index . '</span>';
                 $order_index++;
                 echo '<strong style="font-size:15px;">' . htmlspecialchars($item['domain']) . '</strong>';
@@ -1317,8 +1399,8 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
         ];
         foreach ($grouped_orders as $group_key => $orders) {
             $group_id = 'order_group_' . $group_key;
-            echo '<div class="order-item" id="' . $group_id . '_wrap" style="border-left:5px solid ' . ($group_key == 'success' ? '#10b981' : '#ef4444') . '; margin-bottom:18px;">';
-            echo '<div class="order-main" style="cursor:pointer;user-select:none;" onclick="var el=document.getElementById(\'' . $group_id . '\');el.style.display=(el.style.display==\'none\'?\'block\':\'none\');">';
+            echo '<div class="order-item" id="' . $group_id . '_wrap" data-order-group-wrap="' . $group_key . '" style="border-left:5px solid ' . ($group_key == 'success' ? '#10b981' : '#ef4444') . '; margin-bottom:18px;">';
+            echo '<div class="order-main" data-order-group-header="' . $group_key . '" style="cursor:pointer;user-select:none;" onclick="var el=document.getElementById(\'' . $group_id . '\');el.style.display=(el.style.display==\'none\'?\'block\':\'none\');">';
             echo '<span style="font-size:15px; font-weight:bold; color:' . ($group_key == 'success' ? '#10b981' : '#ef4444') . ';">' . $group_titles[$group_key] . '</span>';
             $filtered_cnt = 0;
             foreach ($orders as $no0 => $it0) {
@@ -1328,10 +1410,13 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
                     $filtered_cnt++;
                 }
             }
+            echo '<div class="order-tags">';
             echo '<span class="badge badge-attempts" style="margin-left:10px;">' . $filtered_cnt . '条</span>';
             echo '<span style="margin-left:10px; color:#64748b; font-size:13px;">点击展开/收起</span>';
             echo '</div>';
-            echo '<div id="' . $group_id . '" style="display:none;">';
+            echo '</div>';
+            $default_open = ($group_key === 'fail' && $status_filter !== 'success') || ($group_key === 'success' && $status_filter === 'success');
+            echo '<div id="' . $group_id . '" data-order-group-body="' . $group_key . '" style="display:' . ($default_open ? 'block' : 'none') . ';">';
             foreach ($orders as $no => $item) {
                 $dom_key = normalize_domain_key($item['domain'] ?? '');
                 $owner = ($dom_key !== '' && isset($domain_owner_map[$dom_key])) ? $domain_owner_map[$dom_key] : null;
@@ -1343,7 +1428,7 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
                 echo '<div class="order-item ' . $st_class . '" style="margin-bottom:8px;">';
                 echo '<div class="order-main" onclick="toggleLog(\'log_' . $no . '\')">';
                 echo '<div style="flex:1;">';
-                echo '<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">';
+                echo '<div class="order-tags" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">';
                 echo '<span style="font-size:13px; color:#64748b; font-weight:bold; background:#f1f5f9; border-radius:6px; padding:2px 8px; margin-right:6px;">' . $order_index . '</span>';
                 $order_index++;
                 echo '<strong style="font-size:15px;">' . htmlspecialchars($item['domain']) . '</strong>';
@@ -1865,6 +1950,11 @@ if ($is_partial_analysis) {
             display: none;
         }
 
+        #revenueChartContainer.is-collapsed {
+            min-height: 0 !important;
+            padding-bottom: 10px !important;
+        }
+
         .chart-container {
             background: white;
             padding: 20px;
@@ -1886,9 +1976,89 @@ if ($is_partial_analysis) {
         .order-item {
             background: white;
             border-radius: 16px;
-            margin-bottom: 12px;
+            /* padding: 0px; */
+            margin-bottom: 14px;
             border: 1px solid #e2e8f0;
-            transition: all 0.2s ease;
+            box-shadow: 0 4px 14px rgba(15,23,42,0.06);
+        }
+
+        @media (max-width: 900px) {
+            .order-item {
+                /* padding: 1px 1px; */
+                margin-bottom: 10px;
+                border-radius: 14px;
+            }
+            .order-main {
+                gap: 10px;
+                
+            }
+            .order-main strong {
+                font-size: 14px !important;
+            }
+            .order-tags {
+                gap: 6px 6px;
+            }
+            .order-tags .badge {
+                display: inline-flex;
+                align-items: center;
+                width: auto;
+                max-width: 100%;
+                flex: 0 0 auto;
+                white-space: nowrap;
+            }
+            .badge {
+                padding: 4px 8px;
+                border-radius: 999px;
+                font-size: 11px;
+            }
+            .badge-attempts {
+                padding: 4px 8px;
+                font-size: 11px;
+            }
+            .error-msg {
+                font-size: 12px;
+                padding: 8px 10px;
+            }
+            .log-content {
+                font-size: 11px;
+                line-height: 1.35;
+            }
+            .copy-domain-btn {
+                padding: 5px 8px;
+                font-size: 11px;
+            }
+
+            .order-group-float {
+                position: fixed;
+                left: 10px;
+                right: 10px;
+                bottom: 10px;
+                z-index: 1200;
+                background: rgba(255,255,255,0.98);
+                border: 1px solid #e2e8f0;
+                border-radius: 14px;
+                box-shadow: 0 10px 24px rgba(15,23,42,0.18);
+                padding: 8px 10px;
+            }
+            .order-group-float .order-main {
+                padding: 0 !important;
+            }
+        }
+
+        .order-group-float {
+            display: none;
+        }
+
+        .order-group-float.is-active {
+            display: block;
+        }
+
+        .order-group-float button {
+            border: none;
+            background: transparent;
+            padding: 0;
+            margin: 0;
+            cursor: pointer;
         }
 
         .order-item:hover {
@@ -1910,6 +2080,14 @@ if ($is_partial_analysis) {
             display: flex;
             flex-direction: column;
             gap: 10px;
+        }
+
+        .order-tags {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            min-width: 0;
         }
 
         @media (min-width: 640px) {
@@ -2378,10 +2556,12 @@ if ($is_partial_analysis) {
                     body.classList.add('is-collapsed');
                     btn.textContent = '展开';
                     cardEl.setAttribute('data-collapsed', '1');
+                    cardEl.classList.add('is-collapsed');
                 } else {
                     body.classList.remove('is-collapsed');
                     btn.textContent = '收起';
                     cardEl.setAttribute('data-collapsed', '0');
+                    cardEl.classList.remove('is-collapsed');
                 }
             }
 
@@ -2393,7 +2573,17 @@ if ($is_partial_analysis) {
 
                     if (storageKey) {
                         try {
-                            collapsed = localStorage.getItem(storageKey) === '1';
+                            const saved = localStorage.getItem(storageKey);
+                            if (key === 'range_revenue') {
+                                if (saved === null) {
+                                    collapsed = true;
+                                    try { localStorage.setItem(storageKey, '1'); } catch (e) {}
+                                } else {
+                                    collapsed = saved === '1';
+                                }
+                            } else {
+                                collapsed = saved === '1';
+                            }
                         } catch (e) {
                             collapsed = false;
                         }
@@ -3175,6 +3365,62 @@ if ($is_partial_analysis) {
                 return nd;
             }
 
+            const MIN_RANGE_DAYS = 5;
+
+            function clampDate(d, minD, maxD) {
+                if (!d) return d;
+                if (minD && d < minD) return new Date(minD.getTime());
+                if (maxD && d > maxD) return new Date(maxD.getTime());
+                return d;
+            }
+
+            function ensureMinSpan(opts) {
+                if (!startInput || !endInput) return false;
+                const meta = getMeta();
+                const minD = parseDate(meta.min_date);
+                const maxD = parseDate(meta.max_date);
+                let rs = parseDate(startInput.value);
+                let re = parseDate(endInput.value);
+                if (!rs || !re || !minD || !maxD) return false;
+
+                rs = clampDate(rs, minD, maxD);
+                re = clampDate(re, minD, maxD);
+
+                let changed = false;
+                const span = daysBetween(rs, re);
+                if (span < MIN_RANGE_DAYS) {
+                    const pin = (opts && opts.pin) ? String(opts.pin) : 'end';
+                    if (pin === 'start') {
+                        re = addDays(rs, MIN_RANGE_DAYS);
+                        re = clampDate(re, minD, maxD);
+                        if (daysBetween(rs, re) < MIN_RANGE_DAYS) {
+                            rs = addDays(re, -MIN_RANGE_DAYS);
+                            rs = clampDate(rs, minD, maxD);
+                        }
+                    } else {
+                        rs = addDays(re, -MIN_RANGE_DAYS);
+                        rs = clampDate(rs, minD, maxD);
+                        if (daysBetween(rs, re) < MIN_RANGE_DAYS) {
+                            re = addDays(rs, MIN_RANGE_DAYS);
+                            re = clampDate(re, minD, maxD);
+                        }
+                    }
+                    changed = true;
+                }
+
+                const rsStr = fmtDate(rs);
+                const reStr = fmtDate(re);
+                if (startInput.value !== rsStr) {
+                    startInput.value = rsStr;
+                    changed = true;
+                }
+                if (endInput.value !== reStr) {
+                    endInput.value = reStr;
+                    changed = true;
+                }
+                return changed;
+            }
+
             function getCache() {
                 if (!window.__rangeRevenueCache) window.__rangeRevenueCache = {};
                 return window.__rangeRevenueCache;
@@ -3244,6 +3490,7 @@ if ($is_partial_analysis) {
 
             function syncSlidersFromInputs() {
                 if (!startInput || !endInput || !startSlider || !endSlider) return;
+                ensureMinSpan({ pin: 'end' });
                 const meta = getMeta();
                 const minD = parseDate(meta.min_date);
                 const maxD = parseDate(meta.max_date);
@@ -3278,6 +3525,13 @@ if ($is_partial_analysis) {
                 const endDay = Math.round((b / 100) * total);
                 startInput.value = fmtDate(addDays(minD, startDay));
                 endInput.value = fmtDate(addDays(minD, endDay));
+
+                const startBefore = startInput.value;
+                const endBefore = endInput.value;
+                ensureMinSpan({ pin: 'end' });
+                if (startBefore !== startInput.value || endBefore !== endInput.value) {
+                    syncSlidersFromInputs();
+                }
                 if (rangeLabel) rangeLabel.textContent = startInput.value + ' ~ ' + endInput.value;
             }
 
@@ -3416,15 +3670,18 @@ if ($is_partial_analysis) {
 
             form.addEventListener('submit', function(ev) {
                 ev.preventDefault();
+                ensureMinSpan({ pin: 'end' });
                 syncSlidersFromInputs();
                 fetchAndUpdate();
             });
             if (startInput) startInput.addEventListener('change', function() {
+                ensureMinSpan({ pin: 'start' });
                 syncSlidersFromInputs();
                 scheduleLocalPreviewRender();
                 scheduleEnsureRangeData(true);
             });
             if (endInput) endInput.addEventListener('change', function() {
+                ensureMinSpan({ pin: 'end' });
                 syncSlidersFromInputs();
                 scheduleLocalPreviewRender();
                 scheduleEnsureRangeData(true);
