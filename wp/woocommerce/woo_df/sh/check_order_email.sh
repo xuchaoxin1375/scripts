@@ -1,14 +1,14 @@
 #!/bin/bash
 set -euo pipefail
-echo "script version:20260104"
+
 # ================== 默认数据库连接信息 ==================
 DB_USER="root"
 DB_PASS="15a58524d3bd2e49"
 DB_HOST="localhost"
 
 TMP_DB_LIST="/tmp/db_list.txt"
-OUTPUT_FILE="found_orders.txt"
-THREADS=64   # 默认并行数
+OUTPUT_FILE="found_orders.csv"
+THREADS=80   # 默认并行数
 
 EMAILS=()
 
@@ -75,6 +75,19 @@ true > "$OUTPUT_FILE"
 ls -l "$OUTPUT_FILE"
 echo "🔍 开始并行查询所有数据库 (线程数: $THREADS)..."
 
+csv_escape() {
+    local s
+    s="${1:-}"
+    s=${s//$'\r'/}
+    s=${s//$'\n'/ }
+    s=${s//"/"""}
+    printf '"%s"' "$s"
+}
+
+export -f csv_escape
+
+echo "email,domain,db_name,order_id,created_gmt,status" > "$OUTPUT_FILE"
+
 mysql -u "$DB_USER" -p"$DB_PASS" -h "$DB_HOST" -Nse "
 SELECT schema_name FROM information_schema.schemata
 WHERE schema_name NOT IN ('mysql', 'information_schema', 'performance_schema', 'sys');
@@ -88,6 +101,8 @@ fi
 query_db() {
     DB_NAME="$1"
     EMAIL="$2"
+
+    DOMAIN="${DB_NAME##*_}"
 
     EMAIL_RAW="$(printf '%s' "$EMAIL" | xargs)"
     EMAIL_NORM="$(printf '%s' "$EMAIL_RAW" | tr '[:upper:]' '[:lower:]')"
@@ -123,31 +138,31 @@ query_db() {
 
         if [ -n "${WC_ORDERS_TABLE:-}" ] && [ -n "${WC_ADDR_TABLE:-}" ]; then
             if [ "$HAS_SEGMENT_LOCAL" -eq 1 ]; then SQL_LOCAL+=" UNION ALL "; fi
-            SQL_LOCAL+="SELECT CONCAT('Order ID: ', o.id, ' | Created: ', o.date_created_gmt, ' | Status: ', o.status) FROM ${WC_ORDERS_TABLE} o JOIN ${WC_ADDR_TABLE} ba ON o.id = ba.order_id AND ba.address_type = 'billing' WHERE ${BILLING_ADDR_CLAUSE}"
+            SQL_LOCAL+="SELECT o.id AS order_id, o.date_created_gmt AS created_gmt, o.status AS status FROM ${WC_ORDERS_TABLE} o JOIN ${WC_ADDR_TABLE} ba ON o.id = ba.order_id AND ba.address_type = 'billing' WHERE ${BILLING_ADDR_CLAUSE}"
             HAS_SEGMENT_LOCAL=1
         fi
 
         if [ -n "${WC_ORDERS_TABLE:-}" ] && [ -n "${POSTMETA_TABLE:-}" ]; then
             if [ "$HAS_SEGMENT_LOCAL" -eq 1 ]; then SQL_LOCAL+=" UNION ALL "; fi
-            SQL_LOCAL+="SELECT CONCAT('Order ID: ', o.id, ' | Created: ', o.date_created_gmt, ' | Status: ', o.status) FROM ${WC_ORDERS_TABLE} o JOIN ${POSTMETA_TABLE} pm ON pm.post_id = o.id WHERE pm.meta_key IN ('_billing_email','billing_email') AND ${PM_EMAIL_CLAUSE}"
+            SQL_LOCAL+="SELECT o.id AS order_id, o.date_created_gmt AS created_gmt, o.status AS status FROM ${WC_ORDERS_TABLE} o JOIN ${POSTMETA_TABLE} pm ON pm.post_id = o.id WHERE pm.meta_key IN ('_billing_email','billing_email') AND ${PM_EMAIL_CLAUSE}"
             HAS_SEGMENT_LOCAL=1
         fi
 
         if [ -n "${WC_ORDERS_TABLE:-}" ] && [ -n "${USERS_TABLE:-}" ]; then
             if [ "$HAS_SEGMENT_LOCAL" -eq 1 ]; then SQL_LOCAL+=" UNION ALL "; fi
-            SQL_LOCAL+="SELECT CONCAT('Order ID: ', o.id, ' | Created: ', o.date_created_gmt, ' | Status: ', o.status) FROM ${WC_ORDERS_TABLE} o JOIN ${USERS_TABLE} u ON u.ID = o.customer_id WHERE ${USER_EMAIL_CLAUSE}"
+            SQL_LOCAL+="SELECT o.id AS order_id, o.date_created_gmt AS created_gmt, o.status AS status FROM ${WC_ORDERS_TABLE} o JOIN ${USERS_TABLE} u ON u.ID = o.customer_id WHERE ${USER_EMAIL_CLAUSE}"
             HAS_SEGMENT_LOCAL=1
         fi
 
         if [ -n "${POSTMETA_TABLE:-}" ] && [ -n "${POSTS_TABLE:-}" ]; then
             if [ "$HAS_SEGMENT_LOCAL" -eq 1 ]; then SQL_LOCAL+=" UNION ALL "; fi
-            SQL_LOCAL+="SELECT CONCAT('Order ID: ', p.ID, ' | Created: ', p.post_date_gmt, ' | Status: ', p.post_status) FROM ${POSTS_TABLE} p JOIN ${POSTMETA_TABLE} pm ON pm.post_id = p.ID WHERE p.post_type IN ('shop_order','shop_order_refund') AND pm.meta_key IN ('_billing_email','billing_email') AND ${PM_EMAIL_CLAUSE}"
+            SQL_LOCAL+="SELECT p.ID AS order_id, p.post_date_gmt AS created_gmt, p.post_status AS status FROM ${POSTS_TABLE} p JOIN ${POSTMETA_TABLE} pm ON pm.post_id = p.ID WHERE p.post_type IN ('shop_order','shop_order_refund') AND pm.meta_key IN ('_billing_email','billing_email') AND ${PM_EMAIL_CLAUSE}"
             HAS_SEGMENT_LOCAL=1
         fi
 
         if [ -n "${POSTMETA_TABLE:-}" ] && [ -n "${POSTS_TABLE:-}" ] && [ -n "${USERS_TABLE:-}" ]; then
             if [ "$HAS_SEGMENT_LOCAL" -eq 1 ]; then SQL_LOCAL+=" UNION ALL "; fi
-            SQL_LOCAL+="SELECT CONCAT('Order ID: ', p.ID, ' | Created: ', p.post_date_gmt, ' | Status: ', p.post_status) FROM ${POSTS_TABLE} p JOIN ${POSTMETA_TABLE} pm_user ON pm_user.post_id = p.ID AND pm_user.meta_key IN ('_customer_user','customer_user') JOIN ${USERS_TABLE} u ON u.ID = pm_user.meta_value WHERE p.post_type IN ('shop_order','shop_order_refund') AND ${USER_EMAIL_CLAUSE}"
+            SQL_LOCAL+="SELECT p.ID AS order_id, p.post_date_gmt AS created_gmt, p.post_status AS status FROM ${POSTS_TABLE} p JOIN ${POSTMETA_TABLE} pm_user ON pm_user.post_id = p.ID AND pm_user.meta_key IN ('_customer_user','customer_user') JOIN ${USERS_TABLE} u ON u.ID = pm_user.meta_value WHERE p.post_type IN ('shop_order','shop_order_refund') AND ${USER_EMAIL_CLAUSE}"
             HAS_SEGMENT_LOCAL=1
         fi
 
@@ -175,11 +190,19 @@ query_db() {
 
     if [ -n "$RESULT" ]; then
         echo "✅ 数据库: $DB_NAME 找到邮箱 $EMAIL 的订单"
-        {
-            echo "=============================="
-            echo "数据库: $DB_NAME (Email: $EMAIL)"
-            echo "$RESULT"
-        } >> "$OUTPUT_FILE"
+        while IFS=$'\t' read -r ORDER_ID CREATED_GMT STATUS; do
+            if [ -z "${ORDER_ID:-}" ]; then
+                continue
+            fi
+            {
+                csv_escape "$EMAIL"; printf ','
+                csv_escape "$DOMAIN"; printf ','
+                csv_escape "$DB_NAME"; printf ','
+                csv_escape "$ORDER_ID"; printf ','
+                csv_escape "$CREATED_GMT"; printf ','
+                csv_escape "$STATUS"; printf '\n'
+            } >> "$OUTPUT_FILE"
+        done <<< "$RESULT"
     fi
 }
 
