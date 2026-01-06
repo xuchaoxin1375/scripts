@@ -1,5 +1,6 @@
 <?php
 // ====== 配置与权限控制 ======
+// v1.0.20260105.2
 $access_token = 'cxxu';
 $current_token = $_GET['token'] ?? '';
 if ($current_token !== $access_token) {
@@ -50,23 +51,54 @@ function compute_range_revenue_days($range_start, $range_end)
         $date = date('Y-m-d', $cur);
         $success_file = $date . 'success.log';
         $notify_file = $date . 'notify.log';
+        $forpay_new_file = $date . 'forpay_new.log';
+        $forpay_file = $date . 'forpay.log';
         $usd_sum = 0;
-        $success_orders = [];
-        if (file_exists($success_file)) {
-            $lines = file($success_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        $success_orders_map = [];
+        $total_orders = 0;
+        $attempts_cnt = 0;
+        // 以 forpay_new 中的唯一订单号作为当日订单总量
+        $order_set = [];
+        if (file_exists($forpay_new_file)) {
+            $lines = file($forpay_new_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
             foreach ($lines as $line) {
-                if (preg_match('/order_no=(\d+)/', $line, $m)) {
-                    $success_orders[$m[1]] = true;
+                if (preg_match('/\\|(\\d+)\\|/', $line, $m)) {
+                    $order_set[$m[1]] = true;
+                }
+            }
+            $total_orders = count($order_set);
+        }
+
+        // forpay.log：统计当日总尝试次数（仅统计属于当日订单集合的记录）
+        if (file_exists($forpay_file) && !empty($order_set)) {
+            $lines = file($forpay_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+            foreach ($lines as $line) {
+                if (preg_match('/\\|(\\d+)\\|/', $line, $m)) {
+                    if (isset($order_set[$m[1]])) {
+                        $attempts_cnt++;
+                    }
                 }
             }
         }
-        if (file_exists($notify_file) && !empty($success_orders)) {
+
+        if (file_exists($success_file)) {
+            $lines = file($success_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+            if (!empty($lines)) $lines = array_values(array_unique($lines));
+            foreach ($lines as $line) {
+                if (preg_match('/order_no=(\d+)/', $line, $m)) {
+                    $success_orders_map[$m[1]] = true;
+                }
+            }
+        }
+        // 为 usd 汇总使用的可变副本
+        $success_orders_for_usd = $success_orders_map;
+        if (file_exists($notify_file) && !empty($success_orders_for_usd)) {
             $lines = file($notify_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
             foreach ($lines as $line) {
                 if (preg_match('/"order_no":"(\d+)"/', $line, $m)) {
                     $current_order_no = $m[1];
-                    if (!isset($success_orders[$current_order_no])) continue;
-                    unset($success_orders[$current_order_no]);
+                    if (!isset($success_orders_for_usd[$current_order_no])) continue;
+                    unset($success_orders_for_usd[$current_order_no]);
                     if ($json = strstr($line, '{')) {
                         $d = json_decode($json, true);
                         if (isset($d['usd_amount']) && is_numeric($d['usd_amount'])) {
@@ -80,9 +112,15 @@ function compute_range_revenue_days($range_start, $range_end)
                 }
             }
         }
+        $success_cnt = count($success_orders_map);
+        $conv = ($total_orders > 0) ? round(($success_cnt / $total_orders) * 100, 2) : 0;
         $revenue_days[] = [
             'date' => $date,
-            'usd' => round($usd_sum, 2)
+            'usd' => round($usd_sum, 2),
+            'conversion' => $conv,
+            'total_orders' => $total_orders,
+            'success_orders' => $success_cnt,
+            'attempts' => $attempts_cnt,
         ];
         $cur = strtotime('+1 day', $cur);
     }
@@ -229,7 +267,7 @@ function export_orders_csv_range($access_token, $range_start, $range_end, $statu
                 $uniq = array_values(array_unique(array_filter(array_map('strval', $item_ref['details']['notify_errors']))));
                 $item_ref['details']['notify_errors'] = $uniq;
                 if (empty($item_ref['details']['err']) && !empty($uniq)) {
-                    $item_ref['details']['err'] = 'notify中非成功日志错误类型: ' . implode(' | ', $uniq);
+                    $item_ref['details']['err'] = '尝试中出现过的错误类型: ' . implode(' | ', $uniq);
                 }
             }
         }
@@ -419,7 +457,7 @@ function render_analysis_content($access_token, $view_mode, $log_date, $stats, $
                     <div class="overview-card" style="height: auto; margin-bottom: 12px;" data-collapsible-card="people_summary">
                         <div class="collapsible-card-header" data-collapsible-card-header>
                             <h3 style="margin:0; font-size:16px; display:flex; align-items:center; gap:8px;">
-                                <span style="background:#4f46e5; color:white; padding:4px; border-radius:6px;">👤</span>
+                                <span style="background:#ffe6e5; color:white; padding:4px; border-radius:6px;">👤</span>
                                 人员业绩汇总
                             </h3>
                             <button type="button" class="collapsible-card-toggle" data-collapsible-card-toggle>收起</button>
@@ -497,6 +535,11 @@ function render_analysis_content($access_token, $view_mode, $log_date, $stats, $
                         <form method="get" id="orderFilterForm" class="order-filter-controls">
                             <input type="hidden" name="token" value="<?= $access_token ?>">
                             <input type="hidden" name="date" value="<?= $log_date ?>">
+                            <select name="list_view" onchange="window.__ordersFilterChange ? window.__ordersFilterChange(this.form) : this.form.submit()"
+                                style="padding:8px 12px; border-radius:10px; border:1px solid #e2e8f0; background:white; font-weight:600;">
+                                <option value="card" <?= $list_view === 'card' ? 'selected' : '' ?>>卡片视图</option>
+                                <option value="table" <?= $list_view === 'table' ? 'selected' : '' ?>>表格视图</option>
+                            </select>
                             <?php if (!empty($csv_files)): ?>
                                 <select name="csv_file" onchange="window.__ordersFilterChange ? window.__ordersFilterChange(this.form) : this.form.submit()"
                                     style="padding:8px 12px; border-radius:10px; border:1px solid #e2e8f0; background:white; font-weight:600;">
@@ -509,6 +552,7 @@ function render_analysis_content($access_token, $view_mode, $log_date, $stats, $
                                 <select name="owner" onchange="window.__ordersFilterChange ? window.__ordersFilterChange(this.form) : this.form.submit()"
                                     style="padding:8px 12px; border-radius:10px; border:1px solid #e2e8f0; background:white; font-weight:600;">
                                     <option value="" <?= $owner_filter === '' ? 'selected' : '' ?>>全部人员</option>
+                                    <option value="__unmatched__" <?= $owner_filter === '__unmatched__' ? 'selected' : '' ?>>未匹配</option>
                                     <?php foreach ($people_list_for_filter as $pname): ?>
                                         <option value="<?= htmlspecialchars($pname) ?>" <?= $owner_filter === $pname ? 'selected' : '' ?>><?= htmlspecialchars($pname) ?></option>
                                     <?php endforeach; ?>
@@ -545,7 +589,7 @@ function render_analysis_content($access_token, $view_mode, $log_date, $stats, $
                     </div>
                 </div>
 
-                <div class="order-list" id="orderListContainer"><?= render_order_list_items($analysis_data, $group_by_domain, $order_sort, $status_filter, $owner_filter, $csv_path) ?></div>
+                <div class="order-list" id="orderListContainer"><?= render_order_list_items($analysis_data, $group_by_domain, $order_sort, $status_filter, $owner_filter, $csv_path, $list_view) ?></div>
             </div>
 
 
@@ -569,6 +613,10 @@ $view_mode = $_GET['mode'] ?? 'analysis';
 $status_filter = $_GET['status'] ?? 'all';
 $owner_filter = trim((string)($_GET['owner'] ?? ''));
 $csv_selected = trim((string)($_GET['csv_file'] ?? ''));
+$list_view = trim((string)($_GET['list_view'] ?? ''));
+if ($list_view !== 'table' && $list_view !== 'card') {
+    $list_view = 'card';
+}
 $amount_nonzero = isset($_GET['amount_nonzero']) ? (bool)$_GET['amount_nonzero'] : false;
 $group_by_domain = isset($_GET['group_by_domain']) ? (bool)$_GET['group_by_domain'] : false;
 $order_sort = $_GET['sort'] ?? 'time_desc';
@@ -675,7 +723,7 @@ if ($view_mode === 'analysis') {
             $uniq = array_values(array_unique(array_filter(array_map('strval', $item_ref['details']['notify_errors']))));
             $item_ref['details']['notify_errors'] = $uniq;
             if (empty($item_ref['details']['err']) && !empty($uniq)) {
-                $item_ref['details']['err'] = 'notify中非成功日志错误类型: ' . implode(' | ', $uniq);
+                $item_ref['details']['err'] = '尝试中出现过的错误类型: ' . implode(' | ', $uniq);
             }
         }
     }
@@ -952,6 +1000,7 @@ function owner_match_filter($people_name, $owner_filter)
 {
     $f = trim((string)$owner_filter);
     if ($f === '') return true;
+    if ($f === '__unmatched__') return trim((string)$people_name) === '';
     return trim((string)$people_name) === $f;
 }
 
@@ -1039,7 +1088,7 @@ function build_people_stats($analysis_data, $domain_owner_map)
     return $stats;
 }
 
-function render_order_list_items($analysis_data, $group_by_domain, $order_sort, $status_filter, $owner_filter, $csv_path)
+function render_order_list_items($analysis_data, $group_by_domain, $order_sort, $status_filter, $owner_filter, $csv_path, $list_view = 'card')
 {
     ob_start();
     $order_index = 1;
@@ -1050,6 +1099,177 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
     $has_country = (bool)($csv_data['meta']['has_country'] ?? false);
     $has_category = (bool)($csv_data['meta']['has_category'] ?? false);
     $has_date = (bool)($csv_data['meta']['has_date'] ?? false);
+
+    $list_view = trim((string)$list_view);
+    if ($list_view !== 'table' && $list_view !== 'card') {
+        $list_view = 'card';
+    }
+
+    if ($list_view === 'table') {
+        $rows = [];
+        foreach ($analysis_data as $no => $item) {
+            if ($status_filter === 'success' && empty($item['is_success'])) {
+                continue;
+            }
+            if ($status_filter === 'fail' && !empty($item['is_success'])) {
+                continue;
+            }
+
+            $dom = (string)($item['domain'] ?? '');
+            $dom_key = normalize_domain_key($dom);
+            $owner = ($dom_key !== '' && isset($domain_owner_map[$dom_key])) ? $domain_owner_map[$dom_key] : null;
+            $people = $owner ? trim((string)($owner['people'] ?? '')) : '';
+            if (!owner_match_filter($people, $owner_filter)) {
+                continue;
+            }
+            $country = $owner ? trim((string)($owner['country'] ?? '')) : '';
+            $category = $owner ? trim((string)($owner['category'] ?? '')) : '';
+            $site_date = $owner ? trim((string)($owner['date'] ?? '')) : '';
+
+            $amt = $item['details']['amt'] ?? 0;
+            $cur = (string)($item['details']['cur'] ?? '');
+            $usd = $item['details']['usd_amt'] ?? 0;
+            $attempts = (int)($item['attempts'] ?? 0);
+            $notify_cnt = (int)($item['details']['notify_count'] ?? 0);
+            $err = (string)($item['details']['err'] ?? '');
+            $time = (string)($item['time'] ?? '');
+            $time_short = ($time !== '' && strlen($time) >= 16) ? substr($time, 11, 5) : $time;
+
+            $rows[] = [
+                'no' => (string)$no,
+                'time' => $time,
+                'time_short' => $time_short,
+                'domain' => $dom,
+                'is_success' => !empty($item['is_success']),
+                'attempts' => $attempts,
+                'notify_cnt' => $notify_cnt,
+                'cur' => $cur,
+                'amt' => $amt,
+                'usd' => $usd,
+                'people' => $people,
+                'country' => $country,
+                'category' => $category,
+                'site_date' => $site_date,
+                'err' => $err,
+            ];
+        }
+
+        $sort_rows = function (&$arr) use ($order_sort) {
+            $get_amt = function ($x) {
+                $v = $x['amt'] ?? 0;
+                return is_numeric($v) ? (float)$v : 0.0;
+            };
+            $get_attempts = function ($x) {
+                $v = $x['attempts'] ?? 0;
+                return is_numeric($v) ? (int)$v : 0;
+            };
+            $get_time = function ($x) {
+                return (string)($x['time'] ?? '');
+            };
+            $get_site_date_ts = function ($x) {
+                return parse_site_date_to_ts((string)($x['site_date'] ?? ''));
+            };
+            usort($arr, function ($a, $b) use ($order_sort, $get_amt, $get_attempts, $get_time, $get_site_date_ts) {
+                switch ($order_sort) {
+                    case 'site_date_asc':
+                        $ta = $get_site_date_ts($a);
+                        $tb = $get_site_date_ts($b);
+                        if ($ta === 0 && $tb !== 0) return 1;
+                        if ($tb === 0 && $ta !== 0) return -1;
+                        $cmp = $ta <=> $tb;
+                        if ($cmp !== 0) return $cmp;
+                        break;
+                    case 'site_date_desc':
+                        $ta = $get_site_date_ts($a);
+                        $tb = $get_site_date_ts($b);
+                        if ($ta === 0 && $tb !== 0) return 1;
+                        if ($tb === 0 && $ta !== 0) return -1;
+                        $cmp = $tb <=> $ta;
+                        if ($cmp !== 0) return $cmp;
+                        break;
+                    case 'amt_asc':
+                        $cmp = $get_amt($a) <=> $get_amt($b);
+                        if ($cmp !== 0) return $cmp;
+                        break;
+                    case 'amt_desc':
+                        $cmp = $get_amt($b) <=> $get_amt($a);
+                        if ($cmp !== 0) return $cmp;
+                        break;
+                    case 'attempts_asc':
+                        $cmp = $get_attempts($a) <=> $get_attempts($b);
+                        if ($cmp !== 0) return $cmp;
+                        break;
+                    case 'attempts_desc':
+                        $cmp = $get_attempts($b) <=> $get_attempts($a);
+                        if ($cmp !== 0) return $cmp;
+                        break;
+                    case 'time_asc':
+                        $cmp = strcmp($get_time($a), $get_time($b));
+                        if ($cmp !== 0) return $cmp;
+                        break;
+                    case 'time_desc':
+                    default:
+                        $cmp = strcmp($get_time($b), $get_time($a));
+                        if ($cmp !== 0) return $cmp;
+                        break;
+                }
+                return strcmp($get_time($b), $get_time($a));
+            });
+        };
+
+        $sort_rows($rows);
+
+        echo '<div class="excel-table-wrap">';
+        echo '<table class="excel-table" id="ordersExcelTable">';
+        echo '<thead><tr>';
+        echo '<th style="width:48px;">#</th>';
+        echo '<th style="width:60px;">时间</th>';
+        echo '<th>域名</th>';
+        if ($has_people) echo '<th style="width:90px;">人员</th>';
+        if ($has_country) echo '<th style="width:70px;">国家</th>';
+        if ($has_category) echo '<th style="width:120px;">内容</th>';
+        if ($has_date) echo '<th style="width:98px;">建站日期</th>';
+        echo '<th style="width:130px; text-align:right;">金额</th>';
+        echo '<th style="width:76px; text-align:right;">$</th>';
+        echo '<th style="width:56px; text-align:right;">尝试</th>';
+        echo '<th style="width:66px; text-align:right;">notify</th>';
+        echo '<th style="width:92px;">状态</th>';
+        echo '<th>错误</th>';
+        echo '</tr></thead>';
+        echo '<tbody>';
+
+        $i = 1;
+        foreach ($rows as $r) {
+            $st = $r['is_success'] ? 'SUCCESS' : 'INCOMPLETE';
+            $st_class = $r['is_success'] ? 'row-success' : ($r['err'] !== '' ? 'row-fail' : '');
+            echo '<tr class="' . $st_class . '" data-order-no="' . htmlspecialchars($r['no']) . '">';
+            echo '<td class="cell-num">' . $i . '</td>';
+            echo '<td class="cell-mono">' . htmlspecialchars($r['time_short']) . '</td>';
+            echo '<td class="cell-domain">';
+            echo '<button type="button" class="copy-domain-btn" data-copy-domain="' . htmlspecialchars($r['domain']) . '">复制</button>';
+            echo '<span style="margin-left:6px;">' . htmlspecialchars($r['domain']) . '</span>';
+            echo '</td>';
+            if ($has_people) {
+                echo '<td>' . ($r['people'] !== '' ? htmlspecialchars($r['people']) : '<span style="color:#c2410c; font-weight:700;">未匹配</span>') . '</td>';
+            }
+            if ($has_country) echo '<td>' . htmlspecialchars($r['country']) . '</td>';
+            if ($has_category) echo '<td class="cell-ellipsis" title="' . htmlspecialchars($r['category']) . '">' . htmlspecialchars($r['category']) . '</td>';
+            if ($has_date) echo '<td class="cell-mono">' . htmlspecialchars($r['site_date']) . '</td>';
+            echo '<td class="cell-num" style="text-align:right;">' . htmlspecialchars($r['cur']) . ' ' . format_money($r['amt']) . '</td>';
+            echo '<td class="cell-num" style="text-align:right;">' . ($r['usd'] > 0 ? ('$' . format_money($r['usd'])) : '') . '</td>';
+            echo '<td class="cell-num" style="text-align:right;">' . (int)$r['attempts'] . '</td>';
+            echo '<td class="cell-num" style="text-align:right;">' . (int)$r['notify_cnt'] . '</td>';
+            echo '<td><span class="excel-status ' . ($r['is_success'] ? 'is-ok' : 'is-warn') . '">' . $st . '</span></td>';
+            echo '<td class="cell-ellipsis" title="' . htmlspecialchars($r['err']) . '">' . htmlspecialchars($r['err']) . '</td>';
+            echo '</tr>';
+            $i++;
+        }
+        echo '</tbody>';
+        echo '</table>';
+        echo '</div>';
+
+        return ob_get_clean();
+    }
 
     $sort_orders_inplace = function (&$orders) use ($order_sort, $domain_owner_map) {
         uasort($orders, function ($a, $b) use ($order_sort, $domain_owner_map) {
@@ -1493,7 +1713,7 @@ if ($is_partial_order_list) {
     header('Content-Type: text/html; charset=UTF-8');
     $csv_files = list_csv_files_in_dir(__DIR__);
     $csv_path = resolve_selected_csv_path(__DIR__, $csv_selected, $csv_files);
-    echo render_order_list_items($analysis_data, $group_by_domain, $order_sort, $status_filter, $owner_filter, $csv_path);
+    echo render_order_list_items($analysis_data, $group_by_domain, $order_sort, $status_filter, $owner_filter, $csv_path, $list_view);
     exit;
 }
 
@@ -1651,6 +1871,97 @@ if ($is_partial_analysis) {
             padding: 8px 0 10px;
             background: linear-gradient(to bottom, rgba(241,245,249,0.98), rgba(241,245,249,0.94));
             backdrop-filter: blur(6px);
+        }
+
+        .excel-table-wrap {
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            background: #fff;
+            overflow: auto;
+            box-shadow: 0 10px 15px -10px rgba(2, 6, 23, 0.15);
+        }
+
+        .excel-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            font-size: 12px;
+            line-height: 1.25;
+        }
+
+        .excel-table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background: #f8fafc;
+            color: #0f172a;
+            font-weight: 800;
+            text-align: left;
+            padding: 8px 8px;
+            border-bottom: 1px solid #e2e8f0;
+            white-space: nowrap;
+        }
+
+        .excel-table tbody td {
+            padding: 6px 8px;
+            border-bottom: 1px solid #f1f5f9;
+            border-right: 1px solid #f1f5f9;
+            vertical-align: middle;
+            white-space: nowrap;
+        }
+
+        .excel-table tbody tr:hover td {
+            background: #f8fafc;
+        }
+
+        .excel-table tbody tr.row-success td {
+            background: rgba(16,185,129,0.04);
+        }
+
+        .excel-table tbody tr.row-fail td {
+            background: rgba(239,68,68,0.04);
+        }
+
+        .excel-table .cell-num {
+            font-variant-numeric: tabular-nums;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        }
+
+        .excel-table .cell-mono {
+            font-variant-numeric: tabular-nums;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            color: #334155;
+        }
+
+        .excel-table .cell-domain {
+            min-width: 260px;
+        }
+
+        .excel-table .cell-ellipsis {
+            max-width: 280px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .excel-status {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-weight: 800;
+            font-size: 11px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .excel-status.is-ok {
+            background: #ecfdf5;
+            color: #059669;
+            border-color: #a7f3d0;
+        }
+
+        .excel-status.is-warn {
+            background: #f8fafc;
+            color: #64748b;
+            border-color: #e2e8f0;
         }
 
         @media (max-width: 899px) {
@@ -2338,8 +2649,9 @@ if ($is_partial_analysis) {
     <div class="container">
         <header>
             <div class="header-top">
-                <h2 style="margin:0;">🛡️ 支付监控中心 <small style="font-size:12px; opacity:0.6; font-weight:normal;">v4.8
-                        Enterprise</small></h2>
+                <h2 style="margin:0;">🛡️ 支付监控中心 <small style="font-size:12px; opacity:0.6; font-weight:normal;">v1.0.20260105
+
+                </small></h2>
                 <div style="display: flex; gap: 10px; align-items: center;">
                     <div style="background: rgba(255,255,255,0.1); padding: 4px; border-radius: 10px; display: flex; align-items:center; gap:6px;">
                         <a href="?token=<?= $access_token ?>&date=<?= $prev_date ?>&mode=<?= $view_mode ?>"
@@ -2571,23 +2883,23 @@ if ($is_partial_analysis) {
                     const storageKey = key ? ('orders3_collapsed_' + key) : '';
                     let collapsed = false;
 
-                    if (storageKey) {
+                    if (key !== 'range_revenue' && storageKey) {
                         try {
-                            const saved = localStorage.getItem(storageKey);
-                            if (key === 'range_revenue') {
-                                if (saved === null) {
-                                    collapsed = true;
-                                    try { localStorage.setItem(storageKey, '1'); } catch (e) {}
-                                } else {
-                                    collapsed = saved === '1';
-                                }
-                            } else {
-                                collapsed = saved === '1';
-                            }
-                        } catch (e) {
-                            collapsed = false;
+                            const v = localStorage.getItem(storageKey);
+                            if (v === '1') collapsed = true;
+                            if (v === '0') collapsed = false;
+                        } catch (e) {}
+                    }
+                    // 多日营收统计卡片：每次页面加载/刷新都默认折叠
+                    if (key === 'range_revenue') {
+                        if (typeof window.__rangeRevenueDesiredCollapsed === 'boolean') {
+                            collapsed = window.__rangeRevenueDesiredCollapsed;
+                            try { delete window.__rangeRevenueDesiredCollapsed; } catch (e) { window.__rangeRevenueDesiredCollapsed = undefined; }
+                        } else {
+                            collapsed = true;
                         }
                     }
+
                     setCollapsed(cardEl, collapsed);
 
                     const header = cardEl.querySelector('[data-collapsible-card-header]');
@@ -2597,7 +2909,7 @@ if ($is_partial_analysis) {
                         const nowCollapsed = (cardEl.getAttribute('data-collapsed') === '1');
                         const next = !nowCollapsed;
                         setCollapsed(cardEl, next);
-                        if (storageKey) {
+                        if (key !== 'range_revenue' && storageKey) {
                             try { localStorage.setItem(storageKey, next ? '1' : '0'); } catch (e) {}
                         }
                     };
@@ -2854,6 +3166,7 @@ if ($is_partial_analysis) {
                 const groupByDomain = !!fd.get('group_by_domain');
                 const owner = (fd.get('owner') || '').toString();
                 const csvFile = (fd.get('csv_file') || '').toString();
+                const listView = (fd.get('list_view') || '').toString();
 
                 const isJumpStatus = (status === 'success' || status === 'fail');
                 const shouldJump = (!groupByDomain) && isJumpStatus && (window.event && window.event.target && window.event.target.name === 'status');
@@ -2870,6 +3183,9 @@ if ($is_partial_analysis) {
 
                 if (csvFile) url.searchParams.set('csv_file', csvFile);
                 else url.searchParams.delete('csv_file');
+
+                if (listView) url.searchParams.set('list_view', listView);
+                else url.searchParams.delete('list_view');
 
                 // 切换 CSV 时，需要同时刷新：人员下拉、人员汇总、映射来源等（不只是订单列表）
                 if (triggerName === 'csv_file') {
@@ -2987,6 +3303,7 @@ if ($is_partial_analysis) {
                     }
                 }
             });
+            try { window.revenueChartInstance.__rawData = data; } catch (e) {}
         }
 
         (function() {
@@ -2994,6 +3311,15 @@ if ($is_partial_analysis) {
             window.__ordersSetDate = function(nextDate) {
                 const dateStr = (nextDate || '').toString();
                 if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return;
+
+                // 保留多日营收统计图当前展开/折叠状态（用于本次局部刷新后恢复）
+                try {
+                    const rangeCard = document.querySelector('[data-collapsible-card="range_revenue"]');
+                    if (rangeCard) {
+                        const isCollapsed = (rangeCard.getAttribute('data-collapsed') === '1');
+                        window.__rangeRevenueDesiredCollapsed = isCollapsed;
+                    }
+                } catch (e) {}
 
                 const openedState = {
                     ids: (function() {
@@ -3197,6 +3523,9 @@ if ($is_partial_analysis) {
             if (!focusDate && window.__ordersFocusDate) focusDate = String(window.__ordersFocusDate);
 
             const labels = data.map(d => d.date);
+            const usdSeries = data.map(d => d.usd);
+            const conversionSeries = data.map(d => (typeof d.conversion === 'number' ? d.conversion : 0));
+            const attemptsSeries = data.map(d => (typeof d.attempts === 'number' ? d.attempts : Number(d.attempts || 0)));
             const focusIdx = focusDate ? labels.indexOf(focusDate) : -1;
             const defaultPointBg = '#6366f1';
             const defaultPointBorder = '#fff';
@@ -3221,13 +3550,17 @@ if ($is_partial_analysis) {
                 try {
                     window.revenueChartInstance.data.labels = labels;
                     if (window.revenueChartInstance.data.datasets && window.revenueChartInstance.data.datasets[0]) {
-                        window.revenueChartInstance.data.datasets[0].data = data.map(d => d.usd);
+                        window.revenueChartInstance.data.datasets[0].data = usdSeries;
                         window.revenueChartInstance.data.datasets[0].pointRadius = pointR;
                         window.revenueChartInstance.data.datasets[0].pointHoverRadius = pointHoverR;
                         window.revenueChartInstance.data.datasets[0].pointHitRadius = pointHitR;
                         window.revenueChartInstance.data.datasets[0].pointBackgroundColor = pointBgColors;
                         window.revenueChartInstance.data.datasets[0].pointBorderColor = pointBorderColors;
                     }
+                    if (window.revenueChartInstance.data.datasets && window.revenueChartInstance.data.datasets[1]) {
+                        window.revenueChartInstance.data.datasets[1].data = conversionSeries;
+                    }
+                    window.revenueChartInstance.__rawData = data;
                     if (window.revenueChartInstance.options && window.revenueChartInstance.options.plugins && window.revenueChartInstance.options.plugins.datalabels) {
                         window.revenueChartInstance.options.plugins.datalabels.display = showLabel;
                     }
@@ -3281,7 +3614,7 @@ if ($is_partial_analysis) {
                     labels: labels,
                     datasets: [{
                         label: '日总营收参考',
-                        data: data.map(d => d.usd),
+                        data: usdSeries,
                         borderColor: '#6366f1',
                         backgroundColor: 'rgba(99,102,241,0.08)',
                         fill: true,
@@ -3293,6 +3626,22 @@ if ($is_partial_analysis) {
                         pointBorderColor: pointBorderColors,
                         pointBorderWidth: 2,
                         borderWidth: 3
+                    },
+                    {
+                        label: '转化率(%)',
+                        data: conversionSeries,
+                        borderColor: '#f59e0b',
+                        backgroundColor: 'rgba(245,158,11,0.08)',
+                        fill: false,
+                        tension: 0.3,
+                        yAxisID: 'y1',
+                        pointRadius: pointR,
+                        pointHoverRadius: pointHoverR,
+                        pointHitRadius: pointHitR,
+                        pointBackgroundColor: labels.map(function(_, i) { return i === focusIdx ? '#f97316' : '#f59e0b'; }),
+                        pointBorderColor: '#fff',
+                        borderWidth: 2,
+                        borderDash: [4, 4]
                     }]
                 },
                 options: {
@@ -3304,6 +3653,16 @@ if ($is_partial_analysis) {
                         tooltip: {
                             callbacks: {
                                 label: function(context) {
+                                    if (context.datasetIndex === 1) {
+                                        try {
+                                            const raw = (context && context.chart && context.chart.__rawData) ? context.chart.__rawData : data;
+                                            const idx = (typeof context.dataIndex === 'number') ? context.dataIndex : -1;
+                                            const at = (idx >= 0 && raw && raw[idx]) ? (raw[idx].attempts || 0) : 0;
+                                            return '转化率: ' + context.parsed.y.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%  |  尝试: ' + at;
+                                        } catch (e) {
+                                            return '转化率: ' + context.parsed.y.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%';
+                                        }
+                                    }
                                     return '金额: $' + context.parsed.y.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                                 }
                             }
@@ -3324,6 +3683,14 @@ if ($is_partial_analysis) {
                     },
                     scales: {
                         y: { beginAtZero: true, grid: { color: '#f1f5f9' } },
+                        y1: {
+                            beginAtZero: true,
+                            position: 'right',
+                            grid: { drawOnChartArea: false },
+                            ticks: {
+                                callback: function(value) { return value + '%'; }
+                            }
+                        },
                         x: { grid: { display: false } }
                     }
                 }
@@ -3431,7 +3798,11 @@ if ($is_partial_analysis) {
                 if (!Array.isArray(arr)) return;
                 for (const d of arr) {
                     if (!d || !d.date) continue;
-                    cache[d.date] = (typeof d.usd === 'number') ? d.usd : Number(d.usd || 0);
+                    cache[d.date] = {
+                        usd: (typeof d.usd === 'number') ? d.usd : Number(d.usd || 0),
+                        conversion: (typeof d.conversion === 'number') ? d.conversion : Number(d.conversion || 0),
+                        attempts: (typeof d.attempts === 'number') ? d.attempts : Number(d.attempts || 0)
+                    };
                 }
             }
 
@@ -3443,8 +3814,8 @@ if ($is_partial_analysis) {
                 const end = new Date(re.getTime());
                 while (cur <= end) {
                     const key = fmtDate(cur);
-                    const v = (key in cache) ? cache[key] : 0;
-                    out.push({ date: key, usd: v });
+                    const v = (key in cache) ? cache[key] : { usd: 0, conversion: 0, attempts: 0 };
+                    out.push({ date: key, usd: v.usd || 0, conversion: v.conversion || 0, attempts: v.attempts || 0 });
                     cur.setDate(cur.getDate() + 1);
                 }
                 return out;

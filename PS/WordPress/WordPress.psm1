@@ -1338,6 +1338,7 @@ function Get-WpOrdersByEmailOnServers
         $ServerConfig = $server_config,
         $WorkingDirectory = '/www/',
         $scriptPath = "/www/sh/check_order_email.sh",
+        $foundResultFileName = "found_orders.csv",
         $log = "$desktop/orders.log"
         
     )
@@ -1362,7 +1363,7 @@ function Get-WpOrdersByEmailOnServers
 
         # scp -r $Path root@"$ip":$WorkingDirectory
         $jobs += Start-ThreadJob -ScriptBlock {
-            param($WorkingDirectory, $Path, $ip, $fileOnServer, $scriptPath, $user, $password, $log)
+            param($WorkingDirectory, $Path, $ip, $fileOnServer, $scriptPath, $user, $password, $log, $foundResultFileName)
             # 强制让当前 PowerShell 线程以 UTF-8 处理输入输出,否则容易出现乱码(尤其是非英文字符)
             [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
             Write-Output "START TIME: [$(Get-DateTime)] on $ip"
@@ -1371,9 +1372,9 @@ function Get-WpOrdersByEmailOnServers
             Write-Host "start query orders on server $ip..." 
             # 使用`-n`选项让后台作业能够顺利退出(否则可能需要手动输入输入回车回到前台.)
             # 相关选项:-n关闭 STDIN,-T禁止分配伪终端（TTY）
-            ssh -n -T root@$ip "cat -n $fileOnServer && bash $scriptPath -f $fileOnServer -o /www/found_orders.txt -u $user -p '$password'" 
+            ssh -n -T root@$ip "cat -n $fileOnServer && bash $scriptPath -f $fileOnServer -o /www/$foundResultFileName -u $user -p '$password'" 
             Write-Host "END TIME: $(Get-DateTime) on $ip"
-        } -ArgumentList $WorkingDirectory, $Path, $ip, $fileOnServer, $scriptPath, $user, $password, $log
+        } -ArgumentList $WorkingDirectory, $Path, $ip, $fileOnServer, $scriptPath, $user, $password, $log, $foundResultFileName
 
     }
     Write-Host "Waiting for jobs to complete..."
@@ -1395,9 +1396,27 @@ function Get-WpOrdersByEmailOnServers
     Write-Host "--------[Getting results...]---------"
     foreach ($server in $servers.ip)
     {
-        $jobs += Start-ThreadJob -script { ssh root@$using:server "cat $using:WorkingDirectory/found_orders.txt" }
+        $jobs += Start-ThreadJob -script { ssh root@$using:server "cat $using:WorkingDirectory/$using:foundResultFileName" }
     }
-    $jobs | Receive-Job -Wait -Verbose 
+    # $localRes = "$desktop/found_orders_all_servers@$(Get-DateTimeNumber).csv"
+    $localRes = "$desktop/found_orders_all_servers.csv"
+    $uniqueRes = "$desktop/found_orders_unique_all_servers.csv"
+    $jobs | Receive-Job -Wait | Tee-Object -FilePath $localRes
+    # 创建临时文件
+    $tmp = New-TemporaryFile
+    # 将csv中重复的行删除
+    Get-Content $localRes | Sort-Object -Unique -Descending | Set-Content -Path $tmp -Encoding utf8
+    Move-Item -Path $tmp -Destination $localRes -Force -Verbose
+    # 清理临时文件
+    if(Test-Path $tmp)
+    {
+        Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+    }
+
+    Write-Verbose "执行以下命令去除email重复的行" -Verbose
+    Import-Csv $localRes | Sort-Object -Property email -Unique | Export-Csv -Path $uniqueRes -NoTypeInformation -Encoding utf8
+    Write-Host "open result file ..."
+    Start-Process $uniqueRes
 }
 function Update-WpPluginsDFOnServers
 {

@@ -31,7 +31,7 @@ from comutils import (
     remove_sensitive_info,
     set_image_extension,
     split_urls,
-    get_now_time_str
+    get_now_time_str,
 )
 
 from filenamehandler import FilenameHandler
@@ -220,7 +220,7 @@ def process_image_csv(img_dir, csv_dir, backup_dir="backup_csvs"):
         print(f"csv文件备份到{backup_dir}🎈")
         print("=" * 50)
     total_after = count_lines_csv(csv_dir)
-    print(f"处理后剩余{total_after}条数据,减少了{total_before-total_after}条数据")
+    print(f"处理后剩余{total_after}条数据,减少了{total_before - total_after}条数据")
 
 
 class SQLiteDB:
@@ -286,7 +286,7 @@ class SQLiteDB:
             "cache_size": -10000,
         }
         # 计算批次时间戳
-        self.stamp= int(time.time())
+        self.stamp = int(time.time())
 
     # def close_db(self):
     #     """关闭数据库连接"""
@@ -420,7 +420,9 @@ class SQLiteDB:
         return unique_rows
 
     def clean_rows(self, db_path, rows, strict_mode=False):
-        """产品去重:
+        """清理不合适的产品
+        比如,产品去重复,移除字符产品名异常(比如很多问号)的产品等
+        产品去重可以使用pandas库简单实现,这里早起没有使用pandas,保留使用原生的方式处理
         默认情况下,产品名和图片同时重复的记录只保留一条(仅排除两者都重复的情况)
         如果严格模式,则仅比较产品名,忽略图片的比较
 
@@ -477,7 +479,6 @@ class SQLiteDB:
             #     self.duplicate_warning(i, row, db_id)
             #     continue
             else:
-
                 # 如果产品描述长度不足要求,则根据情况用产品名称覆盖(代替描述)或者丢弃此条数据
                 if self.desc_min_len and len(product_desc) < self.desc_min_len:
                     warning(
@@ -485,6 +486,10 @@ class SQLiteDB:
                         i,
                         self.desc_min_len,
                     )
+                    if "???" in row[name_field]:
+                        warning("product:[%s] name contains consecutive question mark!", i)
+                        continue
+
                     if self.name_as_desc:
                         row[desc_field] = product_name
                         info("product:[%s] description is replaced by product name", i)
@@ -510,7 +515,7 @@ class SQLiteDB:
         """替换字符串中包含的禁词"""
         return re.sub(pattern, replacement, s)
 
-    def remove_duplicate_rows_bak(self, db_path, rows, strict_mode=False):
+    def remove_duplicate_rows_deprecated(self, db_path, rows, strict_mode=False):
         """产品去重:
         默认情况下,产品名和图片同时重复的记录只保留一条(仅排除两者都重复的情况)
         如果严格模式,则仅比较产品名,忽略图片的比较
@@ -533,7 +538,6 @@ class SQLiteDB:
         img_field = DBProductFields.IMAGES.value
 
         for i, row in enumerate(rows):
-
             product_name = row[name_field]
             product_img = row[img_field]
             # product_info = f"{{name:{product_name};sku:{product_sku}}}"
@@ -660,6 +664,8 @@ but different image, keep records [%s]",
         for row in rows:
             description = row[DBProductFields.DESCRIPTION.value]
             row[DBProductFields.DESCRIPTION.value] = remove_sensitive_info(description)
+            # 移除过多重复的问号
+            # row[DBProductFields.DESCRIPTION.value] = re.sub(rf"\?{3,}", " ", description)
 
         return rows
 
@@ -667,7 +673,7 @@ but different image, keep records [%s]",
         self, dbs, process_attribute=False, sku_suffix=None, strict_mode=False
     ):
         """
-        更新产品数据,让数据更加规范
+        更新产品数据,让数据更加规范(包括产品描述清理等)
 
         在从sqlite(db3)文件读取数据,调用get_data()的过程中已经做了初步的数据处理
         (比如价格处理,去除重复产品等,这些是团队业务必须的)
@@ -685,13 +691,17 @@ but different image, keep records [%s]",
 
         """
 
+        # 调用number_sku方法统一产品编号
         self.number_sku(dbs=dbs, sku_suffix=sku_suffix)
+        # 如果process_attribute为True，则处理属性值
         if process_attribute:
             self.empty_invalid_attribute_subset(dbs=dbs)
         info("Jump process: remove sensitive info from description.")
+        # 如果strict_mode为True，则严格模式处理，移除描述中的敏感信息
         if strict_mode:
             # warning("Warning: strict mode is on, remove sensitive info from description.")
             self.remove_sensitive_info_from_description(dbs=dbs)
+
         return self.db_rows
 
     def number_sku(self, dbs, sku_suffix=None, strict_mode=False):
@@ -705,7 +715,7 @@ but different image, keep records [%s]",
         rows = self.get_data(dbs=dbs, strict_mode=strict_mode)
         sku = DBProductFields.SKU.value
         for idx, _ in enumerate(iterable=rows):
-            new_sku = f"SK{idx+1:07d}-{sku_suffix}"
+            new_sku = f"SK{idx + 1:07d}-{sku_suffix}"
             debug("SKU: %s-> %s", rows[idx].get(sku, ""), new_sku)
             rows[idx][sku] = new_sku
 
@@ -1088,7 +1098,7 @@ but different image, keep records [%s]",
                 row[img_url_field] = img_urls
                 if not img_urls:
                     error("Empty image url for row:", row)
-                    img_urls=""
+                    img_urls = ""
 
                 # 2.处理图名字段(考虑多图,从图片链接解析入手判断图片数量以及图片名取名和编号)
                 ## 考虑到可能会采集多个图片,这里预设图片链接之间的分隔符可能是">"," ",为了便于统一处理,将">"替换为空格,然后利用split分割
@@ -1126,14 +1136,14 @@ but different image, keep records [%s]",
                 elif img_mode == ImageMode.NAME_MIX:
                     # 混合sku和时间戳以及url中的图片名称
                     sku = row[sku_field]
-                    
+
                     # print(f"[{default_extension}]🎁")
                     img_names = [
                         complete_image_file_extension(
                             # 将过长的图片名截断防止wordpress加载图片失败🎈
                             # .replace('%','_')
                             file=f"{sku}-{i}-{self.stamp}-"
-                            f"-{re.sub(r'[=:%?]','_',get_filebasename_from_url(img_url))}"[
+                            f"-{re.sub(r'[=:%?]', '_', get_filebasename_from_url(img_url))}"[
                                 : self.max_img_name_length
                             ],
                             default_extension=default_extension,
@@ -1303,7 +1313,7 @@ but different image, keep records [%s]",
 
         for i, file_rows in enumerate(file_rows_lst):
             os.makedirs(out_dir, exist_ok=True)
-            file_path = os.path.join(out_dir, f"p{i+1}-{get_now_time_str()}.csv")
+            file_path = os.path.join(out_dir, f"p{i + 1}-{get_now_time_str()}.csv")
             file_path = os.path.abspath(file_path)
             self._export_csv(file_path=file_path, header=header, rows=file_rows)
 
@@ -1338,9 +1348,10 @@ but different image, keep records [%s]",
             new_headers: 新表头列表
         """
         temp_file = file_path + ".tmp"
-        with open(file_path, "r", newline="", encoding="utf-8") as infile, open(
-            temp_file, "w", newline="", encoding="utf-8"
-        ) as outfile:
+        with (
+            open(file_path, "r", newline="", encoding="utf-8") as infile,
+            open(temp_file, "w", newline="", encoding="utf-8") as outfile,
+        ):
             reader = csv.reader(infile)
             writer = csv.writer(outfile)
             # 跳过旧表头

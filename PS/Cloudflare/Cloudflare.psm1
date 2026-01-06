@@ -299,7 +299,7 @@ function Add-CFZoneDNSRecords
             Write-Host "正在处理域名:$_"
             Write-Host "当前CF账号(环境变量)信息:$env:CF_API_EMAIL"
             # 默认情况下总是尝试先创建域名(无论是否已经存在),使用AddRecordOnly参数时则不创建域名
-            if(!$AddRecordOnly)
+            if(!$using:AddRecordOnly)
             {
 
                 Write-Host "尝试创建域名[$domain] (如果不存在的话)..."
@@ -307,39 +307,33 @@ function Add-CFZoneDNSRecords
                 # flarectl zone create --zone "$domain" *> $null # 创建域名
             }
         
+            $value = $using:Value
+            $Type = $using:Type
             Write-Host "Set DNS record for domain: $domain" 
-            if ($type -eq "MX")
+            Write-Host "add type:$type; value:$value; domain:$domain"
+            if($using:AddRecordAtOnce -or $using:AddRecordOnly)
             {
-                # 比较少用
-                $priority = $record
-                Write-Host "Adding MX record: $domain -> $value (Priority: $priority)"
-                $res = flarectl dns create --zone "$domain" --name "$domain" --type "$type" --content "$value" --priority "$priority"
-                Write-Host $res
-            }
-            else
-            {
-                if($AddRecordAtOnce -or $AddRecordOnly)
-                {
 
-                    # 常用类型DNS记录的添加
-                    # 一次性添加两条:一条*和$domain;记得启用代理选项保护ip
-                    if(!$No2LDDomain)
-                    {
-                        $RecordNamesForIt = $RecordNames.clone()
-                        $RecordNamesForIt += $domain
-                    }
-                
-               
-                    foreach ($item in $RecordNamesForIt)
-                    {
-                        Write-Host "Adding DNS record: $domain|$item -> $value ($type)"
-                        $res = flarectl --json dns create --zone "$domain" --name "$item" --type "$type" --content "$value" --proxy
-                        Write-Host $res
-                    }
-                
-                    # Pause
-                    # flarectl dns create --zone "$domain" --name "*" --type "$type" --content "$value"
+                # 常用类型DNS记录的添加
+                # 一次性添加两条:一条*和$domain;记得启用代理选项保护ip
+                if(!$using:No2LDDomain)
+                {
+                    $RecordNamesForIt = ($using:RecordNames).clone()
+                    $RecordNamesForIt += $domain
                 }
+                
+                Write-Host "Record names to add: $RecordNamesForIt"
+                foreach ($item in $RecordNamesForIt)
+                {
+                    Write-Host "Adding DNS record[$(Get-DateTime)]: $domain|$item -> $value ($type)"
+                    # continue
+                    # 调用flarectl命令行工具,并将运行结果保存到变量$res中
+                    $res = flarectl --json dns create --zone "$domain" --name "$item" --type "$type" --content "$value" --proxy 
+                    Write-Host $res
+                    Write-Host "Add $domain done!"
+                }
+                
+          
             }
         } -ThrottleLimit 5
     }
@@ -365,7 +359,7 @@ function Add-CFZoneDNSRecords
                 # 比较少用
                 $priority = $record
                 Write-Host "Adding MX record: $domain -> $value (Priority: $priority)"
-                $res = flarectl dns create --zone "$domain" --name "$domain" --type "$type" --content "$value" --priority "$priority"
+                $res = flarectl dns create --zone "$domain" --name "$domain" --type "$type" --content "$value" --priority "$priority" --proxy 
                 Write-Host $res
             }
             else
@@ -385,12 +379,10 @@ function Add-CFZoneDNSRecords
                     foreach ($item in $RecordNamesForIt)
                     {
                         Write-Host "Adding DNS record: $domain|$item -> $value ($type)"
-                        $res = flarectl --json dns create --zone "$domain" --name "$item" --type "$type" --content "$value" --proxy
+                        $res = flarectl --json dns create --zone "$domain" --name "$item" --type "$type" --content "$value" --proxy true
                         Write-Host $res
                     }
-                
-                    # Pause
-                    # flarectl dns create --zone "$domain" --name "*" --type "$type" --content "$value"
+
                 }
             }
         }

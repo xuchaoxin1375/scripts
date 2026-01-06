@@ -40,7 +40,7 @@ function Test-CommandAvailability
     $command = Get-Command $CommandName -ErrorAction SilentlyContinue
     if (! $command)
     {
-        Write-Warning "The $CommandName is not available. Please try a another similar name or install it or add it to the environment variable PATH."
+        Write-Verbose "The $CommandName is not available. Please try a another similar name or install it or add it to the environment variable PATH."
         return $null
     }
     return $command
@@ -830,6 +830,14 @@ function Start-XpNginx
         return $False
     }
     # $item = Get-Item -Path "$nginx_home/ngin
+}
+function Restart-XpPhpStudy {
+    param (
+    )
+    # Restart-Nginx -Force
+    Start-XpNginx -Force
+    Start-XpCgi -Force
+    
 }
 function Restart-Nginx
 {
