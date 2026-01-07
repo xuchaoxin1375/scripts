@@ -4,13 +4,12 @@
 # 依赖说明:主要依赖于外部的伪静态规则文件RewriteRules.LF.conf,以及7z解压工具
 # 在powershell中将此文件更新/推送到服务器(可以使用scp命令):
 # scp -r C:\repos\scripts\wp\woocommerce\woo_df\sh\deploy_wp_full.sh root@${env:DF_SERVER1}:"/www/wwwroot/deploy_wp_full.sh"
-# 默认值
 UPLOADER_DIR="/srv/uploads/uploader"
 DEFAULT_PACK_ROOT="$UPLOADER_DIR/files"
 DEFAULT_DB_USER="root"
 DEFAULT_DB_PASSWORD="15a58524d3bd2e49"
 DEFAULT_DEPLOYED_DIR="$UPLOADER_DIR/deployed_all"
-SERVER_SITE_HOME="/www/wwwroot"
+DEFAULT_PROJECT_HOME="/www/wwwroot"
 
 DB_HOST="localhost" # 数据库主机
 # PACK_ROOT="/www/wwwroot"           # WordPress 网站根目录
@@ -19,21 +18,26 @@ HTTPS_CONFIG_LINE="\$_SERVER['HTTPS'] = 'on'; define('FORCE_SSL_LOGIN', true); d
 
 # === 函数：显示帮助信息 ===
 show_help() {
-    echo "用法: $0 [选项]"
-    echo "选项:"
-    echo "  --pack-root DIR   设置压缩包根目录 (默认: $DEFAULT_PACK_ROOT)"
-    echo "  --db-user USER    设置数据库用户名 (默认: $DEFAULT_DB_USER)"
-    echo "  --db-pass PASS    设置数据库密码"
-    echo "  --user-dir DIR    仅处理指定用户目录"
-    echo "  --deployed-dir DIR 默认存储已部署的包文件(默认: $DEFAULT_DEPLOYED_DIR)"
-    echo "  --help            显示此帮助信息"
+    cat <<EOF
+用法: $0 [选项]
+对于多硬盘服务器,可能需要设置--pack-root(可选),--project-home:
+选项:
+  -p,--pack-root DIR        设置压缩包根目录 (默认: $DEFAULT_PACK_ROOT)
+  --db-user USER            设置数据库用户名 (默认: $DEFAULT_DB_USER)
+  --db-pass PASS            设置数据库密码
+  --user-dir DIR            仅处理指定用户目录
+  --deployed-dir DIR        默认存储已部署的包文件(默认: $DEFAULT_DEPLOYED_DIR)
+  -r,--project-home DIR     设置站点所属的项目目录PROJECT_HOME (默认: $DEFAULT_PROJECT_HOME)
+  --site-home DIR           设置SERVER_SITE_HOME（自定义站点根目录）
+  -h,--help                 显示此帮助信息
+EOF
     exit 0
 }
 
 # 命令行参数解析
 while [[ "$#" -gt 0 ]]; do
     case $1 in
-    --pack-root)
+    -p|--pack-root)
         PACK_ROOT="$2"
         shift
         ;;
@@ -53,7 +57,11 @@ while [[ "$#" -gt 0 ]]; do
         DEPLOYED_DIR="$2"
         shift
         ;;
-    --help) show_help ;;
+    -r|--project-home)
+        PROJECT_HOME="$2"
+        shift
+        ;;
+    -h|--help) show_help ;;
     *)
         echo "未知参数: $1"
         exit 1
@@ -77,11 +85,13 @@ done
 # ${var:-default}	如果 var 未定义 或为空，使用 default
 
 
+
 # 使用默认值或用户提供的值🎈
 PACK_ROOT=${PACK_ROOT:-$DEFAULT_PACK_ROOT}
 DB_USER=${DB_USER:-$DEFAULT_DB_USER}
 DB_PASSWORD=${DB_PASSWORD:-$DEFAULT_DB_PASSWORD}
 DEPLOYED_DIR=${DEPLOYED_DIR:-$DEFAULT_DEPLOYED_DIR}
+PROJECT_HOME=${PROJECT_HOME:-$DEFAULT_PROJECT_HOME}
 
 # 提示用户当前使用的 PACK_ROOT
 echo "使用 PACK_ROOT: $PACK_ROOT"
@@ -520,7 +530,7 @@ deploy_site() {
     # local extracted_domain_dir="$PACK_ROOT/$username/$domain_name"
     local site_dir_archive="$PACK_ROOT/$username/$archive_file"
 
-    local site_domain_home="$SERVER_SITE_HOME/$username/$domain_name" #例如:/www/wwwroot/zsh/domain.com #对于用7z打包domain.com为目录名的7z包,解压后得到domain.com目录 7z x $site_dir_archive -o$site_domain_home 执行结果得到目录$site_domain_home/domain.com,为了便于引用,将其赋值给变量$site_expanded_dir,表示解压后得到的目录
+    local site_domain_home="$PROJECT_HOME/$username/$domain_name" #例如:/www/wwwroot/zsh/domain.com #对于用7z打包domain.com为目录名的7z包,解压后得到domain.com目录 7z x $site_dir_archive -o$site_domain_home 执行结果得到目录$site_domain_home/domain.com,为了便于引用,将其赋值给变量$site_expanded_dir,表示解压后得到的目录
     local site_expanded_dir="$site_domain_home/$domain_name"
     local target_dir="$site_domain_home/wordpress"
 
