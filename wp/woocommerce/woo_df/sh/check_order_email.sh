@@ -55,7 +55,7 @@ if [[ -n "$ARG_EMAIL_FILE" ]]; then
         echo "❌ 邮箱文件不存在: $ARG_EMAIL_FILE"
         exit 1
     fi
-    while IFS= read -r line; do
+    while IFS= read -r line || [[ -n "$line" ]]; do
         line="$(echo "$line" | xargs)"   # 去掉首尾空格
         # 跳过空行、注释行（忽略前导空格）、无@行
         if [[ -z "$line" ]] || [[ "$line" =~ ^[[:space:]]*# ]] || [[ "$line" != *"@"* ]]; then
@@ -190,7 +190,7 @@ query_db() {
 
     if [ -n "$RESULT" ]; then
         echo "✅ 数据库: $DB_NAME 找到邮箱 $EMAIL 的订单"
-        while IFS=$'\t' read -r ORDER_ID CREATED_GMT STATUS; do
+        while IFS=$'\t' read -r ORDER_ID CREATED_GMT STATUS ; do
             if [ -z "${ORDER_ID:-}" ]; then
                 continue
             fi

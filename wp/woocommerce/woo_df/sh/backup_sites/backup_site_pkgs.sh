@@ -12,15 +12,15 @@
 #
 # 选项:
 #   -s, --source-dir <目录>      指定源目录 (默认: /srv/uploads/uploader/files)
-#   -b, --backup-server <地址>   指定备份服务器 
+#   -b, --backup-server <地址>   指定备份服务器 (可以指定用于备份存储的服务器ip,如果没有指定用户名(user@host),则可能会尝试root身份登录)
 #   -l, --log-file <文件>        指定日志文件 (默认: 源目录/backup-to-srv.log)
 #   -d, --backup-dir <目录>      指定备份目录 (默认: /www/wwwroot/xcx/s2)
 #   --date-dir                   启用创建每日备份子目录 (如 2025-09-12),这不建议,对rsync检查增量不简便
 #   -h, --help                   显示帮助信息
 #
 # 示例:
-#   bash backup_site_pkgs.sh --date-dir
-#   bash backup_site_pkgs.sh -s /data/files -b user@host -d /backup --date-dir
+#   bash backup_site_pkgs.sh 
+#   bash backup_site_pkgs.sh -s /data/files -b user@host -d /backup 
 # =============================================
 
 
@@ -32,7 +32,7 @@
 # ========== 🔧 配置区（默认值，可被参数覆盖） ==========
 BACKUP_SERVER="root@xxx.xxx.xxx.xxx"
 SOURCE_DIR="/srv/uploads/uploader/files"
-BACKUP_DIR="/www/wwwroot/xcx/s2"
+BACKUP_DIR="/www/wwwroot/xcx/default"
 LOG_FILE=""
 USE_DATE_DIR=0
 
