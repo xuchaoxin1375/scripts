@@ -155,17 +155,19 @@ function init
         }
         . $ruffCompletionFile
     }
-    if(Test-CommandAvailability conda)
-    {
-        $condaCompletionFile = "$HOME\.conda_completion.ps1"
-        if(!(Test-Path $condaCompletionFile))
-        {
+    # 小心conda(miniforge或miniconda)的初始化脚本,部分版本初始化脚本可能引起错误
+    # 可以使用调试模式强制加载初始化操作: p -verbose -debug -force
+    # if(Test-CommandAvailability conda)
+    # {
+    #     $condaCompletionFile = "$HOME\.conda_completion.ps1"
+    #     if(!(Test-Path $condaCompletionFile))
+    #     {
 
-            conda 'shell.powershell' 'hook' > $condaCompletionFile
-            # (& conda 'shell.powershell' 'hook') | Out-String | Invoke-Expression
-        }
-        . $condaCompletionFile
-    }
+    #         conda 'shell.powershell' 'hook' > $condaCompletionFile
+    #         # (& conda 'shell.powershell' 'hook') | Out-String | Invoke-Expression
+    #     }
+    #     . $condaCompletionFile
+    # }
     # 耗时统计
     $endTime = Get-Date
     $loadTime = $endTime - $startTime
