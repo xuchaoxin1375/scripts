@@ -155,6 +155,17 @@ function init
         }
         . $ruffCompletionFile
     }
+    if(Test-CommandAvailability conda)
+    {
+        $condaCompletionFile = "$HOME\.conda_completion.ps1"
+        if(!(Test-Path $condaCompletionFile))
+        {
+
+            conda 'shell.powershell' 'hook' > $condaCompletionFile
+            # (& conda 'shell.powershell' 'hook') | Out-String | Invoke-Expression
+        }
+        . $condaCompletionFile
+    }
     # 耗时统计
     $endTime = Get-Date
     $loadTime = $endTime - $startTime
@@ -2503,7 +2514,7 @@ function Update-PwshEnvIfNotYet
     Write-Verbose 'Environment  have been Imported in the current powershell!'
 }
  
-function Start-VscodeSSh
+function Start-CodeSSh
 {
     <# 
     .SYNOPSIS
@@ -2517,17 +2528,20 @@ function Start-VscodeSSh
     linux主机的ip地址为192.168.1.111;并且配置了ssh免密登录(上传了公钥),可以直接使用如下命令进行远程编程或文件管理:
     比如我要编辑网站demosite.com根目录,就可以用以下命令打开
     
-    PS> Start-VscodeSSh -Server 192.168.1.111 -Path /www/wwwroot/xcx/demosite.com/wordpress
+    PS> Start-CodeSSh -Server 192.168.1.111 -Path /www/wwwroot/xcx/demosite.com/wordpress
 
     #>
     param (
 
         #根据查询到的ip地址,创建变量
-        $Server = 'cxxuRedmibook',
+        $Editor='code',
+        $Server = 'localhost',
         # $Path="/home/" #需要打开的目录
         $Path = $home 
     )
-    code --folder-uri "vscode-remote://ssh-remote+$Server/$Path"
+    # code --folder-uri "vscode-remote://ssh-remote+$Server/$Path"
+    $cmd="$Editor --folder-uri vscode-remote://ssh-remote+$Server/$Path"
+    Invoke-Expression $cmd
 }
 function Remove-RobocopyMirEmpty
 {

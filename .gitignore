@@ -12,7 +12,8 @@ images/
 *.gif
 *.svg
 *.ico
-*.csv
+# *.csv
+# !**/*.url.csv
 *.xlsx
 *.xls
 *.zip
@@ -23,7 +24,6 @@ images/
 *.pdf
 *.docx
 *.doc
-
 # 记得从git移除这些不需要的文件
 # Python 补充
 __pycache__/

@@ -1,0 +1,9 @@
+domain,birth_time,status
+domain1.com,2025-11-12 18:07:17,old
+domain3.com,2025-11-02 18:07:17,young
+domain14.com,2025-11-12 18:09:22,old
+domain151.com,2025-12-12 18:09:22,young
+domain152.com,2025-12-12 ,young
+domain152.com,,young
+domain153.com,2025/12/12,young
+domain151.com,2025/12/12 18:09:22,young

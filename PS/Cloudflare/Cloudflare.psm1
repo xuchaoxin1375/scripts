@@ -328,7 +328,9 @@ function Add-CFZoneDNSRecords
                     Write-Host "Adding DNS record[$(Get-DateTime)]: $domain|$item -> $value ($type)"
                     # continue
                     # 调用flarectl命令行工具,并将运行结果保存到变量$res中
-                    $res = flarectl --json dns create --zone "$domain" --name "$item" --type "$type" --content "$value" --proxy 
+                    $cmd = "flarectl --json dns create --zone $domain --name $item --type $type --content $value --proxy "
+                    Write-Host "Starting cmd:[ $cmd ]"
+                    $res = $cmd | Invoke-Expression 
                     Write-Host $res
                     Write-Host "Add $domain done!"
                 }

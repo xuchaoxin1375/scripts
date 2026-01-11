@@ -756,7 +756,20 @@ class WooCommerceProductImporter:
             WHERE p.post_type = 'product';
         """
         self._execute_sql(update_sql)
-
+    def update_product_title(self):
+        """部分产品名不规范,比如包含采集中处理不当的或多余的字符串片段
+        或者可选的做名称截断
+        """
+        
+        update_sql = """
+            UPDATE wp_posts
+            SET
+                post_title =
+            REPLACE (post_title, '产品名称中包含顶级域名,检查并适当处理后再继续!', '')
+            WHERE
+                post_type = 'product';
+        """
+        self._execute_sql(update_sql)
     def _execute_sql(self, sql):
         conn = pymysql.connect(**self.db_config)
         try:
@@ -826,6 +839,7 @@ if __name__ == "__main__":
 
     # 后期处理
     importer.post_import_processing()
+    importer.update_product_title()
 
     if args.update_slugs:
         importer.update_product_slugs()
