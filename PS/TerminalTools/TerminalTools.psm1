@@ -76,13 +76,13 @@ function Push-ByScp
         [alias('TargetPath','Target')]
         $DestinationPath=$env:DF_SERVER1
     )
-    $expression = "scp -r $SourcePath $User@${Server}:$DestinationPath"
+    $expression = "scp -r '$SourcePath' '$User@${Server}:$DestinationPath'"
     Write-Host $expression 
     # Pause
     if($PSCmdlet.ShouldProcess($server, $expression))
     {
 
-        Invoke-Expression $expression
+        Invoke-Expression "$expression"
     }
     
 }

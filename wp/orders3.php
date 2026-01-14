@@ -1,11 +1,39 @@
 <?php
 // ====== 配置与权限控制 ======
-// v1.0.20260105.2
+// v1.0.20260113
 $access_token = 'cxxu';
 $current_token = $_GET['token'] ?? '';
 if ($current_token !== $access_token) {
     http_response_code(403);
     die('403 Forbidden');
+}
+
+$CSV_HEADER_CANDIDATES = [
+    'domain' => ['域名', '网站', '站点', 'domain', 'site'],
+    'people' => ['数据采集员', '数据采集人员', '人员', '归属人员', '名字', '姓名', '采集员'],
+    'country' => ['国家', '语言', '网站语言', '站点语言', 'lang', 'country'],
+    'category' => ['内容', '产品类别', '产品分类', '品类', '类目', '类别', '产品', 'category', 'productcategory'],
+    'date' => ['完成日期', '建站日期', '申请日期', '域名申请日期', '日期', '创建日期', '上线日期', '完成时间', '时间', 'date', 'createdate', 'created_at', 'updated_at'],
+    'server' => ['服务器', 'server'],
+];
+
+function order_matches_status_filter($item, $status_filter)
+{
+    $sf = (string)$status_filter;
+    if ($sf === '' || $sf === 'all') return true;
+    $is_success = !empty($item['is_success']);
+    $has_success_log = !empty($item['has_success_log']);
+    $is_pending = ($has_success_log && !$is_success);
+    if ($sf === 'success') {
+        return $is_success;
+    }
+    if ($sf === 'pending') {
+        return $is_pending;
+    }
+    if ($sf === 'fail') {
+        return !$has_success_log;
+    }
+    return true;
 }
 
 function find_available_log_date_range()
@@ -214,6 +242,7 @@ function export_orders_csv_range($access_token, $range_start, $range_end, $statu
                     'domain' => $m[3],
                     'attempts' => 0,
                     'is_success' => false,
+                    'has_success_log' => false,
                     'logs' => ['forpay_new' => [$line]],
                     'details' => ['amt' => 0, 'cur' => '', 'usd_amt' => 0, 'err' => '', 'notify_count' => 0, 'notify_errors' => []]
                 ];
@@ -277,21 +306,28 @@ function export_orders_csv_range($access_token, $range_start, $range_end, $statu
             if (preg_match('/order_no=(\d+)/', $line, $m)) {
                 $no = $m[1];
                 if (isset($analysis_data[$no])) {
-                    $analysis_data[$no]['is_success'] = true;
+                    $analysis_data[$no]['has_success_log'] = true;
                     $analysis_data[$no]['logs']['success'][] = $line;
-                    $stats_stub['hourly_success'][$analysis_data[$no]['hour']]++;
                 }
             }
         }
+
+        foreach ($analysis_data as $no => &$item_ref) {
+            $notify_cnt0 = (int)($item_ref['details']['notify_count'] ?? 0);
+            $has_forpay = ((int)($item_ref['attempts'] ?? 0)) > 0;
+            $has_success_log = !empty($item_ref['has_success_log']);
+            $item_ref['is_success'] = ($has_success_log && $has_forpay && $notify_cnt0 > 0);
+            if (!empty($item_ref['is_success'])) {
+                $stats_stub['hourly_success'][$item_ref['hour']]++;
+            }
+        }
+        unset($item_ref);
 
         foreach ($analysis_data as $no => $item) {
             if ($amount_nonzero && (empty($item['details']['amt']) || $item['details']['amt'] == 0)) {
                 continue;
             }
-            if ($status_filter === 'success' && empty($item['is_success'])) {
-                continue;
-            }
-            if ($status_filter === 'fail' && !empty($item['is_success'])) {
+            if (!order_matches_status_filter($item, $status_filter)) {
                 continue;
             }
 
@@ -300,6 +336,11 @@ function export_orders_csv_range($access_token, $range_start, $range_end, $statu
             $people = $owner ? trim((string)($owner['people'] ?? '')) : '';
             if (!owner_match_filter($people, $owner_filter)) {
                 continue;
+            }
+            $server = $owner ? trim((string)($owner['server'] ?? '')) : '';
+            $server_short = '';
+            if ($server !== '' && preg_match('/^\s*(.)/us', $server, $m)) {
+                $server_short = $m[1];
             }
             $country = $owner ? trim((string)($owner['country'] ?? '')) : '';
             $category = $owner ? trim((string)($owner['category'] ?? '')) : '';
@@ -369,8 +410,20 @@ function render_range_revenue_module($access_token, $view_mode, $range_start, $r
             <?php else: ?>
                 <div id="rangeRevenueError" style="display:none;"></div>
             <?php endif; ?>
-            <div style="width:100%; height:180px; min-height:180px;">
+            <div id="revenueChartLoading" style="width:100%; height:180px; min-height:180px; display:flex; align-items:center; justify-content:center;">
+                <div style="display:flex; align-items:center; gap:10px; color:#64748b; font-size:13px; font-weight:700;">
+                    <span class="mini-spinner" style="width:18px; height:18px; border-radius:999px; border:2px solid #e2e8f0; border-top-color:#6366f1; display:inline-block;"></span>
+                    <span>加载中…</span>
+                </div>
+            </div>
+            <div id="revenueChartContent" style="width:100%; height:180px; min-height:180px; display:none;">
                 <canvas id="revenueChart" style="width:100%; height:180px; min-height:180px;"></canvas>
+            </div>
+            <div id="revenueChartLegend" style="margin-top:6px; font-size:12px; color:#64748b; line-height:1.35; display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+                <span style="display:inline-flex; align-items:center; gap:6px;"><span style="width:10px; height:10px; border-radius:999px; background:#6366f1; display:inline-block;"></span><span>左轴: 营收(USD)</span></span>
+                <span style="display:inline-flex; align-items:center; gap:6px;"><span style="width:10px; height:10px; border-radius:999px; background:#f59e0b; display:inline-block;"></span><span>右轴: 转化率(%)</span></span>
+                <span style="display:inline-flex; align-items:center; gap:6px;"><span style="width:10px; height:10px; border-radius:999px; background:#10b981; display:inline-block;"></span><span>右轴: 尝试次数</span></span>
+                <span style="font-size:11px; color:#94a3b8;">(点击折线点可跳转到对应日期)</span>
             </div>
         </div>
     </div>
@@ -421,6 +474,8 @@ function render_analysis_content($access_token, $view_mode, $log_date, $stats, $
             <div class="overview-card" style="border-bottom: 3px solid var(--success);"><span
                 class="label">成功单量</span><span class="value"
                 style="color:var(--success);"><?= $stats['total_success'] ?></span></div>
+            <div class="overview-card" style="border-bottom: 3px solid #a855f7;"><span class="label">待定单量 <span style="font-size:12px; font-weight:400; opacity:.75;">一般可视为成功</span></span><span class="value"
+                style="color:#a855f7;"><?= (int)($stats['total_pending'] ?? 0) ?></span></div>
             <div class="overview-card" style="border-bottom: 3px solid #db2777;"><span class="label">营收USD-今日指数</span><span class="value"
                 style="color:#db2777;">$<?= format_money($stats['total_usd_sum']) ?></span></div>
             <div class="overview-card" style="border-bottom: 3px solid #0ea5e9;"><span class="label">营收(USD/EUR/GBP)</span><span class="value"
@@ -506,6 +561,12 @@ function render_analysis_content($access_token, $view_mode, $log_date, $stats, $
                             <li style="color:#94a3b8; font-size:13px; text-align:center; padding:20px;">今日暂无成交</li>
                         <?php endif; ?>
                         <?php $rank_i = 1; foreach ($stats['domain_amount'] as $dom => $currs): ?>
+                            <?php
+                                $dom_usd_sum = (float)($stats['domain_usd_sum'][$dom] ?? 0);
+                                $dom_orders = $stats['domain_success_orders'][$dom] ?? [];
+                                $dom_orders_cnt = is_array($dom_orders) ? count($dom_orders) : 0;
+                                $dom_id = 'dom_rev_' . md5((string)$dom);
+                            ?>
                             <li class="ranking-item">
                                 <div style="display:flex; align-items:center; gap:10px; min-width:0; flex:1;">
                                     <span class="rank-num"><?= $rank_i ?></span>
@@ -515,8 +576,31 @@ function render_analysis_content($access_token, $view_mode, $log_date, $stats, $
                                     <?php foreach ($currs as $c => $v): ?>
                                         <div class="dom-val"><?= $c ?>             <?= format_money($v) ?></div>
                                     <?php endforeach; ?>
+                                    <div class="dom-val" style="color:#0ea5e9;">USD            <?= format_money($dom_usd_sum) ?></div>
+                                    <?php if ($dom_orders_cnt > 1): ?>
+                                        <div style="margin-top:6px;">
+                                            <button type="button" class="nav-btn" style="padding:6px 10px; font-size:12px;" onclick="(function(){var el=document.getElementById('<?= $dom_id ?>'); if(!el) return; el.style.display=(el.style.display==='none'?'block':'none');})();">展开/收起(<?= (int)$dom_orders_cnt ?>)</button>
+                                        </div>
+                                    <?php endif; ?>
                                 </div>
                             </li>
+                            <?php if ($dom_orders_cnt > 1): ?>
+                                <li id="<?= $dom_id ?>" style="display:none; padding:10px 12px; margin:-8px 0 10px 0; border-radius:12px; background:#f8fafc; border:1px solid #e2e8f0;">
+                                    <div style="font-size:12px; color:#64748b; margin-bottom:6px;">成功单明细</div>
+                                    <?php foreach ($dom_orders as $od): ?>
+                                        <div style="display:flex; justify-content:space-between; gap:10px; font-size:12px; padding:6px 0; border-top:1px dashed #e2e8f0;">
+                                            <div style="min-width:0;">
+                                                <div style="font-weight:600; color:#334155;">#<?= htmlspecialchars((string)($od['order_no'] ?? '')) ?></div>
+                                                <div style="color:#94a3b8;"><?= htmlspecialchars((string)($od['time'] ?? '')) ?></div>
+                                            </div>
+                                            <div style="text-align:right; white-space:nowrap;">
+                                                <div style="color:#334155;"><?= htmlspecialchars((string)($od['cur'] ?? '')) ?> <?= format_money((float)($od['amt'] ?? 0)) ?></div>
+                                                <div style="color:#0ea5e9;">USD <?= format_money((float)($od['usd_amt'] ?? 0)) ?></div>
+                                            </div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </li>
+                            <?php endif; ?>
                         <?php $rank_i++; endforeach; ?>
                         </ul>
                     </div>
@@ -562,6 +646,7 @@ function render_analysis_content($access_token, $view_mode, $log_date, $stats, $
                                 style="padding:8px 12px; border-radius:10px; border:1px solid #e2e8f0; background:white; font-weight:600;">
                                 <option value="all" <?= $status_filter == 'all' ? 'selected' : '' ?>>全部记录</option>
                                 <option value="success" <?= $status_filter == 'success' ? 'selected' : '' ?>>✅ 成功组</option>
+                                <option value="pending" <?= $status_filter == 'pending' ? 'selected' : '' ?>>🟨 待定组</option>
                                 <option value="fail" <?= $status_filter == 'fail' ? 'selected' : '' ?>>❌ 失败组</option>
                             </select>
                             <select name="sort" onchange="window.__ordersFilterChange ? window.__ordersFilterChange(this.form) : this.form.submit()"
@@ -586,6 +671,42 @@ function render_analysis_content($access_token, $view_mode, $log_date, $stats, $
                                 按站点分组折叠
                             </label>
                         </form>
+
+                        <?php
+                            $matched_fields0 = $csv_data_for_side['meta']['matched_fields'] ?? [];
+                            $matched_headers0 = $csv_data_for_side['meta']['matched_headers'] ?? [];
+                            $csv_encoding0 = (string)($csv_data_for_side['meta']['encoding'] ?? '');
+                            $field_labels = [
+                                'domain' => '域名',
+                                'people' => '人员',
+                                'country' => '国家',
+                                'category' => '内容',
+                                'date' => '日期',
+                                'server' => '服务器',
+                            ];
+                        ?>
+                        <?php if (!empty($csv_path)): ?>
+                            <div class="order-filter-note" style="margin-top:10px; font-size:12px; color:#94a3b8; line-height:1.3;">
+                                <span style="font-weight:700;">注:</span>
+                                <span>CSV已识别字段</span>
+                                <?php if (trim($csv_encoding0) !== ''): ?>
+                                    <span style="margin-left:6px; opacity:.75;">(encoding: <?= htmlspecialchars($csv_encoding0) ?>)</span>
+                                <?php endif; ?>
+                                <?php if (!empty($matched_fields0) && is_array($matched_fields0)): ?>
+                                    <?php
+                                        $parts = [];
+                                        foreach ($matched_fields0 as $fk) {
+                                            $lab = $field_labels[$fk] ?? $fk;
+                                            $hdr = (string)($matched_headers0[$fk] ?? '');
+                                            $parts[] = $hdr !== '' ? ($lab . '(' . $hdr . ')') : $lab;
+                                        }
+                                    ?>
+                                    <span>：<?= htmlspecialchars(implode('，', $parts)) ?></span>
+                                <?php else: ?>
+                                    <span style="color:#c2410c; font-weight:700;">：未命中任何有用字段（可能选错CSV）</span>
+                                <?php endif; ?>
+                            </div>
+                        <?php endif; ?>
                     </div>
                 </div>
 
@@ -639,10 +760,13 @@ $stats = [
     'total_orders' => 0,
     'total_attempts' => 0,
     'total_success' => 0,
+    'total_pending' => 0,
     'total_usd_sum' => 0,
     'revenue_by_currency' => ['USD' => 0, 'EUR' => 0, 'GBP' => 0],
     'unique_domains' => 0,
     'domain_amount' => [],
+    'domain_usd_sum' => [],
+    'domain_success_orders' => [],
     'hourly_attempts' => array_fill(0, 24, 0),
     'hourly_success' => array_fill(0, 24, 0),
 ];
@@ -668,6 +792,7 @@ if ($view_mode === 'analysis') {
                 'domain' => $m[3],
                 'attempts' => 0,
                 'is_success' => false,
+                'has_success_log' => false,
                 'logs' => ['forpay_new' => [$line]],
                 'details' => ['amt' => 0, 'cur' => '', 'usd_amt' => 0, 'err' => '', 'notify_count' => 0, 'notify_errors' => []]
             ];
@@ -733,24 +858,86 @@ if ($view_mode === 'analysis') {
         if (preg_match('/order_no=(\d+)/', $line, $m)) {
             $no = $m[1];
             if (isset($analysis_data[$no])) {
-                $analysis_data[$no]['is_success'] = true;
+                $analysis_data[$no]['has_success_log'] = true;
                 $analysis_data[$no]['logs']['success'][] = $line;
-                $stats['hourly_success'][$analysis_data[$no]['hour']]++;
             }
         }
     }
 
+    foreach ($analysis_data as $no => &$item_ref) {
+        $notify_cnt0 = (int)($item_ref['details']['notify_count'] ?? 0);
+        $needs_money = ($notify_cnt0 <= 0);
+        if ($needs_money) {
+            $cur0 = (string)($item_ref['details']['cur'] ?? '');
+            $amt0 = $item_ref['details']['amt'] ?? 0;
+            $usd0 = $item_ref['details']['usd_amt'] ?? 0;
+            $has_cur = trim($cur0) !== '';
+            $has_amt = (is_numeric($amt0) && (float)$amt0 != 0.0);
+            $has_usd = (is_numeric($usd0) && (float)$usd0 > 0.0);
+            if (!$has_cur || !$has_amt || !$has_usd) {
+                $success_lines = $item_ref['logs']['success'] ?? [];
+                if (!empty($success_lines) && is_array($success_lines)) {
+                    foreach ($success_lines as $sl) {
+                        $parsed = parse_success_log_money($sl);
+                        if (!$parsed) continue;
+                        if (!$has_amt && isset($parsed['amount']) && $parsed['amount'] !== null) {
+                            $item_ref['details']['amt'] = (float)$parsed['amount'];
+                            $has_amt = true;
+                        }
+                        if (!$has_cur && isset($parsed['currency']) && $parsed['currency'] !== null) {
+                            $item_ref['details']['cur'] = (string)$parsed['currency'];
+                            $has_cur = true;
+                        }
+                        if ($has_amt && $has_cur) {
+                            // keep scanning: later logs may contain updated values
+                        }
+                    }
+                }
+                $amt1 = $item_ref['details']['amt'] ?? 0;
+                $cur1 = (string)($item_ref['details']['cur'] ?? '');
+                $usd1 = $item_ref['details']['usd_amt'] ?? 0;
+                if ((!is_numeric($usd1) || (float)$usd1 <= 0.0) && is_numeric($amt1) && trim($cur1) !== '') {
+                    $item_ref['details']['usd_amt'] = convert_to_usd($amt1, $cur1);
+                }
+            }
+        }
+    }
+    unset($item_ref);
+
+    foreach ($analysis_data as $no => &$item_ref) {
+        $notify_cnt0 = (int)($item_ref['details']['notify_count'] ?? 0);
+        $has_forpay = ((int)($item_ref['attempts'] ?? 0)) > 0;
+        $has_success_log = !empty($item_ref['has_success_log']);
+        $item_ref['is_success'] = ($has_success_log && $has_forpay && $notify_cnt0 > 0);
+    }
+    unset($item_ref);
+
     $stats['total_orders'] = count($analysis_data);
     foreach ($analysis_data as $no => $item) {
-        if ($item['is_success']) {
+        if (!empty($item['is_success'])) {
             $stats['total_success']++;
             $stats['total_usd_sum'] += (float) $item['details']['usd_amt'];
+            $stats['hourly_success'][(int)($item['hour'] ?? 0)]++;
             $cur = $item['details']['cur'] ?: 'UNK';
             $stats['domain_amount'][$item['domain']][$cur] = ($stats['domain_amount'][$item['domain']][$cur] ?? 0) + ($item['details']['amt'] ?? 0);
+
+            $dom_key = (string)($item['domain'] ?? '');
+            $stats['domain_usd_sum'][$dom_key] = ($stats['domain_usd_sum'][$dom_key] ?? 0) + (float)($item['details']['usd_amt'] ?? 0);
+            $stats['domain_success_orders'][$dom_key][] = [
+                'order_no' => (string)$no,
+                'time' => (string)($item['time'] ?? ''),
+                'amt' => (float)($item['details']['amt'] ?? 0),
+                'cur' => (string)($item['details']['cur'] ?? ''),
+                'usd_amt' => (float)($item['details']['usd_amt'] ?? 0),
+            ];
 
             $cur_upper = strtoupper((string)($item['details']['cur'] ?? ''));
             if (isset($stats['revenue_by_currency'][$cur_upper])) {
                 $stats['revenue_by_currency'][$cur_upper] += (float)($item['details']['amt'] ?? 0);
+            }
+        } else {
+            if (!empty($item['has_success_log'])) {
+                $stats['total_pending']++;
             }
         }
         if ($amount_nonzero && (empty($item['details']['amt']) || $item['details']['amt'] == 0)) {
@@ -792,6 +979,31 @@ function highlight_log($line)
     return $line;
 }
 
+function parse_success_log_money($line)
+{
+    $s = trim((string)$line);
+    if ($s === '') return null;
+    $amount = null;
+    $currency = null;
+    if (preg_match('/[\?&]amount=([^&#\s]+)/i', $s, $m)) {
+        $amount_raw = urldecode($m[1]);
+        $amount_clean = preg_replace('/[^\d\.\-]/', '', (string)$amount_raw);
+        if ($amount_clean !== '' && is_numeric($amount_clean)) {
+            $amount = (float)$amount_clean;
+        }
+    }
+    if (preg_match('/[\?&]currency=([^&#\s]+)/i', $s, $m)) {
+        $cur_raw = urldecode($m[1]);
+        $cur_raw = strtoupper(trim((string)$cur_raw));
+        $cur_raw = preg_replace('/[^A-Z]/', '', $cur_raw);
+        if ($cur_raw !== '') {
+            $currency = $cur_raw;
+        }
+    }
+    if ($amount === null && $currency === null) return null;
+    return ['amount' => $amount, 'currency' => $currency];
+}
+
 function convert_to_usd($amount, $currency = '')
 {
     // sanitize amount
@@ -826,6 +1038,23 @@ function normalize_domain_key($domain)
     return $s;
 }
 
+function detect_csv_encoding_label($s)
+{
+    if (!is_string($s) || $s === '') return 'unknown';
+    if (function_exists('mb_check_encoding') && mb_check_encoding($s, 'UTF-8')) {
+        return 'utf-8';
+    }
+    if (function_exists('mb_check_encoding')) {
+        if (mb_check_encoding($s, 'GBK') || mb_check_encoding($s, 'GB2312')) {
+            return 'gbk';
+        }
+        if (mb_check_encoding($s, 'BIG5')) {
+            return 'big5';
+        }
+    }
+    return 'unknown';
+}
+
 function normalize_header_key($s)
 {
     $s = strtolower(trim((string)$s));
@@ -834,6 +1063,29 @@ function normalize_header_key($s)
     $s = preg_replace('/^[\x00-\x1F\x7F\x{200B}\x{FEFF}]+/u', '', $s);
     $s = preg_replace('/\s+/', '', $s);
     $s = str_replace(['（', '）', '：', ':', '-', '_', '　'], '', $s);
+    return $s;
+}
+
+function fix_csv_cell_encoding($s)
+{
+    if (!is_string($s) || $s === '') return $s;
+    // If it already looks like UTF-8, keep it
+    if (function_exists('mb_check_encoding') && mb_check_encoding($s, 'UTF-8')) {
+        return $s;
+    }
+    // Common case: CSV saved as GBK/GB2312 but read as bytes -> attempt convert
+    if (function_exists('mb_convert_encoding')) {
+        $converted = @mb_convert_encoding($s, 'UTF-8', 'GBK,GB2312,BIG5');
+        if (is_string($converted) && $converted !== '' && (!function_exists('mb_check_encoding') || mb_check_encoding($converted, 'UTF-8'))) {
+            return $converted;
+        }
+    }
+    if (function_exists('iconv')) {
+        $converted = @iconv('GBK', 'UTF-8//IGNORE', $s);
+        if (is_string($converted) && $converted !== '') {
+            return $converted;
+        }
+    }
     return $s;
 }
 
@@ -884,19 +1136,26 @@ function resolve_selected_csv_path($dir, $csv_selected, $csv_files)
         $full = rtrim($dir, '/').'/'.$csv_files[0];
         if (is_file($full)) return $full;
     }
+
     return '';
 }
 
 function load_domain_owner_map_from_csv($csv_file)
 {
+    global $CSV_HEADER_CANDIDATES;
     $res = [
         'map' => [],
         'meta' => [
+            'csv' => (string)$csv_file,
             'has_people' => false,
             'has_country' => false,
             'has_category' => false,
             'has_date' => false,
+            'has_server' => false,
             'headers' => [],
+            'matched_fields' => [],
+            'matched_headers' => [],
+            'encoding' => '',
             'total_rows' => 0,
             'ok_rows' => 0,
             'skipped_rows' => 0,
@@ -917,18 +1176,77 @@ function load_domain_owner_map_from_csv($csv_file)
         fclose($fh);
         return $res;
     }
+
+    $encoding_label = '';
+    foreach ($headers as $h0) {
+        $enc0 = detect_csv_encoding_label($h0);
+        if ($enc0 !== 'unknown') {
+            $encoding_label = $enc0;
+            break;
+        }
+    }
+    if ($encoding_label === '') $encoding_label = 'unknown';
+    $res['meta']['encoding'] = $encoding_label;
+
+    foreach ($headers as $i => $h) {
+        $headers[$i] = fix_csv_cell_encoding($h);
+    }
     $res['meta']['headers'] = $headers;
 
-    $domain_idx = find_header_index($headers, ['域名', '网站', '站点', 'domain', 'site']);
-    $people_idx = find_header_index($headers, ['数据采集员', '人员', '归属人员', '名字', '姓名', '采集员']);
-    $country_idx = find_header_index($headers, ['国家', '语言', '网站语言', '站点语言', 'lang', 'country']);
-    $category_idx = find_header_index($headers, ['内容', '产品类别', '产品分类', '品类', '类目', '类别', '产品', 'category', 'productcategory']);
-    $date_idx = find_header_index($headers, ['完成日期','建站日期','申请日期', '日期', '创建日期', '上线日期', '完成时间', '时间', 'date', 'createdate', 'created_at', 'updated_at']);
+    $domain_idx = find_header_index($headers, $CSV_HEADER_CANDIDATES['domain'] ?? ['域名', '网站', '站点', 'domain', 'site']);
+    $people_idx = find_header_index($headers, $CSV_HEADER_CANDIDATES['people'] ?? ['数据采集员', '数据采集人员', '人员', '归属人员', '名字', '姓名', '采集员']);
+    $country_idx = find_header_index($headers, $CSV_HEADER_CANDIDATES['country'] ?? ['国家', '语言', '网站语言', '站点语言', 'lang', 'country']);
+    $category_idx = find_header_index($headers, $CSV_HEADER_CANDIDATES['category'] ?? ['内容', '产品类别', '产品分类', '品类', '类目', '类别', '产品', 'category', 'productcategory']);
+    $date_idx = find_header_index($headers, $CSV_HEADER_CANDIDATES['date'] ?? ['完成日期', '建站日期', '申请日期', '域名申请日期', '日期', '创建日期', '上线日期', '完成时间', '时间', 'date', 'createdate', 'created_at', 'updated_at']);
+    $server_idx = find_header_index($headers, $CSV_HEADER_CANDIDATES['server'] ?? ['服务器', 'server']);
+
+    $matched_fields = [];
+    $matched_headers = [];
+    if ($domain_idx !== null) {
+        $matched_fields[] = 'domain';
+        $matched_headers['domain'] = (string)($headers[$domain_idx] ?? '');
+    }
+    if ($people_idx !== null) {
+        $matched_fields[] = 'people';
+        $matched_headers['people'] = (string)($headers[$people_idx] ?? '');
+    }
+    if ($country_idx !== null) {
+        $matched_fields[] = 'country';
+        $matched_headers['country'] = (string)($headers[$country_idx] ?? '');
+    }
+    if ($category_idx !== null) {
+        $matched_fields[] = 'category';
+        $matched_headers['category'] = (string)($headers[$category_idx] ?? '');
+    }
+    if ($date_idx !== null) {
+        $matched_fields[] = 'date';
+        $matched_headers['date'] = (string)($headers[$date_idx] ?? '');
+    }
+    if ($server_idx !== null) {
+        $matched_fields[] = 'server';
+        $matched_headers['server'] = (string)($headers[$server_idx] ?? '');
+    }
+    $res['meta']['matched_fields'] = $matched_fields;
+    $res['meta']['matched_headers'] = $matched_headers;
+
+    $log_fields = !empty($matched_fields) ? implode(',', $matched_fields) : 'none';
+    if ($log_fields === 'none') {
+        $preview = [];
+        foreach ($headers as $hv) {
+            $hv = trim((string)$hv);
+            if ($hv !== '') $preview[] = $hv;
+        }
+        $preview_s = implode('|', array_slice($preview, 0, 20));
+        error_log('[orders3] csv_fields csv=' . basename((string)$csv_file) . ' matched=' . $log_fields . ' headers=' . $preview_s . "\n", 3, __DIR__ . '/orders3_csv_fields.log');
+    } else {
+        error_log('[orders3] csv_fields csv=' . basename((string)$csv_file) . ' matched=' . $log_fields . "\n", 3, __DIR__ . '/orders3_csv_fields.log');
+    }
 
     $res['meta']['has_people'] = ($people_idx !== null);
     $res['meta']['has_country'] = ($country_idx !== null);
     $res['meta']['has_category'] = ($category_idx !== null);
     $res['meta']['has_date'] = ($date_idx !== null);
+    $res['meta']['has_server'] = ($server_idx !== null);
 
     if ($domain_idx === null) {
         fclose($fh);
@@ -951,6 +1269,7 @@ function load_domain_owner_map_from_csv($csv_file)
         $country = $country_idx !== null ? trim((string)($row[$country_idx] ?? '')) : '';
         $category = $category_idx !== null ? trim((string)($row[$category_idx] ?? '')) : '';
         $date = $date_idx !== null ? trim((string)($row[$date_idx] ?? '')) : '';
+        $server = $server_idx !== null ? trim((string)($row[$server_idx] ?? '')) : '';
 
         if (isset($res['map'][$domain_key])) {
             $res['meta']['dup_domains']++;
@@ -966,6 +1285,9 @@ function load_domain_owner_map_from_csv($csv_file)
             if (($res['map'][$domain_key]['date'] ?? '') === '' && $date !== '') {
                 $res['map'][$domain_key]['date'] = $date;
             }
+            if (($res['map'][$domain_key]['server'] ?? '') === '' && $server !== '') {
+                $res['map'][$domain_key]['server'] = $server;
+            }
             continue;
         }
 
@@ -974,6 +1296,7 @@ function load_domain_owner_map_from_csv($csv_file)
             'country' => $country,
             'category' => $category,
             'date' => $date,
+            'server' => $server,
             'raw_domain' => (string)$domain_raw,
         ];
         $res['meta']['ok_rows']++;
@@ -1099,6 +1422,7 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
     $has_country = (bool)($csv_data['meta']['has_country'] ?? false);
     $has_category = (bool)($csv_data['meta']['has_category'] ?? false);
     $has_date = (bool)($csv_data['meta']['has_date'] ?? false);
+    $has_server = (bool)($csv_data['meta']['has_server'] ?? false);
 
     $list_view = trim((string)$list_view);
     if ($list_view !== 'table' && $list_view !== 'card') {
@@ -1108,10 +1432,7 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
     if ($list_view === 'table') {
         $rows = [];
         foreach ($analysis_data as $no => $item) {
-            if ($status_filter === 'success' && empty($item['is_success'])) {
-                continue;
-            }
-            if ($status_filter === 'fail' && !empty($item['is_success'])) {
+            if (!order_matches_status_filter($item, $status_filter)) {
                 continue;
             }
 
@@ -1141,12 +1462,14 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
                 'time_short' => $time_short,
                 'domain' => $dom,
                 'is_success' => !empty($item['is_success']),
+                'has_success_log' => !empty($item['has_success_log']),
                 'attempts' => $attempts,
                 'notify_cnt' => $notify_cnt,
                 'cur' => $cur,
                 'amt' => $amt,
                 'usd' => $usd,
                 'people' => $people,
+                'server' => $server_short,
                 'country' => $country,
                 'category' => $category,
                 'site_date' => $site_date,
@@ -1226,6 +1549,7 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
         echo '<th style="width:60px;">时间</th>';
         echo '<th>域名</th>';
         if ($has_people) echo '<th style="width:90px;">人员</th>';
+        if ($has_server) echo '<th style="width:56px;">服务器</th>';
         if ($has_country) echo '<th style="width:70px;">国家</th>';
         if ($has_category) echo '<th style="width:120px;">内容</th>';
         if ($has_date) echo '<th style="width:98px;">建站日期</th>';
@@ -1240,8 +1564,10 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
 
         $i = 1;
         foreach ($rows as $r) {
-            $st = $r['is_success'] ? 'SUCCESS' : 'INCOMPLETE';
-            $st_class = $r['is_success'] ? 'row-success' : ($r['err'] !== '' ? 'row-fail' : '');
+            $has_success_log = !empty($r['has_success_log']);
+            $is_pending = ($has_success_log && empty($r['is_success']));
+            $st = !empty($r['is_success']) ? 'SUCCESS' : ($is_pending ? 'PENDING' : 'INCOMPLETE');
+            $st_class = !empty($r['is_success']) ? 'row-success' : ($r['err'] !== '' ? 'row-fail' : '');
             echo '<tr class="' . $st_class . '" data-order-no="' . htmlspecialchars($r['no']) . '">';
             echo '<td class="cell-num">' . $i . '</td>';
             echo '<td class="cell-mono">' . htmlspecialchars($r['time_short']) . '</td>';
@@ -1252,6 +1578,9 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
             if ($has_people) {
                 echo '<td>' . ($r['people'] !== '' ? htmlspecialchars($r['people']) : '<span style="color:#c2410c; font-weight:700;">未匹配</span>') . '</td>';
             }
+            if ($has_server) {
+                echo '<td class="cell-mono">' . htmlspecialchars((string)($r['server'] ?? '')) . '</td>';
+            }
             if ($has_country) echo '<td>' . htmlspecialchars($r['country']) . '</td>';
             if ($has_category) echo '<td class="cell-ellipsis" title="' . htmlspecialchars($r['category']) . '">' . htmlspecialchars($r['category']) . '</td>';
             if ($has_date) echo '<td class="cell-mono">' . htmlspecialchars($r['site_date']) . '</td>';
@@ -1259,8 +1588,12 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
             echo '<td class="cell-num" style="text-align:right;">' . ($r['usd'] > 0 ? ('$' . format_money($r['usd'])) : '') . '</td>';
             echo '<td class="cell-num" style="text-align:right;">' . (int)$r['attempts'] . '</td>';
             echo '<td class="cell-num" style="text-align:right;">' . (int)$r['notify_cnt'] . '</td>';
-            echo '<td><span class="excel-status ' . ($r['is_success'] ? 'is-ok' : 'is-warn') . '">' . $st . '</span></td>';
-            echo '<td class="cell-ellipsis" title="' . htmlspecialchars($r['err']) . '">' . htmlspecialchars($r['err']) . '</td>';
+            echo '<td><span class="excel-status ' . (!empty($r['is_success']) ? 'is-ok' : 'is-warn') . '">' . $st . '</span></td>';
+            $err_show = $r['err'];
+            if ($is_pending) {
+                $err_show = ($err_show !== '' ? ($err_show . ' | ') : '') . 'success信息存在但未满足最终成功条件(需要forpay_new/forpay/notify/success四个日志都存在)';
+            }
+            echo '<td class="cell-ellipsis" title="' . htmlspecialchars($err_show) . '">' . htmlspecialchars($err_show) . '</td>';
             echo '</tr>';
             $i++;
         }
@@ -1337,6 +1670,9 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
         // 站点分组折叠
         $grouped = [];
         foreach ($analysis_data as $no => $item) {
+            if (!order_matches_status_filter($item, $status_filter)) {
+                continue;
+            }
             $dom_key = normalize_domain_key($item['domain'] ?? '');
             $owner = ($dom_key !== '' && isset($domain_owner_map[$dom_key])) ? $domain_owner_map[$dom_key] : null;
             $people = $owner ? trim((string)($owner['people'] ?? '')) : '';
@@ -1346,26 +1682,6 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
             $grouped[$item['domain']][] = ['no' => $no, 'item' => $item];
         }
         $group_index = 1;
-
-        if ($status_filter === 'success' || $status_filter === 'fail') {
-            foreach ($grouped as $domain => $orders) {
-                $has_success = false;
-                foreach ($orders as $order) {
-                    if (!empty($order['item']['is_success'])) {
-                        $has_success = true;
-                        break;
-                    }
-                }
-                if ($status_filter === 'success' && !$has_success) {
-                    unset($grouped[$domain]);
-                    continue;
-                }
-                if ($status_filter === 'fail' && $has_success) {
-                    unset($grouped[$domain]);
-                    continue;
-                }
-            }
-        }
 
         // 对每个站点内部订单排序，并按排序字段对站点分组本身进行排序（取每组排序后第一条作为代表）
         $sorted_groups = [];
@@ -1503,15 +1819,23 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
             $group_index++;
             echo '<strong style="font-size:16px; color:#6366f1;">' . htmlspecialchars($domain) . '</strong>';
             echo '<div class="order-tags">';
-            if ($has_people || $has_country) {
+            if ($has_people || $has_country || $has_category || $has_date || $has_server) {
                 $dom_key = normalize_domain_key($domain);
                 $owner = ($dom_key !== '' && isset($domain_owner_map[$dom_key])) ? $domain_owner_map[$dom_key] : null;
                 $people = $owner ? trim((string)($owner['people'] ?? '')) : '';
+                $server = $owner ? trim((string)($owner['server'] ?? '')) : '';
+                $server_short = '';
+                if ($server !== '' && preg_match('/^\s*(.)/us', $server, $m)) {
+                    $server_short = $m[1];
+                }
                 $country = $owner ? trim((string)($owner['country'] ?? '')) : '';
                 $category = $owner ? trim((string)($owner['category'] ?? '')) : '';
                 $site_date = $owner ? trim((string)($owner['date'] ?? '')) : '';
                 if ($people !== '') {
                     echo '<span class="badge badge-attempts" style="margin-left:10px; background:#eef2ff; color:#4f46e5;">人员:' . htmlspecialchars($people) . '</span>';
+                }
+                if ($has_server && $server_short !== '') {
+                    echo '<span class="badge badge-attempts" style="margin-left:6px; background:#fefce8; color:#a16207;">服务器:' . htmlspecialchars($server_short) . '</span>';
                 }
                 if ($has_country && $country !== '') {
                     echo '<span class="badge badge-attempts" style="margin-left:6px; background:#ecfeff; color:#0e7490;">' . htmlspecialchars($country) . '</span>';
@@ -1540,10 +1864,15 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
                 $order_index++;
                 echo '<strong style="font-size:15px;">' . htmlspecialchars($item['domain']) . '</strong>';
                 echo '<button type="button" class="copy-domain-btn" data-copy-domain="' . htmlspecialchars($item['domain']) . '">复制域名</button>';
-                if ($has_people || $has_country || $has_category || $has_date) {
+                if ($has_people || $has_country || $has_category || $has_date || $has_server) {
                     $dom_key = normalize_domain_key($item['domain'] ?? '');
                     $owner = ($dom_key !== '' && isset($domain_owner_map[$dom_key])) ? $domain_owner_map[$dom_key] : null;
                     $people = $owner ? trim((string)($owner['people'] ?? '')) : '';
+                    $server = $owner ? trim((string)($owner['server'] ?? '')) : '';
+                    $server_short = '';
+                    if ($server !== '' && preg_match('/^\s*(.)/us', $server, $m)) {
+                        $server_short = $m[1];
+                    }
                     $country = $owner ? trim((string)($owner['country'] ?? '')) : '';
                     $category = $owner ? trim((string)($owner['category'] ?? '')) : '';
                     $date = $owner ? trim((string)($owner['date'] ?? '')) : '';
@@ -1551,6 +1880,9 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
                         echo '<span class="badge badge-attempts" style="background:#eef2ff; color:#4f46e5;">人员:' . htmlspecialchars($people) . '</span>';
                     } else {
                         echo '<span class="badge badge-attempts" style="background:#fff7ed; color:#c2410c;">人员:未匹配</span>';
+                    }
+                    if ($has_server && $server_short !== '') {
+                        echo '<span class="badge badge-attempts" style="background:#fefce8; color:#a16207;">服务器:' . htmlspecialchars($server_short) . '</span>';
                     }
                     if ($has_country && $country !== '') {
                         echo '<span class="badge badge-attempts" style="background:#ecfeff; color:#0e7490;">' . htmlspecialchars($country) . '</span>';
@@ -1569,6 +1901,9 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
                 if (!empty($item['details']['err'])) {
                     echo '<div class="error-msg">⚠️ ' . htmlspecialchars($item['details']['err']) . '</div>';
                 }
+                if (empty($item['is_success']) && !empty($item['has_success_log'])) {
+                    echo '<div class="error-msg">⚠️ ' . htmlspecialchars('success信息存在但未满足最终成功条件(需要forpay_new/forpay/notify/success四个日志都存在)') . '</div>';
+                }
                 echo '</div>';
                 echo '<div style="text-align:right; min-width:120px;">';
                 echo '<div style="font-size:16px; font-weight:800;">';
@@ -1578,7 +1913,9 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
                 if ($item['details']['usd_amt'] > 0) {
                     echo '<div style="font-size:12px; color:#94a3b8; margin-bottom:4px;">≈$' . format_money($item['details']['usd_amt']) . '</div>';
                 }
-                echo '<span class="badge" style="background:' . ($item['is_success'] ? '#ecfdf5' : '#f8fafc') . '; color:' . ($item['is_success'] ? '#059669' : '#64748b') . ';">' . ($item['is_success'] ? 'SUCCESS' : 'INCOMPLETE') . '</span>';
+                $is_pending = (!empty($item['has_success_log']) && empty($item['is_success']));
+                $st_text = (!empty($item['is_success']) ? 'SUCCESS' : ($is_pending ? 'PENDING' : 'INCOMPLETE'));
+                echo '<span class="badge" style="background:' . (!empty($item['is_success']) ? '#ecfdf5' : '#f8fafc') . '; color:' . (!empty($item['is_success']) ? '#059669' : '#64748b') . ';">' . $st_text . '</span>';
                 echo '</div>';
                 echo '</div>';
                 echo '<div class="log-section" id="log_' . $no . '">';
@@ -1598,11 +1935,17 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
         // 成功/失败大分组折叠
         $grouped_orders = [
             'success' => [],
+            'pending' => [],
             'fail' => []
         ];
         foreach ($analysis_data as $no => $item) {
-            if ($item['is_success']) {
+            if (!order_matches_status_filter($item, $status_filter)) {
+                continue;
+            }
+            if (!empty($item['is_success'])) {
                 $grouped_orders['success'][$no] = $item;
+            } elseif (!empty($item['has_success_log'])) {
+                $grouped_orders['pending'][$no] = $item;
             } else {
                 $grouped_orders['fail'][$no] = $item;
             }
@@ -1615,13 +1958,22 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
 
         $group_titles = [
             'success' => '✅ 成功订单',
+            'pending' => '🟨 待定订单',
             'fail' => '❌ 失败订单'
         ];
         foreach ($grouped_orders as $group_key => $orders) {
+            if (($status_filter === 'success' || $status_filter === 'pending' || $status_filter === 'fail') && $group_key !== $status_filter) {
+                continue;
+            }
+            if (empty($orders)) {
+                continue;
+            }
             $group_id = 'order_group_' . $group_key;
-            echo '<div class="order-item" id="' . $group_id . '_wrap" data-order-group-wrap="' . $group_key . '" style="border-left:5px solid ' . ($group_key == 'success' ? '#10b981' : '#ef4444') . '; margin-bottom:18px;">';
+            $border = ($group_key === 'success' ? '#10b981' : ($group_key === 'pending' ? '#f59e0b' : '#ef4444'));
+            $color = ($group_key === 'success' ? '#10b981' : ($group_key === 'pending' ? '#b45309' : '#ef4444'));
+            echo '<div class="order-item" id="' . $group_id . '_wrap" data-order-group-wrap="' . $group_key . '" style="border-left:5px solid ' . $border . '; margin-bottom:18px;">';
             echo '<div class="order-main" data-order-group-header="' . $group_key . '" style="cursor:pointer;user-select:none;" onclick="var el=document.getElementById(\'' . $group_id . '\');el.style.display=(el.style.display==\'none\'?\'block\':\'none\');">';
-            echo '<span style="font-size:15px; font-weight:bold; color:' . ($group_key == 'success' ? '#10b981' : '#ef4444') . ';">' . $group_titles[$group_key] . '</span>';
+            echo '<span style="font-size:15px; font-weight:bold; color:' . $color . ';">' . $group_titles[$group_key] . '</span>';
             $filtered_cnt = 0;
             foreach ($orders as $no0 => $it0) {
                 $oi0 = get_owner_info_for_domain($it0['domain'] ?? '', $domain_owner_map);
@@ -1635,7 +1987,9 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
             echo '<span style="margin-left:10px; color:#64748b; font-size:13px;">点击展开/收起</span>';
             echo '</div>';
             echo '</div>';
-            $default_open = ($group_key === 'fail' && $status_filter !== 'success') || ($group_key === 'success' && $status_filter === 'success');
+            $default_open = ($group_key === 'fail' && $status_filter !== 'success' && $status_filter !== 'pending')
+                || ($group_key === 'success' && $status_filter === 'success')
+                || ($group_key === 'pending' && $status_filter === 'pending');
             echo '<div id="' . $group_id . '" data-order-group-body="' . $group_key . '" style="display:' . ($default_open ? 'block' : 'none') . ';">';
             foreach ($orders as $no => $item) {
                 $dom_key = normalize_domain_key($item['domain'] ?? '');
@@ -1653,14 +2007,22 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
                 $order_index++;
                 echo '<strong style="font-size:15px;">' . htmlspecialchars($item['domain']) . '</strong>';
                 echo '<button type="button" class="copy-domain-btn" data-copy-domain="' . htmlspecialchars($item['domain']) . '">复制域名</button>';
-                if ($has_people || $has_country || $has_category || $has_date) {
+                if ($has_people || $has_country || $has_category || $has_date || $has_server) {
                     $country = $owner ? trim((string)($owner['country'] ?? '')) : '';
                     $category = $owner ? trim((string)($owner['category'] ?? '')) : '';
                     $date = $owner ? trim((string)($owner['date'] ?? '')) : '';
+                    $server = $owner ? trim((string)($owner['server'] ?? '')) : '';
+                    $server_short = '';
+                    if ($server !== '' && preg_match('/^\s*(.)/us', $server, $m)) {
+                        $server_short = $m[1];
+                    }
                     if ($people !== '') {
                         echo '<span class="badge badge-attempts" style="background:#eef2ff; color:#4f46e5;">人员:' . htmlspecialchars($people) . '</span>';
                     } else {
                         echo '<span class="badge badge-attempts" style="background:#fff7ed; color:#c2410c;">人员:未匹配</span>';
+                    }
+                    if ($has_server && $server_short !== '') {
+                        echo '<span class="badge badge-attempts" style="background:#fefce8; color:#a16207;">服务器:' . htmlspecialchars($server_short) . '</span>';
                     }
                     if ($has_country && $country !== '') {
                         echo '<span class="badge badge-attempts" style="background:#ecfeff; color:#0e7490;">' . htmlspecialchars($country) . '</span>';
@@ -1669,7 +2031,7 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
                         echo '<span class="badge badge-attempts" style="background:#f0fdf4; color:#166534;">' . htmlspecialchars($category) . '</span>';
                     }
                     if ($has_date && $date !== '') {
-                        echo '<span class="badge badge-attempts" style="background:#f1f5f9; color:#334155;">建站日期:' . htmlspecialchars($date) . '</span>';
+                        echo '<span class="badge badge-attempts" style="background:#f1f5f9; color:#334155;">' . htmlspecialchars($date) . '</span>';
                     }
                 }
                 $notify_cnt = (int)($item['details']['notify_count'] ?? 0);
@@ -1688,7 +2050,9 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
                 if ($item['details']['usd_amt'] > 0) {
                     echo '<div style="font-size:12px; color:#94a3b8; margin-bottom:4px;">≈$' . format_money($item['details']['usd_amt']) . '</div>';
                 }
-                echo '<span class="badge" style="background:' . ($item['is_success'] ? '#ecfdf5' : '#f8fafc') . '; color:' . ($item['is_success'] ? '#059669' : '#64748b') . ';">' . ($item['is_success'] ? 'SUCCESS' : 'INCOMPLETE') . '</span>';
+                $is_pending = (!empty($item['has_success_log']) && empty($item['is_success']));
+                $st_text = (!empty($item['is_success']) ? 'SUCCESS' : ($is_pending ? 'PENDING' : 'INCOMPLETE'));
+                echo '<span class="badge" style="background:' . (!empty($item['is_success']) ? '#ecfdf5' : '#f8fafc') . '; color:' . (!empty($item['is_success']) ? '#059669' : '#64748b') . ';">' . $st_text . '</span>';
                 echo '</div>';
                 echo '</div>';
                 echo '<div class="log-section" id="log_' . $no . '">';
@@ -2104,6 +2468,10 @@ if ($is_partial_analysis) {
                 grid-template-columns: auto 1fr;
                 align-items: center;
             }
+
+            .order-filter-controls {
+                flex-wrap: nowrap;
+            }
         }
 
         .order-filter-title {
@@ -2124,6 +2492,10 @@ if ($is_partial_analysis) {
 
         .order-filter-controls select {
             min-width: 110px;
+        }
+
+        .order-filter-note {
+            grid-column: 1 / -1;
         }
 
         @media (max-width: 520px) {
@@ -2176,7 +2548,8 @@ if ($is_partial_analysis) {
 
         @media (min-width: 768px) {
             .stats-overview {
-                grid-template-columns: repeat(5, 1fr);
+                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                align-items: stretch;
             }
         }
 
@@ -2195,12 +2568,15 @@ if ($is_partial_analysis) {
             font-weight: 600;
             display: block;
             margin-bottom: 4px;
+            line-height: 1.2;
         }
 
         .overview-card .value {
             font-size: 20px;
             font-weight: 800;
             color: var(--dark);
+            line-height: 1.15;
+            word-break: break-word;
         }
 
         /* 布局主区域 */
@@ -2653,18 +3029,18 @@ if ($is_partial_analysis) {
 
                 </small></h2>
                 <div style="display: flex; gap: 10px; align-items: center;">
-                    <div style="background: rgba(255,255,255,0.1); padding: 4px; border-radius: 10px; display: flex; align-items:center; gap:6px;">
+                    <div id="mainDatePickerWrap" style="background: rgba(255,255,255,0.1); padding: 4px; border-radius: 10px; display: flex; align-items:center; gap:6px; cursor:pointer;">
                         <a href="?token=<?= $access_token ?>&date=<?= $prev_date ?>&mode=<?= $view_mode ?>"
                             class="nav-btn" data-nav-date="<?= $prev_date ?>" onclick="if(window.__ordersSetDate){event.preventDefault();event.stopPropagation();window.__ordersSetDate('<?= $prev_date ?>');return false;}" style="background:transparent; padding:8px;">«</a>
                         <input type="date" id="mainDatePicker" value="<?= $log_date ?>"
                             onchange="window.__ordersSetDate ? window.__ordersSetDate(this.value) : (location.href='?token=<?= $access_token ?>&mode=<?= $view_mode ?>&date='+this.value)"
-                            style="background:transparent; border:none; color:white; font-weight:bold; width:130px; text-align:center;">
+                            style="background:transparent; border:none; color:white; font-weight:bold; width:130px; text-align:center; cursor:pointer;">
                         <a href="?token=<?= $access_token ?>&date=<?= $next_date ?>&mode=<?= $view_mode ?>"
                             class="nav-btn" data-nav-date="<?= $next_date ?>" onclick="if(window.__ordersSetDate){event.preventDefault();event.stopPropagation();window.__ordersSetDate('<?= $next_date ?>');return false;}" style="background:transparent; padding:8px;">»</a>
                         <button type="button" class="nav-btn" id="quickTodayBtn" style="font-size:12px;">今天</button>
                         <button type="button" class="nav-btn" id="quickPickBtn" style="font-size:12px;">选择日期…</button>
                     </div>
-                    <a href="?<?= http_build_query(array_merge($_GET, ['mode' => 'analysis'])) ?>"
+                    <a href="?<?= http_build_query(array_merge($_GET, ['mode' => 'analysis'])) ?>" id="goAnalysisBtn"
                         class="nav-btn <?= $view_mode == 'analysis' ? 'active' : '' ?>">📊 分析</a>
                     <a href="?<?= http_build_query(array_merge($_GET, ['mode' => 'raw'])) ?>"
                         class="nav-btn <?= $view_mode == 'raw' ? 'active' : '' ?>">📝 源码</a>
@@ -2793,8 +3169,55 @@ if ($is_partial_analysis) {
         // 日期选择器增强：弹窗日历和快速跳转
         document.addEventListener('DOMContentLoaded', function() {
             const mainDatePicker = document.getElementById('mainDatePicker');
+            const mainDatePickerWrap = document.getElementById('mainDatePickerWrap');
             const quickTodayBtn = document.getElementById('quickTodayBtn');
             const quickPickBtn = document.getElementById('quickPickBtn');
+            const goAnalysisBtn = document.getElementById('goAnalysisBtn');
+
+            if (mainDatePicker) {
+                mainDatePicker.addEventListener('click', function(e) {
+                    try { if (e) e.stopPropagation(); } catch (e0) {}
+                    try {
+                        mainDatePicker.showPicker ? mainDatePicker.showPicker() : mainDatePicker.focus();
+                    } catch (e2) {
+                        try { mainDatePicker.focus(); } catch (e3) {}
+                    }
+                }, true);
+            }
+
+            if (mainDatePickerWrap && mainDatePicker) {
+                mainDatePickerWrap.addEventListener('click', function(e) {
+                    const t = e && e.target ? e.target : null;
+                    if (t && t.closest && t.closest('a,button,input,select,textarea')) return;
+                    try {
+                        mainDatePicker.showPicker ? mainDatePicker.showPicker() : mainDatePicker.focus();
+                    } catch (e2) {
+                        try { mainDatePicker.focus(); } catch (e3) {}
+                    }
+                }, true);
+            }
+
+            if (goAnalysisBtn && mainDatePicker) {
+                goAnalysisBtn.addEventListener('click', function(e) {
+                    const v = (mainDatePicker.value || '').toString();
+                    if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (window.__ordersSetDate) {
+                        window.__ordersSetDate(v);
+                        return;
+                    }
+                    try {
+                        const u = new URL(location.href);
+                        u.searchParams.set('mode', 'analysis');
+                        u.searchParams.set('date', v);
+                        u.searchParams.delete('partial');
+                        location.href = u.toString();
+                    } catch (e2) {
+                        location.href = `?token=<?= $access_token ?>&mode=analysis&date=${v}`;
+                    }
+                }, true);
+            }
             if (quickTodayBtn) {
                 quickTodayBtn.onclick = function() {
                     const today = new Date();
@@ -2858,6 +3281,16 @@ if ($is_partial_analysis) {
         })();
 
         (function() {
+            try {
+                if (document.getElementById('miniSpinnerKeyframes')) return;
+                const style = document.createElement('style');
+                style.id = 'miniSpinnerKeyframes';
+                style.textContent = '@keyframes miniSpin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}.mini-spinner{animation:miniSpin 0.9s linear infinite;}';
+                document.head.appendChild(style);
+            } catch (e) {}
+        })();
+
+        (function() {
             function setCollapsed(cardEl, collapsed) {
                 if (!cardEl) return;
                 const body = cardEl.querySelector('[data-collapsible-card-body]');
@@ -2896,7 +3329,7 @@ if ($is_partial_analysis) {
                             collapsed = window.__rangeRevenueDesiredCollapsed;
                             try { delete window.__rangeRevenueDesiredCollapsed; } catch (e) { window.__rangeRevenueDesiredCollapsed = undefined; }
                         } else {
-                            collapsed = true;
+                            collapsed = false;
                         }
                     }
 
@@ -3506,6 +3939,13 @@ if ($is_partial_analysis) {
             if (!canvas || !revenueData || !Array.isArray(revenueData)) return;
             const ctx = canvas.getContext('2d');
 
+            try {
+                const loadingEl = document.getElementById('revenueChartLoading');
+                const contentEl = document.getElementById('revenueChartContent');
+                if (loadingEl) loadingEl.style.display = 'none';
+                if (contentEl) contentEl.style.display = 'block';
+            } catch (e) {}
+
             const data = revenueData;
             const showLabel = (data.length <= 5);
             const isPreview = !!(opts && opts.preview);
@@ -3560,6 +4000,9 @@ if ($is_partial_analysis) {
                     if (window.revenueChartInstance.data.datasets && window.revenueChartInstance.data.datasets[1]) {
                         window.revenueChartInstance.data.datasets[1].data = conversionSeries;
                     }
+                    if (window.revenueChartInstance.data.datasets && window.revenueChartInstance.data.datasets[2]) {
+                        window.revenueChartInstance.data.datasets[2].data = attemptsSeries;
+                    }
                     window.revenueChartInstance.__rawData = data;
                     if (window.revenueChartInstance.options && window.revenueChartInstance.options.plugins && window.revenueChartInstance.options.plugins.datalabels) {
                         window.revenueChartInstance.options.plugins.datalabels.display = showLabel;
@@ -3613,11 +4056,11 @@ if ($is_partial_analysis) {
                 data: {
                     labels: labels,
                     datasets: [{
-                        label: '日总营收参考',
+                        label: '营收(USD)',
                         data: usdSeries,
                         borderColor: '#6366f1',
-                        backgroundColor: 'rgba(99,102,241,0.08)',
-                        fill: true,
+                        backgroundColor: 'transparent',
+                        fill: false,
                         tension: 0.3,
                         pointRadius: pointR,
                         pointHoverRadius: pointHoverR,
@@ -3642,6 +4085,21 @@ if ($is_partial_analysis) {
                         pointBorderColor: '#fff',
                         borderWidth: 2,
                         borderDash: [4, 4]
+                    },
+                    {
+                        label: '尝试次数',
+                        data: attemptsSeries,
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16,185,129,0.05)',
+                        fill: false,
+                        tension: 0.3,
+                        yAxisID: 'y2',
+                        pointRadius: pointR,
+                        pointHoverRadius: pointHoverR,
+                        pointHitRadius: pointHitR,
+                        pointBackgroundColor: '#10b981',
+                        pointBorderColor: '#fff',
+                        borderWidth: 2
                     }]
                 },
                 options: {
@@ -3649,7 +4107,11 @@ if ($is_partial_analysis) {
                     maintainAspectRatio: false,
                     animation: isPreview ? false : undefined,
                     plugins: {
-                        legend: { display: false },
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: { usePointStyle: true, boxSize: 6 }
+                        },
                         tooltip: {
                             callbacks: {
                                 label: function(context) {
@@ -3662,6 +4124,9 @@ if ($is_partial_analysis) {
                                         } catch (e) {
                                             return '转化率: ' + context.parsed.y.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%';
                                         }
+                                    }
+                                    if (context.datasetIndex === 2) {
+                                        return '尝试次数: ' + context.parsed.y.toLocaleString();
                                     }
                                     return '金额: $' + context.parsed.y.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                                 }
@@ -3682,16 +4147,39 @@ if ($is_partial_analysis) {
                         intersect: false
                     },
                     scales: {
-                        y: { beginAtZero: true, grid: { color: '#f1f5f9' } },
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: '#f1f5f9' },
+                            ticks: { color: '#6366f1' }
+                        },
                         y1: {
                             beginAtZero: true,
                             position: 'right',
                             grid: { drawOnChartArea: false },
                             ticks: {
+                                color: '#f59e0b',
                                 callback: function(value) { return value + '%'; }
                             }
                         },
-                        x: { grid: { display: false } }
+                        y2: {
+                            beginAtZero: true,
+                            position: 'right',
+                            grid: { drawOnChartArea: false },
+                            ticks: {
+                                color: '#10b981',
+                                callback: function(value) { return value; }
+                            }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: {
+                                color: '#64748b',
+                                maxRotation: 35,
+                                minRotation: 0,
+                                autoSkip: true,
+                                maxTicksLimit: (labels && labels.length > 8) ? 6 : 8
+                            }
+                        }
                     }
                 }
             });
@@ -3701,6 +4189,13 @@ if ($is_partial_analysis) {
             const form = document.getElementById('rangeRevenueForm');
             const container = document.getElementById('revenueChartContainer');
             if (!form || !container) return;
+
+            try {
+                const loadingEl = document.getElementById('revenueChartLoading');
+                const contentEl = document.getElementById('revenueChartContent');
+                if (loadingEl) loadingEl.style.display = 'flex';
+                if (contentEl) contentEl.style.display = 'none';
+            } catch (e) {}
 
             const startInput = form.querySelector('input[name="range_start"]');
             const endInput = form.querySelector('input[name="range_end"]');
@@ -3908,6 +4403,13 @@ if ($is_partial_analysis) {
 
             let controller = null;
             function fetchAndUpdate() {
+                try {
+                    const loadingEl = document.getElementById('revenueChartLoading');
+                    const contentEl = document.getElementById('revenueChartContent');
+                    if (loadingEl) loadingEl.style.display = 'flex';
+                    if (contentEl) contentEl.style.display = 'none';
+                } catch (e) {}
+
                 const url = new URL(location.href);
                 const fd = new FormData(form);
                 const token = (fd.get('token') || '').toString();
@@ -3959,6 +4461,13 @@ if ($is_partial_analysis) {
 
                     syncSlidersFromInputs();
                     scheduleLocalPreviewRender();
+
+                    try {
+                        const loadingEl = document.getElementById('revenueChartLoading');
+                        const contentEl = document.getElementById('revenueChartContent');
+                        if (loadingEl) loadingEl.style.display = 'none';
+                        if (contentEl) contentEl.style.display = 'block';
+                    } catch (e) {}
 
                     try { if (typeof window.__syncExportRangeFromCurrent === 'function') window.__syncExportRangeFromCurrent(); } catch (e) {}
                 })

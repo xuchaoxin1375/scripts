@@ -1331,10 +1331,18 @@ function Update-WpFunctionsphpOnServers
     } 
     
 }
+
 function Get-WpOrdersByEmailOnServers
 {
+    <# 
+    根据订单邮箱到服务器中查询相关订单
+    .PARAMETER Input
+    输入被查询的邮箱列表,可以指定文件或直接输入邮箱字符串(多行字符串)
+    代码会判断输入是否为文件路径,如果是文件路径则读取文件内容,否则直接将收入保存到文件中,然后统一按照解析文件的路径处理.
+    注意,此操作会将emails.txt上传到相关服务器中.
+    #>
     param (
-        [Alias('Email')]$Path = "$desktop/emails.txt",
+        [Alias('Email', 'Path')]$Inputs = "$desktop/emails.txt",
         $ServerConfig = $server_config,
         $WorkingDirectory = '/www/',
         $scriptPath = "/www/sh/check_order_email.sh",
@@ -1343,7 +1351,16 @@ function Get-WpOrdersByEmailOnServers
         
     )
     $servers = Get-ServerList -Path $ServerConfig
-
+    $Path = "$desktop/emails.txt"
+    if(Test-Path $Inputs)
+    {
+        Write-Verbose "Input source is a file,nothing more to do."
+    }
+    else
+    {
+        Write-Warning "Input source is not a file,write-output to file:[$Path]"
+        $Inputs | Set-Content $Path 
+    }
     $jobs = @()
     foreach ($server in $servers)
     {

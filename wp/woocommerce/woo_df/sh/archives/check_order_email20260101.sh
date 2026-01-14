@@ -8,9 +8,7 @@ DB_HOST="localhost"
 
 TMP_DB_LIST="/tmp/db_list.txt"
 OUTPUT_FILE="found_orders.csv"
-THREADS=64   # 默认并行数
-
-ERROR_LOG="/tmp/check_order_email_errors.log"
+THREADS=80   # 默认并行数
 
 EMAILS=()
 
@@ -52,31 +50,15 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ================== 邮箱来源 ==================
-
-# 兼容Windows换行，去除首尾空白，跳过空行和#开头行，提高容错能力
 if [[ -n "$ARG_EMAIL_FILE" ]]; then
     if [[ ! -f "$ARG_EMAIL_FILE" ]]; then
         echo "❌ 邮箱文件不存在: $ARG_EMAIL_FILE"
         exit 1
     fi
     while IFS= read -r line || [[ -n "$line" ]]; do
-        # 去除Windows换行符和首尾空白
-        line="$(echo "$line" | tr -d '\r' | xargs)"
-        # 跳过空行、#开头（忽略前导空格）、无@行
-        if [[ -z "$line" ]]; then
-            continue
-        fi
-        # 判断是否为注释行（允许前导空格）
-        if [[ "$line" =~ ^[[:space:]]*# ]]; then
-            continue
-        fi
-        # 跳过无@的行
-        if [[ "$line" != *"@"* ]]; then
-            continue
-        fi
-        # 简单邮箱格式校验（可选）
-        if ! [[ "$line" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
-            echo "⚠️  跳过格式异常的邮箱: $line" >&2
+        line="$(echo "$line" | xargs)"   # 去掉首尾空格
+        # 跳过空行、注释行（忽略前导空格）、无@行
+        if [[ -z "$line" ]] || [[ "$line" =~ ^[[:space:]]*# ]] || [[ "$line" != *"@"* ]]; then
             continue
         fi
         EMAILS+=("$line")
@@ -90,8 +72,8 @@ fi
 
 # ================== 执行查询 ==================
 true > "$OUTPUT_FILE"
+ls -l "$OUTPUT_FILE"
 echo "🔍 开始并行查询所有数据库 (线程数: $THREADS)..."
-true > "$ERROR_LOG"
 
 csv_escape() {
     local s
@@ -124,41 +106,20 @@ query_db() {
 
     EMAIL_RAW="$(printf '%s' "$EMAIL" | xargs)"
     EMAIL_NORM="$(printf '%s' "$EMAIL_RAW" | tr '[:upper:]' '[:lower:]')"
+
     EMAIL_RAW_ESC=${EMAIL_RAW//"'"/"\\'"}
     EMAIL_NORM_ESC=${EMAIL_NORM//"'"/"\\'"}
 
-    : >> "$ERROR_LOG"
-
-    mysql_query() {
-        local sql="$1"
-        local tries=3
-        local attempt=1
-        local out
-        while [ "$attempt" -le "$tries" ]; do
-            out=$(mysql \
-                --connect-timeout=5 \
-                -u "$DB_USER" -p"$DB_PASS" -h "$DB_HOST" \
-                -Nse "$sql" 2>>"$ERROR_LOG") && { printf '%s' "$out"; return 0; }
-            sleep "0.$((attempt * 5))"
-            attempt=$((attempt + 1))
-        done
-        return 1
-    }
-
-    TABLES_LINE=$(mysql_query "
+    TABLES_LINE=$(mysql -u "$DB_USER" -p"$DB_PASS" -h "$DB_HOST" -Nse "
         SELECT
           (SELECT table_name FROM information_schema.tables WHERE table_schema = '$DB_NAME' AND table_name LIKE '%wc_orders%' ORDER BY (table_name = 'wp_wc_orders') DESC, table_name LIMIT 1) AS wc_orders,
           (SELECT table_name FROM information_schema.tables WHERE table_schema = '$DB_NAME' AND table_name LIKE '%wc_order_addresses%' ORDER BY (table_name = 'wp_wc_order_addresses') DESC, table_name LIMIT 1) AS wc_order_addresses,
           (SELECT table_name FROM information_schema.tables WHERE table_schema = '$DB_NAME' AND table_name LIKE '%postmeta%' ORDER BY (table_name = 'wp_postmeta') DESC, table_name LIMIT 1) AS postmeta,
           (SELECT table_name FROM information_schema.tables WHERE table_schema = '$DB_NAME' AND table_name LIKE '%posts%' ORDER BY (table_name = 'wp_posts') DESC, table_name LIMIT 1) AS posts,
           (SELECT table_name FROM information_schema.tables WHERE table_schema = '$DB_NAME' AND table_name LIKE '%users%' ORDER BY (table_name = 'wp_users') DESC, table_name LIMIT 1) AS users;
-    " | head -n 1 || true)
+    " 2>/dev/null | head -n 1 || true)
 
     IFS=$'\t' read -r WC_ORDERS_TABLE WC_ADDR_TABLE POSTMETA_TABLE POSTS_TABLE USERS_TABLE <<< "${TABLES_LINE:-}"
-
-    if [ -z "${WC_ORDERS_TABLE:-}" ] && [ -z "${POSTMETA_TABLE:-}" ] && [ -z "${POSTS_TABLE:-}" ]; then
-        return
-    fi
 
     build_sql() {
         MODE="$1"
@@ -215,7 +176,7 @@ query_db() {
 
     SQL_EXACT=$(build_sql "exact")
     if [ -n "$SQL_EXACT" ]; then
-        RESULT=$(mysql_query "$SQL_EXACT" || true)
+        RESULT=$(mysql -u "$DB_USER" -p"$DB_PASS" -h "$DB_HOST" -Nse "$SQL_EXACT" 2>/dev/null)
     else
         RESULT=""
     fi
@@ -223,33 +184,30 @@ query_db() {
     if [ -z "$RESULT" ]; then
         SQL_NORM=$(build_sql "norm")
         if [ -n "$SQL_NORM" ]; then
-            RESULT=$(mysql_query "$SQL_NORM" || true)
+            RESULT=$(mysql -u "$DB_USER" -p"$DB_PASS" -h "$DB_HOST" -Nse "$SQL_NORM" 2>/dev/null)
         fi
     fi
 
     if [ -n "$RESULT" ]; then
         echo "✅ 数据库: $DB_NAME 找到邮箱 $EMAIL 的订单"
-        (
-            flock -x 200
+        while IFS=$'\t' read -r ORDER_ID CREATED_GMT STATUS ; do
+            if [ -z "${ORDER_ID:-}" ]; then
+                continue
+            fi
             {
-                while IFS=$'\t' read -r ORDER_ID CREATED_GMT STATUS ; do
-                    if [ -z "${ORDER_ID:-}" ]; then
-                        continue
-                    fi
-                    csv_escape "$EMAIL"; printf ','
-                    csv_escape "$DOMAIN"; printf ','
-                    csv_escape "$DB_NAME"; printf ','
-                    csv_escape "$ORDER_ID"; printf ','
-                    csv_escape "$CREATED_GMT"; printf ','
-                    csv_escape "$STATUS"; printf '\n'
-                done <<< "$RESULT"
+                csv_escape "$EMAIL"; printf ','
+                csv_escape "$DOMAIN"; printf ','
+                csv_escape "$DB_NAME"; printf ','
+                csv_escape "$ORDER_ID"; printf ','
+                csv_escape "$CREATED_GMT"; printf ','
+                csv_escape "$STATUS"; printf '\n'
             } >> "$OUTPUT_FILE"
-        ) 200>"${OUTPUT_FILE}.lock"
+        done <<< "$RESULT"
     fi
 }
 
 export -f query_db
-export DB_USER DB_PASS DB_HOST OUTPUT_FILE ERROR_LOG
+export DB_USER DB_PASS DB_HOST OUTPUT_FILE
 
 EMAIL_TOTAL=${#EMAILS[@]}
 EMAIL_IDX=0
@@ -257,7 +215,7 @@ EMAIL_IDX=0
 for EMAIL in "${EMAILS[@]}"; do
     EMAIL_IDX=$((EMAIL_IDX+1))
     echo "📧 正在查询第 $EMAIL_IDX/$EMAIL_TOTAL 个邮箱: $EMAIL"
-    parallel --jobs "$THREADS" query_db :::: "$TMP_DB_LIST" ::: "$EMAIL"
+    parallel --jobs "$THREADS" query_db ::: "$(cat "$TMP_DB_LIST")" ::: "$EMAIL"
 done
 
 echo "🎈 查询完成，结果已保存至: $OUTPUT_FILE"
