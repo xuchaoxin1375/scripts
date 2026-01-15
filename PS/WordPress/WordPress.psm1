@@ -1435,6 +1435,33 @@ function Get-WpOrdersByEmailOnServers
     Write-Host "open result file ..."
     Start-Process $uniqueRes
 }
+function Update-ServerRepos
+{
+    <# 
+    .SYNOPSIS
+    批量运行服务器上的某个脚本(bash 命令行)
+    采用线程池的方式对所有服务器执行相同的命令行
+    .NOTES
+    使用ssh -n -T root@$server "command line"的方式执行命令行
+    .PARAMETER ServerConfig
+    服务器配置文件路径
+    #>
+    param (
+        $ServerConfig = $server_config,
+        $WorkingDirectory = '/www/',
+        $cmd = "/update_repos.sh -c"
+    )
+    $servers = Get-ServerList -Path $ServerConfig
+    $jobs = @()
+    foreach ($server in $servers.ip)
+    {
+        $jobs += Start-ThreadJob -script { ssh -n -T root@$using:server "cd $using:WorkingDirectory && bash $using:cmd" }
+    }
+    Start-Sleep 1
+    $jobs | Get-Job
+    $jobs | Receive-Job -Wait
+    
+}
 function Update-WpPluginsDFOnServers
 {
     <# 

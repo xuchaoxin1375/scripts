@@ -13,6 +13,10 @@ THREADS=64   # 默认并行数
 ERROR_LOG="/tmp/check_order_email_errors.log"
 
 EMAILS=()
+ip=$(curl -sm 5 ipinfo.io | grep -Po '"ip": "\K[^"]*')
+# echo "IP: $ip"
+# 查询前清空结果(如果文件不存在,则会创建一个空文件)
+echo "" > "$OUTPUT_FILE"
 
 # ================== 帮助信息函数 ==================
 show_help() {
@@ -260,5 +264,6 @@ for EMAIL in "${EMAILS[@]}"; do
     parallel --jobs "$THREADS" query_db :::: "$TMP_DB_LIST" ::: "$EMAIL"
 done
 
-echo "🎈 查询完成，结果已保存至: $OUTPUT_FILE"
+echo "server[$(hostname):$ip] complete query task."
+echo "查询结束，结果已保存至: $OUTPUT_FILE"
 cat "$OUTPUT_FILE"

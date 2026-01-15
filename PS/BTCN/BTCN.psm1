@@ -475,9 +475,14 @@ function Get-CRLFChecker
     
     .DESCRIPTION
     多行文本将被视为一行,CR,LF(\r,\n)将被显示为[CR],[LF]
+
     .EXAMPLE
     # 将readme.md文件中的回车符\r移除(保留换行符\n),使得文本文件LF化
     Get-CRLFChecker .\readme.md -ConvertToLFStyle -Replace
+    .EXAMPLE
+    批量处理多个文件(借助ls和管道符)
+    ls *.sh | Get-CRLFChecker -ConvertToLFStyle -Replace
+    
     #>
     [CmdletBinding()]
     param (

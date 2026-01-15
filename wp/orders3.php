@@ -1,6 +1,6 @@
 <?php
 // ====== 配置与权限控制 ======
-// v1.0.20260113
+$APP_VERSION = 'v1.5.20260115';
 $access_token = 'cxxu';
 $current_token = $_GET['token'] ?? '';
 if ($current_token !== $access_token) {
@@ -17,6 +17,117 @@ $CSV_HEADER_CANDIDATES = [
     'server' => ['服务器', 'server'],
 ];
 
+// 调试csv读取解析(是否写入日志文件,如果启用,还可以记录什么时候此页面被访问了)
+$ORDERS3_LOG_CSV_FIELDS = false;
+$ORDERS3_CSV_FIELDS_LOG_PATH = __DIR__ . '/orders3_csv_fields.log';
+
+// Print FX warnings at most once per request for the same key to avoid log spam.
+function fx_warn_once($key, $message)
+{
+    static $warned = [];
+    $k = (string)$key;
+    if ($k === '') return;
+    if (isset($warned[$k])) return;
+    $warned[$k] = true;
+    error_log((string)$message);
+}
+
+// Fetch exchange rate online. Returns USD per 1 unit of base currency (mid), or null on failure.
+function fx_fetch_rate_online($base_currency, $target_currency)
+{
+    static $cache = [];
+    $base = strtoupper(trim((string)$base_currency));
+    $target = strtoupper(trim((string)$target_currency));
+    if ($base === '' || $target === '' || $base === $target) return 1.0;
+    $cache_key = $base . '->' . $target;
+    if (isset($cache[$cache_key])) return $cache[$cache_key];
+
+    $url = 'https://hexarate.paikama.co/api/rates/' . rawurlencode($base) . '/' . rawurlencode($target) . '/latest';
+    $body = '';
+    if (function_exists('curl_init')) {
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 2);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 3);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+        curl_setopt($ch, CURLOPT_USERAGENT, 'orders3.php fx');
+        $resp = curl_exec($ch);
+        if (is_string($resp)) {
+            $body = $resp;
+        }
+        curl_close($ch);
+    } else {
+        $ctx = stream_context_create([
+            'http' => [
+                'method' => 'GET',
+                'timeout' => 3,
+                'header' => "User-Agent: orders3.php fx\r\n",
+            ],
+        ]);
+        $resp = @file_get_contents($url, false, $ctx);
+        if (is_string($resp)) {
+            $body = $resp;
+        }
+    }
+
+    if ($body !== '') {
+        $j = json_decode($body, true);
+        $mid = $j['data']['mid'] ?? null;
+        $status_code = $j['status_code'] ?? null;
+        if (($status_code === 200 || $status_code === '200') && $mid !== null && is_numeric($mid)) {
+            $cache[$cache_key] = (float)$mid;
+            return $cache[$cache_key];
+        }
+    }
+
+    $cache[$cache_key] = null;
+    return null;
+}
+
+// Convert amount to USD and provide conversion basis for display/debug.
+// Returns: ['usd' => float, 'basis' => string]
+function convert_to_usd_with_basis($amount, $currency = '')
+{
+    $amt = 0.0;
+    if (is_numeric($amount)) {
+        $amt = (float)$amount;
+    } else {
+        $clean = preg_replace('/[^\d\.\-]/', '', (string)$amount);
+        $amt = $clean === '' ? 0.0 : floatval($clean);
+    }
+    $cur = strtoupper(trim((string)$currency));
+    $rates = [
+        'USD' => 1.0, 'USDT' => 1.0, 'TUSD' => 1.0,
+        'CNY' => 0.14, 'RMB' => 0.14,
+        'EUR' => 1.08, 'GBP' => 1.25, 'JPY' => 0.0067,
+        'AUD' => 0.67, 'CAD' => 0.73, 'SGD' => 0.74,
+    ];
+    if ($cur === '' || $cur === 'USD') return ['usd' => round($amt, 2), 'basis' => 'original USD'];
+    if ($cur === 'USDT' || $cur === 'TUSD') return ['usd' => round($amt, 2), 'basis' => 'stablecoin 1:1'];
+
+    $online = fx_fetch_rate_online($cur, 'USD');
+    if ($online !== null && is_numeric($online) && (float)$online > 0) {
+        return ['usd' => round($amt * (float)$online, 2), 'basis' => 'online hexarate ' . $cur . '->USD mid=' . (string)$online];
+    }
+
+    if (isset($rates[$cur])) {
+        fx_warn_once('fx_fallback_' . $cur, '[FX-FALLBACK] online rate unavailable for ' . $cur . '->USD, using built-in estimate rate=' . $rates[$cur]);
+        return ['usd' => round($amt * $rates[$cur], 2), 'basis' => 'built-in ' . $cur . '->USD rate=' . (string)$rates[$cur]];
+    }
+
+    fx_warn_once('fx_unknown_' . $cur, '[FX-UNKNOWN] unknown currency=' . $cur . ', cannot convert to USD, returning 0');
+    return ['usd' => 0.0, 'basis' => 'unknown currency'];
+}
+
+// Backward compatible: only returns USD amount.
+function convert_to_usd($amount, $currency = '')
+{
+    $r = convert_to_usd_with_basis($amount, $currency);
+    return (float)($r['usd'] ?? 0.0);
+}
+
 function order_matches_status_filter($item, $status_filter)
 {
     $sf = (string)$status_filter;
@@ -24,11 +135,15 @@ function order_matches_status_filter($item, $status_filter)
     $is_success = !empty($item['is_success']);
     $has_success_log = !empty($item['has_success_log']);
     $is_pending = ($has_success_log && !$is_success);
+    $pending_as_success = true;
+    if (isset($_GET['pending_as_success']) && (string)$_GET['pending_as_success'] === '0') {
+        $pending_as_success = false;
+    }
     if ($sf === 'success') {
-        return $is_success;
+        return $is_success || ($pending_as_success && $is_pending);
     }
     if ($sf === 'pending') {
-        return $is_pending;
+        return (!$pending_as_success) && $is_pending;
     }
     if ($sf === 'fail') {
         return !$has_success_log;
@@ -70,7 +185,7 @@ function validate_date_range($range_start, $range_end, $min_date, $max_date)
     return '';
 }
 
-function compute_range_revenue_days($range_start, $range_end)
+function compute_range_revenue_days($range_start, $range_end, $pending_as_success = true)
 {
     $revenue_days = [];
     $cur = strtotime($range_start);
@@ -83,6 +198,7 @@ function compute_range_revenue_days($range_start, $range_end)
         $forpay_file = $date . 'forpay.log';
         $usd_sum = 0;
         $success_orders_map = [];
+        $success_orders_usd_fallback = [];
         $total_orders = 0;
         $attempts_cnt = 0;
         // 以 forpay_new 中的唯一订单号作为当日订单总量
@@ -98,12 +214,37 @@ function compute_range_revenue_days($range_start, $range_end)
         }
 
         // forpay.log：统计当日总尝试次数（仅统计属于当日订单集合的记录）
+        $forpay_orders = [];
         if (file_exists($forpay_file) && !empty($order_set)) {
             $lines = file($forpay_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
             foreach ($lines as $line) {
                 if (preg_match('/\\|(\\d+)\\|/', $line, $m)) {
                     if (isset($order_set[$m[1]])) {
                         $attempts_cnt++;
+                        $forpay_orders[$m[1]] = true;
+                    }
+                }
+            }
+        }
+
+        $notify_orders_usd = [];
+        $notify_orders_set = [];
+        if (file_exists($notify_file) && !empty($order_set)) {
+            $lines = file($notify_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+            foreach ($lines as $line) {
+                if (preg_match('/"order_no":"(\\d+)"/', $line, $m)) {
+                    $ono = $m[1];
+                    if (!isset($order_set[$ono])) continue;
+                    $notify_orders_set[$ono] = true;
+                    if ($json = strstr($line, '{')) {
+                        $d = json_decode($json, true);
+                        if (isset($d['usd_amount']) && is_numeric($d['usd_amount'])) {
+                            $notify_orders_usd[$ono] = floatval($d['usd_amount']);
+                        } else {
+                            $amt = $d['amount'] ?? 0;
+                            $curc = $d['currency'] ?? '';
+                            $notify_orders_usd[$ono] = convert_to_usd($amt, $curc);
+                        }
                     }
                 }
             }
@@ -114,33 +255,35 @@ function compute_range_revenue_days($range_start, $range_end)
             if (!empty($lines)) $lines = array_values(array_unique($lines));
             foreach ($lines as $line) {
                 if (preg_match('/order_no=(\d+)/', $line, $m)) {
-                    $success_orders_map[$m[1]] = true;
-                }
-            }
-        }
-        // 为 usd 汇总使用的可变副本
-        $success_orders_for_usd = $success_orders_map;
-        if (file_exists($notify_file) && !empty($success_orders_for_usd)) {
-            $lines = file($notify_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-            foreach ($lines as $line) {
-                if (preg_match('/"order_no":"(\d+)"/', $line, $m)) {
-                    $current_order_no = $m[1];
-                    if (!isset($success_orders_for_usd[$current_order_no])) continue;
-                    unset($success_orders_for_usd[$current_order_no]);
-                    if ($json = strstr($line, '{')) {
-                        $d = json_decode($json, true);
-                        if (isset($d['usd_amount']) && is_numeric($d['usd_amount'])) {
-                            $usd_sum += floatval($d['usd_amount']);
-                        } else {
-                            $amt = $d['amount'] ?? 0;
-                            $curc = $d['currency'] ?? '';
-                            $usd_sum += convert_to_usd($amt, $curc);
+                    $ono = $m[1];
+                    $success_orders_map[$ono] = true;
+                    if ($pending_as_success && isset($order_set[$ono])) {
+                        $parsed = parse_success_log_money($line);
+                        if ($parsed && isset($parsed['amount']) && isset($parsed['currency']) && $parsed['amount'] !== null && $parsed['currency'] !== null) {
+                            $success_orders_usd_fallback[$ono] = convert_to_usd($parsed['amount'], $parsed['currency']);
                         }
                     }
                 }
             }
         }
-        $success_cnt = count($success_orders_map);
+
+        $success_cnt = 0;
+        foreach ($success_orders_map as $ono => $_v) {
+            if (!isset($order_set[$ono])) continue;
+            $has_forpay = !empty($forpay_orders[$ono]);
+            $has_notify = !empty($notify_orders_set[$ono]);
+            $is_real_success = ($has_forpay && $has_notify);
+            $is_pending = !$is_real_success;
+            if (!$pending_as_success && $is_pending) {
+                continue;
+            }
+            $success_cnt++;
+            if (isset($notify_orders_usd[$ono])) {
+                $usd_sum += (float)$notify_orders_usd[$ono];
+            } elseif (isset($success_orders_usd_fallback[$ono])) {
+                $usd_sum += (float)$success_orders_usd_fallback[$ono];
+            }
+        }
         $conv = ($total_orders > 0) ? round(($success_cnt / $total_orders) * 100, 2) : 0;
         $revenue_days[] = [
             'date' => $date,
@@ -195,6 +338,7 @@ function export_orders_csv_range($access_token, $range_start, $range_end, $statu
         'amount',
         'currency',
         'usd_amount',
+        'usd_basis',
         'error',
         'notify_errors',
         'people',
@@ -244,7 +388,7 @@ function export_orders_csv_range($access_token, $range_start, $range_end, $statu
                     'is_success' => false,
                     'has_success_log' => false,
                     'logs' => ['forpay_new' => [$line]],
-                    'details' => ['amt' => 0, 'cur' => '', 'usd_amt' => 0, 'err' => '', 'notify_count' => 0, 'notify_errors' => []]
+                    'details' => ['amt' => 0, 'cur' => '', 'usd_amt' => 0, 'usd_basis' => '', 'err' => '', 'notify_count' => 0, 'notify_errors' => []]
                 ];
             }
         }
@@ -278,8 +422,11 @@ function export_orders_csv_range($access_token, $range_start, $range_end, $statu
                     $analysis_data[$no]['details']['cur'] = $d['currency'] ?? $analysis_data[$no]['details']['cur'];
                     if (isset($d['usd_amount']) && is_numeric($d['usd_amount'])) {
                         $analysis_data[$no]['details']['usd_amt'] = floatval($d['usd_amount']);
+                        $analysis_data[$no]['details']['usd_basis'] = 'notify.usd_amount';
                     } else {
-                        $analysis_data[$no]['details']['usd_amt'] = convert_to_usd($analysis_data[$no]['details']['amt'], $analysis_data[$no]['details']['cur']);
+                        $rfx = convert_to_usd_with_basis($analysis_data[$no]['details']['amt'], $analysis_data[$no]['details']['cur']);
+                        $analysis_data[$no]['details']['usd_amt'] = (float)($rfx['usd'] ?? 0);
+                        $analysis_data[$no]['details']['usd_basis'] = (string)($rfx['basis'] ?? '');
                     }
                     if (($d['failure_code'] ?? '') !== 'success') {
                         $err_msg = $d['failure_msg'] ?? $d['error_code'] ?? $d['msg'] ?? '';
@@ -325,7 +472,33 @@ function export_orders_csv_range($access_token, $range_start, $range_end, $statu
 
         foreach ($analysis_data as $no => $item) {
             if ($amount_nonzero && (empty($item['details']['amt']) || $item['details']['amt'] == 0)) {
-                continue;
+                $is_pending0 = (!empty($item['has_success_log']) && empty($item['is_success']));
+                $pending_as_success0 = true;
+                if (isset($_GET['pending_as_success']) && (string)$_GET['pending_as_success'] === '0') {
+                    $pending_as_success0 = false;
+                }
+                if ($pending_as_success0 && $is_pending0 && !empty($item['logs']['success'])) {
+                    $succ_lines = $item['logs']['success'];
+                    if (is_array($succ_lines) && !empty($succ_lines)) {
+                        foreach ($succ_lines as $sl) {
+                            $parsed = parse_success_log_money($sl);
+                            if (!$parsed) continue;
+                            $a0 = $parsed['amount'] ?? null;
+                            $c0 = $parsed['currency'] ?? null;
+                            if ($a0 !== null && is_numeric($a0) && (float)$a0 != 0.0 && $c0 !== null && trim((string)$c0) !== '') {
+                                $item['details']['amt'] = (float)$a0;
+                                $item['details']['cur'] = (string)$c0;
+                                $rfx = convert_to_usd_with_basis($a0, $c0);
+                                $item['details']['usd_amt'] = (float)($rfx['usd'] ?? 0);
+                                $item['details']['usd_basis'] = (string)($rfx['basis'] ?? '');
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (empty($item['details']['amt']) || $item['details']['amt'] == 0) {
+                    continue;
+                }
             }
             if (!order_matches_status_filter($item, $status_filter)) {
                 continue;
@@ -358,6 +531,7 @@ function export_orders_csv_range($access_token, $range_start, $range_end, $statu
                 (string)($item['details']['amt'] ?? 0),
                 (string)($item['details']['cur'] ?? ''),
                 (string)($item['details']['usd_amt'] ?? 0),
+                (string)($item['details']['usd_basis'] ?? ''),
                 (string)($item['details']['err'] ?? ''),
                 is_array($item['details']['notify_errors'] ?? null) ? implode(' | ', $item['details']['notify_errors']) : '',
                 $people,
@@ -388,6 +562,7 @@ function render_range_revenue_module($access_token, $view_mode, $range_start, $r
             <form method="get" id="rangeRevenueForm" class="range-revenue-form" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
                 <input type="hidden" name="token" value="<?= htmlspecialchars($access_token) ?>">
                 <input type="hidden" name="mode" value="<?= htmlspecialchars($view_mode) ?>">
+                <input type="hidden" name="pending_as_success" value="<?= (isset($_GET['pending_as_success']) && (string)$_GET['pending_as_success'] === '0') ? '0' : '1' ?>">
                 <div class="range-revenue-row">
                     <span class="range-revenue-title">区间:</span>
                     <input type="date" name="range_start" value="<?= htmlspecialchars($range_start) ?>" min="<?= htmlspecialchars($min_date) ?>" max="<?= htmlspecialchars($max_date) ?>" class="range-revenue-date">
@@ -460,6 +635,10 @@ function get_current_range_from_query_or_default($log_date)
 function render_analysis_content($access_token, $view_mode, $log_date, $stats, $analysis_data, $group_by_domain, $order_sort, $status_filter, $owner_filter, $csv_selected)
 {
     ob_start();
+    $pending_as_success0 = true;
+    if (isset($_GET['pending_as_success']) && (string)$_GET['pending_as_success'] === '0') {
+        $pending_as_success0 = false;
+    }
     ?>
     <script>
         window.__ordersFocusDate = <?php echo json_encode($log_date, JSON_UNESCAPED_UNICODE); ?>;
@@ -472,7 +651,7 @@ function render_analysis_content($access_token, $view_mode, $log_date, $stats, $
             <div class="overview-card"><span class="label">总尝试</span><span
                 class="value"><?= $stats['total_attempts'] ?></span></div>
             <div class="overview-card" style="border-bottom: 3px solid var(--success);"><span
-                class="label">成功单量</span><span class="value"
+                class="label">成功单量<?php if ($pending_as_success0): ?><span style="font-size:12px; font-weight:400; opacity:.75;">(包括pending)</span><?php endif; ?></span><span class="value"
                 style="color:var(--success);"><?= $stats['total_success'] ?></span></div>
             <div class="overview-card" style="border-bottom: 3px solid #a855f7;"><span class="label">待定单量 <span style="font-size:12px; font-weight:400; opacity:.75;">一般可视为成功</span></span><span class="value"
                 style="color:#a855f7;"><?= (int)($stats['total_pending'] ?? 0) ?></span></div>
@@ -490,7 +669,7 @@ function render_analysis_content($access_token, $view_mode, $log_date, $stats, $
             $range_error = validate_date_range($range_start, $range_end, $min_date, $max_date);
             $revenue_days = [];
             if ($range_error === '') {
-                $revenue_days = compute_range_revenue_days($range_start, $range_end);
+                $revenue_days = compute_range_revenue_days($range_start, $range_end, $pending_as_success0);
             }
             ?>
 
@@ -568,9 +747,39 @@ function render_analysis_content($access_token, $view_mode, $log_date, $stats, $
                                 $dom_id = 'dom_rev_' . md5((string)$dom);
                             ?>
                             <li class="ranking-item">
-                                <div style="display:flex; align-items:center; gap:10px; min-width:0; flex:1;">
-                                    <span class="rank-num"><?= $rank_i ?></span>
-                                    <span class="dom-name" style="max-width: 300px;" title="<?= htmlspecialchars($dom) ?>"><?= htmlspecialchars($dom) ?></span>
+                                <?php
+                                    $side_has_people = (bool)($csv_data_for_side['meta']['has_people'] ?? false);
+                                    $side_has_country = (bool)($csv_data_for_side['meta']['has_country'] ?? false);
+                                    $side_has_category = (bool)($csv_data_for_side['meta']['has_category'] ?? false);
+                                    $side_has_date = (bool)($csv_data_for_side['meta']['has_date'] ?? false);
+                                    $dom_key_side = normalize_domain_key((string)$dom);
+                                    $owner_side = ($dom_key_side !== '' && isset($csv_data_for_side['map'][$dom_key_side])) ? $csv_data_for_side['map'][$dom_key_side] : null;
+                                    $people_side = $owner_side ? trim((string)($owner_side['people'] ?? '')) : '';
+                                    $country_side = $owner_side ? trim((string)($owner_side['country'] ?? '')) : '';
+                                    $category_side = $owner_side ? trim((string)($owner_side['category'] ?? '')) : '';
+                                    $site_date_side = $owner_side ? trim((string)($owner_side['date'] ?? '')) : '';
+                                ?>
+                                <div style="min-width:0; flex:1;">
+                                    <div style="display:flex; align-items:center; gap:10px; min-width:0;">
+                                        <span class="rank-num"><?= $rank_i ?></span>
+                                        <span class="dom-name" style="max-width: 300px;" title="<?= htmlspecialchars($dom) ?>"><?= htmlspecialchars($dom) ?></span>
+                                    </div>
+                                    <?php if ($side_has_people || $side_has_country || $side_has_category || $side_has_date): ?>
+                                        <div class="ranking-meta">
+                                            <?php if ($side_has_people): ?>
+                                                <span class="ranking-badge ranking-badge-people">人员:<?= $people_side !== '' ? htmlspecialchars($people_side) : '未匹配' ?></span>
+                                            <?php endif; ?>
+                                            <?php if ($side_has_country && $country_side !== ''): ?>
+                                                <span class="ranking-badge ranking-badge-country"><?= htmlspecialchars($country_side) ?></span>
+                                            <?php endif; ?>
+                                            <?php if ($side_has_category && $category_side !== ''): ?>
+                                                <span class="ranking-badge ranking-badge-category">内容:<?= htmlspecialchars($category_side) ?></span>
+                                            <?php endif; ?>
+                                            <?php if ($side_has_date && $site_date_side !== ''): ?>
+                                                <span class="ranking-badge ranking-badge-date">建站:<?= htmlspecialchars($site_date_side) ?></span>
+                                            <?php endif; ?>
+                                        </div>
+                                    <?php endif; ?>
                                 </div>
                                 <div style="text-align:right;">
                                     <?php foreach ($currs as $c => $v): ?>
@@ -596,6 +805,7 @@ function render_analysis_content($access_token, $view_mode, $log_date, $stats, $
                                             <div style="text-align:right; white-space:nowrap;">
                                                 <div style="color:#334155;"><?= htmlspecialchars((string)($od['cur'] ?? '')) ?> <?= format_money((float)($od['amt'] ?? 0)) ?></div>
                                                 <div style="color:#0ea5e9;">USD <?= format_money((float)($od['usd_amt'] ?? 0)) ?></div>
+                                                <div style="color:#0ea5e9;">Basis <?= htmlspecialchars((string)($od['usd_basis'] ?? '')) ?></div>
                                             </div>
                                         </div>
                                     <?php endforeach; ?>
@@ -619,6 +829,7 @@ function render_analysis_content($access_token, $view_mode, $log_date, $stats, $
                         <form method="get" id="orderFilterForm" class="order-filter-controls">
                             <input type="hidden" name="token" value="<?= $access_token ?>">
                             <input type="hidden" name="date" value="<?= $log_date ?>">
+                            <input type="hidden" name="pending_as_success" value="<?= $pending_as_success0 ? '1' : '0' ?>">
                             <select name="list_view" onchange="window.__ordersFilterChange ? window.__ordersFilterChange(this.form) : this.form.submit()"
                                 style="padding:8px 12px; border-radius:10px; border:1px solid #e2e8f0; background:white; font-weight:600;">
                                 <option value="card" <?= $list_view === 'card' ? 'selected' : '' ?>>卡片视图</option>
@@ -646,7 +857,9 @@ function render_analysis_content($access_token, $view_mode, $log_date, $stats, $
                                 style="padding:8px 12px; border-radius:10px; border:1px solid #e2e8f0; background:white; font-weight:600;">
                                 <option value="all" <?= $status_filter == 'all' ? 'selected' : '' ?>>全部记录</option>
                                 <option value="success" <?= $status_filter == 'success' ? 'selected' : '' ?>>✅ 成功组</option>
+                                <?php if (!$pending_as_success0): ?>
                                 <option value="pending" <?= $status_filter == 'pending' ? 'selected' : '' ?>>🟨 待定组</option>
+                                <?php endif; ?>
                                 <option value="fail" <?= $status_filter == 'fail' ? 'selected' : '' ?>>❌ 失败组</option>
                             </select>
                             <select name="sort" onchange="window.__ordersFilterChange ? window.__ordersFilterChange(this.form) : this.form.submit()"
@@ -740,6 +953,13 @@ if ($list_view !== 'table' && $list_view !== 'card') {
 }
 $amount_nonzero = isset($_GET['amount_nonzero']) ? (bool)$_GET['amount_nonzero'] : false;
 $group_by_domain = isset($_GET['group_by_domain']) ? (bool)$_GET['group_by_domain'] : false;
+$pending_as_success = true;
+if (isset($_GET['pending_as_success']) && (string)$_GET['pending_as_success'] === '0') {
+    $pending_as_success = false;
+}
+if ($pending_as_success && $status_filter === 'pending') {
+    $status_filter = 'all';
+}
 $order_sort = $_GET['sort'] ?? 'time_desc';
 $target_file_key = $_GET['file_key'] ?? 'forpay';
 $raw_order = $_GET['raw_order'] ?? 'desc';
@@ -794,7 +1014,7 @@ if ($view_mode === 'analysis') {
                 'is_success' => false,
                 'has_success_log' => false,
                 'logs' => ['forpay_new' => [$line]],
-                'details' => ['amt' => 0, 'cur' => '', 'usd_amt' => 0, 'err' => '', 'notify_count' => 0, 'notify_errors' => []]
+                'details' => ['amt' => 0, 'cur' => '', 'usd_amt' => 0, 'usd_basis' => '', 'err' => '', 'notify_count' => 0, 'notify_errors' => []]
             ];
         }
     }
@@ -830,8 +1050,11 @@ if ($view_mode === 'analysis') {
                 $analysis_data[$no]['details']['cur'] = $d['currency'] ?? $analysis_data[$no]['details']['cur'];
                 if (isset($d['usd_amount']) && is_numeric($d['usd_amount'])) {
                     $analysis_data[$no]['details']['usd_amt'] = floatval($d['usd_amount']);
+                    $analysis_data[$no]['details']['usd_basis'] = 'notify.usd_amount';
                 } else {
-                    $analysis_data[$no]['details']['usd_amt'] = convert_to_usd($analysis_data[$no]['details']['amt'], $analysis_data[$no]['details']['cur']);
+                    $rfx = convert_to_usd_with_basis($analysis_data[$no]['details']['amt'], $analysis_data[$no]['details']['cur']);
+                    $analysis_data[$no]['details']['usd_amt'] = (float)($rfx['usd'] ?? 0);
+                    $analysis_data[$no]['details']['usd_basis'] = (string)($rfx['basis'] ?? '');
                 }
                 if (($d['failure_code'] ?? '') !== 'success') {
                     $err_msg = $d['failure_msg'] ?? $d['error_code'] ?? $d['msg'] ?? '';
@@ -897,7 +1120,9 @@ if ($view_mode === 'analysis') {
                 $cur1 = (string)($item_ref['details']['cur'] ?? '');
                 $usd1 = $item_ref['details']['usd_amt'] ?? 0;
                 if ((!is_numeric($usd1) || (float)$usd1 <= 0.0) && is_numeric($amt1) && trim($cur1) !== '') {
-                    $item_ref['details']['usd_amt'] = convert_to_usd($amt1, $cur1);
+                    $rfx = convert_to_usd_with_basis($amt1, $cur1);
+                    $item_ref['details']['usd_amt'] = (float)($rfx['usd'] ?? 0);
+                    $item_ref['details']['usd_basis'] = (string)($rfx['basis'] ?? '');
                 }
             }
         }
@@ -914,7 +1139,9 @@ if ($view_mode === 'analysis') {
 
     $stats['total_orders'] = count($analysis_data);
     foreach ($analysis_data as $no => $item) {
-        if (!empty($item['is_success'])) {
+        $is_pending0 = (!empty($item['has_success_log']) && empty($item['is_success']));
+        $is_success_effective0 = (!empty($item['is_success']) || ($pending_as_success && $is_pending0));
+        if ($is_success_effective0) {
             $stats['total_success']++;
             $stats['total_usd_sum'] += (float) $item['details']['usd_amt'];
             $stats['hourly_success'][(int)($item['hour'] ?? 0)]++;
@@ -929,20 +1156,39 @@ if ($view_mode === 'analysis') {
                 'amt' => (float)($item['details']['amt'] ?? 0),
                 'cur' => (string)($item['details']['cur'] ?? ''),
                 'usd_amt' => (float)($item['details']['usd_amt'] ?? 0),
+                'usd_basis' => (string)($item['details']['usd_basis'] ?? ''),
             ];
 
             $cur_upper = strtoupper((string)($item['details']['cur'] ?? ''));
             if (isset($stats['revenue_by_currency'][$cur_upper])) {
                 $stats['revenue_by_currency'][$cur_upper] += (float)($item['details']['amt'] ?? 0);
             }
-        } else {
-            if (!empty($item['has_success_log'])) {
-                $stats['total_pending']++;
-            }
+        }
+        if ($is_pending0) {
+            $stats['total_pending']++;
         }
         if ($amount_nonzero && (empty($item['details']['amt']) || $item['details']['amt'] == 0)) {
-            unset($analysis_data[$no]);
-            continue;
+            if ($pending_as_success && $is_pending0 && !empty($item['logs']['success'])) {
+                $succ_lines = $item['logs']['success'];
+                if (is_array($succ_lines) && !empty($succ_lines)) {
+                    foreach ($succ_lines as $sl) {
+                        $parsed = parse_success_log_money($sl);
+                        if (!$parsed) continue;
+                        $a0 = $parsed['amount'] ?? null;
+                        $c0 = $parsed['currency'] ?? null;
+                        if ($a0 !== null && is_numeric($a0) && (float)$a0 != 0.0 && $c0 !== null && trim((string)$c0) !== '') {
+                            $analysis_data[$no]['details']['amt'] = (float)$a0;
+                            $analysis_data[$no]['details']['cur'] = (string)$c0;
+                            $analysis_data[$no]['details']['usd_amt'] = convert_to_usd($a0, $c0);
+                            break;
+                        }
+                    }
+                }
+            }
+            if (empty($analysis_data[$no]['details']['amt']) || $analysis_data[$no]['details']['amt'] == 0) {
+                unset($analysis_data[$no]);
+                continue;
+            }
         }
     }
     // 按站点营收(USD 参考)倒序排序
@@ -959,9 +1205,12 @@ if ($view_mode === 'analysis') {
     });
     $stats['unique_domains'] = count($stats['domain_amount']);
 
-    uasort($analysis_data, function ($a, $b) {
-        if ($a['is_success'] !== $b['is_success'])
-            return $b['is_success'] <=> $a['is_success'];
+    uasort($analysis_data, function ($a, $b) use ($pending_as_success) {
+        $a_pending = (!empty($a['has_success_log']) && empty($a['is_success']));
+        $b_pending = (!empty($b['has_success_log']) && empty($b['is_success']));
+        $a_eff = (!empty($a['is_success']) || ($pending_as_success && $a_pending));
+        $b_eff = (!empty($b['is_success']) || ($pending_as_success && $b_pending));
+        if ($a_eff !== $b_eff) return $b_eff <=> $a_eff;
         return strcmp($b['time'], $a['time']);
     });
 }
@@ -1002,30 +1251,6 @@ function parse_success_log_money($line)
     }
     if ($amount === null && $currency === null) return null;
     return ['amount' => $amount, 'currency' => $currency];
-}
-
-function convert_to_usd($amount, $currency = '')
-{
-    // sanitize amount
-    $amt = 0.0;
-    if (is_numeric($amount)) {
-        $amt = (float)$amount;
-    } else {
-        $clean = preg_replace('/[^\d\.\-]/', '', (string)$amount);
-        $amt = $clean === '' ? 0.0 : floatval($clean);
-    }
-    $cur = strtoupper(trim((string)$currency));
-    // Exchange rates: USD per 1 unit of currency
-    $rates = [
-        'USD' => 1.0, 'USDT' => 1.0, 'TUSD' => 1.0,
-        'CNY' => 0.14, 'RMB' => 0.14,
-        'EUR' => 1.08, 'GBP' => 1.25, 'JPY' => 0.0067,
-        'AUD' => 0.67, 'CAD' => 0.73, 'SGD' => 0.74,
-    ];
-    if ($cur === '' || $cur === 'USD') return round($amt, 2);
-    if (isset($rates[$cur])) return round($amt * $rates[$cur], 2);
-    // Unknown currency -> return 0.0
-    return 0.0;
 }
 
 function normalize_domain_key($domain)
@@ -1143,6 +1368,21 @@ function resolve_selected_csv_path($dir, $csv_selected, $csv_files)
 function load_domain_owner_map_from_csv($csv_file)
 {
     global $CSV_HEADER_CANDIDATES;
+    global $ORDERS3_LOG_CSV_FIELDS, $ORDERS3_CSV_FIELDS_LOG_PATH;
+
+    static $cache = [];
+    static $logged_csv = [];
+    $cache_key = is_string($csv_file) ? (string)$csv_file : '';
+    if ($cache_key !== '') {
+        $rp = @realpath($cache_key);
+        if (is_string($rp) && $rp !== '') {
+            $cache_key = $rp;
+        }
+    }
+    if ($cache_key !== '' && isset($cache[$cache_key])) {
+        return $cache[$cache_key];
+    }
+
     $res = [
         'map' => [],
         'meta' => [
@@ -1229,17 +1469,21 @@ function load_domain_owner_map_from_csv($csv_file)
     $res['meta']['matched_fields'] = $matched_fields;
     $res['meta']['matched_headers'] = $matched_headers;
 
-    $log_fields = !empty($matched_fields) ? implode(',', $matched_fields) : 'none';
-    if ($log_fields === 'none') {
-        $preview = [];
-        foreach ($headers as $hv) {
-            $hv = trim((string)$hv);
-            if ($hv !== '') $preview[] = $hv;
+    if (!empty($ORDERS3_LOG_CSV_FIELDS) && $cache_key !== '' && empty($logged_csv[$cache_key])) {
+        $logged_csv[$cache_key] = true;
+        $log_fields = !empty($matched_fields) ? implode(',', $matched_fields) : 'none';
+        $ts = date('Y-m-d H:i:s');
+        if ($log_fields === 'none') {
+            $preview = [];
+            foreach ($headers as $hv) {
+                $hv = trim((string)$hv);
+                if ($hv !== '') $preview[] = $hv;
+            }
+            $preview_s = implode('|', array_slice($preview, 0, 20));
+            error_log('[' . $ts . '] [orders3] csv_fields csv=' . basename((string)$csv_file) . ' matched=' . $log_fields . ' headers=' . $preview_s . "\n", 3, (string)$ORDERS3_CSV_FIELDS_LOG_PATH);
+        } else {
+            error_log('[' . $ts . '] [orders3] csv_fields csv=' . basename((string)$csv_file) . ' matched=' . $log_fields . "\n", 3, (string)$ORDERS3_CSV_FIELDS_LOG_PATH);
         }
-        $preview_s = implode('|', array_slice($preview, 0, 20));
-        error_log('[orders3] csv_fields csv=' . basename((string)$csv_file) . ' matched=' . $log_fields . ' headers=' . $preview_s . "\n", 3, __DIR__ . '/orders3_csv_fields.log');
-    } else {
-        error_log('[orders3] csv_fields csv=' . basename((string)$csv_file) . ' matched=' . $log_fields . "\n", 3, __DIR__ . '/orders3_csv_fields.log');
     }
 
     $res['meta']['has_people'] = ($people_idx !== null);
@@ -1302,6 +1546,10 @@ function load_domain_owner_map_from_csv($csv_file)
         $res['meta']['ok_rows']++;
     }
     fclose($fh);
+
+    if ($cache_key !== '') {
+        $cache[$cache_key] = $res;
+    }
     return $res;
 }
 
@@ -1358,6 +1606,10 @@ function parse_site_date_to_ts($s)
 
 function build_people_stats($analysis_data, $domain_owner_map)
 {
+    $pending_as_success = true;
+    if (isset($_GET['pending_as_success']) && (string)$_GET['pending_as_success'] === '0') {
+        $pending_as_success = false;
+    }
     $stats = [
         'people' => [],
         'unmapped_orders' => 0,
@@ -1389,7 +1641,9 @@ function build_people_stats($analysis_data, $domain_owner_map)
         if ($country !== '') {
             $stats['people'][$people_name]['countries'][$country] = true;
         }
-        if (!empty($item['is_success'])) {
+        $is_pending0 = (!empty($item['has_success_log']) && empty($item['is_success']));
+        $is_success_effective0 = (!empty($item['is_success']) || ($pending_as_success && $is_pending0));
+        if ($is_success_effective0) {
             $stats['people'][$people_name]['orders_success']++;
             $stats['people'][$people_name]['usd_sum_success'] += (float)($item['details']['usd_amt'] ?? 0);
         }
@@ -1415,6 +1669,11 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
 {
     ob_start();
     $order_index = 1;
+
+    $pending_as_success0 = true;
+    if (isset($_GET['pending_as_success']) && (string)$_GET['pending_as_success'] === '0') {
+        $pending_as_success0 = false;
+    }
 
     $csv_data = load_domain_owner_map_from_csv($csv_path);
     $domain_owner_map = $csv_data['map'] ?? [];
@@ -1450,6 +1709,7 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
             $amt = $item['details']['amt'] ?? 0;
             $cur = (string)($item['details']['cur'] ?? '');
             $usd = $item['details']['usd_amt'] ?? 0;
+            $usd_basis = (string)($item['details']['usd_basis'] ?? '');
             $attempts = (int)($item['attempts'] ?? 0);
             $notify_cnt = (int)($item['details']['notify_count'] ?? 0);
             $err = (string)($item['details']['err'] ?? '');
@@ -1468,6 +1728,7 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
                 'cur' => $cur,
                 'amt' => $amt,
                 'usd' => $usd,
+                'usd_basis' => $usd_basis,
                 'people' => $people,
                 'server' => $server_short,
                 'country' => $country,
@@ -1566,8 +1827,9 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
         foreach ($rows as $r) {
             $has_success_log = !empty($r['has_success_log']);
             $is_pending = ($has_success_log && empty($r['is_success']));
-            $st = !empty($r['is_success']) ? 'SUCCESS' : ($is_pending ? 'PENDING' : 'INCOMPLETE');
-            $st_class = !empty($r['is_success']) ? 'row-success' : ($r['err'] !== '' ? 'row-fail' : '');
+            $is_success_effective = (!empty($r['is_success']) || ($pending_as_success0 && $is_pending));
+            $st = $is_success_effective ? 'SUCCESS' : ($is_pending ? 'PENDING' : 'INCOMPLETE');
+            $st_class = $is_success_effective ? 'row-success' : ($r['err'] !== '' ? 'row-fail' : '');
             echo '<tr class="' . $st_class . '" data-order-no="' . htmlspecialchars($r['no']) . '">';
             echo '<td class="cell-num">' . $i . '</td>';
             echo '<td class="cell-mono">' . htmlspecialchars($r['time_short']) . '</td>';
@@ -1585,12 +1847,17 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
             if ($has_category) echo '<td class="cell-ellipsis" title="' . htmlspecialchars($r['category']) . '">' . htmlspecialchars($r['category']) . '</td>';
             if ($has_date) echo '<td class="cell-mono">' . htmlspecialchars($r['site_date']) . '</td>';
             echo '<td class="cell-num" style="text-align:right;">' . htmlspecialchars($r['cur']) . ' ' . format_money($r['amt']) . '</td>';
-            echo '<td class="cell-num" style="text-align:right;">' . ($r['usd'] > 0 ? ('$' . format_money($r['usd'])) : '') . '</td>';
+            $usd_basis_title = (string)($r['usd_basis'] ?? '');
+            $usd_show = ($r['usd'] > 0 ? ('$' . format_money($r['usd'])) : '');
+            if ($usd_show !== '' && $usd_basis_title !== '') {
+                $usd_show .= '<div style="font-size:11px; color:#94a3b8; line-height:1.1;" title="' . htmlspecialchars($usd_basis_title) . '">' . htmlspecialchars($usd_basis_title) . '</div>';
+            }
+            echo '<td class="cell-num" style="text-align:right;">' . $usd_show . '</td>';
             echo '<td class="cell-num" style="text-align:right;">' . (int)$r['attempts'] . '</td>';
             echo '<td class="cell-num" style="text-align:right;">' . (int)$r['notify_cnt'] . '</td>';
-            echo '<td><span class="excel-status ' . (!empty($r['is_success']) ? 'is-ok' : 'is-warn') . '">' . $st . '</span></td>';
+            echo '<td><span class="excel-status ' . ($is_success_effective ? 'is-ok' : 'is-warn') . '">' . $st . '</span></td>';
             $err_show = $r['err'];
-            if ($is_pending) {
+            if ($is_pending && !$pending_as_success0) {
                 $err_show = ($err_show !== '' ? ($err_show . ' | ') : '') . 'success信息存在但未满足最终成功条件(需要forpay_new/forpay/notify/success四个日志都存在)';
             }
             echo '<td class="cell-ellipsis" title="' . htmlspecialchars($err_show) . '">' . htmlspecialchars($err_show) . '</td>';
@@ -1855,7 +2122,9 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
             foreach ($orders as $order) {
                 $item = $order['item'];
                 $no = $order['no'];
-                $st_class = $item['is_success'] ? 'is-success' : (!empty($item['details']['err']) ? 'is-fail' : '');
+                $is_pending = (!empty($item['has_success_log']) && empty($item['is_success']));
+                $is_success_effective = (!empty($item['is_success']) || ($pending_as_success0 && $is_pending));
+                $st_class = $is_success_effective ? 'is-success' : (!empty($item['details']['err']) ? 'is-fail' : '');
                 echo '<div class="order-item ' . $st_class . '" style="margin-bottom:8px;">';
                 echo '<div class="order-main" onclick="toggleLog(\'log_' . $no . '\')">';
                 echo '<div style="flex:1;">';
@@ -1897,11 +2166,13 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
                 $notify_cnt = (int)($item['details']['notify_count'] ?? 0);
                 echo '<span class="badge badge-attempts">' . $notify_cnt . '条notify</span>';
                 echo '</div>';
-                echo '<div style="font-size:12px; color:#94a3b8; margin-top:4px;">单号: ' . $no . ' · ' . substr($item['time'], 11) . '</div>';
+                $usd_basis0 = trim((string)($item['details']['usd_basis'] ?? ''));
+                $usd_basis_show0 = ($usd_basis0 !== '') ? (' (' . htmlspecialchars($usd_basis0) . ')') : '';
+                echo '<div style="font-size:12px; color:#94a3b8; margin-top:4px;">单号: ' . $no . ' · ' . substr($item['time'], 11) . $usd_basis_show0 . '</div>';
                 if (!empty($item['details']['err'])) {
                     echo '<div class="error-msg">⚠️ ' . htmlspecialchars($item['details']['err']) . '</div>';
                 }
-                if (empty($item['is_success']) && !empty($item['has_success_log'])) {
+                if (!$pending_as_success0 && empty($item['is_success']) && !empty($item['has_success_log'])) {
                     echo '<div class="error-msg">⚠️ ' . htmlspecialchars('success信息存在但未满足最终成功条件(需要forpay_new/forpay/notify/success四个日志都存在)') . '</div>';
                 }
                 echo '</div>';
@@ -1914,8 +2185,9 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
                     echo '<div style="font-size:12px; color:#94a3b8; margin-bottom:4px;">≈$' . format_money($item['details']['usd_amt']) . '</div>';
                 }
                 $is_pending = (!empty($item['has_success_log']) && empty($item['is_success']));
-                $st_text = (!empty($item['is_success']) ? 'SUCCESS' : ($is_pending ? 'PENDING' : 'INCOMPLETE'));
-                echo '<span class="badge" style="background:' . (!empty($item['is_success']) ? '#ecfdf5' : '#f8fafc') . '; color:' . (!empty($item['is_success']) ? '#059669' : '#64748b') . ';">' . $st_text . '</span>';
+                $is_success_effective = (!empty($item['is_success']) || ($pending_as_success0 && $is_pending));
+                $st_text = ($is_success_effective ? 'SUCCESS' : ($is_pending ? 'PENDING' : 'INCOMPLETE'));
+                echo '<span class="badge" style="background:' . ($is_success_effective ? '#ecfdf5' : '#f8fafc') . '; color:' . ($is_success_effective ? '#059669' : '#64748b') . ';">' . $st_text . '</span>';
                 echo '</div>';
                 echo '</div>';
                 echo '<div class="log-section" id="log_' . $no . '">';
@@ -1945,10 +2217,18 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
             if (!empty($item['is_success'])) {
                 $grouped_orders['success'][$no] = $item;
             } elseif (!empty($item['has_success_log'])) {
-                $grouped_orders['pending'][$no] = $item;
+                if ($pending_as_success0) {
+                    $grouped_orders['success'][$no] = $item;
+                } else {
+                    $grouped_orders['pending'][$no] = $item;
+                }
             } else {
                 $grouped_orders['fail'][$no] = $item;
             }
+        }
+
+        if ($pending_as_success0) {
+            unset($grouped_orders['pending']);
         }
 
         foreach ($grouped_orders as $k => &$orders_ref) {
@@ -1961,6 +2241,9 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
             'pending' => '🟨 待定订单',
             'fail' => '❌ 失败订单'
         ];
+        if ($pending_as_success0) {
+            unset($group_titles['pending']);
+        }
         foreach ($grouped_orders as $group_key => $orders) {
             if (($status_filter === 'success' || $status_filter === 'pending' || $status_filter === 'fail') && $group_key !== $status_filter) {
                 continue;
@@ -2037,7 +2320,9 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
                 $notify_cnt = (int)($item['details']['notify_count'] ?? 0);
                 echo '<span class="badge badge-attempts">' . $notify_cnt . '条notify</span>';
                 echo '</div>';
-                echo '<div style="font-size:12px; color:#94a3b8; margin-top:4px;">单号: ' . $no . ' · ' . substr($item['time'], 11) . '</div>';
+                $usd_basis0 = trim((string)($item['details']['usd_basis'] ?? ''));
+                $usd_basis_show0 = ($usd_basis0 !== '') ? (' (' . htmlspecialchars($usd_basis0) . ')') : '';
+                echo '<div style="font-size:12px; color:#94a3b8; margin-top:4px;">单号: ' . $no . ' · ' . substr($item['time'], 11) . $usd_basis_show0 . '</div>';
                 if (!empty($item['details']['err'])) {
                     echo '<div class="error-msg">⚠️ ' . htmlspecialchars($item['details']['err']) . '</div>';
                 }
@@ -2090,7 +2375,7 @@ if ($is_partial_range_revenue_json) {
     $range_error0 = validate_date_range($rs0, $re0, $min_date0, $max_date0);
     $rev_days0 = [];
     if ($range_error0 === '') {
-        $rev_days0 = compute_range_revenue_days($rs0, $re0);
+        $rev_days0 = compute_range_revenue_days($rs0, $re0, $pending_as_success);
     }
     echo json_encode([
         'meta' => [
@@ -2114,7 +2399,7 @@ if ($is_partial_range_revenue) {
     $range_error0 = validate_date_range($rs0, $re0, $min_date0, $max_date0);
     $rev_days0 = [];
     if ($range_error0 === '') {
-        $rev_days0 = compute_range_revenue_days($rs0, $re0);
+        $rev_days0 = compute_range_revenue_days($rs0, $re0, $pending_as_success);
     }
     echo render_range_revenue_module($access_token, $view_mode, $rs0, $re0, $min_date0, $max_date0, $rev_days0, $range_error0);
     exit;
@@ -2141,7 +2426,7 @@ if ($is_partial_analysis) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>高级支付日志监控 PRO</title>
+    <title>PP ORDERS <?= htmlspecialchars($APP_VERSION) ?></title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
@@ -2916,13 +3201,51 @@ if ($is_partial_analysis) {
         .ranking-item {
             display: flex;
             justify-content: space-between;
-            align-items: center;
-            padding: 12px 0;
+            align-items: flex-start;
+            padding: 10px 0;
             border-bottom: 1px solid #f1f5f9;
         }
 
         .ranking-item:last-child {
             border-bottom: none;
+        }
+
+        .ranking-meta {
+            margin-top: 4px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            align-items: center;
+        }
+
+        .ranking-badge {
+            font-size: 11px;
+            line-height: 1.2;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 6px;
+            background: #f1f5f9;
+            color: #475569;
+        }
+
+        .ranking-badge-people {
+            background: #eef2ff;
+            color: #4f46e5;
+        }
+
+        .ranking-badge-country {
+            background: #ecfeff;
+            color: #0e7490;
+        }
+
+        .ranking-badge-category {
+            background: #f0fdf4;
+            color: #166534;
+        }
+
+        .ranking-badge-date {
+            background: #f8fafc;
+            color: #334155;
         }
 
         .dom-name {
@@ -3025,26 +3348,40 @@ if ($is_partial_analysis) {
     <div class="container">
         <header>
             <div class="header-top">
-                <h2 style="margin:0;">🛡️ 支付监控中心 <small style="font-size:12px; opacity:0.6; font-weight:normal;">v1.0.20260105
+                <h2 style="margin:0;">🛡️ 支付监控中心 <small style="font-size:12px; opacity:0.6; font-weight:normal;"><?= htmlspecialchars($APP_VERSION) ?>
 
                 </small></h2>
                 <div style="display: flex; gap: 10px; align-items: center;">
+                
                     <div id="mainDatePickerWrap" style="background: rgba(255,255,255,0.1); padding: 4px; border-radius: 10px; display: flex; align-items:center; gap:6px; cursor:pointer;">
-                        <a href="?token=<?= $access_token ?>&date=<?= $prev_date ?>&mode=<?= $view_mode ?>"
+                        <a href="?token=<?= $access_token ?>&date=<?= $prev_date ?>&mode=<?= $view_mode ?>&pending_as_success=<?= $pending_as_success ? '1' : '0' ?>"
                             class="nav-btn" data-nav-date="<?= $prev_date ?>" onclick="if(window.__ordersSetDate){event.preventDefault();event.stopPropagation();window.__ordersSetDate('<?= $prev_date ?>');return false;}" style="background:transparent; padding:8px;">«</a>
                         <input type="date" id="mainDatePicker" value="<?= $log_date ?>"
                             onchange="window.__ordersSetDate ? window.__ordersSetDate(this.value) : (location.href='?token=<?= $access_token ?>&mode=<?= $view_mode ?>&date='+this.value)"
                             style="background:transparent; border:none; color:white; font-weight:bold; width:130px; text-align:center; cursor:pointer;">
-                        <a href="?token=<?= $access_token ?>&date=<?= $next_date ?>&mode=<?= $view_mode ?>"
+                        <a href="?token=<?= $access_token ?>&date=<?= $next_date ?>&mode=<?= $view_mode ?>&pending_as_success=<?= $pending_as_success ? '1' : '0' ?>"
                             class="nav-btn" data-nav-date="<?= $next_date ?>" onclick="if(window.__ordersSetDate){event.preventDefault();event.stopPropagation();window.__ordersSetDate('<?= $next_date ?>');return false;}" style="background:transparent; padding:8px;">»</a>
                         <button type="button" class="nav-btn" id="quickTodayBtn" style="font-size:12px;">今天</button>
                         <button type="button" class="nav-btn" id="quickPickBtn" style="font-size:12px;">选择日期…</button>
                     </div>
-                    <a href="?<?= http_build_query(array_merge($_GET, ['mode' => 'analysis'])) ?>" id="goAnalysisBtn"
-                        class="nav-btn <?= $view_mode == 'analysis' ? 'active' : '' ?>">📊 分析</a>
-                    <a href="?<?= http_build_query(array_merge($_GET, ['mode' => 'raw'])) ?>"
-                        class="nav-btn <?= $view_mode == 'raw' ? 'active' : '' ?>">📝 源码</a>
-                    <button type="button" id="headerCollapseBtn" class="nav-btn" title="收起页眉" aria-label="收起页眉" style="background:#0b1222; padding:8px 10px;">收起</button>
+                    <label style="font-size:12px; color:rgba(255,255,255,0.85); display:flex; align-items:center; gap:6px; user-select:none; white-space:nowrap; padding:6px 10px; border-radius:12px; background: rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.12);">
+                        <input type="checkbox" id="pendingAsSuccessToggle" <?= $pending_as_success ? 'checked' : '' ?> style="width:14px; height:14px;">
+                        待定计入成功
+                    </label>
+                        <a
+                        id="goAnalysisBtn"
+                        class="nav-btn <?= $view_mode === 'analysis' ? 'active' : '' ?>"
+                        href="?<?= http_build_query(array_merge($_GET, ['mode' => 'analysis', 'pending_as_success' => ($pending_as_success ? '1' : '0')])) ?>"
+                        style="font-weight:800;">
+                        📊分析
+                    </a>
+                    <a
+                        id="goRawBtn"
+                        class="nav-btn <?= $view_mode !== 'analysis' ? 'active' : '' ?>"
+                        href="?<?= http_build_query(array_merge($_GET, ['mode' => 'raw', 'pending_as_success' => ($pending_as_success ? '1' : '0')])) ?>"
+                        style="font-weight:800;">
+                        📝源码
+                    </a>
                     <?php if ($view_mode === 'analysis'): ?>
                         <form method="get" style="display:flex; align-items:center; gap:8px; margin-left:8px;">
                             <input type="hidden" name="token" value="<?= htmlspecialchars($access_token) ?>">
@@ -3054,6 +3391,7 @@ if ($is_partial_analysis) {
                             <input type="hidden" name="sort" value="<?= htmlspecialchars($order_sort) ?>">
                             <input type="hidden" name="owner" value="<?= htmlspecialchars($owner_filter) ?>">
                             <input type="hidden" name="csv_file" value="<?= htmlspecialchars($csv_selected) ?>">
+                            <input type="hidden" name="pending_as_success" value="<?= $pending_as_success ? '1' : '0' ?>">
                             <?php if (!empty($_GET['amount_nonzero'])): ?>
                                 <input type="hidden" name="amount_nonzero" value="1">
                             <?php endif; ?>
@@ -3064,6 +3402,7 @@ if ($is_partial_analysis) {
                             </button>
                         </form>
                     <?php endif; ?>
+                    <button type="button" class="nav-btn" id="headerCollapseBtn" title="收起页眉" aria-label="收起页眉" style="background:rgba(255,255,255,0.14);">收起</button>
                 </div>
             </div>
         </header>
@@ -3170,9 +3509,11 @@ if ($is_partial_analysis) {
         document.addEventListener('DOMContentLoaded', function() {
             const mainDatePicker = document.getElementById('mainDatePicker');
             const mainDatePickerWrap = document.getElementById('mainDatePickerWrap');
+            const pendingAsSuccessToggle = document.getElementById('pendingAsSuccessToggle');
             const quickTodayBtn = document.getElementById('quickTodayBtn');
             const quickPickBtn = document.getElementById('quickPickBtn');
             const goAnalysisBtn = document.getElementById('goAnalysisBtn');
+            const goRawBtn = document.getElementById('goRawBtn');
 
             if (mainDatePicker) {
                 mainDatePicker.addEventListener('click', function(e) {
@@ -3197,6 +3538,47 @@ if ($is_partial_analysis) {
                 }, true);
             }
 
+            if (pendingAsSuccessToggle) {
+                pendingAsSuccessToggle.addEventListener('change', function() {
+                    const v = pendingAsSuccessToggle.checked ? '1' : '0';
+                    try {
+                        const ff = document.getElementById('orderFilterForm');
+                        if (ff) {
+                            const h = ff.querySelector('input[name="pending_as_success"]');
+                            if (h) h.value = v;
+                        }
+                        const rf = document.getElementById('rangeRevenueForm');
+                        if (rf) {
+                            const h2 = rf.querySelector('input[name="pending_as_success"]');
+                            if (h2) h2.value = v;
+                        }
+                    } catch (e) {}
+
+                    try {
+                        const u = new URL(location.href);
+                        u.searchParams.set('pending_as_success', v);
+                        u.searchParams.delete('partial');
+                        history.replaceState(null, '', u.toString());
+                    } catch (e) {}
+
+                    const ds = (mainDatePicker && mainDatePicker.value) ? String(mainDatePicker.value) : '';
+                    if (window.__ordersSetDate && /^\d{4}-\d{2}-\d{2}$/.test(ds)) {
+                        window.__ordersSetDate(ds);
+                    } else {
+                        try {
+                            const u2 = new URL(location.href);
+                            u2.searchParams.set('mode', 'analysis');
+                            if (ds) u2.searchParams.set('date', ds);
+                            u2.searchParams.set('pending_as_success', v);
+                            u2.searchParams.delete('partial');
+                            location.href = u2.toString();
+                        } catch (e2) {
+                            location.href = `?token=<?= $access_token ?>&mode=analysis&date=${ds}&pending_as_success=${v}`;
+                        }
+                    }
+                }, true);
+            }
+
             if (goAnalysisBtn && mainDatePicker) {
                 goAnalysisBtn.addEventListener('click', function(e) {
                     const v = (mainDatePicker.value || '').toString();
@@ -3209,12 +3591,36 @@ if ($is_partial_analysis) {
                     }
                     try {
                         const u = new URL(location.href);
+                        const pas = (pendingAsSuccessToggle && pendingAsSuccessToggle.checked) ? '1' : '0';
                         u.searchParams.set('mode', 'analysis');
                         u.searchParams.set('date', v);
+                        u.searchParams.set('pending_as_success', pas);
                         u.searchParams.delete('partial');
                         location.href = u.toString();
                     } catch (e2) {
-                        location.href = `?token=<?= $access_token ?>&mode=analysis&date=${v}`;
+                        const pas = (pendingAsSuccessToggle && pendingAsSuccessToggle.checked) ? '1' : '0';
+                        location.href = `?token=<?= $access_token ?>&mode=analysis&date=${v}&pending_as_success=${pas}`;
+                    }
+                }, true);
+            }
+
+            if (goRawBtn && mainDatePicker) {
+                goRawBtn.addEventListener('click', function(e) {
+                    const v = (mainDatePicker.value || '').toString();
+                    if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    try {
+                        const u = new URL(location.href);
+                        const pas = (pendingAsSuccessToggle && pendingAsSuccessToggle.checked) ? '1' : '0';
+                        u.searchParams.set('mode', 'raw');
+                        u.searchParams.set('date', v);
+                        u.searchParams.set('pending_as_success', pas);
+                        u.searchParams.delete('partial');
+                        location.href = u.toString();
+                    } catch (e2) {
+                        const pas = (pendingAsSuccessToggle && pendingAsSuccessToggle.checked) ? '1' : '0';
+                        location.href = `?token=<?= $access_token ?>&mode=raw&date=${v}&pending_as_success=${pas}`;
                     }
                 }, true);
             }
@@ -3600,6 +4006,7 @@ if ($is_partial_analysis) {
                 const owner = (fd.get('owner') || '').toString();
                 const csvFile = (fd.get('csv_file') || '').toString();
                 const listView = (fd.get('list_view') || '').toString();
+                const pendingAsSuccess = (fd.get('pending_as_success') || '1').toString();
 
                 const isJumpStatus = (status === 'success' || status === 'fail');
                 const shouldJump = (!groupByDomain) && isJumpStatus && (window.event && window.event.target && window.event.target.name === 'status');
@@ -3610,6 +4017,7 @@ if ($is_partial_analysis) {
                 url.searchParams.set('mode', 'analysis');
                 url.searchParams.set('status', status);
                 url.searchParams.set('sort', sort);
+                url.searchParams.set('pending_as_success', pendingAsSuccess === '0' ? '0' : '1');
 
                 if (owner) url.searchParams.set('owner', owner);
                 else url.searchParams.delete('owner');
@@ -3839,8 +4247,10 @@ if ($is_partial_analysis) {
                     const sort = (fd.get('sort') || 'time_desc').toString();
                     const owner = (fd.get('owner') || '').toString();
                     const csvFile = (fd.get('csv_file') || '').toString();
+                    const pendingAsSuccess = (fd.get('pending_as_success') || '1').toString();
                     url.searchParams.set('status', status);
                     url.searchParams.set('sort', sort);
+                    url.searchParams.set('pending_as_success', pendingAsSuccess === '0' ? '0' : '1');
                     if (owner) url.searchParams.set('owner', owner);
                     else url.searchParams.delete('owner');
                     if (csvFile) url.searchParams.set('csv_file', csvFile);
@@ -4416,9 +4826,11 @@ if ($is_partial_analysis) {
                 const mode = (fd.get('mode') || 'analysis').toString();
                 const rs = (fd.get('range_start') || '').toString();
                 const re = (fd.get('range_end') || '').toString();
+                const pendingAsSuccess = (fd.get('pending_as_success') || '1').toString();
 
                 if (token) url.searchParams.set('token', token);
                 url.searchParams.set('mode', mode);
+                url.searchParams.set('pending_as_success', pendingAsSuccess === '0' ? '0' : '1');
                 if (rs) url.searchParams.set('range_start', rs);
                 if (re) url.searchParams.set('range_end', re);
 
@@ -4493,11 +4905,13 @@ if ($is_partial_analysis) {
                 const url = new URL(location.href);
                 const fd = new FormData(form);
                 const token = (fd.get('token') || '').toString();
+                const pendingAsSuccess = (fd.get('pending_as_success') || '1').toString();
                 const mode = (fd.get('mode') || 'analysis').toString();
                 const rsStr = (fd.get('range_start') || '').toString();
                 const reStr = (fd.get('range_end') || '').toString();
 
                 if (token) url.searchParams.set('token', token);
+                url.searchParams.set('pending_as_success', pendingAsSuccess === '0' ? '0' : '1');
                 url.searchParams.set('mode', mode);
                 if (rsStr) url.searchParams.set('range_start', rsStr);
                 if (reStr) url.searchParams.set('range_end', reStr);
