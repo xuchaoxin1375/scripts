@@ -756,6 +756,7 @@ class WooCommerceProductImporter:
             WHERE p.post_type = 'product';
         """
         self._execute_sql(update_sql)
+        print("✅ 成功更新产品 slug")
     def update_product_title(self):
         """部分产品名不规范,比如包含采集中处理不当的或多余的字符串片段
         或者可选的做名称截断
@@ -770,13 +771,14 @@ class WooCommerceProductImporter:
                 post_type = 'product';
         """
         self._execute_sql(update_sql)
+        print("清理产品标题多余文字")
     def _execute_sql(self, sql):
         conn = pymysql.connect(**self.db_config)
         try:
             with conn.cursor() as cursor:
                 cursor.execute(sql)
                 conn.commit()
-                print("✅ 成功更新产品 slug")
+            
         except Exception as e:
             conn.rollback()
             print(f"❌ 更新产品 slug 失败: {str(e)}")

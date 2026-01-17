@@ -20,9 +20,12 @@ fi
 omb_themes="$HOME/.oh-my-bash/themes"
 omb_cduru_theme="$omb_themes/cduru"
 omb_cduru="$sh/omb-copied-duru.sh"
-
+# 宝塔nginx配置文件路径
+# vhost
+bt_nginx_vhost_conf_home="/www/server/panel/vhost/nginx"
+bt_nginx_conf_home="/www/server/nginx/conf"
 # 将定义的变量声明为环境变量
-export desktop sh omb_themes omb_cduru_theme omb_cduru
+export desktop sh omb_themes omb_cduru_theme omb_cduru bt_nginx_vhost_conf_home bt_nginx_conf_home
 
 # mkdir -p $omb_themes
 # ln -s $omb_cduru $omb_cduru_theme/cduru.theme.sh -fv

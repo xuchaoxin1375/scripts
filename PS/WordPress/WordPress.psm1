@@ -1387,7 +1387,7 @@ function Get-WpOrdersByEmailOnServers
             Write-Host "start push file to server $ip..." 
             scp -r $Path root@"$ip":$WorkingDirectory
             Write-Host "start query orders on server $ip..." 
-            # 使用`-n`选项让后台作业能够顺利退出(否则可能需要手动输入输入回车回到前台.)
+            # 使用ssh 的-n选项让后台作业能够顺利退出(否则可能需要手动输入输入回车回到前台.)
             # 相关选项:-n关闭 STDIN,-T禁止分配伪终端（TTY）
             ssh -n -T root@$ip "cat -n $fileOnServer && bash $scriptPath -f $fileOnServer -o /www/$foundResultFileName -u $user -p '$password'" 
             Write-Host "END TIME: $(Get-DateTime) on $ip"
@@ -1446,6 +1446,7 @@ function Update-ServerRepos
     .PARAMETER ServerConfig
     服务器配置文件路径
     #>
+    [CmdletBinding()]
     param (
         $ServerConfig = $server_config,
         $WorkingDirectory = '/www/',
@@ -1453,12 +1454,13 @@ function Update-ServerRepos
     )
     $servers = Get-ServerList -Path $ServerConfig
     $jobs = @()
+
     foreach ($server in $servers.ip)
     {
-        $jobs += Start-ThreadJob -script { ssh -n -T root@$using:server "cd $using:WorkingDirectory && bash $using:cmd" }
+        $jobs += Start-ThreadJob -script { ssh -nT  root@$using:server "cd $using:WorkingDirectory && bash $using:cmd" }
     }
     Start-Sleep 1
-    $jobs | Get-Job
+    # $jobs | Get-Job
     $jobs | Receive-Job -Wait
     
 }

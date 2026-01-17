@@ -209,7 +209,10 @@ function p
         [switch]$Force
 
     )
-   
+    # 配置编码输出组合防止外部脚本(非powershell脚本输出非英文字符时乱码)
+    Write-Verbose 'Setting Output Encoding to UTF8' -Verbose
+    $OutputEncoding = [System.Text.Encoding]::UTF8
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
   
     # 处理$profile 和windows terminal 中的携带参数启动pwsh冲突或重复关系
     if ($null -eq $PsInit)
@@ -2536,13 +2539,13 @@ function Start-CodeSSh
     param (
 
         #根据查询到的ip地址,创建变量
-        $Editor='code',
+        $Editor = 'code',
         $Server = 'localhost',
         # $Path="/home/" #需要打开的目录
         $Path = $home 
     )
     # code --folder-uri "vscode-remote://ssh-remote+$Server/$Path"
-    $cmd="$Editor --folder-uri vscode-remote://ssh-remote+$Server/$Path"
+    $cmd = "$Editor --folder-uri vscode-remote://ssh-remote+$Server/$Path"
     Invoke-Expression $cmd
 }
 function Remove-RobocopyMirEmpty
