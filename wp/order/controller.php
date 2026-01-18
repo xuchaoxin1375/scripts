@@ -33,6 +33,14 @@ function orders3_handle_partials_and_exports(
         $range_error0 = validate_date_range($rs0, $re0, $min_date0, $max_date0);
         $rev_days0 = [];
         if ($range_error0 === '') {
+            $csv_files0 = list_csv_files_in_dir(dirname(__DIR__));
+            $csv_path0 = resolve_selected_csv_path(dirname(__DIR__), $csv_selected, $csv_files0);
+            $csv_data0 = load_domain_owner_map_from_csv($csv_path0);
+            $GLOBALS['ORDERS3_RANGE_CSV_DOMAIN_OWNER_MAP'] = (
+                !empty($csv_data0['meta']['has_people'])
+                && !empty($csv_data0['map'])
+                && is_array($csv_data0['map'])
+            ) ? $csv_data0['map'] : null;
             $rev_days0 = compute_range_revenue_days($rs0, $re0, $pending_as_success);
         }
         echo json_encode([

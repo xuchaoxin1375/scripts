@@ -46,17 +46,26 @@ function compute_range_revenue_days($range_start, $range_end, $pending_as_succes
         $forpay_new_file = $date . 'forpay_new.log';
         $forpay_file = $date . 'forpay.log';
         $usd_sum = 0;
+        $people_usd_sum = [];
         $success_orders_map = [];
         $success_orders_usd_fallback = [];
         $total_orders = 0;
         $attempts_cnt = 0;
         // 以 forpay_new 中的唯一订单号作为当日订单总量
         $order_set = [];
+        $order_domain_map = [];
         if (file_exists($forpay_new_file)) {
             $lines = file($forpay_new_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
             foreach ($lines as $line) {
                 if (preg_match('/\\|(\\d+)\\|/', $line, $m)) {
                     $order_set[$m[1]] = true;
+                }
+                if (preg_match('/^(\\d{4}-\\d{2}-\\d{2}\\s\\d{2}:\\d{2}:\\d{2})\\|([^|]+)\\|(\\d+)\\|/', $line, $m2)) {
+                    $dom = (string)($m2[2] ?? '');
+                    $ono2 = (string)($m2[3] ?? '');
+                    if ($ono2 !== '') {
+                        $order_domain_map[$ono2] = $dom;
+                    }
                 }
             }
             $total_orders = count($order_set);
@@ -127,10 +136,23 @@ function compute_range_revenue_days($range_start, $range_end, $pending_as_succes
                 continue;
             }
             $success_cnt++;
+            $usd_val = 0.0;
             if (isset($notify_orders_usd[$ono])) {
-                $usd_sum += (float)$notify_orders_usd[$ono];
+                $usd_val = (float)$notify_orders_usd[$ono];
             } elseif (isset($success_orders_usd_fallback[$ono])) {
-                $usd_sum += (float)$success_orders_usd_fallback[$ono];
+                $usd_val = (float)$success_orders_usd_fallback[$ono];
+            }
+            $usd_sum += $usd_val;
+
+            $people_name = '';
+            if (isset($GLOBALS['ORDERS3_RANGE_CSV_DOMAIN_OWNER_MAP']) && is_array($GLOBALS['ORDERS3_RANGE_CSV_DOMAIN_OWNER_MAP'])) {
+                $dom0 = (string)($order_domain_map[$ono] ?? '');
+                $dom_key0 = normalize_domain_key($dom0);
+                $owner0 = ($dom_key0 !== '' && isset($GLOBALS['ORDERS3_RANGE_CSV_DOMAIN_OWNER_MAP'][$dom_key0])) ? $GLOBALS['ORDERS3_RANGE_CSV_DOMAIN_OWNER_MAP'][$dom_key0] : null;
+                $people_name = $owner0 ? trim((string)($owner0['people'] ?? '')) : '';
+            }
+            if ($people_name !== '') {
+                $people_usd_sum[$people_name] = ($people_usd_sum[$people_name] ?? 0) + $usd_val;
             }
         }
         $conv = ($total_orders > 0) ? round(($success_cnt / $total_orders) * 100, 2) : 0;
@@ -141,6 +163,7 @@ function compute_range_revenue_days($range_start, $range_end, $pending_as_succes
             'total_orders' => $total_orders,
             'success_orders' => $success_cnt,
             'attempts' => $attempts_cnt,
+            'people_usd' => !empty($people_usd_sum) ? $people_usd_sum : null,
         ];
         $cur = strtotime('+1 day', $cur);
     }

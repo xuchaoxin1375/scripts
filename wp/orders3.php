@@ -131,10 +131,7 @@ if (orders3_handle_partials_and_exports(
                         <button type="button" class="nav-btn" id="quickTodayBtn" style="font-size:12px;">今天</button>
                         <button type="button" class="nav-btn" id="quickPickBtn" style="font-size:12px;">选择日期…</button>
                     </div>
-                    <label style="font-size:12px; color:rgba(255,255,255,0.85); display:flex; align-items:center; gap:6px; user-select:none; white-space:nowrap; padding:6px 10px; border-radius:12px; background: rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.12);">
-                        <input type="checkbox" id="pendingAsSuccessToggle" <?= $pending_as_success ? 'checked' : '' ?> style="width:14px; height:14px;">
-                        待定计入成功
-                    </label>
+          
                         <a
                         id="goAnalysisBtn"
                         class="nav-btn <?= $view_mode === 'analysis' ? 'active' : '' ?>"
@@ -149,6 +146,10 @@ if (orders3_handle_partials_and_exports(
                         style="font-weight:800;">
                         📝源码
                     </a>
+                    <label style="font-size:12px; color:rgba(255,255,255,0.85); display:flex; align-items:center; gap:6px; user-select:none; white-space:nowrap; padding:6px 10px; border-radius:12px; background: rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.12);">
+                        <input type="checkbox" id="pendingAsSuccessToggle" <?= $pending_as_success ? 'checked' : '' ?> style="width:14px; height:14px;">
+                        待定计入成功
+                    </label>
                     <?php if ($view_mode === 'analysis'): ?>
                         <form method="get" style="display:flex; align-items:center; gap:8px; margin-left:8px;">
                             <input type="hidden" name="token" value="<?= htmlspecialchars($access_token) ?>">
@@ -278,6 +279,91 @@ if (orders3_handle_partials_and_exports(
                 });
         // 日期选择器增强：弹窗日历和快速跳转
         document.addEventListener('DOMContentLoaded', function() {
+            // 图表显示参数设置
+            window.__ORDERS3_CHART_CFG = window.__ORDERS3_CHART_CFG || {
+                hourly: {
+                    axisFontMobile: 9,
+                    axisFontDesktop: 12,
+                    legendFontMobile: 10,
+                    legendFontDesktop: 12,
+                    xMaxTicksMobile: 12,
+                    xMaxTicksDesktop: 12,
+                    gridColorX: '#e2e8f0',
+                    gridColorY: '#e2e8f0',
+                    gridLineWidthX: 2,
+                    gridLineWidthY: 2,
+                    gridDrawTicks: false,
+                    pointRadiusMobile: 2,
+                    pointRadiusDesktop: 3,
+                    pointHoverRadiusMobile: 3,
+                    pointHoverRadiusDesktop: 4,
+                },
+                revenue: {
+                    axisFontMobile: 9,
+                    axisFontDesktop: 12,
+                    legendFontMobile: 10,
+                    legendFontDesktop: 12,
+                    xMaxTicksMobile: 4,
+                    xMaxTicksDesktop: 8,
+                    chartHeightMobile: 180,
+                    chartHeightDesktop: 240,
+                    gridColorX: '#e2e8f0',
+                    gridColorY: '#e2e8f0',
+                    gridLineWidthX: 1,
+                    gridLineWidthY: 1,
+                    gridDrawTicks: false,
+                    pointRadiusMobile: 1.5,
+                    pointRadiusDesktop: 3,
+                    pointHoverRadiusMobile: 2.5,
+                    pointHoverRadiusDesktop: 4,
+                    pointHitRadiusMobile: 8,
+                    pointHitRadiusDesktop: 14,
+                }
+            };
+
+            window.__applyRevenueChartHeight = function() {
+                try {
+                    const isMobile = (window.matchMedia && window.matchMedia('(max-width: 900px)').matches);
+                    const cfg = (window.__ORDERS3_CHART_CFG && window.__ORDERS3_CHART_CFG.revenue) ? window.__ORDERS3_CHART_CFG.revenue : {};
+                    const h = isMobile ? (cfg.chartHeightMobile || 220) : (cfg.chartHeightDesktop || 240);
+
+                    const loadingEl = document.getElementById('revenueChartLoading');
+                    const contentEl = document.getElementById('revenueChartContent');
+                    const canvasEl = document.getElementById('revenueChart');
+
+                    const loadingEl2 = document.getElementById('peopleChartLoading');
+                    const contentEl2 = document.getElementById('peopleChartContent');
+                    const canvasEl2 = document.getElementById('peopleChart');
+
+                    if (loadingEl) {
+                        loadingEl.style.height = h + 'px';
+                        loadingEl.style.minHeight = h + 'px';
+                    }
+                    if (contentEl) {
+                        contentEl.style.height = h + 'px';
+                        contentEl.style.minHeight = h + 'px';
+                    }
+                    if (canvasEl) {
+                        canvasEl.style.height = h + 'px';
+                        canvasEl.style.minHeight = h + 'px';
+                    }
+
+                    if (loadingEl2) {
+                        loadingEl2.style.height = h + 'px';
+                        loadingEl2.style.minHeight = h + 'px';
+                    }
+                    if (contentEl2) {
+                        contentEl2.style.height = h + 'px';
+                        contentEl2.style.minHeight = h + 'px';
+                    }
+                    if (canvasEl2) {
+                        canvasEl2.style.height = h + 'px';
+                        canvasEl2.style.minHeight = h + 'px';
+                    }
+                } catch (e) {}
+            };
+
+            try { window.__applyRevenueChartHeight(); } catch (e) {}
             const mainDatePicker = document.getElementById('mainDatePicker');
             const mainDatePickerWrap = document.getElementById('mainDatePickerWrap');
             const pendingAsSuccessToggle = document.getElementById('pendingAsSuccessToggle');
@@ -451,7 +537,7 @@ if (orders3_handle_partials_and_exports(
                 if (document.getElementById('miniSpinnerKeyframes')) return;
                 const style = document.createElement('style');
                 style.id = 'miniSpinnerKeyframes';
-                style.textContent = '@keyframes miniSpin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}.mini-spinner{animation:miniSpin 0.9s linear infinite;}';
+                style.textContent = '@keyframes miniSpin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}.mini-spinner{animation:miniSpin 1.6s linear infinite;}';
                 document.head.appendChild(style);
             } catch (e) {}
         })();
@@ -884,6 +970,18 @@ if (orders3_handle_partials_and_exports(
             const success = Array.isArray(dataObj.success) ? dataObj.success : [];
             const ctx = canvas.getContext('2d');
             if (!ctx) return;
+            const isMobile = (window.matchMedia && window.matchMedia('(max-width: 900px)').matches);
+            const cfg = (window.__ORDERS3_CHART_CFG && window.__ORDERS3_CHART_CFG.hourly) ? window.__ORDERS3_CHART_CFG.hourly : {};
+            const axisFontSize = isMobile ? (cfg.axisFontMobile || 9) : (cfg.axisFontDesktop || 12);
+            const legendFontSize = isMobile ? (cfg.legendFontMobile || 10) : (cfg.legendFontDesktop || 12);
+            const pointR = isMobile ? (cfg.pointRadiusMobile || 2) : (cfg.pointRadiusDesktop || 3);
+            const pointHoverR = isMobile ? (cfg.pointHoverRadiusMobile || 3) : (cfg.pointHoverRadiusDesktop || 4);
+            const xMaxTicks = isMobile ? (cfg.xMaxTicksMobile || 5) : (cfg.xMaxTicksDesktop || 12);
+            const gridColorX = cfg.gridColorX || '#e2e8f0';
+            const gridColorY = cfg.gridColorY || '#e2e8f0';
+            const gridLineWidthX = (typeof cfg.gridLineWidthX === 'number') ? cfg.gridLineWidthX : 2;
+            const gridLineWidthY = (typeof cfg.gridLineWidthY === 'number') ? cfg.gridLineWidthY : 2;
+            const gridDrawTicks = (typeof cfg.gridDrawTicks === 'boolean') ? cfg.gridDrawTicks : false;
             if (window.hourlyChartInstance) {
                 try { window.hourlyChartInstance.destroy(); } catch (e) {}
                 window.hourlyChartInstance = null;
@@ -894,24 +992,27 @@ if (orders3_handle_partials_and_exports(
                     labels: Array.from({ length: 24 }).map(function(_, i) { return i + ':00'; }),
                     datasets: [{
                         label: '尝试次数', data: attempts,
-                        borderColor: '#6366f1', backgroundColor: 'rgba(99, 102, 241, 0.05)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 3
+                        borderColor: '#6366f1', backgroundColor: 'rgba(99, 102, 241, 0.05)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: pointR, pointHoverRadius: pointHoverR
                     }, {
                         label: '成功次数', data: success,
-                        borderColor: '#10b981', backgroundColor: 'transparent', borderDash: [5, 5], tension: 0.4, borderWidth: 2, pointRadius: 3
+                        borderColor: '#10b981', backgroundColor: 'transparent', borderDash: [5, 5], tension: 0.4, borderWidth: 2, pointRadius: pointR, pointHoverRadius: pointHoverR
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     interaction: { intersect: false, mode: 'index' },
-                    plugins: { legend: { position: 'top', labels: { usePointStyle: true, boxSize: 6 } } },
+                    layout: {
+                        padding: isMobile ? { top: 4, right: 6, bottom: 0, left: 4 } : { top: 8, right: 12, bottom: 0, left: 8 }
+                    },
+                    plugins: { legend: { position: 'top', labels: { usePointStyle: true, boxSize: 6, font: { size: legendFontSize } } } },
                     scales: {
-                        y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { stepSize: 1 } },
-                        x: { grid: { display: false } }
+                        y: { beginAtZero: true, grid: { color: gridColorY, lineWidth: gridLineWidthY, drawTicks: gridDrawTicks }, ticks: { stepSize: 1, font: { size: axisFontSize } } },
+                        x: { grid: { display: true, color: gridColorX, lineWidth: gridLineWidthX, drawTicks: gridDrawTicks }, ticks: { font: { size: axisFontSize }, maxTicksLimit: xMaxTicks, autoSkip: true, maxRotation: 0 } }
                     }
                 }
             });
-            try { window.revenueChartInstance.__rawData = data; } catch (e) {}
+
         }
 
         (function() {
@@ -946,6 +1047,18 @@ if (orders3_handle_partials_and_exports(
                         }
                     })()
                 };
+
+                // 需求：切换分析日期时不要刷新多日统计（range revenue 模块），避免曲线丢失/跳变。
+                // 这里在局部刷新前先暂存当前模块 DOM，刷新后再恢复。
+                let __rangeRevenueSnapshot = null;
+                try {
+                    const rr = document.getElementById('revenueChartContainer');
+                    if (rr && rr.parentNode) {
+                        __rangeRevenueSnapshot = rr;
+                    }
+                } catch (e) {
+                    __rangeRevenueSnapshot = null;
+                }
 
                 function computeShiftedDate(s, deltaDays) {
                     try {
@@ -1039,6 +1152,8 @@ if (orders3_handle_partials_and_exports(
                     else url.searchParams.delete('range_end');
                 }
 
+                url.searchParams.delete('range_chart_h');
+
                 url.searchParams.delete('partial');
 
                 const fetchUrl = new URL(url.toString());
@@ -1059,6 +1174,16 @@ if (orders3_handle_partials_and_exports(
                 })
                 .then(function(html) {
                     root.innerHTML = html;
+
+                    // restore range revenue module (do not refresh)
+                    try {
+                        if (__rangeRevenueSnapshot) {
+                            const newRR = document.getElementById('revenueChartContainer');
+                            if (newRR && newRR.parentNode) {
+                                newRR.parentNode.replaceChild(__rangeRevenueSnapshot, newRR);
+                            }
+                        }
+                    } catch (e) {}
 
                     try {
                         root.querySelectorAll('script').forEach(function(s) {
@@ -1094,7 +1219,8 @@ if (orders3_handle_partials_and_exports(
 
                     try { initHourlyChart(); } catch (e) {}
                     try { if (typeof window.__initCollapsibleCards === 'function') window.__initCollapsibleCards(); } catch (e) {}
-                    try { if (typeof initRangeRevenueInteractions === 'function') initRangeRevenueInteractions(); } catch (e) {}
+                    // 注意：这里刻意不再调用 initRangeRevenueInteractions / applyRevenueChartHeight / renderPeopleChartFromData。
+                    // 因为我们在切换日期时选择“保留原多日统计模块不刷新”。
                     try {
                         if (typeof window.dispatchEvent === 'function') {
                             window.dispatchEvent(new Event('resize'));
@@ -1116,19 +1242,69 @@ if (orders3_handle_partials_and_exports(
             if (!canvas || !revenueData || !Array.isArray(revenueData)) return;
             const ctx = canvas.getContext('2d');
 
+            const isMobile = (window.matchMedia && window.matchMedia('(max-width: 900px)').matches);
+            const cfg = (window.__ORDERS3_CHART_CFG && window.__ORDERS3_CHART_CFG.revenue) ? window.__ORDERS3_CHART_CFG.revenue : {};
+            const axisFontSize = isMobile ? (cfg.axisFontMobile || 9) : (cfg.axisFontDesktop || 12);
+            const legendFontSize = isMobile ? (cfg.legendFontMobile || 9) : (cfg.legendFontDesktop || 12);
+            const mobilePointR = isMobile ? (cfg.pointRadiusMobile || 1.5) : (cfg.pointRadiusDesktop || 3);
+            const mobilePointHoverR = isMobile ? (cfg.pointHoverRadiusMobile || 2.5) : (cfg.pointHoverRadiusDesktop || 4);
+            const mobilePointHitR = isMobile ? (cfg.pointHitRadiusMobile || 8) : (cfg.pointHitRadiusDesktop || 14);
+            const xMaxTicks = isMobile ? (cfg.xMaxTicksMobile || 4) : (cfg.xMaxTicksDesktop || 8);
+            const gridColorX = cfg.gridColorX || '#e2e8f0';
+            const gridColorY = cfg.gridColorY || '#e2e8f0';
+            const gridLineWidthX = (typeof cfg.gridLineWidthX === 'number') ? cfg.gridLineWidthX : 2;
+            const gridLineWidthY = (typeof cfg.gridLineWidthY === 'number') ? cfg.gridLineWidthY : 2;
+            const gridDrawTicks = (typeof cfg.gridDrawTicks === 'boolean') ? cfg.gridDrawTicks : false;
+
+            function shortDateLabel(v) {
+                const s = (v == null) ? '' : String(v);
+                const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+                if (!m) return s;
+                return m[2] + '-' + m[3];
+            }
+
+            function syncRevenueAxesVisibility(chart) {
+                try {
+                    if (!chart || !chart.options || !chart.options.scales) return;
+                    const scales = chart.options.scales;
+                    const ds = (chart.data && chart.data.datasets) ? chart.data.datasets : [];
+
+                    function isVisibleByIndex(i) {
+                        try { return !chart.isDatasetVisible(i); } catch (e) {}
+                        return false;
+                    }
+
+                    const visible0 = ds[0] ? chart.isDatasetVisible(0) : false; // revenue
+                    const visible1 = ds[1] ? chart.isDatasetVisible(1) : false; // conversion
+                    const visible2 = ds[2] ? chart.isDatasetVisible(2) : false; // attempts
+                    const visible3 = ds[3] ? chart.isDatasetVisible(3) : false; // success orders
+
+                    if (scales.y) scales.y.display = !!visible0;
+                    if (scales.y1) scales.y1.display = !!visible1;
+                    if (scales.y2) scales.y2.display = !!visible2;
+                    if (scales.y3) scales.y3.display = !!visible3;
+                } catch (e) {}
+            }
+
+            const shouldDeferShow = !!(opts && opts.deferShow);
             try {
                 const loadingEl = document.getElementById('revenueChartLoading');
                 const contentEl = document.getElementById('revenueChartContent');
-                if (loadingEl) loadingEl.style.display = 'none';
-                if (contentEl) contentEl.style.display = 'block';
+                if (shouldDeferShow) {
+                    if (loadingEl) loadingEl.style.display = 'flex';
+                    if (contentEl) contentEl.style.display = 'none';
+                } else {
+                    if (loadingEl) loadingEl.style.display = 'none';
+                    if (contentEl) contentEl.style.display = 'block';
+                }
             } catch (e) {}
 
             const data = revenueData;
             const showLabel = (data.length <= 5);
             const isPreview = !!(opts && opts.preview);
-            const pointR = isPreview ? 3 : 5;
-            const pointHoverR = isPreview ? 4 : 7;
-            const pointHitR = isPreview ? 8 : 12;
+            const pointR = mobilePointR;
+            const pointHoverR = mobilePointHoverR;
+            const pointHitR = mobilePointHitR;
 
             let focusDate = '';
             try {
@@ -1143,6 +1319,7 @@ if (orders3_handle_partials_and_exports(
             const usdSeries = data.map(d => d.usd);
             const conversionSeries = data.map(d => (typeof d.conversion === 'number' ? d.conversion : 0));
             const attemptsSeries = data.map(d => (typeof d.attempts === 'number' ? d.attempts : Number(d.attempts || 0)));
+            const successOrdersSeries = data.map(d => (typeof d.success_orders === 'number' ? d.success_orders : Number(d.success_orders || 0)));
             const focusIdx = focusDate ? labels.indexOf(focusDate) : -1;
             const defaultPointBg = '#6366f1';
             const defaultPointBorder = '#fff';
@@ -1180,7 +1357,11 @@ if (orders3_handle_partials_and_exports(
                     if (window.revenueChartInstance.data.datasets && window.revenueChartInstance.data.datasets[2]) {
                         window.revenueChartInstance.data.datasets[2].data = attemptsSeries;
                     }
+                    if (window.revenueChartInstance.data.datasets && window.revenueChartInstance.data.datasets[3]) {
+                        window.revenueChartInstance.data.datasets[3].data = successOrdersSeries;
+                    }
                     window.revenueChartInstance.__rawData = data;
+                    syncRevenueAxesVisibility(window.revenueChartInstance);
                     if (window.revenueChartInstance.options && window.revenueChartInstance.options.plugins && window.revenueChartInstance.options.plugins.datalabels) {
                         window.revenueChartInstance.options.plugins.datalabels.display = showLabel;
                     }
@@ -1204,9 +1385,11 @@ if (orders3_handle_partials_and_exports(
                 canvas.__revenueClickBound = true;
                 canvas.addEventListener('click', function(evt) {
                     try {
+                        const isMobileNow = (window.matchMedia && window.matchMedia('(max-width: 900px)').matches);
+                        if (isMobileNow) return;
                         const chart = window.revenueChartInstance;
                         if (!chart || !chart.getElementsAtEventForMode) return;
-                        const points = chart.getElementsAtEventForMode(evt, 'nearest', { intersect: false }, true);
+                        const points = chart.getElementsAtEventForMode(evt, 'index', { intersect: false }, true);
                         if (!points || !points.length) return;
                         const idx = points[0].index;
                         const date = (chart.data && chart.data.labels && chart.data.labels[idx]) ? String(chart.data.labels[idx]) : '';
@@ -1228,6 +1411,40 @@ if (orders3_handle_partials_and_exports(
                 }, true);
             }
 
+            if (!window.__orders3MobileTooltipDismissBound) {
+                window.__orders3MobileTooltipDismissBound = true;
+                document.addEventListener('click', function(ev) {
+                    try {
+                        const isMobileNow = (window.matchMedia && window.matchMedia('(max-width: 900px)').matches);
+                        if (!isMobileNow) return;
+
+                        const t = ev && ev.target ? ev.target : null;
+                        const revCanvas = document.getElementById('revenueChart');
+                        const pplCanvas = document.getElementById('peopleChart');
+
+                        const clickedInRevenue = !!(revCanvas && t && (revCanvas === t || revCanvas.contains(t)));
+                        const clickedInPeople = !!(pplCanvas && t && (pplCanvas === t || pplCanvas.contains(t)));
+                        if (clickedInRevenue || clickedInPeople) return;
+
+                        function hideTooltipForChart(ch) {
+                            if (!ch || !ch.tooltip) return;
+                            try {
+                                ch.tooltip.setActiveElements([], { x: 0, y: 0 });
+                                ch.update();
+                            } catch (e0) {
+                                try {
+                                    ch.tooltip._active = [];
+                                    ch.update();
+                                } catch (e1) {}
+                            }
+                        }
+
+                        hideTooltipForChart(window.revenueChartInstance);
+                        hideTooltipForChart(window.peopleChartInstance);
+                    } catch (e) {}
+                }, true);
+            }
+
             window.revenueChartInstance = new Chart(ctx, {
                 type: 'line',
                 data: {
@@ -1235,14 +1452,14 @@ if (orders3_handle_partials_and_exports(
                     datasets: [{
                         label: '营收(USD)',
                         data: usdSeries,
-                        borderColor: '#6366f1',
+                        borderColor: '#ef4444',
                         backgroundColor: 'transparent',
                         fill: false,
                         tension: 0.3,
                         pointRadius: pointR,
                         pointHoverRadius: pointHoverR,
                         pointHitRadius: pointHitR,
-                        pointBackgroundColor: pointBgColors,
+                        pointBackgroundColor: labels.map(function(_, i) { return i === focusIdx ? '#b91c1c' : '#ef4444'; }),
                         pointBorderColor: pointBorderColors,
                         pointBorderWidth: 2,
                         borderWidth: 3
@@ -1266,11 +1483,27 @@ if (orders3_handle_partials_and_exports(
                     {
                         label: '尝试次数',
                         data: attemptsSeries,
-                        borderColor: '#10b981',
-                        backgroundColor: 'rgba(16,185,129,0.05)',
+                        borderColor: '#64748b',
+                        backgroundColor: 'rgba(100,116,139,0.06)',
                         fill: false,
                         tension: 0.3,
                         yAxisID: 'y2',
+                        pointRadius: pointR,
+                        pointHoverRadius: pointHoverR,
+                        pointHitRadius: pointHitR,
+                        pointBackgroundColor: '#64748b',
+                        pointBorderColor: '#fff',
+                        borderDash: [6, 4],
+                        borderWidth: 2
+                    },
+                    {
+                        label: '成单数量',
+                        data: successOrdersSeries,
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16,185,129,0.06)',
+                        fill: false,
+                        tension: 0.3,
+                        yAxisID: 'y3',
                         pointRadius: pointR,
                         pointHoverRadius: pointHoverR,
                         pointHitRadius: pointHitR,
@@ -1283,11 +1516,37 @@ if (orders3_handle_partials_and_exports(
                     responsive: true,
                     maintainAspectRatio: false,
                     animation: isPreview ? false : undefined,
+                    layout: {
+                        padding: isMobile ? { top: 4, right: 6, bottom: 0, left: 4 } : { top: 8, right: 12, bottom: 0, left: 8 }
+                    },
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
                     plugins: {
                         legend: {
                             display: true,
                             position: 'top',
-                            labels: { usePointStyle: true, boxSize: 6 }
+                            labels: { usePointStyle: true, boxSize: 6, font: { size: legendFontSize } },
+                            onClick: function(e, legendItem, legend) {
+                                try {
+                                    const chart = legend && legend.chart ? legend.chart : null;
+                                    if (!chart) return;
+
+                                    // 关键：不同 Chart.js 版本对 legendItem / toggle API 的实现不完全一致。
+                                    // 这里直接调用 Chart.js 内置的默认 legend 点击处理（等价于“曲线开关”原生行为），
+                                    // 然后我们再同步坐标轴显示/隐藏，确保开关一定生效。
+                                    const defaultOnClick = (Chart && Chart.defaults && Chart.defaults.plugins && Chart.defaults.plugins.legend && Chart.defaults.plugins.legend.onClick)
+                                        ? Chart.defaults.plugins.legend.onClick
+                                        : null;
+                                    if (typeof defaultOnClick === 'function') {
+                                        defaultOnClick.call(this, e, legendItem, legend);
+                                    }
+
+                                    syncRevenueAxesVisibility(chart);
+                                    chart.update();
+                                } catch (err) {}
+                            }
                         },
                         tooltip: {
                             callbacks: {
@@ -1305,6 +1564,9 @@ if (orders3_handle_partials_and_exports(
                                     if (context.datasetIndex === 2) {
                                         return '尝试次数: ' + context.parsed.y.toLocaleString();
                                     }
+                                    if (context.datasetIndex === 3) {
+                                        return '成单数量: ' + context.parsed.y.toLocaleString();
+                                    }
                                     return '金额: $' + context.parsed.y.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                                 }
                             }
@@ -1320,46 +1582,449 @@ if (orders3_handle_partials_and_exports(
                         }
                     },
                     interaction: {
-                        mode: 'nearest',
+                        mode: 'index',
                         intersect: false
                     },
                     scales: {
                         y: {
                             beginAtZero: true,
-                            grid: { color: '#f1f5f9' },
-                            ticks: { color: '#6366f1' }
+                            grid: { color: gridColorY, lineWidth: gridLineWidthY, drawTicks: gridDrawTicks },
+                            ticks: { color: '#ef4444', font: { size: axisFontSize } }
                         },
                         y1: {
                             beginAtZero: true,
                             position: 'right',
-                            grid: { drawOnChartArea: false },
+                            grid: { drawOnChartArea: false, drawTicks: gridDrawTicks },
                             ticks: {
                                 color: '#f59e0b',
+                                font: { size: axisFontSize },
                                 callback: function(value) { return value + '%'; }
                             }
                         },
                         y2: {
                             beginAtZero: true,
                             position: 'right',
-                            grid: { drawOnChartArea: false },
+                            grid: { drawOnChartArea: false, drawTicks: gridDrawTicks },
+                            ticks: {
+                                color: '#64748b',
+                                font: { size: axisFontSize },
+                                callback: function(value) { return value; }
+                            }
+                        },
+                        y3: {
+                            beginAtZero: true,
+                            position: 'right',
+                            grid: { drawOnChartArea: false, drawTicks: gridDrawTicks },
                             ticks: {
                                 color: '#10b981',
+                                font: { size: axisFontSize },
                                 callback: function(value) { return value; }
                             }
                         },
                         x: {
-                            grid: { display: false },
+                            grid: { display: true, color: gridColorX, lineWidth: gridLineWidthX, drawTicks: gridDrawTicks },
                             ticks: {
                                 color: '#64748b',
-                                maxRotation: 35,
+                                font: { size: axisFontSize },
+                                maxRotation: isMobile ? 0 : 35,
                                 minRotation: 0,
                                 autoSkip: true,
-                                maxTicksLimit: (labels && labels.length > 8) ? 6 : 8
+                                maxTicksLimit: xMaxTicks,
+                                callback: function(value, index, ticks) {
+                                    if (!isMobile) return this.getLabelForValue(value);
+                                    try {
+                                        return shortDateLabel(this.getLabelForValue(value));
+                                    } catch (e) {
+                                        return this.getLabelForValue(value);
+                                    }
+                                }
                             }
                         }
                     }
                 }
             });
+
+            syncRevenueAxesVisibility(window.revenueChartInstance);
+            if (window.revenueChartInstance) window.revenueChartInstance.update();
+            if (shouldDeferShow) {
+                const reveal = function() {
+                    try {
+                        const loadingEl = document.getElementById('revenueChartLoading');
+                        const contentEl = document.getElementById('revenueChartContent');
+                        if (loadingEl) loadingEl.style.display = 'none';
+                        if (contentEl) contentEl.style.display = 'block';
+                    } catch (e) {}
+                };
+                // 首屏/刷新加载延迟显示图表，延迟时间
+                const revealDelay = 800;
+                try {
+                    requestAnimationFrame(function() {
+                        setTimeout(reveal, revealDelay);
+                    });
+                } catch (e) {
+                    setTimeout(reveal, revealDelay);
+                }
+            }
+        }
+
+        // 人员多日业绩图表（独立于营收图表，避免拥挤）
+        function renderPeopleChartFromData(revenueData, opts) {
+            const container = document.getElementById('peopleChartContainer');
+            const canvas = document.getElementById('peopleChart');
+            if (!container || !canvas) return;
+
+            const ctx = canvas.getContext('2d');
+
+            const isMobile = (window.matchMedia && window.matchMedia('(max-width: 900px)').matches);
+            const cfg = (window.__ORDERS3_CHART_CFG && window.__ORDERS3_CHART_CFG.revenue) ? window.__ORDERS3_CHART_CFG.revenue : {};
+            const axisFontSize = isMobile ? (cfg.axisFontMobile || 9) : (cfg.axisFontDesktop || 12);
+            const legendFontSize = isMobile ? (cfg.legendFontMobile || 9) : (cfg.legendFontDesktop || 12);
+            const xMaxTicks = isMobile ? (cfg.xMaxTicksMobile || 4) : (cfg.xMaxTicksDesktop || 8);
+            const gridColorX = cfg.gridColorX || '#e2e8f0';
+            const gridColorY = cfg.gridColorY || '#e2e8f0';
+            const gridLineWidthX = (typeof cfg.gridLineWidthX === 'number') ? cfg.gridLineWidthX : 2;
+            const gridLineWidthY = (typeof cfg.gridLineWidthY === 'number') ? cfg.gridLineWidthY : 2;
+            const gridDrawTicks = (typeof cfg.gridDrawTicks === 'boolean') ? cfg.gridDrawTicks : false;
+
+            function shortDateLabel(s) {
+                try {
+                    const m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+                    if (!m) return s;
+                    return m[2] + '-' + m[3];
+                } catch (e) {
+                    return s;
+                }
+            }
+
+            function formatUsdLocal(v) {
+                try {
+                    const n = Number(v);
+                    if (!isFinite(n)) return '$0';
+                    if (typeof Intl !== 'undefined' && Intl.NumberFormat) {
+                        return new Intl.NumberFormat('en-US', {
+                            style: 'currency',
+                            currency: 'USD',
+                            maximumFractionDigits: 2
+                        }).format(n);
+                    }
+                    return '$' + n.toFixed(2);
+                } catch (e) {
+                    try {
+                        const n2 = Number(v);
+                        return '$' + (isFinite(n2) ? n2.toFixed(2) : '0');
+                    } catch (e2) {
+                        return '$0';
+                    }
+                }
+            }
+
+            function buildPeopleSeries(rawArr) {
+                const peopleSet = {};
+                for (const row of (rawArr || [])) {
+                    const pm = row && row.people_usd ? row.people_usd : null;
+                    if (!pm || typeof pm !== 'object') continue;
+                    for (const k in pm) {
+                        if (!Object.prototype.hasOwnProperty.call(pm, k)) continue;
+                        const name = String(k || '').trim();
+                        if (!name) continue;
+                        peopleSet[name] = true;
+                    }
+                }
+                const people = Object.keys(peopleSet);
+                people.sort(function(a, b) { return a.localeCompare(b, 'zh'); });
+
+                const series = {};
+                for (const p of people) {
+                    series[p] = (rawArr || []).map(function(row) {
+                        const pm = row && row.people_usd ? row.people_usd : null;
+                        if (!pm || typeof pm !== 'object') return 0;
+                        const v = pm[p];
+                        return (typeof v === 'number') ? v : Number(v || 0);
+                    });
+                }
+                return { people: people, series: series };
+            }
+
+            function hashInt(name) {
+                const s = String(name || '');
+                let h = 0;
+                for (let i = 0; i < s.length; i++) {
+                    h = ((h << 5) - h) + s.charCodeAt(i);
+                    h |= 0;
+                }
+                return h;
+            }
+
+            const PALETTE = [
+                '#E6194B', // Red
+                '#3CB44B', // Green
+                '#63625cff', // Yellow
+                '#4363D8', // Blue
+                '#F58231', // Orange
+                '#911EB4', // Purple
+                '#42D4F4', // Cyan
+                '#F032E6', // Magenta
+                '#BFEF45', // Lime
+                '#9A6324'  // Brown
+            ];
+            const DASHES = [
+                [],
+                [6, 4],
+                [2, 4],
+                [10, 4],
+                [12, 3, 2, 3],
+                [3, 3],
+                [2, 2],
+                [8, 2, 2, 2],
+                [1, 3]
+            ];
+            const POINTS = ['circle', 'rect', 'triangle', 'rectRot', 'cross', 'star', 'line', 'dash'];
+
+            function styleForIndex(i, total) {
+                const idx = Math.abs(Number(i || 0)) % PALETTE.length;
+                const dense = Number(total || 0) > 6;
+                const didx = Math.abs(Number(i || 0)) % DASHES.length;
+                const pidx = Math.abs(Number(i || 0)) % POINTS.length;
+                return {
+                    color: PALETTE[idx],
+                    dash: dense ? DASHES[didx] : [],
+                    pointStyle: POINTS[pidx]
+                };
+            }
+
+            function renderPeopleQuickControls(chart, peopleNames) {
+                try {
+                    const legendWrap = document.getElementById('peopleChartLegend');
+                    if (!legendWrap) return;
+                    legendWrap.innerHTML = '';
+
+                    const bar = document.createElement('div');
+                    bar.style.display = 'flex';
+                    bar.style.flexWrap = 'wrap';
+                    bar.style.gap = '8px';
+                    bar.style.alignItems = 'center';
+                    bar.style.margin = '6px 0 10px 0';
+
+                    function mkBtn(text, onClick) {
+                        const b = document.createElement('button');
+                        b.type = 'button';
+                        b.innerText = text;
+                        b.style.padding = '6px 10px';
+                        b.style.border = '1px solid #e2e8f0';
+                        b.style.background = '#fff';
+                        b.style.borderRadius = '8px';
+                        b.style.cursor = 'pointer';
+                        b.addEventListener('click', function(e) {
+                            try { e.preventDefault(); } catch (e0) {}
+                            try { e.stopPropagation(); } catch (e1) {}
+                            try { if (typeof onClick === 'function') onClick(); } catch (e2) {}
+                        });
+                        return b;
+                    }
+
+                    function applyVisibility(mode) {
+                        if (!chart) return;
+                        const ds = (chart.data && chart.data.datasets) ? chart.data.datasets : [];
+                        if (!ds.length) return;
+                        for (let i = 0; i < ds.length; i++) {
+                            const isVisible = chart.isDatasetVisible(i);
+                            if (mode === 'all') {
+                                chart.setDatasetVisibility(i, true);
+                            } else if (mode === 'none') {
+                                chart.setDatasetVisibility(i, false);
+                            } else if (mode === 'invert') {
+                                chart.setDatasetVisibility(i, !isVisible);
+                            }
+                        }
+                        chart.update();
+                    }
+
+                    bar.appendChild(mkBtn('全选', function() { applyVisibility('all'); }));
+                    bar.appendChild(mkBtn('全不选', function() { applyVisibility('none'); }));
+                    bar.appendChild(mkBtn('反选', function() { applyVisibility('invert'); }));
+
+                    const tip = document.createElement('span');
+                    tip.innerText = '提示：可在图例上点选人员曲线进行开关。';
+                    tip.style.color = '#64748b';
+                    tip.style.fontSize = '12px';
+                    tip.style.marginLeft = '6px';
+                    bar.appendChild(tip);
+
+                    legendWrap.appendChild(bar);
+                } catch (e) {}
+            }
+
+            const data = revenueData;
+            const labels = data.map(function(d) { return d && d.date ? d.date : ''; });
+            const built = buildPeopleSeries(data);
+            const peopleNames = built.people;
+            const peopleSeriesMap = built.series;
+
+            const hasPeople = !!(peopleNames && peopleNames.length);
+            if (!hasPeople) {
+                try {
+                    const loadingEl = document.getElementById('peopleChartLoading');
+                    const contentEl = document.getElementById('peopleChartContent');
+                    if (loadingEl) loadingEl.style.display = 'none';
+                    if (contentEl) contentEl.style.display = 'none';
+                    container.style.display = 'none';
+                } catch (e) {}
+                if (window.peopleChartInstance) {
+                    try { window.peopleChartInstance.destroy(); } catch (e2) {}
+                    window.peopleChartInstance = null;
+                }
+                return;
+            }
+
+            const shouldDeferShow = !!(opts && opts.deferShow);
+            try {
+                container.style.display = 'block';
+                const loadingEl = document.getElementById('peopleChartLoading');
+                const contentEl = document.getElementById('peopleChartContent');
+                if (shouldDeferShow) {
+                    if (loadingEl) loadingEl.style.display = 'flex';
+                    if (contentEl) contentEl.style.display = 'none';
+                } else {
+                    if (loadingEl) loadingEl.style.display = 'none';
+                    if (contentEl) contentEl.style.display = 'block';
+                }
+            } catch (e) {}
+
+            if (window.peopleChartInstance) {
+                try {
+                    window.peopleChartInstance.data.labels = labels;
+                    const dsAll = (window.peopleChartInstance.data && window.peopleChartInstance.data.datasets) ? window.peopleChartInstance.data.datasets : [];
+                    for (const pname of peopleNames) {
+                        const label = '人员:' + pname;
+                        const idx = dsAll.findIndex(function(d) { return d && d.label === label; });
+                        if (idx >= 0) {
+                            dsAll[idx].data = peopleSeriesMap[pname] || [];
+                        }
+                    }
+                    window.peopleChartInstance.update();
+                    return;
+                } catch (e) {
+                    try { window.peopleChartInstance.destroy(); } catch (e2) {}
+                    window.peopleChartInstance = null;
+                }
+            }
+
+            window.peopleChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: (peopleNames || []).map(function(pname, i) {
+                        const st = styleForIndex(i, (peopleNames || []).length);
+                        return {
+                            label: '人员:' + pname,
+                            data: peopleSeriesMap[pname] || [],
+                            borderColor: st.color,
+                            backgroundColor: 'transparent',
+                            fill: false,
+                            tension: 0.25,
+                            borderWidth: 2,
+                            borderDash: st.dash,
+                            pointStyle: st.pointStyle,
+                            pointRadius: 2.6,
+                            pointHoverRadius: 5.2,
+                            pointHitRadius: 10,
+                            pointBackgroundColor: '#ffffff',
+                            pointBorderColor: st.color,
+                            pointBorderWidth: 2,
+                            hidden: false
+                        };
+                    })
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: (opts && opts.preview) ? false : undefined,
+                    layout: {
+                        padding: isMobile ? { top: 4, right: 6, bottom: 0, left: 4 } : { top: 8, right: 12, bottom: 0, left: 8 }
+                    },
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    // 显式指定事件列表，避免某些情况下（页面局部刷新/覆盖层）导致 tooltip 不触发
+                    events: ['mousemove', 'mouseout', 'click', 'touchstart', 'touchmove'],
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: { usePointStyle: false, boxWidth: 22, boxHeight: 2, font: { size: legendFontSize } },
+                            onClick: function(e, legendItem, legend) {
+                                try {
+                                    const defaultOnClick = (Chart && Chart.defaults && Chart.defaults.plugins && Chart.defaults.plugins.legend && Chart.defaults.plugins.legend.onClick)
+                                        ? Chart.defaults.plugins.legend.onClick
+                                        : null;
+                                    if (typeof defaultOnClick === 'function') {
+                                        defaultOnClick.call(this, e, legendItem, legend);
+                                    }
+                                    const chart = legend && legend.chart ? legend.chart : null;
+                                    if (chart) chart.update();
+                                } catch (e) {}
+                            }
+                        },
+                        tooltip: {
+                            enabled: true,
+                            callbacks: {
+                                label: function(context) {
+                                    const val = context && context.parsed ? context.parsed.y : null;
+                                    return (context.dataset && context.dataset.label ? context.dataset.label : '') + ': ' + formatUsdLocal(val);
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: gridColorY, lineWidth: gridLineWidthY, drawTicks: gridDrawTicks },
+                            ticks: { color: '#64748b', font: { size: axisFontSize } }
+                        },
+                        x: {
+                            grid: { display: true, color: gridColorX, lineWidth: gridLineWidthX, drawTicks: gridDrawTicks },
+                            ticks: {
+                                color: '#64748b',
+                                font: { size: axisFontSize },
+                                maxRotation: isMobile ? 0 : 35,
+                                minRotation: 0,
+                                autoSkip: true,
+                                maxTicksLimit: xMaxTicks,
+                                callback: function(value, index, ticks) {
+                                    if (!isMobile) return this.getLabelForValue(value);
+                                    try {
+                                        return shortDateLabel(this.getLabelForValue(value));
+                                    } catch (e) {
+                                        return this.getLabelForValue(value);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            if (shouldDeferShow) {
+                const reveal = function() {
+                    try {
+                        const loadingEl = document.getElementById('peopleChartLoading');
+                        const contentEl = document.getElementById('peopleChartContent');
+                        if (loadingEl) loadingEl.style.display = 'none';
+                        if (contentEl) contentEl.style.display = 'block';
+                    } catch (e) {}
+                };
+                const revealDelay = 800;
+                try {
+                    requestAnimationFrame(function() {
+                        setTimeout(reveal, revealDelay);
+                    });
+                } catch (e) {
+                    setTimeout(reveal, revealDelay);
+                }
+            }
+
+            try { renderPeopleQuickControls(window.peopleChartInstance, peopleNames || []); } catch (e) {}
         }
 
         function initRangeRevenueInteractions() {
@@ -1374,11 +2039,29 @@ if (orders3_handle_partials_and_exports(
                 if (contentEl) contentEl.style.display = 'none';
             } catch (e) {}
 
+            try {
+                const loadingEl2 = document.getElementById('peopleChartLoading');
+                const contentEl2 = document.getElementById('peopleChartContent');
+                if (loadingEl2) loadingEl2.style.display = 'flex';
+                if (contentEl2) contentEl2.style.display = 'none';
+            } catch (e) {}
+
             const startInput = form.querySelector('input[name="range_start"]');
             const endInput = form.querySelector('input[name="range_end"]');
             const startSlider = document.getElementById('rangeStartSlider');
             const endSlider = document.getElementById('rangeEndSlider');
-            const rangeLabel = document.getElementById('rangeLabel');
+
+            function getFocusDateStr() {
+                try {
+                    const u = new URL(location.href);
+                    const ds = (u.searchParams.get('date') || '').toString();
+                    if (ds) return ds;
+                } catch (e) {}
+                try {
+                    if (window.__ordersFocusDate) return String(window.__ordersFocusDate);
+                } catch (e) {}
+                return '';
+            }
 
             function parseDate(s) {
                 if (!s) return null;
@@ -1411,6 +2094,25 @@ if (orders3_handle_partials_and_exports(
                 if (minD && d < minD) return new Date(minD.getTime());
                 if (maxD && d > maxD) return new Date(maxD.getTime());
                 return d;
+            }
+
+            function resetRangeAroundCenter(centerStr) {
+                if (!startInput || !endInput) return false;
+                const meta = getMeta();
+                const minD = parseDate(meta.min_date);
+                const maxD = parseDate(meta.max_date);
+                const c = parseDate(centerStr);
+                if (!minD || !maxD || !c) return false;
+                let rs = addDays(c, -5);
+                let re = addDays(c, 5);
+                rs = clampDate(rs, minD, maxD);
+                re = clampDate(re, minD, maxD);
+                const rsStr = fmtDate(rs);
+                const reStr = fmtDate(re);
+                const changed = (startInput.value !== rsStr) || (endInput.value !== reStr);
+                startInput.value = rsStr;
+                endInput.value = reStr;
+                return changed;
             }
 
             function ensureMinSpan(opts) {
@@ -1473,7 +2175,11 @@ if (orders3_handle_partials_and_exports(
                     cache[d.date] = {
                         usd: (typeof d.usd === 'number') ? d.usd : Number(d.usd || 0),
                         conversion: (typeof d.conversion === 'number') ? d.conversion : Number(d.conversion || 0),
-                        attempts: (typeof d.attempts === 'number') ? d.attempts : Number(d.attempts || 0)
+                        attempts: (typeof d.attempts === 'number') ? d.attempts : Number(d.attempts || 0),
+                        // 关键：把 success_orders 也写入缓存。
+                        // 否则在拖动区间滑块时（本地预览/基于缓存重建序列），成单数量会一直使用旧值或变成 0，导致曲线“不会跟着区间变化”。
+                        success_orders: (typeof d.success_orders === 'number') ? d.success_orders : Number(d.success_orders || 0),
+                        people_usd: (d && d.people_usd && typeof d.people_usd === 'object') ? d.people_usd : null
                     };
                 }
             }
@@ -1486,8 +2192,17 @@ if (orders3_handle_partials_and_exports(
                 const end = new Date(re.getTime());
                 while (cur <= end) {
                     const key = fmtDate(cur);
-                    const v = (key in cache) ? cache[key] : { usd: 0, conversion: 0, attempts: 0 };
-                    out.push({ date: key, usd: v.usd || 0, conversion: v.conversion || 0, attempts: v.attempts || 0 });
+                    // 关键：默认值也要包含 success_orders。
+                    // 否则缓存缺失日期会导致该序列不连续/不随区间变化。
+                    const v = (key in cache) ? cache[key] : { usd: 0, conversion: 0, attempts: 0, success_orders: 0, people_usd: null };
+                    out.push({
+                        date: key,
+                        usd: v.usd || 0,
+                        conversion: v.conversion || 0,
+                        attempts: v.attempts || 0,
+                        success_orders: v.success_orders || 0,
+                        people_usd: v.people_usd || null
+                    });
                     cur.setDate(cur.getDate() + 1);
                 }
                 return out;
@@ -1521,8 +2236,10 @@ if (orders3_handle_partials_and_exports(
                     const view = computeViewDataByInputs();
                     if (view && view.length) {
                         renderRevenueChartFromData(view, { preview: true });
+                        renderPeopleChartFromData(view, { preview: true });
                     } else {
                         renderRevenueChartFromData(window.__rangeRevenueData || [], { preview: true });
+                        renderPeopleChartFromData(window.__rangeRevenueData || [], { preview: true });
                     }
                 });
             }
@@ -1545,7 +2262,6 @@ if (orders3_handle_partials_and_exports(
                 const b = Math.max(0, Math.min(total, daysBetween(minD, re)));
                 startSlider.value = String(Math.round((a / total) * 100));
                 endSlider.value = String(Math.round((b / total) * 100));
-                if (rangeLabel) rangeLabel.textContent = startInput.value + ' ~ ' + endInput.value;
             }
 
             function syncInputsFromSliders() {
@@ -1575,7 +2291,6 @@ if (orders3_handle_partials_and_exports(
                 if (startBefore !== startInput.value || endBefore !== endInput.value) {
                     syncSlidersFromInputs();
                 }
-                if (rangeLabel) rangeLabel.textContent = startInput.value + ' ~ ' + endInput.value;
             }
 
             let controller = null;
@@ -1624,7 +2339,6 @@ if (orders3_handle_partials_and_exports(
 
                     if (meta && meta.range_start && startInput) startInput.value = meta.range_start;
                     if (meta && meta.range_end && endInput) endInput.value = meta.range_end;
-                    if (rangeLabel && startInput && endInput) rangeLabel.textContent = startInput.value + ' ~ ' + endInput.value;
 
                     const errEl = document.getElementById('rangeRevenueError');
                     const errMsg = (meta && meta.range_error) ? String(meta.range_error) : '';
@@ -1646,6 +2360,13 @@ if (orders3_handle_partials_and_exports(
                         const contentEl = document.getElementById('revenueChartContent');
                         if (loadingEl) loadingEl.style.display = 'none';
                         if (contentEl) contentEl.style.display = 'block';
+                    } catch (e) {}
+
+                    try {
+                        const loadingEl2 = document.getElementById('peopleChartLoading');
+                        const contentEl2 = document.getElementById('peopleChartContent');
+                        if (loadingEl2) loadingEl2.style.display = 'none';
+                        if (contentEl2) contentEl2.style.display = 'block';
                     } catch (e) {}
 
                     try { if (typeof window.__syncExportRangeFromCurrent === 'function') window.__syncExportRangeFromCurrent(); } catch (e) {}
@@ -1731,6 +2452,7 @@ if (orders3_handle_partials_and_exports(
 
             form.addEventListener('submit', function(ev) {
                 ev.preventDefault();
+                resetRangeAroundCenter(getFocusDateStr());
                 ensureMinSpan({ pin: 'end' });
                 syncSlidersFromInputs();
                 fetchAndUpdate();
@@ -1757,7 +2479,8 @@ if (orders3_handle_partials_and_exports(
                 startSlider.addEventListener('change', function() {
                     syncInputsFromSliders();
                     scheduleLocalPreviewRender();
-                    scheduleFetchAndUpdate(true);
+                    scheduleEnsureRangeData(true);
+                    fetchAndUpdate();
                 });
             }
             if (endSlider) {
@@ -1769,13 +2492,19 @@ if (orders3_handle_partials_and_exports(
                 endSlider.addEventListener('change', function() {
                     syncInputsFromSliders();
                     scheduleLocalPreviewRender();
-                    scheduleFetchAndUpdate(true);
+                    scheduleEnsureRangeData(true);
+                    fetchAndUpdate();
                 });
             }
 
             // 初始渲染 + 初始化联动
+            try {
+                const f = getFocusDateStr();
+                if (f) resetRangeAroundCenter(f);
+            } catch (e) {}
             syncSlidersFromInputs();
-            renderRevenueChartFromData(window.__rangeRevenueData || []);
+            renderRevenueChartFromData(window.__rangeRevenueData || [], { deferShow: true });
+            renderPeopleChartFromData(window.__rangeRevenueData || [], { deferShow: true });
         }
 
         if (document.readyState === 'loading') {

@@ -6,7 +6,7 @@ function render_range_revenue_module($access_token, $view_mode, $range_start, $r
     ?>
     <div class="chart-container" id="revenueChartContainer" style="height: auto;" data-collapsible-card="range_revenue">
         <div class="collapsible-card-header" data-collapsible-card-header style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; gap:10px; flex-wrap:wrap;">
-            <span style="font-size:15px; font-weight:600; color:#6366f1;">📈 区间营收统计</span>
+            <span style="font-size:15px; font-weight:600; color:#6366f1;">🎊 多日统计</span>
             <button type="button" class="collapsible-card-toggle" data-collapsible-card-toggle>收起</button>
         </div>
         <div class="collapsible-card-body" data-collapsible-card-body>
@@ -16,17 +16,24 @@ function render_range_revenue_module($access_token, $view_mode, $range_start, $r
                 <input type="hidden" name="pending_as_success" value="<?= (isset($_GET['pending_as_success']) && (string)$_GET['pending_as_success'] === '0') ? '0' : '1' ?>">
                 <div class="range-revenue-row">
                     <span class="range-revenue-title">区间:</span>
-                    <input type="date" name="range_start" value="<?= htmlspecialchars($range_start) ?>" min="<?= htmlspecialchars($min_date) ?>" max="<?= htmlspecialchars($max_date) ?>" class="range-revenue-date">
-                    <span class="range-revenue-tilde">~</span>
-                    <input type="date" name="range_end" value="<?= htmlspecialchars($range_end ?: date('Y-m-d')) ?>" min="<?= htmlspecialchars($min_date) ?>" max="<?= htmlspecialchars($max_date) ?>" class="range-revenue-date">
+                    <button type="submit" class="range-revenue-btn">重置图表中心和日期区间</button>
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <div id="rangeStartWrap" style="background: rgba(255,255,255,0.06); padding: 4px; border-radius: 6px; display: flex; align-items:center; gap:6px; cursor:pointer;">
+                            <input type="date" name="range_start" value="<?= htmlspecialchars($range_start) ?>" min="<?= htmlspecialchars($min_date) ?>" max="<?= htmlspecialchars($max_date) ?>" class="range-revenue-date" style="background:transparent; border:none; color:inherit; font-weight:500; width:130px; text-align:center; cursor:pointer;">
+                             <input type="range" min="0" max="100" value="0" id="rangeStartSlider" style="flex:1;">
+                        </div>
+                        <div id="rangeEndWrap" style="background: rgba(255,255,255,0.06); padding: 4px; border-radius: 6px; display: flex; align-items:center; gap:6px; cursor:pointer;">
+                            <input type="date" name="range_end" value="<?= htmlspecialchars($range_end ?: date('Y-m-d')) ?>" min="<?= htmlspecialchars($min_date) ?>" max="<?= htmlspecialchars($max_date) ?>" class="range-revenue-date" style="background:transparent; border:none; color:inherit; font-weight:500; width:130px; text-align:center; cursor:pointer;">
+                            <input type="range" min="0" max="100" value="100" id="rangeEndSlider" style="flex:1;">
+                        </div>
+                    </div>
                 </div>
 
-                <button type="submit" class="range-revenue-btn">查询</button>
-                <span id="rangeLabel" class="range-revenue-label"></span>
+                
 
                 <div class="range-revenue-sliders">
-                    <input type="range" min="0" max="100" value="0" id="rangeStartSlider" style="flex:1;">
-                    <input type="range" min="0" max="100" value="100" id="rangeEndSlider" style="flex:1;">
+                   
+                    
                 </div>
             </form>
             <?php if ($range_error !== ''): ?>
@@ -36,20 +43,40 @@ function render_range_revenue_module($access_token, $view_mode, $range_start, $r
             <?php else: ?>
                 <div id="rangeRevenueError" style="display:none;"></div>
             <?php endif; ?>
-            <div id="revenueChartLoading" style="width:100%; height:180px; min-height:180px; display:flex; align-items:center; justify-content:center;">
-                <div style="display:flex; align-items:center; gap:10px; color:#64748b; font-size:13px; font-weight:700;">
-                    <span class="mini-spinner" style="width:18px; height:18px; border-radius:999px; border:2px solid #e2e8f0; border-top-color:#6366f1; display:inline-block;"></span>
-                    <span>加载中…</span>
+            <div class="chart-container" id="revenueChartBox" style="height:auto; background:transparent; box-shadow:none; padding:0;" data-revenue-chart="1">
+                <span style="font-size:15px; font-weight:600; color:#6366f1;">📈综合走势曲线</span>
+                <div id="revenueChartLoading" style="width:100%; display:flex; align-items:center; justify-content:center;">
+                    <div style="display:flex; align-items:center; gap:10px; color:#64748b; font-size:13px; font-weight:700;">
+                        <span class="mini-spinner" style="width:18px; height:18px; border-radius:999px; border:2px solid #e2e8f0; border-top-color:#6366f1; display:inline-block;"></span>
+                        <span>加载中…</span>
+                    </div>
+                </div>
+                <div id="revenueChartContent" style="width:100%; display:none;">
+                    <canvas id="revenueChart" style="width:100%;"></canvas>
+                </div>
+                <div id="revenueChartLegend" style="margin-top:6px; font-size:12px; color:#64748b; line-height:1.35; display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+                    
+                    <span style="font-size:12px; color:#94a3b8;">(点击折线点可跳转到对应日期,点击曲线图例开关可以控制对应曲线的及其坐标轴的显示状态)</span>
                 </div>
             </div>
-            <div id="revenueChartContent" style="width:100%; height:180px; min-height:180px; display:none;">
-                <canvas id="revenueChart" style="width:100%; height:180px; min-height:180px;"></canvas>
-            </div>
-            <div id="revenueChartLegend" style="margin-top:6px; font-size:12px; color:#64748b; line-height:1.35; display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
-                <span style="display:inline-flex; align-items:center; gap:6px;"><span style="width:10px; height:10px; border-radius:999px; background:#6366f1; display:inline-block;"></span><span>左轴: 营收(USD)</span></span>
-                <span style="display:inline-flex; align-items:center; gap:6px;"><span style="width:10px; height:10px; border-radius:999px; background:#f59e0b; display:inline-block;"></span><span>右轴: 转化率(%)</span></span>
-                <span style="display:inline-flex; align-items:center; gap:6px;"><span style="width:10px; height:10px; border-radius:999px; background:#10b981; display:inline-block;"></span><span>右轴: 尝试次数</span></span>
-                <span style="font-size:11px; color:#94a3b8;">(点击折线点可跳转到对应日期)</span>
+
+            <div style="height:12px;"></div>
+            <div class="chart-container" id="peopleChartContainer" style="height:auto; background:transparent; box-shadow:none; padding:0;" data-people-chart="1">
+                <div class="collapsible-card-header" style="display:flex; align-items:center; justify-content:space-between; margin: 6px 0 8px 0; gap:10px; flex-wrap:wrap;">
+                    <span style="font-size:15px; font-weight:600; color:#6366f1;">👤 人员业绩曲线</span>
+                </div>
+                <div id="peopleChartLoading" style="width:100%; display:flex; align-items:center; justify-content:center;">
+                    <div style="display:flex; align-items:center; gap:10px; color:#64748b; font-size:13px; font-weight:700;">
+                        <span class="mini-spinner" style="width:18px; height:18px; border-radius:999px; border:2px solid #e2e8f0; border-top-color:#6366f1; display:inline-block;"></span>
+                        <span>加载中…</span>
+                    </div>
+                </div>
+                <div id="peopleChartContent" style="width:100%; display:none;">
+                    <canvas id="peopleChart" style="width:100%;"></canvas>
+                </div>
+                <div id="peopleChartLegend" style="margin-top:6px; font-size:12px; color:#64748b; line-height:1.35; display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+                    <span style="font-size:12px; color:#94a3b8;">(点击图例开关可控制人员曲线显示状态)</span>
+                </div>
             </div>
         </div>
     </div>
@@ -62,6 +89,51 @@ function render_range_revenue_module($access_token, $view_mode, $range_start, $r
             'range_end' => $range_end,
             'range_error' => $range_error,
         ], JSON_UNESCAPED_UNICODE); ?>;
+        (function() {
+            function initRangeDatePickers() {
+                const startWrap = document.getElementById('rangeStartWrap');
+                const endWrap = document.getElementById('rangeEndWrap');
+                const startInput = startWrap ? startWrap.querySelector('input[name="range_start"]') : null;
+                const endInput = endWrap ? endWrap.querySelector('input[name="range_end"]') : null;
+                if (!startWrap || !endWrap || !startInput || !endInput) return;
+
+                function showPicker(input) {
+                    try {
+                        input.showPicker ? input.showPicker() : input.focus();
+                    } catch (e) {
+                        try { input.focus(); } catch (e2) {}
+                    }
+                }
+
+                startInput.addEventListener('click', function(e) {
+                    try { if (e) e.stopPropagation(); } catch (e0) {}
+                    showPicker(startInput);
+                }, true);
+
+                endInput.addEventListener('click', function(e) {
+                    try { if (e) e.stopPropagation(); } catch (e0) {}
+                    showPicker(endInput);
+                }, true);
+
+                startWrap.addEventListener('click', function(e) {
+                    const t = e && e.target ? e.target : null;
+                    if (t && t.closest && t.closest('input')) return;
+                    showPicker(startInput);
+                }, true);
+
+                endWrap.addEventListener('click', function(e) {
+                    const t = e && e.target ? e.target : null;
+                    if (t && t.closest && t.closest('input')) return;
+                    showPicker(endInput);
+                }, true);
+            }
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initRangeDatePickers);
+            } else {
+                initRangeDatePickers();
+            }
+        })();
     </script>
     <?php
     return ob_get_clean();
@@ -120,6 +192,14 @@ function render_analysis_content($access_token, $view_mode, $log_date, $stats, $
             $range_error = validate_date_range($range_start, $range_end, $min_date, $max_date);
             $revenue_days = [];
             if ($range_error === '') {
+                $csv_files0 = list_csv_files_in_dir(__DIR__);
+                $csv_path0 = resolve_selected_csv_path(__DIR__, $csv_selected, $csv_files0);
+                $csv_data0 = load_domain_owner_map_from_csv($csv_path0);
+                $GLOBALS['ORDERS3_RANGE_CSV_DOMAIN_OWNER_MAP'] = (
+                    !empty($csv_data0['meta']['has_people'])
+                    && !empty($csv_data0['map'])
+                    && is_array($csv_data0['map'])
+                ) ? $csv_data0['map'] : null;
                 $revenue_days = compute_range_revenue_days($range_start, $range_end, $pending_as_success0);
             }
             ?>
