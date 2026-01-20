@@ -32,7 +32,7 @@ usage() {
     $0 -f /path/to/site.conf
     $0 -d /etc/nginx/conf.d -p "*.conf"
     $0 -d /www -p "domain*.conf" --jump-marker "#CUSTOM" --insert-marker "#INSERT-HERE"
-    $0 -d /www -p "*.conf" --days 1                    # 仅处理最近1天修改的文件
+    $0 -d /www -p "*.conf" --days 1  -M 1                  # 仅处理最近1天修改的文件,同时指定最大搜索深度为1
 
 具体用例:
     宝塔用户将所有网站的nginx配置(vhost/nginx)中的conf插入公共基础配置
@@ -61,7 +61,7 @@ LIMIT_SEG='include /www/server/nginx/conf/com_limit_rate.conf;'
 COM_SEG='include /www/server/nginx/conf/com_basic.conf;'
 # 构造替换单元
 # 考虑到部分bash(5.1)无法正确处理命令替换中的heredoc中的\\,这里使用变通的方法将`\`从外部扩展替换
-bslash='\'
+bslash="\\"
 YOUNG_SEG=$(cat <<EOF
     ${COM_SEG}$bslash
 EOF
@@ -71,6 +71,8 @@ OLD_SEG=$(cat <<EOF
     ${LIMIT_SEG}$bslash
 EOF
 )
+# 预览片段
+echo "$OLD_SEG"
 # 注意多行字符边缘(首尾)串换行符的问题(对于sed编辑有影响),下面的写法是不推荐的
 # OLD_SEG="
 #     $COM_SEG
@@ -111,7 +113,7 @@ while [[ $# -gt 0 ]]; do
         [[ -z "$INSERT_MARKER" ]] && echo "❌ 错误: --insert-marker 后需指定字符串" && exit 1
         shift 2
         ;;
-    --max-depth)
+    -M,--max-depth)
         MAX_DEPTH="$2"
         if [[ -z "$MAX_DEPTH" || ! "$MAX_DEPTH" =~ ^[0-9]+$ ]]; then
             echo "❌ 错误: --max-depth 后需指定一个正整数"
@@ -137,7 +139,7 @@ while [[ $# -gt 0 ]]; do
         usage
         ;;
     *)
-        echo "❌ 未知参数: $1"
+        printf "%q\n" "❌ 未知参数: [$1]" 
         usage
         ;;
     esac

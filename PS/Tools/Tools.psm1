@@ -74,10 +74,12 @@ function Restart-NginxOnHost
 
     )
     # 更新各个网站vhost的配置(宝塔nginx vhost配置文件路径)
-    ssh $User@$HostName @"
-    bash /update_nginx_vhosts_conf.sh -d /www/server/panel/vhost/nginx --days 1 
-    bash /www/sh/nginx_conf/update_nginx_vhosts_log_format.sh -d /www/server/panel/vhost/nginx 
-"@
+    # 注意linux上的bash脚本片段的换行符风格为LF,windows平台编写的bash命令行片段这里需要额外处理.
+    ssh $User@$HostName (@"
+bash /update_nginx_vhosts_conf.sh -d /www/server/panel/vhost/nginx --days 1 -M 1 
+bash /www/sh/nginx_conf/update_nginx_vhosts_log_format.sh -d /www/server/panel/vhost/nginx 
+
+"@ -replace "`r","")
     
 
     # 维护服务器上的建站日期表(可以丢到后台运行)
