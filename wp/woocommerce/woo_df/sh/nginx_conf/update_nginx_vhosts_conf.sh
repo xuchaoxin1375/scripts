@@ -270,7 +270,7 @@ if [[ -n "$FILE" ]]; then
     # 🔧 [修改] 单个文件也应检查是否满足时间条件
     if [[ -n "$DAYS" ]]; then
         # 检查文件是否在最近 DAYS 天内修改过
-        if find "$FILE" -type f -mtime "-$DAYS" -print -quit | grep -q .; then
+        if find "$FILE" -maxdepth "$MAX_DEPTH" -type f -mtime "-$DAYS" -print -quit | grep -q .; then
             process_file "$FILE"
         else
             echo "🕒 文件 '$FILE' 不在最近 $DAYS 天内修改，跳过..."
@@ -283,10 +283,10 @@ else
     find_cmd=(find "$DIR" -maxdepth "$MAX_DEPTH" -type f -name "$PATTERN"  -print0)
 
     # 如果设置了 --days，则加入 -mtime 条件
-    [[ -n "$DAYS" ]] && find_cmd=(find "$DIR" -type f -name "$PATTERN" -mtime "-$DAYS" -print0)
+    [[ -n "$DAYS" ]] && find_cmd=(find "$DIR" -maxdepth "$MAX_DEPTH" -type f -name "$PATTERN" -mtime "-$DAYS" -print0)
 
     # 测试分钟数
-    # [[ -n "$DAYS" ]] && find_cmd=(find "$DIR" -type f -name "$PATTERN" -mmin "-$DAYS" -print0)
+    # [[ -n "$DAYS" ]] && find_cmd=(find "$DIR" -maxdepth "$MAX_DEPTH" -type f -name "$PATTERN" -mmin "-$DAYS" -print0)
 
     # 使用 while + find -print0 安全遍历文件
     while IFS= read -r -d '' conf_file; do
