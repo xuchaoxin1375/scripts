@@ -488,15 +488,16 @@ function Get-CRLFChecker
     param (
         [parameter(Mandatory = $true, ValueFromPipeline, ValueFromPipelineByPropertyName)]
         $Path,
-        [switch]$ConvertToLFStyle,
-        [switch]$Replace
+        [switch]$ViewCRLF
+        
     )
     process
     {
         
-        # 这里是关键,读取使用Raw方式读取,否则结果因为分割会丢失`\r`
+        # 读取文件的方式是关键,读取使用Raw方式读取,否则结果因为分割会丢失`\r`
         $raw = Get-Content $Path -Raw
         $isCRLFStyle = $raw -match "`r"
+        
         if($isCRLFStyle)
         {
             Write-Host "The file: [$Path] is CRLF style file(with carriage char)!"
@@ -506,36 +507,50 @@ function Get-CRLFChecker
             Write-Host "The file: [$Path] is LF style file(without carriage char)!"
             
         }
-        # 将回车,换行符替换为可见的标记,便于用户查看
-        $res = $raw -replace "`n", "[LF]" -replace "`r", "[CR]"
-        
-        if($ConvertToLFStyle)
-        {
-            $fileName = Split-Path $Path -LeafBase
-            $fileDir = Split-Path $Path -Parent
-            $fileExtension = Split-Path $Path -Extension
-            
-            # 移除CR回车符
-            $res = $raw -replace "`r", ""
-            # 写入经过LF化的新内容到新文件中
-            $LFFile = "$fileDir/$fileName.LF$fileExtension"
-            $res | Out-File $LFFile -Encoding utf8 -NoNewline
-            
-            Write-Verbose "File has been converted to LF style![$LFFile]" -Verbose
-            if($Replace)
-            {
-                Write-Host "Replace the file: [$Path] with LF style file: [$LFFile]"
-                # 可选备份
-                # Move-Item $Path "$Path.bak" -Force -Verbose
-                # 覆盖原文件(LF化)
-                Move-Item $LFFile $Path -Force -Verbose
-            }
-            # 准备适合用户审阅的输出格式的字符串
-            $resDisplay = $res -replace "`n", "[LF]"
-            $res = $resDisplay
+        if($ViewCRLF){
+
+            # 将回车,换行符替换为可见的标记,便于用户查看
+            $res = $raw -replace "`n", "[LF]" -replace "`r", "[CR]"
+            $res | Select-String -Pattern "\[CR\]|\[LF\]" -AllMatches 
         }
-        $res | Select-String -Pattern "\[CR\]|\[LF\]" -AllMatches 
+        
     }
+}
+function ConvertTo-LF
+{
+    param (
+        [parameter(Mandatory = $true, ValueFromPipeline, ValueFromPipelineByPropertyName)]
+        [string]$Path,
+        [switch]$Replace
+    )
+    process
+    {
+        
+        $fileName = Split-Path $Path -LeafBase
+        $fileDir = Split-Path $Path -Parent
+        $fileExtension = Split-Path $Path -Extension
+            
+        # 移除CR回车符
+        $res = $raw -replace "`r", ""
+        # 写入经过LF化的新内容到新文件中
+        $LFFile = "$fileDir/$fileName.LF$fileExtension"
+        $res | Out-File $LFFile -Encoding utf8 -NoNewline
+            
+        Write-Verbose "File has been converted to LF style![$LFFile]" -Verbose
+        if($Replace)
+        {
+            Write-Host "Replace the file: [$Path] with LF style file: [$LFFile]"
+            # 可选备份
+            # Move-Item $Path "$Path.bak" -Force -Verbose
+            # 覆盖原文件(LF化)
+            Move-Item $LFFile $Path -Force -Verbose
+        }
+        # 准备适合用户审阅的输出格式的字符串
+        # $resDisplay = $res -replace "`n", "[LF]"
+        # $res = $resDisplay
+        
+    }
+    
 }
 function Deploy-BatchSiteBTOnline
 {

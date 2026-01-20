@@ -56,23 +56,26 @@ MODE="young" # 默认模式为 young
 MAX_DEPTH=1 # 默认递归查找的最大深度为1
 FORCE=false #默认值设置为假值(字符串false,小心不要当做布尔值用)
 DRY_RUN=false
-COM_SEG='include /www/server/nginx/conf/com_basic.conf;'
+# 定义配置片段
 LIMIT_SEG='include /www/server/nginx/conf/com_limit_rate.conf;'
+COM_SEG='include /www/server/nginx/conf/com_basic.conf;'
+# 构造替换单元
+# 考虑到部分bash(5.1)无法正确处理命令替换中的heredoc中的\\,这里使用变通的方法将`\`从外部扩展替换
+bslash='\'
 YOUNG_SEG=$(cat <<EOF
-    ${COM_SEG}\\
+    ${COM_SEG}$bslash
 EOF
 )
-# 注意多行字符边缘(首尾)串换行符的问题(对于sed编辑有影响)
+OLD_SEG=$(cat <<EOF
+    ${COM_SEG}$bslash
+    ${LIMIT_SEG}$bslash
+EOF
+)
+# 注意多行字符边缘(首尾)串换行符的问题(对于sed编辑有影响),下面的写法是不推荐的
 # OLD_SEG="
 #     $COM_SEG
 #     $LIMIT_SEG
 # "
-OLD_SEG=$(
-    cat <<EOF
-    ${COM_SEG}\\
-    ${LIMIT_SEG}\\
-EOF
-)
 while [[ $# -gt 0 ]]; do
     case $1 in
     -f)
