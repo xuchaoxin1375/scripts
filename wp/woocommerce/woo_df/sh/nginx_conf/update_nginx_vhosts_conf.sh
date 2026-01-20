@@ -113,7 +113,7 @@ while [[ $# -gt 0 ]]; do
         [[ -z "$INSERT_MARKER" ]] && echo "❌ 错误: --insert-marker 后需指定字符串" && exit 1
         shift 2
         ;;
-    -M,--max-depth)
+    -M|--max-depth)
         MAX_DEPTH="$2"
         if [[ -z "$MAX_DEPTH" || ! "$MAX_DEPTH" =~ ^[0-9]+$ ]]; then
             echo "❌ 错误: --max-depth 后需指定一个正整数"
