@@ -6,7 +6,6 @@ alias bashrc='source ~/.bashrc'
 alias zshrc='source ~/.zshrc'
 alias cls=clear
 # 第三方程序缩写
-alias vim=nvim
 alias vi=vim
 # fail2ban系列命令缩写f2b或fb
 alias fbc='fail2ban-client'

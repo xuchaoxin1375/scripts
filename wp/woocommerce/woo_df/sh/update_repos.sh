@@ -7,7 +7,7 @@
 #git reset --hard origin/main
 #git pull
 
-version=20251218
+version=20260120
 echo "当前脚本版本: $version"
 
 # 配置变量
@@ -40,6 +40,15 @@ optionally update several symlinks and nginx/fail2ban configuration files.
 EOF
 }
 
+# Copies $source to $dest only if $dest does not already exist.
+# If $dest does exist, this function does nothing.
+# This is useful for avoiding unnecessary overwrite of existing files.
+# Example: copy_if_need /path/to/template /path/to/destination
+copy_if_need(){
+    local source="$1"
+    local dest="$2"
+    [[ -f "$dest" ]] || cp -v "$source" "$dest"
+}
 # 解析脚本命令行参数
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -142,18 +151,18 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
     # 兼容wsl 
     [[ -d /mnt/c/repos/scripts/ ]] && ln -s -T /mnt/c/repos/scripts/ /repos/scripts
 
-
-    ln -s -T /repos/scripts/wp/woocommerce/woo_df/sh /www/sh  -fv # 使用-T选项防止嵌套,而-f选项配合-T是会将重复运行符号创建语句效果覆盖而不报错
-    ln -s -T /repos/scripts/wp/woocommerce/woo_df/pys /www/pys -fv
+    ln -s -T /repos/scripts/wp/woocommerce/woo_df /www/woo_df  -fv
+    ln -s -T /www/woo_df/sh /www/sh  -fv # 使用-T选项防止嵌套,而-f选项配合-T是会将重复运行符号创建语句效果覆盖而不报错
+    ln -s -T /www/woo_df/pys /www/pys -fv
     # 脚本文件的符号链接
     ln -s /www/sh/deploy_wp_full.sh /deploy.sh -fv
     ln -s /www/sh/update_repos.sh /update_repos.sh -fv
     ln -s /www/sh/nginx_conf/update_nginx_vhosts_conf.sh /update_nginx_vhosts_conf.sh -fv
     # vim配置
-    ln -s  /www/sh/vimrc.vim ~/.vimrc -v
+    ln -s  /www/sh/vimrc.vim ~/.vimrc -fv
     nvim_conf_dir="$HOME/.config/nvim"
     [[ -d $nvim_conf_dir ]] || mkdir -p "$nvim_conf_dir"
-    ln -s /www/sh/vimrc.vim ~/.config/nvim/init.vim -v
+    ln -s /www/sh/vimrc.vim ~/.config/nvim/init.vim -fv
 
     # ==nginx配置文件软链接(这里如果用二级软连接和宝塔的一些操作(比如api)可能冲突,建议使用文件覆盖或则手动覆盖)
     # ln -s /www/sh/nginx_conf/com.conf /www/server/nginx/conf/com.conf -fv
@@ -220,11 +229,11 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
     # cp -nv "$cf_basic" /etc/fail2ban/action.d/cloudflare1.local
     # cp -nv "$cf_basic" /etc/fail2ban/action.d/cloudflare2.local
 
-    [[ -f "$cf_action1" ]] || cp -v "$cf_basic_tpl" "$cf_action1"
-    [[ -f "$cf_action2" ]] || cp -v "$cf_basic_tpl" "$cf_action2"
-    [[ -f "$cf_mode" ]] || cp -v "$cf_mode_tpl" "$cf_mode"
-    [[ -f "$nginx_cf_jail" ]] || cp -v  "$nginx_cf_jail_tpl" "$nginx_cf_jail"
-    
+
+    copy_if_need "$cf_basic_tpl" "$cf_action2"
+    copy_if_need "$cf_basic_tpl" "$cf_action1"
+    copy_if_need "$cf_mode_tpl" "$cf_mode"
+    copy_if_need "$nginx_cf_jail_tpl" "$nginx_cf_jail"
 
 fi
 
