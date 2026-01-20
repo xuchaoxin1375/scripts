@@ -6,6 +6,10 @@
 
 相关命令行以ubuntu/debian系为例
 
+## 美化shell
+
+参考[linux@提高shell命令行环境易用性@终端美化@国内网络环境友好一条龙美化(ohmyzsh)_oh my zsh 卸载-CSDN博客](https://blog.csdn.net/xuchaoxin1375/article/details/120999508?sharetype=blogdetail&sharerId=120999508&sharerefer=PC&sharesource=xuchaoxin1375&spm=1011.2480.3001.8118)
+
 ## shell配置文件环境预定义
 
 写入一些便于使用的shell配置,比如常用别名和函数,以及预定义变量
@@ -28,7 +32,7 @@ Loading additional shell config and functions...
 
 包括压缩包解压工具等,如果有就跳过
 
-#### 通用软件包
+### linux基础软件包
 
 假设服务器为ubuntu,一键安装命令行
 
@@ -52,7 +56,125 @@ wp --info
 
 ```
 
-### git 获取或更新脚本代码
+#### python脚本用到的依赖安装
+
+> todo:使用虚拟环境优化python及其依赖包的安装和管理
+
+```bash
+#安装pip
+apt install pip
+```
+
+```bash
+ pip install -r /repos/scripts/wp/woocommerce/woo_df/requirements_linux.txt
+```
+
+
+
+### 批量添加站点基础准备
+
+#### api key
+
+- 面板设置中启用api,设置合适的ip白名单,(填写服务器配置`server_config.json`的时候只要填写到端口为止,端口后的串不要写入)
+- 及时申请好cloudflare账号,并且获取全局key
+
+### 服务器相关组件安装和配置
+
+- LNMP套件(php7.4)
+
+- fail2ban自动防御(需要手动安装),并且补全符号链接
+
+  ```bash
+  ln -s /www/server/panel/pyenv/bin/fail2ban-regex /usr/bin/fail2ban-regex -v
+  ln -s /www/server/panel/pyenv/bin/fail2ban-testcases /usr/bin/fail2ban-testcases -v
+  ```
+
+#### mysql
+
+- 关闭二进制日志文件备份功能,节约空间和资源消耗
+- 调整mysql性能参数(使用宝塔预设的方案128G~256G或更高,尤其注意`max_connections`不应该低于1000)
+- 设置数据库登录密码和私有管理员配置
+
+##### 初次登录或修改mysql密码
+
+对于宝塔用户,简单方案就是登录宝塔,数据库设置中获取密码或者修改密码
+
+如果已经登录mysql(root),也可以通过sql语句修改mysql root的密码
+
+```sql
+-- 登录mysql root用户,并且修改为新密码(网站链接数据库的凭据届时将使用此新密码,此mysql root用户"不"开放远程登录!)
+-- 注意:mysql8+使用caching_sha2_password
+ALTER USER 'root'@'localhost' IDENTIFIED WITH caching_sha2_password BY 'your_new_password';
+```
+
+创建私有可远程登录的mysql 管理员账号
+
+```sql
+
+
+-- 创建一个新的私有root管理员级别的用户(开放远程登录),比如root_private
+-- !注意下面两行共[两个地方]用户名都要修改,密码不要和上面的一样,建议更复杂!
+CREATE USER 'root_private'@'%' IDENTIFIED BY 'your_root_private_password';
+GRANT ALL PRIVILEGES ON *.* TO 'root_private'@'%' WITH GRANT OPTION;
+
+FLUSH PRIVILEGES;
+-- END
+```
+
+首尾:建议重启mysqld服务,防止某些配置没有生效
+
+```bash
+systemctl restart mysqld
+```
+
+##### 防火墙配置
+
+如果要远程登录mysql(私有管理员用户)首先要检查防火墙是否放行对应端口(通常是3306)
+
+```bash
+ufw allow 3306
+```
+
+检查:
+
+```bash
+ufw status |grep 3306
+```
+
+##### 检查mysql用户情况
+
+```sql
+# 查看全部mysql用户列表
+select user,host from mysql.user;
+# 查看当前用户
+select user();
+```
+
+举例说明
+
+```sql
+mysql> select user,host from mysql.user;
++------------------+-----------+
+| user             | host      |
++------------------+-----------+
+| root_private     | %         |
+| mysql.infoschema | localhost |
+| mysql.session    | localhost |
+| mysql.sys        | localhost |
+| root             | localhost |
++------------------+-----------+
+5 rows in set (0.00 sec)
+```
+
+
+
+#### php:
+
+- 设置脚本内存限制(1G)
+- php性能调整(并发方案128G),几个进程数1000,100,100,300:
+- 加速插件opcache
+
+### git 获取或更新脚本代码(初次拉取代码)🎈
 
 这里使用浅克隆提高速度并节约资源
 
@@ -68,7 +190,7 @@ git clone --depth  1 https://gitee.com/xuchaoxin1375/scripts.git "$script_root"
 # 配置更新代码的脚本的符号链接
 ln -s /repos/scripts/wp/woocommerce/woo_df/sh /www/sh -fv
 # 使用简短的更新代码仓库的命令
-bash /www/sh/update_repos.sh
+bash /www/sh/update_repos.sh -g
 # 向bash,zsh配置文件导入常用的shell函数,比如wp命令行等
 bash /www/sh/shellrc_addition.sh
 ```
@@ -81,13 +203,31 @@ git reset --hard origin/main
 git pull
 ```
 
+#### 配置检查
+
+拉取代码后,一定要即使检查配置,包括nginx配置
+
+
+
 ### 配置系统时间为北京时间
 
 ```bash
 sudo timedatectl set-timezone Asia/Shanghai
 ```
 
-### 配置可执行权限
+### 修改主机名
+
+```bash
+sudo hostnamectl set-hostname "NewHostName"
+#重载日志服务(否则许多日志还是使用旧主机名,例如:/var/log/auth.log)
+systemctl restart rsyslog
+```
+
+
+
+### 配置shell脚本可执行权限(可选)
+
+> 这部分已经在上面的代码克隆命令中执行过了,放在这里仅供参考
 
 ```bash
 # 这里配置脚本文件(.sh)的可执行属性
@@ -128,7 +268,7 @@ $ /deploy.sh --help
 bash /www/sh/adduser_uploader.sh
 ```
 
-### 完整版本
+### 查看代码部署脚本源码(可选)
 
 文件位置:`$woo_df\sh\update_repos.sh`
 
@@ -137,6 +277,70 @@ bash /www/sh/adduser_uploader.sh
 ```powershell
 cat $sh\update_repos.sh
 ```
+
+## ssh服务端口更改
+
+```bash
+# 检查文件是否存在且Port行存在(默认检查Port 22片段)
+grep -C 5 'Port 22' /etc/ssh/sshd_config 
+```
+
+
+
+```bash
+OldPort=22
+Port=2222 #自行更改
+#(使用i命令原地修改文件并保存)
+# sed  -i -nE "s/#?(Port $OldPort)/Port $Port/"  /etc/ssh/sshd_config 
+#更安全的方案生成.bak备份,同时兼容行开头的空白和注释)
+sed -i.bak -nE "s/^[[:space:]]*#?Port $OldPort[[:space:]]*$/Port $Port/" /etc/ssh/sshd_config
+
+# 检查修改:
+grep -C 5 'Port ' /etc/ssh/sshd_config 
+```
+
+### 服务端防火墙配置
+
+```bash
+#ubuntu
+sudo ufw allow 22022
+# 关闭原来的端口,例如22
+sudo ufw deny 22
+```
+
+状态检查:`ufw status`,配合grep可以过滤出你感兴趣的端口.
+
+### 客户端默认配置更改
+
+例如修改默认登录端口
+
+```powershell
+notepad ~\.ssh\config
+```
+
+
+
+## 配置免密登录
+
+[ssh免密登录配置@上传公钥到ssh server](https://blog.csdn.net/xuchaoxin1375/article/details/120733071?sharetype=blogdetail&sharerId=120733071&sharerefer=PC&sharesource=xuchaoxin1375&spm=1011.2480.3001.8118)
+
+windows上,虽然没有自带ssh-copy-id工具,可以通过powershell+ssh调用服务器上的shell工具的方式实现
+
+```bash
+$pubkey=Get-Content ~/.ssh/id_ed25519.pub
+ssh root@"your_server_host" "mkdir -p ~/.ssh && echo '$pubkey' >> ~/.ssh/authorized_keys"
+
+```
+
+
+
+### 重启ssh服务
+
+```bash
+sudo systemctl restart ssh
+```
+
+
 
 ## 定时自动任务crontab🎈
 

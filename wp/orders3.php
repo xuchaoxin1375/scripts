@@ -1656,7 +1656,7 @@ if (orders3_handle_partials_and_exports(
                     } catch (e) {}
                 };
                 // 首屏/刷新加载延迟显示图表，延迟时间
-                const revealDelay = 800;
+                const revealDelay = 300;
                 try {
                     requestAnimationFrame(function() {
                         setTimeout(reveal, revealDelay);

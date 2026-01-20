@@ -42,6 +42,9 @@ usage() {
 
 涉及到的共用配置文件存放目录: /www/server/nginx/conf/ 请将配置写入其中com_...conf文件中,例如:com_basic.conf和com_limit_rate.conf
 
+检查vhost/nginx中的各网站(.com)配置文件是否插入指定行
+grep -l -E 'com_limit_rate' /www/server/panel/vhost/nginx/*.com.conf |nl
+
 EOF
     exit 1
 }

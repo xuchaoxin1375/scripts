@@ -76,9 +76,9 @@ function Restart-NginxOnHost
     # 更新各个网站vhost的配置(宝塔nginx vhost配置文件路径)
     ssh $User@$HostName @"
     bash /update_nginx_vhosts_conf.sh -d /www/server/panel/vhost/nginx --days 1 
+    bash /www/sh/nginx_conf/update_nginx_vhosts_log_format.sh -d /www/server/panel/vhost/nginx 
 "@
     
-    # bash /www/sh/nginx_conf/update_nginx_vhosts_log_format.sh -d /www/server/panel/vhost/nginx 
 
     # 维护服务器上的建站日期表(可以丢到后台运行)
     $maintain = "python3 /www/sh/nginx_conf/maintain_nginx_vhosts.py maintain -d -k first"

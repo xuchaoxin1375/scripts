@@ -591,7 +591,7 @@ deploy_site() {
 
         # === 配置数据库===
         local db_name="${username}_${domain_name}"
-        mysql -uroot -h localhost -P3306 -p"$DB_PASSWORD" "$db_name" -e "
+        mysql -h "$DB_HOST" -u "$DB_USER" -P3306 -p"$DB_PASSWORD" "$db_name" -e "
     UPDATE wp_options
     SET option_value = 'https://www.${domain_name}'
     WHERE option_name IN ('home', 'siteurl');

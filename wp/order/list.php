@@ -66,9 +66,11 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
             $is_success_effective0 = (!empty($item['is_success']) || ($pending_as_success0 && $is_pending0));
             $group_key0 = $is_success_effective0 ? 'success' : ($has_success_log0 ? 'pending' : 'fail');
 
+            $no0 = (string)$no;
+            $cluster_key0 = (strlen($no0) > 2) ? substr($no0, 0, -2) : $no0;
             $rows[] = [
-                'no' => (string)$no,
-                'prefix6' => (strlen((string)$no) >= 6) ? substr((string)$no, 0, 6) : (string)$no,
+                'no' => $no0,
+                'prefix6' => $cluster_key0,
                 'time' => $time,
                 'time_short' => $time_short,
                 'domain' => $dom,
@@ -354,7 +356,7 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
         $group_key0 = $is_success_effective0 ? 'success' : (!empty($item['has_success_log']) ? 'pending' : 'fail');
 
         $no0 = (string)$no;
-        $p0 = (strlen($no0) >= 6) ? substr($no0, 0, 6) : $no0;
+        $p0 = (strlen($no0) > 2) ? substr($no0, 0, -2) : $no0;
         if ($p0 !== '' && $group_key0 === 'fail') {
             $prefix_cnt[$p0] = ($prefix_cnt[$p0] ?? 0) + 1;
         }
@@ -366,7 +368,7 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
         $clustered = [];
         foreach ($display_orders as $no => $item) {
             $no0 = (string)$no;
-            $p0 = (strlen($no0) >= 6) ? substr($no0, 0, 6) : $no0;
+            $p0 = (strlen($no0) > 2) ? substr($no0, 0, -2) : $no0;
             $is_pending0 = (!empty($item['has_success_log']) && empty($item['is_success']));
             $is_success_effective0 = (!empty($item['is_success']) || ($pending_as_success0 && $is_pending0));
             $group_key0 = $is_success_effective0 ? 'success' : (!empty($item['has_success_log']) ? 'pending' : 'fail');
@@ -629,7 +631,7 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
                 $cc_show0 = ($cluster_prefix6_enabled && $group_key1 === 'fail' && $cc0 > 1) ? (' · 合并' . $cc0 . '条') : '';
                 $no_show0 = (string)$no;
                 if ($cluster_prefix6_enabled && $group_key1 === 'fail' && $cc0 > 1) {
-                    $no_show0 = (strlen($no_show0) >= 6) ? substr($no_show0, 0, 6) : $no_show0;
+                    $no_show0 = (strlen($no_show0) > 2) ? substr($no_show0, 0, -2) : $no_show0;
                 }
                 $no_show_html0 = htmlspecialchars($no_show0);
                 if ($cluster_prefix6_enabled && $group_key1 === 'fail' && $cc0 > 1) {
