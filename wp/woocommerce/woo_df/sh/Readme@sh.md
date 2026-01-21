@@ -37,7 +37,7 @@ Loading additional shell config and functions...
 假设服务器为ubuntu,一键安装命令行
 
 ```bash
-sudo apt install p7zip-full p7zip-rar lz4 zstd unzip git -y #获取7z命令(完整安装)
+sudo apt install p7zip-full p7zip-rar lz4 zstd unzip git rsync -y #获取7z命令(完整安装)
 sudo apt install parallel #并行执行命令的工具
 ```
 
@@ -69,7 +69,9 @@ apt install pip
  pip install -r /repos/scripts/wp/woocommerce/woo_df/requirements_linux.txt
 ```
 
+ubuntu24+版本对于python pip安装依赖包更加严格,可能无法直接通过pip安装
 
+可以使用`venv`模块或者`miniforge`来创建python环境,不过这在运行python脚本前就需要选择/切换python环境.
 
 ### 批量添加站点基础准备
 

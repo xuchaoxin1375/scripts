@@ -224,7 +224,7 @@ function Import-PwshVarFile
 }
 
 
-function Set-ANSIColorEnv
+function Import-ANSIColorEnv
 {
     
     <# 
@@ -239,6 +239,6 @@ function Set-ANSIColorEnv
     
     Import-PwshVarFile -VarFile VarColors
 
-    Write-Host "${BgMagenta}ANSI Color Environment Variables${Reset}  ${blue}Set${Reset}!"
+    Write-Host "${Cyan}ANSI Color Environment Variables${Reset}  ${blue}Set${Reset}!"
 
 }

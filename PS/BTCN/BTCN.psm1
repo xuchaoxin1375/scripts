@@ -461,11 +461,63 @@ function Remove-LineInFile
     }
     
 }
+function Write-Highlighted
+{
+    <# 
+    .SYNOPSIS
+    高亮显示文本中的指定模式
+    .DESCRIPTION
+    默认将匹配到的模式用ANSI转义码高亮显示(黑底白字),但是最终的显示效果还和终端软件的显示配置有关
+    .PARAMETER Text
+    要高亮显示的文本
+    .PARAMETER Pattern
+    要高亮显示的模式(正则表达式)
+
+    .EXAMPLE
+    高亮(黑底红字)显示https片段
+    Write-Highlighted "This is a http(https) link: https://www.demo.com" -Pattern https?
+    This is a http(https) link: https://www.demo.com
+    .EXAMPLE
+    $text=cat $home\.condarc -raw 
+    Write-Highlighted -Text $text -Pattern "https" 
+
+    #>
+    param(
+        [parameter(Mandatory = $true, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
+        [string]$Text,
+        [parameter(Mandatory = $true)]
+        [string]$Pattern,
+        $ForegroundColorCode = '31',
+        $BackgroundColorCode = '40'
+    )
+    
+    begin
+    {
+
+        $RESET = "`e[0m"
+    }
+    process
+    {
+        
+        # 使用 ANSI 转义码高亮
+        $highlighted = $Text -replace "($Pattern)", "`e[${ForegroundColorCode};${BackgroundColorCode}m`$1${RESET}"
+        Write-Host $highlighted
+    }
+
+}
+
+
+
+
 function Get-CRLFChecker
 {
     <# 
     .SYNOPSIS
-    将问文本文件中的回车符,换行符都显示出来
+    判断文本文件是的换行风格(如果是CRLF则返回true,否则返回false)
+    CRLF (Carriage Return + Line Feed)
+
+    可选的,将回车符(\r)和换行符(\n)分被用[CR]和[LF]标记出来并打印(这不属于返回值的一部分)
+
     .PARAMETER Path
     文件路径
     .PARAMETER ConvertToLFStyle
@@ -477,78 +529,146 @@ function Get-CRLFChecker
     多行文本将被视为一行,CR,LF(\r,\n)将被显示为[CR],[LF]
 
     .EXAMPLE
+     Get-CRLFChecker $scripts/ps/tools/tools.psm1 
+     Get-CRLFChecker $sh/shell_vars.sh
+
+    .EXAMPLE
     # 将readme.md文件中的回车符\r移除(保留换行符\n),使得文本文件LF化
-    Get-CRLFChecker .\readme.md -ConvertToLFStyle -Replace
+    Get-CRLFChecker .\readme.md 
     .EXAMPLE
     批量处理多个文件(借助ls和管道符)
-    ls *.sh | Get-CRLFChecker -ConvertToLFStyle -Replace
+    ls *.sh | Get-CRLFChecker 
     
     #>
     [CmdletBinding()]
     param (
         [parameter(Mandatory = $true, ValueFromPipeline, ValueFromPipelineByPropertyName)]
-        $Path,
+        $InputObject,
         [switch]$ViewCRLF
         
     )
     process
     {
-        
-        # 读取文件的方式是关键,读取使用Raw方式读取,否则结果因为分割会丢失`\r`
-        $raw = Get-Content $Path -Raw
+        if(Test-Path $InputObject)
+        {
+            # $InputObject = Get-Content $InputObject -raw
+            $Path = $InputObject
+            # 读取文件的方式是关键,读取使用Raw方式读取,否则结果因为分割会丢失`\r`
+            $raw = Get-Content $Path -Raw
+        }
+        else
+        {
+            $raw = $InputObject
+        }
         $isCRLFStyle = $raw -match "`r"
         
         if($isCRLFStyle)
         {
-            Write-Host "The file: [$Path] is CRLF style file(with carriage char)!"
+            Write-Verbose "The file: [$Path] is CRLF style file(with carriage char)!"
+
         }
         else
         {
-            Write-Host "The file: [$Path] is LF style file(without carriage char)!"
+            Write-Verbose "The file: [$Path] is LF style file(without carriage char)!"
             
         }
-        if($ViewCRLF){
+        if($ViewCRLF)
+        {
 
             # 将回车,换行符替换为可见的标记,便于用户查看
             $res = $raw -replace "`n", "[LF]" -replace "`r", "[CR]"
-            $res | Select-String -Pattern "\[CR\]|\[LF\]" -AllMatches 
+            # $res | Select-String -Pattern "\[CR\]|\[LF\]" -AllMatches 
+            $res | Write-Highlighted -Pattern "\[CR\]|\[LF\]"
         }
-        
+        return $isCRLFStyle
     }
 }
-function ConvertTo-LF
+function Convert-CRLF
 {
+    <# 
+    .SYNOPSIS
+    将CRLF(回车换行)转为LF(换行)
+    反之亦然,默认情况下转换为LF
+    .DESCRIPTION
+    批量处理可以借助通用的for循环,也可以借助ls 通配符+管道符实现
+
+    .PARAMETER Path
+    文件路径
+    .PARAMETER Replace
+    是否将CRLF转为LF,并保存到原文件中
+
+    .EXAMPLE
+    将指定文件转换为LF并使用[LF]标记换行符位置
+     Convert-CRLF -InputObject .\my_table.conf -To LF |Get-CRLFChecker -ViewCRLF 
+    .EXAMPLE
+    通过cat -raw读取文件,并将CRLF转为LF,再将结果用重定向的方式写入另一个文件另存(注意`-raw`选项是不可少的)
+    cat .\my_table.conf -Raw | Convert-CRLF > my_table.LF.conf  
+    .EXAMPLE
+    批量处理多个文件(借助ls和管道符)
+    ls -Recurse *.sh | Convert-CRLF -Replace  -Quiet
+    
+    #>
+    [CmdletBinding()]
     param (
         [parameter(Mandatory = $true, ValueFromPipeline, ValueFromPipelineByPropertyName)]
-        [string]$Path,
-        [switch]$Replace
+        [Alias('Path')]
+        [string]$InputObject,
+        [ValidateSet('CRLF', 'LF')]
+        [string]$To = 'LF',
+        [switch]$Replace,
+        [switch]$Quiet
     )
+
     process
     {
+        $text = ""
+        if(Test-Path $InputObject)
+        {
+            $path = $InputObject
+            $fileName = Split-Path $Path -LeafBase
+            $fileDir = Split-Path $Path -Parent
+            $fileExtension = Split-Path $Path -Extension
+
+            $text = Get-Content $Path -Raw
+        }
+        else
+        {
+            $text = $InputObject
+        }
+            
+        if ($To -eq 'LF')
+        {
+            # 移除CR回车符
+            $res = $text -replace "`r", ""
+        }
+        elseif ($To -eq 'CRLF')
+        {
+            $res = $text -replace "`n", "`r`n"
+        }
         
-        $fileName = Split-Path $Path -LeafBase
-        $fileDir = Split-Path $Path -Parent
-        $fileExtension = Split-Path $Path -Extension
-            
-        # 移除CR回车符
-        $res = $raw -replace "`r", ""
-        # 写入经过LF化的新内容到新文件中
-        $LFFile = "$fileDir/$fileName.LF$fileExtension"
-        $res | Out-File $LFFile -Encoding utf8 -NoNewline
-            
-        Write-Verbose "File has been converted to LF style![$LFFile]" -Verbose
         if($Replace)
         {
-            Write-Host "Replace the file: [$Path] with LF style file: [$LFFile]"
+            if($fileName)
+            {
+                # 写入经过LF化的新内容到新文件中
+                $ToStyleFile = "$fileDir/$fileName.${To}$fileExtension"
+                $res | Out-File $ToStyleFile -Encoding utf8 -NoNewline
+                Write-Verbose "File has been converted to [$To] style![$ToStyleFile]" 
+            }
+            Write-Verbose "Replace the file: [$Path] with [$TO] style file: [$ToStyleFile]"
             # 可选备份
             # Move-Item $Path "$Path.bak" -Force -Verbose
             # 覆盖原文件(LF化)
-            Move-Item $LFFile $Path -Force -Verbose
+            Move-Item $ToStyleFile $Path -Force 
+            Write-Host "File [$Path] has been processed!"
         }
         # 准备适合用户审阅的输出格式的字符串
         # $resDisplay = $res -replace "`n", "[LF]"
         # $res = $resDisplay
-        
+        if(!$Quiet)
+        {
+            return $res 
+        }
     }
     
 }
