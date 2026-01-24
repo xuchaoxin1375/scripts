@@ -77,6 +77,12 @@ def parse_args():
         help="Database name",
     )
     parser.add_argument(
+        "-a",
+        "--add-sqlfile",
+        default="",
+        help="可选的,当你需要从外部导入额外的sql文件时使用,可以是包含一个sql语句的片段"
+    )
+    parser.add_argument(
         "--max-workers",
         type=int,
         default=20,
@@ -117,6 +123,8 @@ class WooCommerceProductImporter:
         self.max_workers = max_workers
         self.batch_size = batch_size
         self.lock = threading.Lock()
+        # 共用一个数据库连接影响并发部分代码
+        self.conn = pymysql.connect(**self.db_config)
         os.makedirs(img_dir, exist_ok=True)
 
     def import_products(self, csv_path):
@@ -646,9 +654,10 @@ class WooCommerceProductImporter:
             conn.close()
 
     def post_import_processing(self):
-        """导入后处理（增强版）"""
+        """导入后处理"""
         print("正在执行后期处理...")
-        conn = pymysql.connect(**self.db_config)
+        # conn = self.conn
+        conn=pymysql.connect(**self.db_config)
         try:
             with conn.cursor() as cursor:
 
@@ -725,6 +734,28 @@ class WooCommerceProductImporter:
         except Exception as e:
             conn.rollback()
             print(f"后期处理失败: {str(e)}")
+        finally:
+            conn.close()
+    def additional_processing(self, sql_path):
+        """ 读取外部sql文件进行处理
+         文件存在性检查交由open函数处理即可
+        """
+        if sql_path:
+            print("正在尝试执行外部sql文件处理...")
+        with open(sql_path, 'r', encoding='utf-8') as f:
+            sql = f.read()
+        # conn = self.conn
+        conn = pymysql.connect(
+         **self.db_config
+        )
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(sql)
+                conn.commit()
+                print("外部sql文件处理完成")
+        except Exception as e:
+            conn.rollback()
+            print(f"外部sql文件处理失败: {str(e)}")
         finally:
             conn.close()
 
@@ -813,6 +844,7 @@ if __name__ == "__main__":
         "connect_timeout": 900,
         "read_timeout": 1600,
         "write_timeout": 1600,
+        "client_flag":pymysql.constants.CLIENT.MULTI_STATEMENTS,
         "init_command": 'SET SESSION sql_mode="NO_ENGINE_SUBSTITUTION"',
     }
 
@@ -845,3 +877,5 @@ if __name__ == "__main__":
 
     if args.update_slugs:
         importer.update_product_slugs()
+    if args.add_sqlfile:
+        importer.additional_processing(args.add_sqlfile)

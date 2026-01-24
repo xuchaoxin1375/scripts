@@ -148,7 +148,7 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
         echo "/www/sh does not exist or is not a symbolic link"
     fi
 
-    # 兼容wsl 
+    # 兼容wsl (脚本测试开发)
     [[ -d /mnt/c/repos/scripts/ ]] && ln -s -T /mnt/c/repos/scripts/ /repos/scripts
 
     ln -s -T /repos/scripts/wp/woocommerce/woo_df /www/woo_df  -fv

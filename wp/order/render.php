@@ -171,22 +171,44 @@ function render_analysis_content($access_token, $view_mode, $log_date, $stats, $
         ], JSON_UNESCAPED_UNICODE); ?>;
     </script>
             <div class="stats-overview">
-            <div class="overview-card"><span class="label">总尝试</span><span
-                class="value"><?= $stats['total_attempts'] ?></span></div>
+            <div class="overview-card"><span class="label">总尝试 / 访客数</span><span
+                class="value">
+                <?= $stats['total_attempts'] ?>
+                <?php
+                    $visitor_success = (int)($stats['visitor_success'] ?? 0);
+                    $visitor_fail_only = (int)($stats['visitor_fail_only'] ?? 0);
+                    $visitor_total = (int)($stats['total_visitors'] ?? ($visitor_success + $visitor_fail_only));
+                ?>
+                <span style="font-size:12px; color:#64748b; margin-left:6px;">
+                    <?= $visitor_total ?>=<?= $visitor_success ?>+<?= $visitor_fail_only ?>
+                    <br>
+                    <span style="font-size:11px; color:#94a3b8; margin-left:6px;">w访客数=成功客户x+失败客户y</span>
+                </span>
+            </span></div>
             <div class="overview-card" style="border-bottom: 3px solid var(--success);"><span
                 class="label">成功单量<?php if ($pending_as_success0): ?><span style="font-size:12px; font-weight:400; opacity:.75;">(包括pending)</span><?php endif; ?></span><span class="value"
                 style="color:var(--success);"><?= $stats['total_success'] ?></span></div>
             <div class="overview-card" style="border-bottom: 3px solid #a855f7;"><span class="label">待定单量 <span style="font-size:12px; font-weight:400; opacity:.75;">一般可视为成功</span></span><span class="value"
                 style="color:#a855f7;"><?= (int)($stats['total_pending'] ?? 0) ?></span></div>
-            <div class="overview-card" style="border-bottom: 3px solid #db2777;"><span class="label">营收USD-今日指数</span><span class="value"
-                style="color:#db2777;">$<?= format_money($stats['total_usd_sum']) ?></span></div>
+            <div class="overview-card" style="border-bottom: 3px solid #db2777;"><span class="label">营收USD-今日指数 / 平均客单价</span><span class="value"
+                style="color:#db2777;">$<?= format_money($stats['total_usd_sum']) ?>
+                <span style="font-size:12px; color:#64748b; margin-left:6px;">$<?= format_money(($stats['total_success'] > 0) ? ($stats['total_usd_sum'] / $stats['total_success']) : 0) ?></span>
+            </span></div>
             <div class="overview-card" style="border-bottom: 3px solid #0ea5e9;"><span class="label">营收(USD/EUR/GBP)</span><span class="value"
                 style="color:#0ea5e9; font-size:16px;">$<?= format_money($stats['revenue_by_currency']['USD']) ?> / €<?= format_money($stats['revenue_by_currency']['EUR']) ?> / £<?= format_money($stats['revenue_by_currency']['GBP']) ?></span></div>
-            <div class="overview-card"><span class="label">转化率</span><span
-                class="value"><?= $stats['total_orders'] > 0 ? round(($stats['total_success'] / $stats['total_orders']) * 100, 1) : 0 ?>%</span>
+            <div class="overview-card"><span class="label">支付成功率 / 客户转化率</span><span
+                class="value">
+                <?= $stats['total_orders'] > 0 ? round(($stats['total_success'] / $stats['total_orders']) * 100, 1) : 0 ?>%
+                <span style="font-size:12px; color:#64748b; margin-left:6px;">
+                    <?= $visitor_total > 0 ? round(($visitor_success / $visitor_total) * 100, 1) : 0 ?>%
+                </span>
+            </span></div>
             </div>
+            <div style="margin:12px 0 18px 0; padding:10px 12px; border-left:3px solid #e2e8f0; background:#f8fafc; color:#64748b; font-size:12px; line-height:1.6; border-radius:8px;">
+                <div>访客数：forpay 日志中的订单号前缀(去掉末两位)去重后的数量（可能是 5 或 6 位）。</div>
+                <div>成功顾客数：成功订单组中统计的去重前缀数量。</div>
+                <div>失败组：总访客数 - 成功顾客数。</div>
             </div>
-
             <?php
             [$range_start, $range_end, $min_date, $max_date] = get_current_range_from_query_or_default($log_date);
             $range_error = validate_date_range($range_start, $range_end, $min_date, $max_date);
@@ -415,8 +437,8 @@ function render_analysis_content($access_token, $view_mode, $log_date, $stats, $
                                 按站点分组折叠
                             </label>
                             <label style="font-size:13px; color:#475569; display:flex; align-items:center; gap:4px;">
-                                <input type="hidden" name="cluster_prefix6" value="0">
-                                <input type="checkbox" name="cluster_prefix6" value="1" onchange="window.__ordersFilterChange ? window.__ordersFilterChange(this.form) : this.form.submit()" <?= (!isset($_GET['cluster_prefix6']) || (string)$_GET['cluster_prefix6'] !== '0') ? 'checked' : '' ?>>
+                                <input type="hidden" name="cluster_prefix_trim2" value="0">
+                                <input type="checkbox" name="cluster_prefix_trim2" value="1" onchange="window.__ordersFilterChange ? window.__ordersFilterChange(this.form) : this.form.submit()" <?= (!isset($_GET['cluster_prefix_trim2']) || (string)$_GET['cluster_prefix_trim2'] !== '0') ? 'checked' : '' ?>>
                                 前缀相同的单号合并(末2位不参与比较)
                             </label>
                         </form>

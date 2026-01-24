@@ -284,6 +284,8 @@ def main():
     bt = server.get("bt", {})
     bt_key = server.get("bt_key") or bt.get("bt_key")
     bt_url = server.get("bt_panel") or bt.get("bt_panel")
+    # 规范化处理:去掉端口后的私密字符串部分(不过安全起见,不建议把端口后的路径放在配置文件里)
+    bt_url=re.sub(r'(http.*:\d+).*',r'\1',bt_url)  
 
     # 这里以http代理为例，socks5可用requests库的socks支持
     os.environ["HTTP_PROXY"] = args.proxy

@@ -11,6 +11,9 @@ function orders3_build_analysis_data_and_stats($log_files, $pending_as_success, 
         'total_usd_sum' => 0,
         'revenue_by_currency' => ['USD' => 0, 'EUR' => 0, 'GBP' => 0],
         'unique_domains' => 0,
+        'total_visitors' => 0,
+        'visitor_success' => 0,
+        'visitor_fail_only' => 0,
         'domain_amount' => [],
         'domain_usd_sum' => [],
         'domain_success_orders' => [],
@@ -24,6 +27,7 @@ function orders3_build_analysis_data_and_stats($log_files, $pending_as_success, 
         if ($type === 'success' && !empty($lines)) {
             $lines = array_values(array_unique($lines));
         }
+
         $logs[$type] = $lines;
     }
 
@@ -43,10 +47,14 @@ function orders3_build_analysis_data_and_stats($log_files, $pending_as_success, 
             ];
         }
     }
-
+    $visitor_prefix_set = [];
     foreach (($logs['forpay'] ?? []) as $line) {
         if (preg_match('/\|(\d+)\|/', $line, $m)) {
             $no = $m[1];
+            $prefix0 = (strlen((string)$no) > 2) ? substr((string)$no, 0, -2) : (string)$no;
+            if ($prefix0 !== '') {
+                $visitor_prefix_set[$prefix0] = true;
+            }
             if (isset($analysis_data[$no])) {
                 $analysis_data[$no]['attempts']++;
                 $analysis_data[$no]['logs']['forpay'][] = $line;
@@ -215,6 +223,21 @@ function orders3_build_analysis_data_and_stats($log_files, $pending_as_success, 
             }
         }
     }
+
+    $visitor_success_set = [];
+    foreach ($analysis_data as $no => $item) {
+        $is_pending0 = (!empty($item['has_success_log']) && empty($item['is_success']));
+        $is_success_effective0 = (!empty($item['is_success']) || ($pending_as_success && $is_pending0));
+        if (!$is_success_effective0) continue;
+        $no0 = (string)$no;
+        $prefix0 = (strlen($no0) > 2) ? substr($no0, 0, -2) : $no0;
+        if ($prefix0 !== '' && isset($visitor_prefix_set[$prefix0])) {
+            $visitor_success_set[$prefix0] = true;
+        }
+    }
+    $stats['total_visitors'] = count($visitor_prefix_set);
+    $stats['visitor_success'] = count($visitor_success_set);
+    $stats['visitor_fail_only'] = max(0, $stats['total_visitors'] - $stats['visitor_success']);
 
     uasort($stats['domain_amount'], function ($a, $b) {
         $sum_a = 0.0;

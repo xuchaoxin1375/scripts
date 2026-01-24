@@ -51,6 +51,7 @@ function compute_range_revenue_days($range_start, $range_end, $pending_as_succes
         $success_orders_usd_fallback = [];
         $total_orders = 0;
         $attempts_cnt = 0;
+        $visitor_prefix_set = [];
         // 以 forpay_new 中的唯一订单号作为当日订单总量
         $order_set = [];
         $order_domain_map = [];
@@ -73,10 +74,15 @@ function compute_range_revenue_days($range_start, $range_end, $pending_as_succes
 
         // forpay.log：统计当日总尝试次数（仅统计属于当日订单集合的记录）
         $forpay_orders = [];
-        if (file_exists($forpay_file) && !empty($order_set)) {
+        if (file_exists($forpay_file)) {
             $lines = file($forpay_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
             foreach ($lines as $line) {
-                if (preg_match('/\\|(\\d+)\\|/', $line, $m)) {
+                if (preg_match('/\|(\d+)\|/', $line, $m)) {
+                    $no0 = (string)$m[1];
+                    $prefix0 = (strlen($no0) > 2) ? substr($no0, 0, -2) : $no0;
+                    if ($prefix0 !== '') {
+                        $visitor_prefix_set[$prefix0] = true;
+                    }
                     if (isset($order_set[$m[1]])) {
                         $attempts_cnt++;
                         $forpay_orders[$m[1]] = true;
@@ -163,6 +169,7 @@ function compute_range_revenue_days($range_start, $range_end, $pending_as_succes
             'total_orders' => $total_orders,
             'success_orders' => $success_cnt,
             'attempts' => $attempts_cnt,
+            'visitors' => count($visitor_prefix_set),
             'people_usd' => !empty($people_usd_sum) ? $people_usd_sum : null,
         ];
         $cur = strtotime('+1 day', $cur);

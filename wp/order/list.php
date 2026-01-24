@@ -5,9 +5,9 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
     ob_start();
     $order_index = 1;
 
-    $cluster_prefix6_enabled = true;
-    if (isset($_GET['cluster_prefix6']) && (string)$_GET['cluster_prefix6'] === '0') {
-        $cluster_prefix6_enabled = false;
+    $cluster_prefix_trim2_enabled = true;
+    if (isset($_GET['cluster_prefix_trim2']) && (string)$_GET['cluster_prefix_trim2'] === '0') {
+        $cluster_prefix_trim2_enabled = false;
     }
 
     $pending_as_success0 = true;
@@ -70,7 +70,7 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
             $cluster_key0 = (strlen($no0) > 2) ? substr($no0, 0, -2) : $no0;
             $rows[] = [
                 'no' => $no0,
-                'prefix6' => $cluster_key0,
+                'prefix_trim2' => $cluster_key0,
                 'time' => $time,
                 'time_short' => $time_short,
                 'domain' => $dom,
@@ -159,16 +159,16 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
 
         $prefix_cnt = [];
         foreach ($rows as $r0) {
-            $p0 = (string)($r0['prefix6'] ?? '');
+            $p0 = (string)($r0['prefix_trim2'] ?? '');
             if ($p0 === '') continue;
             if (($r0['group_key'] ?? '') !== 'fail') continue;
             $prefix_cnt[$p0] = ($prefix_cnt[$p0] ?? 0) + 1;
         }
-        if ($cluster_prefix6_enabled && !empty($rows)) {
+        if ($cluster_prefix_trim2_enabled && !empty($rows)) {
             $seen_prefix = [];
             $rows2 = [];
             foreach ($rows as $r0) {
-                $p0 = (string)($r0['prefix6'] ?? '');
+                $p0 = (string)($r0['prefix_trim2'] ?? '');
                 if ($p0 === '') {
                     $r0['cluster_cnt'] = 1;
                     $rows2[] = $r0;
@@ -225,14 +225,14 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
             echo '<td class="cell-num">' . $i . '</td>';
             echo '<td class="cell-mono">' . htmlspecialchars($r['time_short']) . '</td>';
             $cc0 = (int)($r['cluster_cnt'] ?? 1);
-            $is_merged_row0 = ($cluster_prefix6_enabled && ($r['group_key'] ?? '') === 'fail' && $cc0 > 1);
+            $is_merged_row0 = ($cluster_prefix_trim2_enabled && ($r['group_key'] ?? '') === 'fail' && $cc0 > 1);
             $order_no_show = (string)($r['no'] ?? '');
             if ($is_merged_row0) {
-                $order_no_show = (string)($r['prefix6'] ?? $order_no_show);
+                $order_no_show = (string)($r['prefix_trim2'] ?? $order_no_show);
             }
             $order_no_html = htmlspecialchars($order_no_show);
             if ($is_merged_row0) {
-                $order_no_html = '<span class="order-no-prefix6-merged">' . $order_no_html . '</span>';
+                $order_no_html = '<span class="order-no-prefix-merged">' . $order_no_html . '</span>';
             }
             if ($is_merged_row0) {
                 $order_no_html .= ' (合并' . (int)$cc0 . '条)';
@@ -363,7 +363,7 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
         $display_orders[$no] = $item;
     }
 
-    if ($cluster_prefix6_enabled && !empty($display_orders)) {
+    if ($cluster_prefix_trim2_enabled && !empty($display_orders)) {
         $seen_prefix = [];
         $clustered = [];
         foreach ($display_orders as $no => $item) {
@@ -628,14 +628,14 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
                 $is_pending1 = (!empty($item['has_success_log']) && empty($item['is_success']));
                 $is_success_effective1 = (!empty($item['is_success']) || ($pending_as_success0 && $is_pending1));
                 $group_key1 = $is_success_effective1 ? 'success' : (!empty($item['has_success_log']) ? 'pending' : 'fail');
-                $cc_show0 = ($cluster_prefix6_enabled && $group_key1 === 'fail' && $cc0 > 1) ? (' · 合并' . $cc0 . '条') : '';
+                $cc_show0 = ($cluster_prefix_trim2_enabled && $group_key1 === 'fail' && $cc0 > 1) ? (' · 合并' . $cc0 . '条') : '';
                 $no_show0 = (string)$no;
-                if ($cluster_prefix6_enabled && $group_key1 === 'fail' && $cc0 > 1) {
+                if ($cluster_prefix_trim2_enabled && $group_key1 === 'fail' && $cc0 > 1) {
                     $no_show0 = (strlen($no_show0) > 2) ? substr($no_show0, 0, -2) : $no_show0;
                 }
                 $no_show_html0 = htmlspecialchars($no_show0);
-                if ($cluster_prefix6_enabled && $group_key1 === 'fail' && $cc0 > 1) {
-                    $no_show_html0 = '<span class="order-no-prefix6-merged">' . $no_show_html0 . '</span>';
+                if ($cluster_prefix_trim2_enabled && $group_key1 === 'fail' && $cc0 > 1) {
+                    $no_show_html0 = '<span class="order-no-prefix-merged">' . $no_show_html0 . '</span>';
                 }
                 echo '<div style="font-size:12px; color:#94a3b8; margin-top:4px;">单号: ' . $no_show_html0 . $cc_show0 . ' · ' . substr($item['time'], 11) . $usd_basis_show0 . '</div>';
                 if (!empty($item['details']['err'])) {
@@ -794,14 +794,14 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
                 $is_pending1 = (!empty($item['has_success_log']) && empty($item['is_success']));
                 $is_success_effective1 = (!empty($item['is_success']) || ($pending_as_success0 && $is_pending1));
                 $group_key1 = $is_success_effective1 ? 'success' : (!empty($item['has_success_log']) ? 'pending' : 'fail');
-                $cc_show0 = ($cluster_prefix6_enabled && $group_key1 === 'fail' && $cc0 > 1) ? (' · 合并' . $cc0 . '条') : '';
+                $cc_show0 = ($cluster_prefix_trim2_enabled && $group_key1 === 'fail' && $cc0 > 1) ? (' · 合并' . $cc0 . '条') : '';
                 $no_show0 = (string)$no;
-                if ($cluster_prefix6_enabled && $group_key1 === 'fail' && $cc0 > 1) {
-                    $no_show0 = (strlen($no_show0) >= 6) ? substr($no_show0, 0, 6) : $no_show0;
+                if ($cluster_prefix_trim2_enabled && $group_key1 === 'fail' && $cc0 > 1) {
+                    $no_show0 = (strlen($no_show0) > 2) ? substr($no_show0, 0, -2) : $no_show0;
                 }
                 $no_show_html0 = htmlspecialchars($no_show0);
-                if ($cluster_prefix6_enabled && $group_key1 === 'fail' && $cc0 > 1) {
-                    $no_show_html0 = '<span class="order-no-prefix6-merged">' . $no_show_html0 . '</span>';
+                if ($cluster_prefix_trim2_enabled && $group_key1 === 'fail' && $cc0 > 1) {
+                    $no_show_html0 = '<span class="order-no-prefix-merged">' . $no_show_html0 . '</span>';
                 }
                 echo '<div style="font-size:12px; color:#94a3b8; margin-top:4px;">单号: ' . $no_show_html0 . $cc_show0 . ' · ' . substr($item['time'], 11) . $usd_basis_show0 . '</div>';
                 if (!empty($item['details']['err'])) {

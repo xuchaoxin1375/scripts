@@ -41,7 +41,42 @@ sudo apt install p7zip-full p7zip-rar lz4 zstd unzip git rsync -y #获取7z命�
 sudo apt install parallel #并行执行命令的工具
 ```
 
-#### wordpress相关
+### 宝塔基础环境
+
+通常是LNMP,外带一个fail2ban(不是必须的,但是网站数量较多时基本得配上增强防御力)
+
+### git 获取或更新脚本代码(初次拉取代码)🎈
+
+这里使用浅克隆提高速度并节约资源
+
+> 如果之前git clone过旧版本,或者想要重新clone,移除掉现有目录 `/repos/scripts`
+
+```bash
+#! /bin/bash
+script_root='/repos/scripts'
+if [[ -d "$script_root" ]]; then { echo 'The target dir is already exist! remove old dir...' ; sudo rm "$script_root" -rf ; } ; fi
+# rm /repos/scripts -rf 
+git clone --depth  1 https://gitee.com/xuchaoxin1375/scripts.git "$script_root"
+
+# 配置更新代码的脚本的符号链接
+ln -s /repos/scripts/wp/woocommerce/woo_df/sh /www/sh -fv
+# 使用简短的更新代码仓库的命令(记得检查fail2ban)
+bash /www/sh/update_repos.sh -g # 如果追加使用-f会覆盖/www/server/nginx/conf/nginx.conf
+# 向bash,zsh配置文件导入常用的shell函数,比如wp命令行等
+bash /www/sh/shellrc_addition.sh
+```
+
+如果仅更新脚本仓库,则可以
+
+```bash
+git fetch origin
+git reset --hard origin/main
+git pull
+```
+
+
+
+### wordpress相关工具
 
 wp-cli命令行工具 [WP-CLI | WP-CLI | WP-CLI](https://wp-cli.org/zh-cn/#安装)
 
@@ -56,7 +91,7 @@ wp --info
 
 ```
 
-#### python脚本用到的依赖安装
+### python脚本用到的依赖安装
 
 > todo:使用虚拟环境优化python及其依赖包的安装和管理
 
@@ -66,7 +101,8 @@ apt install pip
 ```
 
 ```bash
- pip install -r /repos/scripts/wp/woocommerce/woo_df/requirements_linux.txt
+# 执行此代码之前确保专用代码仓库已经克隆到设备上.
+pip install -r /repos/scripts/wp/woocommerce/woo_df/requirements_linux.txt
 ```
 
 ubuntu24+版本对于python pip安装依赖包更加严格,可能无法直接通过pip安装
@@ -80,9 +116,11 @@ ubuntu24+版本对于python pip安装依赖包更加严格,可能无法直接通
 - 面板设置中启用api,设置合适的ip白名单,(填写服务器配置`server_config.json`的时候只要填写到端口为止,端口后的串不要写入)
 - 及时申请好cloudflare账号,并且获取全局key
 
-### 服务器相关组件安装和配置
+### 服务器相关组件安装和配置(宝塔)🎈
 
-- LNMP套件(php7.4)
+
+
+### fail2ban
 
 - fail2ban自动防御(需要手动安装),并且补全符号链接
 
@@ -91,11 +129,35 @@ ubuntu24+版本对于python pip安装依赖包更加严格,可能无法直接通
   ln -s /www/server/panel/pyenv/bin/fail2ban-testcases /usr/bin/fail2ban-testcases -v
   ```
 
+
+
 #### mysql
 
 - 关闭二进制日志文件备份功能,节约空间和资源消耗
 - 调整mysql性能参数(使用宝塔预设的方案128G~256G或更高,尤其注意`max_connections`不应该低于1000)
 - 设置数据库登录密码和私有管理员配置
+
+##### 检查当前用户和所有用户
+
+```bash
+#查看当前数据库用户是什么
+select user();
+```
+
+```bash
+mysql> select user,host from mysql.user;
++------------------+-----------+
+| user             | host      |
++------------------+-----------+
+...
+| mysql.infoschema | localhost |
+| mysql.session    | localhost |
+| mysql.sys        | localhost |
+| root             | localhost |
++------------------+-----------+
+```
+
+
 
 ##### 初次登录或修改mysql密码
 
@@ -176,38 +238,11 @@ mysql> select user,host from mysql.user;
 - php性能调整(并发方案128G),几个进程数1000,100,100,300:
 - 加速插件opcache
 
-### git 获取或更新脚本代码(初次拉取代码)🎈
 
-这里使用浅克隆提高速度并节约资源
 
-> 如果之前git clone过旧版本,或者想要重新clone,移除掉现有目录 `/repos/scripts`
+### 配置检查
 
-```bash
-#! /bin/bash
-script_root='/repos/scripts'
-if [[ -d "$script_root" ]]; then { echo 'The target dir is already exist! remove old dir...' ; sudo rm "$script_root" -rf ; } ; fi
-# rm /repos/scripts -rf 
-git clone --depth  1 https://gitee.com/xuchaoxin1375/scripts.git "$script_root"
-
-# 配置更新代码的脚本的符号链接
-ln -s /repos/scripts/wp/woocommerce/woo_df/sh /www/sh -fv
-# 使用简短的更新代码仓库的命令
-bash /www/sh/update_repos.sh -g
-# 向bash,zsh配置文件导入常用的shell函数,比如wp命令行等
-bash /www/sh/shellrc_addition.sh
-```
-
-如果仅更新脚本仓库,则可以
-
-```bash
-git fetch origin
-git reset --hard origin/main
-git pull
-```
-
-#### 配置检查
-
-拉取代码后,一定要即使检查配置,包括nginx配置
+正式部署网站之前,尤其是拉取代码或覆盖脚本后,一定要即使检查配置,包括nginx配置.
 
 
 
@@ -217,7 +252,7 @@ git pull
 sudo timedatectl set-timezone Asia/Shanghai
 ```
 
-### 修改主机名
+### 修改主机名🎈
 
 ```bash
 sudo hostnamectl set-hostname "NewHostName"
@@ -280,7 +315,7 @@ bash /www/sh/adduser_uploader.sh
 cat $sh\update_repos.sh
 ```
 
-## ssh服务端口更改
+## ssh服务端口更改(可选但是推荐)
 
 ```bash
 # 检查文件是否存在且Port行存在(默认检查Port 22片段)
@@ -329,14 +364,18 @@ notepad ~\.ssh\config
 windows上,虽然没有自带ssh-copy-id工具,可以通过powershell+ssh调用服务器上的shell工具的方式实现
 
 ```bash
-$pubkey=Get-Content ~/.ssh/id_ed25519.pub
-ssh root@"your_server_host" "mkdir -p ~/.ssh && echo '$pubkey' >> ~/.ssh/authorized_keys"
+$target="user@your_server_host" #例如 root@$env:DF_SERVER4
 
+$pubkey=Get-Content ~/.ssh/id_ed25519.pub
+ssh $target "mkdir -p ~/.ssh && echo '$pubkey' >> ~/.ssh/authorized_keys"
+# 初次运行需要输入服务器ssh对应user用户的密码
 ```
 
+通常上述操作配合默认的ssh配置已经足够了,如果不行,可能是其他sshd配置的问题.
 
+### 重启ssh服务(按需)
 
-### 重启ssh服务
+根据需要如果发生了sshd配置修改,则要重启服务生效.如果没有就不需要重启服务
 
 ```bash
 sudo systemctl restart ssh

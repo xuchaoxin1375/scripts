@@ -13,7 +13,45 @@
 
 现在问题在于新站变成老站这个过程如何检测和判定,并且判定之后使用执行什么动作(脚本)
 
-bash和python脚本均可实现此任务,不过考虑到任务具有一定的复杂度,尤其是日期时间计算,使用python门槛会比较低
+bash和python脚本均可实现此任务,不过考虑到任务具有一定的复杂度,尤其是日期时间计算,使用python门槛会比较低.
+
+### 局限性
+
+分批限流自动调整作用可能没有想象中的大,主要作用于新网站刚建站的一段时期方便google爬虫,更加严格的限流方案需要其他手段:
+
+- 借助cloudflare:
+  - `$http_cf_ipcountry `字段判断访客ip来源,仅允许特定国家ip或者其他ip属性(住宅ip)访问(存在副作用,可能影响搜索引起爬虫和一些潜在客户)
+  - 对接`fail2ban`,限制某些类型的请求,例如对恶意骚扰访问(状态码499或404)的ip启用质询(人机验证)甚至ip封锁;fail2ban本身不依赖于cloudflare,但是如果所有网站都走cf代理,就需要对接cf的api在cdn层面设置封锁或质询
+
+### 本文涉及脚本
+
+```powershell
+$sh\nginx_conf
+
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+-a---          2025/12/20     8:26          23753 maintain_nginx_vhosts.py
+-a---          2025/12/15    11:32           2699 reload_nginx.py
+-a---           2026/1/21    17:28            287 maintain_nginx_vhosts.sh
+-a---           2026/1/21    17:28            972 update_cf_ip_configs.sh
+-a---           2026/1/21    17:28           9673 update_nginx_vhosts_conf.sh
+-a---           2026/1/21    17:28           4605 update_nginx_vhosts_log_format.sh
+```
+
+主要介绍`maintain_nginx_vhost`相关的`.py`,`.sh`,后者是对前者的一个包装,适合作为定时任务中的配置行.这样当`.py`如果有改动或者调用参数发生改变,则只需要修改`.sh`文件.
+
+其余脚本都是`.sh`:
+
+nginx(vhost)配置文件修改脚本,通过`-h`获取使用帮助.
+
+- `update_nginx_vhosts_conf.sh`用来手动更新配置文件,可以指定时间范围等参数
+- `update_nginx_vhosts_log_format.sh`用来批量修改配置文件中的日志格式(`access_log`指令)
+
+其他
+
+- `update_cf_ip_configs.sh`用来拉取cloudflare的ip,做安全cdn检查,获取的访客ip(虽然也可能是代理ip),较新版本的宝塔也提供了类似功能解析源ip
+
+## 分批限流分析
 
 ### 确定网站的创建时间
 
@@ -77,7 +115,7 @@ bash和python脚本均可实现此任务,不过考虑到任务具有一定的复
 - `status`:取值为`young`或`old`,个别情况可以放空
 - `update_time`:同`birth_time`为时间,但是一般不要自己填写(没有意义),程序自动维护更新日期
 
-## 方案
+## 分批限流管理方案
 
 每次建站,我们都默认为新站的配置文件(vhost)中的`.conf`插入默认严格的配置:`com.conf`以及其他限流相关的配置(比如`limits.conf`)
 
@@ -167,8 +205,8 @@ server
 
 ```bash
 #⚡️[Administrator@CXXUDESK][~\Desktop\woo_df\sh][22:27:19] PS >
- py .\nginx_conf\update_nginx_vhosts.py -h
-usage: update_nginx_vhosts.py [-h] {maintain,update} ...
+ py .\nginx_conf\maintain_nginx_vhosts.py -h
+usage: maintain_nginx_vhosts.py [-h] {maintain,update} ...
 
 nginx站点配置批量管理工具: 维护日志或批量更新nginx虚拟主机配置文件。
 
@@ -181,12 +219,12 @@ options:
   -h, --help         show this help message and exit
 ```
 
-
+#### maintain命令
 
 ```bash
 #( 12/13/25@10:35PM )( root@s3 ):/www/sh/nginx_conf@main✗✗✗
-   py ./update_nginx_vhosts.py maintain -h
-usage: update_nginx_vhosts.py maintain [-h] [-d] [-k {first,last}]
+   py ./maintain_nginx_vhosts.py maintain -h
+usage: maintain_nginx_vhosts.py maintain [-h] [-d] [-k {first,last}]
 
 options:
   -h, --help            show this help message and exit
@@ -194,9 +232,25 @@ options:
   -k {first,last}, --keep {first,last}
                         保留重复项中的哪一个(默认first)
                         
+
+```
+
+典型用例:
+
+```bash
+python3 /www/sh/nginx_conf/maintain_nginx_vhosts.py maintain -d -k first
+```
+
+
+
+#### update命令
+
+主要是给定时任务运行的.
+
+```bash
 #( 12/13/25@10:20PM )( root@s3 ):/www/sh/nginx_conf@main✗✗✗
-   py ./update_nginx_vhosts.py update -h     
-usage: update_nginx_vhosts.py update [-h] [-m {old,young}] [-q] [-n] [-a] [-d DAYS] [--dry-run]
+   py ./maintain_nginx_vhosts.py update -h     
+usage: maintain_nginx_vhosts.py update [-h] [-m {old,young}] [-q] [-n] [-a] [-d DAYS] [--dry-run]
 
 options:
   -h, --help            show this help message and exit
@@ -210,6 +264,8 @@ options:
   --dry-run             仅打印将被处理的站点和配置文件,不做实际修改
 ```
 
+### 用途
+
 #### 主要用途
 
 主要用来自动检测服务器上哪些站点随着时间的推移从新站变成老站,并将这些不在新(不在年轻)的站配置模式更改到老站模式
@@ -220,9 +276,9 @@ options:
 
 每次新建一批站点时,都应该经该批次的网站(域名)列表文件(site_table.conf)上传到服务指定位置(建议统一位置路径`/www/site_table.conf`)
 
-然后调用`update_nginx_vhosts.py`的 `maintain`子命令更新(维护)该服务器专属的**建站日期表**(csv)
+然后调用`maintain_nginx_vhosts.py`的 `maintain`子命令更新(维护)该服务器专属的**建站日期表**(csv)
 
-这样服务器定期调用`update_nginx_vhosts.py`的`update`子命令来扫描此csv文件并做必要的配置文件修改
+这样服务器定期调用`maintain_nginx_vhosts.py`的`update`子命令来扫描此csv文件并做必要的配置文件修改
 
 > 注意,每次修改完配置文件都要及时重载nginx配置,使其生效.
 >
@@ -239,18 +295,20 @@ options:
 
 例如,要把之前的服务器上的部分或者所有网站(从excel中拷贝对应的网站列表即可,还可以选择将建站日期一起),粘贴到csv文件中,这可以用excel编辑,或者vscode中的一些插件,比如`edit csv`像编辑表格一样容易
 
-然后使用类似`py ./update_nginx_vhosts.py update -m old -a`,使用`-a`选项将忽略csv中的`domain`列外的其他列,即不区分日期和状态,将csv中列出的所有站配置更改到mode指定的模式(比如`old`)
+然后使用类似`py ./maintain_nginx_vhosts.py update -m old -a`,使用`-a`选项将忽略csv中的`domain`列外的其他列,即不区分日期和状态,将csv中列出的所有站配置更改到mode指定的模式(比如`old`)
 
 ### 定时运行
 
-#### 直接添加到crontab
+这里提供两个方案,推荐包装为bash脚本的方案
+
+#### 直接添加(不推荐)
 
 crontab中添加行
 
 > 要在每天 00:00 运行脚本，`crontab` 的时间格式应为 `0 0 * * *`。
 
 ```bash
-0 0 * * * python /www/sh/nginx_conf/update_nginx_vhosts.py update -m old
+0 0 * * * python /www/sh/nginx_conf/maintain_nginx_vhosts.py update -m old
 ```
 
 此外,`crontab` 任务不会直接在终端显示输出。为了方便调试和检查任务是否成功，建议将输出重定向到日志文件：
@@ -265,7 +323,7 @@ crontab中添加行
 >
 > 可见,`maintain,update`两个子命令的相对独立性.
 
-#### 绑定nginx重载动作
+#### 包装为bash脚本绑定nginx重载动作
 
 为例更方便管理,可以考虑新建一个`.sh`文件(比如存放于`/www/sh/nginx_conf/maintain_nginx_vhosts.sh`,然后编辑内容
 

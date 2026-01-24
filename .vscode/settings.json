@@ -15,5 +15,6 @@
     },
     "dotnet.defaultSolution": "ConsoleApp1.sln",
     "python-envs.defaultPackageManager": "ms-python.python:conda",
-    "python-envs.pythonProjects": []
+    "python-envs.pythonProjects": [],
+    "python-envs.defaultEnvManager": "ms-python.python:conda"
 }

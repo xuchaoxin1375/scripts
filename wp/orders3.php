@@ -33,9 +33,9 @@ $list_view = trim((string)($_GET['list_view'] ?? ''));
 if ($list_view !== 'table' && $list_view !== 'card') {
     $list_view = 'card';
 }
-$cluster_prefix6 = true;
-if (isset($_GET['cluster_prefix6']) && (string)$_GET['cluster_prefix6'] === '0') {
-    $cluster_prefix6 = false;
+$cluster_prefix_trim2 = true;
+if (isset($_GET['cluster_prefix_trim2']) && (string)$_GET['cluster_prefix_trim2'] === '0') {
+    $cluster_prefix_trim2 = false;
 }
 $amount_nonzero = isset($_GET['amount_nonzero']) ? (bool)$_GET['amount_nonzero'] : false;
 $group_by_domain = isset($_GET['group_by_domain']) ? (bool)$_GET['group_by_domain'] : false;
@@ -853,8 +853,8 @@ if (orders3_handle_partials_and_exports(
                 const csvFile = (fd.get('csv_file') || '').toString();
                 const listView = (fd.get('list_view') || '').toString();
                 const pendingAsSuccess = (fd.get('pending_as_success') || '1').toString();
-                const clusterPrefix6 = (function(){
-                    const el = form.querySelector('input[name="cluster_prefix6"][type="checkbox"]');
+                const clusterPrefixTrim2 = (function(){
+                    const el = form.querySelector('input[name="cluster_prefix_trim2"][type="checkbox"]');
                     if (!el) return true;
                     return !!el.checked;
                 })();
@@ -893,7 +893,7 @@ if (orders3_handle_partials_and_exports(
                 if (fd.get('group_by_domain')) url.searchParams.set('group_by_domain', '1');
                 else url.searchParams.delete('group_by_domain');
 
-                url.searchParams.set('cluster_prefix6', clusterPrefix6 ? '1' : '0');
+                url.searchParams.set('cluster_prefix_trim2', clusterPrefixTrim2 ? '1' : '0');
 
                 const fetchUrl = new URL(url.toString());
                 fetchUrl.searchParams.set('partial', 'order_list');
@@ -1278,11 +1278,76 @@ if (orders3_handle_partials_and_exports(
                     const visible1 = ds[1] ? chart.isDatasetVisible(1) : false; // conversion
                     const visible2 = ds[2] ? chart.isDatasetVisible(2) : false; // attempts
                     const visible3 = ds[3] ? chart.isDatasetVisible(3) : false; // success orders
+                    const visible4 = ds[4] ? chart.isDatasetVisible(4) : false; // visitors
 
                     if (scales.y) scales.y.display = !!visible0;
                     if (scales.y1) scales.y1.display = !!visible1;
                     if (scales.y2) scales.y2.display = !!visible2;
                     if (scales.y3) scales.y3.display = !!visible3;
+                    if (scales.y4) scales.y4.display = !!visible4;
+                } catch (e) {}
+            }
+
+            function renderRevenueQuickControls(chart) {
+                try {
+                    const legendWrap = document.getElementById('revenueChartLegend');
+                    if (!legendWrap) return;
+                    legendWrap.innerHTML = '';
+
+                    const bar = document.createElement('div');
+                    bar.style.display = 'flex';
+                    bar.style.flexWrap = 'wrap';
+                    bar.style.gap = '8px';
+                    bar.style.alignItems = 'center';
+                    bar.style.margin = '6px 0 10px 0';
+
+                    function mkBtn(text, onClick) {
+                        const b = document.createElement('button');
+                        b.type = 'button';
+                        b.innerText = text;
+                        b.style.padding = '6px 10px';
+                        b.style.border = '1px solid #e2e8f0';
+                        b.style.background = '#fff';
+                        b.style.borderRadius = '8px';
+                        b.style.cursor = 'pointer';
+                        b.addEventListener('click', function(e) {
+                            try { e.preventDefault(); } catch (e0) {}
+                            try { e.stopPropagation(); } catch (e1) {}
+                            try { if (typeof onClick === 'function') onClick(); } catch (e2) {}
+                        });
+                        return b;
+                    }
+
+                    function applyVisibility(mode) {
+                        if (!chart) return;
+                        const ds = (chart.data && chart.data.datasets) ? chart.data.datasets : [];
+                        if (!ds.length) return;
+                        for (let i = 0; i < ds.length; i++) {
+                            const isVisible = chart.isDatasetVisible(i);
+                            if (mode === 'all') {
+                                chart.setDatasetVisibility(i, true);
+                            } else if (mode === 'none') {
+                                chart.setDatasetVisibility(i, false);
+                            } else if (mode === 'invert') {
+                                chart.setDatasetVisibility(i, !isVisible);
+                            }
+                        }
+                        syncRevenueAxesVisibility(chart);
+                        chart.update();
+                    }
+
+                    bar.appendChild(mkBtn('全选', function() { applyVisibility('all'); }));
+                    bar.appendChild(mkBtn('全不选', function() { applyVisibility('none'); }));
+                    bar.appendChild(mkBtn('反选', function() { applyVisibility('invert'); }));
+
+                    const tip = document.createElement('span');
+                    tip.innerText = '提示：点击图例开关可控制曲线与坐标轴显示，点折线可跳转日期。';
+                    tip.style.color = '#94a3b8';
+                    tip.style.fontSize = '12px';
+                    tip.style.marginLeft = '6px';
+                    bar.appendChild(tip);
+
+                    legendWrap.appendChild(bar);
                 } catch (e) {}
             }
 
@@ -1320,6 +1385,7 @@ if (orders3_handle_partials_and_exports(
             const conversionSeries = data.map(d => (typeof d.conversion === 'number' ? d.conversion : 0));
             const attemptsSeries = data.map(d => (typeof d.attempts === 'number' ? d.attempts : Number(d.attempts || 0)));
             const successOrdersSeries = data.map(d => (typeof d.success_orders === 'number' ? d.success_orders : Number(d.success_orders || 0)));
+            const visitorsSeries = data.map(d => (typeof d.visitors === 'number' ? d.visitors : Number(d.visitors || 0)));
             const focusIdx = focusDate ? labels.indexOf(focusDate) : -1;
             const defaultPointBg = '#6366f1';
             const defaultPointBorder = '#fff';
@@ -1360,6 +1426,9 @@ if (orders3_handle_partials_and_exports(
                     if (window.revenueChartInstance.data.datasets && window.revenueChartInstance.data.datasets[3]) {
                         window.revenueChartInstance.data.datasets[3].data = successOrdersSeries;
                     }
+                    if (window.revenueChartInstance.data.datasets && window.revenueChartInstance.data.datasets[4]) {
+                        window.revenueChartInstance.data.datasets[4].data = visitorsSeries;
+                    }
                     window.revenueChartInstance.__rawData = data;
                     syncRevenueAxesVisibility(window.revenueChartInstance);
                     if (window.revenueChartInstance.options && window.revenueChartInstance.options.plugins && window.revenueChartInstance.options.plugins.datalabels) {
@@ -1374,6 +1443,7 @@ if (orders3_handle_partials_and_exports(
                     } else {
                         window.revenueChartInstance.update();
                     }
+                    try { renderRevenueQuickControls(window.revenueChartInstance); } catch (e) {}
                     return;
                 } catch (e) {
                     try { window.revenueChartInstance.destroy(); } catch (e2) {}
@@ -1510,6 +1580,23 @@ if (orders3_handle_partials_and_exports(
                         pointBackgroundColor: '#10b981',
                         pointBorderColor: '#fff',
                         borderWidth: 2
+                    },
+                    {
+                        label: '访客数',
+                        data: visitorsSeries,
+                        borderColor: '#0ea5e9',
+                        backgroundColor: 'rgba(14,165,233,0.08)',
+                        fill: false,
+                        tension: 0.3,
+                        yAxisID: 'y4',
+                        pointRadius: pointR,
+                        pointHoverRadius: pointHoverR,
+                        pointHitRadius: pointHitR,
+                        pointBackgroundColor: '#0ea5e9',
+                        pointBorderColor: '#fff',
+                        borderDash: [2, 6],
+                        borderWidth: 2,
+                        hidden: true
                     }]
                 },
                 options: {
@@ -1567,6 +1654,9 @@ if (orders3_handle_partials_and_exports(
                                     if (context.datasetIndex === 3) {
                                         return '成单数量: ' + context.parsed.y.toLocaleString();
                                     }
+                                    if (context.datasetIndex === 4) {
+                                        return '访客数: ' + context.parsed.y.toLocaleString();
+                                    }
                                     return '金额: $' + context.parsed.y.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                                 }
                             }
@@ -1621,6 +1711,16 @@ if (orders3_handle_partials_and_exports(
                                 callback: function(value) { return value; }
                             }
                         },
+                        y4: {
+                            beginAtZero: true,
+                            position: 'right',
+                            grid: { drawOnChartArea: false, drawTicks: gridDrawTicks },
+                            ticks: {
+                                color: '#0ea5e9',
+                                font: { size: axisFontSize },
+                                callback: function(value) { return value; }
+                            }
+                        },
                         x: {
                             grid: { display: true, color: gridColorX, lineWidth: gridLineWidthX, drawTicks: gridDrawTicks },
                             ticks: {
@@ -1645,6 +1745,7 @@ if (orders3_handle_partials_and_exports(
             });
 
             syncRevenueAxesVisibility(window.revenueChartInstance);
+            try { renderRevenueQuickControls(window.revenueChartInstance); } catch (e) {}
             if (window.revenueChartInstance) window.revenueChartInstance.update();
             if (shouldDeferShow) {
                 const reveal = function() {
@@ -1901,6 +2002,9 @@ if (orders3_handle_partials_and_exports(
                             dsAll[idx].data = peopleSeriesMap[pname] || [];
                         }
                     }
+                    if (window.peopleChartInstance.options) {
+                        window.peopleChartInstance.options.animation = undefined;
+                    }
                     window.peopleChartInstance.update();
                     return;
                 } catch (e) {
@@ -1938,7 +2042,7 @@ if (orders3_handle_partials_and_exports(
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    animation: (opts && opts.preview) ? false : undefined,
+                    animation: undefined,
                     layout: {
                         padding: isMobile ? { top: 4, right: 6, bottom: 0, left: 4 } : { top: 8, right: 12, bottom: 0, left: 8 }
                     },
@@ -2176,9 +2280,10 @@ if (orders3_handle_partials_and_exports(
                         usd: (typeof d.usd === 'number') ? d.usd : Number(d.usd || 0),
                         conversion: (typeof d.conversion === 'number') ? d.conversion : Number(d.conversion || 0),
                         attempts: (typeof d.attempts === 'number') ? d.attempts : Number(d.attempts || 0),
-                        // 关键：把 success_orders 也写入缓存。
-                        // 否则在拖动区间滑块时（本地预览/基于缓存重建序列），成单数量会一直使用旧值或变成 0，导致曲线“不会跟着区间变化”。
+                        // 关键：把 success_orders / visitors 也写入缓存。
+                        // 否则在拖动区间滑块时（本地预览/基于缓存重建序列），相关曲线会使用旧值或变成 0。
                         success_orders: (typeof d.success_orders === 'number') ? d.success_orders : Number(d.success_orders || 0),
+                        visitors: (typeof d.visitors === 'number') ? d.visitors : Number(d.visitors || 0),
                         people_usd: (d && d.people_usd && typeof d.people_usd === 'object') ? d.people_usd : null
                     };
                 }
@@ -2194,13 +2299,14 @@ if (orders3_handle_partials_and_exports(
                     const key = fmtDate(cur);
                     // 关键：默认值也要包含 success_orders。
                     // 否则缓存缺失日期会导致该序列不连续/不随区间变化。
-                    const v = (key in cache) ? cache[key] : { usd: 0, conversion: 0, attempts: 0, success_orders: 0, people_usd: null };
+                    const v = (key in cache) ? cache[key] : { usd: 0, conversion: 0, attempts: 0, success_orders: 0, visitors: 0, people_usd: null };
                     out.push({
                         date: key,
                         usd: v.usd || 0,
                         conversion: v.conversion || 0,
                         attempts: v.attempts || 0,
                         success_orders: v.success_orders || 0,
+                        visitors: v.visitors || 0,
                         people_usd: v.people_usd || null
                     });
                     cur.setDate(cur.getDate() + 1);
