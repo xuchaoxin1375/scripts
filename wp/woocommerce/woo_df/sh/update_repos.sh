@@ -7,7 +7,7 @@
 #git reset --hard origin/main
 #git pull
 
-version=20260120
+version=20260124
 echo "当前脚本版本: $version"
 
 # 配置变量
@@ -174,9 +174,11 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
     # cp /www/sh/nginx_conf/com.conf /www/server/nginx/conf/com.conf -fv
     # cp /www/sh/nginx_conf/com_limit_rate.conf /www/server/nginx/conf/com_limit_rate.conf -fv
     # cp /www/sh/nginx_conf/com_basic.conf /www/server/nginx/conf/com_basic.conf -fv
-    cp /www/sh/nginx_conf/com_*.conf /www/server/nginx/conf/ -fv
+    cp /www/sh/nginx_conf/{com_*.conf,*.html} /www/server/nginx/conf/ -fv
+
 
     cp /www/sh/nginx_conf/nginx.conf /www/server/nginx/conf/nginx.repos.conf -fv
+    cp /www/sh/nginx_conf/nginx_openresty.conf /www/server/nginx/conf/nginx_openresty.conf -fv
     
     # 如果启用了 --force 选项,则备份宝塔的 nginx.conf 文件 (/www/server/nginx/conf/nginx.conf)
     # 并使用 /www/sh/nginx_conf/nginx.conf 覆盖宝塔的 nginx.conf 文件
