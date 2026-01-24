@@ -159,9 +159,9 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
     ln -s /www/sh/update_repos.sh /update_repos.sh -fv
     ln -s /www/sh/nginx_conf/update_nginx_vhosts_conf.sh /update_nginx_vhosts_conf.sh -fv
     # vim配置
-    ln -s  /www/sh/vimrc.vim ~/.vimrc -fv
     nvim_conf_dir="$HOME/.config/nvim"
     [[ -d $nvim_conf_dir ]] || mkdir -p "$nvim_conf_dir"
+    ln -s  /www/sh/vimrc.vim ~/.vimrc -fv
     ln -s /www/sh/vimrc.vim ~/.config/nvim/init.vim -fv
 
     # ==nginx配置文件软链接(这里如果用二级软连接和宝塔的一些操作(比如api)可能冲突,建议使用文件覆盖或则手动覆盖)
@@ -203,40 +203,45 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
     nginx -t && nginx -s reload
 
     # ==fail2ban配置文件
-    # 如果/etc/fail2ban/fai2ban.repos事先存在则先删除
-    f2b_repos='/etc/fail2ban/fail2ban.repos'
-    if [ -d $f2b_repos ]; then
-        echo "🗑️  删除已存在的符号链接或目录: $f2b_repos"
-        rm -rfv "$f2b_repos"
-    fi
-    # 仓库中的fail2ban配置目录软链接到/etc/fail2ban/下(便于编辑器内编辑时参考)
-    ln -s /www/sh/fail2ban/ $f2b_repos -fv
-    # 自定义过滤器
-    cp /www/sh/fail2ban/filter.d/* /etc/fail2ban/filter.d/ -fv
+    # 检查是否安装fail2ban,如果没有则跳过下面操作
+    if [[ -d /etc/fail2ban ]]; then
+        # 如果/etc/fail2ban/fai2ban.repos事先存在则先删除
+        f2b_repos='/etc/fail2ban/fail2ban.repos'
+        if [ -d $f2b_repos ]; then
+            echo "🗑️  删除已存在的符号链接或目录: $f2b_repos"
+            rm -rfv "$f2b_repos"
+        fi
+        # 仓库中的fail2ban配置目录软链接到/etc/fail2ban/下(便于编辑器内编辑时参考)
+        ln -s /www/sh/fail2ban/ $f2b_repos -fv
+        # 自定义过滤器
+        cp /www/sh/fail2ban/filter.d/* /etc/fail2ban/filter.d/ -fv
+            
+        # fail2ban源配置文件(.conf)
+        cf_basic_tpl='/www/sh/fail2ban/action.d/cloudflare-tpl.conf'
         
-    # fail2ban源配置文件(.conf)
-    cf_basic_tpl='/www/sh/fail2ban/action.d/cloudflare-tpl.conf'
-    
-    cf_mode_tpl='/www/sh/fail2ban/action.d/cloudflare-mode-tpl.conf'
-    nginx_cf_jail_tpl='/www/sh/fail2ban/jail.d/nginx-cf-warn.conf'
-    # 目标位置(.local)
-    cf_action1='/etc/fail2ban/action.d/cloudflare1.local'
-    cf_action2='/etc/fail2ban/action.d/cloudflare2.local'
+        cf_mode_tpl='/www/sh/fail2ban/action.d/cloudflare-mode-tpl.conf'
+        nginx_cf_jail_tpl='/www/sh/fail2ban/jail.d/nginx-cf-warn.conf'
+        # 目标位置(.local)
+        cf_action1='/etc/fail2ban/action.d/cloudflare1.local'
+        cf_action2='/etc/fail2ban/action.d/cloudflare2.local'
 
-    cf_mode='/etc/fail2ban/action.d/cloudflare-mode.local'
-    nginx_cf_jail='/etc/fail2ban/jail.d/nginx-cf-warn.local'
-    # 根据需要复制对应数量文件(注意编号)
-    # 由于cp的-n参数在将来可能发生变化,且--update=none老版本cp可能不支持,所以这里使用判断语句
-    # 直接cp默认不覆盖,但是会打印报错信息,观感不好,尽管可以重定向错误信息输出到空,但这不是很好
-    # cp -nv "$cf_mode" /etc/fail2ban/action.d/cloudflare-mode.local
-    # cp -nv "$cf_basic" /etc/fail2ban/action.d/cloudflare1.local
-    # cp -nv "$cf_basic" /etc/fail2ban/action.d/cloudflare2.local
+        cf_mode='/etc/fail2ban/action.d/cloudflare-mode.local'
+        nginx_cf_jail='/etc/fail2ban/jail.d/nginx-cf-warn.local'
+        # 根据需要复制对应数量文件(注意编号)
+        # 由于cp的-n参数在将来可能发生变化,且--update=none老版本cp可能不支持,所以这里使用判断语句
+        # 直接cp默认不覆盖,但是会打印报错信息,观感不好,尽管可以重定向错误信息输出到空,但这不是很好
+        # cp -nv "$cf_mode" /etc/fail2ban/action.d/cloudflare-mode.local
+        # cp -nv "$cf_basic" /etc/fail2ban/action.d/cloudflare1.local
+        # cp -nv "$cf_basic" /etc/fail2ban/action.d/cloudflare2.local
 
 
-    copy_if_need "$cf_basic_tpl" "$cf_action2"
-    copy_if_need "$cf_basic_tpl" "$cf_action1"
-    copy_if_need "$cf_mode_tpl" "$cf_mode"
-    copy_if_need "$nginx_cf_jail_tpl" "$nginx_cf_jail"
+        copy_if_need "$cf_basic_tpl" "$cf_action2"
+        copy_if_need "$cf_basic_tpl" "$cf_action1"
+        copy_if_need "$cf_mode_tpl" "$cf_mode"
+        copy_if_need "$nginx_cf_jail_tpl" "$nginx_cf_jail"
+    else
+        echo "fail2ban 未安装，跳过 fail2ban 配置更新"
+    fi
 
 fi
 

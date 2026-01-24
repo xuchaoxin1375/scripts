@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="robots" content="noindex,nofollow">
+    <title>Security Check</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px
+        }
+
+        .card {
+            background: #fff;
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, .25);
+            text-align: center;
+            max-width: 400px;
+            width: 100%
+        }
+
+        .spin {
+            width: 48px;
+            height: 48px;
+            border: 4px solid #e5e7eb;
+            border-top-color: #667eea;
+            border-radius: 50%;
+            animation: s 1s linear infinite;
+            margin: 0 auto 20px
+        }
+
+        @keyframes s {
+            to {
+                transform: rotate(360deg)
+            }
+        }
+
+        h1 {
+            font-size: 20px;
+            color: #1f2937;
+            margin-bottom: 8px
+        }
+
+        p {
+            color: #6b7280;
+            font-size: 14px;
+            line-height: 1.5
+        }
+
+        .bar-wrap {
+            margin-top: 24px;
+            height: 4px;
+            background: #e5e7eb;
+            border-radius: 2px;
+            overflow: hidden
+        }
+
+        .bar {
+            height: 100%;
+            width: 0;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            transition: width .3s
+        }
+
+        .msg {
+            margin-top: 12px;
+            font-size: 12px;
+            color: #9ca3af
+        }
+
+        .err {
+            display: none;
+            margin-top: 16px;
+            padding: 12px;
+            background: #fef2f2;
+            border-radius: 8px;
+            color: #991b1b;
+            font-size: 13px
+        }
+
+        noscript {
+            display: block;
+            background: #fef2f2;
+            padding: 20px;
+            border-radius: 12px;
+            color: #991b1b
+        }
+    </style>
+</head>
+
+<body>
+    <div class="card">
+        <noscript>
+            <h1>JavaScript Required</h1>
+            <p>Please enable JavaScript and refresh.</p>
+        </noscript>
+        <div id="m">
+            <div class="spin"></div>
+            <h1>Verifying your browser</h1>
+            <p>Please wait a moment...</p>
+            <div class="bar-wrap">
+                <div class="bar" id="b"></div>
+            </div>
+            <div class="msg" id="s">Initializing...</div>
+        </div>
+        <div class="err" id="e"></div>
+    </div>
+    <script>
+        !function () {
+            "use strict";
+            var b = document.getElementById("b"),
+                s = document.getElementById("s"),
+                e = document.getElementById("e"),
+                m = document.getElementById("m");
+
+            function u(p, t) { b.style.width = p + "%"; s.textContent = t; }
+            function f(t) { m.style.display = "none"; e.style.display = "block"; e.innerHTML = "<b>Error:</b> " + t; }
+
+            var k = "sc_try";
+            var n = 0;
+            try { n = parseInt(sessionStorage.getItem(k) || "0", 10) || 0; n += 1; sessionStorage.setItem(k, String(n)); } catch (x) { }
+
+            if (n > 6) {
+                f("Please enable cookies and JavaScript, then refresh. If you are using an ad blocker or privacy extension, try disabling it for this site.");
+                return;
+            }
+
+            u(15, "Initializing...");
+            setTimeout(function () { u(45, "Verifying browser..."); }, 250);
+            setTimeout(function () { u(75, "Almost done..."); }, 650);
+            setTimeout(function () { u(100, "Redirecting..."); }, 950);
+
+            setTimeout(function () {
+                try { location.reload(); } catch (x) { location.href = location.href; }
+            }, 1100);
+        }();
+    </script>
+</body>
+<!-- END SECURITY CHALLENGE -->
+</html>
