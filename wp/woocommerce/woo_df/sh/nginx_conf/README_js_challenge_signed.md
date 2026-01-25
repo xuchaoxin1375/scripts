@@ -1,211 +1,305 @@
-# OpenResty 签名 Cookie 浏览器挑战（JS Challenge）说明
+# OpenResty JS 挑战（签名 Cookie）— 部署与运维指南
 
-## 1. 目标 / 解决的问题
+本文档描述一个基于 **OpenResty（nginx + lua-nginx-module）** 实现的 **必须执行 JavaScript 的反爬挑战**。
 
-该方案用于对站点的关键路径（如 `/product/*`、`/shop/*` 等）进行“浏览器验证”，实现：
+目标：
 
-- 允许真实浏览器正常访问（会出现一次检查页，随后自动回到目标页面）。
-- 阻挡常见脚本请求（curl、python requests、简单爬虫），因为它们通常不执行 JS、也无法自动完成“挑战页 -> 重新访问”的流程。
-- 允许非中国主流搜索引擎爬虫抓取（通过 UA 白名单直接放行）。
-- 代理/VPN 用户也能通过（不绑定 IP，避免换 IP 误伤）。
-
-> 备注：此方案是“应用层挑战”，并非万能。高级对手可通过无头浏览器或复刻逻辑绕过，但它对大部分低成本脚本爬虫非常有效。
+- 阻止简单脚本工具（如 `curl`、基础 Python 请求）直接访问受保护页面。
+- 允许正常浏览器自动通过。
+- 允许指定搜索引擎/爬虫（非中国、可配置）直接放行。
+- 适配 CDN / 反向代理场景（不强绑定 IP）。
 
 ---
 
-## 2. 核心原理（简述）
+## 1. 功能特性
 
-### 2.1 签名 Cookie（`sc2`）
+- **两段式（必须 JS 执行）流程**
+  - 挑战页下发一个短期 **票据 Cookie** `sct`（非 HttpOnly）
+  - 浏览器 JS 读取 `sct`，计算 `proof`，请求 `/__sc_verify`
+  - 服务器校验票据 + proof，通过后才签发 **HttpOnly** 的 `sc2`
+  - 不执行 JS 的情况下，无法通过单次 HTTP 请求直接获得有效 `sc2`
 
-当请求命中保护路径时：
+- **签名 Cookie：`sc2`（30 分钟）**
+  - 格式：`sc2=<ts>_<nonce>_<mac>`
+  - `mac = md5(secret|ts|nonce|ua)`
+  - TTL：1800 秒（允许少量时钟误差）
+  - 绑定 User-Agent（UA），降低 Cookie 被盗用后的复用价值
 
-1. 若请求携带有效 `sc2` Cookie（且未过期、且签名校验通过），直接放行进入真实页面。
-2. 若无有效 Cookie，则内部跳转到挑战页 `@challenge`：
-   - 服务端生成短期 token 并设置 `HttpOnly` Cookie `sc2`。
-   - 返回一个美观的 HTML 检查页面（英文提示），页面通过 JS 自动 `reload` 回原 URL。
-3. 浏览器第二次请求会自动携带 Cookie，此时通过校验并放行。
+- **票据 Cookie：`sct`（2 分钟）**
+  - 格式：`sct=<ts>_<nonce>_<sig>`
+  - `sig = md5(secret|ticket|ts|nonce|ua)`
+  - TTL：120 秒
+  - 仅用于换取 `sc2`
 
-Cookie 结构：
+- **跨子域 Cookie（避免 `www` <-> 裸域反复挑战）**
+  - 当请求 Host 为子域名时，Cookie 会带 `Domain=.example.com`
 
-- `sc2 = ts_nonce_mac`
-- `ts`：Unix 时间戳（秒）
-- `nonce`：随机值
-- `mac`：签名
+- **挑战生成限速**
+  - 使用 `lua_shared_dict sc_token_store` 对同一 IP 的挑战频率进行限制
 
-当前签名算法：
-
-- `mac = md5(secret|ts|nonce|ua)`
-- `ua` 为请求 `User-Agent`
-
-校验逻辑：
-
-- `now - ts <= 1800`（30 分钟）
-- `ts - now <= 300`（允许 5 分钟时钟漂移）
-- `md5(secret|ts|nonce|ua) == mac`
-
-> 安全性说明：
-> - 该 Cookie 为 `HttpOnly`，JS 不能读取，可降低前端脚本窃取风险。
-> - 绑定 UA + 短时效，使“复制 Cookie 复用”的收益降低。
-> - 不绑定 IP，以避免代理用户的 IP 变化导致频繁挑战。
-
-### 2.2 为什么挑战页必须是 200 而非 503
-
-早期用 `error_page 503` 触发挑战会导致：
-
-- 浏览器可能提示“页面有问题/已移动/服务不可用”。
-
-当前实现使用 `access_by_lua_block` 内部：
-
-- `ngx.exec("@challenge")`
-
-这是一次“内部跳转”，最终对用户返回的是挑战页的 HTTP 200，因此体验更自然。
+- **爬虫白名单**
+  - 可配置 UA allowlist（主流搜索引擎、社交爬虫等）
 
 ---
 
-## 3. 相关文件与作用
+## 2. 工作原理（请求流程）
 
-### 3.1 `/www/server/nginx/conf/com_js_signed.conf`
+### 2.1 访问受保护页面
 
-- 主配置文件（被 `server {}` include）。
-- 定义：
-  - 是否需要挑战：`set $need_challenge 1;` + 各类 UA 白名单逻辑。
-  - 受保护路径 `location`。
-  - `@challenge`：签发 cookie 并输出挑战页面。
-- 注意：目前密钥已写在该文件的 `set $sc_secret "...";`。
+1. 客户端访问受保护路径，例如：`/product/...`
+2. Nginx Lua 判断该请求是否需要挑战（`$need_challenge`）
+3. 若需要挑战，则校验 `sc2`：
 
-### 3.2 `/www/server/nginx/conf/js_challenge_openresty.html`
+- 解析 `sc2 = ts_nonce_mac`
+- 检查时间戳是否在有效期内
+- 计算期望值 `md5(secret|ts|nonce|ua)`
+- 与 `mac` 比对
 
-- 挑战页面模板（美观 UI + 英文化提示）。
-- 该页面**不负责写 Cookie**，Cookie 由服务端在 `@challenge` 中写入。
-- JS 逻辑：
-  - 显示进度条
-  - 约 1s 后 `location.reload()` 回原 URL
-  - sessionStorage 防循环（超过一定次数提示用户检查 cookies/js/插件）
+4. 若无效/缺失：内部跳转到 `@challenge`
 
-### 3.3 `/www/server/panel/vhost/nginx/drapeq.com.conf`
+### 2.2 挑战页（`@challenge`）
 
-- 站点 vhost 配置。
-- 当前启用：
-  - `include /www/server/nginx/conf/com_js_signed.conf;`
+- 生成一次性票据：
+  - `ts = ngx.time()`
+  - `nonce = 类随机 md5 子串`
+  - `sig = md5(secret|ticket|ts|nonce|ua)`
+- 下发 Cookie：
+  - `Set-Cookie: sct=ts_nonce_sig; Max-Age=120; SameSite=Lax;（https 时带 Secure）`
+- 返回 `js_challenge_openresty.html`
 
----
+### 2.3 换票接口（`/__sc_verify`）
 
-## 4. 关键配置点（必须项）
+浏览器 JS 请求：
 
-### 4.1 `lua_shared_dict`
-
-在 `nginx.conf` 的 `http {}` 中需要：
-
-- `lua_shared_dict sc_token_store 10m;`
-
-用途：
-
-- 挑战接口的简单频率限制（同一 IP 60 次/分钟）存储计数。
-
-### 4.2 `sc_secret` 密钥
-
-必须提供**足够强的密钥**（建议 32+ 随机字符串）。
-
-当前实现方式（多站点推荐）：
-
-- 通过独立文件集中管理密钥：`/www/server/nginx/conf/com_secret.conf`
-- `com_js_signed.conf` 会 `include /www/server/nginx/conf/com_secret.conf;` 来获取 `$sc_secret`
-
-这样你只需要定期替换 `com_secret.conf` 里的一行密钥即可完成“全站统一轮换”。
-
-注意：
-
-- 该文件应限制权限（不要对外暴露），避免泄露。
-- 轮换密钥后，所有访客会重新触发一次挑战（旧 cookie 会失效）。
-
----
-
-## 5. 放行策略（重要细节）
-
-### 5.1 搜索引擎白名单
-
-`com_js_signed.conf` 里对 UA 进行白名单放行（示例）：
-
-- Google: `Googlebot` 等
-- Bing: `bingbot`、`msnbot` 等
-- Yandex / DuckDuck / Applebot / Slurp
-
-这确保非中国主流搜索引擎可以抓取。
-
-> 注意：UA 白名单只能防“误伤”，无法防“伪装 UA”。更严谨的做法是反向 DNS 验证，但实现成本更高。
-
-### 5.2 代理/VPN 用户
-
-- 本方案不绑定 IP，只绑定 UA。
-- 代理用户 IP 变化不影响 cookie 通过。
-
----
-
-## 6. HTTPS / Cloudflare 注意事项
-
-- `@challenge` 中写 cookie 时会自动判断 `X-Forwarded-Proto=https` 或 `scheme=https` 追加 `Secure`。
-- 若你在 Cloudflare 后面，通常 `scheme` 可能是 `http`，而真实外部是 `https`，因此更依赖 `X-Forwarded-Proto`。
-
----
-
-## 7. 测试方法
-
-### 7.1 使用 curl 验证挑战流程（命令行）
-
-```bash
-# 第一次：返回挑战页（HTTP 200），同时 Set-Cookie: sc2=...
-curl -I -A 'Mozilla/5.0 ... Chrome/120 Safari/537.36' -c /tmp/scjar.txt \
-  https://www.drapeq.com/product/xxx/
-
-# 第二次：携带 cookie，应该返回真实页面（HTTP 200）
-curl -I -A 'Mozilla/5.0 ... Chrome/120 Safari/537.36' -b /tmp/scjar.txt \
-  https://www.drapeq.com/product/xxx/
+```
+GET /__sc_verify?ts=...&nonce=...&proof=...
 ```
 
-### 7.2 语法检查与重载
+其中：
 
-```bash
-nginx -t && nginx -s reload
-```
+- `proof = md5(ts|nonce|ua)`
+
+服务器校验：
+
+- `sct` Cookie 存在且其 `ts/nonce` 与参数一致
+- 票据签名 `sig = md5(secret|ticket|ts|nonce|ua)` 匹配
+- `proof` 等于 `md5(ts|nonce|ua)`
+
+成功后：
+
+- 签发 `sc2`（HttpOnly）
+- 清理 `sct`
+- 返回 `200 ok`
 
 ---
 
-## 8. 常见问题排查
+## 3. 文件与路径
 
-### 8.1 一直停留在挑战页（循环刷新）
+### 3.1 核心配置
+
+- **挑战配置**：`/www/server/nginx/conf/com_js_signed.conf`
+- **共享密钥 include**：`/www/server/nginx/conf/com_secret.conf`
+- **挑战页面模板**：`/www/server/nginx/conf/js_challenge_openresty.html`
+
+### 3.2 Nginx 主配置
+
+- 运行中的 master 启动命令应类似：
+  - `nginx -c /www/server/nginx/conf/nginx.conf`
+
+---
+
+## 4. 安装/启用
+
+### 4.1 全局 nginx.conf（必需）
+
+在 `/www/server/nginx/conf/nginx.conf` 的 `http {}` 内，确保：
+
+- 已设置 `lua_package_path`（多数 OpenResty 已内置）
+- 存在共享字典：
+
+```
+lua_shared_dict sc_token_store 10m;
+```
+
+然后 reload：
+
+```
+nginx -c /www/server/nginx/conf/nginx.conf -t
+nginx -c /www/server/nginx/conf/nginx.conf -s reload
+```
+
+### 4.2 共享密钥（必需）
+
+编辑：
+
+- `/www/server/nginx/conf/com_secret.conf`
+
+示例：
+
+```
+set $sc_secret "LONG_RANDOM_SECRET_32+";
+```
+
+要求：
+
+- **务必保密**。
+- 长度 **>= 16**（建议 32+）。
+- 轮换密钥会使旧的 `sc2` 全部失效（用户会重新触发挑战）。
+
+### 4.3 启用到站点（server 块）
+
+在目标 vhost（例如：`/www/server/panel/vhost/nginx/drapeq.com.conf`）内：
+
+```
+include /www/server/nginx/conf/com_js_signed.conf;
+```
+
+放在该站点的 `server {}` 内。
+
+然后 reload nginx。
+
+---
+
+## 5. 默认保护范围（以及如何调整）
+
+在 `com_js_signed.conf` 中，目前受保护的 location 是：
+
+- `location ~ ^/(product|shop|category|cart|checkout|account)/ { ... }`
+
+如需保护更多路径，可扩展该正则。
+
+如果你希望“除静态资源外几乎全站保护”，可参考：
+
+- 使用更广的 `location / { ... }`，并显式添加 `location ~* \.(css|js|...)$ { set $need_challenge 0; }`
+
+（务必谨慎，避免影响后台、API、健康检查等路径。）
+
+---
+
+## 6. 测试方法
+
+### 6.1 浏览器测试
+
+- 使用无痕窗口打开受保护页面。
+- 应短暂显示挑战页，然后自动跳转/刷新进入真实页面。
+
+在 DevTools > Application > Cookies 中应看到：
+
+- `sct`（短暂存在）
+- 随后出现 `sc2`（HttpOnly）
+
+### 6.2 curl 测试（不执行 JS 应无法通过）
+
+请求受保护页面：
+
+```
+curl -i https://www.example.com/product/...
+```
+
+预期：
+
+- 返回 **挑战页 HTML**，并可能包含 `Set-Cookie: sct=...`
+- 首次响应 **不会**直接给出有效 `sc2`
+- 不执行 JS 的情况下，重复请求仍会持续返回挑战页
+
+### 6.3 命令行完整模拟（用于调试）
+
+如果你想模拟浏览器行为：
+
+1) Request protected page to get `sct`
+2) Compute `proof = md5(ts|nonce|ua)`
+3) Call `/__sc_verify` with cookie `sct` and the computed proof
+4) Use returned `sc2` to request the page again
+
+---
+
+## 7. 故障排查
+
+### 7.1 挑战页反复循环
+
+常见原因：
+
+- **`/__sc_verify` 没有签发 `sc2`**
+  - 表现：`/__sc_verify` 有响应，但没有 `Set-Cookie: sc2=...`
+  - 修复：确保 `location = /__sc_verify` 在 `content_by_lua_block` 中执行 Lua（不要被 `return ...;` 短路）。
+
+- **Host 在 `www` 与裸域之间跳转导致 cookie 丢失**
+  - 修复：确保 cookie 带 `Domain=.example.com`。
+
+- **密钥缺失或过短**
+  - 检查 `com_secret.conf` 是否被 include 且内容正确。
+
+- **系统时间不正确**
+  - 服务器时间偏差会导致 `ts` 时间窗校验失败。
+
+### 7.2 `__/sc_verify` 返回 403
 
 可能原因：
 
-- `sc_secret` 不一致（挑战签发与验证使用的密钥不同）。
-- 浏览器禁用 Cookie（或隐私插件阻止）。
-- UA 被改变（某些隐私插件会随机 UA）。
+- 票据过期（超出约 60 秒时间窗）
+- `sct` 缺失（浏览器禁止 cookie）
+- UA 不一致（隐私插件/浏览器策略导致请求前后 UA 变化）
 
-### 8.2 500 Internal Server Error
+### 7.3 Nginx reload 相关问题
 
-历史踩坑：
+务必使用与 master 进程相同的配置文件 reload：
 
-- 使用了 `ngx.hmac_sha256` 但当前 OpenResty/ngx_lua 没有该函数。
+```
+nginx -c /www/server/nginx/conf/nginx.conf -s reload
+```
 
-当前实现已改为 `ngx.md5`，避免缺函数导致 500。
+确认 master 进程：
 
-### 8.3 浏览器提示“页面有问题 / 服务不可用”
-
-通常是对外返回了 `503` 状态。
-
-当前实现通过 `ngx.exec("@challenge")` 内部跳转，最终返回 200，已规避该体验问题。
+- `ps -ef | grep "nginx: master"`
 
 ---
 
-## 9. 可选增强（后续迭代方向）
+## 8. 安全说明 / 局限性
 
-- **更强签名算法**：升级为 HMAC-SHA256（需要确认可用 API 或引入 lua-resty 库）。
-- **更严格的 bot 放行**：对 Google/Bing 做反向 DNS 校验（代价：实现复杂 + 误伤风险）。
-- **更细粒度策略**：按路径/频率/行为进行分级挑战与封禁。
+- 这不是 CAPTCHA。
+- 高级攻击者仍可通过无头浏览器/真实浏览器自动化绕过。
+- 本方案主要用于：
+  - 提高低成本爬虫的攻击门槛
+  - 阻止基础 `curl` / 脚本直接访问
+  - 通过短 TTL + UA 绑定降低 cookie 重放价值
 
 ---
 
-## 10. 变更记录（简要）
+## 9. 快速检查清单
 
-- 由 `com_js_plus.conf`（静态 HTML + 简单 cookie）升级为 `com_js_signed.conf`（OpenResty Lua 签名 cookie）。
-- 挑战页改为复用 `/www/server/nginx/conf/js_challenge_openresty.html` 的美观模板，并改为英文提示。
-- 挑战触发改为内部 `ngx.exec`，对外返回 200。
+- [ ] `http {}` 内已设置 `lua_shared_dict sc_token_store 10m;`
+- [ ] `com_secret.conf` 内已设置 `set $sc_secret "...";`
+- [ ] 站点 vhost 已 include `com_js_signed.conf`
+- [ ] 挑战页模板存在：`/www/server/nginx/conf/js_challenge_openresty.html`
+- [ ] `nginx -t` 通过
+- [ ] reload 使用：`-c /www/server/nginx/conf/nginx.conf`
+
+## cloudflare提供的质询
+
+### 搜索引擎爬虫会被 Cloudflare 要求“检测/质询”吗？
+
+- **正常情况下（推荐配置）**：不会。
+  Cloudflare 有 **Verified Bots（已验证爬虫）** 机制，像 `Googlebot`、`Bingbot` 等“已验证”的搜索引擎爬虫通常会被 **自动放行/跳过挑战**（取决于你是否启用相关功能、以及你的 WAF/防火墙规则有没有误伤）。
+- **会被要求质询的常见情况**：
+  - **你没启用/没放行 Verified Bots**，或 Bot Fight Mode / Bot Management 策略过严
+  - 你写了规则只按 `User-Agent` 放行，但 Cloudflare 没把它识别为“verified”（UA 很容易被伪造）
+  - 你有 **国家/ASN/IP 段**封禁规则，误伤到搜索引擎抓取出口
+  - 开了 **Under Attack Mode (IUAM)** 或更激进的 Managed Challenge
+  - 爬虫访问的是你不常见的子域名/端口/路径，触发了不同规则
+
+结论：**搜索引擎爬虫本身不会执行 JS**，如果真被挑战，通常就抓不到内容，会影响收录/SEO，所以要尽量让 Verified Bots 绕过挑战。
+
+------
+
+### 检测页面一般返回什么状态码？
+
+Cloudflare 的挑战页/质询页在不同产品/模式下返回码不完全一致，常见是：
+
+- **`403 Forbidden`**
+  现在很多“Managed Challenge/JS Challenge”场景会用 403，并带一些 Cloudflare 特征头（不同模式头不一样）。
+- **`503 Service Unavailable`**（历史上 IUAM/部分挑战常见）
+  有些模式会返回 503（看起来像“临时不可用”，让客户端稍后再试）。
+- **`429 Too Many Requests`**
+  更偏“限流/速率限制”类拦截时会出现。
+
+另外还有一种情况是：浏览器最终通过挑战后，**下一跳才是 200**（挑战页本身不等于真实内容页的状态码）。
