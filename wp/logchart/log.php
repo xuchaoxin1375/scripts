@@ -2119,7 +2119,7 @@ function formatDuration($seconds) {
                 borderWidth: 1.5,
                 fill: false,
                 tension: 0.3,
-                yAxisID: 'y1',
+                yAxisID: 'y',
                 pointRadius: 1,
                 pointHoverRadius: 4
             });
@@ -2181,21 +2181,6 @@ function formatDuration($seconds) {
                             },
                             grid: {
                                 color: getComputedStyle(document.documentElement).getPropertyValue('--chart-grid-color').trim()
-                            }
-                        },
-                        y1: {
-                            type: 'linear',
-                            position: 'right',
-                            title: {
-                                display: true,
-                                text: '独立IP数',
-                                color: '#a855f7'
-                            },
-                            ticks: {
-                                color: '#a855f7'
-                            },
-                            grid: {
-                                drawOnChartArea: false
                             }
                         }
                     },

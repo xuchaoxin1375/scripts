@@ -517,3 +517,29 @@ FILES
 
 配置项目存放在`vimrc.vim`中.
 
+## 配置logchart
+
+为了方便分析某个服务器上的流量以及限流策略效果(合理性和全面性),这里提供了一个日志分析页面(`log.php`),此页面带有日志可视化图表分析功能.和本文提供的nginx日志配置格式是配套的(这里假设用户已经克隆了[代码仓库](https://gitee.com/xuchaoxin1375/scripts)),否则可能无法分析.
+
+对于宝塔用户,可以按如下步骤配置:
+
+- 检查nginx配置文件(使用专属的日志格式),并确保对应的日志文件存在(spider.log),其他的可选(比如warn.log,all.log)
+
+- 创建目录和文件符号链接
+
+  ```bash
+  logchart_root=/www/wwwroot/logchart/
+  mkdir -p "$logchart_root"
+  ln  /www/wwwlogs/{warn,spider,all}.log "$logchart_root" -fv
+  ln  /repos/scripts/wp/logchart/* "$logchart_root" -fv
+  ```
+
+- cdn配置(cloudflare)
+
+  - 可以登录网站用GUI配置,在指定域名下增加一个DNS记录绑定到指定ip(包含logchart站的ip)
+  - 也可以用api或者flarectl配置
+
+- 服务器上配置logchart网站配置
+
+  - 设置对应的网站和域名
+  - `.user.ini`里面如果有路径限制可能导致无法访问分析页面,可以酌情清空或删除(注意系统标志位可能导致无法直接`rm`删除)

@@ -254,7 +254,84 @@ nginx -c /www/server/nginx/conf/nginx.conf -s reload
 
 ---
 
-## 8. 安全说明 / 局限性
+## 8. 搜索引擎放行策略（防 UA 伪装）
+
+本方案默认不会仅凭 `User-Agent` 放行 Google/Bing 等搜索引擎。
+
+原因：
+
+- `User-Agent` 很容易被伪造，如果仅靠 UA 放行，会导致“伪装成爬虫”直接绕过挑战。
+
+实现方式（与 Cloudflare Verified Bots 思路类似）：
+
+- 当请求 UA 命中疑似搜索引擎（如 `Googlebot`/`Bingbot`）时，使用 **反向 DNS（PTR）+ 正向 DNS（A/AAAA）回查确认** 该 IP 是否确实属于对应搜索引擎。
+- 验证通过才放行（`need_challenge=0`），否则继续走挑战（方案 A）。
+- 使用 `lua_shared_dict sc_bot_cache` 对验证结果按 IP 缓存：
+  - 通过：缓存较长时间（例如 6 小时）
+  - 不通过：缓存较短时间（例如 10 分钟）
+
+注意：
+
+- 需要服务器能够正常解析 DNS。
+- 如果你的服务器 DNS 环境受限，可以把 nameserver 替换为你可用的递归解析器。
+
+与 Cloudflare 类似的行为（推荐）：
+
+- 当请求 UA 像 `Googlebot`/`Bingbot` 但验证失败时，直接返回 **403**（不返回挑战页）。
+- 目的：避免“伪装爬虫”拿到挑战页 HTML 后把它当作正文抓取结果。
+- 响应头会带 `X-SC-Block`，用于定位阻断原因（如 `unverified_bot`、`unverified_bot_no_ptr` 等）。
+
+---
+
+## 9. AI 爬虫策略（弱校验 + 严格限速）
+
+由于多数 AI 爬虫缺少类似 Google/Bing 的稳定“可验证来源”（PTR 域名/固定 IP 段），本方案对 AI 爬虫采用 **弱校验**：主要基于 `User-Agent` 识别。
+
+风险提示：
+
+- `User-Agent` 容易被伪造，因此必须配合更严格的限速与敏感路径隔离。
+
+当前实现策略：
+
+- **常见 AI UA 命中**时，会设置 `is_ai_bot=1`。
+- 对 AI bot 的弱放行开关为 `ai_allow`，满足以下条件时才会让 `need_challenge=0`：
+  - 仅允许 `GET/HEAD`（非只读方法不弱放行）
+  - 不属于敏感路径（账户/结算/后台等）
+
+常见 AI UA 列表示例（可按需增删）：
+
+- `GPTBot`
+- `ChatGPT-User`
+- `OAI-SearchBot`
+- `OpenAI`
+- `PerplexityBot`
+- `ClaudeBot`
+- `Anthropic`
+- `cohere-ai`
+- `Bytespider`
+- `DuckAssistBot`
+
+敏感路径（即使是 AI bot 也不弱放行）：
+
+- `/wp-admin/`
+- `/wp-login.php`
+- `/xmlrpc.php`
+- `/account/`、`/my-account/`
+- `/cart/`、`/checkout/`
+
+严格限速建议：
+
+- 若你希望 AI bot 可抓取“几乎全站”，建议在全局启用专用限速区，例如：
+  - `limit_req_zone $binary_remote_addr zone=ai_limit:10m rate=30r/m;`
+- 并仅对 AI bot 生效（例如只对其访问的主要页面类型/路径开启）。
+
+附加限制（可选）：
+
+- 若你担心伪装 UA 刷挑战，可对 `@challenge` 内对 `is_ai_bot=1` 施加更严的每 IP 频率限制（本方案已加入）。
+
+---
+
+## 10. 安全说明 / 局限性
 
 - 这不是 CAPTCHA。
 - 高级攻击者仍可通过无头浏览器/真实浏览器自动化绕过。
@@ -265,41 +342,12 @@ nginx -c /www/server/nginx/conf/nginx.conf -s reload
 
 ---
 
-## 9. 快速检查清单
+## 11. 快速检查清单
 
 - [ ] `http {}` 内已设置 `lua_shared_dict sc_token_store 10m;`
+- [ ] `http {}` 内已设置 `lua_shared_dict sc_bot_cache 10m;`
 - [ ] `com_secret.conf` 内已设置 `set $sc_secret "...";`
 - [ ] 站点 vhost 已 include `com_js_signed.conf`
 - [ ] 挑战页模板存在：`/www/server/nginx/conf/js_challenge_openresty.html`
 - [ ] `nginx -t` 通过
 - [ ] reload 使用：`-c /www/server/nginx/conf/nginx.conf`
-
-## cloudflare提供的质询
-
-### 搜索引擎爬虫会被 Cloudflare 要求“检测/质询”吗？
-
-- **正常情况下（推荐配置）**：不会。
-  Cloudflare 有 **Verified Bots（已验证爬虫）** 机制，像 `Googlebot`、`Bingbot` 等“已验证”的搜索引擎爬虫通常会被 **自动放行/跳过挑战**（取决于你是否启用相关功能、以及你的 WAF/防火墙规则有没有误伤）。
-- **会被要求质询的常见情况**：
-  - **你没启用/没放行 Verified Bots**，或 Bot Fight Mode / Bot Management 策略过严
-  - 你写了规则只按 `User-Agent` 放行，但 Cloudflare 没把它识别为“verified”（UA 很容易被伪造）
-  - 你有 **国家/ASN/IP 段**封禁规则，误伤到搜索引擎抓取出口
-  - 开了 **Under Attack Mode (IUAM)** 或更激进的 Managed Challenge
-  - 爬虫访问的是你不常见的子域名/端口/路径，触发了不同规则
-
-结论：**搜索引擎爬虫本身不会执行 JS**，如果真被挑战，通常就抓不到内容，会影响收录/SEO，所以要尽量让 Verified Bots 绕过挑战。
-
-------
-
-### 检测页面一般返回什么状态码？
-
-Cloudflare 的挑战页/质询页在不同产品/模式下返回码不完全一致，常见是：
-
-- **`403 Forbidden`**
-  现在很多“Managed Challenge/JS Challenge”场景会用 403，并带一些 Cloudflare 特征头（不同模式头不一样）。
-- **`503 Service Unavailable`**（历史上 IUAM/部分挑战常见）
-  有些模式会返回 503（看起来像“临时不可用”，让客户端稍后再试）。
-- **`429 Too Many Requests`**
-  更偏“限流/速率限制”类拦截时会出现。
-
-另外还有一种情况是：浏览器最终通过挑战后，**下一跳才是 200**（挑战页本身不等于真实内容页的状态码）。
