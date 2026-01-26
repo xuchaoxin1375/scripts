@@ -9,11 +9,12 @@
 
 version=20260124
 echo "当前脚本版本: $version"
-
+NGINX_CONF_DIR="/www/server/nginx/conf"
+NGINX_CONF_FILE="$NGINX_CONF_DIR/nginx.conf"
 # 配置变量
 REPO_URL="https://gitee.com/xuchaoxin1375/scripts.git"
 TARGET_DIR="/repos/scripts"
-BRANCH="main"  # 或 "master"，根据实际情况调整
+BRANCH="main" # 或 "master"，根据实际情况调整
 
 # CLI flags
 FORCE=0
@@ -21,7 +22,7 @@ UPDATE_CODE=0
 UPDATE_CONFIG=0
 
 print_usage() {
-        cat <<EOF
+    cat <<EOF
 Usage: $(basename "$0") [options]
 
 echo "script version: $version"
@@ -33,7 +34,7 @@ Options:
     -h, --help           显示本帮助信息并退出
 
 If neither --update-code nor --update-config is specified, the script
-will default to updating code only (equivalent to `--update-code`).
+will default to updating code only (equivalent to $(--update-code)).
 
 This script will clone or update the git repository at $TARGET_DIR and
 optionally update several symlinks and nginx/fail2ban configuration files.
@@ -44,7 +45,7 @@ EOF
 # If $dest does exist, this function does nothing.
 # This is useful for avoiding unnecessary overwrite of existing files.
 # Example: copy_if_need /path/to/template /path/to/destination
-copy_if_need(){
+copy_if_need() {
     local source="$1"
     local dest="$2"
     [[ -f "$dest" ]] || cp -v "$source" "$dest"
@@ -52,43 +53,42 @@ copy_if_need(){
 # 解析脚本命令行参数
 while [ "$#" -gt 0 ]; do
     case "$1" in
-        -f|--force)
-            FORCE=1
-            shift
-            ;;
-        -c|--update-code)
-            UPDATE_CODE=1
-            shift
-            ;;
-        -g|--update-config)
-            UPDATE_CONFIG=1
-            shift
-            ;;
-        -h|--help)
-            print_usage
-            exit 0
-            ;;
-        --) # end of options
-            shift
-            break
-            ;;
-        -*)
-            echo "Unknown option: $1"
-            print_usage
-            exit 2
-            ;;
-        *)
-            # positional arg (not used) – ignore for now
-            shift
-            ;;
+    -f | --force)
+        FORCE=1
+        shift
+        ;;
+    -c | --update-code)
+        UPDATE_CODE=1
+        shift
+        ;;
+    -g | --update-config)
+        UPDATE_CONFIG=1
+        shift
+        ;;
+    -h | --help)
+        print_usage
+        exit 0
+        ;;
+    --) # end of options
+        shift
+        break
+        ;;
+    -*)
+        echo "Unknown option: $1"
+        print_usage
+        exit 2
+        ;;
+    *)
+        # positional arg (not used) – ignore for now
+        shift
+        ;;
     esac
 done
 
-    # 默认行为: 如果没有指定 -c/--update-code 或 -g/--update-config, 则默认启用更新代码
-    if [ "$UPDATE_CODE" -eq 0 ] && [ "$UPDATE_CONFIG" -eq 0 ]; then
-        UPDATE_CODE=1
-    fi
-
+# 默认行为: 如果没有指定 -c/--update-code 或 -g/--update-config, 则默认启用更新代码
+if [ "$UPDATE_CODE" -eq 0 ] && [ "$UPDATE_CONFIG" -eq 0 ]; then
+    UPDATE_CODE=1
+fi
 
 # ===更新代码===
 if [ "$UPDATE_CODE" -eq 1 ]; then
@@ -101,7 +101,7 @@ if [ "$UPDATE_CODE" -eq 1 ]; then
     if [ ! -d "$TARGET_DIR/.git" ]; then
         # 目录不存在或不是 Git 仓库：执行浅克隆
         echo "📁 未检测到 Git 仓库，正在执行浅克隆..."
-        rm -rf "$TARGET_DIR"  # 防止存在非 Git 目录（如普通文件夹）
+        rm -rf "$TARGET_DIR" # 防止存在非 Git 目录（如普通文件夹）
         git clone --depth 1 "$REPO_URL" "$TARGET_DIR"
         if [ $? -ne 0 ]; then
             echo "❌ 克隆失败，请检查网络或仓库地址"
@@ -113,7 +113,10 @@ if [ "$UPDATE_CODE" -eq 1 ]; then
         echo "🔁 检测到现有仓库，正在强制更新到最新版本..."
 
         (
-            cd "$TARGET_DIR" || { echo "❌ 无法进入目录: $TARGET_DIR"; exit 1; }
+            cd "$TARGET_DIR" || {
+                echo "❌ 无法进入目录: $TARGET_DIR"
+                exit 1
+            }
 
             # 获取最新提交信息前先 fetch
             git fetch origin "$BRANCH"
@@ -151,8 +154,8 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
     # 兼容wsl (脚本测试开发)
     [[ -d /mnt/c/repos/scripts/ ]] && ln -s -T /mnt/c/repos/scripts/ /repos/scripts
 
-    ln -s -T /repos/scripts/wp/woocommerce/woo_df /www/woo_df  -fv
-    ln -s -T /www/woo_df/sh /www/sh  -fv # 使用-T选项防止嵌套,而-f选项配合-T是会将重复运行符号创建语句效果覆盖而不报错
+    ln -s -T /repos/scripts/wp/woocommerce/woo_df /www/woo_df -fv
+    ln -s -T /www/woo_df/sh /www/sh -fv # 使用-T选项防止嵌套,而-f选项配合-T是会将重复运行符号创建语句效果覆盖而不报错
     ln -s -T /www/woo_df/pys /www/pys -fv
     # 脚本文件的符号链接
     ln -s /www/sh/deploy_wp_full.sh /deploy.sh -fv
@@ -161,7 +164,7 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
     # vim配置
     nvim_conf_dir="$HOME/.config/nvim"
     [[ -d $nvim_conf_dir ]] || mkdir -p "$nvim_conf_dir"
-    ln -s  /www/sh/vimrc.vim ~/.vimrc -fv
+    ln -s /www/sh/vimrc.vim ~/.vimrc -fv
     ln -s /www/sh/vimrc.vim ~/.config/nvim/init.vim -fv
 
     # ==nginx配置文件软链接(这里如果用二级软连接和宝塔的一些操作(比如api)可能冲突,建议使用文件覆盖或则手动覆盖)
@@ -175,16 +178,39 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
     # cp /www/sh/nginx_conf/com_limit_rate.conf /www/server/nginx/conf/com_limit_rate.conf -fv
     # cp /www/sh/nginx_conf/com_basic.conf /www/server/nginx/conf/com_basic.conf -fv
     cp /www/sh/nginx_conf/{com_*.conf,*.html} /www/server/nginx/conf/ -fv
+    # 判断nginx是否可用
+    openresty=false
+    if type nginx &> /dev/null;then
+        nginx_version=$(nginx -v 2>&1)
+        echo "当前 nginx 已安装"
+        if echo "$nginx_version" | grep 'openresty' &> /dev/null ; then
+            echo "当前 nginx 为 openresty: ( $nginx_version )"
+            openresty=true
+        else
+            echo "当前 nginx 非 openresty"
+        fi
+    else
+        echo "nginx 未安装，跳过 nginx 配置更新"
+        nginx_version=""
+    fi
+    if [[ $openresty = true ]]; then
+        echo "检测到 openresty, 使用 openresty 配置文件"
+        cp /www/sh/nginx_conf/nginx_openresty.conf $NGINX_CONF_FILE -fv
+        # 修改com_basic.conf中的# include /www/server/nginx/conf/com_js_signed.conf
+        sed -i.bak -E 's/#[[:space:]]*(.*com_js_signed.conf.*)/\1/g' $NGINX_CONF_DIR/com_basic.conf 
+    elif [[ $nginx_version = *"nginx"* ]]; then
+        echo "使用标准 nginx 配置文件"
+        cp /www/sh/nginx_conf/nginx_nginx.conf $NGINX_CONF_FILE -fv
+    fi
 
+    # cp /www/sh/nginx_conf/nginx_nginx.conf /www/server/nginx/conf/nginx.repos.conf -fv
+    # cp /www/sh/nginx_conf/nginx_openresty.conf /www/server/nginx/conf/nginx_openresty.conf -fv
 
-    cp /www/sh/nginx_conf/nginx.conf /www/server/nginx/conf/nginx.repos.conf -fv
-    cp /www/sh/nginx_conf/nginx_openresty.conf /www/server/nginx/conf/nginx_openresty.conf -fv
-    
     # 如果启用了 --force 选项,则备份宝塔的 nginx.conf 文件 (/www/server/nginx/conf/nginx.conf)
     # 并使用 /www/sh/nginx_conf/nginx.conf 覆盖宝塔的 nginx.conf 文件
     if [ "$FORCE" -eq 1 ]; then
-        NGINX_CONF_DIR="/www/server/nginx/conf"
-        NGINX_CONF_FILE="$NGINX_CONF_DIR/nginx.conf"
+        
+       
         BACKUP_TS=$(date +%Y%m%d) # %H%M%S
         if [ -f "$NGINX_CONF_FILE" ]; then
             echo "🔒 Force enabled: backing up existing nginx.conf to ${NGINX_CONF_FILE}.bak.${BACKUP_TS}"
@@ -215,10 +241,10 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
         ln -s /www/sh/fail2ban/ $f2b_repos -fv
         # 自定义过滤器
         cp /www/sh/fail2ban/filter.d/* /etc/fail2ban/filter.d/ -fv
-            
+
         # fail2ban源配置文件(.conf)
         cf_basic_tpl='/www/sh/fail2ban/action.d/cloudflare-tpl.conf'
-        
+
         cf_mode_tpl='/www/sh/fail2ban/action.d/cloudflare-mode-tpl.conf'
         nginx_cf_jail_tpl='/www/sh/fail2ban/jail.d/nginx-cf-warn.conf'
         # 目标位置(.local)
@@ -233,7 +259,6 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
         # cp -nv "$cf_mode" /etc/fail2ban/action.d/cloudflare-mode.local
         # cp -nv "$cf_basic" /etc/fail2ban/action.d/cloudflare1.local
         # cp -nv "$cf_basic" /etc/fail2ban/action.d/cloudflare2.local
-
 
         copy_if_need "$cf_basic_tpl" "$cf_action2"
         copy_if_need "$cf_basic_tpl" "$cf_action1"
