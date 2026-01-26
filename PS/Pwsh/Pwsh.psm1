@@ -1504,7 +1504,7 @@ function write-GitBasicInfo
 
     # 保存以上内容到你的PowerShell配置文件$PROFILE中，然后重新加载它或重启PowerShell
 }
-
+$originalPrompt = $Function:prompt #禁止在自定义prompt函数体内部执行此代码
 function Prompt
 {
     <# 
@@ -1512,7 +1512,7 @@ function Prompt
     设置powershell提示符(powershell 默认调用)
     .DESCRIPTION
     读取相应的环境变量类设定prompt样式,配合Set-PsPrompt来指定prompt样式
-
+    
     但我们这里改写Prompt函数,而且还可以通过设置环境变量来更改当前prompt主题
     Prompt函数无法传参,但是可以通过设置辅助函数Set-PsPrompt,修改主题来间接传参(控制全局变量)
     关于这部分逻辑详见外部的Set-PsPrompt
@@ -1521,6 +1521,15 @@ function Prompt
     # Write-Host ''
     # Write-Host '# PS> '
 
+    # 计算原来的提示符(conda,nvm等程序可能会在这个阶段完成修改)
+    # $originalPrompt = $function:prompt #禁止在prompt内部执行此代码
+    $prefix = & $originalPrompt
+    # 不要在当前函数prompt中调用prompt,会导致递归调用,逻辑上出不来.
+    # $prefix = prompt # 禁止直接执行!应当在自定义函数prompt外部就把原prompt的脚本块提取出来执行
+
+    # Write-Verbose "Original Prompt: $prefix" -verbose
+
+    $prefix = $prefix.TrimEnd('>')
     switch ($env:PsPrompt)
     {
         'Fast' { PromptFast return "" }
@@ -1538,7 +1547,19 @@ function Prompt
     return ' '
     
 }
-
+function Get-PromptScriptBlock
+{
+    <# 
+    .SYNOPSIS
+    获取当前prompt脚本块
+    .DESCRIPTION
+    获取当前prompt脚本块
+    #>
+    param (
+    )
+    return $function:Prompt
+    
+}
 function Get-PathType
 {
     <# 
@@ -1595,12 +1616,21 @@ function Get-PsProfilesPath
     .SYNOPSIS
     获取所有的$profile级别文件路径,即便文件不存在
     #>
+    [CmdletBinding()]
+    param(
+        # 是否只返回存在文件
+        [switch]$ExistOnly
+    )
     $profiles = @(
         $profile.CurrentUserCurrentHost,
         $profile.CurrentUserAllHosts,
         $profile.AllUsersCurrentHost,
         $profile.AllUsersAllHosts
     )
+    if ($ExistOnly)
+    {
+        $profiles = $profiles | Where-Object { Test-Path $_ }
+    }
     return $profiles
 }
  
@@ -1877,6 +1907,8 @@ function Set-PsPrompt
 
     设置powershell的prompt版本
     .DESCRIPTION
+    通过设置环境变量PsPrompt,间接指定prompt版本(具体的prompt指定函数会读取这个环境变量)
+    .NOTES
     为了设置balance以及信息更丰富的prompt,这里会导入基础的powershell变量和别名
 
     .DESCRIPTION
@@ -1906,7 +1938,7 @@ function Set-PsPrompt
         }
         else
         {
-            # 用户没有和环境变量PsPrompt都没有指定Prompt版本时,则默认启用Balance版本
+            # 用户没有指定Prompt版本且环境变量PsPrompt也没有指定Prompt版本时,则默认启用Balance版本
             $version = 'Balance'
         }
     }

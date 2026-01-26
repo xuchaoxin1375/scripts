@@ -103,11 +103,11 @@ function init
 
     # 其他自定义绑定的任务🎈
     ## 加载时计算方案(耗费一定时间)
-    if(Test-CommandAvailability zoxide)
-    {
+    # if(Test-CommandAvailability zoxide)
+    # {
 
-        Invoke-Expression (& { (zoxide init powershell | Out-String) })
-    }
+    #     Invoke-Expression (& { (zoxide init powershell | Out-String) })
+    # }
     # if(Test-CommandAvailability uv)
     # {
     #     Invoke-Expression (& { uv generate-shell-completion powershell | Out-String })
@@ -119,43 +119,45 @@ function init
 
     ## 缓存补全脚本方案(版本更新的情况下可能要清除缓存脚本文件重新生成)
     # zoxide
-    if(Test-CommandAvailability zoxide)
-    {
-        $zoxideCompletionFile = "$HOME\.zoxide_completion.ps1"
-        if (!(Test-Path $zoxideCompletionFile))
-        {
-            zoxide init powershell > $zoxideCompletionFile
-        }
-        . $zoxideCompletionFile
-    }
+    # if(Test-CommandAvailability zoxide)
+    # {
+    #     $zoxideCompletionFile = "$HOME\.zoxide_completion.ps1"
+    #     if (!(Test-Path $zoxideCompletionFile))
+    #     {
+    #         zoxide init powershell > $zoxideCompletionFile
+    #     }
+    #     . $zoxideCompletionFile
+    # }
+
     # astral系列
     # 检查 uv 是否存在且是否有缓存，如果没有或过时则更新
-    if(Test-CommandAvailability uv)
-    {
-        $uvCompletionFile = "$HOME\.uv_completion.ps1"
-        if (!(Test-Path $uvCompletionFile))
-        {
-            uv generate-shell-completion powershell > $uvCompletionFile
-        }
-        . $uvCompletionFile
-        # uvx
-        $uvxCompletionFile = "$HOME\.uvx_completion.ps1"
-        if(!(Test-Path $uvxCompletionFile))
-        {
-            uvx --generate-shell-completion powershell > $uvxCompletionFile
-        }
-        . $uvxCompletionFile
-    }
-    if(Test-CommandAvailability ruff)
-    {
-        $ruffCompletionFile = "$HOME\.ruff_completion.ps1"
+    # if(Test-CommandAvailability uv)
+    # {
+    #     $uvCompletionFile = "$HOME\.uv_completion.ps1"
+    #     if (!(Test-Path $uvCompletionFile))
+    #     {
+    #         uv generate-shell-completion powershell > $uvCompletionFile
+    #     }
+    #     . $uvCompletionFile
+    #     # uvx
+    #     $uvxCompletionFile = "$HOME\.uvx_completion.ps1"
+    #     if(!(Test-Path $uvxCompletionFile))
+    #     {
+    #         uvx --generate-shell-completion powershell > $uvxCompletionFile
+    #     }
+    #     . $uvxCompletionFile
+    # }
+    # if(Test-CommandAvailability ruff)
+    # {
+    #     $ruffCompletionFile = "$HOME\.ruff_completion.ps1"
 
-        if (!(Test-Path $ruffCompletionFile))
-        {
-            ruff generate-shell-completion powershell > $ruffCompletionFile
-        }
-        . $ruffCompletionFile
-    }
+    #     if (!(Test-Path $ruffCompletionFile))
+    #     {
+    #         ruff generate-shell-completion powershell > $ruffCompletionFile
+    #     }
+    #     . $ruffCompletionFile
+    # }
+
     # 小心conda(miniforge或miniconda)的初始化脚本,部分版本初始化脚本可能引起错误
     # 可以使用调试模式强制加载初始化操作: p -verbose -debug -force
     # if(Test-CommandAvailability conda)
