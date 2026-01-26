@@ -7,10 +7,13 @@
 #git reset --hard origin/main
 #git pull
 
-version=20260124
+version=20260126
 echo "当前脚本版本: $version"
 NGINX_CONF_DIR="/www/server/nginx/conf"
 NGINX_CONF_FILE="$NGINX_CONF_DIR/nginx.conf"
+# nginx主配置文件源(用于覆盖服务器上的旧版本)
+NGINX_CONF_TPL_STD="$NGINX_CONF_DIR/nginx_nginx.conf"
+NGINX_CONF_TPL_OPENRESTY="$NGINX_CONF_DIR/nginx_openresty.conf"
 # 配置变量
 REPO_URL="https://gitee.com/xuchaoxin1375/scripts.git"
 TARGET_DIR="/repos/scripts"
@@ -195,12 +198,12 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
     fi
     if [[ $openresty = true ]]; then
         echo "检测到 openresty, 使用 openresty 配置文件"
-        cp /www/sh/nginx_conf/nginx_openresty.conf $NGINX_CONF_FILE -fv
+        cp $NGINX_CONF_TPL_OPENRESTY $NGINX_CONF_FILE -fv
         # 修改com_basic.conf中的# include /www/server/nginx/conf/com_js_signed.conf
         sed -i.bak -E 's/#[[:space:]]*(.*com_js_signed.conf.*)/\1/g' $NGINX_CONF_DIR/com_basic.conf 
     elif [[ $nginx_version = *"nginx"* ]]; then
         echo "使用标准 nginx 配置文件"
-        cp /www/sh/nginx_conf/nginx_nginx.conf $NGINX_CONF_FILE -fv
+        cp $NGINX_CONF_TPL_STD $NGINX_CONF_FILE -fv
     fi
 
     # cp /www/sh/nginx_conf/nginx_nginx.conf /www/server/nginx/conf/nginx.repos.conf -fv
@@ -220,7 +223,7 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
         fi
 
         echo "🔁 Overwriting $NGINX_CONF_FILE with /www/sh/nginx_conf/nginx.conf"
-        cp -fv /www/sh/nginx_conf/nginx.conf "$NGINX_CONF_FILE"
+        cp -fv /www/sh/nginx_conf/nginx_nginx.conf "$NGINX_CONF_FILE"
     # else
     #     echo "ℹ️ --force not set: skipping overwrite of /www/server/nginx/conf/nginx.conf"
     fi
