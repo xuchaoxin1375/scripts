@@ -1,3 +1,8 @@
+<# 
+这里存放的是别名的处理函数
+定义别名的文件和此文件在同一个目录下,用户可以根据需要自行修改或增加别名
+包括函数别名(functions),程序路径(快捷方式shortcuts)别名等
+#>
 # $scripts = 'C:\repos\scripts'
 # $alias_dir = Split-Path $PSScriptRoot 
 $alias_dir = $PSScriptRoot

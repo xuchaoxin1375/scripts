@@ -5,6 +5,7 @@
 # Set-Alias cxxuAli "@$AliCloudServerIP"
 # 如果需要批量删除set-alias,可以使用编辑器的替换功能(最为简便)
 #---------------------------😀😀😀----------------------
+condam mamba
 
 push pushToAndroid
 win winget

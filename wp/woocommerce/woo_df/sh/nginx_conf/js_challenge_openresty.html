@@ -252,6 +252,22 @@
             function hex(x) { for (var i = 0; i < x.length; i++) x[i] = rhex(x[i]); return x.join(''); }
             function md5(str) { return hex(md51(str)); }
 
+            function qp(name) {
+                try {
+                    var sp = new URLSearchParams(location.search || "");
+                    return sp.get(name);
+                } catch (x) {
+                    return null;
+                }
+            }
+
+            function safePath(u) {
+                u = String(u || "");
+                if (!u) return "/";
+                if (u.charAt(0) !== "/") return "/";
+                return u;
+            }
+
             function verify() {
                 var t = gc('sct');
                 if (!t) {
@@ -276,7 +292,8 @@
                     .then(function (r) {
                         if (r.status === 200) {
                             u(100, 'Done! Redirecting...');
-                            setTimeout(function () { location.reload(); }, 250);
+                            var back = safePath(qp('u') || '/');
+                            setTimeout(function () { location.replace(back); }, 250);
                             return;
                         }
                         return r.text().then(function (t) { throw new Error('Verification failed (' + r.status + '): ' + (t || '')); });

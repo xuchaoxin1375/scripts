@@ -10,7 +10,6 @@ alist "$alist_home\alist"
 aria2c "$aria2_home\aria2c.exe" #主要使用scoop 安装,或者配置aria2所在目录到环境变量Path中
 axmath "$axmath\axmath"
 baiduTranslation "$baiduTranslation_home\百度翻译.exe"
-bebo "$bebo_home\BeBO课程平台.exe"
 br "$exes\broot.exe"
 calibre "$calibre_home\calibre.exe"
 windhawk "$windhawk_portable_home\windhawk.exe"

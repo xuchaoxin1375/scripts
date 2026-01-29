@@ -55,16 +55,29 @@
 - 计算期望值 `md5(secret|ts|nonce|ua)`
 - 与 `mac` 比对
 
-4. 若无效/缺失：内部跳转到 `@challenge`
+4. 若无效/缺失：
 
-### 2.2 挑战页（`@challenge`）
+- 对“看起来像明显非浏览器/脚本”的请求：直接返回 `403`，响应体为挑战页 HTML。
+- 对“看起来像浏览器”的请求：`302` 跳转到 `/_sc/challenge?u=<原始URL>`。
 
-- 生成一次性票据：
-  - `ts = ngx.time()`
-  - `nonce = 类随机 md5 子串`
-  - `sig = md5(secret|ticket|ts|nonce|ua)`
+### 2.2 挑战页（`/_sc/challenge`）
+
+挑战入口为：
+
+- `GET /_sc/challenge?u=<urlencoded 原始 request_uri>`
+
+行为（更接近 Cloudflare 的挑战页形态）：
+
+- 返回 `403`，响应体为 `js_challenge_openresty.html`
+- 同时下发一次性票据 Cookie `sct`
+
+票据生成逻辑：
+
+-  `ts = ngx.time()`
+-  `nonce = 类随机 md5 子串`
+-  `sig = md5(secret|ticket|ts|nonce|ua)`
 - 下发 Cookie：
-  - `Set-Cookie: sct=ts_nonce_sig; Max-Age=120; SameSite=Lax;（https 时带 Secure）`
+  - `Set-Cookie: sct=ts_nonce_sig; Max-Age=120; SameSite=None/Lax;（客户端 https 时带 Secure）`
 - 返回 `js_challenge_openresty.html`
 
 ### 2.3 换票接口（`/__sc_verify`）
@@ -91,6 +104,11 @@ GET /__sc_verify?ts=...&nonce=...&proof=...
 - 清理 `sct`
 - 返回 `200 ok`
 
+说明：
+
+- 在 Cloudflare Flexible 场景下，源站通常是 HTTP，但浏览器侧是 HTTPS。
+- 本方案会根据 `X-Forwarded-Proto` 或 `CF-Visitor` 判断客户端是否为 HTTPS，来决定 Cookie 是否追加 `Secure` 以及是否使用 `SameSite=None`。
+
 ---
 
 ## 3. 文件与路径
@@ -100,6 +118,8 @@ GET /__sc_verify?ts=...&nonce=...&proof=...
 - **挑战配置**：`/www/server/nginx/conf/com_js_signed.conf`
 - **共享密钥 include**：`/www/server/nginx/conf/com_secret.conf`
 - **挑战页面模板**：`/www/server/nginx/conf/js_challenge_openresty.html`
+- **挑战入口**：`/_sc/challenge`
+- **换票接口**：`/__sc_verify`
 
 ### 3.2 Nginx 主配置
 
@@ -181,7 +201,7 @@ include /www/server/nginx/conf/com_js_signed.conf;
 ### 6.1 浏览器测试
 
 - 使用无痕窗口打开受保护页面。
-- 应短暂显示挑战页，然后自动跳转/刷新进入真实页面。
+- 应发生一次 `302` 跳转到 `/_sc/challenge?u=...`，挑战页响应为 `403`，随后自动通过并跳回原始 URL。
 
 在 DevTools > Application > Cookies 中应看到：
 
@@ -198,7 +218,8 @@ curl -i https://www.example.com/product/...
 
 预期：
 
-- 返回 **挑战页 HTML**，并可能包含 `Set-Cookie: sct=...`
+- 可能直接返回 `403`（响应体为挑战页 HTML），并包含 `Set-Cookie: sct=...`
+- 或先 `302` 到 `/_sc/challenge?u=...`，随后挑战页返回 `403` HTML
 - 首次响应 **不会**直接给出有效 `sc2`
 - 不执行 JS 的情况下，重复请求仍会持续返回挑战页
 
@@ -232,7 +253,7 @@ curl -i https://www.example.com/product/...
 - **系统时间不正确**
   - 服务器时间偏差会导致 `ts` 时间窗校验失败。
 
-### 7.2 `__/sc_verify` 返回 403
+### 7.2 `/__sc_verify` 返回 403
 
 可能原因：
 
@@ -264,7 +285,7 @@ nginx -c /www/server/nginx/conf/nginx.conf -s reload
 
 实现方式（与 Cloudflare Verified Bots 思路类似）：
 
-- 当请求 UA 命中疑似搜索引擎（如 `Googlebot`/`Bingbot`）时，使用 **反向 DNS（PTR）+ 正向 DNS（A/AAAA）回查确认** 该 IP 是否确实属于对应搜索引擎。
+- 当请求 UA 命中疑似搜索引擎（如 `Googlebot`/`Bingbot`/`Google-InspectionTool`）时，使用 **反向 DNS（PTR）+ 正向 DNS（A/AAAA）回查确认** 该 IP 是否确实属于对应搜索引擎。
 - 验证通过才放行（`need_challenge=0`），否则继续走挑战（方案 A）。
 - 使用 `lua_shared_dict sc_bot_cache` 对验证结果按 IP 缓存：
   - 通过：缓存较长时间（例如 6 小时）
@@ -274,6 +295,15 @@ nginx -c /www/server/nginx/conf/nginx.conf -s reload
 
 - 需要服务器能够正常解析 DNS。
 - 如果你的服务器 DNS 环境受限，可以把 nameserver 替换为你可用的递归解析器。
+
+推荐的 suspected UA 匹配（尽量不误伤）：
+
+- Google：`(Googlebot|Google-InspectionTool|Storebot-Google|GoogleOther|AdsBot-Google|Mediapartners-Google|FeedFetcher-Google|APIs-Google|Google-Read-Aloud)`
+- Bing：`(Bingbot|BingPreview|msnbot|adidxbot)`
+
+不建议：
+
+- 使用 `google`/`bing` 这种过宽关键词匹配，否则会把大量非官方爬虫/普通 UA 拉入“必须 PTR 验证”的路径，导致误伤。
 
 与 Cloudflare 类似的行为（推荐）：
 
