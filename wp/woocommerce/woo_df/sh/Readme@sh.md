@@ -6,7 +6,7 @@
 
 相关命令行以ubuntu/debian系为例
 
-## 美化shell
+## 美化shell(提高命令行的易用性)
 
 参考[linux@提高shell命令行环境易用性@终端美化@国内网络环境友好一条龙美化(ohmyzsh)_oh my zsh 卸载-CSDN博客](https://blog.csdn.net/xuchaoxin1375/article/details/120999508?sharetype=blogdetail&sharerId=120999508&sharerefer=PC&sharesource=xuchaoxin1375&spm=1011.2480.3001.8118)
 
@@ -45,11 +45,17 @@ sudo apt install parallel #并行执行命令的工具
 
 通常是LNMP,外带一个fail2ban(不是必须的,但是网站数量较多时基本得配上增强防御力)
 
+## 代码下载和管理
+
+通过git下载代码,对于使用定时自动解压的用户,个别文件需要创建服务器专属的自定义版本,避免代码更新导致的覆盖和丢失.
+
 ### git 获取或更新脚本代码(初次拉取代码)🎈
 
 这里使用浅克隆提高速度并节约资源
 
 > 如果之前git clone过旧版本,或者想要重新clone,移除掉现有目录 `/repos/scripts`
+>
+> 
 
 ```bash
 #! /bin/bash
@@ -74,7 +80,35 @@ git reset --hard origin/main
 git pull
 ```
 
+### 脚本保护|自定义脚本(注意!)
 
+`/update_repos.sh`会处理`/www/sh/`和`/www/server/nginx/conf`这些关键目录,如果你修改了代码仓库中的脚本,那么修改会丢失.
+
+> 总之,修改过的脚本都要额外创建文件实现当前服务器或自己的专属版本,不曾使用或没修改过的文件就不用管理保持默认.
+
+典型的例子是
+
+- 部署脚本`deploy_wp_full.sh`和`deploy_wp_schd.sh`
+- 备份脚本`backup_sites/backup_sites_from_source_dir.sh`
+
+不建议服务器管理员直接使用或原地修改`/www/sh/`目录下的这两个文件.(如果没用到上述脚本,就不用管它们)
+
+正确的做法是分被创建属于当前服务器的专属版本(不同人员管理的服务器网站目录结构可能不同,需要自定义)
+
+例如当前服务器记为`s1`,则可以分别取名`deploy_wp_full_s1.sh`,`deploy_wp_schd_s1.sh`,也可以加入管理员的名字缩写,参考模板修改或重写是和当前服务器的版本.
+
+这样即便代码更新覆盖也不会导致自定义修改的版本丢失.
+
+最后要注意定时任务`crontab`中使用的脚本要是服务器专属的(另见crontab配置一节)
+
+```ini
+# 不同服务器管理员要维护自己的网站结构修改自己的定时部署/解压脚本,文件名可能形如deploy_wp_schd_s1.sh
+*/30 * * * * bash /www/sh/deploy_wp_schd.sh
+```
+
+
+
+## 其他工具配置
 
 ### wordpress相关工具
 
@@ -396,8 +430,11 @@ sudo systemctl restart ssh
 ```bash
 # 需要针对每个服务修改的部分
 
-# 修改2个地方: -b参数为备份服务器(ip); -d参数指定要备份服务上的目录,主要是"server?"为对应的目录(比如s1,s2,...)
+# 修改2个地方: -b参数为备份服务器(ip); -d参数指定要备份服务上的目录,主要是"server?"为对应的目录(比如server1,server2,...)
 30 22 * * * bash /www/sh/backup_sites/backup_site_pkgs.sh -s /srv/uploads/uploader/files -b <backupIp> -d /www/wwwroot/xcx/server? #修改"server?"值为具体情况
+
+# 不同服务器管理员要维护自己的网站结构修改自己的定时部署/解压脚本,文件名可能形如deploy_wp_schd_s1.sh
+*/30 * * * * bash /www/sh/deploy_wp_schd.sh
 
 
 # 通用部分(各个服务器共同的定时维护任务脚本)
@@ -406,7 +443,6 @@ sudo systemctl restart ssh
 0 0 */2 * * bash /www/sh/clean_logs.sh
 0 3 * * * bash /www/sh/nginx_conf/update_cf_ip_configs.sh
 50 23 * * 0 bash /www/sh/remove_deployed_sites.sh
-*/30 * * * * bash /www/sh/deploy_wp_schd.sh
 */2 * * * * bash /www/sh/run-all-wp-cron.sh
 
 ## python脚本(适合复杂逻辑维护任务)
@@ -423,29 +459,23 @@ sudo systemctl restart ssh
 
 ### 总配置nginx.conf
 
-文件位置:`$sh\nginx_conf\nginx.conf`
-
-服务器中文件位置:`/www/sh/nginx_conf/nginx.conf`
+下载的代码仓库中相关文件位置:`$sh\nginx_conf\nginx.conf`(`nginx_nginx.conf`或`nginx_openresty.conf`,根据服务器的nginx版本来选用,部署脚本会自动选择,并映射到服务器中文件位置:`/www/sh/nginx_conf/nginx.conf`,不需要过于关心)
 
 如果将仓库中的 `nginx.conf`配置文件覆盖调用原配置文件(比如使用符号链接将文件从仓库位置指向到nginx配置文件路径)是一个有风险的行为
 
 此外,在宝塔中,如果还用了免费防火墙(作者:民国三年一场雨)可能会和限流配置的片段产生冲突,目前看来这个防火墙功能很弱,效果不佳,不太有用,需要nginx限流配置或拦截非法请求的可以自己编写nginx配置,更加灵活
 
-### 公共配置文件com.conf
+### 公共配置文件`com_...conf`系列
 
 对于宝塔用户,可以在 `/www/server/nginx/conf`目录下创建一个 `com.conf`的配置文件
 
-> 在相关配套脚本的作用下,会在创建站点的时候一并往站点的vhost目录(`/www/server/panel/vhost/nginx/`目录下的 `<domain.xxx>.conf`)下配置文件插入一行引用此 `com.conf`的指令
-
-下面是基本 `com.conf`的基本指令内容,可以根据需要统一在这个配置文件中修改;
+> 建议服务器管理员在创建站点的时候一并往站点的vhost目录(`/www/server/panel/vhost/nginx/`目录下的 `<domain.xxx>.conf`)下配置文件插入一行引用此 `com.conf`的指令
 
 每次有需求修改完成后需要重载nginx配置才能逐渐生效 `nginx -t && nginx -s reload` (如果语法有误,会报错,如果通过检测,就会重载配置)
 
-为网站插入公用nginx配置片段的批量处理脚本:`/www/sh/nginx_conf/update_nginx_vhosts_conf.sh`
+为网站插入公用nginx配置片段的批量处理脚本:`/www/sh/nginx_conf/update_nginx_vhosts_conf.sh`,通过`-h`选项获取使用帮助
 
-基础的公用配置(完整版)存放在 `/www/sh/nginx_conf/com.conf`文件中
-
-## nginx 日志文件过多问题🎈
+### nginx 日志文件过多问题🎈
 
 如果服务器上运行很多网站(数百个),可能会遇到如下格式报错
 
@@ -455,7 +485,7 @@ nginx: [emerg] open() "/www/wwwlogs/xxx.com.error.log" failed (24: Too many open
 
 方案不唯一,这里提供一个方案,如果不行请参考其他方法
 
-### 修改系统级 limits.conf
+修改系统级 limits.conf的方案
 
 适用于非 systemd 或传统 init,systemd的系统经过试验应该也可以,如果不行请使用其他方案
 
@@ -486,16 +516,56 @@ nginx: [emerg] open() "/www/wwwlogs/xxx.com.error.log" failed (24: Too many open
 
 在新的终端会话中重载nginx配置
 
-## 配置限流
+## 配置限流🎈
 
-1. 清理免费防火墙(建议清理,很鸡肋,防止和自定义防火墙冲突)
-2. git clone 代码目录得到/www/sh;(如果有古老版本的代码仓库目录 `/repos/scripts`,可以手动清理掉)
-3. 覆盖同个目录(/www/server/nginx/conf)下的2个conf文件 `com.conf`和 `nginx.conf`
-4. 运行同个目录下的两个.sh脚本
-   - `update_nginx_vhosts_conf.sh`(作用是向 `/www/server/panel/vhost/nginx`里的各个站的.conf插入include ...com.conf),
-   - `update_cf_ip_configs.sh`(需要配置定期运行拉取cf公布的ip列表,可借助corntab定期运行)
-5. 增大打开的文件数量限制(针对站点多的服务器),方法之一是修改 `/etc/security/limits.conf` 文件
-6. 新开一个终端(让上一步修改生效),重启nginx
+> 执行之前老用户注意备份自己自定义的脚本,详情参考"脚本保护"一节
+
+1. 清理/卸载宝塔的免费防火墙(这个东西很鸡肋,容易和自定义nginx配置冲突),如果没安装可以跳过此步骤
+
+2. 通过前面的"**代码下载**"一节提供的命令行片段将所需的代码目录下载到服务器上(已经操作过则跳过此步骤),确保已经得到目录`/www/sh`;(如果有古老版本的代码仓库目录 `/repos/scripts`,可以手动清理掉)
+
+3. 创建/覆盖配置目录
+
+   - 运行`/update_repos.sh -g -f` 这个命令会处理:
+     - 将`/www/sh`脚本目录中的脚本更新到最新,里面包含许多服务器管理脚本,`/www/sh/nginx_conf/`这个目录包含`nginx`配置管理脚本
+     - 并在服务器上的nginx配置目录`/www/server/nginx/conf`中创建所需的文件(主要是一些`.conf`,还可能包括`html`文件)
+
+4. 初次部署需要注意:有两个.sh脚本比较重要
+
+   脚本1:`update_cf_ip_configs.sh`(需要配置定期运行拉取cf公布的ip列表,可借助corntab定期运行,一般不要手动运行)
+
+   脚本2:`update_nginx_vhosts_conf.sh`(初次部署使用,为已有的站做处理,后期新建的站可以定期执行一遍,或者每次建站绑定一个步骤执行此脚本.)
+
+   为了让更新的nginx配置生效,需要将自定义配置片段(通常是`include ...`指令)插入到`/www/server/panel/vhost/nginx/`目录下的各个网站的`.conf`文件中,这个过程执行一个命令就可以
+
+   > (下面这个脚本有丰富的选项和用法,这里仅提供最简单粗暴的用法,详情使用`-h`选项查看用法帮助)
+
+   ```bash
+   bash /www/sh/nginx_conf/update_nginx_vhosts_conf.sh -m old --force
+   ```
+
+   为了简化说明,这里不细说对新/老站点做分批限流,而是将所有站都做同样的处理.
+
+其他:
+
+1. 增大打开的文件数量限制(针对站点多的服务器),前面的章节已经提到过,方法之一是修改 `/etc/security/limits.conf` 文件,改完新开一个终端(让上一步修改生效),然后重启nginx
+
+## 反爬
+
+这里反爬也包括一部分的反骚扰(恶意请求,例如大量请求后马上断开状态码为499的骚扰请求).
+
+基本效果是,请求产品页或shop页面,要求客户端执行一段javascript代码,使得一些简单的脚本工具(比如单纯的curl或python脚本)无法直接爬取或发送有效请求,会遇到403错误,需要借助浏览器才能访问.
+
+高级爬虫(调用浏览器仍然可以访问,虽然无法彻底杜绝爬虫,单也增加了爬虫的成本)
+
+目前的实现方案是基于openresty(nginx增强版),通过包含lua脚本的配置实现一些校验功能.
+
+部署也很简单,基本实现脚本自动化:
+
+- 将nginx版本切换到openresty,上述代码下载环节都执行完毕.
+- 注意保护自定义脚本(备份或重命名),执行`/update_repos.sh -g -f`,这会检测你是否安装openresty,然后修改相关的配置文件,重启nginx即可
+
+更多细节参考`/www/sh/nginx_conf/`中的其他文档文件(`.md`文件)
 
 ## 终端文本编辑器
 
