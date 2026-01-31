@@ -186,6 +186,13 @@ for workdir_path in "${WORKDIR_ARRAY[@]}"; do
             if $DRY_RUN; then
                 log_action "  [DRY RUN] 将覆盖 $SOURCE_DIR 到 $TARGET_DIR $TYPE_DESC"
             else
+                # 调整用户ini
+                user_ini="$site/.user.ini"
+                if [[ -f "$user_ini" ]];then
+                    log_action "调整[$site]的.user.ini..."
+                    bash /www/sh/update_user_ini.sh -p "$user_ini"
+                fi
+
                 if [[ -e "$TARGET_DIR" ]]; then
                     log_action "  删除已存在: $TARGET_DIR"
                     rm -rf "$TARGET_DIR"
