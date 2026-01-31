@@ -8,6 +8,7 @@ usage() {
     echo "  --remove <插件名列表>       要移除的插件名，多个用逗号分隔"
     echo "  --user <用户名>             WordPress 站点所属用户名（可选，不指定则处理所有用户）"
     echo "  --workdir <工作目录列表>    网站根工作目录，多个目录用逗号分隔。默认为 /www/wwwroot,/wwwdata/wwwroot"
+    echo "  --install-mode <安装模式>   安装模式(copy:复制到指定目录，symlink:软链接到指定目录),默认为symlink"
     echo "  --plugin-type               插件类型(如果是must类型,则将被处理的插件视为强制执行插件),放到wp-content目录下;默认为common类型,普通插件,放到wp-content/plugins目录下"
     echo "  --dry-run                   预览操作，不实际执行"
     echo "  --blacklist <文件>          指定黑名单文件（每行一个域名）"
@@ -28,7 +29,7 @@ MUST_PLUGINS_HOME="wp-content"
 BLACKLIST_FILE=""
 WHITELIST_FILE=""
 LOG_FILE=""
-
+INSTALL_MODE="symlink"
 PLUGIN_TYPE="common"
 while [[ "$#" -gt 0 ]]; do
     case $1 in
@@ -44,6 +45,14 @@ while [[ "$#" -gt 0 ]]; do
                 PLUGIN_TYPE="must"
             else
                 PLUGIN_TYPE="common"
+            fi
+            shift
+            ;;
+        --install-mode)
+            if [[ "$2" == "copy" ]]; then
+                INSTALL_MODE="copy"
+            elif [[ "$2" == "symlink" ]]; then
+                INSTALL_MODE="symlink"
             fi
             shift
             ;;
@@ -180,8 +189,12 @@ for workdir_path in "${WORKDIR_ARRAY[@]}"; do
                     log_action "  删除已存在: $TARGET_DIR"
                     rm -rf "$TARGET_DIR"
                 fi
-                log_action "  覆盖 $SOURCE_DIR 到 $TARGET_DIR $TYPE_DESC"
-                cp -r "$SOURCE_DIR" "$TARGET_DIR"
+                log_action "  [$INSTALL_MODE]覆盖 $SOURCE_DIR 到 $TARGET_DIR $TYPE_DESC"
+                if [[ "$INSTALL_MODE" == "copy" ]]; then
+                    cp -r "$SOURCE_DIR" "$TARGET_DIR"
+                elif [[ "$INSTALL_MODE" == "symlink" ]]; then
+                    ln -sT "$SOURCE_DIR" "$TARGET_DIR"
+                fi
             fi
         fi
 

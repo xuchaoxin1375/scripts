@@ -905,10 +905,11 @@ function Deploy-WpSitesLocal
         $robocopyLog = "$env:TEMP/$(Get-Date -Format 'yyyyMMdd')robocopy.log"
         # Write-Verbose "Use robocopy to copy files from $path to $destination "
         Copy-Robocopy -Source $path -Destination $destination -Force -Recurse -LogFile $robocopyLog -Threads 32
-        # 根据需要移除mallpay🎈
+        # 根据需要移除mallpay(和其他可能的严格通道)🎈
         if($removeMall)
         {
             Remove-Item "$destination/wp-content/plugins/mallpay" -Force -Recurse -Verbose #-WhatIf:$WhatIfPreference
+            Remove-Item "$destination/wp-content/plugins/xpaid_pay" -Force -Recurse -Verbose
         }
         $template_temp = "$MyWpSitesHomeDir/$template"
         if(Test-Path $template_temp)
@@ -1457,7 +1458,7 @@ function Update-ServerRepos
 
     foreach ($server in $servers.ip)
     {
-        $jobs += Start-ThreadJob -script { ssh -nT  root@$using:server "cd $using:WorkingDirectory && bash $using:cmd" }
+        $jobs += Start-ThreadJob -script { ssh -nT root@$using:server "cd $using:WorkingDirectory && bash $using:cmd" }
     }
     Start-Sleep 1
     # $jobs | Get-Job
@@ -1528,6 +1529,20 @@ function Update-WpPluginsDFOnServers
     $servers = Get-ServerList -Path $ServerConfig
     # Write-Host "servers:$servers"
     # return $servers
+    $plugin_dir_name = (Split-Path $PluginPath -LeafBase) # 计算插件名称,将作为插件压缩包的名称(如果已经是压缩包,则需要压缩包名称和被压缩目录名一致)
+    # 计算插件目录压缩成zip后的文件路径
+    $zipFile = "$wp_plugins/$plugin_dir_name.zip"
+   
+    # 将插件文件夹统一处理为zip包(如果输入路径已经是压缩包文件,则跳过压缩处理)
+    if(Test-Path $PluginPath -PathType Container)
+    {
+        Write-Verbose "Remove existing zip file if exists: [$zipFile]..." 
+        Remove-Item $zipFile -ErrorAction SilentlyContinue -Verbose
+        Compress-Archive -Path $PluginPath -DestinationPath $zipFile
+        # Write-Warning "Plugin name: [$plugin_dir_name],please ensure it is correct then continue. " -WarningAction Inquire 
+        $PluginPath=$zipFile
+    }
+  
     $servers.ip | ForEach-Object {
         if($PSCmdlet.ParameterSetName -eq 'Path')
         {
@@ -1769,12 +1784,13 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
         [switch]$Dry
     )
     
-
+    # 计算要操作的网站名单(白名单/黑名单)
     function Get-DomainListParam
     {
         <# 
         .SYNOPSIS
-        黑白名单文件参数构造和上传
+        内部专用函数.
+        黑白名单文件参数构造,包含目标网站名单上传操作
         #>
         param(
             $DomainList,
@@ -1782,6 +1798,7 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
         )
         Write-Verbose "Using $ListType ...(only update plugins of sites(domain) in $ListType)"
         Write-Verbose "Uploading [$DomainList] file to server[$server]..." -Verbose
+        # 上传网站名单文件
         scp -r $DomainList $username@${server}:"$remoteDirectory" 
         $domainListName = Split-Path -Leaf $DomainList
         $DomainListPathRemote = "$remoteDirectory/$domainListName"
@@ -1795,9 +1812,7 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
         }
         return $domainListParam
     }
-    # 执行高性能的bash脚本
-    $basicCmd = " ssh $username@$server bash $bashScript --workdir $workingDirectory "
-    $dryRunParam = if($Dry) { "--dry-run" }else { "" }
+    
     if($WhiteList -and $BlackList)
     {
         Write-Error "WhiteList and BlackList can not be used together!"
@@ -1813,20 +1828,44 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
 
         $domainListParam = Get-DomainListParam $BlackList -ListType BlackList
     }
+    # 构造bash脚本命令行(插件安装/更新)
+    $basicCmd = " ssh $username@$server bash $bashScript --workdir $workingDirectory "
+    $dryRunParam = if($Dry) { "--dry-run" }else { "" }
+    # 计算插件参数
     if($PSCmdlet.ParameterSetName -eq 'Path')
     {
-        $plugin_dir_name = (Split-Path $PluginPath -Leaf) # 🎈
-        $plugin_dir = "$remoteDirectory/$plugin_dir_name"  # 服务器目标插件目录🎈
-        # 上传文件到服务器
+        $plugin_dir_name = (Split-Path $PluginPath -LeafBase) # 计算插件名称,将作为插件压缩包的名称(如果已经是压缩包,则需要压缩包名称和被压缩目录名一致)
+        # 计算插件目录压缩成zip后的文件路径
+        $zipFile = "$wp_plugins/$plugin_dir_name.zip"
+        $remoteZipFile = "$remoteDirectory/$plugin_dir_name.zip"
+        $remotePluginDir = "$remoteDirectory/$plugin_dir_name"  # 服务器目标插件目录🎈
+
+        # 将插件文件夹统一处理为zip包(如果输入路径已经是压缩包文件,则跳过压缩处理)
+        if(Test-Path $PluginPath -PathType Container)
+        {
+            Write-Verbose "Remove existing zip file if exists: [$zipFile]..." 
+            Remove-Item $zipFile -ErrorAction SilentlyContinue -Verbose
+            Compress-Archive -Path $PluginPath -DestinationPath $zipFile
+            # Write-Warning "Plugin name: [$plugin_dir_name],please ensure it is correct then continue. " -WarningAction Inquire 
+        }
+        else
+        {
+            $zipFile = $PluginPath
+        }
+
+        # 上传插件压缩包到服务器
         Write-Verbose "Uploading file to server[$server]..." -Verbose
-        scp -r $PluginPath $username@${server}:"$remoteDirectory" 
+        scp -r $zipFile $username@${server}:"$remoteDirectory" 
+        
+        Write-Verbose "expanding zip file to [$remotePluginDir]..."
+        # 覆盖式解压(-o选项),-d 指定解压目录(extract directory)
+        ssh $username@$server "unzip -o $remoteZipFile -d $remoteDirectory"
         
         
         Write-Verbose "Executing updating script...(this need several seconds, please wait...)" -Verbose
         # 执行PHP脚本
-        # ssh $username@$server "php $remoteDirectory/$phpScript $remoteDirectory $plugin_dir "
 
-        $cmd = " $basicCmd --source $plugin_dir $domainListParam $dryRunParam " 
+        $cmd = " $basicCmd --source $remotePluginDir $domainListParam $dryRunParam " 
     }
     elseif($PSCmdlet.ParameterSetName -eq 'RemoveByName' -and $RemovePlugin)
     {
