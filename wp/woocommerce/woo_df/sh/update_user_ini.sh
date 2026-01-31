@@ -44,10 +44,10 @@ update_open_basedir() {
   if ! grep -qE "/www/$|/www/:" "$file_path"; then
     echo "更新中: $file_path"
     # 在 open_basedir 行尾追加 :/www/，并清理可能产生的双冒号
-    sed -i '/^open_basedir/ s|$|:/www/|' "$file_path"
+    sed -i '/^open_basedir/ s|$|:/www/\n|' "$file_path"
     sed -i 's|::|:|g' "$file_path"
   else
-    echo "跳过: $file_path (已包含 /www/$)"
+    echo "跳过: $file_path (已包含路径 /www/)"
   fi
 
   # 3. 重新锁定
