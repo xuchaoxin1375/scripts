@@ -25,7 +25,7 @@ usage() {
 
 示例:
   $(basename "$0") -p /www/wwwroot/example.com/.user.ini
-  $(basename "$0") -d /www/wwwroot -m 3
+  $(basename "$0") -d /www/wwwroot -m 4
 EOF
   exit 1
 }
@@ -59,8 +59,8 @@ update_open_basedir() {
 #######################################
 main() {
   local path=""
-  local search_dir=""
-  local max_depth=2
+  local search_dir="/www/wwwroot/"
+  local max_depth=4
 
   # 解析命令行参数
   while getopts "p:d:m:h" opt; do

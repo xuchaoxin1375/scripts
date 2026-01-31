@@ -1329,7 +1329,7 @@ function Update-WpFunctionsphpOnServers
     $servers.ip | ForEach-Object -Parallel {
         Write-Host "Updating functions.php to $_"
         # Push-ByScp -Server $_ -SourcePath $Path -TargetPath $Target  -Verbose
-        $RemoteDirectory=$using:RemoteDirectory
+        $RemoteDirectory = $using:RemoteDirectory
         scp -r $using:Path root@"$_":$RemoteDirectory
         $remoteFunctionsFile = "$RemoteDirectory/functions.php"
         ssh -Tn root@$_ "bash $using:BashScript --src $remoteFunctionsFile --workdir $using:WorkingDirectory --install-mode $using:InstallMode"
@@ -1881,9 +1881,8 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
         
         
         Write-Verbose "Executing updating script...(this need several seconds, please wait...)" -Verbose
-        # 执行PHP脚本
-
-        $cmd = " $basicCmd --source $remotePluginDir $domainListParam $dryRunParam --install-mode $InstallMode" 
+        # 构造替换脚本
+        $cmd = " $basicCmd --source $remotePluginDir $domainListParam $dryRunParam --install-mode $InstallMode ;" 
     }
     elseif($PSCmdlet.ParameterSetName -eq 'RemoveByName' -and $RemovePlugin)
     {
@@ -1894,6 +1893,7 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
     Write-Verbose "Executing command: $cmd" -Verbose
     Start-Sleep 2
     $cmd | Invoke-Expression
+    ssh $username@$server "bash /www/sh/update_user_ini.sh "
     Write-Verbose "Done." -Verbose
     
 }
