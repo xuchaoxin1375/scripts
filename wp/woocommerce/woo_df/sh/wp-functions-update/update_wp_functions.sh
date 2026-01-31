@@ -124,6 +124,7 @@ for site in "${SITE_PATHS[@]}"; do
             log_action "[DRY RUN] 将覆盖 $SRC_FILE 到 $TARGET"
         else
             if [[ $INSTALL_MODE = "copy" ]]; then
+                [[ -f "$TARGET" ]] && rm -f "$TARGET"
                 if cp -f "$SRC_FILE" "$TARGET"; then
                     log_action "已覆盖 $SRC_FILE 到 $TARGET"
                 else

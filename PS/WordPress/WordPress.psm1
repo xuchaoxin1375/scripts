@@ -1320,7 +1320,9 @@ function Update-WpFunctionsphpOnServers
         # 注意,Target目录在远程服务器上应该存在,否则scp上传会失败(scp不会创建缺失的中间路径目录),-r选在跟也不会帮助你创建缺失起始目录
         $RemoteDirectory = "/www/",
         $WorkingDirectory = "/www/wwwroot,/wwwdata/wwwroot",
-        $ServerConfig = $server_config
+        $ServerConfig = $server_config,
+        [ValidateSet('copy','symlink')]
+        $InstallMode='copy'
     )
     $servers = Get-ServerList -Path $ServerConfig
     $servers.ip | ForEach-Object {
@@ -1328,7 +1330,7 @@ function Update-WpFunctionsphpOnServers
         # Push-ByScp -Server $_ -SourcePath $Path -TargetPath $Target  -Verbose
         scp -r $Path root@"$_":$RemoteDirectory
         $remoteFunctionsFile = "$RemoteDirectory/functions.php"
-        ssh root@$_ "bash $BashScript --src $remoteFunctionsFile --workdir $WorkingDirectory"
+        ssh root@$_ "bash $BashScript --src $remoteFunctionsFile --workdir $WorkingDirectory --install-mode $InstallMode"
     } 
     
 }
@@ -1778,6 +1780,8 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
         $BashScript = "/www/sh/wp-plugin-update/update_wp_plugin.sh",
         $WhiteList = "",
         $BlackList = "",
+        [ValidateSet('symlink', 'copy')]
+        $InstallMode="symlink",
         # 移除插件而非安装(更新)插件
         [parameter(ParameterSetName = 'RemoveByName')]
         [switch]$RemovePlugin,
