@@ -22,7 +22,7 @@ HOSTNAME=$(hostname)
 SRC_FILE="/www/functions.php"
 WORKDIR="/www/wwwroot,/wwwdata/wwwroot"
 USER_NAME=""
-INSTALL_MODE="symlink"
+INSTALL_MODE="copy"
 DRY_RUN=false
 BLACKLIST_FILE=""
 WHITELIST_FILE=""
@@ -75,9 +75,11 @@ is_whitelisted() {
     return 1
 }
 log_action() {
-    local msg="$1"
+    # local msg="$*"
+    local msg="[$HOSTNAME] $*"
     echo "$msg"
-    [[ -n "$LOG_FILE" ]] && echo "[$HOSTNAME] $msg" >> "$LOG_FILE"
+    # 根据需要写入到日志文件中.
+    [[ -n "$LOG_FILE" ]] && echo "$msg" >> "$LOG_FILE"
 }
 # 老版本wordpress站路径匹配
 # if [[ -n "$USER_NAME" ]]; then
