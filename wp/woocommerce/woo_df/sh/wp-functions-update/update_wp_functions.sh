@@ -10,6 +10,7 @@ usage() {
     echo "  --workdir <工作目录>     网站根目录,可指定多个" #(改进此参数及其使用逻辑)
     echo "  --user <用户名>          仅处理指定用户名称(不要求系统上真实存在此用户)下的网站"
     echo "  --dry-run                预览操作，不实际执行"
+    echo "  --install-mode           指定安装模式(copy,symlink)"
     echo "  --blacklist <文件>       黑名单文件（每行一个域名）"
     echo "  --whitelist <文件>       白名单文件（每行一个域名，只操作这些域名）"
     echo "  --log <日志文件>         日志文件"
@@ -20,6 +21,7 @@ usage() {
 SRC_FILE="/www/functions.php"
 WORKDIR="/www/wwwroot,/wwwdata/wwwroot"
 USER_NAME=""
+INSTALL_MODE="symlink"
 DRY_RUN=false
 BLACKLIST_FILE=""
 WHITELIST_FILE=""
@@ -30,6 +32,7 @@ while [[ "$#" -gt 0 ]]; do
         --src) SRC_FILE="$2"; shift ;;
         --workdir) WORKDIR="$2"; shift ;;
         --user) USER_NAME="$2"; shift ;;
+        --install-mode) INSTALL_MODE="$2"; shift ;;
         --dry-run) DRY_RUN=true ;;
         --blacklist) BLACKLIST_FILE="$2"; shift ;;
         --whitelist) WHITELIST_FILE="$2"; shift ;;
@@ -120,10 +123,18 @@ for site in "${SITE_PATHS[@]}"; do
         if $DRY_RUN; then
             log_action "[DRY RUN] 将覆盖 $SRC_FILE 到 $TARGET"
         else
-            if cp -f "$SRC_FILE" "$TARGET"; then
-                log_action "已覆盖 $SRC_FILE 到 $TARGET"
-            else
-                log_action "覆盖失败: $TARGET"
+            if [[ $INSTALL_MODE = "copy" ]]; then
+                if cp -f "$SRC_FILE" "$TARGET"; then
+                    log_action "已覆盖 $SRC_FILE 到 $TARGET"
+                else
+                    log_action "覆盖失败: $TARGET"
+                fi
+            elif [[ $INSTALL_MODE = "symlink" ]]; then 
+                if ln -sf "$SRC_FILE" "$TARGET"; then
+                    log_action "已强制创建软链接 $SRC_FILE 到 $TARGET"
+                else
+                    log_action "创建软链接失败: $TARGET"
+                fi
             fi
         fi
     done
