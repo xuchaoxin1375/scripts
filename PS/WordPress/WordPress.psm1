@@ -1318,20 +1318,22 @@ function Update-WpFunctionsphpOnServers
         $Path = "$wp_plugins/functions.php",
         $BashScript = '/www/sh/wp-functions-update/update_wp_functions.sh',
         # 注意,Target目录在远程服务器上应该存在,否则scp上传会失败(scp不会创建缺失的中间路径目录),-r选在跟也不会帮助你创建缺失起始目录
-        $RemoteDirectory = "/www/",
+        $RemoteDirectory = "/www",
         $WorkingDirectory = "/www/wwwroot,/wwwdata/wwwroot",
         $ServerConfig = $server_config,
-        [ValidateSet('copy','symlink')]
-        $InstallMode='copy'
+        [ValidateSet('copy', 'symlink')]
+        $InstallMode = 'copy',
+        $Threads = 10
     )
     $servers = Get-ServerList -Path $ServerConfig
-    $servers.ip | ForEach-Object {
+    $servers.ip | ForEach-Object -Parallel {
         Write-Host "Updating functions.php to $_"
         # Push-ByScp -Server $_ -SourcePath $Path -TargetPath $Target  -Verbose
-        scp -r $Path root@"$_":$RemoteDirectory
+        $RemoteDirectory=$using:RemoteDirectory
+        scp -r $using:Path root@"$_":$RemoteDirectory
         $remoteFunctionsFile = "$RemoteDirectory/functions.php"
-        ssh root@$_ "bash $BashScript --src $remoteFunctionsFile --workdir $WorkingDirectory --install-mode $InstallMode"
-    } 
+        ssh -Tn root@$_ "bash $using:BashScript --src $remoteFunctionsFile --workdir $using:WorkingDirectory --install-mode $using:InstallMode"
+    } -ThrottleLimit $Threads
     
 }
 
@@ -1453,14 +1455,15 @@ function Update-ServerRepos
     param (
         $ServerConfig = $server_config,
         $WorkingDirectory = '/www/',
-        $cmd = "/update_repos.sh -c"
+        $cmd = "/update_repos.sh -c",
+        $Threads = 5
     )
     $servers = Get-ServerList -Path $ServerConfig
     $jobs = @()
 
     foreach ($server in $servers.ip)
     {
-        $jobs += Start-ThreadJob -script { ssh -nT root@$using:server "cd $using:WorkingDirectory && bash $using:cmd" }
+        $jobs += Start-ThreadJob -script { ssh -nT root@$using:server "cd $using:WorkingDirectory && bash $using:cmd" } -ThrottleLimit $Threads
     }
     Start-Sleep 1
     # $jobs | Get-Job
@@ -1488,8 +1491,10 @@ function Update-WpPluginsDFOnServers
         # 删除插件
         [parameter(ParameterSetName = 'Name')]
         [switch]$RemovePlugin,
-
-        $ServerConfig = $server_config
+        [ValidateSet('symlink', 'copy')]
+        $InstallMode = "symlink",
+        $ServerConfig = $server_config,
+        $Threads = 5
     )
 
     if($WhiteList -and $BlackList)
@@ -1542,22 +1547,31 @@ function Update-WpPluginsDFOnServers
         Remove-Item $zipFile -ErrorAction SilentlyContinue -Verbose
         Compress-Archive -Path $PluginPath -DestinationPath $zipFile
         # Write-Warning "Plugin name: [$plugin_dir_name],please ensure it is correct then continue. " -WarningAction Inquire 
-        $PluginPath=$zipFile
+        $PluginPath = $zipFile
     }
-  
-    $servers.ip | ForEach-Object {
-        if($PSCmdlet.ParameterSetName -eq 'Path')
+    $currentSet = $PSCmdlet.ParameterSetName
+    $servers.ip | ForEach-Object -Parallel {
+        param(
+            $currentSet,
+            $WorkingDirectory,
+            $PluginPath,
+            $domainListParam,
+            $InstallMode,
+            $RemovePlugin,
+            $PluginName
+        )
+        if($currentSet -eq 'Path')
         {
             
             Write-Host "Updating plugins to $_"
-            "Update-WpPluginsDFOnServer -server $_ -WorkingDirectory '$workingDirectory' -PluginPath $PluginPath $domainListParam" | Invoke-Expression
+            "Update-WpPluginsDFOnServer -server $_ -WorkingDirectory '$workingDirectory' -PluginPath $PluginPath $domainListParam -InstallMode $InstallMode" | Invoke-Expression
         }
-        elseif($PSCmdlet.ParameterSetName -eq 'Name' -and $RemovePlugin)
+        elseif($currentSet -eq 'Name' -and $RemovePlugin)
         {
             Write-Host "remove plugins[$PluginName] in $_"
-            "Update-WpPluginsDFOnServer -server $_ -WorkingDirectory '$workingDirectory' -PluginName $PluginName -RemovePlugin $domainListParam" | Invoke-Expression
+            "Update-WpPluginsDFOnServer -server $_ -WorkingDirectory '$workingDirectory' -PluginName $PluginName -RemovePlugin $domainListParam " | Invoke-Expression
         }
-    }
+    } -ThrottleLimit $Threads -ArgumentList $currentSet, $WorkingDirectory, $PluginPath, $domainListParam, $InstallMode, $RemovePlugin, $PluginName
 }
 function Update-WpSitesRobots
 {
@@ -1781,7 +1795,7 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
         $WhiteList = "",
         $BlackList = "",
         [ValidateSet('symlink', 'copy')]
-        $InstallMode="symlink",
+        $InstallMode = "symlink",
         # 移除插件而非安装(更新)插件
         [parameter(ParameterSetName = 'RemoveByName')]
         [switch]$RemovePlugin,
@@ -1833,7 +1847,7 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
         $domainListParam = Get-DomainListParam $BlackList -ListType BlackList
     }
     # 构造bash脚本命令行(插件安装/更新)
-    $basicCmd = " ssh $username@$server bash $bashScript --workdir $workingDirectory "
+    $basicCmd = " ssh $username@$server bash $bashScript --workdir $workingDirectory  "
     $dryRunParam = if($Dry) { "--dry-run" }else { "" }
     # 计算插件参数
     if($PSCmdlet.ParameterSetName -eq 'Path')
@@ -1869,7 +1883,7 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
         Write-Verbose "Executing updating script...(this need several seconds, please wait...)" -Verbose
         # 执行PHP脚本
 
-        $cmd = " $basicCmd --source $remotePluginDir $domainListParam $dryRunParam " 
+        $cmd = " $basicCmd --source $remotePluginDir $domainListParam $dryRunParam --install-mode $InstallMode" 
     }
     elseif($PSCmdlet.ParameterSetName -eq 'RemoveByName' -and $RemovePlugin)
     {

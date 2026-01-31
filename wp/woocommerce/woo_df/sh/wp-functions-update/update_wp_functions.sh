@@ -18,6 +18,7 @@ usage() {
 }
 
 # 参数解析
+HOSTNAME=$(hostname)
 SRC_FILE="/www/functions.php"
 WORKDIR="/www/wwwroot,/wwwdata/wwwroot"
 USER_NAME=""
@@ -76,7 +77,7 @@ is_whitelisted() {
 log_action() {
     local msg="$1"
     echo "$msg"
-    [[ -n "$LOG_FILE" ]] && echo "$msg" >> "$LOG_FILE"
+    [[ -n "$LOG_FILE" ]] && echo "[$HOSTNAME] $msg" >> "$LOG_FILE"
 }
 # 老版本wordpress站路径匹配
 # if [[ -n "$USER_NAME" ]]; then
