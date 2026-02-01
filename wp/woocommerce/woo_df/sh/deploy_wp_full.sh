@@ -10,8 +10,9 @@ DEFAULT_DB_USER="root"
 DEFAULT_DB_PASSWORD="15a58524d3bd2e49"
 DEFAULT_DEPLOYED_DIR="$UPLOADER_DIR/deployed_all"
 DEFAULT_PROJECT_HOME="/www/wwwroot"
-
-DB_HOST="localhost" # 数据库主机
+PLUGINS_HOME="/www/"
+PLUGIN_INSTALL_MODE="symlink" # 插件安装模式: symlink(符号链接), copy(复制)
+DB_HOST="localhost"           # 数据库主机
 # PACK_ROOT="/www/wwwroot"           # WordPress 网站根目录
 STOP_EDITING_LINE='Add any custom values between this line and the "stop editing" line'
 HTTPS_CONFIG_LINE="\$_SERVER['HTTPS'] = 'on'; define('FORCE_SSL_LOGIN', true); define('FORCE_SSL_ADMIN', true);"
@@ -26,6 +27,7 @@ show_help() {
   --db-user USER            设置数据库用户名 (默认: $DEFAULT_DB_USER)
   --db-pass PASS            设置数据库密码
   --user-dir DIR            仅处理指定用户目录
+  -m,-plugin-install-mode MODE  设置插件安装模式 (默认: $PLUGIN_INSTALL_MODE) (可选值: symlink, copy)
   --deployed-dir DIR        默认存储已部署的包文件(默认: $DEFAULT_DEPLOYED_DIR)
   -r,--project-home DIR     设置站点所属的项目目录PROJECT_HOME (默认: $DEFAULT_PROJECT_HOME)
   --site-home DIR           设置SERVER_SITE_HOME（自定义站点根目录）
@@ -37,7 +39,7 @@ EOF
 # 命令行参数解析
 while [[ "$#" -gt 0 ]]; do
     case $1 in
-    -p|--pack-root)
+    -p | --pack-root)
         PACK_ROOT="$2"
         shift
         ;;
@@ -57,11 +59,15 @@ while [[ "$#" -gt 0 ]]; do
         DEPLOYED_DIR="$2"
         shift
         ;;
-    -r|--project-home)
+    -m|--plugin-install-mode)
+        PLUGIN_INSTALL_MODE="$2"
+        shift
+        ;;
+    -r | --project-home)
         PROJECT_HOME="$2"
         shift
         ;;
-    -h|--help) show_help ;;
+    -h | --help) show_help ;;
     *)
         echo "未知参数: $1"
         exit 1
@@ -83,8 +89,6 @@ done
 # 语法	             说明
 # ${var-default}	如果 var 未定义，使用 default
 # ${var:-default}	如果 var 未定义 或为空，使用 default
-
-
 
 # 使用默认值或用户提供的值🎈
 PACK_ROOT=${PACK_ROOT:-$DEFAULT_PACK_ROOT}
@@ -258,18 +262,16 @@ set_rewrte_rules_file() {
 #             echo  "解包 .tar 文件 $temp_output_file"
 #             if ! tar -xf "$temp_output_file" -C "$target_dir"; then
 #                 echo "❌ 解包 TAR 文件失败: $temp_output_file"
-#                 rm -f "$temp_output_file" -v 
+#                 rm -f "$temp_output_file" -v
 #                 return 1
 #             fi
 
-            
 #             echo "清理临时文件 $temp_output_file"
 #             rm -f "$temp_output_file" -v
 #             ;;
 #         zst|zstd)
 #             # 使用 mktemp 创建唯一临时文件名
 #             temp_output_file=$(mktemp -u)
-
 
 #             echo "🔍 正在解压 zstd 文件: $archive_file"
 
@@ -283,7 +285,7 @@ set_rewrte_rules_file() {
 #         echo  "解包 .tar 文件 $temp_output_file"
 #             if ! tar -xf "$temp_output_file" -C "$target_dir"; then
 #                 echo "❌ 解包 TAR 文件失败: $temp_output_file"
-#                 rm -f "$temp_output_file" -v 
+#                 rm -f "$temp_output_file" -v
 #                 return 1
 #             fi
 
@@ -314,7 +316,6 @@ set_rewrte_rules_file() {
 #     #     echo "❌ 解压失败: $archive_file"
 #     #     return 1
 #     # fi
-  
 
 #     return 0
 # }
@@ -354,7 +355,7 @@ extract_archive() {
         shift
         echo "🧪 正在验证归档完整性..."
         # if ! "$cmd" --test "$@" >/dev/null 2>&1; then
-        if ! "$cmd" --test "$@" ; then
+        if ! "$cmd" --test "$@"; then
             echo "❌ 归档文件损坏或格式不支持: $archive_file"
             return 1
         fi
@@ -363,152 +364,185 @@ extract_archive() {
 
     # 根据扩展名处理不同格式
     case "$ext" in
-        zip)
-            if ! check_integrity unzip "$archive_file"; then
-                return 1
-            fi
-            echo "📦 正在解压 ZIP 文件..."
-            if ! unzip -q "$archive_file" -d "$target_dir"; then
-                echo "❌ 解压 ZIP 文件失败: $archive_file"
-                return 1
-            fi
-            ;;
+    zip)
+        if ! check_integrity unzip "$archive_file"; then
+            return 1
+        fi
+        echo "📦 正在解压 ZIP 文件..."
+        if ! unzip -q "$archive_file" -d "$target_dir"; then
+            echo "❌ 解压 ZIP 文件失败: $archive_file"
+            return 1
+        fi
+        ;;
 
-        gz|tgz)
-            if ! check_integrity tar -tzf "$archive_file"; then
-                return 1
-            fi
-            echo "📦 正在解压 GZ/TGZ 文件..."
-            if ! tar -xzf "$archive_file" -C "$target_dir"; then
-                echo "❌ 解压 GZ/TGZ 文件失败: $archive_file"
-                return 1
-            fi
-            ;;
+    gz | tgz)
+        if ! check_integrity tar -tzf "$archive_file"; then
+            return 1
+        fi
+        echo "📦 正在解压 GZ/TGZ 文件..."
+        if ! tar -xzf "$archive_file" -C "$target_dir"; then
+            echo "❌ 解压 GZ/TGZ 文件失败: $archive_file"
+            return 1
+        fi
+        ;;
 
-        bz2|tbz2)
-            if ! check_integrity tar -tjf "$archive_file"; then
-                return 1
-            fi
-            echo "📦 正在解压 BZ2/TBZ2 文件..."
-            if ! tar -xjf "$archive_file" -C "$target_dir"; then
-                echo "❌ 解压 BZ2/TBZ2 文件失败: $archive_file"
-                return 1
-            fi
-            ;;
+    bz2 | tbz2)
+        if ! check_integrity tar -tjf "$archive_file"; then
+            return 1
+        fi
+        echo "📦 正在解压 BZ2/TBZ2 文件..."
+        if ! tar -xjf "$archive_file" -C "$target_dir"; then
+            echo "❌ 解压 BZ2/TBZ2 文件失败: $archive_file"
+            return 1
+        fi
+        ;;
 
-        lz4)
-            # 先测试是否能解压到 /dev/null
-            echo "🧪 正在验证 LZ4 文件完整性..."
-            if ! lz4 -t "$archive_file" >/dev/null 2>&1; then
-                echo "❌ LZ4 文件损坏或格式错误: $archive_file"
-                return 1
-            fi
-            echo "✅ LZ4 文件完整性验证通过"
+    lz4)
+        # 先测试是否能解压到 /dev/null
+        echo "🧪 正在验证 LZ4 文件完整性..."
+        if ! lz4 -t "$archive_file" >/dev/null 2>&1; then
+            echo "❌ LZ4 文件损坏或格式错误: $archive_file"
+            return 1
+        fi
+        echo "✅ LZ4 文件完整性验证通过"
 
-            temp_output_file=$(mktemp -u)
-            echo "📦 正在解压 LZ4 文件..."
-            if ! lz4 -d "$archive_file" "$temp_output_file"; then
-                echo "❌ 解压 LZ4 文件失败"
-                rm -f "$temp_output_file"
-                return 1
-            fi
-
-            # 检查解压出的 tar 是否完整
-            echo "🧪 正在验证解包后的 TAR 文件完整性..."
-            if ! tar -tf "$temp_output_file" >/dev/null 2>&1; then
-                echo "❌ 内部 TAR 文件损坏"
-                rm -f "$temp_output_file"
-                return 1
-            fi
-
-            echo "📦 正在解包 TAR 数据..."
-            if ! tar -xf "$temp_output_file" -C "$target_dir"; then
-                echo "❌ 解包 TAR 失败"
-                rm -f "$temp_output_file"
-                return 1
-            fi
-
+        temp_output_file=$(mktemp -u)
+        echo "📦 正在解压 LZ4 文件..."
+        if ! lz4 -d "$archive_file" "$temp_output_file"; then
+            echo "❌ 解压 LZ4 文件失败"
             rm -f "$temp_output_file"
-            ;;
+            return 1
+        fi
 
-        zst|zstd)
+        # 检查解压出的 tar 是否完整
+        echo "🧪 正在验证解包后的 TAR 文件完整性..."
+        if ! tar -tf "$temp_output_file" >/dev/null 2>&1; then
+            echo "❌ 内部 TAR 文件损坏"
+            rm -f "$temp_output_file"
+            return 1
+        fi
+
+        echo "📦 正在解包 TAR 数据..."
+        if ! tar -xf "$temp_output_file" -C "$target_dir"; then
+            echo "❌ 解包 TAR 失败"
+            rm -f "$temp_output_file"
+            return 1
+        fi
+
+        rm -f "$temp_output_file"
+        ;;
+
+    zst | zstd)
         # 这里是特化任务,根据团队规范,默认上传的包实际格式是tar.zst,即便后缀只有.zst而不是.tar.zst,其解压zst层后得到的文件是tar文件(二进制文件)
         # 在这个分支中,首先解压zst层,然后将解压后的内部tar文件再调用tar解压,得到文件(夹)
-            echo "🧪 正在验证 ZSTD 文件完整性..."
-            if ! zstd -t "$archive_file" >/dev/null 2>&1; then
-                echo "❌ ZSTD 文件损坏或格式错误: $archive_file"
-                return 1
-            fi
-            echo "✅ ZSTD 文件完整性验证通过"
-            # 解压结果保存成一个临时文件(tar格式的二进制文件)
-            temp_output_file=$(mktemp -u)
-            echo "📦 正在解压 ZSTD 文件..."
-            if ! zstd -T0 -d "$archive_file" -o "$temp_output_file"; then
-                echo "❌ 解压 ZSTD 文件失败"
-                rm -f "$temp_output_file"
-                return 1
-            fi
-
-            echo "🧪 正在验证内部文件 (是否为TAR 文件以及tar文件完整性)..."
-            
-            if is_plain_tar_file "$temp_output_file"; then
-                echo "是原生tar文件"
-            else
-                echo "不是原生tar文件"
-            fi
-
-            if ! tar -tf "$temp_output_file" >/dev/null 2>&1; then
-                echo "❌ 内部 TAR 文件损坏或者文件不是tar文件"
-                rm -f "$temp_output_file"
-                return 1
-            fi
-
-            echo "📦 正在解包 TAR 数据..."
-            if ! tar -xf "$temp_output_file" -C "$target_dir"; then
-                echo "❌ 解包 TAR 失败"
-                rm -f "$temp_output_file"
-                return 1
-            fi
-
+        echo "🧪 正在验证 ZSTD 文件完整性..."
+        if ! zstd -t "$archive_file" >/dev/null 2>&1; then
+            echo "❌ ZSTD 文件损坏或格式错误: $archive_file"
+            return 1
+        fi
+        echo "✅ ZSTD 文件完整性验证通过"
+        # 解压结果保存成一个临时文件(tar格式的二进制文件)
+        temp_output_file=$(mktemp -u)
+        echo "📦 正在解压 ZSTD 文件..."
+        if ! zstd -T0 -d "$archive_file" -o "$temp_output_file"; then
+            echo "❌ 解压 ZSTD 文件失败"
             rm -f "$temp_output_file"
-            ;;
+            return 1
+        fi
 
-        tar)
-            echo "🧪 正在验证 TAR 文件完整性..."
-            if ! tar -tf "$archive_file" >/dev/null 2>&1; then
-                echo "❌ TAR 文件损坏或格式错误: $archive_file"
-                return 1
-            fi
-            echo "✅ TAR 文件完整性验证通过"
+        echo "🧪 正在验证内部文件 (是否为TAR 文件以及tar文件完整性)..."
 
-            echo "📦 正在解包 TAR 文件..."
-            if ! tar -xf "$archive_file" -C "$target_dir"; then
-                echo "❌ 解包 TAR 文件失败: $archive_file"
-                return 1
-            fi
-            ;;
+        if is_plain_tar_file "$temp_output_file"; then
+            echo "是原生tar文件"
+        else
+            echo "不是原生tar文件"
+        fi
 
-        *)
-            # 使用 7z 处理其他格式（如 rar, 7z, xz, iso 等）
-            echo "🧪 正在使用 7z 验证归档完整性..."
-            if ! 7z t "$archive_file" >/dev/null 2>&1; then
-                echo "❌ 7z 归档验证失败（文件损坏或不支持）: $archive_file"
-                return 1
-            fi
-            echo "✅ 7z 归档完整性验证通过"
+        if ! tar -tf "$temp_output_file" >/dev/null 2>&1; then
+            echo "❌ 内部 TAR 文件损坏或者文件不是tar文件"
+            rm -f "$temp_output_file"
+            return 1
+        fi
 
-            echo "📦 正在使用 7z 解压..."
-            if ! 7z x -y "$archive_file" -o"$target_dir" >/dev/null; then
-                echo "❌ 7z 解压失败: $archive_file"
-                return 1
-            fi
-            ;;
+        echo "📦 正在解包 TAR 数据..."
+        if ! tar -xf "$temp_output_file" -C "$target_dir"; then
+            echo "❌ 解包 TAR 失败"
+            rm -f "$temp_output_file"
+            return 1
+        fi
+
+        rm -f "$temp_output_file"
+        ;;
+
+    tar)
+        echo "🧪 正在验证 TAR 文件完整性..."
+        if ! tar -tf "$archive_file" >/dev/null 2>&1; then
+            echo "❌ TAR 文件损坏或格式错误: $archive_file"
+            return 1
+        fi
+        echo "✅ TAR 文件完整性验证通过"
+
+        echo "📦 正在解包 TAR 文件..."
+        if ! tar -xf "$archive_file" -C "$target_dir"; then
+            echo "❌ 解包 TAR 文件失败: $archive_file"
+            return 1
+        fi
+        ;;
+
+    *)
+        # 使用 7z 处理其他格式（如 rar, 7z, xz, iso 等）
+        echo "🧪 正在使用 7z 验证归档完整性..."
+        if ! 7z t "$archive_file" >/dev/null 2>&1; then
+            echo "❌ 7z 归档验证失败（文件损坏或不支持）: $archive_file"
+            return 1
+        fi
+        echo "✅ 7z 归档完整性验证通过"
+
+        echo "📦 正在使用 7z 解压..."
+        if ! 7z x -y "$archive_file" -o"$target_dir" >/dev/null; then
+            echo "❌ 7z 解压失败: $archive_file"
+            return 1
+        fi
+        ;;
     esac
 
     echo "✅ 解压成功: $archive_file -> $target_dir/"
     return 0
 }
+# 安装插件
+# 检查网站插件目录中的文件及其文件名(视为插件名,文件是插件需要安装的标记)
+# 函数将在指定目录中检查插件是否存在,如果存在指定插件,则安装该插件(默认安装模式为符号链接)
+# Args:
+#   $1: 站点插件目录,供检索待安装插件标记文件
+#   $2: 插件源目录所在目录,供检索指定插件是否存在(可用)
+install_wp_plugin() {
+    local site_plugins_home="$1"
+    local source_plugins_home="$2"
+    echo "🔍 检查插件目录: $site_plugins_home 中的所有文件"
+    for file in "$site_plugins_home"/*; do
+        if [ -f "$file" ]; then
+            local plugin_name
+            plugin_name=$(basename "$file")
+            echo "🔍 检查插件: $plugin_name"
 
+            local from_plugin="$source_plugins_home/$plugin_name"
+            local to_plugin="$site_plugins_home/$plugin_name"
+            if [[ -d $from_plugin ]]; then
+                echo "✅ 插件存在: $plugin_name,准备安装"
+                if [[ $PLUGIN_INSTALL_MODE = "symlink" ]]; then
+                    rm -rf "$to_plugin" && ln -sfT "$from_plugin" "$to_plugin" -v
+                elif [[ $PLUGIN_INSTALL_MODE = "copy" ]]; then
+                    rm -rf "$to_plugin" && cp -r "$from_plugin" "$to_plugin" 
+                else
+                    echo "❌ 未知的插件安装模式: $PLUGIN_INSTALL_MODE"
+                    return 1
+                fi
+            else
+                echo "❌ 插件源目录不存在: $plugin_name"
+            fi
+        fi
+    done
+}
 # === 函数：部署单个站点(解压网站根目录到指定目录,并且找到并导入对应的.sql文件(sql文件在前置步骤中解压完毕)) ===
 deploy_site() {
     local username="$1"
@@ -533,6 +567,8 @@ deploy_site() {
     local site_domain_home="$PROJECT_HOME/$username/$domain_name" #例如:/www/wwwroot/zsh/domain.com #对于用7z打包domain.com为目录名的7z包,解压后得到domain.com目录 7z x $site_dir_archive -o$site_domain_home 执行结果得到目录$site_domain_home/domain.com,为了便于引用,将其赋值给变量$site_expanded_dir,表示解压后得到的目录
     local site_expanded_dir="$site_domain_home/$domain_name"
     local target_dir="$site_domain_home/wordpress"
+    local plugins_dir="$target_dir/wp-content/plugins"
+    local user_ini="$target_dir/.user.ini"
 
     echo "尝试清空目标目录[$target_dir],以便后续干净插入新内容"
     # mkdir -p "$target_dir"
@@ -542,7 +578,7 @@ deploy_site() {
         mkdir -p "$target_dir" # 创建网站根目录
     fi
     # 解压网站文件|如果存在同名目录,则默认覆盖🎈
-        if [ -d "$site_expanded_dir" ]; then
+    if [ -d "$site_expanded_dir" ]; then
         echo "⚠️ 检测到相关目录已存在: $site_expanded_dir"
 
         # echo "是否覆盖现有目录? (yY/n): "
@@ -551,7 +587,7 @@ deploy_site() {
         #     echo "用户选择不覆盖，跳过此解压步骤: $domain_name"
         # else
         #     echo "⚠️用户选择覆盖现有目录: $site_expanded_dir"
-              #覆盖逻辑段存放在此
+        #覆盖逻辑段存放在此
         # fi
         # 覆盖逻辑段(begin)
         echo "正在删除现有目录[$site_expanded_dir]并解压新内容 (预计得到目录:$site_expanded_dir) ..."
@@ -560,6 +596,16 @@ deploy_site() {
         if ! extract_archive "$site_dir_archive" "$site_domain_home"; then
             echo "❌ 解压失败，跳过部署: $domain_name"
             return 1
+        else
+            echo "✅ 解压成功: $site_dir_archive -> $site_expanded_dir/"
+            echo "检查需要安装的插件..."
+            install_wp_plugin "$plugins_dir" "$PLUGINS_HOME"
+            if [[ -f "$user_ini" ]]; then
+                echo "🔍 检测到 .user.ini 文件,设置open_basedir 放行公共插件目录"
+                bash /www/sh/update_user_ini.sh -p "$user_ini" -t "$PLUGINS_HOME"
+            else
+                echo "ℹ️ 未找到 .user.ini 文件，跳过权限设置"
+            fi
         fi
         # 覆盖逻辑点(end)
     else
@@ -587,7 +633,6 @@ deploy_site() {
         # 删除数据库文件.sql(已导入)
         echo "🗑️ 删除数据库文件: $sql_file"
         rm -f "$sql_file" -v
-        
 
         # === 配置数据库===
         local db_name="${username}_${domain_name}"
@@ -608,7 +653,7 @@ deploy_site() {
 
     # 站点根目录配置文件和插件相关检车和更改-------------------
     # 将可能阻碍登录后台wps-hide-login.bak这个插件目录改为wps-hide-login
-    local plugins_dir="$target_dir/wp-content/plugins"
+
     local wps_hide_login_dir="$plugins_dir/wps-hide-login"
     local wps_hide_login_dir_bak="${wps_hide_login_dir}.bak"
 
@@ -640,15 +685,13 @@ deploy_site() {
     chmod -R 755 "$target_dir"
     chown -R www:www "$target_dir"
 
-
-
     # === 写入伪静态规则 ===
     # write_rewrite_rules "$domain_name"
     set_rewrte_rules_file "$domain_name"
     # 重启nginx以便让伪静态生效
     echo "🔄 重启 nginx 以便让伪静态生效"
     nginx -s reload
-    
+
     echo "✅ 完成站点部署: $domain_name ==============( 检查/访问: https://www.$domain_name )=============="
     return 0
 }
@@ -757,7 +800,7 @@ for user_dir in "${user_dirs[@]}"; do
     sql_archives=($(ls *.sql.zip *.sql.7z *.sql.tar *.sql.lz4 *.sql.zst 2>/dev/null))
     if [ -f "${sql_archives[0]}" ]; then
         echo "🔍 找到SQL备份文件，优先处理"
-        echo  "处理全部待部署网站的数据库文件🎈(使用&和wait并行处理)"
+        echo "处理全部待部署网站的数据库文件🎈(使用&和wait并行处理)"
         # 并行处理SQL备份文件
         pids=()
         sql_archive_names=()
@@ -822,7 +865,7 @@ for user_dir in "${user_dirs[@]}"; do
         if wait "$pid"; then
             ((deployed_sites++))
             # 可在此处添加归档逻辑（如需）
-            
+
         else
             ((failed_sites++))
             echo "❌ 站点部署失败: $archive_file"
@@ -832,7 +875,7 @@ for user_dir in "${user_dirs[@]}"; do
     echo "🔒 更改deployed文件夹权限(设置目录权限和所有者)"
     chmod -R 755 "$deployed_dir"
     chown -R uploader:uploader "$deployed_dir"
-    
+
     # 返回上级目录
     cd "$PACK_ROOT" || exit
 done

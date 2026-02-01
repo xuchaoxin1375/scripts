@@ -1470,6 +1470,144 @@ function Update-ServerRepos
     $jobs | Receive-Job -Wait
     
 }
+function Update-WpPluginsDFOnServer
+{
+    <# 
+.SYNOPSIS
+    建议配置免密登录，避免每次都输入密码(ssh 密钥注册)
+    
+.DESCRIPTION
+    这里直接上传插件文件夹(你需要手动解压,插件可能是zip或者tar.gz)
+    也可以添加逻辑来支持上传压缩文件(todo)
+    或者指定目录后,添加一个压缩成zip/7z的命令,然后推送到服务器上,最后调用解压和目录复制逻辑
+.NOTES
+注意黑名单或白名单文本的换行符(LF),对于(CRLF)需要小心,可能会有意外的效果,这取决于服务器端的脚本实现(update_wp_plugin.sh)
+.EXAMPLE
+Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_pay\mallpay 
+#>
+    [cmdletbinding()]
+    param(
+
+        [Alias('hst', 'Ip')]$server ,               # 服务器IP地址
+        $Username = "root"        ,      # 服务器用户名
+        # $password = ""              # 服务器密码（不推荐明文存储,配置ssh密钥登录更安全）
+        
+        # 本地插件目录路径🎈
+        [parameter(ParameterSetName = 'Path')]
+        $PluginPath ,  
+        # 插件名称(服务器上插件路径的最后一级目录名)
+        [parameter(ParameterSetName = 'RemoveByName')]
+        $PluginName,
+        
+        $RemoteDirectory = "/www"       , # 服务器目标目录
+        # 工作目录,可以指定多个(通过逗号分隔,最终用引号包裹),尤其对于多个硬盘的服务器比较有用
+        $WorkingDirectory = "/www/wwwroot,/wwwdata/wwwroot",
+        $BashScript = "/www/sh/wp-plugin-update/update_wp_plugin.sh",
+        $WhiteList = "",
+        $BlackList = "",
+        [ValidateSet('symlink', 'copy')]
+        $InstallMode = "symlink",
+        # 移除插件而非安装(更新)插件
+        [parameter(ParameterSetName = 'RemoveByName')]
+        [switch]$RemovePlugin,
+        [switch]$Dry
+    )
+    
+    # 计算要操作的网站名单(白名单/黑名单)
+    function Get-DomainListParam
+    {
+        <# 
+        .SYNOPSIS
+        内部专用函数.
+        黑白名单文件参数构造,包含目标网站名单上传操作
+        #>
+        param(
+            $DomainList,
+            [ValidateSet('WhiteList', 'BlackList')]$ListType
+        )
+        Write-Verbose "Using $ListType ...(only update plugins of sites(domain) in $ListType)"
+        Write-Verbose "Uploading [$DomainList] file to server[$server]..." -Verbose
+        # 上传网站名单文件
+        scp -r $DomainList $username@${server}:"$remoteDirectory" 
+        $domainListName = Split-Path -Leaf $DomainList
+        $DomainListPathRemote = "$remoteDirectory/$domainListName"
+        if($ListType -eq "BlackList")
+        {
+            $domainListParam = " --blacklist $DomainListPathRemote "
+        }
+        else
+        {
+            $domainListParam = " --whitelist $DomainListPathRemote "
+        }
+        return $domainListParam
+    }
+    
+    if($WhiteList -and $BlackList)
+    {
+        Write-Error "WhiteList and BlackList can not be used together!"
+        return $False
+    }
+    elseif($WhiteList)
+    {
+       
+        $domainListParam = Get-DomainListParam $WhiteList -ListType "WhiteList"
+    }
+    elseif($BlackList)
+    {
+
+        $domainListParam = Get-DomainListParam $BlackList -ListType BlackList
+    }
+    # 构造bash脚本命令行(插件安装/更新)
+    $basicCmd = " ssh -Tn $username@$server bash $bashScript --workdir $workingDirectory  "
+    $dryRunParam = if($Dry) { "--dry-run" }else { "" }
+    # 计算插件参数
+    if($PSCmdlet.ParameterSetName -eq 'Path')
+    {
+        $plugin_dir_name = (Split-Path $PluginPath -LeafBase) # 计算插件名称,将作为插件压缩包的名称(如果已经是压缩包,则需要压缩包名称和被压缩目录名一致)
+        # 计算插件目录压缩成zip后的文件路径
+        $zipFile = "$wp_plugins/$plugin_dir_name.zip"
+        $remoteZipFile = "$remoteDirectory/$plugin_dir_name.zip"
+        $remotePluginDir = "$remoteDirectory/$plugin_dir_name"  # 服务器目标插件目录🎈
+
+        # 将插件文件夹统一处理为zip包(如果输入路径已经是压缩包文件,则跳过压缩处理)
+        if(Test-Path $PluginPath -PathType Container)
+        {
+            Write-Verbose "Remove existing zip file if exists: [$zipFile]..." 
+            Remove-Item $zipFile -ErrorAction SilentlyContinue -Verbose
+            Compress-Archive -Path $PluginPath -DestinationPath $zipFile
+            # Write-Warning "Plugin name: [$plugin_dir_name],please ensure it is correct then continue. " -WarningAction Inquire 
+        }
+        else
+        {
+            $zipFile = $PluginPath
+        }
+
+        # 上传插件压缩包到服务器
+        Write-Verbose "Uploading file to server[$server]..." -Verbose
+        scp -r $zipFile $username@${server}:"$remoteDirectory" 
+        
+        Write-Verbose "expanding zip file to [$remotePluginDir]..."
+        # 覆盖式解压(-o选项),-d 指定解压目录(extract directory)
+        ssh $username@$server "unzip -o $remoteZipFile -d $remoteDirectory"
+        
+        
+        Write-Verbose "Executing updating script...(this need several seconds, please wait...)" -Verbose
+        # 构造替换脚本
+        $cmd = " $basicCmd --source $remotePluginDir $domainListParam $dryRunParam --install-mode $InstallMode ;" 
+    }
+    elseif($PSCmdlet.ParameterSetName -eq 'RemoveByName' -and $RemovePlugin)
+    {
+        # bash update_wp_plugin.sh --remove mallpay --whitelist whitelist.conf
+        $cmd = " $basicCmd --remove $PluginName $domainListParam  $dryRunParam " 
+    }
+    
+    Write-Verbose "Executing command: $cmd" -Verbose
+    Start-Sleep 2
+    $cmd | Invoke-Expression
+    ssh $username@$server "bash /www/sh/update_user_ini.sh "
+    Write-Verbose "Done." -Verbose
+    
+}
 function Update-WpPluginsDFOnServers
 {
     <# 
@@ -1550,28 +1688,37 @@ function Update-WpPluginsDFOnServers
         $PluginPath = $zipFile
     }
     $currentSet = $PSCmdlet.ParameterSetName
-    $servers.ip | ForEach-Object -Parallel {
-        param(
-            $currentSet,
-            $WorkingDirectory,
-            $PluginPath,
-            $domainListParam,
-            $InstallMode,
-            $RemovePlugin,
-            $PluginName
-        )
-        if($currentSet -eq 'Path')
-        {
+    # $servers.ip | ForEach-Object -Parallel { #不支持ArgumentList
+    $jobs = @()
+    foreach ($server in $servers.ip)
+    { 
+    
+        $jobs += Start-ThreadJob {
+            param(
+                $server,
+                $currentSet,
+                $WorkingDirectory,
+                $PluginPath,
+                $domainListParam,
+                $InstallMode,
+                $RemovePlugin,
+                $PluginName
+            )
+            if($currentSet -eq 'Path')
+            {
             
-            Write-Host "Updating plugins to $_"
-            "Update-WpPluginsDFOnServer -server $_ -WorkingDirectory '$workingDirectory' -PluginPath $PluginPath $domainListParam -InstallMode $InstallMode" | Invoke-Expression
-        }
-        elseif($currentSet -eq 'Name' -and $RemovePlugin)
-        {
-            Write-Host "remove plugins[$PluginName] in $_"
-            "Update-WpPluginsDFOnServer -server $_ -WorkingDirectory '$workingDirectory' -PluginName $PluginName -RemovePlugin $domainListParam " | Invoke-Expression
-        }
-    } -ThrottleLimit $Threads -ArgumentList $currentSet, $WorkingDirectory, $PluginPath, $domainListParam, $InstallMode, $RemovePlugin, $PluginName
+                Write-Host "Updating plugins to $server"
+                "Update-WpPluginsDFOnServer -server $server -WorkingDirectory '$workingDirectory' -PluginPath $PluginPath $domainListParam -InstallMode $InstallMode" | Invoke-Expression
+            }
+            elseif($currentSet -eq 'Name' -and $RemovePlugin)
+            {
+                Write-Host "remove plugins[$PluginName] in $server"
+                "Update-WpPluginsDFOnServer -server $server -WorkingDirectory '$workingDirectory' -PluginName $PluginName -RemovePlugin $domainListParam " | Invoke-Expression
+            } 
+        } -ArgumentList $server, $currentSet, $WorkingDirectory, $PluginPath, $domainListParam, $InstallMode, $RemovePlugin, $PluginName
+    } 
+    Start-Sleep 1
+    $jobs | Receive-Job -Wait
 }
 function Update-WpSitesRobots
 {
@@ -1630,7 +1777,7 @@ function Update-WpUrl
 
     
     #>
-    [cmdletbinding(SupportsShouldProcess)]
+    [cmdletbinding(SupportouldProcess)]
     param(
         [parameter(Mandatory = $true)]
         $OldDomain,
@@ -1759,144 +1906,7 @@ WHERE
     Import-MysqlFile -Server $Server -SqlFilePath $sqlPath -MySqlUser $MySqlUser -key $key -DatabaseName $DatabaseName 
 
 }
-function Update-WpPluginsDFOnServer
-{
-    <# 
-.SYNOPSIS
-    建议配置免密登录，避免每次都输入密码(ssh 密钥注册)
-    
-.DESCRIPTION
-    这里直接上传插件文件夹(你需要手动解压,插件可能是zip或者tar.gz)
-    也可以添加逻辑来支持上传压缩文件(todo)
-    或者指定目录后,添加一个压缩成zip/7z的命令,然后推送到服务器上,最后调用解压和目录复制逻辑
-.NOTES
-注意黑名单或白名单文本的换行符(LF),对于(CRLF)需要小心,可能会有意外的效果,这取决于服务器端的脚本实现(update_wp_plugin.sh)
-.EXAMPLE
-Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_pay\mallpay 
-#>
-    [cmdletbinding()]
-    param(
 
-        [Alias('hst', 'Ip')]$server ,               # 服务器IP地址
-        $Username = "root"        ,      # 服务器用户名
-        # $password = ""              # 服务器密码（不推荐明文存储,配置ssh密钥登录更安全）
-        
-        # 本地插件目录路径🎈
-        [parameter(ParameterSetName = 'Path')]
-        $PluginPath ,  
-        # 插件名称(服务器上插件路径的最后一级目录名)
-        [parameter(ParameterSetName = 'RemoveByName')]
-        $PluginName,
-        
-        $RemoteDirectory = "/www"       , # 服务器目标目录
-        # 工作目录,可以指定多个(通过逗号分隔,最终用引号包裹),尤其对于多个硬盘的服务器比较有用
-        $WorkingDirectory = "/www/wwwroot,/wwwdata/wwwroot",
-        $BashScript = "/www/sh/wp-plugin-update/update_wp_plugin.sh",
-        $WhiteList = "",
-        $BlackList = "",
-        [ValidateSet('symlink', 'copy')]
-        $InstallMode = "symlink",
-        # 移除插件而非安装(更新)插件
-        [parameter(ParameterSetName = 'RemoveByName')]
-        [switch]$RemovePlugin,
-        [switch]$Dry
-    )
-    
-    # 计算要操作的网站名单(白名单/黑名单)
-    function Get-DomainListParam
-    {
-        <# 
-        .SYNOPSIS
-        内部专用函数.
-        黑白名单文件参数构造,包含目标网站名单上传操作
-        #>
-        param(
-            $DomainList,
-            [ValidateSet('WhiteList', 'BlackList')]$ListType
-        )
-        Write-Verbose "Using $ListType ...(only update plugins of sites(domain) in $ListType)"
-        Write-Verbose "Uploading [$DomainList] file to server[$server]..." -Verbose
-        # 上传网站名单文件
-        scp -r $DomainList $username@${server}:"$remoteDirectory" 
-        $domainListName = Split-Path -Leaf $DomainList
-        $DomainListPathRemote = "$remoteDirectory/$domainListName"
-        if($ListType -eq "BlackList")
-        {
-            $domainListParam = " --blacklist $DomainListPathRemote "
-        }
-        else
-        {
-            $domainListParam = " --whitelist $DomainListPathRemote "
-        }
-        return $domainListParam
-    }
-    
-    if($WhiteList -and $BlackList)
-    {
-        Write-Error "WhiteList and BlackList can not be used together!"
-        return $False
-    }
-    elseif($WhiteList)
-    {
-       
-        $domainListParam = Get-DomainListParam $WhiteList -ListType "WhiteList"
-    }
-    elseif($BlackList)
-    {
-
-        $domainListParam = Get-DomainListParam $BlackList -ListType BlackList
-    }
-    # 构造bash脚本命令行(插件安装/更新)
-    $basicCmd = " ssh $username@$server bash $bashScript --workdir $workingDirectory  "
-    $dryRunParam = if($Dry) { "--dry-run" }else { "" }
-    # 计算插件参数
-    if($PSCmdlet.ParameterSetName -eq 'Path')
-    {
-        $plugin_dir_name = (Split-Path $PluginPath -LeafBase) # 计算插件名称,将作为插件压缩包的名称(如果已经是压缩包,则需要压缩包名称和被压缩目录名一致)
-        # 计算插件目录压缩成zip后的文件路径
-        $zipFile = "$wp_plugins/$plugin_dir_name.zip"
-        $remoteZipFile = "$remoteDirectory/$plugin_dir_name.zip"
-        $remotePluginDir = "$remoteDirectory/$plugin_dir_name"  # 服务器目标插件目录🎈
-
-        # 将插件文件夹统一处理为zip包(如果输入路径已经是压缩包文件,则跳过压缩处理)
-        if(Test-Path $PluginPath -PathType Container)
-        {
-            Write-Verbose "Remove existing zip file if exists: [$zipFile]..." 
-            Remove-Item $zipFile -ErrorAction SilentlyContinue -Verbose
-            Compress-Archive -Path $PluginPath -DestinationPath $zipFile
-            # Write-Warning "Plugin name: [$plugin_dir_name],please ensure it is correct then continue. " -WarningAction Inquire 
-        }
-        else
-        {
-            $zipFile = $PluginPath
-        }
-
-        # 上传插件压缩包到服务器
-        Write-Verbose "Uploading file to server[$server]..." -Verbose
-        scp -r $zipFile $username@${server}:"$remoteDirectory" 
-        
-        Write-Verbose "expanding zip file to [$remotePluginDir]..."
-        # 覆盖式解压(-o选项),-d 指定解压目录(extract directory)
-        ssh $username@$server "unzip -o $remoteZipFile -d $remoteDirectory"
-        
-        
-        Write-Verbose "Executing updating script...(this need several seconds, please wait...)" -Verbose
-        # 构造替换脚本
-        $cmd = " $basicCmd --source $remotePluginDir $domainListParam $dryRunParam --install-mode $InstallMode ;" 
-    }
-    elseif($PSCmdlet.ParameterSetName -eq 'RemoveByName' -and $RemovePlugin)
-    {
-        # bash update_wp_plugin.sh --remove mallpay --whitelist whitelist.conf
-        $cmd = " $basicCmd --remove $PluginName $domainListParam  $dryRunParam " 
-    }
-    
-    Write-Verbose "Executing command: $cmd" -Verbose
-    Start-Sleep 2
-    $cmd | Invoke-Expression
-    ssh $username@$server "bash /www/sh/update_user_ini.sh "
-    Write-Verbose "Done." -Verbose
-    
-}
 function Move-ItemImagesFromCsvPathFields
 {
     <# 

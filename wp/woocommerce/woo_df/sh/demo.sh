@@ -7,4 +7,3 @@ echo "${myfiles[@]}" #坚持使用引号包裹数组扩展表达式,确保不会
 
 # files=("baz", "foo bar", "*" ,"/*/*/*/*")
 files=("baz" "foo bar" "*" )
-echo ${files[@]}
