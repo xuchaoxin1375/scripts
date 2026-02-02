@@ -9,7 +9,7 @@ PARALLEL_JOBS=4
 
 show_help() {
 	echo "用法: $0 [选项]"
-	echo "  -s, --src <src_root>     源目录 (默认: /www/wwwroot)"
+	echo "  -s, --src <src_root>     项目目录(所有网站所在目录) (默认: /www/wwwroot)"
 	echo "  -d, --dest <dest_root>   目标根目录 (默认: /srv/uploads/uploader/files)"
 	echo "  -u, --user <username>    仅备份指定用户 (默认: 所有用户)"
 	echo "      --mindepth <n>       find 扫描的最小深度 (默认: 3)"
