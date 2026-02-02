@@ -520,11 +520,12 @@ install_wp_plugin() {
     local site_plugins_home="$1"
     local source_plugins_home="$2"
     echo "🔍 检查插件目录: $site_plugins_home 中的所有文件"
-    for file in "$site_plugins_home"/*; do
-        if [ -f "$file" ]; then
+    for plugin in "$site_plugins_home"/*; do
+        # 将插件标记文件或空目录视为插件要安装(覆盖)
+        if [ -f "$plugin" ] || [ -z "$(ls -A "$plugin")" ]; then
             local plugin_name
-            plugin_name=$(basename "$file")
-            echo "🔍 检查插件: $plugin_name"
+            plugin_name=$(basename "$plugin")
+            echo "🔍 检查插件目录源: $plugin_name 是否可用."
 
             local from_plugin="$source_plugins_home/$plugin_name"
             local to_plugin="$site_plugins_home/$plugin_name"
