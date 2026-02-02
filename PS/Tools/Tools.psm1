@@ -78,7 +78,7 @@ function Restart-NginxOnHost
     ssh $User@$HostName (@"
 bash /update_nginx_vhosts_conf.sh -d /www/server/panel/vhost/nginx --days 1 -M 1 
 bash /www/sh/nginx_conf/update_nginx_vhosts_log_format.sh -d /www/server/panel/vhost/nginx 
-
+bash /www/sh/update_user_ini.sh
 "@ -replace "`r","")
     
 

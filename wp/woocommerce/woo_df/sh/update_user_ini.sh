@@ -32,8 +32,10 @@ EOF
   exit 1
 }
 FILE=""
+# TODO 支持多个工作目录.
 WORK_DIR="/www/wwwroot/"
 MAX_DEPTH=4
+VALUE='/www/'
 # 解析命令行参数
 while getopts "p:t:d:m:h" opt; do
   case "$opt" in

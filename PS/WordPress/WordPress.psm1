@@ -1786,7 +1786,7 @@ function Update-WpUrl
 
     
     #>
-    [cmdletbinding(SupportouldProcess)]
+    [cmdletbinding(SupportsShouldProcess)]
     param(
         [parameter(Mandatory = $true)]
         $OldDomain,
