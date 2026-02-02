@@ -22,12 +22,8 @@ do
 done
 
 themes_dir="$sh/archives/themes"
-src_file="/www/functions.sh"
 
 # 遍历目录下的所有文件夹
 for dir in "$themes_dir"/*/; do
-    echo "[$dir]";
-    if [ -d "$dir" ]; then
-        \cp -v "$src_file" "$dir" -f
-    fi
+    [[ -d $dir ]] && echo "[$dir]";
 done

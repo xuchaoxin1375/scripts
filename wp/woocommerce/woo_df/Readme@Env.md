@@ -120,71 +120,75 @@ Backup-EnvsRegistry -Dir $desktop
 
 例如,配置采集器的数据存储路径(建议使用powershell运行)
 
-> ###喜欢使用D盘的注意按需更改""中的值(强烈建议不要设置D盘,diskmgmt删除该盘,然后扩展C盘,尤其总共不足1TB的情况下便于管理)
+> **喜欢使用D盘的注意按需更改""中的值(强烈建议不要设置D盘,diskmgmt删除该盘,然后扩展C盘,尤其总共不足1TB的情况下便于管理)**
 
-```cmd
-# 创建常用软件目录
-New-Item -ItemType Directory -Path C:/exes , C:/sites -ErrorAction SilentlyContinue 
-# 根据情况修改采集器Data目录🎈
-$phpstudy_home="C:\phpstudy_pro"
-$phpstudy_extensions="$phpstudy_home\Extensions"
+- [ ] ```cmd
+  # 创建常用软件目录
+  New-Item -ItemType Directory -Path C:/exes , C:/sites -ErrorAction SilentlyContinue 
+  # 根据情况修改采集器Data目录🎈
+  $phpstudy_home="C:\phpstudy_pro"
+  $phpstudy_extensions="$phpstudy_home\Extensions"
+  
+  
+  # 设置nginx信息🎈
+  # 根据nginx版本修改下面的版本号(默认为1.25.2)
+  $nginx_home="$phpstudy_extensions\Nginx1.25.2"
+  # 根据采集器安装目录修改🎈
+  $locoy_spider_home="C:\火车采集器V10.27"
+  
+  # 设置mysql信息🎈
+  #$MYSQL_BIN_HOME = "$phpstudy_extensions\MySQL5.7.26\bin" #弃用5.7,现在使用8+的版本
+  $mysql_home="$phpstudy_extensions\MySQL8.0.12"
+  $mysql_bin = "$mysql_home\bin"
+  # 根据情况修改本地mysql密码🎈(小皮数据库默认密码为root)
+  setx MySqlKey_LOCAL "root"
+  # 注意php版本号根据具体情况修改🎈
+  $PHP_HOME="$env:phpstudy_extensions\php\php7.4.3nts"
+  
+  
+  # =======下面的不需要修改===========
+  $nginx_conf_dir="$nginx_home\conf"
+  $nginx_vhosts_dir="$nginx_conf_dir\vhosts"
+  $locoy_spider_data="$locoy_spider_home\Data"
+  
+  # 基础环境变量配置
+  setx PYTHONPATH @"
+  C:\repos\scripts\wp\woocommerce\woo_df;
+  C:\repos\scripts\wp\woocommerce\woo_df\pys\bt_api;
+  C:\repos\scripts\wp\woocommerce\woo_df\pys\cf_api;
+  C:\repos\scripts\wp\woocommerce\woo_df\pys\spaceship_api;
+  "@
+  setx PHPSTUDY_HOME $phpstudy_home
+  setx PYS C:\repos\scripts\wp\woocommerce\woo_df\pys
+  setx WOO_DF C:\repos\scripts\wp\woocommerce\woo_df
+  setx PsModulePath C:/repos/scripts/PS
+  setx exes C:/exes
+  
+  
+  # 辅助环境变量配置(D盘用户注意按需更改),还有软件版本也要注意(日后如果更新软件,或其他导致目录变更的情况,要注意修改环境变量(使用gui方案))
+  setx LOCOY_SPIDER_DATA $locoy_spider_data 
+  
+  setx phpstudy_extensions $phpstudy_extensions
+  setx nginx_home $nginx_home
+  setx nginx_conf_dir $nginx_conf_dir
+  setx nginx_vhosts_dir $nginx_vhosts_dir
+  
+  # php
+  setx php_home $php_home
+  # mysql
+  setx MYSQL_HOME $mysql_home
+  setx MYSQL_BIN_HOME $mysql_home
+  
+  # ==配置常用软件所在目录到path===
+  #Add-EnvVar -EnvVar Path -NewValue '%nginx_home%' 
+  Add-EnvVar -EnvVar Path -NewValue $nginx_home
+  Add-EnvVar -EnvVar Path -NewValue $mysql_bin
+  # 注册mysqld服务
+  # $mysql_home=if($MYSQL_HOME){$mysql_home}else{$env:MYSQL_HOME}
+  mysqld --install MySQL80 --defaults-file="$MYSQL_HOME\my.ini"
+  # END
+  ```
 
-
-# 设置nginx信息🎈
-# 根据nginx版本修改下面的版本号(默认为1.25.2)
-$nginx_home="$phpstudy_extensions\Nginx1.25.2"
-# 根据采集器安装目录修改🎈
-$locoy_spider_home="C:\火车采集器V10.27"
-
-# 设置mysql信息🎈
-#$MYSQL_BIN_HOME = "$phpstudy_extensions\MySQL5.7.26\bin" #弃用5.7,现在使用8+的版本
-$mysql_home="$phpstudy_extensions\MySQL8.0.12"
-$mysql_bin = "$mysql_home\bin"
-# 根据情况修改本地mysql密码🎈(小皮数据库默认密码为root)
-setx MySqlKey_LOCAL "root"
-
-
-
-# =======下面的不需要修改===========
-$nginx_conf_dir="$nginx_home\conf"
-$nginx_vhosts_dir="$nginx_conf_dir\vhosts"
-$locoy_spider_data="$locoy_spider_home\Data"
-
-# 基础环境变量配置
-setx PYTHONPATH @"
-C:\repos\scripts\wp\woocommerce\woo_df;
-C:\repos\scripts\wp\woocommerce\woo_df\pys\bt_api;
-C:\repos\scripts\wp\woocommerce\woo_df\pys\cf_api;
-C:\repos\scripts\wp\woocommerce\woo_df\pys\spaceship_api;
-"@
-setx PHPSTUDY_HOME $phpstudy_home
-setx PYS C:\repos\scripts\wp\woocommerce\woo_df\pys
-setx WOO_DF C:\repos\scripts\wp\woocommerce\woo_df
-setx PsModulePath C:/repos/scripts/PS
-setx exes C:/exes
-
-
-# 辅助环境变量配置(D盘用户注意按需更改),还有软件版本也要注意(日后如果更新软件,或其他导致目录变更的情况,要注意修改环境变量(使用gui方案))
-setx LOCOY_SPIDER_DATA $locoy_spider_data 
-
-setx phpstudy_extensions $phpstudy_extensions
-setx nginx_home $nginx_home
-setx nginx_conf_dir $nginx_conf_dir
-setx nginx_vhosts_dir $nginx_vhosts_dir
-
-
-setx MYSQL_HOME $mysql_home
-setx MYSQL_BIN_HOME $mysql_home
-
-# ==配置常用软件所在目录到path===
-#Add-EnvVar -EnvVar Path -NewValue '%nginx_home%' 
-Add-EnvVar -EnvVar Path -NewValue $nginx_home
-Add-EnvVar -EnvVar Path -NewValue $mysql_bin
-# 注册mysqld服务
-# $mysql_home=if($MYSQL_HOME){$mysql_home}else{$env:MYSQL_HOME}
-mysqld --install MySQL80 --defaults-file="$MYSQL_HOME\my.ini"
-# END
-```
 
 将引号中的路径替换为你的采集对应的路径
 
@@ -255,10 +259,11 @@ $newPath = [Environment]::GetEnvironmentVariable("PATH", [EnvironmentVariableTar
 
 
 
-### php命令行(可选)
+### php命令行环境
 
 ```powershell
-$PHP_HOME='C:\phpstudy_pro\Extensions\php\php7.4.3nts'
+# 注意php版本根据具体情况修改
+$PHP_HOME="$env:phpstudy_extensions\php\php7.4.3nts"
 setx php_home $php_home
 Add-EnvVar -EnvVar Path -NewValue $php_home
 ```

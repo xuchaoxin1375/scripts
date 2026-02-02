@@ -10,7 +10,7 @@ DEFAULT_DB_USER="root"
 DEFAULT_DB_PASSWORD="15a58524d3bd2e49"
 DEFAULT_DEPLOYED_DIR="$UPLOADER_DIR/deployed_all"
 DEFAULT_PROJECT_HOME="/www/wwwroot"
-PLUGINS_HOME="/www/"
+PLUGINS_HOME="/www"
 FUNCTIONS_PHP="/www/functions.php"
 PLUGIN_INSTALL_MODE="symlink" # 插件安装模式: symlink(符号链接), copy(复制)
 DB_HOST="localhost"           # 数据库主机
@@ -98,9 +98,17 @@ DB_PASSWORD=${DB_PASSWORD:-$DEFAULT_DB_PASSWORD}
 DEPLOYED_DIR=${DEPLOYED_DIR:-$DEFAULT_DEPLOYED_DIR}
 PROJECT_HOME=${PROJECT_HOME:-$DEFAULT_PROJECT_HOME}
 
+# 定义日志函数
+log(){
+    local message="$1"
+    local dt
+    dt="$(date '+%Y-%m-%d--%H:%M:%S')"
+    message="[$dt] $message"
+    echo "$message"
+}
 # 提示用户当前使用的 PACK_ROOT
-echo "使用 PACK_ROOT: $PACK_ROOT"
-echo "检查默认备份文件夹(不存在则创建)"
+log "使用 PACK_ROOT: $PACK_ROOT"
+log "检查默认备份文件夹(不存在则创建)"
 if [ ! -d "$DEPLOYED_DIR" ]; then
     mkdir -p "$DEPLOYED_DIR"
 fi
@@ -116,8 +124,8 @@ check_commands() {
     done
 
     if [ ${#missing_commands[@]} -gt 0 ]; then
-        echo "❌ 错误: 以下命令未找到: ${missing_commands[*]}"
-        echo "请安装缺少的命令后再运行此脚本。"
+        log "❌ 错误: 以下命令未找到: ${missing_commands[*]}"
+        log "请安装缺少的命令后再运行此脚本。"
         exit 1
     fi
 }
@@ -127,15 +135,15 @@ update_wp_config() {
     local wp_config_path="$1"
 
     if [ ! -f "$wp_config_path" ]; then
-        echo "❌ 错误：找不到 wp-config.php 文件：$wp_config_path"
+        log "❌ 错误：找不到 wp-config.php 文件：$wp_config_path"
         return 1
     fi
 
-    echo "正在修改 $wp_config_path ..."
+    log "正在修改 $wp_config_path ..."
 
     # 检查配置是否已存在
     # if grep -q "FORCE_SSL_ADMIN" "$wp_config_path"; then
-    #     echo "ℹ️ HTTPS 配置已存在，跳过修改。"
+    #     log "ℹ️ HTTPS 配置已存在，跳过修改。"
     #     return 0
     # fi
 
@@ -151,10 +159,10 @@ update_wp_config() {
         sed -ri "s/(define\(\s*'DB_NAME',)(.*)\)/\1'$db_name')/" "$wp_config_path"
         sed -ri "s/(define\(\s*'DB_USER',)(.*)\)/\1'${DB_USER}')/" "$wp_config_path"
         sed -ri "s/(define\(\s*'DB_PASSWORD',)(.*)\)/\1'${DB_PASSWORD}')/" "$wp_config_path"
-        echo "✅ wp-config.php 配置已插入。"
+        log "✅ wp-config.php 配置已插入。"
         return 0
     else
-        echo "⚠️ 未找到 'stop editing' 行，无法插入配置。请手动检查 wp-config.php。"
+        log "⚠️ 未找到 'stop editing' 行，无法插入配置。请手动检查 wp-config.php。"
         return 1
     fi
 }
@@ -168,21 +176,21 @@ import_sql_file() {
     # 构造数据库名：保留域名中的点 "."
     local db_name="${username}_${domain}"
 
-    echo "📦 正在处理数据库: $db_name"
+    log "📦 正在处理数据库: $db_name"
 
     # 创建数据库（如果不存在）
     if ! echo "CREATE DATABASE IF NOT EXISTS \`${db_name}\`;" | mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASSWORD"; then
-        echo "❌ 创建数据库失败，请检查数据库连接和权限。"
+        log "❌ 创建数据库失败，请检查数据库连接和权限。"
         return 1
     fi
 
     # 导入 SQL 文件
-    echo "🚚 正在导入 SQL 文件: $sql_file 到数据库 $db_name"
+    log "🚚 正在导入 SQL 文件: $sql_file 到数据库 $db_name"
     if mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASSWORD" "$db_name" <"$sql_file"; then
-        echo "✅ 数据库 $db_name 成功导入。"
+        log "✅ 数据库 $db_name 成功导入。"
         return 0
     else
-        echo "❌ 导入失败，请检查 SQL 文件或数据库权限。"
+        log "❌ 导入失败，请检查 SQL 文件或数据库权限。"
         return 1
     fi
 }
@@ -196,17 +204,17 @@ set_rewrte_rules_file() {
     # 覆盖式将文件复制到目标位置
     if [ -f "$rewrite_template" ]; then
         # 强制性复制并详情输出，增加 -v 参数提升可读性，并添加错误处理
-        echo "🔄 正在复制伪静态规则文件到目标位置: $rewrite_target"
+        log "🔄 正在复制伪静态规则文件到目标位置: $rewrite_target"
         if cp -v "$rewrite_template" "$rewrite_target"; then
-            echo "✅ 伪静态规则文件已成功复制到: $rewrite_target"
-            # echo "修改伪静态文件[$rewrite_target]的标志位使其无法被轻易修改或覆盖(比如宝塔添加对应目录下的站点时可以不被覆盖伪静态规则),但是宝塔api创建站点的操作将会执行失败"
+            log "✅ 伪静态规则文件已成功复制到: $rewrite_target"
+            # log "修改伪静态文件[$rewrite_target]的标志位使其无法被轻易修改或覆盖(比如宝塔添加对应目录下的站点时可以不被覆盖伪静态规则),但是宝塔api创建站点的操作将会执行失败"
             # chattr +i "$rewrite_target"  -V
         else
-            echo "❌ 复制伪静态规则文件失败: 源文件=$rewrite_template, 目标=$rewrite_target"
+            log "❌ 复制伪静态规则文件失败: 源文件=$rewrite_template, 目标=$rewrite_target"
             return 1
         fi
     else
-        echo "⚠️ 未找到伪静态规则模板文件: $rewrite_template"
+        log "⚠️ 未找到伪静态规则模板文件: $rewrite_template"
         return 1
     fi
 
@@ -218,9 +226,9 @@ set_rewrte_rules_file() {
 #     if [[ "$s" == *.*.* ]]; then
 #         local a="${s%%.*}"
 #         local b="${s#*.}"; b="${b%%.*}"
-#         echo "$a.$b"
+#         log "$a.$b"
 #     else
-#         echo "$s"
+#         log "$s"
 #     fi
 # }
 # === 检查归档文件是否完整===
@@ -233,7 +241,7 @@ set_rewrte_rules_file() {
 #     # 确保目标目录存在
 #     mkdir -p "$target_dir"
 
-#     echo "🔍 正在解压文件: $archive_file -> $target_dir/..."
+#     log "🔍 正在解压文件: $archive_file -> $target_dir/..."
 
 #     case "${archive_file##*.}" in
 #         zip)
@@ -251,52 +259,52 @@ set_rewrte_rules_file() {
 
 #             # 纠正域名提取:target_dir (将domain.com.tar)
 
-#             echo "🔍 正在解压 LZ4 文件: $archive_file"
+#             log "🔍 正在解压 LZ4 文件: $archive_file"
 
-#             echo "解压 .lz4 到临时文件"
+#             log "解压 .lz4 到临时文件"
 #             if ! lz4 -d "$archive_file" "$temp_output_file"; then
-#                 echo "❌ 解压 LZ4 文件失败: $archive_file"
+#                 log "❌ 解压 LZ4 文件失败: $archive_file"
 #                 rm -f "$temp_output_file" -v
 #                 return 1
 #             fi
 
-#             echo  "解包 .tar 文件 $temp_output_file"
+#             log  "解包 .tar 文件 $temp_output_file"
 #             if ! tar -xf "$temp_output_file" -C "$target_dir"; then
-#                 echo "❌ 解包 TAR 文件失败: $temp_output_file"
+#                 log "❌ 解包 TAR 文件失败: $temp_output_file"
 #                 rm -f "$temp_output_file" -v
 #                 return 1
 #             fi
 
-#             echo "清理临时文件 $temp_output_file"
+#             log "清理临时文件 $temp_output_file"
 #             rm -f "$temp_output_file" -v
 #             ;;
 #         zst|zstd)
 #             # 使用 mktemp 创建唯一临时文件名
 #             temp_output_file=$(mktemp -u)
 
-#             echo "🔍 正在解压 zstd 文件: $archive_file"
+#             log "🔍 正在解压 zstd 文件: $archive_file"
 
-#             echo "解压 .zst 到临时文件"
+#             log "解压 .zst 到临时文件"
 #             if ! zstd -d "$archive_file" -o "$temp_output_file"; then
-#                 echo "❌ 解压 zstd 文件失败: $archive_file"
+#                 log "❌ 解压 zstd 文件失败: $archive_file"
 #                 rm -f "$temp_output_file" -v
 #                 return 1
 #             fi
 
-#         echo  "解包 .tar 文件 $temp_output_file"
+#         log  "解包 .tar 文件 $temp_output_file"
 #             if ! tar -xf "$temp_output_file" -C "$target_dir"; then
-#                 echo "❌ 解包 TAR 文件失败: $temp_output_file"
+#                 log "❌ 解包 TAR 文件失败: $temp_output_file"
 #                 rm -f "$temp_output_file" -v
 #                 return 1
 #             fi
 
-#         echo "清理临时文件 $temp_output_file"
+#         log "清理临时文件 $temp_output_file"
 #             rm -f "$temp_output_file" -v
 #             ;;
 #         tar)
-#             echo "🔍 正在解包 TAR 文件: $archive_file"
+#             log "🔍 正在解包 TAR 文件: $archive_file"
 #             if ! tar -xf "$archive_file" -C "$target_dir"; then
-#                 echo "❌ 解包 TAR 文件失败: $archive_file"
+#                 log "❌ 解包 TAR 文件失败: $archive_file"
 #                 return 1
 #             fi
 #             ;;
@@ -314,7 +322,7 @@ set_rewrte_rules_file() {
 #     # 其他格式使用7z几乎通杀:
 #     # 使用7z解压，支持各种格式(对于解压任务,使用多线程解压线程效果似乎没什么)
 #     # if ! 7z x -mmt32 -y "$archive_file" -o"$target_dir"; then
-#     #     echo "❌ 解压失败: $archive_file"
+#     #     log "❌ 解压失败: $archive_file"
 #     #     return 1
 #     # fi
 
@@ -333,19 +341,19 @@ extract_archive() {
 
     # 参数校验
     if [ ! -f "$archive_file" ]; then
-        echo "❌ 归档文件不存在: $archive_file"
+        log "❌ 归档文件不存在: $archive_file"
         return 1
     fi
 
     if [ -z "$target_dir" ]; then
-        echo "❌ 目标目录未指定"
+        log "❌ 目标目录未指定"
         return 1
     fi
 
     # 确保目标目录存在
     mkdir -p "$target_dir"
 
-    echo "🔍 正在处理归档文件: $archive_file -> $target_dir/"
+    log "🔍 正在处理归档文件: $archive_file -> $target_dir/"
 
     local ext="${archive_file##*.}"
     local temp_output_file
@@ -354,13 +362,13 @@ extract_archive() {
     check_integrity() {
         local cmd="$1"
         shift
-        echo "🧪 正在验证归档完整性..."
+        log "🧪 正在验证归档完整性..."
         # if ! "$cmd" --test "$@" >/dev/null 2>&1; then
         if ! "$cmd" --test "$@"; then
-            echo "❌ 归档文件损坏或格式不支持: $archive_file"
+            log "❌ 归档文件损坏或格式不支持: $archive_file"
             return 1
         fi
-        echo "✅ 归档文件完整性验证通过"
+        log "✅ 归档文件完整性验证通过"
     }
 
     # 根据扩展名处理不同格式
@@ -369,9 +377,9 @@ extract_archive() {
         if ! check_integrity unzip "$archive_file"; then
             return 1
         fi
-        echo "📦 正在解压 ZIP 文件..."
+        log "📦 正在解压 ZIP 文件..."
         if ! unzip -q "$archive_file" -d "$target_dir"; then
-            echo "❌ 解压 ZIP 文件失败: $archive_file"
+            log "❌ 解压 ZIP 文件失败: $archive_file"
             return 1
         fi
         ;;
@@ -380,9 +388,9 @@ extract_archive() {
         if ! check_integrity tar -tzf "$archive_file"; then
             return 1
         fi
-        echo "📦 正在解压 GZ/TGZ 文件..."
+        log "📦 正在解压 GZ/TGZ 文件..."
         if ! tar -xzf "$archive_file" -C "$target_dir"; then
-            echo "❌ 解压 GZ/TGZ 文件失败: $archive_file"
+            log "❌ 解压 GZ/TGZ 文件失败: $archive_file"
             return 1
         fi
         ;;
@@ -391,41 +399,41 @@ extract_archive() {
         if ! check_integrity tar -tjf "$archive_file"; then
             return 1
         fi
-        echo "📦 正在解压 BZ2/TBZ2 文件..."
+        log "📦 正在解压 BZ2/TBZ2 文件..."
         if ! tar -xjf "$archive_file" -C "$target_dir"; then
-            echo "❌ 解压 BZ2/TBZ2 文件失败: $archive_file"
+            log "❌ 解压 BZ2/TBZ2 文件失败: $archive_file"
             return 1
         fi
         ;;
 
     lz4)
         # 先测试是否能解压到 /dev/null
-        echo "🧪 正在验证 LZ4 文件完整性..."
+        log "🧪 正在验证 LZ4 文件完整性..."
         if ! lz4 -t "$archive_file" >/dev/null 2>&1; then
-            echo "❌ LZ4 文件损坏或格式错误: $archive_file"
+            log "❌ LZ4 文件损坏或格式错误: $archive_file"
             return 1
         fi
-        echo "✅ LZ4 文件完整性验证通过"
+        log "✅ LZ4 文件完整性验证通过"
 
         temp_output_file=$(mktemp -u)
-        echo "📦 正在解压 LZ4 文件..."
+        log "📦 正在解压 LZ4 文件..."
         if ! lz4 -d "$archive_file" "$temp_output_file"; then
-            echo "❌ 解压 LZ4 文件失败"
+            log "❌ 解压 LZ4 文件失败"
             rm -f "$temp_output_file"
             return 1
         fi
 
         # 检查解压出的 tar 是否完整
-        echo "🧪 正在验证解包后的 TAR 文件完整性..."
+        log "🧪 正在验证解包后的 TAR 文件完整性..."
         if ! tar -tf "$temp_output_file" >/dev/null 2>&1; then
-            echo "❌ 内部 TAR 文件损坏"
+            log "❌ 内部 TAR 文件损坏"
             rm -f "$temp_output_file"
             return 1
         fi
 
-        echo "📦 正在解包 TAR 数据..."
+        log "📦 正在解包 TAR 数据..."
         if ! tar -xf "$temp_output_file" -C "$target_dir"; then
-            echo "❌ 解包 TAR 失败"
+            log "❌ 解包 TAR 失败"
             rm -f "$temp_output_file"
             return 1
         fi
@@ -436,38 +444,38 @@ extract_archive() {
     zst | zstd)
         # 这里是特化任务,根据团队规范,默认上传的包实际格式是tar.zst,即便后缀只有.zst而不是.tar.zst,其解压zst层后得到的文件是tar文件(二进制文件)
         # 在这个分支中,首先解压zst层,然后将解压后的内部tar文件再调用tar解压,得到文件(夹)
-        echo "🧪 正在验证 ZSTD 文件完整性..."
+        log "🧪 正在验证 ZSTD 文件完整性..."
         if ! zstd -t "$archive_file" >/dev/null 2>&1; then
-            echo "❌ ZSTD 文件损坏或格式错误: $archive_file"
+            log "❌ ZSTD 文件损坏或格式错误: $archive_file"
             return 1
         fi
-        echo "✅ ZSTD 文件完整性验证通过"
+        log "✅ ZSTD 文件完整性验证通过"
         # 解压结果保存成一个临时文件(tar格式的二进制文件)
         temp_output_file=$(mktemp -u)
-        echo "📦 正在解压 ZSTD 文件..."
+        log "📦 正在解压 ZSTD 文件..."
         if ! zstd -T0 -d "$archive_file" -o "$temp_output_file"; then
-            echo "❌ 解压 ZSTD 文件失败"
+            log "❌ 解压 ZSTD 文件失败"
             rm -f "$temp_output_file"
             return 1
         fi
 
-        echo "🧪 正在验证内部文件 (是否为TAR 文件以及tar文件完整性)..."
+        log "🧪 正在验证内部文件 (是否为TAR 文件以及tar文件完整性)..."
 
         if is_plain_tar_file "$temp_output_file"; then
-            echo "是原生tar文件"
+            log "是原生tar文件"
         else
-            echo "不是原生tar文件"
+            log "不是原生tar文件"
         fi
 
         if ! tar -tf "$temp_output_file" >/dev/null 2>&1; then
-            echo "❌ 内部 TAR 文件损坏或者文件不是tar文件"
+            log "❌ 内部 TAR 文件损坏或者文件不是tar文件"
             rm -f "$temp_output_file"
             return 1
         fi
 
-        echo "📦 正在解包 TAR 数据..."
+        log "📦 正在解包 TAR 数据..."
         if ! tar -xf "$temp_output_file" -C "$target_dir"; then
-            echo "❌ 解包 TAR 失败"
+            log "❌ 解包 TAR 失败"
             rm -f "$temp_output_file"
             return 1
         fi
@@ -476,38 +484,38 @@ extract_archive() {
         ;;
 
     tar)
-        echo "🧪 正在验证 TAR 文件完整性..."
+        log "🧪 正在验证 TAR 文件完整性..."
         if ! tar -tf "$archive_file" >/dev/null 2>&1; then
-            echo "❌ TAR 文件损坏或格式错误: $archive_file"
+            log "❌ TAR 文件损坏或格式错误: $archive_file"
             return 1
         fi
-        echo "✅ TAR 文件完整性验证通过"
+        log "✅ TAR 文件完整性验证通过"
 
-        echo "📦 正在解包 TAR 文件..."
+        log "📦 正在解包 TAR 文件..."
         if ! tar -xf "$archive_file" -C "$target_dir"; then
-            echo "❌ 解包 TAR 文件失败: $archive_file"
+            log "❌ 解包 TAR 文件失败: $archive_file"
             return 1
         fi
         ;;
 
     *)
         # 使用 7z 处理其他格式（如 rar, 7z, xz, iso 等）
-        echo "🧪 正在使用 7z 验证归档完整性..."
+        log "🧪 正在使用 7z 验证归档完整性..."
         if ! 7z t "$archive_file" >/dev/null 2>&1; then
-            echo "❌ 7z 归档验证失败（文件损坏或不支持）: $archive_file"
+            log "❌ 7z 归档验证失败（文件损坏或不支持）: $archive_file"
             return 1
         fi
-        echo "✅ 7z 归档完整性验证通过"
+        log "✅ 7z 归档完整性验证通过"
 
-        echo "📦 正在使用 7z 解压..."
+        log "📦 正在使用 7z 解压..."
         if ! 7z x -y "$archive_file" -o"$target_dir" >/dev/null; then
-            echo "❌ 7z 解压失败: $archive_file"
+            log "❌ 7z 解压失败: $archive_file"
             return 1
         fi
         ;;
     esac
 
-    echo "✅ 解压成功: $archive_file -> $target_dir/"
+    log "✅ 解压成功: $archive_file -> $target_dir/"
     return 0
 }
 # 安装插件
@@ -519,28 +527,30 @@ extract_archive() {
 install_wp_plugin() {
     local site_plugins_home="$1"
     local source_plugins_home="$2"
-    echo "🔍 检查插件目录: $site_plugins_home 中的所有文件"
+    log "🔍 检查插件目录: $site_plugins_home 中的所有文件"
+    [[ -d $site_plugins_home ]] || { log "❌ 站点插件目录不存在: $site_plugins_home"; return 1; }
     for plugin in "$site_plugins_home"/*; do
         # 将插件标记文件或空目录视为插件要安装(覆盖)
         if [ -f "$plugin" ] || [ -z "$(ls -A "$plugin")" ]; then
             local plugin_name
             plugin_name=$(basename "$plugin")
-            echo "🔍 检查插件目录源: $plugin_name 是否可用."
+            [[ ${plugin_name} = *.php  ]] && continue #跳过.php文件
+            log "🔍 检查插件目录源: $plugin_name 是否可用."
 
             local from_plugin="$source_plugins_home/$plugin_name"
             local to_plugin="$site_plugins_home/$plugin_name"
             if [[ -d $from_plugin ]]; then
-                echo "✅ 插件存在: $plugin_name,准备安装"
+                log "✅ 插件存在: $plugin_name,准备安装"
                 if [[ $PLUGIN_INSTALL_MODE = "symlink" ]]; then
                     rm -rf "$to_plugin" && ln -sfT "$from_plugin" "$to_plugin" -v
                 elif [[ $PLUGIN_INSTALL_MODE = "copy" ]]; then
                     rm -rf "$to_plugin" && cp -r "$from_plugin" "$to_plugin"
                 else
-                    echo "❌ 未知的插件安装模式: $PLUGIN_INSTALL_MODE"
+                    log "❌ 未知的插件安装模式: $PLUGIN_INSTALL_MODE"
                     return 1
                 fi
             else
-                echo "❌ 插件源目录不存在: $plugin_name"
+                log "❌ 插件源目录不存在: $plugin_name"
             fi
         fi
     done
@@ -551,9 +561,9 @@ install_wp_plugin() {
 install_functions_php() {
     local site_themes_home="$1"
     local functions_php="$2"
-    echo "检查主题目录..."
+    log "检查主题目录..."
     for dir in "$site_themes_home"/*/; do
-        echo "process theme dir [$dir]"
+        log "process theme dir [$dir]"
         if [ -d "$dir" ]; then
             \cp -vf "$functions_php" "$dir" 
         fi
@@ -570,7 +580,7 @@ deploy_site() {
 
     # 分析sql文件是属于哪一个域名站点(检查是否以 .sql 结尾，如果是则去掉 .sql 后缀,获得sql所属的域名信息)
     if [[ "$domain_name" == *.sql ]]; then
-        echo "⚠️ 检测到文件名包含 .sql 后缀，将其从名称字符串中移除获取其对应(所属)的域名"
+        log "⚠️ 检测到文件名包含 .sql 后缀，将其从名称字符串中移除获取其对应(所属)的域名"
         domain_name="${domain_name%.sql}"
     fi
 
@@ -587,7 +597,7 @@ deploy_site() {
     local themes_dir="$target_dir/wp-content/themes"
     local user_ini="$target_dir/.user.ini"
 
-    echo "尝试清空目标目录[$target_dir],以便后续干净插入新内容"
+    log "尝试清空目标目录[$target_dir],以便后续干净插入新内容"
     # mkdir -p "$target_dir"
     if [ -d "$target_dir" ]; then
         rm -rf "$target_dir" # 删除网站根目录
@@ -596,60 +606,61 @@ deploy_site() {
     fi
     # 解压网站文件|如果存在同名目录,则默认覆盖🎈
     if [ -d "$site_expanded_dir" ]; then
-        echo "⚠️ 检测到相关目录已存在: $site_expanded_dir"
+        log "⚠️ 检测到相关目录已存在: $site_expanded_dir"
 
-        # echo "是否覆盖现有目录? (yY/n): "
+        # log "是否覆盖现有目录? (yY/n): "
         # read -r response
         # if [[ "$response" != "y" && "$response" != "Y" ]]; then
-        #     echo "用户选择不覆盖，跳过此解压步骤: $domain_name"
+        #     log "用户选择不覆盖，跳过此解压步骤: $domain_name"
         # else
-        #     echo "⚠️用户选择覆盖现有目录: $site_expanded_dir"
+        #     log "⚠️用户选择覆盖现有目录: $site_expanded_dir"
         #覆盖逻辑段存放在此
         # fi
         # 覆盖逻辑段(begin)
-        echo "正在删除现有目录[$site_expanded_dir]并解压新内容 (预计得到目录:$site_expanded_dir) ..."
+        log "正在删除现有目录[$site_expanded_dir]并解压新内容 (预计得到目录:$site_expanded_dir) ..."
         rm -rf "$site_expanded_dir" # 删除现有目录
 
         if ! extract_archive "$site_dir_archive" "$site_domain_home"; then
-            echo "❌ 解压失败，跳过部署: $domain_name"
+            log "❌ 解压失败，跳过部署: $domain_name"
             return 1
         else
-            echo "✅ 解压成功: $site_dir_archive -> $site_expanded_dir/"
-            echo "检查需要安装的插件..."
+            log "✅ 解压成功: $site_dir_archive -> $site_expanded_dir/"
+            log "移动解压后的目录[$site_expanded_dir]内容到目标目录wordpress[$target_dir]🎈"
+            mv "$site_expanded_dir"/* "$target_dir" -f 
+
+            log "检查需要安装的插件..."
             install_wp_plugin "$plugins_dir" "$PLUGINS_HOME"
             install_functions_php "$themes_dir" "$FUNCTIONS_PHP"
             if [[ -f "$user_ini" ]]; then
-                echo "🔍 检测到 .user.ini 文件,设置open_basedir 放行公共插件目录"
+                log "🔍 检测到 .user.ini 文件,设置open_basedir 放行公共插件目录"
                 bash /www/sh/update_user_ini.sh -p "$user_ini" -t "$PLUGINS_HOME"
             else
-                echo "ℹ️ 未找到 .user.ini 文件，跳过权限设置"
+                log "ℹ️ 未找到 .user.ini 文件，跳过权限设置"
             fi
         fi
         # 覆盖逻辑点(end)
     else
         # 纯净解压(未检测到预先存在或残留的目录)
         if ! extract_archive "$site_dir_archive" "$site_domain_home"; then
-            echo "❌ 解压失败，跳过部署: $domain_name"
+            log "❌ 解压失败，跳过部署: $domain_name"
             return 1
         fi
 
     fi
     # 如果上述操作没有出错(return 1没有执行),则执行文件归档操作
-    echo "<<<归档:顺利解压网站归档文件[$archive_file]>>>"
+    log "<<<归档:顺利解压网站归档文件[$archive_file]>>>"
     deployed_dir="$PACK_ROOT/$username/deployed/"
     mv "$archive_file" "$deployed_dir" -f
     # mv "$archive_file" "$DEPLOYED_DIR" -f
-    echo "移动解压后的目录[$site_expanded_dir]内容到目标目录wordpress[$target_dir]🎈"
-    mv "$site_expanded_dir"/* "$target_dir" -f # 移动新目录内容到目标目录
-
+  
     # === 检查并导入对应的 SQL 文件 ===
     local sql_file="$PACK_ROOT/$username/$domain_name.sql"
     if [ -f "$sql_file" ]; then
-        echo "🔍 找到 SQL 文件并导入数据库: $sql_file"
+        log "🔍 找到 SQL 文件并导入数据库: $sql_file"
         # 将导入环节放到前面去执行,可以并行导入sql文件提高效率
         import_sql_file "$domain_name" "$username" "$sql_file"
         # 删除数据库文件.sql(已导入)
-        echo "🗑️ 删除数据库文件: $sql_file"
+        log "🗑️ 删除数据库文件: $sql_file"
         rm -f "$sql_file" -v
 
         # === 配置数据库===
@@ -660,11 +671,11 @@ deploy_site() {
     WHERE option_name IN ('home', 'siteurl');
     "
     else
-        echo "⚠️ 未找到 SQL 文件: $sql_file"
+        log "⚠️ 未找到 SQL 文件: $sql_file"
         # 尝试查找其他可能的 SQL 文件名格式
         # local alt_sql_file="$PACK_ROOT/$username/${domain_name}*.sql"
         # if [ -f "$alt_sql_file" ]; then
-        #     echo "🔍 找到替代 SQL 文件: $alt_sql_file"
+        #     log "🔍 找到替代 SQL 文件: $alt_sql_file"
         #     import_sql_file "$domain_name" "$username" "$alt_sql_file"
         # fi
     fi
@@ -676,18 +687,18 @@ deploy_site() {
     local wps_hide_login_dir_bak="${wps_hide_login_dir}.bak"
 
     if [ -d "$wps_hide_login_dir_bak" ]; then
-        echo "🔄 重命名 wps-hide-login.bak 为 wps-hide-login"
+        log "🔄 重命名 wps-hide-login.bak 为 wps-hide-login"
         # mv "$target_dir/wps-hide-login.bak" "$target_dir/wps-hide-login"
         mv "$wps_hide_login_dir_bak" "$wps_hide_login_dir"
     else
-        echo "ℹ️ 未找到 wps-hide-login.bak 目录，跳过重命名"
+        log "ℹ️ 未找到 wps-hide-login.bak 目录，跳过重命名"
     fi
 
     # 检查是否为有效的 WordPress 目录
     if [ -f "$target_dir/wp-config-sample.php" ] || [ -f "$target_dir/wp-config.php" ] || [ -d "$target_dir/wp-content" ]; then
-        echo "✅ 检测到有效的 WordPress 目录结构"
+        log "✅ 检测到有效的 WordPress 目录结构"
     else
-        echo "⚠️ 警告：目标目录可能不是有效的 WordPress 安装，未找到典型的 WordPress 文件"
+        log "⚠️ 警告：目标目录可能不是有效的 WordPress 安装，未找到典型的 WordPress 文件"
     fi
 
     # === 修改 wp-config.php 文件 ===
@@ -695,11 +706,11 @@ deploy_site() {
     if [ -f "$wp_config_path" ]; then
         update_wp_config "$wp_config_path"
     else
-        echo "⚠️ 未找到 wp-config.php 文件，跳过 HTTPS 配置"
+        log "⚠️ 未找到 wp-config.php 文件，跳过 HTTPS 配置"
     fi
 
     # 设置目录权限和所有者
-    echo "🔒 设置目录权限和所有者"
+    log "🔒 设置目录权限和所有者"
     chmod -R 755 "$target_dir"
     chown -R www:www "$target_dir"
 
@@ -707,10 +718,10 @@ deploy_site() {
     # write_rewrite_rules "$domain_name"
     set_rewrte_rules_file "$domain_name"
     # 重启nginx以便让伪静态生效
-    echo "🔄 重启 nginx 以便让伪静态生效"
+    log "🔄 重启 nginx 以便让伪静态生效"
     nginx -s reload
 
-    echo "✅ 完成站点部署: $domain_name ==============( 检查/访问: https://www.$domain_name )=============="
+    log "✅ 完成站点部署: $domain_name ==============( 检查/访问: https://www.$domain_name )=============="
     return 0
 }
 
@@ -723,14 +734,14 @@ process_sql_file() {
 
     # 获取域名（去掉.sql.zip或.sql.7z后缀）
     local domain_name="${archive_file%.sql.*}"
-    echo "📦 正在处理网站 $domain_name 的SQL备份文件 $archive_file"
+    log "📦 正在处理网站 $domain_name 的SQL备份文件 $archive_file"
 
     # 解压SQL备份文件
     local user_dir="$PACK_ROOT/$username"
     sql_archive="$user_dir/$archive_file"
     # 解压sql文件包
     if ! extract_archive "$sql_archive" "$user_dir"; then
-        echo "❌ 解压SQL备份文件失败: $archive_file"
+        log "❌ 解压SQL备份文件失败: $archive_file"
         return 1
     fi
 
@@ -738,28 +749,25 @@ process_sql_file() {
     local sql_files=($(find "$user_dir" -name "*.sql" -type f))
 
     if [ ${#sql_files[@]} -eq 0 ]; then
-        echo "❌ 在解压后的目录中未找到SQL文件"
+        log "❌ 在解压后的目录中未找到SQL文件"
         return 1
     fi
 
     # 导入找到的第一个SQL文件
-    # echo "🔍 找到SQL文件: ${sql_files[0]}"
+    # log "🔍 找到SQL文件: ${sql_files[0]}"
     # if import_sql_file "$domain_name" "$username" "${sql_files[0]}"; then
-    #     echo "✅ SQL备份成功导入到数据库"
+    #     log "✅ SQL备份成功导入到数据库"
     #     rm -rf "$temp_dir"
     #     return 0
     # else
-    #     echo "❌ SQL备份导入失败"
+    #     log "❌ SQL备份导入失败"
     #     rm -rf "$temp_dir"
     #     return 1
     # fi
 }
 
 # ================================================ 主程序开始 🎈=============================================
-# 在脚本开头定义
-log() {
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1"
-}
+
 
 log "🚀 ==================开始部署 WordPress 站点和数据库...================="
 
@@ -768,7 +776,7 @@ check_commands
 
 # 进入指定目录
 cd "$PACK_ROOT" || {
-    echo "❌ 无法进入目录: $PACK_ROOT"
+    log "❌ 无法进入目录: $PACK_ROOT"
     exit 1
 }
 
@@ -776,15 +784,15 @@ cd "$PACK_ROOT" || {
 if [ -n "$USER_DIR" ]; then
     # 指定单目录时,将单个目录包装成数组(单个元素),便于后续统一两种情况为数组处理
     user_dirs=("$USER_DIR")
-    echo "🔍 仅处理指定用户目录: $USER_DIR"
+    log "🔍 仅处理指定用户目录: $USER_DIR"
 else
     # 否则遍历所有子目录
     user_dirs=($(ls -d */ 2>/dev/null))
     if [ ${#user_dirs[@]} -eq 0 ]; then
-        echo "❌ 在 $PACK_ROOT 中没有找到任何用户目录"
+        log "❌ 在 $PACK_ROOT 中没有找到任何用户目录"
         exit 1
     fi
-    echo "🔍 找到 ${#user_dirs[@]} 个用户目录"
+    log "🔍 找到 ${#user_dirs[@]} 个用户目录"
 fi
 # 统计处理的站点数
 deployed_sites=0
@@ -805,11 +813,11 @@ for user_dir in "${user_dirs[@]}"; do
         mkdir -p "$deployed_dir"
     fi
 
-    echo "📂 正在处理站点人员名所属目录: $username"
+    log "📂 正在处理站点人员名所属目录: $username"
 
     # 进入用户目录
     if ! cd "$PACK_ROOT/$username"; then
-        echo "❌ 无法进入用户目录: $PACK_ROOT/$username"
+        log "❌ 无法进入用户目录: $PACK_ROOT/$username"
         continue
     fi
 
@@ -817,8 +825,8 @@ for user_dir in "${user_dirs[@]}"; do
     # 数据库名字:调用process_sql_file进行处理
     sql_archives=($(ls *.sql.zip *.sql.7z *.sql.tar *.sql.lz4 *.sql.zst 2>/dev/null))
     if [ -f "${sql_archives[0]}" ]; then
-        echo "🔍 找到SQL备份文件，优先处理"
-        echo "处理全部待部署网站的数据库文件🎈(使用&和wait并行处理)"
+        log "🔍 找到SQL备份文件，优先处理"
+        log "处理全部待部署网站的数据库文件🎈(使用&和wait并行处理)"
         # 并行处理SQL备份文件
         pids=()
         sql_archive_names=()
@@ -837,17 +845,17 @@ for user_dir in "${user_dirs[@]}"; do
             if wait "$pid"; then
                 ((sql_backups_processed++))
                 # 归档已用过的sql压缩包文件
-                echo "<<<归档:已用过的sql压缩包文件: $sql_archive >>>"
+                log "<<<归档:已用过的sql压缩包文件: $sql_archive >>>"
                 deployed_dir="$PACK_ROOT/$username/deployed/"
                 mv "$sql_archive" "$deployed_dir" -f -v
                 # mv "$sql_archive" "$DEPLOYED_DIR" -f -v
             else
                 ((failed_sites++))
-                echo "❌ SQL备份文件处理失败: $sql_archive"
+                log "❌ SQL备份文件处理失败: $sql_archive"
             fi
         done
     else
-        echo "ℹ️ 未找到SQL压缩文件,跳过解压步骤"
+        log "ℹ️ 未找到SQL压缩文件,跳过解压步骤"
     fi
 
     # 然后处理WordPress站点文件（过滤出非sql压缩备份文件,得到网站根目录包文件）
@@ -859,7 +867,7 @@ for user_dir in "${user_dirs[@]}"; do
     done
 
     if [ ${#site_archives[@]} -eq 0 ] || [ ! -f "${site_archives[0]}" ]; then
-        echo "⚠️ 在目录 $username 中没有找到有效的WordPress站点压缩包。跳过..."
+        log "⚠️ 在目录 $username 中没有找到有效的WordPress站点压缩包。跳过..."
         cd "$PACK_ROOT" || exit
         # continue
     fi
@@ -886,11 +894,11 @@ for user_dir in "${user_dirs[@]}"; do
 
         else
             ((failed_sites++))
-            echo "❌ 站点部署失败: $archive_file"
+            log "❌ 站点部署失败: $archive_file"
         fi
     done
     # 更改deployed文件夹权限
-    echo "🔒 更改deployed文件夹权限(设置目录权限和所有者)"
+    log "🔒 更改deployed文件夹权限(设置目录权限和所有者)"
     chmod -R 755 "$deployed_dir"
     chown -R uploader:uploader "$deployed_dir"
 
@@ -901,7 +909,7 @@ done
 log "=========部署完成！解压站点根目录数量:[$deployed_sites] , 解压SQL备份: $sql_backups_processed, 失败: $failed_sites========================"
 
 if [ $failed_sites -gt 0 ]; then
-    echo "⚠️ 有 $failed_sites 个操作失败，请检查日志。"
+    log "⚠️ 有 $failed_sites 个操作失败，请检查日志。"
     exit 1
 fi
 
