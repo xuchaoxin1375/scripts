@@ -21,7 +21,7 @@
 .EXAMPLE
 更新或者安装插件🎈
 # 通用版本
-$plugin_dir="$wp_plugins/yipay" 
+$plugin_dir="$wp_plugins/xpaid_pay" 
 . $scripts/wp/update_plugins.ps1 -WpSitesDir $my_wp_sites -PluginSources $plugin_dir -InstallMode TagFile
 # zw,zsh可以跳过下面语句
 . $scripts/wp/update_plugins.ps1 -WpSitesDir $wp_sites -PluginSources $plugin_dir -InstallMode TagFile
@@ -35,9 +35,10 @@ W:\wp_sites\wp_plugins\price_pay\paypal-online-payment-for-woocommerce
 
 .EXAMPLE
 # 只清除指定插件
-$plugin="wlstar"
-. $scripts/wp/update_plugins.ps1 -Depth 2 -WpSitesDir $wp_sites  -RemovePluginsOfSites -PluginsToRemove $plugin
+$plugin="wp-linkpayment-v2"
 . $scripts/wp/update_plugins.ps1  -Depth 2 -WpSitesDir $my_wp_sites  -RemovePluginsOfSites -PluginsToRemove $plugin
+# zw,zsh可以跳过下面语句
+. $scripts/wp/update_plugins.ps1 -Depth 2 -WpSitesDir $wp_sites  -RemovePluginsOfSites -PluginsToRemove $plugin
 
 .EXAMPLE
 移除指定插件:采集员:(将此ps1脚本放到桌面)然后执行下面两个语句(记得修改指定插件名称)

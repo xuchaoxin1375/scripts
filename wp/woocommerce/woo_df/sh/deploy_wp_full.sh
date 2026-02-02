@@ -11,6 +11,7 @@ DEFAULT_DB_PASSWORD="15a58524d3bd2e49"
 DEFAULT_DEPLOYED_DIR="$UPLOADER_DIR/deployed_all"
 DEFAULT_PROJECT_HOME="/www/wwwroot"
 PLUGINS_HOME="/www/"
+FUNCTIONS_PHP="/www/functions.php"
 PLUGIN_INSTALL_MODE="symlink" # 插件安装模式: symlink(符号链接), copy(复制)
 DB_HOST="localhost"           # 数据库主机
 # PACK_ROOT="/www/wwwroot"           # WordPress 网站根目录
@@ -59,7 +60,7 @@ while [[ "$#" -gt 0 ]]; do
         DEPLOYED_DIR="$2"
         shift
         ;;
-    -m|--plugin-install-mode)
+    -m | --plugin-install-mode)
         PLUGIN_INSTALL_MODE="$2"
         shift
         ;;
@@ -532,7 +533,7 @@ install_wp_plugin() {
                 if [[ $PLUGIN_INSTALL_MODE = "symlink" ]]; then
                     rm -rf "$to_plugin" && ln -sfT "$from_plugin" "$to_plugin" -v
                 elif [[ $PLUGIN_INSTALL_MODE = "copy" ]]; then
-                    rm -rf "$to_plugin" && cp -r "$from_plugin" "$to_plugin" 
+                    rm -rf "$to_plugin" && cp -r "$from_plugin" "$to_plugin"
                 else
                     echo "❌ 未知的插件安装模式: $PLUGIN_INSTALL_MODE"
                     return 1
@@ -540,6 +541,20 @@ install_wp_plugin() {
             else
                 echo "❌ 插件源目录不存在: $plugin_name"
             fi
+        fi
+    done
+}
+# 安装functions.php文件
+# Args:
+#   $1:网站的主题目录
+install_functions_php() {
+    local site_themes_home="$1"
+    local functions_php="$2"
+    echo "检查主题目录..."
+    for dir in "$site_themes_home"/*/; do
+        echo "process theme dir [$dir]"
+        if [ -d "$dir" ]; then
+            \cp -vf "$functions_php" "$dir" 
         fi
     done
 }
@@ -568,6 +583,7 @@ deploy_site() {
     local site_expanded_dir="$site_domain_home/$domain_name"
     local target_dir="$site_domain_home/wordpress"
     local plugins_dir="$target_dir/wp-content/plugins"
+    local themes_dir="$target_dir/wp-content/themes"
     local user_ini="$target_dir/.user.ini"
 
     echo "尝试清空目标目录[$target_dir],以便后续干净插入新内容"
@@ -600,6 +616,7 @@ deploy_site() {
             echo "✅ 解压成功: $site_dir_archive -> $site_expanded_dir/"
             echo "检查需要安装的插件..."
             install_wp_plugin "$plugins_dir" "$PLUGINS_HOME"
+            install_functions_php "$themes_dir" "$FUNCTIONS_PHP"
             if [[ -f "$user_ini" ]]; then
                 echo "🔍 检测到 .user.ini 文件,设置open_basedir 放行公共插件目录"
                 bash /www/sh/update_user_ini.sh -p "$user_ini" -t "$PLUGINS_HOME"

@@ -3,13 +3,9 @@
 本地wordpress模板functions.php批量覆盖
 递归查找合适的目录将functions.php插件复制到其中
 .EXAMPLE
-# 管理员
-. $desktop/update_functions.ps1 -wp_sites_dir $wp_sites -verbose    
-. $desktop/update_functions.ps1 -wp_sites_dir $my_wp_sites -verbose   
-.EXAMPLE
-# 采集员的-function_file 指定为$desktop/functions.php
-. $desktop/update_functions.ps1 -wp_sites_dir $wp_sites -verbose   -function_file $desktop/functions.php
-. $desktop/update_functions.ps1 -wp_sites_dir $my_wp_sites -verbose   -function_file $desktop/functions.php
+# 通用更新命令(管理员执行,其他的服务器上解压过程中会进行安装和更新functions.php)
+. $scripts/wp/update_functions.ps1 -wp_sites_dir $wp_sites -verbose   -function_file $wp_plugins/functions.php
+. $scripts/wp/update_functions.ps1 -wp_sites_dir $my_wp_sites -verbose   -function_file $wp_plugins/functions.php
 
 #>
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]

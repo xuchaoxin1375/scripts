@@ -1614,6 +1614,12 @@ function Update-WpPluginsDFOnServers
     .SYNOPSIS
     批量更新服务器上的Wordpress插件目录
     读取配置文件中的服务器列表,然后逐个服务器执行相同的处理
+    .EXAMPLE
+    安装插件
+    Update-WpPluginsDFOnServers -PluginPath "$wp_plugins/mallpay"  -WhiteList "whitelist.conf" 
+    .EXAMPLE
+    删除插件
+    Update-WpPluginsDFOnServers -PluginName "wp-linkpayment-v2" -RemovePlugin 
     #>
     param(
         # 本地插件目录路径🎈
@@ -1674,20 +1680,23 @@ function Update-WpPluginsDFOnServers
     $servers = Get-ServerList -Path $ServerConfig
     # Write-Host "servers:$servers"
     # return $servers
-    $plugin_dir_name = (Split-Path $PluginPath -LeafBase) # 计算插件名称,将作为插件压缩包的名称(如果已经是压缩包,则需要压缩包名称和被压缩目录名一致)
-    # 计算插件目录压缩成zip后的文件路径
-    $zipFile = "$wp_plugins/$plugin_dir_name.zip"
-   
-    # 将插件文件夹统一处理为zip包(如果输入路径已经是压缩包文件,则跳过压缩处理)
-    if(Test-Path $PluginPath -PathType Container)
-    {
-        Write-Verbose "Remove existing zip file if exists: [$zipFile]..." 
-        Remove-Item $zipFile -ErrorAction SilentlyContinue -Verbose
-        Compress-Archive -Path $PluginPath -DestinationPath $zipFile
-        # Write-Warning "Plugin name: [$plugin_dir_name],please ensure it is correct then continue. " -WarningAction Inquire 
-        $PluginPath = $zipFile
-    }
     $currentSet = $PSCmdlet.ParameterSetName
+    if($currentSet -eq 'Path')
+    {
+        $plugin_dir_name = (Split-Path $PluginPath -LeafBase) # 计算插件名称,将作为插件压缩包的名称(如果已经是压缩包,则需要压缩包名称和被压缩目录名一致)
+        # 计算插件目录压缩成zip后的文件路径
+        $zipFile = "$wp_plugins/$plugin_dir_name.zip"
+        
+        # 将插件文件夹统一处理为zip包(如果输入路径已经是压缩包文件,则跳过压缩处理)
+        if(Test-Path $PluginPath -PathType Container)
+        {
+            Write-Verbose "Remove existing zip file if exists: [$zipFile]..." 
+            Remove-Item $zipFile -ErrorAction SilentlyContinue -Verbose
+            Compress-Archive -Path $PluginPath -DestinationPath $zipFile
+            # Write-Warning "Plugin name: [$plugin_dir_name],please ensure it is correct then continue. " -WarningAction Inquire 
+            $PluginPath = $zipFile
+        }
+    }
     # $servers.ip | ForEach-Object -Parallel { #不支持ArgumentList
     $jobs = @()
     foreach ($server in $servers.ip)
