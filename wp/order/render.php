@@ -183,6 +183,8 @@ function render_analysis_content($access_token, $view_mode, $log_date, $stats, $
                     <?= $visitor_total ?>=<?= $visitor_success ?>+<?= $visitor_fail_only ?>
                     <br>
                     <span style="font-size:11px; color:#94a3b8; margin-left:6px;">w访客数=成功客户x+失败客户y</span>
+                    <br>
+                    <span style="font-size:11px; color:#94a3b8; margin-left:6px;">活跃站点数=<?= (int)($stats['active_sites'] ?? 0) ?></span>
                 </span>
             </span></div>
             <div class="overview-card" style="border-bottom: 3px solid var(--success);"><span
@@ -205,7 +207,7 @@ function render_analysis_content($access_token, $view_mode, $log_date, $stats, $
             </span></div>
             </div>
             <div style="margin:12px 0 18px 0; padding:10px 12px; border-left:3px solid #e2e8f0; background:#f8fafc; color:#64748b; font-size:12px; line-height:1.6; border-radius:8px;">
-                <div>访客数：forpay 日志中的订单号前缀(去掉末两位)去重后的数量（可能是 5 或 6 位）。</div>
+                <div>访客次数(仅供参考,可能比实际情况偏高)：forpay 日志中的订单号前缀(去掉末两位)去重后的数量（可能是 5 或 6 位）。</div>
                 <div>成功顾客数：成功订单组中统计的去重前缀数量。</div>
                 <div>失败组：总访客数 - 成功顾客数。</div>
             </div>
@@ -435,6 +437,7 @@ function render_analysis_content($access_token, $view_mode, $log_date, $stats, $
                             <label style="font-size:13px; color:#475569; display:flex; align-items:center; gap:4px;">
                                 <input type="checkbox" name="group_by_domain" value="1" onchange="window.__ordersFilterChange ? window.__ordersFilterChange(this.form) : this.form.submit()" <?= (isset($_GET['group_by_domain']) && $_GET['group_by_domain']) ? 'checked' : '' ?>>
                                 按站点分组折叠
+                                <span style="margin-left:6px; font-size:12px; color:#64748b;">今日活跃站点数: <?= (int)($stats['active_sites'] ?? 0) ?></span>
                             </label>
                             <label style="font-size:13px; color:#475569; display:flex; align-items:center; gap:4px;">
                                 <input type="hidden" name="cluster_prefix_trim2" value="0">

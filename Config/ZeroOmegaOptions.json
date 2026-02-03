@@ -50,8 +50,15 @@
         "defaultProfileName": "direct",
         "name": "auto-direct-8800",
         "profileType": "SwitchProfile",
-        "revision": "19aa60b701e",
+        "revision": "19b2511f89d",
         "rules": [
+            {
+                "condition": {
+                    "conditionType": "HostWildcardCondition",
+                    "pattern": "*.britbookden.com"
+                },
+                "profileName": "https8800"
+            },
             {
                 "condition": {
                     "conditionType": "UrlWildcardCondition",
@@ -84,11 +91,27 @@
             },
             {
                 "conditionType": "BypassCondition",
+                "pattern": "*.cloudflare.com"
+            },
+            {
+                "conditionType": "BypassCondition",
                 "pattern": "*.cn"
             },
             {
                 "conditionType": "BypassCondition",
                 "pattern": "*.test"
+            },
+            {
+                "conditionType": "BypassCondition",
+                "pattern": "4.fr"
+            },
+            {
+                "conditionType": "BypassCondition",
+                "pattern": "*xiaomimimo*"
+            },
+            {
+                "conditionType": "BypassCondition",
+                "pattern": "*.csdn.*"
             }
         ],
         "color": "#9ce",
@@ -99,7 +122,7 @@
         },
         "name": "https10808",
         "profileType": "FixedProfile",
-        "revision": "19aa9545f9f"
+        "revision": "19c20e00b79"
     },
     "+https7897": {
         "bypassList": [
@@ -117,11 +140,27 @@
             },
             {
                 "conditionType": "BypassCondition",
+                "pattern": "*.cloudflare.com"
+            },
+            {
+                "conditionType": "BypassCondition",
                 "pattern": "*.cn"
             },
             {
                 "conditionType": "BypassCondition",
                 "pattern": "*.test"
+            },
+            {
+                "conditionType": "BypassCondition",
+                "pattern": "4.fr"
+            },
+            {
+                "conditionType": "BypassCondition",
+                "pattern": "*xiaomimimo*"
+            },
+            {
+                "conditionType": "BypassCondition",
+                "pattern": "*.csdn.*"
             }
         ],
         "color": "#5b5",
@@ -132,7 +171,7 @@
         },
         "name": "https7897",
         "profileType": "FixedProfile",
-        "revision": "19aa9546c21"
+        "revision": "19c20e02da5"
     },
     "+https8800": {
         "bypassList": [
@@ -150,11 +189,27 @@
             },
             {
                 "conditionType": "BypassCondition",
+                "pattern": "*.cloudflare.com"
+            },
+            {
+                "conditionType": "BypassCondition",
                 "pattern": "*.cn"
             },
             {
                 "conditionType": "BypassCondition",
                 "pattern": "*.test"
+            },
+            {
+                "conditionType": "BypassCondition",
+                "pattern": "4.fr"
+            },
+            {
+                "conditionType": "BypassCondition",
+                "pattern": "*xiaomimimo*"
+            },
+            {
+                "conditionType": "BypassCondition",
+                "pattern": "*.csdn.*"
             }
         ],
         "color": "#5b5",
@@ -165,7 +220,7 @@
         },
         "name": "https8800",
         "profileType": "FixedProfile",
-        "revision": "19aa95479a8"
+        "revision": "19c20e03a93"
     },
     "-addConditionsToBottom": false,
     "-confirmDeletion": true,

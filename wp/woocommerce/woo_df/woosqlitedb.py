@@ -984,7 +984,7 @@ but different image, keep records [%s]",
         sale_price = round(sale_price, 2)
         return sale_price
 
-    def get_sale_price(self, price, limit_sale=298.98):
+    def get_sale_price(self, price, limit_sale=298.98,base_line=300):
         """获取产品折扣价格
         1.价格小于100的打3折
         2.价格100到300的打0.25折
@@ -1014,11 +1014,12 @@ but different image, keep records [%s]",
         sale_price = 0
         if price < 100:
             sale_price = price * 0.3
-        elif price >= 100 and price < 300:
+        elif price >= 100 and price < base_line:
             sale_price = price * 0.25
-        elif price >= limit_sale:
+        elif price >= base_line:
             sale_price = price * 0.2
-            if sale_price >= limit_sale:
+            # 打完折后仍然大于base_line,则设置为limit_sale
+            if sale_price >= base_line:
                 sale_price = limit_sale
 
         # 保留2位小数

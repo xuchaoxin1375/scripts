@@ -1012,7 +1012,7 @@ if (orders3_handle_partials_and_exports(
                     }
                 }
             });
-
+            try { syncRevenueAxesVisibility(window.revenueChartInstance); } catch (e) {}
         }
 
         (function() {
@@ -1279,12 +1279,14 @@ if (orders3_handle_partials_and_exports(
                     const visible2 = ds[2] ? chart.isDatasetVisible(2) : false; // attempts
                     const visible3 = ds[3] ? chart.isDatasetVisible(3) : false; // success orders
                     const visible4 = ds[4] ? chart.isDatasetVisible(4) : false; // visitors
+                    const visible5 = ds[5] ? chart.isDatasetVisible(5) : false; // active sites
 
                     if (scales.y) scales.y.display = !!visible0;
                     if (scales.y1) scales.y1.display = !!visible1;
                     if (scales.y2) scales.y2.display = !!visible2;
                     if (scales.y3) scales.y3.display = !!visible3;
                     if (scales.y4) scales.y4.display = !!visible4;
+                    if (scales.y5) scales.y5.display = !!visible5;
                 } catch (e) {}
             }
 
@@ -1386,6 +1388,7 @@ if (orders3_handle_partials_and_exports(
             const attemptsSeries = data.map(d => (typeof d.attempts === 'number' ? d.attempts : Number(d.attempts || 0)));
             const successOrdersSeries = data.map(d => (typeof d.success_orders === 'number' ? d.success_orders : Number(d.success_orders || 0)));
             const visitorsSeries = data.map(d => (typeof d.visitors === 'number' ? d.visitors : Number(d.visitors || 0)));
+            const activeSitesSeries = data.map(d => (typeof d.active_sites === 'number' ? d.active_sites : Number(d.active_sites || 0)));
             const focusIdx = focusDate ? labels.indexOf(focusDate) : -1;
             const defaultPointBg = '#6366f1';
             const defaultPointBorder = '#fff';
@@ -1428,6 +1431,9 @@ if (orders3_handle_partials_and_exports(
                     }
                     if (window.revenueChartInstance.data.datasets && window.revenueChartInstance.data.datasets[4]) {
                         window.revenueChartInstance.data.datasets[4].data = visitorsSeries;
+                    }
+                    if (window.revenueChartInstance.data.datasets && window.revenueChartInstance.data.datasets[5]) {
+                        window.revenueChartInstance.data.datasets[5].data = activeSitesSeries;
                     }
                     window.revenueChartInstance.__rawData = data;
                     syncRevenueAxesVisibility(window.revenueChartInstance);
@@ -1597,6 +1603,23 @@ if (orders3_handle_partials_and_exports(
                         borderDash: [2, 6],
                         borderWidth: 2,
                         hidden: true
+                    },
+                    {
+                        label: '日活跃站点数',
+                        data: activeSitesSeries,
+                        borderColor: '#a855f7',
+                        backgroundColor: 'rgba(168,85,247,0.08)',
+                        fill: false,
+                        tension: 0.3,
+                        yAxisID: 'y5',
+                        pointRadius: pointR,
+                        pointHoverRadius: pointHoverR,
+                        pointHitRadius: pointHitR,
+                        pointBackgroundColor: '#a855f7',
+                        pointBorderColor: '#fff',
+                        borderDash: [3, 6],
+                        borderWidth: 2,
+                        hidden: true
                     }]
                 },
                 options: {
@@ -1657,6 +1680,9 @@ if (orders3_handle_partials_and_exports(
                                     if (context.datasetIndex === 4) {
                                         return '访客数: ' + context.parsed.y.toLocaleString();
                                     }
+                                    if (context.datasetIndex === 5) {
+                                        return '日活跃站点数: ' + context.parsed.y.toLocaleString();
+                                    }
                                     return '金额: $' + context.parsed.y.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                                 }
                             }
@@ -1666,8 +1692,16 @@ if (orders3_handle_partials_and_exports(
                             color: '#222',
                             align: 'end',
                             anchor: 'end',
-                            formatter: function(value) {
-                                return value > 0 ? ('$' + value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })) : '';
+                            formatter: function(value, context) {
+                                try {
+                                    const di = (context && typeof context.datasetIndex === 'number') ? context.datasetIndex : -1;
+                                    if (di === 0) {
+                                        return value > 0 ? ('$' + value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })) : '';
+                                    }
+                                    return value > 0 ? String(value) : '';
+                                } catch (e) {
+                                    return value > 0 ? String(value) : '';
+                                }
                             }
                         }
                     },
@@ -1717,6 +1751,16 @@ if (orders3_handle_partials_and_exports(
                             grid: { drawOnChartArea: false, drawTicks: gridDrawTicks },
                             ticks: {
                                 color: '#0ea5e9',
+                                font: { size: axisFontSize },
+                                callback: function(value) { return value; }
+                            }
+                        },
+                        y5: {
+                            beginAtZero: true,
+                            position: 'right',
+                            grid: { drawOnChartArea: false, drawTicks: gridDrawTicks },
+                            ticks: {
+                                color: '#a855f7',
                                 font: { size: axisFontSize },
                                 callback: function(value) { return value; }
                             }
@@ -2274,17 +2318,21 @@ if (orders3_handle_partials_and_exports(
             function seedCacheFromData(arr) {
                 const cache = getCache();
                 if (!Array.isArray(arr)) return;
+                // 注意：这里的 cache 字段必须覆盖“综合走势曲线”里所有会被渲染的序列。
+                // 因为滑块拖动/日期区间变化时会走 buildSeriesFromCache() 做本地预览。
+                // 如果漏掉某个字段（例如 active_sites），就会出现：
+                // - 预览时该曲线断崖式变 0
+                // - 曲线开关/切换区间后表现与其他曲线不一致
+                // 这是一个很隐蔽但高频的回归点，后续新增曲线字段时务必同步这里。
                 for (const d of arr) {
                     if (!d || !d.date) continue;
                     cache[d.date] = {
                         usd: (typeof d.usd === 'number') ? d.usd : Number(d.usd || 0),
                         conversion: (typeof d.conversion === 'number') ? d.conversion : Number(d.conversion || 0),
                         attempts: (typeof d.attempts === 'number') ? d.attempts : Number(d.attempts || 0),
-                        // 关键：把 success_orders / visitors 也写入缓存。
-                        // 否则在拖动区间滑块时（本地预览/基于缓存重建序列），相关曲线会使用旧值或变成 0。
                         success_orders: (typeof d.success_orders === 'number') ? d.success_orders : Number(d.success_orders || 0),
                         visitors: (typeof d.visitors === 'number') ? d.visitors : Number(d.visitors || 0),
-                        people_usd: (d && d.people_usd && typeof d.people_usd === 'object') ? d.people_usd : null
+                        active_sites: (typeof d.active_sites === 'number') ? d.active_sites : Number(d.active_sites || 0)
                     };
                 }
             }
@@ -2297,9 +2345,7 @@ if (orders3_handle_partials_and_exports(
                 const end = new Date(re.getTime());
                 while (cur <= end) {
                     const key = fmtDate(cur);
-                    // 关键：默认值也要包含 success_orders。
-                    // 否则缓存缺失日期会导致该序列不连续/不随区间变化。
-                    const v = (key in cache) ? cache[key] : { usd: 0, conversion: 0, attempts: 0, success_orders: 0, visitors: 0, people_usd: null };
+                    const v = (key in cache) ? cache[key] : { usd: 0, conversion: 0, attempts: 0, success_orders: 0, visitors: 0, active_sites: 0 };
                     out.push({
                         date: key,
                         usd: v.usd || 0,
@@ -2307,7 +2353,7 @@ if (orders3_handle_partials_and_exports(
                         attempts: v.attempts || 0,
                         success_orders: v.success_orders || 0,
                         visitors: v.visitors || 0,
-                        people_usd: v.people_usd || null
+                        active_sites: v.active_sites || 0
                     });
                     cur.setDate(cur.getDate() + 1);
                 }

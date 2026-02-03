@@ -11,6 +11,7 @@ function orders3_build_analysis_data_and_stats($log_files, $pending_as_success, 
         'total_usd_sum' => 0,
         'revenue_by_currency' => ['USD' => 0, 'EUR' => 0, 'GBP' => 0],
         'unique_domains' => 0,
+        'active_sites' => 0,
         'total_visitors' => 0,
         'visitor_success' => 0,
         'visitor_fail_only' => 0,
@@ -48,7 +49,24 @@ function orders3_build_analysis_data_and_stats($log_files, $pending_as_success, 
         }
     }
     $visitor_prefix_set = [];
+    $active_domain_set = [];
     foreach (($logs['forpay'] ?? []) as $line) {
+        $domain_raw0 = '';
+        if (preg_match('/^\\d{4}-\\d{2}-\\d{2}\\s\\d{2}:\\d{2}:\\d{2}\\|([^|]+)\\|/', $line, $mDom)) {
+            $domain_raw0 = (string)($mDom[1] ?? '');
+        }
+        $dom0 = ($domain_raw0 !== '') ? normalize_domain_key($domain_raw0) : '';
+        $domain_invalid0 = ($dom0 === '' || strpos($domain_raw0, '接口参数错误') !== false);
+        if ($domain_invalid0) {
+            if (preg_match('/\|(\d+)\|/', $line, $mBad)) {
+                $no_bad = (string)($mBad[1] ?? '');
+                if ($no_bad !== '' && isset($analysis_data[$no_bad])) {
+                    unset($analysis_data[$no_bad]);
+                }
+            }
+            continue;
+        }
+        $active_domain_set[$dom0] = true;
         if (preg_match('/\|(\d+)\|/', $line, $m)) {
             $no = $m[1];
             $prefix0 = (strlen((string)$no) > 2) ? substr((string)$no, 0, -2) : (string)$no;
@@ -238,6 +256,7 @@ function orders3_build_analysis_data_and_stats($log_files, $pending_as_success, 
     $stats['total_visitors'] = count($visitor_prefix_set);
     $stats['visitor_success'] = count($visitor_success_set);
     $stats['visitor_fail_only'] = max(0, $stats['total_visitors'] - $stats['visitor_success']);
+    $stats['active_sites'] = count($active_domain_set);
 
     uasort($stats['domain_amount'], function ($a, $b) {
         $sum_a = 0.0;
