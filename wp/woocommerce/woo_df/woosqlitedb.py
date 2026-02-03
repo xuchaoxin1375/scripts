@@ -1023,7 +1023,8 @@ but different image, keep records [%s]",
                 sale_price = limit_sale
 
         # 保留2位小数
-        sale_price = round(sale_price, 2)
+        sale_price = int(sale_price * 100) / 100.0 #效果是直接截断第单位小数后的值,防止四舍五入
+        # sale_price = round(sale_price, 2)
         return sale_price
 
     def get_lines_dict_for_csv(
