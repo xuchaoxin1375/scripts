@@ -605,10 +605,10 @@ deploy_site() {
     log "尝试清空目标目录[$target_dir],以便后续干净插入新内容"
     # mkdir -p "$target_dir"
     if [ -d "$target_dir" ]; then
-        rm -rf "$target_dir" # 删除网站根目录
-    else
-        mkdir -p "$target_dir" # 创建网站根目录
+        rm1 "$target_dir" # 删除网站根目录
     fi
+    log "创建网站根目录"
+    mkdir -p "$target_dir" -v
     # 解压网站文件|如果存在同名目录,则默认覆盖🎈
     if [ -d "$site_expanded_dir" ]; then
         log "⚠️ 检测到相关目录已存在: $site_expanded_dir"
@@ -622,12 +622,9 @@ deploy_site() {
         #覆盖逻辑段存放在此
         # fi
         # 覆盖逻辑段(begin)
-        log "正在删除现有目录[$site_expanded_dir]并解压新内容 (预计得到目录:$site_expanded_dir) ..."
-        rm1 -rf "$site_expanded_dir" # 删除现有目录
-
-        # 覆盖逻辑点(end)
-
-
+        log "正在强力删除现有目录[$site_expanded_dir]并解压新内容 (预计得到目录:$site_expanded_dir) ..."
+        # rm -rf "$site_expanded_dir" # 删除现有目录
+        rm1 "$site_expanded_dir" # 删除现有目录
     fi
 
     # 纯净解压(未检测到预先存在或残留的目录)
@@ -637,6 +634,15 @@ deploy_site() {
     else
         log "✅ 解压成功: $site_dir_archive -> $site_expanded_dir/"
         log "移动解压后的目录[$site_expanded_dir]内容到目标目录wordpress[$target_dir]🎈"
+        if [[ -d $target_dir ]] ;then
+            log "目标目录[$target_dir]已存在,直接移动解压内容到该目录"
+        else
+            log "目标目录[$target_dir]不存在,创建该目录"
+            # return 1
+            # 直接结束脚本运行
+            exit 1;
+            # mkdir -p "$target_dir" -v
+        fi
         mv "$site_expanded_dir"/* "$target_dir" -f
 
         log "检查需要安装的插件..."
@@ -712,9 +718,9 @@ deploy_site() {
     fi
 
     # 设置目录权限和所有者
-    log "🔒 设置目录权限和所有者"
-    chmod -R 755 "$target_dir"
-    chown -R www:www "$target_dir"
+    log "🔒 设置目录权限和所有者..."
+    chmod -R 755 "$target_dir" &> /dev/null
+    chown -R www:www "$target_dir" &> /dev/null
 
     # === 写入伪静态规则 ===
     # write_rewrite_rules "$domain_name"
