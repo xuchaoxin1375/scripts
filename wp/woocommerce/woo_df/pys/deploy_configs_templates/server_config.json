@@ -1,5 +1,6 @@
 {
     "default": {
+        "comment": "default这个结点可选填写,可留空,servers是重点.",
         "bt_ssl": true,
         "ssh": {
             "port": " "
@@ -17,6 +18,32 @@
         }
     },
     "servers": {
+        "server0": {
+            "comment": "这个结点填写共用备份服务器,可以不写,但是不能删除结点",
+            "ip": " ",
+            "bt_key": " ",
+            "bt_panel": " ",
+            "bt_account": " ",
+            "bt_password": " ",
+            "bt_ssl": true,
+            "mysql": {
+                "root_localhost": " ",
+                "root_password": " ",
+                "root_all": " ",
+                "root_all_password": " ",
+                "port": " "
+            },
+            "ssh": {
+                "port": " ",
+                "user": " ",
+                "password": " "
+            },
+            "cf_account": {
+                "cf_api_email": " ",
+                "cf_api_key": " ",
+                "is_global_key": true
+            }
+        },
         "server1": {
             "ip": " ",
             "bt_key": " ",
@@ -61,12 +88,6 @@
                 "port": " ",
                 "user": " ",
                 "password": " "
-            },
-            "openlist": {
-                "port": " ",
-                "admin": " ",
-                "password": " ",
-                "config_file": " "
             },
             "cf_account": {
                 "cf_api_email": " ",

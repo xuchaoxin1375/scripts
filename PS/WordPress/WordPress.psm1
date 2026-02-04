@@ -1470,6 +1470,28 @@ function Update-ServerRepos
     $jobs | Receive-Job -Wait
     
 }
+function Push-ServerItem
+{
+    <# 
+    .SYNOPSIS
+    上传同一文件/目录到多个服务器的相同目录下.
+    #>
+    [CmdletBinding()]
+    param (
+        $Path,
+        $Destination = '/www',
+        $ServerConfig = $server_config,
+        $Threads = 5
+    )
+    $servers = Get-ServerList -Path $ServerConfig
+    $servers | ForEach-Object -Parallel { 
+        $cmd = "scp -r '$using:Path' root@$($_.ip):$using:Destination"
+        Write-Host "Executing: $cmd" 
+        $cmd | Invoke-Expression
+        Write-Host "Finished: on server $($_.ip)"
+    } -ThrottleLimit $Threads
+    
+}
 function Update-WpPluginsDFOnServer
 {
     <# 

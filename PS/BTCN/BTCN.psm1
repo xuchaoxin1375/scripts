@@ -615,6 +615,7 @@ function Convert-CRLF
         [string]$InputObject,
         [ValidateSet('CRLF', 'LF')]
         [string]$To = 'LF',
+        # 如果输入是个文件,可以选择是否替将换行符更换后直接替换原文件
         [switch]$Replace,
         [switch]$Quiet
     )
