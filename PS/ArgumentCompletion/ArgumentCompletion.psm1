@@ -1,5 +1,61 @@
 
+$originalPromptScript = $Function:prompt #禁止在自定义prompt函数体内部执行此代码
+function Prompt
+{
+    <# 
+    .SYNOPSIS
+    Prompt:设置powershell提示符(powershell 默认调用)
+    .DESCRIPTION
+    读取相应的环境变量类设定prompt样式,配合Set-PsPrompt来指定prompt样式.
+    Prompt最终结果由两类输出/打印组成,一类是prompt中包含的打印语句(主要是write-host,可能带有颜色),
+    另一部分是返回值(隐式或显式的返回值),这部分可以在返回之前做字符串处理
+    
+    但我们这里改写Prompt函数,而且还可以通过设置环境变量来更改当前prompt主题
+    Prompt函数无法传参,但是可以通过设置辅助函数Set-PsPrompt,修改主题来间接传参(控制全局变量)
+    关于这部分逻辑详见外部的Set-PsPrompt
+    .NOTES
+    调试:
+    借助prompt -Debug可以调试prompt函数,尤其是在使用模块重载时如果prompt发生异常,则-Debug选项会显示脚本代码块
+    .NOTES
+    这部分代码不宜在ipmof|iex命令在被重载,在使用conda这类环境程序时,容易会造成prompt堆积,暂时prompt函数放在这里,避免重载,等待更好的解决办法
+    #>
+    [CmdletBinding()]
+    param()
+    # 和上一层输出间隔一行
+    # Write-Host ''
+    # Write-Host '# PS> '
 
+    # 计算原来的提示符(conda,nvm等程序可能会在这个阶段完成修改)
+    # $originalPromptScript = $function:prompt #禁止在prompt内部执行此代码
+    Write-Debug "{$originalPromptScript}" 
+    # & $originalPromptScript
+    $prefix = & $originalPromptScript
+    # 丢弃此部分的返回值
+    $prefix > $null
+    
+    # 不要在当前函数prompt中调用prompt,会导致递归调用,逻辑上出不来.
+    # $prefix = prompt # 禁止直接执行!应当在自定义函数prompt外部就把原prompt的脚本块提取出来执行
+    # $prefix = $prefix.TrimEnd('>')+'|'
+    # Write-Verbose "Original Prompt: $prefix" -verbose
+
+
+    switch ($env:PsPrompt)
+    {
+        'Fast' { PromptFast }
+        'Brilliant' { PromptBrilliant }
+        'Brilliant2' { PromptBrilliant2 }
+        'Balance' { PromptBalance }
+        'Simple' { PromptSimple }
+        'short2' { PromptShort2 }
+        'short' { PromptShort }
+        'Default' { PromptDefault }
+        default { PromptDefault }
+    }
+    # return 'PS> '
+    # 如果追求纯净,可以返回空字符串或者tab缩进
+    return ' '
+    
+}
 
 # # 创建补全功能
 function Get-EnvVarCompleter

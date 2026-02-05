@@ -895,12 +895,12 @@ function Import-ModuleForce
     foreach ($module in $modules)
     {
         # 跳过某些模块的重载(如果这个模块比较特殊的话,比如包含注册补全的模块，这个模块就要谨慎重载,默认跳过,可以根据自己的情况调整)
+        if ($module -like '*completion*')
+        { 
+            Write-Warning "Skipping $module"
+            continue 
+        }
         Remove-Module $module -ErrorAction SilentlyContinue -Force
-        # if ($module -like '*completion*')
-        # { 
-        #     Write-Warning "Skipping $module"
-        #     continue 
-        # }
 
         # Import-Module $module -Force -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
         $exp = "Import-Module $module -Force -ErrorAction SilentlyContinue -WarningAction SilentlyContinue"
@@ -940,7 +940,11 @@ function ipmof
     param (
     )
     # Import-Module PSReadLine -Force
+    # prompt=$originalPromptScript
     Import-ModuleForce
+    # $currentPromptScript = $function:prompt
+    # Write-Verbose "[[$currentPromptScript]]" -Verbose
+    # Set-Item -Path Function:prompt -Value $currentPromptScript
     
 }
 
@@ -1504,49 +1508,7 @@ function write-GitBasicInfo
 
     # 保存以上内容到你的PowerShell配置文件$PROFILE中，然后重新加载它或重启PowerShell
 }
-$originalPrompt = $Function:prompt #禁止在自定义prompt函数体内部执行此代码
-function Prompt
-{
-    <# 
-    .SYNOPSIS
-    设置powershell提示符(powershell 默认调用)
-    .DESCRIPTION
-    读取相应的环境变量类设定prompt样式,配合Set-PsPrompt来指定prompt样式
-    
-    但我们这里改写Prompt函数,而且还可以通过设置环境变量来更改当前prompt主题
-    Prompt函数无法传参,但是可以通过设置辅助函数Set-PsPrompt,修改主题来间接传参(控制全局变量)
-    关于这部分逻辑详见外部的Set-PsPrompt
-    #>
-    # 和上一层输出间隔一行
-    # Write-Host ''
-    # Write-Host '# PS> '
 
-    # 计算原来的提示符(conda,nvm等程序可能会在这个阶段完成修改)
-    # $originalPrompt = $function:prompt #禁止在prompt内部执行此代码
-    $prefix = & $originalPrompt
-    # 不要在当前函数prompt中调用prompt,会导致递归调用,逻辑上出不来.
-    # $prefix = prompt # 禁止直接执行!应当在自定义函数prompt外部就把原prompt的脚本块提取出来执行
-
-    # Write-Verbose "Original Prompt: $prefix" -verbose
-
-    $prefix = $prefix.TrimEnd('>')
-    switch ($env:PsPrompt)
-    {
-        'Fast' { PromptFast return "" }
-        'Brilliant' { PromptBrilliant }
-        'Brilliant2' { PromptBrilliant2 }
-        'Balance' { PromptBalance }
-        'Simple' { PromptSimple }
-        'short2' { PromptShort2 }
-        'short' { PromptShort }
-        'Default' { PromptDefault }
-        default { PromptDefault }
-    }
-    # return 'PS> '
-    # 如果追求纯净,可以返回空字符串或者tab缩进
-    return ' '
-    
-}
 function Get-PromptScriptBlock
 {
     <# 
@@ -1862,6 +1824,7 @@ function Get-SourceCode
     PS>Get-CommandSourceCode -Name prompt
 
         if ($Env:CONDA_PROMPT_MODIFIER) {
+            # 将conda当前激活的环境名打印出来(不带换行,便于和原来的拼接起来)
             $Env:CONDA_PROMPT_MODIFIER | Write-Host -NoNewline
         }
         CondaPromptBackup;

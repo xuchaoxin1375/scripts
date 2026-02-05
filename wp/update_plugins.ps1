@@ -20,8 +20,8 @@
 
 .EXAMPLE
 更新或者安装插件🎈
-# 通用版本
-$plugin_dir="$wp_plugins/xpaid_pay" 
+$plugin='xpaid_pay' #插件名字
+$plugin_dir=if(test-path $wp_plugins -erroraction SilentlyContinue){"$wp_plugins/$plugin"}else{"$plugin"}
 . $scripts/wp/update_plugins.ps1 -WpSitesDir $my_wp_sites -PluginSources $plugin_dir -InstallMode TagFile
 # zw,zsh可以跳过下面语句
 . $scripts/wp/update_plugins.ps1 -WpSitesDir $wp_sites -PluginSources $plugin_dir -InstallMode TagFile
@@ -186,7 +186,7 @@ function get_old_plugins_dirs_of_sites
     )
     # Write-Host "$plugin_dirs_root_of_sites !!!"
 
-    $old_plugin_dirs_of_sites = Get-ChildItem -Path $plugin_dirs_root_of_sites  -Filter $filter -Depth 3 | Where-Object { $_.FullName -like $pattern }
+    $old_plugin_dirs_of_sites = Get-ChildItem -Path $plugin_dirs_root_of_sites -Filter $filter -Depth 3 | Where-Object { $_.FullName -like $pattern }
 
     
     return $old_plugin_dirs_of_sites
@@ -213,7 +213,7 @@ function update_plugins
         foreach($new_plugin_dir in $PluginSources)
         {
    
-            $plugin_name = Split-Path $new_plugin_dir -Leaf
+            $plugin_name = if(Test-Path $new_plugin_dir) { (Split-Path $new_plugin_dir -Leaf) }else { $new_plugin_dir }
             # Write-Host $plugin_name
          
             # $filter="plugins"
@@ -247,6 +247,7 @@ function update_plugins
                 }
                 elseif($InstallMode -eq "tagfile")
                 {
+                    # 此时不依赖于源插件目录是否存在
                     New-Item -ItemType File -Path $target/$plugin_name -Force -Verbose
                 }
                 elseif($InstallMode -eq "copy")

@@ -26,7 +26,7 @@ UPDATE_CODE=0
 UPDATE_CONFIG=0
 
 print_usage() {
-    cat <<EOF
+    cat << EOF
 Usage: $(basename "$0") [options]
 
 echo "script version: $version"
@@ -57,35 +57,35 @@ copy_if_need() {
 # 解析脚本命令行参数
 while [ "$#" -gt 0 ]; do
     case "$1" in
-    -f | --force)
-        FORCE=1
-        shift
-        ;;
-    -c | --update-code)
-        UPDATE_CODE=1
-        shift
-        ;;
-    -g | --update-config)
-        UPDATE_CONFIG=1
-        shift
-        ;;
-    -h | --help)
-        print_usage
-        exit 0
-        ;;
-    --) # end of options
-        shift
-        break
-        ;;
-    -*)
-        echo "Unknown option: $1"
-        print_usage
-        exit 2
-        ;;
-    *)
-        # positional arg (not used) – ignore for now
-        shift
-        ;;
+        -f | --force)
+            FORCE=1
+            shift
+            ;;
+        -c | --update-code)
+            UPDATE_CODE=1
+            shift
+            ;;
+        -g | --update-config)
+            UPDATE_CONFIG=1
+            shift
+            ;;
+        -h | --help)
+            print_usage
+            exit 0
+            ;;
+        --) # end of options
+            shift
+            break
+            ;;
+        -*)
+            echo "Unknown option: $1"
+            print_usage
+            exit 2
+            ;;
+        *)
+            # positional arg (not used) – ignore for now
+            shift
+            ;;
     esac
 done
 
@@ -184,10 +184,10 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
     cp /www/sh/nginx_conf/{com_*.conf,*.html} /www/server/nginx/conf/ -fv
     # 判断nginx是否可用
     openresty=false
-    if type nginx &>/dev/null; then
+    if type nginx &> /dev/null; then
         nginx_version=$(nginx -v 2>&1)
         echo "当前 nginx 已安装"
-        if echo "$nginx_version" | grep 'openresty' &>/dev/null; then
+        if echo "$nginx_version" | grep 'openresty' &> /dev/null; then
             echo "当前 nginx 为 openresty: ( $nginx_version )"
             openresty=true
         else
@@ -197,15 +197,6 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
         echo "nginx 未安装，跳过 nginx 配置更新"
         nginx_version=""
     fi
-    if [[ $openresty = true ]]; then
-        echo "检测到 openresty, 使用 openresty 配置文件"
-        cp $NGINX_CONF_TPL_OPENRESTY $NGINX_CONF_FILE -fv
-        # 修改com_basic.conf中的# include /www/server/nginx/conf/com_js_signed.conf
-        sed -i.bak -E 's/#[[:space:]]*(.*com_js_signed.conf.*)/\1/g' $NGINX_CONF_DIR/com_basic.conf
-    elif [[ $nginx_version = *"nginx"* ]]; then
-        echo "使用标准 nginx 配置文件"
-        cp $NGINX_CONF_TPL_STD $NGINX_CONF_FILE -fv
-    fi
 
     # cp /www/sh/nginx_conf/nginx_nginx.conf /www/server/nginx/conf/nginx.repos.conf -fv
     # cp /www/sh/nginx_conf/nginx_openresty.conf /www/server/nginx/conf/nginx_openresty.conf -fv
@@ -213,7 +204,7 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
     # 如果启用了 --force 选项,则备份宝塔的 nginx.conf 文件 (/www/server/nginx/conf/nginx.conf)
     # 并使用 /www/sh/nginx_conf/nginx.conf 覆盖宝塔的 nginx.conf 文件
     if [ "$FORCE" -eq 1 ]; then
-
+        # 备份当前nginx.conf
         BACKUP_TS=$(date +%Y%m%d) # %H%M%S
         if [ -f "$NGINX_CONF_FILE" ]; then
             echo "🔒 Force enabled: backing up existing nginx.conf to ${NGINX_CONF_FILE}.bak.${BACKUP_TS}"
@@ -223,9 +214,17 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
         fi
 
         echo "🔁 Overwriting $NGINX_CONF_FILE with /www/sh/nginx_conf/nginx.conf"
-        cp -fv /www/sh/nginx_conf/nginx_nginx.conf "$NGINX_CONF_FILE"
-    # else
-    #     echo "ℹ️ --force not set: skipping overwrite of /www/server/nginx/conf/nginx.conf"
+        # cp -fv /www/sh/nginx_conf/nginx_nginx.conf "$NGINX_CONF_FILE"
+        # 执行覆盖
+        if [[ $openresty = true ]]; then
+            echo "检测到 openresty, 使用 openresty 配置文件"
+            cp $NGINX_CONF_TPL_OPENRESTY $NGINX_CONF_FILE -fv
+            # 修改com_basic.conf中的# include /www/server/nginx/conf/com_js_signed.conf
+            sed -i.bak -E 's/#[[:space:]]*(.*com_js_signed.conf.*)/\1/g' $NGINX_CONF_DIR/com_basic.conf
+        elif [[ $nginx_version = *"nginx"* ]]; then
+            echo "使用标准 nginx 配置文件"
+            cp $NGINX_CONF_TPL_STD $NGINX_CONF_FILE -fv
+        fi
     fi
 
     # 让nginx重新加载配置🎈
