@@ -26,3 +26,5 @@ set colored-completion-prefix on # 补全时高亮匹配的部分
 "\e[3;5~": kill-word
 # Ctrl+Backspace 删除光标前的单词
 "\C-H": backward-kill-word
+
+# END(避免尾部换行符错误)

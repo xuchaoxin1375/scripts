@@ -18,6 +18,7 @@ check_dependency() {
     echo "错误: 缺少必要的依赖命令 '$cmd'，请先安装。" >&2
     return 1
   fi
+  return 0
 }
 # 判断当前shell
 # 要在脚本内部准确判断当前运行环境，最健壮的方法是利用各 Shell 的内置变量
