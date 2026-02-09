@@ -1,0 +1,9 @@
+# 让 Tab 补全忽略大小写
+set completion-ignore-case on
+# 输入一部分命令后按上下键，只搜索以此开头的历史记录
+"\e[A": history-search-backward
+"\e[B": history-search-forward
+
+# 切换到 vi 编辑模式（如果你是键盘侠）
+# set editing-mode vi
+

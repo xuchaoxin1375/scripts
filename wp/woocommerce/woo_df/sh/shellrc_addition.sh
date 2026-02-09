@@ -37,3 +37,4 @@ echo "Loading additional shell config and functions..."
 
 # shellcheck source=/www/sh/shell_utils.sh
 source /www/sh/shell_utils.sh
+[ -f "$sh/.inputrc" ] && { bind -f "$sh/.inputrc"; echo "update inputrc..."; }

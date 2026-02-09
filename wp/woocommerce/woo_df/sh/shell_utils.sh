@@ -1,3 +1,6 @@
+#!/bin/bash
+# 提供一些常用的bash/zsh兼容的函数.
+
 #######################################
 # 检查系统中是否存在指定的依赖命令。
 # Arguments:
@@ -238,7 +241,8 @@ EOF
   fi
 
   # 4. 获取总内存 (KiB)
-  local total_mem_kb=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+  local total_mem_kb
+  total_mem_kb=$(grep MemTotal /proc/meminfo | awk '{print $2}')
 
   # 4.1. 检查是否成功获取
   if [ -z "$total_mem_kb" ] || [ "$total_mem_kb" -eq 0 ]; then
