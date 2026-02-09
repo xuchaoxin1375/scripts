@@ -79,14 +79,16 @@ if [[ -n "$BLACKLIST_FILE" ]]; then
         echo "黑名单文件不存在: $BLACKLIST_FILE"
         exit 1
     fi
-    mapfile -t BLACKLIST < "$BLACKLIST_FILE"
+    # mapfile -t BLACKLIST < "$BLACKLIST_FILE"
+    mapfile -t BLACKLIST < <(tr -d '\r' < "$BLACKLIST_FILE")
 fi
 if [[ -n "$WHITELIST_FILE" ]]; then
     if [[ ! -f "$WHITELIST_FILE" ]]; then
         echo "白名单文件不存在: $WHITELIST_FILE"
         exit 1
     fi
-    mapfile -t WHITELIST < "$WHITELIST_FILE"
+    # mapfile -t WHITELIST < "$WHITELIST_FILE"
+    mapfile -t WHITELIST < <(tr -d '\r' < "$WHITELIST_FILE")
 fi
 
 # 判断域名是否在黑名单

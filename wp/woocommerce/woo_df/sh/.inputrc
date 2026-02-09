@@ -1,9 +1,28 @@
-# 让 Tab 补全忽略大小写
-set completion-ignore-case on
-# 输入一部分命令后按上下键，只搜索以此开头的历史记录
-"\e[A": history-search-backward
-"\e[B": history-search-forward
+# 可以通过bind -f ~/.inputrc的方式激活或重载配置.
+
 
 # 切换到 vi 编辑模式（如果你是键盘侠）
 # set editing-mode vi
 
+# 1. 基础全局设置
+$include /etc/inputrc
+set editing-mode emacs
+set show-all-if-ambiguous on    # 按一下 Tab 就显示所有补全结果
+set completion-ignore-case on   # 补全忽略大小写
+set mark-directories on         # 补全目录时自动加上斜杠 /
+set visible-stats on            # 补全列表显示文件类型标识（如 * @ /）
+
+# 2. 搜索增强 (历史记录快速搜索)
+# 输入命令开头再按上下键，只在匹配的历史中搜索
+"\e[A": history-search-backward
+"\e[B": history-search-forward
+
+# 3. 颜色与美化 (如果系统支持)
+set colored-stats on            # 补全列表显示颜色
+set colored-completion-prefix on # 补全时高亮匹配的部分
+
+# 4. 快捷键微调
+# Ctrl+Delete 删除光标后的单词
+"\e[3;5~": kill-word
+# Ctrl+Backspace 删除光标前的单词
+"\C-H": backward-kill-word
