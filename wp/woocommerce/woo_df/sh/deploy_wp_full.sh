@@ -1,10 +1,11 @@
 #!/bin/bash
-
+echo "deploy_script_version:20260210"
 # === 配置参数 ===
 # 依赖说明:主要依赖于外部的伪静态规则文件RewriteRules.LF.conf,以及7z解压工具
 # 在powershell中将此文件更新/推送到服务器(可以使用scp命令):
 # scp -r C:\repos\scripts\wp\woocommerce\woo_df\sh\deploy_wp_full.sh root@${env:DF_SERVER1}:"/www/wwwroot/deploy_wp_full.sh"
 UPLOADER_DIR="/srv/uploads/uploader"
+# 默认的网站压缩包存放目录的共同祖先目录(下面有各个用户名的专属目录)
 DEFAULT_PACK_ROOT="$UPLOADER_DIR/files"
 DEFAULT_DB_USER="root"
 DEFAULT_DB_PASSWORD="15a58524d3bd2e49"
@@ -14,8 +15,10 @@ PLUGINS_HOME="/www"
 FUNCTIONS_PHP="/www/functions.php"
 PLUGIN_INSTALL_MODE="symlink" # 插件安装模式: symlink(符号链接), copy(复制)
 DB_HOST="localhost"           # 数据库主机
-# PACK_ROOT="/www/wwwroot"           # WordPress 网站根目录
+
+# wp配置文件编辑
 STOP_EDITING_LINE='Add any custom values between this line and the "stop editing" line'
+# 非原生包这部分可以跳过插入(已经有相应内容了,可以通过grep检查是否有'FORCE_SSL_ADMIN'字符串存在)
 HTTPS_CONFIG_LINE="\$_SERVER['HTTPS'] = 'on'; define('FORCE_SSL_LOGIN', true); define('FORCE_SSL_ADMIN', true);"
 
 # === 函数：显示帮助信息 ===
@@ -116,7 +119,7 @@ if [ ! -d "$DEPLOYED_DIR" ]; then
 fi
 # === 函数：检查必要的命令是否存在 ===
 check_commands() {
-    local commands=("mysql" "unzip" "7z" "lz4" "zstd" "tar")
+    local commands=("mysql" "zstd" "tar") # "unzip" "7z" "lz4" #可选依赖
     local missing_commands=()
 
     for cmd in "${commands[@]}"; do
@@ -154,9 +157,9 @@ update_wp_config() {
     local STOP_LINE
     STOP_LINE=$(awk -v search="$STOP_EDITING_LINE" '$0 ~ search {print NR}' "$wp_config_path" | head -n 1)
     if [ -n "$STOP_LINE" ]; then
-
+        # 插入用于启用https的代码片段
         sed -i "${STOP_LINE}a$HTTPS_CONFIG_LINE" "$wp_config_path"
-
+        # 编辑数据库链接信息
         sed -ri "s/(define\(\s*'DB_HOST',)(.*)\)/\1'${DB_HOST}')/" "$wp_config_path"
         sed -ri "s/(define\(\s*'DB_NAME',)(.*)\)/\1'$db_name')/" "$wp_config_path"
         sed -ri "s/(define\(\s*'DB_USER',)(.*)\)/\1'${DB_USER}')/" "$wp_config_path"
@@ -227,11 +230,29 @@ is_plain_tar_file() {
     local file_path="$1"
     [[ -f "$file_path" ]] && [[ $(file -b --mime-type "$file_path") == "application/x-tar" ]]
 }
+######################################
 # === 函数：解压压缩文件（带完整性检查）===
-# 将压缩文件解压到指定位置(目录)
+# Description:
+# 将压缩文件解压到指定位置(目录),解压网站根目录和数据库sql文件的zst文件
+# 具体的格式转换为:将tar格式压缩成的zst包进行zstd解压和tar抽取
+# 注意,如果解压的文件是从原文件直接zstd压缩,而没有预先tar处理再压缩的zst包,则解压可能会现出乎意料的错误.
+# 此函数无法直接控制解压结束后得到的文件或目录名,只能控制到其父目录!
+# 因此,如果要进一步操作,尤其是精确操作的话,需要你对压缩包的目录结构有了解
+# Globals:
+#   None
+# Arguments:
+#   $1 - 压缩包文件路径
+#   $2 - 将文件解压到指定目录下
+#
+# Outputs:
+# Returns:
+#   0 on success, non-zero on error
+# Example:
+#
+######################################
 extract_archive() {
     local archive_file="$1"
-    local target_dir="$2"
+    local site_root="$2"
 
     # 参数校验
     if [ ! -f "$archive_file" ]; then
@@ -239,17 +260,18 @@ extract_archive() {
         return 1
     fi
 
-    if [ -z "$target_dir" ]; then
+    if [ -z "$site_root" ]; then
         log "❌ 目标目录未指定"
         return 1
     fi
 
-    # 确保目标目录存在
-    mkdir -p "$target_dir"
+    # 确保目标目录存在,否则创建此目录
+    mkdir -p "$site_root"
 
-    log "🔍 正在处理归档文件: $archive_file -> $target_dir/"
+    log "🔍 正在处理归档文件: $archive_file -> $site_root/"
 
     local ext="${archive_file##*.}"
+    # tar文件临时名字
     local temp_output_file
 
     # 完整性检查函数（内联）
@@ -267,12 +289,69 @@ extract_archive() {
 
     # 根据扩展名处理不同格式
     case "$ext" in
+
+        zst | zstd)
+            # 这里是特化任务,根据团队规范,默认上传的包实际格式是tar.zst,即便后缀只有.zst而不是.tar.zst,其解压zst层后得到的文件是tar文件(二进制文件)
+            # 在这个分支中,首先解压zst层,然后将解压后的内部tar文件再调用tar解压,得到文件(夹)
+            log "🧪 正在验证 ZSTD 文件完整性..."
+            if ! zstd -t "$archive_file" > /dev/null 2>&1; then
+                log "❌ ZSTD 文件损坏或格式错误: $archive_file"
+                return 1
+            fi
+            log "✅ ZSTD 文件完整性验证通过"
+            # 解压结果保存成一个临时文件(tar格式的二进制文件)
+            temp_output_file=$(mktemp -u)
+            log "📦 正在解压 ZSTD 文件(得到临时tar文件)..."
+            if ! zstd -T0 -d "$archive_file" -o "$temp_output_file"; then
+                log "❌ 解压 ZSTD 文件失败"
+                rm -f "$temp_output_file"
+                return 1
+            fi
+
+            log "🧪 正在验证内部文件 (是否为TAR 文件以及tar文件完整性)..."
+            # tar文件的测试,检查和解压
+            if is_plain_tar_file "$temp_output_file"; then
+                log "是原生tar文件"
+            else
+                log "不是原生tar文件"
+            fi
+
+            if ! tar -tf "$temp_output_file" > /dev/null 2>&1; then
+                log "❌ 内部 TAR 文件损坏或者文件不是tar文件"
+                rm -f "$temp_output_file"
+                return 1
+            fi
+
+            log "📦 正在解包 TAR 数据..."
+            if ! tar -xf "$temp_output_file" -C "$site_root"; then
+                log "❌ 解包 TAR 失败"
+                rm -f "$temp_output_file"
+                return 1
+            fi
+            # tar包临时文件已经抽取完毕,移除
+            rm -f "$temp_output_file"
+            ;;
+
+        tar)
+            log "🧪 正在验证 TAR 文件完整性..."
+            if ! tar -tf "$archive_file" > /dev/null 2>&1; then
+                log "❌ TAR 文件损坏或格式错误: $archive_file"
+                return 1
+            fi
+            log "✅ TAR 文件完整性验证通过"
+
+            log "📦 正在解包 TAR 文件..."
+            if ! tar -xf "$archive_file" -C "$site_root"; then
+                log "❌ 解包 TAR 文件失败: $archive_file"
+                return 1
+            fi
+            ;;
         zip)
             if ! check_integrity unzip "$archive_file"; then
                 return 1
             fi
             log "📦 正在解压 ZIP 文件..."
-            if ! unzip -q "$archive_file" -d "$target_dir"; then
+            if ! unzip -q "$archive_file" -d "$site_root"; then
                 log "❌ 解压 ZIP 文件失败: $archive_file"
                 return 1
             fi
@@ -283,7 +362,7 @@ extract_archive() {
                 return 1
             fi
             log "📦 正在解压 GZ/TGZ 文件..."
-            if ! tar -xzf "$archive_file" -C "$target_dir"; then
+            if ! tar -xzf "$archive_file" -C "$site_root"; then
                 log "❌ 解压 GZ/TGZ 文件失败: $archive_file"
                 return 1
             fi
@@ -294,7 +373,7 @@ extract_archive() {
                 return 1
             fi
             log "📦 正在解压 BZ2/TBZ2 文件..."
-            if ! tar -xjf "$archive_file" -C "$target_dir"; then
+            if ! tar -xjf "$archive_file" -C "$site_root"; then
                 log "❌ 解压 BZ2/TBZ2 文件失败: $archive_file"
                 return 1
             fi
@@ -326,7 +405,7 @@ extract_archive() {
             fi
 
             log "📦 正在解包 TAR 数据..."
-            if ! tar -xf "$temp_output_file" -C "$target_dir"; then
+            if ! tar -xf "$temp_output_file" -C "$site_root"; then
                 log "❌ 解包 TAR 失败"
                 rm -f "$temp_output_file"
                 return 1
@@ -335,64 +414,8 @@ extract_archive() {
             rm -f "$temp_output_file"
             ;;
 
-        zst | zstd)
-            # 这里是特化任务,根据团队规范,默认上传的包实际格式是tar.zst,即便后缀只有.zst而不是.tar.zst,其解压zst层后得到的文件是tar文件(二进制文件)
-            # 在这个分支中,首先解压zst层,然后将解压后的内部tar文件再调用tar解压,得到文件(夹)
-            log "🧪 正在验证 ZSTD 文件完整性..."
-            if ! zstd -t "$archive_file" > /dev/null 2>&1; then
-                log "❌ ZSTD 文件损坏或格式错误: $archive_file"
-                return 1
-            fi
-            log "✅ ZSTD 文件完整性验证通过"
-            # 解压结果保存成一个临时文件(tar格式的二进制文件)
-            temp_output_file=$(mktemp -u)
-            log "📦 正在解压 ZSTD 文件..."
-            if ! zstd -T0 -d "$archive_file" -o "$temp_output_file"; then
-                log "❌ 解压 ZSTD 文件失败"
-                rm -f "$temp_output_file"
-                return 1
-            fi
-
-            log "🧪 正在验证内部文件 (是否为TAR 文件以及tar文件完整性)..."
-
-            if is_plain_tar_file "$temp_output_file"; then
-                log "是原生tar文件"
-            else
-                log "不是原生tar文件"
-            fi
-
-            if ! tar -tf "$temp_output_file" > /dev/null 2>&1; then
-                log "❌ 内部 TAR 文件损坏或者文件不是tar文件"
-                rm -f "$temp_output_file"
-                return 1
-            fi
-
-            log "📦 正在解包 TAR 数据..."
-            if ! tar -xf "$temp_output_file" -C "$target_dir"; then
-                log "❌ 解包 TAR 失败"
-                rm -f "$temp_output_file"
-                return 1
-            fi
-
-            rm -f "$temp_output_file"
-            ;;
-
-        tar)
-            log "🧪 正在验证 TAR 文件完整性..."
-            if ! tar -tf "$archive_file" > /dev/null 2>&1; then
-                log "❌ TAR 文件损坏或格式错误: $archive_file"
-                return 1
-            fi
-            log "✅ TAR 文件完整性验证通过"
-
-            log "📦 正在解包 TAR 文件..."
-            if ! tar -xf "$archive_file" -C "$target_dir"; then
-                log "❌ 解包 TAR 文件失败: $archive_file"
-                return 1
-            fi
-            ;;
-
-        *)
+        \
+            *)
             # 使用 7z 处理其他格式（如 rar, 7z, xz, iso 等）
             log "🧪 正在使用 7z 验证归档完整性..."
             if ! 7z t "$archive_file" > /dev/null 2>&1; then
@@ -402,14 +425,14 @@ extract_archive() {
             log "✅ 7z 归档完整性验证通过"
 
             log "📦 正在使用 7z 解压..."
-            if ! 7z x -y "$archive_file" -o"$target_dir" > /dev/null; then
+            if ! 7z x -y "$archive_file" -o"$site_root" > /dev/null; then
                 log "❌ 7z 解压失败: $archive_file"
                 return 1
             fi
             ;;
     esac
 
-    log "✅ 解压成功: $archive_file -> $target_dir/"
+    log "✅ 解压成功: $archive_file -> $site_root/"
     return 0
 }
 # 安装插件
@@ -466,7 +489,30 @@ install_functions_php() {
         fi
     done
 }
-# === 函数：部署单个站点(解压网站根目录到指定目录,并且找到并导入对应的.sql文件(sql文件在前置步骤中解压完毕)) ===
+######################################
+# Description:
+#   部署单个站点
+#   解压网站根目录的归档压缩包到指定目录
+#   根据给定的压缩包路径计算配套的sql文件归档压缩包路径
+#       首先解析网站域名,再构造sql文件名,拼接出完整sql文件路径
+#       再导入对应的.sql文件(sql文件在前置步骤中解压完毕)
+#   收尾:更改必要的目录权限和配置文件
+# 关于解压根目录压缩包,需要兼容两种路径规范(十分相近,根目录仅差一层wordpress目录级别)
+# 可以分为原生包和导出包,前者是建站人员初次打包的,根目录名是网站域名.后者是从服务器导出的,会多一层根目录名wordpress.
+# 因此在解压完毕后(zst->tar->site_dir),需要将site_dir做分支判断处理
+#
+# Globals:
+#   None
+# Arguments:
+#   $1 - username 部署到那个人员名(用户名)目录下
+#   $2 - archive_file 被部署的网站归档文件(站点根目录压缩包)
+#
+# Outputs:
+# Returns:
+#   0 on success, non-zero on error
+# Example:
+#
+######################################
 deploy_site() {
     local username="$1"
     local archive_file="$2"
@@ -485,57 +531,72 @@ deploy_site() {
 
     # === 解压站点压缩包 ===
     # local extracted_domain_dir="$PACK_ROOT/$username/$domain_name"
-    local site_dir_archive="$PACK_ROOT/$username/$archive_file"
+    local site_dir_archive="$PACK_ROOT/$username/$archive_file" #压缩包路径
 
-    local site_domain_home="$PROJECT_HOME/$username/$domain_name" #例如:/www/wwwroot/zsh/domain.com #对于用7z打包domain.com为目录名的7z包,解压后得到domain.com目录 7z x $site_dir_archive -o$site_domain_home 执行结果得到目录$site_domain_home/domain.com,为了便于引用,将其赋值给变量$site_expanded_dir,表示解压后得到的目录
-    local site_expanded_dir="$site_domain_home/$domain_name"
-    local target_dir="$site_domain_home/wordpress"
-    local plugins_dir="$target_dir/wp-content/plugins"
-    local themes_dir="$target_dir/wp-content/themes"
-    local user_ini="$target_dir/.user.ini"
+    # 网站根目录所在目录, 例如:/www/wwwroot/zsh/domain.com
+    local site_domain_home="$PROJECT_HOME/$username/$domain_name"
+    #对于用7z打包domain.com为目录名的7z包,解压后得到domain.com目录 7z x $site_dir_archive -o$site_domain_home 执行结果得到目录$site_domain_home/domain.com,为了便于引用,将其赋值给变量$site_expanded_dir_raw,表示解压后得到的目录
 
-    log "尝试清空目标目录[$target_dir],以便后续干净插入新内容"
-    # mkdir -p "$target_dir"
-    if [ -d "$target_dir" ]; then
-        rm1 "$target_dir" # 删除网站根目录
+    # 网站压缩包要解压结果所在的目录(默认情况,根据需要可以进一步移动处理)
+    local site_expanded_dir_raw="$site_domain_home/$domain_name"
+    # # 网站压缩包要解压结果所在的目录(从服务器导出备份包还原的情况,和site_root恰好相同)
+    local site_expanded_dir_wp="$site_domain_home/wordpress"
+    # 网站最终的根目录
+    local site_root="$site_domain_home/wordpress"
+
+    # 根目录下的其他目录
+
+    # 网站插件目录
+    local plugins_dir="$site_root/wp-content/plugins"
+    # 网站主题总目录
+    local themes_dir="$site_root/wp-content/themes"
+    # 网站根目录下的路径限制配置文件(防跨站open_basedir...)
+    local user_ini="$site_root/.user.ini"
+
+    log "解压之前,尝试清空目标目录[$site_root],以便后续干净插入新内容"
+    # mkdir -p "$site_root"
+    if [ -d "$site_root" ]; then
+        rm1 "$site_root" # 删除网站根目录
     fi
     log "创建网站根目录"
-    mkdir -p "$target_dir" -v
+    mkdir -p "$site_root" -v
     # 解压网站文件|如果存在同名目录,则默认覆盖🎈
-    if [ -d "$site_expanded_dir" ]; then
-        log "⚠️ 检测到相关目录已存在: $site_expanded_dir"
+    # 原生包情况下(另一种是导出包)
+    if [ -d "$site_expanded_dir_raw" ]; then
+        log "⚠️ 检测到相关目录已存在: $site_expanded_dir_raw"
 
         # log "是否覆盖现有目录? (yY/n): "
         # read -r response
         # if [[ "$response" != "y" && "$response" != "Y" ]]; then
         #     log "用户选择不覆盖，跳过此解压步骤: $domain_name"
         # else
-        #     log "⚠️用户选择覆盖现有目录: $site_expanded_dir"
+        #     log "⚠️用户选择覆盖现有目录: $site_expanded_dir_raw"
         #覆盖逻辑段存放在此
         # fi
         # 覆盖逻辑段(begin)
-        log "正在强力删除现有目录[$site_expanded_dir]并解压新内容 (预计得到目录:$site_expanded_dir) ..."
-        # rm -rf "$site_expanded_dir" # 删除现有目录
-        rm1 "$site_expanded_dir" # 删除现有目录
+        log "正在强力删除现有目录[$site_expanded_dir_raw]并解压新内容 (预计得到目录:$site_expanded_dir_raw) ..."
+        # rm -rf "$site_expanded_dir_raw" # 删除现有目录
+        rm1 "$site_expanded_dir_raw" # 删除现有目录
     fi
 
-    # 纯净解压(未检测到预先存在或残留的目录)
+    # 纯净解压(预先存在或残留的目录此时已经清理完毕.)
     if ! extract_archive "$site_dir_archive" "$site_domain_home"; then
-        log "❌ 解压失败，跳过部署: $domain_name"
+        log "❌ 解压失败，本轮跳过此站部署: $domain_name"
         return 1
     else
-        log "✅ 解压成功: $site_dir_archive -> $site_expanded_dir/"
-        log "移动解压后的目录[$site_expanded_dir]内容到目标目录wordpress[$target_dir]🎈"
-        if [[ -d $target_dir ]] ;then
-            log "目标目录[$target_dir]已存在,直接移动解压内容到该目录"
-        else
-            log "目标目录[$target_dir]不存在,创建该目录"
-            # return 1
-            # 直接结束脚本运行
-            exit 1;
-            # mkdir -p "$target_dir" -v
+        log "✅ 解压成功: $site_dir_archive "
+        # 判断包到类型(情况)
+        if [[ -d $site_expanded_dir_raw ]]; then
+            log "原生包-> $site_expanded_dir_raw"
+            log "移动解压后的目录[$site_expanded_dir_raw]内容到目标目录wordpress[$site_root]🎈"
+            if [[ -d $site_root ]]; then
+                log "目标目录[$site_root]已存在,直接移动解压内容到该目录"
+            fi
+            mv "$site_expanded_dir_raw"/* "$site_root" -f
+        elif [[ -d $site_expanded_dir_wp ]];then
+            log "导出包-> $site_expanded_dir_wp"
+            log "根目录已经符合预期,不需要移动根目录"
         fi
-        mv "$site_expanded_dir"/* "$target_dir" -f
 
         log "检查需要安装的插件..."
         install_wp_plugin "$plugins_dir" "$PLUGINS_HOME"
@@ -544,7 +605,7 @@ deploy_site() {
             log "🔍 检测到 .user.ini 文件,设置open_basedir 放行公共插件目录"
             bash /www/sh/update_user_ini.sh -p "$user_ini" -t "$PLUGINS_HOME"
         else
-            log "ℹ️ 未找到 .user.ini 文件，跳过权限设置"
+            log "ℹ️ 未找到 .user.ini 文件，跳过权限设置(等待宝塔创建.user.ini)"
         fi
     fi
     # 如果上述操作没有出错(return 1没有执行),则执行文件归档操作
@@ -588,21 +649,21 @@ deploy_site() {
 
     if [ -d "$wps_hide_login_dir_bak" ]; then
         log "🔄 重命名 wps-hide-login.bak 为 wps-hide-login"
-        # mv "$target_dir/wps-hide-login.bak" "$target_dir/wps-hide-login"
+        # mv "$site_root/wps-hide-login.bak" "$site_root/wps-hide-login"
         mv "$wps_hide_login_dir_bak" "$wps_hide_login_dir"
     else
         log "ℹ️ 未找到 wps-hide-login.bak 目录，跳过重命名"
     fi
 
     # 检查是否为有效的 WordPress 目录
-    if [ -f "$target_dir/wp-config-sample.php" ] || [ -f "$target_dir/wp-config.php" ] || [ -d "$target_dir/wp-content" ]; then
+    if [ -f "$site_root/wp-config-sample.php" ] || [ -f "$site_root/wp-config.php" ] || [ -d "$site_root/wp-content" ]; then
         log "✅ 检测到有效的 WordPress 目录结构"
     else
         log "⚠️ 警告：目标目录可能不是有效的 WordPress 安装，未找到典型的 WordPress 文件"
     fi
 
     # === 修改 wp-config.php 文件 ===
-    local wp_config_path="$target_dir/wp-config.php"
+    local wp_config_path="$site_root/wp-config.php"
     if [ -f "$wp_config_path" ]; then
         update_wp_config "$wp_config_path"
     else
@@ -611,8 +672,8 @@ deploy_site() {
 
     # 设置目录权限和所有者
     log "🔒 设置目录权限和所有者..."
-    chmod -R 755 "$target_dir" &> /dev/null
-    chown -R www:www "$target_dir" &> /dev/null
+    chmod -R 755 "$site_root" &> /dev/null
+    chown -R www:www "$site_root" &> /dev/null
 
     # === 写入伪静态规则 ===
     # write_rewrite_rules "$domain_name"

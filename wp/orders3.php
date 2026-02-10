@@ -2332,7 +2332,8 @@ if (orders3_handle_partials_and_exports(
                         attempts: (typeof d.attempts === 'number') ? d.attempts : Number(d.attempts || 0),
                         success_orders: (typeof d.success_orders === 'number') ? d.success_orders : Number(d.success_orders || 0),
                         visitors: (typeof d.visitors === 'number') ? d.visitors : Number(d.visitors || 0),
-                        active_sites: (typeof d.active_sites === 'number') ? d.active_sites : Number(d.active_sites || 0)
+                        active_sites: (typeof d.active_sites === 'number') ? d.active_sites : Number(d.active_sites || 0),
+                        people_usd: (d && typeof d.people_usd === 'object' && d.people_usd) ? d.people_usd : null
                     };
                 }
             }
@@ -2345,7 +2346,7 @@ if (orders3_handle_partials_and_exports(
                 const end = new Date(re.getTime());
                 while (cur <= end) {
                     const key = fmtDate(cur);
-                    const v = (key in cache) ? cache[key] : { usd: 0, conversion: 0, attempts: 0, success_orders: 0, visitors: 0, active_sites: 0 };
+                    const v = (key in cache) ? cache[key] : { usd: 0, conversion: 0, attempts: 0, success_orders: 0, visitors: 0, active_sites: 0, people_usd: null };
                     out.push({
                         date: key,
                         usd: v.usd || 0,
@@ -2353,7 +2354,8 @@ if (orders3_handle_partials_and_exports(
                         attempts: v.attempts || 0,
                         success_orders: v.success_orders || 0,
                         visitors: v.visitors || 0,
-                        active_sites: v.active_sites || 0
+                        active_sites: v.active_sites || 0,
+                        people_usd: (v && typeof v.people_usd === 'object' && v.people_usd) ? v.people_usd : null
                     });
                     cur.setDate(cur.getDate() + 1);
                 }
@@ -2446,13 +2448,23 @@ if (orders3_handle_partials_and_exports(
             }
 
             let controller = null;
-            function fetchAndUpdate() {
-                try {
-                    const loadingEl = document.getElementById('revenueChartLoading');
-                    const contentEl = document.getElementById('revenueChartContent');
-                    if (loadingEl) loadingEl.style.display = 'flex';
-                    if (contentEl) contentEl.style.display = 'none';
-                } catch (e) {}
+            function fetchAndUpdate(opts) {
+                const silent = !!(opts && opts.silent);
+                if (!silent) {
+                    try {
+                        const loadingEl = document.getElementById('revenueChartLoading');
+                        const contentEl = document.getElementById('revenueChartContent');
+                        if (loadingEl) loadingEl.style.display = 'flex';
+                        if (contentEl) contentEl.style.display = 'none';
+                    } catch (e) {}
+
+                    try {
+                        const loadingEl2 = document.getElementById('peopleChartLoading');
+                        const contentEl2 = document.getElementById('peopleChartContent');
+                        if (loadingEl2) loadingEl2.style.display = 'flex';
+                        if (contentEl2) contentEl2.style.display = 'none';
+                    } catch (e) {}
+                }
 
                 const url = new URL(location.href);
                 const fd = new FormData(form);
@@ -2607,7 +2619,7 @@ if (orders3_handle_partials_and_exports(
                 resetRangeAroundCenter(getFocusDateStr());
                 ensureMinSpan({ pin: 'end' });
                 syncSlidersFromInputs();
-                fetchAndUpdate();
+                fetchAndUpdate({ silent: true });
             });
             if (startInput) startInput.addEventListener('change', function() {
                 ensureMinSpan({ pin: 'start' });
