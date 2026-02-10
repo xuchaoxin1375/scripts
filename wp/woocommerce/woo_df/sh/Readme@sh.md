@@ -264,9 +264,42 @@ mysql> select user,host from mysql.user;
 5 rows in set (0.00 sec)
 ```
 
+##### mysql免密登录配置
+
+通过配置`.my.cnf`文件,写入登录信息
+
+```ini
+[client]
+user = your_username
+password = your_password
+host = localhost
+port=3306
+```
+
+也可以通过重定向写入文件,例如
+
+```bash
+echo "[client]
+user = root
+password = 15a58524d3bd2e49
+host = localhost
+port=3306" >> ~/.my.cnf
+```
+
+验证:
+直接在终端输入mysql,看是否可以登录到mysql shell.
+
+#### 测试mysql在脚本中的连通性
+
+`mysqlshow`命令可以在脚本中用来检查数据库的连通性.但是系统可能不自带.
+
+```bash
+apt install mysql-client-core-8.0 
+```
 
 
-#### php:
+
+#### php
 
 - 设置脚本内存限制(1G)
 - php性能调整(并发方案128G),几个进程数1000,100,100,300:
