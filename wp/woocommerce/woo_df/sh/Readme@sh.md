@@ -647,7 +647,211 @@ FILES
   - 设置对应的网站和域名
   - `.user.ini`里面如果有路径限制可能导致无法访问分析页面,可以酌情清空或删除(注意系统标志位可能导致无法直接`rm`删除)
 
-## 网站无缝迁移(cdn端设置)
+## 网站迁移
+
+### 备份/还原
+
+获取最新版本备份:仓库中提供了配套脚本(目录`/www/sh/backup_sites/`下)
+
+- 导出脚本`backup_sites_from_source_dir.sh`,可以相对灵活地将服务器上指定或者全部的网站导出到合适的目录下
+  - 这个脚本功能是重要的，即便是备份服务器拥有全部备份,仍然是不可靠的,备份服务器主要是为了防止原服务器出现故障而做的解决方案.(最大的变数在于数据库软件之间版本的不同,因此尽量使用版本相近的数据库,不过简单的数据库(例如wordpress)一般不需要担心)
+  - 但是备份服务器本身也可能会宕机甚至被意外破坏而不再可用,最坏情况下是不可恢复(尽管这是小概率事件),这时候求就需要从原服务器上重新导出可用(可以恢复)的备份,然后迁移到新到备份服务器上存储,只有这样才能尽可能提高可用性
+  - 此外,理想情况下应该是定期更新网站备份包,因为网站的插件和functions.php是可能变化的(不过我们可以通过批量更新插件的方式来兜底),最重要的还是某些产品需要下架,如果使用之前的备份包,这些需要下架的产品又会重新上架(细心一点的话就是每次被下架产品的站都标记处理来,然后针对这些站做备份包的更新)
+  - 关于是否支持多线程:考虑到备份大压缩包基本上都是跑满带宽,设计并行备份意义不是很大.不过后来发现,`rsync`在更新压缩包而不是全新上传的情况在,速度会明显变慢.出于现象,有几个方案优化:
+    - 仍然使用rsync,但是增加并行设计,让几个压缩包同时传输
+    - 或者直接在rsync任务启动前,计算哪些包将要备份,事先在服务器`s`上将对应的包删除
+    - 使用其他传输工具.
+- 传输脚本`backup_site_pkgs.sh`,调用`rsync`将文件备份(增量镜像的方式)到专门的备份服务器
+
+为了描述方便,假设要执行任务:
+
+服务器`a`的站迁移到服务器`b`:由于我们有一台备份服务器`s`,理想情况下,每天自动将服务器`a`上新增的网站压缩包完整的备份到`s`;但是可能有例外出现,例如某次更新脚本(包含了错误的修改)导致备份功能故障,或者备份服务器`s`恰好在备份时故障,就可能有些站没有备份到服务器`s`,为了保证备份服务器拥有`a`所有站的完整备份,此外,为了节约服务器空间,每周末都会定时清理网站压缩包,如果刚好有错过了清理前的传输(备份到`s`)
+
+我们需要计算一下哪些站需要备份(这种漏掉的站一般不多)
+
+```bash
+# 在备份服务器上统计特定目录下的备份包,得到已经备份到网站(域名)列表
+# 列出指定服务器备份目录中的压缩包,并保存到文本文件中(domain.com.sql.zst和domain.com.zst)
+find /www/wwwroot/xcx/s4-1 -name '*zst' -printf "%f\n" > result.txt
+# 读取文本文件中的网站备份包名
+mapfile -t dms < result.txt
+# 将文本文件中的网站压缩包文件去除后缀,提取域名,然后排序去重复,
+for d in "${dms[@]}"; do
+    # echo "${d%.com*}.com"
+    if [[ ${d} = *sql.zst ]];then
+        echo "${d%.sql.zst}"
+    # elif [[ ${d%.com*} ]];then
+    #     echo "${d%.com*}"
+    fi
+done | sort > domains.txt
+# 如果domains.txt中的文件数量不是偶数,说明至少有站点备份不完整(比如缺失了数据库包或者根目录包)
+nl domains.txt
+# wc -l < domains.txt
+
+cat domains.txt | uniq > backuped.txt
+# 列出整理好的域名列表(均已备份)
+nl backuped.txt
+```
+
+下载或拷贝文件内容,粘贴到需要检查备份的服务器上(目标服务器,例如服务器`a`),保存对应的文本文件(`dms_backuped.txt`)
+
+将目标服务器上的所有网站域名的列表(可以从登记的表格中拷贝,或者自己扫描处理来)并保存为文本文件(`dms_all.txt`)
+
+```bash
+#移除相关文件中多余的空格
+sed 's/^[[:space:]]*//;s/[[:space:]]*$//' dms*.txt
+# 使用grep计算差集
+grep -Fxvf dms_backuped.txt dms_all.txt > need_backup.conf
+# 计算待备份网站数量
+wc -l need_backup.conf
+
+#也可以计算交集(供参考)
+# grep -Fxf dms_all.txt dms_backuped.txt|nl
+```
+
+备份(从服务器导出)
+
+```bash
+bash ./backup_sites/backup_sites_from_source_dir.sh --whitelist-site need_backup.conf  --parallel  
+```
+
+备份完毕后,检查`crontab -l`中的备份传输的行,形如:
+
+```bash
+bash /www/sh/backup_sites/backup_site_pkgs.sh -s /srv/uploads/uploader/files -b ... -d /www/wwwroot/...
+```
+
+将包都备份到服务器`s`中
+
+#### 从备份服务器拉取包
+
+假设现在服务器`b`要拉取一部分服务器`s`的包进行还原部署.
+
+> ```bash
+> rsync [选项] 源路径 目标路径
+> ```
+>
+> 传输方向有2个:(根据需要可以对调两个路径)
+>
+> - 本地路径->远程路径
+> - 远程路径->本地路径
+>
+> 关于**远程路径**:形如`remote_full_path="$user"@"$remote_host":"$remote_path"`
+
+登录服务器`b`,执行如下格式的命令
+
+```bash
+user="root" #默认root
+# 远程主机
+remote_host=""
+# 本地路径
+local_path=""
+# 远程路径
+remote_path=""
+
+#准备
+authority="$user"@"$remote_host"
+remote_full_path="$authority":"$remote_path"
+
+mkdir -p "$local_path"
+
+rsync -avP --size-only "$remote_full_path" "$local_path" 
+```
+
+移动从备份服务器拉取到的包到指定待解压目录下
+
+```bash
+# 注意末尾的 / 确保只匹配目录
+# 如果要指定人员目录,将*改为人员目录名
+for dir_path in "$uploader_files"/*/; do
+    # 移除末尾的 / 以便构造字符串
+    dir_name=$(basename "$dir_path")
+    user_pack_home="$uploader_files/$dir_name"
+    
+    # 构造新字符串
+    from_backupsrv="$user_pack_home/from_backupsrv/deployed"
+    [[ -d "$from_backupsrv" ]] && mv "$from_backupsrv"/* "$user_pack_home" -v
+done
+```
+
+合并备份服务器中的备份包
+
+```bash
+base="/www/wwwroot/xcx"
+#从服务器1合并(移动)服务器2,分别定义两个目录
+s1="s4-1"
+s2="s1"
+for user in "$base"/$s1/*/;
+do
+	user_dir=$(basename "$user")
+#	echo $user_dir
+	from_dir=$base/$s1/$user_dir/deployed
+	target_dir="$base/$s2/$user_dir/deployed"
+	for pkg in "$from_dir"/* ;do
+		#预览检查(重要!)
+#		echo "$pkg -> $target_dir"
+		mv "$pkg" "$target_dir" -v
+    done
+done
+```
+
+```
+	for pkg in $p/deployed/* ;do
+		echo "$pkg -> $target_dir"
+    done
+```
+
+
+
+### 宝塔站点重叠
+
+通过如下命令可以查看后缀带有`_80`的网站配置文件
+
+> (这大概率是你通过宝塔(api)重复创建了同名网站,比如之前已经创建过domain.com这个站,然后又执行了一遍,就会得到`domain.com_80`),此外,还会体现在nginx目录中出现了`domain.com_80.conf`配置文件.
+>
+> 当然这种情况可能是两个站都指向同一个网站目录.我们可以在面板中查找`_80`过滤出这些网站,然后批量勾选,删除网站.(注意不要勾选站点目录!除非你确实发现不需要.)
+
+> todo:改进宝塔api调用方式:在创建指定域名站点时,现检查有无同名站点存在.
+
+```bash
+ ls /www/server/panel/vhost/nginx/*_80.conf
+```
+
+### 控制并发部署解压的线程数
+
+建议解压线程不要超过10个,否则部分逻辑可能执行不完整或者出现意料之外的错误.
+
+### 批量移动包到指定目录
+
+根据域名列表,将指定域名的压缩包组从`user/deployed`目录移动到user/目录
+
+```bash
+#假设当前是用户目录:.../user/deployed
+sites=(
+domain1.com 
+domain2.com 
+...
+)
+
+for site in "${sites[@]}" ;do mv "$site"*zst .. ;done
+```
+
+
+
+### 站点检查
+
+无论是采用什么方案,迁移部署完后都要检查是否可以正常打开,尤其是过渡并发部署导致的一些潜在问题.
+
+检查前,可以将原服务器上相关网站根目录的父目录(甚至祖先目录)重命名,然后观察迁移后的站是否可以访问,防止访问到旧服务器上的网站版本.
+
+可能出现的故障:
+
+- 数据库链接失败(可能是因为`wp-config.php`修改代码在大量并发解压部署中不够稳健)
+- 如果部分站点迁移后异常卡顿,可以考虑重启数据库服务
+
+
+
+### 无缝迁移(cdn端设置)
 
 这里不涉及负载均衡,仅讨论简单的将一批网站从服务器a迁移到服务器b尽可能减少中断时间的方案
 
@@ -656,5 +860,9 @@ FILES
 假设服务器a由于某种原因需要重装,那么你可以将服务器a的站在服务器b上部署(解压和导入各方面都设置完毕,仅差一步cdn域名解析设置)
 
 使用cloudflare api,将被迁移到网站的dns解析ip从服务器更改为服务器b的ip即可,断连时间片相对短暂.
+
+> 仓库中已经配备了对应的脚本,可以灵活地实现需求.
+>
+> `$pys/cf_update_dns_ip.py`
 
 或者直接将这批网站添加到另一个cloudflare账号(转移),这可能需要重新分配证书,可能导致一段时间的网站断连,步骤上也更多,所以迁移花费的时间会更长一些.

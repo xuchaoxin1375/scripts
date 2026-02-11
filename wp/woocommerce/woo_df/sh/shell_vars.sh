@@ -4,6 +4,10 @@ echo "loading pre-defined variables..."
 # wsl 用户: 统一将使用wsl的设备设置桌面的统一别名目录C:/desktop->$desktop,使用符号链接可以在不改动的情况下优雅的实现这一点
 # New-Item -ItemType Junction  -Path C:/desktop -Target $home/desktop -Verbose -Force #powershell执行
 
+uploader_files="/srv/uploads/uploader/files"
+woo_df="/www/woo_df"
+pys="$woo_df/pys"
+
 desktop="/mnt/c/Users/Administrator/Desktop"
 wslsh="/mnt/c/repos/scripts/wp/woocommerce/woo_df/sh"
 # sh="$wslsh"
@@ -25,9 +29,10 @@ omb_cduru="$sh/omb-copied-duru.sh"
 bt_nginx_vhost_conf_home="/www/server/panel/vhost/nginx"
 bt_nginx_conf_home="/www/server/nginx/conf"
 
-
 # 将定义的变量声明为环境变量
-export desktop sh omb_themes omb_cduru_theme omb_cduru bt_nginx_vhost_conf_home bt_nginx_conf_home
+export desktop sh omb_themes omb_cduru_theme omb_cduru \
+bt_nginx_vhost_conf_home \
+bt_nginx_conf_home uploader_files woo_df pys
 
 # mkdir -p $omb_themes
 # ln -s $omb_cduru $omb_cduru_theme/cduru.theme.sh -fv
