@@ -14,7 +14,9 @@
 
 写入一些便于使用的shell配置,比如常用别名和函数,以及预定义变量
 
-```bash
+> 每次加载shell会有如下提示:
+
+```txt
 loading pre-defined variables...
 Loading pre-defined aliases...
 Configs shell configs already exists in /root/.zshrc, skipping insertion...
@@ -44,6 +46,8 @@ sudo apt install parallel #并行执行命令的工具
 ### 宝塔基础环境
 
 通常是LNMP,外带一个fail2ban(不是必须的,但是网站数量较多时基本得配上增强防御力)
+
+Nginx可以先不装,后续安装openresty,提供更强大的功能.
 
 ## 代码下载和管理
 
@@ -147,7 +151,7 @@ ubuntu24+版本对于python pip安装依赖包更加严格,可能无法直接通
 
 #### api key
 
-- 面板设置中启用api,设置合适的ip白名单,(填写服务器配置`server_config.json`的时候只要填写到端口为止,端口后的串不要写入)
+- 面板设置中启用api(bt_key),设置合适的ip白名单,(填写服务器配置`server_config.json`的时候只要填写到端口为止,端口后的串不要写入)
 - 及时申请好cloudflare账号,并且获取全局key
 
 ### 服务器相关组件安装和配置(宝塔)🎈
@@ -170,26 +174,6 @@ ubuntu24+版本对于python pip安装依赖包更加严格,可能无法直接通
 - 关闭二进制日志文件备份功能,节约空间和资源消耗
 - 调整mysql性能参数(使用宝塔预设的方案128G~256G或更高,尤其注意`max_connections`不应该低于1000)
 - 设置数据库登录密码和私有管理员配置
-
-##### 检查当前用户和所有用户
-
-```bash
-#查看当前数据库用户是什么
-select user();
-```
-
-```bash
-mysql> select user,host from mysql.user;
-+------------------+-----------+
-| user             | host      |
-+------------------+-----------+
-...
-| mysql.infoschema | localhost |
-| mysql.session    | localhost |
-| mysql.sys        | localhost |
-| root             | localhost |
-+------------------+-----------+
-```
 
 
 
@@ -224,6 +208,39 @@ FLUSH PRIVILEGES;
 ```bash
 systemctl restart mysqld
 ```
+
+##### 检查当前用户和所有用户
+
+检查所有已创建mysql用户:
+
+```bash
+mysql> select user,host from mysql.user;
++------------------+-----------+
+| user             | host      |
++------------------+-----------+
+...
+| mysql.infoschema | localhost |
+| mysql.session    | localhost |
+| mysql.sys        | localhost |
+| root             | localhost |
++------------------+-----------+
+```
+
+检查当前mysql用户
+
+```bash
+#查看当前数据库用户是什么
+select user();
+# 例如当前如果以root@localhost身份登录则为:
+mysql> select user();
++----------------+
+| user()         |
++----------------+
+| root@localhost |
++----------------+
+```
+
+
 
 ##### 防火墙配置
 
@@ -289,12 +306,20 @@ port=3306" >> ~/.my.cnf
 验证:
 直接在终端输入mysql,看是否可以登录到mysql shell.
 
-#### 测试mysql在脚本中的连通性
+#### 测试mysql在脚本中的连通性(可选)
 
 `mysqlshow`命令可以在脚本中用来检查数据库的连通性.但是系统可能不自带.
 
+> 可以用mysql命令实现类似的查询.
+
 ```bash
 apt install mysql-client-core-8.0 
+```
+
+```bash
+# 使用shell(例如bash)执行
+# 假设配置了免密
+mysql  -e "SELECT 1" # &>/dev/null
 ```
 
 
@@ -389,12 +414,19 @@ cat $sh\update_repos.sh
 grep -C 5 'Port 22' /etc/ssh/sshd_config 
 ```
 
+```
+OldPort=22
+Port=2222 #自行更改
+sed -E "s/^[[:space:]]*#?Port $OldPort[[:space:]]*$/Port $Port/" /etc/ssh/sshd_config
+
+```
+
 
 
 ```bash
 OldPort=22
 Port=2222 #自行更改
-#(使用i命令原地修改文件并保存)
+#(使用i命令原地修改文件并保存,注意-i选项和p命令不要同时使用!);(-n和p命令配合可以打印被修改的行.)
 # sed  -i -nE "s/#?(Port $OldPort)/Port $Port/"  /etc/ssh/sshd_config 
 #更安全的方案生成.bak备份,同时兼容行开头的空白和注释)
 sed -i.bak -nE "s/^[[:space:]]*#?Port $OldPort[[:space:]]*$/Port $Port/" /etc/ssh/sshd_config
@@ -422,7 +454,15 @@ sudo ufw deny 22
 notepad ~\.ssh\config
 ```
 
+## 修改系统root密码
 
+以ubuntu为例,当前可以登录root用户shell,则可以直接通过`passwd`设置新密码
+
+> 例如宝塔用户
+
+如果当前shell并非root,但是知道root旧密码,则也可以使用`passwd`修改密码
+
+其他情况请另见它文.
 
 ## 配置免密登录
 
@@ -431,8 +471,9 @@ notepad ~\.ssh\config
 windows上,虽然没有自带ssh-copy-id工具,可以通过powershell+ssh调用服务器上的shell工具的方式实现
 
 ```bash
-$target="user@your_server_host" #例如 root@$env:DF_SERVER4
-
+$target="user@your_server_host" 
+# 例如:
+# $target="root@$env:DF_SERVER4"
 $pubkey=Get-Content ~/.ssh/id_ed25519.pub
 ssh $target "mkdir -p ~/.ssh && echo '$pubkey' >> ~/.ssh/authorized_keys"
 # 初次运行需要输入服务器ssh对应user用户的密码
@@ -464,7 +505,7 @@ sudo systemctl restart ssh
 # 需要针对每个服务修改的部分
 
 # 修改2个地方: -b参数为备份服务器(ip); -d参数指定要备份服务上的目录,主要是"server?"为对应的目录(比如server1,server2,...)
-30 22 * * * bash /www/sh/backup_sites/backup_site_pkgs.sh -s /srv/uploads/uploader/files -b <backupIp> -d /www/wwwroot/xcx/server? #修改"server?"值为具体情况
+30 22 * * * bash /www/sh/backup_sites/backup_site_pkgs.sh -s /srv/uploads/uploader/files -b <backupIp> -d /www/wwwroot/xcx/server? #修改"server?"值为具体情况(务必要配置好免密登录!配置完手动运行此行检查连通性)
 
 # 不同服务器管理员要维护自己的网站结构修改自己的定时部署/解压脚本,文件名可能形如deploy_wp_schd_s1.sh
 */30 * * * * bash /www/sh/deploy_wp_schd.sh
@@ -487,6 +528,12 @@ sudo systemctl restart ssh
 注意脚本 `deploy_wp_schd.sh`这个脚本的可执行权限(每次更新代码,上面的代码会尝试自动修改这些文件的可执行权限)
 
 利用系统的crontab定时执行wp-cron,这里的脚本利用了 `wp-cli`命令行工具来触发,而不需要通过http链接触发,执行后有日志文件(记得定期删除(todo))
+
+```bash
+ssh-copy-id -i ~/.ssh/id_ed25519.pub -p 22  "remote_user@server"
+```
+
+
 
 ## nginx配置
 
@@ -793,12 +840,6 @@ do
 		mv "$pkg" "$target_dir" -v
     done
 done
-```
-
-```
-	for pkg in $p/deployed/* ;do
-		echo "$pkg -> $target_dir"
-    done
 ```
 
 
