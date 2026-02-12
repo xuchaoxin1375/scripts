@@ -758,7 +758,7 @@ mkdir -p "$local_path"
 rsync -avP --size-only "$remote_full_path" "$local_path" 
 ```
 
-移动从备份服务器拉取到的包到指定待解压目录下
+准备解压:**移动**从备份服务器拉取到的包到指定待解压目录下,然后就可以利用部署脚本进行部署(导入网站).
 
 ```bash
 # 注意末尾的 / 确保只匹配目录
@@ -774,7 +774,7 @@ for dir_path in "$uploader_files"/*/; do
 done
 ```
 
-合并备份服务器中的备份包
+合并备份服务器中的备份包(合并前确保已经所有站都迁移完毕,否则后续还要重新挑选未迁移的站)
 
 ```bash
 base="/www/wwwroot/xcx"

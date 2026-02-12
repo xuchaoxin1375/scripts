@@ -1,5 +1,5 @@
 #!/bin/bash
-echo "deploy_script_version:20260210(sem)"
+echo "deploy_script_version:20260210"
 # === 配置参数 ===
 # 依赖说明:依赖于外部的伪静态规则文件RewriteRules.LF.conf,以及一些实用性程序(7z,unzip等)
 # 在windows端可以使用powershell借助scp命令将此文件更新/推送到服务器:
@@ -160,7 +160,11 @@ log() {
     local dt
     dt="$(date '+%Y-%m-%d--%H:%M:%S')"
     message="[$dt] $message"
-    echo "$message"
+    if [ -n "${LOG_PREFIX:-}" ]; then
+        echo "${LOG_PREFIX} $message"
+    else
+        echo "$message"
+    fi
 }
 # 提示用户当前使用的 PACK_ROOT
 log "使用 PACK_ROOT: $PACK_ROOT"
@@ -908,12 +912,19 @@ for user_dir in "${user_dirs[@]}"; do
         # 并行处理SQL备份文件
         pids=()
         sql_archive_names=()
+        sql_archive_domains=()
+        total_sql=${#sql_archives[@]}
+        sql_i=0
         for sql_archive in "${sql_archives[@]}"; do
             if [ ! -f "$sql_archive" ]; then
                 continue
             fi
+            sql_i=$((sql_i + 1))
+            sql_domain="${sql_archive%.sql.*}"
             sem_acquire
             (
+                LOG_PREFIX="[job $$/$JOBS][progress ${sql_i}/${total_sql}][SQL ${sql_domain}]"
+                export LOG_PREFIX
                 process_sql_file "$username" "$sql_archive"
                 rc=$?
                 sem_release
@@ -922,11 +933,13 @@ for user_dir in "${user_dirs[@]}"; do
 
             pids+=("$!")
             sql_archive_names+=("$sql_archive")
+            sql_archive_domains+=("$sql_domain")
         done
         # 等待所有后台任务完成，并统计成功/失败
         for i in "${!pids[@]}"; do
             pid="${pids[$i]}"
             sql_archive="${sql_archive_names[$i]}"
+            sql_domain="${sql_archive_domains[$i]}"
             if wait "$pid"; then
                 ((sql_backups_processed++))
                 # 归档已用过的sql压缩包文件
@@ -936,6 +949,7 @@ for user_dir in "${user_dirs[@]}"; do
                 # mv "$sql_archive" "$DEPLOYED_DIR" -f -v
             else
                 ((failed_sites++))
+                LOG_PREFIX="[progress $((i + 1))/${#pids[@]}][SQL ${sql_domain}]"
                 log "❌ SQL备份文件处理失败: $sql_archive"
             fi
         done
@@ -960,13 +974,23 @@ for user_dir in "${user_dirs[@]}"; do
     # 并行处理站点部署
     deploy_pids=()
     deploy_archive_names=()
+    deploy_archive_domains=()
+    total_sites=${#site_archives[@]}
+    site_i=0
     for archive_file in "${site_archives[@]}"; do
         if [ ! -f "$archive_file" ]; then
             continue
         fi
+        site_i=$((site_i + 1))
+        site_domain="${archive_file%.*}"
+        if [[ "$site_domain" == *.sql ]]; then
+            site_domain="${site_domain%.sql}"
+        fi
         # 后台执行部署任务
         sem_acquire
         (
+            LOG_PREFIX="[job $$/$JOBS][progress ${site_i}/${total_sites}][SITE ${site_domain}]"
+            export LOG_PREFIX
             deploy_site "$username" "$archive_file"
             rc=$?
             sem_release
@@ -974,17 +998,20 @@ for user_dir in "${user_dirs[@]}"; do
         ) &
         deploy_pids+=("$!")
         deploy_archive_names+=("$archive_file")
+        deploy_archive_domains+=("$site_domain")
     done
     # 等待所有后台部署任务完成，并统计成功/失败
     for i in "${!deploy_pids[@]}"; do
         pid="${deploy_pids[$i]}"
         archive_file="${deploy_archive_names[$i]}"
+        site_domain="${deploy_archive_domains[$i]}"
         if wait "$pid"; then
             ((deployed_sites++))
             # 可在此处添加归档逻辑（如需）
 
         else
             ((failed_sites++))
+            LOG_PREFIX="[progress $((i + 1))/${#deploy_pids[@]}][SITE ${site_domain}]"
             log "❌ 站点部署失败: $archive_file"
         fi
     done

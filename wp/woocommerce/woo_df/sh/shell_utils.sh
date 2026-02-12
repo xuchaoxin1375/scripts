@@ -1,7 +1,31 @@
 #!/bin/bash
 # 提供一些常用的bash/zsh兼容的函数.
 
- 
+######################################
+# Description:
+# 移除字符串边缘空白
+# Globals:
+#   None
+# Arguments:
+#   $1 - 字符串
+#
+# Outputs:
+#   返回一个字符串，该字符串是输入字符串的边缘空白被删除后的结果。
+# Returns:
+#   0 on success, non-zero on error
+# Example:
+# 
+######################################
+trim() {
+    local var="$*"
+    # 移除开头空格
+    var="${var#"${var%%[![:space:]]*}"}"
+    # 移除结尾空格
+    var="${var%"${var##*[![:space:]]}"}"
+    printf '%s' "$var"
+}
+
+site=$(trim "$site")
 #######################################
 # 检查系统中是否存在指定的依赖命令。
 # Arguments:

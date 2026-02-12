@@ -1,29 +1,51 @@
-#! /bin/bash
+sites=(
+vieuxsous.com
+numis-fr.com
+coin-histoire.com
+monnaieclub.com
+tresor-numis.com
+lecoinrar.com 
+coinarchivefr.com
+coinlegacypro.com
+archivede.com
+mainstcart.com
+easyaisleus.com
+dailyfixpro.com
+homepulseus.com
+livewellcartpro.com
+lovelyusshop.com
+sweetdailyus.com
+operativoshop.com
+armesprofr.com
+armes-elite.com
+waffen24de.com
+teutonic-arms.com
+tac-vanguard.com
+drink-horizon.com
+de-winehub.com
+globalinkreads.com
+shelfwithoutwalls.com
+bookzen365.com
+readbridgebooks.com
+thebookallypro.com
+mototrekusa.com
+livrezen.com
+page-sagesse.com
+groove-hub.com
+analog-soulfr.com
+sonet-disque.com
+spin-shop.com
+sound-objectpro.com
+vinyladdictpro.com
+spinritual.com
+ecoutevinyle.com
+)
+base=/www/wwwroot/xcx/s1
+#修改用户名
+people=cjq
 
-
-echo "args number:$#"
-# 遍历参数
-# for arg in "$@"
-# do
-#     echo "arg:$arg"
-# done
-
-# 带编号打印参数,是和使用C风格的for循环(借助$#获取参数个数)
-# for ((i=1;i<=$#;i++)) do
-#     # $i是参数编号, ${!i}是第i个的取值
-#     echo "arg $i:${!i}"
-# done
-
-i=1
-for arg in "$@"
-do
-    echo "arg $i:$arg"
-    i=$((i+1))
-done
-
-themes_dir="$sh/archives/themes"
-
-# 遍历目录下的所有文件夹
-for dir in "$themes_dir"/*/; do
-    [[ -d $dir ]] && echo "[$dir]";
+user_dir=$base/$people/deployed
+mkdir -p $user_dir/sub
+for site in "${sites[@]}"; do
+  mv -v $user_dir/"$site"*zst  $user_dir/sub 
 done
