@@ -2,6 +2,57 @@
 # 提供一些常用的bash/zsh兼容的函数.
 
 ######################################
+# 调用rsync从已知主机拷贝(镜像)目录结构到指定位置
+# Description:
+#   对rsync的简单包装,构造rsync命令行,带有常用参数
+#   TODO:增加参数选项解析.
+# Globals:
+#   None
+# Arguments:
+#   $1 - remote_host (ip)
+#   $2 - local_path (/srv/uploads/...)
+#   $3 - remote_path (/www/wwwroot/...)
+#   $4 - remote_user ('root' is default)
+# Outputs:
+#  None
+# Returns:
+#   0 on success, non-zero on error
+# Example:
+#
+######################################
+rsync_copy() {
+  remote_host="$1"
+  # 本地路径
+  local_path="$2"
+  # 远程路径
+  remote_path="$3"
+  # 远程主机
+  # 远程主机使用的登录用户名(默认root)
+  user=${4:-'root'}
+  echo "[$user]"
+  # if [[ "${#4}" -ne 0 ]]; then
+  #   user="$4"
+  # fi
+  if [[ $1 =~ ^(-h|--help|[[:space:]]*)$ ]]; then
+    echo $'
+      # Arguments:
+      #   1 - remote_host (ip)
+      #   2 - local_path (/srv/uploads/...)
+      #   3 - remote_path (/www/wwwroot/...)
+      #   4 - remote_user ('root' is default)
+'
+    return 1
+  fi
+  #准备
+  authority="$user"@"$remote_host"
+  remote_full_path="$authority":"$remote_path"
+
+  mkdir -p "$local_path"
+
+  rsync -avP --size-only "$remote_full_path" "$local_path"
+}
+
+######################################
 # Description:
 # 移除字符串边缘空白
 # Globals:
@@ -25,7 +76,6 @@ trim() {
     printf '%s' "$var"
 }
 
-site=$(trim "$site")
 #######################################
 # 检查系统中是否存在指定的依赖命令。
 # Arguments:
