@@ -63,6 +63,10 @@
 
 1. **选择日志文件**：下拉框选择当前目录下的 `.log`
    - 切换文件时会自动重置筛选（时间/区间/间隔）并重新计算区间信息，但**不会改变当前的区间选择模式**（百分比/日期时间）。
+2. **选择解析方式**：
+   - `自动识别（auto）`：根据日志首行自动判断使用哪种解析器
+   - `自定义 KV（custom_kv）`：适用于形如 `status=200 bytes=123 [GET] [req = host/path] UA="..."` 的自定义格式（字段顺序可变，可增字段）
+   - `Nginx Combined（nginx_combined）`：兼容常见 combined 格式（`"GET /path HTTP/1.1" 200 123 "-" "UA"`）
 2. **选择“分析末尾百分比”**（可选）：
    - `100%`：全量扫描
    - `20%/10%/5%`：只分析末尾部分（通常用于“最近几小时/最近一段时间”）
@@ -75,24 +79,32 @@
 
 ## 日志格式要求
 
-解析器按如下格式匹配（参考 `parseLine()`）：
+解析器支持通过 `parse_mode` 切换解析方式（参考 `parseLine()`）：
 
 ```text
-IP [time] status=XXX [METHOD] [req = URL] UA="..."
+custom_kv:
+IP [time] status=XXX bytes=YYY [METHOD] [req = host/path] UA="..." referer="..." CF-IPCountry: US
+
+nginx_combined:
+IP - - [time] "METHOD /path HTTP/1.1" status bytes "referer" "UA"
 ```
 
 示例：
 
 ```text
-1.2.3.4 [10/Jan/2026:18:11:46 +0800] status=200 [GET] [req = example.com/path?a=b] UA="Mozilla/5.0 ..."
+1.2.3.4 [10/Jan/2026:18:11:46 +0800] status=200 bytes=49464 [GET] [req = example.com/path?a=b] UA="Mozilla/5.0 ..." referer="-" CF-IPCountry: US
 ```
 
 说明：
 
 - **time**：必须在方括号内，且能被 `strtotime()` 正确解析
-- **UA**：必须包含 `UA="..."` 字段
+- **status**：必须能识别到（`status=200` 或 combined 中的 `200`）
+- 其他字段（如 `bytes/UA/referer/CF-IPCountry/XFF`）为可选；缺失不会影响主流程统计
 
-如果你的日志格式不同，需要调整 `parseLine()` 的正则。
+如果你的日志格式不同：
+
+- 推荐先用 `parse_mode=custom_kv` 并在“解析示例（首行）”里确认哪些字段没被识别
+- 再按需要调整 `parseLine()` 的解析逻辑
 
 ## API 参数（内部接口）
 
@@ -101,17 +113,22 @@ IP [time] status=XXX [METHOD] [req = URL] UA="..."
 - `action=list_logs`
   - 列出目录下所有 `.log`
 
-- `action=file_info&file=xxx.log&tail_percent=20`
-  - **tail_percent**：1-100，默认 100
+- `action=file_info&file=xxx.log&range_start=0&range_end=100&parse_mode=auto`
+  - **range_start/range_end**：百分比区间（0-100）
+  - **parse_mode**：`auto/custom_kv/nginx_combined`
   - 返回：文件大小、时间跨度、预估行数（按换行符统计）、建议 interval、示例行、analysis 元数据
 
-- `action=analyze&file=xxx.log&interval=60&start=...&end=...&tail_percent=20`
+- `action=analyze&file=xxx.log&interval=60&start=...&end=...&range_start=80&range_end=100&parse_mode=custom_kv`
   - **interval**：时间片（秒）
   - **start/end**：可选，格式为 `Y-m-d H:i:s`
-  - **tail_percent**：1-100，默认 100
+  - **range_start/range_end**：百分比区间（0-100）
+  - **parse_mode**：`auto/custom_kv/nginx_combined`
 
-- `action=get_ips&file=xxx.log&timestamp=...&interval=...&tail_percent=...`
+- `action=get_ips&file=xxx.log&timestamp=...&interval=...&range_start=...&range_end=...&parse_mode=...`
   - 获取某个时间片的 IP 列表与明细
+
+- `action=parse_preview&file=xxx.log&parse_mode=auto`
+  - 返回：首行 raw + parseLine() 的解析结果，用于前端“解析示例（首行）”展示
 
 ## 性能建议
 
@@ -132,6 +149,9 @@ IP [time] status=XXX [METHOD] [req = URL] UA="..."
   - 增大 `interval`
   - 缩小时间范围
   - 适当提高 PHP 的 `max_execution_time`
+
+- **前端界面更新了但看不到新控件/新样式？**
+  - 浏览器可能缓存了旧版 `log.php` 输出，建议使用 `Ctrl+F5` 强制刷新
 
 - **统计图表的边缘不准确？**
   - 若日志存在切割/截断（例如 logrotate），或你仅分析了部分百分比区间，图表最前/最后的时间片可能会缺失部分数据，属于预期现象。

@@ -28,11 +28,85 @@ if (isset($_GET['action'])) {
         case 'file_info':
             echo json_encode(getFileInfo($_GET['file'] ?? ''));
             break;
+        case 'parse_preview':
+            echo json_encode(getParsePreview($_GET));
+            break;
         default:
             echo json_encode(['error' => 'Unknown action']);
     }
 
     exit;
+}
+
+function getParsePreview($params) {
+    $filename = basename($params['file'] ?? '');
+    $filepath = __DIR__ . '/' . $filename;
+
+    if (!file_exists($filepath) || !is_readable($filepath)) {
+        return ['error' => 'File not found or not readable'];
+    }
+
+    $handle = fopen($filepath, 'r');
+    if (!$handle) {
+        return ['error' => 'Cannot open file'];
+    }
+
+    $rawLine = null;
+    while (($line = fgets($handle)) !== false) {
+        $line = trim($line);
+        if ($line === '') continue;
+        $rawLine = $line;
+        break;
+    }
+    fclose($handle);
+
+    $mode = getParseMode($params);
+    if ($mode === 'auto') {
+        $mode = $rawLine ? detectParseMode($rawLine) : 'custom_kv';
+    }
+
+    // 复用 parseLine 内部的模式逻辑：通过传参让其读取本次请求的 parse_mode
+    // 为了保持函数签名不变，这里临时覆盖 $_GET['parse_mode']
+    $prev = $_GET['parse_mode'] ?? null;
+    $_GET['parse_mode'] = $mode;
+
+    $item = null;
+    if ($rawLine) {
+        $item = [
+            'raw' => $rawLine,
+            'parsed' => parseLine($rawLine)
+        ];
+    }
+
+    if ($prev === null) {
+        unset($_GET['parse_mode']);
+    } else {
+        $_GET['parse_mode'] = $prev;
+    }
+
+    return [
+        'parse_mode' => $mode,
+        'item' => $item
+    ];
+}
+
+function getParseMode($params) {
+    $mode = $params['parse_mode'] ?? ($_GET['parse_mode'] ?? 'auto');
+    $mode = strtolower(trim((string)$mode));
+    if ($mode === '') {
+        $mode = 'auto';
+    }
+    return $mode;
+}
+
+function detectParseMode($line) {
+    if (preg_match('/\bstatus=\d{3}\b/', $line) || preg_match('/\[req\s*=\s*/', $line)) {
+        return 'custom_kv';
+    }
+    if (preg_match('/"\S+\s+\S+\s+HTTP\/[0-9.]+"\s+\d{3}\s+/', $line)) {
+        return 'nginx_combined';
+    }
+    return 'custom_kv';
 }
 
 function normalizePercentRange($params, $filesize) {
@@ -597,29 +671,170 @@ function getIPsForTimeSlice($params) {
  * 解析日志行
  */
 function parseLine($line) {
-    // 格式: IP [time] status=XXX [METHOD] [req = URL] UA="..." referer="..."
-    $pattern = '/^(\S+)\s+\[([^\]]+)\]\s+status=(\d+)\s+\[(\w+)\]\s+\[req\s*=\s*([^\]]+)\]\s+UA="([^"]*)"/';
-    
-    if (preg_match($pattern, $line, $matches)) {
-        $url = trim($matches[5]);
-        $domain = '';
-        
-        if (preg_match('/^([^\/]+)/', $url, $domainMatch)) {
-            $domain = $domainMatch[1];
-        }
-        
-        return [
-            'ip' => $matches[1],
-            'time' => $matches[2],
-            'status' => $matches[3],
-            'method' => $matches[4],
-            'url' => $url,
-            'domain' => $domain,
-            'ua' => $matches[6]
-        ];
+    // 字段提示(解析结果数组 key -> 含义):
+    // - ip: 客户端 IP（通常是 $remote_addr）
+    // - time: 日志时间（$time_local，形如 13/Feb/2026:09:23:28 +0800）
+    // - status: HTTP 状态码（$status 或 status=xxx）
+    // - method: 请求方法（GET/POST...，来自 [GET] 或 "GET / HTTP/1.1"）
+    // - url: 请求目标（自定义格式通常是 host+uri；默认 combined 通常是 path）
+    // - domain: 从 url 推断的 host（若 url 不含 host，则为空）
+    // - ua: User-Agent（UA="..." 或 combined 的 "..."）
+    // - bytes: 响应字节数（bytes=xxx 或 combined 的 body_bytes_sent）
+    // - referer: Referer（referer="..." 或 combined 的 "..."）
+    // - country: 国家码（CF-IPCountry: XX）
+    // - xff: X-Forwarded-For（若日志包含）
+    // - x_real_ip: X-Real-IP（若日志包含）
+
+    $line = trim($line);
+    if ($line === '') {
+        return null;
     }
-    
-    return null;
+
+    $mode = getParseMode($_GET);
+    if ($mode === 'auto') {
+        $mode = detectParseMode($line);
+    }
+
+    $ip = null;
+    $time = null;
+    $status = null;
+    $method = null;
+    $url = null;
+    $ua = '';
+
+    $bytes = null;
+    $referer = null;
+    $country = null;
+    $xff = null;
+    $xRealIp = null;
+
+
+    if ($mode === 'nginx_combined') {
+        // 默认 combined 示例:
+        // 127.0.0.1 - - [13/Feb/2026:09:23:28 +0800] "GET /path?a=1 HTTP/1.1" 200 49464 "-" "UA..."
+        $pattern = '/^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"(\S+)\s+([^\s]+)\s+HTTP\/[0-9.]+"\s+(\d{3})\s+(\S+)\s+"([^"]*)"\s+"([^"]*)"/';
+        if (!preg_match($pattern, $line, $m)) {
+            return null;
+        }
+        $ip = $m[1];
+        $time = $m[2];
+        $method = strtoupper($m[3]);
+        $url = $m[4];
+        $status = $m[5];
+        $bytes = ($m[6] === '-' ? null : (int)$m[6]);
+        $referer = $m[7];
+        $ua = $m[8];
+    } else {
+        // custom_kv / auto(探测后)
+        if (preg_match('/^(\S+)\s+\[([^\]]+)\]/', $line, $m)) {
+            $ip = $m[1];
+            $time = $m[2];
+        } else {
+            return null;
+        }
+
+        $kvMap = [];
+        if (preg_match_all('/\b([A-Za-z][A-Za-z0-9_\-]*)=([^\s\"]+|"[^"]*")/', $line, $all, PREG_SET_ORDER)) {
+            foreach ($all as $kv) {
+                $k = strtolower($kv[1]);
+                $v = $kv[2];
+                if (strlen($v) >= 2 && $v[0] === '"' && $v[strlen($v) - 1] === '"') {
+                    $v = substr($v, 1, -1);
+                }
+                $kvMap[$k] = $v;
+            }
+        }
+
+        if (isset($kvMap['status']) && preg_match('/^\d{3}$/', (string)$kvMap['status'])) {
+            $status = (string)$kvMap['status'];
+        } elseif (preg_match('/\bstatus=(\d{3})\b/', $line, $m)) {
+            $status = $m[1];
+        }
+
+        if (isset($kvMap['bytes']) && is_numeric($kvMap['bytes'])) {
+            $bytes = (int)$kvMap['bytes'];
+        } elseif (preg_match('/\bbytes=(\d+)\b/', $line, $m)) {
+            $bytes = (int)$m[1];
+        }
+
+        if (preg_match('/\[(GET|POST|PUT|DELETE|HEAD|OPTIONS|PATCH)\]/i', $line, $m)) {
+            $method = strtoupper($m[1]);
+        }
+
+        if (preg_match('/\[req\s*=\s*([^\]]+)\]/', $line, $m)) {
+            $url = trim($m[1]);
+        } elseif (preg_match('/\s"([^"]+)"\s+status=\d{3}\b/', $line, $m)) {
+            $url = trim($m[1]);
+        } elseif (preg_match('/\s"([^"]+)"\s+status=(\d{3})\b/', $line, $m)) {
+            $url = trim($m[1]);
+            if ($status === null) {
+                $status = $m[2];
+            }
+        }
+
+        if (isset($kvMap['ua'])) {
+            $ua = (string)$kvMap['ua'];
+        } elseif (preg_match('/\bUA="([^"]*)"/', $line, $m)) {
+            $ua = $m[1];
+        }
+        if (isset($kvMap['referer'])) {
+            $referer = (string)$kvMap['referer'];
+        } elseif (preg_match('/\breferer="([^"]*)"/', $line, $m)) {
+            $referer = $m[1];
+        }
+        if (preg_match('/\bCF-IPCountry:\s*(\S+)/', $line, $m)) {
+            $country = $m[1];
+        }
+        if (preg_match('/\bX-Forwarded-For:\s*([^\s]+(?:\s*,\s*[^\s]+)*)/', $line, $m)) {
+            $xff = trim($m[1]);
+        }
+        if (preg_match('/\bX-Real-IP:\s*(\S+)/', $line, $m)) {
+            $xRealIp = $m[1];
+        }
+    }
+
+    if ($status === null) {
+        return null;
+    }
+
+    if ($method === null) {
+        $method = '-';
+    }
+    if ($url === null) {
+        $url = '-';
+    }
+
+    $domain = '';
+    // url 可能是: host/path 或 /path 或 full url
+    if ($url !== '-' && $url !== '') {
+        if (preg_match('/^[a-z]+:\/\//i', $url)) {
+            $host = parse_url($url, PHP_URL_HOST);
+            if (is_string($host)) {
+                $domain = $host;
+            }
+        } elseif ($url[0] === '/') {
+            $domain = '';
+        } else {
+            if (preg_match('/^([^\/]+)/', $url, $domainMatch)) {
+                $domain = $domainMatch[1];
+            }
+        }
+    }
+
+    return [
+        'ip' => $ip,
+        'time' => $time,
+        'status' => $status,
+        'method' => $method,
+        'url' => $url,
+        'domain' => $domain,
+        'ua' => $ua,
+        'bytes' => $bytes,
+        'referer' => $referer,
+        'country' => $country,
+        'xff' => $xff,
+        'x_real_ip' => $xRealIp
+    ];
 }
 
 /**
@@ -1362,6 +1577,14 @@ function formatDuration($seconds) {
                         <option value="datetime">日期时间区间</option>
                     </select>
                 </div>
+                <div class="form-group">
+                    <label>解析方式</label>
+                    <select id="parseMode" onchange="onParseModeChange()">
+                        <option value="auto" selected>自动识别</option>
+                        <option value="custom_kv">自定义 KV</option>
+                        <option value="nginx_combined">Nginx Combined</option>
+                    </select>
+                </div>
                 <div class="form-group" id="percentRangeGroup">
                     <label>按百分比区间截取</label>
                     <div style="display:flex; flex-direction:column; gap:8px;">
@@ -1691,6 +1914,7 @@ function formatDuration($seconds) {
             const filename = document.getElementById('logFile').value;
             const infoDiv = document.getElementById('fileInfo');
             const rangeParams = getRangeQueryParams();
+            const parseModeParam = getParseModeQueryParam();
             const startTime = document.getElementById('startTime')?.value;
             const endTime = document.getElementById('endTime')?.value;
             
@@ -1704,7 +1928,7 @@ function formatDuration($seconds) {
             infoDiv.style.display = 'block';
             
             try {
-                let url = `?action=file_info&file=${encodeURIComponent(filename)}${rangeParams}`;
+                let url = `?action=file_info&file=${encodeURIComponent(filename)}${rangeParams}${parseModeParam}`;
                 if (getRangeMode() === 'datetime') {
                     if (startTime) url += `&start=${encodeURIComponent(startTime.replace('T', ' '))}`;
                     if (endTime) url += `&end=${encodeURIComponent(endTime.replace('T', ' '))}`;
@@ -1796,8 +2020,69 @@ function formatDuration($seconds) {
                         时间范围: ${info.time_span.start} 至 ${info.time_span.end}
                     </p>
                     ` : ''}
+                    <p style="margin-top: 10px; font-size: 0.85rem; color: var(--text-secondary);">
+                        解析方式: <b style="color: var(--text-primary);">${getParseMode()}</b>
+                        <span style="margin-left: 10px;">(如未生效，请强制刷新 Ctrl+F5)</span>
+                    </p>
                 `;
                 infoDiv.style.display = 'block';
+
+                // 解析预览：展示少量样例行的解析结果，便于确认字段是否被识别
+                try {
+                    const previewResp = await fetch(`?action=parse_preview&file=${encodeURIComponent(filename)}${parseModeParam}`);
+                    const preview = await previewResp.json();
+                    if (!preview?.error && preview.item && preview.item.raw) {
+                        const it = preview.item;
+                        const parsed = it.parsed || null;
+
+                        const coreKeys = ['ip', 'time', 'status', 'method', 'url', 'domain'];
+                        const extraFirstKeys = ['ua', 'referer', 'bytes', 'country', 'xff', 'x_real_ip'];
+
+                        function renderKvGrid(obj) {
+                            if (!obj || typeof obj !== 'object') return '<div style="color: var(--text-secondary);">null</div>';
+                            const keys = Object.keys(obj);
+                            const ordered = [];
+                            coreKeys.forEach(k => { if (keys.includes(k)) ordered.push(k); });
+                            extraFirstKeys.forEach(k => { if (keys.includes(k) && !ordered.includes(k)) ordered.push(k); });
+                            keys.forEach(k => { if (!ordered.includes(k)) ordered.push(k); });
+
+                            const items = ordered.map(k => {
+                                const v = obj[k];
+                                const isMissing = v === null || v === undefined || v === '';
+                                return `
+                                    <div style="padding:8px 10px; border:1px solid var(--border-color); border-radius:10px; background:${isMissing ? 'transparent' : 'var(--bg-secondary)'};">
+                                        <div style="font-size:0.75rem; color: var(--text-secondary);">${escapeHtml(k)}</div>
+                                        <div style="margin-top:4px; font-size:0.9rem; font-weight:${coreKeys.includes(k) ? '700' : '500'}; color:${isMissing ? 'var(--text-secondary)' : 'var(--text-primary)'}; word-break: break-all;">
+                                            ${escapeHtml(isMissing ? '-' : String(v))}
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('');
+
+                            return `<div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:10px;">${items}</div>`;
+                        }
+
+                        infoDiv.innerHTML += `
+                            <div style="margin-top: 14px;">
+                                <div style="font-weight: 600; margin-bottom: 8px; display:flex; justify-content: space-between; align-items:center;">
+                                    <span>解析示例（首行）</span>
+                                    <span class="badge badge-info">${escapeHtml(preview.parse_mode || '')}</span>
+                                </div>
+
+                                <details style="border:1px solid var(--border-color); border-radius:10px; background: var(--bg-tertiary); padding:10px;">
+                                    <summary style="cursor:pointer; color: var(--text-secondary); font-size:0.85rem;">查看原始日志行</summary>
+                                    <div style="margin-top:8px; font-size:0.82rem; color: var(--text-secondary); word-break: break-all;">${escapeHtml(it.raw || '')}</div>
+                                </details>
+
+                                <div style="margin-top: 10px;">
+                                    ${renderKvGrid(parsed)}
+                                </div>
+                            </div>
+                        `;
+                    }
+                } catch (e) {
+                    // ignore preview error
+                }
             } catch (e) {
                 console.error('获取文件信息失败:', e);
                 if (requestId !== window.__fileInfoRequestId) {
@@ -1837,6 +2122,15 @@ function formatDuration($seconds) {
             if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
             if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
             return num.toString();
+        }
+
+        function escapeHtml(str) {
+            return String(str)
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#039;');
         }
         
         function resetFilterState(opts = {}) {
@@ -1943,6 +2237,20 @@ function formatDuration($seconds) {
             return `&range_start=${encodeURIComponent(s)}&range_end=${encodeURIComponent(e)}`;
         }
 
+        function getParseMode() {
+            return document.getElementById('parseMode')?.value || 'auto';
+        }
+
+        function getParseModeQueryParam() {
+            const m = getParseMode();
+            return `&parse_mode=${encodeURIComponent(m)}`;
+        }
+
+        function onParseModeChange() {
+            const hasFile = !!document.getElementById('logFile')?.value;
+            if (hasFile) loadFileInfo();
+        }
+
         function getRangeMode() {
             return document.getElementById('rangeMode')?.value || 'percent';
         }
@@ -2001,6 +2309,7 @@ function formatDuration($seconds) {
             const startTime = document.getElementById('startTime').value;
             const endTime = document.getElementById('endTime').value;
             const rangeParams = getRangeQueryParams();
+            const parseModeParam = getParseModeQueryParam();
             
             document.getElementById('loadingIndicator').style.display = 'flex';
             document.getElementById('resultsSection').style.display = 'none';
@@ -2008,7 +2317,7 @@ function formatDuration($seconds) {
             document.getElementById('analyzeBtn').disabled = true;
             
             try {
-                let url = `?action=analyze&file=${encodeURIComponent(filename)}&interval=${interval}${rangeParams}`;
+                let url = `?action=analyze&file=${encodeURIComponent(filename)}&interval=${interval}${rangeParams}${parseModeParam}`;
                 if (getRangeMode() === 'datetime') {
                     if (startTime) url += `&start=${encodeURIComponent(startTime.replace('T', ' '))}`;
                     if (endTime) url += `&end=${encodeURIComponent(endTime.replace('T', ' '))}`;
@@ -2407,13 +2716,14 @@ function formatDuration($seconds) {
             const filename = document.getElementById('logFile').value;
             const interval = document.getElementById('interval').value;
             const rangeParams = getRangeQueryParams();
+            const parseModeParam = getParseModeQueryParam();
 
             modal.classList.add('active');
             body.innerHTML = '<div class="loading" style="padding: 20px;"><div class="spinner" style="width: 24px; height: 24px; margin-right: 10px;"></div><span>正在加载...</span></div>';
 
             try {
                 const response = await fetch(
-                    `?action=get_ips&file=${encodeURIComponent(filename)}&timestamp=${timestamp}&interval=${interval}${rangeParams}`
+                    `?action=get_ips&file=${encodeURIComponent(filename)}&timestamp=${timestamp}&interval=${interval}${rangeParams}${parseModeParam}`
                 );
                 const data = await response.json();
 
