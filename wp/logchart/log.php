@@ -525,6 +525,7 @@ function analyzeLog($params) {
         $point = [
             'time' => date('Y-m-d H:i:s', $ts),
             'timestamp' => $ts,
+            'slot_end' => $ts + $interval,
             'total' => $slot['total'],
             'unique_ips' => count($slot['ips'])
         ];
@@ -2465,7 +2466,8 @@ function formatDuration($seconds) {
                         if (elements.length > 0) {
                             const index = elements[0].index;
                             const point = currentData.timeline[index];
-                            showIPDetails(point.timestamp);
+                            const ts = Number(point?.slot_end || 0) > 0 ? (Number(point.slot_end) - 1) : Number(point?.timestamp || 0);
+                            showIPDetails(ts);
                         }
                     },
                     scales: {
