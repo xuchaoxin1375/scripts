@@ -156,7 +156,43 @@ function Set-PsExtension
     }
     
 }
+function Get-ProcessMemoryView
+{
+    <#
+    .SYNOPSIS
+    在管道（Pipeline）内部修改外部变量时，通常需要显式指定作用域（如 $script: 或 $global:），否则脚本块内部可能会将其视为局部变量。
+    .NOTES
+    如果没有 $script: 前缀，在某些 PowerShell 版本或复杂的上下文中，$sum 可能不会在每一行之间成功传递累加值。
+    .EXAMPLE
+    计算最占内存的前若干名进程的内存占用率之和
+    Get-ProcessMemoryView|measure 'percent(%)' -Sum
+    .EXAMPLE
+    使用表格呈现统计结果
+    Get-ProcessMemoryView|Format-Table 
+    #>
+    param(
+        # 获取前几名进程,如果为0,则获取所有进程
+        $First = 10
+    )
+    # Get-Process | Select-Object ID, Name, WorkingSet64, PagedMemorySize64 | Sort-Object WorkingSet64 -Descending | Select-Object -First 10
+    # 1. 初始化累加变量（确保每次执行前重置为0）
+    $script:Sum = 0
+    $TotalRAM = (Get-CimInstance Win32_OperatingSystem).TotalVisibleMemorySize * 1KB # *1KB是换算成内存
+    $res = Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object ID, Name, @{Name = "WS(GB)"; Expression = { $_.WorkingSet64 / 1GB } }, @{Name = "PM(GB)"; Expression = { $_.PagedMemorySize64 / 1GB } }, @{Name = "percent(%)"; Expression = { [math]::Round(($_.WorkingSet64 / $TotalRAM) * 100, 2) } }, @{Name = "sum(%)"; Expression = { 
+            # 在脚本作用域内进行累加
+            $script:Sum += $_.WorkingSet64
+            # 计算累计值占总内存的百分比
+            [math]::Round(($script:Sum / $TotalRAM) * 100, 2) 
+        }
+    } 
 
+    if($First)
+    {
+
+        $res = $res | Select-Object -First $First
+    }
+    return $res
+}
 function Get-NonEmptySubdirectories
 {
     
@@ -1954,7 +1990,7 @@ function Test-PromptDelay
         # 加载prompt的次数,10次基本就够了(5次也够的)
         $iterations = 10
     )
-    $DurationArrays = (1..$iterations | ForEach-Object { Measure-Command { Prompt *> $null } })
+    $DurationArrays = (1..$iterations | ForEach-Object { Measure-Command { prompt *> $null } })
     $DurationSum = ($DurationArrays | ForEach-Object { $_.TotalSeconds }) | Measure-Object -Sum
     $averageDuration = $DurationSum.Sum / ($DurationArrays.Count)
     Write-Host $averageDuration 'seconds'
