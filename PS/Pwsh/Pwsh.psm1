@@ -193,6 +193,432 @@ function Get-ProcessMemoryView
     }
     return $res
 }
+function Get-CommitStatus
+{
+    <#
+    .SYNOPSIS
+        计算并显示当前系统的内存提交量（Commit Charge）。
+    .DESCRIPTION
+    TotalVirtualMemorySize: 这是 WMI 中对 Commit Limit 的定义。它不是指硬盘大小，而是 物理内存 + 分页文件 的总和。
+    FreeVirtualMemory: 系统当前还能“许诺”出去的剩余额度。
+    减法逻辑: 任务管理器显示的“已提交”本质上就是：系统总额度减去还没被许诺出去的额度。
+    #>
+    [CmdletBinding()]
+    param()
+
+    process
+    {
+        # 获取操作系统内存数据 (单位为 KB)
+        $OS = Get-CimInstance Win32_OperatingSystem
+        
+        # 1. 核心计算
+        $CommitLimitKB = $OS.TotalVirtualMemorySize
+        $FreeCommitKB = $OS.FreeVirtualMemory
+        $CommittedKB = $CommitLimitKB - $FreeCommitKB
+        
+        # 2. 转换单位为 GB
+        $CommittedGB = [Math]::Round($CommittedKB / 1MB, 2)
+        $LimitGB = [Math]::Round($CommitLimitKB / 1MB, 2)
+        $Percent = [Math]::Round(($CommittedKB / $CommitLimitKB) * 100, 1)
+
+        # 3. 确定显示颜色 (压力预警)
+        $StatusColor = "Green"
+        if ($Percent -gt 70) { $StatusColor = "Yellow" }
+        if ($Percent -gt 90) { $StatusColor = "Red" }
+
+        # 4. 格式化输出
+        Write-Host "`n--- 内存提交状态 (Commit Charge) ---" -ForegroundColor Cyan
+        Write-Host "已提交 (Committed): " -NoNewline
+        Write-Host "$CommittedGB GB" -ForegroundColor $StatusColor
+        
+        Write-Host "提交限制 (Limit):     $LimitGB GB"
+        
+        Write-Host "使用百分比:           " -NoNewline
+        Write-Host "$Percent %" -ForegroundColor $StatusColor
+        
+
+    }
+}
+function Show-CommitMemoryBar
+{
+    <#
+    .SYNOPSIS
+        动态监控系统内存提交量（Commit Charge）并显示进度条。
+    
+    .DESCRIPTION
+        该函数会实时读取系统的 Committed Bytes 计数器，并对比系统的 Commit Limit（物理内存 + 分页文件）。
+        进度条会根据当前压力自动变换颜色：
+        - 绿色: < 70% (正常)
+        - 黄色: 70% - 90% (警戒)
+        - 红色: > 90% (危险)
+
+        Commit Limit 的动态性：如果你的 Windows 设置了“自动管理所有驱动器的分页文件大小”，当你运行之前写的内存增加脚本时，你会发现 Commit Limit（分母）偶尔也会变大，因为 Windows 正在动态扩充物理硬盘上的分页文件来应对压力。
+    .NOTES
+    控制台的“自动换行”机制
+    行宽溢出：你的控制台窗口不够宽。当 [时间] [进度条] 比例 这一串字符的总长度超过了窗口宽度时，即便我们用了 \r（回到行首），余下的部分也会被强制挤到下一行。
+    上一次输出的残留：如果前一次输出较长，后一次输出较短，旧的末尾字符会留在屏幕上。
+    我们需要在代码中加入动态宽度计算，并确保每一行输出后都用空格“擦除”掉行尾的残余。
+
+    .EXAMPLE
+        Watch-CommitMemory -RefreshInterval 1
+    #>
+    param (
+        [Parameter(HelpMessage = "刷新间隔（秒）")]
+        [double]$RefreshInterval = 1
+    )
+
+    # 1. 初始化系统限制数据 (单位转换为 GB)
+    # TotalVirtualMemorySize 在 WMI 中代表 Commit Limit
+    function Get-CommitLimit
+    {
+    
+        try
+        {
+            $OS = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
+            $CommitLimitGB = [Math]::Round($OS.TotalVirtualMemorySize / 1MB, 2)
+            return $CommitLimitGB
+        }
+        catch
+        {
+            Write-Error "无法获取系统内存信息。"
+            return
+        }
+    }
+
+    Write-Host "`n>>> 启动内存提交量监控 <<<" -ForegroundColor Cyan
+    Write-Host "初始系统提交限制 (RAM + 分页文件): $(Get-CommitLimit) GB"
+    Write-Host "提示: 按 Ctrl+C 停止监控`n"
+
+    # 2. 持续循环刷新
+    try
+    {
+        # 使用性能计数器获取“已提交字节”
+        Get-Counter "\Memory\Committed Bytes" -SampleInterval $RefreshInterval -Continuous | ForEach-Object {
+            $CurrentBytes = $_.CounterSamples[0].CookedValue
+            $CurrentGB = [Math]::Round($CurrentBytes / 1GB, 2)
+            $CommitLimitGB = Get-CommitLimit
+            $Percent = [Math]::Min(100, [Math]::Round(($CurrentGB / $CommitLimitGB) * 100, 0))
+    
+            # --- 核心改进：动态获取窗口宽度 ---
+            # 我们预留 20 个字符给时间、百分比和括号，剩下的全给进度条
+            $HostWidth = $Host.UI.RawUI.WindowSize.Width
+            $BarWidth = [Math]::Max(10, $HostWidth - 35) 
+    
+            $FilledWidth = [Math]::Floor(($Percent / 100) * $BarWidth)
+            $EmptyWidth = [Math]::Max(0, $BarWidth - $FilledWidth)
+    
+            $Color = "Green"
+            if ($Percent -gt 70) { $Color = "Yellow" }
+            if ($Percent -gt 90) { $Color = "Red" }
+    
+            $BarText = "#" * $FilledWidth
+            $SpaceText = "-" * $EmptyWidth
+    
+            $Timestamp = Get-Date -Format "HH:mm:ss"
+    
+            # 构建最终字符串
+            $Output = "[$Timestamp] [$BarText$SpaceText] $Percent% ($CurrentGB/$CommitLimitGB GB)"
+    
+            # 关键点：用新字符串覆盖旧字符串，并在末尾补空格防止残留
+            Write-Host "`r$Output" -NoNewline -ForegroundColor $Color
+        }
+    }
+    catch
+    {
+        # 处理 Ctrl+C 退出或其他异常
+        Write-Host "`n`n监控已停止。" -ForegroundColor Cyan
+    }
+}
+function Show-MemoryBar
+{
+    <#
+    .SYNOPSIS
+        模拟 Windows 资源监视器中的内存占用条
+    .PARAMETER RefreshInterval
+        刷新间隔（秒），默认 2
+    .PARAMETER NoLoop
+        只显示一次
+    .EXAMPLE
+        Show-MemoryBar
+    .EXAMPLE
+        Show-MemoryBar -RefreshInterval 1
+    #>
+    [CmdletBinding()]
+    param(
+        [int]$RefreshInterval = 2,
+        [switch]$NoLoop
+    )
+
+    function Format-Size
+    {
+        param([double]$Bytes)
+        if ($Bytes -ge 1GB) { "{0:N2} GB" -f ($Bytes / 1GB) }
+        elseif ($Bytes -ge 1MB) { "{0:N0} MB" -f ($Bytes / 1MB) }
+        elseif ($Bytes -ge 1KB) { "{0:N0} KB" -f ($Bytes / 1KB) }
+        else { "{0:N0} B" -f $Bytes }
+    }
+
+    function Get-TruePhysicalMemory
+    {
+        $sticks = Get-CimInstance Win32_PhysicalMemory -ErrorAction SilentlyContinue
+        if ($sticks)
+        {
+            $sum = ($sticks | Measure-Object -Property Capacity -Sum).Sum
+            if ($sum -gt 0) { return [double]$sum }
+        }
+        return [double](Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory
+    }
+
+    function Write-Block
+    {
+        param([int]$Width, [ConsoleColor]$BgColor)
+        if ($Width -le 0) { return }
+        $saved = $Host.UI.RawUI.BackgroundColor
+        $Host.UI.RawUI.BackgroundColor = $BgColor
+        Write-Host (" " * $Width) -NoNewline
+        $Host.UI.RawUI.BackgroundColor = $saved
+    }
+
+    function Get-DisplayWidth
+    {
+        # 计算字符串的显示宽度（CJK 宽字符算 2 列）
+        param([string]$Text)
+        $w = 0
+        foreach ($c in $Text.ToCharArray())
+        {
+            $code = [int]$c
+            if (($code -ge 0x2E80 -and $code -le 0x9FFF) -or
+                ($code -ge 0xF900 -and $code -le 0xFAFF) -or
+                ($code -ge 0xFE30 -and $code -le 0xFE4F) -or
+                ($code -ge 0xFF01 -and $code -le 0xFF60) -or
+                ($code -ge 0x20000 -and $code -le 0x2FA1F))
+            {
+                $w += 2
+            }
+            else
+            {
+                $w += 1
+            }
+        }
+        return $w
+    }
+
+    function Write-TruncateToWidth
+    {
+        # 按显示宽度截断字符串，超出部分用 … 替代
+        param([string]$Text, [int]$MaxWidth)
+        if ($MaxWidth -le 0) { return "" }
+        $w = 0
+        $sb = [System.Text.StringBuilder]::new()
+        foreach ($c in $Text.ToCharArray())
+        {
+            $code = [int]$c
+            $cw = 1
+            if (($code -ge 0x2E80 -and $code -le 0x9FFF) -or
+                ($code -ge 0xF900 -and $code -le 0xFAFF) -or
+                ($code -ge 0xFE30 -and $code -le 0xFE4F) -or
+                ($code -ge 0xFF01 -and $code -le 0xFF60) -or
+                ($code -ge 0x20000 -and $code -le 0x2FA1F))
+            {
+                $cw = 2
+            }
+            if (($w + $cw) -gt ($MaxWidth - 1))
+            {
+                # 剩余空间放不下当前字符 + 省略号
+                [void]$sb.Append([char]0x2026)  # …
+                return $sb.ToString()
+            }
+            [void]$sb.Append($c)
+            $w += $cw
+        }
+        return $sb.ToString()
+    }
+
+    function Write-Truncated
+    {
+        param(
+            [string]$Text,
+            [int]$MaxWidth,
+            [ConsoleColor]$ForegroundColor = [ConsoleColor]::White
+        )
+        $dw = Get-DisplayWidth $Text
+        if ($dw -gt $MaxWidth)
+        {
+            $Text = Write-TruncateToWidth $Text $MaxWidth
+        }
+        Write-Host $Text -ForegroundColor $ForegroundColor
+    }
+
+    $trueTotal = Get-TruePhysicalMemory
+
+    $segDefs = @(
+        @{ Name = "硬件保留"; BgColor = [ConsoleColor]::Gray; LegendFg = [ConsoleColor]::Gray }
+        @{ Name = "正在使用"; BgColor = [ConsoleColor]::DarkGreen; LegendFg = [ConsoleColor]::Green }
+        @{ Name = "已修改  "; BgColor = [ConsoleColor]::DarkYellow; LegendFg = [ConsoleColor]::Yellow }
+        @{ Name = "备用    "; BgColor = [ConsoleColor]::DarkCyan; LegendFg = [ConsoleColor]::Cyan }
+        @{ Name = "可用    "; BgColor = [ConsoleColor]::DarkBlue; LegendFg = [ConsoleColor]::Blue }
+    )
+
+    $lineCount = 0
+    $firstRun = $true
+    try
+    {
+        while ($true)
+        {
+
+            # ── 终端宽度 ──
+            $termWidth = $Host.UI.RawUI.WindowSize.Width
+            if ($termWidth -le 0) { $termWidth = 120 }
+
+            # 进度条宽度 = 终端宽度 - 左边距(4) - 左右边框(2)
+            $barWidth = $termWidth - 6
+            if ($barWidth -lt 20) { $barWidth = 20 }
+
+            # ── 采集 ──
+            $os = Get-CimInstance Win32_OperatingSystem
+            $perf = Get-CimInstance Win32_PerfFormattedData_PerfOS_Memory
+
+            $totalVisible = [double]$os.TotalVisibleMemorySize * 1KB
+            $hardwareReserved = $trueTotal - $totalVisible
+            if ($hardwareReserved -lt 0) { $hardwareReserved = 0 }
+
+            $standbyTotal = [double]$perf.StandbyCacheCoreBytes `
+                + [double]$perf.StandbyCacheNormalPriorityBytes `
+                + [double]$perf.StandbyCacheReserveBytes
+
+            $modified = [double]$perf.ModifiedPageListBytes
+            $freeAndZero = [double]$perf.FreeAndZeroPageListBytes
+
+            $inUse = $totalVisible - $standbyTotal - $modified - $freeAndZero
+            if ($inUse -lt 0)
+            {
+                $inUse = ($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) * 1KB
+                $freeAndZero = $totalVisible - $inUse - $standbyTotal - $modified
+                if ($freeAndZero -lt 0) { $freeAndZero = 0 }
+            }
+
+            $segValues = @($hardwareReserved, $inUse, $modified, $standbyTotal, $freeAndZero)
+            $grandTotal = ($segValues | Measure-Object -Sum).Sum
+            if ($grandTotal -le 0) { $grandTotal = $trueTotal }
+
+            # ── 柱宽 ──
+            $widths = @(0, 0, 0, 0, 0)
+            $usedW = 0
+            for ($i = 0; $i -lt 5; $i++)
+            {
+                $w = [Math]::Floor(($segValues[$i] / $grandTotal) * $barWidth)
+                if ($w -lt 0) { $w = 0 }
+                if ($segValues[$i] -gt 0 -and $w -eq 0 -and ($barWidth - $usedW) -gt 0) { $w = 1 }
+                $widths[$i] = $w
+                $usedW += $w
+            }
+            $diff = $barWidth - $usedW
+            if ($diff -ne 0)
+            {
+                $maxIdx = 0; $maxV = 0
+                for ($i = 0; $i -lt 5; $i++)
+                {
+                    if ($segValues[$i] -gt $maxV) { $maxV = $segValues[$i]; $maxIdx = $i }
+                }
+                $widths[$maxIdx] += $diff
+                if ($widths[$maxIdx] -lt 0) { $widths[$maxIdx] = 0 }
+            }
+
+            # ── 清除上次输出 ──
+            if (-not $firstRun -and $lineCount -gt 0)
+            {
+                for ($j = 0; $j -lt $lineCount; $j++)
+                {
+                    Write-Host "`e[1A`e[2K" -NoNewline
+                }
+            }
+
+            $lines = 0
+
+            # ── 标题 ──
+            Write-Host ""
+            $lines++
+
+            Write-Host ""
+            $lines++
+
+            # ── 进度条（宽度已受控，固定 1 行）──
+            Write-Host "  " -NoNewline
+            Write-Host "▐" -ForegroundColor DarkGray -NoNewline
+            for ($i = 0; $i -lt 5; $i++)
+            {
+                Write-Block -Width $widths[$i] -BgColor $segDefs[$i].BgColor
+            }
+            Write-Host "▌" -ForegroundColor DarkGray
+            $lines++
+
+            Write-Host ""
+            $lines++
+
+            # ── 图例：每行一个 ──
+            for ($i = 0; $i -lt 5; $i++)
+            {
+                $pct = if ($grandTotal -gt 0) { ($segValues[$i] / $grandTotal) * 100 } else { 0 }
+
+                # 构造完整行文本（用于截断计算）
+                $legendText = "        {0}  {1,10}  ({2,5:N1}%)" -f $segDefs[$i].Name, (Format-Size $segValues[$i]), $pct
+                # 色块占 4 列 + 左边距 2 列 = 前 6 列已被色块和边距占用
+                # 所以文字部分最大宽度 = termWidth - 6
+                $textPart = "  {0}  {1,10}  ({2,5:N1}%)" -f $segDefs[$i].Name, (Format-Size $segValues[$i]), $pct
+                $textDW = Get-DisplayWidth $textPart
+                $maxTextWidth = $termWidth - 6
+                if ($textDW -gt $maxTextWidth)
+                {
+                    $textPart = Write-TruncateToWidth $textPart $maxTextWidth
+                }
+
+                Write-Host "  " -NoNewline
+                $savedBg = $Host.UI.RawUI.BackgroundColor
+                $Host.UI.RawUI.BackgroundColor = $segDefs[$i].BgColor
+                Write-Host "    " -NoNewline
+                $Host.UI.RawUI.BackgroundColor = $savedBg
+                Write-Host $textPart -ForegroundColor $segDefs[$i].LegendFg
+                $lines++
+            }
+
+            Write-Host ""
+            $lines++
+
+            # ── 摘要 ──
+            $pctInUse = if ($totalVisible -gt 0) { ($inUse / $totalVisible) * 100 } else { 0 }
+            $available = $standbyTotal + $freeAndZero
+
+            $summaryText = "  物理内存: {0}  |  OS可见: {1}  |  已使用: {2} ({3:N1}%)  |  可用: {4}" -f `
+            (Format-Size $trueTotal),
+            (Format-Size $totalVisible),
+            (Format-Size $inUse),
+            $pctInUse,
+            (Format-Size $available)
+            Write-Truncated $summaryText $termWidth White
+            $lines++
+
+            $ts = Get-Date -Format "HH:mm:ss"
+            $tsLine = "  [$ts] 每 ${RefreshInterval}s 刷新 | Ctrl+C 退出"
+            Write-Truncated $tsLine $termWidth DarkGray
+            $lines++
+
+            Write-Host ""
+            $lines++
+
+            $lineCount = $lines
+            $firstRun = $false
+
+            if ($NoLoop) { break }
+            Start-Sleep -Seconds $RefreshInterval
+        }
+    }
+    catch { }
+    finally
+    {
+        [Console]::ResetColor()
+        Write-Host ""
+    }
+}
 function Get-NonEmptySubdirectories
 {
     
