@@ -161,6 +161,9 @@ function Get-ProcessMemoryView
     <#
     .SYNOPSIS
     在管道（Pipeline）内部修改外部变量时，通常需要显式指定作用域（如 $script: 或 $global:），否则脚本块内部可能会将其视为局部变量。
+    .DESCRIPTION
+    对于分组模式(Group),是按照进程名分组的,方便用户排查哪个软件占用大量内存
+    使用 Measure-Object -Sum 计算分组总和
     .NOTES
     如果没有 $script: 前缀，在某些 PowerShell 版本或复杂的上下文中，$sum 可能不会在每一行之间成功传递累加值。
     .EXAMPLE
@@ -169,28 +172,66 @@ function Get-ProcessMemoryView
     .EXAMPLE
     使用表格呈现统计结果
     Get-ProcessMemoryView|Format-Table 
+    .EXAMPLE
+    按进程名分组,并且换行显示PIDs列
+    Get-ProcessMemoryView -First 10 -Group|ft -Wrap
     #>
     param(
         # 获取前几名进程,如果为0,则获取所有进程
-        $First = 10
+        [int]$First = 10,
+        # 是否按进程名分组
+        [switch]$Group
     )
     # Get-Process | Select-Object ID, Name, WorkingSet64, PagedMemorySize64 | Sort-Object WorkingSet64 -Descending | Select-Object -First 10
     # 1. 初始化累加变量（确保每次执行前重置为0）
     $script:Sum = 0
     $TotalRAM = (Get-CimInstance Win32_OperatingSystem).TotalVisibleMemorySize * 1KB # *1KB是换算成内存
-    $res = Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object ID, Name, @{Name = "WS(GB)"; Expression = { $_.WorkingSet64 / 1GB } }, @{Name = "PM(GB)"; Expression = { $_.PagedMemorySize64 / 1GB } }, @{Name = "percent(%)"; Expression = { [math]::Round(($_.WorkingSet64 / $TotalRAM) * 100, 2) } }, @{Name = "sum(%)"; Expression = { 
-            # 在脚本作用域内进行累加
-            $script:Sum += $_.WorkingSet64
-            # 计算累计值占总内存的百分比
-            [math]::Round(($script:Sum / $TotalRAM) * 100, 2) 
-        }
-    } 
-
-    if($First)
+    
+    if ($Group)
     {
+        # 分组模式：按进程名合并
+        $res = Get-Process | 
+        Group-Object -Property Name | 
+        Select-Object @{Name = "Name"; Expression = { $_.Name } },
+        @{Name = "Count"; Expression = { $_.Count } },
+        @{Name = "PIDs"; Expression = { ($_.Group.Id -join ",") } },
+        @{Name = "WS(GB)"; Expression = { ($_.Group | Measure-Object WorkingSet64 -Sum).Sum / 1GB } },
+        @{Name = "PM(GB)"; Expression = { ($_.Group | Measure-Object PagedMemorySize64 -Sum).Sum / 1GB } },
+        @{Name = "percent(%)"; Expression = { 
+                [math]::Round((($_.Group | Measure-Object WorkingSet64 -Sum).Sum / $TotalRAM) * 100, 2) 
+            }
+        } |
+        Sort-Object "WS(GB)" -Descending |
+        Select-Object Name, Count, "WS(GB)", "PM(GB)", "percent(%)", 
+        @{Name = "sum(%)"; Expression = { 
+                $ws = $_."WS(GB)" * 1GB
+                $script:Sum += $ws
+                [math]::Round(($script:Sum / $TotalRAM) * 100, 2) 
+            }
+        },
+        PIDs
+    }
+    else
+    {
+        # 原始模式：显示每个进程
+        $res = Get-Process | 
+        Sort-Object WorkingSet64 -Descending | 
+        Select-Object ID, Name, 
+        @{Name = "WS(GB)"; Expression = { $_.WorkingSet64 / 1GB } }, 
+        @{Name = "PM(GB)"; Expression = { $_.PagedMemorySize64 / 1GB } }, 
+        @{Name = "percent(%)"; Expression = { [math]::Round(($_.WorkingSet64 / $TotalRAM) * 100, 2) } }, 
+        @{Name = "sum(%)"; Expression = { 
+                $script:Sum += $_.WorkingSet64
+                [math]::Round(($script:Sum / $TotalRAM) * 100, 2) 
+            }
+        }
+    }
 
+    if ($First)
+    {
         $res = $res | Select-Object -First $First
     }
+    
     return $res
 }
 function Get-CommitStatus
@@ -253,6 +294,7 @@ function Show-CommitMemoryBar
         - 红色: > 90% (危险)
 
         Commit Limit 的动态性：如果你的 Windows 设置了“自动管理所有驱动器的分页文件大小”，当你运行之前写的内存增加脚本时，你会发现 Commit Limit（分母）偶尔也会变大，因为 Windows 正在动态扩充物理硬盘上的分页文件来应对压力。
+ 
     .NOTES
     控制台的“自动换行”机制
     行宽溢出：你的控制台窗口不够宽。当 [时间] [进度条] 比例 这一串字符的总长度超过了窗口宽度时，即便我们用了 \r（回到行首），余下的部分也会被强制挤到下一行。
