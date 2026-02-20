@@ -213,9 +213,9 @@ function p
 
     )
     # 配置编码输出组合防止外部脚本(非powershell脚本输出非英文字符时乱码)
-    Write-Verbose 'Setting Output Encoding to UTF8' -Verbose
-    $OutputEncoding = [System.Text.Encoding]::UTF8
-    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    # Write-Verbose 'Setting Output Encoding to UTF8' -Verbose
+    # $OutputEncoding = [System.Text.Encoding]::UTF8
+    # [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
   
     # 处理$profile 和windows terminal 中的携带参数启动pwsh冲突或重复关系
     if ($null -eq $PsInit)

@@ -160,78 +160,330 @@ function Get-ProcessMemoryView
 {
     <#
     .SYNOPSIS
-    在管道（Pipeline）内部修改外部变量时，通常需要显式指定作用域（如 $script: 或 $global:），否则脚本块内部可能会将其视为局部变量。
+    查看进程内存占用情况，支持分组、排序、私有工作集、自定义单位等功能。
+
     .DESCRIPTION
-    对于分组模式(Group),是按照进程名分组的,方便用户排查哪个软件占用大量内存
-    使用 Measure-Object -Sum 计算分组总和
+    获取当前系统所有进程的内存使用情况，支持以下特性：
+    - 按进程名分组（Group模式），方便排查哪个软件占用大量内存
+    - 自定义排序指标（WS/PM/PrivWS）
+    - 自定义显示单位（KB/MB/GB）
+    - 可选显示私有工作集（与任务管理器"内存"列对应）
+    - 累加百分比列（sum%），快速定位内存大户
+    - 百分比列自动跟随排序指标切换（%WS / %PM / %PrivWS）
+
+    关于作用域：
+    在管道（Pipeline）内部修改外部变量时，需要显式指定作用域（$script:），
+    否则脚本块内部会将其视为局部变量，导致累加失败。
+
+    .PARAMETER First
+    获取前几名进程，设为 0 则获取所有进程。默认 10。
+
+    .PARAMETER Group
+    启用分组模式，按进程名合并，使用 Measure-Object -Sum 计算分组总和。
+
+    .PARAMETER WorkingSetPrivate
+    启用后增加私有工作集列（PrivWS），通过 CIM 查询获取，
+    与任务管理器"详细信息"中的"内存(私有工作集)"一致。
+
+    .PARAMETER SortBy
+    指定排序依据的指标。可选值：WS、PM、PrivWS。
+    当指定 PrivWS 时会自动启用 -WorkingSetPrivate。
+    百分比列会自动切换为对应指标的占比（%WS / %PM / %PrivWS）。
+    默认 WS。
+
+    .PARAMETER Unit
+    显示内存的单位。可选值：KB、MB、GB。默认 GB。
+
+    .EXAMPLE
+    Get-ProcessMemoryView | ft
+    默认参数：前10名，按WS排序，显示%WS，单位GB。
+
+    .EXAMPLE
+    Get-ProcessMemoryView -Unit MB -SortBy PM | ft
+    以MB为单位，按PM排序，显示%PM。
+
+    .EXAMPLE
+    Get-ProcessMemoryView -SortBy PrivWS -Unit MB | ft
+    按私有工作集排序（自动启用该列），显示%PrivWS，以MB显示。
+
+    .EXAMPLE
+    Get-ProcessMemoryView -Group -First 10 | ft -Wrap
+    分组模式，换行显示PIDs列。
+
+    .EXAMPLE
+    Get-ProcessMemoryView -Group | Select-Object * -ExcludeProperty PIDs | ft
+    隐藏PIDs列。
+
+    .EXAMPLE
+    Get-ProcessMemoryView | Measure-Object '%WS' -Sum
+    计算最占内存的前若干名进程的内存占用率之和。
+
+    .EXAMPLE
+    Get-ProcessMemoryView -Group | Where-Object { $_.Name -like 'msedge' }
+    筛选特定进程名的分组数据。
+
     .NOTES
-    如果没有 $script: 前缀，在某些 PowerShell 版本或复杂的上下文中，$sum 可能不会在每一行之间成功传递累加值。
-    .EXAMPLE
-    计算最占内存的前若干名进程的内存占用率之和
-    Get-ProcessMemoryView|measure 'percent(%)' -Sum
-    .EXAMPLE
-    使用表格呈现统计结果
-    Get-ProcessMemoryView|Format-Table 
-    .EXAMPLE
-    按进程名分组,并且换行显示PIDs列
-    Get-ProcessMemoryView -First 10 -Group|ft -Wrap
-    #>
-    param(
-        # 获取前几名进程,如果为0,则获取所有进程
-        [int]$First = 10,
-        # 是否按进程名分组
-        [switch]$Group
-    )
-    # Get-Process | Select-Object ID, Name, WorkingSet64, PagedMemorySize64 | Sort-Object WorkingSet64 -Descending | Select-Object -First 10
-    # 1. 初始化累加变量（确保每次执行前重置为0）
-    $script:Sum = 0
-    $TotalRAM = (Get-CimInstance Win32_OperatingSystem).TotalVisibleMemorySize * 1KB # *1KB是换算成内存
+    - 私有工作集通过 Win32_PerfFormattedData_PerfProc_Process 获取，首次查询可能稍慢
+    - 百分比列基于总可见物理内存计算对应指标的占比
+    - 如果没有 $script: 前缀，在某些 PowerShell 版本或复杂上下文中，
+      $sum 可能不会在每一行之间成功传递累加值
+    - 工作集（WorkingSet）= 专用工作集（Private WS）+ 共享工作集（Shared WS）。
+
+    .NOTES
+      多个进程可能共享同一段物理内存页（如共享 DLL），因此对所有进程的 WS 简单求和
+      会重复计算共享部分，导致累加百分比（%Sum）通常高于系统实际物理内存占用率。(总和可能超过100%)
+      类似的,针对私有工作集(Private WS)的求和也是不准确的(偏少),因为共享工作集没有计入占用.
+      而这部分和资源管理器中的内存字段值是对应的(采用的是私有工作集).
+      然而,资源管理器的内存一列的设计很具有迷惑性,总结性的全部进程内存占用百分比之和计算依据既不是私有工作集,
+      也不是总工作集,更不是共享工作集,而是直接根据物理内存被占用了多少得出的.)
+        内存占用的视图(无论是数值还是百分比,都是基于私有工作集的),
+        计算百分比仅仅是进程的私有工作集相对物理内存的占用比,而不是包含共享工作集.
+      同理，PM（PagedMemorySize）包含已换出到页面文件的部分，与物理内存占用并非
+      一一对应，其累加百分比同样可能偏高或与实际物理内存使用率不一致。
+      若需精确的系统级内存占用率，请参考函数开头打印的物理内存使用信息。
     
+    1. Idle 进程 (PID 0)
+        不是真正的进程，它是内核用来统计 CPU 空闲时间的占位符
+        WS = 0, PM = 0，实际不占用物理内存
+        这里显示的 PrivWS = 5.26GB 是虚假且无意义的数据(也不是可用(空闲)内存)，很可能是统计工具的误报或者内核地址空间的映射
+        资源监视器和任务管理器都不显示它的内存占用
+    2. Memory Compression
+        这是 Windows 的内存压缩机制（System 进程的子工作）
+        它显示的 1.28GB 代表的是被压缩后存放的内存内容
+        这些内存原本属于其他进程，只是被压缩存储了
+        如果算上它，就会造成重复计算（double counting）
+    #>
+    [CmdletBinding()]
+    param(
+        [int]$First = 10,
+
+        [switch]$Group,
+
+        [switch]$WorkingSetPrivate,
+
+        [ValidateSet("WS", "PM", "PrivWS")]
+        [string]$SortBy = "WS",
+
+        [ValidateSet("KB", "MB", "GB")]
+        [string]$Unit = "GB"
+    )
+    # 最保守的跳过列表（推荐）
+    $SKIP_PROCESSES = @( "Idle", "Memory Compression" )
+    # 如果只关注应用层
+    # $SKIP_PROCESSES = { "Idle", "Memory Compression", "System" }
+
+    # --- 自动修正：按 PrivWS 排序时自动启用开关 ---
+    if ($SortBy -eq "PrivWS" -and -not $WorkingSetPrivate)
+    {
+        $WorkingSetPrivate = [switch]::Present
+    }
+
+    # --- 单位换算因子 ---
+    $divisor = switch ($Unit)
+    {
+        "KB" { 1KB }
+        "MB" { 1MB }
+        "GB" { 1GB }
+    }
+
+    # 列名，如 WS(MB)、PM(GB)、PrivWS(GB)
+    $wsCol = "WS($Unit)"
+    $pmCol = "PM($Unit)"
+    $pwsCol = "PrivWS($Unit)"
+
+    # --- 排序列名映射 ---
+    $sortColumn = switch ($SortBy)
+    {
+        "WS" { $wsCol }
+        "PM" { $pmCol }
+        "PrivWS" { $pwsCol }
+    }
+
+    # --- 百分比列名跟随排序指标 ---
+    $pctCol = "%$SortBy"          # %WS / %PM / %PrivWS
+    $pctSumCol = "%Sum($SortBy)"  # %Sum(WS) / %Sum(PM) / %Sum(PrivWS)
+    $capSumCol = "CapSum($SortBy)"
+
+    # --- 初始化 ---
+    $script:PercentSum = 0
+    $script:CapacitySum = 0
+
+    $osInfo = Get-CimInstance Win32_OperatingSystem
+    $TotalRAM = $osInfo.TotalVisibleMemorySize * 1KB  # 转为字节
+
+
+    # --- 打印物理内存使用概况 ---
+    $usedRAMBytes = ($osInfo.TotalVisibleMemorySize - $osInfo.FreePhysicalMemory) * 1KB
+    $usedRAMPercent = [math]::Round(($usedRAMBytes / $TotalRAM) * 100, 2)
+    $totalDisp = [math]::Round($TotalRAM / $divisor, 2)
+    $usedDisp = [math]::Round($usedRAMBytes / $divisor, 2)
+    $freeDisp = [math]::Round(($TotalRAM - $usedRAMBytes) / $divisor, 2)
+
+    Write-Host ""
+    Write-Host "Physical Memory" -ForegroundColor Cyan
+    Write-Host "  Total : $totalDisp $Unit" -ForegroundColor White
+    Write-Host "  Used  : $usedDisp $Unit  ($usedRAMPercent %)" -ForegroundColor $(if ($usedRAMPercent -gt 85) { "Red" } elseif ($usedRAMPercent -gt 70) { "Yellow" } else { "Green" })
+    Write-Host "  Free  : $freeDisp $Unit" -ForegroundColor White
+
+    # --- 打印当前参数 ---
+    Write-Host "Parameters" -ForegroundColor Cyan
+    Write-Host "  First             : $(if ($First) { $First } else { 'All' })" -ForegroundColor Yellow
+    Write-Host "  Group             : $Group" -ForegroundColor Yellow
+    Write-Host "  WorkingSetPrivate : $WorkingSetPrivate" -ForegroundColor Yellow
+    Write-Host "  SortBy            : $SortBy  (percent col: $pctCol)" -ForegroundColor Yellow
+    Write-Host "  Unit              : $Unit" -ForegroundColor Yellow
+
+    # --- 预查询私有工作集 PID → 字节数 ---
+    Write-Verbose "Querying More info by Get-CimInstance ,wait for a moment..."
+    $privateWSMap = @{}
+    if ($WorkingSetPrivate)
+    {
+        Get-CimInstance Win32_PerfFormattedData_PerfProc_Process |
+        ForEach-Object { $privateWSMap[[int]$_.IDProcess] = [long]$_.WorkingSetPrivate }
+    }
+
+    # ============================================================
+    #  辅助：根据 SortBy 生成百分比计算表达式（字节级原始值 / TotalRAM）
+    # ============================================================
+    $processes = Get-Process | Where-Object { $_.Name -notin $SKIP_PROCESSES } 
     if ($Group)
     {
-        # 分组模式：按进程名合并
-        $res = Get-Process | 
-        Group-Object -Property Name | 
-        Select-Object @{Name = "Name"; Expression = { $_.Name } },
-        @{Name = "Count"; Expression = { $_.Count } },
-        @{Name = "PIDs"; Expression = { ($_.Group.Id -join ",") } },
-        @{Name = "WS(GB)"; Expression = { ($_.Group | Measure-Object WorkingSet64 -Sum).Sum / 1GB } },
-        @{Name = "PM(GB)"; Expression = { ($_.Group | Measure-Object PagedMemorySize64 -Sum).Sum / 1GB } },
-        @{Name = "percent(%)"; Expression = { 
-                [math]::Round((($_.Group | Measure-Object WorkingSet64 -Sum).Sum / $TotalRAM) * 100, 2) 
+        # === 分组模式 ===
+
+        # 1) 构建基础数据（始终包含 WS / PM 列）
+        $res = $processes |
+        Group-Object -Property Name |
+        Select-Object @{N = "Name"; E = { $_.Name } },
+        @{N = "Count"; E = { $_.Count } },
+        @{N = "PIDs"; E = { ($_.Group.Id -join ",") } },
+        @{N = $wsCol; E = { ($_.Group | Measure-Object WorkingSet64 -Sum).Sum / $divisor } },
+        @{N = $pmCol; E = { ($_.Group | Measure-Object PagedMemorySize64 -Sum).Sum / $divisor } }
+
+        # 2) 可选：追加私有工作集列
+        if ($WorkingSetPrivate)
+        {
+            $res = $res | Select-Object *,
+            @{N = $pwsCol; E = {
+                    $pids = $_.PIDs -split ","
+                    $total = ($pids | ForEach-Object { $privateWSMap[[int]$_] } | Measure-Object -Sum).Sum
+                    [math]::Round($total / $divisor, 4)
+                }
             }
-        } |
-        Sort-Object "WS(GB)" -Descending |
-        Select-Object Name, Count, "WS(GB)", "PM(GB)", "percent(%)", 
-        @{Name = "sum(%)"; Expression = { 
-                $ws = $_."WS(GB)" * 1GB
-                $script:Sum += $ws
-                [math]::Round(($script:Sum / $TotalRAM) * 100, 2) 
+        }
+
+        # 3) 追加百分比列（基于当前 SortBy 指标）
+        $pctExpr = switch ($SortBy)
+        {
+            "WS"
+            {
+                @{N = $pctCol; E = {
+                        [math]::Round(($_."$wsCol" * $divisor / $TotalRAM) * 100, 2)
+                    }
+                }
             }
-        },
-        PIDs
+            "PM"
+            {
+                @{N = $pctCol; E = {
+                        [math]::Round(($_."$pmCol" * $divisor / $TotalRAM) * 100, 2)
+                    }
+                }
+            }
+            "PrivWS"
+            {
+                @{N = $pctCol; E = {
+                        [math]::Round(($_."$pwsCol" * $divisor / $TotalRAM) * 100, 2)
+                    }
+                }
+            }
+        }
+        $res = $res | Select-Object *, $pctExpr
+
+        # 4) 排序 → 计算累加百分比与容量
+        $finalProps = @("Name", "Count", $wsCol, $pmCol)
+        if ($WorkingSetPrivate) { $finalProps += $pwsCol }
+        $finalProps += $pctCol
+        $finalProps += @{N = $pctSumCol; E = {
+                $script:PercentSum += $_."$pctCol"
+                [math]::Round($script:PercentSum, 2)
+            }
+        }
+        $finalProps += @{N = $capSumCol; E = {
+                $script:CapacitySum += $_."$sortColumn"
+                [math]::Round($script:CapacitySum, 2)
+            }
+        }
+        $finalProps += "PIDs"
+
+        $res = $res | Sort-Object $sortColumn -Descending | Select-Object $finalProps
     }
     else
     {
-        # 原始模式：显示每个进程
-        $res = Get-Process | 
-        Sort-Object WorkingSet64 -Descending | 
-        Select-Object ID, Name, 
-        @{Name = "WS(GB)"; Expression = { $_.WorkingSet64 / 1GB } }, 
-        @{Name = "PM(GB)"; Expression = { $_.PagedMemorySize64 / 1GB } }, 
-        @{Name = "percent(%)"; Expression = { [math]::Round(($_.WorkingSet64 / $TotalRAM) * 100, 2) } }, 
-        @{Name = "sum(%)"; Expression = { 
-                $script:Sum += $_.WorkingSet64
-                [math]::Round(($script:Sum / $TotalRAM) * 100, 2) 
+        # === 非分组模式 ===
+
+        # 1) 构建基础数据
+        $baseProps = @(
+            'ID', 'Name',
+            @{N = $wsCol; E = { $_.WorkingSet64 / $divisor } },
+            @{N = $pmCol; E = { $_.PagedMemorySize64 / $divisor } }
+        )
+        if ($WorkingSetPrivate)
+        {
+            $baseProps += @{N = $pwsCol; E = {
+                    [math]::Round(($privateWSMap[[int]$_.ID]) / $divisor, 4)
+                }
             }
         }
+
+        $res = $processes | Select-Object $baseProps
+
+        # 2) 追加百分比列
+        $pctExpr = switch ($SortBy)
+        {
+            "WS"
+            {
+                @{N = $pctCol; E = {
+                        [math]::Round(($_."$wsCol" * $divisor / $TotalRAM) * 100, 2)
+                    }
+                }
+            }
+            "PM"
+            {
+                @{N = $pctCol; E = {
+                        [math]::Round(($_."$pmCol" * $divisor / $TotalRAM) * 100, 2)
+                    }
+                }
+            }
+            "PrivWS"
+            {
+                @{N = $pctCol; E = {
+                        [math]::Round(($_."$pwsCol" * $divisor / $TotalRAM) * 100, 2)
+                    }
+                }
+            }
+        }
+        $res = $res | Select-Object *, $pctExpr
+
+        # 3) 排序 → 计算累加百分比与容量
+        $finalProps = @('ID', 'Name', $wsCol, $pmCol)
+        if ($WorkingSetPrivate) { $finalProps += $pwsCol }
+        $finalProps += $pctCol
+        $finalProps += @{N = $pctSumCol; E = {
+                $script:PercentSum += $_."$pctCol"
+                [math]::Round($script:PercentSum, 2)
+            }
+        }
+        $finalProps += @{N = $capSumCol; E = {
+                $script:CapacitySum += $_."$sortColumn"
+                [math]::Round($script:CapacitySum, 2)
+            }
+        }
+
+        $res = $res | Sort-Object $sortColumn -Descending | Select-Object $finalProps
     }
 
-    if ($First)
-    {
-        $res = $res | Select-Object -First $First
-    }
-    
+    # --- 截取前 N 条 ---
+    if ($First) { $res = $res | Select-Object -First $First }
+
     return $res
 }
 function Get-CommitStatus

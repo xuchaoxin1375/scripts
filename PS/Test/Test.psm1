@@ -1,275 +1,230 @@
-<#
-.SYNOPSIS
-    批量测试主机连通性与 HTTP 状态码。
-
-.DESCRIPTION
-    Test-HostBatch 支持从文件或管道读取主机名或 URL，自动提取主机，
-    并行执行 ICMP Ping 和（如果是 URL）HTTP HEAD/GET 请求，返回结构化结果。
-
-.PARAMETER InputFile
-    包含主机或 URL 的文本文件路径（每行一个）。
-
-.PARAMETER InputObject
-    通过管道传入的字符串数组（支持管道）。
-
-.PARAMETER ThrottleLimit
-    并行线程数，默认 32。
-
-.PARAMETER TimeoutSeconds
-    HTTP 请求和 Ping 的超时时间（秒），默认 10。
-
-.PARAMETER Method
-    HTTP 请求方法，可选 HEAD（默认）、GET。
-
-.PARAMETER NoStatus
-    静默模式，不输出进度信息。
-
-.EXAMPLE
-    Test-HostBatch -InputFile .\urls.txt
-    测试文件中所有地址的 Ping 和 HTTP 状态码。
-
-.EXAMPLE
-    "google.com", "https://httpbin.org/status/404" | Test-HostBatch
-    通过管道传入。
-
-.EXAMPLE
-    Test-HostBatch -InputFile .\urls.txt | Export-Csv report.csv -Encoding UTF8 -NoTypeInformation
-    导出完整报告。
-
-.OUTPUTS
-    PSCustomObject，包含：
-    - Host           : 原始输入
-    - ResolvedHost   : 解析出的主机名
-    - PingStatus     : "Up" / "Down"（ICMP）
-    - PingLatency    : ICMP 延迟（ms）
-    - IsHttpUrl      : 是否为 HTTP/HTTPS
-    - StatusCode     : HTTP 状态码（如 200, 404）
-    - StatusDescription : 状态描述（如 OK, Not Found）
-    - Error          : 错误信息
-
-.NOTES
-    要求：PowerShell 7+
-    HTTP 请求默认使用 HEAD 方法（节省带宽），失败时自动 fallback 到 GET。
-#>
-function push1by1
+function Get-ProcessMemoryViewx
 {
-    <# 
+    <#
     .SYNOPSIS
-    测试后台作业特性:边计算边返回内容,并且便于模拟耗时任务,时间可以通过参数自行指定
-    每秒返回1个数字,默认返回10个数
-    .PARAMETER Count
-    运行时间,也是打印的数字数量(通常填正整数)
-    .PARAMETER ShowProgress
-    打印数字时显示总数,每个数的打印会以[$i/$Count]的格式打印,这种情况下,可以用来简单区分运行在不同后台作业的此函数
-    .PARAMETER ShowDateTime
-    打印日期时间
+    查看进程内存占用情况，支持分组、排序、私有工作集、自定义单位等功能。
+
     .DESCRIPTION
+    获取当前系统所有进程的内存使用情况，支持以下特性：
+    - 按进程名分组（Group模式），方便排查哪个软件占用大量内存
+    - 自定义排序指标（WS/PM/PrivateWS），排序指标决定百分比列和累加列的计算基准
+    - 自定义显示单位（KB/MB/GB）
+    - 可选显示私有工作集（与任务管理器"内存"列对应）
+    - 累加百分比列（sum%），快速定位内存大户
+    
+    关于百分比列：
+    百分比列名和计算基准跟随 SortBy 参数：
+    - SortBy WS         → 显示 %WS 列
+    - SortBy PM         → 显示 %PM 列
+    - SortBy PrivateWS  → 显示 %PrivateWS 列
+
+    关于作用域：
+    在管道（Pipeline）内部修改外部变量时，需要显式指定作用域（$script:），
+    否则脚本块内部会将其视为局部变量，导致累加失败。
+
+    .PARAMETER First
+    获取前几名进程，设为 0 则获取所有进程。默认 10。
+
+    .PARAMETER Group
+    启用分组模式，按进程名合并，使用 Measure-Object -Sum 计算分组总和。
+
+    .PARAMETER WorkingSetPrivate
+    启用后增加私有工作集列（PrivateWS），通过 CIM 查询获取，
+    与任务管理器"详细信息"中的"内存(私有工作集)"一致。
+
+    .PARAMETER SortBy
+    指定排序依据的指标，同时决定百分比列的计算基准。
+    可选值：WS、PM、PrivateWS。
+    当指定 PrivateWS 时会自动启用 -WorkingSetPrivate。默认 WS。
+
+    .PARAMETER Unit
+    显示内存的单位。可选值：KB、MB、GB。默认 GB。
+
+    .EXAMPLE
+    Get-ProcessMemoryView | ft
+    默认参数：前10名，按WS排序，显示%WS，单位GB。
+
+    .EXAMPLE
+    Get-ProcessMemoryView -Unit MB -SortBy PM | ft
+    以MB为单位，按PM排序，显示%PM。
+
+    .EXAMPLE
+    Get-ProcessMemoryView -SortBy PrivateWS -Unit MB | ft
+    按私有工作集排序（自动启用该列），显示%PrivateWS，以MB显示。
+
+    .EXAMPLE
+    Get-ProcessMemoryView -Group -First 10 | ft -Wrap
+    分组模式，换行显示PIDs列。
+
+    .EXAMPLE
+    Get-ProcessMemoryView -Group | Select-Object * -ExcludeProperty PIDs | ft
+    隐藏PIDs列。
+
+    .EXAMPLE
+    Get-ProcessMemoryView | Measure-Object '%WS' -Sum
+    计算最占内存的前若干名进程的WS占用率之和。
+
+    .EXAMPLE
+    Get-ProcessMemoryView -Group | Where-Object { $_.Name -like 'msedge' }
+    筛选特定进程名的分组数据。
+
     .NOTES
-    可以考虑支持打印时间
+    - 私有工作集通过 Win32_PerfFormattedData_PerfProc_Process 获取，首次查询可能稍慢
+    - 百分比基于总可见物理内存计算
+    - 如果没有 $script: 前缀，在某些 PowerShell 版本或复杂上下文中，
+      $sum 可能不会在每一行之间成功传递累加值
     #>
-    [cmdletBinding()]
     param(
-        $Count = 10,
-        $JobMark="",
-        [switch]$ShowProgress,
-        [switch]$ShowDateTime
+        [int]$First = 10,
+
+        [switch]$Group,
+
+        [switch]$WorkingSetPrivate,
+
+        [ValidateSet("WS", "PM", "PrivateWS")]
+        [string]$SortBy = "WS",
+
+        [ValidateSet("KB", "MB", "GB")]
+        [string]$Unit = "GB"
     )
-    if ($Count -and $Count.GetType().Name -match 'Int|Decimal|Double')
+
+    # --- 自动修正：按 PrivateWS 排序时自动启用开关 ---
+    if ($SortBy -eq "PrivateWS" -and -not $WorkingSetPrivate)
     {
-        Write-Verbose "$Count 是数值类型 (通过名称匹配)"
+        $WorkingSetPrivate = [switch]::Present
+    }
+
+    # --- 打印当前参数 ---
+    Write-Host "========== Parameters ==========" -ForegroundColor Cyan
+    Write-Host "  First             : $(if ($First) { $First } else { 'All' })" -ForegroundColor Yellow
+    Write-Host "  Group             : $Group" -ForegroundColor Yellow
+    Write-Host "  WorkingSetPrivate : $WorkingSetPrivate" -ForegroundColor Yellow
+    Write-Host "  SortBy            : $SortBy" -ForegroundColor Yellow
+    Write-Host "  Unit              : $Unit" -ForegroundColor Yellow
+    Write-Host "=================================" -ForegroundColor Cyan
+
+    # --- 单位换算因子 ---
+    $divisor = switch ($Unit)
+    {
+        "KB" { 1KB }
+        "MB" { 1MB }
+        "GB" { 1GB }
+    }
+
+    # --- 列名定义 ---
+    $wsCol = "WS($Unit)"
+    $pmCol = "PM($Unit)"
+    $pwsCol = "PrivateWS($Unit)"
+    $pctCol = "%$SortBy"           # 百分比列名跟随排序指标
+    $sumCol = "sum(%$SortBy)"      # 累加列名跟随排序指标
+    $sortColumn = switch ($SortBy)
+    {
+        "WS"         { $wsCol }
+        "PM"         { $pmCol }
+        "PrivateWS"  { $pwsCol }
+    }
+
+    # --- 初始化 ---
+    $script:Sum = 0
+    $TotalRAM = (Get-CimInstance Win32_OperatingSystem).TotalVisibleMemorySize * 1KB
+
+    # --- 预查询私有工作集 PID → 字节数 ---
+    $privateWSMap = @{}
+    if ($WorkingSetPrivate)
+    {
+        Get-CimInstance Win32_PerfFormattedData_PerfProc_Process |
+            ForEach-Object { $privateWSMap[[int]$_.IDProcess] = [long]$_.WorkingSetPrivate }
+    }
+
+    if ($Group)
+    {
+        # === 分组模式 ===
+
+        # 1) 构建基础数据
+        $res = Get-Process | 
+        Group-Object -Property Name | 
+        Select-Object @{N = "Name"; E = { $_.Name } },
+        @{N = "Count"; E = { $_.Count } },
+        @{N = "PIDs"; E = { ($_.Group.Id -join ",") } },
+        @{N = $wsCol; E = { ($_.Group | Measure-Object WorkingSet64 -Sum).Sum / $divisor } },
+        @{N = $pmCol; E = { ($_.Group | Measure-Object PagedMemorySize64 -Sum).Sum / $divisor } }
+
+        # 2) 可选：追加私有工作集列
+        if ($WorkingSetPrivate)
+        {
+            $res = $res | Select-Object *, 
+            @{N = $pwsCol; E = {
+                    $pids = $_.PIDs -split ","
+                    $total = ($pids | ForEach-Object { $privateWSMap[[int]$_] } | Measure-Object -Sum).Sum
+                    [math]::Round($total / $divisor, 4)
+                }
+            }
+        }
+
+        # 3) 计算百分比列（基于排序指标）
+        $res = $res | Select-Object *,
+        @{N = $pctCol; E = {
+                $bytes = $_.$sortColumn * $divisor
+                [math]::Round(($bytes / $TotalRAM) * 100, 2)
+            }
+        }
+
+        # 4) 排序 → 计算累加 sum
+        $finalProps = @("Name", "Count", $wsCol, $pmCol)
+        if ($WorkingSetPrivate) { $finalProps += $pwsCol }
+        $finalProps += $pctCol
+        $finalProps += @{N = $sumCol; E = { 
+                $script:Sum += $_.$pctCol
+                [math]::Round($script:Sum, 2)
+            }
+        }
+        $finalProps += "PIDs"
+
+        $res = $res | Sort-Object $sortColumn -Descending | Select-Object $finalProps
     }
     else
     {
-        Write-Output "[$Count] 不是数值类型"
-        return $False
-    }
-    for ($i = 0; $i -lt $Count; $i++)
-    {
-        $c = $i + 1
-        if($ShowProgress)
+        # === 非分组模式 ===
+
+        # 1) 构建基础数据
+        $baseProps = @(
+            'ID', 'Name',
+            @{N = $wsCol; E = { $_.WorkingSet64 / $divisor } },
+            @{N = $pmCol; E = { $_.PagedMemorySize64 / $divisor } }
+        )
+        if ($WorkingSetPrivate)
         {
-            $res = "[$c/$Count]"
-        }else{
-            $res = $c
+            $baseProps += @{N = $pwsCol; E = {
+                    [math]::Round(($privateWSMap[[int]$_.ID]) / $divisor, 4)
+                }
+            }
         }
-        if($ShowDateTime){
-            $res="$res $(Get-Date -Format 'yyyy-MM-dd--HH-mm-ss.fff')"
+
+        $res = Get-Process | Select-Object $baseProps
+
+        # 2) 计算百分比列（基于排序指标）
+        $res = $res | Select-Object *,
+        @{N = $pctCol; E = {
+                $bytes = $_.$sortColumn * $divisor
+                [math]::Round(($bytes / $TotalRAM) * 100, 2)
+            }
         }
-        if($JobMark){
-            $res="[$JobMark]: $res"
+
+        # 3) 排序 → 计算累加 sum
+        $finalProps = @('ID', 'Name', $wsCol, $pmCol)
+        if ($WorkingSetPrivate) { $finalProps += $pwsCol }
+        $finalProps += $pctCol
+        $finalProps += @{N = $sumCol; E = {
+                $script:Sum += $_.$pctCol
+                [math]::Round($script:Sum, 2)
+            }
         }
-        Write-Output $res
-        Start-Sleep 1
-        # return $i
-    }
-}
-function Test-HostBatch
-{
-    [CmdletBinding()]
-    param(
-        [Parameter(ValueFromPipeline)]
-        [string[]] $InputObject,
 
-        [Parameter()]
-        [string] $InputFile,
-
-        [int] $ThrottleLimit = 32,
-
-        [int] $TimeoutSeconds = 10,
-
-        [ValidateSet('HEAD', 'GET')]
-        [string] $Method = 'HEAD',
-
-        [switch] $NoStatus
-    )
-
-    begin
-    {
-        $inputs = @()
-        if ($InputFile)
-        {
-            if (-not (Test-Path $InputFile)) { throw "文件不存在: $InputFile" }
-            $inputs += Get-Content -Path $InputFile -Encoding UTF8
-        }
+        $res = $res | Sort-Object $sortColumn -Descending | Select-Object $finalProps
     }
 
-    process
-    {
-        if ($null -ne $InputObject)
-        {
-            $inputs += $InputObject
-        }
-    }
+    # --- 截取前 N 条 ---
+    if ($First) { $res = $res | Select-Object -First $First }
 
-    end
-    {
-        $inputs |
-        ForEach-Object { $_.Trim() } |
-        Where-Object { $_ -ne '' -and $_ -notmatch '^\s*#' } |
-        ForEach-Object -Parallel {
-            # =============== ✅ 关键：启用 TLS 1.2 + 1.3 ===============
-            [System.Net.ServicePointManager]::SecurityProtocol = 
-            [System.Net.SecurityProtocolType]::Tls12 -bor 
-            [System.Net.SecurityProtocolType]::Tls13
-
-            $raw = $_
-            $isHttp = $raw -match '^https?://.+'
-            $hostname = $null
-
-            $result = [ordered]@{
-                Host              = $raw
-                ResolvedHost      = $null
-                PingStatus        = 'Down'
-                PingLatency       = $null
-                IsHttpUrl         = $isHttp
-                StatusCode        = $null
-                StatusDescription = $null
-                Error             = $null
-            }
-
-            # --- 提取主机 ---
-            if ($isHttp)
-            {
-                try
-                {
-                    $uri = [System.Uri]$raw
-                    $hostname = $uri.Host
-                    if (-not $uri.Port)
-                    {
-                        $port = if ($uri.Scheme -eq 'https') { 443 } else { 80 }
-                    }
-                    else
-                    {
-                        $port = $uri.Port
-                    }
-                }
-                catch
-                {
-                    $result.Error = "无效 URL"
-                    return [PSCustomObject]$result
-                }
-            }
-            else
-            {
-                $hostname = $raw
-            }
-
-            if ([string]::IsNullOrEmpty($hostname))
-            {
-                $result.Error = "无法提取主机名"
-                return [PSCustomObject]$result
-            }
-            $result.ResolvedHost = $hostname
-
-            # --- ICMP Ping ---
-            try
-            {
-                $ping = Test-Connection -TargetName $hostname -Count 1 -TimeoutSeconds $using:TimeoutSeconds -ErrorAction Stop
-                $result.PingStatus = 'Up'
-                $result.PingLatency = $ping.Latency
-            }
-            catch
-            {
-                $result.Error = "Ping 失败: $($_.Exception.Message)"
-            }
-
-            # --- HTTP(S) 状态码（使用 .NET 原生请求）---
-            if ($isHttp)
-            {
-                $request = $null
-                try
-                {
-                    $uri = [System.Uri]$raw
-                    $request = [System.Net.WebRequest]::Create($uri)
-                    $request.Method = $using:Method
-                    $request.Timeout = $using:TimeoutSeconds * 1000
-                    $request.AllowAutoRedirect = $true  # 可选：跟随重定向
-
-                    # 忽略证书错误（仅测试环境）
-                    if ($request -is [System.Net.HttpWebRequest])
-                    {
-                        $request.ServerCertificateValidationCallback = { $true }
-                    }
-
-                    $response = $request.GetResponse()
-                    $result.StatusCode = $response.StatusCode.value__
-                    $result.StatusDescription = $response.StatusDescription
-                    $response.Close()
-                }
-                catch
-                {
-                    $ex = $_.Exception
-
-                    # 👉 捕获 WebException 中的响应状态码
-                    if ($ex -is [System.Net.WebException] -and $ex.Response)
-                    {
-                        $resp = $ex.Response
-                        $status = $resp.StatusCode.value__
-                        $desc = $resp.StatusDescription
-                        $result.StatusCode = $status
-                        $result.StatusDescription = $desc
-                    }
-                    else
-                    {
-                        $msg = $ex.Message -replace '\r?\n', ' '
-                        if ($result.Error -eq $null)
-                        {
-                            $result.Error = "HTTP 错误: $msg"
-                        }
-                    }
-                }
-                finally
-                {
-                    if ($request -and $request.RequestUri.Scheme -eq 'https')
-                    {
-                        # 清理
-                        $request.ServicePoint.CloseConnectionGroup("")
-                    }
-                }
-            }
-
-            [PSCustomObject]$result
-        } -ThrottleLimit $ThrottleLimit |
-        Select-Object Host, ResolvedHost, PingStatus, PingLatency, IsHttpUrl, StatusCode, StatusDescription, Error
-    }
+    return $res
 }
