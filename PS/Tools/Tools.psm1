@@ -106,7 +106,77 @@ python3 /www/sh/nginx_conf/maintain_nginx_vhosts.py maintain -d -k first
     # $cmdsLF | ssh $User@$HostName "cat -A"
 
 }
-# Get-Content ./urls.txt | Where-Object { $_.Trim() } | ForEach-Object -Parallel { $hostname = $_; Invoke-WebRequest $_ | Select-Object StatusCode, StatusDescription, @{Name = 'Host'; Expression = { $hostname } } } -ThrottleLimit 500
+ 
+function Invoke-RemoteSSH
+{
+    <# 
+    .SYNOPSIS
+    对sshpass的一个简单包装,读取指定位置的密码文件,并执行ssh登录
+    .NOTES
+    优先尝试密钥免密登录,如果失败则回退到sshpass密码登录
+    对于没有条件配置密钥验证的客户端设备,使用sshpass进行密码输入实现验证自动化
+    #>
+    [CmdletBinding()]
+    param (
+        # 服务器编号(可用范围取决于服务器数量)
+        [parameter(Mandatory = $true)]
+        $ServerID,
+        $Path = "$server_config"
+    )
+
+    $servers = Get-ServerList -Skip 0
+    $server = $servers[$ServerID] # 列表中的编号纠正
+    $ip = $server.ip
+    $user = $server.ssh.user
+    $port = $server.ssh.port
+    $password = $server.ssh.password
+    $authority = "$user@$ip"
+
+    # ===== 第一步：尝试密钥免密登录 =====
+    # 使用 BatchMode=yes 进行探测：
+    #   - 禁止任何交互式提示（密码、passphrase等）
+    #   - 如果密钥认证可用，ssh 会成功连接并执行 exit，返回码为 0
+    #   - 如果密钥认证不可用，ssh 会立即失败，返回码非 0
+    Write-Verbose "尝试密钥免密登录 ${authority}:$port ..."
+    ssh -o BatchMode=yes `
+        -o StrictHostKeyChecking=no `
+        -o ConnectTimeout=5 `
+        -p $port `
+        $authority "exit" 2>$null
+
+    if ($LASTEXITCODE -eq 0)
+    {
+        # 密钥认证可用，直接使用 ssh 连接（不经过 sshpass）
+        Write-Verbose "密钥认证可用,直接SSH连接"
+        ssh -o StrictHostKeyChecking=no -p $port $authority
+    }
+    else
+    {
+        # 密钥认证不可用，回退到 sshpass 密码登录
+        Write-Verbose "密钥认证不可用,回退到sshpass密码登录"
+
+        if (-not (Test-CommandAvailability 'sshpass'))
+        {
+            Write-Error "sshpass 未安装且密钥认证不可用,无法连接"
+            return
+        }
+
+        if ([string]::IsNullOrWhiteSpace($password))
+        {
+            Write-Error "密码为空且密钥认证不可用,无法连接"
+            return
+        }
+
+        # 使用 PreferredAuthentications 强制密码认证，避免认证方式冲突
+        # 使用 PubkeyAuthentication=no 明确禁用密钥认证，防止 sshpass 与密钥认证争抢
+        sshpass -v -p $password ssh `
+            -o StrictHostKeyChecking=no `
+            -o PubkeyAuthentication=no `
+            -o PreferredAuthentications=password,keyboard-interactive `
+            -p $port `
+            $authority
+    }
+}
 
 function Test-UrlOrHostAvailability
 {
