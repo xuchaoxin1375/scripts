@@ -600,35 +600,7 @@ nginx: [emerg] open() "/www/wwwlogs/xxx.com.error.log" failed (24: Too many open
 
 > 执行之前老用户注意备份自己自定义的脚本,详情参考"脚本保护"一节
 
-1. 清理/卸载宝塔的免费防火墙(这个东西很鸡肋,容易和自定义nginx配置冲突),如果没安装可以跳过此步骤
-
-2. 通过前面的"**代码下载**"一节提供的命令行片段将所需的代码目录下载到服务器上(已经操作过则跳过此步骤),确保已经得到目录`/www/sh`;(如果有古老版本的代码仓库目录 `/repos/scripts`,可以手动清理掉)
-
-3. 创建/覆盖配置目录
-
-   - 运行`/update_repos.sh -g -f` 这个命令会处理:
-     - 将`/www/sh`脚本目录中的脚本更新到最新,里面包含许多服务器管理脚本,`/www/sh/nginx_conf/`这个目录包含`nginx`配置管理脚本
-     - 并在服务器上的nginx配置目录`/www/server/nginx/conf`中创建所需的文件(主要是一些`.conf`,还可能包括`html`文件)
-
-4. 初次部署需要注意:有两个.sh脚本比较重要
-
-   脚本1:`update_cf_ip_configs.sh`(需要配置定期运行拉取cf公布的ip列表,可借助corntab定期运行,一般不要手动运行)
-
-   脚本2:`update_nginx_vhosts_conf.sh`(初次部署使用,为已有的站做处理,后期新建的站可以定期执行一遍,或者每次建站绑定一个步骤执行此脚本.)
-
-   为了让更新的nginx配置生效,需要将自定义配置片段(通常是`include ...`指令)插入到`/www/server/panel/vhost/nginx/`目录下的各个网站的`.conf`文件中,这个过程执行一个命令就可以
-
-   > (下面这个脚本有丰富的选项和用法,这里仅提供最简单粗暴的用法,详情使用`-h`选项查看用法帮助)
-
-   ```bash
-   bash /www/sh/nginx_conf/update_nginx_vhosts_conf.sh -m old --force
-   ```
-
-   为了简化说明,这里不细说对新/老站点做分批限流,而是将所有站都做同样的处理.
-
-其他:
-
-1. 增大打开的文件数量限制(针对站点多的服务器),前面的章节已经提到过,方法之一是修改 `/etc/security/limits.conf` 文件,改完新开一个终端(让上一步修改生效),然后重启nginx
+详细介绍参考代码仓库中`nginx_conf`目录中的Readme文件
 
 ## 反爬
 
