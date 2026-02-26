@@ -1534,7 +1534,9 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
         [switch]$RemovePlugin,
         [switch]$Dry
     )
-    
+    $OutputEncoding = [System.Text.Encoding]::UTF8
+    # 设置控制台输出编码为 UTF-8
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
     # 计算要操作的网站名单(白名单/黑名单)
     function Get-DomainListParam
     {
@@ -1662,7 +1664,9 @@ function Update-WpPluginsDFOnServers
         $ServerConfig = $server_config,
         $Threads = 5
     )
-
+    $OutputEncoding = [System.Text.Encoding]::UTF8
+    # 设置控制台输出编码为 UTF-8
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
     if($WhiteList -and $BlackList)
     {
         Write-Error "WhiteList and BlackList can not be used together!"
