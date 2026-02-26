@@ -59,21 +59,28 @@ Nginx可以先不装,后续安装openresty,提供更强大的功能.
 
 > 如果之前git clone过旧版本,或者想要重新clone,移除掉现有目录 `/repos/scripts`
 >
-> 
 
 ```bash
 #! /bin/bash
-script_root='/repos/scripts'
-if [[ -d "$script_root" ]]; then { echo 'The target dir is already exist! remove old dir...' ; sudo rm "$script_root" -rf ; } ; fi
-# rm /repos/scripts -rf 
-git clone --depth  1 https://gitee.com/xuchaoxin1375/scripts.git "$script_root"
+# START (安全起见且为了方便复制粘贴运行,为每行后面增加;号和一个空行)
+script_root='/repos/scripts';
+
+# 如果目录存在，则执行删除
+[[ -d "$script_root" ]] && { echo "Removing old dir..."; sudo rm -rf "$script_root"; };
+
+# rm /repos/scripts -rf ;
+git clone --depth  1 https://gitee.com/xuchaoxin1375/scripts.git "$script_root";
 
 # 配置更新代码的脚本的符号链接
-ln -s /repos/scripts/wp/woocommerce/woo_df/sh /www/sh -fv
+ln -s -T /repos/scripts/wp/woocommerce/woo_df/sh /www/sh -fv;
+
 # 使用简短的更新代码仓库的命令(记得检查fail2ban)
-bash /www/sh/update_repos.sh -g # 如果追加使用-f会覆盖/www/server/nginx/conf/nginx.conf
+# 如果追加使用-f会覆盖/www/server/nginx/conf/nginx.conf
+bash /www/sh/update_repos.sh -g; 
+
 # 向bash,zsh配置文件导入常用的shell函数,比如wp命令行等
-bash /www/sh/shellrc_addition.sh
+bash /www/sh/shellrc_addition.sh;
+# END
 ```
 
 如果仅更新脚本仓库,则可以

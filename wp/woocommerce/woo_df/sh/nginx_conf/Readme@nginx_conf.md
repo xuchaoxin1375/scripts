@@ -32,17 +32,25 @@
 
    ```bash
    #! /bin/bash
-   script_root='/repos/scripts'
-   if [[ -d "$script_root" ]]; then { echo 'The target dir is already exist! remove old dir...' ; sudo rm "$script_root" -rf ; } ; fi
-   # rm /repos/scripts -rf 
-   git clone --depth  1 https://gitee.com/xuchaoxin1375/scripts.git "$script_root"
+   # START (安全起见且为了方便复制粘贴运行,为每行后面增加;号和一个空行)
+   script_root='/repos/scripts';
+   
+   # 如果目录存在，则执行删除
+   [[ -d "$script_root" ]] && { echo "Removing old dir..."; sudo rm -rf "$script_root"; };
+   
+   # rm /repos/scripts -rf ;
+   git clone --depth  1 https://gitee.com/xuchaoxin1375/scripts.git "$script_root";
    
    # 配置更新代码的脚本的符号链接
-   ln -s /repos/scripts/wp/woocommerce/woo_df/sh /www/sh -fv
+   ln -s -T /repos/scripts/wp/woocommerce/woo_df/sh /www/sh -fv;
+   
    # 使用简短的更新代码仓库的命令(记得检查fail2ban)
-   bash /www/sh/update_repos.sh -g # 如果追加使用-f会覆盖/www/server/nginx/conf/nginx.conf
+   # 如果追加使用-f会覆盖/www/server/nginx/conf/nginx.conf
+   bash /www/sh/update_repos.sh -g; 
+   
    # 向bash,zsh配置文件导入常用的shell函数,比如wp命令行等
-   bash /www/sh/shellrc_addition.sh
+   bash /www/sh/shellrc_addition.sh;
+   # END
    ```
 
    
@@ -72,6 +80,18 @@
 其他:
 
 1. 增大打开的文件数量限制(针对站点多的服务器),前面的章节已经提到过,方法之一是修改 `/etc/security/limits.conf` 文件,改完新开一个终端(让上一步修改生效),然后重启nginx
+
+### 检查效果
+
+```bash
+
+# 有没有生效就运行下面的,看看有没有429相关的访问日志出来:
+tail -f /www/wwwlogs/spider.log | grep --line-buffered '429 ' | nl
+
+# 如果要看任何爬虫的请求而不仅仅429,用这个:
+tail -f /www/wwwlogs/spider.log|nl
+
+```
 
 
 
