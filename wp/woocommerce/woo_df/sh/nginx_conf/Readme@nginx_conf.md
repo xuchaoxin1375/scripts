@@ -26,7 +26,26 @@
 
 1. 清理/卸载宝塔的免费防火墙(这个东西很鸡肋,容易和自定义nginx配置冲突),如果没安装可以跳过此步骤
 
-2. 通过前面的"**代码下载**"一节提供的命令行片段将所需的代码目录下载到服务器上(已经操作过则跳过此步骤),确保已经得到目录`/www/sh`;(如果有古老版本的代码仓库目录 `/repos/scripts`,可以手动清理掉)
+2. 通过"**代码下载**"(仓库中Readme@sh.md)一节提供的命令行片段将所需的代码目录下载到服务器上(已经操作过则跳过此步骤),确保已经得到目录`/www/sh`;(如果有古老版本的代码仓库目录 `/repos/scripts`,可以手动清理掉)
+
+   代码下载:
+
+   ```bash
+   #! /bin/bash
+   script_root='/repos/scripts'
+   if [[ -d "$script_root" ]]; then { echo 'The target dir is already exist! remove old dir...' ; sudo rm "$script_root" -rf ; } ; fi
+   # rm /repos/scripts -rf 
+   git clone --depth  1 https://gitee.com/xuchaoxin1375/scripts.git "$script_root"
+   
+   # 配置更新代码的脚本的符号链接
+   ln -s /repos/scripts/wp/woocommerce/woo_df/sh /www/sh -fv
+   # 使用简短的更新代码仓库的命令(记得检查fail2ban)
+   bash /www/sh/update_repos.sh -g # 如果追加使用-f会覆盖/www/server/nginx/conf/nginx.conf
+   # 向bash,zsh配置文件导入常用的shell函数,比如wp命令行等
+   bash /www/sh/shellrc_addition.sh
+   ```
+
+   
 
 3. 创建/覆盖配置目录
 
