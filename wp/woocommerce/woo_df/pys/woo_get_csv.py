@@ -24,7 +24,7 @@ from woosqlitedb import SQLiteDB
 WOOSQLITEDB_LOGGER = "woosqlitedb"
 DEFAULT_CSV_LINES = 5000
 MAX_IMG_NAME_LENGTH = 100
-
+WORDS_FILE=r"C:/repos/scripts/wp/woocommerce/woo_df/forbid_keywords.txt"
 
 LOCOY_SPIDER_DATA = os.environ.get("LOCOY_SPIDER_DATA")
 if LOCOY_SPIDER_DATA is None:
@@ -194,6 +194,13 @@ def parse_args():
         "--name-as-desc",
         action="store_true",
         help="将产品名称作为产品描述(仅当原始的描述短于最小描述长度标准时才会生效)",
+    )
+    parser.add_argument(
+        "-wf",
+        "--words-file",
+        type=str,
+        default=WORDS_FILE,
+        help="限制词文件路径(每行一个词,产品名称或分类中包含这些词的产品将被过滤掉)",
     )
 
     return parser.parse_args()
@@ -380,6 +387,7 @@ if __name__ == "__main__":
         max_img_name_length=args.max_image_name_length,
         desc_min_len=args.desc_min_len,
         name_as_desc=args.name_as_desc,
+        words_file=args.words_file
     )
     ## 2. 读取数据库数据(根据count_rows_only参数,可以只统计行数,而不做初步的数据处理;正式使用是要改成False!)🎈
     db.get_data(
