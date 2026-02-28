@@ -65,16 +65,21 @@
 
    脚本1:`update_cf_ip_configs.sh`(需要配置定期运行拉取cf公布的ip列表,可借助corntab定期运行,一般不要手动运行)
 
+   ```bahs
+   # 这一行加入到crontab中
+   0 3 * * * bash /www/sh/nginx_conf/update_cf_ip_configs.sh
+   ```
+   
    脚本2:`update_nginx_vhosts_conf.sh`(初次部署使用,为已有的站做处理,后期新建的站可以定期执行一遍,或者每次建站绑定一个步骤执行此脚本.)
-
+   
    为了让更新的nginx配置生效,需要将自定义配置片段(通常是`include ...`指令)插入到`/www/server/panel/vhost/nginx/`目录下的各个网站的`.conf`文件中,这个过程执行一个命令就可以
-
+   
    > (下面这个脚本有丰富的选项和用法,这里仅提供最简单粗暴的用法,详情使用`-h`选项查看用法帮助)
-
+   
    ```bash
    bash /www/sh/nginx_conf/update_nginx_vhosts_conf.sh -m old --force
    ```
-
+   
    为了简化说明,这里不细说对新/老站点做分批限流,而是将所有站都做同样的处理.
 
 其他:

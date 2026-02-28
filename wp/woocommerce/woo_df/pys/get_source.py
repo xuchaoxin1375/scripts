@@ -281,7 +281,7 @@ class WebSourceDownloader:
         except Exception as e:
             error_msg = str(e)
             if retry_count < self.max_retries:
-                adjust_delay = min(5, self.delay_range[1] * (retry_count + 1))
+                adjust_delay = min(15, self.delay_range[1] * (retry_count + 1))
                 self.logger.warning(
                     f"下载失败({retry_count + 1}/{self.max_retries}), {error_msg}. 将在{adjust_delay:.1f}秒后重试...",
                     extra={"progress": self.get_progress(index)},

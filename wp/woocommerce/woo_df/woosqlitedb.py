@@ -196,7 +196,7 @@ def remove_items_without_img(csv_dir, img_dir, backup_dir="backup_csvs"):
 
 
 def process_image_csv(img_dir, csv_dir, backup_dir="backup_csvs"):
-    """更新CSV文件中的图片字段,设置格式为webp,并移除无图片的条目
+    """更新CSV文件中的图片字段,设置格式为webp,并移除无图片(下载不成功或者图片无意被移除后)的条目
     请务必图片下载完毕后再执行本处理,否则csv文件内容将因为图片找不到而全部被移除
 
     默认情况下执行此函数会进行备份,因此如果清空太多图片,则可以恢复备份文件
@@ -223,10 +223,21 @@ def process_image_csv(img_dir, csv_dir, backup_dir="backup_csvs"):
     print(f"处理后剩余{total_after}条数据,减少了{total_before - total_after}条数据")
 
 
+def get_forbid_word_list(words_file):
+    """读取禁词文件,返回禁词列表"""
+    with open(words_file, "r", encoding="utf-8") as f:
+        forbidden_words = [line.strip() for line in f if line.strip()]
+    return forbidden_words
+
+
 class SQLiteDB:
     """sqlite数据库操作类
     根据业务需要,这里主要以读取操作为主,其他操作可以后期按需扩展
 
+    数据读取部分:
+    get_data->get_data_from_dbs->get_data_init->get_data_from_db->get_selected_fields
+    数据清理(在get_data_init中调用clean_rows方法):
+    clean_rows方法中定义各种数据过滤或移除到规则.
     """
 
     def __init__(
@@ -239,6 +250,7 @@ class SQLiteDB:
         desc_min_len=0,
         # 如果产品描述字符很短,则将产品名称(标题)作为产品描述
         name_as_desc=True,
+        words_file=None,
         yy=False,
     ):
         self.language = language
@@ -256,6 +268,11 @@ class SQLiteDB:
         self.lowest_price = lowest_price
         self.highest_price = highest_price
         self.category_threshold = category_threshold
+        self.forbid_words = get_forbid_word_list(words_file=words_file)
+        # 使用re.escape映射禁词列表中的每个词,以确保关键字中如果包含正则元字符时不会被错误解释.
+        self.forbid_words_pattern = "|".join(map(re.escape, self.forbid_words))
+        # 编译正则表达式模式,以便后续高效匹配包含禁词的字符串
+        self.forbid_words_pat_regex = re.compile(self.forbid_words_pattern)
         # 缓存从数据库中读出来的数据行(记录),默认情况下仅存储业务需要的行以及字段
         self.db_rows = []
         # self.data_dict_rows = []
@@ -379,7 +396,7 @@ class SQLiteDB:
         self, db_path, fields="", strict_mode=False, count_rows_only=False
     ):
         """从单个数据库获取初步处理过的数据
-
+        通常不直接调用此函数;
         此函数调用get_data_from_db()获取所有特定字段的行
 
         Args:
@@ -421,12 +438,17 @@ class SQLiteDB:
 
     def clean_rows(self, db_path, rows, strict_mode=False):
         """清理不合适的产品
+        考虑根据规则清理产品需要遍历所有产品,为了减少遍历次数,在同一个遍历循环中指定排除规则;
+
         比如,产品去重复,移除字符产品名异常(比如很多问号)的产品等
-        产品去重可以使用pandas库简单实现,这里早起没有使用pandas,保留使用原生的方式处理
+        产品去重可以使用pandas库简单实现,这里早期没有使用pandas,保留使用原生的方式处理
+
         默认情况下,产品名和图片同时重复的记录只保留一条(仅排除两者都重复的情况)
         如果严格模式,则仅比较产品名,忽略图片的比较
 
-        访问内存中的数据行
+        读取限制品关键词(产品名和分类中包含这些关键词的产品将被移除)
+
+        访问内存中的数据行(这很重要🎈)
         handler_dict # 存储单元结构: {product_img: {product_name: count}}的结构
         # 想要访问count,表达式为handler_dict[product_img][product_name]
 
@@ -438,9 +460,9 @@ class SQLiteDB:
                 (如果为False,则只当产品名和图片链接同时重复才去重,会保留更多数据,但是对于跨站产品重复的情况无法良好处理)
         """
 
-        unique_rows = []
-        dd = defaultdict(dict)  # 访问dd的某个尚不存在的属性(key)时,会返回一个dict
-
+        res_rows = []
+        dd = defaultdict(dict)  # 访问dd的某个尚不存在的属性(key)时,会返回一个空dict
+        
         name_field = DBProductFields.NAME.value
         img_field = DBProductFields.IMAGES.value
         desc_field = DBProductFields.DESCRIPTION.value
@@ -455,20 +477,23 @@ class SQLiteDB:
             # product_info = f"{{name:{product_name};sku:{product_sku}}}"
             # names_dict = dd.get(product_img, {})
             # names=dd[product_img]
-            product_img_dict = dd[product_name]
+
 
             # 进度计数器
             with cnt_lock:
                 self.progress += 1
                 debug("progress: {{%s}}", self.progress)
                 # print(f"progress: {self.progress}")
-                # 检查重复
 
             # 获取处理过程的详细信息
             # 数据库文件所在父目录的编号名称
             dbp = Path(db_path)
             db_id = dbp.parent.name
-            # 去重策略
+
+            # START1:去重复
+            # 检查当前row的产品名是否曾经统计过,如果是,则product_img_dict将是一个非空字典,否则是一个空字典(统计过的产品字典形如{product_name:{product_img1: count1, product_img2: count2,...}})
+            product_img_dict = dd[product_name]
+            # 如果严格模式,只要曾经统计过同名产品(不管图片链接是否相同),就视为重复;如果非严格模式,则仅当曾经统计过同名产品且图片链接也相同,才视为重复
             if (strict_mode and product_img_dict) or (product_img in product_img_dict):
                 self.duplicate_warning(i, row, db_id)
                 continue
@@ -479,39 +504,73 @@ class SQLiteDB:
             #     self.duplicate_warning(i, row, db_id)
             #     continue
             else:
-                # 如果产品描述长度不足要求,则根据情况用产品名称覆盖(代替描述)或者丢弃此条数据
-                if self.desc_min_len and len(product_desc) < self.desc_min_len:
-                    warning(
-                        "product:[%s] description length is less than %s",
-                        i,
-                        self.desc_min_len,
-                    )
-                    if "???" in row[name_field]:
-                        warning("product:[%s] name contains consecutive question mark!", i)
-                        continue
-
-                    if self.name_as_desc:
-                        row[desc_field] = product_name
-                        info("product:[%s] description is replaced by product name", i)
-                    else:
-                        warning("product:[%s] record is dropped.", i)
-                        continue
-                # 当前产品尚未统计过,更新统计计数器
-                unique_rows.append(row)
                 info(
                     "keep:product:[%s] of [%s db]: duplicated name, \
-    but different image, keep records [%s]",
+but different image",
                     i,
                     db_id,
                     (row[name_field], row[img_field]),
                 )
+                # dd[product_img][product_name] = dd[product_img].get(product_name, 0) + 1
+                dd[product_name][product_img] = dd[product_name].get(product_img, 0) + 1
+            # END1
 
-            # dd[product_img][product_name] = dd[product_img].get(product_name, 0) + 1
-            dd[product_name][product_img] = dd[product_name].get(product_img, 0) + 1
+            # START2:产品描述处理:若产品描述长度不足要求,则根据情况用产品名称覆盖(代替描述)或者丢弃此条数据
+            if self.desc_min_len and len(product_desc) < self.desc_min_len:
+                warning(
+                    "product:[%s] description length is less than %s",
+                    i,
+                    self.desc_min_len,
+                )
+                if "???" in row[name_field]:
+                    warning("product:[%s] name contains consecutive question mark!", i)
+                    continue
 
-        return unique_rows
+                if self.name_as_desc:
+                    row[desc_field] = product_name
+                    info("product:[%s] description is replaced by product name", i)
+                else:
+                    warning("product:[%s] record is dropped.", i)
+                    continue
 
-    def process_forbidden_words(self, s, pattern=".php", replacement="_"):
+            # STARt3:过滤掉包含禁词的产品
+            if self.forbid_words_pat_regex.search(
+                product_name
+            ) or self.forbid_words_pat_regex.search(product_desc):
+                warning(
+                    "Jump product:[%s]: contains forbidden words, skip this record [%s]!",
+                    product_name,
+                    (product_name, product_desc),
+                )
+                continue
+
+            # 当前产品允许加入最终列表,更新统计计数器
+            res_rows.append(row)
+
+        return res_rows
+
+    def clean_forbidden_words(self):
+        """读取禁词文件,根据读取到禁词列表(名单)过滤掉相关产品"""
+        # 构造正则表达式模式,匹配包含任意一个禁词的字符串
+        forbid_words_pattern = self.forbid_words_pattern
+        # 过滤掉包含禁词的产品
+        cleaned_rows = []
+        for row in self.db_rows:
+            name = row[DBProductFields.NAME.value]
+            desc = row[DBProductFields.DESCRIPTION.value]
+            if re.search(forbid_words_pattern, name) or re.search(
+                forbid_words_pattern, desc
+            ):
+                warning(
+                    "Jump product:[%s]: contains forbidden words, skip this record [%s]!",
+                    name,
+                    (name, desc),
+                )
+                continue
+            cleaned_rows.append(row)
+        self.db_rows = cleaned_rows
+
+    def _replace_forbidden_words(self, s, pattern=".php", replacement="_"):
         """替换字符串中包含的禁词"""
         return re.sub(pattern, replacement, s)
 
@@ -618,6 +677,9 @@ but different image, keep records [%s]",
     ):
         """
         使用多线程从多个SQLite数据库并行读取数据
+        通常不直接调用此函数,而是通过get_data方法调用
+        此方法通过调用get_data_init方法从每个数据库中读取数据,并进行初步处理(比如去重等),最后合并所有数据库的数据返回
+
 
         Args:
             dbs: SQLite文件路径列表
@@ -722,8 +784,9 @@ but different image, keep records [%s]",
     def get_data(
         self, dbs, get_dict_row=True, strict_mode=False, count_rows_only=False
     ):
-        """从缓存或数据库中获取数据
-        如果缓存中上不存在数据,则从数据库中读取数据并缓存到self.data_rows中
+        """获取数据
+        此方法是暴露给用户调用,能够按照约定的规则读取并初步过滤掉不合适的数据.
+        从缓存或数据库中;如果缓存中不存在数据,则从数据库中读取数据并缓存到self.data_rows中(调用get_data_from_dbs方法);
 
         Args:
             dbs: SQLite文件路径列表
@@ -984,7 +1047,7 @@ but different image, keep records [%s]",
         sale_price = round(sale_price, 2)
         return sale_price
 
-    def get_sale_price(self, price, limit_sale=298.98,base_line=300):
+    def get_sale_price(self, price, limit_sale=298.98, base_line=300):
         """获取产品折扣价格
         1.价格小于100的打3折
         2.价格100到300的打0.25折
@@ -1023,7 +1086,9 @@ but different image, keep records [%s]",
                 sale_price = limit_sale
 
         # 保留2位小数
-        sale_price = int(sale_price * 100) / 100.0 #效果是直接截断第单位小数后的值,防止四舍五入
+        sale_price = (
+            int(sale_price * 100) / 100.0
+        )  # 效果是直接截断第单位小数后的值,防止四舍五入
         # sale_price = round(sale_price, 2)
         return sale_price
 
@@ -1157,7 +1222,7 @@ but different image, keep records [%s]",
                 if img_mode in [ImageMode.NAME_FROM_URL, ImageMode.NAME_MIX]:
                     # 将图片名中的禁词移除
                     img_field = CSVProductFields.IMAGES.name
-                    row[img_field] = self.process_forbidden_words(row[img_field])
+                    row[img_field] = self._replace_forbidden_words(row[img_field])
             # 扩充数据行字典
             expanded_rows.append(row)
         return expanded_rows
