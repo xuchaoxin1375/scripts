@@ -462,10 +462,12 @@ class SQLiteDB:
 
         res_rows = []
         dd = defaultdict(dict)  # 访问dd的某个尚不存在的属性(key)时,会返回一个空dict
-        
+
         name_field = DBProductFields.NAME.value
         img_field = DBProductFields.IMAGES.value
         desc_field = DBProductFields.DESCRIPTION.value
+        categories_field = DBProductFields.CATEGORIES.value
+        tags_field = DBProductFields.TAGS.value
 
         # 添加tqdm进度条，显示百分比
         for i, row in tqdm(
@@ -474,10 +476,11 @@ class SQLiteDB:
             product_name = row[name_field]
             product_img = row[img_field]
             product_desc = row[desc_field]
+            product_categories = row[categories_field]
+            product_tags = row[tags_field]
             # product_info = f"{{name:{product_name};sku:{product_sku}}}"
             # names_dict = dd.get(product_img, {})
             # names=dd[product_img]
-
 
             # 进度计数器
             with cnt_lock:
@@ -534,13 +537,16 @@ but different image",
                     continue
 
             # STARt3:过滤掉包含禁词的产品
-            if self.forbid_words_pat_regex.search(
-                product_name
-            ) or self.forbid_words_pat_regex.search(product_desc):
+            regexp = self.forbid_words_pat_regex
+            if (
+                regexp.search(product_name)
+                or regexp.search(product_categories)
+                or regexp.search(product_tags)
+            ):
                 warning(
                     "Jump product:[%s]: contains forbidden words, skip this record [%s]!",
                     product_name,
-                    (product_name, product_desc),
+                    (product_name, product_categories, product_tags),
                 )
                 continue
 
@@ -548,27 +554,6 @@ but different image",
             res_rows.append(row)
 
         return res_rows
-
-    def clean_forbidden_words(self):
-        """读取禁词文件,根据读取到禁词列表(名单)过滤掉相关产品"""
-        # 构造正则表达式模式,匹配包含任意一个禁词的字符串
-        forbid_words_pattern = self.forbid_words_pattern
-        # 过滤掉包含禁词的产品
-        cleaned_rows = []
-        for row in self.db_rows:
-            name = row[DBProductFields.NAME.value]
-            desc = row[DBProductFields.DESCRIPTION.value]
-            if re.search(forbid_words_pattern, name) or re.search(
-                forbid_words_pattern, desc
-            ):
-                warning(
-                    "Jump product:[%s]: contains forbidden words, skip this record [%s]!",
-                    name,
-                    (name, desc),
-                )
-                continue
-            cleaned_rows.append(row)
-        self.db_rows = cleaned_rows
 
     def _replace_forbidden_words(self, s, pattern=".php", replacement="_"):
         """替换字符串中包含的禁词"""
