@@ -172,7 +172,7 @@ function Invoke-RemoteSSH
         sshpass -v -p $password ssh `
             -o StrictHostKeyChecking=no `
             -o PubkeyAuthentication=no `
-            -o PreferredAuthentications=password,keyboard-interactive `
+            -o PreferredAuthentications=password, keyboard-interactive `
             -p $port `
             $authority
     }
@@ -785,7 +785,49 @@ function Get-UrlFromMarkdownUrl
     $Urls = $Urls -replace '\[.*?\]\((.*)\)', '$1' -split "`r?`n" | Where-Object { $_ }
     return $Urls
 }
+function Remove-TitleOrderFromMarkdownTitle
+{
+    <# 
+    .SYNOPSIS
+    移除Markdown标题中的序号部分
 
+    ## 一、...
+    ### 1.1 ...
+
+    #>
+    [CmdletBinding()]
+    param(
+        $Path,
+        $CodeBlockLang = "Bash",
+        [switch]$RemoveEmptyLines 
+    )
+    $Content = Get-Content -Path $Path -Raw
+    $CRLFS = "(\r?\n)*"
+    # $CRLF_PLUS = "(\r?\n)+"
+    $LF = "`n"
+    if($CodeBlockLang)
+    {
+        $p1 = ("$CodeBlockLang" + $CRLFS + '```' + "\s*")
+        $p2 = ('```' + $CodeBlockLang + $LF)
+        Write-Verbose "p1:[$p1],p2:[$p2]"
+        Write-Verbose "'$p1','$p2'"
+        $content = $content -replace $p1 , $p2
+    }
+    # $content | ForEach-Object {
+    #     $_ -replace '(#+ )(\d{1,2}\.\d{1,2}|\S、)', '$1' -split "`r?`n" 
+    # } 
+
+    $content = $content -replace '(#+ )(\d{1,2}\.\d{1,2}|\S、)', '$1' 
+    # $content | Out-File $Path -Encoding UTF8
+    if ($RemoveEmptyLines)
+    {
+        # $Content = $Content -split $CRLF_PLUS | Where-Object { $_.Trim() } 
+        
+        $content = $content -replace '[\s\n]*\n', "`n"
+    }
+    $content | Out-File $Path -Encoding UTF8
+    return $content
+}
 
 function Get-MainDomain
 {
