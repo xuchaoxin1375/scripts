@@ -52,6 +52,24 @@ rsync_copy() {
   rsync -avP --size-only "$remote_full_path" "$local_path"
 }
 
+# 将一个每秒钟打印1个数字,可以指定最多打印的次数(从1开始打印)
+# demo_job.sh
+demo_job() {
+    # JID=$(date +%N)
+    local max=${1:-20}  # 默认运行 20 秒
+    local JID=${2:-$(date +%s)}  # 默认使用当前时间戳作为作业 ID
+    local i=1
+    # 根据调用时间的纳秒部分生成一个随机 ID,以区分不同的作业实例
+    echo "--- [$JID]作业开始 (PID: $$, 预计运行时间: ${max}s) ---"
+    while [ $i -le "$max" ]; do
+        # 打印当前秒数和进程 ID
+        printf "[$JID][$(date +%F-%T)]任务进度: [%2d/%2d] \n" $i "$max"
+        sleep 1
+        ((i++))
+    done
+    echo "--- [$JID]作业完成 ---"
+}
+
 ######################################
 # Description:
 # 移除字符串边缘空白
@@ -65,15 +83,15 @@ rsync_copy() {
 # Returns:
 #   0 on success, non-zero on error
 # Example:
-# 
+#
 ######################################
 trim() {
-    local var="$*"
-    # 移除开头空格
-    var="${var#"${var%%[![:space:]]*}"}"
-    # 移除结尾空格
-    var="${var%"${var##*[![:space:]]}"}"
-    printf '%s' "$var"
+  local var="$*"
+  # 移除开头空格
+  var="${var#"${var%%[![:space:]]*}"}"
+  # 移除结尾空格
+  var="${var%"${var##*[![:space:]]}"}"
+  printf '%s' "$var"
 }
 
 #######################################
@@ -109,10 +127,21 @@ current_shell() {
 
   echo "$CURRENT_SHELL"
 }
+# 判断当前shell是否为指定的shell
+is_shell() {
+  local shell_name="$1"
+  current_shell=$(current_shell)
+  # if ! [[ "$current_shell" =~ .*"$shell_name" ]]; then
+  if [[ "$current_shell" == "$shell_name" ]]; then
+    return 0
+  else
+    return 1
+  fi
+}
 # 获取bash内置命令的帮助
 help_bash() {
   cmd="$1"
-  bash -c "help $cmd"
+  bash -c "help '$cmd'"
 }
 # 在非bash(zsh)或bash中可以通用的查询bash内置命令的函数
 help() {
@@ -122,13 +151,10 @@ help() {
   END='\e[0m'
   shell=$(current_shell)
   tip="${YELLOW}[START]当前shell为$shell,而help输出来自于bash ${END}"
-  if ! [[ "$shell" =~ .*bash ]]; then
-    echo -e "$tip"
-    help_bash "$cmd" | nl
-    echo -e "$tip"
-  else
-    help_bash "$cmd" | nl
-  fi
+
+  is_shell "bash" || echo -e "$tip"
+  help_bash "$cmd" | nl
+  is_shell "bash" || echo -e "$tip"
 
 }
 

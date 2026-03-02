@@ -792,7 +792,7 @@ function Remove-TitleOrderFromMarkdownTitle
     移除Markdown标题中的序号部分
 
     ## 一、...
-    ### 1.1 ...
+    ### 1.[x] ...
 
     #>
     [CmdletBinding()]
@@ -817,7 +817,7 @@ function Remove-TitleOrderFromMarkdownTitle
     #     $_ -replace '(#+ )(\d{1,2}\.\d{1,2}|\S、)', '$1' -split "`r?`n" 
     # } 
 
-    $content = $content -replace '(#+ )(\d{1,2}\.\d{1,2}|\S、)', '$1' 
+    $content = $content -replace '(#+ )(\d{1,2}\.\d{0,2}|\S、)', '$1' 
     # $content | Out-File $Path -Encoding UTF8
     if ($RemoveEmptyLines)
     {

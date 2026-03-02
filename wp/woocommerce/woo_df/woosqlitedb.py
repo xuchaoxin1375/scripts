@@ -476,7 +476,7 @@ class SQLiteDB:
             product_name = row[name_field]
             product_img = row[img_field]
             product_desc = row[desc_field]
-            product_categories = row[categories_field]
+            product_categories = row[categories_field] or "!" #分类需要兜底
             product_tags = row[tags_field]
             # product_info = f"{{name:{product_name};sku:{product_sku}}}"
             # names_dict = dd.get(product_img, {})
