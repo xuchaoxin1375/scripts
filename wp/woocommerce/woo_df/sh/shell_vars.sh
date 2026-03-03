@@ -31,8 +31,8 @@ bt_nginx_conf_home="/www/server/nginx/conf"
 
 # 将定义的变量声明为环境变量
 export desktop sh omb_themes omb_cduru_theme omb_cduru \
-bt_nginx_vhost_conf_home \
-bt_nginx_conf_home uploader_files woo_df pys
+    bt_nginx_vhost_conf_home \
+    bt_nginx_conf_home uploader_files woo_df pys
 
 # mkdir -p $omb_themes
 # ln -s $omb_cduru $omb_cduru_theme/cduru.theme.sh -fv

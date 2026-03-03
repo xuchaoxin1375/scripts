@@ -1517,6 +1517,9 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
         # 本地插件目录路径🎈
         [parameter(ParameterSetName = 'Path')]
         $PluginPath ,  
+        # 仅上传插件文件夹到服务器指定目录并解压,不执行其他操作(例如安装等)
+        [parameter(ParameterSetName = 'Path')]
+        [switch]$JustUpload, 
         # 插件名称(服务器上插件路径的最后一级目录名)
         [parameter(ParameterSetName = 'RemoveByName')]
         $PluginName,
@@ -1581,6 +1584,7 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
 
         $domainListParam = Get-DomainListParam $BlackList -ListType BlackList
     }
+    
     # 构造bash脚本命令行(插件安装/更新)
     $basicCmd = " ssh -Tn $username@$server bash $bashScript --workdir $workingDirectory  "
     $dryRunParam = if($Dry) { "--dry-run" }else { "" }
@@ -1604,6 +1608,7 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
         else
         {
             $zipFile = $PluginPath
+            Write-Verbose "Plugin path is already a file, using it directly: [$zipFile]..."
         }
 
         # 上传插件压缩包到服务器
@@ -1613,7 +1618,9 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
         Write-Verbose "expanding zip file to [$remotePluginDir]..."
         # 覆盖式解压(-o选项),-d 指定解压目录(extract directory)
         ssh $username@$server "unzip -o $remoteZipFile -d $remoteDirectory"
-        
+        if($JustUpload){
+            return $True
+        }
         
         Write-Verbose "Executing updating script...(this need several seconds, please wait...)" -Verbose
         # 构造替换脚本
@@ -1627,8 +1634,11 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
     
     Write-Verbose "Executing command: $cmd" -Verbose
     Start-Sleep 2
-    $cmd | Invoke-Expression
-    ssh $username@$server "bash /www/sh/update_user_ini.sh "
+    if(!$JustUpload)
+    {
+        $cmd | Invoke-Expression
+        ssh $username@$server "bash /www/sh/update_user_ini.sh "
+    }
     Write-Verbose "Done." -Verbose
     
 }
@@ -1650,6 +1660,8 @@ function Update-WpPluginsDFOnServers
         [parameter(ParameterSetName = 'Path')]
         [Alias('Path')]
         $PluginPath ,
+        [parameter(ParameterSetName = 'Path')]
+        [switch]$JustUpload,
         $WorkingDirectory = "/www/wwwroot,/wwwdata/wwwroot",
         # 插件名称(服务器上插件路径的最后一级目录名)
         [parameter(ParameterSetName = 'Name')]
@@ -1743,7 +1755,7 @@ function Update-WpPluginsDFOnServers
             {
             
                 Write-Host "Updating plugins to $server"
-                "Update-WpPluginsDFOnServer -server $server -WorkingDirectory '$workingDirectory' -PluginPath $PluginPath $domainListParam -InstallMode $InstallMode" | Invoke-Expression
+                "Update-WpPluginsDFOnServer -server $server -WorkingDirectory '$workingDirectory' -PluginPath $PluginPath $domainListParam -InstallMode $InstallMode -JustUpload:$JustUpload" | Invoke-Expression
             }
             elseif($currentSet -eq 'Name' -and $RemovePlugin)
             {

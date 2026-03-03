@@ -55,21 +55,64 @@ rsync_copy() {
 # 将一个每秒钟打印1个数字,可以指定最多打印的次数(从1开始打印)
 # demo_job.sh
 demo_job() {
-    # JID=$(date +%N)
-    local max=${1:-20}  # 默认运行 20 秒
-    local JID=${2:-$(date +%s)}  # 默认使用当前时间戳作为作业 ID
-    local i=1
-    # 根据调用时间的纳秒部分生成一个随机 ID,以区分不同的作业实例
-    echo "--- [$JID]作业开始 (PID: $$, 预计运行时间: ${max}s) ---"
-    while [ $i -le "$max" ]; do
-        # 打印当前秒数和进程 ID
-        printf "[$JID][$(date +%F-%T)]任务进度: [%2d/%2d] \n" $i "$max"
-        sleep 1
-        ((i++))
-    done
-    echo "--- [$JID]作业完成 ---"
+  # JID=$(date +%N)
+  local max=${1:-20}          # 默认运行 20 秒
+  local JID=${2:-$(date +%s)} # 默认使用当前时间戳作为作业 ID
+  local i=1
+  # 根据调用时间的纳秒部分生成一个随机 ID,以区分不同的作业实例
+  echo "--- [$JID]作业开始 (PID: $$, 预计运行时间: ${max}s) ---"
+  while [ $i -le "$max" ]; do
+    # 打印当前秒数和进程 ID
+    printf "[$JID][$(date +%F-%T)]任务进度: [%2d/%2d] \n" $i "$max"
+    sleep 1
+    ((i++))
+  done
+  echo "--- [$JID]作业完成 ---"
 }
+######################################
+# 字符串小写处理(有多种实现)
+# 输入多个单词,则全部转换为小写
+# 虽然bash提供了内置的 `${var,,}` 语法来转换为小写,但使用函数的方式写法更方便
+# `-n` 可以控制是否对原字符串做更改(如果传入的是一个字符串变量的情况下)
+# 使用此选项效果相当于s="$(lower $s)"
+# 
+#  延伸:类似的可以实现小写转大写函数upper(),或者增加1个选项来控制是转大写还是转小写
+#  但是单独的函数名比较符合使用习惯.和其他语言更相近.
+# Notes:
+# 利用bash(v4+版本)语法实现
+# echo "${input,,}"
+# 利用tr实现
+# echo  "$input" | tr '[:upper:]' '[:lower:]'
+#
+# Arguments:
+#   $1 - description
+# Returns:
+#   0 on success, non-zero on error
+# Example:
+# lower "Hello WORLD"  # 输出: hello world
+# s="StringS";lower -n s # 输出:strings (注意使用-n时请配合变量名使用,而不是引用变量名! 例如: lower -n $s 是错误写法)
+######################################
+lower() {
+  local ref_mode=false
+  # 单个函数选项判断,可以直接使用if,shift组合(不使用case和循环,如果要设计2个参数就需要循环)
+  if [[ "$1" == "-n" ]]; then
+    ref_mode=true
+    shift
+  fi
 
+  # 引用模式：直接修改传入的变量名
+  if [ "$ref_mode" = true ]; then
+    # 使用 local -n 创建一个指向目标变量的引用
+    # echo "变量ref模式"
+    local -n input="$1"
+  else
+    # 否则，创建一个临时变量并返回结果
+    local input="$*"
+  fi
+  # 核心代码
+  input="${input,,}"
+  echo "$input"
+}
 ######################################
 # Description:
 # 移除字符串边缘空白
