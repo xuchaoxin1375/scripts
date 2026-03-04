@@ -1,8 +1,8 @@
 #! /bin/bash
-script_root='/repos/scripts'
-if [[ -d "$script_root" ]]; then { echo 'The target dir is already exist! remove old dir...' ; sudo rm "$script_root" -rf ; } ; fi
+SCRIPT_ROOT='/repos/scripts'
+if [[ -d "$SCRIPT_ROOT" ]]; then { echo 'The target dir is already exist! remove old dir...' ; sudo rm "$SCRIPT_ROOT" -rf ; } ; fi
 # rm /repos/scripts -rf 
-git clone --depth  1 https://gitee.com/xuchaoxin1375/scripts.git "$script_root"
+git clone --depth  1 https://gitee.com/xuchaoxin1375/scripts.git "$SCRIPT_ROOT"
 
 # 配置更新代码的脚本的符号链接
 ln -s /repos/scripts/wp/woocommerce/woo_df/sh /www/sh -fv

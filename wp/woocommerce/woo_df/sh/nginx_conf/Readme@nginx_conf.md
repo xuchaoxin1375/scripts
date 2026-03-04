@@ -31,30 +31,21 @@
    代码下载:
 
    ```bash
-   #! /bin/bash
-   # START (安全起见且为了方便复制粘贴运行,为每行后面增加;号和一个空行)
-   script_root='/repos/scripts';
-   
-   # 如果目录存在，则执行删除
-   [[ -d "$script_root" ]] && { echo "Removing old dir..."; sudo rm -rf "$script_root"; };
-   
-   # rm /repos/scripts -rf ;
-   git clone --depth  1 https://gitee.com/xuchaoxin1375/scripts.git "$script_root";
-   
-   # 配置更新代码的脚本的符号链接
-   ln -s -T /repos/scripts/wp/woocommerce/woo_df/sh /www/sh -fv;
-   
-   # 使用简短的更新代码仓库的命令(记得检查fail2ban)
-   # 如果追加使用-f会覆盖/www/server/nginx/conf/nginx.conf
-   bash /www/sh/update_repos.sh -g; 
-   
-   # 向bash,zsh配置文件导入常用的shell函数,比如wp命令行等
-   bash /www/sh/shellrc_addition.sh;
-   # END
+   curl -L -o deploy_srv.sh https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh
+   # 建议先 cat setup.sh 看看里面写了啥，有没有恶意代码
+   cat deploy_srv.sh -n
+   # 确认没有问题可以执行脚本了
+   bash deploy_srv.sh -h
    ```
-
    
-
+   一键部署
+   
+   ```
+   bash <(curl -sL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh) -h
+   ```
+   
+   
+   
 3. 创建/覆盖配置目录
 
    - 运行`/update_repos.sh -g -f` 这个命令会处理:
