@@ -28,23 +28,23 @@
 
 2. 通过"**代码下载**"(仓库中Readme@sh.md)一节提供的命令行片段将所需的代码目录下载到服务器上(已经操作过则跳过此步骤),确保已经得到目录`/www/sh`;(如果有古老版本的代码仓库目录 `/repos/scripts`,可以手动清理掉)
 
-   代码下载:
+   一键部署(单行部署)
 
    ```bash
-   curl -L -o deploy_srv.sh https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh
+   bash <(curl -sL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh) -f
+   ```
+   
+   > 其中`-f`会覆盖`nginx`的主配置文件(nginx.conf),酌情使用,如果不想覆盖,可以移除`-f`
+   
+   或者分部操作,更安全
+   
+   ```bash
+   curl -L -o deploy_srv.sh https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh;
    # 建议先 cat setup.sh 看看里面写了啥，有没有恶意代码
-   cat deploy_srv.sh -n
+   cat deploy_srv.sh -n;
    # 确认没有问题可以执行脚本了
-   bash deploy_srv.sh -h
+   bash deploy_srv.sh -h;
    ```
-   
-   一键部署
-   
-   ```
-   bash <(curl -sL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh) -h
-   ```
-   
-   
    
 3. 创建/覆盖配置目录
 

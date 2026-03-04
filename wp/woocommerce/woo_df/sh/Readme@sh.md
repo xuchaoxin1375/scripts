@@ -6,9 +6,7 @@
 
 相关命令行以ubuntu/debian系为例
 
-## 美化shell(提高命令行的易用性)
 
-参考[linux@提高shell命令行环境易用性@终端美化@国内网络环境友好一条龙美化(ohmyzsh)_oh my zsh 卸载-CSDN博客](https://blog.csdn.net/xuchaoxin1375/article/details/120999508?sharetype=blogdetail&sharerId=120999508&sharerefer=PC&sharesource=xuchaoxin1375&spm=1011.2480.3001.8118)
 
 ## shell配置文件环境预定义
 
@@ -49,6 +47,10 @@ sudo apt install parallel #并行执行命令的工具
 
 Nginx可以先不装,后续安装openresty,提供更强大的功能.
 
+## 美化shell(提高命令行的易用性)
+
+参考[linux@提高shell命令行环境易用性@终端美化@国内网络环境友好一条龙美化(ohmyzsh)_oh my zsh 卸载-CSDN博客](https://blog.csdn.net/xuchaoxin1375/article/details/120999508?sharetype=blogdetail&sharerId=120999508&sharerefer=PC&sharesource=xuchaoxin1375&spm=1011.2480.3001.8118)
+
 ## 代码下载和管理
 
 通过git下载代码,对于使用定时自动解压的用户,个别文件需要创建服务器专属的自定义版本,避免代码更新导致的覆盖和丢失.
@@ -60,28 +62,15 @@ Nginx可以先不装,后续安装openresty,提供更强大的功能.
 > 如果之前git clone过旧版本,或者想要重新clone,移除掉现有目录 `/repos/scripts`
 >
 
+一键部署(单行部署)
+
 ```bash
-#! /bin/bash
-# START (安全起见且为了方便复制粘贴运行,为每行后面增加;号和一个空行)
-script_root='/repos/scripts';
-
-# 如果目录存在，则执行删除
-[[ -d "$script_root" ]] && { echo "Removing old dir..."; sudo rm -rf "$script_root"; };
-
-# rm /repos/scripts -rf ;
-git clone --depth  1 https://gitee.com/xuchaoxin1375/scripts.git "$script_root";
-
-# 配置更新代码的脚本的符号链接
-ln -s -T /repos/scripts/wp/woocommerce/woo_df/sh /www/sh -fv;
-
-# 使用简短的更新代码仓库的命令(记得检查fail2ban)
-# 如果追加使用-f会覆盖/www/server/nginx/conf/nginx.conf
-bash /www/sh/update_repos.sh -g; 
-
-# 向bash,zsh配置文件导入常用的shell函数,比如wp命令行等
-bash /www/sh/shellrc_addition.sh;
-# END
+bash <(curl -sL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh) -f
 ```
+
+> 其中`-f`会覆盖`nginx`的主配置文件(nginx.conf),酌情使用,如果不想覆盖,可以移除`-f`
+>
+> todo:将一键部署做成交互式的.
 
 如果仅更新脚本仓库,则可以
 

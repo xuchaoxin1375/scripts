@@ -107,7 +107,7 @@ python3 /www/sh/nginx_conf/maintain_nginx_vhosts.py maintain -d -k first
 
 }
  
-function Invoke-RemoteSSH
+function Invoke-RemoteSSH0
 {
     <# 
     .SYNOPSIS
@@ -169,7 +169,7 @@ function Invoke-RemoteSSH
 
         # 使用 PreferredAuthentications 强制密码认证，避免认证方式冲突
         # 使用 PubkeyAuthentication=no 明确禁用密钥认证，防止 sshpass 与密钥认证争抢
-        sshpass -v -p $password ssh `
+        sshpass -v -p "'$password'" ssh `
             -o StrictHostKeyChecking=no `
             -o PubkeyAuthentication=no `
             -o PreferredAuthentications=password, keyboard-interactive `
@@ -177,7 +177,235 @@ function Invoke-RemoteSSH
             $authority
     }
 }
+function Invoke-RemoteSSH
+{
+    <# 
+    .SYNOPSIS
+    对sshpass的一个简单包装,读取指定位置的密码文件,并执行ssh登录
+    .NOTES
+    优先尝试密钥免密登录,如果失败则回退到sshpass密码登录
+    对于没有条件配置密钥验证的客户端设备,使用sshpass进行密码输入实现验证自动化
+    .PARAMETER Mode
+    指定登录模式:
+      Auto        - (默认) 先尝试密钥,失败回退sshpass
+      Key         - 仅使用密钥免密登录
+      Password    - 仅使用sshpass密码登录
+      Interactive - 仅使用ssh原生交互式密码输入(手动输入密码)
+    .PARAMETER PassDelivery
+    密码传递方式:
+      Env    - (默认) 环境变量传递,规避shell转义
+      File   - 临时文件传递,最安全
+      Direct - 命令行参数传递,密码含特殊字符时可能失败
+    .EXAMPLE
+    Invoke-RemoteSSH -ServerID 0 -Debug
+    自动模式连接,并显示调试信息(完整命令行、密码分析等)
+    .EXAMPLE
+    Invoke-RemoteSSH -ServerID 2 -Mode Password -PassDelivery File -Debug
+    强制sshpass密码登录,用临时文件传密码,同时查看调试信息
+    #>
+    [CmdletBinding()]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+        'PSAvoidUsingPlainTextForPassword', 'PassDelivery',
+        Justification = 'This parameter is an enumeration value of the password delivery method, not the password itself')]
+    param (
+        [parameter(Mandatory = $true)]
+        $ServerID,
 
+        [ValidateSet('Auto', 'Key', 'Password', 'Interactive')]
+        [string]$Mode = 'Auto',
+
+        [ValidateSet('Direct', 'Env', 'File')]
+        [string]$PassDelivery = 'Env',
+
+        $Path = "$server_config"
+    )
+
+    $servers = Get-ServerList -Skip 0
+    $server = $servers[$ServerID]
+    $ip = $server.ip
+    $user = $server.ssh.user
+    $port = $server.ssh.port
+    $password = $server.ssh.password
+    $authority = "$user@$ip"
+
+    # ===== 辅助函数：输出调试信息 =====
+    function Write-DebugCommand
+    {
+        param([string]$Label, [string[]]$CommandArgs, [string]$Note = '')
+
+        Write-Debug ''
+        Write-Debug "===== $Label ====="
+        Write-Debug "目标: $authority : $port"
+        Write-Debug "命令: $($CommandArgs -join ' ')"
+
+        if ($Note)
+        {
+            Write-Debug "备注: $Note"
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($password))
+        {
+            $masked = if ($password.Length -le 2) { '***' }
+            else { "$($password[0])$('*' * ($password.Length - 2))$($password[-1])" }
+            Write-Debug "密码(脱敏): $masked  长度: $($password.Length)"
+
+            $specialChars = [regex]::Matches($password, '[^a-zA-Z0-9]') |
+            ForEach-Object { $_.Value } | Sort-Object -Unique
+            if ($specialChars.Count -gt 0)
+            {
+                Write-Debug "密码含特殊字符: $($specialChars -join ' ')"
+                Write-Debug "提示: 若Direct方式失败,请尝试 -PassDelivery Env 或 File"
+            }
+        }
+        Write-Debug "===== END ====="
+    }
+
+    # ===== 密钥登录探测 =====
+    function Test-KeyAuth
+    {
+        Write-Verbose "探测密钥免密登录 ${authority}:$port ..."
+        $probeArgs = @(
+            '-o', 'BatchMode=yes',
+            '-o', 'StrictHostKeyChecking=no',
+            '-o', 'ConnectTimeout=5',
+            '-p', $port,
+            $authority,
+            'exit'
+        )
+        Write-DebugCommand '密钥探测' (@('ssh') + $probeArgs)
+        ssh @probeArgs 2>$null
+        return ($LASTEXITCODE -eq 0)
+    }
+
+    # ===== 密钥登录 =====
+    function Connect-ByKey
+    {
+        $sshArgs = @(
+            '-o', 'StrictHostKeyChecking=no',
+            '-p', $port,
+            $authority
+        )
+        Write-DebugCommand '密钥登录' (@('ssh') + $sshArgs)
+        ssh @sshArgs
+    }
+
+    # ===== sshpass密码登录 =====
+    function Connect-BySshpass
+    {
+        if (-not (Test-CommandAvailability 'sshpass'))
+        {
+            Write-Error "sshpass 未安装,无法使用密码登录"
+            return
+        }
+        if ([string]::IsNullOrWhiteSpace($password))
+        {
+            Write-Error "密码为空,无法使用sshpass登录"
+            return
+        }
+
+        $sshOpts = @(
+            '-o', 'StrictHostKeyChecking=no',
+            '-o', 'PubkeyAuthentication=no',
+            '-o', 'PreferredAuthentications=password,keyboard-interactive',
+            '-o', 'NumberOfPasswordPrompts=1',
+            '-p', $port,
+            $authority
+        )
+
+        $tempFile = $null
+
+        try
+        {
+            switch ($PassDelivery)
+            {
+                'Direct'
+                {
+                    $sshpassArgs = @('-v', '-p', $password) + @('ssh') + $sshOpts
+                    Write-DebugCommand 'sshpass密码登录(Direct)' (@('sshpass') + $sshpassArgs) `
+                        '密码通过命令行参数传递,特殊字符可能被shell转义导致失败'
+                    sshpass @sshpassArgs
+                }
+                'Env'
+                {
+                    $env:SSHPASS = $password
+                    $sshpassArgs = @('-v', '-e') + @('ssh') + $sshOpts
+                    Write-DebugCommand 'sshpass密码登录(Env)' (@('sshpass') + $sshpassArgs) `
+                        '密码通过环境变量SSHPASS传递,规避shell转义问题'
+                    sshpass @sshpassArgs
+                }
+                'File'
+                {
+                    $tempFile = [System.IO.Path]::GetTempFileName()
+                    [System.IO.File]::WriteAllText($tempFile, $password)
+                    if ($IsLinux -or $IsMacOS) { chmod 600 $tempFile }
+                    $sshpassArgs = @('-v', '-f', $tempFile) + @('ssh') + $sshOpts
+                    Write-DebugCommand 'sshpass密码登录(File)' (@('sshpass') + $sshpassArgs) `
+                        "密码通过临时文件传递: $tempFile"
+                    sshpass @sshpassArgs
+                }
+            }
+        }
+        finally
+        {
+            if ($env:SSHPASS) { Remove-Item Env:SSHPASS -ErrorAction SilentlyContinue }
+            if ($tempFile -and (Test-Path $tempFile))
+            {
+                Remove-Item $tempFile -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
+    # ===== 交互式密码登录 =====
+    function Connect-ByInteractive
+    {
+        $sshArgs = @(
+            '-o', 'StrictHostKeyChecking=no',
+            '-o', 'PubkeyAuthentication=no',
+            '-o', 'PreferredAuthentications=password,keyboard-interactive',
+            '-p', $port,
+            $authority
+        )
+        Write-DebugCommand '交互式密码登录' (@('ssh') + $sshArgs) `
+            '将由ssh直接提示输入密码,不经过sshpass'
+        ssh @sshArgs
+    }
+
+    # ===== 主逻辑 =====
+    Write-Debug "Mode=$Mode  PassDelivery=$PassDelivery"
+
+    switch ($Mode)
+    {
+        'Key'
+        {
+            Write-Verbose "模式: 仅密钥登录"
+            Connect-ByKey
+        }
+        'Password'
+        {
+            Write-Verbose "模式: 仅sshpass密码登录 (方式: $PassDelivery)"
+            Connect-BySshpass
+        }
+        'Interactive'
+        {
+            Write-Verbose "模式: 交互式手动输入密码"
+            Connect-ByInteractive
+        }
+        default
+        {
+            Write-Verbose "模式: 自动(先密钥后密码)"
+            if (Test-KeyAuth)
+            {
+                Write-Verbose "密钥认证可用,直接SSH连接"
+                Connect-ByKey
+            }
+            else
+            {
+                Write-Verbose "密钥认证不可用,回退到sshpass密码登录"
+                Connect-BySshpass
+            }
+        }
+    }
+}
 function Test-UrlOrHostAvailability
 {
     [CmdletBinding(DefaultParameterSetName = 'FromFile')]
