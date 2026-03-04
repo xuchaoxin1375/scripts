@@ -2,7 +2,6 @@
 # 网站部署脚本,可以批量并行部署多个站点,可以指定并发数量.
 
 VERSION=20260303
-echo "deploy_script_version: $VERSION"
 
 # === 配置参数 ===
 # 依赖说明:依赖于外部的伪静态规则文件RewriteRules.LF.conf,以及一些实用性程序(7z,unzip等)
@@ -24,12 +23,6 @@ DB_PASSWORD="15a58524d3bd2e49"
 DEPLOYED_DIR="$UPLOADER_DIR/deployed_all"
 PLUGIN_INSTALL_MODE="symlink" # 插件安装模式: symlink(符号链接), copy(复制)
 DB_HOST="localhost"           # 数据库主机
-# ========语法(默认值设置)======
-# 如果变量未定义或为空，可以设置默认值：
-# 使用 ${}扩展语法, ${} 是 参数扩展（Parameter Expansion） 的语法，用于对变量进行操作，包括获取值、字符串处理、默认值设置等
-# 语法	             说明
-# ${var-default}	如果 var 未定义，使用 default
-# ${var:-default}	如果 var 未定义 或为空，使用 default
 
 # 跳过解压网站根目录及其相关操作(假设已经解压过根目录包了)
 SITE_ROOT_SKIP=false
@@ -38,23 +31,24 @@ SITE_ROOT_SKIP=false
 # TODO:在wp-config.php中设定home_url和site_url
 SITE_DB_SKIP=false
 
-# 关闭shellcheck路径检查多余报错,尤其是其他平台开发时,使用source命令
-# shellcheck source=/dev/null
-SH=/www/sh
-SH1=/scripts/wp/woocommerce/woo_df/sh
-SH2="/c/repos""${SH1}"
-[[ -d $SH1 ]] && SH="$SH1"
-[[ -d $SH2 ]] && SH="$SH2"
-shell_utils=$SH/shell_utils.sh
-echo "verbose:正在加载shell工具函数库...[$shell_utils]"
-# shellcheck disable=SC1090
-source "$shell_utils"
-
-# source /www/sh/shell_utils.sh
-# wp配置文件编辑
+# wp配置文件编辑标记
 STOP_EDITING_LINE='Add any custom values between this line and the "stop editing" line'
 # 非原生包这部分可以跳过插入(已经有相应内容了,可以通过grep检查是否有'FORCE_SSL_ADMIN'字符串存在)
 HTTPS_CONFIG_LINE="\$_SERVER['HTTPS'] = 'on'; define('FORCE_SSL_LOGIN', true); define('FORCE_SSL_ADMIN', true);"
+
+# 关闭shellcheck路径检查多余报错,尤其是其他平台开发时,使用source命令
+# shellcheck source=/dev/null
+SH=/www/sh # linux 软连接短路径风格
+SH1=/scripts/wp/woocommerce/woo_df/sh # linux风格
+SH2="/c/repos""${SH1}" # git bash风格
+# 计算并确定可用的SH目录
+[[ -d $SH1 ]] && SH="$SH1"
+[[ -d $SH2 ]] && SH="$SH2"
+shell_utils=$SH/shell_utils.sh
+echo "deploy_script_version: $VERSION"
+echo "verbose:正在加载shell工具函数库...[$shell_utils]"
+# shellcheck disable=SC1090
+source "$shell_utils"
 
 # === 函数：显示帮助信息 ===
 show_help() {
@@ -69,7 +63,9 @@ show_help() {
         -m,-plugin-install-mode MODE  设置插件安装模式 (默认: $PLUGIN_INSTALL_MODE) (可选值: symlink, copy)
         -R,--site-root-skip       跳过网站解压
         -D,--site-db-skip         跳过数据库导入
+        -E,--strict-mode         严格模式,使用set -euo pipefail
         --deployed-dir DIR        默认存储已部署的包文件(默认: $DEPLOYED_DIR)
+        -j,--jobs NUM            设置并发数 (默认: $JOBS)
         -r,--project-home DIR     设置站点所属的项目目录PROJECT_HOME (默认: $PROJECT_HOME)
         --site-home DIR           设置SERVER_SITE_HOME（自定义站点根目录）
         -h,--help                 显示此帮助信息
@@ -936,7 +932,6 @@ main() {
             while (("$job_cnt" >= JOBS)); do
                 # 等待一个任务完成(简洁起见,这里不添加失败数统计)
                 log "后台任务数:$job_cnt"
-                #  || 保护了 set -e 不会导致脚本退出.
                 log "等待一个任务完成..."
                 wait -n
                 job_cnt=$(jobs -rp | wc -l)
