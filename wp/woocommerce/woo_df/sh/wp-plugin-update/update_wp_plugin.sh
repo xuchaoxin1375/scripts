@@ -3,26 +3,18 @@
 # 如果使用symlink,需要注意和建站工具网站目录中默认设置的"防跨站攻击"功能冲突
 # 合理设置防跨站攻击(open_basedir)，防止黑客通过其他网站目录进行入侵攻击
 usage() {
-    cat << EOF
-用法: $0 [选项]
-
-参数说明：
-  --source <插件目录>          要覆盖的插件目录
-  --remove <插件名列表>        要移除的插件名，多个用逗号分隔
-  --user <用户名>              WordPress 站点所属用户名（可选，不指定则处理所有用户）
-  --workdir <工作目录列表>     网站根工作目录，多个目录用逗号分隔。默认为 /www/wwwroot,/wwwdata/wwwroot
-  --install-mode <安装模式>    安装模式(copy:复制，symlink:软链接), 默认为 symlink
-  --plugin-type                插件类型(must: 强制执行插件/mu-plugins; common: 普通插件), 默认为 common
-  --dry-run                    预览操作，不实际执行
-  --blacklist <文件>           指定黑名单文件（每行一个域名）
-  --whitelist <文件>           指定白名单文件（每行一个域名，只操作这些域名）
-  --log <日志文件>             指定日志文件保存操作日志
-
-用例:
-更新强制启用插件(mu-plugins):
-  bash $0 --source /www/mu-plugins --plugin-type must
-
-EOF
+    echo "用法: $0 [--source <插件目录>] [--remove <插件名1,插件名2,...>] [--user <用户名>] [--workdir <工作目录1,工作目录2,...>] [--dry-run] [--blacklist <黑名单文件>] [--whitelist <白名单文件>] [--log <日志文件>]"
+    echo "参数说明："
+    echo "  --source <插件目录>         要覆盖的插件目录"
+    echo "  --remove <插件名列表>       要移除的插件名，多个用逗号分隔"
+    echo "  --user <用户名>             WordPress 站点所属用户名（可选，不指定则处理所有用户）"
+    echo "  --workdir <工作目录列表>    网站根工作目录，多个目录用逗号分隔。默认为 /www/wwwroot,/wwwdata/wwwroot"
+    echo "  --install-mode <安装模式>   安装模式(copy:复制到指定目录，symlink:软链接到指定目录),默认为symlink"
+    echo "  --plugin-type               插件类型(如果是must类型,则将被处理的插件视为强制执行插件),放到wp-content目录下;默认为common类型,普通插件,放到wp-content/plugins目录下"
+    echo "  --dry-run                   预览操作，不实际执行"
+    echo "  --blacklist <文件>          指定黑名单文件（每行一个域名）"
+    echo "  --whitelist <文件>          指定白名单文件（每行一个域名，只操作这些域名）"
+    echo "  --log <日志文件>            指定日志文件保存操作日志"
     exit 1
 }
 
@@ -221,15 +213,15 @@ for workdir_path in "${WORKDIR_ARRAY[@]}"; do
             IFS=',' read -ra PLUGIN_LIST <<< "$REMOVE_PLUGINS"
             for plugin in "${PLUGIN_LIST[@]}"; do
                 REMOVE_DIR="$site/$COMMON_PLUGINS_HOME/$plugin"
-                if [[ -d "$REMOVE_DIR" ]]; then
+                if [[ -e "$REMOVE_DIR" ]]; then
                     if $DRY_RUN; then
-                        log_action "  [DRY RUN] 将移除插件目录: $REMOVE_DIR"
+                        log_action "  [DRY RUN] 将移除插件: $REMOVE_DIR"
                     else
-                        log_action "  移除插件目录: $REMOVE_DIR"
+                        log_action "  移除插件: $REMOVE_DIR"
                         rm -rf "$REMOVE_DIR"
                     fi
                 else
-                    log_action "  插件目录不存在，无需移除: $REMOVE_DIR"
+                    log_action "  插件不存在，无需移除: $REMOVE_DIR"
                 fi
             done
         fi

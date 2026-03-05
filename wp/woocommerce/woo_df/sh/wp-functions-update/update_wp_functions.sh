@@ -30,14 +30,35 @@ LOG_FILE=""
 
 while [[ "$#" -gt 0 ]]; do
     case $1 in
-        --src) SRC_FILE="$2"; shift ;;
-        --workdir) WORKDIR="$2"; shift ;;
-        --user) USER_NAME="$2"; shift ;;
-        --install-mode) INSTALL_MODE="$2"; shift ;;
+        --src)
+            SRC_FILE="$2"
+            shift
+            ;;
+        --workdir)
+            WORKDIR="$2"
+            shift
+            ;;
+        --user)
+            USER_NAME="$2"
+            shift
+            ;;
+        --install-mode)
+            INSTALL_MODE="$2"
+            shift
+            ;;
         --dry-run) DRY_RUN=true ;;
-        --blacklist) BLACKLIST_FILE="$2"; shift ;;
-        --whitelist) WHITELIST_FILE="$2"; shift ;;
-        --log) LOG_FILE="$2"; shift ;;
+        --blacklist)
+            BLACKLIST_FILE="$2"
+            shift
+            ;;
+        --whitelist)
+            WHITELIST_FILE="$2"
+            shift
+            ;;
+        --log)
+            LOG_FILE="$2"
+            shift
+            ;;
         *) usage ;;
     esac
     shift
@@ -56,11 +77,17 @@ if [[ -n "$WHITELIST_FILE" && -n "$BLACKLIST_FILE" ]]; then
     exit 1
 fi
 if [[ -n "$BLACKLIST_FILE" ]]; then
-    [[ -f "$BLACKLIST_FILE" ]] || { echo "黑名单文件不存在: $BLACKLIST_FILE"; exit 1; }
+    [[ -f "$BLACKLIST_FILE" ]] || {
+        echo "黑名单文件不存在: $BLACKLIST_FILE"
+        exit 1
+    }
     mapfile -t BLACKLIST < "$BLACKLIST_FILE"
 fi
 if [[ -n "$WHITELIST_FILE" ]]; then
-    [[ -f "$WHITELIST_FILE" ]] || { echo "白名单文件不存在: $WHITELIST_FILE"; exit 1; }
+    [[ -f "$WHITELIST_FILE" ]] || {
+        echo "白名单文件不存在: $WHITELIST_FILE"
+        exit 1
+    }
     mapfile -t WHITELIST < "$WHITELIST_FILE"
 fi
 
@@ -98,11 +125,11 @@ for dir in "${WORKDIRS[@]}"; do
     if [[ -n "$USER_NAME" ]]; then
         while IFS= read -r site; do
             SITE_PATHS+=("$site")
-        done < <(find "$dir/$USER_NAME" -type d -maxdepth 2  -name wordpress 2>/dev/null)
+        done < <(find "$dir/$USER_NAME" -type d -maxdepth 2 -name wordpress 2> /dev/null)
     else
         while IFS= read -r site; do
             SITE_PATHS+=("$site")
-        done < <(find "$dir" -type d -maxdepth 3 -name wordpress  2>/dev/null)
+        done < <(find "$dir" -type d -maxdepth 3 -name wordpress 2> /dev/null)
     fi
 done
 
@@ -119,7 +146,10 @@ for site in "${SITE_PATHS[@]}"; do
     fi
 
     THEME_DIR="$site/wp-content/themes"
-    [[ -d "$THEME_DIR" ]] || { log_action "主题目录不存在: $THEME_DIR"; continue; }
+    [[ -d "$THEME_DIR" ]] || {
+        log_action "主题目录不存在: $THEME_DIR"
+        continue
+    }
     for theme in "$THEME_DIR"/*; do
         [[ -d "$theme" ]] || continue
         TARGET="$theme/functions.php"
@@ -133,7 +163,7 @@ for site in "${SITE_PATHS[@]}"; do
                 else
                     log_action "覆盖失败: $TARGET"
                 fi
-            elif [[ $INSTALL_MODE = "symlink" ]]; then 
+            elif [[ $INSTALL_MODE = "symlink" ]]; then
                 if ln -sf "$SRC_FILE" "$TARGET"; then
                     log_action "已强制创建软链接 $SRC_FILE 到 $TARGET"
                 else
@@ -144,4 +174,9 @@ for site in "${SITE_PATHS[@]}"; do
     done
 done
 
-$DRY_RUN && log_action "Dry run 完成，未做任何更改。" || log_action "操作已完成。"
+
+if [[ $DRY_RUN == "true" ]]; then
+    log_action "Dry run 完成，未做任何更改。"
+else
+    log_action "操作已完成。"
+fi

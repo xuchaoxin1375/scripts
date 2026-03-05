@@ -1,5 +1,231 @@
 #!/bin/bash
 # 提供一些常用的bash/zsh兼容的函数.
+# 新函数添加于下方:
+# ===============================
+#
+
+# 判断路径是否为空目录
+
+is_empty_dir() {
+  local method="glob" # 默认方式
+  local dir=""
+  local verbose=false
+
+  # ---------------------- 解析参数 ----------------------
+  local usage="用法: is_empty_dir [-m method] [-v] <directory>
+选项:
+    -m <method>   判断方式: glob | ls | find | read (默认: glob)
+    -v            显示详细信息
+    -h            显示帮助
+"
+
+  local OPTIND=1
+  while getopts ":m:vh" opt; do
+    case "$opt" in
+      m) method="$OPTARG" ;;
+      v) verbose=true ;;
+      h)
+        echo "$usage"
+        return 0
+        ;;
+      :)
+        echo "错误: -$OPTARG 需要参数" >&2
+        return 2
+        ;;
+      *)
+        echo "错误: 未知选项 -$OPTARG" >&2
+        echo "$usage" >&2
+        return 2
+        ;;
+    esac
+  done
+  shift $((OPTIND - 1))
+  dir="$1"
+
+  # ---------------------- 参数校验 ----------------------
+  if [[ -z "$dir" ]]; then
+    echo "错误: 未指定目录" >&2
+    echo "$usage" >&2
+    return 2
+  fi
+
+  if [[ ! -d "$dir" ]]; then
+    echo "错误: '$dir' 不是一个有效目录" >&2
+    return 2
+  fi
+
+  if [[ ! -r "$dir" ]]; then
+    echo "错误: '$dir' 不可读" >&2
+    return 2
+  fi
+
+  # ---------------------- 判断方法 ----------------------
+  local result # 0=空, 1=非空
+
+  case "$method" in
+    glob)
+      # 纯 Bash，利用 glob 展开到数组
+      local files
+      local orig_nullglob orig_dotglob
+      orig_nullglob=$(shopt -p nullglob)
+      orig_dotglob=$(shopt -p dotglob)
+      shopt -s nullglob dotglob
+      files=("$dir"/*)
+      $orig_nullglob # 恢复原始设置
+      $orig_dotglob
+      ((${#files[@]} == 0)) && result=0 || result=1
+      ;;
+
+    ls)
+      # 使用 ls -A 判断
+      if [[ -z "$(ls -A "$dir" 2> /dev/null)" ]]; then
+        result=0
+      else
+        result=1
+      fi
+      ;;
+
+    find)
+      # 使用 find，找到第一个条目即停止
+      if [[ -z "$(find "$dir" -maxdepth 1 -mindepth 1 -print -quit 2> /dev/null)" ]]; then
+        result=0
+      else
+        result=1
+      fi
+      ;;
+
+    read)
+      # 使用 find + read 组合
+      if find "$dir" -maxdepth 1 -mindepth 1 -print0 -quit 2> /dev/null | read -r -d '' _; then
+        result=1
+      else
+        result=0
+      fi
+      ;;
+
+    *)
+      echo "错误: 未知方式 '$method'" >&2
+      echo "可选: glob | ls | find | read" >&2
+      return 2
+      ;;
+  esac
+
+  # ---------------------- 输出结果 ----------------------
+  if $verbose; then
+    local status
+    ((result == 0)) && status="dir is empty" || status="dir not empty "
+    echo "[方式: $method] '$dir' -> $status"
+  fi
+
+  return $result
+}
+###################################
+# 检查 MySQL 是否可连通
+# 按需修改参数，免密登录直接调用 check_mysql 即可
+# mysql "${args[@]}" --connect-timeout=3 -e "SELECT 1" &> /dev/null
+# arguments:
+#   -H: mysql服务主机
+#   -P: mysql服务端口
+#   -u: mysql用户名
+#   -p: mysql密码
+# examples:
+#   check_mysql                                    # 免密登录(依赖 .my.cnf 或 mysql_config_editor)
+#   check_mysql -u root -p "123456"                # 指定用户名密码
+#   check_mysql -u root -p "123456" -H 10.0.0.1    # 指定主机
+#   check_mysql -u root -p "123456" -H 10.0.0.1 -P 3307  # 指定端口
+# 完整用例
+# if check_mysql -u root -p "123456" -H 127.0.0.1 -P 3306; then
+#     echo "MySQL 连接成功"
+# else
+#     echo "MySQL 连接失败"
+# fi
+##################
+check_mysql() {
+  local host="" port="" user="" pass="" verbose=0 args=()
+  local usage="用法: ${FUNCNAME[0]} [-H host] [-P port] [-u user] [-p pass] [-v]"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -H | -P | -u)
+        # 这三个选项必须有参数值
+        if [[ -z "$2" || "$2" == -* ]]; then
+          echo "错误: 选项 $1 需要一个参数值。"
+          return 1
+        fi
+        case "$1" in
+          -H) host="$2" ;;
+          -P) port="$2" ;;
+          -u) user="$2" ;;
+        esac
+        shift 2
+        ;;
+
+      # -p 单独处理，支持三种形式：-p123 / -p 123 / -p（空密码）
+      -p)
+        # -p 后面跟空格的情况
+        if [[ -n "$2" && "$2" != -* ]]; then
+          pass="$2"
+          shift 2
+        else
+          # 没有密码参数，可以交互输入或设为空
+          read -rsp "请输入密码: " pass
+          echo
+          shift
+        fi
+        ;;
+      -p*)
+        # -p123 连写形式
+        pass="${1#-p}"
+        shift
+        ;;
+
+      -v)
+        verbose=1
+        shift
+        ;;
+      --help)
+        echo "$usage"
+        return 0
+        ;;
+      *)
+        echo "未知选项: $1"
+        echo "$usage"
+        return 1
+        ;;
+    esac
+  done
+
+  [[ -n "$host" ]] && args+=(-h "$host")
+  [[ -n "$port" ]] && args+=(-P "$port")
+  [[ -n "$user" ]] && args+=(-u "$user")
+  [[ -n "$pass" ]] && args+=(-p"$pass")
+
+  if ((verbose)); then
+    echo "--- check_mysql ---"
+    echo "  host : ${host:-<default>}"
+    echo "  port : ${port:-<default>}"
+    echo "  user : ${user:-<default>}"
+    echo "  pass : ${pass:+****}"
+    echo -n "  result: "
+  fi
+
+  local out rc
+  out=$(mysql "${args[@]}" --connect-timeout=3 -e "SELECT VERSION() AS version, CURRENT_USER() AS user;" 2>&1)
+  rc=$?
+
+  if ((verbose)); then
+    if ((rc == 0)); then
+      echo -e "\033[32mOK\033[0m"
+      echo "$out"
+    else
+      echo -e "\033[31mFAIL\033[0m"
+      echo "$out"
+    fi
+    echo "-------------------"
+  fi
+
+  return $rc
+}
 
 ######################################
 # 调用rsync从已知主机拷贝(镜像)目录结构到指定位置
@@ -75,7 +301,7 @@ demo_job() {
 # 虽然bash提供了内置的 `${var,,}` 语法来转换为小写,但使用函数的方式写法更方便
 # `-n` 可以控制是否对原字符串做更改(如果传入的是一个字符串变量的情况下)
 # 使用此选项效果相当于s="$(lower $s)"
-# 
+#
 #  延伸:类似的可以实现小写转大写函数upper(),或者增加1个选项来控制是转大写还是转小写
 #  但是单独的函数名比较符合使用习惯.和其他语言更相近.
 # Notes:

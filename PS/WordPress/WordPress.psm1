@@ -1326,6 +1326,9 @@ function Update-WpFunctionsphpOnServers
         $Threads = 10
     )
     $servers = Get-ServerList -Path $ServerConfig
+    $OutputEncoding = [System.Text.Encoding]::UTF8
+    # 设置控制台输出编码为 UTF-8
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
     $servers.ip | ForEach-Object -Parallel {
         Write-Host "Updating functions.php to $_"
         # Push-ByScp -Server $_ -SourcePath $Path -TargetPath $Target  -Verbose
@@ -1618,7 +1621,8 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
         Write-Verbose "expanding zip file to [$remotePluginDir]..."
         # 覆盖式解压(-o选项),-d 指定解压目录(extract directory)
         ssh $username@$server "unzip -o $remoteZipFile -d $remoteDirectory"
-        if($JustUpload){
+        if($JustUpload)
+        {
             return $True
         }
         
