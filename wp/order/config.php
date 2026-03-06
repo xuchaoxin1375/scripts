@@ -1,6 +1,6 @@
 <?php
 
-$APP_VERSION = $APP_VERSION ?? 'v2.0.20260203';
+$APP_VERSION = $APP_VERSION ?? 'v2.5.20260306';
 $access_token = $access_token ?? 'cxxu';
 
 $CSV_HEADER_CANDIDATES = $CSV_HEADER_CANDIDATES ?? [

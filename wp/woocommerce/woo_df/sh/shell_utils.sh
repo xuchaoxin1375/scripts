@@ -4,8 +4,49 @@
 # ===============================
 #
 
-# 判断路径是否为空目录
+# ============ 询问是否继续(支持定制跳过询问) ============
+# Arguments:
+#   $1 prompt 向用户展示的提示信息
+#   $2 default 决定提示符的输入选择部分的内容是(y,Y),(n,N),
+#               或其他情况时,分别对应提示[Y/n],[y/N],[y/n]
+#   $3 决定
+# 用法: confirm "提示信息" [默认值y/n]
+# 返回: 0=yes, 1=no
+# Examples :
+#   confirm "是否继续执行?" "y"
+#       是否继续执行? [y/N]: (如果直接回车,会自动选择N)
+confirm() {
+  local prompt="$1"
+  local default="${2:-}"       # 无命令行覆盖时的默认值(空串)
+  local ASSUME_ANSWER="${3:-}" # 特殊参数,指定的话不会进入交互模式,直接返回0或1
+  # 🔑 如果指定了自动回答，直接返回
+  if [[ -n "$ASSUME_ANSWER" ]]; then
+    echo "${prompt} → 自动回答: ${ASSUME_ANSWER}"
+    [[ "$ASSUME_ANSWER" == "y" ]] && return 0 || return 1
+  fi
+  # 如果命令行没有指定自动回答,则要求用户交互,交互方式可以定义3类(至少要求输入一个回车)
+  # 构造提示符的输入选择部分
+  # (对于y,Y表示偏好为自动输入yes(return 0),如果是n,N,偏好是自动输入no(return 1))
+  local yn
+  case "$default" in
+    y | Y) yn="[Y/n]" ;;
+    n | N) yn="[y/N]" ;;
+    *) yn="[y/n]" ;; # 表示要求用户必须输入可用值
+  esac
 
+  # 交互式询问（支持重试）
+  while true; do
+    read -r -p "${prompt} ${yn}: " answer
+    answer="${answer:-$default}" # 用户直接回车则取默认值
+    case "${answer,,}" in        # ${,,} 转小写 (bash 4+)
+      y | yes) return 0 ;;
+      n | no) return 1 ;;
+      *) echo "请输入 y(Y) 或 n(N)" ;;
+    esac
+  done
+}
+
+# 判断路径是否为空目录
 is_empty_dir() {
   local method="glob" # 默认方式
   local dir=""

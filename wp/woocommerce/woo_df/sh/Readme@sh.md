@@ -460,17 +460,30 @@ notepad ~\.ssh\config
 
 其他情况请另见它文.
 
-## 配置免密登录
+## 配置ssh免密登录
 
 [ssh免密登录配置@上传公钥到ssh server](https://blog.csdn.net/xuchaoxin1375/article/details/120733071?sharetype=blogdetail&sharerId=120733071&sharerefer=PC&sharesource=xuchaoxin1375&spm=1011.2480.3001.8118)
 
 windows上,虽然没有自带ssh-copy-id工具,可以通过powershell+ssh调用服务器上的shell工具的方式实现
+
+> 请确保已经事先生成密钥:`ssh-keygen -t ed25519 -C "your-email"`
+>
+> ```powershell
+> ssh-keygen -t ed25519 -C "$env:COMPUTERNAME" # 或者用计算机名代替邮箱
+> ```
+>
+> 
 
 ```bash
 $target="user@your_server_host" 
 # 例如:
 # $target="root@$env:DF_SERVER4"
 $pubkey=Get-Content ~/.ssh/id_ed25519.pub
+if(Test-Path $pubkey){
+	write-verbose "已存在密钥对"
+}else{
+	ssh-keygen -t ed25519 -C "$env:COMPUTERNAME " # 或者用计算机名代替邮箱
+}
 ssh $target "mkdir -p ~/.ssh && echo '$pubkey' >> ~/.ssh/authorized_keys"
 # 初次运行需要输入服务器ssh对应user用户的密码
 ```

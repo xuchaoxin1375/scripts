@@ -14,6 +14,7 @@ function render_range_revenue_module($access_token, $view_mode, $range_start, $r
                 <input type="hidden" name="token" value="<?= htmlspecialchars($access_token) ?>">
                 <input type="hidden" name="mode" value="<?= htmlspecialchars($view_mode) ?>">
                 <input type="hidden" name="pending_as_success" value="<?= (isset($_GET['pending_as_success']) && (string)$_GET['pending_as_success'] === '0') ? '0' : '1' ?>">
+                <input type="hidden" name="csv_file" value="<?= htmlspecialchars((string)($_GET['csv_file'] ?? '')) ?>">
                 <div class="range-revenue-row">
                     <span class="range-revenue-title">区间:</span>
                     <button type="submit" class="range-revenue-btn">重置图表中心和日期区间</button>
@@ -27,6 +28,13 @@ function render_range_revenue_module($access_token, $view_mode, $range_start, $r
                             <input type="range" min="0" max="100" value="100" id="rangeEndSlider" style="flex:1;">
                         </div>
                     </div>
+                </div>
+
+                <div id="rangeQuickLastNDays" style="margin-left:auto; display:flex; align-items:center; gap:6px; background: rgba(255,255,255,0.06); padding: 6px 8px; border-radius: 10px;">
+                    <span style="font-size:12px; color:#94a3b8; font-weight:700;">最近</span>
+                    <input type="number" id="rangeLastNDaysInput" value="7" min="1" step="1" placeholder="n" style="width:74px; background:transparent; border:1px solid rgba(148,163,184,0.35); border-radius:8px; padding:6px 8px; color:inherit; font-weight:700; outline:none;">
+                    <span style="font-size:12px; color:#94a3b8; font-weight:700;">天</span>
+                    <button type="button" id="rangeLastNDaysApply" class="range-revenue-btn">应用</button>
                 </div>
 
                 
@@ -216,8 +224,8 @@ function render_analysis_content($access_token, $view_mode, $log_date, $stats, $
             $range_error = validate_date_range($range_start, $range_end, $min_date, $max_date);
             $revenue_days = [];
             if ($range_error === '') {
-                $csv_files0 = list_csv_files_in_dir(__DIR__);
-                $csv_path0 = resolve_selected_csv_path(__DIR__, $csv_selected, $csv_files0);
+                $csv_files0 = list_csv_files_in_dir(dirname(__DIR__));
+                $csv_path0 = resolve_selected_csv_path(dirname(__DIR__), $csv_selected, $csv_files0);
                 $csv_data0 = load_domain_owner_map_from_csv($csv_path0);
                 $GLOBALS['ORDERS3_RANGE_CSV_DOMAIN_OWNER_MAP'] = (
                     !empty($csv_data0['meta']['has_people'])
@@ -234,8 +242,8 @@ function render_analysis_content($access_token, $view_mode, $log_date, $stats, $
         <div class="main-layout">
             <aside class="side-panel">
                 <?php
-                $csv_files = list_csv_files_in_dir(__DIR__);
-                $csv_path = resolve_selected_csv_path(__DIR__, $csv_selected, $csv_files);
+                $csv_files = list_csv_files_in_dir(dirname(__DIR__));
+                $csv_path = resolve_selected_csv_path(dirname(__DIR__), $csv_selected, $csv_files);
                 $csv_data_for_side = load_domain_owner_map_from_csv($csv_path);
                 $people_stats = build_people_stats($analysis_data, $csv_data_for_side['map'] ?? []);
                 $people_has_people = (bool)($csv_data_for_side['meta']['has_people'] ?? false);

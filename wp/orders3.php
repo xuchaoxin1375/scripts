@@ -51,6 +51,28 @@ $target_file_key = $_GET['file_key'] ?? 'forpay';
 $raw_order = $_GET['raw_order'] ?? 'desc';
 $raw_view_type = $_GET['raw_view_type'] ?? 'plain';
 
+$export_range_start = '';
+$export_range_end = '';
+if ($view_mode === 'analysis') {
+    try {
+        [$export_range_start, $export_range_end] = (function() use ($log_date) {
+            try {
+                if (function_exists('get_current_range_from_query_or_default')) {
+                    [$rs, $re] = get_current_range_from_query_or_default($log_date);
+                    return [(string)$rs, (string)$re];
+                }
+            } catch (Throwable $e) {
+            }
+            $rs2 = (string)($_GET['range_start'] ?? '');
+            $re2 = (string)($_GET['range_end'] ?? '');
+            return [$rs2, $re2];
+        })();
+    } catch (Throwable $e) {
+        $export_range_start = (string)($_GET['range_start'] ?? '');
+        $export_range_end = (string)($_GET['range_end'] ?? '');
+    }
+}
+
 $log_files = [
     'forpay_new' => "{$log_date}forpay_new.log",
     'forpay' => "{$log_date}forpay.log",
@@ -163,8 +185,8 @@ if (orders3_handle_partials_and_exports(
                             <?php if (!empty($_GET['amount_nonzero'])): ?>
                                 <input type="hidden" name="amount_nonzero" value="1">
                             <?php endif; ?>
-                            <input type="hidden" name="range_start" value="">
-                            <input type="hidden" name="range_end" value="">
+                            <input type="hidden" name="export_start" value="<?= htmlspecialchars($export_range_start) ?>">
+                            <input type="hidden" name="export_end" value="<?= htmlspecialchars($export_range_end) ?>">
                             <button type="submit" class="nav-btn" data-export-range-btn="1" style="background:#0ea5e9; color:white; border:none; padding:8px 14px; font-size:13px; font-weight:600; border-radius:10px; cursor:pointer; transition:background 0.2s, box-shadow 0.2s, transform 0.2s; box-shadow:0 2px 10px rgba(14,165,233,0.22);" onmouseover="this.style.background='#0284c7'; this.style.boxShadow='0 6px 18px rgba(14,165,233,0.30)'; this.style.transform='translateY(-1px)';" onmouseout="this.style.background='#0ea5e9'; this.style.boxShadow='0 2px 10px rgba(14,165,233,0.22)'; this.style.transform='translateY(0)';">
                                 📤 导出 CSV
                             </button>
@@ -899,15 +921,23 @@ if (orders3_handle_partials_and_exports(
                 fetchUrl.searchParams.set('partial', 'order_list');
                 if ((!groupByDomain) && isJumpStatus) fetchUrl.searchParams.set('status', 'all');
 
-                if (controller) controller.abort();
-                controller = new AbortController();
+                const hasAbort = (typeof AbortController !== 'undefined');
+                if (hasAbort) {
+                    try { if (controller) controller.abort(); } catch (e) {}
+                    try { controller = new AbortController(); } catch (e) { controller = null; }
+                } else {
+                    controller = null;
+                }
                 container.style.opacity = '0.6';
 
-                fetch(fetchUrl.toString(), {
+                const fetchOpts = {
                     method: 'GET',
                     headers: { 'X-Requested-With': 'fetch' },
-                    signal: controller.signal
-                })
+                };
+                try {
+                    if (controller && controller.signal) fetchOpts.signal = controller.signal;
+                } catch (e) {}
+                fetch(fetchUrl.toString(), fetchOpts)
                 .then(function(res) {
                     if (!res.ok) throw new Error('bad_status');
                     return res.text();
@@ -1159,15 +1189,23 @@ if (orders3_handle_partials_and_exports(
                 const fetchUrl = new URL(url.toString());
                 fetchUrl.searchParams.set('partial', 'analysis');
 
-                if (controller) controller.abort();
-                controller = new AbortController();
+                const hasAbort = (typeof AbortController !== 'undefined');
+                if (hasAbort) {
+                    try { if (controller) controller.abort(); } catch (e) {}
+                    try { controller = new AbortController(); } catch (e) { controller = null; }
+                } else {
+                    controller = null;
+                }
                 root.style.opacity = '0.55';
 
-                fetch(fetchUrl.toString(), {
+                const fetchOpts = {
                     method: 'GET',
                     headers: { 'X-Requested-With': 'fetch' },
-                    signal: controller.signal
-                })
+                };
+                try {
+                    if (controller && controller.signal) fetchOpts.signal = controller.signal;
+                } catch (e) {}
+                fetch(fetchUrl.toString(), fetchOpts)
                 .then(function(res) {
                     if (!res.ok) throw new Error('bad_status');
                     return res.text();
@@ -1792,23 +1830,7 @@ if (orders3_handle_partials_and_exports(
             try { renderRevenueQuickControls(window.revenueChartInstance); } catch (e) {}
             if (window.revenueChartInstance) window.revenueChartInstance.update();
             if (shouldDeferShow) {
-                const reveal = function() {
-                    try {
-                        const loadingEl = document.getElementById('revenueChartLoading');
-                        const contentEl = document.getElementById('revenueChartContent');
-                        if (loadingEl) loadingEl.style.display = 'none';
-                        if (contentEl) contentEl.style.display = 'block';
-                    } catch (e) {}
-                };
-                // 首屏/刷新加载延迟显示图表，延迟时间
-                const revealDelay = 300;
-                try {
-                    requestAnimationFrame(function() {
-                        setTimeout(reveal, revealDelay);
-                    });
-                } catch (e) {
-                    setTimeout(reveal, revealDelay);
-                }
+                // deferShow 时由 fetchAndUpdate() 统一切换 loading/content，避免首屏出现“某个图提前显示”的不一致。
             }
         }
 
@@ -1817,6 +1839,8 @@ if (orders3_handle_partials_and_exports(
             const container = document.getElementById('peopleChartContainer');
             const canvas = document.getElementById('peopleChart');
             if (!container || !canvas) return;
+
+            const shouldDeferShow = !!(opts && opts.deferShow);
 
             const ctx = canvas.getContext('2d');
 
@@ -2010,9 +2034,16 @@ if (orders3_handle_partials_and_exports(
                 try {
                     const loadingEl = document.getElementById('peopleChartLoading');
                     const contentEl = document.getElementById('peopleChartContent');
-                    if (loadingEl) loadingEl.style.display = 'none';
-                    if (contentEl) contentEl.style.display = 'none';
-                    container.style.display = 'none';
+                    if (shouldDeferShow) {
+                        // 首屏 deferShow：先保留加载态，等待 fetchAndUpdate() 的数据回来后再决定是否隐藏。
+                        container.style.display = 'block';
+                        if (loadingEl) loadingEl.style.display = 'flex';
+                        if (contentEl) contentEl.style.display = 'none';
+                    } else {
+                        if (loadingEl) loadingEl.style.display = 'none';
+                        if (contentEl) contentEl.style.display = 'none';
+                        container.style.display = 'none';
+                    }
                 } catch (e) {}
                 if (window.peopleChartInstance) {
                     try { window.peopleChartInstance.destroy(); } catch (e2) {}
@@ -2021,7 +2052,6 @@ if (orders3_handle_partials_and_exports(
                 return;
             }
 
-            const shouldDeferShow = !!(opts && opts.deferShow);
             try {
                 container.style.display = 'block';
                 const loadingEl = document.getElementById('peopleChartLoading');
@@ -2049,6 +2079,7 @@ if (orders3_handle_partials_and_exports(
                     if (window.peopleChartInstance.options) {
                         window.peopleChartInstance.options.animation = undefined;
                     }
+                    try { if (typeof window.peopleChartInstance.resize === 'function') window.peopleChartInstance.resize(); } catch (e0) {}
                     window.peopleChartInstance.update();
                     return;
                 } catch (e) {
@@ -2153,26 +2184,11 @@ if (orders3_handle_partials_and_exports(
                 }
             });
 
-            if (shouldDeferShow) {
-                const reveal = function() {
-                    try {
-                        const loadingEl = document.getElementById('peopleChartLoading');
-                        const contentEl = document.getElementById('peopleChartContent');
-                        if (loadingEl) loadingEl.style.display = 'none';
-                        if (contentEl) contentEl.style.display = 'block';
-                    } catch (e) {}
-                };
-                const revealDelay = 800;
-                try {
-                    requestAnimationFrame(function() {
-                        setTimeout(reveal, revealDelay);
-                    });
-                } catch (e) {
-                    setTimeout(reveal, revealDelay);
-                }
-            }
-
             try { renderPeopleQuickControls(window.peopleChartInstance, peopleNames || []); } catch (e) {}
+
+            if (shouldDeferShow) {
+                // deferShow 时由 fetchAndUpdate() 统一切换 loading/content，避免首屏出现“某个图提前显示”的不一致。
+            }
         }
 
         function initRangeRevenueInteractions() {
@@ -2473,24 +2489,35 @@ if (orders3_handle_partials_and_exports(
                 const rs = (fd.get('range_start') || '').toString();
                 const re = (fd.get('range_end') || '').toString();
                 const pendingAsSuccess = (fd.get('pending_as_success') || '1').toString();
+                const csvFile = (fd.get('csv_file') || '').toString();
 
                 if (token) url.searchParams.set('token', token);
                 url.searchParams.set('mode', mode);
                 url.searchParams.set('pending_as_success', pendingAsSuccess === '0' ? '0' : '1');
                 if (rs) url.searchParams.set('range_start', rs);
                 if (re) url.searchParams.set('range_end', re);
+                if (csvFile) url.searchParams.set('csv_file', csvFile);
+                else url.searchParams.delete('csv_file');
 
                 const fetchUrl = new URL(url.toString());
                 fetchUrl.searchParams.set('partial', 'range_revenue_json');
 
-                if (controller) controller.abort();
-                controller = new AbortController();
+                const hasAbort = (typeof AbortController !== 'undefined');
+                if (hasAbort) {
+                    try { if (controller) controller.abort(); } catch (e) {}
+                    try { controller = new AbortController(); } catch (e) { controller = null; }
+                } else {
+                    controller = null;
+                }
 
-                return fetch(fetchUrl.toString(), {
+                const fetchOpts = {
                     method: 'GET',
                     headers: { 'X-Requested-With': 'fetch' },
-                    signal: controller.signal
-                })
+                };
+                try {
+                    if (controller && controller.signal) fetchOpts.signal = controller.signal;
+                } catch (e) {}
+                return fetch(fetchUrl.toString(), fetchOpts)
                 .then(function(r) { return r.json(); })
                 .then(function(payload) {
                     if (!payload || typeof payload !== 'object') return;
@@ -2520,6 +2547,13 @@ if (orders3_handle_partials_and_exports(
                     scheduleLocalPreviewRender();
 
                     try {
+                        renderRevenueChartFromData(window.__rangeRevenueData || [], { deferShow: false });
+                    } catch (e) {}
+                    try {
+                        renderPeopleChartFromData(window.__rangeRevenueData || [], { deferShow: false });
+                    } catch (e) {}
+
+                    try {
                         const loadingEl = document.getElementById('revenueChartLoading');
                         const contentEl = document.getElementById('revenueChartContent');
                         if (loadingEl) loadingEl.style.display = 'none';
@@ -2532,6 +2566,28 @@ if (orders3_handle_partials_and_exports(
                         if (loadingEl2) loadingEl2.style.display = 'none';
                         if (contentEl2) contentEl2.style.display = 'block';
                     } catch (e) {}
+
+                    try {
+                        requestAnimationFrame(function() {
+                            try {
+                                if (window.revenueChartInstance && typeof window.revenueChartInstance.resize === 'function') window.revenueChartInstance.resize();
+                                if (window.revenueChartInstance) window.revenueChartInstance.update();
+                            } catch (e1) {}
+                            try {
+                                if (window.peopleChartInstance && typeof window.peopleChartInstance.resize === 'function') window.peopleChartInstance.resize();
+                                if (window.peopleChartInstance) window.peopleChartInstance.update();
+                            } catch (e2) {}
+                        });
+                    } catch (e) {
+                        try {
+                            if (window.revenueChartInstance && typeof window.revenueChartInstance.resize === 'function') window.revenueChartInstance.resize();
+                            if (window.revenueChartInstance) window.revenueChartInstance.update();
+                        } catch (e3) {}
+                        try {
+                            if (window.peopleChartInstance && typeof window.peopleChartInstance.resize === 'function') window.peopleChartInstance.resize();
+                            if (window.peopleChartInstance) window.peopleChartInstance.update();
+                        } catch (e4) {}
+                    }
 
                     try { if (typeof window.__syncExportRangeFromCurrent === 'function') window.__syncExportRangeFromCurrent(); } catch (e) {}
                 })
@@ -2569,14 +2625,22 @@ if (orders3_handle_partials_and_exports(
                 if (reStr) url.searchParams.set('range_end', reStr);
                 url.searchParams.set('partial', 'range_revenue_json');
 
-                if (__ensureController) __ensureController.abort();
-                __ensureController = new AbortController();
+                const hasAbort = (typeof AbortController !== 'undefined');
+                if (hasAbort) {
+                    try { if (__ensureController) __ensureController.abort(); } catch (e) {}
+                    try { __ensureController = new AbortController(); } catch (e) { __ensureController = null; }
+                } else {
+                    __ensureController = null;
+                }
 
-                fetch(url.toString(), {
+                const fetchOpts = {
                     method: 'GET',
                     headers: { 'X-Requested-With': 'fetch' },
-                    signal: __ensureController.signal
-                })
+                };
+                try {
+                    if (__ensureController && __ensureController.signal) fetchOpts.signal = __ensureController.signal;
+                } catch (e) {}
+                fetch(url.toString(), fetchOpts)
                 .then(function(r) { return r.json(); })
                 .then(function(payload) {
                     if (!payload || typeof payload !== 'object') return;
@@ -2661,6 +2725,46 @@ if (orders3_handle_partials_and_exports(
                 });
             }
 
+            const nDaysInput = document.getElementById('rangeLastNDaysInput');
+            const nDaysApply = document.getElementById('rangeLastNDaysApply');
+            function applyLastNDaysRange() {
+                if (!nDaysInput || !startInput || !endInput) return;
+                const n0 = Number(String(nDaysInput.value || '').trim());
+                const n = Math.floor(n0);
+                if (!Number.isFinite(n) || n <= 0) return;
+
+                const meta = getMeta();
+                const minD = parseDate(meta.min_date);
+                const maxD = parseDate(meta.max_date);
+
+                const focusStr = getFocusDateStr();
+                let endD = parseDate(focusStr) || parseDate(endInput.value);
+                if (!endD) return;
+                endD = clampDate(endD, minD, maxD);
+                let startD = addDays(endD, -(n - 1));
+                startD = clampDate(startD, minD, maxD);
+
+                startInput.value = fmtDate(startD);
+                endInput.value = fmtDate(endD);
+                ensureMinSpan({ pin: 'end' });
+                syncSlidersFromInputs();
+                fetchAndUpdate();
+            }
+            if (nDaysApply) {
+                nDaysApply.addEventListener('click', function() {
+                    applyLastNDaysRange();
+                });
+            }
+            if (nDaysInput) {
+                nDaysInput.addEventListener('keydown', function(ev) {
+                    const k = ev && ev.key ? String(ev.key) : '';
+                    if (k === 'Enter') {
+                        try { ev.preventDefault(); } catch (e) {}
+                        applyLastNDaysRange();
+                    }
+                });
+            }
+
             // 初始渲染 + 初始化联动
             try {
                 const f = getFocusDateStr();
@@ -2669,6 +2773,16 @@ if (orders3_handle_partials_and_exports(
             syncSlidersFromInputs();
             renderRevenueChartFromData(window.__rangeRevenueData || [], { deferShow: true });
             renderPeopleChartFromData(window.__rangeRevenueData || [], { deferShow: true });
+
+            try {
+                if (!window.__didAutoResetCenterOnLoad) {
+                    window.__didAutoResetCenterOnLoad = true;
+                    resetRangeAroundCenter(getFocusDateStr());
+                    ensureMinSpan({ pin: 'end' });
+                    syncSlidersFromInputs();
+                    fetchAndUpdate();
+                }
+            } catch (e) {}
         }
 
         if (document.readyState === 'loading') {
@@ -2683,8 +2797,8 @@ if (orders3_handle_partials_and_exports(
                 if (!btn) return;
                 const form = btn.closest('form');
                 if (!form) return;
-                const rsEl = form.querySelector('input[name="range_start"]');
-                const reEl = form.querySelector('input[name="range_end"]');
+                const rsEl = form.querySelector('input[name="export_start"]');
+                const reEl = form.querySelector('input[name="export_end"]');
                 if (!rsEl || !reEl) return;
 
                 // prefer current rangeRevenueForm values if present, fallback to URL
