@@ -15,216 +15,221 @@
 # Examples :
 #   confirm "是否继续执行?" "y"
 #       是否继续执行? [y/N]: (如果直接回车,会自动选择N)
+# $ yes|confirm  contin?  && echo "yes,continue"
+# 回答yes
+# yes,continue
 confirm() {
-  local prompt="${1:-Continue ?}"
-  local default="${2:-}" # 无命令行覆盖时的默认值(空串)
-  local ASSUME_ANSWER=""
-  # local ASSUME_ANSWER="${3:-}" # 特殊参数,指定的话不会进入交互模式,直接返回0或1
-  if [[ "$3" != -* ]]; then ASSUME_ANSWER="$3"; fi
-  # 处理可能出现的选项
-  local verbose=false
-  local usage="
-  Usage: confirm [-p prompt] [-d yYnN] [-a {y|n}] [-v] [-h]
+    local prompt
+    local default
+    local ASSUME_ANSWER=""
+
+    # local ASSUME_ANSWER="${3:-}" # 特殊参数,指定的话不会进入交互模式,直接返回0或1
+    # 处理可能出现的选项
+    local verbose=false
+    # 备用实现方案  Usage: confirm [-p prompt] [-d {y|Y|n|N}] [-a {y|n}] [-v] [-h]
+    local usage="
+Usage: confirm [prompt] [{y|Y}|{n|N}] [y|n]  [-v] [-h]
+其中前3个是可选的位置参数:
+第1个prompt表示交互时要打印的基础部分的提示用语
+第2个是default部分的提示语,有4个可用的值,y,Y对应[Y/n],而n,N对应于[y/N],
+    如果省略不写,得到对应的提示语为[y/n],此时用户必须输入合适的支而无法直接回车填写有效默认值;
+第3个ASSUME_ANSWER用于指定一个用于自动回答的值,可用值为y,n,如果用户交互时没有输入任何内容,则直接返回此选项对应的值;
+
   options:
-    -p, --prompt   指定提示符
-    -d, --default  指定默认值(y,Y,n,N),不指定则默认为空串,将会提示[y/n];
-    -a, --assume-answer 此选项用于指定一个用于自动回答的值,如果用户交互时没有输入任何内容,则直接返回此选项对应的值;
     -h, --help     显示帮助
     -v, --verbose   显示详细信息
   "
-  echo "解析函数参数..."
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      -p | --prompt)
-        prompt="$1"
-        shift 2
-        ;;
-      -d | --default)
-        default="$2"
-        shift 2
-        ;;
-      -a | --assume-answer)
-        ASSUME_ANSWER="$2"
-        shift 2
-        ;;
-      -h | --help)
-        echo "$usage"
-        return 0
-        ;;
-      -v | --verbose)
-        verbose=true
-        shift
-        ;;
-      -?*)
-        echo "错误: 未知选项 '$1'" >&2
-        echo "$usage"
-        return 2
-        ;;
-      *)
-        # break
-        shift
-        continue
-        ;;
-    esac
-    echo "分析下一个参数..."
-  done
-  # echo "检查位置参数..."
-  local rc
-  # 🔑 如果指定了自动回答，直接返回值
-  if [[ -n "$ASSUME_ANSWER" ]]; then
-    echo "${prompt} → 自动回答: ${ASSUME_ANSWER}"
-    # 设置返回值rc
-    [[ "$ASSUME_ANSWER" == "y" ]] && rc=0 || rc=1
-    # if [[ "$verbose" = true ]]; then echo "return $rc"; fi
-    # return $rc
-  fi
-  # 如果命令行没有指定自动回答,则要求用户交互,交互方式可以定义3类(至少要求输入一个回车)
-  if [[ -z $rc ]]; then
+    # echo "解析函数参数..."
+    local positional=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
 
-    # 构造提示符的输入选择部分
-    # (对于y,Y表示偏好为自动输入yes(return 0),如果是n,N,偏好是自动输入no(return 1))
-    local yn
-    case "$default" in
-      y | Y) yn="[Y/n]" ;;
-      n | N) yn="[y/N]" ;;
-      *) yn="[y/n]" ;; # 表示要求用户必须输入可用值
-    esac
+            -h | --help)
+                echo "$usage"
+                return 0
+                ;;
+            -v | --verbose)
+                verbose=true
+                ;;
+            -?*)
+                echo "错误: 未知选项 '$1'" >&2
+                echo "$usage"
+                return 2
+                ;;
+            *)
+                # 收集位置参数
+                positional+=("$1")
 
-    # 交互式询问（支持重试）
-    while true; do
-      read -r -p "${prompt} ${yn}: " answer
-      answer="${answer:-$default}" # 用户直接回车则取默认值
-      case "${answer,,}" in        # ${,,} 转小写 (bash 4+)
-        y | yes)
-          rc=0
-          break
-          ;;
-        n | no)
-          rc=1
-          break
-          ;;
-        *) echo "请输入 y(Y) 或 n(N)" ;;
-      esac
+                ;;
+        esac
+        shift
+        # echo "分析下一个参数[$1]..."
     done
-  fi
-  # 统一返回
-  if [[ "$verbose" = true ]]; then echo "return $rc"; fi
-  return $rc
+    set -- "${positional[@]}"
+    prompt="${1:-Continue ?}"
+    default="${2:-}"
+    ASSUME_ANSWER="${3:-}"
+    # debug:
+    # echo "[$*]"
+    # echo "检查位置参数..."
+    local rc
+    # 🔑 如果指定了自动回答，直接返回值
+    if [[ -n "$ASSUME_ANSWER" ]]; then
+        echo "${prompt} → 自动回答: ${ASSUME_ANSWER}"
+        # 设置返回值rc
+        [[ "$ASSUME_ANSWER" =~ ^y(es)?$ ]] && rc=0 || rc=1
+        # if [[ "$verbose" = true ]]; then echo "return $rc"; fi
+        # return $rc
+    fi
+    # 如果命令行没有指定自动回答,则要求用户交互,交互方式可以定义3类(至少要求输入一个回车)
+    if [[ -z $rc ]]; then
+
+        # 构造提示符的输入选择部分
+        # (对于y,Y表示偏好为自动输入yes(return 0),如果是n,N,偏好是自动输入no(return 1))
+        local yn
+        case "$default" in
+            y | Y) yn="[Y/n]" ;;
+            n | N) yn="[y/N]" ;;
+            *) yn="[y/n]" ;; # 表示要求用户必须输入可用值
+        esac
+
+        # 交互式询问（支持重试）
+        while true; do
+            read -r -p "${prompt} ${yn}: " answer
+            answer="${answer:-$default}" # 用户直接回车则取默认值
+            case "${answer,,}" in        # ${,,} 转小写 (bash 4+)
+                y | yes)
+                    rc=0
+                    # echo "回答yes"
+                    break
+                    ;;
+                n | no)
+                    rc=1
+                    # echo "回答no"
+                    break
+                    ;;
+                *) echo "请输入 y(Y) 或 n(N)" ;;
+            esac
+        done
+    fi
+    # 统一返回
+    if [[ "$verbose" = true ]]; then echo "return $rc"; fi
+    return $rc
 }
 
 # 判断路径是否为空目录
 is_empty_dir() {
-  local method="glob" # 默认方式
-  local dir=""
-  local verbose=false
+    local method="glob" # 默认方式
+    local dir=""
+    local verbose=false
 
-  # ---------------------- 解析参数 ----------------------
-  local usage="用法: is_empty_dir [-m method] [-v] <directory>
+    # ---------------------- 解析参数 ----------------------
+    local usage="用法: is_empty_dir [-m method] [-v] <directory>
 选项:
     -m <method>   判断方式: glob | ls | find | read (默认: glob)
     -v            显示详细信息
     -h            显示帮助
 "
 
-  local OPTIND=1
-  while getopts ":m:vh" opt; do
-    case "$opt" in
-      m) method="$OPTARG" ;;
-      v) verbose=true ;;
-      h)
-        echo "$usage"
-        return 0
-        ;;
-      :)
-        echo "错误: -$OPTARG 需要参数" >&2
-        return 2
-        ;;
-      *)
-        echo "错误: 未知选项 -$OPTARG" >&2
+    local OPTIND=1
+    while getopts ":m:vh" opt; do
+        case "$opt" in
+            m) method="$OPTARG" ;;
+            v) verbose=true ;;
+            h)
+                echo "$usage"
+                return 0
+                ;;
+            :)
+                echo "错误: -$OPTARG 需要参数" >&2
+                return 2
+                ;;
+            *)
+                echo "错误: 未知选项 -$OPTARG" >&2
+                echo "$usage" >&2
+                return 2
+                ;;
+        esac
+    done
+    shift $((OPTIND - 1))
+    dir="$1"
+
+    # ---------------------- 参数校验 ----------------------
+    if [[ -z "$dir" ]]; then
+        echo "错误: 未指定目录" >&2
         echo "$usage" >&2
         return 2
-        ;;
+    fi
+
+    if [[ ! -d "$dir" ]]; then
+        echo "错误: '$dir' 不是一个有效目录" >&2
+        return 2
+    fi
+
+    if [[ ! -r "$dir" ]]; then
+        echo "错误: '$dir' 不可读" >&2
+        return 2
+    fi
+
+    # ---------------------- 判断方法 ----------------------
+    local result # 0=空, 1=非空
+
+    case "$method" in
+        glob)
+            # 纯 Bash，利用 glob 展开到数组
+            local files
+            local orig_nullglob orig_dotglob
+            orig_nullglob=$(shopt -p nullglob)
+            orig_dotglob=$(shopt -p dotglob)
+            shopt -s nullglob dotglob
+            files=("$dir"/*)
+            $orig_nullglob # 恢复原始设置
+            $orig_dotglob
+            ((${#files[@]} == 0)) && result=0 || result=1
+            ;;
+
+        ls)
+            # 使用 ls -A 判断
+            if [[ -z "$(ls -A "$dir" 2> /dev/null)" ]]; then
+                result=0
+            else
+                result=1
+            fi
+            ;;
+
+        find)
+            # 使用 find，找到第一个条目即停止
+            if [[ -z "$(find "$dir" -maxdepth 1 -mindepth 1 -print -quit 2> /dev/null)" ]]; then
+                result=0
+            else
+                result=1
+            fi
+            ;;
+
+        read)
+            # 使用 find + read 组合
+            if find "$dir" -maxdepth 1 -mindepth 1 -print0 -quit 2> /dev/null | read -r -d '' _; then
+                result=1
+            else
+                result=0
+            fi
+            ;;
+
+        *)
+            echo "错误: 未知方式 '$method'" >&2
+            echo "可选: glob | ls | find | read" >&2
+            return 2
+            ;;
     esac
-  done
-  shift $((OPTIND - 1))
-  dir="$1"
 
-  # ---------------------- 参数校验 ----------------------
-  if [[ -z "$dir" ]]; then
-    echo "错误: 未指定目录" >&2
-    echo "$usage" >&2
-    return 2
-  fi
+    # ---------------------- 输出结果 ----------------------
+    if $verbose; then
+        local status
+        ((result == 0)) && status="dir is empty" || status="dir not empty "
+        echo "[方式: $method] '$dir' -> $status"
+    fi
 
-  if [[ ! -d "$dir" ]]; then
-    echo "错误: '$dir' 不是一个有效目录" >&2
-    return 2
-  fi
-
-  if [[ ! -r "$dir" ]]; then
-    echo "错误: '$dir' 不可读" >&2
-    return 2
-  fi
-
-  # ---------------------- 判断方法 ----------------------
-  local result # 0=空, 1=非空
-
-  case "$method" in
-    glob)
-      # 纯 Bash，利用 glob 展开到数组
-      local files
-      local orig_nullglob orig_dotglob
-      orig_nullglob=$(shopt -p nullglob)
-      orig_dotglob=$(shopt -p dotglob)
-      shopt -s nullglob dotglob
-      files=("$dir"/*)
-      $orig_nullglob # 恢复原始设置
-      $orig_dotglob
-      ((${#files[@]} == 0)) && result=0 || result=1
-      ;;
-
-    ls)
-      # 使用 ls -A 判断
-      if [[ -z "$(ls -A "$dir" 2> /dev/null)" ]]; then
-        result=0
-      else
-        result=1
-      fi
-      ;;
-
-    find)
-      # 使用 find，找到第一个条目即停止
-      if [[ -z "$(find "$dir" -maxdepth 1 -mindepth 1 -print -quit 2> /dev/null)" ]]; then
-        result=0
-      else
-        result=1
-      fi
-      ;;
-
-    read)
-      # 使用 find + read 组合
-      if find "$dir" -maxdepth 1 -mindepth 1 -print0 -quit 2> /dev/null | read -r -d '' _; then
-        result=1
-      else
-        result=0
-      fi
-      ;;
-
-    *)
-      echo "错误: 未知方式 '$method'" >&2
-      echo "可选: glob | ls | find | read" >&2
-      return 2
-      ;;
-  esac
-
-  # ---------------------- 输出结果 ----------------------
-  if $verbose; then
-    local status
-    ((result == 0)) && status="dir is empty" || status="dir not empty "
-    echo "[方式: $method] '$dir' -> $status"
-  fi
-
-  return $result
+    return $result
 }
 ###################################
 # 检查 MySQL 是否可连通
@@ -248,90 +253,90 @@ is_empty_dir() {
 # fi
 ##################
 check_mysql() {
-  local host="" port="" user="" pass="" verbose=0 args=()
-  local usage="用法: ${FUNCNAME[0]} [-H host] [-P port] [-u user] [-p pass] [-v]"
+    local host="" port="" user="" pass="" verbose=0 args=()
+    local usage="用法: ${FUNCNAME[0]} [-H host] [-P port] [-u user] [-p pass] [-v]"
 
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      -H | -P | -u)
-        # 这三个选项必须有参数值
-        if [[ -z "$2" || "$2" == -* ]]; then
-          echo "错误: 选项 $1 需要一个参数值。"
-          return 1
-        fi
+    while [[ $# -gt 0 ]]; do
         case "$1" in
-          -H) host="$2" ;;
-          -P) port="$2" ;;
-          -u) user="$2" ;;
+            -H | -P | -u)
+                # 这三个选项必须有参数值
+                if [[ -z "$2" || "$2" == -* ]]; then
+                    echo "错误: 选项 $1 需要一个参数值。"
+                    return 1
+                fi
+                case "$1" in
+                    -H) host="$2" ;;
+                    -P) port="$2" ;;
+                    -u) user="$2" ;;
+                esac
+                shift 2
+                ;;
+
+            # -p 单独处理，支持三种形式：-p123 / -p 123 / -p（空密码）
+            -p)
+                # -p 后面跟空格的情况
+                if [[ -n "$2" && "$2" != -* ]]; then
+                    pass="$2"
+                    shift 2
+                else
+                    # 没有密码参数，可以交互输入或设为空
+                    read -rsp "请输入密码: " pass
+                    echo
+                    shift
+                fi
+                ;;
+            -p*)
+                # -p123 连写形式
+                pass="${1#-p}"
+                shift
+                ;;
+
+            -v)
+                verbose=1
+                shift
+                ;;
+            --help)
+                echo "$usage"
+                return 0
+                ;;
+            *)
+                echo "未知选项: $1"
+                echo "$usage"
+                return 1
+                ;;
         esac
-        shift 2
-        ;;
+    done
 
-      # -p 单独处理，支持三种形式：-p123 / -p 123 / -p（空密码）
-      -p)
-        # -p 后面跟空格的情况
-        if [[ -n "$2" && "$2" != -* ]]; then
-          pass="$2"
-          shift 2
-        else
-          # 没有密码参数，可以交互输入或设为空
-          read -rsp "请输入密码: " pass
-          echo
-          shift
-        fi
-        ;;
-      -p*)
-        # -p123 连写形式
-        pass="${1#-p}"
-        shift
-        ;;
+    [[ -n "$host" ]] && args+=(-h "$host")
+    [[ -n "$port" ]] && args+=(-P "$port")
+    [[ -n "$user" ]] && args+=(-u "$user")
+    [[ -n "$pass" ]] && args+=(-p"$pass")
 
-      -v)
-        verbose=1
-        shift
-        ;;
-      --help)
-        echo "$usage"
-        return 0
-        ;;
-      *)
-        echo "未知选项: $1"
-        echo "$usage"
-        return 1
-        ;;
-    esac
-  done
-
-  [[ -n "$host" ]] && args+=(-h "$host")
-  [[ -n "$port" ]] && args+=(-P "$port")
-  [[ -n "$user" ]] && args+=(-u "$user")
-  [[ -n "$pass" ]] && args+=(-p"$pass")
-
-  if ((verbose)); then
-    echo "--- check_mysql ---"
-    echo "  host : ${host:-<default>}"
-    echo "  port : ${port:-<default>}"
-    echo "  user : ${user:-<default>}"
-    echo "  pass : ${pass:+****}"
-    echo -n "  result: "
-  fi
-
-  local out rc
-  out=$(mysql "${args[@]}" --connect-timeout=3 -e "SELECT VERSION() AS version, CURRENT_USER() AS user;" 2>&1)
-  rc=$?
-
-  if ((verbose)); then
-    if ((rc == 0)); then
-      echo -e "OK"
-      echo "$out"
-    else
-      echo -e "FAIL"
-      echo "$out"
+    if ((verbose)); then
+        echo "--- check_mysql ---"
+        echo "  host : ${host:-<default>}"
+        echo "  port : ${port:-<default>}"
+        echo "  user : ${user:-<default>}"
+        echo "  pass : ${pass:+****}"
+        echo -n "  result: "
     fi
-    echo "-------------------"
-  fi
 
-  return $rc
+    local out rc
+    out=$(mysql "${args[@]}" --connect-timeout=3 -e "SELECT VERSION() AS version, CURRENT_USER() AS user;" 2>&1)
+    rc=$?
+
+    if ((verbose)); then
+        if ((rc == 0)); then
+            echo -e "OK"
+            echo "$out"
+        else
+            echo -e "FAIL"
+            echo "$out"
+        fi
+        echo "-------------------"
+    fi
+
+    return $rc
 }
 
 ######################################
@@ -354,53 +359,53 @@ check_mysql() {
 #
 ######################################
 rsync_copy() {
-  remote_host="$1"
-  # 本地路径
-  local_path="$2"
-  # 远程路径
-  remote_path="$3"
-  # 远程主机
-  # 远程主机使用的登录用户名(默认root)
-  user=${4:-'root'}
-  echo "[$user]"
-  # if [[ "${#4}" -ne 0 ]]; then
-  #   user="$4"
-  # fi
-  if [[ $1 =~ ^(-h|--help|[[:space:]]*)$ ]]; then
-    echo $'
+    remote_host="$1"
+    # 本地路径
+    local_path="$2"
+    # 远程路径
+    remote_path="$3"
+    # 远程主机
+    # 远程主机使用的登录用户名(默认root)
+    user=${4:-'root'}
+    echo "[$user]"
+    # if [[ "${#4}" -ne 0 ]]; then
+    #   user="$4"
+    # fi
+    if [[ $1 =~ ^(-h|--help|[[:space:]]*)$ ]]; then
+        echo $'
       # Arguments:
       #   1 - remote_host (ip)
       #   2 - local_path (/srv/uploads/...)
       #   3 - remote_path (/www/wwwroot/...)
       #   4 - remote_user ('root' is default)
 '
-    return 1
-  fi
-  #准备
-  authority="$user"@"$remote_host"
-  remote_full_path="$authority":"$remote_path"
+        return 1
+    fi
+    #准备
+    authority="$user"@"$remote_host"
+    remote_full_path="$authority":"$remote_path"
 
-  mkdir -p "$local_path"
+    mkdir -p "$local_path"
 
-  rsync -avP --size-only "$remote_full_path" "$local_path"
+    rsync -avP --size-only "$remote_full_path" "$local_path"
 }
 
 # 将一个每秒钟打印1个数字,可以指定最多打印的次数(从1开始打印)
 # demo_job.sh
 demo_job() {
-  # JID=$(date +%N)
-  local max=${1:-20}          # 默认运行 20 秒
-  local JID=${2:-$(date +%s)} # 默认使用当前时间戳作为作业 ID
-  local i=1
-  # 根据调用时间的纳秒部分生成一个随机 ID,以区分不同的作业实例
-  echo "--- [$JID]作业开始 (PID: $$, 预计运行时间: ${max}s) ---"
-  while [ $i -le "$max" ]; do
-    # 打印当前秒数和进程 ID
-    printf "[$JID][$(date +%F-%T)]任务进度: [%2d/%2d] \n" $i "$max"
-    sleep 1
-    ((i++))
-  done
-  echo "--- [$JID]作业完成 ---"
+    # JID=$(date +%N)
+    local max=${1:-20}          # 默认运行 20 秒
+    local JID=${2:-$(date +%s)} # 默认使用当前时间戳作为作业 ID
+    local i=1
+    # 根据调用时间的纳秒部分生成一个随机 ID,以区分不同的作业实例
+    echo "--- [$JID]作业开始 (PID: $$, 预计运行时间: ${max}s) ---"
+    while [ $i -le "$max" ]; do
+        # 打印当前秒数和进程 ID
+        printf "[$JID][$(date +%F-%T)]任务进度: [%2d/%2d] \n" $i "$max"
+        sleep 1
+        ((i++))
+    done
+    echo "--- [$JID]作业完成 ---"
 }
 ######################################
 # 字符串小写处理(有多种实现)
@@ -426,25 +431,25 @@ demo_job() {
 # s="StringS";lower -n s # 输出:strings (注意使用-n时请配合变量名使用,而不是引用变量名! 例如: lower -n $s 是错误写法)
 ######################################
 lower() {
-  local ref_mode=false
-  # 单个函数选项判断,可以直接使用if,shift组合(不使用case和循环,如果要设计2个参数就需要循环)
-  if [[ "$1" == "-n" ]]; then
-    ref_mode=true
-    shift
-  fi
+    local ref_mode=false
+    # 单个函数选项判断,可以直接使用if,shift组合(不使用case和循环,如果要设计2个参数就需要循环)
+    if [[ "$1" == "-n" ]]; then
+        ref_mode=true
+        shift
+    fi
 
-  # 引用模式：直接修改传入的变量名
-  if [ "$ref_mode" = true ]; then
-    # 使用 local -n 创建一个指向目标变量的引用
-    # echo "变量ref模式"
-    local -n input="$1"
-  else
-    # 否则，创建一个临时变量并返回结果
-    local input="$*"
-  fi
-  # 核心代码
-  input="${input,,}"
-  echo "$input"
+    # 引用模式：直接修改传入的变量名
+    if [ "$ref_mode" = true ]; then
+        # 使用 local -n 创建一个指向目标变量的引用
+        # echo "变量ref模式"
+        local -n input="$1"
+    else
+        # 否则，创建一个临时变量并返回结果
+        local input="$*"
+    fi
+    # 核心代码
+    input="${input,,}"
+    echo "$input"
 }
 ######################################
 # Description:
@@ -462,12 +467,12 @@ lower() {
 #
 ######################################
 trim() {
-  local var="$*"
-  # 移除开头空格
-  var="${var#"${var%%[![:space:]]*}"}"
-  # 移除结尾空格
-  var="${var%"${var##*[![:space:]]}"}"
-  printf '%s' "$var"
+    local var="$*"
+    # 移除开头空格
+    var="${var#"${var%%[![:space:]]*}"}"
+    # 移除结尾空格
+    var="${var%"${var##*[![:space:]]}"}"
+    printf '%s' "$var"
 }
 
 #######################################
@@ -481,96 +486,96 @@ trim() {
 #   1 如果命令不存在。
 #######################################
 check_dependency() {
-  local cmd="$1"
-  # command -v "$cmd" &>/dev/null
-  if ! command -v "$cmd" > /dev/null 2>&1; then
-    echo "错误: 缺少必要的依赖命令 '$cmd'，请先安装。" >&2
-    return 1
-  fi
-  return 0
+    local cmd="$1"
+    # command -v "$cmd" &>/dev/null
+    if ! command -v "$cmd" > /dev/null 2>&1; then
+        echo "错误: 缺少必要的依赖命令 '$cmd'，请先安装。" >&2
+        return 1
+    fi
+    return 0
 }
 # 判断当前shell
 # 要在脚本内部准确判断当前运行环境，最健壮的方法是利用各 Shell 的内置变量
 current_shell() {
 
-  if [ -n "$ZSH_VERSION" ]; then
-    CURRENT_SHELL="zsh"
-  elif [ -n "$BASH_VERSION" ]; then
-    CURRENT_SHELL="bash"
-  else
-    CURRENT_SHELL="unknow"
-  fi
+    if [ -n "$ZSH_VERSION" ]; then
+        CURRENT_SHELL="zsh"
+    elif [ -n "$BASH_VERSION" ]; then
+        CURRENT_SHELL="bash"
+    else
+        CURRENT_SHELL="unknow"
+    fi
 
-  echo "$CURRENT_SHELL"
+    echo "$CURRENT_SHELL"
 }
 # 判断当前shell是否为指定的shell
 is_shell() {
-  local shell_name="$1"
-  current_shell=$(current_shell)
-  # if ! [[ "$current_shell" =~ .*"$shell_name" ]]; then
-  if [[ "$current_shell" == "$shell_name" ]]; then
-    return 0
-  else
-    return 1
-  fi
+    local shell_name="$1"
+    current_shell=$(current_shell)
+    # if ! [[ "$current_shell" =~ .*"$shell_name" ]]; then
+    if [[ "$current_shell" == "$shell_name" ]]; then
+        return 0
+    else
+        return 1
+    fi
 }
 # 获取bash内置命令的帮助
 help_bash() {
-  cmd="$1"
-  bash -c "help '$cmd'"
+    cmd="$1"
+    bash -c "help '$cmd'"
 }
 # 在非bash(zsh)或bash中可以通用的查询bash内置命令的函数
 help() {
-  cmd="$1"
-  # 黄色的提示:当前help输出来自于bash
-  YELLOW='\e[31m'
-  END='\e[0m'
-  shell=$(current_shell)
-  tip="${YELLOW}[START]当前shell为$shell,而help输出来自于bash ${END}"
+    cmd="$1"
+    # 黄色的提示:当前help输出来自于bash
+    YELLOW='\e[31m'
+    END='\e[0m'
+    shell=$(current_shell)
+    tip="${YELLOW}[START]当前shell为$shell,而help输出来自于bash ${END}"
 
-  is_shell "bash" || echo -e "$tip"
-  help_bash "$cmd" | nl
-  is_shell "bash" || echo -e "$tip"
+    is_shell "bash" || echo -e "$tip"
+    help_bash "$cmd" | nl
+    is_shell "bash" || echo -e "$tip"
 
 }
 
 # 运行wp命令(借用www用户权限)
 wp() {
-  user='www' #修改为你的系统上存在的一个普通用户的名字,比如宝塔用户可以使用www
-  echo "[INFO] Executing as user '$user':wp $*"
-  sudo -u $user wp "$@"
-  local EXIT_CODE=$?
-  return $EXIT_CODE
+    user='www' #修改为你的系统上存在的一个普通用户的名字,比如宝塔用户可以使用www
+    echo "[INFO] Executing as user '$user':wp $*"
+    sudo -u $user wp "$@"
+    local EXIT_CODE=$?
+    return $EXIT_CODE
 }
 # 运行brew命令(借用linuxbrew用户权限)
 brew() {
-  user='linuxbrew' #修改为你的系统上存在的一个普通用户的名字
-  local ORIG_DIR="$PWD"
-  echo "[INFO] Executing as user '$user' in /home/linuxbrew: brew $*"
-  cd /home/$user && sudo -u $user /home/linuxbrew/.linuxbrew/bin/brew "$@"
-  local EXIT_CODE=$?
-  cd "$ORIG_DIR" 2> /dev/null || echo "[WARN] Could not return to original directory: $ORIG_DIR"
-  return $EXIT_CODE
+    user='linuxbrew' #修改为你的系统上存在的一个普通用户的名字
+    local ORIG_DIR="$PWD"
+    echo "[INFO] Executing as user '$user' in /home/linuxbrew: brew $*"
+    cd /home/$user && sudo -u $user /home/linuxbrew/.linuxbrew/bin/brew "$@"
+    local EXIT_CODE=$?
+    cd "$ORIG_DIR" 2> /dev/null || echo "[WARN] Could not return to original directory: $ORIG_DIR"
+    return $EXIT_CODE
 }
 # 强力删除:能够将标志位是i的文件(目录)更改为可删除,然后删除掉指定目标
 # 这是一个简化版本(使用rm1或rm2更可靠)
 # 用法: rmx <目标文件或目录>
 rmx() {
-  if [ $# -eq 0 ]; then
-    echo "用法: rmx <目标文件或目录>"
-    return 1
-  fi
-  for target in "$@"; do
-    if [ -e "$target" ]; then
-      echo "[INFO] 尝试去除 $target 的 i 标志..."
-      sudo chattr -R -ia "$target"
-      echo "[INFO] 强力删除 $target ..."
-      sudo rm -rf "$target"
-    else
-      echo "[WARN] 目标不存在: $target"
+    if [ $# -eq 0 ]; then
+        echo "用法: rmx <目标文件或目录>"
+        return 1
     fi
-  done
-  return 0
+    for target in "$@"; do
+        if [ -e "$target" ]; then
+            echo "[INFO] 尝试去除 $target 的 i 标志..."
+            sudo chattr -R -ia "$target"
+            echo "[INFO] 强力删除 $target ..."
+            sudo rm -rf "$target"
+        else
+            echo "[WARN] 目标不存在: $target"
+        fi
+    done
+    return 0
 }
 #######################################
 # 强力删除指定的文件或目录。
@@ -583,105 +588,105 @@ rmx() {
 #   1 如果未提供参数或删除失败。
 #######################################
 rm1() {
-  # 检查是否输入了参数
-  if [[ $# -eq 0 ]]; then
-    echo "Error: No arguments provided." >&2
-    echo "Usage: rm1 <path> [path...]" >&2
-    return 1
-  fi
-
-  local exit_code=0
-  # 为了支持同时处理多个文件/目录,使用循环遍历此函数的所有参数
-  for target in "$@"; do
-    # 删除前判断目标是否存在(文件/目录/符号链接等)
-    if [[ -e "$target" ]]; then
-      echo "Force removing: $target"
-
-      # 1. 移除特殊属性 (-i 不可修改, -a 仅追加)
-      # 使用 sudo 确保有权修改属性
-      sudo chattr -R -ia "$target" 2> /dev/null
-
-      # 2. 修改权限，确保 root 拥有完全控制权
-      sudo chmod -R 777 "$target" 2> /dev/null
-
-      # 3. 递归强制删除
-      sudo rm -rf "$target"
-
-      # 检查结果
-      if [[ -e "$target" ]]; then
-        echo "FAILED: $target still exists." >&2
-        exit_code=1
-      else
-        echo "SUCCESS: $target has been removed."
-      fi
-    else
-      echo "Skip: $target does not exist."
+    # 检查是否输入了参数
+    if [[ $# -eq 0 ]]; then
+        echo "Error: No arguments provided." >&2
+        echo "Usage: rm1 <path> [path...]" >&2
+        return 1
     fi
-  done
 
-  return $exit_code
+    local exit_code=0
+    # 为了支持同时处理多个文件/目录,使用循环遍历此函数的所有参数
+    for target in "$@"; do
+        # 删除前判断目标是否存在(文件/目录/符号链接等)
+        if [[ -e "$target" ]]; then
+            echo "Force removing: $target"
+
+            # 1. 移除特殊属性 (-i 不可修改, -a 仅追加)
+            # 使用 sudo 确保有权修改属性
+            sudo chattr -R -ia "$target" 2> /dev/null
+
+            # 2. 修改权限，确保 root 拥有完全控制权
+            sudo chmod -R 777 "$target" 2> /dev/null
+
+            # 3. 递归强制删除
+            sudo rm -rf "$target"
+
+            # 检查结果
+            if [[ -e "$target" ]]; then
+                echo "FAILED: $target still exists." >&2
+                exit_code=1
+            else
+                echo "SUCCESS: $target has been removed."
+            fi
+        else
+            echo "Skip: $target does not exist."
+        fi
+    done
+
+    return $exit_code
 }
 
 rm2() {
-  # 强力删除文件或目录（移除 immutable 属性后删除）
-  # 用法: rm2 [-f] <目标文件或目录>...
-  #   -f: 跳过确认提示
+    # 强力删除文件或目录（移除 immutable 属性后删除）
+    # 用法: rm2 [-f] <目标文件或目录>...
+    #   -f: 跳过确认提示
 
-  local force=false
-  local errors=0
+    local force=false
+    local errors=0
 
-  # 解析选项
-  if [[ "$1" == "-f" ]]; then
-    force=true
-    shift
-  fi
-
-  if [[ $# -eq 0 ]]; then
-    echo "用法: rmx [-f] <目标文件或目录>..." >&2
-    return 1
-  fi
-
-  for target in "$@"; do
-    # 检查存在性（包括断开的符号链接）
-    if [[ ! -e "$target" && ! -L "$target" ]]; then
-      echo "[WARN] 目标不存在: $target" >&2
-      ((errors++))
-      continue
+    # 解析选项
+    if [[ "$1" == "-f" ]]; then
+        force=true
+        shift
     fi
 
-    # 安全确认（除非 -f）
-    if [[ "$force" != true ]]; then
-      read -r -p "[WARN] 确定要强制删除 '$target'? [y/N] " confirm
-      [[ "$confirm" != [yY] ]] && continue
+    if [[ $# -eq 0 ]]; then
+        echo "用法: rmx [-f] <目标文件或目录>..." >&2
+        return 1
     fi
 
-    echo "[INFO] 处理: $target"
+    for target in "$@"; do
+        # 检查存在性（包括断开的符号链接）
+        if [[ ! -e "$target" && ! -L "$target" ]]; then
+            echo "[WARN] 目标不存在: $target" >&2
+            ((errors++))
+            continue
+        fi
 
-    # 移除 immutable 属性（根据类型选择是否递归）
-    if [[ -d "$target" ]]; then
-      sudo chattr -R -i -- "$target" 2> /dev/null
-    else
-      sudo chattr -i -- "$target" 2> /dev/null
-    fi
-    # 注意: 非 ext 文件系统会失败，忽略错误
+        # 安全确认（除非 -f）
+        if [[ "$force" != true ]]; then
+            read -r -p "[WARN] 确定要强制删除 '$target'? [y/N] " confirm
+            [[ "$confirm" != [yY] ]] && continue
+        fi
 
-    # 执行删除
-    if sudo rm -rf -- "$target"; then
-      echo "[OK] 已删除: $target"
-    else
-      echo "[ERROR] 删除失败: $target" >&2
-      ((errors++))
-    fi
-  done
+        echo "[INFO] 处理: $target"
 
-  return $((errors > 0 ? 1 : 0))
+        # 移除 immutable 属性（根据类型选择是否递归）
+        if [[ -d "$target" ]]; then
+            sudo chattr -R -i -- "$target" 2> /dev/null
+        else
+            sudo chattr -i -- "$target" 2> /dev/null
+        fi
+        # 注意: 非 ext 文件系统会失败，忽略错误
+
+        # 执行删除
+        if sudo rm -rf -- "$target"; then
+            echo "[OK] 已删除: $target"
+        else
+            echo "[ERROR] 删除失败: $target" >&2
+            ((errors++))
+        fi
+    done
+
+    return $((errors > 0 ? 1 : 0))
 }
 # 进程监控函数psm
 psm() {
-  # 1. 检查帮助选项
-  if [[ "$1" == "-h" || "$1" == "--help" ]]; then
-    # 使用 'cat << EOF' 来格式化多行帮助文本
-    cat << EOF
+    # 1. 检查帮助选项
+    if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+        # 使用 'cat << EOF' 来格式化多行帮助文本
+        cat << EOF
 用法: psm [排序字段] [行数]
 
 功能:
@@ -705,33 +710,33 @@ psm() {
   psm -rss 10    # 按 RSS 内存占用降序显示前 10 个进程
   psm +pid 50    # 按 PID 升序显示前 50 个进程
 EOF
-    return 0 # 成功退出函数
-  fi
+        return 0 # 成功退出函数
+    fi
 
-  # 2. 处理函数参数
-  local sort_field="${1:--%cpu}"
-  local lines="${2:-20}"
+    # 2. 处理函数参数
+    local sort_field="${1:--%cpu}"
+    local lines="${2:-20}"
 
-  # 3. 智能处理内存排序
-  #    如果用户输入 -%mem 或 -mem, 自动帮他转换为 -rss
-  if [[ "$sort_field" == "-%mem" || "$sort_field" == "-mem" ]]; then
-    sort_field="-rss"
-  fi
+    # 3. 智能处理内存排序
+    #    如果用户输入 -%mem 或 -mem, 自动帮他转换为 -rss
+    if [[ "$sort_field" == "-%mem" || "$sort_field" == "-mem" ]]; then
+        sort_field="-rss"
+    fi
 
-  # 4. 获取总内存 (KiB)
-  local total_mem_kb
-  total_mem_kb=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+    # 4. 获取总内存 (KiB)
+    local total_mem_kb
+    total_mem_kb=$(grep MemTotal /proc/meminfo | awk '{print $2}')
 
-  # 4.1. 检查是否成功获取
-  if [ -z "$total_mem_kb" ] || [ "$total_mem_kb" -eq 0 ]; then
-    echo "错误: 无法从 /proc/meminfo 读取总内存。" >&2
-    return 1
-  fi
+    # 4.1. 检查是否成功获取
+    if [ -z "$total_mem_kb" ] || [ "$total_mem_kb" -eq 0 ]; then
+        echo "错误: 无法从 /proc/meminfo 读取总内存。" >&2
+        return 1
+    fi
 
-  # 5. 执行 ps 和 awk 命令 (核心逻辑不变)
-  ps -eo user,pid,%cpu,rss,vsz,nlwp,stat,start_time,cmd --sort="$sort_field" |
-    head -n "$((lines + 1))" |
-    awk -v total_mem="$total_mem_kb" '
+    # 5. 执行 ps 和 awk 命令 (核心逻辑不变)
+    ps -eo user,pid,%cpu,rss,vsz,nlwp,stat,start_time,cmd --sort="$sort_field" |
+        head -n "$((lines + 1))" |
+        awk -v total_mem="$total_mem_kb" '
     NR==1 {
         # 表头
         printf "%-12s %-8s %-6s %-6s %-12s %-12s %-6s %-8s %-10s %-s\n",
