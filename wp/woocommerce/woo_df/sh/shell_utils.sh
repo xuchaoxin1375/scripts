@@ -9,41 +9,107 @@
 #   $1 prompt 向用户展示的提示信息
 #   $2 default 决定提示符的输入选择部分的内容是(y,Y),(n,N),
 #               或其他情况时,分别对应提示[Y/n],[y/N],[y/n]
-#   $3 决定
-# 用法: confirm "提示信息" [默认值y/n]
-# 返回: 0=yes, 1=no
+#   $3 assume_answer 是否跳过用户交互直接回答此变量对应的选项
+# Return:
+#  0 if yes, 1 if no;
 # Examples :
 #   confirm "是否继续执行?" "y"
 #       是否继续执行? [y/N]: (如果直接回车,会自动选择N)
 confirm() {
-  local prompt="$1"
-  local default="${2:-}"       # 无命令行覆盖时的默认值(空串)
-  local ASSUME_ANSWER="${3:-}" # 特殊参数,指定的话不会进入交互模式,直接返回0或1
-  # 🔑 如果指定了自动回答，直接返回
+  local prompt="${1:-Continue ?}"
+  local default="${2:-}" # 无命令行覆盖时的默认值(空串)
+  local ASSUME_ANSWER=""
+  # local ASSUME_ANSWER="${3:-}" # 特殊参数,指定的话不会进入交互模式,直接返回0或1
+  if [[ "$3" != -* ]]; then ASSUME_ANSWER="$3"; fi
+  # 处理可能出现的选项
+  local verbose=false
+  local usage="
+  Usage: confirm [-p prompt] [-d yYnN] [-a {y|n}] [-v] [-h]
+  options:
+    -p, --prompt   指定提示符
+    -d, --default  指定默认值(y,Y,n,N),不指定则默认为空串,将会提示[y/n];
+    -a, --assume-answer 此选项用于指定一个用于自动回答的值,如果用户交互时没有输入任何内容,则直接返回此选项对应的值;
+    -h, --help     显示帮助
+    -v, --verbose   显示详细信息
+  "
+  echo "解析函数参数..."
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -p | --prompt)
+        prompt="$1"
+        shift 2
+        ;;
+      -d | --default)
+        default="$2"
+        shift 2
+        ;;
+      -a | --assume-answer)
+        ASSUME_ANSWER="$2"
+        shift 2
+        ;;
+      -h | --help)
+        echo "$usage"
+        return 0
+        ;;
+      -v | --verbose)
+        verbose=true
+        shift
+        ;;
+      -?*)
+        echo "错误: 未知选项 '$1'" >&2
+        echo "$usage"
+        return 2
+        ;;
+      *)
+        # break
+        shift
+        continue
+        ;;
+    esac
+    echo "分析下一个参数..."
+  done
+  # echo "检查位置参数..."
+  local rc
+  # 🔑 如果指定了自动回答，直接返回值
   if [[ -n "$ASSUME_ANSWER" ]]; then
     echo "${prompt} → 自动回答: ${ASSUME_ANSWER}"
-    [[ "$ASSUME_ANSWER" == "y" ]] && return 0 || return 1
+    # 设置返回值rc
+    [[ "$ASSUME_ANSWER" == "y" ]] && rc=0 || rc=1
+    # if [[ "$verbose" = true ]]; then echo "return $rc"; fi
+    # return $rc
   fi
   # 如果命令行没有指定自动回答,则要求用户交互,交互方式可以定义3类(至少要求输入一个回车)
-  # 构造提示符的输入选择部分
-  # (对于y,Y表示偏好为自动输入yes(return 0),如果是n,N,偏好是自动输入no(return 1))
-  local yn
-  case "$default" in
-    y | Y) yn="[Y/n]" ;;
-    n | N) yn="[y/N]" ;;
-    *) yn="[y/n]" ;; # 表示要求用户必须输入可用值
-  esac
+  if [[ -z $rc ]]; then
 
-  # 交互式询问（支持重试）
-  while true; do
-    read -r -p "${prompt} ${yn}: " answer
-    answer="${answer:-$default}" # 用户直接回车则取默认值
-    case "${answer,,}" in        # ${,,} 转小写 (bash 4+)
-      y | yes) return 0 ;;
-      n | no) return 1 ;;
-      *) echo "请输入 y(Y) 或 n(N)" ;;
+    # 构造提示符的输入选择部分
+    # (对于y,Y表示偏好为自动输入yes(return 0),如果是n,N,偏好是自动输入no(return 1))
+    local yn
+    case "$default" in
+      y | Y) yn="[Y/n]" ;;
+      n | N) yn="[y/N]" ;;
+      *) yn="[y/n]" ;; # 表示要求用户必须输入可用值
     esac
-  done
+
+    # 交互式询问（支持重试）
+    while true; do
+      read -r -p "${prompt} ${yn}: " answer
+      answer="${answer:-$default}" # 用户直接回车则取默认值
+      case "${answer,,}" in        # ${,,} 转小写 (bash 4+)
+        y | yes)
+          rc=0
+          break
+          ;;
+        n | no)
+          rc=1
+          break
+          ;;
+        *) echo "请输入 y(Y) 或 n(N)" ;;
+      esac
+    done
+  fi
+  # 统一返回
+  if [[ "$verbose" = true ]]; then echo "return $rc"; fi
+  return $rc
 }
 
 # 判断路径是否为空目录
@@ -256,10 +322,10 @@ check_mysql() {
 
   if ((verbose)); then
     if ((rc == 0)); then
-      echo -e "\033[32mOK\033[0m"
+      echo -e "OK"
       echo "$out"
     else
-      echo -e "\033[31mFAIL\033[0m"
+      echo -e "FAIL"
       echo "$out"
     fi
     echo "-------------------"
