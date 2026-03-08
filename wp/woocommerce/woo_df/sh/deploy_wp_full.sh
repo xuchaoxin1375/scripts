@@ -22,8 +22,12 @@
 #   /deploy.sh -u xcx  -M single  -n domain1.com --dry-run
 #   /deploy.sh -M single  -n domain1.com --yes
 #   /deploy.sh -M single  -n domain1.com
+#   /deploy.sh -M single  --user-dir zsh -S .../domain1.com.zst -N domain2.com
+#   /deploy.sh -M single   --user-dir uuu  -n d1.com --pack-format zip --dry-run
+#   /deploy.sh  --user-dir xcx  --ssp '' -K  --dry-run #适合服务器迁移参数组合!
+
 VERSION=20260306
-shopt -s extglob
+shopt -s extglob globstar
 shopt -s nullglob
 # === 配置参数 ===
 # 依赖说明:依赖于外部的伪静态规则文件RewriteRules.LF.conf,以及一些实用性程序(7z,unzip等)
@@ -38,7 +42,7 @@ PLUGINS_HOME="/www"
 PROJECT_HOME="/www/wwwroot"
 SITE_DIR_PACK=""
 FUNCTIONS_PHP="/www/functions.php"
-ARCHIVE_FORMATS=(zip 7z tar lz4 zst)
+# ARCHIVE_FORMATS=(zip 7z tar lz4 zst)
 # ARCHIVE_FORMATS_STR=$(IFS=,; echo "${ARCHIVE_FORMATS[*]}") #可以配合eval使用
 # 默认的网站压缩包存放目录的共同祖先目录(下面有各个人员名的专属目录)
 PACK_ROOT="$UPLOADER_DIR/files"
@@ -46,12 +50,13 @@ DB_HOST="localhost" # 数据库主机
 DB_USER="root"
 DB_PASSWORD="15a58524d3bd2e49"
 DB_PORT="3306"
-DEPLOY_MODE="batch" # 部署模式(批量解压或手动指定压缩包解压特定网站)
+DEPLOY_MODE="auto" # 部署模式(批量解压或手动指定压缩包解压特定网站)
 DEPLOYED_DIR="$UPLOADER_DIR/deployed_all"
-PLUGIN_INSTALL_MODE="symlink" # 插件安装模式: symlink(符号链接), copy(复制)
-USER_DIRS=()                  #需要部署的用户目录
-SITE_ROOT_NAME="wordpress"    # 站点根目录是否要包一层wordpress目录
-# 跳过解压网站根目录及其相关操作(假设已经解压过根目录包了)
+PLUGIN_INSTALL_MODE="symlink"    # 插件安装模式: symlink(符号链接), copy(复制)
+USER_DIRS=()                     #需要部署的用户目录
+SITE_ROOT_NAME="wordpress"       # 站点根目录是否要包一层wordpress目录
+SKIP_SCAN_PATTERN="*/deployed/*" # 对于部署指定包的模式下,功能find扫描参考跳过部分目录
+# 跳过解压网站根目录及其相关操作(假设已经解压过根目录包了),如果不想跳过则设为空串""即可.
 SITE_ROOT_SKIP=false
 # 跳过数据库导入(假设已经导入过sql文件了),此选项几乎不使用(完整流程会有步骤修改数据库中的某些字段)除非某次解压部分目录有异常而数据库导入处理是完成的;
 # 否则,如果使用此选项跳过数据库导入,则需要注意手动修改
@@ -82,24 +87,77 @@ source "$shell_utils"
 # === 函数：显示帮助信息 ===
 show_help() {
     cat <<- EOF
-        用法: $0 [选项]
-        对于多硬盘服务器,可能需要设置--pack-root(可选),--project-home:
-        选项:
-        -p,--pack-root DIR        设置压缩包根目录 (默认: $PACK_ROOT)
-        --site-sql-pack FILE      单站部署模式下:设置网站数据库压缩包
-        --site-dir-pack FILE      单站部署模式下:设置网站目录压缩包 
-        --db-user USER            设置数据库人员名 (默认: $DB_USER)
-        --db-pass PASS            设置数据库密码
-        -u,--user-dir DIR            仅处理指定用户目录
-        -m,-plugin-install-mode MODE  设置插件安装模式 (默认: $PLUGIN_INSTALL_MODE) (可选值: symlink, copy)
-        -R,--site-root-skip       跳过网站解压
-        -D,--site-db-skip         跳过数据库导入
-        -E,--strict-mode         严格模式,使用set -euo pipefail
-        --deployed-dir DIR        默认存储已部署的包文件(默认: $DEPLOYED_DIR)
-        -j,--jobs NUM            设置并发数 (默认: $JOBS)
-        -r,--project-home DIR     设置站点所属的项目目录PROJECT_HOME (默认: $PROJECT_HOME)
-        --deploy-mode MODE           部署模式:指定单个网站文件组进行部署还是批量部署(自动扫描PACK_ROOT目录下的站点包文件组) (可选值:single,batch),Default:$DEPLOY_MODE
-        -h,--help                 显示此帮助信息
+        用法：$0 [选项]
+
+        描述:
+          WordPress 站点批量部署脚本，支持并发部署、数据库导入、插件安装等功能。
+          对于多硬盘服务器，可能需要设置 --pack-root 和 --project-home 参数。
+
+        部署模式:
+          -M, --deploy-mode MODE     部署模式：single(单站) 或 auto(批量扫描) (默认:$DEPLOY_MODE)
+
+        路径配置:
+          -p, --pack-root DIR        设置压缩包根目录 (默认:$PACK_ROOT)
+          -r, --project-home DIR     设置站点项目目录 (默认:$PROJECT_HOME)
+          --deployed-dir DIR         设置已部署包归档目录 (默认:$DEPLOYED_DIR)
+          --site-sql-pack FILE       单站模式：设置数据库 SQL 压缩包路径
+          -S, --site-dir-pack-standard FILE  单站模式：设置网站目录压缩包（标准路径）
+          -P, --site-dir-pack FILE   单站模式：设置网站目录压缩包路径
+
+        数据库配置:
+          --db-user USER             设置数据库用户名 (默认:$DB_USER)
+          --db-pass PASS             设置数据库密码
+          --db-host HOST             设置数据库主机 (默认:$DB_HOST)
+          --db-port PORT             设置数据库端口 (默认:$DB_PORT)
+
+        站点配置:
+          -u, -U, --user-dir DIR     指定用户目录（可多次使用以处理多个用户）
+          -n, --domain-name NAME     设置网站域名
+          -N, --update-domain-name NAME  更新已上传包网站的域名
+          -W, --site-root-name NAME  设置站点根目录名称 (默认:$SITE_ROOT_NAME)
+          --uploader USER            设置 uploader 用户名 (默认:$UPLOADER)
+
+        插件配置:
+          -m, --plugin-install-mode MODE  插件安装模式：symlink(符号链接) 或 copy(复制) (默认:$PLUGIN_INSTALL_MODE)
+
+        跳过选项:
+          -R, --site-root-skip       跳过网站根目录解压
+          -D, --site-db-skip         跳过数据库导入
+          --ssp, --skip-scan-pattern PATTERN  扫描站点包时跳过指定目录模式 (默认:$SKIP_SCAN_PATTERN)
+
+        压缩配置:
+          --pack-format FORMAT       扫描站点包时限定压缩格式（如：zst,zip,tar 等）
+          -K, --keep-pack, --no-move-pack  部署后保留压缩包（不移动归档到 deployed 目录）
+
+        并发与执行:
+          -j, --jobs NUM             设置并发数 (默认:$JOBS)
+          --dry-run                  干运行模式（仅模拟，不实际执行）
+          --yes, --force             自动确认所有交互提示
+          --no                       自动拒绝所有交互提示
+          -E, --strict-mode          严格模式（启用 set -euo pipefail）
+
+        其他:
+          -h, --help                 显示此帮助信息
+          -V, --version              显示脚本版本
+
+        示例:
+          # 批量部署（自动扫描）
+          $0 --user-dir zlj --deploy-mode auto
+
+          # 单站部署（指定压缩包）
+          $0 -M single -P /srv/uploads/uploader/files/zlj/domain1.com.zst
+
+          # 单站部署（指定域名自动搜索）
+          $0 -M single -u xcx -n domain1.com --dry-run
+
+          # 服务器迁移（保留压缩包）
+          $0 --user-dir xcx --ssp '' -K --dry-run
+
+          # 仅处理数据库或仅处理网站根目录
+          $0 -M single -n domain1.com --site-db-skip    # 仅解压网站
+          $0 -M single -n domain1.com --site-root-skip  # 仅导入数据库
+
+        版本：$VERSION
 EOF
     exit 0
 }
@@ -134,6 +192,14 @@ parse_args() {
                 DB_PASSWORD="$2"
                 shift
                 ;;
+            --db-host)
+                DB_HOST="$2"
+                shift
+                ;;
+            --db-port)
+                DB_PORT="$2"
+                shift
+                ;;
             -u | -U | --user-dir)
                 # 指定用户目录,则将工作范围缩小到该目录下
                 # USER_DIR="$2"
@@ -166,7 +232,7 @@ parse_args() {
                 DEPLOY_MODE="$2"
                 shift
                 ;;
-            -S,--site-dir-pack-standard)
+            -S | --site-dir-pack-standard)
                 SITE_DIR_PACK_STD="$2"
                 shift
                 ;;
@@ -178,7 +244,14 @@ parse_args() {
                 DOMAIN_NAME="$2"
                 shift
                 ;;
+            -N | --update-domain-name)
+                # 当某个已上传包网站的域名需要更改时,使用此参数
+                # 配合单包部署选项来使用.
+                UPDATE_DOMAIN_NAME="$2"
+                shift
+                ;;
             -W | --site-root-name)
+                # 站点根目录是否要包一层目录名(通常是wordpress)
                 SITE_ROOT_NAME="$2"
                 shift
                 ;;
@@ -200,13 +273,30 @@ parse_args() {
                 ASSUME_ANSWER="n"
                 shift
                 ;;
+            --ssp | --skip-scan-pattern)
+                # 扫描站点包时跳过某些目录(例如指定deployed)
+                SKIP_SCAN_PATTERN="$2"
+                shift
+                ;;
+            --pack-format)
+                # 自动扫描站点包时,要求文件后缀匹配指定格式,默认为空,不要求特定的压缩格式
+                PACK_FORMAT="$2"
+                shift
+                ;;
+            -K | --keep-pack | --no-move-pack)
+                # 部署解压网站包后不做移动归档操作
+                KEEP_PACK=true
+                ;;
             -R | --site-root-only)
+                # 仅处理网站根目录(而不处理数据库)
                 SITE_ROOT_SKIP="true"
                 ;;
             -D | --site-db-only)
+                # 仅处理数据库的部署(而不处理站点根目录)
                 SITE_DB_SKIP="true"
                 ;;
             -E | --strict-mode)
+                # 严格模式,使用set -euo pipefail
                 STRICT_MODE="true"
                 ;;
             -h | --help) show_help ;;
@@ -299,33 +389,48 @@ update_wp_config() {
     fi
 }
 export -f update_wp_config
+######################################
 # === 函数：导入 SQL 文件到对应数据库 ===
+# Description:
+#
+# Globals:
+#   DB_HOST
+#   DB_USER
+#   DB_PASSWORD
+#   DB_PORT
+# Arguments:
+#   $1 db_name 将要创建的完整数据库的名字(名结构通常为数据库所属人员名"前缀_网站域名")
+#   $2 sql_file 被导入的 SQL 文件路径(文件名字通常和domain相关,但不是必须的)
+#
+# Outputs:
+#   None
+# Returns:
+#   0 on success, non-zero on error
+# Example:
+#  import_sql_file "$domain_name" "$user_name" "$sql_file"
+######################################
 import_sql_file() {
-    local domain="$1"
-    local user_name="$2"
-    local sql_file="$3"
-
-    # 构造数据库名：保留域名中的点 "."
-    local db_name="${user_name}_${domain}"
+    local db_name="$1"
+    local sql_file="$2"
 
     log "📦 正在处理数据库: $db_name"
 
     # 导入前现检查是否有对应数据库存在,如果有先移除旧数据库!
-    if mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASSWORD" -P $DB_PORT -e "DROP DATABASE IF EXISTS \`${db_name}\`;"; then
+    if mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASSWORD" -P "$DB_PORT" -e "DROP DATABASE IF EXISTS \`${db_name}\`;"; then
         log "🗑️ 旧数据库已删除。"
     else
         log "Error❌ 删除旧数据库失败，请检查数据库连接和权限。"
         return 1
     fi
     # 创建数据库(空数据库)
-    if ! echo "CREATE DATABASE IF NOT EXISTS \`${db_name}\`;" | mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASSWORD" -P $DB_PORT; then
+    if ! echo "CREATE DATABASE IF NOT EXISTS \`${db_name}\`;" | mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASSWORD" -P "$DB_PORT"; then
         log "Error❌ 创建数据库失败，请检查数据库连接和权限。"
         return 1
     fi
 
     # 导入 SQL 文件
     log "🚚 正在导入 SQL 文件: $sql_file 到数据库 $db_name"
-    if mysql -h "$DB_HOST" -u "$DB_USER" -P $DB_PORT -p"$DB_PASSWORD" "$db_name" < "$sql_file"; then
+    if mysql -h "$DB_HOST" -u "$DB_USER" -P "$DB_PORT" -p"$DB_PASSWORD" "$db_name" < "$sql_file"; then
         log "✅ 数据库 $db_name 成功导入。"
         return 0
     else
@@ -668,6 +773,9 @@ deploy_site() {
 
     local deployed_dir="$PACK_ROOT/$user_name/deployed/"
     local sql_file="$PACK_ROOT/$user_name/$domain_name.sql"
+    # 计算可能需要更正的最终的网站域名和数据库名(如果需要网站更名,不要直接覆盖domain_name,而是另起一个新名,因为后续原名要被多词使用!)
+    local final_domain_name="${UPDATE_DOMAIN_NAME:-${domain_name}}"
+    local db_name="${user_name}_${final_domain_name}"
 
     log "📦 正在处理网站: $domain_name ============"
 
@@ -705,12 +813,18 @@ deploy_site() {
             return 1
         fi
     fi
-
+    # 导入已经解压的数据库(import sql)
     if [ -f "$sql_file" ]; then
         log "🔍 找到 SQL 文件并导入数据库: $sql_file"
         # 将导入环节放到前面去执行,可以并行导入sql文件提高效率
         if [[ $SITE_DB_SKIP != 'true' ]]; then
-            import_sql_file "$domain_name" "$user_name" "$sql_file"
+            # if [[ -n $UPDATE_DOMAIN_NAME ]]; then
+            #     db_domain_name=$UPDATE_DOMAIN_NAME
+            # else
+            #     db_domain_name=$domain_name
+            # fi
+
+            import_sql_file "$db_name" "$sql_file"
         else
             log "跳过 $sql_file 的导入处理"
             # 返回
@@ -721,10 +835,10 @@ deploy_site() {
         rm -f "$sql_file" -v
 
         # === 配置数据库===
-        local db_name="${user_name}_${domain_name}"
-        mysql -h "$DB_HOST" -u "$DB_USER" -P $DB_PORT -p"$DB_PASSWORD" "$db_name" -e "
+
+        mysql -h "$DB_HOST" -u "$DB_USER" -P "$DB_PORT" -p"$DB_PASSWORD" "$db_name" -e "
     UPDATE wp_options
-    SET option_value = 'https://www.${domain_name}'
+    SET option_value = 'https://www.${final_domain_name}'
     WHERE option_name IN ('home', 'siteurl');
     "
     else
@@ -734,23 +848,28 @@ deploy_site() {
     # END-SQL-IMPORT
 
     # START-DIR-EXPAND
-    log "开始处理网站[$domain_name]根目录..."
+    log "开始处理网站[$final_domain_name]根目录..."
 
     # 网站根目录所在目录, 例如:/www/wwwroot/zsh/domain.com
-    local site_domain_home="$PROJECT_HOME/$user_name/$domain_name"
+    local site_domain_home="$PROJECT_HOME/$user_name/$final_domain_name"
+    # local final_site_domain_home="$PROJECT_HOME/$user_name/$final_domain_name"
     #对于用7z打包domain.com为目录名的7z包,解压后得到domain.com目录 7z x $site_dir_archive -o$site_domain_home 执行结果得到目录$site_domain_home/domain.com,为了便于引用,将其赋值给变量$site_expanded_dir_raw,表示解压后得到的目录
     # 定义网站最终的根目录
     local site_root="$site_domain_home"
+    #例如:/www/wwwroot/zsh/domain.com/
     if [[ -n $SITE_ROOT_NAME ]]; then
         site_root="$site_domain_home/$SITE_ROOT_NAME"
+        # 例如:/www/wwwroot/zsh/domain.com/wordpress
     fi
 
     # 根据事先设计的目录压缩结构,配套的网站压缩包将会解压得到的目录有两种可能(事先规划):
     # 人员初次导出的原生包:(默认情况,根据需要可以进一步移动处理)
     local site_expanded_dir_raw="$site_domain_home/$domain_name"
+    # 例如: /www/wwwroot/zsh/(final)domain.com/domain.com
+
     # 从服务器导出备份包:通常是形如: PROJECT_HOME/user_name/domain_name/SITE_ROOT_NAME
     # 例如:/www/wwwroot/zsh/domain.com/wordpress
-    local site_expanded_dir_wp="$site_root"
+    local site_expanded_dir_wp="$site_root" # 通常final和导出包没有关系,因为导出时域名一般是确定可用的,不需要更新.
 
     # 根目录下的其他目录(解压后要进行到额外处理)会用到的目录
 
@@ -781,7 +900,7 @@ deploy_site() {
     # 纯净解压(预先存在或残留的目录此时已经清理完毕.)
     if [[ $SITE_ROOT_SKIP == 'true' ]]; then
         log "跳过站点$site_dir_archive 包的解压"
-        # 判断解压是否成功
+        # 进入此分支后,就不会进入下面的解压分支,不要这里return 0;
     elif ! extract_archive "$site_dir_archive" "$site_domain_home"; then
         log "Error❌ 解压失败，本轮跳过此站部署: $domain_name"
         return 1
@@ -816,7 +935,7 @@ deploy_site() {
         fi
     fi
 
-    # 站点根目录配置文件和插件相关检车和更改-------------------
+    # 站点根目录配置文件和插件相关处理和更改-------------------
     # 将可能阻碍登录后台wps-hide-login.bak这个插件目录改为wps-hide-login
 
     local wps_hide_login_dir="$plugins_dir/wps-hide-login"
@@ -858,16 +977,19 @@ deploy_site() {
     # 部署批次结束后再统一重启,减少重载次数提高效率
     # nginx -s reload
 
-    # ===如果上述操作没有出错(return 1没有执行),则执行文件归档操作
-    log "<<<归档:已用过的sql压缩包文件: $site_sql_archive >>>"
-    # deployed_dir="$PACK_ROOT/$user_name/deployed/"
-    mv "$site_sql_archive" "$deployed_dir" -f -v
-    # mv "$site_sql_archive" "$DEPLOYED_DIR" -f -v
-    log "<<<归档:顺利解压网站压缩文件[$site_dir_archive]>>>"
-    mv "$site_dir_archive" "$deployed_dir" -fv
-    # mv "$archive_file" "$DEPLOYED_DIR" -f
+    # ===如果上述操作没有出错(return 1没有执行),则按需执行文件归档操作
+    if [[ $KEEP_PACK == "true" ]]; then
+        log "站点包不归档到${deployed_dir}中,留在原地."
+    else
+        log "<<<归档:已用过的sql压缩包文件: $site_sql_archive >>>"
+        mv "$site_sql_archive" "$deployed_dir" -f -v
+        # mv "$site_sql_archive" "$DEPLOYED_DIR" -f -v
+        log "<<<归档:顺利解压网站压缩文件[$site_dir_archive]>>>"
+        mv "$site_dir_archive" "$deployed_dir" -fv
+        # mv "$archive_file" "$DEPLOYED_DIR" -f
+    fi
 
-    log "✅ 完成站点部署: $domain_name ( 检查/访问: https://www.$domain_name )=============="
+    log "✅ 完成站点部署: $domain_name ( 检查/访问: https://www.$final_domain_name )=============="
     return 0
 }
 
@@ -932,15 +1054,22 @@ main() {
     local -a user_dirs
 
     # if [[ $DEPLOY_MODE == "single" ]]; then
-    if [[ $DEPLOY_MODE != "batch" ]]; then
-        log "处理指定的站点"
+    if [[ $DEPLOY_MODE != "auto" ]]; then
+        log "处理指定的站点[$SITE_DIR_PACK_STD]"
         local user_dir
         local site_name
         # 在需要用户确认解析结果的时候将need_check设置为1
         local need_check=0
-        if [[ -f $SITE_DIR_PACK_STD ]]; then
+        if [[ -n $SITE_DIR_PACK_STD ]]; then
+            local candidate_path=./"$USER_DIR/$SITE_DIR_PACK_STD"
+            if [[ -f $candidate_path ]]; then
+                SITE_DIR_PACK_STD="${candidate_path/\/.\//\/}"
+            fi
+            if ! [[ -f $SITE_DIR_PACK_STD ]]; then
+                log "Error:检查是否使用绝对路径,或确保路径存在[$(pwd)]"
+                return 1
+            fi
             log "找到待处理站点(尝试按标准方式解析所属人员和域名): $SITE_DIR_PACK_STD"
-
             # user_dir+=($SITE_DIR_PACK)
         elif [ -f "$SITE_DIR_PACK" ]; then
             echo "指定站点压缩包路径不规范的路径,优先尝试读取相关选项参数"
@@ -950,31 +1079,31 @@ main() {
             # 仅提供网站包的名字(域名),而不提供包的路径的情况下尝试扫描确定路径
             site_name="$DOMAIN_NAME"
             # 搜索PACK_ROOT(及其子目录)下的站点名为site_name的压缩包
-            local site_dir_packs=()
+            local site_packs=()
             # 安全且兼容性强的find扫描文件保存到数组中的方法
             while IFS= read -r -d '' file; do
-                site_dir_packs+=("$file")
-            done < <(find "$PACK_ROOT/$USER_DIR" -path '*/deployed/*' -prune -o -type f -iname "*${site_name}*" -print0)
+                site_packs+=("$file")
+            done < <(find "$PACK_ROOT/$USER_DIR" -path "$SKIP_SCAN_PATTERN" -prune -o -type f -iname "*${site_name}*" -print0)
 
             # 检查候选包路径数组长度
-            local pack_num=${#site_dir_packs[@]}
+            local pack_num=${#site_packs[@]}
             if [[ $pack_num -eq 0 ]]; then
                 log "未找到任何文件,请检查文件名是否正确"
                 exit 1
             elif [[ $pack_num -gt 1 ]]; then
-                declare -p site_dir_packs
-                log "共找到 $pack_num 个文件,使用第一个文件作为代表,如果不是,请在命令行(-P或-S)参数中提供路径!"
+                declare -p site_packs
+                log "共找到 $pack_num 个相关文件,使用第一个文件作为代表(用于提取domain_name),如果不合适,请在命令行(-P或-S)参数中提供路径!"
 
             fi
-            SITE_DIR_PACK_STD="${site_dir_packs[0]}"
+            SITE_DIR_PACK_STD="${site_packs[0]}"
             declare -p SITE_DIR_PACK_STD
             echo ""
-            declare -p site_dir_packs
+            declare -p site_packs
 
             need_check=1
 
         else
-            log "请指定待处理站点的目录"
+            log "请指定待处理站点的路径或名字(域名)"
             exit 1
         fi
         # 下面的分支下,是脚本推测站点的所属人员和网站名,建议请求用户输入确认(输入y/n)
@@ -1079,8 +1208,25 @@ main() {
             # declare -p sql_archives
             # shopt -s extglob
             # local sql_files=( @(*.sql|*.sql.*) )  # 或 files=( *.sql?(.?*) )
-            local sql_files=(*.sql*) # 这足够区分domain.xxx.sql开头的文件了
-            local -A unique_map=()   # 初始化为空
+
+            # for site_sql_archive in "${sql_archives[@]}"; do
+            # 获取域名（去掉.sql.zip或.sql.7z后缀）
+            #     domain_name="${site_sql_archive%.sql.*}"
+            #     user_dir_names+=("$user_name")
+            #     site_names+=("$domain_name")
+            # done
+
+            # 简单单层通配扫描:
+            # local sql_files=(*.sql*) # 这足够区分domain.xxx.sql开头的文件了
+            # 如果有搜索深度的需要,可以考虑用find
+            local sql_files=()
+            while IFS= read -r -d '' sql_file; do
+                sql_files+=("$sql_file")
+            done < <(find . -path "$SKIP_SCAN_PATTERN" -prune -o -type f -iname "*sql*" -printf "%f\0")
+            # debug
+            declare -p sql_files
+            # return 0
+            local -A unique_map=() # 初始化为空
 
             for f in "${sql_files[@]}"; do
                 # 提取前缀：删除从 ".sql" 开始到结尾的所有内容
@@ -1103,12 +1249,7 @@ main() {
             # 分层处理(少嵌套逻辑,让代码容易阅读和调试)
 
             # 初步计算待处理的网站名(域名),没找到要给网站包(以sql包为代表即可),就成组加入两个任务数组中
-            # for site_sql_archive in "${sql_archives[@]}"; do
-            # 获取域名（去掉.sql.zip或.sql.7z后缀）
-            #     domain_name="${site_sql_archive%.sql.*}"
-            #     user_dir_names+=("$user_name")
-            #     site_names+=("$domain_name")
-            # done
+
             for domain_name in "${domain_names[@]}"; do
                 site_names+=("$domain_name")
                 user_dir_names+=("$user_name")
@@ -1131,11 +1272,24 @@ main() {
         local candidate_site_archives=()
 
         # START-C-P(计算最终的包文件路径)
-        for format in "${ARCHIVE_FORMATS[@]}"; do
-            # site_archives+=("$PACK_ROOT/$user_name/$domain_name."*"$format")
-            candidate_sql_archives+=("$PACK_ROOT/$user_name/$domain_name".sql*)
-            candidate_site_archives+=("$PACK_ROOT/$user_name/$domain_name.$format")
+        candidate_sql_archives+=("$PACK_ROOT/$user_name"/**/"$domain_name".sql*"$PACK_FORMAT")
+        # mapfile -d '' -t candidate_site_archives <  <(find "$PACK_ROOT/$user_name" -maxdepth 1 -type f ! -name "*.sql*" -and -name "*$domain_name*" -printf "%p\0")
+        # for pack in "$PACK_ROOT/$user_name"/**/!(*.sql*); do
+        for pack in "$PACK_ROOT/$user_name"/**/"$domain_name"*; do
+            # echo "$pack"
+            # if [[ $pack == */"$domain_name"*"$PACK_FORMAT" ]]; then
+            if [[ $pack != *.sql* && $pack == *"$PACK_FORMAT" ]]; then
+                candidate_site_archives+=("$pack")
+                break
+            fi
         done
+        # for format in "${ARCHIVE_FORMATS[@]}"; do
+        #     local candidate_pack="$PACK_ROOT/$user_name/$domain_name.$format"
+        #     if [[ -f $candidate_pack ]]; then
+        #         candidate_site_archives+=("$candidate_pack")
+        #         break
+        #     fi
+        # done
         declare -p candidate_sql_archives candidate_site_archives
         # 计算网站根目录包路径
         for site_archive in "${candidate_site_archives[@]}"; do
@@ -1173,8 +1327,12 @@ main() {
             job_cnt=$(jobs -rp | wc -l)
         done
         # debug:
-        log "verbose:" "$user_name" "$domain_name" "$site_dir_archive" "$site_sql_archive"
+        log "['verbose:' '$user_name', '$domain_name', '$site_dir_archive', '$site_sql_archive']"
         # continue
+        ! [[ -f "$site_dir_archive" && -f "$site_sql_archive" ]] && {
+            log "[$domain_name]缺少必要的站点包文件(若指定了包格式,请检查是否指定格式的包不存在,或取消包格式指定)"
+            return 1
+        }
         deploy_site "$user_name" "$domain_name" "$site_dir_archive" "$site_sql_archive" &
         # END-C-W
     done
@@ -1208,7 +1366,7 @@ main() {
     done
     # 部署批次结束后再统一重启,减少重载次数提高效率
     log "🚀 ==================重载Nginx 配置...================="
-    nginx -s reload
+    [[ $DRY_RUN == "false" ]] && nginx -s reload
 
     log "部署结束！"
     # 解压站点根目录数量:[$deployed_sites] , 解压SQL备份: $sql_backups_processed, 失败: $failed_sites========================"

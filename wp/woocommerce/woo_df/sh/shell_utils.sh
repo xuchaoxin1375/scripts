@@ -13,31 +13,37 @@
 # Return:
 #  0 if yes, 1 if no;
 # Examples :
-#   confirm "是否继续执行?" "y"
+# $ confirm "是否继续执行?" "y"
 #       是否继续执行? [y/N]: (如果直接回车,会自动选择N)
+# 
 # $ yes|confirm  contin?  && echo "yes,continue"
-# 回答yes
 # yes,continue
+# 
+# $ confirm -v "continue this operation?" "y" 
+# continue this operation? [Y/n]: 
+# return 0 
 confirm() {
     local prompt
-    local default
-    local ASSUME_ANSWER=""
-
-    # local ASSUME_ANSWER="${3:-}" # 特殊参数,指定的话不会进入交互模式,直接返回0或1
+    local default_suggestion
+    local assume_answer
     # 处理可能出现的选项
     local verbose=false
-    # 备用实现方案  Usage: confirm [-p prompt] [-d {y|Y|n|N}] [-a {y|n}] [-v] [-h]
     local usage="
-Usage: confirm [prompt] [{y|Y}|{n|N}] [y|n]  [-v] [-h]
-其中前3个是可选的位置参数:
-第1个prompt表示交互时要打印的基础部分的提示用语
-第2个是default部分的提示语,有4个可用的值,y,Y对应[Y/n],而n,N对应于[y/N],
-    如果省略不写,得到对应的提示语为[y/n],此时用户必须输入合适的支而无法直接回车填写有效默认值;
-第3个ASSUME_ANSWER用于指定一个用于自动回答的值,可用值为y,n,如果用户交互时没有输入任何内容,则直接返回此选项对应的值;
+    suggestion
+Usage: confirm [OPTIONS] [PROMPT] [DEFAULT_SUGGESTION] [ASSUME_ANSWER]
+ confirm [OPTIONS] [PROMPT] [y|Y|n|N] [ASSUME_ANSWER]
 
-  options:
-    -h, --help     显示帮助
-    -v, --verbose   显示详细信息
+Arguments:
+  PROMPT                      The message to display to the user.
+  DEFAULT_SUGGESTION          Presentation of default choice:
+                              y or Y -> [Y/n] (Default is Yes)
+                              n or N -> [y/N] (Default is No)
+                              (Omitting means no default, requiring explicit input)->[y/n]
+  ASSUME_ANSWER               Automatic answer if user presses Enter (y/n).
+
+Options:
+  -v, --verbose    Show detailed process.
+  -h, --help       Show this help message.
   "
     # echo "解析函数参数..."
     local positional=()
@@ -67,17 +73,17 @@ Usage: confirm [prompt] [{y|Y}|{n|N}] [y|n]  [-v] [-h]
     done
     set -- "${positional[@]}"
     prompt="${1:-Continue ?}"
-    default="${2:-}"
-    ASSUME_ANSWER="${3:-}"
+    default_suggestion="${2:-}"
+    assume_answer="${3:-}"
     # debug:
     # echo "[$*]"
     # echo "检查位置参数..."
     local rc
     # 🔑 如果指定了自动回答，直接返回值
-    if [[ -n "$ASSUME_ANSWER" ]]; then
-        echo "${prompt} → 自动回答: ${ASSUME_ANSWER}"
+    if [[ -n "$assume_answer" ]]; then
+        echo "${prompt} → 自动回答: ${assume_answer}"
         # 设置返回值rc
-        [[ "$ASSUME_ANSWER" =~ ^y(es)?$ ]] && rc=0 || rc=1
+        [[ "$assume_answer" =~ ^y(es)?$ ]] && rc=0 || rc=1
         # if [[ "$verbose" = true ]]; then echo "return $rc"; fi
         # return $rc
     fi
@@ -87,7 +93,7 @@ Usage: confirm [prompt] [{y|Y}|{n|N}] [y|n]  [-v] [-h]
         # 构造提示符的输入选择部分
         # (对于y,Y表示偏好为自动输入yes(return 0),如果是n,N,偏好是自动输入no(return 1))
         local yn
-        case "$default" in
+        case "$default_suggestion" in
             y | Y) yn="[Y/n]" ;;
             n | N) yn="[y/N]" ;;
             *) yn="[y/n]" ;; # 表示要求用户必须输入可用值
@@ -96,7 +102,7 @@ Usage: confirm [prompt] [{y|Y}|{n|N}] [y|n]  [-v] [-h]
         # 交互式询问（支持重试）
         while true; do
             read -r -p "${prompt} ${yn}: " answer
-            answer="${answer:-$default}" # 用户直接回车则取默认值
+            answer="${answer:-$default_suggestion}" # 用户直接回车则取默认值
             case "${answer,,}" in        # ${,,} 转小写 (bash 4+)
                 y | yes)
                     rc=0

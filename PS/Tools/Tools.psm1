@@ -554,7 +554,60 @@ function ssh-copy-id-ps
         & Get-Content "$publicKey" | ssh $args $userAtMachine "umask 077; test -d .ssh || mkdir .ssh ; cat >> .ssh/authorized_keys || exit 1"      
     }
 }
+function Add-SSHkeyOnHost
+{
+    <# 
+    .SYNOPSIS
+    将当前用户SSH公钥添加到指定主机的authorized_keys文件中
+    .DESCRIPTION
+    使用此函数添加不会覆盖掉原文件,可以在不同设备上使用此函数向同一个服务器添加公钥
+    .NOTES
+    为了避免之前不规范添加文件末尾可能缺少换行符,可以使用 -PrefixNextLine 参数在公钥周围添加换行符,
+    保证防止和之前的添加的公钥粘连
+    .EXAMPLE
+    PS> Add-SSHkeyOnHost -ComputerName 192.168.1.1 -UserName root
+    #>
+    [CmdletBinding()]
+    param(
+        $ComputerName,
+        $UserName = 'root',
+        $Type = 'ed25519',
+        # 尽可能跳过ssh-keygen的生成确认环节.
+        [switch]$Force,
+        [switch]$PrefixNextLine
+    )
+    $authority = "$UserName@$ComputerName" 
+    $keypath = "~/.ssh/id_$Type"
+    $pubkey = Get-Content "${keypath}.pub"
+    # START (密钥检查,如有需要生成密钥)
+    if(Test-Path $keypath)
+    {
+        Write-Verbose "已存在${type}密钥"
+    }
+    else
+    {
+        if($Force)
+        {
 
+            ssh-keygen -t $Type -C "$env:COMPUTERNAME" -N '' -f "$HOME\.ssh\id_$Type" -q
+        }
+        else
+        {
+            
+            ssh-keygen -t $Type -C "$env:COMPUTERNAME " # 或者用计算机名代替邮箱
+        }
+    }
+    # END
+    $pubkey = "$pubkey`n"
+    if ($PrefixNextLine)
+    {
+        $pubkey = "`n$pubkey"
+    }
+    Write-Verbose "本次将添加公开密钥内容[$pubkey]到服务器"
+
+    ssh $authority "mkdir -p ~/.ssh && echo '${pubkey}' >> ~/.ssh/authorized_keys"
+    # 初次运行需要输入服务器ssh对应user用户的密码
+}
 function Start-SleepWithProgress
 {
     <# 
