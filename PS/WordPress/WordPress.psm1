@@ -1463,7 +1463,9 @@ function Update-ServerRepos
     )
     $servers = Get-ServerList -Path $ServerConfig
     $jobs = @()
-
+    $OutputEncoding = [System.Text.Encoding]::UTF8
+    # 设置控制台输出编码为 UTF-8
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
     foreach ($server in $servers.ip)
     {
         $jobs += Start-ThreadJob -script { ssh -nT root@$using:server "cd $using:WorkingDirectory && bash $using:cmd" } -ThrottleLimit $Threads

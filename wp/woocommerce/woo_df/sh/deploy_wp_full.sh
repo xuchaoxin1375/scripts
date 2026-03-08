@@ -26,7 +26,7 @@
 #   /deploy.sh -M single   --user-dir uuu  -n d1.com --pack-format zip --dry-run
 #   /deploy.sh  --user-dir xcx  --ssp '' -K  --dry-run #适合服务器迁移参数组合!
 
-VERSION=20260306
+VERSION=20260308
 shopt -s extglob globstar
 shopt -s nullglob
 # === 配置参数 ===
@@ -963,6 +963,9 @@ deploy_site() {
     else
         log "⚠️ 未找到 wp-config.php 文件，跳过 HTTPS 配置"
     fi
+
+    log "===修改element 容器背景广告图链接"
+    sed -i "s/http:\/\/$domain_name/https:\/\/www.$final_domain_name/g" "$site_root"/wp-content/uploads/elementor/css/post-10.css
     # END-DIR-EXPAND
 
     # 设置目录权限和所有者
