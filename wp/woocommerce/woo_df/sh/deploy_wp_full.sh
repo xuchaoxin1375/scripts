@@ -330,12 +330,8 @@ log() {
     echo "$message"
 }
 export -f log
-# 提示用户当前使用的 PACK_ROOT
-log "使用 PACK_ROOT: $PACK_ROOT"
-log "检查默认备份文件夹(不存在则创建)"
-if [ ! -d "$DEPLOYED_DIR" ]; then
-    mkdir -p "$DEPLOYED_DIR"
-fi
+
+
 
 export -f confirm
 # === 函数：检查必要的命令是否存在 ===
@@ -885,7 +881,6 @@ deploy_site() {
     local user_ini="$site_root/.user.ini"
 
     log "解压之前,尝试清空目标目录[$site_root],以便后续干净插入新内容"
-    # mkdir -p "$site_root"
     if [ -d "$site_root" ]; then
         rm1 "$site_root" # 删除网站根目录
     fi
@@ -988,8 +983,9 @@ deploy_site() {
     if [[ $KEEP_PACK == "true" ]]; then
         log "站点包不归档到${deployed_dir}中,留在原地."
     else
+        mkdir -p "$deployed_dir"
         log "<<<归档:已用过的sql压缩包文件: $site_sql_archive >>>"
-        mv "$site_sql_archive" "$deployed_dir" -f -v
+        mv "$site_sql_archive" "$deployed_dir" -f -v 
         # mv "$site_sql_archive" "$DEPLOYED_DIR" -f -v
         log "<<<归档:顺利解压网站压缩文件[$site_dir_archive]>>>"
         mv "$site_dir_archive" "$deployed_dir" -fv
@@ -1324,9 +1320,8 @@ main() {
         user_dir="${user_dir%/}"
 
         deployed_dir="$PACK_ROOT/$user_dir/deployed/"
-        if [ ! -d "$deployed_dir" ]; then
-            mkdir -p "$deployed_dir"
-        fi
+        mkdir -p "$deployed_dir"
+
         # 更改计算得到的deployed文件夹权限
         log "🔒 更改${user_dir}的${deployed_dir}文件夹权限(设置目录权限和所有者)"
         chmod -R 755 "$deployed_dir"
