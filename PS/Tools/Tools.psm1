@@ -537,23 +537,6 @@ function Update-SSNameServers
     
 }
 
-
-function ssh-copy-id-ps
-{   
-    param(
-        [string]$userAtMachine, 
-        $args
-    )
-    $publicKey = "$ENV:USERPROFILE/.ssh/id_rsa.pub"
-    if (!(Test-Path "$publicKey"))
-    {
-        Write-Error "ERROR: failed to open ID file '$publicKey': No such file"            
-    }
-    else
-    {
-        & Get-Content "$publicKey" | ssh $args $userAtMachine "umask 077; test -d .ssh || mkdir .ssh ; cat >> .ssh/authorized_keys || exit 1"      
-    }
-}
 function Add-SSHkeyOnHost
 {
     <# 
@@ -1286,7 +1269,7 @@ function Restart-Nginx
         {
             $nginx_processes | Stop-Process -Force -Verbose
             Write-Verbose "Start nginx.exe..." -Verbose
-            $p = Start-Process -WorkingDirectory $nginx_home -FilePath "nginx.exe" -ArgumentList "-c", "$nginx_conf" -NoNewWindow # -PassThru
+            Start-Process -WorkingDirectory $nginx_home -FilePath "nginx.exe" -ArgumentList "-c", "$nginx_conf" -NoNewWindow # -PassThru
             # 重新扫描nginx进程(而不是使用上面的Start-Process返回的进程对象,进程创建失败时,这不太准确)
             return Get-Process nginx*
             # Start-XpNginx 
@@ -2259,7 +2242,7 @@ function Show-UnicodeConverterWindow
         })
 
     # ========== 核心解码函数 ==========
-    function Decode-Text
+    function Get-DecodeText
     {
         param([string]$Text, [string]$Mode)
 
@@ -2343,7 +2326,7 @@ function Show-UnicodeConverterWindow
     }
 
     # ========== 编码函数（仅 JS/HTML） ==========
-    function Encode-Text
+    function Get-EncodeText
     {
         param([string]$Text, [string]$Mode)
 
@@ -2376,7 +2359,7 @@ function Show-UnicodeConverterWindow
     }
 
     # ========== Auto 检测 ==========
-    function Detect-EncodingMode
+    function Get-EncodingMode
     {
         param([string]$Text)
 
@@ -2402,8 +2385,8 @@ function Show-UnicodeConverterWindow
 
     # ========== 按钮事件 ==========
     $buttonDecode.Add_Click({
-            $input = $textBoxInput.Text
-            if ([string]::IsNullOrWhiteSpace($input))
+            $inputText = $textBoxInput.Text
+            if ([string]::IsNullOrWhiteSpace($inputText))
             {
                 $textBoxOutput.Text = ""
                 return
@@ -2413,27 +2396,27 @@ function Show-UnicodeConverterWindow
 
             if ($mode -eq "Auto (Detect)")
             {
-                $detected = Detect-EncodingMode -Text $input
+                $detected = Get-EncodingMode -Text $inputText
                 if ($null -eq $detected)
                 {
-                    $textBoxOutput.Text = $input
+                    $textBoxOutput.Text = $inputText
                 }
                 else
                 {
-                    $result = Decode-Text -Text $input -Mode $detected
+                    $result = Get-DecodeText -Text $inputText -Mode $detected
                     $textBoxOutput.Text = $result
                 }
             }
             else
             {
-                $result = Decode-Text -Text $input -Mode $mode
+                $result = Get-DecodeText -Text $inputText -Mode $mode
                 $textBoxOutput.Text = $result
             }
         })
 
     $buttonEncode.Add_Click({
-            $input = $textBoxInput.Text
-            if ([string]::IsNullOrWhiteSpace($input))
+            $inputText = $textBoxInput.Text
+            if ([string]::IsNullOrWhiteSpace($inputText))
             {
                 $textBoxOutput.Text = ""
                 return
@@ -2454,7 +2437,7 @@ function Show-UnicodeConverterWindow
 
             try
             {
-                $result = Encode-Text -Text $input -Mode $mode
+                $result = Get-EncodeText -Text $inputText -Mode $mode
                 $textBoxOutput.Text = $result
             }
             catch

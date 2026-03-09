@@ -241,13 +241,17 @@ parse_args() {
                 shift
                 ;;
             -n | --domain-name)
+                # 自动启用单站点模式
                 DOMAIN_NAME="$2"
+                DEPLOY_MODE="single"
                 shift
                 ;;
             -N | --update-domain-name)
                 # 当某个已上传包网站的域名需要更改时,使用此参数
                 # 配合单包部署选项来使用.
                 UPDATE_DOMAIN_NAME="$2"
+                log "[INFO] 域名更改模式已启用(使用此选项时自动启用-M single)"
+                DEPLOY_MODE="single"
                 shift
                 ;;
             -W | --site-root-name)
@@ -965,7 +969,7 @@ deploy_site() {
     fi
 
     log "===修改element 容器背景广告图链接"
-    sed -i "s/http:\/\/$domain_name/https:\/\/www.$final_domain_name/g" "$site_root"/wp-content/uploads/elementor/css/post-10.css
+    sed -i "s/http:\/\/$domain_name/https:\/\/www.$final_domain_name/g" "$site_root"/wp-content/uploads/elementor/css/post-*.css
     # END-DIR-EXPAND
 
     # 设置目录权限和所有者
@@ -1135,25 +1139,7 @@ main() {
                     echo "跳过处理[$site_name]..."
                     return 1
                 fi
-                # read -rp "❓ 是否继续处理该站点文件? (y/n, 默认y): " confirm
-                # # 将输入转换为小写（可选，Bash 4+ 支持 ${confirm,,}）
-                # local confirm=${confirm:-y} # 如果直接回车，默认为 y
 
-                # case "${confirm,,}" in
-                #     # 兼容yes,y 大小写都兼容
-                #     yes | y)
-                #         echo "🚀 正在继续执行..."
-                #         # 在这里放置你的逻辑
-                #         ;;
-                #     no | n)
-                #         echo "🛑 操作已取消。"
-                #         exit 1
-                #         ;;
-                #     *)
-                #         echo "Error❌ 输入无效，脚本退出。"
-                #         exit 1
-                #         ;;
-                # esac
             else
                 echo "自动提取站点所属人员和网站名失败,请提供站点所属人员名(目录名)"
             fi
@@ -1197,28 +1183,7 @@ main() {
             fi
 
             # ===编写网站部署逻辑,并发可控===
-            # 首先处理SQL备份文件(将所有站点的sql文件都解压,然后逐个导入到对应的数据库)
-            # 数据库名字:调用process_sql_file进行处理
-            # 收集网站压缩包目录下的压缩包文件列表,基于此过滤并计算出待部署到网站名及对应的压缩包组(可以仅收集sql压缩包,特点鲜明,和网站备份文件强相关)
-
-            # local sql_archives=()
-            # sql_archives=(*.sql{zip,7z,tar,lz4,zst})
-            # ARCHIVE_FORMATS=(zip 7z tar lz4 zst)
-            # for format in "${ARCHIVE_FORMATS[@]}"; do
-            #     sql_archives+=(*.sql."$format")
-            #     # echo '*.sql.'"$format"
-            # done
-            # declare -p sql_archives
-            # shopt -s extglob
-            # local sql_files=( @(*.sql|*.sql.*) )  # 或 files=( *.sql?(.?*) )
-
-            # for site_sql_archive in "${sql_archives[@]}"; do
-            # 获取域名（去掉.sql.zip或.sql.7z后缀）
-            #     domain_name="${site_sql_archive%.sql.*}"
-            #     user_dir_names+=("$user_name")
-            #     site_names+=("$domain_name")
-            # done
-
+            # 收集网站压缩包目录下的压缩包文件列表,基于此过滤并计算出待部署到网站名及对应的压缩包组
             # 简单单层通配扫描:
             # local sql_files=(*.sql*) # 这足够区分domain.xxx.sql开头的文件了
             # 如果有搜索深度的需要,可以考虑用find

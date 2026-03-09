@@ -15,13 +15,13 @@
 # Examples :
 # $ confirm "是否继续执行?" "y"
 #       是否继续执行? [y/N]: (如果直接回车,会自动选择N)
-# 
+#
 # $ yes|confirm  contin?  && echo "yes,continue"
 # yes,continue
-# 
-# $ confirm -v "continue this operation?" "y" 
-# continue this operation? [Y/n]: 
-# return 0 
+#
+# $ confirm -v "continue this operation?" "y"
+# continue this operation? [Y/n]:
+# return 0
 confirm() {
     local prompt
     local default_suggestion
@@ -103,7 +103,7 @@ Options:
         while true; do
             read -r -p "${prompt} ${yn}: " answer
             answer="${answer:-$default_suggestion}" # 用户直接回车则取默认值
-            case "${answer,,}" in        # ${,,} 转小写 (bash 4+)
+            case "${answer,,}" in                   # ${,,} 转小写 (bash 4+)
                 y | yes)
                     rc=0
                     # echo "回答yes"
@@ -527,12 +527,27 @@ is_shell() {
 }
 # 获取bash内置命令的帮助
 help_bash() {
-    cmd="$1"
-    bash -c "help '$cmd'"
+    # cmd="$1"
+    bash -c "help $* "
 }
 # 在非bash(zsh)或bash中可以通用的查询bash内置命令的函数
+# 支持-N参数控制是否显示行号;
 help() {
-    cmd="$1"
+    local args
+    local number_flag=true
+    while [[ $# -gt 0 ]]; do
+
+        case "$1" in
+            -N | --no-numbers)
+                number_flag=false
+                ;;
+            *)
+                args+=("$1")
+                ;;
+        esac
+        shift
+    done
+    set -- "${args[@]}"
     # 黄色的提示:当前help输出来自于bash
     YELLOW='\e[31m'
     END='\e[0m'
@@ -540,7 +555,11 @@ help() {
     tip="${YELLOW}[START]当前shell为$shell,而help输出来自于bash ${END}"
 
     is_shell "bash" || echo -e "$tip"
-    help_bash "$cmd" | nl
+    if [[ $number_flag == true ]]; then
+        help_bash "$*" | nl
+    else
+        help_bash "$*"
+    fi
     is_shell "bash" || echo -e "$tip"
 
 }
