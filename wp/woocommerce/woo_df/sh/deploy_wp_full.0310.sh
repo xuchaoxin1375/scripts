@@ -56,7 +56,6 @@ PLUGIN_INSTALL_MODE="symlink"    # 插件安装模式: symlink(符号链接), co
 USER_DIRS=()                     #需要部署的用户目录
 SITE_ROOT_NAME="wordpress"       # 站点根目录是否要包一层wordpress目录
 SKIP_SCAN_PATTERN="*/deployed/*" # 对于部署指定包的模式下,功能find扫描参考跳过部分目录
-FAST=false                       #快速模式(将数据库的导入和网站的解压并行化,deploy_site内的局部并行,适合极速部署单个站点)
 # 跳过解压网站根目录及其相关操作(假设已经解压过根目录包了),如果不想跳过则设为空串""即可.
 SITE_ROOT_SKIP=false
 # 跳过数据库导入(假设已经导入过sql文件了),此选项几乎不使用(完整流程会有步骤修改数据库中的某些字段)除非某次解压部分目录有异常而数据库导入处理是完成的;
@@ -97,13 +96,9 @@ show_help() {
         描述:
           WordPress 站点批量部署脚本，支持并发部署、数据库导入、插件安装等功能。
           对于多硬盘服务器，可能需要设置 --pack-root 和 --project-home 参数。
-         FAST 模式下并发执行时,注意:
-         1. 两个子进程的 stdout/stderr 会混在一起，建议分别重定向
-         2. & 会 fork 子进程，子进程中无法修改父进程的变量
 
         部署模式:
           -M, --deploy-mode MODE     部署模式：single(单站) 或 auto(批量扫描) (默认:$DEPLOY_MODE)
-          --fast                     快速部署:部署站点的时候同时处理数据库的导入和站点根目录的解压(建议仅用在单个站点的部署上)
 
         路径配置:
           -p, --pack-root DIR        设置压缩包根目录 (默认:$PACK_ROOT)
@@ -272,10 +267,6 @@ parse_args() {
                 UPLOADER="$2"
                 shift
                 ;;
-            --fast)
-                FAST="true"
-                shift
-                ;;
             --dry-run)
                 DRY_RUN=true
                 ;;
@@ -442,10 +433,10 @@ import_sql_file() {
     # 导入 SQL 文件
     log "🚚 正在导入 SQL 文件: $sql_file 到数据库 $db_name"
     if mysql -h "$DB_HOST" -u "$DB_USER" -P "$DB_PORT" -p"$DB_PASSWORD" "$db_name" < "$sql_file"; then
-        # log "✅ 数据库 $db_name 成功导入。"
+        log "✅ 数据库 $db_name 成功导入。"
         return 0
     else
-        # log "Error❌ 导入失败，请检查 SQL 文件或数据库权限。"
+        log "Error❌ 导入失败，请检查 SQL 文件或数据库权限。"
         return 1
     fi
 }
@@ -809,208 +800,189 @@ deploy_site() {
         # time_consumption=3
         # sleep $time_consumption
         log "[DRY_RUN] End for $domain_name "
-        return 1
+        return 0
     fi
-    local URL_MODE_SQL="
-UPDATE wp_options
-SET option_value = 'https://www.${final_domain_name}'
-WHERE option_name IN ('home', 'siteurl');
-"
-    # START-SQL-IMPORT 检查并导入对应的 SQL 文件
-    process_db() {
-        log "检查是否已经有.sql文件(解压过的)"
-        if [[ -f $sql_file ]]; then
-            log "已找到原sql文件[$sql_file],可能之前解压过"
+    # START-SQL-IMPORT 检查并导入对应的 SQL 文件 ===
+    log "检查是否已经有.sql文件(解压过的)"
+    if [[ -f $sql_file ]]; then
+        log "已找到原sql文件[$sql_file],可能之前解压过"
+    else
+        log "开始解压站点[$domain_name]的sql文件"
+        # 解压数据库压缩包,归档已解压文件,并可选地统计解压情况
+        if process_sql_file "$user_name" "$site_sql_archive"; then
+            log "✅ 站点[$domain_name]的sql文件解压成功"
         else
-            log "开始解压站点[$domain_name]的sql文件"
-            # 解压数据库压缩包,归档已解压文件,并可选地统计解压情况
-            if process_sql_file "$user_name" "$site_sql_archive"; then
-                log "✅ 站点[$domain_name]的sql文件解压成功"
-            else
-                log "Error❌ SQL备份文件处理失败: $site_sql_archive"
-                log "跳过此站点的处理"
-                return 1
-            fi
-        fi
-        # 导入已经解压的数据库(import sql)
-        if [ -f "$sql_file" ]; then
-            log "🔍 找到 SQL 文件并导入数据库: $sql_file"
-            if [[ $SITE_DB_SKIP != 'true' ]]; then
-                if import_sql_file "$db_name" "$sql_file"; then
-                    log "✅ 数据库[$db_name]导入成功"
-                else
-                    log "Error:数据库[$db_name]导入失败,跳过此站点部署"
-                    return 1
-                fi
-            else
-                log "跳过 $sql_file 的导入处理"
-                # 返回
-                return 1
-            fi
-            # 删除数据库文件.sql(已导入)
-            log "🗑️ 删除数据库文件: $sql_file"
-            rm -f "$sql_file" -v
-
-            # === 配置数据库===
-
-            mysql -h "$DB_HOST" -u "$DB_USER" -P "$DB_PORT" -p"$DB_PASSWORD" "$db_name" -e "$URL_MODE_SQL"
-        else
-            log "Error❌ 未找到 SQL 文件: $sql_file"
+            log "Error❌ SQL备份文件处理失败: $site_sql_archive"
+            log "跳过此站点的处理"
             return 1
         fi
-    }
+    fi
+    # 导入已经解压的数据库(import sql)
+    if [ -f "$sql_file" ]; then
+        log "🔍 找到 SQL 文件并导入数据库: $sql_file"
+        # 将导入环节放到前面去执行,可以并行导入sql文件提高效率
+        if [[ $SITE_DB_SKIP != 'true' ]]; then
+            # if [[ -n $UPDATE_DOMAIN_NAME ]]; then
+            #     db_domain_name=$UPDATE_DOMAIN_NAME
+            # else
+            #     db_domain_name=$domain_name
+            # fi
 
+            import_sql_file "$db_name" "$sql_file"
+        else
+            log "跳过 $sql_file 的导入处理"
+            # 返回
+            return 1
+        fi
+        # 删除数据库文件.sql(已导入)
+        log "🗑️ 删除数据库文件: $sql_file"
+        rm -f "$sql_file" -v
+
+        # === 配置数据库===
+
+        mysql -h "$DB_HOST" -u "$DB_USER" -P "$DB_PORT" -p"$DB_PASSWORD" "$db_name" -e "
+    UPDATE wp_options
+    SET option_value = 'https://www.${final_domain_name}'
+    WHERE option_name IN ('home', 'siteurl');
+    "
+    else
+        log "Error❌ 未找到 SQL 文件: $sql_file"
+        return 1
+    fi
     # END-SQL-IMPORT
 
     # START-DIR-EXPAND
-    process_site_root() {
-        log "开始处理网站[$final_domain_name]根目录..."
+    log "开始处理网站[$final_domain_name]根目录..."
 
-        # 网站根目录所在目录, 例如:/www/wwwroot/zsh/domain.com
-        local site_domain_home="$PROJECT_HOME/$user_name/$final_domain_name"
-        # local final_site_domain_home="$PROJECT_HOME/$user_name/$final_domain_name"
-        #对于用7z打包domain.com为目录名的7z包,解压后得到domain.com目录 7z x $site_dir_archive -o$site_domain_home 执行结果得到目录$site_domain_home/domain.com,为了便于引用,将其赋值给变量$site_expanded_dir_raw,表示解压后得到的目录
-        # 定义网站最终的根目录
-        local site_root="$site_domain_home"
-        #例如:/www/wwwroot/zsh/domain.com/
-        if [[ -n $SITE_ROOT_NAME ]]; then
-            site_root="$site_domain_home/$SITE_ROOT_NAME"
-            # 例如:/www/wwwroot/zsh/domain.com/wordpress
-        fi
-
-        # 根据事先设计的目录压缩结构,配套的网站压缩包将会解压得到的目录有两种可能(事先规划):
-        # 人员初次导出的原生包:(默认情况,根据需要可以进一步移动处理)
-        local site_expanded_dir_raw="$site_domain_home/$domain_name"
-        # 例如: /www/wwwroot/zsh/(final)domain.com/domain.com
-
-        # 从服务器导出备份包:通常是形如: PROJECT_HOME/user_name/domain_name/SITE_ROOT_NAME
+    # 网站根目录所在目录, 例如:/www/wwwroot/zsh/domain.com
+    local site_domain_home="$PROJECT_HOME/$user_name/$final_domain_name"
+    # local final_site_domain_home="$PROJECT_HOME/$user_name/$final_domain_name"
+    #对于用7z打包domain.com为目录名的7z包,解压后得到domain.com目录 7z x $site_dir_archive -o$site_domain_home 执行结果得到目录$site_domain_home/domain.com,为了便于引用,将其赋值给变量$site_expanded_dir_raw,表示解压后得到的目录
+    # 定义网站最终的根目录
+    local site_root="$site_domain_home"
+    #例如:/www/wwwroot/zsh/domain.com/
+    if [[ -n $SITE_ROOT_NAME ]]; then
+        site_root="$site_domain_home/$SITE_ROOT_NAME"
         # 例如:/www/wwwroot/zsh/domain.com/wordpress
-        local site_expanded_dir_wp="$site_root" # 通常final和导出包没有关系,因为导出时域名一般是确定可用的,不需要更新.
-
-        # 根目录下的其他目录(解压后要进行到额外处理)会用到的目录
-
-        # 网站插件目录
-        local plugins_dir="$site_root/wp-content/plugins"
-        # 网站主题总目录
-        local themes_dir="$site_root/wp-content/themes"
-        # 网站根目录下的路径限制配置文件(防跨站open_basedir...)
-        local user_ini="$site_root/.user.ini"
-
-        log "解压之前,尝试清空目标目录[$site_root],以便后续干净插入新内容"
-        if [ -d "$site_root" ]; then
-            rm1 "$site_root" # 删除网站根目录
-        fi
-        log "创建网站根目录"
-        mkdir -p "$site_root" -v
-        # 解压网站文件|如果存在同名目录,则默认覆盖🎈
-        # 原生包情况下(另一种是导出包)
-        if [ -d "$site_expanded_dir_raw" ]; then
-            log "⚠️ 检测到相关目录已存在: $site_expanded_dir_raw"
-
-            log "正在强力删除现有目录[$site_expanded_dir_raw]并解压新内容 (预计得到目录:$site_expanded_dir_raw) ..."
-            # rm -rf "$site_expanded_dir_raw" # 删除现有目录
-            rm1 "$site_expanded_dir_raw" # 删除现有目录
-        fi
-
-        # 纯净解压(预先存在或残留的目录此时已经清理完毕.)
-        if [[ $SITE_ROOT_SKIP == 'true' ]]; then
-            log "跳过站点$site_dir_archive 包的解压"
-            # 进入此分支后,就不会进入下面的解压分支,不要这里return 0;
-        elif ! extract_archive "$site_dir_archive" "$site_domain_home"; then
-            log "Error❌ 解压失败，本轮跳过此站部署: $domain_name"
-            return 1
-        else
-            log "✅ 解压成功: $site_dir_archive "
-            # 判断包的类型:原生包还是导出包
-            if [[ -d $site_expanded_dir_raw ]]; then
-                log "原生包-> $site_expanded_dir_raw"
-                log "移动解压后的目录[$site_expanded_dir_raw]内容到目标目录wordpress[$site_root]🎈"
-                if [[ -d $site_root ]]; then
-                    log "目标目录[$site_root]已存在,直接移动解压内容到该目录"
-                fi
-                mv "$site_expanded_dir_raw"/* "$site_root" -f || return 1
-            elif [[ -d $site_expanded_dir_wp ]]; then
-                if is_empty_dir "$site_expanded_dir_wp"; then
-                    log "Error:站点根目录[$site_expanded_dir_wp]为空,未将文件正确移动到目标目录,跳过处理,请检查此站点"
-                    return 1
-                else
-                    log "导出包-> $site_expanded_dir_wp"
-                    log "根目录已经符合预期,不需要移动根目录"
-                fi
-            fi
-
-            log "检查需要安装的插件..."
-            install_wp_plugin "$plugins_dir" "$PLUGINS_HOME"
-            install_functions_php "$themes_dir" "$FUNCTIONS_PHP" || exit 1
-            if [[ -f "$user_ini" ]]; then
-                log "🔍 检测到 .user.ini 文件,设置open_basedir 放行公共插件目录"
-                bash /www/sh/update_user_ini.sh -p "$user_ini" -t "$PLUGINS_HOME"
-            else
-                log "ℹ️ 未找到 .user.ini 文件，跳过权限设置(等待宝塔创建.user.ini)"
-            fi
-        fi
-
-        # 站点根目录配置文件和插件相关处理和更改-------------------
-        # 将可能阻碍登录后台wps-hide-login.bak这个插件目录改为wps-hide-login
-
-        local wps_hide_login_dir="$plugins_dir/wps-hide-login"
-        local wps_hide_login_dir_bak="${wps_hide_login_dir}.bak"
-
-        if [ -d "$wps_hide_login_dir_bak" ]; then
-            log "🔄 重命名 wps-hide-login.bak 为 wps-hide-login"
-            # mv "$site_root/wps-hide-login.bak" "$site_root/wps-hide-login"
-            mv "$wps_hide_login_dir_bak" "$wps_hide_login_dir"
-        else
-            log "ℹ️ 未找到 wps-hide-login.bak 目录，跳过重命名"
-        fi
-
-        # 检查是否为有效的 WordPress 目录
-        if [ -f "$site_root/wp-config-sample.php" ] || [ -f "$site_root/wp-config.php" ] || [ -d "$site_root/wp-content" ]; then
-            log "✅ 检测到有效的 WordPress 目录结构"
-        else
-            log "⚠️ 警告：目标目录可能不是有效的 WordPress 安装，未找到典型的 WordPress 文件"
-        fi
-
-        # === 修改 wp-config.php 文件 ===
-        local wp_config_path="$site_root/wp-config.php"
-        if [ -f "$wp_config_path" ]; then
-            update_wp_config "$wp_config_path"
-        else
-            log "⚠️ 未找到 wp-config.php 文件，跳过 HTTPS 配置"
-        fi
-
-        log "===修改element 容器背景广告图链接"
-        sed -i "s/http:\/\/$domain_name/https:\/\/www.$final_domain_name/g" "$site_root"/wp-content/uploads/elementor/css/post-*.css
-
-        # 设置目录权限和所有者
-        log "🔒 设置目录权限和所有者..."
-        chmod -R 755 "$site_root" &> /dev/null
-        chown -R www:www "$site_root" &> /dev/null
-
-        # === 写入伪静态规则 ===
-        # write_rewrite_rules "$domain_name"
-        set_rewrte_rules_file "$domain_name"
-        log "🔄 等待重载 nginx 配置,以便让伪静态生效"
-        # 部署批次结束后再统一重启,减少重载次数提高效率
-        # nginx -s reload
-    }
-    # END-DIR-EXPAND
-    # 调用核心操作函数
-    if [[ $FAST == "false" ]]; then
-        process_db || return 1
-        process_site_root || return 1
-    else
-        log "[$final_domain_name]并行处理数据库和站点根目录"
-        local pid_db pid_root_dir
-        process_db &
-        pid_db=$!
-        process_site_root &
-        pid_root_dir=$!
-        local status=0
-        wait $pid_db || status=1
-        wait $pid_root_dir || status=1
-        [[ status -eq 1 ]] && return 1
     fi
+
+    # 根据事先设计的目录压缩结构,配套的网站压缩包将会解压得到的目录有两种可能(事先规划):
+    # 人员初次导出的原生包:(默认情况,根据需要可以进一步移动处理)
+    local site_expanded_dir_raw="$site_domain_home/$domain_name"
+    # 例如: /www/wwwroot/zsh/(final)domain.com/domain.com
+
+    # 从服务器导出备份包:通常是形如: PROJECT_HOME/user_name/domain_name/SITE_ROOT_NAME
+    # 例如:/www/wwwroot/zsh/domain.com/wordpress
+    local site_expanded_dir_wp="$site_root" # 通常final和导出包没有关系,因为导出时域名一般是确定可用的,不需要更新.
+
+    # 根目录下的其他目录(解压后要进行到额外处理)会用到的目录
+
+    # 网站插件目录
+    local plugins_dir="$site_root/wp-content/plugins"
+    # 网站主题总目录
+    local themes_dir="$site_root/wp-content/themes"
+    # 网站根目录下的路径限制配置文件(防跨站open_basedir...)
+    local user_ini="$site_root/.user.ini"
+
+    log "解压之前,尝试清空目标目录[$site_root],以便后续干净插入新内容"
+    if [ -d "$site_root" ]; then
+        rm1 "$site_root" # 删除网站根目录
+    fi
+    log "创建网站根目录"
+    mkdir -p "$site_root" -v
+    # 解压网站文件|如果存在同名目录,则默认覆盖🎈
+    # 原生包情况下(另一种是导出包)
+    if [ -d "$site_expanded_dir_raw" ]; then
+        log "⚠️ 检测到相关目录已存在: $site_expanded_dir_raw"
+
+        log "正在强力删除现有目录[$site_expanded_dir_raw]并解压新内容 (预计得到目录:$site_expanded_dir_raw) ..."
+        # rm -rf "$site_expanded_dir_raw" # 删除现有目录
+        rm1 "$site_expanded_dir_raw" # 删除现有目录
+    fi
+
+    # 纯净解压(预先存在或残留的目录此时已经清理完毕.)
+    if [[ $SITE_ROOT_SKIP == 'true' ]]; then
+        log "跳过站点$site_dir_archive 包的解压"
+        # 进入此分支后,就不会进入下面的解压分支,不要这里return 0;
+    elif ! extract_archive "$site_dir_archive" "$site_domain_home"; then
+        log "Error❌ 解压失败，本轮跳过此站部署: $domain_name"
+        return 1
+    else
+        log "✅ 解压成功: $site_dir_archive "
+        # 判断包的类型:原生包还是导出包
+        if [[ -d $site_expanded_dir_raw ]]; then
+            log "原生包-> $site_expanded_dir_raw"
+            log "移动解压后的目录[$site_expanded_dir_raw]内容到目标目录wordpress[$site_root]🎈"
+            if [[ -d $site_root ]]; then
+                log "目标目录[$site_root]已存在,直接移动解压内容到该目录"
+            fi
+            mv "$site_expanded_dir_raw"/* "$site_root" -f
+        elif [[ -d $site_expanded_dir_wp ]]; then
+            if is_empty_dir "$site_expanded_dir_wp"; then
+                log "Error:站点根目录[$site_expanded_dir_wp]为空,未将文件正确移动到目标目录,跳过处理,请检查此站点"
+                return 1
+            else
+                log "导出包-> $site_expanded_dir_wp"
+                log "根目录已经符合预期,不需要移动根目录"
+            fi
+        fi
+
+        log "检查需要安装的插件..."
+        install_wp_plugin "$plugins_dir" "$PLUGINS_HOME"
+        install_functions_php "$themes_dir" "$FUNCTIONS_PHP" || exit 1
+        if [[ -f "$user_ini" ]]; then
+            log "🔍 检测到 .user.ini 文件,设置open_basedir 放行公共插件目录"
+            bash /www/sh/update_user_ini.sh -p "$user_ini" -t "$PLUGINS_HOME"
+        else
+            log "ℹ️ 未找到 .user.ini 文件，跳过权限设置(等待宝塔创建.user.ini)"
+        fi
+    fi
+
+    # 站点根目录配置文件和插件相关处理和更改-------------------
+    # 将可能阻碍登录后台wps-hide-login.bak这个插件目录改为wps-hide-login
+
+    local wps_hide_login_dir="$plugins_dir/wps-hide-login"
+    local wps_hide_login_dir_bak="${wps_hide_login_dir}.bak"
+
+    if [ -d "$wps_hide_login_dir_bak" ]; then
+        log "🔄 重命名 wps-hide-login.bak 为 wps-hide-login"
+        # mv "$site_root/wps-hide-login.bak" "$site_root/wps-hide-login"
+        mv "$wps_hide_login_dir_bak" "$wps_hide_login_dir"
+    else
+        log "ℹ️ 未找到 wps-hide-login.bak 目录，跳过重命名"
+    fi
+
+    # 检查是否为有效的 WordPress 目录
+    if [ -f "$site_root/wp-config-sample.php" ] || [ -f "$site_root/wp-config.php" ] || [ -d "$site_root/wp-content" ]; then
+        log "✅ 检测到有效的 WordPress 目录结构"
+    else
+        log "⚠️ 警告：目标目录可能不是有效的 WordPress 安装，未找到典型的 WordPress 文件"
+    fi
+
+    # === 修改 wp-config.php 文件 ===
+    local wp_config_path="$site_root/wp-config.php"
+    if [ -f "$wp_config_path" ]; then
+        update_wp_config "$wp_config_path"
+    else
+        log "⚠️ 未找到 wp-config.php 文件，跳过 HTTPS 配置"
+    fi
+
+    log "===修改element 容器背景广告图链接"
+    sed -i "s/http:\/\/$domain_name/https:\/\/www.$final_domain_name/g" "$site_root"/wp-content/uploads/elementor/css/post-*.css
+    # END-DIR-EXPAND
+
+    # 设置目录权限和所有者
+    log "🔒 设置目录权限和所有者..."
+    chmod -R 755 "$site_root" &> /dev/null
+    chown -R www:www "$site_root" &> /dev/null
+
+    # === 写入伪静态规则 ===
+    # write_rewrite_rules "$domain_name"
+    set_rewrte_rules_file "$domain_name"
+    log "🔄 等待重载 nginx 配置,以便让伪静态生效"
+    # 部署批次结束后再统一重启,减少重载次数提高效率
+    # nginx -s reload
+
     # ===如果上述操作没有出错(return 1没有执行),则按需执行文件归档操作
     if [[ $KEEP_PACK == "true" ]]; then
         log "站点包不归档到${deployed_dir}中,留在原地."
@@ -1386,7 +1358,7 @@ main() {
     log "=====部署结束！"
     # log "失败的任务列表: ${PID_TASK_MAP_FAILED[*]}"
     # log "成功任务列表: ${PID_TASK_MAP_SUCCESSED[*]}"
-    log "失败任务数: $FAILED"
+    log "❌ 失败任务数: $FAILED"
     for site in "${PID_TASK_MAP_FAILED[@]}"; do
         log "$site"
     done
