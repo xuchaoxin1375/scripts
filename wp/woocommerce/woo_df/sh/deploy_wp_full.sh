@@ -26,7 +26,7 @@
 #   /deploy.sh -M single   --user-dir uuu  -n d1.com --pack-format zip --dry-run
 #   /deploy.sh  --user-dir xcx  --ssp '' -K  --dry-run #适合服务器迁移参数组合!
 
-VERSION=20260308
+VERSION=20260311
 shopt -s extglob globstar
 shopt -s nullglob
 # === 配置参数 ===
@@ -85,9 +85,6 @@ SH2="/c/repos""${SH1}"                # git bash风格
 [[ -d $SH2 ]] && SH="$SH2"
 shell_utils=$SH/shell_utils.sh
 echo "deploy_script_version: $VERSION"
-echo "verbose:正在加载shell工具函数库...[$shell_utils]"
-# shellcheck disable=SC1090
-source "$shell_utils"
 
 # === 函数：显示帮助信息 ===
 show_help() {
@@ -140,7 +137,7 @@ show_help() {
 
         并发与执行:
           -j, --jobs NUM             设置并发数 (默认:$JOBS)
-          --dry-run                  干运行模式（仅模拟，不实际执行）
+          -T,--preview,--dry-run                  干运行模式（仅模拟，不实际执行）
           --yes, --force             自动确认所有交互提示
           --no                       自动拒绝所有交互提示
           -E, --strict-mode          严格模式（启用 set -euo pipefail）
@@ -148,6 +145,7 @@ show_help() {
         其他:
           -h, --help                 显示此帮助信息
           -V, --version              显示脚本版本
+          -v, --verbose             显示详细日志
 
         示例:
           # 批量部署（自动扫描）
@@ -209,6 +207,10 @@ parse_args() {
                 DB_PORT="$2"
                 shift
                 ;;
+            # --no-check-mysql)
+            #     NO_CHECK_MYSQL="true"
+            #     shift
+            #     ;;
             -u | -U | --user-dir)
                 # 指定用户目录,则将工作范围缩小到该目录下
                 # USER_DIR="$2"
@@ -276,7 +278,7 @@ parse_args() {
                 FAST="true"
                 shift
                 ;;
-            --dry-run)
+            -T | --preview | --dry-run)
                 DRY_RUN=true
                 ;;
             # --force)
@@ -316,6 +318,10 @@ parse_args() {
                 # 严格模式,使用set -euo pipefail
                 STRICT_MODE="true"
                 ;;
+            -v | --verbose)
+                # 输出详细日志
+                VERBOSE="true"
+                ;;
             -h | --help) show_help ;;
             *)
                 echo "未知参数: $1"
@@ -326,6 +332,16 @@ parse_args() {
     done
 }
 parse_args "$@"
+
+# 判断是否启用了verbose模式
+verbose() {
+    [[ $VERBOSE == "true" ]] && return 0
+    return 1
+}
+verbose && echo "正在加载shell工具函数库...[$shell_utils]"
+# shellcheck disable=SC1090
+source "$shell_utils"
+# 严格模式
 [[ $STRICT_MODE == "true" ]] && set -euo pipefail
 # 定义日志文件路径
 # LOG_FILE="/srv/uploads/uploader/files/deploy_wp_$($USER_DIR)_$(date +%Y%m%d_%H%M%S).log"
@@ -1075,335 +1091,360 @@ main() {
         log "Error❌ 无法进入目录: $PACK_ROOT"
         exit 1
     }
-    log "📦 当前工作目录: $PACK_ROOT"
+    verbose && log "📦 当前工作目录: $PACK_ROOT"
 
     # ==========按照待处理人员名(目录)数组,逐个用户地处理🎈====
     # 使用两个并行数组保存结果(分被记录压缩包所属的人员目录和网站名)
     local -a user_dir_names=()
     local -a site_names=()
-    local -a user_dirs
-
-    # if [[ $DEPLOY_MODE == "single" ]]; then
-    if [[ $DEPLOY_MODE != "auto" ]]; then
-        log "处理指定的站点[$SITE_DIR_PACK_STD]"
-        local user_dir
-        local site_name
-        # 在需要用户确认解析结果的时候将need_check设置为1
-        local need_check=0
-        if [[ -n $SITE_DIR_PACK_STD ]]; then
-            local candidate_path=./"$USER_DIR/$SITE_DIR_PACK_STD"
-            if [[ -f $candidate_path ]]; then
-                SITE_DIR_PACK_STD="${candidate_path/\/.\//\/}"
-            fi
-            if ! [[ -f $SITE_DIR_PACK_STD ]]; then
-                log "Error:检查是否使用绝对路径,或确保路径存在[$(pwd)]"
-                return 1
-            fi
-            log "找到待处理站点(尝试按标准方式解析所属人员和域名): $SITE_DIR_PACK_STD"
-            # user_dir+=($SITE_DIR_PACK)
-        elif [ -f "$SITE_DIR_PACK" ]; then
-            echo "指定站点压缩包路径不规范的路径,优先尝试读取相关选项参数"
-            [[ -n "$DOMAIN_NAME" ]] && site_name="$DOMAIN_NAME"
-            [[ -n "$USER_DIR" ]] && user_dir="$USER_DIR"
-        elif [[ -n "$DOMAIN_NAME" ]]; then
-            # 仅提供网站包的名字(域名),而不提供包的路径的情况下尝试扫描确定路径
-            site_name="$DOMAIN_NAME"
-            # 搜索PACK_ROOT(及其子目录)下的站点名为site_name的压缩包
-            local site_packs=()
-            # 安全且兼容性强的find扫描文件保存到数组中的方法
-            while IFS= read -r -d '' file; do
-                site_packs+=("$file")
-            done < <(find "$PACK_ROOT/$USER_DIR" -path "$SKIP_SCAN_PATTERN" -prune -o -type f -iname "*${site_name}*" -print0)
-
-            # 检查候选包路径数组长度
-            local pack_num=${#site_packs[@]}
-            if [[ $pack_num -eq 0 ]]; then
-                log "未找到任何文件,请检查文件名是否正确"
-                exit 1
-            elif [[ $pack_num -gt 1 ]]; then
-                declare -p site_packs
-                log "共找到 $pack_num 个相关文件,使用第一个文件作为代表(用于提取domain_name),如果不合适,请在命令行(-P或-S)参数中提供路径!"
-
-            fi
-            SITE_DIR_PACK_STD="${site_packs[0]}"
-            declare -p SITE_DIR_PACK_STD
-            echo ""
-            declare -p site_packs
-
-            need_check=1
-
-        else
-            log "请指定待处理站点的路径或名字(域名)"
-            exit 1
-        fi
-        # 下面的分支下,是脚本推测站点的所属人员和网站名,建议请求用户输入确认(输入y/n)
-        local archive_path="${SITE_DIR_PACK_STD:-$SITE_DIR_PACK}"
-        if [[ -z "$user_dir" ]]; then
-            # SITE_DIR_PACK_STD="/srv/uploads/uploaders/files/john/domain1.com.sql.zst"
-            local pack_dir
-            pack_dir="$(dirname "$archive_path")" # .../files/john
-            # 提取站点所属人员名(目录名),移除路径前缀
-            user_dir="${pack_dir##*/}" # john
-            need_check=1
-        fi
-        if [[ -z "$site_name" ]]; then
-            # 提取站点名(域名)
-            site_name="$(basename "$archive_path")"
-            site_name="${site_name%.*}"
-            site_name="${site_name%.sql}" # domain1.com
-            need_check=1
-        fi
-        if [[ $need_check -eq 1 ]]; then
-            if [[ -n "$user_dir" && -n "$site_name" ]]; then
-                echo "tips: [$user_dir] [$site_name]"
-                if confirm "❓ 是否继续处理该站点文件?" "y" "$ASSUME_ANSWER"; then
-                    echo "继续处理[$site_name]..."
-                else
-                    echo "跳过处理[$site_name]..."
+    # 记录需要变更权限的用户目录(重置权限)
+    local -a user_dir_need_deployed
+    collect_tasks() {
+        # if [[ $DEPLOY_MODE == "single" ]]; then
+        if [[ $DEPLOY_MODE != "auto" ]]; then
+            log "处理指定的站点[$SITE_DIR_PACK_STD]"
+            local user_dir
+            local site_name
+            # 在需要用户确认解析结果的时候将need_check设置为1
+            local need_check=0
+            if [[ -n $SITE_DIR_PACK_STD ]]; then
+                local candidate_path=./"$USER_DIR/$SITE_DIR_PACK_STD"
+                if [[ -f $candidate_path ]]; then
+                    SITE_DIR_PACK_STD="${candidate_path/\/.\//\/}"
+                fi
+                if ! [[ -f $SITE_DIR_PACK_STD ]]; then
+                    log "Error:检查是否使用绝对路径,或确保路径存在[$(pwd)]"
                     return 1
                 fi
+                log "找到待处理站点(尝试按标准方式解析所属人员和域名): $SITE_DIR_PACK_STD"
+                # user_dir+=($SITE_DIR_PACK)
+            elif [ -f "$SITE_DIR_PACK" ]; then
+                log "指定站点压缩包路径不规范的路径,优先尝试读取相关选项参数"
+                [[ -n "$DOMAIN_NAME" ]] && site_name="$DOMAIN_NAME"
+                [[ -n "$USER_DIR" ]] && user_dir="$USER_DIR"
+            elif [[ -n "$DOMAIN_NAME" ]]; then
+                # 仅提供网站包的名字(域名),而不提供包的路径的情况下尝试扫描确定路径
+                site_name="$DOMAIN_NAME"
+                # 搜索PACK_ROOT(及其子目录)下的站点名为site_name的压缩包
+                local site_packs=()
+                # 安全且兼容性强的find扫描文件保存到数组中的方法
+                while IFS= read -r -d '' file; do
+                    site_packs+=("$file")
+                done < <(find "$PACK_ROOT/$USER_DIR" -path "$SKIP_SCAN_PATTERN" -prune -o -type f -iname "*${site_name}*" -print0)
+
+                # 检查候选包路径数组长度
+                local pack_num=${#site_packs[@]}
+                if [[ $pack_num -eq 0 ]]; then
+                    log "未找到任何文件,请检查文件名是否正确"
+                    exit 1
+                elif [[ $pack_num -gt 1 ]]; then
+                    declare -p site_packs # 重要消息,予以打印!
+                    log "共找到 $pack_num 个相关文件,使用第一个文件作为代表(用于提取domain_name),如果不合适,请在命令行(-P或-S)参数中提供路径!"
+
+                fi
+                SITE_DIR_PACK_STD="${site_packs[0]}"
+                verbose && declare -p SITE_DIR_PACK_STD
+                verbose && echo ""
+                verbose && declare -p site_packs
+
+                need_check=1
 
             else
-                echo "自动提取站点所属人员和网站名失败,请提供站点所属人员名(目录名)"
+                log "请指定待处理站点的路径或名字(域名)"
+                exit 1
             fi
-        fi
+            # 下面的分支下,是脚本推测站点的所属人员和网站名,建议请求用户输入确认(输入y/n)
+            local archive_path="${SITE_DIR_PACK_STD:-$SITE_DIR_PACK}"
+            if [[ -z "$user_dir" ]]; then
+                # SITE_DIR_PACK_STD="/srv/uploads/uploaders/files/john/domain1.com.sql.zst"
+                local pack_dir
+                pack_dir="$(dirname "$archive_path")" # .../files/john
+                # 提取站点所属人员名(目录名),移除路径前缀
+                user_dir="${pack_dir##*/}" # john
+                need_check=1
+            fi
+            if [[ -z "$site_name" ]]; then
+                # 提取站点名(域名)
+                site_name="$(basename "$archive_path")"
+                site_name="${site_name%.*}"
+                site_name="${site_name%.sql}" # domain1.com
+                need_check=1
+            fi
+            if [[ $need_check -eq 1 ]]; then
+                if [[ -n "$user_dir" && -n "$site_name" ]]; then
+                    log "tips: [$user_dir] [$site_name]"
+                    if confirm "❓ 是否继续处理该站点文件?" "y" "$ASSUME_ANSWER"; then
+                        log "继续处理[$site_name]..."
+                    else
+                        log "跳过处理[$site_name]..."
+                        return 1
+                    fi
 
-        user_dir_names+=("$user_dir")
-        site_names+=("$site_name")
-    else
-        local user_dirs
-        # START-DP(确定要部署网站的人员)
-        # 如果指定了用户目录，则仅处理该目录,否则遍历所有子目录
-        # if [ -n "$USER_DIR" ]; then
-        #    user_dirs=("$USER_DIR")
-        # 指定单目录时,将单个目录包装成数组(单个元素),便于后续统一两种情况为数组处理
-        if [[ "${#USER_DIRS}" -gt 0 ]]; then
-            user_dirs=("${USER_DIRS[@]}")
-            log "🔍 仅处理指定用户目录: ${USER_DIRS[*]}"
+                else
+                    echo "自动提取站点所属人员和网站名失败,请提供站点所属人员名(目录名)"
+                fi
+            fi
+
+            user_dir_names+=("$user_dir")
+            site_names+=("$site_name")
         else
-            log " 将自动扫描目录"
-            user_dirs=(*/) #直接使用通配匹配指定目录下的目录名
-        fi
-        # 否则遍历当前工作目录的所有子目录(计算用户目录名)
-
-        # END-DP
-        if [ ${#user_dirs[@]} -eq 0 ]; then
-            log "Error❌ 在 $PACK_ROOT 中没有找到任何用户目录"
-            exit 1
-        fi
-        log "🔍 找到 ${#user_dirs[@]} 个用户目录"
-        for user_dir in "${user_dirs[@]}"; do
-
-            # 去掉末尾斜杠(如果有的话)，得到人员名缩写
-            user_name="${user_dir%/}"
-            # 创建用于归档已经使用过的文件的目录(移动到当前user文件的deployed目录中,例如 为用户zsh /srv/uploads/uploader/files/zsh下的deployed目录中,如果不存在,则创建此目录 )
-            log "📂 正在处理站点人员名所属目录: $user_name"
-
-            # 进入用户目录
-            if ! cd "$PACK_ROOT/$user_name"; then
-                log "Error❌ 无法进入用户目录: $PACK_ROOT/$user_name"
-                continue
+            # START-DP(确定要部署网站的人员)
+            local -a user_dirs
+            # 如果指定了用户目录，则仅处理该目录,否则遍历所有子目录
+            # if [ -n "$USER_DIR" ]; then
+            #    user_dirs=("$USER_DIR")
+            # 指定单目录时,将单个目录包装成数组(单个元素),便于后续统一两种情况为数组处理
+            if [[ "${#USER_DIRS}" -gt 0 ]]; then
+                user_dirs=("${USER_DIRS[@]}")
+                verbose && log "🔍 仅处理指定用户目录: ${USER_DIRS[*]}"
+            else
+                verbose && log " 将自动扫描目录"
+                user_dirs=(*/) #直接使用通配匹配指定目录下的目录名
             fi
+            # 否则遍历当前工作目录的所有子目录(计算用户目录名)
 
-            # ===编写网站部署逻辑,并发可控===
-            # 收集网站压缩包目录下的压缩包文件列表,基于此过滤并计算出待部署到网站名及对应的压缩包组
-            # 简单单层通配扫描:
-            # local sql_files=(*.sql*) # 这足够区分domain.xxx.sql开头的文件了
-            # 如果有搜索深度的需要,可以考虑用find
-            local sql_files=()
-            while IFS= read -r -d '' sql_file; do
-                sql_files+=("$sql_file")
-            done < <(find . -path "$SKIP_SCAN_PATTERN" -prune -o -type f -iname "*sql*" -printf "%f\0")
-            # debug
-            declare -p sql_files
-            # return 0
-            local -A unique_map=() # 初始化为空
+            # END-DP
+            if [ ${#user_dirs[@]} -eq 0 ]; then
+                log "Error❌ 在 $PACK_ROOT 中没有找到任何用户目录"
+                exit 1
+            fi
+            log "🔍 找到 ${#user_dirs[@]} 个用户目录"
+            for user_dir in "${user_dirs[@]}"; do
+                # 去掉末尾斜杠(如果有的话)，得到人员名缩写
+                local user_dir_name="${user_dir%/}"
+                # 创建用于归档已经使用过的文件的目录(移动到当前user文件的deployed目录中,例如 为用户zsh /srv/uploads/uploader/files/zsh下的deployed目录中,如果不存在,则创建此目录 )
+                verbose && log "📂 正在处理站点人员名所属目录: $user_dir_name"
 
-            for f in "${sql_files[@]}"; do
-                # 提取前缀：删除从 ".sql" 开始到结尾的所有内容
-                # 例如：backup.sql.gz -> backup
-                #      data.sql      -> data
-                local prefix="${f%%.sql*}"
+                # 进入用户目录
+                if ! cd "$PACK_ROOT/$user_dir_name"; then
+                    log "Error❌ 无法进入用户目录: $PACK_ROOT/$user_dir_name"
+                    continue
+                fi
 
-                # 如果该前缀还没存入 map，则存入（保留第一个遇到的完整文件名）
-                if [[ -z "${unique_map[$prefix]}" ]]; then
-                    unique_map[$prefix]="$f"
+                # ===编写网站部署逻辑,并发可控===
+                # 收集网站压缩包目录下的压缩包文件列表,基于此过滤并计算出待部署到网站名及对应的压缩包组
+                # 简单单层通配扫描:
+                # local sql_files=(*.sql*) # 这足够区分domain.xxx.sql开头的文件了
+                # 如果有搜索深度的需要,可以考虑用find
+                local sql_files=()
+                while IFS= read -r -d '' sql_file; do
+                    sql_files+=("$sql_file")
+                done < <(find . -path "$SKIP_SCAN_PATTERN" -prune -o -type f -iname "*sql*" -printf "%f\0")
+                # debug
+                verbose && declare -p sql_files
+                if [[ ${#sql_files[@]} -gt 0 ]]; then
+                    log "[$user_dir_name]目录下有站点待部署"
+                    user_dir_need_deployed+=("$user_dir")
+                else
+                    verbose && log "[$user_dir_name]目录下没有站点待部署"
+                    continue
+
+                fi
+
+                # return 0
+                local -A unique_map=() # 初始化为空
+
+                for f in "${sql_files[@]}"; do
+                    # 提取前缀：删除从 ".sql" 开始到结尾的所有内容
+                    # 例如：backup.sql.gz -> backup
+                    #      data.sql      -> data
+                    local prefix="${f%%.sql*}"
+
+                    # 如果该前缀还没存入 map，则存入（保留第一个遇到的完整文件名）
+                    if [[ -z "${unique_map[$prefix]}" ]]; then
+                        unique_map[$prefix]="$f"
+                    fi
+                done
+
+                # 将去重后的结果重新写回普通数组(取key名字即可)
+                local domain_names=("${!unique_map[@]}") # 网站名(域名)数组
+
+                # 验证结果
+                verbose && printf '%s\n' "${domain_names[@]}"
+
+                # 分层处理(少嵌套逻辑,让代码容易阅读和调试)
+
+                # 初步计算待处理的网站名(域名),没找到要给网站包(以sql包为代表即可),就成组加入两个任务数组中
+
+                for domain_name in "${domain_names[@]}"; do
+                    site_names+=("$domain_name")
+                    user_dir_names+=("$user_dir_name")
+                done
+                verbose && declare -p site_names
+
+                # 返回上级目录,准备下一个人员目录的处理
+                cd "$PACK_ROOT" || exit
+            done
+            if [[ ${#user_dir_need_deployed[@]} -eq 0 ]]; then
+                log "没有站点需要部署!"
+                exit 0
+            fi
+        fi
+    }
+    collect_tasks
+    start_tasks() {
+        # START-C:核心调度部分(按合适的方式部署任务(网站域名)列表中的网站文件组)
+        # for domain_name in "${site_names[@]}"; do
+        for i in "${!site_names[@]}"; do
+            local domain_name="${site_names[$i]}"
+            local user_name="${user_dir_names[$i]}"
+            # 计算合法后缀的网站压缩包相关文件(通常只有2个包),为了支持多种后缀(压缩格式),所以代码会比固定压缩格式的情况要多一些.
+            # 计算当前站点($domain_name)的候选(可能)合法格式的压缩包
+            local candidate_sql_archives=()
+            local candidate_site_archives=()
+
+            # START-C-P(计算最终的包文件路径)
+            candidate_sql_archives+=("$PACK_ROOT/$user_name"/**/"$domain_name".sql*"$PACK_FORMAT")
+            # mapfile -d '' -t candidate_site_archives <  <(find "$PACK_ROOT/$user_name" -maxdepth 1 -type f ! -name "*.sql*" -and -name "*$domain_name*" -printf "%p\0")
+            # for pack in "$PACK_ROOT/$user_name"/**/!(*.sql*); do
+            for pack in "$PACK_ROOT/$user_name"/**/"$domain_name"*; do
+                # echo "$pack"
+                # if [[ $pack == */"$domain_name"*"$PACK_FORMAT" ]]; then
+                if [[ $pack != *.sql* && $pack == *"$PACK_FORMAT" ]]; then
+                    candidate_site_archives+=("$pack")
+                    break
                 fi
             done
-
-            # 将去重后的结果重新写回普通数组(取key名字即可)
-            local domain_names=("${!unique_map[@]}") # 网站名(域名)数组
-
-            # 验证结果
-            printf '%s\n' "${domain_names[@]}"
-
-            # 分层处理(少嵌套逻辑,让代码容易阅读和调试)
-
-            # 初步计算待处理的网站名(域名),没找到要给网站包(以sql包为代表即可),就成组加入两个任务数组中
-
-            for domain_name in "${domain_names[@]}"; do
-                site_names+=("$domain_name")
-                user_dir_names+=("$user_name")
+            # for format in "${ARCHIVE_FORMATS[@]}"; do
+            #     local candidate_pack="$PACK_ROOT/$user_name/$domain_name.$format"
+            #     if [[ -f $candidate_pack ]]; then
+            #         candidate_site_archives+=("$candidate_pack")
+            #         break
+            #     fi
+            # done
+            verbose && declare -p candidate_sql_archives candidate_site_archives
+            # 计算网站根目录包路径
+            for site_archive in "${candidate_site_archives[@]}"; do
+                if [ -f "$site_archive" ]; then
+                    log "📦 检测到网站根目录压缩包: $site_archive"
+                    site_dir_archive="$site_archive"
+                    break
+                fi
             done
-            declare -p site_names
+            # 计算网站sql包路径
+            for sql_archive in "${candidate_sql_archives[@]}"; do
+                # log "debug:test sql file:[[$sql_archive]]"
+                if [ -f "$sql_archive" ]; then
+                    log "🗄️ 检测到数据库文件: $sql_archive"
+                    site_sql_archive=$sql_archive
 
-            # 返回上级目录,准备下一个人员目录的处理
-            cd "$PACK_ROOT" || exit
+                    # 注意break的位置!
+                    break
+                fi
+            done
+            # END-C-P
+
+            # 串行部署(或者把JOBS改成1)
+            # deploy_site "$user_name" "$domain_name" ...
+
+            # START-C-W(并发方案)
+            # & + wait -n 循环并发部署
+
+            # 利用循环检测任务数，控制并发数!
+            while true; do
+                # 等待一个任务完成
+                job_cnt=$(jobs -rp | wc -l)
+                log "当前后台任务数:$job_cnt"
+                if (("$job_cnt" < JOBS)); then
+                    break
+                fi
+
+                log "等待一个任务完成..."
+                wait -n
+            done
+            # debug:
+            log "['verbose:' '$user_name', '$domain_name', '$site_dir_archive', '$site_sql_archive']"
+            # continue
+            ! [[ -f "$site_dir_archive" && -f "$site_sql_archive" ]] && {
+                log "[$domain_name]缺少必要的站点包文件(若指定了包格式,请检查是否指定格式的包不存在,或取消包格式指定)"
+                return 1
+            }
+            # 创建后台作业;
+            deploy_site "$user_name" "$domain_name" "$site_dir_archive" "$site_sql_archive" &
+            local pid=$!
+            PIDS+=($!)
+            PID_TASK_MAP[$pid]="$domain_name"
+
+            # END-C-W
         done
-    fi
-    # local pids=() # 统计后台任务pid,注意此初始化变量位置
-    # START-C:核心调度部分(按合适的方式部署任务(网站域名)列表中的网站文件组)
-    # for domain_name in "${site_names[@]}"; do
-    for i in "${!site_names[@]}"; do
-        local domain_name="${site_names[$i]}"
-        local user_name="${user_dir_names[$i]}"
-        # 计算合法后缀的网站压缩包相关文件(通常只有2个包),为了支持多种后缀(压缩格式),所以代码会比固定压缩格式的情况要多一些.
-        # 计算当前站点($domain_name)的候选(可能)合法格式的压缩包
-        local candidate_sql_archives=()
-        local candidate_site_archives=()
-
-        # START-C-P(计算最终的包文件路径)
-        candidate_sql_archives+=("$PACK_ROOT/$user_name"/**/"$domain_name".sql*"$PACK_FORMAT")
-        # mapfile -d '' -t candidate_site_archives <  <(find "$PACK_ROOT/$user_name" -maxdepth 1 -type f ! -name "*.sql*" -and -name "*$domain_name*" -printf "%p\0")
-        # for pack in "$PACK_ROOT/$user_name"/**/!(*.sql*); do
-        for pack in "$PACK_ROOT/$user_name"/**/"$domain_name"*; do
-            # echo "$pack"
-            # if [[ $pack == */"$domain_name"*"$PACK_FORMAT" ]]; then
-            if [[ $pack != *.sql* && $pack == *"$PACK_FORMAT" ]]; then
-                candidate_site_archives+=("$pack")
-                break
+        verbose && log "等待剩余后台任务结束"
+        # log "统计失败任务数"
+        for pid in "${PIDS[@]}"; do
+            wait "$pid"
+            exit_code=$?
+            local domain="${PID_TASK_MAP[$pid]}"
+            if [[ $exit_code -ne 0 ]]; then
+                ((FAILED++))
+                log "任务[$pid]($domain)失败"
+                PID_TASK_MAP_FAILED[$pid]="$domain"
+            else
+                ((SUCCESSED++))
+                log "任务[$pid]($domain)成功"
+                PID_TASK_MAP_SUCCESSED[$pid]="$domain"
             fi
         done
-        # for format in "${ARCHIVE_FORMATS[@]}"; do
-        #     local candidate_pack="$PACK_ROOT/$user_name/$domain_name.$format"
-        #     if [[ -f $candidate_pack ]]; then
-        #         candidate_site_archives+=("$candidate_pack")
-        #         break
-        #     fi
-        # done
-        declare -p candidate_sql_archives candidate_site_archives
-        # 计算网站根目录包路径
-        for site_archive in "${candidate_site_archives[@]}"; do
-            if [ -f "$site_archive" ]; then
-                log "📦 检测到网站根目录压缩包: $site_archive"
-                site_dir_archive="$site_archive"
-                break
-            fi
-        done
-        # 计算网站sql包路径
-        for sql_archive in "${candidate_sql_archives[@]}"; do
-            # log "debug:test sql file:[[$sql_archive]]"
-            if [ -f "$sql_archive" ]; then
-                log "🗄️ 检测到数据库文件: $sql_archive"
-                site_sql_archive=$sql_archive
+        # wait
 
-                # 注意break的位置!
-                break
-            fi
-        done
-        # END-C-P
-
-        # 串行部署(或者把JOBS改成1)
-        # deploy_site "$user_name" "$domain_name" ...
-
-        # START-C-W(并发方案)
-        # & + wait -n 循环并发部署
-
-        # 利用循环检测任务数，控制并发数!
-        while true; do
-            # 等待一个任务完成
-            job_cnt=$(jobs -rp | wc -l)
-            log "当前后台任务数:$job_cnt"
-            if (("$job_cnt" < JOBS)); then
-                break
-            fi
-
-            log "等待一个任务完成..."
-            wait -n
-        done
-        # debug:
-        log "['verbose:' '$user_name', '$domain_name', '$site_dir_archive', '$site_sql_archive']"
-        # continue
-        ! [[ -f "$site_dir_archive" && -f "$site_sql_archive" ]] && {
-            log "[$domain_name]缺少必要的站点包文件(若指定了包格式,请检查是否指定格式的包不存在,或取消包格式指定)"
-            return 1
-        }
-        # 创建后台作业;
-        deploy_site "$user_name" "$domain_name" "$site_dir_archive" "$site_sql_archive" &
-        local pid=$!
-        PIDS+=($!)
-        PID_TASK_MAP[$pid]="$domain_name"
-
-        # END-C-W
-    done
-    log "等待剩余后台任务结束"
-    log "统计失败任务数"
-    for pid in "${PIDS[@]}"; do
-        wait "$pid"
-        exit_code=$?
-        local domain="${PID_TASK_MAP[$pid]}"
-        if [[ $exit_code -ne 0 ]]; then
-            ((FAILED++))
-            log "任务[$pid]($domain)失败"
-            PID_TASK_MAP_FAILED[$pid]="$domain"
+        verbose && log "所有后台任务结束"
+        # END-C:结束所有后台任务
+    }
+    start_tasks
+    end_tasks() {
+        # 收尾(集中处理权限)
+        local deployed_dir_need_chmod=()
+        if [[ ${#USER_DIRS} -gt 0 ]]; then
+            deployed_dir_need_chmod=("${USER_DIRS[@]}")
         else
-            ((SUCCESSED++))
-            log "任务[$pid]($domain)成功"
-            PID_TASK_MAP_SUCCESSED[$pid]="$domain"
+            # deployed_dir_used_users=("$PACK_ROOT"/*/)
+            deployed_dir_need_chmod=("${user_dir_need_deployed[@]}")
         fi
-    done
-    # wait
+        verbose && declare -p deployed_dir_need_chmod
+        for user_dir in "${deployed_dir_need_chmod[@]}"; do
+            # 创建全局归档目录
+            # deployed_dir="$DEPLOYED_DIR"
+            # 为当前用户创建归档目录(deployed)
+            user_dir="${user_dir%/}"
 
-    log "所有后台任务结束"
-    # END-C:结束所有后台任务
+            deployed_dir="$PACK_ROOT/$user_dir/deployed/"
+            mkdir -p "$deployed_dir"
 
-    # 收尾(集中处理权限)
-    local deployed_dir_used_users=()
-    if [[ ${#USER_DIRS} -gt 0 ]]; then
-        deployed_dir_used_users=("${USER_DIRS[@]}")
-    else
-        deployed_dir_used_users=("$PACK_ROOT"/*/)
-    fi
-    declare -p deployed_dir_used_users
-    for user_dir in "${deployed_dir_used_users[@]}"; do
-        # 创建全局归档目录
-        # deployed_dir="$DEPLOYED_DIR"
-        # 为当前用户创建归档目录(deployed)
-        user_dir="${user_dir%/}"
+            # 更改计算得到的deployed文件夹权限
+            log "🔒 更改${user_dir}的${deployed_dir}文件夹权限(设置目录权限和所有者)"
+            chmod -R 755 "$deployed_dir"
+            chown -R "$UPLOADER:$UPLOADER" "$deployed_dir"
+        done
+        # 部署批次结束后再统一重启,减少重载次数提高效率
+        if [[ $DRY_RUN == "false" && ${#deployed_dir_need_chmod[@]} -gt 0 ]]; then
+            log "==================重载Nginx 配置...================="
+            nginx -s reload
+        fi
 
-        deployed_dir="$PACK_ROOT/$user_dir/deployed/"
-        mkdir -p "$deployed_dir"
-
-        # 更改计算得到的deployed文件夹权限
-        log "🔒 更改${user_dir}的${deployed_dir}文件夹权限(设置目录权限和所有者)"
-        chmod -R 755 "$deployed_dir"
-        chown -R "$UPLOADER:$UPLOADER" "$deployed_dir"
-    done
-    # 部署批次结束后再统一重启,减少重载次数提高效率
-    log "🚀 ==================重载Nginx 配置...================="
-    [[ $DRY_RUN == "false" ]] && nginx -s reload
-
-    log "=====部署结束！"
-    # log "失败的任务列表: ${PID_TASK_MAP_FAILED[*]}"
-    # log "成功任务列表: ${PID_TASK_MAP_SUCCESSED[*]}"
-    log "失败任务数: $FAILED"
-    for site in "${PID_TASK_MAP_FAILED[@]}"; do
-        log "$site"
-    done
-    log "成功任务数: $SUCCESSED"
-    for site in "${PID_TASK_MAP_SUCCESSED[@]}"; do
-        log "✅ https://www.$site"
-    done
-    if [ "$FAILED" -gt 0 ]; then
-        log "⚠️ 有 $FAILED 个操作失败，请检查日志。"
-        exit 1
-    fi
-
+        log "=====部署结束！====="
+        # log "失败的任务列表: ${PID_TASK_MAP_FAILED[*]}"
+        # log "成功任务列表: ${PID_TASK_MAP_SUCCESSED[*]}"
+        log "失败任务数: $FAILED"
+        for site in "${PID_TASK_MAP_FAILED[@]}"; do
+            log "$site"
+        done
+        log "成功任务数: $SUCCESSED"
+        for site in "${PID_TASK_MAP_SUCCESSED[@]}"; do
+            log "✅ https://www.$site"
+        done
+        if [ "$FAILED" -gt 0 ]; then
+            log "⚠️ 有 $FAILED 个操作失败，请检查日志。"
+            exit 1
+        fi
+    }
+    end_tasks
     # exit 0
     return 0
 }
+if [ "$DRY_RUN" == "true" ]; then
+    log "⚠️ 模拟运行,请勿将此结果用于生产环境!"
+else
+    check_mysql -H "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -p"$DB_PASSWORD" -v || exit
+fi
 # 检查数据库连通性(如果无法连接,直接停止脚本.)
-check_mysql -H "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -p"$DB_PASSWORD" -v || exit 1
 
 start_time=$(date +%s)
 main
