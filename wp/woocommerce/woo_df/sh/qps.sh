@@ -1,7 +1,7 @@
 #!/bin/bash
 
 LOG_FILE="/www/wwwlogs/spider.log"
-
+args_pos=()
 while [[ $# -gt 0 ]]; do
     usage="使用方法： [-f <日志文件>]"
     case "$1" in
@@ -12,15 +12,21 @@ while [[ $# -gt 0 ]]; do
         -h | -\? | --help)
             [[ $1 =~ -(-?h.*|\?) ]] && echo "$usage" && exit 0
             ;;
-        *)
+        -*)
             echo "未知参数：$1"
             echo "$usage"
             exit 1
+            ;;
+        *)
+            args_pos+=("$1")
+
             ;;
     esac
     shift
 done
 
+set -- "${args_pos[@]}"
+echo "[$LOG_FILE]"
 # 使用 awk 实时处理
 tail -f "$LOG_FILE" | awk '
 {

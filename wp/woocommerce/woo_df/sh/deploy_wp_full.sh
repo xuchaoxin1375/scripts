@@ -42,7 +42,7 @@ PLUGINS_HOME="/www"
 PROJECT_HOME="/www/wwwroot"
 SITE_DIR_PACK=""
 FUNCTIONS_PHP="/www/functions.php"
-# ARCHIVE_FORMATS=(zip 7z tar lz4 zst)
+ARCHIVE_FORMATS=(zip 7z tar lz4 zst)
 # ARCHIVE_FORMATS_STR=$(IFS=,; echo "${ARCHIVE_FORMATS[*]}") #可以配合eval使用
 # 默认的网站压缩包存放目录的共同祖先目录(下面有各个人员名的专属目录)
 PACK_ROOT="$UPLOADER_DIR/files"
@@ -1313,25 +1313,41 @@ main() {
             #     fi
             # done
             verbose && declare -p candidate_sql_archives candidate_site_archives
-            # 计算网站根目录包路径
-            for site_archive in "${candidate_site_archives[@]}"; do
-                if [ -f "$site_archive" ]; then
-                    log "📦 检测到网站根目录压缩包: $site_archive"
-                    site_dir_archive="$site_archive"
-                    break
-                fi
-            done
-            # 计算网站sql包路径
-            for sql_archive in "${candidate_sql_archives[@]}"; do
-                # log "debug:test sql file:[[$sql_archive]]"
-                if [ -f "$sql_archive" ]; then
-                    log "🗄️ 检测到数据库文件: $sql_archive"
-                    site_sql_archive=$sql_archive
+            # 计算网站包路径(根目录包和sql包)
+            # Globals: ARCHIVE_FORMATS
+            get_archive_path() {
+                local -n candidate_archives="$1"
+                local -n result="$2"
+                for archive in "${candidate_archives[@]}"; do
+                    # log "debug:test sql file:[[$sql_archive]]"
+                    local is_valid_format=0
+                    fmt="${archive##*.}"
+                    # 检测格式是否满足白名单列表中
+                    for f in "${ARCHIVE_FORMATS[@]}"; do
+                        if [[ "${fmt,,}" == "${f,,}" ]]; then
+                            is_valid_format=1
+                            break
+                        fi
+                    done
+                    # 格式满足要求时直接结束查找,否则检验下一个是否满足格式要求
+                    if [[ $is_valid_format -eq 1 ]]; then
+                        # if [ -f "$sql_archive" ]; then
+                        log "🗄️ 检测到(扩展名合适的)文件: $archive"
+                        result=$archive
 
-                    # 注意break的位置!
-                    break
-                fi
-            done
+                        # 注意break的位置!
+                        break
+                    fi
+                done
+                # echo "$result"
+            }
+
+            # 计算网站根目录包路径
+            # site_dir_archive=$(get_archive_path candidate_site_archives)
+            get_archive_path candidate_site_archives site_dir_archive
+            # 计算网站sql包路径
+            # site_sql_archive=$(get_archive_path candidate_sql_archives)
+            get_archive_path candidate_sql_archives site_sql_archive
             # END-C-P
 
             # 串行部署(或者把JOBS改成1)
@@ -1353,11 +1369,13 @@ main() {
                 wait -n
             done
             # debug:
-            log "['verbose:' '$user_name', '$domain_name', '$site_dir_archive', '$site_sql_archive']"
+            log "['tips:' '$user_name', '$domain_name', '$site_dir_archive', '$site_sql_archive']"
             # continue
             ! [[ -f "$site_dir_archive" && -f "$site_sql_archive" ]] && {
-                log "[$domain_name]缺少必要的站点包文件(若指定了包格式,请检查是否指定格式的包不存在,或取消包格式指定)"
-                return 1
+                log "[$domain_name]缺少必要的站点包文件,本轮跳过此站点部署
+                (若指定了包格式,请检查是否指定格式的包不存在,或取消包格式指定)"
+                # return 1
+                continue
             }
             # 创建后台作业;
             deploy_site "$user_name" "$domain_name" "$site_dir_archive" "$site_sql_archive" &
@@ -1442,8 +1460,12 @@ main() {
 if [ "$DRY_RUN" == "true" ]; then
     log "⚠️ 模拟运行,请勿将此结果用于生产环境!"
 else
-    check_mysql -H "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -p"$DB_PASSWORD" -v || exit
+    args=(-H "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -p"$DB_PASSWORD")
+    verbose && args+=(-v)
+
+    check_mysql "${args[@]}" || exit
 fi
+
 # 检查数据库连通性(如果无法连接,直接停止脚本.)
 
 start_time=$(date +%s)
