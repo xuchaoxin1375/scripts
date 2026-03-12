@@ -77,15 +77,51 @@
 
 1. 增大打开的文件数量限制(针对站点多的服务器),前面的章节已经提到过,方法之一是修改 `/etc/security/limits.conf` 文件,改完新开一个终端(让上一步修改生效),然后重启nginx
 
-### 检查效果
+### ri'zhi检查效果
+
+为了方便观察所有网站的日志,首先要把nginx日志都聚集到统一个日志文件中,并且可以根据我们感兴趣的日志进行聚合;
+
+例如,将所有被允许的(白名单)的爬虫(googlebot,bingbot,....)的访问日志(对服务器上的所有网站的访问日志)聚合到`/www/wwwlogs/spider.log`中;
+
+也可以额外将所有访问日志(包括普通用户和任何爬虫)聚合到`all.log`中
+
+这样分析整个服务器所有站的搜索引擎爬虫就看`spider.log`即可;
+
+分析所有网站的访问日志就看`all.log`即可(spider.log是all.log的一个子集)
+
+另外,仓库还提供了一个`qps.sh`脚本,可以分析约定格式的日志,计算出服务器承受的流量(每秒的QPS)
+
+将nginx日志设置为约定的格式很简单(如果要还原默认也很简单),利用下面的脚本直接批量设置:
 
 ```bash
+bash /www/sh/nginx_conf/update_nginx_vhosts_log_format.sh  # --dry-run
+```
 
+如果把上面命令的`#`去掉,可以预览效果而不真正执行;
+
+执行完毕后,重启nginx(执行`nginx -t && nginx -s reload`),让更改生效;
+
+---
+
+
+
+接下来就可以检查日志了,例如:
+
+```bash
+# 传统的限流(针对大量google,bing等爬虫)
 # 有没有生效就运行下面的,看看有没有429相关的访问日志出来:
 tail -f /www/wwwlogs/spider.log | grep --line-buffered '429 ' | nl
 
 # 如果要看任何爬虫的请求而不仅仅429,用这个:
 tail -f /www/wwwlogs/spider.log|nl
+
+```
+
+
+
+```bash
+# 针对客户端检测(主要防止恶意脚本大量请求)的日志
+tail -f /www/wwwlogs/all.log|grep challenge --line-buffered|nl
 
 ```
 
