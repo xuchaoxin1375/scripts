@@ -19,7 +19,6 @@ PS>    py $pys/bt_api/create_sites.py -s server2 -r -c $desktop/table.conf
 
 # import pybtpanel
 
-
 import argparse
 import json
 import os
@@ -38,6 +37,7 @@ SERVER_CONFIG = f"{DESKTOP}/deploy_configs/server_config.json"
 TEAM_JSON = r"C:/sites/wp_sites/SpiderTeam.json"
 # 参数化🎈
 TABLE_CONF = f"{DESKTOP}/table.conf"
+MAX_WORKERS = 10
 
 REWRITE_CONTENT_WP = r"""
 location /
@@ -100,6 +100,13 @@ def parse_args():
         "--sites-home",
         default="/www/wwwroot",
         help="可选，指定所有站点的总目录,宝塔默认为/www/wwwroot",
+    )
+    parser.add_argument(
+        "-j",
+        "--max-workers",
+        type=int,
+        default=MAX_WORKERS,
+        help=f"最大线程数,默认为{MAX_WORKERS}",
     )
     return parser.parse_args()
 
@@ -182,10 +189,11 @@ def add_sites(bt_api: BTApi, args):
     """
     并行批量添加站点
     """
-    config_file=args.file
+    config_file = args.file
     print(f"开始解析配置文件:[{config_file}]")
     set_rewrite_rule = args.rewrite
     sites_home = args.sites_home
+    max_workers = args.max_workers
 
     sites = parse_site_to_add(config_file)
     total = len(sites)
@@ -215,7 +223,7 @@ def add_sites(bt_api: BTApi, args):
         user = item["user"]
         # 控制网站根目录🎈
         path = f"{sites_home}/{user}/{domain}/wordpress"
-        msg_prefix = f"[{idx+1}/{total}] {domain}"
+        msg_prefix = f"[{idx + 1}/{total}] {domain}"
         try:
             with lock:
                 print(f"{msg_prefix} -> 正在添加站点...")
@@ -254,7 +262,7 @@ def add_sites(bt_api: BTApi, args):
     results = []
     start_time = time.time()
     # 使用线程池并发执行任务🎈
-    with ThreadPoolExecutor() as executor:
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_idx = {
             executor.submit(_add_single_site, item, idx): idx
             for idx, item in enumerate(sites)
@@ -285,7 +293,7 @@ def main():
     bt_key = server.get("bt_key") or bt.get("bt_key")
     bt_url = server.get("bt_panel") or bt.get("bt_panel")
     # 规范化处理:去掉端口后的私密字符串部分(不过安全起见,不建议把端口后的路径放在配置文件里)
-    bt_url=re.sub(r'(http.*:\d+).*',r'\1',bt_url)  
+    bt_url = re.sub(r"(http.*:\d+).*", r"\1", bt_url)
 
     # 这里以http代理为例，socks5可用requests库的socks支持
     os.environ["HTTP_PROXY"] = args.proxy

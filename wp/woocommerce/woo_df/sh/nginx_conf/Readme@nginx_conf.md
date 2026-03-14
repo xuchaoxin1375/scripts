@@ -125,7 +125,9 @@ tail -f /www/wwwlogs/all.log|grep challenge --line-buffered|nl
 
 ```
 
+### 日志定期清理
 
+将日志聚合后,`spider.log`和`all.log`文件体积的增长速度是比较快的,建议定期清理,创建对应的自动任务(比如创建`clean_logs.sh`定义清理规则);然后在`crontab`中添加定期运行此清理脚本.
 
 ## js挑战配置文件说明
 

@@ -34,7 +34,6 @@ load_dotenv()
 CONFIG_GROUP = "cxxu_df2"
 
 # DESKTOP = r"C:/Users/Administrator/Desktop"
-import os
 
 # USER_HOME=os.environ.get('userprofile')
 DESKTOP = os.path.expanduser("~/Desktop")

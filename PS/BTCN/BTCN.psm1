@@ -1,11 +1,124 @@
 
+
+function Get-BatchSiteDBCreateLines
+{
+    <# 
+    .SYNOPSIS
+    获取批量站点数据库创建命令行
+    .DESCRIPTION
+    默认生成两种命令行,一种是可以直接在shell中执行,另一种是保存到sql文件中,最后调用mysql命令行来执行
+    第一种使用起来简单,但是开销大,而且构造语句的过程中相对比较麻烦,需要考虑powershell对特殊字符的解释
+    第二种命令简短,而且符号包裹更少,运行开销较小,理论上比第一种快;但是powershell对于mysql命令行执行
+    sql文件也相对麻烦,需要用一些技巧
+    .EXAMPLE
+ Get-BatchSiteDBCreateLines -User zsh -Domains @"
+>> d1.com
+>> d2.com
+>> "@
+CREATE DATABASE  `zsh_d1.com` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+CREATE DATABASE  `zsh_d2.com` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+
+#>
+    [CmdletBinding()]
+    param (
+        [Alias("Domain")]$Domains = @"
+domain1.com
+domain2.com
+"@,
+        # 指明网站的创建或归属者,涉及到网站数据库名字和网站根目录的区分
+        [Alias("SiteOwner")]$User,
+        # 单域名模式:每次调用此函数指输入一个配置行(一个站点的配置信息);
+        # 适合与Start-BatchSiteBuilderLine-DF的Table参数配合使用
+        [switch]$SingleDomainMode,
+        #可以配置系统环境变量 df_server,可以是ip或域名
+        $Server = $env:DF_SERVER1, 
+        # 对于wordpress,一般使用utf8mb4_general_ci
+        $collate = 'utf8mb4_general_ci',
+        $MySqlUser = "root",
+
+        # 置空表示不输出sql文件(如果不想要生成sql文件，请指定此参数并传入一个空字符串""作为参数)
+        # 在非单行模式(SingleDomainMode)下,默认生成的sql文件名为 BatchSiteDBCreate-[User].sql
+        # 否则$User参数生成的SqlFile里的语句可能包含多个用户名,建议手动指定文件路径参数,
+        # 而且文件名应该更有概括性,比如将$User用当前时间代替
+        $SqlFilePath = "$home\Desktop\BatchSiteDBCreate-$User.sql",
+        
+        [Parameter(ParameterSetName = "UseKey")]
+        # 控制是否使用明文mysql密码
+        $MySqlkey = $env:DF_MysqlKey,
+        [parameter(ParameterSetName = "UseKey")]
+        [switch]$UseKey
+    )
+    $domains = @($domains) -join "`n"
+    $domains = $domains.trim() -split "`r?`n|," | Where-Object { $_.Length }
+
+    # $lines = [System.Collections.ArrayList]@()
+    # $sqlLines = [System.Collections.ArrayList]@()
+    $ShellLines = New-Object System.Collections.Generic.List[string]
+    $sqlLines = New-Object System.Collections.Generic.List[string]
+        
+    $password = ""
+    if($PSCmdlet.ParameterSetName -eq "UseKey")
+    {
+            
+        if($UseKey -and $MySqlkey)
+        {
+            $password = " -p$MySqlkey"
+        }
+            
+    }
+        
+    Write-Verbose "读取的域名规范化(移除多余的空白和`www.`,使数据库名字结构统一)" 
+    # 默认处理的是非单行模式,也就是认为Domain参数包含了一组域名配置,逐个解析
+    # 如果是单行模式也没关系,上面的处理将$domains确保数组化
+    # 这里将试图生成两种语句:一种是适合于shell中直接执行mysql语句;另一种是适合保存到sql文件中的普通sql语句
+    foreach ($domain in $domains)
+    {
+        $domain = $domain.Trim() -replace "www\.", "" 
+
+        $ShellLine = "mysql -u$mysqlUser -h $Server $password -e 'CREATE DATABASE ``${User}_$domain`` CHARACTER SET utf8mb4 COLLATE $collate;' "
+        $sqlLine = 'CREATE DATABASE ' + " ``${User}_$domain`` CHARACTER SET utf8mb4 COLLATE $collate;"
+            
+        Write-Verbose $ShellLine
+        Write-Verbose $sqlLine
+
+        $ShellLines.Add($ShellLine) > $null
+        $sqlLines.Add($sqlLine) > $null
+            
+        # 两组前后分开处理,但是合并返回
+        # $ShellLines = $ShellLines + $sqlLine
+        # $lines = $ShellLines.AddRange($sqlLines) 
+            
+        # $lines = @($ShellLines, $sqlLines)
+            
+        # $line | Invoke-Expression
+    }
+    # 是否将sql语句写入到文件
+    if($SqlFilePath)
+    {
+        Write-Verbose "Try add sqlLine:`n`t[$sqlLines]`nto .sql file:`n`t[$SqlFilePath]" 
+        # 根据是否使用单行模式来决定是:追加式写入或覆盖式创建/写入
+        if($SingleDomainMode)
+        {
+            $sqlLines >> $SqlFilePath
+        }
+        else
+        {
+
+            $sqlLines | Out-File $SqlFilePath -Encoding utf8   
+        }
+    }
+    return $sqlLines
+    
+}
+
 function Get-BatchSiteBuilderLines
 {
     <# 
     .SYNOPSIS
     获取批量站点生成器的生成命令行(宝塔面板专用)
     
-    仅处理单个用户的站点,如果要处理多个用户,请在外部调用此函数并做额外处理
+    仅处理单个用户的站点,如果要处理多个用户,请在外部调用此函数并做额外处理;
+    单个用户可以对应多个网站域名,总之,本函数可以处理一个用户下的多个域名;
 
     功能比较基础,暂时只接收域名列表(字符串),不处理专门格式的输入数据,否则会导致错误解析
 
@@ -117,112 +230,30 @@ www.domain2.com
     # Write-Host "`nlines copied to clipboard!" -ForegroundColor Cyan
     return $lines
 }
-
-function Get-BatchSiteDBCreateLines
+function Get-BatchSiteBuilderLinesFromTable
 {
     <# 
     .SYNOPSIS
-    获取批量站点数据库创建命令行
-    .DESCRIPTION
-    默认生成两种命令行,一种是可以直接在shell中执行,另一种是保存到sql文件中,最后调用mysql命令行来执行
-    第一种使用起来简单,但是开销大,而且构造语句的过程中相对比较麻烦,需要考虑powershell对特殊字符的解释
-    第二种命令简短,而且符号包裹更少,运行开销较小,理论上比第一种快;但是powershell对于mysql命令行执行
-    sql文件也相对麻烦,需要用一些技巧
+    从表格中获取批量建站语句,内部调用Get-BatchSiteBuilderLines,但是更适合从特定格式的文件中读取要构造的批量建站语句
+
+    .EXAMPLE
+     Get-BatchSiteBuilderLinesFromTable -Table $desktop/table-s3.conf -Structure "Domain,User"
+output:
+...
+----- Dictionary -----
+...
+----- End of Dictionary1 -----
+
+VERBOSE: structureFieldsNumber:[2]:{Domain User}
+Try parse table from file:[C:\Users\Administrator\Desktop/table-s3.conf]
+VERBOSE: scripts written to clipboard!
+
+a.com,www.a.com,*.a.com      |/www/wwwroot/yxj/a.com/wordpress      |0|0|74
+b.com,www.b.com,*.b.com      |/www/wwwroot/yxj/b.com/wordpress      |0|0|74
+...
+n.com,www.n.com,*.n.com      |/www/wwwroot/yxj/n.com/wordpress      |0|0|74
 
     #>
-    [CmdletBinding()]
-    param (
-        [Alias("Domain")]$Domains = @"
-domain1.com
-domain2.com
-"@,
-        # 指明网站的创建或归属者,涉及到网站数据库名字和网站根目录的区分
-        [Alias("SiteOwner")]$User,
-        # 单域名模式:每次调用此函数指输入一个配置行(一个站点的配置信息);
-        # 适合与Start-BatchSiteBuilderLine-DF的Table参数配合使用
-        [switch]$SingleDomainMode,
-        #可以配置系统环境变量 df_server,可以是ip或域名
-        $Server = $env:DF_SERVER1, 
-        # 对于wordpress,一般使用utf8mb4_general_ci
-        $collate = 'utf8mb4_general_ci',
-        $MySqlUser = "root",
-
-        # 置空表示不输出sql文件(如果不想要生成sql文件，请指定此参数并传入一个空字符串""作为参数)
-        # 在非单行模式(SingleDomainMode)下,默认生成的sql文件名为 BatchSiteDBCreate-[User].sql
-        # 否则$User参数生成的SqlFile里的语句可能包含多个用户名,建议手动指定文件路径参数,
-        # 而且文件名应该更有概括性,比如将$User用当前时间代替
-        $SqlFilePath = "$home\Desktop\BatchSiteDBCreate-$User.sql",
-        
-        [Parameter(ParameterSetName = "UseKey")]
-        # 控制是否使用明文mysql密码
-        $MySqlkey = $env:DF_MysqlKey,
-        [parameter(ParameterSetName = "UseKey")]
-        [switch]$UseKey
-    )
-    $domains = @($domains) -join "`n"
-    $domains = $domains.trim() -split "`r?`n|," | Where-Object { $_.Length }
-
-    # $lines = [System.Collections.ArrayList]@()
-    # $sqlLines = [System.Collections.ArrayList]@()
-    $ShellLines = New-Object System.Collections.Generic.List[string]
-    $sqlLines = New-Object System.Collections.Generic.List[string]
-        
-    $password = ""
-    if($PSCmdlet.ParameterSetName -eq "UseKey")
-    {
-            
-        if($UseKey -and $MySqlkey)
-        {
-            $password = " -p$MySqlkey"
-        }
-            
-    }
-        
-    Write-Verbose "读取的域名规范化(移除多余的空白和`www.`,使数据库名字结构统一)" 
-    # 默认处理的是非单行模式,也就是认为Domain参数包含了一组域名配置,逐个解析
-    # 如果是单行模式也没关系,上面的处理将$domains确保数组化
-    # 这里将试图生成两种语句:一种是适合于shell中直接执行mysql语句;另一种是适合保存到sql文件中的普通sql语句
-    foreach ($domain in $domains)
-    {
-        $domain = $domain.Trim() -replace "www\.", "" 
-
-        $ShellLine = "mysql -u$mysqlUser -h $Server $password -e 'CREATE DATABASE ``${User}_$domain`` CHARACTER SET utf8mb4 COLLATE $collate;' "
-        $sqlLine = 'CREATE DATABASE ' + " ``${User}_$domain`` CHARACTER SET utf8mb4 COLLATE $collate;"
-            
-        Write-Verbose $ShellLine
-        Write-Verbose $sqlLine
-
-        $ShellLines.Add($ShellLine) > $null
-        $sqlLines.Add($sqlLine) > $null
-            
-        # 两组前后分开处理,但是合并返回
-        # $ShellLines = $ShellLines + $sqlLine
-        # $lines = $ShellLines.AddRange($sqlLines) 
-            
-        # $lines = @($ShellLines, $sqlLines)
-            
-        # $line | Invoke-Expression
-    }
-    # 是否将sql语句写入到文件
-    if($SqlFilePath)
-    {
-        Write-Verbose "Try add sqlLine:`n`t[$sqlLines]`nto .sql file:`n`t[$SqlFilePath]" 
-        # 根据是否使用单行模式来决定是:追加式写入或覆盖式创建/写入
-        if($SingleDomainMode)
-        {
-            $sqlLines >> $SqlFilePath
-        }
-        else
-        {
-
-            $sqlLines | Out-File $SqlFilePath -Encoding utf8   
-        }
-    }
-    return $sqlLines
-    
-}
-function Get-BatchSiteBuilderLinesFromTable
-{
     [CmdletBinding()]
     param(
         $Table = "$Desktop/table.conf",

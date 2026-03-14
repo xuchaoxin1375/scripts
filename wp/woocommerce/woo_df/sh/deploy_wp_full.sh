@@ -159,7 +159,7 @@ show_help() {
 
           # 服务器迁移（保留压缩包）
           $0 --user-dir xcx --ssp '' -K --dry-run
-
+          $0 --pack-root /srv/uploads/uploader/files/recovery --user-dir yxj --ssp '' -K
           # 仅处理数据库或仅处理网站根目录
           $0 -M single -n domain1.com --site-db-skip    # 仅解压网站
           $0 -M single -n domain1.com --site-root-skip  # 仅导入数据库
@@ -520,7 +520,7 @@ is_plain_tar_file() {
 ######################################
 extract_archive() {
     local archive_file="$1"
-    local site_root="$2"
+    local expanded_under_dir="$2"
 
     # 参数校验
     if [ ! -f "$archive_file" ]; then
@@ -528,15 +528,15 @@ extract_archive() {
         return 1
     fi
 
-    if [ -z "$site_root" ]; then
+    if [ -z "$expanded_under_dir" ]; then
         log "Error❌ 目标目录未指定"
         return 1
     fi
 
     # 确保目标目录存在,否则创建此目录
-    mkdir -p "$site_root" -v
+    mkdir -p "$expanded_under_dir" -v
 
-    log "🔍 正在处理压缩文件: $archive_file -> $site_root/"
+    log "🔍 正在处理压缩文件: $archive_file -> $expanded_under_dir/"
 
     local ext="${archive_file##*.}"
     # tar文件临时名字
@@ -591,7 +591,7 @@ extract_archive() {
             fi
 
             log "📦 正在解包 TAR 数据..."
-            if ! tar -xf "$temp_output_file" -C "$site_root"; then
+            if ! tar -xf "$temp_output_file" -C "$expanded_under_dir"; then
                 log "Error❌ 解包 TAR 失败"
                 rm -f "$temp_output_file"
                 return 1
@@ -609,7 +609,7 @@ extract_archive() {
             log "✅ TAR 文件完整性验证通过"
 
             log "📦 正在解包 TAR 文件..."
-            if ! tar -xf "$archive_file" -C "$site_root"; then
+            if ! tar -xf "$archive_file" -C "$expanded_under_dir"; then
                 log "Error❌ 解包 TAR 文件失败: $archive_file"
                 return 1
             fi
@@ -619,7 +619,7 @@ extract_archive() {
                 return 1
             fi
             log "📦 正在解压 ZIP 文件..."
-            if ! unzip -q "$archive_file" -d "$site_root"; then
+            if ! unzip -q "$archive_file" -d "$expanded_under_dir"; then
                 log "Error❌ 解压 ZIP 文件失败: $archive_file"
                 return 1
             fi
@@ -630,7 +630,7 @@ extract_archive() {
                 return 1
             fi
             log "📦 正在解压 GZ/TGZ 文件..."
-            if ! tar -xzf "$archive_file" -C "$site_root"; then
+            if ! tar -xzf "$archive_file" -C "$expanded_under_dir"; then
                 log "Error❌ 解压 GZ/TGZ 文件失败: $archive_file"
                 return 1
             fi
@@ -641,7 +641,7 @@ extract_archive() {
                 return 1
             fi
             log "📦 正在解压 BZ2/TBZ2 文件..."
-            if ! tar -xjf "$archive_file" -C "$site_root"; then
+            if ! tar -xjf "$archive_file" -C "$expanded_under_dir"; then
                 log "Error❌ 解压 BZ2/TBZ2 文件失败: $archive_file"
                 return 1
             fi
@@ -673,7 +673,7 @@ extract_archive() {
             fi
 
             log "📦 正在解包 TAR 数据..."
-            if ! tar -xf "$temp_output_file" -C "$site_root"; then
+            if ! tar -xf "$temp_output_file" -C "$expanded_under_dir"; then
                 log "Error❌ 解包 TAR 失败"
                 rm -f "$temp_output_file"
                 return 1
@@ -692,14 +692,14 @@ extract_archive() {
             log "✅ 7z 归档完整性验证通过"
 
             log "📦 正在使用 7z 解压..."
-            if ! 7z x -y "$archive_file" -o"$site_root" > /dev/null; then
+            if ! 7z x -y "$archive_file" -o"$expanded_under_dir" > /dev/null; then
                 log "Error❌ 7z 解压失败: $archive_file"
                 return 1
             fi
             ;;
     esac
 
-    log "✅ 解压成功: $archive_file -> $site_root/"
+    log "✅ 解压成功: $archive_file -> $expanded_under_dir/"
     return 0
 }
 export -f extract_archive

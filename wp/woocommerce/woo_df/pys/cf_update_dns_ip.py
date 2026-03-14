@@ -36,6 +36,7 @@ AUTH_METHOD = "token"
 @dataclass
 class UpdateResult:
     """单条记录的更新结果"""
+
     domain: str
     old_ip: str
     new_ip: str
@@ -46,6 +47,7 @@ class UpdateResult:
 @dataclass
 class UpdateStats:
     """线程安全的统计计数器"""
+
     updated: int = 0
     skipped: int = 0
     errors: int = 0
@@ -171,7 +173,9 @@ class CloudflareDNSUpdater:
             "proxied": proxied,
             "ttl": ttl,
         }
-        return self._request("PUT", f"/zones/{zone_id}/dns_records/{record_id}", json=payload)
+        return self._request(
+            "PUT", f"/zones/{zone_id}/dns_records/{record_id}", json=payload
+        )
 
     def _process_zone(
         self,
@@ -366,34 +370,31 @@ def load_whitelist(filepath: str) -> list[str]:
     return domains
 
 
-def main() -> None:
+def parse_args():
     parser = argparse.ArgumentParser(
         description="Cloudflare DNS 批量修改工具",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 使用示例:
   # 预览：修改账号下所有域名的 A 记录到新 IP
-  python cf_dns_batch.py --new-ip 1.2.3.4 --dry-run
-
+  python cf_update_dns_ip.py --new-ip 1.2.3.4 --dry-run
   # 执行：只修改旧 IP 为 5.6.7.8 的记录
-  python cf_dns_batch.py --new-ip 1.2.3.4 --old-ip 5.6.7.8
-
+  python cf_update_dns_ip.py --new-ip 1.2.3.4 --old-ip 5.6.7.8
   # 使用白名单文件
-  python cf_dns_batch.py --new-ip 1.2.3.4 --whitelist domains.txt --dry-run
-
+  python cf_update_dns_ip.py --new-ip 1.2.3.4 --whitelist domains.txt --dry-run
   # 指定 8 个线程并发
-  python cf_dns_batch.py --new-ip 1.2.3.4 --old-ip 5.6.7.8 --workers 8
-
+  python cf_update_dns_ip.py --new-ip 1.2.3.4 --old-ip 5.6.7.8 --workers 8
   # 通过命令行传入 token
-  python cf_dns_batch.py --new-ip 1.2.3.4 --token YOUR_API_TOKEN
-  
+  python cf_update_dns_ip.py --new-ip 1.2.3.4 --token YOUR_API_TOKEN
   # 通过命令行传入 api key 和 email组合
    python cf_update_dns_ip.py --api-key key_string --email your_email  --new-ip new_ip --whitelist whitelist.txt 
         """,
     )
     parser.add_argument("--new-ip", required=True, help="新的目标 IP 地址")
     parser.add_argument("--old-ip", default=None, help="旧 IP 地址（只修改匹配的记录）")
-    parser.add_argument("--whitelist", default=None, help="域名白名单文件路径（每行一个域名）")
+    parser.add_argument(
+        "--whitelist", default=None, help="域名白名单文件路径（每行一个域名）"
+    )
     parser.add_argument(
         "--record-type",
         default="A",
@@ -414,18 +415,24 @@ def main() -> None:
         help="并发线程数（默认 5，建议不超过 10 以避免 API 限流）",
     )
     parser.add_argument("--token", default=None, help="Cloudflare API Token")
-    parser.add_argument("--email", default=None, help="Cloudflare 账号邮箱（配合 --api-key 使用）")
+    parser.add_argument(
+        "--email", default=None, help="Cloudflare 账号邮箱（配合 --api-key 使用）"
+    )
     parser.add_argument("--api-key", default=None, help="Cloudflare Global API Key")
 
     args = parser.parse_args()
+    return args
+
+def main() -> None:
+    args = parse_args()
 
     # 线程数校验
     if args.workers < 1:
         print("❌ --workers 至少为 1")
         sys.exit(1)
-    if args.workers > 20:
+    if args.workers > 5:
         print("⚠️  线程数过高可能触发 Cloudflare API 限流，已自动调整为 20")
-        args.workers = 20
+        args.workers = 5
 
     # 确定认证方式
     api_token: Optional[str] = None
@@ -475,6 +482,7 @@ def main() -> None:
         dry_run=args.dry_run,
         include_subdomains=not args.no_subdomains,
     )
+
 
 
 if __name__ == "__main__":
