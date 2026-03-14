@@ -534,7 +534,7 @@ extract_archive() {
     fi
 
     # 确保目标目录存在,否则创建此目录
-    mkdir -p "$site_root"
+    mkdir -p "$site_root" -v
 
     log "🔍 正在处理压缩文件: $archive_file -> $site_root/"
 
@@ -1031,7 +1031,7 @@ WHERE option_name IN ('home', 'siteurl');
     if [[ $KEEP_PACK == "true" ]]; then
         log "站点包不归档到${deployed_dir}中,留在原地."
     else
-        mkdir -p "$deployed_dir"
+        mkdir -p "$deployed_dir" -v
         log "<<<归档:已用过的sql压缩包文件: $site_sql_archive >>>"
         mv "$site_sql_archive" "$deployed_dir" -f -v
         # mv "$site_sql_archive" "$DEPLOYED_DIR" -f -v
@@ -1424,12 +1424,14 @@ main() {
             user_dir="${user_dir%/}"
 
             deployed_dir="$PACK_ROOT/$user_dir/deployed/"
-            mkdir -p "$deployed_dir"
-
-            # 更改计算得到的deployed文件夹权限
-            log "🔒 更改${user_dir}的${deployed_dir}文件夹权限(设置目录权限和所有者)"
-            chmod -R 755 "$deployed_dir"
-            chown -R "$UPLOADER:$UPLOADER" "$deployed_dir"
+            # mkdir -p "$deployed_dir" -v
+            log "检查归档目录[$deployed_dir]"
+            if [[ -d "$deployed_dir" ]]; then
+                # 更改计算得到的deployed文件夹权限
+                log "🔒 更改${user_dir}的${deployed_dir}文件夹权限(设置目录权限和所有者)"
+                chmod -R 755 "$deployed_dir"
+                chown -R "$UPLOADER:$UPLOADER" "$deployed_dir"
+            fi
         done
         # 部署批次结束后再统一重启,减少重载次数提高效率
         if [[ $DRY_RUN == "false" && ${#deployed_dir_need_chmod[@]} -gt 0 ]]; then

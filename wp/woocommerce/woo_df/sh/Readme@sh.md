@@ -727,7 +727,7 @@ FILES
   - 设置对应的网站和域名
   - `.user.ini`里面如果有路径限制可能导致无法访问分析页面,可以酌情清空或删除(注意系统标志位可能导致无法直接`rm`删除)
 
-## 网站迁移
+## 网站迁移🎈
 
 ### 备份/还原
 
@@ -818,15 +818,18 @@ bash /www/sh/backup_sites/backup_site_pkgs.sh -s /srv/uploads/uploader/files -b 
 >
 > 关于**远程路径**:形如`remote_full_path="$user"@"$remote_host":"$remote_path"`
 
+#### rsync拉取包的命令模板和函数rsync-copy
+
 登录服务器`b`,执行如下格式的命令
 
 ```bash
+#! /bin/bash
 user="root" #默认root
-# 远程主机
+# 远程主机(ip)
 remote_host=""
-# 本地路径
+# 本地路径(比如/srv/uploads/uploader/files/recovery),末尾的recovery表示恢复备份用的目录
 local_path=""
-# 远程路径
+# 远程路径(比如"/www/wwwroot/xcx/s4/yxj")
 remote_path=""
 
 #准备
@@ -837,6 +840,20 @@ mkdir -p "$local_path"
 
 rsync -avP --size-only "$remote_full_path" "$local_path" 
 ```
+
+为了方便使用,已经将上述命令行包装为**rsync_copy**,降低了rsync参数的记忆压力
+
+> 在shell_utils.sh中定义好,已经配置好环境的设备上可以直接使用
+
+> `rsync_copy -h`获取帮助
+
+例如:
+
+```bash
+   rsync_copy <remote_ip> /srv/uploads/uploader/files/recovery /www/wwwroot/xcx/s4/yxj
+```
+
+
 
 准备解压:**移动**从备份服务器拉取到的包到指定待解压目录下,然后就可以利用部署脚本进行部署(导入网站).
 
@@ -877,7 +894,7 @@ done
 
 
 
-### 宝塔站点重叠
+### 宝塔站点重叠现象和清理方法
 
 通过如下命令可以查看后缀带有`_80`的网站配置文件
 
