@@ -500,9 +500,18 @@ trim() {
 #######################################
 check_dependency() {
     local cmd="$1"
+    local verbose=true
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -q | --quiet | --silent)
+                verbose=false
+                ;;
+        esac
+        shift
+    done
     # command -v "$cmd" &>/dev/null
     if ! command -v "$cmd" > /dev/null 2>&1; then
-        echo "错误: 缺少必要的依赖命令 '$cmd'，请先安装。" >&2
+        [[ $verbose == true ]] && echo "错误: 缺少必要的依赖命令 '$cmd'，请先安装。" >&2
         return 1
     fi
     return 0

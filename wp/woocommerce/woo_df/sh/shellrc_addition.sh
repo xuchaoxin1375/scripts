@@ -50,15 +50,22 @@ done
 # 允许root用户运行常用命令(主要针对zsh)
 echo "Loading additional shell config and functions..."
 
-# ===============添加自定义函数到下面=================
-
-# shellcheck disable=SC2154
-[[ -f "$sh/.inputrc" ]] && check_dependency 2> /dev/null bind && {
-  bind -f "$sh/.inputrc"
-  echo "update inputrc..."
-}
-
 # 目录快速切换
-shopt -s autocd                 # 直接输入目录名即可进入，无需 cd
-shopt -s cdspell                # 拼写检查：自动修正 cd 时的小错误
-shopt -s globstar               # 递归通配符：允许使用 ls **/*.js 这种写法
+if is_shell bash || check_dependency -q shopt; then
+  shopt -s autocd   # 直接输入目录名即可进入，无需 cd
+  shopt -s cdspell  # 拼写检查：自动修正 cd 时的小错误
+  shopt -s globstar # 递归通配符：允许使用 ls **/*.js 这种写法
+fi
+# shellcheck disable=SC2154
+export INPUTRC="$sh/.inputrc.conf"
+echo "update inputrc [$INPUTRC]..."
+
+[[ -f "$HOME/.inputrc" ]] && echo "warning: ~/.inputrc exists, $INPUTRC will be used instead!"
+# cp "$INPUTRC" "$HOME/.inputrc" -fv
+
+[[ -f "$INPUTRC" ]] && check_dependency 2> /dev/null bind && {
+  bind -f "$INPUTRC"
+  echo "check readline config (case ignore)..."
+  bind -v | grep ignore
+}
+# ===============自定义函数请添加到shell_utils.sh中=================
