@@ -63,6 +63,11 @@ echo "update inputrc [$INPUTRC]..."
 [[ -f "$HOME/.inputrc" ]] && echo "warning: ~/.inputrc exists, $INPUTRC will be used instead!"
 # cp "$INPUTRC" "$HOME/.inputrc" -fv
 
+# 检查 Readline 是否识search-ignore-case变量从而决定是否自动启用忽略大小写的历史搜索
+if bind -V 2> /dev/null | grep -q "search-ignore-case"; then
+  bind 'set search-ignore-case on'
+  # bind 'set completion-ignore-case on'
+fi
 [[ -f "$INPUTRC" ]] && check_dependency 2> /dev/null bind && {
   bind -f "$INPUTRC"
   echo "check readline config (case ignore)..."
