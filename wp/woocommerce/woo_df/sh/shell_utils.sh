@@ -9,6 +9,11 @@ get_public_ip() {
     ip=$(curl -sm 5 ipinfo.io | grep -Po '"ip": "\K[^"]*')
     echo -n "$ip"
 }
+# 获取系统readline库版本
+get_readline_version_info() {
+
+    find /usr/lib /lib -name "libreadline*" 2> /dev/null | head -10
+}
 
 # ============ 询问是否继续(支持定制跳过询问) ============
 # Arguments:

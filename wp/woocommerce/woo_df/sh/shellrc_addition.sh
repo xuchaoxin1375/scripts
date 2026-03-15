@@ -57,7 +57,7 @@ if is_shell bash || check_dependency -q shopt; then
   shopt -s globstar # 递归通配符：允许使用 ls **/*.js 这种写法
 fi
 # shellcheck disable=SC2154
-export INPUTRC="$sh/.inputrc.conf"
+export INPUTRC="$sh/.inputrc.tpl.conf"
 echo "update inputrc [$INPUTRC]..."
 
 [[ -f "$HOME/.inputrc" ]] && echo "warning: ~/.inputrc exists, $INPUTRC will be used instead!"
