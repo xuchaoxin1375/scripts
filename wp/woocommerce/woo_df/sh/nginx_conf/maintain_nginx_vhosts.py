@@ -110,9 +110,14 @@ def init_site_birth_log(site_birth_log=SITE_BIRTH_CSV, table_header=TABLE_HEADER
         df.to_csv(site_birth_log, index=False)
     else:
         # 检查此文件是否为非空文本文件
-        print("日志文件存在,检查是否为空...")
+        print(f"日志文件[{site_birth_log}]存在,检查是否为空...")
         if os.path.getsize(site_birth_log) > 0:
-            print("日志文件存在,读取站点创建日期...")
+            print("读取站点创建日期...")
+            # 先普通打印输出内容
+            with open(site_birth_log, "r", encoding="utf-8") as f:
+                for line in f:
+                    print(line.strip())
+            print("读取完毕,开始处理...")
             df = pd.read_csv(site_birth_log)
         else:
             print("日志文件为空,初始化表头...")
@@ -248,7 +253,6 @@ def set_config(
                 print(f"CUSTOM_CONFIG_START exist in [{vhost_config}] configuration.")
 
                 if switch_to == "old":
-
                     if config.find(COM_LIMIT_RATE_SEG) >= 0:
                         # 如果原配置已经存在目标配置,则不进行替换(尽量不动配置文件,检查并维护配置文件不意味着内容移动要变更)
                         print("COM_LIMIT_RATE_SEG exist! no need to replace.")

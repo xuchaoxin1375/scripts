@@ -48,64 +48,7 @@ function Test-CommandAvailability
 
 
 
-function Restart-NginxOnHost
-{
-    <# 
-.SYNOPSIS
-更新nginx配置(插入公共配置)
-调用相应脚本,维护指定服务器上的[建站日期表]
-重启指定主机的Nginx服务配置
 
-默认仅重载nginx配置
-强制可以杀死nginx进程再启动nginx
-
-.NOTES
-强烈建议配置ssh免密登录
-
-
-#>
-    [CmdletBinding()]
-    param(
-        [parameter(ValueFromPipeline = $true)]
-        [alias('Host', 'Server', 'Ip')]
-        $HostName = $env:DF_SERVER1,
-        [alias("ScpUser")]$User = 'root',
-        [switch]$Force
-
-    )
-    # 更新各个网站vhost的配置(宝塔nginx vhost配置文件路径)
-    # 注意linux上的bash脚本片段的换行符风格为LF,windows平台编写的bash命令行片段这里需要额外处理.
-    $LF = "`n"
-    $cmds = @"
-#START
-bash /update_nginx_vhosts_conf.sh -d /www/server/panel/vhost/nginx --days 1 -M 1 
-bash /www/sh/nginx_conf/update_nginx_vhosts_log_format.sh -d /www/server/panel/vhost/nginx 
-bash /www/sh/update_user_ini.sh
-python3 /www/sh/nginx_conf/maintain_nginx_vhosts.py maintain -d -k first
-#END(basic parts)
-"@+ $LF
-
-    # 维护服务器上的建站日期表(可以丢到后台运行)
-    # $maintain = "python3 /www/sh/nginx_conf/maintain_nginx_vhosts.py maintain -d -k first"
-    # Write-Verbose "维护域名列表[  $maintain ]"
-    # ssh root@$HostName $maintain
-    if ($Force)
-    {
-        # ssh $User@$HostName " pkill -9 nginx ; nginx "
-        $cmds += "pkill -9 nginx  " + $LF
-    }
-    $cmds += "nginx -t && nginx -s reload " + $LF
-    # 方案1
-    # ssh $User@$HostName ($cmds -replace "`r", "")
-    # 方案2
-    $cmdsLF = $cmds | Convert-CRLF -To LF 
-    # 添加结尾标记,防止pwsh管道符传递命令行片段末尾追加的\r\n(CRLF)造成感染
-    $cmdsLF = $cmdsLF + "#END(all)"
-    Write-Host "执行命令行: [$cmdsLF]"
-    $cmdsLF | ssh $User@$HostName "bash"
-    # $cmdsLF | ssh $User@$HostName "cat -A"
-
-}
  
 function Invoke-RemoteSSH0
 {

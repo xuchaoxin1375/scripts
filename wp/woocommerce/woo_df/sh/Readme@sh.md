@@ -996,22 +996,7 @@ bash /www/sh/update_user_ini.sh
 >
 > 如果是多个用户目录甚至整个服务器迁移,则优先考虑脚本的方式;
 
-### 批量移动包到指定目录
-
-根据域名列表,将指定域名的压缩包组从`user/deployed`目录移动到user/目录
-
-```bash
-#假设当前是用户目录:.../user/deployed
-sites=(
-domain1.com 
-domain2.com 
-...
-)
-
-for site in "${sites[@]}" ;do mv "$site"*zst .. ;done
-```
-
-或者:
+#### 批量移动包到指定目录
 
 合并备份服务器中的备份包(合并前确保已经所有站都迁移完毕,否则后续还要重新挑选未迁移的站)
 
@@ -1021,4 +1006,12 @@ merge_dir -u yxj ./s4 ./s1 deployed
 ```
 
 > 函数`merge_dir`定义在`shell_utils.sh`中;也可以自己编写bash片段移动
+
+#### vhost 配置更新
+
+> 例如我要从df_server1移动一批站到df_server3,则执行后者的nginx vhost配置更新
+
+```bash
+ Restart-NginxOnHost -HostName $env:DF_SERVER3 -Verbose
+```
 

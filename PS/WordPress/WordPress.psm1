@@ -1082,8 +1082,8 @@ function Deploy-WpSitesOnline
     # 解析服务器配置
     $serversConfig = Get-Content $ServerConfig | ConvertFrom-Json
     $servers = $serversConfig.servers
-    $hst = $servers."$HostName".ip
-    Write-Verbose "Deploy to server: $HostName,IP:$hst"
+    $HostName = $servers."$HostName".ip
+    Write-Verbose "Deploy to server: $HostName,IP:$HostName"
 
     Get-Job | Remove-Job -Verbose
     # 让python使用utf-8编码,防止在powershell后台作业中(由receive-job接收的)输出非英文字符乱码
@@ -1093,7 +1093,7 @@ function Deploy-WpSitesOnline
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
     # START SERIAL (串行,各步骤内局部并行,如果线程过多导致api错误(429),尤其是cloudflare api,则考虑降低线程数或者减少任务中的网站域名数量,分批部署)
     # 添加域名解析到cf(第一步执行)
-    Add-CFZoneDNSRecords -AddRecordAtOnce -IP $hst -Parallel:(!$Onebyone) -Domains $FromTable
+    Add-CFZoneDNSRecords -AddRecordAtOnce -IP $HostName -Parallel:(!$Onebyone) -Domains $FromTable
     # 从待部署域名列表更新spaceship域名的nameservers(cf添加后立即执行spaceship的nameservers更新)
     Get-CFZoneNameServersTable -FromTable $FromTable
     # 更新spaceship的nameservers(后续的CFZoneActivation依赖于此域名DNS配置)
@@ -1130,7 +1130,7 @@ function Deploy-WpSitesOnline
     } -ArgumentList $CfAccount, $CfConfig, $FromTable , $SpaceshipConfig, $ToTable , "$pys/spaceship_api/update_nameservers.py" -ThrottleLimit 5
 
     # 配置cf域名解析,邮箱转发和代理保护(位置1)
-    # Add-CFZoneConfig -Account $CfAccount -CfConfig $CfConfig -Table $FromTable -Ip $hst
+    # Add-CFZoneConfig -Account $CfAccount -CfConfig $CfConfig -Table $FromTable -Ip $HostName
     Start-ThreadJob -Name "CFZoneConfig" -ScriptBlock {  
         param ($Account, $CfConfig, $Table, $script, $Ip)
         $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -1143,7 +1143,7 @@ function Deploy-WpSitesOnline
             -script $Script `
             -Ip $Ip
         Write-Host "[END TIME::$(Get-DateTime)]CFZoneConfig done."
-    } -ArgumentList $CfAccount, $CfConfig, $FromTable, "$pys/cf_api/cf_config_api.py", $hst
+    } -ArgumentList $CfAccount, $CfConfig, $FromTable, "$pys/cf_api/cf_config_api.py", $HostName
     
     # 创建宝塔远程空站点创建
     # Deploy-BatchSiteBTOnline -Server $HostName -ServerConfig $ServerConfig -Table $FromTable -SitesHome $SitesHome 
@@ -1158,31 +1158,19 @@ function Deploy-WpSitesOnline
 
     # 上传本批次域名列表到对应服务器上
     # Push-ByScp -Server $HostName -Path $FromTable -Destination $RemoteSiteTable
-    $pushSiteTable = {
-        # 使用 $using: 修饰符访问父作用域的变量
-        param(
-            [string]$Server,
-            [string]$Path,
-            [string]$Destination
-        )
-        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-        Write-Host "[START TIME:$(Get-DateTime)]Pushing site table to server..."
-        Push-ByScp -Server $Server -Path $Path -Destination $Destination
-        Write-Host "[END TIME::$(Get-DateTime)]Pushing site table to server done."
-    }
-    Start-ThreadJob -ScriptBlock $pushSiteTable -ArgumentList $hst, $FromTable, $RemoteSiteTable -Name "PushSiteTable"
+   
 
     Write-Host "等待后台作业完成..."
     $jobs = Get-Job
     # 等待1~2秒在查看作业启动状态,看看各个任务的启动情况(这不会阻塞后台job的运行,可以放心等待)
     Start-Sleep 2
     Write-Host "$($jobs|Out-String)"
-    # Receive-Job $deploySitesOnBTJob, $pushSiteTableJob -Wait -Verbose
+
     $jobs | Receive-Job -Wait 
     # END JOBS
     
     # 重启nginx 
-    Restart-NginxOnHost -HostName $hst
+    Update-NginxVhostOnHost -HostName $HostName -FromTable $FromTable
     # 等待环节
     Write-Warning "等待2到5分钟让cf激活域名保护(不保证成功,大多数情况下可以),后续检查是否全部激活,否则循环等待,每次$RetryGap 秒,最多等待$MaxRetryTimes 轮"
     if($WaitTimeBasic)
@@ -1245,6 +1233,83 @@ function Deploy-WpSitesOnline
     }
     # 配置cf域名解析,邮箱转发和代理保护(位置2,暂时使用位置1)
     # Add-CFZoneConfig
+}
+function Update-NginxVhostOnHost
+{
+    <# 
+.SYNOPSIS
+更新nginx配置(插入公共配置)
+上传最近批次的网站域名表
+调用相应脚本,维护指定服务器上的[建站日期表]
+重启指定主机的Nginx服务配置
+
+默认仅重载nginx配置
+强制可以杀死nginx进程再启动nginx
+
+.NOTES
+强烈建议配置ssh免密登录
+
+
+#>
+    [CmdletBinding()]
+    param(
+        [parameter(ValueFromPipeline = $true, Mandatory = $true)]
+        [alias('Host', 'Server', 'Ip')]
+        $HostName ,
+        $User = 'root',
+        [alias('Table')]$FromTable = "$Desktop/table.conf",
+        # 网站域名表在服务器上的路径
+        $RemoteSiteTable = '/www/site_table.conf',
+        [switch]$Force
+
+    )
+    # 更新各个网站vhost的配置(宝塔nginx vhost配置文件路径)
+    # 注意linux上的bash脚本片段的换行符风格为LF,windows平台编写的bash命令行片段这里需要额外处理.
+    $LF = "`n"
+    $cmds = @"
+#START
+bash /update_nginx_vhosts_conf.sh -d /www/server/panel/vhost/nginx --days 1 -M 1 
+bash /www/sh/nginx_conf/update_nginx_vhosts_log_format.sh -d /www/server/panel/vhost/nginx 
+bash /www/sh/update_user_ini.sh
+python3 /www/sh/nginx_conf/maintain_nginx_vhosts.py maintain -d -k first
+#END(basic parts)
+"@+ $LF
+    $pushSiteTable = {
+        # 使用 $using: 修饰符访问父作用域的变量
+        param(
+            [string]$HostName,
+            [string]$Path,
+            [string]$Destination
+        )
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        Write-Host "[START TIME:$(Get-DateTime)]Pushing site table to server..."
+        Push-ByScp -Server $HostName -Path $Path -Destination $Destination -Verbose
+        Write-Host "[END TIME::$(Get-DateTime)]Pushing site table to server done."
+    }
+    $PushSiteTableJob = Start-ThreadJob -ScriptBlock $pushSiteTable -ArgumentList $HostName, $FromTable, $RemoteSiteTable -Name "PushSiteTableJob"
+    # 这里使用后台作业意义不是很大,但是后续可能变更到其他命令中故而保留此写法(需要等待上传完毕再执行shell调用.)
+    Receive-Job -Job $PushSiteTableJob -Wait -Verbose
+    # return "debug"
+    # 维护服务器上的建站日期表(可以丢到后台运行)
+    # $maintain = "python3 /www/sh/nginx_conf/maintain_nginx_vhosts.py maintain -d -k first"
+    # Write-Verbose "维护域名列表[  $maintain ]"
+    # ssh root@$HostName $maintain
+    if ($Force)
+    {
+        # ssh $User@$HostName " pkill -9 nginx ; nginx "
+        $cmds += "pkill -9 nginx  " + $LF
+    }
+    $cmds += "nginx -t && nginx -s reload " + $LF
+    # 方案1
+    # ssh $User@$HostName ($cmds -replace "`r", "")
+    # 方案2
+    $cmdsLF = $cmds | Convert-CRLF -To LF 
+    # 添加结尾标记,防止pwsh管道符传递命令行片段末尾追加的\r\n(CRLF)造成干扰
+    $cmdsLF = $cmdsLF + "#END(all)"
+    Write-Host "执行命令行: [$cmdsLF]"
+    $cmdsLF | ssh $User@$HostName "bash"
+    # $cmdsLF | ssh $User@$HostName "cat -A"
+
 }
 function Get-CFAccountsCodeDF
 {
@@ -2440,14 +2505,14 @@ Get-ShopifyProductJsonUrl -UrlsFromFile 'abc.txt' -Destination "$desktop/localho
                 [System.Management.Automation.CommandInfo]$CurlExecutable
             )
             
-            $hst = ([System.Uri]$Uri).Host
+            $HostName = ([System.Uri]$Uri).Host
             $proxyRotation = @($null) + $Proxies
             $maxAttemptsPerEngine = [math]::Min($Retries, $proxyRotation.Count)
 
             # 1. 智能尝试：优先使用缓存的成功配置
-            if ($Cache.ContainsKey($hst))
+            if ($Cache.ContainsKey($HostName))
             {
-                $cachedConfig = $Cache[$hst]
+                $cachedConfig = $Cache[$HostName]
                 $cachedProxyDisplay = if ($cachedConfig.Proxy) { "'$($cachedConfig.Proxy)'" } else { '直连' }
                 Write-Verbose "发现主机 '$host' 的缓存配置。优先尝试引擎: '$($cachedConfig.Engine)', 代理: $cachedProxyDisplay"
 
@@ -2500,7 +2565,7 @@ Get-ShopifyProductJsonUrl -UrlsFromFile 'abc.txt' -Destination "$desktop/localho
                         $response = Invoke-WebRequest @iwrParams
                         
                         Write-Verbose "IWR 请求成功。为 '$host' 缓存配置 (Proxy: $proxyDisplay)"
-                        $Cache[$hst] = @{ Engine = 'Iwr'; Proxy = $currentProxy }
+                        $Cache[$HostName] = @{ Engine = 'Iwr'; Proxy = $currentProxy }
                         return $response.Content
                     }
                     catch
@@ -2529,7 +2594,7 @@ Get-ShopifyProductJsonUrl -UrlsFromFile 'abc.txt' -Destination "$desktop/localho
                         if ($LASTEXITCODE -eq 0)
                         {
                             Write-Verbose "Curl 请求成功。为 '$host' 缓存配置 (Proxy: $proxyDisplay)"
-                            $Cache[$hst] = @{ Engine = 'Curl'; Proxy = $currentProxy }
+                            $Cache[$HostName] = @{ Engine = 'Curl'; Proxy = $currentProxy }
                             return $result
                         }
                         Write-Warning "Curl 尝试 $($i+1) 失败 (退出码: $LASTEXITCODE)。"

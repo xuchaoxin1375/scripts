@@ -66,15 +66,16 @@ function Push-ByScp
 #>
     [CmdletBinding(SupportsShouldProcess)]
     param (
+        [alias("HostName")]
         $Server,
 
         [alias("ScpUser")]
-        $User='root',
+        $User = 'root',
         [alias("Path")]
         $SourcePath,
 
-        [alias('TargetPath','Target')]
-        $DestinationPath=$env:DF_SERVER1
+        [alias('TargetPath', 'Target')]
+        $DestinationPath = $env:DF_SERVER1
     )
     $expression = "scp -r '$SourcePath' '$User@${Server}:$DestinationPath'"
     Write-Host $expression 
