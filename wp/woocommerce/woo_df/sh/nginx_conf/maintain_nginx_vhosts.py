@@ -113,11 +113,7 @@ def init_site_birth_log(site_birth_log=SITE_BIRTH_CSV, table_header=TABLE_HEADER
         print(f"日志文件[{site_birth_log}]存在,检查是否为空...")
         if os.path.getsize(site_birth_log) > 0:
             print("读取站点创建日期...")
-            # 先普通打印输出内容
-            with open(site_birth_log, "r", encoding="utf-8") as f:
-                for line in f:
-                    print(line.strip())
-            print("读取完毕,开始处理...")
+
             df = pd.read_csv(site_birth_log)
         else:
             print("日志文件为空,初始化表头...")
@@ -149,7 +145,12 @@ def maintain_site_birth_log(
     if os.path.exists(site_table) is False:
         print(f"域名列表文件不存在:{site_table},结束操作.")
         return False
-
+    else:
+        # 先普通打印输出内容
+        print(f"预览上传到站点列表{site_table}文件...")
+        with open(site_table, "r", encoding="utf-8") as f:
+            for line in f:
+                print(line.strip())
     try:
         with open(site_table, mode="r", encoding="utf-8") as f:
             lines = f.readlines()

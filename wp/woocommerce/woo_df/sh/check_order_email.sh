@@ -264,6 +264,5 @@ for EMAIL in "${EMAILS[@]}"; do
     parallel --jobs "$THREADS" query_db :::: "$TMP_DB_LIST" ::: "$EMAIL"
 done
 
-echo "server[$(hostname):$ip] complete query task."
-echo "查询结束，结果已保存至: $OUTPUT_FILE"
+echo "server[$(hostname):$ip] complete query task. result save to [$OUTPUT_FILE]"
 cat "$OUTPUT_FILE"
