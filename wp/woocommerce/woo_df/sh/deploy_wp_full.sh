@@ -74,17 +74,37 @@ declare -A PID_TASK_MAP PID_TASK_MAP_FAILED PID_TASK_MAP_SUCCESSED
 STOP_EDITING_LINE='Add any custom values between this line and the "stop editing" line'
 # 非原生包这部分可以跳过插入(已经有相应内容了,可以通过grep检查是否有'FORCE_SSL_ADMIN'字符串存在)
 HTTPS_CONFIG_LINE="\$_SERVER['HTTPS'] = 'on'; define('FORCE_SSL_LOGIN', true); define('FORCE_SSL_ADMIN', true);"
+SH=/www/sh # linux 软连接短路径风格
 
-# 关闭shellcheck路径检查多余报错,尤其是其他平台开发时,使用source命令
-# shellcheck source=/dev/null
-SH=/www/sh                            # linux 软连接短路径风格
-SH1=/scripts/wp/woocommerce/woo_df/sh # linux风格
-SH2="/c/repos""${SH1}"                # git bash风格
-# 计算并确定可用的SH目录
-[[ -d $SH1 ]] && SH="$SH1"
-[[ -d $SH2 ]] && SH="$SH2"
-shell_utils=$SH/shell_utils.sh
+# 计算可用SH目录,通过变量引用来更改参数
+# arguments:
+#   $1: 需要被更改值的变量
+# example:
+#   get_sh_dir SH
+get_sh_dir() {
+    local -n _sh="$1"
+    # 关闭shellcheck路径检查多余报错,尤其是其他平台开发时,使用source命令
+    # shellcheck source=/dev/null
+    SH1=/scripts/wp/woocommerce/woo_df/sh # linux风格
+    SH2="/c/repos""${SH1}"                # git bash风格
+    # 计算并确定可用的SH目录
+    [[ -d $SH1 ]] && SH="$SH1"
+    [[ -d $SH2 ]] && SH="$SH2"
+    _sh="$SH"
+
+}
+get_sh_dir SH && SHELL_UTILS="$SH/shell_utils.sh" || exit 1
 echo "deploy_script_version: $VERSION"
+# shellcheck disable=SC1090
+source "$SHELL_UTILS"
+# 严格模式
+[[ $STRICT_MODE == "true" ]] && set -euo pipefail
+
+# 判断是否启用了verbose模式
+verbose() {
+    [[ $VERBOSE == "true" ]] && return 0
+    return 1
+}
 
 # === 函数：显示帮助信息 ===
 show_help() {
@@ -332,17 +352,7 @@ parse_args() {
     done
 }
 parse_args "$@"
-
-# 判断是否启用了verbose模式
-verbose() {
-    [[ $VERBOSE == "true" ]] && return 0
-    return 1
-}
-verbose && echo "正在加载shell工具函数库...[$shell_utils]"
-# shellcheck disable=SC1090
-source "$shell_utils"
-# 严格模式
-[[ $STRICT_MODE == "true" ]] && set -euo pipefail
+verbose && echo "正在加载shell工具函数库...[$SHELL_UTILS]"
 # 定义日志文件路径
 # LOG_FILE="/srv/uploads/uploader/files/deploy_wp_$($USER_DIR)_$(date +%Y%m%d_%H%M%S).log"
 # LOG_DIR=$(dirname "$LOG_FILE") #获取日志文件字符串的目录,然后创建这个目录(如果不存在的话)
@@ -797,6 +807,31 @@ deploy_site() {
     local domain_name="$2"
     local site_dir_archive="$3"
     local site_sql_archive="$4"
+    usage="Usage:  -u <user_name> -d <domain_name> -a <site_dir_archive> -s <site_sql_archive> task_note "
+    while getopts "u:d:a:s" opt; do
+        case "$opt" in
+            u)
+                user_name="$OPTARG"
+                ;;
+            d)
+                domain_name="$OPTARG"
+                ;;
+            a)
+                site_dir_archive="$OPTARG"
+                ;;
+            s)
+                site_sql_archive="$OPTARG"
+                ;;
+            *)
+                log "Error❌ 未知参数: $opt"
+                echo "$usage"
+                return 1
+                ;;
+        esac
+    done
+    # 移除已经解析过的选项(准备接收位置参数)
+    shift $((OPTIND - 1))
+    local task_note="$1"
 
     local deployed_dir="$PACK_ROOT/$user_name/deployed/"
     local sql_file="$PACK_ROOT/$user_name/$domain_name.sql"
@@ -804,7 +839,7 @@ deploy_site() {
     local final_domain_name="${UPDATE_DOMAIN_NAME:-${domain_name}}"
     local db_name="${user_name}_${final_domain_name}"
 
-    log "📦 正在处理网站: $domain_name ============"
+    log "[$task_note][$domain_name]📦 正在处理网站:  ============"
 
     # 检查关于domain_name网站的压缩包组
     # local extracted_domain_dir="$PACK_ROOT/$user_name/$domain_name"
@@ -1285,6 +1320,8 @@ main() {
     start_tasks() {
         # START-C:核心调度部分(按合适的方式部署任务(网站域名)列表中的网站文件组)
         # for domain_name in "${site_names[@]}"; do
+        local task_id=0
+        local task_total=${#site_names[@]}
         for i in "${!site_names[@]}"; do
             local domain_name="${site_names[$i]}"
             local user_name="${user_dir_names[$i]}"
@@ -1317,7 +1354,7 @@ main() {
             # Globals: ARCHIVE_FORMATS
             get_archive_path() {
                 local -n candidate_archives="$1"
-                local -n result="$2"
+                local -n _result="$2"
                 for archive in "${candidate_archives[@]}"; do
                     # log "debug:test sql file:[[$sql_archive]]"
                     local is_valid_format=0
@@ -1333,7 +1370,7 @@ main() {
                     if [[ $is_valid_format -eq 1 ]]; then
                         # if [ -f "$sql_archive" ]; then
                         log "🗄️ 检测到(扩展名合适的)文件: $archive"
-                        result=$archive
+                        _result=$archive
 
                         # 注意break的位置!
                         break
@@ -1378,7 +1415,9 @@ main() {
                 continue
             }
             # 创建后台作业;
-            deploy_site "$user_name" "$domain_name" "$site_dir_archive" "$site_sql_archive" &
+            deploy_site -u "$user_name" -d "$domain_name" -a "$site_dir_archive" -s "$site_sql_archive" "task_$task_id/$task_total" &
+            ((task_id++))
+
             local pid=$!
             PIDS+=($!)
             PID_TASK_MAP[$pid]="$domain_name"

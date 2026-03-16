@@ -132,7 +132,7 @@ CF_API_KEY = account.get("cf_api_key")
 DEFAULT_SERVER_IP = args.ip_address or account.get("default_server_ip")
 print(f"默认绑定域名到ip: {DEFAULT_SERVER_IP}")
 
-
+# 配置文件(cf_config.json)中寻找全局配置`default_forward_email`
 DEFAULT_FORWARD_EMAIL = config.get("default_forward_email")
 DEFAULT_SSL_MODE = config.get("ssl_mode") or "flexible"
 DEFAULT_SECURITY_MODE = config.get("security_mode") or 1
