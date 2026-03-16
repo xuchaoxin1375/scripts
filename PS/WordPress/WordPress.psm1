@@ -1094,58 +1094,58 @@ function Deploy-WpSitesOnline
     # 设置控制台输出编码为 UTF-8
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
     # START SERIAL (串行,各步骤内局部并行,如果线程过多导致api错误(429),尤其是cloudflare api,则考虑降低线程数或者减少任务中的网站域名数量,分批部署)
-    # # 添加域名解析到cf(第一步执行)
-    # Add-CFZoneDNSRecords -AddRecordAtOnce -IP $HostName -Parallel:(!$Onebyone) -Domains $FromTable
-    # # 从待部署域名列表更新spaceship域名的nameservers(cf添加后立即执行spaceship的nameservers更新)
-    # Get-CFZoneNameServersTable -FromTable $FromTable
-    # # 更新spaceship的nameservers(后续的CFZoneActivation依赖于此域名DNS配置)
-    # # Update-SSNameServers -Config $SpaceshipConfig -Table $ToTable
-    # # END SERIAL
+    # 添加域名解析到cf(第一步执行)
+    Add-CFZoneDNSRecords -AddRecordAtOnce -IP $HostName -Parallel:(!$Onebyone) -Domains $FromTable
+    # 从待部署域名列表更新spaceship域名的nameservers(cf添加后立即执行spaceship的nameservers更新)
+    Get-CFZoneNameServersTable -FromTable $FromTable
+    # 更新spaceship的nameservers(后续的CFZoneActivation依赖于此域名DNS配置)
+    # Update-SSNameServers -Config $SpaceshipConfig -Table $ToTable
+    # END SERIAL
 
-    # # START JOBS
-    # # 让cf立即检查域名的激活
-    # # Add-CFZoneCheckActivation -Account $CfAccount -ConfigPath $CfConfig -Table $FromTable
-    # Start-ThreadJob -Name "CFZoneActivation" -ScriptBlock {
-    #     <# 
-    #     实验性局部串行,此小节包含两个任务(需要串行)
-    #     #>
-    #     param (
-    #         # part1
-    #         $Account, $ConfigPath, $Table,
-    #         # part2
-    #         $SpaceshipConfig, $ToTable, $spaceshipScript
+    # START JOBS
+    # 让cf立即检查域名的激活
+    # Add-CFZoneCheckActivation -Account $CfAccount -ConfigPath $CfConfig -Table $FromTable
+    Start-ThreadJob -Name "CFZoneActivation" -ScriptBlock {
+        <# 
+        实验性局部串行,此小节包含两个任务(需要串行)
+        #>
+        param (
+            # part1
+            $Account, $ConfigPath, $Table,
+            # part2
+            $SpaceshipConfig, $ToTable, $spaceshipScript
         
-    #     )
-    #     $OutputEncoding = [System.Text.Encoding]::UTF8
-    #     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-    #     # part1
-    #     Write-Host "[START TIME:$(Get-DateTime)]Update-SSNameServers..."
-    #     Update-SSNameServers -Config $SpaceshipConfig -Table $ToTable -script $spaceshipScript
-    #     Write-Host "[END TIME::$(Get-DateTime)]Update-SSNameServers done."
-    #     # part2
-    #     Write-Host "[START TIME:$(Get-DateTime)]CFZoneActivation..."
-    #     Add-CFZoneCheckActivation `
-    #         -Account $Account `
-    #         -ConfigPath $ConfigPath `
-    #         -Table $Table
-    #     Write-Host "[END TIME::$(Get-DateTime)]CFZoneActivation done."
-    # } -ArgumentList $CfAccount, $CfConfig, $FromTable , $SpaceshipConfig, $ToTable , "$pys/spaceship_api/update_nameservers.py" -ThrottleLimit 5
+        )
+        $OutputEncoding = [System.Text.Encoding]::UTF8
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        # part1
+        Write-Host "[START TIME:$(Get-DateTime)]Update-SSNameServers..."
+        Update-SSNameServers -Config $SpaceshipConfig -Table $ToTable -script $spaceshipScript
+        Write-Host "[END TIME::$(Get-DateTime)]Update-SSNameServers done."
+        # part2
+        Write-Host "[START TIME:$(Get-DateTime)]CFZoneActivation..."
+        Add-CFZoneCheckActivation `
+            -Account $Account `
+            -ConfigPath $ConfigPath `
+            -Table $Table
+        Write-Host "[END TIME::$(Get-DateTime)]CFZoneActivation done."
+    } -ArgumentList $CfAccount, $CfConfig, $FromTable , $SpaceshipConfig, $ToTable , "$pys/spaceship_api/update_nameservers.py" -ThrottleLimit 5
 
-    # # 配置cf域名解析,邮箱转发和代理保护(位置1)
-    # # Add-CFZoneConfig -Account $CfAccount -CfConfig $CfConfig -Table $FromTable -Ip $HostName
-    # Start-ThreadJob -Name "CFZoneConfig" -ScriptBlock {  
-    #     param ($Account, $CfConfig, $Table, $script, $Ip)
-    #     $OutputEncoding = [System.Text.Encoding]::UTF8
-    #     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-    #     Write-Host "[START TIME:$(Get-DateTime)]CFZoneConfig..."
-    #     Add-CFZoneConfig `
-    #         -Account $Account `
-    #         -CfConfig $CfConfig `
-    #         -Table $Table `
-    #         -script $Script `
-    #         -Ip $Ip
-    #     Write-Host "[END TIME::$(Get-DateTime)]CFZoneConfig done."
-    # } -ArgumentList $CfAccount, $CfConfig, $FromTable, "$pys/cf_api/cf_config_api.py", $HostName
+    # 配置cf域名解析,邮箱转发和代理保护(位置1)
+    # Add-CFZoneConfig -Account $CfAccount -CfConfig $CfConfig -Table $FromTable -Ip $HostName
+    Start-ThreadJob -Name "CFZoneConfig" -ScriptBlock {  
+        param ($Account, $CfConfig, $Table, $script, $Ip)
+        $OutputEncoding = [System.Text.Encoding]::UTF8
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        Write-Host "[START TIME:$(Get-DateTime)]CFZoneConfig..."
+        Add-CFZoneConfig `
+            -Account $Account `
+            -CfConfig $CfConfig `
+            -Table $Table `
+            -script $Script `
+            -Ip $Ip
+        Write-Host "[END TIME::$(Get-DateTime)]CFZoneConfig done."
+    } -ArgumentList $CfAccount, $CfConfig, $FromTable, "$pys/cf_api/cf_config_api.py", $HostName
     
     # 创建宝塔远程空站点创建
     # Deploy-BatchSiteBTOnline -Server $HostName -ServerConfig $ServerConfig -Table $FromTable -SitesHome $SitesHome 

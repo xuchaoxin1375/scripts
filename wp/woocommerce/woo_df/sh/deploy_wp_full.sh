@@ -1265,7 +1265,7 @@ main() {
                 local sql_files=()
                 while IFS= read -r -d '' sql_file; do
                     sql_files+=("$sql_file")
-                done < <(find . -path "$SKIP_SCAN_PATTERN" -prune -o -type f -iname "*sql*" -printf "%f\0")
+                done < <(find . -path "$SKIP_SCAN_PATTERN" -prune -o -type f -iname "?*.sql*" -printf "%f\0")
                 # debug
                 verbose && declare -p sql_files
                 if [[ ${#sql_files[@]} -gt 0 ]]; then
