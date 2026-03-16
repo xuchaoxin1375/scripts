@@ -32,8 +32,6 @@ shopt -s nullglob
 # === 配置参数 ===
 # 依赖说明:依赖于外部的伪静态规则文件RewriteRules.LF.conf,以及一些实用性程序(7z,unzip等)
 # 并发方案:
-# 基础方案是后台运行并等待执行结果(&+wait组合);
-# 主要在process_sql_file和deploy_site这两个耗时函数的执行丢进后台
 JOBS=5 # 默认并发数,根据服务器性能和实际情况调整
 STRICT_MODE="false"
 UPLOADER_DIR="/srv/uploads/uploader"
@@ -808,7 +806,7 @@ deploy_site() {
     local site_dir_archive="$3"
     local site_sql_archive="$4"
     usage="Usage:  -u <user_name> -d <domain_name> -a <site_dir_archive> -s <site_sql_archive> task_note "
-    while getopts "u:d:a:s" opt; do
+    while getopts "u:d:a:s:" opt; do
         case "$opt" in
             u)
                 user_name="$OPTARG"
@@ -829,6 +827,9 @@ deploy_site() {
                 ;;
         esac
     done
+
+    verbose && log "[[ $user_name,$domain_name,$site_dir_archive,$site_sql_archive ]]"
+    verbose && log "debug:[$*];OPTIND=$OPTIND"
     # 移除已经解析过的选项(准备接收位置参数)
     shift $((OPTIND - 1))
     local task_note="$1"
@@ -1075,7 +1076,7 @@ WHERE option_name IN ('home', 'siteurl');
         # mv "$archive_file" "$DEPLOYED_DIR" -f
     fi
 
-    log "✅ 完成站点部署: $domain_name ( 检查/访问: https://www.$final_domain_name )=============="
+    log "[$task_note][$domain_name]✅ 完成站点部署( 检查/访问: https://www.$final_domain_name )=============="
     return 0
 }
 
@@ -1415,8 +1416,8 @@ main() {
                 continue
             }
             # 创建后台作业;
-            deploy_site -u "$user_name" -d "$domain_name" -a "$site_dir_archive" -s "$site_sql_archive" "task_$task_id/$task_total" &
             ((task_id++))
+            deploy_site -u "$user_name" -d "$domain_name" -a "$site_dir_archive" -s "$site_sql_archive" "task_$task_id/$task_total" &
 
             local pid=$!
             PIDS+=($!)

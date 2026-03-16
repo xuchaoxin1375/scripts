@@ -1073,18 +1073,20 @@ function Deploy-WpSitesOnline
 
     
     )
+    # 解析服务器配置
+    $serversConfig = Get-Content $ServerConfig | ConvertFrom-Json
+    $servers = $serversConfig.servers
+    write-verbose "Get Server $servers"
+    $server=$HostName
+    # server name -> server ip
+    $HostName = $servers."$HostName".ip
+    Write-Verbose "Deploy to server: $server,IP:$HostName"
     # 读取cf配置文件,确定要使用的cf账号(根据cf账号和密钥设置当前cf相关环境变量)
     # $config = Get-Content $CfConfig | ConvertFrom-Json
     # $account = $config."accounts"."$CfAccount"
     # Set-CFCredentials -ApiKey $account.cf_api_key -ApiEmail $account.cf_api_email
     Set-CFCredentials -CfConfig $CfConfig -Account $CfAccount
     Get-ChildItem env:cf*
-    # 解析服务器配置
-    $serversConfig = Get-Content $ServerConfig | ConvertFrom-Json
-    $servers = $serversConfig.servers
-    $HostName = $servers."$HostName".ip
-    Write-Verbose "Deploy to server: $HostName,IP:$HostName"
-
     Get-Job | Remove-Job -Verbose
     # 让python使用utf-8编码,防止在powershell后台作业中(由receive-job接收的)输出非英文字符乱码
     $env:PYTHONUTF8 = 1
@@ -1092,69 +1094,71 @@ function Deploy-WpSitesOnline
     # 设置控制台输出编码为 UTF-8
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
     # START SERIAL (串行,各步骤内局部并行,如果线程过多导致api错误(429),尤其是cloudflare api,则考虑降低线程数或者减少任务中的网站域名数量,分批部署)
-    # 添加域名解析到cf(第一步执行)
-    Add-CFZoneDNSRecords -AddRecordAtOnce -IP $HostName -Parallel:(!$Onebyone) -Domains $FromTable
-    # 从待部署域名列表更新spaceship域名的nameservers(cf添加后立即执行spaceship的nameservers更新)
-    Get-CFZoneNameServersTable -FromTable $FromTable
-    # 更新spaceship的nameservers(后续的CFZoneActivation依赖于此域名DNS配置)
-    # Update-SSNameServers -Config $SpaceshipConfig -Table $ToTable
-    # END SERIAL
+    # # 添加域名解析到cf(第一步执行)
+    # Add-CFZoneDNSRecords -AddRecordAtOnce -IP $HostName -Parallel:(!$Onebyone) -Domains $FromTable
+    # # 从待部署域名列表更新spaceship域名的nameservers(cf添加后立即执行spaceship的nameservers更新)
+    # Get-CFZoneNameServersTable -FromTable $FromTable
+    # # 更新spaceship的nameservers(后续的CFZoneActivation依赖于此域名DNS配置)
+    # # Update-SSNameServers -Config $SpaceshipConfig -Table $ToTable
+    # # END SERIAL
 
-    # START JOBS
-    # 让cf立即检查域名的激活
-    # Add-CFZoneCheckActivation -Account $CfAccount -ConfigPath $CfConfig -Table $FromTable
-    Start-ThreadJob -Name "CFZoneActivation" -ScriptBlock {
-        <# 
-        实验性局部串行,此小节包含两个任务(需要串行)
-        #>
-        param (
-            # part1
-            $Account, $ConfigPath, $Table,
-            # part2
-            $SpaceshipConfig, $ToTable, $spaceshipScript
+    # # START JOBS
+    # # 让cf立即检查域名的激活
+    # # Add-CFZoneCheckActivation -Account $CfAccount -ConfigPath $CfConfig -Table $FromTable
+    # Start-ThreadJob -Name "CFZoneActivation" -ScriptBlock {
+    #     <# 
+    #     实验性局部串行,此小节包含两个任务(需要串行)
+    #     #>
+    #     param (
+    #         # part1
+    #         $Account, $ConfigPath, $Table,
+    #         # part2
+    #         $SpaceshipConfig, $ToTable, $spaceshipScript
         
-        )
-        $OutputEncoding = [System.Text.Encoding]::UTF8
-        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-        # part1
-        Write-Host "[START TIME:$(Get-DateTime)]Update-SSNameServers..."
-        Update-SSNameServers -Config $SpaceshipConfig -Table $ToTable -script $spaceshipScript
-        Write-Host "[END TIME::$(Get-DateTime)]Update-SSNameServers done."
-        # part2
-        Write-Host "[START TIME:$(Get-DateTime)]CFZoneActivation..."
-        Add-CFZoneCheckActivation `
-            -Account $Account `
-            -ConfigPath $ConfigPath `
-            -Table $Table
-        Write-Host "[END TIME::$(Get-DateTime)]CFZoneActivation done."
-    } -ArgumentList $CfAccount, $CfConfig, $FromTable , $SpaceshipConfig, $ToTable , "$pys/spaceship_api/update_nameservers.py" -ThrottleLimit 5
+    #     )
+    #     $OutputEncoding = [System.Text.Encoding]::UTF8
+    #     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    #     # part1
+    #     Write-Host "[START TIME:$(Get-DateTime)]Update-SSNameServers..."
+    #     Update-SSNameServers -Config $SpaceshipConfig -Table $ToTable -script $spaceshipScript
+    #     Write-Host "[END TIME::$(Get-DateTime)]Update-SSNameServers done."
+    #     # part2
+    #     Write-Host "[START TIME:$(Get-DateTime)]CFZoneActivation..."
+    #     Add-CFZoneCheckActivation `
+    #         -Account $Account `
+    #         -ConfigPath $ConfigPath `
+    #         -Table $Table
+    #     Write-Host "[END TIME::$(Get-DateTime)]CFZoneActivation done."
+    # } -ArgumentList $CfAccount, $CfConfig, $FromTable , $SpaceshipConfig, $ToTable , "$pys/spaceship_api/update_nameservers.py" -ThrottleLimit 5
 
-    # 配置cf域名解析,邮箱转发和代理保护(位置1)
-    # Add-CFZoneConfig -Account $CfAccount -CfConfig $CfConfig -Table $FromTable -Ip $HostName
-    Start-ThreadJob -Name "CFZoneConfig" -ScriptBlock {  
-        param ($Account, $CfConfig, $Table, $script, $Ip)
-        $OutputEncoding = [System.Text.Encoding]::UTF8
-        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-        Write-Host "[START TIME:$(Get-DateTime)]CFZoneConfig..."
-        Add-CFZoneConfig `
-            -Account $Account `
-            -CfConfig $CfConfig `
-            -Table $Table `
-            -script $Script `
-            -Ip $Ip
-        Write-Host "[END TIME::$(Get-DateTime)]CFZoneConfig done."
-    } -ArgumentList $CfAccount, $CfConfig, $FromTable, "$pys/cf_api/cf_config_api.py", $HostName
+    # # 配置cf域名解析,邮箱转发和代理保护(位置1)
+    # # Add-CFZoneConfig -Account $CfAccount -CfConfig $CfConfig -Table $FromTable -Ip $HostName
+    # Start-ThreadJob -Name "CFZoneConfig" -ScriptBlock {  
+    #     param ($Account, $CfConfig, $Table, $script, $Ip)
+    #     $OutputEncoding = [System.Text.Encoding]::UTF8
+    #     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    #     Write-Host "[START TIME:$(Get-DateTime)]CFZoneConfig..."
+    #     Add-CFZoneConfig `
+    #         -Account $Account `
+    #         -CfConfig $CfConfig `
+    #         -Table $Table `
+    #         -script $Script `
+    #         -Ip $Ip
+    #     Write-Host "[END TIME::$(Get-DateTime)]CFZoneConfig done."
+    # } -ArgumentList $CfAccount, $CfConfig, $FromTable, "$pys/cf_api/cf_config_api.py", $HostName
     
     # 创建宝塔远程空站点创建
     # Deploy-BatchSiteBTOnline -Server $HostName -ServerConfig $ServerConfig -Table $FromTable -SitesHome $SitesHome 
     # 后台运行远程站点创建
     Start-ThreadJob -ScriptBlock { 
         [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-        Write-Host "[START TIME:$(Get-DateTime)]Deploying sites on BT online..."
-        Deploy-BatchSiteBTOnline -Script "$using:pys/bt_api/create_sites.py" -Server $using:HostName -ServerConfig $using:ServerConfig -Table $using:FromTable -SitesHome $using:SitesHome 
+        $server=$using:server
+        Write-Host "[START TIME:$(Get-DateTime)][$server]Deploying sites on BT online..."
+        Deploy-BatchSiteBTOnline -Script "$using:pys/bt_api/create_sites.py" -Server $server -ServerConfig $using:ServerConfig -Table $using:FromTable -SitesHome $using:SitesHome 
         Write-Host "[END TIME::$(Get-DateTime)]Deploying sites on BT online done."
     } -Name "DeployBTSites"
-    
+    # return "debug..."
+    # Receive-Job
 
     # 上传本批次域名列表到对应服务器上
     # Push-ByScp -Server $HostName -Path $FromTable -Destination $RemoteSiteTable
@@ -1391,9 +1395,12 @@ function Update-WpFunctionsphpOnServers
         $Threads = 10
     )
     $servers = Get-ServerList -Path $ServerConfig
+
+    # 管道流向外部程序的数据设置为UTF-8
     $OutputEncoding = [System.Text.Encoding]::UTF8
     # 设置控制台输出编码为 UTF-8
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
     $servers.ip | ForEach-Object -Parallel {
         Write-Host "Updating functions.php to $_"
         # Push-ByScp -Server $_ -SourcePath $Path -TargetPath $Target  -Verbose
@@ -1403,6 +1410,46 @@ function Update-WpFunctionsphpOnServers
         ssh -Tn root@$_ "bash $using:BashScript --src $remoteFunctionsFile --workdir $using:WorkingDirectory --install-mode $using:InstallMode"
     } -ThrottleLimit $Threads
     
+}
+function update-WpSqlOnServers
+{
+    <# 
+    .SYNOPSIS
+    批量更新服务器上的Wordpress数据库
+    .PARAMETER Path
+    数据库文件路径
+    .PARAMETER Target
+    上传文件到目标目录,默认值为"/www/"
+    .PARAMETER ServerConfig
+    服务器配置文件路径,默认值为"$server_config"
+    #>
+    [cmdletbinding()]
+    param (
+        $Path = "$Desktop/wp_batch.sql",
+        $BashScript = '/www/sh/mysql/mysql_db_batch_runner.sh',
+        # 注意,Target目录在远程服务器上应该存在,否则scp上传会失败(scp不会创建缺失的 intermediate paths),-r选在跟也不会帮助你创建缺失起始目录
+        $RemoteDirectory = "/www",
+        $ServerConfig = $server_config,
+        $Threads = 10,
+        $ThreadsOnSqlUpdate=10
+    
+    )
+    $servers = Get-ServerList -Path $ServerConfig
+    $filename = Split-Path $Path -Leaf
+    # 管道流向外部程序的数据设置为UTF-8
+    $OutputEncoding = [System.Text.Encoding]::UTF8
+    # 设置控制台输出编码为 UTF-8
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    $servers.ip | ForEach-Object -Parallel {
+        Write-Host "Running sql to $_"
+        # Push-ByScp -Server $_ -SourcePath $Path -TargetPath $Target  -Verbose
+        $RemoteDirectory = $using:RemoteDirectory
+        # scp 推送文件到服务器
+        scp -r $using:Path root@"$_":$RemoteDirectory
+        $remoteSqlFile = "$RemoteDirectory/$using:filename"
+        # ssh远程调用
+        ssh -Tn root@$_ "bash $using:BashScript -f $remoteSqlFile -j $using:ThreadsOnSqlUpdate  "
+    } -ThrottleLimit $Threads
 }
 
 function Get-WpOrdersByEmailOnServers

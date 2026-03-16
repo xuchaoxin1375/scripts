@@ -1,4 +1,5 @@
 #!/bin/bash
+# mysql_db_batch_runner.sh
 # 定义需要执行的sql语句
 usage="
 usage: $0 [options]
@@ -12,6 +13,10 @@ DB_PASSWORD='15a58524d3bd2e49'
 DB_USER='root'
 CONCURRENCY=10
 ARGS_POS=()
+log "[$(hostname)]tasks start..."
+log() {
+    echo "$(date +"%Y-%m-%d %H:%M:%S") $*"
+}
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -60,7 +65,6 @@ set -- "${ARGS_POS[@]}"
 # 临时测试片段
 # SQL="SELECT DATABASE();" #简单打印当前链接到的数据库
 
-
 # mysql选项说明
 # -D, --database=name Database to use.
 # -s, --silent        Be more silent. Print results with a tab as separator,
@@ -71,8 +75,8 @@ query_db() {
     # local res
     # res=$(mysql -u root -p"$KEY" -N -s -D "$db" < "$SQL" 2> /dev/null)
     # echo "$db, $res"
-
-    mysql -u "$DB_USER" -p"$DB_PASSWORD" -N -s -D "$db" < "$SQL"  2> /dev/null
+    # 使用2>/dev/null 忽略错误输出(主要是忽略命令行中使用密码的安全性警告)
+    mysql -u "$DB_USER" -p"$DB_PASSWORD" -N -s -D "$db" < "$SQL" 2> /dev/null
 }
 
 export -f query_db
@@ -82,3 +86,4 @@ export DB_PASSWORD SQL
 databases=$(mysql -u root -p"$DB_PASSWORD" -e "SHOW DATABASES;" | grep -Ev "(Database|information_schema|mysql|performance_schema|sys)")
 
 echo "$databases" | xargs -P "$CONCURRENCY" -I {} bash -c 'query_db "$@"' _ {}
+log "[$(hostname)]tasks done"
