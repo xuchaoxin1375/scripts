@@ -504,20 +504,28 @@ trim() {
 #   1 如果命令不存在。
 #######################################
 check_dependency() {
-    local cmd="$1"
+    local cmd
     local verbose=true
+    args_pos=()
     while [ $# -gt 0 ]; do
         case "$1" in
             -q | --quiet | --silent)
                 verbose=false
                 ;;
+            *)
+                args_pos+=("$1")
+                ;;
         esac
         shift
     done
+    set -- "${args_pos[@]}"
+    cmd="$1"
     # command -v "$cmd" &>/dev/null
     if ! command -v "$cmd" > /dev/null 2>&1; then
         [[ $verbose == true ]] && echo "错误: 缺少必要的依赖命令 '$cmd'，请先安装。" >&2
         return 1
+    else
+        [[ $verbose == true ]] && echo "[$cmd]已安装"
     fi
     return 0
 }

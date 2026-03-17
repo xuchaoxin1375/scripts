@@ -60,7 +60,7 @@ if is_shell bash || check_dependency -q shopt; then
   # This allows you to bookmark your favorite places across the file system
   # Define a variable containing a path and you will be able to cd into it regardless of the directory you're in
   shopt -s cdable_vars
-  
+
   # Update window size after every command
   shopt -s checkwinsize
 
@@ -102,18 +102,18 @@ echo "update inputrc [$INPUTRC]..."
 
 [[ -f "$HOME/.inputrc" ]] && echo "warning: ~/.inputrc exists, $INPUTRC will be used instead!"
 # cp "$INPUTRC" "$HOME/.inputrc" -fv
-
-# 检查 Readline 是否识search-ignore-case变量从而决定是否自动启用忽略大小写的历史搜索
-if bind -V 2> /dev/null | grep -q "search-ignore-case"; then
-  bind 'set search-ignore-case on'
-  # bind 'set completion-ignore-case on'
-fi
 [[ -f "$INPUTRC" ]] && check_dependency -q bind 2> /dev/null && {
+
   if [[ $- == *i* ]]; then
     # 默认会从 $INPUTRC 文件中读取配置readline配置
     # bind -f "$INPUTRC"
     echo "check readline config (case ignore)..."
     bind -v | grep ignore
+    # 检查 Readline 是否识search-ignore-case变量从而决定是否自动启用忽略大小写的历史搜索
+    if bind -V 2> /dev/null | grep -q "search-ignore-case"; then
+      bind 'set search-ignore-case on'
+      # bind 'set completion-ignore-case on'
+    fi
   else
     echo "Interactive shell environment is not prepared,jump readline binding."
   fi
