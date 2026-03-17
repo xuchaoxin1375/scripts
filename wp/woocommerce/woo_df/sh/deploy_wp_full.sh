@@ -174,10 +174,12 @@ show_help() {
 
           # 单站部署（指定域名自动搜索）
           $0 -M single -u xcx -n domain1.com --dry-run
-
+          # 单站部署（指定域名自动搜索，并更新已上传的网站域名）
+          $0 -u xcx -n domain1.com -N domain2.com 
           # 服务器迁移（保留压缩包）
           $0 --user-dir xcx --ssp '' -K --dry-run
           $0 --pack-root /srv/uploads/uploader/files/recovery --user-dir yxj --ssp '' -K
+
           # 仅处理数据库或仅处理网站根目录
           $0 -M single -n domain1.com --site-db-skip    # 仅解压网站
           $0 -M single -n domain1.com --site-root-skip  # 仅导入数据库
@@ -279,7 +281,7 @@ parse_args() {
                 # 当某个已上传包网站的域名需要更改时,使用此参数
                 # 配合单包部署选项来使用.
                 UPDATE_DOMAIN_NAME="$2"
-                log "[INFO] 域名更改模式已启用(使用此选项时自动启用-M single)"
+                echo "[INFO] 域名更改模式已启用(使用此选项时自动启用-M single)"
                 DEPLOY_MODE="single"
                 shift
                 ;;
