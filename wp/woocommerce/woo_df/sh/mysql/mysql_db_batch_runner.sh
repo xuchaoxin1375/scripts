@@ -13,10 +13,10 @@ DB_PASSWORD='15a58524d3bd2e49'
 DB_USER='root'
 CONCURRENCY=10
 ARGS_POS=()
-log "[$(hostname)]tasks start..."
 log() {
     echo "$(date +"%Y-%m-%d %H:%M:%S") $*"
 }
+log "[$(hostname)]tasks start..."
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
