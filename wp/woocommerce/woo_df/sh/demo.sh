@@ -1,12 +1,6 @@
 #! /bin/bash
-R="old"
-echo "before:R=$R"
-fun() {
-    local -n var="$1"
-    local value="$2"
-    var="$value"
-    echo "$var" >/dev/null
-}
-
-fun R "new"
-echo "later:R=$R"
+# Use bash-completion, if available, and avoid double-sourcing
+[[ $PS1 &&
+    ! ${BASH_COMPLETION_VERSINFO:-} &&
+    -f /usr/share/bash-completion/bash_completion ]] &&
+    . /usr/share/bash-completion/bash_completion

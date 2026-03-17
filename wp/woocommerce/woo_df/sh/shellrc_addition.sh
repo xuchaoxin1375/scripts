@@ -119,4 +119,12 @@ echo "update inputrc [$INPUTRC]..."
   fi
 
 }
+# bash-completion 的安全载入
+# Use bash-completion, if available, and avoid double-sourcing
+[[ $PS1 &&
+  ! ${BASH_COMPLETION_VERSINFO:-} &&
+  -f /usr/share/bash-completion/bash_completion ]] &&
+  . /usr/share/bash-completion/bash_completion
+# end bash-completion importer
+
 # ===============自定义函数请添加到shell_utils.sh中=================
