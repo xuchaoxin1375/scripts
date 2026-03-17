@@ -498,6 +498,7 @@ function Add-SSHkeyOnHost
         $ComputerName,
         $UserName = 'root',
         $Type = 'ed25519',
+        $Port = 22,
         # 尽可能跳过ssh-keygen的生成确认环节.
         [switch]$Force,
         [switch]$PrefixNextLine
@@ -531,7 +532,7 @@ function Add-SSHkeyOnHost
     }
     Write-Verbose "本次将添加公开密钥内容[$pubkey]到服务器"
 
-    ssh $authority "mkdir -p ~/.ssh && echo '${pubkey}' >> ~/.ssh/authorized_keys"
+    ssh $authority "mkdir -p ~/.ssh && echo '${pubkey}' >> ~/.ssh/authorized_keys" -v -p $port
     # 初次运行需要输入服务器ssh对应user用户的密码
 }
 function Start-SleepWithProgress

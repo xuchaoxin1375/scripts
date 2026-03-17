@@ -729,6 +729,10 @@ FILES
 
 ## 网站迁移🎈
 
+分为生产服务器之间的迁移和备份服务器之间的迁移
+
+通常指的是前者,但是也可能是后者,先介绍前者;
+
 ### 备份/还原网站包组
 
 获取最新版本备份:仓库中提供了配套脚本(目录`/www/sh/backup_sites/`下)
@@ -1016,3 +1020,53 @@ merge_dir -u yxj ./s4 ./s1 deployed
 > 实际操作中,可能不是整个服务器迁移(比如可能仅迁移服务器`a`中的`user1`的网站到`b`,那么只需要更正一个目录即可,这种情况下也可以考虑手动移动,也简单)
 >
 > 如果是多个用户目录甚至整个服务器迁移,则优先考虑脚本的方式;
+
+## 备份服务器之间的迁移
+
+假设backsrv1要迁移到backsrv2,则可以按照如下流程:
+
+将代码克隆到新的backsrv2服务器上(主要为了获取关键脚本`/www/sh/remote_rsync.sh`,此脚本主要是对`rsync`的一个简单包装,便于调用)
+
+配置新备份服务器backsrv2向backsrv1的免密ssh key登录
+
+> ssh-keygen -t ed25519 
+>
+> ssh-copy-id ....
+
+准备目录和传输路径:
+
+> 对于对硬盘服务器,尤其是宝塔用户,可能习惯使用`/www/wwwroot/`,如果`/www/wwwroot`是位于小硬盘上,可以通过符号链接到大硬盘上的某个目录:
+>
+> ```bash
+> mv /www/wwwroot /www/wwwroot.bak
+> ln -s -T /data /www/wwwroot -vf
+> ```
+>
+> 
+
+运行传输命令:(通过`bash /www/sh/remote_rsync.sh -h`获取使用帮助和选项说明.)
+
+```bash
+例如:
+bash /www/sh/remote_rsync.sh -r <remote_ip> -p /www/wwwroot/xcx -l /data/xcx
+```
+
+### 生产服务器对接新备份服务器
+
+更换新服务器(`backsrv2`),生产服务器由于需要每天推送新内容(主要通过rsync),也需要一起更新ssh凭据
+
+- 逐个登录生产服务器,使用`ssh-copy-id`命令推送公钥到`backsrv2`;
+
+  > `ssh-copy-id -i ~/.ssh/id_ed25519.pub remote_user@backsrv2`
+
+- 逐个更改定时任务中的备份服务器`ip`;(例如crontab用户执行`crontab -e`)
+
+注意,每个生产服务器更改完cron中的任务后,手动验证对应的备份命令行能否工作;
+
+```bash
+crontab -l |grep backup
+# 或
+crontab -l |grep backup|sed 's/.*bash/bash/'
+
+```
+

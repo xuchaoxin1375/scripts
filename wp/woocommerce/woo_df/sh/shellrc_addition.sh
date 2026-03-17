@@ -15,6 +15,7 @@ config_lines=$(
   cat << EOF
 
 $mark
+# shellcheck source=/www/sh/shell_utils.sh
 source /www/sh/shellrc_addition.sh
 
 EOF
@@ -55,6 +56,45 @@ if is_shell bash || check_dependency -q shopt; then
   shopt -s autocd   # 直接输入目录名即可进入，无需 cd
   shopt -s cdspell  # 拼写检查：自动修正 cd 时的小错误
   shopt -s globstar # 递归通配符：允许使用 ls **/*.js 这种写法
+
+  # This allows you to bookmark your favorite places across the file system
+  # Define a variable containing a path and you will be able to cd into it regardless of the directory you're in
+  shopt -s cdable_vars
+  
+  # Update window size after every command
+  shopt -s checkwinsize
+
+  # Enable history expansion with space
+  # E.g. typing !!<space> will replace the !! with your last command
+  bind Space:magic-space
+  # Turn on recursive globbing (enables ** to recurse all directories)
+  shopt -s globstar 2> /dev/null
+
+  ## SANE HISTORY DEFAULTS ##
+
+  # Append to the history file, don't overwrite it
+  shopt -s histappend
+
+  # Save multi-line commands as one command
+  shopt -s cmdhist
+
+  # Record each line as it gets issued
+  PROMPT_COMMAND='history -a'
+
+  # Huge history. Doesn't appear to slow things down, so why not?
+  HISTSIZE=500000
+  HISTFILESIZE=100000
+
+  # Avoid duplicate entries
+  HISTCONTROL="erasedups:ignoreboth"
+
+  # Don't record some commands
+  export HISTIGNORE="&:[ ]*:exit:ls:bg:fg:history:clear"
+
+  # Use standard ISO 8601 timestamp
+  # %F equivalent to %Y-%m-%d
+  # %T equivalent to %H:%M:%S (24-hours format)
+  HISTTIMEFORMAT='%F %T '
 fi
 # shellcheck disable=SC2154
 export INPUTRC="$sh/.inputrc.tpl.conf"
@@ -68,9 +108,15 @@ if bind -V 2> /dev/null | grep -q "search-ignore-case"; then
   bind 'set search-ignore-case on'
   # bind 'set completion-ignore-case on'
 fi
-[[ -f "$INPUTRC" ]] && check_dependency 2> /dev/null bind && {
-  bind -f "$INPUTRC"
-  echo "check readline config (case ignore)..."
-  bind -v | grep ignore
+[[ -f "$INPUTRC" ]] && check_dependency -q bind 2> /dev/null && {
+  if [[ $- == *i* ]]; then
+    # 默认会从 $INPUTRC 文件中读取配置readline配置
+    # bind -f "$INPUTRC"
+    echo "check readline config (case ignore)..."
+    bind -v | grep ignore
+  else
+    echo "Interactive shell environment is not prepared,jump readline binding."
+  fi
+
 }
 # ===============自定义函数请添加到shell_utils.sh中=================
