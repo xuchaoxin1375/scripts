@@ -174,8 +174,9 @@ show_help() {
 
           # 单站部署（指定域名自动搜索）
           $0 -M single -u xcx -n domain1.com --dry-run
-          # 单站部署（指定域名自动搜索，并更新已上传的网站域名）
-          $0 -u xcx -n domain1.com -N domain2.com 
+          # 单站部署（指定域名自动搜索,不排除deployed目录，并更新已上传的网站域名）
+          $0 -u xcx -n domain1.com -N domain2.com --ssp '' 
+        
           # 服务器迁移（保留压缩包）
           $0 --user-dir xcx --ssp '' -K --dry-run
           $0 --pack-root /srv/uploads/uploader/files/recovery --user-dir yxj --ssp '' -K
@@ -1145,6 +1146,9 @@ main() {
             local site_name
             # 在需要用户确认解析结果的时候将need_check设置为1
             local need_check=0
+            log "优先使用命令行中提供的相关选项参数"
+            [[ -n "$USER_DIR" ]] && user_dir="$USER_DIR"
+            [[ -n "$DOMAIN_NAME" ]] && site_name="$DOMAIN_NAME"
             if [[ -n $SITE_DIR_PACK_STD ]]; then
                 local candidate_path=./"$USER_DIR/$SITE_DIR_PACK_STD"
                 if [[ -f $candidate_path ]]; then
@@ -1157,9 +1161,9 @@ main() {
                 log "找到待处理站点(尝试按标准方式解析所属人员和域名): $SITE_DIR_PACK_STD"
                 # user_dir+=($SITE_DIR_PACK)
             elif [ -f "$SITE_DIR_PACK" ]; then
-                log "指定站点压缩包路径不规范的路径,优先尝试读取相关选项参数"
-                [[ -n "$DOMAIN_NAME" ]] && site_name="$DOMAIN_NAME"
-                [[ -n "$USER_DIR" ]] && user_dir="$USER_DIR"
+                log "指定站点压缩包路径可能是不规范的路径"
+                # [[ -n "$USER_DIR" ]] && user_dir="$USER_DIR"
+                # [[ -n "$DOMAIN_NAME" ]] && site_name="$DOMAIN_NAME"
             elif [[ -n "$DOMAIN_NAME" ]]; then
                 # 仅提供网站包的名字(域名),而不提供包的路径的情况下尝试扫描确定路径
                 site_name="$DOMAIN_NAME"
@@ -1210,8 +1214,9 @@ main() {
             fi
             if [[ $need_check -eq 1 ]]; then
                 if [[ -n "$user_dir" && -n "$site_name" ]]; then
-                    log "tips: [$user_dir] [$site_name]"
-                    if confirm "❓ 是否继续处理该站点文件?" "y" "$ASSUME_ANSWER"; then
+                    log "tips: user_dir:[$user_dir] site_name=[$site_name]"
+                    [[ "$user_dir" == *deployed* ]] && log "解析的人员名不是预期值,请给出人员名(-u选项)或者将包组移出deployed"
+                    if confirm "❓ [检查人员名目录和站点名是否都正确]是否继续处理该站点文件??" "y" "$ASSUME_ANSWER"; then
                         log "继续处理[$site_name]..."
                     else
                         log "跳过处理[$site_name]..."
@@ -1409,7 +1414,7 @@ main() {
                 wait -n
             done
             # debug:
-            log "['tips:' '$user_name', '$domain_name', '$site_dir_archive', '$site_sql_archive']"
+            log "['tips:' user_name='$user_name', domain_name='$domain_name',site_dir_archive='$site_dir_archive', site_sql_archive='$site_sql_archive']"
             # continue
             ! [[ -f "$site_dir_archive" && -f "$site_sql_archive" ]] && {
                 log "[$domain_name]缺少必要的站点包文件,本轮跳过此站点部署
@@ -1481,7 +1486,7 @@ main() {
             nginx -s reload
         fi
 
-        log "=====部署结束！====="
+        log "=====[dry:$DRY_RUN]部署结束！====="
         # log "失败的任务列表: ${PID_TASK_MAP_FAILED[*]}"
         # log "成功任务列表: ${PID_TASK_MAP_SUCCESSED[*]}"
         log "失败任务数: $FAILED"
@@ -1493,7 +1498,7 @@ main() {
             log "✅ https://www.$site"
         done
         if [ "$FAILED" -gt 0 ]; then
-            log "⚠️ 有 $FAILED 个操作失败，请检查日志。"
+            log "[dry:$DRY_RUN]⚠️ 有 $FAILED 个操作失败，请检查日志。"
             exit 1
         fi
     }
