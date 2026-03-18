@@ -1,6 +1,7 @@
 #!/bin/bash
 # 脚本也兼容zsh
 # 部署方式: bash /www/sh/shellrc_addition.sh
+# wsl中执行部署: sudo mkdir -p /www/ ; sudo ln -sTv /mnt/c/repos/scripts/wp/woocommerce/woo_df/sh/  /www/sh
 # 引入外部shell脚本使用source命令,这里防止shellcheck误报,禁用此类检查
 # shellcheck disable=SC1091
 # compatible_shells=("bash" "zsh")
@@ -51,8 +52,22 @@ done
 # 允许root用户运行常用命令(主要针对zsh)
 echo "Loading additional shell config and functions..."
 
-# 目录快速切换
+# 针对bash的配置(依赖于shopt命令)
 if is_shell bash || check_dependency -q shopt; then
+  echo "[bash-completion] loading..."
+  # Use bash-completion, if available, and avoid double-sourcing
+  [[ $PS1 &&
+    ! ${BASH_COMPLETION_VERSINFO:-} &&
+    -f /usr/share/bash-completion/bash_completion ]] &&
+    . /usr/share/bash-completion/bash_completion
+
+  # 检查当前 Shell 是否运行在 POSIX 模式下。
+  # POSIX 模式是为了严格遵守 Unix 标准，它会禁用很多 Bash 特有的“花哨”功能（比如高级补全）。
+  if ! shopt -oq posix; then
+    echo "[bash-completionx] loading..."
+  fi
+
+  # 目录快速切换
   shopt -s autocd   # 直接输入目录名即可进入，无需 cd
   shopt -s cdspell  # 拼写检查：自动修正 cd 时的小错误
   shopt -s globstar # 递归通配符：允许使用 ls **/*.js 这种写法
@@ -106,7 +121,6 @@ echo "update inputrc [$INPUTRC]..."
 
   if [[ $- == *i* ]]; then
     # 默认会从 $INPUTRC 文件中读取配置readline配置
-    # bind -f "$INPUTRC"
     echo "check readline config (case ignore)..."
     bind -v | grep ignore
     # 检查 Readline 是否识search-ignore-case变量从而决定是否自动启用忽略大小写的历史搜索
@@ -115,16 +129,12 @@ echo "update inputrc [$INPUTRC]..."
       # bind 'set completion-ignore-case on'
     fi
   else
-    echo "Interactive shell environment is not prepared,jump readline binding."
+    echo "Interactive shell environment is not prepared. Jump readline binding util next time bash loading."
+    bind -f "$INPUTRC" 2> /dev/null
   fi
 
 }
-# bash-completion 的安全载入
-# Use bash-completion, if available, and avoid double-sourcing
-[[ $PS1 &&
-  ! ${BASH_COMPLETION_VERSINFO:-} &&
-  -f /usr/share/bash-completion/bash_completion ]] &&
-  . /usr/share/bash-completion/bash_completion
+
 # end bash-completion importer
 
 # ===============自定义函数请添加到shell_utils.sh中=================
