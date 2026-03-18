@@ -114,7 +114,7 @@ if is_shell bash || check_dependency -q shopt; then
   # 加载bash prompt(注意每次加载prompt附近可能绑定其他一些动作)
   # Record each line as it gets issued
   # 自定义prompt的话一般也会更改PROMPT_COMMAND,考虑把被绑定的语句放到prompt定义中
-  # PROMPT_COMMAND='history -a' 
+  # PROMPT_COMMAND='history -a'
   source /www/sh/fine_bash_prompt.sh
 fi
 
@@ -126,8 +126,9 @@ echo "update inputrc [$INPUTRC]..."
 # cp "$INPUTRC" "$HOME/.inputrc" -fv
 [[ -f "$INPUTRC" ]] && check_dependency -q bind 2> /dev/null && {
 
+  # 默认会从 $INPUTRC 文件中读取配置readline配置
+  bind -f "$INPUTRC" 2> /dev/null
   if [[ $- == *i* ]]; then
-    # 默认会从 $INPUTRC 文件中读取配置readline配置
     echo "check readline config (case ignore)..."
     bind -v | grep ignore
     # 检查 Readline 是否识search-ignore-case变量从而决定是否自动启用忽略大小写的历史搜索
@@ -137,7 +138,6 @@ echo "update inputrc [$INPUTRC]..."
     fi
   else
     echo "Interactive shell environment is not prepared. Jump readline binding util next time bash loading."
-    bind -f "$INPUTRC" 2> /dev/null
   fi
 
 }
