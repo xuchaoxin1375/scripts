@@ -3,6 +3,78 @@
 # 新函数添加于下方:
 # ===============================
 
+# 检测数组中是否包含指定元素
+# Arguments:
+#   -e : 待查找的元素
+#   -a : 数组名称
+#   -p : 匹配模式,默认为精确匹配
+# Return:
+#   0: 存在
+#   1: 不存在
+is_in_array() {
+    local element array_name item
+    local -n array_ref
+    local use_pattern=0
+    local args_pos=()
+    # 解析参数
+    usage="
+usage:
+    is_in_array ELEMENT ARRAY_NAME [-p]
+或: is_in_array -e ELEMENT -a ARRAY_NAME [-p]
+
+example:
+    shs=(/www/sh/*.sh)
+    is_in_array '*plugins*' shs -p && echo yes
+"
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -e | --element)
+                element="$2"
+                shift
+                ;;
+            -a | --array)
+                array_name="$2"
+                shift
+                ;;
+            -p | --pattern)
+                use_pattern=1
+
+                ;;
+            -*)
+                echo "错误: 未知选项 $1" >&2
+                return 2
+                ;;
+            *)
+                # 位置参数模式
+                args_pos+=("$1")
+                ;;
+        esac
+        shift
+    done
+    set -- "${args_pos[@]}"
+    [[ ! $element ]] && element="$1"
+    [[ ! $array_name ]] && array_name="$2"
+
+    [[ -z $element || -z $array_name ]] && {
+        echo "$usage" >&2
+        return 2
+    }
+
+    array_ref="$array_name"
+
+    for item in "${array_ref[@]}"; do
+        if ((use_pattern)); then
+            # 模式匹配（支持通配符）
+            # shellcheck disable=SC2053
+            [[ $item == $element ]] && return 0
+        else
+            # 精确匹配
+            [[ $item == "$element" ]] && return 0
+        fi
+    done
+
+    return 1
+}
 # 尝试获取本机公网ip
 get_public_ip() {
     local ip
@@ -70,7 +142,7 @@ Options:
                 ;;
             -?*)
                 echo "错误: 未知选项 '$1'" >&2
-                echo "$usage"
+                echo "$usage" >&2
                 return 2
                 ;;
             *)

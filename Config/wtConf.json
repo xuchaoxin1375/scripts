@@ -1,0 +1,493 @@
+{
+    "$help": "https://aka.ms/terminal-documentation",
+    "$schema": "https://aka.ms/terminal-profiles-schema",
+    "actions": 
+    [
+        {
+            "command": 
+            {
+                "action": "switchToTab",
+                "index": 7
+            },
+            "id": "User.switchToTab.D7681B66"
+        },
+        {
+            "command": 
+            {
+                "action": "switchToTab",
+                "index": 4
+            },
+            "id": "User.switchToTab.F747588A"
+        },
+        {
+            "command": 
+            {
+                "action": "switchToTab",
+                "index": 8
+            },
+            "id": "User.switchToTab.ED268D78"
+        },
+        {
+            "command": 
+            {
+                "action": "copy",
+                "singleLine": false
+            },
+            "id": "User.copy.644BA8F2"
+        },
+        {
+            "command": 
+            {
+                "action": "swapPane",
+                "direction": "left"
+            },
+            "id": "User.swapPane.2A0DA8E0"
+        },
+        {
+            "command": 
+            {
+                "action": "openSettings",
+                "target": "settingsUI"
+            },
+            "id": "User.openSettings.6CD791B"
+        },
+        {
+            "command": 
+            {
+                "action": "switchToTab",
+                "index": 0
+            },
+            "id": "User.switchToTab.D3F0B923"
+        },
+        {
+            "command": "togglePaneZoom",
+            "id": "User.togglePaneZoom"
+        },
+        {
+            "command": 
+            {
+                "action": "splitPane",
+                "split": "auto",
+                "splitMode": "duplicate"
+            },
+            "id": "User.splitPane.A6751878"
+        },
+        {
+            "command": 
+            {
+                "action": "switchToTab",
+                "index": 2
+            },
+            "id": "User.switchToTab.87C324ED"
+        },
+        {
+            "command": 
+            {
+                "action": "switchToTab",
+                "index": 5
+            },
+            "id": "User.switchToTab.75247157"
+        },
+        {
+            "command": 
+            {
+                "action": "setMaximized"
+            },
+            "id": "User.setMaximized.3856770F"
+        },
+        {
+            "command": 
+            {
+                "action": "switchToTab",
+                "index": 6
+            },
+            "id": "User.switchToTab.787314EB"
+        },
+        {
+            "command": "paste",
+            "id": "User.paste"
+        },
+        {
+            "command": 
+            {
+                "action": "switchToTab",
+                "index": 3
+            },
+            "id": "User.switchToTab.6CD791B"
+        },
+        {
+            "command": "find",
+            "id": "User.find"
+        },
+        {
+            "command": 
+            {
+                "action": "resizePane",
+                "direction": "left"
+            },
+            "id": "User.resizePane.2A0DA8E0"
+        },
+        {
+            "command": "toggleFullscreen",
+            "id": "User.toggleFullscreen"
+        }
+    ],
+    "autoHideWindow": false,
+    "copyFormatting": "none",
+    "copyOnSelect": false,
+    "defaultProfile": "{74fd5587-5585-4037-a746-20164b911685}",
+    "disableAnimations": false,
+    "experimental.enableColorSelection": false,
+    "firstWindowPreference": "defaultProfile",
+    "focusFollowMouse": false,
+    "keybindings": 
+    [
+        {
+            "id": null,
+            "keys": "ctrl+left"
+        },
+        {
+            "id": null,
+            "keys": "ctrl+k"
+        },
+        {
+            "id": null,
+            "keys": "ctrl+alt+9"
+        },
+        {
+            "id": null,
+            "keys": "ctrl+alt+2"
+        },
+        {
+            "id": "User.paste",
+            "keys": "ctrl+v"
+        },
+        {
+            "id": null,
+            "keys": "ctrl+shift+f"
+        },
+        {
+            "id": null,
+            "keys": "ctrl+shift+left"
+        },
+        {
+            "id": null,
+            "keys": "alt+1"
+        },
+        {
+            "id": null,
+            "keys": "ctrl+alt+5"
+        },
+        {
+            "id": null,
+            "keys": "ctrl+shift+c"
+        },
+        {
+            "id": null,
+            "keys": "alt+2"
+        },
+        {
+            "id": null,
+            "keys": "ctrl+alt+6"
+        },
+        {
+            "id": null,
+            "keys": "ctrl+alt+7"
+        },
+        {
+            "id": null,
+            "keys": "ctrl+alt+4"
+        },
+        {
+            "id": null,
+            "keys": "ctrl+alt+shift+left"
+        },
+        {
+            "id": null,
+            "keys": "ctrl+alt+8"
+        },
+        {
+            "id": null,
+            "keys": "ctrl+shift+v"
+        },
+        {
+            "id": null,
+            "keys": "ctrl+alt+3"
+        },
+        {
+            "id": null,
+            "keys": "alt+/"
+        },
+        {
+            "id": null,
+            "keys": "enter"
+        },
+        {
+            "id": "User.copy.644BA8F2",
+            "keys": "ctrl+c"
+        },
+        {
+            "id": "User.togglePaneZoom",
+            "keys": "ctrl+/"
+        },
+        {
+            "id": "User.find",
+            "keys": "ctrl+shift+f"
+        },
+        {
+            "id": "User.resizePane.2A0DA8E0",
+            "keys": "alt+shift+left"
+        }
+    ],
+    "language": "zh-Hans",
+    "newTabMenu": 
+    [
+        {
+            "type": "remainingProfiles"
+        }
+    ],
+    "profiles": 
+    {
+        "defaults": 
+        {
+            "adjustIndistinguishableColors": "always",
+            "antialiasingMode": "grayscale",
+            "backgroundImageAlignment": "center",
+            "backgroundImageOpacity": 0.34,
+            "backgroundImageStretchMode": "uniformToFill",
+            "bellStyle": "none",
+            "colorScheme": "One Half Light (modified)",
+            "cursorHeight": 28,
+            "cursorShape": "vintage",
+            "experimental.retroTerminalEffect": false,
+            "font": 
+            {
+                "face": "LiterationMono Nerd Font",
+                "size": 10
+            },
+            "opacity": 90,
+            "padding": "14",
+            "useAcrylic": true
+        },
+        "list": 
+        [
+            {
+                "adjustIndistinguishableColors": "always",
+                "antialiasingMode": "cleartype",
+                "closeOnExit": "automatic",
+                "colorScheme": "One Half Light (modified)",
+                "commandline": "pwsh -noe -c Import-TerminalIcons ; Set-PromptVersion  balance",
+                "cursorColor": "#000000",
+                "experimental.retroTerminalEffect": false,
+                "guid": "{4d4365a2-7a9f-4f42-983e-4c5d5cb5caea}",
+                "name": "pwsh7 Prompt",
+                "opacity": 50,
+                "startingDirectory": "%USERPROFILE%\\Desktop",
+                "useAcrylic": true
+            },
+            {
+                "adjustIndistinguishableColors": "always",
+                "antialiasingMode": "cleartype",
+                "closeOnExit": "automatic",
+                "colorScheme": "One Half Light (modified)",
+                "commandline": "pwsh -noe -c p",
+                "elevate": true,
+                "experimental.retroTerminalEffect": false,
+                "guid": "{d109fd44-ac64-4ea0-a19a-311150c640a8}",
+                "hidden": false,
+                "name": "pwsh7 Admin",
+                "startingDirectory": "%USERPROFILE%"
+            },
+            {
+                "colorScheme": "Campbell (modified)",
+                "commandline": "pwsh -nologo -noe -c Import-TerminalIcons ",
+                "guid": "{49c99180-65cf-4c4a-8cb6-0a955aab769f}",
+                "hidden": false,
+                "name": "pwsh7 Dark"
+            },
+            {
+                "guid": "{61c54bbd-c2c6-5271-96e7-009a87ff44bf}",
+                "hidden": false,
+                "name": "Windows PowerShell"
+            },
+            {
+                "guid": "{0caa0dad-35be-5f56-a8ff-afceeeaa6101}",
+                "hidden": false,
+                "name": "Command Prompt"
+            },
+            {
+                "adjustIndistinguishableColors": "always",
+                "commandline": "C:/msys64/msys2_shell.cmd -defterm -here -no-start -ucrt64 -shell bash",
+                "guid": "{517af48c-7c9f-49e0-9d49-db491a0bafaf}",
+                "hidden": false,
+                "name": "MSYS2(bash)"
+            },
+            {
+                "adjustIndistinguishableColors": "always",
+                "antialiasingMode": "cleartype",
+                "closeOnExit": "automatic",
+                "colorScheme": "One Half Light (modified)",
+                "commandline": "pwsh -noe -c Import-TerminalIcons",
+                "cursorColor": "#000000",
+                "experimental.retroTerminalEffect": false,
+                "guid": "{6a10fda8-b6b6-4dbe-a3ff-c5aba8d07b80}",
+                "hidden": false,
+                "name": "pwsh7 ",
+                "opacity": 50,
+                "useAcrylic": true
+            },
+            {
+                "adjustIndistinguishableColors": "always",
+                "antialiasingMode": "cleartype",
+                "bellStyle": "taskbar",
+                "closeOnExit": "automatic",
+                "colorScheme": "One Half Light (modified)",
+                "commandline": "pwsh -noe -c p",
+                "cursorColor": "#000000",
+                "experimental.retroTerminalEffect": false,
+                "font": 
+                {
+                    "face": "LiterationMono Nerd Font"
+                },
+                "guid": "{74fd5587-5585-4037-a746-20164b911685}",
+                "hidden": false,
+                "name": "pwsh7 Scoop Prompt",
+                "opacity": 90,
+                "startingDirectory": "%USERPROFILE%\\Desktop",
+                "useAcrylic": true
+            },
+            {
+                "adjustIndistinguishableColors": "always",
+                "commandline": "C:/msys64/msys2_shell.cmd -defterm -here -no-start -ucrt64 -shell zsh",
+                "guid": "{f14aa6e7-75b5-4912-a54f-e43c21d9e0ca}",
+                "hidden": false,
+                "name": "MSYS2(zsh)"
+            },
+            {
+                "guid": "{19b06ca7-0e9e-5a82-8ad0-4250d746201a}",
+                "hidden": false,
+                "name": "archlinux",
+                "source": "Microsoft.WSL"
+            },
+            {
+                "guid": "{610316a2-07c2-5b51-b270-54dcb770eb0b}",
+                "hidden": false,
+                "name": "Alpine",
+                "source": "Microsoft.WSL"
+            },
+            {
+                "guid": "{b453ae62-4e3d-5e58-b989-0a998ec441b8}",
+                "hidden": false,
+                "name": "Azure Cloud Shell",
+                "source": "Windows.Terminal.Azure"
+            },
+            {
+                "guid": "{0fcbc45d-e622-5315-b186-0c7b9b2c784e}",
+                "hidden": false,
+                "name": "ubuntu24",
+                "source": "Microsoft.WSL"
+            }
+        ]
+    },
+    "schemes": 
+    [
+        {
+            "background": "#0C0C0C",
+            "black": "#0C0C0C",
+            "blue": "#0030BD",
+            "brightBlack": "#767676",
+            "brightBlue": "#224491",
+            "brightCyan": "#3C8585",
+            "brightGreen": "#76C67D",
+            "brightPurple": "#B4009E",
+            "brightRed": "#E74856",
+            "brightWhite": "#F2F2F2",
+            "brightYellow": "#F9F1A5",
+            "cursorColor": "#FFFFFF",
+            "cyan": "#2F79B3",
+            "foreground": "#F0F0F0",
+            "green": "#8AFAB9",
+            "name": "Campbell (modified)",
+            "purple": "#881798",
+            "red": "#C50F1F",
+            "selectionBackground": "#FFFFFF",
+            "white": "#808080",
+            "yellow": "#C19C00"
+        },
+        {
+            "background": "#FFFFFF",
+            "black": "#3C5712",
+            "blue": "#17B2FF",
+            "brightBlack": "#749B36",
+            "brightBlue": "#27B2F6",
+            "brightCyan": "#13A8C0",
+            "brightGreen": "#89AF50",
+            "brightPurple": "#F2A20A",
+            "brightRed": "#F49B36",
+            "brightWhite": "#741274",
+            "brightYellow": "#991070",
+            "cursorColor": "#FFFFFF",
+            "cyan": "#3C96A6",
+            "foreground": "#000000",
+            "green": "#6AAE08",
+            "name": "Frost",
+            "purple": "#991070",
+            "red": "#8D0C0C",
+            "selectionBackground": "#FFFFFF",
+            "white": "#6E386E",
+            "yellow": "#991070"
+        },
+        {
+            "background": "#F3FAF0",
+            "black": "#363840",
+            "blue": "#0184BC",
+            "brightBlack": "#8F94A8",
+            "brightBlue": "#61AFEF",
+            "brightCyan": "#56B5C1",
+            "brightGreen": "#98C379",
+            "brightPurple": "#C577DD",
+            "brightRed": "#DF6C75",
+            "brightWhite": "#7A7A7A",
+            "brightYellow": "#E4C07A",
+            "cursorColor": "#4BA35F",
+            "cyan": "#0997B3",
+            "foreground": "#000000",
+            "green": "#50A14F",
+            "name": "One Half Light (modified)",
+            "purple": "#A626A4",
+            "red": "#E45649",
+            "selectionBackground": "#B75FFF",
+            "white": "#C4C4C4",
+            "yellow": "#C18301"
+        },
+        {
+            "background": "#FFFEFC",
+            "black": "#002B36",
+            "blue": "#217AB8",
+            "brightBlack": "#073642",
+            "brightBlue": "#4E54B3",
+            "brightCyan": "#93A1A1",
+            "brightGreen": "#586E75",
+            "brightPurple": "#6C71C4",
+            "brightRed": "#CB4B16",
+            "brightWhite": "#FDF6E3",
+            "brightYellow": "#B0AA15",
+            "cursorColor": "#002B36",
+            "cyan": "#2AA198",
+            "foreground": "#657B83",
+            "green": "#859900",
+            "name": "Solarized Light (modified)",
+            "purple": "#D33682",
+            "red": "#DC322F",
+            "selectionBackground": "#FFFFFF",
+            "white": "#EEE8D5",
+            "yellow": "#B58900"
+        }
+    ],
+    "tabSwitcherMode": "disabled",
+    "tabWidthMode": "equal",
+    "theme": "system",
+    "themes": [],
+    "useAcrylicInTabRow": true,
+    "windowingBehavior": "useExisting"
+}

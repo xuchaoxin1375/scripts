@@ -52,7 +52,7 @@ done
 # 允许root用户运行常用命令(主要针对zsh)
 echo "Loading additional shell config and functions..."
 
-# 针对bash的配置(依赖于shopt命令)
+# 针对bash的配置(依赖于shopt命令和针对bash的prompt)
 if is_shell bash || check_dependency -q shopt; then
   # 检查当前 Shell 是否运行在 POSIX 模式下。
   # POSIX 模式是为了严格遵守 Unix 标准，它会禁用很多 Bash 特有的“花哨”功能（比如高级补全）。
@@ -66,35 +66,35 @@ if is_shell bash || check_dependency -q shopt; then
       . /usr/share/bash-completion/bash_completion
 
   fi
+  set_shopt() {
 
-  # 目录快速切换
-  shopt -s autocd   # 直接输入目录名即可进入，无需 cd
-  shopt -s cdspell  # 拼写检查：自动修正 cd 时的小错误
-  shopt -s globstar # 递归通配符：允许使用 ls **/*.js 这种写法
+    # 目录快速切换
+    shopt -s autocd   # 直接输入目录名即可进入，无需 cd
+    shopt -s cdspell  # 拼写检查：自动修正 cd 时的小错误
+    shopt -s globstar # 递归通配符：允许使用 ls **/*.js 这种写法
 
-  # This allows you to bookmark your favorite places across the file system
-  # Define a variable containing a path and you will be able to cd into it regardless of the directory you're in
-  shopt -s cdable_vars
+    # This allows you to bookmark your favorite places across the file system
+    # Define a variable containing a path and you will be able to cd into it regardless of the directory you're in
+    shopt -s cdable_vars
 
-  # Update window size after every command
-  shopt -s checkwinsize
+    # Update window size after every command
+    shopt -s checkwinsize
 
-  # Enable history expansion with space
-  # E.g. typing !!<space> will replace the !! with your last command
-  bind Space:magic-space
-  # Turn on recursive globbing (enables ** to recurse all directories)
-  shopt -s globstar 2> /dev/null
+    # Enable history expansion with space
+    # E.g. typing !!<space> will replace the !! with your last command
+    bind Space:magic-space
+    # Turn on recursive globbing (enables ** to recurse all directories)
+    shopt -s globstar 2> /dev/null
 
-  ## SANE HISTORY DEFAULTS ##
+    ## SANE HISTORY DEFAULTS ##
 
-  # Append to the history file, don't overwrite it
-  shopt -s histappend
+    # Append to the history file, don't overwrite it
+    shopt -s histappend
 
-  # Save multi-line commands as one command
-  shopt -s cmdhist
-
-  # Record each line as it gets issued
-  PROMPT_COMMAND='history -a'
+    # Save multi-line commands as one command
+    shopt -s cmdhist
+  }
+  set_shopt
 
   # Huge history. Doesn't appear to slow things down, so why not?
   HISTSIZE=500000
@@ -110,9 +110,16 @@ if is_shell bash || check_dependency -q shopt; then
   # %F equivalent to %Y-%m-%d
   # %T equivalent to %H:%M:%S (24-hours format)
   HISTTIMEFORMAT='%F %T '
+
+  # 加载bash prompt(注意每次加载prompt附近可能绑定其他一些动作)
+  # Record each line as it gets issued
+  # 自定义prompt的话一般也会更改PROMPT_COMMAND,考虑把被绑定的语句放到prompt定义中
+  # PROMPT_COMMAND='history -a' 
+  source /www/sh/fine_bash_prompt.sh
 fi
+
 # shellcheck disable=SC2154
-export INPUTRC="$sh/.inputrc.tpl.conf"
+export INPUTRC="$sh/.inputrc.conf"
 echo "update inputrc [$INPUTRC]..."
 
 [[ -f "$HOME/.inputrc" ]] && echo "warning: ~/.inputrc exists, $INPUTRC will be used instead!"

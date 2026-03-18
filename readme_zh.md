@@ -43,9 +43,9 @@ irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsMod
 
 更具体的说明查看此文档：[部署说明](./PS/Deploy/readme.md)
 
-> 会尝试为你的电脑安装powershell7和git两个软件
+如果已经安装过powershell7和git,则上述命令会跳过相关软件下载,直接clone代码速度更快更稳.
 
-如果已经安装过powershell7和git,则可以运行如下版本的命令快速部署.
+> 如果没有实现安装,则会尝试为你的电脑安装powershell7和git两个软件,但是可靠性不保证.
 
 
 

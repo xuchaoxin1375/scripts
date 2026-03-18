@@ -2013,7 +2013,7 @@ function Deploy-WtSettings
     )
     Update-PwshEnvIfNotYet -Mode Vars
     # 备份的配置文件路径
-    $ConfigBackup = "$configs\wtConf.json"
+    $ConfigBackup = "$scripts\config\wtConf.json"
     $WtConfig = "$wtConf_Home\settings.json"
     $WtPortableConfig = "$wtPortableConf_Home\settings.json"
     if ($Force)

@@ -92,7 +92,7 @@ function Backup-WtSettings
 {
     Update-PwshEnvIfNotYet -Mode Vars
     
-    Copy-Item -Path $wtConf_Home\settings.json -Destination $configs\wtConf.json -Verbose 
+    Copy-Item -Path $wtConf_Home\settings.json -Destination $scripts\config\wtConf.json -Verbose 
     # hard "$configs\wtConf.json" "$wtConf_Home\settings.json"
 
 }
