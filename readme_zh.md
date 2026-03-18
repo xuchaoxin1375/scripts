@@ -43,6 +43,12 @@ irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsMod
 
 更具体的说明查看此文档：[部署说明](./PS/Deploy/readme.md)
 
+> 会尝试为你的电脑安装powershell7和git两个软件
+
+如果已经安装过powershell7和git,则可以运行如下版本的命令快速部署.
+
+
+
 ### 部署失败问题👺
 
 本项目的许多一键部署脚本依赖于`github.com`的加速站点,如果这些站点过期了,那么会导致相关下载行为无法顺利执行`irm,wget`等

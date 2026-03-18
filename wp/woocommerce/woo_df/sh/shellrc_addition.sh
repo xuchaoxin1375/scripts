@@ -54,17 +54,17 @@ echo "Loading additional shell config and functions..."
 
 # 针对bash的配置(依赖于shopt命令)
 if is_shell bash || check_dependency -q shopt; then
-  echo "[bash-completion] loading..."
-  # Use bash-completion, if available, and avoid double-sourcing
-  [[ $PS1 &&
-    ! ${BASH_COMPLETION_VERSINFO:-} &&
-    -f /usr/share/bash-completion/bash_completion ]] &&
-    . /usr/share/bash-completion/bash_completion
-
   # 检查当前 Shell 是否运行在 POSIX 模式下。
   # POSIX 模式是为了严格遵守 Unix 标准，它会禁用很多 Bash 特有的“花哨”功能（比如高级补全）。
   if ! shopt -oq posix; then
-    echo "[bash-completionx] loading..."
+    echo "bash not running on posix mode ..."
+    echo "[bash-completion] loading..."
+    # Use bash-completion, if available, and avoid double-sourcing
+    [[ $PS1 &&
+      ! ${BASH_COMPLETION_VERSINFO:-} &&
+      -f /usr/share/bash-completion/bash_completion ]] &&
+      . /usr/share/bash-completion/bash_completion
+
   fi
 
   # 目录快速切换

@@ -56,8 +56,17 @@ function Deploy-GitForwindows
         [switch]$InstallByGiteeScoop,
         
         $Path = 'C:\PortableGit',
+        # 如果检测到git命令已经可用,是否仍然通过此方法再次安装(默认取消)
+        [switch]$Force,
         [switch]$IgnoreCache
     )
+    Write-Host 'Checking git command availability......'
+
+    if((Get-Command git -ErrorAction SilentlyContinue) -and !$Force)
+    {
+        Write-Host 'Git command already exists,skip installation.' -ForegroundColor yellow
+        return $true
+    }
     Write-Verbose 'Try to get the lastest version of git portable version...'
     $latestRelease = Invoke-WebRequest -UseBasicParsing -Uri 'https://api.github.com/repos/git-for-windows/git/releases/latest' -Method Get | ConvertFrom-Json
     if ($latestRelease)

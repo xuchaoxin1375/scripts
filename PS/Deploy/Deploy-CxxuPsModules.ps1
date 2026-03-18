@@ -107,8 +107,9 @@ function Deploy-CxxuPsModules
         # 而国内的仓库平台需要登录,登录有下载快,成功率高
         $PackagePath = "$home/Downloads/CxxuPsModules/scripts*.zip",
         
+        # default 自动切换策略(优先尝试从本地包安装,如果失败,则尝试从远程仓库克隆)
         [ValidateSet('Default', 'FromPackage', 'FromRemoteGit')]
-        $Mode = 'Default',
+        $Mode = 'Default', 
         [switch]$Force
     )
     
@@ -181,13 +182,14 @@ function Deploy-CxxuPsModules
     #     New-Item -ItemType Directory $RepoPath -Verbose
     # }
 
-    #模式及其代码准备
+    # 定义代码下载安装模式片段
+    # 模式1:从远程Git仓库克隆
     $RemoteGitCloneScript = { 
         Write-Host "Mode:Clone From Remote repository:[$source]" -ForegroundColor cyan
         $GitCmdAvailability = Get-Command git -ErrorAction SilentlyContinue
         if (!$GitCmdAvailability)
         {
-            Throw 'Git is not available on your system,please install it first!'
+            throw 'Git is not available on your system,please install it first!'
         }
         $url = "https://${Source}.com/xuchaoxin1375/scripts.git"
         Write-Verbose $url
@@ -224,18 +226,23 @@ function Deploy-CxxuPsModules
         
         if ((Test-Path $PackagePath))
         {
+            Write-Verbose "Local package exist,try local mode..."
             & $LocalScript
         }
         else
         {
             
-            ## 检查Git是否可用,如果可用,采用最可靠的克隆方案执行,否则采用下载仓库,和本地解压方案
+            Write-Verbose @"
+            检查Git是否可用:
+            1.如果可用,采用最可靠的克隆方案执行,否则采用下载仓库,和本地解压方案;
+            2.如果不可用,则尝试安装git,然后情况变回第一种情况
+"@
             $GitAvailability = Get-Command git -ErrorAction SilentlyContinue
             if (!$GitAvailability)
             {
 
                 #向用户推荐一键安装git的方案,然后使用默认的下载方案
-                Write-Host 'Git is not available on your system!' -ForegroundColor cyan
+                Write-Host 'Git is not available on your system now!' -ForegroundColor cyan
                 $InstallGit = Read-Host 'Do you want to install it (it take a few seconds)!(y/n)(Default: y)'
                 if ($InstallGit -eq 'y' -or $InstallGit.Trim() -eq '')
                 {
@@ -311,32 +318,7 @@ function Deploy-CxxuPsModules
     Start-Process -FilePath pwsh -ArgumentList '-noe -c p'
 }
 
-function Install-CxxuPsModules-Deprecated
-{
-    <# 
-    .SYNOPSIS
-    # 调用上述定义的函数
-    .DESCRIPTION
-    这里判断Git是否可用，如果可用，采用最可靠的克隆方案执行，否则采用下载仓库,和本地解压方案,然后用合适的参数调用Deploy-CxxuPsModule
-    本函数适合作为一种默认方案,如果失败,用户可以尝试手动调用相关的函数,自行指定参数,比如Deploy-CxxuPsModule
-    #>
-
-    ## 检查Git是否可用,如果可用,采用最可靠的克隆方案执行,否则采用下载仓库,和本地解压方案
-    $GitAvailability = Get-Command git -ErrorAction SilentlyContinue
-
-    if ($GitAvailability)
-    {
-        #装有Git的用户使用此方案
-        Deploy-CxxuPsModules # -RepoPath  C:/temp/scripts -Verbose
-    
-    }
-    else
-    {
-    
-        #没有Git的用户使用此方案
-        Deploy-CxxuPsModules -Mode FromPackage -Verbose
-    } 
-}
+ 
 
 #交互脚本
 # $continue = Read-Host 'Install the CxxuPSModules in Default Parameters?
@@ -362,4 +344,5 @@ function Remove-CxxuPsModulesEnvVars
     Remove-EnvVarValue -EnvVar Path -ValueToRemove "$env:systemDrive\powershell\7"
     
 }
+# 调用函数执行安装(配置默认行为)
 Deploy-CxxuPsModules -Verbose -Confirm
