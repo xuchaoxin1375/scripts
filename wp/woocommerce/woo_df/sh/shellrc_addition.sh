@@ -9,6 +9,8 @@
 source /www/sh/shell_vars.sh
 source /www/sh/shell_alias.sh
 source /www/sh/shell_utils.sh
+# bash prompt主题配置
+export BASH_PROMPT="fast_ys"
 # 使用windows环境下的编辑器时,例如vscode,注意换行符改为LF,避免多行命令被错误解释🎈
 mark='# Load additional shell configs'
 # 检查~/.zshrc文件中是否存在:$mark 字符串,如果不存在,则向~/.zshrc添加以下内容,否则跳过插入并报告相关配置已存在
@@ -110,12 +112,15 @@ if is_shell bash || check_dependency -q shopt; then
   # %F equivalent to %Y-%m-%d
   # %T equivalent to %H:%M:%S (24-hours format)
   HISTTIMEFORMAT='%F %T '
-
   # 加载bash prompt(注意每次加载prompt附近可能绑定其他一些动作)
   # Record each line as it gets issued
   # 自定义prompt的话一般也会更改PROMPT_COMMAND,考虑把被绑定的语句放到prompt定义中
   # PROMPT_COMMAND='history -a'
-  source /www/sh/fine_bash_prompt.sh
+  echo "bash prompt:$BASH_PROMPT"
+  BASH_PROMPT_SCRIPT="/www/sh/bash_prompts/${BASH_PROMPT}.sh"
+  # echo "[$BASH_PROMPT_SCRIPT]"
+  # shellcheck disable=SC1090
+  source "$BASH_PROMPT_SCRIPT"
 fi
 
 # shellcheck disable=SC2154
