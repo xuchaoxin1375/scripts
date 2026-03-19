@@ -4,6 +4,7 @@
 # wsl中执行部署: sudo mkdir -p /www/ ; sudo ln -sTv /mnt/c/repos/scripts/wp/woocommerce/woo_df/sh/  /www/sh
 # 引入外部shell脚本使用source命令,这里防止shellcheck误报,禁用此类检查
 # shellcheck disable=SC1091
+# shellcheck disable=SC2154
 # compatible_shells=("bash" "zsh")
 # 引入预定义的别名
 source /www/sh/shell_vars.sh
@@ -117,13 +118,31 @@ if is_shell bash || check_dependency -q shopt; then
   # 自定义prompt的话一般也会更改PROMPT_COMMAND,考虑把被绑定的语句放到prompt定义中
   # PROMPT_COMMAND='history -a'
   echo "bash prompt:$BASH_PROMPT"
-  BASH_PROMPT_SCRIPT="/www/sh/bash_prompts/${BASH_PROMPT}.sh"
-  # echo "[$BASH_PROMPT_SCRIPT]"
-  # shellcheck disable=SC1090
-  source "$BASH_PROMPT_SCRIPT"
+
+  # 修改后的 prompt_switcher
+  prompt_switcher() {
+    local prompt_file="$sh/bash_prompts/${BASH_PROMPT}.sh"
+
+    if [[ -f "$prompt_file" ]]; then
+      # 仅加载当前需要的那个脚本
+      # shellcheck source=/dev/null
+      source "$prompt_file"
+
+      # 调用对应的函数
+      case "$BASH_PROMPT" in
+        "fast_ys") __fast_ys_prompt ;;
+        "fast_junkfood") __fast_junkfood_prompt ;;
+        "ys") __ys_prompt ;;
+        *) echo "warning: function mapping missing for $BASH_PROMPT" >&2 ;;
+      esac
+      # PS1="[$(commom_prefix)]$PS1"
+    else
+      echo "warning: unknown prompt configuration [$BASH_PROMPT]" >&2
+    fi
+  }
+  PROMPT_COMMAND=prompt_switcher
 fi
 
-# shellcheck disable=SC2154
 export INPUTRC="$sh/.inputrc.conf"
 echo "update inputrc [$INPUTRC]..."
 

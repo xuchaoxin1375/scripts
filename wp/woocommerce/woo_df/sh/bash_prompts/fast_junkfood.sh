@@ -49,7 +49,7 @@ __git_prompt_dirty() {
 
     # 一次 git status 搞定
     local porcelain
-    porcelain=$(git -C "$dir" status --porcelain=v1 2>/dev/null | head -1)
+    porcelain=$(git -C "$dir" status --porcelain=v1 2> /dev/null | head -1)
 
     if [[ -n "$porcelain" ]]; then
         echo -n "✗✗✗"
@@ -57,31 +57,34 @@ __git_prompt_dirty() {
         echo -n "✔"
     fi
 }
+__fast_junkfood_prompt() {
 
-# ============================================================
-#  静态 PS1 定义（和 junkfood 一样，一次性组装）
-# ============================================================
-# 颜色
-__C_RED='\[\e[1;31m\]'
-__C_WHITE='\[\e[1;37m\]'
-__C_YELLOW='\[\e[1;33m\]'
-__C_BLUE='\[\e[1;34m\]'
-__C_GREEN='\[\e[1;32m\]'
-__C_CYAN='\[\e[0;36m\]'
-__C_RESET='\[\e[0m\]'
+    # ============================================================
+    #  静态 PS1 定义（和 junkfood 一样，一次性组装）
+    # ============================================================
+    # 颜色
+    __C_RED='\[\e[1;31m\]'
+    __C_WHITE='\[\e[1;37m\]'
+    __C_YELLOW='\[\e[1;33m\]'
+    __C_BLUE='\[\e[1;34m\]'
+    __C_GREEN='\[\e[1;32m\]'
+    __C_CYAN='\[\e[0;36m\]'
+    __C_RESET='\[\e[0m\]'
 
-# 对应 junkfood 的各段
-# #( 日期@时间 )( user@machine ): 路径@分支 dirty/clean
-JUNKFOOD_TIME_="${__C_RED}#${__C_WHITE}( ${__C_YELLOW}\D{%m/%d/%Y}${__C_RESET}@${__C_WHITE}\t ${__C_WHITE})( ${__C_RESET}"
-JUNKFOOD_CURRENT_USER_="${__C_GREEN}\u${__C_RESET}"
-JUNKFOOD_MACHINE_="${__C_BLUE}\h${__C_WHITE} ):${__C_RESET}"
-# # \$(__git_prompt_info) 和 \$(__git_prompt_dirty) 在 PS1 中延迟求值
-# JUNKFOOD_LOCA_="${__C_CYAN}\w${__C_WHITE}\$(__git_prompt_info)${__C_WHITE}\$(__git_prompt_dirty)${__C_RESET}"
-JUNKFOOD_LOCA_="${__C_CYAN}\w${__C_WHITE}"
+    # 对应 junkfood 的各段
+    # #( 日期@时间 )( user@machine ): 路径@分支 dirty/clean
+    JUNKFOOD_TIME_="${__C_RED}# [$(get_os_name)][$(current_shell)]${__C_WHITE}( ${__C_YELLOW}\D{%m/%d/%Y}${__C_RESET}@${__C_WHITE}\t ${__C_WHITE})( ${__C_RESET}"
+    JUNKFOOD_CURRENT_USER_="${__C_GREEN}\u${__C_RESET}"
+    JUNKFOOD_MACHINE_="${__C_BLUE}\h${__C_WHITE} ):${__C_RESET}"
+    # # \$(__git_prompt_info) 和 \$(__git_prompt_dirty) 在 PS1 中延迟求值
+    # JUNKFOOD_LOCA_="${__C_CYAN}\w${__C_WHITE}\$(__git_prompt_info)${__C_WHITE}\$(__git_prompt_dirty)${__C_RESET}"
+    JUNKFOOD_LOCA_="${__C_CYAN}\w${__C_WHITE}"
 
-# 组装
-PS1="${JUNKFOOD_TIME_}${JUNKFOOD_CURRENT_USER_}@${JUNKFOOD_MACHINE_}${JUNKFOOD_LOCA_}
+    # 组装(定义字段顺序)
+    PS1="${JUNKFOOD_TIME_}${JUNKFOOD_CURRENT_USER_}@${JUNKFOOD_MACHINE_}${JUNKFOOD_LOCA_}
 \$ "
 
-# history 实时写入
-PROMPT_COMMAND="history -a"
+    # history 实时写入
+    history -a
+    # PROMPT_COMMAND="history -a"
+}

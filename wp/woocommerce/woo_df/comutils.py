@@ -8,16 +8,17 @@ import os
 import queue
 import re
 import threading
+import unicodedata
 from datetime import datetime
-from time import time
 from logging import debug, error, info
+from time import time
 from typing import List, Optional, Union
 from urllib.parse import unquote, urlparse
-from pandas import Series
+
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
-import unicodedata
+from pandas import Series
 
 SUPPORT_IMAGE_FORMATS_NAME = (
     "jpg",
@@ -58,6 +59,22 @@ EMAIL_PATTERN = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
 HTTP_S_URL_CONS_PATTERN = r'https?://[^"<>]+'
 URL_SEP_REGEXP = re.compile(URL_SEP_PATTERN)
 COMMON_SEP_REGEXP = re.compile(COMMON_SEP_PATTERN)
+
+
+
+def encode_domain(url, n=5):
+    """取域名前n个字符，混淆成短字符串"""
+    domain = urlparse(url).hostname.replace("www.", "")
+    part = domain[:n]
+    # 每个字符ASCII码+5，再转hex取后两位，拼接
+    return ''.join(f'{(ord(c)+5) % 256:x}' for c in part)
+
+def decode_domain(code):
+    """还原(备用)"""
+    chars = [code[i:i+2] for i in range(0, len(code), 2)]
+    return ''.join(chr(int(c, 16) - 5) for c in chars)
+
+
 
 
 def get_now_time_str():

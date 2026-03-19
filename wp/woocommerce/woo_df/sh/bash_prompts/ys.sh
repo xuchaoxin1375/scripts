@@ -57,7 +57,7 @@ __ys_prompt() {
     fi
 
     # ── 组装 prompt ──
-    PS1="\n${gray}# [bash]${reset} ${cyan}\u${reset} ${gray}@${reset} ${yellow}\h${reset}"
+    PS1="\n${gray}# [$(get_os_name)][$(current_shell)]${reset} ${cyan}\u${reset} ${gray}@${reset} ${yellow}\h${reset}"
     PS1+=" ${gray}in${reset} ${blue}\w${reset}"
     PS1+="${git_info}"
     PS1+=" ${gray}[${time}]${reset}"
@@ -70,4 +70,4 @@ __ys_prompt() {
     history -a
 }
 
-export PROMPT_COMMAND=__ys_prompt
+# export PROMPT_COMMAND=__ys_prompt
