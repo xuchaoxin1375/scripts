@@ -6,9 +6,9 @@ alias bashrc='source ~/.bashrc'
 alias zshrc='source ~/.zshrc'
 alias cls=clear
 # 第三方程序缩写(尽可能用neovim(nvim)代替vim)
-command -v nvim &>/dev/null && alias vim=nvim
-command -v neovim &>/dev/null && alias vim=neovim
-alias vi=vim
+command -v nvim &> /dev/null && alias vim=nvim
+command -v neovim &> /dev/null && alias vim=neovim
+command -v vim &> /dev/null && alias vi=vim
 # fail2ban系列命令缩写f2b或fb
 alias fbc='fail2ban-client'
 alias sfbc='sudo fail2ban-client' #非root用户使用,也兼容root用户使用

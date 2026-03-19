@@ -2,6 +2,58 @@
 # 提供一些常用的bash/zsh兼容的函数.
 # 新函数添加于下方:
 # ===============================
+
+# Install ble.sh framework for bash
+# 安装前检查依赖,以及避免重复安装重复插入配置项到~/.bashrc
+install_blesh() {
+    local BLE_REPO="https://github.com/akinomyoga/ble.sh.git"
+    local BLE_DIR="$HOME/.local/share/blesh"
+    local INSTALL_SRC="$HOME/.local/share/blesh/ble.sh"
+    local BASHRC="$HOME/.bashrc"
+
+    echo "--- 开始检查 ble.sh 安装环境 ---"
+
+    # 1. 依赖检查
+    for cmd in git make; do
+        if ! command -v $cmd &> /dev/null; then
+            echo "错误: 未找到 $cmd，请先安装后再试。"
+            return 1
+        fi
+    done
+
+    # 2. 避免重复下载/编译 (如果目录已存在则跳过)
+    if [ ! -d "$BLE_DIR" ]; then
+        echo "正在克隆并编译 ble.sh..."
+
+        # 使用临时目录克隆，避免污染当前路径
+        local TMP_DIR
+        TMP_DIR=$(mktemp -d)
+        git clone --recursive --depth 1 --shallow-submodules "$BLE_REPO" "$TMP_DIR/ble.sh"
+
+        # 执行安装
+        make -C "$TMP_DIR/ble.sh" install PREFIX=~/.local
+
+        # 清理临时目录
+        rm -rf "$TMP_DIR"
+    else
+        echo "提示: ble.sh 似乎已经安装在 $BLE_DIR。"
+    fi
+
+    # 3. 幂等性添加 source 命令到 .bashrc
+    local SOURCE_LINE="[[ \$- == *i* ]] && source -- \"$INSTALL_SRC\""
+
+    if grep -Fq "$INSTALL_SRC" "$BASHRC"; then
+        echo "提示: .bashrc 中已存在 ble.sh 配置，跳过写入。"
+    else
+        echo "正在向 .bashrc 添加启动配置..."
+        # 换行确保不会追加到已有内容的行尾
+        echo -e "\n# ble.sh setup\n$SOURCE_LINE" >> "$BASHRC"
+        echo "配置已成功添加。"
+    fi
+
+    echo "--- 安装/检查完成 ---"
+    echo "请执行 'source ~/.bashrc' 或重新打开终端以激活 ble.sh。"
+}
 # 获取当前系统的发行版名称
 function get_os_name() {
     # 只读取第一行并取第一个单词
