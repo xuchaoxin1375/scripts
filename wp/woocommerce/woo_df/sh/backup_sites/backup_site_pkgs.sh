@@ -1,32 +1,9 @@
 #!/bin/bash
 
-
 # =============================================
 # 📦 服务器 A → 服务器 B 压缩包备份脚本（要求SSH 已配好免密）
 # 仅备份指定目录中的压缩包，保留子目录结构
 # 可选每日归档，支持多种压缩格式
-# =============================================
-#
-# 用法:
-#   bash backup_site_pkgs.sh [选项]
-#
-# 选项:
-#   -s, --source-dir <目录>      指定源目录 (默认: /srv/uploads/uploader/files)
-#   -b, --backup-server <地址>   指定备份服务器 (可以指定用于备份存储的服务器ip,如果没有指定用户名(user@host),则可能会尝试root身份登录)
-#   -l, --log-file <文件>        指定日志文件 (默认: 源目录/backup-to-srv.log)
-#   -d, --backup-dir <目录>      指定备份目录 (默认: /www/wwwroot/xcx/s2)
-#   --date-dir                   启用创建每日备份子目录 (如 2025-09-12),这不建议,对rsync检查增量不简便
-#   -h, --help                   显示帮助信息
-#
-# 示例:
-#   bash backup_site_pkgs.sh 
-#   bash backup_site_pkgs.sh -s /data/files -b user@host -d /backup 
-# =============================================
-
-
-
-
-
 
 # -h 输出内容截止于此(暂定前30行)
 # ========== 🔧 配置区（默认值，可被参数覆盖） ==========
@@ -48,30 +25,58 @@ INCLUDE_PATTERNS=(
     "*.7z"
     "*.gz" "*.bz2" "*.xz"
 )
-
 # ========== 🏷️ 解析命令行参数和现实帮助 ==========
 show_help() {
-    echo "# 帮助文档来源: 脚本顶部注释区" >&2
-    head -30 "$0" | grep '^#' | sed 's/^#//'
+    usage="
+
+ 用法:
+   bash $0 [选项]
+
+ 选项:
+   -s, --source-dir <目录>      指定源目录 (默认: /srv/uploads/uploader/files)
+   -b, --backup-server <地址>   指定备份服务器 (可以指定用于备份存储的服务器ip,如果没有指定用户名(user@host),则可能会尝试root身份登录)
+   -l, --log-file <文件>        指定日志文件 (默认: 源目录/backup-to-srv.log)
+   -d, --backup-dir <目录>      指定备份目录 (默认: /www/wwwroot/xcx/s2)
+   --date-dir                   启用创建每日备份子目录 (如 2025-09-12),这不建议,对rsync检查增量不简便
+   -h, --help                   显示帮助信息
+
+ 示例:
+   bash $0 
+   bash $0 -s /data/files -b user@host -d /backup 
+"
+    echo "$usage"
     exit 0
 }
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        -s|--source-dir)
-            SOURCE_DIR="$2"; shift 2;;
-        -b|--backup-server)
-            BACKUP_SERVER="$2"; shift 2;;
-        -d|--backup-dir)
-            BACKUP_DIR="$2"; shift 2;;
-        -l|--log-file)
-            LOG_FILE="$2"; shift 2;;
+        -s | --source-dir)
+            SOURCE_DIR="$2"
+            shift 2
+            ;;
+        -b | --backup-server)
+            BACKUP_SERVER="$2"
+            shift 2
+            ;;
+        -d | --backup-dir)
+            BACKUP_DIR="$2"
+            shift 2
+            ;;
+        -l | --log-file)
+            LOG_FILE="$2"
+            shift 2
+            ;;
         --date-dir)
-            USE_DATE_DIR=1; shift;;
-        -h|--help)
-            show_help;;
+            USE_DATE_DIR=1
+            shift
+            ;;
+        -h | --help)
+            show_help
+            ;;
         *)
-            echo "未知参数: $1"; show_help;;
+            echo "未知参数: $1"
+            show_help
+            ;;
     esac
 done
 
@@ -84,7 +89,6 @@ fi
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
 }
-
 
 # ========== 🚀 开始执行 ==========
 log "=== 🚀 启动压缩包备份任务 ==="
@@ -109,7 +113,6 @@ if ! ssh "$BACKUP_SERVER" "mkdir -p '$TARGET_DIR'" 2>> "$LOG_FILE"; then
     exit 1
 fi
 
-
 # ========== 🔄 构建 rsync 命令 ==========
 RSYNC_CMD=(
     rsync
@@ -117,15 +120,15 @@ RSYNC_CMD=(
     --size-only # 如果你确定文件只要大小没变就没更新，使用 --size-only 可以跳过耗时的属性对比。
     # -z #压缩传输,如果已经是压缩包,可以不使用,否则可能会影响传输速度
     --prune-empty-dirs
-    --include="*/"                  # 保留子目录结构（关键！）
+    --include="*/" # 保留子目录结构（关键！）
 )
 
 for pattern in "${INCLUDE_PATTERNS[@]}"; do
     RSYNC_CMD+=(--include="$pattern")
 done
 
-RSYNC_CMD+=(--exclude="*")          # 排除其他所有文件
-RSYNC_CMD+=("$SOURCE_DIR/")         # 同步目录内容（注意末尾 /）
+RSYNC_CMD+=(--exclude="*")  # 排除其他所有文件
+RSYNC_CMD+=("$SOURCE_DIR/") # 同步目录内容（注意末尾 /）
 RSYNC_CMD+=("$BACKUP_SERVER:$TARGET_DIR/")
 
 # ========== ▶️ 执行备份 ==========
