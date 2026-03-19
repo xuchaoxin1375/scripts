@@ -38,23 +38,25 @@ MYSQL_USER="root"
 MYSQL_PASS=""
 
 show_help() {
-	log "用法: $0 [选项]"
-	log "  -s, --src <src_root>     网站根目录所在总目录 (默认: $SRC_ROOT)"
-	log "  -d, --dest <dest_root>   目标根目录 (默认: $DEST_ROOT)"
-	log "  -u, --user <username>    根据站点所属人员来指定网站范围(人员专属目录名,通常是人名拼音缩写),从而仅备份指定用户的网站目录下的站点 (默认: 所有用户)"
-	log "      --valid-users  <file>   白名单文件，指定需要处理的用户目录名列表 (默认: 无)"
-	log "      --whitelist-site <file>   白名单文件，指定需要处理的网站(域名)列表 (默认: 无)"
-	log "      --mysql-host <host>  MySQL主机地址"
-	log "      --mysql-port <port>  MySQL端口"
-	log "      --mysql-user <user>  MySQL用户名"
-	log "      --mysql-pass <pass>  MySQL密码"
-	log "      --mindepth <n>       find 扫描的最小深度 (默认: $MINDEPTH)"
-	log "      --maxdepth <n>       find 扫描的最大深度 (默认: $MAXDEPTH)"
-	log "      --dry-run            预览模式，仅显示将执行的操作"
-	log "      --force              强制覆盖已存在的备份"
-	log "      --parallel           并行处理模式"
-	log "      --jobs <n>           并行任务数 (默认: 4)"
-	log "  -h, --help               显示本帮助信息"
+	cat << EOF
+用法：$0 [选项]
+  -s, --src <src_root>     网站根目录所在总目录 (默认：$SRC_ROOT)
+  -d, --dest <dest_root>   目标根目录 (默认：$DEST_ROOT)
+  -u, --user <username>    根据站点所属人员来指定网站范围 (人员专属目录名，通常是人名拼音缩写),从而仅备份指定用户的网站目录下的站点 (默认：所有用户)
+      --valid-users  <file>   白名单文件，指定需要处理的用户目录名列表
+      --whitelist-site <file>   白名单文件，指定需要处理的网站 (域名) 列表
+      --mysql-host <host>  MySQL 主机地址
+      --mysql-port <port>  MySQL 端口
+      --mysql-user <user>  MySQL 用户名
+      --mysql-pass <pass>  MySQL 密码
+      --mindepth <n>       find 扫描的最小深度 (默认：$MINDEPTH)
+      --maxdepth <n>       find 扫描的最大深度 (默认：$MAXDEPTH)
+      --dry-run            预览模式，仅显示将执行的操作
+      --force              强制覆盖已存在的备份
+      --parallel           并行处理模式
+      --jobs <n>           并行任务数 (默认：$PARALLEL_JOBS)
+  -h, --help               显示本帮助信息
+EOF
 }
 #Function: isCommandInstalled()
 #
@@ -65,10 +67,9 @@ show_help() {
 #  if ! isCommandInstalled  ls ; then echo "You can install it with \"sudo dnf install tree\""; fi
 isCommandInstalled() {
 	if [ $# -ne 1 ]; then
-		echo "Invalid number of parameters provided to $FUNCNAME"
-		$(return >/dev/null 2>&1) && return 1 || exit 1
+		echo "Invalid number of parameters provided "
 	fi
-	if ! command -v "$1" &>/dev/null; then
+	if ! command -v "$1" &> /dev/null; then
 		echo "$1 is not installed"
 		return 1
 	fi
@@ -94,7 +95,7 @@ extract_username() {
 	local path="$1"
 
 	# 使用 IFS 按 '/' 分割路径
-	IFS='/' read -ra parts <<<"$path"
+	IFS='/' read -ra parts <<< "$path"
 
 	# 检查是否有至少 4 个部分（因为开头是 /，所以数组第一个元素为空）
 	# 例如：/www/wwwroot/xcx/ → ['', 'www', 'wwwroot', 'xcx', '']
@@ -181,7 +182,7 @@ check_mysql_connection() {
 	# mysqlshow "${MYSQL_ARGS[@]}"
 
 	# if mysqlshow "$MYSQL_ARGS" >/dev/null 2>&1; then
-	if mysql "${MYSQL_ARGS[@]}" -e "SELECT 1" &>/dev/null; then
+	if mysql "${MYSQL_ARGS[@]}" -e "SELECT 1" &> /dev/null; then
 		log "MySQL连接成功"
 		return 0
 	else
@@ -304,8 +305,8 @@ backup_one_site() {
 			# 构建mysql连接参数
 
 			# if mysqlshow "${MYSQL_ARGS[@]}" "$DBNAME" >/dev/null 2>&1; then
-			if mysql "${MYSQL_ARGS[@]}" -e "USE \`$DBNAME\`;" >/dev/null 2>&1; then
-				if mysqldump "${MYSQL_ARGS[@]}" "$DBNAME" >"$SQL_DUMP_PATH"; then
+			if mysql "${MYSQL_ARGS[@]}" -e "USE \`$DBNAME\`;" > /dev/null 2>&1; then
+				if mysqldump "${MYSQL_ARGS[@]}" "$DBNAME" > "$SQL_DUMP_PATH"; then
 					# 将sql文件用tar包装一下,文件名保持原来的.sql而不加tar后缀(这看起来有点多余,但是为了和其他配套脚本兼容,这里做一下额外处理)
 					## 先临时创建一个.tar文件,然后重命名(去掉.tar)
 					log "正在将 $SQL_DUMP_PATH 打包为tar文件,然后更名回 $SQL_DUMP_PATH"
@@ -334,80 +335,85 @@ backup_one_site() {
 }
 
 # 参数解析
-while [[ $# -gt 0 ]]; do
-	case "$1" in
-	-s | --src)
-		SRC_ROOT="$2"
-		shift 2
-		;;
-	-d | --dest)
-		DEST_ROOT="$2"
-		shift 2
-		;;
-	-u | --user)
-		USER="$2"
-		shift 2
-		;;
-	--valid-users)
-		VALID_USERS="$2"
-		shift 2
-		;;
-	--whitelist-site)
-		WHITELIST_SITE="$2"
-		shift 2
-		;;
-	--mysql-host)
-		MYSQL_HOST="$2"
-		shift 2
-		;;
-	--mysql-port)
-		MYSQL_PORT="$2"
-		shift 2
-		;;
-	--mysql-user)
-		MYSQL_USER="$2"
-		shift 2
-		;;
-	--mysql-pass)
-		MYSQL_PASS="$2"
-		shift 2
-		;;
-	--mindepth)
-		MINDEPTH="$2"
-		shift 2
-		;;
-	--maxdepth)
-		MAXDEPTH="$2"
-		shift 2
-		;;
-	--dry-run)
-		DRY_RUN=1
-		shift
-		;;
-	--force)
-		FORCE=1
-		shift
-		;;
-	--parallel)
-		PARALLEL=1
-		shift
-		;;
-	--jobs)
-		PARALLEL_JOBS="$2"
-		shift 2
-		;;
-	-h | --help)
-		show_help
-		exit 0
-		;;
-	*)
-		log "未知参数: $1"
-		show_help
-		exit 1
-		;;
-	esac
-done
+parse_args() {
 
+	while [[ $# -gt 0 ]]; do
+		case "$1" in
+			-s | --src)
+				SRC_ROOT="$2"
+				shift 2
+				;;
+			-d | --dest)
+				DEST_ROOT="$2"
+				shift 2
+				;;
+			-u | --user)
+				USER="$2"
+				shift 2
+				;;
+			--valid-users)
+				VALID_USERS="$2"
+				shift 2
+				;;
+			--whitelist-site)
+				WHITELIST_SITE="$2"
+				shift 2
+				;;
+			--mysql-host)
+				MYSQL_HOST="$2"
+				shift 2
+				;;
+			--mysql-port)
+				MYSQL_PORT="$2"
+				shift 2
+				;;
+			--mysql-user)
+				MYSQL_USER="$2"
+				shift 2
+				;;
+			--mysql-pass)
+				MYSQL_PASS="$2"
+				shift 2
+				;;
+			--mindepth)
+				MINDEPTH="$2"
+				shift 2
+				;;
+			--maxdepth)
+				MAXDEPTH="$2"
+				shift 2
+				;;
+			--dry-run)
+				DRY_RUN=1
+				shift
+				;;
+			--force)
+				FORCE=1
+				shift
+				;;
+			--parallel)
+				PARALLEL=1
+				shift
+				;;
+			--jobs)
+				PARALLEL_JOBS="$2"
+				shift 2
+				;;
+			-h | --help)
+				show_help
+				shift
+				exit 0
+				;;
+			*)
+				log "未知参数: $1"
+				show_help
+				shift
+				exit 1
+				;;
+		esac
+	done
+}
+parse_args "$@"
 # 获取所有 wordpress 目录，并打印已匹配到的目录
 log "正在扫描匹配的 wordpress 目录..."
 
@@ -436,10 +442,7 @@ fi
 check_listfile "$VALID_USERS"
 check_listfile "$WHITELIST_SITE"
 
-# if [[ -n "$VALID_USERS" && ! -f "$VALID_USERS" ]]; then
-# 	log "错误: 白名单文件 $VALID_USERS 不存在"
-# 	exit 1
-# fi
+
 
 # 在开始备份前检查MySQL连接
 if ! check_mysql_connection; then
@@ -457,7 +460,7 @@ if [[ $PARALLEL -eq 1 ]]; then
 	declare -a site_dirs
 	site_dirs_listfile="/www/site_dirs_list.txt"
 	# 清空原文件防止旧数据干扰
-	echo -n "" >"$site_dirs_listfile"
+	echo -n "" > "$site_dirs_listfile"
 
 	# 计算待备份网站根目录(初步计算,尚未计算列表中曾经备份而已有备份包到过滤处理.)
 	if [[ -n "$VALID_USERS" ]]; then
@@ -467,19 +470,22 @@ if [[ $PARALLEL -eq 1 ]]; then
 		# 使用 mapfile 安全读取
 		# -d '' 指定以 NULL 字符作为行分隔符
 		# < <(...) 使用进程替换将 find 的输出喂给 mapfile
-		find "$FIND_PATH" -mindepth "$MINDEPTH" -maxdepth "$MAXDEPTH" -type d -name wordpress >"$site_dirs_listfile"
+		find "$FIND_PATH" -mindepth "$MINDEPTH" -maxdepth "$MAXDEPTH" -type d -name wordpress > "$site_dirs_listfile"
 
-		mapfile -d '' site_dirs <"$site_dirs_listfile"
+		mapfile -d '' site_dirs < "$site_dirs_listfile"
 
 	elif [[ -n "$WHITELIST_SITE" ]]; then
 		log "将使用域名白名单文件搜索指定网站根目录: $WHITELIST_SITE"
-		mapfile -t sites <"$WHITELIST_SITE"
+		mapfile -t sites < "$WHITELIST_SITE"
 		for site in "${sites[@]}"; do
 			# 跳过第一个非空白字符是#或;的行(视为注释)
 			if [[ $site =~ ^[[:space:]]*(#|;).* ]]; then
 				log "Jump line [$site]"
 				continue
 			fi
+			# 移除行边缘空格
+			# site=$(echo "$site" | xargs)
+			site=$(trim "$site")
 			dir=$(echo "$SRC_ROOT"/*/"$site"/wordpress)
 			if [[ -d "$dir" ]]; then
 				# [[ -d "$dir" ]] && site_dirs+=("$dir")
@@ -488,7 +494,7 @@ if [[ $PARALLEL -eq 1 ]]; then
 				# 写入到文件中使用printf并以\0 分隔路径字符串比echo要安全(但是用户直接打开文件没有一行一个路径) printf "%s\0"
 				# 使用mapfile 的 -d '' 选项可以轻松读取 \0 分隔的元素,while read -r -d ''也支持
 				# 而在已知路径不会包含\n的情况下,可以用\n
-				printf "%s\n" "$dir" >>$site_dirs_listfile
+				printf "%s\n" "$dir" >> $site_dirs_listfile
 			else
 				log "[警告] 站点 $site 不存在"
 			fi
@@ -537,7 +543,7 @@ if [[ $PARALLEL -eq 1 ]]; then
 			log "[状态] 站点 $DOMAIN 需要执行备份"
 			((SITE_TO_BACKUP++))
 		fi
-	done <"$site_dirs_listfile"
+	done < "$site_dirs_listfile"
 
 	# 扫描结果报告(包括找不到要处理站点的报告)
 	if [[ $SITE_COUNT -eq 0 ]]; then
@@ -582,7 +588,7 @@ if [[ $PARALLEL -eq 1 ]]; then
 					# 使用echo or printf 将路径传递出去
 					echo "$WP_DIR"
 				fi
-			done <"$site_dirs_listfile" |
+			done < "$site_dirs_listfile" |
 				parallel --line-buffer -j "$PARALLEL_JOBS" backup_one_site
 		else
 			# 原有逻辑

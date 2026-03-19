@@ -36,7 +36,7 @@ install_blesh() {
         # 清理临时目录
         rm -rf "$TMP_DIR"
     else
-        echo "提示: ble.sh 似乎已经安装在 $BLE_DIR。"
+        echo "提示: ble.sh 似乎已经安装在 $BLE_DIR"
     fi
 
     # 3. 幂等性添加 source 命令到 .bashrc
