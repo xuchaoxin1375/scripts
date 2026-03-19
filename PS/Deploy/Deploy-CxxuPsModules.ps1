@@ -197,7 +197,8 @@ function Deploy-CxxuPsModules
         Write-Verbose $RepoPath
         #克隆仓库
         # git 支持指定一个不存在的目录作为克隆目的地址,所以可以不用检查目录是否存在并手动创建
-        git clone $url $RepoPath 
+        git clone --recursive --depth 1 --shallow-submodules $url $RepoPath 
+         
     }
     $LocalScript = {
         Write-Host "Mode:Expanding local pacakge:[$PackagePath]" -ForegroundColor Green

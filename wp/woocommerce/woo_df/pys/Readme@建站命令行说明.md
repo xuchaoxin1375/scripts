@@ -48,8 +48,9 @@ Deploy-WpSitesOnline -HostName server2 -CfAccount account2
 代码无论是采集还是建站,都从仓库下载
 
 ```powershell
-git clone https://gitee.com/xuchaoxin1375/scripts.git C:/repos/scripts
+git clone --recursive --depth 1 --shallow-submodules https://gitee.com/xuchaoxin1375/scripts.git C:/repos/scripts
 setx PsModulePath C:/repos/scripts/PS
+
 ```
 
 详情参考: [ReadMe.md(woo_df)](..\ReadMe.md) 

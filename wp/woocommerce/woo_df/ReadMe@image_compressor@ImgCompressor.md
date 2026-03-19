@@ -211,7 +211,8 @@ sudo apt install git
 将代码克隆到默认目录下`/repos/scripts`的git命令行
 
 ```bash
-git clone https://gitee.com/xuchaoxin1375/scripts.git /repos/scripts
+git clone --recursive --depth 1 --shallow-submodules https://gitee.com/xuchaoxin1375/scripts.git C:/repos/scripts
+setx PsModulePath C:/repos/scripts/PS
 
 ```
 
@@ -368,7 +369,9 @@ setx PYTHONPATH C:\repos\scripts\wp\woocommerce\woo_df
 利用git获取代码
 
 ```cmd
-git clone https://gitee.com/xuchaoxin1375/scripts.git C:/repos/scripts
+git clone --recursive --depth 1 --shallow-submodules https://gitee.com/xuchaoxin1375/scripts.git C:/repos/scripts
+setx PsModulePath C:/repos/scripts/PS
+
 ```
 
 配置完上述内容,重启命令行窗口或者新开一个命令行窗口使其生效,如果有开启的vscode这种的也要重启窗口生效

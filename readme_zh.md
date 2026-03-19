@@ -47,7 +47,22 @@ irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsMod
 
 > 如果没有实现安装,则会尝试为你的电脑安装powershell7和git两个软件,但是可靠性不保证.
 
+### 单纯克隆
 
+```powershell
+git clone --recursive --depth 1 --shallow-submodules https://gitee.com/xuchaoxin1375/scripts.git C:/repos/scripts
+setx PsModulePath C:/repos/scripts/PS
+
+```
+
+clone参数说明:
+
+| **参数**                   | **说明**                                                     | **推荐用法**                |
+| -------------------------- | ------------------------------------------------------------ | --------------------------- |
+| **`--depth 1`**            | **最核心参数**。只克隆最近的一次提交（Commit），不下载历史记录。 | `git clone --depth 1 [URL]` |
+| **`--recursive`**          | 如果仓库包含**子模块（Submodules）**，此参数会一并克隆它们。 | `ble.sh` 建议带上此参数。   |
+| **`--shallow-submodules`** | 确保子模块也只克隆最新版本（深度为 1），进一步节省空间。     | 配合 `--recursive` 使用。   |
+| **`--single-branch`**      | 只克隆指定的某个分支（默认是主分支），忽略其他远程分支。     | 配合 `-b [branch]` 使用。   |
 
 ### 部署失败问题👺
 

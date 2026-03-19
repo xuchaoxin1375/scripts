@@ -9,7 +9,7 @@ https://www.locoy.com/LocoySpider_V10.28_Build20250507.zip
 
 # 配置powershell环境🎈
 #方案1: 手动安装powershell和git软件,然后执行以下语句快速部署基本powershell(pwsh)
-git clone https://gitee.com/xuchaoxin1375/scripts.git C:/repos/scripts #
+git clone --recursive --depth 1 --shallow-submodules https://gitee.com/xuchaoxin1375/scripts.git C:/repos/scripts #
 $p="C:\repos\scripts\PS" #这里修改为您下载的模块所在目录,这里的取值作为示范
 $env:PSModulePath=";$p"
 Add-EnvVar -EnvVar PsModulePath -NewValue $p -Verbose #这里$p上上面定义的

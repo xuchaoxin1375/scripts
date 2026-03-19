@@ -94,7 +94,7 @@ irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsMod
 前提:已经安装了git(和powershell7),那么直接执行(记得最后一行要回车):
 
 ```powershell
-git clone https://gitee.com/xuchaoxin1375/scripts.git C:/repos/scripts
+git clone --recursive --depth 1 --shallow-submodules https://gitee.com/xuchaoxin1375/scripts.git C:/repos/scripts
 setx PsModulePath C:/repos/scripts/PS
 
 ```
