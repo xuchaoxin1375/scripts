@@ -27,9 +27,9 @@ install_blesh() {
 
         # 使用临时目录克隆，避免污染当前路径
         local TMP_DIR
-        TMP_DIR=$(mktemp -d)
+        # 将仓库clone到家目录,防止wsl这类环境IO慢的问题
+        TMP_DIR=$(mktemp -d ~/blesh_tmp.XXXX)
         git clone --recursive --depth 1 --shallow-submodules "$BLE_REPO" "$TMP_DIR/ble.sh"
-
         # 执行安装
         make -C "$TMP_DIR/ble.sh" install PREFIX=~/.local
 
