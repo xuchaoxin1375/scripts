@@ -38,7 +38,8 @@ function Get-SourceFromUrls
         $Agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", 
         $proxy = "",
         $TimeGap = 1,
-        $Threads = 0
+        $Threads = 0,
+        $TimeOut = 10
     )
     # $dt = Get-DateTimeNumber
     $Path = Get-Item $Path | Select-Object -ExpandProperty FullName
@@ -52,6 +53,8 @@ function Get-SourceFromUrls
     {
         $proxyinline = ""
     }
+    # 获取当前IP
+    "curl $proxyinline https://ipinfo.io/" | Invoke-Expression
     # 串行下载
     if(!$Threads)
     {
@@ -60,13 +63,13 @@ function Get-SourceFromUrls
         Get-Content $Path | ForEach-Object {
             # $file = "$OutputDir/$(($_ -split "/")[-1])-$dt-$i.html"
             $file = "$OutputDir/---$(($_ -split "/")[-1])"
-            $cmd = "curl.exe -A '$Agent' -L  -k $proxyinline -o $file $_" 
+            $cmd = "curl.exe -m $TimeOut -A '$Agent'  -L  -k $proxyinline -o $file $_" 
             Write-Host "[$cmd]" -ForegroundColor Yellow
             $cmd | Invoke-Expression
             Start-Sleep 1
             
             # $s>"ames/$(($_ -split "/")[-1]).html"
-            Write-Host "Downloaded($i):[ $_ ]-> $file"
+            Write-Host "[$(Get-Date)]Downloaded($i):[ $_ ]-> $file"
             $i++
             Start-Sleep $TimeGap
         } 
@@ -88,12 +91,12 @@ function Get-SourceFromUrls
             if($_)
             {
 
-                $cmd = "curl.exe -A '$using:Agent' -L  -k $using:proxyinline -o '$file' '$_'" 
+                $cmd = "curl.exe -A '$using:Agent' -m $using:TimeOut -L  -k $using:proxyinline -o '$file' '$_'" 
                 Write-Host "[$cmd]" -ForegroundColor Yellow
                 $cmd | Invoke-Expression
             }
         
-            Write-Host "Downloaded($index): [ $_ ] -> $file"
+            Write-Host "[$(Get-Date)]Downloaded($index): [ $_ ] -> $file"
             Start-Sleep $using:TimeGap
         } -ThrottleLimit $threads
     
