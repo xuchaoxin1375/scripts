@@ -29,6 +29,7 @@ function Get-SourceFromUrls
     .NOTES
     下载网站资源或者网页源代码往往是比较占用磁盘空间的,建议不要直接将文件下载到系统盘(如果条件允许,请下载到其他分区或者硬盘上),除非你确定当前磁盘空间充足或者下载的资源很少,否则长时间不注意可能塞满系统盘导致卡顿甚至崩溃
     #>
+    [cmdletbinding()]
     param (
         [parameter(Mandatory = $true)]
         $Path,
@@ -60,8 +61,8 @@ function Get-SourceFromUrls
             # $file = "$OutputDir/$(($_ -split "/")[-1])-$dt-$i.html"
             $file = "$OutputDir/---$(($_ -split "/")[-1])"
             $cmd = "curl.exe -A '$Agent' -L  -k $proxyinline -o $file $_" 
+            Write-Host "[$cmd]" -ForegroundColor Yellow
             $cmd | Invoke-Expression
-            Write-Host "$cmd"
             Start-Sleep 1
             
             # $s>"ames/$(($_ -split "/")[-1]).html"
@@ -84,9 +85,13 @@ function Get-SourceFromUrls
             # debug
             # return "Debug:stop here.[$file]"
             # curl.exe -A $using:Agent -L  -k -o $file $_  -x $using:proxy
+            if($_)
+            {
 
-            $cmd = "curl.exe -A '$using:Agent' -L  -k $using:proxyinline -o $file $_" 
-            $cmd | Invoke-Expression
+                $cmd = "curl.exe -A '$using:Agent' -L  -k $using:proxyinline -o '$file' '$_'" 
+                Write-Host "[$cmd]" -ForegroundColor Yellow
+                $cmd | Invoke-Expression
+            }
         
             Write-Host "Downloaded($index): [ $_ ] -> $file"
             Start-Sleep $using:TimeGap
@@ -245,8 +250,8 @@ function Get-SitemapFromUrlIndex
             $7z = Get-Command 7z -ErrorAction SilentlyContinue
             if ($7z)
             {
-                $cmd = "7z x $file -o$OutputDir" 
-                Write-Verbose $cmd
+                $cmd = "7z x $file -o$OutputDir " 
+                Write-Verbose "[$cmd]"
                 $cmd | Invoke-Expression
                 # todo:检查文件是否是压缩或归档文件而不是普通的文本文件,测试或者检查响应码
             }
