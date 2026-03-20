@@ -96,7 +96,7 @@ function Get-SourceFromUrls
             if($_)
             {
 
-                $cmd = "$using:curl -A '$using:Agent' -m $using:TimeOut -L  -k $using:proxyinline -o '$file' '$_'" 
+                $cmd = "$using:curl -A '$using:Agent' --connect-timeout 5 -m $using:TimeOut -L  -k $using:proxyinline -o '$file' '$_'" 
                 Write-Host "[$cmd]" -ForegroundColor Yellow
                 $cmd | Invoke-Expression
             }
