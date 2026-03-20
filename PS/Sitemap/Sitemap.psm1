@@ -35,6 +35,8 @@ function Get-SourceFromUrls
         $Path,
         [parameter(Mandatory = $true)]
         $OutputDir,
+        # 指定特定路径下的curl版本(绝对路径!)
+        $Curl="curl",
         $Agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", 
         $proxy = "",
         $TimeGap = 1,
@@ -53,8 +55,11 @@ function Get-SourceFromUrls
     {
         $proxyinline = ""
     }
+    # 查看当前 curl 版本(部分反爬允许高版本但是不允许低版本curl)
+    Get-Command curl*
+    "$curl --version" | Invoke-Expression
     # 获取当前IP
-    "curl $proxyinline https://ipinfo.io/" | Invoke-Expression
+    "$curl $proxyinline https://ipinfo.io/" | Invoke-Expression
     # 串行下载
     if(!$Threads)
     {
@@ -63,7 +68,7 @@ function Get-SourceFromUrls
         Get-Content $Path | ForEach-Object {
             # $file = "$OutputDir/$(($_ -split "/")[-1])-$dt-$i.html"
             $file = "$OutputDir/---$(($_ -split "/")[-1])"
-            $cmd = "curl.exe -m $TimeOut -A '$Agent'  -L  -k $proxyinline -o $file $_" 
+            $cmd = "$curl -m $TimeOut -A '$Agent'  -L  -k $proxyinline -o $file $_" 
             Write-Host "[$cmd]" -ForegroundColor Yellow
             $cmd | Invoke-Expression
             Start-Sleep 1
@@ -91,7 +96,7 @@ function Get-SourceFromUrls
             if($_)
             {
 
-                $cmd = "curl.exe -A '$using:Agent' -m $using:TimeOut -L  -k $using:proxyinline -o '$file' '$_'" 
+                $cmd = "$using:curl -A '$using:Agent' -m $using:TimeOut -L  -k $using:proxyinline -o '$file' '$_'" 
                 Write-Host "[$cmd]" -ForegroundColor Yellow
                 $cmd | Invoke-Expression
             }
