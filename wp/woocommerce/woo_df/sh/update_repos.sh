@@ -1,14 +1,15 @@
 #!/bin/bash
 #初次下载代码
-#git clone --depth 1 https://gitee.com/xuchaoxin1375/scripts.git /repos/scripts
+#git clone --depth 1 https://github.com/xuchaoxin1375/scripts.git /repos/scripts
 
 # 强制更新代码(放弃已有更改)
 #git fetch origin
 #git reset --hard origin/main
 #git pull
 
-version=20260126
-echo "当前脚本版本: $version"
+version=20260321
+REPO_SOURCE='github' # gitee或github (gitee可能对国外ip服务器用户限流或要求注册账号)
+echo "当前脚本版本: $version;clone repository source: $REPO_SOURCE"
 NGINX_CONF_DIR="/www/server/nginx/conf"
 NGINX_CONF_FILE="$NGINX_CONF_DIR/nginx.conf"
 # nginx主配置文件源(用于覆盖服务器上的旧版本)
@@ -16,7 +17,7 @@ NGINX_CONF_TPL_DIR="/www/sh/nginx_conf"
 NGINX_CONF_TPL_STD="$NGINX_CONF_TPL_DIR/nginx_nginx.conf"
 NGINX_CONF_TPL_OPENRESTY="$NGINX_CONF_TPL_DIR/nginx_openresty.conf"
 # 配置变量
-REPO_URL="https://gitee.com/xuchaoxin1375/scripts.git"
+REPO_URL="https://$REPO_SOURCE/xuchaoxin1375/scripts.git"
 TARGET_DIR="/repos/scripts"
 BRANCH="main" # 或 "master"，根据实际情况调整
 
@@ -68,6 +69,10 @@ while [ "$#" -gt 0 ]; do
         -g | --update-config)
             UPDATE_CONFIG=1
             shift
+            ;;
+        -r | --repo-source)
+            REPO_SOURCE="$2"
+            shift 2
             ;;
         -h | --help)
             print_usage

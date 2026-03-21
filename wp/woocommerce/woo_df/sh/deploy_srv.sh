@@ -40,7 +40,7 @@ parse_args "$@"
 }
 
 # rm /repos/scripts -rf ;
-git clone --depth 1 https://gitee.com/xuchaoxin1375/scripts.git "$SCRIPT_ROOT"
+git clone --depth 1 https://github.com/xuchaoxin1375/scripts.git "$SCRIPT_ROOT"
 
 # 配置更新代码的脚本的符号链接
 ln -s -T /repos/scripts/wp/woocommerce/woo_df/sh /www/sh -fv
