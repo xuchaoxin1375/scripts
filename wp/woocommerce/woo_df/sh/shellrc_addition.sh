@@ -6,6 +6,17 @@
 # shellcheck disable=SC1091
 # shellcheck disable=SC2154
 # compatible_shells=("bash" "zsh")
+
+# 防止重复导入检查处理
+if [ -z "$_SHELLX_LOADED" ]; then
+  # 标记为空,则说明此前并未导入,本轮需要导入
+  # 方便起见,直接修改标记为被导入,然后再继续后面的配置代码
+  _SHELLX_LOADED=true
+else
+  # echo "===debug: custom shell already loaded..."
+  # 跳过本次导入
+  return 0
+fi
 # 引入预定义的别名
 source /www/sh/shell_vars.sh
 source /www/sh/shell_alias.sh
@@ -13,17 +24,39 @@ source /www/sh/shell_utils.sh
 # bash prompt主题配置
 export BASH_PROMPT="fast_ys"
 # 使用windows环境下的编辑器时,例如vscode,注意换行符改为LF,避免多行命令被错误解释🎈
-mark='# Load additional shell configs'
+# mark='# Load additional shell configs'
+mark="custom additional shell"
+mark_start="# >>>$mark>>>"
+mark_end="# <<<$mark<<<"
 # 检查~/.zshrc文件中是否存在:$mark 字符串,如果不存在,则向~/.zshrc添加以下内容,否则跳过插入并报告相关配置已存在
 config_lines=$(
   cat << EOF
 
-$mark
+$mark_start
+# Load additional shell configs
 # shellcheck source=/www/sh/shell_utils.sh
+
 source /www/sh/shellrc_addition.sh
+
+$mark_end
 
 EOF
 )
+mark_last_start='# >>>last_part>>>'
+mark_last_end='# <<<last_part<<<'
+# shellcheck disable=SC2016
+prompt_prefix_broadcast='_PS1_PRE="${PS1%"$_PS1_RAW"}"'
+config_last_part=$(
+  cat << EOF
+$mark_last_start
+# 回传(广播)prompt前缀到前面的PROMPT_COMMAND
+$prompt_prefix_broadcast
+$mark_last_end
+EOF
+)
+# 判断 $mark_last_end 是否为.bashrc的最后一行非空行,如果是则不处理,否则删除$mark_last_start到$mark_last_end之间的内容,然后config_last_part插入到.bashrc的末尾
+# todo
+
 # 检查极简系统中的~/.bash_profile文件
 if ! [ -f ~/.bash_profile ]; then
   echo "Creating .bash_profile..."
@@ -120,7 +153,12 @@ if is_shell bash || check_dependency -q shopt; then
   echo "bash prompt:$BASH_PROMPT"
   # 考虑到用户可能使用conda,nvm等环境管理工具,这可能修改prompt,因此这里在覆盖promopt前保留原propmt值供后续拼接
   # 注意本代码在~/.bashrc中插入位置要靠后,否则如果在conda这类导入片段之前可能会被覆盖效果;或者.bashrc(中BASH_COMMAND的设置 )
-  _PS1_RAW="${PS1%)*})"
+  PS1="" #清空原始的prompt值
+  # _PS1_RAW="[${PS1}]"
+  # _PS1_PRE="${PS1%"$_PS1_RAW"}"
+  # log "===debug: PS1: ${PS1}->[${PS1@P}]"
+  # echo "===debug: _PS1_RAW: $_PS1_RAW"
+  # log "===debug: _PS1_RRE: $_PS1_PRE"
   # 修改后的 prompt_switcher
   prompt_switcher() {
     local prompt_file="$sh/bash_prompts/${BASH_PROMPT}.sh"
@@ -131,7 +169,7 @@ if is_shell bash || check_dependency -q shopt; then
       # shellcheck source=/dev/null
       source "$prompt_file"
 
-      # 调用对应的函数
+      # 调用对应的函数(引入__PS1__这部分自定义的prompt片段)
       case "$BASH_PROMPT" in
         "fast_ys") __fast_ys_prompt ;;
         "fast_junkfood") __fast_junkfood_prompt ;;
@@ -140,13 +178,17 @@ if is_shell bash || check_dependency -q shopt; then
       esac
       # PS1="[$(commom_prefix)]$PS1"
       _COMMOM_PROMPT_PREFIX="${gray}[$(get_os_name)][$(current_shell)]${reset}"
-      PS1="# $_PS1_RAW $_COMMOM_PROMPT_PREFIX $__PS1__"
+      # _PS1_PRE 会在conda等对PS1进行修改后将增加的前缀(例如base)传播回来
+      PS1="# $_PS1_PRE $_COMMOM_PROMPT_PREFIX $__PS1__"
+      export PS1
+      # echo  "===debug on PROMPT_COMMAND: PS1: <<${PS1}->[${PS1@P}]>>"
     else
       echo "warning: unknown prompt configuration [$BASH_PROMPT]" >&2
     fi
   }
   # 设置每次返回shell提示符时要执行的逻辑(比如更改prompt,或者其他动作)
   PROMPT_COMMAND=prompt_switcher
+  # prompt_switcher
   # echo "<<${PS1@P}>>"
 fi
 
@@ -175,4 +217,4 @@ echo "update inputrc [$INPUTRC]..."
 
 # end bash-completion importer
 
-# ===============自定义函数请添加到shell_utils.sh中=================
+# 如果要自定义函数请添加到shell_utils.sh中!

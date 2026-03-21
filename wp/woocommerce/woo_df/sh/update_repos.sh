@@ -1,6 +1,6 @@
 #!/bin/bash
 #初次下载代码
-#git clone --depth 1 https://github.com/xuchaoxin1375/scripts.git /repos/scripts
+#git clone --depth 1 https://gitee.com/xuchaoxin1375/scripts.git /repos/scripts
 
 # 强制更新代码(放弃已有更改)
 #git fetch origin
@@ -8,7 +8,7 @@
 #git pull
 
 version=20260321
-REPO_SOURCE='github' # gitee或github (gitee可能对国外ip服务器用户限流或要求注册账号)
+REPO_SOURCE='gitee' # gitee或github (gitee可能对国外ip服务器用户限流或要求注册账号)
 echo "当前脚本版本: $version;clone repository source: $REPO_SOURCE"
 NGINX_CONF_DIR="/www/server/nginx/conf"
 NGINX_CONF_FILE="$NGINX_CONF_DIR/nginx.conf"

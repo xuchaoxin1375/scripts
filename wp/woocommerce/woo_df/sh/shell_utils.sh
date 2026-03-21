@@ -2,7 +2,12 @@
 # 提供一些常用的bash/zsh兼容的函数.
 # 新函数添加于下方:
 # ===============================
-
+# 带有日期时间的简单日志函数,在调试代码时可以代替echo让输出和时间线挂钩
+log() {
+    local dt
+    dt="$(date +%F-%T.%3N)"
+    echo "[$dt] $*"
+}
 # Install ble.sh framework for bash
 # 安装前检查依赖,以及避免重复安装重复插入配置项到~/.bashrc
 install_blesh() {
