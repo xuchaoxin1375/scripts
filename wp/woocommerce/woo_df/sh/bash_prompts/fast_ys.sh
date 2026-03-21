@@ -25,13 +25,14 @@ __fast_ys_prompt() {
         git_info=" ${yellow}on${reset} ${red}git:${branch}${reset}"
     fi
 
-    PS1="\n${gray}# [$(get_os_name)][$(current_shell)]${reset} ${cyan}\u${reset} ${gray}@${reset} ${yellow}\h${reset}"
-    PS1+=" ${gray}in${reset} ${blue}\w${reset}"
-    PS1+="${git_info}"
-    PS1+=" ${gray}[${time}]${reset}"
-    PS1+="\n${gray}\$${reset} "
+    # prefix="${gray}# [$(get_os_name)][$(current_shell)]${reset} ${cyan}\u${reset} ${gray}@${reset} ${yellow}\h${reset}"
+     __PS1__="${cyan}\u${reset}${gray}@${reset}${yellow}\h${reset}"
+    __PS1__+=" ${gray}in${reset} ${blue}\w${reset}"
+    __PS1__+="${git_info}"
+    __PS1__+=" ${gray}[${time}]${reset}"
+    __PS1__+="\n${gray}\$${reset} "
 
     history -a
 }
-
+export __PS1__
 # export PROMPT_COMMAND=__fast_ys_prompt

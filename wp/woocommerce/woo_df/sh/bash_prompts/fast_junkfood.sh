@@ -73,7 +73,8 @@ __fast_junkfood_prompt() {
 
     # 对应 junkfood 的各段
     # #( 日期@时间 )( user@machine ): 路径@分支 dirty/clean
-    JUNKFOOD_TIME_="${__C_RED}# [$(get_os_name)][$(current_shell)]${__C_WHITE}( ${__C_YELLOW}\D{%m/%d/%Y}${__C_RESET}@${__C_WHITE}\t ${__C_WHITE})( ${__C_RESET}"
+    # prefix="${__C_RED}# [$(get_os_name)][$(current_shell)]"
+    JUNKFOOD_TIME_="${__C_WHITE}( ${__C_YELLOW}\D{%m/%d/%Y}${__C_RESET}@${__C_WHITE}\t ${__C_WHITE})( ${__C_RESET}"
     JUNKFOOD_CURRENT_USER_="${__C_GREEN}\u${__C_RESET}"
     JUNKFOOD_MACHINE_="${__C_BLUE}\h${__C_WHITE} ):${__C_RESET}"
     # # \$(__git_prompt_info) 和 \$(__git_prompt_dirty) 在 PS1 中延迟求值
@@ -81,10 +82,11 @@ __fast_junkfood_prompt() {
     JUNKFOOD_LOCA_="${__C_CYAN}\w${__C_WHITE}"
 
     # 组装(定义字段顺序)
-    PS1="${JUNKFOOD_TIME_}${JUNKFOOD_CURRENT_USER_}@${JUNKFOOD_MACHINE_}${JUNKFOOD_LOCA_}
+    __PS1__="${JUNKFOOD_TIME_}${JUNKFOOD_CURRENT_USER_}@${JUNKFOOD_MACHINE_}${JUNKFOOD_LOCA_}
 \$ "
 
     # history 实时写入
     history -a
     # PROMPT_COMMAND="history -a"
 }
+export __PS1__

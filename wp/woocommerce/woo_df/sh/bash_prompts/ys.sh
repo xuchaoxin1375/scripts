@@ -57,17 +57,19 @@ __ys_prompt() {
     fi
 
     # ── 组装 prompt ──
-    PS1="\n${gray}# [$(get_os_name)][$(current_shell)]${reset} ${cyan}\u${reset} ${gray}@${reset} ${yellow}\h${reset}"
-    PS1+=" ${gray}in${reset} ${blue}\w${reset}"
-    PS1+="${git_info}"
-    PS1+=" ${gray}[${time}]${reset}"
+    # prefix="\n${gray}# [$(get_os_name)][$(current_shell)]${reset}"
+    __PS1__=" ${cyan}\u${reset} ${gray}@${reset} ${yellow}\h${reset}"
+    __PS1__+=" ${gray}in${reset} ${blue}\w${reset}"
+    __PS1__+="${git_info}"
+    __PS1__+=" ${gray}[${time}]${reset}"
 
     # 退出码非零时显示（可选，ys 风格）
-    # (( exit_code != 0 )) && PS1+=" ${red}✘ ${exit_code}${reset}"
+    # (( exit_code != 0 )) && __PS1__+=" ${red}✘ ${exit_code}${reset}"
 
-    PS1+="\n${gray}\$${reset} "
+    __PS1__+="\n${gray}\$${reset} "
 
     history -a
 }
 
+export __PS1__
 # export PROMPT_COMMAND=__ys_prompt

@@ -68,7 +68,7 @@ function Get-SourceFromUrls
         Get-Content $Path | ForEach-Object {
             # $file = "$OutputDir/$(($_ -split "/")[-1])-$dt-$i.html"
             $file = "$OutputDir/---$(($_ -split "/")[-1])"
-            $cmd = "$curl -m $TimeOut -A '$Agent'  -L  -k $proxyinline -o $file $_" 
+            $cmd = "$curl -A '$Agent' --connect-timeout 5 -m $TimeOut   -L  -k $proxyinline -o $file $_" 
             Write-Host "[$cmd]" -ForegroundColor Yellow
             $cmd | Invoke-Expression
             Start-Sleep 1

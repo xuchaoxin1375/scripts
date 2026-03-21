@@ -63,7 +63,7 @@ if is_shell bash || check_dependency -q shopt; then
     echo "bash not running on posix mode ..."
     echo "[bash-completion] loading..."
     # Use bash-completion, if available, and avoid double-sourcing
-    [[ $PS1 &&
+    [[ $_PS1 &&
       ! ${BASH_COMPLETION_VERSINFO:-} &&
       -f /usr/share/bash-completion/bash_completion ]] &&
       . /usr/share/bash-completion/bash_completion
@@ -118,11 +118,14 @@ if is_shell bash || check_dependency -q shopt; then
   # 自定义prompt的话一般也会更改PROMPT_COMMAND,考虑把被绑定的语句放到prompt定义中
   # PROMPT_COMMAND='history -a'
   echo "bash prompt:$BASH_PROMPT"
-
+  # 考虑到用户可能使用conda,nvm等环境管理工具,这可能修改prompt,因此这里在覆盖promopt前保留原propmt值供后续拼接
+  # 注意本代码在~/.bashrc中插入位置要靠后,否则如果在conda这类导入片段之前可能会被覆盖效果;或者.bashrc(中BASH_COMMAND的设置 )
+  _PS1_RAW="${PS1%)*})"
   # 修改后的 prompt_switcher
   prompt_switcher() {
     local prompt_file="$sh/bash_prompts/${BASH_PROMPT}.sh"
-
+    local gray='\[\e[38;5;244m\]'
+    local reset='\[\e[0m\]'
     if [[ -f "$prompt_file" ]]; then
       # 仅加载当前需要的那个脚本
       # shellcheck source=/dev/null
@@ -136,11 +139,15 @@ if is_shell bash || check_dependency -q shopt; then
         *) echo "warning: function mapping missing for $BASH_PROMPT" >&2 ;;
       esac
       # PS1="[$(commom_prefix)]$PS1"
+      _COMMOM_PROMPT_PREFIX="${gray}[$(get_os_name)][$(current_shell)]${reset}"
+      PS1="# $_PS1_RAW $_COMMOM_PROMPT_PREFIX $__PS1__"
     else
       echo "warning: unknown prompt configuration [$BASH_PROMPT]" >&2
     fi
   }
+  # 设置每次返回shell提示符时要执行的逻辑(比如更改prompt,或者其他动作)
   PROMPT_COMMAND=prompt_switcher
+  # echo "<<${PS1@P}>>"
 fi
 
 export INPUTRC="$sh/.inputrc.conf"
