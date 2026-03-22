@@ -105,6 +105,8 @@ parse_args() {
 }
 parse_args "$@"
 REPO_URL="https://$REPO_SOURCE.com/xuchaoxin1375/scripts.git"
+REPO_URL_GITEE="https://gitee.com/xuchaoxin1375/scripts.git"
+REPO_URL_GITHUB="https://github.com/xuchaoxin1375/scripts.git"
 echo "clone repository source: $REPO_SOURCE;from git: $REPO_URL"
 
 # 默认行为: 如果没有指定 -c/--update-code 或 -g/--update-config, 则默认启用更新代码
@@ -129,8 +131,12 @@ if [ "$UPDATE_CODE" -eq 1 ]; then
         echo "📁 未检测到 Git 仓库，正在执行浅克隆..."
         rm -rf "$TARGET_DIR" # 防止存在非 Git 目录（如普通文件夹）
 
-        if git clone --depth 1 "$REPO_URL" "$TARGET_DIR"; then
-            echo "✅ 克隆成功"
+        if git clone --depth 1 "$REPO_URL_GITEE" "$TARGET_DIR"; then
+            echo "✅ 克隆成功($REPO_SOURCE)"
+        elif git clone --depth 1 "$REPO_URL_GITEE" "$TARGET_DIR"; then
+            echo "✅ 克隆成功(gitee)"
+        elif git clone --depth 1 "$REPO_URL_GITHUB" "$TARGET_DIR"; then
+            echo "✅ 克隆成功(github)"
         else
             echo "❌ 克隆失败，请检查网络或仓库地址"
             exit 1
