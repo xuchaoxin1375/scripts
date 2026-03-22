@@ -7,6 +7,7 @@
 # shellcheck disable=SC2154
 # compatible_shells=("bash" "zsh")
 
+# BASHRC_FILE="$HOME/.bashrc"
 # 防止重复导入检查处理
 if [ -z "$_SHELLX_LOADED" ]; then
   # 标记为空,则说明此前并未导入,本轮需要导入
@@ -21,6 +22,7 @@ fi
 source /www/sh/shell_vars.sh
 source /www/sh/shell_alias.sh
 source /www/sh/shell_utils.sh
+source /www/sh/shell_env_mgr.sh
 # bash prompt主题配置
 export BASH_PROMPT="fast_ys"
 # 使用windows环境下的编辑器时,例如vscode,注意换行符改为LF,避免多行命令被错误解释🎈
@@ -42,22 +44,8 @@ $mark_end
 
 EOF
 )
-mark_last_start='# >>>last_part>>>'
-mark_last_end='# <<<last_part<<<'
-# shellcheck disable=SC2016
-prompt_prefix_broadcast='_PS1_PRE="${PS1%"$_PS1_RAW"}"'
-config_last_part=$(
-  cat << EOF
-$mark_last_start
-# 回传(广播)prompt前缀到前面的PROMPT_COMMAND
-$prompt_prefix_broadcast
-$mark_last_end
-EOF
-)
-# 判断 $mark_last_end 是否为.bashrc的最后一行非空行,如果是则不处理,否则删除$mark_last_start到$mark_last_end之间的内容,然后config_last_part插入到.bashrc的末尾
-# todo
 
-# 检查极简系统中的~/.bash_profile文件
+# START-CBRC:检查极简系统中的~/.bash_profile文件,必要时插入引导~/.bashrc的逻辑
 if ! [ -f ~/.bash_profile ]; then
   echo "Creating .bash_profile..."
   cat << 'EOF' > ~/.bash_profile
@@ -65,9 +53,12 @@ if ! [ -f ~/.bash_profile ]; then
 if [ -f ~/.bashrc ]; then
     . ~/.bashrc
 fi
+
 EOF
 
 fi
+# END-CBRC
+
 # 检查bashrc,zshrc文件,如果配置不存在则插入
 rcfiles=(~/.bashrc)
 if ! [[ -f ~/.bash_profile ]]; then
@@ -78,7 +69,7 @@ if [[ -f ~/.zshrc ]]; then
 fi
 for rcfile in "${rcfiles[@]}"; do
   if grep -q "$mark" "$rcfile"; then
-    echo "Configs shell configs already exists in $rcfile, skipping insertion..."
+    echo "[$mark] already exists in $rcfile, skipping insertion..."
   else
     echo "Inserting configs shell configs into $rcfile..."
     echo "$config_lines" >> "$rcfile"
@@ -93,7 +84,7 @@ if is_shell bash || check_dependency -q shopt; then
   # 检查当前 Shell 是否运行在 POSIX 模式下。
   # POSIX 模式是为了严格遵守 Unix 标准，它会禁用很多 Bash 特有的“花哨”功能（比如高级补全）。
   if ! shopt -oq posix; then
-    echo "bash not running on posix mode ..."
+    # echo "bash not running on posix mode ..."
     echo "[bash-completion] loading..."
     # Use bash-completion, if available, and avoid double-sourcing
     [[ $_PS1 &&
@@ -102,6 +93,7 @@ if is_shell bash || check_dependency -q shopt; then
       . /usr/share/bash-completion/bash_completion
 
   fi
+
   set_shopt() {
 
     # 目录快速切换
@@ -176,11 +168,16 @@ if is_shell bash || check_dependency -q shopt; then
         "ys") __ys_prompt ;;
         *) echo "warning: function mapping missing for $BASH_PROMPT" >&2 ;;
       esac
-      # PS1="[$(commom_prefix)]$PS1"
-      _COMMOM_PROMPT_PREFIX="${gray}[$(get_os_name)][$(current_shell)]${reset}"
+      # 配置conda等可能更改prompt的环境变量的部分(可以对比oh my zsh中prompt的效果再按需修改)
+      _PY_VENV_NAME="${VIRTUAL_ENV##*/}"
+      [[ $_PY_VENV_NAME ]] && _PY_VENV_NAME="(${_PY_VENV_NAME})"
+      NODE_VERSION=$(check_dependency -q node && node -v 2> /dev/null)
+      [[ $NODE_VERSION ]] && NODE_VERSION="(node:${NODE_VERSION})"
+
+      _ENV_PROMPT="${CONDA_PROMPT_MODIFIER}${_PY_VENV_NAME}${NODE_VERSION}${KUBECONFIG}"
+      _COMMOM_PROMPT_PREFIX="${gray}${_ENV_PROMPT}[$(get_os_name)][$(current_shell)]${reset}"
       # _PS1_PRE 会在conda等对PS1进行修改后将增加的前缀(例如base)传播回来
-      PS1="# $_PS1_PRE $_COMMOM_PROMPT_PREFIX $__PS1__"
-      export PS1
+      PS1="# ${_PS1_PRE}${_COMMOM_PROMPT_PREFIX}${__PS1__}"
       # echo  "===debug on PROMPT_COMMAND: PS1: <<${PS1}->[${PS1@P}]>>"
     else
       echo "warning: unknown prompt configuration [$BASH_PROMPT]" >&2
