@@ -33,7 +33,7 @@ Usage: $(basename "$0") [options]
 echo "script version: $version"
 
 Options:
-    -r, --repo-source    指定仓库源，可以是 gitee 或 github
+    -r, --repo-source    指定仓库源，可以是 gitee 或 github 或 gitlab
     -c, --update-code    更新仓库代码（clone / reset /pull）
     -g, --update-config  更新配置文件和符号链接等（覆盖/创建/重载 nginx, fail2ban 等）
     -f, --force          强制执行,需要和-g配合使用才生效（用于覆盖 nginx.conf 并跳过交互或保护性检查）

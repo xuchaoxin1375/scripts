@@ -18,13 +18,16 @@ else
   # 跳过本次导入
   return 0
 fi
+# bash prompt主题配置
+export BASH_PROMPT="fast_ys"
+export BASHRC_FILE="$HOME/.bashrc"
 # 引入预定义的别名
 source /www/sh/shell_vars.sh
 source /www/sh/shell_alias.sh
 source /www/sh/shell_utils.sh
-source /www/sh/shell_env_mgr.sh
-# bash prompt主题配置
-export BASH_PROMPT="fast_ys"
+# source /www/sh/shell_env_mgr.sh
+source /www/sh/shell_insert_last_part.sh
+
 # 使用windows环境下的编辑器时,例如vscode,注意换行符改为LF,避免多行命令被错误解释🎈
 # mark='# Load additional shell configs'
 mark="custom additional shell"
@@ -81,6 +84,8 @@ echo "Loading additional shell config and functions..."
 
 # 针对bash的配置(依赖于shopt命令和针对bash的prompt)
 if is_shell bash || check_dependency -q shopt; then
+  # 插入bashrc的最后部分的配置
+  update_last_part_bashrc
   # 检查当前 Shell 是否运行在 POSIX 模式下。
   # POSIX 模式是为了严格遵守 Unix 标准，它会禁用很多 Bash 特有的“花哨”功能（比如高级补全）。
   if ! shopt -oq posix; then
@@ -185,6 +190,7 @@ if is_shell bash || check_dependency -q shopt; then
   }
   # 设置每次返回shell提示符时要执行的逻辑(比如更改prompt,或者其他动作)
   PROMPT_COMMAND=prompt_switcher
+  # 注意,PROMPT_COMMAND不会再被赋值的时候立即执行!和直接调用被赋值函数不同!
   # prompt_switcher
   # echo "<<${PS1@P}>>"
 fi

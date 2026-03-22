@@ -4,7 +4,9 @@
 echo "Loading common env mgr..."
 # DON'T EXPORT *LOADED ENV VARIABLES
 _NVM_LOADED=""
-if ! [[ $(type -t nvm) == "function" || -z $_NVM_LOADED ]]; then
+# $(type -t nvm) == "function"  # type -t 不适用于zsh
+# && [[ -z $_NVM_LOADED ]]
+if ! command -v nvm &> /dev/null ; then
     echo "Loading nvm..."
     _NVM_LOADED="1"
     export NVM_DIR="$HOME/.nvm"
