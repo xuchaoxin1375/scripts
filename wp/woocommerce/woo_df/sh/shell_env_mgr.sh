@@ -4,7 +4,7 @@
 echo "Loading common env mgr..."
 # DON'T EXPORT *LOADED ENV VARIABLES
 _NVM_LOADED=""
-if [[ -z $_NVM_LOADED ]]; then
+if ! [[ $(type -t nvm) == "function" || -z $_NVM_LOADED ]]; then
     echo "Loading nvm..."
     _NVM_LOADED="1"
     export NVM_DIR="$HOME/.nvm"
