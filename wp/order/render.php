@@ -450,7 +450,7 @@ function render_analysis_content($access_token, $view_mode, $log_date, $stats, $
                             <label style="font-size:13px; color:#475569; display:flex; align-items:center; gap:4px;">
                                 <input type="hidden" name="cluster_prefix_trim2" value="0">
                                 <input type="checkbox" name="cluster_prefix_trim2" value="1" onchange="window.__ordersFilterChange ? window.__ordersFilterChange(this.form) : this.form.submit()" <?= (!isset($_GET['cluster_prefix_trim2']) || (string)$_GET['cluster_prefix_trim2'] !== '0') ? 'checked' : '' ?>>
-                                前缀相同的单号合并(末2位不参与比较)
+                                前缀相同的单号合并(末3位不参与比较)
                             </label>
                         </form>
 

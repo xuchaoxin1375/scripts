@@ -137,7 +137,8 @@ function load_domain_owner_map_from_csv($csv_file)
             continue;
         }
         $res['meta']['total_rows']++;
-        $domain_raw = $row[$domain_idx] ?? '';
+        $domain_raw = fix_csv_cell_encoding((string)($row[$domain_idx] ?? ''));
+        $domain_raw = trim((string)$domain_raw);
         $domain_key = normalize_domain_key($domain_raw);
         if ($domain_key === '') {
             $res['meta']['skipped_rows']++;

@@ -62,6 +62,10 @@ while [ "$#" -gt 0 ]; do
             FORCE=1
             shift
             ;;
+        --remove-old)
+            REMOVE_OLD=1
+            shift
+            ;;
         -c | --update-code)
             UPDATE_CODE=1
             shift
@@ -111,6 +115,9 @@ if [ "$UPDATE_CODE" -eq 1 ]; then
         # 目录不存在或不是 Git 仓库：执行浅克隆
         echo "📁 未检测到 Git 仓库，正在执行浅克隆..."
         rm -rf "$TARGET_DIR" # 防止存在非 Git 目录（如普通文件夹）
+        if [[ $REMOVE_OLD -eq 1 ]]; then
+            rm -rf "$TARGET_DIR"
+        fi
         git clone --depth 1 "$REPO_URL" "$TARGET_DIR"
         if [ $? -ne 0 ]; then
             echo "❌ 克隆失败，请检查网络或仓库地址"

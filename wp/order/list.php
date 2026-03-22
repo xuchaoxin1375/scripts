@@ -67,7 +67,7 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
             $group_key0 = $is_success_effective0 ? 'success' : ($has_success_log0 ? 'pending' : 'fail');
 
             $no0 = (string)$no;
-            $cluster_key0 = (strlen($no0) > 2) ? substr($no0, 0, -2) : $no0;
+            $cluster_key0 = (strlen($no0) > 3) ? substr($no0, 0, -3) : $no0;
             $rows[] = [
                 'no' => $no0,
                 'prefix_trim2' => $cluster_key0,
@@ -356,7 +356,7 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
         $group_key0 = $is_success_effective0 ? 'success' : (!empty($item['has_success_log']) ? 'pending' : 'fail');
 
         $no0 = (string)$no;
-        $p0 = (strlen($no0) > 2) ? substr($no0, 0, -2) : $no0;
+        $p0 = (strlen($no0) > 3) ? substr($no0, 0, -3) : $no0;
         if ($p0 !== '' && $group_key0 === 'fail') {
             $prefix_cnt[$p0] = ($prefix_cnt[$p0] ?? 0) + 1;
         }
@@ -368,7 +368,7 @@ function render_order_list_items($analysis_data, $group_by_domain, $order_sort, 
         $clustered = [];
         foreach ($display_orders as $no => $item) {
             $no0 = (string)$no;
-            $p0 = (strlen($no0) > 2) ? substr($no0, 0, -2) : $no0;
+            $p0 = (strlen($no0) > 3) ? substr($no0, 0, -3) : $no0;
             $is_pending0 = (!empty($item['has_success_log']) && empty($item['is_success']));
             $is_success_effective0 = (!empty($item['is_success']) || ($pending_as_success0 && $is_pending0));
             $group_key0 = $is_success_effective0 ? 'success' : (!empty($item['has_success_log']) ? 'pending' : 'fail');

@@ -828,6 +828,19 @@ if (orders3_handle_partials_and_exports(
                 });
             }
 
+            function getRegistrableDomainLike(hostOrUrl) {
+                var s = (hostOrUrl || '').toString().trim();
+                if (!s) return '';
+                s = s.replace(/^https?:\/\//i, '');
+                s = s.replace(/\/.*/, '');
+                s = s.replace(/^www\./i, '');
+                var parts = s.split('.').filter(function(p) { return p !== ''; });
+                if (parts.length >= 2) {
+                    return parts.slice(-2).join('.');
+                }
+                return s;
+            }
+
             document.addEventListener('click', function(e) {
                 var btn = e.target && e.target.closest ? e.target.closest('.copy-domain-btn[data-copy-domain]') : null;
                 if (!btn) return;
@@ -836,7 +849,8 @@ if (orders3_handle_partials_and_exports(
                 var domain = btn.getAttribute('data-copy-domain') || '';
                 if (!domain) return;
                 var oldText = btn.innerText;
-                copyText(domain).then(function() {
+                var toCopy = getRegistrableDomainLike(domain);
+                copyText(toCopy).then(function() {
                     btn.innerText = '已复制';
                     setTimeout(function() { btn.innerText = oldText; }, 900);
                 }).catch(function() {

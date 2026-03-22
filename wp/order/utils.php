@@ -211,7 +211,11 @@ function resolve_selected_csv_path($base_dir, $csv_selected, $csv_files)
 
 function normalize_domain_key($domain)
 {
-    $s = strtolower(trim((string)$domain));
+    $s = (string)$domain;
+    $s = preg_replace('/^\xEF\xBB\xBF/', '', $s);
+    $s = str_replace(["\xC2\xA0", "\xE2\x80\x8B", "\xEF\xBB\xBF"], [' ', '', ''], $s);
+    $s = preg_replace('/[\x{200B}\x{FEFF}\x{00A0}\s]+/u', ' ', $s);
+    $s = strtolower(trim($s));
     $s = preg_replace('/^https?:\/\//', '', $s);
     $s = preg_replace('/\/.*/', '', $s);
     $s = preg_replace('/^www\./', '', $s);
