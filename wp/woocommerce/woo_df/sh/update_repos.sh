@@ -8,7 +8,7 @@
 #git pull
 
 version=20260321
-REPO_SOURCE='gitee' # gitee或github (gitee可能对国外ip服务器用户限流或要求注册账号)
+REPO_SOURCE='github' # gitee或github或gitlab (gitee可能对国外ip服务器用户限流或要求注册账号,优先使用github或gitlab)
 echo "当前脚本版本: $version;"
 NGINX_CONF_DIR="/www/server/nginx/conf"
 NGINX_CONF_FILE="$NGINX_CONF_DIR/nginx.conf"
@@ -38,10 +38,11 @@ Options:
     -g, --update-config  更新配置文件和符号链接等（覆盖/创建/重载 nginx, fail2ban 等）
     -f, --force          强制执行,需要和-g配合使用才生效（用于覆盖 nginx.conf 并跳过交互或保护性检查）
     --remove-old         删除仓库,完全重新clone(务必谨慎使用,考虑手动备份或者将原来可能自定义的文件备份出来)
+    -b, --branch         指定分支名称，默认为 main
     -h, --help           显示本帮助信息并退出
 
 If neither --update-code nor --update-config is specified, the script
-will default to updating code only (equivalent to $(--update-code)).
+will default to updating code only (equivalent to \$(--update-code)).
 
 This script will clone or update the git repository at $TARGET_DIR and
 optionally update several symlinks and nginx/fail2ban configuration files.
@@ -69,6 +70,10 @@ parse_args() {
             --remove-old)
                 REMOVE_OLD=1
                 shift
+                ;;
+            -b | --branch)
+                BRANCH="$2"
+                shift 2
                 ;;
             -c | --update-code)
                 UPDATE_CODE=1
@@ -105,8 +110,9 @@ parse_args() {
 }
 parse_args "$@"
 REPO_URL="https://$REPO_SOURCE.com/xuchaoxin1375/scripts.git"
-REPO_URL_GITEE="https://gitee.com/xuchaoxin1375/scripts.git"
-REPO_URL_GITHUB="https://github.com/xuchaoxin1375/scripts.git"
+URL_GITEE="https://gitee.com/xuchaoxin1375/scripts.git"
+URL_GITHUB="https://github.com/xuchaoxin1375/scripts.git"
+URL_GITLAB="https://gitlab.com/xuchaoxin1375/scripts.git"
 echo "clone repository source: $REPO_SOURCE;from git: $REPO_URL"
 
 # 默认行为: 如果没有指定 -c/--update-code 或 -g/--update-config, 则默认启用更新代码
@@ -126,19 +132,54 @@ if [ "$UPDATE_CODE" -eq 1 ]; then
         rm -rf "$TARGET_DIR"
     fi
     # 判断目录是否存在，决定是克隆还是更新
-    if [ ! -d "$TARGET_DIR/.git" ]; then
-        # 目录不存在或不是 Git 仓库：执行浅克隆
-        echo "📁 未检测到 Git 仓库，正在执行浅克隆..."
-        rm -rf "$TARGET_DIR" # 防止存在非 Git 目录（如普通文件夹）
 
-        if git clone --depth 1 "$REPO_URL_GITEE" "$TARGET_DIR"; then
-            echo "✅ 克隆成功($REPO_SOURCE)"
-        elif git clone --depth 1 "$REPO_URL_GITEE" "$TARGET_DIR"; then
-            echo "✅ 克隆成功(gitee)"
-        elif git clone --depth 1 "$REPO_URL_GITHUB" "$TARGET_DIR"; then
-            echo "✅ 克隆成功(github)"
-        else
-            echo "❌ 克隆失败，请检查网络或仓库地址"
+    # 定义源的优先级(尝试顺序数组)：将指定的 REPO_SOURCE 放在首位，其他作为备份
+    case "$REPO_SOURCE" in
+        "github") SOURCES=("$URL_GITHUB" "$URL_GITEE" "$URL_GITLAB") ;;
+        "gitlab") SOURCES=("$URL_GITLAB" "$URL_GITHUB" "$URL_GITEE") ;;
+        *) SOURCES=("$URL_GITEE" "$URL_GITHUB" "$URL_GITLAB") ;; # 默认 Gitee 优先
+    esac
+
+    # 目录不存在或不是 Git 仓库：执行浅克隆
+    if [ ! -d "$TARGET_DIR/.git" ]; then
+        # echo "📁 未检测到 Git 仓库，正在执行浅克隆..."
+        # rm -rf "$TARGET_DIR" # 防止存在非 Git 目录（如普通文件夹）
+
+        # if git clone --depth 1 "$REPO_URL_GITEE" "$TARGET_DIR"; then
+        #     echo "✅ 克隆成功($REPO_SOURCE)"
+        # elif git clone --depth 1 "$REPO_URL_GITEE" "$TARGET_DIR"; then
+        #     echo "✅ 克隆成功(gitee)"
+        # elif git clone --depth 1 "$REPO_URL_GITHUB" "$TARGET_DIR"; then
+        #     echo "✅ 克隆成功(github)"
+        # else
+        #     echo "❌ 克隆失败，请检查网络或仓库地址"
+        #     exit 1
+        # fi
+
+        # 准备工作：清理可能存在的残留目录
+        echo "📁 未检测到有效 Git 仓库，正在准备执行浅克隆..."
+        rm -rf "$TARGET_DIR"
+
+        #  循环尝试序列中的仓库源
+        CLONE_SUCCESS=false
+        for URL in "${SOURCES[@]}"; do
+            [ -z "$URL" ] && continue # 跳过空地址
+
+            echo "📡 尝试从 $URL 克隆..."
+            # --depth 1 配合 --single-branch
+            if git clone --progress --depth 1 --single-branch -b "$BRANCH" "$URL" "$TARGET_DIR"; then
+                echo "✅ 克隆成功！(源: $URL)"
+                CLONE_SUCCESS=true
+                break
+            else
+                echo "⚠️  该源连接失败，尝试下一个..."
+                rm -rf "$TARGET_DIR" # 关键：失败后必须清理目录，否则下次 clone 会报错
+            fi
+        done
+
+        #  最终检查
+        if [ "$CLONE_SUCCESS" = false ]; then
+            echo "❌ 所有远程源均克隆失败，请检查网络！"
             exit 1
         fi
     else
@@ -150,20 +191,63 @@ if [ "$UPDATE_CODE" -eq 1 ]; then
                 echo "❌ 无法进入目录: $TARGET_DIR"
                 exit 1
             }
+            # 循环尝试序列中的仓库源(自动重试方案)
+            UPDATE_SUCCESS=false # 初始化状态开关
 
-            # 获取最新提交信息前先 fetch
-            git fetch origin "$BRANCH"
+            for URL in "${SOURCES[@]}"; do
+                [ -z "$URL" ] && continue
 
-            if [ $? -ne 0 ]; then
-                echo "❌ 获取远程更新失败"
+                echo "📡 尝试从 $URL 更新..."
+
+                # 1. 动态设置远程地址 (这里建议直接用 $URL 变量，而不是 $REPO_URL)
+                if ! git remote set-url origin "$URL"; then
+                    echo "⚠️  无法设置远程地址，尝试下一个源..."
+                    continue
+                fi
+
+                # 2. 执行 Fetch
+                echo "📥 正在拉取分支 $BRANCH..."
+                if git fetch origin "$BRANCH"; then
+                    # --- 如果 fetch 成功，进入重置阶段 ---
+                    echo "✅ Fetch 成功，正在同步本地代码..."
+
+                    if git reset --hard origin/"$BRANCH"; then
+                        echo "✨ 仓库已成功更新到源: $URL"
+                        UPDATE_SUCCESS=true
+                        break # 【关键】跳出 for 循环，不再尝试后续的源
+                    fi
+                else
+                    echo "⚠️  源 $URL 连接失败或分支不存在，尝试下一个..."
+                fi
+            done
+
+            # 最后检查是否所有源都失败了
+            if [ "$UPDATE_SUCCESS" = false ]; then
+                echo "❌ 错误：所有配置的远程源均无法完成更新！"
                 exit 1
             fi
 
-            # 重置到远程分支最新提交
-            git reset --hard origin/"$BRANCH"
+            # 单次尝试方案
 
-            echo "✅ 仓库已强制更新到 origin/$BRANCH 最新版本"
+            #  定义不同源的仓库基础地址 (根据你的实际情况修改)
+            # case "$REPO_SOURCE" in
+            #     "github")
+            #         REPO_URL=$URL_GITHUB
+            #         ;;
+            #     "gitlab")
+            #         REPO_URL=$URL_GITLAB
+            #         ;;
+            #     "gitee")
+            #         REPO_URL=$URL_GITEE
+            #         ;;
+            #     *)
+            #         echo "⚠️ 未知的 REPO_SOURCE: $REPO_SOURCE，将尝试使用当前配置的 origin"
+            #         REPO_URL=""
+            #         ;;
+            # esac
+
         )
+
     fi
 
     echo "🎉 代码同步完成：$TARGET_DIR"
