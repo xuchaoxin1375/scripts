@@ -9,7 +9,7 @@
 
 version=20260321
 REPO_SOURCE='gitee' # gitee或github (gitee可能对国外ip服务器用户限流或要求注册账号)
-echo "当前脚本版本: $version;clone repository source: $REPO_SOURCE"
+echo "当前脚本版本: $version;"
 NGINX_CONF_DIR="/www/server/nginx/conf"
 NGINX_CONF_FILE="$NGINX_CONF_DIR/nginx.conf"
 # nginx主配置文件源(用于覆盖服务器上的旧版本)
@@ -17,7 +17,7 @@ NGINX_CONF_TPL_DIR="/www/sh/nginx_conf"
 NGINX_CONF_TPL_STD="$NGINX_CONF_TPL_DIR/nginx_nginx.conf"
 NGINX_CONF_TPL_OPENRESTY="$NGINX_CONF_TPL_DIR/nginx_openresty.conf"
 # 配置变量
-REPO_URL="https://$REPO_SOURCE/xuchaoxin1375/scripts.git"
+
 TARGET_DIR="/repos/scripts"
 BRANCH="main" # 或 "master"，根据实际情况调整
 
@@ -33,9 +33,11 @@ Usage: $(basename "$0") [options]
 echo "script version: $version"
 
 Options:
+    -r, --repo-source    指定仓库源，可以是 gitee 或 github
     -c, --update-code    更新仓库代码（clone / reset /pull）
     -g, --update-config  更新配置文件和符号链接等（覆盖/创建/重载 nginx, fail2ban 等）
     -f, --force          强制执行,需要和-g配合使用才生效（用于覆盖 nginx.conf 并跳过交互或保护性检查）
+    --remove-old         删除仓库,完全重新clone(务必谨慎使用,考虑手动备份或者将原来可能自定义的文件备份出来)
     -h, --help           显示本帮助信息并退出
 
 If neither --update-code nor --update-config is specified, the script
@@ -55,48 +57,55 @@ copy_if_need() {
     local dest="$2"
     [[ -f "$dest" ]] || cp -v "$source" "$dest"
 }
-# 解析脚本命令行参数
-while [ "$#" -gt 0 ]; do
-    case "$1" in
-        -f | --force)
-            FORCE=1
-            shift
-            ;;
-        --remove-old)
-            REMOVE_OLD=1
-            shift
-            ;;
-        -c | --update-code)
-            UPDATE_CODE=1
-            shift
-            ;;
-        -g | --update-config)
-            UPDATE_CONFIG=1
-            shift
-            ;;
-        -r | --repo-source)
-            REPO_SOURCE="$2"
-            shift 2
-            ;;
-        -h | --help)
-            print_usage
-            exit 0
-            ;;
-        --) # end of options
-            shift
-            break
-            ;;
-        -*)
-            echo "Unknown option: $1"
-            print_usage
-            exit 2
-            ;;
-        *)
-            # positional arg (not used) – ignore for now
-            shift
-            ;;
-    esac
-done
+parse_args() {
+
+    # 解析脚本命令行参数
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -f | --force)
+                FORCE=1
+                shift
+                ;;
+            --remove-old)
+                REMOVE_OLD=1
+                shift
+                ;;
+            -c | --update-code)
+                UPDATE_CODE=1
+                shift
+                ;;
+            -g | --update-config)
+                UPDATE_CONFIG=1
+                shift
+                ;;
+            -r | --repo-source)
+                REPO_SOURCE="$2"
+                shift 2
+                ;;
+            -h | --help)
+                print_usage
+                exit 0
+                ;;
+            --) # end of options
+                shift
+                break
+                ;;
+            -*)
+                echo "Unknown option: $1"
+                print_usage
+                exit 2
+                ;;
+            *)
+                # positional arg (not used) – ignore for now
+                shift
+                ;;
+        esac
+    done
+
+}
+parse_args "$@"
+REPO_URL="https://$REPO_SOURCE.com/xuchaoxin1375/scripts.git"
+echo "clone repository source: $REPO_SOURCE;from git: $REPO_URL"
 
 # 默认行为: 如果没有指定 -c/--update-code 或 -g/--update-config, 则默认启用更新代码
 if [ "$UPDATE_CODE" -eq 0 ] && [ "$UPDATE_CONFIG" -eq 0 ]; then
@@ -110,20 +119,22 @@ if [ "$UPDATE_CODE" -eq 1 ]; then
 
     echo "🚀 正在同步仓库到最新版本: $TARGET_DIR"
 
+    if [[ $REMOVE_OLD -eq 1 ]]; then
+        echo "🗑️ 删除旧仓库..."
+        rm -rf "$TARGET_DIR"
+    fi
     # 判断目录是否存在，决定是克隆还是更新
     if [ ! -d "$TARGET_DIR/.git" ]; then
         # 目录不存在或不是 Git 仓库：执行浅克隆
         echo "📁 未检测到 Git 仓库，正在执行浅克隆..."
         rm -rf "$TARGET_DIR" # 防止存在非 Git 目录（如普通文件夹）
-        if [[ $REMOVE_OLD -eq 1 ]]; then
-            rm -rf "$TARGET_DIR"
-        fi
-        git clone --depth 1 "$REPO_URL" "$TARGET_DIR"
-        if [ $? -ne 0 ]; then
+
+        if git clone --depth 1 "$REPO_URL" "$TARGET_DIR"; then
+            echo "✅ 克隆成功"
+        else
             echo "❌ 克隆失败，请检查网络或仓库地址"
             exit 1
         fi
-        echo "✅ 克隆成功"
     else
         # 已存在 Git 仓库：进入目录并强制更新
         echo "🔁 检测到现有仓库，正在强制更新到最新版本..."
