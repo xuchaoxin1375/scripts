@@ -4,12 +4,11 @@ update_last_part_bashrc() {
     local mark_last_end='# <<<last_part<<<'
     # shellcheck disable=SC2016
     # local prompt_prefix_broadcast='_PS1_PRE="${PS1%"$_PS1_RAW"}"'
-    local prompt_prefix_broadcast='source /www/sh/shell_env_mgr.sh'
+    local code_segment='source /www/sh/shell_env_mgr.sh'
     config_last_part=$(
         cat <<- EOF
 $mark_last_start
-# 回传(广播)prompt前缀到前面的PROMPT_COMMAND
-$prompt_prefix_broadcast
+$code_segment
 $mark_last_end
 EOF
 
