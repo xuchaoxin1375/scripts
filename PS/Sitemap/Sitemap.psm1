@@ -36,7 +36,7 @@ function Get-SourceFromUrls
         [parameter(Mandatory = $true)]
         $OutputDir,
         # 指定特定路径下的curl版本(绝对路径!)
-        $Curl="curl",
+        $Curl = "curl",
         $Agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", 
         $proxy = "",
         $TimeGap = 1,
@@ -284,6 +284,7 @@ function Get-SitemapFromLocalFiles
     <# 
     .SYNOPSIS
     扫描指定目录下的所有html文件,构造合适成适合采集的url链接列表,并输出到指定文件
+
     .PARAMETER Path
     待扫描的目录
     .PARAMETER Hst
@@ -318,7 +319,7 @@ function Get-SitemapFromLocalFiles
         # 输出文件路径(如果不指定,则默认输出到$Path的同级别目录下)
         $Output = "",
         # 输出到文件时,每个文件最多n条url;对于html很多的情况下,适当分割成多个文件有利于提高采集器的检索速度
-        $LinesOfEach = 1000,
+        $LinesOfEachFile = 1000,
         $Pattern = '*.html',
         $ExtOut = ".xml.txt",
         # 预览生成的本地站点url格式
@@ -328,35 +329,56 @@ function Get-SitemapFromLocalFiles
         # 输出(返回)结果传递
         [switch]$PassThru
     )
-    # 判断$Path是否为$HstRoot的子目录,如果不是则抛出异常结束此命令
+    # 判断$Path是否为目录,如果不是则抛出异常结束此命令
     if (!(Test-Path -Path $Path -PathType Container))
     {
         throw "Path '$Path' is not a valid directory."
     }
+    else
+    {
+        # 目录$path存在的情况下,创建junction link,将$path指向$HstRoot内部
+        $sourceDirName = Split-Path -Path $Path -Leaf
+        $RawPath = $Path
+        $Path = "$HstRoot/$sourceDirName"
+        New-Junction -Path "$Path" -Target $RawPath -Verbose
+        if(Test-Path -Path $Path -PathType Container)
+        {
+            Write-Host "已创建junction link,将${RawPath}指向${HstRoot}内部"
+            Get-Item $Path
+        }
+        else
+        {
+            Write-Error "符号创建错误!"
+            return $False
+        }
+
+    }
+    # 判断目录$Path是$HstRoot相等,如果相等,则会造成混乱,拒绝执行,应该
     if($Path -eq $HstRoot)
     {
         Write-Error "Current working path '$Path' is equal to '$HstRoot'. This will cause mess problems."
         
+        Write-Host "Chose(move to) or cd to another directory as [Path] value"
         return $False
-        Write-Host "Chose or cd to another directory as [Path] value"
     }
     # 大致判断当前将会生成一级还是二级站点地图(顶级地图为index站点地图)
-    $isIndex = if($LinesOfEach) { $true }else { $false }
+    $isIndex = if($LinesOfEachFile) { $true }else { $false }
     # 合理意图推测
     if($Pattern -match '.*\.xml')
     {
         Write-Warning "用户当前可能仅仅是要收集xml(比如从gz中解压出来的.xml)"
-        Write-Warning "将LinesOfEach调整为0,使得站点地图组织不用多余分级"
-        $LinesOfEach = 0
+        Write-Warning "将LinesOfEachFile调整为0,使得站点地图组织不用多余分级"
+        $LinesOfEachFile = 0
     }
-    # 分别获取$path和$HstRoot的绝对路径字符串,对比前缀
+    # 分别获取$Path和$HstRoot的绝对路径字符串,然后计算并对比前缀
     $Path = Get-Item $Path | Select-Object -ExpandProperty FullName
     $HstRoot = Get-Item $HstRoot | Select-Object -ExpandProperty FullName
+    # 路径规范化:字母大小写和路径分隔符规范化(统一为小写,并统一为斜杠方便对比)
     $absHstRoot = $HstRoot.ToLower() -replace "\\", "/"
     $absPath = $Path.ToLower() -replace "\\", "/"
     # 计算多级站点地图子级站点地图存放目录(不一定用上)
     $mapsDir = "$absPath/maps"
-    if($LinesOfEach)
+    if($LinesOfEachFile)
     {
         # 清空可能已经存在的文件
         if(Test-Path $mapsDir)
@@ -369,8 +391,10 @@ function Get-SitemapFromLocalFiles
     # return $absPath,$absHstRoot
     if($absPath -notlike "$absHstRoot*")
     {
-        Write-Error "Path '$absPath' is not a subdirectory of '$absHstRoot'."
-        return $False
+        Write-Warning "Path '$absPath' is not a subdirectory of '$absHstRoot'."
+
+        # return $False
+ 
 
     }
     else
@@ -390,7 +414,7 @@ function Get-SitemapFromLocalFiles
         # $absPath.Substring($absHstRoot.Length).Trim('\')
         # $OutputDefault = "$absHstRoot/${sitemapNameBaseDefault}${ext}"
         # $Output = $OutputDefault
-        if ($LinesOfEach)
+        if ($LinesOfEachFile)
         {
             $postfix = "_index"
         }
@@ -422,9 +446,9 @@ function Get-SitemapFromLocalFiles
         Write-Host "待处理被匹配到的文件数:[$fileCount]"
     }
 
-    if($LinesOfEach)
+    if($LinesOfEachFile)
     {
-        Write-Host "将会得到子级站点地图文件数:[$([math]::Ceiling($files.Count/$LinesOfEach))]"
+        Write-Host "将会得到子级站点地图文件数:[$([math]::Ceiling($files.Count/$LinesOfEachFile))]"
     }
     $sitemapSubIdx = 0
     $lineIdx = 0
@@ -453,14 +477,14 @@ function Get-SitemapFromLocalFiles
         # Write-Host $url
 
         # 写入到文件中
-        if($LinesOfEach)
+        if($LinesOfEachFile)
         {
             # 计算待编号的子级站点地图文件名
             # $sitemapSub = "${filebase}_${sitemapSubIdx}${ext}"
             # $sitemapSub = "${sitemapNameBaseDefault}_${sitemapSubIdx}${ext}"
             
             # 计算子级站点地图文件名称并写入到SitemapIndex文件
-            if($lineIdx % $LinesOfEach -eq 0)
+            if($lineIdx % $LinesOfEachFile -eq 0)
             {
                 $sitemapSubName = "${sitemapSubIdx}_local${ExtOut}"
                 $sitemapSubPath = "$mapsDir/$sitemapSubName"

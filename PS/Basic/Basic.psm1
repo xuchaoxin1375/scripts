@@ -1088,6 +1088,7 @@ function Open-AllFiles
 
 function New-Junction
 {
+    [cmdletbinding()]
     param(
         $Path,
         [alias('Destination')]$Target
@@ -1105,7 +1106,7 @@ function New-Junction
         New-Item -ItemType Directory -Force -Verbose $Target
     }
 
-    New-Item -Verbose -Force -ItemType junction -Path $Path -Target (Resolve-Path $Target)
+    New-Item -Force -ItemType junction -Path $Path -Target (Resolve-Path $Target) -Verbose:$VerbosePreference
     
 }
 function Get-BatteryLevel
@@ -1682,7 +1683,7 @@ function Disable-CredentialGuard
     if (-not(Test-AdminPermission))
     {
         Write-Warning '请以管理员身份运行此脚本。'
-        Exit
+        exit
     }
 
     # 设置注册表项以禁用Credential Guard相关设置
