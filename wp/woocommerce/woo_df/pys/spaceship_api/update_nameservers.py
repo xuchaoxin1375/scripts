@@ -9,7 +9,13 @@
     python $pys/spaceship_api/update_nameservers.py -h
 
 # 执行nameservers更新操作
-    python $pys/spaceship_api/update_nameservers.py -c $Desktop/deploy_configs/spaceship_config.json -f $Desktop/domains_nameservers.csv -v
+    ## 配合powershell的命令  
+    # 设置cf账号凭据 Set-CFCredentials -Account account1 # 注意修改account值
+    # Get-CFZoneNameServersTable -FromTable $desktop/table-xxx.conf 计算domains_nameservers.csv
+    # 最后执行spaceship 域名服务器更新操作
+    python $pys/spaceship_api/update_nameservers.py -c $deploy_configs/spaceship_config.json -f $Desktop/domains_nameservers.csv -v
+
+
 
 配置文件(json)内容示例
 {
@@ -170,13 +176,6 @@ def parse_args():
     """命令行参数解析"""
     parser = argparse.ArgumentParser(
         description="批量更新SpaceShip域名的Nameservers\n\n"
-        "示例: python update_nameservers.py -d domains.csv -c config.json --threads 8 --dry-run -v\n"
-        "参数说明:\n"
-        "  -d, --domains-file   域名和nameserver配置文件路径 (csv/xlsx/conf)\n"
-        "  -c, --config        SpaceShip API配置文件路径 (json)\n"
-        "  --threads           并发线程数 (默认: 4)\n"
-        "  --dry-run           仅预览将要修改的内容,不实际提交API\n"
-        "  -v, --verbose       显示详细日志\n"
     )
     parser.add_argument(
         "-f",

@@ -1076,8 +1076,8 @@ function Deploy-WpSitesOnline
     # 解析服务器配置
     $serversConfig = Get-Content $ServerConfig | ConvertFrom-Json
     $servers = $serversConfig.servers
-    write-verbose "Get Server $servers"
-    $server=$HostName
+    Write-Verbose "Get Server $servers"
+    $server = $HostName
     # server name -> server ip
     $HostName = $servers."$HostName".ip
     Write-Verbose "Deploy to server: $server,IP:$HostName"
@@ -1152,7 +1152,7 @@ function Deploy-WpSitesOnline
     # 后台运行远程站点创建
     Start-ThreadJob -ScriptBlock { 
         [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-        $server=$using:server
+        $server = $using:server
         Write-Host "[START TIME:$(Get-DateTime)][$server]Deploying sites on BT online..."
         Deploy-BatchSiteBTOnline -Script "$using:pys/bt_api/create_sites.py" -Server $server -ServerConfig $using:ServerConfig -Table $using:FromTable -SitesHome $using:SitesHome 
         Write-Host "[END TIME::$(Get-DateTime)]Deploying sites on BT online done."
@@ -1431,7 +1431,7 @@ function update-WpSqlOnServers
         $RemoteDirectory = "/www",
         $ServerConfig = $server_config,
         $Threads = 10,
-        $ThreadsOnSqlUpdate=10
+        $ThreadsOnSqlUpdate = 10
     
     )
     $servers = Get-ServerList -Path $ServerConfig
@@ -1867,7 +1867,8 @@ function Update-WpPluginsDFOnServers
                 $domainListParam,
                 $InstallMode,
                 $RemovePlugin,
-                $PluginName
+                $PluginName,
+                $JustUpload
             )
             if($currentSet -eq 'Path')
             {
@@ -1880,7 +1881,7 @@ function Update-WpPluginsDFOnServers
                 Write-Host "remove plugins[$PluginName] in $server"
                 "Update-WpPluginsDFOnServer -server $server -WorkingDirectory '$workingDirectory' -PluginName $PluginName -RemovePlugin $domainListParam " | Invoke-Expression
             } 
-        } -ArgumentList $server, $currentSet, $WorkingDirectory, $PluginPath, $domainListParam, $InstallMode, $RemovePlugin, $PluginName
+        } -ArgumentList $server, $currentSet, $WorkingDirectory, $PluginPath, $domainListParam, $InstallMode, $RemovePlugin, $PluginName, $JustUpload
     } 
     Start-Sleep 1
     $jobs | Receive-Job -Wait
