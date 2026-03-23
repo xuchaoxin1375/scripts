@@ -1070,3 +1070,15 @@ crontab -l |grep backup|sed 's/.*bash/bash/'
 
 ```
 
+## 手动添加少量网站
+
+通常也可以按照平时批量添加的方式添加少量网站;
+
+但是如果网站的包是从已有的站克隆(导出),则需要调整备份包的位置使其符合平时约定的规范
+
+或者使用专门的解压命令行参数(旧网站的域名假设绑定为`old.com`,使用`-N`指定新站域名`new.com`)
+
+```bash
+bash   /deploy.sh --user-dir Bsite -K --ssp "" -n old.com -N new.com
+```
+

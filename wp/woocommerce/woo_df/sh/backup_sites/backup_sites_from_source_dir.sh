@@ -11,14 +11,6 @@
 # 3.完整性检查:备份完后可以运行一段批量检查文件完整性检查的代码,防止某些文件压缩过程中出错(尤其是被意外终止脚本的情况)
 # 4.线程数不要开太高,虽然服务器核心很多,但是tar和zstd算法容易打满磁盘IO,备份速度的主要瓶颈不在cpu而在于磁盘上!
 
-# # 指定MySQL主机和端口
-# ./backup_sites_from_source_dir.sh --mysql-host 192.168.1.100 --mysql-port 3306
-
-# # 指定MySQL用户名和密码
-# ./backup_sites_from_source_dir.sh --mysql-user myuser --mysql-pass mypassword
-# bash ./backup_sites_from_source_dir.sh --parallel --jobs 2 --valid-users  valid_users.ini -u xcx --mysql-user myusername --mysql-pass password123
-# # 组合使用所有参数
-# ./backup_sites_from_source_dir.sh -d /srv/uploads/uploader/files --mysql-host localhost --mysql-port 3306 --mysql-user root --mysql-pass password123
 
 SRC_ROOT="/www/wwwroot"
 DEST_ROOT="/srv/uploads/uploader/files"
@@ -43,6 +35,7 @@ show_help() {
   -s, --src <src_root>     网站根目录所在总目录 (默认：$SRC_ROOT)
   -d, --dest <dest_root>   目标根目录 (默认：$DEST_ROOT)
   -u, --user <username>    根据站点所属人员来指定网站范围 (人员专属目录名，通常是人名拼音缩写),从而仅备份指定用户的网站目录下的站点 (默认：所有用户)
+	  --site,--domain 备份指定的单个网站(指定域名(网站名),而不是网站根目录)
       --valid-users  <file>   白名单文件，指定需要处理的用户目录名列表
       --whitelist-site <file>   白名单文件，指定需要处理的网站 (域名) 列表
       --mysql-host <host>  MySQL 主机地址
@@ -56,7 +49,29 @@ show_help() {
       --parallel           并行处理模式
       --jobs <n>           并行任务数 (默认：$PARALLEL_JOBS)
   -h, --help               显示本帮助信息
+
+examples:
+	# 指定MySQL主机和端口
+	./backup_sites_from_source_dir.sh --mysql-host 192.168.1.100 --mysql-port 3306
+
+	# 指定MySQL用户名和密码
+	./backup_sites_from_source_dir.sh --mysql-user myuser --mysql-pass mypassword
+	bash ./backup_sites_from_source_dir.sh --parallel --jobs 2 --valid-users  valid_users.ini -u xcx --mysql-user myusername --mysql-pass password123
+	# 组合使用所有参数
+	./backup_sites_from_source_dir.sh -d /srv/uploads/uploader/files --mysql-host localhost --mysql-port 3306 --mysql-user root --mysql-pass password123
+
+	# 备份单个站点(指定网站名字,自动搜索网站根路径)
+	bash ./backup_sites_from_source_dir.sh --site goodpayway.shop --parallel --jobs 1
 EOF
+}
+# 移除字符串边缘空白字符
+trim() {
+	local var="$*"
+	# 移除开头空格
+	var="${var#"${var%%[![:space:]]*}"}"
+	# 移除结尾空格
+	var="${var%"${var##*[![:space:]]}"}"
+	printf '%s' "$var"
 }
 #Function: isCommandInstalled()
 #
@@ -355,6 +370,10 @@ parse_args() {
 				VALID_USERS="$2"
 				shift 2
 				;;
+			--domain | --site)
+				SITE_ROOT="$2"
+				shift 2
+				;;
 			--whitelist-site)
 				WHITELIST_SITE="$2"
 				shift 2
@@ -442,8 +461,6 @@ fi
 check_listfile "$VALID_USERS"
 check_listfile "$WHITELIST_SITE"
 
-
-
 # 在开始备份前检查MySQL连接
 if ! check_mysql_connection; then
 	exit 1
@@ -453,11 +470,24 @@ fi
 SITE_COUNT=0
 SITE_EXISTING=0
 SITE_TO_BACKUP=0
+# 计算是否仅备份指定网站(将命令行指定的单个网站(根目录作为代表)保存到临时白名单文件中)
+# 将处理逻辑统一到白名单指定的方式一样处理
+log "SITE_ROOT=$SITE_ROOT"
+if [[ $SITE_ROOT ]]; then
+	# [[ -d $SITE_ROOT ]] && {
+	# }
 
+	WHITELIST_SITE_TMP=$(mktemp ~/whitelist_site.XXX)
+	WHITELIST_SITE=$WHITELIST_SITE_TMP
+	log "WHITELIST_SITE=$WHITELIST_SITE"
+	# 单个网站写入此文件中
+	echo "$SITE_ROOT" > "$WHITELIST_SITE"
+fi
 if [[ $PARALLEL -eq 1 ]]; then
 	# 并行处理模式
 	# 初始化一个空数组
 	declare -a site_dirs
+	# 创建一个文件用于观察中间处理结果的文件(便于调试)
 	site_dirs_listfile="/www/site_dirs_list.txt"
 	# 清空原文件防止旧数据干扰
 	echo -n "" > "$site_dirs_listfile"
@@ -475,7 +505,7 @@ if [[ $PARALLEL -eq 1 ]]; then
 		mapfile -d '' site_dirs < "$site_dirs_listfile"
 
 	elif [[ -n "$WHITELIST_SITE" ]]; then
-		log "将使用域名白名单文件搜索指定网站根目录: $WHITELIST_SITE"
+		log "将对指定的网站(根目录+数据库)做备份: $WHITELIST_SITE"
 		mapfile -t sites < "$WHITELIST_SITE"
 		for site in "${sites[@]}"; do
 			# 跳过第一个非空白字符是#或;的行(视为注释)
@@ -486,6 +516,7 @@ if [[ $PARALLEL -eq 1 ]]; then
 			# 移除行边缘空格
 			# site=$(echo "$site" | xargs)
 			site=$(trim "$site")
+			log "site:$site"
 			dir=$(echo "$SRC_ROOT"/*/"$site"/wordpress)
 			if [[ -d "$dir" ]]; then
 				# [[ -d "$dir" ]] && site_dirs+=("$dir")
@@ -496,7 +527,7 @@ if [[ $PARALLEL -eq 1 ]]; then
 				# 而在已知路径不会包含\n的情况下,可以用\n
 				printf "%s\n" "$dir" >> $site_dirs_listfile
 			else
-				log "[警告] 站点 $site 不存在"
+				log "[警告] 站点 $site [$dir] 不存在"
 			fi
 		done
 	else
@@ -554,7 +585,7 @@ if [[ $PARALLEL -eq 1 ]]; then
 		elif [[ -n "$WHITELIST_SITE" ]]; then
 			log "根据站点白名单文件 $WHITELIST_SITE 未找到需要处理的 wordpress 站点"
 		else
-			log "未找到任何 wordpress 站点"
+			log "未找到任何满足指定条件的 wordpress 站点"
 		fi
 	else
 		log "查找完成，共匹配到 $SITE_COUNT 个站点"
@@ -673,3 +704,5 @@ else
 	# 	log "总共发现 $SITE_COUNT 个站点，其中 $SITE_EXISTING 个已存在备份，$SITE_TO_BACKUP 个需要备份"
 	# fi
 fi
+# 清理临时文件
+[[ -f WHITELIST_SITE_TMP ]] && rm -rfv "$WHITELIST_SITE_TMP"

@@ -1804,21 +1804,19 @@ function Update-WpPluginsDFOnServers
     elseif($WhiteList)
     {
         Write-Verbose "Using WhiteList...(only update plugins of sites(domain) in WhiteList)"
+        # 白名单文件可能有多个,将他们合并到一个文件中方便处理
         if (@($WhiteList).Count -gt 1)
         {
             Write-Verbose "There are more than one WhiteList, merging them..."
             $mergeFile = "$desktop/WhiteList-$(Get-DateTimeNumber -Format "yyyyMMddHH" ).txt"
             Get-Content $WhiteList -Raw | Out-File $mergeFile -Verbose
+            # 更新白名单文件
+            $WhiteList = $mergeFile
         }
-        else
-        {
-            $mergeFile = $WhiteList
-        }
-        $domainListParam = "-WhiteList $mergeFile"
     }
     elseif($BlackList)
     {
-        
+        # 和白名单类似的处理手法
         Write-Verbose "Using BlackList...(skip updating plugins of sites(domain) in BlackList)"
         if (@($BlackList).Count -gt 1)
         {
@@ -1826,11 +1824,8 @@ function Update-WpPluginsDFOnServers
             $mergeFile = "$desktop/BlackList-$(Get-DateTimeNumber -Format "yyyyMMddHH" ).txt"
             Get-Content $BlackList -Raw | Out-File $mergeFile -Verbose
         }
-        else
-        {
-            $mergeFile = $BlackList
-        }
-        $domainListParam = "-BlackList $mergeFile"
+ 
+        $BlackList = "$mergeFile"
     }
 
     $servers = Get-ServerList -Path $ServerConfig
@@ -1864,7 +1859,8 @@ function Update-WpPluginsDFOnServers
                 $currentSet,
                 $WorkingDirectory,
                 $PluginPath,
-                $domainListParam,
+                $WhiteList,
+                $BlackList,
                 $InstallMode,
                 $RemovePlugin,
                 $PluginName,
@@ -1874,14 +1870,21 @@ function Update-WpPluginsDFOnServers
             {
             
                 Write-Host "Updating plugins to $server"
-                "Update-WpPluginsDFOnServer -server $server -WorkingDirectory '$workingDirectory' -PluginPath $PluginPath $domainListParam -InstallMode $InstallMode -JustUpload:$JustUpload" | Invoke-Expression
+                # params=@ {
+                #     Server=$server
+                #     WorkingDirectory=$WorkingDirectory
+                #     PluginPath=$PluginPath
+                #     InstallMode=$InstallMode
+                #     JustUpload=$JustUpload
+                # }
+                Update-WpPluginsDFOnServer -server $server -WorkingDirectory $workingDirectory -PluginPath $PluginPath -InstallMode $InstallMode -JustUpload:$JustUpload -WhiteList $WhiteList -BlackList $BlackList 
             }
             elseif($currentSet -eq 'Name' -and $RemovePlugin)
             {
                 Write-Host "remove plugins[$PluginName] in $server"
-                "Update-WpPluginsDFOnServer -server $server -WorkingDirectory '$workingDirectory' -PluginName $PluginName -RemovePlugin $domainListParam " | Invoke-Expression
+                Update-WpPluginsDFOnServer -server $server -WorkingDirectory $workingDirectory -PluginName $PluginName -RemovePlugin -WhiteList $WhiteList -BlackList $BlackList 
             } 
-        } -ArgumentList $server, $currentSet, $WorkingDirectory, $PluginPath, $domainListParam, $InstallMode, $RemovePlugin, $PluginName, $JustUpload
+        } -ArgumentList $server, $currentSet, $WorkingDirectory, $PluginPath, $WhiteList, $BlackList, $InstallMode, $RemovePlugin, $PluginName, $JustUpload
     } 
     Start-Sleep 1
     $jobs | Receive-Job -Wait
