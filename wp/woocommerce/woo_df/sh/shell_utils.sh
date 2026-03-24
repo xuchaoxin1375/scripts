@@ -61,8 +61,55 @@ install_blesh() {
 }
 # 获取当前系统的发行版名称
 function get_os_name() {
-    # 只读取第一行并取第一个单词
-    awk -F= '/^NAME/{print $2}' /etc/os-release | tr -d '"'
+    local out_name=false
+    local out_version=false
+    local os_file="/etc/os-release"
+    local usage="
+    获取当前系统的发行版名称或版本号。默认无参数时，只输出发行版名称。
+usage:
+    get_os_name [OPTIONS]
+options:
+    -o: 输出名称和版本号
+    --id: 仅输出版本号
+    "
+    # 处理参数
+    if [[ $# -eq 0 ]]; then
+        # 默认行为：只输出名称
+        out_name=true
+    else
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                -o)
+                    out_name=true
+                    out_version=true
+                    shift
+                    ;;
+                --id)
+                    out_version=true
+                    shift
+                    ;;
+                *)
+                    echo "Unknown option: "
+                    return 1
+                    ;;
+            esac
+        done
+    fi
+
+    # 提取变量值
+    local name
+    name=$(grep -E '^NAME=' "$os_file" | cut -d'=' -f2 | tr -d '"')
+    local version
+    version=$(grep -E '^VERSION_ID=' "$os_file" | cut -d'=' -f2 | tr -d '"')
+
+    # 根据布尔值决定输出内容
+    if [[ "$out_name" == true && "$out_version" == true ]]; then
+        echo "$name $version"
+    elif [[ "$out_version" == true ]]; then
+        echo "$version"
+    else
+        echo "$name"
+    fi
 }
 # 检测数组中是否包含指定元素
 # Arguments:

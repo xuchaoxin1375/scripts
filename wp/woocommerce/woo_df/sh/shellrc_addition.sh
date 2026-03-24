@@ -21,12 +21,14 @@ fi
 # bash prompt主题配置
 export BASH_PROMPT="fast_ys"
 export BASHRC_FILE="$HOME/.bashrc"
+export BASH_PROMPTS_ROOT="/www/sh/bash_prompts"
 # 引入预定义的别名
 source /www/sh/shell_vars.sh
 source /www/sh/shell_alias.sh
 source /www/sh/shell_utils.sh
 # source /www/sh/shell_env_mgr.sh
 source /www/sh/shell_insert_last_part.sh
+# source "$BASH_PROMPTS_ROOT/prompt_switcher.sh"
 
 # 使用windows环境下的编辑器时,例如vscode,注意换行符改为LF,避免多行命令被错误解释🎈
 # mark='# Load additional shell configs'
@@ -86,6 +88,8 @@ echo "Loading additional shell config and functions..."
 if is_shell bash || check_dependency -q shopt; then
   # 插入bashrc的最后部分的配置
   update_last_part_bashrc
+  # 在合适的位置加载bash prompt
+  source "$BASH_PROMPTS_ROOT/prompt_switcher.sh"
   # 检查当前 Shell 是否运行在 POSIX 模式下。
   # POSIX 模式是为了严格遵守 Unix 标准，它会禁用很多 Bash 特有的“花哨”功能（比如高级补全）。
   if ! shopt -oq posix; then
@@ -150,49 +154,7 @@ if is_shell bash || check_dependency -q shopt; then
   echo "bash prompt:$BASH_PROMPT"
   # 考虑到用户可能使用conda,nvm等环境管理工具,这可能修改prompt,因此这里在覆盖promopt前保留原propmt值供后续拼接
   # 注意本代码在~/.bashrc中插入位置要靠后,否则如果在conda这类导入片段之前可能会被覆盖效果;或者.bashrc(中BASH_COMMAND的设置 )
-  PS1="" #清空原始的prompt值
-  # _PS1_RAW="[${PS1}]"
-  # _PS1_PRE="${PS1%"$_PS1_RAW"}"
-  # log "===debug: PS1: ${PS1}->[${PS1@P}]"
-  # echo "===debug: _PS1_RAW: $_PS1_RAW"
-  # log "===debug: _PS1_RRE: $_PS1_PRE"
-  # 修改后的 prompt_switcher
-  prompt_switcher() {
-    local prompt_file="$sh/bash_prompts/${BASH_PROMPT}.sh"
-    local gray='\[\e[38;5;244m\]'
-    local reset='\[\e[0m\]'
-    if [[ -f "$prompt_file" ]]; then
-      # 仅加载当前需要的那个脚本
-      # shellcheck source=/dev/null
-      source "$prompt_file"
-
-      # 调用对应的函数(引入__PS1__这部分自定义的prompt片段)
-      case "$BASH_PROMPT" in
-        "fast_ys") __fast_ys_prompt ;;
-        "fast_junkfood") __fast_junkfood_prompt ;;
-        "ys") __ys_prompt ;;
-        *) echo "warning: function mapping missing for $BASH_PROMPT" >&2 ;;
-      esac
-      # 配置conda等可能更改prompt的环境变量的部分(可以对比oh my zsh中prompt的效果再按需修改)
-      _PY_VENV_NAME="${VIRTUAL_ENV##*/}"
-      [[ $_PY_VENV_NAME ]] && _PY_VENV_NAME="(${_PY_VENV_NAME})"
-      NODE_VERSION=$(check_dependency -q node && node -v 2> /dev/null)
-      [[ $NODE_VERSION ]] && NODE_VERSION="(node:${NODE_VERSION})"
-
-      _ENV_PROMPT="${CONDA_PROMPT_MODIFIER}${_PY_VENV_NAME}${NODE_VERSION}${KUBECONFIG}"
-      _COMMOM_PROMPT_PREFIX="${gray}${_ENV_PROMPT}[$(get_os_name)][$(current_shell)]${reset}"
-      # _PS1_PRE 会在conda等对PS1进行修改后将增加的前缀(例如base)传播回来
-      PS1="# ${_PS1_PRE}${_COMMOM_PROMPT_PREFIX}${__PS1__}"
-      # echo  "===debug on PROMPT_COMMAND: PS1: <<${PS1}->[${PS1@P}]>>"
-    else
-      echo "warning: unknown prompt configuration [$BASH_PROMPT]" >&2
-    fi
-  }
-  # 设置每次返回shell提示符时要执行的逻辑(比如更改prompt,或者其他动作)
-  PROMPT_COMMAND=prompt_switcher
-  # 注意,PROMPT_COMMAND不会再被赋值的时候立即执行!和直接调用被赋值函数不同!
-  # prompt_switcher
-  # echo "<<${PS1@P}>>"
+ 
 fi
 
 export INPUTRC="$sh/.inputrc.conf"
