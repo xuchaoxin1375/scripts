@@ -783,13 +783,31 @@ wp() {
 }
 # 运行brew命令(借用linuxbrew用户权限)
 brew() {
-    user='linuxbrew' #修改为你的系统上存在的一个普通用户的名字
-    local ORIG_DIR="$PWD"
-    echo "[INFO] Executing as user '$user' in /home/linuxbrew: brew $*"
-    cd /home/$user && sudo -u $user /home/linuxbrew/.linuxbrew/bin/brew "$@"
-    local EXIT_CODE=$?
-    cd "$ORIG_DIR" 2> /dev/null || echo "[WARN] Could not return to original directory: $ORIG_DIR"
-    return $EXIT_CODE
+    # 检查当前是否为 root 用户 (UID 0)
+    if [ "$(id -u)" -eq 0 ]; then
+        # 如果未设置 BREW_USER，则给出提示并退出
+        if [ -z "$BREW_USER" ]; then
+            echo "[ERROR] Brew cannot run as root. Please set BREW_USER environment variable."
+            echo "set environment variable: export BREW_USER='your_username',write it to your shellrc file to make it permanent."
+            return 1
+        fi
+
+        # 执行逻辑：切换到指定用户运行
+        local ORIG_DIR="$PWD"
+        echo "[INFO] Root detected. Executing as '$BREW_USER': brew $*"
+
+        # 建议切换到该用户的家目录，避免权限报错
+        cd "/home/$BREW_USER" 2> /dev/null || cd /tmp || exit 1
+
+        sudo -u "$BREW_USER" /home/linuxbrew/.linuxbrew/bin/brew "$@"
+        local EXIT_CODE=$?
+
+        cd "$ORIG_DIR" 2> /dev/null || exit 1
+        return $EXIT_CODE
+    else
+        # 如果不是 root 用户，直接调用原始的 brew 命令
+        brew "$@"
+    fi
 }
 # 强力删除:能够将标志位是i的文件(目录)更改为可删除,然后删除掉指定目标
 # 这是一个简化版本(使用rm1或rm2更可靠)
