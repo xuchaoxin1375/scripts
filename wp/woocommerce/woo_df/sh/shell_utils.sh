@@ -782,7 +782,13 @@ wp() {
     return $EXIT_CODE
 }
 # 运行brew命令(借用linuxbrew用户权限)
-brew() {
+# brew(linuxbrew)拒绝root用户直接运行,并且默认安装路径是/home/linuxbrew/.linuxbrew
+# 添加brew配置到PATH
+# - Run these commands in your terminal to add Homebrew to your PATH:
+# echo >> /home/cxxu/.zshrc
+# echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv zsh)"' >> /home/cxxu/.zshrc
+# eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv zsh)"
+brewr() {
     # 检查当前是否为 root 用户 (UID 0)
     if [ "$(id -u)" -eq 0 ]; then
         # 如果未设置 BREW_USER，则给出提示并退出
@@ -806,7 +812,8 @@ brew() {
         return $EXIT_CODE
     else
         # 如果不是 root 用户，直接调用原始的 brew 命令
-        brew "$@"
+        # 注意避免递归调用!
+        command brew "$@"
     fi
 }
 # 强力删除:能够将标志位是i的文件(目录)更改为可删除,然后删除掉指定目标
