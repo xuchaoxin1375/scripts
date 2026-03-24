@@ -22,6 +22,8 @@ fi
 export BASH_PROMPT="fast_ys"
 export BASHRC_FILE="$HOME/.bashrc"
 export BASH_PROMPTS_ROOT="/www/sh/bash_prompts"
+_HOMEBREW_PREFIX="/home/linuxbrew/.linuxbrew"
+_HOMEBREW_PATH="$_HOMEBREW_PREFIX/bin/brew"
 # 引入预定义的别名
 source /www/sh/shell_vars.sh
 source /www/sh/shell_alias.sh
@@ -29,6 +31,11 @@ source /www/sh/shell_utils.sh
 # source /www/sh/shell_env_mgr.sh
 source /www/sh/shell_insert_last_part.sh
 # source "$BASH_PROMPTS_ROOT/prompt_switcher.sh"
+# brew包管理器配置(如果可用的话) brew shellenv 是幂等的,如果shell环境执行过一次,那么再次执行输出为空.
+if [[ -e "$_HOMEBREW_PATH" && -z $HOMEBREW_PREFIX ]]; then
+  # $_HOMEBREW_PATH shellenv # debug print it
+  eval "$($_HOMEBREW_PATH shellenv)"
+fi
 
 # 使用windows环境下的编辑器时,例如vscode,注意换行符改为LF,避免多行命令被错误解释🎈
 # mark='# Load additional shell configs'
@@ -154,7 +161,7 @@ if is_shell bash || check_dependency -q shopt; then
   echo "bash prompt:$BASH_PROMPT"
   # 考虑到用户可能使用conda,nvm等环境管理工具,这可能修改prompt,因此这里在覆盖promopt前保留原propmt值供后续拼接
   # 注意本代码在~/.bashrc中插入位置要靠后,否则如果在conda这类导入片段之前可能会被覆盖效果;或者.bashrc(中BASH_COMMAND的设置 )
- 
+
 fi
 
 export INPUTRC="$sh/.inputrc.conf"
