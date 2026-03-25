@@ -340,15 +340,24 @@ function Get-SitemapFromLocalFiles
         $sourceDirName = Split-Path -Path $Path -Leaf
         $RawPath = $Path
         $Path = "$HstRoot/$sourceDirName"
-        New-Junction -Path "$Path" -Target $RawPath -Verbose
-        if(Test-Path -Path $Path -PathType Container)
+        if (! (Test-Path -Path $Path -PathType Container))
         {
-            Write-Host "已创建junction link,将${RawPath}指向${HstRoot}内部"
-            Get-Item $Path
+
+            New-Junction -Path "$Path" -Target $RawPath -Verbose
+            if(Test-Path -Path $Path -PathType Container)
+            {
+                Write-Host "已创建junction link,将${RawPath}指向${HstRoot}内部"
+                Get-Item $Path
+            }
+            else
+            {
+                Write-Error "符号创建错误!"
+                return $False
+            }
         }
         else
         {
-            Write-Error "符号创建错误!"
+            Write-Host "目标目录已经存在,检查[$Path],考虑重名备份或者删除后继续执行"
             return $False
         }
 

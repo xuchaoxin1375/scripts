@@ -23,7 +23,7 @@ SOURCE_DIR=""
 REMOVE_PLUGINS=""
 USER_NAME=""
 # 修改默认值，支持多个路径，用逗号分隔
-WORKDIR="/www/wwwroot,/wwwdata/wwwroot" 
+WORKDIR="/www/wwwroot,/wwwdata/wwwroot"
 DRY_RUN=false
 COMMON_PLUGINS_HOME="wp-content/plugins"
 MUST_PLUGINS_HOME="wp-content"
@@ -34,13 +34,31 @@ INSTALL_MODE="symlink"
 PLUGIN_TYPE="common"
 while [[ "$#" -gt 0 ]]; do
     case $1 in
-        --source) SOURCE_DIR="$2"; shift ;;
-        --remove) REMOVE_PLUGINS="$2"; shift ;;
-        --user) USER_NAME="$2"; shift ;;
-        --workdir) WORKDIR="$2"; shift ;; # 接受逗号分隔的多个路径
+        --source)
+            SOURCE_DIR="$2"
+            shift
+            ;;
+        --remove)
+            REMOVE_PLUGINS="$2"
+            shift
+            ;;
+        --user)
+            USER_NAME="$2"
+            shift
+            ;;
+        --workdir)
+            WORKDIR="$2"
+            shift
+            ;; # 接受逗号分隔的多个路径
         --dry-run) DRY_RUN=true ;;
-        --blacklist) BLACKLIST_FILE="$2"; shift ;;
-        --whitelist) WHITELIST_FILE="$2"; shift ;;
+        --blacklist)
+            BLACKLIST_FILE="$2"
+            shift
+            ;;
+        --whitelist)
+            WHITELIST_FILE="$2"
+            shift
+            ;;
         --plugin-type)
             if [[ "$2" == "must" ]]; then
                 PLUGIN_TYPE="must"
@@ -57,7 +75,10 @@ while [[ "$#" -gt 0 ]]; do
             fi
             shift
             ;;
-        --log) LOG_FILE="$2"; shift ;;
+        --log)
+            LOG_FILE="$2"
+            shift
+            ;;
         *) usage ;;
     esac
     shift
@@ -80,7 +101,8 @@ if [[ -n "$BLACKLIST_FILE" ]]; then
         exit 1
     fi
     # mapfile -t BLACKLIST < "$BLACKLIST_FILE"
-    mapfile -t BLACKLIST < <(tr -d '\r' < "$BLACKLIST_FILE")
+    # mapfile -t BLACKLIST < <(tr -d '\r' < "$BLACKLIST_FILE")
+    mapfile -t BLACKLIST < <(sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/\r$//' < "$BLACKLIST_FILE")
 fi
 if [[ -n "$WHITELIST_FILE" ]]; then
     if [[ ! -f "$WHITELIST_FILE" ]]; then
@@ -88,14 +110,14 @@ if [[ -n "$WHITELIST_FILE" ]]; then
         exit 1
     fi
     # mapfile -t WHITELIST < "$WHITELIST_FILE"
-    mapfile -t WHITELIST < <(tr -d '\r' < "$WHITELIST_FILE")
+    mapfile -t BLACKLIST < <(sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/\r$//' < "$WHITELIST_FILE")
 fi
 
 # 判断域名是否在黑名单
 is_blacklisted() {
     local domain="$1"
     for blacklisted in "${BLACKLIST[@]}"; do
-        if [[ "$domain" == "$blacklisted" ]]; then
+        if [[ "$domain" == "${blacklisted,,}" ]]; then
             return 0
         fi
     done
@@ -112,7 +134,6 @@ is_whitelisted() {
     done
     return 1
 }
-
 
 # 记录日志函数
 log_action() {
@@ -134,7 +155,7 @@ for workdir_path in "${WORKDIR_ARRAY[@]}"; do
         log_action "工作目录不存在，跳过: $workdir_path"
         continue
     fi
-    
+
     log_action "--- 正在处理工作目录: $workdir_path ---"
 
     # 查找所有 WordPress 站点目录 (SITE_PATHS现在是相对于workdir_path的模式)
@@ -190,7 +211,7 @@ for workdir_path in "${WORKDIR_ARRAY[@]}"; do
             else
                 # 调整用户ini
                 user_ini="$site/.user.ini"
-                if [[ -f "$user_ini" ]];then
+                if [[ -f "$user_ini" ]]; then
                     log_action "调整[$site]的.user.ini..."
                     bash /www/sh/update_user_ini.sh -p "$user_ini"
                 fi
