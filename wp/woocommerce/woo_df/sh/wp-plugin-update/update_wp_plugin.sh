@@ -102,6 +102,11 @@ if [[ -n "$BLACKLIST_FILE" ]]; then
     fi
     # mapfile -t BLACKLIST < "$BLACKLIST_FILE"
     # mapfile -t BLACKLIST < <(tr -d '\r' < "$BLACKLIST_FILE")
+
+    # 去除域名边缘的空格,兼容CRLF换行的文件
+    # s/^[[:space:]]*//：删除行首空格。
+    # s/[[:space:]]*$//：删除行尾空格。
+    # s/\r$//：删除 Windows 换行符。
     mapfile -t BLACKLIST < <(sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/\r$//' < "$BLACKLIST_FILE")
 fi
 if [[ -n "$WHITELIST_FILE" ]]; then
