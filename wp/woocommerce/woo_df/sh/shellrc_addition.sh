@@ -36,6 +36,14 @@ if [[ -e "$_HOMEBREW_PATH" && -z $HOMEBREW_PREFIX ]]; then
   # $_HOMEBREW_PATH shellenv # debug print it
   eval "$($_HOMEBREW_PATH shellenv)"
 fi
+# 移除wsl中ls列出文件夹的背景色
+remove_background_color() {
+  echo "Remove the background color to improve the reading experience."
+  echo "try to remove bgc for the current shell:$SHELL!"
+  eval "$(dircolors -p |
+    sed 's/ 4[0-9];/ 01;/; s/;4[0-9];/;01;/g; s/;4[0-9] /;01 /' |
+    dircolors /dev/stdin)"
+}
 
 # 使用windows环境下的编辑器时,例如vscode,注意换行符改为LF,避免多行命令被错误解释🎈
 # mark='# Load additional shell configs'
@@ -93,6 +101,7 @@ echo "Loading additional shell config and functions..."
 
 # 针对bash的配置(依赖于shopt命令和针对bash的prompt)
 if is_shell bash || check_dependency -q shopt; then
+  remove_background_color
   # 插入bashrc的最后部分的配置
   update_last_part_bashrc
   # 在合适的位置加载bash prompt

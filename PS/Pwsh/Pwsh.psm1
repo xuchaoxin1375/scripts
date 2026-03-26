@@ -3054,7 +3054,8 @@ function Start-CodeSSh
         $Editor = 'code',
         $Server = 'localhost',
         # $Path="/home/" #需要打开的目录
-        $Path = $home 
+        $Path = $home,
+        $Port = ""
     )
     # code --folder-uri "vscode-remote://ssh-remote+$Server/$Path"
     $cmd = "$Editor --folder-uri vscode-remote://ssh-remote+$Server/$Path"

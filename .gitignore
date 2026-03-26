@@ -24,6 +24,7 @@ images/
 *.pdf
 *.docx
 *.doc
+# *.html (部分地方需要)
 # 记得从git移除这些不需要的文件
 # Python 补充
 __pycache__/

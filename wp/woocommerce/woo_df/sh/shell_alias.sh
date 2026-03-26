@@ -1,6 +1,10 @@
 #!/bin/bash
 
 echo "Loading pre-defined aliases..."
+# 重新加载别名配置(从外部引入sh环境变量)
+# shellcheck disable=SC2154
+# shellcheck disable=SC2139
+alias update_alias="source '$sh/shell_alias.sh'"
 # 常用内置命令缩写
 alias bashrc='source ~/.bashrc'
 alias zshrc='source ~/.zshrc'
