@@ -24,6 +24,9 @@ images/
 *.pdf
 *.docx
 *.doc
+browser_profile
+chrome_debug_profile
+
 # *.html (部分地方需要)
 # 记得从git移除这些不需要的文件
 # Python 补充
