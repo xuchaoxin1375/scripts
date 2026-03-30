@@ -2153,12 +2153,21 @@ function Move-ItemImagesFromCsvPathFields
             Write-Warning "仅处理后缀名符合匹配模式[$ImgExtPattern]的图片文件"
             $values = $values | ForEach-Object { $_ -replace '\.\w+$', $ImgExtPattern }
         }
+        # 如果$values中元素为0 则不处理
+        if ($values.Count -eq 0)
+        {  
+            Write-Warning "无对应图片文件需要处理..."         
+            return $false
+        }
         # Write-Host $values[1..10]
+        $movedCount=0
         $values | ForEach-Object { 
             # Write-Host "Moving file: $SourceDir/$_ to $Destination"
 
             Move-Item -Path $SourceDir/$_ -Destination $Destination -Verbose -ErrorAction SilentlyContinue # -Confirm
+            $movedCount++
         }
+        write-host "Done! Moved [$movedCount] items."
     } 
 
 }

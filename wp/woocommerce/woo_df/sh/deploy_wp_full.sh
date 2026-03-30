@@ -51,9 +51,9 @@ DB_PORT="3306"
 DEPLOY_MODE="auto" # 部署模式(批量解压或手动指定压缩包解压特定网站)
 DEPLOYED_DIR="$UPLOADER_DIR/deployed_all"
 PLUGIN_INSTALL_MODE="symlink"    # 插件安装模式: symlink(符号链接), copy(复制)
-USER_DIRS=()                     #需要部署的用户目录
+USER_DIRS=()                     #需要部署的用户目录,可以指定多个(重复使用-u选项指定人员目录名)
 SITE_ROOT_NAME="wordpress"       # 站点根目录是否要包一层wordpress目录
-SKIP_SCAN_PATTERN="*/deployed/*" # 对于部署指定包的模式下,功能find扫描参考跳过部分目录
+SKIP_SCAN_PATTERN="*/deployed/*" # 对于部署指定包的模式下,功能find扫描参考跳过部分目录(*deployed*不如*/deployed/*严谨)
 FAST=false                       #快速模式(将数据库的导入和网站的解压并行化,deploy_site内的局部并行,适合极速部署单个站点)
 # 跳过解压网站根目录及其相关操作(假设已经解压过根目录包了),如果不想跳过则设为空串""即可.
 SITE_ROOT_SKIP=false
@@ -1241,12 +1241,12 @@ main() {
                 user_dirs=("${USER_DIRS[@]}")
                 verbose && log "🔍 仅处理指定用户目录: ${USER_DIRS[*]}"
             else
-                verbose && log " 将自动扫描目录"
-                user_dirs=(*/) #直接使用通配匹配指定目录下的目录名
+                verbose && log " 将自动扫描人员目录下的站点包"
+                user_dirs=(*/) #直接使用通配匹配指定目录(PACK_ROOT)下的人员目录名
             fi
             # 否则遍历当前工作目录的所有子目录(计算用户目录名)
-
             # END-DP
+
             if [ ${#user_dirs[@]} -eq 0 ]; then
                 log "Error❌ 在 $PACK_ROOT 中没有找到任何用户目录"
                 exit 1
@@ -1330,6 +1330,7 @@ main() {
         # for domain_name in "${site_names[@]}"; do
         local task_id=0
         local task_total=${#site_names[@]}
+        # START-for-sitenames
         for i in "${!site_names[@]}"; do
             local domain_name="${site_names[$i]}"
             local user_name="${user_dir_names[$i]}"
@@ -1339,17 +1340,19 @@ main() {
             local candidate_site_archives=()
 
             # START-C-P(计算最终的包文件路径)
-            candidate_sql_archives+=("$PACK_ROOT/$user_name"/**/"$domain_name".sql*"$PACK_FORMAT")
-            # mapfile -d '' -t candidate_site_archives <  <(find "$PACK_ROOT/$user_name" -maxdepth 1 -type f ! -name "*.sql*" -and -name "*$domain_name*" -printf "%p\0")
+            # candidate_sql_archives+=("$PACK_ROOT/$user_name"/**/"$domain_name".sql*"$PACK_FORMAT")
+            # 为了保证能够在包更新后更准确地覆盖掉deployed中同名包(但是路径可能排在前面),这里用find来支持跳过 SKIP_SCAN_PATTERN
+            mapfile -d '' -t candidate_sql_archives < <(find "$PACK_ROOT/$user_name" -path "$SKIP_SCAN_PATTERN" -prune -o -type f -name "*$domain_name.sql*$PACK_FORMAT" -printf "%p\0")
+            mapfile -d '' -t candidate_site_archives < <(find "$PACK_ROOT/$user_name" -path "$SKIP_SCAN_PATTERN" -prune -o -type f ! -name "*.sql*$PACK_FORMAT" -and -name "*$domain_name*$PACK_FORMAT" -printf "%p\0")
             # for pack in "$PACK_ROOT/$user_name"/**/!(*.sql*); do
-            for pack in "$PACK_ROOT/$user_name"/**/"$domain_name"*; do
-                # echo "$pack"
-                # if [[ $pack == */"$domain_name"*"$PACK_FORMAT" ]]; then
-                if [[ $pack != *.sql* && $pack == *"$PACK_FORMAT" ]]; then
-                    candidate_site_archives+=("$pack")
-                    break
-                fi
-            done
+            # for pack in "$PACK_ROOT/$user_name"/**/"$domain_name"*; do
+            #     # echo "$pack"
+            #     # if [[ $pack == */"$domain_name"*"$PACK_FORMAT" ]]; then
+            #     if [[ $pack != *.sql* && $pack == *"$PACK_FORMAT" ]]; then
+            #         candidate_site_archives+=("$pack")
+            #         break
+            #     fi
+            # done
             # for format in "${ARCHIVE_FORMATS[@]}"; do
             #     local candidate_pack="$PACK_ROOT/$user_name/$domain_name.$format"
             #     if [[ -f $candidate_pack ]]; then
@@ -1357,7 +1360,10 @@ main() {
             #         break
             #     fi
             # done
-            verbose && declare -p candidate_sql_archives candidate_site_archives
+            verbose && {
+                log "current:[$domain_name]"
+                declare -p candidate_sql_archives candidate_site_archives
+            }
             # 计算网站包路径(根目录包和sql包)
             # Globals: ARCHIVE_FORMATS
             get_archive_path() {
@@ -1415,7 +1421,14 @@ main() {
             done
             # debug:
             log "['tips:' user_name='$user_name', domain_name='$domain_name',site_dir_archive='$site_dir_archive', site_sql_archive='$site_sql_archive']"
-            # continue
+            # 检查匹配是否出错
+            if ! [[ $site_dir_archive == *"$domain_name"* && $site_sql_archive == *"$domain_name"* ]]; then
+                log "Error❌ 站点[$domain_name]的根目录包和sql包路径计算出错了,请检查匹配规则和文件命名是否正确"
+                # return 1
+                continue
+            else
+                log "站点[$domain_name]和包文件名相匹配"
+            fi
             ! [[ -f "$site_dir_archive" && -f "$site_sql_archive" ]] && {
                 log "[$domain_name]缺少必要的站点包文件,本轮跳过此站点部署
                 (若指定了包格式,请检查是否指定格式的包不存在,或取消包格式指定)"
@@ -1432,6 +1445,7 @@ main() {
 
             # END-C-W
         done
+        #END-for-sitenames
         verbose && log "等待剩余后台任务结束"
         # log "统计失败任务数"
         for pid in "${PIDS[@]}"; do
