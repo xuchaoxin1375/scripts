@@ -47,6 +47,20 @@ sudo apt install parallel #并行执行命令的工具
 
 Nginx可以先不装,后续安装openresty,提供更强大的功能.
 
+### wordpress插件包上传/更新
+
+每台新服务器配置之初就建议把所有常用插件上传到常用目录(比如/www);
+
+避免后续站点部署引用插件时找不到对应的插件而部署不完整!
+
+对于配置了服务器信息并且部署了pwsh的用户可以执行:
+
+```pwsh
+Update-WpAllPluginPackagesOnServers
+```
+
+更新全部包到所有服务器上;
+
 ## 美化shell(提高命令行的易用性)
 
 参考[linux@提高shell命令行环境易用性@终端美化@国内网络环境友好一条龙美化(ohmyzsh)_oh my zsh 卸载-CSDN博客](https://blog.csdn.net/xuchaoxin1375/article/details/120999508?sharetype=blogdetail&sharerId=120999508&sharerefer=PC&sharesource=xuchaoxin1375&spm=1011.2480.3001.8118)
@@ -652,6 +666,30 @@ nginx: [emerg] open() "/www/wwwlogs/xxx.com.error.log" failed (24: Too many open
 
    > 同时确保 PAM 启用了 limits（大多数现代系统默认启用）。
    >
+
+如果是第一次配置,可以直接执行下面是提供一键插入的命令行片段:
+
+```bash
+limits_conf="/etc/security/limits.conf"
+if [[ -f $limits_conf ]];then
+echo "
+* soft nofile 65536
+* hard nofile 65536
+root soft nofile 65536
+root hard nofile 65536
+nginx soft nofile 65536
+nginx hard nofile 65536
+" >> /etc/security/limits.conf
+# 查看文件的末尾行是否已经是所插入内容
+tail $limits_conf
+# 替换当前进程为新的bash进程
+# 临时让当前会话生效,配置文件中的如果配置正确,则永久生效,需要新建立一个ssh链接检查ulimit -n 的数值
+ulimit -n 65536
+
+else
+	echo "conf file [$limits_conf] does not exit!"
+fi
+```
 
 关闭当前终端链接,然后新开终端链接刷新环境(否则上述修改可能无效!)
 

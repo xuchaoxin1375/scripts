@@ -1371,6 +1371,20 @@ function Get-ServerList
     return $servers[$Skip..($servers.Length - 1)]
     
 }
+function Update-WpAllPluginPackagesOnServers
+{
+    <# 
+    更新所有服务器上的所有wp插件包(仅上传并解压到公共目录(/www/下),并不执行额外执行覆盖到网站插件目录的操作)
+    如果网站是用符号链接引入插件的,则相应的网站插件相当于被自动更新(替换)
+    #>
+    param()
+    Write-Host "Only update plugins packages..."
+    Get-ChildItem $wp_plugins -Directory -Exclude archived | ForEach-Object {
+        Write-Host "Processing [$_]"
+        Update-WpPluginsDFOnServers -PluginPath $_ -JustUpload
+    }
+
+}
 function Update-WpFunctionsphpOnServers
 {
     <# 
@@ -2160,14 +2174,14 @@ function Move-ItemImagesFromCsvPathFields
             return $false
         }
         # Write-Host $values[1..10]
-        $movedCount=0
+        $movedCount = 0
         $values | ForEach-Object { 
             # Write-Host "Moving file: $SourceDir/$_ to $Destination"
 
             Move-Item -Path $SourceDir/$_ -Destination $Destination -Verbose -ErrorAction SilentlyContinue # -Confirm
             $movedCount++
         }
-        write-host "Done! Moved [$movedCount] items."
+        Write-Host "Done! Moved [$movedCount] items."
     } 
 
 }

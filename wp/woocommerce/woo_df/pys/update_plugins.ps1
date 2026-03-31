@@ -20,11 +20,14 @@
 
 .EXAMPLE
 更新或者安装插件🎈
-$plugin='xpaid_pay' #插件名字
-$plugin_dir=if(test-path $wp_plugins -erroraction SilentlyContinue){"$wp_plugins/$plugin"}else{"$plugin"}
-. $scripts/wp/update_plugins.ps1 -WpSitesDir $my_wp_sites -PluginSources $plugin_dir -InstallMode TagFile
-# zw,zsh可以跳过下面语句
-. $scripts/wp/update_plugins.ps1 -WpSitesDir $wp_sites -PluginSources $plugin_dir -InstallMode TagFile
+$plugin='mallpay' #插件名字
+# 计算合适的插件源形式(路径或者名称)
+$installMode="TageFile" # "symbolicLink", "TageFile", "Copy"
+$plugin_format=if(test-path $wp_plugins -erroraction SilentlyContinue){"$wp_plugins/$plugin"}else{"$plugin"}
+. $scripts/wp/update_plugins.ps1 -WpSitesDir $my_wp_sites -PluginSources $plugin_format -InstallMode $installMode
+
+# 只有zw,zsh可以跳过下面语句，其他人都要执行
+. $scripts/wp/update_plugins.ps1 -WpSitesDir $wp_sites -PluginSources $plugin_format -InstallMode $installMode
 
 .EXAMPLE
 # 更新指定插件(插件路径列表)
@@ -78,6 +81,10 @@ param(
 
 function split_args
 {
+    <# 
+    .SYNOPSIS
+    将可能包含多个的插件目录参数进行分割(假设每个插件目录路径都不含空格或其他特殊字符)
+    #>
     param (
         $Params
     )
@@ -185,7 +192,6 @@ function get_old_plugins_dirs_of_sites
         $pattern = $pattern
     )
     # Write-Host "$plugin_dirs_root_of_sites !!!"
-
     $old_plugin_dirs_of_sites = Get-ChildItem -Path $plugin_dirs_root_of_sites -Filter $filter -Depth 3 | Where-Object { $_.FullName -like $pattern }
 
     
@@ -239,11 +245,18 @@ function update_plugins
                 Write-Host "Installing plugin $plugin_name to $target"
            
                 # if($UseSymbolicLink)
-                if($InstallMode -eq "symbolic")
+                if($InstallMode -like "symbolic*")
                 {
-                    # 使用符号链接代替拷贝
-                    New-Item -ItemType SymbolicLink -Path $target/$plugin_name -Value $new_plugin_dir -Force -Verbose 
-                    # pause
+                    if (Test-Path $new_plugin_dir)
+                    {
+
+                        # 使用符号链接代替拷贝
+                        New-Item -ItemType SymbolicLink -Path $target/$plugin_name -Value $new_plugin_dir -Force -Verbose 
+                        # pause
+                    }else{
+                        Write-Error "Plugin source directory not found: $new_plugin_dir"
+                        return $False
+                    }
                 }
                 elseif($InstallMode -eq "tagfile")
                 {
