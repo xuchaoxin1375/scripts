@@ -1813,6 +1813,7 @@ function Update-WpPluginsDFOnServers
         # 删除插件
         [parameter(ParameterSetName = 'Name')]
         [switch]$RemovePlugin,
+        [switch]$Dry,
         $ServerConfig = $server_config,
         $Threads = 5
     )
@@ -1887,7 +1888,8 @@ function Update-WpPluginsDFOnServers
                 $ListMode,
                 $RemovePlugin,
                 $PluginName,
-                $JustUpload
+                $JustUpload,
+                $Dry
             )
             if($currentSet -eq 'Path')
             {
@@ -1900,14 +1902,14 @@ function Update-WpPluginsDFOnServers
                 #     InstallMode=$InstallMode
                 #     JustUpload=$JustUpload
                 # }
-                Update-WpPluginsDFOnServer -server $server -WorkingDirectory $workingDirectory -ListMode $ListMode -PluginPath $PluginPath -InstallMode $InstallMode -JustUpload:$JustUpload -WhiteList $WhiteList -BlackList $BlackList 
+                Update-WpPluginsDFOnServer -server $server -WorkingDirectory $workingDirectory -ListMode $ListMode -PluginPath $PluginPath -InstallMode $InstallMode -JustUpload:$JustUpload -WhiteList $WhiteList -BlackList $BlackList -Dry:$Dry
             }
             elseif($currentSet -eq 'Name' -and $RemovePlugin)
             {
                 Write-Host "remove plugins[$PluginName] in $server"
-                Update-WpPluginsDFOnServer -server $server -WorkingDirectory $workingDirectory -ListMode $ListMode -PluginName $PluginName -RemovePlugin -WhiteList $WhiteList -BlackList $BlackList 
+                Update-WpPluginsDFOnServer -server $server -WorkingDirectory $workingDirectory -ListMode $ListMode -PluginName $PluginName -RemovePlugin -WhiteList $WhiteList -BlackList $BlackList -Dry:$Dry
             } 
-        } -ArgumentList $server, $currentSet, $WorkingDirectory, $PluginPath, $WhiteList, $BlackList, $InstallMode, $ListMode, $RemovePlugin, $PluginName, $JustUpload
+        } -ArgumentList $server, $currentSet, $WorkingDirectory, $PluginPath, $WhiteList, $BlackList, $InstallMode, $ListMode, $RemovePlugin, $PluginName, $JustUpload , $Dry
     } 
     Start-Sleep 1
     $jobs | Receive-Job -Wait

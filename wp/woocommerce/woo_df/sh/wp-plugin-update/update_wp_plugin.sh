@@ -342,7 +342,7 @@ for workdir_path in "${WORKDIR_ARRAY[@]}"; do
             # 插件更新(仅针对普通插件,must-plugin类型请使用manual更新)
             install_to_target "$d" "(common plugin)" || return 1
         done
-        log "共找到 ${#site_plugin_dirs[@]} 个安装了 $PLUGIN_BASENAME 插件的站点。"
+        log "[$(hostname)]共找到 ${#site_plugin_dirs[@]} 个安装了 $PLUGIN_BASENAME 插件的站点。"
     fi
 done
 
