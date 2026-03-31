@@ -12,8 +12,8 @@ usage() {
   --remove <插件名列表>       要移除的插件名，多个用逗号分隔
   --user <用户名>             WordPress 站点所属用户名（可选，不指定则处理所有用户）
   --workdir <工作目录列表>    网站根工作目录，多个目录用逗号分隔。默认为 /www/wwwroot,/wwwdata/wwwroot
-  -m,--install-mode <安装模式>   安装模式 (copy:复制到指定目录，symlink:软链接到指定目录),默认为 symlink
-  -M,--get-list-mode <列表模式> 获取待处理站点列表的模式 (auto:自动扫描已安装插件的站点，manual:手动指定黑/白名单),默认为 auto
+  -m,--install-mode <安装模式>   安装模式 (copy:复制到指定目录;symlink:软链接到指定目录),默认为 symlink
+  -M,--list-mode <列表模式> 获取待处理站点列表的模式 (auto:自动扫描已安装插件的站点;manual:手动指定黑/白名单;full:所有网站都要安装;),默认为 auto
   --plugin-type               插件类型 (如果是 must 类型，则将被处理的插件视为强制执行插件),放到 wp-content 目录下;默认为 common 类型，普通插件，放到 wp-content/plugins 目录下
   --dry-run                   预览操作，不实际执行
   --blacklist <文件>          指定黑名单文件（每行一个域名）;指定了黑名单文件,自动设置LIST_MODE为manual模式
@@ -91,7 +91,7 @@ parse_args() {
                 fi
                 shift
                 ;;
-            -M | --get-list-mode)
+            -M | --list-mode)
                 if [[ "$2" == "auto" ]]; then
                     echo "仅更新已经安装了指定插件的网站,未安装的网站将跳过！"
                     LIST_MODE="auto"
@@ -239,7 +239,7 @@ for workdir_path in "${WORKDIR_ARRAY[@]}"; do
         fi
     }
     ## 黑/白名单模式
-    if [[ $LIST_MODE == "manual" ]]; then
+    if [[ $LIST_MODE == "manual" || $LIST_MODE == "full" ]]; then
         count=0
         for site in $SEARCH_PATTERN; do
             # 检查目录是否存在,不存在跳过该站处理
@@ -253,6 +253,7 @@ for workdir_path in "${WORKDIR_ARRAY[@]}"; do
             log "处理站点: $DOMAIN @ $site"
 
             # 如果不符合指定名单,跳过该站处理(continue)
+            # 如果是全局安装(full),则不跳过任何站点
             # 白名单优先，只处理白名单中的域名
             if [[ -n "$WHITELIST_FILE" ]]; then
                 if ! is_whitelisted "$DOMAIN"; then

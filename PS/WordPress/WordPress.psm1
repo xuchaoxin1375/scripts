@@ -1663,6 +1663,9 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
         $BlackList = "",
         [ValidateSet('symlink', 'copy')]
         $InstallMode = "symlink",
+        # 列表模式(默认自动,仅更新已安装过的插件,manual:指定网站名单,full:所有网站都安装(更新)插件)
+        [validateSet('auto', 'manual', 'full')]
+        $ListMode = "auto",
         # 移除插件而非安装(更新)插件
         [parameter(ParameterSetName = 'RemoveByName')]
         [switch]$RemovePlugin,
@@ -1717,7 +1720,7 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
     }
     
     # 构造bash脚本命令行(插件安装/更新)
-    $basicCmd = " ssh -Tn $username@$server bash $bashScript --workdir $workingDirectory  "
+    $basicCmd = " ssh -Tn $username@$server bash $bashScript --workdir $workingDirectory --list-mode $ListMode "
     $dryRunParam = if($Dry) { "--dry-run" }else { "" }
     # 计算插件参数
     if($PSCmdlet.ParameterSetName -eq 'Path')
@@ -1798,13 +1801,18 @@ function Update-WpPluginsDFOnServers
         # 插件名称(服务器上插件路径的最后一级目录名)
         [parameter(ParameterSetName = 'Name')]
         $PluginName,
+        # 插件安装模式
+        [ValidateSet('symlink', 'copy')]
+        $InstallMode = "symlink",
+        # 获取网站列表的方式(默认自动,仅更新已安装过的插件,manual:指定网站名单,full:所有网站都安装(更新)插件)
+        [validateSet('auto', 'manual', 'full')]
+        $ListMode = "auto",
+        # ListMode = "manual"情况下,指定名单文件才有效
         $WhiteList = "",
         $BlackList = "",
         # 删除插件
         [parameter(ParameterSetName = 'Name')]
         [switch]$RemovePlugin,
-        [ValidateSet('symlink', 'copy')]
-        $InstallMode = "symlink",
         $ServerConfig = $server_config,
         $Threads = 5
     )
@@ -1876,6 +1884,7 @@ function Update-WpPluginsDFOnServers
                 $WhiteList,
                 $BlackList,
                 $InstallMode,
+                $ListMode,
                 $RemovePlugin,
                 $PluginName,
                 $JustUpload
@@ -1891,14 +1900,14 @@ function Update-WpPluginsDFOnServers
                 #     InstallMode=$InstallMode
                 #     JustUpload=$JustUpload
                 # }
-                Update-WpPluginsDFOnServer -server $server -WorkingDirectory $workingDirectory -PluginPath $PluginPath -InstallMode $InstallMode -JustUpload:$JustUpload -WhiteList $WhiteList -BlackList $BlackList 
+                Update-WpPluginsDFOnServer -server $server -WorkingDirectory $workingDirectory -ListMode $ListMode -PluginPath $PluginPath -InstallMode $InstallMode -JustUpload:$JustUpload -WhiteList $WhiteList -BlackList $BlackList 
             }
             elseif($currentSet -eq 'Name' -and $RemovePlugin)
             {
                 Write-Host "remove plugins[$PluginName] in $server"
-                Update-WpPluginsDFOnServer -server $server -WorkingDirectory $workingDirectory -PluginName $PluginName -RemovePlugin -WhiteList $WhiteList -BlackList $BlackList 
+                Update-WpPluginsDFOnServer -server $server -WorkingDirectory $workingDirectory -ListMode $ListMode -PluginName $PluginName -RemovePlugin -WhiteList $WhiteList -BlackList $BlackList 
             } 
-        } -ArgumentList $server, $currentSet, $WorkingDirectory, $PluginPath, $WhiteList, $BlackList, $InstallMode, $RemovePlugin, $PluginName, $JustUpload
+        } -ArgumentList $server, $currentSet, $WorkingDirectory, $PluginPath, $WhiteList, $BlackList, $InstallMode, $ListMode, $RemovePlugin, $PluginName, $JustUpload
     } 
     Start-Sleep 1
     $jobs | Receive-Job -Wait
