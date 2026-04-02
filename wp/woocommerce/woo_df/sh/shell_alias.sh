@@ -17,6 +17,7 @@ command -v vim &> /dev/null && alias vi=vim
 alias fbc='fail2ban-client'
 alias sfbc='sudo fail2ban-client' #非root用户使用,也兼容root用户使用
 
+alias curl='curl --proto-default https'
 alias fbcs='fail2ban-client status'
 alias fbregex='fail2ban-regex'
 alias fbt='fail2ban-testcases'

@@ -3,7 +3,84 @@
 # 新函数添加于下方:
 # ===============================
 
+# 代理配置函数
+proxy() {
+    # 你的代理地址和端口
+    local host_name="localhost"
+    local port="7897"
+    local proxy_addr=""
+    local args_pos=()
+    usage="
+usage:
+    proxy {on|off|status} [OPTIONS]
+options:
+    -H,--hostname: 代理服务器主机名 (默认: $host_name)
+    -p,--proxy: 代理服务器端口 (默认: $port)
+    -c,--check: 检查代理是否能够访问指定网站(例如访问google)
+    -g: 检查是否能够访问google(设置check_url)
+"
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -H | --hostname)
+                host_name="$2"
+                shift
+                ;;
+            -p | --proxy)
+                port="$2"
+                shift
+                ;;
+            -c | --check)
+                check_url="$2"
+                ;;
+            -g)
+                check_url="https://www.google.com"
 
+                ;;
+            --help)
+                echo "$usage"
+                return 1
+                ;;
+            -*)
+                echo "错误: 未知选项 " >&2
+                echo "$usage"
+                return 1
+                ;;
+            *)
+                args_pos+=("$1")
+                ;;
+        esac
+        shift
+    done
+    proxy_addr="${host_name}:${port}"
+    echo "代理地址: [$proxy_addr]"
+    set -- "${args_pos[@]}"
+    case $1 in
+        on)
+            export http_proxy="http://$proxy_addr"
+            export https_proxy="http://$proxy_addr"
+            export all_proxy="socks5://$proxy_addr"
+            echo -e "\033[32m[✔] 已开启终端代理 ($proxy_addr)\033[0m"
+            ;;
+        off)
+            unset http_proxy https_proxy all_proxy
+            echo -e "\033[31m[✘] 已关闭终端代理\033[0m"
+            ;;
+        status)
+            if [ -z "$http_proxy" ]; then
+                echo -e "当前状态：\033[31m未设置代理\033[0m"
+            else
+                echo -e "当前状态：\033[32m代理运行中 -> $http_proxy\033[0m"
+            fi
+            ;;
+        *)
+            echo "用法: proxy {on|off|status}"
+            ;;
+    esac
+    if [[ $check_url ]]; then
+        echo "检查代理是否可用："
+        curl -L -m 5 "$check_url" && echo "OK" || echo "Failed!"
+    fi
+}
 # 带有日期时间的简单日志函数,在调试代码时可以代替echo让输出和时间线挂钩
 log() {
     local dt
@@ -186,11 +263,179 @@ example:
     return 1
 }
 # 尝试获取本机公网ip
+# get_public_ip() {
+#     local ip
+#     ip=$(curl -sm 5 ipconfig.me)
+#     ip=$(curl -sm 5 ipinfo.io | grep -Po '"ip": "\K[^"]*')
+#     echo -n "$ip"
+# }
 get_public_ip() {
+
+    local time_out="${1:-2}"
+
     local ip
-    ip=$(curl -sm 5 ipinfo.io | grep -Po '"ip": "\K[^"]*')
-    echo -n "$ip"
+    _curl() {
+        curl -sL -m "$time_out" "$@"
+    }
+    # 按照优先级尝试不同的源(串行查询)
+    ip=$(_curl https://ifconfig.me) ||
+        ip=$(_curl ipinfo.io/ip) ||
+        ip=$(_curl https://icanhazip.com) ||
+        ip=$(_curl https://1.1.1.1/cdn-cgi/trace | grep -Po '^ip=\K.*') ||
+        ip=$(_curl https://whatismyip.akamai.com) ||
+        return 1
+
+    if [ -n "$ip" ]; then
+        echo -n "$ip"
+    else
+        return 1 # 全部失败时返回错误码
+    fi
 }
+# 并行查询多个源获取公网IP,哪个先返回就用哪个,提高获取速度(适合网络环境不稳定的情况)
+# 默认超时2秒;使用ip=$(get_public_ip_fast 2> /dev/null)
+get_public_ip_fast() {
+    local time_out="${1:-2}"
+    local tmp_dir
+    tmp_dir=$(mktemp -d) || return 1
+
+    # 所有查询源
+    local -a urls=(
+        "https://ifconfig.me"
+        "https://icanhazip.com"
+        "https://ipinfo.io/ip"
+        "https://whatismyip.akamai.com"
+        "https://api.ipify.org"
+    )
+
+    # 特殊源：需要后处理
+    local cloudflare_url="https://1.1.1.1/cdn-cgi/trace"
+
+    local -a pids=()
+
+    # 每个源启动一个后台子进程，获取成功就写入文件
+    for i in "${!urls[@]}"; do
+        (
+            result=$(curl -sL -m "$time_out" "${urls[$i]}" 2> /dev/null)
+            # 验证：非空且像一个 IP 地址（v4 或 v6）
+            if [[ "$result" =~ ^[0-9a-fA-F.:]+$ ]]; then
+                echo -n "$result" > "$tmp_dir/$i"
+            fi
+        ) &
+
+        pids+=($!)
+    done
+
+    # Cloudflare 特殊处理
+    (
+        result=$(curl -sL -m "$time_out" "$cloudflare_url" 2> /dev/null | grep -Po '^ip=\K.*')
+        if [[ "$result" =~ ^[0-9a-fA-F.:]+$ ]]; then
+            echo -n "$result" > "$tmp_dir/cf"
+        fi
+    ) &
+    pids+=($!)
+
+    # 轮询等待：任一进程产出结果就立即返回
+    local ip=""
+    local elapsed=0
+    local poll_interval=0.05 # 50ms 轮询间隔
+
+    while ((elapsed < time_out * 1000)); do
+        for f in "$tmp_dir"/*; do
+            if [[ -f "$f" ]]; then
+                ip=$(< "$f")
+                if [[ -n "$ip" ]]; then
+                    # 杀掉所有剩余后台进程
+                    kill "${pids[@]}" 2> /dev/null
+                    wait "${pids[@]}" 2> /dev/null
+                    rm -rf "$tmp_dir"
+                    echo -n "$ip"
+                    return 0
+                fi
+            fi
+        done
+
+        # 检查是否所有进程都已结束（全部失败）
+        local all_done=true
+        for pid in "${pids[@]}"; do
+            if kill -0 "$pid" 2> /dev/null; then
+                all_done=false
+                break
+            fi
+        done
+        $all_done && break
+
+        sleep "$poll_interval"
+        elapsed=$((elapsed + 50))
+    done
+
+    # 超时：清理
+    kill "${pids[@]}" 2> /dev/null
+    wait "${pids[@]}" 2> /dev/null
+    rm -rf "$tmp_dir"
+    return 1
+}
+get_public_ip_quick() {
+    local timeout="${1:-2}"
+    local tmp_dir
+    tmp_dir=$(mktemp -d)
+    trap 'rm -rf "$tmp_dir"' EXIT
+    set +m # 关键：抑制后台任务 "[1]+ Done" 提示
+
+    local -a urls=(
+        https://ifconfig.me
+        https://icanhazip.com
+        https://ipinfo.io/ip
+        https://whatismyip.akamai.com
+        https://api.ipify.org
+    )
+    local -a pids=()
+
+    # 启动所有源
+    for i in "${!urls[@]}"; do
+        (
+            local ip=$(curl -sL -m "$timeout" "${urls[$i]}" 2> /dev/null)
+            [[ "$ip" =~ ^[0-9a-fA-F.:]+$ ]] && echo -n "$ip" > "$tmp_dir/$i"
+        ) &
+        pids+=($!)
+    done
+
+    # Cloudflare 特殊源
+    (
+        local ip=$(curl -sL -m "$timeout" https://1.1.1.1/cdn-cgi/trace 2> /dev/null | grep -Po '^ip=\K.*')
+        [[ "$ip" =~ ^[0-9a-fA-F.:]+$ ]] && echo -n "$ip" > "$tmp_dir/cf"
+    ) &
+    pids+=($!)
+
+    # 超时保护（后台独立运行，不阻塞主逻辑）
+    (
+        sleep "$timeout"
+        kill "${pids[@]}" 2> /dev/null
+    ) &
+    local timer=$!
+
+    # 事件驱动轮询：替代 sleep 0.05
+    local ip=""
+    while kill -0 "${pids[@]}" 2> /dev/null; do
+        wait -n 2> /dev/null
+        for f in "$tmp_dir"/*; do
+            [[ -f "$f" && -s "$f" ]] && {
+                ip=$(< "$f")
+                break 2
+            }
+        done
+    done
+
+    kill "$timer" 2> /dev/null
+    wait "${pids[@]}" 2> /dev/null
+
+    [[ -n "$ip" ]] && {
+        echo -n "$ip"
+        return 0
+    }
+    return 1
+}
+alias get_ip_public=get_public_ip
+
 # 获取系统readline库版本
 get_readline_version_info() {
 
