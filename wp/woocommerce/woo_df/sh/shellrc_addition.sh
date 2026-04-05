@@ -1,7 +1,7 @@
 #!/bin/bash
 # 脚本也兼容zsh
-# 部署方式: bash /www/sh/shellrc_addition.sh
-# wsl中执行部署: sudo mkdir -p /www/ ; sudo ln -sTv /mnt/c/repos/scripts/wp/woocommerce/woo_df/sh/  /www/sh
+# 部署方式: bash "$sh"/shellrc_addition.sh
+# wsl中执行部署: sudo mkdir -p /www/ ; sudo ln -sTv /mnt/c/repos/scripts/wp/woocommerce/woo_df/sh/  "$sh"
 # 引入外部shell脚本使用source命令,这里防止shellcheck误报,禁用此类检查
 # shellcheck disable=SC1091
 # shellcheck disable=SC2154
@@ -10,26 +10,32 @@
 # BASHRC_FILE="$HOME/.bashrc"
 # 防止重复导入检查处理
 if [ -z "$_SHELLX_LOADED" ]; then
-  # 标记为空,则说明此前并未导入,本轮需要导入
-  # 方便起见,直接修改标记为被导入,然后再继续后面的配置代码
+  # 标记为空,则说明此前并未导入,本轮需要导入  # 方便起见,直接修改标记为被导入,然后再继续后面的配置代码
   _SHELLX_LOADED=true
 else
   # echo "===debug: custom shell already loaded..."
   # 跳过本次导入
   return 0
 fi
+if [[ $OSTYPE == "darwin"* ]]; then
+  echo "Current Os is darwin(MacOS)"
+  SCRIPT_ROOT_DARWIN="$HOME/repos/scripts"
+  SH_SCRIPT_DIR="$SCRIPT_ROOT_DARWIN/wp/woocommerce/woo_df/sh"
+  # shell scripts dir shorthand
+  sh="$SH_SCRIPT_DIR"
+fi
 # bash prompt主题配置
 export BASH_PROMPT="fast_ys"
 export BASHRC_FILE="$HOME/.bashrc"
-export BASH_PROMPTS_ROOT="/www/sh/bash_prompts"
+export BASH_PROMPTS_ROOT="$sh/bash_prompts"
 _HOMEBREW_PREFIX="/home/linuxbrew/.linuxbrew"
 _HOMEBREW_PATH="$_HOMEBREW_PREFIX/bin/brew"
 # 引入预定义的别名
-source /www/sh/shell_vars.sh
-source /www/sh/shell_alias.sh
-source /www/sh/shell_utils.sh
-# source /www/sh/shell_env_mgr.sh
-source /www/sh/shell_insert_last_part.sh
+source "$sh"/shell_vars.sh
+source "$sh"/shell_alias.sh
+source "$sh"/shell_utils.sh
+# source "$sh"/shell_env_mgr.sh
+source "$sh"/shell_insert_last_part.sh
 # source "$BASH_PROMPTS_ROOT/prompt_switcher.sh"
 # brew包管理器配置(如果可用的话) brew shellenv 是幂等的,如果shell环境执行过一次,那么再次执行输出为空.
 if [[ -e "$_HOMEBREW_PATH" && -z $HOMEBREW_PREFIX ]]; then
@@ -56,9 +62,9 @@ config_lines=$(
 
 $mark_start
 # Load additional shell configs
-# shellcheck source=/www/sh/shell_utils.sh
+# shellcheck source="$sh"/shell_utils.sh
 
-source /www/sh/shellrc_addition.sh
+source "$sh"/shellrc_addition.sh
 
 $mark_end
 
@@ -101,9 +107,12 @@ echo "Loading additional shell config and functions..."
 
 # 针对bash的配置(依赖于shopt命令和针对bash的prompt)
 if is_shell bash || check_dependency -q shopt; then
-  remove_background_color
+  if ! [[ $OSTYPE == "darwin"* ]]; then
+    # macos does not need remove the folder background colors
+    remove_background_color
+  fi
   # 插入bashrc的最后部分的配置
-  update_last_part_bashrc
+  update_last_part_bashrc "$sh"
   # 在合适的位置加载bash prompt
   source "$BASH_PROMPTS_ROOT/prompt_switcher.sh"
   # 检查当前 Shell 是否运行在 POSIX 模式下。

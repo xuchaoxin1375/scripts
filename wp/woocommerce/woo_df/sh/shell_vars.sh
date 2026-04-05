@@ -1,4 +1,15 @@
 #!/bin/bash
+# 兼容不同的类unix系统的shell变量定义和使用，主要是路径变量，适配linux,wsl,macos等环境
+# 相关变量基本用法：
+# mkdir -p "$HOME/repos" && git clone --recursive --depth 1 --shallow-submodules https://gitee.com/xuchaoxin1375/scripts.git "$SCRIPT_ROOT"
+#创建符号链接（sh),注意bsd（macos）的ln 不支持-T;
+# if [[ -d $SH_SCRIPT_DIR ]]; then
+#     ln -s "$SH_SCRIPT_DIR" "$SH_SYM" -fv
+# fi
+
+# shell 基本工具相关环境变量
+export CLICOLOR=1 #让ls的输出显示颜色
+
 # 定义常用变量(路径变量为主)
 echo "loading pre-defined variables..."
 # wsl 用户: 统一将使用wsl的设备设置桌面的统一别名目录C:/desktop->$desktop,使用符号链接可以在不改动的情况下优雅的实现这一点
@@ -7,32 +18,48 @@ echo "loading pre-defined variables..."
 uploader_files="/srv/uploads/uploader/files"
 woo_df="/www/woo_df"
 pys="$woo_df/pys"
+# 定义scripts 仓库clone 的保存路径
+#普通linux系统（假设有 root 权限）：
+_REPO_BASE="repos/scripts"
+SCRIPT_ROOT_LINUX='/repos/scripts'
+SCRIPT_ROOT_WSL="/mnt/c/$_REPO_BASE"
+SCRIPT_ROOT_DARWIN="$HOME/$_REPO_BASE" # macos
+
+SH_SYM_LINUX="/www/sh"
+SH_SYM_DARWIN="$HOME/sh"
+SH_SYM_WSL="/www/sh"
 
 desktop="/mnt/c/Users/Administrator/Desktop"
-wslsh="/mnt/c/repos/scripts/wp/woocommerce/woo_df/sh"
+
 # sh="$wslsh"
 # 根据不同的系统环境为变量sh配置不同的取值
 if [[ -d /mnt/c/ ]]; then
-    # wsl环境
-    sh="$wslsh"
+    # wsl环境(直接访问 windows 上的仓库目录，而不是单独克隆，主要是方便开发和仓库同步简单)
+    SCRIPT_ROOT="$SCRIPT_ROOT_WSL"
+    SH_SYM="$SH_SYM_WSL"
+
+elif [[ $OSTYPE == "darwin"* ]]; then
+    # macos环境
+    SCRIPT_ROOT="$SCRIPT_ROOT_DARWIN"
+    SH_SYM="$SH_SYM_DARWIN"
+
+    # sh="/Users/$(whoami)/$REPOS"
 else
-    # 非wsl环境,如linux服务器等
-    sh="/www/sh"
+    # 普通linux环境
+    SCRIPT_ROOT="$SCRIPT_ROOT_LINUX" # 默认使用linux环境的路径变量
+    SH_SYM="$SH_SYM_LINUX"
+
 fi
-# 配置oh-my-bash主题路径和自定义轻量化主题路径
-# cp $omb_copied_duru  $omb_themes -fv
-omb_themes="$HOME/.oh-my-bash/themes"
-omb_cduru_theme="$omb_themes/cduru"
-omb_cduru="$sh/omb-copied-duru.sh"
+# 符号链接SH_SYM的TARGET：
+SH_SCRIPT_DIR="$SCRIPT_ROOT/wp/woocommerce/woo_df/sh"
+sh="$SH_SYM" 
 # 宝塔nginx配置文件路径
 # vhost
 bt_nginx_vhost_conf_home="/www/server/panel/vhost/nginx"
 bt_nginx_conf_home="/www/server/nginx/conf"
 
 # 将定义的变量声明为环境变量
-export desktop sh omb_themes omb_cduru_theme omb_cduru \
+export desktop sh omb_themes \
     bt_nginx_vhost_conf_home \
-    bt_nginx_conf_home uploader_files woo_df pys
-
-# mkdir -p $omb_themes
-# ln -s $omb_cduru $omb_cduru_theme/cduru.theme.sh -fv
+    bt_nginx_conf_home uploader_files woo_df pys \
+    SH_SYM SCRIPT_ROOT SH_SCRIPT_DIR

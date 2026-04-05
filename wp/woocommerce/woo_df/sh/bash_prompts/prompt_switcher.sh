@@ -24,7 +24,7 @@ prompt_switcher() {
         esac
         # 配置conda等可能更改prompt的环境变量的部分(可以对比oh my zsh中prompt的效果再按需修改)
         # wsl环境
-        grep 'wsl' -iq /proc/version && _IS_WSL=1
+        [[ -e /proc/version ]] && grep 'wsl' -iq /proc/version && _IS_WSL=1
         # python venv环境
         _PY_VENV_NAME="${VIRTUAL_ENV##*/}"
         [[ $_PY_VENV_NAME ]] && _PY_VENV_NAME="(${_PY_VENV_NAME})"

@@ -1,10 +1,13 @@
 #!/bin/bash
+
+# 检查bashrc末尾是否为指定内容（定义需要最后执行的代码片段）
 update_last_part_bashrc() {
+    local sh="$1"
     local mark_last_start='# >>>last_part>>>'
     local mark_last_end='# <<<last_part<<<'
     # shellcheck disable=SC2016
     # local prompt_prefix_broadcast='_PS1_PRE="${PS1%"$_PS1_RAW"}"'
-    local code_segment='source /www/sh/shell_env_mgr.sh'
+    local code_segment="source $sh/shell_env_mgr.sh"
     config_last_part=$(
         cat <<- EOF
 $mark_last_start

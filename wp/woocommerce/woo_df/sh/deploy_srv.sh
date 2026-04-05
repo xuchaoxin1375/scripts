@@ -2,6 +2,8 @@
 # START (安全起见且为了方便复制粘贴运行,为每行后面增加;号和一个空行)
 # 参数解析 (支持-f(覆盖nginx主配置),-h(--help)参数)
 SCRIPT_ROOT='/repos/scripts'
+REPO_SOURCE="github.com"
+
 OVERWRITE_NGINX_CONF=false
 parse_args() {
 
@@ -14,6 +16,14 @@ parse_args() {
                 show_help
                 exit 0
                 ;;
+            -r | --source)
+                REPO_SOURCE="$2"
+                shift
+                ;;
+            --script-root)
+                SCRIPT_ROOT="$2"
+                shift
+                ;;
             *)
                 echo "Unknown option: $1"
                 exit 1
@@ -22,6 +32,9 @@ parse_args() {
         shift
     done
 }
+SH_SCRIPT_DIR="$SCRIPT_ROOT/wp/woocommerce/woo_df/sh"
+REPO_URL="https://$REPO_SOURCE/xuchaoxin1375/scripts.git"
+
 show_help() {
     cat << EOF
     Usage: $0 [-f] [ -h,--help]
@@ -40,10 +53,10 @@ parse_args "$@"
 }
 
 # rm /repos/scripts -rf ;
-git clone --depth 1 https://github.com/xuchaoxin1375/scripts.git "$SCRIPT_ROOT"
+git clone --depth 1 "$REPO_URL" "$SCRIPT_ROOT"
 
-# 配置更新代码的脚本的符号链接
-ln -s -T /repos/scripts/wp/woocommerce/woo_df/sh /www/sh -fv
+# 配置更新代码的脚本的符号链接(bsd的ln命令不支持-T)
+ln -s  $SH_SCRIPT_DIR /www/sh -fv
 
 # 使用简短的更新代码仓库的命令(记得检查fail2ban)
 # 如果追加使用-f会覆盖/www/server/nginx/conf/nginx.conf

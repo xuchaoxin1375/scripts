@@ -138,6 +138,16 @@ install_blesh() {
     echo "--- 安装/检查完成 ---"
     echo "请执行 'source ~/.bashrc' 或重新打开终端以激活 ble.sh。"
 }
+
+# 判断当前系统是否为macos(darwin内核)
+is_darwin() {
+
+    if [[ $OSTYPE == "darwin"* ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
 # 获取当前系统的发行版名称
 function get_os_name() {
     local out_name=false
@@ -174,13 +184,20 @@ options:
             esac
         done
     fi
-
-    # 提取变量值
     local name
-    name=$(grep -E '^NAME=' "$os_file" | cut -d'=' -f2 | tr -d '"')
     local version
-    version=$(grep -E '^VERSION_ID=' "$os_file" | cut -d'=' -f2 | tr -d '"')
+    if is_darwin; then
+        # 提取名称
+        name=$(sw_vers -productName)
 
+        # 提取版本号
+        version=$(sw_vers -productVersion)
+
+    else
+        # 提取变量值
+        name=$(grep -E '^NAME=' "$os_file" | cut -d'=' -f2 | tr -d '"')
+        version=$(grep -E '^VERSION_ID=' "$os_file" | cut -d'=' -f2 | tr -d '"')
+    fi
     # 根据布尔值决定输出内容
     if [[ "$out_name" == true && "$out_version" == true ]]; then
         echo "$name $version"
