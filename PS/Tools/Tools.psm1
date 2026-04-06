@@ -3085,6 +3085,15 @@ function Get-BootEntries
 
     Write-Output $entries
 }
+function Rename-ComputerMac
+{
+    param(
+        $NewName="CxxuMac"
+    )
+    sudo scutil --set ComputerName "$NewName"
+    sudo scutil --set LocalHostName "$NewName"
+    sudo scutil --set HostName "$NewName.local"
+}
 function Get-WindowsVersionInfoOnDrive
 {
     <# 

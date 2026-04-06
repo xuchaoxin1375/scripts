@@ -1421,7 +1421,7 @@ function Push-ReposesConfiged
     foreach ($repoDir in $repoDirs)
     {
         # 切换到当前仓库目录
-        $p = "$repos\$repoDir"
+        $p = "$repos/$repoDir"
         Set-Location -Path $p
         Write-Host $P -ForegroundColor Magenta
         # 执行任务
