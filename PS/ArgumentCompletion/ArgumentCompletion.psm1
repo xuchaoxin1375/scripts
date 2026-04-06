@@ -16,6 +16,8 @@ function promptx
     .NOTES
     调试:
     借助prompt -Debug可以调试prompt函数,尤其是在使用模块重载时如果prompt发生异常,则-Debug选项会显示脚本代码块
+    目前配置自动激活后(例如mamba shell init --shell powershell --root-prefix=~/.local/share/mamba)
+    powershell的提示符才会带上(base)这类前缀
     .NOTES
     这部分代码不宜在ipmof|iex命令在被重载,在使用conda这类环境程序时,容易会造成prompt堆积,暂时prompt函数放在这里,避免重载,等待更好的解决办法
     #>
@@ -32,6 +34,8 @@ function promptx
     $prefix = & $originalPromptScript
     # 丢弃此部分的返回值
     $prefix > $null
+    # 或打印出来查看
+    # Write-Host "[[$prefix]]"
     
     # 不要在当前函数prompt中调用prompt,会导致递归调用,逻辑上出不来.
     # $prefix = prompt # 禁止直接执行!应当在自定义函数prompt外部就把原prompt的脚本块提取出来执行
