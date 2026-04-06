@@ -1553,15 +1553,15 @@ function Update-ReposesConfiged
         if (!(Test-Path $P))
         {
             $gitUrl = "$gitee_xuchaoxin1375/$repoDir" #.Trim('\\')
-            $Path = "$repos\$repoDir"
+            $Path = "$repos/$repoDir"
             Write-Verbose "[$giturl] will be cloned to [$Path] !" -Verbose
             git clone $gitUrl $Path 
             continue
 
         }
         # 切换到当前仓库目录
-        Set-Location -Path "$repos\$repoDir"
-        Write-Host "$repos\$repoDir" 
+        Set-Location -Path "$repos/$repoDir"
+        Write-Host "$repos/$repoDir" 
 
         # 执行任务
         if (Test-Path -Path '.git')
