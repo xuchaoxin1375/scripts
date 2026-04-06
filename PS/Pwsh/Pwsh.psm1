@@ -855,7 +855,7 @@ function Show-MemoryBar
                 $pct = if ($grandTotal -gt 0) { ($segValues[$i] / $grandTotal) * 100 } else { 0 }
 
                 # 构造完整行文本（用于截断计算）
-                $legendText = "        {0}  {1,10}  ({2,5:N1}%)" -f $segDefs[$i].Name, (Format-Size $segValues[$i]), $pct
+                # $legendText = "        {0}  {1¡,10}  ({2,5:N1}%)" -f $segDefs[$i].Name, (Format-Size $segValues[$i]), $pct
                 # 色块占 4 列 + 左边距 2 列 = 前 6 列已被色块和边距占用
                 # 所以文字部分最大宽度 = termWidth - 6
                 $textPart = "  {0}  {1,10}  ({2,5:N1}%)" -f $segDefs[$i].Name, (Format-Size $segValues[$i]), $pct
@@ -1760,7 +1760,7 @@ function PromptFast
 {
     <# 
  .SYNOPSIS
- 对性能影响小
+ 对性能影响小的快速提示符
  #>
 
 
@@ -2619,6 +2619,7 @@ function dm
     Set-PsPrompt -version Default
     
 }
+
 function Set-PsPrompt
 {
     <# 
@@ -2653,12 +2654,13 @@ function Set-PsPrompt
         # 用户不指定prompt版本时,尝试读取环境变量PsPrompt
         if ($env:PsPrompt)
         {
+            Write-Verbose "env:PsPrompt=[$env:PsPrompt]" 
             $version = $env:PsPrompt
         }
         else
         {
             # 用户没有指定Prompt版本且环境变量PsPrompt也没有指定Prompt版本时,则默认启用Balance版本
-            $version = 'Balance'
+            $version = 'fast'
         }
     }
     else

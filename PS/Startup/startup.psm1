@@ -106,11 +106,19 @@ function Confirm-OSVersionCaption
         
     if ($Force -or $null -eq $env:OSCaption)
     {
-    
-        $os = Get-CimInstance Win32_OperatingSystem
-        $Catption = $os.Caption
-        $cp = ('Win' + $Catption.Split('Windows')[1])
-        Set-EnvVar -Name 'OSCaption' -NewValue $cp | Out-Null
+        if ($IsWindows)
+        {
+
+            $os = Get-CimInstance Win32_OperatingSystem
+            $Catption = $os.Caption
+            $cp = ('Win' + $Catption.Split('Windows')[1])
+            Set-EnvVar -Name 'OSCaption' -NewValue $cp | Out-Null
+        }
+        else
+        {
+            $Catption = "macOS $(sw_vers -productVersion)"
+            Set-EnvVar -Name 'OSCaption' -NewValue $Catption
+        }
     }
     return $env:OSCaption
 }
@@ -130,8 +138,18 @@ function Confirm-OSVersionFullCode
         
     if ($Force -or $null -eq $env:OSFullVersionCode)
     {
-    
-        $code = Get-WindowsOSVersionFromRegistry | Select-Object -ExpandProperty FullVersion
+        if($IsWindows)
+        {
+
+            $code = Get-WindowsOSVersionFromRegistry | Select-Object -ExpandProperty FullVersion
+        }
+        else
+        {
+            $info = Get-WindowsVersionInfoOnDrive
+            $OsVersion = $info.OSVersion
+            $BuildNumber = $info.BuildNumber
+            $code = "${OsVersion}-$BuildNumber"
+        }
         Set-EnvVar -Name 'OSFullVersionCode' -NewValue $code
     }
     return $env:OSFullVersionCode
@@ -149,7 +167,7 @@ function Confirm-EnvVarOfInfo
     param (
         
     )
-    Confirm-OSVersionCaption  > $null
+    Confirm-OSVersionCaption > $null
     Confirm-OSVersionFullCode > $null
     if ($null -eq $env:Scripts)
     {

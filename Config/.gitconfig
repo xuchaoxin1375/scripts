@@ -13,8 +13,8 @@
 [init]
 	defaultBranch = main
 # 尽量不要浪费代理服务器的流量,使用镜像加速服务来克隆即可
-# [http "https://github.com"]
-# 	proxy = socks5://127.0.0.1:7980
+[http "https://github.com"]
+	proxy = socks5://127.0.0.1:10808
 #将源github仓库的地址链接的https://插入gitclone.com,然后进行克隆即可
 	#加速文档说明:https://www.gitclone.com/docs/intro
 # [url "https://gitclone.com/"]

@@ -462,7 +462,19 @@ function Get-UserHostName
     .SYNOPSIS
     返回符合ssh连接规范的用户名@计算机名
     #>
-    $res = "$env:USERNAME@$env:COMPUTERNAME"
+    # 方案1:
+    # 分支判断方案:
+    # 获取用户名
+    # $username = if ($IsWindows) { $env:USERNAME } else { $env:USER }
+    # # 获取计算机名
+    # $computername = if ($IsWindows) { $env:COMPUTERNAME } else { $env:HOSTNAME }
+    # $res = "$username@$computername"
+
+    # 方案2:
+    $username = [System.Environment]::UserName
+    $computername = [System.Environment]::MachineName
+    $res = "$username@$computername"
+
     return  $res
 }
 function Get-BIOSInfo
@@ -634,7 +646,7 @@ function Get-ComputerCoreHardwareInfo
         $index++
     }
     Write-Warning ('显存: 建议使用专门工具或任务管理器中的性能面板查看:dxgi-info.exe,dxdiag.exe' +
-     "`n下面显示的信息来自于dxgi-info.exe;每个显卡都用====Adapter===== 分割引出信息(省电模式可能会禁用显卡导致部分信息不可用)") 
+        "`n下面显示的信息来自于dxgi-info.exe;每个显卡都用====Adapter===== 分割引出信息(省电模式可能会禁用显卡导致部分信息不可用)") 
     dxgi-info.exe
     
 }

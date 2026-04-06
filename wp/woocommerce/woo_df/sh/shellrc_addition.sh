@@ -104,7 +104,12 @@ done
 
 # 允许root用户运行常用命令(主要针对zsh)
 echo "Loading additional shell config and functions..."
-
+# 为macos导入专用配置
+if is_darwin; then
+  # 导入macos相关定义
+  # shellcheck source=/dev/null
+  source "$macos_sh"/*.sh
+fi
 # 针对bash的配置(依赖于shopt命令和针对bash的prompt)
 if is_shell bash || check_dependency -q shopt; then
   if ! [[ $OSTYPE == "darwin"* ]]; then
@@ -120,12 +125,17 @@ if is_shell bash || check_dependency -q shopt; then
   if ! shopt -oq posix; then
     # echo "bash not running on posix mode ..."
     echo "[bash-completion] loading..."
-    # Use bash-completion, if available, and avoid double-sourcing
-    [[ $_PS1 &&
-      ! ${BASH_COMPLETION_VERSINFO:-} &&
-      -f /usr/share/bash-completion/bash_completion ]] &&
-      . /usr/share/bash-completion/bash_completion
+    # for macos bash-completion
+    if is_darwin; then
 
+      [[ -r "/opt/homebrew/etc/profile.d/bash_completion.sh" ]] && . "/opt/homebrew/etc/profile.d/bash_completion.sh"
+    else
+      # Use bash-completion, if available, and avoid double-sourcing
+      [[ $_PS1 &&
+        ! ${BASH_COMPLETION_VERSINFO:-} &&
+        -f /usr/share/bash-completion/bash_completion ]] &&
+        . /usr/share/bash-completion/bash_completion
+    fi
   fi
 
   set_shopt() {

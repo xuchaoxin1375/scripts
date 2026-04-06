@@ -1652,12 +1652,18 @@ function Test-AdminPermission
     $false.
 #>
 
-    if (!([Security.Principal.WindowsIdentity]::GetCurrent().Groups -contains 'S-1-5-32-544'))
+    if ($IsWindows)
     {
-        
-        return $false
+        # Windows 逻辑：检查 SID
+        return ([Security.Principal.WindowsIdentity]::GetCurrent().Groups -contains 'S-1-5-32-544')
     }
-    return $true
+    else
+    {
+        # macOS/Linux 逻辑：检查有效用户 ID 是否为 0 (root)
+        # 也可以使用：id -u
+        return (id -u) -eq 0
+    }
+
 }
 
 function Test-AdminPermission2

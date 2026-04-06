@@ -1,4 +1,4 @@
-       
+
      1	# Default settings
      2	ZSH="${ZSH:-$HOME/.oh-my-zsh}"
      3	#REPO=${REPO:-ohmyzsh/ohmyzsh}

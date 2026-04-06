@@ -3112,23 +3112,46 @@ function Get-WindowsVersionInfoOnDrive
 
     try
     {
-        # 加载指定盘符的注册表
-        reg load HKLM\TempHive "$Driver\Windows\System32\config\SOFTWARE" | Out-Null
-
+        
         # 获取Windows版本信息
-        $osInfo = Get-ItemProperty -Path 'HKLM:\TempHive\Microsoft\Windows NT\CurrentVersion'
+        if ($IsWindows)
+        {
+            # 加载指定盘符的注册表
+            reg load HKLM\TempHive "$Driver\Windows\System32\config\SOFTWARE" | Out-Null
 
-        # 创建一个对象保存版本信息
-        $versionInfo = [PSCustomObject]@{
-            WindowsVersion = $osInfo.ProductName
-            OSVersion      = $osInfo.DisplayVersion
-            BuildNumber    = $osInfo.CurrentBuild
-            UBR            = $osInfo.UBR
-            LUVersion      = $osInfo.ReleaseId
+            $osInfo = Get-ItemProperty -Path 'HKLM:\TempHive\Microsoft\Windows NT\CurrentVersion'
+            
+            # 创建一个对象保存版本信息
+            $versionInfo = [PSCustomObject]@{
+                WindowsVersion = $osInfo.ProductName
+                OSVersion      = $osInfo.DisplayVersion
+                BuildNumber    = $osInfo.CurrentBuild
+                UBR            = $osInfo.UBR
+                LUVersion      = $osInfo.ReleaseId
+            }
+            
+            # 卸载注册表
+            reg unload HKLM\TempHive | Out-Null
         }
+        elseif($IsMacOS)
+        {
+       
+            # 执行 macOS 原生命令并捕获输出
+            $productName = sw_vers -productName
+            $productVersion = sw_vers -productVersion
+            $buildVersion = sw_vers -buildVersion
+            $kernelRelease = sysctl -n kern.osrelease
+            $architecture = uname -m
 
-        # 卸载注册表
-        reg unload HKLM\TempHive | Out-Null
+            # 包装为熟悉的 PSCustomObject
+            $versionInfo = [PSCustomObject]@{
+                macOSVersion  = $productName
+                OSVersion     = $productVersion
+                BuildNumber   = $buildVersion
+                KernelRelease = $kernelRelease
+                Arch          = $architecture
+            }
+        }
 
         # 返回版本信息
         return $versionInfo

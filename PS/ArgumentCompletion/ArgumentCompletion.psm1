@@ -1,6 +1,6 @@
 
 $originalPromptScript = $Function:prompt #禁止在自定义prompt函数体内部执行此代码
-function Prompt
+function promptx
 {
     <# 
     .SYNOPSIS

@@ -1,0 +1,1 @@
+/Users/cxxu/.config/powershell/Microsoft.PowerShell_profile.ps1

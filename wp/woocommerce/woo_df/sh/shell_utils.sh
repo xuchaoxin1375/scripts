@@ -2,7 +2,15 @@
 # 提供一些常用的bash/zsh兼容的函数.
 # 新函数添加于下方:
 # ===============================
+# 判断当前系统是否为macos(darwin内核)
+is_darwin() {
 
+    if [[ $OSTYPE == "darwin"* ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
 # 代理配置函数
 proxy() {
     # 你的代理地址和端口
@@ -87,6 +95,44 @@ log() {
     dt="$(date +%F-%T.%3N)"
     echo "[$dt] $*"
 }
+install_gnu_tools() {
+    echo "正在通过 Homebrew 安装 GNU 全家桶..."
+
+    # 核心工具集：ls, cp, mv, cat 等
+    brew install coreutils
+    # 常用增强工具
+    brew install findutils gnu-sed gnu-tar gnu-which gawk gnutls grep
+
+    echo "安装完成！正在配置环境变量..."
+
+    # 获取 Homebrew 的前缀路径 (M系列芯片通常是 /opt/homebrew)
+    BREW_PREFIX=$(brew --prefix)
+
+    # 定义需要添加到 PATH 的 GNU 路径
+    # 例如：/opt/homebrew/opt/coreutils/libexec/gnubin
+    # macOS 某些自带的系统脚本（.sh）可能依赖 BSD 特有的参数。如果全局强制覆盖，极少数情况下会导致系统工具行为异常。
+    # 折中方案： 仅针对最常用的 coreutils、sed、grep进行覆盖(findutils,tar)。
+    GNU_PATHS=(
+        "${BREW_PREFIX}/opt/coreutils/libexec/gnubin"
+        "${BREW_PREFIX}/opt/findutils/libexec/gnubin"
+        "${BREW_PREFIX}/opt/gnu-tar/libexec/gnubin"
+        "${BREW_PREFIX}/opt/gnu-sed/libexec/gnubin"
+        "${BREW_PREFIX}/opt/grep/libexec/gnubin"
+    )
+    # GNU_PATH=""
+    for p in "${GNU_PATHS[@]}"; do
+        # 防止已有PATH路径片段重复添加，同时路径存在才添加
+        if [[ ":$PATH:" != *":$p:"* ]] && [[ -d $p ]]; then
+            PATH="$p:$PATH"
+            # GNU_PATH="$p:$GNU_PATH"
+        fi
+    done
+    echo "设置 GNU Man pages" #可选
+    # export PATH="$GNU_PATH:$PATH"
+    export PATH
+    export MANPATH="${BREW_PREFIX}/opt/coreutils/libexec/gnuman:$MANPATH"
+
+}
 # Install ble.sh framework for bash
 # 安装前检查依赖,以及避免重复安装重复插入配置项到~/.bashrc
 install_blesh() {
@@ -98,8 +144,20 @@ install_blesh() {
     echo "--- 开始检查 ble.sh 安装环境 ---"
 
     # 1. 依赖检查
-    for cmd in git make; do
-        if ! command -v $cmd &> /dev/null; then
+    required_tools=(
+        git
+        make
+    )
+    if is_darwin; then
+        required_tools+=(gwak)
+        if command -v brew &> /dev/null; then
+            echo "Try to use brew to install 'gawk'"
+            brew install gawk
+        fi
+    fi
+    for cmd in "${required_tools[@]}"; do
+        if ! command -v "$cmd" &> /dev/null; then
+
             echo "错误: 未找到 $cmd，请先安装后再试。"
             return 1
         fi
@@ -139,15 +197,7 @@ install_blesh() {
     echo "请执行 'source ~/.bashrc' 或重新打开终端以激活 ble.sh。"
 }
 
-# 判断当前系统是否为macos(darwin内核)
-is_darwin() {
-
-    if [[ $OSTYPE == "darwin"* ]]; then
-        return 0
-    else
-        return 1
-    fi
-}
+alias is_macos=is_darwin
 # 获取当前系统的发行版名称
 function get_os_name() {
     local out_name=false
@@ -410,7 +460,8 @@ get_public_ip_quick() {
     # 启动所有源
     for i in "${!urls[@]}"; do
         (
-            local ip=$(curl -sL -m "$timeout" "${urls[$i]}" 2> /dev/null)
+            local ip
+            ip=$(curl -sL -m "$timeout" "${urls[$i]}" 2> /dev/null)
             [[ "$ip" =~ ^[0-9a-fA-F.:]+$ ]] && echo -n "$ip" > "$tmp_dir/$i"
         ) &
         pids+=($!)
@@ -418,7 +469,8 @@ get_public_ip_quick() {
 
     # Cloudflare 特殊源
     (
-        local ip=$(curl -sL -m "$timeout" https://1.1.1.1/cdn-cgi/trace 2> /dev/null | grep -Po '^ip=\K.*')
+        local ip
+        ip=$(curl -sL -m "$timeout" https://1.1.1.1/cdn-cgi/trace 2> /dev/null | grep -Po '^ip=\K.*')
         [[ "$ip" =~ ^[0-9a-fA-F.:]+$ ]] && echo -n "$ip" > "$tmp_dir/cf"
     ) &
     pids+=($!)
@@ -1205,33 +1257,33 @@ rm2() {
     return $((errors > 0 ? 1 : 0))
 }
 # 进程监控函数psm
-psm() {
+psm_gnu() {
     # 1. 检查帮助选项
     if [[ "$1" == "-h" || "$1" == "--help" ]]; then
         # 使用 'cat << EOF' 来格式化多行帮助文本
-        cat << EOF
-用法: psm [排序字段] [行数]
+        cat <<- EOF
+    用法: psm [排序字段] [行数]
 
-功能:
-  显示当前系统的进程状态, 类似于 top, 但提供了高精度的内存百分比计算。
+    功能:
+    显示当前系统的进程状态, 类似于 top, 但提供了高精度的内存百分比计算。
 
-参数:
-  [排序字段]   (可选) 指定 'ps' 命令用于排序的字段。
-               必须包含 '-' (降序) 或 '+' (升序)。
-               注意: 按内存排序请使用 '-rss'。
-               (为了方便, '-mem' 或 '-%mem' 会被自动转换为 '-rss')
-               默认: -%cpu
+    参数:
+    [排序字段]   (可选) 指定 'ps' 命令用于排序的字段。
+                必须包含 '-' (降序) 或 '+' (升序)。
+                注意: 按内存排序请使用 '-rss'。
+                (为了方便, '-mem' 或 '-%mem' 会被自动转换为 '-rss')
+                默认: -%cpu
 
-  [行数]       (可选) 指定显示进程的行数 (不包括表头)。
-               默认: 20
+    [行数]       (可选) 指定显示进程的行数 (不包括表头)。
+                默认: 20
 
-选项:
-  -h, --help   显示此帮助信息并退出。
+    选项:
+    -h, --help   显示此帮助信息并退出。
 
-示例:
-  psm            # 按 CPU 降序显示前 20 个进程
-  psm -rss 10    # 按 RSS 内存占用降序显示前 10 个进程
-  psm +pid 50    # 按 PID 升序显示前 50 个进程
+    示例:
+    psm            # 按 CPU 降序显示前 20 个进程
+    psm -rss 10    # 按 RSS 内存占用降序显示前 10 个进程
+    psm +pid 50    # 按 PID 升序显示前 50 个进程
 EOF
         return 0 # 成功退出函数
     fi
@@ -1248,7 +1300,14 @@ EOF
 
     # 4. 获取总内存 (KiB)
     local total_mem_kb
-    total_mem_kb=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+    # total_mem_kb=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS 方案
+        total_mem_kb=$(($(sysctl -n hw.memsize) / 1024))
+    else
+        # Linux 方案
+        total_mem_kb=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+    fi
 
     # 4.1. 检查是否成功获取
     if [ -z "$total_mem_kb" ] || [ "$total_mem_kb" -eq 0 ]; then
@@ -1282,6 +1341,191 @@ EOF
         printf "%-12s %-8s %-6.1f %-6.2f %-12.1f %-12.1f %-6s %-8s %-10s %-s\n",
                $1,$2,$3,mem_perc,rss_mb,vsz_mb,$6,$7,$8,cmd
     }'
+}
+
+psm() {
+    # 1. 帮助
+    if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+        cat << EOF
+用法: psm [排序字段] [行数]
+
+功能:
+  显示当前系统进程状态, 提供高精度内存百分比计算。
+
+参数:
+  [排序字段]   (可选) 排序字段, 需带符号:
+               '-' 降序, '+' 升序
+               常用: -%cpu(默认) | -rss | -vsz | +pid
+               别名: -mem / -%mem 自动转换为 -rss
+  [行数]       (可选) 显示行数 (不含表头), 默认 20
+
+选项:
+  -h, --help   显示帮助并退出
+
+示例:
+  psm               # 按 CPU 降序显示前 20 个进程
+  psm -rss 10       # 按内存降序显示前 10 个进程
+  psm +pid 50       # 按 PID 升序显示前 50 个进程
+EOF
+        return 0
+    fi
+
+    # 2. 参数处理
+    local sort_field="${1:--%cpu}"
+    local lines="${2:-20}"
+
+    # 3. 内存排序别名
+    if [[ "$sort_field" == "-%mem" || "$sort_field" == "-mem" ]]; then
+        sort_field="-rss"
+    fi
+
+    # 4. 平台判断
+    local os_type
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        os_type="macos"
+    else
+        os_type="linux"
+    fi
+
+    # 5. 获取总内存 (KiB)
+    local total_mem_kb
+    if [[ "$os_type" == "macos" ]]; then
+        total_mem_kb=$(($(sysctl -n hw.memsize) / 1024))
+    else
+        total_mem_kb=$(awk '/MemTotal/{print $2}' /proc/meminfo)
+    fi
+
+    if [[ -z "$total_mem_kb" || "$total_mem_kb" -eq 0 ]]; then
+        echo "错误: 无法获取系统总内存。" >&2
+        return 1
+    fi
+
+    # 6. 构造 ps 命令并输出
+    if [[ "$os_type" == "macos" ]]; then
+        _psm_macos "$sort_field" "$lines" "$total_mem_kb"
+    else
+        _psm_linux "$sort_field" "$lines" "$total_mem_kb"
+    fi
+}
+
+# ── Linux 分支 ──────────────────────────────────────────────
+_psm_linux() {
+    local sort_field="$1" lines="$2" total_mem_kb="$3"
+
+    ps -eo user,pid,%cpu,rss,vsz,nlwp,stat,start_time,cmd \
+        --sort="$sort_field" |
+        head -n $((lines + 1)) |
+        awk -v total_mem="$total_mem_kb" '
+        NR==1 {
+            printf "%-12s %-8s %-6s %-7s %-10s %-10s %-6s %-8s %-10s %s\n",
+                   "USER","PID","%CPU","%MEM","RSS(MB)","VSZ(MB)",
+                   "NLWP","STAT","STARTED","CMD"
+            next
+        }
+        {
+            mem_perc = ($4 / total_mem) * 100
+            rss_mb   = $4 / 1024
+            vsz_mb   = $5 / 1024
+            cmd = $9; for(i=10;i<=NF;i++) cmd=cmd" "$i
+            if(length(cmd)>45) cmd=substr(cmd,1,42)"..."
+            printf "%-12s %-8s %-6.1f %-7.2f %-10.1f %-10.1f %-6s %-8s %-10s %s\n",
+                   $1,$2,$3,mem_perc,rss_mb,vsz_mb,$6,$7,$8,cmd
+        }
+    '
+}
+
+# ── macOS 分支 ──────────────────────────────────────────────
+_psm_macos() {
+    local sort_field="$1" lines="$2" total_mem_kb="$3"
+
+    local field_name order
+    if [[ "$sort_field" == -* ]]; then
+        field_name="${sort_field#-}"
+        order="desc"
+    else
+        field_name="${sort_field#+}"
+        order="asc"
+    fi
+
+    ps -eo user,pid,%cpu,rss,vsz,stat,start,command |
+    awk -v total_mem="$total_mem_kb" \
+        -v field="$field_name" \
+        -v order="$order" \
+        -v maxlines="$lines" '
+        BEGIN {
+            col["user"]=1; col["pid"]=2; col["cpu"]=3; col["%cpu"]=3
+            col["rss"]=4;  col["vsz"]=5; col["stat"]=6
+            col["start"]=7; col["command"]=8; col["cmd"]=8
+        }
+
+        NR==1 { next }
+
+        {
+            cmd = $8
+            for (i=9; i<=NF; i++) cmd = cmd " " $i
+
+            # ✅ 用 (row, col) 复合键模拟二维数组
+            rows[NR, 1] = $1
+            rows[NR, 2] = $2
+            rows[NR, 3] = $3
+            rows[NR, 4] = $4
+            rows[NR, 5] = $5
+            rows[NR, 6] = $6
+            rows[NR, 7] = $7
+            rows[NR, 8] = cmd
+            row_ids[NR] = NR
+            total_rows++
+        }
+
+        END {
+            printf "%-12s %-8s %-6s %-7s %-10s %-10s %-6s %-10s %s\n", \
+                   "USER","PID","%CPU","%MEM","RSS(MB)","VSZ(MB)", \
+                   "STAT","STARTED","CMD"
+
+            sort_col = (field in col) ? col[field] : 3
+
+            # 冒泡排序 row_ids 数组
+            n = total_rows
+            for (i = 1; i <= n; i++) {
+                for (j = 1; j <= n - i; j++) {
+                    ri = row_ids[j]
+                    rj = row_ids[j+1]
+
+                    # 判断是否为字符串列
+                    if (sort_col==1 || sort_col==6 || sort_col==7 || sort_col==8) {
+                        a = rows[ri, sort_col]
+                        b = rows[rj, sort_col]
+                        need_swap = (order=="desc") ? (a < b) : (a > b)
+                    } else {
+                        a = rows[ri, sort_col] + 0
+                        b = rows[rj, sort_col] + 0
+                        need_swap = (order=="desc") ? (a < b) : (a > b)
+                    }
+
+                    if (need_swap) {
+                        tmp = row_ids[j]
+                        row_ids[j] = row_ids[j+1]
+                        row_ids[j+1] = tmp
+                    }
+                }
+            }
+
+            # 输出前 maxlines 行
+            printed = 0
+            for (i = 1; i <= n && printed < maxlines; i++) {
+                ri = row_ids[i]
+                mem_perc = (rows[ri, 4] / total_mem) * 100
+                rss_mb   =  rows[ri, 4] / 1024
+                vsz_mb   =  rows[ri, 5] / 1024
+                cmd      =  rows[ri, 8]
+                if (length(cmd) > 45) cmd = substr(cmd, 1, 42) "..."
+                printf "%-12s %-8s %-6.1f %-7.2f %-10.1f %-10.1f %-6s %-10s %s\n", \
+                       rows[ri,1], rows[ri,2], rows[ri,3], mem_perc, \
+                       rss_mb, vsz_mb, rows[ri,6], rows[ri,7], cmd
+                printed++
+            }
+        }
+    '
 }
 # 为常用情况创建别名
 alias pscpu='psm -%cpu'

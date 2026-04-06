@@ -1,5 +1,6 @@
 #! /bin/bash
 __ys_prompt() {
+    # shellcheck disable=SC2034
     local exit_code=$?
 
     # 颜色定义（静态，不变）

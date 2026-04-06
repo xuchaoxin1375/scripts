@@ -8,10 +8,11 @@
 # fi
 
 # shell 基本工具相关环境变量
-export CLICOLOR=1 #让ls的输出显示颜色
+export CLICOLOR=1 # 让ls的输出显示颜色
+export PsPrompt=fast # 如果使用pwsh,此环境变量供参考
 
 # 定义常用变量(路径变量为主)
-echo "loading pre-defined variables..."
+echo "Loading pre-defined variables..."
 # wsl 用户: 统一将使用wsl的设备设置桌面的统一别名目录C:/desktop->$desktop,使用符号链接可以在不改动的情况下优雅的实现这一点
 # New-Item -ItemType Junction  -Path C:/desktop -Target $home/desktop -Verbose -Force #powershell执行
 
@@ -52,14 +53,16 @@ else
 fi
 # 符号链接SH_SYM的TARGET：
 SH_SCRIPT_DIR="$SCRIPT_ROOT/wp/woocommerce/woo_df/sh"
-sh="$SH_SYM" 
+sh="$SH_SYM"
+macos_sh="$sh/macos_sh"
+
 # 宝塔nginx配置文件路径
 # vhost
 bt_nginx_vhost_conf_home="/www/server/panel/vhost/nginx"
 bt_nginx_conf_home="/www/server/nginx/conf"
 
 # 将定义的变量声明为环境变量
-export desktop sh omb_themes \
+export desktop sh macos_sh omb_themes \
     bt_nginx_vhost_conf_home \
     bt_nginx_conf_home uploader_files woo_df pys \
     SH_SYM SCRIPT_ROOT SH_SCRIPT_DIR
