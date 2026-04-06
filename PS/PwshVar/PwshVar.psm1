@@ -92,11 +92,15 @@ function Update-PwshVars
         # ,
         'ConstantString'
     )
+    $PwshVarFilesWindows = @(
+
+        'VarSet3' 
+    )
     $PwshVarFilesEnhance = @(
-        'VarSet3', 
         'VarAndroid',
         'VarFiles'
     )
+    if($IsWindows) { $PwshVarFilesEnhance += $PwshVarFilesWindows }
     $PwshVarFilesFull = $PwshVarFilesFast + $PwshVarFilesEnhance 
 
     # write-verbose "checking the environment of the windows system (`$env:variables)😊..." 
@@ -130,7 +134,7 @@ function Update-PwshVars
     
     foreach ($VarFile in $PwshVarFiles) 
     {
-          
+        Write-Verbose "processing:[$VarFile]"
         Import-PwshVarFile -VarFile $VarFile # -AsPwshEnvForHomeVars
     }
     Write-Verbose 'envs updated!'

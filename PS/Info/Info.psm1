@@ -45,7 +45,10 @@ function Get-MemoryCapacity
     )
 
     # 获取总内存
-    $totalMemory = Get-CimInstance -ClassName Win32_ComputerSystem | Select-Object -ExpandProperty TotalPhysicalMemory
+    $totalMemory = if($isWindows) { Get-CimInstance -ClassName Win32_ComputerSystem | Select-Object -ExpandProperty TotalPhysicalMemory }else
+    {
+        sysctl -n hw.memsize
+    }
 
     # 定义单位与除数的哈希表
     $unitDivisors = @{
