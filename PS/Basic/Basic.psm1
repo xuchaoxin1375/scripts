@@ -1372,7 +1372,7 @@ function Test-MainPC
     .SYNOPSIS
     return whether the current Pc is the main PC or not.
     #>
-    return (Get-MatherBoardInfo).SerialNumber -eq $PC1
+    return (Get-MotherBoardInfo).SerialNumber -eq $PC1
 
 }
 
@@ -1503,8 +1503,9 @@ function Test-CxxuComputer
         $CxxuComputers = $CxxuComputers
     )
     Update-PwshvarsIfNotYet
+    Write-Verbose "$CxxuComputers"
     # Update-PwshEnvIfNotYet
-    return $env:COMPUTERNAME -in @($CxxuComputers)
+    return  [System.Environment]::MachineName -in @($CxxuComputers)
 
     
 }

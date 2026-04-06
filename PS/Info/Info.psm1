@@ -676,9 +676,44 @@ function Get-ModuleByCxxu
     
 }
 
-function Get-MatherBoardInfo
+# function Get-MotherBoardInfo
+# {
+#     return Get-CimInstance -ClassName Win32_baseboard
+# }
+function Get-MotherBoardInfo
 {
-    return Get-CimInstance -ClassName Win32_baseboard
+
+    if ($IsWindows)
+    {
+        return Get-CimInstance -ClassName Win32_BaseBoard
+    }
+    elseif ($IsMacOS)
+    {
+        $model = (sysctl -n hw.model)
+        $serial = (ioreg -l | Select-String IOPlatformSerialNumber).ToString().Split('"')[-2]
+
+        return [PSCustomObject]@{
+            Manufacturer = "Apple"
+            Product      = $model
+            SerialNumber = $serial
+            Version      = "N/A"
+        }
+    }
+    # elseif ($IsMacOS) {
+    #     $info = system_profiler SPHardwareDataType
+
+    #     return [PSCustomObject]@{
+    #         Manufacturer = "Apple"
+    #         Product      = ($info | Select-String "Model Identifier").ToString().Split(":")[1].Trim()
+    #         SerialNumber = ($info | Select-String "Serial Number").ToString().Split(":")[1].Trim()
+    #         Version      = "N/A"
+    #     }
+    # }
+
+    elseif ($IsLinux)
+    {
+        return Get-Content /sys/class/dmi/id/board_* | Out-String
+    }
 }
 function Get-MemoryChipInfo
 {

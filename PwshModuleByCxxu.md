@@ -747,7 +747,7 @@ ControlPanel                     C:\repos\scripts\PS\ControlPanel
   Function        Get-BIOSInfo                                       0.0        Info
   Function        Get-DiskDriversInfo                                0.0        Info
   Function        Get-LocalGroupOfUser                               0.0        Info
-  Function        Get-MatherBoardInfo                                0.0        Info
+  Function        Get-MotherBoardInfo                                0.0        Info
   Function        Get-MaxMemoryCapacity                              0.0        Info
   Function        Get-MemoryChipInfo                                 0.0        Info
   Function        Get-MemoryUseRatio                                 0.0        Info
