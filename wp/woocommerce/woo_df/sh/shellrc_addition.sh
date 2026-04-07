@@ -26,7 +26,7 @@ if [[ $OSTYPE == "darwin"* ]]; then
   # shell scripts dir shorthand
   sh="$SH_SCRIPT_DIR"
 elif [[ $OSTYPE == "linux-gnu"* ]]; then
-  SCRIPT_ROOT="/$_SH_RELATIVE"
+  SCRIPT_ROOT="/$_REPO_BASE"
   # wsl可选:
   [[ -d /mnt/c/ ]] && SCRIPT_ROOT="/mnt/c/$_REPO_BASE"
   sh="$SCRIPT_ROOT/$_SH_RELATIVE"
