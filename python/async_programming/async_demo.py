@@ -14,6 +14,7 @@ async def process_data():
 async def main():
     # 异步并发执行：总耗时约 2 秒（因为两个任务重叠执行）
     start = asyncio.get_event_loop().time()
+    # 
     await asyncio.gather(fetch_data(), process_data())
     print(f"总耗时: {asyncio.get_event_loop().time() - start:.2f} 秒")
 

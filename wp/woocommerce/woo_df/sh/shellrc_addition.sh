@@ -1,13 +1,15 @@
 #!/bin/bash
 # 脚本也兼容zsh
 # 部署方式: bash "$sh"/shellrc_addition.sh
-# wsl中执行部署: sudo mkdir -p /www/ ; sudo ln -sTv /mnt/c/repos/scripts/wp/woocommerce/woo_df/sh/  "$sh"
+# wsl中执行部署: sudo mkdir -p /www/ ; sudo ln -sTv /mnt/c/repos/scripts/$SH_RELATIVE/  "$sh"
 # 引入外部shell脚本使用source命令,这里防止shellcheck误报,禁用此类检查
 # shellcheck disable=SC1091
 # shellcheck disable=SC2154
 # compatible_shells=("bash" "zsh")
 
 # BASHRC_FILE="$HOME/.bashrc"
+_SH_RELATIVE="wp/woocommerce/woo_df/sh"
+_REPO_BASE="repos/scripts"
 # 防止重复导入检查处理
 if [ -z "$_SHELLX_LOADED" ]; then
   # 标记为空,则说明此前并未导入,本轮需要导入  # 方便起见,直接修改标记为被导入,然后再继续后面的配置代码
@@ -19,10 +21,16 @@ else
 fi
 if [[ $OSTYPE == "darwin"* ]]; then
   echo "Current Os is darwin(MacOS)"
-  SCRIPT_ROOT_DARWIN="$HOME/repos/scripts"
-  SH_SCRIPT_DIR="$SCRIPT_ROOT_DARWIN/wp/woocommerce/woo_df/sh"
+  SCRIPT_ROOT_DARWIN="$HOME/$_SH_RELATIVE"
+  SH_SCRIPT_DIR="$SCRIPT_ROOT_DARWIN/$_SH_RELATIVE"
   # shell scripts dir shorthand
   sh="$SH_SCRIPT_DIR"
+elif [[ $OSTYPE == "linux-gnu"* ]]; then
+  SCRIPT_ROOT="/$_SH_RELATIVE"
+  # wsl可选:
+  [[ -d /mnt/c/ ]] && SCRIPT_ROOT="/mnt/c/$_REPO_BASE"
+  sh="$SCRIPT_ROOT/$_SH_RELATIVE"
+
 fi
 # bash prompt主题配置
 export BASH_PROMPT="fast_ys"
