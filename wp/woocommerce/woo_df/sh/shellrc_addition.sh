@@ -21,7 +21,7 @@ else
 fi
 if [[ $OSTYPE == "darwin"* ]]; then
   echo "Current Os is darwin(MacOS)"
-  SCRIPT_ROOT_DARWIN="$HOME/$_SH_RELATIVE"
+  SCRIPT_ROOT_DARWIN="$HOME/$_REPO_BASE"
   SH_SCRIPT_DIR="$SCRIPT_ROOT_DARWIN/$_SH_RELATIVE"
   # shell scripts dir shorthand
   sh="$SH_SCRIPT_DIR"
