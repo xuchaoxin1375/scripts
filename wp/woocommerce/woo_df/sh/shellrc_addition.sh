@@ -132,7 +132,6 @@ if is_shell bash || check_dependency -q shopt; then
   # POSIX 模式是为了严格遵守 Unix 标准，它会禁用很多 Bash 特有的“花哨”功能（比如高级补全）。
   if ! shopt -oq posix; then
     # echo "bash not running on posix mode ..."
-    echo "[bash-completion] loading..."
     # for macos bash-completion
     if is_darwin; then
 
@@ -144,6 +143,7 @@ if is_shell bash || check_dependency -q shopt; then
         -f /usr/share/bash-completion/bash_completion ]] &&
         . /usr/share/bash-completion/bash_completion
     fi
+    echo "[bash-completion] ${BASH_COMPLETION_VERSINFO:-"bash-completion unavailable !"}..."
   fi
 
   set_shopt() {

@@ -1155,6 +1155,7 @@ function Add-CxxuPsModuleToProfile
     # 确保文件存在
     New-Item -ItemType File -Path $ProfileLevel -Force -Verbose -ErrorAction SilentlyContinue
     $pf = $ProfileLevel
+    Update-PwshEnvIfNotYet
     '# AutoRun commands from CxxuPsModules' + " $(Get-Date)" >> $pf
     Get-Content $scripts/config/core_ps_profile.ps1 >>$pf #向配置文件追加内容
     '# End AutoRun commands from CxxuPsModules' >> $pf
