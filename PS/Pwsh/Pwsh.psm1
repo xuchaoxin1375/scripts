@@ -1134,7 +1134,11 @@ function Add-CxxuPsModuleToProfile
     .SYNOPSIS
     将此模块集推荐的自动加载工作添加到powershell的配置文件$profile中
     .DESCRIPTION
-    从$profile中移除
+    写入位置为$profile;
+    在vscode中,情况和普通终端管理器(例如windows terminal)中有所不同,尤其是如果用户启用了powershell extension terminal时;
+    建议不要使用这个特殊的交互式shell,powershell extension用其服务于powershell语言服务器,提供语法检查等功能,而不适合用于交互式使用;
+    在这个shell环境下,$profile取值和vscode相关.
+    可以考虑使用powershell.integratedConsole.startInBackground此选项会从终端列表中隐藏powershell extension terminal;
     
     .PARAMETER ProfileLevel
     默认情况下写入的是$Profile.CurrentUserCurrentHost
@@ -1152,20 +1156,7 @@ function Add-CxxuPsModuleToProfile
     New-Item -ItemType File -Path $ProfileLevel -Force -Verbose -ErrorAction SilentlyContinue
     $pf = $ProfileLevel
     '# AutoRun commands from CxxuPsModules' + " $(Get-Date)" >> $pf
-    {
-        init
-        # 全局补全模块需要特殊处理,放在profile中,但是该模块可能导致ipmof|iex报错,所以不自动启用为好
-        # Confirm-ModuleInstalled -Name PsCompletions -Install *> $null
-        # Import-Module PSCompletions
-        
-        # $res = Get-Command 'scoop-search' -ErrorAction SilentlyContinue
-        # if ($res)
-        # {
-        #     Write-Host 'scoop-search hook loaded!'
-        #     Invoke-Expression (&scoop-search --hook)
-        # }
-
-    }.ToString().Trim()>>$pf #向配置文件追加内容
+    Get-Content $scripts/config/core_ps_profile.ps1 >>$pf #向配置文件追加内容
     '# End AutoRun commands from CxxuPsModules' >> $pf
 }
 function Add-CxxuPsModuleToEnvVar
@@ -1462,7 +1453,8 @@ function write-PermissoinLevel
     )
     if (Test-AdminPermission)
     {
-        $s = '#⚡️', 'Cyan'
+        # $s = '#⚡️', 'Cyan'
+        $s = '#Admin', 'Cyan'
         
 
     }
