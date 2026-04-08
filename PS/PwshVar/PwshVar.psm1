@@ -96,11 +96,22 @@ function Update-PwshVars
 
         'VarSet3' 
     )
+    $PwshVarFilesMacOs = @(
+
+        'VarSet3.macos' 
+    )
     $PwshVarFilesEnhance = @(
         'VarAndroid',
         'VarFiles'
     )
-    if($IsWindows) { $PwshVarFilesEnhance += $PwshVarFilesWindows }
+    if($IsWindows) 
+    {
+        $PwshVarFilesEnhance += $PwshVarFilesWindows 
+    }
+    elseif($IsMacOS)
+    {
+        $PwshVarFilesEnhance += $PwshVarFilesMacOs
+    }
     $PwshVarFilesFull = $PwshVarFilesFast + $PwshVarFilesEnhance 
 
     # write-verbose "checking the environment of the windows system (`$env:variables)😊..." 

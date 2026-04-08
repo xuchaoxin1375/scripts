@@ -1455,8 +1455,8 @@ function Deploy-Typora
 
     .Parameter TyporaHome
     指定typora安装目录
-    .Parameter InstalledByScoop
-    指定typora是否是通过scoop安装的,否则检查默认安装目录
+    .Parameter InstalledByBrew
+    指定typora是否是通过brew安装的
     .Notes
     可能需要管理员权限运行
     细节设置(自动保存,关闭语法检查,选择指定主题等不会还原需要手动选择)
@@ -1483,17 +1483,18 @@ function Deploy-Typora
     为通过scoop安装的typora进行部署
     Deploy-Typora -TyporaHome $scoop_home\apps\typora\current
     #>
+    [CmdletBinding()]
     param(
         # [switch]$InstalledByScoop,
         $TyporaHome = "$scoop_home\apps\typora\current",
-        $Typora_Config = "$home\AppData\Roaming\typora\conf",
+        $TyporaConfig = "$home\AppData\Roaming\typora\conf",
+        [parameter(ParameterSetName = 'windows')]
         [switch]$PatchWinmm,
-        [switch]$OpenWithTypora
+        [parameter(ParameterSetName = 'windows')]
+        [switch]$OpenWithTypora,
+        [parameter(ParameterSetName = 'macos')]
+        [switch]$InstallByBrew
     )
-
-
-    Update-PwshEnvIfNotYet
-    Confirm-AdminPermission
 
     # Write-Host 'close the typora to apply the settings!'
         
@@ -1524,37 +1525,62 @@ function Deploy-Typora
     
     Write-Host 'continue to deploy...' -BackgroundColor Yellow
 
-    # 开始建立链接(使用symboliclink支持跨分区的链接文件夹和文件通吃)
-
-    # 设置注册.md扩展名为文件类型MarkdownFile
-    # 这里的.md是标准markdown文件的扩展名,而MarkdownFile是可以宽松自定义的名字，也可以是别的名字,但是要注意在后面的ftype命令中使用同一个文件类型名字
-    cmd /c assoc .md=MarkdownFile 
-
-
-    # 注册Markdown文件的打开方式(其中MarkdownFile是上面assoc命令设置的文件类型名)🎈
-    # 这个命令不会设置默认打开方式,只是注册了打开方式,除非此前没有其他程序注册打开方式
-    if($OpenWithTypora)
+    if($IsWindows)
     {
+        # 导入专门的环境变量
+        Update-PwshEnvIfNotYet
+        # 要求管理员权限
+        Confirm-AdminPermission
 
-        cmd /c ftype MarkdownFile=$TyporaHome\Typora.exe %1 
-        # 如果要取消,可以使用下面的命令:(=后面留空即可),但是可能不会完全取消,需要检查是否有同地位的注册语句关联相同后缀,设置后可以用新的值覆盖
-        cmd /c ftype MarkdownFile= 
+        # 开始建立链接(使用symboliclink支持跨分区的链接文件夹和文件通吃)
 
+        # 设置注册.md扩展名为文件类型MarkdownFile
+        # 这里的.md是标准markdown文件的扩展名,而MarkdownFile是可以宽松自定义的名字，也可以是别的名字,但是要注意在后面的ftype命令中使用同一个文件类型名字
+        cmd /c assoc .md=MarkdownFile 
+
+
+        # 注册Markdown文件的打开方式(其中MarkdownFile是上面assoc命令设置的文件类型名)🎈
+        # 这个命令不会设置默认打开方式,只是注册了打开方式,除非此前没有其他程序注册打开方式
+        if($OpenWithTypora)
+        {
+
+            cmd /c ftype MarkdownFile=$TyporaHome\Typora.exe %1 
+            # 如果要取消,可以使用下面的命令:(=后面留空即可),但是可能不会完全取消,需要检查是否有同地位的注册语句关联相同后缀,设置后可以用新的值覆盖
+            cmd /c ftype MarkdownFile= 
+
+        }
+
+        $items = @($Typora_Themes , $TyporaConfig)
+        # 移除原有的相关目录,以便能够创建新的符号链接
+        $items | ForEach-Object {
+        
+            Remove-Item -Path $_ -Recurse -Force -Verbose
+        } 
     }
 
-    $items = @($Typora_Themes , $Typora_Config)
-    # 移除原有的相关目录,以便能够创建新的符号链接
-    $items | ForEach-Object {
-        
-        Remove-Item -Path $_ -Recurse -Force -Verbose
-    } 
+
+    
     # 按照原来的位置创建新的符号链接
     # $items | ForEach-Object {
     # } 
-    New-Item -ItemType SymbolicLink -Path $Typora_Themes -Target $Typora_Themes_backup -Force -Verbose
-    New-Item -ItemType SymbolicLink -Path $Typora_Config -Target $Typora_Config_backup -Force -Verbose
+    if($InstallByBrew)
+    {
+        $TyporaHome = "$HOME/Library/Application Support/abnerworks.Typora/themes"
+        mv $TyporaHome "${TyporaHome}.bak"
+        # 配置快捷键等.
+        # $TyporaConfig=""
+        $Typora_Themes_backup = "$configs/Typora/themes"
+        New-Item -ItemType SymbolicLink -Path $TyporaHome -Target $Typora_Themes_backup -Verbose
+
+    }
+    else
+    {
+        # windows 方案
+        New-Item -ItemType SymbolicLink -Path $Typora_Themes -Target $Typora_Themes_backup -Force -Verbose
+        New-Item -ItemType SymbolicLink -Path $TyporaConfig -Target $TyporaConfig_backup -Force -Verbose
+    }
         
-    # New-Item -ItemType SymbolicLink -Path $Typora_Config -Target $Typora_Config_backup -Force -Verbose
+    # New-Item -ItemType SymbolicLink -Path $TyporaConfig -Target $TyporaConfig_backup -Force -Verbose
     if($PatchWinmm)
     {
             
