@@ -137,13 +137,15 @@ if is_shell bash || check_dependency -q shopt; then
 
       [[ -r "/opt/homebrew/etc/profile.d/bash_completion.sh" ]] && . "/opt/homebrew/etc/profile.d/bash_completion.sh"
     else
+      # 检查PS1环境变量,非空(且尚未导入过)bash-completion采执行导入;
       # Use bash-completion, if available, and avoid double-sourcing
-      [[ $_PS1 &&
+      [[ $PS1 &&
         ! ${BASH_COMPLETION_VERSINFO:-} &&
         -f /usr/share/bash-completion/bash_completion ]] &&
         . /usr/share/bash-completion/bash_completion
     fi
-    echo "[bash-completion] ${BASH_COMPLETION_VERSINFO:-"bash-completion unavailable !"}..."
+    # 注意感叹号!在双引号中可能具有特殊性,尤其是历史功能启用的情况下,建议转义!号
+    echo "[bash-completion] (version:${BASH_COMPLETION_VERSINFO:-"None \!"})..."
   fi
 
   set_shopt() {
