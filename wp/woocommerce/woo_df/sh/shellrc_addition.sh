@@ -39,8 +39,12 @@ fi
 export BASH_PROMPT="fast_ys"
 export BASHRC_FILE="$HOME/.bashrc"
 export BASH_PROMPTS_ROOT="$sh/bash_prompts"
+# linuxbrew的基本环境变量
 _HOMEBREW_PREFIX="/home/linuxbrew/.linuxbrew"
 _HOMEBREW_PATH="$_HOMEBREW_PREFIX/bin/brew"
+# macos brew(homebrew) 会自己注册HOMEBREW_PREFIX等环境变量
+# HOMEBREW_PREFIX="$(brew --prefix)"
+
 # 引入预定义的别名
 source "$sh"/shell_vars.sh
 source "$sh"/shell_alias.sh
@@ -52,7 +56,8 @@ source "$sh"/shell_insert_last_part.sh
 if is_shell bash; then
   # 配置调试用途的PS4
 
-  export PS4='\[\e[35m\]+ [${BASH_SOURCE[0]##*/}:${LINENO}]\[\e[0m\] '
+  # export PS4='\[\e[35m\]+ [${BASH_SOURCE[0]##*/}:${LINENO}]\[\e[0m\] '
+  export PS4='+ [${BASH_SOURCE[0]##*/}:${LINENO}] ${FUNCNAME[0]:+${FUNCNAME[0]}(): }'
   # export PS4='+ [${SECONDS}s][${BASH_SOURCE}:${LINENO}][${FUNCNAME[0] || main}] '
   # set -x
 fi
@@ -146,8 +151,9 @@ if is_shell bash || check_dependency -q shopt; then
     # echo "bash not running on posix mode ..."
     # for macos bash-completion
     if is_darwin; then
-
+      # set -x
       [[ -r "/opt/homebrew/etc/profile.d/bash_completion.sh" ]] && . "/opt/homebrew/etc/profile.d/bash_completion.sh"
+      # set +x
     else
       # 检查PS1环境变量,非空(且尚未导入过)bash-completion采执行导入;
       # declare -p PS1 #debug:检查PS1环境变量取值
