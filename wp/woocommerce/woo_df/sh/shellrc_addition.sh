@@ -126,7 +126,7 @@ if is_shell bash || check_dependency -q shopt; then
   fi
   # 插入bashrc的最后部分的配置
   update_last_part_bashrc "$sh"
-  # 在合适的位置加载bash prompt
+  # 在合适的位置加载bash prompt(间接修改PS1)
   source "$BASH_PROMPTS_ROOT/prompt_switcher.sh"
   # 检查当前 Shell 是否运行在 POSIX 模式下。
   # POSIX 模式是为了严格遵守 Unix 标准，它会禁用很多 Bash 特有的“花哨”功能（比如高级补全）。
@@ -138,6 +138,7 @@ if is_shell bash || check_dependency -q shopt; then
       [[ -r "/opt/homebrew/etc/profile.d/bash_completion.sh" ]] && . "/opt/homebrew/etc/profile.d/bash_completion.sh"
     else
       # 检查PS1环境变量,非空(且尚未导入过)bash-completion采执行导入;
+      # declare -p PS1 #debug:检查PS1环境变量取值
       # Use bash-completion, if available, and avoid double-sourcing
       [[ $PS1 &&
         ! ${BASH_COMPLETION_VERSINFO:-} &&

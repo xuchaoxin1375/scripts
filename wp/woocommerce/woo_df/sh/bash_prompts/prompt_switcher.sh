@@ -1,5 +1,5 @@
 #! /bin/bash
-PS1="" #清空原始的prompt值
+# PS1="" #清空原始的prompt值
 # _PS1_RAW="[${PS1}]"
 # _PS1_PRE="${PS1%"$_PS1_RAW"}"
 # log "===debug: PS1: ${PS1}->[${PS1@P}]"
@@ -7,6 +7,7 @@ PS1="" #清空原始的prompt值
 # log "===debug: _PS1_RRE: $_PS1_PRE"
 # 修改后的 prompt_switcher
 prompt_switcher() {
+    # shellcheck disable=SC2154
     local prompt_file="$sh/bash_prompts/${BASH_PROMPT}.sh"
     local gray='\[\e[38;5;244m\]'
     local reset='\[\e[0m\]'
