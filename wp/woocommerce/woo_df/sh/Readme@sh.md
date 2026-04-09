@@ -8,26 +8,6 @@
 
 
 
-## shell配置文件环境预定义
-
-写入一些便于使用的shell配置,比如常用别名和函数,以及预定义变量
-
-> 每次加载shell会有如下提示:
-
-```txt
-loading pre-defined variables...
-Loading pre-defined aliases...
-Configs shell configs already exists in /root/.zshrc, skipping insertion...
-Configs shell configs already exists in /root/.bashrc, skipping insertion...
-Loading additional shell config and functions...
-```
-
-具体要写入的配置通过一个脚本管理:`/www/sh/shellrc_addition.sh`,这里面统筹管理外部配置,包括专门定义变量的 `shell_vars.sh`,专门定义别名的 `shell_alias.sh`,当然将来可能还有更多东西
-
-不过共同点是使用source命令导入配置,并且要安排好顺序
-
-一定要注意,这些shell脚本的换行符(`LF`)不要选择 `CRLF`,这容易导致解析错误 `\r...`
-
 ## 服务器上需要事先安装的东西👺
 
 包括压缩包解压工具等,如果有就跳过
@@ -53,7 +33,7 @@ Nginx可以先不装,后续安装openresty,提供更强大的功能.
 
 避免后续站点部署引用插件时找不到对应的插件而部署不完整!
 
-对于配置了服务器信息并且部署了pwsh的用户可以执行:
+对于配置了服务器信息并且部署了powershell(`pwsh`)的用户可以执行:
 
 ```pwsh
 Update-WpAllPluginPackagesOnServers
@@ -61,9 +41,7 @@ Update-WpAllPluginPackagesOnServers
 
 更新全部包到所有服务器上;
 
-## 美化shell(提高命令行的易用性)
 
-参考[linux@提高shell命令行环境易用性@终端美化@国内网络环境友好一条龙美化(ohmyzsh)_oh my zsh 卸载-CSDN博客](https://blog.csdn.net/xuchaoxin1375/article/details/120999508?sharetype=blogdetail&sharerId=120999508&sharerefer=PC&sharesource=xuchaoxin1375&spm=1011.2480.3001.8118)
 
 ## 代码下载和管理
 
@@ -120,7 +98,21 @@ git pull
 */30 * * * * bash /www/sh/deploy_wp_schd.sh
 ```
 
+## 提高命令行的易用性(shell交互体验)
 
+参考[linux@提高shell命令行环境易用性@终端美化@国内网络环境友好一条龙美化(ohmyzsh)_oh my zsh 卸载-CSDN博客](https://blog.csdn.net/xuchaoxin1375/article/details/120999508?sharetype=blogdetail&sharerId=120999508&sharerefer=PC&sharesource=xuchaoxin1375&spm=1011.2480.3001.8118)
+
+### shell配置文件环境预定义
+
+写入一些便于使用的shell配置,比如常用别名和函数,以及预定义变量,有助于提高命令行交互效率;
+
+> 具体要写入的配置通过一个脚本管理:`/www/sh/shellrc_addition.sh`
+>
+> 通过这个关口统筹管理外部shell配置,包括:常用shell函数定义`shell_utils.sh`,专门定义变量的 `shell_vars.sh`,专门定义别名的 `shell_alias.sh`,当然将来可能还有更多东西;
+
+> 在`shellrc_addition.sh`中通过`source`命令导入配置,并且要安排好顺序;
+
+一定要注意,这些shell脚本的换行符(`LF`)不要选择 `CRLF`,这容易导致解析错误 `\r...`
 
 ## 其他工具配置
 
@@ -170,6 +162,8 @@ ubuntu24+版本对于python pip安装依赖包更加严格,可能无法直接通
 
 ### fail2ban
 
+这个是可选的组件;
+
 - fail2ban自动防御(需要手动安装),并且补全符号链接
 
   ```bash
@@ -181,8 +175,14 @@ ubuntu24+版本对于python pip安装依赖包更加严格,可能无法直接通
 
 #### mysql
 
-- 关闭二进制日志文件备份功能,节约空间和资源消耗
-- 调整mysql性能参数(使用宝塔预设的方案128G~256G或更高,尤其注意`max_connections`不应该低于1000)
+- **关闭二进制日志文件备份功能**,节约空间和资源消耗,防止网站数量增多而导致数据库资源耗尽,出现连接数占用异常的情况,例如
+
+  ```
+  ERROR 1040(HY000):Too many connections.
+  ```
+
+  
+- 调整mysql性能参数(使用宝塔预设的方案128G~256G或更高,尤其注意`max_connections`不应该低于1000,4000一般来说是充足的)
 - 设置数据库登录密码和私有管理员配置
 
 
