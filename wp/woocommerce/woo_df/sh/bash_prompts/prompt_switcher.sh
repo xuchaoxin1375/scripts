@@ -7,9 +7,15 @@
 # log "===debug: _PS1_RRE: $_PS1_PRE"
 # 修改后的 prompt_switcher
 prompt_switcher() {
+    # 在开头捕获上一条命令(通常是用户执行的命令)的退出状态码
+    export LAST_STATUS=$? #位置有讲究,必须放在函数开头,否则捕获的不是用户输入命令的状态码码!
+
+    # 导入具体的Prompt定义
     # shellcheck disable=SC2154
     local prompt_file="$sh/bash_prompts/${BASH_PROMPT}.sh"
     local gray='\[\e[38;5;244m\]'
+    local red='\[\e[31m\]'
+    local green='\[\e[32m\]'
     local reset='\[\e[0m\]'
     if [[ -f "$prompt_file" ]]; then
         # 仅加载当前需要的那个脚本
@@ -34,8 +40,10 @@ prompt_switcher() {
         [[ $NODE_VERSION ]] && NODE_VERSION="(node:${NODE_VERSION})"
         # 环境提示符合并
         _ENV_PROMPT="${CONDA_PROMPT_MODIFIER}${_PY_VENV_NAME}${NODE_VERSION}${KUBECONFIG}"
+        # 上一条命令执行状态
+        _LAST_STATUS="$([ "$LAST_STATUS" -eq 0 ] && echo "${green}✔ ${reset}" || echo "${red}✗${reset} ($LAST_STATUS)")"
         # 定义共同前缀
-        _COMMOM_PROMPT_PREFIX="${gray}${_ENV_PROMPT}${_IS_WSL:+[wsl]}[$(get_os_name -o)][$(current_shell)]${reset}"
+        _COMMOM_PROMPT_PREFIX="${_LAST_STATUS}${gray}${_ENV_PROMPT}${_IS_WSL:+[wsl]}[$(get_os_name -o)][$(current_shell)]${reset}"
         # _PS1_PRE 会在conda等对PS1进行修改后将增加的前缀(例如base)传播回来
         PS1="# ${_PS1_PRE}${_COMMOM_PROMPT_PREFIX}${__PS1__}"
         # echo  "===debug on PROMPT_COMMAND: PS1: <<${PS1}->[${PS1@P}]>>"

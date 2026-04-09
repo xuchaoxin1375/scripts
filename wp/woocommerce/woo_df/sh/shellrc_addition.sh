@@ -7,6 +7,8 @@
 # shellcheck disable=SC2154
 # compatible_shells=("bash" "zsh")
 
+# 计算加载配置的耗时
+start_time=$(date +%s%N)
 # BASHRC_FILE="$HOME/.bashrc"
 _SH_RELATIVE="wp/woocommerce/woo_df/sh"
 _REPO_BASE="repos/scripts"
@@ -25,7 +27,8 @@ if [[ $OSTYPE == "darwin"* ]]; then
   SH_SCRIPT_DIR="$SCRIPT_ROOT_DARWIN/$_SH_RELATIVE"
   # shell scripts dir shorthand
   sh="$SH_SCRIPT_DIR"
-elif [[ $OSTYPE == "linux-gnu"* ]]; then
+elif [[ $OSTYPE == "linux"* ]]; then
+  echo "Current Os is linux[$OSTYPE]"
   SCRIPT_ROOT="/$_REPO_BASE"
   # wsl可选:
   [[ -d /mnt/c/ ]] && SCRIPT_ROOT="/mnt/c/$_REPO_BASE"
@@ -45,6 +48,15 @@ source "$sh"/shell_utils.sh
 # source "$sh"/shell_env_mgr.sh
 source "$sh"/shell_insert_last_part.sh
 # source "$BASH_PROMPTS_ROOT/prompt_switcher.sh"
+
+if is_shell bash; then
+  # 配置调试用途的PS4
+
+  export PS4='\[\e[35m\]+ [${BASH_SOURCE[0]##*/}:${LINENO}]\[\e[0m\] '
+  # export PS4='+ [${SECONDS}s][${BASH_SOURCE}:${LINENO}][${FUNCNAME[0] || main}] '
+  # set -x
+fi
+
 # brew包管理器配置(如果可用的话) brew shellenv 是幂等的,如果shell环境执行过一次,那么再次执行输出为空.
 if [[ -e "$_HOMEBREW_PATH" && -z $HOMEBREW_PREFIX ]]; then
   # $_HOMEBREW_PATH shellenv # debug print it
@@ -146,7 +158,7 @@ if is_shell bash || check_dependency -q shopt; then
         . /usr/share/bash-completion/bash_completion
     fi
     # 注意感叹号!在双引号中可能具有特殊性,尤其是历史功能启用的情况下,建议转义!号
-    echo "[bash-completion] (version:${BASH_COMPLETION_VERSINFO:-"None \!"})..."
+    echo "[bash-completion] (version:${BASH_COMPLETION_VERSINFO:-"None"})..."
   fi
 
   set_shopt() {
@@ -216,10 +228,10 @@ echo "update inputrc [$INPUTRC]..."
     echo "check readline config (case ignore)..."
     bind -v | grep ignore
     # 检查 Readline 是否识search-ignore-case变量从而决定是否自动启用忽略大小写的历史搜索
-    if bind -V 2> /dev/null | grep -q "search-ignore-case"; then
-      bind 'set search-ignore-case on'
-      # bind 'set completion-ignore-case on'
-    fi
+    # if bind -V 2> /dev/null | grep -q "search-ignore-case"; then
+    #   bind 'set search-ignore-case on'
+    #   # bind 'set completion-ignore-case on'
+    # fi
   else
     echo "Interactive shell environment is not prepared. Jump readline binding util next time bash loading."
   fi
@@ -227,5 +239,8 @@ echo "update inputrc [$INPUTRC]..."
 }
 
 # end bash-completion importer
-
+end_time=$(date +%s%N)
+# 计算差值（纳秒转毫秒）
+elapsed=$(((end_time - start_time) / 1000000))
+echo "Elapsed(execution) Time: ${elapsed} ms"
 # 如果要自定义函数请添加到shell_utils.sh中!

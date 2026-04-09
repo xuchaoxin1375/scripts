@@ -11,6 +11,14 @@ is_darwin() {
         return 1
     fi
 }
+# 判断当前系统是否为linux(可能是linux-gnu,linux-musl)
+is_linux() {
+    if [[ $OSTYPE == "linux"* ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
 # 代理配置函数
 proxy() {
     # 你的代理地址和端口
@@ -1448,10 +1456,10 @@ _psm_macos() {
     fi
 
     ps -eo user,pid,%cpu,rss,vsz,stat,start,command |
-    awk -v total_mem="$total_mem_kb" \
-        -v field="$field_name" \
-        -v order="$order" \
-        -v maxlines="$lines" '
+        awk -v total_mem="$total_mem_kb" \
+            -v field="$field_name" \
+            -v order="$order" \
+            -v maxlines="$lines" '
         BEGIN {
             col["user"]=1; col["pid"]=2; col["cpu"]=3; col["%cpu"]=3
             col["rss"]=4;  col["vsz"]=5; col["stat"]=6
