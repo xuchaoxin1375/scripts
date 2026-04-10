@@ -103,6 +103,40 @@ log() {
     dt="$(date +%F-%T.%3N)"
     echo "[$dt] $*"
 }
+
+# 使用GNU版本的命令工具集代替macos自带的bsd版工具;
+# 通过定义需要添加到 PATH 的 GNU 路径来覆盖系统默认版本的优先级
+# 如果没有使用brew安装过,也可以自动快速跳过;
+# 例如：/opt/homebrew/opt/coreutils/libexec/gnubin
+# macOS 某些自带的系统脚本（.sh）可能依赖 BSD 特有的参数。如果全局强制覆盖，极少数情况下会导致系统工具行为异常。
+# 折中方案： 仅针对最常用的 coreutils、sed、grep进行覆盖(findutils,tar)。
+set_gnu_instead_bsd() {
+
+    # 如果不是darwin内核(macos),则跳过处理
+    if ! is_darwin; then
+        return 1
+    fi
+    echo "Using gnu tool instead bsd version ..."
+    GNU_PATHS=(
+        "${HOMEBREW_PREFIX}/opt/coreutils/libexec/gnubin"
+        "${HOMEBREW_PREFIX}/opt/findutils/libexec/gnubin"
+        "${HOMEBREW_PREFIX}/opt/gnu-tar/libexec/gnubin"
+        "${HOMEBREW_PREFIX}/opt/gnu-sed/libexec/gnubin"
+        "${HOMEBREW_PREFIX}/opt/grep/libexec/gnubin"
+    )
+    # GNU_PATH=""
+    for p in "${GNU_PATHS[@]}"; do
+        # 防止已有PATH路径片段重复添加，同时路径存在才添加
+        if [[ ":$PATH:" != *":$p:"* ]] && [[ -d $p ]]; then
+            PATH="$p:$PATH"
+            # GNU_PATH="$p:$GNU_PATH"
+        fi
+    done
+    echo "Set GNU Man pages" #可选
+    # export PATH="$GNU_PATH:$PATH"
+    export PATH
+    export MANPATH="${HOMEBREW_PREFIX}/opt/coreutils/libexec/gnuman:$MANPATH"
+}
 install_gnu_tools() {
     echo "正在通过 Homebrew 安装 GNU 全家桶..."
 
@@ -114,31 +148,8 @@ install_gnu_tools() {
     echo "安装完成！正在配置环境变量..."
 
     # 获取 Homebrew 的前缀路径 (M系列芯片通常是 /opt/homebrew)
-    BREW_PREFIX=$(brew --prefix)
-
-    # 定义需要添加到 PATH 的 GNU 路径
-    # 例如：/opt/homebrew/opt/coreutils/libexec/gnubin
-    # macOS 某些自带的系统脚本（.sh）可能依赖 BSD 特有的参数。如果全局强制覆盖，极少数情况下会导致系统工具行为异常。
-    # 折中方案： 仅针对最常用的 coreutils、sed、grep进行覆盖(findutils,tar)。
-    GNU_PATHS=(
-        "${BREW_PREFIX}/opt/coreutils/libexec/gnubin"
-        "${BREW_PREFIX}/opt/findutils/libexec/gnubin"
-        "${BREW_PREFIX}/opt/gnu-tar/libexec/gnubin"
-        "${BREW_PREFIX}/opt/gnu-sed/libexec/gnubin"
-        "${BREW_PREFIX}/opt/grep/libexec/gnubin"
-    )
-    # GNU_PATH=""
-    for p in "${GNU_PATHS[@]}"; do
-        # 防止已有PATH路径片段重复添加，同时路径存在才添加
-        if [[ ":$PATH:" != *":$p:"* ]] && [[ -d $p ]]; then
-            PATH="$p:$PATH"
-            # GNU_PATH="$p:$GNU_PATH"
-        fi
-    done
-    echo "设置 GNU Man pages" #可选
-    # export PATH="$GNU_PATH:$PATH"
-    export PATH
-    export MANPATH="${BREW_PREFIX}/opt/coreutils/libexec/gnuman:$MANPATH"
+    # HOMEBREW_PREFIX=$(brew --prefix)
+    HOMEBREW_PREFIX=${HOMEBREW_PREFIX:-"$(brew --prefix)"}
 
 }
 # Install ble.sh framework for bash

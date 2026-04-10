@@ -136,6 +136,8 @@ if is_darwin; then
   # 导入macos相关定义
   # shellcheck source=/dev/null
   source "$macos_sh"/*.sh
+  # 设置gnu工具集优先
+  set_gnu_instead_bsd
 fi
 # 针对bash的配置(依赖于shopt命令和针对bash的prompt)
 if is_shell bash || check_dependency -q shopt; then
