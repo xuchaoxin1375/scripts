@@ -1035,18 +1035,37 @@ check_dependency() {
 }
 # 判断当前shell
 # 要在脚本内部准确判断当前运行环境，最健壮的方法是利用各 Shell 的内置变量
+# shellcheck disable=SC2120
 current_shell() {
-
+    # set -x
+    local full=false
+    local CURRENT_SHELL
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -v | --verbose)
+                full=true
+                ;;
+        esac
+        shift
+    done
+    local current_shell_version=""
     if [ -n "$ZSH_VERSION" ]; then
         CURRENT_SHELL="zsh"
+        current_shell_version="$ZSH_VERSION"
     elif [ -n "$BASH_VERSION" ]; then
         CURRENT_SHELL="bash"
+        current_shell_version="${BASH_VERSION%%(*}"
     else
-        CURRENT_SHELL="unknow"
+        CURRENT_SHELL="unknown"
     fi
 
+    if [ "$full" = true ]; then
+        CURRENT_SHELL+=" $current_shell_version"
+    fi
     echo "$CURRENT_SHELL"
+    # set -x
 }
+# export -f current_shell
 # 判断当前shell是否为指定的shell
 is_shell() {
     local shell_name="$1"
