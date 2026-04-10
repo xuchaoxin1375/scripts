@@ -19,7 +19,7 @@
 只检查指定的插件目录,不清除旧插件,不更新/重新安装新插件
 
 .EXAMPLE
-更新或者安装插件🎈
+更新或者安装单个插件🎈
 $plugin='mallpay' #插件名字
 # 计算合适的插件源形式(路径或者名称)
 $installMode="TageFile" # "symbolicLink", "TageFile", "Copy"
@@ -30,7 +30,7 @@ $plugin_format=if(test-path $wp_plugins -erroraction SilentlyContinue){"$wp_plug
 . $scripts/wp/update_plugins.ps1 -WpSitesDir $wp_sites -PluginSources $plugin_format -InstallMode $installMode
 
 .EXAMPLE
-# 更新指定插件(插件路径列表)
+# 更新多个指定插件(插件路径列表)
 (执行两个步骤:1.清除旧插件,2.安装新插件)
 W:\wp_sites\wp_plugins_function\update_plugins.ps1 -PluginSources @"
 W:\wp_sites\wp_plugins\price_pay\paypal-online-payment-for-woocommerce

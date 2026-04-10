@@ -2159,6 +2159,10 @@ function Move-ItemImagesFromCsvPathFields
     process
     {
         Write-Verbose "Processing file: $Path" -Verbose
+        if(!(Test-Path $Path)){
+            Write-Warning "文件不存在: $Path"
+            return $False
+        }
         if($PSCmdlet.ParameterSetName -eq "UseDomainNamePair" -and $UseDomainNamePair)
         {
             $midPath = "wp-content/uploads/$YearField"

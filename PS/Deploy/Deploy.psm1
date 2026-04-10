@@ -1483,7 +1483,7 @@ function Deploy-Typora
     为通过scoop安装的typora进行部署
     Deploy-Typora -TyporaHome $scoop_home\apps\typora\current
     #>
-    [CmdletBinding()]
+    [CmdletBinding(DefaultParameterSetName = 'windows')]
     param(
         # [switch]$InstalledByScoop,
         $TyporaHome = "$scoop_home\apps\typora\current",
@@ -1566,7 +1566,7 @@ function Deploy-Typora
     if($InstallByBrew)
     {
         $TyporaHome = "$HOME/Library/Application Support/abnerworks.Typora/themes"
-        mv $TyporaHome "${TyporaHome}.bak"
+        Move-Item $TyporaHome "${TyporaHome}.bak"
         # 配置快捷键等.
         # $TyporaConfig=""
         $Typora_Themes_backup = "$configs/Typora/themes"

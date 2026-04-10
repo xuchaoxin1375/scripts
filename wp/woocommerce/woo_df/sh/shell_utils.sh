@@ -244,6 +244,7 @@ options:
     fi
     local name
     local version
+
     if is_darwin; then
         # 提取名称
         name=$(sw_vers -productName)
@@ -251,10 +252,17 @@ options:
         # 提取版本号
         version=$(sw_vers -productVersion)
 
-    else
-        # 提取变量值
+    elif [[ -f "$os_file" ]]; then
+        # name="debug"
+        # version="debug"
+        # # 提取变量值
         name=$(grep -E '^NAME=' "$os_file" | cut -d'=' -f2 | tr -d '"')
         version=$(grep -E '^VERSION_ID=' "$os_file" | cut -d'=' -f2 | tr -d '"')
+    elif osinfo=$(uname -a); then
+        name="${osinfo%% *}"
+    else
+        name="unknown"
+        version=""
     fi
     # 根据布尔值决定输出内容
     if [[ "$out_name" == true && "$out_version" == true ]]; then

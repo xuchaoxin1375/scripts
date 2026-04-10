@@ -8,7 +8,7 @@
 # fi
 
 # shell 基本工具相关环境变量
-export CLICOLOR=1 # 让ls的输出显示颜色
+export CLICOLOR=1    # 让ls的输出显示颜色
 export PsPrompt=fast # 如果使用pwsh,此环境变量供参考
 
 # 定义常用变量(路径变量为主)
@@ -24,11 +24,13 @@ pys="$woo_df/pys"
 _REPO_BASE="repos/scripts"
 SCRIPT_ROOT_LINUX='/repos/scripts'
 SCRIPT_ROOT_WSL="/mnt/c/$_REPO_BASE"
+SCRIPT_ROOT_MSYS="/c/$_REPO_BASE"
 SCRIPT_ROOT_DARWIN="$HOME/$_REPO_BASE" # macos
 
 SH_SYM_LINUX="/www/sh"
 SH_SYM_DARWIN="$HOME/sh"
 SH_SYM_WSL="/www/sh"
+SH_SYM_MSYS="$HOME/sh"
 
 desktop="/mnt/c/Users/Administrator/Desktop"
 
@@ -38,6 +40,10 @@ if [[ -d /mnt/c/ ]]; then
     # wsl环境(直接访问 windows 上的仓库目录，而不是单独克隆，主要是方便开发和仓库同步简单)
     SCRIPT_ROOT="$SCRIPT_ROOT_WSL"
     SH_SYM="$SH_SYM_WSL"
+elif [[ -d /c/ ]]; then
+    # msys2环境
+    SCRIPT_ROOT="$SCRIPT_ROOT_MSYS"
+    SH_SYM="$SH_SYM_MSYS"
 
 elif [[ $OSTYPE == "darwin"* ]]; then
     # macos环境
@@ -45,7 +51,7 @@ elif [[ $OSTYPE == "darwin"* ]]; then
     SH_SYM="$SH_SYM_DARWIN"
 
     # sh="/Users/$(whoami)/$REPOS"
-else
+elif [[ $OSTYPE == "linux"* ]]; then
     # 普通linux环境
     SCRIPT_ROOT="$SCRIPT_ROOT_LINUX" # 默认使用linux环境的路径变量
     SH_SYM="$SH_SYM_LINUX"
@@ -55,6 +61,10 @@ fi
 SH_SCRIPT_DIR="$SCRIPT_ROOT/wp/woocommerce/woo_df/sh"
 sh="$SH_SYM"
 macos_sh="$sh/macos_sh"
+# 按需创建sh短路径(对于msys平台,可能有脚本缓存问题(脚本更改不生效的情况),必要时可以删除短路径重建)
+# echo "[$SH_SYM]🎈"
+
+[[ -e "$SH_SYM" ]] || ln -s "$SH_SCRIPT_DIR" "$SH_SYM" -fv 
 
 # 宝塔nginx配置文件路径
 # vhost

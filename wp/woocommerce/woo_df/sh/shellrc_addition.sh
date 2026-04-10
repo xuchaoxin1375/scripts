@@ -12,6 +12,7 @@ start_time=$(date +%s%N)
 # BASHRC_FILE="$HOME/.bashrc"
 _SH_RELATIVE="wp/woocommerce/woo_df/sh"
 _REPO_BASE="repos/scripts"
+_SHELL_DEBUG=0
 # 防止重复导入检查处理
 if [ -z "$_SHELLX_LOADED" ]; then
   # 标记为空,则说明此前并未导入,本轮需要导入  # 方便起见,直接修改标记为被导入,然后再继续后面的配置代码
@@ -21,20 +22,20 @@ else
   # 跳过本次导入
   return 0
 fi
+# 判断当前系统(平台)类型
+echo "Current Os type is [$OSTYPE]"
 if [[ $OSTYPE == "darwin"* ]]; then
-  echo "Current Os is darwin(MacOS)"
-  SCRIPT_ROOT_DARWIN="$HOME/$_REPO_BASE"
-  SH_SCRIPT_DIR="$SCRIPT_ROOT_DARWIN/$_SH_RELATIVE"
-  # shell scripts dir shorthand
-  sh="$SH_SCRIPT_DIR"
+  SCRIPT_ROOT="$HOME/$_REPO_BASE"
 elif [[ $OSTYPE == "linux"* ]]; then
-  echo "Current Os is linux[$OSTYPE]"
   SCRIPT_ROOT="/$_REPO_BASE"
   # wsl可选:
   [[ -d /mnt/c/ ]] && SCRIPT_ROOT="/mnt/c/$_REPO_BASE"
-  sh="$SCRIPT_ROOT/$_SH_RELATIVE"
-
+else
+  # msys*(windows上的一些模拟层)
+  [[ -d /c/ ]] && SCRIPT_ROOT="/c/$_REPO_BASE"
 fi
+sh="$SCRIPT_ROOT/$_SH_RELATIVE"
+
 # bash prompt主题配置
 export BASH_PROMPT="fast_ys"
 export BASHRC_FILE="$HOME/.bashrc"
@@ -59,7 +60,8 @@ if is_shell bash; then
   # export PS4='\[\e[35m\]+ [${BASH_SOURCE[0]##*/}:${LINENO}]\[\e[0m\] '
   export PS4='+ [${BASH_SOURCE[0]##*/}:${LINENO}] ${FUNCNAME[0]:+${FUNCNAME[0]}(): }'
   # export PS4='+ [${SECONDS}s][${BASH_SOURCE}:${LINENO}][${FUNCNAME[0] || main}] '
-  # set -x
+  # 启用调试模式(按需启用set -x)
+  [[ $_SHELL_DEBUG -eq 1  ]] && set -x
 fi
 
 # brew包管理器配置(如果可用的话) brew shellenv 是幂等的,如果shell环境执行过一次,那么再次执行输出为空.
