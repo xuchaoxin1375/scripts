@@ -61,7 +61,7 @@ if is_shell bash; then
   export PS4='+ [${BASH_SOURCE[0]##*/}:${LINENO}] ${FUNCNAME[0]:+${FUNCNAME[0]}(): }'
   # export PS4='+ [${SECONDS}s][${BASH_SOURCE}:${LINENO}][${FUNCNAME[0] || main}] '
   # 启用调试模式(按需启用set -x)
-  [[ $_SHELL_DEBUG -eq 1  ]] && set -x
+  [[ $_SHELL_DEBUG -eq 1 ]] && set -x
 fi
 
 # brew包管理器配置(如果可用的话) brew shellenv 是幂等的,如果shell环境执行过一次,那么再次执行输出为空.
@@ -224,7 +224,19 @@ if is_shell bash || check_dependency -q shopt; then
   # 注意本代码在~/.bashrc中插入位置要靠后,否则如果在conda这类导入片段之前可能会被覆盖效果;或者.bashrc(中BASH_COMMAND的设置 )
 
 fi
-
+if is_shell zsh; then
+  # ^[[A 和 ^[[B 是大多数终端（如 iTerm2, VS Code 终端, Putty）发送给 Shell 的原始“向上”和“向下”信号。
+  # 绑定向上箭头
+  bindkey '^[[A' history-substring-search-up
+  # 绑定向下箭头
+  bindkey '^[[B' history-substring-search-down
+  # ${terminfo}[kcuu1] 代表从系统的终端信息数据库中读取“向上箭头”的定义。
+  bindkey "${terminfo}[kcuu1]" history-substring-search-up
+  bindkey "${terminfo}[kcud1]" history-substring-search-down
+  # 如果你使用 Vi 模式，还可以绑定 j 和 k
+  # bindkey -M vicmd 'k' history-substring-search-up
+  # bindkey -M vicmd 'j' history-substring-search-down
+fi
 export INPUTRC="$sh/.inputrc.conf"
 echo "update inputrc [$INPUTRC]..."
 
