@@ -1,16 +1,18 @@
 #!/bin/bash
 # 20260411
 # 以下代码需要gnu sed,如果gsed不可用,请用户安装
-if command -v gsed &> /dev/null; then
-    # 临时设置别名
-    alias sed=gsed
-else
-    echo "gnu sed not found, please install gnu sed first!"
-    if command -v brew &> /dev/null; then
-        brew install gnu-sed
+if [[ $OSTYPE == darwin* ]]; then
+    if command -v gsed &> /dev/null; then
+        # 临时设置别名
+        alias sed=gsed
     else
-        echo "Please install gnu-sed first!"
-        exit 1
+        echo "macOS:gnu sed not found, please install gnu sed first!"
+        if command -v brew &> /dev/null; then
+            brew install gnu-sed
+        else
+            echo "Please install gnu-sed first!"
+            exit 1
+        fi
     fi
 fi
 # 将推荐的插件下载到指定目录下:(git 已经指定好了目录)
