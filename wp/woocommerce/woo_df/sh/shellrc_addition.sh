@@ -231,8 +231,8 @@ if is_shell zsh; then
   # 绑定向下箭头
   bindkey '^[[B' history-substring-search-down
   # ${terminfo}[kcuu1] 代表从系统的终端信息数据库中读取“向上箭头”的定义。
-  bindkey "${terminfo}[kcuu1]" history-substring-search-up
-  bindkey "${terminfo}[kcud1]" history-substring-search-down
+  bindkey "${terminfo[kcuu1]}" history-substring-search-up
+  bindkey "${terminfo[kcud1]}" history-substring-search-down
   # 如果你使用 Vi 模式，还可以绑定 j 和 k
   # bindkey -M vicmd 'k' history-substring-search-up
   # bindkey -M vicmd 'j' history-substring-search-down

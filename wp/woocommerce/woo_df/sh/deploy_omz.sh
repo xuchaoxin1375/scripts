@@ -25,15 +25,18 @@ git clone --depth 1 https://gitee.com/mirror-hub/zsh-history-substring-search ${
 cd ~ || exit 1
 zshrc_path="$HOME/.zshrc"
 # 配置插件
+# backslash='\\'
 plugins_list=$(
     cat << EOF
-    git\\
-    z\\
-    zsh-syntax-highlighting\\
-    zsh-autosuggestions\\
-    zsh-history-substring-search\\
+    git
+    z
+    zsh-syntax-highlighting
+    zsh-autosuggestions
+    zsh-history-substring-search
 EOF
 )
+# 为每行插件名末尾增加`\`便于在sed中使用(注意最后一个比较特殊,手动补充\\)
+plugins_list="${plugins_list//$'\n'/\\$'\n'}\\"
 echo "[$plugins_list]"
 
 echo "[$zshrc_path]"
