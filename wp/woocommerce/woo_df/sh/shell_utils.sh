@@ -19,6 +19,13 @@ is_linux() {
         return 1
     fi
 }
+is_alpine() {
+    if [[ $(get_os_name) == 'Alpine'* ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
 # 代理配置函数
 proxy() {
     # 你的代理地址和端口
@@ -174,6 +181,13 @@ install_blesh() {
             brew install gawk
         fi
     fi
+    if is_alpine; then
+        required_tools+=(gwak)
+        if command -v apk &> /dev/null; then
+            echo "Try to use apk to install 'gawk'"
+            sudo apk add gawk 
+        fi
+    fi
     for cmd in "${required_tools[@]}"; do
         if ! command -v "$cmd" &> /dev/null; then
 
@@ -189,7 +203,8 @@ install_blesh() {
         # 使用临时目录克隆，避免污染当前路径
         local TMP_DIR
         # 将仓库clone到家目录,防止wsl这类环境IO慢的问题
-        TMP_DIR=$(mktemp -d ~/blesh_tmp.XXXX)
+        # TMP_DIR=$(mktemp -d ~/blesh_tmp.XXXX) # ash 中X的数量为6,过少不行
+        TMP_DIR=$(mktemp -p ~ -d blesh_tmp.XXXXXX)
         git clone --recursive --depth 1 --shallow-submodules "$BLE_REPO" "$TMP_DIR/ble.sh"
         # 执行安装
         make -C "$TMP_DIR/ble.sh" install PREFIX=~/.local
