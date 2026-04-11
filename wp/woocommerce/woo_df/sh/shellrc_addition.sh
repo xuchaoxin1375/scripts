@@ -74,9 +74,11 @@ fi
 remove_background_color() {
   echo "Remove the background color to improve the reading experience."
   echo "try to remove bgc for the current shell:$SHELL!"
-  eval "$(dircolors -p |
-    sed 's/ 4[0-9];/ 01;/; s/;4[0-9];/;01;/g; s/;4[0-9] /;01 /' |
-    dircolors /dev/stdin)"
+  if command -v dircolors &> /dev/null; then
+    eval "$(dircolors -p |
+      sed 's/ 4[0-9];/ 01;/; s/;4[0-9];/;01;/g; s/;4[0-9] /;01 /' |
+      dircolors /dev/stdin)"
+  fi
 }
 
 # 使用windows环境下的编辑器时,例如vscode,注意换行符改为LF,避免多行命令被错误解释🎈

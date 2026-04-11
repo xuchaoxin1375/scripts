@@ -76,10 +76,11 @@ repo_source="gitee.com" # 根据需要可以切换为github.com
 sh_sym="$HOME/sh" sh="$sh_sym"
 mkdir -p "$repos" && git clone --recursive --depth 1 --shallow-submodules https://"$repo_source"/xuchaoxin1375/scripts.git "$scripts"
 # 可选的配置shell脚本库（兼容bash，zsh)
-ln -s "$sh_script_dir" "$sh_sym" -fv 
+! [[ -L $sh_sym ]] && ln -s "$sh_script_dir" "$sh_sym" -fv 
 # 部署shell 交互方案(prompt主题和补全方案)
 bash $sh/shellrc_addition.sh
-
+# 进程替换,让配置生效
+exec bash
 ```
 
 clone参数说明:
