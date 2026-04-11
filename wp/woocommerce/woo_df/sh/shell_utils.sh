@@ -175,14 +175,14 @@ install_blesh() {
         make
     )
     if is_darwin; then
-        required_tools+=(gwak)
+        required_tools+=(gawk)
         if command -v brew &> /dev/null; then
             echo "Try to use brew to install 'gawk'"
             brew install gawk
         fi
     fi
     if is_alpine; then
-        required_tools+=(gwak)
+        required_tools+=(gawk)
         if command -v apk &> /dev/null; then
             echo "Try to use apk to install 'gawk'"
             sudo apk add gawk 
@@ -191,7 +191,7 @@ install_blesh() {
     for cmd in "${required_tools[@]}"; do
         if ! command -v "$cmd" &> /dev/null; then
 
-            echo "错误: 未找到 $cmd，请先安装后再试。"
+            echo "错误: 未找到 $cmd，请先安装后再试(install_blesh)。"
             return 1
         fi
     done
