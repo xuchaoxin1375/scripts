@@ -1,0 +1,26 @@
+# 使用本地镜像路径
+# 文档: https://lima-vm.io/docs/
+# aria2c -k 16 -s 16 https://dl-cdn.alpinelinux.org/alpine/v3.23/releases/cloud/nocloud_alpine-3.23.3-aarch64-uefi-cloudinit-r0.qcow2
+# limactl start --name=alpine ~/lima-configs/alpine-local.yaml
+images:
+  - location: "~/lima-configs/nocloud_alpine-3.23.3-aarch64-uefi-cloudinit-r0.qcow2"
+    # 注意：如果是 Apple Silicon (M1/M2/M3)，arch 必须是 "aarch64"
+    arch: "aarch64"
+
+# 设置虚拟机资源
+cpus: 4
+memory: "1GiB"
+
+# 挂载本地目录
+mounts:
+  - location: "~"
+    writable: true
+
+# 指定操作系统类型，以便 Lima 知道如何进行初始配置
+# field `os` must be one of ["Linux" "Darwin" "FreeBSD"]
+os: "Linux" 
+containerd:
+  system: false
+  user: false
+# 如果你使用的是 ISO，通常需要配置自启动脚本或确保它包含 cloud-init
+# Alpine 的官方标准 ISO 不一定带 cloud-init，建议使用带有 "cloud-init" 字样的镜像

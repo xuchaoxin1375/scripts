@@ -45,6 +45,16 @@ irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsMod
 
 ### 单纯克隆
 
+> 无论哪个方案,请事先安装好git;
+>
+> 对于部分精简的linux系统(例如alpine linux),可能还需要手动安装bash:
+>
+> ```bash
+> sudo apk add bash git
+> ```
+>
+> 
+
 windows系统（使用powershell运行）
 
 ```powershell
@@ -58,14 +68,17 @@ setx PsModulePath C:/repos/scripts/PS
 如果macos或者linux用户，可以将仓库克隆到家目录下（考虑扩展性，将来可能会克隆多个仓库，那么可以在家目录创建 `repos`目录，将仓库克隆到其中便于管理；
 
 ```bash
+
 repos="$HOME/repos"
-scripts_root="$repos/scripts"
-sh_script_dir="$scripts_root/wp/woocommerce/woo_df/sh"
+scripts="$repos/scripts"
+sh_script_dir="$scripts/wp/woocommerce/woo_df/sh"
 repo_source="gitee.com" # 根据需要可以切换为github.com
-sh_sym="$HOME/sh"
+sh_sym="$HOME/sh" sh="$sh_sym"
 mkdir -p "$repos" && git clone --recursive --depth 1 --shallow-submodules https://"$repo_source"/xuchaoxin1375/scripts.git "$scripts"
 # 可选的配置shell脚本库（兼容bash，zsh)
 ln -s "$sh_script_dir" "$sh_sym" -fv 
+# 部署shell 交互方案(prompt主题和补全方案)
+bash $sh/shellrc_addition.sh
 
 ```
 
