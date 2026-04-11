@@ -27,8 +27,8 @@ echo "Current Os type is [$OSTYPE]"
 if [[ $OSTYPE == "darwin"* ]]; then
   SCRIPT_ROOT="$HOME/$_REPO_BASE"
 elif [[ $OSTYPE == "linux"* ]]; then
-  SCRIPT_ROOT="/$_REPO_BASE"
-  ! [[ -e $SCRIPT_ROOT ]] && SCRIPT_ROOT="$HOME/$_REPO_BASE"
+  SCRIPT_ROOT="$HOME/$_REPO_BASE"
+  # ! [[ -e $SCRIPT_ROOT ]] && SCRIPT_ROOT="$HOME/$_REPO_BASE"
   # wsl可选:
   [[ -d /mnt/c/ ]] && SCRIPT_ROOT="/mnt/c/$_REPO_BASE"
 else
