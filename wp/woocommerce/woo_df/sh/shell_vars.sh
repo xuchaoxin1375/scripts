@@ -27,9 +27,9 @@ SCRIPT_ROOT_WSL="/mnt/c/$_REPO_BASE"
 SCRIPT_ROOT_MSYS="/c/$_REPO_BASE"
 SCRIPT_ROOT_DARWIN="$HOME/$_REPO_BASE" # macos
 
-SH_SYM_LINUX="/www/sh"
+SH_SYM_LINUX="$HOME/sh"
 SH_SYM_DARWIN="$HOME/sh"
-SH_SYM_WSL="/www/sh"
+SH_SYM_WSL="$HOME/sh"
 SH_SYM_MSYS="$HOME/sh"
 
 desktop="/mnt/c/Users/Administrator/Desktop"

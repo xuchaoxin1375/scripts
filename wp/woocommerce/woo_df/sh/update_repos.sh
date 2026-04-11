@@ -13,11 +13,11 @@ echo "当前脚本版本: $version;"
 NGINX_CONF_DIR="/www/server/nginx/conf"
 NGINX_CONF_FILE="$NGINX_CONF_DIR/nginx.conf"
 # nginx主配置文件源(用于覆盖服务器上的旧版本)
-NGINX_CONF_TPL_DIR="/www/sh/nginx_conf"
+NGINX_CONF_TPL_DIR="$SH_SYM/nginx_conf"
 NGINX_CONF_TPL_STD="$NGINX_CONF_TPL_DIR/nginx_nginx.conf"
 NGINX_CONF_TPL_OPENRESTY="$NGINX_CONF_TPL_DIR/nginx_openresty.conf"
 # 配置变量
-
+SH_SYM="/www/sh"
 TARGET_DIR="/repos/scripts"
 BRANCH="main" # 或 "master"，根据实际情况调整
 
@@ -256,45 +256,45 @@ fi
 # ===更新配置文件或模板===
 if [ "$UPDATE_CONFIG" -eq 1 ]; then
 
-    bash /www/sh/nginx_conf/update_cf_ip_configs.sh
+    bash $SH_SYM/nginx_conf/update_cf_ip_configs.sh
     # 更新符号链接
     # 目录的符号链接(需要小心处理避免出现循环符号链接).可以先移除再创建防止嵌套
-    # [ -L "/www/sh" ] && rm -f "/www/sh"
-    if [ -L "/www/sh" ]; then
-        echo "Removing existing symbolic link /www/sh"
-        rm -rfv "/www/sh"
+    # [ -L "$SH_SYM" ] && rm -f "$SH_SYM"
+    if [ -L "$SH_SYM" ]; then
+        echo "Removing existing symbolic link $SH_SYM"
+        rm -rfv "$SH_SYM"
 
     else
-        echo "/www/sh does not exist or is not a symbolic link"
+        echo "$SH_SYM does not exist or is not a symbolic link"
     fi
 
     # 兼容wsl (脚本测试开发)
     [[ -d /mnt/c/repos/scripts/ ]] && ln -s -T /mnt/c/repos/scripts/ /repos/scripts
 
     ln -s -T /repos/scripts/wp/woocommerce/woo_df /www/woo_df -fv
-    ln -s -T /www/woo_df/sh /www/sh -fv # 使用-T选项防止嵌套,而-f选项配合-T是会将重复运行符号创建语句效果覆盖而不报错
+    ln -s -T /www/woo_df/sh $SH_SYM -fv # 使用-T选项防止嵌套,而-f选项配合-T是会将重复运行符号创建语句效果覆盖而不报错
     ln -s -T /www/woo_df/pys /www/pys -fv
     # 脚本文件的符号链接
-    ln -s /www/sh/deploy_wp_full.sh /deploy.sh -fv
-    ln -s /www/sh/update_repos.sh /update_repos.sh -fv
-    ln -s /www/sh/nginx_conf/update_nginx_vhosts_conf.sh /update_nginx_vhosts_conf.sh -fv
+    ln -s $SH_SYM/deploy_wp_full.sh /deploy.sh -fv
+    ln -s $SH_SYM/update_repos.sh /update_repos.sh -fv
+    ln -s $SH_SYM/nginx_conf/update_nginx_vhosts_conf.sh /update_nginx_vhosts_conf.sh -fv
     # vim配置
     nvim_conf_dir="$HOME/.config/nvim"
     [[ -d $nvim_conf_dir ]] || mkdir -p "$nvim_conf_dir"
-    ln -s /www/sh/vimrc.vim ~/.vimrc -fv
-    ln -s /www/sh/vimrc.vim ~/.config/nvim/init.vim -fv
+    ln -s $SH_SYM/vimrc.vim ~/.vimrc -fv
+    ln -s $SH_SYM/vimrc.vim ~/.config/nvim/init.vim -fv
 
     # ==nginx配置文件软链接(这里如果用二级软连接和宝塔的一些操作(比如api)可能冲突,建议使用文件覆盖或则手动覆盖)
-    # ln -s /www/sh/nginx_conf/com.conf /www/server/nginx/conf/com.conf -fv
-    # ln -s /www/sh/nginx_conf/nginx.conf /www/server/nginx/conf/nginx.conf -fv
+    # ln -s $SH_SYM/nginx_conf/com.conf /www/server/nginx/conf/com.conf -fv
+    # ln -s $SH_SYM/nginx_conf/nginx.conf /www/server/nginx/conf/nginx.conf -fv
 
     # if [ -f /www/server/nginx/conf/com.conf ]; then
     #     rm  /www/server/nginx/conf/com.conf -fv
     # fi
-    # cp /www/sh/nginx_conf/com.conf /www/server/nginx/conf/com.conf -fv
-    # cp /www/sh/nginx_conf/com_limit_rate.conf /www/server/nginx/conf/com_limit_rate.conf -fv
-    # cp /www/sh/nginx_conf/com_basic.conf /www/server/nginx/conf/com_basic.conf -fv
-    cp /www/sh/nginx_conf/{com_*.conf,*.html} /www/server/nginx/conf/ -fv
+    # cp $SH_SYM/nginx_conf/com.conf /www/server/nginx/conf/com.conf -fv
+    # cp $SH_SYM/nginx_conf/com_limit_rate.conf /www/server/nginx/conf/com_limit_rate.conf -fv
+    # cp $SH_SYM/nginx_conf/com_basic.conf /www/server/nginx/conf/com_basic.conf -fv
+    cp $SH_SYM/nginx_conf/{com_*.conf,*.html} /www/server/nginx/conf/ -fv
     # 判断nginx是否可用
     openresty=false
     if type nginx &> /dev/null; then
@@ -311,11 +311,11 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
         nginx_version=""
     fi
 
-    # cp /www/sh/nginx_conf/nginx_nginx.conf /www/server/nginx/conf/nginx.repos.conf -fv
-    # cp /www/sh/nginx_conf/nginx_openresty.conf /www/server/nginx/conf/nginx_openresty.conf -fv
+    # cp $SH_SYM/nginx_conf/nginx_nginx.conf /www/server/nginx/conf/nginx.repos.conf -fv
+    # cp $SH_SYM/nginx_conf/nginx_openresty.conf /www/server/nginx/conf/nginx_openresty.conf -fv
 
     # 如果启用了 --force 选项,则备份宝塔的 nginx.conf 文件 (/www/server/nginx/conf/nginx.conf)
-    # 并使用 /www/sh/nginx_conf/nginx.conf 覆盖宝塔的 nginx.conf 文件
+    # 并使用 $SH_SYM/nginx_conf/nginx.conf 覆盖宝塔的 nginx.conf 文件
     if [ "$FORCE" -eq 1 ]; then
         # 备份当前nginx.conf
         BACKUP_TS=$(date +%Y%m%d) # %H%M%S
@@ -326,8 +326,8 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
             echo "ℹ️ No existing nginx.conf to backup at $NGINX_CONF_FILE"
         fi
 
-        echo "🔁 Overwriting $NGINX_CONF_FILE with /www/sh/nginx_conf/nginx.conf"
-        # cp -fv /www/sh/nginx_conf/nginx_nginx.conf "$NGINX_CONF_FILE"
+        echo "🔁 Overwriting $NGINX_CONF_FILE with $SH_SYM/nginx_conf/nginx.conf"
+        # cp -fv $SH_SYM/nginx_conf/nginx_nginx.conf "$NGINX_CONF_FILE"
         # 执行覆盖
         if [[ $openresty = true ]]; then
             echo "检测到 openresty, 使用 openresty 配置文件"
@@ -353,15 +353,15 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
             rm -rfv "$f2b_repos"
         fi
         # 仓库中的fail2ban配置目录软链接到/etc/fail2ban/下(便于编辑器内编辑时参考)
-        ln -s /www/sh/fail2ban/ $f2b_repos -fv
+        ln -s $SH_SYM/fail2ban/ $f2b_repos -fv
         # 自定义过滤器
-        cp /www/sh/fail2ban/filter.d/* /etc/fail2ban/filter.d/ -fv
+        cp $SH_SYM/fail2ban/filter.d/* /etc/fail2ban/filter.d/ -fv
 
         # fail2ban源配置文件(.conf)
-        cf_basic_tpl='/www/sh/fail2ban/action.d/cloudflare-tpl.conf'
+        cf_basic_tpl='$SH_SYM/fail2ban/action.d/cloudflare-tpl.conf'
 
-        cf_mode_tpl='/www/sh/fail2ban/action.d/cloudflare-mode-tpl.conf'
-        nginx_cf_jail_tpl='/www/sh/fail2ban/jail.d/nginx-cf-warn.conf'
+        cf_mode_tpl='$SH_SYM/fail2ban/action.d/cloudflare-mode-tpl.conf'
+        nginx_cf_jail_tpl='$SH_SYM/fail2ban/jail.d/nginx-cf-warn.conf'
         # 目标位置(.local)
         cf_action1='/etc/fail2ban/action.d/cloudflare1.local'
         cf_action2='/etc/fail2ban/action.d/cloudflare2.local'

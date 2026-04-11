@@ -29,6 +29,7 @@ REMOVE_PLUGINS=""
 USER_NAME=""
 # 修改默认值，支持多个路径，用逗号分隔
 WORKDIR="/www/wwwroot,/wwwdata/wwwroot"
+SH_SYM="/www/sh"
 DRY_RUN=false
 COMMON_PLUGINS_HOME="wp-content/plugins"
 MUST_PLUGINS_HOME="wp-content"
@@ -222,7 +223,7 @@ for workdir_path in "${WORKDIR_ARRAY[@]}"; do
             user_ini="$site/.user.ini"
             if [[ -f "$user_ini" ]]; then
                 log "调整[$site]的.user.ini..."
-                bash /www/sh/update_user_ini.sh -p "$user_ini" || return 1
+                bash $SH_SYM/update_user_ini.sh -p "$user_ini" || return 1
             fi
             # 正式安装前移除站点中的原插件目录
             if [[ -e "$TARGET_DIR" ]]; then

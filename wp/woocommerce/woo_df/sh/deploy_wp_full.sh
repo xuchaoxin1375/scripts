@@ -38,6 +38,7 @@ UPLOADER_DIR="/srv/uploads/uploader"
 UPLOADER="uploader" # 默认uploader,成员通过(sftp等)上传到指定目录所用的专用用户名
 PLUGINS_HOME="/www"
 PROJECT_HOME="/www/wwwroot"
+SH_SYM="/www/sh"
 SITE_DIR_PACK=""
 FUNCTIONS_PHP="/www/functions.php"
 ARCHIVE_FORMATS=(zip 7z tar lz4 zst)
@@ -999,7 +1000,7 @@ WHERE option_name IN ('home', 'siteurl');
             install_functions_php "$themes_dir" "$FUNCTIONS_PHP" || exit 1
             if [[ -f "$user_ini" ]]; then
                 log "🔍 检测到 .user.ini 文件,设置open_basedir 放行公共插件目录"
-                bash /www/sh/update_user_ini.sh -p "$user_ini" -t "$PLUGINS_HOME"
+                bash $SH_SYM/update_user_ini.sh -p "$user_ini" -t "$PLUGINS_HOME"
             else
                 log "ℹ️ 未找到 .user.ini 文件，跳过权限设置(等待宝塔创建.user.ini)"
             fi

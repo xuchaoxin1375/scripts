@@ -3,7 +3,7 @@
 # 比如deploy_wp_schd_user1_s1.sh
 # 然后修改副本中的参数来实现自定义部署逻辑
 
-# 部署脚本依赖于/www/sh/deploy_wp_full.sh,不过部署代码的时候通常会为你创建/deploy.sh这个路径简化的符号连接.(管理员权限)
+# 部署脚本依赖于deploy_wp_full.sh,不过部署代码的时候通常会为你创建/deploy.sh这个路径简化的符号连接.(管理员权限)
 # 这里使用后者代替
 cat <<eof >/dev/null
 

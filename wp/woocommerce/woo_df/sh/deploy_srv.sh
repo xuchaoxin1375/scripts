@@ -3,7 +3,7 @@
 # 参数解析 (支持-f(覆盖nginx主配置),-h(--help)参数)
 SCRIPT_ROOT='/repos/scripts'
 REPO_SOURCE="github.com"
-
+SH_SYM="/www/sh"
 OVERWRITE_NGINX_CONF=false
 parse_args() {
 
@@ -56,17 +56,17 @@ parse_args "$@"
 git clone --depth 1 "$REPO_URL" "$SCRIPT_ROOT"
 
 # 配置更新代码的脚本的符号链接(bsd的ln命令不支持-T)
-ln -s  $SH_SCRIPT_DIR /www/sh -fv
+ln -s  $SH_SCRIPT_DIR "$SH_SYM" -fv
 
 # 使用简短的更新代码仓库的命令(记得检查fail2ban)
 # 如果追加使用-f会覆盖/www/server/nginx/conf/nginx.conf
-# bash /www/sh/update_repos.sh -g
+# bash "$SH_SYM"/update_repos.sh -g
 if [[ $OVERWRITE_NGINX_CONF == "true" ]]; then
-    bash /www/sh/update_repos.sh -g -f
+    bash "$SH_SYM"/update_repos.sh -g -f
 else
-    bash /www/sh/update_repos.sh -g
+    bash "$SH_SYM"/update_repos.sh -g
 fi
 
 # 向bash,zsh配置文件导入常用的shell函数,比如wp命令行等
-bash /www/sh/shellrc_addition.sh
+bash "$SH_SYM"/shellrc_addition.sh
 # END

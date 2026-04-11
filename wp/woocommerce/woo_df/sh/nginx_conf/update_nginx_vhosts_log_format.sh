@@ -29,9 +29,9 @@ help_doc=$(cat <<EOF
     -f,--force      强制执行,即便已经替换过也重新替换
 示例:
 默认用例:将宝塔Nginx虚拟主机配置中的access_log日志格式替换为 main_format
-bash /www/sh/nginx_conf/update_nginx_vhosts_log_format.sh  # --dry-run
+bash $sh/nginx_conf/update_nginx_vhosts_log_format.sh  # --dry-run
 恢复默认日志格式(将自定义日志格式清空)
-bash /www/sh/nginx_conf/update_nginx_vhosts_log_format.sh -d /www/server/panel/vhost/nginx  -s '' -f
+bash $sh/nginx_conf/update_nginx_vhosts_log_format.sh -d /www/server/panel/vhost/nginx  -s '' -f
 EOF
 )
 # 解析命令行参数
