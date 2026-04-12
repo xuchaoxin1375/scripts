@@ -1,5 +1,9 @@
 #!/bin/bash
 # shellcheck disable=SC1091
+# shellcheck source=/dev/null
+# 注意,由于shellcheck如果要扫描nvm等第三方脚本库会占用大量资源
+# 因此这里在脚本开头设置相关指令阻止分析外部文件,避免(source或者.执行外部文件)内存泄露;
+
 # 在这里可以手动维护一些常用的环境管理的程序的导入脚本,注意检查相关环境变量,避免重复导入;
 echo "Loading common env mgr..."
 # DON'T EXPORT *LOADED ENV VARIABLES
@@ -26,7 +30,7 @@ if [[ -e "$nvm_sh" ]]; then
             if command -v xz &> /dev/null; then
                 export NVM_DIR="$HOME/.nvm"
             else
-                echo "xz command not found, please install xz command first"
+                echo "[warning]: To use nvm install node, 'xz' command not found, please install xz command first"
                 exit 1
             fi
             # export NVM_DIR="$HOME/.nvm"

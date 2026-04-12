@@ -130,7 +130,7 @@ unset __conda_setup
 
 # >>>custom additional shell>>>
 # Load additional shell configs
-# shellcheck source="/Users/cxxu/sh"/shell_utils.sh
+# shellcheck source=/dev/null
 
 source "/Users/cxxu/sh"/shellrc_addition.sh
 

@@ -92,7 +92,7 @@ config_lines=$(
 
 $mark_start
 # Load additional shell configs
-# shellcheck source="$sh"/shell_utils.sh
+# shellcheck source=/dev/null
 
 source "$sh"/shellrc_addition.sh
 
