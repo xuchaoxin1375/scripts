@@ -233,6 +233,7 @@ install_blesh() {
 
 alias is_macos=is_darwin
 # 获取当前系统的发行版名称
+# shellcheck disable=SC2120
 function get_os_name() {
     local out_name=false
     local out_version=false
@@ -1403,7 +1404,34 @@ EOF
                $1,$2,$3,mem_perc,rss_mb,vsz_mb,$6,$7,$8,cmd
     }'
 }
-
+# 按进程名统计内存占用 (从高到低排序)
+psmem_group() {
+    local lines=${1:-20} # 如果没有提供参数，默认显示前 20 行
+    printf "\n%-15s | %-5s | %s\n" "MEMORY (MB)" "COUNT" "PROCESS"
+    printf "%-15s-|-%-5s-|-%s\n" "---------------" "-----" "-------------------------"
+    ps -e -c -o rss=,command= | awk '{
+        rss=$1; $1=""; sub(/^[ \t]+/, ""); 
+        sum[$0]+=rss; count[$0]++
+    } END {
+        for (cmd in sum) 
+            printf "%12.2f MB | %5d | %s\n", sum[cmd]/1024, count[cmd], cmd
+    }' | sort -nr | head -n "$lines"
+    echo ""
+}
+# 登出(结束当前用户所有进程)
+logout_killall(){
+    sudo killall -u "$(whoami)"
+}
+# 快速注销当前用户
+logout_soft() {
+    echo "正在注销当前用户并清理进程..."
+    # 优先尝试 AppleScript 强制注销
+    osascript -e 'tell application "System Events" to  «event aevtlout»'
+    
+    # 如果 5 秒后还没登出（可能有程序卡死），则执行强制清理
+    sleep 5 && launchctl bootout "user/$(id -u)"
+}
+# 按照资源占用从高到低的顺序列出进程(可选内存和cpu占用,其中内存使用合适的精度和单位显示)
 psm() {
     # 1. 帮助
     if [[ "$1" == "-h" || "$1" == "--help" ]]; then

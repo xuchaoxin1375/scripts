@@ -1,7 +1,9 @@
 # 使用本地镜像路径
 # 文档: https://lima-vm.io/docs/
 # aria2c -k 16 -s 16 https://dl-cdn.alpinelinux.org/alpine/v3.23/releases/cloud/nocloud_alpine-3.23.3-aarch64-uefi-cloudinit-r0.qcow2
-# limactl start --name=alpine ~/lima-configs/alpine-local.yaml
+# 基础命令:
+# limactl start --name=alpine ~/lima-configs/alpine-local.yaml #
+# limactl edit apline #编辑配置
 images:
   - location: "~/lima-configs/nocloud_alpine-3.23.3-aarch64-uefi-cloudinit-r0.qcow2"
     # 注意：如果是 Apple Silicon (M1/M2/M3)，arch 必须是 "aarch64"
