@@ -1,7 +1,7 @@
 #! /bin/bash
 # START (安全起见且为了方便复制粘贴运行,为每行后面增加;号和一个空行)
 # 参数解析 (支持-f(覆盖nginx主配置),-h(--help)参数)
-SCRIPT_ROOT='/repos/scripts'
+SCRIPT_ROOT="$HOME/repos/scripts"
 REPO_SOURCE="github.com"
 SH_SYM="/www/sh"
 OVERWRITE_NGINX_CONF=false
@@ -46,8 +46,14 @@ EOF
 }
 
 parse_args "$@"
+# 确保scrits仓库父目录存在(纯shell计算父目录)
+repos_dir="${SCRIPT_ROOT%/}"
+repos_dir="${repos_dir%/*}"
+# echo $repos_dir
+mkdir -p -v "$repos_dir"
 # 如果目录存在，则执行删除
 [[ -d "$SCRIPT_ROOT" ]] && {
+    echo "覆盖旧目录..."
     echo "Removing old dir..."
     sudo rm -rf "$SCRIPT_ROOT"
 }
@@ -56,7 +62,7 @@ parse_args "$@"
 git clone --depth 1 "$REPO_URL" "$SCRIPT_ROOT"
 
 # 配置更新代码的脚本的符号链接(bsd的ln命令不支持-T)
-ln -s  $SH_SCRIPT_DIR "$SH_SYM" -fv
+ln -s -fv "$SH_SCRIPT_DIR" "$SH_SYM" 
 
 # 使用简短的更新代码仓库的命令(记得检查fail2ban)
 # 如果追加使用-f会覆盖/www/server/nginx/conf/nginx.conf

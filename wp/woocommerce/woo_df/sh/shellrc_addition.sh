@@ -1,7 +1,8 @@
 #!/bin/bash
 # 脚本也兼容zsh
 # 部署方式: bash "$sh"/shellrc_addition.sh
-# wsl中执行部署: sudo mkdir -p /www/ ; sudo ln -sTv /mnt/c/repos/scripts/$SH_RELATIVE/  "$sh"
+# wsl中执行部署(共用windows上的仓库目录): sudo mkdir -p /www/ ; sudo ln -sTv /mnt/c/repos/scripts/$SH_RELATIVE/  "$sh"
+#  或者: bash /mnt/c/repos/scripts/wp/woocommerce/woo_df/sh/shellrc_addition.sh
 # 引入外部shell脚本使用source命令,这里防止shellcheck误报,禁用此类检查
 # shellcheck disable=SC1091
 # shellcheck disable=SC2154
@@ -39,15 +40,34 @@ else
 fi
 
 SH_SYM="$HOME/sh"
-# 历史遗留路径检查
 [[ -d $SCRIPT_ROOT_SERVER ]] && SCRIPT_ROOT=$SCRIPT_ROOT_SERVER
+
 # shell脚本目录(仓库内部的sh)
 SH_SCRIPT_DIR="$SCRIPT_ROOT/$_SH_RELATIVE"
-echo "[INFO]:sh_sym=[$SH_SYM],sh_script_dir=[$SH_SCRIPT_DIR],script_root=[$SCRIPT_ROOT]"
+# 适用于服务器管理员的sh路径检查
+if [[ -d $SCRIPT_ROOT_SERVER ]]; then
+  # SCRIPT_ROOT=$SCRIPT_ROOT_SERVER
+  if [[ "$(id -u)" -eq 0 ]]; then
+
+    SH_SYM="/www/sh"
+    #  检查 /www 目录是否存在（ln 不会自动创建父目录）
+    if [ ! -d "/www" ]; then
+      echo "正在创建目录 /www..."
+      mkdir -p /www
+    fi
+    # 创建符号链接
+    # -s: symbolic (符号链接); -f: force (如果目标已存在则覆盖，防止因旧链接存在导致失败)
+    # -n: 如果目标是一个指向目录的链接，将其视为普通文件（防止在目录内创建嵌套链接）
+    ln -sfn "$SH_SCRIPT_DIR" "$SH_SYM"
+  fi
+fi
 # 如果sh短路径(符号链接不存在或者虽然存在符号但是目标无效,则创建)
+# 最终目录结果
+echo "[INFO]:sh_sym=[$SH_SYM],sh_script_dir=[$SH_SCRIPT_DIR],script_root=[$SCRIPT_ROOT]"
 # rm -rfv "$SH_SYM"
 [[ -L "$SH_SYM" && -e "$SH_SYM" ]] || ln -s -fv "$SH_SCRIPT_DIR" "$SH_SYM"
-sh="$SH_SCRIPT_DIR"
+sh="$SH_SYM"
+echo "[INFO]:sh=[$sh]"
 
 # bash prompt主题配置
 export BASH_PROMPT="fast_ys"
@@ -105,8 +125,8 @@ config_lines=$(
 $mark_start
 # Load additional shell configs
 # shellcheck source=/dev/null
-
-source "$sh"/shellrc_addition.sh
+sh="$SH_SYM"
+source "\$sh"/shellrc_addition.sh
 
 $mark_end
 
