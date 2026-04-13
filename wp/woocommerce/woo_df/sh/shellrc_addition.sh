@@ -10,6 +10,8 @@
 # 计算加载配置的耗时
 start_time=$(date +%s%N)
 # BASHRC_FILE="$HOME/.bashrc"
+# 服务器用的目录(by root user on server)
+SCRIPT_ROOT_SERVER=/repos/scripts
 _SH_RELATIVE="wp/woocommerce/woo_df/sh"
 _REPO_BASE="repos/scripts"
 _SHELL_DEBUG=0
@@ -35,11 +37,17 @@ else
   # msys*(windows上的一些模拟层)
   [[ -d /c/ ]] && SCRIPT_ROOT="/c/$_REPO_BASE"
 fi
-sh="$SCRIPT_ROOT/$_SH_RELATIVE"
+
 SH_SYM="$HOME/sh"
-echo "sh_sym=[$SH_SYM]"
+# 历史遗留路径检查
+[[ -d $SCRIPT_ROOT_SERVER ]] && SCRIPT_ROOT=$SCRIPT_ROOT_SERVER
+# shell脚本目录(仓库内部的sh)
+SH_SCRIPT_DIR="$SCRIPT_ROOT/$_SH_RELATIVE"
+echo "[INFO]:sh_sym=[$SH_SYM],sh_script_dir=[$SH_SCRIPT_DIR],script_root=[$SCRIPT_ROOT]"
+# 如果sh短路径(符号链接不存在或者虽然存在符号但是目标无效,则创建)
 # rm -rfv "$SH_SYM"
-[[ -L "$SH_SYM" ]] || ln -s -fv "$SH_SCRIPT_DIR" "$SH_SYM"
+[[ -L "$SH_SYM" && -e "$SH_SYM" ]] || ln -s -fv "$SH_SCRIPT_DIR" "$SH_SYM"
+sh="$SH_SCRIPT_DIR"
 
 # bash prompt主题配置
 export BASH_PROMPT="fast_ys"
