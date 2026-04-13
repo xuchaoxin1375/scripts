@@ -1,5 +1,7 @@
 #!/bin/bash
 # 兼容不同的类unix系统的shell变量定义和使用，主要是路径变量，适配linux,wsl,macos等环境
+# 本文件由shellrc_addition.sh导入
+
 # 相关变量基本用法：
 # mkdir -p "$HOME/repos" && git clone --recursive --depth 1 --shallow-submodules https://gitee.com/xuchaoxin1375/scripts.git "$SCRIPT_ROOT"
 #创建符号链接（sh),注意bsd（macos）的ln 不支持-T;
@@ -62,9 +64,9 @@ SH_SCRIPT_DIR="$SCRIPT_ROOT/wp/woocommerce/woo_df/sh"
 sh="$SH_SYM"
 macos_sh="$sh/macos_sh"
 # 按需创建sh短路径(对于msys平台,可能有脚本缓存问题(脚本更改不生效的情况),必要时可以删除短路径重建)
-# echo "[$SH_SYM]🎈"
+# echo "sh=[$SH_SYM]"
+# [[ -L "$SH_SYM" ]] || ln -s -fv "$SH_SCRIPT_DIR" "$SH_SYM"  
 
-[[ -e "$SH_SYM" ]] || ln -s "$SH_SCRIPT_DIR" "$SH_SYM" -fv 
 
 # 宝塔nginx配置文件路径
 # vhost

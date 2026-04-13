@@ -36,6 +36,10 @@ else
   [[ -d /c/ ]] && SCRIPT_ROOT="/c/$_REPO_BASE"
 fi
 sh="$SCRIPT_ROOT/$_SH_RELATIVE"
+SH_SYM="$HOME/sh"
+echo "sh_sym=[$SH_SYM]"
+# rm -rfv "$SH_SYM"
+[[ -L "$SH_SYM" ]] || ln -s -fv "$SH_SCRIPT_DIR" "$SH_SYM"
 
 # bash prompt主题配置
 export BASH_PROMPT="fast_ys"
