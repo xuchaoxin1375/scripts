@@ -678,7 +678,7 @@ check_symboliclink() {
 
     # 1. 首先检查它是否是一个符号链接
     if [ ! -L "$target" ]; then
-        echo "错误: '$target' 不是一个符号链接。"
+        echo "错误: '$target' 不是一个符号链接。"  >& 2
         return 2
     fi
 
@@ -688,7 +688,7 @@ check_symboliclink() {
         echo "有效: 符号链接 '$target' 指向的目标存在。"
         return 0
     else
-        echo "无效: 符号链接 '$target' 已断开（指向的目标不存在）。"
+        echo "无效: 符号链接 '$target' 已断开（指向的目标不存在）。"  >& 2
         return 1
     fi
 }

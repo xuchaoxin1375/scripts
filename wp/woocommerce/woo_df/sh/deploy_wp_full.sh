@@ -26,7 +26,7 @@
 #   /deploy.sh -M single   --user-dir uuu  -n d1.com --pack-format zip --dry-run
 #   /deploy.sh  --user-dir xcx  --ssp '' -K  --dry-run #适合服务器迁移参数组合!
 
-VERSION=20260311
+VERSION=20260413
 shopt -s extglob globstar
 shopt -s nullglob
 # === 配置参数 ===
@@ -730,8 +730,11 @@ install_wp_plugin() {
         return 1
     }
     for plugin in "$site_plugins_home"/*; do
-        # 将插件标记文件或空目录视为插件要安装(覆盖)
-        if [ -f "$plugin" ] || check_symboliclink "$plugin" || is_empty_dir "$plugin"; then
+        # 将插件标记文件(或无效符号链接）或空目录视为插件要安装(覆盖)
+        check_symboliclink "$plugin" &> /dev/null
+        local sym_code=$? # check_symboliclink 返回 1表示参数是一个符号链接但确不是有效的链接,返回2表示参数不是一个符号链接
+        # 这里我们要精确区分返回码,所以不能简单判断返回是否非0
+        if [ -f "$plugin" ] || [[ $sym_code -eq 1 ]] || is_empty_dir "$plugin"; then
             local plugin_name
             plugin_name=$(basename "$plugin")
             [[ ${plugin_name} = *.php ]] && continue #跳过.php文件
@@ -740,7 +743,7 @@ install_wp_plugin() {
             local from_plugin="$source_plugins_home/$plugin_name"
             local to_plugin="$site_plugins_home/$plugin_name"
             if [[ -d $from_plugin ]]; then
-                log "✅ 插件存在: $plugin_name,准备安装"
+                log "✅ 插件存在: $plugin_name,准备安装(安装前会清空插件标记)"
                 if [[ $PLUGIN_INSTALL_MODE = "symlink" ]]; then
                     rm -rf "$to_plugin" && ln -sfT "$from_plugin" "$to_plugin" -v
                 elif [[ $PLUGIN_INSTALL_MODE = "copy" ]]; then
