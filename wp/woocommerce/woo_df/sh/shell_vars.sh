@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck source=/dev/null
 # 兼容不同的类unix系统的shell变量定义和使用，主要是路径变量，适配linux,wsl,macos等环境
 # 本文件由shellrc_addition.sh导入
 
@@ -66,8 +67,10 @@ macos_sh="$sh/macos_sh"
 # 按需创建sh短路径(对于msys平台,可能有脚本缓存问题(脚本更改不生效的情况),必要时可以删除短路径重建)
 # echo "sh=[$SH_SYM]"
 # [[ -L "$SH_SYM" ]] || ln -s -fv "$SH_SCRIPT_DIR" "$SH_SYM"  
-
-
+# 导入适用于macos的环境变量
+if [[ $OSTYPE == "darwin"* ]]; then
+    . "$macos_sh/shell_vars_macos.sh"
+fi
 # 宝塔nginx配置文件路径
 # vhost
 bt_nginx_vhost_conf_home="/www/server/panel/vhost/nginx"
