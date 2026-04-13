@@ -672,7 +672,26 @@ Options:
     if [[ "$verbose" = true ]]; then echo "return $rc"; fi
     return $rc
 }
+# 判断符号链接是否有效
+check_symboliclink() {
+    local target="$1"
 
+    # 1. 首先检查它是否是一个符号链接
+    if [ ! -L "$target" ]; then
+        echo "错误: '$target' 不是一个符号链接。"
+        return 2
+    fi
+
+    # 2. 检查符号链接指向的目标是否存在
+    # -e 会跟随链接检查目标文件的存在性
+    if [ -e "$target" ]; then
+        echo "有效: 符号链接 '$target' 指向的目标存在。"
+        return 0
+    else
+        echo "无效: 符号链接 '$target' 已断开（指向的目标不存在）。"
+        return 1
+    fi
+}
 # 判断路径是否为空目录
 is_empty_dir() {
     local method="glob" # 默认方式

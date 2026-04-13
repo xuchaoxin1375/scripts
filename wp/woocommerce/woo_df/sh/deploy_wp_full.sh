@@ -731,7 +731,7 @@ install_wp_plugin() {
     }
     for plugin in "$site_plugins_home"/*; do
         # 将插件标记文件或空目录视为插件要安装(覆盖)
-        if [ -f "$plugin" ] || is_empty_dir "$plugin"; then
+        if [ -f "$plugin" ] || check_symboliclink "$plugin" || is_empty_dir "$plugin"; then
             local plugin_name
             plugin_name=$(basename "$plugin")
             [[ ${plugin_name} = *.php ]] && continue #跳过.php文件
