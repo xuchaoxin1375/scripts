@@ -1,48 +1,6 @@
 
 
-function Get-PSConsoleHostHistory
-{
-    <# 
-    .SYNOPSIS
-    读取powershell上运行的历史命令行并返回
-    可以配合其他过滤工具来查找命令
-    .EXAMPLE
-    PS> Get-PSConsoleHostHistory|sls group
 
-    mysql --defaults-group-suffix=_remote1
-    mysql --defaults-group-suffix=df_server1
-    mysql --defaults-group-suffix=remote1
-    mysql --defaults-group-suffix=_remote1
-    mysql --defaults-group-suffix=_df_server1
-    mysql --defaults-group-suffix=_df_server1
-    mysql --defaults-group-suffix=_df_server1
-    mysql --defaults-group-suffix=_df_server1
-    Get-PowershellConsoleHostHistory|sls group
-    Get-PSConsoleHostHistory|sls group
-    .EXAMPLE
-    PS> Get-PSConsoleHostHistory|sls mysql.*default |Get-ContentNL -AsString
-    1:mysql --defaults-group-suffix=_remote1
-    2:mysql --defaults-group-suffix=df_server1
-    3:mysql --defaults-group-suffix=remote1
-    4:mysql --defaults-group-suffix=_remote1
-    5:mysql --defaults-group-suffix=_df_server1
-    6:mysql --defaults-group-suffix=_df_server1
-    7:mysql --defaults-group-suffix=_df_server1
-    8:mysql --defaults-group-suffix=_df_server1
-    9:mysqld --install MySQL55 --defaults-file="C:\phpstudy_pro\Extensions\MySQL5.5.29\my.ini"
-    .EXAMPLE
-    #⚡️[Administrator@CXXUDESK][~\AppData\Roaming\Microsoft\Windows\PowerShell\PSReadLine][9:43:35][UP:3.54Days]
-    PS> Get-PSConsoleHostHistory|sls mysql.*default
-
-    mysql --defaults-group-suffix=_remote1
-    mysql --defaults-group-suffix=df_server1
-    mysql --defaults-group-suffix=remote1
-    mysql --defaults-group-suffix=_remote1
-    mysql --defaults-group-suffix=_df_server1
-    #>
-    $res = Get-Content $PSConsoleHostHistory
-    return $res
-}
 function Get-MysqlDbInfo
 {
     <# 
@@ -693,7 +651,7 @@ function Get-MysqlTablesList
     }
 }
 
-function Start-MySqlStatementForAllDatabasesTemplate
+function Start-MySqlQueryForDbs
 {
     <# 
     .SYNOPSIS
@@ -701,7 +659,7 @@ function Start-MySqlStatementForAllDatabasesTemplate
     .DESCRIPTION
     比如读取本地mysql数据库中所有数据库,然后对这些数据执行同一段sql语句的模板
     .NOTES
-    注意参数sql语句比较复杂的时候,建议使用多行字符串
+    注意参数sql语句比较复杂的时候,建议使用多行字符串,或者指定sql文件
     此外,虽然此函数支持链接远程数据库进行批量操作,但是操作效率低,比本地数据库慢得多
     因为实现方式是遍历所有mysql数据库(比如每个站点的数据库列出),然后逐个利用mysql -e选项执行sql语句,
     这意味着每操作一个数据库,就要连接一次数据库
@@ -714,29 +672,35 @@ function Start-MySqlStatementForAllDatabasesTemplate
     .EXAMPLE
     本地数据库(免密登录直接执行sql语句)
     不给任何参数时,尝试本地免密登录mysql并执行show tables;语句
-    Start-MySqlStatementForAllDatabasesTemplate 
+    Start-MySqlQueryForDbs 
     也可以简单追加-Sql指定要执行的sql语句
     .EXAMPLE
     本地数据库(完整参数输入)
-    Start-MySqlStatementForAllDatabasesTemplate -Server localhost -MysqlUser root -Mysqlkey $env:MySqlKey_LOCAL -Sql @'
+    Start-MySqlQueryForDbs -Server localhost -MysqlUser root -Mysqlkey $env:MySqlKey_LOCAL -Sql @'
     select * from wp_options WHERE option_name LIKE 'woocommerce_flat_rate_%_settings';
 '@
     .EXAMPLE
     远程数据库(完整参数输入)
-     Start-MySqlStatementForAllDatabasesTemplate -Server $env:DF_SERVER -MysqlUser rootx -Mysqlkey $env:MySqlKey_DF2  -Sql @'
+     Start-MySqlQueryForDbs -Server $env:DF_SERVER -MysqlUser rootx -Mysqlkey $env:MySqlKey_DF2  -Sql @'
 select * from wp_options WHERE option_name LIKE 'woocommerce_flat_rate_%_settings';
 '@
     #>
+    [CmdletBinding(DefaultParameterSetName="InLineSql")]
     param (
         $Server = "localhost",
         $MysqlUser = "root",
         $Mysqlkey = $env:MySqlKey_LOCAL,
         $Port = 3306,
-        $Sql='show tables;'
+        [parameter(ParameterSetName="InLineSql")]
+        $Sql='show tables;',
+        # 从sql文件中读取sql语句
+        [parameter(ParameterSetName="SqlFile")]
+        $Path=""
     )
     $dbs = Get-MySqlDatabaseNameNative -Server $Server -User $MysqlUser -Password $Mysqlkey -Port $Port
 
     $key = Get-MysqlKeyInline $Mysqlkey
+    # 遍历数据库并执行SQL语句
     $dbs | ForEach-Object { 
         $Db = $_
         Write-Host "Querying database [$Db]" -ForegroundColor Cyan

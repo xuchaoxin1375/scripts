@@ -185,7 +185,7 @@ install_blesh() {
         required_tools+=(gawk)
         if command -v apk &> /dev/null; then
             echo "Try to use apk to install 'gawk'"
-            sudo apk add gawk 
+            sudo apk add gawk
         fi
     fi
     for cmd in "${required_tools[@]}"; do
@@ -230,7 +230,18 @@ install_blesh() {
     echo "--- 安装/检查完成 ---"
     echo "请执行 'source ~/.bashrc' 或重新打开终端以激活 ble.sh。"
 }
-
+# 安装跨平台跨shell补全项目argc-completions
+# 默认为bash安装补全(注意,bash下和blesh可能会有冲突,酌情使用)
+# 默认不会向shell的配置文件插入激活argc_completions的代码,需要手动输入选项激活
+# 该项目依赖于(argc,yq)国内网络下载可能较慢(从github下载)
+install_argc_completions() {
+    local shell="${1:-bash}"
+    git clone https://github.com/sigoden/argc-completions.git
+    cd argc-completions || exit 1
+    ./scripts/download-tools.sh
+    # bash/zsh/powershell/fish/nushell/elvish/xonsh/tcsh
+    ./scripts/setup-shell.sh "$shell"
+}
 alias is_macos=is_darwin
 # 获取当前系统的发行版名称
 # shellcheck disable=SC2120
@@ -678,7 +689,7 @@ check_symboliclink() {
 
     # 1. 首先检查它是否是一个符号链接
     if [ ! -L "$target" ]; then
-        echo "错误: '$target' 不是一个符号链接。"  >& 2
+        echo "错误: '$target' 不是一个符号链接。" >&2
         return 2
     fi
 
@@ -688,7 +699,7 @@ check_symboliclink() {
         echo "有效: 符号链接 '$target' 指向的目标存在。"
         return 0
     else
-        echo "无效: 符号链接 '$target' 已断开（指向的目标不存在）。"  >& 2
+        echo "无效: 符号链接 '$target' 已断开（指向的目标不存在）。" >&2
         return 1
     fi
 }
@@ -1438,7 +1449,7 @@ psmem_group() {
     echo ""
 }
 # 登出(结束当前用户所有进程)
-logout_killall(){
+logout_killall() {
     sudo killall -u "$(whoami)"
 }
 # 快速注销当前用户
@@ -1446,7 +1457,7 @@ logout_soft() {
     echo "正在注销当前用户并清理进程..."
     # 优先尝试 AppleScript 强制注销
     osascript -e 'tell application "System Events" to  «event aevtlout»'
-    
+
     # 如果 5 秒后还没登出（可能有程序卡死），则执行强制清理
     sleep 5 && launchctl bootout "user/$(id -u)"
 }

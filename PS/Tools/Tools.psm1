@@ -1,3 +1,46 @@
+function Get-PSConsoleHostHistory
+{
+    <# 
+    .SYNOPSIS
+    读取powershell上运行的历史命令行并返回
+    可以配合其他过滤工具来查找命令
+    .EXAMPLE
+    PS> Get-PSConsoleHostHistory|sls group
+
+    mysql --defaults-group-suffix=_remote1
+    mysql --defaults-group-suffix=df_server1
+    mysql --defaults-group-suffix=remote1
+    mysql --defaults-group-suffix=_remote1
+    mysql --defaults-group-suffix=_df_server1
+    mysql --defaults-group-suffix=_df_server1
+    mysql --defaults-group-suffix=_df_server1
+    mysql --defaults-group-suffix=_df_server1
+    Get-PowershellConsoleHostHistory|sls group
+    Get-PSConsoleHostHistory|sls group
+    .EXAMPLE
+    PS> Get-PSConsoleHostHistory|sls mysql.*default |Get-ContentNL -AsString
+    1:mysql --defaults-group-suffix=_remote1
+    2:mysql --defaults-group-suffix=df_server1
+    3:mysql --defaults-group-suffix=remote1
+    4:mysql --defaults-group-suffix=_remote1
+    5:mysql --defaults-group-suffix=_df_server1
+    6:mysql --defaults-group-suffix=_df_server1
+    7:mysql --defaults-group-suffix=_df_server1
+    8:mysql --defaults-group-suffix=_df_server1
+    9:mysqld --install MySQL55 --defaults-file="C:\phpstudy_pro\Extensions\MySQL5.5.29\my.ini"
+    .EXAMPLE
+    #⚡️[Administrator@CXXUDESK][~\AppData\Roaming\Microsoft\Windows\PowerShell\PSReadLine][9:43:35][UP:3.54Days]
+    PS> Get-PSConsoleHostHistory|sls mysql.*default
+
+    mysql --defaults-group-suffix=_remote1
+    mysql --defaults-group-suffix=df_server1
+    mysql --defaults-group-suffix=remote1
+    mysql --defaults-group-suffix=_remote1
+    mysql --defaults-group-suffix=_df_server1
+    #>
+    $res = Get-Content $PSConsoleHostHistory
+    return $res
+}
 function Get-CxxuPsModuleVersoin
 {
     param (
