@@ -685,17 +685,17 @@ function Start-MySqlQueryForDbs
 select * from wp_options WHERE option_name LIKE 'woocommerce_flat_rate_%_settings';
 '@
     #>
-    [CmdletBinding(DefaultParameterSetName="InLineSql")]
+    [CmdletBinding(DefaultParameterSetName = "InLineSql")]
     param (
         $Server = "localhost",
         $MysqlUser = "root",
         $Mysqlkey = $env:MySqlKey_LOCAL,
         $Port = 3306,
-        [parameter(ParameterSetName="InLineSql")]
-        $Sql='show tables;',
+        [parameter(ParameterSetName = "InLineSql")]
+        $Sql = 'show tables;',
         # 从sql文件中读取sql语句
-        [parameter(ParameterSetName="SqlFile")]
-        $Path=""
+        [parameter(ParameterSetName = "SqlFile")]
+        $Path = ""
     )
     $dbs = Get-MySqlDatabaseNameNative -Server $Server -User $MysqlUser -Password $Mysqlkey -Port $Port
 
@@ -706,7 +706,17 @@ select * from wp_options WHERE option_name LIKE 'woocommerce_flat_rate_%_setting
         Write-Host "Querying database [$Db]" -ForegroundColor Cyan
 
         $useDbSql = "use $Db; "
-        mysql -u $MysqlUser -h $Server $key -P $Port -e $($useDbSql + $Sql)
+        if ($PSCmdlet.ParameterSetName -eq "InLineSql")
+        {
+
+            mysql -u $MysqlUser -h $Server $key -P $Port -e $($useDbSql + $Sql)
+        }
+        elseif($PSCmdlet.ParameterSetName -eq "SqlFile") {
+            # 直接使用powershell执行mysql 命令
+            # mysql -u $MysqlUser -h $Server $key -P $Port -e $($useDbSql + (Get-Content $Path -Raw))
+            # 借用cmd 的`<`输入重定向
+            cmd /c "mysql -u $MysqlUser -h $Server $key -P $Port $Db <  $Path"
+        }
         # Write-Host $cmd
     }
 

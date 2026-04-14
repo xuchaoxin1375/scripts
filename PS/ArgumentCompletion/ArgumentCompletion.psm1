@@ -60,6 +60,13 @@ function promptx
     return ' '
     
 }
+function prompt
+{
+    param (
+    )
+    promptx
+    
+}
 
 # # 创建补全功能
 function Get-EnvVarCompleter
