@@ -159,6 +159,67 @@ install_gnu_tools() {
     HOMEBREW_PREFIX=${HOMEBREW_PREFIX:-"$(brew --prefix)"}
 
 }
+# 检测当前IP是否为中国IP
+# shellcheck disable=SC2120
+is_china_ip() {
+    local verbose=false
+    local target=""
+    usage="
+usage:
+    is_china_ip [OPTIONS] [IP]
+options:
+    -v,--verbose: 显示详细信息
+"
+    # 参数解析
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -v | --verbose)
+                verbose=true
+                shift
+                ;;
+            -h)
+                echo "$usage"
+                return 1
+                ;;
+            *)
+                # 指定要查询的ip,如果没指定,则查询本机公网ip
+                target="$1"
+                shift
+                ;;
+        esac
+    done
+    # 定义超时
+    local time_out="${1:-3}"
+    # 一次性请求所有数据
+    local response
+    response=$(curl -s -m "$time_out" "https://ipinfo.io/${target}")
+
+    # 提取字段
+    local ip
+    local country
+    # 要求ggrep和cut命令
+    ip=$(echo "$response" | grep -oE '"ip": *"[^"]+"' | cut -d'"' -f4)
+    country=$(echo "$response" | grep -oE '"country": *"[^"]+"' | cut -d'"' -f4)
+    # 方案2: 使用 curl 获取数据指定字段(但是要花费2次请求)
+    # ip=$(curl -s "https://ipinfo.io/${target}/ip")
+    # country=$(curl -s "https://ipinfo.io/${target}/country")
+
+    if [[ "$verbose" == true ]]; then
+        echo "---- IP Info ----"
+        echo "Target: ${target:-"Localhost"}"
+        echo "Public IP: $ip"
+        echo "Country: $country"
+        echo "-----------------"
+    fi
+
+    if [[ "$country" == "CN" ]]; then
+        [[ "$verbose" == true ]] && echo "Result: This is a China IP."
+        return 0
+    else
+        [[ "$verbose" == true ]] && echo "Result: This is NOT a China IP."
+        return 1
+    fi
+}
 # Install ble.sh framework for bash
 # 安装前检查依赖,以及避免重复安装重复插入配置项到~/.bashrc
 install_blesh() {
@@ -236,6 +297,54 @@ install_blesh() {
 # 该项目依赖于(argc,yq)国内网络下载可能较慢(从github下载)
 install_argc_completions() {
     local shell="${1:-bash}"
+    local install_dir="${repos:-$HOME}"
+
+    local force=false
+    local usage="
+usage:
+    install_argc_completions [OPTIONS] [--shell=<shell>]
+options:
+    --force: 尝试即使在国内ip下直连github安装;
+    --shell=<shell>: 指定要安装的shell,默认为bash 
+    可用shell:bash/zsh/powershell/fish/nushell/elvish/xonsh/tcsh
+"
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+           -s| --shell)
+                shell="$2"
+                shift
+                ;;
+            -f | --force)
+                force=true
+                ;;
+            --help | -h)
+                echo "$usage"
+                return 1
+                ;;
+            -*)
+                echo "unknown option: $1"
+                echo "$usage"
+                return 1
+                ;;
+            *)
+                shell="$1"
+                ;;
+        esac
+        shift
+    done
+
+    echo "installing argc-completions to [$install_dir] ..."
+    if is_china_ip; then
+        echo "[warning]: In China, downloading from github may be slow."
+        echo "Try use proxy instead of connecting to github directly!"
+        if [[ $force == "false" ]]; then
+            echo "use --force to install anyway"
+            return 1
+        fi
+    fi
+    echo "[info]: install_dir is [$install_dir]."
+    cd "$install_dir" || return 1
+
     git clone https://github.com/sigoden/argc-completions.git
     cd argc-completions || exit 1
     ./scripts/download-tools.sh
