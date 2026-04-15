@@ -87,7 +87,7 @@ def get_now_time_str():
 
 
 def get_desktop_path():
-    """获取当前用户桌面路径
+    """获取当前用户桌面路径(字符串)
     尤其是windows用户
     """
     return os.path.join(os.path.expanduser("~"), "Desktop")
@@ -188,7 +188,7 @@ def merge_table_files(
     directory: str, out_file="", remove_old_files=False, encoding: str = "utf-8"
 ) -> pd.DataFrame:
     """
-    读取指定目录下的所有 CSV 文件并合并为一个结构统一的 DataFrame。
+    读取指定目录下的所有表格文件(例如CSV) 文件并合并为一个结构统一的 DataFrame。
     如果有结构相同的excel表格.xlsx(xls)或者csv,excel表格文件混合存放但是表头一样,也可以读取并合并
 
     Args:
@@ -253,7 +253,7 @@ def remove_duplicate_rows(file, subset=None, inplace=True):
 def merge_csv_naive(csv_dir, out_file="", remove_old_files=False):
     """读取指定目录下的所有csv文件，并合并成一个csv文件
     注意,如果csv的格式不同(比如具有不同的列名,无法使用此函数合并)
-    仅使用python自带的csv模块,而不依赖于pandas
+    仅使用python自带的csv模块,而不依赖于pandas(pandas可用的情况下可以考虑用merge_table_files函数,支持跟多格式的表格文件合并)
 
     Args:
         csv_dir (str): csv文件所在目录

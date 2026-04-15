@@ -431,6 +431,7 @@ function Add-CFZoneCheckActivation
         $Table = "$desktop/table.conf",
         $ConfigPath = "$cf_config"
     )
+    Write-Host "Account format is: account[x[-y]]"
     $config = Get-Content $ConfigPath | ConvertFrom-Json
     $account = $config."accounts"."$Account"
     Set-CFCredentials -ApiKey $account.cf_api_key -ApiEmail $account.cf_api_email -CfAccount $Account

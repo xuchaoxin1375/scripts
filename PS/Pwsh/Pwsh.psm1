@@ -1759,14 +1759,15 @@ function PromptFast
 
     # Write-Host "`t" -NoNewline
     write-PermissoinLevel
+    Write-Host "[$current_shell]" -NoNewline
     Write-UserHostname
     # Write-HostIp
     Write-Path
     Write-Time
     # Write-Uptime #统计不太准,而且比较少用
     write-GitBasicInfo
-    # Write-Host ''
-    Write-Host ' PS >'
+    Write-Host ''
+    # Write-Host ' PS >'
     
 }
 function PromptBalance
@@ -2210,7 +2211,38 @@ function Get-ItemSizeSorted
     return $sorted
 }
 
+function Get-GitInfo
+{
+    # ── 1. 获取 .git 目录路径 ──────────────────────────────────────
+    $gitDir = git rev-parse --git-dir 2>$null
+    if (-not $gitDir) { return "" }          # 不在 git 仓库，直接返回
 
+    # ── 2. 构建 HEAD 文件路径 ──────────────────────────────────────
+    $headFile = Join-Path $gitDir "HEAD"
+    if (-not (Test-Path $headFile -PathType Leaf)) { return "" }
+
+    # ── 3. 读取 HEAD 内容 ──────────────────────────────────────────
+    # 只读第一行，等价于 read
+    $headContent = Get-Content -LiteralPath $headFile -TotalCount 1 -Encoding utf8
+
+    # ── 4. 判断分支 or Detached HEAD ──────────────────────────────
+    $branch = if ($headContent -match '^ref: refs/heads/(.+)$')
+    {
+        $Matches[1]                              # 捕获组1 = 分支名
+    }
+    else
+    {
+        $headContent.Substring(0, [Math]::Min(7, $headContent.Length))
+    }                                            # 游离状态取前7位 hash
+
+    # ── 5. 构建带颜色的输出 ────────────────────────────────────────
+    # $yellow = "`e[33m"    # ANSI 黄色  (PowerShell 7+ 支持 `e 转义)
+    # $red = "`e[31m"    # ANSI 红色
+    # $reset = "`e[0m"     # 重置颜色
+
+    # return " ${yellow}on${reset} ${red}git:${branch}${reset}"
+    return "${branch}"
+}
 function write-GitBasicInfo
 {
     <# 
@@ -2230,21 +2262,22 @@ function write-GitBasicInfo
     $gitBranch = ''
 
     # 检查当前路径是否在Git仓库中
-    if (Test-Path (Join-Path $path '.git') )
-    {
-        $Gitavailability = Get-Command git -ErrorAction SilentlyContinue
-        if ($Gitavailability)
-        {
-            # 使用git命令获取当前分支名称
-            $gitBranch = & git symbolic-ref --short HEAD
-            $gitBranch = $gitBranch.Trim()
-        }
-        else
-        {
-            # 捕获任何异常（例如，当前目录不是Git仓库）
-            $gitBranch = ''
-        }
-    }
+    # if (Test-Path (Join-Path $path '.git') )
+    # {
+    #     $Gitavailability = Get-Command git -ErrorAction SilentlyContinue
+    #     if ($Gitavailability)
+    #     {
+    #         # 使用git命令获取当前分支名称
+    #         $gitBranch = & git symbolic-ref --short HEAD
+    #         $gitBranch = $gitBranch.Trim()
+    #     }
+    #     else
+    #     {
+    #         # 捕获任何异常（例如，当前目录不是Git仓库）
+    #         $gitBranch = ''
+    #     }
+    # }
+    $gitBranch = Get-GitInfo $Path
     if ($gitBranch)
     {
         <# Action to perform if the condition is true #>
