@@ -8,7 +8,7 @@ DAYS=""                                  # 默认不限制时间
 WORK_DIR="/www/server/panel/vhost/nginx" # 默认工作目录
 # === 显示用法 ===
 usage() {
-    cat <<EOF
+    cat << EOF
 用法: $0 [选项]
 
 选项:
@@ -53,8 +53,8 @@ EOF
 FILE=""
 DIR=""
 MODE="young" # 默认模式为 young
-MAX_DEPTH=1 # 默认递归查找的最大深度为1
-FORCE=false #默认值设置为假值(字符串false,小心不要当做布尔值用)
+MAX_DEPTH=1  # 默认递归查找的最大深度为1
+FORCE=false  #默认值设置为假值(字符串false,小心不要当做布尔值用)
 DRY_RUN=false
 # 定义配置片段
 LIMIT_SEG='include /www/server/nginx/conf/com_limit_rate.conf;'
@@ -62,11 +62,13 @@ COM_SEG='include /www/server/nginx/conf/com_basic.conf;'
 # 构造替换单元
 # 考虑到部分bash(5.1)无法正确处理命令替换中的heredoc中的\\,这里使用变通的方法将`\`从外部扩展替换
 bslash="\\"
-YOUNG_SEG=$(cat <<EOF
+YOUNG_SEG=$(
+    cat << EOF
     ${COM_SEG}$bslash
 EOF
 )
-OLD_SEG=$(cat <<EOF
+OLD_SEG=$(
+    cat << EOF
     ${COM_SEG}$bslash
     ${LIMIT_SEG}$bslash
 EOF
@@ -80,68 +82,68 @@ echo "$OLD_SEG"
 # "
 while [[ $# -gt 0 ]]; do
     case $1 in
-    -f)
-        FILE="$2"
-        [[ -z "$FILE" ]] && echo "❌ 错误: -f 后需指定文件" && exit 1
-        shift 2
-        ;;
-    -d)
-        DIR="$2"
-        [[ -z "$DIR" ]] && echo "❌ 错误: -d 后需指定目录" && exit 1
-        shift 2
-        ;;
-    -p)
-        PATTERN="$2"
-        [[ -z "$PATTERN" ]] && echo "❌ 错误: -p 后需指定模式" && exit 1
-        shift 2
-        ;;
-    --force)
-        FORCE=true
-        shift
-        ;;
-    --dry-run)
-        DRY_RUN=true
-        shift 
-        ;;
-    --jump-marker)
-        JUMP_MARKER="$2"
-        [[ -z "$JUMP_MARKER" ]] && echo "❌ 错误: --jump-marker 后需指定字符串" && exit 1
-        shift 2
-        ;;
-    --insert-marker)
-        INSERT_MARKER="$2"
-        [[ -z "$INSERT_MARKER" ]] && echo "❌ 错误: --insert-marker 后需指定字符串" && exit 1
-        shift 2
-        ;;
-    -M|--max-depth)
-        MAX_DEPTH="$2"
-        if [[ -z "$MAX_DEPTH" || ! "$MAX_DEPTH" =~ ^[0-9]+$ ]]; then
-            echo "❌ 错误: --max-depth 后需指定一个正整数"
-            exit 1
-        fi
-        shift 2
-        ;;
-    -m | --mode)
-        MODE="$2"
-        [[ -z "$MODE" ]] && echo "❌ 错误: -m 或 --mode 后需指定模式" && exit 1
-        shift 2
-        ;;
-    
-    --days)
-        DAYS="$2"
-        if [[ -z "$DAYS" || ! "$DAYS" =~ ^[0-9]+$ ]]; then
-            echo "❌ 错误: --days 后需指定一个正整数"
-            exit 1
-        fi
-        shift 2
-        ;;
-    -h | --help)
-        usage
-        ;;
-    *)
-        printf "%q\n" "❌ 未知参数: [$1]" 
-        usage
-        ;;
+        -f)
+            FILE="$2"
+            [[ -z "$FILE" ]] && echo "❌ 错误: -f 后需指定文件" && exit 1
+            shift 2
+            ;;
+        -d)
+            DIR="$2"
+            [[ -z "$DIR" ]] && echo "❌ 错误: -d 后需指定目录" && exit 1
+            shift 2
+            ;;
+        -p)
+            PATTERN="$2"
+            [[ -z "$PATTERN" ]] && echo "❌ 错误: -p 后需指定模式" && exit 1
+            shift 2
+            ;;
+        --force)
+            FORCE=true
+            shift
+            ;;
+        --dry-run)
+            DRY_RUN=true
+            shift
+            ;;
+        --jump-marker)
+            JUMP_MARKER="$2"
+            [[ -z "$JUMP_MARKER" ]] && echo "❌ 错误: --jump-marker 后需指定字符串" && exit 1
+            shift 2
+            ;;
+        --insert-marker)
+            INSERT_MARKER="$2"
+            [[ -z "$INSERT_MARKER" ]] && echo "❌ 错误: --insert-marker 后需指定字符串" && exit 1
+            shift 2
+            ;;
+        -M | --max-depth)
+            MAX_DEPTH="$2"
+            if [[ -z "$MAX_DEPTH" || ! "$MAX_DEPTH" =~ ^[0-9]+$ ]]; then
+                echo "❌ 错误: --max-depth 后需指定一个正整数"
+                exit 1
+            fi
+            shift 2
+            ;;
+        -m | --mode)
+            MODE="$2"
+            [[ -z "$MODE" ]] && echo "❌ 错误: -m 或 --mode 后需指定模式" && exit 1
+            shift 2
+            ;;
+
+        --days)
+            DAYS="$2"
+            if [[ -z "$DAYS" || ! "$DAYS" =~ ^[0-9]+$ ]]; then
+                echo "❌ 错误: --days 后需指定一个正整数"
+                exit 1
+            fi
+            shift 2
+            ;;
+        -h | --help)
+            usage
+            ;;
+        *)
+            printf "%q\n" "❌ 未知参数: [$1]"
+            usage
+            ;;
     esac
 done
 
@@ -164,6 +166,7 @@ if [[ -n "$DIR" && ! -d "$DIR" ]]; then
     echo "❌ 目录不存在: $DIR"
     exit 1
 fi
+
 # === 编辑配置的函数(利用sed) ===
 edit_conf() {
     # 参数$1表示文件
@@ -177,7 +180,7 @@ edit_conf() {
         insert_seg="$OLD_SEG"
     fi
     echo "将要插入到片段:[$insert_seg]"
-    if [[  $DRY_RUN = true ]]; then
+    if [[ $DRY_RUN = true ]]; then
         echo "📝 [DRY RUN] 以下内容将被插入到文件 '$1' 的 '$INSERT_MARKER' 之前:"
         echo "----------------------------------------"
         echo "#CUSTOM-CONFIG-START"
@@ -188,19 +191,19 @@ edit_conf() {
     fi
 
     # 使用单引号 + 每行结尾加 \ 的方式确保换行正确
-# 使用 > 作为分隔符，避免与内容冲突(下面到i\\立即换行虽然美观,但是会引入空行,可以事后使用sed清除多余空行)
+    # 使用 > 作为分隔符，避免与内容冲突(下面到i\\立即换行虽然美观,但是会引入空行,可以事后使用sed清除多余空行)
 
     cmd="\>$INSERT_MARKER>i\\
     #CUSTOM-CONFIG-START\\
 $insert_seg
     #CUSTOM-CONFIG-END\\
-";
+"
 
-# 预览sed表达式,确保没有多余的空行,否则会引起错误(unterminated address regex)
-echo -n "$cmd"
-# 开始编辑
-    
-    if sed -i.bak "$cmd" "$conf_file"; then 
+    # 预览sed表达式,确保没有多余的空行,否则会引起错误(unterminated address regex)
+    echo -n "$cmd"
+    # 开始编辑
+
+    if sed -i.bak "$cmd" "$conf_file"; then
         echo "✅ 成功插入配置到: $conf_file"
         echo "清理多余空行" #多个空行压缩成一个空行,但是非纯空行会被保留
         # sed -i -E 's/^\n[\n\s]*\n/\n/g' "$conf_file" # sed不支持此用法
@@ -232,7 +235,7 @@ process_file() {
     echo "📄 处理文件: $conf_file"
 
     # 1. 检查是否已包含跳过标记
-    if grep -qF "$JUMP_MARKER" "$conf_file" ; then
+    if grep -qF "$JUMP_MARKER" "$conf_file"; then
         echo "      🔔 已包含 '$JUMP_MARKER'"
         if [[ $FORCE = false ]]; then
             echo "⚠️  跳过..."
@@ -243,7 +246,7 @@ process_file() {
     fi
 
     # 2. 检查插入引导标记是否存在(如果不存在,则此文件不需要处理)
-    if ! grep -qF "$INSERT_MARKER" "$conf_file" ; then
+    if ! grep -qF "$INSERT_MARKER" "$conf_file"; then
         echo "⚠️  未找到插入标记 '$INSERT_MARKER'，跳过..."
         return
     fi
@@ -252,7 +255,7 @@ process_file() {
     # 3. 使用 sed 在 INSERT_MARKER 前插入多行内容（修复换行问题）
     if [[ $FORCE = true ]] || [[ $MODE == "remove" ]]; then
         echo "⚠️  清空可能存在的老片段..."
-        if [[ $DRY_RUN = true ]];then
+        if [[ $DRY_RUN = true ]]; then
             echo "清空老片段"
         else
             sed -i "/#CUSTOM-CONFIG-START/,/#CUSTOM-CONFIG-END/d" "$conf_file"
@@ -261,7 +264,6 @@ process_file() {
     if [[ $MODE != "remove" ]]; then
         edit_conf "$conf_file"
     fi
-
 
 }
 
@@ -280,7 +282,7 @@ if [[ -n "$FILE" ]]; then
     fi
 else
     # 🔧 [修改] 构建 find 命令，支持按时间过滤
-    find_cmd=(find "$DIR" -maxdepth "$MAX_DEPTH" -type f -name "$PATTERN"  -print0)
+    find_cmd=(find "$DIR" -maxdepth "$MAX_DEPTH" -type f -name "$PATTERN" -print0)
 
     # 如果设置了 --days，则加入 -mtime 条件
     [[ -n "$DAYS" ]] && find_cmd=(find "$DIR" -maxdepth "$MAX_DEPTH" -type f -name "$PATTERN" -mtime "-$DAYS" -print0)

@@ -157,25 +157,40 @@ update_comp_plugins_config_rc() {
     # 在plugins= 行或者source $ZSH/oh-my-zsh.sh行上方插入额外片段行(适用于zsh-completions)
     # shellcheck disable=SC2016
     # sed -i '/source \$ZSH/oh-my-zsh\.sh/i\
-    if [[ "$install_zsh_completions" == "true" ]]; then
-        echo "安装zsh-completions ..."
-        _switch=''
-        if ! grep '# >>> zsh-completions' "$zshrc_path"; then
+    update_zc_config_rc() {
+        # 定义zsh-completions片段
+        mark_zc_start='# >>> zsh-completions'
+        mark_zc_end='# <<< zsh-completions'
+        if [[ "$install_zsh_completions" == "true" ]]; then
+            echo "安装zsh-completions ..."
+            _switch=''
+            # 如果zsh-autocomplete启用,则设置注释开关
             if [[ $install_zsh_autocomplete != "false" ]]; then
-                #     _switch=''
-                # else
                 _switch='#'
             fi
+            # 检查是否曾经配置过zsh-completions片段
+            # 如果已有,则原地更新(可以通过删除旧片段),然后统一执行插入
+
+            if grep "$mark_zc_start" "$zshrc_path"; then
+                echo "Remove old zsh-completions  snippet..."
+                sed -i "/$mark_zc_start/,/$mark_zc_end/d" "$zshrc_path"
+            fi
+            # 在合适的位置插入zsh_completions配置片段
             sed -i '/^plugins=(/i\
 # >>> zsh-completions\
 fpath+=${ZSH_CUSTOM:-${ZSH:-~/.oh-my-zsh}/custom}/plugins/zsh-completions/src\
-'"$_switch"' autoload -U compinit \&\& compinit # 有zsh-autocomplete时这一行注释掉防止冲突\
+'"$_switch"'autoload -U compinit \&\& compinit # 有zsh-autocomplete时这一行注释掉防止冲突\
 # <<< zsh-completions\
 ' ~/.zshrc
             # 重建补全(词库)
             rm -f ~/.zcompdump
+        else
+            # zsh-completions不安装(配置撤销)
+            sed -i "/$mark_zc_start/,/$mark_zc_end/d" "$zshrc_path"
         fi
-    fi
+    }
+    update_zc_config_rc
+    # 标准方式安装zsh-autocomplete(不依赖于oh my zsh等配置框架)
     # 向.zshrc文件头部插入source命令(根据插件官方知道要让autocomplete插件尽早加载,写在.zshrc文件头部,如果oh my zsh插件管理中的加载时机无法正常生效时,可以考虑下面的方案,代替插件列表中的简单配置)
     if [[ "$install_zsh_autocomplete" == "std" ]]; then
         echo "安装zsh-autocomplete ..."
@@ -188,10 +203,23 @@ source ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autocomplete/zsh-autocompl
 # <<< zsh-autocomplete\
 ' ~/.zshrc
         fi
-        echo "remove zsh-autocomplete from plugin list(of my zsh)..."
-        echo plugins_list |sed -i '/zsh-autocomplete/d' 
-        update_omz_plugins_rc
+        echo "Try to remove zsh-autocomplete from plugin list(of my zsh)..."
+        # 移除可能omz安装模式下,oh my zsh中的plugins残留插件名
+        # plugins_list=$(echo "$plugins_list" | sed '/zsh-autocomplete/d')
+        # 将 zsh-autocomplete 替换为空字符
+        plugins_list="${plugins_list//zsh-autocomplete/}"
+
+    elif [[ $install_zsh_autocomplete == "omz" ]]; then
+        # 移除可能在std模式下,在~/.zshrc头部插入的source代码片段;
+        echo "Try to remove 'source .../zsh-autocomplete' code snippet..."
+        sed -i '/# >>> zsh-autocomplete/,/# <<< zsh-autocomplete/d' "$zshrc_path"
     fi
+    if [[ "$install_zsh_autocomplete" == "false" ]]; then
+        sed -i '/# >>> zsh-autocomplete/,/# <<< zsh-autocomplete/d' "$zshrc_path"
+        plugins_list="${plugins_list//zsh-autocomplete/}"
+    fi
+    # 将最终的plugins列表写回到~/.zshrc中
+    update_omz_plugins_rc
 }
 update_comp_plugins_config_rc
 
@@ -205,6 +233,9 @@ sed -Ei.bak 's/(^#*\s*)(ZSH_THEME_RANDOM.*=)(.*)/\2("ys" "junkfood" )/' "$zshrc_
 cat "$zshrc_path" | grep -e zsh-syntax-highlighting -e zsh-autosuggestions \
     -e zsh-history-substring-search -e zsh-autocomplete -e zsh-completions
 cat ~/.zshrc | grep -E '^[^#]' | grep -e random -e THEME -e RANDOM | cat -n
+
+# 移除多余空行(大片空行压缩)
+sed -i '/^$/N;/^\n$/D' "$zshrc_path"
 
 #刷新配置结果
 # shellcheck disable=SC1090

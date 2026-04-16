@@ -85,6 +85,7 @@ source "$sh"/shell_alias.sh
 source "$sh"/shell_utils.sh
 # source "$sh"/shell_env_mgr.sh
 source "$sh"/shell_insert_last_part.sh
+source "$sh"/shell_desktop.sh
 # source "$BASH_PROMPTS_ROOT/prompt_switcher.sh"
 
 if is_shell bash; then

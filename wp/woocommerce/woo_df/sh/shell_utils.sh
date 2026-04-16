@@ -26,6 +26,12 @@ is_alpine() {
         return 1
     fi
 }
+# 移除多余空行(大片空行压缩)
+remove_redundant_blank_lines() {
+
+    local file="$1"
+    sed -i '/^$/N;/^\n$/D' "$file"
+}
 # 代理配置函数
 proxy() {
     # 你的代理地址和端口
