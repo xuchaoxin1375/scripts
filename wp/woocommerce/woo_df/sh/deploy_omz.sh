@@ -4,7 +4,7 @@
 # 补全类插件要求比较严格,尤其是动态自动补全实现比较复杂需要更多的步骤
 # 测试补全插件效果时,对于基础工具,注意区分gnu版本和bsd版本,可用选项和风格有所不同
 version=20260415
-install_zsh_completions=false
+install_zsh_completions=true
 install_zsh_autocomplete=true
 usage='
 version:'"$version"'
@@ -19,35 +19,35 @@ options:
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            -zc | --install-zsh-completions)
-                install_zsh_completions="$2"
-                shift
-                ;;
-            -zac | --install-zsh-autocomplete)
-                install_zsh_autocomplete="$2"
-                shift
-                ;;
-            -h | --help)
-                echo "$usage"
-                exit 0
-                ;;
-            -*)
-                echo "unknown option: "
-                echo "$usage"
-                exit 1
-                ;;
+        -zc | --install-zsh-completions)
+            install_zsh_completions="$2"
+            shift
+            ;;
+        -zac | --install-zsh-autocomplete)
+            install_zsh_autocomplete="$2"
+            shift
+            ;;
+        -h | --help)
+            echo "$usage"
+            exit 0
+            ;;
+        -*)
+            echo "unknown option: "
+            echo "$usage"
+            exit 1
+            ;;
         esac
         shift
     done
 }
 # 以下代码需要gnu sed,如果gsed不可用,请用户安装
 if [[ $OSTYPE == darwin* ]]; then
-    if command -v gsed &> /dev/null; then
+    if command -v gsed &>/dev/null; then
         # 临时设置别名
         alias sed=gsed
     else
         echo "macOS:gnu sed not found, please install gnu sed first!"
-        if command -v brew &> /dev/null; then
+        if command -v brew &>/dev/null; then
             brew install gnu-sed
         else
             echo "Please install gnu-sed first!"
@@ -81,20 +81,29 @@ zshrc_path="$HOME/.zshrc"
 # 配置插件(不要在下面的列表中添加zsh-completions这个特殊插件)
 # backslash='\\'
 plugins_list=$(
-    cat << EOF
-    git
-    z
-    zsh-autocomplete
-    zsh-syntax-highlighting
-    zsh-autosuggestions
-    zsh-history-substring-search
-    you-should-use
+    cat <<EOF
+git
+z
+zsh-syntax-highlighting
+zsh-autosuggestions
+zsh-history-substring-search
+you-should-use
 EOF
 )
+if [[ $install_zsh_autocomplete == "true" ]]; then
+    front_plugins=$(
+        cat <<EOF
+zsh-autocomplete
+EOF
+    )
+    plugins_list="${front_plugins}"$'\n'"${plugins_list}"
+
+fi
+
 # 为每行插件名末尾增加`\`便于在sed中使用(注意最后一个比较特殊,手动补充\\)
 plugins_list="${plugins_list//$'\n'/\\$'\n'}\\"
 echo "[$plugins_list]"
-
+# exit 1 # debug plugins_list
 echo "[$zshrc_path]"
 if grep '^plugins=(.*)' "$zshrc_path"; then
     echo "初次覆盖plugins(单行)"
@@ -120,26 +129,26 @@ if [[ "$install_zsh_completions" == "true" ]]; then
         sed -i '/^plugins=(/i\
 # >>> zsh-completions\
 fpath+=${ZSH_CUSTOM:-${ZSH:-~\/.oh-my-zsh}\/custom}\/plugins\/zsh-completions\/src\
-autoload -U compinit \&\& compinit\
+# autoload -U compinit \&\& compinit\ # 有zsh-autocomplete时这一行注释掉防止冲突
 # <<< zsh-completions\
 ' ~/.zshrc
     fi
     # 重建补全(词库)
     rm -f ~/.zcompdump
 fi
-# 向.zshrc文件头部插入source命令
-if [[ "$install_zsh_autocomplete" == "true" ]]; then
-    echo "安装zsh-autocomplete ..."
-    if ! grep '# >>> zsh-autocomplete' "$zshrc_path"; then
-        # shellcheck disable=SC2016
-        sed -i '1i\
-# >>> zsh-autocomplete\
-# source /path/to/zsh-autocomplete/zsh-autocomplete.plugin.zsh\
-source ${ZSH_CUSTOM:-~\/.oh-my-zsh\/custom}\/plugins\/zsh-autocomplete\/zsh-autocomplete.plugin.zsh\
-# <<< zsh-autocomplete\
-' ~/.zshrc
-    fi
-fi
+# 向.zshrc文件头部插入source命令(根据插件官方知道要让autocomplete插件仅早加载,写在.zshrc文件头部,如果oh my zsh插件管理中的加载时机无法正常生效时,可以考虑下面的方案,代替插件列表中的简单配置)
+# if [[ "$install_zsh_autocomplete" == "true" ]]; then
+#     echo "安装zsh-autocomplete ..."
+#     if ! grep '# >>> zsh-autocomplete' "$zshrc_path"; then
+#         # shellcheck disable=SC2016
+#         sed -i '1i\
+# # >>> zsh-autocomplete\
+# # source /path/to/zsh-autocomplete/zsh-autocomplete.plugin.zsh\
+# source ${ZSH_CUSTOM:-~\/.oh-my-zsh\/custom}\/plugins\/zsh-autocomplete\/zsh-autocomplete.plugin.zsh\
+# # <<< zsh-autocomplete\
+# ' ~/.zshrc
+#     fi
+# fi
 
 # 利用sed并启用扩展正则原地修改,将Zsh主题设置为随机
 sed -Ei 's/(^ZSH_THEME=)(.*)/\1"random"/' "$zshrc_path"
