@@ -137,7 +137,7 @@ REMOTE=${REMOTE:-https://gitee.com/${REPO}.git} ' -r ~/install.sh > ~/gitee_inst
     fi
 
 }
-install_omz
+omz_installer
 # 构造新的plugins插件列表(字符串),保存到全局变量plugins_list中
 get_omz_plugins_list() {
 
