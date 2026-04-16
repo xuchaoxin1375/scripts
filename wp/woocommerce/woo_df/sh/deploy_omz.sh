@@ -259,10 +259,48 @@ source ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autocomplete/zsh-autocompl
             echo "Try to remove 'source .../zsh-autocomplete' code snippet..."
             sed -i '/# >>> zsh-autocomplete/,/# <<< zsh-autocomplete/d' "$zshrc_path"
         fi
+        # 时候后置的动作(收尾部分)
         if [[ "$install_zsh_autocomplete" == "false" ]]; then
             sed -i '/# >>> zsh-autocomplete/,/# <<< zsh-autocomplete/d' "$zshrc_path"
             plugins_list="${plugins_list//zsh-autocomplete/}"
+            sed -i '/# >>> zac bindkey config/,/# <<< zac bindkey config/d' "$zshrc_path"
         else
+            # 配置快捷键
+            # 如果此前配置过,则清空相应区域,以便统一更新相应配置
+            if grep -q "# >>> zac bindkey config" "$zshrc_path"; then
+                sed -i '/# >>> zac bindkey config/,/# <<< zac bindkey config/d' "$zshrc_path"
+            fi
+            # 定义快捷键片段
+            # shellcheck disable=SC2016
+            zsh_bindkey_config='
+# 将 Tab 和 Shift 和 Tab 设置为更改菜单中的选择(menu-select)
+# 这样， Tab 和 ShiftTab 分别将菜单中的选择项向右和向左移动，而不是退出菜单：
+bindkey              '^I' menu-select
+bindkey "$terminfo[kcbt]" menu-select
+
+# 使 Enter 始终提交命令行
+# 这样一来，即使您在菜单中， Enter 也始终会提交命令行：
+bindkey -M menuselect '^M' .accept-line
+
+# 其他 
+# 将 Tab 和 ShiftTab 添加到菜单中(menu-complete)
+# 这样，当在命令行中按下 Tab 和 ShiftTab 时，它们将进入菜单而不是插入补全命令：
+# bindkey              '^I'         menu-complete
+# bindkey "$terminfo[kcbt]" reverse-menu-complete
+
+# 使 ← 和 → 始终在命令行上移动光标
+# 这样，即使您在菜单中， ← 和 → 也始终会在命令行上移动光标：
+# bindkey -M menuselect  '^[[D' .backward-char  '^[OD' .backward-char
+# bindkey -M menuselect  '^[[C'  .forward-char  '^[OC'  .forward-char
+'
+            echo "$zsh_bindkey_config" > ~/zsh_bindkey_config.sh
+            # 快捷键脚本文件插入到.zshrc
+            sed -i '$a\
+# >>> zac bindkey config\
+source ~/zsh_bindkey_config.sh\
+# <<< zac bindkey config\
+' ~/.zshrc
+
             # 如果是ubuntu系统,设置.zshenv
             if [[ -f /etc/os-release ]] && grep -q -i 'NAME="Ubuntu' /etc/os-release; then
                 echo "ubuntu系统设置.zshenv"
