@@ -1422,6 +1422,13 @@ function Update-WpFunctionsphpOnServers
         scp -r $using:Path root@"$_":$RemoteDirectory
         $remoteFunctionsFile = "$RemoteDirectory/functions.php"
         ssh -Tn root@$_ "bash $using:BashScript --src $remoteFunctionsFile --workdir $using:WorkingDirectory --install-mode $using:InstallMode"
+        
+        
+    } -ThrottleLimit $Threads
+
+    Write-Output "检查更新状态:服务器上的版本(日期)都正确更新:"
+    $servers.ip | ForEach-Object -Parallel { 
+        ssh -Tn root@$_ "echo -n `"[`$(hostname)]:`" ; stat -c %y $using:RemoteDirectory/functions.php"
     } -ThrottleLimit $Threads
     
 }
@@ -1798,6 +1805,7 @@ function Update-WpPluginsDFOnServers
         [parameter(ParameterSetName = 'Path')]
         [switch]$JustUpload,
         $WorkingDirectory = "/www/wwwroot,/wwwdata/wwwroot",
+        $RemoteDirectory = "/www",# 上传到服务器的指定目录下
         # 插件名称(服务器上插件路径的最后一级目录名)
         [parameter(ParameterSetName = 'Name')]
         $PluginName,
@@ -1881,6 +1889,7 @@ function Update-WpPluginsDFOnServers
                 $server,
                 $currentSet,
                 $WorkingDirectory,
+                $RemoteDirectory,
                 $PluginPath,
                 $WhiteList,
                 $BlackList,
@@ -1902,17 +1911,28 @@ function Update-WpPluginsDFOnServers
                 #     InstallMode=$InstallMode
                 #     JustUpload=$JustUpload
                 # }
-                Update-WpPluginsDFOnServer -server $server -WorkingDirectory $workingDirectory -ListMode $ListMode -PluginPath $PluginPath -InstallMode $InstallMode -JustUpload:$JustUpload -WhiteList $WhiteList -BlackList $BlackList -Dry:$Dry
+                Update-WpPluginsDFOnServer -server $server -WorkingDirectory $workingDirectory -RemoteDirectory $RemoteDirectory -ListMode $ListMode -PluginPath $PluginPath -InstallMode $InstallMode -JustUpload:$JustUpload -WhiteList $WhiteList -BlackList $BlackList -Dry:$Dry
             }
             elseif($currentSet -eq 'Name' -and $RemovePlugin)
             {
                 Write-Host "remove plugins[$PluginName] in $server"
-                Update-WpPluginsDFOnServer -server $server -WorkingDirectory $workingDirectory -ListMode $ListMode -PluginName $PluginName -RemovePlugin -WhiteList $WhiteList -BlackList $BlackList -Dry:$Dry
+                Update-WpPluginsDFOnServer -server $server -WorkingDirectory $workingDirectory -RemoteDirectory $RemoteDirectory -ListMode $ListMode -PluginName $PluginName -RemovePlugin -WhiteList $WhiteList -BlackList $BlackList -Dry:$Dry
             } 
-        } -ArgumentList $server, $currentSet, $WorkingDirectory, $PluginPath, $WhiteList, $BlackList, $InstallMode, $ListMode, $RemovePlugin, $PluginName, $JustUpload , $Dry
+        } -ArgumentList $server, $currentSet, $WorkingDirectory, $RemoteDirectory, $PluginPath, $WhiteList, $BlackList, $InstallMode, $ListMode, $RemovePlugin, $PluginName, $JustUpload , $Dry
     } 
-    Start-Sleep 1
+    # Start-Sleep 1
     $jobs | Receive-Job -Wait
+    if($PluginPath)
+    {
+
+        # 计算插件名:
+        $PluginName = Split-Path -Leaf $PluginPath # 例如wp-card.zip
+        Write-Output "检查更新状态:服务器上的版本(日期)都正确更新:"
+        $servers.ip | ForEach-Object -Parallel { 
+            ssh -Tn root@$_ "echo -n `"[`$(hostname)]:`" ; stat -c %y $using:RemoteDirectory/$using:PluginName"
+        } -ThrottleLimit $Threads
+    }
+    
 }
 function Update-WpSitesRobots
 {
@@ -2159,7 +2179,8 @@ function Move-ItemImagesFromCsvPathFields
     process
     {
         Write-Verbose "Processing file: $Path" -Verbose
-        if(!(Test-Path $Path)){
+        if(!(Test-Path $Path))
+        {
             Write-Warning "文件不存在: $Path"
             return $False
         }
