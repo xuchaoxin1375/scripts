@@ -7,6 +7,7 @@ version=20260415
 # 默认插件安装选项(仅补全类插件)
 install_zsh_completions=true # true|false
 install_zsh_autocomplete=omz # omz|std|false
+install_omz="default"        # default|github|gitee
 # 定义使用帮助(help)
 usage='
 version:'"$version"'
@@ -17,6 +18,8 @@ options:
         install zsh-completions plugin if true
     -zac | --install-zsh-autocomplete [omz|std|false]
         install zsh-autocomplete plugin if true,if use std (standard) mode,this plugin will be installed without oh my zsh plugins list
+    -omz|--install-omz) [""|default|gitee|github]
+        install oh-my-zsh(omz) if omz is not available.
     -h,--help 
         show this help message.
 '
@@ -39,6 +42,10 @@ parse_args() {
                     echo "$usage"
                     exit 1
                 fi
+                shift
+                ;;
+            -o | --install-omz)
+                install_omz="$2"
                 shift
                 ;;
             -h | --help)
@@ -70,6 +77,7 @@ if [[ $OSTYPE == darwin* ]]; then
         fi
     fi
 fi
+
 # 将推荐的插件下载到指定目录下:(git 已经指定好了目录)
 zap=${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions
 zshp=${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
@@ -94,7 +102,42 @@ zac=${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autocomplete
 current_wd=$(pwd)
 cd ~ || exit 1
 zshrc_path="$HOME/.zshrc"
+omz_installer() {
+    if [[ $install_omz ]]; then
+        echo "检查oh-my-zsh是否已经安装"
+        if [[ -d $HOME/.oh-my-zsh ]]; then
+            echo "oh-my-zsh已经安装(如果要重新安装请删除$HOME/.oh-my-zsh目录)"
+            return 1
+        fi
+        echo "将要安装oh-my-zsh [$install_omz]"
+    else
+        echo "跳过安装oh-my-zsh"
+        return 0
+    fi
+    if [[ $install_omz == default ]]; then
+        sh -c "$(curl -fsSL https://install.ohmyz.sh/)"
+    elif [[ $install_omz == github ]]; then
+        sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+    elif [[ $install_omz == gitee ]]; then
+        curl https://gitee.com/mirrors/oh-my-zsh/raw/master/tools/install.sh -o ~/install.sh
+        # 由于国内网络问题,可能需要多尝试几次一下source 命令才可以安装成功.(我将其注释掉,采用换源后再执行clone
+        #source install.sh
+        #本段代码将修改install.sh中的拉取源,以便您能够冲gitee上成功将需要的文件clone下来.
 
+        # 本段代码会再修改前做备份(备份文件名为install.shE)
+        # shellcheck disable=SC2016
+        sed '/(^remote)|(^repo)/I s/^#*/#/ ;
+/^#*remote/I a\
+REPO=${REPO:-mirrors/oh-my-zsh}\
+REMOTE=${REMOTE:-https://gitee.com/${REPO}.git} ' -r ~/install.sh > ~/gitee_install.sh
+        # 执行安装
+        # shellcheck source=/dev/null
+        source ~/gitee_install.sh
+
+    fi
+
+}
+install_omz
 # 构造新的plugins插件列表(字符串),保存到全局变量plugins_list中
 get_omz_plugins_list() {
 
