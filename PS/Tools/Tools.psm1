@@ -3079,7 +3079,8 @@ function Disable-WindowsUpdateByDelay
 {
     $reg = "$PsScriptRoot\..\..\registry\windows-updates-pause.reg" | Resolve-Path
     Write-Host $reg
-    & $reg
+    # & $reg
+    regedit.exe "$reg"
 }
 function Get-BootEntries
 {
@@ -3131,7 +3132,7 @@ function Get-BootEntries
 function Rename-ComputerMac
 {
     param(
-        $NewName="CxxuMac"
+        $NewName = "CxxuMac"
     )
     sudo scutil --set ComputerName "$NewName"
     sudo scutil --set LocalHostName "$NewName"

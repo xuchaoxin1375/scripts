@@ -105,13 +105,13 @@ if [[ -e "$_HOMEBREW_PATH" && -z $HOMEBREW_PREFIX ]]; then
 fi
 # 移除wsl中ls列出文件夹的背景色
 remove_background_color() {
+  command -v dircolors &> /dev/null || return 1
   echo "Remove the background color to improve the reading experience."
   echo "try to remove bgc for the current shell:$SHELL!"
-  if command -v dircolors &> /dev/null; then
-    eval "$(dircolors -p |
-      sed 's/ 4[0-9];/ 01;/; s/;4[0-9];/;01;/g; s/;4[0-9] /;01 /' |
-      dircolors /dev/stdin)"
-  fi
+
+  eval "$(dircolors -p |
+    sed 's/ 4[0-9];/ 01;/; s/;4[0-9];/;01;/g; s/;4[0-9] /;01 /' |
+    dircolors /dev/stdin)"
 }
 
 # 使用windows环境下的编辑器时,例如vscode,注意换行符改为LF,避免多行命令被错误解释🎈
@@ -175,12 +175,13 @@ if is_darwin; then
   # 设置gnu工具集优先
   set_gnu_instead_bsd
 fi
+# 移除linux(尤其是wsl)目录的背景色
+if ! [[ $OSTYPE == "darwin"* ]]; then
+  # macos does not need remove the folder background colors
+  remove_background_color
+fi
 # 针对bash的配置(依赖于shopt命令和针对bash的prompt)
 if is_shell bash || check_dependency -q shopt; then
-  if ! [[ $OSTYPE == "darwin"* ]]; then
-    # macos does not need remove the folder background colors
-    remove_background_color
-  fi
   # 插入bashrc的最后部分的配置
   update_last_part_bashrc "$sh"
   # 在合适的位置加载bash prompt(间接修改PS1)
@@ -261,6 +262,7 @@ if is_shell bash || check_dependency -q shopt; then
 
 fi
 if is_shell zsh; then
+  # zsh-history-substring-search 快捷键配置(可以考虑迁移到文件中)
   # ^[[A 和 ^[[B 是大多数终端（如 iTerm2, VS Code 终端, Putty）发送给 Shell 的原始“向上”和“向下”信号。
   # 绑定向上箭头
   bindkey '^[[A' history-substring-search-up
@@ -272,6 +274,11 @@ if is_shell zsh; then
   # 如果你使用 Vi 模式，还可以绑定 j 和 k
   # bindkey -M vicmd 'k' history-substring-search-up
   # bindkey -M vicmd 'j' history-substring-search-down
+
+  # 避免zsh compinit: insecure directories and files, run compaudit for list.
+  compaudit | xargs chmod g-w,o-w --verbose
+  # 避免compinit: bad math expression: operand expected at end of string 的错误
+  # rm -rf ~/.zcompdump* # 每次重建有开销,手动重建
 fi
 export INPUTRC="$sh/.inputrc.conf"
 echo "update inputrc [$INPUTRC]..."
