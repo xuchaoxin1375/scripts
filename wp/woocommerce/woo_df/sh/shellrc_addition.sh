@@ -276,7 +276,8 @@ if is_shell zsh; then
   # bindkey -M vicmd 'j' history-substring-search-down
 
   # 避免zsh compinit: insecure directories and files, run compaudit for list.
-  compaudit | xargs chmod g-w,o-w --verbose
+  # compaudit | xargs chmod g-w,o-w --verbose # 通常是linuxbrew单独用户的原因(所有者问题),建议忽略这部分的检查
+  zstyle '*:compinit' arguments -i -u 
   # 避免compinit: bad math expression: operand expected at end of string 的错误
   # rm -rf ~/.zcompdump* # 每次重建有开销,手动重建
 fi
