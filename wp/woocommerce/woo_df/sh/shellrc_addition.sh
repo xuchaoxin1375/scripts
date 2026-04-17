@@ -49,7 +49,7 @@ if [[ -d $SCRIPT_ROOT_SERVER ]]; then
   # SCRIPT_ROOT=$SCRIPT_ROOT_SERVER
   if [[ "$(id -u)" -eq 0 ]]; then
 
-    SH_SYM="/www/sh"
+    SH_WWW="/www/sh"
     #  检查 /www 目录是否存在（ln 不会自动创建父目录）
     if [ ! -d "/www" ]; then
       echo "正在创建目录 /www..."
@@ -58,8 +58,10 @@ if [[ -d $SCRIPT_ROOT_SERVER ]]; then
     # 创建符号链接
     # -s: symbolic (符号链接); -f: force (如果目标已存在则覆盖，防止因旧链接存在导致失败)
     # -n: 如果目标是一个指向目录的链接，将其视为普通文件（防止在目录内创建嵌套链接）
-    ln -sfn "$SH_SCRIPT_DIR" "$SH_SYM"
+    ln -sfn "$SH_SCRIPT_DIR" "$SH_WWW"
   fi
+  # 在家目录也创建一个符号链接便于使用
+  #  ln -sfn "$SH_SCRIPT_DIR" "$SH_SYM"
 fi
 # 如果sh短路径(符号链接不存在或者虽然存在符号但是目标无效,则创建)
 # 最终目录结果
@@ -275,9 +277,6 @@ if is_shell zsh; then
   # bindkey -M vicmd 'k' history-substring-search-up
   # bindkey -M vicmd 'j' history-substring-search-down
 
-  # 避免zsh compinit: insecure directories and files, run compaudit for list.
-  # compaudit | xargs chmod g-w,o-w --verbose # 通常是linuxbrew单独用户的原因(所有者问题),建议忽略这部分的检查
-  zstyle '*:compinit' arguments -i -u 
   # 避免compinit: bad math expression: operand expected at end of string 的错误
   # rm -rf ~/.zcompdump* # 每次重建有开销,手动重建
 fi

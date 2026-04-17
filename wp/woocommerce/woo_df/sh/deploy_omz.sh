@@ -265,13 +265,22 @@ source ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autocomplete/zsh-autocompl
             plugins_list="${plugins_list//zsh-autocomplete/}"
             sed -i '/# >>> zac bindkey config/,/# <<< zac bindkey config/d' "$zshrc_path"
         else
+            # 设置compinit
+            # 插入前清空可能的旧片段
+            sed -i '/# >>> zac_compinit/,/# <<< zac_compinit/d' "$zshrc_path"
+            sed -i '$a\
+# >>> zac_compinit\
+# 避免zsh compinit: insecure directories and files, run compaudit for list.\
+# compaudit | xargs chmod g-w,o-w --verbose # 通常是linuxbrew单独用户的原因(所有者问题),建议忽略这部分的检查\
+zstyle '"'*:compinit'"' arguments -i -u \
+# <<< zac_compinit\
+' "$zshrc_path"
             # 配置快捷键
             # 如果此前配置过,则清空相应区域,以便统一更新相应配置
-            if grep -q "# >>> zac bindkey config" "$zshrc_path"; then
-                sed -i '/# >>> zac bindkey config/,/# <<< zac bindkey config/d' "$zshrc_path"
-            fi
+            sed -i '/# >>> zac bindkey config/,/# <<< zac bindkey config/d' "$zshrc_path"
             # 定义快捷键片段
             # shellcheck disable=SC2016
+            # shellcheck disable=SC2125
             zsh_bindkey_config='
 # 将 Tab 和 Shift 和 Tab 设置为更改菜单中的选择(menu-select)
 # 这样， Tab 和 ShiftTab 分别将菜单中的选择项向右和向左移动，而不是退出菜单：
