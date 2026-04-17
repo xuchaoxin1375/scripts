@@ -11,7 +11,9 @@ parse_args() {
     local host="" port="" user="" pass="" verbose=0 args=()
     local usage="
 移除宝塔中的站点(wp),包括清理数据库,删除站点根目录,移除配置文件(nginx/apache),伪静态文件
-> todo:从宝塔的站点列表中移除;
+> 宝塔自带的btcli site del命令可以用来删除站点,但是有些批量建站的情况数据库我们是绕过宝塔创建的,这种情况下btcli删除不干净
+因此这里站点的配置文件和站点根目录用btcli删除(考虑到有些站点根目录嵌套了目录,可以考虑自行扫描删除);
+而删除数据库可以根据白名单,构造要删除的数据库名来遍历删除;
 usage:
     $0 [options]    
 options:
@@ -175,15 +177,16 @@ for pr in "${project_roots[@]}"; do
             # mysql "${args[@]}" -e "SHOW DATABASES LIKE '${db_name}';"
             # 除了删除数据库,还可以选择删除对应的专用用户(如果有的话):DROP USER '数据库用户名'@'localhost';
             mysql "${args[@]}" -e "DROP DATABASE IF EXISTS \`${db_name}\`" &&
-                # rm -rf "$site_path" &&
-                rmx "$site_path" && #rmx 强力删除,自带-rf效果
-                ((succeed++))
+                yes | btcli site del "$site" &&
+            ((succeed++))
+            # rm -rf "$site_path" &&
+            # rmx "$site_path" && #rmx 强力删除,自带-rf效果
             # 移除nginx配置文件
-            rm -fv /www/server/panel/vhost/nginx/"${site}".conf >&/dev/null
-            rm -fv /www/server/panel/vhost/nginx/"www.${site}".conf >&/dev/null
-            # 移除伪静态文件
-            rm -fv /www/server/panel/vhost/rewrite/"${site}".conf >&/dev/null
-            rm -fv /www/server/panel/vhost/rewrite/"www.${site}".conf >&/dev/null
+            # rm -fv /www/server/panel/vhost/nginx/"${site}".conf >&/dev/null
+            # rm -fv /www/server/panel/vhost/nginx/"www.${site}".conf >&/dev/null
+            # # 移除伪静态文件
+            # rm -fv /www/server/panel/vhost/rewrite/"${site}".conf >&/dev/null
+            # rm -fv /www/server/panel/vhost/rewrite/"www.${site}".conf >&/dev/null
             # 模糊处理
             # db_name="$site"
             # mysql "${args[@]}" -e "SHOW DATABASES LIKE '%_${db_name}';"
