@@ -16,7 +16,7 @@
 requirements=(git curl)
 meet_req=true
 for req in "${requirements[@]}"; do
-    if command -v "$req" >&/dev/null; then
+    if ! command -v "$req" >&/dev/null; then
         echo "[error]:'$req' is not available! Install $req and retry again."
         meet_req=false
     fi
