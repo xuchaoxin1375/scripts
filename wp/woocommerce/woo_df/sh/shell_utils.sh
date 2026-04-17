@@ -316,7 +316,7 @@ options:
 "
     while [[ $# -gt 0 ]]; do
         case "$1" in
-           -s| --shell)
+            -s | --shell)
                 shell="$2"
                 shift
                 ;;
@@ -1295,7 +1295,25 @@ help() {
     is_shell "bash" || echo -e "$tip"
 
 }
+#  列出linux系统上各种类型用户的详细信息（类似表格输出）
+# 基于getent passwd 的输出改造
+get_user_list_linux() {
 
+    printf "%-20s %-8s %-8s %-20s %-10s\n" "USERNAME" "UID" "GID" "HOME" "SHELL"
+    getent passwd | awk -F: '{ printf "%-20s %-8s %-8s %-20s %-10s\n", $1, $3, $4, $6, $7 }' | sort
+}
+# 列出系统上的(主要是人为创建的)用户信息,从/etc/passwd
+get_user_list_from_passwd() {
+    awk -F: '$3 >= 1000 && $3 < 65534 {printf "%-20s %-30s %s\n", $1, $6, $7}' /etc/passwd
+}
+# 使用column 命令解析结果并控制排版
+get_user_list_from_passwd_by_column() {
+
+    (
+        printf "USERNAME:PASS:UID:GID:DESCRIPTION:HOME:SHELL\n"
+        cat /etc/passwd
+    ) | column -t -s:
+}
 # 运行wp命令(借用www用户权限)
 wp() {
     user='www' #修改为你的系统上存在的一个普通用户的名字,比如宝塔用户可以使用www
@@ -1313,6 +1331,33 @@ wp() {
 # eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv zsh)"
 brewr() {
     # 检查当前是否为 root 用户 (UID 0)
+    local BREW_USER="$BREW_USER"
+    local usage='
+    usage:
+        brewr [options]
+    options
+        -u,--user,--brew-user 指定用户身份运行brew
+        -h,--help 打印帮助信息
+    
+    '
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -u | --user | --brew-user)
+                BREW_USER="$2"
+                shift
+                ;;
+            -h | --help)
+                echo "$usage"
+                return 0
+                ;;
+            -*)
+                echo "Invalid option"
+                echo "$usage"
+                return 1
+                ;;
+        esac
+        shift
+    done
     if [ "$(id -u)" -eq 0 ]; then
         # 如果未设置 BREW_USER，则给出提示并退出
         if [ -z "$BREW_USER" ]; then
@@ -1338,6 +1383,42 @@ brewr() {
         # 注意避免递归调用!
         command brew "$@"
     fi
+}
+brewx() {
+    local ORIG_DIR="$PWD"
+    local cuser=linuxbrew
+    local usage='
+    usage:
+        brewx [options]
+    options
+        -u,--user,--brew-user 指定用户身份运行brew
+        -h,--help 打印帮助信息
+    
+    '
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -u | --user | --brew-user)
+                cuser="$2"
+                shift
+                ;;
+            -h | --help)
+                echo "$usage"
+                return 0
+                ;;
+            -*)
+                echo "Invalid option"
+                echo "$usage"
+                return 1
+                ;;
+        esac
+        shift
+    done
+    echo "[INFO] Executing as user 'linuxbrew' in /home/linuxbrew: brew $*"
+    cd /home/linuxbrew || exit 1
+    sudo -u "$cuser" /home/linuxbrew/.linuxbrew/bin/brew "$@"
+    local EXIT_CODE=$?
+    cd "$ORIG_DIR" 2> /dev/null || echo "[WARN] Could not return to original directory: $ORIG_DIR"
+    return $EXIT_CODE
 }
 # 强力删除:能够将标志位是i的文件(目录)更改为可删除,然后删除掉指定目标
 # 这是一个简化版本(使用rm1或rm2更可靠)

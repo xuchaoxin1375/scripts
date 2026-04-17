@@ -1,9 +1,29 @@
 #!/bin/bash
 # 配置zsh(oh my zsh)相关插件,让体验向fish靠拢
-# 此部署代码尽量实现幂等性(避免反复运行导致配置文件内容混乱.)
+# 此部署代码尽量实现幂等性(避免反复运行导致配置文件内容混乱.);
+# 此脚本配置的不全仅适用于zsh,对于bash没有作用,不过此脚本可以用bash执行部署;
+# 软件要求:zsh需要用户实现安装好;对于一些精简的系统,可能要事先安装curl和git来拉去一些插件代码;
 # 补全类插件要求比较严格,尤其是动态自动补全实现比较复杂需要更多的步骤
 # 测试补全插件效果时,对于基础工具,注意区分gnu版本和bsd版本,可用选项和风格有所不同
-version=20260415
+# 卸载此套件:本脚本主要下载了oh-my-zsh配置框架(如果是默认选项会尝试为你安装),
+# 并且下载了一组zsh插件,并且对于补型插件修改了配置文件(~/.zshrc);
+# 若要删除插件,请进入 $ZSH_CUSTOM/plugins目录中,删除不需要的插件(目录),然后修改(~/.zshrc)配置中多余的代码片段
+# 此脚本通过sed修改的配置片段都使用了起始和结束标记组合('>>>'和'<<<',模仿conda风格),用户可以清晰的识别出修改的代码片段
+# 最后记得检查oh-my-zsh中的插件列表(plugins数组)中的插件是否移除多余内容.
+
+# 一键部署
+# bash <(https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_omz.sh)
+requirements=(git curl)
+meet_req=true
+for req in "${requirements[@]}"; do
+    if command -v "$req" >&/dev/null; then
+        echo "[error]:'$req' is not available! Install $req and retry again."
+        meet_req=false
+    fi
+done
+
+if [[ $meet_req == false ]]; then exit 2; fi
+version=20260417
 # 默认插件安装选项(仅补全类插件)
 install_zsh_completions=true # true|false
 install_zsh_autocomplete=omz # omz|std|false
