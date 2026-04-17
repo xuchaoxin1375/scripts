@@ -178,8 +178,9 @@ for pr in "${project_roots[@]}"; do
             # 除了删除数据库,还可以选择删除对应的专用用户(如果有的话):DROP USER '数据库用户名'@'localhost';
             mysql "${args[@]}" -e "DROP DATABASE IF EXISTS \`${db_name}\`" &&
                 yes | btcli site del "$site" &&
-            ((succeed++))
-            # rm -rf "$site_path" &&
+                ((succeed++))
+            # 移除可能多余的上层目录
+            rm -rf "$site_path" >&/dev/null
             # rmx "$site_path" && #rmx 强力删除,自带-rf效果
             # 移除nginx配置文件
             # rm -fv /www/server/panel/vhost/nginx/"${site}".conf >&/dev/null
