@@ -12,8 +12,9 @@
 #git pull
 
 version=20260418.2208
-REPO_SOURCE='github' # gitee或github或gitlab (gitee可能对国外ip服务器用户限流或要求注册账号,优先使用github或gitlab)
 echo "当前脚本版本: $version;"
+REPO_SOURCE='github' # gitee或github或gitlab (gitee可能对国外ip服务器用户限流或要求注册账号,优先使用github或gitlab)
+BRANCH="main" # 或 "master"，根据实际情况调整
 NGINX_CONF_DIR="/www/server/nginx/conf"
 NGINX_CONF_FILE="$NGINX_CONF_DIR/nginx.conf"
 
@@ -22,16 +23,18 @@ NGINX_CONF_FILE="$NGINX_CONF_DIR/nginx.conf"
 SH_SYM="$HOME/sh"
 SH_WWW="/www/sh" #末尾不要加斜杠/
 
-# 移除可能的就链接,重新创建链接
-# unlink $SH_SYM # 可以使用unlink命令安全删除符号链接(不会误删目标目录内的文件)
-rm -fv "${SH_WWW%/}" && ln -snfv "$SH_SYM" "$SH_WWW" 
 # sh="$SH_SYM" # 简写或者直接用SH_SYM
 _REPO_BASE="repos/scripts"
 _SH_RELATIVE="wp/woocommerce/woo_df/sh"
-SCRIPT_ROOT="$HOME/$_REPO_BASE" # /root/repos/scripts 或 /home/user/repos/scripts
+SCRIPT_ROOT_DEFAULT="$HOME/$_REPO_BASE"
+SCRIPT_ROOT="${SCRIPT_ROOT:-"$SCRIPT_ROOT_DEFAULT"}" # /root/repos/scripts 或 /home/user/repos/scripts
 # shell脚本目录(sh)
 SH_SCRIPT_DIR="$SCRIPT_ROOT/$_SH_RELATIVE"
-BRANCH="main" # 或 "master"，根据实际情况调整
+ln -snfv "$SH_SCRIPT_DIR" "$SH_SYM"
+# 移除可能的就链接,重新创建链接
+# unlink $SH_SYM # 可以使用unlink命令安全删除符号链接(不会误删目标目录内的文件)
+rm -fv "${SH_WWW%/}" && ln -snfv "$SH_SYM" "$SH_WWW" 
+
 # CLI flags
 FORCE=0
 UPDATE_CODE=0
