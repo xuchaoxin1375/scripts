@@ -20,6 +20,7 @@ NGINX_CONF_FILE="$NGINX_CONF_DIR/nginx.conf"
 # 配置变量
 # SCRIPT_ROOT_SERVER=/repos/scripts
 SH_SYM="$HOME/sh"
+# sh="$SH_SYM" # 简写或者直接用SH_SYM
 _REPO_BASE="repos/scripts"
 _SH_RELATIVE="wp/woocommerce/woo_df/sh"
 SCRIPT_ROOT="$HOME/$_REPO_BASE" # /root/repos/scripts 或 /home/user/repos/scripts
@@ -403,4 +404,4 @@ fi
 
 # 让指定目录下所有脚本文件(.sh)可执行🎈
 # shellcheck disable=SC2154
-find "$sh" -type f \( -name "*.sh" -o -name "*.bash" \) -exec chmod +x {} \;
+find "$SH_SYM" -type f \( -name "*.sh" -o -name "*.bash" \) -exec chmod +x {} \;
