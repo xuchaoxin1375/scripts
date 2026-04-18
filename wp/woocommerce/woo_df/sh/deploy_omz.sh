@@ -358,6 +358,13 @@ source ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autocomplete/zsh-autocompl
             plugins_list="${plugins_list//zsh-autocomplete/}"
             sed -i '/# >>> zac bindkey config/,/# <<< zac bindkey config/d' "$zshrc_path"
         else
+            # 按需关闭补全代码检查(linuxbrew),将环境变量插入配置文件开头
+            sed -i '/# >>> disable_compfix/,/# <<< disable_compfix/d' "$zshrc_path"
+            sed -i '1i\
+# >>> disable_compfix\
+ZSH_DISABLE_COMPFIX=true\
+# <<< disable_compfix\
+' "$zshrc_path"
             # 设置compinit
             # 插入前清空可能的旧片段
             sed -i '/# >>> zac_compinit/,/# <<< zac_compinit/d' "$zshrc_path"

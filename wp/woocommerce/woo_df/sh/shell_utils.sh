@@ -1346,7 +1346,8 @@ wp() {
 # eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv zsh)"
 brewr() {
     # 检查当前是否为 root 用户 (UID 0)
-    local BREW_USER="$BREW_USER"
+    # 默认的用户身份从环境变量中读取,如果没有
+    local BREW_USER="${BREW_USER:-linuxbrew}"
     local usage='
     usage:
         brewr [options]
@@ -1355,6 +1356,7 @@ brewr() {
         -h,--help 打印帮助信息
     
     '
+    local extra_args=()
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -u | --user | --brew-user)
@@ -1365,19 +1367,28 @@ brewr() {
                 echo "$usage"
                 return 0
                 ;;
-            -*)
-                echo "Invalid option"
-                echo "$usage"
-                return 1
+            # -*) # 为了传递完整参数列表(包括选项)给brew,这里不建议捕获-*)
+            #     echo "Invalid option"
+            #     echo "$usage"
+            #     return 1
+            #     ;;
+            *)
+                extra_args+=("$1")
                 ;;
         esac
         shift
     done
+    set -- "${extra_args[@]}"
+    echo "params:[$*]"
     if [ "$(id -u)" -eq 0 ]; then
         # 如果未设置 BREW_USER，则给出提示并退出
         if [ -z "$BREW_USER" ]; then
             echo "[ERROR] Brew cannot run as root. Please set BREW_USER environment variable."
-            echo "set environment variable: export BREW_USER='your_username',write it to your shellrc file to make it permanent."
+            echo "
+            Set environment variable: 
+                export BREW_USER='your_username'
+            Write it to your shellrc file to make it permanent.
+            "
             return 1
         fi
 
@@ -1386,8 +1397,8 @@ brewr() {
         echo "[INFO] Root detected. Executing as '$BREW_USER': brew $*"
 
         # 建议切换到该用户的家目录，避免权限报错
-        cd "/home/$BREW_USER" 2> /dev/null || cd /tmp || exit 1
-
+        cd "/home/$BREW_USER" 2> /dev/null || exit 1
+        # 使用指定用户身份执行标准安装的brew
         sudo -u "$BREW_USER" /home/linuxbrew/.linuxbrew/bin/brew "$@"
         local EXIT_CODE=$?
 
@@ -1399,42 +1410,7 @@ brewr() {
         command brew "$@"
     fi
 }
-brewx() {
-    local ORIG_DIR="$PWD"
-    local cuser=linuxbrew
-    local usage='
-    usage:
-        brewx [options]
-    options
-        -u,--user,--brew-user 指定用户身份运行brew
-        -h,--help 打印帮助信息
-    
-    '
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            -u | --user | --brew-user)
-                cuser="$2"
-                shift
-                ;;
-            -h | --help)
-                echo "$usage"
-                return 0
-                ;;
-            -*)
-                echo "Invalid option"
-                echo "$usage"
-                return 1
-                ;;
-        esac
-        shift
-    done
-    echo "[INFO] Executing as user 'linuxbrew' in /home/linuxbrew: brew $*"
-    cd /home/linuxbrew || exit 1
-    sudo -u "$cuser" /home/linuxbrew/.linuxbrew/bin/brew "$@"
-    local EXIT_CODE=$?
-    cd "$ORIG_DIR" 2> /dev/null || echo "[WARN] Could not return to original directory: $ORIG_DIR"
-    return $EXIT_CODE
-}
+
 # 强力删除:能够将标志位是i的文件(目录)更改为可删除,然后删除掉指定目标
 # 这是一个简化版本(使用rm1或rm2更可靠)
 # 用法: rmx <目标文件或目录>
