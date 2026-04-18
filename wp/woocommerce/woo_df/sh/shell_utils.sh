@@ -226,6 +226,21 @@ options:
         return 1
     fi
 }
+# 覆盖式创建指定路径的符号链接(兼容gnu ln和bsd ln)
+# 效果在路径sym_path创建指向target的符号链接(如果sym_path已存在(无论是什么类型文件或目录)，则覆盖)
+# 效果:创建符号链接[$2:sym_path]->[$1:target] 
+# example:
+#   ln_update_sym "$SH_SCRIPT_DIR" "$SH_SYM"
+ln_update_sym() {
+    local target="$1"
+    local sym_path="$2"
+    [[ -e $sym_path ]] && rm -rf "$sym_path"
+    # 单纯使用-nf仍然和gnu ln的 -T选项效果有差别
+    ln -snfv "$target" "$sym_path" ||{
+        echo "[error]:创建符号链接[$sym_path]->[$target] 失败" >& 2
+        exit 1
+    }
+}
 # Install ble.sh framework for bash
 # 安装前检查依赖,以及避免重复安装重复插入配置项到~/.bashrc
 install_blesh() {

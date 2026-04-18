@@ -6,6 +6,7 @@
 SCRIPT_ROOT="$HOME/repos/scripts"
 REPO_SOURCE="github.com"
 SH_SYM="/www/sh" # 假设服务器上有root权限,并能够创建/www/sh 目录
+SH_SYM_HOME="$HOME/sh"
 OVERWRITE_NGINX_CONF=false
 parse_args() {
 
@@ -64,19 +65,23 @@ mkdir -p -v "$repos_dir"
 }
 # 进行全新的干净clone
 git clone --depth 1 "$REPO_URL" "$SCRIPT_ROOT"
-
+# 覆盖式创建指定路径的符号链接(兼容gnu ln和bsd ln)
+# 效果在路径sym_path创建指向target的符号链接(如果sym_path已存在(无论是什么类型文件或目录)，则覆盖)
+ln_update_sym() {
+    local target="$1"
+    local sym_path="$2"
+    [[ -e $sym_path ]] && rm -rf "$sym_path"
+    # 单纯使用-nf仍然和gnu ln的 -T选项效果有差别
+    ln -snfv "$target" "$sym_path" ||{
+        echo "[error]:创建符号链接[$sym_path]->[$target] 失败" >& 2
+        exit 1
+    }
+}
 # 配置更新代码的脚本的符号链接(bsd的ln命令不支持-T)
-[[ -e "$SH_SYM" ]] && rm -rfv "$SH_SYM"
-ln -s -fv "$SH_SCRIPT_DIR" "$SH_SYM" || {
-    echo "sh符号链接[$SH_SYM]创建失败,请检查."
-    exit 1
-}
+ln_update_sym "$SH_SCRIPT_DIR" "$SH_SYM"
+ln_update_sym "$SH_SCRIPT_DIR" "$SH_SYM_HOME"
 # 家目录也放置一份符号链接
-[[ -e "$HOME/sh" ]] && rm -rfv "$HOME/sh"
-ln -s -fv "$SH_SCRIPT_DIR" "$HOME/sh" || {
-    echo "sh符号链接[$HOME/sh]创建失败,请检查."
-    exit 1
-}
+
 
 # 使用简短的更新代码仓库的命令(记得检查fail2ban)
 # 如果追加使用-f会覆盖/www/server/nginx/conf/nginx.conf
