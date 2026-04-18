@@ -38,7 +38,7 @@ options:
         install zsh-completions plugin if true
     -zac | --install-zsh-autocomplete [omz|std|false]
         install zsh-autocomplete plugin if true,if use std (standard) mode,this plugin will be installed without oh my zsh plugins list
-    -omz|--install-omz) [""|default|gitee|github]
+    -o|-omz|--install-omz) [false|default|gitee|github]
         install oh-my-zsh(omz) if omz is not available.
     -h,--help 
         show this help message.
@@ -64,7 +64,7 @@ parse_args() {
                 fi
                 shift
                 ;;
-            -o | --install-omz)
+            -o | -omz | --install-omz)
                 install_omz="$2"
                 shift
                 ;;
@@ -122,12 +122,14 @@ zac=${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autocomplete
 current_wd=$(pwd)
 cd ~ || exit 1
 zshrc_path="$HOME/.zshrc"
+# 对于某些精简系统安装完zsh可能不存在~/.zshrc
+[[ -f $zshrc_path ]] || touch "$zshrc_path"
 omz_installer() {
-    if [[ $install_omz ]]; then
+    if [[ $install_omz != false ]]; then
         echo "检查oh-my-zsh是否已经安装"
         if [[ -d $HOME/.oh-my-zsh ]]; then
             echo "oh-my-zsh已经安装(如果要重新安装请删除$HOME/.oh-my-zsh目录)"
-            return 1
+            return 0
         fi
         echo "将要安装oh-my-zsh [$install_omz]"
     else
