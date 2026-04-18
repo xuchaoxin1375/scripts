@@ -33,11 +33,11 @@
    ```bash
    bash <(curl -sL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh) -f
    ```
-   
+
    > 其中`-f`会覆盖`nginx`的主配置文件(nginx.conf),酌情使用,如果不想覆盖,可以移除`-f`
-   
+
    或者分部操作,更安全
-   
+
    ```bash
    curl -L -o deploy_srv.sh https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh;
    # 建议先 cat setup.sh 看看里面写了啥，有没有恶意代码
@@ -45,37 +45,43 @@
    # 确认没有问题可以执行脚本了
    bash deploy_srv.sh -h;
    ```
-   
+
 3. 创建/覆盖配置目录
 
-   - 运行`/update_repos.sh -g -f` 这个命令会处理:
-     - 将`/www/sh`脚本目录中的脚本更新到最新,里面包含许多服务器管理脚本,`/www/sh/nginx_conf/`这个目录包含`nginx`配置管理脚本
+   - 运行`bash /update_repos.sh -g -f` 这个命令会处理:
+     - 将`/www/sh`脚本目录中的脚本更新到最新.(里面包含许多服务器管理脚本,`/www/sh/nginx_conf/`这个目录包含`nginx`配置管理脚本)
      - 并在服务器上的nginx配置目录`/www/server/nginx/conf`中创建所需的文件(主要是一些`.conf`,还可能包括`html`文件)
 
-4. 初次部署需要注意:有两个.sh脚本比较重要
+4. 更新vhosts配置
 
-   脚本1:`update_cf_ip_configs.sh`(需要配置定期运行拉取cf公布的ip列表,可借助corntab定期运行,一般不要手动运行)
+为了让更新的nginx配置生效,需要将自定义配置片段(通常是`include ...`指令)插入到`/www/server/panel/vhost/nginx/`目录下的各个网站的`.conf`文件中,这个过程执行一个命令就可以
 
-   ```bahs
-   # 这一行加入到crontab中
-   0 3 * * * bash /www/sh/nginx_conf/update_cf_ip_configs.sh
-   ```
-   
-   脚本2:`update_nginx_vhosts_conf.sh`(初次部署使用,为已有的站做处理,后期新建的站可以定期执行一遍,或者每次建站绑定一个步骤执行此脚本.)
-   
-   为了让更新的nginx配置生效,需要将自定义配置片段(通常是`include ...`指令)插入到`/www/server/panel/vhost/nginx/`目录下的各个网站的`.conf`文件中,这个过程执行一个命令就可以
-   
-   > (下面这个脚本有丰富的选项和用法,这里仅提供最简单粗暴的用法,详情使用`-h`选项查看用法帮助)
-   
-   ```bash
-   bash /www/sh/nginx_conf/update_nginx_vhosts_conf.sh -m old --force
-   ```
-   
-   为了简化说明,这里不细说对新/老站点做分批限流,而是将所有站都做同样的处理.
+> (下面这个脚本有丰富的选项和用法,这里仅提供最简单粗暴的用法,详情使用`-h`选项查看用法帮助)
+
+```bash
+bash /www/sh/nginx_conf/update_nginx_vhosts_conf.sh -m old --force
+```
+
+为了简化说明,这里不细说对新/老站点做分批限流,而是将所有站都做同样的处理.
+
+---
+
+### 定期执行的脚本
+
+初次部署需要注意:有两个shell脚本比较重要
+
+- 脚本1:`update_cf_ip_configs.sh`(需要配置定期运行拉取cf公布的ip列表,可借助corntab定期运行,一般不要手动运行)
+
+```bash
+# 这一行加入到crontab中
+0 3 * * * bash /www/sh/nginx_conf/update_cf_ip_configs.sh
+```
+
+- 脚本2:`update_nginx_vhosts_conf.sh`(初次部署使用,为已有的站做处理,后期新建的站可以定期执行一遍,或者每次建站绑定一个步骤执行此脚本.)
 
 其他:
 
-1. 增大打开的文件数量限制(针对站点多的服务器),前面的章节已经提到过,方法之一是修改 `/etc/security/limits.conf` 文件,改完新开一个终端(让上一步修改生效),然后重启nginx
+- 增大打开的文件数量限制(针对站点多的服务器),前面的章节已经提到过,方法之一是修改 `/etc/security/limits.conf` 文件,改完新开一个终端(让上一步修改生效),然后重启nginx
 
 ### 日志设置和检查效果
 

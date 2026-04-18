@@ -93,5 +93,5 @@ else
 fi
 
 # 向bash,zsh配置文件导入常用的shell函数,比如wp命令行等
-bash "$SH_SYM"/shellrc_addition.sh
+bash "$SH_SYM"/shellrc_addition.sh && exec bash
 # END

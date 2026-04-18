@@ -15,14 +15,13 @@ usage() {
     -f <file>           指定单个配置文件
     -d <directory>      指定配置文件目录
     -p <pattern>        文件匹配模式 (默认: *.conf)
-    -m <mode>           配置模式 (默认: young)
+    -m,--mode <mode>           配置模式 (默认: young)
                         young - 仅包含基础配置
                         old   - 包含基础配置和限流配置
                         remove - 移除自定义配置片段
-                        
     --force             强制插入配置,即使遇到已经插入过的痕迹,覆盖已经有的片段
     --dry-run           仅显示将要插入的内容,不实际修改文件
-    --max-depth <n>    递归查找的最大深度 (默认: 不限制),这里调用find实现递归查找
+    -M,--max-depth <n>    递归查找的最大深度 (默认: 不限制),这里调用find实现递归查找
     --jump-marker <str> 跳过标记 (默认: #CUSTOM)
     --insert-marker <str> 插入位置标记 (默认: #CERT-APPLY-CHECK--START)
     --days <n>          仅处理最近 n 天内修改的文件,默认不挑时间全部处理 (例如: --days 1 表示最近1天)
