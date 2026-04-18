@@ -12,8 +12,8 @@
 # 最后记得检查oh-my-zsh中的插件列表(plugins数组)中的插件是否移除多余内容.
 
 # 一键部署
-# bash <(https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_omz.sh)
-requirements=(git curl)
+# bash <(curl -sSfL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_omz.sh)
+requirements=(git curl zsh)
 meet_req=true
 for req in "${requirements[@]}"; do
     if ! command -v "$req" >&/dev/null; then
@@ -27,22 +27,48 @@ version=20260417
 # 默认插件安装选项(仅补全类插件)
 install_zsh_completions=true # true|false
 install_zsh_autocomplete=omz # omz|std|false
-install_omz="default"        # default|github|gitee
+install_zsh_autosuggestions=true
+install_zsh_you_should_use=true
+install_zsh_syntax_highlighting=true
+install_zsh_history_substring_search=true
+install_omz="default" # default|github|gitee
+omz_only=false
 # 定义使用帮助(help)
 usage='
+Oh-my-zsh(omz) and zsh plugins deployment script.
+
 version:'"$version"'
 usage:
     deploy_omz.sh [options]
 options:
+    -o|-omz|--install-omz) [false|default|gitee|github]
+        install oh-my-zsh(omz) if omz is not available.
+        This option try to install oh-my-zsh on default and standard path of current user.
+        If you have already install oh-my-zsh (especially install in your custom dir ),you can use [false] to skip oh-my-zsh installation.
+        This decision will be linked to the value of the [ZSH_CUSTOM] environment variable
+    -O|--omz-only 
+        install oh-my-zsh only without other plugins if true.
     -zc | --install-zsh-completions [true|false]
         install zsh-completions plugin if true
     -zac | --install-zsh-autocomplete [omz|std|false]
         install zsh-autocomplete plugin if true,if use std (standard) mode,this plugin will be installed without oh my zsh plugins list
-    -o|-omz|--install-omz) [false|default|gitee|github]
-        install oh-my-zsh(omz) if omz is not available.
+    -zasp|--install-zsh-autosuggesions [true|false]
+        install zsh-autosuggestions plugin if true
+    -zysu|--install-zsh-you-should-use [true|false]
+        install zsh-you-should-use plugin if true
+    -zshp|--install-zsh-syntax-highlighting [true|false]
+        install zsh-syntax-highlighting plugin if true
+    -zhssp|--install-zsh-history-substring-search [true|false]
+        install zsh-history-substring-search plugin if true
+    --zsh-custom
+        set oh-my-zsh custom directory [ZSH_CUSTOM].
     -h,--help 
         show this help message.
-'
+'"
+examples:
+    install oh-my-zsh only:
+    bash $0 --omz-only
+"
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -64,8 +90,32 @@ parse_args() {
                 fi
                 shift
                 ;;
+            -zasp | --install-zsh-autosuggestions)
+                install_zsh_autosuggestions="$2"
+                shift
+                ;;
+            -zysu | --install-zsh-you-should-use)
+                install_zsh_you_should_use="$2"
+                shift
+                ;;
+            -zshp | --install-zsh-syntax-highlighting)
+                install_zsh_syntax_highlighting="$2"
+                shift
+                ;;
+            -zhssp | --install-zsh-history-substring-search)
+                install_zsh_history_substring_search="$2"
+                shift
+                ;;
             -o | -omz | --install-omz)
                 install_omz="$2"
+                shift
+                ;;
+            -O | --omz-only)
+                omz_only="true"
+
+                ;;
+            --zsh-custom)
+                ZSH_CUSTOM="$2"
                 shift
                 ;;
             -h | --help)
@@ -73,7 +123,7 @@ parse_args() {
                 exit 0
                 ;;
             -*)
-                echo "unknown option: "
+                echo "unknown option:[$1] "
                 echo "$usage"
                 exit 1
                 ;;
@@ -97,27 +147,6 @@ if [[ $OSTYPE == darwin* ]]; then
         fi
     fi
 fi
-
-# 将推荐的插件下载到指定目录下:(git 已经指定好了目录)
-zap=${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions
-zshp=${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
-zhssp=${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-history-substring-search
-zcp=${ZSH_CUSTOM:-${ZSH:-~/.oh-my-zsh}/custom}/plugins/zsh-completions
-zysu=${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/you-should-use
-zac=${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autocomplete
-! [[ -d $zap ]] && git clone --depth 1 https://gitee.com/zsh-users/zsh-autosuggestions "$zap"
-
-! [[ -d $zshp ]] && git clone --depth 1 https://gitee.com/zsh-users/zsh-syntax-highlighting.git "$zshp"
-
-! [[ -d $zhssp ]] && git clone --depth 1 https://gitee.com/mirror-hub/zsh-history-substring-search "$zhssp"
-
-# zsh-completions这个项目gitee官方可能没有镜像,使用个人用户的自镜像版本(建议有需要的可以自己拉取一份比较安全)
-# 另外这个插件比其他zsh插件不同,在配合oh my zsh使用时需要额外注意配置文件的写法;
-! [[ -d $zcp ]] && git clone --depth 1 https://gitee.com/duchenpaul/zsh-completions.git "$zcp"
-! [[ -d $zysu ]] && git clone --depth 1 https://gitcode.com/gh_mirrors/zs/zsh-you-should-use.git "$zysu"
-# 自动动态的补全预测,属于较复杂插件(代替incr.zsh)
-! [[ -d $zac ]] && git clone --depth 1 https://gitee.com/mirrors/zsh-autocomplete.git "$zac"
-
 # 将工作目录转移到家目录
 current_wd=$(pwd)
 cd ~ || exit 1
@@ -136,6 +165,7 @@ omz_installer() {
         echo "跳过安装oh-my-zsh"
         return 0
     fi
+    # 开始安装(如果需要的话)
     if [[ $install_omz == default ]]; then
         sh -c "$(curl -fsSL https://install.ohmyz.sh/)"
     elif [[ $install_omz == github ]]; then
@@ -160,6 +190,41 @@ REMOTE=${REMOTE:-https://gitee.com/${REPO}.git} ' -r ~/install.sh > ~/gitee_inst
 
 }
 omz_installer
+# 如果仅安装omz,那么后续内容跳过执行;
+if [[ $omz_only == true ]]; then
+    [[ $install_omz != false ]] && exec zsh
+    return 0
+else
+    echo "继续安装插件..."
+fi
+# 将推荐的插件下载到指定目录下:(git 已经指定好了目录)
+zasp=${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions
+zshp=${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
+zhssp=${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-history-substring-search
+zcp=${ZSH_CUSTOM:-${ZSH:-~/.oh-my-zsh}/custom}/plugins/zsh-completions
+zysu=${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/you-should-use
+zac=${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autocomplete
+
+# zsh-completions这个项目gitee官方可能没有镜像,使用个人用户的自镜像版本(建议有需要的可以自己拉取一份比较安全)
+# 另外这个插件比其他zsh插件不同,在配合oh my zsh使用时需要额外注意配置文件的写法;
+[[ $install_zsh_completions == true ]] &&
+    ! [[ -d $zcp ]] && git clone --depth 1 https://gitee.com/duchenpaul/zsh-completions.git "$zcp"
+# 自动动态的补全预测,属于较复杂插件(代替incr.zsh)
+[[ $install_zsh_autocomplete != false ]] &&
+    ! [[ -d $zac ]] && git clone --depth 1 https://gitee.com/mirrors/zsh-autocomplete.git "$zac"
+
+[[ $install_zsh_autosuggestions == true ]] &&
+    ! [[ -d $zasp ]] && git clone --depth 1 https://gitee.com/zsh-users/zsh-autosuggestions "$zasp"
+
+[[ $install_zsh_you_should_use == true ]] &&
+    ! [[ -d $zysu ]] && git clone --depth 1 https://gitcode.com/gh_mirrors/zs/zsh-you-should-use.git "$zysu"
+
+[[ $install_zsh_syntax_highlighting == true ]] &&
+    ! [[ -d $zshp ]] && git clone --depth 1 https://gitee.com/zsh-users/zsh-syntax-highlighting.git "$zshp"
+
+[[ $install_zsh_history_substring_search == true ]] &&
+    ! [[ -d $zhssp ]] && git clone --depth 1 https://gitee.com/mirror-hub/zsh-history-substring-search "$zhssp"
+
 # 构造新的plugins插件列表(字符串),保存到全局变量plugins_list中
 get_omz_plugins_list() {
 
@@ -170,21 +235,23 @@ get_omz_plugins_list() {
         cat << EOF
 git
 z
-zsh-syntax-highlighting
-zsh-autosuggestions
-zsh-history-substring-search
-you-should-use
+$([[ $install_zsh_syntax_highlighting == false ]] && echo '#')zsh-syntax-highlighting
+$([[ $install_zsh_autosuggestions == false ]] && echo '#')zsh-autosuggestions
+$([[ $install_zsh_history_substring_search == false ]] && echo '#')zsh-history-substring-search
+$([[ $install_zsh_you_should_use == false ]] && echo '#')you-should-use
+$([[ $install_zsh_autocomplete == false ]] && echo '#')zsh-autocomplete
 EOF
     )
-    if [[ $install_zsh_autocomplete == "omz" ]]; then
-        front_plugins=$(
-            cat << EOF
-zsh-autocomplete
-EOF
-        )
-        plugins_list="${front_plugins}"$'\n'"${plugins_list}"
+    # 拼接法(比较啰嗦)
+    #     if [[ $install_zsh_autocomplete == "omz" ]]; then
+    #         front_plugins=$(
+    #             cat << EOF
+    # zsh-autocomplete
+    # EOF
+    #         )
+    #         plugins_list="${front_plugins}"$'\n'"${plugins_list}"
 
-    fi
+    #     fi
 
     # 为每行插件名末尾增加`\`便于在sed中使用(注意最后一个比较特殊,手动补充\\)
     plugins_list="${plugins_list//$'\n'/\\$'\n'}\\"
@@ -215,7 +282,7 @@ plugins=(\
 
 update_omz_plugins_rc
 
-# 将补全相关插件的配置写入.zshrc
+# 将补全(completions,complete)相关插件的配置写入.zshrc
 update_comp_plugins_config_rc() {
 
     echo "checking and install completion related plugins (zc,zac) ..."
