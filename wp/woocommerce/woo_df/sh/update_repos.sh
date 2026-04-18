@@ -1,13 +1,17 @@
 #!/bin/bash
-#初次下载代码
-#git clone --depth 1 https://gitee.com/xuchaoxin1375/scripts.git /repos/scripts
+# 适用于服务器(带有root权限),不建议用于个人电脑,个人电脑使用专用版本的更新脚本(或命令行)
+# 在代码已经clone的情况下,使用此脚本进行配置服务器环境
+# 此脚本也可以直接使用,如果仓库不存在,就会全新clone,否则执行仓库更新;
+# 然后可以按照需要,统一执行服务器配置文件修改;
+
+# mkdir -p -v $HOME/repos && git clone --depth 1 https://gitee.com/xuchaoxin1375/scripts.git $HOME/repos/scripts
 
 # 强制更新代码(放弃已有更改)
 #git fetch origin
 #git reset --hard origin/main
 #git pull
 
-version=20260321
+version=20260418
 REPO_SOURCE='github' # gitee或github或gitlab (gitee可能对国外ip服务器用户限流或要求注册账号,优先使用github或gitlab)
 echo "当前脚本版本: $version;"
 NGINX_CONF_DIR="/www/server/nginx/conf"
@@ -17,10 +21,14 @@ NGINX_CONF_TPL_DIR="$SH_SYM/nginx_conf"
 NGINX_CONF_TPL_STD="$NGINX_CONF_TPL_DIR/nginx_nginx.conf"
 NGINX_CONF_TPL_OPENRESTY="$NGINX_CONF_TPL_DIR/nginx_openresty.conf"
 # 配置变量
-SH_SYM="/www/sh"
-TARGET_DIR="/repos/scripts"
+# SCRIPT_ROOT_SERVER=/repos/scripts
+SH_SYM="$HOME/sh"
+_REPO_BASE="repos/scripts"
+_SH_RELATIVE="wp/woocommerce/woo_df/sh"
+SCRIPT_ROOT="$HOME/$_REPO_BASE" # /root/repos/scripts 或 /home/user/repos/scripts
+# shell脚本目录(sh)
+SH_SCRIPT_DIR="$SCRIPT_ROOT/$_SH_RELATIVE"
 BRANCH="main" # 或 "master"，根据实际情况调整
-
 # CLI flags
 FORCE=0
 UPDATE_CODE=0
@@ -44,7 +52,7 @@ Options:
 If neither --update-code nor --update-config is specified, the script
 will default to updating code only (equivalent to \$(--update-code)).
 
-This script will clone or update the git repository at $TARGET_DIR and
+This script will clone or update the git repository at $SCRIPT_ROOT and
 optionally update several symlinks and nginx/fail2ban configuration files.
 EOF
 }
@@ -87,6 +95,10 @@ parse_args() {
                 REPO_SOURCE="$2"
                 shift 2
                 ;;
+            -t|--repo-path)
+                SCRIPT_ROOT="$2"
+                shift 2
+                ;;
             -h | --help)
                 print_usage
                 exit 0
@@ -123,13 +135,13 @@ fi
 # ===更新代码===
 if [ "$UPDATE_CODE" -eq 1 ]; then
     # 确保父目录存在
-    mkdir -p "$(dirname "$TARGET_DIR")"
+    mkdir -p "$(dirname "$SCRIPT_ROOT")"
 
-    echo "🚀 正在同步仓库到最新版本: $TARGET_DIR"
+    echo "🚀 正在同步仓库到最新版本: $SCRIPT_ROOT"
 
     if [[ $REMOVE_OLD -eq 1 ]]; then
         echo "🗑️ 删除旧仓库..."
-        rm -rf "$TARGET_DIR"
+        rm -rf "$SCRIPT_ROOT"
     fi
     # 判断目录是否存在，决定是克隆还是更新
 
@@ -141,15 +153,15 @@ if [ "$UPDATE_CODE" -eq 1 ]; then
     esac
 
     # 目录不存在或不是 Git 仓库：执行浅克隆
-    if [ ! -d "$TARGET_DIR/.git" ]; then
+    if [ ! -d "$SCRIPT_ROOT/.git" ]; then
         # echo "📁 未检测到 Git 仓库，正在执行浅克隆..."
-        # rm -rf "$TARGET_DIR" # 防止存在非 Git 目录（如普通文件夹）
+        # rm -rf "$SCRIPT_ROOT" # 防止存在非 Git 目录（如普通文件夹）
 
-        # if git clone --depth 1 "$REPO_URL_GITEE" "$TARGET_DIR"; then
+        # if git clone --depth 1 "$REPO_URL_GITEE" "$SCRIPT_ROOT"; then
         #     echo "✅ 克隆成功($REPO_SOURCE)"
-        # elif git clone --depth 1 "$REPO_URL_GITEE" "$TARGET_DIR"; then
+        # elif git clone --depth 1 "$REPO_URL_GITEE" "$SCRIPT_ROOT"; then
         #     echo "✅ 克隆成功(gitee)"
-        # elif git clone --depth 1 "$REPO_URL_GITHUB" "$TARGET_DIR"; then
+        # elif git clone --depth 1 "$REPO_URL_GITHUB" "$SCRIPT_ROOT"; then
         #     echo "✅ 克隆成功(github)"
         # else
         #     echo "❌ 克隆失败，请检查网络或仓库地址"
@@ -158,7 +170,7 @@ if [ "$UPDATE_CODE" -eq 1 ]; then
 
         # 准备工作：清理可能存在的残留目录
         echo "📁 未检测到有效 Git 仓库，正在准备执行浅克隆..."
-        rm -rf "$TARGET_DIR"
+        rm -rf "$SCRIPT_ROOT"
 
         #  循环尝试序列中的仓库源
         CLONE_SUCCESS=false
@@ -167,13 +179,13 @@ if [ "$UPDATE_CODE" -eq 1 ]; then
 
             echo "📡 尝试从 $URL 克隆..."
             # --depth 1 配合 --single-branch
-            if git clone --progress --depth 1 --single-branch -b "$BRANCH" "$URL" "$TARGET_DIR"; then
+            if git clone --progress --depth 1 --single-branch -b "$BRANCH" "$URL" "$SCRIPT_ROOT"; then
                 echo "✅ 克隆成功！(源: $URL)"
                 CLONE_SUCCESS=true
                 break
             else
                 echo "⚠️  该源连接失败，尝试下一个..."
-                rm -rf "$TARGET_DIR" # 关键：失败后必须清理目录，否则下次 clone 会报错
+                rm -rf "$SCRIPT_ROOT" # 关键：失败后必须清理目录，否则下次 clone 会报错
             fi
         done
 
@@ -187,8 +199,8 @@ if [ "$UPDATE_CODE" -eq 1 ]; then
         echo "🔁 检测到现有仓库，正在强制更新到最新版本..."
 
         (
-            cd "$TARGET_DIR" || {
-                echo "❌ 无法进入目录: $TARGET_DIR"
+            cd "$SCRIPT_ROOT" || {
+                echo "❌ 无法进入目录: $SCRIPT_ROOT"
                 exit 1
             }
             # 循环尝试序列中的仓库源(自动重试方案)
@@ -250,7 +262,7 @@ if [ "$UPDATE_CODE" -eq 1 ]; then
 
     fi
 
-    echo "🎉 代码同步完成：$TARGET_DIR"
+    echo "🎉 代码同步完成：$SCRIPT_ROOT"
 fi
 
 # ===更新配置文件或模板===
@@ -265,19 +277,20 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
         rm -rfv "$SH_SYM"
 
     else
-        echo "$SH_SYM does not exist or is not a symbolic link"
+        echo "$SH_SYM does not exist or is not a symbolic link."
     fi
 
     # 兼容wsl (脚本测试开发)
-    [[ -d /mnt/c/repos/scripts/ ]] && ln -s -T /mnt/c/repos/scripts/ /repos/scripts
+    # [[ -d /mnt/c/ ]] && ln -s -T $SCRIPT_ROOT /repos/scripts
 
-    ln -s -T /repos/scripts/wp/woocommerce/woo_df /www/woo_df -fv
-    ln -s -T /www/woo_df/sh $SH_SYM -fv # 使用-T选项防止嵌套,而-f选项配合-T是会将重复运行符号创建语句效果覆盖而不报错
-    ln -s -T /www/woo_df/pys /www/pys -fv
+    # ln -s -T /repos/scripts/wp/woocommerce/woo_df /www/woo_df -fv
+    # ln -s -T /www/woo_df/sh $SH_SYM -fv # 使用-T选项防止嵌套,而-f选项配合-T是会将重复运行符号创建语句效果覆盖而不报错
+    # ln -s -T /www/woo_df/pys /www/pys -fv
     # 脚本文件的符号链接
-    ln -s $SH_SYM/deploy_wp_full.sh /deploy.sh -fv
-    ln -s $SH_SYM/update_repos.sh /update_repos.sh -fv
-    ln -s $SH_SYM/nginx_conf/update_nginx_vhosts_conf.sh /update_nginx_vhosts_conf.sh -fv
+    ln -sfv $SH_SCRIPT_DIR $SH_SYM 
+    ln -sfv $SH_SYM/deploy_wp_full.sh /deploy.sh 
+    ln -sfv $SH_SYM/update_repos.sh /update_repos.sh 
+    ln -sfv $SH_SYM/nginx_conf/update_nginx_vhosts_conf.sh /update_nginx_vhosts_conf.sh 
     # vim配置
     nvim_conf_dir="$HOME/.config/nvim"
     [[ -d $nvim_conf_dir ]] || mkdir -p "$nvim_conf_dir"
@@ -386,4 +399,5 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
 fi
 
 # 让指定目录下所有脚本文件(.sh)可执行🎈
-find /repos/scripts/wp/woocommerce/woo_df/sh/ -type f \( -name "*.sh" -o -name "*.bash" \) -exec chmod +x {} \;
+# shellcheck disable=SC2154
+find "$sh" -type f \( -name "*.sh" -o -name "*.bash" \) -exec chmod +x {} \;

@@ -1,9 +1,11 @@
 #! /bin/bash
-# START (安全起见且为了方便复制粘贴运行,为每行后面增加;号和一个空行)
+# 适用于服务器(有root权限的情况),有许多针对服务器软件的配置,因此不建议用于个人电脑
+# 注意:执行此代码会覆盖掉原来的代码仓库,因此执行前确保指定的代码仓库目录中自定义的文件或脚本已经备份好(例如一些定时执行的脚本)!
+# 此脚本先clone相应代码仓库,然后调用仓库中的update_repos.sh脚本部署环境;
 # 参数解析 (支持-f(覆盖nginx主配置),-h(--help)参数)
 SCRIPT_ROOT="$HOME/repos/scripts"
 REPO_SOURCE="github.com"
-SH_SYM="/www/sh"
+SH_SYM="/www/sh" # 假设服务器上有root权限,并能够创建/www/sh 目录
 OVERWRITE_NGINX_CONF=false
 parse_args() {
 
@@ -20,7 +22,7 @@ parse_args() {
                 REPO_SOURCE="$2"
                 shift
                 ;;
-            --script-root)
+            -s | --script-root)
                 SCRIPT_ROOT="$2"
                 shift
                 ;;
@@ -32,6 +34,9 @@ parse_args() {
         shift
     done
 }
+parse_args "$@"
+
+# 根据解析的参数定义关键变量(定义在参数解析语句之后!)
 SH_SCRIPT_DIR="$SCRIPT_ROOT/wp/woocommerce/woo_df/sh"
 REPO_URL="https://$REPO_SOURCE/xuchaoxin1375/scripts.git"
 
@@ -45,24 +50,33 @@ EOF
     # exit 0
 }
 
-parse_args "$@"
-# 确保scrits仓库父目录存在(纯shell计算父目录)
+# 确保scrits仓库父目录(repos)存在(纯shell计算父目录)
 repos_dir="${SCRIPT_ROOT%/}"
 repos_dir="${repos_dir%/*}"
 # echo $repos_dir
 mkdir -p -v "$repos_dir"
-# 如果目录存在，则执行删除
+
+# 如果指定仓库目录已经存在，则执行删除
 [[ -d "$SCRIPT_ROOT" ]] && {
     echo "覆盖旧目录..."
     echo "Removing old dir..."
     sudo rm -rf "$SCRIPT_ROOT"
 }
-
-# rm /repos/scripts -rf ;
+# 进行全新的干净clone
 git clone --depth 1 "$REPO_URL" "$SCRIPT_ROOT"
 
 # 配置更新代码的脚本的符号链接(bsd的ln命令不支持-T)
-ln -s -fv "$SH_SCRIPT_DIR" "$SH_SYM" 
+[[ -e "$SH_SYM" ]] && rm -fv "$SH_SYM"
+ln -s -fv "$SH_SCRIPT_DIR" "$SH_SYM" || {
+    echo "sh符号链接[$SH_SYM]创建失败,请检查."
+    exit 1
+}
+# 家目录也放置一份符号链接
+[[ -e "$HOME/sh" ]] && rm -fv "$HOME/sh"
+ln -s -fv "$SH_SCRIPT_DIR" "$HOME/sh" || {
+    echo "sh符号链接[$HOME/sh]创建失败,请检查."
+    exit 1
+}
 
 # 使用简短的更新代码仓库的命令(记得检查fail2ban)
 # 如果追加使用-f会覆盖/www/server/nginx/conf/nginx.conf
