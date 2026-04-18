@@ -5,11 +5,11 @@
 
 version=20260418
 REPO_SOURCE='github.com'
+BRANCH="main" # 或 "master"，根据实际情况调整
 
 repos="$HOME/repos"
 scripts="$repos/scripts"
 sh_script_dir="$scripts/wp/woocommerce/woo_df/sh"
-
 SCRIPT_ROOT="$scripts"
 
 SH_SYM="$HOME/sh" # 假设服务器上有root权限,并能够创建/www/sh 目录
