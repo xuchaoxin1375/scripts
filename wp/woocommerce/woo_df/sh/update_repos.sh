@@ -24,7 +24,7 @@ SH_WWW="/www/sh" #末尾不要加斜杠/
 
 # 移除可能的就链接,重新创建链接
 # unlink $SH_SYM # 可以使用unlink命令安全删除符号链接(不会误删目标目录内的文件)
-rm -fv "${SH_SYM%/}" && ln -snfv "$SH_SYM" "$SH_WWW" 
+rm -fv "${SH_WWW%/}" && ln -snfv "$SH_SYM" "$SH_WWW" 
 # sh="$SH_SYM" # 简写或者直接用SH_SYM
 _REPO_BASE="repos/scripts"
 _SH_RELATIVE="wp/woocommerce/woo_df/sh"
