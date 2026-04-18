@@ -66,13 +66,13 @@ mkdir -p -v "$repos_dir"
 git clone --depth 1 "$REPO_URL" "$SCRIPT_ROOT"
 
 # 配置更新代码的脚本的符号链接(bsd的ln命令不支持-T)
-[[ -e "$SH_SYM" ]] && rm -fv "$SH_SYM"
+[[ -e "$SH_SYM" ]] && rm -rfv "$SH_SYM"
 ln -s -fv "$SH_SCRIPT_DIR" "$SH_SYM" || {
     echo "sh符号链接[$SH_SYM]创建失败,请检查."
     exit 1
 }
 # 家目录也放置一份符号链接
-[[ -e "$HOME/sh" ]] && rm -fv "$HOME/sh"
+[[ -e "$HOME/sh" ]] && rm -rfv "$HOME/sh"
 ln -s -fv "$SH_SCRIPT_DIR" "$HOME/sh" || {
     echo "sh符号链接[$HOME/sh]创建失败,请检查."
     exit 1
