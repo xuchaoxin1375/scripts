@@ -66,8 +66,12 @@ options:
         show this help message.
 '"
 examples:
-    install oh-my-zsh only:
+    # install oh-my-zsh only:
     bash $0 --omz-only
+    # install without 'you-should-use' plugin or  disable the plugin in plugins list
+    bash deploy_omz.sh -o false -zysu false
+    # enable all predefined plugins
+    bash deploy_omz.sh 
 "
 parse_args() {
     while [[ $# -gt 0 ]]; do
