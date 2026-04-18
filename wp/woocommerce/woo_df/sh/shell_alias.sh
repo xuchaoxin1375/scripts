@@ -9,6 +9,9 @@ alias update_alias="source '$sh/shell_alias.sh'"
 alias bashrc='source ~/.bashrc'
 alias zshrc='source ~/.zshrc'
 alias cls=clear
+# man手册(macos bsd版本的命令)
+# 例如,使用 bman ln 即可查看bsd版本的ln的原生帮助
+alias bman='man -M /usr/share/man'
 # 第三方程序缩写(尽可能用neovim(nvim)代替vim)
 command -v nvim &> /dev/null && alias vim=nvim
 command -v neovim &> /dev/null && alias vim=neovim

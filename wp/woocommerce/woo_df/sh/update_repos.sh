@@ -11,7 +11,7 @@
 #git reset --hard origin/main
 #git pull
 
-version=20260418
+version=20260418.2208
 REPO_SOURCE='github' # gitee或github或gitlab (gitee可能对国外ip服务器用户限流或要求注册账号,优先使用github或gitlab)
 echo "当前脚本版本: $version;"
 NGINX_CONF_DIR="/www/server/nginx/conf"
@@ -20,6 +20,11 @@ NGINX_CONF_FILE="$NGINX_CONF_DIR/nginx.conf"
 # 配置变量
 # SCRIPT_ROOT_SERVER=/repos/scripts
 SH_SYM="$HOME/sh"
+SH_WWW="/www/sh" #末尾不要加斜杠/
+
+# 移除可能的就链接,重新创建链接
+# unlink $SH_SYM # 可以使用unlink命令安全删除符号链接(不会误删目标目录内的文件)
+rm -fv "${SH_SYM%/}" && ln -snfv "$SH_SYM" "$SH_WWW" 
 # sh="$SH_SYM" # 简写或者直接用SH_SYM
 _REPO_BASE="repos/scripts"
 _SH_RELATIVE="wp/woocommerce/woo_df/sh"
