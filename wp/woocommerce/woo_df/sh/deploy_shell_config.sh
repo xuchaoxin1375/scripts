@@ -1,5 +1,6 @@
 #!/bin/bash
 # 针对个人电脑(windows(wsl),macos,linux)的shell配置部署
+# bash <( curl -sSfL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_shell_config.sh)
 # 服务器版本的参考deploy_srv.sh,update_repos.sh脚本
 
 version=20260418
@@ -11,10 +12,12 @@ sh_script_dir="$scripts/wp/woocommerce/woo_df/sh"
 
 SCRIPT_ROOT="$scripts"
 
-
 SH_SYM="$HOME/sh" # 假设服务器上有root权限,并能够创建/www/sh 目录
 show_help() {
     cat << EOF
+    针对个人电脑(windows(wsl),macos,linux)的shell配置部署脚本.
+
+    version: $version
     Usage:  
         $0 [options]
     Options:
@@ -27,6 +30,27 @@ parse_args() {
         case "$1" in
             -r | --repo-source)
                 REPO_SOURCE="$2"
+                shift
+                ;;
+            -b | --branch)
+                BRANCH="$2"
+                shift
+                ;;
+            -h | --help)
+                show_help
+                exit 0
+                ;;
+            --) # end of options
+                shift
+                break
+                ;;
+            -*)
+                echo "Unknown option: $1"
+                show_help
+                exit 2
+                ;;
+            *)
+                # positional arg (not used) – ignore for now
                 shift
                 ;;
         esac

@@ -84,6 +84,13 @@ bash $sh/shellrc_addition.sh
 exec bash
 ```
 
+或者使用自动判断可用仓库源的一键部署版本:
+
+```bash
+bash <( curl -sSfL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_shell_config.sh)
+
+```
+
 clone参数说明:
 
 | **参数**                     | **说明**                                                         | **推荐用法**            |
