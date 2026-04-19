@@ -188,6 +188,6 @@ echo "🎉 代码同步完成：$SCRIPT_ROOT"
 # ! [[ -L $sh_sym ]] &&
 ln -snfv "$sh_script_dir" "$SH_SYM"
 # 部署shell 交互方案(prompt主题和补全方案)
-bash "$SH_SYM"/shellrc_addition.sh
-# 进程替换,让配置生效
-exec bash
+bash "$SH_SYM"/shellrc_addition.sh # 内部不执行进程替换
+# 进程替换
+# exec bash
