@@ -1,9 +1,10 @@
 #!/bin/bash
-# 针对个人电脑(windows(wsl),macos,linux)的shell配置部署
-# bash <( curl -sSfL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_shell_config.sh)
+# 针对个人电脑(windows(wsl),macos,linux)的shell配置部署/更新脚本
+# 如果没有部署过,则完整克隆,否则执行代码更新
+# bash <( curl -sSfL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/update_shell_config.sh)
 # 服务器版本的参考deploy_srv.sh,update_repos.sh脚本
 
-version=20260418
+version=20260419
 REPO_SOURCE='github.com'
 BRANCH="main" # 或 "master"，根据实际情况调整
 
@@ -15,7 +16,7 @@ SCRIPT_ROOT="$scripts"
 SH_SYM="$HOME/sh" # 假设服务器上有root权限,并能够创建/www/sh 目录
 show_help() {
     cat << EOF
-    针对个人电脑(windows(wsl),macos,linux)的shell配置部署脚本.
+    针对个人电脑(windows(wsl),macos,linux)的shell配置部署/更新脚本.
 
     version: $version
     Usage:  
@@ -57,7 +58,7 @@ parse_args() {
         shift
     done
 }
-
+parse_args "$@"
 # 代码仓库来源
 REPO_URL="https://${REPO_SOURCE}.com/xuchaoxin1375/scripts.git"
 URL_GITEE="https://gitee.com/xuchaoxin1375/scripts.git"

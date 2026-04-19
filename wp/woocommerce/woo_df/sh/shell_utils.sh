@@ -57,8 +57,8 @@ print_env() {
                 :
             fi
         # elif [[ $ZSH_VERSION ]]; then
+        #     # zsh 专用语法导致shfmt无法执行代码格式化;(todo:将此部分代码移动到zsh专用脚本文件中)
         #     # shellcheck disable=SC2296
-        #     zsh 专用语法导致shfmt无法执行代码格式化;(todo:将此部分代码移动到zsh专用脚本文件中)
         #     if [[ -n ${(P)env+is_var_name} ]]; then
         #         # echo "$env is a variable name"
         #         env="${(P)env}"
