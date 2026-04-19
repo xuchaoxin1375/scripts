@@ -26,6 +26,76 @@ is_alpine() {
         return 1
     fi
 }
+# 查看当前shell中PATH环境变量的取值,对于多值变量换行显示
+# 对于非PATH变量,则使用建议使用echo $env_var | tr ':' '\n'
+# 或 printenv $env_var | tr ':' '\n' 来查看指定变量的方式查看指定变量
+print_env_path() {
+
+    echo "$PATH" | tr ':' '\n'
+}
+# 查看指定环境变量取值,分割:换行显示
+# 不指定值,则打印PATH环境变量
+# examples:
+#   print_env "$PATH" #建议带上双引号,放置带有空格的变量值单词分割后显示不准确
+#   print_env PATH #支持直接传递变量名,但是可靠性不保证(支持bash)
+print_env() {
+    local env="$*"
+    # echo "value: $env"
+    # 定义空参数时的默认行为:
+    [[ -z "$env" ]] && env="$PATH"
+    # 判断传入的是否为一个变量名,例如PATH,如果是变量名,则获取变量值,以便后续格式化
+    # 通过间接易用计算获取变量值(bash语法),zsh用自己的语法
+    # Bash 使用：${!var}
+    # Zsh 使用：${(P)var},其中 (P) 代表 Parameter expansion
+    if ! [[ $env =~ .*[:/].* ]]; then
+        if [[ $BASH_VERSION ]]; then
+            if [[ -n ${!env+is_var_name} ]]; then # -n选项可以省略
+                # echo "$env is a variable name"
+                env="${!env}"
+            else
+                # echo "$env is value of var"
+                :
+            fi
+        # elif [[ $ZSH_VERSION ]]; then
+        #     # shellcheck disable=SC2296
+        #     zsh 专用语法导致shfmt无法执行代码格式化;(todo:将此部分代码移动到zsh专用脚本文件中)
+        #     if [[ -n ${(P)env+is_var_name} ]]; then
+        #         # echo "$env is a variable name"
+        #         env="${(P)env}"
+        #     else
+        #         # echo "$env is value of var"
+        #         :
+        #     fi
+        fi
+    fi
+    # echo "value: $env"
+    echo "$env" | tr ':' '\n'
+}
+# 添加路径到PATH变量中(幂等操作,防止重复添加相同路径造成冗余)
+# 对语句 [[ ":$PATH:" != *":/your/path:"* ]] && export PATH="/your/path:$PATH" 的函数封装
+add_to_path() {
+    # 1. 检查参数是否为空
+    if [ -z "$1" ]; then
+        return 1
+    fi
+
+    # 2. 移除路径末尾可能存在的斜杠（为了匹配的一致性）
+    local target_dir="${1%/}"
+
+    # 3. 判断当前 PATH 中是否已包含该路径
+    # 使用 [[ :$PATH: == *:$target_dir:* ]] 这种技巧可以精准匹配，
+    # 避免子字符串干扰（例如 /usr/bin 匹配到 /bin）
+    [[ ":$PATH:" != *":$target_dir:"* ]] && export PATH="$target_dir:$PATH"
+    case ":$PATH:" in
+        *:"$target_dir":*)
+            # 已存在，不做任何操作
+            ;;
+        *)
+            # 不存在，添加到头部
+            export PATH="$target_dir:$PATH"
+            ;;
+    esac
+}
 # 移除多余空行(大片空行压缩)
 remove_redundant_blank_lines() {
 
@@ -228,7 +298,7 @@ options:
 }
 # 覆盖式创建指定路径的符号链接(兼容gnu ln和bsd ln)
 # 效果在路径sym_path创建指向target的符号链接(如果sym_path已存在(无论是什么类型文件或目录)，则覆盖)
-# 效果:创建符号链接[$2:sym_path]->[$1:target] 
+# 效果:创建符号链接[$2:sym_path]->[$1:target]
 # example:
 #   ln_update_sym "$SH_SCRIPT_DIR" "$SH_SYM"
 ln_update_sym() {
@@ -236,8 +306,8 @@ ln_update_sym() {
     local sym_path="$2"
     [[ -e $sym_path ]] && rm -rf "$sym_path"
     # 单纯使用-nf仍然和gnu ln的 -T选项效果有差别
-    ln -snfv "$target" "$sym_path" ||{
-        echo "[error]:创建符号链接[$sym_path]->[$target] 失败" >& 2
+    ln -snfv "$target" "$sym_path" || {
+        echo "[error]:创建符号链接[$sym_path]->[$target] 失败" >&2
         exit 1
     }
 }

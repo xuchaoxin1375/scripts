@@ -16,15 +16,17 @@ SCRIPT_ROOT_SERVER=/repos/scripts
 _SH_RELATIVE="wp/woocommerce/woo_df/sh"
 _REPO_BASE="repos/scripts"
 _SHELL_DEBUG=0
-# 防止重复导入检查处理
-if [ -z "$_SHELLX_LOADED" ]; then
-  # 标记为空,则说明此前并未导入,本轮需要导入  # 方便起见,直接修改标记为被导入,然后再继续后面的配置代码
-  _SHELLX_LOADED=true
-else
-  # echo "===debug: custom shell already loaded..."
-  # 跳过本次导入
-  return 0
-fi
+# 防止重复导入检查处理(如果想要设计为单会话单词运行的话)
+# if [ -z "$_SHELLX_LOADED" ]; then
+#   # 标记为空,则说明此前并未导入,本轮需要导入  # 方便起见,直接修改标记为被导入,然后再继续后面的配置代码
+#   _SHELLX_LOADED=true
+# else
+#   # echo "===debug: custom shell already loaded..."
+#   # 跳过本次导入
+#   return 0
+# fi
+
+
 # 判断当前系统(平台)类型
 echo "Current Os type is [$OSTYPE]"
 if [[ $OSTYPE == "darwin"* ]]; then
@@ -89,6 +91,11 @@ source "$sh"/shell_utils.sh
 source "$sh"/shell_insert_last_part.sh
 source "$sh"/shell_desktop.sh
 # source "$BASH_PROMPTS_ROOT/prompt_switcher.sh"
+
+# PATH变量修补
+add_to_path "$HOME/.local/bin"
+add_to_path "$HOME/bin"
+
 
 if is_shell bash; then
   # 配置调试用途的PS4
