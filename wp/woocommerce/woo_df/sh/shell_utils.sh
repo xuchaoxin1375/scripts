@@ -139,7 +139,7 @@ options:
                 echo "$usage"
                 return 1
                 ;;
-            -*)
+            -?*)
                 echo "错误: 未知选项 " >&2
                 echo "$usage"
                 return 1
@@ -412,7 +412,7 @@ options:
                 echo "$usage"
                 return 1
                 ;;
-            -*)
+            -?*)
                 echo "unknown option: $1"
                 echo "$usage"
                 return 1
@@ -548,7 +548,7 @@ example:
                 use_pattern=1
 
                 ;;
-            -*)
+            -?*)
                 echo "错误: 未知选项 $1" >&2
                 return 2
                 ;;
@@ -791,8 +791,9 @@ confirm() {
     local verbose=false
     local usage="
     suggestion
-Usage: confirm [OPTIONS] [PROMPT] [DEFAULT_SUGGESTION] [ASSUME_ANSWER]
- confirm [OPTIONS] [PROMPT] [y|Y|n|N] [ASSUME_ANSWER]
+Usage: 
+    confirm [OPTIONS] [PROMPT] [DEFAULT_SUGGESTION] [ASSUME_ANSWER]
+    confirm [OPTIONS] [PROMPT] [y|Y|n|N] [ASSUME_ANSWER]
 
 Arguments:
   PROMPT                      The message to display to the user.
@@ -1407,7 +1408,160 @@ wp() {
     local EXIT_CODE=$?
     return $EXIT_CODE
 }
+# 创建一个带有sudo使用权限的linux用户,尽量实现幂等性;
+# 考虑安全性,不支持直接命令行中设置密码
+# 如果要设置密码,建议在创建之后使用sudo passwd <username> 的方式为指定用户设置密码!
+# parameter:
+#   username: 用户名
+new_user_sudo() {
+    #根据需要更改要操作的用户名,例如linuxbrew
+    local username="${1:-linuxbrew}"
+    if ! command -v sudo &> /dev/null; then
+        echo "[sudo] command is not available."
+        exit 2
+    elif ! command -v visudo &> /dev/null; then
+        echo "[visudo] command is not available."
+        exit 2
+    fi
+    if id "$username" > /dev/null 2>&1; then
+        echo "用户 $username 已存在，跳过创建。"
+    else
+        # sudo useradd -m -s /bin/bash "$username" # 配置该用户默认使用bash
+        # 1. 检查 useradd 命令是否存在
+        if command -v useradd > /dev/null 2>&1; then
+            echo "使用 useradd 创建用户..."
+            sudo useradd -m -s /bin/bash "$username"
+
+        # 2. 如果 useradd 不可用，尝试使用 adduser
+        elif command -v adduser > /dev/null 2>&1; then
+            echo "useradd 不可用，尝试使用 adduser..."
+            # 注意：adduser 在某些发行版中是交互式的，这里使用 --disabled-password 跳过交互
+            # --gecos "" 用于填充用户信息字段，避免交互
+            sudo adduser --disabled-password --gecos "" --shell /bin/bash "$username"
+
+        else
+            echo "错误：系统中未找到 useradd 或 adduser 命令。"
+            exit 1
+        fi
+    fi
+
+    passwd "$username"
+    usermod -aG sudo "$username"
+
+    # 1. 创建一个包含新规则的临时文件
+    echo "$username ALL=(ALL) NOPASSWD: ALL" > /tmp/new_sudo_rule
+
+    # 2. 使用 visudo 验证临时文件的语法
+    if visudo -c -f /tmp/new_sudo_rule; then
+        echo "语法正确，正在合并..."
+        # 3. 将验证通过的规则追加到 /etc/sudoers.d/ 目录下的一个新文件中
+        sudo install -m 440 /tmp/new_sudo_rule /etc/sudoers.d/alice_nopasswd
+        echo "✅ 用户 alice 已被授予无密码 sudo 权限。"
+    else
+        echo "❌ 语法错误！规则未被应用。"
+        rm /tmp/new_sudo_rule
+        exit 1
+    fi
+
+    # 4. 清理临时文件
+    rm /tmp/new_sudo_rule
+
+}
+install_linuxbrew() {
+
+    local usage
+    usage=$(
+        cat << EOF
+usage:
+    install_linuxbrew [options] [username]
+        默认使用默认用户名linuxbrew,如果指定用户名不存在,则创建
+options:
+    -u,--user <username> 指定用户名(默认为linuxbrew)
+    -h,--help 显示帮助
+documents:
+    https://docs.brew.sh/
+    https://docs.brew.sh/Homebrew-on-Linux
+requirements:
+    安装系统依赖：在运行 Homebrew 安装脚本前，确保系统已安装必要的构建工具。根据你的 Linux 发行版运行相应命令：
+
+- Debian 或 Ubuntu: sudo apt-get install build-essential procps curl file git
+- Fedora: sudo dnf group install development-tools 和 sudo dnf install procps-ng curl file
+- CentOS Stream 或 RHEL: sudo dnf group install 'Development Tools' 和 sudo dnf install procps-ng curl file
+- Arch Linux: sudo pacman -S base-devel procps-ng curl file git
+
+reference
+- uninstall:https://github.com/homebrew/install#uninstall-homebrew
+EOF
+    )
+    # 参数解析
+    local username="${1:-linuxbrew}" # 安装linuxbrew时使用的用户
+    local args_pos=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -u | --user)
+                username="$2"
+                shift
+                ;;
+            -h | --help)
+                echo "$usage"
+                exit 0
+                ;;
+            --)
+                shift
+                break # -- 后面的都是普通参数,使用break结束选项参数的解析.
+                ;;
+            -?*)
+                echo "Unknown option: " >&2
+                show_help
+                exit 1
+                ;;
+            *)
+                args_pos+=("$1")
+                ;;
+        esac
+        shift
+    done
+    set -- "${args_pos[@]}"
+    # 参数解析并调整完毕
+
+    echo "checking username [$username]..."
+    # 判断是否已经安装过brew:
+    if command -v brew > /dev/null 2>&1; then
+        echo "Homebrew/Linuxbrew 已安装;如果需要重新安装,请移除brew(查看帮助中的链接)."
+        brew --version
+        exit 1 # 退出安装
+    else
+        echo "正在准备安装homebrew..."
+    fi
+    echo "检查安装用户..."
+    new_user_sudo "$username"
+    # 使用指定的已存在的非root用户(但是能够使用sudo的用户,例如linuxbrew)安装brew:
+    # /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    sudo -u "$username" /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    # 插入brew的配置片段到shell rc
+    local shell_rc_to_config
+    if [[ ${#args_pos} -gt 0 ]]; then
+        shell_rc_to_config=("${args_pos[@]}")
+    else
+        shell_rc_to_config=(bash zsh)
+    fi
+    # if confirm "insert brew config to shell rc?"; then
+    # fi
+    test -d ~/.linuxbrew && eval "$(~/.linuxbrew/bin/brew shellenv)"
+    test -d /home/linuxbrew/.linuxbrew && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+    # 计算需要插入的shell rc片段
+    for shellname in "${shell_rc_to_config[@]}"; do
+        # eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)" #被插入的片段参考
+        # 判断相关片段是否已经存在于配置文件,如果不存在,则插入
+        grep -q '^[^#].*brew shellenv' ~/."$shellname"rc ||
+            echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/."$shellname"rc
+        # echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.zshrc
+    done
+
+}
 # 运行brew命令(借用linuxbrew用户权限)
+# 为了防止和macos brew冲突,这里不直接命名为brew,而是增加后缀作区分;
+# 可以在别名配置或者shell配置文件中判断系统类型,然后按需设置brew别名
 # brew(linuxbrew)拒绝root用户直接运行,并且默认安装路径是/home/linuxbrew/.linuxbrew
 # 添加brew配置到PATH
 # - Run these commands in your terminal to add Homebrew to your PATH:
@@ -1437,7 +1591,7 @@ brewr() {
                 echo "$usage"
                 return 0
                 ;;
-            # -*) # 为了传递完整参数列表(包括选项)给brew,这里不建议捕获-*)
+            # -?*) # 为了传递完整参数列表(包括选项)给brew,这里不建议捕获-?*)
             #     echo "Invalid option"
             #     echo "$usage"
             #     return 1
@@ -1449,7 +1603,7 @@ brewr() {
         shift
     done
     set -- "${extra_args[@]}"
-    echo "params:[$*]"
+    echo "brew params:[$*]" >&2
     if [ "$(id -u)" -eq 0 ]; then
         # 如果未设置 BREW_USER，则给出提示并退出
         if [ -z "$BREW_USER" ]; then
@@ -1464,7 +1618,8 @@ brewr() {
 
         # 执行逻辑：切换到指定用户运行
         local ORIG_DIR="$PWD"
-        echo "[INFO] Root detected. Executing as '$BREW_USER': brew $*"
+        echo "[INFO]:brew for root user [mod from linuxbrew]."
+        echo "[INFO]:Executing as '$BREW_USER': brew $*"
 
         # 建议切换到该用户的家目录，避免权限报错
         cd "/home/$BREW_USER" 2> /dev/null || exit 1

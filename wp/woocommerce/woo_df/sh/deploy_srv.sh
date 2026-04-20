@@ -73,7 +73,7 @@ ln_update_sym() {
     [[ -e $sym_path ]] && rm -rf "$sym_path"
     # 单纯使用-nf仍然和gnu ln的 -T选项效果有差别
     ln -snfv "$target" "$sym_path" ||{
-        echo "[error]:创建符号链接[$sym_path]->[$target] 失败" >& 2
+        echo "[error]:创建符号链接[$sym_path]->[$target] 失败" >&2
         exit 1
     }
 }
