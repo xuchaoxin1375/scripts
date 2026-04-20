@@ -19,8 +19,8 @@ command -v vim &> /dev/null && alias vi=vim
 # fail2ban系列命令缩写f2b或fb
 alias fbc='fail2ban-client'
 alias sfbc='sudo fail2ban-client' #非root用户使用,也兼容root用户使用
-# brew 
-[[ $OSTYPE != 'darwin'* && $(id -u) -eq 0 ]] && alias brew=brewr 
+# brew 已经安装的情况下
+[[ $OSTYPE != 'darwin'* && $(id -u) -eq 0  ]] && command -v 'brew' >& /dev/null  && alias brew=brewr 
 
 alias curl='curl --proto-default https'
 alias fbcs='fail2ban-client status'
