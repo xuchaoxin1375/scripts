@@ -26,10 +26,12 @@ SH_WWW="/www/sh" #末尾不要加斜杠/
 # sh="$SH_SYM" # 简写或者直接用SH_SYM
 _REPO_BASE="repos/scripts"
 _SH_RELATIVE="wp/woocommerce/woo_df/sh"
-SCRIPT_ROOT_DEFAULT="$HOME/$_REPO_BASE"
+SCRIPT_ROOT_DEFAULT="/$_REPO_BASE" # 默认的仓库目录(scripts仓库总目录)
 SCRIPT_ROOT="${SCRIPT_ROOT:-"$SCRIPT_ROOT_DEFAULT"}" # /root/repos/scripts 或 /home/user/repos/scripts
 # shell脚本目录(sh)
 SH_SCRIPT_DIR="$SCRIPT_ROOT/$_SH_RELATIVE"
+
+# 创建shell脚本目录的短路径(符号链接)
 ln -snfv "$SH_SCRIPT_DIR" "$SH_SYM"
 # 移除可能的就链接,重新创建链接
 # unlink $SH_SYM # 可以使用unlink命令安全删除符号链接(不会误删目标目录内的文件)

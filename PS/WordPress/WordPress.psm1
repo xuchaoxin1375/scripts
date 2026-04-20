@@ -1576,11 +1576,12 @@ function Get-WpOrdersByEmailOnServers
     Write-Host "open result file ..."
     Start-Process $uniqueRes
 }
-function Update-ServerRepos
+function Update-Servers
 {
     <# 
     .SYNOPSIS
-    批量运行服务器上的某个脚本(bash 命令行)
+    批量运行:在服务器上执行某个命令行,例如运行服务器上的某个脚本(bash 命令行)
+    
     采用线程池的方式对所有服务器执行相同的命令行
     .NOTES
     使用ssh -n -T root@$server "command line"的方式执行命令行
@@ -1591,7 +1592,8 @@ function Update-ServerRepos
     param (
         $ServerConfig = $server_config,
         $WorkingDirectory = '/www/',
-        $cmd = "/update_repos.sh -c",
+        [Alias('Script')]
+        $Cmd = "/update_repos.sh -c",
         $Threads = 5
     )
     $servers = Get-ServerList -Path $ServerConfig
