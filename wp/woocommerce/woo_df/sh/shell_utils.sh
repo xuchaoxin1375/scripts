@@ -308,7 +308,7 @@ ln_update_sym() {
     # 单纯使用-nf仍然和gnu ln的 -T选项效果有差别
     ln -snfv "$target" "$sym_path" || {
         echo "[error]:创建符号链接[$sym_path]->[$target] 失败" >&2
-        exit 1
+        return 1
     }
 }
 # Install ble.sh framework for bash
@@ -437,7 +437,7 @@ options:
     cd "$install_dir" || return 1
 
     git clone https://github.com/sigoden/argc-completions.git
-    cd argc-completions || exit 1
+    cd argc-completions || return 1
     ./scripts/download-tools.sh
     # bash/zsh/powershell/fish/nushell/elvish/xonsh/tcsh
     ./scripts/setup-shell.sh "$shell"
@@ -1418,10 +1418,10 @@ new_user_sudo() {
     local username="${1:-linuxbrew}"
     if ! command -v sudo &> /dev/null; then
         echo "[sudo] command is not available."
-        exit 2
+        return 2
     elif ! command -v visudo &> /dev/null; then
         echo "[visudo] command is not available."
-        exit 2
+        return 2
     fi
     if id "$username" > /dev/null 2>&1; then
         echo "用户 $username 已存在，跳过创建。"
@@ -1441,7 +1441,7 @@ new_user_sudo() {
 
         else
             echo "错误：系统中未找到 useradd 或 adduser 命令。"
-            exit 1
+            return 1
         fi
     fi
 
@@ -1460,7 +1460,7 @@ new_user_sudo() {
     else
         echo "❌ 语法错误！规则未被应用。"
         rm /tmp/new_sudo_rule
-        exit 1
+        return 1
     fi
 
     # 4. 清理临时文件
@@ -1514,7 +1514,7 @@ EOF
                 ;;
             -h | --help)
                 echo "$usage"
-                exit 0
+                return 0
                 ;;
             --)
                 shift
@@ -1523,7 +1523,7 @@ EOF
             -?*)
                 echo "Unknown option: " >&2
                 show_help
-                exit 1
+                return 1
                 ;;
             *)
                 args_pos+=("$1")
@@ -1539,7 +1539,7 @@ EOF
     if command -v brew > /dev/null 2>&1; then
         echo "Homebrew/Linuxbrew 已安装;如果需要重新安装,请移除brew(查看帮助中的链接)."
         brew --version
-        exit 1 # 退出安装
+        return 1 # 退出安装
     else
         echo "正在准备安装homebrew..."
     fi
@@ -1634,12 +1634,12 @@ brewr() {
         echo "[INFO]:Executing as '$BREW_USER': brew $*"
 
         # 建议切换到该用户的家目录，避免权限报错
-        cd "/home/$BREW_USER" 2> /dev/null || exit 1
+        cd "/home/$BREW_USER" 2> /dev/null || return 1
         # 使用指定用户身份执行标准安装的brew
         sudo -u "$BREW_USER" /home/linuxbrew/.linuxbrew/bin/brew "$@"
         local EXIT_CODE=$?
 
-        cd "$ORIG_DIR" 2> /dev/null || exit 1
+        cd "$ORIG_DIR" 2> /dev/null || return 1
         return $EXIT_CODE
     else
         # 如果不是 root 用户，直接调用原始的 brew 命令
