@@ -1475,12 +1475,24 @@ install_linuxbrew() {
 usage:
     install_linuxbrew [options] [username]
         默认使用默认用户名linuxbrew,如果指定用户名不存在,则创建
+    此脚本适用于国外服务器(或网络条件好的情况),尤其是只有root用户的情况下,可以创建brew专用用户;
+
+    注意:相关依赖不会自动安装(当依赖程序不存在是请自行安寨跟,例如使用系统自带包管理器安装)
+    
+    国内网络用户(非root用户下):如果没有条件配置代理(或者代理设置不便)
+    对于个人电脑(macos),考虑国内方案:https://gitee.com/cunkai/HomebrewCN #cn方案
+    对于linux用户,使用上述方案可能卡住要多试几下(过程中并非全程快速下载,部分组件依然可能因为网络耗时);
+
 options:
     -u,--user <username> 指定用户名(默认为linuxbrew)
     -h,--help 显示帮助
 documents:
     https://docs.brew.sh/
     https://docs.brew.sh/Homebrew-on-Linux
+reference
+    - uninstall:https://github.com/homebrew/install#uninstall-homebrew
+mirror:
+    - https://developer.aliyun.com/mirror/homebrew
 requirements:
     安装系统依赖：在运行 Homebrew 安装脚本前，确保系统已安装必要的构建工具。根据你的 Linux 发行版运行相应命令：
 
@@ -1489,8 +1501,6 @@ requirements:
 - CentOS Stream 或 RHEL: sudo dnf group install 'Development Tools' 和 sudo dnf install procps-ng curl file
 - Arch Linux: sudo pacman -S base-devel procps-ng curl file git
 
-reference
-- uninstall:https://github.com/homebrew/install#uninstall-homebrew
 EOF
     )
     # 参数解析
@@ -1556,6 +1566,8 @@ EOF
         grep -q '^[^#].*brew shellenv' ~/."$shellname"rc ||
             echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/."$shellname"rc
         # echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.zshrc
+        # 查看相关配置是否插入成功
+        grep 'brew shellenv' ~/."$shellname"rc
     done
 
 }
