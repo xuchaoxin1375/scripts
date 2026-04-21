@@ -382,10 +382,11 @@ zstyle '"'*:compinit'"' arguments -i -u \
             # shellcheck disable=SC2016
             # shellcheck disable=SC2125
             zsh_bindkey_config='
+# shellcheck disable=SC2148
 # 将 Tab 和 Shift 和 Tab 设置为更改菜单中的选择(menu-select)
 # 这样， Tab 和 ShiftTab 分别将菜单中的选择项向右和向左移动，而不是退出菜单：
 bindkey              '^I' menu-select
-bindkey "$terminfo[kcbt]" menu-select
+[[ -n "${terminfo[kcbt]}" ]] && bindkey "${terminfo[kcbt]}" menu-select
 
 # 使 Enter 始终提交命令行
 # 这样一来，即使您在菜单中， Enter 也始终会提交命令行：
