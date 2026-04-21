@@ -304,10 +304,20 @@ if is_shell zsh; then
   # rm -rf ~/.zcompdump* # 每次重建有开销,手动重建
 
   # 为设置zsh设置help命令(对于bash,zsh混用用户友好)
+  if is_darwin; then
+    # macos 上的zsh行为和linux上有些不同,可能要额外的设置,才能够提高帮助精度,
+    # 否则内置命令的帮助可能只有zshbuiltin首页
+    # 告诉 zsh 帮助文件的搜寻路径（虽然默认可能为空，但指定了 autoload 就会生效）
+    export HELPDIR
+    HELPDIR=/usr/share/zsh/$(zsh --version | awk '{print $2}')/help
+  fi
+  # 卸载 alias 形式的 run-help
   unalias run-help 2> /dev/null
   # 如果系统路径里找不到，可以手动把函数路径加入 fpath 数组（可选）
   # [[ -d /usr/share/zsh/functions/Misc ]] && fpath=(/usr/share/zsh/functions/Misc $fpath)
+  # 重新以函数形式载入 run-help
   autoload -Uz run-help
+  # 定义辅助别名方便使用
   alias help=run-help
 fi
 export INPUTRC="$sh/.inputrc.conf"
