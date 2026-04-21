@@ -42,7 +42,7 @@ W:\wp_sites\wp_plugins\price_pay\paypal-online-payment-for-woocommerce
 
 .EXAMPLE
 # 只清除指定插件
-$plugin="wp-linkpayment-v2"
+$plugin="xpaid_pay"
 . $scripts/wp/update_plugins.ps1  -Depth 2 -WpSitesDir $my_wp_sites  -RemovePluginsOfSites -PluginsToRemove $plugin
 # zw,zsh可以跳过下面语句
 . $scripts/wp/update_plugins.ps1 -Depth 2 -WpSitesDir $wp_sites  -RemovePluginsOfSites -PluginsToRemove $plugin

@@ -26,7 +26,6 @@ _SHELL_DEBUG=0
 #   return 0
 # fi
 
-
 # 判断当前系统(平台)类型
 echo "Current Os type is [$OSTYPE]"
 if [[ $OSTYPE == "darwin"* ]]; then
@@ -95,7 +94,6 @@ source "$sh"/shell_desktop.sh
 # PATH变量修补
 add_to_path "$HOME/.local/bin"
 add_to_path "$HOME/bin"
-
 
 if is_shell bash; then
   # 配置调试用途的PS4
@@ -288,7 +286,11 @@ if is_shell zsh; then
   # rm -rf ~/.zcompdump* # 每次重建有开销,手动重建
 
   # 为设置zsh设置help命令(对于bash,zsh混用用户友好)
-  # alias help=run-help
+  unalias run-help 2> /dev/null
+  # 如果系统路径里找不到，可以手动把函数路径加入 fpath 数组（可选）
+  # [[ -d /usr/share/zsh/functions/Misc ]] && fpath=(/usr/share/zsh/functions/Misc $fpath) 
+  autoload -Uz run-help
+  alias help=run-help
 fi
 export INPUTRC="$sh/.inputrc.conf"
 echo "update inputrc [$INPUTRC]..."

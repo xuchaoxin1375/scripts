@@ -1444,6 +1444,7 @@ new_user_sudo() {
         echo "[visudo] command is not available."
         return 2
     fi
+    # 避免重复创建已有用户
     if id "$username" > /dev/null 2>&1; then
         echo "用户 $username 已存在，跳过创建。"
     else
@@ -1501,7 +1502,9 @@ usage:
     注意:相关依赖不会自动安装(当依赖程序不存在是请自行安寨跟,例如使用系统自带包管理器安装)
     
     国内网络用户(非root用户下):如果没有条件配置代理(或者代理设置不便)
-    对于个人电脑(macos),考虑国内方案:https://gitee.com/cunkai/HomebrewCN #cn方案
+    对于个人电脑(macos),考虑国内方案:
+    - https://brew-cn.mintimate.cn/
+    - https://gitee.com/cunkai/HomebrewCN #cn方案
     对于linux用户,使用上述方案可能卡住要多试几下(过程中并非全程快速下载,部分组件依然可能因为网络耗时);
 
 options:
@@ -1513,6 +1516,8 @@ documents:
 reference
     - uninstall:https://github.com/homebrew/install#uninstall-homebrew
 mirror:
+    - https://mirrors.ustc.edu.cn/help/brew.git.html
+    - https://mirrors.tuna.tsinghua.edu.cn/help/homebrew/
     - https://developer.aliyun.com/mirror/homebrew
 requirements:
     安装系统依赖：在运行 Homebrew 安装脚本前，确保系统已安装必要的构建工具。根据你的 Linux 发行版运行相应命令：
@@ -1593,7 +1598,9 @@ EOF
     echo "[INFO]:Reload shell rc file to take effect..."
     # exec "$0" # 不要在函数中直接执行此行,交互式中才可以
     echo "[INFO]:Run command: exec \$SHELL"
-    # 针对
+    # 针对常用shell尝试自动刷新配置生效
+    is_shell "zsh" && exec zsh
+    is_shell "bash" && exec bash
 
 }
 # 运行brew命令(借用linuxbrew用户权限)
