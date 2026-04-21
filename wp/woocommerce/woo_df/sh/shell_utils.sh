@@ -38,8 +38,57 @@ print_env_path() {
 # examples:
 #   print_env "$PATH" #建议带上双引号,放置带有空格的变量值单词分割后显示不准确
 #   print_env PATH #支持直接传递变量名,但是可靠性不保证(支持bash)
+#   print_env "$fpath" -s " " #指定分隔符为空格
 print_env() {
-    local env="$*"
+    local env
+    local separator=':'
+    # 参数解析
+    # shellcheck disable=SC2016
+    usage='
+查看指定环境变量取值,分割:换行显示
+不指定值,则打印PATH环境变量
+
+Usage: print_env [options] [env]
+Options:
+    -s [separator]  指定分隔符,默认为":"
+    -h,--help       显示帮助信息
+
+
+examples:
+  print_env "$PATH" #建议带上双引号,放置带有空格的变量值单词分割后显示不准确
+  print_env PATH #支持直接传递变量名,但是可靠性不保证(支持bash)
+  print_env "$fpath" -s " " #指定分隔符为空格
+  
+'
+    local args_pos=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h | --help)
+                echo "$usage"
+                return 0
+                ;;
+            -s | --separator)
+                separator="$2"
+                shift
+                ;;
+            --)
+                shift
+                break
+                ;;
+            -?*)
+                echo "Unknown option: " >&2
+                echo "$usage"
+                return 1
+                ;;
+            *)
+                args_pos+=("$1")
+                ;;
+        esac
+        shift
+    done
+    set -- "${args_pos[@]}"
+    env="$*"
+    # 参数解析并调整完毕
     # echo "value: $env"
     # 定义空参数时的默认行为:
     [[ -z "$env" ]] && env="$PATH"
@@ -69,7 +118,7 @@ print_env() {
         fi
     fi
     # echo "value: $env"
-    echo "$env" | tr ':' '\n'
+    echo "$env" | tr "$separator" '\n'
 }
 # 添加路径到PATH变量中(幂等操作,防止重复添加相同路径造成冗余)
 # 对语句 [[ ":$PATH:" != *":/your/path:"* ]] && export PATH="/your/path:$PATH" 的函数封装
@@ -790,23 +839,24 @@ confirm() {
     # 处理可能出现的选项
     local verbose=false
     local usage="
-    suggestion
-Usage: 
-    confirm [OPTIONS] [PROMPT] [DEFAULT_SUGGESTION] [ASSUME_ANSWER]
-    confirm [OPTIONS] [PROMPT] [y|Y|n|N] [ASSUME_ANSWER]
+    Usage: 
+        confirm [OPTIONS] [PROMPT] [DEFAULT_SUGGESTION] [ASSUME_ANSWER]
+        confirm [OPTIONS] [PROMPT] [y|Y|n|N] [ASSUME_ANSWER]
 
-Arguments:
-  PROMPT                      The message to display to the user.
-  DEFAULT_SUGGESTION          Presentation of default choice:
-                              y or Y -> [Y/n] (Default is Yes)
-                              n or N -> [y/N] (Default is No)
-                              (Omitting means no default, requiring explicit input)->[y/n]
-  ASSUME_ANSWER               Automatic answer if user presses Enter (y/n).
+    Arguments:
+        PROMPT                      The message to display to the user.
+        DEFAULT_SUGGESTION          Presentation of default choice:
+                                    y or Y -> [Y/n] (Default is Yes)
+                                    n or N -> [y/N] (Default is No)
+                                    (Omitting means no default, requiring explicit input)->[y/n]
+        ASSUME_ANSWER               Automatic answer if user presses Enter (y/n).
 
-Options:
-  -v, --verbose    Show detailed process.
-  -h, --help       Show this help message.
-  "
+    Options:
+        -v, --verbose    Show detailed process.
+        -h, --help       Show this help message.
+    examples:
+
+    "
     # echo "解析函数参数..."
     local positional=()
     while [[ $# -gt 0 ]]; do
@@ -863,7 +913,10 @@ Options:
 
         # 交互式询问（支持重试）
         while true; do
-            read -r -p "${prompt} ${yn}: " answer
+            # read -r -p "${prompt} ${yn}: " answer #bash 写法,zsh不支持这种用法,而是有自己的方式
+            # 为了兼容性,这里拆成2步,使用echo打印提示
+            echo "${prompt} ${yn}: "
+            read -r answer
             answer="${answer:-$default_suggestion}" # 用户直接回车则取默认值
             case "${answer,,}" in                   # ${,,} 转小写 (bash 4+)
                 y | yes)
@@ -1348,39 +1401,7 @@ help_bash() {
     # cmd="$1"
     bash -c "help $* "
 }
-# 在非bash(zsh)或bash中可以通用的查询bash内置命令的函数
-# 支持-N参数控制是否显示行号;
-help() {
-    local args
-    local number_flag=true
-    while [[ $# -gt 0 ]]; do
 
-        case "$1" in
-            -N | --no-numbers)
-                number_flag=false
-                ;;
-            *)
-                args+=("$1")
-                ;;
-        esac
-        shift
-    done
-    set -- "${args[@]}"
-    # 黄色的提示:当前help输出来自于bash
-    YELLOW='\e[31m'
-    END='\e[0m'
-    shell=$(current_shell)
-    tip="${YELLOW}[START]当前shell为$shell,而help输出来自于bash ${END}"
-
-    is_shell "bash" || echo -e "$tip"
-    if [[ $number_flag == true ]]; then
-        help_bash "$*" | nl
-    else
-        help_bash "$*"
-    fi
-    is_shell "bash" || echo -e "$tip"
-
-}
 #  列出linux系统上各种类型用户的详细信息（类似表格输出）
 # 基于getent passwd 的输出改造
 get_user_list_linux() {
@@ -1567,8 +1588,12 @@ EOF
             echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/."$shellname"rc
         # echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.zshrc
         # 查看相关配置是否插入成功
-        grep 'brew shellenv' ~/."$shellname"rc
+        grep -Hn 'brew shellenv' ~/."$shellname"rc
     done
+    echo "[INFO]:Reload shell rc file to take effect..."
+    # exec "$0" # 不要在函数中直接执行此行,交互式中才可以
+    echo "[INFO]:Run command: exec \$SHELL"
+    # 针对
 
 }
 # 运行brew命令(借用linuxbrew用户权限)

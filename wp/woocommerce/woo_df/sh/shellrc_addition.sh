@@ -286,6 +286,9 @@ if is_shell zsh; then
 
   # 避免compinit: bad math expression: operand expected at end of string 的错误
   # rm -rf ~/.zcompdump* # 每次重建有开销,手动重建
+
+  # 为设置zsh设置help命令(对于bash,zsh混用用户友好)
+  # alias help=run-help
 fi
 export INPUTRC="$sh/.inputrc.conf"
 echo "update inputrc [$INPUTRC]..."
