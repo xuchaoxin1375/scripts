@@ -9,6 +9,8 @@ alias update_alias="source '$sh/shell_alias.sh'"
 alias bashrc='source ~/.bashrc'
 alias zshrc='source ~/.zshrc'
 alias cls=clear
+alias ls='\ls --color=auto' #macos 上可能默认没有启用颜色
+alias lsdir='ls -d */' #列出所有目录(不含文件)
 # man手册(macos bsd版本的命令)
 # 例如,使用 bman ln 即可查看bsd版本的ln的原生帮助
 alias bman='man -M /usr/share/man'
