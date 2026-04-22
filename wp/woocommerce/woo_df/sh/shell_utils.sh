@@ -234,6 +234,7 @@ log() {
     local dt
     dt="$(date +%F-%T.%3N)"
     echo "[$dt] $*"
+    # echo "[$(date +%F-%T.%3N)] $*"
 }
 
 # 使用GNU版本的命令工具集代替macos自带的bsd版工具;
@@ -361,7 +362,7 @@ ln_update_sym() {
     }
 }
 # 从原码编译安装zsh5.9
-install_zsh_bymake() {
+install_zsh_bymake_short() {
     # 安装依赖
     sudo apt install -y libncurses-dev libpcre2-dev
     cd ~ || exit 1
@@ -376,6 +377,193 @@ install_zsh_bymake() {
 
     # 验证
     /usr/local/bin/zsh --version
+}
+# zsh安装器,安装指定版本的zsh,支持指定安装选项
+install_zsh_bymake() {
+    set -euo pipefail
+    usage="
+    install_zsh_bymake - Build and install Zsh from source (Linux)
+
+    USAGE:
+        install_zsh_bymake [OPTIONS] [VERSION] [PREFIX] [SRC_DIR]
+    OPTIONS:
+        -h,--help       Print this help message and exit
+
+    DESCRIPTION:
+        Compile and install Zsh from source code with automatic dependency handling.
+        Designed for reproducibility, idempotency, and cross-distribution compatibility.
+
+    PARAMETERS:
+        VERSION     Zsh version to install (default: 5.9)
+        PREFIX      Installation prefix (default: /usr/local)
+                    Example: /usr/local, /opt/zsh
+
+        SRC_DIR     Source code directory (default: $HOME/src)
+                    Used to store downloaded and extracted source files
+
+    FEATURES:
+        - Idempotent installation (safe to run multiple times)
+        - Automatic dependency installation (apt / yum / dnf)
+        - Parallel build using all CPU cores
+        - Download caching (avoids repeated downloads)
+        - Optional default shell configuration
+
+    EXAMPLES:
+        # Install default version (5.9)
+        install_zsh_bymake
+
+        # Install specific version
+        install_zsh_bymake 5.8
+
+        # Custom install location
+        install_zsh_bymake 5.9 /opt/zsh
+
+        # Full customization
+        install_zsh_bymake 5.9 /opt/zsh /tmp/build
+
+    FILES:
+        Source archive:
+            zsh-<VERSION>.tar.xz
+
+        Install path:
+            <PREFIX>/bin/zsh
+
+    POST-INSTALL:
+        After installation, you may need to re-login for the new shell to take effect.
+
+        To manually switch shell:
+            chsh -s <PREFIX>/bin/zsh
+
+    NOTES:
+        - Root privileges (sudo) are required for installation
+        - Internet connection is required for downloading source code
+        - Build tools (gcc, make) will be installed automatically if missing
+
+    TROUBLESHOOTING:
+        If build fails:
+            - Ensure dependencies are installed
+            - Check available disk space
+            - Verify network connectivity
+
+        If zsh is not default:
+            - Ensure <PREFIX>/bin/zsh is listed in /etc/shells
+
+    SEE ALSO:
+        zsh --version
+        man zsh
+    "
+    # 参数解析
+    local args_pos=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h | --help)
+                echo "$usage"
+                return 0
+                ;;
+            --)
+                shift
+                break 
+                ;;
+            -?*)
+                echo "Unknown option: " >&2
+                echo "$usage"
+                return 1
+                ;;
+            *)
+                args_pos+=("$1")
+                ;;
+        esac
+        shift
+    done
+    set -- "${args_pos[@]}"
+    # 参数解析并调整完毕
+    # ===== 参数（configurable parameters）=====
+    local ZSH_VERSION="${1:-5.9}"
+    local PREFIX="${2:-/usr/local}"
+    local SRC_DIR="${3:-$HOME/src}"
+    local BUILD_DIR="$SRC_DIR/zsh-$ZSH_VERSION"
+    local TAR_FILE="zsh-$ZSH_VERSION.tar.xz"
+    local DOWNLOAD_URL="https://downloads.sourceforge.net/project/zsh/zsh/$ZSH_VERSION/$TAR_FILE"
+
+    echo "==> [INFO] Install Zsh $ZSH_VERSION from source"
+
+    # ===== 检查是否已安装（idempotency）=====
+    if command -v zsh > /dev/null 2>&1; then
+        local CURRENT_VERSION
+        CURRENT_VERSION="$(zsh --version | awk '{print $2}')"
+        if [ "$CURRENT_VERSION" = "$ZSH_VERSION" ]; then
+            echo "==> [SKIP] Zsh $ZSH_VERSION already installed"
+            return 0
+        else
+            echo "==> [INFO] Existing Zsh version: $CURRENT_VERSION (will upgrade)"
+        fi
+    fi
+
+    # ===== 安装依赖（dependency management）=====
+    if command -v apt > /dev/null 2>&1; then
+        sudo apt update
+        sudo apt install -y \
+            build-essential \
+            libncurses-dev \
+            libpcre2-dev \
+            wget \
+            xz-utils
+    elif command -v yum > /dev/null 2>&1; then
+        sudo yum groupinstall -y "Development Tools"
+        sudo yum install -y ncurses-devel pcre2-devel wget xz
+    elif command -v dnf > /dev/null 2>&1; then
+        sudo dnf groupinstall -y "Development Tools"
+        sudo dnf install -y ncurses-devel pcre2-devel wget xz
+    else
+        echo "[ERROR] Unsupported package manager"
+        return 1
+    fi
+
+    # ===== 准备源码目录（workspace）=====
+    mkdir -p "$SRC_DIR"
+    cd "$SRC_DIR"
+
+    # ===== 下载源码（download with cache）=====
+    if [ ! -f "$TAR_FILE" ]; then
+        echo "==> [INFO] Downloading $TAR_FILE"
+        wget -O "$TAR_FILE" "$DOWNLOAD_URL"
+    else
+        echo "==> [CACHE] Using existing $TAR_FILE"
+    fi
+
+    # ===== 解压（clean build）=====
+    rm -rf "$BUILD_DIR"
+    tar xf "$TAR_FILE"
+    cd "$BUILD_DIR"
+
+    # ===== 配置（configure step）=====
+    ./configure \
+        --prefix="$PREFIX" \
+        --enable-multibyte \
+        --with-tcsetpgrp
+
+    # ===== 编译（parallel build）=====
+    make -j"$(nproc)"
+
+    # ===== 安装（install step）=====
+    sudo make install
+
+    # ===== 验证（verification）=====
+    if [ -x "$PREFIX/bin/zsh" ]; then
+        "$PREFIX/bin/zsh" --version
+    else
+        echo "[ERROR] Installation failed"
+        return 1
+    fi
+
+    # ===== 设置默认 shell（optional but recommended）=====
+    if ! grep -q "$PREFIX/bin/zsh" /etc/shells; then
+        echo "$PREFIX/bin/zsh" | sudo tee -a /etc/shells
+    fi
+
+    chsh -s "$PREFIX/bin/zsh" || true
+
+    echo "==> [DONE] Zsh $ZSH_VERSION installed successfully"
 }
 # Install ble.sh framework for bash
 # 安装前检查依赖,以及避免重复安装重复插入配置项到~/.bashrc

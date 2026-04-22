@@ -3,6 +3,7 @@
 SITE_LIST_FILE=""
 # verbose开关,注意取名和verbose函数区别,这里使用大小表示变量
 VERBOSE=false
+DRY_RUN=false
 
 project_roots_default=('/www/wwwroot' '/wwwdata/wwwroot')
 parse_args() {
@@ -38,6 +39,11 @@ options:
             -s | --site-list-file)
                 SITE_LIST_FILE="$2"
                 shift 2
+                ;;
+            --dry-run)
+                # echo "--- dry run ---"
+                DRY_RUN=true
+                shift
                 ;;
             -H | -P | -u)
                 # 这三个选项必须有参数值
@@ -151,7 +157,9 @@ SELECT
 cnt=0
 removing=0 # 统计被移除的站点数
 succeed=0
-
+log() {
+    echo "[$(date +%F-%T.%3N)] $*"
+}
 for pr in "${project_roots[@]}"; do
     [[ -e $pr ]] || continue
     echo "processing sites in project:[$pr]"
@@ -176,11 +184,20 @@ for pr in "${project_roots[@]}"; do
             db_name="${owner}_${site}"
             # mysql "${args[@]}" -e "SHOW DATABASES LIKE '${db_name}';"
             # 除了删除数据库,还可以选择删除对应的专用用户(如果有的话):DROP USER '数据库用户名'@'localhost';
-            mysql "${args[@]}" -e "DROP DATABASE IF EXISTS \`${db_name}\`" &&
-                yes | btcli site del "$site" &&
-                ((succeed++))
-            # 移除可能多余的上层目录
-            rm -rf "$site_path" >&/dev/null
+
+            # START-DW 删除站点(危险区域)🎈
+            log "[INFO] 尝试删除网站[$site]:配套数据库${db_name}"
+            if [[ $DRY_RUN == "true" ]]; then
+                mysql "${args[@]}" -e "DROP DATABASE IF EXISTS \`${db_name}\`" &&
+                    yes | btcli site del "$site" &&
+                    ((succeed++))
+                # 移除可能多余的上层目录
+                rm -rf "$site_path" >&/dev/null
+            else
+                log "[DRY-RUN] 模拟删除"
+            fi
+            # END-DW 结束删除站点(危险区域)🎈
+
             # rmx "$site_path" && #rmx 强力删除,自带-rf效果
             # 移除nginx配置文件
             # rm -fv /www/server/panel/vhost/nginx/"${site}".conf >&/dev/null
