@@ -360,6 +360,23 @@ ln_update_sym() {
         return 1
     }
 }
+# 从原码编译安装zsh5.9
+install_zsh_bymake() {
+    # 安装依赖
+    sudo apt install -y libncurses-dev libpcre2-dev
+    cd ~ || exit 1
+
+    # 下载编译
+    wget https://sourceforge.net/projects/zsh/files/zsh/5.9/zsh-5.9.tar.xz
+    tar xf zsh-5.9.tar.xz
+    cd zsh-5.9 || exit 1
+    ./configure --prefix=/usr/local
+    make -j"$(nproc)"
+    sudo make install
+
+    # 验证
+    /usr/local/bin/zsh --version
+}
 # Install ble.sh framework for bash
 # 安装前检查依赖,以及避免重复安装重复插入配置项到~/.bashrc
 install_blesh() {

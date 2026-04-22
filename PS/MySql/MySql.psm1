@@ -150,7 +150,7 @@ function Import-MysqlFile
         
             # return 
 
-            # $DBExists = Invoke-Expression $CheckDBCmd
+            # $dbExists = Invoke-Expression $CheckDBCmd
             if(!$DatabaseName )
             {
                 Write-Warning "You did not specify the database name!"
@@ -161,9 +161,9 @@ function Import-MysqlFile
             if($DatabaseName)
             {
 
-                $DBExists = Get-MysqlDbInfo -Name $DatabaseName -Server $Server -Port $Port -MySQLUser $MySqlUser -key $key
+                $dbExists = Get-MysqlDbInfo -Name $DatabaseName -Server $Server -Port $Port -MySQLUser $MySqlUser -key $key
             
-                if(!$DBExists)
+                if(!$dbExists)
                 {
                 
                     # Write-Host "数据库不存在!"
@@ -684,6 +684,16 @@ function Start-MySqlQueryForDbs
      Start-MySqlQueryForDbs -Server $env:DF_SERVER -MysqlUser rootx -Mysqlkey $env:MySqlKey_DF2  -Sql @'
 select * from wp_options WHERE option_name LIKE 'woocommerce_flat_rate_%_settings';
 '@
+    .EXAMPLE
+    指定数据库名列表
+    命令行中安全地指定方式有以下方式:
+    -Dbs "7.us","7.uk" # 使用引号包裹每个数组名(尤其是带有`.`可能会被shell解释为访问对象的属性)
+    或者
+    -Dbs @("7.us","7.uk") # 更加明显的数组写法
+    不推荐省略引号,例如
+    -Dbs 7.us,7.uk # 如果被错误解释;
+    就算只有单个指定的数据库名,也建议用引号包裹!
+    -Dbs "7.us" 或 -Dbs @("7.us")
     #>
     [CmdletBinding(DefaultParameterSetName = "InLineSql")]
     param (
@@ -691,31 +701,52 @@ select * from wp_options WHERE option_name LIKE 'woocommerce_flat_rate_%_setting
         $MysqlUser = "root",
         $Mysqlkey = $env:MySqlKey_LOCAL,
         $Port = 3306,
+        # [string[]]$Dbs = @(),
+        $Dbs = '',
         [parameter(ParameterSetName = "InLineSql")]
         $Sql = 'show tables;',
         # 从sql文件中读取sql语句
         [parameter(ParameterSetName = "SqlFile")]
         $Path = ""
     )
-    $dbs = Get-MySqlDatabaseNameNative -Server $Server -User $MysqlUser -Password $Mysqlkey -Port $Port
+    # 如果用户指定了数据库名列表,则优先使用数据库列表,否则计算全部用户数据库
+    if($Dbs)
+    {
+        $Dbs = @($Dbs)
+        echo "Dbs: $Dbs"
+        $Dbs = $Dbs | Where-Object { $_ -ne "" }
+    }
+    else
+    {
+        $dbs = Get-MySqlDatabaseNameNative -Server $Server -User $MysqlUser -Password $Mysqlkey -Port $Port
+    }
 
     $key = Get-MysqlKeyInline $Mysqlkey
     # 遍历数据库并执行SQL语句
-    $dbs | ForEach-Object { 
-        $Db = $_
-        Write-Host "Querying database [$Db]" -ForegroundColor Cyan
+    # $dbs | ForEach-Object { 
+    foreach ($db in $dbs)
+    { 
+    
+        # $db = $_
+        Write-Host "Querying database [$db]" -ForegroundColor Cyan
 
-        $useDbSql = "use $Db; "
+        $useDbSql = "use $db; "
         if ($PSCmdlet.ParameterSetName -eq "InLineSql")
         {
-
+            # 为了防止用户将sql文件传递给sql参数(内联语句而非文件)，检查sql参数是否为文件路径，如果是拒绝执行
+            if (Test-Path $Sql)
+            {
+                Write-Error "The sql parameter cannot be a file path. Please use the [-Path] parameter to specify a file path."
+                return $False
+            }
             mysql -u $MysqlUser -h $Server $key -P $Port -e $($useDbSql + $Sql)
         }
-        elseif($PSCmdlet.ParameterSetName -eq "SqlFile") {
+        elseif($PSCmdlet.ParameterSetName -eq "SqlFile")
+        {
             # 直接使用powershell执行mysql 命令
             # mysql -u $MysqlUser -h $Server $key -P $Port -e $($useDbSql + (Get-Content $Path -Raw))
             # 借用cmd 的`<`输入重定向
-            cmd /c "mysql -u $MysqlUser -h $Server $key -P $Port $Db <  $Path"
+            cmd /c "mysql -u $MysqlUser -h $Server $key -P $Port $db <  $Path"
         }
         # Write-Host $cmd
     }
