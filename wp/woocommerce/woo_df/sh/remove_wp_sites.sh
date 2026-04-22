@@ -158,14 +158,14 @@ cnt=0
 removing=0 # 统计被移除的站点数
 succeed=0
 log() {
-    echo "[$(date +%F-%T.%3N)] $*"
+    echo -e "[$(date +%F-%T.%3N)] $*"
 }
 for pr in "${project_roots[@]}"; do
     [[ -e $pr ]] || continue
     echo "processing sites in project:[$pr]"
     for site in "${sites[@]}"; do
         ((cnt++))
-        verbose && echo "cleaning[$cnt]:$site"
+        verbose && log "cleaning[$cnt]:$site"
         # 扫描网站根目录(或站点顶级目录),例如/www/wwwroot/user/domain.com/
         # find "$pr" -mindepth 2 -maxdepth 2 -type d -iname "$site" -exec printf "[site dir to be remove (%s)]\n" {} \;
         # mapfile -t -d '' site_dirs < <(find "$pr" -mindepth 2 -maxdepth 2 -type d -iname "$site" -print0)
@@ -177,8 +177,8 @@ for pr in "${project_roots[@]}"; do
             tmp=${site_path#"$pr"}
             tmp=${tmp#/}
             owner=${tmp%%/*}
-            echo "[remove:$((removing++))] site root [$site_path]..."
-            verbose && echo "extract user of [${site_path}]-> ($owner)"
+            log "[remove:$((removing++))] site root [$site_path]..."
+            verbose && log "extract user of [${site_path}]-> ($owner)"
             # 精确处理
 
             db_name="${owner}_${site}"
@@ -186,15 +186,15 @@ for pr in "${project_roots[@]}"; do
             # 除了删除数据库,还可以选择删除对应的专用用户(如果有的话):DROP USER '数据库用户名'@'localhost';
 
             # START-DW 删除站点(危险区域)🎈
-            log "[INFO] 尝试删除网站[$site]:配套数据库${db_name}"
-            if [[ $DRY_RUN == "true" ]]; then
+            log "\t[INFO] 尝试删除网站[$site]:配套数据库${db_name}"
+            if [[ $DRY_RUN == "false" ]]; then
                 mysql "${args[@]}" -e "DROP DATABASE IF EXISTS \`${db_name}\`" &&
                     yes | btcli site del "$site" &&
                     ((succeed++))
                 # 移除可能多余的上层目录
                 rm -rf "$site_path" >&/dev/null
             else
-                log "[DRY-RUN] 模拟删除"
+                log "\t[DRY-RUN] 模拟删除"
             fi
             # END-DW 结束删除站点(危险区域)🎈
 
