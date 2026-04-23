@@ -210,7 +210,6 @@ class WC(API):
         """
         products_to_export = {}
         if mode == "existing_products_sku":
-
             products_to_export = self.existing_products_sku
         elif mode == "existing_products":
             products_to_export = self.existing_products
@@ -493,7 +492,6 @@ class WC(API):
                 info("Using existing products cache.")
 
         elif fetch_mode == FetchMode.FROM_DATABASE:
-
             self.get_product_from_db(
                 page_size=page_size, max_workers_fetch=max_workers_fetch
             )
@@ -593,7 +591,6 @@ class WC(API):
             # 普通方案: 逐页获取分类
             if max_workers == 0:
                 while True:
-
                     response = self.get_categories_page(page=page, page_size=page_size)
                     if not response.ok:
                         # api调用失败退出循环
@@ -878,7 +875,6 @@ class WC(API):
         res_json = response.json()
         product_id = res_json.get("id")
         if response.ok:
-
             info(
                 f"\tOK({self.progress_tracker.get_updated_progress_str()}):\
                     Product created:{{ Name:{name};sku:[{sku}] }}"

@@ -720,7 +720,7 @@ but different image, keep records [%s]",
         self, dbs, process_attribute=False, sku_suffix=None, strict_mode=False
     ):
         """
-        更新产品数据,让数据更加规范(包括产品描述清理等)
+        更新产品数据,让数据更加规范(包括产品描述加工或清理等)
 
         在从sqlite(db3)文件读取数据,调用get_data()的过程中已经做了初步的数据处理
         (比如价格处理,去除重复产品等,这些是团队业务必须的)
@@ -728,11 +728,10 @@ but different image, keep records [%s]",
         而下面的步骤是让数据更加规范(如果不处理,不一定会出现问题)
         - 统一编号(number)数据库中产品型号
         - (尽量)清理描述中不需要的内容,如邮箱地址、网址、电话号码等,
-            并且，对于库存这类消息,需要采集员采集时避免采集到或者及时替换为空翻译后阅读检查
+            并且，对于库存这类消息,需要采集员采集时避免采集到,或者及时替换为空,翻译后阅读检查
         - 处理不规范的属性值(建议采集员在采集时就认真抽查,毕竟事后查出问题再补救可能更浪费时间)
 
-        :param process_attribute: 是否处理属性值,默认为False(建议手动调用相关方法检查属性值后,
-            如果没有太多不规范或者无关紧要才设置为True)
+        :param process_attribute: 是否处理属性值,默认为False(建议手动调用相关方法检查属性值后,如果没有太多不规范或者无关紧要才设置为True)
         :param strict_mode: 是否严格模式(检查产品描述中的敏感信息),默认为False(可以加速导出,效果不好估计,但是数据可能包含邮箱或者url)
 
 
@@ -1327,8 +1326,8 @@ but different image, keep records [%s]",
         default_extension=".webp",
     ):
         """
-        导出csv文件
-        :param file_path: 文件路径
+        导出csv文件(包含数据分配和分割,然后导出csv)
+        :file_path: 文件路径
         :split_files: 单个csv文件最大行数,默认为10000,如果不能整除,则余数行数保存到最后一份;
         :average_split_files: 平均切割文件数,默认为0,表示不切割;
         :img_mode: 是否仅保存图片名作为"图片字段"(一般可以指定产品图片名字为产品sku),

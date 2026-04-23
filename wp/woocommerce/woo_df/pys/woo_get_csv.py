@@ -442,7 +442,7 @@ if __name__ == "__main__":
     ## 6.统计并处理产品分类(包括合并小分类,分配热销类);可以用data wragger查看cats统计结果
     cats = db.get_category_statistic(hot_class=LanguagesHotSaleX)  # type: ignore
     ## 7.更新产品数据(描述等)🎈
-    db.update_products(dbs=dbs, sku_suffix=SKU_SUFFIX, strict_mode=False)
+    db.update_products(dbs=dbs,process_attribute=True, sku_suffix=SKU_SUFFIX, strict_mode=False)
     ## 8.导出csv文件
     db.export_csv(
         dbs=dbs,

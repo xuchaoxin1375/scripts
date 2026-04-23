@@ -160,11 +160,42 @@ ATTRIBUTE_NAME = "Attribute 1 name"
 
 这些枚举值定义在专门的python模块中
 
-## 数据处理流程和规范化处理
+## 数据处理流程和规范化处理🎈
 
-`get_data`方法从数据库中初步提取产品数据(关键字段)
+暴露给用户调用的主要方法:
 
-`update_products`方法中集中处理产品数据的各个字段
+`export_csv`:此方法内部调用数据读取和清理方法,定义数据表头,最后导出符合规范的数据文件(csv)
+
+数据读取部分:`get_data`方法从数据库中初步提取产品数据(关键字段)
+
+> 方法调用链:
+>
+>  `get_lines_dict_for_csv->get_data->get_data_from_dbs->get_data_init->get_data_from_db->get_selected_fields`
+>
+> 也就是说最开始的操作是从数据库中读取指定的字段(并非所有字段都是我们想要的);
+
+在`get_lines_dict_for_csv`方法中会做
+
+> - `_get_lines_dict_raw`读取数据(内部读取数据的主体函数),调用`get_data`方法
+> - 价格处理(`get_sale_price`),还包括图片字段判断处理;
+>
+> - 禁词产品移除`_replace_forbidden_words`
+
+>   数据清理(在`get_data_init`中调用`clean_rows`方法):
+
+数据处理部分:`update_products`方法中集中处理产品数据的各个字段;
+
+  clean_rows方法中定义各种数据过滤或移除到规则.
+
+```mermaid
+flowchart 
+	export_csv["export_csv()"]
+	get_data["get_data()"]
+	update_products["update_products()"]
+	
+	export_csv-->get_data-->update_products
+
+```
 
 
 
