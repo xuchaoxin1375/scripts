@@ -1523,6 +1523,7 @@ function Update-ReposesConfiged
     param(
         # $repoDirs = '',
         $repoDirs = $CommonRepos,
+        $RepoSource = 'gitee',
         $CxxuRepos = $CxxuRepos,
         # 默认读取GlobalConfig中的配置,也可以通过命令行覆盖这个列表(传入$env:ComputerName就可以临时地获取拉取CxxuRepos仓库的权限)
         $CxxuComputers = $CxxuComputers,
@@ -1553,7 +1554,7 @@ function Update-ReposesConfiged
         Write-Verbose $P
         if (!(Test-Path $P))
         {
-            $gitUrl = "$gitee_xuchaoxin1375/$repoDir" #.Trim('\\')
+            $gitUrl = "https://${RepoSource}.com/xuchaoxin1375/$repoDir" #.Trim('\\')
             $Path = "$repos/$repoDir"
             Write-Verbose "[$giturl] will be cloned to [$Path] !" -Verbose
             git clone $gitUrl $Path 
