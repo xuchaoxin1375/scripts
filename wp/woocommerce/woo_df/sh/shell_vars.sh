@@ -18,17 +18,18 @@ export PsPrompt=fast # 如果使用pwsh,此环境变量供参考
 echo "Loading pre-defined variables..."
 # wsl 用户: 统一将使用wsl的设备设置桌面的统一别名目录C:/desktop->$desktop,使用符号链接可以在不改动的情况下优雅的实现这一点
 # New-Item -ItemType Junction  -Path C:/desktop -Target $home/desktop -Verbose -Force #powershell执行
-
-uploader_files="/srv/uploads/uploader/files"
-woo_df="/www/woo_df"
-pys="$woo_df/pys"
-# 定义scripts 仓库clone 的保存路径
-#普通linux系统（假设有 root 权限）：
 _REPO_BASE="repos/scripts"
-SCRIPT_ROOT_LINUX='/repos/scripts'
+_WOO_DF_RELATIVE="wp/woocommerce/woo_df"
+# SCRIPT_ROOT_SERVER="/$_REPO_BASE"
+uploader_files="/srv/uploads/uploader/files"
+# 定义scripts 仓库clone 的保存路径
+SCRIPT_ROOT="$HOME/$_REPO_BASE" # 默认以家目录为基础路径
+#普通linux系统（假设有 root 权限）：
+SCRIPT_ROOT_LINUX="/$_REPO_BASE"
 SCRIPT_ROOT_WSL="/mnt/c/$_REPO_BASE"
 SCRIPT_ROOT_MSYS="/c/$_REPO_BASE"
-SCRIPT_ROOT_DARWIN="$HOME/$_REPO_BASE" # macos
+woo_df="$SCRIPT_ROOT/$_WOO_DF_RELATIVE"
+pys="$woo_df/pys"
 
 SH_SYM_LINUX="$HOME/sh"
 SH_SYM_DARWIN="$HOME/sh"
@@ -36,7 +37,8 @@ SH_SYM_WSL="$HOME/sh"
 SH_SYM_MSYS="$HOME/sh"
 
 desktop="/mnt/c/Users/Administrator/Desktop"
-
+# pythonpath
+PYTHONPATH="$woo_df:$pys/bt_api:$pys/cf_api:$pys/spaceship_api"
 # sh="$wslsh"
 # 根据不同的系统环境为变量sh配置不同的取值
 if [[ -d /mnt/c/ ]]; then
@@ -80,4 +82,4 @@ bt_nginx_conf_home="/www/server/nginx/conf"
 export desktop sh macos_sh omb_themes \
     bt_nginx_vhost_conf_home \
     bt_nginx_conf_home uploader_files woo_df pys \
-    SH_SYM SCRIPT_ROOT SH_SCRIPT_DIR
+    SH_SYM SCRIPT_ROOT SH_SCRIPT_DIR PYTHONPATH

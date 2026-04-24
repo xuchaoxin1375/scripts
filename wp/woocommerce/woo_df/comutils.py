@@ -14,7 +14,7 @@ from logging import debug, error, info
 from time import time
 from typing import List, Optional, Union
 from urllib.parse import unquote, urlparse
-
+import random
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
@@ -61,20 +61,18 @@ URL_SEP_REGEXP = re.compile(URL_SEP_PATTERN)
 COMMON_SEP_REGEXP = re.compile(COMMON_SEP_PATTERN)
 
 
-
 def encode_domain(url, n=5):
     """取域名前n个字符，混淆成短字符串"""
     domain = urlparse(url).hostname.replace("www.", "")
     part = domain[:n]
     # 每个字符ASCII码+5，再转hex取后两位，拼接
-    return ''.join(f'{(ord(c)+5) % 256:x}' for c in part)
+    return "".join(f"{(ord(c) + 5) % 256:x}" for c in part)
+
 
 def decode_domain(code):
     """还原(备用)"""
-    chars = [code[i:i+2] for i in range(0, len(code), 2)]
-    return ''.join(chr(int(c, 16) - 5) for c in chars)
-
-
+    chars = [code[i : i + 2] for i in range(0, len(code), 2)]
+    return "".join(chr(int(c, 16) - 5) for c in chars)
 
 
 def get_now_time_str():
@@ -541,7 +539,7 @@ def set_image_extension(
         series.astype(str).apply(get_image_filebasename(supported_image_formats))
         + f"{default_image_format}"
     )
-    
+
     return res
 
 
@@ -651,7 +649,7 @@ def get_image_filebasename(supported_image_formats=SUPPORT_IMAGE_FORMATS_NAME):
         # x.rsplit(".", 1)[0]: 从右侧开始分割字符串，"只分割1次(有的文件名有包含多个.部分)"，取(索引为0的)第一部分（即最后一个点号之前的部分）,对应于文件名name.extension中的name部分
         # x.split(".")[-1]和x.rsplit(".", 1)[-1]作用基本相同,但是后者性能高点,不会做多余的分割操作
         x.rsplit(".", 1)[0]
-        if x.rsplit(".",1)[-1].lower() in supported_image_formats
+        if x.rsplit(".", 1)[-1].lower() in supported_image_formats
         else x
     )
 
@@ -752,7 +750,7 @@ def find_existing_x_directory(dir_roots, dir_base):
     """
 
     for root in dir_roots:
-        path = f"{root }/{dir_base}"
+        path = f"{root}/{dir_base}"
         if os.path.exists(path):
             return path
     return None
@@ -782,7 +780,7 @@ def count_lines_csv(csv_dir):
     return total
 
 
-def get_data_from_csv(args, lines, reader, url_field, name_field,log_length_limit=0):
+def get_data_from_csv(args, lines, reader, url_field, name_field, log_length_limit=0):
     """
     从csv reader对象中读取图片名字和图片链接字段,并写入结果到lines中
 
@@ -794,7 +792,7 @@ def get_data_from_csv(args, lines, reader, url_field, name_field,log_length_limi
         name_field: 图片名字所在的列名
     """
     for line in reader:
-        if log_length_limit :
+        if log_length_limit:
             debug("Processing line: %s", str(line)[:log_length_limit])
         img_names = line.get(name_field, "")
         img_urls = line.get(url_field, "")
@@ -804,7 +802,9 @@ def get_data_from_csv(args, lines, reader, url_field, name_field,log_length_limi
         )
 
 
-def get_data_line_name_url_from_csv(args, lines, img_names, img_urls,log_length_limit=0):
+def get_data_line_name_url_from_csv(
+    args, lines, img_names, img_urls, log_length_limit=0
+):
     """
     将读取的csv文件中的图片名字和图片链接,处理单行
 
@@ -1024,7 +1024,6 @@ def log_worker(log_file="./"):
                 os.makedirs(log_dir)
             # 写入日志文件
             with open(log_file, "a", newline="", encoding="utf-8") as f:
-
                 writer = csv.writer(f)
                 # 如果文件为空，写入标题行
                 if f.tell() == 0:
@@ -1035,32 +1034,53 @@ def log_worker(log_file="./"):
         finally:
             log_queue.task_done()
 
+
 class FastOffsetCipher:
-    """ 混淆给定的字符串
-    要求是(可见ascii字符构成的情况下才解密运算才是可靠的) 
+    """混淆给定的字符串
+    要求是(可见ascii字符构成的情况下才解密运算才是可靠的)
     为了简单快速起见,不做过多判断检查;
-    
+
     混淆算法:
     - 将字符串中的每个字符替换为ascii码值,然后加上我给定的偏移整数(不超过500)
 
     - 最后每个字符的对应值不超过3位数(我要求占位3位,不足的补0);
     Arguments:
-        offset (int): 偏移量，默认为666，可以根据需要调整
+        offset (int): 偏移量，默认为17，可以根据需要调整
     """
-    def __init__(self, offset: int=666):
+
+    def __init__(self, offset: int = 17, noise="0710823713"):
         self.offset = offset
+        self.noise = noise
+        self.noise_size=len(noise)
+        # self.noise_size=len("".join(noise))
+        print(f"noise size: {self.noise_size}")
 
     def encrypt(self, text: str) -> str:
-        """使用 map 和格式化字符串消除显式循环"""
+        """简单混淆指定字符串"""
         # f"{ord(c) + self.offset:03d}" 快速转化为3位补零字符串
-        return "".join(map(lambda c: f"{ord(c) + self.offset:03d}", text))
+        iter = map(lambda c: f"{(ord(c) + self.offset):03d}", text)
+         # 2. 生成随机噪音 (例如随机选择1-3个噪音片段拼接)
+        # noise_count = random.randint(1, 3)
+        # noise_str = "".join(random.choice(self.noise) for _ in range(noise_count))
+        noise_list=list(self.noise)
+        random.shuffle(noise_list)
+        
+        
+        return "".join(noise_list)+"".join(iter)
 
     def decrypt(self, cipher_text: str) -> str:
         """利用切片步长和 map 快速还原"""
         # 每3位取一个片段
-        chunks = [cipher_text[i:i+3] for i in range(0, len(cipher_text), 3)]
+        # print(f"cipher_text: {cipher_text}")
+        cipher_text= cipher_text[self.noise_size:]
+        # print(f"cipher_text: {cipher_text}")
+        chunks = [cipher_text[i : i + 3] for i in range(0, len(cipher_text), 3)]
         # 还原：转整数 -> 减偏移 -> 转字符 -> 拼接
-        return "".join(map(lambda n: chr(int(n) - self.offset), chunks))
+        raw = "".join(map(lambda n: chr(int(n) - self.offset), chunks))
+        # return re.sub(r"[\x00-\x1f\x7f]", "", raw)
+        return raw
+
+
 def log_upload(sku, name, product_id, status, msg=""):
     """将日志加入到日志消息队列中
     表头结构由常量LOG_HEADER定义,元素顺序与LOG_HEADER一致,或者使用关键字参数传参

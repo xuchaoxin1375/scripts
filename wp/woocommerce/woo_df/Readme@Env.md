@@ -194,7 +194,14 @@ Backup-EnvsRegistry -Dir $desktop
 
 >  请等待所有命令执行完毕,等到shell能够继续相应的回车键为止!👺
 
-
+> macos/linux可以参考
+>
+> ```bash
+> PYTHONPATH="$woo_df:$pys/bt_api:$pys/cf_api:$pys/spaceship_api"
+> export PYTHONPATH
+> ```
+>
+> 
 
 配置完以后关闭所有命令行窗口,以及vscode窗口(如果有用到vscode的话)再重新打开才会生效	
 

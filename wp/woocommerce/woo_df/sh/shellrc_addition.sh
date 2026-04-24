@@ -12,9 +12,9 @@
 start_time=$(date +%s%N)
 # BASHRC_FILE="$HOME/.bashrc"
 # 服务器用的目录(by root user on server)
-SCRIPT_ROOT_SERVER=/repos/scripts
-_SH_RELATIVE="wp/woocommerce/woo_df/sh"
 _REPO_BASE="repos/scripts"
+_SH_RELATIVE="wp/woocommerce/woo_df/sh"
+SCRIPT_ROOT_SERVER="/$_REPO_BASE"
 _SHELL_DEBUG=0
 # 防止重复导入检查处理(如果想要设计为单会话单词运行的话)
 # if [ -z "$_SHELLX_LOADED" ]; then
