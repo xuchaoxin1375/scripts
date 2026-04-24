@@ -1071,9 +1071,9 @@ function Remove-TitleOrderFromMarkdownTitle
     $LF = "`n"
     if($CodeBlockLang)
     {
-        $p1 = ("$CodeBlockLang" + $CRLFS + '```' + "\s*")
-        $p2 = ('```' + $CodeBlockLang + $LF)
-        Write-Verbose "p1:[$p1],p2:[$p2]"
+        $p1 = ("$CodeBlockLang" + $CRLFS +'(\s*)' + '```' + "\s*")
+        $p2 = ('```' + $CodeBlockLang.ToLower() + $LF)
+        # Write-Verbose "p1:[$p1],p2:[$p2]"
         Write-Verbose "'$p1','$p2'"
         $content = $content -replace $p1 , $p2
     }
