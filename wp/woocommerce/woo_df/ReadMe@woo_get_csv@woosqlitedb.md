@@ -188,14 +188,28 @@ ATTRIBUTE_NAME = "Attribute 1 name"
   clean_rows方法中定义各种数据过滤或移除到规则.
 
 ```mermaid
-flowchart 
-	export_csv["export_csv()"]
-	get_data["get_data()"]
-	update_products["update_products()"]
+flowchart LR
+	subgraph export_data
+	 	direction TB    %% 子图内部垂直
+        export_csv["export_csv()"]
+        get_data["get_data()"]
+        get_data_from_dbs["get_data_from_dbs()"]
+        get_data_init["get_data_init()"]
+        get_data_from_db["get_data_from_db()"]
+        get_select_fields["get_selected_fields()"]
+		export_csv-->get_data-->get_data_from_dbs-->get_data_init-->get_data_from_db-->get_select_fields
+	end
 	
-	export_csv-->get_data-->update_products
+    subgraph data_normalization
+    	direction TB    %% 子图内部垂直
+		update_products["update_products()"]
+		
+    end
+    export_data --> data_normalization
 
 ```
+
+
 
 
 
@@ -205,7 +219,6 @@ flowchart
 
   - 数据规范的情况下,导出一个站的数据也就3秒左右,50w的数据也不过2分钟内
   - 但是最坏的情况下,5万的数据可能要好几分钟
-
 
 ### 大量正则计算
 

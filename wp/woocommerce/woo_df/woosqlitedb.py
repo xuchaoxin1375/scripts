@@ -32,6 +32,8 @@ from comutils import (
     set_image_extension,
     split_urls,
     get_now_time_str,
+    get_main_domain_name_from_str,
+    FastOffsetCipher,
 )
 
 from filenamehandler import FilenameHandler
@@ -41,6 +43,8 @@ IMAGES = CSVProductFields.IMAGES.value
 IMAGE_URL = CSVProductFields.IMAGES_URL.value
 DEFAULT_TABLE = "Content"
 MAX_IMG_NAME_LENGTH = 100
+
+ENC = FastOffsetCipher(666)
 
 
 def set_log(name=__name__):
@@ -303,7 +307,7 @@ class SQLiteDB:
             "cache_size": -10000,
         }
         # 计算批次时间戳
-        self.stamp = int(time.time())
+        self.timestamp = int(time.time())
 
     # def close_db(self):
     #     """关闭数据库连接"""
@@ -336,12 +340,12 @@ class SQLiteDB:
         # 构造查询语句
         if not fields:
             fields = self.field_values_full
-
+        # 将字段列表(集合)拼接成字符串使用(如果fields是列表或元组)的话
+        fields_str = fields
         if isinstance(fields, (list, tuple)):
             fields_str = ", ".join(fields)
-        else:
-            fields_str = fields
 
+        # 构造查询语句
         sql = f"SELECT {fields_str} FROM {table}"
 
         # 添加WHERE条件
@@ -354,7 +358,7 @@ class SQLiteDB:
         cursor.execute(sql, params or ())
 
         # 分批处理函数
-        def process_batch():
+        def fetch_db_data_batch():
             while True:
                 # 获取一批数据
                 rows = cursor.fetchmany(batch_size)
@@ -370,13 +374,13 @@ class SQLiteDB:
 
         # 流式处理模式：返回生成器
         if as_iterator:
-            return process_batch()
+            return fetch_db_data_batch()
 
         # 兼容模式：一次性返回生成器中的所有数据(耗尽生成器)
         rows = []
         if batch_size > 0:
             # 分批读取并合并结果
-            for batch in process_batch():
+            for batch in fetch_db_data_batch():
                 rows.extend(batch)
             return rows
 
@@ -397,7 +401,8 @@ class SQLiteDB:
     ):
         """从单个数据库获取初步处理过的数据
         通常不直接调用此函数;
-        此函数调用get_data_from_db()获取所有特定字段的行
+        此函数调用read_data_from_db()获取所有特定字段的行
+        调用clean_rows()函数对数据进行清理处理
 
         Args:
             db_path: sqlite文件路径
@@ -409,7 +414,7 @@ class SQLiteDB:
         rows = []
         unique_rows = []
         try:
-            rows = self.get_data_from_db(db_path, fields)
+            rows = self._read_data_from_db(db_path, fields)
             # Row对象转换为字典
             rows = [dict(row) for row in rows]
             if count_rows_only:
@@ -427,7 +432,9 @@ class SQLiteDB:
         else:
             # 初步数据处理操作
 
-            unique_rows = self.clean_rows(db_path, rows, strict_mode=strict_mode)
+            unique_rows = self._clean_and_patch_rows(
+                db_path, rows, strict_mode=strict_mode
+            )
 
             # print(handler_dict)
         self.db_reports[db_path] = {
@@ -436,7 +443,7 @@ class SQLiteDB:
         }
         return unique_rows
 
-    def clean_rows(self, db_path, rows, strict_mode=False):
+    def _clean_and_patch_rows(self, db_path, rows, strict_mode=False):
         """清理不合适的产品
         考虑根据规则清理产品需要遍历所有产品,为了减少遍历次数,在同一个遍历循环中指定排除规则;
 
@@ -447,6 +454,8 @@ class SQLiteDB:
         如果严格模式,则仅比较产品名,忽略图片的比较
 
         读取限制品关键词(产品名和分类中包含这些关键词的产品将被移除)
+
+        在将产品描述(或其他字段)插入包含产品数据来源信息的串,方便溯源
 
         访问内存中的数据行(这很重要🎈)
         handler_dict # 存储单元结构: {product_img: {product_name: count}}的结构
@@ -467,6 +476,7 @@ class SQLiteDB:
         img_field = DBProductFields.IMAGES.value
         desc_field = DBProductFields.DESCRIPTION.value
         categories_field = DBProductFields.CATEGORIES.value
+        page_url_field = DBProductFields.PAGE_URL.value
         tags_field = DBProductFields.TAGS.value
 
         # 添加tqdm进度条，显示百分比
@@ -476,7 +486,7 @@ class SQLiteDB:
             product_name = row[name_field]
             product_img = row[img_field]
             product_desc = row[desc_field]
-            product_categories = row[categories_field] or "!" #分类需要兜底
+            product_categories = row[categories_field] or "!"  # 分类需要兜底
             product_tags = row[tags_field] or ""
             # product_info = f"{{name:{product_name};sku:{product_sku}}}"
             # names_dict = dd.get(product_img, {})
@@ -535,6 +545,14 @@ but different image",
                 else:
                     warning("product:[%s] record is dropped.", i)
                     continue
+            ## 为合适的字段添加标记串处理(补丁环节)
+            ### 不要使用display:none 隐藏标签,会被seo惩罚;
+            url = f"{row[page_url_field]}"
+            # 提取url的域名部分,用'+'拼接当前日期时间字符串
+            domain = get_main_domain_name_from_str(url)
+            raw_id = domain  # f"{domain}+{self.timestamp}"
+            prodtagid = ENC.encrypt(raw_id)
+            row[desc_field] += f"<div data-prodtagid='{prodtagid}'></div>"
 
             # STARt3:过滤掉包含禁词的产品
             regexp = self.forbid_words_pat_regex
@@ -559,7 +577,7 @@ but different image",
         """替换字符串中包含的禁词"""
         return re.sub(pattern, replacement, s)
 
-    def remove_duplicate_rows_deprecated(self, db_path, rows, strict_mode=False):
+    def __remove_duplicate_rows_deprecated(self, db_path, rows, strict_mode=False):
         """产品去重:
         默认情况下,产品名和图片同时重复的记录只保留一条(仅排除两者都重复的情况)
         如果严格模式,则仅比较产品名,忽略图片的比较
@@ -634,7 +652,7 @@ but different image, keep records [%s]",
             (row[DBProductFields.NAME.value], row[DBProductFields.IMAGES.value]),
         )
 
-    def get_data_from_db(self, db_path, fields):
+    def _read_data_from_db(self, db_path, fields):
         """从单个数据库获取指定字段的全部数据
 
         警告:此函数及其依赖未做有效的超大数据库优化,对于几十个GB的sqlite文件,处理可能卡顿甚至得不到有效响应
@@ -684,6 +702,7 @@ but different image, keep records [%s]",
         batch_size = 10  # 每批处理10个文件
         for i in range(0, len(dbs), batch_size):
             batch = dbs[i : i + batch_size]
+            # 多线程的方式调用get_data_init从批次数据库中读取数据
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = [
                     executor.submit(
@@ -1014,7 +1033,7 @@ but different image, keep records [%s]",
             lines.append(line_dict)
         return lines
 
-    def get_sale_price_yy(self, price, limit_sale=169.99):
+    def _get_sale_price_yy(self, price, limit_sale=169.99):
         """临时的新价格处理方案
         1.原价*0.5,如果折后仍然高于169,则限制为169
 
@@ -1031,7 +1050,7 @@ but different image, keep records [%s]",
         sale_price = round(sale_price, 2)
         return sale_price
 
-    def get_sale_price(self, price, limit_sale=298.98, base_line=300):
+    def _get_sale_price(self, price, limit_sale=298.98, base_line=300):
         """获取产品折扣价格
         1.价格小于100的打3折
         2.价格100到300的打0.25折
@@ -1115,9 +1134,9 @@ but different image, keep records [%s]",
             # 数据处理:特价
             price = row[DBProductFields.REGULAR_PRICE.name]
             if self.yy:
-                sale_price = self.get_sale_price_yy(price, limit_sale=limit_sale)
+                sale_price = self._get_sale_price_yy(price, limit_sale=limit_sale)
             else:
-                sale_price = self.get_sale_price(price, limit_sale=limit_sale)
+                sale_price = self._get_sale_price(price, limit_sale=limit_sale)
             if sale_price == 0:
                 continue
             # 数据处理:产品分类(将分类取值为非常规值做一个恰当的转换,比如热销这类的此)
@@ -1193,7 +1212,7 @@ but different image, keep records [%s]",
                         complete_image_file_extension(
                             # 将过长的图片名截断防止wordpress加载图片失败🎈
                             # .replace('%','_')
-                            file=f"{sku}-{i}-{self.stamp}-"
+                            file=f"{sku}-{i}-{self.timestamp}-"
                             f"-{re.sub(r'[=:%?]', '_', get_filebasename_from_url(img_url))}"[
                                 : self.max_img_name_length
                             ],

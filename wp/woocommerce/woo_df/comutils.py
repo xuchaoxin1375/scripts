@@ -1035,7 +1035,32 @@ def log_worker(log_file="./"):
         finally:
             log_queue.task_done()
 
+class FastOffsetCipher:
+    """ 混淆给定的字符串
+    要求是(可见ascii字符构成的情况下才解密运算才是可靠的) 
+    为了简单快速起见,不做过多判断检查;
+    
+    混淆算法:
+    - 将字符串中的每个字符替换为ascii码值,然后加上我给定的偏移整数(不超过500)
 
+    - 最后每个字符的对应值不超过3位数(我要求占位3位,不足的补0);
+    Arguments:
+        offset (int): 偏移量，默认为666，可以根据需要调整
+    """
+    def __init__(self, offset: int=666):
+        self.offset = offset
+
+    def encrypt(self, text: str) -> str:
+        """使用 map 和格式化字符串消除显式循环"""
+        # f"{ord(c) + self.offset:03d}" 快速转化为3位补零字符串
+        return "".join(map(lambda c: f"{ord(c) + self.offset:03d}", text))
+
+    def decrypt(self, cipher_text: str) -> str:
+        """利用切片步长和 map 快速还原"""
+        # 每3位取一个片段
+        chunks = [cipher_text[i:i+3] for i in range(0, len(cipher_text), 3)]
+        # 还原：转整数 -> 减偏移 -> 转字符 -> 拼接
+        return "".join(map(lambda n: chr(int(n) - self.offset), chunks))
 def log_upload(sku, name, product_id, status, msg=""):
     """将日志加入到日志消息队列中
     表头结构由常量LOG_HEADER定义,元素顺序与LOG_HEADER一致,或者使用关键字参数传参
