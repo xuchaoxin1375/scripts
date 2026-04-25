@@ -25,43 +25,18 @@ uploader_files="/srv/uploads/uploader/files"
 # 定义scripts 仓库clone 的保存路径
 SCRIPT_ROOT="$HOME/$_REPO_BASE" # 默认以家目录为基础路径
 #普通linux系统（假设有 root 权限）：
-SCRIPT_ROOT_LINUX="/$_REPO_BASE"
-SCRIPT_ROOT_WSL="/mnt/c/$_REPO_BASE"
-SCRIPT_ROOT_MSYS="/c/$_REPO_BASE"
+# SCRIPT_ROOT_LINUX="/$_REPO_BASE"
+# SCRIPT_ROOT_WSL="/mnt/c/$_REPO_BASE"
+# SCRIPT_ROOT_MSYS="/c/$_REPO_BASE"
 woo_df="$SCRIPT_ROOT/$_WOO_DF_RELATIVE"
 pys="$woo_df/pys"
-
-SH_SYM_LINUX="$HOME/sh"
-SH_SYM_DARWIN="$HOME/sh"
-SH_SYM_WSL="$HOME/sh"
-SH_SYM_MSYS="$HOME/sh"
 
 desktop="/mnt/c/Users/Administrator/Desktop"
 # pythonpath
 PYTHONPATH="$woo_df:$pys/bt_api:$pys/cf_api:$pys/spaceship_api"
 # sh="$wslsh"
 # 根据不同的系统环境为变量sh配置不同的取值
-if [[ -d /mnt/c/ ]]; then
-    # wsl环境(直接访问 windows 上的仓库目录，而不是单独克隆，主要是方便开发和仓库同步简单)
-    SCRIPT_ROOT="$SCRIPT_ROOT_WSL"
-    SH_SYM="$SH_SYM_WSL"
-elif [[ -d /c/ ]]; then
-    # msys2环境
-    SCRIPT_ROOT="$SCRIPT_ROOT_MSYS"
-    SH_SYM="$SH_SYM_MSYS"
 
-elif [[ $OSTYPE == "darwin"* ]]; then
-    # macos环境
-    SCRIPT_ROOT="$SCRIPT_ROOT_DARWIN"
-    SH_SYM="$SH_SYM_DARWIN"
-
-    # sh="/Users/$(whoami)/$REPOS"
-elif [[ $OSTYPE == "linux"* ]]; then
-    # 普通linux环境
-    SCRIPT_ROOT="$SCRIPT_ROOT_LINUX" # 默认使用linux环境的路径变量
-    SH_SYM="$SH_SYM_LINUX"
-
-fi
 # 符号链接SH_SYM的TARGET：
 SH_SCRIPT_DIR="$SCRIPT_ROOT/wp/woocommerce/woo_df/sh"
 sh="$SH_SYM"

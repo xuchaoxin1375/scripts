@@ -156,6 +156,76 @@ function Set-PsExtension
     }
     
 }
+# ==========================================
+# 模拟 Win32_OperatingSystem 在 macOS 上的信息抓取
+# ==========================================
+function Get-MacOSOperatingSystemInfo
+{
+
+    # 1. 获取操作系统基础信息 (对应 Caption, Version, BuildNumber)
+    $productName = (sw_vers -productName).Trim()
+    $productVersion = (sw_vers -productVersion).Trim()
+    $buildVersion = (sw_vers -buildVersion).Trim()
+    
+    # 2. 获取架构和内核信息 (对应 OSArchitecture)
+    $arch = (uname -m).Trim()
+    $kernelVersion = (uname -r).Trim()
+    $osArchitecture = if ($arch -eq 'arm64') { 'ARM 64-bit (Apple Silicon)' } else { '64-bit (Intel)' }
+    
+    # 3. 获取内存信息 (WMI 中 TotalVisibleMemorySize 和 FreePhysicalMemory 的单位是 KB)
+    # 获取总内存 (Bytes 转 KB)
+    $totalMemBytes = [int64](sysctl -n hw.memsize)
+    $totalVisibleMemorySize = [math]::Round($totalMemBytes / 1KB)
+    
+    # 获取可用内存 (通过 vm_stat 和 pagesize 计算)
+    $pageSize = [int64](sysctl -n hw.pagesize)
+    $vmStat = vm_stat
+    $pagesFreeMatch = $vmStat | Select-String 'Pages free:\s+(\d+)'
+    $pagesFree = if ($pagesFreeMatch) { [int64]$pagesFreeMatch.Matches.Groups[1].Value } else { 0 }
+    $freePhysicalMemory = [math]::Round(($pagesFree * $pageSize) / 1KB)
+    
+    # 4. 获取系统启动时间 (对应 LastBootUpTime)
+    $bootTimeRaw = sysctl -n kern.boottime
+    # 提取 Epoch 秒数并转换为 DateTime 对象
+    if ($bootTimeRaw -match 'sec = (\d+)')
+    {
+        $bootTimeSec = [int]$matches[1]
+        $lastBootUpTime = [timezone]::CurrentTimeZone.ToLocalTime(([datetime]'1/1/1970').AddSeconds($bootTimeSec))
+    }
+    else
+    {
+        $lastBootUpTime = $null
+    }
+    
+    # 5. 估算系统安装时间 (对应 InstallDate)
+    # macOS 没有统一的系统安装日期属性，通常使用核心系统目录的创建时间来替代
+    $installDate = (Get-Item /System/Library/CoreServices/SystemVersion.plist).CreationTime
+    
+    # 6. 获取主机名 (对应 CSName)
+    $csName = (hostname).Trim()
+    
+    # ==========================================
+    # 组装模拟的 WMI 对象
+    # ==========================================
+    $osInfo = [PSCustomObject]@{
+        Caption                = "$productName $productVersion"
+        Version                = $productVersion
+        BuildNumber            = $buildVersion
+        OSArchitecture         = $osArchitecture
+        Manufacturer           = 'Apple Inc.'
+        TotalVisibleMemorySize = $totalVisibleMemorySize # 单位: KB
+        FreePhysicalMemory     = $freePhysicalMemory     # 单位: KB
+        LastBootUpTime         = $lastBootUpTime
+        InstallDate            = $installDate
+        SystemDirectory        = '/System'
+        CSName                 = $csName
+        OSType                 = 'Darwin'
+        KernelVersion          = $kernelVersion
+    }
+    return $osInfo
+    
+}
+    
 function Get-ProcessMemoryView
 {
     <#
@@ -182,7 +252,7 @@ function Get-ProcessMemoryView
     启用分组模式，按进程名合并，使用 Measure-Object -Sum 计算分组总和。
 
     .PARAMETER WorkingSetPrivate
-    启用后增加私有工作集列（PrivWS），通过 CIM 查询获取，
+    启用后增加私有工作集列（PrivWS），通过 CIM 查询获取(仅windows平台可用)，
     与任务管理器"详细信息"中的"内存(私有工作集)"一致。
 
     .PARAMETER SortBy
@@ -302,22 +372,60 @@ function Get-ProcessMemoryView
     # --- 百分比列名跟随排序指标 ---
     $pctCol = "%$SortBy"          # %WS / %PM / %PrivWS
     $pctSumCol = "%Sum($SortBy)"  # %Sum(WS) / %Sum(PM) / %Sum(PrivWS)
-    $capSumCol = "CapSum($SortBy)"
+    $capSumCol = "CapSum($SortBy)" # Capacity Sum
 
     # --- 初始化 ---
     $script:PercentSum = 0
     $script:CapacitySum = 0
+    if($IsWindows)
+    {
 
-    $osInfo = Get-CimInstance Win32_OperatingSystem
-    $TotalRAM = $osInfo.TotalVisibleMemorySize * 1KB  # 转为字节
+        $osInfo = Get-CimInstance Win32_OperatingSystem
+        $totalRAMBytes = $osInfo.TotalVisibleMemorySize * 1KB  # 转为字节
+        $usedRAMBytes = ($osInfo.TotalVisibleMemorySize - $osInfo.FreePhysicalMemory) * 1KB
+    }
+    elseif ($IsMacOS)
+    {
+        Write-Verbose "Macos 上由于机制不同,部分指标(虚拟内存相关)显示为0;
+        - PeakVirtualMemorySize64 峰值虚拟内存大小64
+        - PeakWorkingSet64
+        描述提交大小的字段: PagedMemorySize(64) 或同义字段 PrivateMemorySize(64)
+        - PrivateMemorySize64 私有内存大小64
+        "
+        
+        
+        $totalRAMBytes = [long]$(sysctl -n hw.memsize)
+
+        # 获取空闲内存页数
+        $vmStat = vm_stat
+        $pageSize = [long](($vmStat | Select-String "page size of") -replace '.*page size of (\d+) bytes.*', '$1')
+        if ($pageSize -eq 0) { $pageSize = 4096 }
+
+        $freePages = [long][regex]::Match(($vmStat | Select-String "^Pages free:"), '\d+').Value
+        $inactivePages = [long][regex]::Match(($vmStat | Select-String "^Pages inactive:"), '\d+').Value
+
+        $freeRAMBytes = ($freePages + $inactivePages) * $pageSize
+        $usedRAMBytes = $totalRAMBytes - $freeRAMBytes
+
+        Write-Host "总内存:   $totalRAMBytes 字节 ($([math]::Round($totalRAMBytes/1GB,2)) GB)"
+        Write-Host "已用内存: $usedRAMBytes 字节 ($([math]::Round($usedRAMBytes/1GB,2)) GB)"
+    }
+    elseif($IsLinux)
+    {
+        $totalRAMBytes = $(awk '/^MemTotal:/ {print $2 * 1024}' /proc/meminfo)
+        # 直接获取 used 字节数
+        $usedRAMBytes = [long](free -b | awk '/^Mem:/ {print $3}')
+
+        # Write-Host "已用内存: $usedRAMBytes 字节"
+        # Write-Host "已用内存: $([math]::Round($usedRAMBytes/1GB,2)) GB"
+    }
 
 
     # --- 打印物理内存使用概况 ---
-    $usedRAMBytes = ($osInfo.TotalVisibleMemorySize - $osInfo.FreePhysicalMemory) * 1KB
-    $usedRAMPercent = [math]::Round(($usedRAMBytes / $TotalRAM) * 100, 2)
-    $totalDisp = [math]::Round($TotalRAM / $divisor, 2)
+    $usedRAMPercent = [math]::Round(($usedRAMBytes / $totalRAMBytes) * 100, 2)
+    $totalDisp = [math]::Round($totalRAMBytes / $divisor, 2)
     $usedDisp = [math]::Round($usedRAMBytes / $divisor, 2)
-    $freeDisp = [math]::Round(($TotalRAM - $usedRAMBytes) / $divisor, 2)
+    $freeDisp = [math]::Round(($totalRAMBytes - $usedRAMBytes) / $divisor, 2)
 
     Write-Host ""
     Write-Host "Physical Memory" -ForegroundColor Cyan
@@ -343,7 +451,7 @@ function Get-ProcessMemoryView
     }
 
     # ============================================================
-    #  辅助：根据 SortBy 生成百分比计算表达式（字节级原始值 / TotalRAM）
+    #  辅助：根据 SortBy 生成百分比计算表达式（字节级原始值 / totalRAMBytes）
     # ============================================================
     $processes = Get-Process | Where-Object { $_.Name -notin $SKIP_PROCESSES } 
     if ($Group)
@@ -351,13 +459,20 @@ function Get-ProcessMemoryView
         # === 分组模式 ===
 
         # 1) 构建基础数据（始终包含 WS / PM 列）
+        $columns = @(
+            @{N = "Name"; E = { $_.Name } },
+            @{N = "Count"; E = { $_.Count } },
+            @{N = "PIDs"; E = { ($_.Group.Id -join ",") } },
+            @{N = $wsCol; E = { ($_.Group | Measure-Object WorkingSet64 -Sum).Sum / $divisor } }
+        )
+        # 只有属性存在时才添加最后一列
+        if (! $IsMacOS)
+        {
+            $columns += @{N = $pmCol; E = { ($_.Group | Measure-Object PagedMemorySize64 -Sum).Sum / $divisor } }
+        }
         $res = $processes |
         Group-Object -Property Name |
-        Select-Object @{N = "Name"; E = { $_.Name } },
-        @{N = "Count"; E = { $_.Count } },
-        @{N = "PIDs"; E = { ($_.Group.Id -join ",") } },
-        @{N = $wsCol; E = { ($_.Group | Measure-Object WorkingSet64 -Sum).Sum / $divisor } },
-        @{N = $pmCol; E = { ($_.Group | Measure-Object PagedMemorySize64 -Sum).Sum / $divisor } }
+        Select-Object $columns
 
         # 2) 可选：追加私有工作集列
         if ($WorkingSetPrivate)
@@ -377,21 +492,21 @@ function Get-ProcessMemoryView
             "WS"
             {
                 @{N = $pctCol; E = {
-                        [math]::Round(($_."$wsCol" * $divisor / $TotalRAM) * 100, 2)
+                        [math]::Round(($_."$wsCol" * $divisor / $totalRAMBytes) * 100, 2)
                     }
                 }
             }
             "PM"
             {
                 @{N = $pctCol; E = {
-                        [math]::Round(($_."$pmCol" * $divisor / $TotalRAM) * 100, 2)
+                        [math]::Round(($_."$pmCol" * $divisor / $totalRAMBytes) * 100, 2)
                     }
                 }
             }
             "PrivWS"
             {
                 @{N = $pctCol; E = {
-                        [math]::Round(($_."$pwsCol" * $divisor / $TotalRAM) * 100, 2)
+                        [math]::Round(($_."$pwsCol" * $divisor / $totalRAMBytes) * 100, 2)
                     }
                 }
             }
@@ -442,21 +557,21 @@ function Get-ProcessMemoryView
             "WS"
             {
                 @{N = $pctCol; E = {
-                        [math]::Round(($_."$wsCol" * $divisor / $TotalRAM) * 100, 2)
+                        [math]::Round(($_."$wsCol" * $divisor / $totalRAMBytes) * 100, 2)
                     }
                 }
             }
             "PM"
             {
                 @{N = $pctCol; E = {
-                        [math]::Round(($_."$pmCol" * $divisor / $TotalRAM) * 100, 2)
+                        [math]::Round(($_."$pmCol" * $divisor / $totalRAMBytes) * 100, 2)
                     }
                 }
             }
             "PrivWS"
             {
                 @{N = $pctCol; E = {
-                        [math]::Round(($_."$pwsCol" * $divisor / $TotalRAM) * 100, 2)
+                        [math]::Round(($_."$pwsCol" * $divisor / $totalRAMBytes) * 100, 2)
                     }
                 }
             }
@@ -464,7 +579,11 @@ function Get-ProcessMemoryView
         $res = $res | Select-Object *, $pctExpr
 
         # 3) 排序 → 计算累加百分比与容量
-        $finalProps = @('ID', 'Name', $wsCol, $pmCol)
+        $finalProps = @('ID', 'Name', $wsCol)
+        if(! $IsMacOS)
+        {
+            $finalProps += $pmCol
+        }
         if ($WorkingSetPrivate) { $finalProps += $pwsCol }
         $finalProps += $pctCol
         $finalProps += @{N = $pctSumCol; E = {
