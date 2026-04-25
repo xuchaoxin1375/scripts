@@ -1036,22 +1036,106 @@ def log_worker(log_file="./"):
 
 
 class FastOffsetCipher:
-    """混淆给定的字符串
+    """快速偏移加密算法(仅作基础混淆)
     要求是(可见ascii字符构成的情况下才解密运算才是可靠的)
     为了简单快速起见,不做过多判断检查;
-
     混淆算法:
-    - 将字符串中的每个字符替换为ascii码值,然后加上我给定的偏移整数(不超过500)
-
+    - 将字符串中的每个字符替换为ascii码值,然后加上我给定的偏移整数(不超过100)
     - 最后每个字符的对应值不超过3位数(我要求占位3位,不足的补0);
-    Arguments:
-        offset (int): 偏移量，默认为17，可以根据需要调整
     """
 
-    def __init__(self, offset: int = 17, noise="0710823713"):
+    def __init__(self, offset: int = 31):
+        self.offset = offset
+
+    def encrypt(self, text: str) -> str:
+        """使用 map 和格式化字符串消除显式循环"""
+        # f"{ord(c) + self.offset:03d}" 快速转化为3位补零字符串
+        iter = map(lambda c: f"{(ord(c) + self.offset):03d}", text)
+        unit3c = "".join(iter)
+        return unit3c
+
+    def decrypt(self, cipher_text: str) -> str:
+        """利用切片步长和 map 快速还原"""
+        # 每3位取一个片段
+        chunks = [cipher_text[i : i + 3] for i in range(0, len(cipher_text), 3)]
+        # 还原：转整数 -> 减偏移 -> 转字符 -> 拼接
+        return "".join(map(lambda n: chr(int(n) - self.offset), chunks))
+
+class DictCipher:
+    """
+    基于给定字典的编码混淆加密算法
+    将任意字符转为3位ASCII码数字，再将数字0-9映射为指定字符
+    """
+
+    DIGIT_MAP_ENCODE = {
+        "0": "x",
+        "1": "y",
+        "2": "z",
+        "3": "d",
+        "4": "e",
+        "5": "f",
+        "6": "g",
+        "7": "h",
+        "8": "i",
+        "9": "j",
+    }
+    # 反向映射用于解码
+    DIGIT_MAP_DECODE = {v: k for k, v in DIGIT_MAP_ENCODE.items()}
+
+    def encrypt(self, text: str) -> str:
+        """
+        加密字符串
+        1. 每个字符转为3位ASCII码 (例如 'A' -> '065')
+        2. 将数字字符映射为字典中的字符 (例如 '065' -> 'abf')
+        """
+        # 先将所有字符转为3位数字字符串
+        iter_digits = map(lambda c: f"{ord(c):03d}", text)
+        unit3c = "".join(iter_digits)
+        
+        # 根据字典将数字字符串映射为密文字符
+        return "".join(map(lambda n: self.DIGIT_MAP_ENCODE[n], unit3c))
+
+    def decrypt(self, cipher_text: str) -> str:
+        """
+        解密字符串
+        1. 将密文字符反向映射为数字字符串 (例如 'abf' -> '065')
+        2. 每3位数字转为一个字符 (例如 '065' -> 'A')
+        """
+        if not cipher_text:
+            return ""
+        
+        try:
+            # 1. 反向映射还原为数字串
+            digit_str = "".join(map(lambda c: self.DIGIT_MAP_DECODE[c], cipher_text))
+            
+            # 2. 校验长度
+            if len(digit_str) % 3 != 0:
+                raise ValueError("Invalid cipher text length")
+            
+            # 3. 分块还原
+            chunks = [digit_str[i:i+3] for i in range(0, len(digit_str), 3)]
+            return "".join(map(lambda n: chr(int(n)), chunks))
+            
+        except KeyError as e:
+            raise ValueError(f"Invalid character in cipher text: {e}")
+
+
+class NoiseOffsetCipher:
+    """基于FastOffsetCipher增加噪音的混淆给定的字符串
+    混淆算法:
+    - 噪音片段: 噪音字符串,允许设置任意字符串,将拼接到密文前缀(允许任何字符)
+
+    """
+
+    def __init__(self, offset: int = 31, noise=""):
+        """
+        parameters:
+            offset (int): 偏移量，默认为31，可以根据需要调整(不超过100)
+            noise (str): 噪音字符串，默认为空,允许设置任意字符串,将拼接到密文前缀(允许任何字符)
+        """
         self.offset = offset
         self.noise = noise
-        self.noise_size=len(noise)
+        self.noise_size = len(noise)
         # self.noise_size=len("".join(noise))
         print(f"noise size: {self.noise_size}")
 
@@ -1059,20 +1143,19 @@ class FastOffsetCipher:
         """简单混淆指定字符串"""
         # f"{ord(c) + self.offset:03d}" 快速转化为3位补零字符串
         iter = map(lambda c: f"{(ord(c) + self.offset):03d}", text)
-         # 2. 生成随机噪音 (例如随机选择1-3个噪音片段拼接)
+        # 2. 生成随机噪音 (例如随机选择1-3个噪音片段拼接)
         # noise_count = random.randint(1, 3)
         # noise_str = "".join(random.choice(self.noise) for _ in range(noise_count))
-        noise_list=list(self.noise)
+        noise_list = list(self.noise)
         random.shuffle(noise_list)
-        
-        
-        return "".join(noise_list)+"".join(iter)
+
+        return "".join(noise_list) + "".join(iter)
 
     def decrypt(self, cipher_text: str) -> str:
         """利用切片步长和 map 快速还原"""
         # 每3位取一个片段
         # print(f"cipher_text: {cipher_text}")
-        cipher_text= cipher_text[self.noise_size:]
+        cipher_text = cipher_text[self.noise_size :]
         # print(f"cipher_text: {cipher_text}")
         chunks = [cipher_text[i : i + 3] for i in range(0, len(cipher_text), 3)]
         # 还原：转整数 -> 减偏移 -> 转字符 -> 拼接
