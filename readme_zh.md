@@ -84,6 +84,43 @@ bash $sh/shellrc_addition.sh
 exec bash
 ```
 
+### 轻量虚拟化平台中和宿主机共用
+
+```bash
+# 准备
+_REPO_BASE="repos/scripts"
+_SH_RELATIVE="wp/woocommerce/woo_df/sh"
+```
+
+在家目录创建`repos`,`sh`目录便于访问;
+
+#### wsl中访问windows中的仓库目录
+
+```bash
+ln -s /mnt/c/repos ~/repos
+ln -s /mnt/c/$_REPO_BASE/$_SH_RELATIVE ~/sh
+bash ~/sh/shellrc_addition.sh && exec bash
+```
+
+
+
+#### macos上lima虚拟机直接访问宿主机仓库
+
+如果用户需要在macos上的lima的linux实例中直接访问macos上的仓库,根据lima的特性,可以在虚拟机中无缝访问`/Users/当前用户目录`;
+
+> 假设macos上当前用户目录为`/Users/cxxu/`
+
+```bash
+ln -s /Users/cxxu/repos ~/repos
+ln -s /Users/cxxu/$_REPO_BASE/$_SH_RELATIVE ~/sh
+# 配置shell环境
+bash ~/sh/shellrc_addition.sh && exec bash
+```
+
+
+
+### 一键部署
+
 或者使用自动判断可用仓库源的一键部署版本:
 
 ```bash

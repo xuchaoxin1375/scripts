@@ -72,15 +72,7 @@ echo "[INFO]:sh_sym=[$SH_SYM],sh_script_dir=[$SH_SCRIPT_DIR],script_root=[$SCRIP
 sh="$SH_SYM"
 echo "[INFO]:sh=[$sh]"
 
-# bash prompt主题配置
-export BASH_PROMPT="fast_ys"
-export BASHRC_FILE="$HOME/.bashrc"
-export BASH_PROMPTS_ROOT="$sh/bash_prompts"
-# linuxbrew的基本环境变量
-_HOMEBREW_PREFIX="/home/linuxbrew/.linuxbrew"
-_HOMEBREW_PATH="$_HOMEBREW_PREFIX/bin/brew"
-# macos brew(homebrew) 会自己注册HOMEBREW_PREFIX等环境变量
-# HOMEBREW_PREFIX="$(brew --prefix)"
+
 
 # 引入预定义的别名
 source "$sh"/shell_vars.sh

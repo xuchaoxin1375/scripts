@@ -1,9 +1,15 @@
 # 使用本地镜像路径
 # 文档: https://lima-vm.io/docs/
+# 下载镜像(lima命令可以直接下载镜像,但是国内速度可能会很慢)
+# 可以外部手动下载合适的镜像版本,例如从lima文档中参考镜像版本,然后指定本地镜像文件
 # aria2c -k 16 -s 16 https://dl-cdn.alpinelinux.org/alpine/v3.23/releases/cloud/nocloud_alpine-3.23.3-aarch64-uefi-cloudinit-r0.qcow2
-# 基础命令:
+
+# lima基础命令:
 # limactl start --name=alpine ~/lima-configs/alpine-local.yaml #
-# limactl edit apline #编辑配置
+## 其中 --name 是虚拟机实例名称(可以自定义,比如采用系统发行版的名称): [limactl create] Override the instance name (否则默认是default这个名称)
+
+# lima编辑配置的命令
+# limactl edit apline 
 images:
   - location: "~/lima-configs/nocloud_alpine-3.23.3-aarch64-uefi-cloudinit-r0.qcow2"
     # 注意：如果是 Apple Silicon (M1/M2/M3)，arch 必须是 "aarch64"

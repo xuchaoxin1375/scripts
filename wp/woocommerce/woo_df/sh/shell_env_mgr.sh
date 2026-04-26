@@ -19,7 +19,7 @@ fi
 if [[ -e "$nvm_sh" ]]; then
     if ! command -v nvm &> /dev/null; then
         _NVM_LOADED="1"
-        echo  "Loading nvm ..."
+        echo "Loading nvm ..."
         if ! is_darwin; then
             # linux等非macos系统
             [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"                   # This loads nvm

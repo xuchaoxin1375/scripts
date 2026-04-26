@@ -2,6 +2,21 @@
 # 提供一些常用的bash/zsh兼容的函数.
 # 新函数添加于下方:
 # ===============================
+# 列出bash中所有名字以指定字符串开头的变量
+list_var_start_with_eval() {
+    local var_prefix="$1"
+    # 1. 获取所有变量名
+    # 2. 筛选出以 $var_prefix 开¡头的变量
+    # 3. 循环并使用 eval 提取值
+    for item in $(compgen -v); do
+        if [[ $item == $var_prefix* ]]; then
+            # 使用 eval 动态解析变量的值
+            eval "value=\$$item"
+            # shellcheck disable=SC2154
+            echo "$item=$value"
+        fi
+    done
+}
 # 判断当前系统是否为macos(darwin内核)
 is_darwin() {
 
@@ -462,7 +477,7 @@ install_zsh_bymake() {
                 ;;
             --)
                 shift
-                break 
+                break
                 ;;
             -?*)
                 echo "Unknown option: " >&2
@@ -1694,6 +1709,40 @@ new_user_sudo() {
     rm /tmp/new_sudo_rule
 
 }
+# 从国内镜像源安装brew(默认中科大源镜像源)
+install_brew_from_ustc() {
+    export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.ustc.edu.cn/brew.git"
+    export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.ustc.edu.cn/homebrew-core.git"
+    export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.ustc.edu.cn/homebrew-bottles"
+    export HOMEBREW_API_DOMAIN="https://mirrors.ustc.edu.cn/homebrew-bottles/api"
+
+    /bin/bash -c "$(curl -fsSL https://mirrors.ustc.edu.cn/misc/brew-install.sh)"
+    # /bin/bash -c "$(curl -fsSL https://github.com/Homebrew/install/raw/HEAD/install.sh)"
+    # 对于 bash 用户
+    # echo 'export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.ustc.edu.cn/brew.git"' >> ~/.bash_profile
+    # 幂等地添加brew_git_remote环境变量到指定文件中
+    set_brew_env_to_shellrc() {
+        # local shellrc="$1"
+        for shellrc in "$@"; do
+            if [ -f "$shellrc" ]; then
+                # break
+                sed -i '/# >>> brew git env/,/# <<< brew git env/d' "$shellrc"
+                sed -i '$a\
+# >>> brew git env\
+export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.ustc.edu.cn/brew.git"\
+# <<< brew git env\
+' "$shellrc"
+            else
+                echo "无法找到指定文件: $shellrc"
+            fi
+        done
+    }
+    # 对于bash用户
+    set_brew_env_to_shellrc ~/.bashrc ~/.zshrc # ~/.bash_profile
+    # 对于macos,可能需要写入.bash_profile
+    # 对于 zsh 用户
+    # set_brew_env_to_shellrc ~/.zshrc
+}
 install_linuxbrew() {
 
     local usage
@@ -2038,7 +2087,7 @@ psm_gnu() {
     psm -rss 10    # 按 RSS 内存占用降序显示前 10 个进程
     psm +pid 50    # 按 PID 升序显示前 50 个进程
 EOF
-        return 0 # 成功退出函数
+        return 0 # 成功退出函��
     fi
 
     # 2. 处理函数参数
@@ -2051,7 +2100,7 @@ EOF
         sort_field="-rss"
     fi
 
-    # 4. 获取总内存 (KiB)
+    # 4. ��取总内存 (KiB)
     local total_mem_kb
     # total_mem_kb=$(grep MemTotal /proc/meminfo | awk '{print $2}')
     if [[ "$OSTYPE" == "darwin"* ]]; then

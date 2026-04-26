@@ -13,6 +13,24 @@
 # shell 基本工具相关环境变量
 export CLICOLOR=1    # 让ls的输出显示颜色
 export PsPrompt=fast # 如果使用pwsh,此环境变量供参考
+# bash prompt主题配置
+export BASH_PROMPT="fast_ys"
+export BASHRC_FILE="$HOME/.bashrc"
+export BASH_PROMPTS_ROOT="$sh/bash_prompts"
+# linuxbrew的基本环境变量
+export _HOMEBREW_PREFIX="/home/linuxbrew/.linuxbrew"
+export _HOMEBREW_PATH="$_HOMEBREW_PREFIX/bin/brew"
+# macos brew(homebrew) 会自己注册HOMEBREW_PREFIX等环境变量
+# HOMEBREW_PREFIX="$(brew --prefix)"
+# brew镜像加速(以科大ustc源为例):
+# Homebrew 源代码仓库,可以用来加速: brew update
+export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.ustc.edu.cn/brew.git"
+# Homebrew 预编译二进制软件包与软件包元数据文件
+export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.ustc.edu.cn/homebrew-bottles"
+export HOMEBREW_API_DOMAIN="https://mirrors.ustc.edu.cn/homebrew-bottles/api"
+# Homebrew 核心软件仓库(Brew 4.0 版本后默认使用元数据 JSON API 获取仓库信息，因此在大部分情况下都不再需要进行如下配置。可参考 homebrew-bottles 进行相关配置。)
+export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.ustc.edu.cn/homebrew-core.git"
+
 
 # 定义常用变量(路径变量为主)
 echo "Loading pre-defined variables..."
