@@ -97,8 +97,8 @@ _SH_RELATIVE="wp/woocommerce/woo_df/sh"
 #### wsl中访问windows中的仓库目录
 
 ```bash
-ln -s /mnt/c/repos ~/repos
-ln -s /mnt/c/$_REPO_BASE/$_SH_RELATIVE ~/sh
+ln -snfv /mnt/c/repos ~/repos
+ln -snfv /mnt/c/$_REPO_BASE/$_SH_RELATIVE ~/sh
 bash ~/sh/shellrc_addition.sh && exec bash
 ```
 
@@ -111,8 +111,8 @@ bash ~/sh/shellrc_addition.sh && exec bash
 > 假设macos上当前用户目录为`/Users/cxxu/`
 
 ```bash
-ln -s /Users/cxxu/repos ~/repos
-ln -s /Users/cxxu/$_REPO_BASE/$_SH_RELATIVE ~/sh
+ln -snfv /Users/cxxu/repos ~/repos
+ln -snfv /Users/cxxu/$_REPO_BASE/$_SH_RELATIVE ~/sh
 # 配置shell环境
 bash ~/sh/shellrc_addition.sh && exec bash
 ```
@@ -124,7 +124,7 @@ bash ~/sh/shellrc_addition.sh && exec bash
 或者使用自动判断可用仓库源的一键部署版本:
 
 ```bash
-bash <( curl -sSfL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_shell_config.sh)
+bash <( curl -sSfL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/update_shell_config.sh)
 
 ```
 
