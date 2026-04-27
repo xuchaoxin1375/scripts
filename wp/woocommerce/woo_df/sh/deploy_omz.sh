@@ -430,7 +430,8 @@ source ~/zsh_bindkey_config.sh\
     }
     update_hss_config_rc() {
         if [[ $install_zsh_history_substring_search == true ]]; then
-            local zsh_bindkey_hss_config=$(
+            local zsh_bindkey_hss_config
+            zsh_bindkey_hss_config=$(
                 cat << 'EOF'
 # zsh-history-substring-search 快捷键配置
 # ^[[A 和 ^[[B 是大多数终端（如 iTerm2, VS Code 终端, Putty）发送给 Shell 的原始"向上"和"向下"信号。

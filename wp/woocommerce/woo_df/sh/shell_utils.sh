@@ -1709,15 +1709,16 @@ new_user_sudo() {
     rm /tmp/new_sudo_rule
 
 }
-# 从国内镜像源安装brew(默认中科大源镜像源)
 
 # 从国内镜像源安装brew(默认中科大源镜像源)
-install_brew_from_mirror() {
-
+install_brew_cn() {
+    
     # 参数解析
+    # usage: '"${FUNCNAME[0]}"' [options] # ${FUNCNAME[0]}在bash中支持,但是zsh不支持,用$funcstack[1]
     local usage='
     国内用户安装homebrew(使用镜像加速)
-    usage: install_brew_from_ustc [options]
+    usage: 
+        install_brew_cn [options]
     options:
         -h, --help      显示帮助信息
         -s, --source    指定镜像源,可用镜像包括:ustc,tuna,aliyun,github;
@@ -1729,6 +1730,7 @@ install_brew_from_mirror() {
         --reset-mirror  重置为官方源(github)
         --force          强制重新设置brew环境变量(即便之前有安装设置过的迹象)
         --uninstall      卸载brew
+        --github-mirror  使用github镜像加速github链接(默认使用:https://gh-proxy.com/)
 
 '
     local args_pos=()
@@ -1736,6 +1738,10 @@ install_brew_from_mirror() {
     local installer_source="ustc"
     local reset_mirror=false
     local force=false
+    local github_mirror="https://gh-proxy.com/"
+    if [[ $github_mirror == https*://github.com/* ]]; then
+        github_mirror="${github_mirror%/}/"
+    fi
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -h | --help)
@@ -1763,15 +1769,16 @@ install_brew_from_mirror() {
             --uninstall)
                 echo "正在卸载brew...参考[https://github.com/Homebrew/install#uninstall-homebrew]"
                 # 从github拉去卸载脚本并执行
-                /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh)"
+                /bin/bash -c "$(curl -fsSL "$github_mirror"https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh)"
                 # 移除默认安装目录(如果之前的安装中断或者不完整):
-                echo "移除默认安装目录可能需要管理员权限,如果需要,考虑将此函数导出(export),然后用类似于sudo bash -c 的命令方式运行此函数"
+                echo "移除默认安装目录可能需要管理员权限,如果需要,考虑将此函数导出(export),
+                然后用类似于sudo bash -c 的命令方式运行此函数,或者自行手动删除brew安装目录;"
                 local brew_home
-                brew_home1=$(brew --prefix)
-                brew_home2=/home/linuxbrew/.linuxbrew
-                brew_home3=/opt/homebrew
-                brew_home4=/usr/local/homebrew
-                brew_homes=("$brew_home1" "$brew_home2" "$brew_home3" "$brew_home4")
+                # brew_home0=$(brew --prefix) #brew未必可用
+                brew_home1=/home/linuxbrew/.linuxbrew
+                brew_home2=/opt/homebrew
+                brew_home3=/usr/local/homebrew
+                brew_homes=("$brew_home1" "$brew_home2" "$brew_home3")
                 for brew_home in "${brew_homes[@]}"; do
                     if [[ -d $brew_home ]]; then
                         if command -v sudo &> /dev/null; then

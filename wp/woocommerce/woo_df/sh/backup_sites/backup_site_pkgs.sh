@@ -89,7 +89,11 @@ fi
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
 }
-
+# 依赖检查
+if ! command -v rsync &> /dev/null; then
+    log "❌ 错误: rsync 未安装，请先安装 rsync"
+    exit 1
+fi
 # ========== 🚀 开始执行 ==========
 log "=== 🚀 启动压缩包备份任务 ==="
 
