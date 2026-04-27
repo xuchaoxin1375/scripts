@@ -1731,7 +1731,11 @@ install_brew_from_mirror() {
     usage: install_brew_from_ustc [options]
     options:
         -h, --help      显示帮助信息
-        -s, --source    指定镜像源,可用镜像包括:ustc,tuna,aliyun,github;可能需要排队(tuna);
+        -s, --source    指定镜像源,可用镜像包括:ustc,tuna,aliyun,github;
+                        ustc成功率最高;
+                        tuna可能需要排队;
+                        aliyun镜像方案比较老旧,容易失败;
+                        github不适用国内镜像(如果用此方案建议设置终端代理);
         -b, --installer-source 指定brew本体的安装脚本来源(和镜像相对独立),可能需要排队(tuna);
         --reset-mirror  重置为官方源(github)
         --force          强制重新设置brew环境变量(即便之前有安装设置过的迹象)
@@ -1771,6 +1775,16 @@ install_brew_from_mirror() {
                 echo "正在卸载brew...参考[https://github.com/Homebrew/install#uninstall-homebrew]"
                 # 从github拉去卸载脚本并执行
                 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh)"
+                # 移除默认安装目录(如果之前的安装中断或者不完整):
+                local brew_home
+                brew_home1=$(brew --prefix)
+                brew_home2=/home/linuxbrew/.linuxbrew
+                brew_home3=/opt/homebrew
+                brew_home4=/usr/local/homebrew
+                brew_homes=("$brew_home1" "$brew_home2" "$brew_home3" "$brew_home4")
+                for brew_home in "${brew_homes[@]}"; do
+                    [[ -d $brew_home ]] && rm -rf "$brew_home"
+                done
                 return 0
                 ;;
             --)
@@ -1851,7 +1865,11 @@ export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.aliyun.com/homebrew/homebrew-bott
         aliyun)
             mirror_env="$aliyun_env"
             ;;
-        github) mirror="" ;;
+        github)
+            mirror=""
+            unset HOMEBREW_BREW_GIT_REMOTE
+            git -C "$(brew --repo)" remote set-url origin https://github.com/Homebrew/brew
+            ;;
         *)
             echo "Unknown mirror: $mirror. " >&2
             echo "$usage" >&2
