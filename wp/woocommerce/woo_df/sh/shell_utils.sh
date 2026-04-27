@@ -1713,18 +1713,7 @@ new_user_sudo() {
 
 # 从国内镜像源安装brew(默认中科大源镜像源)
 install_brew_from_mirror() {
-    # 判断是否已经安装过brew:
-    # command -v brew > /dev/null 2>&1
-    if command -v brew > /dev/null 2>&1; then
-        local brew_version
-        brew_version=$(brew --version 2> /dev/null)
-        if [[ $brew_version ]]; then
-            echo "Homebrew/Linuxbrew 已安装[$brew_version]."
-            return 1 # 退出安装
-        else
-            echo "正在准备安装homebrew..."
-        fi
-    fi
+
     # 参数解析
     local usage='
     国内用户安装homebrew(使用镜像加速)
@@ -1776,6 +1765,7 @@ install_brew_from_mirror() {
                 # 从github拉去卸载脚本并执行
                 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh)"
                 # 移除默认安装目录(如果之前的安装中断或者不完整):
+                echo "移除默认安装目录可能需要管理员权限,如果需要,考虑将此函数导出(export),然后用类似于sudo bash -c 的命令方式运行此函数"
                 local brew_home
                 brew_home1=$(brew --prefix)
                 brew_home2=/home/linuxbrew/.linuxbrew
@@ -1783,7 +1773,14 @@ install_brew_from_mirror() {
                 brew_home4=/usr/local/homebrew
                 brew_homes=("$brew_home1" "$brew_home2" "$brew_home3" "$brew_home4")
                 for brew_home in "${brew_homes[@]}"; do
-                    [[ -d $brew_home ]] && rm -rf "$brew_home"
+                    if [[ -d $brew_home ]]; then
+                        if command -v sudo &> /dev/null; then
+                            echo "使用sudo权限移除目录: $brew_home"
+                            sudo rm -rf "$brew_home"
+                        else
+                            rm -rf "$brew_home"
+                        fi
+                    fi
                 done
                 return 0
                 ;;
@@ -1803,6 +1800,7 @@ install_brew_from_mirror() {
         shift
     done
     set -- "${args_pos[@]}"
+
     # 参数解析并调整完毕
     # 是否重置
     if [[ $reset_mirror == true ]]; then
@@ -1826,6 +1824,18 @@ install_brew_from_mirror() {
 
         echo "请检查shell的配置文件,如果之前永久配置了 HOMEBREW 环境变量，还需要在对应的 ~/.bash_profile 或者 ~/.zshrc 配置文件中，将对应的 HOMEBREW 环境变量配置行注释或者删除!"
 
+    fi
+    # 判断是否已经安装过brew:
+    # command -v brew > /dev/null 2>&1
+    if command -v brew > /dev/null 2>&1; then
+        local brew_version
+        brew_version=$(brew --version 2> /dev/null)
+        if [[ $brew_version ]]; then
+            echo "Homebrew/Linuxbrew 已安装[$brew_version]."
+            return 1 # 退出安装
+        else
+            echo "正在准备安装homebrew..."
+        fi
     fi
     # 设置源
     local mirror_env=""
@@ -2051,7 +2061,7 @@ EOF
     echo "checking username [$username]..."
     # 判断是否已经安装过brew:
     if command -v brew > /dev/null 2>&1; then
-        echo "Homebrew/Linuxbrew 已安装;如果需要重新安装,请移除brew(查看帮助中的链接)."
+        echo "Homebrew/Linuxbrew 已安��;如果需要重新安装,请移除brew(查看帮助中的链接)."
         brew --version
         return 1 # 退出安装
     else

@@ -261,36 +261,7 @@ if is_shell bash || check_dependency -q shopt; then
 
 fi
 if is_shell zsh; then
-  # zsh-history-substring-search 快捷键配置(可以考虑迁移到文件中)
-  # ^[[A 和 ^[[B 是大多数终端（如 iTerm2, VS Code 终端, Putty）发送给 Shell 的原始“向上”和“向下”信号。
-  # 绑定向上箭头
-  # bindkey '^[[A' history-substring-search-up
-  # # 绑定向下箭头
-  # bindkey '^[[B' history-substring-search-down
-  # # ${terminfo}[kcuu1] 代表从系统的终端信息数据库中读取“向上箭头”的定义。
-  # bindkey "${terminfo[kcuu1]}" history-substring-search-up
-  # bindkey "${terminfo[kcud1]}" history-substring-search-down
-
-  # 兼容性写法
-  # 为了让你的配置在所有终端都“硬核”工作，建议使用条件判断和备选硬编码。这样即便 terminfo 挂了，脚本也不会报错：
-  # 向上键
-  if [[ -n "${terminfo[kcuu1]}" ]]; then
-    bindkey "${terminfo[kcuu1]}" history-substring-search-up
-  else
-    # 备选方案：手动绑定常见的 ANSI 序列
-    bindkey "^[[A" history-substring-search-up
-  fi
-
-  # 向下键
-  if [[ -n "${terminfo[kcud1]}" ]]; then
-    bindkey "${terminfo[kcud1]}" history-substring-search-down
-  else
-    bindkey "^[[B" history-substring-search-down
-  fi
-
-  # 如果你使用 Vi 模式，还可以绑定 j 和 k
-  # bindkey -M vicmd 'k' history-substring-search-up
-  # bindkey -M vicmd 'j' history-substring-search-down
+ 
 
   # 避免compinit: bad math expression: operand expected at end of string 的错误
   # rm -rf ~/.zcompdump* # 每次重建有开销,手动重建
