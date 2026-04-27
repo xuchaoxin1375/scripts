@@ -1992,8 +1992,6 @@ EOF
     fi
 
 }
-
-# 适用于网络环境良好的国外服务器安装homebrew(root用户也可以使用此方案使用brew)
 install_linuxbrew() {
 
     local usage
@@ -2068,7 +2066,7 @@ EOF
     echo "checking username [$username]..."
     # 判断是否已经安装过brew:
     if command -v brew > /dev/null 2>&1; then
-        echo "Homebrew/Linuxbrew 已安��;如果需要重新安装,请移除brew(查看帮助中的链接)."
+        echo "Homebrew/Linuxbrew 已安装;如果需要重新安装,请移除brew(查看帮助中的链接)."
         brew --version
         return 1 # 退出安装
     else
@@ -2097,13 +2095,13 @@ EOF
         grep -q '^[^#].*brew shellenv' ~/."$shellname"rc ||
             echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/."$shellname"rc
         # echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.zshrc
-        # 查看相关配置是��插入成功
+        # 查看相关配置是否插入成功
         grep -Hn 'brew shellenv' ~/."$shellname"rc
     done
     echo "[INFO]:Reload shell rc file to take effect..."
     # exec "$0" # 不要在函数中直接执行此行,交互式中才可以
     echo "[INFO]:Run command: exec \$SHELL"
-    # 针对常用shell��试自动刷新配置生效
+    # 针对常用shell尝试自动刷新配置生效
     is_shell "zsh" && exec zsh
     is_shell "bash" && exec bash
 
@@ -2180,7 +2178,7 @@ brewr() {
         return $EXIT_CODE
     else
         # 如果不是 root 用户，直接调用原始的 brew 命令
-        # 注意避免递��调用!
+        # 注意避免递归调用!
         command brew "$@"
     fi
 }
@@ -2206,14 +2204,14 @@ rmx() {
     return 0
 }
 #######################################
-# 强力删除指��的文件或目录。
+# 强力删除指定的文件或目录。
 # 该函数会尝试移除文件的不可修改属性 (immutable) 和权限限制，
-# 然后执行强制递��删除。
+# 然后执行强制递归删除。
 # Arguments:
-#   待删除的文件或目录路径（支持多个参数���。
+#   待删除的文件或目录路径（支持多个参数）。
 # Returns:
 #   0 如果所有目标都被成功删除。
-#   1 ���果未提供参数或删除失败。
+#   1 如果未提供参数或删除失败。
 #######################################
 rm1() {
     # 检查是否输入了参数
@@ -2282,7 +2280,7 @@ rm2() {
             continue
         fi
 
-        # 安全���认（除非 -f）
+        # 安全确认（除非 -f）
         if [[ "$force" != true ]]; then
             read -r -p "[WARN] 确定要强制删除 '$target'? [y/N] " confirm
             [[ "$confirm" != [yY] ]] && continue
@@ -2309,9 +2307,9 @@ rm2() {
 
     return $((errors > 0 ? 1 : 0))
 }
-# 进程���控函数psm
+# 进程监控函数psm
 psm_gnu() {
-    # 1. 检��帮助选项
+    # 1. 检查帮助选项
     if [[ "$1" == "-h" || "$1" == "--help" ]]; then
         # 使用 'cat << EOF' 来格式化多行帮助文本
         cat <<- EOF
