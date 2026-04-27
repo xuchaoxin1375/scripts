@@ -5,10 +5,6 @@
 
 # 相关变量基本用法：
 # mkdir -p "$HOME/repos" && git clone --recursive --depth 1 --shallow-submodules https://gitee.com/xuchaoxin1375/scripts.git "$SCRIPT_ROOT"
-#创建符号链接（sh),注意bsd（macos）的ln 不支持-T;
-# if [[ -d $SH_SCRIPT_DIR ]]; then
-#     ln -s "$SH_SCRIPT_DIR" "$SH_SYM" -fv
-# fi
 
 # shell 基本工具相关环境变量
 export CLICOLOR=1    # 让ls的输出显示颜色
@@ -22,15 +18,6 @@ export _HOMEBREW_PREFIX="/home/linuxbrew/.linuxbrew"
 export _HOMEBREW_PATH="$_HOMEBREW_PREFIX/bin/brew"
 # macos brew(homebrew) 会自己注册HOMEBREW_PREFIX等环境变量
 # HOMEBREW_PREFIX="$(brew --prefix)"
-# brew镜像加速(以科大ustc源为例):
-# Homebrew 源代码仓库,可以用来加速: brew update
-export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.ustc.edu.cn/brew.git"
-# Homebrew 预编译二进制软件包与软件包元数据文件
-export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.ustc.edu.cn/homebrew-bottles"
-export HOMEBREW_API_DOMAIN="https://mirrors.ustc.edu.cn/homebrew-bottles/api"
-# Homebrew 核心软件仓库(Brew 4.0 版本后默认使用元数据 JSON API 获取仓库信息，因此在大部分情况下都不再需要进行如下配置。可参考 homebrew-bottles 进行相关配置。)
-export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.ustc.edu.cn/homebrew-core.git"
-
 
 # 定义常用变量(路径变量为主)
 echo "Loading pre-defined variables..."
@@ -52,13 +39,15 @@ pys="$woo_df/pys"
 desktop="/mnt/c/Users/Administrator/Desktop"
 # pythonpath
 PYTHONPATH="$woo_df:$pys/bt_api:$pys/cf_api:$pys/spaceship_api"
-# sh="$wslsh"
 # 根据不同的系统环境为变量sh配置不同的取值
 
 # 符号链接SH_SYM的TARGET：
 SH_SCRIPT_DIR="$SCRIPT_ROOT/wp/woocommerce/woo_df/sh"
 sh="$SH_SYM"
 macos_sh="$sh/macos_sh"
+
+# brew镜像加速(以科大ustc源为例):
+source "$sh/env_sh/homebrew_env.sh"
 # 按需创建sh短路径(对于msys平台,可能有脚本缓存问题(脚本更改不生效的情况),必要时可以删除短路径重建)
 # echo "sh=[$SH_SYM]"
 # [[ -L "$SH_SYM" ]] || ln -s -fv "$SH_SCRIPT_DIR" "$SH_SYM"  

@@ -1711,6 +1711,17 @@ new_user_sudo() {
 }
 # 从国内镜像源安装brew(默认中科大源镜像源)
 install_brew_from_ustc() {
+    # 判断是否已经安装过brew:
+    # command -v brew > /dev/null 2>&1
+
+    local brew_version
+    brew_version=$(brew --version)
+    if [[ $brew_version ]]; then
+        echo "Homebrew/Linuxbrew 已安装[$brew_version]."
+        return 1 # 退出安装
+    else
+        echo "正在准备安装homebrew..."
+    fi
     export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.ustc.edu.cn/brew.git"
     export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.ustc.edu.cn/homebrew-core.git"
     export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.ustc.edu.cn/homebrew-bottles"
@@ -1720,6 +1731,7 @@ install_brew_from_ustc() {
     # /bin/bash -c "$(curl -fsSL https://github.com/Homebrew/install/raw/HEAD/install.sh)"
     # 对于 bash 用户
     # echo 'export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.ustc.edu.cn/brew.git"' >> ~/.bash_profile
+
     # 幂等地添加brew_git_remote环境变量到指定文件中
     set_brew_env_to_shellrc() {
         # local shellrc="$1"
@@ -1729,7 +1741,13 @@ install_brew_from_ustc() {
                 sed -i '/# >>> brew git env/,/# <<< brew git env/d' "$shellrc"
                 sed -i '$a\
 # >>> brew git env\
+# Homebrew 源代码仓库,可以用来加速: brew update\
 export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.ustc.edu.cn/brew.git"\
+# Homebrew 预编译二进制软件包与软件包元数据文件\
+export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.ustc.edu.cn/homebrew-bottles"\
+export HOMEBREW_API_DOMAIN="https://mirrors.ustc.edu.cn/homebrew-bottles/api"\
+# Homebrew 核心软件仓库(Brew 4.0 版本后默认使用元数据 JSON API 获取仓库信息，因此在大部分情况下都不再需要进行如下配置。可参考 homebrew-bottles 进行相关配置。)\
+export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.ustc.edu.cn/homebrew-core.git"\
 # <<< brew git env\
 ' "$shellrc"
             else
@@ -1737,11 +1755,19 @@ export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.ustc.edu.cn/brew.git"\
             fi
         done
     }
-    # 对于bash用户
-    set_brew_env_to_shellrc ~/.bashrc ~/.zshrc # ~/.bash_profile
-    # 对于macos,可能需要写入.bash_profile
-    # 对于 zsh 用户
-    # set_brew_env_to_shellrc ~/.zshrc
+    # 判断是否需要插入到shellrc文件中(用户可能已经通过别的方式导入相关的环境变量)
+    if [[ $HOMEBREW_BREW_GIT_REMOTE ]]; then
+        echo "HOMEBREW_BREW_GIT_REMOTE is already set to $HOMEBREW_BREW_GIT_REMOTE (in somewhere else), skipping adding to shellrc"
+        # 显示当前相关环境变量
+        set | grep '^HOMEBREW' | grep https
+    else
+        # 对于bash用户
+        set_brew_env_to_shellrc ~/.bashrc ~/.zshrc # ~/.bash_profile
+        # 对于macos,可能需要写入.bash_profile
+        # 对于 zsh 用户
+        # set_brew_env_to_shellrc ~/.zshrc
+    fi
+
 }
 install_linuxbrew() {
 
@@ -2058,9 +2084,9 @@ rm2() {
 
     return $((errors > 0 ? 1 : 0))
 }
-# 进程监控函数psm
+# 进程���控函数psm
 psm_gnu() {
-    # 1. 检查帮助选项
+    # 1. 检��帮助选项
     if [[ "$1" == "-h" || "$1" == "--help" ]]; then
         # 使用 'cat << EOF' 来格式化多行帮助文本
         cat <<- EOF
