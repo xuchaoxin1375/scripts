@@ -1710,48 +1710,170 @@ new_user_sudo() {
 
 }
 # 从国内镜像源安装brew(默认中科大源镜像源)
-install_brew_from_ustc() {
+
+# 从国内镜像源安装brew(默认中科大源镜像源)
+install_brew_from_mirror() {
     # 判断是否已经安装过brew:
     # command -v brew > /dev/null 2>&1
-
-    local brew_version
-    brew_version=$(brew --version)
-    if [[ $brew_version ]]; then
-        echo "Homebrew/Linuxbrew 已安装[$brew_version]."
-        return 1 # 退出安装
-    else
-        echo "正在准备安装homebrew..."
+    if command -v brew > /dev/null 2>&1; then
+        local brew_version
+        brew_version=$(brew --version 2> /dev/null)
+        if [[ $brew_version ]]; then
+            echo "Homebrew/Linuxbrew 已安装[$brew_version]."
+            return 1 # 退出安装
+        else
+            echo "正在准备安装homebrew..."
+        fi
     fi
-    export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.ustc.edu.cn/brew.git"
-    export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.ustc.edu.cn/homebrew-core.git"
-    export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.ustc.edu.cn/homebrew-bottles"
-    export HOMEBREW_API_DOMAIN="https://mirrors.ustc.edu.cn/homebrew-bottles/api"
+    # 参数解析
+    local usage='
+    国内用户安装homebrew(使用镜像加速)
+    usage: install_brew_from_ustc [options]
+    options:
+        -h, --help      显示帮助信息
+        -s, --source    指定镜像源,可用镜像包括:ustc,tuna,aliyun,github;可能需要排队(tuna);
+        -b, --installer-source 指定brew本体的安装脚本来源(和镜像相对独立),可能需要排队(tuna);
 
-    /bin/bash -c "$(curl -fsSL https://mirrors.ustc.edu.cn/misc/brew-install.sh)"
+'
+    local args_pos=()
+    local mirror='ustc'
+    local installer_source="ustc"
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h | --help)
+                echo "$usage"
+                return 0
+                ;;
+            -s | ---source)
+                mirror="$2"
+                shift
+                ;;
+            -b | --installer-source)
+                installer_source="$2"
+                shift
+                ;;
+            --)
+                shift
+                break
+                ;;
+            -?*)
+                echo "Unknown option: " >&2
+                echo "$usage"
+                return 1
+                ;;
+            *)
+                args_pos+=("$1")
+                ;;
+        esac
+        shift
+    done
+    set -- "${args_pos[@]}"
+    # 参数解析并调整完毕
+    local mirror_env=""
+    # ustc mirror
+    local ustc_env='
+export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.ustc.edu.cn/brew.git"
+export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.ustc.edu.cn/homebrew-core.git"
+export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.ustc.edu.cn/homebrew-bottles"
+export HOMEBREW_API_DOMAIN="https://mirrors.ustc.edu.cn/homebrew-bottles/api"
+'
+    local tuna_env='
+export HOMEBREW_INSTALL_FROM_API=1
+export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/brew.git"
+export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/homebrew-core.git"
+export HOMEBREW_API_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles/api"
+export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles"
+export HOMEBREW_PIP_INDEX_URL="https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
+'
+    local aliyun_env='
+export HOMEBREW_INSTALL_FROM_API=1
+export HOMEBREW_API_DOMAIN="https://mirrors.aliyun.com/homebrew-bottles/api"
+export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.aliyun.com/homebrew/brew.git"
+export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.aliyun.com/homebrew/homebrew-core.git"
+export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.aliyun.com/homebrew/homebrew-bottles"
+
+'
+    if [[ $mirror == "tuna" || $installer_source == "tuna" ]]; then
+        echo "使用tuna镜像可能需要排队(高负载情况下),时间可能需要十来分钟!"
+    fi
+    case "$mirror" in
+        ustc)
+            mirror_env="$ustc_env"
+            ;;
+        tuna)
+            mirror_env="$tuna_env"
+            ;;
+        aliyun)
+            mirror_env="$aliyun_env"
+            ;;
+        github) mirror="" ;;
+        *)
+            echo "Unknown mirror: $mirror. " >&2
+            echo "$usage" >&2
+
+            return 1
+            ;;
+    esac
+    # 移除多余的换行符
+    mirror_trimed=$(
+        cat << EOF
+$mirror_env
+EOF
+    )
+    echo "${mirror_trimed}"
+    if [[ $mirror_env ]]; then
+        # 临时执行环境变量设置语句片段
+        # source <(echo -e "${ustc_env//$'\n'/ \\$'\n'}\\")
+        eval "$mirror_env"
+        # 将环境变量设置语句片段转换为适合sed插入到shellrc文件中的格式
+        local mirror_forsed="${mirror_trimed//$'\n'/ \\$'\n'}\\"
+        # echo -e "${ustc_env//$'\n'/ \\$'\n'}\\"
+    fi
+    # return 1
+
+    case "$installer_source" in
+        ustc)
+            echo "使用中科大镜像源安装homebrew..."
+            /bin/bash -c "$(curl -fsSL https://mirrors.ustc.edu.cn/misc/brew-install.sh)"
+            ;;
+        tuna)
+            echo "使用清华大学镜像源安装homebrew..."
+            # 从镜像下载安装脚本并安装 Homebrew / Linuxbrew
+            git clone --depth=1 https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/install.git ~/brew-install
+            /bin/bash ~/brew-install/install.sh
+            rm -rf ~/brew-install
+
+            ;;
+        aliyun)
+            # 从阿里云下载安装脚本并安装 Homebrew
+            git clone https://mirrors.aliyun.com/homebrew/install.git brew-install
+            /bin/bash brew-install/install.sh
+            rm -rf brew-install
+            ;;
+        github)
+            echo "使用官方源安装homebrew..."
+            # 也可从 GitHub 获取官方安装脚本安装 Homebrew / Linuxbrew
+            /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+            ;;
+    esac
     # /bin/bash -c "$(curl -fsSL https://github.com/Homebrew/install/raw/HEAD/install.sh)"
     # 对于 bash 用户
     # echo 'export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.ustc.edu.cn/brew.git"' >> ~/.bash_profile
 
-    # 幂等地添加brew_git_remote环境变量到指定文件中
+    # 幂等地添加brew 镜像相关的环境变量到指定文件中
     set_brew_env_to_shellrc() {
         # local shellrc="$1"
         for shellrc in "$@"; do
+            ! [[ -f "$shellrc" ]] && touch "$shellrc"
             if [ -f "$shellrc" ]; then
                 # break
                 sed -i '/# >>> brew git env/,/# <<< brew git env/d' "$shellrc"
                 sed -i '$a\
 # >>> brew git env\
-# Homebrew 源代码仓库,可以用来加速: brew update\
-export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.ustc.edu.cn/brew.git"\
-# Homebrew 预编译二进制软件包与软件包元数据文件\
-export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.ustc.edu.cn/homebrew-bottles"\
-export HOMEBREW_API_DOMAIN="https://mirrors.ustc.edu.cn/homebrew-bottles/api"\
-# Homebrew 核心软件仓库(Brew 4.0 版本后默认使用元数据 JSON API 获取仓库信息，因此在大部分情况下都不再需要进行如下配置。可参考 homebrew-bottles 进行相关配置。)\
-export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.ustc.edu.cn/homebrew-core.git"\
+'"$mirror_forsed"'
 # <<< brew git env\
 ' "$shellrc"
-            else
-                echo "无法找到指定文件: $shellrc"
             fi
         done
     }
@@ -1761,14 +1883,37 @@ export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.ustc.edu.cn/homebrew-core.git"\
         # 显示当前相关环境变量
         set | grep '^HOMEBREW' | grep https
     else
-        # 对于bash用户
-        set_brew_env_to_shellrc ~/.bashrc ~/.zshrc # ~/.bash_profile
+        if [[ $mirror ]]; then
+            echo "正在将brew镜像环境变量添加到shellrc文件中..."
+            # 对于bash用户
+            set_brew_env_to_shellrc ~/.bashrc ~/.zshrc ~/.bash_profile
         # 对于macos,可能需要写入.bash_profile
         # 对于 zsh 用户
         # set_brew_env_to_shellrc ~/.zshrc
+        else
+            echo "没有指定镜像源,跳过添加brew镜像环境变量到shellrc文件中..."
+        fi
+    fi
+    # 配置homebrew路径相关的环境变量(和镜像环境变量不同)
+    arch=$(uname -m)
+    if is_darwin; then
+        if [[ $arch == "arm64" ]]; then
+            # shellcheck disable=SC2016
+            test -r ~/.bash_profile && echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.bash_profile
+            # shellcheck disable=SC2016
+            test -r ~/.zprofile && echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
+        fi
+    elif is_linux; then
+        test -d ~/.linuxbrew && eval "$(~/.linuxbrew/bin/brew shellenv)"
+        test -d /home/linuxbrew/.linuxbrew && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+        test -r ~/.bash_profile && echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.bash_profile
+        test -r ~/.profile && echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.profile
+        test -r ~/.zprofile && echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.zprofile
     fi
 
 }
+
+# 适用于网络环境良好的国外服务器安装homebrew(root用户也可以使用此方案使用brew)
 install_linuxbrew() {
 
     local usage
@@ -1955,7 +2100,7 @@ brewr() {
         return $EXIT_CODE
     else
         # 如果不是 root 用户，直接调用原始的 brew 命令
-        # 注意避免递归调用!
+        # 注意避免递��调用!
         command brew "$@"
     fi
 }
@@ -1981,14 +2126,14 @@ rmx() {
     return 0
 }
 #######################################
-# 强力删除指定的文件或目录。
+# 强力删除指��的文件或目录。
 # 该函数会尝试移除文件的不可修改属性 (immutable) 和权限限制，
-# 然后执行强制递归删除。
+# 然后执行强制递��删除。
 # Arguments:
-#   待删除的文件或目录路径（支持多个参数）。
+#   待删除的文件或目录路径（支持多个参数���。
 # Returns:
 #   0 如果所有目标都被成功删除。
-#   1 如果未提供参数或删除失败。
+#   1 ���果未提供参数或删除失败。
 #######################################
 rm1() {
     # 检查是否输入了参数
@@ -2057,7 +2202,7 @@ rm2() {
             continue
         fi
 
-        # 安全确认（除非 -f）
+        # 安全���认（除非 -f）
         if [[ "$force" != true ]]; then
             read -r -p "[WARN] 确定要强制删除 '$target'? [y/N] " confirm
             [[ "$confirm" != [yY] ]] && continue

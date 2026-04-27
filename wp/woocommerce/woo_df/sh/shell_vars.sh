@@ -47,7 +47,7 @@ sh="$SH_SYM"
 macos_sh="$sh/macos_sh"
 
 # brew镜像加速(以科大ustc源为例):
-source "$sh/env_sh/homebrew_env.sh"
+source "$sh/env_sh/homebrew_ustc.sh"
 # 按需创建sh短路径(对于msys平台,可能有脚本缓存问题(脚本更改不生效的情况),必要时可以删除短路径重建)
 # echo "sh=[$SH_SYM]"
 # [[ -L "$SH_SYM" ]] || ln -s -fv "$SH_SCRIPT_DIR" "$SH_SYM"  
