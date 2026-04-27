@@ -1559,7 +1559,7 @@ function Update-ReposesConfiged
             $gitUrl = "https://${RepoSource}.com/xuchaoxin1375/$repoDir" #.Trim('\\')
             $Path = "$repos/$repoDir"
             Write-Verbose "[$giturl] will be cloned to [$Path] !" -Verbose
-            git clone $gitUrl $Path -c http.proxy="$Proxy" -c https.proxy="$Proxy"
+            git -c http.proxy="$Proxy" -c https.proxy="$Proxy" clone $gitUrl $Path 
             continue
 
         }
@@ -1576,9 +1576,9 @@ function Update-ReposesConfiged
             if ($Force)
             {
 
-                git reset --hard origin/main -c http.proxy="$Proxy" -c https.proxy="$Proxy"
+                git -c http.proxy="$Proxy" -c https.proxy="$Proxy" reset --hard origin/main 
             }
-            git pull origin main -c http.proxy="$Proxy" -c https.proxy="$Proxy"
+            git -c http.proxy="$Proxy" -c https.proxy="$Proxy" pull origin main 
             # 上述命令对于不会引起冲突的文件或目录不造成影响,只有和云端仓库冲突的文件或目录才会被移除更改
             # 如果想要完全一样,那么执行以下清理命令(清除未跟踪的文件或目录)
             # git clean -fd
