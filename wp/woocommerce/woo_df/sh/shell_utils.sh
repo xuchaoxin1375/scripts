@@ -1733,11 +1733,16 @@ install_brew_from_mirror() {
         -h, --help      显示帮助信息
         -s, --source    指定镜像源,可用镜像包括:ustc,tuna,aliyun,github;可能需要排队(tuna);
         -b, --installer-source 指定brew本体的安装脚本来源(和镜像相对独立),可能需要排队(tuna);
+        --reset-mirror  重置为官方源(github)
+        --force          强制重新设置brew环境变量(即便之前有安装设置过的迹象)
+        --uninstall      卸载brew
 
 '
     local args_pos=()
     local mirror='ustc'
     local installer_source="ustc"
+    local reset_mirror=false
+    local force=false
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -h | --help)
@@ -1751,6 +1756,22 @@ install_brew_from_mirror() {
             -b | --installer-source)
                 installer_source="$2"
                 shift
+                ;;
+            --reset-mirror)
+                mirror="github"
+                installer_source="github"
+                reset_mirror=true
+                shift
+                ;;
+            --force)
+                force=true
+                shift
+                ;;
+            --uninstall)
+                echo "正在卸载brew...参考[https://github.com/Homebrew/install#uninstall-homebrew]"
+                # 从github拉去卸载脚本并执行
+                /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh)"
+                return 0
                 ;;
             --)
                 shift
@@ -1769,6 +1790,30 @@ install_brew_from_mirror() {
     done
     set -- "${args_pos[@]}"
     # 参数解析并调整完毕
+    # 是否重置
+    if [[ $reset_mirror == true ]]; then
+        echo "重置为官方源..."
+        unset HOMEBREW_BREW_GIT_REMOTE
+        git -C "$(brew --repo)" remote set-url origin https://github.com/Homebrew/brew
+
+        unset HOMEBREW_API_DOMAIN
+        unset HOMEBREW_CORE_GIT_REMOTE
+        BREW_TAPS="$(
+            BREW_TAPS="$(brew tap 2> /dev/null)"
+            echo -n "${BREW_TAPS//$'\n'/:}"
+        )"
+        for tap in core cask{,-fonts,-versions} command-not-found services; do
+            if [[ ":${BREW_TAPS}:" == *":homebrew/${tap}:"* ]]; then
+                brew tap --custom-remote "homebrew/${tap}" "https://github.com/Homebrew/homebrew-${tap}"
+            fi
+        done
+
+        brew update
+
+        echo "请检查shell的配置文件,如果之前永久配置了 HOMEBREW 环境变量，还需要在对应的 ~/.bash_profile 或者 ~/.zshrc 配置文件中，将对应的 HOMEBREW 环境变量配置行注释或者删除!"
+
+    fi
+    # 设置源
     local mirror_env=""
     # ustc mirror
     local ustc_env='
@@ -1868,17 +1913,17 @@ EOF
             ! [[ -f "$shellrc" ]] && touch "$shellrc"
             if [ -f "$shellrc" ]; then
                 # break
-                sed -i '/# >>> brew git env/,/# <<< brew git env/d' "$shellrc"
+                sed -i '/# >>> brew mirror env/,/# <<< brew mirror env/d' "$shellrc"
                 sed -i '$a\
-# >>> brew git env\
+# >>> brew mirror env\
 '"$mirror_forsed"'
-# <<< brew git env\
+# <<< brew mirror env\
 ' "$shellrc"
             fi
         done
     }
     # 判断是否需要插入到shellrc文件中(用户可能已经通过别的方式导入相关的环境变量)
-    if [[ $HOMEBREW_BREW_GIT_REMOTE ]]; then
+    if [[ $HOMEBREW_BREW_GIT_REMOTE && $force == false ]]; then
         echo "HOMEBREW_BREW_GIT_REMOTE is already set to $HOMEBREW_BREW_GIT_REMOTE (in somewhere else), skipping adding to shellrc"
         # 显示当前相关环境变量
         set | grep '^HOMEBREW' | grep https
@@ -2017,13 +2062,13 @@ EOF
         grep -q '^[^#].*brew shellenv' ~/."$shellname"rc ||
             echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/."$shellname"rc
         # echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.zshrc
-        # 查看相关配置是否插入成功
+        # 查看相关配置是��插入成功
         grep -Hn 'brew shellenv' ~/."$shellname"rc
     done
     echo "[INFO]:Reload shell rc file to take effect..."
     # exec "$0" # 不要在函数中直接执行此行,交互式中才可以
     echo "[INFO]:Run command: exec \$SHELL"
-    # 针对常用shell尝试自动刷新配置生效
+    # 针对常用shell��试自动刷新配置生效
     is_shell "zsh" && exec zsh
     is_shell "bash" && exec bash
 

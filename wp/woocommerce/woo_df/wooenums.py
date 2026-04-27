@@ -205,25 +205,39 @@ class CSVProductFields(EnumIt):
 class LanguagesHotSale(EnumItRc):
     """语言枚举
     新品, 热卖, 促销, 限时抢购, 超值, 精选, 今日特价
+    注意:对于枚举,两个枚举成员如果取值一样,则仅暴力第一个,后续的枚举成员会忽略
     """
-
+    # 英语国家通用
+    EN=[
+        "New Arrival",
+        "Best Sellers",
+        "Trending Now",
+    ]
+    # 如果需要区别,则不同英语国家做一点区别
     US = [
         "New Arrival",
         "Best Sellers",
         "Promotion",
-        # "Flash Deal",
         # "Best Value",
         # "Editor's Pick",
         # "Today’s Special",
+    ]
+    AU = [
+        "New Arrival",
+        "Best Sellers",
+        "Top Picks",
+
+    ]
+    CA = [
+        "New Arrival",
+        "Best Sellers",
+        "Flash Sale",
+
     ]
     UK = [
         "New In",
         "Best Seller",
         "Special Offer",
-        # "Flash Sale",
-        # "Great Value",
-        # "Top Picks",
-        # "Today’s Deal",
     ]
     IT = [
         "Novità",

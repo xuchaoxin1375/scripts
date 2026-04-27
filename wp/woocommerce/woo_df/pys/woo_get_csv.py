@@ -24,7 +24,7 @@ from woosqlitedb import SQLiteDB
 WOOSQLITEDB_LOGGER = "woosqlitedb"
 DEFAULT_CSV_LINES = 5000
 MAX_IMG_NAME_LENGTH = 100
-WORDS_FILE=r"C:/repos/scripts/wp/woocommerce/woo_df/forbid_keywords.txt"
+WORDS_FILE = r"C:/repos/scripts/wp/woocommerce/woo_df/forbid_keywords.txt"
 
 LOCOY_SPIDER_DATA = os.environ.get("LOCOY_SPIDER_DATA")
 if LOCOY_SPIDER_DATA is None:
@@ -121,7 +121,7 @@ def parse_args():
         type=str,
         choices=[mode.name for mode in ImageMode],
         default=ImageMode.NAME_FROM_SKU.name,
-        help=f'图片字段导出模式，可选值: {", ".join(ImageMode.__members__.keys())}',
+        help=f"图片字段导出模式，可选值: {', '.join(ImageMode.__members__.keys())}",
     )
     parser.add_argument(
         "-ml",
@@ -304,7 +304,10 @@ class LanguagesHotSaleX(EnumItRc):
 
     """
 
+    EN = LanguagesHotSale.EN.value
     US = LanguagesHotSale.US.value
+    CA = LanguagesHotSale.CA.value
+    AU = LanguagesHotSale.AU.value
     UK = LanguagesHotSale.UK.value
     IT = LanguagesHotSale.IT.value
     DE = LanguagesHotSale.DE.value
@@ -387,7 +390,7 @@ if __name__ == "__main__":
         max_img_name_length=args.max_image_name_length,
         desc_min_len=args.desc_min_len,
         name_as_desc=args.name_as_desc,
-        words_file=args.words_file
+        words_file=args.words_file,
     )
     ## 2. 读取数据库数据(根据count_rows_only参数,可以只统计行数,而不做初步的数据处理;正式使用是要改成False!)🎈
     db.get_data(
@@ -442,7 +445,9 @@ if __name__ == "__main__":
     ## 6.统计并处理产品分类(包括合并小分类,分配热销类);可以用data wragger查看cats统计结果
     cats = db.get_category_statistic(hot_class=LanguagesHotSaleX)  # type: ignore
     ## 7.更新产品数据(描述等)🎈
-    db.update_products(dbs=dbs,process_attribute=True, sku_suffix=SKU_SUFFIX, strict_mode=False)
+    db.update_products(
+        dbs=dbs, process_attribute=True, sku_suffix=SKU_SUFFIX, strict_mode=False
+    )
     ## 8.导出csv文件
     db.export_csv(
         dbs=dbs,
