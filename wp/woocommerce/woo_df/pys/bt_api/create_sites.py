@@ -37,7 +37,7 @@ SERVER_CONFIG = f"{DESKTOP}/deploy_configs/server_config.json"
 TEAM_JSON = r"C:/sites/wp_sites/SpiderTeam.json"
 # 参数化🎈
 TABLE_CONF = f"{DESKTOP}/table.conf"
-MAX_WORKERS = 10
+MAX_WORKERS = 5 #线程过高可能导致部分站点争用同一个名字,导致出现站点名后缀_80的网站出现;
 
 REWRITE_CONTENT_WP = r"""
 location /

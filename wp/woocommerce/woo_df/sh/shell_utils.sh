@@ -1767,9 +1767,9 @@ install_brew_cn() {
                 shift
                 ;;
             --uninstall)
-                echo "正在卸载brew...参考[https://github.com/Homebrew/install#uninstall-homebrew]"
+                echo "正在下载brew卸载脚本...参考[https://github.com/Homebrew/install#uninstall-homebrew]"
                 # 从github拉去卸载脚本并执行
-                /bin/bash -c "$(curl -fsSL "$github_mirror"https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh)"
+                /bin/bash -c "$(curl -fSL "$github_mirror"https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh)"
                 # 移除默认安装目录(如果之前的安装中断或者不完整):
                 echo "移除默认安装目录可能需要管理员权限,如果需要,考虑将此函数导出(export),
                 然后用类似于sudo bash -c 的命令方式运行此函数,或者自行手动删除brew安装目录;"
