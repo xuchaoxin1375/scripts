@@ -1,12 +1,15 @@
 #!/bin/bash
 # 脚本也兼容zsh
-# 部署方式: bash "$sh"/shellrc_addition.sh
+# 部署方式: 
+# source ~/sh/shellrc_addition.sh # 直接导入但当前环境
+# bash "$sh"/shellrc_addition.sh
 # wsl中执行部署(共用windows上的仓库目录): sudo mkdir -p /www/ ; sudo ln -sTv /mnt/c/repos/scripts/$SH_RELATIVE/  "$sh"
 #  或者: bash /mnt/c/repos/scripts/wp/woocommerce/woo_df/sh/shellrc_addition.sh
 # 引入外部shell脚本使用source命令,这里防止shellcheck误报,禁用此类检查
 # shellcheck disable=SC1091
 # shellcheck disable=SC2154
 # compatible_shells=("bash" "zsh")
+
 
 # 计算加载配置的耗时
 start_time=$(date +%s%N)
@@ -127,7 +130,6 @@ $mark_start
 # shellcheck source=/dev/null
 sh="$SH_SYM"
 source "\$sh"/shellrc_addition.sh
-
 $mark_end
 
 EOF

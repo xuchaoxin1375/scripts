@@ -2,6 +2,19 @@
 # 提供一些常用的bash/zsh兼容的函数.
 # 新函数添加于下方:
 # ===============================
+echo "Loading shell_utils.sh..."
+# 临时清理历史遗留配置(2026.5月份后移除)
+cleanrc() {
+
+    sed -i '/^# Load additional shell configs$/d; 
+        /^# shellcheck source=\/www\/sh\/shell_utils\.sh$/d; 
+        /^# >>>custom additional shell>>>$/d; 
+        /^# <<<custom additional shell<<<$/d; 
+        /^# >>>additional shell configs>>>$/d; 
+        /^# <<<additional shell configs<<<$/d;
+        /^source \/www\/sh\/shellrc_addition\.sh$/d
+' ~/.bashrc ~/.zshrc
+}
 # 列出bash中所有名字以指定字符串开头的变量
 list_var_start_with_eval() {
     local var_prefix="$1"
@@ -1733,7 +1746,8 @@ install_brew_cn() {
             -g, --github-mirror  使用github镜像加速github链接
                             (默认使用:https://gh-proxy.com/,如果不可用,可以自行搜索其他github加速镜像网址)
                             如果要禁用镜像加速,请指定为空字符串""
-            --update-mirror-only 开关参数:仅更新brew镜像源配置,不执行安装(适用于已经安装了brew,但想要切换镜像源的情况);执行完成后,要执行brew update;
+            --update-mirror-only 开关参数:仅更新brew镜像源配置,不执行安装(适用于已经安装了brew,但想要切换镜像源的情况);
+                                    执行完成后,要执行brew update;
 
     '
     local args_pos=()
@@ -2038,7 +2052,7 @@ EOF
             fi
         fi
     }
-    # 配置homebrew路径相关的环境变量(和镜像环境变量不同)到配置文件中
+    # 配置homebrew路径相关的环境变量(和镜像环境���量不同)到配置文件中
     set_brew_path_env_to_shellrc() {
         arch=$(uname -m)
         if is_darwin; then
