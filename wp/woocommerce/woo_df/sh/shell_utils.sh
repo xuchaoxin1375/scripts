@@ -1712,7 +1712,7 @@ new_user_sudo() {
 
 # 从国内镜像源安装brew(默认中科大源镜像源)
 install_brew_cn() {
-    
+
     # 参数解析
     # usage: '"${FUNCNAME[0]}"' [options] # ${FUNCNAME[0]}在bash中支持,但是zsh不支持,用$funcstack[1]
     local usage='
@@ -1726,11 +1726,14 @@ install_brew_cn() {
                         tuna可能需要排队;
                         aliyun镜像方案比较老旧,容易失败;
                         github不适用国内镜像(如果用此方案建议设置终端代理);
-        -b, --installer-source 指定brew本体的安装脚本来源(和镜像相对独立),可能需要排队(tuna);
+        -b, --installer-source 指定brew本体的安装脚本来源(和镜像相对独立),可用值和特点参考[-s]选项;
         --reset-mirror  重置为官方源(github)
         --force          强制重新设置brew环境变量(即便之前有安装设置过的迹象)
         --uninstall      卸载brew
-        --github-mirror  使用github镜像加速github链接(默认使用:https://gh-proxy.com/)
+        -g, --github-mirror  使用github镜像加速github链接
+                        (默认使用:https://gh-proxy.com/,如果不可用,可以自行搜索其他github加速镜像网址)
+                        如果要禁用镜像加速,请指定为空字符串""
+        --update-mirror-only 仅更新brew镜像源配置,不执行安装(适用于已经安装了brew,但想要切换镜像源的情况);执行完成后,要执行brew update;
 
 '
     local args_pos=()
@@ -1738,8 +1741,11 @@ install_brew_cn() {
     local installer_source="ustc"
     local reset_mirror=false
     local force=false
+    local update_mirror_only=false
     local github_mirror="https://gh-proxy.com/"
-    if [[ $github_mirror == https*://github.com/* ]]; then
+    local write_env_rc=true
+    # 确保github镜像地址以/结尾:
+    if [[ $github_mirror == http* ]]; then
         github_mirror="${github_mirror%/}/"
     fi
     while [[ $# -gt 0 ]]; do
@@ -1766,6 +1772,15 @@ install_brew_cn() {
                 force=true
                 shift
                 ;;
+            -g | --github-mirror)
+                github_mirror="$2"
+                shift
+                ;;
+            --update-mirror-only)
+                update_mirror_only=true
+                ;;
+            # --write-env-rc)
+            #     write_env_rc=true
             --uninstall)
                 echo "正在下载brew卸载脚本...参考[https://github.com/Homebrew/install#uninstall-homebrew]"
                 # 从github拉去卸载脚本并执行
@@ -1775,12 +1790,14 @@ install_brew_cn() {
                 然后用类似于sudo bash -c 的命令方式运行此函数,或者自行手动删除brew安装目录;"
                 local brew_home
                 # brew_home0=$(brew --prefix) #brew未必可用
+                # 下面针对安装中途卡死或失败的的情况下执行的简单安装目录清理
                 brew_home1=/home/linuxbrew/.linuxbrew
                 brew_home2=/opt/homebrew
                 brew_home3=/usr/local/homebrew
                 brew_homes=("$brew_home1" "$brew_home2" "$brew_home3")
                 for brew_home in "${brew_homes[@]}"; do
                     if [[ -d $brew_home ]]; then
+                        echo "尝试移除目录: [$brew_home] "
                         if command -v sudo &> /dev/null; then
                             echo "使用sudo权限移除目录: $brew_home"
                             sudo rm -rf "$brew_home"
@@ -1809,7 +1826,15 @@ install_brew_cn() {
     set -- "${args_pos[@]}"
 
     # 参数解析并调整完毕
-    # 是否重置
+
+    # 判断是否需要设置环境变量到shellrc文件中
+    if [[ $HOMEBREW_BREW_GIT_REMOTE && $force == false && $update_mirror_only == false ]]; then
+        write_env_rc=false
+        echo "HOMEBREW_BREW_GIT_REMOTE is already set to $HOMEBREW_BREW_GIT_REMOTE (in somewhere else), skipping adding to shellrc"
+        # 显示当前相关环境变量
+        set | grep '^HOMEBREW' | grep https
+    fi
+    # 是否重置镜像源
     if [[ $reset_mirror == true ]]; then
         echo "重置为官方源..."
         unset HOMEBREW_BREW_GIT_REMOTE
@@ -1869,6 +1894,7 @@ export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.aliyun.com/homebrew/homebrew-co
 export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.aliyun.com/homebrew/homebrew-bottles"
 
 '
+    # 选择目标镜像源
     if [[ $mirror == "tuna" || $installer_source == "tuna" ]]; then
         echo "使用tuna镜像可能需要排队(高负载情况下),时间可能需要十来分钟!"
     fi
@@ -1901,54 +1927,55 @@ $mirror_env
 EOF
     )
     echo "${mirror_trimed}"
+
+    # 按需临时执行环境变量设置语句片段
     if [[ $mirror_env ]]; then
-        # 临时执行环境变量设置语句片段
         # source <(echo -e "${ustc_env//$'\n'/ \\$'\n'}\\")
         eval "$mirror_env"
         # 将环境变量设置语句片段转换为适合sed插入到shellrc文件中的格式
         local mirror_forsed="${mirror_trimed//$'\n'/ \\$'\n'}\\"
         # echo -e "${ustc_env//$'\n'/ \\$'\n'}\\"
     fi
-    # return 1
+    # 从指定镜像获取脚本并开始安装brew
+    start_install_brew() {
+        case "$installer_source" in
+            ustc)
+                echo "使用中科大镜像源安装homebrew..."
+                /bin/bash -c "$(curl -fsSL https://mirrors.ustc.edu.cn/misc/brew-install.sh)"
+                ;;
+            tuna)
+                echo "使用清华大学镜像源安装homebrew..."
+                # 从镜像下载安装脚本并安装 Homebrew / Linuxbrew
+                git clone --depth=1 https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/install.git ~/brew-install
+                /bin/bash ~/brew-install/install.sh
+                rm -rf ~/brew-install
 
-    case "$installer_source" in
-        ustc)
-            echo "使用中科大镜像源安装homebrew..."
-            /bin/bash -c "$(curl -fsSL https://mirrors.ustc.edu.cn/misc/brew-install.sh)"
-            ;;
-        tuna)
-            echo "使用清华大学镜像源安装homebrew..."
-            # 从镜像下载安装脚本并安装 Homebrew / Linuxbrew
-            git clone --depth=1 https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/install.git ~/brew-install
-            /bin/bash ~/brew-install/install.sh
-            rm -rf ~/brew-install
+                ;;
+            aliyun)
+                # 从阿里云下载安装脚本并安装 Homebrew
+                git clone https://mirrors.aliyun.com/homebrew/install.git brew-install
+                /bin/bash brew-install/install.sh
+                rm -rf brew-install
+                ;;
+            github)
+                echo "使用官方源安装homebrew..."
+                # 也可从 GitHub 获取官方安装脚本安装 Homebrew / Linuxbrew
+                /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
-            ;;
-        aliyun)
-            # 从阿里云下载安装脚本并安装 Homebrew
-            git clone https://mirrors.aliyun.com/homebrew/install.git brew-install
-            /bin/bash brew-install/install.sh
-            rm -rf brew-install
-            ;;
-        github)
-            echo "使用官方源安装homebrew..."
-            # 也可从 GitHub 获取官方安装脚本安装 Homebrew / Linuxbrew
-            /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+                ;;
+        esac
+    }
 
-            ;;
-    esac
-    # /bin/bash -c "$(curl -fsSL https://github.com/Homebrew/install/raw/HEAD/install.sh)"
-    # 对于 bash 用户
-    # echo 'export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.ustc.edu.cn/brew.git"' >> ~/.bash_profile
-
-    # 幂等地添加brew 镜像相关的环境变量到指定文件中
-    set_brew_env_to_shellrc() {
+    # 定义内部函数:幂等地添加brew 镜像相关的环境变量到指定文件中
+    _set_brew_mirror_env_to_shellrc() {
         # local shellrc="$1"
         for shellrc in "$@"; do
             ! [[ -f "$shellrc" ]] && touch "$shellrc"
             if [ -f "$shellrc" ]; then
                 # break
+                echo "清理可能存在的相关旧环境变量的配置片段..."
                 sed -i '/# >>> brew mirror env/,/# <<< brew mirror env/d' "$shellrc"
+                echo "正在将brew镜像环境变量添加到shellrc文件中..."
                 sed -i '$a\
 # >>> brew mirror env\
 '"$mirror_forsed"'
@@ -1958,38 +1985,49 @@ EOF
         done
     }
     # 判断是否需要插入到shellrc文件中(用户可能已经通过别的方式导入相关的环境变量)
-    if [[ $HOMEBREW_BREW_GIT_REMOTE && $force == false ]]; then
-        echo "HOMEBREW_BREW_GIT_REMOTE is already set to $HOMEBREW_BREW_GIT_REMOTE (in somewhere else), skipping adding to shellrc"
-        # 显示当前相关环境变量
-        set | grep '^HOMEBREW' | grep https
+    set_brew_mirror_env_to_shellrc() {
+        if [[ $write_env_rc == true ]]; then
+            if [[ $mirror ]]; then
+                echo "正在将brew镜像环境变量添加到shellrc文件中..."
+                # 对于bash用户
+                _set_brew_mirror_env_to_shellrc ~/.bashrc ~/.zshrc ~/.bash_profile
+            # 对于macos,可能需要写入.bash_profile
+            # 对于 zsh 用户
+            # _set_brew_mirror_env_to_shellrc ~/.zshrc
+            else
+                echo "没有指定镜像源,跳过添加brew镜像环境变量到shellrc文件中..."
+            fi
+        fi
+    }
+    # 配置homebrew路径相关的环境变量(和镜像环境变量不同)到配置文件中
+    set_brew_path_env_to_shellrc() {
+        arch=$(uname -m)
+        if is_darwin; then
+            if [[ $arch == "arm64" ]]; then
+                # shellcheck disable=SC2016
+                test -r ~/.bash_profile && echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.bash_profile
+                # shellcheck disable=SC2016
+                test -r ~/.zprofile && echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
+            fi
+        elif is_linux; then
+            test -d ~/.linuxbrew && eval "$(~/.linuxbrew/bin/brew shellenv)"
+            test -d /home/linuxbrew/.linuxbrew && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+            test -r ~/.bash_profile && echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.bash_profile
+            test -r ~/.profile && echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.profile
+            test -r ~/.zprofile && echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.zprofile
+        fi
+    }
+    echo "更新镜像源环境变量配置到常用shellrc中..."
+    set_brew_mirror_env_to_shellrc
+    # 开始安装
+    if [[ $update_mirror_only == true ]]; then
+        echo "跳过后续的安装操作..."
+        return 0
     else
-        if [[ $mirror ]]; then
-            echo "正在将brew镜像环境变量添加到shellrc文件中..."
-            # 对于bash用户
-            set_brew_env_to_shellrc ~/.bashrc ~/.zshrc ~/.bash_profile
-        # 对于macos,可能需要写入.bash_profile
-        # 对于 zsh 用户
-        # set_brew_env_to_shellrc ~/.zshrc
-        else
-            echo "没有指定镜像源,跳过添加brew镜像环境变量到shellrc文件中..."
-        fi
+        start_install_brew
     fi
-    # 配置homebrew路径相关的环境变量(和镜像环境变量不同)
-    arch=$(uname -m)
-    if is_darwin; then
-        if [[ $arch == "arm64" ]]; then
-            # shellcheck disable=SC2016
-            test -r ~/.bash_profile && echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.bash_profile
-            # shellcheck disable=SC2016
-            test -r ~/.zprofile && echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
-        fi
-    elif is_linux; then
-        test -d ~/.linuxbrew && eval "$(~/.linuxbrew/bin/brew shellenv)"
-        test -d /home/linuxbrew/.linuxbrew && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-        test -r ~/.bash_profile && echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.bash_profile
-        test -r ~/.profile && echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.profile
-        test -r ~/.zprofile && echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.zprofile
-    fi
+    # set_brew_mirror_env_to_shellrc
+    set_brew_path_env_to_shellrc
 
 }
 install_linuxbrew() {
@@ -2004,8 +2042,8 @@ usage:
 
     注意:相关依赖不会自动安装(当依赖程序不存在是请自行安寨跟,例如使用系统自带包管理器安装)
     
-    国内网络用户(非root用户下):如果没有条件配置代理(或者代理设置不便)
-    对于个人电脑(macos),考虑国内方案:
+    国内网络用户(非root用户户下):如果没条件配置代理(或者代理设置不便)
+    对于个人电脑,考虑国内方案:
     - https://brew-cn.mintimate.cn/
     - https://gitee.com/cunkai/HomebrewCN #cn方案
     对于linux用户,使用上述方案可能卡住要多试几下(过程中并非全程快速下载,部分组件依然可能因为网络耗时);
@@ -2336,7 +2374,7 @@ psm_gnu() {
     psm -rss 10    # 按 RSS 内存占用降序显示前 10 个进程
     psm +pid 50    # 按 PID 升序显示前 50 个进程
 EOF
-        return 0 # 成功退出函��
+        return 0 # 成功退出函数
     fi
 
     # 2. 处理函数参数
@@ -2349,7 +2387,7 @@ EOF
         sort_field="-rss"
     fi
 
-    # 4. ��取总内存 (KiB)
+    # 4. 取总内存 (KiB)
     local total_mem_kb
     # total_mem_kb=$(grep MemTotal /proc/meminfo | awk '{print $2}')
     if [[ "$OSTYPE" == "darwin"* ]]; then
