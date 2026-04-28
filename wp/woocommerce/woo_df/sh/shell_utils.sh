@@ -1894,6 +1894,9 @@ export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.aliyun.com/homebrew/homebrew-co
 export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.aliyun.com/homebrew/homebrew-bottles"
 
 '
+    # 当镜像相关环境变量不存在时，Homebrew 会自动回退到内置的 GitHub 官方路径。
+    #     local github_env=''
+
     # 选择目标镜像源
     if [[ $mirror == "tuna" || $installer_source == "tuna" ]]; then
         echo "使用tuna镜像可能需要排队(高负载情况下),时间可能需要十来分钟!"
@@ -1909,9 +1912,12 @@ export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.aliyun.com/homebrew/homebrew-bott
             mirror_env="$aliyun_env"
             ;;
         github)
-            mirror=""
+            mirror_env=""
             unset HOMEBREW_BREW_GIT_REMOTE
-            git -C "$(brew --repo)" remote set-url origin https://github.com/Homebrew/brew
+            if command -v brew &> /dev/null; then
+                # brew update-reset "$(brew --repo)"
+                git -C "$(brew --repo)" remote set-url origin https://github.com/Homebrew/brew
+            fi
             ;;
         *)
             echo "Unknown mirror: $mirror. " >&2
@@ -1973,9 +1979,8 @@ EOF
             ! [[ -f "$shellrc" ]] && touch "$shellrc"
             if [ -f "$shellrc" ]; then
                 # break
-                echo "清理可能存在的相关旧环境变量的配置片段..."
                 sed -i '/# >>> brew mirror env/,/# <<< brew mirror env/d' "$shellrc"
-                echo "正在将brew镜像环境变量添加到shellrc文件中..."
+                echo "正在将brew镜像环境变量添加到shell配置文件 [$shellrc] 中..."
                 sed -i '$a\
 # >>> brew mirror env\
 '"$mirror_forsed"'
@@ -2037,8 +2042,8 @@ install_linuxbrew() {
         cat << EOF
 usage:
     install_linuxbrew [options] [username]
-        默认使用默认用户名linuxbrew,如果指定用户名不存在,则创建
-    此脚本适用于国外服务器(或网络条件好的情况),尤其是只有root用户的情况下,可以创建brew专用用户;
+        默认使用默认用户名linuxbrew,如果指定用户名不存在,则��建
+    此脚本适用于国外服务器(或网络条��好的情况),尤其是只有root用户的情况下,可���创建brew专用用户;
 
     注意:相关依赖不会自动安装(当依赖程序不存在是请自行安寨跟,例如使用系统自带包管理器安装)
     
