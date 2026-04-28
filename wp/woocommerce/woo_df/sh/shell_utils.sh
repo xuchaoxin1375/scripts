@@ -93,7 +93,7 @@ examples:
             -?*)
                 echo "Unknown option: " >&2
                 echo "$usage"
-                return 1
+                return 2
                 ;;
             *)
                 args_pos+=("$1")
@@ -206,7 +206,7 @@ options:
             -?*)
                 echo "错误: 未知选项 " >&2
                 echo "$usage"
-                return 1
+                return 2
                 ;;
             *)
                 args_pos+=("$1")
@@ -482,7 +482,7 @@ install_zsh_bymake() {
             -?*)
                 echo "Unknown option: " >&2
                 echo "$usage"
-                return 1
+                return 2
                 ;;
             *)
                 args_pos+=("$1")
@@ -679,12 +679,12 @@ options:
                 ;;
             --help | -h)
                 echo "$usage"
-                return 1
+                return 0
                 ;;
             -?*)
                 echo "unknown option: $1"
                 echo "$usage"
-                return 1
+                return 2
                 ;;
             *)
                 shell="$1"
@@ -1741,6 +1741,7 @@ install_brew_cn() {
     local installer_source="ustc"
     local reset_mirror=false
     local force=false
+    local uninstall=false
     local update_mirror_only=false
     local github_mirror="https://gh-proxy.com/"
     local write_env_rc=true
@@ -1748,86 +1749,89 @@ install_brew_cn() {
     if [[ $github_mirror == http* ]]; then
         github_mirror="${github_mirror%/}/"
     fi
-    # 参数解析
-    parse_args() {
+    # 参数解析(不建议包装到内部函数parse_args中,不然不方便执行中断,例如-h打印帮助后立即停止执行)
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h | --help)
+                echo "$usage"
+                return 2
+                ;;
+            -s | ---source | --mirror)
+                mirror="$2"
+                shift
+                ;;
+            -b | --installer-source)
+                installer_source="$2"
+                shift
+                ;;
+            --reset-mirror)
+                mirror="github"
+                installer_source="github"
+                reset_mirror=true
+                shift
+                ;;
+            --force)
+                force=true
+                shift
+                ;;
+            -g | --github-mirror)
+                github_mirror="$2"
+                shift
+                ;;
+            --update-mirror-only)
+                update_mirror_only=true
+                ;;
+            # --write-env-rc)
+            #     write_env_rc=true
+            --uninstall)
 
-        while [[ $# -gt 0 ]]; do
-            case "$1" in
-                -h | --help)
-                    echo "$usage"
-                    return 0
-                    ;;
-                -s | ---source | --mirror)
-                    mirror="$2"
-                    shift
-                    ;;
-                -b | --installer-source)
-                    installer_source="$2"
-                    shift
-                    ;;
-                --reset-mirror)
-                    mirror="github"
-                    installer_source="github"
-                    reset_mirror=true
-                    shift
-                    ;;
-                --force)
-                    force=true
-                    shift
-                    ;;
-                -g | --github-mirror)
-                    github_mirror="$2"
-                    shift
-                    ;;
-                --update-mirror-only)
-                    update_mirror_only=true
-                    ;;
-                # --write-env-rc)
-                #     write_env_rc=true
-                --uninstall)
-                    echo "正在下载brew卸载脚本...参考[https://github.com/Homebrew/install#uninstall-homebrew]"
-                    # 从github拉去卸载脚本并执行
-                    /bin/bash -c "$(curl -fSL "$github_mirror"https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh)"
-                    # 移除默认安装目录(如果之前的安装中断或者不完整):
-                    echo "移除默认安装目录可能需要管理员权限,如果需要,考虑将此函数导出(export),
+                uninstall=true
+                ;;
+            --)
+                shift
+                break
+                ;;
+            -?*)
+                echo "Unknown option: " >&2
+                echo "$usage"
+                return 2
+                ;;
+            *)
+                args_pos+=("$1")
+                ;;
+        esac
+        shift
+    done
+    _uninstall_brew() {
+        echo "正在下载brew卸载脚本...参考[https://github.com/Homebrew/install#uninstall-homebrew]"
+        # 从github拉去卸载脚本并执行
+        /bin/bash -c "$(curl -fSL "$github_mirror"https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh)"
+        # 移除默认安装目录(如果之前的安装中断或者不完整):
+        echo "移除默认安装目录可能需要管理员权限,如果需要,考虑将此函数导出(export),
                 然后用类似于sudo bash -c 的命令方式运行此函数,或者自行手动删除brew安装目录;"
-                    local brew_home
-                    # brew_home0=$(brew --prefix) #brew未必可用
-                    # 下面针对安装中途卡死或失败的的情况下执行的简单安装目录清理
-                    brew_home1=/home/linuxbrew/.linuxbrew
-                    brew_home2=/opt/homebrew
-                    brew_home3=/usr/local/homebrew
-                    brew_homes=("$brew_home1" "$brew_home2" "$brew_home3")
-                    for brew_home in "${brew_homes[@]}"; do
-                        if [[ -d $brew_home ]]; then
-                            echo "尝试移除目录: [$brew_home] "
-                            if command -v sudo &> /dev/null; then
-                                echo "使用sudo权限移除目录: $brew_home"
-                                sudo rm -rf "$brew_home"
-                            else
-                                rm -rf "$brew_home"
-                            fi
-                        fi
-                    done
-                    return 0
-                    ;;
-                --)
-                    shift
-                    break
-                    ;;
-                -?*)
-                    echo "Unknown option: " >&2
-                    echo "$usage"
-                    return 1
-                    ;;
-                *)
-                    args_pos+=("$1")
-                    ;;
-            esac
-            shift
+        local brew_home
+        # brew_home0=$(brew --prefix) #brew未必可用
+        # 下面针对安装中途卡死或失败的的情况下执行的简单安装目录清理
+        brew_home1=/home/linuxbrew/.linuxbrew
+        brew_home2=/opt/homebrew
+        brew_home3=/usr/local/homebrew
+        brew_homes=("$brew_home1" "$brew_home2" "$brew_home3")
+        for brew_home in "${brew_homes[@]}"; do
+            if [[ -d $brew_home ]]; then
+                echo "尝试移除目录: [$brew_home] "
+                if command -v sudo &> /dev/null; then
+                    echo "使用sudo权限移除目录: $brew_home"
+                    sudo rm -rf "$brew_home"
+                else
+                    rm -rf "$brew_home"
+                fi
+            fi
         done
     }
-    parse_args "$@"
+    if [[ $uninstall == true ]]; then
+        _uninstall_brew
+        return $?
+    fi
     # 位置参数重排(如果有的话)
     set -- "${args_pos[@]}"
     # 检查位置参数:
@@ -1947,7 +1951,7 @@ install_brew_cn() {
     esac
     # 移除多余的换行符
     local mirror_trimed
-    
+
     # shellcheck disable=SC2001
     mirror_trimed=$(
         cat << EOF
@@ -2038,7 +2042,7 @@ EOF
     set_brew_path_env_to_shellrc() {
         arch=$(uname -m)
         if is_darwin; then
-            if [[ $arch == "arm64" ]]; then
+            if [[ $arch == "arm2" ]]; then
                 # shellcheck disable=SC2016
                 test -r ~/.bash_profile && echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.bash_profile
                 # shellcheck disable=SC2016
@@ -2125,7 +2129,7 @@ EOF
             -?*)
                 echo "Unknown option: " >&2
                 show_help
-                return 1
+                return 2
                 ;;
             *)
                 args_pos+=("$1")
@@ -2214,7 +2218,7 @@ brewr() {
             # -?*) # 为了传递完整参数列表(包括选项)给brew,这里不建议捕获-?*)
             #     echo "Invalid option"
             #     echo "$usage"
-            #     return 1
+            #     return 2
             #     ;;
             *)
                 extra_args+=("$1")
