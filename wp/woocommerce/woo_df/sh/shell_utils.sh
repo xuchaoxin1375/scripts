@@ -1716,26 +1716,26 @@ install_brew_cn() {
     # 参数解析
     # usage: '"${FUNCNAME[0]}"' [options] # ${FUNCNAME[0]}在bash中支持,但是zsh不支持,用$funcstack[1]
     local usage='
-    国内用户安装homebrew(使用镜像加速)
-    usage: 
-        install_brew_cn [options]
-    options:
-        -h, --help      显示帮助信息
-        -s, --source    指定镜像源,可用镜像包括:ustc,tuna,aliyun,github;
-                        ustc成功率最高;
-                        tuna可能需要排队;
-                        aliyun镜像方案比较老旧,容易失败;
-                        github不适用国内镜像(如果用此方案建议设置终端代理);
-        -b, --installer-source 指定brew本体的安装脚本来源(和镜像相对独立),可用值和特点参考[-s]选项;
-        --reset-mirror  重置为官方源(github)
-        --force          强制重新设置brew环境变量(即便之前有安装设置过的迹象)
-        --uninstall      卸载brew
-        -g, --github-mirror  使用github镜像加速github链接
-                        (默认使用:https://gh-proxy.com/,如果不可用,可以自行搜索其他github加速镜像网址)
-                        如果要禁用镜像加速,请指定为空字符串""
-        --update-mirror-only 仅更新brew镜像源配置,不执行安装(适用于已经安装了brew,但想要切换镜像源的情况);执行完成后,要执行brew update;
+        国内用户安装homebrew(使用镜像加速)
+        usage: 
+            install_brew_cn [options]
+        options:
+            -h, --help      显示帮助信息
+            -s, --source    指定镜像源,可用镜像包括:ustc,tuna,aliyun,github;
+                            ustc成功率最高;
+                            tuna可能需要排队;
+                            aliyun镜像方案比较老旧,容易失败;
+                            github不使用国内镜像(走brew的官方默认源,如果用此方案建议设置终端代理或者镜像,否则国内会很慢甚至失败);
+            -b, --installer-source 指定brew本体的安装脚本来源(和镜像相对独立),可用值和特点参考[-s]选项;
+            --reset-mirror  重置为官方源(github)
+            --force          强制重新设置brew环境变量(即便之前有安装设置过的迹象)
+            --uninstall      卸载brew
+            -g, --github-mirror  使用github镜像加速github链接
+                            (默认使用:https://gh-proxy.com/,如果不可用,可以自行搜索其他github加速镜像网址)
+                            如果要禁用镜像加速,请指定为空字符串""
+            --update-mirror-only 开关参数:仅更新brew镜像源配置,不执行安装(适用于已经安装了brew,但想要切换镜像源的情况);执行完成后,要执行brew update;
 
-'
+    '
     local args_pos=()
     local mirror='ustc'
     local installer_source="ustc"
@@ -1748,83 +1748,96 @@ install_brew_cn() {
     if [[ $github_mirror == http* ]]; then
         github_mirror="${github_mirror%/}/"
     fi
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            -h | --help)
-                echo "$usage"
-                return 0
-                ;;
-            -s | ---source)
-                mirror="$2"
-                shift
-                ;;
-            -b | --installer-source)
-                installer_source="$2"
-                shift
-                ;;
-            --reset-mirror)
-                mirror="github"
-                installer_source="github"
-                reset_mirror=true
-                shift
-                ;;
-            --force)
-                force=true
-                shift
-                ;;
-            -g | --github-mirror)
-                github_mirror="$2"
-                shift
-                ;;
-            --update-mirror-only)
-                update_mirror_only=true
-                ;;
-            # --write-env-rc)
-            #     write_env_rc=true
-            --uninstall)
-                echo "正在下载brew卸载脚本...参考[https://github.com/Homebrew/install#uninstall-homebrew]"
-                # 从github拉去卸载脚本并执行
-                /bin/bash -c "$(curl -fSL "$github_mirror"https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh)"
-                # 移除默认安装目录(如果之前的安装中断或者不完整):
-                echo "移除默认安装目录可能需要管理员权限,如果需要,考虑将此函数导出(export),
-                然后用类似于sudo bash -c 的命令方式运行此函数,或者自行手动删除brew安装目录;"
-                local brew_home
-                # brew_home0=$(brew --prefix) #brew未必可用
-                # 下面针对安装中途卡死或失败的的情况下执行的简单安装目录清理
-                brew_home1=/home/linuxbrew/.linuxbrew
-                brew_home2=/opt/homebrew
-                brew_home3=/usr/local/homebrew
-                brew_homes=("$brew_home1" "$brew_home2" "$brew_home3")
-                for brew_home in "${brew_homes[@]}"; do
-                    if [[ -d $brew_home ]]; then
-                        echo "尝试移除目录: [$brew_home] "
-                        if command -v sudo &> /dev/null; then
-                            echo "使用sudo权限移除目录: $brew_home"
-                            sudo rm -rf "$brew_home"
-                        else
-                            rm -rf "$brew_home"
-                        fi
-                    fi
-                done
-                return 0
-                ;;
-            --)
-                shift
-                break
-                ;;
-            -?*)
-                echo "Unknown option: " >&2
-                echo "$usage"
-                return 1
-                ;;
-            *)
-                args_pos+=("$1")
-                ;;
-        esac
-        shift
-    done
-    set -- "${args_pos[@]}"
+    # 参数解析
+    parse_args() {
 
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                -h | --help)
+                    echo "$usage"
+                    return 0
+                    ;;
+                -s | ---source | --mirror)
+                    mirror="$2"
+                    shift
+                    ;;
+                -b | --installer-source)
+                    installer_source="$2"
+                    shift
+                    ;;
+                --reset-mirror)
+                    mirror="github"
+                    installer_source="github"
+                    reset_mirror=true
+                    shift
+                    ;;
+                --force)
+                    force=true
+                    shift
+                    ;;
+                -g | --github-mirror)
+                    github_mirror="$2"
+                    shift
+                    ;;
+                --update-mirror-only)
+                    update_mirror_only=true
+                    ;;
+                # --write-env-rc)
+                #     write_env_rc=true
+                --uninstall)
+                    echo "正在下载brew卸载脚本...参考[https://github.com/Homebrew/install#uninstall-homebrew]"
+                    # 从github拉去卸载脚本并执行
+                    /bin/bash -c "$(curl -fSL "$github_mirror"https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh)"
+                    # 移除默认安装目录(如果之前的安装中断或者不完整):
+                    echo "移除默认安装目录可能需要管理员权限,如果需要,考虑将此函数导出(export),
+                然后用类似于sudo bash -c 的命令方式运行此函数,或者自行手动删除brew安装目录;"
+                    local brew_home
+                    # brew_home0=$(brew --prefix) #brew未必可用
+                    # 下面针对安装中途卡死或失败的的情况下执行的简单安装目录清理
+                    brew_home1=/home/linuxbrew/.linuxbrew
+                    brew_home2=/opt/homebrew
+                    brew_home3=/usr/local/homebrew
+                    brew_homes=("$brew_home1" "$brew_home2" "$brew_home3")
+                    for brew_home in "${brew_homes[@]}"; do
+                        if [[ -d $brew_home ]]; then
+                            echo "尝试移除目录: [$brew_home] "
+                            if command -v sudo &> /dev/null; then
+                                echo "使用sudo权限移除目录: $brew_home"
+                                sudo rm -rf "$brew_home"
+                            else
+                                rm -rf "$brew_home"
+                            fi
+                        fi
+                    done
+                    return 0
+                    ;;
+                --)
+                    shift
+                    break
+                    ;;
+                -?*)
+                    echo "Unknown option: " >&2
+                    echo "$usage"
+                    return 1
+                    ;;
+                *)
+                    args_pos+=("$1")
+                    ;;
+            esac
+            shift
+        done
+    }
+    parse_args "$@"
+    # 位置参数重排(如果有的话)
+    set -- "${args_pos[@]}"
+    # 检查位置参数:
+    if [[ ${#args_pos[@]} -gt 1 ]]; then
+        echo "错误: 不支持超过1个的位置参数: ${args_pos[*]}" >&2
+        echo "$usage" >&2
+        return 1
+    elif [[ ${#args_pos[@]} -eq 1 ]]; then
+        mirror="${args_pos[1]}"
+    fi
     # 参数解析并调整完毕
 
     # 判断是否需要设置环境变量到shellrc文件中
@@ -1859,43 +1872,50 @@ install_brew_cn() {
     fi
     # 判断是否已经安装过brew:
     # command -v brew > /dev/null 2>&1
-    if command -v brew > /dev/null 2>&1; then
-        local brew_version
-        brew_version=$(brew --version 2> /dev/null)
-        if [[ $brew_version ]]; then
-            echo "Homebrew/Linuxbrew 已安装[$brew_version]."
-            return 1 # 退出安装
-        else
-            echo "正在准备安装homebrew..."
+    is_brew_installed() {
+        if command -v brew > /dev/null 2>&1; then
+            local brew_version
+            brew_version=$(brew --version 2> /dev/null)
+            if [[ $brew_version ]]; then
+                echo "Homebrew/Linuxbrew 已安装[$brew_version]."
+                if [[ $update_mirror_only == false && $force == false ]]; then
+                    echo "不执行任何操作,退出程序;"
+                    return 1 # 退出安装
+                fi
+            else
+                echo "正在准备安装homebrew..."
+                return 0
+            fi
         fi
-    fi
+    }
+    is_brew_installed || exit 1
     # 设置源
     local mirror_env=""
     # ustc mirror
     local ustc_env='
-export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.ustc.edu.cn/brew.git"
-export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.ustc.edu.cn/homebrew-core.git"
-export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.ustc.edu.cn/homebrew-bottles"
-export HOMEBREW_API_DOMAIN="https://mirrors.ustc.edu.cn/homebrew-bottles/api"
-'
+    export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.ustc.edu.cn/brew.git"
+    export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.ustc.edu.cn/homebrew-core.git"
+    export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.ustc.edu.cn/homebrew-bottles"
+    export HOMEBREW_API_DOMAIN="https://mirrors.ustc.edu.cn/homebrew-bottles/api"
+    '
     local tuna_env='
-export HOMEBREW_INSTALL_FROM_API=1
-export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/brew.git"
-export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/homebrew-core.git"
-export HOMEBREW_API_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles/api"
-export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles"
-export HOMEBREW_PIP_INDEX_URL="https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
-'
+    export HOMEBREW_INSTALL_FROM_API=1
+    export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/brew.git"
+    export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/homebrew-core.git"
+    export HOMEBREW_API_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles/api"
+    export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles"
+    export HOMEBREW_PIP_INDEX_URL="https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
+    '
     local aliyun_env='
-export HOMEBREW_INSTALL_FROM_API=1
-export HOMEBREW_API_DOMAIN="https://mirrors.aliyun.com/homebrew-bottles/api"
-export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.aliyun.com/homebrew/brew.git"
-export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.aliyun.com/homebrew/homebrew-core.git"
-export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.aliyun.com/homebrew/homebrew-bottles"
-'
+    export HOMEBREW_INSTALL_FROM_API=1
+    export HOMEBREW_API_DOMAIN="https://mirrors.aliyun.com/homebrew-bottles/api"
+    export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.aliyun.com/homebrew/brew.git"
+    export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.aliyun.com/homebrew/homebrew-core.git"
+    export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.aliyun.com/homebrew/homebrew-bottles"
+    '
     local github_env='
-# 官方源不使用镜像加速,或者考虑使用github加速镜像
-'
+    # 官方源不使用镜像加速,或者考虑使用github加速镜像
+    '
     # 选择目标镜像源
     if [[ $mirror == "tuna" || $installer_source == "tuna" ]]; then
         echo "使用tuna镜像可能需要排队(高负载情况下),时间可能需要十来分钟!"
@@ -1926,9 +1946,12 @@ export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.aliyun.com/homebrew/homebrew-bott
             ;;
     esac
     # 移除多余的换行符
+    local mirror_trimed
+    
+    # shellcheck disable=SC2001
     mirror_trimed=$(
         cat << EOF
-$mirror_env
+$(echo "$mirror_env" | sed 's/^[[:space:]]*//')
 EOF
     )
     echo "${mirror_trimed}"
@@ -1938,7 +1961,7 @@ EOF
         # source <(echo -e "${ustc_env//$'\n'/ \\$'\n'}\\")
         eval "$mirror_env"
         # 将环境变量设置语句片段转换为适合sed插入到shellrc文件中的格式
-        local mirror_forsed="${mirror_trimed//$'\n'/ \\$'\n'}\\"
+        # local mirror_forsed="${mirror_trimed//$'\n'/ \\$'\n'}\\" # bash中可以工作,但是zsh中可能会有不同效果
         # echo -e "${ustc_env//$'\n'/ \\$'\n'}\\"
     fi
     # 从指定镜像获取脚本并开始安装brew
@@ -1980,12 +2003,19 @@ EOF
                 # break
                 sed -i '/# >>> brew mirror env/,/# <<< brew mirror env/d' "$shellrc"
                 echo "正在将brew镜像环境变量添加到shell配置文件 [$shellrc] 中..."
-                sed -i '$a\
-\
-# >>> brew mirror env\
-'"$mirror_forsed"'
-# <<< brew mirror env\
-' "$shellrc"
+                # sed方案
+                #                 sed -i '$a\
+                # # >>> brew mirror env\
+                # '"$mirror_forsed"'
+                # # <<< brew mirror env\
+                # ' "$shellrc"
+                # 重定向追加的方案
+                cat << EOF >> "$shellrc"
+# >>> brew mirror env
+$mirror_trimed
+# <<< brew mirror env
+EOF
+
             fi
         done
     }
@@ -2026,7 +2056,7 @@ EOF
     set_brew_mirror_env_to_shellrc
     # 开始安装
     if [[ $update_mirror_only == true ]]; then
-        echo "跳过后续的安装操作..."
+        echo "跳过后续的安装操作(更新完homebrew镜像环境变量后需要执行brew update)..."
         return 0
     else
         start_install_brew
@@ -2043,7 +2073,7 @@ install_linuxbrew() {
 usage:
     install_linuxbrew [options] [username]
         默认使用默认用户名linuxbrew,如果指定用户名不存在,则创建
-    此脚本适用于国外服务器(或网络条件好的情况),尤其是只有root用户的情况下,可���创建brew专用用户;
+    此脚本适用于国外服务器(或网络条件好的情况),尤其是只有root用户的情况下,可考虑创建brew专用用户;
 
     注意:相关依赖不会自动安装(当依赖程序不存在是请自行安寨跟,例如使用系统自带包管理器安装)
     
