@@ -5,15 +5,15 @@
 echo "Loading shell_utils.sh..."
 # 临时清理历史遗留配置(2026.5月份后移除)
 cleanrc() {
-
-    sed -i '/^# Load additional shell configs$/d; 
-        /^# shellcheck source=\/www\/sh\/shell_utils\.sh$/d; 
-        /^# >>>custom additional shell>>>$/d; 
-        /^# <<<custom additional shell<<<$/d; 
-        /^# >>>additional shell configs>>>$/d; 
-        /^# <<<additional shell configs<<<$/d;
-        /^source \/www\/sh\/shellrc_addition\.sh$/d
-' ~/.bashrc ~/.zshrc
+    local files="$*"
+    sed -i '/^# Load additional shell configs/d; 
+        /^# >>>custom additional shell>>>.*/d; 
+        /^# <<<custom additional shell<<<.*/d; 
+        /^sh=.*/d; 
+        /^# >>>additional shell configs>>>.*/d; 
+        /^# <<<additional shell configs<<<.*/d;
+        \|source .*/shellrc_addition.*|d;
+' "${files:-"~/.bashrc ~/.zshrc"}"
 }
 # 列出bash中所有名字以指定字符串开头的变量
 list_var_start_with_eval() {
@@ -1176,7 +1176,9 @@ confirm() {
             echo "${prompt} ${yn}: "
             read -r answer
             answer="${answer:-$default_suggestion}" # 用户直接回车则取默认值
-            case "${answer,,}" in                   # ${,,} 转小写 (bash 4+)
+            # ${,,} 转小写 (bash 4+支持,zsh不支持)
+            # Zsh 使用 (L) (Lower) 和 (U) (Upper) 标识符来处理
+            case "${answer}" in                   
                 y | yes)
                     rc=0
                     # echo "回答yes"
@@ -1747,7 +1749,60 @@ new_user_sudo() {
     rm /tmp/new_sudo_rule
 
 }
+# 配置homebrew路径相关的环境变量(和镜像环境变量不同)到配置文件中
+# TODO:支持reset选项,将相关配置文件中的brew shellenv语句删除(可便于后续重新添加)
+set_brew_path_env_to_shellrc() {
+    # 先检测是否已经有brew shellenv相关的配置,如果有提示用户是否继续
+    # 获取匹配到的文件名列表
+    result=$(grep -l '/bin/brew shellenv' ~/.bashrc ~/.zshrc 2> /dev/null)
 
+    if [ -n "$result" ]; then
+        echo "在以下文件中发现了配置brew shellenv行：$result"
+        if confirm "是否继续添加?" "n"; then
+            echo "继续执行..."
+        else
+            echo "已取消操作。"
+            return 0
+        fi
+    else
+        echo "准备添加..."
+    fi
+
+    # tuna源的方案:
+    # arch=$(uname -m)
+    # if is_darwin; then
+    #     if [[ $arch == "arm64" ]]; then
+    #         # shellcheck disable=SC2016
+    #         test -r ~/.bash_profile && echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.bash_profile
+    #         # shellcheck disable=SC2016
+    #         test -r ~/.zprofile && echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
+    #     fi
+    # elif is_linux; then
+    #     test -d ~/.linuxbrew && eval "$(~/.linuxbrew/bin/brew shellenv)"
+    #     test -d /home/linuxbrew/.linuxbrew && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+    #     test -r ~/.bash_profile && echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.bash_profile
+    #     test -r ~/.profile && echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.profile
+    #     test -r ~/.zprofile && echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.zprofile
+    # fi
+
+    # 判断系统平台,找到正确的brew路径并执行shellenv命令生成环境变量设置语句;在通过eval注入到当前环境中;
+    if [[ $OSTYPE == linux* ]]; then
+        test -d ~/.linuxbrew && eval "$(~/.linuxbrew/bin/brew shellenv)"
+        test -d /home/linuxbrew/.linuxbrew && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+    elif [[ $OSTYPE == darwin* ]]; then
+        # 针对 Apple Silicon Mac
+        test -d /opt/homebrew && eval "$(/opt/homebrew/bin/brew shellenv)"
+        # 针对 Intel Mac
+        test -d /usr/local/bin/brew && eval "$(/usr/local/bin/brew shellenv)"
+        # mac的shell启动行为和linxu的差异,额外关注.bash_profile和.zprofile
+        echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.bash_profile
+        echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.zprofile
+    fi
+    # 插入到shell配置文件中以便持久化
+    echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.bashrc
+    echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.zshrc
+
+}
 # 从国内镜像源安装brew(默认中科大源镜像源)
 install_brew_cn() {
 
@@ -1773,7 +1828,6 @@ install_brew_cn() {
                             如果要禁用镜像加速,请指定为空字符串""
             --update-mirror-only 开关参数:仅更新brew镜像源配置,不执行安装(适用于已经安装了brew,但想要切换镜像源的情况);
                                     执行完成后,要执行brew update;
-
     '
     local args_pos=()
     local mirror='ustc'
@@ -1961,7 +2015,7 @@ install_brew_cn() {
     '
     # 选择目标镜像源
     if [[ $mirror == "tuna" || $installer_source == "tuna" ]]; then
-        echo "使用tuna镜像可能需要排队(高负载情况下),时间可能需要十来分钟!"
+        echo "使用tuna镜像可能���要排队(高负载情况下),时间可能需要十来分钟!"
     fi
     case "$mirror" in
         ustc)
@@ -2045,7 +2099,7 @@ EOF
             if [ -f "$shellrc" ]; then
                 # break
                 sed -i '/# >>> brew mirror env/,/# <<< brew mirror env/d' "$shellrc"
-                echo "正在将brew镜像环境变量添加到shell��置文件 [$shellrc] 中..."
+                echo "正在将brew镜像环境变量添加到shell配置文件 [$shellrc] 中..."
                 # sed方案
                 #                 sed -i '$a\
                 # # >>> brew mirror env\
@@ -2065,7 +2119,7 @@ EOF
     set_brew_mirror_env_to_shellrc() {
         if [[ $write_env_rc == true ]]; then
             if [[ $mirror ]]; then
-                echo "正在将brew镜像��境变量添加到shellrc文件中..."
+                echo "正在将brew镜像环境变量添加到shellrc文件中..."
                 # 对于bash用户
                 _set_brew_mirror_env_to_shellrc ~/.bashrc ~/.zshrc ~/.bash_profile
             # 对于macos,可能需要写入.bash_profile
@@ -2076,24 +2130,7 @@ EOF
             fi
         fi
     }
-    # 配置homebrew路径相关的环境变量(和镜像环境变量不同)到配置文件中
-    set_brew_path_env_to_shellrc() {
-        arch=$(uname -m)
-        if is_darwin; then
-            if [[ $arch == "arm2" ]]; then
-                # shellcheck disable=SC2016
-                test -r ~/.bash_profile && echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.bash_profile
-                # shellcheck disable=SC2016
-                test -r ~/.zprofile && echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
-            fi
-        elif is_linux; then
-            test -d ~/.linuxbrew && eval "$(~/.linuxbrew/bin/brew shellenv)"
-            test -d /home/linuxbrew/.linuxbrew && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-            test -r ~/.bash_profile && echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.bash_profile
-            test -r ~/.profile && echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.profile
-            test -r ~/.zprofile && echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.zprofile
-        fi
-    }
+
     echo "更新镜像源环境变量配置到常用shellrc中..."
     set_brew_mirror_env_to_shellrc
     # 开始安装

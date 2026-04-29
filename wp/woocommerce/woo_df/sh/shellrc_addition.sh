@@ -1,7 +1,7 @@
 #!/bin/bash
 # 脚本也兼容zsh
 # 部署方式:
-# source ~/sh/shellrc_addition.sh # 直接导入但当前环境
+# source ~/sh/shellrc_addition.sh # 直接导入但当前环境 (可以手动调用reset_shellrc_addition函数来重置shell配置文件中的相关导入片段)
 # bash "$sh"/shellrc_addition.sh
 # wsl中执行部署(共用windows上的仓库目录): sudo mkdir -p /www/ ; sudo ln -sTv /mnt/c/repos/scripts/$SH_RELATIVE/  "$sh"
 #  或者: bash /mnt/c/repos/scripts/wp/woocommerce/woo_df/sh/shellrc_addition.sh
