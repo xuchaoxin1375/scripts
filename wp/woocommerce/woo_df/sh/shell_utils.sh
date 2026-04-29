@@ -204,6 +204,15 @@ remove_redundant_blank_lines() {
     local file="$1"
     sed -i '/^$/N;/^\n$/D' "$file"
 }
+remove_blank_lines_for_shellrc() {
+    local shellrcs=(~/.bashrc ~/.zshrc ~/.bash_profile ~/.zprofile)
+    for shellrc in "${shellrcs[@]}"; do
+        if [ -f "$shellrc" ]; then
+            echo "cleaning for: $shellrc"
+            remove_redundant_blank_lines "$shellrc"
+        fi
+    done
+}
 # 代理配置函数
 proxy() {
     # 你的代理地址和端口
@@ -1178,7 +1187,7 @@ confirm() {
             answer="${answer:-$default_suggestion}" # 用户直接回车则取默认值
             # ${,,} 转小写 (bash 4+支持,zsh不支持)
             # Zsh 使用 (L) (Lower) 和 (U) (Upper) 标识符来处理
-            case "${answer}" in                   
+            case "${answer}" in
                 y | yes)
                     rc=0
                     # echo "回答yes"
@@ -1752,21 +1761,87 @@ new_user_sudo() {
 # 配置homebrew路径相关的环境变量(和镜像环境变量不同)到配置文件中
 # TODO:支持reset选项,将相关配置文件中的brew shellenv语句删除(可便于后续重新添加)
 set_brew_path_env_to_shellrc() {
+    # 参数解析
+    local usage='
+    配置homebrew路径相关的环境变量(和镜像环境变量不同)到配置文件中
+    options:
+      -h, --help    显示帮助信息
+      --remove      删除brew路径相关的环境变量配置
+      --reset       重置brew路径相关的环境变量配置(移除旧有行,重新插入到shell配置文件末尾)
+                    
+    '
+    local remove=false
+    local reset=false
+    local args_pos=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h | --help)
+                echo "$usage"
+                return 0
+                ;;
+            --remove)
+                remove=true
+                ;;
+            --reset)
+                reset=true
+                ;;
+            --)
+                shift
+                break
+                ;;
+            -?*)
+                echo "Unknown option: " >&2
+                echo "$usage"
+                return 2
+                ;;
+            *)
+                args_pos+=("$1")
+                ;;
+        esac
+        shift
+    done
+    set -- "${args_pos[@]}"
+    # 参数解析并调整完毕
     # 先检测是否已经有brew shellenv相关的配置,如果有提示用户是否继续
     # 获取匹配到的文件名列表
-    result=$(grep -l '/bin/brew shellenv' ~/.bashrc ~/.zshrc 2> /dev/null)
-
-    if [ -n "$result" ]; then
-        echo "在以下文件中发现了配置brew shellenv行：$result"
-        if confirm "是否继续添加?" "n"; then
-            echo "继续执行..."
+    # result=$(grep -l '/bin/brew shellenv' ~/.bashrc ~/.zshrc 2> /dev/null)
+    local result=()
+    local shellrcs=(~/.bashrc ~/.zshrc ~/.bash_profile ~/.zprofile)
+    while IFS= read -r file; do
+        result+=("$file")
+    done < <(grep -l 'brew shellenv' "${shellrcs[@]}" 2> /dev/null)
+    # debug:
+    # echo "result: ${result[*]}"
+    # printf "%s\n" "${result[@]}"
+    echo "修改前预览相关配置文件中的相关行..."
+    _check_brew_shellenv_line() {
+        for rc in "${shellrcs[@]}"; do
+            test -e "$rc" && command grep --color -H '/bin/brew shellenv' "$rc"
+        done
+    }
+    _check_brew_shellenv_line
+    if [ "${result[*]}" ]; then
+        echo "在以下文件[$(${#result[@]})]个文件中发现了配置brew shellenv行:"
+        printf "%s\n" "${result[@]}"
+        # 检查是否移除配置行
+        if [[ $remove == true || $reset == true ]]; then
+            echo "正在删除brew shellenv行..."
+            for file in "${result[@]}"; do
+                sed -i '/[^#]*brew shellenv/d' "$file" &&
+                    echo "brew shellenv行已从${file}文件删除。"
+            done
+            if [[ $remove == true ]]; then
+                echo "brew shellenv行已从所有相关配置文件中删除。"
+                return 0
+            fi
         else
-            echo "已取消操作。"
-            return 0
+            if ! confirm "是否继续添加?" "n"; then
+                echo "已取消操作。"
+                return 0
+            fi
         fi
-    else
-        echo "准备添加..."
     fi
+    echo "添加brew shellenv行到配置文件中..."
 
     # tuna源的方案:
     # arch=$(uname -m)
@@ -1801,6 +1876,9 @@ set_brew_path_env_to_shellrc() {
     # 插入到shell配置文件中以便持久化
     echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.bashrc
     echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.zshrc
+    # 检查配置结果:
+    _check_brew_shellenv_line
+    echo "如果要移除多余的brew shellenv行,请执行: set_brew_path_env_to_shellrc --reset "
 
 }
 # 从国内镜像源安装brew(默认中科大源镜像源)
