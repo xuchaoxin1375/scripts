@@ -196,7 +196,7 @@ function Invoke-RemoteSSH
     param (
         [parameter(Mandatory = $true)]
         $ServerID,
-
+        $Port='',
         [ValidateSet('Auto', 'Key', 'Password', 'Interactive')]
         [string]$Mode = 'Auto',
 
@@ -210,7 +210,7 @@ function Invoke-RemoteSSH
     $server = $servers[$ServerID]
     $ip = $server.ip
     $user = $server.ssh.user
-    $port = $server.ssh.port
+    $port = if($Port){$Port}else{$server.ssh.port}
     $password = $server.ssh.password
     $authority = "$user@$ip"
 
