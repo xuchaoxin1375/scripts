@@ -149,6 +149,7 @@ examples:
     echo "$env" | tr "$separator" '\n'
 }
 # 添加路径到PATH变量中(幂等操作,防止重复添加相同路径造成冗余)
+# 将新的路径插入到PATH变量的开头
 # 对语句 [[ ":$PATH:" != *":/your/path:"* ]] && export PATH="/your/path:$PATH" 的函数封装
 add_to_path() {
     # 1. 检查参数是否为空
@@ -162,14 +163,38 @@ add_to_path() {
     # 3. 判断当前 PATH 中是否已包含该路径
     # 使用 [[ :$PATH: == *:$target_dir:* ]] 这种技巧可以精准匹配，
     # 避免子字符串干扰（例如 /usr/bin 匹配到 /bin）
-    [[ ":$PATH:" != *":$target_dir:"* ]] && export PATH="$target_dir:$PATH"
+    # [[ ":$PATH:" != *":$target_dir:"* ]] && export PATH="$target_dir:$PATH"
     case ":$PATH:" in
         *:"$target_dir":*)
             # 已存在，不做任何操作
             ;;
         *)
             # 不存在，添加到头部
-            export PATH="$target_dir:$PATH"
+            export PATH="${target_dir}${PATH:+:$PATH}"
+            ;;
+    esac
+}
+alias prepend_path='add_to_path'
+
+# Append "$1" to $PATH when not already in.
+# 此函数是幂等的;
+# 函数实现中的 case ":$PATH:" in: 这里是整个函数的精妙之处。它在 $PATH 变量的前后各加了一个冒号 :。
+# 为什么要加冒号:$PATH 的格式通常是 路径1:路径2:路径3。
+# 如果不加前缀后缀，当你搜索 /bin 时，可能会意外匹配到 /usr/bin。
+# 通过将其包装成 :/bin:/usr/local/bin:...:，可以确保匹配的是完整的路径单元。
+# This function API is accessible to scripts in /etc/profile.d
+append_path() {
+    # 利用通配检查原PATH值是否已经包含了需要新增的值,使用`:`包裹可以确保路径匹配的准确性和完整性,
+    # 避免新路径匹配到当前PATh的某个长路径的前缀的情况
+    case ":$PATH:" in
+        *:"$1":*)
+            # 新值已经存在PATH中，不做任何操作
+            ;;
+        *)
+            # 判断“如果 PATH 有值(原PATH不是空串)，就先加个冒号再接新值”
+            # 如果直接写成PATH="$PATH:$1",在原PATH为空的情况下,结果会多出来一个前缀`:`
+            # 这种写法优雅地处理了第一个路径添加时不需要冒号的细节
+            PATH="${PATH:+$PATH:}$1"
             ;;
     esac
 }
@@ -2020,7 +2045,7 @@ EOF
             if [ -f "$shellrc" ]; then
                 # break
                 sed -i '/# >>> brew mirror env/,/# <<< brew mirror env/d' "$shellrc"
-                echo "正在将brew镜像环境变量添加到shell配置文件 [$shellrc] 中..."
+                echo "正在将brew镜像环境变量添加到shell��置文件 [$shellrc] 中..."
                 # sed方案
                 #                 sed -i '$a\
                 # # >>> brew mirror env\
@@ -2033,7 +2058,6 @@ EOF
 $mirror_trimed
 # <<< brew mirror env
 EOF
-
             fi
         done
     }
@@ -2041,7 +2065,7 @@ EOF
     set_brew_mirror_env_to_shellrc() {
         if [[ $write_env_rc == true ]]; then
             if [[ $mirror ]]; then
-                echo "正在将brew镜像环境变量添加到shellrc文件中..."
+                echo "正在将brew镜像��境变量添加到shellrc文件中..."
                 # 对于bash用户
                 _set_brew_mirror_env_to_shellrc ~/.bashrc ~/.zshrc ~/.bash_profile
             # 对于macos,可能需要写入.bash_profile
@@ -2052,7 +2076,7 @@ EOF
             fi
         fi
     }
-    # 配置homebrew路径相关的环境变量(和镜像环境���量不同)到配置文件中
+    # 配置homebrew路径相关的环境变量(和镜像环境变量不同)到配置文件中
     set_brew_path_env_to_shellrc() {
         arch=$(uname -m)
         if is_darwin; then
@@ -2081,6 +2105,10 @@ EOF
     fi
     # set_brew_mirror_env_to_shellrc
     set_brew_path_env_to_shellrc
+    # 查看PATH环境变量中是否包含了brew的路径
+    echo "$PATH" | tr ':' '\n' | grep brew
+    # /home/linuxbrew/.linuxbrew/bin
+    # /home/linuxbrew/.linuxbrew/sbin
 
 }
 install_linuxbrew() {

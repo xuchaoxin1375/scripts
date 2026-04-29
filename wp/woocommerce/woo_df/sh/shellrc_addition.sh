@@ -1,6 +1,6 @@
 #!/bin/bash
 # 脚本也兼容zsh
-# 部署方式: 
+# 部署方式:
 # source ~/sh/shellrc_addition.sh # 直接导入但当前环境
 # bash "$sh"/shellrc_addition.sh
 # wsl中执行部署(共用windows上的仓库目录): sudo mkdir -p /www/ ; sudo ln -sTv /mnt/c/repos/scripts/$SH_RELATIVE/  "$sh"
@@ -9,7 +9,6 @@
 # shellcheck disable=SC1091
 # shellcheck disable=SC2154
 # compatible_shells=("bash" "zsh")
-
 
 # 计算加载配置的耗时
 start_time=$(date +%s%N)
@@ -75,8 +74,6 @@ echo "[INFO]:sh_sym=[$SH_SYM],sh_script_dir=[$SH_SCRIPT_DIR],script_root=[$SCRIP
 sh="$SH_SYM"
 echo "[INFO]:sh=[$sh]"
 
-
-
 # 引入预定义的别名
 source "$sh"/shell_vars.sh
 source "$sh"/shell_alias.sh
@@ -117,55 +114,63 @@ remove_background_color() {
 }
 
 # 使用windows环境下的编辑器时,例如vscode,注意换行符改为LF,避免多行命令被错误解释🎈
-# mark='# Load additional shell configs'
 mark="custom additional shell"
 mark_start="# >>>$mark>>>"
 mark_end="# <<<$mark<<<"
-# 检查~/.zshrc文件中是否存在:$mark 字符串,如果不存在,则向~/.zshrc添加以下内容,否则跳过插入并报告相关配置已存在
-config_lines=$(
-  cat << EOF
+# insert_shellrc_addition to shellrc files.
+insert_shellrc_addition() {
+  # mark='# Load additional shell configs'
+  # 检查~/.zshrc文件中是否存在:$mark 字符串,如果不存在,则向~/.zshrc添加以下内容,否则跳过插入并报告相关配置已存在
+  config_lines=$(
+    cat << EOF
 
 $mark_start
 # Load additional shell configs
-# shellcheck source=/dev/null
 sh="$SH_SYM"
+# shellcheck source=/dev/null
 source "\$sh"/shellrc_addition.sh
 $mark_end
 
 EOF
-)
+  )
 
-# START-CBRC:检查极简系统中的~/.bash_profile文件,必要时插入引导~/.bashrc的逻辑
-if ! [ -f ~/.bash_profile ]; then
-  echo "Creating .bash_profile..."
-  cat << 'EOF' > ~/.bash_profile
+  # START-CBRC:检查极简系统中的~/.bash_profile文件,必要时插入引导~/.bashrc的逻辑
+  if ! [ -f ~/.bash_profile ]; then
+    echo "Creating .bash_profile..."
+    cat << 'EOF' > ~/.bash_profile
 # if .bashrc，exist, load it first
 if [ -f ~/.bashrc ]; then
     . ~/.bashrc
 fi
-
 EOF
 
-fi
-# END-CBRC
-
-# 检查bashrc,zshrc文件,如果配置不存在则插入
-rcfiles=(~/.bashrc)
-if ! [[ -f ~/.bash_profile ]]; then
-  touch ~/.bashrc
-fi
-if [[ -f ~/.zshrc ]]; then
-  rcfiles+=(~/.zshrc)
-fi
-for rcfile in "${rcfiles[@]}"; do
-  if grep -q "$mark" "$rcfile"; then
-    echo "[$mark] already exists in $rcfile, skipping insertion..."
-  else
-    echo "Inserting configs shell configs into $rcfile..."
-    echo "$config_lines" >> "$rcfile"
   fi
-done
+  # END-CBRC
 
+  # 检查bashrc,zshrc文件,如果配置不存在则插入
+  rcfiles=(~/.bashrc)
+  if ! [[ -f ~/.bash_profile ]]; then
+    touch ~/.bashrc
+  fi
+  if [[ -f ~/.zshrc ]]; then
+    rcfiles+=(~/.zshrc)
+  fi
+  for rcfile in "${rcfiles[@]}"; do
+    if grep -q "$mark" "$rcfile"; then
+      echo "[$mark] already exists in $rcfile, skipping insertion..."
+    else
+      echo "Inserting configs shell configs into $rcfile..."
+      echo "$config_lines" >> "$rcfile"
+    fi
+  done
+}
+insert_shellrc_addition
+reset_shellrc_addition() {
+  # 从~/.zshrc文件中删除之前插入的配置片段,通过$mark_start和$mark_end标记来定位需要删除的内容
+  sed -i "/$mark_start/,/$mark_end/d" ~/.bashrc ~/.zshrc
+  # 重新插入配置片段
+  insert_shellrc_addition
+}
 # 允许root用户运行常用命令(主要针对zsh)
 echo "Loading additional shell config and functions..."
 # 为macos导入专用配置
@@ -263,7 +268,6 @@ if is_shell bash || check_dependency -q shopt; then
 
 fi
 if is_shell zsh; then
- 
 
   # 避免compinit: bad math expression: operand expected at end of string 的错误
   # rm -rf ~/.zcompdump* # 每次重建有开销,手动重建

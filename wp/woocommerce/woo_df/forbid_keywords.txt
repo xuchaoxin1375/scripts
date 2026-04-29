@@ -9,6 +9,7 @@ v-comb
 V-Comb
 Villeroy
 villeroy-boch
+DRMTLGY
 VCOMB
 Goodr
 Shure

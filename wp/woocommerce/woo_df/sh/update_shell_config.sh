@@ -187,6 +187,11 @@ echo "🎉 代码同步完成：$SCRIPT_ROOT"
 # 可选的配置shell脚本库（兼容bash，zsh)
 # ! [[ -L $sh_sym ]] &&
 ln -snfv "$sh_script_dir" "$SH_SYM"
+# wsl的ble.sh用户专属配置
+if [ -e '/mnt/' ]; then
+    blerc="$SH_SYM/env_sh/.blerc"
+    [ -e "$blerc" ] && ln -snfv "$blerc" "$HOME/.blerc"
+fi
 # 部署shell 交互方案(prompt主题和补全方案)
 bash "$SH_SYM"/shellrc_addition.sh # 内部不执行进程替换
 # 进程替换
