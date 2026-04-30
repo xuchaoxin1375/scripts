@@ -97,11 +97,7 @@ if is_shell bash; then
   [[ $_SHELL_DEBUG -eq 1 ]] && set -x
 fi
 
-# brew包管理器配置(如果可用的话) brew shellenv 是幂等的,如果shell环境执行过一次,那么再次执行输出为空.
-if [[ -e "$_HOMEBREW_PATH" && -z $HOMEBREW_PREFIX ]]; then
-  # $_HOMEBREW_PATH shellenv # debug print it
-  eval "$($_HOMEBREW_PATH shellenv)"
-fi
+
 # 移除wsl中ls列出文件夹的背景色
 remove_background_color() {
   command -v dircolors &> /dev/null || return 1

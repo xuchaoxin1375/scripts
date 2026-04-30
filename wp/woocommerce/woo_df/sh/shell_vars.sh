@@ -14,8 +14,17 @@ export BASH_PROMPT="fast_ys"
 export BASHRC_FILE="$HOME/.bashrc"
 export BASH_PROMPTS_ROOT="$sh/bash_prompts"
 # linuxbrew的基本环境变量
-export _HOMEBREW_PREFIX="/home/linuxbrew/.linuxbrew"
-export _HOMEBREW_PATH="$_HOMEBREW_PREFIX/bin/brew"
+_HOMEBREW_PREFIX="/home/linuxbrew/.linuxbrew"
+_HOMEBREW_PATH="$_HOMEBREW_PREFIX/bin/brew"
+# 只有当_HOMEBREW_PATH目录存在时才导出对应的环境变量
+# test -e "$_HOMEBREW_PATH" && export _HOMEBREW_PATH
+# brew包管理器配置(如果可用的话) brew shellenv 是幂等的,如果shell环境执行过一次,那么再次执行输出为空.
+if [[ -e "$_HOMEBREW_PATH" ]]; then
+  # $_HOMEBREW_PATH shellenv # debug print it
+  echo "[homebrew]:importing and setting homebrew related environment variables..."
+  # eval "$($_HOMEBREW_PATH shellenv)"
+fi
+
 # macos brew(homebrew) 会自己注册HOMEBREW_PREFIX等环境变量
 # HOMEBREW_PREFIX="$(brew --prefix)"
 

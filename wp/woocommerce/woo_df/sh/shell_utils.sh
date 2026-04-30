@@ -1759,11 +1759,11 @@ new_user_sudo() {
 
 }
 # 配置homebrew路径相关的环境变量(和镜像环境变量不同)到配置文件中
-# TODO:支持reset选项,将相关配置文件中的brew shellenv语句删除(可便于后续重新添加)
 set_brew_path_env_to_shellrc() {
     # 参数解析
     local usage='
-    配置homebrew路径相关的环境变量(和镜像环境变量不同)到配置文件中
+    配置homebrew路径相关的环境变量(和镜像环境变量不同)到配置文件中;
+    定位到安装brew安装路径后会立即更新shell环境变量,无需手动刷新配置或重载shell
     options:
       -h, --help    显示帮助信息
       --remove      删除brew路径相关的环境变量配置
@@ -1861,6 +1861,8 @@ set_brew_path_env_to_shellrc() {
     # fi
 
     # 判断系统平台,找到正确的brew路径并执行shellenv命令生成环境变量设置语句;在通过eval注入到当前环境中;
+    # 注意:下面到片段定位到brew的安装目录后会立刻执行eval命令将立刻注入和修改环境变量设置(包括PATH变量)
+    # 也就是运行此函数的交互式终端能够直接运行brew(且已经能够由brew --prefix计算安装路径,替换命令字符串模板,追加到配置文件中)
     if [[ $OSTYPE == linux* ]]; then
         test -d ~/.linuxbrew && eval "$(~/.linuxbrew/bin/brew shellenv)"
         test -d /home/linuxbrew/.linuxbrew && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
