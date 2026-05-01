@@ -22,7 +22,7 @@ _HOMEBREW_PATH="$_HOMEBREW_PREFIX/bin/brew"
 if [[ -e "$_HOMEBREW_PATH" ]]; then
   # $_HOMEBREW_PATH shellenv # debug print it
   echo "[homebrew]:importing and setting homebrew related environment variables..."
-  # eval "$($_HOMEBREW_PATH shellenv)"
+  eval "$($_HOMEBREW_PATH shellenv)"
 fi
 
 # macos brew(homebrew) 会自己注册HOMEBREW_PREFIX等环境变量

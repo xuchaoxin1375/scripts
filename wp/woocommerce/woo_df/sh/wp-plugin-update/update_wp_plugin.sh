@@ -2,14 +2,15 @@
 # 更新重点日志:251204为参数WORKDIR提供接收单个或多个路径的支持,即允许指定1个或多个工作目录
 # 如果使用symlink,需要注意和建站工具网站目录中默认设置的"防跨站攻击"功能冲突
 # 合理设置防跨站攻击(open_basedir)，防止黑客通过其他网站目录进行入侵攻击
-
-usage() {
+VERSION=20260501
+show_usage() {
     cat << EOF
+wordpress 插件更新/安装/移除脚本 (version:$VERSION)
 用法：$0 [--source <插件目录>] [--remove <插件名 1，插件名 2,...>] [--user <用户名>] [--workdir <工作目录 1，工作目录 2,...>] [--dry-run] [--blacklist <黑名单文件>] [--whitelist <白名单文件>] [--log <日志文件>]
 
 参数说明：
   --src,--source,--plugin-source <插件目录>         要被安装/更新的插件源目录
-  --remove <插件名列表>       要移除的插件名，多个用逗号分隔
+  --remove,--remove-plugins <插件名列表>       要移除的插件名，多个用逗号分隔
   --user <用户名>             WordPress 站点所属用户名（可选，不指定则处理所有用户）
   --workdir <工作目录列表>    网站根工作目录，多个目录用逗号分隔。默认为 /www/wwwroot,/wwwdata/wwwroot
   -m,--install-mode <安装模式>   安装模式 (copy:复制到指定目录;symlink:软链接到指定目录),默认为 symlink
@@ -24,7 +25,9 @@ EOF
 }
 
 # 解析命令行参数
-SOURCE_DIR=""
+# 插件所在目录
+PLUGIN_SOURCE=""
+# 移除的插件(列表)
 REMOVE_PLUGINS=""
 USER_NAME=""
 # 修改默认值，支持多个路径，用逗号分隔
@@ -48,10 +51,11 @@ parse_args() {
     while [[ "$#" -gt 0 ]]; do
         case $1 in
             --src | --source | --plugin-source)
-                SOURCE_DIR="$2"
+                PLUGIN_SOURCE="$2"
                 shift
                 ;;
-            --remove)
+            --remove | --remove-plugins)
+                # 此选项启用时,将网站列表列表模式设置为manual模式
                 REMOVE_PLUGINS="$2"
                 shift
                 ;;
@@ -93,12 +97,13 @@ parse_args() {
                 shift
                 ;;
             -M | --list-mode)
-                if [[ "$2" == "auto" ]]; then
-                    echo "仅更新已经安装了指定插件的网站,未安装的网站将跳过！"
-                    LIST_MODE="auto"
-                else
-                    # 手动指定(白名单或黑名单的方式)
+                LIST_MODE="$2"
+                # 检查是否是插件移除模式,如果是,则将模式切换为非auto的模式(manual模式)
+                if [[ "$REMOVE_PLUGINS" != "" ]];then
                     LIST_MODE="manual"
+                fi
+                if [[ "$LIST_MODE" == "auto" ]]; then
+                    echo "仅处理已经安装了指定插件的网站,未安装的网站将跳过(此方案仅适用于老插件更新,不适用于安装全新插件)！"
                 fi
                 shift
                 ;;
@@ -106,14 +111,20 @@ parse_args() {
                 LOG_FILE="$2"
                 shift
                 ;;
-            *) usage ;;
+            --help | -h)
+                show_usage
+                ;;
+            *)
+                echo "未知参数: $1" >&2
+                show_usage
+                ;;
         esac
         shift
     done
 }
 parse_args "$@"
-if [[ -z "$SOURCE_DIR" && -z "$REMOVE_PLUGINS" ]]; then
-    usage
+if [[ -z "$PLUGIN_SOURCE" && -z "$REMOVE_PLUGINS" ]]; then
+    show_usage
 fi
 
 # 读取黑名单或白名单文件到数组
@@ -207,7 +218,7 @@ for workdir_path in "${WORKDIR_ARRAY[@]}"; do
     # Global:
     #   DRY_RUN
     #   INSTALL_MODE
-    #   SOURCE_DIR
+    #   PLUGIN_SOURCE
     # Arguments:
     #   $1 - description
     # Returns:
@@ -217,7 +228,7 @@ for workdir_path in "${WORKDIR_ARRAY[@]}"; do
         local TARGET_DIR="$1"
         local TYPE_DESC="$2"
         if $DRY_RUN; then
-            log "  [DRY RUN] 将覆盖 $SOURCE_DIR 到 [$TARGET_DIR] [$TYPE_DESC]"
+            log "  [DRY RUN] 将覆盖 $PLUGIN_SOURCE 到 [$TARGET_DIR] [$TYPE_DESC]"
         else
             # 安装插件前,尤其是symbolic方式,建议检查并调整用户ini
             user_ini="$site/.user.ini"
@@ -230,25 +241,26 @@ for workdir_path in "${WORKDIR_ARRAY[@]}"; do
                 log "  删除已存在: $TARGET_DIR"
                 rm -rf "$TARGET_DIR" || return 1
             fi
-            log "  [$INSTALL_MODE]覆盖 $SOURCE_DIR 到 $TARGET_DIR $TYPE_DESC"
+            log "  [$INSTALL_MODE]覆盖 $PLUGIN_SOURCE 到 $TARGET_DIR $TYPE_DESC"
             # 根据安装模式正式执行安装操作
             if [[ "$INSTALL_MODE" == "copy" ]]; then
-                cp -r "$SOURCE_DIR" "$TARGET_DIR" || return 1
+                cp -r "$PLUGIN_SOURCE" "$TARGET_DIR" || return 1
             elif [[ "$INSTALL_MODE" == "symlink" ]]; then
-                ln -sT "$SOURCE_DIR" "$TARGET_DIR" || return 1
+                ln -sT "$PLUGIN_SOURCE" "$TARGET_DIR" || return 1
             fi
         fi
     }
     ## 黑/白名单模式
     if [[ $LIST_MODE == "manual" || $LIST_MODE == "full" ]]; then
         count=0
+        # 遍历所有网站根目录,并检查(指定)网站根目录是否存在,若不存在则跳过该站处理
+        # site表示存在的网站根目录(绝对路径) .../domain.com/wordpress
         for site in $SEARCH_PATTERN; do
-            # 检查目录是否存在,不存在跳过该站处理
             # if [[ ! -d "$site" ]]; then
             #     continue
             # fi
 
-            # 获取域名（父目录名）
+            # 获取域名（父目录名）:通过dirname 计算父目录,再用basename移除目录路径前缀
             DOMAIN=$(basename "$(dirname "$site")")
 
             log "处理站点: $DOMAIN @ $site"
@@ -276,9 +288,9 @@ for workdir_path in "${WORKDIR_ARRAY[@]}"; do
             fi
 
             # 覆盖式安装插件
-            if [[ -n "$SOURCE_DIR" ]]; then
+            if [[ -n "$PLUGIN_SOURCE" ]]; then
                 # 计算插件名称
-                PLUGIN_BASENAME="$(basename "$SOURCE_DIR")"
+                PLUGIN_BASENAME="$(basename "$PLUGIN_SOURCE")"
                 # 根据不同的插件类型执行不同的安装方式(计算最终的安装目录)
                 if [[ "$PLUGIN_TYPE" == "must" ]]; then
                     # 强制执行插件的安装(must-plugin)
@@ -317,8 +329,8 @@ for workdir_path in "${WORKDIR_ARRAY[@]}"; do
         done
         log "共处理 $count 个站点。"
     else
-        ## 自动模式下更新插件
-        PLUGIN_BASENAME="$(basename "$SOURCE_DIR")"
+        ## 自动模式(LIST_MODE=auto)下更新插件
+        PLUGIN_BASENAME="$(basename "$PLUGIN_SOURCE")"
         # find搜索(指定层级提高搜索效率,比递归通配符快速)
         # 写法1:直接mapfile不会实时打印找到的目录
         # mapfile -d '' -t site_plugin_dirs < <(find "$workdir_path" -mindepth 5 -maxdepth 6 -type d -name "$PLUGIN_BASENAME" -print0)
