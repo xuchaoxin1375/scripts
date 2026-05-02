@@ -220,8 +220,18 @@ SUBSTITUTERS="$SUBSTITUTERS https://cache.nixos.org"
 EXPERIMENTAL_FEATURES=""
 [[ "$ENABLE_NIX_COMMAND" == "yes" ]] && EXPERIMENTAL_FEATURES="$EXPERIMENTAL_FEATURES nix-command"
 [[ "$ENABLE_FLAKES" == "yes" ]] && EXPERIMENTAL_FEATURES="$EXPERIMENTAL_FEATURES flakes"
+
 EXPERIMENTAL_FEATURES=$(echo "$EXPERIMENTAL_FEATURES" | xargs) # 去除首尾空格
 
+# 如果启用了flakes,国内加速镜像可能要额外配置才能加速部分内容
+# 相关讨论:https://discourse.nixos.org/t/how-to-use-nix-profile-without-github-com/72289
+if [[ "$ENABLE_FLAKES" == "yes" ]]; then
+    # 绕过 GitHub 访问限制，直接从 CDN 拉取 nixpkgs
+    # 执行下面的nix registry后，当你在 Nix 命令（如 nix run、nix build）中使用 nixpkgs#... 时，会直接从这个 URL 获取 nixpkgs，而不是 从 github:NixOS/nixpkgs 或系统配置的 channel 获取。
+    nix registry add nixpkgs https://channels.nixos.org/nixpkgs-unstable/nixexprs.tar.xz
+    # 恢复默认registry:
+    # nix registry remove nixpkgs
+fi
 # 写入配置文件
 print_info "写入配置文件: $NIX_CONF"
 # 使用here-doc标准输入重定向写入多行字符串到配置文件中(对于系统级配置文件,需要sudo权限,这里使用tee命令方便sudo生效)

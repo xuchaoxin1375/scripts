@@ -10,7 +10,7 @@ alias bashrc='source ~/.bashrc'
 alias zshrc='source ~/.zshrc'
 alias cls=clear
 alias ls='\ls --color=auto' #macos 上可能默认没有启用颜色
-alias lsdir='ls -d */' #列出所有目录(不含文件)
+alias lsdir='ls -d */'      #列出所有目录(不含文件)
 # man手册(macos bsd版本的命令)
 # 例如,使用 bman ln 即可查看bsd版本的ln的原生帮助
 alias bman='man -M /usr/share/man'
@@ -22,7 +22,7 @@ command -v vim &> /dev/null && alias vi=vim
 alias fbc='fail2ban-client'
 alias sfbc='sudo fail2ban-client' #非root用户使用,也兼容root用户使用
 # brew 已经安装的情况下(执行此命令位置有讲究,或者放到shellrc_addition中)
-[[ $OSTYPE != 'darwin'* && $(id -u) -eq 0  ]] && command -v 'brew' >& /dev/null  && alias brew=brewr 
+[[ $OSTYPE != 'darwin'* && $(id -u) -eq 0 ]] && command -v 'brew' >&/dev/null && alias brew=brewr
 
 alias curl='curl --proto-default https'
 alias fbcs='fail2ban-client status'
@@ -33,3 +33,28 @@ alias fbt='fail2ban-testcases'
 alias python=python3
 alias py=python3
 alias pip=pip3
+# nix
+if command -v nix &> /dev/null; then
+    # echo "[nix]:loading nix alias..." # debug
+    # alias nia='nix profile add'
+    alias nr='nix profile remove'
+    alias nup='nix profile upgrade --all'
+    alias nls='nix profile list'
+    alias ns='nix search nixpkgs'
+    alias nshow='nix search nixpkgs --exclude-details' # 只显示包名
+    alias nrun='nix run nixpkgs#'
+    ni() {
+        # 支持多包，智能添加 nixpkgs# 前缀
+        local packages=()
+        for pkg in "$@"; do
+            if [[ "$pkg" == *"#"* ]]; then
+                packages+=("$pkg")
+            else
+                packages+=("nixpkgs#$pkg")
+            fi
+        done
+        nix profile install "${packages[@]}"
+    }
+    # 额外的别名 nix profile add
+    alias nia=ni
+fi
