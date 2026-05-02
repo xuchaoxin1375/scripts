@@ -6,19 +6,20 @@
 set -e
 
 # 默认配置
-INSTALL_MODE="--daemon" # 多用户模式
+INSTALL_MODE="daemon" # 多用户模式
 NIX_VERSION="latest"    # 默认最新版
 
-MIRROR="ustc"                         # 镜像源（bfsu/ustc/tuna/sjtu/nju）
+MIRROR="bfsu"                         # 镜像源（bfsu/ustc/tuna/sjtu/nju）
 CHANNEL_MIRROR="ustc"                 # channel 镜像源
 BINARY_CACHE_MIRRORS="ustc,sjtu,tuna" # 二进制缓存镜像列表
 CHANNEL_NAME="nixpkgs-unstable"       # 使用的 channel,通常是nixpkgs-unstable
 
 ENABLE_FLAKES="yes"      # 启用 flakes
 ENABLE_NIX_COMMAND="yes" # 启用 nix-command
-
-CONFIG_SCOPE="user" # 配置范围（user/system）
-
+SET_MIRRORS_ONLY=false   # 仅配置镜像而跳过安装nix环节
+CONFIG_SCOPE="system"      # 配置范围（user/system）
+# curl User-Agent
+UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 # 颜色输出
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -46,23 +47,28 @@ Nix 多用户安装脚本（国内镜像优化）
 选项:
     --mode <mode>           安装模式: daemon(多用户,默认) | single(单用户)
     --version <version>     Nix 版本: latest(默认) | 2.18.0 | 2.19.0 | etc
-    --mirror <mirror>       安装包镜像源:  ustc(中科大) | sjtu(上交) | bfsu(北外) | tuna(清华)  | nju(南大)
+    -A,--user-agent         部分情况下没有指定UA的curl会被镜像源拒绝服务,考虑指定UA
+    -S,--mirror <mirror>       安装包镜像源:   bfsu(北外) | tuna(清华)  | nju(南大) | nixorg(官方源)
                             注意:部分镜像会检查网段请求量,可能会被限流而无法请求,这种情况下请更换源;
+                            ustc(中科大) | sjtu(上交) 似乎没有提供安装脚本,但是提供了channel和binary-cache
+    --channel-mirror <mirror> Channel 镜像源 (默认: ustc)
+    --binary-mirrors <list> 二进制缓存镜像列表, 逗号分隔 (默认: ustc,sjtu,tuna)
+    --set-mirrors-only      仅配置镜像源加速相关部分(不执行安装)
+
     --flakes <yes/no>       启用 flakes 特性 (默认: yes)
     --nix-command <yes/no>  启用 nix-command 特性 (默认: yes)
-    --config-scope <scope>  配置范围: user(用户级,默认) | system(系统级)
-    --binary-mirrors <list> 二进制缓存镜像列表, 逗号分隔 (默认: ustc,sjtu,tuna)
-    --channel-mirror <mirror> Channel 镜像源 (默认: ustc)
+
+    --config-scope <scope>  配置范围: user(用户级) | system(系统级,默认)
     --channel <name>        使用的 channel 名称 (默认: nixpkgs-unstable)
     --no-channel-update     跳过 channel 更新步骤
     -h,--help                  显示此帮助信息
 
 镜像说明:
     bfsu  - 北京外国语大学 (https://mirrors.bfsu.edu.cn)
-    ustc  - 中国科学技术大学 (https://mirrors.ustc.edu.cn)
     tuna  - 清华大学 (https://mirrors.tuna.tsinghua.edu.cn)
-    sjtu  - 上海交通大学 (https://mirror.sjtu.edu.cn)
     nju   - 南京大学 (https://mirror.nju.edu.cn)
+    ustc  - 中国科学技术大学 (https://mirrors.ustc.edu.cn)
+    sjtu  - 上海交通大学 (https://mirror.sjtu.edu.cn)
 
 示例:
     $0                                          # 使用默认配置安装
@@ -84,7 +90,7 @@ while [[ $# -gt 0 ]]; do
                 INSTALL_MODE="--daemon"
             else
                 print_error "无效的安装模式: $2"
-                exit 1
+                exit 2
             fi
             shift 2
             ;;
@@ -92,9 +98,17 @@ while [[ $# -gt 0 ]]; do
             NIX_VERSION="$2"
             shift 2
             ;;
+        -A | --user-agent)
+            UA="$2"
+            shift 2
+            ;;
         --mirror)
             MIRROR="$2"
             shift 2
+            ;;
+        -S | --set-mirrors-only)
+            SET_MIRRORS_ONLY=true
+            shift
             ;;
         --flakes)
             ENABLE_FLAKES="$2"
@@ -136,45 +150,80 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
-# 检查是否已经安装过nix,如果有,则退出
-if command -v nix &> /dev/null; then
-    print_info "nix已经安装过了,跳过后续操作."
-    exit 1
-fi
+
 # 选择镜像 URL(前缀部分)
 get_mirror_url() {
     local mirror=$1
     case $mirror in
         ustc) echo "https://mirrors.ustc.edu.cn" ;;
         bfsu) echo "https://mirrors.bfsu.edu.cn" ;;
+        nju) echo "https://mirror.nju.edu.cn" ;;
         tuna) echo "https://mirrors.tuna.tsinghua.edu.cn" ;;
         sjtu) echo "https://mirror.sjtu.edu.cn" ;;
-        nju) echo "https://mirror.nju.edu.cn" ;;
-        *) echo "https://mirrors.ustc.edu.cn" ;;
+        nixorg) echo "https://nixos.org/nix/install" ;;
+        *) echo "https://nixos.org/nix/install" ;;
     esac
 }
+curlx() {
+    local args=("$@")
+    curl -L -A "$UA" "${args[@]}"
+}
+_install_nix() {
+    # 检查是否已经安装过nix,如果有,则退出
+    if command -v nix &> /dev/null; then
+        print_info "nix已经安装过了,跳过后续操作." 
+        exit 1
+    fi
+    # 获取安装脚本install URL(计算前缀部分+路径)
+    # 并非所有镜像源都提供(相同)的nix安装脚本,已知nju以及tuna和bfsu提供了安装脚本(两者采用相同的模板,限流规则也相似):
+    # 例如tuna提供的(多用户模式)安装命令: sh <(curl -L https://mirrors.tuna.tsinghua.edu.cn/nix/latest/install) --daemon
+    MIRROR_URL=$(get_mirror_url "$MIRROR")
+    echo "[$MIRROR]选中URL: [$MIRROR_URL] ..."
+    if [[ $MIRROR != "nixorg" ]]; then
+        if [[ "$NIX_VERSION" == "latest" ]]; then
+            # 一般是latest路径
+            INSTALL_URL="${MIRROR_URL}/nix/latest/install"
+        else
+            # 备用
+            INSTALL_URL="${MIRROR_URL}/nix/nix-${NIX_VERSION}/install"
+        fi
+    else
+        INSTALL_URL="$MIRROR_URL"
+    fi
+    echo "测试INSTALL_URL($INSTALL_URL)可用性...."
+    if curlx -I -f "$INSTALL_URL"; then
+        echo "地址有效:$INSTALL_URL"
+    else
+        echo "地址无效:$INSTALL_URL"
+        exit 1
+    fi
+    print_info "开始安装 Nix..."
+    print_info "安装模式: ${INSTALL_MODE:-单用户}"
+    print_info "镜像源: $MIRROR_URL"
+    print_info "安装脚本: $INSTALL_URL"
 
-# 获取安装脚本install URL(计算前缀部分+路径)
-MIRROR_URL=$(get_mirror_url "$MIRROR")
-if [[ "$NIX_VERSION" == "latest" ]]; then
-    INSTALL_URL="${MIRROR_URL}/nix/latest/install"
-else
-    INSTALL_URL="${MIRROR_URL}/nix/nix-${NIX_VERSION}/install"
-fi
-
-print_info "开始安装 Nix..."
-print_info "安装模式: ${INSTALL_MODE:-单用户}"
-print_info "镜像源: $MIRROR_URL"
-print_info "安装脚本: $INSTALL_URL"
+    print_info "下载并执行安装脚本..."
+    if [[ -n "$INSTALL_MODE" ]]; then
+        sh <(curlx "$INSTALL_URL") $INSTALL_MODE
+    else
+        sh <(curlx "$INSTALL_URL")
+    fi
+}
 
 # 1. 下载并执行官方安装脚本
-print_info "下载并执行安装脚本..."
-if [[ -n "$INSTALL_MODE" ]]; then
-    sh <(curl -L "$INSTALL_URL") $INSTALL_MODE
-else
-    sh <(curl -L "$INSTALL_URL")
-fi
+if [[ $SET_MIRRORS_ONLY == false ]]; then
 
+    _install_nix
+else
+    # 要求nix已经安装,否则配置镜像过程中会出错;
+    echo "检查nix是否已经安装..."
+    if command -v nix &> /dev/null; then
+        echo "nix已安装"
+    else
+        echo "nix未安装,请先安装" &>2
+        exit 1
+    fi
+fi
 # 2. 加载 Nix 环境（如果尚未加载）通常不需要手动执行这个部分
 if [[ -f ~/.nix-profile/etc/profile.d/nix.sh ]]; then
     # shellcheck disable=SC1090
@@ -224,15 +273,6 @@ EXPERIMENTAL_FEATURES=""
 
 EXPERIMENTAL_FEATURES=$(echo "$EXPERIMENTAL_FEATURES" | xargs) # 去除首尾空格
 
-# 如果启用了flakes,国内加速镜像可能要额外配置才能加速部分内容
-# 相关讨论:https://discourse.nixos.org/t/how-to-use-nix-profile-without-github-com/72289
-if [[ "$ENABLE_FLAKES" == "yes" ]]; then
-    # 绕过 GitHub 访问限制，直接从 CDN 拉取 nixpkgs
-    # 执行下面的nix registry后，当你在 Nix 命令（如 nix run、nix build）中使用 nixpkgs#... 时，会直接从这个 URL 获取 nixpkgs，而不是 从 github:NixOS/nixpkgs 或系统配置的 channel 获取。
-    nix registry add nixpkgs https://channels.nixos.org/nixpkgs-unstable/nixexprs.tar.xz
-    # 恢复默认registry:
-    # nix registry remove nixpkgs
-fi
 # 写入配置文件
 print_info "写入配置文件: $NIX_CONF"
 # 使用here-doc标准输入重定向写入多行字符串到配置文件中(对于系统级配置文件,需要sudo权限,这里使用tee命令方便sudo生效)
@@ -260,7 +300,7 @@ cat "$NIX_CONF"
 # 4. 配置 channel（可选）
 if [[ "$SKIP_CHANNEL_UPDATE" != "yes" ]]; then
     print_info "配置 Nix channel..."
-    CHANNEL_URL=$(get_mirror_url $CHANNEL_MIRROR)/nix-channels/$CHANNEL_NAME
+    CHANNEL_URL=$(get_mirror_url "$CHANNEL_MIRROR")/nix-channels/$CHANNEL_NAME
 
     print_info "添加 channel: $CHANNEL_URL"
     nix-channel --add "$CHANNEL_URL" nixpkgs
@@ -298,15 +338,7 @@ if [[ "$ENABLE_FLAKES" == "yes" ]] && nix flake --help &> /dev/null; then
     print_info "✓ flakes 已启用"
 fi
 
-# 测试安装
-print_info "测试安装一个包(hello)..."
-nix profile install nixpkgs#hello 2> /dev/null || {
-    print_warn "测试安装失败，可能需要重新加载环境"
-}
 
-if command -v hello &> /dev/null; then
-    print_info "测试成功: $(hello --version)"
-fi
 
 print_info "=========================================="
 print_info "✅ Nix 安装完成！"
@@ -318,3 +350,29 @@ print_info "  nix profile remove <索引>          # 移除包"
 print_info "  nix search nixpkgs 关键词          # 搜索包(不推荐本地执行,建议直接用在线网站搜索包获取包信息)"
 print_info "  nix shell nixpkgs#包名             # 临时进入环境"
 print_info "=========================================="
+
+# 如果启用了flakes,国内加速镜像可能要额外配置才能加速部分内容
+# 相关讨论:https://discourse.nixos.org/t/how-to-use-nix-profile-without-github-com/72289
+if [[ "$ENABLE_FLAKES" == "yes" ]]; then
+    # 绕过 GitHub 访问限制，直接从 CDN 拉取 nixpkgs
+    # 执行下面的nix registry后，当你在 Nix 命令（如 nix run、nix build）中使用 nixpkgs#... 时，会直接从这个 URL 获取 nixpkgs，而不是 从 github:NixOS/nixpkgs 或系统配置的 channel 获取。
+    echo "=================="
+    echo "[Warning]:Run next line command to pass by github and download packages from mirror."
+    echo ""
+    echo "nix registry add nixpkgs https://channels.nixos.org/nixpkgs-unstable/nixexprs.tar.xz"
+    echo "=================="
+    # 尝试自动source当前shell的配置文件(常见shell)
+
+    # 恢复默认registry:
+    # nix registry remove nixpkgs
+fi
+
+# 测试安装(使用flakes的情况下可能会很慢,考虑挪到最后)
+# print_info "测试安装一个包(hello)..."
+# nix profile add nixpkgs#hello 2> /dev/null || {
+#     print_warn "测试安装失败，可能需要重新加载环境"
+# }
+
+# if command -v hello &> /dev/null; then
+#     print_info "测试成功: $(hello --version)"
+# fi
