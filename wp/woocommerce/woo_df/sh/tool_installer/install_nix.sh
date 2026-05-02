@@ -9,7 +9,7 @@ set -e
 INSTALL_MODE="--daemon" # 多用户模式
 NIX_VERSION="latest"    # 默认最新版
 
-MIRROR="bfsu"                         # 镜像源（bfsu/ustc/tuna/sjtu/nju）
+MIRROR="ustc"                         # 镜像源（bfsu/ustc/tuna/sjtu/nju）
 CHANNEL_MIRROR="ustc"                 # channel 镜像源
 BINARY_CACHE_MIRRORS="ustc,sjtu,tuna" # 二进制缓存镜像列表
 CHANNEL_NAME="nixpkgs-unstable"       # 使用的 channel,通常是nixpkgs-unstable
@@ -46,7 +46,8 @@ Nix 多用户安装脚本（国内镜像优化）
 选项:
     --mode <mode>           安装模式: daemon(多用户,默认) | single(单用户)
     --version <version>     Nix 版本: latest(默认) | 2.18.0 | 2.19.0 | etc
-    --mirror <mirror>       安装包镜像: bfsu(北外,默认) | ustc(中科大) | tuna(清华) | sjtu(上交) | nju(南大)
+    --mirror <mirror>       安装包镜像源:  ustc(中科大) | sjtu(上交) | bfsu(北外) | tuna(清华)  | nju(南大)
+                            注意:部分镜像会检查网段请求量,可能会被限流而无法请求,这种情况下请更换源;
     --flakes <yes/no>       启用 flakes 特性 (默认: yes)
     --nix-command <yes/no>  启用 nix-command 特性 (默认: yes)
     --config-scope <scope>  配置范围: user(用户级,默认) | system(系统级)
@@ -144,12 +145,12 @@ fi
 get_mirror_url() {
     local mirror=$1
     case $mirror in
-        bfsu) echo "https://mirrors.bfsu.edu.cn" ;;
         ustc) echo "https://mirrors.ustc.edu.cn" ;;
+        bfsu) echo "https://mirrors.bfsu.edu.cn" ;;
         tuna) echo "https://mirrors.tuna.tsinghua.edu.cn" ;;
         sjtu) echo "https://mirror.sjtu.edu.cn" ;;
         nju) echo "https://mirror.nju.edu.cn" ;;
-        *) echo "https://mirrors.bfsu.edu.cn" ;;
+        *) echo "https://mirrors.ustc.edu.cn" ;;
     esac
 }
 

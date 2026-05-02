@@ -1,146 +1,370 @@
-# WordPress 插件批量覆盖脚本说明
+#!/bin/bash
+# 更新重点日志:251204为参数WORKDIR提供接收单个或多个路径的支持,即允许指定1个或多个工作目录
+# 如果使用symlink,需要注意和建站工具网站目录中默认设置的"防跨站攻击"功能冲突
+# 合理设置防跨站攻击(open_basedir)，防止黑客通过其他网站目录进行入侵攻击
+VERSION=20260501
+show_usage() {
+    cat << EOF
+wordpress 插件更新/安装/移除脚本 (version:$VERSION)
+用法：$0 [--source <插件目录>] [--remove <插件名 1，插件名 2,...>] [--user <用户名>] [--workdir <工作目录 1，工作目录 2,...>] [--dry-run] [--blacklist <黑名单文件>] [--whitelist <白名单文件>] [--log <日志文件>]
 
-## 需求说明
+参数说明：
+  --src,--source,--plugin-source <插件目录>         要被安装/更新的插件源目录
+  --remove,--remove-plugins <插件名列表>       要移除的插件名，多个用逗号分隔
+  --user <用户名>             WordPress 站点所属用户名（可选，不指定则处理所有用户）
+  --workdir <工作目录列表>    网站根工作目录，多个目录用逗号分隔。默认为 /www/wwwroot,/wwwdata/wwwroot
+  -m,--install-mode <安装模式>   安装模式 (copy:复制到指定目录;symlink:软链接到指定目录),默认为 symlink
+  -M,--list-mode <列表模式> 获取待处理站点列表的模式 (auto:自动扫描已安装插件的站点;manual:手动指定黑/白名单;full:所有网站都要安装;),默认为 auto
+  --plugin-type               插件类型 (如果是 must 类型，则将被处理的插件视为强制执行插件),放到 wp-content 目录下;默认为 common 类型，普通插件，放到 wp-content/plugins 目录下
+  --dry-run                   预览操作，不实际执行
+  --blacklist <文件>          指定黑名单文件（每行一个域名）;指定了黑名单文件,自动设置LIST_MODE为manual模式
+  --whitelist <文件>          指定白名单文件（每行一个域名，只操作这些域名）;指定了白名单文件,自动设置LIST_MODE为manual模式
+  --log <日志文件>            指定日志文件保存操作日志
+EOF
+    exit 1
+}
 
-本脚本用于批量覆盖或移除一批 WordPress 网站的插件目录。(大多数功能经过验证,执行速度较快)
-支持如下功能：
+# 解析命令行参数
+# 插件所在目录
+PLUGIN_SOURCE=""
+# 移除的插件(列表)
+REMOVE_PLUGINS=""
+USER_NAME=""
+# 修改默认值，支持多个路径，用逗号分隔
+WORKDIR="/www/wwwroot,/wwwdata/wwwroot"
+SH_SYM="/www/sh"
+DRY_RUN=false
+COMMON_PLUGINS_HOME="wp-content/plugins"
+MUST_PLUGINS_HOME="wp-content"
+# 安装/更新插件时采用的安装模式(copy/symlink)
+INSTALL_MODE="symlink"
+# 获取待处理网站列表的模式(自动扫描适用于普通的按需插件更新,未安装过目标插件的网站将自动跳过处理)
+LIST_MODE="auto" # auto,manual
+# 手动指定黑白名单模式下(manual),可以指定黑/白名单中的一个
+BLACKLIST_FILE=""
+WHITELIST_FILE=""
 
-- 支持指定插件源目录，将其覆盖到所有目标站点的插件目录下。
-- 支持通过命令行参数指定网站工作目录（默认为 `/www/wwwroot`）。
-- 支持指定用户名，仅操作该用户下的所有站点；未指定则处理所有用户下的站点。
-- 支持黑名单和白名单模式，灵活控制操作的站点范围。
-- 支持移除指定插件（可批量，逗号分隔），可与覆盖操作独立或同时使用。
-- 支持 `--dry-run` 预览模式，仅显示将要执行的操作，不实际更改文件。
-- 支持 `--log` 参数，将所有操作日志保存到指定文件。
-- 黑名单和白名单只能二选一，不能同时指定。
+LOG_FILE=""
+PLUGIN_TYPE="common"
+# 命令行参数解析
+parse_args() {
+    while [[ "$#" -gt 0 ]]; do
+        case $1 in
+            --src | --source | --plugin-source)
+                PLUGIN_SOURCE="$2"
+                shift
+                ;;
+            --remove | --remove-plugins)
+                # 此选项启用时,将网站列表列表模式设置为manual模式
+                REMOVE_PLUGINS="$2"
+                shift
+                ;;
+            --user)
+                USER_NAME="$2"
+                shift
+                ;;
+            --workdir)
+                WORKDIR="$2"
+                shift
+                ;; # 接受逗号分隔的多个路径
+            --dry-run) DRY_RUN=true ;;
+            --blacklist)
+                BLACKLIST_FILE="$2"
+                echo "指定了黑名单文件,自动设置LIST_MODE为manual模式"
+                LIST_MODE="manual"
+                shift
+                ;;
+            --whitelist)
+                WHITELIST_FILE="$2"
+                echo "指定了白名单文件,自动设置LIST_MODE为manual模式"
+                LIST_MODE="manual"
+                shift
+                ;;
+            --plugin-type)
+                if [[ "$2" == "must" ]]; then
+                    PLUGIN_TYPE="must"
+                else
+                    PLUGIN_TYPE="common"
+                fi
+                shift
+                ;;
+            -m | --install-mode)
+                if [[ "$2" == "copy" ]]; then
+                    INSTALL_MODE="copy"
+                elif [[ "$2" == symlink* ]]; then
+                    INSTALL_MODE="symlink"
+                fi
+                shift
+                ;;
+            -M | --list-mode)
+                LIST_MODE="$2"
+               
+                if [[ "$LIST_MODE" == "auto" ]]; then
+                    echo "仅处理已经安装了指定插件的网站,未安装的网站将跳过(此方案仅适用于老插件更新,不适用于安装全新插件)！"
+                fi
+                shift
+                ;;
+            --log)
+                LOG_FILE="$2"
+                shift
+                ;;
+            --help | -h)
+                show_usage
+                ;;
+            *)
+                echo "未知参数: $1" >&2
+                show_usage
+                ;;
+        esac
+        shift
+    done
+}
+parse_args "$@"
+if [[ -z "$PLUGIN_SOURCE" && -z "$REMOVE_PLUGINS" ]]; then
+    show_usage
+fi
+# 检查是否是插件移除模式,如果是,则将模式切换为非auto的模式(manual模式)
+# 注意不要把这个逻辑写在-M选项解析中(如果用户没有手动指定-M选项,就不会执行这段修正代码)
+if [[ "$REMOVE_PLUGINS" != "" ]];then
+    echo "检测到要移除插件,将网站列表模式改为manual"
+    LIST_MODE="manual"
+fi
+# 读取黑名单或白名单文件到数组
+BLACKLIST=()
+WHITELIST=()
+if [[ -n "$WHITELIST_FILE" && -n "$BLACKLIST_FILE" ]]; then
+    echo "不能同时指定白名单和黑名单！"
+    exit 1
+fi
+if [[ -n "$BLACKLIST_FILE" ]]; then
+    if [[ ! -f "$BLACKLIST_FILE" ]]; then
+        echo "黑名单文件不存在: $BLACKLIST_FILE"
+        exit 1
+    fi
+    # mapfile -t BLACKLIST < "$BLACKLIST_FILE"
+    # mapfile -t BLACKLIST < <(tr -d '\r' < "$BLACKLIST_FILE")
 
-## 目录结构
+    # 去除域名边缘的空格,兼容CRLF换行的文件
+    # s/^[[:space:]]*//：删除行首空格。
+    # s/[[:space:]]*$//：删除行尾空格。
+    # s/\r$//：删除 Windows 换行符。
+    mapfile -t BLACKLIST < <(sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/\r$//' < "$BLACKLIST_FILE")
+fi
+if [[ -n "$WHITELIST_FILE" ]]; then
+    if [[ ! -f "$WHITELIST_FILE" ]]; then
+        echo "白名单文件不存在: $WHITELIST_FILE"
+        exit 1
+    fi
+    # mapfile -t WHITELIST < "$WHITELIST_FILE"
+    mapfile -t WHITELIST < <(sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/\r$//' < "$WHITELIST_FILE")
+fi
 
-```
-update_wp_plugin.sh      # 主脚本
-README.md              # 使用说明
-blacklist.conf         # 黑名单示例文件（可选）
-whitelist.conf         # 白名单示例文件（可选）
-```
+# 判断域名是否在黑名单
+is_blacklisted() {
+    local domain="$1"
+    for blacklisted in "${BLACKLIST[@]}"; do
+        if [[ "$domain" == "${blacklisted,,}" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
 
-## 使用方法
-### 赋予脚本文件可执行权限
-```bash
-chmod +x update_wp_plugin.sh  #注意真实的脚本具体路径
-```
+# 判断域名是否在白名单
+is_whitelisted() {
+    local domain="$1"
+    # log "检查域名[$domain]是否在白名单中..."
+    for whitelisted in "${WHITELIST[@]}"; do
+        if [[ "${domain,,}" == "${whitelisted,,}" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
 
-### 覆盖插件（批量分发插件到所有站点）
+# 记录日志函数
+log() {
+    local msg="$1"
+    echo "$msg"
+    if [[ -n "$LOG_FILE" ]]; then
+        echo "$msg" >> "$LOG_FILE"
+    fi
+}
 
-```bash
-bash update_wp_plugin.sh --source <插件目录>
-```
+# --- 开始修改的重点区域 ---
 
-### 移除插件（批量删除指定插件名的目录）
+# 遍历所有工作目录
+IFS=',' read -ra WORKDIR_ARRAY <<< "$WORKDIR"
+for workdir_path in "${WORKDIR_ARRAY[@]}"; do
+    workdir_path=$(echo "$workdir_path" | xargs) # 清除可能的空格
 
-```bash
-bash update_wp_plugin.sh --remove mallpay
-bash update_wp_plugin.sh --remove mallpay,otherplugin
-```
+    if [[ ! -d "$workdir_path" ]]; then
+        log "工作目录不存在，跳过: $workdir_path"
+        continue
+    fi
 
-### 同时覆盖和移除插件
+    log "--- 正在处理工作目录: $workdir_path ---"
 
-```bash
-bash update_wp_plugin.sh --source <插件目录> --remove mallpay,otherplugin
-```
+    # 查找所有 WordPress 站点目录 (SITE_PATHS现在是相对于workdir_path的模式)
+    ## 计算合适的搜索模式串,用以匹配网站根目录
+    if [[ -n "$USER_NAME" ]]; then
+        # 针对指定用户，路径模式为 /www/wwwroot/{user}/{domain}/wordpress
+        SEARCH_PATTERN="$workdir_path/$USER_NAME/*/wordpress"
+    else
+        # 针对所有用户，路径模式为 /www/wwwroot/*/{domain}/wordpress
+        SEARCH_PATTERN="$workdir_path/*/*/wordpress"
+    fi
+    # 计算待处理的各个具体的网站根目录
+    ######################################
+    # 预览安装提示
+    # Global:
+    #   DRY_RUN
+    #   INSTALL_MODE
+    #   PLUGIN_SOURCE
+    # Arguments:
+    #   $1 - description
+    # Returns:
+    #   0 on success, non-zero on error
+    ######################################
+    install_to_target() {
+        local TARGET_DIR="$1"
+        local TYPE_DESC="$2"
+        if $DRY_RUN; then
+            log "  [DRY RUN] 将覆盖 $PLUGIN_SOURCE 到 [$TARGET_DIR] [$TYPE_DESC]"
+        else
+            # 安装插件前,尤其是symbolic方式,建议检查并调整用户ini
+            user_ini="$site/.user.ini"
+            if [[ -f "$user_ini" ]]; then
+                log "调整[$site]的.user.ini..."
+                bash $SH_SYM/update_user_ini.sh -p "$user_ini" || return 1
+            fi
+            # 正式安装前移除站点中的原插件目录
+            if [[ -e "$TARGET_DIR" ]]; then
+                log "  删除已存在: $TARGET_DIR"
+                rm -rf "$TARGET_DIR" || return 1
+            fi
+            log "  [$INSTALL_MODE]覆盖 $PLUGIN_SOURCE 到 $TARGET_DIR $TYPE_DESC"
+            # 根据安装模式正式执行安装操作
+            if [[ "$INSTALL_MODE" == "copy" ]]; then
+                cp -r "$PLUGIN_SOURCE" "$TARGET_DIR" || return 1
+            elif [[ "$INSTALL_MODE" == "symlink" ]]; then
+                ln -sT "$PLUGIN_SOURCE" "$TARGET_DIR" || return 1
+            fi
+        fi
+    }
+    ## 黑/白名单模式
+    if [[ $LIST_MODE == "manual" || $LIST_MODE == "full" ]]; then
+        count=0
+        # 遍历所有网站根目录,并检查(指定)网站根目录是否存在,若不存在则跳过该站处理
+        # site表示存在的网站根目录(绝对路径) .../domain.com/wordpress
+        for site in $SEARCH_PATTERN; do
+            # if [[ ! -d "$site" ]]; then
+            #     continue
+            # fi
 
-### 指定用户名
+            # 获取域名（父目录名）:通过dirname 计算父目录,再用basename移除目录路径前缀
+            DOMAIN=$(basename "$(dirname "$site")")
 
-```bash
-bash update_wp_plugin.sh --source <插件目录> --user <用户名>
-```
+            log "处理站点: $DOMAIN @ $site"
 
-### 指定工作目录
+            # 如果不符合指定名单,跳过该站处理(continue)
+            # 如果是全局安装(full),则不跳过任何站点
+            # 白名单优先，只处理白名单中的域名
+            if [[ -n "$WHITELIST_FILE" ]]; then
+                if ! is_whitelisted "$DOMAIN"; then
+                    log "  跳过未在白名单中的域名: $DOMAIN"
+                    continue
+                else
+                    log "  域名[$DOMAIN]在白名单中,需要处理"
+                    ((count++))
+                fi
+            # 黑名单模式，跳过黑名单中的域名
+            elif [[ -n "$BLACKLIST_FILE" ]]; then
+                if is_blacklisted "$DOMAIN"; then
+                    log "  跳过黑名单域名: $DOMAIN"
+                    continue
+                else
+                    log "  域名[$DOMAIN]不在黑名单中,需要处理"
+                    ((count++))
+                fi
+            fi
 
-```bash
-bash update_wp_plugin.sh --source <插件目录> --workdir /your/path
-```
+            # 覆盖式安装插件
+            if [[ -n "$PLUGIN_SOURCE" ]]; then
+                # 计算插件名称
+                PLUGIN_BASENAME="$(basename "$PLUGIN_SOURCE")"
+                # 根据不同的插件类型执行不同的安装方式(计算最终的安装目录)
+                if [[ "$PLUGIN_TYPE" == "must" ]]; then
+                    # 强制执行插件的安装(must-plugin)
+                    TARGET_DIR="$site/$MUST_PLUGINS_HOME/$PLUGIN_BASENAME"
+                    # 确保 mu-plugins 目录存在
+                    if ! $DRY_RUN; then
+                        mkdir -p "$site/$MUST_PLUGINS_HOME"
+                    fi
+                    TYPE_DESC="(must-use plugin)"
+                else
+                    # 普通wp插件安装
+                    TARGET_DIR="$site/$COMMON_PLUGINS_HOME/$PLUGIN_BASENAME"
+                    TYPE_DESC="(common plugin)"
+                fi
 
-### 使用黑名单
+                install_to_target "$TARGET_DIR" "$TYPE_DESC" || return 1
+            fi
 
-```bash
-bash update_wp_plugin.sh --source <插件目录> --blacklist blacklist.conf
-bash update_wp_plugin.sh --remove mallpay --blacklist blacklist.conf
-```
+            # 移除插件(针对普通插件)
+            if [[ -n "$REMOVE_PLUGINS" ]]; then
+                IFS=',' read -ra PLUGIN_LIST <<< "$REMOVE_PLUGINS"
+                for plugin in "${PLUGIN_LIST[@]}"; do
+                    REMOVE_DIR="$site/$COMMON_PLUGINS_HOME/$plugin"
+                    if [[ -e "$REMOVE_DIR" ]]; then
+                        if $DRY_RUN; then
+                            log "  [DRY RUN] 将移除插件: $REMOVE_DIR"
+                        else
+                            log "  移除插件: $REMOVE_DIR"
+                            rm -rf "$REMOVE_DIR"
+                        fi
+                    else
+                        log "  插件不存在，无需移除: $REMOVE_DIR"
+                    fi
+                done
+            fi
+        done
+        log "共处理 $count 个站点。"
+    else
+        ## 自动模式(LIST_MODE=auto)下更新插件
+        PLUGIN_BASENAME="$(basename "$PLUGIN_SOURCE")"
+        # find搜索(指定层级提高搜索效率,比递归通配符快速)
+        # 写法1:直接mapfile不会实时打印找到的目录
+        # mapfile -d '' -t site_plugin_dirs < <(find "$workdir_path" -mindepth 5 -maxdepth 6 -type d -name "$PLUGIN_BASENAME" -print0)
 
-### 使用白名单
+        # 写法2:考虑使用tee来及时输出find找到的路径
+        # mapfile -d '' -t site_plugin_dirs < <(
+        #     find "$workdir_path" \
+        #         -mindepth 5 -maxdepth 6 \
+        #         -type d -name "$PLUGIN_BASENAME" \
+        #         -print0 | tee /dev/stderr
+        # )
+        # 写法3:使用兼容性最好的while read循环来处理find的输出(性能会比mapfile差一些)
+        site_plugin_dirs=()
+        while IFS= read -r -d '' dir; do
+            echo "找到目录: $dir"
+            site_plugin_dirs+=("$dir")
+        done < <(find "$workdir_path" -mindepth 5 -maxdepth 6 \( -type d -o -type l \) -name "$PLUGIN_BASENAME" -print0)
 
-```bash
-bash update_wp_plugin.sh --source <插件目录> --whitelist whitelist.conf
-bash update_wp_plugin.sh --remove mallpay --whitelist whitelist.conf
-```
+        # 遍历处理找到的站点
+        for d in "${site_plugin_dirs[@]}"; do
+            log "处理站点: $d"
+            # 插件更新(仅针对普通插件,must-plugin类型请使用manual更新)
+            install_to_target "$d" "(common plugin)" || return 1
+        done
+        log "[$(hostname)]共找到 ${#site_plugin_dirs[@]} 个安装了 $PLUGIN_BASENAME 插件的站点。"
+    fi
+done
 
-### 预览模式（不实际执行）
+# --- 结束修改的重点区域 ---
 
-```bash
-bash update_wp_plugin.sh --source <插件目录> --dry-run
-bash update_wp_plugin.sh --remove mallpay --dry-run
-```
-
-### 保存操作日志
-
-```bash
-bash update_wp_plugin.sh --source <插件目录> --log 操作日志.txt
-bash update_wp_plugin.sh --remove mallpay --log 删除日志.txt
-```
-
-## 黑名单/白名单文件格式
-
-每行一个域名，例如：
-
-```
-example.com
-testsite.org
-```
-## 使用示例
-
-```bash
-# root @ wnx0020303 in /www/wwwroot/wp-plugin-update [13:05:24] C:130
-$ ./update_wp_plugin.sh --source /www/wwwroot/mallpay --blacklist ./blacklist.conf --dry-run  
-[DRY RUN] 将覆盖 /www/wwwroot/mallpay 到 /www/wwwroot/Bsite/goodpayway.shop/wordpress/wp-content/plugins/mallpay
-[DRY RUN] 将覆盖 /www/wwwroot/mallpay 到 /www/wwwroot/cjq/americangoods24.com/wordpress/wp-content/plugins/mallpay
-[DRY RUN] 将覆盖 /www/wwwroot/mallpay 到 /www/wwwroot/cjq/everythingshop24.com/wordpress/wp-content/plugins/mallpay
-...
-[DRY RUN] 将覆盖 /www/wwwroot/mallpay 到 /www/wwwroot/zsh/allshoppingzone.com/wordpress/wp-content/plugins/mallpay
-跳过黑名单域名: armedtechgear.com
-[DRY RUN] 将覆盖 /www/wwwroot/mallpay 到 /www/wwwroot/zsh/autobuildershop.com/wordpress/wp-content/plugins/mallpay
-[DRY RUN] 将覆盖 /www/wwwroot/mallpay 到 /www/wwwroot/zsh/autoracinggearshop.com/wordpress/wp-content/plugins/mallpay
-...
-[DRY RUN] 将覆盖 /www/wwwroot/mallpay 到 /www/wwwroot/zsh/babymarktzone.com/wordpress/wp-content/plugins/mallpay
-[DRY RUN] 将覆盖 /www/wwwroot/mallpay 到 /www/wwwroot/zsh/bargainhubstore.com/wordpress/wp-content/plugins/mallpay
-跳过黑名单域名: beautytherapiesplus.com
-[DRY RUN] 将覆盖 /www/wwwroot/mallpay 到 ..
-```
-
-## 注意事项
-
-- 黑名单和白名单不能同时使用。
-- 未指定 `--user` 时，脚本会遍历所有用户目录。
-- 建议先用 `--dry-run` 预览操作，确认无误后再正式执行。
-- 脚本会删除目标插件目录后再覆盖，请确保数据安全。
-- 移除插件时，指定的插件名可以为多个，逗号分隔。
-- 日志文件会记录所有操作和跳过信息，便于后续审查。
-
-## 需求细节
-### 基础需求
-编写一个bash脚本,其功能是为一批wordpress网站的插件目录覆盖式添加指定目录(一般是个插件目录);
-这些wordpress站的根目录的路径规律是形如/www/wwwroot/<user_name>/<domain>/wordpress (一个具体的例子是 /www/wwwroot/zsh/allgoodsmarkets.com/wordpress)
-脚本支持完善的命令行和参数
-
-
-1. 允许我命令行参数配置网站所在的工作目录(默认为/www/wwwroot)
-2. 当我没有指定--user时,使用通配的方式尝试处理所有指定工作目录(比如/www/wwwroot///wordpress)
-3. 改用中文编写完善的readme文件,包含详细的需求和功能实现以及使用说明
-4. 支持指定黑名单文件(blacklist.conf),黑名单文件中指定一系列域名(形如domian.com),一行一个,被配置的域名对应的网站根目录不执行目录更新(添加)操作,即跳过处理,并且给于提示;
-还应该支持--dry模式,让我可以在正式执行前判断一下操作是否满足需要
-5. 支持白名单的模式,允许我只操作指定域名对应的网站根目录而不是全部
-但是当我没有指定黑/白名单时,默认对所有网站根目录执行操作
-注释使用中文表述详细
-
-### 补充和完善
-1. 允许我移除插件(指定插件名(一个或多个),比如mallpay)然后如果有指定白名单则仅移除白名单站点目录下的插件(目录),否则移除工作目录中全部wp网站下的对应名称插件(目录),仍然支持--dry-run操作预览
-2. 还允许我启用log参数指定保存日志到日志log文件
+if $DRY_RUN; then
+    log "Dry run 完成，未做任何更改。"
+else
+    log "操作已完成。"
+fi
