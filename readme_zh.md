@@ -86,6 +86,8 @@ exec bash
 
 ### 轻量虚拟化平台中和宿主机共用
 
+#### 准备命令
+
 ```bash
 # 准备
 _REPO_BASE="repos/scripts"
@@ -95,6 +97,8 @@ _SH_RELATIVE="wp/woocommerce/woo_df/sh"
 在家目录创建`repos`,`sh`目录便于访问;
 
 #### wsl中访问windows中的仓库目录
+
+> 执行下面代码前,请确保执行了上面的准备命令!
 
 ```bash
 ln -snfv /mnt/c/repos ~/repos
@@ -106,13 +110,13 @@ bash ~/sh/shellrc_addition.sh && exec bash
 
 #### macos上lima虚拟机直接访问宿主机仓库
 
-如果用户需要在macos上的lima的linux实例中直接访问macos上的仓库,根据lima的特性,可以在虚拟机中无缝访问`/Users/当前用户目录`;
+> 执行下面代码前,请确保执行了上面的准备命令!
 
-> 假设macos上当前用户目录为`/Users/cxxu/`
+如果用户需要在macos上的lima的linux实例中直接访问macos上的仓库,根据lima的特性,可以在虚拟机中无缝访问;
 
 ```bash
-ln -snfv /Users/cxxu/repos ~/repos
-ln -snfv /Users/cxxu/$_REPO_BASE/$_SH_RELATIVE ~/sh
+ln -snfv $HOME/repos ~/repos
+ln -snfv $HOME/$_REPO_BASE/$_SH_RELATIVE ~/sh
 # 配置shell环境
 bash ~/sh/shellrc_addition.sh && exec bash
 ```
