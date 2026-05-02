@@ -98,10 +98,7 @@ parse_args() {
                 ;;
             -M | --list-mode)
                 LIST_MODE="$2"
-                # 检查是否是插件移除模式,如果是,则将模式切换为非auto的模式(manual模式)
-                if [[ "$REMOVE_PLUGINS" != "" ]];then
-                    LIST_MODE="manual"
-                fi
+               
                 if [[ "$LIST_MODE" == "auto" ]]; then
                     echo "仅处理已经安装了指定插件的网站,未安装的网站将跳过(此方案仅适用于老插件更新,不适用于安装全新插件)！"
                 fi
@@ -126,7 +123,12 @@ parse_args "$@"
 if [[ -z "$PLUGIN_SOURCE" && -z "$REMOVE_PLUGINS" ]]; then
     show_usage
 fi
-
+# 检查是否是插件移除模式,如果是,则将模式切换为非auto的模式(manual模式)
+# 注意不要把这个逻辑写在-M选项解析中(如果用户没有手动指定-M选项,就不会执行这段修正代码)
+if [[ "$REMOVE_PLUGINS" != "" ]];then
+    echo "检测到要移除插件,将网站列表模式改为manual"
+    LIST_MODE="manual"
+fi
 # 读取黑名单或白名单文件到数组
 BLACKLIST=()
 WHITELIST=()
