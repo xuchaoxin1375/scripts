@@ -37,12 +37,13 @@ alias pip=pip3
 if command -v nix &> /dev/null; then
     # echo "[nix]:loading nix alias..." # debug
     # alias nia='nix profile add'
-    alias nr='nix profile remove'
-    alias nup='nix profile upgrade --all'
-    alias nls='nix profile list'
-    alias ns='nix search nixpkgs'
-    alias nshow='nix search nixpkgs --exclude-details' # 只显示包名
-    alias nrun='nix run nixpkgs#'
+
+    alias nixup='nix profile upgrade --all'
+    alias nixupgrade='nix upgrade-nix'
+    alias nixls='nix profile list'
+    alias nixsearch='nix search nixpkgs'
+    alias nixshow='nix search nixpkgs --exclude-details' # 只显示包名
+    alias nixrun='nix run nixpkgs#'
     ni() {
         # 支持多包，智能添加 nixpkgs# 前缀
         local packages=()
@@ -53,7 +54,7 @@ if command -v nix &> /dev/null; then
                 packages+=("nixpkgs#$pkg")
             fi
         done
-        nix profile install "${packages[@]}"
+        nix profile add "${packages[@]}"
     }
     show_nix_configs_core() {
         # 查看镜像源/缓存源（类似 conda channels）
@@ -70,7 +71,6 @@ if command -v nix &> /dev/null; then
         # 查看最大作业数
         nix config show | grep max-jobs
 
-
         # 查看超时设置
         # nix config show | grep timeout
 
@@ -79,5 +79,21 @@ if command -v nix &> /dev/null; then
     }
     # 额外的别名 nix profile add
     alias nia=ni
-    alias restart-nix-daemon='sudo systemctl restart nix-daemon'
+    # alias restart-nix-daemon='sudo systemctl restart nix-daemon'
+    restart-nix-daemon() {
+        # 适用于有systemd的系统(大部分linux)
+        if command -v systemctl &> /dev/null; then
+            echo "重启 nix-daemon 服务 (systemd)..."
+            sudo systemctl restart nix-daemon 2> /dev/null || true
+        # 适用于macos(darwin)系统
+        elif command -v launchctl &> /dev/null; then
+            echo "重启 nix-daemon 服务 (launchd)..."
+            sudo launchctl kickstart -k system/org.nixos.nix-daemon 2> /dev/null || true
+        fi
+    }
+    # 软件包移除和空间回收
+    alias nixrm='nix profile remove'
+    alias nixgc='nix store gc'
+    alias nixgcd='nix-collect-garbage -d'
+    alias nixgc-deep='nix profile wipe-history --older-than 7d && nix store gc'
 fi
