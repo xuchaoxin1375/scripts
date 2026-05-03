@@ -7,7 +7,7 @@ set -e
 
 # 默认配置
 INSTALL_MODE="daemon" # 多用户模式
-NIX_VERSION="latest"    # 默认最新版
+NIX_VERSION="latest"  # 默认最新版
 
 MIRROR="bfsu"                         # 镜像源（bfsu/ustc/tuna/sjtu/nju）
 CHANNEL_MIRROR="ustc"                 # channel 镜像源
@@ -17,7 +17,7 @@ CHANNEL_NAME="nixpkgs-unstable"       # 使用的 channel,通常是nixpkgs-unsta
 ENABLE_FLAKES="yes"      # 启用 flakes
 ENABLE_NIX_COMMAND="yes" # 启用 nix-command
 SET_MIRRORS_ONLY=false   # 仅配置镜像而跳过安装nix环节
-CONFIG_SCOPE="system"      # 配置范围（user/system）
+CONFIG_SCOPE="system"    # 配置范围（user/system）
 # curl User-Agent
 UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 # 颜色输出
@@ -171,7 +171,7 @@ curlx() {
 _install_nix() {
     # 检查是否已经安装过nix,如果有,则退出
     if command -v nix &> /dev/null; then
-        print_info "nix已经安装过了,跳过后续操作." 
+        print_info "nix已经安装过了,跳过后续操作."
         exit 1
     fi
     # 获取安装脚本install URL(计算前缀部分+路径)
@@ -220,7 +220,7 @@ else
     if command -v nix &> /dev/null; then
         echo "nix已安装"
     else
-        echo "nix未安装,请先安装" &>2
+        echo "nix未安装,请先安装" &> 2
         exit 1
     fi
 fi
@@ -276,12 +276,19 @@ EXPERIMENTAL_FEATURES=$(echo "$EXPERIMENTAL_FEATURES" | xargs) # 去除首尾空
 # 写入配置文件
 print_info "写入配置文件: $NIX_CONF"
 # 使用here-doc标准输入重定向写入多行字符串到配置文件中(对于系统级配置文件,需要sudo权限,这里使用tee命令方便sudo生效)
+echo "下面的操作将会覆盖掉配置文件,覆盖前执行备份..."
+cp -v "$NIX_CONF" "${HOME}/nix.conf.bak.$(date +%F-%T)"
 $USE_SUDO tee "$NIX_CONF" > /dev/null << EOF
 # Nix 配置文件（自动生成）
 # 生成时间: $(date)
 
+# 构建用户(可选)
+build-users-group = nixbld
+
 # 二进制缓存镜像源
 substituters = $SUBSTITUTERS
+# 设置受信任用户(避免部分操作无法成功)
+trusted-users = root $(whoami)
 
 # 启用实验性特性
 experimental-features = $EXPERIMENTAL_FEATURES
@@ -337,8 +344,6 @@ fi
 if [[ "$ENABLE_FLAKES" == "yes" ]] && nix flake --help &> /dev/null; then
     print_info "✓ flakes 已启用"
 fi
-
-
 
 print_info "=========================================="
 print_info "✅ Nix 安装完成！"

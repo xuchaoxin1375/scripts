@@ -55,6 +55,29 @@ if command -v nix &> /dev/null; then
         done
         nix profile install "${packages[@]}"
     }
+    show_nix_configs_core() {
+        # 查看镜像源/缓存源（类似 conda channels）
+        nix config show | grep substituters
+        # 查看实验特性
+        nix config show | grep experimental-features
+
+        # 查看是否受信任（类似查看 conda 的 allow_conda_downgrades）
+        nix config show | grep trusted-users
+
+        # 查看并发构建数
+        nix config show | grep cores
+
+        # 查看最大作业数
+        nix config show | grep max-jobs
+
+
+        # 查看超时设置
+        # nix config show | grep timeout
+
+        # 访问令牌（类似 conda 的 tokens）
+        # nix config show | grep access-tokens
+    }
     # 额外的别名 nix profile add
     alias nia=ni
+    alias restart-nix-daemon='sudo systemctl restart nix-daemon'
 fi
