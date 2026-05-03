@@ -1097,7 +1097,7 @@ function New-Junction
     if (Test-Path $path)
     {
         Write-Host 'removing the existing dir/symbolicLink!'
-        Remove-Item -Force -Verbose $path 
+        # Remove-Item -Force -Verbose $path 
         # timer_tips
     }
     if (!(Test-Path $Target))

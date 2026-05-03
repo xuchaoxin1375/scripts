@@ -8,6 +8,7 @@ set -e
 # 默认配置
 INSTALL_MODE="daemon" # 多用户模式
 NIX_VERSION="latest"  # 默认最新版
+TRUSTED_USERS="$(whoami)"
 
 MIRROR="bfsu"                         # 镜像源（bfsu/ustc/tuna/sjtu/nju）
 CHANNEL_MIRROR="ustc"                 # channel 镜像源
@@ -37,7 +38,6 @@ print_warn() {
 print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
-
 show_help() {
     cat << EOF
 Nix 多用户安装脚本（国内镜像优化）
@@ -46,14 +46,17 @@ Nix 多用户安装脚本（国内镜像优化）
 
 选项:
     --mode <mode>           安装模式: daemon(多用户,默认) | single(单用户)
+    -t,--trusted-users      配置受信任的用户名列表,默认包含root和当前用户名
+                            (可以手动指定多个用户名写在引号中,并用空格隔开不同用户名,此时通常也应该手动填写当前用户名),
+                            或者反复使用-t选项每次分别指定用户名;
     --version <version>     Nix 版本: latest(默认) | 2.18.0 | 2.19.0 | etc
     -A,--user-agent         部分情况下没有指定UA的curl会被镜像源拒绝服务,考虑指定UA
-    -S,--mirror <mirror>       安装包镜像源:   bfsu(北外) | tuna(清华)  | nju(南大) | nixorg(官方源)
+    -m,--mirror <mirror>       安装包镜像源:   bfsu(北外) | tuna(清华)  | nju(南大) | nixorg(官方源)
                             注意:部分镜像会检查网段请求量,可能会被限流而无法请求,这种情况下请更换源;
                             ustc(中科大) | sjtu(上交) 似乎没有提供安装脚本,但是提供了channel和binary-cache
-    --channel-mirror <mirror> Channel 镜像源 (默认: ustc)
-    --binary-mirrors <list> 二进制缓存镜像列表, 逗号分隔 (默认: ustc,sjtu,tuna)
-    --set-mirrors-only      仅配置镜像源加速相关部分(不执行安装)
+    -c,--channel-mirror <mirror> Channel 镜像源 (默认: ustc)
+    -b,--binary-mirrors <list> 二进制缓存镜像列表, 逗号分隔 (默认: ustc,sjtu,tuna)
+    -S,--set-mirrors-only      仅配置镜像源加速相关部分(不执行安装)
 
     --flakes <yes/no>       启用 flakes 特性 (默认: yes)
     --nix-command <yes/no>  启用 nix-command 特性 (默认: yes)
@@ -78,10 +81,10 @@ Nix 多用户安装脚本（国内镜像优化）
 
 EOF
 }
-
+# trusted_users_list=()
 # 解析命令行参数
 while [[ $# -gt 0 ]]; do
-    case $1 in
+    case "$1" in
         --mode)
             INSTALL_MODE="$2"
             if [[ "$INSTALL_MODE" == "single" ]]; then
@@ -92,6 +95,12 @@ while [[ $# -gt 0 ]]; do
                 print_error "无效的安装模式: $2"
                 exit 2
             fi
+            shift 2
+            ;;
+        -t | --trusted-users)
+            # TRUSTED_USERS="$2"
+            TRUSTED_USERS="$TRUSTED_USERS $2"
+            # trusted_users_list+=("$2")
             shift 2
             ;;
         --version)
@@ -122,11 +131,11 @@ while [[ $# -gt 0 ]]; do
             CONFIG_SCOPE="$2"
             shift 2
             ;;
-        --binary-mirrors)
+        -b | --binary-mirrors)
             BINARY_CACHE_MIRRORS="$2"
             shift 2
             ;;
-        --channel-mirror)
+        -c | --channel-mirror)
             CHANNEL_MIRROR="$2"
             shift 2
             ;;
@@ -150,7 +159,9 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
-
+# 检查部分参数取值:
+print_info "trusted-users=$TRUSTED_USERS"
+# exit 1
 # 选择镜像 URL(前缀部分)
 get_mirror_url() {
     local mirror=$1
@@ -220,7 +231,7 @@ else
     if command -v nix &> /dev/null; then
         echo "nix已安装"
     else
-        echo "nix未安装,请先安装" &> 2
+        echo "nix未安装,请先安装" >&2
         exit 1
     fi
 fi
@@ -272,13 +283,14 @@ EXPERIMENTAL_FEATURES=""
 [[ "$ENABLE_FLAKES" == "yes" ]] && EXPERIMENTAL_FEATURES="$EXPERIMENTAL_FEATURES flakes"
 
 EXPERIMENTAL_FEATURES=$(echo "$EXPERIMENTAL_FEATURES" | xargs) # 去除首尾空格
-
-# 写入配置文件
-print_info "写入配置文件: $NIX_CONF"
-# 使用here-doc标准输入重定向写入多行字符串到配置文件中(对于系统级配置文件,需要sudo权限,这里使用tee命令方便sudo生效)
-echo "下面的操作将会覆盖掉配置文件,覆盖前执行备份..."
-cp -v "$NIX_CONF" "${HOME}/nix.conf.bak.$(date +%F-%T)"
-$USE_SUDO tee "$NIX_CONF" > /dev/null << EOF
+_set_nix_config() {
+    # 写入配置文件
+    print_info "写入配置文件: $NIX_CONF"
+    # 使用here-doc标准输入重定向写入多行字符串到配置文件中(对于系统级配置文件,需要sudo权限,这里使用tee命令方便sudo生效)
+    echo "下面的操作将会覆盖掉配置文件,覆盖前执行备份..."
+    cp -v "$NIX_CONF" "${HOME}/nix.conf.bak.$(date +%F-%T)"
+    # 写入配置文件(/etc/nix/nix.conf等)
+    $USE_SUDO tee "$NIX_CONF" > /dev/null << EOF
 # Nix 配置文件（自动生成）
 # 生成时间: $(date)
 
@@ -288,7 +300,7 @@ build-users-group = nixbld
 # 二进制缓存镜像源
 substituters = $SUBSTITUTERS
 # 设置受信任用户(避免部分操作无法成功)
-trusted-users = root $(whoami)
+trusted-users = root $TRUSTED_USERS
 
 # 启用实验性特性
 experimental-features = $EXPERIMENTAL_FEATURES
@@ -301,8 +313,10 @@ builders-use-substitutes = true
 
 EOF
 
-print_info "配置文件内容："
-cat "$NIX_CONF"
+    print_info "[$NIX_CONF]配置文件内容："
+    cat "$NIX_CONF"
+}
+_set_nix_config
 
 # 4. 配置 channel（可选）
 if [[ "$SKIP_CHANNEL_UPDATE" != "yes" ]]; then

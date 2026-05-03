@@ -2330,7 +2330,7 @@ function Deploy-TrafficMonitor
     Deploy-TrafficMonitor -InstalledByScoop -TrafficmonitorHome C:\scoop\apps\trafficmonitor\current\
     #>
     param(
-        $TrafficmonitorHome = "$scoop_global_apps\TrafficMonitor\current",
+        $TrafficmonitorHome = "$scoop_apps\TrafficMonitor\current",
         [switch]$InstalledByScoop
     )
     $process = Get-Process -Name TrafficMonitor -ErrorAction SilentlyContinue
