@@ -1,4 +1,19 @@
 #! /usr/bin/env bash
+# todo:增加脚本命令行选项解析:
+# 1.允许单独执行neovim的安装操作
+# 2.允许指定是否使用github镜像
+
+# neovim安装最新版
+# 如果有brew可用,则使用brew安装
+if command -v brew &> /dev/null; then
+    brew install neovim
+else
+    # 下载并安装到 /usr/local
+
+    # 验证版本
+    nvim --version
+fi
+
 # 参考文档:https://www.lazyvim.org/
 # 快捷键:https://www.lazyvim.org/keymaps
 # required
