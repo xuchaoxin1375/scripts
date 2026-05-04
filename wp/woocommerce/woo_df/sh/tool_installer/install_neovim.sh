@@ -5,7 +5,7 @@
 # Download nvim-linux-x86_64.tar.gz
 # Extract: tar xzvf nvim-linux-x86_64.tar.gz
 # Run ./nvim-linux-x86_64/bin/nvim
-
+INSTALLER_VERSION="2026.5.4"
 # --- 默认配置 ---
 MODE="auto" # 可选: auto, brew, manual
 NVIM_VERSION="stable"
@@ -20,6 +20,8 @@ GITHUB_MIRROR="https://gh-proxy.com"
 usage() {
 
     cat << EOF
+为*uix系统安装最新版的neovim的脚本.
+    INSTALLER_VERSION:$INSTALLER_VERSION
 用法: $0 [选项]
 选项:
     -m, --mode [auto|brew|manual]  安装模式 (默认: auto)
@@ -128,7 +130,7 @@ install_manually() {
 
     echo "正在下载: $DOWNLOAD_URL"
     if ! curl -L "$DOWNLOAD_URL" -o "${TEMP_DIR}/nvim.tar.gz"; then
-        echo "下载失败，请检查网络！"
+        echo "下载失败，请检查网络或使用的镜像是否合适！"
         exit 1
     fi
     # 解压tar.gz包,需要用z选项(xz),而不是仅仅x选项
@@ -136,16 +138,28 @@ install_manually() {
     # 列出解压后的结果:
     ls "$TEMP_DIR"
     # 使用通配符匹配
-    SRC_DIRS=("${TEMP_DIR}/nvim-*")
+    SRC_DIRS=("${TEMP_DIR}/"nvim-*) # 通配符不要在""对中
     SRC_DIR="${SRC_DIRS[0]}"
+    echo "得到解压路径(临时):$SRC_DIR"
     # SRC_DIR=$(find "${TEMP_DIR}" -maxdepth 1 -type d -name "nvim-*" | head -n 1)
 
     # 尝试全员安装
     INSTALL_SUCCESS=false
     echo "尝试全局安装到 $GLOBAL_OPT..."
-
+    if [ "$EUID" -eq 0 ]; then
+        echo "root 用户下免sudo"
+        if mkdir -p "$GLOBAL_OPT" 2> /dev/null; then
+            mv "${SRC_DIR}/"* "$GLOBAL_OPT/"
+            nvim_path="$GLOBAL_OPT/bin/nvim" # /opt/nvim/bin/nvim (可执行文件的完整路径.)
+            # 如果创建符号链接的命令失败（返回非0），执行 true（什么也不做，返回0），确保整个命令不会因错误而中断脚本
+            ln -sf "$nvim_path" "/usr/local/bin/nvim" 2> /dev/null || true
+            TARGET_BIN="$nvim_path"
+            INSTALL_SUCCESS=true
+        fi
+    # fi
     # 尝试使用 sudo
-    if [ "$EUID" -ne 0 ] && command -v sudo > /dev/null 2>&1; then
+    elif command -v sudo > /dev/null 2>&1; then
+        echo "尝试全局安装(sudo)"
         if sudo mkdir -p "$GLOBAL_OPT" 2> /dev/null; then
             sudo mv "${SRC_DIR}/"* "$GLOBAL_OPT/"
             nvim_path="$GLOBAL_OPT/bin/nvim" # /opt/nvim/bin/nvim (可执行文件的完整路径.)
@@ -158,9 +172,9 @@ install_manually() {
 
     # 回退到当前用户级别的安装
     if [ "$INSTALL_SUCCESS" = false ]; then
-        echo "权限不足，安装到用户目录: $LOCAL_SHARE"
+        echo "全局安装失败,回退安装到用户目录: $LOCAL_SHARE"
         mkdir -p "$LOCAL_SHARE"
-        mv -R "${SRC_DIR}/"* "$LOCAL_SHARE/"
+        mv "${SRC_DIR}/"* "$LOCAL_SHARE/"
         TARGET_BIN="$LOCAL_SHARE/bin/nvim"
     fi
 
@@ -168,7 +182,7 @@ install_manually() {
     mkdir -p "$LOCAL_BIN"
     ln -sfv "$TARGET_BIN" "$LOCAL_BIN/nvim"
 
-    rm -rfv "$TEMP_DIR"
+    rm -rf "$TEMP_DIR"
     echo "手动安装完成！"
 }
 
@@ -199,6 +213,11 @@ if [[ ":$PATH:" != *":$LOCAL_BIN:"* ]]; then
     echo -e "建议：将 $LOCAL_BIN 加入到您的 PATH 环境中。"
     echo "在您的 ~/.bashrc 或 ~/.zshrc 中添加(如果有其他shell配置类似地添加)："
     echo "export PATH=\"$LOCAL_BIN:\$PATH\"" | tee -a ~/.bashrc ~/.zshrc
+fi
+
+echo "建议刷新一下当前shell配置让新版本生效."
+if command -v nvim &> /dev/null; then
+    echo "当前版本$(nvim --version)"
 fi
 
 # echo -e "\n\033[32m安装成功！输入 'nvim' 开始编辑。\033[0m"

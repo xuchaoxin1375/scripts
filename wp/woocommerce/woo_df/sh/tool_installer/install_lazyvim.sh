@@ -1,8 +1,8 @@
 #! /usr/bin/env bash
-# todo:增加脚本命令行选项解析:
+# 安装依赖:https://www.lazyvim.org/
 # 1.允许单独执行neovim的安装操作
 # 2.允许指定是否使用github镜像
-
+# 建议安装后运行 :LazyHealth 命令。这将加载所有插件并检查一切是否正常运行。
 # neovim安装最新版
 # 如果有brew可用,则使用brew安装
 if command -v brew &> /dev/null; then
