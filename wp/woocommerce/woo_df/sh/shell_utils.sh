@@ -1698,16 +1698,30 @@ wp() {
     local EXIT_CODE=$?
     return $EXIT_CODE
 }
+# 按任意键继续的简单交互提示指令
+pause(){
+    read -n 1 -s -r -p "${1:-按任意键继续...}"
+    echo ""
+}
 # 创建一个带有sudo使用权限的linux用户,尽量实现幂等性;
 # 考虑安全性和便利性,默认不在内部直接命令行中设置密码;
 # 如果要设置密码,建议在创建之后使用sudo passwd <username> 的方式为指定用户设置密码!
-# parameter:
-#   username: 用户名
+#  usage:
+#       new_user_sudo [options] [username]
+#     options:
+#       -h, --help: 显示帮助信息
+#       -p, --addpwd: 创建用户后调用passwd 命令添加密码(不是直接将密码作为命令参数,而是从标准输入读取密码)
+#       -A, --addsudo: 创建用户后添加sudo权限
+#       -N, --no-sudo-password: 调用sudo命令时,不输入密码(慎重)
+#       -s, --shell: 指定用户登录shell,默认为/bin/bash
 new_user_sudo() {
 
     #根据需要更改要操作的用户名,例如linuxbrew
     local username="linuxbrew"
     local add_passwd=false
+    local add_sudo=false
+    local no_sudo_password=false
+    local shell="/bin/bash"
     # 参数解析
     usage="
     usage:
@@ -1715,6 +1729,9 @@ new_user_sudo() {
     options:
       -h, --help: 显示帮助信息
       -p, --addpwd: 创建用户后调用passwd 命令添加密码(不是直接将密码作为命令参数,而是从标准输入读取密码)
+      -A, --addsudo: 创建用户后添加sudo权限
+      -N, --no-sudo-password: 调用sudo命令时,不输入密码(慎重)
+      -s, --shell: 指定用户登录shell,默认为/bin/bash
     "
     local args_pos=()
     while [[ $# -gt 0 ]]; do
@@ -1725,6 +1742,16 @@ new_user_sudo() {
                 ;;
             -p | --addpasswd)
                 add_passwd=true
+                ;;
+            -A | --addsudo)
+                add_sudo=true
+                ;;
+            -s | --shell)
+                local shell="$2"
+                shift
+                ;;
+            -N | --no-sudo-password)
+                no_sudo_password=true
                 ;;
             --)
                 shift
@@ -1759,7 +1786,7 @@ new_user_sudo() {
         # 1. 检查 useradd 命令是否存在
         if command -v useradd > /dev/null 2>&1; then
             echo "使用 useradd 创建用户..."
-            sudo useradd -m -s /bin/bash "$username"
+            sudo useradd -m -s "$shell" "$username"
 
         # 2. 如果 useradd 不可用，尝试使用 adduser
         elif command -v adduser > /dev/null 2>&1; then
@@ -1774,25 +1801,39 @@ new_user_sudo() {
         fi
     fi
     if [[ $add_passwd == true ]]; then
-        passwd "$username"
+        # 生成 16 位仅包含字母和数字的随机密码
+        echo "高强度密码参考(请复制备用)"
+        NEW_PASS=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 16)
+        echo "$username:$NEW_PASS" | sudo chpasswd # chpasswd: 专门为脚本设计。它接收 用户名:密码 格式的标准输入
+        # passwd "$username"
+        read -n 1 -s -r -p "按任意键继续..."
+        echo "" # 换行，防止后续输出跟在提示词后面
     fi
-    usermod -aG sudo "$username"
+    # 集中判断是否要添加到sudo组,授予sudo权限;
+    if [[ $add_sudo == true ]]; then
+        echo "正在添加 $username 到 sudo 组..."
+        # 添加用户到 sudo 组,使其有权限调用sudo
+        # 但默认情况下,每次执行 sudo 时，系统仍然会要求输入该用户自己的密码。
+        usermod -aG sudo "$username"
 
-    # 1. 创建一个包含新规则的临时文件
-    echo "$username ALL=(ALL) NOPASSWD: ALL" > /tmp/new_sudo_rule
-
-    # 2. 使用 visudo 验证临时文件的语法
-    if visudo -c -f /tmp/new_sudo_rule; then
-        echo "语法正确，正在合并..."
-        # 3. 将验证通过的规则追加到 /etc/sudoers.d/ 目录下的一个新文件中
-        sudo install -m 440 /tmp/new_sudo_rule /etc/sudoers.d/alice_nopasswd
-        echo "✅ 用户 $username 已被授予无密码 sudo 权限。"
-    else
-        echo "❌ 语法错误！规则未被应用。"
-        rm /tmp/new_sudo_rule
-        return 1
     fi
+    # 设置特定的用户（或组）在执行命令时，不需要验证密码。
+    if [[ $no_sudo_password == true ]]; then
+        #  创建一个包含新规则的临时文件
+        echo "$username ALL=(ALL) NOPASSWD: ALL" > /tmp/new_sudo_rule
 
+        #  使用 visudo 验证临时文件的语法
+        if visudo -c -f /tmp/new_sudo_rule; then
+            echo "语法正确，正在合并..."
+            #  将验证通过的规则追加到 /etc/sudoers.d/ 目录下的一个新文件中
+            sudo install -m 440 /tmp/new_sudo_rule /etc/sudoers.d/alice_nopasswd
+            echo "✅ 用户 $username 已被授予无密码 sudo 权限。"
+        else
+            echo "❌ 语法错误！规则未被应用。"
+            rm /tmp/new_sudo_rule
+            return 1
+        fi
+    fi
     # 4. 清理临时文件
     rm /tmp/new_sudo_rule
 
@@ -1807,10 +1848,10 @@ remove_user_safe() {
 
     echo "正在清理用户 $target_user 的进程..."
     sudo pkill -u "$target_user"
-    
+
     echo "正在删除用户及其家目录..."
     sudo userdel -r "$target_user"
-    
+
     echo "检查残留的组信息..."
     grep "$target_user" /etc/group
 }
@@ -2040,7 +2081,7 @@ install_brew_cn() {
                 然后用类似于sudo bash -c 的命令方式运行此函数,或者自行手动删除brew安装目录;"
         local brew_home
         # brew_home0=$(brew --prefix) #brew未必可用
-        # 下面针对安装中途卡死或失败的的情况下执行的简单安装目录清理
+        # 下面��对���装中途卡死或失败的的情况下执行的简单安装目录清理
         brew_home1=/home/linuxbrew/.linuxbrew
         brew_home2=/opt/homebrew
         brew_home3=/usr/local/homebrew
@@ -2290,10 +2331,16 @@ install_linuxbrew() {
     local usage
     usage=$(
         cat << EOF
+安装homebrew(linuxbrew for linux root user.)
+此脚本适用于国外服务器(或网络条件好的情况),尤其是只有root用户的情况下,可考虑创建brew专用用户;
+    默认使用默认用户名linuxbrew,如果指定用户名不存在,则创建
+    用户名：建议简单明确，如 linuxbrew 或 brew。
+    权限：该用户需要能通过 sudo 执行安装任务，但严禁拥有免密登录你个人账户的权限。
+    Shell：建议设置为标准的 /bin/bash（因为 Brew 的安装脚本大量使用 Bash）。
+    家目录：必须有独立的 /home/linuxbrew，因为 Linuxbrew 默认最理想的安装路径是 /home/linuxbrew/.linuxbrew（这可以让你直接使用官方提供的预编译 Binary，而不需要从源码编译，节省大量时间）。
+
 usage:
     install_linuxbrew [options] [username]
-        默认使用默认用户名linuxbrew,如果指定用户名不存在,则创建
-    此脚本适用于国外服务器(或网络条件好的情况),尤其是只有root用户的情况下,可考虑创建brew专用用户;
 
     注意:相关依赖不会自动安装(当依赖程序不存在是请自行安寨跟,例如使用系统自带包管理器安装)
     
@@ -2366,7 +2413,7 @@ EOF
         echo "正在准备安装homebrew..."
     fi
     echo "检查安装用户..."
-    new_user_sudo "$username"
+    new_user_sudo "$username" -N
     # 使用指定的已存在的非root用户(但是能够使用sudo的用户,例如linuxbrew)安装brew:
     # /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
     sudo -u "$username" /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
