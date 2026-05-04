@@ -1699,26 +1699,41 @@ wp() {
     return $EXIT_CODE
 }
 # 按任意键继续的简单交互提示指令
-pause(){
+pause_bash() {
     read -n 1 -s -r -p "${1:-按任意键继续...}"
     echo ""
 }
+pause() {
+    local prompt="${1:-按任意键继续...}"
+    if [ -n "$ZSH_VERSION" ]; then
+        # Zsh 逻辑: -k1 表示只读 1 个字符, -s 表示静默
+        echo -n "$prompt"
+        read -r -k 1 -s
+    else
+        # Bash 逻辑: -n 1 表示 1 个字符, -p 表示提示词
+        read -r -n 1 -s -p "$prompt"
+    fi
+    echo ""
+}
+
 # 创建一个带有sudo使用权限的linux用户,尽量实现幂等性;
 # 考虑安全性和便利性,默认不在内部直接命令行中设置密码;
 # 如果要设置密码,建议在创建之后使用sudo passwd <username> 的方式为指定用户设置密码!
 #  usage:
 #       new_user_sudo [options] [username]
-#     options:
-#       -h, --help: 显示帮助信息
-#       -p, --addpwd: 创建用户后调用passwd 命令添加密码(不是直接将密码作为命令参数,而是从标准输入读取密码)
-#       -A, --addsudo: 创建用户后添加sudo权限
-#       -N, --no-sudo-password: 调用sudo命令时,不输入密码(慎重)
-#       -s, --shell: 指定用户登录shell,默认为/bin/bash
+#  options:
+#     -h, --help: 显示帮助信息
+#     -p, --addpwd: 创建用户后调用passwd 命令添加密码(不是直接将密码作为命令参数,而是从标准输入读取密码)
+#     -P, --set-random-pwd: 创建用户后调用chpasswd 命令添加随机密码
+#     -A, --addsudo: 创建用户后添加sudo权限
+#     -N, --no-sudo-password: 调用sudo命令时,不输入密码(慎重)
+#     -s, --shell: 指定用户登录shell,默认为/bin/bash
 new_user_sudo() {
 
     #根据需要更改要操作的用户名,例如linuxbrew
     local username="linuxbrew"
     local add_passwd=false
+    local add_random_passwd=false
     local add_sudo=false
     local no_sudo_password=false
     local shell="/bin/bash"
@@ -1729,6 +1744,7 @@ new_user_sudo() {
     options:
       -h, --help: 显示帮助信息
       -p, --addpwd: 创建用户后调用passwd 命令添加密码(不是直接将密码作为命令参数,而是从标准输入读取密码)
+      -P, --set-random-pwd: 创建用户后调用chpasswd 命令添加随机密码
       -A, --addsudo: 创建用户后添加sudo权限
       -N, --no-sudo-password: 调用sudo命令时,不输入密码(慎重)
       -s, --shell: 指定用户登录shell,默认为/bin/bash
@@ -1742,6 +1758,9 @@ new_user_sudo() {
                 ;;
             -p | --addpasswd)
                 add_passwd=true
+                ;;
+            -P | --set-random-pwd)
+                add_random_passwd=true
                 ;;
             -A | --addsudo)
                 add_sudo=true
@@ -1801,12 +1820,14 @@ new_user_sudo() {
         fi
     fi
     if [[ $add_passwd == true ]]; then
+        passwd "$username"
+    elif [[ $add_random_passwd == true ]]; then
         # 生成 16 位仅包含字母和数字的随机密码
-        echo "高强度密码参考(请复制备用)"
         NEW_PASS=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 16)
+        echo "高强度密码参考(请复制备用): $NEW_PASS"
         echo "$username:$NEW_PASS" | sudo chpasswd # chpasswd: 专门为脚本设计。它接收 用户名:密码 格式的标准输入
-        # passwd "$username"
-        read -n 1 -s -r -p "按任意键继续..."
+        echo "按回车键继续..."
+        read -r _dummy
         echo "" # 换行，防止后续输出跟在提示词后面
     fi
     # 集中判断是否要添加到sudo组,授予sudo权限;
@@ -1833,9 +1854,9 @@ new_user_sudo() {
             rm /tmp/new_sudo_rule
             return 1
         fi
+        #  清理临时文件
+        rm /tmp/new_sudo_rule
     fi
-    # 4. 清理临时文件
-    rm /tmp/new_sudo_rule
 
 }
 # 删除用户,并清理残留进程
@@ -2413,6 +2434,7 @@ EOF
         echo "正在准备安装homebrew..."
     fi
     echo "检查安装用户..."
+    # 默认创建的是无密码(锁定)用户,只能通过sudo -u切换的方式登录该用户
     new_user_sudo "$username" -N
     # 使用指定的已存在的非root用户(但是能够使用sudo的用户,例如linuxbrew)安装brew:
     # /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
