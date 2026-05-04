@@ -1,11 +1,15 @@
 #!/bin/bash
 # 为*uix系统安装最新版的neovim
-# 有先尝试homebrew安装,如果失败则手动下载并安装
+# 先尝试homebrew(包括linuxbrew)安装,如果失败则手动下载并安装
+# todo:检查本地版本是否已经是最新版本,如果不是,则安装最新版本
+
 # 手动的基本流程(以x86_64平台为例):
 # Download nvim-linux-x86_64.tar.gz
 # Extract: tar xzvf nvim-linux-x86_64.tar.gz
 # Run ./nvim-linux-x86_64/bin/nvim
-INSTALLER_VERSION="2026.5.4"
+
+INSTALLER_VERSION="20260504"
+
 # --- 默认配置 ---
 MODE="auto" # 可选: auto, brew, manual
 NVIM_VERSION="stable"

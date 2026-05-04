@@ -1699,13 +1699,51 @@ wp() {
     return $EXIT_CODE
 }
 # 创建一个带有sudo使用权限的linux用户,尽量实现幂等性;
-# 考虑安全性,不支持直接命令行中设置密码
+# 考虑安全性和便利性,默认不在内部直接命令行中设置密码;
 # 如果要设置密码,建议在创建之后使用sudo passwd <username> 的方式为指定用户设置密码!
 # parameter:
 #   username: 用户名
 new_user_sudo() {
+
     #根据需要更改要操作的用户名,例如linuxbrew
-    local username="${1:-linuxbrew}"
+    local username="linuxbrew"
+    local add_passwd=false
+    # 参数解析
+    usage="
+    usage:
+      new_user_sudo [options] [username]
+    options:
+      -h, --help: 显示帮助信息
+      -p, --addpwd: 创建用户后调用passwd 命令添加密码(不是直接将密码作为命令参数,而是从标准输入读取密码)
+    "
+    local args_pos=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h | --help)
+                echo "$usage"
+                return 0
+                ;;
+            -p | --addpasswd)
+                add_passwd=true
+                ;;
+            --)
+                shift
+                break
+                ;;
+            -?*)
+                echo "Unknown option: " >&2
+                echo "$usage"
+                return 2
+                ;;
+            *)
+                args_pos+=("$1")
+                ;;
+        esac
+        shift
+    done
+    set -- "${args_pos[@]}"
+    username="${1:-linuxbrew}"
+    # 参数解析并调整完毕
     if ! command -v sudo &> /dev/null; then
         echo "[sudo] command is not available."
         return 2
@@ -1735,8 +1773,9 @@ new_user_sudo() {
             return 1
         fi
     fi
-
-    passwd "$username"
+    if [[ $add_passwd == true ]]; then
+        passwd "$username"
+    fi
     usermod -aG sudo "$username"
 
     # 1. 创建一个包含新规则的临时文件
@@ -1747,7 +1786,7 @@ new_user_sudo() {
         echo "语法正确，正在合并..."
         # 3. 将验证通过的规则追加到 /etc/sudoers.d/ 目录下的一个新文件中
         sudo install -m 440 /tmp/new_sudo_rule /etc/sudoers.d/alice_nopasswd
-        echo "✅ 用户 alice 已被授予无密码 sudo 权限。"
+        echo "✅ 用户 $username 已被授予无密码 sudo 权限。"
     else
         echo "❌ 语法错误！规则未被应用。"
         rm /tmp/new_sudo_rule
@@ -1757,6 +1796,23 @@ new_user_sudo() {
     # 4. 清理临时文件
     rm /tmp/new_sudo_rule
 
+}
+# 删除用户,并清理残留进程
+remove_user_safe() {
+    local target_user=$1
+    if [ -z "$target_user" ]; then
+        echo "请输入用户名再重新试一次."
+        return 1
+    fi
+
+    echo "正在清理用户 $target_user 的进程..."
+    sudo pkill -u "$target_user"
+    
+    echo "正在删除用户及其家目录..."
+    sudo userdel -r "$target_user"
+    
+    echo "检查残留的组信息..."
+    grep "$target_user" /etc/group
 }
 # 配置homebrew路径相关的环境变量(和镜像环境变量不同)到配置文件中
 set_brew_path_env_to_shellrc() {
@@ -2228,6 +2284,7 @@ EOF
     # /home/linuxbrew/.linuxbrew/sbin
 
 }
+
 install_linuxbrew() {
 
     local usage

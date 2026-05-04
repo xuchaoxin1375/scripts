@@ -32,4 +32,4 @@ set smartcase           " 智能大小写匹配
 set hlsearch            " 高亮搜索结果
 set incsearch           " 渐进搜索
 " 复制粘贴
-" set clipboard=unnamedplus
+set clipboard=unnamedplus
