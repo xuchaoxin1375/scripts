@@ -1871,7 +1871,7 @@ remove_user_safe() {
     sudo pkill -u "$target_user"
 
     echo "正在删除用户及其家目录..."
-    sudo userdel -r "$target_user"
+    sudo userdel -r "$target_user" 2>/dev/null
 
     echo "检查残留的组信息..."
     grep "$target_user" /etc/group
@@ -2434,7 +2434,7 @@ EOF
         echo "正在准备安装homebrew..."
     fi
     echo "检查安装用户..."
-    # 默认创建的是无密码(锁定)用户,只能通过sudo -u切换的方式登录该用户
+    # 默认创建的是无密码(锁定)用户,只能通过 su - username 切换的方式登录该用户
     new_user_sudo "$username" -N
     # 使用指定的已存在的非root用户(但是能够使用sudo的用户,例如linuxbrew)安装brew:
     # /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
