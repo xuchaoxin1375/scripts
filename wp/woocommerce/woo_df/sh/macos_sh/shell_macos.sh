@@ -1,5 +1,7 @@
 #!/bin/bash
 echo "Loading env for macos..."
+# 提高macos允许进程打开的文件数量,某些zsh插件对此数值要求较高(macos默认为256)
+ulimit -n 4096
 
 # alias typora="open -a /Applications/Typora.app"
 typora() {
@@ -17,5 +19,16 @@ typora() {
     fi
 }
 [[ -e /opt/homebrew/opt/curl/bin ]] && export PATH="/opt/homebrew/opt/curl/bin:$PATH"
-# 提高macos允许进程打开的文件数量,某些zsh插件对此数值要求较高(macos默认为256)
-ulimit -n 4096
+
+activate_copyq() {
+    #软件github https://github.com/hluk/CopyQ
+    # 使用brew安装(由于认证问题,将来可能不能通过brew安装,需要从github下载安装)
+    if [ ! -d /Applications/CopyQ.app ]; then
+        echo "CopyQ not found, please install it first."
+        return 1
+    fi
+    # brew install copyq
+    
+    xattr -d com.apple.quarantine /Applications/CopyQ.app
+    codesign --force --deep --sign - /Applications/CopyQ.app
+}
