@@ -11,7 +11,7 @@
 #git reset --hard origin/main
 #git pull
 
-version=20260418.2208
+version=20260506.1807
 echo "当前脚本版本: $version;"
 REPO_SOURCE='github' # gitee或github或gitlab (gitee可能对国外ip服务器用户限流或要求注册账号,优先使用github或gitlab)
 BRANCH="main" # 或 "master"，根据实际情况调整
@@ -35,6 +35,7 @@ SH_SCRIPT_DIR="$SCRIPT_ROOT/$_SH_RELATIVE"
 ln -snfv "$SH_SCRIPT_DIR" "$SH_SYM"
 # 移除可能的就链接,重新创建链接
 # unlink $SH_SYM # 可以使用unlink命令安全删除符号链接(不会误删目标目录内的文件)
+echo "更新符号链接$SH_WWW"
 rm -fv "${SH_WWW%/}" && ln -snfv "$SH_SYM" "$SH_WWW" 
 
 # CLI flags
@@ -139,7 +140,8 @@ REPO_URL="https://$REPO_SOURCE.com/xuchaoxin1375/scripts.git"
 URL_GITEE="https://gitee.com/xuchaoxin1375/scripts.git"
 URL_GITHUB="https://github.com/xuchaoxin1375/scripts.git"
 URL_GITLAB="https://gitlab.com/xuchaoxin1375/scripts.git"
-echo "clone repository source: $REPO_SOURCE;from git: $REPO_URL"
+
+echo "[INFO](update_repos.sh):repository source: $REPO_SOURCE;from git: $REPO_URL"
 
 # 默认行为: 如果没有指定 -c/--update-code 或 -g/--update-config, 则默认启用更新代码
 if [ "$UPDATE_CODE" -eq 0 ] && [ "$UPDATE_CONFIG" -eq 0 ]; then
@@ -282,7 +284,7 @@ fi
 # ===更新配置文件或模板===
 if [ "$UPDATE_CONFIG" -eq 1 ]; then
 
-    bash $SH_SYM/nginx_conf/update_cf_ip_configs.sh
+    bash "$SH_SYM"/nginx_conf/update_cf_ip_configs.sh
     # 更新符号链接
     # 目录的符号链接(需要小心处理避免出现循环符号链接).可以先移除再创建防止嵌套
     # [ -L "$SH_SYM" ] && rm -f "$SH_SYM"

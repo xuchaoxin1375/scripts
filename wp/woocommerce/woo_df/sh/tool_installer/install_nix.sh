@@ -382,7 +382,7 @@ if [[ "$ENABLE_FLAKES" == "yes" ]] && nix flake --help &> /dev/null; then
 fi
 
 print_info "=========================================="
-print_info "✅ Nix 安装完成！"
+print_info "操作完成！"
 print_info "=========================================="
 print_info "常用命令："
 print_info "  nix profile add nixpkgs#包名   # 安装包"
@@ -398,7 +398,13 @@ if [[ "$ENABLE_FLAKES" == "yes" ]]; then
 
     # 绕过 GitHub 访问限制，直接从 CDN 拉取 nixpkgs
     # 执行下面的nix registry后，当你在 Nix 命令（如 nix run、nix build）中使用 nixpkgs#... 时，会直接从这个 URL 获取 nixpkgs，而不是 从 github:NixOS/nixpkgs 或系统配置的 channel 获取。
-    nix registry add nixpkgs https://channels.nixos.org/nixpkgs-unstable/nixexprs.tar.xz
+    # nix registry add nixpkgs https://channels.nixos.org/nixpkgs-unstable/nixexprs.tar.xz
+
+    # 移除之前错误的注册表项(通常nix registry add 能够覆盖旧的配置项)
+    # nix registry remove nixpkgs
+
+    # 添加国内源的路径
+    nix registry add nixpkgs https://mirrors.ustc.edu.cn/nix-channels/nixpkgs-unstable/nixexprs.tar.xz
 
     # echo "=================="
     # echo "[Warning]:Run next line command to pass by github and download packages from mirror."

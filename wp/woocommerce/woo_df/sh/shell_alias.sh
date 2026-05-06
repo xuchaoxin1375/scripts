@@ -77,9 +77,7 @@ if command -v nix &> /dev/null; then
         # 访问令牌（类似 conda 的 tokens）
         # nix config show | grep access-tokens
     }
-    # 额外的别名 nix profile add
-    alias nia=ni
-    # alias restart-nix-daemon='sudo systemctl restart nix-daemon'
+    # 兼容linux和macos的重启nix-daemon函数,而不是使用简单的别名重启服务;
     restart-nix-daemon() {
         # 适用于有systemd的系统(大部分linux)
         if command -v systemctl &> /dev/null; then
@@ -90,6 +88,20 @@ if command -v nix &> /dev/null; then
             echo "重启 nix-daemon 服务 (launchd)..."
             sudo launchctl kickstart -k system/org.nixos.nix-daemon 2> /dev/null || true
         fi
+    }
+    # 额外的别名 nix profile add
+    alias nia=ni
+    alias nixadd=ni
+    # 临时走清华镜像安装包
+    nixadd-tuna() {
+        nix profile add nixpkgs#"$1" \
+            --option substituters "https://mirrors.tuna.tsinghua.edu.cn/nix-channels/store https://cache.nixos.org/" \
+            --option trusted-public-keys "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
+    }
+    nixadd-ustc() {
+        nix profile add nixpkgs#"$1" \
+            --option substituters "https://mirrors.ustc.edu.cn/nix-channels/store https://cache.nixos.org/" \
+            --option trusted-public-keys "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
     }
     # 软件包移除和空间回收
     alias nixrm='nix profile remove'

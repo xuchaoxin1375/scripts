@@ -1,32 +1,29 @@
 [toc]
 
-
-
 ## abstract
 
-存放`nginx`配置文件和配置文件管理脚本
+存放 `nginx`配置文件和配置文件管理脚本
 
 起初使用的是原版nginx,后来为了满足更复杂的需求,引入openresty(功能增强版nginx),来实现动态处理,尤其是实现js挑战的反爬和防御功能.
 
 ## 文件说明
 
-- 带有js字样的是为js挑战准备的,包括`.conf`和`.html`
-  - `com_js_signed.conf`针对于openresty编写,原版nginx不能使用,其他`com_...conf`兼容原版nginx
+- 带有js字样的是为js挑战准备的,包括 `.conf`和 `.html`
+  - `com_js_signed.conf`针对于openresty编写,原版nginx不能使用,其他 `com_...conf`兼容原版nginx
 - 主配置文件:
-  - `nginx_nginx.conf`,适用于原版的主配置,部署时用来替换`nginx.conf`
+  - `nginx_nginx.conf`,适用于原版的主配置,部署时用来替换 `nginx.conf`
   - `nginx_openresty.conf`
 
 ## 注意事项
 
 - 搜索引擎的爬虫可以带来流量,因此在封锁或防御恶意爬虫时也要检测和验证google/bing爬虫能否顺利抓取页面,检验方法有许多:
   - 使用js挑战后,通常服务器负载会因为普通爬虫脚本无法爬取核心内容(数据库查询次数降低)而负载降低;但是如果负载降低过头(比如始终低于10%,那么就要怀疑是不是规则没写好,导致爬虫抓取的是挑战页面而没有访问到真正的页面(没有数据库查询)
-  - 另一方面是检查日志(nginx/openresty),但是注意日志格式中要包含`$body_bytes_sent `(默认会包含的),如果爬虫没有抓取到真正的页面,那么会发现日志中的`bytes`大小很小(通常不足10kB(10000B)),并且大量请求的bytes都一样大,这就是爬虫抓取的是挑战页面的征兆
+  - 另一方面是检查日志(nginx/openresty),但是注意日志格式中要包含 `$body_bytes_sent `(默认会包含的),如果爬虫没有抓取到真正的页面,那么会发现日志中的 `bytes`大小很小(通常不足10kB(10000B)),并且大量请求的bytes都一样大,这就是爬虫抓取的是挑战页面的征兆
 
 ## 配置步骤
 
 1. 清理/卸载宝塔的免费防火墙(这个东西很鸡肋,容易和自定义nginx配置冲突),如果没安装可以跳过此步骤
-
-2. 通过"**代码下载**"(仓库中Readme@sh.md)一节提供的命令行片段将所需的代码目录下载到服务器上(已经操作过则跳过此步骤),确保已经得到目录`/www/sh`;(如果有古老版本的代码仓库目录 `/repos/scripts`,可以手动清理掉)
+2. 通过"**代码下载**"(仓库中Readme@sh.md)一节提供的命令行片段将所需的代码目录下载到服务器上(已经操作过则跳过此步骤),确保已经得到目录 `/www/sh`;(如果有古老版本的代码仓库目录 `/repos/scripts`,可以手动清理掉)
 
    一键部署(单行部署)
 
@@ -34,9 +31,10 @@
    bash <(curl -sL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh) -f
    ```
 
-   > 其中`-f`会覆盖`nginx`的主配置文件(nginx.conf),酌情使用,如果不想覆盖,可以移除`-f`
+   > 其中 `-f`会覆盖 `nginx`的主配置文件(nginx.conf),酌情使用,如果不想覆盖,可以移除 `-f`
+   >
 
-   或者分部操作,更安全
+   或者分步操作,更安全
 
    ```bash
    curl -L -o deploy_srv.sh https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh;
@@ -45,24 +43,60 @@
    # 确认没有问题可以执行脚本了
    bash deploy_srv.sh -h;
    ```
-
 3. 创建/覆盖配置目录
 
-   - 运行`bash /update_repos.sh -g -f` 这个命令会处理:
-     - 将`/www/sh`脚本目录中的脚本更新到最新.(里面包含许多服务器管理脚本,`/www/sh/nginx_conf/`这个目录包含`nginx`配置管理脚本)
-     - 并在服务器上的nginx配置目录`/www/server/nginx/conf`中创建所需的文件(主要是一些`.conf`,还可能包括`html`文件)
-
+   - 运行 `bash /update_repos.sh -g -f` 这个命令会处理:
+     - 将 `/www/sh`脚本目录中的脚本更新到最新.(里面包含许多服务器管理脚本,`/www/sh/nginx_conf/`这个目录包含 `nginx`配置管理脚本)
+     - 并在服务器上的nginx配置目录 `/www/server/nginx/conf`中创建所需的文件(主要是一些 `.conf`,还可能包括 `html`文件)
 4. 更新vhosts配置
 
-为了让更新的nginx配置生效,需要将自定义配置片段(通常是`include ...`指令)插入到`/www/server/panel/vhost/nginx/`目录下的各个网站的`.conf`文件中,这个过程执行一个命令就可以
+为了让更新的nginx配置生效,需要将自定义配置片段(通常是 `include ...`指令)插入到 `/www/server/panel/vhost/nginx/`目录下的各个网站的 `.conf`文件中,这个过程执行一个命令就可以
 
-> (下面这个脚本有丰富的选项和用法,这里仅提供最简单粗暴的用法,详情使用`-h`选项查看用法帮助)
+> (下面这个脚本有丰富的选项和用法,这里仅提供最简单粗暴的用法,详情使用 `-h`选项查看用法帮助)
 
 ```bash
 bash /www/sh/nginx_conf/update_nginx_vhosts_conf.sh -m old --force
 ```
 
 为了简化说明,这里不细说对新/老站点做分批限流,而是将所有站都做同样的处理.
+
+### 从普通nginx迁移到openresty
+
+分两类情况:
+
+1. 如果用户尚未部署本代码(没有下载过),那么从nginx切换到openresty后,执行上述流程即可;
+
+> 对于宝塔用户,在面板中将nginx切换到openresty版本(可能有几个变体可选,具体版本号不做特殊要求,任意选择);
+
+2. 如果已经使用普通nginx,并且也已经使用本代码仓库的配置代码,则需要注意:
+
+- 版本切换会重置 `nginx.conf`及其所在目录的其他配置文件,此时nginx暂时无法启动,需要用户重新执行脚本部署:
+
+  > 因为使用本代码后,各个站点的vhost中的配置(`/www/server/panel/vhost/nginx`)引用的文件会因为版本切换而清空;
+  >
+  > 因此需要重新运行部署脚本创建所需的文件;
+  >
+  > 一般只需要再跑一遍`bash /update_repos.sh -g -f`
+
+### 选择工作模式(js挑战/限流)
+
+暂时没有让两者同时工作,用户需要二选一;
+
+> 如果要同时生效,需要修改`com_js_signed.conf`文件;
+>
+> 将`com_limit_rate.conf`中的语句添加到"**受保护页面**"的上下文中,但注意`try_files $uri $uri/ /index.php?$args;`这个语句不要一起带过去,`com_js_signed.conf`中已经有了;也可以参考`com_js_429.conf`中最终的内容.
+
+即便使用openresty,当前仓库默认配置是仅启用429限流;
+
+如果要启用js,需要将"受保护页面"一节中的路径做调整:找到下面的代码位置,将被注释的第一行解开,并把第2行注释掉或者移除掉.
+
+```nginx
+
+# location ~ ^/(product|shop|category|cart|checkout|account|admin){
+location ~ ^/(category|cart|checkout|account|admin){
+```
+
+
 
 ---
 
@@ -87,15 +121,15 @@ bash /www/sh/nginx_conf/update_nginx_vhosts_conf.sh -m old --force
 
 为了方便观察所有网站的日志,首先要把nginx日志都聚集到统一个日志文件中,并且可以根据我们感兴趣的日志进行聚合;
 
-例如,将所有被允许的(白名单)的爬虫(googlebot,bingbot,....)的访问日志(对服务器上的所有网站的访问日志)聚合到`/www/wwwlogs/spider.log`中;
+例如,将所有被允许的(白名单)的爬虫(googlebot,bingbot,....)的访问日志(对服务器上的所有网站的访问日志)聚合到 `/www/wwwlogs/spider.log`中;
 
-也可以额外将所有访问日志(包括普通用户和任何爬虫)聚合到`all.log`中
+也可以额外将所有访问日志(包括普通用户和任何爬虫)聚合到 `all.log`中
 
-这样分析整个服务器所有站的搜索引擎爬虫就看`spider.log`即可;
+这样分析整个服务器所有站的搜索引擎爬虫就看 `spider.log`即可;
 
-分析所有网站的访问日志就看`all.log`即可(spider.log是all.log的一个子集)
+分析所有网站的访问日志就看 `all.log`即可(spider.log是all.log的一个子集)
 
-另外,仓库还提供了一个`qps.sh`脚本,可以分析约定格式的日志,计算出服务器承受的流量(每秒的QPS)
+另外,仓库还提供了一个 `qps.sh`脚本,可以分析约定格式的日志,计算出服务器承受的流量(每秒的QPS)
 
 将nginx日志设置为约定的格式很简单(如果要还原默认也很简单),利用下面的脚本直接批量设置:
 
@@ -103,13 +137,11 @@ bash /www/sh/nginx_conf/update_nginx_vhosts_conf.sh -m old --force
 bash /www/sh/nginx_conf/update_nginx_vhosts_log_format.sh  # --dry-run
 ```
 
-如果把上面命令的`#`去掉,可以预览效果而不真正执行;
+如果把上面命令的 `#`去掉,可以预览效果而不真正执行;
 
-执行完毕后,重启nginx(执行`nginx -t && nginx -s reload`),让更改生效;
+执行完毕后,重启nginx(执行 `nginx -t && nginx -s reload`),让更改生效;
 
 ---
-
-
 
 接下来就可以检查日志了,例如:
 
@@ -123,8 +155,6 @@ tail -f /www/wwwlogs/spider.log|nl
 
 ```
 
-
-
 ```bash
 # 针对客户端检测(主要防止恶意脚本大量请求)的日志
 tail -f /www/wwwlogs/all.log|grep challenge --line-buffered|nl
@@ -133,7 +163,7 @@ tail -f /www/wwwlogs/all.log|grep challenge --line-buffered|nl
 
 ### 日志定期清理
 
-将日志聚合后,`spider.log`和`all.log`文件体积的增长速度是比较快的,建议定期清理,创建对应的自动任务(比如创建`clean_logs.sh`定义清理规则);然后在`crontab`中添加定期运行此清理脚本.
+将日志聚合后,`spider.log`和 `all.log`文件体积的增长速度是比较快的,建议定期清理,创建对应的自动任务(比如创建 `clean_logs.sh`定义清理规则);然后在 `crontab`中添加定期运行此清理脚本.
 
 ## js挑战配置文件说明
 
