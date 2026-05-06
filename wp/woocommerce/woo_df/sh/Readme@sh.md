@@ -102,6 +102,18 @@ git pull
 
 参考[linux@提高shell命令行环境易用性@终端美化@国内网络环境友好一条龙美化(ohmyzsh)_oh my zsh 卸载-CSDN博客](https://blog.csdn.net/xuchaoxin1375/article/details/120999508?sharetype=blogdetail&sharerId=120999508&sharerefer=PC&sharesource=xuchaoxin1375&spm=1011.2480.3001.8118)
 
+简单介绍:
+
+- 请事先安装zsh,git等基本软件
+
+- 执行
+
+  ```bash
+   bash <(curl -sSfL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_omz.sh)
+  ```
+
+  进行部署(zsh系列插件,包括补全提示和prompt主题);
+
 ### shell配置文件环境预定义
 
 写入一些便于使用的shell配置,比如常用别名和函数,以及预定义变量,有助于提高命令行交互效率;

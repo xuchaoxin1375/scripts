@@ -1,5 +1,9 @@
 #!/bin/bash
-# 配置zsh(oh my zsh)相关插件,让体验向fish靠拢
+# 配置zsh(oh my zsh)相关插件,让体验向fish靠拢;
+#    默认情况下,如果系统尚未安装过zsh(omz),则第一次运行会尝试安装oh-my-zsh(omz),设置zsh为默认shell后会进入zsh,脚本中断;
+#        第二次运行,会安装增强插件;
+#    如果已经安装过oh-my-zsh,则此脚本会尝试安装额外的插件(用户也可以自行制定),自动检测并更新oh-my-zsh配置文件(~/.zshrc)
+#       国外服务器有限考虑从github下载插件,国内gitee可能会限流要求登录账号.
 # 此部署代码尽量实现幂等性(避免反复运行导致配置文件内容混乱.);
 # 此脚本配置的不全仅适用于zsh,对于bash没有作用,不过此脚本可以用bash执行部署;
 # 软件要求:zsh需要用户实现安装好;对于一些精简的系统,可能要事先安装curl和git来拉去一些插件代码;
@@ -23,7 +27,9 @@ for req in "${requirements[@]}"; do
 done
 
 if [[ $meet_req == false ]]; then exit 2; fi
-version=20260417
+version=20260506
+# 插件仓库源
+REPO_SOURCE="github" # gitee
 # 默认插件安装选项(仅补全类插件)
 install_zsh_completions=true # true|false
 install_zsh_autocomplete=omz # omz|std|false
@@ -62,6 +68,7 @@ options:
         install zsh-history-substring-search plugin if true
     --zsh-custom
         set oh-my-zsh custom directory [ZSH_CUSTOM].
+    -s|--repo-source [github|gitee] plugin repository source(其中gitee方式包含少量gitcode.)
     -h,--help 
         show this help message.
 '"
@@ -112,6 +119,10 @@ parse_args() {
                 ;;
             -o | -omz | --install-omz)
                 install_omz="$2"
+                shift
+                ;;
+            -s | --repo-source)
+                REPO_SOURCE="$2"
                 shift
                 ;;
             -O | --omz-only)
@@ -208,26 +219,40 @@ zhssp=${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-history-substring-search
 zcp=${ZSH_CUSTOM:-${ZSH:-~/.oh-my-zsh}/custom}/plugins/zsh-completions
 zysu=${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/you-should-use
 zac=${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autocomplete
-
+if [[ $REPO_SOURCE == gitee ]]; then
+    zcp_repo=https://gitee.com/duchenpaul/zsh-completions.git
+    zac_repo=https://gitee.com/mirrors/zsh-autocomplete.git
+    zasp_repo=https://gitee.com/zsh-users/zsh-autosuggestions
+    zysu_repo=https://gitcode.com/gh_mirrors/zs/zsh-you-should-use.git
+    zshp_repo=https://gitee.com/zsh-users/zsh-syntax-highlighting.git
+    zhssp_repo=https://gitee.com/mirror-hub/zsh-history-substring-search
+elif [[ $REPO_SOURCE == github ]]; then
+    zcp_repo=https://github.com/zsh-users/zsh-completions.git
+    zac_repo=https://github.com/marlonrichert/zsh-autocomplete.git
+    zasp_repo=https://github.com/zsh-users/zsh-autosuggestions.git
+    zysu_repo=https://github.com/MichaelAquilina/zsh-you-should-use.git
+    zshp_repo=https://github.com/zsh-users/zsh-syntax-highlighting.git
+    zhssp_repo=https://github.com/zsh-users/zsh-history-substring-search.git
+fi
 # zsh-completions这个项目gitee官方可能没有镜像,使用个人用户的自镜像版本(建议有需要的可以自己拉取一份比较安全)
 # 另外这个插件比其他zsh插件不同,在配合oh my zsh使用时需要额外注意配置文件的写法;
 [[ $install_zsh_completions == true ]] &&
-    ! [[ -d $zcp ]] && git clone --depth 1 https://gitee.com/duchenpaul/zsh-completions.git "$zcp"
+    ! [[ -d $zcp ]] && git clone --depth 1 "$zcp_repo" "$zcp"
 # 自动动态的补全预测,属于较复杂插件(代替incr.zsh)
 [[ $install_zsh_autocomplete != false ]] &&
-    ! [[ -d $zac ]] && git clone --depth 1 https://gitee.com/mirrors/zsh-autocomplete.git "$zac"
+    ! [[ -d $zac ]] && git clone --depth 1 "$zac_repo" "$zac"
 
 [[ $install_zsh_autosuggestions == true ]] &&
-    ! [[ -d $zasp ]] && git clone --depth 1 https://gitee.com/zsh-users/zsh-autosuggestions "$zasp"
+    ! [[ -d $zasp ]] && git clone --depth 1 "$zasp_repo" "$zasp"
 
 [[ $install_zsh_you_should_use == true ]] &&
-    ! [[ -d $zysu ]] && git clone --depth 1 https://gitcode.com/gh_mirrors/zs/zsh-you-should-use.git "$zysu"
+    ! [[ -d $zysu ]] && git clone --depth 1 "$zysu_repo" "$zysu"
 
 [[ $install_zsh_syntax_highlighting == true ]] &&
-    ! [[ -d $zshp ]] && git clone --depth 1 https://gitee.com/zsh-users/zsh-syntax-highlighting.git "$zshp"
+    ! [[ -d $zshp ]] && git clone --depth 1 "$zshp_repo" "$zshp"
 
 [[ $install_zsh_history_substring_search == true ]] &&
-    ! [[ -d $zhssp ]] && git clone --depth 1 https://gitee.com/mirror-hub/zsh-history-substring-search "$zhssp"
+    ! [[ -d $zhssp ]] && git clone --depth 1 "$zhssp_repo" "$zhssp"
 
 # 构造新的plugins插件列表(字符串),保存到全局变量plugins_list中
 get_omz_plugins_list() {

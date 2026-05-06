@@ -1,10 +1,9 @@
 #!/bin/bash
 set -e
 
-
 # === 可配置保存路径 ===
 # SAVE_DIR="/etc/nginx/conf.d"   # 可根据需要修改
-SAVE_DIR="/www/server/nginx/conf"   # 保存路径
+SAVE_DIR="/www/server/nginx/conf" # 保存路径
 # 如果路径不存在,则创建此目录
 if [ ! -d "$SAVE_DIR" ]; then
   mkdir -p "$SAVE_DIR"
@@ -21,6 +20,7 @@ curl -s https://www.cloudflare.com/ips-v6 -o "$CF_IPV6_FILE"
 # 生成 Nginx 配置
 {
   echo "# Cloudflare IPs [update at $(date +"%Y-%m-%d %H:%M:%S %Z")]"
+  # todo:To read lines rather than words, pipe/redirect to a 'while read' loop.
   for ip in $(cat "$CF_IPV4_FILE"); do
     echo "set_real_ip_from $ip;"
   done
@@ -32,4 +32,9 @@ curl -s https://www.cloudflare.com/ips-v6 -o "$CF_IPV6_FILE"
 
 # 检查配置 & 重载 Nginx
 # nginx -t && systemctl reload nginx
-nginx -t && nginx -s reload
+if command -v nginx > /dev/null; then
+  echo "Nginx is installed. Reloading nginx config."
+  nginx -t && nginx -s reload
+else
+  echo "Nginx is not installed. Skipping nginx -t and nginx -s reload." &> 2
+fi

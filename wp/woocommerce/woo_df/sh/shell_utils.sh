@@ -4,6 +4,7 @@
 # ===============================
 echo "Loading shell_utils.sh..."
 # 临时清理历史遗留配置(2026.5月份后移除)
+# cleanrc ~/.bashrc 
 cleanrc() {
     local files="$*"
     sed -i '/^# Load additional shell configs/d; 
