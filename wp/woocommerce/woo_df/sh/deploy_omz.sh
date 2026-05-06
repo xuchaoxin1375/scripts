@@ -15,8 +15,9 @@
 # 此脚本通过sed修改的配置片段都使用了起始和结束标记组合('>>>'和'<<<',模仿conda风格),用户可以清晰的识别出修改的代码片段
 # 最后记得检查oh-my-zsh中的插件列表(plugins数组)中的插件是否移除多余内容.
 
-# 一键部署
-# bash <(curl -sSfL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_omz.sh)
+# 一键部署(可能需要运行2次.)
+# bash <(curl -sSfL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_omz.sh) -s github  # 这里的链接gitee也可以换成github
+#   国内可以考虑用gitee,但是可能要登录账号;使用-h获取帮助
 requirements=(git curl zsh)
 meet_req=true
 for req in "${requirements[@]}"; do
@@ -30,6 +31,7 @@ if [[ $meet_req == false ]]; then exit 2; fi
 version=20260506
 # 插件仓库源
 REPO_SOURCE="github" # gitee
+echo "Using repo source: $REPO_SOURCE"
 # 默认插件安装选项(仅补全类插件)
 install_zsh_completions=true # true|false
 install_zsh_autocomplete=omz # omz|std|false
