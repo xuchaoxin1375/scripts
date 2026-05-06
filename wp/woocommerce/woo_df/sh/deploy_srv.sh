@@ -87,6 +87,7 @@ ln_update_sym "$SH_SCRIPT_DIR" "$SH_SYM_HOME"
 # 如果追加使用-f会覆盖/www/server/nginx/conf/nginx.conf
 # bash "$SH_SYM"/update_repos.sh -g
 if [[ $OVERWRITE_NGINX_CONF == "true" ]]; then
+    # 开发(维护)者注意:这里的代码是云端克隆的,如果本地的版本修改后没立即推送云端,那么后续update_repos.sh的代码会是滞后的(旧版本)
     bash "$SH_SYM"/update_repos.sh -g -f
 else
     bash "$SH_SYM"/update_repos.sh -g

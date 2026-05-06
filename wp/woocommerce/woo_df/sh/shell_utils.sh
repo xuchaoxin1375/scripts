@@ -1209,7 +1209,8 @@ confirm() {
 # 判断符号链接是否有效
 check_symboliclink() {
     local target="$1"
-
+    # 简单判断: [[ -L $target && -e $target ]] && echo "valid link." || echo "invalid link."
+    # 分级判断和诊断
     # 1. 首先检查它是否是一个符号链接
     if [ ! -L "$target" ]; then
         echo "错误: '$target' 不是一个符号链接。" >&2

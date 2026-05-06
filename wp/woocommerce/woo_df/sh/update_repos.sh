@@ -1,5 +1,6 @@
 #!/bin/bash
 # 适用于服务器(带有root权限),不建议用于个人电脑,个人电脑使用专用版本的更新脚本(或命令行)
+# [本地linux环境模拟时,请切换到root用户sudo su root ]
 # 在代码已经clone的情况下,使用此脚本进行配置服务器环境
 # 此脚本也可以直接使用,如果仓库不存在,就会全新clone,否则执行仓库更新;
 # 然后可以按照需要,统一执行服务器配置文件修改;
@@ -11,10 +12,13 @@
 #git reset --hard origin/main
 #git pull
 
+# 严格模式
+set -euo pipefail
 version=20260506.1807
+
 echo "当前脚本版本: $version;"
 REPO_SOURCE='github' # gitee或github或gitlab (gitee可能对国外ip服务器用户限流或要求注册账号,优先使用github或gitlab)
-BRANCH="main" # 或 "master"，根据实际情况调整
+BRANCH="main"        # 或 "master"，根据实际情况调整
 NGINX_CONF_DIR="/www/server/nginx/conf"
 NGINX_CONF_FILE="$NGINX_CONF_DIR/nginx.conf"
 
@@ -26,17 +30,19 @@ SH_WWW="/www/sh" #末尾不要加斜杠/
 # sh="$SH_SYM" # 简写或者直接用SH_SYM
 _REPO_BASE="repos/scripts"
 _SH_RELATIVE="wp/woocommerce/woo_df/sh"
-SCRIPT_ROOT_DEFAULT="/$_REPO_BASE" # 默认的仓库目录(scripts仓库总目录)
-SCRIPT_ROOT="${SCRIPT_ROOT:-"$SCRIPT_ROOT_DEFAULT"}" # /root/repos/scripts 或 /home/user/repos/scripts
+SCRIPT_ROOT_DEFAULT="$HOME/$_REPO_BASE"              # 默认的仓库目录(scripts仓库总目录)
+SCRIPT_ROOT="${SCRIPT_ROOT:-"$SCRIPT_ROOT_DEFAULT"}" # /root/repos/scripts 或 /home/user/repos/scripts,历史遗留目录为/repos/scripts
 # shell脚本目录(sh)
 SH_SCRIPT_DIR="$SCRIPT_ROOT/$_SH_RELATIVE"
-
 # 创建shell脚本目录的短路径(符号链接)
 ln -snfv "$SH_SCRIPT_DIR" "$SH_SYM"
+echo "基础目录: $SCRIPT_ROOT;"
+# exit 0
+
 # 移除可能的就链接,重新创建链接
-# unlink $SH_SYM # 可以使用unlink命令安全删除符号链接(不会误删目标目录内的文件)
-echo "更新符号链接$SH_WWW"
-rm -fv "${SH_WWW%/}" && ln -snfv "$SH_SYM" "$SH_WWW" 
+# unlink $SH_SYM # 可以使用unlink命令安全删除符号链接(不会误删目标目录内的文件)🎈
+echo "[INFO]:更新符号链接$SH_WWW"
+rm -fv "${SH_WWW%/}" && ln -snfv "$SH_SYM" "$SH_WWW"
 
 # CLI flags
 FORCE=0
@@ -104,7 +110,7 @@ parse_args() {
                 REPO_SOURCE="$2"
                 shift 2
                 ;;
-            -t|--repo-path)
+            -t | --repo-path)
                 SCRIPT_ROOT="$2"
                 shift 2
                 ;;
@@ -141,7 +147,7 @@ URL_GITEE="https://gitee.com/xuchaoxin1375/scripts.git"
 URL_GITHUB="https://github.com/xuchaoxin1375/scripts.git"
 URL_GITLAB="https://gitlab.com/xuchaoxin1375/scripts.git"
 
-echo "[INFO](update_repos.sh):repository source: $REPO_SOURCE;from git: $REPO_URL"
+echo "[INFO](update_repos.sh):repository source: [$REPO_SOURCE];from git: [$REPO_URL]" #🎈
 
 # 默认行为: 如果没有指定 -c/--update-code 或 -g/--update-config, 则默认启用更新代码
 if [ "$UPDATE_CODE" -eq 0 ] && [ "$UPDATE_CONFIG" -eq 0 ]; then
@@ -197,6 +203,11 @@ if [ "$UPDATE_CODE" -eq 1 ]; then
             # --depth 1 配合 --single-branch
             if git clone --progress --depth 1 --single-branch -b "$BRANCH" "$URL" "$SCRIPT_ROOT"; then
                 echo "✅ 克隆成功！(源: $URL)"
+                # 检查sh短路径(符号链接)的有效性
+                if [[ ! -e "$SCRIPT_ROOT" ]]; then
+                    echo "无效目录或符号:SCRIPT_ROOT:[$SCRIPT_ROOT]." >&2
+                    exit 1
+                fi
                 CLONE_SUCCESS=true
                 break
             else
@@ -207,7 +218,7 @@ if [ "$UPDATE_CODE" -eq 1 ]; then
 
         #  最终检查
         if [ "$CLONE_SUCCESS" = false ]; then
-            echo "❌ 所有远程源均克隆失败，请检查网络！"
+            echo "❌ 所有远程源均克隆失败，请检查网络！" >&2
             exit 1
         fi
     else
@@ -216,7 +227,7 @@ if [ "$UPDATE_CODE" -eq 1 ]; then
 
         (
             cd "$SCRIPT_ROOT" || {
-                echo "❌ 无法进入目录: $SCRIPT_ROOT"
+                echo "❌ 无法进入目录: $SCRIPT_ROOT" >&2
                 exit 1
             }
             # 循环尝试序列中的仓库源(自动重试方案)
@@ -283,8 +294,15 @@ fi
 
 # ===更新配置文件或模板===
 if [ "$UPDATE_CONFIG" -eq 1 ]; then
+    echo "更新cloudflare ip信息..."
+    update_cf_ip="$SH_SYM"/nginx_conf/update_cf_ip_configs.sh
+    if [[ -e "$update_cf_ip" ]]; then
+        bash "$update_cf_ip"
+    else
+        echo "未找到更新脚本: $update_cf_ip" >&2
 
-    bash "$SH_SYM"/nginx_conf/update_cf_ip_configs.sh
+        exit 1
+    fi
     # 更新符号链接
     # 目录的符号链接(需要小心处理避免出现循环符号链接).可以先移除再创建防止嵌套
     # [ -L "$SH_SYM" ] && rm -f "$SH_SYM"
@@ -303,10 +321,10 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
     # ln -s -T /www/woo_df/sh $SH_SYM -fv # 使用-T选项防止嵌套,而-f选项配合-T是会将重复运行符号创建语句效果覆盖而不报错
     # ln -s -T /www/woo_df/pys /www/pys -fv
     # 脚本文件的符号链接
-    ln -sfv $SH_SCRIPT_DIR $SH_SYM 
-    ln -sfv $SH_SYM/deploy_wp_full.sh /deploy.sh 
-    ln -sfv $SH_SYM/update_repos.sh /update_repos.sh 
-    ln -sfv $SH_SYM/nginx_conf/update_nginx_vhosts_conf.sh /update_nginx_vhosts_conf.sh 
+    ln -snfv $SH_SCRIPT_DIR $SH_SYM
+    ln -snfv $SH_SYM/deploy_wp_full.sh /deploy.sh
+    ln -snfv $SH_SYM/update_repos.sh /update_repos.sh
+    ln -snfv $SH_SYM/nginx_conf/update_nginx_vhosts_conf.sh /update_nginx_vhosts_conf.sh
     # vim配置
     nvim_conf_dir="$HOME/.config/nvim"
     [[ -d $nvim_conf_dir ]] || mkdir -p "$nvim_conf_dir"
