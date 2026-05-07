@@ -106,13 +106,15 @@ git pull
 
 - 请事先安装zsh,git等基本软件
 
-- 执行
+- 执行(一键部署(可能需要运行2次.))
 
   ```bash
-   bash <(curl -sSfL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_omz.sh)
+  
+  bash <(curl -sSfL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_omz.sh) -s github  # 这里的链接gitee也可以换成github
+  
   ```
 
-  进行部署(zsh系列插件,包括补全提示和prompt主题);
+  部署(zsh系列插件,包括补全提示和prompt主题);
 
 ### shell配置文件环境预定义
 

@@ -24,7 +24,7 @@
 注意symbolicLink要谨慎使用(尤其是跟新待上线本地站点的插件时,建议使用Tagfile,或者Copy模式,
 否则默认的打包(tar)时默认符号链接会会被不合适的形式打包进去)
 
-$plugin='wp-card-tpay' #插件名字
+$plugin='yingtopay' #插件名字
 $installMode="TagFile" # "symbolicLink", "TagFile", "Copy"
 $plugin_format=if(test-path $wp_plugins -erroraction SilentlyContinue){"$wp_plugins/$plugin"}else{"$plugin"}
 # 更新本地站点(例如已经拷贝到my_wp_sites中的待上线站点;)

@@ -51,7 +51,7 @@ class APIClient:
         """初始化API客户端"""
         # 配置文件中所有账号信息(如果有读取配置文件的话),字典形式存储可以提高查找效率
         self.auth = auth or {}
-        self.accounts = {}
+        # self.accounts = {}
         self.accounts = self.get_accounts()
 
         # 默认账号信息
@@ -166,9 +166,7 @@ class APIClient:
                 items = resp.get("items", [])
             else:
                 items = []
-            print(
-                f"本轮请求获取{len(items)}个域名"
-            )
+            print(f"本轮请求获取{len(items)}个域名")
             # {items[0]['name']}...{items[-1]['name']}
 
             # 如果本轮获取的域名数组(items)非空,则添加到总的items中
@@ -614,6 +612,7 @@ def get_auth(config_path, args=None):
 
     Args:
         config_path (str): 配置文件路径
+        args: 命令行参数命令空间对象
     Returns:
         dict: 最终读取并处理后得到的完整的配置信息
 
@@ -630,6 +629,8 @@ def get_auth(config_path, args=None):
     # 从json配置文件中读取鉴权配置
     with open(config_path, "r", encoding="utf-8") as f:
         config = json.load(f)
+        default_account_name = config.get("account")
+    # 如果用户需要列出可用账号(list_accounts),则读取配置文件中的账号信息
     if args and getattr(args, "list_accounts", None):
         # 列出配置文件中的账号信息
         accounts = config.get("accounts", {})
@@ -637,7 +638,7 @@ def get_auth(config_path, args=None):
             name = account.get("account")
             print(f"{i}. {name}")
         exit(0)
-    # 根据arg.account参数来决定是否进入选择模式
+    # 根据arg.account参数来决定是否进入选择模式,如果直接指定,就不需要列出账号列表做选择
     if args and args.account:
         # 读取配置文件中的账号信息
         # 列出配置文件中的账号
@@ -686,13 +687,33 @@ def get_auth(config_path, args=None):
     if key and secret:
         config["api_key"] = key
         config["api_secret"] = secret
+    elif default_account_name:
+        print("尝试根据配置文件中的默认账号名,读取对应的key和secret...")
+
+        for account in config["accounts"]:
+            acc = account["account"]
+            if acc == default_account_name:
+                key = account["api_key"]
+                secret = account["api_secret"]
+        # debug:打印确定最终使用的账号(key和secret)
+        print(
+            ["selected_account", default_account_name],
+            ["api key:", key],
+            ["secret:", secret],
+        )
+        config["api_key"] = key
+        config["api_secret"] = secret
     # print(f"API Key: {key},API Secret: {secret}")
 
     return config or {}
 
 
-def parse_args():
-    """解析命令行参数"""
+def parse_args() -> argparse.Namespace:
+    """解析命令行参数
+    Returns:
+        argparse.Namespace: 解析后的命令行参数对象,提供命令行参数的名称规范化后的同名属性
+            通过 “点语法” (.) 来访问这些参数。这比传统的 sys.argv 索引访问要直观且安全得多。
+    """
     parser = argparse.ArgumentParser(
         description="Spaceship API Client: 多子命令支持，域名/DNS/联系人管理"
     )
@@ -950,7 +971,18 @@ def main():
     args = parse_args()
     # config = load_config(args.config)
     # auth = get_auth(args, config)
-    auth = get_auth(config_path=args.config, args=args)
+    auth = get_auth(
+        config_path=args.config, args=args
+    )  # args.config 配置文件路径(json).
+
+    # selected_account = auth["account"]
+    # for account in auth["accounts"]:
+    #     acc = account["account"]
+    #     if acc == selected_account:
+    #         key = account["api_key"]
+    #         secret = account["api_secret"]
+    # print(["selected_account", selected_account], ["api key:", key], ["secret:", secret])
+
     if not auth["api_key"] or not auth["api_secret"]:
         print("API Key 和 Secret 必须指定 (命令行或配置文件)", file=sys.stderr)
         sys.exit(1)
@@ -1025,7 +1057,6 @@ def main():
                 print(json.dumps(result, ensure_ascii=False, indent=2))
             return
         else:
-            
             # result = client.list_domains(args.take, args.skip, args.order_by)
             # print(json.dumps(result, ensure_ascii=False, indent=2))
             print(result)  # 打印未格式还的json

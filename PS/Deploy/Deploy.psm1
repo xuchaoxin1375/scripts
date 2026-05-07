@@ -983,7 +983,9 @@ function Deploy-ScoopStartMenuAppsStarter
     $userPath = [System.Environment]::GetEnvironmentVariable('PATH', 'User')
     if ($userPath -notlike "*$scoopAppsPathEx*")
     {
-        $newUserPath = $scoopAppsPath + ';' + $userPath
+        # 新的PATH路径的构造方式会影响同名命令名的优先级(lnk和exe)
+        # $newUserPath = $scoopAppsPath + ';' + $userPath
+        $newUserPath = $userPath + ';' + $scoopAppsPath
         [System.Environment]::SetEnvironmentVariable('PATH', $newUserPath, 'User')
         Write-Host '已将 Scoop Apps 目录添加到用户 PATH 环境变量中。'
     }
