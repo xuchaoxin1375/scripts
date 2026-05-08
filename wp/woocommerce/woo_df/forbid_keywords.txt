@@ -8,6 +8,7 @@ Simpson
 Laverne
 v-comb
 V-Comb
+Grunt Style
 Villeroy
 villeroy-boch
 DRMTLGY
@@ -30,6 +31,7 @@ White Mountain Puzzles
 Baggallini
 Banyan Licensing
 BB9
+Mechanix
 Berkey
 CURT
 Enewton
@@ -71,6 +73,7 @@ LEGO
 Lifevac
 Magic Body Oil
 Mammut
+Sprout
 Marucci
 Medmama LLC
 Möbelino

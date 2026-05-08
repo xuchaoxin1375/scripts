@@ -34,6 +34,7 @@ SCRIPT_ROOT_DEFAULT="$HOME/$_REPO_BASE"              # 默认的仓库目录(scr
 SCRIPT_ROOT="${SCRIPT_ROOT:-"$SCRIPT_ROOT_DEFAULT"}" # /root/repos/scripts 或 /home/user/repos/scripts,历史遗留目录为/repos/scripts
 # shell脚本目录(sh)
 SH_SCRIPT_DIR="$SCRIPT_ROOT/$_SH_RELATIVE"
+REMOVE_OLD=0
 # 创建shell脚本目录的短路径(符号链接)
 ln -snfv "$SH_SCRIPT_DIR" "$SH_SYM"
 echo "基础目录: $SCRIPT_ROOT;"
