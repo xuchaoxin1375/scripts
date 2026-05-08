@@ -15,6 +15,7 @@ async def main():
     num_repeats = 3
     for cid in range(num_repeats):
         #   await coro_a()
+        print("执行await task_a")
         await asyncio.create_task(coro_a(cid))
     await task_b
 
