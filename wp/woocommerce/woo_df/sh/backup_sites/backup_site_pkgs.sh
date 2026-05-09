@@ -126,11 +126,11 @@ fi
 RSYNC_CMD=(
     rsync
     -avP
+    -e "ssh -p $PORT"
     --size-only # 如果你确定文件只要大小没变就没更新，使用 --size-only 可以跳过耗时的属性对比。
     # -z #压缩传输,如果已经是压缩包,可以不使用,否则可能会影响传输速度
     --prune-empty-dirs
     --include="*/" # 保留子目录结构（关键！）
-    --port "$PORT"
 )
 
 for pattern in "${INCLUDE_PATTERNS[@]}"; do
