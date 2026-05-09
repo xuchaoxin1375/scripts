@@ -112,9 +112,13 @@ function Get-RelativePath
     可以得到理想结果的情况
     Get-RelativePath -Path "C:\Users/Administrator\Desktop/test.txt" -BasePath "C:\Users\Administrator"
     结果为: Desktop/test.txt
+
     .EXAMPLE
     非理想结果和异常处理1(绝对路径)
     Get-RelativePath -Path "C:/Users/Administrator/Desktop" -BasePath "C:/Users/Administrator/localhost"
+
+    抛出错误(示例):Get-RelativePath: Path [C:/Users/Administrator/Desktop] is not a child of BasePath [C:/Users/Administrator/localhost]
+    
     .EXAMPLE
     非理想结果和异常处理2(相对路径)
     cd $desktop
@@ -123,7 +127,9 @@ function Get-RelativePath
     [CmdletBinding()]
     param (
         $Path,
-        $BasePath
+        $BasePath,
+        # 取消默认的路径标准化行为(windows系统路径大小不敏感,为了便于比较,默认转换为小写路径,这通常是合理的,尤其是对于整个windows系统而言.)
+        [switch]$Restrict
     )
     if ($Path -eq $BasePath)
     {
@@ -133,8 +139,15 @@ function Get-RelativePath
     $Path = Get-AbsPath -Path $Path
     $BasePath = Get-AbsPath -Path $BasePath
     # 规范化
+    if(!$Restrict)
+    {
+
+        $Path = $Path.tolower()
+        $BasePath = $BasePath.tolower()
+    }
     $Path = $Path.Replace("\", "/").Trim("/") | Compress-PathDots
     $BasePath = $BasePath.Replace("\", "/").trim("/") | Compress-PathDots
+
     Write-Verbose "Path: $Path"
     Write-Verbose "BasePath: $BasePath"
     # 比较两个已经规范化的绝对路径(相似性检测,比如-match或者-like)

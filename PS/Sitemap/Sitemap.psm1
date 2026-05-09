@@ -295,11 +295,21 @@ function Test-SubItem
     .NoOrder
     无论参数指定顺序,只要其中一个路径是另一个路径的前缀,就返回$True
     .EXAMPLE
+    # windows系统上大小斜杠和反斜杠不影响比较.
     Test-SubItem -BasePath C:/Users -FullPath C:\Users\Administrator\Desktop 
     True
     .EXAMPLE
+    # windows系统上大小写混用
     Test-SubItem -BasePath C:/UsERs -FullPath C:\Users\Administrator\Desktop -Verbose
     VERBOSE: BasePath: [c:/users],FullPath: [c:/users/administrator/desktop]
+    True
+    .EXAMPLE
+    # 可以通过-NoOrder开关,自动判断短路径是否为长路径的前缀.
+     Test-SubItem  C:\UsERs\Administrator\Data.json  C:\Users/ -NoOrder  -Verbose
+    VERBOSE: IsWindows: [True],normalize path...
+    VERBOSE: NoOrder: [True],swap BasePath and FullPath if needed...
+    VERBOSE: Swap BasePath and FullPath...
+    VERBOSE: BasePath: [c:/users/],FullPath: [c:/users/administrator/data.json]
     True
     #>
     param (
@@ -369,7 +379,7 @@ function Get-SitemapFromLocalFiles
     .PARAMETER PassThru
     输出结果传递,返回结果
     .EXAMPLE
-    
+    Get-SitemapFromLocalFiles -Path . -Pattern *.xml -Output 2-speed.de.txt -Verbose
     #>
     [CmdletBinding(SupportsShouldProcess = $true)]
     param (
@@ -400,30 +410,42 @@ function Get-SitemapFromLocalFiles
     else
     {
         # 目录$path存在的情况下,如果是$HstRoot以外的位置,则考虑创建junction link,在$HstRoot内部有符号链接指向$path
-        $sourceDirName = Split-Path -Path $Path -Leaf
-        $RawPath = $Path
-        $Path = "$HstRoot/$sourceDirName"
-        if (! (Test-Path -Path $Path -PathType Container))
-        {
 
-            New-Junction -Path "$Path" -Target $RawPath -Verbose
-            if(Test-Path -Path $Path -PathType Container)
-            {
-                Write-Host "已创建junction link,将${RawPath}指向${HstRoot}内部"
-                Get-Item $Path
-            }
-            else
-            {
-                Write-Error "符号创建错误!"
-                return $False
-            }
+        if( Test-SubItem -BasePath $HstRoot -FullPath $Path)
+        {
+            Write-Host "待编制入地图的文件所在目录已经包含在标准站点[$HstRoot]目录中..."
         }
         else
         {
-            Write-Host "目标目录已经存在,检查[$Path],考虑重名备份或者删除后继续执行"
-            return $False
+            Write-Host "待编制入地图的文件所在目录不在标准站点[$HstRoot]目录中,尝试创建junction link..."
+            # 计算path对应的目录名,用于创建junction link时取名.
+            $sourceDirName = Split-Path -Path $Path -Leaf
+            $RawPath = $Path
+            # 构造预期的符号链接路径(如果创建成功,将代替原外部目录供后续代码访问此目录)
+            $Path = "$HstRoot/$sourceDirName"
+            # 判断预期符号链接路径$Path是否早已存在(是否有同名目录存在),如果存在则符号链接创建取消,并提示用户考虑重名或者删除现有的$Path后继续执行,防止混乱.
+            if (! (Test-Path -Path $Path -PathType Container))
+            {
+                
+                New-Junction -Path "$Path" -Target $RawPath -Verbose
+                if(Test-Path -Path $Path -PathType Container)
+                {
+                    Write-Host "已创建junction link,从${HstRoot}内部指向外部的${RawPath}"
+                    Get-Item $Path
+                }
+                else
+                {
+                    Write-Error "符号创建错误!"
+                    return $False
+                }
+            }
+            else
+            {
+                Write-Host "预计创建的符号链接路径[$Path]已被现有目录占用,考虑重名备份或者删除现有的[$Path]后继续执行"
+                return $False
+            }
+            
         }
-
     }
     # 判断目录$Path是$HstRoot相等,如果相等,则会造成混乱,拒绝执行.
     if($Path -eq $HstRoot)
@@ -596,7 +618,7 @@ function Get-SitemapFromLocalFiles
     if($sitemapIndexPath)
     {
         Write-Host "[Output(Sitemap/SitemapIndex)] $sitemapIndexPath" -ForegroundColor 'cyan'
-        $OutputUrl = "http://${Hst}:${Port}/$(Get-RelativePath -Path $sitemapIndexPath -BasePath $absHstRoot)"
+        $OutputUrl = "http://${Hst}:${Port}/$(Get-RelativePath -Path $sitemapIndexPath -BasePath $absHstRoot -Verbose:$VerbosePreference)"
         Write-Host '--------默认output的参考http链接-----------------'
         Write-Host "`n$outputUrl `n" -ForegroundColor 'cyan'
         Write-Host '-------------------------'
