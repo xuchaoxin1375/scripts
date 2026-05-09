@@ -12,7 +12,7 @@ SOURCE_DIR="/srv/uploads/uploader/files"
 BACKUP_DIR="/www/wwwroot/xcx/default"
 LOG_FILE=""
 USE_DATE_DIR=0
-
+PORT=22 # 远程服务器的sshd服务监听的端口
 # ========== 🧩 支持的压缩包格式（可自行增删） ==========
 INCLUDE_PATTERNS=(
     "*.zst" "*.tar.zst"
@@ -35,6 +35,7 @@ show_help() {
  选项:
    -s, --source-dir <目录>      指定源目录 (默认: /srv/uploads/uploader/files)
    -b, --backup-server <地址>   指定备份服务器 (可以指定用于备份存储的服务器ip,如果没有指定用户名(user@host),则可能会尝试root身份登录)
+   -p, --port <端口>           指定远程服务端的sshd服务监听的端口 (默认: 22)
    -l, --log-file <文件>        指定日志文件 (默认: 源目录/backup-to-srv.log)
    -d, --backup-dir <目录>      指定备份目录 (默认: /www/wwwroot/xcx/s2)
    --date-dir                   启用创建每日备份子目录 (如 2025-09-12),这不建议,对rsync检查增量不简便
@@ -64,6 +65,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -l | --log-file)
             LOG_FILE="$2"
+            shift 2
+            ;;
+        -p | --port)
+            PORT="$2"
             shift 2
             ;;
         --date-dir)
@@ -112,7 +117,7 @@ fi
 
 # 在服务器 B 上创建备份目录
 log "📁 准备创建远程目录: $TARGET_DIR"
-if ! ssh "$BACKUP_SERVER" "mkdir -p '$TARGET_DIR'" 2>> "$LOG_FILE"; then
+if ! ssh -p "$PORT" "$BACKUP_SERVER" "mkdir -p '$TARGET_DIR'" 2>> "$LOG_FILE"; then
     log "❌ 无法在 B 服务器创建目录，请检查网络或权限"
     exit 1
 fi
@@ -125,6 +130,7 @@ RSYNC_CMD=(
     # -z #压缩传输,如果已经是压缩包,可以不使用,否则可能会影响传输速度
     --prune-empty-dirs
     --include="*/" # 保留子目录结构（关键！）
+    --port "$PORT"
 )
 
 for pattern in "${INCLUDE_PATTERNS[@]}"; do
