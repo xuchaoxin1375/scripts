@@ -279,6 +279,66 @@ function Get-SitemapFromUrlIndex
     Get-SitemapFromLocalFiles -Path $OutputDir -Pattern *.xml
     # 
 }
+function Test-SubItem
+{
+    <# 
+    .SYNOPSIS
+    判断两个路径是否有共同前缀(一个路径包含另一个路径,或完全是同一个路径)
+    可以用来判断路径a存在的情况在,是否在目录b(或其某一级子目录内).
+
+    windows系统不区分大小写,将英文字母大小写调换不影响路径指向,我们利用小写化以及分隔符统一化后的唯一标准表示形式后来判断两个路径的关系;
+    其他区分大小写(且严格区分路径分隔符路径)的系统,则无需这些额外的步骤,直接判断即可.
+    .PARAMETER BasePath
+    子路径
+    .PARAMETER FullPath
+    父路径
+    .NoOrder
+    无论参数指定顺序,只要其中一个路径是另一个路径的前缀,就返回$True
+    .EXAMPLE
+    Test-SubItem -BasePath C:/Users -FullPath C:\Users\Administrator\Desktop 
+    True
+    .EXAMPLE
+    Test-SubItem -BasePath C:/UsERs -FullPath C:\Users\Administrator\Desktop -Verbose
+    VERBOSE: BasePath: [c:/users],FullPath: [c:/users/administrator/desktop]
+    True
+    #>
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$BasePath,
+        [string]$FullPath
+        ,
+        [switch]$NoOrder
+    )
+    # 分别获取$Path和$HstRoot的绝对路径字符串,然后计算并对比前缀
+    $BasePath = Get-Item $BasePath | Select-Object -ExpandProperty FullName
+    $FullPath = Get-Item $FullPath | Select-Object -ExpandProperty FullName
+    # 路径规范化:字母大小写和路径分隔符规范化(统一为小写,并统一为斜杠方便对比)
+    if($IsWindows)
+    {
+        Write-Verbose "IsWindows: [$IsWindows],normalize path..."
+        $absFullPath = $FullPath.ToLower() -replace "\\", "/"
+        $absBasePath = $BasePath.ToLower() -replace "\\", "/"
+    }
+    if($NoOrder)
+    {
+        Write-Verbose "NoOrder: [$NoOrder],swap BasePath and FullPath if needed..."
+        # 自动调整被比较的两个路径参数,把较长的路径放在后面
+        if($absFullPath.Length -lt $absBasePath.Length)
+        {
+            Write-Verbose "Swap BasePath and FullPath..."
+            $absFullPath, $absBasePath = $absBasePath, $absFullPath
+        }
+    }
+    Write-Verbose "BasePath: [$absBasePath],FullPath: [$absFullPath]"
+    if($absFullPath -like "$absBasePath*")
+    {
+        return $true
+    }
+    else
+    {
+        return $false
+    }
+}
 function Get-SitemapFromLocalFiles
 {
     <# 
@@ -286,21 +346,24 @@ function Get-SitemapFromLocalFiles
     扫描指定目录下的所有html文件,构造合适成适合采集的url链接列表,并输出到指定文件
 
     .PARAMETER Path
-    待扫描的目录
+    待扫描的目录,将其中的.xml等类型文件编入新创建的站点地图.
+    .PARAMETER Pattern
+    输入文件扩展名,默认为.html,也可以设置为.htm,.xml等其他后缀
+    如果是任意文件(甚至没有扩展名),则可以设置为*
+    .PARAMETER ExtOut
+    输出文件扩展名,默认为.xml.txt
+    
     .PARAMETER Hst
     站点域名(通常本地localhost)
     .PARAMETER Output
     输出文件路径
+    .PARAMETER Port
+    本地站点端口,通常为80
     .PARAMETER NoLocTag
     是否使用<loc>标签包裹url,默认不使用
     .PARAMETER htmlDirSegment
     html所在路径,通常为空,程序会尝试自动获取
-    .PARAMETER Pattern
-    输入文件扩展名,默认为.html,也可以设置为.htm,.xml等其他后缀
-    如果是任意文件(甚至没有扩展名),则可以设置为*
 
-    .PARAMETER ExtOut
-    输出文件扩展名,默认为.xml.txt
     .PARAMETER Preview
     预览生成的url列表,不输出文件
     .PARAMETER PassThru
@@ -336,7 +399,7 @@ function Get-SitemapFromLocalFiles
     }
     else
     {
-        # 目录$path存在的情况下,创建junction link,将$path指向$HstRoot内部
+        # 目录$path存在的情况下,如果是$HstRoot以外的位置,则考虑创建junction link,在$HstRoot内部有符号链接指向$path
         $sourceDirName = Split-Path -Path $Path -Leaf
         $RawPath = $Path
         $Path = "$HstRoot/$sourceDirName"
@@ -362,7 +425,7 @@ function Get-SitemapFromLocalFiles
         }
 
     }
-    # 判断目录$Path是$HstRoot相等,如果相等,则会造成混乱,拒绝执行,应该
+    # 判断目录$Path是$HstRoot相等,如果相等,则会造成混乱,拒绝执行.
     if($Path -eq $HstRoot)
     {
         Write-Error "Current working path '$Path' is equal to '$HstRoot'. This will cause mess problems."

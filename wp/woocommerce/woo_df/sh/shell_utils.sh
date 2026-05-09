@@ -4,9 +4,10 @@
 # ===============================
 echo "Loading shell_utils.sh..."
 # 临时清理历史遗留配置(2026.5月份后移除)
-# cleanrc ~/.bashrc 
+# cleanrc ~/.bashrc ~/.zshrc
 cleanrc() {
-    local files="$*"
+    local files=("$@")
+    [[  ${#files[@]} -eq 0 ]] && files=(~/.bashrc ~/.zshrc)
     sed -i '/^# Load additional shell configs/d; 
         /^# >>>custom additional shell>>>.*/d; 
         /^# <<<custom additional shell<<<.*/d; 
@@ -14,7 +15,7 @@ cleanrc() {
         /^# >>>additional shell configs>>>.*/d; 
         /^# <<<additional shell configs<<<.*/d;
         \|source .*/shellrc_addition.*|d;
-' "${files:-"~/.bashrc ~/.zshrc"}"
+' "${files[@]}"
 }
 # 列出bash中所有名字以指定字符串开头的变量
 list_var_start_with_eval() {
