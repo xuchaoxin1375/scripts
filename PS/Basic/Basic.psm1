@@ -1559,7 +1559,7 @@ function Update-ReposesConfiged
             $gitUrl = "https://${RepoSource}.com/xuchaoxin1375/$repoDir" #.Trim('\\')
             $Path = "$repos/$repoDir"
             Write-Verbose "[$giturl] will be cloned to [$Path] !" -Verbose
-            git -c http.proxy="$Proxy" -c https.proxy="$Proxy" clone $gitUrl $Path 
+            git -c http.proxy="$Proxy" -c https.proxy="$Proxy" --depth 1 clone $gitUrl $Path 
             continue
 
         }
