@@ -57,7 +57,10 @@ irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsMod
 
 > 如果没有实现安装,则会尝试为你的电脑安装powershell7和git两个软件,但是可靠性不保证.
 
-### 单纯克隆
+### 单纯克隆仓库
+
+1. windows 用户主要使用powershell模块(通过wsl或git-bash也可以使用第二类(shell)相关内容)
+2. linux/macos用户主要使用shell中的脚本集合(也可以安装powershell使用第一类中的内容.)
 
 > 无论哪个方案,请事先安装好git;
 >
@@ -67,7 +70,8 @@ irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsMod
 > sudo apk add bash git
 > ```
 >
-> 
+
+#### powershell
 
 windows系统（使用powershell运行）
 
@@ -78,6 +82,8 @@ git clone --recursive --depth 1 --shallow-submodules https://gitee.com/xuchaoxin
 setx PsModulePath C:/repos/scripts/PS
 
 ```
+
+#### bash/zsh
 
 如果macos或者linux用户，可以将仓库克隆到家目录下（考虑扩展性，将来可能会克隆多个仓库，那么可以在家目录创建 `repos`目录，将仓库克隆到其中便于管理；
 
@@ -100,6 +106,8 @@ exec bash
 
 ### 轻量虚拟化平台中和宿主机共用
 
+这里主要是指虚拟机或模拟层(linux)中使用shell脚本模块.
+
 #### 准备命令
 
 ```bash
@@ -110,7 +118,7 @@ _SH_RELATIVE="wp/woocommerce/woo_df/sh"
 
 在家目录创建`repos`,`sh`目录便于访问;
 
-#### wsl中访问windows中的仓库目录
+#### windows的wsl中访问windows中的仓库目录
 
 > 执行下面代码前,请确保执行了上面的准备命令!
 
@@ -137,9 +145,9 @@ bash ~/sh/shellrc_addition.sh && exec bash
 
 
 
-### 一键部署
+### `*nix`系统上的一键部署shell模块目录(面向bash/zsh shell)
 
-或者使用自动判断可用仓库源的一键部署版本:
+这里提供使用自动判断可用仓库源的一键部署版本:
 
 ```bash
 bash <( curl -sSfL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/update_shell_config.sh)
