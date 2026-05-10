@@ -15,6 +15,9 @@ $scripts="C:/repos/scripts"
 #>
 [CmdletBinding()]
 param(
+    # 仓库源
+    [validateSet('gitee', 'github')]
+    $RepoSource = 'gitee',
     # 适用于开发(维护调整)的测试模式
     [switch]$Dev
     # [switch]$Force
@@ -29,7 +32,7 @@ if($Dev)
 else
 {
     # 正式版:
-    Invoke-RestMethod 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-GitForWindows.ps1' | Invoke-Expression
+    Invoke-RestMethod "https://$RepoSource.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-GitForWindows.ps1" | Invoke-Expression
 }
 function Get-CxxuPsModulePackage
 {
@@ -87,7 +90,7 @@ function Deploy-CxxuPsModules
     直接调用,不是用参数,适合第一次部署
     deploy-CxxuPsModules
     .EXAMPLE
-    使用在线方案,从默认的gitee仓库克隆下载(要求预先安装Git软件)
+    使用在线方案,从默认的gitee/github(要求预先安装Git软件)
     PS C:\Users\cxxu > deploy-CxxuPsModules -Mode FromRemoteGit -RepoPath C:/TestPsM -Verbose
     Mode:Clone From Remote repository:[gitee]
     VERBOSE: https://gitee.com/xuchaoxin1375/scripts.git
@@ -131,11 +134,11 @@ function Deploy-CxxuPsModules
         # 添加到环境变量中的路径
         $NewPsPath = "$RepoPath\PS",
         
-        [ValidateSet('Gitee,Github')]
-        $Source = 'gitee',
+        [ValidateSet('gitee,github')]
+        $Source = $RepoSource,
         # 如果使用从包安装的方案,需要指定包的位置,这里的路径是包文件路径,而不是包文件所在目录
         #和从远程仓库克隆有多个来源可选一样,下载离线包也有多种选择,同样是github可以直接下载,但是速度慢或者下不动,
-        # 而国内的仓库平台需要登录,登录有下载快,成功率高
+        # 而gitee等仓库平台需要登录,条件允许的话,登录下载快,成功率高
         $PackagePath = "$home/Downloads/CxxuPsModules/scripts*.zip",
         
         # default 自动切换策略(优先尝试从本地包安装,如果失败,则尝试从远程仓库克隆)
@@ -344,7 +347,7 @@ function Deploy-CxxuPsModules
         if ($continue)
         {
 
-            Invoke-RestMethod 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-Pwsh7Portable.ps1' | Invoke-Expression
+            Invoke-RestMethod "https://$RepoSource.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-Pwsh7Portable.ps1" | Invoke-Expression
         }
     }
     #检查模块设置效果
