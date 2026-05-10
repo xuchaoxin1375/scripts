@@ -41,6 +41,7 @@ function Get-PSConsoleHostHistory
     $res = Get-Content $PSConsoleHostHistory
     return $res
 }
+Set-Alias -Name Get-PSHistory -Value Get-PSConsoleHostHistory
 function Get-CxxuPsModuleVersoin
 {
     param (
@@ -196,7 +197,7 @@ function Invoke-RemoteSSH
     param (
         [parameter(Mandatory = $true)]
         $ServerID,
-        $Port='',
+        $Port = '',
         [ValidateSet('Auto', 'Key', 'Password', 'Interactive')]
         [string]$Mode = 'Auto',
 
@@ -210,7 +211,7 @@ function Invoke-RemoteSSH
     $server = $servers[$ServerID]
     $ip = $server.ip
     $user = $server.ssh.user
-    $port = if($Port){$Port}else{$server.ssh.port}
+    $port = if($Port) { $Port }else { $server.ssh.port }
     $password = $server.ssh.password
     $authority = "$user@$ip"
 
@@ -1071,7 +1072,7 @@ function Remove-TitleOrderFromMarkdownTitle
     $LF = "`n"
     if($CodeBlockLang)
     {
-        $p1 = ("$CodeBlockLang" + $CRLFS +'(\s*)' + '```' + "\s*")
+        $p1 = ("$CodeBlockLang" + $CRLFS + '(\s*)' + '```' + "\s*")
         $p2 = ('```' + $CodeBlockLang.ToLower() + $LF)
         # Write-Verbose "p1:[$p1],p2:[$p2]"
         Write-Verbose "'$p1','$p2'"
