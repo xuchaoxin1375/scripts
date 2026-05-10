@@ -1,4 +1,36 @@
+<# 
+.SYNOPSIS
+部署CxxuPsModules
 
+.DESCRIPTION
+
+这里会尝试通过在线仓库导入 Deploy-GitForWindows 模块,会引入一些外部命令;
+如果本地调整此脚本时,注意在线仓库中的版本可能不是最新的.
+也可以考虑用本地导入的方式暂时代替默认的导入在线版本.
+.NOTES
+本地开发测试命令行参考: 
+$scripts="C:/repos/scripts"
+. $scripts/PS/Deploy/Deploy-CxxuPsModules.ps1 -Dev # 默认无参数
+
+#>
+[CmdletBinding()]
+param(
+    # 适用于开发(维护调整)的测试模式
+    [switch]$Dev
+    # [switch]$Force
+)
+Write-Output "开始运行CxxuPsModules部署脚本..."
+# 导入 Deploy-GitForWindows 命令(适合独立部署用户使用),分开放置确保灵活性
+if($Dev)
+{
+    # 测试版:
+    . $Scripts/PS/Deploy/Deploy-GitForWindows.ps1
+}
+else
+{
+    # 正式版:
+    Invoke-RestMethod 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-GitForWindows.ps1' | Invoke-Expression
+}
 function Get-CxxuPsModulePackage
 {
     <# 
@@ -36,8 +68,7 @@ function Get-CxxuPsModulePackage
     return $PackgePath
 }
 
-#导入 Deploy-GitForWindows 命令(适合独立部署用户使用),分开放置确保灵活性
-Invoke-RestMethod 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-GitForWindows.ps1' | Invoke-Expression
+
 
 
 function Deploy-CxxuPsModules
@@ -122,8 +153,9 @@ function Deploy-CxxuPsModules
         Mode        = $Mode
         Force       = $Force
     }
-
+    Write-Verbose "check deploy params (by user):"
     $PSBoundParameters | Format-Table
+    Write-Verbose "check deploy params (full:user and default):"
     $params | Format-Table
 
     $isContinue = $PSCmdlet.ShouldProcess("$env:UserName@$env:COMPUTERNAME", 'Deploy CxxuPsModules')

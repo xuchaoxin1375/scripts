@@ -5,6 +5,12 @@ Invoke-RestMethod 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/De
 .DESCRIPTION
 此脚本文件用于部署Git for Windows到windows系统,可以自动下载最新版本的Git for Windows安装包,也可以指定下载链接,也可以指定本地安装包路径进行部署
 #>
+# 检查git是否已经可用,如果已经可用,则跳过后续安装步骤.
+if (Get-Command git -ErrorAction SilentlyContinue)
+{
+    Write-Host 'Git command already exists,skip installation.' -ForegroundColor yellow
+    return $true
+}
 # $github_mirror="https://gh-proxy.com"
 ## 导入其他模块
 # 方案1:iex执行
