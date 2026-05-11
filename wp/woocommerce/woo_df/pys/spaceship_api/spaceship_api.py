@@ -51,15 +51,16 @@ class APIClient:
         """初始化API客户端"""
         # 配置文件中所有账号信息(如果有读取配置文件的话),字典形式存储可以提高查找效率
         self.auth = auth or {}
-        # self.accounts = {}
-        self.accounts = self.get_accounts()
-
         # 默认账号信息
         self.account = account or self.auth.get("account")
         self.api_key = api_key or self.accounts.get(self.account, {}).get("api_key")
         self.api_secret = api_secret or self.accounts.get(self.account, {}).get(
             "api_secret"
         )
+        # 构造账号信息字典
+        # self.accounts = {} # 占位防止属性缺失
+        self.accounts = self.get_accounts()
+
         # 其他配置
         self.base_url = "https://spaceship.dev/api/v1"
         self.domains_in_all_accounts = []
@@ -70,9 +71,11 @@ class APIClient:
 
     def get_accounts(self):
         """获取配置文件中所有账号信息的易于检索的字典形式"""
+        # print("self.auth",self.auth)
+        # exit()
         if self.auth:
             accounts = self.auth["accounts"]
-            # 定义账号速查字典结构
+            # 定义账号速查字典结构(字典生成式)
             self.accounts = {
                 accunt["account"]: {
                     "api_key": accunt["api_key"],
@@ -80,7 +83,15 @@ class APIClient:
                 }
                 for accunt in accounts
             }
-        return self.accounts
+        else:
+            self.accounts={
+                
+            }
+        # print("self.accounts", self.accounts)
+        # exit()
+        
+        return getattr(self, "accounts", {})
+        # return self.accounts
 
     def _headers(self):
         """生成请求头"""
@@ -304,7 +315,7 @@ class APIClient:
             """获取指定账号的域名列表
             内部会创建临时的APIClient对象,防止线程间覆盖self.api_key/secret
             Args:
-                account (dict): 账号信息
+                account (dict): 账号信息(主要是key/secret信息)
             Returns:
                 dict: 包含账号名称和域名列表统计信息的字典
             """
@@ -314,7 +325,7 @@ class APIClient:
             print(
                 f"正在获取{account_name},信息{api_key, api_secret}账号中的域名列表..."
             )
-            # 创建临时client防止线程间覆盖self.api_key/secret
+            # 创建独立的临时client防止线程间覆盖self.api_key/secret
             client = APIClient(api_key, api_secret, account=account_name)
             if names_only:
                 domains = client.list_domains_names_only(take=0, skip=0)

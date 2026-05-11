@@ -2,12 +2,45 @@
 
 ## abstract
 
-- 记录日常编写的脚本,函数
-- 以powershell7为主,将这些代码组成相应的模块,支持一键灵活导入,配置简单
+实用脚本集合,改善命令行使用体验. 
 
-## powershell 7+模块集
+- windows下的powershell(pwsh7)
+- *nix系统bash/zsh
 
-- 此脚本仓库重点是 `powershell` 脚本和模块,详情查看说明文档:
+### 克隆仓库|代码下载(通过git)
+
+1. windows 用户主要使用powershell模块(通过wsl或git-bash也可以使用第二类(shell)相关内容)
+2. linux/macos用户主要使用shell中的脚本集合(也可以安装powershell使用第一类中的内容.)
+
+> 无论哪个方案,请事先安装好git;
+>
+> 对于部分精简的linux系统(例如alpine linux),可能还需要手动安装bash:
+>
+> ```bash
+> sudo apk add bash git
+> ```
+
+### 直接clone仓库(单纯clone)
+
+windows系统（使用powershell运行）
+
+```powershell
+new-item -itemtype directory C:/repos -Verbose -ErrorAction SilentlyContinue
+git clone --recursive --depth 1 --shallow-submodules https://gitee.com/xuchaoxin1375/scripts.git C:/repos/scripts
+# 可选的设置环境变量：
+setx PsModulePath C:/repos/scripts/PS
+
+```
+
+
+
+## powershell
+
+>  powershell(pwsh) 模块集,主要针对v7+版本适配.
+>
+> 可用于windows,linux,macos等系统.(主要用于windows,在其他系统提供有限的支持.)
+
+- powershell模块部分详情查看说明文档:
 
   - 仓库内查看[pwshModulebyCxxu.md](./PwshModuleByCxxu.md)
   - 文档此文档内提供了一键部署此项目的方案
@@ -17,20 +50,11 @@
   - [Gitee|PwshModuleByCxxu.md](https://gitee.com/xuchaoxin1375/scripts/blob/main/PwshModuleByCxxu.md)
   - [Github|PwshModuleByCxxu.md](https://github.com/xuchaoxin1375/scripts/blob/main/PwshModuleByCxxu.md)
 
-### 常用powershell模块在线运行🎈
 
-#### Deploy系列
 
-- 参考文档:[Deploy/readme.md](PS/Deploy/readme.md)
+### 一键部署powershell模块(full)
 
-#### Tools系列
-
-- ```powershell
-  irm https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Tools/Tools.psm1|iex
-  
-  ```
-
-## 一键部署此项目
+部署完整的powershell模块,适合长期使用.
 
 ```powershell
 irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1'|iex
@@ -57,45 +81,51 @@ irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsMod
 
 > 如果没有实现安装,则会尝试为你的电脑安装powershell7和git两个软件,但是可靠性不保证.
 
-### 单纯克隆仓库
+### 常用powershell模块部署
 
-1. windows 用户主要使用powershell模块(通过wsl或git-bash也可以使用第二类(shell)相关内容)
-2. linux/macos用户主要使用shell中的脚本集合(也可以安装powershell使用第一类中的内容.)
+适合临时使用,不获取全部代码.
 
-> 无论哪个方案,请事先安装好git;
->
-> 对于部分精简的linux系统(例如alpine linux),可能还需要手动安装bash:
->
-> ```bash
-> sudo apk add bash git
-> ```
->
+#### Deploy系列
 
-#### powershell
+参考文档:[Deploy/readme.md](PS/Deploy/readme.md)
 
-windows系统（使用powershell运行）
+#### Tools系列
 
 ```powershell
-new-item -itemtype directory C:/repos -Verbose -ErrorAction SilentlyContinue
-git clone --recursive --depth 1 --shallow-submodules https://gitee.com/xuchaoxin1375/scripts.git C:/repos/scripts
-# 可选的设置环境变量：
-setx PsModulePath C:/repos/scripts/PS
+irm https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Tools/Tools.psm1|iex
 
 ```
 
-#### bash/zsh
+## bash/zsh
 
-如果macos或者linux用户，可以将仓库克隆到家目录下（考虑扩展性，将来可能会克隆多个仓库，那么可以在家目录创建 `repos`目录，将仓库克隆到其中便于管理；
+如果macos或者linux用户(甚至是git-bash)，可以将仓库克隆到家目录下:
+
+考虑扩展性，将来可能会克隆多个仓库，那么可以在家目录创建 `repos`目录，将仓库克隆到其中便于管理；
+
+
+
+### `*nix`系统上的一键部署shell模块目录(面向bash/zsh shell)
+
+这里提供使用自动判断可用仓库源的一键部署版本:
 
 ```bash
+# 如果没有部署过,则完整克隆,否则执行代码更新
+bash <( curl -sSfL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/update_shell_config.sh)
 
+```
+
+### 分步执行
+
+```bash
 repos="$HOME/repos"
 scripts="$repos/scripts"
 sh_script_dir="$scripts/wp/woocommerce/woo_df/sh"
 repo_source="gitee.com" # 根据需要可以切换为github.com
 sh_sym="$HOME/sh" sh="$sh_sym"
-mkdir -p "$repos" && git clone --recursive --depth 1 --shallow-submodules https://"$repo_source"/xuchaoxin1375/scripts.git "$scripts"
-# 可选的配置shell脚本库（兼容bash，zsh)
+mkdir -p "$repos" 
+# clone代码
+git clone --recursive --depth 1 --shallow-submodules https://"$repo_source"/xuchaoxin1375/scripts.git "$scripts"
+# 可选的配置shell脚本库(兼容bash,zsh)
 # ! [[ -L $sh_sym ]] && 
 ln -snfv  "$sh_script_dir" "$sh_sym" 
 # 部署shell 交互方案(prompt主题和补全方案)
@@ -103,6 +133,8 @@ bash $sh/shellrc_addition.sh
 # 进程替换,让配置生效
 exec bash
 ```
+
+
 
 ### 轻量虚拟化平台中和宿主机共用
 
@@ -145,16 +177,7 @@ bash ~/sh/shellrc_addition.sh && exec bash
 
 
 
-### `*nix`系统上的一键部署shell模块目录(面向bash/zsh shell)
-
-这里提供使用自动判断可用仓库源的一键部署版本:
-
-```bash
-bash <( curl -sSfL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/update_shell_config.sh)
-
-```
-
-clone参数说明:
+## clone参数说明
 
 | **参数**                     | **说明**                                                         | **推荐用法**            |
 | ---------------------------------- | ---------------------------------------------------------------------- | ----------------------------- |
