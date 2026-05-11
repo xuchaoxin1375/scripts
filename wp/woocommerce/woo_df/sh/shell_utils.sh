@@ -2105,7 +2105,7 @@ install_brew_cn() {
                 然后用类似于sudo bash -c 的命令方式运行此函数,或者自行手动删除brew安装目录;"
         local brew_home
         # brew_home0=$(brew --prefix) #brew未必可用
-        # 下面��对���装中途卡死或失败的的情况下执行的简单安装目录清理
+        # 下面针对安装中途卡死或失败的的情况下执行的简单安装目录清理
         brew_home1=/home/linuxbrew/.linuxbrew
         brew_home2=/opt/homebrew
         brew_home3=/usr/local/homebrew
@@ -2138,7 +2138,8 @@ install_brew_cn() {
     fi
     # 参数解析并调整完毕
 
-    # 判断是否需要设置环境变量到shellrc文件中
+    # 判断是否需要设置(镜像源)环境变量到shellrc文件中
+    # HOMEBREW_BREW_GIT_REMOTE变量已经存在(且非空),同时不要求强制插入配置也不是专门要配置更新配置的情况下,则跳过环境变量配置更新操作
     if [[ $HOMEBREW_BREW_GIT_REMOTE && $force == false && $update_mirror_only == false ]]; then
         write_env_rc=false
         echo "HOMEBREW_BREW_GIT_REMOTE is already set to $HOMEBREW_BREW_GIT_REMOTE (in somewhere else), skipping adding to shellrc"
@@ -2216,7 +2217,7 @@ install_brew_cn() {
     '
     # 选择目标镜像源
     if [[ $mirror == "tuna" || $installer_source == "tuna" ]]; then
-        echo "使用tuna镜像可能���要排队(高负载情况下),时间可能需要十来分钟!"
+        echo "使用tuna镜像可能要排队(高负载情况下),时间可能需要十来分钟!"
     fi
     case "$mirror" in
         ustc)
@@ -2370,8 +2371,10 @@ usage:
     
     国内网络用户(非root用户户下):如果没条件配置代理(或者代理设置不便)
     对于个人电脑,考虑国内方案:
+    - 本文shell模块提供的方案: source <(curl -fsSL https://raw.giteeusercontent.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/shell_utils.sh)
     - https://brew-cn.mintimate.cn/
     - https://gitee.com/cunkai/HomebrewCN #cn方案
+install_brew_cn # 添加-h选项查看帮助(默认使用ustc源安装)
     对于linux用户,使用上述方案可能卡住要多试几下(过程中并非全程快速下载,部分组件依然可能因为网络耗时);
 
 options:
