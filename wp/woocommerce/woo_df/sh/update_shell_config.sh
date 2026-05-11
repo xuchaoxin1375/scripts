@@ -187,7 +187,7 @@ echo "🎉 代码同步完成：$SCRIPT_ROOT"
 # 可选的配置shell脚本库（兼容bash，zsh)
 # ! [[ -L $sh_sym ]] &&
 ln -snfv "$sh_script_dir" "$SH_SYM"
-# wsl的ble.sh用户专属配置
+# wsl的ble.sh用户专属配置(从PATH环境变量中移除/mnt/缓解性能问题.)
 if [ -e '/mnt/' ]; then
     blerc="$SH_SYM/env_sh/.blerc"
     [ -e "$blerc" ] && ln -snfv "$blerc" "$HOME/.blerc"

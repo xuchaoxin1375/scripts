@@ -58,6 +58,14 @@ is_alpine() {
         return 1
     fi
 }
+is_wsl() {
+    [[ -e /proc/version ]] && grep 'wsl' -iq /proc/version && _IS_WSL=1
+    if [[ $(uname -r) == *"Microsoft"* ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
 # 查看当前shell中PATH环境变量的取值,对于多值变量换行显示
 # 对于非PATH变量,则使用建议使用echo $env_var | tr ':' '\n'
 # 或 printenv $env_var | tr ':' '\n' 来查看指定变量的方式查看指定变量
@@ -2034,7 +2042,7 @@ uninstall_brew() {
         fi
     done
 }
-# 从国内镜像源安装brew(默认中科大源镜像源)
+# 从国内镜像���安装brew(默认中科大源镜像源)
 install_brew_cn() {
 
     # 参数解析

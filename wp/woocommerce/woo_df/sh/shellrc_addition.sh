@@ -37,6 +37,11 @@ elif [[ $OSTYPE == "linux"* ]]; then
   # ! [[ -e $SCRIPT_ROOT ]] && SCRIPT_ROOT="$HOME/$_REPO_BASE"
   # wsl可选:
   [[ -d /mnt/c/ ]] && SCRIPT_ROOT="/mnt/c/$_REPO_BASE"
+  # wsl的ble.sh用户专属配置(从PATH环境变量中移除/mnt/缓解性能问题.检查PATH取值以验证效果)
+  if [ -e '/mnt/' ]; then
+    blerc="$SH_SYM/env_sh/.blerc"
+    [ -e "$blerc" ] && ln -snfv "$blerc" "$HOME/.blerc"
+  fi
 else
   # msys*(windows上的一些模拟层)
   [[ -d /c/ ]] && SCRIPT_ROOT="/c/$_REPO_BASE"
@@ -96,7 +101,6 @@ if is_shell bash; then
   # 启用调试模式(按需启用set -x)
   [[ $_SHELL_DEBUG -eq 1 ]] && set -x
 fi
-
 
 # 移除wsl中ls列出文件夹的背景色
 remove_background_color() {
@@ -177,8 +181,9 @@ if is_darwin; then
   # 设置gnu工具集优先
   set_gnu_instead_bsd
 fi
-# 移除linux(尤其是wsl)目录的背景色
-if ! [[ $OSTYPE == "darwin"* ]]; then
+# 移除wsl目录的背景色
+# if ! [[ $OSTYPE == "darwin"* ]]; then
+if [[ -d /mnt/c ]]; then
   # macos does not need remove the folder background colors
   remove_background_color
 fi
@@ -312,5 +317,5 @@ echo "update inputrc [$INPUTRC]..."
 end_time=$(date +%s%N)
 # 计算差值（纳秒转毫秒）
 elapsed=$(((end_time - start_time) / 1000000))
-echo "Elapsed(execution) Time: ${elapsed} ms"
+echo "[$(get_os_name -o)]:Elapsed(execution) Time: ${elapsed} ms"
 # 如果要自定义函数请添加到shell_utils.sh中!
