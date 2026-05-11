@@ -7,13 +7,37 @@
 - windows下的powershell(pwsh7)
 - *nix系统bash/zsh
 
-### 克隆仓库|代码下载(通过git)
+### 使用说明
 
 1. windows 用户主要使用powershell模块(通过wsl或git-bash也可以使用第二类(shell)相关内容)
 2. linux/macos用户主要使用shell中的脚本集合(也可以安装powershell使用第一类中的内容.)
 
-> 无论哪个方案,请事先安装好git;
->
+### 代码clone注意事项
+
+无论哪个方案,请事先安装好git;
+
+#### windows用户git配置
+
+对于**windows**用户,建议关闭`autocrlf`,否则一些bash脚本的换行方式会被修改为CRLF,造成脚本运行出错,包括git-bash.
+
+```bash
+git config --global core.autocrlf true
+```
+
+补救措施:(如果上述配置之前已经clone好代码了,有2种方案:
+
+1. 删除代码仓库,配置好git(关闭`autocrlf`) ,重新clone.
+2. 进入powershell(前提是已经配置好本仓库的powershell模块),执行如下命令:
+
+```powershell
+# 将$sh目录下的sh文件和.inputrc配置文件中的换行设置为LF
+cd $sh;ls -Recurse *.sh,.inputrc.conf|Convert-CRLF -Replace -To LF ;cd -
+```
+
+
+
+#### alpine linux
+
 > 对于部分精简的linux系统(例如alpine linux),可能还需要手动安装bash:
 >
 > ```bash

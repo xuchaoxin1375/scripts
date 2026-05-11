@@ -2026,10 +2026,11 @@ uninstall_brew() {
     local brew_home
     # brew_home0=$(brew --prefix) #brew未必可用
     # 下面针对安装中途卡死或失败的的情况下执行的简单安装目录清理
+    brew_home0=/home/linuxbrew
     brew_home1=/home/linuxbrew/.linuxbrew
     brew_home2=/opt/homebrew
     brew_home3=/usr/local/homebrew
-    brew_homes=("$brew_home1" "$brew_home2" "$brew_home3")
+    brew_homes=("$brew_home0" "$brew_home1" "$brew_home2" "$brew_home3")
     for brew_home in "${brew_homes[@]}"; do
         if [[ -d $brew_home ]]; then
             echo "尝试移除目录: [$brew_home] "
@@ -2042,7 +2043,7 @@ uninstall_brew() {
         fi
     done
 }
-# 从国内镜像���安装brew(默认中科大源镜像源)
+# 从国内镜像源安装brew(默认中科大源镜像源)
 install_brew_cn() {
 
     # 参数解析
