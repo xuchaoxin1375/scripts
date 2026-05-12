@@ -2290,6 +2290,11 @@ EOF
     [[ $user ]] && new_user_sudo "$user" -N
     # 如果没有指定用户,则默认尝试当前用户
     [[ ! $user ]] && user=$(whoami)
+    # 如果是root,退出安装
+    if [[ $user == "root" ]]; then
+        echo "请勿使用root用户安装brew,指定其他普通用户名,例如homebrew"
+        exit 1
+    fi
     # 从指定镜像获取脚本并开始安装brew
     start_install_brew() {
         case "$installer_source" in

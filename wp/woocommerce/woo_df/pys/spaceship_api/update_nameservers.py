@@ -129,7 +129,7 @@ def read_data(file_path):
                 domain = get_main_domain_name_from_str(domain)
                 domains.append(domain)
         all_columns = ["domain", "nameserver1", "nameserver2"]
-        df = pd.DataFrame({"domain": domains}, columns=all_columns)
+        df = pd.DataFrame({"domain": domains}, columns=all_columns)  # ty:ignore[invalid-argument-type]
         # df.fillna("", inplace=True)
 
     return df

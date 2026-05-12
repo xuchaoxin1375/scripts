@@ -51,15 +51,15 @@ class APIClient:
         """初始化API客户端"""
         # 配置文件中所有账号信息(如果有读取配置文件的话),字典形式存储可以提高查找效率
         self.auth = auth or {}
+        # 构造账号信息字典
+        # self.accounts = {} # 占位防止属性缺失
+        self.accounts = self.get_accounts()
         # 默认账号信息
         self.account = account or self.auth.get("account")
         self.api_key = api_key or self.accounts.get(self.account, {}).get("api_key")
         self.api_secret = api_secret or self.accounts.get(self.account, {}).get(
             "api_secret"
         )
-        # 构造账号信息字典
-        # self.accounts = {} # 占位防止属性缺失
-        self.accounts = self.get_accounts()
 
         # 其他配置
         self.base_url = "https://spaceship.dev/api/v1"
