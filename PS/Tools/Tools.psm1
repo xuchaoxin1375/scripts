@@ -1346,21 +1346,125 @@ function Get-ProcessOfPort
     return $res
     
 }
+function New-LocalSite
+{
+    <# 
+.SYNOPSIS
+本地新建一个空网站(基于nginx)
+关键步骤是配置文件的创建和系统的hosts文件(本地dns)的映射添加
+#>
+    [CmdletBinding()]
+    param(
+        # 新站点的名称(域名,由于是本地站点,可以是一个简单的单词,不要求多级)
+        $Name,
+        # 网站根目录
+        $SiteRoot ,
+        # nginx可执行文件所在路径,放空则会尝试自行寻找Path中的nginx
+        $NginxPath = "",
+        # ngix安装目录(nginx可执行文件所在目录),例如c:/phpstudy_pro/extensions/nginx1.25.2
+        $NginxHome = $nginx_home,
+        # nginx vhosts所在目录,例如c:/phpstudy_pro/extensions/nginx1.25.2/conf/vhosts
+        $NginxVhosts = $nginx_vhosts,
+        # nginx总配置文件路径(不是目录),例如C:/phpstudy_pro/Extensions/Nginx1.25.2/conf/nginx.conf
+        $NginxConf = $nginx_conf
+    )
+    # 优先查看用户给定的路径是否可用(不可用直接抛出异常结束执行).
+    # 如果没有指定此参数从Path环境变量中查找nginx
+    # $nginxAvailability=False
+    if($NginxPath) #是否指定了路径,且是一个有效路径
+    {
+        if(Get-Command $NginxPath -ErrorAction Stop)
+        {
+            Write-Verbose "nginx路径存在..."
+        }
+     
+    }
+    else
+    {
+       
+        # Write-Verbose "[$NginxPath]:nginx路径存在..."
+        Write-Verbose "从Path中寻找nginx..."
+        if(Get-Command nginx -ErrorAction Stop)
+        {
+            Write-Verbose "环境变量中的nginx路径存在..."
+            $NginxPath = Get-Command nginx | Select-Object -ExpandProperty Source
+        }
+    }
+    
+    # 创建新站点的配置文件
+    $conf = "$NginxVhosts/$Name.conf"
+    Write-Host "Writing site vhost config..."
 
+    $tpl = @'
+server {
+    listen 80;
+    server_name $Name;
+    # root ""; # 对于特殊用途,可以不使用root,而是直接让 Nginx 在内存中处理请求;
+    location / {
+        # 简单返回200和一个简单HTML类型的页面
+        default_type text/html;
+        return 200 "<html><body style='text-align:center;'><h1>200 OK</h1></body></html>";
+
+        # try_files直接返回html文件
+        # try_files $uri $uri/ /index.html;
+    }
+
+}
+
+'@ 
+    $tpl = $tpl -replace '\$Name', "$Name"
+    if($SiteRoot)
+    {
+        # 将tpl中的# root "$root"; 行替换为启用行
+        $tpl = $tpl -replace '# root "";' , "root `"$root`";"
+    }
+    $tpl > $conf
+    # 写入到系统的hosts配置文件中
+    if($IsWindows)
+    {
+        # 使用专门的外部命令修改hosts文件
+        if (Get-Command Add-NewDomainToHosts -ErrorAction SilentlyContinue)
+        {
+
+            Add-NewDomainToHosts -Domain $Name
+        }
+        else
+        {
+            # 简单添加
+            Write-Host "Adding [$name] to hosts file..."
+            "127.0.0.1  $name" >> $hosts
+        }
+    }
+
+    # 重启nginx
+    # 方案1:要求配置好nginx所在目录到Path环境变量中,更简单:
+    # nginx -p $nginx_home -c $nginx_conf -s reload
+
+    # 方案2:使用start-process运行,更加灵活:
+    # 构造命令参数列表
+    $param_base = @("-p", $nginxhome, "-c", $nginxconf)
+    $param_restart = $param_base + @("-s", "reload")
+    $param_check = $param_base + @('-t')
+    Start-Process -FilePath $NginxPath -ArgumentList $param_check -NoNewWindow -Wait
+    Start-Process -FilePath "$NginxPath" -ArgumentList $param_restart -NoNewWindow -Wait
+    Write-Host "执行完毕."
+
+}
 function Approve-NginxValidVhostsConf
 {
     <# 
     .SYNOPSIS
-    扫描nginx vhosts目录中的各个站点配置文件是否有效(尤其是所指的站点路径)
-    如果无效,则会将对应的vhosts中的站点配置文件移除,从而避免nginx启动或重载而受阻
+    扫描nginx vhosts目录中的各个站点配置文件是否有效(尤其是所指的站点路径(网站根目录.))
+    如果无效,则会将对应的vhosts中的站点配置文件移除,从而避免nginx启动或重载而受阻.
     #>
     [CmdletBinding()]
     param(
         # 典型nginx配置文件路径:C:\phpstudy_pro\Extensions\Nginx1.25.2\conf\vhosts,
         [alias('NginxVhostsDir')]
         $NginxVhostConfDir = "$env:nginx_vhosts_dir" ,
-        # 对于nginx服务器的网站,内部应该有标准文件(比如nginx.htaccess),如果要求是wordpress网站,内部要求有wp-config.php文件
-        $KeyPath = "*.htaccess"
+        # 对于nginx服务器的网站,内部应该有典型的标准文件(比如*.htaccess),
+        # 如果要求是wordpress网站,内部要求有wp-config.php文件
+        $KeyPath = "" # 默认为空,宽松处理,其他典型值:*.htaccess等
     )
     $vhosts = Get-ChildItem $NginxVhostConfDir -Filter "*.conf" 
     Write-Verbose "Checking vhosts in $NginxVhostConfDir" -Verbose
@@ -1369,7 +1473,7 @@ function Approve-NginxValidVhostsConf
         $root_info = Get-Content $vhost | Select-String "\s*root\s+" | Select-Object -First 1
         Write-Debug "root line:[ $root_info ]" -Debug
         # 计算vhost配置文件中的站点根路径(如果不存在时跳过处理此配置)
-        if($root_info)
+        if($root_info -and $root_info -match '^\s*root')
         {
             $root_info = $root_info.ToString().Trim()    
             $root = $root_info -replace '.*"(.+)".*', '$1'
@@ -1398,11 +1502,17 @@ function Approve-NginxValidVhostsConf
             # $removeVhost = $false
             Write-Verbose "vhost: $($vhost.Name) root path: $root is valid(exist)!"  
 
-            # 保险起见,再检查内部的nginx访问控制标准文件nginx.htaccess是否存在(部分情况下,目录没有移除干净或者被其他进程占用,这种情况下仅仅根据网站根目录是否存在是不够准确的,当然,此时系统内部可能积累了许多错误,建议重启计算机)
-            if(Test-Path "$root/$KeyPath")
+            # 保险起见,再检查内部的访问控制标准文件例如*.htaccess是否存在
+            # 这里引入的基于网站根目录的额外判断,是考虑到部分情况下,目录没有移除干净或者被其他进程占用,
+            # 这种情况下仅仅根据网站根目录是否存合法是不够准确的,当然,此时系统内部可能积累了许多错误,建议重启计算机)
+            if(! $KeyPath)
+            {
+                $removeVhost = $false
+            }
+            elseif( Test-Path "$root/$KeyPath")
             {
                 Write-Verbose "vhost: $($vhost.Name) $KeyPath exists in root path: $root"  
-                $removeVhost = $falseget
+                $removeVhost = $false
             }
             else
             {

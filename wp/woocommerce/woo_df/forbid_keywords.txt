@@ -35,11 +35,13 @@ Banyan Licensing
 BB9
 Mechanix
 Berkey
+TSeries
 CURT
 Enewton
 FLESHLIGHT
 Fleshlight
 HOME DEPOT
+TSSU
 Jellycat
 Nilla
 Orthofeet
