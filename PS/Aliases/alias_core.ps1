@@ -7,6 +7,7 @@ src Get-SourceCode
 #umo Import-ModuleForce
 ue Update-PwshEnvIfNotYet
 Add-SSNameServers Update-SSNameServers
+Get-PSHistory  Get-PSConsoleHostHistory
 nlps Get-ContentNL
 Set-PSRLO Set-PSReadLineOption
 satjb Start-ThreadJob

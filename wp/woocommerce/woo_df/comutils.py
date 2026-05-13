@@ -91,6 +91,16 @@ def get_desktop_path():
     return os.path.join(os.path.expanduser("~"), "Desktop")
 
 
+def get_env_var(env):
+    """
+    获取TMP环境变量的取值
+
+    EXAMPLE:
+        get_env_var('TEMP')
+    """
+    return os.environ.get(env)
+
+
 def get_paths(input_dir: str, recurse: bool = False):
     """
     获取指定目录下的所有路径(绝对路径)
@@ -1061,6 +1071,7 @@ class FastOffsetCipher:
         # 还原：转整数 -> 减偏移 -> 转字符 -> 拼接
         return "".join(map(lambda n: chr(int(n) - self.offset), chunks))
 
+
 class DictCipher:
     """
     基于给定字典的编码混淆加密算法
@@ -1091,7 +1102,7 @@ class DictCipher:
         # 先将所有字符转为3位数字字符串
         iter_digits = map(lambda c: f"{ord(c):03d}", text)
         unit3c = "".join(iter_digits)
-        
+
         # 根据字典将数字字符串映射为密文字符
         return "".join(map(lambda n: self.DIGIT_MAP_ENCODE[n], unit3c))
 
@@ -1103,19 +1114,19 @@ class DictCipher:
         """
         if not cipher_text:
             return ""
-        
+
         try:
             # 1. 反向映射还原为数字串
             digit_str = "".join(map(lambda c: self.DIGIT_MAP_DECODE[c], cipher_text))
-            
+
             # 2. 校验长度
             if len(digit_str) % 3 != 0:
                 raise ValueError("Invalid cipher text length")
-            
+
             # 3. 分块还原
-            chunks = [digit_str[i:i+3] for i in range(0, len(digit_str), 3)]
+            chunks = [digit_str[i : i + 3] for i in range(0, len(digit_str), 3)]
             return "".join(map(lambda n: chr(int(n)), chunks))
-            
+
         except KeyError as e:
             raise ValueError(f"Invalid character in cipher text: {e}")
 

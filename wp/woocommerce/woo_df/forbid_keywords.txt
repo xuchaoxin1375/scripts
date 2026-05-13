@@ -9,6 +9,7 @@ Laverne
 v-comb
 V-Comb
 V-COMB
+Valencia
 Grunt Style
 Villeroy
 villeroy-boch

@@ -41,7 +41,7 @@ function Get-PSConsoleHostHistory
     $res = Get-Content $PSConsoleHostHistory
     return $res
 }
-Set-Alias -Name Get-PSHistory -Value Get-PSConsoleHostHistory
+
 function Get-CxxuPsModuleVersoin
 {
     param (

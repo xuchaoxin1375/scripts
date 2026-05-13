@@ -7,6 +7,9 @@ Cloudflare 批量修改 DNS A 记录脚本
   3. 支持 dry-run 模式预览变更
   4. 支持按旧 IP 过滤（只修改特定旧 IP 的记录）
   5. 支持多线程并发加速
+
+用例:
+python .../cf_update_dns_ip.py --new-ip new_ip --whitelist white_list.txt --api-key your_api_key --email example_cf@mail.com
 """
 
 import requests
