@@ -3,7 +3,7 @@ from scrapling.fetchers import StealthySession
 
 # 定义一个本地文件夹路径用于存放浏览器数据
 # 这样即便 Python 程序结束，下次运行依然能读取到之前的验证状态
-my_browser_data = os.path.abspath("C:/tmp/my_scraping_profile")
+my_browser_data = os.path.abspath("C:/temp/my_scraping_profile")
 
 # 测试链接(至少2条)
 # url = "https://www.lascoautoparts.com/oem-parts/ford-oil-filter-4h2z6731aa"

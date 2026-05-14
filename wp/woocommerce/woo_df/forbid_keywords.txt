@@ -6,6 +6,7 @@ Designs For Health
 Hexclad
 Simpson
 Laverne
+Gerber
 v-comb
 V-Comb
 V-COMB

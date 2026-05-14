@@ -1,3 +1,14 @@
+"""
+LocoySpider Http(s) request plugin.
+拦截火车头采集器的请求,使用自定义的请求(抓取)方案进行请求,可以提高请求成功率,尤其是带有对普通爬虫403检测到网站的采集.
+Prerequisites:
+    curl_cffi,scrapling套件(详情另见额外文档)
+    本地(或自建)前缀为http://ok/的中转服务网站(要求始终返回200 ok)
+将采集器的请求url用上述前缀缀包装,达到让采集器交出请求控制权的目的(变通的方法.)
+然后传递给本插件自动判断并处理.
+
+"""
+
 import importlib  # noqa: F401 (动态导入)
 import sys
 from urllib import parse
@@ -13,8 +24,10 @@ from scrapling.fetchers import StealthyFetcher, StealthySession
 # import curl_cffi
 import logging
 
+VERSION = "2026.05.14"
+
 # fetcher模式:auto,curl(curl_cffi),stealthy,None
-# 默认使用auto模式,如果curl_cffi无法通过,则使用stealthy
+# 默认使用auto模式,如果curl_cffi无法通过,则自动切换到stealthy方案
 FETCH_MODE = "auto"
 # 定义一个本地文件夹路径用于存放浏览器数据,这样即便 Python 程序结束，下次运行依然能读取到之前的验证状态
 # session共用效率更高,但是受限于采集器插件形式在,难以实现(每个url采集都是独立启动插件)条件下,复用cookie等信息,以尽量减少人机验证.
@@ -23,15 +36,21 @@ TEMP = os.environ.get("TEMP")
 LOG_DIR = "C:/temp/spider"
 # 确保日志文件所在目录存在.
 os.makedirs(LOG_DIR, exist_ok=True)
+PROXY_PORT = 8800
+HEADLESS=False
+SAVE_REQ_RES = False  # 是否将请求保存到文件中(用于开发维护时的对比).TODO
 BROWSER_PROFILE = os.path.abspath(
     r"C:/temp/my_scrapling_profile"
 )  # 如果缺少权限,可以更换文件夹为: TEMP/scrapling_profile
-
+# 单一代理
+PROXY = f"http://localhost:{PROXY_PORT}"
 # 设置插件内部的代理(todo:使用ip池轮换器rotator)
-PROXIES_DICT = {"http": "http://localhost:8800", "https": "http://localhost:8800"}
+PROXIES_DICT = {
+    "http": f"http://localhost:{PROXY_PORT}",
+    "https": f"http://localhost:{PROXY_PORT}",
+}
 PROXIES = ProxySpec(**PROXIES_DICT)
 # PROXIES = PROXIES_DICT
-PROXY = "http://localhost:8800"
 
 # 代理字典格式
 # proxies = {
@@ -45,15 +64,17 @@ logging.basicConfig(
     filename="C:/temp/spider/log.txt",
     filemode="w",  # 默认是a,追加.
     encoding="utf-8",
-    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+    format="%(asctime)s - %(levelname)s - %(funcName)s - %(name)s - %(message)s",
     datefmt=datefmt1,
 )
 logger = logging.getLogger(__name__)
 info = logger.info
+error = logger.error
 # 获取命令行参数列表
 args = sys.argv
 
-info(args)
+info(f"LocoySpider Http(s) request plugin.Version:{VERSION}")
+# info(args)
 
 if len(sys.argv) != 5:
     print(len(sys.argv))
@@ -117,13 +138,12 @@ else:
     # 以下是用户编写代码区域
     if PageType == "Save":
         if LabelArray["标题"]:
-            LabelArray["标题"] = "这是Python插件处理的标题x"
+            LabelArray["标题"] = "这是Python插件处理的标题"
         # if LabelArray["log"]:
         #     LabelArray["log"] = "这是Python插件处理的日志"
         # LabelArray["log"] = "这是Python插件处理的日志"
     else:
-        info(f"处理的url:{LabelUrl}")
-        # >>>>>>>>
+        info(f"原始的url:{LabelUrl}")
         url = LabelUrl
         # url = "https://www.momox-shop.fr/tad-hills-duck-goose-find-a-pumpkin-pappbilderbuch-M0037585813X.html"
         # url='https://nissan.worldoemparts.com/oem-parts/nissan-2023-2024-nissan-armada-floor-mats-all-season-black-t99e15zw1b'
@@ -135,38 +155,35 @@ else:
             # LabelArray["Html"] = msg
         else:
             url = url[(url.find("https://")) :]
+            info(f"移除包装后的链接:{url}")
 
             def curl_request():
-                info(f"Attempting curl_request to: {url}")
+                info(f"Attempting curl_cffi request to: {url}")
                 try:
                     response = requests.get(
                         url,
-                        # proxies=PROXIES,
-                        # impersonate="chrome120",
+                        proxies=PROXIES,
+                        impersonate="chrome",
                         timeout=30,
                     )
-                    # 检查 HTTP 状态码是否为 200
-                    # if response.status_code == 200:
-                    #     print("curl_request success (200)")
-                    #     return response.text
-                    # else:
-                    #     print(f"curl_request failed with status: {response.status_code}")
-                    #     return None
 
                     info(f"curl request status_code:{response.status_code}")
                     response.raise_for_status()  # 请求失败时主动抛出异常
-                    return response.text
+                    res = response.text
+                    # info(res)
+                    return res
 
                 except Exception as e:
-                    info(f"curl_request error: {e},try another schema.")
-                    return None
+                    msg = f"curl_request error: {e},try another schema."
+                    error(msg)
+                    return msg
 
             def stealthy_fetch():
                 try:
                     if BROWSER_PROFILE:
                         with StealthySession(
                             solve_cloudflare=True,
-                            headless=False,
+                            headless=HEADLESS,
                             proxy=PROXY,
                             user_data_dir=BROWSER_PROFILE,  # 关键参数：持久化存储路径
                         ) as session:
@@ -178,13 +195,17 @@ else:
                             # timeout=30,
                             solve_cloudflare=True,
                             # real_chrome=True,
-                            headless=False,
+                            headless=HEADLESS,
                         )
                     # return page
-                    return page.body.decode("utf-8")
+                    # res = page.body.decode("utf-8")
+                    res=page.html_content
+                    info(f"page.body:{res}")
+                    return res
                 except Exception as e:
-                    info(f"scrapling stealthy request failed:{e}")
-                    return None
+                    msg = f"scrapling stealthy request failed:{e}"
+                    error(msg)
+                    return msg
 
             if FETCH_MODE == "auto":
                 result = curl_request()
