@@ -36,7 +36,7 @@ TEMP = os.environ.get("TEMP")
 LOG_DIR = "C:/temp/spider"
 # 确保日志文件所在目录存在.
 os.makedirs(LOG_DIR, exist_ok=True)
-PROXY_PORT = 8800
+PROXY_PORT = 10808
 HEADLESS=False
 SAVE_REQ_RES = False  # 是否将请求保存到文件中(用于开发维护时的对比).TODO
 BROWSER_PROFILE = os.path.abspath(
@@ -176,7 +176,7 @@ else:
                 except Exception as e:
                     msg = f"curl_request error: {e},try another schema."
                     error(msg)
-                    return msg
+                    return None
 
             def stealthy_fetch():
                 try:
@@ -205,10 +205,13 @@ else:
                 except Exception as e:
                     msg = f"scrapling stealthy request failed:{e}"
                     error(msg)
-                    return msg
+                    return None
 
             if FETCH_MODE == "auto":
                 result = curl_request()
+                # result是否以error开头:
+                # if result.startswith("error"):
+                #     result = stealthy_fetch()
                 if result is None:
                     result = stealthy_fetch()
 
