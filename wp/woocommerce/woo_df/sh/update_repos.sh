@@ -6,7 +6,8 @@
 # 然后可以按照需要,统一执行服务器配置文件修改;
 
 # mkdir -p -v $HOME/repos && git clone --depth 1 https://gitee.com/xuchaoxin1375/scripts.git $HOME/repos/scripts
-
+# 直接更新此脚本:(如果某次更新引入错误导致更新脚本不可用时,通过下面的命令恢复)
+# curl -SL https://raw.githubusercontent.com/xuchaoxin1375/scripts/9b0c50fd8497a54fb7e9d1ce58129d3c4bd05a1a/wp/woocommerce/woo_df/sh/update_repos.sh -o $sh/update_repos.sh
 # 强制更新代码(放弃已有更改)
 #git fetch origin
 #git reset --hard origin/main
