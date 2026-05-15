@@ -1488,12 +1488,16 @@ function Deploy-Typora
     [CmdletBinding(DefaultParameterSetName = 'windows')]
     param(
         # [switch]$InstalledByScoop,
-        $TyporaHome = "$scoop_home\apps\typora\current",
-        $TyporaConfig = "$home\AppData\Roaming\typora\conf",
+
+        # typora安装目录下的主题和配置文件(包含快捷键等)
+        $TyporaHome = "$scoop_home\apps\typora\current",# for windows
+        $TyporaConfig = "$home\AppData\Roaming\typora\conf", # for windows
+        # 其他
         [parameter(ParameterSetName = 'windows')]
         [switch]$PatchWinmm,
         [parameter(ParameterSetName = 'windows')]
         [switch]$OpenWithTypora,
+
         [parameter(ParameterSetName = 'macos')]
         [switch]$InstallByBrew
     )
@@ -1555,8 +1559,10 @@ function Deploy-Typora
         $items = @($Typora_Themes , $TyporaConfig)
         # 移除原有的相关目录,以便能够创建新的符号链接
         $items | ForEach-Object {
-        
-            Remove-Item -Path $_ -Recurse -Force -Verbose
+            if(Test-Path $_)
+            {
+                Remove-Item -Path $_ -Recurse -Force -Verbose
+            }
         } 
     }
 
@@ -1565,13 +1571,14 @@ function Deploy-Typora
     # 按照原来的位置创建新的符号链接
     # $items | ForEach-Object {
     # } 
+    $Typora_Themes_backup = "$configs/Typora/themes"
+    $TyporaConfig_backup = "$configs/Typora/conf"
     if($InstallByBrew)
     {
         $TyporaHome = "$HOME/Library/Application Support/abnerworks.Typora/themes"
         Move-Item $TyporaHome "${TyporaHome}.bak"
         # 配置快捷键等.
         # $TyporaConfig=""
-        $Typora_Themes_backup = "$configs/Typora/themes"
         New-Item -ItemType SymbolicLink -Path $TyporaHome -Target $Typora_Themes_backup -Verbose
 
     }
