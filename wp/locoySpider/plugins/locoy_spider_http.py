@@ -30,32 +30,37 @@ from scrapling.fetchers import StealthyFetcher, StealthySession
 import logging
 
 VERSION = "2026.05.14"
+ENABLE = 1 # 是否启用插件(启用为True或1,关闭为False或0)
 
 # fetcher模式:auto,curl(curl_cffi),stealthy,None
 # 默认使用auto模式,如果curl_cffi无法通过,则自动切换到stealthy方案
 FETCH_MODE = "auto"
+
 # 定义一个本地文件夹路径用于存放浏览器数据,这样即便 Python 程序结束，下次运行依然能读取到之前的验证状态
 # session共用效率更高,但是受限于采集器插件形式在,难以实现(每个url采集都是独立启动插件)条件下,复用cookie等信息,以尽量减少人机验证.
 # 访问环境变量:
 TEMP = os.environ.get("TEMP")
+
+PROXY_PORT = 8800
+HEADLESS = False
+SAVE_REQ_RES = False  # 是否将请求保存到文件中(用于开发维护时的对比).TODO
 LOG_DIR = "C:/temp/spider"
+
 # 确保日志文件所在目录存在.
 os.makedirs(LOG_DIR, exist_ok=True)
-PROXY_PORT = 10808
-HEADLESS=False
-SAVE_REQ_RES = False  # 是否将请求保存到文件中(用于开发维护时的对比).TODO
 BROWSER_PROFILE = os.path.abspath(
     r"C:/temp/my_scrapling_profile"
 )  # 如果缺少权限,可以更换文件夹为: TEMP/scrapling_profile
+
 # 单一代理
 PROXY = f"http://localhost:{PROXY_PORT}"
+
 # 设置插件内部的代理(todo:使用ip池轮换器rotator)
 PROXIES_DICT = {
     "http": f"http://localhost:{PROXY_PORT}",
     "https": f"http://localhost:{PROXY_PORT}",
 }
 PROXIES = ProxySpec(**PROXIES_DICT)
-# PROXIES = PROXIES_DICT
 
 # 代理字典格式
 # proxies = {
@@ -148,19 +153,27 @@ else:
         #     LabelArray["log"] = "这是Python插件处理的日志"
         # LabelArray["log"] = "这是Python插件处理的日志"
     else:
+        # 这个部分只能处理LabelArray['Html'],其他标签这里处理不了,在PageType=="Save"中才能处理.
         info(f"原始的url:{LabelUrl}")
         url = LabelUrl
         # url = "https://www.momox-shop.fr/tad-hills-duck-goose-find-a-pumpkin-pappbilderbuch-M0037585813X.html"
         # url='https://nissan.worldoemparts.com/oem-parts/nissan-2023-2024-nissan-armada-floor-mats-all-season-black-t99e15zw1b'
+        # debug:
+        # info(f"LabelArray 类型:{type(LabelArray)}") # <class 'dict'>
+        # 遍历字典:
+        # for key, value in LabelArray.items():
+        #     info(f"key:{key},value:{value}")
 
         # 移除url中https://(不含)之前的内容:
-        if not url.startswith("http://ok"):
+        # if not url.startswith("http://ok"):
+        # if False:  # debug:
+        if not ENABLE:
             msg = f"普通url,跳过特殊处理:{url}"
             info(msg)
             # LabelArray["Html"] = msg
         else:
-            url = url[(url.find("https://")) :]
-            info(f"移除包装后的链接:{url}")
+            # url = url[(url.find("https://")) :]
+            # info(f"移除包装后的链接:{url}")
 
             def curl_request():
                 info(f"Attempting curl_cffi request to: {url}")
@@ -204,7 +217,7 @@ else:
                         )
                     # return page
                     # res = page.body.decode("utf-8")
-                    res=page.html_content
+                    res = page.html_content
                     info(f"page.body:{res}")
                     return res
                 except Exception as e:

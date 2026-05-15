@@ -163,7 +163,17 @@ def parse_args():
     利用parser.add_argument()方法添加命令行参数，并解析命令行参数
     长选项--开头,例如--workers,指出参数将会绑定到相应的变量上,经过parse_args()解析,将构造对应的参数包
     """
-    parser = argparse.ArgumentParser(description="多线程图片下载器")
+    # 使用说明(用于打印给用户)
+    desc = """
+
+    多方案集成的强力图片下载器
+    
+    Examples:
+        # 假设当前shell中配置了$var所需的环境变量: 
+        python $pys/image_downloader.py -c -n -R auto -k  -rs 1000 800  --output-dir $Desktop/test_img_down -f  $downloads/p4.csv -F  -w 2  -U bro
+    
+    """
+    parser = argparse.ArgumentParser(description=desc)
     # 关于输入的参数(图片链接)的若干形式
     parser.add_argument(
         "-i",
@@ -227,9 +237,9 @@ def parse_args():
         "-U",
         "--download-method",
         default="request",
-        choices=["request", "curl", "iwr"] + BROWSER_DOWNLOADER,
+        choices=["request", "curl", "iwr"] + BROWSER_DOWNLOADER + ["scrapling"],
         # action="store_true",
-        help=f"使用python 请求或外部工具下载图片(request,curl,iwr)以及浏览器方案playwright,统一词{BROWSER_DOWNLOADER}",
+        help=f"使用python 请求或外部工具下载图片(request,curl,iwr,browser,scrapling)以及浏览器方案playwright,同义词{BROWSER_DOWNLOADER},scrapling是更强劲的浏览器方案",
     )
     parser.add_argument("-w", "--workers", type=int, default=10, help="下载线程数")
     parser.add_argument(

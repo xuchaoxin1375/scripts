@@ -1,6 +1,6 @@
 """
-调用浏览器下载资源
-注意:部分情况(某些网站,比如https://www.jegs.com)需要系统代理到合适的ip才能下载
+调用scrapling的stealthy浏览器下载资源
+使用scrapling框架的AsyncStealthySession实现，具有更好的反检测能力
 """
 
 import asyncio
@@ -8,16 +8,15 @@ import logging
 import os
 import random
 import re
-import shutil
 import unicodedata
 from typing import Any, Dict, List, Optional, Tuple, Union
-from imgcompressor import ImageCompressor  # 假设 imgcompressor.py 在同一环境
+from imgcompressor import ImageCompressor
 from urllib.parse import urlparse
-from playwright.async_api import BrowserContext, Page, async_playwright
+from scrapling.fetchers import AsyncStealthySession
 
 PROXY = "http://127.0.0.1:8800"  # 代理设置是可选的,根据实际情况修改
 # 配置一个基本的logger，避免在外部调用时没有handler
-logger = logging.getLogger("browser_downloader")
+logger = logging.getLogger("scrapling_downloader")
 if not logger.handlers:
     logger.setLevel(logging.INFO)
     handler = logging.StreamHandler()
@@ -49,19 +48,19 @@ def _guess_filename_from_url(url: str, default_name: str = "index") -> str:
     if not filename or filename == "/":
         filename = default_name
 
-    # 确保有扩展名，如果 URL 中没有，Playwright 下载的默认行为是根据 Content-Type
-    # 但此处我们无法提前知道 Content-Type，因此如果 URL 路径中没有点号，则假定为 .html
+    # 确保有扩展名，如果 URL 中没有，默认假定为 .html
     if "." not in filename:
         filename = filename + ".html"
 
     return _sanitize_filename(filename)
 
 
-class BrowserDownloader:
+class ScraplingDownloader:
     """
-    基于 Playwright 的网络资源下载器。
+    基于 Scrapling StealthySession 的网络资源下载器。
     专用于下载那些需要完整浏览器环境才能获取的资源 (如动态加载的图片或受保护的网页内容)。
     支持指定输出路径、代理配置和并发控制。
+    使用 AsyncStealthySession 实现更好的反检测能力。
     """
 
     def __init__(
@@ -75,6 +74,11 @@ class BrowserDownloader:
         ic: ImageCompressor | None = None,
         compress_quality: int = 0,
         output_format: str = "webp",
+        # Scrapling 特定参数
+        solve_cloudflare: bool = True,
+        block_webrtc: bool = True,
+        hide_canvas: bool = True,
+        real_chrome: bool = True,
     ):
         """
         初始化下载器。
@@ -86,12 +90,12 @@ class BrowserDownloader:
             max_concurrency: 最大并发工作线程数。
             max_retries: 单个 URL 下载失败后的最大重试次数。
             ic: 图片压缩器实例。
-            compress_quality: 图片压缩质量 (0-100)。0 表示不压缩 (或遵循 quality_rule)。
-            quality_rule: 基于文件大小的压缩规则 (如 '1M=80, 500K=90')。
+            compress_quality: 图片压缩质量 (0-100)。0 表示不压缩。
             output_format: 图片压缩后的输出格式 (如 'webp', 'jpeg')。
-            remove_original: 图片压缩后是否移除原始文件。
-            resize_threshold: 仅当图片宽度或高度超过此阈值时才进行调整大小 (宽, 高)。
-            fake_format: 是否允许压缩时伪造文件名扩展名 (如将 JPG 压缩为 WEBP 但保留 .jpg 扩展)。
+            solve_cloudflare: 是否自动解决 Cloudflare 验证。
+            block_webrtc: 是否阻止 WebRTC 泄露。
+            hide_canvas: 是否隐藏 canvas 指纹。
+            real_chrome: 是否使用真实 Chrome 浏览器。
         """
         self.headless = headless
         self.timeout = timeout
@@ -102,6 +106,11 @@ class BrowserDownloader:
         self.ic = ic
         self.compress_quality = compress_quality
         self.output_format = output_format
+        # Scrapling 特定参数
+        self.solve_cloudflare = solve_cloudflare
+        self.block_webrtc = block_webrtc
+        self.hide_canvas = hide_canvas
+        self.real_chrome = real_chrome
 
     @staticmethod
     def _read_proxies(proxy_input: Optional[Union[str, List[str]]]) -> List[str]:
@@ -133,28 +142,26 @@ class BrowserDownloader:
         # 认为已经是代理列表
         return [p for p in proxy_input if p]
 
-    def _get_proxy_config(
-        self, proxy_list: List[str], worker_id: int
-    ) -> Optional[Dict[str, str]]:
-        """根据 worker_id 和代理列表获取 Playwright 代理配置。"""
+    def _get_proxy_config(self, proxy_list: List[str], worker_id: int) -> Optional[str]:
+        """根据 worker_id 和代理列表获取代理配置。"""
         if not proxy_list:
             return None
 
-        proxy_url = proxy_list[worker_id % len(proxy_list)]
-        return {"server": proxy_url}
+        return proxy_list[worker_id % len(proxy_list)]
 
     async def _download_single_url(
         self,
-        page: Page,
+        session: AsyncStealthySession,
         url: str,
         output_path: str,
         user_agent: Optional[str] = None,
         retry_count: int = 0,
         proxy_info: str = "直连",
         progress_info: Optional[str] = None,
+        proxy_url: Optional[str] = None,
     ) -> bool:
         """
-        核心下载逻辑：下载单个 URL 并保存到指定路径 (复用 Page)。
+        核心下载逻辑：下载单个 URL 并保存到指定路径 (复用 Session)。
         下载完成后自动进行图片压缩处理（如启用）。
         """
         start_time = asyncio.get_event_loop().time()
@@ -179,31 +186,34 @@ class BrowserDownloader:
                 f"🚀{progress_info if progress_info else ''} 开始请求: {display_url} [代理: {proxy_info}] -> {output_path} ".strip()
             )
 
-            # 使用复用的 page 发起请求
-            # wait_until="networkidle" 确保页面完全加载/动态资源加载
-            response = await page.goto(
-                url, timeout=self.timeout * 1000, wait_until="networkidle"
-            )
+            # 准备 fetch 参数
+            fetch_kwargs = {
+                "timeout": self.timeout * 1000,  # 转换为毫秒
+                "network_idle": True,  # 等待网络空闲
+            }
+            # ty 比 pylance严格,这里可能会警告类型
+            
+            # 如果指定了 user_agent，添加到 extra_headers
+            if user_agent:
+                fetch_kwargs["extra_headers"] = {"User-Agent": user_agent}
+
+            # 如果指定了代理，添加到 fetch 参数
+            if proxy_url:
+                fetch_kwargs["proxy"] = proxy_url
+
+            # 使用复用的 session 发起请求
+            response = await session.fetch(url, **fetch_kwargs)
 
             if not response:
                 raise Exception("未获取到有效响应 (Response is None)")
 
-            if response.status >= 400:
-                if response.status == 404:
-                    logger.error(
-                        f"404 未找到: {display_url}，直接放弃不重试。",
-                        extra={"progress": "FAIL"},
-                    )
-                    return False
-                else:
-                    raise Exception(f"HTTP 状态码错误: {response.status}")
-
+            # 获取 content-type
             content_type = (
                 response.headers.get("content-type", "").split(";")[0].strip().lower()
             )
 
             # 获取原始数据流
-            data_to_write = await response.body()
+            data_to_write = response.body
 
             # 写入文件
             with open(output_path, "wb") as f:
@@ -249,9 +259,15 @@ class BrowserDownloader:
                     extra={"progress": f"RETRY {retry_count + 1}"},
                 )
                 await asyncio.sleep(adjust_delay)
-                # 重试时继续使用同一个 page 对象
+                # 重试时继续使用同一个 session 对象
                 return await self._download_single_url(
-                    page, url, output_path, user_agent, retry_count + 1, proxy_info
+                    session,
+                    url,
+                    output_path,
+                    user_agent,
+                    retry_count + 1,
+                    proxy_info,
+                    proxy_url,
                 )
             else:
                 logger.error(
@@ -262,14 +278,15 @@ class BrowserDownloader:
 
     async def _worker(
         self,
-        page: Page,
+        session: AsyncStealthySession,
         queue: asyncio.Queue,
         proxy_info: str,
+        proxy_url: Optional[str],
         completed_count: List[int],
         total_tasks: int,
         lock: asyncio.Lock,
     ) -> None:
-        """工作线程，复用 page 对象从队列中获取任务并执行下载。进度信息融合到请求提示语句。"""
+        """工作线程，复用 session 对象从队列中获取任务并执行下载。进度信息融合到请求提示语句。"""
         while True:
             try:
                 url, output_path, user_agent = await queue.get()
@@ -279,12 +296,13 @@ class BrowserDownloader:
                     progress_info = f"[{completed_count[0]}/{total_tasks}]"
                 try:
                     await self._download_single_url(
-                        page,
+                        session,
                         url,
                         output_path,
                         user_agent,
                         proxy_info=proxy_info,
                         progress_info=progress_info,
+                        proxy_url=proxy_url,
                     )
                     if self.delay_range[0] > 0 or self.delay_range[1] > 0:
                         delay = random.uniform(*self.delay_range)
@@ -301,7 +319,7 @@ class BrowserDownloader:
         tasks: List[Tuple[str, str, Optional[str]]],
         proxy_input: Optional[Union[str, List[str]]] = None,
     ):
-        """异步运行并发下载任务，实现 Context 和 Page 复用。"""
+        """异步运行并发下载任务，实现 Session 复用。"""
         proxy_list = self._read_proxies(proxy_input)
         proxy_configs = proxy_list if proxy_list else [""]
 
@@ -309,38 +327,30 @@ class BrowserDownloader:
             f"配置: 并发={self.max_concurrency}, 代理池大小={len(proxy_configs)}"
         )
 
-        async with async_playwright() as p:
-            launch_options: Dict[str, Any] = {
-                "headless": self.headless,
-                "args": [
-                    "--disable-blink-features=AutomationControlled",
-                ],
-            }
-
-            browser = await p.chromium.launch(**launch_options)
-
+        # 使用 AsyncStealthySession，max_pages 用于控制并发标签页数量
+        async with AsyncStealthySession(
+            headless=self.headless,
+            solve_cloudflare=self.solve_cloudflare,
+            block_webrtc=self.block_webrtc,
+            hide_canvas=self.hide_canvas,
+            real_chrome=self.real_chrome,
+            timeout=self.timeout * 1000,
+            max_pages=self.max_concurrency,
+        ) as session:
             queue: asyncio.Queue[Tuple[str, str, Optional[str]]] = asyncio.Queue()
             for task in tasks:
                 await queue.put(task)
 
             actual_workers = min(self.max_concurrency, len(tasks))
-            worker_slots: List[Tuple[BrowserContext, Page, str]] = []
+            worker_sessions: List[Tuple[AsyncStealthySession, str]] = []
 
-            for i in range(actual_workers):
-                worker_proxy_url = proxy_configs[i % len(proxy_configs)]
-                default_user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                context_args: Dict[str, Any] = {
-                    "user_agent": default_user_agent,
-                    "viewport": {"width": 1366, "height": 768},
-                }
-                if worker_proxy_url:
-                    context_args["proxy"] = {"server": worker_proxy_url}
-                    p_info = worker_proxy_url
-                else:
-                    p_info = "环境代理"
-                ctx = await browser.new_context(**context_args)
-                pg = await ctx.new_page()
-                worker_slots.append((ctx, pg, p_info))
+            # 由于 AsyncStealthySession 本身支持并发请求（通过 max_pages），
+            # 我们不需要创建多个 session，而是使用同一个 session 并发请求
+            # 但为了支持代理轮换，我们需要为每个 worker 分配不同的代理配置
+            # 这里我们简化处理：如果需要代理轮换，在 fetch 时动态设置 proxy 参数
+            # 由于 scrapling 的 session 级别 proxy 配置限制，我们采用以下策略：
+            # - 如果有代理列表，我们在每个请求时动态设置 proxy
+            # - 如果没有代理，使用默认配置
 
             # 进度计数器和锁
             completed_count = [0]  # 用列表包裹以便可变
@@ -348,11 +358,21 @@ class BrowserDownloader:
             lock = asyncio.Lock()
 
             workers = []
-            for ctx, pg, p_info in worker_slots:
+            for i in range(actual_workers):
+                worker_proxy_url = (
+                    proxy_configs[i % len(proxy_configs)] if proxy_configs else None
+                )
+                p_info = worker_proxy_url if worker_proxy_url else "环境代理"
                 workers.append(
                     asyncio.create_task(
                         self._worker(
-                            pg, queue, p_info, completed_count, total_tasks, lock
+                            session,
+                            queue,
+                            p_info,
+                            worker_proxy_url,
+                            completed_count,
+                            total_tasks,
+                            lock,
                         )
                     )
                 )
@@ -363,13 +383,6 @@ class BrowserDownloader:
                 w.cancel()
             await asyncio.gather(*workers, return_exceptions=True)
 
-            for ctx, pg, _ in worker_slots:
-                try:
-                    await pg.close()
-                    await ctx.close()
-                except Exception:
-                    pass
-
             logger.info("所有下载任务已完成。")
 
     def batch_download(
@@ -379,7 +392,7 @@ class BrowserDownloader:
         output_dir: Optional[str] = None,
     ):
         """
-        [公共方法] 通过 Playwright 浏览器环境批量下载网络资源。
+        [公共方法] 通过 Scrapling StealthySession 批量下载网络资源。
 
         所有下载参数 (headless, timeout, concurrency, retries, delay) 继承自 Downloader 实例。
 
@@ -430,7 +443,7 @@ class BrowserDownloader:
         retries: Optional[int] = None,
     ) -> None:
         """
-        [公共方法] 通过 Playwright 浏览器环境下载单个网络资源。
+        [公共方法] 通过 Scrapling StealthySession 下载单个网络资源。
 
         注意: 此方法将临时设置 max_concurrency=1 且 delay_range=(0.0, 0.0) 执行下载。
 
@@ -439,7 +452,7 @@ class BrowserDownloader:
             output_path: 指定保存文件的完整路径。如果提供，它将覆盖 use_remote_name 的逻辑。
             use_remote_name: 是否使用 URL 猜测的文件名作为保存文件名。
             output_dir_for_remote_name: 如果 use_remote_name 为 True，指定保存的目录。
-            user_agent: 可选，为此次请求设置 User-Agent 字符串 (目前 Playwright 在 Context 级别设置，此处保留以备将来使用)。
+            user_agent: 可选，为此次请求设置 User-Agent 字符串。
             proxy_input: 代理配置 (同 batch_download)。
             retries: 可选，覆盖 Downloader 实例的 max_retries 设置。
         """
@@ -467,7 +480,7 @@ class BrowserDownloader:
 
         # 3. 临时覆盖并发和延迟，创建临时 Downloader 实例来执行
         # 使用 self 的配置，但固定并发=1，延迟=(0.0, 0.0)
-        temp_downloader = BrowserDownloader(
+        temp_downloader = ScraplingDownloader(
             headless=self.headless,
             timeout=self.timeout,
             delay_range=(0.0, 0.0),  # 单个任务不需要延迟
@@ -475,11 +488,11 @@ class BrowserDownloader:
             max_retries=retries if retries is not None else self.max_retries,
             # 继承图片压缩配置
             compress_quality=self.compress_quality,
-            # quality_rule=self.quality_rule,
-            # output_format=self.output_format,
-            # remove_original=self.remove_original,
-            # resize_threshold=self.resize_threshold,
-            # fake_format=self.fake_format,
+            # 继承 Scrapling 特定配置
+            solve_cloudflare=self.solve_cloudflare,
+            block_webrtc=self.block_webrtc,
+            hide_canvas=self.hide_canvas,
+            real_chrome=self.real_chrome,
         )
 
         try:
@@ -492,90 +505,111 @@ class BrowserDownloader:
             logger.error(f"下载任务发生致命错误: {e}")
 
 
-# --- 原始的测试函数现在使用 BrowserDownloader 实例 ---
+# --- 测试函数 ---
 
 
 def test_batch_download():
     """测试多个链接批量下载的情况"""
-    test_url_1 = (
-        "https://images.bike24.com/media/1020/i/mb/fc/0d/06/100048-00-d-163801.jpg"
-    )
-    test_url_2 = "https://covers-v2.ryefieldbooks.com/in-print-books/9783161491184"
-    test_url_3 = "https://playwright.dev/"
-    test_url_21 = "https://www.bigw.com.au/medias/sys_master/images/images/h6a/h5f/100887801561118.jpg"
+    image_urls = [
+        "https://www.gosupps.com/media/catalog/product/cache/25/image/9df78eab33525d08d6e5fb8d27136e95/6/1/61Mfc8jVlQL.jpg",
+        "https://www.gosupps.com/media/catalog/product/cache/25/image/9df78eab33525d08d6e5fb8d27136e95/5/1/51Em4E1TwPL.jpg",
+        # ... 其他图片URL ...
+        # "https://www.velogear.com.au/media/catalog/product/cache/94ef66d09f7a7e8c63df55350acf28cd/m/a/maxxis_flyweight_26_tube_fv.jpg",
+    ]
+    # 输出目录
+    output_dir = "./scrapling_downloads"
 
-    output_dir = "./browser_downloads_optimized"
-    output_path_1 = os.path.join(output_dir, "bike24_image.jpg")
-    output_path_2 = os.path.join(output_dir, "ryefieldbooks_cover.webp")
-    output_path_3 = os.path.join(output_dir, "playwright_doc.html")
-    output_path_21 = os.path.join(output_dir, "SK0000004-U-0.jpg")
+    # test_url_1 = (
+    #     "https://images.bike24.com/media/1020/i/mb/fc/0d/06/100048-00-d-163801.jpg"
+    # )
+    # test_url_2 = "https://covers-v2.ryefieldbooks.com/in-print-books/9783161491184"
+    # test_url_3 = "https://playwright.dev/"
+    # test_url_21 = "https://www.bigw.com.au/medias/sys_master/images/images/h6a/h5f/100887801561118.jpg"
 
+    # output_path_1 = os.path.join(output_dir, "bike24_image.jpg")
+    # output_path_2 = os.path.join(output_dir, "ryefieldbooks_cover.webp")
+    # output_path_3 = os.path.join(output_dir, "playwright_doc.html")
+    # output_path_21 = os.path.join(output_dir, "SK0000004-U-0.jpg")
+
+    # download_tasks: list[tuple[str, str]] = [
+    #     (test_url_1, output_path_1),
+    #     (test_url_2, output_path_2),
+    #     (test_url_3, output_path_3),
+    #     (test_url_21, output_path_21),
+    # ]
     download_tasks: list[tuple[str, str]] = [
-        (test_url_1, output_path_1),
-        (test_url_2, output_path_2),
-        (test_url_3, output_path_3),
-        (test_url_21, output_path_21),
+        (url, os.path.join(output_dir, _sanitize_filename(url))) for url in image_urls
     ]
 
     # 清理旧文件和目录以便测试
     if os.path.exists(output_dir):
+        import shutil
+
         shutil.rmtree(output_dir, ignore_errors=True)
     os.makedirs(output_dir, exist_ok=True)
 
     # 1. 实例化 Downloader，设置公共配置
-    downloader = BrowserDownloader(
+    downloader = ScraplingDownloader(
         headless=False,
         max_concurrency=3,
         delay_range=(0.5, 1.0),
         max_retries=1,
-        # quality_rule="",
+        solve_cloudflare=True,
+        block_webrtc=True,
     )
 
-    print("--- 启动并发下载任务 (无头模式，并发=3，Page 复用) ---")
+    print("--- 启动并发下载任务 (无头模式，并发=3，Session 复用) ---")
 
     # 2. 调用实例方法进行下载
     downloader.batch_download(
         tasks=download_tasks,
         proxy_input=PROXY,
-        output_dir=output_dir,  # 即使这里指定了 output_dir，但因为 tasks 中是完整路径，它不会生效
+        output_dir=output_dir,
     )
 
 
 def test_single_download():
     """测试单个链接下载的情况"""
+    # 图片
     test_url_1 = (
-        "https://images.bike24.com/media/1020/i/mb/fc/0d/06/100048-00-d-163801.jpg"
+        "https://www.velogear.com.au/media/catalog/product/cache/94ef66d09f7a7e8c63df55350acf28cd/m/a/maxxis_flyweight_26_tube_fv.jpg"
+        # "https://images.bike24.com/media/1020/i/mb/fc/0d/06/100048-00-d-163801.jpg"
+        # "https://www.gosupps.com/media/catalog/product/cache/25/image/9df78eab33525d08d6e5fb8d27136e95/6/1/61Mfc8jVlQL.jpg"
     )
-    test_url_4 = "https://www.baidu.com"
-    output_dir = "./browser_downloads_single_test"
+    # 网页(html)
+    # test_url_html = "https://www.baidu.com"
+
+    output_dir = "./scrapling_downloads"
 
     if os.path.exists(output_dir):
+        import shutil
+
         shutil.rmtree(output_dir, ignore_errors=True)
     os.makedirs(output_dir, exist_ok=True)
 
-    # 1. 实例化 Downloader，设置公共配置 (例如，全局设置 headless=True)
-    downloader = BrowserDownloader(
-        headless=False,  # 可以全局设置
+    # 1. 实例化 Downloader，设置公共配置
+    downloader = ScraplingDownloader(
+        headless=False,
         timeout=60,
+        solve_cloudflare=True,
     )
 
     print("\n\n=== 示例 1: 指定完整 output_path (图片) ===")
-    output_path_1 = os.path.join(output_dir, "bike24_test_011234.jpg")
+    output_path_1 = os.path.join(output_dir, "img_by_scrapling.jpg")
 
     # 2. 调用实例方法进行下载
     downloader.single_download(
         url=test_url_1,
         output_path=output_path_1,
-        # headless=False, # 可以继承或覆盖
-        # timeout=60, # 继承或覆盖
+        proxy_input=PROXY,
     )
 
-    print("\n\n=== 示例 2: 使用 use_remote_name 猜测文件名 (HTML) ===")
-    downloader.single_download(
-        url=test_url_4,
-        use_remote_name=True,
-        output_dir_for_remote_name=output_dir,
-    )
+    # print("\n\n=== 示例 2: 使用 use_remote_name 猜测文件名 (HTML) ===")
+    # downloader.single_download(
+    #     url=test_url_html,
+    #     use_remote_name=True,
+    #     output_dir_for_remote_name=output_dir,
+    # )
 
 
 # --- 简单使用示例 ---

@@ -24,7 +24,6 @@ Todo: 允许忽略证书过期的下载
     # 命令行使用
     # python img_downloader.py -i urls.txt -o ./images -w 10
 """
-
 import concurrent.futures
 import logging
 import os
@@ -46,9 +45,7 @@ from urllib3.util.retry import Retry
 
 from filenamehandler import FilenameHandler
 from imgcompressor import ImageCompressor
-# 引入外部的强力下载方案(基于浏览器的方案)
 from downbybrowser import BrowserDownloader
-from downbyscrapling import ScraplingDownloader
 
 # 异步调用浏览器下载方案的近义词
 BROWSER_DOWNLOADER = ["browser", "playwright", "bro", "pro"]
@@ -312,7 +309,7 @@ def download_by_curl(
     cmd += [url]
 
     try:
-        info(f"正在下载: {url}\n> [{' '.join(cmd)}] ")
+        info(f"正在下载: {url}\n> [{" ".join(cmd)}] ")
         subprocess.run(cmd, check=True)
         if use_remote_name:
             info(f"文件已保存至(仅供参考): {output_path}")
@@ -444,7 +441,6 @@ class ImageDownloader:
         resize_threshold=RESIZE_THRESHOLD,
         fake_format=True,
         headless=False,
-        progress_recorder=None,
     ):
         """
         初始化图片下载器
@@ -455,9 +451,6 @@ class ImageDownloader:
             retry_times: 下载失败重试次数
             user_agent: 自定义User-Agent
             cookies: 自定义Cookie
-            download_method: 下载方式,可选值为:curl,iwr,browser,scrapling
-                            其中browser的同义词:["browser", "playwright", "bro", "pro"]
-                            scrapling也属于浏览器方案,具有更强的隐蔽性,更高的成功率.
             verify_ssl: 是否验证SSL证书(启用会提高安全性，但会降低下载速度)
             proxies: 代理设置,格式为{'http': 'http://proxy.example.com:8080',
                 'https': 'https://proxy.example.com:8080'}
@@ -502,9 +495,6 @@ class ImageDownloader:
             # resize_threshold=resize_threshold,
             # fake_format=fake_format,
         )
-        self.sbd = ScraplingDownloader(
-            headless=headless, ic=self.ic, max_concurrency=max_workers
-        )
         self.headless = headless
 
         # if retry_times < 1:
@@ -531,8 +521,6 @@ class ImageDownloader:
         self.proxies = proxies or []
         self.proxy_strategy = proxy_strategy
         self.proxy_index = 0
-        # 进度记录器（可选）
-        self.progress_recorder = progress_recorder
 
     def get_proxy(self):
         """
@@ -668,11 +656,7 @@ class ImageDownloader:
                         #     tasks=[(url, file_path)],
                         #     timeout=self.timeout,
                         # )
-                    elif self.download_method == "scrapling":
-                        browser=self.sbd
-                        res=browser.batch_download(
-                            tasks=[(url, file_path)],
-                        )
+                    # elif self.use_shutil == "request":
                     else:
                         # 通过python发送get请求获取包含文件(图片)的响应
                         # (酌情启用stream参数可以实现流式下载,减少内存占用,配合后面的iter_content方法使用)
@@ -692,25 +676,6 @@ class ImageDownloader:
 
                     if res:
                         self.stats.add_success()
-                        # 记录成功下载
-                        if self.progress_recorder:
-                            # 对于curl/iwr等方法，成功时假设是200
-                            http_code = 200
-                            if (
-                                self.download_method == "request"
-                                and "response" in locals()
-                            ):
-                                http_code = response.status_code
-                            self.progress_recorder.record_success(
-                                url=url, filename=filename, http_code=http_code
-                            )
-                    else:
-                        # curl/iwr等方法返回False表示下载失败
-                        # 这里不记录，让异常处理部分统一处理
-                        # 但需要抛出异常以便进入异常处理流程
-                        raise Exception(
-                            f"下载失败: {url} (方法: {self.download_method})"
-                        )
 
                 # 执行压缩任务🎈
                 quality = self.compress_quality
@@ -732,59 +697,6 @@ class ImageDownloader:
                 # return True
                 return file_path
 
-            except requests.exceptions.HTTPError as e:
-                # HTTP错误，可以获取状态码
-                http_code = None
-                if hasattr(e, "response") and e.response is not None:
-                    http_code = e.response.status_code
-
-                # 如果是404等不可重试的状态码，直接记录并返回
-                if http_code == 404:
-                    warning("资源不存在 (404): %s", url)
-                    if self.progress_recorder:
-                        self.progress_recorder.record_failure(
-                            url=url,
-                            status="404",
-                            http_code=404,
-                            filename=filename or "",
-                        )
-                    self.stats.add_failed(url, name=filename or "")
-                    return False
-
-                # 其他HTTP错误
-                warning(
-                    "下载失败 (尝试 %d/%d): %s, HTTP状态码: %s, 错误: %s",
-                    attempt + 1,
-                    self.retry_times,
-                    url,
-                    http_code or "未知",
-                    str(e),
-                )
-                # 如果还有重试的机会,则等待一段时间后回到循环再重试
-                if attempt < self.retry_times - 1:
-                    wait_time = retry_gap * (2**attempt) + random.uniform(0, 1)
-                    time.sleep(wait_time)
-                else:
-                    # 尝试次机会用完,直接报错并返回False
-                    wait_time = retry_gap * (2**attempt) + random.uniform(0, 1)
-                    time.sleep(wait_time)
-                    error(
-                        "下载失败: %s, HTTP状态码: %s, 错误: %s",
-                        url,
-                        http_code or "未知",
-                        str(e),
-                    )
-                    # 记录失败状态
-                    if self.progress_recorder:
-                        status = f"failed_{http_code}" if http_code else "failed"
-                        self.progress_recorder.record_failure(
-                            url=url,
-                            status=status,
-                            http_code=http_code,
-                            filename=filename or "",
-                        )
-                    self.stats.add_failed(url, name=filename or "")
-                    return False
             except requests.exceptions.RequestException as e:
                 # 如果是应为请求异常导致的下载失败,这在这里捕获;
                 warning(
@@ -803,14 +715,6 @@ class ImageDownloader:
                     wait_time = retry_gap * (2**attempt) + random.uniform(0, 1)
                     time.sleep(wait_time)
                     error("下载失败: %s, 错误: %s", url, str(e))
-                    # 记录失败状态
-                    if self.progress_recorder:
-                        self.progress_recorder.record_failure(
-                            url=url,
-                            status="failed",
-                            http_code=None,
-                            filename=filename or "",
-                        )
                     self.stats.add_failed(url, name=filename or "")
                     return False
 
@@ -898,12 +802,6 @@ class ImageDownloader:
         Returns:
             Dict: 下载统计信息
         """
-        # 如果有进度记录器，过滤已完成的URL
-        if self.progress_recorder:
-            urls = self.progress_recorder.filter_urls(urls)
-            if self.progress_recorder:
-                self.progress_recorder.print_statistics()
-
         info("开始下载 %d 张图片到 %s", len(urls), output_dir)
 
         # 初始化统计信息
@@ -959,14 +857,6 @@ class ImageDownloader:
         Returns:
             Dict: 下载统计信息
         """
-        # 如果有进度记录器，过滤已完成的URL
-        if self.progress_recorder:
-            name_url_pairs = self.progress_recorder.filter_name_url_pairs(
-                name_url_pairs
-            )
-            if self.progress_recorder:
-                self.progress_recorder.print_statistics()
-
         info("开始下载 %d 张图片到 %s", len(name_url_pairs), output_dir)
 
         # 初始化统计信息
@@ -1010,12 +900,9 @@ class ImageDownloader:
             # 异步方案(调用浏览器下载)
             # for filename, url in name_url_pairs:
             url_name_pairs = [(url, filename) for filename, url in name_url_pairs]
-            if self.download_method in BROWSER_DOWNLOADER:
-                browser = self.bd
-            else:
-                browser = self.sbd
+            browser = self.bd
             browser.batch_download(tasks=url_name_pairs, output_dir=output_dir)
-            
+
         # 完成下载，打印统计信息
         self.stats.finish(record_faild=self.record_failed)
         self.stats.print_summary()
