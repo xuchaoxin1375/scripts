@@ -30,7 +30,7 @@ from scrapling.fetchers import StealthyFetcher, StealthySession
 import logging
 
 VERSION = "2026.05.14"
-ENABLE = 1 # 是否启用插件(启用为True或1,关闭为False或0)
+ENABLE = 1  # 是否启用插件(启用为True或1,关闭为False或0)
 
 # fetcher模式:auto,curl(curl_cffi),stealthy,None
 # 默认使用auto模式,如果curl_cffi无法通过,则自动切换到stealthy方案
@@ -165,9 +165,9 @@ else:
         #     info(f"key:{key},value:{value}")
 
         # 移除url中https://(不含)之前的内容:
-        # if not url.startswith("http://ok"):
-        # if False:  # debug:
-        if not ENABLE:
+        if not url.startswith("http://ok"):
+            # if False:  # debug:
+            # if not ENABLE:
             msg = f"普通url,跳过特殊处理:{url}"
             info(msg)
             # LabelArray["Html"] = msg

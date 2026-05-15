@@ -49,14 +49,38 @@ cd $sh;ls -Recurse *.sh,.inputrc.conf|Convert-CRLF -Replace -To LF ;cd -
 windows系统（使用powershell运行）
 
 ```powershell
-new-item -itemtype directory C:/repos -Verbose -ErrorAction SilentlyContinue
+# 创建仓库存放目录
+New-Item -itemtype directory C:/repos -Verbose -ErrorAction SilentlyContinue
+# 开始clone:
 git clone --recursive --depth 1 --shallow-submodules https://gitee.com/xuchaoxin1375/scripts.git C:/repos/scripts
 # 可选的设置环境变量：
 setx PsModulePath C:/repos/scripts/PS
 
 ```
 
+> gitee可能要求用户登录自己的gitee账号才能clone.
 
+如果不想登录且网络环境允许,可用走github方案:将上述命令行中的`gitee`替换为`github`,当然还可以选择配置加速镜像或者代理:
+
+```powershell
+$repos = "C:/repos"
+$proxy = "http://127.0.0.1:8800" # 设置代理url;
+# 创建仓库存放目录
+New-Item -itemtype directory C:/repos -Verbose -ErrorAction SilentlyContinue
+# 开始clone:
+git -c http.proxy="$Proxy" -c https.proxy="$Proxy" clone --recursive --depth 1 --shallow-submodules https://github.com/xuchaoxin1375/scripts.git C:/repos/scripts
+# 可选的设置环境变量：
+setx PsModulePath C:/repos/scripts/PS
+
+```
+
+也可以选择让配置持久生效：
+
+
+
+
+
+clone完成后,
 
 ## powershell
 
