@@ -2330,6 +2330,209 @@ function Deploy-EnvsByPwsh
     
 }
 
+function Deploy-uvConfig
+{
+    param (
+        $Path = "~/.config/uv/uv.toml"
+    )
+    $uvConfig = @'
+[[index]]
+url = "https://mirrors.ustc.edu.cn/pypi/simple"
+default = true
+'@
+
+    if ($IsWindows)
+    {
+        $Path = "$env:AppData\uv\uv.toml"
+        New-Item -ItemType File -Path $Path -Force -Verbose
+    }
+    $uvConfig | Set-Content $Path -Verbose
+    
+}
+
+function Deploy-MiniforgeConfig
+{
+    <# 
+    .SYNOPSIS
+    设置miniforge的配置文件;
+    优先使用mamba代替conda;mamba默认无法直接调用,可以先激活conda 环境后查出mamba的安装位置,然后将安装目录添加到Path中.
+
+    修改默认环境存放位置,例如~/.conda/envs
+    #>
+    [CmdletBinding()]
+    param(
+        [ValidateSet("mamba", "conda", "all")]
+        $Mode = "conda",
+        [switch]$Override,
+        $Condabin = "",
+        [ValidateSet('Copy', 'SymbolicLink', 'Hardlink', 'Junction')]
+        $OverrideMode = "Copy"
+    )
+    $condarcBak = "$Scripts/config/miniforge/.condarc"
+    $mambarcBak = "$Scripts/config/miniforge/.mambarc"
+    $condaAvailability = Get-Command conda -ErrorAction SilentlyContinue
+    # 准备环境变量condabin
+    $condabinScoop = "$scoop_apps/miniforge/current/condabin"
+    if(!$Condabin)
+    {
+        $Condabin = $condabinScoop
+    }
+    if(Test-Path $Condabin)
+    {
+        # 如果condabinScoop路径存在,则添加到环境变量中.
+        Write-Host "[condabin]:路径${condabin}存在."
+        #注意避免重复添加(add-envvar命令已经实现避免重复的逻辑)
+        # Add-EnvVar Path $condabinScoop -Verbose
+        # Get-EnvPath
+        # 临时添加到Path
+        if($env:Path -notlike "*Condabin*")
+        {
+            Write-Host "Add temp ${condabin} to PATH temporarily."
+            $env:path = "${Condabin};$env:path"
+        }
+        else
+        {
+            Write-Host "Condabin path has already been added to Path."
+        }
+        $env:path -split ';'
+
+    }
+    else
+    {
+        Write-Warning "The [$Condabin] does not exist!"
+    }
+    if($Mode -eq "conda")
+    {
+
+        if($condaAvailability )
+        {
+            if($Override)
+            {
+                if($OverrideMode -eq 'Copy')
+                {
+                    Copy-Item $condarcBak ~/.condarc -Force -Verbose
+                }
+                else
+                {
+
+                    New-Item -ItemType $OverrideMode -Path ~/.condarc -Value $condarcBak -Verbose -Force
+                }
+                conda clean -i
+                return 
+            }
+            # 检查相关配置文件位置:
+            conda config --show-source
+            # 设置安全的环境存放目录
+            conda config --add envs_dirs ~/.conda/envs
+            # 关闭自动激活conda环境
+            conda config --set auto_activate_base false
+            # 显示通道url
+            conda config --set show_channel_urls yes
+            # 设置镜像加速
+            conda config --add channels conda-forge
+            # 更新镜像配置后清理缓存
+            conda clean -i
+            # 检查配置结果
+            conda config --show-source
+        }
+        else
+        {
+            Write-Error "[Conda] is not available."
+        }
+    }
+    if($Mode -eq "mamba")
+    {
+        if($Override)
+        {
+            if($OverrideMode -eq 'Copy')
+            {
+                Copy-Item $mambarcBak ~/.mambarc -Force -Verbose
+            }
+            else
+            {
+
+                New-Item -ItemType $OverrideMode -Path ~/.mambarc -Value $mambarcBak -Verbose -Force
+            }
+            # 避免和.condarc中的custom_channels的影响,使用mamba的情况下移除掉~/.condarc,不要混用.
+            # 反之,conda不受~/.mambarc的影响,因此可以不用清除.
+            Remove-Item ~/.condarc -Verbose -ErrorAction SilentlyContinue
+            mamba clean -i
+            return
+        }
+        # 计算mamba路径
+        $mambaAvailability = Get-Command mamba -ErrorAction SilentlyContinue
+        if ($mambaAvailability)
+        {
+            
+            Get-Command mamba | Select-Object Source
+            # 列出配置文件
+            mamba config sources
+            # 配置channel
+            mamba config append channels conda-forge
+            # mamba专用通道字段:
+            
+            # 将mamba专属配置写入到`~/.mambarc`中
+            # 移除旧值,防止重叠
+            # mamba config get mirrored_channels # 
+            # mamba config remove-key mirrored_channels #移除
+            
+            # 添加mirrored_channels(mamba专用字段)
+            $existed = Select-String -Path ~/.mambarc -Pattern 'mirrored_channels:'
+            $mc = @"
+mirrored_channels:
+  conda-forge:
+    - https://mirrors.ustc.edu.cn/anaconda/cloud/conda-forge
+
+"@  # 保留一个换行符,防止粘连
+            if(! $existed)
+            {
+                $mc | Add-Content "$env:USERPROFILE/.mambarc"
+            }
+            # 设置默认的虚拟环境存放位置.
+            mamba config append envs_dirs ~/.conda/envs
+            # 自动导入mamba环境(便于mamba activate等命令生效.)
+            mamba shell init --shell powershell --root-prefix=~/.local/share/mamba
+            # end
+            # 更新镜像配置后清理缓存
+            mamba clean -i
+            # 检查配置结果
+            mamba config list
+        }
+        else
+        {
+            Write-Warning "[Mamba] is not available now"
+            Write-Warning "Try add [condabin] path to your system environment variable 'Path'."
+            # Write-Warning "Run following command (in powershell) to get [mamba] localtion:"
+            # Write-Host "`t conda init # if not yet "
+            # Write-Host "`t conda activate"
+            # Write-Host "`t Get-Command mamba | Select-Object Source"
+            Write-Warning "Run mamba on a new shell session:"
+            Write-Host "`t mamba activate"
+
+        }
+    }
+
+    if($Mode -eq "all")
+    {
+        if($Override)
+        {
+            if($OverrideMode -eq 'Copy')
+            {
+                Copy-Item $condarcBak ~/.condarc -Force -Verbose
+                Copy-Item $mambarcBak ~/.mambarc -Force -Verbose
+            }
+            else
+            {
+
+                New-Item -ItemType $OverrideMode -Path ~/.condarc -Value $condarcBak -Verbose -Force
+                New-Item -ItemType $OverrideMode -Path ~/.mambarc -Value $mambarcBak -Verbose -Force
+            }
+        }
+    }
+    # 检查配置文件内容:
+    Get-Content ~/.condarc 
+    Get-Content ~/.mambarc
+}
 function Deploy-TrafficMonitor
 {
     <# 

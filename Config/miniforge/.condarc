@@ -1,0 +1,11 @@
+channels:
+  - nodefaults
+show_channel_urls: true
+custom_channels:
+  conda-forge: https://mirrors.ustc.edu.cn/anaconda/cloud 
+  conda-forge-pku: https://mirrors.pku.edu.cn/anaconda/cloud
+  auto: https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/
+  bioconda: https://mirrors.ustc.edu.cn/anaconda/cloud
+auto_activate: false
+envs_dirs:
+  - ~/.conda/envs

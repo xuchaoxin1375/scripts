@@ -1,0 +1,13 @@
+# mamba 最近版下载包的方式发生变化,国内镜像暂时不太兼容,使用官方源默认配置以支持Shard Index特性.
+# 此外mamba 走conda-forge 官方源也不一定慢,暂时就这么设置(注意本配置不要和.condrc共用,暂时避免国内镜像通道)
+channels:
+  - conda-forge # 默认走官方源
+show_channel_urls: true
+
+# 适用于-c <custom_channel> 的用法:
+# custom_channels:
+#   conda-forge: https://mirrors.ustc.edu.cn/anaconda/cloud # 适用于 -c conda-forge
+#   bioconda: https://mirrors.ustc.edu.cn/anaconda/cloud
+auto_activate: false
+envs_dirs:
+  - ~/.conda/envs

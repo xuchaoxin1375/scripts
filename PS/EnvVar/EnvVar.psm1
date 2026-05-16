@@ -616,7 +616,7 @@ Number Scope Name Value
     $NewValueFull = Remove-RedundantSemicolon $NewValueFull
     # return 
     # 提示待添加值是否已经存在于原值
-    if ($NewValue -in $CurrentValue)
+    if ($CurrentValue -like "*${NewValue}*")
     {
         Write-Warning "Value $NewValue already exists in $EnvVar" 
     }
