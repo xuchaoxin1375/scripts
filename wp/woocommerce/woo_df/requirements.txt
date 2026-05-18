@@ -18,7 +18,8 @@ Wand
 cloudflare
 
 # please run:[  playwright install  ] this command in your terminal to install playwright browser automation tool
-playwright
-playwright_stealth
+# playwright
+# playwright_stealth
+patchright
 dotenv
 # opencv-python

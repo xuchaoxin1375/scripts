@@ -2,7 +2,8 @@
 import os
 from scrapling.fetchers import StealthySession
 SOLVE_CLOUDFLARE = True
-HEADLESS = True
+HEADLESS = False
+proxy="http://localhost:7897"
 image_urls = [
     "https://www.gosupps.com/media/catalog/product/cache/25/image/9df78eab33525d08d6e5fb8d27136e95/6/1/61Mfc8jVlQL.jpg",
     "https://www.gosupps.com/media/catalog/product/cache/25/image/9df78eab33525d08d6e5fb8d27136e95/5/1/51Em4E1TwPL.jpg",
@@ -15,7 +16,7 @@ url = "https://www.gosupps.com/media/catalog/product/cache/25/image/9df78eab3352
 
 # 初始化一个隐匿会话
 # 它默认开启了底层最高级别的防检测，并模拟真实浏览器环境
-with StealthySession(solve_cloudflare=SOLVE_CLOUDFLARE, headless=HEADLESS) as session:
+with StealthySession(solve_cloudflare=SOLVE_CLOUDFLARE, headless=HEADLESS,proxy=proxy) as session:
     try:
         # 复用会话请求图片
         page = session.fetch(url)
