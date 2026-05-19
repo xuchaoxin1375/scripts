@@ -1400,6 +1400,12 @@ function Deploy-PicgoGUI
 }
 function Deploy-UVConfig
 {
+    <# 
+    .SYNOPSIS
+    部署uv的配置(主要是pypi镜像源)
+
+    https://help.mirrorz.org/pypi/
+    #>
     param (
         $ConfigDirectory = '~/.config/uv'
     )
@@ -1414,6 +1420,55 @@ default = true
     Set-Content -Path $config -Value $configContent 
 
     Get-Content $config
+}
+
+function Deploy-uvConfig
+{
+    <# 
+    .SYNOPSIS
+    部署uv的全局配置;
+    自动判断系统平台,创建不同的路径的配置文件(uv.toml)
+    # 国内高校源聚合列表:https://help.mirrorz.org/pypi/
+    # 其他企业平台自行搜索
+    #>
+    param (
+        $Path = "~/.config/uv/uv.toml",
+        $Mirror = "http://mirrors.aliyun.com/pypi/simple/"
+    )
+    $uvConfig = @"
+[[index]]
+url = `"$Mirror`"
+default = true
+"@
+
+    if ($IsWindows)
+    {
+        $Path = "$env:AppData\uv\uv.toml"
+        New-Item -ItemType File -Path $Path -Force -Verbose
+    }
+    $uvConfig | Set-Content $Path -Verbose
+    # 其他源:
+    # $pypi_tencent="https://mirrors.cloud.tencent.com/pypi/simple/"
+    # $pypi_pku="https://mirrors.pku.edu.cn/pypi/web/simple"
+    # $pypi_zju="https://mirrors.zju.edu.cn/pypi/web/simple"
+    # $pypi_nju="https://mirror.nju.edu.cn/pypi/web/simple"
+    # $pypi_aliyun="http://mirrors.aliyun.com/pypi/simple/"
+    # 1. 定义哈希表 (使用 @{ } 语法)
+    $pypi_mirrors = @{
+        Tencent = "https://mirrors.cloud.tencent.com/pypi/simple/"
+        Aliyun  = "http://mirrors.aliyun.com/pypi/simple/"
+        PKU     = "https://mirrors.pku.edu.cn/pypi/web/simple"
+        ZJU     = "https://mirrors.zju.edu.cn/pypi/web/simple"
+        NJU     = "https://mirror.nju.edu.cn/pypi/web/simple"
+    }
+
+    # 2. 直接输出整个哈希表
+    Write-Warning "如果镜像不可用或被限流403,可以更换镜像."
+    Write-Host "当前使用的镜像:[$Mirror]"
+    
+    return $pypi_mirrors
+
+    
 }
 function Deploy-AndroidStudio_depends
 {
@@ -2330,25 +2385,6 @@ function Deploy-EnvsByPwsh
     
 }
 
-function Deploy-uvConfig
-{
-    param (
-        $Path = "~/.config/uv/uv.toml"
-    )
-    $uvConfig = @'
-[[index]]
-url = "https://mirrors.ustc.edu.cn/pypi/simple"
-default = true
-'@
-
-    if ($IsWindows)
-    {
-        $Path = "$env:AppData\uv\uv.toml"
-        New-Item -ItemType File -Path $Path -Force -Verbose
-    }
-    $uvConfig | Set-Content $Path -Verbose
-    
-}
 
 function Deploy-MiniforgeConfig
 {

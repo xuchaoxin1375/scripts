@@ -17,6 +17,7 @@ url = "https://www.gosupps.com/media/catalog/product/cache/25/image/9df78eab3352
 # 初始化一个隐匿会话
 # 它默认开启了底层最高级别的防检测，并模拟真实浏览器环境
 with StealthySession(solve_cloudflare=SOLVE_CLOUDFLARE, headless=HEADLESS,proxy=proxy) as session:
+# with StealthySession(solve_cloudflare=SOLVE_CLOUDFLARE, headless=HEADLESS) as session:
     try:
         # 复用会话请求图片
         page = session.fetch(url)

@@ -671,7 +671,7 @@ class ImageDownloader:
                     elif self.download_method == "scrapling":
                         browser=self.sbd
                         res=browser.batch_download(
-                            tasks=[(url, file_path)],
+                            tasks=[(url, file_path)]
                         )
                     else:
                         # 通过python发送get请求获取包含文件(图片)的响应

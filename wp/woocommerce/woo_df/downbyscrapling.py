@@ -76,9 +76,9 @@ class ScraplingDownloader:
         output_format: str = "webp",
         # Scrapling 特定参数
         solve_cloudflare: bool = True,
-        block_webrtc: bool = True,
-        hide_canvas: bool = True,
-        real_chrome: bool = True,
+        block_webrtc: bool = False,
+        hide_canvas: bool = False,
+        real_chrome: bool = False,
     ):
         """
         初始化下载器。
