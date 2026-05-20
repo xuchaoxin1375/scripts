@@ -274,7 +274,7 @@ def parse_args():
         "--ps-version",
         default="powershell",
         choices=["powershell", "pwsh"],
-        help="PowerShell版本，可选值：powershell、pwsh",
+        help="PowerShell版本,可选值:powershell,pwsh",
     )
     parser.add_argument(
         "-ci",
@@ -292,11 +292,13 @@ def parse_args():
     parser.add_argument("--proxy", help="代理url")
     parser.add_argument("--cookie-file", help="包含Cookies的JSON文件路径")
     parser.add_argument(
+        "-Z",
         "--user-data-dir",
         "--profile-dir",
         help="指定持久化浏览器配置/Cookies的主目录(适用于scrapling等浏览器方案)",
     )
     parser.add_argument(
+        "-W",
         "--warmup",
         action="store_true",
         default=False,
@@ -329,8 +331,62 @@ def parse_args():
         # default=RESIZE_THRESHOLD,
         help="指定图片等比例缩放后的最大尺寸(宽,高),单位px;放空表示不调整分辨率",
     )
+    parser.add_argument(
+        "-S",
+        "--config",
+        help="从指定的 JSON 配置文件中读取参数。如果命令行中也指定了参数，命令行优先级更高。",
+    )
 
-    return parser.parse_args()
+    # 1. 正常解析所有命令行参数
+    args = parser.parse_args()
+
+    # 2. 如果指定了配置文件且存在，则进行合并处理
+    if args.config:
+        import json
+        if os.path.exists(args.config):
+            try:
+                with open(args.config, "r", encoding="utf-8") as f:
+                    config_data = json.load(f)
+                
+                # 提取原始默认值
+                original_defaults = {
+                    action.dest: action.default 
+                    for action in parser._actions 
+                    if action.dest != "help"
+                }
+
+                # 抑制解析器中的所有默认值，以提取用户显式指定的命令行参数
+                for action in parser._actions:
+                    if action.dest != "help":
+                        action.default = argparse.SUPPRESS
+
+                # 重新解析，得到仅包含用户显式指定参数的 Namespace
+                explicit_args = parser.parse_args()
+
+                # 合并优先级：默认值 < 配置文件值 < 命令行显式指定值
+                merged_dict = {}
+                
+                # a. 填充默认值
+                for k, v in original_defaults.items():
+                    if v != argparse.SUPPRESS:
+                        merged_dict[k] = v
+
+                # b. 覆盖配置文件中的值
+                for k, v in config_data.items():
+                    merged_dict[k] = v
+
+                # c. 覆盖命令行中显式指定的值
+                for k, v in vars(explicit_args).items():
+                    merged_dict[k] = v
+
+                args = argparse.Namespace(**merged_dict)
+                logger.info(f"成功加载并合并了配置文件: {args.config}")
+            except Exception as e:
+                logger.error(f"加载配置文件 {args.config} 失败: {e}")
+        else:
+            logger.warning(f"指定的配置文件不存在: {args.config}")
+
+    return args
 
 
 def main():

@@ -1,0 +1,33 @@
+{
+    "from_specific_csv": true,
+    "name_url_pairs": true,
+    "quality_rule": "auto",
+    "remove_original": true,
+    "resize_threshold": [
+        1000,
+        800
+    ],
+    "fake_format": true,
+    "ps_version": "pwsh",
+    "workers": 5,
+    "download_method": "cffi",
+    "warmup": true,
+    "user_data_dir": "C:/temp/scrapling/imgdown",
+    "override": false,
+    "timeout": 30,
+    "retry": 1,
+    "headless": true,
+    "verify_ssl": false,
+    "curl_insecure": false,
+    "verbose": false,
+    "loglevel": "INFO",
+    "test_url": null,
+    "file_input": null,
+    "from_csv": false,
+    "format_consistent": false,
+    "user_agent": null,
+    "proxy": null,
+    "proxy_file": null,
+    "cookie_file": null,
+    "compress_quality": 0
+}

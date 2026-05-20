@@ -51,7 +51,7 @@ from filenamehandler import FilenameHandler
 from imgcompressor import ImageCompressor
 
 # 引入外部的强力下载方案(基于浏览器的方案)
-from downbybrowser import BrowserDownloader # 将被弃用,主要使用scrapling方案更强劲
+from downbybrowser import BrowserDownloader # 将被弃用,使用scrapling方案更强劲
 from downbyscrapling import ScraplingDownloader # 核心方案
 
 # 异步调用浏览器下载方案的近义词
