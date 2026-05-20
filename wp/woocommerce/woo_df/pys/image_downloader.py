@@ -291,6 +291,17 @@ def parse_args():
     parser.add_argument("--proxy-file", help="代理url列表文件路径")
     parser.add_argument("--proxy", help="代理url")
     parser.add_argument("--cookie-file", help="包含Cookies的JSON文件路径")
+    parser.add_argument(
+        "--user-data-dir",
+        "--profile-dir",
+        help="指定持久化浏览器配置/Cookies的主目录(适用于scrapling等浏览器方案)",
+    )
+    parser.add_argument(
+        "--warmup",
+        action="store_true",
+        default=False,
+        help="启用单任务顺序预热模式，先使用单页面通过可能的人机验证(如Cloudflare)，之后再并发下载剩余链接",
+    )
 
     parser.add_argument("-v", "--verbose", action="store_true", help="显示详细日志")
     parser.add_argument(
@@ -416,6 +427,8 @@ def main():
         curl_insecure=args.curl_insecure,
         fake_format=args.fake_format,
         headless=args.headless,
+        user_data_dir=args.user_data_dir,
+        warmup=args.warmup,
     )
     # 过滤已有图片,扫描出尚未下载的图片
     # 这里不关心文件名后缀的差异,比较basename

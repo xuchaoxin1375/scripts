@@ -9,6 +9,8 @@ import os
 import random
 import re
 import unicodedata
+import tempfile
+import shutil
 from typing import Any, Dict, List, Optional, Tuple, Union
 from imgcompressor import ImageCompressor
 from urllib.parse import urlparse
@@ -81,6 +83,9 @@ class ScraplingDownloader:
         block_webrtc: bool = False,
         hide_canvas: bool = False,
         real_chrome: bool = False,
+        user_data_dir: Optional[str] = None,
+        warmup: bool = False,
+        override: bool = False,
     ):
         """
         初始化下载器。
@@ -114,6 +119,9 @@ class ScraplingDownloader:
         self.block_webrtc = block_webrtc
         self.hide_canvas = hide_canvas
         self.real_chrome = real_chrome
+        self.user_data_dir = user_data_dir
+        self.warmup = warmup
+        self.override = override
 
     def _read_proxies(self, proxy) -> List[str]:
         """
@@ -171,9 +179,10 @@ class ScraplingDownloader:
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir, exist_ok=True)
 
-        # 检查是否已存在
+        # 检查是否已存在（如果不启用 override 且本地有缓存，则跳过）
         if (
-            os.path.exists(output_path)
+            not self.override
+            and os.path.exists(output_path)
             and os.path.getsize(output_path) > 0
             and retry_count == 0
         ):
@@ -282,6 +291,7 @@ class ScraplingDownloader:
         completed_count: List[int],
         total_tasks: int,
         lock: asyncio.Lock,
+        results: Dict[str, bool],
     ) -> None:
         """工作线程，复用 session 对象从队列中获取任务并执行下载。进度信息融合到请求提示语句。"""
         while True:
@@ -292,13 +302,14 @@ class ScraplingDownloader:
                     completed_count[0] += 1
                     progress_info = f"[{completed_count[0]}/{total_tasks}]"
                 try:
-                    await self._download_single_url(
+                    res = await self._download_single_url(
                         session,
                         url,
                         output_path,
                         user_agent,
                         progress_info=progress_info,
                     )
+                    results[url] = res
                     if self.delay_range[0] > 0 or self.delay_range[1] > 0:
                         delay = random.uniform(*self.delay_range)
                         await asyncio.sleep(delay)
@@ -313,7 +324,7 @@ class ScraplingDownloader:
         self,
         tasks: List[Tuple[str, str, Optional[str]]],
         proxy: Optional[Union[str, List[str]]] = None,
-    ):
+    ) -> Dict[str, bool]:
         """异步运行并发下载任务，实现 Session 复用。"""
         proxy_list = self._read_proxies(proxy)
         proxy_configs = proxy_list if proxy_list else [""]
@@ -332,6 +343,8 @@ class ScraplingDownloader:
             "timeout": self.timeout * 1000,
             "max_pages": self.max_concurrency,
         }
+        if self.user_data_dir:
+            session_kwargs["user_data_dir"] = self.user_data_dir
 
         # 如果有多个代理，使用 ProxyRotator 实现代理轮换
         # 如果只有一个代理或没有代理，使用静态 proxy 参数
@@ -349,49 +362,110 @@ class ScraplingDownloader:
             # 没有代理，直连
             logger.info("未配置代理，使用直连模式")
 
-        # 使用 AsyncStealthySession,这会启动一个浏览器
-        async with AsyncStealthySession(**session_kwargs) as session:
-            queue: asyncio.Queue[Tuple[str, str, Optional[str]]] = asyncio.Queue()
-            for task in tasks:
-                await queue.put(task)
+        results: Dict[str, bool] = {}
+        completed_count = [0]  # 用列表包裹以便可变
+        
+        # 决定使用哪个持久化目录（为了在预热和正式并发之间共享状态）
+        actual_user_data_dir = self.user_data_dir
+        cleanup_dir = False
+        if not actual_user_data_dir:
+            actual_user_data_dir = tempfile.mkdtemp(prefix="scrapling_tmp_")
+            cleanup_dir = True
+            
+        session_kwargs["user_data_dir"] = actual_user_data_dir
 
-            actual_workers = min(self.max_concurrency, len(tasks))
+        try:
+            # 1. 预热模式：严格控制只开1个页面的单独 Session
+            if self.warmup and len(tasks) > 1:
+                # 寻找第一个实际需要网络下载的任务进行预热
+                warmup_task = None
+                for t in tasks:
+                    url, output_path, user_agent = t
+                    if self.override or not (os.path.exists(output_path) and os.path.getsize(output_path) > 0):
+                        warmup_task = t
+                        break
 
-            # AsyncStealthySession 本身支持并发请求（通过 max_pages）
-            # ProxyRotator 会自动处理代理轮换（如果配置了）
-            # 进度计数器和锁
-            completed_count = [0]  # 用列表包裹以便可变
-            total_tasks = len(tasks)
-            lock = asyncio.Lock()
+                if warmup_task:
+                    warmup_kwargs = session_kwargs.copy()
+                    warmup_kwargs["max_pages"] = 1
+                    
+                    async with AsyncStealthySession(**warmup_kwargs) as session:
+                        logger.info("🔥 [预热模式] 正在启动独立单页会话预热第一个需要下载的链接...")
+                        url, output_path, user_agent = warmup_task
+                        try:
+                            res = await self._download_single_url(
+                                session,
+                                url,
+                                output_path,
+                                user_agent,
+                                progress_info="[WARMUP]",
+                            )
+                            results[url] = res
+                            logger.info(f"🔥 [预热模式] 预热链接下载完成。成功状态: {res}")
+                        except Exception as e:
+                            logger.error(f"🔥 [预热模式] 预热时发生异常: {e}")
+                            results[url] = False
+                    
+                    completed_count[0] = 1
+                    remaining_tasks = [t for t in tasks if t != warmup_task]
+                else:
+                    remaining_tasks = tasks
+            else:
+                remaining_tasks = tasks
 
-            workers = []
-            for i in range(actual_workers):
-                workers.append(
-                    asyncio.create_task(
-                        self._worker(
-                            session,
-                            queue,
-                            completed_count,
-                            total_tasks,
-                            lock,
+            # 2. 正式并发下载模式
+            if remaining_tasks:
+                # 使用 AsyncStealthySession,这会启动并发浏览器页面
+                async with AsyncStealthySession(**session_kwargs) as session:
+                    queue: asyncio.Queue[Tuple[str, str, Optional[str]]] = asyncio.Queue()
+                    for task in remaining_tasks:
+                        await queue.put(task)
+
+                    actual_workers = min(self.max_concurrency, len(remaining_tasks))
+
+                    # AsyncStealthySession 本身支持并发请求（通过 max_pages）
+                    # ProxyRotator 会自动处理代理轮换（如果配置了）
+                    # 进度计数器和锁
+                    total_tasks = len(tasks)
+                    lock = asyncio.Lock()
+
+                    workers = []
+                    for i in range(actual_workers):
+                        workers.append(
+                            asyncio.create_task(
+                                self._worker(
+                                    session,
+                                    queue,
+                                    completed_count,
+                                    total_tasks,
+                                    lock,
+                                    results,
+                                )
+                            )
                         )
-                    )
-                )
 
-            await queue.join()
+                    await queue.join()
 
-            for w in workers:
-                w.cancel()
-            await asyncio.gather(*workers, return_exceptions=True)
+                    for w in workers:
+                        w.cancel()
+                    await asyncio.gather(*workers, return_exceptions=True)
 
-            logger.info("所有下载任务已完成。")
+        finally:
+            if cleanup_dir and os.path.exists(actual_user_data_dir):
+                try:
+                    shutil.rmtree(actual_user_data_dir, ignore_errors=True)
+                except Exception as e:
+                    logger.debug(f"清理临时目录失败: {e}")
+
+        logger.info("所有下载任务已完成。")
+        return results
 
     def batch_download(
         self,
         tasks: List[Tuple[str, str]],
         proxy: Optional[Union[str, List[str]]] = None,
         output_dir: Optional[str] = None,
-    ):
+    ) -> Dict[str, bool]:
         """
         [公共方法] 通过 Scrapling StealthySession 批量下载网络资源。
 
@@ -402,11 +476,12 @@ class ScraplingDownloader:
             proxy: 代理输入，可以是单个代理字符串、代理列表或代理文件路径。
             output_dir: 可选，如果指定，将所有 output_path 仅为文件名的任务补全为 output_dir/filename。
         Returns:
-            True 表示下载过程完成 (不代表所有任务成功)。
+            Dict[str, bool]: 返回包含每个 URL 下载是否成功的字典。
         """
+        results: Dict[str, bool] = {}
         if not tasks:
             logger.warning("任务列表为空，无需下载。")
-            return True
+            return results
 
         # 如果指定了 output_dir，则将所有 output_path 仅为文件名的任务补全为 output_dir/filename
         processed_tasks: List[Tuple[str, str, Optional[str]]] = []
@@ -425,12 +500,12 @@ class ScraplingDownloader:
 
         try:
             # 使用 self._run_async 启动异步下载
-            asyncio.run(self._run_async(processed_tasks, proxy))
+            results = asyncio.run(self._run_async(processed_tasks, proxy))
         except KeyboardInterrupt:
             logger.warning("任务被用户中断。")
         except Exception as e:
             logger.error(f"下载任务发生致命错误: {e}")
-        return True
+        return results
 
     def single_download(
         self,
@@ -494,6 +569,8 @@ class ScraplingDownloader:
             block_webrtc=self.block_webrtc,
             hide_canvas=self.hide_canvas,
             real_chrome=self.real_chrome,
+            user_data_dir=self.user_data_dir,
+            warmup=False,  # 单个任务不需要开启预热
         )
 
         try:

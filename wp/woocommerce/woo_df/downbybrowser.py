@@ -76,6 +76,8 @@ class BrowserDownloader:
         ic: ImageCompressor | None = None,
         compress_quality: int = 0,
         output_format: str = "webp",
+        warmup: bool = False,
+        override: bool = False,
     ):
         """
         初始化下载器。
@@ -104,6 +106,8 @@ class BrowserDownloader:
         self.ic = ic
         self.compress_quality = compress_quality
         self.output_format = output_format
+        self.warmup = warmup
+        self.override = override
 
     def _read_proxies(self, proxy) -> List[str]:
         """
@@ -169,9 +173,10 @@ class BrowserDownloader:
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir, exist_ok=True)
 
-        # 检查是否已存在
+        # 检查是否已存在（如果不启用 override 且本地有缓存，则跳过）
         if (
-            os.path.exists(output_path)
+            not self.override
+            and os.path.exists(output_path)
             and os.path.getsize(output_path) > 0
             and retry_count == 0
         ):
@@ -272,6 +277,7 @@ class BrowserDownloader:
         completed_count: List[int],
         total_tasks: int,
         lock: asyncio.Lock,
+        results: Dict[str, bool],
     ) -> None:
         """工作线程，复用 page 对象从队列中获取任务并执行下载。进度信息融合到请求提示语句。"""
         while True:
@@ -282,7 +288,7 @@ class BrowserDownloader:
                     completed_count[0] += 1
                     progress_info = f"[{completed_count[0]}/{total_tasks}]"
                 try:
-                    await self._download_single_url(
+                    res = await self._download_single_url(
                         page,
                         url,
                         output_path,
@@ -290,6 +296,7 @@ class BrowserDownloader:
                         proxy_info=proxy_info,
                         progress_info=progress_info,
                     )
+                    results[url] = res
                     if self.delay_range[0] > 0 or self.delay_range[1] > 0:
                         delay = random.uniform(*self.delay_range)
                         await asyncio.sleep(delay)
@@ -304,7 +311,7 @@ class BrowserDownloader:
         self,
         tasks: List[Tuple[str, str, Optional[str]]],
         proxy: Optional[Union[str, List[str]]] = None,
-    ):
+    ) -> Dict[str, bool]:
         """异步运行并发下载任务，实现 Context 和 Page 复用。"""
         proxy_list = self._read_proxies(proxy)
         proxy_configs = proxy_list if proxy_list else [""]
@@ -312,6 +319,8 @@ class BrowserDownloader:
         logger.info(
             f"配置: 并发={self.max_concurrency}, 代理池大小={len(proxy_configs)}"
         )
+
+        results: Dict[str, bool] = {}
 
         async with async_playwright() as p:
             launch_options: Dict[str, Any] = {
@@ -323,17 +332,65 @@ class BrowserDownloader:
 
             browser = await p.chromium.launch(**launch_options)
 
-            queue: asyncio.Queue[Tuple[str, str, Optional[str]]] = asyncio.Queue()
-            for task in tasks:
-                await queue.put(task)
-
             actual_workers = min(self.max_concurrency, len(tasks))
             worker_slots: List[Tuple[BrowserContext, Page, str]] = []
 
-            for i in range(actual_workers):
+            # 1. 优先仅启动第 1 个 worker slot 用于预热或单页面首发运行，避免在预热完成前启动多个页面/进程
+            worker_proxy_url = proxy_configs[0 % len(proxy_configs)]
+            default_user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            context_args: Dict[str, Any] = {
+                "user_agent": default_user_agent,
+                "viewport": {"width": 1366, "height": 768},
+            }
+            if worker_proxy_url:
+                context_args["proxy"] = {"server": worker_proxy_url}
+                p_info = worker_proxy_url
+            else:
+                p_info = "环境代理"
+            ctx = await browser.new_context(**context_args)
+            pg = await ctx.new_page()
+            worker_slots.append((ctx, pg, p_info))
+
+            # 2. 如果开启了预热，且任务数量大于 1，则使用第 1 个 worker 的 context/page 预热下载第一个实际需要网络请求的任务
+            completed_count = [0]  # 用列表包裹以便可变
+            if self.warmup and len(tasks) > 1:
+                # 寻找第一个实际需要网络下载的任务进行预热
+                warmup_task = None
+                for t in tasks:
+                    url, output_path, user_agent = t
+                    if self.override or not (os.path.exists(output_path) and os.path.getsize(output_path) > 0):
+                        warmup_task = t
+                        break
+
+                if warmup_task:
+                    logger.info("🔥 [预热模式] 正在预热下载第一个需要下载的链接以通过可能的人机验证...")
+                    url, output_path, user_agent = warmup_task
+                    ctx, pg, p_info = worker_slots[0]
+                    try:
+                        res = await self._download_single_url(
+                            pg,
+                            url,
+                            output_path,
+                            user_agent,
+                            proxy_info=p_info,
+                            progress_info="[WARMUP]",
+                        )
+                        results[url] = res
+                        logger.info(f"🔥 [预热模式] 预热链接下载完成。成功状态: {res}")
+                    except Exception as e:
+                        logger.error(f"🔥 [预热模式] 预热时发生异常: {e}")
+                        results[url] = False
+                    completed_count[0] = 1
+                    remaining_tasks = [t for t in tasks if t != warmup_task]
+                else:
+                    remaining_tasks = tasks
+            else:
+                remaining_tasks = tasks
+
+            # 3. 预热完成（或无预热）后，才开始初始化剩余的 worker slots
+            for i in range(1, actual_workers):
                 worker_proxy_url = proxy_configs[i % len(proxy_configs)]
-                default_user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                context_args: Dict[str, Any] = {
+                context_args = {
                     "user_agent": default_user_agent,
                     "viewport": {"width": 1366, "height": 768},
                 }
@@ -346,8 +403,12 @@ class BrowserDownloader:
                 pg = await ctx.new_page()
                 worker_slots.append((ctx, pg, p_info))
 
+            # 3. 将剩余的任务放入 queue 并启动并发 worker
+            queue: asyncio.Queue[Tuple[str, str, Optional[str]]] = asyncio.Queue()
+            for task in remaining_tasks:
+                await queue.put(task)
+
             # 进度计数器和锁
-            completed_count = [0]  # 用列表包裹以便可变
             total_tasks = len(tasks)
             lock = asyncio.Lock()
 
@@ -356,7 +417,7 @@ class BrowserDownloader:
                 workers.append(
                     asyncio.create_task(
                         self._worker(
-                            pg, queue, p_info, completed_count, total_tasks, lock
+                            pg, queue, p_info, completed_count, total_tasks, lock, results
                         )
                     )
                 )
@@ -375,13 +436,14 @@ class BrowserDownloader:
                     pass
 
             logger.info("所有下载任务已完成。")
+            return results
 
     def batch_download(
         self,
         tasks: List[Tuple[str, str]],
         proxy: Optional[Union[str, List[str]]] = None,
         output_dir: Optional[str] = None,
-    ):
+    ) -> Dict[str, bool]:
         """
         [公共方法] 通过 Playwright 浏览器环境批量下载网络资源。
 
@@ -392,11 +454,12 @@ class BrowserDownloader:
             proxy: 代理输入，可以是单个代理字符串、代理列表或代理文件路径。
             output_dir: 可选，如果指定，将所有 output_path 仅为文件名的任务补全为 output_dir/filename。
         Returns:
-            True 表示下载过程完成 (不代表所有任务成功)。
+            Dict[str, bool]: 返回包含每个 URL 下载是否成功的字典。
         """
+        results: Dict[str, bool] = {}
         if not tasks:
             logger.warning("任务列表为空，无需下载。")
-            return True
+            return results
 
         # 如果指定了 output_dir，则将所有 output_path 仅为文件名的任务补全为 output_dir/filename
         processed_tasks: List[Tuple[str, str, Optional[str]]] = []
@@ -415,12 +478,12 @@ class BrowserDownloader:
 
         try:
             # 使用 self._run_async 启动异步下载
-            asyncio.run(self._run_async(processed_tasks, proxy))
+            results = asyncio.run(self._run_async(processed_tasks, proxy))
         except KeyboardInterrupt:
             logger.warning("任务被用户中断。")
         except Exception as e:
             logger.error(f"下载任务发生致命错误: {e}")
-        return True
+        return results
 
     def single_download(
         self,
@@ -478,12 +541,10 @@ class BrowserDownloader:
             max_concurrency=1,  # 单个任务固定并发为 1
             max_retries=retries if retries is not None else self.max_retries,
             # 继承图片压缩配置
+            ic=self.ic,
             compress_quality=self.compress_quality,
-            # quality_rule=self.quality_rule,
-            # output_format=self.output_format,
-            # remove_original=self.remove_original,
-            # resize_threshold=self.resize_threshold,
-            # fake_format=self.fake_format,
+            output_format=self.output_format,
+            warmup=False,  # 单个任务不需要开启预热
         )
 
         try:

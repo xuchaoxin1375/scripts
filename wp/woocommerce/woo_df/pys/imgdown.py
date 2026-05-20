@@ -51,11 +51,11 @@ from filenamehandler import FilenameHandler
 from imgcompressor import ImageCompressor
 
 # 引入外部的强力下载方案(基于浏览器的方案)
-from downbybrowser import BrowserDownloader
-from downbyscrapling import ScraplingDownloader
+from downbybrowser import BrowserDownloader # 将被弃用,主要使用scrapling方案更强劲
+from downbyscrapling import ScraplingDownloader # 核心方案
 
 # 异步调用浏览器下载方案的近义词
-BROWSER_DOWNLOADER = ["browser", "playwright", "bro", "pro"]
+BROWSER_DOWNLOADER = ["browser", "playwright", "bro", "pro", "scrapling"]
 TIMEOUT = 120
 
 IMG_DIR = "./images"
@@ -544,6 +544,8 @@ class ImageDownloader:
         fake_format=True,
         headless=False,
         progress_recorder=None,
+        user_data_dir: Optional[str] = None,
+        warmup: bool = False,
     ):
         """
         初始化图片下载器
@@ -596,18 +598,17 @@ class ImageDownloader:
             ic=self.ic,
             max_concurrency=max_workers,
             proxy=self.proxies,
-            # compress_quality=compress_quality,
-            # quality_rule=quality_rule,
-            # output_format=output_format,
-            # remove_original=remove_original,
-            # resize_threshold=resize_threshold,
-            # fake_format=fake_format,
+            warmup=warmup,
+            override=override,
         )
         self.sbd = ScraplingDownloader(
             headless=headless,
             ic=self.ic,
             max_concurrency=max_workers,
             proxy=self.proxies,
+            user_data_dir=user_data_dir,
+            warmup=warmup,
+            override=override,
         )
         self.headless = headless
 
@@ -773,15 +774,11 @@ class ImageDownloader:
                             timeout=self.timeout,
                             ps_version=self.ps_version,
                         )
-                    elif self.download_method in BROWSER_DOWNLOADER:
+                    elif self.download_method in ["browser", "playwright", "bro", "pro"]:
                         browser = self.bd
                         res = browser.batch_download(
                             tasks=[(url, file_path)],
                         )
-                        # res = download_by_browser(
-                        #     tasks=[(url, file_path)],
-                        #     timeout=self.timeout,
-                        # )
                     elif self.download_method == "scrapling":
                         browser = self.sbd
                         res = browser.batch_download(tasks=[(url, file_path)])
@@ -1025,28 +1022,58 @@ class ImageDownloader:
         # 创建输出目录
         os.makedirs(output_dir, exist_ok=True)
 
-        # 使用线程池多线程下载图片
-        with concurrent.futures.ThreadPoolExecutor(
-            max_workers=self.max_workers
-        ) as executor:
-            future_to_url = {
-                executor.submit(
-                    self._download_single_image,
-                    url,
-                    output_dir,
-                    default_ext=default_ext,
-                ): url
-                for url in urls
-            }
+        # 普通同步方案:使用线程池下载图片
+        if self.download_method and self.download_method not in BROWSER_DOWNLOADER:
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=self.max_workers
+            ) as executor:
+                future_to_url = {
+                    executor.submit(
+                        self._download_single_image,
+                        url,
+                        output_dir,
+                        default_ext=default_ext,
+                    ): url
+                    for url in urls
+                }
 
-            for future in concurrent.futures.as_completed(future_to_url):
-                url = future_to_url[future]
-                try:
-                    future.result()
-
-                except Exception as e:
-                    exception("处理下载时发生异常: %s, 错误: %s", url, str(e))
-                    self.stats.add_failed(url)
+                for future in concurrent.futures.as_completed(future_to_url):
+                    url = future_to_url[future]
+                    try:
+                        future.result()
+                    except Exception as e:
+                        exception("处理下载时发生异常: %s, 错误: %s", url, str(e))
+                        self.stats.add_failed(url)
+        else:
+            # 浏览器方案，直接调用 batch_download
+            if self.download_method in ["browser", "playwright", "bro", "pro"]:
+                browser = self.bd
+            else:
+                browser = self.sbd
+            
+            # 构造任务列表
+            tasks = []
+            for url in urls:
+                filename = self.prepare_filename(url, "", try_get_ext=True, default_ext=default_ext)
+                file_path = os.path.join(output_dir, filename)
+                tasks.append((url, file_path))
+            
+            # 直接进行批量下载，只启动一个浏览器
+            results = browser.batch_download(tasks=tasks, output_dir=output_dir)
+            if isinstance(results, dict):
+                for url, success in results.items():
+                    if success:
+                        self.stats.add_success()
+                        if self.progress_recorder:
+                            self.progress_recorder.record_success(
+                                url=url, filename=os.path.basename(url), http_code=200
+                            )
+                    else:
+                        self.stats.add_failed(url)
+                        if self.progress_recorder:
+                            self.progress_recorder.record_failure(
+                                url=url, status="failed", http_code=None, filename=""
+                            )
 
         # 完成下载，打印统计信息
         self.stats.finish(record_faild=self.record_failed)
@@ -1099,7 +1126,7 @@ class ImageDownloader:
                         self._download_single_image,
                         url=url,
                         output_dir=output_dir,
-                        filename=filename,  # 此参数取值来自对可迭代对象name_url_pairs解析出来的filename,url元组中的第一个分量
+                        filename=filename,
                         default_ext=default_ext,
                     ): (filename, url)
                     for filename, url in name_url_pairs
@@ -1109,24 +1136,36 @@ class ImageDownloader:
                     filename, url = future_to_pair[future]
                     try:
                         future.result()
-                        # success = future.result()
-                        # if success:
-                        #     self.stats.add_success()
-                        # else:
-                        #     self.stats.add_failed(url)
                     except Exception as e:
                         failed_dict = {filename: url}
                         exception("处理%s下载时发生异常, 错误:%s", failed_dict, str(e))
                         self.stats.add_failed(url=url, name=filename)
         else:
             # 异步方案(调用浏览器下载)
-            # for filename, url in name_url_pairs:
             url_name_pairs = [(url, filename) for filename, url in name_url_pairs]
-            if self.download_method in BROWSER_DOWNLOADER:
+            if self.download_method in ["browser", "playwright", "bro", "pro"]:
                 browser = self.bd
             else:
                 browser = self.sbd
-            browser.batch_download(tasks=url_name_pairs, output_dir=output_dir)
+            
+            # 直接进行批量下载，只启动一个浏览器
+            results = browser.batch_download(tasks=url_name_pairs, output_dir=output_dir)
+            if isinstance(results, dict):
+                for url, success in results.items():
+                    if success:
+                        self.stats.add_success()
+                        if self.progress_recorder:
+                            filename = next((name for name, u in name_url_pairs if u == url), os.path.basename(url))
+                            self.progress_recorder.record_success(
+                                url=url, filename=filename, http_code=200
+                            )
+                    else:
+                        self.stats.add_failed(url)
+                        if self.progress_recorder:
+                            filename = next((name for name, u in name_url_pairs if u == url), "")
+                            self.progress_recorder.record_failure(
+                                url=url, status="failed", http_code=None, filename=filename
+                            )
 
         # 完成下载，打印统计信息
         self.stats.finish(record_faild=self.record_failed)
