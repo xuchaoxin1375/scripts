@@ -1692,13 +1692,14 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
         内部专用函数.
         黑白名单文件参数构造,包含目标网站名单上传操作
         #>
+        [CmdletBinding()]
         param(
             $DomainList,
             [ValidateSet('WhiteList', 'BlackList')]$ListType
         )
         Write-Verbose "Using $ListType ...(only update plugins of sites(domain) in $ListType)"
         Write-Verbose "Uploading [$DomainList] file to server[$server]..." -Verbose
-        # 上传网站名单文件
+        # 上传网站名单文件(为例兼容性,这里使用scp命令而不用包装命令push-byscp)
         scp -r $DomainList $username@${server}:"$remoteDirectory" 
         $domainListName = Split-Path -Leaf $DomainList
         $DomainListPathRemote = "$remoteDirectory/$domainListName"
@@ -1720,13 +1721,13 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
     }
     elseif($WhiteList)
     {
-       
+        Write-Verbose "获取白名单参数,并上传白名单文件..."
         $domainListParam = Get-DomainListParam $WhiteList -ListType "WhiteList"
     }
     elseif($BlackList)
     {
-
-        $domainListParam = Get-DomainListParam $BlackList -ListType BlackList
+        Write-Verbose "获取黑名单参数,并上传黑名单文件..."
+        $domainListParam = Get-DomainListParam $BlackList -ListType "BlackList"
     }
     
     # 构造bash脚本命令行(插件安装/更新)
@@ -1756,7 +1757,7 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
         }
 
         # 上传插件压缩包到服务器
-        Write-Verbose "Uploading file to server[$server]..." -Verbose
+        Write-Verbose "Uploading file [$zipFile] to server[$server]..." -Verbose
         scp -r $zipFile $username@${server}:"$remoteDirectory" 
         
         Write-Verbose "expanding zip file to [$remotePluginDir]..."
@@ -1831,6 +1832,12 @@ function Update-WpPluginsDFOnServers
     $OutputEncoding = [System.Text.Encoding]::UTF8
     # 设置控制台输出编码为 UTF-8
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    if ($BlackList -or $WhiteList)
+    {
+        Write-Host "Using ListMode: manual (BlackList or WhiteList used. ListMode auto set to manual.) $ListMode -> manual"
+
+        $ListMode = "manual"
+    }
     if($WhiteList -and $BlackList)
     {
         Write-Error "WhiteList and BlackList can not be used together!"
@@ -1838,7 +1845,7 @@ function Update-WpPluginsDFOnServers
     elseif($WhiteList)
     {
         Write-Verbose "Using WhiteList...(only update plugins of sites(domain) in WhiteList)"
-        # 白名单文件可能有多个,将他们合并到一个文件中方便处理
+        # 白名单文件可能有多个(用户可以指定多个名单文件,数组),将他们合并到一个文件中方便处理
         if (@($WhiteList).Count -gt 1)
         {
             Write-Verbose "There are more than one WhiteList, merging them..."
@@ -1857,9 +1864,10 @@ function Update-WpPluginsDFOnServers
             Write-Verbose "There are more than one BlackList, merging them..."
             $mergeFile = "$desktop/BlackList-$(Get-DateTimeNumber -Format "yyyyMMddHH" ).txt"
             Get-Content $BlackList -Raw | Out-File $mergeFile -Verbose
+            # 更新黑名单文件
+            $BlackList = "$mergeFile"
         }
  
-        $BlackList = "$mergeFile"
     }
 
     $servers = Get-ServerList -Path $ServerConfig
