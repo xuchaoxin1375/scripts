@@ -24,13 +24,12 @@ from comutils import (
 )
 
 # from woo_df.imgdown import ImageDownloader
-from downbybrowser import PROXY
-from imgdown import ImageDownloader, USER_AGENTS, BROWSER_DOWNLOADER
+from imgdown import ImageDownloader, USER_AGENTS, PLAY_BROWSER_DOWNLOADER
 from filenamehandler import FilenameHandler as fh
 from wooenums import CSVProductFields
 
 DOWNLOAD_METHODS = (
-    ["request", "curl", "cffi", "iwr"] + BROWSER_DOWNLOADER + ["scrapling"]
+    ["request", "curl", "cffi", "iwr"] + PLAY_BROWSER_DOWNLOADER
 )
 
 PROXY_HTTP = os.environ.get("HTTP_PROXY")
@@ -245,7 +244,7 @@ def parse_args():
         default="request",
         choices=DOWNLOAD_METHODS,
         # action="store_true",
-        help=f"使用python 请求或外部工具下载图片(request,curl,iwr,browser,scrapling)以及浏览器方案playwright,同义词{BROWSER_DOWNLOADER},scrapling是更强劲的浏览器方案",
+        help=f"使用python 请求或外部工具下载图片(request,curl,iwr,browser,scrapling)以及浏览器方案playwright,同义词{PLAY_BROWSER_DOWNLOADER},scrapling是更强劲的浏览器方案",
     )
     parser.add_argument("-w", "--workers", type=int, default=10, help="下载线程数")
     parser.add_argument(

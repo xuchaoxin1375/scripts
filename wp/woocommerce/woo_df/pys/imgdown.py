@@ -51,11 +51,13 @@ from filenamehandler import FilenameHandler
 from imgcompressor import ImageCompressor
 
 # 引入外部的强力下载方案(基于浏览器的方案)
-from downbybrowser import BrowserDownloader # 将被弃用,使用scrapling方案更强劲
-from downbyscrapling import ScraplingDownloader # 核心方案
+from downbybrowser import BrowserDownloader  # 将被弃用,主要使用scrapling方案更强劲
+from downbyscrapling import ScraplingDownloader  #
 
 # 异步调用浏览器下载方案的近义词
-BROWSER_DOWNLOADER = ["browser", "playwright", "bro", "pro", "scrapling"]
+PLAY_BROWSER_DOWNLOADER = ["playwright", "play"]
+SCRAPLING_BROWSER_DOWNLOADER = ["scrapling", "browser", "scr", "bro", "pro"]
+BROSWER_DOWNLOADER = PLAY_BROWSER_DOWNLOADER + SCRAPLING_BROWSER_DOWNLOADER
 TIMEOUT = 120
 
 IMG_DIR = "./images"
@@ -599,7 +601,6 @@ class ImageDownloader:
             max_concurrency=max_workers,
             proxy=self.proxies,
             warmup=warmup,
-            override=override,
         )
         self.sbd = ScraplingDownloader(
             headless=headless,
@@ -608,7 +609,6 @@ class ImageDownloader:
             proxy=self.proxies,
             user_data_dir=user_data_dir,
             warmup=warmup,
-            override=override,
         )
         self.headless = headless
 
@@ -774,12 +774,12 @@ class ImageDownloader:
                             timeout=self.timeout,
                             ps_version=self.ps_version,
                         )
-                    elif self.download_method in ["browser", "playwright", "bro", "pro"]:
+                    elif self.download_method in PLAY_BROWSER_DOWNLOADER:
                         browser = self.bd
                         res = browser.batch_download(
                             tasks=[(url, file_path)],
                         )
-                    elif self.download_method == "scrapling":
+                    elif self.download_method in SCRAPLING_BROWSER_DOWNLOADER:
                         browser = self.sbd
                         res = browser.batch_download(tasks=[(url, file_path)])
                     else:
@@ -1023,7 +1023,7 @@ class ImageDownloader:
         os.makedirs(output_dir, exist_ok=True)
 
         # 普通同步方案:使用线程池下载图片
-        if self.download_method and self.download_method not in BROWSER_DOWNLOADER:
+        if self.download_method and self.download_method not in PLAY_BROWSER_DOWNLOADER:
             with concurrent.futures.ThreadPoolExecutor(
                 max_workers=self.max_workers
             ) as executor:
@@ -1046,18 +1046,20 @@ class ImageDownloader:
                         self.stats.add_failed(url)
         else:
             # 浏览器方案，直接调用 batch_download
-            if self.download_method in ["browser", "playwright", "bro", "pro"]:
+            if self.download_method in PLAY_BROWSER_DOWNLOADER:
                 browser = self.bd
-            else:
+            elif self.download_method in SCRAPLING_BROWSER_DOWNLOADER:
                 browser = self.sbd
-            
+
             # 构造任务列表
             tasks = []
             for url in urls:
-                filename = self.prepare_filename(url, "", try_get_ext=True, default_ext=default_ext)
+                filename = self.prepare_filename(
+                    url, "", try_get_ext=True, default_ext=default_ext
+                )
                 file_path = os.path.join(output_dir, filename)
                 tasks.append((url, file_path))
-            
+
             # 直接进行批量下载，只启动一个浏览器
             results = browser.batch_download(tasks=tasks, output_dir=output_dir)
             if isinstance(results, dict):
@@ -1116,7 +1118,7 @@ class ImageDownloader:
         os.makedirs(name=output_dir, exist_ok=True)
 
         # 普通同步方案:使用线程池下载图片
-        if self.download_method and self.download_method not in BROWSER_DOWNLOADER:
+        if self.download_method and self.download_method not in PLAY_BROWSER_DOWNLOADER:
             with concurrent.futures.ThreadPoolExecutor(
                 max_workers=self.max_workers
             ) as executor:
@@ -1143,28 +1145,38 @@ class ImageDownloader:
         else:
             # 异步方案(调用浏览器下载)
             url_name_pairs = [(url, filename) for filename, url in name_url_pairs]
-            if self.download_method in ["browser", "playwright", "bro", "pro"]:
+            if self.download_method in PLAY_BROWSER_DOWNLOADER:
                 browser = self.bd
-            else:
+            elif self.download_method in SCRAPLING_BROWSER_DOWNLOADER:
                 browser = self.sbd
-            
+
             # 直接进行批量下载，只启动一个浏览器
-            results = browser.batch_download(tasks=url_name_pairs, output_dir=output_dir)
+            results = browser.batch_download(
+                tasks=url_name_pairs, output_dir=output_dir
+            )
             if isinstance(results, dict):
                 for url, success in results.items():
                     if success:
                         self.stats.add_success()
                         if self.progress_recorder:
-                            filename = next((name for name, u in name_url_pairs if u == url), os.path.basename(url))
+                            filename = next(
+                                (name for name, u in name_url_pairs if u == url),
+                                os.path.basename(url),
+                            )
                             self.progress_recorder.record_success(
                                 url=url, filename=filename, http_code=200
                             )
                     else:
                         self.stats.add_failed(url)
                         if self.progress_recorder:
-                            filename = next((name for name, u in name_url_pairs if u == url), "")
+                            filename = next(
+                                (name for name, u in name_url_pairs if u == url), ""
+                            )
                             self.progress_recorder.record_failure(
-                                url=url, status="failed", http_code=None, filename=filename
+                                url=url,
+                                status="failed",
+                                http_code=None,
+                                filename=filename,
                             )
 
         # 完成下载，打印统计信息
