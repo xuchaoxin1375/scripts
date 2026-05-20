@@ -16,7 +16,7 @@
     "override": false,
     "timeout": 30,
     "retry": 1,
-    "headless": true,
+    "headless": false,
     "verify_ssl": false,
     "curl_insecure": false,
     "verbose": false,

@@ -390,6 +390,16 @@ def parse_args():
 
 def main():
     """主函数"""
+    # 注册 Ctrl+C 信号处理器，确保不管处于何种异步事件循环或并发状态下，均能一次 Ctrl+C 瞬间强退程序
+    import signal
+    def signal_handler(sig, frame):
+        logger.warning("\n🛑 接收到 Ctrl+C 信号！正在强行退出并终止所有底层下载进程/线程...")
+        os._exit(1)
+    signal.signal(signal.SIGINT, signal_handler)
+    try:
+        signal.signal(signal.SIGTERM, signal_handler)
+    except AttributeError:
+        pass
 
     # 解析命令行用户传输进来的参数,像字典一样使用它
     args = parse_args()
@@ -526,30 +536,34 @@ def main():
         )
 
     # 下载图片
-    if args.name_url_pairs:
-        # 解析文件名和URL对(使用自定义文件名)
-        try:
-            downloader.download_with_names(
-                name_url_pairs=lines,
-                output_dir=args.output_dir,
-                default_ext=DEAFULT_EXT,
-            )
-        except Exception as e:
-            exception("下载过程中发生错误: %s", str(e))
-            return 1
-    else:
-        # 直接下载URL列表中的图片
-        try:
-            if not lines:
-                warning("没有有效的URL")
+    try:
+        if args.name_url_pairs:
+            # 解析文件名和URL对(使用自定义文件名)
+            try:
+                downloader.download_with_names(
+                    name_url_pairs=lines,
+                    output_dir=args.output_dir,
+                    default_ext=DEAFULT_EXT,
+                )
+            except Exception as e:
+                exception("下载过程中发生错误: %s", str(e))
                 return 1
+        else:
+            # 直接下载URL列表中的图片
+            try:
+                if not lines:
+                    warning("没有有效的URL")
+                    return 1
 
-            downloader.download_only_url(
-                urls=lines, output_dir=args.output_dir, default_ext=DEAFULT_EXT
-            )
-        except Exception as e:
-            exception("下载过程中发生错误: %s", str(e))
-            return 1
+                downloader.download_only_url(
+                    urls=lines, output_dir=args.output_dir, default_ext=DEAFULT_EXT
+                )
+            except Exception as e:
+                exception("下载过程中发生错误: %s", str(e))
+                return 1
+    except KeyboardInterrupt:
+        logger.warning("\n🛑 接收到 Ctrl+C 信号！正在强行退出并终止所有底层下载进程/线程...")
+        os._exit(1)
 
     return 0
 

@@ -503,6 +503,7 @@ class ScraplingDownloader:
             results = asyncio.run(self._run_async(processed_tasks, proxy))
         except KeyboardInterrupt:
             logger.warning("任务被用户中断。")
+            raise
         except Exception as e:
             logger.error(f"下载任务发生致命错误: {e}")
         return results

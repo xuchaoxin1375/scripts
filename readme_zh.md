@@ -7,6 +7,11 @@
 - windows下的powershell(pwsh7)
 - *nix系统bash/zsh
 
+链接:
+
+- https://gitee.com/xuchaoxin1375/scripts
+- [xuchaoxin1375/scripts](https://github.com/xuchaoxin1375/scripts)
+
 ### 使用说明
 
 1. windows 用户主要使用powershell模块(通过wsl或git-bash也可以使用第二类(shell)相关内容)
@@ -104,6 +109,8 @@ clone完成后,
 
 部署完整的powershell模块,适合长期使用.
 
+> gitee 可能要求登录账号;
+
 ```powershell
 irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1'|iex
 
@@ -182,7 +189,22 @@ bash $sh/shellrc_addition.sh
 exec bash
 ```
 
+### 更新脚本错误修复
 
+> 如果某次更新引入错误导致更新脚本不可用时,通过下面的修复更新脚本.
+>
+> 对于服务器版本,搜索仓库中的文件名:`update_repos.sh`
+
+```bash
+# 具体的脚本文件url请登录github获取,下面提供一个示例
+curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos.sh -o $sh/update_repos.sh
+
+```
+
+点击**原始数据**(raw)获取脚本链接:
+
+- [scripts/wp/woocommerce/woo_df/sh/update_repos.sh at main · xuchaoxin1375/scripts](https://github.com/xuchaoxin1375/scripts/blob/main/wp/woocommerce/woo_df/sh/update_repos.sh)
+- [wp/woocommerce/woo_df/sh/update_repos.sh · xuchaoxin1375/scripts - Gitee.com](https://gitee.com/xuchaoxin1375/scripts/blob/main/wp/woocommerce/woo_df/sh/update_repos.sh)
 
 ### 轻量虚拟化平台中和宿主机共用
 

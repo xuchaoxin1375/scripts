@@ -776,12 +776,14 @@ class ImageDownloader:
                         )
                     elif self.download_method in PLAY_BROWSER_DOWNLOADER:
                         browser = self.bd
-                        res = browser.batch_download(
+                        res_map = browser.batch_download(
                             tasks=[(url, file_path)],
                         )
+                        res = res_map.get(url, False)
                     elif self.download_method in SCRAPLING_BROWSER_DOWNLOADER:
                         browser = self.sbd
-                        res = browser.batch_download(tasks=[(url, file_path)])
+                        res_map = browser.batch_download(tasks=[(url, file_path)])
+                        res = res_map.get(url, False)
                     else:
                         # 通过python发送get请求获取包含文件(图片)的响应
                         # (酌情启用stream参数可以实现流式下载,减少内存占用,配合后面的iter_content方法使用)
@@ -1023,10 +1025,10 @@ class ImageDownloader:
         os.makedirs(output_dir, exist_ok=True)
 
         # 普通同步方案:使用线程池下载图片
-        if self.download_method and self.download_method not in PLAY_BROWSER_DOWNLOADER:
-            with concurrent.futures.ThreadPoolExecutor(
-                max_workers=self.max_workers
-            ) as executor:
+        if self.download_method and self.download_method not in BROSWER_DOWNLOADER:
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers)
+            future_to_url = {}
+            try:
                 future_to_url = {
                     executor.submit(
                         self._download_single_image,
@@ -1044,6 +1046,14 @@ class ImageDownloader:
                     except Exception as e:
                         exception("处理下载时发生异常: %s, 错误: %s", url, str(e))
                         self.stats.add_failed(url)
+            except KeyboardInterrupt:
+                info("🛑 线程池下载被 Ctrl+C 中断，正在取消未启动的任务...")
+                for fut in future_to_url:
+                    fut.cancel()
+                executor.shutdown(wait=False)
+                raise
+            finally:
+                executor.shutdown(wait=False)
         else:
             # 浏览器方案，直接调用 batch_download
             if self.download_method in PLAY_BROWSER_DOWNLOADER:
@@ -1118,10 +1128,10 @@ class ImageDownloader:
         os.makedirs(name=output_dir, exist_ok=True)
 
         # 普通同步方案:使用线程池下载图片
-        if self.download_method and self.download_method not in PLAY_BROWSER_DOWNLOADER:
-            with concurrent.futures.ThreadPoolExecutor(
-                max_workers=self.max_workers
-            ) as executor:
+        if self.download_method and self.download_method not in BROSWER_DOWNLOADER:
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers)
+            future_to_pair = {}
+            try:
                 # 使用字典解析式创建和存储任务{future: (filename, url)}
                 future_to_pair = {
                     executor.submit(
@@ -1142,6 +1152,14 @@ class ImageDownloader:
                         failed_dict = {filename: url}
                         exception("处理%s下载时发生异常, 错误:%s", failed_dict, str(e))
                         self.stats.add_failed(url=url, name=filename)
+            except KeyboardInterrupt:
+                info("🛑 线程池下载被 Ctrl+C 中断，正在取消未启动的任务...")
+                for fut in future_to_pair:
+                    fut.cancel()
+                executor.shutdown(wait=False)
+                raise
+            finally:
+                executor.shutdown(wait=False)
         else:
             # 异步方案(调用浏览器下载)
             url_name_pairs = [(url, filename) for filename, url in name_url_pairs]
