@@ -1,1 +1,0 @@
-c:\Users\Administrator\Desktop\spider_tasks\domains.xlsx

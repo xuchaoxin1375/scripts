@@ -32,6 +32,9 @@ import random
 import re
 
 import subprocess
+from typing import cast
+# import curl_cffi
+
 import shutil
 import threading
 import time
@@ -46,6 +49,7 @@ from urllib3.util.retry import Retry
 
 from filenamehandler import FilenameHandler
 from imgcompressor import ImageCompressor
+
 # 引入外部的强力下载方案(基于浏览器的方案)
 from downbybrowser import BrowserDownloader
 from downbyscrapling import ScraplingDownloader
@@ -145,6 +149,7 @@ def download_by_iwr(
     url,
     output_path,
     user_agent=None,
+    proxies=None,
     timeout=TIMEOUT,
     verify_ssl=True,
     ps_version="pwsh",
@@ -173,6 +178,7 @@ def download_by_iwr(
         f"-Uri '{url}'",
         f"-OutFile '{output_path}'",
         f"-TimeoutSec {timeout}",
+        f"-Proxy '{proxies}'",
         '"',
     ]
     if user_agent:
@@ -204,6 +210,7 @@ def download_by_curl(
     use_remote_name: bool = False,
     output_dir_for_remote_name="./",
     user_agent: str = USER_AGENTS[0],
+    proxies=None,
     timeout: int = TIMEOUT,
     silent: bool = False,
     extra_args: Optional[list] = None,
@@ -283,7 +290,8 @@ def download_by_curl(
     # 忽略证书安全检查(慎用,可能会引起部分网络环境无法下载图片(403))
     if curl_insecure:
         cmd += ["-k", "--ssl-no-revoke"]
-
+    if proxies:
+        cmd += ["-x", proxies]
     # 添加 User-Agent
     cmd += ["-A", user_agent]
     # 添加超时
@@ -329,6 +337,97 @@ def download_by_curl(
         if reset_cwd:
             os.chdir(cwd)  # 回到原目录
             debug(f"已回到原目录: {cwd}")
+
+
+def download_by_curl_cffi(
+    url: str,
+    output_path: str,
+    user_agent: str = USER_AGENTS[0],
+    timeout: int = TIMEOUT,
+    proxies=None,
+    curl_insecure: bool = False,
+    impersonate: str = "chrome",  # Default to a modern Chrome version
+) -> bool:
+    """
+    使用 curl_cffi 模块(代替外部curl命令)下载文件
+    注意充分利用可用的伪装参数.
+    Use curl_cffi module to download files with browser-like TLS fingerprints.
+
+    This method is superior to standard requests for sites with strict anti-bot
+    protection because it impersonates real browser TLS handshakes.
+
+    Args:
+        url (str): The URL of the file to download.
+        output_path (str): The local file path to save the downloaded content.
+        user_agent (str): The User-Agent string to send in the request header.
+        timeout (int): Request timeout in seconds.
+        proxies (Optional[str]): Proxy URL (e.g., 'http://user:pass@proxy:port').
+        curl_insecure (bool): If True, skip SSL certificate verification.
+        impersonate (str): The browser version to impersonate.
+
+    Returns:
+        bool: True if download was successful, False otherwise.
+
+    Raises:
+        ImportError: If curl_cffi is not installed.
+    """
+    try:
+        from curl_cffi import requests as cffi_requests
+        from curl_cffi.requests.impersonate import BrowserTypeLiteral
+    except ImportError:
+        error(
+            "curl_cffi is not installed. Please install it via 'pip install curl-cffi'"
+        )
+        return False
+
+    # Ensure output directory exists
+    output_dir = os.path.dirname(output_path)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+
+    debug(f"Downloading with curl_cffi (impersonate={impersonate}): {url}")
+
+    try:
+        # Create a session with impersonation
+        # Note: curl_cffi's Session supports context manager usage
+        valid_impersonate = (
+            cast("BrowserTypeLiteral", impersonate) if impersonate else None
+        )
+        with cffi_requests.Session(impersonate=valid_impersonate) as session:
+            # Configure proxy if provided
+            if proxies:
+                session.proxies = {"http": proxies, "https": proxies}
+
+            # Send GET request with stream=True to handle large files efficiently
+            response = session.get(
+                url=url,
+                headers={"User-Agent": user_agent},
+                timeout=timeout,
+                verify=not curl_insecure,  # verify=False if curl_insecure is True
+                stream=True,
+            )
+
+            # Raise exception for bad status codes (4xx, 5xx)
+            response.raise_for_status()
+
+            # Write content to file in chunks
+            with open(output_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+
+            file_size = os.path.getsize(output_path)
+            info(
+                f"Successfully downloaded (curl_cffi): {url} -> {output_path} ({file_size} bytes)"
+            )
+            return True
+
+    except cffi_requests.RequestsError as e:
+        error(f"curl_cffi download failed for {url}: {str(e)}")
+        return False
+    except Exception as e:
+        exception(f"Unexpected error during curl_cffi download for {url}: {str(e)}")
+        return False
 
 
 class DownloadStatistics:
@@ -471,6 +570,7 @@ class ImageDownloader:
         self.retry_times = retry_times
         self.verify_ssl = verify_ssl
         self.cookies = cookies
+        self.proxies = proxies
         # self.download_method = use_shutil
         self.download_method = download_method
         self.stats = DownloadStatistics()
@@ -495,6 +595,7 @@ class ImageDownloader:
             headless=headless,
             ic=self.ic,
             max_concurrency=max_workers,
+            proxy=self.proxies,
             # compress_quality=compress_quality,
             # quality_rule=quality_rule,
             # output_format=output_format,
@@ -503,7 +604,10 @@ class ImageDownloader:
             # fake_format=fake_format,
         )
         self.sbd = ScraplingDownloader(
-            headless=headless, ic=self.ic, max_concurrency=max_workers
+            headless=headless,
+            ic=self.ic,
+            max_concurrency=max_workers,
+            proxy=self.proxies,
         )
         self.headless = headless
 
@@ -648,6 +752,16 @@ class ImageDownloader:
                             output_dir_for_remote_name=output_dir,
                             timeout=self.timeout,
                             user_agent=self.headers["User-Agent"],
+                            proxies=self.proxies,
+                            curl_insecure=self.curl_insecure,
+                        )
+                    if self.download_method == "cffi":
+                        res = download_by_curl_cffi(
+                            url=url,
+                            output_path=file_path,
+                            timeout=self.timeout,
+                            user_agent=self.headers["User-Agent"],
+                            proxies=self.proxies,
                             curl_insecure=self.curl_insecure,
                         )
                     elif self.download_method == "iwr":
@@ -669,10 +783,8 @@ class ImageDownloader:
                         #     timeout=self.timeout,
                         # )
                     elif self.download_method == "scrapling":
-                        browser=self.sbd
-                        res=browser.batch_download(
-                            tasks=[(url, file_path)]
-                        )
+                        browser = self.sbd
+                        res = browser.batch_download(tasks=[(url, file_path)])
                     else:
                         # 通过python发送get请求获取包含文件(图片)的响应
                         # (酌情启用stream参数可以实现流式下载,减少内存占用,配合后面的iter_content方法使用)
@@ -1015,7 +1127,7 @@ class ImageDownloader:
             else:
                 browser = self.sbd
             browser.batch_download(tasks=url_name_pairs, output_dir=output_dir)
-            
+
         # 完成下载，打印统计信息
         self.stats.finish(record_faild=self.record_failed)
         self.stats.print_summary()

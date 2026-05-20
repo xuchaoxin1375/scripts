@@ -1,11 +1,13 @@
 @REM Make sure the cmd scripts use 'CRLF'(not LF)
-pip config set global.index-url https://pypi.mirrors.ustc.edu.cn/simple/
+@REM pip config set global.index-url https://pypi.mirrors.ustc.edu.cn/simple/
+pip config set global.index-url http://mirrors.aliyun.com/pypi/simple/
 
-pip install scrapling
-pip install scrapling[shell]
-pip install scrapling[fetchers]
+uv pip install scrapling
+uv pip install scrapling[shell]
+uv pip install scrapling[fetchers]
+
 @REM update related packages
-pip install scrapling curl_cffi -U
+uv pip install scrapling curl_cffi -U
 
 @REM install browsers...
 patchright install

@@ -71,6 +71,7 @@ class BrowserDownloader:
         delay_range: Tuple[float, float] = (0, 0),
         max_concurrency: int = 3,
         max_retries: int = 1,
+        proxy=None,
         # 图片压缩相关参数
         ic: ImageCompressor | None = None,
         compress_quality: int = 0,
@@ -98,40 +99,43 @@ class BrowserDownloader:
         self.delay_range = delay_range
         self.max_concurrency = max_concurrency
         self.max_retries = max_retries
+        self.proxy = proxy
         # 图片压缩相关参数
         self.ic = ic
         self.compress_quality = compress_quality
         self.output_format = output_format
 
-    @staticmethod
-    def _read_proxies(proxy_input: Optional[Union[str, List[str]]]) -> List[str]:
+    def _read_proxies(self, proxy) -> List[str]:
         """
         从文件路径或直接的代理字符串中读取代理列表。
         一个 None 或空列表/空字符串表示直连(取决于环境代理)。
         """
-        if not proxy_input:
-            return []
+        if not proxy: # 如果没有传递proxy参数,则考虑对象中的代理属性.
+            if self.proxy:
+                proxy = self.proxy
+            else:
+                return []
 
-        if isinstance(proxy_input, str):
-            if os.path.exists(proxy_input):
+        if isinstance(proxy, str):
+            if os.path.exists(proxy):
                 # 认为是文件路径
                 proxies = []
                 try:
-                    with open(proxy_input, "r", encoding="utf-8") as f:
+                    with open(proxy, "r", encoding="utf-8") as f:
                         for line in f:
                             stripped = line.strip()
                             if stripped and not stripped.startswith("#"):
                                 proxies.append(stripped)
                     return proxies
                 except Exception as e:
-                    logger.error(f"读取代理文件失败: {proxy_input}, 错误: {e}")
+                    logger.error(f"读取代理文件失败: {proxy}, 错误: {e}")
                     return []
             else:
                 # 认为是单个代理字符串
-                return [proxy_input]
+                return [proxy]
 
         # 认为已经是代理列表
-        return [p for p in proxy_input if p]
+        return [p for p in proxy if p]
 
     def _get_proxy_config(
         self, proxy_list: List[str], worker_id: int
@@ -299,10 +303,10 @@ class BrowserDownloader:
     async def _run_async(
         self,
         tasks: List[Tuple[str, str, Optional[str]]],
-        proxy_input: Optional[Union[str, List[str]]] = None,
+        proxy: Optional[Union[str, List[str]]] = None,
     ):
         """异步运行并发下载任务，实现 Context 和 Page 复用。"""
-        proxy_list = self._read_proxies(proxy_input)
+        proxy_list = self._read_proxies(proxy)
         proxy_configs = proxy_list if proxy_list else [""]
 
         logger.info(
@@ -375,7 +379,7 @@ class BrowserDownloader:
     def batch_download(
         self,
         tasks: List[Tuple[str, str]],
-        proxy_input: Optional[Union[str, List[str]]] = None,
+        proxy: Optional[Union[str, List[str]]] = None,
         output_dir: Optional[str] = None,
     ):
         """
@@ -385,7 +389,7 @@ class BrowserDownloader:
 
         Args:
             tasks: 任务列表，每个元素是 (url, output_path) 的元组。
-            proxy_input: 代理输入，可以是单个代理字符串、代理列表或代理文件路径。
+            proxy: 代理输入，可以是单个代理字符串、代理列表或代理文件路径。
             output_dir: 可选，如果指定，将所有 output_path 仅为文件名的任务补全为 output_dir/filename。
         Returns:
             True 表示下载过程完成 (不代表所有任务成功)。
@@ -411,7 +415,7 @@ class BrowserDownloader:
 
         try:
             # 使用 self._run_async 启动异步下载
-            asyncio.run(self._run_async(processed_tasks, proxy_input))
+            asyncio.run(self._run_async(processed_tasks, proxy))
         except KeyboardInterrupt:
             logger.warning("任务被用户中断。")
         except Exception as e:
@@ -425,7 +429,7 @@ class BrowserDownloader:
         use_remote_name: bool = False,
         output_dir_for_remote_name: str = "./",
         user_agent: Optional[str] = None,
-        proxy_input: Optional[Union[str, List[str]]] = None,
+        proxy: Optional[Union[str, List[str]]] = None,
         # 单个下载时，可以临时覆盖重试次数
         retries: Optional[int] = None,
     ) -> None:
@@ -440,7 +444,7 @@ class BrowserDownloader:
             use_remote_name: 是否使用 URL 猜测的文件名作为保存文件名。
             output_dir_for_remote_name: 如果 use_remote_name 为 True，指定保存的目录。
             user_agent: 可选，为此次请求设置 User-Agent 字符串 (目前 Playwright 在 Context 级别设置，此处保留以备将来使用)。
-            proxy_input: 代理配置 (同 batch_download)。
+            proxy: 代理配置 (同 batch_download)。
             retries: 可选，覆盖 Downloader 实例的 max_retries 设置。
         """
 
@@ -484,7 +488,7 @@ class BrowserDownloader:
 
         try:
             # 4. 运行异步任务
-            asyncio.run(temp_downloader._run_async(tasks, proxy_input))
+            asyncio.run(temp_downloader._run_async(tasks, proxy))
             logger.info(f"单个链接下载完成: {final_output_path}")
         except KeyboardInterrupt:
             logger.warning("任务被用户中断。")
@@ -536,7 +540,7 @@ def test_batch_download():
     # 2. 调用实例方法进行下载
     downloader.batch_download(
         tasks=download_tasks,
-        proxy_input=PROXY,
+        proxy=PROXY,
         output_dir=output_dir,  # 即使这里指定了 output_dir，但因为 tasks 中是完整路径，它不会生效
     )
 

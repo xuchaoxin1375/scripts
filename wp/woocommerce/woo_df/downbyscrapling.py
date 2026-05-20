@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from imgcompressor import ImageCompressor
 from urllib.parse import urlparse
 from scrapling.fetchers import AsyncStealthySession
+from scrapling.fetchers import ProxyRotator
 
 PROXY = "http://127.0.0.1:8800"  # 代理设置是可选的,根据实际情况修改
 # 配置一个基本的logger，避免在外部调用时没有handler
@@ -70,6 +71,7 @@ class ScraplingDownloader:
         delay_range: Tuple[float, float] = (0, 0),
         max_concurrency: int = 3,
         max_retries: int = 1,
+        proxy=None,
         # 图片压缩相关参数
         ic: ImageCompressor | None = None,
         compress_quality: int = 0,
@@ -102,6 +104,7 @@ class ScraplingDownloader:
         self.delay_range = delay_range
         self.max_concurrency = max_concurrency
         self.max_retries = max_retries
+        self.proxy = proxy
         # 图片压缩相关参数
         self.ic = ic
         self.compress_quality = compress_quality
@@ -112,42 +115,39 @@ class ScraplingDownloader:
         self.hide_canvas = hide_canvas
         self.real_chrome = real_chrome
 
-    @staticmethod
-    def _read_proxies(proxy_input: Optional[Union[str, List[str]]]) -> List[str]:
+    def _read_proxies(self, proxy) -> List[str]:
         """
         从文件路径或直接的代理字符串中读取代理列表。
         一个 None 或空列表/空字符串表示直连(取决于环境代理)。
         """
-        if not proxy_input:
-            return []
 
-        if isinstance(proxy_input, str):
-            if os.path.exists(proxy_input):
+        if not proxy:  # 如果没有传递proxy参数,则考虑对象中的代理属性.
+            if self.proxy:
+                proxy = self.proxy
+            else:
+                return []
+
+        if isinstance(proxy, str):
+            if os.path.exists(proxy):
                 # 认为是文件路径
                 proxies = []
                 try:
-                    with open(proxy_input, "r", encoding="utf-8") as f:
+                    with open(proxy, "r", encoding="utf-8") as f:
                         for line in f:
                             stripped = line.strip()
                             if stripped and not stripped.startswith("#"):
                                 proxies.append(stripped)
                     return proxies
                 except Exception as e:
-                    logger.error(f"读取代理文件失败: {proxy_input}, 错误: {e}")
+                    logger.error(f"读取代理文件失败: {proxy}, 错误: {e}")
                     return []
             else:
                 # 认为是单个代理字符串
-                return [proxy_input]
+                return [proxy]
 
-        # 认为已经是代理列表
-        return [p for p in proxy_input if p]
+        # 其他情况,则认为已经是代理列表
 
-    def _get_proxy_config(self, proxy_list: List[str], worker_id: int) -> Optional[str]:
-        """根据 worker_id 和代理列表获取代理配置。"""
-        if not proxy_list:
-            return None
-
-        return proxy_list[worker_id % len(proxy_list)]
+        return [p for p in proxy if p]
 
     async def _download_single_url(
         self,
@@ -156,14 +156,13 @@ class ScraplingDownloader:
         output_path: str,
         user_agent: Optional[str] = None,
         retry_count: int = 0,
-        proxy_info: str = "直连",
         progress_info: Optional[str] = None,
-        proxy_url: Optional[str] = None,
     ) -> bool:
         """
         核心下载逻辑：下载单个 URL 并保存到指定路径 (复用 Session)。
         下载完成后自动进行图片压缩处理（如启用）。
         """
+
         start_time = asyncio.get_event_loop().time()
         display_url = url
 
@@ -183,7 +182,7 @@ class ScraplingDownloader:
 
         try:
             logger.info(
-                f"🚀{progress_info if progress_info else ''} 开始请求: {display_url} [代理: {proxy_info}] -> {output_path} ".strip()
+                f"🚀{progress_info if progress_info else ''} 开始请求: {display_url} -> {output_path}"
             )
 
             # 准备 fetch 参数
@@ -192,14 +191,15 @@ class ScraplingDownloader:
                 "network_idle": True,  # 等待网络空闲
             }
             # ty 比 pylance严格,这里可能会警告类型
-            
+
             # 如果指定了 user_agent，添加到 extra_headers
             if user_agent:
                 fetch_kwargs["extra_headers"] = {"User-Agent": user_agent}
 
-            # 如果指定了代理，添加到 fetch 参数
-            if proxy_url:
-                fetch_kwargs["proxy"] = proxy_url
+            # 注意：不要在 fetch 调用中传递 proxy 参数
+            # 因为 AsyncStealthySession 已经在初始化时配置了代理
+            # 如果需要代理轮换，应该使用 proxy_rotator 参数而不是 proxy 参数
+            # 参考：https://scrapling.readthedocs.io/en/latest/spiders/proxy-blocking.html
 
             # 使用复用的 session 发起请求
             response = await session.fetch(url, **fetch_kwargs)
@@ -266,8 +266,7 @@ class ScraplingDownloader:
                     output_path,
                     user_agent,
                     retry_count + 1,
-                    proxy_info,
-                    proxy_url,
+                    progress_info,
                 )
             else:
                 logger.error(
@@ -280,8 +279,6 @@ class ScraplingDownloader:
         self,
         session: AsyncStealthySession,
         queue: asyncio.Queue,
-        proxy_info: str,
-        proxy_url: Optional[str],
         completed_count: List[int],
         total_tasks: int,
         lock: asyncio.Lock,
@@ -300,9 +297,7 @@ class ScraplingDownloader:
                         url,
                         output_path,
                         user_agent,
-                        proxy_info=proxy_info,
                         progress_info=progress_info,
-                        proxy_url=proxy_url,
                     )
                     if self.delay_range[0] > 0 or self.delay_range[1] > 0:
                         delay = random.uniform(*self.delay_range)
@@ -317,41 +312,53 @@ class ScraplingDownloader:
     async def _run_async(
         self,
         tasks: List[Tuple[str, str, Optional[str]]],
-        proxy_input: Optional[Union[str, List[str]]] = None,
+        proxy: Optional[Union[str, List[str]]] = None,
     ):
         """异步运行并发下载任务，实现 Session 复用。"""
-        proxy_list = self._read_proxies(proxy_input)
+        proxy_list = self._read_proxies(proxy)
         proxy_configs = proxy_list if proxy_list else [""]
 
         logger.info(
             f"配置: 并发={self.max_concurrency}, 代理池大小={len(proxy_configs)}"
         )
 
-        # 使用 AsyncStealthySession，max_pages 用于控制并发标签页数量
-        async with AsyncStealthySession(
-            headless=self.headless,
-            solve_cloudflare=self.solve_cloudflare,
-            block_webrtc=self.block_webrtc,
-            hide_canvas=self.hide_canvas,
-            real_chrome=self.real_chrome,
-            timeout=self.timeout * 1000,
-            max_pages=self.max_concurrency,
-        ) as session:
+        # 准备 session 参数
+        session_kwargs = {
+            "headless": self.headless,
+            "solve_cloudflare": self.solve_cloudflare,
+            "block_webrtc": self.block_webrtc,
+            "hide_canvas": self.hide_canvas,
+            "real_chrome": self.real_chrome,
+            "timeout": self.timeout * 1000,
+            "max_pages": self.max_concurrency,
+        }
+
+        # 如果有多个代理，使用 ProxyRotator 实现代理轮换
+        # 如果只有一个代理或没有代理，使用静态 proxy 参数
+        if len(proxy_configs) > 1:
+            # 使用 ProxyRotator 进行代理轮换
+            # 注意：ProxyRotator 与 proxy 参数不能同时使用
+            proxy_rotator = ProxyRotator(proxy_configs)
+            session_kwargs["proxy_rotator"] = proxy_rotator
+            logger.info(f"启用代理轮换模式，代理数量: {len(proxy_configs)}")
+        elif len(proxy_configs) == 1 and proxy_configs[0]:
+            # 单个代理，使用静态 proxy 参数
+            session_kwargs["proxy"] = proxy_configs[0]
+            logger.info(f"使用单个代理: {proxy_configs[0]}")
+        else:
+            # 没有代理，直连
+            logger.info("未配置代理，使用直连模式")
+
+        # 使用 AsyncStealthySession,这会启动一个浏览器
+        async with AsyncStealthySession(**session_kwargs) as session:
             queue: asyncio.Queue[Tuple[str, str, Optional[str]]] = asyncio.Queue()
             for task in tasks:
                 await queue.put(task)
 
             actual_workers = min(self.max_concurrency, len(tasks))
-            worker_sessions: List[Tuple[AsyncStealthySession, str]] = []
 
-            # 由于 AsyncStealthySession 本身支持并发请求（通过 max_pages），
-            # 我们不需要创建多个 session，而是使用同一个 session 并发请求
-            # 但为了支持代理轮换，我们需要为每个 worker 分配不同的代理配置
-            # 这里我们简化处理：如果需要代理轮换，在 fetch 时动态设置 proxy 参数
-            # 由于 scrapling 的 session 级别 proxy 配置限制，我们采用以下策略：
-            # - 如果有代理列表，我们在每个请求时动态设置 proxy
-            # - 如果没有代理，使用默认配置
-
+            # AsyncStealthySession 本身支持并发请求（通过 max_pages）
+            # ProxyRotator 会自动处理代理轮换（如果配置了）
             # 进度计数器和锁
             completed_count = [0]  # 用列表包裹以便可变
             total_tasks = len(tasks)
@@ -359,17 +366,11 @@ class ScraplingDownloader:
 
             workers = []
             for i in range(actual_workers):
-                worker_proxy_url = (
-                    proxy_configs[i % len(proxy_configs)] if proxy_configs else None
-                )
-                p_info = worker_proxy_url if worker_proxy_url else "环境代理"
                 workers.append(
                     asyncio.create_task(
                         self._worker(
                             session,
                             queue,
-                            p_info,
-                            worker_proxy_url,
                             completed_count,
                             total_tasks,
                             lock,
@@ -388,7 +389,7 @@ class ScraplingDownloader:
     def batch_download(
         self,
         tasks: List[Tuple[str, str]],
-        proxy_input: Optional[Union[str, List[str]]] = None,
+        proxy: Optional[Union[str, List[str]]] = None,
         output_dir: Optional[str] = None,
     ):
         """
@@ -398,7 +399,7 @@ class ScraplingDownloader:
 
         Args:
             tasks: 任务列表，每个元素是 (url, output_path) 的元组。
-            proxy_input: 代理输入，可以是单个代理字符串、代理列表或代理文件路径。
+            proxy: 代理输入，可以是单个代理字符串、代理列表或代理文件路径。
             output_dir: 可选，如果指定，将所有 output_path 仅为文件名的任务补全为 output_dir/filename。
         Returns:
             True 表示下载过程完成 (不代表所有任务成功)。
@@ -424,7 +425,7 @@ class ScraplingDownloader:
 
         try:
             # 使用 self._run_async 启动异步下载
-            asyncio.run(self._run_async(processed_tasks, proxy_input))
+            asyncio.run(self._run_async(processed_tasks, proxy))
         except KeyboardInterrupt:
             logger.warning("任务被用户中断。")
         except Exception as e:
@@ -438,7 +439,7 @@ class ScraplingDownloader:
         use_remote_name: bool = False,
         output_dir_for_remote_name: str = "./",
         user_agent: Optional[str] = None,
-        proxy_input: Optional[Union[str, List[str]]] = None,
+        proxy: Optional[Union[str, List[str]]] = None,
         # 单个下载时，可以临时覆盖重试次数
         retries: Optional[int] = None,
     ) -> None:
@@ -453,7 +454,7 @@ class ScraplingDownloader:
             use_remote_name: 是否使用 URL 猜测的文件名作为保存文件名。
             output_dir_for_remote_name: 如果 use_remote_name 为 True，指定保存的目录。
             user_agent: 可选，为此次请求设置 User-Agent 字符串。
-            proxy_input: 代理配置 (同 batch_download)。
+            proxy: 代理配置 (同 batch_download)。
             retries: 可选，覆盖 Downloader 实例的 max_retries 设置。
         """
 
@@ -497,7 +498,7 @@ class ScraplingDownloader:
 
         try:
             # 4. 运行异步任务
-            asyncio.run(temp_downloader._run_async(tasks, proxy_input))
+            asyncio.run(temp_downloader._run_async(tasks, proxy))
             logger.info(f"单个链接下载完成: {final_output_path}")
         except KeyboardInterrupt:
             logger.warning("任务被用户中断。")
@@ -563,7 +564,7 @@ def test_batch_download():
     # 2. 调用实例方法进行下载
     downloader.batch_download(
         tasks=download_tasks,
-        proxy_input=PROXY,
+        proxy=PROXY,
         output_dir=output_dir,
     )
 
@@ -601,7 +602,7 @@ def test_single_download():
     downloader.single_download(
         url=test_url_1,
         output_path=output_path_1,
-        proxy_input=PROXY,
+        proxy=PROXY,
     )
 
     # print("\n\n=== 示例 2: 使用 use_remote_name 猜测文件名 (HTML) ===")
@@ -614,5 +615,5 @@ def test_single_download():
 
 # --- 简单使用示例 ---
 if __name__ == "__main__":
-    test_single_download()
-    # test_batch_download()
+    # test_single_download()
+    test_batch_download()

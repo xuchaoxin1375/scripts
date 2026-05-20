@@ -24,10 +24,16 @@ from comutils import (
 )
 
 # from woo_df.imgdown import ImageDownloader
+from downbybrowser import PROXY
 from imgdown import ImageDownloader, USER_AGENTS, BROWSER_DOWNLOADER
 from filenamehandler import FilenameHandler as fh
 from wooenums import CSVProductFields
 
+DOWNLOAD_METHODS = (
+    ["request", "curl", "cffi", "iwr"] + BROWSER_DOWNLOADER + ["scrapling"]
+)
+
+PROXY_HTTP = os.environ.get("HTTP_PROXY")
 
 RESIZE_THRESHOLD = (1000, 800)
 DEAFULT_EXT = ".webp"
@@ -237,7 +243,7 @@ def parse_args():
         "-U",
         "--download-method",
         default="request",
-        choices=["request", "curl", "iwr"] + BROWSER_DOWNLOADER + ["scrapling"],
+        choices=DOWNLOAD_METHODS,
         # action="store_true",
         help=f"使用python 请求或外部工具下载图片(request,curl,iwr,browser,scrapling)以及浏览器方案playwright,同义词{BROWSER_DOWNLOADER},scrapling是更强劲的浏览器方案",
     )
@@ -282,7 +288,8 @@ def parse_args():
         action="store_true",
         help="是否验证SSL证书(启用会提高安全性，但可能降低下载速度以及成功率)",
     )
-    parser.add_argument("--proxy-file", help="代理IP地址列表文件路径")
+    parser.add_argument("--proxy-file", help="代理url列表文件路径")
+    parser.add_argument("--proxy", help="代理url")
     parser.add_argument("--cookie-file", help="包含Cookies的JSON文件路径")
 
     parser.add_argument("-v", "--verbose", action="store_true", help="显示详细日志")
@@ -388,10 +395,16 @@ def main():
                     # print(lines,"🎈🎈")
     debug(f"use shutil:{args.download_method}")
     # 创建下载器实例,控制下载器基本行为
+
+    # 计算最终要使用的代理.
+    proxy = PROXY_HTTP if not args.proxy and PROXY_HTTP else args.proxy
+    info("当前设置的代理: %s", [proxy])
+
     downloader = ImageDownloader(
         max_workers=args.workers,
         timeout=args.timeout,
         retry_times=args.retry,
+        proxies=proxy,
         user_agent=args.user_agent,
         download_method=args.download_method,
         compress_quality=args.compress_quality,
