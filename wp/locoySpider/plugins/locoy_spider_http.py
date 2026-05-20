@@ -29,7 +29,7 @@ from scrapling.fetchers import StealthyFetcher, StealthySession
 # import curl_cffi
 import logging
 
-VERSION = "2026.05.14"
+VERSION = "2026.05.21"
 ENABLE = 1  # 是否启用插件(启用为True或1,关闭为False或0)
 
 # fetcher模式:auto,curl(curl_cffi),stealthy,None
@@ -41,10 +41,10 @@ FETCH_MODE = "auto"
 # 访问环境变量:
 TEMP = os.environ.get("TEMP")
 
-PROXY_PORT = 8800
+PROXY_PORT = 10808
 HEADLESS = False
 SAVE_REQ_RES = False  # 是否将请求保存到文件中(用于开发维护时的对比).TODO
-LOG_DIR = "C:/temp/spider"
+LOG_DIR = "C:/temp/spider" # 运行日志文件保存目录
 
 # 确保日志文件所在目录存在.
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -84,6 +84,7 @@ error = logger.error
 args = sys.argv
 
 info(f"LocoySpider Http(s) request plugin.Version:{VERSION}")
+info(f"FETCH_MODE={FETCH_MODE}")
 # info(args)
 
 if len(sys.argv) != 5:
@@ -172,9 +173,10 @@ else:
             info(msg)
             # LabelArray["Html"] = msg
         else:
-            # url = url[(url.find("https://")) :]
-            # info(f"移除包装后的链接:{url}")
-
+            info(f"执行预请求处理[{url}]...")
+            # http://ok前缀方案,需要移除包装后的链接
+            url = url[(url.find("https://")) :]
+            info(f"移除包装后的链接:{url}")
             def curl_request():
                 info(f"Attempting curl_cffi request to: {url}")
                 try:
@@ -188,7 +190,7 @@ else:
                     info(f"curl request status_code:{response.status_code}")
                     response.raise_for_status()  # 请求失败时主动抛出异常
                     res = response.text
-                    # info(res)
+                    info("curl_cffi request success.")
                     return res
 
                 except Exception as e:
@@ -218,7 +220,7 @@ else:
                     # return page
                     # res = page.body.decode("utf-8")
                     res = page.html_content
-                    info(f"page.body:{res}")
+                    # info(f"page.body:{res}")
                     return res
                 except Exception as e:
                     msg = f"scrapling stealthy request failed:{e}"

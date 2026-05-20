@@ -1242,6 +1242,9 @@ function Restart-Nginx
 
         $nginx_home = $env:NGINX_HOME,
         $NginxVhostConfDir = $env:nginx_vhosts_dir,
+        # 记录启动或重启nginx的错误日志,也可以考虑用临时文件:
+        # $tempLog=New-TemporaryFile,用完删除防止堆积
+        $Errorlog = "$env:TEMP/nginx_error.log",
         # 终止所有nginx进程后再重启
         [switch]$Force
     
@@ -1270,7 +1273,7 @@ function Restart-Nginx
         {
             $nginx_processes | Stop-Process -Force -Verbose
             Write-Verbose "Start nginx.exe..." -Verbose
-            Start-Process -WorkingDirectory $nginx_home -FilePath "nginx.exe" -ArgumentList "-c", "$nginx_conf" -NoNewWindow # -PassThru
+            Start-Process -WorkingDirectory $nginx_home -FilePath "nginx.exe" -ArgumentList "-c", "$nginx_conf" -NoNewWindow -RedirectStandardError $ErrorLog # -PassThru
             # 重新扫描nginx进程(而不是使用上面的Start-Process返回的进程对象,进程创建失败时,这不太准确)
             return Get-Process nginx*
             # Start-XpNginx 
@@ -1284,8 +1287,18 @@ function Restart-Nginx
     {
 
         Write-Verbose "Nginx.exe -s reload" -Verbose
-        Start-Process -WorkingDirectory $nginx_home -FilePath "nginx.exe" -ArgumentList "-s", "reload" -Wait -NoNewWindow
+        Start-Process -WorkingDirectory $nginx_home -FilePath "nginx.exe" -ArgumentList "-s", "reload" -Wait -NoNewWindow -RedirectStandardError $ErrorLog
         Write-Verbose "Nginx.exe -s stop" -Verbose
+    }
+    if(Test-Path $Errorlog)
+    {
+        $errorMsg = Get-Content $Errorlog 
+        if($errorMsg)
+        {
+            Write-Error $errorMsg
+            # 清空错误日志,避免下次误报
+        }
+        Remove-Item $Errorlog -Verbose
     }
 }
 
