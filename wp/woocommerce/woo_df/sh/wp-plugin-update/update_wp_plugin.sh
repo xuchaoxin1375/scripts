@@ -3,6 +3,7 @@
 # 如果使用symlink,需要注意和建站工具网站目录中默认设置的"防跨站攻击"功能冲突
 # 合理设置防跨站攻击(open_basedir)，防止黑客通过其他网站目录进行入侵攻击
 VERSION=20260501
+HOSTNAME=$(hostname)
 show_usage() {
     cat << EOF
 wordpress 插件更新/安装/移除脚本 (version:$VERSION)
@@ -121,14 +122,15 @@ if [[ -z "$PLUGIN_SOURCE" && -z "$REMOVE_PLUGINS" ]]; then
     show_usage
 fi
 
-if [[ "$LIST_MODE" == "auto" ]]; then
-    echo "最终LIST_MODE设置为auto,仅处理已经安装了指定插件的网站,未安装的网站将跳过(此方案仅适用于老插件更新,不适用于安装全新插件)！"
-fi
 # 检查是否是插件移除模式,如果是,则将模式切换为非auto的模式(manual模式)
 # 注意不要把这个逻辑写在-M选项解析中(如果用户没有手动指定-M选项,就不会执行这段修正代码)
 if [[ "$REMOVE_PLUGINS" != "" ]]; then
     echo "检测到要移除插件,将网站列表模式改为manual"
     LIST_MODE="manual"
+fi
+echo "最终LIST_MODE设置为:[$LIST_MODE]"
+if [[ "$LIST_MODE" == "auto" ]]; then
+    echo "[$HOSTNAME]仅处理已经安装了指定插件的网站,未安装的网站将跳过(此方案仅适用于老插件更新,不适用于安装全新插件)！"
 fi
 # 读取黑名单或白名单文件到数组
 BLACKLIST=()
@@ -188,7 +190,7 @@ log() {
     local msg="$1"
     echo "$msg"
     if [[ -n "$LOG_FILE" ]]; then
-        echo "$msg" >> "$LOG_FILE"
+        echo "[$HOSTNAME] $msg" >> "$LOG_FILE"
     fi
 }
 
@@ -348,7 +350,7 @@ for workdir_path in "${WORKDIR_ARRAY[@]}"; do
         # 写法3:使用兼容性最好的while read循环来处理find的输出(性能会比mapfile差一些)
         site_plugin_dirs=()
         while IFS= read -r -d '' dir; do
-            echo "找到目录: $dir"
+            echo "[$HOSTNAME]找到目录: $dir"
             site_plugin_dirs+=("$dir")
         done < <(find "$workdir_path" -mindepth 5 -maxdepth 6 \( -type d -o -type l \) -name "$PLUGIN_BASENAME" -print0)
 
@@ -358,7 +360,7 @@ for workdir_path in "${WORKDIR_ARRAY[@]}"; do
             # 插件更新(仅针对普通插件,must-plugin类型请使用manual更新)
             install_to_target "$d" "(common plugin)" || return 1
         done
-        log "[$(hostname)]共找到 ${#site_plugin_dirs[@]} 个安装了 $PLUGIN_BASENAME 插件的站点。"
+        log "[$HOSTNAME]共找到 ${#site_plugin_dirs[@]} 个安装了 $PLUGIN_BASENAME 插件的站点。"
     fi
 done
 
