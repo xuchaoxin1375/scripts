@@ -24,12 +24,12 @@ from comutils import (
 )
 
 # from woo_df.imgdown import ImageDownloader
-from imgdown import ImageDownloader, USER_AGENTS, PLAY_BROWSER_DOWNLOADER
+from imgdown import ImageDownloader, USER_AGENTS, BROSWER_DOWNLOADER
 from filenamehandler import FilenameHandler as fh
 from wooenums import CSVProductFields
 
 DOWNLOAD_METHODS = (
-    ["request", "curl", "cffi", "iwr"] + PLAY_BROWSER_DOWNLOADER
+    ["request", "curl", "cffi", "iwr"] + BROSWER_DOWNLOADER
 )
 
 PROXY_HTTP = os.environ.get("HTTP_PROXY")
