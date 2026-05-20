@@ -24,7 +24,7 @@ from comutils import (
 )
 
 # from woo_df.imgdown import ImageDownloader
-from imgdown import ImageDownloader, USER_AGENTS, BROSWER_DOWNLOADER
+from imgdown import ImageDownloader, USER_AGENTS, BROSWER_DOWNLOADER,PLAY_BROWSER_DOWNLOADER
 from filenamehandler import FilenameHandler as fh
 from wooenums import CSVProductFields
 
