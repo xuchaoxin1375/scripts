@@ -1394,33 +1394,6 @@ function Deploy-PicgoConfig
     Write-Output 'for GUI part'
     cpFVR $configs\PicgoConfigs\* $env:picgo_conf
 }
-function Deploy-PicgoGUI
-{
-    cpFVR
-}
-function Deploy-UVConfig
-{
-    <# 
-    .SYNOPSIS
-    部署uv的配置(主要是pypi镜像源)
-
-    https://help.mirrorz.org/pypi/
-    #>
-    param (
-        $ConfigDirectory = '~/.config/uv'
-    )
-    New-Item -ItemType Directory -Path $ConfigDirectory -ErrorAction SilentlyContinue
-    $configContent = @'
-[[index]]
-url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
-default = true
-'@
-    $config = "$ConfigDirectory/uv.toml"
-    # New-Item -ItemType File -Path $config -Verbose
-    Set-Content -Path $config -Value $configContent 
-
-    Get-Content $config
-}
 
 function Deploy-uvConfig
 {
@@ -1433,7 +1406,7 @@ function Deploy-uvConfig
     #>
     param (
         $Path = "~/.config/uv/uv.toml",
-        $Mirror = "http://mirrors.aliyun.com/pypi/simple/"
+        $Mirror = "https://mirrors.aliyun.com/pypi/simple/"
     )
     $uvConfig = @"
 [[index]]
@@ -1456,7 +1429,7 @@ default = true
     # 1. 定义哈希表 (使用 @{ } 语法)
     $pypi_mirrors = @{
         Tencent = "https://mirrors.cloud.tencent.com/pypi/simple/"
-        Aliyun  = "http://mirrors.aliyun.com/pypi/simple/"
+        Aliyun  = "https://mirrors.aliyun.com/pypi/simple/"
         PKU     = "https://mirrors.pku.edu.cn/pypi/web/simple"
         ZJU     = "https://mirrors.zju.edu.cn/pypi/web/simple"
         NJU     = "https://mirror.nju.edu.cn/pypi/web/simple"

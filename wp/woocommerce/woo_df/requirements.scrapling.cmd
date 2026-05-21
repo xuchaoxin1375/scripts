@@ -1,6 +1,7 @@
 @REM Make sure the cmd scripts use 'CRLF'(not LF)
 @REM pip config set global.index-url https://pypi.mirrors.ustc.edu.cn/simple/
-pip config set global.index-url http://mirrors.aliyun.com/pypi/simple/
+@REM pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
+pip config set global.index-url https://mirrors.pku.edu.cn/pypi/web/simple 
 
 uv pip install scrapling
 uv pip install scrapling[shell]

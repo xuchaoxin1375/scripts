@@ -16,7 +16,7 @@ unidecode
 tqdm
 Wand
 cloudflare
-
+uv
 # please run:[  playwright install  ] this command in your terminal to install playwright browser automation tool
 # playwright
 # playwright_stealth
