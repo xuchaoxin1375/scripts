@@ -36,10 +36,18 @@ from scraplings.scrapling_sitemap_helper import fetch_sitemap_urls
 # import curl_cffi
 import logging
 
-VERSION = "20260521-1450"
-ENABLE = 1  # 是否启用插件(启用为True或1,关闭为False或0)
+VERSION = "20260521-1450" # 插件版本(更新日期)
 
-# fetcher模式:auto,curl(curl_cffi),stealthy,None
+# 插件选中后也并不总是启用核心逻辑(请求替换这部分代码)
+# 1.使用http://ok/前缀的情况下,认为要启用代理
+# 2.手动将ENABLE设置为True或1,则启用插件
+# 统一逻辑,可将第一种情况转换为第二种情况统一判断.
+
+ENABLE = 0  # 是否启用插件(启用为True或1,关闭为False或0)
+PROXY_PORT = 8800
+HEADLESS = bool(0)  # 是否无头模式(正式采集启动前更改为True或1,可以阻止浏览器窗口弹出;False或0表示打开浏览器窗口),记得保存修改(ctrl+s保存)
+
+# fetcher模式:auto,curl(curl_cffi),stealthy
 # 默认使用auto模式,如果curl_cffi无法通过,则自动切换到stealthy方案
 FETCH_MODE = "auto"
 
@@ -48,8 +56,6 @@ FETCH_MODE = "auto"
 # 访问环境变量:
 TEMP = os.environ.get("TEMP")
 
-PROXY_PORT = 10808
-HEADLESS = False  # 是否无头模式(正式采集启动前更改为True),记得保存修改(ctrl+s保存)
 SAVE_REQ_RES = False  # 是否将请求保存到文件中(用于开发维护时的对比).TODO
 
 # 确保日志文件所在目录存在.
@@ -78,7 +84,7 @@ PROXIES = ProxySpec(**PROXIES_DICT)
 
 datefmt1 = "%H:%M:%S"  # 仅打印时分秒
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.INFO, # 将此行注释掉,或者改为logging.WARNING可只打印警告及以上的日志
     filename=LOG,
     filemode="w",  # 默认是a,追加.
     encoding="utf-8",
@@ -175,16 +181,13 @@ else:
         # for key, value in LabelArray.items():
         #     info(f"key:{key},value:{value}")
 
-        # 移除url中https://(不含)之前的内容:
-        if not url.startswith("http://ok"):
-            # if False:  # debug:
-            # if not ENABLE:
-            msg = f"普通url,跳过特殊处理:{url}"
-            info(msg)
-            # LabelArray["Html"] = msg
-        else:
+        if url.startswith("http://ok"):
+            ENABLE=1
+            
+
+        if ENABLE:
             info(f"执行预请求处理[{url}]...")
-            # http://ok前缀方案,需要移除包装后的链接
+            # http://ok前缀方案,需要移除包装后的链接,移除url中https://(不含)之前的内容:
             url = url[(url.find("https://")) :]
             info(f"移除包装后的链接:{url}")
 
@@ -275,7 +278,10 @@ else:
             # 调试:查看请求到的内容(无论是前面的站点地图(xml)还是普通html页面)
             # info(f"page.body:{result}")
             LabelArray["Html"] = result
-
+        else:
+            msg = f"跳过特殊处理:{url}"
+            info(msg)
+            # LabelArray["Html"] = msg
         # ============
         # 非Html标签似乎无法在此分支修改.
         # LabelArray["log"] #不生效
