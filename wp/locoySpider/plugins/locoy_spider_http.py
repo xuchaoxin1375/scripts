@@ -49,7 +49,7 @@ FETCH_MODE = "auto"
 TEMP = os.environ.get("TEMP")
 
 PROXY_PORT = 10808
-HEADLESS = False
+HEADLESS = False  # 是否无头模式(正式采集启动前更改为True),记得保存修改(ctrl+s保存)
 SAVE_REQ_RES = False  # 是否将请求保存到文件中(用于开发维护时的对比).TODO
 
 # 确保日志文件所在目录存在.
@@ -221,7 +221,6 @@ else:
                             user_data_dir=BROWSER_PROFILE,
                             headless=HEADLESS,
                             solve_cloudflare=True,
-                            
                         )
                         res = xml_content
 
@@ -250,7 +249,7 @@ else:
                         # return page
                         # res = page.body.decode("utf-8")
                         res = page.html_content
-                    info(f"page.body:{res}")
+
                     return res
                 except Exception as e:
                     msg = f"scrapling stealthy request failed:{e}"
@@ -273,7 +272,8 @@ else:
             # page = Fetcher.get(url, proxy=proxy, timeout=30)
             elif FETCH_MODE == "stealthy":
                 result = stealthy_fetch()
-
+            # 调试:查看请求到的内容(无论是前面的站点地图(xml)还是普通html页面)
+            # info(f"page.body:{result}")
             LabelArray["Html"] = result
 
         # ============

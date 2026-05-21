@@ -1762,7 +1762,7 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
         
         Write-Verbose "expanding zip file to [$remotePluginDir]..."
         # 覆盖式解压(-o选项),-d 指定解压目录(extract directory)
-        ssh $username@$server "unzip -o $remoteZipFile -d $remoteDirectory"
+        ssh -Tn $username@$server "unzip -o $remoteZipFile -d $remoteDirectory"
         if($JustUpload)
         {
             return $True
@@ -1783,7 +1783,7 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
     if(!$JustUpload)
     {
         $cmd | Invoke-Expression
-        ssh $username@$server "bash /www/sh/update_user_ini.sh "
+        ssh -Tn $username@$server "bash /www/sh/update_user_ini.sh "
     }
     Write-Verbose "Done." -Verbose
     
