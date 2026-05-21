@@ -29,10 +29,14 @@ from curl_cffi.requests.session import ProxySpec
 
 from scrapling.fetchers import StealthyFetcher, StealthySession
 
+# sitemap(xml)处理器
+# from scrapling_sitemap_helper import fetch_sitemap_urls
+from scraplings.scrapling_sitemap_helper import fetch_sitemap_urls
+
 # import curl_cffi
 import logging
 
-VERSION = "2026.05.21"
+VERSION = "20260521-1450"
 ENABLE = 1  # 是否启用插件(启用为True或1,关闭为False或0)
 
 # fetcher模式:auto,curl(curl_cffi),stealthy,None
@@ -47,10 +51,11 @@ TEMP = os.environ.get("TEMP")
 PROXY_PORT = 10808
 HEADLESS = False
 SAVE_REQ_RES = False  # 是否将请求保存到文件中(用于开发维护时的对比).TODO
-LOG_DIR = "C:/temp/spider" # 运行日志文件保存目录
 
 # 确保日志文件所在目录存在.
+LOG_DIR = "C:/temp/spider"  # 运行日志文件保存目录
 os.makedirs(LOG_DIR, exist_ok=True)
+LOG = f"{LOG_DIR}/log.txt"
 BROWSER_PROFILE = os.path.abspath(
     r"C:/temp/my_scrapling_profile"
 )  # 如果缺少权限,可以更换文件夹为: TEMP/scrapling_profile
@@ -74,13 +79,15 @@ PROXIES = ProxySpec(**PROXIES_DICT)
 datefmt1 = "%H:%M:%S"  # 仅打印时分秒
 logging.basicConfig(
     level=logging.INFO,
-    filename="C:/temp/spider/log.txt",
+    filename=LOG,
     filemode="w",  # 默认是a,追加.
     encoding="utf-8",
     format="%(asctime)s - %(levelname)s - %(funcName)s - %(name)s - %(message)s",
     datefmt=datefmt1,
 )
-logger = logging.getLogger(__name__)
+logger = (
+    logging.getLogger()
+)  # root logger,以便可以捕获带有日志支持的模块传递的日志消息.
 info = logger.info
 error = logger.error
 # 获取命令行参数列表
@@ -180,6 +187,7 @@ else:
             # http://ok前缀方案,需要移除包装后的链接
             url = url[(url.find("https://")) :]
             info(f"移除包装后的链接:{url}")
+
             def curl_request():
                 info(f"Attempting curl_cffi request to: {url}")
                 try:
@@ -202,28 +210,47 @@ else:
                     return None
 
             def stealthy_fetch():
+                # 判断url类型(是否为站点地图.xml)
                 try:
-                    if BROWSER_PROFILE:
-                        with StealthySession(
-                            solve_cloudflare=True,
-                            headless=HEADLESS,
-                            proxy=PROXY,
-                            user_data_dir=BROWSER_PROFILE,  # 关键参数：持久化存储路径
-                        ) as session:
-                            page = session.fetch(url)
-                    else:
-                        page = StealthyFetcher.fetch(
+                    if url.endswith(".xml"):
+                        info(f"url是.xml后缀[{url}]...")
+                        xml_content = fetch_sitemap_urls(
                             url,
                             proxy=PROXY,
-                            # timeout=30,
-                            solve_cloudflare=True,
-                            # real_chrome=True,
+                            parse_urls=False,
+                            user_data_dir=BROWSER_PROFILE,
                             headless=HEADLESS,
+                            solve_cloudflare=True,
+                            
                         )
-                    # return page
-                    # res = page.body.decode("utf-8")
-                    res = page.html_content
-                    # info(f"page.body:{res}")
+                        res = xml_content
+
+                    else:
+                        if BROWSER_PROFILE:
+                            # 指定了浏览器配置文件路径,则使用持久化配置文件(session类),使用with管理上下文
+                            with (
+                                StealthySession(
+                                    solve_cloudflare=True,
+                                    headless=HEADLESS,
+                                    proxy=PROXY,
+                                    user_data_dir=BROWSER_PROFILE,  # 关键参数：持久化存储路径
+                                ) as session
+                            ):
+                                page = session.fetch(url)
+                        else:
+                            # 使用无持久化配置文件(fetcher类),直接抓取(fetch)
+                            page = StealthyFetcher.fetch(
+                                url,
+                                proxy=PROXY,
+                                # timeout=30,
+                                solve_cloudflare=True,
+                                # real_chrome=True,
+                                headless=HEADLESS,
+                            )
+                        # return page
+                        # res = page.body.decode("utf-8")
+                        res = page.html_content
+                    info(f"page.body:{res}")
                     return res
                 except Exception as e:
                     msg = f"scrapling stealthy request failed:{e}"

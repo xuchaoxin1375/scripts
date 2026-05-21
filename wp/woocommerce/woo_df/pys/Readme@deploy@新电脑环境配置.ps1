@@ -50,7 +50,7 @@ scoop install spc/7zip-zstd #依赖于额外的scoop bucket(spc)
 scoop install zstd
 scoop install lz4
 # 代理软件
-scoop install clash-verge-rev # 小猫咪飞机场代理软件
+scoop install c***h-verge-rev 
 # 资源监控软件
 scoop install trafficmonitor #状态栏资源和流量监控(建议直接从exes分享,而不是scoop安装部署插件比较麻烦)
 scoop install liberationMono-NF -g # 推荐的字体，可以让终端显示更多的符号
