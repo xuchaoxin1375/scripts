@@ -3,12 +3,12 @@
 @REM pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 pip config set global.index-url https://mirrors.pku.edu.cn/pypi/web/simple 
 
-uv pip install scrapling
-uv pip install scrapling[shell]
-uv pip install scrapling[fetchers]
+pip install scrapling
+pip install scrapling[shell]
+pip install scrapling[fetchers]
 
 @REM update related packages
-uv pip install scrapling curl_cffi -U
+pip install scrapling curl_cffi -U
 
 @REM install browsers...
 patchright install
