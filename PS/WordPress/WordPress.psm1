@@ -968,7 +968,7 @@ function Deploy-WpSitesLocal
 
 
 # 下载图片
-python $pys\image_downloader.py --output-dir $ImgDir --dir-input $CsvDirHome -S $pys/image_downloader.json -w 5 # -U cffi
+python $pys\image_downloader.py --output-dir $ImgDir --dir-input $CsvDirHome  -w 5 # -U cffi
 
 # 导入产品数据到数据库(线程数不必太高,通常效果不明显)
 python $pys\woo_uploader_db.py --update-slugs  --csv-path $CsvDirHome --img-dir $ImgDir --db-name $domain --max-workers 2

@@ -13,6 +13,7 @@ import logging
 import os
 import re
 import sys
+import warnings
 
 # from logging import error, exception, info, warning, debug
 from comutils import (
@@ -24,19 +25,41 @@ from comutils import (
 )
 
 # from woo_df.imgdown import ImageDownloader
-from imgdown import ImageDownloader, USER_AGENTS, BROSWER_DOWNLOADER,PLAY_BROWSER_DOWNLOADER
+from imgdown import (
+    ImageDownloader,
+    USER_AGENTS,
+    BROSWER_DOWNLOADER,
+    PLAY_BROWSER_DOWNLOADER,
+)
 from filenamehandler import FilenameHandler as fh
 from wooenums import CSVProductFields
 
-DOWNLOAD_METHODS = (
-    ["request", "curl", "cffi", "iwr"] + BROSWER_DOWNLOADER
-)
+DOWNLOAD_METHODS = ["request", "curl", "cffi", "iwr"] + BROSWER_DOWNLOADER
 
 PROXY_HTTP = os.environ.get("HTTP_PROXY")
 
 RESIZE_THRESHOLD = (1000, 800)
 DEAFULT_EXT = ".webp"
 csv.field_size_limit(int(1e7))
+# 根据系统平台计算默认启动参数配置文件(json)所在目录
+
+# 如果是windows系统,则默认值设置为对应的环境变量PYS,或者手动设置: C:/repos/scripts/wp/woocommerce/woo_df/pys
+# 如果是*nix系统,则设置为用户:$HOME/repos/scripts/wp/woocommerce/woo_df/pys
+
+# 或者获取当前脚本所在目录,配置文件位于同一个目录
+script_path = os.path.abspath(__file__)
+script_dir = os.path.dirname(script_path)
+CONFIG = os.path.join(script_dir, "image_downloader.json")
+# 判断CONFIG是否存在
+if os.path.exists(CONFIG):
+    print(f"默认配置文件[{CONFIG}]存在(可以通过选项参数,手动指定路径覆盖默认路径)")
+    # 这里写你加载配置的代码
+else:
+    # 抛出标准的运行时警告，程序会继续往下走
+    warnings.warn(f"找不到配置文件: {CONFIG}，将使用默认参数运行。", UserWarning)
+
+print(f"脚本文件的绝对路径: {script_path}")
+
 # 或者根据实际类定义位置调整导入路径
 IMG_DIR = "./images"
 selected_csv_field_ids: list[str] = []
@@ -333,6 +356,7 @@ def parse_args():
     parser.add_argument(
         "-S",
         "--config",
+        default=CONFIG,
         help="从指定的 JSON 配置文件中读取参数。如果命令行中也指定了参数，命令行优先级更高。",
     )
 
@@ -342,15 +366,16 @@ def parse_args():
     # 2. 如果指定了配置文件且存在，则进行合并处理
     if args.config:
         import json
+
         if os.path.exists(args.config):
             try:
                 with open(args.config, "r", encoding="utf-8") as f:
                     config_data = json.load(f)
-                
+
                 # 提取原始默认值
                 original_defaults = {
-                    action.dest: action.default 
-                    for action in parser._actions 
+                    action.dest: action.default
+                    for action in parser._actions
                     if action.dest != "help"
                 }
 
@@ -364,7 +389,7 @@ def parse_args():
 
                 # 合并优先级：默认值 < 配置文件值 < 命令行显式指定值
                 merged_dict = {}
-                
+
                 # a. 填充默认值
                 for k, v in original_defaults.items():
                     if v != argparse.SUPPRESS:
@@ -384,6 +409,8 @@ def parse_args():
                 logger.error(f"加载配置文件 {args.config} 失败: {e}")
         else:
             logger.warning(f"指定的配置文件不存在: {args.config}")
+            # 随即抛出异常中断程序
+            raise FileNotFoundError(f"Configuration file not found: {args.config}")
 
     return args
 
@@ -392,9 +419,13 @@ def main():
     """主函数"""
     # 注册 Ctrl+C 信号处理器，确保不管处于何种异步事件循环或并发状态下，均能一次 Ctrl+C 瞬间强退程序
     import signal
+
     def signal_handler(sig, frame):
-        logger.warning("\n🛑 接收到 Ctrl+C 信号！正在强行退出并终止所有底层下载进程/线程...")
+        logger.warning(
+            "/n🛑 接收到 Ctrl+C 信号！正在强行退出并终止所有底层下载进程/线程..."
+        )
         os._exit(1)
+
     signal.signal(signal.SIGINT, signal_handler)
     try:
         signal.signal(signal.SIGTERM, signal_handler)
@@ -562,7 +593,9 @@ def main():
                 exception("下载过程中发生错误: %s", str(e))
                 return 1
     except KeyboardInterrupt:
-        logger.warning("\n🛑 接收到 Ctrl+C 信号！正在强行退出并终止所有底层下载进程/线程...")
+        logger.warning(
+            "/n🛑 接收到 Ctrl+C 信号！正在强行退出并终止所有底层下载进程/线程..."
+        )
         os._exit(1)
 
     return 0
