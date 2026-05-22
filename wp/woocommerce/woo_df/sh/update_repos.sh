@@ -15,9 +15,16 @@
 
 # 严格模式
 set -euo pipefail
-version=20260506.1807
+version=20260522.1128
 
 echo "当前脚本版本: $version;"
+# ip=$(curl -sm 5 ipinfo.io | grep -Po '"ip": "\K[^"]*')
+HOSTNAME="server[$(hostname)]"
+log() {
+    local dt
+    dt="$(date +%F-%T.%3N)"
+    echo "[$HOSTNAME][$dt] $*"
+}
 REPO_SOURCE='github' # gitee或github或gitlab (gitee可能对国外ip服务器用户限流或要求注册账号,优先使用github或gitlab)
 BRANCH="main"        # 或 "master"，根据实际情况调整
 NGINX_CONF_DIR="/www/server/nginx/conf"
@@ -38,12 +45,12 @@ SH_SCRIPT_DIR="$SCRIPT_ROOT/$_SH_RELATIVE"
 REMOVE_OLD=0
 # 创建shell脚本目录的短路径(符号链接)
 ln -snfv "$SH_SCRIPT_DIR" "$SH_SYM"
-echo "基础目录: $SCRIPT_ROOT;"
+log "基础目录: $SCRIPT_ROOT;"
 # exit 0
 
 # 移除可能的就链接,重新创建链接
 # unlink $SH_SYM # 可以使用unlink命令安全删除符号链接(不会误删目标目录内的文件)🎈
-echo "[INFO]:更新符号链接$SH_WWW"
+log "[INFO]:更新符号链接$SH_WWW"
 rm -fv "${SH_WWW%/}" && ln -snfv "$SH_SYM" "$SH_WWW"
 
 # CLI flags
@@ -125,7 +132,7 @@ parse_args() {
                 break
                 ;;
             -*)
-                echo "Unknown option: $1"
+                log "Unknown option: $1"
                 print_usage
                 exit 2
                 ;;
@@ -149,7 +156,7 @@ URL_GITEE="https://gitee.com/xuchaoxin1375/scripts.git"
 URL_GITHUB="https://github.com/xuchaoxin1375/scripts.git"
 URL_GITLAB="https://gitlab.com/xuchaoxin1375/scripts.git"
 
-echo "[INFO](update_repos.sh):repository source: [$REPO_SOURCE];from git: [$REPO_URL]" #🎈
+log "[INFO](update_repos.sh):repository source: [$REPO_SOURCE];from git: [$REPO_URL]" #🎈
 
 # 默认行为: 如果没有指定 -c/--update-code 或 -g/--update-config, 则默认启用更新代码
 if [ "$UPDATE_CODE" -eq 0 ] && [ "$UPDATE_CONFIG" -eq 0 ]; then
@@ -161,10 +168,10 @@ if [ "$UPDATE_CODE" -eq 1 ]; then
     # 确保父目录存在
     mkdir -p "$(dirname "$SCRIPT_ROOT")"
 
-    echo "🚀 正在同步仓库到最新版本: $SCRIPT_ROOT"
+    log "🚀 正在同步仓库到最新版本: $SCRIPT_ROOT"
 
     if [[ $REMOVE_OLD -eq 1 ]]; then
-        echo "🗑️ 删除旧仓库..."
+        log "🗑️ 删除旧仓库..."
         rm -rf "$SCRIPT_ROOT"
     fi
     # 判断目录是否存在，决定是克隆还是更新
@@ -178,22 +185,22 @@ if [ "$UPDATE_CODE" -eq 1 ]; then
 
     # 目录不存在或不是 Git 仓库：执行浅克隆
     if [ ! -d "$SCRIPT_ROOT/.git" ]; then
-        # echo "📁 未检测到 Git 仓库，正在执行浅克隆..."
+        # log "📁 未检测到 Git 仓库，正在执行浅克隆..."
         # rm -rf "$SCRIPT_ROOT" # 防止存在非 Git 目录（如普通文件夹）
 
         # if git clone --depth 1 "$REPO_URL_GITEE" "$SCRIPT_ROOT"; then
-        #     echo "✅ 克隆成功($REPO_SOURCE)"
+        #     log "✅ 克隆成功($REPO_SOURCE)"
         # elif git clone --depth 1 "$REPO_URL_GITEE" "$SCRIPT_ROOT"; then
-        #     echo "✅ 克隆成功(gitee)"
+        #     log "✅ 克隆成功(gitee)"
         # elif git clone --depth 1 "$REPO_URL_GITHUB" "$SCRIPT_ROOT"; then
-        #     echo "✅ 克隆成功(github)"
+        #     log "✅ 克隆成功(github)"
         # else
-        #     echo "❌ 克隆失败，请检查网络或仓库地址"
+        #     log "❌ 克隆失败，请检查网络或仓库地址"
         #     exit 1
         # fi
 
         # 准备工作：清理可能存在的残留目录
-        echo "📁 未检测到有效 Git 仓库，正在准备执行浅克隆..."
+        log "📁 未检测到有效 Git 仓库，正在准备执行浅克隆..."
         rm -rf "$SCRIPT_ROOT"
 
         #  循环尝试序列中的仓库源
@@ -201,35 +208,35 @@ if [ "$UPDATE_CODE" -eq 1 ]; then
         for URL in "${SOURCES[@]}"; do
             [ -z "$URL" ] && continue # 跳过空地址
 
-            echo "📡 尝试从 $URL 克隆..."
+            log "📡 尝试从 $URL 克隆..."
             # --depth 1 配合 --single-branch
             if git clone --progress --depth 1 --single-branch -b "$BRANCH" "$URL" "$SCRIPT_ROOT"; then
-                echo "✅ 克隆成功！(源: $URL)"
+                log "✅ 克隆成功！(源: $URL)"
                 # 检查sh短路径(符号链接)的有效性
                 if [[ ! -e "$SCRIPT_ROOT" ]]; then
-                    echo "无效目录或符号:SCRIPT_ROOT:[$SCRIPT_ROOT]." >&2
+                    log "无效目录或符号:SCRIPT_ROOT:[$SCRIPT_ROOT]." >&2
                     exit 1
                 fi
                 CLONE_SUCCESS=true
                 break
             else
-                echo "⚠️  该源连接失败，尝试下一个..."
+                log "⚠️  该源连接失败，尝试下一个..."
                 rm -rf "$SCRIPT_ROOT" # 关键：失败后必须清理目录，否则下次 clone 会报错
             fi
         done
 
         #  最终检查
         if [ "$CLONE_SUCCESS" = false ]; then
-            echo "❌ 所有远程源均克隆失败，请检查网络！" >&2
+            log "❌ 所有远程源均克隆失败，请检查网络！" >&2
             exit 1
         fi
     else
         # 已存在 Git 仓库：进入目录并强制更新
-        echo "🔁 检测到现有仓库，正在强制更新到最新版本..."
+        log "🔁 检测到现有仓库，正在强制更新到最新版本..."
 
         (
             cd "$SCRIPT_ROOT" || {
-                echo "❌ 无法进入目录: $SCRIPT_ROOT" >&2
+                log "❌ 无法进入目录: $SCRIPT_ROOT" >&2
                 exit 1
             }
             # 循环尝试序列中的仓库源(自动重试方案)
@@ -238,33 +245,33 @@ if [ "$UPDATE_CODE" -eq 1 ]; then
             for URL in "${SOURCES[@]}"; do
                 [ -z "$URL" ] && continue
 
-                echo "📡 尝试从 $URL 更新..."
+                log "📡 尝试从 $URL 更新..."
 
                 # 1. 动态设置远程地址 (这里建议直接用 $URL 变量，而不是 $REPO_URL)
                 if ! git remote set-url origin "$URL"; then
-                    echo "⚠️  无法设置远程地址，尝试下一个源..."
+                    log "⚠️  无法设置远程地址，尝试下一个源..."
                     continue
                 fi
 
                 # 2. 执行 Fetch
-                echo "📥 正在拉取分支 $BRANCH..."
+                log "📥 正在拉取分支 $BRANCH..."
                 if git fetch origin "$BRANCH"; then
                     # --- 如果 fetch 成功，进入重置阶段 ---
-                    echo "✅ Fetch 成功，正在同步本地代码..."
+                    log "✅ Fetch 成功，正在同步本地代码..."
 
                     if git reset --hard origin/"$BRANCH"; then
-                        echo "✨ 仓库已成功更新到源: $URL"
+                        log "✨ 仓库已成功更新到源: $URL"
                         UPDATE_SUCCESS=true
                         break # 【关键】跳出 for 循环，不再尝试后续的源
                     fi
                 else
-                    echo "⚠️  源 $URL 连接失败或分支不存在，尝试下一个..."
+                    log "⚠️  源 $URL 连接失败或分支不存在，尝试下一个..."
                 fi
             done
 
             # 最后检查是否所有源都失败了
             if [ "$UPDATE_SUCCESS" = false ]; then
-                echo "❌ 错误：所有配置的远程源均无法完成更新！"
+                log "❌ 错误：所有配置的远程源均无法完成更新！"
                 exit 1
             fi
 
@@ -282,7 +289,7 @@ if [ "$UPDATE_CODE" -eq 1 ]; then
             #         REPO_URL=$URL_GITEE
             #         ;;
             #     *)
-            #         echo "⚠️ 未知的 REPO_SOURCE: $REPO_SOURCE，将尝试使用当前配置的 origin"
+            #         log "⚠️ 未知的 REPO_SOURCE: $REPO_SOURCE，将尝试使用当前配置的 origin"
             #         REPO_URL=""
             #         ;;
             # esac
@@ -291,17 +298,17 @@ if [ "$UPDATE_CODE" -eq 1 ]; then
 
     fi
 
-    echo "🎉 代码同步完成：$SCRIPT_ROOT"
+    log "🎉 代码同步完成：$SCRIPT_ROOT"
 fi
 
 # ===更新配置文件或模板===
 if [ "$UPDATE_CONFIG" -eq 1 ]; then
-    echo "更新cloudflare ip信息..."
+    log "更新cloudflare ip信息..."
     update_cf_ip="$SH_SYM"/nginx_conf/update_cf_ip_configs.sh
     if [[ -e "$update_cf_ip" ]]; then
         bash "$update_cf_ip"
     else
-        echo "未找到更新脚本: $update_cf_ip" >&2
+        log "未找到更新脚本: $update_cf_ip" >&2
 
         exit 1
     fi
@@ -309,11 +316,11 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
     # 目录的符号链接(需要小心处理避免出现循环符号链接).可以先移除再创建防止嵌套
     # [ -L "$SH_SYM" ] && rm -f "$SH_SYM"
     if [ -L "$SH_SYM" ]; then
-        echo "Removing existing symbolic link $SH_SYM"
+        log "Removing existing symbolic link $SH_SYM"
         rm -rfv "$SH_SYM"
 
     else
-        echo "$SH_SYM does not exist or is not a symbolic link."
+        log "$SH_SYM does not exist or is not a symbolic link."
     fi
 
     # 兼容wsl (脚本测试开发)
@@ -348,15 +355,15 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
     openresty=false
     if type nginx &> /dev/null; then
         nginx_version=$(nginx -v 2>&1)
-        echo "当前 nginx 已安装"
+        log "当前 nginx 已安装"
         if echo "$nginx_version" | grep 'openresty' &> /dev/null; then
-            echo "当前 nginx 为 openresty: ( $nginx_version )"
+            log "当前 nginx 为 openresty: ( $nginx_version )"
             openresty=true
         else
-            echo "当前 nginx 非 openresty"
+            log "当前 nginx 非 openresty"
         fi
     else
-        echo "nginx 未安装，跳过 nginx 配置更新"
+        log "nginx 未安装，跳过 nginx 配置更新"
         nginx_version=""
     fi
 
@@ -369,22 +376,22 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
         # 备份当前nginx.conf
         BACKUP_TS=$(date +%Y%m%d) # %H%M%S
         if [ -f "$NGINX_CONF_FILE" ]; then
-            echo "🔒 Force enabled: backing up existing nginx.conf to ${NGINX_CONF_FILE}.bak.${BACKUP_TS}"
+            log "🔒 Force enabled: backing up existing nginx.conf to ${NGINX_CONF_FILE}.bak.${BACKUP_TS}"
             cp -fv "$NGINX_CONF_FILE" "${NGINX_CONF_FILE}.bak.${BACKUP_TS}"
         else
-            echo "ℹ️ No existing nginx.conf to backup at $NGINX_CONF_FILE"
+            log "ℹ️ No existing nginx.conf to backup at $NGINX_CONF_FILE"
         fi
 
-        echo "🔁 Overwriting $NGINX_CONF_FILE with $SH_SYM/nginx_conf/nginx.conf"
+        log "🔁 Overwriting $NGINX_CONF_FILE with $SH_SYM/nginx_conf/nginx.conf"
         # cp -fv $SH_SYM/nginx_conf/nginx_nginx.conf "$NGINX_CONF_FILE"
         # 执行覆盖
         if [[ $openresty = true ]]; then
-            echo "检测到 openresty, 使用 openresty 配置文件"
+            log "检测到 openresty, 使用 openresty 配置文件"
             cp $NGINX_CONF_TPL_OPENRESTY $NGINX_CONF_FILE -fv
             # 修改com_basic.conf中的# include /www/server/nginx/conf/com_js_signed.conf
             sed -i.bak -E 's/#[[:space:]]*(.*com_js_signed.conf.*)/\1/g' $NGINX_CONF_DIR/com_basic.conf
         elif [[ $nginx_version = *"nginx"* ]]; then
-            echo "使用标准 nginx 配置文件"
+            log "使用标准 nginx 配置文件"
             cp $NGINX_CONF_TPL_STD $NGINX_CONF_FILE -fv
         fi
     fi
@@ -398,7 +405,7 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
         # 如果/etc/fail2ban/fai2ban.repos事先存在则先删除
         f2b_repos='/etc/fail2ban/fail2ban.repos'
         if [ -d $f2b_repos ]; then
-            echo "🗑️  删除已存在的符号链接或目录: $f2b_repos"
+            log "🗑️  删除已存在的符号链接或目录: $f2b_repos"
             rm -rfv "$f2b_repos"
         fi
         # 仓库中的fail2ban配置目录软链接到/etc/fail2ban/下(便于编辑器内编辑时参考)
@@ -429,7 +436,7 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
         copy_if_need "$cf_mode_tpl" "$cf_mode"
         copy_if_need "$nginx_cf_jail_tpl" "$nginx_cf_jail"
     else
-        echo "fail2ban 未安装，跳过 fail2ban 配置更新"
+        log "fail2ban 未安装，跳过 fail2ban 配置更新"
     fi
 
 fi
