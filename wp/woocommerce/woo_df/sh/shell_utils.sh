@@ -2043,6 +2043,33 @@ uninstall_brew() {
         fi
     done
 }
+# 从当前shell会话中中删除HOMEBREW环境变量
+unset_brew_envs() {
+    unset HOMEBREW_BREW_GIT_REMOTE
+    unset HOMEBREW_API_DOMAIN
+    unset HOMEBREW_CORE_GIT_REMOTE
+    unset HOMEBREW_BOTTLE_DOMAIN
+}
+# 从常用shell配置文件中删除HOMEBREW环境变量(todo:交互确认)
+remove_brew_env_in_shellrcs() {
+    unset_brew_envs
+    # 1. 探测当前系统的 sed 类型
+    if sed --version > /dev/null 2>&1; then
+        # GNU sed 支持 --version
+        sed_cmd=(sed -i)
+    else
+        # BSD/Mac sed 不支持 --version
+        sed_cmd=(sed -i '')
+    fi
+
+    # 2. 执行循环
+    for file in ~/.zshrc ~/.bashrc ~/.bash_profile; do
+        if [ -f "$file" ]; then
+            echo "正在清理: $file"
+            "${sed_cmd[@]}" '/^[[:space:]]*export[[:space:]][[:space:]]*HOMEBREW_/d' "$file"
+        fi
+    done
+}
 # 从国内镜像源安装brew(默认中科大源镜像源)
 install_brew_cn() {
 
@@ -2064,13 +2091,13 @@ install_brew_cn() {
                             (通常(普通用户)而言,此选项是可省略的,但是对于当前用户是root的情况下,此选项是必须的),
                             推荐的值是homebrew,但也可以是其他非root名称;
             -b, --installer-source 指定brew本体的安装脚本来源(和镜像相对独立),可用值和特点参考[-s]选项;
-            --reset-mirror  重置为官方源(github)
+            -R,--reset-mirror  重置为官方源(github)
             --force          强制重新设置brew环境变量(即便之前有安装设置过的迹象)
             --uninstall      卸载brew
             -g, --github-mirror  使用github镜像加速github链接
                             (默认使用:https://gh-proxy.com/,如果不可用,可以自行搜索其他github加速镜像网址)
                             如果要禁用镜像加速,请指定为空字符串""
-            --update-mirror-only 开关参数:仅更新brew镜像源配置,不执行安装(适用于已经安装了brew,但想要切换镜像源的情况);
+            -U,--update-mirror-only 开关参数:仅更新brew镜像源配置,不执行安装(适用于已经安装了brew,但想要切换镜像源的情况);
                                     执行完成后,要执行brew update;
     '
     local args_pos=()
@@ -2106,7 +2133,7 @@ install_brew_cn() {
                 installer_source="$2"
                 shift
                 ;;
-            --reset-mirror)
+            -R | --reset-mirror)
                 mirror="github"
                 installer_source="github"
                 reset_mirror=true
@@ -2120,7 +2147,7 @@ install_brew_cn() {
                 github_mirror="$2"
                 shift
                 ;;
-            --update-mirror-only)
+            -U | --update-mirror-only)
                 update_mirror_only=true
                 ;;
             # --write-env-rc)
@@ -2172,11 +2199,9 @@ install_brew_cn() {
     # 是否重置镜像源
     if [[ $reset_mirror == true ]]; then
         echo "重置为官方源..."
-        unset HOMEBREW_BREW_GIT_REMOTE
+        unset_brew_envs
         git -C "$(brew --repo)" remote set-url origin https://github.com/Homebrew/brew
-
-        unset HOMEBREW_API_DOMAIN
-        unset HOMEBREW_CORE_GIT_REMOTE
+        # 其他(tap)相关
         BREW_TAPS="$(
             BREW_TAPS="$(brew tap 2> /dev/null)"
             echo -n "${BREW_TAPS//$'\n'/:}"
@@ -2190,6 +2215,8 @@ install_brew_cn() {
         brew update
 
         echo "请检查shell的配置文件,如果之前永久配置了 HOMEBREW 环境变量，还需要在对应的 ~/.bash_profile 或者 ~/.zshrc 配置文件中，将对应的 HOMEBREW 环境变量配置行注释或者删除!"
+
+        remove_brew_env_in_shellrcs
 
     fi
     # 判断是否已经安装过brew:
@@ -2254,7 +2281,8 @@ install_brew_cn() {
             ;;
         github)
             mirror_env="$github_env"
-            unset HOMEBREW_BREW_GIT_REMOTE
+            # unset HOMEBREW_BREW_GIT_REMOTE
+            remove_brew_env_in_shellrcs
             if command -v brew &> /dev/null; then
                 # brew update-reset "$(brew --repo)"
                 git -C "$(brew --repo)" remote set-url origin https://github.com/Homebrew/brew
