@@ -14,6 +14,12 @@ ERROR_LOG="/tmp/check_order_email_errors.log"
 
 EMAILS=()
 ip=$(curl -sm 5 ipinfo.io | grep -Po '"ip": "\K[^"]*')
+HOSTNAME="server[$(hostname):$ip]"
+log() {
+    local dt
+    dt="$(date +%F-%T.%3N)"
+    echo "[$HOSTNAME][$dt] $*"
+}
 # echo "IP: $ip"
 # 查询前清空结果(如果文件不存在,则会创建一个空文件)
 echo "" > "$OUTPUT_FILE"
@@ -60,7 +66,7 @@ done
 # 兼容Windows换行，去除首尾空白，跳过空行和#开头行，提高容错能力
 if [[ -n "$ARG_EMAIL_FILE" ]]; then
     if [[ ! -f "$ARG_EMAIL_FILE" ]]; then
-        echo "❌ 邮箱文件不存在: $ARG_EMAIL_FILE"
+        log "❌ 邮箱文件不存在: $ARG_EMAIL_FILE"
         exit 1
     fi
     while IFS= read -r line || [[ -n "$line" ]]; do
@@ -80,7 +86,7 @@ if [[ -n "$ARG_EMAIL_FILE" ]]; then
         fi
         # 简单邮箱格式校验（可选）
         if ! [[ "$line" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
-            echo "⚠️  跳过格式异常的邮箱: $line" >&2
+            log "⚠️  跳过格式异常的邮箱: $line" >&2
             continue
         fi
         EMAILS+=("$line")
@@ -88,13 +94,13 @@ if [[ -n "$ARG_EMAIL_FILE" ]]; then
 fi
 
 if [[ ${#EMAILS[@]} -eq 0 ]]; then
-    echo "❌ 未指定任何邮箱，使用 -f <文件> 或直接提供邮箱参数。"
+    log "❌ 未指定任何邮箱，使用 -f <文件> 或直接提供邮箱参数。"
     exit 1
 fi
 
 # ================== 执行查询 ==================
 true > "$OUTPUT_FILE"
-echo "🔍 开始并行查询所有数据库 (线程数: $THREADS)..."
+log "🔍 开始并行查询所有数据库 (线程数: $THREADS)..."
 true > "$ERROR_LOG"
 
 csv_escape() {
@@ -116,7 +122,7 @@ WHERE schema_name NOT IN ('mysql', 'information_schema', 'performance_schema', '
 " > "$TMP_DB_LIST"
 
 if [ ! -s "$TMP_DB_LIST" ]; then
-    echo "❌ 没有找到任何非系统数据库，请检查 MySQL 连接信息。"
+    log "❌ 没有找到任何非系统数据库，请检查 MySQL 连接信息。"
     exit 1
 fi
 
@@ -232,7 +238,7 @@ query_db() {
     fi
 
     if [ -n "$RESULT" ]; then
-        echo "✅ 数据库: $DB_NAME 找到邮箱 $EMAIL 的订单"
+        log "✅ 数据库: $DB_NAME 找到邮箱 $EMAIL 的订单"
         (
             flock -x 200
             {
@@ -260,9 +266,9 @@ EMAIL_IDX=0
 # 并行调度
 for EMAIL in "${EMAILS[@]}"; do
     EMAIL_IDX=$((EMAIL_IDX+1))
-    echo "📧 正在查询第 $EMAIL_IDX/$EMAIL_TOTAL 个邮箱: $EMAIL"
+    log "📧 正在查询第 $EMAIL_IDX/$EMAIL_TOTAL 个邮箱: $EMAIL"
     parallel --jobs "$THREADS" query_db :::: "$TMP_DB_LIST" ::: "$EMAIL"
 done
 
-echo "server[$(hostname):$ip] complete query task. result save to [$OUTPUT_FILE]"
+log " complete query task. result save to [$OUTPUT_FILE]"
 cat "$OUTPUT_FILE"

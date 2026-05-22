@@ -19,6 +19,8 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 from pandas import Series
+from urllib.parse import urlparse
+
 
 SUPPORT_IMAGE_FORMATS_NAME = (
     "jpg",
@@ -789,6 +791,41 @@ def count_lines_csv(csv_dir):
 
     return total
 
+
+def get_domain_from_url(url,keep_port=False):
+    """
+    计算并提取给定 URL 中的域名部分。
+    利用 urlparse() 函数即可
+    .Example:
+    测试用例:
+    urls = [
+        "https://www.google.com/search?q=python",
+        "http://github.com/trending",
+        "www.wikipedia.org/wiki/Python",
+        "https://localhost:8080/dashboard",
+        "//example.com/path"
+    ]
+    """
+    # 如果 URL 没有以协议开头（如 www.baidu.com），urlparse 可能无法正确解析域名。
+    # 自动帮其补上协议头，确保解析准确。
+    if not url.startswith(('http://', 'https://', '//')):
+        url = 'https://' + url
+        
+    try:
+        # 使用 urlparse 解析 URL
+        parsed_url = urlparse(url)
+        # netloc 属性包含了域名（可能带有端口号，如 localhost:8080）
+        domain = parsed_url.netloc
+        
+        # 如果你只想保留纯域名，去掉可能存在的端口号，可以进行以下分割：
+        if not keep_port:
+            if ':' in domain:
+                domain = domain.split(':')[0]
+            
+        return domain
+    except Exception as e:
+        print(f"解析错误: {e}")
+        return None
 
 def get_data_from_csv(args, lines, reader, url_field, name_field, log_length_limit=0):
     """

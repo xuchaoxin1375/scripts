@@ -5,15 +5,19 @@ Prerequisites:
     curl_cffi,scrapling套件(详情另见额外文档)
     方案1:本地(或自建)前缀为http://ok/的中转服务网站(要求始终返回200 ok)
     方案2:在locoySpider中设置忽略错误码(403,这最常见,或者其他错误码),这样所有请求都会经过本插件做预请求处理.
-    从运行效率上讲,方案2效率低于方案1,因为采集器本身也要请求一次远程站点(而方案1请求的ok站点几乎开销几乎可以忽略);
-    从配置便捷性来看,方案
+    从运行效率上讲,方案2效率低于方案1,因为采集器本身也要请求一次远程站点(而方案1请求的ok站点几乎开销几乎可以忽略),可以在采集规则调试阶段使用;
+    从配置便捷性来看,方案1会稍微麻烦一些,依赖于外部的ok站点,并要手动添加指定前缀.
+
 将采集器的请求url用上述前缀缀包装,达到让采集器交出请求控制权的目的(变通的方法.)
 然后传递给本插件自动判断并处理.
 
+NOTES:
+重要选项和开关在代码头部
+
 安装插件:
-New-SymbolicLink -Path $env:LOCOY_SPIDER_DATA/../plugins/df_spider.py -Target $scripts\wp\locoySpider\plugins\df_spider.py
-New-SymbolicLink -Path $env:LOCOY_SPIDER_DATA/../plugins/locoy_spider_http.py -Target  $scripts\wp\locoySpider\plugins\locoy_spider_http.py
-New-SymbolicLink -Path $env:LOCOY_SPIDER_DATA/../plugins/demo3.4.py -Target  $scripts\wp\locoySpider\plugins\locoy_spider_http.py -force -verbose
+New-SymbolicLink -Path $env:LOCOY_SPIDER_DATA/../plugins/df_spider.py -Target $scripts/wp/locoySpider/plugins/df_spider.py
+New-SymbolicLink -Path $env:LOCOY_SPIDER_DATA/../plugins/locoy_spider_http.py -Target  $scripts/wp/locoySpider/plugins/locoy_spider_http.py
+New-SymbolicLink -Path $env:LOCOY_SPIDER_DATA/../plugins/demo3.4.py -Target  $scripts/wp/locoySpider/plugins/locoy_spider_http.py -force -verbose
 
 """
 
@@ -22,50 +26,58 @@ import sys
 from urllib import parse
 import json
 import os
+from urllib.parse import urlparse
 
 # 使用curl_cffi 清理绕过代理,StealthyFetcher重量级模拟浏览器
 from curl_cffi import requests
 from curl_cffi.requests.session import ProxySpec
-
 from scrapling.fetchers import StealthyFetcher, StealthySession
+# from comutils import get_domain_from_url
 
 # sitemap(xml)处理器
 # from scrapling_sitemap_helper import fetch_sitemap_urls
 from scraplings.scrapling_sitemap_helper import fetch_sitemap_urls
+from datetime import date
 
 # import curl_cffi
 import logging
 
-VERSION = "20260521-1450" # 插件版本(更新日期)
+VERSION = "20260522-1041"  # 插件版本(更新日期)
 
 # 插件选中后也并不总是启用核心逻辑(请求替换这部分代码)
 # 1.使用http://ok/前缀的情况下,认为要启用代理
 # 2.手动将ENABLE设置为True或1,则启用插件
 # 统一逻辑,可将第一种情况转换为第二种情况统一判断.
 
-ENABLE = 0  # 是否启用插件(启用为True或1,关闭为False或0)
-PROXY_PORT = 8800
-HEADLESS = bool(0)  # 是否无头模式(正式采集启动前更改为True或1,可以阻止浏览器窗口弹出;False或0表示打开浏览器窗口),记得保存修改(ctrl+s保存)
-
-# fetcher模式:auto,curl(curl_cffi),stealthy
-# 默认使用auto模式,如果curl_cffi无法通过,则自动切换到stealthy方案
-FETCH_MODE = "auto"
+ENABLE = 1  # 是否启用插件(启用为True或1,关闭为False或0)
+PROXY_PORT = 8800  # 默认代理端口
+HEADLESS = bool(
+    0
+)  # 是否无头模式(正式采集启动前更改为True或1,可以阻止浏览器窗口弹出;False或0表示打开浏览器窗口),记得保存修改(ctrl+s保存)
+FETCH_MODE = "auto"  # FETCH_MODE: fetcher模式:auto,curl(curl_cffi),stealthy(scr) ,默认使用auto模式,如果curl_cffi无法通过,则自动切换到 stealthy 方案
 
 # 定义一个本地文件夹路径用于存放浏览器数据,这样即便 Python 程序结束，下次运行依然能读取到之前的验证状态
 # session共用效率更高,但是受限于采集器插件形式在,难以实现(每个url采集都是独立启动插件)条件下,复用cookie等信息,以尽量减少人机验证.
-# 访问环境变量:
-TEMP = os.environ.get("TEMP")
 
+# 其他
+# 访问环境变量:
+# TEMP = os.environ.get("TEMP")
 SAVE_REQ_RES = False  # 是否将请求保存到文件中(用于开发维护时的对比).TODO
+SCRAPLING_STEALTHY_NAMES = ["scrapling", "stealthy", "scr"]
 
 # 确保日志文件所在目录存在.
 LOG_DIR = "C:/temp/spider"  # 运行日志文件保存目录
 os.makedirs(LOG_DIR, exist_ok=True)
 LOG = f"{LOG_DIR}/log.txt"
-BROWSER_PROFILE = os.path.abspath(
-    r"C:/temp/my_scrapling_profile"
-)  # 如果缺少权限,可以更换文件夹为: TEMP/scrapling_profile
 
+
+# 1. 只获取日期（年-月-日）
+today_date = date.today()
+USER_DATA_DIR_BASE = os.path.abspath(
+    # r"C:/temp/spider/my_scrapling_profile"
+    rf"C:/temp/spider/{today_date}"
+)  # 如果缺少权限,可以更换文件夹为: TEMP/scrapling_profile
+USER_DATA_DIR_DEFAULT = os.path.join(USER_DATA_DIR_BASE, "default")
 # 单一代理
 PROXY = f"http://localhost:{PROXY_PORT}"
 
@@ -84,7 +96,7 @@ PROXIES = ProxySpec(**PROXIES_DICT)
 
 datefmt1 = "%H:%M:%S"  # 仅打印时分秒
 logging.basicConfig(
-    level=logging.INFO, # 将此行注释掉,或者改为logging.WARNING可只打印警告及以上的日志
+    level=logging.INFO,  # 将此行注释掉,或者改为logging.WARNING可只打印警告及以上的日志
     filename=LOG,
     filemode="w",  # 默认是a,追加.
     encoding="utf-8",
@@ -101,7 +113,34 @@ args = sys.argv
 
 info(f"LocoySpider Http(s) request plugin.Version:{VERSION}")
 info(f"FETCH_MODE={FETCH_MODE}")
+
+
 # info(args)
+def get_domain_from_url(url, keep_port=False):
+    """
+    计算并提取给定 URL 中的域名部分。
+    """
+    # 如果 URL 没有以协议开头（如 www.baidu.com），urlparse 可能无法正确解析域名。
+    # 自动帮其补上协议头，确保解析准确。
+    if not url.startswith(("http://", "https://", "//")):
+        url = "https://" + url
+
+    try:
+        # 使用 urlparse 解析 URL
+        parsed_url = urlparse(url)
+        # netloc 属性包含了域名（可能带有端口号，如 localhost:8080）
+        domain = parsed_url.netloc
+
+        # 如果你只想保留纯域名，去掉可能存在的端口号，可以进行以下分割：
+        if not keep_port:
+            if ":" in domain:
+                domain = domain.split(":")[0]
+
+        return domain
+    except Exception as e:
+        print(f"解析错误: {e}")
+        return ""
+
 
 if len(sys.argv) != 5:
     print(len(sys.argv))
@@ -182,8 +221,7 @@ else:
         #     info(f"key:{key},value:{value}")
 
         if url.startswith("http://ok"):
-            ENABLE=1
-            
+            ENABLE = 1
 
         if ENABLE:
             info(f"执行预请求处理[{url}]...")
@@ -214,6 +252,10 @@ else:
 
             def stealthy_fetch():
                 # 判断url类型(是否为站点地图.xml)
+                # 计算当前处理的站点域名
+                domain = get_domain_from_url(url)
+                USER_DATA_DIR = os.path.join(USER_DATA_DIR_BASE, domain)
+
                 try:
                     if url.endswith(".xml"):
                         info(f"url是.xml后缀[{url}]...")
@@ -221,23 +263,21 @@ else:
                             url,
                             proxy=PROXY,
                             parse_urls=False,
-                            user_data_dir=BROWSER_PROFILE,
+                            user_data_dir=USER_DATA_DIR,
                             headless=HEADLESS,
                             solve_cloudflare=True,
                         )
                         res = xml_content
 
                     else:
-                        if BROWSER_PROFILE:
+                        if USER_DATA_DIR:  # 默认始终使用Session方案
                             # 指定了浏览器配置文件路径,则使用持久化配置文件(session类),使用with管理上下文
-                            with (
-                                StealthySession(
-                                    solve_cloudflare=True,
-                                    headless=HEADLESS,
-                                    proxy=PROXY,
-                                    user_data_dir=BROWSER_PROFILE,  # 关键参数：持久化存储路径
-                                ) as session
-                            ):
+                            with StealthySession(
+                                solve_cloudflare=True,
+                                headless=HEADLESS,
+                                proxy=PROXY,
+                                user_data_dir=USER_DATA_DIR,  # 关键参数：持久化存储路径
+                            ) as session:
                                 page = session.fetch(url)
                         else:
                             # 使用无持久化配置文件(fetcher类),直接抓取(fetch)
@@ -273,7 +313,7 @@ else:
             # scrapling 方案:抓取页面:
             # 基础请求(过不了js挑战)
             # page = Fetcher.get(url, proxy=proxy, timeout=30)
-            elif FETCH_MODE == "stealthy":
+            elif FETCH_MODE in SCRAPLING_STEALTHY_NAMES:
                 result = stealthy_fetch()
             # 调试:查看请求到的内容(无论是前面的站点地图(xml)还是普通html页面)
             # info(f"page.body:{result}")
