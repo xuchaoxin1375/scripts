@@ -321,12 +321,18 @@ mysql> select user,host from mysql.user;
 
 通过配置`.my.cnf`文件,写入登录信息
 
+> 宝塔用户如果发现mysql无法直接登录数据库(即便当前系统用户是root),
+>
+> 例如遇到报错:/run/mysqld/mysqld.sock时启用`socket`配置行.
+
 ```ini
 [client]
 user = your_username
 password = your_password
 host = localhost
 port=3306
+# 按需启用:
+# socket=/tmp/mysql.sock
 ```
 
 也可以通过重定向写入文件,例如

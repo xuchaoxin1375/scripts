@@ -1,15 +1,20 @@
 """
 LocoySpider Http(s) request plugin.
 拦截火车头采集器的请求,使用自定义的请求(抓取)方案进行请求,可以提高请求成功率,尤其是带有对普通爬虫403检测到网站的采集.
+
 Prerequisites:
     curl_cffi,scrapling套件(详情另见额外文档)
     方案1:本地(或自建)前缀为http://ok/的中转服务网站(要求始终返回200 ok)
-    方案2:在locoySpider中设置忽略错误码(403,这最常见,或者其他错误码),这样所有请求都会经过本插件做预请求处理.
-    从运行效率上讲,方案2效率低于方案1,因为采集器本身也要请求一次远程站点(而方案1请求的ok站点几乎开销几乎可以忽略),可以在采集规则调试阶段使用;
-    从配置便捷性来看,方案1会稍微麻烦一些,依赖于外部的ok站点,并要手动添加指定前缀.
+    方案2:在locoySpider中任务的"其他设置->其他配置" 设置忽略错误码(403,这最常见,或者其他错误码),这样所有请求都会经过本插件做预请求处理.
+    
+从运行效率上讲,方案2效率低于方案1,因为采集器本身也要请求一次远程站点(而方案1请求的ok站点几乎开销几乎可以忽略),可以在采集规则调试阶段使用;
+从配置便捷性来看,方案1会稍微麻烦一些,依赖于外部的ok站点,并要手动添加指定前缀.
 
-将采集器的请求url用上述前缀缀包装,达到让采集器交出请求控制权的目的(变通的方法.)
-然后传递给本插件自动判断并处理.
+将采集器的请求url用上述前缀包装,达到让采集器交出请求控制权的目的(变通的方法.)然后传递给本插件自动判断并处理.
+
+对于要调用浏览器请求的情况,这里要定义一个本地文件夹路径用于存放浏览器数据,这样即便 Python 程序结束，下次运行依然能读取到之前的验证状态
+> session共用效率更高,但是受限于采集器插件形式在,难以实现(每个url采集都是独立启动插件)条件下,复用cookie等信息,以尽量减少人机验证.
+
 
 NOTES:
 重要选项和开关在代码头部
@@ -37,7 +42,9 @@ from scrapling.fetchers import StealthyFetcher, StealthySession
 # sitemap(xml)处理器
 # from scrapling_sitemap_helper import fetch_sitemap_urls
 from scraplings.scrapling_sitemap_helper import fetch_sitemap_urls
-from datetime import date
+
+# from datetime import date
+# from datetime import datetime
 
 # import curl_cffi
 import logging
@@ -49,15 +56,27 @@ VERSION = "20260522-1041"  # 插件版本(更新日期)
 # 2.手动将ENABLE设置为True或1,则启用插件
 # 统一逻辑,可将第一种情况转换为第二种情况统一判断.
 
+# DEV = 1  # 开发模式(data_user_dir会被设置为default)
+
 ENABLE = 1  # 是否启用插件(启用为True或1,关闭为False或0)
 PROXY_PORT = 8800  # 默认代理端口
 HEADLESS = bool(
     0
-)  # 是否无头模式(正式采集启动前更改为True或1,可以阻止浏览器窗口弹出;False或0表示打开浏览器窗口),记得保存修改(ctrl+s保存)
+)  # 是否无头模式,1表示无头隐藏浏览器窗口,0表示显示浏览器窗口;(正式采集启动前更改为True或1,可以阻止浏览器窗口弹出;修改后,记得保存修改(ctrl+s保存)
 FETCH_MODE = "auto"  # FETCH_MODE: fetcher模式:auto,curl(curl_cffi),stealthy(scr) ,默认使用auto模式,如果curl_cffi无法通过,则自动切换到 stealthy 方案
 
-# 定义一个本地文件夹路径用于存放浏览器数据,这样即便 Python 程序结束，下次运行依然能读取到之前的验证状态
-# session共用效率更高,但是受限于采集器插件形式在,难以实现(每个url采集都是独立启动插件)条件下,复用cookie等信息,以尽量减少人机验证.
+# 浏览器缓存目录
+
+# 是否自动管理浏览器缓存目录(user_data_dir),默认自动管理,设置为1手动管理(需要自行设置)
+## 如果缺少权限,可以更换文件夹,比如家目录或者桌面
+
+# 1.手动管理方案(设置为非空值(路径)时生效,优先级高于自动管理方案):
+USER_DATA_DIR_MANUAL = ""  # 例如 C:/temp/spider/domain_1.com
+# 改为你要自定义的目录(还要将MANUAL_MANAGE_PROFILE设置为1)
+# 2.自动管理方案:
+USER_DATA_DIR_BASE = os.path.abspath(r"C:/temp/spider")
+
+
 
 # 其他
 # 访问环境变量:
@@ -71,13 +90,13 @@ os.makedirs(LOG_DIR, exist_ok=True)
 LOG = f"{LOG_DIR}/log.txt"
 
 
-# 1. 只获取日期（年-月-日）
-today_date = date.today()
-USER_DATA_DIR_BASE = os.path.abspath(
-    # r"C:/temp/spider/my_scrapling_profile"
-    rf"C:/temp/spider/{today_date}"
-)  # 如果缺少权限,可以更换文件夹为: TEMP/scrapling_profile
-USER_DATA_DIR_DEFAULT = os.path.join(USER_DATA_DIR_BASE, "default")
+# now = datetime.now()
+# month = now.strftime("%Y-%m")
+# USER_DATA_DIR_BASE = os.path.abspath(rf"C:/temp/spider/{month}")
+
+# 候选的默认路径
+# USER_DATA_DIR_DEFAULT = os.path.join(USER_DATA_DIR_BASE, "default")
+
 # 单一代理
 PROXY = f"http://localhost:{PROXY_PORT}"
 
@@ -251,12 +270,20 @@ else:
                     return None
 
             def stealthy_fetch():
-                # 判断url类型(是否为站点地图.xml)
-                # 计算当前处理的站点域名
-                domain = get_domain_from_url(url)
-                USER_DATA_DIR = os.path.join(USER_DATA_DIR_BASE, domain)
+                """调用浏览器请求网址."""
+                # 计算浏览器缓存路径取值
+                if not USER_DATA_DIR_MANUAL:
+                    # 计算当前处理的站点域名
+                    domain = get_domain_from_url(url)
+                    USER_DATA_DIR = os.path.join(USER_DATA_DIR_BASE, domain)
+                else:
+                    info(
+                        f"当前模式:手动管理浏览器缓存目录,设置缓存目录为:{USER_DATA_DIR_MANUAL}..."
+                    )
+                    USER_DATA_DIR = USER_DATA_DIR_MANUAL
 
                 try:
+                    # 判断url类型(是否为站点地图.xml)
                     if url.endswith(".xml"):
                         info(f"url是.xml后缀[{url}]...")
                         xml_content = fetch_sitemap_urls(
