@@ -84,11 +84,14 @@ USER_DATA_DIR_BASE = os.path.abspath(r"C:/temp/spider")
 SAVE_REQ_RES = False  # 是否将请求保存到文件中(用于开发维护时的对比).TODO
 SCRAPLING_STEALTHY_NAMES = ["scrapling", "stealthy", "scr"]
 
+# 或者获取当前脚本名字
+# 获取当前文件的绝对路径，并获取脚本名
+file_path = __file__
+script_name = os.path.basename(file_path)
 # 确保日志文件所在目录存在.
 LOG_DIR = "C:/temp/spider"  # 运行日志文件保存目录
 os.makedirs(LOG_DIR, exist_ok=True)
-LOG = f"{LOG_DIR}/log.txt"
-
+LOG = f"{LOG_DIR}/log_{script_name}.txt"
 
 # now = datetime.now()
 # month = now.strftime("%Y-%m")
@@ -181,7 +184,7 @@ else:
                 "LabelCookie": LabelCookie,
                 "LabelUrl": LabelUrl,
                 "PageType": PageType,
-                "SerializerStr": SerializerStr,
+                # "SerializerStr": SerializerStr,
             },
             # sort_keys=True,
             indent=4,
@@ -239,7 +242,11 @@ else:
         # for key, value in LabelArray.items():
         #     info(f"key:{key},value:{value}")
 
-        if url.startswith("http://ok"):
+        # 绕过本地站点(http链接的处理,但是如果是ok开头的,则视为特殊情况,请用预请求处理)
+        if url.startswith("http://"):
+            info("普通本地站点,跳过预请求处理...")
+            ENABLE = 0
+        if url.startswith("http://ok") :
             ENABLE = 1
 
         if ENABLE:
