@@ -14,7 +14,8 @@
 #git pull
 
 # 严格模式
-set -euo pipefail
+# set -euo pipefail #慎用,可能会因为部分错误(重载nginx失败)导致覆盖逻辑不触发,考虑将更新cf_ip的代码作为选项执行.
+
 version=20260522.1128
 
 echo "当前脚本版本: $version;"
@@ -304,7 +305,7 @@ fi
 # ===更新配置文件或模板===
 if [ "$UPDATE_CONFIG" -eq 1 ]; then
     log "更新cloudflare ip信息..."
-    update_cf_ip="$SH_SYM"/nginx_conf/update_cf_ip_configs.sh
+    update_cf_ip="$SH_SYM"/nginx_conf/update_cf_ip_configs.sh # 将改为可选项而不再是默认行为.
     if [[ -e "$update_cf_ip" ]]; then
         bash "$update_cf_ip"
     else
