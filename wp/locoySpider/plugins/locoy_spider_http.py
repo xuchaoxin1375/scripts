@@ -61,7 +61,7 @@ VERSION = "20260522-1041"  # 插件版本(更新日期)
 ENABLE = 1  # 是否启用插件(启用为True或1,关闭为False或0)
 PROXY_PORT = 8800  # 默认代理端口
 HEADLESS = bool(
-    0
+    1
 )  # 是否无头模式,1表示无头隐藏浏览器窗口,0表示显示浏览器窗口;(正式采集启动前更改为True或1,可以阻止浏览器窗口弹出;修改后,记得保存修改(ctrl+s保存)
 FETCH_MODE = "auto"  # FETCH_MODE: fetcher模式:auto,curl(curl_cffi),stealthy(scr) ,默认使用auto模式,如果curl_cffi无法通过,则自动切换到 stealthy 方案
 

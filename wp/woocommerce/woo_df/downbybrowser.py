@@ -1,5 +1,5 @@
 """
-# 本模块将被启用,请考虑使用更强力的基于stealthy(scrapling)的downbyscrapling方案.
+# 本模块将被弃用(不再维护),请考虑使用更强力的基于stealthy(scrapling)的downbyscrapling方案.
 调用浏览器下载资源
 注意:部分情况(某些网站,比如https://www.jegs.com)需要系统代理到合适的ip才能下载
 """

@@ -908,8 +908,8 @@ function Deploy-WpSitesLocal
         # 根据需要移除mallpay(和其他可能的严格通道)🎈
         if($removeMall)
         {
-            Remove-Item "$destination/wp-content/plugins/mallpay" -Force -Recurse -Verbose #-WhatIf:$WhatIfPreference
-            Remove-Item "$destination/wp-content/plugins/xpaid_pay" -Force -Recurse -Verbose
+            Remove-Item "$destination/wp-content/plugins/mallpay" -Force -Recurse -Verbose -ErrorAction SilentlyContinue #-WhatIf:$WhatIfPreference
+            Remove-Item "$destination/wp-content/plugins/xpaid_pay" -Force -Recurse -Verbose -ErrorAction SilentlyContinue
         }
         $template_temp = "$MyWpSitesHomeDir/$template"
         if(Test-Path $template_temp)

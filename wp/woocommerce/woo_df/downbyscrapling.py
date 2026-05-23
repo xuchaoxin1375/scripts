@@ -651,7 +651,8 @@ def test_single_download():
     """测试单个链接下载的情况"""
     # 图片
     test_url_1 = (
-        "https://www.velogear.com.au/media/catalog/product/cache/94ef66d09f7a7e8c63df55350acf28cd/m/a/maxxis_flyweight_26_tube_fv.jpg"
+        "https://www.woodbrass.com/images/woodbrass/GRAVITY+GLS331B.JPG"
+        # "https://www.velogear.com.au/media/catalog/product/cache/94ef66d09f7a7e8c63df55350acf28cd/m/a/maxxis_flyweight_26_tube_fv.jpg"
         # "https://images.bike24.com/media/1020/i/mb/fc/0d/06/100048-00-d-163801.jpg"
         # "https://www.gosupps.com/media/catalog/product/cache/25/image/9df78eab33525d08d6e5fb8d27136e95/6/1/61Mfc8jVlQL.jpg"
     )
@@ -693,5 +694,5 @@ def test_single_download():
 
 # --- 简单使用示例 ---
 if __name__ == "__main__":
-    # test_single_download()
-    test_batch_download()
+    test_single_download()
+    # test_batch_download()
