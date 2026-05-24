@@ -352,6 +352,9 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
     # cp $SH_SYM/nginx_conf/com_limit_rate.conf /www/server/nginx/conf/com_limit_rate.conf -fv
     # cp $SH_SYM/nginx_conf/com_basic.conf /www/server/nginx/conf/com_basic.conf -fv
     cp $SH_SYM/nginx_conf/{com_*.conf,*.html} /www/server/nginx/conf/ -fv
+    # html文件包括js挑战用到的页面
+    cp /www/server/nginx/conf/js_challenge_openresty_auto.html \
+        /www/server/nginx/conf/js_challenge_openresty.html -fv
     # 判断nginx是否可用
     openresty=false
     if type nginx &> /dev/null; then

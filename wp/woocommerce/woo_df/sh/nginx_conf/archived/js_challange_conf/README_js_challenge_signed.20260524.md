@@ -5,7 +5,7 @@
 目标：
 
 - 阻止简单脚本工具（如 `curl`、基础 Python 请求）直接访问受保护页面。
-- 允许正常浏览器通过验证页；可选择“自动验证”或“点击继续验证”两种模板模式。
+- 允许正常浏览器自动通过。
 - 允许指定搜索引擎/爬虫（非中国、可配置）直接放行。
 - 适配 CDN / 反向代理场景（不强绑定 IP）。
 
@@ -13,18 +13,26 @@
 
 ---
 
-- 普通访客第一次访问页面时，可能会先看到一个验证页。
-- 自动模式会直接执行验证；交互模式会要求用户点击一次 “Click to continue” 后再执行验证。
-- 验证页里的 JavaScript 通过后，浏览器会拿到一个短期通行证 Cookie：`sc2`。
+- 普通访客第一次访问页面时，可能会先看到一个很短暂的验证页。
+- 浏览器执行验证页里的 JavaScript 后，会拿到一个短期通行证 Cookie：`sc2`。
 - 之后 30 分钟内，同一个浏览器访问页面通常不会再被挑战。
 - 不会执行 JavaScript 的简单脚本通常拿不到 `sc2`，因此无法直接抓取真实页面。
 - 静态资源和内部验证接口不能乱拦，否则页面会缺 CSS/JS，或者挑战流程会循环,但避免 `/backup/assets.zip` 这类请求被当作普通静态资源放行。
 
-### 注意事项
+### 该版本已知问题
 
-当前版本主要针对服务器上所有网站的域名都是常规的**单段**后缀,例如`.com`,`.shop`这类型
+此版本基本可用,但是有一点问题:部分情况下会js挑战2次.
 
-如果是复杂的域名(双段后缀),不在此方案考虑之内,可能需要额外修改.
+也就是观察到,通过**裸域**访问首页的情况下, JS 挑战进度走两遍.
+
+> 最常见原因是首页有规范化跳转，例如：
+>
+> - `example.com -> www.example.com`
+> - `www.example.com -> example.com`
+>
+> 此版本的 Cookie Domain 逻辑是：只有请求 Host 是子域名时才加 `Domain=.example.com`。
+>
+> 如果用户先访问裸域 example.com，挑战后拿到的 sc2 只属于裸域；随后站点跳到 www.example.com，浏览器不会带这个 sc2，于是又挑战一次。
 
 ### 检查搜索引擎是否能够有效爬取真实内容
 
@@ -41,7 +49,6 @@
 - **两段式（必须 JS 执行）流程**
   - 挑战页下发一个短期 **票据 Cookie** `sct`（非 HttpOnly）
   - 浏览器 JS 读取 `sct`，计算 `proof`，请求 `/__sc_verify`
-  - 自动模板会自动执行这一步；交互模板会在用户点击后执行这一步
   - 服务器校验票据 + proof，通过后才签发 **HttpOnly** 的 `sc2`
   - 不执行 JS 的情况下，无法通过单次 HTTP 请求直接获得有效 `sc2`
 
@@ -58,10 +65,7 @@
   - 仅用于换取 `sc2`
 
 - **跨子域 Cookie（避免 `www` <-> 裸域反复挑战）**
-  - 本部署只使用 `example.com` 这类简单单段后缀域名
-  - 配置会取 Host 最后两段作为主域，并写入 `Domain=.example.com`
-  - 这样裸域、`www`、其他子域之间发生跳转时，`sc2` 仍可继续使用
-  - 对 IP、`localhost` 等测试环境不会追加 Domain
+  - 当请求 Host 为子域名时，Cookie 会带 `Domain=.example.com`
 
 - **挑战生成限速**
   - 使用 `lua_shared_dict sc_token_store` 对同一 IP 的挑战频率进行限制
@@ -84,11 +88,10 @@
 1. 用户请求页面。
 2. Nginx 先看有没有有效的 `sc2` 通行证。
 3. 如果没有，就让浏览器去挑战页 `/_sc/challenge`。
-4. 挑战页给浏览器一个短期票据 `sct`。
-5. 自动模式直接继续；交互模式显示“点击继续验证”，等待用户点击。
-6. JavaScript 带着计算结果访问 `/__sc_verify`。
-7. 服务器确认结果正确后，签发真正的通行证 `sc2`。
-8. 用户带着 `sc2` 再访问页面，就能看到真实内容。
+4. 挑战页给浏览器一个短期票据 `sct`，并要求浏览器执行 JavaScript。
+5. JavaScript 带着计算结果访问 `/__sc_verify`。
+6. 服务器确认结果正确后，签发真正的通行证 `sc2`。
+7. 用户带着 `sc2` 再访问页面，就能看到真实内容。
 
 这里有两个 Cookie：
 
@@ -131,9 +134,6 @@
 
 - 返回 `403`，响应体为 `js_challenge_openresty.html`
 - 同时下发一次性票据 Cookie `sct`
-- 页面行为取决于当前启用的模板：
-  - 自动版：页面加载后自动调用 `/__sc_verify`
-  - 交互版：显示 “Click to continue”，点击后调用 `/__sc_verify`
 
 票据生成逻辑：
 
@@ -142,7 +142,7 @@
 -  `sig = md5(secret|ticket|ts|nonce|ua)`
 - 下发 Cookie：
   - `Set-Cookie: sct=ts_nonce_sig; Max-Age=120; SameSite=None/Lax;（客户端 https 时带 Secure）`
-- 返回当前启用的挑战页模板内容
+- 返回 `js_challenge_openresty.html`
 
 ### 2.3 换票接口（`/__sc_verify`）
 
@@ -181,52 +181,9 @@ GET /__sc_verify?ts=...&nonce=...&proof=...
 
 - **挑战配置**：`/www/server/nginx/conf/com_js_signed.conf`
 - **共享密钥 include**：`/www/server/nginx/conf/com_secret.conf`
-- **当前生效挑战页面模板**：`/www/server/nginx/conf/js_challenge_openresty.html`
+- **挑战页面模板**：`/www/server/nginx/conf/js_challenge_openresty.html`
 - **挑战入口**：`/_sc/challenge`
 - **换票接口**：`/__sc_verify`
-
-### 3.1.1 挑战页模板模式
-
-`com_js_signed.conf` 中实际读取的是固定路径：
-
-```
-/www/server/nginx/conf/js_challenge_openresty.html
-```
-
-也就是说，真正生效的永远是这个文件。其他模板文件只是候选版本。
-
-建议保留两个候选模板：
-
-- **自动版**：`js_challenge_openresty_auto.html`
-  - 页面加载后自动执行 JS 验证。
-  - 用户体验更顺滑。
-  - 更像“无感 JS challenge”。
-
-- **交互版**：`js_challenge_openresty_interactive.html`
-  - 页面显示 “Click to continue”。
-  - 用户点击后才执行 JS 验证。
-  - 更像 Cloudflare 的简化验证交互。
-
-如果线上文件名使用了 `js_challenge_openresty_interactivate.html` 这样的拼写，也可以使用；下方命令把文件名替换成你的实际文件名即可。
-
-切换方式推荐用复制覆盖当前生效模板：
-
-```bash
-# 切换到自动版
-cp /www/server/nginx/conf/js_challenge_openresty_auto.html \
-   /www/server/nginx/conf/js_challenge_openresty.html
-
-# 切换到交互版
-cp /www/server/nginx/conf/js_challenge_openresty_interactive.html \
-   /www/server/nginx/conf/js_challenge_openresty.html
-```
-
-说明：
-
-- 只替换 HTML 模板通常不需要 reload nginx，因为 `@challenge` 每次会读取该 HTML 文件。
-- 如果前面有 CDN 或页面缓存，可能需要清理缓存。
-- 如果修改的是 `com_js_signed.conf` 中的 `io.open(...)` 路径，则需要 `nginx -t` 后 reload。
-- 为避免误操作，建议把 `js_challenge_openresty.html` 当作“当前启用版本”，把 `*_auto.html`、`*_interactive.html` 当作“备份/候选版本”。
 
 ### 3.2 Nginx 主配置
 
@@ -364,9 +321,7 @@ location ~ ^/(product|shop|category|cart|checkout|account|admin){
 ### 6.1 浏览器测试
 
 - 使用无痕窗口打开受保护页面。
-- 应发生一次 `302` 跳转到 `/_sc/challenge?u=...`，挑战页响应为 `403`。
-- 自动版：页面应自动完成验证并跳回原始 URL。
-- 交互版：点击 “Click to continue” 后，应完成验证并跳回原始 URL。
+- 应发生一次 `302` 跳转到 `/_sc/challenge?u=...`，挑战页响应为 `403`，随后自动通过并跳回原始 URL。
 
 在 DevTools > Application > Cookies 中应看到：
 
@@ -401,7 +356,7 @@ curl -I https://www.example.com/wp-content/themes/example/style.css
 测试备份包探测：
 
 ```
-curl -I https://www.example.com/backup/assets.zip # 使用-f获取状态码
+curl -I https://www.example.com/backup/assets.zip
 ```
 
 预期：
@@ -442,58 +397,7 @@ curl -I https://www.example.com/backup/assets.zip # 使用-f获取状态码
   - 修复：确保 `location = /__sc_verify` 在 `content_by_lua_block` 中执行 Lua（不要被 `return ...;` 短路）。
 
 - **Host 在 `www` 与裸域之间跳转导致 cookie 丢失**
-  - 表现：首页验证完成后又看到一次挑战页，Network 中常见 `example.com` -> `www.example.com` 或反向跳转。
-  - 推荐修复：让裸域在进入 JS challenge 前直接 301 到 `www`，只在 `www` 站点上执行挑战。
-  - 兼容修复：当前配置会自动带 `Domain=.example.com`，裸域与 `www` 可以共享 `sc2`。
-
-- **首页存在额外规范化跳转**
-  - 例如 HTTP -> HTTPS、裸域 -> `www`、`/` -> `/en/`、缓存/CDN 插件跳转等。
-  - 如果跳转后 Host 没变，通常不会重新挑战；如果 Host 变了，就依赖跨子域 Cookie。
-
-### 7.1.1 推荐的裸域跳转方式
-
-关于 `co.uk`、`com.au` 这类公共后缀：
-
-> 浏览器不允许网站设置 `Domain=.co.uk` 这类公共后缀 Cookie。原因是 `.co.uk` 不属于某个网站，而是公共注册后缀。
->
-> 如果允许任意站点给 `.co.uk` 写 Cookie，就会影响所有 `.co.uk` 网站，存在严重安全问题。
->
-> 浏览器会依据 Public Suffix List 拒绝这类 Cookie。
-
-当前部署已确认不使用这类域名，因此配置按简单单段后缀处理。
-
-### 7.1.2 同时兼容裸域站和 `www` 站
-
-当前配置可以同时兼容两类站点：
-
-A 类站：裸域跳转到 `www`
-
-```
-用户 -> example.com -> 301 -> www.example.com -> challenge -> 正常访问
-```
-
-B 类站：裸域就是正式站点
-
-```
-用户 -> example.com -> challenge -> 正常访问
-```
-
-兼容的关键是 Cookie Domain：
-
-- `example.com` 签发：`Domain=.example.com`
-- `www.example.com` 签发：`Domain=.example.com`
-- `shop.example.com` 签发：`Domain=.example.com`
-
-这样：
-
-- A 类站如果先在裸域触发过挑战，再跳到 `www`，`sc2` 仍能被 `www` 使用，不会重复挑战。
-- A 类站如果裸域先 301 到 `www`，挑战只会发生在 `www`，这是最推荐的路径。
-- B 类站没有 `www` 跳转，裸域签发的 `sc2` 也能正常用于裸域后续访问。
-
-注意：
-
-- 这依赖“所有域名都是 `example.com` 这种简单单段后缀”的前提。
-- 如果同一个主域下有多个完全不同业务的子域，它们会共享 `sc2`。一般防爬场景可以接受；如果不同子域需要完全隔离，应改回 Host-only Cookie 或为不同子域使用不同 Cookie 名。
+  - 修复：确保 cookie 带 `Domain=.example.com`。
 
 - **密钥缺失或过短**
   - 检查 `com_secret.conf` 是否被 include 且内容正确。
@@ -544,7 +448,23 @@ grep "challenge template missing" /www/wwwlogs/nginx_error.log | tail -20
 
 当前配置已经把常见备份/归档探测放在静态资源白名单之前拦截，正常情况下 `/backup/assets.zip` 应返回 `403`。
 
+### 7.5 Googlebot 返回 200 是否正常
 
+正常。
+
+例如日志中看到类似：
+
+```
+66.249.77.129 ... status=200 ... UA="... Googlebot/2.1 ..."
+```
+
+如果该 IP 通过 PTR + A/AAAA 回查确认属于 Google，那么它会被放行并拿到真实页面。这是为了避免搜索引擎收录挑战页。
+
+如果有人伪装 Googlebot 但 IP 验证失败，应返回 `403`，并可能带有：
+
+- `X-SC-Block: unverified_bot`
+- `X-SC-Block: unverified_bot_no_ptr`
+- `X-SC-Block: unverified_bot_cache`
 
 ---
 
