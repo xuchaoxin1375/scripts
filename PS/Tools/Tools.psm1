@@ -1265,6 +1265,10 @@ function Restart-Nginx
     
     # Approve-NginxValidVhostsConf
     Approve-NginxValidVhostsConf -NginxVhostConfDir $NginxVhostConfDir
+    # 打印hosts文件内容,确保hosts中的映射正确(防止被第三方网络工具修改后不能及时发现)
+    Write-Warning "hosts file content:"
+    Get-Content $hosts
+    Write-Warning "Please ensure maps like '127.0.0.1 domain.com' exist and are not commented out."
     if($Force)
     {
         Write-Verbose "Force stop all nginx processes..." -Verbose
@@ -1300,6 +1304,7 @@ function Restart-Nginx
         }
         Remove-Item $Errorlog -Verbose
     }
+   
 }
 
 function Get-ProcessOfPort

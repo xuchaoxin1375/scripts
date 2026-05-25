@@ -37,13 +37,13 @@ from comutils import (
 from imgdown import (
     ImageDownloader,
     USER_AGENTS,
-    BROSWER_DOWNLOADER,
+    BROWSER_DOWNLOADER,
     PLAY_BROWSER_DOWNLOADER,
 )
 from filenamehandler import FilenameHandler as fh
 from wooenums import CSVProductFields
 
-DOWNLOAD_METHODS = ["request", "curl", "cffi", "iwr"] + BROSWER_DOWNLOADER
+DOWNLOAD_METHODS = ["request", "curl", "cffi", "iwr"] + BROWSER_DOWNLOADER
 
 PROXY_HTTP = os.environ.get("HTTP_PROXY")
 

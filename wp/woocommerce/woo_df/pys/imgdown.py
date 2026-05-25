@@ -33,8 +33,14 @@ import re
 
 import subprocess
 from typing import cast
+
 # import curl_cffi
 
+from curl_cffi import requests as requests_cffi
+from curl_cffi.requests.impersonate import BrowserTypeLiteral
+from downbycurlcffi import download_by_curl_cffi_async
+
+# 其他
 import shutil
 import threading
 import time
@@ -57,8 +63,12 @@ from downbyscrapling import ScraplingDownloader  #
 # 异步调用浏览器下载方案的近义词
 PLAY_BROWSER_DOWNLOADER = ["playwright", "play"]
 SCRAPLING_BROWSER_DOWNLOADER = ["scrapling", "browser", "scr", "bro", "pro"]
-BROSWER_DOWNLOADER = PLAY_BROWSER_DOWNLOADER + SCRAPLING_BROWSER_DOWNLOADER
+BROWSER_DOWNLOADER = PLAY_BROWSER_DOWNLOADER + SCRAPLING_BROWSER_DOWNLOADER
+ASYNC_DOWNLOADER = BROWSER_DOWNLOADER + ["cffi_async"]
 TIMEOUT = 120
+
+# cffi 伪装指纹
+IMPERSONATE = "chrome"
 
 IMG_DIR = "./images"
 RESIZE_THRESHOLD = 1000, 800  # 图片尺寸小于这个阈值则不调整分辨率(宽*高)
@@ -348,7 +358,7 @@ def download_by_curl_cffi(
     timeout: int = TIMEOUT,
     proxies=None,
     curl_insecure: bool = False,
-    impersonate: str = "chrome",  # Default to a modern Chrome version
+    impersonate="chrome",  # Default to a modern Chrome version
 ) -> bool:
     """
     使用 curl_cffi 模块(代替外部curl命令)下载文件
@@ -374,8 +384,8 @@ def download_by_curl_cffi(
         ImportError: If curl_cffi is not installed.
     """
     try:
-        from curl_cffi import requests as cffi_requests
-        from curl_cffi.requests.impersonate import BrowserTypeLiteral
+        from curl_cffi import requests as requests_cffi
+        # from curl_cffi.requests.impersonate import BrowserTypeLiteral
     except ImportError:
         error(
             "curl_cffi is not installed. Please install it via 'pip install curl-cffi'"
@@ -395,7 +405,7 @@ def download_by_curl_cffi(
         valid_impersonate = (
             cast("BrowserTypeLiteral", impersonate) if impersonate else None
         )
-        with cffi_requests.Session(impersonate=valid_impersonate) as session:
+        with requests_cffi.Session(impersonate=valid_impersonate) as session:
             # Configure proxy if provided
             if proxies:
                 session.proxies = {"http": proxies, "https": proxies}
@@ -424,7 +434,7 @@ def download_by_curl_cffi(
             )
             return True
 
-    except cffi_requests.RequestsError as e:
+    except requests_cffi.RequestsError as e:
         error(f"curl_cffi download failed for {url}: {str(e)}")
         return False
     except Exception as e:
@@ -614,12 +624,22 @@ class ImageDownloader:
 
         # if retry_times < 1:
         #     warning("retry_times smaller than 1, no retry will be performed.")
-        # 初始化会话
-        self.session = requests.Session()
-        # 创建具有重试策略的适配器
-        adapter = HTTPAdapter(max_retries=Retry(total=3, backoff_factor=1))
-        self.session.mount("http://", adapter)
-        self.session.mount("https://", adapter)
+        # 初始化轻量下载方式的会话
+        if self.download_method == "request":
+            ## requests库
+            self.session = requests.Session()
+            # 创建具有重试策略的适配器
+            adapter = HTTPAdapter(max_retries=Retry(total=3, backoff_factor=1))
+            self.session.mount("http://", adapter)
+            self.session.mount("https://", adapter)
+        else:
+            ## cffi库
+
+            valid_impersonate = (
+                cast("BrowserTypeLiteral", IMPERSONATE) if IMPERSONATE else None
+            )
+            self.session = requests_cffi.Session(impersonate=valid_impersonate)
+            # self.session_cffi = requests_cffi.Session()
 
         if cookies:
             self.session.cookies.update(cookies)
@@ -655,7 +675,7 @@ class ImageDownloader:
             return random.choice(self.proxies)
         return None
 
-    def _download_single_image(
+    def _download_single_image_sync(
         self,
         url: str,
         output_dir: str,
@@ -668,7 +688,7 @@ class ImageDownloader:
         # use_shutil=False,
     ):
         """
-        下载单张图片
+        下载单张图片(同步方案,适用于多线程)
 
         for chunk in response.iter_content(chunk_size=8*2**10):
         从 HTTP 响应中按块读取内容，每块大小为 8192 字节（8KB）。
@@ -706,7 +726,8 @@ class ImageDownloader:
         else:
             info("没有指定文件名,自动命名")
         info(
-            "🚀@downloading(%d/%d): [%s]\n\t->[ %s ] ",
+            "🚀[%s]@downloading(%d/%d): [%s]\n\t->[ %s ] ",
+            self.download_method,
             current_index,
             self.stats.total,
             url,
@@ -756,15 +777,7 @@ class ImageDownloader:
                             proxies=self.proxies,
                             curl_insecure=self.curl_insecure,
                         )
-                    if self.download_method == "cffi":
-                        res = download_by_curl_cffi(
-                            url=url,
-                            output_path=file_path,
-                            timeout=self.timeout,
-                            user_agent=self.headers["User-Agent"],
-                            proxies=self.proxies,
-                            curl_insecure=self.curl_insecure,
-                        )
+
                     elif self.download_method == "iwr":
                         # debug("使用shutil(iwr)下载图片")
                         res = download_by_iwr(
@@ -774,17 +787,8 @@ class ImageDownloader:
                             timeout=self.timeout,
                             ps_version=self.ps_version,
                         )
-                    elif self.download_method in PLAY_BROWSER_DOWNLOADER:
-                        browser = self.bd
-                        res_map = browser.batch_download(
-                            tasks=[(url, file_path)],
-                        )
-                        res = res_map.get(url, False)
-                    elif self.download_method in SCRAPLING_BROWSER_DOWNLOADER:
-                        browser = self.sbd
-                        res_map = browser.batch_download(tasks=[(url, file_path)])
-                        res = res_map.get(url, False)
-                    else:
+
+                    elif self.download_method == "request":
                         # 通过python发送get请求获取包含文件(图片)的响应
                         # (酌情启用stream参数可以实现流式下载,减少内存占用,配合后面的iter_content方法使用)
                         response = self.session.get(
@@ -800,7 +804,41 @@ class ImageDownloader:
                             url, response=response, file_path=file_path
                         )
                         # self.stats.add_success()
+                    elif self.download_method == "cffi":
+                        response = self.session.get(
+                            url=url,
+                            timeout=self.timeout,
+                            verify=self.verify_ssl,
+                            stream=True,
+                            # impersonate=valid_impersonate, # 在Session层级设置
+                            # proxies={"https": self.get_proxy()},  # 使用代理
+                        )
+                        response.raise_for_status()
+                        res = self.download_by_py(
+                            url, response=response, file_path=file_path
+                        )
+                    # elif self.download_method == "cffi":
+                    #     res = download_by_curl_cffi(
+                    #         url=url,
+                    #         output_path=file_path,
+                    #         timeout=self.timeout,
+                    #         user_agent=self.headers["User-Agent"],
+                    #         proxies=self.proxies,
+                    #         curl_insecure=self.curl_insecure,
+                    #     )
+                    # 异步方案(相对独立,配合测试模式下载单张图片)
+                    # elif self.download_method in PLAY_BROWSER_DOWNLOADER:
+                    #     browser = self.bd
+                    #     res_map = browser.batch_download(
+                    #         tasks=[(url, file_path)],
+                    #     )
+                    #     res = res_map.get(url, False)
+                    # elif self.download_method in SCRAPLING_BROWSER_DOWNLOADER:
+                    #     browser = self.sbd
+                    #     res_map = browser.batch_download(tasks=[(url, file_path)])
+                    #     res = res_map.get(url, False)
 
+                    # 处理图片
                     if res:
                         self.stats.add_success()
                         # 记录成功下载
@@ -1025,13 +1063,15 @@ class ImageDownloader:
         os.makedirs(output_dir, exist_ok=True)
 
         # 普通同步方案:使用线程池下载图片
-        if self.download_method and self.download_method not in BROSWER_DOWNLOADER:
-            executor = concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers)
+        if self.download_method and self.download_method not in ASYNC_DOWNLOADER:
+            executor = concurrent.futures.ThreadPoolExecutor(
+                max_workers=self.max_workers
+            )
             future_to_url = {}
             try:
                 future_to_url = {
                     executor.submit(
-                        self._download_single_image,
+                        self._download_single_image_sync,
                         url,
                         output_dir,
                         default_ext=default_ext,
@@ -1128,14 +1168,16 @@ class ImageDownloader:
         os.makedirs(name=output_dir, exist_ok=True)
 
         # 普通同步方案:使用线程池下载图片
-        if self.download_method and self.download_method not in BROSWER_DOWNLOADER:
-            executor = concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers)
+        if self.download_method and self.download_method not in ASYNC_DOWNLOADER:
+            executor = concurrent.futures.ThreadPoolExecutor(
+                max_workers=self.max_workers
+            )
             future_to_pair = {}
             try:
                 # 使用字典解析式创建和存储任务{future: (filename, url)}
                 future_to_pair = {
                     executor.submit(
-                        self._download_single_image,
+                        self._download_single_image_sync,
                         url=url,
                         output_dir=output_dir,
                         filename=filename,

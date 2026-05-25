@@ -297,7 +297,7 @@ include /www/server/nginx/conf/com_js_signed.conf;
 
 - 内部接口 `/__sc_verify` 和 `/_sc/challenge` 会跳过整站校验，避免挑战流程被自身拦截
 - AI bot、社交媒体爬虫、支付/监控服务仍按配置策略放行
-- Google/Bing 等疑似搜索引擎 UA 仍需 PTR + A/AAAA 回查验证，通过后才放行
+- Google/Bing/Applebot 等疑似搜索引擎 UA 仍需 PTR + A/AAAA 回查验证，通过后才放行
 
 文件中仍保留了旧版显式保护路径：
 
@@ -550,7 +550,7 @@ grep "challenge template missing" /www/wwwlogs/nginx_error.log | tail -20
 
 ## 8. 搜索引擎放行策略（防 UA 伪装）
 
-本方案默认不会仅凭 `User-Agent` 放行 Google/Bing 等搜索引擎。
+本方案默认不会仅凭 `User-Agent` 放行 Google/Bing/Applebot 等搜索引擎。
 
 原因：
 
@@ -558,7 +558,7 @@ grep "challenge template missing" /www/wwwlogs/nginx_error.log | tail -20
 
 实现方式（与 Cloudflare Verified Bots 思路类似）：
 
-- 当请求 UA 命中疑似搜索引擎（如 `Googlebot`/`Bingbot`/`Google-InspectionTool`）时，使用 **反向 DNS（PTR）+ 正向 DNS（A/AAAA）回查确认** 该 IP 是否确实属于对应搜索引擎。
+- 当请求 UA 命中疑似搜索引擎（如 `Googlebot`/`Bingbot`/`Google-InspectionTool`/`Applebot`）时，使用 **反向 DNS（PTR）+ 正向 DNS（A/AAAA）回查确认** 该 IP 是否确实属于对应搜索引擎。
 - 验证通过才放行（`need_challenge=0`），否则继续走挑战（方案 A）。
 - 使用 `lua_shared_dict sc_bot_cache` 对验证结果按 IP 缓存：
   - 通过：缓存较长时间（例如 6 小时）
@@ -573,6 +573,14 @@ grep "challenge template missing" /www/wwwlogs/nginx_error.log | tail -20
 
 - Google：`(Googlebot|Google-InspectionTool|Storebot-Google|GoogleOther|AdsBot-Google|Mediapartners-Google|FeedFetcher-Google|APIs-Google|Google-Read-Aloud)`
 - Bing：`(Bingbot|BingPreview|msnbot|adidxbot)`
+- Apple：`Applebot`
+
+Apple 官方说明：
+
+- Applebot 的 UA 字符串包含 `Applebot`。
+- Applebot 流量通常可通过反向 DNS 显示为 `*.applebot.apple.com` 来识别。
+- 还应确认该 PTR 主机名的 A/AAAA 记录指回原始 IP。
+- 参考：<https://support.apple.com/zh-cn/119829>
 
 不建议：
 
@@ -580,7 +588,7 @@ grep "challenge template missing" /www/wwwlogs/nginx_error.log | tail -20
 
 与 Cloudflare 类似的行为：
 
-- 当请求 UA 像 `Googlebot`/`Bingbot` 但验证失败时，直接返回 **403**（不返回挑战页）。
+- 当请求 UA 像 `Googlebot`/`Bingbot`/`Applebot` 但验证失败时，直接返回 **403**（不返回挑战页）。
 - 目的：避免“伪装爬虫”拿到挑战页 HTML 后把它当作正文抓取结果。
 - 响应头会带 `X-SC-Block`，用于定位阻断原因（如 `unverified_bot`、`unverified_bot_no_ptr` 等）。
 
