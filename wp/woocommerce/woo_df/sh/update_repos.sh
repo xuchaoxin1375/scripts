@@ -16,7 +16,7 @@
 # 严格模式
 # set -euo pipefail #慎用,可能会因为部分错误(重载nginx失败)导致覆盖逻辑不触发,考虑将更新cf_ip的代码作为选项执行.
 
-version=20260525.1943
+version=20260525.1953
 
 echo "当前脚本版本: $version;"
 # ip=$(curl -sm 5 ipinfo.io | grep -Po '"ip": "\K[^"]*')
@@ -344,6 +344,7 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
     ln -snfv $SH_SYM/deploy_wp_full.sh /deploy.sh
     ln -snfv $SH_SYM/update_repos.sh /update_repos.sh
     ln -snfv $SH_SYM/nginx_conf/update_nginx_vhosts_conf.sh /update_nginx_vhosts_conf.sh
+    ln -snfv $SH_SYM/nginx_conf/real_cdn_ip.conf $NGINX_CONF_DIR/real_cdn_ip.conf -fv
     # vim配置
     nvim_conf_dir="$HOME/.config/nvim"
     [[ -d $nvim_conf_dir ]] || mkdir -p "$nvim_conf_dir"
@@ -364,7 +365,6 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
     # 通配批量复制文件
     # html文件包括js挑战用到的页面
     cp $SH_SYM/nginx_conf/{com_*.conf,*.html} /www/server/nginx/conf/ -fv
-
     cp /www/server/nginx/conf/js_challenge_openresty_auto.html \
         /www/server/nginx/conf/js_challenge_openresty.html -fv
 
@@ -439,10 +439,10 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
         cp $SH_SYM/fail2ban/filter.d/* /etc/fail2ban/filter.d/ -fv
 
         # fail2ban源配置文件(.conf)
-        cf_basic_tpl='$SH_SYM/fail2ban/action.d/cloudflare-tpl.conf'
+        cf_basic_tpl="$SH_SYM/fail2ban/action.d/cloudflare-tpl.conf"
 
-        cf_mode_tpl='$SH_SYM/fail2ban/action.d/cloudflare-mode-tpl.conf'
-        nginx_cf_jail_tpl='$SH_SYM/fail2ban/jail.d/nginx-cf-warn.conf'
+        cf_mode_tpl="$SH_SYM/fail2ban/action.d/cloudflare-mode-tpl.conf"
+        nginx_cf_jail_tpl="$SH_SYM/fail2ban/jail.d/nginx-cf-warn.conf"
         # 目标位置(.local)
         cf_action1='/etc/fail2ban/action.d/cloudflare1.local'
         cf_action2='/etc/fail2ban/action.d/cloudflare2.local'
@@ -456,8 +456,8 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
         # cp -nv "$cf_basic" /etc/fail2ban/action.d/cloudflare1.local
         # cp -nv "$cf_basic" /etc/fail2ban/action.d/cloudflare2.local
 
-        copy_if_need "$cf_basic_tpl" "$cf_action2"
         copy_if_need "$cf_basic_tpl" "$cf_action1"
+        copy_if_need "$cf_basic_tpl" "$cf_action2"
         copy_if_need "$cf_mode_tpl" "$cf_mode"
         copy_if_need "$nginx_cf_jail_tpl" "$nginx_cf_jail"
     else
