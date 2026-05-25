@@ -16,7 +16,7 @@
 # 严格模式
 # set -euo pipefail #慎用,可能会因为部分错误(重载nginx失败)导致覆盖逻辑不触发,考虑将更新cf_ip的代码作为选项执行.
 
-version=20260525.1802
+version=20260525.1943
 
 echo "当前脚本版本: $version;"
 # ip=$(curl -sm 5 ipinfo.io | grep -Po '"ip": "\K[^"]*')
@@ -45,9 +45,7 @@ SCRIPT_ROOT="${SCRIPT_ROOT:-"$SCRIPT_ROOT_DEFAULT"}" # /root/repos/scripts 或 /
 # shell脚本目录(sh)
 SH_SCRIPT_DIR="$SCRIPT_ROOT/$_SH_RELATIVE"
 REMOVE_OLD=0
-# 创建shell脚本目录的短路径(符号链接)
-ln -snfv "$SH_SCRIPT_DIR" "$SH_SYM"
-log "基础目录: $SCRIPT_ROOT;"
+
 # exit 0
 
 # CLI flags
@@ -148,7 +146,9 @@ parse_args() {
 
 }
 parse_args "$@"
-
+# 创建shell脚本目录的短路径(符号链接)
+ln -snfv "$SH_SCRIPT_DIR" "$SH_SYM"
+log "基础目录: $SCRIPT_ROOT;"
 # 移除可能的就链接,重新创建链接
 # unlink $SH_SYM # 可以使用unlink命令安全删除符号链接(不会误删目标目录内的文件)🎈
 log "[INFO]:更新符号链接$SH_WWW"
@@ -375,7 +375,7 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
   s|#[[:space:]]*(include real_cdn_ip\.conf;)|\1|
 ' "$NGINX_CONF_DIR/com_com.conf"
     fi
-    
+
     # 判断nginx是否可用
     openresty=false
     if type nginx &> /dev/null; then
