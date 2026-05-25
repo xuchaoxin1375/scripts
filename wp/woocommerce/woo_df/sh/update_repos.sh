@@ -316,7 +316,7 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
         sed -i -E '
   \|include /www/.*/cf-realip\.conf;| s/^/# /
   s|#[[:space:]]*(include real_cdn_ip\.conf;)|\1|
-' com_com.conf
+' "$NGINX_CONF_DIR/com_com.conf"
     fi
 
     # log "更新cloudflare ip信息..."
