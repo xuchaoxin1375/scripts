@@ -50,11 +50,6 @@ ln -snfv "$SH_SCRIPT_DIR" "$SH_SYM"
 log "基础目录: $SCRIPT_ROOT;"
 # exit 0
 
-# 移除可能的就链接,重新创建链接
-# unlink $SH_SYM # 可以使用unlink命令安全删除符号链接(不会误删目标目录内的文件)🎈
-log "[INFO]:更新符号链接$SH_WWW"
-rm -fv "${SH_WWW%/}" && ln -snfv "$SH_SYM" "$SH_WWW"
-
 # CLI flags
 FORCE=0
 UPDATE_CODE=0
@@ -141,7 +136,7 @@ parse_args() {
                 ;;
             -*)
                 log "Unknown option: $1"
-                print_usage
+                print_usage >&2
                 exit 2
                 ;;
             *)
@@ -153,6 +148,12 @@ parse_args() {
 
 }
 parse_args "$@"
+
+# 移除可能的就链接,重新创建链接
+# unlink $SH_SYM # 可以使用unlink命令安全删除符号链接(不会误删目标目录内的文件)🎈
+log "[INFO]:更新符号链接$SH_WWW"
+rm -fv "${SH_WWW%/}" && ln -snfv "$SH_SYM" "$SH_WWW"
+
 # nginx主配置文件源(用于覆盖服务器上的旧版本)
 NGINX_CONF_TPL_DIR="$SH_SYM/nginx_conf"
 NGINX_CONF_TPL_STD="$NGINX_CONF_TPL_DIR/nginx_nginx.conf"
@@ -311,13 +312,6 @@ fi
 
 # ===更新配置文件或模板===
 if [ "$UPDATE_CONFIG" -eq 1 ]; then
-    log "处理real_cdn_ip选项: $REAL_CDN_IP"
-    if [[ "$REAL_CDN_IP" == "all" ]]; then
-        sed -i -E '
-  \|include /www/.*/cf-realip\.conf;| s/^/# /
-  s|#[[:space:]]*(include real_cdn_ip\.conf;)|\1|
-' "$NGINX_CONF_DIR/com_com.conf"
-    fi
 
     # log "更新cloudflare ip信息..."
     # update_cf_ip="$SH_SYM"/nginx_conf/update_cf_ip_configs.sh # 将改为可选项而不再是默认行为.
@@ -366,10 +360,22 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
     # cp $SH_SYM/nginx_conf/com.conf /www/server/nginx/conf/com.conf -fv
     # cp $SH_SYM/nginx_conf/com_limit_rate.conf /www/server/nginx/conf/com_limit_rate.conf -fv
     # cp $SH_SYM/nginx_conf/com_basic.conf /www/server/nginx/conf/com_basic.conf -fv
-    cp $SH_SYM/nginx_conf/{com_*.conf,*.html} /www/server/nginx/conf/ -fv
+
+    # 通配批量复制文件
     # html文件包括js挑战用到的页面
+    cp $SH_SYM/nginx_conf/{com_*.conf,*.html} /www/server/nginx/conf/ -fv
+
     cp /www/server/nginx/conf/js_challenge_openresty_auto.html \
         /www/server/nginx/conf/js_challenge_openresty.html -fv
+
+    log "处理real_cdn_ip选项: $REAL_CDN_IP"
+    if [[ "$REAL_CDN_IP" == "all" ]]; then
+        sed -i -E '
+  \|include /www/.*/cf-realip\.conf;| s/^/# /
+  s|#[[:space:]]*(include real_cdn_ip\.conf;)|\1|
+' "$NGINX_CONF_DIR/com_com.conf"
+    fi
+    
     # 判断nginx是否可用
     openresty=false
     if type nginx &> /dev/null; then
