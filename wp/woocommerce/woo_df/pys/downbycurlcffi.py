@@ -14,8 +14,8 @@ USER_AGENTS = [
 ]
 
 TIMEOUT = 20
-MAX_CONCURRENCY = 80
-RETRIES = 3
+MAX_CONCURRENCY = 5
+RETRIES = 1
 
 
 @dataclass
@@ -30,7 +30,7 @@ class DownloadResult:
 async def _write_bytes(output_path: str, content: bytes) -> None:
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    # 使用线程池避免磁盘写入阻塞事件循环。
+    # 使用额外线程(to_thread),避免磁盘写入阻塞事件循环。
     await asyncio.to_thread(path.write_bytes, content)
 
 
@@ -47,7 +47,8 @@ async def download_image(
     retries: int = RETRIES,
 ) -> DownloadResult:
     """
-    下载单张图片。建议由 download_images_concurrent 统一调度调用。
+    下载单张图片的协程函数。可以指定url和保存路径.
+    批量下载时,建议由 download_images_concurrent 统一调度调用。
     """
     last_error = None
 

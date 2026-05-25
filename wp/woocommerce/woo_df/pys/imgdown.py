@@ -585,7 +585,6 @@ class ImageDownloader:
         self.verify_ssl = verify_ssl
         self.cookies = cookies
         self.proxies = proxies
-        # self.download_method = use_shutil
         self.download_method = download_method
         self.stats = DownloadStatistics()
         self.compress_quality = compress_quality
@@ -1095,12 +1094,7 @@ class ImageDownloader:
             finally:
                 executor.shutdown(wait=False)
         else:
-            # 浏览器方案，直接调用 batch_download
-            if self.download_method in PLAY_BROWSER_DOWNLOADER:
-                browser = self.bd
-            elif self.download_method in SCRAPLING_BROWSER_DOWNLOADER:
-                browser = self.sbd
-
+            # 异步方案
             # 构造任务列表
             tasks = []
             for url in urls:
@@ -1109,24 +1103,37 @@ class ImageDownloader:
                 )
                 file_path = os.path.join(output_dir, filename)
                 tasks.append((url, file_path))
-
-            # 直接进行批量下载，只启动一个浏览器
-            results = browser.batch_download(tasks=tasks, output_dir=output_dir)
-            if isinstance(results, dict):
-                for url, success in results.items():
-                    if success:
-                        self.stats.add_success()
-                        if self.progress_recorder:
-                            self.progress_recorder.record_success(
-                                url=url, filename=os.path.basename(url), http_code=200
-                            )
-                    else:
-                        self.stats.add_failed(url)
-                        if self.progress_recorder:
-                            self.progress_recorder.record_failure(
-                                url=url, status="failed", http_code=None, filename=""
-                            )
-
+            ## 浏览器方案，直接调用 batch_download
+            if self.download_method in BROWSER_DOWNLOADER:
+                if self.download_method in PLAY_BROWSER_DOWNLOADER:
+                    browser = self.bd
+                elif self.download_method in SCRAPLING_BROWSER_DOWNLOADER:
+                    browser = self.sbd
+                # 直接进行批量下载，只启动一个浏览器
+                results = browser.batch_download(tasks=tasks, output_dir=output_dir)
+                if isinstance(results, dict):
+                    for url, success in results.items():
+                        if success:
+                            self.stats.add_success()
+                            if self.progress_recorder:
+                                self.progress_recorder.record_success(
+                                    url=url,
+                                    filename=os.path.basename(url),
+                                    http_code=200,
+                                )
+                        else:
+                            self.stats.add_failed(url)
+                            if self.progress_recorder:
+                                self.progress_recorder.record_failure(
+                                    url=url,
+                                    status="failed",
+                                    http_code=None,
+                                    filename="",
+                                )
+            elif self.download_method == "curl_cffi_async":
+                results = download_by_curl_cffi_async(
+                    tasks, max_concurrency=self.max_workers
+                )
         # 完成下载，打印统计信息
         self.stats.finish(record_faild=self.record_failed)
         self.stats.print_summary()
@@ -1205,40 +1212,45 @@ class ImageDownloader:
         else:
             # 异步方案(调用浏览器下载)
             url_name_pairs = [(url, filename) for filename, url in name_url_pairs]
-            if self.download_method in PLAY_BROWSER_DOWNLOADER:
-                browser = self.bd
-            elif self.download_method in SCRAPLING_BROWSER_DOWNLOADER:
-                browser = self.sbd
+            ## 浏览器方案
+            if self.download_method in BROWSER_DOWNLOADER:
+                if self.download_method in PLAY_BROWSER_DOWNLOADER:
+                    browser = self.bd
+                elif self.download_method in SCRAPLING_BROWSER_DOWNLOADER:
+                    browser = self.sbd
 
-            # 直接进行批量下载，只启动一个浏览器
-            results = browser.batch_download(
-                tasks=url_name_pairs, output_dir=output_dir
-            )
-            if isinstance(results, dict):
-                for url, success in results.items():
-                    if success:
-                        self.stats.add_success()
-                        if self.progress_recorder:
-                            filename = next(
-                                (name for name, u in name_url_pairs if u == url),
-                                os.path.basename(url),
-                            )
-                            self.progress_recorder.record_success(
-                                url=url, filename=filename, http_code=200
-                            )
-                    else:
-                        self.stats.add_failed(url)
-                        if self.progress_recorder:
-                            filename = next(
-                                (name for name, u in name_url_pairs if u == url), ""
-                            )
-                            self.progress_recorder.record_failure(
-                                url=url,
-                                status="failed",
-                                http_code=None,
-                                filename=filename,
-                            )
-
+                # 直接进行批量下载，只启动一个浏览器
+                results = browser.batch_download(
+                    tasks=url_name_pairs, output_dir=output_dir
+                )
+                if isinstance(results, dict):
+                    for url, success in results.items():
+                        if success:
+                            self.stats.add_success()
+                            if self.progress_recorder:
+                                filename = next(
+                                    (name for name, u in name_url_pairs if u == url),
+                                    os.path.basename(url),
+                                )
+                                self.progress_recorder.record_success(
+                                    url=url, filename=filename, http_code=200
+                                )
+                        else:
+                            self.stats.add_failed(url)
+                            if self.progress_recorder:
+                                filename = next(
+                                    (name for name, u in name_url_pairs if u == url), ""
+                                )
+                                self.progress_recorder.record_failure(
+                                    url=url,
+                                    status="failed",
+                                    http_code=None,
+                                    filename=filename,
+                                )
+            elif self.download_method == "curl_cffi_async":
+                results = download_by_curl_cffi_async(
+                    tasks=url_name_pairs, max_concurrency=self.max_workers
+                )
         # 完成下载，打印统计信息
         self.stats.finish(record_faild=self.record_failed)
         self.stats.print_summary()

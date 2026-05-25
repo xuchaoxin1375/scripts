@@ -25,19 +25,26 @@
 1. 清理/卸载宝塔的免费防火墙(这个东西很鸡肋,容易和自定义nginx配置冲突),如果没安装可以跳过此步骤
 2. 通过"**代码下载**"(仓库中Readme@sh.md)一节提供的命令行片段将所需的代码目录下载到服务器上(已经操作过则跳过此步骤),确保已经得到目录 `/www/sh`;(如果有古老版本的代码仓库目录 `/repos/scripts`,可以手动清理掉)
 
-   一键部署(单行部署)
+   一键部署(单行部署,github和gitee 方式2选1,后者适合国内,但是可能要登录.)
 
+   > 方便起见,这里默认用github
+   
    ```bash
-   bash <(curl -sL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh) -f
+   # github
+   bash <(curl -SfL https://github.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh) -f
+   
+   # gitee
+   bash <(curl -SfL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh) -f
+   
    ```
-
+   
    > 其中 `-f`会覆盖 `nginx`的主配置文件(nginx.conf),酌情使用,如果不想覆盖,可以移除 `-f`
    >
-
+   
    或者分步操作,更安全
-
+   
    ```bash
-   curl -L -o deploy_srv.sh https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh;
+   curl -L -o deploy_srv.sh https://github.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh;
    # 建议先 cat setup.sh 看看里面写了啥，有没有恶意代码
    cat deploy_srv.sh -n;
    # 确认没有问题可以执行脚本了
@@ -85,16 +92,6 @@ bash /www/sh/nginx_conf/update_nginx_vhosts_conf.sh -m old --force
 > 如果要同时生效,需要修改`com_js_signed.conf`文件;
 >
 > 将`com_limit_rate.conf`中的语句添加到"**受保护页面**"的上下文中,但注意`try_files $uri $uri/ /index.php?$args;`这个语句不要一起带过去,`com_js_signed.conf`中已经有了;也可以参考`com_js_429.conf`中最终的内容.
-
-即便使用openresty,当前仓库默认配置是仅启用429限流;
-
-如果要启用js,需要将"受保护页面"一节中的路径做调整:找到下面的代码位置,将被注释的第一行解开,并把第2行注释掉或者移除掉.
-
-```nginx
-
-# location ~ ^/(product|shop|category|cart|checkout|account|admin){
-location ~ ^/(category|cart|checkout|account|admin){
-```
 
 
 
