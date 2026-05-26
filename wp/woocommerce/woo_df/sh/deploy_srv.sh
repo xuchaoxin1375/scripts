@@ -8,6 +8,19 @@ REPO_SOURCE="github.com"
 SH_SYM="/www/sh" # 假设服务器上有root权限,并能够创建/www/sh 目录
 SH_SYM_HOME="$HOME/sh"
 OVERWRITE_NGINX_CONF=false
+
+REAL_CDN_IP="cf" # 非默认模式将被记为all
+
+show_help() {
+    cat << EOF
+    Usage: $0 [-f] [ -h,--help]
+    Options
+    -f      覆盖nginx主配置(默认情况下仅部署代码仓库,添加一些配置文件,但是不会覆盖主nginx.conf)
+    -R, --real_cdn_ip    使用非默认的客户ip解析.
+    -h,--help       显示帮助
+EOF
+    # exit 0
+}
 parse_args() {
 
     while [ $# -gt 0 ]; do
@@ -23,12 +36,18 @@ parse_args() {
                 REPO_SOURCE="$2"
                 shift
                 ;;
+            -R | --real_cdn_ip)
+                REAL_CDN_IP="all"
+                # log "已启用使用非默认客户IP解析的选项"
+                shift
+                ;;
             -s | --script-root)
                 SCRIPT_ROOT="$2"
                 shift
                 ;;
             *)
                 echo "Unknown option: $1"
+                show_help >&2
                 exit 1
                 ;;
         esac
@@ -41,15 +60,7 @@ parse_args "$@"
 SH_SCRIPT_DIR="$SCRIPT_ROOT/wp/woocommerce/woo_df/sh"
 REPO_URL="https://$REPO_SOURCE/xuchaoxin1375/scripts.git"
 
-show_help() {
-    cat << EOF
-    Usage: $0 [-f] [ -h,--help]
-    Options
-    -f      覆盖nginx主配置(默认情况下仅部署代码仓库,添加一些配置文件,但是不会覆盖主nginx.conf)
-    -h,--help       显示帮助
-EOF
-    # exit 0
-}
+
 
 # 确保scrits仓库父目录(repos)存在(纯shell计算父目录)
 repos_dir="${SCRIPT_ROOT%/}"
@@ -86,12 +97,16 @@ ln_update_sym "$SH_SCRIPT_DIR" "$SH_SYM_HOME"
 # 使用简短的更新代码仓库的命令(记得检查fail2ban)
 # 如果追加使用-f会覆盖/www/server/nginx/conf/nginx.conf
 # bash "$SH_SYM"/update_repos.sh -g
+params=("-g")
 if [[ $OVERWRITE_NGINX_CONF == "true" ]]; then
-    # 开发(维护)者注意:这里的代码是云端克隆的,如果本地的版本修改后没立即推送云端,那么后续update_repos.sh的代码会是滞后的(旧版本)
-    bash "$SH_SYM"/update_repos.sh -g -f
-else
-    bash "$SH_SYM"/update_repos.sh -g
+    params+=("-f")
 fi
+if [[ $REAL_CDN_IP == "all" ]]; then
+    params+=("-R")
+fi
+
+# 开发(维护)者注意:这里的代码是云端克隆的,如果本地的版本修改后没立即推送云端,那么后续update_repos.sh的代码会是滞后的(旧版本)
+bash "$SH_SYM"/update_repos.sh "${params[@]}"
 
 # 向bash,zsh配置文件导入常用的shell函数,比如wp命令行等
 bash "$SH_SYM"/shellrc_addition.sh && exec bash

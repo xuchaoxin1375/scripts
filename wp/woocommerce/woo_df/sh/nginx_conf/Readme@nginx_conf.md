@@ -20,6 +20,13 @@
   - 使用js挑战后,通常服务器负载会因为普通爬虫脚本无法爬取核心内容(数据库查询次数降低)而负载降低;但是如果负载降低过头(比如始终低于10%,那么就要怀疑是不是规则没写好,导致爬虫抓取的是挑战页面而没有访问到真正的页面(没有数据库查询)
   - 另一方面是检查日志(nginx/openresty),但是注意日志格式中要包含 `$body_bytes_sent `(默认会包含的),如果爬虫没有抓取到真正的页面,那么会发现日志中的 `bytes`大小很小(通常不足10kB(10000B)),并且大量请求的bytes都一样大,这就是爬虫抓取的是挑战页面的征兆
 
+### 服务器类型
+
+> 下面两种方案要使用的部署方式略有不同,请服务器管理员根据自己的服务器情况做调整.
+
+1. 常规的标准cdn代理保护服务器
+2. 增强的隐蔽ip+cdn代理保护服务器(反向代理的ip)
+
 ## 配置步骤
 
 1. 清理/卸载宝塔的免费防火墙(这个东西很鸡肋,容易和自定义nginx配置冲突),如果没安装可以跳过此步骤
@@ -27,9 +34,10 @@
 
    一键部署(单行部署,github和gitee 方式2选1,后者适合国内,但是可能要登录.)
 
-   > 方便起见,这里默认用github
+   > 方便起见,这里默认用github.
    
    ```bash
+   # 标准方案
    # github
    bash <(curl -SfL https://github.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh) -f
    
@@ -40,12 +48,18 @@
    
    > 其中 `-f`会覆盖 `nginx`的主配置文件(nginx.conf),酌情使用,如果不想覆盖,可以移除 `-f`
    >
+   > 对于反向代理ip的服务器,请使用额外的`-R`选项,即:
+   >
+   > ```bash
+   > bash <(curl -SfL https://github.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh) -f -R
+   > 
+   > ```
    
    或者分步操作,更安全
    
    ```bash
    curl -L -o deploy_srv.sh https://github.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh;
-   # 建议先 cat setup.sh 看看里面写了啥，有没有恶意代码
+   # 建议先 cat setup.sh 看看里面写了啥
    cat deploy_srv.sh -n;
    # 确认没有问题可以执行脚本了
    bash deploy_srv.sh -h;
