@@ -8,7 +8,7 @@ DB_PASS="15a58524d3bd2e49"
 DB_HOST="localhost"
 TMP_DB_LIST="/tmp/db_list.txt"
 OUTPUT_FILE="found_orders.csv"
-THREADS=64   # 默认并行数
+THREADS=64 # 默认并行数
 
 ERROR_LOG="/tmp/check_order_email_errors.log"
 
@@ -27,7 +27,7 @@ echo "" > "$OUTPUT_FILE"
 
 # ================== 帮助信息函数 ==================
 show_help() {
-    cat <<EOF
+    cat << EOF
 用法: $0 [选项] [邮箱1 邮箱2 ...]
 
 查询 WooCommerce 数据库中指定邮箱的订单信息。
@@ -51,14 +51,38 @@ EOF
 ARG_EMAIL_FILE=""
 while [[ $# -gt 0 ]]; do
     case $1 in
-        -u) DB_USER="$2"; shift 2 ;;
-        -p) DB_PASS="$2"; shift 2 ;;
-        -H) DB_HOST="$2"; shift 2 ;;
-        -f) ARG_EMAIL_FILE="$2"; shift 2 ;;
-        -o) OUTPUT_FILE="$2"; shift 2 ;;
-        -j) THREADS="$2"; shift 2 ;;
-        -h|--help) show_help; exit 0 ;;
-        *) EMAILS+=("$1"); shift ;;
+        -u)
+            DB_USER="$2"
+            shift 2
+            ;;
+        -p)
+            DB_PASS="$2"
+            shift 2
+            ;;
+        -H)
+            DB_HOST="$2"
+            shift 2
+            ;;
+        -f)
+            ARG_EMAIL_FILE="$2"
+            shift 2
+            ;;
+        -o)
+            OUTPUT_FILE="$2"
+            shift 2
+            ;;
+        -j)
+            THREADS="$2"
+            shift 2
+            ;;
+        -h | --help)
+            show_help
+            exit 0
+            ;;
+        *)
+            EMAILS+=("$1")
+            shift
+            ;;
     esac
 done
 
@@ -109,11 +133,11 @@ csv_escape() {
     s="${1:-}"
     s=${s//$'\r'/}
     s=${s//$'\n'/ }
-    s=${s//"/"""}
+    s=${s//"/"""/}
     printf '"%s"' "$s"
 }
-
-export -f csv_escape
+# 将常用函数export,让其能够在并发子进程中调用
+export -f csv_escape log csv_escape
 
 echo "email,domain,db_name,order_id,created_gmt,status" > "$OUTPUT_FILE"
 
@@ -149,7 +173,10 @@ query_db() {
             out=$(mysql \
                 --connect-timeout=5 \
                 -u "$DB_USER" -p"$DB_PASS" -h "$DB_HOST" \
-                -Nse "$sql" 2>>"$ERROR_LOG") && { printf '%s' "$out"; return 0; }
+                -Nse "$sql" 2>> "$ERROR_LOG") && {
+                printf '%s' "$out"
+                return 0
+            }
             sleep "0.$((attempt * 5))"
             attempt=$((attempt + 1))
         done
@@ -243,19 +270,25 @@ query_db() {
         (
             flock -x 200
             {
-                while IFS=$'\t' read -r ORDER_ID CREATED_GMT STATUS ; do
+                while IFS=$'\t' read -r ORDER_ID CREATED_GMT STATUS; do
                     if [ -z "${ORDER_ID:-}" ]; then
                         continue
                     fi
-                    csv_escape "$EMAIL"; printf ','
-                    csv_escape "$DOMAIN"; printf ','
-                    csv_escape "$DB_NAME"; printf ','
-                    csv_escape "$ORDER_ID"; printf ','
-                    csv_escape "$CREATED_GMT"; printf ','
-                    csv_escape "$STATUS"; printf '\n'
+                    csv_escape "$EMAIL"
+                    printf ','
+                    csv_escape "$DOMAIN"
+                    printf ','
+                    csv_escape "$DB_NAME"
+                    printf ','
+                    csv_escape "$ORDER_ID"
+                    printf ','
+                    csv_escape "$CREATED_GMT"
+                    printf ','
+                    csv_escape "$STATUS"
+                    printf '\n'
                 done <<< "$RESULT"
             } >> "$OUTPUT_FILE"
-        ) 200>"${OUTPUT_FILE}.lock"
+        ) 200> "${OUTPUT_FILE}.lock"
     fi
 }
 
@@ -266,7 +299,7 @@ EMAIL_TOTAL=${#EMAILS[@]}
 EMAIL_IDX=0
 # 并行调度
 for EMAIL in "${EMAILS[@]}"; do
-    EMAIL_IDX=$((EMAIL_IDX+1))
+    EMAIL_IDX=$((EMAIL_IDX + 1))
     log "📧 正在查询第 $EMAIL_IDX/$EMAIL_TOTAL 个邮箱: $EMAIL"
     parallel --jobs "$THREADS" query_db :::: "$TMP_DB_LIST" ::: "$EMAIL"
 done
