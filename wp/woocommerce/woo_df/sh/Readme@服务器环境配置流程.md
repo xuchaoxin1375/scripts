@@ -112,11 +112,12 @@ git pull
   # 安装zsh(二选一)
   ## 方案1:对于apt包管理器
   apt install zsh 
-  ## 方案2:如果前面步骤成功执行的情况下,可以执行: 
-  install_zsh_bymake # 安装较新版本的zsh(编译安装)
+  ## 方案2:上述代码应用成功执行的情况下(配置了bash函数),可以执行: 
+  install_zsh_bymake # 安装较新版本的zsh(编译安装,如果失败,自行使用合适的包管理器安装)
   
   # zsh配置
-  # 可能需要运行2次.第一次安装oh-my-zsh,第二次安装相关zsh插件并修改配置文件):
+  # 可能需要2个阶段.
+  # 第一阶段安装oh-my-zsh(如果此前没有安装过omz,安装完omz后输入exit),第二阶段安装相关zsh插件并修改配置文件
   bash <(curl -sSfL https://github.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_omz.sh) -s github  # 国内(服务器)用户这里的链接github也可以换成gitee,可能需要登录gitee账号.
   
   ```
@@ -169,6 +170,26 @@ pip install -r $woo_df/requirements_linux.txt
 ubuntu24+版本对于python pip安装依赖包更加严格,可能无法直接通过pip安装
 
 可以使用`venv`模块或者`miniforge`来创建python环境,不过这在运行python脚本前就需要选择/切换python环境.
+
+以miniforge为例:
+
+> [conda-forge/miniforge: 一个 conda-forge  --- conda-forge/miniforge: A conda-forge distribution.](https://github.com/conda-forge/miniforge#unix-like-platforms-macos-linux--wsl)
+
+```bash
+# 下载合适的安装程序
+curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
+# 交互式安装
+bash Miniforge3-$(uname)-$(uname -m).sh
+# 初始化环境准备使用.
+conda init
+
+# 非交互式安装(在非交互式安装中，conda 初始化命令默认不会运行。)
+bash Miniforge3-$(uname)-$(uname -m).sh -b
+~/miniforge3/bin/conda init # 非交互式安装,需要指定conda路径执行conda init
+
+```
+
+
 
 ### 批量添加站点基础准备
 

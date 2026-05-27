@@ -373,6 +373,10 @@ parse_args() {
 				USER="$2"
 				shift 2
 				;;
+			-m | --mode)
+				MODE="$2"
+				shift 2
+				;;
 			--valid-users)
 				VALID_USERS="$2"
 				shift 2
