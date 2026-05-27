@@ -313,15 +313,16 @@ fi
 # ===更新配置文件或模板===
 if [ "$UPDATE_CONFIG" -eq 1 ]; then
 
-    # log "更新cloudflare ip信息..."
-    # update_cf_ip="$SH_SYM"/nginx_conf/update_cf_ip_configs.sh # 将改为可选项而不再是默认行为.
-    # if [[ -e "$update_cf_ip" ]]; then
-    #     bash "$update_cf_ip"
-    # else
-    #     log "未找到更新脚本: $update_cf_ip" >&2
+    log "更新cloudflare ip信息..."
+    update_cf_ip="$SH_SYM"/nginx_conf/update_cf_ip_configs.sh # 将改为可选项而不再是默认行为.
+    if [[ -e "$update_cf_ip" ]]; then
+        bash "$update_cf_ip"
+    else
+        log "未找到更新脚本: $update_cf_ip" >&2
 
-    #     exit 1
-    # fi
+        exit 1
+    fi
+    
     # 更新符号链接
     # 目录的符号链接(需要小心处理避免出现循环符号链接).可以先移除再创建防止嵌套
     # [ -L "$SH_SYM" ] && rm -f "$SH_SYM"
