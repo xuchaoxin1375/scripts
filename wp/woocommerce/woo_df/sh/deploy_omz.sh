@@ -47,7 +47,10 @@ options:
         install oh-my-zsh(omz) if omz is not available.
         This option try to install oh-my-zsh on default and standard path of current user.
         If you have already install oh-my-zsh (especially install in your custom dir ),you can use [false] to skip oh-my-zsh installation.
-        This decision will be linked to the value of the [ZSH_CUSTOM] environment variable
+        This decision will be linked to the value of the [ZSH_CUSTOM] environment variable.
+        To reinstall or force install again,run:
+            rm ~/.oh-my-zsh -rf
+        and then install omz again.(use -O install omz noly.)
     -O|--omz-only 
         install oh-my-zsh only without other plugins if true.
     -zc | --install-zsh-completions [true|false]
@@ -180,15 +183,16 @@ zshrc_path="$HOME/.zshrc"
 [[ -f $zshrc_path ]] || touch "$zshrc_path"
 omz_installer() {
     if [[ $install_omz != false ]]; then
-        echo "检查oh-my-zsh是否已经安装"
-        # if [[ -d $HOME/.oh-my-zsh ]]; then
-        if command -v omz &> /dev/null; then
-            echo "oh-my-zsh已经安装(如果要重新安装请删除$HOME/.oh-my-zsh目录)"
+        echo "检查oh-my-zsh是否已经安装..."
+        if [[ -d $HOME/.oh-my-zsh ]]; then
+        # if command -v omz &> /dev/null; then # omz是一个zsh中的函数,bash脚本不便判断
+            echo "oh-my-zsh已经安装(如果安装不完整或者要重新安装请删除$HOME/.oh-my-zsh目录):"
+            echo -e "\t rm ~/.oh-my-zsh -rf"
             return 0
         fi
         echo "将要安装oh-my-zsh [$install_omz]"
     else
-        echo "跳过安装oh-my-zsh"
+        echo "跳过安装oh-my-zsh !"
         return 0
     fi
     # 开始安装(如果需要的话)
