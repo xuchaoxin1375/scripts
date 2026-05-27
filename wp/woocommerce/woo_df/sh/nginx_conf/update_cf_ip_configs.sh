@@ -15,7 +15,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     -h | --help)
       echo "$usage"
-      return 0
+      exit 0
       ;;
     -n | --no-reload-nginx)
       reload_nginx=false
@@ -27,7 +27,7 @@ while [[ $# -gt 0 ]]; do
     -?*)
       echo "Unknown option: " >&2
       echo "$usage"
-      return 2
+      exit 2
       ;;
     *)
       args_pos+=("$1")
@@ -75,4 +75,6 @@ if [[ $reload_nginx == true ]]; then
   else
     echo "Nginx is not installed. Skipping nginx -t and nginx -s reload." >&2
   fi
+else
+  echo "Please reload nginx configuration to make the changes take effect.(nginx -t && nginx -s reload)"
 fi

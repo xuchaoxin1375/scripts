@@ -316,7 +316,7 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
     log "更新cloudflare ip信息..."
     update_cf_ip="$SH_SYM"/nginx_conf/update_cf_ip_configs.sh # 将改为可选项而不再是默认行为.
     if [[ -e "$update_cf_ip" ]]; then
-        bash "$update_cf_ip"
+        bash "$update_cf_ip" -n
     else
         log "未找到更新脚本: $update_cf_ip" >&2
 
