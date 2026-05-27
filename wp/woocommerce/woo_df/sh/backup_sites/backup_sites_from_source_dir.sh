@@ -11,9 +11,9 @@
 # 3.完整性检查:备份完后可以运行一段批量检查文件完整性检查的代码,防止某些文件压缩过程中出错(尤其是被意外终止脚本的情况)
 # 4.线程数不要开太高,虽然服务器核心很多,但是tar和zstd算法容易打满磁盘IO,备份速度的主要瓶颈不在cpu而在于磁盘上!
 
-
 SRC_ROOT="/www/wwwroot"
 DEST_ROOT="/srv/uploads/uploader/files"
+# OWNER="uploader"
 DRY_RUN=0
 FORCE=0
 PARALLEL=0
@@ -28,13 +28,14 @@ MYSQL_HOST="localhost"
 MYSQL_PORT="3306"
 MYSQL_USER="root"
 MYSQL_PASS=""
-
+MODE="full" # db,dir,full.分被表示:仅备份数据库,仅备份文件,还是两者都备份(默认)
 show_help() {
 	cat << EOF
 用法：$0 [选项]
   -s, --src <src_root>     网站根目录所在总目录 (默认：$SRC_ROOT)
   -d, --dest <dest_root>   目标根目录 (默认：$DEST_ROOT)
   -u, --user <username>    根据站点所属人员来指定网站范围 (人员专属目录名，通常是人名拼音缩写),从而仅备份指定用户的网站目录下的站点 (默认：所有用户)
+  -m, --mode <mode>        备份模式，dir表示仅备份文件，db表示仅备份数据库，full表示同时备份文件和数据库 (默认：full)
 	  --site,--domain 备份指定的单个网站(指定域名(网站名),而不是网站根目录)
       --valid-users  <file>   白名单文件，指定需要处理的用户目录名列表
       --whitelist-site <file>   白名单文件，指定需要处理的网站 (域名) 列表
@@ -275,76 +276,82 @@ backup_one_site() {
 		log "[预览] 将尝试导出数据库: ${USERNAME}_${DOMAIN}, ${DOMAIN}, www.${DOMAIN}，并用 zstd 压缩"
 		return 0
 	else
-		log "正在备份站点 $WP_DIR，用户 $USERNAME，域名 $DOMAIN..."
-		log "📦 正在打包 WordPress 文件（排除缓存和日志）..."
-		mkdir -p "$DEST_DIR"
-		# tar -cf "$TAR_PATH" -C "$WP_DIR" .
-		# tar -cf "$TAR_PATH" -C "$WP_DIR/.." wordpress #完整备份
-		# 跳过不重要的内容的轻量备份(这里打包的文件夹指定为wordpress,
-		# 其他用户如果使用此套代码要注意原本的目录结构,可能需要自行调整tar打包的命令行)
-		tar --exclude='wp-content/cache' \
-			--exclude='wp-content/uploads/cache' \
-			--exclude='wp-content/uploads/wpo' \
-			--exclude='wp-content/uploads/wp-rocket' \
-			--exclude='wp-content/uploads/backupbuddy_temp' \
-			--exclude='wp-content/uploads/*-cache' \
-			--exclude='wp-content/updraft' \
-			--exclude='wp-content/ai1wm-backups' \
-			--exclude='wp-content/backups' \
-			--exclude='wp-content/tmp' \
-			--exclude='wp-content/upgrade' \
-			--exclude='wp-content/*.log' \
-			--exclude='wp-content/*.sql' \
-			--exclude='wp-content/*.zip' \
-			--exclude='wp-content/*.tar.gz' \
-			--exclude='wp-content/debug.log' \
-			-cf "$TAR_PATH" -C "$WP_DIR"/.. wordpress
+		if [[ $MODE == dir || $MODE == full ]]; then
+			log "正在备份站点 $WP_DIR，用户 $USERNAME，域名 $DOMAIN..."
 
-		# 调用zstd命令,使用--rm来删除被压缩成zst包之前的文件tar文件;注意,使用-v疑似会降低速度
-		zstd -T0 --rm "$TAR_PATH" -f -v
-		mv "$TAR_PATH.zst" "$DEST_PATH"
+			log "📦 正在打包 WordPress 站点各目录并排除无用的缓存和日志..."
+			mkdir -p "$DEST_DIR"
+			# tar -cf "$TAR_PATH" -C "$WP_DIR" .
+			# tar -cf "$TAR_PATH" -C "$WP_DIR/.." wordpress #完整备份
+			# 跳过不重要的内容的轻量备份(这里打包的文件夹指定为wordpress,
+			# 其他用户如果使用此套代码要注意原本的目录结构,可能需要自行调整tar打包的命令行)
+			tar --exclude='wp-content/cache' \
+				--exclude='wp-content/uploads/cache' \
+				--exclude='wp-content/uploads/wpo' \
+				--exclude='wp-content/uploads/wp-rocket' \
+				--exclude='wp-content/uploads/backupbuddy_temp' \
+				--exclude='wp-content/uploads/*-cache' \
+				--exclude='wp-content/updraft' \
+				--exclude='wp-content/ai1wm-backups' \
+				--exclude='wp-content/backups' \
+				--exclude='wp-content/tmp' \
+				--exclude='wp-content/upgrade' \
+				--exclude='wp-content/*.log' \
+				--exclude='wp-content/*.sql' \
+				--exclude='wp-content/*.zip' \
+				--exclude='wp-content/*.tar.gz' \
+				--exclude='wp-content/debug.log' \
+				-cf "$TAR_PATH" -C "$WP_DIR"/.. wordpress
 
-		# 设置文件权限和所有者
-		chmod 755 "$DEST_PATH"
-		chown uploader:uploader "$DEST_PATH"
-		log "站点文件已备份到: $DEST_PATH"
+			# 调用zstd命令,使用--rm来删除被压缩成zst包之前的文件tar文件;注意,使用-v疑似会降低速度
+			zstd -T0 --rm "$TAR_PATH" -f -v
+			mv "$TAR_PATH.zst" "$DEST_PATH"
 
-		# 数据库备份，依次尝试三种数据库名
-		DB_CANDIDATES=("${USERNAME}_${DOMAIN}" "${DOMAIN}" "www.${DOMAIN}")
-		DB_DUMPED=0
-		for DBNAME in "${DB_CANDIDATES[@]}"; do
-			# 导出sql的备份文件名统一使用"${DOMAIN}.zst"
-			SQL_DUMP_PATH="${DEST_DIR}/${DOMAIN}.sql"
-			ZST_SQL_DUMP_PATH="${SQL_DUMP_PATH}.zst"
+			# 设置文件权限和所有者
+			chmod 755 "$DEST_PATH"
+			# 可选,设置的话可以让普通用户看到/管理包目录的文件包
+			# chown "$OWNER":"$OWNER" "$DEST_PATH"
+			log "站点目录文件已备份到: $DEST_PATH"
+		elif [[ $MODE == db || $MODE == full ]]; then
+			# START-DB:数据库备份，依次尝试三种数据库名
+			DB_CANDIDATES=("${USERNAME}_${DOMAIN}" "${DOMAIN}" "www.${DOMAIN}")
+			DB_DUMPED=0
+			for DBNAME in "${DB_CANDIDATES[@]}"; do
+				# 导出sql的备份文件名统一使用"${DOMAIN}.zst"
+				SQL_DUMP_PATH="${DEST_DIR}/${DOMAIN}.sql"
+				ZST_SQL_DUMP_PATH="${SQL_DUMP_PATH}.zst"
 
-			# 构建mysql连接参数
+				# 构建mysql连接参数
 
-			# if mysqlshow "${MYSQL_ARGS[@]}" "$DBNAME" >/dev/null 2>&1; then
-			if mysql "${MYSQL_ARGS[@]}" -e "USE \`$DBNAME\`;" > /dev/null 2>&1; then
-				if mysqldump "${MYSQL_ARGS[@]}" "$DBNAME" > "$SQL_DUMP_PATH"; then
-					# 将sql文件用tar包装一下,文件名保持原来的.sql而不加tar后缀(这看起来有点多余,但是为了和其他配套脚本兼容,这里做一下额外处理)
-					## 先临时创建一个.tar文件,然后重命名(去掉.tar)
-					log "正在将 $SQL_DUMP_PATH 打包为tar文件,然后更名回 $SQL_DUMP_PATH"
-					sql_tar="${SQL_DUMP_PATH}.tar"
-					tar -cvf "$sql_tar" -C "$(dirname "$SQL_DUMP_PATH")" "$(basename "$SQL_DUMP_PATH")"
-					rm "$SQL_DUMP_PATH" -v -f
-					mv "$sql_tar" "$SQL_DUMP_PATH" -v -f
-					log "检查当前sql归档文件类型:$SQL_DUMP_PATH ($(file -b "$SQL_DUMP_PATH"))"
+				# if mysqlshow "${MYSQL_ARGS[@]}" "$DBNAME" >/dev/null 2>&1; then
+				if mysql "${MYSQL_ARGS[@]}" -e "USE \`$DBNAME\`;" > /dev/null 2>&1; then
+					if mysqldump "${MYSQL_ARGS[@]}" "$DBNAME" > "$SQL_DUMP_PATH"; then
+						# 将sql文件用tar包装一下,文件名保持原来的.sql而不加tar后缀(这看起来有点多余,但是为了和其他配套脚本兼容,这里做一下额外处理)
+						## 先临时创建一个.tar文件,然后重命名(去掉.tar)
+						log "正在将 $SQL_DUMP_PATH 打包为tar文件,然后更名回 $SQL_DUMP_PATH"
+						sql_tar="${SQL_DUMP_PATH}.tar"
+						tar -cvf "$sql_tar" -C "$(dirname "$SQL_DUMP_PATH")" "$(basename "$SQL_DUMP_PATH")"
+						rm "$SQL_DUMP_PATH" -v -f
+						mv "$sql_tar" "$SQL_DUMP_PATH" -v -f
+						log "检查当前sql归档文件类型:$SQL_DUMP_PATH ($(file -b "$SQL_DUMP_PATH"))"
 
-					log "将$SQL_DUMP_PATH 压缩为 $ZST_SQL_DUMP_PATH"
-					zstd -T0 --rm "$SQL_DUMP_PATH" -f #默认添加后缀.zst
-					log "设置SQL文件权限(755)"
-					chmod 755 "$ZST_SQL_DUMP_PATH"
-					# chown uploader:uploader "$ZST_SQL_DUMP_PATH"
-					# log "数据库 $DBNAME 已导出并压缩到: $ZST_SQL_DUMP_PATH"
-					DB_DUMPED=1
-					break
+						log "将$SQL_DUMP_PATH 压缩为 $ZST_SQL_DUMP_PATH"
+						zstd -T0 --rm "$SQL_DUMP_PATH" -f #默认添加后缀.zst
+						log "设置SQL文件权限(755)"
+						chmod 755 "$ZST_SQL_DUMP_PATH"
+						# chown uploader:uploader "$ZST_SQL_DUMP_PATH"
+						# log "数据库 $DBNAME 已导出并压缩到: $ZST_SQL_DUMP_PATH"
+						DB_DUMPED=1
+						break
+					fi
 				fi
+			done
+			if [[ $DB_DUMPED -eq 0 ]]; then
+				log "[警告] 未找到可用数据库，站点 $DOMAIN (用户 $USERNAME) 未进行数据库备份。"
 			fi
-		done
-		if [[ $DB_DUMPED -eq 0 ]]; then
-			log "[警告] 未找到可用数据库，站点 $DOMAIN (用户 $USERNAME) 未进行数据库备份。"
 		fi
+		# END-DB
+
 		return 0
 	fi
 }

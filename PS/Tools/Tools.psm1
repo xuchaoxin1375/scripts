@@ -578,7 +578,7 @@ function Add-SSHkeyOnHost
     Write-Verbose "本次将添加公开密钥内容[$pubkey]到服务器[$ComputerName]($authority),by port=$port"
     if ($RemoteOSIsWindows)
     {
-        Write-Host "确保被链接服务器是windows系统(并且不是链接到wsl中且存在powershell),否则推送语句失效!"
+        Write-Warning "确保被链接服务器是windows系统(并且不是链接到wsl中且存在powershell),否则推送语句失效!"
         # $cmd="ssh $authority powershell -Command mkdir -p ~/.ssh ; Write-Output '${pubkey}' >> ~/.ssh/authorized_keys -v -p $port"
         # Write-Host "cmd=[$cmd]"
         ssh $authority -v -p $port "powershell.exe -noprofile -Nologo -NonInteractive -Command `" mkdir -p ~/.ssh ; echo '${pubkey}' >> ~/.ssh/authorized_keys`"" 
@@ -586,7 +586,7 @@ function Add-SSHkeyOnHost
     else
     {
         
-        Write-Host "确保被链接服务器不是windows系统,否则推送语句失效!"
+        Write-Warning "确保被链接服务器是windows之外的系统(linux等系统),否则推送语句失效!"
         # && 针对于linux系统(windows不适用),这里使用';'代替'&&'
         ssh $authority -v -p $port "mkdir -p ~/.ssh && echo '${pubkey}' >> ~/.ssh/authorized_keys" 
     }

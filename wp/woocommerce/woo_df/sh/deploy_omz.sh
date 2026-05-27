@@ -15,23 +15,16 @@
 # 此脚本通过sed修改的配置片段都使用了起始和结束标记组合('>>>'和'<<<',模仿conda风格),用户可以清晰的识别出修改的代码片段
 # 最后记得检查oh-my-zsh中的插件列表(plugins数组)中的插件是否移除多余内容.
 
-# 一键部署(可能需要运行2次.)
-# bash <(curl -sSfL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_omz.sh) -s github  # 这里的链接gitee也可以换成github
-#   国内可以考虑用gitee,但是可能要登录账号;使用-h获取帮助
-requirements=(git curl zsh)
-meet_req=true
-for req in "${requirements[@]}"; do
-    if ! command -v "$req" >&/dev/null; then
-        echo "[error]:'$req' is not available! Install $req and retry again."
-        meet_req=false
-    fi
-done
+# 一键部署(可能需要运行2次.第一次安装oh-my-zsh,第二次安装相关zsh插件并修改配置文件):
+# bash <(curl -sSfL https://github.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_omz.sh) -s github
+# 这里的链接gitee也可以换成gitee(适合国内用户,但是可能要登录gitee账号)
+# 使用-h获取命令行帮助
 
-if [[ $meet_req == false ]]; then exit 2; fi
 version=20260506
 # 插件仓库源
 REPO_SOURCE="github" # gitee
 echo "Using repo source: $REPO_SOURCE"
+
 # 默认插件安装选项(仅补全类插件)
 install_zsh_completions=true # true|false
 install_zsh_autocomplete=omz # omz|std|false
@@ -41,6 +34,7 @@ install_zsh_syntax_highlighting=true
 install_zsh_history_substring_search=true
 install_omz="default" # default|github|gitee
 omz_only=false
+
 # 定义使用帮助(help)
 usage='
 Oh-my-zsh(omz) and zsh plugins deployment script.
@@ -77,8 +71,10 @@ options:
 examples:
     # install oh-my-zsh only:
     bash $0 --omz-only
+
     # install without 'you-should-use' plugin or  disable the plugin in plugins list
     bash deploy_omz.sh -o false -zysu false
+
     # enable all predefined plugins
     bash deploy_omz.sh 
 "
@@ -149,6 +145,18 @@ parse_args() {
     done
 }
 parse_args "$@"
+
+# 检查依赖
+requirements=(git curl zsh)
+meet_req=true
+for req in "${requirements[@]}"; do
+    if ! command -v "$req" >& /dev/null; then
+        echo "[error]:'$req' is not available! Install $req and retry again."
+        meet_req=false
+    fi
+done
+
+if [[ $meet_req == false ]]; then exit 2; fi
 # 以下代码需要gnu sed,如果gsed不可用,请用户安装
 if [[ $OSTYPE == darwin* ]]; then
     if command -v gsed &> /dev/null; then
@@ -173,7 +181,8 @@ zshrc_path="$HOME/.zshrc"
 omz_installer() {
     if [[ $install_omz != false ]]; then
         echo "检查oh-my-zsh是否已经安装"
-        if [[ -d $HOME/.oh-my-zsh ]]; then
+        # if [[ -d $HOME/.oh-my-zsh ]]; then
+        if command -v omz &> /dev/null; then
             echo "oh-my-zsh已经安装(如果要重新安装请删除$HOME/.oh-my-zsh目录)"
             return 0
         fi
