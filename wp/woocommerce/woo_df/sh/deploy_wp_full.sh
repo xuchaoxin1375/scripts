@@ -16,40 +16,37 @@
 # TODO:
 # 1. 对于多个磁盘的服务器,检测磁盘使用情况自动处理解压位置(为每个盘事先设定一个项目目录)
 # 2. 并发部署中的日志打印在终端容易错乱,改进此问题.
-#
-# Examples
-#   /deploy.sh --user-dir zlj -P /srv/uploads/uploader/files/zlj/domain1.com.zst  -M single
-#   /deploy.sh -u xcx  -M single  -n domain1.com --dry-run
-#   /deploy.sh -M single  -n domain1.com --yes
-#   /deploy.sh -M single  -n domain1.com
-#   /deploy.sh -M single  --user-dir zsh -S .../domain1.com.zst -N domain2.com
-#   /deploy.sh -M single   --user-dir uuu  -n d1.com --pack-format zip --dry-run
-#   /deploy.sh  --user-dir xcx  --ssp '' -K  --dry-run #适合服务器迁移参数组合!
+
 
 VERSION=20260528
 shopt -s extglob globstar
 shopt -s nullglob
 # === 配置参数 ===
 # 依赖说明:依赖于外部的伪静态规则文件RewriteRules.LF.conf,以及一些实用性程序(7z,unzip等)
+
+DEPLOY_MODE="auto" # 部署模式(批量解压或手动指定压缩包解压特定网站)
 # 并发方案:
 JOBS=5 # 默认并发数,根据服务器性能和实际情况调整
 STRICT_MODE="false"
-UPLOADER_DIR="/srv/uploads/uploader"
 UPLOADER="uploader" # 默认uploader,成员通过(sftp等)上传到指定目录所用的专用用户名
+UPLOADER_DIR="/srv/uploads/uploader"
+PACK_ROOT="$UPLOADER_DIR/files"
+
 PLUGINS_HOME="/www"
 PROJECT_HOME="/www/wwwroot"
 SH_SYM="/www/sh"
 SITE_DIR_PACK=""
 FUNCTIONS_PHP="/www/functions.php"
 ARCHIVE_FORMATS=(zip 7z tar lz4 zst)
+
 # ARCHIVE_FORMATS_STR=$(IFS=,; echo "${ARCHIVE_FORMATS[*]}") #可以配合eval使用
 # 默认的网站压缩包存放目录的共同祖先目录(下面有各个人员名的专属目录)
-PACK_ROOT="$UPLOADER_DIR/files"
 DB_HOST="localhost" # 数据库主机
 DB_USER="root"
 DB_PASSWORD="15a58524d3bd2e49"
 DB_PORT="3306"
-DEPLOY_MODE="auto" # 部署模式(批量解压或手动指定压缩包解压特定网站)
+
+
 DEPLOYED_DIR="$UPLOADER_DIR/deployed_all"
 PLUGIN_INSTALL_MODE="symlink"    # 插件安装模式: symlink(符号链接), copy(复制)
 USER_DIRS=()                     #需要部署的用户目录,可以指定多个(重复使用-u选项指定人员目录名)
@@ -152,7 +149,7 @@ show_help() {
 
         压缩配置:
           --pack-format FORMAT       扫描站点包时限定压缩格式（如：zst,zip,tar 等）
-          -K, --keep-pack, --no-move-pack  部署后保留压缩包（不移动归档到 deployed 目录）
+          -K, --keep-pack, --no-move-pack  部署后压缩包原地不动（不移动归档到 deployed 目录）;若以人员为单位拷贝站点,在该人员所有包传输完毕前不适合使用此选项,否则不利于分辨哪些站已经解压完毕.
 
         并发与执行:
           -j, --jobs NUM             设置并发数 (默认:$JOBS)
@@ -166,27 +163,28 @@ show_help() {
           -V, --version              显示脚本版本
           -v, --verbose             显示详细日志
 
-        示例:
-          # 批量部署（自动扫描）
-          $0 --user-dir zlj --deploy-mode auto
+示例:
+    # 批量部署（自动扫描）
+    $0 --user-dir zlj --deploy-mode auto
 
-          # 单站部署（指定压缩包）
-          $0 -M single -P /srv/uploads/uploader/files/zlj/domain1.com.zst
+    # 单站部署（指定压缩包）
+    $0 -M single -P /srv/uploads/uploader/files/zlj/domain1.com.zst
 
-          # 单站部署（指定域名自动搜索）
-          $0 -M single -u xcx -n domain1.com --dry-run
-          # 单站部署（指定域名自动搜索,不排除deployed目录，并更新已上传的网站域名）
-          $0 -u xcx -n domain1.com -N domain2.com --ssp '' 
-        
-          # 服务器迁移（保留压缩包）
-          $0 --user-dir xcx --ssp '' -K --dry-run
-          $0 --pack-root /srv/uploads/uploader/files/recovery --user-dir yxj --ssp '' -K
+    # 单站部署（指定域名自动搜索）
+    $0 -M single -u xcx -n domain1.com --dry-run
+    # 单站部署（指定域名自动搜索,不排除deployed目录，并更新已上传的网站域名）
+    $0 -u xcx -n domain1.com -N domain2.com --ssp '' 
 
-          # 仅处理数据库或仅处理网站根目录
-          $0 -M single -n domain1.com --site-db-skip    # 仅解压网站
-          $0 -M single -n domain1.com --site-root-skip  # 仅导入数据库
+    # 仅处理数据库或仅处理网站根目录
+    $0 -M single -n domain1.com --site-db-skip    # 仅解压网站
+    $0 -M single -n domain1.com --site-root-skip  # 仅导入数据库
 
-        版本：$VERSION
+    # 服务器迁移（保留压缩包）
+    $0 --user-dir xcx --ssp ''  --dry-run
+    $0 --pack-root /srv/uploads/uploader/files/recovery --user-dir yxj --ssp '' # -K (传输完整当前人员(本里例yxj)的所有包之前请勿使用-K.)
+
+版本：$VERSION
+
 EOF
     exit 0
 }

@@ -512,7 +512,7 @@ function Update-SSNameServers
     # Set-CFCredentials -CfAccount account2
     # Get-CFZoneNameServersTable -FromTable $desktop/table-s2.conf
     # Update-SSNameServers -Table $desktop/domains_nameservers.csv -Verbose
-    #>
+    #>`
     [CmdletBinding()]
     param (
         $Table = "$desktop/domains_nameservers.csv",

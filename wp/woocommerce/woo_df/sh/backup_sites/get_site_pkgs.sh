@@ -19,7 +19,7 @@
 # 2.关于数据库文件备份和导出,建议配置免密登录,不仅更安全,代码也更加简单(免密登录mysql配置方案有许多,自行查阅资料配置)
 # 3.完整性检查:备份完后可以运行一段批量检查文件完整性检查的代码,防止某些文件压缩过程中出错(尤其是被意外终止脚本的情况)
 # 4.线程数不要开太高,虽然服务器核心很多,但是tar和zstd算法容易打满磁盘IO,备份速度的主要瓶颈不在cpu而在于磁盘上!
-VERSION=20260528.1208
+VERSION=20260528.1710
 
 SRC_ROOT="/www/wwwroot"
 DEST_ROOT="/srv/uploads/uploader/files" # 备份文件存储目录
@@ -109,16 +109,22 @@ examples:
 	# 指定MySQL用户名和密码
 	./backup_sites_from_source_dir.sh --mysql-user myuser --mysql-pass mypassword
 	bash ./backup_sites_from_source_dir.sh  --jobs 2 --valid-users  valid_users.ini -u xcx --mysql-user myusername --mysql-pass password123
-	# 组合使用所有参数
+
+	# 组合使用mysql的所有参数
 	./backup_sites_from_source_dir.sh -d /srv/uploads/uploader/files --mysql-host localhost --mysql-port 3306 --mysql-user root --mysql-pass password123
+    
+    # 扫描白名单用户的所有网站,并备份数据库(不备份目录文件),最大扫描深度限制为2
+    bash get_site_pkgs.sh -U valid_users.ini -m db -j 4  -M 2 -D # -D预览操作.
 
 	# 备份单个站点(指定网站名字,自动搜索网站根路径)
 	bash ./backup_sites_from_source_dir.sh --site goodpayway.shop  --jobs 1
 
-    # 扫描白名单用户的所有网站,并备份数据库(不备份目录文件),最大扫描深度限制为2
-    bash get_site_pkgs.sh -U valid_users.ini -m db -j 4  -M 2 -D # 预览操作.
+    
     # 直接指定网站白名单(域名列表)
     bash get_site_pkgs.sh  -m db -j 4 -M 2 -D -W w.txt # W选项和U选项不要同时使用.
+
+    # 即时传输
+    bash get_site_pkgs.sh -u xcx  -m db -j 4 -M 2 -I --remote-host <your_server_b_ip> --remote-path /www/wwwroot/服务器管理员名/建站人员名/ # 例如 /www/wwwroot/xcx/s1/
 
 EOF
 }
