@@ -1084,7 +1084,8 @@ WHERE option_name IN ('home', 'siteurl');
         log "站点包不归档到${deployed_dir}中,留在原地."
     elif [[ $REMOVE_AFTER_DEPLOY == "true" ]]; then
         log "删除已用过的sql压缩包文件: $site_sql_archive"
-        rm -f "$site_sql_archive" -v
+        rm -fv "$site_sql_archive"
+        rm -fv "$site_dir_archive"
     else
         mkdir -p "$deployed_dir" -v
         log "<<<归档:已用过的sql压缩包文件: $site_sql_archive >>>"
