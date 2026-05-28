@@ -26,7 +26,7 @@
 #   /deploy.sh -M single   --user-dir uuu  -n d1.com --pack-format zip --dry-run
 #   /deploy.sh  --user-dir xcx  --ssp '' -K  --dry-run #适合服务器迁移参数组合!
 
-VERSION=20260413
+VERSION=20260528
 shopt -s extglob globstar
 shopt -s nullglob
 # === 配置参数 ===
@@ -483,7 +483,7 @@ export -f import_sql_file
 set_rewrte_rules_file() {
     # 将/www/wwwroot/RewriteRules.LF.conf 赋值到被部署网站的对于伪静态文件存路径:"/www/server/panel/vhost/rewrite/${domain}.conf"
     local domain="$1"
-    local rewrite_template="/www/woo_df/RewriteRules.LF.conf"
+    local rewrite_template="/www/sh/nginx_conf/RewriteRules.LF.conf"
     local rewrite_target="/www/server/panel/vhost/rewrite/${domain}.conf"
     # 覆盖式将文件复制到目标位置
     if [ -f "$rewrite_template" ]; then
