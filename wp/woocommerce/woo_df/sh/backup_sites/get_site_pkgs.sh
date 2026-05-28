@@ -2,10 +2,16 @@
 # 脚本功能和设计
 # 脚本支持多个选项,满足备份指定网站(可通过网站白名单文件来指定备份哪些网站),也可以指定工作目录及其下面的需要参与备份的目录名(可能是网站所属人员的名字代号或拼写)来备份某个人员的站点
 # 无论是哪种方式,基本思路是指定的任务通过计算直接或间接(比如find扫描指定目录下的所有网站)得到需要执行打包备份的网站根目录路径列表,然后遍历这些路径调用一个网站打包函数完整站点备份;并且可选的,允许同时对多个网站进行备份.
-# 如果本机磁盘空间紧张,可以使用 -I 考虑即时备份方案(打包后立刻传输到备份服务器并删除本机包,但暂时要求配置ssh免密,连贯性好);
+# 如果本机磁盘空间紧张,可以使用 -I 考虑即时传输备份方案(打包后立刻传输到备份服务器并删除本机包,但暂时要求配置ssh免密);
+# 并且注意,使用即时传输的情况下,如果中断后重新运行,将会因为备份目录中缺少相应的包而再次出发备份,需要额外的机制来来辅助判断上一轮是否备份过:(多种方案,简单期间,这里使用标记文件方案)
+## 日志方案:(日志中包含字段:网站名(域名),备份模式(db/dir/full),上一次备份日期时间,是否成功备份),日志使用csv的方式记录,但是注意并发需要锁机制(例如flock),否则写操作可能会导致文件错乱,影响阅读和解析.
+## 标记文件方案:比较简单,并发操作创建文件不用担心错乱问题.
+#
 #
 # ===========
 # 注意事项:
+# export 让并发子进程能够访问相关变量🎈
+#
 # 0.执行此脚本时建议暂停服务器网站的服务(比如暂停nginx服务,防止备份过程中文件发生变化而导致tar过程出现错误或不一致);
 # 建议白天执行备份任务,降低应为服务器暂停而导致的丢单损失
 # 1.此脚本主要用于处理历史遗留的备份问题,专门为没有压缩包而只有站点各目录和对应的活跃数据库情况下进行备份
@@ -13,34 +19,50 @@
 # 2.关于数据库文件备份和导出,建议配置免密登录,不仅更安全,代码也更加简单(免密登录mysql配置方案有许多,自行查阅资料配置)
 # 3.完整性检查:备份完后可以运行一段批量检查文件完整性检查的代码,防止某些文件压缩过程中出错(尤其是被意外终止脚本的情况)
 # 4.线程数不要开太高,虽然服务器核心很多,但是tar和zstd算法容易打满磁盘IO,备份速度的主要瓶颈不在cpu而在于磁盘上!
-VERSION=20260527.1918
+VERSION=20260528.1208
+
 SRC_ROOT="/www/wwwroot"
-DEST_ROOT="/srv/uploads/uploader/files"
-SITE_ROOT="" # 单个站点备份
+DEST_ROOT="/srv/uploads/uploader/files" # 备份文件存储目录
+SITE_ROOT=""                            # 单个站点备份
 # OWNER="uploader"
 DRY_RUN=0
 FORCE=0
 PARALLEL_JOBS=4 #不要过多
-USER=""         # 仅备份指定人员的站点.
+
+# 并发子进程内部需要访问的变量
+LOG_FILE="" # 备份进度日志文件路径(可选,建议加锁机制)
+USER=""     # 仅备份指定人员的站点.
 MINDEPTH=2
 MAXDEPTH=3
 VALID_USERS=""
 WHITELIST_SITE=""
+export STATUS_TAG_DIR="$DEST_ROOT/status_tags" # 即时备份模式在,备份并传输一个包后,就创建对应的名字的空文件.
+export MODE="full"                             # db,dir,full.分被表示:仅备份数据库,仅备份文件,还是两者都备份(默认)
+export IMMEDIATELY=false                       # 网站文件导出后立即传输到备份服务器并删除本机包
+export HOSTNAME
+HOSTNAME=$(hostname)
+# mysql链接参数
 declare -a MYSQL_ARGS
 MYSQL_HOST="localhost"
 MYSQL_PORT="3306"
 MYSQL_USER="root"
 MYSQL_PASS=""
-MODE="full" # db,dir,full.分被表示:仅备份数据库,仅备份文件,还是两者都备份(默认)
 
-IMMEDIATELY=false # 网站文件导出后立即传输到备份服务器并删除本机包
-# 传输相关参数
+# 传输相关参数(需要导出)
 REMOTE_USER="root"
 REMOTE_HOST=""
+REMOTE_PORT="22"
+REMOTE_ADMINER_NAME=""
 # 远程服务器上的存储路径(基础路径,请务必自行指定跟具体的目录防止混乱.)
-REMOTE_PATH="/www/wwwroot/"
-# 参考路径结构: /www/wwwroot/adminer/serverx/userx/deployed/
-export MODE # export 让并发子进程能够访问MODE变量
+# 参考路径结构: /www/wwwroot/$adminer/$HOSTNAME/$userx/deployed/
+REMOTE_PATH_BASE="/www/wwwroot/$REMOTE_ADMINER_NAME/$HOSTNAME"
+
+export USER DEST_ROOT FORCE DRY_RUN VALID_USERS MINDEPTH MAXDEPTH
+export REMOTE_HOST REMOTE_USER REMOTE_PORT REMOTE_ADMINER_NAME REMOTE_PATH_BASE
+export MYSQL_HOST MYSQL_PORT MYSQL_USER MYSQL_PASS
+
+# export 让并发子进程能够访问相关变量🎈
+# export MODE IMMEDIATELY REMOTE_HOST REMOTE_USER REMOTE_PORT REMOTE_PATH
 
 show_help() {
     cat << EOF
@@ -52,23 +74,28 @@ version: $VERSION
 -s, --src <src_root>     项目目录:网站根目录所在总目录 (默认：$SRC_ROOT)
 -d, --dest <dest_root>   备份存储基础目录 (默认：$DEST_ROOT)
 -m, --mode <mode>        备份模式，dir表示仅备份文件，db表示仅备份数据库，full表示同时备份文件和数据库 (默认：full)
--U, --valid-users <username>    根据站点所属人员来指定网站范围 (人员专属目录名，通常是人名拼音缩写),从而仅备份指定用户的网站目录下的站点 (默认：所有用户)
-    --site,--domain 备份指定的单个网站(指定域名(网站名),而不是网站根目录)
-    --valid-users  <file>   白名单文件，指定需要处理的用户目录名列表
+-u, --user <username>    仅备份指定人员的站点(人员专属目录名，通常是人名拼音缩写),从而仅备份指定用户的网站目录下的站点
+
+-U, --valid-users <file>    白名单文件,指定需要处理的人员目录名列表
 -W, --whitelist-site <file>   白名单文件，指定需要处理的网站 (域名) 列表
 -L, --mindepth <n>       find 扫描的最小深度 (默认：$MINDEPTH)
 -M, --maxdepth <n>       find 扫描的最大深度 (默认：$MAXDEPTH)
 
+--site,--domain <site_name or domain> 备份指定的单个网站(指定域名(网站名),而不是网站根目录)
+
 -I, --immediately        网站文件导出后立即传输到备份服务器并删除本机包(本机磁盘紧张的情况下使用)
     --remote-user <user> 远程服务器SSH登录用户名 (默认：$REMOTE_USER)
     --remote-host <host> 远程服务器SSH登录主机地址 (必填)
-    --remote-path <path> 远程服务器上的存储路径基础目录 (默认：$REMOTE_PATH)
+    --remote-port <port> 远程服务器SSH登录端口 (默认：$REMOTE_PORT)
+    --remote-path <path> 远程服务器上的存储路径基础目录 (默认：$REMOTE_PATH_BASE)
 
 -D, --dry-run            预览模式，仅显示将执行的操作
     --force              强制覆盖已存在的备份
 -j, --jobs <n>           并行任务数 (默认：$PARALLEL_JOBS)
 -h, --help               显示本帮助信息
-
+--tag-dir                即时备份模式在,备份并传输一个包后,就创建对应的名字的空文件,
+                         实现简单的进度恢复,此参数指定标记文件保存目录.
+--log                    备份进度日志文件路径 (默认：$LOG_FILE),如果需要忽略备份历史,请删除此文件.
 
     --mysql-host <host>  MySQL 主机地址
     --mysql-port <port>  MySQL 端口
@@ -164,8 +191,12 @@ parse_args() {
                 REMOTE_HOST="$2"
                 shift 2
                 ;;
+            --remote-port)
+                REMOTE_PORT="$2"
+                shift 2
+                ;;
             --remote-path)
-                REMOTE_PATH="$2"
+                REMOTE_PATH_BASE="$2"
                 shift 2
                 ;;
             --mysql-host)
@@ -188,6 +219,14 @@ parse_args() {
                 FORCE=1
                 shift
                 ;;
+            --tag-dir)
+                STATUS_TAG_DIR="$2"
+                shift 2
+                ;;
+            --log)
+                LOG_FILE="$2"
+                shift 2
+                ;;
             *)
                 echo "未知参数: $1"
                 show_help
@@ -198,6 +237,8 @@ parse_args() {
     done
 }
 parse_args "$@"
+mkdir -pv "$STATUS_TAG_DIR" # 确保标记文件目录存在
+
 # 移除字符串边缘空白字符
 trim() {
     local var="$*"
@@ -207,6 +248,29 @@ trim() {
     var="${var%"${var##*[![:space:]]}"}"
     printf '%s' "$var"
 }
+# 测试SSH连接是否成功的函数
+ssh_test() {
+    local host="$1"
+    local user="${2:-root}"
+    local port="${3:-22}"
+
+    ssh \
+        -o BatchMode=yes \
+        -o ConnectTimeout=5 \
+        -p "$port" \
+        "${user}@${host}" exit
+
+    local status=$?
+
+    if [ $status -eq 0 ]; then
+        echo "✅ SSH connection success: ${user}@${host}:${port}"
+    else
+        echo "❌ SSH connection failed: ${user}@${host}:${port}"
+    fi
+
+    return $status
+}
+
 #Function: isCommandInstalled()
 #
 #Brief: Checks if a command or a package is installed, by trying to run it
@@ -396,8 +460,17 @@ backup_one_site() {
     TAR_PATH="/tmp/${TAR_NAME}"
     # 判断指定站点的(db或dir)包已经备份过了
     judger() {
-        pkg_path="$1"
-        if [[ -f "$pkg_path" ]]; then
+        local pkg_path="$1"
+        local pkg_name
+        pkg_name="$(basename "$pkg_path")"
+        local tag_file="$STATUS_TAG_DIR/${pkg_name}"
+        log "正在检查备份包 $pkg_path 是否已存在，或标记文件 $tag_file 是否存在..."
+
+        # if [[ -f $STATUS_TAG_DIR/"$pkg_name" ]]; then
+        #     log "[跳过[$MODE]] 发现标记文件 $STATUS_TAG_DIR/$pkg_name,之前已成功备份过 $pkg_name,将跳过站点 $DOMAIN 的备份。"
+        #     return 2 # 返回2表示跳过
+        # fi
+        if [[ -f "$pkg_path" ]] || [[ -f "$tag_file" ]]; then
             if [[ $FORCE -eq 0 ]]; then
                 log "[跳过[$MODE]] 发现已存在压缩包 $pkg_path,[user: $USERNAME],跳过站点 $DOMAIN 的备份。"
                 return 2 # 返回2表示跳过
@@ -428,7 +501,30 @@ backup_one_site() {
     mkdir -p "$DEST_DIR" -v # 确保存储包的目录存在
     # 远程备份用到的字段
     authority="$REMOTE_USER"@"$REMOTE_HOST"
-    remote_full_path="$authority":"$REMOTE_PATH" # /www/wwwroot/xcx/serverx/
+    remote_full_path="$authority":"$REMOTE_PATH_BASE/$USERNAME/deployed" # /www/wwwroot/xcx/serverx/username/deployed
+    # 传输指定文件到远程服务器并删除本地文件,并记录到日志的函数(使用rsync)
+    rsync_pack() {
+        pkg="$1"
+        pkg_name="$(basename "$pkg")"
+        log "使用 rsync 将 $pkg 传输到远程服务器 ${authority}:${remote_full_path} 并删除本地文件"
+        # -q (quiet) 抑制了所有文件的条目输出不会向上滚动刷屏
+        if rsync -aq --size-only --remove-source-files "$pkg" "$remote_full_path"; then
+            # rc=failed
+            log "✅ rsync 传输 $pkg 到远程服务器成功,已删除本地文件 $pkg"
+            # 创建标记文件(如果启用了标记文件机制)
+            tag_file="$STATUS_TAG_DIR/${pkg_name}"
+            if touch "$tag_file"; then
+                log "已创建标记文件 $tag_file 来标识备份和传输完成"
+            fi
+        else
+            # rc=success
+            log "错误: rsync 传输 $pkg 到远程服务器失败!"
+
+        fi
+        # 记录情况到进度日志(使用前要初始化表头,并且每行注意字段对齐.)
+        # echo "${DOMAIN},$MODE,$(date '+%Y-%m-%d %H:%M:%S'),$rc" >> "$LOG_FILE"
+
+    }
 
     log "正在备份站点 $WP_DIR，用户 $USERNAME，域名 $DOMAIN; [$MODE]..."
     if [[ $MODE == dir || $MODE == full ]]; then
@@ -473,16 +569,16 @@ backup_one_site() {
         # chown "$OWNER":"$OWNER" "$DEST_DIR_PATH"
         log "站点文件已备份到: $DEST_DIR_PATH"
         if [[ $IMMEDIATELY == true ]]; then
-            rsync -avP --size-only --remove-source-files "$DEST_DIR_PATH" "$remote_full_path"
+
+            rsync_pack "$DEST_DIR_PATH"
         fi
         # START-DB:数据库备份，依次尝试三种数据库名
     elif [[ $MODE == db || $MODE == full ]]; then
+        log "将尝试导出数据库: ${USERNAME}_${DOMAIN}, ${DOMAIN}, www.${DOMAIN}，并用 zstd 压缩"
         if [[ $DRY_RUN -eq 1 ]]; then
-            log "将尝试导出数据库: ${USERNAME}_${DOMAIN}, ${DOMAIN}, www.${DOMAIN}，并用 zstd 压缩"
             return 0
         fi
-        log "尝试导出数据库: ${USERNAME}_${DOMAIN}, ${DOMAIN}, www.${DOMAIN}，并用 zstd 压缩"
-        DB_CANDIDATES=("${USERNAME}_${DOMAIN}" "${DOMAIN}" "www.${DOMAIN}")
+        DB_CANDIDATES=("${USERNAME}_${DOMAIN}" "${DOMAIN}" "www.${DOMAIN}" "${DOMAIN%.*}")
         DB_DUMPED=0
         for DBNAME in "${DB_CANDIDATES[@]}"; do
             # 导出sql的备份文件名统一使用"${DOMAIN}.zst"
@@ -514,18 +610,32 @@ backup_one_site() {
                 fi
             fi
         done
+        # 提示本站数据库备份情况:
         if [[ $DB_DUMPED -eq 0 ]]; then
             log "[警告] 未找到可用数据库，站点 $DOMAIN (用户 $USERNAME) 未进行数据库备份。"
         fi
         if [[ $IMMEDIATELY == true ]]; then
-            rsync -avP --size-only --remove-source-files "$ZST_SQL_DUMP_PATH" "$remote_full_path"
+
+            rsync_pack "$ZST_SQL_DUMP_PATH"
+            # log "[即时传输]使用 rsync 将 $ZST_SQL_DUMP_PATH 传输到远程服务器 ${authority}:$REMOTE_PATH_BASE，并删除本地文件"
+
+            # rsync -aq --info=progress2 --size-only --remove-source-files "$ZST_SQL_DUMP_PATH" "$remote_full_path"
         fi
     fi
     # END-DB
     return 0
 
 }
+# 环境检查
+if [[ $IMMEDIATELY == true ]]; then
+    log "正在测试SSH连接到远程服务器 $REMOTE_HOST..."
+    if ! ssh_test "$REMOTE_HOST" "$REMOTE_USER" "$REMOTE_PORT"; then
+        log "错误: 无法连接到远程服务器 $REMOTE_HOST，请检查SSH连接参数和服务器状态"
+        exit 1
+    fi
+    # rsync 联通性测试
 
+fi
 # 获取所有 wordpress 目录，并打印已匹配到的目录
 
 # 在 dry-run 模式下显示将要执行的查找命令
@@ -537,7 +647,9 @@ if [[ -n "$WHITELIST_SITE" ]]; then
     log "使用域名白名单文件: $WHITELIST_SITE"
 fi
 
+log "脚本版本: $VERSION"
 log "备份模式: $MODE"
+log "即时传输: $IMMEDIATELY"
 log "将使用并行任务数: $PARALLEL_JOBS"
 check_listfile "$VALID_USERS"
 check_listfile "$WHITELIST_SITE"
@@ -706,7 +818,8 @@ while IFS= read -r WP_DIR || [[ -n "$WP_DIR" ]]; do
     _get_pack_names
     judger_cnt() {
         pkg_path="$1"
-        if [[ -f "$pkg_path" ]]; then
+        pkg_name="$(basename "$pkg_path")"
+        if [[ -f "$pkg_path" ]] || [[ -f $STATUS_TAG_DIR/"$pkg_name" ]]; then
             if [[ $FORCE -eq 0 ]]; then
                 log "[跳过[$MODE]] 发现已存在压缩包 $pkg_path,[user: $USERNAME],跳过站点 $DOMAIN 的备份。"
                 return 2 # 返回2表示跳过
@@ -776,12 +889,11 @@ fi
 
 # 实际并行执行(在parallel模式下,使用--linebuffer参数让输出及时显示到终端而不是必须等待return!)
 if [[ $DRY_RUN -eq 0 ]]; then
+    # 导出函数,供子进程访问(普通变量可以在前面声明的时候导出)
     export -f backup_one_site
     export -f extract_username
     export -f log
     export -f is_user_in_whitelist
-    export USER DEST_ROOT FORCE DRY_RUN VALID_USERS MINDEPTH MAXDEPTH
-    export MYSQL_HOST MYSQL_PORT MYSQL_USER MYSQL_PASS
 
     if [[ -n "$VALID_USERS" && -z "$USER" ]]; then
         # 当指定了合法用户目录但未指定扫描哪个用户时，需要先过滤目录

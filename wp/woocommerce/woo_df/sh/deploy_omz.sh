@@ -26,12 +26,12 @@ REPO_SOURCE="github" # gitee
 echo "Using repo source: $REPO_SOURCE"
 
 # 默认插件安装选项(仅补全类插件)
-install_zsh_completions=true # true|false
-install_zsh_autocomplete=omz # omz|std|false
-install_zsh_autosuggestions=true
-install_zsh_you_should_use=false # 可能有bug,某些情况下可能会让zsh出现异常(输出:alias -g|sort ...)
-install_zsh_syntax_highlighting=true
-install_zsh_history_substring_search=true
+install_zsh_completions=true # zc插件,可选值:true|false
+install_zsh_autocomplete=omz # zac插件安装模式:可选值:omz|std|false 
+install_zsh_autosuggestions=true # zasp
+install_zsh_you_should_use=false # zysu 可能有bug,某些情况下可能会让zsh出现异常(输出:alias -g|sort ...)
+install_zsh_syntax_highlighting=true # zshp
+install_zsh_history_substring_search=false # zhssp
 install_omz="default" # default|github|gitee
 omz_only=false
 
