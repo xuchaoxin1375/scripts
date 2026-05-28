@@ -33,7 +33,6 @@ NGINX_CONF_FILE="$NGINX_CONF_DIR/nginx.conf"
 REAL_CDN_IP="cf" # 非默认模式将被记为all
 
 # 配置变量
-# SCRIPT_ROOT_SERVER=/repos/scripts
 SH_SYM="$HOME/sh"
 SH_WWW="/www/sh" #末尾不要加斜杠/
 
@@ -41,7 +40,13 @@ SH_WWW="/www/sh" #末尾不要加斜杠/
 _REPO_BASE="repos/scripts"
 _SH_RELATIVE="wp/woocommerce/woo_df/sh"
 SCRIPT_ROOT_DEFAULT="$HOME/$_REPO_BASE"              # 默认的仓库目录(scripts仓库总目录)
+
+# 计算最终的SCRIPT_ROOT路径
 SCRIPT_ROOT="${SCRIPT_ROOT:-"$SCRIPT_ROOT_DEFAULT"}" # /root/repos/scripts 或 /home/user/repos/scripts,历史遗留目录为/repos/scripts
+# (服务器端)兼容历史遗留路径
+SCRIPT_ROOT_SERVER=/repos/scripts
+[[ -d $SCRIPT_ROOT_SERVER ]] && SCRIPT_ROOT=$SCRIPT_ROOT_SERVER #将被会弃用 (/repos/scripts/)
+
 # shell脚本目录(sh)
 SH_SCRIPT_DIR="$SCRIPT_ROOT/$_SH_RELATIVE"
 REMOVE_OLD=0

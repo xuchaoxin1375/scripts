@@ -944,7 +944,7 @@ bash /www/sh/backup_sites/backup_site_pkgs.sh -s /srv/uploads/uploader/files -b 
 
 #### rsync拉取包的命令模板和函数rsync-copy
 
-登录服务器`b`,执行如下格式的命令
+登录服务器`b`(见上述章节),执行如下格式的命令
 
 ```bash
 #! /bin/bash

@@ -2,6 +2,9 @@
 # 脚本功能和设计
 # 脚本支持多个选项,满足备份指定网站(可通过网站白名单文件来指定备份哪些网站),也可以指定工作目录及其下面的需要参与备份的目录名(可能是网站所属人员的名字代号或拼写)来备份某个人员的站点
 # 无论是哪种方式,基本思路是指定的任务通过计算直接或间接(比如find扫描指定目录下的所有网站)得到需要执行打包备份的网站根目录路径列表,然后遍历这些路径调用一个网站打包函数完整站点备份;并且可选的,允许同时对多个网站进行备份.
+# 如果本机磁盘空间紧张,可以使用 -I 考虑即时备份方案(打包后立刻传输到备份服务器并删除本机包,但暂时要求配置ssh免密,连贯性好);
+#
+# ===========
 # 注意事项:
 # 0.执行此脚本时建议暂停服务器网站的服务(比如暂停nginx服务,防止备份过程中文件发生变化而导致tar过程出现错误或不一致);
 # 建议白天执行备份任务,降低应为服务器暂停而导致的丢单损失
@@ -18,7 +21,7 @@ SITE_ROOT="" # 单个站点备份
 DRY_RUN=0
 FORCE=0
 PARALLEL_JOBS=4 #不要过多
-USER="" # 仅备份指定人员的站点.
+USER=""         # 仅备份指定人员的站点.
 MINDEPTH=2
 MAXDEPTH=3
 VALID_USERS=""
@@ -29,7 +32,16 @@ MYSQL_PORT="3306"
 MYSQL_USER="root"
 MYSQL_PASS=""
 MODE="full" # db,dir,full.分被表示:仅备份数据库,仅备份文件,还是两者都备份(默认)
+
+IMMEDIATELY=false # 网站文件导出后立即传输到备份服务器并删除本机包
+# 传输相关参数
+REMOTE_USER="root"
+REMOTE_HOST=""
+# 远程服务器上的存储路径(基础路径,请务必自行指定跟具体的目录防止混乱.)
+REMOTE_PATH="/www/wwwroot/"
+# 参考路径结构: /www/wwwroot/adminer/serverx/userx/deployed/
 export MODE # export 让并发子进程能够访问MODE变量
+
 show_help() {
     cat << EOF
 
@@ -38,22 +50,30 @@ show_help() {
 version: $VERSION
 用法：$0 [选项] 
 -s, --src <src_root>     项目目录:网站根目录所在总目录 (默认：$SRC_ROOT)
--d, --dest <dest_root>   目标根目录 (默认：$DEST_ROOT)
+-d, --dest <dest_root>   备份存储基础目录 (默认：$DEST_ROOT)
 -m, --mode <mode>        备份模式，dir表示仅备份文件，db表示仅备份数据库，full表示同时备份文件和数据库 (默认：full)
 -U, --valid-users <username>    根据站点所属人员来指定网站范围 (人员专属目录名，通常是人名拼音缩写),从而仅备份指定用户的网站目录下的站点 (默认：所有用户)
     --site,--domain 备份指定的单个网站(指定域名(网站名),而不是网站根目录)
     --valid-users  <file>   白名单文件，指定需要处理的用户目录名列表
 -W, --whitelist-site <file>   白名单文件，指定需要处理的网站 (域名) 列表
-    --mysql-host <host>  MySQL 主机地址
-    --mysql-port <port>  MySQL 端口
-    --mysql-user <user>  MySQL 用户名
-    --mysql-pass <pass>  MySQL 密码
 -L, --mindepth <n>       find 扫描的最小深度 (默认：$MINDEPTH)
 -M, --maxdepth <n>       find 扫描的最大深度 (默认：$MAXDEPTH)
+
+-I, --immediately        网站文件导出后立即传输到备份服务器并删除本机包(本机磁盘紧张的情况下使用)
+    --remote-user <user> 远程服务器SSH登录用户名 (默认：$REMOTE_USER)
+    --remote-host <host> 远程服务器SSH登录主机地址 (必填)
+    --remote-path <path> 远程服务器上的存储路径基础目录 (默认：$REMOTE_PATH)
+
 -D, --dry-run            预览模式，仅显示将执行的操作
     --force              强制覆盖已存在的备份
 -j, --jobs <n>           并行任务数 (默认：$PARALLEL_JOBS)
 -h, --help               显示本帮助信息
+
+
+    --mysql-host <host>  MySQL 主机地址
+    --mysql-port <port>  MySQL 端口
+    --mysql-user <user>  MySQL 用户名
+    --mysql-pass <pass>  MySQL 密码
 
 examples:
 	# 指定MySQL主机和端口
@@ -109,6 +129,45 @@ parse_args() {
                 WHITELIST_SITE="$2"
                 shift 2
                 ;;
+            -L | --mindepth)
+                MINDEPTH="$2"
+                shift 2
+                ;;
+            -M | --maxdepth)
+                MAXDEPTH="$2"
+                shift 2
+                ;;
+            -I | --immediately)
+                IMMEDIATELY=true
+                shift
+                ;;
+
+            -D | --dry-run)
+                DRY_RUN=1
+                shift
+                ;;
+
+            -j | --jobs)
+                PARALLEL_JOBS="$2"
+                shift 2
+                ;;
+            -h | --help)
+                show_help
+                shift
+                exit 0
+                ;;
+            --remote-user)
+                REMOTE_USER="$2"
+                shift 2
+                ;;
+            --remote-host)
+                REMOTE_HOST="$2"
+                shift 2
+                ;;
+            --remote-path)
+                REMOTE_PATH="$2"
+                shift 2
+                ;;
             --mysql-host)
                 MYSQL_HOST="$2"
                 shift 2
@@ -125,31 +184,9 @@ parse_args() {
                 MYSQL_PASS="$2"
                 shift 2
                 ;;
-            -L | --mindepth)
-                MINDEPTH="$2"
-                shift 2
-                ;;
-            -M | --maxdepth)
-                MAXDEPTH="$2"
-                shift 2
-                ;;
-            -D | --dry-run)
-                DRY_RUN=1
-                shift
-                ;;
             --force)
                 FORCE=1
                 shift
-                ;;
-
-            -j | --jobs)
-                PARALLEL_JOBS="$2"
-                shift 2
-                ;;
-            -h | --help)
-                show_help
-                shift
-                exit 0
                 ;;
             *)
                 echo "未知参数: $1"
@@ -389,6 +426,10 @@ backup_one_site() {
     fi
 
     mkdir -p "$DEST_DIR" -v # 确保存储包的目录存在
+    # 远程备份用到的字段
+    authority="$REMOTE_USER"@"$REMOTE_HOST"
+    remote_full_path="$authority":"$REMOTE_PATH" # /www/wwwroot/xcx/serverx/
+
     log "正在备份站点 $WP_DIR，用户 $USERNAME，域名 $DOMAIN; [$MODE]..."
     if [[ $MODE == dir || $MODE == full ]]; then
         if [[ $DRY_RUN -eq 1 ]]; then
@@ -431,7 +472,9 @@ backup_one_site() {
         # 可选,设置的话可以让普通用户看到/管理包目录的文件包
         # chown "$OWNER":"$OWNER" "$DEST_DIR_PATH"
         log "站点文件已备份到: $DEST_DIR_PATH"
-
+        if [[ $IMMEDIATELY == true ]]; then
+            rsync -avP --size-only --remove-source-files "$DEST_DIR_PATH" "$remote_full_path"
+        fi
         # START-DB:数据库备份，依次尝试三种数据库名
     elif [[ $MODE == db || $MODE == full ]]; then
         if [[ $DRY_RUN -eq 1 ]]; then
@@ -473,6 +516,9 @@ backup_one_site() {
         done
         if [[ $DB_DUMPED -eq 0 ]]; then
             log "[警告] 未找到可用数据库，站点 $DOMAIN (用户 $USERNAME) 未进行数据库备份。"
+        fi
+        if [[ $IMMEDIATELY == true ]]; then
+            rsync -avP --size-only --remove-source-files "$ZST_SQL_DUMP_PATH" "$remote_full_path"
         fi
     fi
     # END-DB
