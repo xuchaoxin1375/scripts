@@ -1,14 +1,15 @@
 #! /bin/bash
 # 根据包名(部分名)清理不在需要的包文件,例如网站压缩包
 FIND_BASE="/www/wwwroot/xcx/" #可以自行酌情增加精确度,比如添加服务器名到路径中
-white_list_file=""
+name_list_file=""
 # 参数解析
 args_pos=()
 parse_args() {
     usage="
-    $0 [options] FIND_BASE
+    $0 [options] FIND_BASE -f name_list_file
     options:
         -h, --help    显示帮助信息
+        -f, --file name_list_file   包含包名的白名单文件,每行一个包名(部分名),必填
     "
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -17,7 +18,7 @@ parse_args() {
                 exit 0
                 ;;
             -f | --file)
-                white_list_file="$2"
+                name_list_file="$2"
                 shift
                 ;;
             --)
@@ -41,12 +42,12 @@ parse_args "$@"
 set -- "${args_pos[@]}"
 declare -a names=(
 )
-if [[ -f "$white_list_file" ]]; then
-    echo "从名单文件 '$white_list_file' 中包名..."
-    nl "$white_list_file"
-    mapfile -t names < <(tr -d '\r' < "$white_list_file")
+if [[ -f "$name_list_file" ]]; then
+    echo "从名单文件 '$name_list_file' 中包名..."
+    nl "$name_list_file"
+    mapfile -t names < <(tr -d '\r' < "$name_list_file")
 else
-    echo "警告: 白名单文件 '$white_list_file' 不存在或不可读, 将使用默认的包名列表." >&2
+    echo "警告: 白名单文件 '$name_list_file' 不存在或不可读, 将使用默认的包名列表." >&2
 fi
 FIND_BASE="${1:-$FIND_BASE}" #如果用户提供了参数则覆盖默认值
 # 检查白名单数组
