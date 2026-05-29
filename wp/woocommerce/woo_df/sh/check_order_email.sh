@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-VERSION="20260526"
+VERSION_UTILS="20260526"
 # ================== 默认数据库连接信息 ==================
 DB_USER="root"
 DB_PASS="15a58524d3bd2e49"
@@ -20,7 +20,7 @@ log() {
     dt="$(date +%F-%T.%3N)"
     echo "[$HOSTNAME][$dt] $*"
 }
-log "🚀 wp-woocommerce订单查询[v$VERSION]"
+log "🚀 wp-woocommerce订单查询[v$VERSION_UTILS]"
 # echo "IP: $ip"
 # 查询前清空结果(如果文件不存在,则会创建一个空文件)
 echo "" > "$OUTPUT_FILE"

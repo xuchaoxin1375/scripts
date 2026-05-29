@@ -2,11 +2,11 @@
 # 更新重点日志:251204为参数WORKDIR提供接收单个或多个路径的支持,即允许指定1个或多个工作目录
 # 如果使用symlink,需要注意和建站工具网站目录中默认设置的"防跨站攻击"功能冲突
 # 合理设置防跨站攻击(open_basedir)，防止黑客通过其他网站目录进行入侵攻击
-VERSION=20260501
+VERSION_UTILS=20260501
 HOSTNAME=$(hostname)
 show_usage() {
     cat << EOF
-wordpress 插件更新/安装/移除脚本 (version:$VERSION)
+wordpress 插件更新/安装/移除脚本 (version:$VERSION_UTILS)
 用法：$0 [--source <插件目录>] [--remove <插件名 1，插件名 2,...>] [--user <用户名>] [--workdir <工作目录 1，工作目录 2,...>] [--dry-run] [--blacklist <黑名单文件>] [--whitelist <白名单文件>] [--log <日志文件>]
 
 参数说明：

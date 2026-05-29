@@ -19,7 +19,7 @@
 # 2.关于数据库文件备份和导出,建议配置免密登录,不仅更安全,代码也更加简单(免密登录mysql配置方案有许多,自行查阅资料配置)
 # 3.完整性检查:备份完后可以运行一段批量检查文件完整性检查的代码,防止某些文件压缩过程中出错(尤其是被意外终止脚本的情况)
 # 4.线程数不要开太高,虽然服务器核心很多,但是tar和zstd算法容易打满磁盘IO,备份速度的主要瓶颈不在cpu而在于磁盘上!
-VERSION=20260528.1710
+VERSION_UTILS=20260528.1710
 
 SRC_ROOT="/www/wwwroot"
 DEST_ROOT="/srv/uploads/uploader/files" # 备份文件存储目录
@@ -69,7 +69,7 @@ show_help() {
 
 站点批量备份脚本.
 
-version: $VERSION
+version: $VERSION_UTILS
 用法：$0 [选项] 
 -s, --src <src_root>     项目目录:网站根目录所在总目录 (默认：$SRC_ROOT)
 -d, --dest <dest_root>   备份存储基础目录 (默认：$DEST_ROOT)
@@ -653,7 +653,7 @@ if [[ -n "$WHITELIST_SITE" ]]; then
     log "使用域名白名单文件: $WHITELIST_SITE"
 fi
 
-log "脚本版本: $VERSION"
+log "脚本版本: $VERSION_UTILS"
 log "备份模式: $MODE"
 log "即时传输: $IMMEDIATELY"
 log "将使用并行任务数: $PARALLEL_JOBS"

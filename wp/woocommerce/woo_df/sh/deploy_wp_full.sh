@@ -81,8 +81,8 @@ get_sh_dir() {
     local -n _sh="$1"
     # 关闭shellcheck路径检查多余报错,尤其是其他平台开发时,使用source命令
     # shellcheck source=/dev/null
-    SH1=/scripts/wp/woocommerce/woo_df/sh # linux风格
-    SH2="/c/repos""${SH1}"                # git bash风格
+    SH1=$HOME/repos/scripts/wp/woocommerce/woo_df/sh # linux风格
+    SH2="/c/repos""${SH1}"                           # git bash风格
     # 计算并确定可用的SH目录
     [[ -d $SH1 ]] && SH="$SH1"
     [[ -d $SH2 ]] && SH="$SH2"
@@ -357,7 +357,7 @@ parse_args() {
     done
 }
 parse_args "$@"
-verbose && echo "正在加载shell工具函数库...[$SHELL_UTILS]"
+verbose && echo "加载shell工具函数库...[$SHELL_UTILS]"
 # 定义日志文件路径
 # LOG_FILE="/srv/uploads/uploader/files/deploy_wp_$($USER_DIR)_$(date +%Y%m%d_%H%M%S).log"
 # LOG_DIR=$(dirname "$LOG_FILE") #获取日志文件字符串的目录,然后创建这个目录(如果不存在的话)
@@ -1542,11 +1542,10 @@ if [ "$DRY_RUN" == "true" ]; then
 else
     args=(-H "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -p"$DB_PASSWORD")
     verbose && args+=(-v)
-
+    declare -p args
+    # 检查数据库连通性(如果无法连接,直接停止脚本.)
     check_mysql "${args[@]}" || exit
 fi
-
-# 检查数据库连通性(如果无法连接,直接停止脚本.)
 
 start_time=$(date +%s)
 main

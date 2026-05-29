@@ -9,7 +9,7 @@
 # shellcheck disable=SC1091
 # shellcheck disable=SC2154
 # compatible_shells=("bash" "zsh")
-VERSION="20260528"
+VERSION_UTILS="20260528"
 # 计算加载配置的耗时
 start_time=$(date +%s%N)
 # BASHRC_FILE="$HOME/.bashrc"
@@ -29,7 +29,7 @@ _SHELL_DEBUG=0
 # fi
 
 # 判断当前系统(平台)类型
-echo "Current Os type is [$OSTYPE] [shellrc version: $VERSION]..."
+echo "Current Os type is [$OSTYPE] [shellrc version: $VERSION_UTILS]..."
 if [[ $OSTYPE == "darwin"* ]]; then
   SCRIPT_ROOT="$HOME/$_REPO_BASE"
 elif [[ $OSTYPE == "linux"* ]]; then

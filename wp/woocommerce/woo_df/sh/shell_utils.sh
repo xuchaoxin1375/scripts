@@ -4,7 +4,7 @@
 # ===============================
 VERSION_UTILS="20260511"
 
-echo "Loading shell_utils.sh...(VERSION_UTILS:$VERSION_UTILS)"
+echo "Loading shell_utils.sh...(version:$VERSION_UTILS)"
 # 临时清理历史遗留配置(2026.5月份后移除)
 # cleanrc ~/.bashrc ~/.zshrc
 cleanrc() {
@@ -59,7 +59,7 @@ is_alpine() {
     fi
 }
 is_wsl() {
-    [[ -e /proc/VERSION_UTILS ]] && grep 'wsl' -iq /proc/VERSION_UTILS && _IS_WSL=1
+    [[ -e /proc/version ]] && grep 'wsl' -iq /proc/version && _IS_WSL=1
     if [[ $(uname -r) == *"Microsoft"* ]]; then
         return 0
     else
@@ -137,7 +137,7 @@ examples:
     # Bash 使用：${!var}
     # Zsh 使用：${(P)var},其中 (P) 代表 Parameter expansion
     if ! [[ $env =~ .*[:/].* ]]; then
-        if [[ $BASH_VERSION_UTILS ]]; then
+        if [[ $BASH_VERSION ]]; then
             if [[ -n ${!env+is_var_name} ]]; then # -n选项可以省略
                 # echo "$env is a variable name"
                 env="${!env}"
@@ -145,7 +145,7 @@ examples:
                 # echo "$env is value of var"
                 :
             fi
-        # elif [[ $ZSH_VERSION_UTILS ]]; then
+        # elif [[ $ZSH_VERSION ]]; then
         #     # zsh 专用语法导致shfmt无法执行代码格式化;(todo:将此部分代码移动到zsh专用脚本文件中)
         #     # shellcheck disable=SC2296
         #     if [[ -n ${(P)env+is_var_name} ]]; then
@@ -323,7 +323,7 @@ set_gnu_instead_bsd() {
     if ! is_darwin; then
         return 1
     fi
-    echo "Using gnu tool instead bsd VERSION_UTILS ..."
+    echo "Using gnu tool instead bsd version ..."
     GNU_PATHS=(
         "${HOMEBREW_PREFIX}/opt/coreutils/libexec/gnubin"
         "${HOMEBREW_PREFIX}/opt/findutils/libexec/gnubin"
@@ -450,7 +450,7 @@ install_zsh_bymake_short() {
     sudo make install
 
     # 验证
-    /usr/local/bin/zsh --VERSION_UTILS
+    /usr/local/bin/zsh --version
 }
 # zsh安装器,安装指定版本的zsh,支持指定安装选项
 install_zsh_bymake() {
@@ -459,7 +459,7 @@ install_zsh_bymake() {
     install_zsh_bymake - Build and install Zsh from source (Linux)
 
     USAGE:
-        install_zsh_bymake [OPTIONS] [VERSION_UTILS] [PREFIX] [SRC_DIR]
+        install_zsh_bymake [OPTIONS] [VERSION] [PREFIX] [SRC_DIR]
     OPTIONS:
         -h,--help       Print this help message and exit
 
@@ -468,7 +468,7 @@ install_zsh_bymake() {
         Designed for reproducibility, idempotency, and cross-distribution compatibility.
 
     PARAMETERS:
-        VERSION_UTILS     Zsh VERSION_UTILS to install (default: 5.9)
+        VERSION     Zsh version to install (default: 5.9)
         PREFIX      Installation prefix (default: /usr/local)
                     Example: /usr/local, /opt/zsh
 
@@ -483,10 +483,10 @@ install_zsh_bymake() {
         - Optional default shell configuration
 
     EXAMPLES:
-        # Install default VERSION_UTILS (5.9)
+        # Install default version (5.9)
         install_zsh_bymake
 
-        # Install specific VERSION_UTILS
+        # Install specific version
         install_zsh_bymake 5.8
 
         # Custom install location
@@ -497,7 +497,7 @@ install_zsh_bymake() {
 
     FILES:
         Source archive:
-            zsh-<VERSION_UTILS>.tar.xz
+            zsh-<VERSION>.tar.xz
 
         Install path:
             <PREFIX>/bin/zsh
@@ -523,7 +523,7 @@ install_zsh_bymake() {
             - Ensure <PREFIX>/bin/zsh is listed in /etc/shells
 
     SEE ALSO:
-        zsh --VERSION_UTILS
+        zsh --version
         man zsh
     "
     # 参数解析
@@ -552,24 +552,24 @@ install_zsh_bymake() {
     set -- "${args_pos[@]}"
     # 参数解析并调整完毕
     # ===== 参数（configurable parameters）=====
-    local ZSH_VERSION_UTILS="${1:-5.9}"
+    local ZSH_VERSION="${1:-5.9}"
     local PREFIX="${2:-/usr/local}"
     local SRC_DIR="${3:-$HOME/src}"
-    local BUILD_DIR="$SRC_DIR/zsh-$ZSH_VERSION_UTILS"
-    local TAR_FILE="zsh-$ZSH_VERSION_UTILS.tar.xz"
-    local DOWNLOAD_URL="https://downloads.sourceforge.net/project/zsh/zsh/$ZSH_VERSION_UTILS/$TAR_FILE"
+    local BUILD_DIR="$SRC_DIR/zsh-$ZSH_VERSION"
+    local TAR_FILE="zsh-$ZSH_VERSION.tar.xz"
+    local DOWNLOAD_URL="https://downloads.sourceforge.net/project/zsh/zsh/$ZSH_VERSION/$TAR_FILE"
 
-    echo "==> [INFO] Install Zsh $ZSH_VERSION_UTILS from source"
+    echo "==> [INFO] Install Zsh $ZSH_VERSION from source"
 
     # ===== 检查是否已安装（idempotency）=====
     if command -v zsh > /dev/null 2>&1; then
-        local CURRENT_VERSION_UTILS
-        CURRENT_VERSION_UTILS="$(zsh --VERSION_UTILS | awk '{print $2}')"
-        if [ "$CURRENT_VERSION_UTILS" = "$ZSH_VERSION_UTILS" ]; then
-            echo "==> [SKIP] Zsh $ZSH_VERSION_UTILS already installed"
+        local CURRENT_VERSION
+        CURRENT_VERSION="$(zsh --version | awk '{print $2}')"
+        if [ "$CURRENT_VERSION" = "$ZSH_VERSION" ]; then
+            echo "==> [SKIP] Zsh $ZSH_VERSION already installed"
             return 0
         else
-            echo "==> [INFO] Existing Zsh VERSION_UTILS: $CURRENT_VERSION_UTILS (will upgrade)"
+            echo "==> [INFO] Existing Zsh version: $CURRENT_VERSION (will upgrade)"
         fi
     fi
 
@@ -624,7 +624,7 @@ install_zsh_bymake() {
 
     # ===== 验证（verification）=====
     if [ -x "$PREFIX/bin/zsh" ]; then
-        "$PREFIX/bin/zsh" --VERSION_UTILS
+        "$PREFIX/bin/zsh" --version
     else
         echo "[ERROR] Installation failed"
         return 1
@@ -637,7 +637,7 @@ install_zsh_bymake() {
 
     chsh -s "$PREFIX/bin/zsh" || true
 
-    echo "==> [DONE] Zsh $ZSH_VERSION_UTILS installed successfully"
+    echo "==> [DONE] Zsh $ZSH_VERSION installed successfully"
 }
 # Install ble.sh framework for bash
 # 安装前检查依赖,以及避免重复安装重复插入配置项到~/.bashrc
@@ -775,7 +775,7 @@ alias is_macos=is_darwin
 # shellcheck disable=SC2120
 function get_os_name() {
     local out_name=false
-    local out_VERSION_UTILS=false
+    local out_version=false
     local os_file="/etc/os-release"
     local usage="
     获取当前系统的发行版名称或版本号。默认无参数时，只输出发行版名称。
@@ -794,11 +794,11 @@ options:
             case "$1" in
                 -o)
                     out_name=true
-                    out_VERSION_UTILS=true
+                    out_version=true
                     shift
                     ;;
                 --id)
-                    out_VERSION_UTILS=true
+                    out_version=true
                     shift
                     ;;
                 *)
@@ -809,32 +809,32 @@ options:
         done
     fi
     local name
-    local VERSION_UTILS
+    local version
 
     if is_darwin; then
         # 提取名称
         name=$(sw_vers -productName)
 
         # 提取版本号
-        VERSION_UTILS=$(sw_vers -productVERSION_UTILS)
+        version=$(sw_vers -productVersion)
 
     elif [[ -f "$os_file" ]]; then
         # name="debug"
-        # VERSION_UTILS="debug"
+        # version="debug"
         # # 提取变量值
         name=$(grep -E '^NAME=' "$os_file" | cut -d'=' -f2 | tr -d '"')
-        VERSION_UTILS=$(grep -E '^VERSION_UTILS_ID=' "$os_file" | cut -d'=' -f2 | tr -d '"')
+        version=$(grep -E '^VERSION_ID=' "$os_file" | cut -d'=' -f2 | tr -d '"')
     elif osinfo=$(uname -a); then
         name="${osinfo%% *}"
     else
         name="unknown"
-        VERSION_UTILS=""
+        version=""
     fi
     # 根据布尔值决定输出内容
-    if [[ "$out_name" == true && "$out_VERSION_UTILS" == true ]]; then
-        echo "$name $VERSION_UTILS"
-    elif [[ "$out_VERSION_UTILS" == true ]]; then
-        echo "$VERSION_UTILS"
+    if [[ "$out_name" == true && "$out_version" == true ]]; then
+        echo "$name $version"
+    elif [[ "$out_version" == true ]]; then
+        echo "$version"
     else
         echo "$name"
     fi
@@ -1088,7 +1088,7 @@ get_public_ip_quick() {
 alias get_ip_public=get_public_ip
 
 # 获取系统readline库版本
-get_readline_VERSION_UTILS_info() {
+get_readline_version_info() {
 
     find /usr/lib /lib -name "libreadline*" 2> /dev/null | head -10
 }
@@ -1376,7 +1376,10 @@ is_empty_dir() {
 ##################
 check_mysql() {
     local host="" port="" user="" pass="" verbose=0 args=()
-    local usage="用法: ${FUNCNAME[0]} [-H host] [-P port] [-u user] [-p pass] [-v]"
+    local usage="
+    function_version:20260529
+    用法: ${FUNCNAME[0]} [-H host] [-P port] [-u user] [-p pass] [-v]
+    "
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -1444,9 +1447,10 @@ check_mysql() {
     fi
 
     local out rc
-    out=$(mysql "${args[@]}" --connect-timeout=3 -e "SELECT VERSION_UTILS() AS VERSION_UTILS, CURRENT_USER() AS user;" 2>&1)
+    out=$(mysql "${args[@]}" --connect-timeout=3 -e "SELECT VERSION() AS version, CURRENT_USER() AS user;" 2>&1)
     rc=$?
-
+    # out=$(mysql "${args[@]}" --connect-timeout=3 --batch -e "SELECT 1;" 2>&1)
+    # rc=$?
     if ((verbose)); then
         if ((rc == 0)); then
             echo -e "OK"
@@ -1649,19 +1653,19 @@ current_shell() {
         esac
         shift
     done
-    local current_shell_VERSION_UTILS=""
-    if [ -n "$ZSH_VERSION_UTILS" ]; then
+    local current_shell_version=""
+    if [ -n "$ZSH_VERSION" ]; then
         CURRENT_SHELL="zsh"
-        current_shell_VERSION_UTILS="$ZSH_VERSION_UTILS"
-    elif [ -n "$BASH_VERSION_UTILS" ]; then
+        current_shell_version="$ZSH_VERSION"
+    elif [ -n "$BASH_VERSION" ]; then
         CURRENT_SHELL="bash"
-        current_shell_VERSION_UTILS="${BASH_VERSION_UTILS%%(*}"
+        current_shell_version="${BASH_VERSION%%(*}"
     else
         CURRENT_SHELL="unknown"
     fi
 
     if [ "$full" = true ]; then
-        CURRENT_SHELL+=" $current_shell_VERSION_UTILS"
+        CURRENT_SHELL+=" $current_shell_version"
     fi
     echo "$CURRENT_SHELL"
     # set -x
@@ -1718,7 +1722,7 @@ pause_bash() {
 }
 pause() {
     local prompt="${1:-按任意键继续...}"
-    if [ -n "$ZSH_VERSION_UTILS" ]; then
+    if [ -n "$ZSH_VERSION" ]; then
         # Zsh 逻辑: -k1 表示只读 1 个字符, -s 表示静默
         echo -n "$prompt"
         read -r -k 1 -s
@@ -2054,11 +2058,11 @@ unset_brew_envs() {
 remove_brew_env_in_shellrcs() {
     unset_brew_envs
     # 1. 探测当前系统的 sed 类型
-    if sed --VERSION_UTILS > /dev/null 2>&1; then
-        # GNU sed 支持 --VERSION_UTILS
+    if sed --version > /dev/null 2>&1; then
+        # GNU sed 支持 --version
         sed_cmd=(sed -i)
     else
-        # BSD/Mac sed 不支持 --VERSION_UTILS
+        # BSD/Mac sed 不支持 --version
         sed_cmd=(sed -i '')
     fi
 
@@ -2206,7 +2210,7 @@ install_brew_cn() {
             BREW_TAPS="$(brew tap 2> /dev/null)"
             echo -n "${BREW_TAPS//$'\n'/:}"
         )"
-        for tap in core cask{,-fonts,-VERSION_UTILSs} command-not-found services; do
+        for tap in core cask{,-fonts,-versions} command-not-found services; do
             if [[ ":${BREW_TAPS}:" == *":homebrew/${tap}:"* ]]; then
                 brew tap --custom-remote "homebrew/${tap}" "https://github.com/Homebrew/homebrew-${tap}"
             fi
@@ -2223,10 +2227,10 @@ install_brew_cn() {
     # command -v brew > /dev/null 2>&1
     is_brew_installed() {
         if command -v brew > /dev/null 2>&1; then
-            local brew_VERSION_UTILS
-            brew_VERSION_UTILS=$(brew --VERSION_UTILS 2> /dev/null)
-            if [[ $brew_VERSION_UTILS ]]; then
-                echo "Homebrew/Linuxbrew 已安装[$brew_VERSION_UTILS]."
+            local brew_version
+            brew_version=$(brew --version 2> /dev/null)
+            if [[ $brew_version ]]; then
+                echo "Homebrew/Linuxbrew 已安装[$brew_version]."
                 if [[ $update_mirror_only == false && $force == false ]]; then
                     echo "不执行任何操作,退出程序;"
                     return 1 # 退出安装
@@ -2494,7 +2498,7 @@ EOF
     # 判断是否已经安装过brew:
     if command -v brew > /dev/null 2>&1; then
         echo "Homebrew/Linuxbrew 已安装;如果需要重新安装,请移除brew(查看帮助中的链接)."
-        brew --VERSION_UTILS
+        brew --version
         return 1 # 退出安装
     else
         echo "正在准备安装homebrew..."
