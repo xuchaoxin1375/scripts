@@ -77,8 +77,6 @@
 
 ## 2. 工作原理（请求流程）
 
-### 2.0 新手理解版
-
 可以把这个方案想成“门口领临时通行证”：
 
 1. 用户请求页面。
@@ -94,6 +92,36 @@
 
 - `sct`：临时票据，寿命短，只用于换取 `sc2`。
 - `sc2`：真正通行证，HttpOnly，默认 30 分钟有效。
+
+**完整的请求与验证流程如下图所示：**
+
+```mermaid
+sequenceDiagram
+    participant U as 用户 (浏览器)
+    participant N as Nginx (Lua)
+    participant C as 挑战页
+    
+    U->>N: 1. 请求访问真实页面 (如 /product/xxx)
+    N->>N: 检查是否含有有效 sc2 Cookie?
+    alt 没有 sc2 或 sc2 失效
+        N-->>U: 2. 返回 302 跳转到 /_sc/challenge
+        U->>N: 3. 请求 /_sc/challenge
+        N->>C: 生成短期票据 sct (包含 ts, nonce, sig)
+        C-->>U: 4. 返回 403 状态码 + HTML 验证页 + sct Cookie
+        U->>U: 5. 浏览器执行 JavaScript (计算 proof)
+        U->>N: 6. 请求 /__sc_verify?ts=...&nonce=...&proof=... (带着 sct)
+        N->>N: 7. 验证 sct 签名、时间戳、proof 计算结果
+        alt 验证通过
+            N-->>U: 8. 下发真实通行证 sc2 Cookie (HttpOnly) 并返回 200 ok
+            U->>N: 9. 重新请求真实页面 /product/xxx (带着 sc2)
+            N-->>U: 10. 返回真实页面内容
+        else 验证失败 (爬虫/脚本)
+            N-->>U: 返回 403 拒绝
+        end
+    else 包含有效 sc2
+        N-->>U: 直接返回真实页面内容
+    end
+```
 
 ### 2.1 访问受保护页面
 
@@ -571,7 +599,7 @@ grep "challenge template missing" /www/wwwlogs/nginx_error.log | tail -20
 
 推荐的 suspected UA 匹配（尽量不误伤）：
 
-- Google：`(Googlebot|Google-InspectionTool|Storebot-Google|GoogleOther|AdsBot-Google|Mediapartners-Google|FeedFetcher-Google|APIs-Google|Google-Read-Aloud)`
+- Google：`(Googlebot|Google-InspectionTool|Storebot-Google|GoogleOther|AdsBot-Google|Mediapartners-Google|FeedFetcher-Google|APIs-Google|Google-Read-Aloud|Chrome-Lighthouse|Google-Site-Verification)`
 - Bing：`(Bingbot|BingPreview|msnbot|adidxbot)`
 - Apple：`Applebot`
 
@@ -592,7 +620,70 @@ Apple 官方说明：
 - 目的：避免“伪装爬虫”拿到挑战页 HTML 后把它当作正文抓取结果。
 - 响应头会带 `X-SC-Block`，用于定位阻断原因（如 `unverified_bot`、`unverified_bot_no_ptr` 等）。
 
+**搜索引擎 / 爬虫 IP 验证流程如下图所示：**
+
+#### 主干版本
+
+```mermaid
+flowchart 
+    A[请求命中疑似搜索引擎 UA] --> B{检查本地内存中的 IP 验证缓存}
+    B -- 有缓存且通过 --> C["直接放行 (免挑战)"]
+    B -- 有缓存且未通过 --> D["拦截请求 (403)"]
+    
+    B -- 无缓存 --> E["DNS 反向查询 (PTR记录)"]
+    E --> F{PTR 域名是否匹配目标爬虫？<br>例: .googlebot.com, .googleusercontent.com}
+    F -- 否或无记录 --> G["缓存验证失败并拦截 (403)"]
+    
+    F -- 是 --> H["DNS 正向查询该 PTR 域名 (A/AAAA记录)"]
+    H --> I{正向解析的 IP 列表中<br>是否包含发起请求的 IP？}
+    
+    I -- 是 --> J["缓存验证成功并放行 (免挑战)"]
+    I -- 否 --> K["缓存验证失败并拦截 (403)"]
+```
+
 ---
+
+#### 细节补充版本
+
+```mermaid
+flowchart TD
+    A[请求进入 access_by_lua] --> A1{need_challenge == 1 ?}
+    A1 -- 否 --> Z[直接放行]
+    A1 -- 是 --> B{sc_suspected_se_bot == 1 ?}
+    B -- 否 --> Y[进入常规 sc2 验签流程]
+    B -- 是 --> C{remote_addr 是否存在?}
+
+    C -- 否 --> C1["403 + X-SC-Block=unverified_bot_no_ip<br/>+ X-Robots-Tag=noindex"]
+    C -- 是 --> D{sc_bot_cache 命中?}
+
+    D -- 命中=1 --> Z
+    D -- 命中=0 --> D1["403 + X-SC-Block=unverified_bot_cache<br/>+ X-Robots-Tag=noindex"]
+    D -- 未命中 --> E[初始化 DNS resolver]
+
+    E --> E1{resolver 初始化成功?}
+    E1 -- 否 --> E2["缓存 vbot:ip=0(60s) + 403<br/>X-SC-Block=unverified_bot_dns_init<br/>X-Robots-Tag=noindex"]
+    E1 -- 是 --> F[反向 DNS 查询 PTR]
+
+    F --> F1{PTR 存在?}
+    F1 -- 否 --> F2["缓存 vbot:ip=0(300s) + 403<br/>X-SC-Block=unverified_bot_no_ptr<br/>X-Robots-Tag=noindex"]
+    F1 -- 是 --> G[标准化 PTR 去尾点并写 X-SC-PTR]
+
+    G --> H{按 UA 选择允许的 PTR 后缀}
+    H --> H1[Google: googlebot.com/google.com/googleusercontent.com]
+    H --> H2[Bing: search.msn.com]
+    H --> H3[Applebot: applebot.apple.com]
+
+    H1 --> I[对 PTR 做正向 A/AAAA 查询]
+    H2 --> I
+    H3 --> I
+
+    I --> J{正向结果包含请求 IP ?}
+    J -- 是 --> J1["缓存 vbot:ip=1(21600s)"]
+    J1 --> Z
+    J -- 否 --> K["缓存 vbot:ip=0(600s) + 403<br/>X-SC-Block=unverified_bot<br/>X-Robots-Tag=noindex"]
+```
+
+
 
 ## 9. AI 爬虫策略（弱校验 + 严格限速）
 
@@ -662,3 +753,120 @@ Apple 官方说明：
 - [ ] 挑战页模板存在：`/www/server/nginx/conf/js_challenge_openresty.html`
 - [ ] `nginx -t` 通过
 - [ ] reload 使用：`-c /www/server/nginx/conf/nginx.conf`
+
+---
+
+## 12. 常见问题 (FAQ)
+
+### Q1: 为什么识别疑似 Google 爬虫时不用最简单的 `if ($http_user_agent ~* "google")` ？
+**A:** 使用单纯的 `google` 确实更省事，而且在功能上是基本可行的。但是有以下两点原因我们采用了更精确的匹配：
+1. **性能考虑**：任何 UA 中包含 `google` 的伪造爬虫都会触发后端的“反向 DNS (PTR) + 正向 DNS”回查逻辑。DNS 查询相对耗时，虽然我们加了 `lua_shared_dict` 缓存机制来减轻影响，但在面对海量且随机更换 IP 的伪造扫描时，使用精确匹配能更快地将明显不是 Google 官方工具的请求直接打入 JS 挑战，节省服务器的 DNS 解析性能。
+2. **覆盖面问题**：诸如 PageSpeed Insights (富媒体检测同理) 等工具，其 User-Agent 是 `Chrome-Lighthouse`，根本不包含 `google` 关键字。所以如果要省事，至少也要写成 `google|lighthouse`。当前配置明确列出了常见的官方 UA 前缀以及 `Chrome-Lighthouse`，较好地兼顾了性能和准确性。
+
+### Q2: Google Search Console (站长工具) 的网站所有权验证能免挑战吗？
+**A:** **可以的**。网站所有权验证使用的 User-Agent 通常为 `Google-Site-Verification`，属于用户触发的抓取器。
+1. 它的 UA 匹配了我们配置的 `Google-Site-Verification` 关键字，因此能进入 DNS 验证阶段。
+2. 它的 IP 反向解析（PTR 记录）通常以 `.googleusercontent.com` 结尾（例如 `gae.googleusercontent.com`）。我们在 Lua 代码中已经加入了对 `ends_with(ptr, "googleusercontent.com")` 的支持。
+因此，此类工具最终可以顺利通过反向 DNS 验证并被直接放行，无需进行 JS 挑战。
+
+## 核心代码和变量定义说明
+
+
+
+一、自定义 Nginx 变量（`set` 定义）
+
+| 变量名                 |     默认值 | 作用                              | 关键赋值逻辑                                                 |
+| ---------------------- | ---------: | --------------------------------- | ------------------------------------------------------------ |
+| `$need_challenge`      |        `1` | 是否需要进入挑战/验签主流程       | 白名单或校验通过后置 `0`                                     |
+| `$sc2_ok`              |        `0` | 标记 `sc2` 验签是否通过           | `access_by_lua` 验签成功后置 `1`                             |
+| `$sc_suspected_se_bot` |        `0` | 是否“疑似搜索引擎爬虫”的UA        | UA 命中 Google/Bing/Applebot 关键词置 `1`                    |
+| `$is_ai_bot`           |        `0` | 是否“疑似 AI 爬虫”                | UA 命中 GPTBot/ClaudeBot 等置 `1`                            |
+| `$ai_allow`            |        `0` | AI 爬虫弱放行开关                 | AI UA + 非敏感路径 + GET/HEAD 时置 `1`，并将 `$need_challenge=0` |
+| `$sc_secret`           | 无固定默认 | 签名密钥（可来自 include 或 env） | 用于 `sct/sc2` 的签名和验签                                  |
+
+`$sc_suspected_se_bot` 这个名字可以拆成：
+
+1. `sc` = **signed cookie**（你这套方案的核心就是签名 Cookie 挑战）
+2. `suspected` = **疑似**
+3. `se` = **search engine**（搜索引擎）
+4. `bot` = **爬虫/机器人**
+
+所以整体可理解为：
+
+`sc_suspected_se_bot` = “**在 signed-cookie 挑战体系里，被识别为疑似搜索引擎爬虫**”的标记变量。
+
+二、共享字典（`lua_shared_dict`）相关
+
+| 名称             | 用途                  | 典型 key          | 值                    | TTL                                                          |
+| ---------------- | --------------------- | ----------------- | --------------------- | ------------------------------------------------------------ |
+| `sc_token_store` | 挑战频控计数          | `<ip>`、`ai:<ip>` | 计数值                | 60 秒窗口                                                    |
+| `sc_bot_cache`   | 搜索引擎 DNS 验证缓存 | `vbot:<ip>`       | `"1"`通过 / `"0"`失败 | 通过约 21600 秒，失败约 600 秒（初始化失败可 60/300 秒短缓存） |
+
+注：`sc_bot_cache` 也需要在 `http {}` 声明，否则相关缓存逻辑不可用。
+
+三、Cookie 变量与字段
+
+| 名称                 | 来源                       | 格式            | 含义                               |
+| -------------------- | -------------------------- | --------------- | ---------------------------------- |
+| `sc2`                | 客户端 Cookie              | `ts_nonce_mac`  | 访问凭证 Cookie（30 分钟）         |
+| `sct`                | 客户端 Cookie              | `ts_nonce_tsig` | 挑战票据 Cookie（短期，约 120 秒） |
+| `ngx.var.cookie_sct` | Nginx 内置 cookie 变量映射 | 同上            | `__sc_verify` 用于验证挑战票据     |
+
+字段说明：
+
+1. `ts`：时间戳（秒）。
+2. `nonce`：随机串（配置里一般 6-32 长度限制）。
+3. `mac/tsig`：签名摘要（当前实现为 MD5 32 位十六进制）。
+
+`sc2` 是这套配置里的“**第二阶段签名通行 Cookie**”（核心访问凭证）。
+
+1. 用户先经过挑战页，服务端先下发临时票据 `sct`。
+2. 前端完成 JS 校验后调用 `/__sc_verify`。
+3. 服务端验证通过后签发 `sc2`。
+4. 后续请求带着有效 `sc2` 就可放行，不再反复挑战（直到过期）。
+
+所以 `sc2` 本质就是“**短时有效、绑定 UA 的签名访问令牌**”，用于区分“通过挑战的真实浏览器请求”和普通脚本流量。
+
+
+
+四、请求参数（挑战验证接口）
+
+| 参数名                 | 使用位置               | 作用                           |
+| ---------------------- | ---------------------- | ------------------------------ |
+| `ts` (`$arg_ts`)       | `/__sc_verify`         | JS 提交的时间戳                |
+| `nonce` (`$arg_nonce`) | `/__sc_verify`         | JS 提交的随机串                |
+| `proof` (`$arg_proof`) | `/__sc_verify`         | 前端计算证明值（与 UA 绑定）   |
+| `u`                    | `/_sc/challenge?u=...` | 原始访问 URL（挑战后回跳用途） |
+
+五、Lua 中常用内置请求变量（`ngx.var.*`）
+
+| 变量                                                    | 用途                                         |
+| ------------------------------------------------------- | -------------------------------------------- |
+| `remote_addr`                                           | 客户端 IP，做限速和 bot 验证缓存 key         |
+| `http_user_agent`                                       | UA 识别、签名绑定、bot 判定                  |
+| `request_uri` / `uri`                                   | 原请求路径，用于重定向挑战与放行判断         |
+| `host`                                                  | 计算 Cookie Domain                           |
+| `scheme` / `http_x_forwarded_proto` / `http_cf_visitor` | 判断客户端是否 HTTPS（决定 SameSite/Secure） |
+| `http_cookie`                                           | 手动提取 `sc2`                               |
+| `arg_ts/arg_nonce/arg_proof`                            | 验证接口参数读取                             |
+
+六、响应头（调试/控制）相关变量意义
+
+| Header                    | 含义                                                     |
+| ------------------------- | -------------------------------------------------------- |
+| `X-SC-Block`              | 标识拦截原因（如 `unverified_bot`、`sensitive_archive`） |
+| `X-SC-PTR`                | 记录反向 DNS 解析结果（调试搜索引擎验证）                |
+| `X-Robots-Tag: noindex`   | 防止错误页面/挑战页被收录                                |
+| `Cache-Control: no-store` | 防止挑战页与验证响应缓存                                 |
+
+七、签名相关“逻辑变量”（Lua 局部）
+
+| 名称               | 作用                                   |
+| ------------------ | -------------------------------------- |
+| `secret`           | 密钥，来自 `$sc_secret` 或 `SC_SECRET` |
+| `expected`         | 服务端计算的 `sc2` 期望签名            |
+| `tsig` / `texpect` | `sct` 票据签名与期望值                 |
+| `jexpect`          | JS proof 期望值                        |
+| `client_https`     | 是否 HTTPS 客户端语义                  |
+| `same_site`        | `None`（HTTPS）或 `Lax`（HTTP）        |
+

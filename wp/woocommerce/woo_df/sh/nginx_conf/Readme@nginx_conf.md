@@ -30,12 +30,13 @@
 ## 配置步骤
 
 1. 清理/卸载宝塔的免费防火墙(这个东西很鸡肋,容易和自定义nginx配置冲突),如果没安装可以跳过此步骤
+
 2. 通过"**代码下载**"(仓库中Readme@sh.md)一节提供的命令行片段将所需的代码目录下载到服务器上(已经操作过则跳过此步骤),确保已经得到目录 `/www/sh`;(如果有古老版本的代码仓库目录 `/repos/scripts`,可以手动清理掉)
 
    一键部署(单行部署,github和gitee 方式2选1,后者适合国内,但是可能要登录.)
 
    > 方便起见,这里默认用github.
-   
+
    ```bash
    # 标准方案
    # github
@@ -45,7 +46,7 @@
    bash <(curl -SfL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh) -f
    
    ```
-   
+
    > 其中 `-f`会覆盖 `nginx`的主配置文件(nginx.conf),酌情使用,如果不想覆盖,可以移除 `-f`
    >
    > 对于反向代理ip的服务器,请使用额外的`-R`选项,即:
@@ -54,9 +55,9 @@
    > bash <(curl -SfL https://github.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh) -f -R
    > 
    > ```
-   
+
    或者分步操作,更安全
-   
+
    ```bash
    curl -L -o deploy_srv.sh https://github.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh;
    # 建议先 cat setup.sh 看看里面写了啥
@@ -64,12 +65,16 @@
    # 确认没有问题可以执行脚本了
    bash deploy_srv.sh -h;
    ```
+
+   上述步骤顺利执行的情况下只是完成一部分,限流并不会生效,知道vhosts配置更新.(对于服务器迁移的情况,需要尤为注意)
+
 3. 创建/覆盖配置目录
 
    - 运行 `bash /update_repos.sh -g -f` 这个命令会处理:
      - 将 `/www/sh`脚本目录中的脚本更新到最新.(里面包含许多服务器管理脚本,`/www/sh/nginx_conf/`这个目录包含 `nginx`配置管理脚本)
      - 并在服务器上的nginx配置目录 `/www/server/nginx/conf`中创建所需的文件(主要是一些 `.conf`,还可能包括 `html`文件)
-4. 更新vhosts配置
+
+4. 更新vhosts配置(关键步骤)
 
 为了让更新的nginx配置生效,需要将自定义配置片段(通常是 `include ...`指令)插入到 `/www/server/panel/vhost/nginx/`目录下的各个网站的 `.conf`文件中,这个过程执行一个命令就可以
 

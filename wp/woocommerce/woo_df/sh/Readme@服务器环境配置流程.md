@@ -1174,6 +1174,10 @@ merge_dir -u yxj ./s4 ./s1 deployed
  Update-NginxVhostOnHost -HostName $env:DF_SERVER3 -FromTable $desktop/table-s3.conf -Verbose
 ```
 
+### 限流配置
+
+服务器迁移后,限流等反爬配置通常会丢失,强烈建议根据nginx_conf中的配置文档中的流程逐步核对,恢复限流.
+
 #### 站点检查
 
 无论是采用什么方案,迁移部署完后都要检查是否可以正常打开,尤其是过渡并发部署导致的一些潜在问题.
