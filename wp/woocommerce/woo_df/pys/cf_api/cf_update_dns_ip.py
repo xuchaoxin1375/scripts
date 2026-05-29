@@ -12,6 +12,9 @@ Cloudflare 批量修改 DNS A 记录脚本
 python .../cf_update_dns_ip.py --new-ip new_ip --whitelist white_list.txt --api-key your_api_key --email example_cf@mail.com
 """
 
+# import logging
+import json
+import os
 import requests
 import argparse
 import sys
@@ -34,7 +37,9 @@ CF_API_TOKEN = "your_api_token_here"
 # 使用哪种认证方式：'token' 或 'key'
 AUTH_METHOD = "token"
 # ================================
-
+DESKTOP = r"C:/Users/Administrator/Desktop"
+DEPLOY_CONFIGS = f"{DESKTOP}/deploy_configs"
+CF_CONFIG_PATH = f"{DEPLOY_CONFIGS}/cf_config.json"
 
 @dataclass
 class UpdateResult:
@@ -422,9 +427,55 @@ def parse_args():
         "--email", default=None, help="Cloudflare 账号邮箱（配合 --api-key 使用）"
     )
     parser.add_argument("--api-key", default=None, help="Cloudflare Global API Key")
+    parser.add_argument("--config", default=None, help="cloudflare账号配置文件路径,适合多个账号批量处理")
 
     args = parser.parse_args()
     return args
+
+
+def load_config(config_path) -> dict:
+    """加载配置文件(json)
+    Args:
+        config_path: 配置文件路径
+    Returns:
+         config: 配置字典
+
+    """
+    if not os.path.exists(config_path):
+        print(f"{config_path} 文件不存在")
+    with open(config_path, "r", encoding="utf-8") as f:
+        return json.load(f) or {}
+    return {}
+
+
+def get_cf_accounts(config_path):
+    """ 获取Cloudflare账号(事先约定的json格式中读取)
+    returns:
+        accs: 账号列表(每个元素是一个字典)
+    """
+
+    cf_config = load_config(config_path)
+    accs = cf_config["accounts"]
+    acc_names = accs.keys()
+
+    # pairs = []
+    # for acc in acc_names:
+    #     acc_obj = accs.get(acc)
+    #     # print(acc_obj)
+
+    #     cf_email = acc_obj.get("cf_api_email")
+    #     cf_key = acc_obj.get("cf_api_key")
+    #     pairs.append((cf_email, cf_key))
+        # print(cf_email, cf_key)
+    accounts=[]
+    for acc in acc_names:
+        acc_obj = accs.get(acc)
+        cf_email = acc_obj.get("cf_api_email")
+        cf_key = acc_obj.get("cf_api_key")
+        cf_token="" # 暂不适配使用token
+        accounts.append({"email": cf_email, "key": cf_key,"token":cf_token})
+    return accounts
+
 
 def main() -> None:
     args = parse_args()
@@ -436,56 +487,72 @@ def main() -> None:
     if args.workers > 5:
         print("⚠️  线程数过高可能触发 Cloudflare API 限流，已自动调整为 20")
         args.workers = 5
-
-    # 确定认证方式
-    api_token: Optional[str] = None
-    api_email: Optional[str] = None
-    api_key: Optional[str] = None
-
-    if args.token:
-        auth_method = "token"
-        api_token = args.token
-    elif args.email and args.api_key:
-        auth_method = "key"
-        api_email = args.email
-        api_key = args.api_key
-    elif AUTH_METHOD == "token" and CF_API_TOKEN != "your_api_token_here":
-        auth_method = "token"
-        api_token = CF_API_TOKEN
+    cf_accounts=[]
+    auth_method="key"
+    if args.config:
+        # 从配置文件中读取账号信息,暂时仅使用简单的全局key方案
+        cf_accounts = get_cf_accounts(args.config)
+        # for cf_email, cf_key in cf_accounts:
+        #     print(f"开始处理账号:{cf_email}")
+        #     # main_single(cf_email, cf_key, args)
     else:
-        print("❌ 请提供认证信息！")
-        print("   方式一：--token YOUR_API_TOKEN")
-        print("   方式二：--email YOUR_EMAIL --api-key YOUR_API_KEY")
-        print("   方式三：在脚本顶部配置区填写")
-        sys.exit(1)
+        # 确定认证方式,支持key和token两种方案.(单账号操作情况下)
+        api_token: Optional[str] = None
+        api_email: Optional[str] = None
+        api_key: Optional[str] = None
 
-    # 加载白名单
-    whitelist: Optional[list[str]] = None
-    if args.whitelist:
-        whitelist = load_whitelist(args.whitelist)
-        if not whitelist:
-            print("❌ 白名单文件为空")
+        if args.token:
+            auth_method = "token"
+            api_token = args.token
+        elif args.email and args.api_key:
+            auth_method = "key"
+            api_email = args.email
+            api_key = args.api_key
+        elif AUTH_METHOD == "token" and CF_API_TOKEN != "your_api_token_here":
+            auth_method = "token"
+            api_token = CF_API_TOKEN
+        else:
+            print("❌ 请提供认证信息！")
+            print("   方式一：--token YOUR_API_TOKEN")
+            print("   方式二：--email YOUR_EMAIL --api-key YOUR_API_KEY")
+            print("   方式三：在脚本顶部配置区填写")
             sys.exit(1)
-        print(f"📄 已加载白名单: {len(whitelist)} 个域名")
+        # 将账号信息添加到列表中cf_accounts中
+        cf_accounts.append({"email": api_email, "key": api_key, "token": api_token})
+    for account in cf_accounts:
+        api_email = account.get("email")
+        api_key = account.get("key")
+        api_token = account.get("token")
+        auth_method = auth_method or "key"
+        if api_email:
+            print(f"开始处理账号:{api_email}")
+        
+        # 加载域名白名单
+        whitelist: Optional[list[str]] = None
+        if args.whitelist:
+            whitelist = load_whitelist(args.whitelist)
+            if not whitelist:
+                print("❌ 白名单文件为空")
+                sys.exit(1)
+            print(f"📄 已加载白名单: {len(whitelist)} 个域名")
 
-    # 创建更新器并执行
-    updater = CloudflareDNSUpdater(
-        auth_method=auth_method,
-        api_token=api_token,
-        api_email=api_email,
-        api_key=api_key,
-        max_workers=args.workers,
-    )
+        # 创建更新器并执行update方法
+        updater = CloudflareDNSUpdater(
+            auth_method=auth_method,
+            api_token=api_token,
+            api_email=api_email,
+            api_key=api_key,
+            max_workers=args.workers,
+        )
 
-    updater.batch_update(
-        new_ip=args.new_ip,
-        old_ip=args.old_ip,
-        whitelist=whitelist,
-        record_type=args.record_type,
-        dry_run=args.dry_run,
-        include_subdomains=not args.no_subdomains,
-    )
-
+        updater.batch_update(
+            new_ip=args.new_ip,
+            old_ip=args.old_ip,
+            whitelist=whitelist,
+            record_type=args.record_type,
+            dry_run=args.dry_run,
+            include_subdomains=not args.no_subdomains,
+        )
 
 
 if __name__ == "__main__":

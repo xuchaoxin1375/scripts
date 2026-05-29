@@ -1657,12 +1657,14 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
         
         # 本地插件目录路径🎈
         [parameter(ParameterSetName = 'Path')]
+        [Alias('Path')]
         $PluginPath ,  
         # 仅上传插件文件夹到服务器指定目录并解压,不执行其他操作(例如安装等)
         [parameter(ParameterSetName = 'Path')]
         [switch]$JustUpload, 
         # 插件名称(服务器上插件路径的最后一级目录名)
         [parameter(ParameterSetName = 'RemoveByName')]
+        [Alias('Name')]
         $PluginName,
         
         $RemoteDirectory = "/www"       , # 服务器目标目录

@@ -11,13 +11,14 @@
 # 解压部署以外的功能:
 #
 # 执行正式的解压部署前检查数据库连通性,否则停止脚本
+# 如果需要排查问题,或者发现脚本直接停止运行,使用-v选项打印详细信息.
 # 统计运行时间,统计失败任务数量
 # 部署指定路径下的站点(单个站点),支持指定站点压缩包名称(域名),脚本自动搜索满足该名称的站点包进行部署
 # TODO:
 # 1. 对于多个磁盘的服务器,检测磁盘使用情况自动处理解压位置(为每个盘事先设定一个项目目录)
 # 2. 并发部署中的日志打印在终端容易错乱,改进此问题.
 
-VERSION=20260528
+VERSION=20260529.1040
 shopt -s extglob globstar
 shopt -s nullglob
 # === 配置参数 ===
@@ -29,8 +30,9 @@ JOBS=5 # 默认并发数,根据服务器性能和实际情况调整
 STRICT_MODE="false"
 UPLOADER="uploader" # 默认uploader,成员通过(sftp等)上传到指定目录所用的专用用户名
 UPLOADER_DIR="/srv/uploads/uploader"
-PACK_ROOT="$UPLOADER_DIR/files"
-
+PACK_ROOT="$UPLOADER_DIR/files" # 仅存放人员名目录
+STATUS_TAG_DIR="$UPLOADER_DIR/status_tags" # 存放部署状态标记文件的目录(简单起见,将所有标记文件放到统一的目录中,而不分散存放)
+mkdir -pv "$STATUS_TAG_DIR"
 REMOVE_AFTER_DEPLOY=false # 是否在部署完成后删除压缩包文件(默认false,按需归档),如果是迁移场景,在服务器空间有限的情况下启用此选项.
 
 PLUGINS_HOME="/www"
@@ -59,6 +61,7 @@ SITE_ROOT_SKIP=false
 # 否则,如果使用此选项跳过数据库导入,则需要注意手动修改
 # TODO:在wp-config.php中设定home_url和site_url
 SITE_DB_SKIP=false
+
 # 统计后台作业pid
 PIDS=()
 DRY_RUN=false
@@ -66,6 +69,7 @@ ASSUME_ANSWER=""
 FAILED=0
 SUCCESSED=0
 declare -A PID_TASK_MAP PID_TASK_MAP_FAILED PID_TASK_MAP_SUCCESSED
+
 # wp配置文件编辑标记
 STOP_EDITING_LINE='Add any custom values between this line and the "stop editing" line'
 # 非原生包这部分可以跳过插入(已经有相应内容了,可以通过grep检查是否有'FORCE_SSL_ADMIN'字符串存在)
@@ -138,6 +142,8 @@ show_help() {
           -N, --update-domain-name NAME  更新已上传包网站的域名
           -W, --site-root-name NAME  设置站点根目录名称 (默认:$SITE_ROOT_NAME)
           --uploader USER            设置 uploader 用户名 (默认:$UPLOADER)
+          --tag-dir                  存放状态标记文件的目录:对于即时部署模式
+                                    (解压部署一个站后立即删除对应的包文件组),为了记住是否已经部署过的状态,使用标记文件提供判断支持.
 
         插件配置:
           -m, --plugin-install-mode MODE  插件安装模式：symlink(符号链接) 或 copy(复制) (默认:$PLUGIN_INSTALL_MODE)
@@ -152,6 +158,7 @@ show_help() {
           -K, --keep-pack, --no-move-pack  部署后压缩包原地不动（不移动归档到 deployed 目录）;
                                             若以人员为单位拷贝站点,在该人员所有包传输完毕前不适合使用此选项,否则不利于分辨哪些站已经解压完毕.
           --rm,--remove-after-deploy      部署完成后删除压缩包文件(默认false,按需归档),如果是迁移场景,在服务器空间有限的情况下启用此选项.
+          
 
         并发与执行:
           -j, --jobs NUM             设置并发数 (默认:$JOBS)
@@ -296,6 +303,10 @@ parse_args() {
                 UPLOADER="$2"
                 shift
                 ;;
+            --tag-dir)
+                STATUS_TAG_DIR="$2"
+                shift
+                ;;
             --fast)
                 FAST="true"
                 shift
@@ -357,6 +368,8 @@ parse_args() {
     done
 }
 parse_args "$@"
+# 移除PACK_ROOT末尾可能多出来的斜杠
+PACK_ROOT="${PACK_ROOT%/}"
 verbose && echo "加载shell工具函数库...[$SHELL_UTILS]"
 # 定义日志文件路径
 # LOG_FILE="/srv/uploads/uploader/files/deploy_wp_$($USER_DIR)_$(date +%Y%m%d_%H%M%S).log"
@@ -551,7 +564,7 @@ extract_archive() {
     # 确保目标目录存在,否则创建此目录
     mkdir -p "$expanded_under_dir" -v
 
-    log "🔍 正在处理压缩文件: $archive_file -> $expanded_under_dir/"
+    log "🔍 正在处理压缩文件: $archive_file -> $expanded_under_dir"
 
     local ext="${archive_file##*.}"
     # tar文件临时名字
@@ -714,7 +727,7 @@ extract_archive() {
             ;;
     esac
 
-    log "✅ 解压成功: $archive_file -> $expanded_under_dir/"
+    log "✅ 解压成功: $archive_file -> $expanded_under_dir"
     return 0
 }
 export -f extract_archive
@@ -855,6 +868,14 @@ deploy_site() {
     # 计算可能需要更正的最终的网站域名和数据库名(如果需要网站更名,不要直接覆盖domain_name,而是另起一个新名,因为后续原名要被多词使用!)
     local final_domain_name="${UPDATE_DOMAIN_NAME:-${domain_name}}"
     local db_name="${user_name}_${final_domain_name}"
+
+    local tag_file
+    tag_file="$STATUS_TAG_DIR/$final_domain_name"
+    log "[TagFile]检查$tag_file文件是否要跳过网站部署"
+    if [[ -f $tag_file ]]; then
+        log "存在部署状态标记文件[$tag_file],说明已经部署过了,跳过部署.如果需要重新部署,请删除此标记文件后再尝试..."
+        return 0
+    fi
 
     log "[$task_note][$domain_name]📦 正在处理网站:  ============"
 
@@ -1086,6 +1107,9 @@ WHERE option_name IN ('home', 'siteurl');
         log "删除已用过的sql压缩包文件: $site_sql_archive"
         rm -fv "$site_sql_archive"
         rm -fv "$site_dir_archive"
+        # local sql_file_name=$(basename "$site_sql_archive")
+        # local site_dir_file_name=$(basename "$site_dir_archive")
+
     else
         mkdir -p "$deployed_dir" -v
         log "<<<归档:已用过的sql压缩包文件: $site_sql_archive >>>"
@@ -1094,6 +1118,15 @@ WHERE option_name IN ('home', 'siteurl');
         log "<<<归档:顺利解压网站压缩文件[$site_dir_archive]>>>"
         mv "$site_dir_archive" "$deployed_dir" -fv
         # mv "$archive_file" "$DEPLOYED_DIR" -f
+    fi
+    # 按需创建部署状态标记文件:
+    if [[ -d $STATUS_TAG_DIR ]]; then
+        local tag_file="$STATUS_TAG_DIR/${domain_name}"
+        if touch "$tag_file"; then
+            log "创建部署状态标记文件: $tag_file"
+        fi
+    else
+        log "[TagFile]部署状态标记目录不存在: $STATUS_TAG_DIR,无法创建部署状态标记文件"
     fi
 
     log "[$task_note][$domain_name]✅ 完成站点部署( 检查/访问: https://www.$final_domain_name )=============="

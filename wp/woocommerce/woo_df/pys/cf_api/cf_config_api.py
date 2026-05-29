@@ -38,7 +38,7 @@ CONFIG_GROUP = "cxxu_df2"
 # USER_HOME=os.environ.get('userprofile')
 DESKTOP = os.path.expanduser("~/Desktop")
 # CONFIG_PATH = f"{DESKTOP}/deploy_configs/server_config.json"
-DEPLOY_CONFIGS = f"{DESKTOP}/deploy_configs"
+DEPLOY_CONFIGS = f"{DESKTOP}/deploy_configs" 
 # 默认配置文件路径
 CONFIG_PATH = f"{DEPLOY_CONFIGS}/cf_config.json"
 # 通用格式:采用table.conf中的第一列数据作为要配置的域名

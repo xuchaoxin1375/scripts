@@ -414,9 +414,12 @@ mysql  -e "SELECT 1" # &>/dev/null
 
 #### php
 
-- 设置脚本内存限制(1G)
-- php性能调整(并发方案128G),几个进程数1000,100,100,300:
-- 加速插件opcache
+- 配置修改:设置脚本内存限制(1G)
+- 性能调整:
+  - 并发方案128+G,
+  - 相关进程数参数:1000,100,100,300(简单写就是1111,111,111,333)
+
+- 加速扩展插件:opcache
 
 
 
@@ -981,7 +984,7 @@ bash /www/sh/backup_sites/backup_site_pkgs.sh -s /srv/uploads/uploader/files -b 
 user="root" #默认root
 # 远程主机(ip)
 remote_host=""
-# 本地路径(比如/srv/uploads/uploader/files/recovery),末尾的recovery表示恢复备份用的目录
+# 本地路径(比如/srv/uploads/uploader/recovery),末尾的recovery表示恢复备份用的目录
 local_path=""
 # 远程路径(比如"/www/wwwroot/xcx/s4/yxj")
 remote_path=""
@@ -1004,7 +1007,7 @@ rsync -avP --size-only "$remote_full_path" "$local_path"
 例如:
 
 ```bash
-rsync_copy <remote_ip> /srv/uploads/uploader/files/recovery /www/wwwroot/xcx/s?/yxj
+rsync_copy <remote_ip> /srv/uploads/uploader/recovery /www/wwwroot/xcx/s?/yxj
 ```
 
 
@@ -1056,7 +1059,27 @@ done
       n.com,www.n.com,*.n.com      |/www/wwwroot/yxj/n.com/wordpress      |0|0|74
   ```
 
-  
+
+#### 批量设置伪静态
+
+> 宝塔自带的网站管理可以批量设置伪静态,但是站点数量多的情况下,逐页批量设置还是不够快捷.
+>
+> 建议使用shell脚本快速设置,脚本位于`$sh/backup_sites/deploy_wp_rewrite.sh`
+
+内容参考:
+
+```bash
+#!/bin/bash
+
+res=(/www/server/panel/vhost/rewrite/*.conf)
+# 覆盖所有网站的rewrite规则.
+for r in "${res[@]}"; do
+    cp /www/sh/nginx_conf/RewriteRules.LF.conf "$r" -fv
+done
+
+```
+
+
 
 #### 宝塔站点重叠现象和清理方法
 
