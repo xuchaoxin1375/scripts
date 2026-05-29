@@ -1588,13 +1588,23 @@ function Update-Servers
     使用ssh -n -T root@$server "command line"的方式执行命令行
     .PARAMETER ServerConfig
     服务器配置文件路径
+    .PARAMETER Cmd
+    要执行的命令行
+    .PARAMETER Threads
+    线程数
+    .PARAMETER WorkingDirectory
+    工作目录
+    .EXAMPLE
+    # 重载nginx配置
+    Update-Servers -Cmd 'nginx -t && nginx -s reload ' -Verbose
+
     #>
     [CmdletBinding()]
     param (
         $ServerConfig = $server_config,
         $WorkingDirectory = '/www/',
         [Alias('Script')]
-        $Cmd = "/update_repos.sh -c",
+        $Cmd = "bash /update_repos.sh -c",
         $Threads = 5
     )
     $servers = Get-ServerList -Path $ServerConfig
@@ -1604,7 +1614,7 @@ function Update-Servers
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
     foreach ($server in $servers.ip)
     {
-        $jobs += Start-ThreadJob -script { ssh -nT root@$using:server "cd $using:WorkingDirectory && bash $using:cmd" } -ThrottleLimit $Threads
+        $jobs += Start-ThreadJob -script { ssh -nT root@$using:server "cd $using:WorkingDirectory &&  $using:cmd" } -ThrottleLimit $Threads
     }
     Start-Sleep 1
     # $jobs | Get-Job
@@ -1651,9 +1661,12 @@ Update-WpPluginsDF -PluginPath C:\share\df\wp_sites\wp_plugins_functions\price_p
     [cmdletbinding()]
     param(
 
-        [Alias('hst', 'Ip')]$server ,               # 服务器IP地址
-        $Username = "root"        ,      # 服务器用户名
-        # $password = ""              # 服务器密码（不推荐明文存储,配置ssh密钥登录更安全）
+        # 服务器IP地址
+        [Alias('hst', 'Ip')]$server ,               
+        # 服务器用户名
+        $Username = "root"        ,      
+        # 服务器密码（不推荐明文存储,配置ssh密钥登录更安全）
+        # $password = ""              
         
         # 本地插件目录路径🎈
         [parameter(ParameterSetName = 'Path')]

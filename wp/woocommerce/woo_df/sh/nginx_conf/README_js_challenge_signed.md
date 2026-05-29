@@ -28,7 +28,11 @@
 
 ### 检查搜索引擎是否能够有效爬取真实内容
 
+[验证来自 Google 抓取工具和抓取器的请求 | Google 抓取基础设施  | Crawling infrastructure  | Google for Developers](https://developers.google.cn/crawling/docs/crawlers-fetchers/verify-google-requests?hl=zh-cn)
+
 [富媒体测试 Google Search Console](https://search.google.com/test/rich-results)
+
+此外可选的还有:[PageSpeed Insights](https://pagespeed.web.dev/)
 
 
 
