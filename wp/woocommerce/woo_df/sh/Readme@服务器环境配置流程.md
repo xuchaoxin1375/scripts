@@ -4,20 +4,132 @@
 
 运行在linux上的脚本以及相关配置
 
-相关命令行以ubuntu/debian系为例
+相关命令行以ubuntu/debian系为例.
+
+## 配置ssh免密登录
+
+建议先配置一下通过密钥登录ssh,方面后续命令行操作.
+
+[ssh免密登录配置@上传公钥到ssh server](https://blog.csdn.net/xuchaoxin1375/article/details/120733071?sharetype=blogdetail&sharerId=120733071&sharerefer=PC&sharesource=xuchaoxin1375&spm=1011.2480.3001.8118)
+
+windows上,虽然没有自带ssh-copy-id工具,可以通过powershell+ssh调用服务器上的shell工具的方式实现
+
+> 请确保已经事先生成密钥:`ssh-keygen -t ed25519 -C "your-email"`
+>
+> ```powershell
+> ssh-keygen -t ed25519 -C "$env:COMPUTERNAME" # 或者用计算机名代替邮箱
+> ```
+
+或者使用powershell实现:
+
+打开powershell,输入下面的代码片段:
+
+```bash
+function Add-SSHkeyOnHost
+{
+    <# 
+    .SYNOPSIS
+    将当前用户SSH公钥添加到指定主机的authorized_keys文件中
+    .DESCRIPTION
+    使用此函数添加不会覆盖掉原文件,可以在不同设备上使用此函数向同一个服务器添加公钥
+    .NOTES
+    为了避免之前不规范添加文件末尾可能缺少换行符,可以使用 -PrefixNextLine 参数在公钥周围添加换行符,
+    保证防止和之前的添加的公钥粘连
+    .EXAMPLE
+    PS> Add-SSHkeyOnHost -ComputerName 192.168.1.1 -UserName root
+    #>
+    [CmdletBinding()]
+    param(
+        $ComputerName,
+        $UserName = 'root',
+        $Type = 'ed25519',
+        $Port = 22,
+        [Alias('Winodws')][switch]$RemoteOSIsWindows,
+        # 尽可能跳过ssh-keygen的生成确认环节.
+        [switch]$Force,
+        [switch]$PrefixNextLine
+    )
+    $authority = "$UserName@$ComputerName" 
+    $keypath = "~/.ssh/id_$Type"
+    $pubkey = Get-Content "${keypath}.pub"
+    # START (密钥检查,如有需要生成密钥)
+    if(Test-Path $keypath)
+    {
+        Write-Verbose "已存在${type}密钥"
+    }
+    else
+    {
+        if($Force)
+        {
+
+            ssh-keygen -t $Type -C "$env:COMPUTERNAME" -N '' -f "$HOME\.ssh\id_$Type" -q
+        }
+        else
+        {
+            
+            ssh-keygen -t $Type -C "$env:COMPUTERNAME " # 或者用计算机名代替邮箱
+        }
+    }
+    # END
+    $pubkey = "$pubkey`n"
+    if ($PrefixNextLine)
+    {
+        $pubkey = "`n$pubkey"
+    }
+    Write-Verbose "本次将添加公开密钥内容[$pubkey]到服务器[$ComputerName]($authority),by port=$port"
+    if ($RemoteOSIsWindows)
+    {
+        Write-Warning "确保被链接服务器是windows系统(并且不是链接到wsl中且存在powershell),否则推送语句失效!"
+        # $cmd="ssh $authority powershell -Command mkdir -p ~/.ssh ; Write-Output '${pubkey}' >> ~/.ssh/authorized_keys -v -p $port"
+        # Write-Host "cmd=[$cmd]"
+        ssh $authority -v -p $port "powershell.exe -noprofile -Nologo -NonInteractive -Command `" mkdir -p ~/.ssh ; echo '${pubkey}' >> ~/.ssh/authorized_keys`"" 
+    }
+    else
+    {
+        
+        Write-Warning "确保被链接服务器是windows之外的系统(linux等系统),否则推送语句失效!"
+        # && 针对于linux系统(windows不适用),这里使用';'代替'&&'
+        ssh $authority -v -p $port "mkdir -p ~/.ssh && echo '${pubkey}' >> ~/.ssh/authorized_keys" 
+    }
+    # 初次运行需要输入服务器ssh对应user用户的密码
+}
+```
+
+然后执行:
+
+```powershell
+# 根据自己的服务器情况替换两个尖括号为真实值(非默认端口情况在,通过 -Port 指定.)
+Add-SSHkeyOnHost -ComputerName <server> -UserName <username>
+# 例如:  
+# Add-SSHkeyOnHost -ComputerName $env:DF_SERVER5 -UserName root -Port 22022
+```
+
+通常上述操作配合默认的ssh配置已经足够了,如果不行,可能是其他sshd配置的问题.
+
+### 重启ssh服务(按需)
+
+根据需要如果发生了sshd配置修改,则要重启服务生效.如果没有就不需要重启服务
+
+```bash
+sudo systemctl restart ssh
+```
+
+
 
 
 
 ## 服务器上需要事先安装的东西👺
 
-包括压缩包解压工具等,如果有就跳过
+包括压缩包解压工具等,如果有就跳过.
+
+
 
 ### linux基础软件包
 
 假设服务器为ubuntu,一键安装命令行
 
 ```bash
-sudo apt install p7zip-full p7zip-rar lz4 zstd unzip git rsync -y #获取7z命令(完整安装)
+sudo apt install p7zip-full p7zip-rar lz4 zstd unzip git rsync tree -y #获取7z命令(完整安装)
 sudo apt install parallel #并行执行命令的工具
 ```
 
@@ -59,7 +171,8 @@ Update-WpAllPluginPackagesOnServers
 一键部署(单行部署)
 
 ```bash
-bash <(curl -sSfL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh) -f # -R
+bash <(curl -sSfL https://github.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh) -f # -R
+# 国内服务器可以考虑用gitee代替github,但是可能要登录.
 ```
 
 > 其中`-f`会覆盖`nginx`的主配置文件(nginx.conf),酌情使用,如果不想覆盖,可以移除`-f`
@@ -115,7 +228,7 @@ git pull
   ## 方案1:对于apt包管理器
   apt install zsh 
   ## 方案2:上述代码应用成功执行的情况下(配置了bash函数),可以执行: 
-  install_zsh_bymake # 安装较新版本的zsh(编译安装,如果失败,自行使用合适的包管理器安装)
+  install_zsh_bymake # 安装较新版本的zsh(编译安装,中间可能会有一些警告warning等,请耐性等待几分钟.如果失败,自行使用合适的包管理器安装)
   
   # zsh配置
   # 可能需要2个阶段.
@@ -200,7 +313,7 @@ bash Miniforge3-$(uname)-$(uname -m).sh -b
 - 面板设置中启用api(bt_key),设置合适的ip白名单,(填写服务器配置`server_config.json`的时候只要填写到端口为止,端口后的串不要写入)
 - 及时申请好cloudflare账号,并且获取全局key
 
-### 服务器相关组件安装和配置(宝塔)🎈
+## 服务器相关组件安装和配置(宝塔)🎈
 
 
 
@@ -217,7 +330,58 @@ bash Miniforge3-$(uname)-$(uname -m).sh -b
 
 
 
-#### mysql
+### mysql
+
+
+
+#### 初次登录或修改mysql密码
+
+对于宝塔用户,简单方案就是登录宝塔,数据库设置中获取密码或者修改密码
+
+> 如果已经登录mysql(root),也可以通过sql语句修改mysql root的密码
+
+```sql
+-- 登录mysql root用户,并且修改为新密码(网站链接数据库的凭据届时将使用此新密码,此mysql root用户"不"开放远程登录!)
+-- 注意:mysql8+使用caching_sha2_password
+ALTER USER 'root'@'localhost' IDENTIFIED WITH caching_sha2_password BY 'your_new_password';
+```
+
+
+
+#### mysql免密登录配置
+
+通过配置`.my.cnf`文件,写入登录信息
+
+> 宝塔用户如果发现mysql无法直接登录数据库(即便当前系统用户是root),
+>
+> 例如遇到报错:/run/mysqld/mysqld.sock时启用`socket`配置行.
+
+```ini
+[client]
+user = your_username
+password = your_password
+host = localhost
+port=3306
+# 按需启用(宝塔用户通常设置此行):
+socket=/tmp/mysql.sock
+```
+
+也可以通过重定向写入文件,例如
+
+```bash
+echo "[client]
+user = root
+password = 15a58524d3bd2e49
+host = localhost
+# 按需启用(宝塔用户通常设置此行):
+socket=/tmp/mysql.sock
+port=3306" >> ~/.my.cnf
+```
+
+验证:
+直接在终端输入mysql,看是否可以登录到mysql shell.
+
+#### 关闭二进制备份功能
 
 - **关闭二进制日志文件备份功能**,节约空间和资源消耗,防止网站数量增多而导致数据库资源耗尽
 
@@ -229,11 +393,11 @@ bash Miniforge3-$(uname)-$(uname -m).sh -b
 
     
 
-- 调整mysql性能参数(使用宝塔预设的方案128G~256G或更高,尤其注意`max_connections`不应该低于1000,4000一般来说是充足(但前提是模板正常),如果网站代码模板有问题,可能占用链接而不释放,可能会大量消耗连接数,考虑改进模板问题或者增大连接数)
+- 调整mysql性能参数(使用宝塔预设的方案128G~256G或更高,如果服务器内存是128G及以下(考虑96~128这一档的方案),尤其注意`max_connections`不应该低于1000,4000一般来说是充足(但前提是模板正常),如果网站代码模板有问题,可能占用链接而不释放,可能会大量消耗连接数,考虑改进模板问题或者增大连接数)
 
 - 设置数据库登录密码和私有管理员配置
 
-##### 数据库链接数问题
+#### 数据库链接数问题
 
 连接数排查:
 
@@ -253,7 +417,7 @@ SHOW STATUS LIKE 'Max_used_connections';
 
 
 
-##### 防火墙配置
+#### 防火墙配置
 
 如果要远程登录mysql(私有管理员用户)首先要检查防火墙是否放行对应端口(通常是3306)
 
@@ -269,7 +433,7 @@ ufw status |grep 3306
 
 
 
-##### 检查当前mysql用户
+#### 检查当前mysql用户
 
 ```bash
 #查看当前数据库用户是什么
@@ -285,21 +449,9 @@ mysql> select user();
 
 
 
-##### 初次登录或修改mysql密码
+#### 私有管理员账号创建
 
-对于宝塔用户,简单方案就是登录宝塔,数据库设置中获取密码或者修改密码
-
-如果已经登录mysql(root),也可以通过sql语句修改mysql root的密码
-
-```sql
--- 登录mysql root用户,并且修改为新密码(网站链接数据库的凭据届时将使用此新密码,此mysql root用户"不"开放远程登录!)
--- 注意:mysql8+使用caching_sha2_password
-ALTER USER 'root'@'localhost' IDENTIFIED WITH caching_sha2_password BY 'your_new_password';
-```
-
-##### 私有管理员账号创建
-
-创建私有可远程登录的mysql 管理员账号
+创建私有可远程登录的mysql 管理员账号,请在文本编辑器中修改默认值(使用ctrl+h批量替换`root_private`)
 
 ```sql
 -- 创建一个新的私有root管理员级别的用户(开放远程登录),比如root_private
@@ -313,13 +465,15 @@ FLUSH PRIVILEGES;
 -- END
 ```
 
+> 移除用户的语句:`DROP USER 'root_private'@'%';`
+
 首尾:建议重启mysqld服务,防止某些配置没有生效
 
 ```bash
 systemctl restart mysqld
 ```
 
-##### 检查当前用户和所有用户
+#### 检查当前用户和所有用户
 
 检查所有已创建mysql用户:
 
@@ -338,7 +492,7 @@ mysql> select user,host from mysql.user;
 
 
 
-##### 检查mysql用户情况
+#### 检查mysql用户情况
 
 ```sql
 # 查看全部mysql用户列表
@@ -363,36 +517,7 @@ mysql> select user,host from mysql.user;
 5 rows in set (0.00 sec)
 ```
 
-##### mysql免密登录配置
 
-通过配置`.my.cnf`文件,写入登录信息
-
-> 宝塔用户如果发现mysql无法直接登录数据库(即便当前系统用户是root),
->
-> 例如遇到报错:/run/mysqld/mysqld.sock时启用`socket`配置行.
-
-```ini
-[client]
-user = your_username
-password = your_password
-host = localhost
-port=3306
-# 按需启用:
-# socket=/tmp/mysql.sock
-```
-
-也可以通过重定向写入文件,例如
-
-```bash
-echo "[client]
-user = root
-password = 15a58524d3bd2e49
-host = localhost
-port=3306" >> ~/.my.cnf
-```
-
-验证:
-直接在终端输入mysql,看是否可以登录到mysql shell.
 
 #### 测试mysql在脚本中的连通性(可选)
 
@@ -500,7 +625,7 @@ cat $sh\update_repos.sh
 
 ## ssh服务端口更改(可选但是推荐)
 
-直接谁用宝塔修改:安全->ssh->端口修改;
+建议直接使用宝塔修改:安全->ssh->端口修改;
 
 ```bash
 # 检查文件是否存在且Port行存在(默认检查Port 22片段)
@@ -549,112 +674,6 @@ notepad ~\.ssh\config
 如果当前shell并非root,但是知道root旧密码,则也可以使用`passwd`修改密码
 
 其他情况请另见它文.
-
-## 配置ssh免密登录
-
-[ssh免密登录配置@上传公钥到ssh server](https://blog.csdn.net/xuchaoxin1375/article/details/120733071?sharetype=blogdetail&sharerId=120733071&sharerefer=PC&sharesource=xuchaoxin1375&spm=1011.2480.3001.8118)
-
-windows上,虽然没有自带ssh-copy-id工具,可以通过powershell+ssh调用服务器上的shell工具的方式实现
-
-> 请确保已经事先生成密钥:`ssh-keygen -t ed25519 -C "your-email"`
->
-> ```powershell
-> ssh-keygen -t ed25519 -C "$env:COMPUTERNAME" # 或者用计算机名代替邮箱
-> ```
-
-或者使用powershell实现:
-
-打开powershell,输入下面的代码片段:
-
-```bash
-
-function Add-SSHkeyOnHost
-{
-    <# 
-    .SYNOPSIS
-    将当前用户SSH公钥添加到指定主机的authorized_keys文件中
-    .DESCRIPTION
-    使用此函数添加不会覆盖掉原文件,可以在不同设备上使用此函数向同一个服务器添加公钥
-    .NOTES
-    为了避免之前不规范添加文件末尾可能缺少换行符,可以使用 -PrefixNextLine 参数在公钥周围添加换行符,
-    保证防止和之前的添加的公钥粘连
-    .EXAMPLE
-    PS> Add-SSHkeyOnHost -ComputerName 192.168.1.1 -UserName root
-    #>
-    [CmdletBinding()]
-    param(
-        $ComputerName,
-        $UserName = 'root',
-        $Type = 'ed25519',
-        $Port = 22,
-        [Alias('Winodws')][switch]$RemoteOSIsWindows,
-        # 尽可能跳过ssh-keygen的生成确认环节.
-        [switch]$Force,
-        [switch]$PrefixNextLine
-    )
-    $authority = "$UserName@$ComputerName" 
-    $keypath = "~/.ssh/id_$Type"
-    $pubkey = Get-Content "${keypath}.pub"
-    # START (密钥检查,如有需要生成密钥)
-    if(Test-Path $keypath)
-    {
-        Write-Verbose "已存在${type}密钥"
-    }
-    else
-    {
-        if($Force)
-        {
-
-            ssh-keygen -t $Type -C "$env:COMPUTERNAME" -N '' -f "$HOME\.ssh\id_$Type" -q
-        }
-        else
-        {
-            
-            ssh-keygen -t $Type -C "$env:COMPUTERNAME " # 或者用计算机名代替邮箱
-        }
-    }
-    # END
-    $pubkey = "$pubkey`n"
-    if ($PrefixNextLine)
-    {
-        $pubkey = "`n$pubkey"
-    }
-    Write-Verbose "本次将添加公开密钥内容[$pubkey]到服务器[$ComputerName]($authority),by port=$port"
-    if ($RemoteOSIsWindows)
-    {
-        Write-Warning "确保被链接服务器是windows系统(并且不是链接到wsl中且存在powershell),否则推送语句失效!"
-        # $cmd="ssh $authority powershell -Command mkdir -p ~/.ssh ; Write-Output '${pubkey}' >> ~/.ssh/authorized_keys -v -p $port"
-        # Write-Host "cmd=[$cmd]"
-        ssh $authority -v -p $port "powershell.exe -noprofile -Nologo -NonInteractive -Command `" mkdir -p ~/.ssh ; echo '${pubkey}' >> ~/.ssh/authorized_keys`"" 
-    }
-    else
-    {
-        
-        Write-Warning "确保被链接服务器是windows之外的系统(linux等系统),否则推送语句失效!"
-        # && 针对于linux系统(windows不适用),这里使用';'代替'&&'
-        ssh $authority -v -p $port "mkdir -p ~/.ssh && echo '${pubkey}' >> ~/.ssh/authorized_keys" 
-    }
-    # 初次运行需要输入服务器ssh对应user用户的密码
-}
-```
-
-然后执行:
-
-```powershell
-# 根据自己的服务器情况替换两个尖括号为真实值(非默认端口情况在,通过 -Port 指定.)
-Add-SSHkeyOnHost -ComputerName <server> -UserName <username>
-# 例如:  Add-SSHkeyOnHost -ComputerName $env:DF_SERVER5 -UserName root -Port 22022
-```
-
-通常上述操作配合默认的ssh配置已经足够了,如果不行,可能是其他sshd配置的问题.
-
-### 重启ssh服务(按需)
-
-根据需要如果发生了sshd配置修改,则要重启服务生效.如果没有就不需要重启服务
-
-```bash
-sudo systemctl restart ssh
-```
 
 
 
@@ -764,7 +783,16 @@ nginx: [emerg] open() "/www/wwwlogs/xxx.com.error.log" failed (24: Too many open
 
 如果是第一次配置,可以直接执行下面是提供一键插入的命令行片段:
 
+请在bash下执行:
+
+> ```bash
+> bash $sh/nginx_conf/append_ulimit_config.sh
+> ```
+
+或者直接复制粘贴以下内容到bash中执行:
+
 ```bash
+#!/bin/bash
 limits_conf="/etc/security/limits.conf"
 if [[ -f $limits_conf ]];then
 echo "
@@ -780,7 +808,6 @@ tail $limits_conf
 # 替换当前进程为新的bash进程
 # 临时让当前会话生效,配置文件中的如果配置正确,则永久生效,需要新建立一个ssh链接检查ulimit -n 的数值
 ulimit -n 65536
-
 else
 	echo "conf file [$limits_conf] does not exit!"
 fi
@@ -964,6 +991,8 @@ bash /www/sh/backup_sites/backup_site_pkgs.sh -s /srv/uploads/uploader/files -b 
 
 假设现在服务器`b`要拉取一部分服务器`s`的包进行还原部署.
 
+> 根据情况,拉取的源也可以是另一个普通服务器.
+
 > ```bash
 > rsync [选项] 源路径 目标路径
 > ```
@@ -977,7 +1006,9 @@ bash /www/sh/backup_sites/backup_site_pkgs.sh -s /srv/uploads/uploader/files -b 
 
 #### rsync拉取包的命令模板和函数rsync-copy
 
-登录服务器`b`(见上述章节),执行如下格式的命令
+登录服务器`b`(见上述章节),执行如下格式的命令:
+
+简单版本(速度偏码,很可能无法充分利用带宽.)
 
 ```bash
 #! /bin/bash
@@ -996,7 +1027,22 @@ remote_full_path="$authority":"$remote_path"
 mkdir -p "$local_path"
 
 rsync -avP --size-only "$remote_full_path" "$local_path" 
+
 ```
+
+或者可以直接使用`rsync`命令,后面3行参数按需使用或更改
+
+```bash
+rsync -a \
+    --no-compress \
+#    --whole-file \ # 仅适合全新传输,从中断任务中恢复不合适
+    -e "ssh -T -c aes128-gcm@openssh.com -o Compression=no -p 22" \ # 这里的-p 22按需更改,如果使用了非默认端口的话
+    source/ user@host:/target/ # user,host分被替换为远程服务器的用户名和主机(ip); source/和/target/两个路径占位符请替换为自己的路径.
+```
+
+如果某个文件夹是**全新传输**的,强烈建议使用`--whole-file`.
+
+##### rsync_copy封装
 
 为了方便使用,已经将上述命令行包装为**rsync_copy**,降低了rsync参数的记忆压力
 
@@ -1007,8 +1053,15 @@ rsync -avP --size-only "$remote_full_path" "$local_path"
 例如:
 
 ```bash
-rsync_copy <remote_ip> /srv/uploads/uploader/recovery /www/wwwroot/xcx/s?/yxj
+# 从备份服务器上拉取时的参考模板
+rsync_copy -W -p 22 <remote_ip> /srv/uploads/uploader/recovery /www/wwwroot/adminer?/s?/yxj 
+# 其中-W 要小心使用,仅适合全新传输,如果是传输一般断开,则要移除-W选项
+# -p 指定远程服务器端口,默认22,可以不指定.
 ```
+
+>  远程路径的最后一段目录名称将在本地路径中自动创建
+>
+>  这个例子中,远程路径中的yxj文件夹会搬到本地recovery目录下,也就是会得到目录:`/srv/uploads/uploader/recovery/yxj`
 
 
 
@@ -1064,9 +1117,12 @@ done
 
 > 宝塔自带的网站管理可以批量设置伪静态,但是站点数量多的情况下,逐页批量设置还是不够快捷.
 >
-> 建议使用shell脚本快速设置,脚本位于`$sh/backup_sites/deploy_wp_rewrite.sh`
 
-内容参考:
+建议使用shell脚本快速设置,脚本位于:
+
+> `bash $sh/backup_sites/deploy_wp_rewrite.sh`
+
+或者手动执行,内容参考:
 
 ```bash
 #!/bin/bash
@@ -1103,7 +1159,9 @@ done
 
 
 
-### 无缝迁移(cdn端设置)
+## 无缝迁移
+
+### cdn端设置
 
 这里不涉及负载均衡,仅讨论简单的将一批网站从服务器a迁移到服务器b尽可能减少中断时间的方案
 
@@ -1122,6 +1180,16 @@ done
 上述脚本的典型用法通过`-h`获取帮助
 
 > 迁移时可以先设置白名单,先少量添加个域名试试效果;
+
+下面这个命令尝试查找所有cf账号中,域名dns解析ip为`oldip`的记录修改为新的ip;
+
+> 如果服务器ip有被设置为环境变量,则建议使用环境变量指定,更加优雅,例如:``$env:DF_SERVER3``
+
+```powershell
+ python $pys/cf_api/cf_update_dns_ip.py --new-ip oldip  --old-ip newip --config $deploy_configs/cf_config.json --whitelist $Desktop/domains_to_update.txt
+```
+
+
 
 #### cloudflare账号分散问题
 
@@ -1176,7 +1244,7 @@ merge_dir -u yxj ./s4 ./s1 deployed
 
 ### 限流配置
 
-服务器迁移后,限流等反爬配置通常会丢失,强烈建议根据nginx_conf中的配置文档中的流程逐步核对,恢复限流.
+服务器迁移后,限流等反爬配置通常会丢失,强烈建议根据`nginx_conf`中的配置文档中的流程逐步核对,恢复限流.
 
 #### 站点检查
 

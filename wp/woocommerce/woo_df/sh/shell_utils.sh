@@ -1485,37 +1485,181 @@ check_mysql() {
 # Example:
 #
 ######################################
+
 rsync_copy() {
+    local remote_host=""
+    local local_path=""
+    local remote_path=""
+    local user="root"
+    local port="22"
+
+    # 激进优化默认关闭
+    local enable_whole_file=0
+    local enable_inplace=0
+
+    # 用户附加参数
+    local -a rsync_extra_args=()
+
+    show_help() {
+        cat <<'EOF'
+Usage:
+  rsync_copy [options] remote_host local_path remote_path
+
+Arguments:
+  remote_host    远程主机 IP 或域名
+  local_path     本地目录
+  remote_path    远程目录
+
+Options:
+  -u USER        SSH 用户名 (默认: root)
+  -p PORT        SSH 端口 (默认: 22)
+
+  -W             启用 --whole-file
+                 (禁用 delta diff, 局域网大文件更快)
+
+  -I             启用 --inplace
+                 (原地写入, 更快但有损坏风险)
+
+  -r ARG         追加 rsync 参数
+                 可重复使用
+
+  -h             显示帮助
+
+Examples:
+
+  默认高速安全模式:
+    rsync_copy 1.2.3.4 /backup /data
+
+  启用 whole-file:
+    rsync_copy -W 1.2.3.4 /backup /data
+
+  启用 inplace:
+    rsync_copy -I 1.2.3.4 /backup /data
+
+  追加 rsync 参数:
+    rsync_copy -r "--delete" \
+               -r "--exclude=node_modules" \
+               1.2.3.4 /backup /data
+
+EOF
+    }
+
+    while getopts ":u:p:WIr:h" opt; do
+        case "$opt" in
+            u)
+                user="$OPTARG"
+                ;;
+            p)
+                port="$OPTARG"
+                ;;
+            W)
+                enable_whole_file=1
+                ;;
+            I)
+                enable_inplace=1
+                ;;
+            r)
+                rsync_extra_args+=("$OPTARG")
+                ;;
+            h)
+                show_help
+                return 0
+                ;;
+            \?)
+                echo "Unknown option: -$OPTARG"
+                return 1
+                ;;
+            :)
+                echo "Option -$OPTARG requires an argument."
+                return 1
+                ;;
+        esac
+    done
+
+    shift $((OPTIND - 1))
+
     remote_host="$1"
-    # 本地路径
     local_path="$2"
-    # 远程路径
     remote_path="$3"
-    # 远程主机
-    # 远程主机使用的登录用户名(默认root)
-    user=${4:-'root'}
-    echo "[$user]"
-    # if [[ "${#4}" -ne 0 ]]; then
-    #   user="$4"
-    # fi
-    if [[ $1 =~ ^(-h|--help|[[:space:]]*)$ ]]; then
-        echo $'
-      # Arguments:
-      #   1 - remote_host (ip)
-      #   2 - local_path (/srv/uploads/...)
-      #   3 - remote_path (/www/wwwroot/...)
-      #   4 - remote_user ('root' is default)
-'
+
+    if [[ -z "$remote_host" || -z "$local_path" || -z "$remote_path" ]]; then
+        echo "Missing required arguments."
+        echo "Use: rsync_copy -h"
         return 1
     fi
-    #准备
-    authority="$user"@"$remote_host"
-    remote_full_path="$authority":"$remote_path"
 
     mkdir -p "$local_path"
 
-    rsync -avP --size-only "$remote_full_path" "$local_path"
+    local authority="${user}@${remote_host}"
+    local remote_full_path="${authority}:${remote_path}"
+
+    #
+    # 默认安全高速参数
+    #
+    local -a rsync_args=(
+        -a
+        # --info=progress2
+        # --partial
+
+        -P # -P 等同于 --partial --progress
+        --human-readable
+        # --append-verify
+        --no-compress
+        --size-only
+    )
+
+    #
+    # SSH 优化
+    #
+    local ssh_cmd=(
+        ssh
+        -T
+        -o Compression=no
+        -c aes128-gcm@openssh.com
+        -p "$port"
+    )
+
+    #
+    # 显式开启的激进优化
+    #
+    if [[ "$enable_whole_file" -eq 1 ]]; then
+        rsync_args+=(--whole-file)
+    fi
+
+    if [[ "$enable_inplace" -eq 1 ]]; then
+        rsync_args+=(--inplace)
+    fi
+
+    #
+    # 用户自定义 rsync 参数
+    #
+    if [[ "${#rsync_extra_args[@]}" -gt 0 ]]; then
+        rsync_args+=("${rsync_extra_args[@]}")
+    fi
+
+    echo "----------------------------------------"
+    echo "Remote Host : $remote_host"
+    echo "Remote User : $user"
+    echo "SSH Port    : $port"
+    echo "Remote Path : $remote_path"
+    echo "Local Path  : $local_path"
+    echo "Whole File  : $enable_whole_file"
+    echo "Inplace     : $enable_inplace"
+    echo "----------------------------------------"
+
+    echo
+    echo "rsync args:"
+    printf '  %q\n' "${rsync_args[@]}"
+    echo
+
+    rsync \
+        "${rsync_args[@]}" \
+        -e "$(printf '%q ' "${ssh_cmd[@]}")" \
+        "$remote_full_path" \
+        "$local_path"
 }
+
+
 
 # 将一个每秒钟打印1个数字,可以指定最多打印的次数(从1开始打印)
 # demo_job.sh
