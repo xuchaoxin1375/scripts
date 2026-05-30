@@ -15,6 +15,7 @@ from time import time
 from typing import List, Optional, Union
 from urllib.parse import unquote, urlparse
 import random
+from xml.sax import handler
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
@@ -547,8 +548,15 @@ def set_image_extension(
     #     series.astype(str).apply(get_image_filebasename(supported_image_formats))
     #     + f"{default_image_format}"
     # )
+    str_series = series.astype(str)
+    # 警告: 有缺失值
+    if str_series.isna().any():
+        print("[Warning]:有缺失值.")
+        print(str_series[str_series.isna()])
+    # debug:
+    # exit()
     res = (
-        series.astype(str).apply(get_image_filebasename(supported_image_formats))
+        str_series.apply(get_image_filebasename_func(supported_image_formats))
         + f"{default_image_format}"
     )
 
@@ -630,9 +638,11 @@ def read_table(file_path, header=0, encoding=None, default_columns=None):
     return df
 
 
-def get_image_filebasename(supported_image_formats=SUPPORT_IMAGE_FORMATS_NAME):
-    """返回一个用于计算不带格式后缀(扩展名)的图片名的匿名函数对象(callable)
-    可以将此函数的返回值作为函数看待,并作为apply()的参数
+def get_image_filebasename_func(supported_image_formats=SUPPORT_IMAGE_FORMATS_NAME):
+    """移除图片名中的扩展名部分的处理器.
+    返回一个用于计算不带后缀扩展名的"图片名"的匿名函数对象(callable),
+    这种设计有利于在pandas等库中做向量化处理,
+    可以将此函数的返回值作为函数看待,并作为apply()的参数.
 
     效果依赖于supported_image_formats的配置的完善程度
 
@@ -656,14 +666,26 @@ def get_image_filebasename(supported_image_formats=SUPPORT_IMAGE_FORMATS_NAME):
         >>> get_image_filebasename(['png', 'jpg'])('abc.png.jpg')
         'abc.png'
     """
-
+    # 方案1:lambda
+    # lambda 参数列表:函数体(仅限单个表达式)
+    # 这里定义一个仅含一个参数x的lambda函数,函数体被写成多行但是仍然算只有一个表达式;
+    # x不便在lambda表达式中查看,可以在调用者打印要传入,或者定义为普通函数(不要将lambda表达式作为赋值给变量)
     return lambda x: (
         # x.rsplit(".", 1)[0]: 从右侧开始分割字符串，"只分割1次(有的文件名有包含多个.部分)"，取(索引为0的)第一部分（即最后一个点号之前的部分）,对应于文件名name.extension中的name部分
         # x.split(".")[-1]和x.rsplit(".", 1)[-1]作用基本相同,但是后者性能高点,不会做多余的分割操作
-        x.rsplit(".", 1)[0]
-        if x.rsplit(".", 1)[-1].lower() in supported_image_formats
+        (x).rsplit(".", 1)[0]
+        if str(x).rsplit(".", 1)[-1].lower() in supported_image_formats
         else x
     )
+
+    # 方案2:普通函数方案(扩展性更好)
+    # def _handler(x):
+    #     return (
+    #         str(x).rsplit(".", 1)[0]
+    #         if str(x).rsplit(".", 1)[-1].lower() in supported_image_formats
+    #         else x
+    #     )
+    # return _handler
 
 
 def get_filebasename_from_url(url):
@@ -714,7 +736,7 @@ def complete_image_file_extension(
         return file
     else:
         return (
-            get_image_filebasename(supported_image_formats_name)(file)
+            get_image_filebasename_func(supported_image_formats_name)(file)
             + default_extension
         )
 
@@ -792,7 +814,7 @@ def count_lines_csv(csv_dir):
     return total
 
 
-def get_domain_from_url(url,keep_port=False):
+def get_domain_from_url(url, keep_port=False):
     """
     计算并提取给定 URL 中的域名部分。
     利用 urlparse() 函数即可
@@ -808,24 +830,25 @@ def get_domain_from_url(url,keep_port=False):
     """
     # 如果 URL 没有以协议开头（如 www.baidu.com），urlparse 可能无法正确解析域名。
     # 自动帮其补上协议头，确保解析准确。
-    if not url.startswith(('http://', 'https://', '//')):
-        url = 'https://' + url
-        
+    if not url.startswith(("http://", "https://", "//")):
+        url = "https://" + url
+
     try:
         # 使用 urlparse 解析 URL
         parsed_url = urlparse(url)
         # netloc 属性包含了域名（可能带有端口号，如 localhost:8080）
         domain = parsed_url.netloc
-        
+
         # 如果你只想保留纯域名，去掉可能存在的端口号，可以进行以下分割：
         if not keep_port:
-            if ':' in domain:
-                domain = domain.split(':')[0]
-            
+            if ":" in domain:
+                domain = domain.split(":")[0]
+
         return domain
     except Exception as e:
         print(f"解析错误: {e}")
         return None
+
 
 def get_data_from_csv(args, lines, reader, url_field, name_field, log_length_limit=0):
     """

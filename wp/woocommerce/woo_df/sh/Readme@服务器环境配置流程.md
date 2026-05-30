@@ -129,7 +129,8 @@ sudo systemctl restart ssh
 假设服务器为ubuntu,一键安装命令行
 
 ```bash
-sudo apt install p7zip-full p7zip-rar lz4 zstd unzip git rsync tree -y #获取7z命令(完整安装)
+sudo apt install dnsutils iputils-ping zstd unzip git rsync tree  lz4 # 常用命令
+sudo apt install p7zip-full p7zip-rar  -y #获取7z命令(完整安装)
 sudo apt install parallel #并行执行命令的工具
 ```
 
