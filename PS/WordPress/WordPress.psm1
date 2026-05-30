@@ -1842,11 +1842,12 @@ function Update-WpPluginsDFOnServers
         [switch]$RemovePlugin,
         [switch]$Dry,
         $ServerConfig = $server_config,
-        $Threads = 5
+        $Threads = 10
     )
     $OutputEncoding = [System.Text.Encoding]::UTF8
     # 设置控制台输出编码为 UTF-8
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    Write-Warning "[Threads]: $Threads(线程池worker数,每批次最多操作数量有限,如果有更多服务器,将在下一批次中处理,或者调高线程数)"
     if ($BlackList -or $WhiteList)
     {
         Write-Host "Using ListMode: manual (BlackList or WhiteList used. ListMode auto set to manual.) $ListMode -> manual"
@@ -1944,7 +1945,7 @@ function Update-WpPluginsDFOnServers
                 Write-Host "remove plugins[$PluginName] in $server"
                 Update-WpPluginsDFOnServer -server $server -WorkingDirectory $workingDirectory -RemoteDirectory $RemoteDirectory -ListMode $ListMode -PluginName $PluginName -RemovePlugin -WhiteList $WhiteList -BlackList $BlackList -Dry:$Dry
             } 
-        } -ArgumentList $server, $currentSet, $WorkingDirectory, $RemoteDirectory, $PluginPath, $WhiteList, $BlackList, $InstallMode, $ListMode, $RemovePlugin, $PluginName, $JustUpload , $Dry
+        } -ArgumentList $server, $currentSet, $WorkingDirectory, $RemoteDirectory, $PluginPath, $WhiteList, $BlackList, $InstallMode, $ListMode, $RemovePlugin, $PluginName, $JustUpload , $Dry -ThrottleLimit $Threads
     } 
     # Start-Sleep 1
     $jobs | Receive-Job -Wait
