@@ -19,8 +19,10 @@ from threading import Event, Lock, local as thread_local
 from typing import Optional
 
 import requests
+import re
+# from comutils import get_main_domain_name_from_str
 
-VERSION="20260529"
+VERSION = "20260529"
 # ============ 配置区 ============
 # 方式一：使用 API Token（推荐）
 CF_API_TOKEN = "your_api_token_here"
@@ -32,6 +34,55 @@ AUTH_METHOD = "token"
 DESKTOP = r"C:/Users/Administrator/Desktop"
 DEPLOY_CONFIGS = f"{DESKTOP}/deploy_configs"
 CF_CONFIG_PATH = f"{DEPLOY_CONFIGS}/cf_config.json"
+
+
+def get_main_domain_name_from_str(url, normalize=True):
+    """
+            从字符串中提取域名,结构形如 "二级域名.顶级域名",即SLD.TLD;
+            对于提取部分的正则,如果允许英文"字母,-,数字")(对于简单容忍其他字符的域名,使用([^/]+)代替([\\w]+)这个部分
+
+            仅提取一个域名,适合于对于一个字符串中仅包含一个确定的域名的情况
+            例如,对于更长的结构,"子域名.二级域名.顶级域名"则会丢弃子域名,前缀带有http(s)的部分也会被移除
+
+            Args:
+                url (str): 待处理的URL字符串
+                normalize (bool, optional): 是否进行规范化处理(移除空格,并且将字母小写化处理). Defaults to True.
+
+
+            Examples:
+    # 测试URL列表
+    urls = [
+        "www.domain1.com",
+        "domain--name.com",
+        "https://www.dom-ain2.com",
+        "https://sports.whh3.cn.com",
+        "domain-test4.com",
+        "http://domain5.com",
+        "https://domain6.com/",
+        "# https://domain7.com",
+        "http://",
+        "https://www8./",
+        "https:/www9",
+    ]
+    for url in urls:
+        domain = get_main_domain_name_from_str(url)
+        print(domain)
+
+    # END
+    """
+    # 使用正则表达式提取域名
+    url = str(url)
+    # 清理常见的无效url部分
+    url = re.sub(r"https?:/*w*\.?/?", "", url)
+    # 尝试提取英文域名(注意,\w匹配数字,字母,下划线,但不包括中划线,而域名中允许,因此这里使用[-\w+]表示域名中的可能的字符(小数点.比较特殊,单独处理)
+    match = re.search(r"(?:https?://)?(?:www\.)?(([-\w+]+\.)+[-\w+]+)/?", url)
+    if match:
+        res = match.group(1).strip("/")
+        if normalize:
+            # 字母小写并且移除空白
+            res = re.sub(r"\s+", "", res).lower()
+        return res
+    return ""
 
 
 @dataclass
@@ -189,7 +240,9 @@ class CloudflareDNSUpdater:
             "proxied": proxied,
             "ttl": ttl,
         }
-        return self._request("PUT", f"/zones/{zone_id}/dns_records/{record_id}", json=payload)
+        return self._request(
+            "PUT", f"/zones/{zone_id}/dns_records/{record_id}", json=payload
+        )
 
     def _process_zone(
         self,
@@ -229,7 +282,11 @@ class CloudflareDNSUpdater:
             r_proxied = record["proxied"]
             r_ttl = record["ttl"]
 
-            if whitelist and not include_subdomains and r_name.lower() != zone_name.lower():
+            if (
+                whitelist
+                and not include_subdomains
+                and r_name.lower() != zone_name.lower()
+            ):
                 continue
 
             if old_ip and r_content != old_ip:
@@ -246,7 +303,9 @@ class CloudflareDNSUpdater:
                 results.append(UpdateResult(r_name, r_content, new_ip, "dry_run"))
             else:
                 try:
-                    self.update_dns_record(zone_id, r_id, r_name, new_ip, r_proxied, r_ttl, record_type)
+                    self.update_dns_record(
+                        zone_id, r_id, r_name, new_ip, r_proxied, r_ttl, record_type
+                    )
                     self._safe_print(f"  [OK] {r_name}: {r_content} -> {new_ip}")
                     stats.inc_updated()
                     results.append(UpdateResult(r_name, r_content, new_ip, "updated"))
@@ -254,7 +313,9 @@ class CloudflareDNSUpdater:
                 except Exception as e:
                     self._safe_print(f"  [ERR] {r_name}: {e}")
                     stats.inc_errors()
-                    results.append(UpdateResult(r_name, r_content, new_ip, "error", str(e)))
+                    results.append(
+                        UpdateResult(r_name, r_content, new_ip, "error", str(e))
+                    )
 
         return results
 
@@ -270,7 +331,9 @@ class CloudflareDNSUpdater:
         self._check_stop()
         self._safe_print("=" * 60)
         self._safe_print("Cloudflare DNS 批量更新")
-        self._safe_print(f"new_ip={new_ip}, type={record_type}, workers={self.max_workers}, dry_run={dry_run}")
+        self._safe_print(
+            f"new_ip={new_ip}, type={record_type}, workers={self.max_workers}, dry_run={dry_run}"
+        )
         self._safe_print("=" * 60)
 
         all_zones = self.get_all_zones()
@@ -327,18 +390,26 @@ class CloudflareDNSUpdater:
             executor.shutdown(wait=False, cancel_futures=True)
 
         self._safe_print("\n" + "=" * 60)
-        self._safe_print(f"完成: success={stats.updated}, skipped={stats.skipped}, errors={stats.errors}")
+        self._safe_print(
+            f"完成: success={stats.updated}, skipped={stats.skipped}, errors={stats.errors}"
+        )
         self._safe_print("=" * 60)
         return all_results
 
 
 def load_whitelist(filepath: str) -> list[str]:
+    """
+    加载白名单文件中的域名(支持url,会自动提取域名).
+    支持注释,'#'开头的行会被忽略.
+    """
     domains: list[str] = []
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith("#"):
+                    line = get_main_domain_name_from_str(line)
+                    print(f"解析到域名{line}")
                     domains.append(line.lower())
     except FileNotFoundError:
         print(f"白名单文件不存在: {filepath}")
@@ -369,9 +440,25 @@ def get_cf_accounts(config_path: str) -> list[dict]:
         email = acc_obj.get("cf_api_email")
         key = acc_obj.get("cf_api_key")
         if token:
-            accounts.append({"name": name, "auth_method": "token", "token": token, "email": None, "key": None})
+            accounts.append(
+                {
+                    "name": name,
+                    "auth_method": "token",
+                    "token": token,
+                    "email": None,
+                    "key": None,
+                }
+            )
         elif email and key:
-            accounts.append({"name": name, "auth_method": "key", "token": None, "email": email, "key": key})
+            accounts.append(
+                {
+                    "name": name,
+                    "auth_method": "key",
+                    "token": None,
+                    "email": email,
+                    "key": key,
+                }
+            )
     return accounts
 
 
@@ -382,22 +469,47 @@ def parse_args():
     )
     parser.add_argument("--new-ip", help="新的目标 IP 地址（更新模式必填）")
     parser.add_argument("--old-ip", default=None, help="旧 IP 地址（只修改匹配记录）")
-    parser.add_argument("--whitelist", default=None, help="域名白名单文件路径（每行一个）")
-    parser.add_argument("--record-type", default="A", choices=["A", "AAAA", "CNAME"], help="DNS 记录类型")
+    parser.add_argument(
+        "-w", "--whitelist", default=None, help="域名(或url)白名单文件路径（每行一个）"
+    )
+    parser.add_argument(
+        "--record-type",
+        default="A",
+        choices=["A", "AAAA", "CNAME"],
+        help="DNS 记录类型",
+    )
     parser.add_argument("--dry-run", action="store_true", help="预览模式")
-    parser.add_argument("--no-subdomains", action="store_true", help="白名单模式下只修改根域名")
-    parser.add_argument("--workers", type=int, default=5, metavar="N", help="单账号内 zone 并发数（默认 5）")
+    parser.add_argument(
+        "--no-subdomains", action="store_true", help="白名单模式下只修改根域名"
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=5,
+        metavar="N",
+        help="单账号内 zone 并发数（默认 5）",
+    )
 
     # 新增：账号级并发
-    parser.add_argument("--account-workers", type=int, default=3, metavar="N", help="多账号并发数（默认 3）")
+    parser.add_argument(
+        "--account-workers",
+        type=int,
+        default=3,
+        metavar="N",
+        help="多账号并发数（默认 3）",
+    )
 
     parser.add_argument("--token", default=None, help="Cloudflare API Token")
-    parser.add_argument("--email", default=None, help="Cloudflare 账号邮箱（配合 --api-key）")
+    parser.add_argument(
+        "--email", default=None, help="Cloudflare 账号邮箱（配合 --api-key）"
+    )
     parser.add_argument("--api-key", default=None, help="Cloudflare Global API Key")
     parser.add_argument("--config", default=None, help="账号配置文件路径（多账号）")
 
     # 新增：快速查域名模式
-    parser.add_argument("--find-domain", default=None, help="快速查找某个域名是否存在于账号中")
+    parser.add_argument(
+        "--find-domain", default=None, help="快速查找某个域名是否存在于账号中"
+    )
     return parser.parse_args()
 
 
@@ -410,13 +522,37 @@ def build_accounts(args) -> list[dict]:
         return accounts
 
     if args.token:
-        return [{"name": "cli-account", "auth_method": "token", "token": args.token, "email": None, "key": None}]
+        return [
+            {
+                "name": "cli-account",
+                "auth_method": "token",
+                "token": args.token,
+                "email": None,
+                "key": None,
+            }
+        ]
 
     if args.email and args.api_key:
-        return [{"name": args.email, "auth_method": "key", "token": None, "email": args.email, "key": args.api_key}]
+        return [
+            {
+                "name": args.email,
+                "auth_method": "key",
+                "token": None,
+                "email": args.email,
+                "key": args.api_key,
+            }
+        ]
 
     if AUTH_METHOD == "token" and CF_API_TOKEN != "your_api_token_here":
-        return [{"name": "default-token-account", "auth_method": "token", "token": CF_API_TOKEN, "email": None, "key": None}]
+        return [
+            {
+                "name": "default-token-account",
+                "auth_method": "token",
+                "token": CF_API_TOKEN,
+                "email": None,
+                "key": None,
+            }
+        ]
 
     print("请提供认证信息：--token 或 --email + --api-key，或 --config")
     sys.exit(1)
@@ -546,7 +682,9 @@ def main() -> None:
 
     # 模式1：快速查域名
     if args.find_domain:
-        code = run_find_mode(accounts, args.find_domain, args.account_workers, args.workers, stop_event)
+        code = run_find_mode(
+            accounts, args.find_domain, args.account_workers, args.workers, stop_event
+        )
         sys.exit(code)
 
     # 模式2：批量更新
@@ -568,7 +706,9 @@ def main() -> None:
     executor = ThreadPoolExecutor(max_workers=args.account_workers)
     try:
         futures = [
-            executor.submit(run_update_for_account, account, args, whitelist, print_lock, stop_event)
+            executor.submit(
+                run_update_for_account, account, args, whitelist, print_lock, stop_event
+            )
             for account in accounts
         ]
         for future in as_completed(futures):
