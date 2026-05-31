@@ -22,7 +22,7 @@ import requests
 import re
 # from comutils import get_main_domain_name_from_str
 
-VERSION = "20260529"
+VERSION = "20260531"
 # ============ 配置区 ============
 # 方式一：使用 API Token（推荐）
 CF_API_TOKEN = "your_api_token_here"
@@ -501,25 +501,27 @@ def parse_args():
 
     parser.add_argument("--token", default=None, help="Cloudflare API Token")
     parser.add_argument(
-        "--email", default=None, help="Cloudflare 账号邮箱（配合 --api-key）"
+        "-e","--email", default=None, help="Cloudflare 账号邮箱（配合 --api-key）"
     )
-    parser.add_argument("--api-key", default=None, help="Cloudflare Global API Key")
-    parser.add_argument("--config", default=None, help="账号配置文件路径（多账号）")
+    parser.add_argument("-k","--key","--api-key",
+                        dest="api_key",# 明确指定后面用 args.api_key 来调用
+                        default=None, help="Cloudflare Global API Key")
+    parser.add_argument("--config", default=CF_CONFIG_PATH, help="账号配置文件路径（多账号）;此方式指定的账号优先级低于命令行中显式指定的账号信息.")
 
     # 新增：快速查域名模式
     parser.add_argument(
         "--find-domain", default=None, help="快速查找某个域名是否存在于账号中"
     )
+    parser.add_argument(
+        "-l","--list-accounts",action="store_true", help="列出所有可用账号."
+    )
+    parser.add_argument(
+        "-s","--select-account",action="store_true", help="读取配置文件中的账号,并选择一个账号进行操作."
+    )
     return parser.parse_args()
 
 
 def build_accounts(args) -> list[dict]:
-    if args.config:
-        accounts = get_cf_accounts(args.config)
-        if not accounts:
-            print("配置文件中没有可用账号")
-            sys.exit(1)
-        return accounts
 
     if args.token:
         return [
@@ -542,18 +544,27 @@ def build_accounts(args) -> list[dict]:
                 "key": args.api_key,
             }
         ]
-
-    if AUTH_METHOD == "token" and CF_API_TOKEN != "your_api_token_here":
-        return [
-            {
-                "name": "default-token-account",
-                "auth_method": "token",
-                "token": CF_API_TOKEN,
-                "email": None,
-                "key": None,
-            }
-        ]
-
+    # 配置文件模式(低优先级)
+    if args.config or args.select_account:
+        accounts = get_cf_accounts(args.config)
+        if not accounts:
+            print("配置文件中没有可用账号")
+            sys.exit(1)
+        else:
+            print(f"从配置文件中读取账号: {args.config}")
+            # print("可用账号如下:")
+            if args.select_account:
+                print("请选择一个账号:")
+                list_accounts(accounts)
+                # 读取用户输入:
+                account_idx = input("请输入选择的账号索引: ")
+                account_idx = int(account_idx)
+                account = accounts[account_idx - 1]
+                print(f"已选择账号: {account.get('name')}")
+                return [account]
+        return accounts
+    # 可用账号指定方式都没有命中,报告错误
+    
     print("请提供认证信息：--token 或 --email + --api-key，或 --config")
     sys.exit(1)
 
@@ -620,7 +631,7 @@ def run_find_mode(
         for name in found_accounts:
             print(f"- {name}")
         return 0
-    print("- 未在任何账号中找到")
+    print("- 未账号中找到")
     return 2
 
 
@@ -659,7 +670,10 @@ def run_update_for_account(
     except Exception as e:
         return name, False, str(e)
 
-
+def list_accounts(accounts):
+    for i,account in enumerate(accounts, start=1):
+        print(f'[{i}]:{account.get("name")}\t: {account.get("email"):50}:{account.get("key")} ')
+    
 def main() -> None:
     args = parse_args()
     stop_event = Event()
@@ -680,6 +694,13 @@ def main() -> None:
 
     accounts = build_accounts(args)
 
+    # 模式0:列出可用账号
+    if args.list_accounts:
+        list_accounts(accounts)
+        # for account in accounts:
+        # for i,account in enumerate(accounts, start=1):
+        #     print(f'[{i}]:{account.get("name")}\t: {account.get("email"):50}:{account.get("key")} ')
+        sys.exit(0)
     # 模式1：快速查域名
     if args.find_domain:
         code = run_find_mode(
@@ -688,57 +709,64 @@ def main() -> None:
         sys.exit(code)
 
     # 模式2：批量更新
-    if not args.new_ip:
-        print("更新模式下必须提供 --new-ip")
-        sys.exit(1)
+    # if not args.new_ip:
+    #     print("更新模式下必须提供 --new-ip")
+    #     sys.exit(1)
+    if args.new_ip:
+        whitelist: Optional[list[str]] = None
+        if args.whitelist:
+            whitelist = load_whitelist(args.whitelist)
+            if not whitelist:
+                print("白名单文件为空")
+                sys.exit(1)
+            print(f"已加载白名单: {len(whitelist)}")
 
-    whitelist: Optional[list[str]] = None
-    if args.whitelist:
-        whitelist = load_whitelist(args.whitelist)
-        if not whitelist:
-            print("白名单文件为空")
+        print_lock = Lock()
+        success = 0
+        failed = 0
+        executor = ThreadPoolExecutor(max_workers=args.account_workers)
+        try:
+            futures = [
+                executor.submit(
+                    run_update_for_account, account, args, whitelist, print_lock, stop_event
+                )
+                for account in accounts
+            ]
+            for future in as_completed(futures):
+                if stop_event.is_set():
+                    break
+                name, ok, err = future.result()
+                if ok:
+                    success += 1
+                    print(f"[ACCOUNT-OK] {name}")
+                else:
+                    if err == "interrupted":
+                        continue
+                    failed += 1
+                    print(f"[ACCOUNT-ERR] {name}: {err}")
+        except KeyboardInterrupt:
+            stop_event.set()
+            print("\n[INTERRUPT] 收到 Ctrl+C，正在终止所有线程...")
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
+
+        if stop_event.is_set():
+            print("任务已被用户中断")
+            sys.exit(130)
+
+        print("\n账号汇总:")
+        print(f"- 成功: {success}")
+        print(f"- 失败: {failed}")
+        if failed > 0:
             sys.exit(1)
-        print(f"已加载白名单: {len(whitelist)}")
 
-    print_lock = Lock()
-    success = 0
-    failed = 0
-    executor = ThreadPoolExecutor(max_workers=args.account_workers)
-    try:
-        futures = [
-            executor.submit(
-                run_update_for_account, account, args, whitelist, print_lock, stop_event
-            )
-            for account in accounts
-        ]
-        for future in as_completed(futures):
-            if stop_event.is_set():
-                break
-            name, ok, err = future.result()
-            if ok:
-                success += 1
-                print(f"[ACCOUNT-OK] {name}")
-            else:
-                if err == "interrupted":
-                    continue
-                failed += 1
-                print(f"[ACCOUNT-ERR] {name}: {err}")
-    except KeyboardInterrupt:
-        stop_event.set()
-        print("\n[INTERRUPT] 收到 Ctrl+C，正在终止所有线程...")
-    finally:
-        executor.shutdown(wait=False, cancel_futures=True)
+    # 默认模式:列出可用账号
 
-    if stop_event.is_set():
-        print("任务已被用户中断")
-        sys.exit(130)
-
-    print("\n账号汇总:")
-    print(f"- 成功: {success}")
-    print(f"- 失败: {failed}")
-    if failed > 0:
-        sys.exit(1)
-
+    # if args.list_accounts:
+        # for account in accounts:
+    list_accounts(accounts)
+    print("使用-s选项可以通过序号选择账号.")
+    sys.exit(0)
 
 if __name__ == "__main__":
     main()

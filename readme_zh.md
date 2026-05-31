@@ -4,13 +4,13 @@
 
 实用脚本集合,改善命令行使用体验. 
 
-- windows下的powershell(pwsh7)
-- *nix系统bash/zsh
+- powershell(pwsh7跨平台)
+- bash/zsh
 
-链接:
+仓库链接:
 
-- https://gitee.com/xuchaoxin1375/scripts
-- [xuchaoxin1375/scripts](https://github.com/xuchaoxin1375/scripts)
+- [github.com/xuchaoxin1375/scripts](https://github.com/xuchaoxin1375/scripts)
+- [gitee.com/xuchaoxin1375/scripts](https://gitee.com/xuchaoxin1375/scripts)
 
 ### 使用说明
 
@@ -79,13 +79,7 @@ setx PsModulePath C:/repos/scripts/PS
 
 ```
 
-也可以选择让配置持久生效：
 
-
-
-
-
-clone完成后,
 
 ## powershell
 
@@ -189,7 +183,24 @@ bash $sh/shellrc_addition.sh
 exec bash
 ```
 
-### 更新脚本错误修复
+### 服务器上使用
+
+#### 一键部署
+
+```bash
+# 标准方案
+# github
+bash <(curl -SfL https://github.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh) # -f
+# gitee
+bash <(curl -SfL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh) # -f
+
+```
+
+其中 `-f`会覆盖 `nginx`的主配置文件(nginx.conf),酌情使用,如果不想覆盖,可以移除 `-f`
+
+对于反向代理ip的服务器,考虑使用额外的`-R`选项.
+
+#### 更新脚本错误修复
 
 > 如果某次更新引入错误导致更新脚本不可用时,通过下面的修复更新脚本.
 >

@@ -2,6 +2,8 @@
 # 适用于服务器迁移场景
 # 老服务器上将网站包导出使用get_site_pkgs.sh ,可以指定白名单导出(可选立即推送到备份服务器上);
 # 新服务器上使用本脚本拉取指定的网站包到指定目录中.
+# 注意:修复这些遗漏的网站后,请重新更新插件和functions(如果是刚导出来的,也建议检查插件目录和functions.php文件)
+
 VERSION=20260531
 # shellcheck disable=SC1091
 source /www/sh/shell_utils.sh #导入rsync_copy函数
@@ -28,6 +30,13 @@ Options:
     -p, --port <port>           指定备份服务器的端口,default: 22
     -s, --server <server>       指定原服务器(被迁出)的名字,eg: s3
     -a, --adminer <adminer>     指定网站管理员,eg: xcx
+
+EXAMPLE:
+# 拉取单个站(domain.com)的包示例(这里用进程替换的写法<(echo 'domain.com')来指定,可以免去手动创建白名单文件:
+bash ~/sh/backup_sites/rsync_pull_pkgs.sh -f <(echo 'domain.com') -r 192.... -u zlj -a xcx -s s3
+
+NOTES: 注意:修复这些遗漏的网站后,请重新更新插件和functions(如果是刚导出来的,也建议检查插件目录和functions.php文件)
+
 "
 parse_args() {
     while [[ $# -gt 0 ]]; do
