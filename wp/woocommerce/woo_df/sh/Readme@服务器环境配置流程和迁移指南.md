@@ -392,11 +392,51 @@ port=3306" >> ~/.my.cnf
     rm /www/server/data/mysql-bin.* -fv
     ```
 
-    
 
-- 调整mysql性能参数(使用宝塔预设的方案128G~256G或更高,如果服务器内存是128G及以下(考虑96~128这一档的方案),尤其注意`max_connections`不应该低于1000,4000一般来说是充足(但前提是模板正常),如果网站代码模板有问题,可能占用链接而不释放,可能会大量消耗连接数,考虑改进模板问题或者增大连接数)
+#### mysql性能调整(方案选择)
+
+- 调整mysql性能参数(使用宝塔预设的方案128G~256G或更高,如果服务器内存是128G及以下(考虑96~128这一档的方案),不能随便选,否则容易控制不住内存用量导致爆内存(引起系统杀死重要进程)
+
+  - 建议设置mysql服务提醒(当mysqld服务终止时向管理员发送告警邮件.)
+
+  - 但尤其注意`max_connections`不应该低于1000
+
+  - > 4000一般来说是充足(但前提是模板正常),如果网站代码模板有问题,可能占用链接而不释放,可能会大量消耗连接数,考虑改进模板问题或者增大连接数)
 
 - 设置数据库登录密码和私有管理员配置
+
+
+#### 保持充足的内存余量
+
+如果内存占用超过了80%(尤其是多日稳定在80%以上,说明这个服务器站偏多了,考虑调低mysql的**性能方案**档位,或者迁移部分站到其他服务器),那么服务器将有较高的概率因为内存不足而杀掉重要服务,例如mysql,尤其是高峰期,内存占用会大幅增加.
+
+此外交换内存(swap)可以考虑调高,当RAM和swap都达到上限,就会被oom杀死进程.
+
+```bash
+$ systemctl status mysql
+× mysqld.service - LSB: start and stop MySQL
+     Loaded: loaded (/etc/init.d/mysqld; generated)
+     Active: failed (Result: oom-kill) since Sun 2026-05-31 21:51:50 CST; 10h ago
+   Duration: 1d 13h 30min 39.896s
+       Docs: man:systemd-sysv-generator(8)
+    Process: 538556 ExecStart=/etc/init.d/mysqld start (code=exited, status=0/SUCCESS)
+    Process: 848594 ExecStop=/etc/init.d/mysqld stop (code=exited, status=1/FAILURE)
+        CPU: 2d 2h 17min 3.278s
+
+May 30 08:20:51 s5 systemd[1]: Starting mysqld.service - LSB: start and stop MySQL...
+May 30 08:21:04 s5 mysqld[538556]: Starting MySQL............. *
+May 30 08:21:04 s5 systemd[1]: Started mysqld.service - LSB: start and stop MySQL.
+May 31 21:51:44 s5 systemd[1]: mysqld.service: A process of this unit has been killed by the OOM killer.
+May 31 21:51:49 s5 mysqld[538570]: /www/server/mysql/bin/mysqld_safe: line 199: 539161 Killed                  env MYSQLD_PARENT_PID=538570 nohup /www/server/mysql/bin/mysqld --defaults-file=/etc/my.cnf --basedir=/www/server/mysql -->
+May 31 21:51:50 s5 mysqld[848594]: Shutting down MySQL..... * The server quit without updating PID file (/www/server/data/s5.pid).
+May 31 21:51:50 s5 systemd[1]: mysqld.service: Control process exited, code=exited, status=1/FAILURE
+May 31 21:51:50 s5 systemd[1]: mysqld.service: Failed with result 'oom-kill'.
+May 31 21:51:50 s5 systemd[1]: mysqld.service: Consumed 2d 2h 17min 3.278s CPU time, 69.5G memory peak, 9.1G memory swap peak.
+```
+
+更多错误日志的排查需要查看日志.
+
+
 
 #### 数据库链接数问题
 

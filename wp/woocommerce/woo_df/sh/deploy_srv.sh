@@ -11,6 +11,9 @@ OVERWRITE_NGINX_CONF=false
 
 REAL_CDN_IP="cf" # 非默认模式将被记为all
 
+# 确保目录SH_SYM存在
+mkdir -pv /www/sh
+
 show_help() {
     cat << EOF
     Usage: $0 [-f] [ -h,--help]
