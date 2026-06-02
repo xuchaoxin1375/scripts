@@ -163,8 +163,8 @@ backup_one_site() {
 			[[ -n "$MYSQL_USER" ]] && MYSQL_ARGS="$MYSQL_ARGS -u$MYSQL_USER"
 			[[ -n "$MYSQL_PASS" ]] && MYSQL_ARGS="$MYSQL_ARGS -p$MYSQL_PASS"
 			
-			if mysqlshow $MYSQL_ARGS "$DBNAME" >/dev/null 2>&1; then
-				if mysqldump $MYSQL_ARGS "$DBNAME" > "$SQL_DUMP_PATH"; then
+			if mysqlshow "$MYSQL_ARGS" "$DBNAME" >/dev/null 2>&1; then
+				if mysqldump "$MYSQL_ARGS" "$DBNAME" > "$SQL_DUMP_PATH"; then
 					# 将sql文件用tar包装一下,文件名保持原来的.sql而不加tar后缀(这看起来有点多余,但是为了和其他配套脚本兼容,这里做一下额外处理)
 					## 先临时创建一个.tar文件,然后重命名(去掉.tar)
 					echo "正在将 $SQL_DUMP_PATH 打包为tar文件,然后更名回 $SQL_DUMP_PATH"

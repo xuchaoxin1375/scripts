@@ -309,7 +309,6 @@ parse_args() {
                 ;;
             --fast)
                 FAST="true"
-                shift
                 ;;
             -T | --preview | --dry-run)
                 DRY_RUN=true

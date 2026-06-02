@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+
+# ==============================================================================
+# 脚本名称: upgrade_nginx_multi.sh
+# 适用系统: Ubuntu 20.04 (Focal) / 22.04 (Jammy) / 24.04 (Noble) 及更高版本
+# 功能描述: 自动识别 Ubuntu 版本，安全升级 Nginx 至官方最新 Stable / Mainline 版本
+# ==============================================================================
+
+set -o pipefail
+
+# --- 颜色定义 ---
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+# --- 配置参数 ---
+NGINX_BRANCH="stable" # 可选: "stable" 或 "mainline"
+BACKUP_DIR="/etc/nginx_backup_$(date +%Y%m%d_%H%M%S)"
+
+# --- 日志函数 ---
+log_info()    { echo -e "${GREEN}[INFO]${NC} $1"; }
+log_warn()    { echo -e "${YELLOW}[WARN]${NC} $1"; }
+log_error()   { echo -e "${RED}[ERROR]${NC} $1"; }
+
+# --- 1. 权限与系统架构检查 ---
+if [[ $EUID -ne 0 ]]; then
+   log_error "该脚本必须以 root 权限运行，请使用: sudo $0"
+   exit 1
+fi
+
+if ! command -v nginx &> /dev/null; then
+    log_error "未检测到当前系统安装了 Nginx。本脚本仅用于升级。"
+    exit 1
+fi
+
+# --- 2. 【核心改动】动态识别 Ubuntu 版本代号 ---
+if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    CODENAME=$VERSION_CODENAME
+    DISTRO=$ID
+else
+    log_error "无法读取 /etc/os-release，不支持的系统架构。"
+    exit 1
+fi
+
+# 确保是 Ubuntu 系统
+if [ "$DISTRO" != "ubuntu" ] || [ -z "$CODENAME" ]; then
+    log_error "本脚本仅支持 Ubuntu 系统。当前检测到系统为: ${DISTRO} (${CODENAME})"
+    exit 1
+fi
+
+log_info "检测到当前系统为: ${BLUE}Ubuntu ${VERSION_ID} (${CODENAME})${NC}"
+
+CURRENT_VER=$(nginx -v 2>&1 | awk -F/ '{print $2}')
+log_info "当前 Nginx 版本为: ${BLUE}${CURRENT_VER}${NC}"
+
+# --- 3. 前置配置语法检查 ---
+log_info "正在检查现有 Nginx 配置文件的语法..."
+if ! nginx -t -q; then
+    log_error "当前 Nginx 配置存在语法错误，请修复后再运行升级脚本！"
+    exit 1
+fi
+
+# --- 4. 备份配置文件 ---
+log_info "正在备份整个 /etc/nginx 目录至 ${BACKUP_DIR} ..."
+if ! cp -r /etc/nginx "${BACKUP_DIR}"; then
+    log_error "备份失败，脚本终止！"
+    exit 1
+fi
+
+# --- 5. 配置 Nginx 官方 APT 源（兼容新旧版本格式） ---
+log_info "正在配置 Nginx 官方 APT 存储源 (${NGINX_BRANCH})..."
+
+# 确保安装了基础依赖（Ubuntu 20.04 可能缺少 ubuntu-keyring，这里做容错）
+apt-get update -y -q > /dev/null
+apt-get install -y -q curl gnupg2 ca-certificates lsb-release > /dev/null
+if apt-cache show ubuntu-keyring &>/dev/null; then
+    apt-get install -y -q ubuntu-keyring > /dev/null
+fi
+
+# 创建专用的密钥目录（确保兼容现代 APT 密钥管理规范，避免 apt-key add 警告）
+mkdir -p /usr/share/keyrings
+
+KEYRING="/usr/share/keyrings/nginx-archive-keyring.gpg"
+# 下载并导入官方签名密钥
+curl -fsSL https://nginx.org/keys/nginx_signing.key | gpg --dearmor --yes -o "$KEYRING"
+
+# 动态写入包含正确系统代号和架构的 APT 源列表
+SOURCE_FILE="/etc/apt/sources.list.d/nginx.list"
+ARCH=$(dpkg --print-architecture)
+
+if [ "$NGINX_BRANCH" = "mainline" ]; then
+    echo "deb [arch=${ARCH} signed-by=${KEYRING}] https://nginx.org/packages/mainline/ubuntu/ ${CODENAME} nginx" > "$SOURCE_FILE"
+else
+    echo "deb [arch=${ARCH} signed-by=${KEYRING}] https://nginx.org/packages/ubuntu/ ${CODENAME} nginx" > "$SOURCE_FILE"
+fi
+
+# 设置 APT 优先级
+cat <<EOF > /etc/apt/preferences.d/99nginx
+Package: nginx
+Pin: origin nginx.org
+Pin-Priority: 900
+EOF
+
+# --- 6. 执行非交互式升级 ---
+log_info "正在更新本地 APT 缓存并升级 Nginx..."
+apt-get update -y -q
+
+# 强制保持用户当前配置，防止 20.04/22.04 弹窗询问是否覆盖 nginx.conf
+export DEBIAN_FRONTEND=noninteractive
+apt-get install -y \
+    -o Dpkg::Options::="--force-confold" \
+    -o Dpkg::Options::="--force-confdef" \
+    nginx
+
+# --- 7. 热升级（无缝切换二进制文件） ---
+if systemctl is-active --quiet nginx; then
+    log_info "检测到 Nginx 正在运行，启动热升级以确保零断开时间..."
+    OLD_PID=$(cat /run/nginx.pid 2>/dev/null)
+    
+    if [ -n "$OLD_PID" ]; then
+        kill -USR2 "$OLD_PID"
+        sleep 2
+        kill -WINCH "$OLD_PID"
+        sleep 2
+        log_info "热升级信号发送完毕，新旧进程已交接。"
+    fi
+else
+    log_warn "Nginx 当前未处于运行状态，直接启动新版服务..."
+    systemctl start nginx
+fi
+
+# --- 8. 升级后验证与清理 ---
+NEW_VER=$(nginx -v 2>&1 | awk -F/ '{print $2}')
+log_info "升级后的 Nginx 版本为: ${BLUE}${NEW_VER}${NC}"
+
+log_info "正在测试新版本下的配置兼容性..."
+if nginx -t -q; then
+    log_info "${GREEN}✔ Nginx 成功升级且配置完美兼容！${NC}"
+    if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+        kill -QUIT "$OLD_PID"
+    fi
+else
+    log_error "❌ 新版本 Nginx 无法解析当前配置文件！"
+    log_warn "触发自动回滚机制..."
+    rm -rf /etc/nginx
+    cp -r "${BACKUP_DIR}" /etc/nginx
+    systemctl restart nginx
+    exit 1
+fi

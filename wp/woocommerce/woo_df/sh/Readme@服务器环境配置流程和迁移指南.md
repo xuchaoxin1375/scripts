@@ -718,7 +718,7 @@ notepad ~\.ssh\config
 
 
 
-## 定时自动任务crontab🎈
+## 定时任务|自动任务crontab🎈
 
 使用 `crontab -e`选择编辑器编辑自动任务,添加以下内容(可以自定义执行时间)
 
@@ -742,7 +742,7 @@ notepad ~\.ssh\config
 
 # */30 * * * * pkill -9 nginx;nginx
 0 0 */2 * * bash /www/sh/clean_logs.sh
-0 3 * * * bash /www/sh/nginx_conf/update_cf_ip_configs.sh
+0 3 * * * bash /www/sh/nginx_conf/update_cf_ip_configs.sh && nginx -t && nginx -s reload
 50 23 * * 0 bash /www/sh/remove_deployed_sites.sh
 */2 * * * * bash /www/sh/run-all-wp-cron.sh
 
@@ -1307,9 +1307,27 @@ done
 
 迁移一大批站点的过程中,通常难免会遇到一些没有正确恢复的网站;
 
-尤其是从一个大服务器分批迁移到两个较小的服务器上,更加容易出错.
+尤其是从一个大服务器a分批迁移到两个较小的服务器(b1,b2)上,更加容易出错.
 
-经验表明,如果某个域名的dns解析指向ip没有更改到正确的新ip上,cloudflare会返回404(nginx),且服务器上看不到相关网站的访问日志(这类错误和cloudflare包装的页面(通常是520+的错误码)有所不同.
+经验表明,如果某个域名的dns解析指向ip没有更改到正确的新ip上,如果刚好指定到某个安装了宝塔的服务器(c),那么用户可能会看到404(nginx),且服务器(a,以及b1,b2中至少其一)上看不到相关网站的访问日志.(这类错误和cloudflare包装的页面(通常是520+的错误码)有所不同.
+
+> 无论你使用的是openresty还是nginx,如果是通过宝塔安装的,那么宝塔有一个默认vhost(配置文件对应于`0.default.conf`);
+>
+> 里面定义了默认返回页面是`/www/server/nginx/html/index.html`,这里的`index.html`是一个硬编码的404页面,实际上用户的请求如果命中返回的是200,只是html原码里写着404(模仿nginx 404页面),这有误导性.可以通过`curl -I <url> `来查验.
+>
+> ```bash
+> #( 06/02/26@ 8:38AM )( root@s3 ):/www/server/nginx/html
+>    nl index.html
+>      1  <html>
+>      2  <head><title>404 Not Found</title></head>
+>      3  <body>
+>      4  <center><h1>404 Not Found</h1></center>
+>      5  <hr><center>nginx</center>
+>      6  </body>
+>      7  </html>
+> ```
+>
+> 
 
 这种情况下建议:
 
