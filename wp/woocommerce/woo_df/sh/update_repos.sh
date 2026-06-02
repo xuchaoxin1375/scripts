@@ -350,9 +350,13 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
     ln -snfv "$SH_SYM"/deploy_wp_full.sh /deploy.sh
     ln -snfv "$SH_SYM"/update_repos.sh /update_repos.sh
     ln -snfv "$SH_SYM"/nginx_conf/update_nginx_vhosts_conf.sh /update_nginx_vhosts_conf.sh
+
     # 不直接覆盖real_cdn_ip.conf,允许用户保留自己的版本,除非没有这个文件.
     # ln -snfv "$SH_SYM"/nginx_conf/real_cdn_ip.conf $NGINX_CONF_DIR/real_cdn_ip.conf -fv
+    # 移除就的符号链接
+    [[ -L "$NGINX_CONF_DIR/real_cdn_ip.conf" ]] && rm -fv "$NGINX_CONF_DIR/real_cdn_ip.conf"
     copy_if_need "$SH_SYM"/nginx_conf/real_cdn_ip.conf $NGINX_CONF_DIR/real_cdn_ip.conf
+
     # vim配置
     nvim_conf_dir="$HOME/.config/nvim"
     [[ -d $nvim_conf_dir ]] || mkdir -p "$nvim_conf_dir"
@@ -378,7 +382,7 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
 
     log "处理real_cdn_ip选项: $REAL_CDN_IP"
     if [[ "$REAL_CDN_IP" == "all" ]]; then
-        
+
         # 移除宝塔设置的real_cdn_ip.conf配置文件(内容清空)
         echo "" > /www/server/panel/vhost/nginx/real_cdn_ip.conf
 
