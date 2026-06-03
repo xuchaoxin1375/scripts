@@ -2,12 +2,13 @@
 # 将vps配置成反向代理服务器(反代网关),基于nginx(openresty).
 # 测试系统为ubuntu,nginx版本为标准安装(或者通过仓库中的nginx_conf/upgrade-nginx-ubt.sh安装较新版本)
 #
-# bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos_vps.sh) # -c /www/server/nginx/conf -d /www/server/panel/vhost/nginx
+# bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos_vps.sh) #  -c /www/server/nginx/conf -d /www/server/panel/vhost/nginx -l /www/logs/ -i upstream_ip
 
 VERSION="20260603.1043"
 
 NGINX_CONF_HOME="/etc/nginx"
 NGINX_CONFD="$NGINX_CONF_HOME/conf.d" # nginx自动include运行的配置文件目录
+# UPDATE_CODE=false
 # 参数解析
 args_pos=()
 parse_args() {
@@ -15,8 +16,10 @@ parse_args() {
 部署反代服务器的shell脚本.[version:$VERSION]
 Usage: $0 [options]
 Options:
-    -c, --nginx-home <dir>         nginx配置文件家目录(常见目录:/etc/nginx/,/www/server/nginx/conf)
+    -c, --nginx-conf-dir <dir>         nginx配置文件家目录(常见目录:/etc/nginx/,/www/server/nginx/conf)
     -d, --nginx-confd-vhost <dir>   nginx自动include运行的配置文件目录(常见目录:/etc/nginx/conf.d/,/www/server/panel/vhost/nginx)
+    -l, --log-home <dir>           日志文件家目录(常见目录:/var/log/nginx/,/www/server/nginx/logs)
+    -i, --ip <ip>                 指定反代的上游ip(需要对外隐藏的后端服务器ip),而不是反代服务器本身的ip
     -h, --help                  显示帮助信息
 EXAMPLES:
 $0 -c /www/server/nginx/conf -d /www/server/panel/vhost/nginx
@@ -27,7 +30,10 @@ $0 -c /www/server/nginx/conf -d /www/server/panel/vhost/nginx
                 echo "$usage"
                 exit 0
                 ;;
-            -c | --nginx-home)
+            # -u | --update-code)
+            #     UPDATE_CODE=true
+            #     ;;
+            -c | --nginx-conf-dir)
                 NGINX_CONF_HOME="$2"
                 shift
                 ;;
@@ -40,7 +46,7 @@ $0 -c /www/server/nginx/conf -d /www/server/panel/vhost/nginx
                 shift
                 ;;
             -l | --log-dir)
-                LOG_DIR="$2"
+                NGINX_LOG_DIR="$2"
                 shift
                 ;;
             --)
@@ -65,9 +71,14 @@ set -- "${args_pos[@]}"
 
 # 获取仓库代码,优先尝试幂等的克隆脚本(默认从github获取,gitee适合国内服务器):
 bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos.sh)
+
+# 确保NGINX_LOG_DIR末尾有且仅有一个斜杠:
+shopt -s extglob
+NGINX_LOG_DIR="${NGINX_LOG_DIR%%+(/)}/"
+
 # 确保相关目录存在:
 mkdir -pv "$NGINX_CONFD"
-mkdir -pv "$LOG_DIR"
+mkdir -pv "$NGINX_LOG_DIR"
 
 SH_SYM="$HOME/sh"
 sh="$SH_SYM"
@@ -95,6 +106,7 @@ sed -i -E '
   s|A_IP|'"$IP"'|g
   s|/var/log/nginx/|'"$NGINX_LOG_DIR"'|g
 ' "$reverse_conf"
-
+# 查看修改后的文件
+cat "$reverse_conf"|nl
 # 重载nginx
 nginx -t && nginx -s reload
