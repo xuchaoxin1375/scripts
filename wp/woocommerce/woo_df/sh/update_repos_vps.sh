@@ -2,7 +2,7 @@
 # 将vps配置成反向代理服务器(反代网关),基于nginx(openresty).
 # 测试系统为ubuntu,nginx版本为标准安装(或者通过仓库中的nginx_conf/upgrade-nginx-ubt.sh安装较新版本)
 #
-# bash -SfL <(https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos_vps.sh)
+# bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos_vps.sh) # -c /www/server/nginx/conf -d /www/server/panel/vhost/nginx
 
 VERSION="20260603.1043"
 
@@ -35,6 +35,14 @@ $0 -c /www/server/nginx/conf -d /www/server/panel/vhost/nginx
                 NGINX_CONFD="$2"
                 shift
                 ;;
+            -i | --ip)
+                IP="$2"
+                shift
+                ;;
+            -l | --log-dir)
+                LOG_DIR="$2"
+                shift
+                ;;
             --)
                 shift
                 break
@@ -57,6 +65,9 @@ set -- "${args_pos[@]}"
 
 # 获取仓库代码,优先尝试幂等的克隆脚本(默认从github获取,gitee适合国内服务器):
 bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos.sh)
+# 确保相关目录存在:
+mkdir -pv "$NGINX_CONFD"
+mkdir -pv "$LOG_DIR"
 
 SH_SYM="$HOME/sh"
 sh="$SH_SYM"
@@ -70,10 +81,20 @@ sh="$SH_SYM"
 
 # cf_realip.conf的更新脚本映射到/etc/nginx/conf.d/cf_realip.conf
 ln -snfv "$sh/nginx_conf/update_cf_ip_configs.sh" "$NGINX_CONF_HOME/update_cf_ip_configs.sh"
-# 运行一次脚本
+
+# 运行一次脚本 cf_realip.conf的更新脚本
 bash "$NGINX_CONF_HOME/update_cf_ip_configs.sh"
+
 # 将反代服务器nginx配置文件映射到/etc/nginx/conf.d/
-ln -snfv "$sh"/nginx_conf/reverse_proxy/reverse_to_a.conf "$NGINX_CONFD/"
+cp -fv "$sh"/nginx_conf/reverse_proxy/reverse_to_a.conf "$NGINX_CONFD/"
+
+reverse_conf="$NGINX_CONFD/reverse_to_a.conf"
+
+# 编辑nginx配置文件(reverse_to_a.conf)
+sed -i -E '
+  s|A_IP|'"$IP"'|g
+  s|/var/log/nginx/|'"$NGINX_LOG_DIR"'|g
+' "$reverse_conf"
 
 # 重载nginx
 nginx -t && nginx -s reload
