@@ -3,7 +3,7 @@
 # 测试系统为ubuntu,nginx版本为标准安装(或者通过仓库中的nginx_conf/upgrade-nginx-ubt.sh安装较新版本)
 #
 # bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos_vps.sh) #  -c /www/server/nginx/conf -d /www/server/panel/vhost/nginx -l /www/logs/ -i <upstream_ip>
-# 
+#
 # 对于使用过本仓库的早期版本的宝塔用户,注意,如果早期的网站的/www/server/panel/vhost/nginx/目录中的网站配置
 # 包含了include com.conf的引用语句,请考虑全部移除,或者情况com.conf的内容,
 # 或者更新到最新的版本,使用此命令进行更新: bash /www/sh/nginx_conf/update_nginx_vhosts_conf.sh -m old --force
@@ -27,6 +27,11 @@ Options:
     -h, --help                  显示帮助信息
 EXAMPLES:
 $0 -c /www/server/nginx/conf -d /www/server/panel/vhost/nginx
+# 非宝塔方案(apt安装的情况)
+bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos_vps.sh) -i <upstream_ip>
+
+# 宝塔方案
+bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos_vps.sh) -c /www/server/nginx/conf -d /www/server/panel/vhost/nginx -l /www/logs/  -i <upstream_ip>
     "
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -106,11 +111,14 @@ cp -fv "$sh"/nginx_conf/reverse_proxy/reverse_to_a.conf "$NGINX_CONFD/"
 reverse_conf="$NGINX_CONFD/reverse_to_a.conf"
 
 # 编辑nginx配置文件(reverse_to_a.conf)
-sed -i -E '
-  s|A_IP|'"$IP"'|g
-  s|/var/log/nginx/|'"$NGINX_LOG_DIR"'|g
-' "$reverse_conf"
+[[ $IP ]] || echo "请设置需要被反代隐藏的上游IP" >&2 && exit 1
+sed -i "s|A_IP|$IP|g" "$reverse_conf"
+[[ $NGINX_LOG_DIR ]] && sed -i "s|/log/var/nginx/|$NGINX_LOG_DIR|g" r.conf
+# sed -i -E '
+#   s|A_IP|'"$IP"'|g
+#   s|/var/log/nginx/|'"$NGINX_LOG_DIR"'|g
+# ' "$reverse_conf"
 # 查看修改后的文件
-cat "$reverse_conf"|nl
+cat "$reverse_conf" | nl
 # 重载nginx
 nginx -t && nginx -s reload
