@@ -2,7 +2,11 @@
 # 将vps配置成反向代理服务器(反代网关),基于nginx(openresty).
 # 测试系统为ubuntu,nginx版本为标准安装(或者通过仓库中的nginx_conf/upgrade-nginx-ubt.sh安装较新版本)
 #
-# bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos_vps.sh) #  -c /www/server/nginx/conf -d /www/server/panel/vhost/nginx -l /www/logs/ -i upstream_ip
+# bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos_vps.sh) #  -c /www/server/nginx/conf -d /www/server/panel/vhost/nginx -l /www/logs/ -i <upstream_ip>
+# 
+# 对于使用过本仓库的早期版本的宝塔用户,注意,如果早期的网站的/www/server/panel/vhost/nginx/目录中的网站配置
+# 包含了include com.conf的引用语句,请考虑全部移除,或者情况com.conf的内容,
+# 或者更新到最新的版本,使用此命令进行更新: bash /www/sh/nginx_conf/update_nginx_vhosts_conf.sh -m old --force
 
 VERSION="20260603.1043"
 

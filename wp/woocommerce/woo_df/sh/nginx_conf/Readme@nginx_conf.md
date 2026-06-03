@@ -52,7 +52,7 @@
    > 对于反向代理ip的服务器,请使用额外的`-R`选项,即:
    >
    > ```bash
-   > bash <(curl -SfL https://github.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh) -f -R
+   > bash <(curl -SfL https://github.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh) -F -R
    > 
    > ```
 

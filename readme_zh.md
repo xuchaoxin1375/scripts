@@ -150,9 +150,9 @@ bash <( curl -sSfL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommer
 ```bash
 
 # github
-bash <(curl -SfL https://github.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh) # -F
+bash <(curl -SfL https://github.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh) # -F -R
 # gitee
-bash <(curl -SfL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh) # -F
+bash <(curl -SfL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh) # -F 
 
 ```
 
@@ -165,7 +165,7 @@ bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/he
 
 其中 `-F`会覆盖 `nginx`的主配置文件(nginx.conf),酌情使用,如果不想覆盖,可以移除 `-F`
 
-对于反向代理ip的服务器,考虑使用额外的`-R`选项.
+对于隐藏在反向代理服务器的后端服务器,通常要使用额外的`-R`选项部署.
 
 
 

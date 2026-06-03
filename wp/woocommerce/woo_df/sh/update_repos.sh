@@ -13,6 +13,8 @@
 # 
 # 单独拉取并修复此脚本:(如果某次更新引入错误导致更新脚本不可用时,通过下面的命令恢复,注意这依赖于$sh变量,如果是第一次使用本仓库代码,$sh未定义,导致脚本尝试下载到根目录下.)
 # curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos.sh -o $HOME/update_repos.sh
+# bash $HOME/update_repos.sh
+
 #
 # 强制更新代码(放弃已有更改)
 #git fetch origin
