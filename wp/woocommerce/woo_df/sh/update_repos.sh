@@ -1,13 +1,19 @@
 #!/bin/bash
 # 适用于服务器(带有root权限),不建议用于个人电脑,个人电脑使用专用版本的更新脚本(或命令行)
+# 主要适配通过宝塔安装的nginx等服务软件.
+#
 # [本地linux环境模拟时,请切换到root用户sudo su root ]
-# 在代码已经clone的情况下,使用此脚本进行配置服务器环境
-# 此脚本也可以直接使用,如果仓库不存在,就会全新clone,否则执行仓库更新;
+# 1. 如果代码仓库尚不存在,就会全新clone;
+# 2. 在代码仓库已经clone的情况下,使用此脚本会拉取最新代码,并进行配置服务器环境.
+# 3. 处理代码克隆或更新之外,额外的操作通过选项来控制,例如是否更新nginx配置目录中的文件,以及是否覆盖主配置文件nginx.conf等操作.
 # 然后可以按照需要,统一执行服务器配置文件修改;
-
+#
+# 仅clone:
 # mkdir -p -v $HOME/repos && git clone --depth 1 https://gitee.com/xuchaoxin1375/scripts.git $HOME/repos/scripts
-# 直接更新此脚本:(如果某次更新引入错误导致更新脚本不可用时,通过下面的命令恢复)
-# curl -SL https://raw.githubusercontent.com/xuchaoxin1375/scripts/9b0c50fd8497a54fb7e9d1ce58129d3c4bd05a1a/wp/woocommerce/woo_df/sh/update_repos.sh -o $sh/update_repos.sh
+# 
+# 单独拉取并修复此脚本:(如果某次更新引入错误导致更新脚本不可用时,通过下面的命令恢复,注意这依赖于$sh变量,如果是第一次使用本仓库代码,$sh未定义,导致脚本尝试下载到根目录下.)
+# curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos.sh -o $HOME/update_repos.sh
+#
 # 强制更新代码(放弃已有更改)
 #git fetch origin
 #git reset --hard origin/main
@@ -16,7 +22,7 @@
 # 严格模式
 # set -euo pipefail #慎用,可能会因为部分错误(重载nginx失败)导致覆盖逻辑不触发,考虑将更新cf_ip的代码作为选项执行.
 
-version=20260525.1953
+version=20260603.0905
 
 echo "当前脚本版本: $version;"
 # ip=$(curl -sm 5 ipinfo.io | grep -Po '"ip": "\K[^"]*')
@@ -69,6 +75,7 @@ Options:
     -c, --update-code    更新仓库代码（clone / reset /pull）
     -g, --update-config  更新配置文件和符号链接等（覆盖/创建/重载 nginx, fail2ban 等）
     -f, --force          强制执行,需要和-g配合使用才生效（用于覆盖 nginx.conf 并跳过交互或保护性检查）
+    -F, --update-config-force  强制更新配置文件(包括覆盖nginx.conf),相当于同时启用-g,-f
     --remove-old         删除仓库,完全重新clone(务必谨慎使用,考虑手动备份或者将原来可能自定义的文件备份出来)
     -b, --branch         指定分支名称，默认为 main
     -R, --real_cdn_ip    使用非默认的客户ip解析.
@@ -96,10 +103,6 @@ parse_args() {
     # 解析脚本命令行参数
     while [ "$#" -gt 0 ]; do
         case "$1" in
-            -f | --force)
-                FORCE=1
-                shift
-                ;;
             --remove-old)
                 REMOVE_OLD=1
                 shift
@@ -114,6 +117,15 @@ parse_args() {
                 ;;
             -g | --update-config)
                 UPDATE_CONFIG=1
+                shift
+                ;;
+            -f | --force)
+                FORCE=1
+                shift
+                ;;
+            -F | --update-config-force)
+                UPDATE_CONFIG=1
+                FORCE=1
                 shift
                 ;;
             -r | --repo-source)

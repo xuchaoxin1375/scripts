@@ -49,36 +49,6 @@ cd $sh;ls -Recurse *.sh,.inputrc.conf|Convert-CRLF -Replace -To LF ;cd -
 > sudo apk add bash git
 > ```
 
-### 直接clone仓库(单纯clone)
-
-windows系统（使用powershell运行）
-
-```powershell
-# 创建仓库存放目录
-New-Item -itemtype directory C:/repos -Verbose -ErrorAction SilentlyContinue
-# 开始clone:
-git clone --recursive --depth 1 --shallow-submodules https://gitee.com/xuchaoxin1375/scripts.git C:/repos/scripts
-# 可选的设置环境变量：
-setx PsModulePath C:/repos/scripts/PS
-
-```
-
-> gitee可能要求用户登录自己的gitee账号才能clone.
-
-如果不想登录且网络环境允许,可用走github方案:将上述命令行中的`gitee`替换为`github`,当然还可以选择配置加速镜像或者代理:
-
-```powershell
-$repos = "C:/repos"
-$proxy = "http://127.0.0.1:8800" # 设置代理url;
-# 创建仓库存放目录
-New-Item -itemtype directory C:/repos -Verbose -ErrorAction SilentlyContinue
-# 开始clone:
-git -c http.proxy="$Proxy" -c https.proxy="$Proxy" clone --recursive --depth 1 --shallow-submodules https://github.com/xuchaoxin1375/scripts.git C:/repos/scripts
-# 可选的设置环境变量：
-setx PsModulePath C:/repos/scripts/PS
-
-```
-
 
 
 ## powershell
@@ -157,52 +127,51 @@ irm https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Tools/Tools.psm1|iex
 
 这里提供使用自动判断可用仓库源的一键部署版本:
 
+> 面向个人电脑和服务器的部署方式(对于服务器,此方案不会涉及服务器软件例如nginx的配置文件的部署.)
+
 ```bash
 # 如果没有部署过,则完整克隆,否则执行代码更新
 bash <( curl -sSfL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/update_shell_config.sh)
 
 ```
 
-### 分步执行
 
-```bash
-repos="$HOME/repos"
-scripts="$repos/scripts"
-sh_script_dir="$scripts/wp/woocommerce/woo_df/sh"
-repo_source="gitee.com" # 根据需要可以切换为github.com
-sh_sym="$HOME/sh" sh="$sh_sym"
-mkdir -p "$repos" 
-# clone代码
-git clone --recursive --depth 1 --shallow-submodules https://"$repo_source"/xuchaoxin1375/scripts.git "$scripts"
-# 可选的配置shell脚本库(兼容bash,zsh)
-# ! [[ -L $sh_sym ]] && 
-ln -snfv  "$sh_script_dir" "$sh_sym" 
-# 部署shell 交互方案(prompt主题和补全方案)
-bash $sh/shellrc_addition.sh
-# 进程替换,让配置生效
-exec bash
-```
 
 ### 服务器上使用
 
+适用于linux服务器的代码部署方案.
+
+服务器上的代码和个人使用的shell方案相同,但是有专用的部分,例如服务器有一些专用的服务软件(nginx,fail2ban等),仓库提供了一些常用配置.
+
 #### 一键部署
 
+标准方案:
+
 ```bash
-# 标准方案
+
 # github
-bash <(curl -SfL https://github.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh) # -f
+bash <(curl -SfL https://github.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh) # -F
 # gitee
-bash <(curl -SfL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh) # -f
+bash <(curl -SfL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh) # -F
 
 ```
 
-其中 `-f`会覆盖 `nginx`的主配置文件(nginx.conf),酌情使用,如果不想覆盖,可以移除 `-f`
+或者幂等方案:
+
+```bash
+bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos.sh)
+
+```
+
+其中 `-F`会覆盖 `nginx`的主配置文件(nginx.conf),酌情使用,如果不想覆盖,可以移除 `-F`
 
 对于反向代理ip的服务器,考虑使用额外的`-R`选项.
 
+
+
 #### 更新脚本错误修复
 
-> 如果某次更新引入错误导致更新脚本不可用时,通过下面的修复更新脚本.
+> 如果某次更新引入错误导致更新脚本不可用时,通过下面的命令恢复,注意这依赖于`$sh`变量,如果是第一次使用本仓库代码,`$sh`未定义,导致脚本尝试下载到根目录下.
 >
 > 对于服务器版本,搜索仓库中的文件名:`update_repos.sh`
 
@@ -254,6 +223,60 @@ ln -snfv $HOME/repos ~/repos
 ln -snfv $HOME/$_REPO_BASE/$_SH_RELATIVE ~/sh
 # 配置shell环境
 bash ~/sh/shellrc_addition.sh && exec bash
+```
+
+## 直接clone仓库(单纯clone)
+
+不同系统下,clone的首选路径有所不同.
+
+### windows系统（使用powershell运行）
+
+```powershell
+# 创建仓库存放目录
+New-Item -itemtype directory C:/repos -Verbose -ErrorAction SilentlyContinue
+# 开始clone:
+git clone --recursive --depth 1 --shallow-submodules https://gitee.com/xuchaoxin1375/scripts.git C:/repos/scripts
+# 可选的设置环境变量：
+setx PsModulePath C:/repos/scripts/PS
+
+```
+
+> gitee可能要求用户登录自己的gitee账号才能clone.
+
+如果不想登录且网络环境允许,可用走github方案:将上述命令行中的`gitee`替换为`github`,当然还可以选择配置加速镜像或者代理:
+
+```powershell
+$repos = "C:/repos"
+$proxy = "http://127.0.0.1:8800" # 设置代理url;
+# 创建仓库存放目录
+New-Item -itemtype directory C:/repos -Verbose -ErrorAction SilentlyContinue
+# 开始clone:
+git -c http.proxy="$Proxy" -c https.proxy="$Proxy" clone --recursive --depth 1 --shallow-submodules https://github.com/xuchaoxin1375/scripts.git C:/repos/scripts
+# 可选的设置环境变量：
+setx PsModulePath C:/repos/scripts/PS
+
+```
+
+### `*nix`系统
+
+```bash
+repos="$HOME/repos"
+scripts="$repos/scripts"
+repo_source="gitee.com" # 根据需要可以切换为github.com
+mkdir -p "$repos" 
+# clone代码
+git clone --recursive --depth 1 --shallow-submodules https://"$repo_source"/xuchaoxin1375/scripts.git "$scripts"
+
+
+# 可选的配置shell脚本库(兼容bash,zsh)
+sh_script_dir="$scripts/wp/woocommerce/woo_df/sh"
+sh_sym="$HOME/sh" sh="$sh_sym"
+# ! [[ -L $sh_sym ]] && 
+ln -snfv  "$sh_script_dir" "$sh_sym" 
+# 部署shell 交互方案(prompt主题和补全方案)
+bash $sh/shellrc_addition.sh
+# 进程替换,让配置生效
+exec bash
 ```
 
 
