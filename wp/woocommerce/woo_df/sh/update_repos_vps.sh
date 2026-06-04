@@ -87,6 +87,7 @@ bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/he
 shopt -s extglob
 NGINX_LOG_DIR="${NGINX_LOG_DIR%%+(/)}/"
 echo "检查当前日志路径取值: [$NGINX_LOG_DIR]"
+echo "指定的IP=[$IP]"
 
 # 确保相关目录存在:
 mkdir -pv "$NGINX_CONFD"
@@ -113,16 +114,20 @@ echo "将反代服务器nginx配置文件复制一份到:[$NGINX_CONFD]..."
 cp -fv "$sh"/nginx_conf/reverse_proxy/reverse_to_a.conf "$NGINX_CONFD/"
 
 reverse_conf="$NGINX_CONFD/reverse_to_a.conf"
-[[ -f $reverse_conf ]] || echo "请检查文件:[$reverse_conf]是否存在" >&2 && exit 1
-# 编辑nginx配置文件(reverse_to_a.conf)
-[[ $IP ]] || echo "请设置需要被反代隐藏的上游IP" >&2 && exit 1
-sed -i "s|A_IP|$IP|g" "$reverse_conf"
-[[ $NGINX_LOG_DIR ]] && sed -i "s|/var/log/nginx/|$NGINX_LOG_DIR|g" "$reverse_conf"
-# sed -i -E '
-#   s|A_IP|'"$IP"'|g
-#   s|/var/log/nginx/|'"$NGINX_LOG_DIR"'|g
-# ' "$reverse_conf"
-# 查看修改后的文件
-cat "$reverse_conf" | nl
+if [[ -f $reverse_conf ]]; then
+    echo "正在用sed编辑文件:[$reverse_conf]..."
+    # 编辑nginx配置文件(reverse_to_a.conf)
+    [[ $IP ]] || echo "请设置需要被反代隐藏的上游IP" >&2 && exit 1
+    sed -i "s|A_IP|$IP|g" "$reverse_conf"
+    [[ $NGINX_LOG_DIR ]] && sed -i "s|/var/log/nginx/|$NGINX_LOG_DIR|g" "$reverse_conf"
+    # sed -i -E '
+    #   s|A_IP|'"$IP"'|g
+    #   s|/var/log/nginx/|'"$NGINX_LOG_DIR"'|g
+    # ' "$reverse_conf"
+    # 查看修改后的文件
+    cat "$reverse_conf" | nl
+else
+    echo "请检查文件:[$reverse_conf]是否存在" >&2 && exit 1
+fi
 # 重载nginx
 nginx -t && nginx -s reload
