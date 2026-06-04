@@ -12,6 +12,8 @@ VERSION="20260603.1043"
 
 NGINX_CONF_HOME="/etc/nginx"
 NGINX_CONFD="$NGINX_CONF_HOME/conf.d" # nginx自动include运行的配置文件目录
+NGINX_LOG_DIR="" # /var/log/nginx 
+IP=""
 # UPDATE_CODE=false
 # 参数解析
 args_pos=()
@@ -84,6 +86,7 @@ bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/he
 # 确保NGINX_LOG_DIR末尾有且仅有一个斜杠:
 shopt -s extglob
 NGINX_LOG_DIR="${NGINX_LOG_DIR%%+(/)}/"
+echo "检查当前日志路径取值: [$NGINX_LOG_DIR]"
 
 # 确保相关目录存在:
 mkdir -pv "$NGINX_CONFD"
@@ -113,7 +116,7 @@ reverse_conf="$NGINX_CONFD/reverse_to_a.conf"
 # 编辑nginx配置文件(reverse_to_a.conf)
 [[ $IP ]] || echo "请设置需要被反代隐藏的上游IP" >&2 && exit 1
 sed -i "s|A_IP|$IP|g" "$reverse_conf"
-[[ $NGINX_LOG_DIR ]] && sed -i "s|/log/var/nginx/|$NGINX_LOG_DIR|g" r.conf
+[[ $NGINX_LOG_DIR ]] && sed -i "s|/var/log/nginx/|$NGINX_LOG_DIR|g" "$reverse_conf"
 # sed -i -E '
 #   s|A_IP|'"$IP"'|g
 #   s|/var/log/nginx/|'"$NGINX_LOG_DIR"'|g
