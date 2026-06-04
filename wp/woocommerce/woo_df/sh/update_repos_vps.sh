@@ -114,10 +114,14 @@ echo "将反代服务器nginx配置文件复制一份到:[$NGINX_CONFD]..."
 cp -fv "$sh"/nginx_conf/reverse_proxy/reverse_to_a.conf "$NGINX_CONFD/"
 
 reverse_conf="$NGINX_CONFD/reverse_to_a.conf"
-if [[ -f $reverse_conf ]]; then
+if [[ -e $reverse_conf ]]; then
     echo "正在用sed编辑文件:[$reverse_conf]..."
     # 编辑nginx配置文件(reverse_to_a.conf)
-    [[ $IP ]] || echo "请设置需要被反代隐藏的上游IP" >&2 && exit 1
+    # [[ $IP ]] || echo "请设置需要被反代隐藏的上游IP" >&2 && exit 1
+    [[ $IP ]] || {
+        echo "请设置需要被反代隐藏的上游IP" >&2
+        exit 1
+    }
     sed -i "s|A_IP|$IP|g" "$reverse_conf"
     [[ $NGINX_LOG_DIR ]] && sed -i "s|/var/log/nginx/|$NGINX_LOG_DIR|g" "$reverse_conf"
     # sed -i -E '
@@ -129,5 +133,6 @@ if [[ -f $reverse_conf ]]; then
 else
     echo "请检查文件:[$reverse_conf]是否存在" >&2 && exit 1
 fi
-# 重载nginx
+
+echo "重载nginx"
 nginx -t && nginx -s reload
