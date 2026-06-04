@@ -12,7 +12,7 @@ VERSION="20260603.1043"
 
 NGINX_CONF_HOME="/etc/nginx"
 NGINX_CONFD="$NGINX_CONF_HOME/conf.d" # nginx自动include运行的配置文件目录
-NGINX_LOG_DIR="" # /var/log/nginx 
+NGINX_LOG_DIR=""                      # /var/log/nginx
 IP=""
 # UPDATE_CODE=false
 # 参数解析
@@ -105,14 +105,15 @@ sh="$SH_SYM"
 # cf_realip.conf的更新脚本映射到/etc/nginx/conf.d/cf_realip.conf
 ln -snfv "$sh/nginx_conf/update_cf_ip_configs.sh" "$NGINX_CONF_HOME/update_cf_ip_configs.sh"
 
-# 运行一次脚本 cf_realip.conf的更新脚本
-bash "$NGINX_CONF_HOME/update_cf_ip_configs.sh"
+# 运行一次脚本 cf_realip.conf的更新脚本(不主动重载,后续一并重载)
+bash "$NGINX_CONF_HOME/update_cf_ip_configs.sh" -n
 
-# 将反代服务器nginx配置文件映射到/etc/nginx/conf.d/
+echo "将反代服务器nginx配置文件复制一份到:[$NGINX_CONFD]..."
+# 不要用ln 创建链接,因为这里的文件要自定义修改.
 cp -fv "$sh"/nginx_conf/reverse_proxy/reverse_to_a.conf "$NGINX_CONFD/"
 
 reverse_conf="$NGINX_CONFD/reverse_to_a.conf"
-
+[[ -f $reverse_conf ]] || echo "请检查文件:[$reverse_conf]是否存在" >&2 && exit 1
 # 编辑nginx配置文件(reverse_to_a.conf)
 [[ $IP ]] || echo "请设置需要被反代隐藏的上游IP" >&2 && exit 1
 sed -i "s|A_IP|$IP|g" "$reverse_conf"
