@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 将 VPS 配置成多出口 IP 反向代理服务器，基于 nginx/openresty.
-#
+# 关于此脚本的设计说明和图解,参考nginx_conf中的文档.
 # 网络架构:
 #   client -> Cloudflare -> B(reverse proxy server) -> A(origin server)
 #
