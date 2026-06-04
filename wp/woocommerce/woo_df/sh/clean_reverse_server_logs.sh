@@ -5,12 +5,12 @@ dirs=(
     /www/wwwlogs
     /var/log/nginx
 )
-
+echo "[$(date +%F-%T)]Run the cleaner routine."
 for logdir in "${dirs[@]}"; do
     [ -d "$logdir" ] &&
         find "$logdir" \
             -type f \
-            \( -name "*access.log" -o -name "*error.log" \) \
+            \( -name "*access.log" -o -name "*error.log*" \) \
             -exec truncate -s 0 {} +
 
 done
