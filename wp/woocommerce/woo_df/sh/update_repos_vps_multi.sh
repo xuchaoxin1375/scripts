@@ -33,14 +33,14 @@
 #     -m '10.0.0.12:203.0.113.12'
 #
 # 映射文件示例:
-#   cat >/root/reverse_multi_ip.maps <<'MAPS'
+#   cat > ~/reverse_multi_ip.maps <<'MAPS'
 #   # 格式: B_IP:A_IP，可带注释
 #   10.0.0.11:203.0.113.11
 #   10.0.0.12:203.0.113.12
 #   10.0.0.13 203.0.113.13
 #   MAPS
 #
-#   bash update_repos_vps_multi.sh --map-file /root/reverse_multi_ip.maps
+#   bash update_repos_vps_multi.sh --map-file ~/reverse_multi_ip.maps
 #
 # 注意:
 #   1. B_IP 必须是当前反代服务器 B 上已经配置好的本机 IP，否则 nginx listen/proxy_bind 会失败。
@@ -48,10 +48,11 @@
 #   3. 生成文件默认写入: $NGINX_CONFD/reverse_multi_ip.conf
 #   4. 脚本会复用 update_repos_vps.sh 中更新仓库和更新 Cloudflare real IP 配置的流程。
 #   5. --dev 仅用于调试输出，不进行任何写入或 reload(如果要输出到文件中查看,可以用shell的重定向功能保存到指定文件中)。
+#
 
 set -Eeuo pipefail
 
-VERSION="20260604.14:40"
+VERSION="20260604.15:40"
 
 NGINX_CONF_HOME="/etc/nginx"
 NGINX_CONFD="$NGINX_CONF_HOME/conf.d"
@@ -59,18 +60,18 @@ NGINX_LOG_DIR="/var/log/nginx/"
 
 CONF_NAME="reverse_multi_ip.conf"
 MAP_FILE=""
-
+LEGACY_CONF="reverse_to_a.conf"
 UPDATE_CODE=true
 UPDATE_CF=true
 RELOAD_NGINX=true
 DRY_RUN=false
 DEV_MODE=false
-FORCE=false
+# FORCE=false
 
 MAPPINGS=()
 
 usage() {
-    cat <<EOF
+    cat << EOF
 部署多出口 IP 反向代理服务器的 shell 脚本. [version:$VERSION]
 
 Usage:
@@ -100,7 +101,6 @@ Options:
             /etc/nginx/conf.d
             /www/server/panel/vhost/nginx
 
-    -l, --log-home <dir>
     -l, --log-dir <dir>
         nginx 日志文件家目录.
         常见值:
@@ -108,20 +108,24 @@ Options:
             /www/logs
 
     -m, --mapping <B_IP:A_IP[,B_IP:A_IP,...]>
-        从命令行指定一组或多组映射.
+        从命令行指定一组或多组映射(同一行内不同组间隔用逗号分隔).
         可以重复传入多次 -m.
 
         示例:
             -m '10.0.0.11:203.0.113.11'
             -m '10.0.0.11:203.0.113.11,10.0.0.12:203.0.113.12'
 
-    --map-file <file>
+    -f, -M, --map-file <file>
         从文件读取映射关系.
         支持格式:
             B_IP:A_IP
             B_IP A_IP
 
         支持空行和 # 注释.
+    --clean, --clean-legacy-conf 
+        尝试删除旧配置文件.(老版本脚本产生的reverse_to_a.conf);
+        也可以在重载nginx后自行删除引起错误的老文件.
+        
 
     --conf-name <name>
         生成的 nginx 配置文件名.
@@ -180,6 +184,20 @@ Examples:
       -d /www/server/panel/vhost/nginx \\
       -l /www/logs/ \\
       --map-file ~/reverse_multi_ip.maps
+    
+    #在线拉取脚本并一键部署(要求事先安装好nginx),下面的-c,-d,-l适合于宝塔安装的nginx
+    bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos_vps_multi.sh) \\
+    -c /www/server/nginx/conf \\
+    -d /www/server/panel/vhost/nginx \\
+    -l /www/wwwlogs/ \\
+    -M <(
+    echo "
+    # 一行一个映射关系,修改为真实映射组
+    B1_IP:A1_IP
+    B2_IP:A2_IP
+"
+    )\\
+    # --dev #预览
 
 映射文件示例:
     默认使用分号':' 作为分隔符,也支持空格.
@@ -194,7 +212,7 @@ EOF
 }
 
 die() {
-    echo "Error: $*" >&2
+    echo "[Error][$0]: $*" >&2
     exit 1
 }
 
@@ -219,12 +237,12 @@ is_ipv4() {
 
     local IFS=.
     local -a parts
-    read -r -a parts <<<"$ip"
+    read -r -a parts <<< "$ip"
 
     local p
     for p in "${parts[@]}"; do
         [[ "$p" =~ ^[0-9]+$ ]] || return 1
-        (( p >= 0 && p <= 255 )) || return 1
+        ((p >= 0 && p <= 255)) || return 1
     done
 }
 
@@ -283,7 +301,7 @@ add_mapping_arg() {
     local arg="$1"
     local pair=""
 
-    IFS=',' read -r -a pairs <<<"$arg"
+    IFS=',' read -r -a pairs <<< "$arg"
     for pair in "${pairs[@]}"; do
         add_mapping_pair "$pair"
     done
@@ -291,52 +309,57 @@ add_mapping_arg() {
 
 read_map_file() {
     local file="$1"
-    [[ -f "$file" ]] || die "映射文件不存在: $file"
+    # 考虑到用户可能通过进程替换<(echo ...)的方式指定,不按照普通方式检查文件存在性
+    # [[ -f "$file" ]] || die "映射文件不存在: $file"
 
     local line=""
     while IFS= read -r line || [[ -n "$line" ]]; do
         add_mapping_pair "$line"
-    done <"$file"
+    done < "$file"
 }
-
+# 命令行参数解析
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            -h|--help)
+            -h | --help)
                 usage
                 exit 0
                 ;;
 
-            -c|--nginx-conf-dir)
+            -c | --nginx-conf-dir)
                 [[ $# -ge 2 ]] || die "$1 需要参数"
                 NGINX_CONF_HOME="$2"
                 shift
                 ;;
 
-            -d|--nginx-confd-vhost)
+            -d | --nginx-confd-vhost)
                 [[ $# -ge 2 ]] || die "$1 需要参数"
                 NGINX_CONFD="$2"
                 shift
                 ;;
 
-            -l|--log-home|--log-dir)
+            -l | --log-home | --log-dir)
                 [[ $# -ge 2 ]] || die "$1 需要参数"
                 NGINX_LOG_DIR="$2"
                 shift
                 ;;
 
-            -m|--mapping)
+            -m | --mapping)
                 [[ $# -ge 2 ]] || die "$1 需要参数"
                 add_mapping_arg "$2"
                 shift
                 ;;
 
-            --map-file)
+            -f | -M | --map-file)
                 [[ $# -ge 2 ]] || die "$1 需要参数"
                 MAP_FILE="$2"
                 shift
                 ;;
+            --clean | --clean-legacy-conf)
+                LEGACY_CONF="$2"
 
+                shift
+                ;;
             --conf-name)
                 [[ $# -ge 2 ]] || die "$1 需要参数"
                 CONF_NAME="$2"
@@ -368,9 +391,9 @@ parse_args() {
                 RELOAD_NGINX=false
                 ;;
 
-            --force)
-                FORCE=true
-                ;;
+            # --force)
+            #     FORCE=true
+            #     ;;
 
             --)
                 shift
@@ -397,7 +420,7 @@ generate_nginx_conf() {
     local b_ip=""
     local a_ip=""
 
-    cat <<EOF
+    cat << EOF
 # ======================================================================
 # AUTO GENERATED FILE - DO NOT EDIT MANUALLY
 # ======================================================================
@@ -444,13 +467,13 @@ EOF
     for item in "${MAPPINGS[@]}"; do
         b_ip="${item%%:*}"
         a_ip="${item#*:}"
-        cat <<EOF
+        cat << EOF
 #   b${idx}: ${b_ip} -> a${idx}: ${a_ip}
 EOF
         idx=$((idx + 1))
     done
 
-    cat <<'EOF'
+    cat << 'EOF'
 #
 # ======================================================================
 
@@ -514,7 +537,7 @@ EOF
         b_ip="${item%%:*}"
         a_ip="${item#*:}"
 
-        cat <<EOF
+        cat << EOF
 
 # ======================================================================
 # 映射组 b${idx} -> a${idx}
@@ -623,12 +646,19 @@ EOF
 
 main() {
     parse_args "$@"
+    # 尝试清理旧配置(可能会影响到新生成的配置.)
+    local legacy_conf="$NGINX_CONFD/$LEGACY_CONF"
+    [[ -f $legacy_conf ]] && rm -fv "$legacy_conf"
 
     if [[ -n "$MAP_FILE" ]]; then
         read_map_file "$MAP_FILE"
     fi
 
-    [[ ${#MAPPINGS[@]} -gt 0 ]] || die "必须提供至少一组映射关系. 示例: -m '10.0.0.11:203.0.113.11'"
+    [[ ${#MAPPINGS[@]} -gt 0 ]] || {
+
+        usage >&2
+        die "必须提供至少一组映射关系. 示例: -m '10.0.0.11:203.0.113.11'"
+    }
 
     NGINX_LOG_DIR="$(normalize_dir_slash "$NGINX_LOG_DIR")"
 
@@ -657,7 +687,7 @@ main() {
         idx=$((idx + 1))
     done
 
-    generate_nginx_conf "$generated_at" >"$tmp_file"
+    generate_nginx_conf "$generated_at" > "$tmp_file"
 
     if [[ "$DRY_RUN" == true ]]; then
         if [[ "$DEV_MODE" == true ]]; then
