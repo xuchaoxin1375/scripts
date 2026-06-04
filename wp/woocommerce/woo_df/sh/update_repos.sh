@@ -10,10 +10,10 @@
 #
 # 仅clone:
 # mkdir -p -v $HOME/repos && git clone --depth 1 https://gitee.com/xuchaoxin1375/scripts.git $HOME/repos/scripts
-# 
+#
 # 单独拉取并修复此脚本:(如果某次更新引入错误导致更新脚本不可用时,通过下面的命令恢复,注意这依赖于$sh变量,如果是第一次使用本仓库代码,$sh未定义,导致脚本尝试下载到根目录下.)
-# curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos.sh -o $HOME/update_repos.sh
-# bash $HOME/update_repos.sh
+# curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos.sh -o $HOME/sh/update_repos.sh
+# bash $HOME/sh/update_repos.sh
 
 #
 # 强制更新代码(放弃已有更改)
@@ -37,6 +37,7 @@ log() {
 REPO_SOURCE='github' # gitee或github或gitlab (gitee可能对国外ip服务器用户限流或要求注册账号,优先使用github或gitlab)
 BRANCH="main"        # 或 "master"，根据实际情况调整
 NGINX_CONF_DIR="/www/server/nginx/conf"
+NGINX_CONFD_VHOST="/www/server/panel/vhost/nginx"
 NGINX_CONF_FILE="$NGINX_CONF_DIR/nginx.conf"
 REAL_CDN_IP="cf" # 非默认模式将被记为all
 
@@ -65,6 +66,12 @@ REMOVE_OLD=0
 FORCE=0
 UPDATE_CODE=0
 UPDATE_CONFIG=0
+# 检测当前是否是宝塔环境
+ISBT=false
+if command -v bt &> /dev/null && [[ -e /www/server/panel ]]; then
+    echo "当前用户使用宝塔..."
+    ISBT=true
+fi
 
 print_usage() {
     cat << EOF
@@ -370,6 +377,9 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
     # 移除就的符号链接
     [[ -L "$NGINX_CONF_DIR/real_cdn_ip.conf" ]] && rm -fv "$NGINX_CONF_DIR/real_cdn_ip.conf"
     copy_if_need "$SH_SYM"/nginx_conf/real_cdn_ip.conf $NGINX_CONF_DIR/real_cdn_ip.conf
+
+    # NGINX_CONFD_VHOST (将宝塔的vhost目录创建符号链接到总配置目录,便于访问和管理)
+    [[ $ISBT == true ]] && ln -snfv "$NGINX_CONFD_VHOST" $NGINX_CONF_DIR/vhosts_confd -fv
 
     # vim配置
     nvim_conf_dir="$HOME/.config/nvim"
