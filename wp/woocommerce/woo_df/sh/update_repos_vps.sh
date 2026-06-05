@@ -105,6 +105,8 @@ sh="$SH_SYM"
 
 # cf_realip.conf的更新脚本映射到/etc/nginx/conf.d/cf_realip.conf
 ln -snfv "$sh/nginx_conf/update_cf_ip_configs.sh" "$NGINX_CONF_HOME/update_cf_ip_configs.sh"
+# 这会创建/etc/nginx/log,包含nginx日志,例如# ln -snfv /var/log/nginx /etc/nginx/log
+ln -snfv "$NGINX_LOG_DIR" "$NGINX_CONF_HOME/log"
 
 # 运行一次脚本 cf_realip.conf的更新脚本(不主动重载,后续一并重载)
 bash "$NGINX_CONF_HOME/update_cf_ip_configs.sh" -n

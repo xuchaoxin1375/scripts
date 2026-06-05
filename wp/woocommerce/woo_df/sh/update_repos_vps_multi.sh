@@ -710,11 +710,13 @@ main() {
 
     mkdir -pv "$NGINX_CONFD"
     mkdir -pv "$NGINX_LOG_DIR"
+    # 这会创建/etc/nginx/log,包含nginx日志,例如# ln -snfv /var/log/nginx /etc/nginx/log
+    ln -snfv "$NGINX_LOG_DIR" "$NGINX_CONF_HOME/log"
 
     if [[ "$UPDATE_CF" == true ]]; then
         info "更新 Cloudflare real IP 配置..."
         ln -snfv "$HOME/sh/nginx_conf/update_cf_ip_configs.sh" "$NGINX_CONF_HOME/update_cf_ip_configs.sh"
-        bash "$NGINX_CONF_HOME/update_cf_ip_configs.sh" -n
+        bash "$NGINX_CONF_HOME/update_cf_ip_configs.sh" -s "$NGINX_CONFD" -n
     else
         info "跳过 Cloudflare real IP 更新 (--no-update-cf 或 --dev)"
     fi
