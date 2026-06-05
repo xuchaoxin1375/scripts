@@ -1077,10 +1077,12 @@ function Deploy-WpSitesOnline
     $serversConfig = Get-Content $ServerConfig | ConvertFrom-Json
     $servers = $serversConfig.servers
     Write-Verbose "Get Server $servers"
-    $server = $HostName
+    $server = $HostName # 例如 server1
     # server name -> server ip
-    $HostName = $servers."$HostName".ip
-    Write-Verbose "Deploy to server: $server,IP:$HostName"
+    $serverObj=$servers."$HostName"
+    $HostName = $serverObj.ip
+    $reverse = $serverObj.ip_reverse
+    Write-Verbose "Deploy to server: $server,IP:$HostName [IP reverse:$reverse]"
     # 读取cf配置文件,确定要使用的cf账号(根据cf账号和密钥设置当前cf相关环境变量)
     # $config = Get-Content $CfConfig | ConvertFrom-Json
     # $account = $config."accounts"."$CfAccount"
@@ -1095,7 +1097,7 @@ function Deploy-WpSitesOnline
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
     # START SERIAL (串行,各步骤内局部并行,如果线程过多导致api错误(429),尤其是cloudflare api,则考虑降低线程数或者减少任务中的网站域名数量,分批部署)
     # 添加域名解析到cf(第一步执行)
-    Add-CFZoneDNSRecords -AddRecordAtOnce -IP $HostName -Parallel:(!$Onebyone) -Domains $FromTable
+    Add-CFZoneDNSRecords -AddRecordAtOnce -IP $reverse -Parallel:(!$Onebyone) -Domains $FromTable
     # 从待部署域名列表更新spaceship域名的nameservers(cf添加后立即执行spaceship的nameservers更新)
     Get-CFZoneNameServersTable -FromTable $FromTable
     # 更新spaceship的nameservers(后续的CFZoneActivation依赖于此域名DNS配置)
@@ -1132,7 +1134,7 @@ function Deploy-WpSitesOnline
     } -ArgumentList $CfAccount, $CfConfig, $FromTable , $SpaceshipConfig, $ToTable , "$pys/spaceship_api/update_nameservers.py" -ThrottleLimit 5
 
     # 配置cf域名解析,邮箱转发和代理保护(位置1)
-    # Add-CFZoneConfig -Account $CfAccount -CfConfig $CfConfig -Table $FromTable -Ip $HostName
+    # Add-CFZoneConfig -Account $CfAccount -CfConfig $CfConfig -Table $FromTable -Ip $reverse
     Start-ThreadJob -Name "CFZoneConfig" -ScriptBlock {  
         param ($Account, $CfConfig, $Table, $script, $Ip)
         $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -1145,7 +1147,7 @@ function Deploy-WpSitesOnline
             -script $Script `
             -Ip $Ip
         Write-Host "[END TIME::$(Get-DateTime)]CFZoneConfig done."
-    } -ArgumentList $CfAccount, $CfConfig, $FromTable, "$pys/cf_api/cf_config_api.py", $HostName
+    } -ArgumentList $CfAccount, $CfConfig, $FromTable, "$pys/cf_api/cf_config_api.py", $reverse
     
     # 创建宝塔远程空站点创建
     # Deploy-BatchSiteBTOnline -Server $HostName -ServerConfig $ServerConfig -Table $FromTable -SitesHome $SitesHome 
