@@ -156,11 +156,15 @@ bash <(curl -SfL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce
 
 ```
 
-或者幂等方案:
+或者幂等方案更新或拉取仓库代码:
 
 ```bash
+# 仅clone代码(不做额外操作)
 bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos.sh)
 
+# 设置bash prompt样式
+bash ~/sh/shellrc_addition.sh 
+source ~/.bashrc # 激活样式
 ```
 
 其中 `-F`会覆盖 `nginx`的主配置文件(nginx.conf),酌情使用,如果不想覆盖,可以移除 `-F`
