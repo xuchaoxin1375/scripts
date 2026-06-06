@@ -1055,7 +1055,9 @@ function Deploy-WpSitesOnline
 
         # 域名绑定cf后解析cf返回的查询结果来传递给spaceship更新域名的nameservers的中间表格
         [alias('DomainTable')]$ToTable = "$Desktop/domains_nameservers.csv",
-
+        # 适用于反代的hostmap
+        [alias('HostMap')]$RoutesMap = "$Desktop/routes.map.conf",
+        $ReverseNginxConfDir = "",# 例如/etc/nginx,缺失将尝试从配置文件中获取.
         # 记录spaceship账号信息的配置文件路径
         $SpaceshipConfig = "$spaceship_config",
         # 记录cf账号和密钥信息的配置文件路径
@@ -1079,10 +1081,49 @@ function Deploy-WpSitesOnline
     Write-Verbose "Get Server $servers"
     $server = $HostName # 例如 server1
     # server name -> server ip
-    $serverObj=$servers."$HostName"
+    $serverObj = $servers."$HostName"
     $HostName = $serverObj.ip
+    # 计算反代服务器的ip(如果有的话,没有则发出警告,并设置为普通ip)
     $reverse = $serverObj.ip_reverse
+    if (!$reverse)
+    {
+        Write-Warning "No reverse server ip found,use normal ip instead!"
+        $reverse = $HostName
+    }
     Write-Verbose "Deploy to server: $server,IP:$HostName [IP reverse:$reverse]"
+    # 计算域名-ip映射表(适用于nginx反代map上下文)
+    # $hostmap=
+    $items = Get-DomainUserDictFromTableLite -Table $FromTable
+    Write-Verbose "Get domain-ip mapping table from table.conf,save result to $RoutesMap"
+    # 先清空旧文件
+    Clear-Content $RoutesMap 
+    foreach ($item in $items)
+    {
+        $line = ".$($item.domain) http://$($item.ip);"
+        $line | Tee-Object -Append -FilePath $RoutesMap 
+    }
+    Convert-CRLF -InputObject $RoutesMap -To LF -Replace
+    $vps = Get-ServerList -Vps | Where-Object { $reverse -in $_.ips }
+    # 计算远程vps的routes.maps.conf的路径
+    if ($ReverseNginxConfDir)
+    {
+        Write-Verbose "Use $ReverseNginxConfDir specified by command line parameter."
+    }
+    else
+    {
+        $reverseNginxConfDir = $vps.nginx.prefix 
+    }
+    $remoteRoutesMap = "$ReverseNginxConfDir/gateway/maps/routes.map.conf"
+    Write-Host "Adding routes map to reverse server: $reverse on path:[$remoteRoutesMap]"
+    # 将域名-ip映射表上传到远程vps(内容追加到配置文件末尾)
+    ## 使用标准收入的情况下不能使用ssh的 -n
+    # Get-Content -Raw $RoutesMap| ssh -T "$($vps.ssh.user)@$reverse"  -p $vps.ssh.port "sudo tee -a $remoteRoutesMap " 
+    ## 更可靠的方式是使用编写合适的脚本,放在服务器上,调用其脚本不冗余且安全的将map文件并入到原map中.
+    # 上传map文件
+    scp -P $vps.ssh.port $RoutesMap "$($vps.ssh.user)@${reverse}:~/routes.map.conf"
+    ssh -Tn "$($vps.ssh.user)@$reverse"  -p $vps.ssh.port "bash ~/sh/nginx_conf/merge_routes_map.sh -a $remoteRoutesMap -b "~/routes.map.conf" --add "
+    # return "debuging"
+    
     # 读取cf配置文件,确定要使用的cf账号(根据cf账号和密钥设置当前cf相关环境变量)
     # $config = Get-Content $CfConfig | ConvertFrom-Json
     # $account = $config."accounts"."$CfAccount"
@@ -1360,19 +1401,31 @@ function Get-ServerList
     param(
         [alias('Config', "ServerConfig")]$Path = "$server_config",
         # 跳过前若干个服务器(比如特殊用途的服务器),设为0表示返回全部服务器
-        $Skip = 1
+        $Skip = 1,
+        # 仅列出VPS服务器
+        [switch]$VpsOnly
     )
     $config = Get-Content $Path | ConvertFrom-Json
-    # Write-Output $config
-    $servers = $config.servers.PSObject.Properties.Value
-    # Write-Output $servers
-    if($Skip -eq 1)
+    if($VpsOnly)
     {
-        Write-Warning "Skipping the first $Skip server."
+        $vpsSet = $config.vps.vps_set.PSObject.Properties.Value
+        return $vpsSet
+    }
+    else
+    {
+
+        # Write-Output $config
+        $servers = $config.servers.PSObject.Properties.Value
+        # Write-Output $servers
+        if($Skip -eq 1)
+        {
+            Write-Warning "Skipping the first $Skip server."
+        }
     }
     return $servers[$Skip..($servers.Length - 1)]
     
 }
+
 function Update-WpAllPluginPackagesOnServers
 {
     <# 

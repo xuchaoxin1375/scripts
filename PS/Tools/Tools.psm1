@@ -513,7 +513,7 @@ function Update-SSNameServers
     # Get-CFZoneNameServersTable -FromTable $desktop/table-s2.conf
     # Update-SSNameServers -Table $desktop/domains_nameservers.csv -Verbose
     #>`
-    [CmdletBinding()]
+        [CmdletBinding()]
     param (
         $Table = "$desktop/domains_nameservers.csv",
         $Config = "$spaceship_config",
@@ -1546,25 +1546,164 @@ function Approve-NginxValidVhostsConf
     }
 
 }
+function Test-IsIPAddress
+{
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
+        [string]$IPAddress,
+
+        [Parameter(Mandatory = $false)]
+        [ValidateSet("v4", "v6", "Auto")]
+        [string]$Type = "Auto"
+    )
+
+    # 初始化一个变量用于接收解析后的 IP 对象
+    $parsedIP = $null
+
+    # 使用 .NET 的 TryParse 方法尝试解析字符串
+    if ([System.Net.IPAddress]::TryParse($IPAddress, [ref]$parsedIP))
+    {
+        
+        # 根据指定的类型进行二次判断
+        switch ($Type)
+        {
+            "v4"
+            {
+                # AddressFamily 为 InterNetwork 表示 IPv4
+                return $parsedIP.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork
+            }
+            "v6"
+            {
+                # AddressFamily 为 InterNetworkV6 表示 IPv6
+                return $parsedIP.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetworkV6
+            }
+            "Auto"
+            {
+                # 自动判断模式下，只要解析成功就返回 True
+                return $true
+            }
+        }
+    }
+
+    # 如果解析失败，直接返回 False
+    return $false
+}
 function Get-DomainUserDictFromTableLite
 {
     <# 
     .SYNOPSIS
     简单地从约定的配置文本(包含多列数据,每一列用空白字符隔开)中提取各列(字段)的数据
+    .EXAMPLE
+    文件内容假设包含如下内容
+    
+https://www.d1.com	人名	7.ca	Title1	1	4(192.168.1.1)
+https://www.example.com	人名	7.ca	title2	1	A(192.168.1.1)
+https://www.domain1.com	人名	1.fr	title3		
+https://dm2.com	 人名	1.fr			FX192.168.1.4
+https://dms3.com	 人名	3.fr			
+
+    解析结果:
+
+WARNING: 已执行域名规范化(小写化字母):[d1.com] -> [d1.com]
+
+Name                           Value
+----                           -----
+user                           人名
+domain                         d1.com
+removeMall                     False
+ip                             192.168.1.1
+template                       7.ca
+title                          Title1
+WARNING: 已执行域名规范化(小写化字母):[example.com] -> [example.com]
+user                           人名
+domain                         example.com
+removeMall                     False
+ip                             192.168.1.1
+template                       7.ca
+title                          title2
+WARNING: IP[] is empty!
+WARNING: 已执行域名规范化(小写化字母):[domain1.com] -> [domain1.com]
+user                           人名
+domain                         domain1.com
+removeMall                     False
+ip
+template                       1.fr
+title                          title3
+WARNING: 已执行域名规范化(小写化字母):[dm2.com] -> [dm2.com]
+user                           人名
+domain                         dm2.com
+removeMall                     False
+ip                             192.168.1.4
+template                       1.fr
+title
+WARNING: IP[] is empty!
+WARNING: 已执行域名规范化(小写化字母):[dms3.com] -> [dms3.com]
+user                           人名
+domain                         dms3.com
+removeMall                     False
+ip
+template                       3.fr
+title
     #>
+    [CmdletBinding()]
     param(
         # [Parameter(Mandatory = $true)]
         [Alias('Path')]$Table = "$env:USERPROFILE/Desktop/my_table.conf"
     )
     Get-Content $Table | Where-Object { $_.Trim() } | Where-Object { $_ -notmatch "^\s*#" } | ForEach-Object { 
-        $l = $_ -split '\s+'
-        $title = ($_ -split '\d+\.\w{1,5}')[-1].trim().TrimEnd('1') -replace '"', ''
+        $line = $_
+        $lineArray = $_ -split '\s+'
+        Write-Verbose "[$lineArray]" 
+        # 计算域名(网站)对应的服务器ip
+        $last = $lineArray[-1].trim()
+        $ip=""
+        if ($last)
+        {
+            if (Test-IsIPAddress $last)
+            {
+                $ip = $last
+            }
+            else
+            {
+         
+                $pattern = '(?<ip>(?:25[0-5]|2[0-4]\d|[01]?\d\d?)(?:\.(?:25[0-5]|2[0-4]\d|[01]?\d\d?)){3})'
+
+                if ($last -match $pattern)
+                {
+                    # 直接通过 .ip 或者 ['ip'] 拿到命名组的值
+                    
+                    $ip = $Matches.ip
+                }
+            
+                # 兼容 A192.168.1.1,A(192.168.1.1) 和2(192.168.1.1)
+                if(!(Test-IsIPAddress $ip))
+                {
+                    Write-Warning "IP[$ip] parsing error!" 
+                    
+                }
+                else
+                {
+                    Write-Verbose "line:[$line]" 
+                    $line = $line.TrimEnd($last)
+                }
+            }
+        }
+        else
+        {
+            Write-Warning "IP[$ip] is empty!"
+           
+        }
+        Write-Verbose "line:[$line]"
+        # 计算标题,将模板名(例如1.us)作为分隔符,通常得到两段,取第二段(最后一段);移除末尾可能存在的记号1
+        $title = ($line -split '\d+\.\w{1,5}')[-1].trim().TrimEnd('1') -replace '"', ''
         # 如果行以'\s+1'结尾,则返回$true
         $removeMall = if($_ -match '.*\s+1\s*$') { $true }else { $false }
-        @{'domain'       = ($l[0] | Get-MainDomain);
-            'user'       = $l[1];
-            'template'   = $l[2] ;
+        @{'domain'       = ($lineArray[0] | Get-MainDomain);
+            'user'       = $lineArray[1];
+            'template'   = $lineArray[2] ;
             'title'      = $title;
+            'ip'         = $ip;
             'removeMall' = $removeMall;
         } 
     }

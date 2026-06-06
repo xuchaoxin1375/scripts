@@ -32,12 +32,18 @@ Options:
     -D, --debug                   开发者模式,跳过拉取远程代码,使用本地代码,并打印调试信息
     -G, --gateway <mode>           反代模式,可选值:simple,hostmap,默认为simple
 EXAMPLES:
-$0 -c /www/server/nginx/conf -d /www/server/panel/vhost/nginx
-# 非宝塔方案(apt安装的情况)
-bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos_vps.sh) -i <upstream_ip>
+
+# 非宝塔方案(apt或标准脚本安装的情况)
+bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos_vps.sh) -i <upstream_ip> # -G hostmap 
+
 
 # 宝塔方案
 bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos_vps.sh) -c /www/server/nginx/conf -d /www/server/panel/vhost/nginx -l /www/logs/  -i <upstream_ip>
+
+# hostmap方案
+
+bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos_vps.sh) -c /www/server/nginx/conf -d /www/server/panel/vhost/nginx -l /www/logs/  -G hostmap 
+
     "
     while [[ $# -gt 0 ]]; do
         case "$1" in
