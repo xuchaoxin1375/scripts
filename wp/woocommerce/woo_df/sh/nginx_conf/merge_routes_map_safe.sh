@@ -1,11 +1,21 @@
 #!/usr/bin/env bash
-# 快速版本(牺牲部分兼容性):同步两个配置文件，将 B 的内容追加到 A 中，并清理 A 中与 B 的第一列相同的行。
+
+# ==============================================================================
+# 脚本名称: merge_routes_map.sh
+# 脚本描述:
+#   1. 安全地从 A 中清除与 B 冲突的行。
+#   2. 可选：清理完成后，将整个 B 文件追加到 A 末尾。
+#   3. 全程使用临时文件，避免同一路径在同一管道/重定向中既读又写。
+# ==============================================================================
+# shellcheck disable=SC2094
 set -euo pipefail
 
 FILE_A=""
 FILE_B=""
 DRY_RUN=false
-MODE="CLEAN" # CLEAN: 只清理 A；ADD: 清理后追加 B
+MODE="CLEAN"          # CLEAN: 纯清理, ADD: 清理后并入 B
+EXPECTED_COLS=2
+FORCE_MODE=false
 
 TMP_FILE=""
 TMP_NORM=""
@@ -16,9 +26,9 @@ GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 
-log_info() { printf '%b[INFO]%b %s\n' "$GREEN" "$RC" "$*" >&2; }
-log_warn() { printf '%b[WARN]%b %s\n' "$YELLOW" "$RC" "$*" >&2; }
-log_error() { printf '%b[ERROR]%b %s\n' "$RED" "$RC" "$*" >&2; }
+log_info()   { printf '%b[INFO]%b %s\n' "$GREEN" "$RC" "$*" >&2; }
+log_warn()   { printf '%b[WARN]%b %s\n' "$YELLOW" "$RC" "$*" >&2; }
+log_error()  { printf '%b[ERROR]%b %s\n' "$RED" "$RC" "$*" >&2; }
 log_dryrun() { printf '%b[PREVIEW]%b %s\n' "$BLUE" "$RC" "$*" >&2; }
 
 cleanup() {
@@ -35,12 +45,10 @@ usage() {
   -a FILE          指定配置文件 A
   -b FILE          指定源文件 B
   --add            清理后整体追加 B 到 A
+  --force          精确第一列模式：严格依据第一列原始文本完全匹配
+  -c, --cols NUM   指定预期的有效非注释行列数，默认为: 2
   -d, --dry        预览模式，只打印改动，不实际修改文件
   -h, --help       显示此帮助信息
-
-说明:
-  假设 A 和 B 的有效行第一列都已经是 .domain.com 格式。
-  脚本会按第一列原样匹配，删除 A 中第一列也出现在 B 中的行。
 EOF
     exit 1
 }
@@ -53,18 +61,12 @@ parse_arguments() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -a)
-                [[ $# -ge 2 ]] || {
-                    log_error "-a 缺少文件路径"
-                    exit 1
-                }
+                [[ $# -ge 2 ]] || { log_error "-a 缺少文件路径"; exit 1; }
                 FILE_A="$2"
                 shift 2
                 ;;
             -b)
-                [[ $# -ge 2 ]] || {
-                    log_error "-b 缺少文件路径"
-                    exit 1
-                }
+                [[ $# -ge 2 ]] || { log_error "-b 缺少文件路径"; exit 1; }
                 FILE_B="$2"
                 shift 2
                 ;;
@@ -72,11 +74,20 @@ parse_arguments() {
                 MODE="ADD"
                 shift
                 ;;
-            -d | --dry)
+            --force)
+                FORCE_MODE=true
+                shift
+                ;;
+            -c|--cols)
+                [[ $# -ge 2 ]] || { log_error "$1 缺少列数"; exit 1; }
+                EXPECTED_COLS="$2"
+                shift 2
+                ;;
+            -d|--dry)
                 DRY_RUN=true
                 shift
                 ;;
-            -h | --help)
+            -h|--help)
                 usage
                 ;;
             *)
@@ -100,22 +111,40 @@ parse_arguments() {
         log_error "FILE_A 和 FILE_B 指向同一个文件，拒绝执行。"
         exit 1
     fi
+
+    if ! [[ "$EXPECTED_COLS" =~ ^[1-9][0-9]*$ ]]; then
+        log_error "--cols 必须是正整数。"
+        exit 1
+    fi
 }
 
-# 只取第一列。
-# 空行、注释行返回空字符串。
-get_key() {
+process_line() {
     local line="$1"
+    local file_name="$2"
+    local line_num="$3"
 
-    case "$line" in
-        "" | [[:space:]]*) ;;
-    esac
+    if [[ "$line" =~ ^[[:space:]]*# ]] || [[ -z "${line//[[:space:]]/}" ]]; then
+        printf 'COMMENT\n'
+        return 0
+    fi
 
-    [[ "$line" =~ ^[[:space:]]*$ ]] && return 0
-    [[ "$line" =~ ^[[:space:]]*# ]] && return 0
+    local actual_cols
+    actual_cols=$(awk '{print NF; exit}' <<< "$line")
 
-    # 第一列已保证是 .domain.com，因此无需归一化。
-    printf '%s\n' "${line%%[[:space:]]*}"
+    if [[ "$actual_cols" -ne "$EXPECTED_COLS" ]]; then
+        log_warn "文件 [$file_name] 第 $line_num 行列数不符合预期，预期 $EXPECTED_COLS 列，实际 $actual_cols 列 -> 内容: '$line'"
+    fi
+
+    local first_col
+    first_col=$(awk '{print $1; exit}' <<< "$line")
+
+    if [[ "$FORCE_MODE" == true ]]; then
+        printf '%s\n' "$first_col"
+    else
+        local dm
+        dm=$(sed -E 's/^\.+//; s/.*\.([^\.]+\.[^\.]+)$/\1/' <<< "$first_col")
+        printf '%s\n' "$dm"
+    fi
 }
 
 trim_trailing_blank_lines() {
@@ -151,25 +180,25 @@ main() {
     TMP_FILE=$(mktemp "${tmp_dir%/}/.sync_safe.XXXXXX")
     TMP_NORM=$(mktemp "${tmp_dir%/}/.sync_safe_norm.XXXXXX")
 
-    chmod --reference="$FILE_A" "$TMP_FILE" 2> /dev/null || true
+    chmod --reference="$FILE_A" "$TMP_FILE" 2>/dev/null || true
 
     declare -A b_domains
 
     local line
     local line_num=0
 
-    # 读取 B，记录 B 的第一列。
     while IFS= read -r line || [[ -n "$line" ]]; do
         line_num=$((line_num + 1))
 
-        key_b=$(get_key "$line")
+        local key_b
+        key_b=$(process_line "$line" "$(basename -- "$FILE_B")" "$line_num")
 
-        if [[ -n "$key_b" ]]; then
+        if [[ -n "$key_b" && "$key_b" != "COMMENT" ]]; then
             b_domains["$key_b"]=1
         fi
     done < "$FILE_B"
 
-    log_info "步骤 1: 过滤文件 A 中与 B 第一列冲突的行..."
+    log_info "步骤 1: 过滤文件 A 中与 B 冲突的行..."
 
     local deleted_count=0
     line_num=0
@@ -177,13 +206,14 @@ main() {
     while IFS= read -r line || [[ -n "$line" ]]; do
         line_num=$((line_num + 1))
 
-        key_a=$(get_key "$line")
+        local key_a
+        key_a=$(process_line "$line" "$(basename -- "$FILE_A")" "$line_num")
 
-        if [[ -n "$key_a" && -n "${b_domains["$key_a"]+_}" ]]; then
+        if [[ -n "$key_a" && "$key_a" != "COMMENT" ]] && [[ -n "${b_domains["$key_a"]+_}" ]]; then
             deleted_count=$((deleted_count + 1))
 
             if [[ "$DRY_RUN" == true ]]; then
-                log_dryrun "【将删除】A 中第 $line_num 行 -> 第一列: [$key_a] | 内容: '$line'"
+                log_dryrun "【将删除】A 中第 $line_num 行 -> 冲突凭据: [$key_a] | 内容: '$line'"
             fi
 
             continue
@@ -198,12 +228,13 @@ main() {
         if [[ "$DRY_RUN" == true ]]; then
             log_dryrun "【整体并入】文件 B ($FILE_B) 的全部内容将追加到 A 末尾，并收紧 A 尾部空行。"
         else
+            # 关键改进：
+            # 不使用 sed -i，也不使用 `cmd "$TMP_FILE" > "$TMP_FILE"`。
+            # 先读取 TMP_FILE，写入 TMP_NORM，再用 mv 替换。
             trim_trailing_blank_lines "$TMP_FILE" "$TMP_NORM"
             mv -- "$TMP_NORM" "$TMP_FILE"
 
-            # 可选：如果你希望 A 和 B 之间一定有一个换行，可以取消下一行注释
-            # printf '\n' >> "$TMP_FILE"
-
+            # 这里只读取 FILE_B，追加写入 TMP_FILE；两者不是同一个文件。
             cat -- "$FILE_B" >> "$TMP_FILE"
         fi
     fi
