@@ -29,6 +29,8 @@ Options:
     -l, --log-home <dir>           日志文件家目录(常见目录:/var/log/nginx/,/www/server/nginx/logs)
     -i, --ip <ip>                 指定反代的上游ip(需要对外隐藏的后端服务器ip),而不是反代服务器本身的ip
     -h, --help                  显示帮助信息
+    -D, --debug                   开发者模式,跳过拉取远程代码,使用本地代码,并打印调试信息
+    -G, --gateway <mode>           反代模式,可选值:simple,hostmap,默认为simple
 EXAMPLES:
 $0 -c /www/server/nginx/conf -d /www/server/panel/vhost/nginx
 # 非宝塔方案(apt安装的情况)
@@ -102,7 +104,7 @@ fi
 shopt -s extglob
 NGINX_LOG_DIR="${NGINX_LOG_DIR%%+(/)}/"
 echo "检查当前日志路径取值: [$NGINX_LOG_DIR]"
-echo "指定的IP=[$IP]"
+# echo "指定的IP=[$IP]"
 
 # 确保相关目录存在:
 mkdir -pv "$NGINX_CONFD"
@@ -137,6 +139,7 @@ elif [[ $GATEWAY_MODE == "hostmap" ]]; then
     # cp -rfv "$sh"/nginx_conf/reverse_proxy/gateway/ "$NGINX_CONF_HOME/"
     gateway_dir_tpl="$sh"/nginx_conf/reverse_proxy/gateway
     gateway_dir="$NGINX_CONF_HOME/gateway"
+    cp -fv "$sh"/nginx_conf/reverse_proxy/gateway.conf "$NGINX_CONFD/"
     mkdir -pv "$gateway_dir"
     # 更新时覆盖的部分
     cp -rfv "$gateway_dir_tpl"/snippets "$gateway_dir/"
