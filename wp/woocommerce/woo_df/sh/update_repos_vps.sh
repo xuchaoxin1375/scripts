@@ -8,12 +8,14 @@
 # 包含了include com.conf的引用语句,请考虑全部移除,或者情况com.conf的内容,
 # 或者更新到最新的版本,使用此命令进行更新: bash /www/sh/nginx_conf/update_nginx_vhosts_conf.sh -m old --force
 
-VERSION="20260603.1043"
+VERSION="20260606.0903"
 
 NGINX_CONF_HOME="/etc/nginx"
 NGINX_CONFD="$NGINX_CONF_HOME/conf.d" # nginx自动include运行的配置文件目录
 NGINX_LOG_DIR=""                      # /var/log/nginx
 IP=""
+DEV_MODE=false      # 调试模式,不拉取远程代码,使用本地代码
+GATEWAY_MODE=simple # hostmap
 # UPDATE_CODE=false
 # 参数解析
 args_pos=()
@@ -60,6 +62,17 @@ bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/h
                 NGINX_LOG_DIR="$2"
                 shift
                 ;;
+            -D | --debug)
+                DEV_MODE=true
+                # DRY_RUN=true
+                # UPDATE_CODE=false
+                # UPDATE_CF=false
+                # RELOAD_NGINX=false
+                ;;
+            -G | --gateway)
+                GATEWAY_MODE="$2"
+                shift
+                ;;
             --)
                 shift
                 break
@@ -79,10 +92,12 @@ bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/h
 }
 parse_args "$@"
 set -- "${args_pos[@]}"
-
-# 获取仓库代码,优先尝试幂等的克隆脚本(默认从github获取,gitee适合国内服务器):
-bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos.sh)
-
+if [[ $DEV_MODE == true ]]; then
+    echo "[debug]:开发者模式,跳过拉取远程代码,使用本地代码..."
+else
+    # 获取仓库代码,优先尝试幂等的克隆脚本(默认从github获取,gitee适合国内服务器):
+    bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos.sh)
+fi
 # 确保NGINX_LOG_DIR末尾有且仅有一个斜杠:
 shopt -s extglob
 NGINX_LOG_DIR="${NGINX_LOG_DIR%%+(/)}/"
@@ -103,33 +118,50 @@ sh="$SH_SYM"
 # # clone代码
 # git clone --recursive --depth 1 --shallow-submodules https://"$repo_source"/xuchaoxin1375/scripts.git "$scripts"
 
-# cf_realip.conf的更新脚本映射到/etc/nginx/conf.d/cf_realip.conf
+# cf_realip.conf的更新脚本update_cf_ip_configs.sh映射到$NGINX_CONF_HOME
 ln -snfv "$sh/nginx_conf/update_cf_ip_configs.sh" "$NGINX_CONF_HOME/update_cf_ip_configs.sh"
-# 这会创建/etc/nginx/log,包含nginx日志,例如# ln -snfv /var/log/nginx /etc/nginx/log
+# 创建/etc/nginx/log,包含nginx日志,例如# ln -snfv /var/log/nginx /etc/nginx/log
 ln -snfv "$NGINX_LOG_DIR" "$NGINX_CONF_HOME/log"
 
 # 运行一次脚本 cf_realip.conf的更新脚本(不主动重载,后续一并重载)
-bash "$NGINX_CONF_HOME/update_cf_ip_configs.sh" -n
+# 其生成的配置将位于$NGINX_CONFD/cf_realip.conf
+bash "$NGINX_CONF_HOME/update_cf_ip_configs.sh" -s "$NGINX_CONFD" -n
 
 echo "将反代服务器nginx配置文件复制一份到:[$NGINX_CONFD]..."
 # 不要用ln 创建链接,因为这里的文件要自定义修改.
-cp -fv "$sh"/nginx_conf/reverse_proxy/reverse_to_a.conf "$NGINX_CONFD/"
+if [[ $GATEWAY_MODE == "simple" ]]; then
+    cp -fv "$sh"/nginx_conf/reverse_proxy/reverse_to_a.conf "$NGINX_CONFD/"
+    reverse_conf="$NGINX_CONFD/reverse_to_a.conf"
+elif [[ $GATEWAY_MODE == "hostmap" ]]; then
+    # 情况特殊一点,建议放到配置总目录NGINX_CONF_HOME
+    cp -rfv "$sh"/nginx_conf/reverse_proxy/gateway/ "$NGINX_CONF_HOME/"
+    reverse_conf="$NGINX_CONFD/gateway.conf"
+else
+    echo "请指定正确的GATEWAY_MODE参数." >&2
+    exit 1
+fi
 
-reverse_conf="$NGINX_CONFD/reverse_to_a.conf"
 if [[ -e $reverse_conf ]]; then
     echo "正在用sed编辑文件:[$reverse_conf]..."
     # 编辑nginx配置文件(reverse_to_a.conf)
-    # [[ $IP ]] || echo "请设置需要被反代隐藏的上游IP" >&2 && exit 1
-    [[ $IP ]] || {
-        echo "请设置需要被反代隐藏的上游IP" >&2
-        exit 1
-    }
-    sed -i "s|A_IP|$IP|g" "$reverse_conf"
+    if [[ $GATEWAY_MODE == "simple" ]]; then
+        # [[ $IP ]] || echo "请设置需要被反代隐藏的上游IP" >&2 && exit 1
+        [[ $IP ]] || {
+            echo "请设置需要被反代隐藏的上游IP" >&2
+            exit 1
+        }
+        #
+        sed -i "s|A_IP|$IP|g" "$reverse_conf"
+
+    elif [[ $GATEWAY_MODE == "hostmap" ]]; then
+
+        echo "[$GATEWAY_MODE]:采用map映射,可跳过上游IP设置"
+
+        # [[ $NGINX_LOG_DIR ]] && sed -i "s|/etc/nginx/|$NGINX_CONF_HOME|g" "$reverse_conf"
+
+    fi
+    # 公共配置
     [[ $NGINX_LOG_DIR ]] && sed -i "s|/var/log/nginx/|$NGINX_LOG_DIR|g" "$reverse_conf"
-    # sed -i -E '
-    #   s|A_IP|'"$IP"'|g
-    #   s|/var/log/nginx/|'"$NGINX_LOG_DIR"'|g
-    # ' "$reverse_conf"
     # 查看修改后的文件
     cat "$reverse_conf" | nl
 else
