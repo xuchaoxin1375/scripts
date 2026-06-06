@@ -150,11 +150,12 @@ elif [[ $GATEWAY_MODE == "hostmap" ]]; then
     # 更新时覆盖的部分
     cp -rfv "$gateway_dir_tpl"/snippets "$gateway_dir/"
     # 更新时要跳过的部分(用户自定义的映射地图)
+    echo "检查maps目录[$gateway_dir/maps]是否已存在"
     if [[ -d $gateway_dir/maps ]]; then
+        echo "检测到maps目录已存在,跳过更新"
+    else
         echo "检测到maps目录不存在,创建对于maps模板目录"
         cp -rfv "$gateway_dir_tpl/maps" "$gateway_dir/maps/"
-    else
-        echo "检测到maps目录已存在,跳过更新"
     fi
 
     reverse_conf="$NGINX_CONFD/gateway.conf"
