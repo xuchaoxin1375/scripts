@@ -134,7 +134,18 @@ if [[ $GATEWAY_MODE == "simple" ]]; then
     reverse_conf="$NGINX_CONFD/reverse_to_a.conf"
 elif [[ $GATEWAY_MODE == "hostmap" ]]; then
     # 情况特殊一点,建议放到配置总目录NGINX_CONF_HOME
-    cp -rfv "$sh"/nginx_conf/reverse_proxy/gateway/ "$NGINX_CONF_HOME/"
+    # cp -rfv "$sh"/nginx_conf/reverse_proxy/gateway/ "$NGINX_CONF_HOME/"
+    gateway_dir_tpl="$sh"/nginx_conf/reverse_proxy/gateway
+    gateway_dir="$NGINX_CONF_HOME/gateway"
+    mkdir -pv "$gateway_dir"
+    # 更新时覆盖的部分
+    cp -rfv "$gateway_dir_tpl"/snippets "$gateway_dir/"
+    # 更新时要跳过的部分(用户自定义的映射地图)
+    if [[ -d $gateway_dir/maps ]]; then
+        echo "检测到maps目录不存在,创建对于maps模板目录"
+        cp -rfv "$gateway_dir_tpl/maps" "$gateway_dir/maps/"
+    fi
+
     reverse_conf="$NGINX_CONFD/gateway.conf"
 else
     echo "请指定正确的GATEWAY_MODE参数." >&2
