@@ -36,3 +36,5 @@ cargo install --locked tree-sitter-cli
 which tree-sitter
 tree-sitter --version
 ldd "$(which tree-sitter)" | grep libc
+# 进程替换,确保环境重新加载,防止tree-sitter-cli找不到.
+exec bash
