@@ -380,7 +380,7 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
 
     # NGINX_CONFD_VHOST (将宝塔的vhost目录创建符号链接到总配置目录,便于访问和管理)
     [[ $ISBT == true ]] && ln -snfv "$NGINX_CONFD_VHOST" $NGINX_CONF_DIR/vhosts_confd -fv
-
+    [[  $ISBT == true ]] && ln -snfv "/www/wwwlogs" $NGINX_CONF_DIR -fv
     # vim配置
     nvim_conf_dir="$HOME/.config/nvim"
     [[ -d $nvim_conf_dir ]] || mkdir -p "$nvim_conf_dir"

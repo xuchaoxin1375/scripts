@@ -21,3 +21,5 @@ for logdir in "${dirs[@]}"; do
         echo "[$(date +%F-%T)] Skip missing directory: $logdir"
     fi
 done
+# 查看磁盘使用情况
+df -h # 关注/ (根目录即可)

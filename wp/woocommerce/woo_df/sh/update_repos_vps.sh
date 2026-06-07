@@ -10,9 +10,9 @@
 
 VERSION="20260606.0903"
 
-NGINX_CONF_HOME="/etc/nginx"
-NGINX_CONFD="$NGINX_CONF_HOME/conf.d" # nginx自动include运行的配置文件目录
-NGINX_LOG_DIR=""                      # /var/log/nginx
+NGINX_CONF_DIR="/etc/nginx"
+NGINX_CONFD="$NGINX_CONF_DIR/conf.d" # nginx自动include运行的配置文件目录
+NGINX_LOG_DIR="/var/log/nginx"                      # 默认值为标准安装的nginx的默认路径 /var/log/nginx
 IP=""
 DEV_MODE=false      # 调试模式,不拉取远程代码,使用本地代码
 GATEWAY_MODE=simple # hostmap
@@ -55,7 +55,7 @@ bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/h
             #     UPDATE_CODE=true
             #     ;;
             -c | --nginx-conf-dir)
-                NGINX_CONF_HOME="$2"
+                NGINX_CONF_DIR="$2"
                 shift
                 ;;
             -d | --nginx-confd-vhost)
@@ -126,14 +126,14 @@ sh="$SH_SYM"
 # # clone代码
 # git clone --recursive --depth 1 --shallow-submodules https://"$repo_source"/xuchaoxin1375/scripts.git "$scripts"
 
-# cf_realip.conf的更新脚本update_cf_ip_configs.sh映射到$NGINX_CONF_HOME
-ln -snfv "$sh/nginx_conf/update_cf_ip_configs.sh" "$NGINX_CONF_HOME/update_cf_ip_configs.sh"
+# cf_realip.conf的更新脚本update_cf_ip_configs.sh映射到$NGINX_CONF_DIR
+ln -snfv "$sh/nginx_conf/update_cf_ip_configs.sh" "$NGINX_CONF_DIR/update_cf_ip_configs.sh"
 # 创建/etc/nginx/log,包含nginx日志,例如# ln -snfv /var/log/nginx /etc/nginx/log
-ln -snfv "$NGINX_LOG_DIR" "$NGINX_CONF_HOME/log"
+ln -snfv "$NGINX_LOG_DIR" "$NGINX_CONF_DIR/log"
 
 # 运行一次脚本 cf_realip.conf的更新脚本(不主动重载,后续一并重载)
 # 其生成的配置将位于$NGINX_CONFD/cf_realip.conf
-bash "$NGINX_CONF_HOME/update_cf_ip_configs.sh" -s "$NGINX_CONFD" -n
+bash "$NGINX_CONF_DIR/update_cf_ip_configs.sh" -s "$NGINX_CONFD" -n
 
 echo "将反代服务器nginx配置文件复制一份到:[$NGINX_CONFD]..."
 # 不要用ln 创建链接,因为这里的文件要自定义修改.
@@ -141,11 +141,11 @@ if [[ $GATEWAY_MODE == "simple" ]]; then
     cp -fv "$sh"/nginx_conf/reverse_proxy/reverse_to_a.conf "$NGINX_CONFD/"
     reverse_conf="$NGINX_CONFD/reverse_to_a.conf"
 elif [[ $GATEWAY_MODE == "hostmap" ]]; then
-    # 情况特殊一点,建议放到配置总目录NGINX_CONF_HOME
+    # 情况特殊一点,建议放到配置总目录NGINX_CONF_DIR
 
-    # cp -rfv "$sh"/nginx_conf/reverse_proxy/gateway/ "$NGINX_CONF_HOME/"
+    # cp -rfv "$sh"/nginx_conf/reverse_proxy/gateway/ "$NGINX_CONF_DIR/"
     gateway_dir_tpl="$sh"/nginx_conf/reverse_proxy/gateway
-    gateway_dir="$NGINX_CONF_HOME/gateway"
+    gateway_dir="$NGINX_CONF_DIR/gateway"
     gateway_conf="$sh"/nginx_conf/reverse_proxy/gateway.conf
     echo "复制[$gateway_conf]配置文件到[$NGINX_CONFD]..."
     cp -fv "$sh"/nginx_conf/reverse_proxy/gateway.conf "$NGINX_CONFD/" || {
@@ -186,11 +186,12 @@ if [[ -e $reverse_conf ]]; then
 
         echo "[$GATEWAY_MODE]:采用map映射,可跳过上游IP设置"
 
-        # [[ $NGINX_LOG_DIR ]] && sed -i "s|/etc/nginx/|$NGINX_CONF_HOME|g" "$reverse_conf"
+        # [[ $NGINX_LOG_DIR ]] && sed -i "s|/etc/nginx/|$NGINX_CONF_DIR|g" "$reverse_conf"
 
     fi
     # 公共配置
-    [[ $NGINX_LOG_DIR ]] && sed -i "s|/var/log/nginx/|$NGINX_LOG_DIR|g" "$reverse_conf"
+    ## 如果默认路径被改动,则需要修改
+    [[ $NGINX_LOG_DIR != '/var/log/nginx/' ]] && sed -i "s|/var/log/nginx/|$NGINX_LOG_DIR|g" "$reverse_conf"
     # 查看修改后的文件
     cat "$reverse_conf" | nl
 else

@@ -41,13 +41,32 @@
 
 - [Code/server/nginx/反向代理配置实战 · xuchaoxin1375/blogs - 码云 - 开源中国](https://gitee.com/xuchaoxin1375/blogs/tree/main/Code/server/nginx/反向代理配置实战)
 
-本仓库用户,定时任务清理日志可以参考如下配置:
+本仓库用户,定时任务(crontab):
+
+- `cf_realip.conf`配置的更新.
+- 清理日志可以参考如下配置:
 
 > 配置前后都建议要验证一下,运行bash命令后是否执行了清理,可以执行`df -h`查看磁盘占用情况
 
 ```bash
+# 默认扫描常见路径下日志:/var/log/nginx,/www/wwwlogs
 0 0 * * * bash ~/sh/clean_reverse_server_logs.sh >> ~/clean_log_actions.log 2>&1
+
 ```
+
+更新`cf_realip.conf`
+
+```bash
+# 每天凌晨3点更新cf_realip.sh,并重载nginx.(路径适用于ubuntu/debian vps)
+
+# 如果是标准安装(nginx配置根目录为/etc/nginx/的情况)
+0 3 * * * bash /etc/nginx/update_cf_ip_configs.sh -s /etc/nginx/conf.d/cf-realip.conf
+
+# 如果nginx通过宝塔安装:
+0 3 * * * bash /www/server/nginx/conf/update_cf_ip_configs.sh -s /www/server/panel/vhost/nginx/cf-realip.conf
+```
+
+
 
 # 限流
 
