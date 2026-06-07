@@ -5,13 +5,47 @@
 # 建议安装后运行 :LazyHealth 命令。这将加载所有插件并检查一切是否正常运行。
 # neovim安装最新版
 # 如果有brew可用,则使用brew安装
-if command -v brew &> /dev/null; then
-    brew install neovim
-else
-    # 下载并安装到 /usr/local
+# 考虑到服务器上可能直接就是root用户,需要包装一下brew命令而不是直接用原本的brew命令
 
-    # 验证版本
-    nvim --version
+# 参数解析
+args_pos=()
+parse_args() {
+    usage="
+    安装lazevim;
+
+    "
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h | --help)
+                echo "$usage"
+                exit 0
+                ;;
+            
+            --)
+                shift
+                break 
+                ;;
+            -?*)
+                echo "Unknown option:$1" >&2 #输出错误信息到标准错误
+                echo "$usage" >&2
+                exit 2 #直接退出脚本
+                ;;
+            *)
+                args_pos+=("$1")
+                ;;
+        esac
+        shift
+    done
+    # 参数解析并调整完毕
+}
+parse_args "$@"
+set -- "${args_pos[@]}"
+
+# 检查neovim要求,如果尚未安装,则报错并退出(为了控制脚本规模,这里不内置安装neovim的代码)
+# 考虑使用专门的neovim安装脚本.
+if ! command -v nvim &> /dev/null; then
+    echo "Neovim is not installed. Please install it first."
+    exit 1
 fi
 
 # 参考文档:https://www.lazyvim.org/

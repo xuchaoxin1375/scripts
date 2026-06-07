@@ -20,6 +20,7 @@ LOCAL_BIN="$HOME/.local/bin"
 GLOBAL_OPT="/opt/nvim"
 DOWNLOAD_URL=""
 GITHUB_MIRROR="https://gh-proxy.com"
+DIRECT=0
 # --- 打印帮助信息 ---
 usage() {
 
@@ -35,6 +36,7 @@ usage() {
     --url [url]                     指定下载 URL (默认: https://github.com/neovim/neovim/releases/download/stable/nvim-linux64.tar.gz);
                                     如果手动指定链接,则会禁用--github-mirror(设置为空).
     --github-mirror [url]           如果从github下载,考虑叠加前缀,指定 GitHub 镜像 URL (默认: https://gh-proxy.com)
+    -d,--direct                     在手动安装模式下,忽略github-mirror直连github下载
     -v, --version [tag]            指定版本 (默认: stable)
     -h, --help                     显示此帮助
 EOF
@@ -57,6 +59,9 @@ while [[ "$#" -gt 0 ]]; do
             DOWNLOAD_URL="$2"
             shift
             ;;
+        -d | --direct)
+            DIRECT=1
+            ;;
         --github-mirror)
             GITHUB_MIRROR="$2"
             shift
@@ -70,6 +75,10 @@ while [[ "$#" -gt 0 ]]; do
     shift
 done
 
+# 是否忽略github 镜像
+if [[ $DIRECT -eq 1 ]]; then
+    GITHUB_MIRROR=""
+fi
 # --- 1. 环境探测 ---
 OS="$(uname -s)"
 ARCH="$(uname -m)"
@@ -78,8 +87,41 @@ echo "--- 正在检测环境: $OS ($ARCH) ---"
 # --- 2. Homebrew 安装函数 ---
 install_with_brew() {
     if command -v brew > /dev/null 2>&1; then
-        echo "检测到 Homebrew，正在执行安装..."
-        brew install neovim
+        echo "检测到 Homebrew(brew)已安装..."
+        # 判断当前用户是否是root,如果是需要定义brew命令的包装不能直接使用brew命令
+        if [ "$(id -u)" = "0" ]; then
+            echo "当前用户是root,请使用非root用户身份来运行brew命令,或者更换安装方式(使用普通方式安装)..."
+            echo "如果完整clone了本仓库并部署了shell配置(包装了可在root在运行brew的函数),也可以在导入环境后运行 brew install neovim."
+            # 根据用户输入判断继续使用brew安装
+            cat <<- EOF
+                继续使用brew安装?
+                --------------------------------------------------
+                请选择操作:
+                1) 尝试导入环境后继续使用brew安装.
+                2) 切换到mannual模式安装.
+                3) 终止执行,重新设置脚本运行参数重试.
+                --------------------------------------------------
+EOF
+            read -rp "是否继续使用brew安装(导入?(y/n): " USER_CHOICE
+            case $USER_CHOICE in
+                1)
+                    echo "尝试导入环境后继续使用brew安装..."
+                    # shellcheck disable=SC1090
+                    [[ -e ~/sh/shell_utils/brew.sh ]] && source ~/sh/shell_utils/brew.sh
+                    ;;
+                2)
+                    echo "切换到manual模式安装."
+                    install_manually
+                    ;;
+                *)
+                    echo "操作已取消，脚本退出。"
+                    exit 1
+                    ;;
+            esac
+        else
+            echo "当前用户可以直接运行brew命令..."
+            brew install neovim
+        fi
         # 为 Brew 安装的版本也创建 ~/.local/bin 的软链接
         # BREW_NVIM=$(brew --prefix neovim)/bin/nvim
         # mkdir -p "$LOCAL_BIN"
