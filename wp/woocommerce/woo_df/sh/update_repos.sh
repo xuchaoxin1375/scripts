@@ -24,7 +24,7 @@
 # 严格模式
 # set -euo pipefail #慎用,可能会因为部分错误(重载nginx失败)导致覆盖逻辑不触发,考虑将更新cf_ip的代码作为选项执行.
 
-version=20260607.15.00
+version=20260607.15.57
 
 echo "当前脚本版本: $version;"
 # ip=$(curl -sm 5 ipinfo.io | grep -Po '"ip": "\K[^"]*')
@@ -42,7 +42,6 @@ NGINX_CONF_FILE="$NGINX_CONF_DIR/nginx.conf"
 REAL_CDN_IP="cf" # 非默认模式将被记为all
 # 将sh中常用的shell函数插入到bash和zsh的配置文件中以便自动加载.
 UPDATE_SHELLRC=0
-
 # 配置变量
 SH_SYM="$HOME/sh"
 SH_WWW="/www/sh" #末尾不要加斜杠/
@@ -64,6 +63,8 @@ REMOVE_OLD=0
 
 # exit 0
 
+# 开发模式(不执行远程拉取操作)
+DEV_MODE=0
 # CLI flags
 FORCE=0
 UPDATE_CODE=0
@@ -85,10 +86,10 @@ Options:
     -r, --repo-source    指定仓库源，可以是 gitee 或 github 或 gitlab
     -c, --update-code    更新仓库代码（clone / reset /pull）
     -g, --update-config  更新配置文件和符号链接等（覆盖/创建/重载 nginx, fail2ban 等）
-    -f, --force          强制执行覆盖 nginx.conf 并跳过交互或保护性检查
-    -F, --update-config-force  强制更新配置文件(包括覆盖nginx.conf),
-                         相当于同时启用-g,-f
-    --remove-old         删除仓库,完全重新clone(务必谨慎使用,考虑手动备份或者将原来可能自定义的文件备份出来)
+    -f, -F, --update-config-force  强制更新配置文件(包括覆盖nginx.conf),
+                         
+    --rm, --remove-old         删除仓库,完全重新clone(务必谨慎使用,考虑手动备份或者将原来可能自定义的文件备份出来)
+    -D, --dev-mode       开发模式,不执行远程拉取操作.
     -b, --branch         指定分支名称，默认为 main
     -R, --real_cdn_ip    使用非默认的客户ip解析.
     -h, --help           显示本帮助信息并退出
@@ -115,7 +116,7 @@ parse_args() {
     # 解析脚本命令行参数
     while [ "$#" -gt 0 ]; do
         case "$1" in
-            --remove-old)
+            --rm | --remove-old)
                 REMOVE_OLD=1
                 shift
                 ;;
@@ -131,11 +132,8 @@ parse_args() {
                 UPDATE_CONFIG=1
                 shift
                 ;;
-            -f | --force)
-                FORCE=1
-                shift
-                ;;
-            -F | --update-config-force)
+
+            -f | -F | --update-config-force)
                 UPDATE_CONFIG=1
                 FORCE=1
                 shift
@@ -156,6 +154,10 @@ parse_args() {
             -U | --shellrc-update)
                 # log "正在更新shellrc文件..."
                 UPDATE_SHELLRC=1
+                shift
+                ;;
+            -D | --dev-mode)
+                DEV_MODE=1
                 shift
                 ;;
             -h | --help)
@@ -201,12 +203,30 @@ URL_GITLAB="https://gitlab.com/xuchaoxin1375/scripts.git"
 
 log "[INFO](update_repos.sh):repository source: [$REPO_SOURCE];from git: [$REPO_URL]" #🎈
 
-# 默认行为: 如果没有指定 -c/--update-code 或 -g/--update-config, 则默认启用更新代码
-if [ "$UPDATE_CODE" -eq 0 ] && [ "$UPDATE_CONFIG" -eq 0 ]; then
+# 默认行为:在非开发模式下, 如果没有指定 -c/--update-code 或 -g/--update-config, 则默认启用更新代码
+if [ $DEV_MODE -eq 0 ] && [ "$UPDATE_CODE" -eq 0 ] && [ "$UPDATE_CONFIG" -eq 0 ]; then
+    log "[INFO]:启用更新代码"
     UPDATE_CODE=1
 fi
+# 更新基础性配置
+## vim配置(默认覆盖掉旧vim配置文件)
+nvim_conf_dir="$HOME/.config/nvim"
+[[ -d $nvim_conf_dir ]] || mkdir -p "$nvim_conf_dir"
+ln -sfv "$SH_SYM"/vimrc.vim ~/.vimrc
+# 下面的配置要小心冲突.
+# ln -sfv "$SH_SYM"/vimrc.vim ~/.config/nvim/init.vim
+nvim_mine=~/.config/nvim/lua/mine/
+mkdir -pv $nvim_mine
+ln -sfv "$SH_SYM"/nvim_base.lua $nvim_mine/
+# 在neovim中引用配置文件
+if grep 'nvim_base' ~/.config/nvim/init.lua -q; then
+    log "已找到nvim基础配置行,已跳过插入"
+else
+    log "未找到nvim基础配置行,正在添加..."
+    echo 'require("mine.nvim_base")' >> ~/.config/nvim/init.lua
+fi
 
-# ===更新代码===
+# ===从远程仓库拉取更新代码===
 if [ "$UPDATE_CODE" -eq 1 ]; then
     # 确保父目录存在
     mkdir -p "$(dirname "$SCRIPT_ROOT")"
@@ -389,28 +409,25 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
     # NGINX_CONFD_VHOST (将宝塔的vhost目录创建符号链接到总配置目录,便于访问和管理)
     [[ $ISBT == true ]] && ln -snfv "$NGINX_CONFD_VHOST" $NGINX_CONF_DIR/vhosts_confd -fv
     [[ $ISBT == true ]] && ln -snfv "/www/wwwlogs" $NGINX_CONF_DIR -fv
-    # vim配置
-    nvim_conf_dir="$HOME/.config/nvim"
-    [[ -d $nvim_conf_dir ]] || mkdir -p "$nvim_conf_dir"
-    ln -s "$SH_SYM"/vimrc.vim ~/.vimrc -fv
-    ln -s "$SH_SYM"/vimrc.vim ~/.config/nvim/init.vim -fv
-
-    # ==nginx配置文件软链接(这里如果用二级软连接和宝塔的一些操作(比如api)可能冲突,建议使用文件覆盖或则手动覆盖)
-    # ln -s "$SH_SYM"/nginx_conf/com.conf /www/server/nginx/conf/com.conf -fv
-    # ln -s "$SH_SYM"/nginx_conf/nginx.conf /www/server/nginx/conf/nginx.conf -fv
-
-    # if [ -f /www/server/nginx/conf/com.conf ]; then
-    #     rm  /www/server/nginx/conf/com.conf -fv
-    # fi
-    # cp "$SH_SYM"/nginx_conf/com.conf /www/server/nginx/conf/com.conf -fv
-    # cp "$SH_SYM"/nginx_conf/com_limit_rate.conf /www/server/nginx/conf/com_limit_rate.conf -fv
-    # cp "$SH_SYM"/nginx_conf/com_basic.conf /www/server/nginx/conf/com_basic.conf -fv
 
     # 通配批量复制文件
     # html文件包括js挑战用到的页面
-    cp "$SH_SYM"/nginx_conf/{com_*.conf,*.html} /www/server/nginx/conf/ -fv
-    cp /www/server/nginx/conf/js_challenge_openresty_auto.html \
-        /www/server/nginx/conf/js_challenge_openresty.html -fv
+    # cp "$SH_SYM"/nginx_conf/{com_*.conf,*.html} "$NGINX_CONF_DIR" -fv
+    cp -fv "$SH_SYM"/nginx_conf/*.html "$NGINX_CONF_DIR"
+    # 绕过com_basic.conf(如果已经存在的话,这里面可能被定制话修改过,视为和nginx.conf级别需要-f覆盖)
+    com_confs=("$SH_SYM"/nginx_conf/com_*.conf)
+    for conf in "${com_confs[@]}"; do
+        _conf_name=$(basename "$conf")
+        if [[ $_conf_name == "com_basic.conf" ]] && [[ FORCE -eq 0 ]]; then
+            log "按需复制com_basic.conf文件到nginx配置目录中..."
+            copy_if_need "$conf" "$NGINX_CONF_DIR"
+        fi
+        # 其他com_*.conf文件直接覆盖
+        cp -fv "$conf" "$NGINX_CONF_DIR"
+    done
+
+    cp "$NGINX_CONF_DIR"/js_challenge_openresty_auto.html \
+        "$NGINX_CONF_DIR"/js_challenge_openresty.html -fv
 
     log "处理real_cdn_ip选项: $REAL_CDN_IP"
     if [[ "$REAL_CDN_IP" == "all" ]]; then
@@ -441,10 +458,7 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
         nginx_version=""
     fi
 
-    # cp "$SH_SYM"/nginx_conf/nginx_nginx.conf /www/server/nginx/conf/nginx.repos.conf -fv
-    # cp "$SH_SYM"/nginx_conf/nginx_openresty.conf /www/server/nginx/conf/nginx_openresty.conf -fv
-
-    # 如果启用了 --force 选项,则备份宝塔的 nginx.conf 文件 (/www/server/nginx/conf/nginx.conf)
+    # 如果启用了 --force 选项,则备份宝塔的 nginx.conf 文件 ("$NGINX_CONF_DIR"/nginx.conf)
     # 并使用 "$SH_SYM"/nginx_conf/nginx.conf 覆盖宝塔的 nginx.conf 文件
     if [ "$FORCE" -eq 1 ]; then
         # 备份当前nginx.conf
@@ -462,7 +476,7 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
         if [[ $openresty = true ]]; then
             log "检测到 openresty, 使用 openresty 配置文件"
             cp "$NGINX_CONF_TPL_OPENRESTY" $NGINX_CONF_FILE -fv
-            # 修改com_basic.conf中的# include /www/server/nginx/conf/com_js_signed.conf
+            # 修改com_basic.conf中的# include com_js_signed.conf
             sed -i.bak -E 's/#[[:space:]]*(.*com_js_signed.conf.*)/\1/g' $NGINX_CONF_DIR/com_basic.conf
         elif [[ $nginx_version = *"nginx"* ]]; then
             log "使用标准 nginx 配置文件"
