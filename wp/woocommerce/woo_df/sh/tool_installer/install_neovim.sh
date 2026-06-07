@@ -163,8 +163,8 @@ EOF
             esac
         else
             echo "当前用户可以直接运行brew命令..."
-            brew install neovim
         fi
+        brew install neovim
         # 为 Brew 安装的版本也创建 ~/.local/bin 的软链接
         # BREW_NVIM=$(brew --prefix neovim)/bin/nvim
         # mkdir -p "$LOCAL_BIN"
