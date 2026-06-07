@@ -11,8 +11,9 @@
 INSTALLER_VERSION="20260504"
 
 # --- 默认配置 ---
-MODE="auto" # 可选: auto, brew, manual
-NVIM_VERSION="stable"
+MODE="auto"               # 可选: auto, brew, manual
+NVIM_VERSION="stable"     # 最新稳定版
+REQUIRED_VERSION="0.11.2" # 如果当前版本低于此要求,则安装新版本
 # 用户级别的软件包存放位置
 LOCAL_SHARE="$HOME/.local/share/nvim-dist"
 # 用户级别的可执行文件(符号链接存放位置,方便使用短路径)
@@ -37,6 +38,7 @@ usage() {
                                     如果手动指定链接,则会禁用--github-mirror(设置为空).
     --github-mirror [url]           如果从github下载,考虑叠加前缀,指定 GitHub 镜像 URL (默认: https://gh-proxy.com)
     -d,--direct                     在手动安装模式下,忽略github-mirror直连github下载
+    --required-version [tag]        检查版本要求
     -v, --version [tag]            指定版本 (默认: stable)
     -h, --help                     显示此帮助
 EOF
@@ -66,6 +68,10 @@ while [[ "$#" -gt 0 ]]; do
             GITHUB_MIRROR="$2"
             shift
             ;;
+        --required-version)
+            REQUIRED_VERSION="$2"
+            shift
+            ;;
         -h | --help) usage ;;
         *)
             echo "未知参数: $1"
@@ -74,7 +80,35 @@ while [[ "$#" -gt 0 ]]; do
     esac
     shift
 done
+# 1. 检查 nvim 是否存在于系统 PATH 中
+if ! command -v nvim &> /dev/null; then
+    echo " Neovim 未安装！"
+fi
 
+# 2. 获取当前安装的 Neovim 版本号 (例如提取出 0.11.2 或 0.12.0)
+CURRENT_VERSION=$(nvim --version | head -n 1 | awk '{print $2}' | sed 's/^v//')
+
+# 3. 检查当前版本是否满足要求 (例如 >= 0.11.2)
+echo "当前安装的 Neovim 版本为: v$CURRENT_VERSION"
+# 比较版本号是否不低于指定版本
+# 利用 awk 将版本号按 '.' 拆分并逐位对比
+VERSION_CHECK=$(awk -v cur="$CURRENT_VERSION" -v req="$REQUIRED_VERSION" '
+    BEGIN {
+        split(cur, c, ".");
+        split(req, r, ".");
+        for (i=1; i<=3; i++) {
+            if (c[i] + 0 > r[i] + 0) { print "PASS"; exit; }
+            if (c[i] + 0 < r[i] + 0) { print "FAIL"; exit; }
+        }
+        print "PASS"; # 完全相等
+    }
+')
+
+if [ "$VERSION_CHECK" = "PASS" ]; then
+    echo "版本符合要求！(不低于 $REQUIRED_VERSION)"
+else
+    echo "版本过低！需要至少 $REQUIRED_VERSION"
+fi
 # 是否忽略github 镜像
 if [[ $DIRECT -eq 1 ]]; then
     GITHUB_MIRROR=""
@@ -102,12 +136,21 @@ install_with_brew() {
                 3) 终止执行,重新设置脚本运行参数重试.
                 --------------------------------------------------
 EOF
-            read -rp "是否继续使用brew安装(导入?(y/n): " USER_CHOICE
+            read -rp "选择操作序号: " USER_CHOICE
+            echo "用户选中了[$USER_CHOICE]"
             case $USER_CHOICE in
                 1)
                     echo "尝试导入环境后继续使用brew安装..."
                     # shellcheck disable=SC1090
-                    [[ -e ~/sh/shell_utils/brew.sh ]] && source ~/sh/shell_utils/brew.sh
+                    brew_sh=~/sh/shell_utils/brew.sh
+                    if [[ -e $brew_sh ]]; then
+                        echo "导入[$brew_sh]..."
+                        # shellcheck disable=SC1090
+                        source "$brew_sh"
+                    else
+                        echo "依赖[$brew_sh]不存在"
+                        exit 1
+                    fi
                     ;;
                 2)
                     echo "切换到manual模式安装."
@@ -126,7 +169,8 @@ EOF
         # BREW_NVIM=$(brew --prefix neovim)/bin/nvim
         # mkdir -p "$LOCAL_BIN"
         # ln -sf "$BREW_NVIM" "$LOCAL_BIN/nvim"
-        echo "已安装 Neovim！"
+
+        # echo "已安装 Neovim！"
         return 0
     else
         echo "未发现 Homebrew 。"
