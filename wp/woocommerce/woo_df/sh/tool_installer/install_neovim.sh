@@ -147,6 +147,13 @@ EOF
                         echo "导入[$brew_sh]..."
                         # shellcheck disable=SC1090
                         source "$brew_sh"
+                        if command -v brewr &> /dev/null;then
+                            echo "brewr函数已载入"
+                            # shellcheck disable=SC2262
+                            alias brew=brewr
+                        else
+                            echo "brewr不可用..."
+                        fi
                     else
                         echo "依赖[$brew_sh]不存在"
                         exit 1
