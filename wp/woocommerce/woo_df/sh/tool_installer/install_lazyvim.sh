@@ -12,7 +12,11 @@ args_pos=()
 parse_args() {
     usage="
     安装lazevim;
-
+    如果neovim尚未安装或者版本过旧,考虑运行:
+    bash ~/sh/tool_installer/install_neovim.sh
+    或在线安装脚本(选择合适的参数运行,-h可以提供帮助)
+    bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/tool_installer/install_neovim.sh) 
+    
     "
     while [[ $# -gt 0 ]]; do
         case "$1" in

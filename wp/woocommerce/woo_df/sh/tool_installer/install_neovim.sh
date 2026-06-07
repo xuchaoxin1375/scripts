@@ -150,7 +150,7 @@ EOF
                         if command -v brewr &> /dev/null;then
                             echo "brewr函数已载入"
                             # shellcheck disable=SC2262
-                            alias brew=brewr
+                            brewr install neovim
                         else
                             echo "brewr不可用..."
                         fi
@@ -170,8 +170,8 @@ EOF
             esac
         else
             echo "当前用户可以直接运行brew命令..."
+            brew install neovim
         fi
-        brew install neovim
         # 为 Brew 安装的版本也创建 ~/.local/bin 的软链接
         # BREW_NVIM=$(brew --prefix neovim)/bin/nvim
         # mkdir -p "$LOCAL_BIN"
