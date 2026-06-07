@@ -604,6 +604,7 @@ sudo timedatectl set-timezone Asia/Shanghai
 ### 修改主机名🎈
 
 ```bash
+# 务必自行修改NewHostName.
 sudo hostnamectl set-hostname "NewHostName"
 #重载日志服务(否则许多日志还是使用旧主机名,例如:/var/log/auth.log)
 systemctl restart rsyslog

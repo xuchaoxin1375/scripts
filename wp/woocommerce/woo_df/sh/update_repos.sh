@@ -24,7 +24,7 @@
 # 严格模式
 # set -euo pipefail #慎用,可能会因为部分错误(重载nginx失败)导致覆盖逻辑不触发,考虑将更新cf_ip的代码作为选项执行.
 
-version=20260603.0905
+version=20260607.15.00
 
 echo "当前脚本版本: $version;"
 # ip=$(curl -sm 5 ipinfo.io | grep -Po '"ip": "\K[^"]*')
@@ -40,6 +40,8 @@ NGINX_CONF_DIR="/www/server/nginx/conf"
 NGINX_CONFD_VHOST="/www/server/panel/vhost/nginx"
 NGINX_CONF_FILE="$NGINX_CONF_DIR/nginx.conf"
 REAL_CDN_IP="cf" # 非默认模式将被记为all
+# 将sh中常用的shell函数插入到bash和zsh的配置文件中以便自动加载.
+UPDATE_SHELLRC=0
 
 # 配置变量
 SH_SYM="$HOME/sh"
@@ -54,7 +56,7 @@ SCRIPT_ROOT_DEFAULT="$HOME/$_REPO_BASE" # 默认的仓库目录(scripts仓库总
 SCRIPT_ROOT="${SCRIPT_ROOT:-"$SCRIPT_ROOT_DEFAULT"}" # /root/repos/scripts 或 /home/user/repos/scripts,历史遗留目录为/repos/scripts
 # (服务器端)兼容历史遗留路径
 SCRIPT_ROOT_SERVER=/repos/scripts
-[[ -d $SCRIPT_ROOT_SERVER ]] && SCRIPT_ROOT=$SCRIPT_ROOT_SERVER #将被会弃用 (/repos/scripts/)
+[[ -d $SCRIPT_ROOT_SERVER ]] && SCRIPT_ROOT=$SCRIPT_ROOT_SERVER #将被弃用 (/repos/scripts/)
 
 # shell脚本目录(sh)
 SH_SCRIPT_DIR="$SCRIPT_ROOT/$_SH_RELATIVE"
@@ -83,8 +85,9 @@ Options:
     -r, --repo-source    指定仓库源，可以是 gitee 或 github 或 gitlab
     -c, --update-code    更新仓库代码（clone / reset /pull）
     -g, --update-config  更新配置文件和符号链接等（覆盖/创建/重载 nginx, fail2ban 等）
-    -f, --force          强制执行,需要和-g配合使用才生效（用于覆盖 nginx.conf 并跳过交互或保护性检查）
-    -F, --update-config-force  强制更新配置文件(包括覆盖nginx.conf),相当于同时启用-g,-f
+    -f, --force          强制执行覆盖 nginx.conf 并跳过交互或保护性检查
+    -F, --update-config-force  强制更新配置文件(包括覆盖nginx.conf),
+                         相当于同时启用-g,-f
     --remove-old         删除仓库,完全重新clone(务必谨慎使用,考虑手动备份或者将原来可能自定义的文件备份出来)
     -b, --branch         指定分支名称，默认为 main
     -R, --real_cdn_ip    使用非默认的客户ip解析.
@@ -148,6 +151,11 @@ parse_args() {
             -R | --real_cdn_ip)
                 REAL_CDN_IP="all"
                 # log "已启用使用非默认客户IP解析的选项"
+                shift
+                ;;
+            -U | --shellrc-update)
+                # log "正在更新shellrc文件..."
+                UPDATE_SHELLRC=1
                 shift
                 ;;
             -h | --help)
@@ -380,7 +388,7 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
 
     # NGINX_CONFD_VHOST (将宝塔的vhost目录创建符号链接到总配置目录,便于访问和管理)
     [[ $ISBT == true ]] && ln -snfv "$NGINX_CONFD_VHOST" $NGINX_CONF_DIR/vhosts_confd -fv
-    [[  $ISBT == true ]] && ln -snfv "/www/wwwlogs" $NGINX_CONF_DIR -fv
+    [[ $ISBT == true ]] && ln -snfv "/www/wwwlogs" $NGINX_CONF_DIR -fv
     # vim配置
     nvim_conf_dir="$HOME/.config/nvim"
     [[ -d $nvim_conf_dir ]] || mkdir -p "$nvim_conf_dir"
@@ -510,3 +518,8 @@ fi
 # 让指定目录下所有脚本文件(.sh)可执行🎈
 # shellcheck disable=SC2154
 find "$SH_SYM" -type f \( -name "*.sh" -o -name "*.bash" \) -exec chmod +x {} \;
+
+if [[ $UPDATE_SHELLRC == 1 ]]; then
+    # 向bash,zsh配置文件导入常用的shell函数,比如wp命令行等
+    bash "$SH_SYM"/shellrc_addition.sh && exec bash
+fi

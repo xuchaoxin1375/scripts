@@ -145,26 +145,19 @@ bash <( curl -sSfL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommer
 
 #### 一键部署
 
-标准方案:
 
-```bash
-
-# github
-bash <(curl -SfL https://github.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh) # -F -R
-# gitee
-bash <(curl -SfL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh) # -F 
-
-```
-
-或者幂等方案更新或拉取仓库代码:
 
 ```bash
 # 仅clone代码(不做额外操作)
-bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos.sh)
 
-# 设置bash prompt样式
-bash ~/sh/shellrc_addition.sh 
-source ~/.bashrc # 激活样式
+## github
+bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos.sh) # -F -R
+
+## gitee(国内方案)
+bash <(curl -SfL https://raw.giteeusercontent.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/update_repos.sh) # -F -R
+
+# 设置bash prompt样式(可选)
+bash ~/sh/shellrc_addition.sh && exec bash # 激活样式
 ```
 
 其中 `-F`会覆盖 `nginx`的主配置文件(nginx.conf),酌情使用,如果不想覆盖,可以移除 `-F`

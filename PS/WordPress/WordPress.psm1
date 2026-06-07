@@ -1074,6 +1074,12 @@ function Deploy-WpSitesOnline
 
     
     )
+    # 让python使用utf-8编码,防止在powershell后台作业中(由receive-job接收的)输出非英文字符乱码
+    $env:PYTHONUTF8 = 1
+    $OutputEncoding = [System.Text.Encoding]::UTF8
+    # 设置控制台输出编码为 UTF-8
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+  
     # 解析服务器配置
     $serversConfig = Get-Content $ServerConfig | ConvertFrom-Json
     $servers = $serversConfig.servers
@@ -1112,16 +1118,44 @@ function Deploy-WpSitesOnline
     {
         $reverseNginxConfDir = $vps.nginx.prefix 
     }
+
     $remoteRoutesMap = "$ReverseNginxConfDir/gateway/maps/routes.map.conf"
     Write-Host "Adding routes map to reverse server: $reverse on path:[$remoteRoutesMap]"
-    # 将域名-ip映射表上传到远程vps(内容追加到配置文件末尾)
-    ## 使用标准收入的情况下不能使用ssh的 -n
-    # Get-Content -Raw $RoutesMap| ssh -T "$($vps.ssh.user)@$reverse"  -p $vps.ssh.port "sudo tee -a $remoteRoutesMap " 
-    ## 更可靠的方式是使用编写合适的脚本,放在服务器上,调用其脚本不冗余且安全的将map文件并入到原map中.
-    # 上传map文件
-    scp -P $vps.ssh.port $RoutesMap "$($vps.ssh.user)@${reverse}:~/routes.map.conf"
-    # 将新map合并到原map中
-    ssh -Tn "$($vps.ssh.user)@$reverse"  -p $vps.ssh.port "bash ~/sh/nginx_conf/merge_routes_map.sh -a $remoteRoutesMap -b ~/routes.map.conf --add ;tail  $remoteRoutesMap |nl; nginx -t && nginx -s reload "
+    # 删除所有会话前面可能残留的job
+    Get-Job | Remove-Job -Verbose
+
+    # 后台运行vps 的routes.map.conf更新合并任务.
+    Start-ThreadJob -Name "UpdateRoutesMap" -ScriptBlock {
+        param(
+            $vps,
+            $reverse,
+            $RoutesMap,
+            $remoteRoutesMap
+        )
+        # 将域名-ip映射表上传到远程vps(内容追加到配置文件末尾)
+        ## 使用标准收入的情况下不能使用ssh的 -n
+        # Get-Content -Raw $RoutesMap| ssh -T "$($vps.ssh.user)@$reverse"  -p $vps.ssh.port "sudo tee -a $remoteRoutesMap " 
+        ## 更可靠的方式是使用编写合适的脚本,放在服务器上,调用其脚本不冗余且安全的将map文件并入到原map中.
+        $vpsUser = $vps.ssh.user
+        $vpsPort = $vps.ssh.port
+        # 上传map文件
+        scp -P $vpsPort $RoutesMap "$vpsUser@${reverse}:~/routes.map.conf"
+        if ($LASTEXITCODE -ne 0)
+        {
+            Write-Warning "[UpdateRoutesMap] SCP 传输文件失败！退出码: $LASTEXITCODE。将跳过后续的 Nginx 配置合并。"
+            # return # 结束当前任务，不再执行后面的 ssh
+        }
+        # 将新map合并到原map中
+        ssh -Tn "$vpsUser@${reverse}" -p $vpsPort (@"
+    bash ~/sh/nginx_conf/merge_routes_map.sh -a $remoteRoutesMap -b ~/routes.map.conf --add ;
+    tail  $remoteRoutesMap |nl; 
+    nginx -t && nginx -s reload 
+"@| Convert-CRLF -To LF
+
+        )
+
+    } -ArgumentList $vps, $reverse, $RoutesMap, $remoteRoutesMap
+
     # return "debuging"
 
     # 读取cf配置文件,确定要使用的cf账号(根据cf账号和密钥设置当前cf相关环境变量)
@@ -1130,12 +1164,8 @@ function Deploy-WpSitesOnline
     # Set-CFCredentials -ApiKey $account.cf_api_key -ApiEmail $account.cf_api_email
     Set-CFCredentials -CfConfig $CfConfig -Account $CfAccount
     Get-ChildItem env:cf*
-    Get-Job | Remove-Job -Verbose
-    # 让python使用utf-8编码,防止在powershell后台作业中(由receive-job接收的)输出非英文字符乱码
-    $env:PYTHONUTF8 = 1
-    $OutputEncoding = [System.Text.Encoding]::UTF8
-    # 设置控制台输出编码为 UTF-8
-    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+
     # START SERIAL (串行,各步骤内局部并行,如果线程过多导致api错误(429),尤其是cloudflare api,则考虑降低线程数或者减少任务中的网站域名数量,分批部署)
     # 添加域名解析到cf(第一步执行)
     Add-CFZoneDNSRecords -AddRecordAtOnce -IP $reverse -Parallel:(!$Onebyone) -Domains $FromTable
@@ -1207,7 +1237,7 @@ function Deploy-WpSitesOnline
     # Push-ByScp -Server $HostName -Path $FromTable -Destination $RemoteSiteTable
    
 
-    Write-Host "等待后台作业完成..."
+    Write-Host "等待所有后台作业完成..."
     $jobs = Get-Job
     # 等待1~2秒在查看作业启动状态,看看各个任务的启动情况(这不会阻塞后台job的运行,可以放心等待)
     Start-Sleep 2

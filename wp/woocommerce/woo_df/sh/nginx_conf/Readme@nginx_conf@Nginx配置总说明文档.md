@@ -35,7 +35,7 @@
 - 安装nginx或openresty,前者最简单,可以考虑包管理器直接安装,或者通过脚本安装最新版本的nginx,如果用宝塔也可以考虑宝塔安装,但是安装速度慢.
   - 通过标准安装(系统包管理器或脚本安装)的默认配置路径是`/etc/nginx`,日志`/var/log/nginx`,其他情况自行修改部署脚本相关路径参数(如果要手动配置也要确保路径对应实际情况.)
 
-### 相关文档:
+### 相关文档
 
 包含各种情况下反代的部署脚本和日志清理定时任务说明
 
@@ -104,34 +104,20 @@
    ```bash
    # 标准方案
    # github
-   bash <(curl -SfL https://github.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh) -f
-   
+   bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos.sh) -F -R -U
    # gitee
-   bash <(curl -SfL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh) -f
+   bash <(curl -SfL https://raw.giteeusercontent.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/update_repos.sh)  -F -R -U
    
    ```
-
-   > 其中 `-f`会覆盖 `nginx`的主配置文件(nginx.conf),酌情使用,如果不想覆盖,可以移除 `-f`
+   
+   > 其中 `-F`(相当于`-g -f`),会覆盖 `nginx`的主配置文件(nginx.conf),酌情使用,如果不想覆盖,可以移除 `-F`
    >
-   > 对于反向代理ip的服务器,请使用额外的`-R`选项,即:
+   > 对于反向代理ip的服务器,请使用额外的`-R`选项.如果服务器本身IP适合直接暴露(比如对cdn可见),则可以考虑移除`-R`
    >
-   > ```bash
-   > bash <(curl -SfL https://github.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh) -F -R
-   > 
-   > ```
-
-   或者分步操作,更安全
-
-   ```bash
-   curl -L -o deploy_srv.sh https://github.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh;
-   # 建议先 cat setup.sh 看看里面写了啥
-   cat deploy_srv.sh -n;
-   # 确认没有问题可以执行脚本了
-   bash deploy_srv.sh -h;
-   ```
-
-   上述步骤顺利执行的情况下只是完成一部分,限流并不会生效,知道vhosts配置更新.(对于服务器迁移的情况,需要尤为注意)
-
+   > `-U`会向你的shell(bash和zsh)的配置文件插入一些易用的环境变量,别名和shell函数,并更改bash的prompt样式,相较于默认样式更美观.如果不需要这部分功能,可以考虑移除`-U`.
+   
+   上述步骤顺利执行的情况下只是完成一部分,限流并不会生效,直到vhosts配置更新.(对于服务器迁移的情况,需要尤为注意).
+   
 3. 创建/覆盖配置目录
 
    - 运行 `bash /update_repos.sh -g -f` 这个命令会处理:

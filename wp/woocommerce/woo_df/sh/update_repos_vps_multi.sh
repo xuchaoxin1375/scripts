@@ -703,7 +703,7 @@ main() {
 
     if [[ "$UPDATE_CODE" == true ]]; then
         info "获取/更新仓库代码..."
-        bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos.sh)
+        bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos.sh) -U
     else
         info "跳过仓库更新 (--no-update-code 或 --dev)"
     fi
