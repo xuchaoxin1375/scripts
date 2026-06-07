@@ -71,7 +71,7 @@ done
 echo -e "\n${CYAN}[5. 网络与 IP 配置]${NC}"
 # 获取内网 IP（排除 loopback 和 docker 等虚拟网卡）
 INTERNAL_IPS=$(ip -o -4 addr show | awk '{print $2, $4}' | grep -vE 'lo|docker|veth|br-' | awk '{print $2}' | cut -d/ -f1)
-echo -e "局域网 IP:"
+echo -e "可用IP:"
 for ip in $INTERNAL_IPS; do
     echo -e "             - ${GREEN}$ip${NC}"
 done
