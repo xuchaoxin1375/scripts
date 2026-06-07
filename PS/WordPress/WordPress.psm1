@@ -1064,7 +1064,6 @@ function Deploy-WpSitesOnline
         $CfConfig = "$cf_config",
         # 记录服务器账号信息的配置文件路径
         $ServerConfig = "$server_config",
-
         # 基础等待时间(秒),默认0秒
         $WaitTimeBasic = 0,
         # 最大重试次数,默认20
@@ -1121,7 +1120,8 @@ function Deploy-WpSitesOnline
     ## 更可靠的方式是使用编写合适的脚本,放在服务器上,调用其脚本不冗余且安全的将map文件并入到原map中.
     # 上传map文件
     scp -P $vps.ssh.port $RoutesMap "$($vps.ssh.user)@${reverse}:~/routes.map.conf"
-    ssh -Tn "$($vps.ssh.user)@$reverse"  -p $vps.ssh.port "bash ~/sh/nginx_conf/merge_routes_map.sh -a $remoteRoutesMap -b ~/routes.map.conf --add ; nginx -t && nginx -s reload "
+    # 将新map合并到原map中
+    ssh -Tn "$($vps.ssh.user)@$reverse"  -p $vps.ssh.port "bash ~/sh/nginx_conf/merge_routes_map.sh -a $remoteRoutesMap -b ~/routes.map.conf --add ;tail  $remoteRoutesMap |nl; nginx -t && nginx -s reload "
     # return "debuging"
 
     # 读取cf配置文件,确定要使用的cf账号(根据cf账号和密钥设置当前cf相关环境变量)

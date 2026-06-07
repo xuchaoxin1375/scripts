@@ -7,10 +7,17 @@ dirs=(
 )
 echo "[$(date +%F-%T)]Run the cleaner routine."
 for logdir in "${dirs[@]}"; do
-    [ -d "$logdir" ] &&
+    if [ -d "$logdir" ]; then
         find "$logdir" \
             -type f \
             \( -name "*access.log*" -o -name "*error.log*" \) \
-            -exec truncate -s 0 {} +
-
+            -exec sh -c '
+                for file do
+                    echo "[$(date +%F-%T)] Truncating: $file"
+                    truncate -s 0 "$file"
+                done
+            ' sh {} +
+    else
+        echo "[$(date +%F-%T)] Skip missing directory: $logdir"
+    fi
 done

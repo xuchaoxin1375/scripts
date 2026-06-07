@@ -1657,7 +1657,7 @@ title
         Write-Verbose "[$lineArray]" 
         # 计算域名(网站)对应的服务器ip
         $last = $lineArray[-1].trim()
-        $ip=""
+        $ip = ""
         if ($last)
         {
             if (Test-IsIPAddress $last)
@@ -1708,7 +1708,25 @@ title
         } 
     }
 }
+function Get-DomainRoutesMaps
+{
+    param(
+        [Alias('Table')]$FromTable = "$Desktop/table.conf",
+        [Parameter(Mandatory = $true)]
+        [Alias('Output')]$RoutesMap
+    )
 
+    $items = Get-DomainUserDictFromTableLite -Table $FromTable
+    Write-Verbose "Get domain-ip mapping table from table.conf,save result to $RoutesMap"
+    # 先清空旧文件
+    Clear-Content $RoutesMap 
+    foreach ($item in $items)
+    {
+        $line = ".$($item.domain) http://$($item.ip);"
+        $line | Tee-Object -Append -FilePath $RoutesMap 
+    }
+    Convert-CRLF -InputObject $RoutesMap -To LF -Replace
+}
 function Rename-FileName
 {
     [CmdletBinding()]
