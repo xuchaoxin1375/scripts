@@ -197,9 +197,11 @@ omz_installer() {
     fi
     # 开始安装(如果需要的话)
     # 根据 Oh My Zsh 官方仓库 README 和 官方 tools/install.sh 安装脚本源码,下面到环境变量设置可以减少交互.
-    RUNZSH=no
-    CHSH=yes
-    OVERWRITE_CONFIRMATION='no'
+    export CHSH=yes
+    export RUNZSH=no
+    export KEEP_ZSHRC=no
+    export OVERWRITE_CONFIRMATION=no
+
     echo "Environment variable about omz install:RUNZSH=$RUNZSH; CHSH=$CHSH;OVERWRITE_CONFIRMATION=$OVERWRITE_CONFIRMATION"
     if [[ $install_omz == default ]]; then
         sh -c "$(curl -fsSL https://install.ohmyz.sh/)"
