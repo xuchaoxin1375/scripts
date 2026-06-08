@@ -31,7 +31,10 @@ STRICT_MODE="false"
 UPLOADER="uploader" # 默认uploader,成员通过(sftp等)上传到指定目录所用的专用用户名
 UPLOADER_DIR="/srv/uploads/uploader"
 PACK_ROOT="$UPLOADER_DIR/files" # 仅存放人员名目录
+
 STATUS_TAG_DIR="$UPLOADER_DIR/status_tags" # 存放部署状态标记文件的目录(简单起见,将所有标记文件放到统一的目录中,而不分散存放)
+ENABLE_TAG=false                           # 是否启用部署状态标记
+
 mkdir -pv "$STATUS_TAG_DIR"
 REMOVE_AFTER_DEPLOY=false # 是否在部署完成后删除压缩包文件(默认false,按需归档),如果是迁移场景,在服务器空间有限的情况下启用此选项.
 
@@ -137,13 +140,14 @@ show_help() {
           --db-port PORT             设置数据库端口 (默认:$DB_PORT)
 
         站点配置:
-          -u, -U, --user-dir DIR     指定用户目录（可多次使用以处理多个用户）
-          -n, --domain-name NAME     设置网站域名
-          -N, --update-domain-name NAME  更新已上传包网站的域名
-          -W, --site-root-name NAME  设置站点根目录名称 (默认:$SITE_ROOT_NAME)
-          --uploader USER            设置 uploader 用户名 (默认:$UPLOADER)
-          --tag-dir                  存放状态标记文件的目录:对于即时部署模式
+        -u, -U, --user-dir DIR     指定用户目录（可多次使用以处理多个用户）
+        -n, --domain-name NAME     设置网站域名
+        -N, --update-domain-name NAME  更新已上传包网站的域名
+        -W, --site-root-name NAME  设置站点根目录名称 (默认:$SITE_ROOT_NAME)
+        --uploader USER            设置 uploader 用户名 (默认:$UPLOADER)
+        --tag-dir                  存放状态标记文件的目录:对于即时部署模式
                                     (解压部署一个站后立即删除对应的包文件组),为了记住是否已经部署过的状态,使用标记文件提供判断支持.
+        --enable-tag            是否启用状态标记功能(保存标记到tag-dir)
 
         插件配置:
           -m, --plugin-install-mode MODE  插件安装模式：symlink(符号链接) 或 copy(复制) (默认:$PLUGIN_INSTALL_MODE)
@@ -306,6 +310,9 @@ parse_args() {
             --tag-dir)
                 STATUS_TAG_DIR="$2"
                 shift
+                ;;
+            --enable-tag)
+                ENABLE_TAG=true
                 ;;
             --fast)
                 FAST="true"
@@ -867,15 +874,16 @@ deploy_site() {
     # 计算可能需要更正的最终的网站域名和数据库名(如果需要网站更名,不要直接覆盖domain_name,而是另起一个新名,因为后续原名要被多词使用!)
     local final_domain_name="${UPDATE_DOMAIN_NAME:-${domain_name}}"
     local db_name="${user_name}_${final_domain_name}"
+    if [[ $ENABLE_TAG ]]; then
 
-    local tag_file
-    tag_file="$STATUS_TAG_DIR/$final_domain_name"
-    log "[TagFile]检查$tag_file文件是否要跳过网站部署"
-    if [[ -f $tag_file ]]; then
-        log "存在部署状态标记文件[$tag_file],说明已经部署过了,跳过部署.如果需要重新部署,请删除此标记文件后再尝试..."
-        return 0
+        local tag_file
+        tag_file="$STATUS_TAG_DIR/$final_domain_name"
+        log "[TagFile]检查$tag_file文件是否要跳过网站部署"
+        if [[ -f $tag_file ]]; then
+            log "存在部署状态标记文件[$tag_file],说明已经部署过了,跳过部署.如果需要重新部署,请删除此标记文件后再尝试..."
+            return 0
+        fi
     fi
-
     log "[$task_note][$domain_name]📦 正在处理网站:  ============"
 
     # 检查关于domain_name网站的压缩包组
@@ -1119,13 +1127,15 @@ WHERE option_name IN ('home', 'siteurl');
         # mv "$archive_file" "$DEPLOYED_DIR" -f
     fi
     # 按需创建部署状态标记文件:
-    if [[ -d $STATUS_TAG_DIR ]]; then
-        local tag_file="$STATUS_TAG_DIR/${domain_name}"
-        if touch "$tag_file"; then
-            log "创建部署状态标记文件: $tag_file"
+    if [[ $ENABLE_TAG ]]; then
+        if [[ -d $STATUS_TAG_DIR ]]; then
+            local tag_file="$STATUS_TAG_DIR/${domain_name}"
+            if touch "$tag_file"; then
+                log "创建部署状态标记文件: $tag_file"
+            fi
+        else
+            log "[TagFile]部署状态标记目录不存在: $STATUS_TAG_DIR,无法创建部署状态标记文件"
         fi
-    else
-        log "[TagFile]部署状态标记目录不存在: $STATUS_TAG_DIR,无法创建部署状态标记文件"
     fi
 
     log "[$task_note][$domain_name]✅ 完成站点部署( 检查/访问: https://www.$final_domain_name )=============="

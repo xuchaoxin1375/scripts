@@ -754,7 +754,7 @@ sudo systemctl restart ssh # sshd
 ```bash
 # 需要针对每个服务修改的部分
 
-# 修改2个地方: -b参数为备份服务器(ip); -d参数指定要备份服务上的目录,主要是"server?"为对应的目录(比如server1,server2,...)
+# 修改位置: -b参数为备份服务器(ip); -d参数指定要备份服务上的目录,主要是"username?"(xcx),"server?"为对应的目录(比如server1,server2,...)
 30 22 * * * bash /www/sh/backup_sites/backup_site_pkgs.sh -s /srv/uploads/uploader/files -b <backupIp> -d /www/wwwroot/username?/server? #修改"username?","server?"值为具体情况(务必要配置好免密登录!配置完手动运行此行检查连通性)
 
 # 不同服务器管理员要维护自己的网站结构修改自己的定时部署/解压脚本,文件名可能形如deploy_wp_schd_s1.sh
