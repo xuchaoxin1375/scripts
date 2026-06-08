@@ -737,11 +737,11 @@ EOF
     # 安装linuxbrew时使用的用户(优先考虑当前用户安装,如果不是root的话)
 
     # 检查当前用户是否为root
-    if [ "$(id -u)" -ne 0 ]; then
-        echo "请使用root用户执行此脚本"
+    if [ "$(id -u)" -eq 0 ]; then
+        echo "当前是root用户执行此脚本."
         local username="${1:-linuxbrew}"
     else
-        # 为当前用户安装
+        echo "为当前用户(非root)安装brew."
         local username="${1:-$(whoami)}"
     fi
 
