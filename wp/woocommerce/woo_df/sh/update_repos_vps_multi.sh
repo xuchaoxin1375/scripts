@@ -49,10 +49,14 @@
 #   4. 脚本会复用 update_repos_vps.sh 中更新仓库和更新 Cloudflare real IP 配置的流程。
 #   5. --dev 仅用于调试输出，不进行任何写入或 reload(如果要输出到文件中查看,可以用shell的重定向功能保存到指定文件中)。
 #
+# 一键部署反代服务器的命令行请参考`-h`,`--help`的输出或者文档(这里就不重复定义)
+
+
+
 
 set -Eeuo pipefail
 
-VERSION="20260604.15:40"
+VERSION="20260608.15:40"
 
 NGINX_CONF_HOME="/etc/nginx"
 NGINX_CONFD="$NGINX_CONF_HOME/conf.d"
@@ -185,7 +189,15 @@ Examples:
       -l /www/logs/ \\
       --map-file ~/reverse_multi_ip.maps
     
-    #在线拉取脚本并一键部署(要求事先安装好nginx),下面的-c,-d,-l适合于宝塔安装的nginx
+    # 在线拉取脚本并一键部署(要求事先安装好nginx)
+    
+    ## 标准包管理器或官方nginx标准安装:
+bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos_vps_multi.sh) \
+  -m 'B1_IP:A1_IP' \
+  -m 'B2_IP:A2_IP' 
+
+
+    ## 宝塔方案:下面的-c,-d,-l适合于宝塔安装的nginx
     bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos_vps_multi.sh) \\
     -c /www/server/nginx/conf \\
     -d /www/server/panel/vhost/nginx \\
