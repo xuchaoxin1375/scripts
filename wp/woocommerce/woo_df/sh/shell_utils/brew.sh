@@ -733,7 +733,18 @@ requirements:
 EOF
     )
     # 参数解析
-    local username="${1:-linuxbrew}" # 安装linuxbrew时使用的用户
+
+    # 安装linuxbrew时使用的用户(优先考虑当前用户安装,如果不是root的话)
+
+    # 检查当前用户是否为root
+    if [ "$(id -u)" -ne 0 ]; then
+        echo "请使用root用户执行此脚本"
+        local username="${1:-linuxbrew}"
+    else
+        # 为当前用户安装
+        local username="${1:-$(whoami)}"
+    fi
+
     local args_pos=()
     while [[ $# -gt 0 ]]; do
         case "$1" in
