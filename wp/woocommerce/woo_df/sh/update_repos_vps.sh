@@ -109,7 +109,7 @@ if [[ $DEV_MODE == true ]]; then
     echo "[debug]:开发者模式,跳过拉取远程代码,使用本地代码..."
 else
     # 获取仓库代码,优先尝试幂等的克隆脚本(默认从github获取,gitee适合国内服务器):
-    bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos.sh) -U
+    bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos.sh) # -U
 fi
 # 确保NGINX_LOG_DIR末尾有且仅有一个斜杠:
 shopt -s extglob
