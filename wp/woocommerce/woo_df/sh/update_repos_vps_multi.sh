@@ -51,9 +51,6 @@
 #
 # 一键部署反代服务器的命令行请参考`-h`,`--help`的输出或者文档(这里就不重复定义)
 
-
-
-
 set -Eeuo pipefail
 
 VERSION="20260608.15:40"
@@ -61,7 +58,7 @@ VERSION="20260608.15:40"
 NGINX_CONF_HOME="/etc/nginx"
 NGINX_CONFD="$NGINX_CONF_HOME/conf.d"
 NGINX_LOG_DIR="/var/log/nginx/"
-
+# 生成的配置文件名
 CONF_NAME="reverse_multi_ip.conf"
 MAP_FILE=""
 LEGACY_CONF="reverse_to_a.conf"
@@ -732,10 +729,16 @@ main() {
     else
         info "跳过 Cloudflare real IP 更新 (--no-update-cf 或 --dev)"
     fi
-
-    info "写入 nginx 配置文件: $conf_file"
-    install -m 0644 "$tmp_file" "$conf_file"
-    rm -f "$tmp_file"
+    info "检查配置文件$tmp_file路径是否存在..."
+    if [[ ! -f "$tmp_file" ]]; then
+        error "配置文件$tmp_file !"
+        exit 1
+    else
+        info "配置文件$tmp_file 存在!"
+    fi
+    info "[install]写入 nginx 配置文件: $conf_file"
+    install -m 0644 "$tmp_file" "$conf_file" -v # verbose
+    rm -fv "$tmp_file"
 
     info "展示生成后的配置文件:"
     nl -ba "$conf_file"
