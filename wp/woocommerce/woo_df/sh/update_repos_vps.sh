@@ -12,10 +12,14 @@ VERSION="20260606.0903"
 
 NGINX_CONF_DIR="/etc/nginx"
 NGINX_CONFD="$NGINX_CONF_DIR/conf.d" # nginx自动include运行的配置文件目录
-NGINX_LOG_DIR="/var/log/nginx"                      # 默认值为标准安装的nginx的默认路径 /var/log/nginx
+NGINX_LOG_DIR="/var/log/nginx"       # 默认值为标准安装的nginx的默认路径 /var/log/nginx
 IP=""
 DEV_MODE=false      # 调试模式,不拉取远程代码,使用本地代码
 GATEWAY_MODE=simple # hostmap
+
+# 调整nginx map hash size参数组到较大值,建议标准安装nginx的用户启用此参数,宝塔用户可能会有冲突,默认不启用
+EXTEND_MAP_HASH_SIZE=false
+
 # UPDATE_CODE=false
 # 参数解析
 args_pos=()
@@ -30,6 +34,7 @@ Options:
     -i, --ip <ip>                 指定反代的上游ip(需要对外隐藏的后端服务器ip),而不是反代服务器本身的ip
     -h, --help                  显示帮助信息
     -D, --debug                   开发者模式,跳过拉取远程代码,使用本地代码,并打印调试信息
+    -E, --extend-map-hash-size   调整map_hash_*size参数组到一个较大的值(如果需要更大,自行编辑gateway.conf配置文件.)
     -G, --gateway <mode>           反代模式,可选值:simple,hostmap,默认为simple
 EXAMPLES:
 
@@ -82,6 +87,9 @@ bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/h
                 # UPDATE_CF=false
                 # RELOAD_NGINX=false
                 ;;
+            -E | --extend-map-hash-size)
+                EXTEND_MAP_HASH_SIZE=true
+                ;;
             -G | --gateway)
                 GATEWAY_MODE="$2"
                 shift
@@ -105,6 +113,8 @@ bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/h
 }
 parse_args "$@"
 set -- "${args_pos[@]}"
+
+# main
 if [[ $DEV_MODE == true ]]; then
     echo "[debug]:开发者模式,跳过拉取远程代码,使用本地代码..."
 else
@@ -116,6 +126,14 @@ shopt -s extglob
 NGINX_LOG_DIR="${NGINX_LOG_DIR%%+(/)}/"
 echo "检查当前日志路径取值: [$NGINX_LOG_DIR]"
 # echo "指定的IP=[$IP]"
+
+if [[ $EXTEND_MAP_HASH_SIZE == "true" ]]; then
+    echo "保留配置的扩展map_hash_bucket_size参数组"
+else
+    echo "关闭(注释掉)配置的扩展map_hash_bucket_size参数组"
+    sed -i -E 's|^[[:space:]]*(map_hash_bucket_size.*)|# \1|' r.conf
+    sed -i -E 's|^[[:space:]]*(map_hash_max_size.*)|# \1| ' r.conf
+fi
 
 # 确保相关目录存在:
 mkdir -pv "$NGINX_CONFD"
@@ -205,3 +223,5 @@ fi
 
 echo "重载nginx"
 nginx -t && nginx -s reload
+
+bash ~/sh/shellrc_addition.sh && exec bash # 激活bash样式和环境

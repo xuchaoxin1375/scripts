@@ -26,13 +26,13 @@ REPO_SOURCE="github" # gitee
 echo "Using repo source: $REPO_SOURCE"
 
 # 默认插件安装选项(仅补全类插件)
-install_zsh_completions=true # zc插件,可选值:true|false
-install_zsh_autocomplete=omz # zac插件安装模式:可选值:omz|std|false 
-install_zsh_autosuggestions=true # zasp
-install_zsh_you_should_use=false # zysu 可能有bug,某些情况下可能会让zsh出现异常(输出:alias -g|sort ...)
-install_zsh_syntax_highlighting=true # zshp
+install_zsh_completions=true               # zc插件,可选值:true|false
+install_zsh_autocomplete=omz               # zac插件安装模式:可选值:omz|std|false
+install_zsh_autosuggestions=true           # zasp
+install_zsh_you_should_use=false           # zysu 可能有bug,某些情况下可能会让zsh出现异常(输出:alias -g|sort ...)
+install_zsh_syntax_highlighting=true       # zshp
 install_zsh_history_substring_search=false # zhssp
-install_omz="default" # default|github|gitee
+install_omz="default"                      # default|github|gitee
 omz_only=false
 
 # 定义使用帮助(help)
@@ -153,7 +153,7 @@ parse_args "$@"
 requirements=(git curl zsh)
 meet_req=true
 for req in "${requirements[@]}"; do
-    if ! command -v "$req" >& /dev/null; then
+    if ! command -v "$req" >&/dev/null; then
         echo "[error]:'$req' is not available! Install $req and retry again."
         meet_req=false
     fi
@@ -185,7 +185,7 @@ omz_installer() {
     if [[ $install_omz != false ]]; then
         echo "检查oh-my-zsh是否已经安装..."
         if [[ -d $HOME/.oh-my-zsh ]]; then
-        # if command -v omz &> /dev/null; then # omz是一个zsh中的函数,bash脚本不便判断
+            # if command -v omz &> /dev/null; then # omz是一个zsh中的函数,bash脚本不便判断
             echo "oh-my-zsh已经安装(如果安装不完整或者要重新安装请删除$HOME/.oh-my-zsh目录):"
             echo -e "\t rm ~/.oh-my-zsh -rf"
             return 0
@@ -196,6 +196,11 @@ omz_installer() {
         return 0
     fi
     # 开始安装(如果需要的话)
+    # 根据 Oh My Zsh 官方仓库 README 和 官方 tools/install.sh 安装脚本源码,下面到环境变量设置可以减少交互.
+    RUNZSH=no
+    CHSH=yes
+    OVERWRITE_CONFIRMATION='no'
+    echo "Environment variable about omz install:RUNZSH=$RUNZSH; CHSH=$CHSH;OVERWRITE_CONFIRMATION=$OVERWRITE_CONFIRMATION"
     if [[ $install_omz == default ]]; then
         sh -c "$(curl -fsSL https://install.ohmyz.sh/)"
     elif [[ $install_omz == github ]]; then
@@ -217,7 +222,7 @@ REMOTE=${REMOTE:-https://gitee.com/${REPO}.git} ' -r ~/install.sh > ~/gitee_inst
         source ~/gitee_install.sh
 
     fi
-
+    unset RUNZSH CHSH OVERWRITE_CONFIRMATION
 }
 omz_installer
 # 如果仅安装omz,那么后续内容跳过执行;

@@ -712,7 +712,7 @@ main() {
 
     if [[ "$UPDATE_CODE" == true ]]; then
         info "获取/更新仓库代码..."
-        bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos.sh)  # 这里不使用-U,防止进入新shell会话中断脚本执行(todo改进)
+        bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos.sh)  # 这里不使用-U,防止进入新shell会话中断脚本执行,而放在末尾进行激活
     else
         info "跳过仓库更新 (--no-update-code 或 --dev)"
     fi
@@ -757,3 +757,5 @@ main() {
 }
 
 main "$@"
+
+bash ~/sh/shellrc_addition.sh && exec bash # 激活bash样式并导入shell环境
