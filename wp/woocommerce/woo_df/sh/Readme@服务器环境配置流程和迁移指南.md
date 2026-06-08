@@ -111,7 +111,7 @@ Add-SSHkeyOnHost -ComputerName <server> -UserName <username>
 根据需要如果发生了sshd配置修改,则要重启服务生效.如果没有就不需要重启服务
 
 ```bash
-sudo systemctl restart ssh
+sudo systemctl restart ssh #sshd 
 ```
 
 
@@ -688,6 +688,20 @@ sed -i.bak -E "s/^[[:space:]]*#?Port $OldPort[[:space:]]*$/Port $Port/" /etc/ssh
 grep -C 5 'Port ' /etc/ssh/sshd_config 
 ```
 
+模式设置(启用`ssh.service`)
+
+```bash
+# 1. 停止并禁用 ssh.socket
+sudo systemctl stop ssh.socket
+sudo systemctl disable ssh.socket
+
+# 2. 启用并启动 ssh.service
+sudo systemctl enable ssh.service
+sudo systemctl start ssh.service
+```
+
+
+
 ### 服务端防火墙配置
 
 ```bash
@@ -699,13 +713,21 @@ sudo ufw deny 22
 
 状态检查:`ufw status`,配合grep可以过滤出你感兴趣的端口.
 
-### 客户端默认配置更改
+### ssh客户端默认配置更改
 
 例如修改默认登录端口
 
 ```powershell
 notepad ~\.ssh\config
 ```
+
+### 重载sshd服务
+
+```bash
+sudo systemctl restart ssh # sshd
+```
+
+
 
 ## 修改系统root密码
 

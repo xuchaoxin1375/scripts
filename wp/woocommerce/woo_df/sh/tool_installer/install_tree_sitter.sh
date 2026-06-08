@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# 安装tree-sitter-cli,当尝试在较老的linux系统上lazyvim在
 if command -v npm &> /dev/null; then
     echo "尝试卸载可能残留的错误 tree-sitter-cli..."
     npm uninstall -g tree-sitter-cli
