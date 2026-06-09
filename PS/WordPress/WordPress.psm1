@@ -1104,6 +1104,12 @@ function Deploy-WpSitesOnline
     Write-Output "" > $RoutesMap 
     foreach ($item in $items)
     {
+        # 检查ip是否合法
+        if (!(Test-IPv4Address -IP $item.ip))
+        {
+            Write-Error "Invalid ip address: $($item.ip)" -ErrorAction Stop
+            # continue
+        }
         $line = ".$($item.domain) http://$($item.ip);"
         $line | Tee-Object -Append -FilePath $RoutesMap 
     }
