@@ -1550,7 +1550,7 @@ function Test-IsIPAddress
 {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
+        [Parameter(ValueFromPipeline = $true)]
         [string]$IPAddress,
 
         [Parameter(Mandatory = $false)]
@@ -1560,7 +1560,11 @@ function Test-IsIPAddress
 
     # 初始化一个变量用于接收解析后的 IP 对象
     $parsedIP = $null
-
+    if(! $IPAddress){
+        Write-Warning "[Test-IsIPAddress]: IPAddress is empty!"
+    }else{
+        Write-Verbose "[Test-IsIPAddress] Trying to parse IP address: [$IPAddress]"
+    }
     # 使用 .NET 的 TryParse 方法尝试解析字符串
     if ([System.Net.IPAddress]::TryParse($IPAddress, [ref]$parsedIP))
     {
@@ -1601,7 +1605,8 @@ https://www.d1.com	人名	7.ca	Title1	1	4(192.168.1.1)
 https://www.example.com	人名	7.ca	title2	1	A(192.168.1.1)
 https://www.domain1.com	人名	1.fr	title3		
 https://dm2.com	 人名	1.fr			FX192.168.1.4
-https://dms3.com	 人名	3.fr			
+https://dms3.com	 人名	3.fr
+https://dms3.com	 行末无空格测试者	3.fr
 
     解析结果:
 
@@ -1649,7 +1654,7 @@ title
     [CmdletBinding()]
     param(
         # [Parameter(Mandatory = $true)]
-        [Alias('Path')]$Table = "$env:USERPROFILE/Desktop/my_table.conf"
+        [Alias('Path')]$Table = "$env:USERPROFILE/Desktop/table.conf"
     )
     Get-Content $Table | Where-Object { $_.Trim() } | Where-Object { $_ -notmatch "^\s*#" } | ForEach-Object { 
         $line = $_
@@ -1657,6 +1662,7 @@ title
         Write-Verbose "[$lineArray]" 
         # 计算域名(网站)对应的服务器ip
         $last = $lineArray[-1].trim()
+        Write-Verbose "last field:[$last]"
         $ip = ""
         if ($last)
         {

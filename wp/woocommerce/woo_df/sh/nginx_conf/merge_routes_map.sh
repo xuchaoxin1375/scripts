@@ -4,7 +4,7 @@ set -euo pipefail
 FILE_A=""
 FILE_B=""
 DRY_RUN=false
-MODE="CLEAN"   # CLEAN: 只清理 A；ADD: 清理后追加 B
+MODE="CLEAN" # CLEAN: 只清理 A；ADD: 清理后追加 B
 
 TMP_FILE=""
 TMP_NORM=""
@@ -19,9 +19,9 @@ GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 
-log_info()   { printf '%b[INFO]%b %s\n' "$GREEN" "$RC" "$*" >&2; }
-log_warn()   { printf '%b[WARN]%b %s\n' "$YELLOW" "$RC" "$*" >&2; }
-log_error()  { printf '%b[ERROR]%b %s\n' "$RED" "$RC" "$*" >&2; }
+log_info() { printf '%b[INFO]%b %s\n' "$GREEN" "$RC" "$*" >&2; }
+log_warn() { printf '%b[WARN]%b %s\n' "$YELLOW" "$RC" "$*" >&2; }
+log_error() { printf '%b[ERROR]%b %s\n' "$RED" "$RC" "$*" >&2; }
 log_dryrun() { printf '%b[PREVIEW]%b %s\n' "$BLUE" "$RC" "$*" >&2; }
 
 cleanup() {
@@ -60,12 +60,18 @@ parse_arguments() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -a)
-                [[ $# -ge 2 ]] || { log_error "-a 缺少文件路径"; exit 1; }
+                [[ $# -ge 2 ]] || {
+                    log_error "-a 缺少文件路径"
+                    exit 1
+                }
                 FILE_A="$2"
                 shift 2
                 ;;
             -b)
-                [[ $# -ge 2 ]] || { log_error "-b 缺少文件路径"; exit 1; }
+                [[ $# -ge 2 ]] || {
+                    log_error "-b 缺少文件路径"
+                    exit 1
+                }
                 FILE_B="$2"
                 shift 2
                 ;;
@@ -73,11 +79,11 @@ parse_arguments() {
                 MODE="ADD"
                 shift
                 ;;
-            -d|--dry)
+            -d | --dry)
                 DRY_RUN=true
                 shift
                 ;;
-            -h|--help)
+            -h | --help)
                 usage
                 ;;
             *)
@@ -91,8 +97,11 @@ parse_arguments() {
         log_error "必须同时指定 -a 和 -b 参数。"
         usage
     fi
-
-    if [[ ! -f "$FILE_A" || ! -f "$FILE_B" ]]; then
+    if ! [ -f "$FILE_A" ]; then
+        log_error "文件 $FILE_A 不存在。创建空文件以继续(将以 $FILE_B 覆盖)"
+        mkdir -p "$(dirname "$FILE_A")" && touch "$FILE_A"
+    fi
+    if [[ ! -f "$FILE_B" ]]; then
         log_error "输入文件不存在，请检查 -a 或 -b 路径。"
         exit 1
     fi
@@ -114,7 +123,7 @@ init_tmp_files() {
     TMP_DELETE_LINES=$(mktemp "${tmp_dir%/}/.sync_delete_lines.XXXXXX")
     TMP_COUNT=$(mktemp "${tmp_dir%/}/.sync_count.XXXXXX")
 
-    chmod --reference="$FILE_A" "$TMP_FILE" 2>/dev/null || true
+    chmod --reference="$FILE_A" "$TMP_FILE" 2> /dev/null || true
 }
 
 extract_b_keys() {

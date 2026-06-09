@@ -1101,7 +1101,7 @@ function Deploy-WpSitesOnline
     $items = Get-DomainUserDictFromTableLite -Table $FromTable
     Write-Verbose "Get domain-ip mapping table from table.conf,save result to $RoutesMap"
     # 先清空旧文件
-    Clear-Content $RoutesMap 
+    Write-Output "" > $RoutesMap 
     foreach ($item in $items)
     {
         $line = ".$($item.domain) http://$($item.ip);"
@@ -1147,6 +1147,9 @@ function Deploy-WpSitesOnline
         }
         # 将新map合并到原map中
         ssh -Tn "$vpsUser@${reverse}" -p $vpsPort (@"
+    # 确保目标文件存在,否则创建空文件
+    # [ -f "$remoteRoutesMap" ]|| { mkdir -p "`$(dirname $remoteRoutesMap)" && touch "`$$remoteRoutesMap" }
+    
     bash ~/sh/nginx_conf/merge_routes_map.sh -a $remoteRoutesMap -b ~/routes.map.conf --add ;
     tail  $remoteRoutesMap |nl; 
     nginx -t && nginx -s reload 
