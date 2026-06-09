@@ -1105,7 +1105,7 @@ function Deploy-WpSitesOnline
     foreach ($item in $items)
     {
         # 检查ip是否合法
-        if (!(Test-IPv4Address -IP $item.ip))
+        if (!(Test-IsIPAddress -IP $item.ip))
         {
             Write-Error "Invalid ip address: $($item.ip)" -ErrorAction Stop
             # continue
