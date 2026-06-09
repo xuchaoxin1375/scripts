@@ -34,6 +34,12 @@
 - linux系统(推荐ubuntu/debian,但不是必须的.)
 - 安装nginx或openresty,前者最简单,可以考虑包管理器直接安装,或者通过脚本安装最新版本的nginx,如果用宝塔也可以考虑宝塔安装,但是安装速度慢.
   - 通过标准安装(系统包管理器或脚本安装)的默认配置路径是`/etc/nginx`,日志`/var/log/nginx`,其他情况自行修改部署脚本相关路径参数(如果要手动配置也要确保路径对应实际情况.)
+  
+  - ```bash
+    curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/tool_installer/install_nginx_ubt.sh -o ~/inu.sh && sudo bash ~/inu.sh
+    ```
+  
+    
 
 ### 相关文档
 

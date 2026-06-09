@@ -2,10 +2,13 @@
 VERSION="20260605"
 echo "Nginx 安装/升级脚本 v$VERSION"
 # ==============================================================================
-# 脚本名称: install_or_upgrade_nginx.sh
+# 脚本名称: install_nginx_ubt.sh
 # 适用系统: Ubuntu 20.04 (Focal) / 22.04 (Jammy) / 24.04 (Noble) 及更高版本
 # 功能描述: 自动识别 Ubuntu 版本，支持全新直装或安全升级至官方最新 Stable / Mainline 版本
 # 在编写自动化运维脚本时，apt-get 比 apt 更合适，也更安全。
+# 一键安装:(非root 用户请考虑切换到root 用户,或者sudo bash 后再执行,或者分步执行)
+
+# curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/tool_installer/install_nginx_ubt.sh -o ~/inu.sh && sudo bash ~/inu.sh
 # ==============================================================================
 
 set -o pipefail
