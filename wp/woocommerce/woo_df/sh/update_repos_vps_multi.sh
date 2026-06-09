@@ -68,6 +68,8 @@ RELOAD_NGINX=true
 DRY_RUN=false
 DEV_MODE=false
 # FORCE=false
+SYM_SH='/www/sh' #适用于服务器的仓库shell脚本目录
+mkdir -pv /www/
 
 MAPPINGS=()
 
@@ -158,7 +160,7 @@ Options:
         显示帮助信息.
 
 Examples:
-
+# root用户可以直接运行下面的示例命令(参数自行替换)
     # 非宝塔 nginx 默认路径
     bash $0 \\
       -m '10.0.0.11:203.0.113.11' \\
@@ -193,7 +195,6 @@ bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/he
   -m 'B1_IP:A1_IP' \
   -m 'B2_IP:A2_IP' 
 
-
     ## 宝塔方案:下面的-c,-d,-l适合于宝塔安装的nginx
     bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos_vps_multi.sh) \\
     -c /www/server/nginx/conf \\
@@ -207,6 +208,20 @@ bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/he
 "
     )\\
     # --dev #预览
+
+# 对于非root用户(但有sudo权限),有两种选择:
+    > 注意,脚本内部有些路径依赖于家目录,如果进入root或使用sudo执行部署脚本,引用的路径可能是/root/sh/...
+    > 在退出root回到普通用户时,相关的路径就会失效!并且重载nginx等操作也需要root权限,方便起见,可以创建root用户.
+    
+    进入root用户,然后执行脚本;
+    或分步执行:
+    将脚本保存到本地
+    curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos_vps_multi.sh -o ~/urvm.sh
+    运行脚本(携带的参数更改为自己的真实映射组)
+    sudo bash ~/urvm.sh -m 'B1_IP:A1_IP' -m 'B2_IP:A2_IP' 
+    
+    重载nginx
+    sudo nginx -t && sudo nginx -s reload
 
 映射文件示例:
     默认使用分号':' 作为分隔符,也支持空格.
@@ -712,7 +727,7 @@ main() {
 
     if [[ "$UPDATE_CODE" == true ]]; then
         info "获取/更新仓库代码..."
-        bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos.sh)  # 这里不使用-U,防止进入新shell会话中断脚本执行,而放在末尾进行激活
+        bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos.sh) # 这里不使用-U,防止进入新shell会话中断脚本执行,而放在末尾进行激活
     else
         info "跳过仓库更新 (--no-update-code 或 --dev)"
     fi
@@ -724,7 +739,7 @@ main() {
 
     if [[ "$UPDATE_CF" == true ]]; then
         info "更新 Cloudflare real IP 配置..."
-        ln -snfv "$HOME/sh/nginx_conf/update_cf_ip_configs.sh" "$NGINX_CONF_HOME/update_cf_ip_configs.sh"
+        cp -fv "$SYM_SH/nginx_conf/update_cf_ip_configs.sh" "$NGINX_CONF_HOME/update_cf_ip_configs.sh"
         bash "$NGINX_CONF_HOME/update_cf_ip_configs.sh" -s "$NGINX_CONFD" -n
     else
         info "跳过 Cloudflare real IP 更新 (--no-update-cf 或 --dev)"

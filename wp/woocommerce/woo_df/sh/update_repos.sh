@@ -188,7 +188,32 @@ log "基础目录: $SCRIPT_ROOT;"
 # 移除可能的就链接,重新创建链接
 # unlink $SH_SYM # 可以使用unlink命令安全删除符号链接(不会误删目标目录内的文件)🎈
 log "[INFO]:更新符号链接$SH_WWW"
-rm -fv "${SH_WWW%/}" && ln -snfv "$SH_SYM" "$SH_WWW"
+[[ -L $SH_WWW ]] && rm -fv "${SH_WWW%/}"
+# 如果不是符号链接(而是目录),则询问是否删除,以便创建符号链接
+while true; do
+    if [[ -d $SH_WWW ]]; then
+        log "[WARN]:$SH_WWW是目录,是否备份并重命名以继续?"
+        read -rp "请输入[Y/N]:" answer
+        case $answer in
+            [Yy])
+                # rm -rfv "$SH_WWW"
+                mv -fv "$SH_WWW" "${SH_WWW}.bak.$(date +%Y%m%d-%H%M%S)"
+                break
+                ;;
+            [Nn])
+                log "[INFO]:取消创建符号链接"
+                break
+                # exit 0
+                ;;
+            *)
+                log "[ERROR]:请输入[Y/N]"
+                # exit 1
+                ;;
+        esac
+    fi
+done
+log "[INFO]:创建符号链接"
+ln -snfv "$SH_SYM" "$SH_WWW"
 
 # nginx主配置文件源(用于覆盖服务器上的旧版本)
 NGINX_CONF_TPL_DIR="$SH_SYM/nginx_conf"

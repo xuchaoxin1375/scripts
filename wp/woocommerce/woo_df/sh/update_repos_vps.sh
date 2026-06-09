@@ -150,7 +150,7 @@ sh="$SH_SYM"
 # git clone --recursive --depth 1 --shallow-submodules https://"$repo_source"/xuchaoxin1375/scripts.git "$scripts"
 
 # cf_realip.conf的更新脚本update_cf_ip_configs.sh映射到$NGINX_CONF_DIR
-ln -snfv "$sh/nginx_conf/update_cf_ip_configs.sh" "$NGINX_CONF_DIR/update_cf_ip_configs.sh"
+cp -fv "$sh/nginx_conf/update_cf_ip_configs.sh" "$NGINX_CONF_DIR/update_cf_ip_configs.sh"
 # 创建/etc/nginx/log,包含nginx日志,例如# ln -snfv /var/log/nginx /etc/nginx/log
 ln -snfv "$NGINX_LOG_DIR" "$NGINX_CONF_DIR/log"
 
