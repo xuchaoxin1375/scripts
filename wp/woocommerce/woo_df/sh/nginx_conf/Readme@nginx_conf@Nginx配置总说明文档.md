@@ -90,6 +90,27 @@
 proxy_cache_key "$scheme$request_method$host$uri$is_args$args";
 ```
 
+## 绕过cdn调试请求
+
+利用curl或其他客户端,绕过cdn,直接构造请求(不走cdn)
+
+> 在bash中执行:
+
+```bash
+# 定义一个完整的浏览器UA
+ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+# 填写你的服务器IP,以此绕过cloudflare.
+server='your_ip'
+# 填写你的域名
+domain='www.your_domain.com'
+```
+
+> 可能要把网站的强制https关闭,否则依然会走公网解析.
+
+```bash
+curl -v -L -A "$ua" --resolve $domain$:80:"$server" http://$domain/content/2026/0.webp -o demo.webp 
+```
+
 
 
 # 限流
