@@ -25,7 +25,7 @@
 
 第2种资源消耗最少,但是配置也相对复杂(主要体现在需要服务器管理员需要自行提供路由映射文件(`routes.map.conf`),并且在后续添加新站点时需要更新维护映射表,也就是`routes.map.conf`)
 
-### 前提要求和注意事项
+## 前提要求和注意事项
 
 - 性能要求:要求很低,单核心的vps足够
   - 但是如果要用宝塔的话,安装软件,例如nginx可能会比较卡)
@@ -70,6 +70,24 @@
 
 # 如果nginx通过宝塔安装:
 0 3 * * * bash /www/server/nginx/conf/update_cf_ip_configs.sh -s /www/server/panel/vhost/nginx/cf-realip.conf
+```
+
+## 缓存和日志问题
+
+最直接可以体验到缓存key和反代服务器配置不匹配的问题,例如跨站同名图片响应不正确.
+
+### 图片访问日志
+
+关于图片访问的日志,如果使用cloudflare(默认启用缓存),在缓存了图片资源的情况下,如果**直接访问图片url**,可能不会将请求打到服务器上,cf节点直接将资源返回(因此可能不是最新的);
+
+通常我们不关心图片这类静态资源的日志,但是如果有需要,考虑将cloudflare上的缓存清除,或者切换为开发者模式(这会关闭缓存功能)
+
+### 后端服务器上的proxy cache配置
+
+> 对于宝塔用户,nginx配置总目录中的`proxy.conf`中有代理缓存配置,考虑以下指令,避免缓存精度不够在同名文件中返回不正确的资源.
+
+```nginx
+proxy_cache_key "$scheme$request_method$host$uri$is_args$args";
 ```
 
 

@@ -1,7 +1,6 @@
 # OpenResty JS 挑战（签名 Cookie）— 部署与运维指南
 
-本文档描述一个基于 **OpenResty（nginx + lua-nginx-module）** 实现的 **必须执行 JavaScript 的反爬挑战**。
-
+本文档描述一个基于 **OpenResty（nginx + lua-nginx-module）** 实现的 **JavaScript 反爬挑战**。
 目标：
 
 - 阻止简单脚本工具（如 `curl`、基础 Python 请求）直接访问受保护页面。

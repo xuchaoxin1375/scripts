@@ -439,7 +439,8 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
 
     # NGINX_CONFD_VHOST (将宝塔的vhost目录创建符号链接到总配置目录,便于访问和管理)
     [[ $ISBT == true ]] && ln -snfv "$NGINX_CONFD_VHOST" $NGINX_CONF_DIR/vhosts_confd -fv
-    [[ $ISBT == true ]] && ln -snfv "/www/wwwlogs" $NGINX_CONF_DIR/logs -fv
+    # 日志由于root用户操作可能更改所有者和写入权限,可能导致日志写入问题.
+    # [[ $ISBT == true ]] && ln -snfv "/www/wwwlogs" $NGINX_CONF_DIR/logs -fv 
 
     # 通配批量复制文件
     # html文件包括js挑战用到的页面
