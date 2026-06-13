@@ -63,7 +63,7 @@ PROXY_PORT = 8800  # 默认代理端口
 HEADLESS = bool(
     1
 )  # 是否无头模式,1表示无头隐藏浏览器窗口,0表示显示浏览器窗口;(正式采集启动前更改为True或1,可以阻止浏览器窗口弹出;修改后,记得保存修改(ctrl+s保存)
-FETCH_MODE = "auto"  # FETCH_MODE: fetcher模式:auto,curl(curl_cffi),stealthy(scr) ,默认使用auto模式,如果curl_cffi无法通过,则自动切换到 stealthy 方案
+FETCH_MODE = "scr"  # FETCH_MODE: fetcher模式:auto,curl(curl_cffi),stealthy(scr) ,默认使用auto模式,如果curl_cffi无法通过,则自动切换到 stealthy 方案
 
 # 浏览器缓存目录
 
@@ -350,7 +350,7 @@ else:
             elif FETCH_MODE in SCRAPLING_STEALTHY_NAMES:
                 result = stealthy_fetch()
             # 调试:查看请求到的内容(无论是前面的站点地图(xml)还是普通html页面)
-            # info(f"page.body:{result}")
+            info(f"page.body:{result}")
             LabelArray["Html"] = result
         else:
             msg = f"跳过特殊处理:{url}"
