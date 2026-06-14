@@ -22,7 +22,7 @@ param(
     [switch]$Dev
     # [switch]$Force
 )
-Write-Output "开始运行CxxuPsModules部署脚本..."
+Write-Host "[Deploy-CxxuPsModules]:开始运行CxxuPsModules部署脚本(来源:${RepoSource})..."
 # 导入 Deploy-GitForWindows 命令(适合独立部署用户使用),分开放置确保灵活性
 if($Dev)
 {
@@ -32,7 +32,8 @@ if($Dev)
 else
 {
     # 正式版:
-    Invoke-RestMethod "https://${RepoSource}.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-GitForWindows.ps1" | Invoke-Expression
+    Invoke-RestMethod "https://${RepoSource}.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-GitForWindows.ps1" > ~/dgw.ps1
+    ~/dgw.ps1 -RepoSource $RepoSource| Invoke-Expression 
 }
 function Get-CxxuPsModulePackage
 {

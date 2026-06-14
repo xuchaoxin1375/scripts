@@ -14,6 +14,7 @@ param(
     [switch]$Dev
     # [switch]$Force
 )
+Write-Host "[Deploy-GitForWindows]:RepoSource=$RepoSource,Dev=$Dev"
 # 检查git是否已经可用,如果已经可用,则跳过后续安装步骤.
 if (Get-Command git -ErrorAction SilentlyContinue)
 {
