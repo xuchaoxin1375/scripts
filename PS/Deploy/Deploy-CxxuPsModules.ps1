@@ -33,7 +33,7 @@ else
 {
     # 正式版:
     $dgwUrl = "https://${RepoSource}.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-GitForWindows.ps1"
-    write-host"拉取Deploy-GitForWindows 命令:[$dgwUrl]..."
+    Write-Host "拉取Deploy-GitForWindows 命令:[$dgwUrl]..."
     Invoke-RestMethod $dgwUrl > ~/dgw.ps1
     ~/dgw.ps1 -RepoSource $RepoSource -Verbose
 }
