@@ -758,7 +758,17 @@ PS C:\repos\scripts>
         $Default = 1, # 默认选择第一个(可能是响应最快的)
         [switch]$Linearly,
         [switch]$Silent # 是否静默模式,不询问用户,返回第$Default个链接($Default默认为1)
-    )
+    ) 
+    if (Get-Command -Name Get-AvailableGithubMirrors -ErrorAction SilentlyContinue)
+    {
+        Write-Verbose 'Checking available Mirrors...'
+    }
+    else
+    {
+        # 临时获取链接测试函数
+        Invoke-RestMethod https://raw.giteeusercontent.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/TestLinks.psm1 | Invoke-Expression
+    }
+ 
     $Mirrors = Get-AvailableGithubMirrors -PassThru -Linearly:$Linearly
 
     $res = @()

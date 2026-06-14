@@ -18,6 +18,7 @@ param(
     # 仓库源
     [validateSet('gitee', 'github')]
     $RepoSource = 'gitee',
+    $GithubMirror = 'https://gh-proxy.com',
     # 适用于开发(维护调整)的测试模式
     [switch]$Dev
     # [switch]$Force
@@ -33,6 +34,13 @@ else
 {
     # 正式版:
     $dgwUrl = "https://${RepoSource}.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-GitForWindows.ps1"
+    # github镜像
+    if ($RepoSource -eq 'gitee' -and $GithubMirror)
+    {
+        $dgwUrl = "$GithubMirror/$dgwUrl" 
+        Write-Verbose "GithubMirror:[$GithubMirror]" -ForegroundColor Cyan 
+    }
+
     Write-Host "拉取Deploy-GitForWindows 命令:[$dgwUrl]..."
     Invoke-RestMethod $dgwUrl > ~/dgw.ps1
     ~/dgw.ps1 -RepoSource $RepoSource -Verbose
