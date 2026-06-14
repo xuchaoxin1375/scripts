@@ -11,20 +11,24 @@ param(
 )
 if($RepoSource -eq 'github')
 {
-    $dplUrl="https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1"
-    $tlUrl="https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/TestLinks.psm1"
-
-}else{
+    $dplUrl = "https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1"
+    $tlUrl = "https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/TestLinks.psm1"
+    $gitUrl = "https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Git/Git.psm1"
+}
+else
+{
 
     
     $dplUrl = "https://raw.giteeusercontent.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy.psm1" 
     $tlUrl = "https://raw.giteeusercontent.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/TestLinks.psm1"
+    $gitUrl = "https://raw.giteeusercontent.com/xuchaoxin1375/scripts/raw/main/PS/Git/Git.psm1"
 }
     
 Write-Host "[Deploy-Pwsh7Portable]: Pull Deploy.psm1 and TestLinks.psm1 modules [$dplUrl] & [$tlUrl]..." 
 
 Invoke-RestMethod $dplUrl | Invoke-Expression
 Invoke-RestMethod $tlurl | Invoke-Expression
+Invoke-RestMethod $gitUrl | Invoke-Expression
 # get functions or commands about mirror operations!
 Get-Command *mirror* 
 Write-Host "check commands usage (syntax)"
