@@ -35,7 +35,7 @@ else
     # 正式版:
     $dgwUrl = "https://${RepoSource}.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-GitForWindows.ps1"
     # github镜像
-    if ($RepoSource -eq 'gitee' -and $GithubMirror)
+    if ($RepoSource -eq 'github' -and $GithubMirror)
     {
         $dgwUrl = "$GithubMirror/$dgwUrl" 
         Write-Verbose "GithubMirror:[$GithubMirror]" -ForegroundColor Cyan 
