@@ -49,7 +49,7 @@ function Set-ScoopAria2Options
     <# 
     .SYNOPSIS
     设置scoop config文件中的aria2选项
-    例如某些下载不允许使用aria2多路下载,那么关闭aria2(aria2对于代理下载不太友好,这边建议下载大文件时采用aria2(手动启用),其他情况直接用scoop下载)
+    例如某些下载不允许使用aria2多路下载,那么关闭aria2(aria2对于proxy下载不太友好,这边建议下载大文件时采用aria2(手动启用),其他情况直接用scoop下载)
     如果允许使用aria2,那么可以起到加速的作用
     .EXAMPLE
     # 基础地设置是否启用aria2进行下载
@@ -132,7 +132,7 @@ function Deploy-ScoopByGithubMirrors
         Invoke-Expression "& $installer_cn"
     }
  
-    # 将 Scoop 的仓库源替换为代理的
+    # 将 Scoop 的仓库源替换为proxy的
     scoop config scoop_repo $mirror/https://github.com/ScoopInstaller/Scoop
  
     #确保git可用
@@ -151,7 +151,7 @@ function Deploy-ScoopByGithubMirrors
     }
      
  
-    # 将 Scoop 的 main 仓库源替换为代理加速过的
+    # 将 Scoop 的 main 仓库源替换为proxy加速过的
     if (Test-Path -Path "$env:USERPROFILE\scoop\buckets\main")
     {
         # 先移除默认的源，然后添加同名bucket和加速后的源

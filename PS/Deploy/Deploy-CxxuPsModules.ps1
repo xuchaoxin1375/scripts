@@ -27,7 +27,7 @@ Write-Output "开始运行CxxuPsModules部署脚本..."
 if($Dev)
 {
     # 测试版:
-    . $Scripts/PS/Deploy/Deploy-GitForWindows.ps1
+    . $Scripts/PS/Deploy/Deploy-GitForWindows.ps1 -RepoSource $RepoSource
 }
 else
 {
