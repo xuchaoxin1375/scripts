@@ -9,9 +9,18 @@ param(
     [switch]$Dev
     # [switch]$Force
 )
-$dplUrl = "https://raw.${RepoSource}usercontent.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy.psm1" 
-$tlUrl = "https://raw.${RepoSource}usercontent.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/TestLinks.psm1"
+if($RepoSource -eq 'github')
+{
+    $dplUrl="https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1"
+    $tlUrl="https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/TestLinks.psm1"
 
+}else{
+
+    
+    $dplUrl = "https://raw.giteeusercontent.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy.psm1" 
+    $tlUrl = "https://raw.giteeusercontent.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/TestLinks.psm1"
+}
+    
 Write-Host "[Deploy-Pwsh7Portable]: Pull Deploy.psm1 and TestLinks.psm1 modules [$dplUrl] & [$tlUrl]..." 
 
 Invoke-RestMethod $dplUrl | Invoke-Expression
