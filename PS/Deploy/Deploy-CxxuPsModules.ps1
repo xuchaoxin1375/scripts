@@ -134,8 +134,8 @@ function Deploy-CxxuPsModules
         # 添加到环境变量中的路径
         $NewPsPath = "$RepoPath\PS",
         
-        [ValidateSet('gitee,github')]
-        $Source = 'gitee',
+        [ValidateSet('gitee','github')]
+        $RepoSource = 'gitee',
         # 如果使用从包安装的方案,需要指定包的位置,这里的路径是包文件路径,而不是包文件所在目录
         #和从远程仓库克隆有多个来源可选一样,下载离线包也有多种选择,同样是github可以直接下载,但是速度慢或者下不动,
         # 而gitee等仓库平台需要登录,条件允许的话,登录下载快,成功率高
@@ -151,7 +151,7 @@ function Deploy-CxxuPsModules
     $params = [pscustomobject]@{
         RepoPath    = $RepoPath
         NewPsPath   = $NewPsPath
-        Source      = $Source
+        Source      = $RepoSource
         PackagePath = $PackagePath
         Mode        = $Mode
         Force       = $Force
@@ -220,7 +220,7 @@ function Deploy-CxxuPsModules
     # 定义代码下载安装模式片段
     # 模式1:从远程Git仓库克隆
     $RemoteGitCloneScript = { 
-        Write-Host "Mode:Clone From Remote repository:[$source]" -ForegroundColor cyan
+        Write-Host "Mode:Clone From Remote repository:[$RepoSource]" -ForegroundColor cyan
         $GitCmdAvailability = Get-Command git -ErrorAction SilentlyContinue
         if (!$GitCmdAvailability)
         {
@@ -381,4 +381,4 @@ function Remove-CxxuPsModulesEnvVars
     
 }
 # 调用函数执行安装(配置默认行为)
-Deploy-CxxuPsModules -Source $RepoSource -Verbose -Confirm
+Deploy-CxxuPsModules -RepoSource $RepoSource -Verbose -Confirm

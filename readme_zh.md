@@ -85,7 +85,8 @@ irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsMod
 > ```powershell
 > irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1' > ~/dcp.ps1
 > ~/dcp.ps1 -RepoSource github
-> 
+> # 如果需要强制覆盖已有仓库,可以运行
+> Deploy-CxxuPsModules  -Verbose -Confirm # -RepoSource github 也可以zhi'd
 > ```
 >
 > 
