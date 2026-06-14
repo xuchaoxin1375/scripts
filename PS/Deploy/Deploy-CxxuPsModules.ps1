@@ -229,7 +229,7 @@ function Deploy-CxxuPsModules
         {
             throw 'Git is not available on your system,please install it first!'
         }
-        $url = "https://${Source}.com/xuchaoxin1375/scripts.git"
+        $url = "https://${RepoSource}.com/xuchaoxin1375/scripts.git"
         Write-Verbose $url
    
         Write-Verbose $RepoPath
