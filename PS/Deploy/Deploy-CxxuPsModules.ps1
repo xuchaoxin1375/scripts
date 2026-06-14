@@ -32,7 +32,7 @@ if($Dev)
 else
 {
     # 正式版:
-    Invoke-RestMethod "https://$RepoSource.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-GitForWindows.ps1" | Invoke-Expression
+    Invoke-RestMethod "https://${RepoSource}.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-GitForWindows.ps1" | Invoke-Expression
 }
 function Get-CxxuPsModulePackage
 {
