@@ -2067,6 +2067,19 @@ function Deploy-VsCodeSettings_depends
 function Deploy-WtSettings
 {
     <# 
+    .SYNOPSIS
+    部署windows terminal的配置文件
+    
+    .EXAMPLE
+    #Admin[pwsh][cxxu1375@CXXU][~][16:58:16]
+ Deploy-WtSettings -InstalledByScoop -WtScoopConfig C:\scoop\apps\windows-terminal\current\settings\settings.json
+VERBOSE: Performing the operation "Create Symbolic Link" on target "Destination: C:\scoop\apps\windows-terminal\current\settings\settings.json".
+
+    Directory: C:\scoop\apps\windows-terminal\current\settings
+
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+la---           2026/6/14    16:58              0 settings.json -> C:\repos\scripts\config\wtConf.json
     .Notes
     PS [C:\repos\scripts]> gv wt*
 
