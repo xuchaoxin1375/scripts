@@ -99,7 +99,7 @@ function Deploy-CxxuPsModules
                 C:\Users\cxxu\scoop\modules
 
     #>
-    [CmdletBinding(SupportsShouldProcess = $true)]
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
     param(
         # 模块集所在仓库的存放目录(这个目录不一定是git clone下来的仓库目录,也可以是从本地包解压到对应位置的目录)
         $RepoPath = "$env:systemdrive\repos\scripts",
@@ -395,4 +395,4 @@ function Remove-CxxuPsModulesEnvVars
     
 }
 # 调用函数执行安装(配置默认行为)
-Deploy-CxxuPsModules -RepoSource $RepoSource -Verbose -Confirm
+Deploy-CxxuPsModules -RepoSource $RepoSource -Verbose -Force:$Force
