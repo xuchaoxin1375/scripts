@@ -1,13 +1,28 @@
 
 # $github_mirror="https://gh-proxy.com"
-Invoke-RestMethod 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy.psm1' | Invoke-Expression
+[CmdletBinding()]
+param(
+    # 仓库源
+    [validateSet('gitee', 'github')]
+    $RepoSource = 'gitee',
+    # 适用于开发(维护调整)的测试模式
+    [switch]$Dev
+    # [switch]$Force
+)
+$dplUrl = "https://raw.${RepoSource}usercontent.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy.psm1" 
+$tlUrl = "https://raw.${RepoSource}usercontent.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/TestLinks.psm1"
+
+Write-Host "[Deploy-Pwsh7Portable]: Pull Deploy.psm1 and TestLinks.psm1 modules [$dplUrl] & [$tlUrl]..." 
+
+Invoke-RestMethod $dplUrl | Invoke-Expression
+Invoke-RestMethod $tlurl | Invoke-Expression
 # get functions or commands about mirror operations!
 Get-Command *mirror* 
-#check commands usage (syntax)
+Write-Host "check commands usage (syntax)"
 Get-Command Get-AvailableGithubMirrors -Syntax #use this is enough in general cases
 Get-Command Get-SelectedMirror -Syntax
 
-#choose a mirror which is available
+Write-Host "choose a mirror which is available..."
 $github_mirror = Get-SelectedMirror  
 
 # Write-Verbose $github_mirror -Verbose

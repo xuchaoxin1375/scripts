@@ -350,7 +350,11 @@ function Deploy-CxxuPsModules
         if ($continue)
         {
 
-            Invoke-RestMethod "https://$RepoSource.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-Pwsh7Portable.ps1" | Invoke-Expression
+            # Invoke-RestMethod "https://$RepoSource.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-Pwsh7Portable.ps1" | Invoke-Expression
+            $dp7Url = "https://$RepoSource.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-Pwsh7Portable.ps1"
+            Write-Verbose "Downloading Deploy-Pwsh7Portable.ps1 from $dp7Url"
+            Invoke-RestMethod $dp7Url > ~/dp7.ps1
+            ~/dp7.ps1 -RepoSource $RepoSource -Verbose
         }
     }
     #检查模块设置效果
