@@ -114,17 +114,34 @@ function Deploy-Pwsh7Portable
     $versionCode = $s -replace '.*(\d+\.\d+\.\d+).*', '$1'
     # 下载文件
     $outputPath = "$env:TEMP\powershell-$versionCode.zip"
+    $downloadNeed = $True
     if (!(Test-Path -Path $outputPath))
     {
-
-        # 调用 Invoke-WebRequest 下载文件
-        Invoke-WebRequest -Uri $baseUrl -UseBasicParsing -OutFile $outputPath
+        Write-Host "$outputPath does not exist, start downloading..."
     }
     else
     {
         Write-Output "$outputPath is already exist"
+        $downloadNeed = Read-Host "Download again ？(Y/N)"
+        if ($response -like 'Y')
+        {
+            Write-Host "Redownload..."
+            $downloadNeed = $True
+            Remove-Item -Path $outputPath -Verbose
+        }
+        else
+        {
+            Write-Host "Use cached file: $outputPath"
+        }
     }
-
+    
+    if($downloadNeed)
+    {
+        
+        Write-Host "Downloading from $BaseUrl"
+        # 调用 Invoke-WebRequest 下载文件
+        Invoke-WebRequest -Uri $baseUrl -UseBasicParsing -OutFile $outputPath
+    }
     
     # 确保安装路径存在
     # $InstallPath="$InstallPath\$versionCode"
