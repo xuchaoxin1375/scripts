@@ -32,8 +32,10 @@ if($Dev)
 else
 {
     # 正式版:
-    Invoke-RestMethod "https://${RepoSource}.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-GitForWindows.ps1" > ~/dgw.ps1
-    ~/dgw.ps1 -RepoSource $RepoSource| Invoke-Expression 
+    $dgwUrl = "https://${RepoSource}.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-GitForWindows.ps1"
+    write-host"拉取Deploy-GitForWindows 命令:[$dgwUrl]..."
+    Invoke-RestMethod $dgwUrl > ~/dgw.ps1
+    ~/dgw.ps1 -RepoSource $RepoSource -Verbose
 }
 function Get-CxxuPsModulePackage
 {
@@ -135,7 +137,7 @@ function Deploy-CxxuPsModules
         # 添加到环境变量中的路径
         $NewPsPath = "$RepoPath\PS",
         
-        [ValidateSet('gitee','github')]
+        [ValidateSet('gitee', 'github')]
         $RepoSource = 'gitee',
         # 如果使用从包安装的方案,需要指定包的位置,这里的路径是包文件路径,而不是包文件所在目录
         #和从远程仓库克隆有多个来源可选一样,下载离线包也有多种选择,同样是github可以直接下载,但是速度慢或者下不动,
