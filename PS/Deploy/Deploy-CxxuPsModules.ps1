@@ -135,7 +135,7 @@ function Deploy-CxxuPsModules
         $NewPsPath = "$RepoPath\PS",
         
         [ValidateSet('gitee,github')]
-        $Source = $RepoSource,
+        $Source = 'gitee',
         # 如果使用从包安装的方案,需要指定包的位置,这里的路径是包文件路径,而不是包文件所在目录
         #和从远程仓库克隆有多个来源可选一样,下载离线包也有多种选择,同样是github可以直接下载,但是速度慢或者下不动,
         # 而gitee等仓库平台需要登录,条件允许的话,登录下载快,成功率高
@@ -381,4 +381,4 @@ function Remove-CxxuPsModulesEnvVars
     
 }
 # 调用函数执行安装(配置默认行为)
-Deploy-CxxuPsModules -Verbose -Confirm
+Deploy-CxxuPsModules -Source $RepoSource -Verbose -Confirm

@@ -80,6 +80,16 @@ irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsMod
 
 ```
 
+> 分步执行:(可以指定参数,例如仓库源指向github.)
+>
+> ```powershell
+> irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1' > ~/dcp.ps1
+> ~/dcp.ps1 -RepoSource github
+> 
+> ```
+>
+> 
+
 更具体的说明查看此文档：[部署说明](./PS/Deploy/readme.md)
 
 > 如果clone过程中出错(比如git读取git配置出错,可以执行如下命令移除或备份配置)
