@@ -234,7 +234,7 @@ function Add-CFZoneDNSRecords
         $Domains = "$Desktop\table.conf",
         # 默认使用私人模式DF,启用Common开关变成通用模式
         [switch]$Common,
-        # 域名添加模式
+        # 域名添加模式(todo提供内部判断,根据IP类型自动选择类型)
         $Type = 'A' ,
         [alias('IP', 'Content')]
         $Value

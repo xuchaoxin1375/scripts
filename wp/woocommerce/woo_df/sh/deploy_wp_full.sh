@@ -180,13 +180,17 @@ show_help() {
     # 批量部署（自动扫描）
     $0 --user-dir zlj --deploy-mode auto
 
-    # 单站部署（指定压缩包）
+    # 单站部署（指定压缩包,要求路径符合"人员名/域名(站点名)压缩包",否则无法解析出站点所属人员）
     $0 -M single -P /srv/uploads/uploader/files/zlj/domain1.com.zst
 
-    # 单站部署（指定域名自动搜索）
+    # 单站部署（指定域名自动搜索,需要指定人员名,然后指定域名(站点名),而不需要指定包名或包的路径,也不需要指定压缩包格式后缀）
     $0 -M single -u xcx -n domain1.com --dry-run
-    # 单站部署（指定域名自动搜索,不排除deployed目录，并更新已上传的网站域名）
-    $0 -u xcx -n domain1.com -N domain2.com --ssp '' 
+
+
+    # 单站重新部署(已经解压且被归档到deployed目录中,但发现需要更新域名的情况)
+    # 指定要部署的站点域名及其所属人员,同时用新域名替代旧域名（根据旧域名自动搜索包路径)
+    bash $0 -n domain.com -N new_domain.com --ssp '' # 搜索包路径时不排除deployed目录
+    # 注意: 建议更改完域名并部署完成后,将新的包导出,同时删除旧域名包 # bash /www/sh/backup_sites/get_site_pkgs.sh --site new_domain.com 
 
     # 仅处理数据库或仅处理网站根目录
     $0 -M single -n domain1.com --site-db-skip    # 仅解压网站
@@ -1568,7 +1572,11 @@ main() {
         done
         log "成功任务数: $SUCCESSED"
         for site in "${PID_TASK_MAP_SUCCESSED[@]}"; do
-            log "✅ https://www.$site"
+            if [[ $UPDATE_DOMAIN_NAME ]]; then
+                log "✅ https://$site -> https://www.$UPDATE_DOMAIN_NAME"
+            else
+                log "✅ https://www.$site"
+            fi
         done
         if [ "$FAILED" -gt 0 ]; then
             log "[dry:$DRY_RUN]⚠️ 有 $FAILED 个操作失败，请检查日志。"

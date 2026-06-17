@@ -19,7 +19,7 @@
 # 2.关于数据库文件备份和导出,建议配置免密登录,不仅更安全,代码也更加简单(免密登录mysql配置方案有许多,自行查阅资料配置)
 # 3.完整性检查:备份完后可以运行一段批量检查文件完整性检查的代码,防止某些文件压缩过程中出错(尤其是被意外终止脚本的情况)
 # 4.线程数不要开太高,虽然服务器核心很多,但是tar和zstd算法容易打满磁盘IO,备份速度的主要瓶颈不在cpu而在于磁盘上!
-VERSION_UTILS=20260528.1710
+VERSION_UTILS=20260617.1002
 
 SRC_ROOT="/www/wwwroot"
 DEST_ROOT="/srv/uploads/uploader/files" # 备份文件存储目录
@@ -36,9 +36,11 @@ MINDEPTH=2
 MAXDEPTH=3
 VALID_USERS=""
 WHITELIST_SITE=""
-export STATUS_TAG_DIR="$DEST_ROOT/status_tags" # 即时备份模式在,备份并传输一个包后,就创建对应的名字的空文件.
-export MODE="full"                             # db,dir,full.分被表示:仅备份数据库,仅备份文件,还是两者都备份(默认)
-export IMMEDIATELY=false                       # 网站文件导出后立即传输到备份服务器并删除本机包
+export STATUS_TAG_DIR="$DEST_ROOT/../bak_status_tags" # 即时备份模式在,备份并传输一个包后,就创建对应的名字的空文件.
+export ENABLE_TAG=true                             # 是否启用状态标记
+
+export MODE="full"       # db,dir,full.分被表示:仅备份数据库,仅备份文件,还是两者都备份(默认)
+export IMMEDIATELY=false # 网站文件导出后立即传输到备份服务器并删除本机包
 export HOSTNAME
 HOSTNAME=$(hostname)
 # mysql链接参数
@@ -93,8 +95,11 @@ version: $VERSION_UTILS
     --force              强制覆盖已存在的备份
 -j, --jobs <n>           并行任务数 (默认：$PARALLEL_JOBS)
 -h, --help               显示本帮助信息
+
 --tag-dir                即时备份模式在,备份并传输一个包后,就创建对应的名字的空文件,
                          实现简单的进度恢复,此参数指定标记文件保存目录.
+-T, --enable-tag  [true|false]  是否启用状态标记模式
+
 --log                    备份进度日志文件路径 (默认：$LOG_FILE),如果需要忽略备份历史,请删除此文件.
 
     --mysql-host <host>  MySQL 主机地址
@@ -104,27 +109,27 @@ version: $VERSION_UTILS
 
 examples:
 	# 指定MySQL主机和端口
-	./backup_sites_from_source_dir.sh --mysql-host 192.168.1.100 --mysql-port 3306
+	$0 --mysql-host 192.168.1.100 --mysql-port 3306
 
 	# 指定MySQL用户名和密码
-	./backup_sites_from_source_dir.sh --mysql-user myuser --mysql-pass mypassword
-	bash ./backup_sites_from_source_dir.sh  --jobs 2 --valid-users  valid_users.ini -u xcx --mysql-user myusername --mysql-pass password123
+	$0 --mysql-user myuser --mysql-pass mypassword
+	bash $0  --jobs 2 --valid-users  valid_users.ini -u xcx --mysql-user myusername --mysql-pass password123
 
 	# 组合使用mysql的所有参数
-	./backup_sites_from_source_dir.sh -d /srv/uploads/uploader/files --mysql-host localhost --mysql-port 3306 --mysql-user root --mysql-pass password123
+	$0 -d /srv/uploads/uploader/files --mysql-host localhost --mysql-port 3306 --mysql-user root --mysql-pass password123
     
     # 扫描白名单用户的所有网站,并备份数据库(不备份目录文件),最大扫描深度限制为2
-    bash get_site_pkgs.sh -U valid_users.ini -m db -j 4  -M 2 -D # -D预览操作.
+    bash $0 -U valid_users.ini -m db -j 4  -M 2 -D # -D预览操作.
 
-	# 备份单个站点(指定网站名字,自动搜索网站根路径)
-	bash ./backup_sites_from_source_dir.sh --site goodpayway.shop  --jobs 1
+	# 备份单个站点(指定网站名字,自动搜索网站根路径),可用-s 指定项目目录,默认为/www/wwwroot
+	bash $0  --site domain.com  --jobs 1
 
     
     # 直接指定网站白名单(域名列表)
-    bash get_site_pkgs.sh  -m db -j 4 -M 2 -D -W w.txt # W选项和U选项不要同时使用.
+    bash $0  -m db -j 4 -M 2 -D -W w.txt # W选项和U选项不要同时使用.
 
     # 即时传输
-    bash get_site_pkgs.sh -u xcx  -m db -j 4 -M 2 -I --remote-host <your_server_b_ip> --remote-path /www/wwwroot/服务器管理员名/建站人员名/ # 例如 /www/wwwroot/xcx/s1/
+    bash $0 -u xcx  -m db -j 4 -M 2 -I --remote-host <your_server_b_ip> --remote-path /www/wwwroot/服务器管理员名/建站人员名/ # 例如 /www/wwwroot/xcx/s1/
 
 EOF
 }
@@ -227,6 +232,10 @@ parse_args() {
                 ;;
             --tag-dir)
                 STATUS_TAG_DIR="$2"
+                shift 2
+                ;;
+            -T | --enable-tag)
+                ENABLE_TAG="$2"
                 shift 2
                 ;;
             --log)
@@ -423,6 +432,7 @@ check_listfile() {
 # 	备份单个站点的函数
 # 函数会分析传入的站点根目录路径,按照约定的规则提取网站域名,构造合适的网站压缩包路径(包名和域名相关)
 # 例如计算得出的域名为domain.com,那么会压缩得到domain.com.zst以及domain.com.sql.zst
+#
 # 注意,为了解压时流程的一致性等因素,这里的包在压缩成.zst文件之前都会先压缩成.tar文件,即便是当文件的.sql
 # 不仅如此,作为过渡包到tar文件名中不会保留.tar,但是不要因为没有.tar就忽略了这个中间格式,在解压时不要漏掉用tar解压.
 # tar包在zstd打包结束后,会自动移除,以节约空间.
@@ -467,8 +477,10 @@ backup_one_site() {
     # 判断指定站点的(db或dir)包已经备份过了
     judger() {
         local pkg_path="$1"
+
         local pkg_name
         pkg_name="$(basename "$pkg_path")"
+
         local tag_file="$STATUS_TAG_DIR/${pkg_name}"
         log "正在检查备份包 $pkg_path 是否已存在，或标记文件 $tag_file 是否存在..."
 
@@ -476,21 +488,21 @@ backup_one_site() {
         #     log "[跳过[$MODE]] 发现标记文件 $STATUS_TAG_DIR/$pkg_name,之前已成功备份过 $pkg_name,将跳过站点 $DOMAIN 的备份。"
         #     return 2 # 返回2表示跳过
         # fi
-        if [[ -f "$pkg_path" ]] || [[ -f "$tag_file" ]]; then
+        if [[ -f "$pkg_path" ]] || [[ $ENABLE_TAG == true && -f "$tag_file" ]]; then
             if [[ $FORCE -eq 0 ]]; then
-                log "[跳过[$MODE]] 发现已存在压缩包 $pkg_path,[user: $USERNAME],跳过站点 $DOMAIN 的备份。"
+                log "发现已存在压缩包 $pkg_path,[user: $USERNAME]"
                 return 2 # 返回2表示跳过
             else
                 log " 将强制覆盖已存在的压缩包 $pkg_path"
             fi
         else
-            log "[任务[$MODE]] 将为站点 $DOMAIN 创建备份归档任务,请耐心等待"
+            log "[任务[$MODE]] 将为站点 $DOMAIN 创建备份归档任务[$pkg_path],请耐心等待"
 
         fi
 
         return 0 #表示需要执行备份
     }
-    # 检查压缩包是否已存在(如果存在且不强制覆盖,则跳过此站)
+    # 检查压缩包是否已存在(如果存在且不强制覆盖,则跳过此站的备份,即跳过后续处理,返回对应状态码)
     if [[ $MODE == dir ]]; then
         judger "$DEST_DIR_PATH"
         [[ $? -eq 2 ]] && return 2
@@ -499,9 +511,12 @@ backup_one_site() {
         [[ $? -eq 2 ]] && return 2
     elif [[ $MODE == full ]]; then
         judger "$DEST_DIR_PATH"
-        [[ $? -eq 2 ]] && return 2
+        rc_dir=$?
+
         judger "$DEST_DB_PATH"
-        [[ $? -eq 2 ]] && return 2
+        rc_db=$?
+        # 站点的db和根目录全部已经备份过,才跳过.
+        [[ $rc_dir -eq 2 && $rc_db -eq 2 ]] && return 2
     fi
 
     mkdir -p "$DEST_DIR" -v # 确保存储包的目录存在
@@ -519,7 +534,7 @@ backup_one_site() {
             log "✅ rsync 传输 $pkg 到远程服务器成功,已删除本地文件 $pkg"
             # 创建标记文件(如果启用了标记文件机制)
             tag_file="$STATUS_TAG_DIR/${pkg_name}"
-            if touch "$tag_file"; then
+            if [[ $ENABLE_TAG == true ]] && touch "$tag_file"; then
                 log "已创建标记文件 $tag_file 来标识备份和传输完成"
             fi
         else
@@ -532,7 +547,7 @@ backup_one_site() {
 
     }
 
-    log "正在备份站点 $WP_DIR，用户 $USERNAME，域名 $DOMAIN; [$MODE]..."
+    log "正在备份站点[根目录]: $WP_DIR，用户 $USERNAME，域名 $DOMAIN; [$MODE]..."
     if [[ $MODE == dir || $MODE == full ]]; then
         if [[ $DRY_RUN -eq 1 ]]; then
             log "将打包 $WP_DIR 到 $TAR_PATH"
@@ -578,8 +593,9 @@ backup_one_site() {
 
             rsync_pack "$DEST_DIR_PATH"
         fi
-        # START-DB:数据库备份，依次尝试三种数据库名
-    elif [[ $MODE == db || $MODE == full ]]; then
+    fi
+    # START-DB:数据库备份，依次尝试三种数据库名
+    if [[ $MODE == db || $MODE == full ]]; then
         log "将尝试导出数据库: ${USERNAME}_${DOMAIN}, ${DOMAIN}, www.${DOMAIN}，并用 zstd 压缩"
         if [[ $DRY_RUN -eq 1 ]]; then
             return 0
@@ -656,6 +672,8 @@ fi
 log "脚本版本: $VERSION_UTILS"
 log "备份模式: $MODE"
 log "即时传输: $IMMEDIATELY"
+log "状态标记模式: $ENABLE_TAG"
+log "状态标记目录: $STATUS_TAG_DIR "
 log "将使用并行任务数: $PARALLEL_JOBS"
 check_listfile "$VALID_USERS"
 check_listfile "$WHITELIST_SITE"
@@ -825,9 +843,9 @@ while IFS= read -r WP_DIR || [[ -n "$WP_DIR" ]]; do
     judger_cnt() {
         pkg_path="$1"
         pkg_name="$(basename "$pkg_path")"
-        if [[ -f "$pkg_path" ]] || [[ -f $STATUS_TAG_DIR/"$pkg_name" ]]; then
+        if [[ -f "$pkg_path" ]] || [[ $ENABLE_TAG == true && -f $STATUS_TAG_DIR/"$pkg_name" ]]; then
             if [[ $FORCE -eq 0 ]]; then
-                log "[跳过[$MODE]] 发现已存在压缩包 $pkg_path,[user: $USERNAME],跳过站点 $DOMAIN 的备份。"
+                log "[跳过[$MODE]] 发现已存在压缩包 $pkg_path,[user: $USERNAME],跳过对应的备份步骤。"
                 return 2 # 返回2表示跳过
             else
                 log " 将强制覆盖已存在的压缩包 $pkg_path"

@@ -1175,7 +1175,7 @@ function Deploy-WpSitesOnline
 
     # START SERIAL (串行,各步骤内局部并行,如果线程过多导致api错误(429),尤其是cloudflare api,则考虑降低线程数或者减少任务中的网站域名数量,分批部署)
     # 添加域名解析到cf(第一步执行)
-    Add-CFZoneDNSRecords -AddRecordAtOnce -IP $reverse -Parallel:(!$Onebyone) -Domains $FromTable
+    Add-CFZoneDNSRecords -AddRecordAtOnce -IP $reverse -Parallel:(!$Onebyone) -Domains $FromTable 
     # 从待部署域名列表更新spaceship域名的nameservers(cf添加后立即执行spaceship的nameservers更新)
     Get-CFZoneNameServersTable -FromTable $FromTable
     # 更新spaceship的nameservers(后续的CFZoneActivation依赖于此域名DNS配置)
