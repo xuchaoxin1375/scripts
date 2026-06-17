@@ -37,7 +37,7 @@ MAXDEPTH=3
 VALID_USERS=""
 WHITELIST_SITE=""
 export STATUS_TAG_DIR="$DEST_ROOT/../bak_status_tags" # 即时备份模式在,备份并传输一个包后,就创建对应的名字的空文件.
-export ENABLE_TAG=true                             # 是否启用状态标记
+export ENABLE_TAG=true                                # 是否启用状态标记
 
 export MODE="full"       # db,dir,full.分被表示:仅备份数据库,仅备份文件,还是两者都备份(默认)
 export IMMEDIATELY=false # 网站文件导出后立即传输到备份服务器并删除本机包
@@ -474,6 +474,7 @@ backup_one_site() {
 
     TAR_NAME="${DOMAIN}"
     TAR_PATH="/tmp/${TAR_NAME}"
+
     # 判断指定站点的(db或dir)包已经备份过了
     judger() {
         local pkg_path="$1"
@@ -523,6 +524,18 @@ backup_one_site() {
     # 远程备份用到的字段
     authority="$REMOTE_USER"@"$REMOTE_HOST"
     remote_full_path="$authority":"$REMOTE_PATH_BASE/$USERNAME/deployed" # /www/wwwroot/xcx/serverx/username/deployed
+    # 创建标记文件
+    create_tag() {
+        local pkg="$1"
+        local pkg_name
+        pkg_name="$(basename "$pkg")"
+        local tag_file="$STATUS_TAG_DIR/${pkg_name}"
+        if [[ $ENABLE_TAG == true ]]; then
+            touch "$tag_file" && log "已创建标记文件 $tag_file 来标识备份完成"
+        else
+            log "未启用标记文件创建 $tag_file"
+        fi
+    }
     # 传输指定文件到远程服务器并删除本地文件,并记录到日志的函数(使用rsync)
     rsync_pack() {
         pkg="$1"
@@ -532,11 +545,7 @@ backup_one_site() {
         if rsync -aq --size-only --remove-source-files "$pkg" "$remote_full_path"; then
             # rc=failed
             log "✅ rsync 传输 $pkg 到远程服务器成功,已删除本地文件 $pkg"
-            # 创建标记文件(如果启用了标记文件机制)
-            tag_file="$STATUS_TAG_DIR/${pkg_name}"
-            if [[ $ENABLE_TAG == true ]] && touch "$tag_file"; then
-                log "已创建标记文件 $tag_file 来标识备份和传输完成"
-            fi
+
         else
             # rc=success
             log "错误: rsync 传输 $pkg 到远程服务器失败!"
@@ -593,8 +602,12 @@ backup_one_site() {
 
             rsync_pack "$DEST_DIR_PATH"
         fi
+        # 创建标记文件(如果启用了标记文件机制)
+
+        create_tag "$DEST_DIR_PATH"
     fi
-    # START-DB:数据库备份，依次尝试三种数据库名
+
+    # START-DB:数据库备份，依次尝试几种常见的数据库名格式
     if [[ $MODE == db || $MODE == full ]]; then
         log "将尝试导出数据库: ${USERNAME}_${DOMAIN}, ${DOMAIN}, www.${DOMAIN}，并用 zstd 压缩"
         if [[ $DRY_RUN -eq 1 ]]; then
@@ -643,6 +656,7 @@ backup_one_site() {
 
             # rsync -aq --info=progress2 --size-only --remove-source-files "$ZST_SQL_DUMP_PATH" "$remote_full_path"
         fi
+        create_tag "$ZST_SQL_DUMP_PATH"
     fi
     # END-DB
     return 0
