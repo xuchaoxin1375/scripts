@@ -27,10 +27,11 @@
 $plugin='yingtopay' #插件名字
 $installMode="TagFile" # "symbolicLink", "TagFile", "Copy"
 $plugin_format=if(test-path $wp_plugins -erroraction SilentlyContinue){"$wp_plugins/$plugin"}else{"$plugin"}
-# 更新本地站点(例如已经拷贝到my_wp_sites中的待上线站点;)
+
+# 更新本地站点(例如已经拷贝到my_wp_sites中的待上线站点;) 对于品类有要求(禁品)的插件需要重新检查并移除,避免安装到不适合站点上(因为下面的命令不分品类全部覆盖安装)
 . $scripts/wp/update_plugins.ps1 -WpSitesDir $my_wp_sites -PluginSources $plugin_format -InstallMode $installMode
 
-# 只有zw,zsh可以跳过下面语句，其他人(有本地模板库的)都要执行
+# 只有局域网内的使用远程拷贝的成员可以跳过下面语句，其他人(有本地模板库的)都要执行
 . $scripts/wp/update_plugins.ps1 -WpSitesDir $wp_sites -PluginSources $plugin_format -InstallMode $installMode
 
 .EXAMPLE

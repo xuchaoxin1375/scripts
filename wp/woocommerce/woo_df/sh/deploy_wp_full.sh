@@ -878,7 +878,7 @@ deploy_site() {
     # 计算可能需要更正的最终的网站域名和数据库名(如果需要网站更名,不要直接覆盖domain_name,而是另起一个新名,因为后续原名要被多词使用!)
     local final_domain_name="${UPDATE_DOMAIN_NAME:-${domain_name}}"
     local db_name="${user_name}_${final_domain_name}"
-    if [[ $ENABLE_TAG ]]; then
+    if [[ $ENABLE_TAG == true ]]; then
 
         local tag_file
         tag_file="$STATUS_TAG_DIR/$final_domain_name"
@@ -1131,7 +1131,7 @@ WHERE option_name IN ('home', 'siteurl');
         # mv "$archive_file" "$DEPLOYED_DIR" -f
     fi
     # 按需创建部署状态标记文件:
-    if [[ $ENABLE_TAG ]]; then
+    if [[ $ENABLE_TAG == true ]]; then
         if [[ -d $STATUS_TAG_DIR ]]; then
             local tag_file="$STATUS_TAG_DIR/${domain_name}"
             if touch "$tag_file"; then
