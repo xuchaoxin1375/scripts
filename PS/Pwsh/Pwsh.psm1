@@ -1311,12 +1311,7 @@ function Update-PwshEnv
     Set-PsPrompt 
     # Start-CoreInit
 }
-function Get-AdministratorPrivilege
-{
-    # sudo pwsh #-noprofile -nologo
-    # sudo pwsh -noprofile -nologo -noe -c { init }
-    sudo pwsh -c { p }
-}
+
 
 function Head
 {

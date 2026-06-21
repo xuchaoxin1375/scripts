@@ -7,9 +7,9 @@
             "command": 
             {
                 "action": "switchToTab",
-                "index": 7
+                "index": 8
             },
-            "id": "User.switchToTab.D7681B66"
+            "id": "User.switchToTab.ED268D78"
         },
         {
             "command": 
@@ -23,17 +23,9 @@
             "command": 
             {
                 "action": "switchToTab",
-                "index": 8
+                "index": 7
             },
-            "id": "User.switchToTab.ED268D78"
-        },
-        {
-            "command": 
-            {
-                "action": "copy",
-                "singleLine": false
-            },
-            "id": "User.copy.644BA8F2"
+            "id": "User.switchToTab.D7681B66"
         },
         {
             "command": 
@@ -46,10 +38,10 @@
         {
             "command": 
             {
-                "action": "openSettings",
-                "target": "settingsUI"
+                "action": "copy",
+                "singleLine": false
             },
-            "id": "User.openSettings.6CD791B"
+            "id": "User.copy.644BA8F2"
         },
         {
             "command": 
@@ -58,6 +50,14 @@
                 "index": 0
             },
             "id": "User.switchToTab.D3F0B923"
+        },
+        {
+            "command": 
+            {
+                "action": "openSettings",
+                "target": "settingsUI"
+            },
+            "id": "User.openSettings.6CD791B"
         },
         {
             "command": "togglePaneZoom",
@@ -83,17 +83,17 @@
         {
             "command": 
             {
-                "action": "switchToTab",
-                "index": 5
+                "action": "setMaximized"
             },
-            "id": "User.switchToTab.75247157"
+            "id": "User.setMaximized.3856770F"
         },
         {
             "command": 
             {
-                "action": "setMaximized"
+                "action": "switchToTab",
+                "index": 5
             },
-            "id": "User.setMaximized.3856770F"
+            "id": "User.switchToTab.75247157"
         },
         {
             "command": 
@@ -120,16 +120,16 @@
             "id": "User.find"
         },
         {
+            "command": "toggleFullscreen",
+            "id": "User.toggleFullscreen"
+        },
+        {
             "command": 
             {
                 "action": "resizePane",
                 "direction": "left"
             },
             "id": "User.resizePane.2A0DA8E0"
-        },
-        {
-            "command": "toggleFullscreen",
-            "id": "User.toggleFullscreen"
         }
     ],
     "autoHideWindow": false,
@@ -148,10 +148,6 @@
         },
         {
             "id": null,
-            "keys": "ctrl+k"
-        },
-        {
-            "id": null,
             "keys": "ctrl+alt+9"
         },
         {
@@ -159,11 +155,15 @@
             "keys": "ctrl+alt+2"
         },
         {
+            "id": null,
+            "keys": "ctrl+k"
+        },
+        {
             "id": "User.paste",
             "keys": "ctrl+v"
         },
         {
-            "id": null,
+            "id": "User.find",
             "keys": "ctrl+shift+f"
         },
         {
@@ -176,11 +176,11 @@
         },
         {
             "id": null,
-            "keys": "ctrl+alt+5"
+            "keys": "ctrl+shift+c"
         },
         {
             "id": null,
-            "keys": "ctrl+shift+c"
+            "keys": "ctrl+alt+5"
         },
         {
             "id": null,
@@ -192,15 +192,15 @@
         },
         {
             "id": null,
-            "keys": "ctrl+alt+7"
-        },
-        {
-            "id": null,
             "keys": "ctrl+alt+4"
         },
         {
             "id": null,
-            "keys": "ctrl+alt+shift+left"
+            "keys": "ctrl+alt+7"
+        },
+        {
+            "id": null,
+            "keys": "ctrl+shift+v"
         },
         {
             "id": null,
@@ -208,7 +208,7 @@
         },
         {
             "id": null,
-            "keys": "ctrl+shift+v"
+            "keys": "ctrl+alt+shift+left"
         },
         {
             "id": null,
@@ -229,10 +229,6 @@
         {
             "id": "User.togglePaneZoom",
             "keys": "ctrl+/"
-        },
-        {
-            "id": "User.find",
-            "keys": "ctrl+shift+f"
         },
         {
             "id": "User.resizePane.2A0DA8E0",
@@ -385,6 +381,12 @@
                 "guid": "{0fcbc45d-e622-5315-b186-0c7b9b2c784e}",
                 "hidden": false,
                 "name": "ubuntu24",
+                "source": "Microsoft.WSL"
+            },
+            {
+                "guid": "{086cad9e-f79f-5197-804f-9d27e161e43c}",
+                "hidden": false,
+                "name": "archlinux",
                 "source": "Microsoft.WSL"
             }
         ]

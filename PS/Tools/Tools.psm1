@@ -1560,9 +1560,12 @@ function Test-IsIPAddress
 
     # 初始化一个变量用于接收解析后的 IP 对象
     $parsedIP = $null
-    if(! $IPAddress){
+    if(! $IPAddress)
+    {
         Write-Warning "[Test-IsIPAddress]: IPAddress is empty!"
-    }else{
+    }
+    else
+    {
         Write-Verbose "[Test-IsIPAddress] Trying to parse IP address: [$IPAddress]"
     }
     # 使用 .NET 的 TryParse 方法尝试解析字符串
@@ -3366,6 +3369,13 @@ function Enable-WindowsUpdateByDelay
     $reg = "$PsScriptRoot\..\..\registry\windows-updates-unpause.reg" | Resolve-Path
     Write-Host $reg
     & $reg
+}
+function Disable-WindowsWidgets
+{
+    reg add "HKLM\SOFTWARE\Policies\Microsoft\Dsh" /v AllowNewsAndInterests /t REG_DWORD /d 0 /f
+    gpupdate /force
+    taskkill /f /im explorer.exe
+    Start-Process explorer.exe
 }
 function Disable-WindowsUpdateByDelay
 {

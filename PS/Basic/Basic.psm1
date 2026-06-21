@@ -1559,7 +1559,7 @@ function Update-ReposesConfiged
             $gitUrl = "https://${RepoSource}.com/xuchaoxin1375/$repoDir" #.Trim('\\')
             $Path = "$repos/$repoDir"
             Write-Verbose "[$giturl] will be cloned to [$Path] !" -Verbose
-            git  -c http.proxy="$Proxy" -c https.proxy="$Proxy" clone --depth=1  $gitUrl $Path 
+            git -c http.proxy="$Proxy" -c https.proxy="$Proxy" clone --depth=1 $gitUrl $Path 
             continue
 
         }
@@ -1621,7 +1621,90 @@ function timer_tips
 
     }
 }
+function Test-IsAdministrator
+{
+    <#
+    .SYNOPSIS
+        判断当前 PowerShell 进程是否以管理员权限运行。
 
+    .DESCRIPTION
+        Test-IsAdministrator 检测当前 PowerShell 进程的访问令牌是否包含
+        Windows 内置 Administrators 角色。
+
+        该函数用于判断当前进程是否“已提升”，不是判断当前用户账户是否“属于管理员组”。
+
+        在 UAC 开启的 Windows 系统中：
+        - 用户属于 Administrators 组，但 PowerShell 未以管理员身份运行：返回 $false
+        - 用户属于 Administrators 组，且 PowerShell 已提升运行：返回 $true
+        - 标准用户：返回 $false
+
+    .OUTPUTS
+        System.Boolean
+
+    .EXAMPLE
+        Test-IsAdministrator
+
+    .EXAMPLE
+        if (-not (Test-IsAdministrator)) {
+            Write-Error "请以管理员身份重新运行此脚本。"
+            exit 1
+        }
+
+    .EXAMPLE
+        #Requires -RunAsAdministrator
+
+        如果你的整个脚本都必须管理员运行，也可以直接使用 PowerShell 的 requires 声明。
+        但 Test-IsAdministrator 更适合做条件判断、自定义错误信息或自动重启提升。
+
+    .NOTES
+        Platform: Windows
+        Compatible with:
+        - Windows PowerShell 5.1
+        - PowerShell 7+
+
+        返回 $false 的情况：
+        - 当前进程未提升
+        - 当前系统不是 Windows
+        - 当前运行环境不支持 WindowsIdentity
+        - 检测过程中发生异常
+    #>
+
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param()
+
+    # PowerShell 7+ 有 $IsWindows；Windows PowerShell 5.1 没有。
+    # 因此这里用 RuntimeInformation 或环境变量做兼容判断。
+    $isWindowsPlatform = $false
+
+    try
+    {
+        if (Get-Variable -Name IsWindows -Scope Global -ErrorAction SilentlyContinue)
+        {
+            $isWindowsPlatform = $IsWindows
+        }
+        else
+        {
+            $isWindowsPlatform = $env:OS -eq 'Windows_NT'
+        }
+
+        if (-not $isWindowsPlatform)
+        {
+            return $false
+        }
+
+        $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+        $principal = [System.Security.Principal.WindowsPrincipal]::new($identity)
+
+        return $principal.IsInRole(
+            [System.Security.Principal.WindowsBuiltInRole]::Administrator
+        )
+    }
+    catch
+    {
+        return $false
+    }
+}
 function Test-AdminPermission
 {
     <#
