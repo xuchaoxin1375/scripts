@@ -475,6 +475,7 @@ source ~/zsh_bindkey_config.sh\
             # programs.zsh.enableCompletion = false;
         fi
     }
+    # 内部函数:更新.zshrc文件中hss插件的配置行
     update_hss_config_rc() {
         if [[ $install_zsh_history_substring_search == true ]]; then
             local zsh_bindkey_hss_config
@@ -519,7 +520,10 @@ EOF
 # >>> zhss bindkey config\
 source ~/zsh_bindkey_hss_config.sh\
 # <<< zhss bindkey config\
-' ~/.zshrc
+' "$zshrc_path"
+        else
+            # 尝试移除zhss插件的快捷键配置片段
+            sed -i '/# >>> zhss bindkey config/,/# <<< zhss bindkey config/d' "$zshrc_path"
         fi
 
     }
@@ -539,7 +543,7 @@ sed -Ei.bak 's/(^#*\s*)(ZSH_THEME_RANDOM.*=)(.*)/\2("ys" "junkfood" )/' "$zshrc_
 #检查配置文件是否有相应的行
 cat "$zshrc_path" | grep -e zsh-syntax-highlighting -e zsh-autosuggestions \
     -e zsh-history-substring-search -e zsh-autocomplete -e zsh-completions
-cat ~/.zshrc | grep -E '^[^#]' | grep -e random -e THEME -e RANDOM | cat -n
+cat "$zshrc_path" | grep -E '^[^#]' | grep -e random -e THEME -e RANDOM | cat -n
 
 # 移除多余空行(大片空行压缩)
 sed -i '/^$/N;/^\n$/D' "$zshrc_path"

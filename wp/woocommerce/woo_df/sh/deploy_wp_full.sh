@@ -18,7 +18,7 @@
 # 1. 对于多个磁盘的服务器,检测磁盘使用情况自动处理解压位置(为每个盘事先设定一个项目目录)
 # 2. 并发部署中的日志打印在终端容易错乱,改进此问题.
 
-VERSION=20260529.1040
+VERSION=20260622.1511
 shopt -s extglob globstar
 shopt -s nullglob
 # === 配置参数 ===
@@ -178,10 +178,13 @@ show_help() {
 
 示例:
     # 批量部署（自动扫描）
-    $0 --user-dir zlj --deploy-mode auto
+    $0 --user-dir zlj --deploy-mode auto # -v # 使用-v 查看脚本运行详情,适用于故障排查和功能维护测试.
 
-    # 单站部署（指定压缩包,要求路径符合"人员名/域名(站点名)压缩包",否则无法解析出站点所属人员）
-    $0 -M single -P /srv/uploads/uploader/files/zlj/domain1.com.zst
+    # 单站部署（指定压缩包,使用-P指定包路径,使用相对路径时,会猜测一些行为,支持路径格式:人员名/deployed/域名(站点名)压缩包的解析
+    $0 -P /srv/uploads/uploader/files/Bsite/deployed/domain.com.sql.zst # 其他参数,例如用指定的备份包复制一个具有新域名的站点,追加 -N new-domain.com  
+
+    # 使用标准路径选项-S指定参数,要求路径符合"人员名/域名(站点名)压缩包",否则无法解析出站点所属人员
+    $0  -P /srv/uploads/uploader/files/zlj/domain1.com.zst
 
     # 单站部署（指定域名自动搜索,需要指定人员名,然后指定域名(站点名),而不需要指定包名或包的路径,也不需要指定压缩包格式后缀）
     $0 -M single -u xcx -n domain1.com --dry-run
@@ -1212,9 +1215,12 @@ main() {
             log "优先使用命令行中提供的相关选项参数"
             [[ -n "$USER_DIR" ]] && user_dir="$USER_DIR"
             [[ -n "$DOMAIN_NAME" ]] && site_name="$DOMAIN_NAME"
+            # 如果给定的路径是以标准路径格式给出,则从中解析出人员名和域名.
             if [[ -n $SITE_DIR_PACK_STD ]]; then
+                # 为了提高健壮性,这里考虑输入路径是相对路径的情况(仅提供了文件包名),构造候选路径
                 local candidate_path=./"$USER_DIR/$SITE_DIR_PACK_STD"
                 if [[ -f $candidate_path ]]; then
+                    # 如果候选路径正确,那么对路径做标准化(将./移除)
                     SITE_DIR_PACK_STD="${candidate_path/\/.\//\/}"
                 fi
                 if ! [[ -f $SITE_DIR_PACK_STD ]]; then
@@ -1224,7 +1230,7 @@ main() {
                 log "找到待处理站点(尝试按标准方式解析所属人员和域名): $SITE_DIR_PACK_STD"
                 # user_dir+=($SITE_DIR_PACK)
             elif [ -f "$SITE_DIR_PACK" ]; then
-                log "指定站点压缩包路径可能是不规范的路径"
+                log "[Warning]:指定站点压缩包路径可能是不规范的路径!"
                 # [[ -n "$USER_DIR" ]] && user_dir="$USER_DIR"
                 # [[ -n "$DOMAIN_NAME" ]] && site_name="$DOMAIN_NAME"
             elif [[ -n "$DOMAIN_NAME" ]]; then
@@ -1259,13 +1265,26 @@ main() {
                 exit 1
             fi
             # 下面的分支下,是脚本推测站点的所属人员和网站名,建议请求用户输入确认(输入y/n)
+            # 优先从STD规范路径解析,如果给的不是STD路径,则用普通路径代替,赋值给archive_path
             local archive_path="${SITE_DIR_PACK_STD:-$SITE_DIR_PACK}"
             if [[ -z "$user_dir" ]]; then
                 # SITE_DIR_PACK_STD="/srv/uploads/uploaders/files/john/domain1.com.sql.zst"
                 local pack_dir
-                pack_dir="$(dirname "$archive_path")" # .../files/john
+                pack_dir="$(dirname "$archive_path")" # 两种常见的可能: .../files/john,或.../files/john/deployed
                 # 提取站点所属人员名(目录名),移除路径前缀
-                user_dir="${pack_dir##*/}" # john
+                if [[ $pack_dir == */deployed ]]; then
+                    log "[warning]检测到初步提取的人员目录名为deployed.尝试往前一级提取."
+                    local deployed="${pack_dir%/deployed}" # 如果路径以/deployed结尾,则去掉这个后缀,尝试得到人员目录的路径(不保证一定正确,当然需要用户确认核实)
+                    user_dir="${deployed##*/}"             # john
+                    log "[Warning]:纠偏:find搜索中的SKIP_SCAN_PATTERN设置为空"
+                    SKIP_SCAN_PATTERN=''
+                # [[ "$user_dir" == *deployed* ]] && log "[Warning]:解析的人员名不是预期值,请给出人员名(-u选项)或者将包组移出deployed"
+                else
+                    user_dir="${pack_dir##*/}" # john
+                fi
+                if [[ "$user_dir" == "deployed" ]]; then
+                    user_dir="$(basename "$(dirname "$pack_dir")")"
+                fi
                 need_check=1
             fi
             if [[ -z "$site_name" ]]; then
@@ -1277,8 +1296,11 @@ main() {
             fi
             if [[ $need_check -eq 1 ]]; then
                 if [[ -n "$user_dir" && -n "$site_name" ]]; then
-                    log "tips: user_dir:[$user_dir] site_name=[$site_name]"
-                    [[ "$user_dir" == *deployed* ]] && log "解析的人员名不是预期值,请给出人员名(-u选项)或者将包组移出deployed"
+                    local new_domain_name_msg=""
+                    if [[ $UPDATE_DOMAIN_NAME ]]; then
+                        new_domain_name_msg="(new domain: $UPDATE_DOMAIN_NAME)"
+                    fi
+                    log "tips: user_dir:[$user_dir] site_name=[$site_name];$new_domain_name_msg"
                     if confirm "❓ [检查人员名目录和站点名是否都正确]是否继续处理该站点文件??" "y" "$ASSUME_ANSWER"; then
                         log "继续处理[$site_name]..."
                     else
@@ -1388,6 +1410,10 @@ main() {
         fi
     }
     collect_tasks
+    # log "[Debug] 计算得到的待部署站点列表: "
+    # declare -p site_names 
+    # declare -p user_dir_names
+    
     start_tasks() {
         # START-C:核心调度部分(按合适的方式部署任务(网站域名)列表中的网站文件组)
         # for domain_name in "${site_names[@]}"; do
