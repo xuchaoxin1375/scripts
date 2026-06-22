@@ -1,7 +1,13 @@
 {
-    "account":"default_account_name",
-    "api_key": "your_short_api_key",
-    "api_secret": "your_secret_long_string",
+    "comment": "账号添加说明:新增账号写在accounts中，采用头插的方式添加比较方便;顶层的account为默认最先查找的账号,新增账号时推荐更改为新账号,提高查找效率",
+    "account": "default_account_name",
+    "account-tpl-readonly": [
+        {
+            "account": "",
+            "api_key": "",
+            "api_secret": ""
+        }
+    ],
     "accounts": [
         {
             "account": "account1",
@@ -14,18 +20,6 @@
             "api_secret": ""
         }
     ],
-    "nameserver1": "",
-    "nameserver2": "",
-    "nameservers": {
-        "group1": {
-            "nameserver1": "",
-            "nameserver2": ""
-        },
-        "group2": {
-            "nameserver1": "",
-            "nameserver2": ""
-        }
-    },
     "take": 100,
     "skip": 0,
     "order_by": "expirationDate"
