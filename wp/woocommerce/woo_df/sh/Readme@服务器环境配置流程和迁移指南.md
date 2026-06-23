@@ -706,12 +706,29 @@ sudo systemctl start ssh.service
 
 ```bash
 #ubuntu
-sudo ufw allow 22022
-# 关闭原来的端口,例如22
-sudo ufw deny 22
+sudo ufw allow 2222
+# 可选的,关闭原来的端口,例如22(谨慎关闭)
+# sudo ufw deny 22
 ```
 
 状态检查:`ufw status`,配合grep可以过滤出你感兴趣的端口.
+
+### 小结:
+
+> 使用本文配套的仓库代码,可以使用如下命令快速配置
+
+```bash
+# 配置你的端口组合
+old_port=22
+new_port=2222 # 建议xiu
+# 执行
+update_sshd_port -o $old_port -p $new_port
+enable_ssh_server
+sudo ufw allow $new_port
+# end
+```
+
+
 
 ### ssh客户端默认配置更改
 

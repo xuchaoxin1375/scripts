@@ -44,6 +44,7 @@ cleanrc() {
         /^# <<<additional shell configs<<<.*/d;
         \|source .*/shellrc_addition.*|d;
 ' "${files[@]}"
+    bash ~/sh/shellrc_addition.sh && exec bash
 }
 # 列出bash中所有名字以指定字符串开头的变量
 list_var_start_with_eval() {
