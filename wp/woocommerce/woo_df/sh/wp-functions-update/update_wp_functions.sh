@@ -90,15 +90,25 @@ if [[ -n "$WHITELIST_FILE" ]]; then
     }
     mapfile -t WHITELIST < "$WHITELIST_FILE"
 fi
+# 集中对黑白名单中的域名进行规范化,避免后续判断函数中反复执行这部分规范化,提高性能(全部小写处理,去除域名后缀,例如: Domain.com -> domain)
+BLACKLIST=("${BLACKLIST[@],,}")
+BLACKLIST=("${BLACKLIST[@]%.*}")
+
+WHITELIST=("${WHITELIST[@],,}")
+WHITELIST=("${WHITELIST[@]%.*}")
 
 is_blacklisted() {
     local domain="$1"
-    for b in "${BLACKLIST[@]}"; do [[ "$domain" == "$b" ]] && return 0; done
+    domain="${domain,,}"
+    domain="${domain%.*}"
+    for b in "${BLACKLIST[@]}"; do [[ "${domain}" == "${b}" ]] && return 0; done
     return 1
 }
 is_whitelisted() {
     local domain="$1"
-    for w in "${WHITELIST[@]}"; do [[ "$domain" == "$w" ]] && return 0; done
+    domain="${domain,,}"
+    domain="${domain%.*}"
+    for w in "${WHITELIST[@]}"; do [[ "${domain}" == "${w}" ]] && return 0; done
     return 1
 }
 log_action() {
@@ -173,7 +183,6 @@ for site in "${SITE_PATHS[@]}"; do
         fi
     done
 done
-
 
 if [[ $DRY_RUN == "true" ]]; then
     log_action "Dry run 完成，未做任何更改。"

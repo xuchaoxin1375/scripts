@@ -161,12 +161,23 @@ if [[ -n "$WHITELIST_FILE" ]]; then
     # mapfile -t WHITELIST < "$WHITELIST_FILE"
     mapfile -t WHITELIST < <(sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/\r$//' < "$WHITELIST_FILE")
 fi
+# 集中对黑白名单中的域名进行规范化,避免后续判断函数中反复执行这部分规范化,提高性能(全部小写处理,去除域名后缀,例如: Domain.com -> domain)
+BLACKLIST=("${BLACKLIST[@],,}")
+BLACKLIST=("${BLACKLIST[@]%.*}")
+
+WHITELIST=("${WHITELIST[@],,}")
+WHITELIST=("${WHITELIST[@]%.*}")
+
+
 
 # 判断域名是否在黑名单
 is_blacklisted() {
     local domain="$1"
+    # 规范化名称:小写+去除域名后缀
+    domain="${domain%.*}"
+    domain="${domain,,}"
     for blacklisted in "${BLACKLIST[@]}"; do
-        if [[ "$domain" == "${blacklisted,,}" ]]; then
+        if [[ "${domain}" == "${blacklisted}" ]]; then
             return 0
         fi
     done
@@ -176,9 +187,12 @@ is_blacklisted() {
 # 判断域名是否在白名单
 is_whitelisted() {
     local domain="$1"
+    # 规范化名称:小写+去除域名后缀
+    domain="${domain%.*}"
+    domain="${domain,,}"
     # log "检查域名[$domain]是否在白名单中..."
     for whitelisted in "${WHITELIST[@]}"; do
-        if [[ "${domain,,}" == "${whitelisted,,}" ]]; then
+        if [[ "${domain}" == "${whitelisted}" ]]; then
             return 0
         fi
     done
