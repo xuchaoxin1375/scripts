@@ -2,7 +2,7 @@
 # 更新重点日志:251204为参数WORKDIR提供接收单个或多个路径的支持,即允许指定1个或多个工作目录
 # 如果使用symlink,需要注意和建站工具网站目录中默认设置的"防跨站攻击"功能冲突
 # 合理设置防跨站攻击(open_basedir)，防止黑客通过其他网站目录进行入侵攻击
-VERSION_UTILS=20260501
+VERSION_UTILS=20260623
 HOSTNAME=$(hostname)
 show_usage() {
     cat << EOF
@@ -352,7 +352,7 @@ for workdir_path in "${WORKDIR_ARRAY[@]}"; do
         while IFS= read -r -d '' dir; do
             echo "[$HOSTNAME]找到目录: $dir"
             site_plugin_dirs+=("$dir")
-        done < <(find "$workdir_path" -mindepth 5 -maxdepth 6 \( -type d -o -type l \) -name "$PLUGIN_BASENAME" -print0)
+        done < <(find -L "$workdir_path" -mindepth 5 -maxdepth 6 \( -type d -o -type l \) -name "$PLUGIN_BASENAME" -print0)
 
         # 遍历处理找到的站点
         for d in "${site_plugin_dirs[@]}"; do

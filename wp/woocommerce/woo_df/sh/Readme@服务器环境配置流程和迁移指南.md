@@ -370,6 +370,8 @@ socket=/tmp/mysql.sock
 也可以通过重定向写入文件,例如
 
 ```bash
+#! /usr/bin/env bash
+# shell片段一键配置免密登录(注意检查user和password)
 echo "[client]
 user = root
 password = 15a58524d3bd2e49
@@ -377,6 +379,7 @@ host = localhost
 # 按需启用(宝塔用户通常设置此行):
 socket=/tmp/mysql.sock
 port=3306" >> ~/.my.cnf
+# end
 ```
 
 验证:
@@ -384,13 +387,13 @@ port=3306" >> ~/.my.cnf
 
 #### 关闭二进制备份功能
 
-- **关闭二进制日志文件备份功能**,节约空间和资源消耗,防止网站数量增多而导致数据库资源耗尽
+**关闭二进制日志文件备份功能**,节约空间和资源消耗,防止网站数量增多而导致数据库资源耗尽
 
-  - 如果忘记关闭,使用命令删除
+- 如果忘记关闭,使用命令删除
 
-    ```bash
-    rm /www/server/data/mysql-bin.* -fv
-    ```
+  ```bash
+  rm /www/server/data/mysql-bin.* -fv
+  ```
 
 
 #### mysql性能调整(方案选择)
@@ -488,9 +491,37 @@ mysql> select user();
 +----------------+
 ```
 
+#### 限制任何ip登录的root方式
 
 
-#### 私有管理员账号创建
+
+##### 检查root相关用户(可选)
+
+```sql
+-- 检查名为root的数据库用户,尝试列出root@%一级root@localhost等角色
+SELECT Host, User FROM mysql.user WHERE User='root';
+-- 通配检查root开头的用户
+SELECT Host, User FROM mysql.user WHERE User like 'root%';
+```
+
+修改/删除root用户后,请重新运行上述命令检查是否正确修改.
+
+##### 删除 root 的远程访问权限
+
+通常，允许从任何 IP 登录的权限对应的是 `Host` 为 `%` 的记录。执行以下命令删除它：
+
+```sql
+DELETE FROM mysql.user WHERE User='root' AND Host='%';
+-- 重新检查:
+-- 检查名为root的数据库用户,尝试列出root@%一级root@localhost等角色
+SELECT Host, User FROM mysql.user WHERE User='root';
+-- 通配检查root开头的用户
+SELECT Host, User FROM mysql.user WHERE User like 'root%';
+```
+
+*解释：`%` 在 MySQL 中是通配符，代表任何 IP 地址。删除这一行即禁止了 root 从远程登录。*
+
+#### 私有管理员账号创建🎈
 
 创建私有可远程登录的mysql 管理员账号,请在文本编辑器中修改默认值(使用ctrl+h批量替换`root_private`)
 
@@ -503,10 +534,12 @@ CREATE USER 'root_private'@'%' IDENTIFIED BY 'your_root_private_password';
 GRANT ALL PRIVILEGES ON *.* TO 'root_private'@'%' WITH GRANT OPTION;
 
 FLUSH PRIVILEGES;
+-- 通配检查root开头的用户
+SELECT Host, User FROM mysql.user WHERE User like 'root%';
 -- END
 ```
 
-> 移除用户的语句:`DROP USER 'root_private'@'%';`
+> 如果有不需要的用户或者创建的用户名想要更改,可以用移除用户的语句:`DROP USER 'root_private'@'%';`,然后重新创建.
 
 首尾:建议重启mysqld服务,防止某些配置没有生效
 
@@ -720,11 +753,13 @@ sudo ufw allow 2222
 ```bash
 # 配置你的端口组合
 old_port=22
-new_port=2222 # 建议xiu
+new_port=2222 # 建议修改
 # 执行
 update_sshd_port -o $old_port -p $new_port
 enable_ssh_server
 sudo ufw allow $new_port
+echo "重启ssh(sshd)服务..."
+sudo systemctl restart ssh
 # end
 ```
 

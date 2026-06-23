@@ -125,11 +125,11 @@ for dir in "${WORKDIRS[@]}"; do
     if [[ -n "$USER_NAME" ]]; then
         while IFS= read -r site; do
             SITE_PATHS+=("$site")
-        done < <(find "$dir/$USER_NAME" -type d -maxdepth 2 -name wordpress 2> /dev/null)
+        done < <(find -L "$dir/$USER_NAME" -type d -maxdepth 2 -name wordpress 2> /dev/null)
     else
         while IFS= read -r site; do
             SITE_PATHS+=("$site")
-        done < <(find "$dir" -type d -maxdepth 3 -name wordpress 2> /dev/null)
+        done < <(find -L "$dir" -type d -maxdepth 3 -name wordpress 2> /dev/null)
     fi
 done
 

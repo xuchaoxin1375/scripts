@@ -63,7 +63,7 @@ python spaceship_api.py list-domains --all
 从所有账号查询
 
 ```bash
-python C:\repos\scripts\wp\woocommerce\woo_df\pys\spaceship_api\spaceship_api.py list-domains --list_suspended_domains all $desktop/suspend.json --brief
+python C:\repos\scripts\wp\woocommerce\woo_df\pys\spaceship_api\spaceship_api.py list-domains --list_suspended_domains all suspend.json --brief # 将文件输出到suspend.json中(可以自行指定完整路径)
 ```
 
 #### 查询已购买的域名在哪个账号上
