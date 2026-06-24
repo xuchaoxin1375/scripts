@@ -1477,6 +1477,50 @@ function Update-WpAllPluginPackagesOnServers
     }
 
 }
+
+function Update-WpFunctionsphpOnServer
+{
+    <# 
+    .SYNOPSIS
+    更新指定服务器上的Wordpress函数文件
+    .PARAMETER Path
+    本地的functions.php文件路径,默认值为"$wp_plugins/functions.php"
+
+    #>
+    [cmdletbinding()]
+    param (
+        $Server,
+        $Path = "$wp_plugins/functions.php",
+        $BashScript = '/www/sh/wp-functions-update/update_wp_functions.sh',
+        # 注意,Target目录在远程服务器上应该存在,否则scp上传会失败(scp不会创建缺失的中间路径目录),-r选在跟也不会帮助你创建缺失起始目录
+        $RemoteDirectory = "/www",
+        # 需要检索functions.php替换路径的项目目录,尤其是多磁盘的情况
+        $WorkingDirectory = "/www/wwwroot,/wwwdata/wwwroot",
+        $ServerConfig = $server_config,
+        [ValidateSet('copy', 'symlink')]
+        $InstallMode = 'copy'
+    )
+
+    # 管道流向外部程序的数据设置为UTF-8
+    $OutputEncoding = [System.Text.Encoding]::UTF8
+    # 设置控制台输出编码为 UTF-8
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+    Write-Host "Updating functions.php to $Server ..."
+    $RemoteDirectory = $RemoteDirectory
+    Write-Host "Uploading functions.php to $Server ..."
+    scp -r $Path root@"$Server":$RemoteDirectory
+    $remoteFunctionsFile = "$RemoteDirectory/functions.php"
+    ssh -Tn root@$Server "bash $BashScript --src $remoteFunctionsFile --workdir $WorkingDirectory --install-mode $InstallMode"
+        
+        
+
+    Write-Output "检查更新状态:服务器上的版本(日期)是否正确更新:"
+
+    ssh -Tn root@$Server "echo -n `"[`$(hostname)]:`" ; stat -c %y $RemoteDirectory/functions.php"
+  
+    
+}
 function Update-WpFunctionsphpOnServers
 {
     <# 

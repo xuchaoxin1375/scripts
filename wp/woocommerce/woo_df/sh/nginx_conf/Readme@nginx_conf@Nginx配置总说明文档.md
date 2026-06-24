@@ -171,12 +171,16 @@ curl -v -L -A "$ua" --resolve $domain$:80:"$server" http://$domain/content/2026/
 
 4. 更新vhosts配置(关键步骤)
 
-为了让更新的nginx配置生效,需要将自定义配置片段(通常是 `include ...`指令)插入到 `/www/server/panel/vhost/nginx/`目录下的各个网站的 `.conf`文件中,这个过程执行一个命令就可以
+为了让更新的nginx配置生效,需要将自定义配置片段(通常是 `include ...`指令)插入到 `/www/server/panel/vhost/nginx/`目录下的各个网站的 `.conf`文件中,这个过程执行一个命令就可以.
 
 > (下面这个脚本有丰富的选项和用法,这里仅提供最简单粗暴的用法,详情使用 `-h`选项查看用法帮助)
 
 ```bash
-bash /www/sh/nginx_conf/update_nginx_vhosts_conf.sh -m old --force
+# 默认检测标记为通常不用写.
+bash /www/sh/nginx_conf/update_nginx_vhosts_conf.sh -m old --force 
+
+# 按需启用--insert-marker (指定标记参数) 
+bash /www/sh/nginx_conf/update_nginx_vhosts_conf.sh -m old --force # --insert-marker '#ERROR-PAGE-START ' 
 ```
 
 为了简化说明,这里不细说对新/老站点做分批限流,而是将所有站都做同样的处理.

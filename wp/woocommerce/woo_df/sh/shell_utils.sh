@@ -46,6 +46,18 @@ cleanrc() {
 ' "${files[@]}"
     bash ~/sh/shellrc_addition.sh && exec bash
 }
+# 安装常用工具(通过调用 sh/tool_installer中定义好的安装脚本)
+# 要求：sh/tool_installer下的安装脚本都以install_name.sh 的格式命名,从而运行install name 的方式安装名为name的工具.
+install() {
+    local tool_name="$1"
+    local tool_installer_script_path="$SCRIPT_DIR/tool_installer/$tool_name.sh"
+    if [ -f "$tool_installer_script_path" ]; then
+        echo "Installing $tool_name..."
+        bash "$tool_installer_script_path"
+    else
+        echo "Error: $tool_name.sh not found in $tool_installer_script_path"
+    fi
+}
 # 列出bash中所有名字以指定字符串开头的变量
 list_var_start_with_eval() {
     local var_prefix="$1"
