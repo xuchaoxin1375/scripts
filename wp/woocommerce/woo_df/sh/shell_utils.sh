@@ -50,7 +50,7 @@ cleanrc() {
 # 要求：sh/tool_installer下的安装脚本都以install_name.sh 的格式命名,从而运行install name 的方式安装名为name的工具.
 install() {
     local tool_name="$1"
-    local tool_installer_script_path="$SCRIPT_DIR/tool_installer/$tool_name.sh"
+    local tool_installer_script_path="$SCRIPT_DIR/tool_installer/install_$tool_name.sh"
     if [ -f "$tool_installer_script_path" ]; then
         echo "Installing $tool_name..."
         bash "$tool_installer_script_path"
