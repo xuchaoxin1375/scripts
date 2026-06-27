@@ -1107,9 +1107,11 @@ FILES
 
 此外还提供了即时传输的选项(`-I`,还要指定其他关于远程服务器的(remote系列)参数),允许管理员备份一个站后立即上传到备份服务器,然后删除本地包释放空间.
 
-#### 传输脚本
+#### 备份包传输脚本(从生产服务器将包备份到专用备份服务器)
 
-- 传输脚本`backup_site_pkgs.sh`,调用`rsync`将文件备份(增量镜像的方式)到专门的**备份服务器**
+使用传输脚本`backup_site_pkgs.sh`,调用`rsync`将文件备份(增量镜像的方式)到专门的**备份服务器**.
+
+此脚本可以设置为定期运行,每批新站部署完自动按时传输到备份服务器保存副本.
 
 #### 迁移任务说明
 
@@ -1182,6 +1184,8 @@ bash /www/sh/backup_sites/backup_site_pkgs.sh -s /srv/uploads/uploader/files -b 
 
 假设现在服务器`b`要拉取一部分服务器`s`的包进行还原部署.
 
+##### 原始rsync用法
+
 > 根据情况,拉取的源也可以是另一个普通服务器.
 
 > ```bash
@@ -1245,7 +1249,7 @@ rsync -a \
 
 ```bash
 # 从备份服务器上拉取时的参考模板
-rsync_copy -W -p 22 <remote_ip> /srv/uploads/uploader/recovery /www/wwwroot/adminer?/s?/yxj 
+rsync_copy -W -p 22 <remote_ip> /srv/uploads/uploader/recovery /www/wwwroot/adminer?/s?/username? 
 # 其中-W 要小心使用,仅适合全新传输,如果是传输一般断开,则要移除-W选项
 # -p 指定远程服务器端口,默认22,可以不指定.
 ```
@@ -1256,7 +1260,33 @@ rsync_copy -W -p 22 <remote_ip> /srv/uploads/uploader/recovery /www/wwwroot/admi
 
 
 
-准备解压:**移动**从备份服务器拉取到的包到指定待解压目录下,然后就可以利用部署脚本进行部署(导入网站).
+### 准备解压部署
+
+#### 方案1
+
+直接从备份目录中开始解压部署.(推荐)
+
+> 为例降低磁盘存储压力,考虑使用部署完立即删除包解压的选项.
+>
+> 考虑到我们基于人员目录来区分站点归属,解压脚本支持仅解压指定人员的网站包.
+>
+> 包到拉取传输和解压部署可以同时进行,但是建议逐个用户进行解压,比如拉取完一个人员的所有包后,允许针对该人员的包进行解压.
+
+```bash
+# 仅解压指定人员
+bash $sh/deploy_wp_full.sh --pack-root /srv/uploads/uploader/recovery --user-dir username --ssp '' --remove-after-deploy
+```
+
+```bash
+# 也可以所有包拉取完毕后,统一解压部署
+bash $sh/deploy_wp_full.sh --pack-root /srv/uploads/uploader/recovery  --ssp '' --remove-after-deploy
+```
+
+
+
+#### 方案2
+
+**移动**从备份服务器拉取到的包到指定待解压目录下,然后就可以利用部署脚本进行部署(导入网站).
 
 ```bash
 # 注意末尾的 / 确保只匹配目录
@@ -1318,8 +1348,11 @@ done
 
 #### 批量设置伪静态
 
+如果宝塔上的站点列表在网站压缩包解压部署之前就完成创建,那么解压脚本中会完成伪静态的设置操作,并且不会被宝塔的站点添加操作覆盖,不需要额外的操作.
+
+但也可以选择后续统一设置伪静态,这种情况下需要选择合适的方法提高设置效率.
+
 > 宝塔自带的网站管理可以批量设置伪静态,但是站点数量多的情况下,逐页批量设置还是不够快捷.
->
 
 建议使用shell脚本快速设置,脚本位于:
 

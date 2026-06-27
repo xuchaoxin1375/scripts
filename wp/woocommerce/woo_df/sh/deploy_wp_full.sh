@@ -199,9 +199,12 @@ show_help() {
     $0 -M single -n domain1.com --site-db-skip    # 仅解压网站
     $0 -M single -n domain1.com --site-root-skip  # 仅导入数据库
 
-    # 服务器迁移（保留压缩包）
+    # 服务器迁移相关:
+
+    ## 解压后保留压缩包
     $0 --user-dir xcx --ssp ''  --dry-run
-    $0 --pack-root /srv/uploads/uploader/files/recovery --user-dir yxj --ssp '' --remove-after-deploy # 解压完即删除压缩包文件,节省空间
+    ## 解压完即删除压缩包文件,节省空间
+    $0 --pack-root /srv/uploads/uploader/recovery --user-dir yxj --ssp '' --remove-after-deploy 
 
 版本：$VERSION
 
