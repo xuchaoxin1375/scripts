@@ -1399,15 +1399,44 @@ function Deploy-FirewallByNetsh
 
 }
 
-function Deploy-PicgoConfig
+
+function Deploy-PipConfig
 {
-    Write-Output 'for CLI part'
-    cpFVR $configs\PicgoConfigs\* $env:picgo_CLI_config
-    Write-Output 'for GUI part'
-    cpFVR $configs\PicgoConfigs\* $env:picgo_conf
+    <# 
+    .SYNOPSIS
+    配置pip的国内加速源
+    .NOTES 
+    提供的镜像可能不是最新的,如果不可用,请联网搜索获取可用镜像url.
+    #>
+    param (
+        $Mirror = "https://mirrors.ustc.edu.cn/pypi/simple"
+    )
+    pip config set global.index-url $mirror
+    $config = "$env:APPDATA/pip/pip.ini"
+    if(Test-Path $config)
+    {
+        Get-Content $config
+    }
+    pip config list
+    # 1. 定义哈希表 (使用 @{ } 语法)
+    $pypi_mirrors = @{
+        Tencent = "https://mirrors.cloud.tencent.com/pypi/simple/"
+        Aliyun  = "https://mirrors.aliyun.com/pypi/simple/"
+        PKU     = "https://mirrors.pku.edu.cn/pypi/web/simple"
+        ZJU     = "https://mirrors.zju.edu.cn/pypi/web/simple"
+        NJU     = "https://mirror.nju.edu.cn/pypi/web/simple"
+        TUNA    = "https://pypi.tuna.tsinghua.edu.cn/simple"
+        USTC    = "https://mirrors.ustc.edu.cn/pypi/simple"
+    }
+
+    # 2. 直接输出整个哈希表
+    Write-Warning "如果镜像不可用或被限流403,可以更换镜像."
+    Write-Host "当前使用的镜像:[$Mirror]"
+    
+    return $pypi_mirrors
 }
 
-function Deploy-uvConfig
+function Deploy-UvConfig
 {
     <# 
     .SYNOPSIS
@@ -1432,6 +1461,8 @@ default = true
         New-Item -ItemType File -Path $Path -Force -Verbose
     }
     $uvConfig | Set-Content $Path -Verbose
+    Write-Host "检查配置文件内容:"
+    Get-Content $Path
     # 其他源:
     # $pypi_tencent="https://mirrors.cloud.tencent.com/pypi/simple/"
     # $pypi_pku="https://mirrors.pku.edu.cn/pypi/web/simple"
@@ -1445,6 +1476,7 @@ default = true
         PKU     = "https://mirrors.pku.edu.cn/pypi/web/simple"
         ZJU     = "https://mirrors.zju.edu.cn/pypi/web/simple"
         NJU     = "https://mirror.nju.edu.cn/pypi/web/simple"
+        USTC    = "https://mirrors.ustc.edu.cn/pypi/simple"
     }
 
     # 2. 直接输出整个哈希表
@@ -2389,19 +2421,23 @@ function Deploy-MiniforgeConfig
     <# 
     .SYNOPSIS
     设置miniforge的配置文件;
-    优先使用mamba代替conda;mamba默认无法直接调用,可以先激活conda 环境后查出mamba的安装位置,然后将安装目录添加到Path中.
+
+    优先使用conda(miniforge的conda命令已经采用mamba求解器加速,国内各镜像源主要提供的是对conda命令的支持)
+    mamba命令在虚拟环境激活后作为兼容项存在.但是不建议混用.
 
     修改默认环境存放位置,例如~/.conda/envs
     #>
     [CmdletBinding()]
     param(
-        [ValidateSet("mamba", "conda", "all")]
+        [ValidateSet("conda", "mamba", "all")]
         $Mode = "conda",
-        [switch]$Override,
+        
         $Condabin = "",
-        [ValidateSet('Copy', 'SymbolicLink', 'Hardlink', 'Junction')]
-        $OverrideMode = "Copy"
+        [Alias('Override')]
+        [ValidateSet('Copy', 'SymbolicLink', 'Hardlink', 'Junction', '')]
+        $OverrideMode = ""
     )
+    # 从本代码仓库中预设的conda配置文件进行配置部署.
     $condarcBak = "$Scripts/config/miniforge/.condarc"
     $mambarcBak = "$Scripts/config/miniforge/.mambarc"
     $condaAvailability = Get-Command conda -ErrorAction SilentlyContinue
@@ -2435,12 +2471,13 @@ function Deploy-MiniforgeConfig
     {
         Write-Warning "The [$Condabin] does not exist!"
     }
+    # 默认选择
     if($Mode -eq "conda")
     {
 
         if($condaAvailability )
         {
-            if($Override)
+            if($OverrideMode)
             {
                 if($OverrideMode -eq 'Copy')
                 {
@@ -2451,22 +2488,23 @@ function Deploy-MiniforgeConfig
 
                     New-Item -ItemType $OverrideMode -Path ~/.condarc -Value $condarcBak -Verbose -Force
                 }
-                conda clean -i
-                return 
+                
             }
-            # 检查相关配置文件位置:
-            conda config --show-source
-            # 设置安全的环境存放目录
-            conda config --add envs_dirs ~/.conda/envs
-            # 关闭自动激活conda环境
-            conda config --set auto_activate_base false
-            # 显示通道url
-            conda config --set show_channel_urls yes
-            # 设置镜像加速
-            conda config --add channels conda-forge
+            else
+            {
+                
+                # 设置安全的环境存放目录
+                conda config --add envs_dirs ~/.conda/envs
+                # 关闭自动激活conda环境
+                conda config --set auto_activate_base false
+                # 显示通道url
+                conda config --set show_channel_urls yes
+                # 设置镜像加速
+                conda config --add channels conda-forge
+            }
             # 更新镜像配置后清理缓存
             conda clean -i
-            # 检查配置结果
+            # 检查相关配置文件位置:
             conda config --show-source
         }
         else
@@ -2474,9 +2512,10 @@ function Deploy-MiniforgeConfig
             Write-Error "[Conda] is not available."
         }
     }
+    # deprecated
     if($Mode -eq "mamba")
     {
-        if($Override)
+        if($OverrideMode)
         {
             if($OverrideMode -eq 'Copy')
             {
@@ -2545,10 +2584,10 @@ mirrored_channels:
 
         }
     }
-
+    # deprecated
     if($Mode -eq "all")
     {
-        if($Override)
+        if($OverrideMode)
         {
             if($OverrideMode -eq 'Copy')
             {
@@ -2563,9 +2602,9 @@ mirrored_channels:
             }
         }
     }
-    # 检查配置文件内容:
+    Write-Host "检查配置文件内容:..."
     Get-Content ~/.condarc 
-    Get-Content ~/.mambarc
+    Get-Content ~/.mambarc -ErrorAction SilentlyContinue
 }
 function Deploy-TrafficMonitor
 {
