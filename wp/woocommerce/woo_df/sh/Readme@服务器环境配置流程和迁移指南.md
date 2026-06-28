@@ -281,9 +281,15 @@ wp --info
 
 ```
 
-### python脚本用到的依赖安装
+### python脚本用到的依赖安装(可选)
 
-> todo:使用虚拟环境优化python及其依赖包的安装和管理
+这部分不是必须的,但是如果要使用python脚本,则建议配置相关环境.
+
+方案有两类,
+
+#### 直接使用pip安装依赖
+
+> 推荐使用虚拟环境优化python及其依赖包的安装和管理
 
 ```bash
 #安装pip
@@ -295,26 +301,79 @@ apt install pip
 pip install -r $woo_df/requirements_linux.txt
 ```
 
-ubuntu24+版本对于python pip安装依赖包更加严格,可能无法直接通过pip安装
+ubuntu24+版本对于python pip安装依赖包更加严格,可能无法直接通过`pip`安装(或者需要启用允许破坏系统完整性的强制性选项`--break-system-packages`),这和老版本系统以及windows系统大不相同.
 
-可以使用`venv`模块或者`miniforge`来创建python环境,不过这在运行python脚本前就需要选择/切换python环境.
+#### 基于虚拟环境的方案
 
-以miniforge为例:
+可以使用`venv`模块或者`miniforge`来创建python环境.
+
+> 这类方案在运行python脚本前就需要选择/切换python环境.
+
+以miniforge方案为例:
 
 > [conda-forge/miniforge: 一个 conda-forge  --- conda-forge/miniforge: A conda-forge distribution.](https://github.com/conda-forge/miniforge#unix-like-platforms-macos-linux--wsl)
 
 ```bash
-# 下载合适的安装程序
+# 下载合适的安装程序(下载完脚本后安装方式有两类)
 curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
-# 交互式安装
-bash Miniforge3-$(uname)-$(uname -m).sh
-# 初始化环境准备使用.
-conda init
 
-# 非交互式安装(在非交互式安装中，conda 初始化命令默认不会运行。)
+## 以下方案二选一
+# 方案1:交互式安装(安装过程中基本都是输入yes,如果默认回车可能是no,这会跳过某些步骤,新手不建议跳过,例如注册shell激活,如果不小心跳过某个步骤,可以参考交互提示中给出的命令行,根据自己使用的shell修改,再执行即可)
+bash Miniforge3-$(uname)-$(uname -m).sh
+
+# 方案2:非交互式安装(在非交互式安装中，conda 初始化命令默认不会运行。)
 bash Miniforge3-$(uname)-$(uname -m).sh -b
 ~/miniforge3/bin/conda init # 非交互式安装,需要指定conda路径执行conda init
 
+# 初始化环境准备使用
+conda init
+
+# 重新加载shell会话
+exec bash
+
+## 创建conda环境(可以指定python版本,例如3.13)
+conda create -n main python=3.13
+# 激活环境
+conda activate main
+
+```
+
+推荐使用uv优化python包的安装体验
+
+```shell
+# 在上述环境激活的情况下(国外服务器网络环境较好,无需要配置国内镜像加速)
+conda install uv # 或者 pip install uv 
+# 通过uv pip install <package_name> 安装python包,或者uv pip install -r requirements.txt从依赖文件中恢复环境
+uv pip install pandas
+# 使用uv恢复依赖环境速度即可,配合好的网络条件,相比于直接使用pip有极大优势
+uv pip install -r  $woo_df/requirements_linux.txt
+
+
+```
+
+#### 检查PYTHONPATH环境变量
+
+> 除了安装requirements配置中的依赖,还有本文配套的专用python包(未发布在pypi),供图片压缩脚本引用.
+>
+> 查看`PYTHONPATH`变量取值,是否包含了代码仓库中的python包目录:
+
+```bash
+echo $PYTHONPATH | tr ':' '\n'
+# 参考取值
+.../repos/scripts/wp/woocommerce/woo_df
+.../repos/scripts/wp/woocommerce/woo_df/pys/bt_api
+.../repos/scripts/wp/woocommerce/woo_df/pys/cf_api
+.../repos/scripts/wp/woocommerce/woo_df/pys/spaceship_api
+```
+
+例如运行`python $pys/image_compressor.py -h`获取图片压缩脚本的使用帮助
+
+```python
+# ✔ (main) [Ubuntu 24.04][bash 5.2.21]root@s9 in ~/repos/scripts/wp/woocommerce/woo_df on git:main [10:46:15]
+$ python $pys/image_compressor.py -h
+usage: image_compressor.py [-h] [-i INPUT] [-I INPUT_DIRLIST_FILE] [-o OUTPUT] [-A] [-f {webp,jpg,png}] ...
+图片压缩与转换工具(制定输入的方式有两个参数,-I优先级高,-i允许制定当文件或者目录)
+...
 ```
 
 

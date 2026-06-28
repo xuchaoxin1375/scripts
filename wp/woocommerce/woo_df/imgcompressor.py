@@ -171,7 +171,9 @@ class ImageCompressor:
         self.opl.start()
         info(f"压缩白名单: {self.compress_for_format}")
         # self.logger.propagate = False
-        self.logger.info(f"[{__name__}]当前日志处理器:{logger.handlers}")  # type: ignore
+        self.logger.info(
+            f"[{__name__}]当前日志处理器:{logger.handlers if logger else 'None'}"
+        )
 
     @property
     def compress_threshold(self):
@@ -380,8 +382,8 @@ class ImageCompressor:
                 msg_segs = (
                     icon_trend,
                     f"体积变化({size_trend}): {ratio:.2f}%",
-                    f"原始大小: {original_size/1024:.2f}KB, ",
-                    f"压缩后: {new_size/1024:.2f}KB, ",
+                    f"原始大小: {original_size / 1024:.2f}KB, ",
+                    f"压缩后: {new_size / 1024:.2f}KB, ",
                     f"压缩成功: {input_path} -> {output_path}",
                     f"压缩参数: quality={quality}",
                     f"分辨率变化:{old_wh}->{new_wh} ; 分辨率限制:{self.resize_threshold}",
@@ -473,7 +475,7 @@ class ImageCompressor:
             )
             # debug(f"对比:{original_size} vs {ct}")
         elif ct and original_size < ct:
-            msg = f"文件大小({original_size/1024:.2f}KB)过小,微压(quality={quality_for_small_file})"
+            msg = f"文件大小({original_size / 1024:.2f}KB)过小,微压(quality={quality_for_small_file})"
             self.logger.info(msg)
             quality = quality_for_small_file
             # 验证质量参数
@@ -567,7 +569,6 @@ class ImageCompressor:
             # for filename in os.listdir(input_dir):
             for input_path in files:
                 if input_path.lower().endswith(SUPPORT_IMAGE_FORMATS_NAME):
-
                     output_format_name, output_path = self._get_output_info(
                         output_dir=output_dir,
                         output_format=output_format,
