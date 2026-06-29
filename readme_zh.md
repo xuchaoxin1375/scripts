@@ -183,7 +183,7 @@ bash <(curl -SfL https://raw.giteeusercontent.com/xuchaoxin1375/scripts/raw/main
 
 ```bash
 # 具体的脚本文件url请登录github获取,下面提供一个示例
-curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos.sh -o $sh/update_repos.sh
+curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos.sh -o $HOME/update_repos.sh && bash $HOME/update_repos.sh
 
 ```
 

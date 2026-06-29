@@ -11,7 +11,7 @@
 # 仅clone:
 # mkdir -p -v $HOME/repos && git clone --depth 1 https://gitee.com/xuchaoxin1375/scripts.git $HOME/repos/scripts
 #
-# 单独拉取并修复此脚本:(如果某次更新引入错误导致更新脚本不可用时,通过下面的命令恢复,注意这依赖于$sh变量,如果是第一次使用本仓库代码,$sh未定义,导致脚本尝试下载到根目录下.)
+# 单独拉取并修复此脚本:(如果某次更新引入错误导致更新脚本不可用时,通过下面的命令恢复)
 # curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos.sh -o $HOME/sh/update_repos.sh
 # bash $HOME/sh/update_repos.sh
 
@@ -24,7 +24,7 @@
 # 严格模式
 # set -euo pipefail #慎用,可能会因为部分错误(重载nginx失败)导致覆盖逻辑不触发,考虑将更新cf_ip的代码作为选项执行.
 
-version=20260607.15.57
+version=20260629.1502
 
 echo "当前脚本版本: $version;"
 # ip=$(curl -sm 5 ipinfo.io | grep -Po '"ip": "\K[^"]*')
@@ -49,13 +49,23 @@ SH_WWW="/www/sh" #末尾不要加斜杠/
 # sh="$SH_SYM" # 简写或者直接用SH_SYM
 _REPO_BASE="repos/scripts"
 _SH_RELATIVE="wp/woocommerce/woo_df/sh"
-SCRIPT_ROOT_DEFAULT="$HOME/$_REPO_BASE" # 默认的仓库目录(scripts仓库总目录)
 
 # 计算最终的SCRIPT_ROOT路径
-SCRIPT_ROOT="${SCRIPT_ROOT:-"$SCRIPT_ROOT_DEFAULT"}" # /root/repos/scripts 或 /home/user/repos/scripts,历史遗留目录为/repos/scripts
-# (服务器端)兼容历史遗留路径
-SCRIPT_ROOT_SERVER=/repos/scripts
-[[ -d $SCRIPT_ROOT_SERVER ]] && SCRIPT_ROOT=$SCRIPT_ROOT_SERVER #将被弃用 (/repos/scripts/)
+SCRIPT_ROOT_DEFAULT="$HOME/$_REPO_BASE" # 默认的仓库目录(scripts仓库总目录)
+SCRIPT_ROOT="${SCRIPT_ROOT_DEFAULT}"    # /root/repos/scripts 或 /home/user/repos/scripts,历史遗留目录为/repos/scripts
+
+# (服务器端)兼容历史遗留路径,此时符号链接指向SCRIPT_ROOT_SERVER为主
+SCRIPT_ROOT_SERVER="/$_REPO_BASE"
+# [[ -d $SCRIPT_ROOT_SERVER ]] && ln -snfv "$SCRIPT_ROOT" "$SCRIPT_ROOT_SERVER"
+if [[ -d $SCRIPT_ROOT_SERVER ]]; then
+    SCRIPT_ROOT="$SCRIPT_ROOT_SERVER"
+    if [[ -d "$SCRIPT_ROOT_DEFAULT" ]]; then
+        rm -rf "$SCRIPT_ROOT_DEFAULT"
+    else
+        mkdir -pv "$(dirname "$SCRIPT_ROOT_DEFAULT")"
+    fi
+    ln -snvf "$SCRIPT_ROOT_SERVER" "$SCRIPT_ROOT_DEFAULT"
+fi
 
 # shell脚本目录(sh)
 SH_SCRIPT_DIR="$SCRIPT_ROOT/$_SH_RELATIVE"
@@ -440,7 +450,7 @@ if [ "$UPDATE_CONFIG" -eq 1 ]; then
     # NGINX_CONFD_VHOST (将宝塔的vhost目录创建符号链接到总配置目录,便于访问和管理)
     [[ $ISBT == true ]] && ln -snfv "$NGINX_CONFD_VHOST" $NGINX_CONF_DIR/vhosts_confd -fv
     # 日志由于root用户操作可能更改所有者和写入权限,可能导致日志写入问题.
-    # [[ $ISBT == true ]] && ln -snfv "/www/wwwlogs" $NGINX_CONF_DIR/logs -fv 
+    # [[ $ISBT == true ]] && ln -snfv "/www/wwwlogs" $NGINX_CONF_DIR/logs -fv
 
     # 通配批量复制文件
     # html文件包括js挑战用到的页面
