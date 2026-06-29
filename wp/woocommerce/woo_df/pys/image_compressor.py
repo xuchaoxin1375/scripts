@@ -7,14 +7,13 @@ import os
 import sys
 import logging
 
-
 from imgcompressor import (
     # DEFAULT_QUALITY_RULE,
     # SUPPORT_IMAGE_FORMATS,
     ImageCompressor,
     setup_logging,
 )
-
+__version__="20260629.1434"
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 info=logger.info
@@ -34,8 +33,8 @@ COMPRESS_TRHESHOLD = COMPRESS_TRHESHOLD_B
 def parse_args():
     """解析命令行参数"""
     parser = argparse.ArgumentParser(
-        description="""
-        基于python PIL库的图片压缩与转换脚本
+        description=f"""
+        基于python PIL库的图片压缩与转换脚本 VERSION={__version__}
         (指定输入的方式有两个参数,-I优先级高,-i允许指定当文件或者目录)
         """,
         
@@ -195,6 +194,11 @@ def parse_args():
         action="store_true",
         help="跳过处理输入图片为截断或破损的图片(默认尽可能处理图片)",
     )
+    parser.add_argument(
+        "--version",
+        action="store_true",
+        help="显示版本信息并退出",
+    )
     parser.add_argument("-v", "--verbose", action="store_true", help="显示详细输出")
     return parser.parse_args()
 
@@ -203,6 +207,9 @@ def main():
     """命令行入口"""
     args = parse_args()
     setup_logging(args.verbose)
+    if args.version:
+        print(f"{__version__}")
+        return 0
     skip_format = args.skip_format or ""
     info(f"skip_format:[{skip_format}]")
     compressor = ImageCompressor(
