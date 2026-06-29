@@ -5,6 +5,8 @@
 import argparse
 import os
 import sys
+import logging
+
 
 from imgcompressor import (
     # DEFAULT_QUALITY_RULE,
@@ -12,6 +14,10 @@ from imgcompressor import (
     ImageCompressor,
     setup_logging,
 )
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+info=logger.info
 
 # SUPPORT_IMAGE_FORMATS = list(SUPPORT_IMAGE_FORMATS)
 
@@ -28,8 +34,25 @@ COMPRESS_TRHESHOLD = COMPRESS_TRHESHOLD_B
 def parse_args():
     """解析命令行参数"""
     parser = argparse.ArgumentParser(
-        description="图片压缩与转换工具(制定输入的方式有两个参数,-I优先级高,-i允许制定当文件或者目录)",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description="""
+        基于python PIL库的图片压缩与转换脚本
+        (指定输入的方式有两个参数,-I优先级高,-i允许指定当文件或者目录)
+        """,
+        
+        epilog="""
+
+        EXAMPLE:
+        
+            # 将各种格式的图片格式转换为webp格式(从jpg,png等格式转换通常可以降低存储占用,但是有的图片处理后体积反而会膨胀,这时候可以启用-p 参数,仅更改图片后缀,而不做实际的格式转换)
+            python $pys/image_compressor.py   -R auto -p -F  -O -k -f webp  -r 1000 800  -i $downloads/imgs
+            
+
+            # 原地压缩,保持后缀,但实际将图片格式转为webp以降低占用.(虽然扩展名和图片实际格式可能不再匹配,但是不影响浏览器显示)
+            # 直接指定一个目录,从该目录递归扫描处理,不执行分辨率处理,跳过50KB以下的图片的处理
+            python3 $pys/image_compressor.py   -R auto -p -F  -O -W  -k  -A  -i /www/wwwroot/  -T 50
+        """,
+        # formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        formatter_class=argparse.RawTextHelpFormatter
     )
     # parser.add_argument(
     #     "input",
@@ -181,7 +204,7 @@ def main():
     args = parse_args()
     setup_logging(args.verbose)
     skip_format = args.skip_format or ""
-    print(f"skip_format:[{skip_format}]")
+    info(f"skip_format:[{skip_format}]")
     compressor = ImageCompressor(
         compress_threshold=args.compress_threshold,
         quality_rule=args.quality_rule,
@@ -195,7 +218,7 @@ def main():
         skip_truncated_image=args.skip_truncated_image,
     )
     fmt = args.format or ""
-    print(f"target fmt:[{fmt}]")
+    info(f"target fmt:[{fmt}]")
     input_path = args.input
     if args.input_dirlist_file:
         with open(args.input_dirlist_file, "r", encoding="utf-8") as f:
@@ -235,7 +258,7 @@ def process_input_task(args, compressor: ImageCompressor, fmt, input_path):
                 keep_exif=args.keep_exif,
                 overwrite=args.overwrite,
             )
-            # print(_)
+            # info(_)
             # sys.exit(0 if success else 1)
         elif os.path.isdir(input_path):
             # 批量处理
@@ -243,9 +266,9 @@ def process_input_task(args, compressor: ImageCompressor, fmt, input_path):
             output = args.output
             out_dir = output or input_path
             if not output:
-                # print("!批量处理时必须指定输出目录", file=sys.stderr)
+                # info("!批量处理时必须指定输出目录", file=sys.stderr)
                 # sys.exit(1)
-                print(f"批量处理没有指定输出目录🎈,使用默认目录{out_dir}")
+                info(f"批量处理没有指定输出目录🎈,使用默认目录{out_dir}")
 
             results = compressor.batch_compress(
                 input_dir=input_path,
@@ -255,16 +278,16 @@ def process_input_task(args, compressor: ImageCompressor, fmt, input_path):
                 max_workers=args.max_workers,
                 overwrite=args.overwrite,
             )
-            print("\n处理结果报告:")
+            info("\n处理结果报告:")
             results.end_and_report()
 
         else:
-            print(f"跳过此行(路径不存在或非路径串) {args.input}", file=sys.stderr)
+            info(f"跳过此行(路径不存在或非路径串) {args.input}")
             # sys.exit(1)
         # results.end_and_report()
 
     except Exception as e:
-        print(f"发生错误: {str(e)}", file=sys.stderr)
+        info(f"发生错误: {str(e)}")
         sys.exit(1)
 
 

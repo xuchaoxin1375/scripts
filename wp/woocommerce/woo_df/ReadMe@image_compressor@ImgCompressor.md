@@ -326,7 +326,7 @@ python3 $pys/image_compressor.py   -R auto -p -F -O -W -k -A -r 1000 800 -i "替
 ## 从白名单指定,并且执行分辨率处理
 python3 $pys/image_compressor.py   -R auto -p -F  -O -W  -k  -A  -I "images_to_compress.txt" -r 1000 800 # -T 50
 
-# 直接指定一个目录,从该目录递归扫描处理,不执行分辨率处理,跳过50KB一下的
+# 直接指定一个目录,从该目录递归扫描处理,不执行分辨率处理,跳过50KB以下的图片的处理
 python3 $pys/image_compressor.py   -R auto -p -F  -O -W  -k  -A  -i /www/wwwroot/  -T 50
 ```
 

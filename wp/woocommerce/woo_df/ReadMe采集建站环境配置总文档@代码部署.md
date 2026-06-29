@@ -48,7 +48,7 @@
 
 ### 各个脚本的使用说明
 
-详情见专门的文档: [Readme.md](pys\Readme.md) 
+详情见专门的文档: [Readme.md@本地建站流程说明](pys\Readme@本地建站流程说明.md) 
 
 建站人员使用的命令行说明: [Readme@建站命令行说明.md](pys\Readme@建站命令行说明.md) (提供设计思路和现有脚本的基本运行流程)
 
@@ -116,7 +116,7 @@ Add-CxxuPsModuleToProfile #今后将自动加载powershell环境
 
 ### python环境检查
 
-- 如果成功,打开python交互模式,运行`import woo`不会报错,否则说明配置失败
+- 如果成功,打开python交互模式,运行`import woodf`不会报错,否则说明配置失败
 
   ```powershell
   #⚡️[cxxu@CXXUFIREBAT11][~\Desktop][23:21:06][UP:4.02Days]
@@ -143,12 +143,6 @@ PS>
 ```
 
 而不是只有`PS >`
-
-
-
-
-
-
 
 ## 向桌面添加脚本|模块所在目录🎈
 

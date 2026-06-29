@@ -18,7 +18,7 @@ from io import BytesIO
 # from wand.image import Image as WandImage
 from PIL import Image, ImageFile
 
-# import pillow_avif  # 启用 AVIF 支持必须导入,太新的python版本可能安装不上库(不需要显式调用,导入即可) # noqa: F401  pylint: disable=unused-import
+import pillow_avif  # 为了启用 AVIF 支持必须导入(不需要显式调用,导入即可),注意,太新的python版本可能安装不上库 # noqa: F401  pylint: disable=unused-import
 from comutils import get_paths, SUPPORT_IMAGE_FORMATS_NAME
 from operationlogger import OperationLogger
 from pathsize import format_size, get_size
@@ -39,8 +39,9 @@ COMPRESS_TRHESHOLD_KB = 0
 COMPRESS_TRHESHOLD_B = COMPRESS_TRHESHOLD_KB * K
 COMPRESS_TRHESHOLD = COMPRESS_TRHESHOLD_B
 
-# 默认的quality规则
-DEFAULT_QUALITY_RULE = "0,50,75 ; 50,200,40 ; 200,10000,30"
+# 默认的quality规则(针对不同图片占用区间指定对应的图片保存质量,预设4个档位(每个档位由三个数构成:min,max,quality),
+# 小图片压缩潜力不大且容易变糊,保留较高的quality,升档则降低quality.)
+DEFAULT_QUALITY_RULE = "0,50,75 ; 50,100,60; 100,200,45 ; 200,10000,30"
 # image extension / format names
 
 SUPPORT_IMAGE_FORMATS = ["." + f for f in SUPPORT_IMAGE_FORMATS_NAME]
@@ -247,7 +248,7 @@ class ImageCompressor:
                 output_format=output_format,
             )
             info(f"输出文件: {output_path}")
-            # self.logger.info(f"输出文件: {output_path}🎈")
+
             output_base, output_format = os.path.splitext(output_path)
             output_format_name = output_format.lower().strip(".")
             self.logger.debug(f"输出格式:{output_format}")
@@ -370,7 +371,7 @@ class ImageCompressor:
                     debug(f"格式文件变化:{input_path}->{output_path}")
                     os.rename(input_path, output_path)
                 msg = f" 🟰  压缩后文件大小未减少,不覆盖原文件(大小变化:{original_size}->{new_size})"
-                debug(msg)
+                info(msg)
             else:
                 # 需要替换源文件的情况
                 if not expand:
@@ -395,7 +396,7 @@ class ImageCompressor:
                     input_path, output_path, overwrite, temp_output_path
                 )
 
-                self.logger.info(msg)
+                info(msg)
                 opl.log_success()
             # 检查 tmp 文件是否存在,如果存在,删除(安全语句)
             if os.path.exists(temp_output_path):
@@ -621,7 +622,8 @@ class ImageCompressor:
 
 def setup_logging(level=logging.INFO, log_file=None, log_format=None):
     """
-    设置日志记录器。
+    设置日志记录器。仅用于当前文件被视为脚本而非模块的时候,定义日志记录器。
+    如果本文件作为模块,这不应该调用此方法.
 
     Args:
         level (int): 日志级别，
@@ -641,7 +643,9 @@ def setup_logging(level=logging.INFO, log_file=None, log_format=None):
 
     # 设置默认的日志格式
     if log_format is None:
-        log_format = "%(asctime)s ~~ %(name)s - %(levelname)s - %(message)s"
+        log_format = (
+            "%(asctime)s - %(name)s - %(funcName)s - %(levelname)s - %(message)s"
+        )
 
     # 创建格式化器
     formatter = logging.Formatter(log_format)
@@ -699,4 +703,5 @@ def get_quality_from_rule(rule, size, default_quality=20):
 
 if __name__ == "__main__":
     # main()
-    print("Welcome to use imgcompressor!")
+    setup_logging()
+    info("Welcome to use imgcompressor!")
