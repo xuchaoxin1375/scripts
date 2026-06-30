@@ -321,16 +321,22 @@ python3 $pys/image_compressor.py   -R auto -p -F -O -W -k -A -r 1000 800 -i "替
 >
 > - 其他格式(可以用find找出所有非png图片,或压缩脚本的`-s png`),对这部分图片使用`-r 1000 800`;
 
+直接指定等层目录可能会很慢,考虑使用find过滤出根据具体的目录,例如:
+
+```bash
+ find /data  -mindepth 3 -maxdepth 5 -type d -path '*/wp-content/uploads/202*' > img_dirs_to_compress.txt
+```
+
+
+
 ```bash
 # 计算要压缩到路径,保存到白名单"images_to_compress.txt",
 ## 从白名单指定,并且执行分辨率处理
 python3 $pys/image_compressor.py   -R auto -p -F  -O -W  -k  -A  -I "images_to_compress.txt" -r 1000 800 # -T 50
 
 # 直接指定一个目录,从该目录递归扫描处理,不执行分辨率处理,跳过50KB以下的图片的处理
-python3 $pys/image_compressor.py   -R auto -p -F  -O -W  -k  -A  -i /www/wwwroot/  -T 50
+python3 $pys/image_compressor.py   -R auto -p -F  -O -W  -k  -A  -i /www/wwwroot/.../wp-content/uploads/  -T 50
 ```
-
-
 
 #### 案例:扫描所有网站里的大图并压缩
 
