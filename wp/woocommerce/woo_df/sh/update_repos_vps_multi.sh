@@ -269,7 +269,74 @@ is_ipv4() {
         ((p >= 0 && p <= 255)) || return 1
     done
 }
+# 辅助判断一个ip是否为ipv6,由is_ipv6调用
+_ipv6_count_hextets() {
+    local s="$1"
+    local IFS=:
+    local -a parts
+    local h
 
+    if [[ -z "$s" ]]; then
+        printf '0'
+        return 0
+    fi
+
+    # 普通片段中不能出现空字段
+    [[ "$s" != :* && "$s" != *: && "$s" != *::* ]] || return 1
+
+    read -r -a parts <<< "$s"
+
+    for h in "${parts[@]}"; do
+        [[ "$h" =~ ^[0-9A-Fa-f]{1,4}$ ]] || return 1
+    done
+
+    printf '%d' "${#parts[@]}"
+}
+
+# 判断一个ip是否为ipv6
+is_ipv6() {
+    local ip="$1"
+    local v4 left right n_left n_right
+
+    [[ -n "$ip" ]] || return 1
+
+    # 这里判断纯 IPv6 地址，不接受 [::1] 或 fe80::1%eth0
+    [[ "$ip" != *%* && "$ip" != \[* && "$ip" != *\]* ]] || return 1
+    [[ "$ip" =~ ^[0-9A-Fa-f:.]+$ ]] || return 1
+
+    # 支持 IPv4 嵌入形式，例如 ::ffff:192.168.1.1
+    # IPv4 尾部等价于 2 个 IPv6 hextet
+    if [[ "$ip" == *.* ]]; then
+        v4=${ip##*:}
+
+        is_ipv4 "$v4" || return 1
+        [[ "$ip" == *:* ]] || return 1
+        [[ "${ip%:*}" != *.* ]] || return 1
+
+        ip="${ip%:*}:0:0"
+    fi
+
+    [[ "$ip" =~ ^[0-9A-Fa-f:]+$ ]] || return 1
+
+    # :: 最多只能出现一次
+    [[ "$ip" != *::*::* ]] || return 1
+
+    if [[ "$ip" == *::* ]]; then
+        left=${ip%%::*}
+        right=${ip#*::}
+
+        n_left=$(_ipv6_count_hextets "$left") || return 1
+        n_right=$(_ipv6_count_hextets "$right") || return 1
+
+        # 有 :: 时，显式字段数必须小于 8，:: 至少压缩 1 个字段
+        ((n_left + n_right < 8)) || return 1
+    else
+        n_left=$(_ipv6_count_hextets "$ip") || return 1
+
+        # 没有 :: 时必须正好 8 段
+        ((n_left == 8)) || return 1
+    fi
+}
 normalize_dir_slash() {
     local dir="$1"
     [[ -n "$dir" ]] || return 0
@@ -315,8 +382,10 @@ add_mapping_pair() {
     [[ -n "$b_ip" ]] || die "映射中的 B_IP 为空: [$raw]"
     [[ -n "$a_ip" ]] || die "映射中的 A_IP 为空: [$raw]"
 
-    is_ipv4 "$b_ip" || die "B_IP 不是合法 IPv4: [$b_ip], 原始映射: [$raw]"
-    is_ipv4 "$a_ip" || die "A_IP 不是合法 IPv4: [$a_ip], 原始映射: [$raw]"
+    # is_ipv4 "$b_ip" || die "B_IP 不是合法 IPv4: [$b_ip], 原始映射: [$raw]"
+    # is_ipv4 "$a_ip" || die "A_IP 不是合法 IPv4: [$a_ip], 原始映射: [$raw]"
+    is_ipv4 "$b_ip" || is_ipv6 "$b_ip" || die "B_IP 不是合法 IP: [$b_ip], 原始映射: [$raw]"
+    is_ipv4 "$a_ip" || is_ipv6 "$b_ip" || die "A_IP 不是合法 IP: [$a_ip], 原始映射: [$raw]"
 
     MAPPINGS+=("${b_ip}:${a_ip}")
 }
