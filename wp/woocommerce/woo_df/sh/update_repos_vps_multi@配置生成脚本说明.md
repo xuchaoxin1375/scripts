@@ -367,3 +367,124 @@ flowchart
     J --> K[nginx -s reload]
 ```
 
+## 关于ipv6
+
+注意,使用 **IPv6 出口绑定 IPv4 upstream**,将导致错误.
+
+nginx 连接 `ipv4:80` 时会创建 IPv4 socket，但如果你又要求它绑定某个ipv6,例如：
+
+```nginx
+proxy_bind ipv6;
+```
+
+于是内核报：
+
+```text
+Address family not supported by protocol
+```
+
+意思就是：**IPv4 连接不能绑定 IPv6 源地址。**
+
+### 目前只能支持同地址族
+
+方案 1：A 有 IPv6，使用 IPv6 -> IPv6
+
+```text
+ipv6 -> A服务器IPv6
+```
+
+生成后类似：
+
+```nginx
+listen [ipv6]:80 default_server;
+proxy_bind ipv6;
+server [A服务器IPv6]:80;
+```
+
+这是正确的。
+
+------
+
+方案 2：A 只有 IPv4，使用 IPv4 -> IPv4
+
+```text
+B服务器IPv4 -> ipv4
+```
+
+生成后类似：
+
+```nginx
+listen B服务器IPv4:80 default_server;
+proxy_bind B服务器IPv4;
+server ipv4:80;
+```
+
+这也是正确的。
+
+------
+
+方案 3：前端监听 IPv6，但后端仍然是 IPv4
+
+去掉`proxy_bind`指令,让转发可以执行
+
+```nginx
+proxy_bind ipv6;
+```
+
+问题是这样就失去了你原脚本的核心设计：**指定 B_IP 作为访问 A 的出口 IP**。
+
+所以如果你的目标是“多出口 IP 精确绑定”，就不要混用 IPv6 和 IPv4。
+
+------
+
+### 校验ip family
+
+在 `add_mapping_pair()` 里，校验完 IP 合法性后，加这个函数：
+
+```bash
+ip_family() {
+    local ip="$1"
+
+    if is_ipv4 "$ip"; then
+        printf 'ipv4'
+        return 0
+    fi
+
+    if is_ipv6 "$ip"; then
+        printf 'ipv6'
+        return 0
+    fi
+
+    return 1
+}
+```
+
+然后在：
+
+```bash
+is_ipv4 "$b_ip" || is_ipv6 "$b_ip" || die "B_IP 不是合法 IP: [$b_ip], 原始映射: [$raw]"
+is_ipv4 "$a_ip" || is_ipv6 "$a_ip" || die "A_IP 不是合法 IP: [$a_ip], 原始映射: [$raw]"
+```
+
+后面追加：
+
+```bash
+local b_family=""
+local a_family=""
+
+b_family="$(ip_family "$b_ip")"
+a_family="$(ip_family "$a_ip")"
+
+[[ "$b_family" == "$a_family" ]] || die "B_IP 与 A_IP 地址族不一致，不能用于 proxy_bind: [$b_ip -> $a_ip]。IPv4 只能绑定 IPv4 出口，IPv6 只能绑定 IPv6 出口。"
+```
+
+这样以后如果写了：
+
+```bash
+-m 'ipv6->ipv4'
+```
+
+脚本会直接报错，不会生成一个 nginx 运行时报 500 的配置。
+
+------
+

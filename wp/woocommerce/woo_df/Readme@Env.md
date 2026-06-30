@@ -8,6 +8,8 @@
 
 查看woo_df目录下的requirements.txt,根据该文件的要求进行安装依赖
 
+### windows用户
+
 在这之前,建议将pip源更换为国内加速源,比如清华源,执行以下命令即可配置(powershell或者cmd/bash都可以)
 
 ```bash
@@ -25,7 +27,23 @@ pip install -r "$woo_df\requirements.txt" #注意修改requirements.txt的路径
 - 注意:具体的requirements.txt路径根据自己的实际情况指定,尤其是当前工作目录会影响到指定目录值
 
 
-- 或者可以使用拖转文件的方式或指定绝对路径的方式来指定requirements.txt文件都可以
+- 或者可以使用拖转文件的方式或指定绝对路径的方式来指定requirements.txt文件都可以.
+
+#### linux用户
+
+> 主要针对服务器上运行脚本,如果是国外服务器,就不需要执行换源配置.
+
+linux用户把上面提到的`requirements.txt`替换为`requirements_linux.txt`,并且推荐使用环境管理(例如uv或者conda+uv,然后用`uv pip install -r ...`快速安装依赖),而不是直接`pip install`
+
+```python
+# 虚拟环境+uv pip 方案
+uv pip install -r "$woo_df"/requirements_linux.txt
+
+# 普通方案:强制安装依赖(允许pip 破坏系统包:即 Allow pip to modify an EXTERNALLY-MANAGED Python installation)
+pip install -r "$woo_df"/requirements_linux.txt --break-system-packages 
+```
+
+
 
 ### magic库的检查(可选)
 
@@ -122,72 +140,74 @@ Backup-EnvsRegistry -Dir $desktop
 
 > **喜欢使用D盘的注意按需更改""中的值(强烈建议不要设置D盘,diskmgmt删除该盘,然后扩展C盘,尤其总共不足1TB的情况下便于管理)**
 
-- [ ] ```cmd
-  # 创建常用软件目录
-  New-Item -ItemType Directory -Path C:/exes , C:/sites -ErrorAction SilentlyContinue 
-  # 根据情况修改采集器Data目录🎈
-  $phpstudy_home="C:\phpstudy_pro"
-  $phpstudy_extensions="$phpstudy_home\Extensions"
-  
-  
-  # 设置nginx信息🎈
-  # 根据nginx版本修改下面的版本号(默认为1.25.2)
-  $nginx_home="$phpstudy_extensions\Nginx1.25.2"
-  # 根据采集器安装目录修改🎈
-  $locoy_spider_home="C:\火车采集器V10.27"
-  
-  # 设置mysql信息🎈
-  #$MYSQL_BIN_HOME = "$phpstudy_extensions\MySQL5.7.26\bin" #弃用5.7,现在使用8+的版本
-  $mysql_home="$phpstudy_extensions\MySQL8.0.12"
-  $mysql_bin = "$mysql_home\bin"
-  # 根据情况修改本地mysql密码🎈(小皮数据库默认密码为root)
-  setx MySqlKey_LOCAL "root"
-  # 注意php版本号根据具体情况修改🎈
-  $PHP_HOME="$env:phpstudy_extensions\php\php7.4.3nts"
-  
-  
-  # =======下面的不需要修改===========
-  $nginx_conf_dir="$nginx_home\conf"
-  $nginx_vhosts_dir="$nginx_conf_dir\vhosts"
-  $locoy_spider_data="$locoy_spider_home\Data"
-  
-  # 基础环境变量配置
-  setx PYTHONPATH @"
-  C:\repos\scripts\wp\woocommerce\woo_df;
-  C:\repos\scripts\wp\woocommerce\woo_df\pys\bt_api;
-  C:\repos\scripts\wp\woocommerce\woo_df\pys\cf_api;
-  C:\repos\scripts\wp\woocommerce\woo_df\pys\spaceship_api;
-  "@
-  setx PHPSTUDY_HOME $phpstudy_home
-  setx PYS C:\repos\scripts\wp\woocommerce\woo_df\pys
-  setx WOO_DF C:\repos\scripts\wp\woocommerce\woo_df
-  setx PsModulePath C:/repos/scripts/PS
-  setx exes C:/exes
-  
-  
-  # 辅助环境变量配置(D盘用户注意按需更改),还有软件版本也要注意(日后如果更新软件,或其他导致目录变更的情况,要注意修改环境变量(使用gui方案))
-  setx LOCOY_SPIDER_DATA $locoy_spider_data 
-  
-  setx phpstudy_extensions $phpstudy_extensions
-  setx nginx_home $nginx_home
-  setx nginx_conf_dir $nginx_conf_dir
-  setx nginx_vhosts_dir $nginx_vhosts_dir
-  
-  # php
-  setx php_home $php_home
-  # mysql
-  setx MYSQL_HOME $mysql_home
-  setx MYSQL_BIN_HOME $mysql_home
-  
-  # ==配置常用软件所在目录到path===
-  #Add-EnvVar -EnvVar Path -NewValue '%nginx_home%' 
-  Add-EnvVar -EnvVar Path -NewValue $nginx_home
-  Add-EnvVar -EnvVar Path -NewValue $mysql_bin
-  # 注册mysqld服务
-  # $mysql_home=if($MYSQL_HOME){$mysql_home}else{$env:MYSQL_HOME}
-  mysqld --install MySQL80 --defaults-file="$MYSQL_HOME\my.ini"
-  # END
-  ```
+
+
+```cmd
+# 创建常用软件目录
+New-Item -ItemType Directory -Path C:/exes , C:/sites -ErrorAction SilentlyContinue 
+# 根据情况修改采集器Data目录🎈
+$phpstudy_home="C:\phpstudy_pro"
+$phpstudy_extensions="$phpstudy_home\Extensions"
+
+
+# 设置nginx信息🎈
+# 根据nginx版本修改下面的版本号(默认为1.25.2)
+$nginx_home="$phpstudy_extensions\Nginx1.25.2"
+# 根据采集器安装目录修改🎈
+$locoy_spider_home="C:\火车采集器V10.27"
+
+# 设置mysql信息🎈
+#$MYSQL_BIN_HOME = "$phpstudy_extensions\MySQL5.7.26\bin" #弃用5.7,现在使用8+的版本
+$mysql_home="$phpstudy_extensions\MySQL8.0.12"
+$mysql_bin = "$mysql_home\bin"
+# 根据情况修改本地mysql密码🎈(小皮数据库默认密码为root)
+setx MySqlKey_LOCAL "root"
+# 注意php版本号根据具体情况修改🎈
+$PHP_HOME="$env:phpstudy_extensions\php\php7.4.3nts"
+
+
+# =======下面的不需要修改===========
+$nginx_conf_dir="$nginx_home\conf"
+$nginx_vhosts_dir="$nginx_conf_dir\vhosts"
+$locoy_spider_data="$locoy_spider_home\Data"
+
+# 基础环境变量配置
+setx PYTHONPATH @"
+C:\repos\scripts\wp\woocommerce\woo_df;
+C:\repos\scripts\wp\woocommerce\woo_df\pys\bt_api;
+C:\repos\scripts\wp\woocommerce\woo_df\pys\cf_api;
+C:\repos\scripts\wp\woocommerce\woo_df\pys\spaceship_api;
+"@
+setx PHPSTUDY_HOME $phpstudy_home
+setx PYS C:\repos\scripts\wp\woocommerce\woo_df\pys
+setx WOO_DF C:\repos\scripts\wp\woocommerce\woo_df
+setx PsModulePath C:/repos/scripts/PS
+setx exes C:/exes
+
+
+# 辅助环境变量配置(D盘用户注意按需更改),还有软件版本也要注意(日后如果更新软件,或其他导致目录变更的情况,要注意修改环境变量(使用gui方案))
+setx LOCOY_SPIDER_DATA $locoy_spider_data 
+
+setx phpstudy_extensions $phpstudy_extensions
+setx nginx_home $nginx_home
+setx nginx_conf_dir $nginx_conf_dir
+setx nginx_vhosts_dir $nginx_vhosts_dir
+
+# php
+setx php_home $php_home
+# mysql
+setx MYSQL_HOME $mysql_home
+setx MYSQL_BIN_HOME $mysql_home
+
+# ==配置常用软件所在目录到path===
+#Add-EnvVar -EnvVar Path -NewValue '%nginx_home%' 
+Add-EnvVar -EnvVar Path -NewValue $nginx_home
+Add-EnvVar -EnvVar Path -NewValue $mysql_bin
+# 注册mysqld服务
+# $mysql_home=if($MYSQL_HOME){$mysql_home}else{$env:MYSQL_HOME}
+mysqld --install MySQL80 --defaults-file="$MYSQL_HOME\my.ini"
+# END
+```
 
 
 将引号中的路径替换为你的采集对应的路径

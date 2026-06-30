@@ -582,8 +582,8 @@ EOF
 
     idx=1
     for item in "${MAPPINGS[@]}"; do
-        b_ip="${item%%${MAPPING_SEP}*}"
-        a_ip="${item#*${MAPPING_SEP}}"
+        b_ip="${item%%"${MAPPING_SEP}"*}"
+        a_ip="${item#*"${MAPPING_SEP}"}"
         cat << EOF
 #   b${idx}: ${b_ip} -> a${idx}: ${a_ip}
 EOF
@@ -651,8 +651,8 @@ EOF
 
     idx=1
     for item in "${MAPPINGS[@]}"; do
-        b_ip="${item%%${MAPPING_SEP}*}"
-        a_ip="${item#*${MAPPING_SEP}}"
+        b_ip="${item%%"${MAPPING_SEP}"*}"
+        a_ip="${item#*"${MAPPING_SEP}"}"
         local b_listen_addr=""
         local a_upstream_addr=""
         b_listen_addr="$(format_nginx_ip_port "$b_ip" 80)"
@@ -805,7 +805,7 @@ main() {
     local idx=1
     local item=""
     for item in "${MAPPINGS[@]}"; do
-        info "映射 b${idx}->a${idx}: ${item%%${MAPPING_SEP}*} -> ${item#*${MAPPING_SEP}}"
+        info "映射 b${idx}->a${idx}: ${item%%"${MAPPING_SEP}"*} -> ${item#*"${MAPPING_SEP}"}"
         idx=$((idx + 1))
     done
 

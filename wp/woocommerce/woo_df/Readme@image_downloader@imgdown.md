@@ -22,7 +22,7 @@
 
 url的分隔符不能随便取,比如逗号是不可靠的,有的url中本身包含逗号,例如:
 
-- https://img1.baidu.com/it/u=2620377681,912957102&fm=253&fmt=auto&app=138&f=JPEG?w=764&h=500
+- `https://img1.baidu.com/it/u=2620377681,912957102&fm=253&fmt=auto&app=138&f=JPEG?w=764&h=500`
 
 目前使用的分隔符包括空格(可以多个连续空白字符)或者`>`号
 
