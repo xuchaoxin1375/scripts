@@ -8,7 +8,27 @@
 cloudflare_dns_tool.py
 ```
 
+---
 
+## 目录
+
+- [功能概览](#功能概览)
+- [运行环境](#运行环境)
+- [Cloudflare API 权限建议](#cloudflare-api-权限建议)
+- [配置文件格式](#配置文件格式)
+- [快速开始](#快速开始)
+- [命令行参数](#命令行参数)
+- [IPv4 / IPv6 设计](#ipv4--ipv6-设计)
+- [IPv4 / IPv6 跨类型迁移](#ipv4--ipv6-跨类型迁移)
+- [删除通配符记录](#删除通配符记录)
+- [删除指向指定 IP 的记录](#删除指向指定-ip-的记录)
+- [保守限流模式](#保守限流模式)
+- [Ctrl+C 中断多线程](#ctrlc-中断多线程)
+- [日志与审计](#日志与审计)
+- [处理流程示意图](#处理流程示意图)
+- [代码质量检查](#代码质量检查)
+- [维护说明](#维护说明)
+- [安全建议](#安全建议)
 
 ---
 
@@ -74,9 +94,33 @@ cloudflare_dns_tool.py
 | IPv6，例如 `2001:db8::1` | `AAAA`                  |
 | CNAME 内容               | 需要手动指定 `-r CNAME` |
 
+同时支持 IPv4 / IPv6 跨类型迁移：
+
+```bash
+# A(IPv4) -> AAAA(IPv6)：创建新 AAAA，并删除旧 A
+python cloudflare_dns_tool.py -o 1.2.3.4 -n 2001:db8::1 -d
+
+# AAAA(IPv6) -> A(IPv4)：创建新 A，并删除旧 AAAA
+python cloudflare_dns_tool.py -o 2001:db8::1 -n 1.2.3.4 -d
+```
+
 ---
 
-### 4. 多账号、多域名并发
+### 4. 删除指向指定 IP 的记录
+
+支持直接删除所有内容指向指定 IP 的 `A` / `AAAA` 记录：
+
+```bash
+# 删除指向 IPv4 的 A 记录，先 dry-run
+python cloudflare_dns_tool.py -x 1.2.3.4 -d
+
+# 删除指向 IPv6 的 AAAA 记录，先 dry-run
+python cloudflare_dns_tool.py -x 2001:db8::1 -d
+```
+
+---
+
+### 5. 多账号、多域名并发
 
 支持两层并发：
 
@@ -87,7 +131,7 @@ cloudflare_dns_tool.py
 
 ---
 
-### 5. 账号内域名处理计数
+### 6. 账号内域名处理计数
 
 处理账号内域名时会输出类似：
 
@@ -103,7 +147,7 @@ cloudflare_dns_tool.py
 
 ---
 
-### 6. Cloudflare API 保守限流模式
+### 7. Cloudflare API 保守限流模式
 
 Cloudflare REST API 常规全局限制通常为：
 
@@ -120,7 +164,7 @@ Cloudflare REST API 常规全局限制通常为：
 
 ---
 
-### 7. Ctrl+C 中断多线程
+### 8. Ctrl+C 中断多线程
 
 脚本已增强 Ctrl+C 处理：
 
@@ -131,7 +175,7 @@ Cloudflare REST API 常规全局限制通常为：
 
 ---
 
-### 8. 日志与审计
+### 9. 日志与审计
 
 引入 `logging` 模块，支持将运行过程保存到日志文件，便于后期审计、排查和归档。
 
@@ -321,6 +365,40 @@ IPv6：
 python cloudflare_dns_tool.py -o 2001:db8::10 -n 2001:db8::20 -d
 ```
 
+IPv4 迁移到 IPv6：
+
+```bash
+python cloudflare_dns_tool.py -o 1.2.3.4 -n 2001:db8::1 -d
+```
+
+IPv6 迁移到 IPv4：
+
+```bash
+python cloudflare_dns_tool.py -o 2001:db8::1 -n 1.2.3.4 -d
+```
+
+---
+
+### 删除指向指定 IP 的记录
+
+删除所有指向指定 IPv4 的 A 记录：
+
+```bash
+python cloudflare_dns_tool.py -x 1.2.3.4 -d
+```
+
+删除所有指向指定 IPv6 的 AAAA 记录：
+
+```bash
+python cloudflare_dns_tool.py -x 2001:db8::1 -d
+```
+
+可配合白名单使用：
+
+```bash
+python cloudflare_dns_tool.py -w whitelist.txt -x 1.2.3.4 -d
+```
+
 ---
 
 ### 更新 CNAME
@@ -373,6 +451,7 @@ python cloudflare_dns_tool.py -w whitelist.txt -n 1.2.3.4 -N -d
 | `-d`           | `--dry-run`                                  | 预览模式，不实际修改 / 删除                                  |
 | `-N`           | `--no-subdomains`                            | 白名单更新模式下只处理根域名                                 |
 | `-D`           | `--delete-wildcard`, `--delete-star-records` | 删除名称以 `*` 开头的 DNS 记录                               |
+| `-x`           | `--delete-ip`                                | 删除所有指向指定 IPv4/IPv6 的 A/AAAA 记录                    |
 | `-W`           | `--workers`                                  | 单账号内 zone/domain 并发数                                  |
 | `-A`           | `--account-workers`                          | 多账号并发数                                                 |
 | `-c`           | `--conservative`                             | 保守限流模式                                                 |
@@ -423,6 +502,56 @@ flowchart TD
 
 ---
 
+## IPv4 / IPv6 跨类型迁移
+
+当同时提供 `-o / --old-ip` 和 `-n / --new-ip`，并且二者 IP 版本不同，脚本会自动进入跨类型迁移逻辑。
+
+| 旧 IP | 新 IP | 处理方式                                                     |
+| ----- | ----- | ------------------------------------------------------------ |
+| IPv4  | IPv6  | 查找匹配旧 IPv4 的 `A` 记录，为同名记录创建 `AAAA`，然后删除旧 `A` |
+| IPv6  | IPv4  | 查找匹配旧 IPv6 的 `AAAA` 记录，为同名记录创建 `A`，然后删除旧 `AAAA` |
+
+示例：
+
+```bash
+# IPv4 -> IPv6
+python cloudflare_dns_tool.py -o 1.2.3.4 -n 2001:db8::1 -d
+
+# IPv6 -> IPv4
+python cloudflare_dns_tool.py -o 2001:db8::1 -n 1.2.3.4 -d
+```
+
+迁移顺序：
+
+1. 读取旧类型记录，例如 `A`。
+2. 读取目标类型记录，例如 `AAAA`，检查是否已存在同名同内容记录。
+3. 若目标记录不存在，则先创建目标记录。
+4. 创建成功后删除旧记录。
+5. 如果目标记录已存在，则跳过创建并删除旧记录。
+
+这样设计是为了尽量避免“先删旧记录导致解析短暂中断”。
+
+```mermaid
+flowchart TD
+    A[发现 old_ip 和 new_ip IP版本不同] --> B[确定旧记录类型和新记录类型]
+    B --> C[读取旧类型 DNS 记录]
+    B --> D[读取目标类型 DNS 记录]
+    C --> E[筛选 content == old_ip 的记录]
+    D --> F{同名同 new_ip 的目标记录已存在?}
+    E --> F
+    F -->|否| G[创建目标类型记录]
+    F -->|是| H[跳过创建]
+    G --> I{创建是否成功?}
+    I -->|否| J[保留旧记录并记录错误]
+    I -->|是| K[删除旧类型记录]
+    H --> K
+    K --> L[记录迁移结果]
+```
+
+注意：跨类型迁移会删除旧记录。执行前强烈建议先加 `-d / --dry-run` 预览。
+
+---
+
 ## 删除通配符记录
 
 启用删除模式：
@@ -448,6 +577,63 @@ python cloudflare_dns_tool.py -D -r AAAA -d
 ```
 
 实际删除前建议始终先 dry-run。
+
+---
+
+## 删除指向指定 IP 的记录
+
+如果只想清理所有指向某个旧服务器 IP 的 DNS 记录，可以使用：
+
+```bash
+-x
+--delete-ip
+```
+
+脚本会根据 IP 版本自动选择记录类型：
+
+| IP 类型 | 自动扫描记录类型 |
+| ------- | ---------------- |
+| IPv4    | `A`              |
+| IPv6    | `AAAA`           |
+
+示例：
+
+```bash
+# 删除指向旧 IPv4 的所有 A 记录
+python cloudflare_dns_tool.py -x 1.2.3.4 -d
+
+# 删除指向旧 IPv6 的所有 AAAA 记录
+python cloudflare_dns_tool.py -x 2001:db8::1 -d
+```
+
+支持白名单：
+
+```bash
+python cloudflare_dns_tool.py -w whitelist.txt -x 1.2.3.4 -d
+```
+
+白名单模式下默认处理子域名；如果只想处理 zone 根记录：
+
+```bash
+python cloudflare_dns_tool.py -w whitelist.txt -x 1.2.3.4 -N -d
+```
+
+```mermaid
+flowchart TD
+    A[用户传入 -x / --delete-ip] --> B{IP 版本}
+    B -->|IPv4| C[扫描 A 记录]
+    B -->|IPv6| D[扫描 AAAA 记录]
+    C --> E[筛选 content == delete_ip]
+    D --> E
+    E --> F{dry-run?}
+    F -->|是| G[打印 DRY-DELETE-IP]
+    F -->|否| H[DELETE DNS record]
+    H --> I[统计 deleted]
+```
+
+实际删除前建议始终先 dry-run。
+
+注意：`--delete-ip` 自身已经指定了要匹配和删除的 IP，因此不能再同时使用 `--old-ip / --old-content`。
 
 ---
 
@@ -479,6 +665,17 @@ python cloudflare_dns_tool.py -n 1.2.3.4 -c -d
 ```
 
 这种模式更适合“账号可以并行，但单账号内请求要保守”的场景。
+
+限速范围选择建议：
+
+| 场景                                                         | 推荐 `--rate-limit-scope` | 说明                                             |
+| ------------------------------------------------------------ | ------------------------- | ------------------------------------------------ |
+| 多个配置账号分别使用不同 Cloudflare 用户 / 独立 token        | `account`                 | 每个账号独立限速，可提升整体吞吐                 |
+| 多个配置账号实际共用同一个 Global API Key / 同一用户下 token | `global`                  | 所有账号共享限速器，更接近 Cloudflare 用户级限额 |
+| 不确定账号/token 是否共享用户级限额                          | `global` 或调大 `-i`      | 更稳，降低 429 风险                              |
+| 账号很多，但每个账号域名不多                                 | `account` + 较小 `-W`     | 保留账号级并行，限制单账号内部请求密度           |
+
+注意：`account` 作用域是按脚本配置中的账号任务创建限速器。若多个配置项复用了同一个 Cloudflare token 或同一个用户身份，它们在 Cloudflare 侧仍可能累计到同一个用户级限额，此时建议使用 `-q global`。
 
 也可以不启用保守模式，只手动设置请求间隔和限速范围：
 
@@ -831,6 +1028,18 @@ python cloudflare_dns_tool.py -D -d
 
 # 保守模式删除通配符记录预览
 python cloudflare_dns_tool.py -D -c -d
+
+# IPv4 -> IPv6 迁移预览：创建 AAAA 并删除旧 A
+python cloudflare_dns_tool.py -o 1.2.3.4 -n 2001:db8::1 -d
+
+# IPv6 -> IPv4 迁移预览：创建 A 并删除旧 AAAA
+python cloudflare_dns_tool.py -o 2001:db8::1 -n 1.2.3.4 -d
+
+# 删除所有指向指定 IPv4 的 A 记录预览
+python cloudflare_dns_tool.py -x 1.2.3.4 -d
+
+# 删除所有指向指定 IPv6 的 AAAA 记录预览
+python cloudflare_dns_tool.py -x 2001:db8::1 -d
 
 # 只删除 AAAA 通配符记录预览
 python cloudflare_dns_tool.py -D -r AAAA -d

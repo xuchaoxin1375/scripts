@@ -717,8 +717,8 @@ server {
         proxy_pass http://a${idx}_backend;
 
         # 关键配置:
-        # 强制 B 连接 A 时使用当前 B_IP 作为源 IP。
-        proxy_bind ${b_ip};
+        # 强制 B 连接 A 时使用当前 B_IP 作为源 IP。(默认不启用绑定,以免阻碍ipv6,ipv4之间的转发)
+        # proxy_bind ${b_ip};
 
         # 保留原始 Host，让后端 A 按域名识别站点。
         proxy_set_header Host \$host;

@@ -10,7 +10,8 @@ Cloudflare DNS 批量修改 / 查询 / 清理工具
      * --new-ip/--new-content 是 IPv4 时自动处理 A 记录；
      * --new-ip/--new-content 是 IPv6 时自动处理 AAAA 记录；
      * CNAME 无法通过 IP 自动判断，需显式指定 --record-type CNAME。
-   - 支持白名单、old-ip/old-content 过滤、dry-run 预览。
+    - 支持白名单、old-ip/old-content 过滤、dry-run 预览。
+   - 支持 IPv4 <-> IPv6 跨类型迁移：例如 A(IPv4) -> AAAA(IPv6) 时创建新 AAAA 并删除旧 A。
 
 2. 删除以星号开头的通配符 DNS 记录
    - 使用 --delete-wildcard 启用删除模式。
@@ -61,6 +62,12 @@ Cloudflare DNS 批量修改 / 查询 / 清理工具
 
   # 只更新旧 IPv6 为指定新 IPv6
   python cf_dns_tool.py --old-ip 2001:db8::10 --new-ip 2001:db8::20
+
+  # IPv4 -> IPv6 迁移：为匹配旧 IPv4 的记录创建 AAAA，并删除旧 A
+  python cf_dns_tool.py --old-ip 1.2.3.4 --new-ip 2001:db8::1 --dry-run
+
+  # 删除所有指向指定 IP 的 A/AAAA 记录
+  python cf_dns_tool.py --delete-ip 1.2.3.4 --dry-run
 
   # 更新 CNAME
   python cf_dns_tool.py --record-type CNAME --old-content old.example.com --new-content new.example.com
@@ -142,16 +149,12 @@ CONSERVATIVE_REQUEST_INTERVAL = 0.5
 CONSERVATIVE_ACCOUNT_WORKERS = 3
 CONSERVATIVE_ZONE_WORKERS = 2
 DEFAULT_RATE_LIMIT_SCOPE = "account"
-DEFAULT_API_MAX_RETRIES = 10 # 间隔最多不超过5分钟(300s)
+DEFAULT_API_MAX_RETRIES = 5
 DEFAULT_API_RETRY_BASE_DELAY = 2.0
 DEFAULT_API_RETRY_MAX_SLEEP = 300.0
 
 LOGGER = logging.getLogger("cloudflare_dns_tool")
 SENSITIVE_ARG_NAMES = {"-t", "--token", "-k", "--key", "--api-key"}
-
-# 统计哪些账号处理成功/失败
-SUCCESS_ACCOUNTS = []
-FAILED_ACCOUNTS = []
 
 
 def configure_logging(log_file: Optional[str], log_level: str, overwrite: bool) -> None:
@@ -392,16 +395,65 @@ def resolve_update_record_type(
     if final_type == "A":
         if new_version != 4:
             raise ValueError("A 记录的新内容必须是合法 IPv4 地址")
-        if old_content and old_version != 4:
-            raise ValueError("A 记录的 --old-ip/--old-content 必须是合法 IPv4 地址")
+        if old_content and old_version not in {4, 6}:
+            raise ValueError(
+                "A 记录的 --old-ip/--old-content 必须是合法 IPv4/IPv6 地址；"
+                "如需更新 CNAME 请指定 --record-type CNAME"
+            )
 
     if final_type == "AAAA":
         if new_version != 6:
             raise ValueError("AAAA 记录的新内容必须是合法 IPv6 地址")
-        if old_content and old_version != 6:
-            raise ValueError("AAAA 记录的 --old-ip/--old-content 必须是合法 IPv6 地址")
+        if old_content and old_version not in {4, 6}:
+            raise ValueError(
+                "AAAA 记录的 --old-ip/--old-content 必须是合法 IPv4/IPv6 地址；"
+                "如需更新 CNAME 请指定 --record-type CNAME"
+            )
 
     return final_type
+
+
+def record_type_for_ip_version(ip_version: int) -> str:
+    """根据 IP 版本返回对应 DNS 记录类型。"""
+    if ip_version == 4:
+        return "A"
+    if ip_version == 6:
+        return "AAAA"
+    raise ValueError(f"不支持的 IP 版本: {ip_version}")
+
+
+def is_ip_family_migration(
+    old_content: Optional[str], new_content: Optional[str]
+) -> bool:
+    """判断是否为 IPv4 <-> IPv6 跨记录类型迁移。"""
+    if not old_content or not new_content:
+        return False
+    old_version = get_ip_version(old_content)
+    new_version = get_ip_version(new_content)
+    return (
+        old_version in {4, 6} and new_version in {4, 6} and old_version != new_version
+    )
+
+
+def resolve_delete_ip_record_type(delete_ip: str, record_type: str) -> str:
+    """
+    解析“删除指向指定 IP 的记录”最终要读取的记录类型。
+
+    删除 IPv4 时只需要扫描 A 记录；删除 IPv6 时只需要扫描 AAAA 记录。
+    如果用户显式指定了不匹配的 --record-type，则提前报错，避免误解。
+    """
+    ip_version = get_ip_version(delete_ip)
+    if ip_version not in {4, 6}:
+        raise ValueError("--delete-ip 必须是合法 IPv4 或 IPv6 地址")
+
+    inferred_type = record_type_for_ip_version(ip_version)
+    if record_type in {"auto", "ALL", inferred_type}:
+        return inferred_type
+
+    raise ValueError(
+        f"--delete-ip {delete_ip} 对应记录类型为 {inferred_type}，"
+        f"但当前 --record-type={record_type} 不匹配"
+    )
 
 
 def resolve_delete_record_type(record_type: str) -> str:
@@ -609,6 +661,7 @@ class OperationStats:
     """线程安全统计信息。多个 zone 并发处理时统一累加。"""
 
     updated: int = 0
+    created: int = 0
     deleted: int = 0
     dry_run: int = 0
     skipped: int = 0
@@ -618,6 +671,10 @@ class OperationStats:
     def inc_updated(self) -> None:
         with self._lock:
             self.updated += 1
+
+    def inc_created(self) -> None:
+        with self._lock:
+            self.created += 1
 
     def inc_deleted(self) -> None:
         with self._lock:
@@ -911,6 +968,30 @@ class CloudflareDNSUpdater:
             "PUT", f"/zones/{zone_id}/dns_records/{record_id}", json=payload
         )
 
+    def create_dns_record(
+        self,
+        zone_id: str,
+        record_name: str,
+        content: str,
+        proxied: bool,
+        ttl: int,
+        record_type: str,
+    ) -> dict:
+        """
+        创建单条 DNS 记录。
+
+        主要用于 IPv4 <-> IPv6 迁移：先创建目标类型记录，再删除旧类型记录，
+        尽量降低迁移过程中的解析中断风险。
+        """
+        payload = {
+            "type": record_type,
+            "name": record_name,
+            "content": content,
+            "proxied": proxied,
+            "ttl": ttl,
+        }
+        return self._request("POST", f"/zones/{zone_id}/dns_records", json=payload)
+
     def delete_dns_record(self, zone_id: str, record_id: str) -> dict:
         """删除单条 DNS 记录。调用前应确保已完成过滤与 dry-run 判断。"""
         return self._request("DELETE", f"/zones/{zone_id}/dns_records/{record_id}")
@@ -1063,6 +1144,292 @@ class CloudflareDNSUpdater:
 
         return results
 
+    def _process_zone_migrate_ip_family(
+        self,
+        zone: dict,
+        zone_index: int,
+        selected_zone_total: int,
+        account_zone_total: int,
+        old_content: str,
+        new_content: str,
+        old_record_type: str,
+        new_record_type: str,
+        dry_run: bool,
+        include_subdomains: bool,
+        whitelist_active: bool,
+        stats: OperationStats,
+    ) -> list[DNSOperationResult]:
+        """处理单个 zone 的 IPv4 <-> IPv6 跨类型迁移。"""
+        zone_name = zone["name"]
+        zone_id = zone["id"]
+        results: list[DNSOperationResult] = []
+
+        self._safe_print(
+            self._progress_prefix(
+                zone_name,
+                zone_index,
+                selected_zone_total,
+                account_zone_total,
+                action_name=f"迁移 {old_record_type}->{new_record_type}",
+            )
+        )
+
+        try:
+            old_records = self.get_dns_records(zone_id, old_record_type)
+            target_records = self.get_dns_records(zone_id, new_record_type)
+        except KeyboardInterrupt:
+            return results
+        except Exception as exc:
+            self._safe_print(f"  [zone] 获取记录失败: {exc}")
+            stats.inc_errors()
+            return results
+
+        existing_targets = {
+            (record.get("name", "").lower(), record.get("content", ""))
+            for record in target_records
+        }
+        matched = 0
+
+        for record in old_records:
+            if self._should_stop():
+                return results
+
+            r_name = record.get("name", "")
+            r_content = record.get("content", "")
+            r_id = record.get("id", "")
+            r_proxied = bool(record.get("proxied", False))
+            r_ttl = int(record.get("ttl", 1) or 1)
+
+            if (
+                whitelist_active
+                and not include_subdomains
+                and r_name.lower() != zone_name.lower()
+            ):
+                continue
+
+            if r_content != old_content:
+                stats.inc_skipped()
+                continue
+
+            matched += 1
+            target_exists = (r_name.lower(), new_content) in existing_targets
+            create_text = "目标记录已存在" if target_exists else "创建目标记录"
+
+            if dry_run:
+                self._safe_print(
+                    f"  [DRY-MIGRATE] {old_record_type} {r_name}: {old_content} -> "
+                    f"{new_record_type} {new_content} ({create_text}; 删除旧记录)"
+                )
+                stats.inc_dry_run()
+                results.append(
+                    DNSOperationResult(
+                        zone=zone_name,
+                        name=r_name,
+                        record_type=f"{old_record_type}->{new_record_type}",
+                        old_content=old_content,
+                        new_content=new_content,
+                        status="dry_run_migrate",
+                    )
+                )
+                continue
+
+            if not target_exists:
+                try:
+                    self.create_dns_record(
+                        zone_id=zone_id,
+                        record_name=r_name,
+                        content=new_content,
+                        proxied=r_proxied,
+                        ttl=r_ttl,
+                        record_type=new_record_type,
+                    )
+                    existing_targets.add((r_name.lower(), new_content))
+                    stats.inc_created()
+                    self._safe_print(
+                        f"  [CREATE] {new_record_type} {r_name}: {new_content}"
+                    )
+                    results.append(
+                        DNSOperationResult(
+                            zone=zone_name,
+                            name=r_name,
+                            record_type=new_record_type,
+                            old_content="",
+                            new_content=new_content,
+                            status="created",
+                        )
+                    )
+                    time.sleep(0.1)
+                except Exception as exc:
+                    self._safe_print(
+                        f"  [ERR] 创建 {new_record_type} {r_name}: {exc}; 已保留旧记录"
+                    )
+                    stats.inc_errors()
+                    results.append(
+                        DNSOperationResult(
+                            zone=zone_name,
+                            name=r_name,
+                            record_type=new_record_type,
+                            old_content=old_content,
+                            new_content=new_content,
+                            status="error",
+                            message=str(exc),
+                        )
+                    )
+                    continue
+            else:
+                stats.inc_skipped()
+                self._safe_print(
+                    f"  [SKIP-CREATE] {new_record_type} {r_name}: {new_content} 已存在"
+                )
+
+            try:
+                self.delete_dns_record(zone_id, r_id)
+                stats.inc_deleted()
+                self._safe_print(
+                    f"  [DEL-OLD] {old_record_type} {r_name}: {old_content}"
+                )
+                results.append(
+                    DNSOperationResult(
+                        zone=zone_name,
+                        name=r_name,
+                        record_type=old_record_type,
+                        old_content=old_content,
+                        new_content=None,
+                        status="deleted_old_after_migrate",
+                    )
+                )
+                time.sleep(0.1)
+            except Exception as exc:
+                self._safe_print(
+                    f"  [ERR] 删除旧记录失败 {old_record_type} {r_name}: {exc}"
+                )
+                stats.inc_errors()
+                results.append(
+                    DNSOperationResult(
+                        zone=zone_name,
+                        name=r_name,
+                        record_type=old_record_type,
+                        old_content=old_content,
+                        new_content=None,
+                        status="error",
+                        message=str(exc),
+                    )
+                )
+
+        if matched == 0:
+            self._safe_print(f"  [zone] 未找到 {old_record_type} {old_content} 记录")
+
+        return results
+
+    def _process_zone_delete_ip(
+        self,
+        zone: dict,
+        zone_index: int,
+        selected_zone_total: int,
+        account_zone_total: int,
+        delete_ip: str,
+        record_type: str,
+        dry_run: bool,
+        include_subdomains: bool,
+        whitelist_active: bool,
+        stats: OperationStats,
+    ) -> list[DNSOperationResult]:
+        """处理单个 zone 中所有指向指定 IP 的 A/AAAA 记录删除。"""
+        zone_name = zone["name"]
+        zone_id = zone["id"]
+        results: list[DNSOperationResult] = []
+
+        self._safe_print(
+            self._progress_prefix(
+                zone_name,
+                zone_index,
+                selected_zone_total,
+                account_zone_total,
+                action_name=f"删除指向 IP 的记录(type={record_type})",
+            )
+        )
+
+        try:
+            records = self.get_dns_records(zone_id, record_type)
+        except KeyboardInterrupt:
+            return results
+        except Exception as exc:
+            self._safe_print(f"  [zone] 获取记录失败: {exc}")
+            stats.inc_errors()
+            return results
+
+        matched = 0
+        for record in records:
+            if self._should_stop():
+                return results
+
+            r_name = record.get("name", "")
+            r_content = record.get("content", "")
+            r_id = record.get("id", "")
+            r_type = record.get("type", record_type)
+
+            if (
+                whitelist_active
+                and not include_subdomains
+                and r_name.lower() != zone_name.lower()
+            ):
+                continue
+
+            if r_content != delete_ip:
+                stats.inc_skipped()
+                continue
+
+            matched += 1
+            if dry_run:
+                self._safe_print(f"  [DRY-DELETE-IP] {r_type} {r_name}: {r_content}")
+                stats.inc_dry_run()
+                results.append(
+                    DNSOperationResult(
+                        zone=zone_name,
+                        name=r_name,
+                        record_type=r_type,
+                        old_content=r_content,
+                        new_content=None,
+                        status="dry_run_delete_ip",
+                    )
+                )
+                continue
+
+            try:
+                self.delete_dns_record(zone_id, r_id)
+                self._safe_print(f"  [DEL-IP] {r_type} {r_name}: {r_content}")
+                stats.inc_deleted()
+                results.append(
+                    DNSOperationResult(
+                        zone=zone_name,
+                        name=r_name,
+                        record_type=r_type,
+                        old_content=r_content,
+                        new_content=None,
+                        status="deleted_ip",
+                    )
+                )
+                time.sleep(0.1)
+            except Exception as exc:
+                self._safe_print(f"  [ERR] 删除失败 {r_type} {r_name}: {exc}")
+                stats.inc_errors()
+                results.append(
+                    DNSOperationResult(
+                        zone=zone_name,
+                        name=r_name,
+                        record_type=r_type,
+                        old_content=r_content,
+                        new_content=None,
+                        status="error",
+                        message=str(exc),
+                    )
+                )
+
+        if matched == 0:
+            self._safe_print(f"  [zone] 未找到指向 {delete_ip} 的 {record_type} 记录")
+
+        return results
+
     def _process_zone_delete_wildcard(
         self,
         zone: dict,
@@ -1199,12 +1566,20 @@ class CloudflareDNSUpdater:
         final_record_type = resolve_update_record_type(
             record_type, new_content, old_content
         )
+        migrate_ip_family = is_ip_family_migration(old_content, new_content)
+        old_record_type = None
+        if migrate_ip_family and old_content:
+            old_version = get_ip_version(old_content)
+            if old_version is None:
+                raise ValueError("跨 IP 类型迁移必须提供合法 --old-ip")
+            old_record_type = record_type_for_ip_version(old_version)
 
         self._safe_print("=" * 70)
         self._safe_print(f"Cloudflare DNS 批量更新 | 账号: {self.account_name}")
         self._safe_print(
             f"new_content={new_content}, old_content={old_content}, "
-            f"type={final_record_type}, workers={self.max_workers}, dry_run={dry_run}"
+            f"type={final_record_type}, migrate_ip_family={migrate_ip_family}, "
+            f"workers={self.max_workers}, dry_run={dry_run}"
         )
         self._safe_print("=" * 70)
 
@@ -1224,23 +1599,42 @@ class CloudflareDNSUpdater:
         executor = ThreadPoolExecutor(max_workers=self.max_workers)
         pending: set[Future[Any]] = set()
         try:
-            future_to_zone = {
-                executor.submit(
-                    self._process_zone_update,
-                    zone,
-                    zone_index,
-                    selected_zone_total,
-                    account_zone_total,
-                    new_content,
-                    old_content,
-                    final_record_type,
-                    dry_run,
-                    include_subdomains,
-                    whitelist_active=whitelist_set is not None,
-                    stats=stats,
-                ): zone
-                for zone_index, zone in enumerate(zones, start=1)
-            }
+            future_to_zone: dict[Future[Any], dict] = {}
+            for zone_index, zone in enumerate(zones, start=1):
+                if migrate_ip_family:
+                    if old_record_type is None or old_content is None:
+                        raise ValueError("跨 IP 类型迁移必须提供合法 --old-ip")
+                    future = executor.submit(
+                        self._process_zone_migrate_ip_family,
+                        zone,
+                        zone_index,
+                        selected_zone_total,
+                        account_zone_total,
+                        old_content,
+                        new_content,
+                        old_record_type,
+                        final_record_type,
+                        dry_run,
+                        include_subdomains,
+                        whitelist_active=whitelist_set is not None,
+                        stats=stats,
+                    )
+                else:
+                    future = executor.submit(
+                        self._process_zone_update,
+                        zone,
+                        zone_index,
+                        selected_zone_total,
+                        account_zone_total,
+                        new_content,
+                        old_content,
+                        final_record_type,
+                        dry_run,
+                        include_subdomains,
+                        whitelist_active=whitelist_set is not None,
+                        stats=stats,
+                    )
+                future_to_zone[future] = zone
             pending = set(future_to_zone)
 
             while pending and not self._should_stop():
@@ -1273,8 +1667,8 @@ class CloudflareDNSUpdater:
         self._safe_print("\n" + "=" * 70)
         self._safe_print(
             f"账号 {self.account_name} 完成: "
-            f"updated={stats.updated}, deleted={stats.deleted}, dry_run={stats.dry_run}, "
-            f"skipped={stats.skipped}, errors={stats.errors}"
+            f"updated={stats.updated}, created={stats.created}, deleted={stats.deleted}, "
+            f"dry_run={stats.dry_run}, skipped={stats.skipped}, errors={stats.errors}"
         )
         self._safe_print("=" * 70)
         return BatchRunResult(results=all_results, stats=stats)
@@ -1360,8 +1754,98 @@ class CloudflareDNSUpdater:
         self._safe_print("\n" + "=" * 70)
         self._safe_print(
             f"账号 {self.account_name} 完成: "
-            f"updated={stats.updated}, deleted={stats.deleted}, dry_run={stats.dry_run}, "
-            f"skipped={stats.skipped}, errors={stats.errors}"
+            f"updated={stats.updated}, created={stats.created}, deleted={stats.deleted}, "
+            f"dry_run={stats.dry_run}, skipped={stats.skipped}, errors={stats.errors}"
+        )
+        self._safe_print("=" * 70)
+        return BatchRunResult(results=all_results, stats=stats)
+
+    def batch_delete_ip(
+        self,
+        delete_ip: str,
+        whitelist: Optional[list[str]] = None,
+        record_type: str = "auto",
+        dry_run: bool = False,
+        include_subdomains: bool = True,
+    ) -> BatchRunResult:
+        """当前账号下批量删除所有指向指定 IP 的 A/AAAA 记录。"""
+        self._check_stop()
+        final_record_type = resolve_delete_ip_record_type(delete_ip, record_type)
+
+        self._safe_print("=" * 70)
+        self._safe_print(f"Cloudflare DNS 指定 IP 记录删除 | 账号: {self.account_name}")
+        self._safe_print(
+            f"delete_ip={delete_ip}, record_type={final_record_type}, "
+            f"workers={self.max_workers}, dry_run={dry_run}"
+        )
+        self._safe_print("=" * 70)
+
+        all_zones = self.get_all_zones()
+        account_zone_total = len(all_zones)
+        self._safe_print(f"账号 {self.account_name} 下共 {account_zone_total} 个域名")
+
+        zones, whitelist_set = self._filter_zones_by_whitelist(all_zones, whitelist)
+        if not zones:
+            self._safe_print("没有需要处理的域名")
+            return BatchRunResult(results=[], stats=OperationStats())
+
+        stats = OperationStats()
+        all_results: list[DNSOperationResult] = []
+        selected_zone_total = len(zones)
+
+        executor = ThreadPoolExecutor(max_workers=self.max_workers)
+        pending: set[Future[Any]] = set()
+        try:
+            future_to_zone = {
+                executor.submit(
+                    self._process_zone_delete_ip,
+                    zone,
+                    zone_index,
+                    selected_zone_total,
+                    account_zone_total,
+                    delete_ip,
+                    final_record_type,
+                    dry_run,
+                    include_subdomains,
+                    whitelist_active=whitelist_set is not None,
+                    stats=stats,
+                ): zone
+                for zone_index, zone in enumerate(zones, start=1)
+            }
+            pending = set(future_to_zone)
+
+            while pending and not self._should_stop():
+                done, pending = wait(
+                    pending,
+                    timeout=0.5,
+                    return_when=FIRST_COMPLETED,
+                )
+                if not done:
+                    continue
+
+                for future in done:
+                    zone = future_to_zone[future]
+                    try:
+                        all_results.extend(future.result())
+                    except KeyboardInterrupt:
+                        self._stop_event.set()
+                        break
+                    except Exception as exc:
+                        self._safe_print(f"[zone-error] {zone.get('name')}: {exc}")
+                        stats.inc_errors()
+        except KeyboardInterrupt:
+            self._stop_event.set()
+            self._safe_print("\n[INTERRUPT] 收到 Ctrl+C，正在停止当前账号任务...")
+        finally:
+            if self._should_stop():
+                cancel_pending_futures(pending)
+            executor.shutdown(wait=False, cancel_futures=True)
+
+        self._safe_print("\n" + "=" * 70)
+        self._safe_print(
+            f"账号 {self.account_name} 完成: "
+            f"updated={stats.updated}, created={stats.created}, deleted={stats.deleted}, "
+            f"dry_run={stats.dry_run}, skipped={stats.skipped}, errors={stats.errors}"
         )
         self._safe_print("=" * 70)
         return BatchRunResult(results=all_results, stats=stats)
@@ -1538,6 +2022,13 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="删除名称以 * 开头的 DNS 记录，例如 *.example.com；建议先加 --dry-run 预览。",
     )
+    parser.add_argument(
+        "-x",
+        "--delete-ip",
+        default=None,
+        metavar="IP",
+        help="删除所有指向指定 IPv4/IPv6 的 A/AAAA 记录；建议先加 --dry-run 预览。",
+    )
 
     # 并发控制。
     parser.add_argument(
@@ -1593,7 +2084,7 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=DEFAULT_API_MAX_RETRIES,
         metavar="N",
-        help="Cloudflare API 429/5xx/网络临时错误的最大重试次数（默认 10）。",
+        help="Cloudflare API 429/5xx/网络临时错误的最大重试次数（默认 5）。",
     )
     parser.add_argument(
         "-B",
@@ -1947,6 +2438,14 @@ def run_operation_for_account(
                 old_content=args.old_content,
                 dry_run=args.dry_run,
             )
+        elif args.delete_ip:
+            batch_result = updater.batch_delete_ip(
+                delete_ip=args.delete_ip,
+                whitelist=whitelist,
+                record_type=args.record_type,
+                dry_run=args.dry_run,
+                include_subdomains=not args.no_subdomains,
+            )
         else:
             batch_result = updater.batch_update(
                 new_content=args.new_content,
@@ -2069,13 +2568,24 @@ def validate_worker_args(args: argparse.Namespace) -> None:
 
 def validate_action_args(args: argparse.Namespace) -> None:
     """校验运行模式参数，避免更新和删除模式同时触发。"""
-    if args.find_domain and (args.new_content or args.delete_wildcard):
+    if args.find_domain and (
+        args.new_content or args.delete_wildcard or args.delete_ip
+    ):
         log_print("--find-domain 查询模式不能与更新/删除模式同时使用")
         sys.exit(1)
 
-    if args.delete_wildcard and args.new_content:
+    destructive_modes = [bool(args.delete_wildcard), bool(args.delete_ip)]
+    if args.new_content and any(destructive_modes):
+        log_print("更新模式不能与 --delete-wildcard/--delete-ip 删除模式同时使用")
+        sys.exit(1)
+
+    if sum(destructive_modes) > 1:
+        log_print("--delete-wildcard 和 --delete-ip 不能同时使用")
+        sys.exit(1)
+
+    if args.delete_ip and args.old_content:
         log_print(
-            "--delete-wildcard 删除模式不能与 --new-ip/--new-content 更新模式同时使用"
+            "--delete-ip 已经指定要删除的 IP，不能再同时使用 --old-ip/--old-content"
         )
         sys.exit(1)
 
@@ -2085,7 +2595,15 @@ def validate_action_args(args: argparse.Namespace) -> None:
             final_type = resolve_update_record_type(
                 args.record_type, args.new_content, args.old_content
             )
-            log_print(f"更新模式记录类型: {final_type}")
+            if is_ip_family_migration(args.old_content, args.new_content):
+                old_type = record_type_for_ip_version(
+                    get_ip_version(args.old_content) or 0
+                )
+                log_print(
+                    f"更新模式记录类型: {old_type}->{final_type} (跨 IP 类型迁移)"
+                )
+            else:
+                log_print(f"更新模式记录类型: {final_type}")
         except ValueError as exc:
             log_print(f"参数错误: {exc}")
             sys.exit(1)
@@ -2094,6 +2612,16 @@ def validate_action_args(args: argparse.Namespace) -> None:
         try:
             final_type = resolve_delete_record_type(args.record_type)
             log_print(f"删除通配符记录模式，记录类型: {final_type}")
+        except ValueError as exc:
+            log_print(f"参数错误: {exc}")
+            sys.exit(1)
+
+    if args.delete_ip:
+        try:
+            final_type = resolve_delete_ip_record_type(args.delete_ip, args.record_type)
+            log_print(
+                f"删除指定 IP 记录模式，记录类型: {final_type}, delete_ip={args.delete_ip}"
+            )
         except ValueError as exc:
             log_print(f"参数错误: {exc}")
             sys.exit(1)
@@ -2138,8 +2666,8 @@ def main() -> None:
         )
         sys.exit(code)
 
-    # 模式 2：批量更新或删除通配符记录。
-    if args.new_content or args.delete_wildcard:
+    # 模式 2：批量更新或删除记录。
+    if args.new_content or args.delete_wildcard or args.delete_ip:
         whitelist: Optional[list[str]] = None
         if args.whitelist:
             whitelist = load_whitelist(args.whitelist)
@@ -2184,13 +2712,11 @@ def main() -> None:
                     name, ok, err = future.result()
                     if ok:
                         success += 1
-                        SUCCESS_ACCOUNTS.append(name)
                         log_print(f"[ACCOUNT-OK] {name}")
                     else:
                         if err == "interrupted":
                             continue
                         failed += 1
-                        FAILED_ACCOUNTS.append(name)
                         log_print(f"[ACCOUNT-ERR] {name}: {err}")
         except KeyboardInterrupt:
             stop_event.set()
@@ -2207,19 +2733,17 @@ def main() -> None:
         log_print("\n账号汇总:")
         log_print(f"- 成功: {success}")
         log_print(f"- 失败: {failed}")
-        # 打印失败的账号
-        if failed > 0:
-            log_print("\n失败的账号列表:")
-            for name in FAILED_ACCOUNTS:
-                log_print(name)
         sys.exit(1 if failed > 0 else 0)
 
     # 默认模式：没有指定动作时列出账号，给用户操作提示。
     list_accounts(accounts, show_secrets=args.show_secrets)
     log_print("\n提示:")
     log_print("- 使用 -s/--select-account 可交互选择账号；-s <账号名> 可直接指定账号。")
-    log_print("- 使用 --new-ip/--new-content 进入更新模式。")
+    log_print(
+        "- 使用 --new-ip/--new-content 进入更新模式；old/new IP 版本不同会自动迁移 A/AAAA。"
+    )
     log_print("- 使用 --delete-wildcard 进入删除通配符记录模式。")
+    log_print("- 使用 --delete-ip 删除所有指向指定 IP 的 A/AAAA 记录。")
     log_print("- 使用 -f/--find-domain 查询域名所在账号。")
     sys.exit(0)
 
