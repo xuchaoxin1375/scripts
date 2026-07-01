@@ -1048,12 +1048,12 @@ class CloudflareDNSUpdater:
         except KeyboardInterrupt:
             return results
         except Exception as exc:
-            self._safe_print(f"  [zone] 获取记录失败: {exc}")
+            self._safe_print(f"  [zone] {zone_name} 获取记录失败: {exc}")
             stats.inc_errors()
             return results
 
         if not records:
-            self._safe_print(f"  [zone] 未找到 {record_type} 记录")
+            self._safe_print(f"  [zone] {zone_name} 未找到 {record_type} 记录")
             return results
 
         for record in records:
