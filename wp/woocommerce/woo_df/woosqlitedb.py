@@ -22,7 +22,6 @@ from pathlib import Path
 from tqdm import tqdm
 
 import pandas as pd
-from zmq import RATE
 
 from comutils import (
     SUPPORT_IMAGE_FORMATS_NAME,
@@ -44,6 +43,7 @@ from wooenums import (
     ImageMode,
     LanguagesHotSale,
     RATE_DICT,
+    COUNTRY_CURRENCY_DICT,
 )
 
 IMAGES = CSVProductFields.IMAGES.value
@@ -1154,8 +1154,12 @@ but different image, keep records [%s]",
             if self.yy:
                 sale_price = self._get_sale_price_yy(price, limit_sale=limit_sale)
             else:
+                curr = COUNTRY_CURRENCY_DICT.get(self.country, "")
+                if not curr:
+                    raise ValueError(f"{self.country} is not supported")
+                rate = RATE_DICT.get(curr, 1)
                 sale_price = self._get_sale_price(
-                    price, limit_sale=limit_sale, rate=RATE_DICT.get(self.country, 1)
+                    price, limit_sale=limit_sale, rate=rate
                 )
             if sale_price == 0:
                 continue

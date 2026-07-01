@@ -202,6 +202,19 @@ class CSVProductFields(EnumIt):
         return res
 
 
+COUNTRY_CURRENCY_DICT = {
+    "US": "USD",
+    "CA": "CAD",
+    "AU": "AUD",
+    "GB": "GBP",
+    "DE": "EUR",
+    "FR": "EUR",
+    "IT": "EUR",
+    "ES": "EUR",
+    "JP": "JPY",
+    "SE": "SEK",
+    "NO": "NOK",
+}
 RATE_DICT = {
     "GBP": 1.25,
     "EUR": 1.1,
