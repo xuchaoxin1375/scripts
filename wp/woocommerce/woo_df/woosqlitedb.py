@@ -1089,10 +1089,12 @@ but different image, keep records [%s]",
         if price < lowest_price:
             return 0
         # 普通情况
-        base_line = base_line * rate
-        base100 = 100 * rate
-        limit_sale = limit_sale * rate
 
+        # 折扣门槛换算(节点从美元换算为对应的货币)
+        base_line = base_line / rate
+        base100 = 100 / rate
+        limit_sale = limit_sale / rate
+        # 
         sale_price = 0
         if price < base100:
             sale_price = price * 0.3
