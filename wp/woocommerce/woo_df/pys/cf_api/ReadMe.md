@@ -447,6 +447,7 @@ python cloudflare_dns_tool.py -w whitelist.txt -n 1.2.3.4 -N -d
 | `-n`           | `--new-ip`, `--new-content`                  | 新的 DNS 内容                                                |
 | `-o`           | `--old-ip`, `--old-content`                  | 旧 DNS 内容过滤器                                            |
 | `-w`           | `--whitelist`                                | 白名单文件路径                                               |
+| `-D`           | `--domain`                                   | 直接指定域名（可多次使用，如 `-D example.com -D api.example.com`），与白名单同时使用时取交集 |
 | `-r`           | `--record-type`                              | DNS 记录类型：`auto` / `A` / `AAAA` / `CNAME` / `ALL`        |
 | `-d`           | `--dry-run`                                  | 预览模式，不实际修改 / 删除                                  |
 | `-N`           | `--no-subdomains`                            | 白名单更新模式下只处理根域名                                 |
@@ -471,6 +472,11 @@ python cloudflare_dns_tool.py -w whitelist.txt -n 1.2.3.4 -N -d
 | `-l`           | `--list-accounts`                            | 列出账号                                                     |
 | `-s [ACCOUNT]` | `--select-account [ACCOUNT]`                 | 选择配置文件中的一个账号；不带值时交互式选择，带值时按账号名 / 邮箱 / 数字索引选择 |
 | `-S`           | `--show-secrets`                             | 列账号时显示完整 token/key，默认隐藏                         |
+| `--add-domain` | `--add-domain DOMAIN`                        | 在当前账号添加新域名（zone）                                   |
+| `--add-record` | `--add-record NAME:TYPE:CONTENT`             | 添加 DNS 记录（可多次使用），格式 `name:type:content`          |
+| `--proxied`    | `--proxied`                                  | 添加记录时启用 Cloudflare 代理                                 |
+| `--ttl`        | `--ttl N`                                    | 添加记录的 TTL（默认 1=自动）                                  |
+| `--delete-zone`| `--delete-zone {dns,full}`                   | 删除域名模式：`dns`=仅清空记录，`full`=彻底删除域名            |
 
 ---
 
@@ -1090,4 +1096,46 @@ VERSION = "20260630"
 
 ```bash
 python cloudflare_dns_tool.py -V
+```
+
+---
+
+## 添加域名与 DNS 记录（新增功能）
+
+### 典型用法示例
+
+```bash
+# 添加域名 + 多条记录（最常用）
+python cloudflare_dns_tool.py \
+    --add-domain domain.com \
+    --add-record "domain.com:A:203.0.113.10" \
+    --add-record "www:A:203.0.113.10" \
+    --add-record "api:A:203.0.113.20" \
+    --add-record "domain.com:AAAA:2001:db8::10" \
+    --proxied --ttl 300 --dry-run
+
+# 仅添加记录到已有域名
+python cloudflare_dns_tool.py -z domain.com \
+    --add-record "dev:A:203.0.113.50" \
+    --add-record "@:CNAME:target.com"
+```
+
+### 记录格式
+
+- `--add-record "name:type:content"`
+  - `name`：`@`（根域名）或 `www`、`api` 等子域名
+  - `type`：`A`、`AAAA`、`CNAME`、`MX` 等（支持 `AUTO` 自动判断）
+  - `content`：IP 地址或目标值
+
+### 针对 domain.com 的完整示例
+
+```bash
+python cloudflare_dns_tool.py --add-domain domain.com \
+    --add-record "domain.com:A:203.0.113.10" \
+    --add-record "www:A:203.0.113.10" \
+    --add-record "api:A:203.0.113.20" \
+    --add-record "mail:A:203.0.113.30" \
+    --add-record "domain.com:MX:10 mail.domain.com" \
+    --add-record "domain.com:AAAA:2001:db8::10" \
+    --proxied
 ```
