@@ -22,6 +22,7 @@ from pathlib import Path
 from tqdm import tqdm
 
 import pandas as pd
+from zmq import RATE
 
 from comutils import (
     SUPPORT_IMAGE_FORMATS_NAME,
@@ -37,7 +38,13 @@ from comutils import (
 )
 
 from filenamehandler import FilenameHandler
-from wooenums import CSVProductFields, DBProductFields, ImageMode, LanguagesHotSale
+from wooenums import (
+    CSVProductFields,
+    DBProductFields,
+    ImageMode,
+    LanguagesHotSale,
+    RATE_DICT,
+)
 
 IMAGES = CSVProductFields.IMAGES.value
 IMAGE_URL = CSVProductFields.IMAGES_URL.value
@@ -257,7 +264,11 @@ class SQLiteDB:
         words_file=None,
         yy=False,
     ):
+        """
+        language: 语言或国家简码,默认为美国(US),常见的还有UK,CA,AU,DE,FR,IT,ES,SE,NO
+        """
         self.language = language
+        self.country = language
         self.yy = yy
         self.desc_min_len = desc_min_len
         self.name_as_desc = name_as_desc
@@ -1050,8 +1061,9 @@ but different image, keep records [%s]",
         sale_price = round(sale_price, 2)
         return sale_price
 
-    def _get_sale_price(self, price, limit_sale=298.98, base_line=300):
+    def _get_sale_price(self, price, limit_sale=298.98, base_line=300, rate=1.0):
         """获取产品折扣价格
+        以美金为例:(其他货币请根据rate汇率计算基于usd,例如gbp相对usd的比率,通常大于1.x(大概是1.3左右,可以取保守一点的值1.2))
         1.价格小于100的打3折
         2.价格100到300的打0.25折
         3.价格大于300的先打0.2折
@@ -1077,10 +1089,14 @@ but different image, keep records [%s]",
         if price < lowest_price:
             return 0
         # 普通情况
+        base_line = base_line * rate
+        base100 = 100 * rate
+        limit_sale = limit_sale * rate
+
         sale_price = 0
-        if price < 100:
+        if price < base100:
             sale_price = price * 0.3
-        elif price >= 100 and price < base_line:
+        elif price >= base100 and price < base_line:
             sale_price = price * 0.25
         elif price >= base_line:
             sale_price = price * 0.2
@@ -1126,6 +1142,8 @@ but different image, keep records [%s]",
 
         :return: list[dict] 返回字段扩充后的数据行的列表
         """
+        # 定义常见货币关于美元(USD)的汇率字典(考虑到波动,这里取保守值(参考近5年(或更宽)汇率曲线),而非准确值,例如GBP->USD*13,可以取1.2,或者1.25)
+
         language = language or self.language
         rows = self._get_lines_dict_raw(dbs=dbs, extra_fields=extra_fields)
         expanded_rows = []
@@ -1136,7 +1154,9 @@ but different image, keep records [%s]",
             if self.yy:
                 sale_price = self._get_sale_price_yy(price, limit_sale=limit_sale)
             else:
-                sale_price = self._get_sale_price(price, limit_sale=limit_sale)
+                sale_price = self._get_sale_price(
+                    price, limit_sale=limit_sale, rate=RATE_DICT.get(self.country, 1)
+                )
             if sale_price == 0:
                 continue
             # 数据处理:产品分类(将分类取值为非常规值做一个恰当的转换,比如热销这类的此)

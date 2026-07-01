@@ -202,13 +202,25 @@ class CSVProductFields(EnumIt):
         return res
 
 
+RATE_DICT = {
+    "GBP": 1.25,
+    "EUR": 1.1,
+    "CAD": 0.65,
+    "AUD": 0.65,
+    "SEK": 0.08,
+    "NOK": 0.08,
+    "JPY": 0.006,
+}
+
+
 class LanguagesHotSale(EnumItRc):
     """语言枚举
     新品, 热卖, 促销, 限时抢购, 超值, 精选, 今日特价
     注意:对于枚举,两个枚举成员如果取值一样,则仅暴力第一个,后续的枚举成员会忽略
     """
+
     # 英语国家通用
-    EN=[
+    EN = [
         "New Arrival",
         "Best Sellers",
         "Trending Now",
@@ -222,17 +234,17 @@ class LanguagesHotSale(EnumItRc):
         # "Editor's Pick",
         # "Today’s Special",
     ]
+    NO = ["Nyheter", "Bestselgere", "Kampanje"]
+    SE = ["Nyheter", "Bästsäljare", "Kampanj"]
     AU = [
         "New Arrival",
         "Best Sellers",
         "Top Picks",
-
     ]
     CA = [
         "New Arrival",
         "Best Sellers",
         "Flash Sale",
-
     ]
     UK = [
         "New In",

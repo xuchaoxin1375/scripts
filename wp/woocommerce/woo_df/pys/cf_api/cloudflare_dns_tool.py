@@ -2745,12 +2745,15 @@ def parse_args() -> argparse.Namespace:
         description="Cloudflare DNS 批量修改/查询/清理工具",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
+        Note: 更多示例查看Readme.md文档,这里仅列出简单用法.
+        
         # 查询某个域名
-        python $pys\cf_api\cloudflare_dns_tool.py -s  --find-domain domain.com  --json # -s选项默认启用查询模式
+        python $pys/cf_api/cloudflare_dns_tool.py -s  --find-domain domain.com  --json # -s选项默认启用查询模式
         # 为cf00这个cf账号中的domain.com域名添加dns记录,@表示主域名domain.com本身
-        python $pys\cf_api\cloudflare_dns_tool.py -s cf00  --add-record  "@:auto:23.23.23.23" -z domain.com 
+        python $pys/cf_api/cloudflare_dns_tool.py -s cf00  --add-record  "@:auto:23.23.23.23" -z domain.com 
         # 指定cf账号配置文件
-        python $pys\cf_api\cloudflare_dns_tool.py -C $deploy_configs/cf_config.csv # ....其他参数
+        python $pys/cf_api/cloudflare_dns_tool.py -C $deploy_configs/cf_config.csv # ....其他参数
+        
         """
         
     )
