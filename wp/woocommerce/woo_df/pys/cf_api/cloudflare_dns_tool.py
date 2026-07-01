@@ -126,7 +126,7 @@ AUTH_METHOD = "token"  # 可选：'token' 或 'key'
 # 默认沿用原脚本的 Windows 路径；也可以通过环境变量 CF_CONFIG_PATH 覆盖。
 DESKTOP = r"C:/Users/Administrator/Desktop"
 DEPLOY_CONFIGS = f"{DESKTOP}/deploy_configs"
-CF_CONFIG_PATH = os.getenv("CF_CONFIG_PATH", f"{DEPLOY_CONFIGS}/cf_config.json")
+CF_CONFIG_PATH = os.getenv("CF_CONFIG_PATH", f"{DEPLOY_CONFIGS}/cf_config.csv") # cf_config.json
 
 # Cloudflare 常见 DNS 记录类型。本脚本更新模式只处理这三类：
 # - A    -> IPv4
@@ -2744,6 +2744,15 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Cloudflare DNS 批量修改/查询/清理工具",
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+        # 查询某个域名
+        python $pys\cf_api\cloudflare_dns_tool.py -s  --find-domain domain.com  --json # -s选项默认启用查询模式
+        # 为cf00这个cf账号中的domain.com域名添加dns记录,@表示主域名domain.com本身
+        python $pys\cf_api\cloudflare_dns_tool.py -s cf00  --add-record  "@:auto:23.23.23.23" -z domain.com 
+        # 指定cf账号配置文件
+        python $pys\cf_api\cloudflare_dns_tool.py -C $deploy_configs/cf_config.csv # ....其他参数
+        """
+        
     )
     parser.add_argument(
         "-V", "--version", action="version", version=f"%(prog)s {VERSION}"
@@ -2988,6 +2997,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="列出账号时显示完整 token/key。默认隐藏敏感字段。",
     )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="以 JSON 格式输出结果（目前主要用于 -f/--find-domain）。",
+    )
 
     return parser.parse_args()
 
@@ -3137,8 +3151,10 @@ def run_find_mode(
     print_lock = Lock()
     target_domain = get_main_domain_name_from_str(domain) or domain.strip().lower()
 
-    def _find_one(account: dict) -> tuple[str, bool, str]:
+    def _find_one(account: dict) -> tuple[str, bool, str, dict]:
+        """返回: (账号名, 是否存在, 错误信息, zone详情)"""
         name = account.get("name") or account.get("email") or "unknown"
+        email = account.get("email") or ""
         try:
             account_rate_limiter = get_account_rate_limiter(
                 args,
@@ -3160,14 +3176,48 @@ def run_find_mode(
                 api_retry_max_sleep=args.api_retry_max_sleep,
             )
             exists = updater.zone_exists(target_domain)
-            return name, exists, ""
+            zone_info = {}
+            if exists:
+                # 尝试获取 zone 详细信息（记录数等）
+                try:
+                    all_zones = updater.get_all_zones()
+                    for z in all_zones:
+                        if z.get("name", "").lower() == target_domain:
+                            zone_id = z.get("id")
+                            zone_info = {
+                                "zone_id": zone_id,
+                                "name": z.get("name"),
+                                "status": z.get("status"),
+                                "name_servers": z.get("name_servers", []),
+                            }
+                            try:
+                                records = updater.get_dns_records(zone_id, record_type="ALL")
+                                zone_info["record_count"] = len(records)
+                                # 收集记录摘要（前 10 条）
+                                record_list = []
+                                for r in records[:10]:
+                                    record_list.append({
+                                        "type": r.get("type"),
+                                        "name": r.get("name"),
+                                        "content": r.get("content"),
+                                        "proxied": r.get("proxied", False),
+                                    })
+                                zone_info["records"] = record_list
+                                if len(records) > 10:
+                                    zone_info["records_truncated"] = True
+                            except Exception:
+                                zone_info["record_count"] = "?"
+                            break
+                except Exception:
+                    pass
+            return name, exists, "", {"email": email, "zone_info": zone_info}
         except KeyboardInterrupt:
-            return name, False, "interrupted"
+            return name, False, "interrupted", {}
         except Exception as exc:
-            return name, False, str(exc)
+            return name, False, str(exc), {}
 
     log_print(f"快速查找域名: {target_domain}，账号数: {len(accounts)}")
-    found_accounts: list[str] = []
+    found_results: list[dict] = []
 
     executor = ThreadPoolExecutor(max_workers=max(1, account_workers))
     pending: set[Future[Any]] = set()
@@ -3183,15 +3233,29 @@ def run_find_mode(
                 continue
 
             for future in done:
-                name, exists, err = future.result()
+                name, exists, err, extra = future.result()
                 if err:
                     if err == "interrupted":
                         continue
                     log_print(f"[ERR] {name}: {err}")
                     continue
                 if exists:
-                    found_accounts.append(name)
-                    log_print(f"[FOUND] {name}")
+                    zone_info = extra.get("zone_info", {})
+                    email = extra.get("email", "")
+                    result = {
+                        "name": name,
+                        "email": email,
+                        "zone_info": zone_info,
+                    }
+                    found_results.append(result)
+
+                    # 打印详细信息
+                    rec_count = zone_info.get("record_count", "?")
+                    ns_preview = ""
+                    if zone_info.get("name_servers"):
+                        ns_preview = f" NS={zone_info['name_servers'][0]}"
+                    log_print(f"[FOUND] {name}" + (f" <{email}>" if email else "") +
+                              f" records={rec_count}{ns_preview}")
                 else:
                     log_print(f"[MISS]  {name}")
     except KeyboardInterrupt:
@@ -3206,12 +3270,52 @@ def run_find_mode(
         return 130
 
     log_print("\n查询结果:")
-    if found_accounts:
-        for name in found_accounts:
-            log_print(f"- {name}")
+    if found_results:
+        if args.json:
+            import json
+            output = {
+                "domain": target_domain,
+                "found": len(found_results),
+                "results": []
+            }
+            for r in found_results:
+                item = {
+                    "account": r["name"],
+                    "email": r.get("email") or None,
+                    "zone": r.get("zone_info", {})
+                }
+                output["results"].append(item)
+            print(json.dumps(output, ensure_ascii=False, indent=2))
+        else:
+            for r in found_results:
+                name = r["name"]
+                email = r.get("email", "")
+                z = r.get("zone_info", {})
+                line = f"- {name}"
+                if email:
+                    line += f"  email={email}"
+                if z.get("zone_id"):
+                    line += f"  zone_id={z['zone_id']}"
+                if z.get("record_count") is not None:
+                    line += f"  records={z['record_count']}"
+                if z.get("status"):
+                    line += f"  status={z['status']}"
+                log_print(line)
+                # 打印记录摘要
+                recs = z.get("records", [])
+                if recs:
+                    for rec in recs[:5]:
+                        prox = " (proxied)" if rec.get("proxied") else ""
+                        log_print(f"    {rec['type']:5} {rec['name']:<30} -> {rec['content']}{prox}")
+                    if len(recs) > 5 or z.get("records_truncated"):
+                        log_print(f"    ... ({z.get('record_count', '?')} total)")
         return 0
 
-    log_print("- 未在任何账号中找到")
+    if args.json:
+        import json
+        print(json.dumps({"domain": target_domain, "found": 0, "results": []}, ensure_ascii=False))
+    else:
+        log_print("- 未在任何账号中找到")
     return 2
 
 
@@ -3285,14 +3389,6 @@ def run_operation_for_account(
             # 默认启用代理，除非用户显式使用 --no-proxied
             use_proxied = not getattr(args, "no_proxied", False)
             
-            # 支持通过 -z 指定已有域名添加记录
-            explicit_zone_id = None
-            explicit_zone_name = None
-            if args.domain and not args.add_domain:
-                # 用户通过 -z 指定了域名，但没有 --add-domain，说明是向已有域名添加记录
-                # 这里简化处理：假设第一个 domain 就是要操作的 zone
-                explicit_zone_name = args.domain[0] if args.domain else None
-
             batch_result = updater.batch_add_domain_and_records(
                 add_domain=args.add_domain,
                 add_records=args.add_record,
