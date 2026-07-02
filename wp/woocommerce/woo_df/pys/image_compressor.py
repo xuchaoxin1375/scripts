@@ -13,10 +13,12 @@ from imgcompressor import (
     ImageCompressor,
     setup_logging,
 )
-__version__="20260629.1434"
+
+__version__ = "20260702.1434"
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
-info=logger.info
+info = logger.info
+warning = logger.warning
 
 # SUPPORT_IMAGE_FORMATS = list(SUPPORT_IMAGE_FORMATS)
 
@@ -37,7 +39,6 @@ def parse_args():
         基于python PIL库的图片压缩与转换脚本 VERSION={__version__}
         (指定输入的方式有两个参数,-I优先级高,-i允许指定当文件或者目录)
         """,
-        
         epilog="""
 
         EXAMPLE:
@@ -51,7 +52,7 @@ def parse_args():
             python3 $pys/image_compressor.py   -R auto -p -F  -O -W  -k  -A  -i /www/wwwroot/  -T 50
         """,
         # formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        formatter_class=argparse.RawTextHelpFormatter
+        formatter_class=argparse.RawTextHelpFormatter,
     )
     # parser.add_argument(
     #     "input",
@@ -69,7 +70,8 @@ def parse_args():
     parser.add_argument(
         "-I",
         "--input-dirlist-file",
-        help="指定包含输入路径的列表文件,每行一个路径,用于批量处理多个目录",
+        help="指定包含输入路径的列表文件,每行一个路径(建议使用绝对路径),用于批量处理多个目录"
+        "支持相对路径(此时脚本会尝试计算绝对路径,避免相对路径的模糊性.)",
     )
     parser.add_argument(
         "-o",
@@ -121,7 +123,9 @@ def parse_args():
     )
     parser.add_argument(
         "-w",
+        "--threads",
         "--max-workers",
+        dest="max_workers",
         type=int,
         default=10,
         help="批量处理时的最大线程数",
@@ -226,34 +230,49 @@ def main():
     )
     fmt = args.format or ""
     info(f"target fmt:[{fmt}]")
+    info("查看基础参数设定")
+    print(f"线程数:{args.max_workers}")
+    print(f"输入路径:[{args.input}]")
+    print(
+        f"输出路径:[{args.output if args.output else '由被压缩图片路径决定,输出到被压缩图片相同的目录下'}]"
+    )
+
     input_path = args.input
     if args.input_dirlist_file:
         with open(args.input_dirlist_file, "r", encoding="utf-8") as f:
-            for line in f:
-                input_path = line.strip()
-                if not input_path:
-                    continue
-                process_input_task(args, compressor, fmt, input_path)
+            raw_paths = [line.strip() for line in f if line.strip()]
+
+        total_paths = len(raw_paths)
+        if total_paths == 0:
+            warning(f"输入列表文件[{args.input_dirlist_file}]中没有有效路径,退出。")
+            return 0
+
+        for idx, line in enumerate(raw_paths, start=1):
+            input_path = os.path.abspath(line)
+            if not os.path.exists(input_path):
+                warning(f"[{idx}/{total_paths}] 输入路径[{input_path}]不存在,跳过处理")
+                continue
+            process_input_task(args, compressor, fmt, input_path, idx, total_paths)
     else:
-        process_input_task(args, compressor, fmt, input_path)
+        process_input_task(args, compressor, fmt, input_path, 1, 1)
 
 
-def process_input_task(args, compressor: ImageCompressor, fmt, input_path):
+def process_input_task(
+    args,
+    compressor: ImageCompressor,
+    fmt,
+    input_path,
+    index: int = 1,
+    total: int = 1,
+):
     """分两种情况处理input(文件或目录),以决定调用单处理还是批处理"""
     try:
+        prefix = f"[{index}/{total}] " if total > 1 else ""
+        info(f"{prefix}开始处理路径: {input_path}")
         compressor.opl.init_status(input_path)
 
         if os.path.isfile(input_path):
-            # 单文件处理(压缩完一个图片后就退出程序exit)
-            # output_path = (
-            #     args.output or os.path.splitext(args.input)[0] + f".{args.format}"
-            # )
             output_path = args.output or ""
-
-            # if args.output:
-            #     output_path = args.output
-            # else:
-            #     output_path = input_path
 
             # success, _ =
             compressor.compress_image(
@@ -275,7 +294,7 @@ def process_input_task(args, compressor: ImageCompressor, fmt, input_path):
             if not output:
                 # info("!批量处理时必须指定输出目录", file=sys.stderr)
                 # sys.exit(1)
-                info(f"批量处理没有指定输出目录🎈,使用默认目录{out_dir}")
+                info(f"{prefix}批量处理没有指定输出目录🎈,使用默认目录{out_dir}")
 
             results = compressor.batch_compress(
                 input_dir=input_path,
@@ -284,17 +303,18 @@ def process_input_task(args, compressor: ImageCompressor, fmt, input_path):
                 quality=args.quality,
                 max_workers=args.max_workers,
                 overwrite=args.overwrite,
+                path_progress_prefix=f"{index}/{total}" if total > 1 else "",
             )
-            info("\n处理结果报告:")
+            info(f"{prefix}\n处理结果报告:")
             results.end_and_report()
 
         else:
-            info(f"跳过此行(路径不存在或非路径串) {args.input}")
+            info(f"{prefix}跳过此行(路径不存在或非路径串) {args.input}")
             # sys.exit(1)
         # results.end_and_report()
 
     except Exception as e:
-        info(f"发生错误: {str(e)}")
+        info(f"{prefix}发生错误: {str(e)}")
         sys.exit(1)
 
 

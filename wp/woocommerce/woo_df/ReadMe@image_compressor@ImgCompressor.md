@@ -324,7 +324,10 @@ python3 $pys/image_compressor.py   -R auto -p -F -O -W -k -A -r 1000 800 -i "替
 直接指定等层目录可能会很慢,考虑使用find过滤出根据具体的目录,例如:
 
 ```bash
- find /data  -mindepth 3 -maxdepth 5 -type d -path '*/wp-content/uploads/202*' > img_dirs_to_compress.txt
+# 计算相对路径
+find /data  -mindepth 3 -maxdepth 5 -type d -path '*/wp-content/uploads/202*' > img_dirs_to_compress.txt
+# 但是更推荐绝对路径
+find .  -mindepth 3 -maxdepth 5 -type d -path '*/wp-content/uploads/202*' -print0 | xargs -0 realpath > img_dirs_to_compress.txt
 ```
 
 

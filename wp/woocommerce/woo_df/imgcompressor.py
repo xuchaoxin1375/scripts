@@ -194,6 +194,7 @@ class ImageCompressor:
         keep_exif: bool = True,
         overwrite: bool = False,
         resize_compensate_quality=5,
+        progress_prefix: str = "",
     ):
         """
         压缩或转换图片
@@ -215,7 +216,8 @@ class ImageCompressor:
         try:
             if not os.path.exists(input_path):
                 return False, f"输入文件不存在: {input_path}"
-            self.logger.info(f"开始压缩: {[input_path]}")
+            prefix = f"{progress_prefix}" if progress_prefix else ""
+            self.logger.info(f"{prefix}开始压缩: {[input_path]}")
             _, input_format = os.path.splitext(input_path)
             # input_format = os.path.splitext(input_path)[1].lower()
             input_format_name = input_format.lower().strip(".")
@@ -238,7 +240,7 @@ class ImageCompressor:
             ct: int = self.compress_threshold  # 取0则不跳过(全部压缩)
             if ct and original_size < ct:
                 msg = f"文件大小({format_size(original_size)})小于压缩阈值({format_size(ct)}),跳过: {input_path}"
-                self.logger.info(msg)
+                self.logger.info(f"{prefix}{msg}")
                 opl.log_skip()
                 return True, msg
             # 计算最终的输出路径字符串
@@ -247,7 +249,7 @@ class ImageCompressor:
                 output_path=output_path,
                 output_format=output_format,
             )
-            info(f"输出文件: {output_path}")
+            info(f"{prefix}输出文件: {output_path}")
 
             output_base, output_format = os.path.splitext(output_path)
             output_format_name = output_format.lower().strip(".")
@@ -259,7 +261,7 @@ class ImageCompressor:
                     opl.log_skip()
                     msg = f"[⚠️]输出文件已存在,默认取消压缩: {output_path} (使用-O/--overwrite覆盖)"
 
-                    self.logger.warning(msg)
+                    self.logger.warning(f"{prefix}{msg}")
                     return (False, msg)
             # return
             with Image.open(input_path) as img:
@@ -371,7 +373,7 @@ class ImageCompressor:
                     debug(f"格式文件变化:{input_path}->{output_path}")
                     os.rename(input_path, output_path)
                 msg = f" 🟰  压缩后文件大小未减少,不覆盖原文件(大小变化:{original_size}->{new_size})"
-                info(msg)
+                info(f"{prefix}{msg}")
             else:
                 # 需要替换源文件的情况
                 if not expand:
@@ -396,7 +398,7 @@ class ImageCompressor:
                     input_path, output_path, overwrite, temp_output_path
                 )
 
-                info(msg)
+                info(f"{prefix}{msg}")
                 opl.log_success()
             # 检查 tmp 文件是否存在,如果存在,删除(安全语句)
             if os.path.exists(temp_output_path):
@@ -406,7 +408,7 @@ class ImageCompressor:
 
         except Exception as e:
             error_msg = f"处理图片失败: {str(e)}"
-            self.logger.error(error_msg)
+            self.logger.error(f"{prefix}{error_msg}")
             opl.log_failure(item=input_path, error=error_msg)
             return False, error_msg
 
@@ -532,6 +534,7 @@ class ImageCompressor:
         overwrite: bool = False,
         # skip_existing: bool = True,
         max_workers: int = 10,
+        path_progress_prefix: str = "",
     ):
         """
         批量压缩目录中的图片(多线程版本)
@@ -563,28 +566,41 @@ class ImageCompressor:
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = []
-            files = []
-
+            # 计算文件列表(所有待处理文件的完整路径列表)
             files = get_paths(input_dir=input_dir, recurse=self.recurse)
+            image_files = [
+                input_path
+                for input_path in files
+                if input_path.lower().endswith(SUPPORT_IMAGE_FORMATS_NAME)
+            ]
+            total_files = len(image_files)
+            info(
+                f"批量压缩目录: {input_dir} -> {output_dir} ; 目标图片数量: {total_files}"
+            )
 
-            # for filename in os.listdir(input_dir):
-            for input_path in files:
-                if input_path.lower().endswith(SUPPORT_IMAGE_FORMATS_NAME):
-                    output_format_name, output_path = self._get_output_info(
-                        output_dir=output_dir,
-                        output_format=output_format,
+            for idx, input_path in enumerate(image_files, start=1):
+                output_format_name, output_path = self._get_output_info(
+                    output_dir=output_dir,
+                    output_format=output_format,
+                    input_path=input_path,
+                )
+                if path_progress_prefix:
+                    progress_prefix = f"{path_progress_prefix}:[{idx}/{total_files}] "
+                else:
+                    progress_prefix = (
+                        f"[{idx}/{total_files}] " if total_files > 0 else ""
+                    )
+                futures.append(
+                    executor.submit(
+                        self.compress_image,
                         input_path=input_path,
+                        output_path=output_path,
+                        output_format=output_format_name,
+                        quality=quality,
+                        overwrite=overwrite,
+                        progress_prefix=progress_prefix,
                     )
-                    futures.append(
-                        executor.submit(
-                            self.compress_image,
-                            input_path=input_path,
-                            output_path=output_path,
-                            output_format=output_format_name,
-                            quality=quality,
-                            overwrite=overwrite,
-                        )
-                    )
+                )
 
             for future in as_completed(futures):
                 future.result()
@@ -648,7 +664,7 @@ def setup_logging(level=logging.INFO, log_file=None, log_format=None):
         )
 
     # 创建格式化器
-    formatter = logging.Formatter(log_format)
+    formatter = logging.Formatter(log_format, datefmt="%Y-%m-%d %H:%M:%S")
 
     # 设置处理器
     if log_file is None:
