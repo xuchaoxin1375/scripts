@@ -204,19 +204,20 @@ class CSVProductFields(EnumIt):
 
 COUNTRY_CURRENCY_DICT = {
     "US": "USD",
+    "UK": "GBP",
+    "GB": "GBP",
     "CA": "CAD",
     "AU": "AUD",
-    "GB": "GBP",
     "DE": "EUR",
     "FR": "EUR",
     "IT": "EUR",
     "ES": "EUR",
-    "JP": "JPY",
     "SE": "SEK",
     "NO": "NOK",
+    "JP": "JPY",
 }
 # 非美元/美元的比例(例如GBP/USD=1.3,可以取保守值1.25)
-# 以gbp和usd的关系为例,满足: price_usd=price_gbp*RATE_DICT["GBP"] 
+# 以gbp和usd的关系为例,满足: price_usd=price_gbp*RATE_DICT["GBP"]
 # 例如10GBP=10*1.3=13USD ,10GBP可以兑换13USD
 # 考虑到收费限制,必须严格小于指定的收费数值(美元)防止超过,这里有两种方案:
 ## 1.将价格处理规则上限拉低,限制最高价格略低低于原上限(和实际上限留有余量)

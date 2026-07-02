@@ -1094,7 +1094,9 @@ but different image, keep records [%s]",
         base_line = base_line / rate
         base100 = 100 / rate
         limit_sale = limit_sale / rate
-        # 
+        # 或者把价格换算为美元
+        # price = price * rate
+        
         sale_price = 0
         if price < base100:
             sale_price = price * 0.3
