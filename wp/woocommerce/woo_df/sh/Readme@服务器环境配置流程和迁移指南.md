@@ -1138,7 +1138,7 @@ FILES
 
 获取最新版本备份:仓库中提供了配套脚本(目录`/www/sh/backup_sites/`下)
 
-#### 备份包导出脚本
+#### 备份包导出脚本	
 
 > 通常对于网站迁移来说,最大的变数在于数据库软件之间版本的不同,因此尽量使用版本相近的数据库,不过简单的数据库(例如wordpress)一般不需要担心,经验表明mysql5.7和mysql8之间导出的wp数据库是良好兼容的.
 
@@ -1241,7 +1241,7 @@ bash /www/sh/backup_sites/backup_site_pkgs.sh -s /srv/uploads/uploader/files -b 
 
 将包都备份到服务器`s`中.
 
-#### 从备份服务器拉取包
+#### 从备份服务器拉取包🎈
 
 假设现在服务器`b`要拉取一部分服务器`s`的包进行还原部署.
 
@@ -1317,9 +1317,14 @@ rsync_copy -W -p 22 <remote_ip> /srv/uploads/uploader/recovery /www/wwwroot/admi
 
 >  远程路径的最后一段目录名称将在本地路径中自动创建
 >
->  这个例子中,远程路径中的yxj文件夹会搬到本地recovery目录下,也就是会得到目录:`/srv/uploads/uploader/recovery/yxj`
+>  这个例子中,远程路径中的`username`文件夹会搬到本地recovery目录下,也就是会得到目录:`/srv/uploads/uploader/recovery/username`
 
+```bash
+# 全量拉取(不指定具体的人员名级别目录)
+rsync_copy -p 22 23.239.111.114 /srv/uploads/uploader/recovery /www/wwwroot/xcx/s?
+```
 
+例如`rsync_copy -W -p 22 23.239.111.114 /srv/uploads/uploader/recovery /www/wwwroot/xcx/z9/`,将在本机得到`/srv/uploads/uploader/recovery/z9/...`
 
 ### 准备解压部署
 
@@ -1605,7 +1610,7 @@ merge_dir -u yxj ./s4 ./s1 deployed
 
 ### 限流配置
 
-服务器迁移后,限流等反爬配置通常会丢失,强烈建议根据`nginx_conf`中的配置文档中的流程逐步核对,恢复限流.
+服务器迁移后,限流等反爬配置通常会丢失,强烈建议根据`nginx_conf`目录下的文档[Readme@nginx_conf@Nginx配置总说明文档 .md](nginx_conf/Readme@nginx_conf@Nginx配置总说明文档.md)中的配置文档中的流程逐步核对,恢复限流.
 
 #### 站点检查
 

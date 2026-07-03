@@ -1583,6 +1583,7 @@ Examples:
 EOF
     }
 
+    local OPTIND=1
     while getopts ":u:p:WIr:h" opt; do
         case "$opt" in
             u)

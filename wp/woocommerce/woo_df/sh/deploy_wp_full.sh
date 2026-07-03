@@ -132,10 +132,10 @@ show_help() {
           -P, --site-dir-pack FILE   单站模式：设置网站目录压缩包路径
 
         数据库配置:
-          --db-user USER             设置数据库用户名 (默认:$DB_USER)
-          --db-pass PASS             设置数据库密码
-          --db-host HOST             设置数据库主机 (默认:$DB_HOST)
-          --db-port PORT             设置数据库端口 (默认:$DB_PORT)
+          --db-user USER                            设置数据库用户名 (默认:$DB_USER)
+          --db-pass,--db-password PASS              设置数据库密码
+          --db-host HOST                            设置数据库主机 (默认:$DB_HOST)
+          --db-port PORT                            设置数据库端口 (默认:$DB_PORT)
 
         站点配置:
         -u, -U, --user-dir DIR     指定用户目录（可多次使用以处理多个用户）
@@ -194,15 +194,24 @@ show_help() {
     # 注意: 建议更改完域名并部署完成后,将新的包导出,同时删除旧域名包 # bash /www/sh/backup_sites/get_site_pkgs.sh --site new_domain.com 
 
     # 仅处理数据库或仅处理网站根目录
-    $0 -M single -n domain1.com --site-db-skip    # 仅解压网站
-    $0 -M single -n domain1.com --site-root-skip  # 仅导入数据库
+    bash $0 -M single -n domain1.com --site-db-skip    # 仅解压网站
+    bash $0 -M single -n domain1.com --site-root-skip  # 仅导入数据库
 
     # 服务器迁移相关:
 
     ## 解压后保留压缩包
-    $0 --user-dir xcx --ssp ''  --dry-run
-    ## 解压完即删除压缩包文件,节省空间
-    $0 --pack-root /srv/uploads/uploader/recovery --user-dir yxj --ssp '' --remove-after-deploy 
+    bash $0 --user-dir xcx --ssp ''  --dry-run
+
+    ## 针对单个站做导入(从备份服务器拉取后,针对性或者抽样测试部署) (这里假设我从备份服务器拉取z9这个服务器的所有站点,做整个服务器的迁移.)
+    bash $0 --pack-root /srv/uploads/uploader/recovery/z9  --ssp '' -n <domain.com> 
+
+    ## 解压完即删除压缩包文件,节省空间 (按人员逐个迁移:例如,针对人员username的所有包做部署,包路径示例:/srv/uploads/uploader/recovery/username/deployed/domain.com.zst)
+    bash $0 --pack-root /srv/uploads/uploader/recovery --user-dir <username> --ssp '' --remove-after-deploy 
+
+    # 可选的,覆盖配置文件中数据库配置.
+    # 考虑启用--enable-tag 保存各个备份包的部署状态,避免多次运行造成重复部署浪费时间.
+    # 注意,正式部署传输过来的所有网站(或按人员逐个处理时)建议启用即时删除,降低存储压力. --remove-after-deploy (但是若还未传输全部包完成,仅测试部署时不建议使用此选项)
+    bash $0 --pack-root /srv/uploads/uploader/recovery/z9  --ssp ''  --enable-tag # --db-user <db_user> --db-pass <new_db_password>  # --remove-after-deploy 
 
 版本：$VERSION
 
@@ -441,6 +450,11 @@ update_wp_config() {
     #     return 0
     # fi
 
+    # 编辑数据库链接信息
+    sed -ri "s/(define\(\s*'DB_HOST',)(.*)\)/\1'${DB_HOST}')/" "$wp_config_path"
+    sed -ri "s/(define\(\s*'DB_NAME',)(.*)\)/\1'$db_name')/" "$wp_config_path"
+    sed -ri "s/(define\(\s*'DB_USER',)(.*)\)/\1'${DB_USER}')/" "$wp_config_path"
+    sed -ri "s/(define\(\s*'DB_PASSWORD',)(.*)\)/\1'${DB_PASSWORD}')/" "$wp_config_path"
     # 使用 awk 查找包含 "stop editing" 的那一行号(第一次出现)
 
     local STOP_LINE
@@ -448,11 +462,6 @@ update_wp_config() {
     if [ -n "$STOP_LINE" ]; then
         # 插入用于启用https的代码片段
         sed -i "${STOP_LINE}a$HTTPS_CONFIG_LINE" "$wp_config_path"
-        # 编辑数据库链接信息
-        sed -ri "s/(define\(\s*'DB_HOST',)(.*)\)/\1'${DB_HOST}')/" "$wp_config_path"
-        sed -ri "s/(define\(\s*'DB_NAME',)(.*)\)/\1'$db_name')/" "$wp_config_path"
-        sed -ri "s/(define\(\s*'DB_USER',)(.*)\)/\1'${DB_USER}')/" "$wp_config_path"
-        sed -ri "s/(define\(\s*'DB_PASSWORD',)(.*)\)/\1'${DB_PASSWORD}')/" "$wp_config_path"
         log "✅ wp-config.php 配置已插入。"
         return 0
     else
