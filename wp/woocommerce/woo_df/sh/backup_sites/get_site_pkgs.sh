@@ -19,7 +19,7 @@
 # 2.关于数据库文件备份和导出,建议配置免密登录,不仅更安全,代码也更加简单(免密登录mysql配置方案有许多,自行查阅资料配置)
 # 3.完整性检查:备份完后可以运行一段批量检查文件完整性检查的代码,防止某些文件压缩过程中出错(尤其是被意外终止脚本的情况)
 # 4.线程数不要开太高,虽然服务器核心很多,但是tar和zstd算法容易打满磁盘IO,备份速度的主要瓶颈不在cpu而在于磁盘上!
-VERSION_UTILS=20260617.1002
+VERSION_UTILS=20260703.1002
 
 SRC_ROOT="/www/wwwroot"
 DEST_ROOT="/srv/uploads/uploader/files" # 备份文件存储目录
@@ -58,11 +58,18 @@ REMOTE_ADMINER_NAME=""
 # 远程服务器上的存储路径(基础路径,请务必自行指定跟具体的目录防止混乱.)
 # 参考路径结构: /www/wwwroot/$adminer/$HOSTNAME/$userx/deployed/
 REMOTE_PATH_BASE="/www/wwwroot/$REMOTE_ADMINER_NAME/$HOSTNAME"
+# 统计量:本轮运行扫描并备份所有匹配的站点(数量)
+SITE_COUNT=0
+SITE_EXISTING=0
+SITE_TO_BACKUP=0
 
+# 导出变量
 export USER DEST_ROOT FORCE DRY_RUN VALID_USERS MINDEPTH MAXDEPTH
 export REMOTE_HOST REMOTE_USER REMOTE_PORT REMOTE_ADMINER_NAME REMOTE_PATH_BASE
 export MYSQL_HOST MYSQL_PORT MYSQL_USER MYSQL_PASS
-
+export SITE_COUNT SITE_EXISTING SITE_TO_BACKUP
+# 严格模式开关.
+STRICT_MODE="false"
 # export 让并发子进程能够访问相关变量🎈
 # export MODE IMMEDIATELY REMOTE_HOST REMOTE_USER REMOTE_PORT REMOTE_PATH
 
@@ -238,6 +245,10 @@ parse_args() {
                 ENABLE_TAG="$2"
                 shift 2
                 ;;
+            -E | --strict-mode)
+                STRICT_MODE="true"
+                shift 1
+                ;;
             --log)
                 LOG_FILE="$2"
                 shift 2
@@ -253,6 +264,11 @@ parse_args() {
 }
 parse_args "$@"
 mkdir -pv "$STATUS_TAG_DIR" # 确保标记文件目录存在
+# 严格模式(也可以用于调试(DEBUG)和故障排查,改进代码质量)
+# [[ $STRICT_MODE == "true" ]] && set -euo pipefail
+[[ $STRICT_MODE == "true" ]] && set -eu -o pipefail
+# 定义trap提供更具体的错误位置信息(代替x产生的过多的冗余信息)
+trap 'echo "Error: 命令在行 $LINENO 执行失败 (退出码:$?)." >&2' ERR
 
 # 移除字符串边缘空白字符
 trim() {
@@ -566,27 +582,41 @@ backup_one_site() {
             return 0
         fi
         log "📦 正在打包 WordPress 文件,排除缓存和日志:打包 $WP_DIR 到 $TAR_PATH..."
+        tar_dir=$(realpath -s "$WP_DIR/..") # 使用-s阻止realpath解析符号链接.
+        log "[tar]工作目录为[$tar_dir],耐心等待..."
         # tar -cf "$TAR_PATH" -C "$WP_DIR" .
         # tar -cf "$TAR_PATH" -C "$WP_DIR/.." wordpress #完整备份
         # 跳过不重要的内容的轻量备份(这里打包的文件夹指定为wordpress,
         # 其他用户如果使用此套代码要注意原本的目录结构,可能需要自行调整tar打包的命令行)
-        tar --exclude='wp-content/cache' \
-            --exclude='wp-content/uploads/cache' \
-            --exclude='wp-content/uploads/wpo' \
-            --exclude='wp-content/uploads/wp-rocket' \
-            --exclude='wp-content/uploads/backupbuddy_temp' \
-            --exclude='wp-content/uploads/*-cache' \
-            --exclude='wp-content/updraft' \
-            --exclude='wp-content/ai1wm-backups' \
-            --exclude='wp-content/backups' \
-            --exclude='wp-content/tmp' \
-            --exclude='wp-content/upgrade' \
-            --exclude='wp-content/*.log' \
-            --exclude='wp-content/*.sql' \
-            --exclude='wp-content/*.zip' \
-            --exclude='wp-content/*.tar.gz' \
-            --exclude='wp-content/debug.log' \
-            -cf "$TAR_PATH" -C "$WP_DIR"/.. wordpress
+        # 每10000个文件输出一个进度信息检查点
+        # !! 续行服附近要小心编辑,\后面不能有空格,只能是回车符(键),注释不要插在内部
+        if
+            tar --exclude='wp-content/cache' \
+                --exclude='wp-content/uploads/cache' \
+                --exclude='wp-content/uploads/wpo' \
+                --exclude='wp-content/uploads/wp-rocket' \
+                --exclude='wp-content/uploads/backupbuddy_temp' \
+                --exclude='wp-content/uploads/*-cache' \
+                --exclude='wp-content/updraft' \
+                --exclude='wp-content/ai1wm-backups' \
+                --exclude='wp-content/backups' \
+                --exclude='wp-content/tmp' \
+                --exclude='wp-content/upgrade' \
+                --exclude='wp-content/*.log' \
+                --exclude='wp-content/*.sql' \
+                --exclude='wp-content/*.zip' \
+                --exclude='wp-content/*.tar.gz' \
+                --exclude='wp-content/debug.log' \
+                -c -h -f "$TAR_PATH" \
+                --checkpoint=10000 \
+                -C "$tar_dir" wordpress
+        then
+            # -c -h -f "$TAR_PATH" -C "$WP_DIR"/.. wordpress # 使用-h跟随符号链接打包,或者使用 a/ 记号,跟随所有层次的符号链接.
+            log "[tar]:✅打包成功"
+        else
+            log "[Warning][tar]:打包失败,请检查站点目录 $WP_DIR 是否存在"
+            # exit 1
+        fi
 
         # 调用zstd命令,使用--rm来删除被压缩成zst包之前的文件tar文件;注意,使用-v疑似会降低速度
         log "使用 zstd --rm 压缩 $TAR_PATH 到 $TAR_PATH.zst"
@@ -705,10 +735,6 @@ if ! check_mysql_connection; then
     exit 1
 fi
 
-# 扫描并备份所有匹配的站点(数量)
-SITE_COUNT=0
-SITE_EXISTING=0
-SITE_TO_BACKUP=0
 # 计算是否仅备份指定网站(将命令行指定的单个网站(根目录作为代表)保存到临时白名单文件中)
 ## 将处理逻辑统一到白名单指定的方式一样处理
 if [[ $SITE_ROOT ]]; then
@@ -763,7 +789,8 @@ if [[ -n "$VALID_USERS" ]]; then
         # 方案1:
         # -d '' 指定以 NULL 字符作为行分隔符
         # < <(...) 使用进程替换将 find 的输出喂给 mapfile
-        find "$FIND_BASE" -mindepth "$MINDEPTH" -maxdepth "$MAXDEPTH" -type d -name wordpress >> "$site_dirs_listfile"
+        # find "$FIND_BASE" -mindepth "$MINDEPTH" -maxdepth "$MAXDEPTH" -type d -name wordpress >> "$site_dirs_listfile"
+        find "$FIND_BASE" -mindepth "$MINDEPTH" -maxdepth "$MAXDEPTH" \( -type d -o -type l \) -name wordpress >> "$site_dirs_listfile"
         log "debug:$(wc -l $site_dirs_listfile) lines on [$site_dirs_listfile]"
         # nl $site_dirs_listfile
         mapfile -t site_dirs_user < "$site_dirs_listfile"
@@ -796,7 +823,7 @@ elif [[ -n "$WHITELIST_SITE" ]]; then
         shopt -s nullglob
         dir=$(echo "$SRC_ROOT"/*/"$site"/wordpress)
         # 检查路径是否存在,如果存在则添加到site_dirs数组中,并写入到文件中;如果不存在则记录日志警告.(这个可以通过shopt -s nullglob简化.)
-        if [[ -d "$dir" ]]; then
+        if [[ -e "$dir" ]]; then
             # [[ -d "$dir" ]] && site_dirs+=("$dir")
             # find $base_dir -maxdepth 2 -type d -name $site
             site_dirs+=("$dir")
@@ -841,7 +868,8 @@ while IFS= read -r WP_DIR || [[ -n "$WP_DIR" ]]; do
     fi
 
     site_need_backup_dirs+=("$WP_DIR")
-    ((SITE_COUNT++))
+
+    ((SITE_COUNT++)) || true # 算数上下文的特殊性,使用||true避免误报错误
     # log "debug: $SITE_COUNT ; $WP_DIR"
     # 计算待备份网站中是否存曾经备份过,即检查备份包路径是否已存在.(如果有,则按需跳过此站点备份)
     _get_pack_names() {

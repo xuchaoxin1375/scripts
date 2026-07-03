@@ -18,7 +18,7 @@
 # 1. 对于多个磁盘的服务器,检测磁盘使用情况自动处理解压位置(为每个盘事先设定一个项目目录)
 # 2. 并发部署中的日志打印在终端容易错乱,改进此问题.
 
-VERSION=20260622.1511
+VERSION=20260703.1511
 shopt -s extglob globstar
 shopt -s nullglob
 # === 配置参数 ===
@@ -100,8 +100,6 @@ get_sh_dir SH && SHELL_UTILS="$SH/shell_utils.sh" || exit 1
 echo "deploy_script_version: $VERSION"
 # shellcheck disable=SC1090
 source "$SHELL_UTILS"
-# 严格模式
-[[ $STRICT_MODE == "true" ]] && set -euo pipefail
 
 # 判断是否启用了verbose模式
 verbose() {
@@ -384,6 +382,9 @@ parse_args() {
     done
 }
 parse_args "$@"
+# 严格模式(也可以用于调试(DEBUG)和故障排查,改进代码质量)
+[[ $STRICT_MODE == "true" ]] && set -euo pipefail
+
 # 移除PACK_ROOT末尾可能多出来的斜杠
 PACK_ROOT="${PACK_ROOT%/}"
 verbose && echo "加载shell工具函数库...[$SHELL_UTILS]"
@@ -1414,9 +1415,9 @@ main() {
     }
     collect_tasks
     # log "[Debug] 计算得到的待部署站点列表: "
-    # declare -p site_names 
+    # declare -p site_names
     # declare -p user_dir_names
-    
+
     start_tasks() {
         # START-C:核心调度部分(按合适的方式部署任务(网站域名)列表中的网站文件组)
         # for domain_name in "${site_names[@]}"; do
@@ -1528,7 +1529,7 @@ main() {
                 continue
             }
             # 创建后台作业;
-            ((task_id++))
+            ((task_id++)) || true
             deploy_site -u "$user_name" -d "$domain_name" -a "$site_dir_archive" -s "$site_sql_archive" "task_$task_id/$task_total" &
 
             local pid=$!
@@ -1545,11 +1546,11 @@ main() {
             exit_code=$?
             local domain="${PID_TASK_MAP[$pid]}"
             if [[ $exit_code -ne 0 ]]; then
-                ((FAILED++))
+                ((FAILED++)) || true
                 log "任务[$pid]($domain)失败"
                 PID_TASK_MAP_FAILED[$pid]="$domain"
             else
-                ((SUCCESSED++))
+                ((SUCCESSED++)) || true
                 log "任务[$pid]($domain)成功"
                 PID_TASK_MAP_SUCCESSED[$pid]="$domain"
             fi
