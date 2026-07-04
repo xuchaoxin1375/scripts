@@ -1321,10 +1321,10 @@ rsync_copy -W -p 22 <remote_ip> /srv/uploads/uploader/recovery /www/wwwroot/admi
 
 ```bash
 # 全量拉取(不指定具体的人员名级别目录)
-rsync_copy -p 22 23.239.111.114 /srv/uploads/uploader/recovery /www/wwwroot/xcx/s?
+rsync_copy -p 22 <remote_ip> /srv/uploads/uploader/recovery /www/wwwroot/xcx/s?
 ```
 
-例如`rsync_copy -W -p 22 23.239.111.114 /srv/uploads/uploader/recovery /www/wwwroot/xcx/z9/`,将在本机得到`/srv/uploads/uploader/recovery/z9/...`
+例如`rsync_copy -W -p 22 <remote_ip> /srv/uploads/uploader/recovery /www/wwwroot/xcx/z9/`,将在本机得到`/srv/uploads/uploader/recovery/z9/...`
 
 ### 准备解压部署
 
@@ -1375,6 +1375,12 @@ done
 这种情况下考虑在旧服务器中根据问题网站的名单列表导出这些站的包组.然后传输到备份服务器,最后在新服务器中从备份服务器拉取名单中指定的站.
 
 相关脚本为`rsync_pull_pkgs.sh`(是对`rsync-copy`的封装.和备份服务器以及导入脚本的目录结构配套,支持按名单列表拉取,而非全部拉取).
+
+> 如果远程文件路径不符合`/www/wwwroot/admin/server/username/deployed/...zst`,则无法使用这个脚本,可以自行构造`rsync`命令拉取,也可以参考前面的`rsync_copy`中的方法(但是要注意拉取两个包,一个根目录压缩包,一个sql压缩包).
+
+```bash
+bash $sh/backup_sites/rsync_pull_pkgs.sh -f <(echo 'domain.com') -r 192.... -u zlj -a xcx -s s3
+```
 
 > 修复最后的问题网站还有不要忘记更新(重新安装)插件和functions.php.
 >
