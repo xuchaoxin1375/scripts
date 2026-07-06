@@ -297,7 +297,8 @@ for file in sorted(dbs):
 
 class LanguagesHotSaleX(EnumItRc):
     """对LanguagesHotSale枚举类的复刻,但是允许你修改下面的配置来调整和控制热销的返回值
-
+    > 如果有新国家/语言添加,除了在LanguagesHotSale枚举类中添加配置,记得在这里配置对应的语言行
+    
     例如,我希望修改美国(US)产品数据中返回热卖的允许词汇列表,则修改下面US的取值(代替默认取值,默认取值来自于LanguagesHotSale枚举类)
 
     US = ["Best-Sellers","Featured","Top-Sellers"]
@@ -313,6 +314,8 @@ class LanguagesHotSaleX(EnumItRc):
     DE = LanguagesHotSale.DE.value
     ES = LanguagesHotSale.ES.value
     FR = LanguagesHotSale.FR.value
+    SE = LanguagesHotSale.SE.value
+    NO = LanguagesHotSale.NO.value
 
 
 try:

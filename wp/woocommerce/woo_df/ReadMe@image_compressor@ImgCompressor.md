@@ -327,16 +327,17 @@ python3 $pys/image_compressor.py   -R auto -p -F -O -W -k -A -r 1000 800 -i "替
 # 计算相对路径
 find /data  -mindepth 3 -maxdepth 5 -type d -path '*/wp-content/uploads/202*' > img_dirs_to_compress.txt
 # 但是更推荐绝对路径
-find .  -mindepth 3 -maxdepth 5 -type d -path '*/wp-content/uploads/202*' -print0 | xargs -0 realpath > img_dirs_to_compress.txt
+find -L /www/wwwroot/  -mindepth 5 -maxdepth 5  -type d -path '*/wp-content/uploads' -print0 | xargs -I % -0  realpath % |tee  img_dirs_to_compress.txt | nl
 ```
 
-指定白名单网站域名,检索图片目录
+> 更加具体的,可以指定白名单网站域名,检索图片目录,例如:
+>
 
 ```bash
 # 将所有符合条件的目录存入数组
 mapfile -t dirs < <(find -L /www/wwwroot/ -mindepth 5 -maxdepth 5 -type d -path '*/wordpress/wp-content/uploads')
 
-# 读取匹配列表并计数
+# 指定站点名称白名单,扫描这些网站中需要处理的目录(uploads)
 cnt=1
 result="images_to_compress.txt"
 [[ -e $result ]] && rm "$result" -rf # 清空旧内容
@@ -361,6 +362,21 @@ python3 $pys/image_compressor.py   -R auto -p -F  -O -W  -k  -A -w 64 -I "images
 # 直接指定一个目录,从该目录递归扫描处理,不执行分辨率处理,跳过50KB以下的图片的处理
 python3 $pys/image_compressor.py   -R auto -p -F  -O -W  -k  -A -w 64 -i /www/wwwroot/.../wp-content/uploads/  -T 50
 ```
+
+### 设置为后台长期运行(终端复用器)
+
+为了防止ssh长期链接中断导致压缩任务被以外停止,建议使用screen这类终端复用器让压缩任务能够更稳定的在后台运行.
+
+```bash
+# 创建或者进入image-compress 会话
+screen -R image-compress
+# 启动python环境(如果使用conda来管理python环境管理的话)
+conda activate main
+# 启动压缩任务.
+python3 $pys/image_compressor.py   -R auto -p -F  -O -W  -k  -A -w 64 -I "images_to_compress.txt"  -T 50
+```
+
+
 
 #### 案例:扫描所有网站里的大图并压缩
 

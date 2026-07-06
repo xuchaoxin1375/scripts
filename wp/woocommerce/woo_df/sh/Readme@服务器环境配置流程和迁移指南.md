@@ -285,7 +285,7 @@ wp --info
 
 这部分不是必须的,但是如果要使用python脚本,则建议配置相关环境.
 
-方案有两类,
+方案有两类
 
 #### 直接使用pip安装依赖
 
@@ -303,7 +303,7 @@ pip install -r $woo_df/requirements_linux.txt
 
 ubuntu24+版本对于python pip安装依赖包更加严格,可能无法直接通过`pip`安装(或者需要启用允许破坏系统完整性的强制性选项`--break-system-packages`),这和老版本系统以及windows系统大不相同.
 
-#### 基于虚拟环境的方案
+#### 基于虚拟环境的方案(miniforge/conda/uv)
 
 可以使用`venv`模块或者`miniforge`来创建python环境.
 
@@ -320,6 +320,7 @@ curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Mi
 ## 以下方案二选一
 # 方案1:交互式安装(安装过程中基本都是输入yes,如果默认回车可能是no,这会跳过某些步骤,新手不建议跳过,例如注册shell激活,如果不小心跳过某个步骤,可以参考交互提示中给出的命令行,根据自己使用的shell修改,再执行即可)
 bash Miniforge3-$(uname)-$(uname -m).sh
+# yes "yes" | bash Miniforge3-$(uname)-$(uname -m).sh
 
 # 方案2:非交互式安装(在非交互式安装中，conda 初始化命令默认不会运行。)
 bash Miniforge3-$(uname)-$(uname -m).sh -b
@@ -334,7 +335,7 @@ conda init
 exec bash
 
 ## 创建conda环境(可以指定python版本,例如3.13)
-conda create -n main python=3.13
+yes |conda create -n main python=3.13
 # 激活环境
 conda activate main
 
@@ -344,7 +345,7 @@ conda activate main
 
 ```shell
 # 在上述环境激活的情况下(国外服务器网络环境较好,无需要配置国内镜像加速)
-conda install uv # 或者 pip install uv 
+yes y | conda install uv # 或者 pip install uv 
 # 通过uv pip install <package_name> 安装python包,或者uv pip install -r requirements.txt从依赖文件中恢复环境
 uv pip install pandas
 # 使用uv恢复依赖环境速度即可,配合好的网络条件,相比于直接使用pip有极大优势
@@ -455,10 +456,10 @@ socket=/tmp/mysql.sock
 
 ```bash
 #! /usr/bin/env bash
-# shell片段一键配置免密登录(注意检查user和password)
+# shell片段一键配置免密登录(注意检查user和password修改为真实值)
 echo "[client]
-user = root
-password = 15a58524d3bd2e49
+user = your_username
+password = "your_password"
 host = localhost
 # 按需启用(宝塔用户通常设置此行):
 socket=/tmp/mysql.sock
