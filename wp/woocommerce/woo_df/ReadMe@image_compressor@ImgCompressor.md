@@ -330,15 +330,36 @@ find /data  -mindepth 3 -maxdepth 5 -type d -path '*/wp-content/uploads/202*' > 
 find .  -mindepth 3 -maxdepth 5 -type d -path '*/wp-content/uploads/202*' -print0 | xargs -0 realpath > img_dirs_to_compress.txt
 ```
 
+指定白名单网站域名,检索图片目录
+
+```bash
+# 将所有符合条件的目录存入数组
+mapfile -t dirs < <(find -L /www/wwwroot/ -mindepth 5 -maxdepth 5 -type d -path '*/wordpress/wp-content/uploads')
+
+# 读取匹配列表并计数
+cnt=1
+result="images_to_compress.txt"
+[[ -e $result ]] && rm "$result" -rf # 清空旧内容
+while IFS= read -r pattern; do
+    for dir in "${dirs[@]}"; do
+        if [[ "$dir" == *"/$pattern/wordpress/wp-content/uploads" ]]; then
+            echo "[$((cnt++))]:Processing [$pattern] -> $dir"
+            echo "$dir" >> "$result"
+        fi
+    done
+done < "img_dirs.txt"
+
+```
+
 
 
 ```bash
 # 计算要压缩到路径,保存到白名单"images_to_compress.txt",
-## 从白名单指定,并且执行分辨率处理
-python3 $pys/image_compressor.py   -R auto -p -F  -O -W  -k  -A  -I "images_to_compress.txt" -r 1000 800 # -T 50
+## 从白名单指定,并且执行分辨率处理(默认10线程,可以酌情开高,例如32,64)
+python3 $pys/image_compressor.py   -R auto -p -F  -O -W  -k  -A -w 64 -I "images_to_compress.txt"  -T 50 # -r 1000 800 
 
 # 直接指定一个目录,从该目录递归扫描处理,不执行分辨率处理,跳过50KB以下的图片的处理
-python3 $pys/image_compressor.py   -R auto -p -F  -O -W  -k  -A  -i /www/wwwroot/.../wp-content/uploads/  -T 50
+python3 $pys/image_compressor.py   -R auto -p -F  -O -W  -k  -A -w 64 -i /www/wwwroot/.../wp-content/uploads/  -T 50
 ```
 
 #### 案例:扫描所有网站里的大图并压缩
@@ -509,4 +530,195 @@ class Resampling(IntEnum):
    - 使用汉明窗函数
    - 平衡了振铃效应和锐度
 
- 
+##  并发模型选择:线程池还是进程池
+
+建议：**先保留线程池，不要直接切到进程池**。图片压缩通常是“磁盘 I/O + C 扩展编码/解码 + 少量 Python 调度”的混合任务，线程池往往更简单、更稳定、内存更省。只有在压测确认 CPU 被打满需求明显、线程池无法提升吞吐时，再考虑进程池。
+
+## 核心判断
+
+### 线程池更适合这些情况
+
+核心任务:
+
+```text
+读取图片 -> resize/thumbnail -> save JPEG/WebP/PNG -> 写文件
+```
+
+并且每张图独立处理。这个场景里，线程池通常够用，因为文件读写属于阻塞 I/O，CPython 会在阻塞 I/O 周围释放 GIL；Python 官方文档也说明，GIL 会在读写文件等阻塞 I/O 操作周围释放。([Python documentation](https://docs.python.org/3/c-api/threads.html))
+
+线程池还有几个优势：
+
+| 维度                 | 线程池                                     |
+| -------------------- | ------------------------------------------ |
+| 启动成本             | 低                                         |
+| 内存占用             | 低，共享进程内存                           |
+| 数据传递             | 简单，不需要 pickle                        |
+| 代码复杂度           | 低                                         |
+| Windows/macOS 兼容性 | 更少坑                                     |
+| 适合任务             | I/O 密集、Pillow 内部 C 代码占比较高的处理 |
+
+Python 官方文档中，`ThreadPoolExecutor` 本质是用线程异步执行任务。([Python documentation](https://docs.python.org/3/library/concurrent.futures.html))
+
+### 进程池更适合这些情况
+
+切换到进程池的理由主要是：**你的压缩逻辑 CPU 密集，并且线程池无法充分利用多核 CPU**。
+
+比如：
+
+```text
+大量高分辨率图片
+复杂 resize/filter
+逐像素 Python 逻辑
+复杂格式转换
+WebP/AVIF 等编码耗时明显
+CPU 长时间接近单核瓶颈
+```
+
+`ProcessPoolExecutor` 使用多进程，可以绕开 GIL，但代价是函数和参数需要可 pickle，子进程需要能导入 `__main__`，而且在子进程任务里调用 Executor/Future 方法会导致死锁。([Python documentation](https://docs.python.org/3/library/concurrent.futures.html))
+
+| 维度       | 进程池                                       |
+| ---------- | -------------------------------------------- |
+| 启动成本   | 高                                           |
+| 内存占用   | 高，每个进程一份解释器和库状态               |
+| 数据传递   | 需要 pickle，传大图对象/bytes 成本高         |
+| 多核利用   | 好                                           |
+| 稳定性隔离 | 单个 worker 崩溃影响较小                     |
+| 适合任务   | CPU 密集、纯 Python 计算多、单张图处理耗时长 |
+
+## 稳定性对比
+
+**线程池稳定性更依赖代码本身是否线程安全。** 建议每个线程内部独立打开、处理、保存图片，不要多个线程共享同一个 `Image` 对象、文件句柄、全局 buffer 或临时文件名。
+
+推荐模式：
+
+```python
+def compress_one(src_path, dst_path):
+    from PIL import Image
+
+    with Image.open(src_path) as im:
+        im = im.convert("RGB")
+        im.thumbnail((1920, 1920))
+        im.save(dst_path, "JPEG", quality=85, optimize=True)
+```
+
+不推荐：
+
+```python
+# 不推荐：多个线程共享同一个 Image 对象
+shared_img = Image.open("a.jpg")
+```
+
+**进程池的隔离性更好**：某个任务内存泄漏、native crash、异常污染全局状态时，影响通常局限在 worker 进程。但进程池也有自己的稳定性坑：必须正确关闭 pool，否则可能在退出时挂住；Python multiprocessing 文档明确提醒，进程池有内部资源，需要用上下文管理器或显式 close/terminate 管理。([Python documentation](https://docs.python.org/3/library/multiprocessing.html))
+
+如果长期批处理大量图片，进程池可以设置 worker 处理一定任务数后重启。`multiprocessing.Pool` 有 `maxtasksperchild`，`ProcessPoolExecutor` 也有 `max_tasks_per_child`，可用于释放 worker 持有的资源。([Python documentation](https://docs.python.org/3/library/multiprocessing.html))
+
+## 效率对比
+
+### 线程池效率
+
+优点：
+
+线程创建成本低
+没有跨进程序列化
+传 path、配置、结果都很轻
+对大量小文件更友好
+
+缺点：
+
+如果主要耗时是 Python 层 CPU 计算，GIL 会限制多核并行
+线程数过多会造成磁盘竞争、上下文切换、内存峰值上升
+
+### 进程池效率
+
+优点：
+
+CPU 密集任务可以真正并行
+更容易吃满多核
+适合单张图处理耗时较长的场景
+
+缺点：
+
+启动慢
+内存高
+大对象跨进程传输慢
+Windows/macOS 下 spawn 模式成本更明显
+
+所以使用进程池时，**不要把 PIL Image 对象或大 bytes 传给子进程**，只传文件路径和参数：
+
+```python
+# 推荐
+pool.submit(compress_one, "input/a.jpg", "output/a.jpg")
+
+# 不推荐
+pool.submit(compress_image_object, image_object)
+```
+
+## 对 Pillow 的具体影响
+
+不能简单认为“Pillow 一定适合线程”或“一定适合进程”。Pillow 很多底层工作在 C 代码里完成，但是否释放 GIL 取决于具体操作。Pillow 官方发布说明中就有单独记录过某些矩阵转换操作释放 GIL，这也侧面说明并不是所有操作都可以一概而论。([Pillow (PIL Fork)](https://pillow.readthedocs.io/en/stable/releasenotes/9.3.0.html))
+
+实际建议是：
+
+1. 没有逐像素 Python 循环：优先线程池
+2. 有大量 Python 层循环/计算：优先进程池
+3. 编码/resize 很重：两者都测，以吞吐和内存峰值为准
+
+## 建议配置
+
+### 线程池
+
+```python
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import os
+
+workers = min(32, (os.cpu_count() or 4) * 4)
+
+with ThreadPoolExecutor(max_workers=workers) as ex:
+    futures = [ex.submit(compress_one, src, dst) for src, dst in tasks]
+    for f in as_completed(futures):
+        f.result()
+```
+
+适合：图片多、单张不太大、磁盘/网络 I/O 明显。
+
+### 进程池
+
+```python
+from concurrent.futures import ProcessPoolExecutor, as_completed
+import os
+
+workers = os.cpu_count() or 4
+
+if __name__ == "__main__":
+    with ProcessPoolExecutor(max_workers=workers, max_tasks_per_child=200) as ex:
+        futures = [ex.submit(compress_one, src, dst) for src, dst in tasks]
+        for f in as_completed(futures):
+            f.result()
+```
+
+适合：单张图处理很重、CPU 长时间高负载、线程池提速不明显。
+
+## 结论
+
+你的图片压缩脚本如果只是常规批量压缩，**不建议一开始换成进程池**。先用线程池，并控制并发数，通常更稳、更省内存、代码更简单。
+
+建议按这个顺序优化：
+
+```text
+线程池 + 合理 max_workers
+↓
+确认没有共享 Image 对象/文件句柄
+↓
+压测 CPU、内存、磁盘 I/O
+↓
+如果 CPU 成为瓶颈，再切进程池
+↓
+进程池只传路径，不传图片对象
+```
+
+最终判断标准很简单：
+
+- 线程池下 CPU 使用率不高，磁盘繁忙：继续线程池
+- 线程池下单核瓶颈明显，多核吃不满：考虑进程池
+- 进程池吞吐提升 < 20%，但内存明显增加：继续线程池
+- 进程池吞吐提升明显且内存可接受：使用进程池

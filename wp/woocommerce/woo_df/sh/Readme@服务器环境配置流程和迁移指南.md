@@ -323,7 +323,9 @@ bash Miniforge3-$(uname)-$(uname -m).sh
 
 # 方案2:非交互式安装(在非交互式安装中，conda 初始化命令默认不会运行。)
 bash Miniforge3-$(uname)-$(uname -m).sh -b
-~/miniforge3/bin/conda init # 非交互式安装,需要指定conda路径执行conda init
+# 非交互式安装,需要指定conda路径执行conda init
+# 对于多shell用户(bash,zsh),如果交互安装提示配置写入到zshrc,那么bash用户也需要手动指定conda路径执行init
+~/miniforge3/bin/conda init
 
 # 初始化环境准备使用
 conda init

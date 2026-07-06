@@ -30,6 +30,7 @@ COMPRESS_TRHESHOLD_KB = 0  # 只对指定大小以上的图片文件进行压缩
 K = 2**10
 COMPRESS_TRHESHOLD_B = COMPRESS_TRHESHOLD_KB * K
 COMPRESS_TRHESHOLD = COMPRESS_TRHESHOLD_B
+EXECUTOR_TYPE = "thread"  # 默认使用线程池,可选进程池.(process)
 
 
 def parse_args():
@@ -131,6 +132,14 @@ def parse_args():
         help="批量处理时的最大线程数",
     )
     parser.add_argument(
+        "-E",
+        "--executor-type",
+        choices=["thread", "process"],
+        dest="executor_type",
+        default="thread",
+        help="批量处理时的执行器类型(thread/process),默认使用线程池",
+    )
+    parser.add_argument(
         "-T",
         "--compress-threshold",
         type=int,
@@ -215,6 +224,7 @@ def main():
         print(f"{__version__}")
         return 0
     skip_format = args.skip_format or ""
+    executor_type = args.executor_type or EXECUTOR_TYPE
     info(f"skip_format:[{skip_format}]")
     compressor = ImageCompressor(
         compress_threshold=args.compress_threshold,
@@ -252,9 +262,25 @@ def main():
             if not os.path.exists(input_path):
                 warning(f"[{idx}/{total_paths}] 输入路径[{input_path}]不存在,跳过处理")
                 continue
-            process_input_task(args, compressor, fmt, input_path, idx, total_paths)
+            process_input_task(
+                args,
+                compressor,
+                fmt,
+                input_path,
+                idx,
+                total_paths,
+                executor_type=executor_type,
+            )
     else:
-        process_input_task(args, compressor, fmt, input_path, 1, 1)
+        process_input_task(
+            args,
+            compressor,
+            fmt,
+            input_path,
+            index=1,
+            total=1,
+            executor_type=executor_type,
+        )
 
 
 def process_input_task(
@@ -264,6 +290,7 @@ def process_input_task(
     input_path,
     index: int = 1,
     total: int = 1,
+    executor_type=EXECUTOR_TYPE,
 ):
     """分两种情况处理input(文件或目录),以决定调用单处理还是批处理"""
     try:
@@ -303,6 +330,7 @@ def process_input_task(
                 quality=args.quality,
                 max_workers=args.max_workers,
                 overwrite=args.overwrite,
+                executor_type=executor_type,
                 path_progress_prefix=f"{index}/{total}" if total > 1 else "",
             )
             info(f"{prefix}\n处理结果报告:")

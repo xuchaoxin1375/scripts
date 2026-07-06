@@ -12,8 +12,8 @@
 
 import logging
 import os
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from io import BytesIO
+import uuid
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 
 # from wand.image import Image as WandImage
 from PIL import Image, ImageFile
@@ -30,7 +30,7 @@ Image.MAX_IMAGE_PIXELS = int(
 )  # 允许处理最大10B=100亿像素的图片(默认只支持1.7亿左右的像素)
 QUALITY_DEFAULT = 70
 QUALITY_DEFAULT_STRONG = 30
-
+VERSION="20260706.10:20"
 # 只对指定大小以上的图片文件进行压缩(取值为0时全部压缩)
 K = 2**10
 # 直观的KB单位指定(默认0则处理所有大小的图片)
@@ -213,6 +213,8 @@ class ImageCompressor:
             (成功状态, 消息)
         """
         opl = self.opl
+        prefix = ""
+        temp_output_path = ""
         try:
             if not os.path.exists(input_path):
                 return False, f"输入文件不存在: {input_path}"
@@ -275,10 +277,14 @@ class ImageCompressor:
                 # if output_format in (".jpg", ".jpeg", ".webp") and img.mode != "RGB":
                 if output_format in (".jpg", ".jpeg") and img.mode != "RGB":
                     img = img.convert("RGB")
-                # 为了检测分辨率调整膨胀变化,先保存到临时文件(后缀要保留)
-                if self.fake_format_from_webp:
-                    output_format_name = "webp"
-                temp_output_path = f"{output_base}.tmp.{output_format_name}"
+                # 为了检测分辨率调整膨胀变化,使用唯一临时文件名(后缀要保留)
+                # fake_format_from_webp 时实际编码为 webp，但最终输出路径仍可保持用户指定后缀
+                actual_output_format = ".webp" if self.fake_format_from_webp else output_format
+                temp_output_format_name = actual_output_format.lower().strip(".")
+                temp_output_path = (
+                    f"{output_base}.{os.getpid()}.{uuid.uuid4().hex}.tmp."
+                    f"{temp_output_format_name}"
+                )
                 self.logger.debug(f"临时文件: {temp_output_path}")
 
                 resized_file_size = 0
@@ -287,31 +293,18 @@ class ImageCompressor:
                     self.logger.debug(
                         f"分辨率变化:{old_wh}->{new_wh} ; 分辨率限制:{self.resize_threshold}"
                     )
-                    # 保存临时图片以便计算调整分辨率后的大小,从而分配quality参数
-                    # 硬盘方案:先保存临时文件到硬盘,然后计算大小
-                    # img.save(temp_output_path)
-                    # resized_file_size = os.path.getsize(temp_output_path)
-
-                    # 内存方案:保存临时文件到内存中,避免重复读写硬盘
-                    # 特殊处理JPG格式
-                    # if output_format_name.lower() in ("jpg", "jpeg"):
-                    #     save_kwargs["subsampling"] = 0  # 无损压缩
-                    buffer = BytesIO()
-                    # 将img流保存到临时的buffer中,再额外指定format
-                    # debug
-                    debug(f"格式: {output_format_name}")
-                    # 规范jpg名字为jpeg(PIL库的需要)
-                    if output_format_name == "jpg":
-                        output_format_name = "jpeg"
-                    img.save(buffer, format=output_format_name)
-                    resized_file_size = buffer.tell()  # 获取内存缓冲区大小
-
-                    # buffer.close()  # 清理内存
-
-                    self.logger.debug(
-                        f"降分辨率前后的文件大小变化: {format_size(original_size)}->{format_size(resized_file_size)}"
+                    # 性能优化：不再把图片先编码到 BytesIO 来估算调整分辨率后的大小。
+                    # 之前这里会完整编码一次，后续正式保存又编码一次；大图/高并发时 CPU 和内存开销明显。
+                    # 这里按像素比例估算，足够用于 quality_rule 分档，同时避免重复编码。
+                    resized_file_size = self._estimate_resized_file_size(
+                        original_size=original_size,
+                        old_wh=old_wh,
+                        new_wh=new_wh,
                     )
-                    # self.logger.debug(f"估算文件大小: {original_size} bytes")
+                    self.logger.debug(
+                        f"降分辨率前后的估算文件大小变化: "
+                        f"{format_size(original_size)}->{format_size(resized_file_size)}"
+                    )
                 # 确定最终的quality(依赖于最新的文件大小评估,尤其是分辨率变化后)
                 # quality = self._get_quality(
                 #     quality,
@@ -334,10 +327,11 @@ class ImageCompressor:
                         f"补偿quality调整: {quality}+{resize_compensate_quality}={new_quality}"
                     )
                     quality = new_quality
+                quality = self._normalize_quality(quality)
                 # 参数设定
                 save_kwargs = self._get_compress_args(
                     img=img,
-                    output_format=output_format,
+                    output_format=actual_output_format,
                     quality=quality,
                     optimize=optimize,
                     exif=exif,
@@ -407,10 +401,30 @@ class ImageCompressor:
             return True, msg
 
         except Exception as e:
+            if temp_output_path and os.path.exists(temp_output_path):
+                try:
+                    os.remove(temp_output_path)
+                except OSError as cleanup_error:
+                    self.logger.warning(f"清理临时文件失败: {temp_output_path}; {cleanup_error}")
             error_msg = f"处理图片失败: {str(e)}"
             self.logger.error(f"{prefix}{error_msg}")
             opl.log_failure(item=input_path, error=error_msg)
             return False, error_msg
+
+    def _estimate_resized_file_size(self, original_size, old_wh, new_wh):
+        """根据像素比例估算调整分辨率后的文件大小，避免为了估算大小而额外编码一次图片。"""
+        old_pixels = max(1, old_wh[0] * old_wh[1])
+        new_pixels = max(1, new_wh[0] * new_wh[1])
+        resized_file_size = int(original_size * (new_pixels / old_pixels))
+        return max(1, resized_file_size)
+
+    def _normalize_quality(self, quality):
+        """将图片质量参数限制在 Pillow 常用的有效范围内。"""
+        try:
+            quality = int(quality)
+        except (TypeError, ValueError):
+            quality = QUALITY_DEFAULT
+        return max(1, min(100, quality))
 
     def resize_resolution(self, img: Image.Image):
         """按需调整图像分辨率"""
@@ -436,16 +450,18 @@ class ImageCompressor:
         self, input_path, output_path, overwrite, temp_output_path
     ):
         """根据需要移除原始文件等操作🎈"""
-        if self.remove_original:
+        input_path_abs = os.path.abspath(input_path)
+        output_path_abs = os.path.abspath(output_path)
+
+        if os.path.exists(output_path) and not overwrite:
+            raise FileExistsError(f"输出文件已存在: {output_path}")
+
+        if self.remove_original and input_path_abs != output_path_abs:
             os.remove(input_path)
             debug(f"删除原始文件: {input_path}")
-            # 将临时文件重命名为输出文件🎈
-        if overwrite:
-            if os.path.exists(output_path):
-                os.remove(output_path)
-                # 重名名时,参数dst直接使用前面计算好的output_path,而不是再构造output_path
 
-        os.rename(src=temp_output_path, dst=output_path)
+        # os.replace 在目标文件存在时可原子替换，避免先 remove 再 rename 之间的竞态窗口。
+        os.replace(src=temp_output_path, dst=output_path)
 
     def _get_compress_args(self, img, output_format, quality, optimize, exif):
         save_kwargs = {"quality": quality, "optimize": optimize}
@@ -535,9 +551,10 @@ class ImageCompressor:
         # skip_existing: bool = True,
         max_workers: int = 10,
         path_progress_prefix: str = "",
+        executor_type: str = "thread",
     ):
         """
-        批量压缩目录中的图片(多线程版本)
+        批量压缩目录中的图片(默认线程池，可选进程池)
 
         Args:
             input_dir: 输入目录
@@ -545,7 +562,8 @@ class ImageCompressor:
             output_format: 输出格式(webp/jpg/png)
             quality: 压缩质量(1-100)
             overwrite: 是否覆盖已存在文件
-            max_workers: 最大线程数
+            max_workers: 最大并发数
+            executor_type: 执行器类型，"thread" 使用线程池，"process" 使用进程池
 
         Returns:
             处理结果统计: {
@@ -564,7 +582,16 @@ class ImageCompressor:
 
         os.makedirs(output_dir, exist_ok=True)
 
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        executor_type = (executor_type or "thread").lower()
+        if executor_type == "process":
+            executor_cls = ProcessPoolExecutor
+        elif executor_type == "thread":
+            executor_cls = ThreadPoolExecutor
+        else:
+            raise ValueError('executor_type 只支持 "thread" 或 "process"')
+
+        info(f"批量压缩执行器: {executor_type}; max_workers={max_workers}")
+        with executor_cls(max_workers=max_workers) as executor:
             futures = []
             # 计算文件列表(所有待处理文件的完整路径列表)
             files = get_paths(input_dir=input_dir, recurse=self.recurse)
