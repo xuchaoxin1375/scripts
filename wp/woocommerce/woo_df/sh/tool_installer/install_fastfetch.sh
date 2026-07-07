@@ -1,287 +1,869 @@
 #!/usr/bin/env bash
-# =============================================================================
-# Description : 从 GitHub 下载最新预编译包安装 fastfetch (支持多用户/镜像源)
-# Version     : 3.0
-# =============================================================================
+# Fastfetch 通用安装、更新与卸载脚本 v5
+# 支持 GitHub 直连、gh-proxy.com、ghfast.top 和自定义镜像前缀。
 
-set -euo pipefail
+set -Eeuo pipefail
 
-# ========================= 常量 =========================
-FASTFETCH_REPO="fastfetch-cli/fastfetch"
-TEMP_DIR="$(mktemp -d)"
+readonly REPOSITORY="fastfetch-cli/fastfetch"
+readonly GITHUB_API_URL="https://api.github.com/repos/${REPOSITORY}/releases/latest"
+readonly GH_PROXY_PREFIX="https://gh-proxy.com"
+readonly GHFAST_PREFIX="https://ghfast.top"
 
-# 全局状态变量 (在流程中赋值)
+MIRROR_MODE="auto"
+MIRROR_WAS_SET=false
+UNINSTALL=false
+CUSTOM_MIRROR_PREFIX=""
 INSTALL_DIR=""
-MIRROR_PREFIX=""
+TARGET_PATH=""
+TMP_DIR=""
+API_JSON_FILE=""
+DOWNLOAD_URL=""
+ARCH=""
+ASSET_NAME=""
+REMOTE_TAG=""
+REMOTE_VERSION=""
+LOCAL_VERSION=""
+LOCAL_BINARY=""
+STAGED_PATH=""
+declare -a PREFIX_CANDIDATES=()
 
-# ========================= 颜色 =========================
-if [[ -t 1 ]]; then
-    C_RED='\033[0;31m'
-    C_GREEN='\033[0;32m'
-    C_YELLOW='\033[1;33m'
-    C_BLUE='\033[0;34m'
-    C_NC='\033[0m'
-else
-    C_RED=''
-    C_GREEN=''
-    C_YELLOW=''
-    C_BLUE=''
-    C_NC=''
-fi
+COLOR_RESET=""
+COLOR_BLUE=""
+COLOR_GREEN=""
+COLOR_YELLOW=""
+COLOR_RED=""
 
-# ========================= 日志 =========================
-log_info() { echo -e "${C_BLUE}[INFO]${C_NC} $*"; }
-log_success() { echo -e "${C_GREEN}[OK]${C_NC} $*"; }
-log_warn() { echo -e "${C_YELLOW}[WARN]${C_NC} $*" >&2; }
-log_error() { echo -e "${C_RED}[ERROR]${C_NC} $*" >&2; }
+init_colors() {
+    if [[ -t 2 && "${TERM:-dumb}" != "dumb" && -z "${NO_COLOR:-}" ]]; then
+        COLOR_RESET=$'\033[0m'
+        COLOR_BLUE=$'\033[34m'
+        COLOR_GREEN=$'\033[32m'
+        COLOR_YELLOW=$'\033[33m'
+        COLOR_RED=$'\033[31m'
+    fi
+}
 
-# ========================= 基础工具 =========================
-has_command() { command -v "$1" > /dev/null 2>&1; }
+log_info() {
+    printf '%s[INFO]%s %s\n' "$COLOR_BLUE" "$COLOR_RESET" "$*" >&2
+}
 
-cleanup() { rm -rf "$TEMP_DIR"; }
+log_success() {
+    printf '%s[SUCCESS]%s %s\n' "$COLOR_GREEN" "$COLOR_RESET" "$*" >&2
+}
+
+log_warn() {
+    printf '%s[WARN]%s %s\n' "$COLOR_YELLOW" "$COLOR_RESET" "$*" >&2
+}
+
+log_error() {
+    printf '%s[ERROR]%s %s\n' "$COLOR_RED" "$COLOR_RESET" "$*" >&2
+}
+
+die() {
+    log_error "$*"
+    exit 1
+}
+
+usage() {
+    cat <<USAGE
+用法：
+  $0 [选项]
+
+选项：
+  -u, --uninstall   卸载由本脚本安装在当前用户目标目录中的 Fastfetch。
+                    普通用户删除 ~/.local/bin/fastfetch；
+                    root 用户删除 /usr/local/bin/fastfetch。
+                    不会删除 Fastfetch 配置文件。
+  --mirror MODE     指定 GitHub 下载源模式，默认 auto。
+                    MODE 可为：
+                      auto      自动探测直连、gh-proxy.com、ghfast.top
+                      direct    强制直连 GitHub
+                      ghproxy   强制使用 https://gh-proxy.com
+                      ghfast    强制使用 https://ghfast.top
+                      URL       使用自定义镜像前缀（必须以 http:// 或 https:// 开头）
+  -h, --help        显示本帮助信息
+
+示例：
+  ./$0
+  ./$0 --mirror direct
+  ./$0 --mirror ghproxy
+  ./$0 --mirror=https://example.com/github-proxy
+  ./$0 --uninstall
+  sudo ./$0 --uninstall
+
+安装位置：
+  root 用户：/usr/local/bin/fastfetch
+  普通用户：~/.local/bin/fastfetch
+USAGE
+}
+
+cleanup() {
+    if [[ -n "$STAGED_PATH" && -e "$STAGED_PATH" ]]; then
+        rm -f -- "$STAGED_PATH"
+    fi
+
+    if [[ -n "$TMP_DIR" && -d "$TMP_DIR" ]]; then
+        rm -rf -- "$TMP_DIR"
+    fi
+}
+
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
-# ========================= 参数解析 =========================
 parse_args() {
-    MIRROR_MODE="auto"
-    while [[ $# -gt 0 ]]; do
+    while (($# > 0)); do
         case "$1" in
+            -u|--uninstall)
+                UNINSTALL=true
+                shift
+                ;;
             --mirror)
-                [[ $# -lt 2 ]] && {
-                    log_error "--mirror 需要一个参数"
-                    exit 1
-                }
-                MIRROR_MODE="$2"
+                (($# >= 2)) || die "--mirror 缺少参数。"
+                MIRROR_WAS_SET=true
+                MIRROR_MODE=$2
                 shift 2
                 ;;
-            -h | --help)
-                cat << EOF
-用法: $0 [选项]
-选项:
-  --mirror <MODE>   指定下载源, MODE 可选:
-      auto          自动探测最佳源 (默认)
-      direct        直连 GitHub
-      ghproxy       使用 https://gh-proxy.com/ 镜像
-      ghfast        使用 https://ghfast.top/ 镜像
-      <URL>         自定义镜像前缀 (需含协议, 例如 https://gh-proxy.com/)
-  -h, --help        显示此帮助
-
-示例:
-
-# 默认: 自动探测最佳源 (直连失败自动切镜像)
-$0
-
-# 强制走 gh-proxy 镜像
-$0 --mirror ghproxy
-
-# 直连 GitHub
-$0 --mirror direct
-
-# 使用自定义镜像前缀
-$0 --mirror https://ghfast.top/
-
-EOF
+            --mirror=*)
+                MIRROR_WAS_SET=true
+                MIRROR_MODE=${1#*=}
+                shift
+                ;;
+            -h|--help)
+                usage
                 exit 0
                 ;;
+            --)
+                shift
+                (($# == 0)) || die "不支持位置参数：$*"
+                ;;
             *)
-                log_error "未知参数: $1"
-                exit 1
+                die "未知参数：$1。使用 --help 查看帮助。"
                 ;;
         esac
     done
-}
 
-# ========================= 镜像源选择 =========================
-select_mirror() {
-    local api_url="https://api.github.com/repos/${FASTFETCH_REPO}/releases/latest"
+    if [[ "$UNINSTALL" == true && "$MIRROR_WAS_SET" == true ]]; then
+        die "--uninstall 不能与 --mirror 同时使用。"
+    fi
 
     case "$MIRROR_MODE" in
+        auto|direct|ghproxy|ghfast)
+            ;;
+        http://*|https://*)
+            CUSTOM_MIRROR_PREFIX=$MIRROR_MODE
+            MIRROR_MODE="custom"
+            ;;
+        "")
+            die "镜像模式不能为空。"
+            ;;
+        *)
+            die "无效的镜像模式：$MIRROR_MODE。自定义镜像必须以 http:// 或 https:// 开头。"
+            ;;
+    esac
+}
+
+require_linux() {
+    local kernel_name
+    kernel_name=$(uname -s 2>/dev/null || true)
+    [[ "$kernel_name" == "Linux" ]] || die "该脚本仅支持 Linux，当前系统为：${kernel_name:-unknown}。"
+}
+
+append_unique() {
+    local item=$1
+    shift
+    local existing
+
+    for existing in "$@"; do
+        [[ "$existing" == "$item" ]] && return 1
+    done
+    return 0
+}
+
+select_package_manager() {
+    local manager
+    for manager in apt-get dnf pacman zypper apk; do
+        if command -v "$manager" >/dev/null 2>&1; then
+            printf '%s\n' "$manager"
+            return 0
+        fi
+    done
+    return 1
+}
+
+package_for_command() {
+    local command_name=$1
+
+    case "$command_name" in
+        curl)
+            printf '%s\n' "curl"
+            ;;
+        tar)
+            printf '%s\n' "tar"
+            ;;
+        grep)
+            printf '%s\n' "grep"
+            ;;
+        gzip)
+            printf '%s\n' "gzip"
+            ;;
+        find)
+            printf '%s\n' "findutils"
+            ;;
+        cat|chmod|cut|head|install|mkdir|mktemp|mv|rm|tr|uname)
+            printf '%s\n' "coreutils"
+            ;;
+        *)
+            printf '%s\n' "$command_name"
+            ;;
+    esac
+}
+
+install_missing_dependencies() {
+    local -a required_commands=(
+        curl tar gzip grep cut find install mktemp head tr mkdir chmod mv rm cat uname
+    )
+    local -a missing_commands=()
+    local -a packages=()
+    local -a privilege=()
+    local command_name package_name manager
+
+    for command_name in "${required_commands[@]}"; do
+        if ! command -v "$command_name" >/dev/null 2>&1; then
+            missing_commands+=("$command_name")
+        fi
+    done
+
+    ((${#missing_commands[@]} == 0)) && return 0
+
+    log_warn "缺少依赖：${missing_commands[*]}，准备尝试自动安装。"
+
+    manager=$(select_package_manager) || die "未找到受支持的包管理器（apt/dnf/pacman/zypper/apk），请手动安装缺失依赖。"
+
+    if ((EUID != 0)); then
+        command -v sudo >/dev/null 2>&1 || die "安装系统依赖需要 root 权限，但当前系统未找到 sudo。"
+        privilege=(sudo)
+    fi
+
+    for command_name in "${missing_commands[@]}"; do
+        package_name=$(package_for_command "$command_name")
+        if append_unique "$package_name" "${packages[@]}"; then
+            packages+=("$package_name")
+        fi
+    done
+
+    log_info "使用 $manager 安装软件包：${packages[*]}"
+    case "$manager" in
+        apt-get)
+            "${privilege[@]}" apt-get update
+            "${privilege[@]}" apt-get install -y "${packages[@]}"
+            ;;
+        dnf)
+            "${privilege[@]}" dnf install -y "${packages[@]}"
+            ;;
+        pacman)
+            "${privilege[@]}" pacman -Sy --noconfirm --needed "${packages[@]}"
+            ;;
+        zypper)
+            "${privilege[@]}" zypper --non-interactive install -y "${packages[@]}"
+            ;;
+        apk)
+            "${privilege[@]}" apk add --no-cache "${packages[@]}"
+            ;;
+        *)
+            die "内部错误：不支持的包管理器 $manager。"
+            ;;
+    esac
+
+    for command_name in "${required_commands[@]}"; do
+        command -v "$command_name" >/dev/null 2>&1 || die "依赖安装后仍找不到命令：$command_name。"
+    done
+}
+
+detect_architecture() {
+    local machine
+    machine=$(uname -m)
+
+    case "$machine" in
+        x86_64|amd64)
+            ARCH="amd64"
+            ;;
+        aarch64|arm64)
+            ARCH="aarch64"
+            ;;
+        armv7l|armv7)
+            ARCH="armv7l"
+            ;;
+        *)
+            die "不支持的 CPU 架构：$machine。目前支持 x86_64、aarch64、armv7l。"
+            ;;
+    esac
+
+    ASSET_NAME="fastfetch-linux-${ARCH}.tar.gz"
+    log_info "检测到系统架构：$machine -> $ARCH"
+}
+
+determine_install_path() {
+    if ((EUID == 0)); then
+        INSTALL_DIR="/usr/local/bin"
+    else
+        [[ -n "${HOME:-}" ]] || die "无法确定用户主目录：HOME 未设置。"
+        INSTALL_DIR="$HOME/.local/bin"
+    fi
+
+    TARGET_PATH="$INSTALL_DIR/fastfetch"
+}
+
+prepare_install_directory() {
+    mkdir -p -- "$INSTALL_DIR"
+    log_info "安装目标：$TARGET_PATH"
+}
+
+uninstall_fastfetch() {
+    local path_fastfetch=""
+    local remaining_fastfetch=""
+    local version=""
+
+    log_info "卸载目标：$TARGET_PATH"
+
+    if [[ ! -e "$TARGET_PATH" && ! -L "$TARGET_PATH" ]]; then
+        log_warn "未在目标位置发现 Fastfetch：$TARGET_PATH"
+
+        path_fastfetch=$(command -v fastfetch 2>/dev/null || true)
+        if [[ -n "$path_fastfetch" && "$path_fastfetch" != "$TARGET_PATH" ]]; then
+            log_warn "PATH 中仍存在另一个 Fastfetch：$path_fastfetch"
+            log_warn "该文件不属于本次卸载目标，未进行删除。"
+        fi
+        return 0
+    fi
+
+    if [[ -d "$TARGET_PATH" && ! -L "$TARGET_PATH" ]]; then
+        die "卸载目标是目录而不是文件，拒绝删除：$TARGET_PATH"
+    fi
+
+    if [[ -x "$TARGET_PATH" ]]; then
+        version=$(extract_version_from_binary "$TARGET_PATH")
+        if [[ -n "$version" ]]; then
+            log_info "检测到 Fastfetch 版本：$version"
+        else
+            log_warn "无法读取目标文件的 Fastfetch 版本号，但仍将按 --uninstall 请求删除该文件。"
+        fi
+    fi
+
+    rm -f -- "$TARGET_PATH" || die "无法删除 Fastfetch：$TARGET_PATH"
+
+    if [[ -e "$TARGET_PATH" || -L "$TARGET_PATH" ]]; then
+        die "卸载失败，目标文件仍然存在：$TARGET_PATH"
+    fi
+
+    log_success "已卸载 Fastfetch：$TARGET_PATH"
+    log_info "Fastfetch 配置文件未删除。"
+
+    remaining_fastfetch=$(command -v fastfetch 2>/dev/null || true)
+    if [[ -n "$remaining_fastfetch" && "$remaining_fastfetch" != "$TARGET_PATH" ]]; then
+        log_warn "PATH 中仍存在另一个 Fastfetch：$remaining_fastfetch"
+    fi
+}
+
+build_url_with_prefix() {
+    local prefix=$1
+    local original_url=$2
+
+    if [[ -z "$prefix" ]]; then
+        printf '%s\n' "$original_url"
+        return 0
+    fi
+
+    while [[ "$prefix" == */ ]]; do
+        prefix=${prefix%/}
+    done
+
+    printf '%s/%s\n' "$prefix" "$original_url"
+}
+
+prefix_label() {
+    local prefix=$1
+
+    case "$prefix" in
+        "")
+            printf '%s\n' "GitHub 直连"
+            ;;
+        "$GH_PROXY_PREFIX")
+            printf '%s\n' "gh-proxy.com"
+            ;;
+        "$GHFAST_PREFIX")
+            printf '%s\n' "ghfast.top"
+            ;;
+        *)
+            printf '%s\n' "$prefix"
+            ;;
+    esac
+}
+
+load_prefix_candidates() {
+    PREFIX_CANDIDATES=()
+
+    case "$MIRROR_MODE" in
+        auto)
+            PREFIX_CANDIDATES=("" "$GH_PROXY_PREFIX" "$GHFAST_PREFIX")
+            ;;
         direct)
-            MIRROR_PREFIX=""
-            log_info "下载源: 直连 GitHub"
+            PREFIX_CANDIDATES=("")
             ;;
         ghproxy)
-            MIRROR_PREFIX="https://gh-proxy.com/"
-            log_info "下载源: gh-proxy.com 镜像"
+            PREFIX_CANDIDATES=("$GH_PROXY_PREFIX")
             ;;
         ghfast)
-            MIRROR_PREFIX="https://ghfast.top/"
-            log_info "下载源: ghfast.top 镜像"
+            PREFIX_CANDIDATES=("$GHFAST_PREFIX")
             ;;
-        auto)
-            log_info "自动探测可用下载源 (依次测试连通性)..."
-            # 候选源: 直连在前, 失败再走镜像
-            local candidates=("" "https://gh-proxy.com/" "https://ghfast.top/" "https://mirror.ghproxy.com/")
-            for prefix in "${candidates[@]}"; do
-                local test_url="${prefix}${api_url}"
-                if curl -fsSL --connect-timeout 5 --max-time 12 -o /dev/null "$test_url" 2> /dev/null; then
-                    MIRROR_PREFIX="$prefix"
-                    if [[ -z "$prefix" ]]; then
-                        log_success "直连 GitHub 可用"
-                    else
-                        log_success "使用镜像源: ${prefix}"
-                    fi
-                    return
-                fi
-                if [[ -z "$prefix" ]]; then
-                    log_warn "直连 GitHub 不可达, 尝试镜像..."
-                else
-                    log_warn "镜像 ${prefix} 不可达, 尝试下一个..."
-                fi
-            done
-            log_error "所有源均不可用, 请检查网络或使用 --mirror <URL> 指定镜像"
-            exit 1
+        custom)
+            PREFIX_CANDIDATES=("$CUSTOM_MIRROR_PREFIX")
             ;;
         *)
-            # 自定义镜像前缀
-            MIRROR_PREFIX="$MIRROR_MODE"
-            [[ "$MIRROR_PREFIX" != */ ]] && MIRROR_PREFIX="${MIRROR_PREFIX}/"
-            log_info "下载源: 自定义镜像 ${MIRROR_PREFIX}"
+            die "内部错误：未知镜像模式 $MIRROR_MODE。"
             ;;
     esac
 }
 
-# ========================= 依赖检查 =========================
-ensure_dependencies() {
-    local missing=()
-    has_command curl || missing+=("curl")
-    has_command tar || missing+=("tar")
-    [[ ${#missing[@]} -eq 0 ]] && return
+fetch_release_metadata() {
+    local prefix api_url label http_code
 
-    log_warn "缺少依赖: ${missing[*]}, 尝试自动安装..."
-    if has_command apt-get; then
-        sudo apt-get update -y && sudo apt-get install -y "${missing[@]}"
-    elif has_command dnf; then
-        sudo dnf install -y "${missing[@]}"
-    elif has_command pacman; then
-        sudo pacman -Sy --noconfirm "${missing[@]}"
-    elif has_command zypper; then
-        sudo zypper install -y "${missing[@]}"
-    elif has_command apk; then
-        sudo apk add --no-cache "${missing[@]}"
-    else
-        log_error "无法自动安装依赖, 请手动安装: ${missing[*]}"
-        exit 1
-    fi
-    log_success "依赖安装完成"
-}
+    API_JSON_FILE="$TMP_DIR/release.json"
+    load_prefix_candidates
 
-# ========================= 安装目录判定 =========================
-determine_install_dir() {
-    if [[ $EUID -eq 0 ]]; then
-        INSTALL_DIR="/usr/local/bin"
-        log_info "安装目录 (系统级): ${INSTALL_DIR}"
-    else
-        INSTALL_DIR="${HOME}/.local/bin"
-        if [[ ! -d "$INSTALL_DIR" ]]; then
-            mkdir -p "$INSTALL_DIR"
-            log_info "已创建安装目录: ${INSTALL_DIR}"
+    for prefix in "${PREFIX_CANDIDATES[@]}"; do
+        api_url=$(build_url_with_prefix "$prefix" "$GITHUB_API_URL")
+        label=$(prefix_label "$prefix")
+        log_info "探测版本 API：$label"
+
+        http_code=$(
+            curl --silent --show-error --location \
+                --connect-timeout 5 --max-time 20 \
+                --retry 1 --retry-delay 1 \
+                --header 'Accept: application/vnd.github+json' \
+                --header 'X-GitHub-Api-Version: 2022-11-28' \
+                --user-agent '$0' \
+                --output "$API_JSON_FILE" \
+                --write-out '%{http_code}' \
+                "$api_url" 2>/dev/null || true
+        )
+
+        if [[ "$http_code" == "200" ]] && grep -q '"tag_name"' "$API_JSON_FILE"; then
+            log_success "版本 API 可用：$label"
+            return 0
         fi
-        log_info "安装目录 (用户级): ${INSTALL_DIR}"
-    fi
+
+        if [[ "$http_code" == "403" ]]; then
+            log_warn "$label 返回 HTTP 403，可能触发 GitHub API 限流或被网络策略拦截。"
+        else
+            log_warn "$label API 探测失败（HTTP ${http_code:-000}）。"
+        fi
+    done
+
+    die "无法从 GitHub 或指定镜像获取 Fastfetch 最新版本信息。"
 }
 
-# ========================= 架构映射 =========================
-get_architecture() {
-    case "$(uname -m)" in
-        x86_64) echo "amd64" ;;
-        aarch64) echo "aarch64" ;;
-        *)
-            log_error "不支持的架构: $(uname -m)"
-            exit 1
-            ;;
-    esac
-}
+parse_release_metadata() {
+    local asset_url=""
 
-# ========================= 核心安装 =========================
-install_from_github() {
-    local target_arch
-    target_arch=$(get_architecture)
-
-    local api_url="${MIRROR_PREFIX}https://api.github.com/repos/${FASTFETCH_REPO}/releases/latest"
-    log_info "获取最新版本信息..."
-    local api_response latest_version
-    if ! api_response=$(curl -fsSL --connect-timeout 10 --max-time 30 "$api_url"); then
-        log_error "无法访问 GitHub API (源: ${MIRROR_PREFIX:-直连})"
-        exit 1
-    fi
-
-    # 优先 jq, 回退正则
-    if has_command jq; then
-        latest_version=$(echo "$api_response" | jq -r '.tag_name')
+    if command -v jq >/dev/null 2>&1; then
+        log_info "使用 jq 解析 GitHub Release JSON。"
+        REMOTE_TAG=$(jq -r '.tag_name // empty' "$API_JSON_FILE")
+        asset_url=$(
+            jq -r --arg asset "$ASSET_NAME" \
+                '.assets[]? | select(.name == $asset) | .browser_download_url' \
+                "$API_JSON_FILE" | head -n 1
+        )
     else
-        latest_version=$(echo "$api_response" | grep -o '"tag_name":[[:space:]]*"[^"]*"' | head -n1 | sed -E 's/.*"([^"]+)"$/\1/')
+        log_info "未检测到 jq，使用 grep + cut 解析 GitHub Release JSON。"
+        REMOTE_TAG=$(
+            tr ',' '\n' < "$API_JSON_FILE" \
+                | grep -m 1 '"tag_name"' \
+                | cut -d '"' -f 4 \
+                || true
+        )
+        asset_url=$(
+            tr ',' '\n' < "$API_JSON_FILE" \
+                | grep '"browser_download_url"' \
+                | grep -F "/${ASSET_NAME}\"" \
+                | head -n 1 \
+                | cut -d '"' -f 4 \
+                || true
+        )
     fi
 
-    if [[ -z "$latest_version" || "$latest_version" == "null" ]]; then
-        log_error "无法解析版本号 (可能触发 API 限流)"
-        exit 1
-    fi
-    log_info "最新版本: ${latest_version}"
+    [[ -n "$REMOTE_TAG" && "$REMOTE_TAG" != "null" ]] || die "无法从 API 响应中解析最新版本号。"
 
-    local download_url="${MIRROR_PREFIX}https://github.com/${FASTFETCH_REPO}/releases/download/${latest_version}/fastfetch-linux-${target_arch}.tar.gz"
-    local tar_file="${TEMP_DIR}/fastfetch.tar.gz"
+    REMOTE_VERSION=${REMOTE_TAG#v}
+    REMOTE_VERSION=${REMOTE_VERSION#V}
 
-    log_info "开始下载: ${download_url}"
-    # 显示下载进度条: 不使用 -s, 保留 -f -L
-    if ! curl -fL --connect-timeout 15 --retry 2 -o "$tar_file" "$download_url"; then
-        log_error "下载失败! 请检查网络或尝试 --mirror ghproxy"
-        exit 1
-    fi
-    log_success "下载完成"
-
-    log_info "解压中..."
-    tar -xzf "$tar_file" -C "$TEMP_DIR"
-
-    local extracted_dir="${TEMP_DIR}/fastfetch-linux-${target_arch}"
-    if [[ ! -d "$extracted_dir" ]]; then
-        log_error "解压目录异常: ${extracted_dir}"
-        exit 1
+    if [[ -z "$asset_url" || "$asset_url" == "null" ]]; then
+        log_warn "API 响应中未找到 $ASSET_NAME，改用标准 Release 下载地址。"
+        asset_url="https://github.com/${REPOSITORY}/releases/download/${REMOTE_TAG}/${ASSET_NAME}"
     fi
 
-    log_info "安装文件到 ${INSTALL_DIR} ..."
-    install -m 755 "${extracted_dir}/usr/bin/fastfetch" "${INSTALL_DIR}/fastfetch"
-    if [[ -f "${extracted_dir}/usr/bin/flashfetch" ]]; then
-        install -m 755 "${extracted_dir}/usr/bin/flashfetch" "${INSTALL_DIR}/flashfetch"
-    fi
-    log_success "文件复制完成"
+    DOWNLOAD_URL=$asset_url
+    log_info "远程最新版本：$REMOTE_VERSION"
 }
 
-# ========================= 验证与提示 =========================
-verify_and_advise() {
-    local target_bin="${INSTALL_DIR}/fastfetch"
-    if [[ ! -x "$target_bin" ]]; then
-        log_error "fastfetch 安装失败或无执行权限"
-        exit 1
+extract_version_from_binary() {
+    local binary_path=$1
+    local version_output version_number
+
+    version_output=$("$binary_path" --version 2>/dev/null || true)
+    version_number=$(
+        printf '%s\n' "$version_output" \
+            | grep -Eo '[vV]?[0-9]+([.][0-9]+){1,3}' \
+            | head -n 1 \
+            | tr -d 'vV' \
+            || true
+    )
+    printf '%s\n' "$version_number"
+}
+
+is_elf_binary() {
+    local file_path=$1
+    local magic=""
+
+    [[ -f "$file_path" ]] || return 1
+    IFS= read -r -N 4 magic < "$file_path" || true
+    [[ "$magic" == $'\x7fELF' ]]
+}
+
+find_extracted_fastfetch_binary() {
+    local extract_root=$1
+    local candidate relative_path
+
+    # 官方 tar 包的主程序通常位于 */usr/bin/fastfetch。优先搜索该路径，
+    # 避免误选 */bash-completion/completions/fastfetch 等同名脚本。
+    while IFS= read -r candidate; do
+        [[ -n "$candidate" ]] || continue
+        if is_elf_binary "$candidate"; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+
+        relative_path=${candidate#"$extract_root"/}
+        log_warn "忽略同名但不是 ELF 二进制的文件：$relative_path"
+    done < <(
+        find "$extract_root" -type f -path '*/usr/bin/fastfetch' -print
+        find "$extract_root" -type f -name 'fastfetch' ! -path '*/usr/bin/fastfetch' -print
+    )
+
+    return 1
+}
+
+show_candidate_version_output() {
+    local binary_path=$1
+    local output exit_status
+
+    if output=$("$binary_path" --version 2>&1); then
+        exit_status=0
+    else
+        exit_status=$?
     fi
 
-    local version
-    version=$("$target_bin" --version 2>&1 | head -n1)
-    log_success "fastfetch 安装成功!"
-    log_info "版本: ${version}"
+    printf '%s\n' '----- 解压出的 fastfetch --version 输出开始 -----' >&2
+    if [[ -n "$output" ]]; then
+        printf '%s\n' "$output" >&2
+    else
+        printf '%s\n' '(命令没有产生任何输出)' >&2
+    fi
+    printf '%s\n' '----- 解压出的 fastfetch --version 输出结束 -----' >&2
 
-    case ":${PATH}:" in
-        *":${INSTALL_DIR}:"*) ;;
-        *)
-            log_warn "安装目录 ${INSTALL_DIR} 不在 PATH 中"
-            echo -e "${C_YELLOW}请将以下内容添加到 ~/.bashrc 或 ~/.zshrc:${C_NC}"
-            echo -e "  export PATH=\"\$PATH:${INSTALL_DIR}\""
-            echo -e "${C_YELLOW}然后执行 source ~/.bashrc (或重开终端) 后即可使用 fastfetch${C_NC}"
+    return "$exit_status"
+}
+
+show_fastfetch_v_output() {
+    local binary_path=$1
+    local version_output exit_status
+
+    log_info "尝试运行以下命令以展示旧程序的实际输出：$binary_path -v"
+    if version_output=$("$binary_path" -v 2>&1); then
+        exit_status=0
+    else
+        exit_status=$?
+    fi
+
+    printf '%s\n' '----- fastfetch -v 输出开始 -----' >&2
+    if [[ -n "$version_output" ]]; then
+        printf '%s\n' "$version_output" >&2
+    else
+        printf '%s\n' '(命令没有产生任何输出)' >&2
+    fi
+    printf '%s\n' '----- fastfetch -v 输出结束 -----' >&2
+
+    if ((exit_status != 0)); then
+        log_warn "fastfetch -v 返回非零状态：$exit_status"
+    fi
+}
+
+confirm_remove_and_reinstall() {
+    local binary_path=$1
+    local answer
+
+    if [[ ! -t 0 ]]; then
+        die "无法解析现有 Fastfetch 的版本号，且当前不是交互式终端，不能确认是否删除旧文件。请在交互式终端中重新运行脚本。"
+    fi
+
+    while true; do
+        printf '是否尝试移除旧文件 %s，并重新安装 Fastfetch（覆盖安装）？[y/N] '             "$binary_path" >&2
+        if ! IFS= read -r answer; then
+            answer=""
+        fi
+
+        case "$answer" in
+            y|Y|yes|YES|Yes)
+                break
+                ;;
+            n|N|no|NO|No|"")
+                log_warn "用户取消覆盖安装，未对旧文件进行修改。"
+                exit 0
+                ;;
+            *)
+                log_warn "请输入 y 或 n。"
+                ;;
+        esac
+    done
+
+    if rm -f -- "$binary_path" 2>/dev/null; then
+        :
+    elif ((EUID != 0)) && command -v sudo >/dev/null 2>&1; then
+        log_info "直接删除失败，尝试使用 sudo 移除旧文件。"
+        sudo rm -f -- "$binary_path"
+    else
+        die "无法移除旧文件：$binary_path。请检查文件权限后重试。"
+    fi
+
+    if [[ -e "$binary_path" || -L "$binary_path" ]]; then
+        die "旧文件仍然存在，无法继续覆盖安装：$binary_path"
+    fi
+
+    log_success "已移除旧文件：$binary_path"
+    LOCAL_BINARY=""
+    LOCAL_VERSION=""
+}
+
+detect_local_version() {
+    local installed_binary=""
+
+    if [[ -x "$TARGET_PATH" ]]; then
+        installed_binary=$TARGET_PATH
+    elif command -v fastfetch >/dev/null 2>&1; then
+        installed_binary=$(command -v fastfetch)
+    fi
+
+    if [[ -n "$installed_binary" ]]; then
+        LOCAL_BINARY=$installed_binary
+
+        if ! is_elf_binary "$installed_binary"; then
+            log_warn "检测到名为 fastfetch 的文件，但它不是 Linux ELF 二进制：$installed_binary"
+            show_fastfetch_v_output "$installed_binary"
+            confirm_remove_and_reinstall "$installed_binary"
+            return 0
+        fi
+
+        LOCAL_VERSION=$(extract_version_from_binary "$installed_binary")
+        if [[ -n "$LOCAL_VERSION" ]]; then
+            log_info "已安装版本：$LOCAL_VERSION（$installed_binary）"
+        else
+            log_warn "检测到 Fastfetch ELF 文件，但无法解析其版本号：$installed_binary"
+            show_fastfetch_v_output "$installed_binary"
+            confirm_remove_and_reinstall "$installed_binary"
+        fi
+    else
+        log_info "未检测到已安装的 Fastfetch。"
+    fi
+}
+
+select_download_channel() {
+    local prefix candidate_url label
+
+    load_prefix_candidates
+
+    for prefix in "${PREFIX_CANDIDATES[@]}"; do
+        candidate_url=$(build_url_with_prefix "$prefix" "$DOWNLOAD_URL")
+        label=$(prefix_label "$prefix")
+        log_info "探测文件下载通道：$label"
+
+        if curl --fail --silent --show-error --location \
+            --range 0-0 \
+            --connect-timeout 5 --max-time 20 \
+            --retry 1 --retry-delay 1 \
+            --user-agent '$0' \
+            --output /dev/null \
+            "$candidate_url" 2>/dev/null; then
+            DOWNLOAD_URL=$candidate_url
+            log_success "文件下载通道可用：$label"
+            return 0
+        fi
+
+        log_warn "$label 下载探测失败。"
+    done
+
+    die "无法通过 GitHub 或指定镜像下载 $ASSET_NAME。"
+}
+
+download_and_install() {
+    local archive_path extract_dir binary_path=""
+    local relative_path extracted_version staged_version
+
+    archive_path="$TMP_DIR/$ASSET_NAME"
+    extract_dir="$TMP_DIR/extracted"
+    mkdir -p -- "$extract_dir"
+
+    log_info "正在下载：$DOWNLOAD_URL"
+    curl --fail --show-error --location \
+        --connect-timeout 10 --max-time 300 \
+        --retry 3 --retry-delay 2 \
+        --user-agent '$0' \
+        --output "$archive_path" \
+        "$DOWNLOAD_URL"
+
+    [[ -s "$archive_path" ]] || die "下载完成，但文件为空：$archive_path"
+
+    log_info "正在解压安装包。"
+    tar -xzf "$archive_path" -C "$extract_dir"
+
+    binary_path=$(find_extracted_fastfetch_binary "$extract_dir" || true)
+    [[ -n "$binary_path" ]] || die "解压后未找到有效的 Fastfetch ELF 二进制文件。"
+
+    relative_path=${binary_path#"$extract_dir"/}
+    log_info "选中主程序：$relative_path"
+
+    chmod 0755 "$binary_path"
+    extracted_version=$(extract_version_from_binary "$binary_path")
+    if [[ -z "$extracted_version" ]]; then
+        show_candidate_version_output "$binary_path" || true
+        die "解压出的文件虽然是 ELF，但无法运行或无法读取 Fastfetch 版本号；未覆盖现有文件。"
+    fi
+
+    if [[ "$extracted_version" != "$REMOTE_VERSION" ]]; then
+        die "安装包内 Fastfetch 版本为 $extracted_version，与预期版本 $REMOTE_VERSION 不一致；未覆盖现有文件。"
+    fi
+
+    # 先写入同目录临时文件并完成校验，最后再原子替换目标文件，
+    # 避免下载包异常时破坏原有 Fastfetch。
+    STAGED_PATH=$(mktemp "$INSTALL_DIR/.fastfetch.install.XXXXXX")
+    install -m 0755 "$binary_path" "$STAGED_PATH"
+
+    if ! is_elf_binary "$STAGED_PATH"; then
+        die "复制后的暂存文件不是有效的 ELF 二进制；未覆盖现有文件。"
+    fi
+
+    staged_version=$(extract_version_from_binary "$STAGED_PATH")
+    if [[ "$staged_version" != "$REMOTE_VERSION" ]]; then
+        die "暂存文件版本校验失败（读取到：${staged_version:-空}）；未覆盖现有文件。"
+    fi
+
+    mv -f -- "$STAGED_PATH" "$TARGET_PATH"
+    STAGED_PATH=""
+
+    [[ -x "$TARGET_PATH" ]] || die "安装校验失败：$TARGET_PATH 不存在或不可执行。"
+    is_elf_binary "$TARGET_PATH" || die "安装校验失败：$TARGET_PATH 不是 ELF 二进制文件。"
+}
+
+check_path_and_print_hint() {
+    local shell_name profile_file export_command
+
+    case ":${PATH:-}:" in
+        *":$INSTALL_DIR:"*)
+            log_success "$INSTALL_DIR 已位于 PATH 中。"
+            return 0
             ;;
     esac
+
+    log_warn "$INSTALL_DIR 当前不在 PATH 中。"
+    shell_name=${SHELL:-}
+    shell_name=${shell_name##*/}
+
+    if [[ "$INSTALL_DIR" == "${HOME:-}/.local/bin" ]]; then
+        export_command="export PATH=\"\$HOME/.local/bin:\$PATH\""
+    else
+        export_command="export PATH=\"$INSTALL_DIR:\$PATH\""
+    fi
+
+    if [[ -z "${HOME:-}" ]]; then
+        printf '请在 Shell 配置文件中加入：\n  %s\n' "$export_command" >&2
+        return 0
+    fi
+
+    case "$shell_name" in
+        zsh)
+            profile_file="$HOME/.zshrc"
+            ;;
+        fish)
+            printf '请执行以下命令将安装目录加入 PATH：\n  fish_add_path %q\n' "$INSTALL_DIR" >&2
+            return 0
+            ;;
+        bash)
+            profile_file="$HOME/.bashrc"
+            ;;
+        *)
+            profile_file="$HOME/.profile"
+            ;;
+    esac
+
+    printf '请执行以下命令将安装目录加入 PATH：\n' >&2
+    printf '  printf '\''%%s\\n'\'' '\''%s'\'' >> %q\n' "$export_command" "$profile_file" >&2
+    printf '  source %q\n' "$profile_file" >&2
 }
 
-# ========================= 主流程 =========================
+verify_installation() {
+    local installed_version
+
+    installed_version=$(extract_version_from_binary "$TARGET_PATH")
+    [[ -n "$installed_version" ]] || die "Fastfetch 已复制到目标位置，但无法正常读取版本号。"
+
+    log_success "Fastfetch $installed_version 已安装到 $TARGET_PATH"
+    check_path_and_print_hint
+
+    log_info "正在运行 Fastfetch："
+    if ! "$TARGET_PATH"; then
+        log_warn "Fastfetch 已安装，但自动运行返回了非零状态。可稍后手动执行：$TARGET_PATH"
+    fi
+}
+
 main() {
+    init_colors
     parse_args "$@"
-    log_info "开始安装 fastfetch..."
-    select_mirror
-    ensure_dependencies
-    determine_install_dir
-    install_from_github
-    verify_and_advise
+    require_linux
+    determine_install_path
+
+    if [[ "$UNINSTALL" == true ]]; then
+        uninstall_fastfetch
+        return 0
+    fi
+
+    install_missing_dependencies
+    detect_architecture
+    prepare_install_directory
+
+    TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/install-fastfetch.XXXXXX")
+
+    fetch_release_metadata
+    parse_release_metadata
+    detect_local_version
+
+    if [[ -n "$LOCAL_VERSION" && "$LOCAL_VERSION" == "$REMOTE_VERSION" ]]; then
+        log_success "当前已是最新版本 $LOCAL_VERSION，无需下载。"
+        if [[ "$LOCAL_BINARY" == "$TARGET_PATH" ]]; then
+            check_path_and_print_hint
+        fi
+        log_info "正在运行 Fastfetch："
+        "$LOCAL_BINARY" || log_warn "Fastfetch 自动运行返回了非零状态。"
+        return 0
+    fi
+
+    if [[ -n "$LOCAL_VERSION" ]]; then
+        log_info "准备更新：$LOCAL_VERSION -> $REMOTE_VERSION"
+    else
+        log_info "准备安装 Fastfetch $REMOTE_VERSION"
+    fi
+
+    select_download_channel
+    download_and_install
+    verify_installation
 }
 
 main "$@"
-log_info "尝试运行 'fastfetch' ..."
-command -v fastfetch > /dev/null 2>&1 && fastfetch
