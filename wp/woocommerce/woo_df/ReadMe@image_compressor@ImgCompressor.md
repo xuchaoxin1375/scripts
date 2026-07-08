@@ -251,26 +251,6 @@ sudo apt install git
 
 
 
-### 更新代码
-
-```bash
-cd /repos/scripts
-git pull origin main
-
-```
-
-获取最新版本
-
-```bash
-[oh-my-zsh] Random theme 'junkfood' loaded
-#( 05/30/25@ 7:35AM )( root@wnx0020303 ):~
-   cd /repos/scripts
-#( 05/30/25@ 7:35AM )( root@wnx0020303 ):/repos/scripts@main✔
-   git pull origin main
-```
-
-
-
 ## 原地压缩@压缩服务器上的图片🎈
 
 
@@ -279,7 +259,7 @@ git pull origin main
 
 主要针对老方法(api上传的图片未经过处理的情况),以及其他未压缩过图片的站点
 
-参数序列`-R auto -p -F -O -W -k -A -r 1000 800 `
+参数序列`-R auto -p -F -O -W -k -A `
 
 对于需要批量压缩多个目录,可以使用`-I`指定包含这些要压缩的目录的文本文件(即,指定目录白名单)
 
@@ -292,7 +272,7 @@ git pull origin main
 在基础参数组合的基础上,追加`-T `并指定一个**整数**(表示KB数,**对于占用不小于该数值的图片才处理**)
 
 - 小图压缩节约的空间比较有限,如果为了快速,可以考虑跳过小图,比如50KB以上才压缩);
-- 或者二次运行压缩也可以考虑使用`-T`来针对性处理大图(比如压缩脚本版本更新,对大图的压缩策略做了优化,这时候考虑在运行一次压缩处理,配合使用`-T`跳过小图处理.)
+- 或者二次运行压缩也可以考虑使用`-T`来针对性处理大图(比如压缩脚本版本更新,对大图的压缩策略做了优化,这时候考虑再运行一次压缩处理,配合使用`-T`跳过小图处理.)
 
 例如,我使用某个查找脚本(比如linux系统上的find,支持按照复杂的条件查找,比如图片大小,修改时间等筛选出一批需要压缩的文件)
 
@@ -351,7 +331,7 @@ mapfile -t dirs < <(find -L /www/wwwroot/ -mindepth 5 -maxdepth 5 -type d -path 
 
 # 指定站点名称白名单,扫描这些网站中需要处理的目录(uploads)
 cnt=1
-result="images_to_compress.txt"
+result="img_dirs_to_compress.txt"
 [[ -e $result ]] && rm "$result" -rf # 清空旧内容
 while IFS= read -r pattern; do
     for dir in "${dirs[@]}"; do
@@ -367,9 +347,9 @@ done < "img_dirs.txt"
 
 
 ```bash
-# 计算要压缩到路径,保存到白名单"images_to_compress.txt",
+# 计算要压缩到路径,保存到白名单"img_dirs_to_compress.txt",
 ## 从白名单指定,并且执行分辨率处理(默认10线程,可以酌情开高,例如32,64)
-python3 $pys/image_compressor.py   -R auto -p -F  -O -W  -k  -A -w 64 -I "images_to_compress.txt"  -T 50 # -r 1000 800 
+python3 $pys/image_compressor.py   -R auto -p -F  -O -W  -k  -A -w 64 -I "img_dirs_to_compress.txt"  -T 50 # -r 1000 800 
 
 # 直接指定一个目录,从该目录递归扫描处理,不执行分辨率处理,跳过50KB以下的图片的处理
 python3 $pys/image_compressor.py   -R auto -p -F  -O -W  -k  -A -w 64 -i /www/wwwroot/.../wp-content/uploads/  -T 50
@@ -385,7 +365,7 @@ screen -d -R image-compress
 # 启动python环境(如果使用conda来管理python环境管理的话)
 conda activate main
 # 启动压缩任务.
-python3 $pys/image_compressor.py   -R auto -p -F  -O -W  -k  -A -w 64 -I "images_to_compress.txt"  -T 50
+python3 $pys/image_compressor.py   -R auto -p -F  -O -W  -k  -A -w 64 -I "img_dirs_to_compress.txt"  -T 50
 ```
 
 
@@ -471,7 +451,7 @@ setx PsModulePath C:/repos/scripts/PS
 
 ### 批量压缩
 
-如果需要集中批量压缩,可以使用如下参数(`-i`后面更上需要处理的图片(文件夹)路径)
+如果需要集中批量压缩,可以使用如下参数(`-i`后面跟上需要处理的图片(文件夹)路径)
 
 ```bash
 -R auto -p -F  -O -k -f webp  -r 1000 800  -i
@@ -493,7 +473,7 @@ python C:\repos\scripts\wp\woocommerce\woo_df\pys\image_compressor.py   -R auto 
 
 ```
 
-### 把指定目录中文件后缀为.jpg,.png批量修改为.webp
+### 把指定目录中文件后缀为.jpg,.png的图片批量修改为.webp
 
 定位到图片所在目录,然后可以在文件资源管理器地址栏中输入`pwsh`,执行:
 
