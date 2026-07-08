@@ -105,11 +105,25 @@ ls -File *jpg |where{$_.Length -le 200}|rm -Verbose
 
 
 
-## linux服务器部署代码🎈
+## clone代码
+
+> 更完整的介绍参考仓库首页的介绍.
+
+```shell
+# linux服务器上的代码拉取:
+bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos.sh) -U # -F -R
+
+```
 
 
 
-### 安装python和pip
+## linux服务器配置环境🎈
+
+
+
+### python和pip
+
+#### 直接安装
 
 以ubuntu为例,通常自带python,但是pip可能不可以用
 
@@ -142,6 +156,14 @@ python3.12 -m pip --version
 
 ```
 
+#### 使用环境管理安装
+
+新系统(例如ubuntu24)对于直接的pip install会发出警告并终止安装.
+
+考虑使用miniforge(conda)+uv pip的组合来管理python.
+
+具体的做法参考 [Readme@服务器环境配置流程和迁移指南.md](sh\Readme@服务器环境配置流程和迁移指南.md) 中python环境一节
+
 ### 安装python依赖
 
 > 对于国内网络环境,建议配置国内源(比如清华源)来加速依赖包的下载(国外的服务器本身就有加速效果,可以不用配置)
@@ -160,7 +182,7 @@ pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
 #### 对于linux系统
 
 ```bash
-pip install -r /repos/scripts/wp/woocommerce/woo_df/requirements_linux.txt
+pip install -r $woo_df/requirements_linux.txt
 ```
 
 如果pip不存在,请自行查阅资料并安装
@@ -206,17 +228,7 @@ sudo apt install git
 
 
 
-### 第一次获取代码
 
-将代码克隆到默认目录下`/repos/scripts`的git命令行
-
-```bash
-git clone --recursive --depth 1 --shallow-submodules https://gitee.com/xuchaoxin1375/scripts.git C:/repos/scripts
-setx PsModulePath C:/repos/scripts/PS
-
-```
-
-之后不需要再执行此命令,如果要更行代码,执行以下命令
 
 ### 配置环境变量🎈
 
@@ -321,7 +333,7 @@ python3 $pys/image_compressor.py   -R auto -p -F -O -W -k -A -r 1000 800 -i "替
 >
 > - 其他格式(可以用find找出所有非png图片,或压缩脚本的`-s png`),对这部分图片使用`-r 1000 800`;
 
-直接指定等层目录可能会很慢,考虑使用find过滤出根据具体的目录,例如:
+直接指定顶层目录可能会很慢,考虑使用find过滤出根据具体的目录,例如:
 
 ```bash
 # 计算相对路径
@@ -369,7 +381,7 @@ python3 $pys/image_compressor.py   -R auto -p -F  -O -W  -k  -A -w 64 -i /www/ww
 
 ```bash
 # 创建或者进入image-compress 会话
-screen -R image-compress
+screen -d -R image-compress
 # 启动python环境(如果使用conda来管理python环境管理的话)
 conda activate main
 # 启动压缩任务.
