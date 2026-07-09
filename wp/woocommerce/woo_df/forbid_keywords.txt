@@ -11,6 +11,8 @@ v-comb
 V-Comb
 V-COMB
 Valencia
+Joules
+Haribo
 Aigle
 Cigsa
 Grunt Style

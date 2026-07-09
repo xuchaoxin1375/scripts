@@ -34,6 +34,8 @@ function init
         return
     }
 
+
+    # 获取当前日期时间
     $startTime = Get-Date
     Set-LastUpdateTime
     $tasks = {

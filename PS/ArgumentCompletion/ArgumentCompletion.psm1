@@ -42,6 +42,19 @@ function promptx
     # $prefix = $prefix.TrimEnd('>')+'|'
     # Write-Verbose "Original Prompt: $prefix" -verbose
 
+    # 根据环境变量PS_PATH_CUR 取值是否为true,来决定是否总是将工作目录添加到PATH中
+    ##  Set-EnvVar -EnvVar PS_PATH_CUR -NewValue true #(持久生效)
+    ##  $env:PS_PATH_CUR=false #(临时生效)
+    if ($env:PS_PATH_CUR -eq 'true')
+    {
+        # 将当前目录添加到环境变量PATH中,实现简化: .\runable.ext -> runable.ext
+        $currentPath = Get-Location | Select-Object -ExpandProperty Path
+        if (($env:Path -split ';') -notcontains $currentPath)
+        {
+            # Write-Host "# Adding $currentPath to PATH"
+            $env:Path += ";$currentPath"
+        }
+    }
 
     switch ($env:PsPrompt)
     {
