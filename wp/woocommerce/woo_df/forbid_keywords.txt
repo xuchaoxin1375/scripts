@@ -1,3 +1,4 @@
+# Benchmade
 Baggallini
 baggallini
 Supacaz
@@ -15,6 +16,7 @@ Joules
 Haribo
 Aigle
 Cigsa
+Dometic
 Grunt Style
 Villeroy
 villeroy-boch

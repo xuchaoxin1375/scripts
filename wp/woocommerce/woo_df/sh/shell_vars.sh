@@ -55,6 +55,9 @@ SH_SCRIPT_DIR="$SCRIPT_ROOT/wp/woocommerce/woo_df/sh"
 sh="$SH_SYM"
 macos_sh="$sh/macos_sh"
 
+# mihomo默认配置目录
+mihomo_config_dir="$HOME/.config/.mihomo"
+
 # brew镜像加速(以科大ustc源为例):
 # source "$sh/env_sh/homebrew_ustc.sh"
 # 按需创建sh短路径(对于msys平台,可能有脚本缓存问题(脚本更改不生效的情况),必要时可以删除短路径重建)
@@ -73,4 +76,5 @@ bt_nginx_conf_home="/www/server/nginx/conf"
 export desktop sh macos_sh omb_themes \
     bt_nginx_vhost_conf_home \
     bt_nginx_conf_home uploader_files woo_df pys \
-    SH_SYM SCRIPT_ROOT SH_SCRIPT_DIR PYTHONPATH
+    SH_SYM SCRIPT_ROOT SH_SCRIPT_DIR PYTHONPATH \
+    mihomo_config_dir
