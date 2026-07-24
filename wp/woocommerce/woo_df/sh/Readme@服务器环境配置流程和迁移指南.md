@@ -183,14 +183,21 @@ Update-WpAllPluginPackagesOnServers
 
 一键部署(单行部署)
 
+> 更多信息可以参考本仓库首页中的中文介绍.
+
 ```bash
-bash <(curl -sSfL https://github.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_srv.sh) -f # -R
-# 国内服务器可以考虑用gitee代替github,但是可能要登录.
+# 仅clone代码(不做额外操作)
+
+## github
+bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos.sh) -U # -F -R
+
+## gitee(国内服务器可以考虑用gitee代替github,但是可能要登录.)
+bash <(curl -SfL https://raw.giteeusercontent.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/update_repos.sh) -U # -F -R
 ```
 
-> 其中`-f`会覆盖`nginx`的主配置文件(nginx.conf),酌情使用,如果不想覆盖,可以移除`-f`
+> 其中 `-F`会覆盖 `nginx`的主配置文件(nginx.conf),酌情使用,如果不想覆盖,可以移除 `-F`
 >
-> 对于反向代理的服务器,需要额外`-R`,用户解析cdn来源ip.
+> 对于隐藏在反向代理服务器的后端服务器,通常要使用额外的`-R`选项部署.
 
 如果仅更新脚本仓库,则可以
 

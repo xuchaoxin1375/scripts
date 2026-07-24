@@ -1621,6 +1621,9 @@ function Get-WpOrdersByEmailOnServers
     param (
         [Alias('Email', 'Path')]$Inputs = "$desktop/emails.txt",
         $ServerConfig = $server_config,
+        # 指定服务器IP,多个用逗号隔开
+        $ServerIPNameWhiteList = @(),
+        [switch]$OnlyGetResult,
         $WorkingDirectory = '/www/',
         $scriptPath = "/www/sh/check_order_email.sh",
         $foundResultFileName = "found_orders.csv",
@@ -1628,68 +1631,81 @@ function Get-WpOrdersByEmailOnServers
         
     )
     $servers = Get-ServerList -Path $ServerConfig
-    $Path = "$desktop/emails.txt"
-    if(Test-Path $Inputs)
-    {
-        Write-Verbose "Input source is a file,nothing more to do."
-    }
-    else
-    {
-        Write-Warning "Input source is not a file,write-output to file:[$Path]"
-        $Inputs | Set-Content $Path 
-    }
     $jobs = @()
-    foreach ($server in $servers)
+    if(-not $OnlyGetResult)
     {
-        $ip = $server.ip
-        Write-Host "Getting orders from $($ip)"
-        $fileName = Split-Path $Path -Leaf
-        $fileOnServer = "$WorkingDirectory/$fileName"
-        # Get-WpOrdersByEmail -Email $Path -Server $server
-        $mysql = $server.mysql
+        $Path = "$desktop/emails.txt"
+        if(Test-Path $Inputs)
+        {
+            Write-Verbose "Input source is a file,nothing more to do."
+        }
+        else
+        {
+            Write-Warning "Input source is not a file,write-output to file:[$Path]"
+            $Inputs | Set-Content $Path 
+        }
+        foreach ($server in $servers)
+        {
+            $ip = $server.ip
+            if ( $ServerIPNameWhiteList -and $ip -notin $ServerIPNameWhiteList)
+            {
+                Write-Warning "Skip server:[$ip],which is not in the white list:[$ServerIPNameWhiteList]"
+                continue
+            }
+            Write-Host "Getting orders from $($ip)"
+            $fileName = Split-Path $Path -Leaf
+            $fileOnServer = "$WorkingDirectory/$fileName"
+            # Get-WpOrdersByEmail -Email $Path -Server $server
+            $mysql = $server.mysql
 
-        $user = $mysql.root_localhost
-        $password = $mysql.root_password
-        # $port = $mysql.port
+            $user = $mysql.root_localhost
+            $password = $mysql.root_password
+            # $port = $mysql.port
         
-        Write-Host "Check orders on $ip with mysql user:$user,mysql password:$password"
-        Write-Host "Email file: $fileOnServer on server"
+            Write-Host "Check orders on $ip with mysql user:$user,mysql password:$password"
+            Write-Host "Email file: $fileOnServer on server"
 
-        # scp -r $Path root@"$ip":$WorkingDirectory
-        $jobs += Start-ThreadJob -ScriptBlock {
-            param($WorkingDirectory, $Path, $ip, $fileOnServer, $scriptPath, $user, $password, $log, $foundResultFileName)
-            # 强制让当前 PowerShell 线程以 UTF-8 处理输入输出,否则容易出现乱码(尤其是非英文字符)
-            [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-            Write-Output "START TIME: [$(Get-DateTime)] on $ip"
-            Write-Host "start push file to server $ip..." 
-            scp -r $Path root@"$ip":$WorkingDirectory
-            Write-Host "start query orders on server $ip..." 
-            # 使用ssh 的-n选项让后台作业能够顺利退出(否则可能需要手动输入输入回车回到前台.)
-            # 相关选项:-n关闭 STDIN,-T禁止分配伪终端（TTY）
-            ssh -n -T root@$ip "cat -n $fileOnServer && bash $scriptPath -f $fileOnServer -o /www/$foundResultFileName -u $user -p '$password'" 
-            Write-Host "END TIME: $(Get-DateTime) on $ip"
-        } -ArgumentList $WorkingDirectory, $Path, $ip, $fileOnServer, $scriptPath, $user, $password, $log, $foundResultFileName
+            # scp -r $Path root@"$ip":$WorkingDirectory
+            $jobs += Start-ThreadJob -ScriptBlock {
+                param($WorkingDirectory, $Path, $ip, $fileOnServer, $scriptPath, $user, $password, $log, $foundResultFileName)
+                # 强制让当前 PowerShell 线程以 UTF-8 处理输入输出,否则容易出现乱码(尤其是非英文字符)
+                [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+                Write-Output "START TIME: [$(Get-DateTime)] on $ip"
+                Write-Host "start push file to server $ip..." 
+                scp -r $Path root@"$ip":$WorkingDirectory
+                Write-Host "start query orders on server $ip..." 
+                # 使用ssh 的-n选项让后台作业能够顺利退出(否则可能需要手动输入输入回车回到前台.)
+                # 相关选项:-n关闭 STDIN,-T禁止分配伪终端（TTY）
+                ssh -n -T root@$ip "cat -n $fileOnServer && bash $scriptPath -f $fileOnServer -o /www/$foundResultFileName -u $user -p '$password'" 
+                Write-Host "END TIME: $(Get-DateTime) on $ip"
+            } -ArgumentList $WorkingDirectory, $Path, $ip, $fileOnServer, $scriptPath, $user, $password, $log, $foundResultFileName
 
+        }
+        Write-Host "Waiting for jobs to complete..."
+        Start-Sleep 2
+        $jobs | Get-Job
+        Write-Host "checking logs..." 
+        # Get-Content $log -wait &
+        $jobs | Receive-Job -Wait | Tee-Object $log
+        # while ($jobs.Status -contains 'Running')
+        # {
+        #     $jobs | Receive-Job | Tee-Object $log -Append
+        #     Start-Sleep -Milliseconds 500
+        # }
+        # foreach ($job in $jobs)
+        # {
+        #     $job | Wait-Job | Receive-Job -Wait -Verbose
+        # }
+        # $jobs | Remove-Job 
     }
-    Write-Host "Waiting for jobs to complete..."
-    Start-Sleep 2
-    $jobs | Get-Job
-    Write-Host "checking logs..." 
-    # Get-Content $log -wait &
-    $jobs | Receive-Job -Wait | Tee-Object $log
-    # while ($jobs.Status -contains 'Running')
-    # {
-    #     $jobs | Receive-Job | Tee-Object $log -Append
-    #     Start-Sleep -Milliseconds 500
-    # }
-    # foreach ($job in $jobs)
-    # {
-    #     $job | Wait-Job | Receive-Job -Wait -Verbose
-    # }
-    # $jobs | Remove-Job 
     Write-Host "--------[Getting results...]---------"
     foreach ($server in $servers.ip)
     {
+        # if ( $ServerIPNameWhiteList -and $ip -notin $ServerIPNameWhiteList)
+        # {
+        #     Write-Warning "Skip server:[$ip],which is not in the white list:[$ServerIPNameWhiteList]"
+        #     continue
+        # }
         $jobs += Start-ThreadJob -script { ssh root@$using:server "cat $using:WorkingDirectory/$using:foundResultFileName" }
     }
     # $localRes = "$desktop/found_orders_all_servers@$(Get-DateTimeNumber).csv"

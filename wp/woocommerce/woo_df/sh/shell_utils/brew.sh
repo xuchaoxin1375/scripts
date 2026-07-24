@@ -1,896 +1,838 @@
 #!/usr/bin/env bash
-# brew包管理器相关函数
-# 用户管理相关函数
+# Homebrew 安装与管理函数，可由 Bash 和 Zsh source。
+#
+# 统一入口是 install_brew；install_brew_cn 只提供国内镜像默认值；
+# install_linuxbrew 专用于 root 创建/使用隔离账号。网络来源、操作系统和运行
+# 身份是三个独立维度，不应由包装函数暗中改变安装身份。
+#
+# 常用场景：
+#   国外 Linux 服务器，当前是 root：
+#     install_linuxbrew                 # 创建/使用 linuxbrew 用户
+#     brewr install jq                  # root 借用该用户运行 brew
+#
+#   国内 Linux 或 macOS，当前是普通用户：
+#     install_brew_cn --mirror ustc
+#     install_brew_cn --mirror tuna --update-mirror-only
+#     install_brew_cn --mirror official --update-mirror-only
+#
+# 也可以使用官方源配合代理。调用前设置 HTTPS_PROXY、HTTP_PROXY 或
+# ALL_PROXY 即可；这些变量会在 root 通过 brewr 切换用户时被显式传递。
+#
+# Homebrew 的受支持前缀不是当前用户的家目录：Linux 使用
+# /home/linuxbrew/.linuxbrew，Apple Silicon macOS 使用 /opt/homebrew，Intel
+# macOS 使用 /usr/local。不要默认改装到 ~/.linuxbrew；非标准前缀可能无法
+# 使用官方 bottle，导致大量软件从源码编译。Linux 普通用户安装到标准前缀
+# 时通常需要 sudo；没有 sudo 时应明确失败，而不是悄悄换到家目录。
 
-# 创建一个带有sudo使用权限的linux用户,尽量实现幂等性;
-# 创建前会做判断,避免重复创建已有用户.
-# 考虑安全性和便利性,默认不在内部直接命令行中设置密码;
-# 如果要设置密码,建议在创建之后使用sudo passwd <username> 的方式为指定用户设置密码!
-#  usage:
-#       new_user_sudo [options] [username]
-#  options:
-#     -h, --help: 显示帮助信息
-#     -p, --addpwd: 创建用户后调用passwd 命令添加密码(不是直接将密码作为命令参数,而是从标准输入读取密码)
-#     -P, --set-random-pwd: 创建用户后调用chpasswd 命令添加随机密码
-#     -A, --addsudo: 创建用户后添加sudo权限
-#     -N, --no-sudo-password: 调用sudo命令时,不输入密码(慎重)
-#     -s, --shell: 指定用户登录shell,默认为/bin/bash
-new_user_sudo() {
+_brew_info() { printf '[brew] %s\n' "$*"; }
+_brew_warn() { printf '[brew] warning: %s\n' "$*" >&2; }
+_brew_error() { printf '[brew] error: %s\n' "$*" >&2; }
 
-    #根据需要更改要操作的用户名,例如linuxbrew
-    local username="linuxbrew"
-    local add_passwd=false
-    local add_random_passwd=false
-    local add_sudo=false
-    local no_sudo_password=false
-    local shell="/bin/bash"
-    # 参数解析
-    usage="
-    usage:
-      new_user_sudo [options] [username]
-    options:
-      -h, --help: 显示帮助信息
-      -p, --addpwd: 创建用户后调用passwd 命令添加密码(不是直接将密码作为命令参数,而是从标准输入读取密码)
-      -P, --set-random-pwd: 创建用户后调用chpasswd 命令添加随机密码
-      -A, --addsudo: 创建用户后添加sudo权限
-      -N, --no-sudo-password: 调用sudo命令时,不输入密码(慎重)
-      -s, --shell: 指定用户登录shell,默认为/bin/bash
-    "
-    local args_pos=()
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            -h | --help)
-                echo "$usage"
-                return 0
-                ;;
-            -p | --addpasswd)
-                add_passwd=true
-                ;;
-            -P | --set-random-pwd)
-                add_random_passwd=true
-                ;;
-            -A | --addsudo)
-                add_sudo=true
-                ;;
-            -s | --shell)
-                local shell="$2"
-                shift
-                ;;
-            -N | --no-sudo-password)
-                no_sudo_password=true
-                ;;
-            --)
-                shift
-                break
-                ;;
-            -?*)
-                echo "Unknown option: " >&2
-                echo "$usage"
-                return 2
-                ;;
-            *)
-                args_pos+=("$1")
-                ;;
-        esac
-        shift
-    done
-    set -- "${args_pos[@]}"
-    username="${1:-linuxbrew}"
-    # 参数解析并调整完毕
-    if ! command -v sudo &> /dev/null; then
-        echo "[sudo] command is not available."
-        return 2
-    elif ! command -v visudo &> /dev/null; then
-        echo "[visudo] command is not available."
-        return 2
-    fi
-    # 避免重复创建已有用户
-    if id "$username" > /dev/null 2>&1; then
-        echo "用户 $username 已存在，跳过创建。"
-    else
-        # sudo useradd -m -s /bin/bash "$username" # 配置该用户默认使用bash
-        # 1. 检查 useradd 命令是否存在
-        if command -v useradd > /dev/null 2>&1; then
-            echo "使用 useradd 创建用户..."
-            sudo useradd -m -s "$shell" "$username"
+_brew_is_linux() { [ "$(uname -s 2>/dev/null)" = Linux ]; }
+_brew_is_macos() { [ "$(uname -s 2>/dev/null)" = Darwin ]; }
 
-        # 2. 如果 useradd 不可用，尝试使用 adduser
-        elif command -v adduser > /dev/null 2>&1; then
-            echo "useradd 不可用，尝试使用 adduser..."
-            # 注意：adduser 在某些发行版中是交互式的，这里使用 --disabled-password 跳过交互
-            # --gecos "" 用于填充用户信息字段，避免交互
-            sudo adduser --disabled-password --gecos "" --shell /bin/bash "$username"
-
-        else
-            echo "错误：系统中未找到 useradd 或 adduser 命令。"
-            return 1
-        fi
-    fi
-    if [[ $add_passwd == true ]]; then
-        passwd "$username"
-    elif [[ $add_random_passwd == true ]]; then
-        # 生成 16 位仅包含字母和数字的随机密码
-        NEW_PASS=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 16)
-        echo "高强度密码参考(请复制备用): $NEW_PASS"
-        echo "$username:$NEW_PASS" | sudo chpasswd # chpasswd: 专门为脚本设计。它接收 用户名:密码 格式的标准输入
-        echo "按回车键继续..."
-        read -r _dummy
-        echo "" # 换行，防止后续输出跟在提示词后面
-    fi
-    # 集中判断是否要添加到sudo组,授予sudo权限;
-    if [[ $add_sudo == true ]]; then
-        echo "正在添加 $username 到 sudo 组..."
-        # 添加用户到 sudo 组,使其有权限调用sudo
-        # 但默认情况下,每次执行 sudo 时，系统仍然会要求输入该用户自己的密码。
-        usermod -aG sudo "$username"
-
-    fi
-    # 设置特定的用户（或组）在执行命令时，不需要验证密码。
-    if [[ $no_sudo_password == true ]]; then
-        #  创建一个包含新规则的临时文件
-        echo "$username ALL=(ALL) NOPASSWD: ALL" > /tmp/new_sudo_rule
-
-        #  使用 visudo 验证临时文件的语法
-        if visudo -c -f /tmp/new_sudo_rule; then
-            echo "语法正确，正在合并..."
-            #  将验证通过的规则追加到 /etc/sudoers.d/ 目录下的一个新文件中
-            sudo install -m 440 /tmp/new_sudo_rule /etc/sudoers.d/alice_nopasswd
-            echo "✅ 用户 $username 已被授予无密码 sudo 权限。"
-        else
-            echo "❌ 语法错误！规则未被应用。"
-            rm /tmp/new_sudo_rule
-            return 1
-        fi
-        #  清理临时文件
-        rm /tmp/new_sudo_rule
-    fi
-
+_brew_need_command() {
+    command -v "$1" >/dev/null 2>&1 || {
+        _brew_error "required command not found: $1"
+        return 1
+    }
 }
-# 删除用户,并清理残留进程
-remove_user_safe() {
-    local target_user=$1
+
+# Run an administrative command. Root does not need sudo; other users do.
+_brew_as_root() {
+    if [ "$(id -u)" -eq 0 ]; then
+        command "$@"
+    elif command -v sudo >/dev/null 2>&1; then
+        sudo "$@"
+    else
+        _brew_error "this operation needs root privileges (sudo is unavailable)"
+        return 1
+    fi
+}
+
+_brew_user_home() {
+    local target_user=$1 home_dir=''
+    if command -v getent >/dev/null 2>&1; then
+        home_dir=$(getent passwd "$target_user" 2>/dev/null | cut -d: -f6)
+    elif _brew_is_macos; then
+        home_dir=$(dscl . -read "/Users/$target_user" NFSHomeDirectory 2>/dev/null | awk '{print $2}')
+    fi
+    [ -n "$home_dir" ] || home_dir="/home/$target_user"
+    printf '%s\n' "$home_dir"
+}
+
+_brew_find_binary() {
+    local target_user=${1:-} user_home candidate path_brew
     if [ -z "$target_user" ]; then
-        echo "请输入用户名再重新试一次."
-        return 1
-    fi
-
-    echo "正在清理用户 $target_user 的进程..."
-    sudo pkill -u "$target_user"
-
-    echo "正在删除用户及其家目录..."
-    sudo userdel -r "$target_user" 2> /dev/null
-
-    echo "检查残留的组信息..."
-    grep "$target_user" /etc/group
-}
-# 配置homebrew路径相关的环境变量(和镜像环境变量不同)到配置文件中
-set_brew_path_env_to_shellrc() {
-    # 参数解析
-    local usage='
-    配置homebrew路径相关的环境变量(和镜像环境变量不同)到配置文件中;
-    定位到安装brew安装路径后会立即更新shell环境变量,无需手动刷新配置或重载shell
-    options:
-      -h, --help    显示帮助信息
-      --remove      删除brew路径相关的环境变量配置
-      --reset       重置brew路径相关的环境变量配置(移除旧有行,重新插入到shell配置文件末尾)
-                    
-    '
-    local remove=false
-    local reset=false
-    local args_pos=()
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            -h | --help)
-                echo "$usage"
-                return 0
-                ;;
-            --remove)
-                remove=true
-                ;;
-            --reset)
-                reset=true
-                ;;
-            --)
-                shift
-                break
-                ;;
-            -?*)
-                echo "Unknown option: " >&2
-                echo "$usage"
-                return 2
-                ;;
-            *)
-                args_pos+=("$1")
-                ;;
-        esac
-        shift
-    done
-    set -- "${args_pos[@]}"
-    # 参数解析并调整完毕
-    # 先检测是否已经有brew shellenv相关的配置,如果有提示用户是否继续
-    # 获取匹配到的文件名列表
-    # result=$(grep -l '/bin/brew shellenv' ~/.bashrc ~/.zshrc 2> /dev/null)
-    local result=()
-    local shellrcs=(~/.bashrc ~/.zshrc ~/.bash_profile ~/.zprofile)
-    while IFS= read -r file; do
-        result+=("$file")
-    done < <(grep -l 'brew shellenv' "${shellrcs[@]}" 2> /dev/null)
-    # debug:
-    # echo "result: ${result[*]}"
-    # printf "%s\n" "${result[@]}"
-    echo "修改前预览相关配置文件中的相关行..."
-    _check_brew_shellenv_line() {
-        for rc in "${shellrcs[@]}"; do
-            test -e "$rc" && command grep --color -H '/bin/brew shellenv' "$rc"
-        done
-    }
-    _check_brew_shellenv_line
-    if [ "${result[*]}" -gt 0 ]; then
-        echo "在以下文件[${#result[@]}]个文件中发现了配置brew shellenv行:"
-        printf "%s\n" "${result[@]}"
-        # 检查是否移除配置行
-        if [[ $remove == true || $reset == true ]]; then
-            echo "正在删除brew shellenv行..."
-            for file in "${result[@]}"; do
-                sed -i '/[^#]*brew shellenv/d' "$file" &&
-                    echo "brew shellenv行已从${file}文件删除。"
-            done
-            if [[ $remove == true ]]; then
-                echo "brew shellenv行已从所有相关配置文件中删除。"
-                return 0
-            fi
-        else
-            if ! confirm "是否继续添加?" "n"; then
-                echo "已取消操作。"
-                return 0
-            fi
+        path_brew=$(command -v brew 2>/dev/null || true)
+        if [ -n "$path_brew" ] && [ -x "$path_brew" ]; then
+            printf '%s\n' "$path_brew"
+            return 0
         fi
     fi
-    echo "添加brew shellenv行到配置文件中..."
-
-    # tuna源的方案:
-    # arch=$(uname -m)
-    # if is_darwin; then
-    #     if [[ $arch == "arm64" ]]; then
-    #         # shellcheck disable=SC2016
-    #         test -r ~/.bash_profile && echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.bash_profile
-    #         # shellcheck disable=SC2016
-    #         test -r ~/.zprofile && echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
-    #     fi
-    # elif is_linux; then
-    #     test -d ~/.linuxbrew && eval "$(~/.linuxbrew/bin/brew shellenv)"
-    #     test -d /home/linuxbrew/.linuxbrew && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-    #     test -r ~/.bash_profile && echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.bash_profile
-    #     test -r ~/.profile && echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.profile
-    #     test -r ~/.zprofile && echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.zprofile
-    # fi
-
-    # 判断系统平台,找到正确的brew路径并执行shellenv命令生成环境变量设置语句;在通过eval注入到当前环境中;
-    # 注意:下面到片段定位到brew的安装目录后会立刻执行eval命令将立刻注入和修改环境变量设置(包括PATH变量)
-    # 也就是运行此函数的交互式终端能够直接运行brew(且已经能够由brew --prefix计算安装路径,替换命令字符串模板,追加到配置文件中)
-    if [[ $OSTYPE == linux* ]]; then
-        test -d ~/.linuxbrew && eval "$(~/.linuxbrew/bin/brew shellenv)"
-        test -d /home/linuxbrew/.linuxbrew && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-    elif [[ $OSTYPE == darwin* ]]; then
-        # 针对 Apple Silicon Mac
-        test -d /opt/homebrew && eval "$(/opt/homebrew/bin/brew shellenv)"
-        # 针对 Intel Mac
-        test -d /usr/local/bin/brew && eval "$(/usr/local/bin/brew shellenv)"
-        # mac的shell启动行为和linxu的差异,额外关注.bash_profile和.zprofile
-        echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.bash_profile
-        echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.zprofile
-    fi
-    # 插入到shell配置文件中以便持久化
-    echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.bashrc
-    echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.zshrc
-    # 检查配置结果:
-    _check_brew_shellenv_line
-    echo "如果要移除多余的brew shellenv行,请执行: set_brew_path_env_to_shellrc --reset "
-
-}
-# 卸载homebrew
-uninstall_brew() {
-    echo "正在下载brew卸载脚本...参考[https://github.com/Homebrew/install#uninstall-homebrew]"
-    # 从github拉去卸载脚本并执行
-    /bin/bash -c "$(curl -fSL "$github_mirror"https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh)"
-    # 移除默认安装目录(如果之前的安装中断或者不完整):
-    echo "移除默认安装目录可能需要管理员权限,如果需要,考虑将此函数导出(export),
-                然后用类似于sudo bash -c 的命令方式运行此函数,或者自行手动删除brew安装目录;"
-    local brew_home
-    # brew_home0=$(brew --prefix) #brew未必可用
-    # 下面针对安装中途卡死或失败的的情况下执行的简单安装目录清理
-    brew_home0=/home/linuxbrew
-    brew_home1=/home/linuxbrew/.linuxbrew
-    brew_home2=/opt/homebrew
-    brew_home3=/usr/local/homebrew
-    brew_homes=("$brew_home0" "$brew_home1" "$brew_home2" "$brew_home3")
-    for brew_home in "${brew_homes[@]}"; do
-        if [[ -d $brew_home ]]; then
-            echo "尝试移除目录: [$brew_home] "
-            if command -v sudo &> /dev/null; then
-                echo "使用sudo权限移除目录: $brew_home"
-                sudo rm -rf "$brew_home"
-            else
-                rm -rf "$brew_home"
-            fi
+    [ -n "$target_user" ] && user_home=$(_brew_user_home "$target_user")
+    for candidate in \
+        "$user_home/.linuxbrew/bin/brew" \
+        /home/linuxbrew/.linuxbrew/bin/brew \
+        /opt/homebrew/bin/brew \
+        /usr/local/bin/brew; do
+        if [ -x "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return 0
         fi
     done
+    return 1
 }
-# 从当前shell会话中中删除HOMEBREW环境变量
-unset_brew_envs() {
-    unset HOMEBREW_BREW_GIT_REMOTE
-    unset HOMEBREW_API_DOMAIN
-    unset HOMEBREW_CORE_GIT_REMOTE
-    unset HOMEBREW_BOTTLE_DOMAIN
-}
-# 从常用shell配置文件中删除HOMEBREW环境变量(todo:交互确认)
-remove_brew_env_in_shellrcs() {
-    unset_brew_envs
-    # 1. 探测当前系统的 sed 类型
-    if sed --version > /dev/null 2>&1; then
-        # GNU sed 支持 --version
-        sed_cmd=(sed -i)
-    else
-        # BSD/Mac sed 不支持 --version
-        sed_cmd=(sed -i '')
-    fi
 
-    # 2. 执行循环
-    for file in ~/.zshrc ~/.bashrc ~/.bash_profile; do
-        if [ -f "$file" ]; then
-            echo "正在清理: $file"
-            "${sed_cmd[@]}" '/^[[:space:]]*export[[:space:]][[:space:]]*HOMEBREW_/d' "$file"
-        fi
-    done
-}
-# 从国内镜像源安装brew(默认中科大源镜像源)
-install_brew_cn() {
-
-    # 参数解析
-    # usage: '"${FUNCNAME[0]}"' [options] # ${FUNCNAME[0]}在bash中支持,但是zsh不支持,用$funcstack[1]
-    local usage='
-        国内用户安装homebrew(使用镜像加速)
-        usage: 
-            install_brew_cn [options]
-        options:
-            -h, --help      显示帮助信息
-            -s, --source    指定镜像源,可用镜像包括:ustc,tuna,aliyun,github;
-                            ustc成功率最高;
-                            tuna可能需要排队;
-                            aliyun镜像方案比较老旧,容易失败;
-                            github不使用国内镜像(走brew的官方默认源,如果用此方案建议设置终端代理或者镜像,否则国内会很慢甚至失败);
-
-            -u, --user      指定brew安装用户,默认为当前用户
-                            (通常(普通用户)而言,此选项是可省略的,但是对于当前用户是root的情况下,此选项是必须的),
-                            推荐的值是homebrew,但也可以是其他非root名称;
-            -b, --installer-source 指定brew本体的安装脚本来源(和镜像相对独立),可用值和特点参考[-s]选项;
-            -R,--reset-mirror  重置为官方源(github)
-            --force          强制重新设置brew环境变量(即便之前有安装设置过的迹象)
-            --uninstall      卸载brew
-            -g, --github-mirror  使用github镜像加速github链接
-                            (默认使用:https://gh-proxy.com/,如果不可用,可以自行搜索其他github加速镜像网址)
-                            如果要禁用镜像加速,请指定为空字符串""
-            -U,--update-mirror-only 开关参数:仅更新brew镜像源配置,不执行安装(适用于已经安装了brew,但想要切换镜像源的情况);
-                                    执行完成后,要执行brew update;
-    '
-    local args_pos=()
-    local mirror='ustc'
-    local installer_source="ustc"
-    local reset_mirror=false
-    local force=false
-    local uninstall=false
-    local update_mirror_only=false
-    local github_mirror="https://gh-proxy.com/"
-    local write_env_rc=true
-    local user
-    # 确保github镜像地址以/结尾:
-    if [[ $github_mirror == http* ]]; then
-        github_mirror="${github_mirror%/}/"
-    fi
-    # 参数解析(不建议包装到内部函数parse_args中,不然不方便执行中断,例如-h打印帮助后立即停止执行)
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            -h | --help)
-                echo "$usage"
-                return 2
-                ;;
-            -s | ---source | --mirror)
-                mirror="$2"
-                shift
-                ;;
-            -u | --user)
-                user="$2"
-                shift
-                ;;
-            -b | --installer-source)
-                installer_source="$2"
-                shift
-                ;;
-            -R | --reset-mirror)
-                mirror="github"
-                installer_source="github"
-                reset_mirror=true
-                shift
-                ;;
-            --force)
-                force=true
-                shift
-                ;;
-            -g | --github-mirror)
-                github_mirror="$2"
-                shift
-                ;;
-            -U | --update-mirror-only)
-                update_mirror_only=true
-                ;;
-            # --write-env-rc)
-            #     write_env_rc=true
-            --uninstall)
-
-                uninstall=true
-                ;;
-            --)
-                shift
-                break
-                ;;
-            -?*)
-                echo "Unknown option: " >&2
-                echo "$usage"
-                return 2
-                ;;
-            *)
-                args_pos+=("$1")
-                ;;
-        esac
-        shift
-    done
-    # 位置参数重排(如果有的话)
-    set -- "${args_pos[@]}"
-    # 检查位置参数:
-    if [[ ${#args_pos[@]} -gt 1 ]]; then
-        echo "错误: 不支持超过1个的位置参数: ${args_pos[*]}" >&2
-        echo "$usage" >&2
-        return 1
-    elif [[ ${#args_pos[@]} -eq 1 ]]; then
-        mirror="${args_pos[1]}"
-    fi
-    # 参数解析并调整完毕
-
-    if [[ $uninstall == true ]]; then
-        uninstall_brew
-        return $?
-    fi
-
-    # 判断是否需要设置(镜像源)环境变量到shellrc文件中
-    # HOMEBREW_BREW_GIT_REMOTE变量已经存在(且非空),同时不要求强制插入配置也不是专门要配置更新配置的情况下,则跳过环境变量配置更新操作
-    if [[ $HOMEBREW_BREW_GIT_REMOTE && $force == false && $update_mirror_only == false ]]; then
-        write_env_rc=false
-        echo "HOMEBREW_BREW_GIT_REMOTE is already set to $HOMEBREW_BREW_GIT_REMOTE (in somewhere else), skipping adding to shellrc"
-        # 显示当前相关环境变量
-        set | grep '^HOMEBREW' | grep https
-    fi
-    # 是否重置镜像源
-    if [[ $reset_mirror == true ]]; then
-        echo "重置为官方源..."
-        unset_brew_envs
-        git -C "$(brew --repo)" remote set-url origin https://github.com/Homebrew/brew
-        # 其他(tap)相关
-        BREW_TAPS="$(
-            BREW_TAPS="$(brew tap 2> /dev/null)"
-            echo -n "${BREW_TAPS//$'\n'/:}"
-        )"
-        for tap in core cask{,-fonts,-versions} command-not-found services; do
-            if [[ ":${BREW_TAPS}:" == *":homebrew/${tap}:"* ]]; then
-                brew tap --custom-remote "homebrew/${tap}" "https://github.com/Homebrew/homebrew-${tap}"
-            fi
-        done
-
-        brew update
-
-        echo "请检查shell的配置文件,如果之前永久配置了 HOMEBREW 环境变量，还需要在对应的 ~/.bash_profile 或者 ~/.zshrc 配置文件中，将对应的 HOMEBREW 环境变量配置行注释或者删除!"
-
-        remove_brew_env_in_shellrcs
-
-    fi
-    # 判断是否已经安装过brew:
-    # command -v brew > /dev/null 2>&1
-    is_brew_installed() {
-        if command -v brew > /dev/null 2>&1; then
-            local brew_version
-            brew_version=$(brew --version 2> /dev/null)
-            if [[ $brew_version ]]; then
-                echo "Homebrew/Linuxbrew 已安装[$brew_version]."
-                if [[ $update_mirror_only == false && $force == false ]]; then
-                    echo "不执行任何操作,退出程序;"
-                    return 1 # 退出安装
-                fi
-            else
-                echo "正在准备安装homebrew..."
-                return 0
-            fi
-        fi
-    }
-    is_brew_installed || exit 1
-    # 设置源
-    local mirror_env=""
-    # ustc mirror
-    local ustc_env='
-    export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.ustc.edu.cn/brew.git"
-    export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.ustc.edu.cn/homebrew-core.git"
-    export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.ustc.edu.cn/homebrew-bottles"
-    export HOMEBREW_API_DOMAIN="https://mirrors.ustc.edu.cn/homebrew-bottles/api"
-    '
-    local tuna_env='
-    export HOMEBREW_INSTALL_FROM_API=1
-    export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/brew.git"
-    export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/homebrew-core.git"
-    export HOMEBREW_API_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles/api"
-    export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles"
-    export HOMEBREW_PIP_INDEX_URL="https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
-    '
-    local aliyun_env='
-    export HOMEBREW_INSTALL_FROM_API=1
-    export HOMEBREW_API_DOMAIN="https://mirrors.aliyun.com/homebrew-bottles/api"
-    export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.aliyun.com/homebrew/brew.git"
-    export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.aliyun.com/homebrew/homebrew-core.git"
-    export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.aliyun.com/homebrew/homebrew-bottles"
-    '
-    local github_env='
-    # 官方源不使用镜像加速,或者考虑使用github加速镜像
-    '
-    # 选择目标镜像源
-    if [[ $mirror == "tuna" || $installer_source == "tuna" ]]; then
-        echo "使用tuna镜像可能要排队(高负载情况下),时间可能需要十来分钟!"
-    fi
-    case "$mirror" in
-        ustc)
-            mirror_env="$ustc_env"
-            ;;
-        tuna)
-            mirror_env="$tuna_env"
-            ;;
-        aliyun)
-            mirror_env="$aliyun_env"
-            ;;
-        github)
-            mirror_env="$github_env"
-            # unset HOMEBREW_BREW_GIT_REMOTE
-            remove_brew_env_in_shellrcs
-            if command -v brew &> /dev/null; then
-                # brew update-reset "$(brew --repo)"
-                git -C "$(brew --repo)" remote set-url origin https://github.com/Homebrew/brew
-            fi
-            ;;
+_brew_default_rc() {
+    case "${SHELL##*/}" in
+        zsh) printf '%s\n' "$HOME/.zshrc" ;;
+        bash) printf '%s\n' "$HOME/.bashrc" ;;
         *)
-            echo "Unknown mirror: $mirror. " >&2
-            echo "$usage" >&2
-
-            return 1
+            if _brew_is_macos; then
+                printf '%s\n' "$HOME/.zprofile"
+            else
+                printf '%s\n' "$HOME/.profile"
+            fi
             ;;
     esac
-    # 移除多余的换行符
-    local mirror_trimed
+}
 
-    # shellcheck disable=SC2001
-    mirror_trimed=$(
-        cat << EOF
-$(echo "$mirror_env" | sed 's/^[[:space:]]*//')
+# Linux 的官方 bottle 只支持固定前缀。root 使用专用账号安装时，先以 root
+# 准备这个目录，再降权运行安装器。已有且属于其他用户的前缀绝不自动 chown，
+# 避免破坏另一套 Homebrew 安装。
+_brew_prepare_linux_prefix() {
+    local target_user=$1 prefix=/home/linuxbrew/.linuxbrew
+    local prefix_parent=${prefix%/*} target_group
+    _brew_is_linux || return 0
+    target_group=$(id -gn "$target_user") || return 1
+
+    if [ -e "$prefix" ]; then
+        if find "$prefix" -maxdepth 0 -user "$target_user" -print 2>/dev/null | grep -q .; then
+            return 0
+        fi
+        _brew_error "$prefix already exists and is not owned by $target_user"
+        return 1
+    fi
+    if [ -e "$prefix_parent" ] &&
+        ! find "$prefix_parent" -maxdepth 0 -user "$target_user" -print 2>/dev/null | grep -q .; then
+        _brew_error "$prefix_parent already exists and is not owned by $target_user"
+        return 1
+    fi
+    _brew_as_root install -d -o "$target_user" -g "$target_group" "$prefix_parent" || return
+    _brew_as_root install -d -o "$target_user" -g "$target_group" "$prefix"
+}
+
+# 普通用户不能接管另一个用户拥有的标准前缀。尤其是 /home/linuxbrew 权限为
+# 750 时，test -d 无法看到内部目录，安装器随后会在 cd 失败后产生误导性错误。
+# 在联网下载安装器之前明确终止，并保留已有安装的所有权。
+_brew_check_linux_prefix_access() {
+    local prefix=/home/linuxbrew/.linuxbrew prefix_parent=/home/linuxbrew owner='unknown'
+    _brew_is_linux || return 0
+    [ "$(id -u)" -ne 0 ] || return 0
+
+    if [ -e "$prefix_parent" ] && [ ! -x "$prefix_parent" ]; then
+        owner=$(stat -c '%U' "$prefix_parent" 2>/dev/null || printf 'unknown')
+        _brew_error "$prefix_parent is owned by $owner and is not accessible to $(id -un)"
+        _brew_error "finish/use the dedicated installation as root with: install_linuxbrew; brewr ..."
+        _brew_error 'to install as the current user, explicitly remove or transfer the existing dedicated installation first'
+        return 1
+    fi
+    if [ -e "$prefix" ] && { [ ! -x "$prefix" ] || [ ! -w "$prefix" ]; }; then
+        owner=$(stat -c '%U' "$prefix" 2>/dev/null || printf 'unknown')
+        _brew_error "$prefix is owned by $owner and is not writable by $(id -un)"
+        _brew_error 'refusing to take ownership of an existing Homebrew prefix automatically'
+        return 1
+    fi
+    if [ ! -e "$prefix" ] && ! command -v sudo >/dev/null 2>&1; then
+        _brew_error 'the standard Linux prefix needs root privileges, but sudo is unavailable'
+        _brew_error 'Homebrew is not automatically installed into ~/.linuxbrew; see shell_utils/Readme.md'
+        return 1
+    fi
+}
+
+# Replace or remove a block delimited by exact marker lines. A temporary file is
+# used so this works with both GNU sed (Linux) and BSD sed (macOS).
+_brew_replace_block() {
+    local target_file=$1 block_name=$2 content=${3-}
+    local begin_marker="# >>> $block_name >>>"
+    local end_marker="# <<< $block_name <<<"
+    local temp_file
+
+    mkdir -p "$(dirname "$target_file")" || return 1
+    touch "$target_file" || return 1
+    temp_file=$(mktemp "${TMPDIR:-/tmp}/brew-rc.XXXXXX") || return 1
+    awk -v begin="$begin_marker" -v end="$end_marker" '
+        $0 == begin { skip = 1; next }
+        $0 == end { skip = 0; next }
+        # Migrate blocks written by the previous brew.sh implementation.
+        $0 == "# >>> brew mirror env" { skip = 1; next }
+        $0 == "# <<< brew mirror env" { skip = 0; next }
+        !skip { print }
+    ' "$target_file" >"$temp_file" || {
+        rm -f "$temp_file"
+        return 1
+    }
+    if [ -n "$content" ]; then
+        {
+            printf '\n%s\n' "$begin_marker"
+            printf '%s\n' "$content"
+            printf '%s\n' "$end_marker"
+        } >>"$temp_file"
+    fi
+    # Redirection preserves the ownership and mode of an existing rc file.
+    if command cat "$temp_file" >"$target_file"; then
+        rm -f "$temp_file"
+    else
+        rm -f "$temp_file"
+        return 1
+    fi
+}
+
+_brew_mirror_env() {
+    case "$1" in
+        official | github)
+            return 0
+            ;;
+        ustc)
+            printf '%s\n' \
+                'export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.ustc.edu.cn/brew.git"' \
+                'export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.ustc.edu.cn/homebrew-core.git"' \
+                'export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.ustc.edu.cn/homebrew-bottles"' \
+                'export HOMEBREW_API_DOMAIN="https://mirrors.ustc.edu.cn/homebrew-bottles/api"'
+            ;;
+        tuna)
+            printf '%s\n' \
+                'export HOMEBREW_INSTALL_FROM_API="1"' \
+                'export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/brew.git"' \
+                'export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/homebrew-core.git"' \
+                'export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles"' \
+                'export HOMEBREW_API_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles/api"' \
+                'export HOMEBREW_PIP_INDEX_URL="https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"'
+            ;;
+        aliyun)
+            printf '%s\n' \
+                'export HOMEBREW_INSTALL_FROM_API="1"' \
+                'export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.aliyun.com/homebrew/brew.git"' \
+                'export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.aliyun.com/homebrew/homebrew-core.git"' \
+                'export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.aliyun.com/homebrew/homebrew-bottles"' \
+                'export HOMEBREW_API_DOMAIN="https://mirrors.aliyun.com/homebrew-bottles/api"'
+            ;;
+        *)
+            _brew_error "unknown mirror: $1 (expected official, ustc, tuna, or aliyun)"
+            return 2
+            ;;
+    esac
+}
+
+_brew_export_mirror_env() {
+    local mirror=$1 line name value
+    unset_brew_envs
+    [ "$mirror" = official ] || [ "$mirror" = github ] || {
+        while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            name=${line#export }
+            name=${name%%=*}
+            value=${line#*=}
+            value=${value#\"}
+            value=${value%\"}
+            export "$name=$value"
+        done <<EOF
+$(_brew_mirror_env "$mirror")
 EOF
-    )
-    echo "${mirror_trimed}"
+    }
+}
 
-    # 按需临时执行环境变量设置语句片段
-    if [[ $mirror_env ]]; then
-        # source <(echo -e "${ustc_env//$'\n'/ \\$'\n'}\\")
-        eval "$mirror_env"
-        # 将环境变量设置语句片段转换为适合sed插入到shellrc文件中的格式
-        # local mirror_forsed="${mirror_trimed//$'\n'/ \\$'\n'}\\" # bash中可以工作,但是zsh中可能会有不同效果
-        # echo -e "${ustc_env//$'\n'/ \\$'\n'}\\"
-    fi
-    # 检查安装用户
-    [[ $user ]] && new_user_sudo "$user" -N
-    # 如果没有指定用户,则默认尝试当前用户
-    [[ ! $user ]] && user=$(whoami)
-    # 如果是root,退出安装
-    if [[ $user == "root" ]]; then
-        echo "请勿使用root用户安装brew,指定其他普通用户名,例如homebrew"
-        exit 1
-    fi
-    # 从指定镜像获取脚本并开始安装brew
-    start_install_brew() {
-        case "$installer_source" in
-            ustc)
-                echo "使用中科大镜像源安装homebrew..."
-                sudo -u "$user" /bin/bash -c "$(curl -fsSL https://mirrors.ustc.edu.cn/misc/brew-install.sh)"
-                ;;
-            tuna)
-                echo "使用清华大学镜像源安装homebrew..."
-                # 从镜像下载安装脚本并安装 Homebrew / Linuxbrew
-                git clone --depth=1 https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/install.git ~/brew-install
-                sudo -u "$user" /bin/bash ~/brew-install/install.sh
-                rm -rf ~/brew-install
+_brew_installer_url() {
+    case "$1" in
+        official | github) printf '%s\n' 'https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh' ;;
+        ustc) printf '%s\n' 'https://mirrors.ustc.edu.cn/misc/brew-install.sh' ;;
+        tuna) printf '%s\n' 'https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh' ;;
+        aliyun) printf '%s\n' 'https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh' ;;
+        *) _brew_error "unknown installer source: $1"; return 2 ;;
+    esac
+}
 
-                ;;
-            aliyun)
-                # 从阿里云下载安装脚本并安装 Homebrew
-                sudo -u "$user" git clone https://mirrors.aliyun.com/homebrew/install.git brew-install
-                /bin/bash brew-install/install.sh
-                rm -rf brew-install
-                ;;
-            github)
-                echo "使用官方源安装homebrew..."
-                # 也可从 GitHub 获取官方安装脚本安装 Homebrew / Linuxbrew
-                sudo -u "$user" /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+new_user_sudo() {
+    local username=linuxbrew login_shell=/bin/bash
+    local add_password=false random_password=false add_sudo=false passwordless_sudo=false
+    local sudo_group sudo_file temp_file random_value
 
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -h | --help)
+                cat <<'EOF'
+Usage: new_user_sudo [options] [username]
+
+Create a Linux user idempotently. Despite the legacy function name, sudo
+access is granted only when --addsudo is specified.
+
+  -p, --addpasswd          run passwd interactively after creation
+  -P, --set-random-pwd    generate and set a random password (printed once)
+  -A, --addsudo           add the user to the sudo/wheel group
+  -N, --no-sudo-password grant passwordless sudo (implies --addsudo)
+  -s, --shell PATH        login shell (default: /bin/bash)
+EOF
+                return 0
                 ;;
+            -p | --addpwd | --addpasswd) add_password=true ;;
+            -P | --set-random-pwd) random_password=true ;;
+            -A | --addsudo) add_sudo=true ;;
+            -N | --no-sudo-password) passwordless_sudo=true; add_sudo=true ;;
+            -s | --shell)
+                [ "$#" -ge 2 ] || { _brew_error "$1 needs a value"; return 2; }
+                login_shell=$2
+                shift
+                ;;
+            --) shift; break ;;
+            -*) _brew_error "unknown option: $1"; return 2 ;;
+            *) username=$1 ;;
         esac
-    }
+        shift
+    done
 
-    # 定义内部函数:幂等地添加brew 镜像相关的环境变量到指定文件中
-    _set_brew_mirror_env_to_shellrc() {
-        # local shellrc="$1"
-        for shellrc in "$@"; do
-            ! [[ -f "$shellrc" ]] && touch "$shellrc"
-            if [ -f "$shellrc" ]; then
-                # break
-                sed -i '/# >>> brew mirror env/,/# <<< brew mirror env/d' "$shellrc"
-                echo "正在将brew镜像环境变量添加到shell配置文件 [$shellrc] 中..."
-                # sed方案
-                #                 sed -i '$a\
-                # # >>> brew mirror env\
-                # '"$mirror_forsed"'
-                # # <<< brew mirror env\
-                # ' "$shellrc"
-                # 重定向追加的方案
-                cat << EOF >> "$shellrc"
-# >>> brew mirror env
-$mirror_trimed
-# <<< brew mirror env
+    _brew_is_linux || { _brew_error 'user creation is supported only on Linux'; return 1; }
+    if id "$username" >/dev/null 2>&1; then
+        _brew_info "user already exists: $username"
+    elif command -v useradd >/dev/null 2>&1; then
+        _brew_as_root useradd --create-home --shell "$login_shell" "$username" || return
+    elif command -v adduser >/dev/null 2>&1; then
+        _brew_as_root adduser --disabled-password --gecos '' --shell "$login_shell" "$username" || return
+    else
+        _brew_error 'neither useradd nor adduser is available'
+        return 1
+    fi
+
+    if [ "$add_password" = true ]; then
+        _brew_as_root passwd "$username" || return
+    elif [ "$random_password" = true ]; then
+        _brew_need_command openssl || return
+        random_value=$(openssl rand -base64 24 | tr -d '/+=' | cut -c1-20)
+        printf '%s:%s\n' "$username" "$random_value" | _brew_as_root chpasswd || return
+        _brew_warn "temporary password for $username: $random_value"
+    fi
+
+    if [ "$add_sudo" = true ]; then
+        if getent group sudo >/dev/null 2>&1; then sudo_group=sudo; else sudo_group=wheel; fi
+        _brew_as_root usermod -aG "$sudo_group" "$username" || return
+    fi
+    if [ "$passwordless_sudo" = true ]; then
+        _brew_need_command visudo || return
+        temp_file=$(mktemp "${TMPDIR:-/tmp}/brew-sudoers.XXXXXX") || return 1
+        printf '%s ALL=(ALL:ALL) NOPASSWD: ALL\n' "$username" >"$temp_file"
+        if ! visudo -c -f "$temp_file" >/dev/null; then
+            rm -f "$temp_file"
+            _brew_error 'generated sudoers rule failed validation'
+            return 1
+        fi
+        sudo_file="/etc/sudoers.d/${username}_nopasswd"
+        _brew_as_root install -o root -g root -m 0440 "$temp_file" "$sudo_file" || {
+            rm -f "$temp_file"
+            return 1
+        }
+        rm -f "$temp_file"
+        _brew_warn "$username now has passwordless sudo via $sudo_file"
+    fi
+}
+
+remove_user_safe() {
+    local target_user=${1:-}
+    [ -n "$target_user" ] || { _brew_error 'usage: remove_user_safe USER'; return 2; }
+    [ "$target_user" != root ] || { _brew_error 'refusing to remove root'; return 1; }
+    id "$target_user" >/dev/null 2>&1 || { _brew_info "user does not exist: $target_user"; return 0; }
+    _brew_as_root pkill -u "$target_user" >/dev/null 2>&1 || true
+    _brew_as_root userdel -r "$target_user"
+}
+
+# 清理早期方案创建的专用 linuxbrew 用户，为普通 sudo 用户按官方方式安装释放
+# /home/linuxbrew 标准前缀。默认仅预览；执行时移动家目录而不是直接删除，便于
+# 恢复。此函数刻意只处理用户名 linuxbrew 和家目录 /home/linuxbrew。
+cleanup_linuxbrew_dedicated_user() {
+    local execute=false target_user=linuxbrew expected_home=/home/linuxbrew
+    local backup_dir='' account_entry='' actual_home='' process_list=''
+    local timestamp
+
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -h | --help)
+                cat <<'EOF'
+用法：cleanup_linuxbrew_dedicated_user [--execute] [--backup-dir PATH]
+
+清理由旧版 root/专用用户方案创建的 linuxbrew 账号和 /home/linuxbrew，
+从而允许当前普通 sudo 用户使用 Homebrew 官方标准安装流程。
+
+默认只显示将执行的操作，不修改系统。--execute 将：
+  1. 拒绝在 linuxbrew 仍有运行进程时继续；
+  2. 将 /home/linuxbrew 移到带时间戳的备份目录；
+  3. 删除 linuxbrew 账号及空的同名私有组；
+  4. 删除本脚本创建的 linuxbrew_nopasswd sudoers 文件；
+  5. 报告其他仍引用 linuxbrew 的 sudoers 文件。
+
+备份不会自动删除。确认新安装正常后再由管理员手工处理。
 EOF
+                return 0
+                ;;
+            --execute) execute=true ;;
+            --backup-dir)
+                [ "$#" -ge 2 ] || { _brew_error '--backup-dir needs a value'; return 2; }
+                backup_dir=$2
+                shift
+                ;;
+            *) _brew_error "unknown option: $1"; return 2 ;;
+        esac
+        shift
+    done
+
+    _brew_is_linux || { _brew_error 'this cleanup is Linux-only'; return 1; }
+    timestamp=$(date '+%Y%m%d-%H%M%S') || return 1
+    [ -n "$backup_dir" ] || backup_dir="/home/linuxbrew.dedicated-backup-$timestamp"
+    case "$backup_dir" in
+        "$expected_home" | "$expected_home"/*)
+            _brew_error 'backup directory must be outside /home/linuxbrew'
+            return 2
+            ;;
+    esac
+    [ ! -e "$backup_dir" ] || { _brew_error "backup path already exists: $backup_dir"; return 1; }
+
+    if id "$target_user" >/dev/null 2>&1; then
+        account_entry=$(getent passwd "$target_user") || return 1
+        actual_home=$(printf '%s\n' "$account_entry" | cut -d: -f6)
+        [ "$actual_home" = "$expected_home" ] || {
+            _brew_error "refusing cleanup: $target_user home is $actual_home, expected $expected_home"
+            return 1
+        }
+        process_list=$(ps -u "$target_user" -o pid=,cmd= 2>/dev/null || true)
+        if [ -n "$process_list" ]; then
+            _brew_error "$target_user still has running processes:"
+            printf '%s\n' "$process_list" >&2
+            return 1
+        fi
+    fi
+
+    _brew_info "account: ${account_entry:-not present}"
+    if [ -e "$expected_home" ]; then
+        _brew_info "home will be moved: $expected_home -> $backup_dir"
+    else
+        _brew_info "home is not present: $expected_home"
+    fi
+    _brew_info 'known sudoers rule will be removed if present: /etc/sudoers.d/linuxbrew_nopasswd'
+    if [ "$execute" != true ]; then
+        _brew_info 'dry run only; review the paths, then rerun with --execute'
+        return 0
+    fi
+
+    # Acquire credentials before the first state change.
+    _brew_as_root true || return
+    if [ -e "$expected_home" ]; then
+        _brew_as_root mv -- "$expected_home" "$backup_dir" || return
+    fi
+    if id "$target_user" >/dev/null 2>&1; then
+        if ! _brew_as_root userdel "$target_user"; then
+            _brew_error 'userdel failed; attempting to restore the original home path'
+            if [ -e "$backup_dir" ] && [ ! -e "$expected_home" ]; then
+                _brew_as_root mv -- "$backup_dir" "$expected_home" || true
             fi
-        done
+            return 1
+        fi
+    fi
+    if [ -e "$backup_dir" ]; then
+        _brew_as_root chown root:root "$backup_dir" || return
+        _brew_as_root chmod 0700 "$backup_dir" || return
+    fi
+    if getent group "$target_user" >/dev/null 2>&1; then
+        _brew_as_root groupdel "$target_user" || _brew_warn "group remains: $target_user"
+    fi
+    if [ -e /etc/sudoers.d/linuxbrew_nopasswd ]; then
+        _brew_as_root rm -f /etc/sudoers.d/linuxbrew_nopasswd || return
+    fi
+    _brew_info 'checking for other sudoers references to linuxbrew...'
+    _brew_as_root grep -RIl -- "$target_user" /etc/sudoers /etc/sudoers.d 2>/dev/null || true
+    _brew_info "cleanup complete; recoverable home backup: $backup_dir"
+    _brew_info 'next: run install_brew --mirror SOURCE as the normal sudo user'
+}
+
+set_brew_path_env_to_shellrc() {
+    local remove=false reset=false rc_file='' brew_bin='' block_content
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -h | --help)
+                cat <<'EOF'
+Usage: set_brew_path_env_to_shellrc [--remove|--reset] [--rc FILE] [--brew PATH]
+
+Write one managed `brew shellenv` block to the current shell's rc file.
+EOF
+                return 0
+                ;;
+            --remove) remove=true ;;
+            --reset) reset=true ;;
+            --rc) [ "$#" -ge 2 ] || return 2; rc_file=$2; shift ;;
+            --brew) [ "$#" -ge 2 ] || return 2; brew_bin=$2; shift ;;
+            *) _brew_error "unknown option: $1"; return 2 ;;
+        esac
+        shift
+    done
+    : "$reset" # --reset is retained as a compatibility synonym for replacement.
+    [ -n "$rc_file" ] || rc_file=$(_brew_default_rc)
+    if [ "$remove" = true ]; then
+        _brew_replace_block "$rc_file" 'homebrew shellenv' ''
+        _brew_info "removed managed shellenv block from $rc_file"
+        return
+    fi
+    [ -n "$brew_bin" ] || brew_bin=$(_brew_find_binary) || {
+        _brew_error 'cannot locate brew; pass --brew PATH'
+        return 1
     }
-    # 判断是否需要插入到shellrc文件中(用户可能已经通过别的方式导入相关的环境变量)
-    set_brew_mirror_env_to_shellrc() {
-        if [[ $write_env_rc == true ]]; then
-            if [[ $mirror ]]; then
-                echo "正在将brew镜像环境变量添加到shellrc文件中..."
-                # 对于bash用户
-                _set_brew_mirror_env_to_shellrc ~/.bashrc ~/.zshrc ~/.bash_profile
-            # 对于macos,可能需要写入.bash_profile
-            # 对于 zsh 用户
-            # _set_brew_mirror_env_to_shellrc ~/.zshrc
+    block_content="eval \"\$($brew_bin shellenv)\""
+    _brew_replace_block "$rc_file" 'homebrew shellenv' "$block_content" || return
+    eval "$("$brew_bin" shellenv)" || return
+    _brew_info "updated Homebrew PATH in $rc_file and the current shell"
+}
+
+unset_brew_envs() {
+    unset HOMEBREW_INSTALL_FROM_API HOMEBREW_BREW_GIT_REMOTE
+    unset HOMEBREW_CORE_GIT_REMOTE HOMEBREW_BOTTLE_DOMAIN
+    unset HOMEBREW_API_DOMAIN HOMEBREW_PIP_INDEX_URL
+}
+
+remove_brew_env_in_shellrcs() {
+    local rc_file=${1:-$(_brew_default_rc)}
+    unset_brew_envs
+    _brew_replace_block "$rc_file" 'homebrew mirror env' '' || return
+    _brew_info "removed managed mirror block from $rc_file"
+}
+
+_brew_set_mirror() {
+    local mirror=$1 rc_file=$2 write_rc=$3 mirror_content=''
+    mirror_content=$(_brew_mirror_env "$mirror") || return
+    _brew_export_mirror_env "$mirror" || return
+    if [ "$write_rc" = true ]; then
+        _brew_replace_block "$rc_file" 'homebrew mirror env' "$mirror_content" || return
+        _brew_info "configured mirror '$mirror' in $rc_file"
+    else
+        _brew_info "configured mirror '$mirror' for the current shell only"
+    fi
+    if [ "$mirror" = official ] || [ "$mirror" = github ]; then
+        local brew_bin
+        if brew_bin=$(_brew_find_binary 2>/dev/null); then
+            git -C "$("$brew_bin" --repo)" remote set-url origin https://github.com/Homebrew/brew 2>/dev/null || true
+        fi
+    fi
+}
+
+_brew_download_installer() {
+    local source_name=$1 output_file=$2 url
+    url=$(_brew_installer_url "$source_name") || return
+    _brew_info "downloading installer from $url"
+    curl --fail --location --show-error --retry 3 --connect-timeout 15 \
+        "$url" --output "$output_file"
+}
+
+_brew_run_installer() {
+    local installer=$1 target_user=${2:-} noninteractive=${3:-false}
+    local env_args=()
+    [ "$noninteractive" != true ] || env_args+=("NONINTERACTIVE=1")
+    [ -z "${HOMEBREW_INSTALL_FROM_API:-}" ] || env_args+=("HOMEBREW_INSTALL_FROM_API=$HOMEBREW_INSTALL_FROM_API")
+    [ -z "${HOMEBREW_BREW_GIT_REMOTE:-}" ] || env_args+=("HOMEBREW_BREW_GIT_REMOTE=$HOMEBREW_BREW_GIT_REMOTE")
+    [ -z "${HOMEBREW_CORE_GIT_REMOTE:-}" ] || env_args+=("HOMEBREW_CORE_GIT_REMOTE=$HOMEBREW_CORE_GIT_REMOTE")
+    [ -z "${HOMEBREW_BOTTLE_DOMAIN:-}" ] || env_args+=("HOMEBREW_BOTTLE_DOMAIN=$HOMEBREW_BOTTLE_DOMAIN")
+    [ -z "${HOMEBREW_API_DOMAIN:-}" ] || env_args+=("HOMEBREW_API_DOMAIN=$HOMEBREW_API_DOMAIN")
+    [ -z "${HOMEBREW_PIP_INDEX_URL:-}" ] || env_args+=("HOMEBREW_PIP_INDEX_URL=$HOMEBREW_PIP_INDEX_URL")
+    [ -z "${HTTPS_PROXY:-}" ] || env_args+=("HTTPS_PROXY=$HTTPS_PROXY")
+    [ -z "${HTTP_PROXY:-}" ] || env_args+=("HTTP_PROXY=$HTTP_PROXY")
+    [ -z "${ALL_PROXY:-}" ] || env_args+=("ALL_PROXY=$ALL_PROXY")
+    [ -z "${https_proxy:-}" ] || env_args+=("https_proxy=$https_proxy")
+    [ -z "${http_proxy:-}" ] || env_args+=("http_proxy=$http_proxy")
+    [ -z "${all_proxy:-}" ] || env_args+=("all_proxy=$all_proxy")
+    chmod 0755 "$installer" || return
+    if [ -n "$target_user" ] && [ "$target_user" != "$(id -un)" ]; then
+        _brew_as_root chown "$target_user" "$installer" || return
+        if command -v sudo >/dev/null 2>&1; then
+            sudo -H -u "$target_user" env "${env_args[@]}" /bin/bash "$installer"
+        elif [ "$(id -u)" -eq 0 ] && command -v runuser >/dev/null 2>&1; then
+            runuser -u "$target_user" -- env HOME="$(_brew_user_home "$target_user")" "${env_args[@]}" /bin/bash "$installer"
+        else
+            _brew_error 'sudo or runuser is required to install as another user'
+            return 1
+        fi
+    else
+        env "${env_args[@]}" /bin/bash "$installer"
+    fi
+}
+
+install_brew() {
+    local mirror=official installer_source='' target_user='' rc_file=''
+    local update_only=false write_rc=true force=false uninstall=false github_mirror=''
+    local create_user=false noninteractive=false already_installed=false
+    local installer_file brew_bin
+
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -h | --help)
+                cat <<'EOF'
+用法：install_brew [选项]
+
+统一安装和配置 Homebrew。镜像、代理、操作系统和安装用户彼此独立。
+使用代理时选择 official，并提前导出 HTTPS_PROXY/ALL_PROXY。
+
+  -s, --source, --mirror NAME  official|ustc|tuna|aliyun，默认 official
+  -b, --installer-source NAME  单独指定安装脚本来源；默认与 mirror 相同
+  -u, --user USER              root 指定实际安装和运行 brew 的非 root 用户
+      --create-user            指定用户不存在时创建（仅 root）
+  -U, --update-mirror-only     只更新镜像环境变量，不安装
+  -R, --reset-mirror           清除镜像配置并恢复官方源
+      --rc FILE                将持久配置写入 FILE
+      --no-write-env           只配置当前 shell，不写入 rc 文件
+      --non-interactive        非交互安装；普通用户需要 sudo 密码时不要使用
+      --force                  即使已经找到 brew 也重新安装
+      --uninstall              运行官方卸载脚本
+
+标准安装前缀：Linux 为 /home/linuxbrew/.linuxbrew，Apple Silicon macOS 为
+/opt/homebrew，Intel macOS 为 /usr/local。普通 Linux 用户通常需要 sudo。
+不默认安装到 ~/.linuxbrew，因为非标准前缀可能无法使用预编译 bottle。
+
+身份规则：普通用户只能安装给自己，不要传 --create-user，也不需要创建
+linuxbrew 账号。只有当前调用者就是 root 时，才能组合使用
+--user USER --create-user；Homebrew 命令随后由 root 通过 brewr 间接执行。
+
+兼容选项 --github-mirror 已弃用。请改用代理环境变量。
+EOF
+                return 0
+                ;;
+            -s | --source | ---source | --mirror) [ "$#" -ge 2 ] || return 2; mirror=$2; shift ;;
+            -b | --installer-source) [ "$#" -ge 2 ] || return 2; installer_source=$2; shift ;;
+            -u | --user) [ "$#" -ge 2 ] || return 2; target_user=$2; shift ;;
+            -U | --update-mirror-only) update_only=true ;;
+            -R | --reset-mirror) mirror=official; installer_source=official; update_only=true ;;
+            --rc) [ "$#" -ge 2 ] || return 2; rc_file=$2; shift ;;
+            --no-write-env) write_rc=false ;;
+            --create-user) create_user=true ;;
+            --non-interactive) noninteractive=true ;;
+            --force) force=true ;;
+            --uninstall) uninstall=true ;;
+            -g | --github-mirror) [ "$#" -ge 2 ] || return 2; github_mirror=$2; shift ;;
+            --) shift; break ;;
+            -*) _brew_error "unknown option: $1"; return 2 ;;
+            *) mirror=$1 ;;
+        esac
+        shift
+    done
+    [ -n "$installer_source" ] || installer_source=$mirror
+    if [ "$uninstall" = true ]; then
+        if [ -n "$target_user" ]; then
+            uninstall_brew --user "$target_user"
+        else
+            uninstall_brew
+        fi
+        return
+    fi
+    if [ "$create_user" = true ]; then
+        [ "$(id -u)" -eq 0 ] || {
+            _brew_error '--create-user is only for a root shell managing a dedicated Homebrew account'
+            _brew_error 'normal users should omit --user/--create-user and install Homebrew for themselves'
+            return 2
+        }
+        [ -n "$target_user" ] || {
+            _brew_error '--create-user requires --user USER'
+            return 2
+        }
+    fi
+    if [ "$(id -u)" -ne 0 ] && [ -n "$target_user" ] && [ "$target_user" != "$(id -un)" ]; then
+        _brew_error 'a normal user cannot install Homebrew for another user'
+        _brew_error 'omit --user to install for the current user'
+        return 2
+    fi
+    if brew_bin=$(_brew_find_binary "$target_user" 2>/dev/null) && [ "$force" != true ]; then
+        already_installed=true
+    fi
+    # 仅更新镜像或使用可访问的既有安装时不需要检查前缀；真正下载安装前预检，
+    # 避免失败安装把无效配置写入当前用户的 rc 文件。
+    if [ "$update_only" != true ] && [ "$already_installed" != true ]; then
+        _brew_check_linux_prefix_access || return
+    fi
+    [ -z "$github_mirror" ] || _brew_warn '--github-mirror is deprecated and intentionally not injected into URLs'
+    [ -n "$rc_file" ] || rc_file=$(_brew_default_rc)
+    _brew_set_mirror "$mirror" "$rc_file" "$write_rc" || return
+    if [ "$update_only" = true ]; then
+        _brew_info 'mirror configuration updated; run brew update when ready'
+        return 0
+    fi
+    if [ "$already_installed" = true ]; then
+        _brew_info "Homebrew is already installed: $brew_bin"
+        "$brew_bin" --version
+        return 0
+    fi
+    if [ "$(id -u)" -eq 0 ]; then
+        [ -n "$target_user" ] || {
+            _brew_error 'Homebrew refuses root; pass --user USER (for example linuxbrew)'
+            return 2
+        }
+        [ "$target_user" != root ] || { _brew_error 'the install user cannot be root'; return 2; }
+        if ! id "$target_user" >/dev/null 2>&1; then
+            if [ "$create_user" = true ]; then
+                new_user_sudo "$target_user" || return
             else
-                echo "没有指定镜像源,跳过添加brew镜像环境变量到shellrc文件中..."
+                _brew_error "user does not exist: $target_user (use --create-user to create it)"
+                return 2
             fi
         fi
-    }
-
-    echo "更新镜像源环境变量配置到常用shellrc中..."
-    set_brew_mirror_env_to_shellrc
-    # 开始安装
-    if [[ $update_mirror_only == true ]]; then
-        echo "跳过后续的安装操作(更新完homebrew镜像环境变量后需要执行brew update)..."
-        return 0
-    else
-        start_install_brew
+        _brew_prepare_linux_prefix "$target_user" || return
+        # 切换到专用用户后不能交互输入 root 的 sudo 密码。
+        noninteractive=true
     fi
-    # set_brew_mirror_env_to_shellrc
-    set_brew_path_env_to_shellrc
-    # 查看PATH环境变量中是否包含了brew的路径
-    echo "$PATH" | tr ':' '\n' | grep brew
-    # /home/linuxbrew/.linuxbrew/bin
-    # /home/linuxbrew/.linuxbrew/sbin
 
+    _brew_need_command curl || return
+    installer_file=$(mktemp "${TMPDIR:-/tmp}/brew-install.XXXXXX") || return 1
+    if ! _brew_download_installer "$installer_source" "$installer_file"; then
+        rm -f "$installer_file"
+        return 1
+    fi
+    _brew_run_installer "$installer_file" "$target_user" "$noninteractive"
+    local install_status=$?
+    rm -f "$installer_file"
+    [ "$install_status" -eq 0 ] || return "$install_status"
+
+    brew_bin=$(_brew_find_binary "$target_user") || {
+        _brew_error 'installer completed, but the brew executable was not found'
+        return 1
+    }
+    if [ -z "$target_user" ] || [ "$target_user" = "$(id -un)" ]; then
+        set_brew_path_env_to_shellrc --rc "$rc_file" --brew "$brew_bin"
+    else
+        _brew_info "installed for $target_user; root can run commands with: brewr --user $target_user ..."
+    fi
+}
+
+# 国内网络场景入口，只设置网络来源，不创建或切换用户。调用者后置传入的
+# --mirror 或 --installer-source 可以覆盖这里的默认值。
+install_brew_cn() {
+    install_brew --mirror ustc --installer-source ustc "$@"
 }
 
 install_linuxbrew() {
-
-    local usage
-    usage=$(
-        cat << EOF
-安装homebrew(linuxbrew for linux root user.)
-此脚本适用于国外服务器(或网络条件好的情况),尤其是只有root用户的情况下,可考虑创建brew专用用户;
-    默认使用默认用户名linuxbrew,如果指定用户名不存在,则创建
-    用户名：建议简单明确，如 linuxbrew 或 brew。
-    权限：该用户需要能通过 sudo 执行安装任务，但严禁拥有免密登录你个人账户的权限。
-    Shell：建议设置为标准的 /bin/bash（因为 Brew 的安装脚本大量使用 Bash）。
-    家目录：必须有独立的 /home/linuxbrew，因为 Linuxbrew 默认最理想的安装路径是 /home/linuxbrew/.linuxbrew（这可以让你直接使用官方提供的预编译 Binary，而不需要从源码编译，节省大量时间）。
-
-usage:
-    install_linuxbrew [options] [username]
-
-    注意:相关依赖不会自动安装(当依赖程序不存在是请自行安装,例如使用系统自带包管理器安装)
-    
-    国内网络用户(非root用户户下):如果没条件配置代理(或者代理设置不便)
-    对于个人电脑,考虑国内方案:
-    - 本文shell模块提供的方案: source <(curl -fsSL https://raw.giteeusercontent.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/shell_utils/brew.sh)
-    - https://brew-cn.mintimate.cn/
-    - https://gitee.com/cunkai/HomebrewCN #cn方案
-install_brew_cn # 添加-h选项查看帮助(默认使用ustc源安装)
-    对于linux用户,使用上述方案可能卡住要多试几下(过程中并非全程快速下载,部分组件依然可能因为网络耗时);
-
-options:
-    -u,--user <username> 指定用户名(默认为linuxbrew)
-    -h,--help 显示帮助
-documents:
-    https://docs.brew.sh/
-    https://docs.brew.sh/Homebrew-on-Linux
-reference
-    - uninstall:https://github.com/homebrew/install#uninstall-homebrew
-mirror:
-    - https://mirrors.ustc.edu.cn/help/brew.git.html
-    - https://mirrors.tuna.tsinghua.edu.cn/help/homebrew/
-    - https://developer.aliyun.com/mirror/homebrew
-requirements:
-    安装系统依赖：在运行 Homebrew 安装脚本前，确保系统已安装必要的构建工具。根据你的 Linux 发行版运行相应命令：
-
-- Debian 或 Ubuntu: sudo apt-get install build-essential procps curl file git
-- Fedora: sudo dnf group install development-tools 和 sudo dnf install procps-ng curl file
-- CentOS Stream 或 RHEL: sudo dnf group install 'Development Tools' 和 sudo dnf install procps-ng curl file
-- Arch Linux: sudo pacman -S base-devel procps-ng curl file git
-
-EOF
-    )
-    # 参数解析
-
-    # 安装linuxbrew时使用的用户(优先考虑当前用户安装,如果不是root的话)
-
-    # 检查当前用户是否为root
-    if [ "$(id -u)" -eq 0 ]; then
-        echo "当前是root用户执行此脚本."
-        local username="${1:-linuxbrew}"
-    else
-        echo "为当前用户(非root)安装brew."
-        local username="${1:-$(whoami)}"
-    fi
-
-    local args_pos=()
-    while [[ $# -gt 0 ]]; do
+    local username
+    if [ "$(id -u)" -eq 0 ]; then username=linuxbrew; else username=$(id -un); fi
+    while [ "$#" -gt 0 ]; do
         case "$1" in
-            -u | --user)
-                username="$2"
-                shift
-                ;;
             -h | --help)
-                echo "$usage"
+                cat <<'EOF'
+用法：install_linuxbrew [-u USER] [USER]
+
+仅供 Linux root shell 使用：从官方源安装 Homebrew，并创建或复用专用普通
+用户（默认 linuxbrew）。该用户不会获得 sudo；root 通过 brewr 使用 brew。
+
+普通用户不要调用本函数，也不要创建 linuxbrew 账号。请改用：
+  install_brew [网络选项]
+或：
+  install_brew_cn [网络选项]
+
+系统依赖：
+  Debian/Ubuntu: apt-get install build-essential procps curl file git
+  Fedora/RHEL:   dnf group install 'Development Tools'; dnf install procps-ng curl file git
+  Arch:          pacman -S base-devel procps-ng curl file git
+EOF
                 return 0
                 ;;
-            --)
-                shift
-                break # -- 后面的都是普通参数,使用break结束选项参数的解析.
-                ;;
-            -?*)
-                echo "Unknown option: " >&2
-                show_help
-                return 2
-                ;;
-            *)
-                args_pos+=("$1")
-                ;;
+            -u | --user) [ "$#" -ge 2 ] || return 2; username=$2; shift ;;
+            --) shift; break ;;
+            -*) _brew_error "unknown option: $1"; return 2 ;;
+            *) username=$1 ;;
         esac
         shift
     done
-    set -- "${args_pos[@]}"
-    # 参数解析并调整完毕
-
-    echo "checking username [$username]..."
-    # 判断是否已经安装过brew:
-    if command -v brew > /dev/null 2>&1; then
-        echo "Homebrew/Linuxbrew 已安装;如果需要重新安装,请移除brew(查看帮助中的链接)."
-        brew --version
-        return 1 # 退出安装
-    else
-        echo "正在准备安装homebrew..."
-    fi
-    echo "检查安装用户..."
-    # 默认创建的是无密码(锁定)用户,只能通过 su - username 切换的方式登录该用户
-    new_user_sudo "$username" -N
-    # 使用指定的已存在的非root用户(但是能够使用sudo的用户,例如linuxbrew)安装brew:
-    # /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-    sudo -u "$username" /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-    # 插入brew的配置片段到shell rc
-    local shell_rc_to_config
-    if [[ ${#args_pos} -gt 0 ]]; then
-        shell_rc_to_config=("${args_pos[@]}")
-    else
-        shell_rc_to_config=(bash zsh)
-    fi
-    # if confirm "insert brew config to shell rc?"; then
-    # fi
-    test -d ~/.linuxbrew && eval "$(~/.linuxbrew/bin/brew shellenv)"
-    test -d /home/linuxbrew/.linuxbrew && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-    # 计算需要插入的shell rc片段
-    for shellname in "${shell_rc_to_config[@]}"; do
-        # eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)" #被插入的片段参考
-        # 判断相关片段是否已经存在于配置文件,如果不存在,则插入
-        grep -q '^[^#].*brew shellenv' ~/."$shellname"rc ||
-            echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/."$shellname"rc
-        # echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.zshrc
-        # 查看相关配置是否插入成功
-        grep -Hn 'brew shellenv' ~/."$shellname"rc
-    done
-    echo "[INFO]:Reload shell rc file to take effect..."
-    # exec "$0" # 不要在函数中直接执行此行,交互式中才可以
-    echo "[INFO]:Run command: exec \$SHELL"
-    # 针对常用shell尝试自动刷新配置生效
-    is_shell "zsh" && exec zsh
-    is_shell "bash" && exec bash
-
+    _brew_is_linux || { _brew_error 'install_linuxbrew is Linux-only'; return 1; }
+    [ "$(id -u)" -eq 0 ] || {
+        _brew_error 'install_linuxbrew is reserved for a root shell using a dedicated account'
+        _brew_error 'normal users should run: install_brew (or install_brew_cn)'
+        return 2
+    }
+    install_brew --mirror official --installer-source official --user "$username" \
+        --create-user --no-write-env --non-interactive
 }
-# 运行brew命令(借用linuxbrew用户权限)
-# 为了防止和macos brew冲突,这里不直接命名为brew,而是增加后缀作区分;
-# 可以在别名配置或者shell配置文件中判断系统类型,然后按需设置brew别名
-# brew(linuxbrew)拒绝root用户直接运行,并且默认安装路径是/home/linuxbrew/.linuxbrew
-# 添加brew配置到PATH
-# - Run these commands in your terminal to add Homebrew to your PATH:
-# echo >> /home/cxxu/.zshrc
-# echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv zsh)"' >> /home/cxxu/.zshrc
-# eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv zsh)"
+
 brewr() {
-    # 检查当前是否为 root 用户 (UID 0)
-    # 默认的用户身份从环境变量中读取,如果没有
-    local BREW_USER="${BREW_USER:-linuxbrew}"
-    local usage='
-    usage:
-        brewr [options]
-    options
-        -u,--user,--brew-user 指定用户身份运行brew
-        -h,--help 打印帮助信息
-    
-    '
-    local extra_args=()
-    while [[ $# -gt 0 ]]; do
+    local brew_user=${BREW_USER:-linuxbrew} brew_bin user_home
+    local args=()
+    local env_args=()
+    while [ "$#" -gt 0 ]; do
         case "$1" in
             -u | --user | --brew-user)
-                BREW_USER="$2"
+                [ "$#" -ge 2 ] || { _brew_error "$1 needs a value"; return 2; }
+                brew_user=$2
                 shift
                 ;;
             -h | --help)
-                echo "$usage"
+                cat <<'EOF'
+Usage: brewr [-u USER] BREW_ARGUMENTS...
+
+As root, execute Homebrew as BREW_USER (default: linuxbrew). As a normal user,
+execute the brew found in PATH. Set BREW_USER to change the persistent default.
+EOF
                 return 0
                 ;;
-            # -?*) # 为了传递完整参数列表(包括选项)给brew,这里不建议捕获-?*)
-            #     echo "Invalid option"
-            #     echo "$usage"
-            #     return 2
-            #     ;;
-            *)
-                extra_args+=("$1")
-                ;;
+            *) args+=("$1") ;;
         esac
         shift
     done
-    set -- "${extra_args[@]}"
-    echo "brew params:[$*]" >&2
-    if [ "$(id -u)" -eq 0 ]; then
-        # 如果未设置 BREW_USER，则给出提示并退出
-        if [ -z "$BREW_USER" ]; then
-            echo "[ERROR] Brew cannot run as root. Please set BREW_USER environment variable."
-            echo "
-            Set environment variable: 
-                export BREW_USER='your_username'
-            Write it to your shellrc file to make it permanent.
-            "
-            return 1
-        fi
 
-        # 执行逻辑：切换到指定用户运行
-        local ORIG_DIR="$PWD"
-        echo "[INFO]:brew for root user [mod from linuxbrew]."
-        echo "[INFO]:Executing as '$BREW_USER': brew $*"
-
-        # 建议切换到该用户的家目录，避免权限报错
-        cd "/home/$BREW_USER" 2> /dev/null || return 1
-        # 使用指定用户身份执行标准安装的brew
-        sudo -u "$BREW_USER" /home/linuxbrew/.linuxbrew/bin/brew "$@"
-        local EXIT_CODE=$?
-
-        cd "$ORIG_DIR" 2> /dev/null || return 1
-        return $EXIT_CODE
-    else
-        # 如果不是 root 用户，直接调用原始的 brew 命令
-        # 注意避免递归调用!
-        command brew "$@"
+    if [ "$(id -u)" -ne 0 ]; then
+        command brew "${args[@]}"
+        return
     fi
+    id "$brew_user" >/dev/null 2>&1 || {
+        _brew_error "brew user does not exist: $brew_user"
+        return 1
+    }
+    brew_bin=$(_brew_find_binary "$brew_user") || {
+        _brew_error "cannot find Homebrew installed for user $brew_user"
+        return 1
+    }
+    user_home=$(_brew_user_home "$brew_user")
+    # sudo normally filters these variables. Passing only Homebrew and proxy
+    # settings keeps mirror/proxy behavior consistent with the root shell.
+    [ -z "${HOMEBREW_INSTALL_FROM_API:-}" ] || env_args+=("HOMEBREW_INSTALL_FROM_API=$HOMEBREW_INSTALL_FROM_API")
+    [ -z "${HOMEBREW_BREW_GIT_REMOTE:-}" ] || env_args+=("HOMEBREW_BREW_GIT_REMOTE=$HOMEBREW_BREW_GIT_REMOTE")
+    [ -z "${HOMEBREW_CORE_GIT_REMOTE:-}" ] || env_args+=("HOMEBREW_CORE_GIT_REMOTE=$HOMEBREW_CORE_GIT_REMOTE")
+    [ -z "${HOMEBREW_BOTTLE_DOMAIN:-}" ] || env_args+=("HOMEBREW_BOTTLE_DOMAIN=$HOMEBREW_BOTTLE_DOMAIN")
+    [ -z "${HOMEBREW_API_DOMAIN:-}" ] || env_args+=("HOMEBREW_API_DOMAIN=$HOMEBREW_API_DOMAIN")
+    [ -z "${HOMEBREW_PIP_INDEX_URL:-}" ] || env_args+=("HOMEBREW_PIP_INDEX_URL=$HOMEBREW_PIP_INDEX_URL")
+    [ -z "${HTTPS_PROXY:-}" ] || env_args+=("HTTPS_PROXY=$HTTPS_PROXY")
+    [ -z "${HTTP_PROXY:-}" ] || env_args+=("HTTP_PROXY=$HTTP_PROXY")
+    [ -z "${ALL_PROXY:-}" ] || env_args+=("ALL_PROXY=$ALL_PROXY")
+    [ -z "${https_proxy:-}" ] || env_args+=("https_proxy=$https_proxy")
+    [ -z "${http_proxy:-}" ] || env_args+=("http_proxy=$http_proxy")
+    [ -z "${all_proxy:-}" ] || env_args+=("all_proxy=$all_proxy")
+    if command -v sudo >/dev/null 2>&1; then
+        sudo -H -u "$brew_user" env HOME="$user_home" "${env_args[@]}" "$brew_bin" "${args[@]}"
+    elif command -v runuser >/dev/null 2>&1; then
+        runuser -u "$brew_user" -- env HOME="$user_home" "${env_args[@]}" "$brew_bin" "${args[@]}"
+    else
+        _brew_error 'sudo or runuser is required to execute brew as another user'
+        return 1
+    fi
+}
+
+uninstall_brew() {
+    local installer_file target_user='' url='https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh'
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -h | --help)
+                printf '%s\n' 'Usage: uninstall_brew [--user USER]'
+                return 0
+                ;;
+            -u | --user) [ "$#" -ge 2 ] || return 2; target_user=$2; shift ;;
+            *) _brew_error "unknown option: $1"; return 2 ;;
+        esac
+        shift
+    done
+    _brew_need_command curl || return
+    installer_file=$(mktemp "${TMPDIR:-/tmp}/brew-uninstall.XXXXXX") || return 1
+    _brew_info "downloading official uninstaller from $url"
+    if ! curl --fail --location --show-error --retry 3 "$url" --output "$installer_file"; then
+        rm -f "$installer_file"
+        return 1
+    fi
+    _brew_run_installer "$installer_file" "$target_user" false
+    local uninstall_status=$?
+    rm -f "$installer_file"
+    return "$uninstall_status"
 }

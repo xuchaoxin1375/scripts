@@ -4,7 +4,7 @@ from scrapling.fetchers import StealthySession
 SOLVE_CLOUDFLARE = True
 image_urls = [
     "https://www.velogear.com.au/media/catalog/product/cache/94ef66d09f7a7e8c63df55350acf28cd/m/a/maxxis_flyweight_26_tube_fv.jpg",
-    # ... 其他图片URL ...
+    # ... 其他URL ...
 ]
 
 # 初始化一个隐匿会话

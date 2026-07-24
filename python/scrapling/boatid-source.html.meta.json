@@ -1,0 +1,11 @@
+{
+  "engine": "scrapling_cli",
+  "url": "https://www.boatid.com/t-h-marine/48-l-snap-flex-all-round-stern-pole-led-light-mpn-led-navsfsl-48-dp.html",
+  "final_url": null,
+  "status": 200,
+  "elapsed_sec": 29.356,
+  "blocked_suspected": false,
+  "saved_to": "C:\\repos\\scripts\\python\\scrapling\\boatid-source.html",
+  "bytes_utf8": 233819,
+  "sha256": "9ede0ad14a37b7e06b1b45d020eeb98005839aca856c4ab0a7159d650dadacb1"
+}
