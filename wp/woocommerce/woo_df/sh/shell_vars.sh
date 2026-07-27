@@ -23,6 +23,7 @@ if [[ -e "$_HOMEBREW_PATH" ]]; then
   # $_HOMEBREW_PATH shellenv # debug print it
   echo "[homebrew]:importing and setting homebrew related environment variables..."
   eval "$($_HOMEBREW_PATH shellenv)"
+  echo "HOMEBREW_PREFIX=[${HOMEBREW_PREFIX:-None}]"
 fi
 
 # macos brew(homebrew) 会自己注册HOMEBREW_PREFIX等环境变量
@@ -62,10 +63,10 @@ mihomo_config_dir="$HOME/.config/.mihomo"
 # source "$sh/env_sh/homebrew_ustc.sh"
 # 按需创建sh短路径(对于msys平台,可能有脚本缓存问题(脚本更改不生效的情况),必要时可以删除短路径重建)
 # echo "sh=[$SH_SYM]"
-# [[ -L "$SH_SYM" ]] || ln -s -fv "$SH_SCRIPT_DIR" "$SH_SYM"  
+# [[ -L "$SH_SYM" ]] || ln -s -fv "$SH_SCRIPT_DIR" "$SH_SYM"
 # 导入适用于macos的环境变量
 if [[ $OSTYPE == "darwin"* ]]; then
-    . "$macos_sh/shell_vars_macos.sh"
+  . "$macos_sh/shell_vars_macos.sh"
 fi
 # 宝塔nginx配置文件路径
 # vhost
@@ -74,7 +75,7 @@ bt_nginx_conf_home="/www/server/nginx/conf"
 
 # 将定义的变量声明为环境变量
 export desktop sh macos_sh omb_themes \
-    bt_nginx_vhost_conf_home \
-    bt_nginx_conf_home uploader_files woo_df pys \
-    SH_SYM SCRIPT_ROOT SH_SCRIPT_DIR PYTHONPATH \
-    mihomo_config_dir
+  bt_nginx_vhost_conf_home \
+  bt_nginx_conf_home uploader_files woo_df pys \
+  SH_SYM SCRIPT_ROOT SH_SCRIPT_DIR PYTHONPATH \
+  mihomo_config_dir

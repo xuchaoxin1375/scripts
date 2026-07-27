@@ -6,7 +6,22 @@
 
 分两类情况:
 - 国外linux服务器(网络好,但是可能用的root用户,为了让root用户可以(间接)安装和使用brew,这时候我们考虑创建一个普通用户(例如linuxbrew),然后root借用这个角色权限使用brew,也可以考虑编写一个函数brewr来包装一下)
-- 国内linux或者macos上安装和使用brew,这里我们主要讨论前者.因为网络环境的问题,brew的自身的安装和brew下载包的过程中如果不借助于镜像,失败率高且几乎不可用.当然用户可以使用代理来加速也是可以的.方案应该灵活,注释和文档完善.
+- 国内linux或者macos上安装和使用brew,这里我们主要讨论前者.因为网络环境的问题,brew的自身的安装和brew下载包的过程中如果不借助于镜像,失败率高且几乎不可用.当然用户可以使用代理来加速也是可以的.
+
+本仓库中的homebrew环境激活的注意事项:
+
+- 如果使用本仓库提供的一键部署shell环境,那么在`$sh/shell_var.sh`这个文件中会尝试几种管理homebrew的环境变量和激活指令(如果没有安装homebrew,则不会执行相关代码,不会污染环境.)
+- 典型命令示例:
+
+```Shell
+# >>> homebrew shellenv >>>
+eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+# <<< homebrew shellenv <<<
+```
+
+其中`/home/linuxbrew/.linuxbrew/bin/brew shellenv`命令会生成一系列的环境变量设置语句(如果相关环境变量在当前shell会话中尚未设置的话,才会输出,或者用`$()`接收输出).然后我们用`eval`执行这些语句.
+
+- 如果直接将homebrew的激活指令添加到`.zshrc`或`.bashrc`中,也可以,重复配置不会有什么问题.
 
 ### 设计与函数入口
 
@@ -42,7 +57,7 @@ install_brew [options]
 普通用户传入 `--create-user`，或者调用 `install_linuxbrew`，都会得到明确错误，
 不会静默创建账号，也不会悄悄切换成其他安装模式。
 
-`new_user_sudo` 是底层系统用户管理工具，不是普通用户安装 Homebrew 的前置步骤。
+`new_user` 是底层系统用户管理工具，不是普通用户安装 Homebrew 的前置步骤。
 只有明确维护服务器账号时才直接调用它；Homebrew 安装流程会在 root 且明确指定
 `--create-user` 时调用它。
 

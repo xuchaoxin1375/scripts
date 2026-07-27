@@ -28,11 +28,11 @@ _brew_info() { printf '[brew] %s\n' "$*"; }
 _brew_warn() { printf '[brew] warning: %s\n' "$*" >&2; }
 _brew_error() { printf '[brew] error: %s\n' "$*" >&2; }
 
-_brew_is_linux() { [ "$(uname -s 2>/dev/null)" = Linux ]; }
-_brew_is_macos() { [ "$(uname -s 2>/dev/null)" = Darwin ]; }
+_brew_is_linux() { [ "$(uname -s 2> /dev/null)" = Linux ]; }
+_brew_is_macos() { [ "$(uname -s 2> /dev/null)" = Darwin ]; }
 
 _brew_need_command() {
-    command -v "$1" >/dev/null 2>&1 || {
+    command -v "$1" > /dev/null 2>&1 || {
         _brew_error "required command not found: $1"
         return 1
     }
@@ -42,7 +42,7 @@ _brew_need_command() {
 _brew_as_root() {
     if [ "$(id -u)" -eq 0 ]; then
         command "$@"
-    elif command -v sudo >/dev/null 2>&1; then
+    elif command -v sudo > /dev/null 2>&1; then
         sudo "$@"
     else
         _brew_error "this operation needs root privileges (sudo is unavailable)"
@@ -52,10 +52,10 @@ _brew_as_root() {
 
 _brew_user_home() {
     local target_user=$1 home_dir=''
-    if command -v getent >/dev/null 2>&1; then
-        home_dir=$(getent passwd "$target_user" 2>/dev/null | cut -d: -f6)
+    if command -v getent > /dev/null 2>&1; then
+        home_dir=$(getent passwd "$target_user" 2> /dev/null | cut -d: -f6)
     elif _brew_is_macos; then
-        home_dir=$(dscl . -read "/Users/$target_user" NFSHomeDirectory 2>/dev/null | awk '{print $2}')
+        home_dir=$(dscl . -read "/Users/$target_user" NFSHomeDirectory 2> /dev/null | awk '{print $2}')
     fi
     [ -n "$home_dir" ] || home_dir="/home/$target_user"
     printf '%s\n' "$home_dir"
@@ -64,7 +64,7 @@ _brew_user_home() {
 _brew_find_binary() {
     local target_user=${1:-} user_home candidate path_brew
     if [ -z "$target_user" ]; then
-        path_brew=$(command -v brew 2>/dev/null || true)
+        path_brew=$(command -v brew 2> /dev/null || true)
         if [ -n "$path_brew" ] && [ -x "$path_brew" ]; then
             printf '%s\n' "$path_brew"
             return 0
@@ -108,14 +108,14 @@ _brew_prepare_linux_prefix() {
     target_group=$(id -gn "$target_user") || return 1
 
     if [ -e "$prefix" ]; then
-        if find "$prefix" -maxdepth 0 -user "$target_user" -print 2>/dev/null | grep -q .; then
+        if find "$prefix" -maxdepth 0 -user "$target_user" -print 2> /dev/null | grep -q .; then
             return 0
         fi
         _brew_error "$prefix already exists and is not owned by $target_user"
         return 1
     fi
     if [ -e "$prefix_parent" ] &&
-        ! find "$prefix_parent" -maxdepth 0 -user "$target_user" -print 2>/dev/null | grep -q .; then
+        ! find "$prefix_parent" -maxdepth 0 -user "$target_user" -print 2> /dev/null | grep -q .; then
         _brew_error "$prefix_parent already exists and is not owned by $target_user"
         return 1
     fi
@@ -132,19 +132,19 @@ _brew_check_linux_prefix_access() {
     [ "$(id -u)" -ne 0 ] || return 0
 
     if [ -e "$prefix_parent" ] && [ ! -x "$prefix_parent" ]; then
-        owner=$(stat -c '%U' "$prefix_parent" 2>/dev/null || printf 'unknown')
+        owner=$(stat -c '%U' "$prefix_parent" 2> /dev/null || printf 'unknown')
         _brew_error "$prefix_parent is owned by $owner and is not accessible to $(id -un)"
         _brew_error "finish/use the dedicated installation as root with: install_linuxbrew; brewr ..."
         _brew_error 'to install as the current user, explicitly remove or transfer the existing dedicated installation first'
         return 1
     fi
     if [ -e "$prefix" ] && { [ ! -x "$prefix" ] || [ ! -w "$prefix" ]; }; then
-        owner=$(stat -c '%U' "$prefix" 2>/dev/null || printf 'unknown')
+        owner=$(stat -c '%U' "$prefix" 2> /dev/null || printf 'unknown')
         _brew_error "$prefix is owned by $owner and is not writable by $(id -un)"
         _brew_error 'refusing to take ownership of an existing Homebrew prefix automatically'
         return 1
     fi
-    if [ ! -e "$prefix" ] && ! command -v sudo >/dev/null 2>&1; then
+    if [ ! -e "$prefix" ] && ! command -v sudo > /dev/null 2>&1; then
         _brew_error 'the standard Linux prefix needs root privileges, but sudo is unavailable'
         _brew_error 'Homebrew is not automatically installed into ~/.linuxbrew; see shell_utils/Readme.md'
         return 1
@@ -169,7 +169,7 @@ _brew_replace_block() {
         $0 == "# >>> brew mirror env" { skip = 1; next }
         $0 == "# <<< brew mirror env" { skip = 0; next }
         !skip { print }
-    ' "$target_file" >"$temp_file" || {
+    ' "$target_file" > "$temp_file" || {
         rm -f "$temp_file"
         return 1
     }
@@ -178,10 +178,10 @@ _brew_replace_block() {
             printf '\n%s\n' "$begin_marker"
             printf '%s\n' "$content"
             printf '%s\n' "$end_marker"
-        } >>"$temp_file"
+        } >> "$temp_file"
     fi
     # Redirection preserves the ownership and mode of an existing rc file.
-    if command cat "$temp_file" >"$target_file"; then
+    if command cat "$temp_file" > "$target_file"; then
         rm -f "$temp_file"
     else
         rm -f "$temp_file"
@@ -237,7 +237,7 @@ _brew_export_mirror_env() {
             value=${value#\"}
             value=${value%\"}
             export "$name=$value"
-        done <<EOF
+        done << EOF
 $(_brew_mirror_env "$mirror")
 EOF
     }
@@ -249,11 +249,14 @@ _brew_installer_url() {
         ustc) printf '%s\n' 'https://mirrors.ustc.edu.cn/misc/brew-install.sh' ;;
         tuna) printf '%s\n' 'https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh' ;;
         aliyun) printf '%s\n' 'https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh' ;;
-        *) _brew_error "unknown installer source: $1"; return 2 ;;
+        *)
+            _brew_error "unknown installer source: $1"
+            return 2
+            ;;
     esac
 }
 
-new_user_sudo() {
+new_user_linuxbrew() {
     local username=linuxbrew login_shell=/bin/bash
     local add_password=false random_password=false add_sudo=false passwordless_sudo=false
     local sudo_group sudo_file temp_file random_value
@@ -261,11 +264,10 @@ new_user_sudo() {
     while [ "$#" -gt 0 ]; do
         case "$1" in
             -h | --help)
-                cat <<'EOF'
-Usage: new_user_sudo [options] [username]
+                cat << 'EOF'
+Usage: new_user_linuxbrew [options] [username]
 
-Create a Linux user idempotently. Despite the legacy function name, sudo
-access is granted only when --addsudo is specified.
+Create a Linux user idempotently(幂等地). 
 
   -p, --addpasswd          run passwd interactively after creation
   -P, --set-random-pwd    generate and set a random password (printed once)
@@ -277,26 +279,41 @@ EOF
                 ;;
             -p | --addpwd | --addpasswd) add_password=true ;;
             -P | --set-random-pwd) random_password=true ;;
-            -A | --addsudo) add_sudo=true ;;
-            -N | --no-sudo-password) passwordless_sudo=true; add_sudo=true ;;
+            -A | --addsudo) add_sudo=false ;;
+            -N | --no-sudo-password)
+                passwordless_sudo=true
+                add_sudo=true
+                ;;
             -s | --shell)
-                [ "$#" -ge 2 ] || { _brew_error "$1 needs a value"; return 2; }
+                [ "$#" -ge 2 ] || {
+                    _brew_error "$1 needs a value"
+                    return 2
+                }
                 login_shell=$2
                 shift
                 ;;
-            --) shift; break ;;
-            -*) _brew_error "unknown option: $1"; return 2 ;;
+            --)
+                shift
+                break
+                ;;
+            -*)
+                _brew_error "unknown option: $1"
+                return 2
+                ;;
             *) username=$1 ;;
         esac
         shift
     done
 
-    _brew_is_linux || { _brew_error 'user creation is supported only on Linux'; return 1; }
-    if id "$username" >/dev/null 2>&1; then
+    _brew_is_linux || {
+        _brew_error 'user creation is supported only on Linux'
+        return 1
+    }
+    if id "$username" > /dev/null 2>&1; then
         _brew_info "user already exists: $username"
-    elif command -v useradd >/dev/null 2>&1; then
+    elif command -v useradd > /dev/null 2>&1; then
         _brew_as_root useradd --create-home --shell "$login_shell" "$username" || return
-    elif command -v adduser >/dev/null 2>&1; then
+    elif command -v adduser > /dev/null 2>&1; then
         _brew_as_root adduser --disabled-password --gecos '' --shell "$login_shell" "$username" || return
     else
         _brew_error 'neither useradd nor adduser is available'
@@ -313,14 +330,14 @@ EOF
     fi
 
     if [ "$add_sudo" = true ]; then
-        if getent group sudo >/dev/null 2>&1; then sudo_group=sudo; else sudo_group=wheel; fi
+        if getent group sudo > /dev/null 2>&1; then sudo_group=sudo; else sudo_group=wheel; fi
         _brew_as_root usermod -aG "$sudo_group" "$username" || return
     fi
     if [ "$passwordless_sudo" = true ]; then
         _brew_need_command visudo || return
         temp_file=$(mktemp "${TMPDIR:-/tmp}/brew-sudoers.XXXXXX") || return 1
-        printf '%s ALL=(ALL:ALL) NOPASSWD: ALL\n' "$username" >"$temp_file"
-        if ! visudo -c -f "$temp_file" >/dev/null; then
+        printf '%s ALL=(ALL:ALL) NOPASSWD: ALL\n' "$username" > "$temp_file"
+        if ! visudo -c -f "$temp_file" > /dev/null; then
             rm -f "$temp_file"
             _brew_error 'generated sudoers rule failed validation'
             return 1
@@ -335,14 +352,7 @@ EOF
     fi
 }
 
-remove_user_safe() {
-    local target_user=${1:-}
-    [ -n "$target_user" ] || { _brew_error 'usage: remove_user_safe USER'; return 2; }
-    [ "$target_user" != root ] || { _brew_error 'refusing to remove root'; return 1; }
-    id "$target_user" >/dev/null 2>&1 || { _brew_info "user does not exist: $target_user"; return 0; }
-    _brew_as_root pkill -u "$target_user" >/dev/null 2>&1 || true
-    _brew_as_root userdel -r "$target_user"
-}
+
 
 # 清理早期方案创建的专用 linuxbrew 用户，为普通 sudo 用户按官方方式安装释放
 # /home/linuxbrew 标准前缀。默认仅预览；执行时移动家目录而不是直接删除，便于
@@ -355,7 +365,7 @@ cleanup_linuxbrew_dedicated_user() {
     while [ "$#" -gt 0 ]; do
         case "$1" in
             -h | --help)
-                cat <<'EOF'
+                cat << 'EOF'
 用法：cleanup_linuxbrew_dedicated_user [--execute] [--backup-dir PATH]
 
 清理由旧版 root/专用用户方案创建的 linuxbrew 账号和 /home/linuxbrew，
@@ -374,16 +384,25 @@ EOF
                 ;;
             --execute) execute=true ;;
             --backup-dir)
-                [ "$#" -ge 2 ] || { _brew_error '--backup-dir needs a value'; return 2; }
+                [ "$#" -ge 2 ] || {
+                    _brew_error '--backup-dir needs a value'
+                    return 2
+                }
                 backup_dir=$2
                 shift
                 ;;
-            *) _brew_error "unknown option: $1"; return 2 ;;
+            *)
+                _brew_error "unknown option: $1"
+                return 2
+                ;;
         esac
         shift
     done
 
-    _brew_is_linux || { _brew_error 'this cleanup is Linux-only'; return 1; }
+    _brew_is_linux || {
+        _brew_error 'this cleanup is Linux-only'
+        return 1
+    }
     timestamp=$(date '+%Y%m%d-%H%M%S') || return 1
     [ -n "$backup_dir" ] || backup_dir="/home/linuxbrew.dedicated-backup-$timestamp"
     case "$backup_dir" in
@@ -392,16 +411,19 @@ EOF
             return 2
             ;;
     esac
-    [ ! -e "$backup_dir" ] || { _brew_error "backup path already exists: $backup_dir"; return 1; }
+    [ ! -e "$backup_dir" ] || {
+        _brew_error "backup path already exists: $backup_dir"
+        return 1
+    }
 
-    if id "$target_user" >/dev/null 2>&1; then
+    if id "$target_user" > /dev/null 2>&1; then
         account_entry=$(getent passwd "$target_user") || return 1
         actual_home=$(printf '%s\n' "$account_entry" | cut -d: -f6)
         [ "$actual_home" = "$expected_home" ] || {
             _brew_error "refusing cleanup: $target_user home is $actual_home, expected $expected_home"
             return 1
         }
-        process_list=$(ps -u "$target_user" -o pid=,cmd= 2>/dev/null || true)
+        process_list=$(ps -u "$target_user" -o pid=,cmd= 2> /dev/null || true)
         if [ -n "$process_list" ]; then
             _brew_error "$target_user still has running processes:"
             printf '%s\n' "$process_list" >&2
@@ -426,7 +448,7 @@ EOF
     if [ -e "$expected_home" ]; then
         _brew_as_root mv -- "$expected_home" "$backup_dir" || return
     fi
-    if id "$target_user" >/dev/null 2>&1; then
+    if id "$target_user" > /dev/null 2>&1; then
         if ! _brew_as_root userdel "$target_user"; then
             _brew_error 'userdel failed; attempting to restore the original home path'
             if [ -e "$backup_dir" ] && [ ! -e "$expected_home" ]; then
@@ -439,14 +461,14 @@ EOF
         _brew_as_root chown root:root "$backup_dir" || return
         _brew_as_root chmod 0700 "$backup_dir" || return
     fi
-    if getent group "$target_user" >/dev/null 2>&1; then
+    if getent group "$target_user" > /dev/null 2>&1; then
         _brew_as_root groupdel "$target_user" || _brew_warn "group remains: $target_user"
     fi
     if [ -e /etc/sudoers.d/linuxbrew_nopasswd ]; then
         _brew_as_root rm -f /etc/sudoers.d/linuxbrew_nopasswd || return
     fi
     _brew_info 'checking for other sudoers references to linuxbrew...'
-    _brew_as_root grep -RIl -- "$target_user" /etc/sudoers /etc/sudoers.d 2>/dev/null || true
+    _brew_as_root grep -RIl -- "$target_user" /etc/sudoers /etc/sudoers.d 2> /dev/null || true
     _brew_info "cleanup complete; recoverable home backup: $backup_dir"
     _brew_info 'next: run install_brew --mirror SOURCE as the normal sudo user'
 }
@@ -456,7 +478,7 @@ set_brew_path_env_to_shellrc() {
     while [ "$#" -gt 0 ]; do
         case "$1" in
             -h | --help)
-                cat <<'EOF'
+                cat << 'EOF'
 Usage: set_brew_path_env_to_shellrc [--remove|--reset] [--rc FILE] [--brew PATH]
 
 Write one managed `brew shellenv` block to the current shell's rc file.
@@ -465,9 +487,20 @@ EOF
                 ;;
             --remove) remove=true ;;
             --reset) reset=true ;;
-            --rc) [ "$#" -ge 2 ] || return 2; rc_file=$2; shift ;;
-            --brew) [ "$#" -ge 2 ] || return 2; brew_bin=$2; shift ;;
-            *) _brew_error "unknown option: $1"; return 2 ;;
+            --rc)
+                [ "$#" -ge 2 ] || return 2
+                rc_file=$2
+                shift
+                ;;
+            --brew)
+                [ "$#" -ge 2 ] || return 2
+                brew_bin=$2
+                shift
+                ;;
+            *)
+                _brew_error "unknown option: $1"
+                return 2
+                ;;
         esac
         shift
     done
@@ -513,8 +546,8 @@ _brew_set_mirror() {
     fi
     if [ "$mirror" = official ] || [ "$mirror" = github ]; then
         local brew_bin
-        if brew_bin=$(_brew_find_binary 2>/dev/null); then
-            git -C "$("$brew_bin" --repo)" remote set-url origin https://github.com/Homebrew/brew 2>/dev/null || true
+        if brew_bin=$(_brew_find_binary 2> /dev/null); then
+            git -C "$("$brew_bin" --repo)" remote set-url origin https://github.com/Homebrew/brew 2> /dev/null || true
         fi
     fi
 }
@@ -546,9 +579,9 @@ _brew_run_installer() {
     chmod 0755 "$installer" || return
     if [ -n "$target_user" ] && [ "$target_user" != "$(id -un)" ]; then
         _brew_as_root chown "$target_user" "$installer" || return
-        if command -v sudo >/dev/null 2>&1; then
+        if command -v sudo > /dev/null 2>&1; then
             sudo -H -u "$target_user" env "${env_args[@]}" /bin/bash "$installer"
-        elif [ "$(id -u)" -eq 0 ] && command -v runuser >/dev/null 2>&1; then
+        elif [ "$(id -u)" -eq 0 ] && command -v runuser > /dev/null 2>&1; then
             runuser -u "$target_user" -- env HOME="$(_brew_user_home "$target_user")" "${env_args[@]}" /bin/bash "$installer"
         else
             _brew_error 'sudo or runuser is required to install as another user'
@@ -568,7 +601,7 @@ install_brew() {
     while [ "$#" -gt 0 ]; do
         case "$1" in
             -h | --help)
-                cat <<'EOF'
+                cat << 'EOF'
 用法：install_brew [选项]
 
 统一安装和配置 Homebrew。镜像、代理、操作系统和安装用户彼此独立。
@@ -598,20 +631,50 @@ linuxbrew 账号。只有当前调用者就是 root 时，才能组合使用
 EOF
                 return 0
                 ;;
-            -s | --source | ---source | --mirror) [ "$#" -ge 2 ] || return 2; mirror=$2; shift ;;
-            -b | --installer-source) [ "$#" -ge 2 ] || return 2; installer_source=$2; shift ;;
-            -u | --user) [ "$#" -ge 2 ] || return 2; target_user=$2; shift ;;
+            -s | --source | ---source | --mirror)
+                [ "$#" -ge 2 ] || return 2
+                mirror=$2
+                shift
+                ;;
+            -b | --installer-source)
+                [ "$#" -ge 2 ] || return 2
+                installer_source=$2
+                shift
+                ;;
+            -u | --user)
+                [ "$#" -ge 2 ] || return 2
+                target_user=$2
+                shift
+                ;;
             -U | --update-mirror-only) update_only=true ;;
-            -R | --reset-mirror) mirror=official; installer_source=official; update_only=true ;;
-            --rc) [ "$#" -ge 2 ] || return 2; rc_file=$2; shift ;;
+            -R | --reset-mirror)
+                mirror=official
+                installer_source=official
+                update_only=true
+                ;;
+            --rc)
+                [ "$#" -ge 2 ] || return 2
+                rc_file=$2
+                shift
+                ;;
             --no-write-env) write_rc=false ;;
             --create-user) create_user=true ;;
             --non-interactive) noninteractive=true ;;
             --force) force=true ;;
             --uninstall) uninstall=true ;;
-            -g | --github-mirror) [ "$#" -ge 2 ] || return 2; github_mirror=$2; shift ;;
-            --) shift; break ;;
-            -*) _brew_error "unknown option: $1"; return 2 ;;
+            -g | --github-mirror)
+                [ "$#" -ge 2 ] || return 2
+                github_mirror=$2
+                shift
+                ;;
+            --)
+                shift
+                break
+                ;;
+            -*)
+                _brew_error "unknown option: $1"
+                return 2
+                ;;
             *) mirror=$1 ;;
         esac
         shift
@@ -641,7 +704,7 @@ EOF
         _brew_error 'omit --user to install for the current user'
         return 2
     fi
-    if brew_bin=$(_brew_find_binary "$target_user" 2>/dev/null) && [ "$force" != true ]; then
+    if brew_bin=$(_brew_find_binary "$target_user" 2> /dev/null) && [ "$force" != true ]; then
         already_installed=true
     fi
     # 仅更新镜像或使用可访问的既有安装时不需要检查前缀；真正下载安装前预检，
@@ -666,10 +729,13 @@ EOF
             _brew_error 'Homebrew refuses root; pass --user USER (for example linuxbrew)'
             return 2
         }
-        [ "$target_user" != root ] || { _brew_error 'the install user cannot be root'; return 2; }
-        if ! id "$target_user" >/dev/null 2>&1; then
+        [ "$target_user" != root ] || {
+            _brew_error 'the install user cannot be root'
+            return 2
+        }
+        if ! id "$target_user" > /dev/null 2>&1; then
             if [ "$create_user" = true ]; then
-                new_user_sudo "$target_user" || return
+                new_user_linuxbrew -A "$target_user" || return
             else
                 _brew_error "user does not exist: $target_user (use --create-user to create it)"
                 return 2
@@ -702,6 +768,97 @@ EOF
     fi
 }
 
+# 将HOMEBREW_BOTTLE_DOMAIN替换为官方源再下载包(应对部分情况下,包安装后但是不可用(提示找不到文件的错误))
+binstall() {
+    local proxy_host="http://localhost"
+    local proxy_port="7890"
+    local show_help=false
+    local cmd_args=()
+    
+    # 解析参数
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -x|--proxy)
+                if [[ -z "$2" || "$2" =~ ^- ]]; then
+                    echo "Error: --proxy/-x requires an argument" >&2
+                    return 1
+                fi
+                proxy_host="$2"
+                shift 2
+                ;;
+            -p|--port)
+                if [[ -z "$2" || ! "$2" =~ ^[0-9]+$ ]]; then
+                    echo "Error: --port/-p requires a valid port number" >&2
+                    return 1
+                fi
+                proxy_port="$2"
+                shift 2
+                ;;
+            -h|--help)
+                show_help=true
+                shift
+                ;;
+            *)
+                cmd_args+=("$1")
+                shift
+                ;;
+        esac
+    done
+    echo "相关参数"
+    echo -e "\t proxy_host=$proxy_host"
+    echo -e "\t proxy_port=$proxy_port"
+    # 显示帮助信息
+    if [[ "$show_help" == true ]]; then
+        cat << EOF
+Usage: binstall [OPTIONS] <brew-command> [ARGUMENTS...]
+
+Execute Homebrew commands with proxy support.
+
+Options:
+    -x, --proxy PROXY    Set proxy host (default: http://localhost)
+    -p, --port PORT      Set proxy port (optional)
+    -h, --help           Show this help message
+
+Examples:
+    binstall install wget
+    binstall -x http://192.168.1.100 -p 8080 install wget curl
+    binstall --proxy socks5://localhost -p 1080 install git
+    binstall -p 7890 install wget
+    binstall search wget
+    binstall update
+
+Environment:
+    HTTP_PROXY and HTTPS_PROXY will be set to proxy_host:port
+    HOMEBREW_BOTTLE_DOMAIN is set to https://ghcr.io/v2/homebrew/core
+EOF
+        return 0
+    fi
+
+    # 检查是否有命令参数
+    if [[ ${#cmd_args[@]} -eq 0 ]]; then
+        echo "Error: No brew command specified" >&2
+        echo "Use -h or --help for usage information" >&2
+        return 1
+    fi
+
+    # 构造完整的代理地址
+    local full_proxy="${proxy_host}"
+    if [[ -n "$proxy_port" ]]; then
+        # 如果 proxy_host 已经包含端口，添加冒号，否则直接拼接
+        if [[ "$proxy_host" =~ :[0-9]+$ ]]; then
+            full_proxy="${proxy_host%:*}:${proxy_port}"
+        else
+            full_proxy="${proxy_host}:${proxy_port}"
+        fi
+    fi
+
+    # 执行 brew 命令
+    HTTP_PROXY="${full_proxy}" \
+        HTTPS_PROXY="${full_proxy}" \
+        HOMEBREW_BOTTLE_DOMAIN="https://ghcr.io/v2/homebrew/core" \
+        command brew "${cmd_args[@]}"
+}
+
 # 国内网络场景入口，只设置网络来源，不创建或切换用户。调用者后置传入的
 # --mirror 或 --installer-source 可以覆盖这里的默认值。
 install_brew_cn() {
@@ -714,7 +871,7 @@ install_linuxbrew() {
     while [ "$#" -gt 0 ]; do
         case "$1" in
             -h | --help)
-                cat <<'EOF'
+                cat << 'EOF'
 用法：install_linuxbrew [-u USER] [USER]
 
 仅供 Linux root shell 使用：从官方源安装 Homebrew，并创建或复用专用普通
@@ -732,14 +889,27 @@ install_linuxbrew() {
 EOF
                 return 0
                 ;;
-            -u | --user) [ "$#" -ge 2 ] || return 2; username=$2; shift ;;
-            --) shift; break ;;
-            -*) _brew_error "unknown option: $1"; return 2 ;;
+            -u | --user)
+                [ "$#" -ge 2 ] || return 2
+                username=$2
+                shift
+                ;;
+            --)
+                shift
+                break
+                ;;
+            -*)
+                _brew_error "unknown option: $1"
+                return 2
+                ;;
             *) username=$1 ;;
         esac
         shift
     done
-    _brew_is_linux || { _brew_error 'install_linuxbrew is Linux-only'; return 1; }
+    _brew_is_linux || {
+        _brew_error 'install_linuxbrew is Linux-only'
+        return 1
+    }
     [ "$(id -u)" -eq 0 ] || {
         _brew_error 'install_linuxbrew is reserved for a root shell using a dedicated account'
         _brew_error 'normal users should run: install_brew (or install_brew_cn)'
@@ -756,12 +926,15 @@ brewr() {
     while [ "$#" -gt 0 ]; do
         case "$1" in
             -u | --user | --brew-user)
-                [ "$#" -ge 2 ] || { _brew_error "$1 needs a value"; return 2; }
+                [ "$#" -ge 2 ] || {
+                    _brew_error "$1 needs a value"
+                    return 2
+                }
                 brew_user=$2
                 shift
                 ;;
             -h | --help)
-                cat <<'EOF'
+                cat << 'EOF'
 Usage: brewr [-u USER] BREW_ARGUMENTS...
 
 As root, execute Homebrew as BREW_USER (default: linuxbrew). As a normal user,
@@ -778,7 +951,7 @@ EOF
         command brew "${args[@]}"
         return
     fi
-    id "$brew_user" >/dev/null 2>&1 || {
+    id "$brew_user" > /dev/null 2>&1 || {
         _brew_error "brew user does not exist: $brew_user"
         return 1
     }
@@ -801,9 +974,9 @@ EOF
     [ -z "${https_proxy:-}" ] || env_args+=("https_proxy=$https_proxy")
     [ -z "${http_proxy:-}" ] || env_args+=("http_proxy=$http_proxy")
     [ -z "${all_proxy:-}" ] || env_args+=("all_proxy=$all_proxy")
-    if command -v sudo >/dev/null 2>&1; then
+    if command -v sudo > /dev/null 2>&1; then
         sudo -H -u "$brew_user" env HOME="$user_home" "${env_args[@]}" "$brew_bin" "${args[@]}"
-    elif command -v runuser >/dev/null 2>&1; then
+    elif command -v runuser > /dev/null 2>&1; then
         runuser -u "$brew_user" -- env HOME="$user_home" "${env_args[@]}" "$brew_bin" "${args[@]}"
     else
         _brew_error 'sudo or runuser is required to execute brew as another user'
@@ -819,8 +992,15 @@ uninstall_brew() {
                 printf '%s\n' 'Usage: uninstall_brew [--user USER]'
                 return 0
                 ;;
-            -u | --user) [ "$#" -ge 2 ] || return 2; target_user=$2; shift ;;
-            *) _brew_error "unknown option: $1"; return 2 ;;
+            -u | --user)
+                [ "$#" -ge 2 ] || return 2
+                target_user=$2
+                shift
+                ;;
+            *)
+                _brew_error "unknown option: $1"
+                return 2
+                ;;
         esac
         shift
     done
