@@ -244,7 +244,7 @@ zac=${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autocomplete
 if [[ $REPO_SOURCE == gitee ]]; then
     zcp_repo=https://gitee.com/duchenpaul/zsh-completions.git
     zac_repo=https://gitee.com/mirrors/zsh-autocomplete.git
-    zasp_repo=https://gitee.com/zsh-users/zsh-autosuggestions
+    zasp_repo=https://gitee.com/mirrors/zsh-autosuggestions.git
     zysu_repo=https://gitcode.com/gh_mirrors/zs/zsh-you-should-use.git
     zshp_repo=https://gitee.com/zsh-users/zsh-syntax-highlighting.git
     zhssp_repo=https://gitee.com/mirror-hub/zsh-history-substring-search
@@ -427,7 +427,8 @@ zstyle '"'*:compinit'"' arguments -i -u \
             # 定义快捷键片段
             # shellcheck disable=SC2016
             # shellcheck disable=SC2125
-            local zsh_bindkey_config='
+            local zsh_bindkey_config="$(
+                cat << 'EOF'
 # shellcheck disable=SC2148
 # 将 Tab 和 Shift 和 Tab 设置为更改菜单中的选择(menu-select)
 # 这样， Tab 和 ShiftTab 分别将菜单中的选择项向右和向左移动，而不是退出菜单：
@@ -437,6 +438,31 @@ bindkey              '^I' menu-select
 # 使 Enter 始终提交命令行
 # 这样一来，即使您在菜单中， Enter 也始终会提交命令行：
 bindkey -M menuselect '^M' .accept-line
+
+# zsh-autosuggestions 的旧异步实现会在取消请求时先关闭 fd，再移除
+# ZLE handler，可能报 "No handler installed for fd"。保留建议但改为同步获取。
+unset ZSH_AUTOSUGGEST_USE_ASYNC
+
+# 不让 zsh-autocomplete 在历史命令后追加分号。
+zstyle ':autocomplete:*' add-semicolon no
+
+# 如果不使用 zsh-autocomplete 的方向键历史菜单,设置如下动作：
+## .up-line-or-history
+## .down-line-or-history
+
+# 上下键按 Zsh 默认方式逐条
+# 浏览历史，左右键始终移动命令行光标。覆盖常见的 CSI 和 SS3 序列。
+bindkey -M emacs \
+    '^[[C' .forward-char          '^[OC' .forward-char \
+    '^[[D' .backward-char         '^[OD' .backward-char
+    # '^[[A' .up-line-or-history    '^[OA' .up-line-or-history \
+    # '^[[B' .down-line-or-history  '^[OB' .down-line-or-history \
+
+bindkey -M menuselect \
+    '^[[C' .forward-char          '^[OC' .forward-char \
+    '^[[D' .backward-char         '^[OD' .backward-char
+    # '^[[A' .up-line-or-history    '^[OA' .up-line-or-history \
+    # '^[[B' .down-line-or-history  '^[OB' .down-line-or-history \
 
 # 其他 
 # 将 Tab 和 ShiftTab 添加到菜单中(menu-complete)
@@ -448,7 +474,10 @@ bindkey -M menuselect '^M' .accept-line
 # 这样，即使您在菜单中， ← 和 → 也始终会在命令行上移动光标：
 # bindkey -M menuselect  '^[[D' .backward-char  '^[OD' .backward-char
 # bindkey -M menuselect  '^[[C'  .forward-char  '^[OC'  .forward-char
-'
+
+EOF
+            )"
+
             echo "$zsh_bindkey_config" > ~/zsh_bindkey_config.sh
             # 如果此前配置过,则清空相应区域,以便统一更新相应配置
             sed -i '/# >>> zac bindkey config/,/# <<< zac bindkey config/d' "$zshrc_path"

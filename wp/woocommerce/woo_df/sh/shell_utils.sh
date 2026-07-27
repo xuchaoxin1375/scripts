@@ -48,7 +48,7 @@ cleanrc() {
 }
 # 安装常用工具(通过调用 sh/tool_installer中定义好的安装脚本)
 # 要求：sh/tool_installer下的安装脚本都以install_name.sh 的格式命名,从而运行install name 的方式安装名为name的工具.
-install() {
+installer() {
     local tool_name="$1"
     local tool_installer_script_path="$SCRIPT_DIR/tool_installer/install_$tool_name.sh"
     if [ -f "$tool_installer_script_path" ]; then
