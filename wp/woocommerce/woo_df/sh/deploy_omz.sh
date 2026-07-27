@@ -453,8 +453,8 @@ zstyle ':autocomplete:*' add-semicolon no
 # 上下键按 Zsh 默认方式逐条
 # 浏览历史，左右键始终移动命令行光标。覆盖常见的 CSI 和 SS3 序列。
 bindkey -M emacs \
-    '^[[C' .forward-char          '^[OC' .forward-char \
-    '^[[D' .backward-char         '^[OD' .backward-char
+    '^[[C' forward-char           '^[OC' forward-char \
+    '^[[D' backward-char          '^[OD' backward-char
     # '^[[A' .up-line-or-history    '^[OA' .up-line-or-history \
     # '^[[B' .down-line-or-history  '^[OB' .down-line-or-history \
 
