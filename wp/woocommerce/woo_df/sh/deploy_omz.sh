@@ -26,7 +26,7 @@ REPO_SOURCE="github" # gitee
 echo "Using repo source: $REPO_SOURCE"
 
 # 默认插件安装选项(仅补全类插件)
-install_zsh_completions=true               # zc插件,可选值:true|false
+install_zsh_completions=true               # zcp插件,可选值:true|false
 install_zsh_autocomplete=omz               # zac插件安装模式:可选值:omz|std|false
 install_zsh_autosuggestions=true           # zasp
 install_zsh_you_should_use=false           # zysu 可能有bug,某些情况下可能会让zsh出现异常(输出:alias -g|sort ...)
@@ -245,10 +245,11 @@ if [[ $REPO_SOURCE == gitee ]]; then
     zcp_repo=https://gitee.com/duchenpaul/zsh-completions.git
     zac_repo=https://gitee.com/mirrors/zsh-autocomplete.git
     zasp_repo=https://gitee.com/mirrors/zsh-autosuggestions.git
-    zysu_repo=https://gitcode.com/gh_mirrors/zs/zsh-you-should-use.git
-    zshp_repo=https://gitee.com/zsh-users/zsh-syntax-highlighting.git
+    zysu_repo=https://gitee.com/mirrors/zsh-you-should-use.git
+    # zysu_repo=https://gitcode.com/gh_mirrors/zs/zsh-you-should-use.git
+    zshp_repo=https://gitee.com/mirrors/zsh-syntax-highlighting.git
     zhssp_repo=https://gitee.com/mirror-hub/zsh-history-substring-search
-elif [[ $REPO_SOURCE == github ]]; then
+elif [[ $REPO_SOURCE == github ]]; then 
     zcp_repo=https://github.com/zsh-users/zsh-completions.git
     zac_repo=https://github.com/marlonrichert/zsh-autocomplete.git
     zasp_repo=https://github.com/zsh-users/zsh-autosuggestions.git
