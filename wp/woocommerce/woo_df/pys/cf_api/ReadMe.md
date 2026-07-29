@@ -325,6 +325,18 @@ python cloudflare_dns_tool.py -s 2
 python cloudflare_dns_tool.py -f example.com
 ```
 
+查询过程会为每个账号输出详细上下文，例如：
+
+```text
+[CHECK] [账号 2/10] name=account-b, email=name@example.com, auth=key, domain=example.com
+[MISS] [账号 2/10] name=account-b, email=name@example.com, auth=key, domain=example.com, elapsed=0.42s
+[ERR] [账号 3/10] name=account-c, email=bad@example.com, auth=key, domain=example.com, elapsed=0.31s: HTTP 400, API 请求失败: ...
+```
+
+使用 API Token 且配置中没有邮箱时，会显示 `email=不可用`。日志始终不会输出 API Token
+或 Global API Key。CSV/Excel 中的空单元格（包括 Pandas 读取后的 `NaN`）不会再作为账号提交
+给 Cloudflare；缺少有效邮箱或 Key 的行会显示配置行号并被跳过。
+
 ---
 
 ### IPv4 批量更新，预览模式
@@ -895,13 +907,18 @@ flowchart LR
 
 ## 代码质量检查
 
-已使用以下工具检查：
+每次修改 `cloudflare_dns_tool.py` 后，都应执行本节推荐的完整检查。不要只运行语法检查；
+格式、常见代码问题和静态类型也必须通过后再提交或交付修改。
+
+在仓库根目录 `pys` 下执行：
 
 ```bash
-python3 -m ruff format cloudflare_dns_tool.py
-python3 -m ruff check cloudflare_dns_tool.py
-python3 -m pyright cloudflare_dns_tool.py
-python3 -m py_compile cloudflare_dns_tool.py
+ruff format cf_api/cloudflare_dns_tool.py
+ruff check cf_api/cloudflare_dns_tool.py
+ruff format --check cf_api/cloudflare_dns_tool.py
+pyright cf_api/cloudflare_dns_tool.py
+python -m py_compile cf_api/cloudflare_dns_tool.py
+git diff --check -- cf_api/cloudflare_dns_tool.py
 ```
 
 当前结果：
@@ -915,8 +932,16 @@ All checks passed!
 
 - `ruff format`：格式化代码
 - `ruff check`：检查常见代码质量问题
+- `ruff format --check`：确认文件已符合统一格式，适用于最终验证和 CI
 - `pyright`：静态类型检查
 - `py_compile`：Python 语法编译检查
+- `git diff --check`：检查尾随空格等差异格式问题
+
+若修改影响命令行参数或启动流程，还应执行冒烟测试：
+
+```bash
+python cf_api/cloudflare_dns_tool.py --help
+```
 
 ---
 

@@ -25,6 +25,8 @@ Cloudflare DNS 批量修改 / 查询 / 清理工具
 
 4. 快速查询某个域名存在于哪些账号
    - 使用 -f/--find-domain。
+   - 查询日志包含账号序号、账号名、可用邮箱、认证方式、目标域名和耗时，便于定位失败账号。
+   - 不会在查询日志中输出 API Token 或 Global API Key。
 
 5. 处理进度输出
    - 处理账号内域名时输出：[i/n] 正在处理域名 xxx。
@@ -40,6 +42,11 @@ Cloudflare DNS 批量修改 / 查询 / 清理工具
    - 支持 Ctrl+C 通知所有账号/域名工作线程停止。
    - 尚未开始的 future 会被取消；已经运行中的线程会在下一次检查 stop_event 或当前 HTTP 请求返回后退出。
 
+维护约定：
+- 每次修改本文件后，都应执行项目文档“代码质量检查”章节推荐的完整检查。
+- 至少包括 Ruff 格式化与静态检查、Pyright 类型检查、Python 语法编译检查，
+  以及 git diff 空白错误检查；所有检查通过后再提交或交付修改。
+
 配置文件示例：
 {
   "accounts": {
@@ -53,40 +60,7 @@ Cloudflare DNS 批量修改 / 查询 / 清理工具
   }
 }
 
-常用示例：
-  # IPv4：自动选择 A 记录
-  python cf_dns_tool.py --new-ip 1.2.3.4 --dry-run
 
-  # IPv6：自动选择 AAAA 记录
-  python cf_dns_tool.py --new-ip 2001:db8::1 --dry-run
-
-  # 只更新旧 IPv6 为指定新 IPv6
-  python cf_dns_tool.py --old-ip 2001:db8::10 --new-ip 2001:db8::20
-
-  # IPv4 -> IPv6 迁移：为匹配旧 IPv4 的记录创建 AAAA，并删除旧 A
-  python cf_dns_tool.py --old-ip 1.2.3.4 --new-ip 2001:db8::1 --dry-run
-
-  # 删除所有指向指定 IP 的 A/AAAA 记录
-  python cf_dns_tool.py --delete-ip 1.2.3.4 --dry-run
-
-  # 更新 CNAME
-  python cf_dns_tool.py --record-type CNAME --old-content old.example.com --new-content new.example.com
-
-  # 预览删除所有以 * 开头的通配符记录
-  python cf_dns_tool.py --delete-wildcard --dry-run
-
-  # 只删除通配符 AAAA 记录
-  python cf_dns_tool.py --delete-wildcard --record-type AAAA
-
-  # 保守模式：适合账号多、域名多或已有其他 Cloudflare API 任务同时运行的场景
-  python cf_dns_tool.py --new-ip 1.2.3.4 --conservative --dry-run
-
-  # 自定义全局 API 调用间隔：本脚本进程内所有账号共享，0.5 表示最多约 2 次/秒
-  python cf_dns_tool.py --new-ip 1.2.3.4 --request-interval 0.5
-
-  # 短选项等价写法
-  python cf_dns_tool.py -n 1.2.3.4 -c -d
-  python cf_dns_tool.py -D -c -d
 """
 
 from __future__ import annotations
@@ -126,7 +100,9 @@ AUTH_METHOD = "token"  # 可选：'token' 或 'key'
 # 默认沿用原脚本的 Windows 路径；也可以通过环境变量 CF_CONFIG_PATH 覆盖。
 DESKTOP = r"C:/Users/Administrator/Desktop"
 DEPLOY_CONFIGS = f"{DESKTOP}/deploy_configs"
-CF_CONFIG_PATH = os.getenv("CF_CONFIG_PATH", f"{DEPLOY_CONFIGS}/cf_config.csv") # cf_config.json
+CF_CONFIG_PATH = os.getenv(
+    "CF_CONFIG_PATH", f"{DEPLOY_CONFIGS}/cf_config.csv"
+)  # cf_config.json
 
 # Cloudflare 常见 DNS 记录类型。本脚本更新模式只处理这三类：
 # - A    -> IPv4
@@ -488,6 +464,32 @@ def mask_secret(value: Optional[str], show: bool = False) -> str:
     return f"{value[:4]}...{value[-4:]}"
 
 
+def normalize_config_text(value: Any) -> str:
+    """将配置值规范化为文本，并把常见表格空值统一转换为空字符串。"""
+    if value is None:
+        return ""
+
+    text = str(value).strip()
+    if text.lower() in {"", "nan", "none", "null", "<na>"}:
+        return ""
+    return text
+
+
+def format_account_identity(
+    account: Mapping[str, Any],
+    account_index: Optional[int] = None,
+    account_total: Optional[int] = None,
+) -> str:
+    """构建不包含密钥的账号标识，供并发查询日志定位具体账号。"""
+    name = normalize_config_text(account.get("name")) or "unknown"
+    email = normalize_config_text(account.get("email")) or "不可用"
+    auth_method = normalize_config_text(account.get("auth_method")) or "unknown"
+    progress = ""
+    if account_index is not None and account_total is not None:
+        progress = f"[账号 {account_index}/{account_total}] "
+    return f"{progress}name={name}, email={email}, auth={auth_method}"
+
+
 def interruptible_sleep(seconds: float, stop_event: Optional[Event] = None) -> None:
     """
     可被 Ctrl+C / stop_event 中断的 sleep。
@@ -650,7 +652,7 @@ class DNSOperationResult:
     zone: str
     name: str
     record_type: str
-    old_content: str
+    old_content: Optional[str]
     new_content: Optional[str]
     status: str  # updated / deleted / dry_run_update / dry_run_delete / skipped / error
     message: str = ""
@@ -1369,7 +1371,6 @@ class CloudflareDNSUpdater:
                     )
                     continue
 
-                created = False
                 if not target_exists:
                     try:
                         self.create_dns_record(
@@ -1385,7 +1386,6 @@ class CloudflareDNSUpdater:
                         self._safe_print(
                             f"  [CREATE-FULL] {record_type} {r_name}: {new_content}"
                         )
-                        created = True
                         time.sleep(0.08)
                     except Exception as exc:
                         self._safe_print(
@@ -1834,11 +1834,11 @@ class CloudflareDNSUpdater:
     ) -> tuple[list[dict], Optional[set[str]]]:
         """
         按白名单或显式域名过滤 zone。
-        
+
         支持两种模式：
         - whitelist：文件白名单模式
         - explicit_domains：命令行直接指定的域名（--domain）
-        
+
         同时提供两者时取交集。
         """
         if not whitelist and not explicit_domains:
@@ -1850,7 +1850,9 @@ class CloudflareDNSUpdater:
 
         explicit_set = set()
         if explicit_domains:
-            explicit_set = {d.lower().strip() for d in explicit_domains if d and d.strip()}
+            explicit_set = {
+                d.lower().strip() for d in explicit_domains if d and d.strip()
+            }
 
         # 同时指定时取交集，否则使用任一集合
         if whitelist_set and explicit_set:
@@ -1898,7 +1900,7 @@ class CloudflareDNSUpdater:
             and old_version != new_version
         )
         old_record_type = None
-        if migrate_ip_family and old_content:
+        if migrate_ip_family and old_content and old_version is not None:
             old_record_type = record_type_for_ip_version(old_version)
 
         # full_replace 模式：未指定 --old-ip 时，自动处理域名下所有 A/AAAA 记录
@@ -1924,7 +1926,9 @@ class CloudflareDNSUpdater:
 
         # 合并实例级 explicit_domains 和方法参数
         final_explicit = explicit_domains or getattr(self, "_explicit_domains", None)
-        zones, whitelist_set = self._filter_zones(all_zones, whitelist=whitelist, explicit_domains=final_explicit)
+        zones, whitelist_set = self._filter_zones(
+            all_zones, whitelist=whitelist, explicit_domains=final_explicit
+        )
         if not zones:
             self._safe_print("没有需要处理的域名")
             return BatchRunResult(results=[], stats=OperationStats())
@@ -2050,7 +2054,9 @@ class CloudflareDNSUpdater:
         self._safe_print(f"账号 {self.account_name} 下共 {account_zone_total} 个域名")
 
         final_explicit = explicit_domains or getattr(self, "_explicit_domains", None)
-        zones, _ = self._filter_zones(all_zones, whitelist=whitelist, explicit_domains=final_explicit)
+        zones, _ = self._filter_zones(
+            all_zones, whitelist=whitelist, explicit_domains=final_explicit
+        )
         if not zones:
             self._safe_print("没有需要处理的域名")
             return BatchRunResult(results=[], stats=OperationStats())
@@ -2118,7 +2124,7 @@ class CloudflareDNSUpdater:
         self,
         add_domain: Optional[str] = None,
         add_records: Optional[list[str]] = None,
-        proxied: bool = True,          # 默认启用代理
+        proxied: bool = True,  # 默认启用代理
         ttl: int = 1,
         dry_run: bool = False,
         existing_zone_id: Optional[str] = None,
@@ -2129,12 +2135,16 @@ class CloudflareDNSUpdater:
         self._check_stop()
 
         # 如果用户通过 -z 指定了域名但没有 --add-domain，则视为向已有域名添加记录
-        target_zone_name = existing_zone_name or (explicit_domains[0] if explicit_domains else None)
+        target_zone_name = existing_zone_name or (
+            explicit_domains[0] if explicit_domains else None
+        )
 
         self._safe_print("=" * 70)
         self._safe_print(f"Cloudflare DNS 添加域名/记录 | 账号: {self.account_name}")
-        self._safe_print(f"add_domain={add_domain}, target_zone={target_zone_name}, records={len(add_records) if add_records else 0}, "
-                         f"proxied={proxied}, ttl={ttl}, dry_run={dry_run}")
+        self._safe_print(
+            f"add_domain={add_domain}, target_zone={target_zone_name}, records={len(add_records) if add_records else 0}, "
+            f"proxied={proxied}, ttl={ttl}, dry_run={dry_run}"
+        )
         self._safe_print("=" * 70)
 
         stats = OperationStats()
@@ -2165,7 +2175,9 @@ class CloudflareDNSUpdater:
                     resp = self.create_zone(domain)
                     zone_id = resp.get("result", {}).get("id")
                     zone_name = resp.get("result", {}).get("name", domain)
-                    self._safe_print(f"  [OK] 已添加域名: {zone_name} (zone_id={zone_id})")
+                    self._safe_print(
+                        f"  [OK] 已添加域名: {zone_name} (zone_id={zone_id})"
+                    )
                     stats.inc_created()
                     results.append(
                         DNSOperationResult(
@@ -2201,7 +2213,9 @@ class CloudflareDNSUpdater:
                     if z.get("name", "").lower() == zone_name.lower():
                         zone_id = z["id"]
                         zone_name = z["name"]
-                        self._safe_print(f"  [INFO] 使用已有域名: {zone_name} (zone_id={zone_id})")
+                        self._safe_print(
+                            f"  [INFO] 使用已有域名: {zone_name} (zone_id={zone_id})"
+                        )
                         break
                 if not zone_id:
                     self._safe_print(f"  [ERR] 未在账号中找到域名: {zone_name}")
@@ -2215,7 +2229,9 @@ class CloudflareDNSUpdater:
         # 2. 添加 DNS 记录
         if add_records:
             if not zone_id:
-                self._safe_print("  [ERR] 没有可用的 zone_id，请使用 --add-domain 添加域名，或使用 -z 指定已有域名")
+                self._safe_print(
+                    "  [ERR] 没有可用的 zone_id，请使用 --add-domain 添加域名，或使用 -z 指定已有域名"
+                )
 
             if zone_id:
                 for rec_str in add_records:
@@ -2245,10 +2261,14 @@ class CloudflareDNSUpdater:
                         # auto 自动判断记录类型（最常用场景）
                         if rec_type in ("AUTO", "auto", ""):
                             rec_type = infer_record_type_from_content(rec_content)
-                            print(f"  [AUTO] 自动判断记录类型: {rec_content} -> {rec_type}")
+                            print(
+                                f"  [AUTO] 自动判断记录类型: {rec_content} -> {rec_type}"
+                            )
 
                         if dry_run:
-                            self._safe_print(f"  [DRY-ADD-RECORD] {rec_type} {rec_name} -> {rec_content}")
+                            self._safe_print(
+                                f"  [DRY-ADD-RECORD] {rec_type} {rec_name} -> {rec_content}"
+                            )
                             stats.inc_dry_run()
                             results.append(
                                 DNSOperationResult(
@@ -2270,7 +2290,9 @@ class CloudflareDNSUpdater:
                             proxied=proxied,
                             ttl=ttl,
                         )
-                        self._safe_print(f"  [OK-ADD] {rec_type} {rec_name} -> {rec_content}")
+                        self._safe_print(
+                            f"  [OK-ADD] {rec_type} {rec_name} -> {rec_content}"
+                        )
                         stats.inc_created()
                         results.append(
                             DNSOperationResult(
@@ -2355,7 +2377,9 @@ class CloudflareDNSUpdater:
                     zone_index,
                     selected_zone_total,
                     account_zone_total,
-                    action_name="删除域名" if delete_zone_completely else "清空 DNS 记录",
+                    action_name="删除域名"
+                    if delete_zone_completely
+                    else "清空 DNS 记录",
                 )
             )
 
@@ -2366,9 +2390,13 @@ class CloudflareDNSUpdater:
                 self._safe_print(f"  [zone] 发现 {record_count} 条 DNS 记录")
 
                 if dry_run:
-                    self._safe_print(f"  [DRY-DELETE-ZONE] 将删除 {record_count} 条记录")
+                    self._safe_print(
+                        f"  [DRY-DELETE-ZONE] 将删除 {record_count} 条记录"
+                    )
                     if delete_zone_completely:
-                        self._safe_print(f"  [DRY-DELETE-ZONE] 将彻底删除域名 {zone_name}")
+                        self._safe_print(
+                            f"  [DRY-DELETE-ZONE] 将彻底删除域名 {zone_name}"
+                        )
                     stats.inc_dry_run()
                     all_results.append(
                         DNSOperationResult(
@@ -2377,7 +2405,9 @@ class CloudflareDNSUpdater:
                             record_type="ZONE",
                             old_content=None,
                             new_content=None,
-                            status="dry_run_delete_zone" if delete_zone_completely else "dry_run_clear_dns",
+                            status="dry_run_delete_zone"
+                            if delete_zone_completely
+                            else "dry_run_clear_dns",
                         )
                     )
                     continue
@@ -2392,11 +2422,15 @@ class CloudflareDNSUpdater:
                         deleted_count += 1
                         time.sleep(0.05)
                     except Exception as exc:
-                        self._safe_print(f"  [ERR] 删除记录失败 {record.get('name')}: {exc}")
+                        self._safe_print(
+                            f"  [ERR] 删除记录失败 {record.get('name')}: {exc}"
+                        )
                         stats.inc_errors()
 
                 stats.inc_deleted(deleted_count)
-                self._safe_print(f"  [OK] 已删除 {deleted_count}/{record_count} 条 DNS 记录")
+                self._safe_print(
+                    f"  [OK] 已删除 {deleted_count}/{record_count} 条 DNS 记录"
+                )
 
                 # 3. 如果是 full 模式，删除整个 zone
                 if delete_zone_completely:
@@ -2481,7 +2515,9 @@ class CloudflareDNSUpdater:
 
         # 合并实例级 explicit_domains 和方法参数
         final_explicit = explicit_domains or getattr(self, "_explicit_domains", None)
-        zones, whitelist_set = self._filter_zones(all_zones, whitelist=whitelist, explicit_domains=final_explicit)
+        zones, whitelist_set = self._filter_zones(
+            all_zones, whitelist=whitelist, explicit_domains=final_explicit
+        )
         if not zones:
             self._safe_print("没有需要处理的域名")
             return BatchRunResult(results=[], stats=OperationStats())
@@ -2638,27 +2674,32 @@ def load_config(config_path: str) -> dict:
             log_print(f"表格缺少必要列 {required}，当前列: {list(df.columns)}")
             sys.exit(1)
 
-        accounts_dict = {}
-        for idx, row in df.iterrows():
-            email = str(row.get("cf_api_email", "")).strip()
-            key = str(row.get("cf_api_key", "")).strip()
+        accounts_dict: dict[str, dict[str, Any]] = {}
+        for row_number, (_, row) in enumerate(df.iterrows(), start=2):
+            email = normalize_config_text(row.get("cf_api_email"))
+            key = normalize_config_text(row.get("cf_api_key"))
             if not email or not key:
+                account_name = normalize_config_text(row.get("account")) or "未命名账号"
+                log_print(
+                    f"[WARN] 配置文件第 {row_number} 行 {account_name} "
+                    f"缺少有效的 cf_api_email 或 cf_api_key，已跳过"
+                )
                 continue
 
-            name = str(row.get("account", "")).strip() or email.split("@")[0]
-            acc = {
+            name = normalize_config_text(row.get("account")) or email.split("@")[0]
+            acc: dict[str, Any] = {
                 "cf_api_email": email,
                 "cf_api_key": key,
             }
             if "password" in df.columns:
                 pwd = row.get("password")
-                if pd.notna(pwd):
-                    pwd_str = str(pwd).strip()
+                if bool(pd.notna(pwd)):
+                    pwd_str = normalize_config_text(pwd)
                     if pwd_str:
                         acc["password"] = pwd_str
             if "email_routing_verified" in df.columns:
                 val = row.get("email_routing_verified")
-                if pd.notna(val):
+                if bool(pd.notna(val)):
                     acc["email_routing_verified"] = bool(val)
 
             accounts_dict[name] = acc
@@ -2668,7 +2709,6 @@ def load_config(config_path: str) -> dict:
     else:
         log_print(f"不支持的配置文件格式: {ext}")
         sys.exit(1)
-
 
 
 def get_cf_accounts(config_path: str) -> list[dict]:
@@ -2710,14 +2750,15 @@ def get_cf_accounts(config_path: str) -> list[dict]:
 
     accounts: list[dict] = []
     for name, acc_obj in iterable_accounts:
-        token = acc_obj.get("cf_api_token")
-        email = acc_obj.get("cf_api_email")
-        key = acc_obj.get("cf_api_key")
+        token = normalize_config_text(acc_obj.get("cf_api_token"))
+        email = normalize_config_text(acc_obj.get("cf_api_email"))
+        key = normalize_config_text(acc_obj.get("cf_api_key"))
+        account_name = normalize_config_text(name) or email or "unknown"
 
         if token:
             accounts.append(
                 {
-                    "name": name,
+                    "name": account_name,
                     "auth_method": "token",
                     "token": token,
                     "email": None,
@@ -2727,7 +2768,7 @@ def get_cf_accounts(config_path: str) -> list[dict]:
         elif email and key:
             accounts.append(
                 {
-                    "name": name,
+                    "name": account_name,
                     "auth_method": "key",
                     "token": None,
                     "email": email,
@@ -2735,7 +2776,11 @@ def get_cf_accounts(config_path: str) -> list[dict]:
                 }
             )
         else:
-            log_print(f"[WARN] 账号 {name} 缺少有效认证字段，已跳过")
+            log_print(
+                f"[WARN] 账号 {account_name}"
+                + (f" <{email}>" if email else "")
+                + " 缺少有效认证字段，已跳过"
+            )
 
     return accounts
 
@@ -2746,16 +2791,58 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
         Note: 更多示例查看Readme.md文档,这里仅列出简单用法.
-        
+        Examples:
+
         # 查询某个域名
-        python $pys/cf_api/cloudflare_dns_tool.py -s  --find-domain domain.com  --json # -s选项默认启用查询模式
+        python cloudflare_dns_tool.py -s  --find-domain domain.com  --json # -s选项默认启用查询模式
+
         # 为cf00这个cf账号中的domain.com域名添加dns记录,@表示主域名domain.com本身
-        python $pys/cf_api/cloudflare_dns_tool.py -s cf00  --add-record  "@:auto:23.23.23.23" -z domain.com 
+        python cloudflare_dns_tool.py -s cf00  --add-record  "@:auto:23.23.23.23" -z domain.com
+
         # 指定cf账号配置文件
-        python $pys/cf_api/cloudflare_dns_tool.py -C $deploy_configs/cf_config.csv # ....其他参数
+        python cloudflare_dns_tool.py -C $deploy_configs/cf_config.csv # ....其他参数
+
+        # IPv4：自动选择 A 记录
+        python cloudflare_dns_tool.py --new-ip 1.2.3.4 --dry-run
+
+        # IPv6：自动选择 AAAA 记录
+        python cloudflare_dns_tool.py --new-ip 2001:db8::1 --dry-run
+
+        # 只更新旧 IPv6 为指定新 IPv6
+        python cloudflare_dns_tool.py --old-ip 2001:db8::10 --new-ip 2001:db8::20
+
+        # IPv4 -> IPv6 迁移：为匹配旧 IPv4 的记录创建 AAAA，并删除旧 A
+        python cloudflare_dns_tool.py --old-ip 1.2.3.4 --new-ip 2001:db8::1 --dry-run
+
+        # 从指定账号中删除域名,域名及其dns记录都移除
+        python cloudflare_dns_tool.py  --delete-zone full -z domain.com -s cf00
+
+        # 删除域名下的所有dns记录,但保留域名在cf账号中.
+        python cloudflare_dns_tool.py  --delete-zone dns -z domain.com -s cf00
+
+        # 删除所有指向指定 IP 的 A/AAAA 记录
+        python cloudflare_dns_tool.py --delete-ip 1.2.3.4 --dry-run
+
+        # 更新 CNAME
+        python cloudflare_dns_tool.py --record-type CNAME --old-content old.example.com --new-content new.example.com
+
+        # 预览删除所有以 * 开头的通配符记录
+        python cloudflare_dns_tool.py --delete-wildcard --dry-run
+
+        # 只删除通配符 AAAA 记录
+        python cloudflare_dns_tool.py --delete-wildcard --record-type AAAA
+
+        # 保守模式：适合账号多、域名多或已有其他 Cloudflare API 任务同时运行的场景
+        python cloudflare_dns_tool.py --new-ip 1.2.3.4 --conservative --dry-run
+
+        # 自定义全局 API 调用间隔：本脚本进程内所有账号共享，0.5 表示最多约 2 次/秒
+        python cloudflare_dns_tool.py --new-ip 1.2.3.4 --request-interval 0.5
+
+        # 短选项等价写法
+        python cloudflare_dns_tool.py -n 1.2.3.4 -c -d
+        python cloudflare_dns_tool.py -D -c -d
         
-        """
-        
+        """,
     )
     parser.add_argument(
         "-V", "--version", action="version", version=f"%(prog)s {VERSION}"
@@ -3153,11 +3240,16 @@ def run_find_mode(
     """并发检查某个域名/zone 是否存在于多个账号中。"""
     print_lock = Lock()
     target_domain = get_main_domain_name_from_str(domain) or domain.strip().lower()
+    account_total = len(accounts)
 
-    def _find_one(account: dict) -> tuple[str, bool, str, dict]:
-        """返回: (账号名, 是否存在, 错误信息, zone详情)"""
+    def _find_one(account: dict, account_index: int) -> tuple[str, bool, str, dict]:
+        """返回账号名、是否存在、错误信息和含账号上下文的查询详情。"""
         name = account.get("name") or account.get("email") or "unknown"
         email = account.get("email") or ""
+        identity = format_account_identity(account, account_index, account_total)
+        started_at = time.monotonic()
+        with print_lock:
+            log_print(f"[CHECK] {identity}, domain={target_domain}")
         try:
             account_rate_limiter = get_account_rate_limiter(
                 args,
@@ -3180,6 +3272,7 @@ def run_find_mode(
             )
             exists = updater.zone_exists(target_domain)
             zone_info = {}
+            detail_warnings: list[str] = []
             if exists:
                 # 尝试获取 zone 详细信息（记录数等）
                 try:
@@ -3187,6 +3280,8 @@ def run_find_mode(
                     for z in all_zones:
                         if z.get("name", "").lower() == target_domain:
                             zone_id = z.get("id")
+                            if not isinstance(zone_id, str) or not zone_id:
+                                continue
                             zone_info = {
                                 "zone_id": zone_id,
                                 "name": z.get("name"),
@@ -3194,30 +3289,64 @@ def run_find_mode(
                                 "name_servers": z.get("name_servers", []),
                             }
                             try:
-                                records = updater.get_dns_records(zone_id, record_type="ALL")
+                                records = updater.get_dns_records(
+                                    zone_id, record_type="ALL"
+                                )
                                 zone_info["record_count"] = len(records)
                                 # 收集记录摘要（前 10 条）
                                 record_list = []
                                 for r in records[:10]:
-                                    record_list.append({
-                                        "type": r.get("type"),
-                                        "name": r.get("name"),
-                                        "content": r.get("content"),
-                                        "proxied": r.get("proxied", False),
-                                    })
+                                    record_list.append(
+                                        {
+                                            "type": r.get("type"),
+                                            "name": r.get("name"),
+                                            "content": r.get("content"),
+                                            "proxied": r.get("proxied", False),
+                                        }
+                                    )
                                 zone_info["records"] = record_list
                                 if len(records) > 10:
                                     zone_info["records_truncated"] = True
-                            except Exception:
+                            except Exception as exc:
                                 zone_info["record_count"] = "?"
+                                detail_warnings.append(f"读取 DNS 记录详情失败: {exc}")
                             break
-                except Exception:
-                    pass
-            return name, exists, "", {"email": email, "zone_info": zone_info}
+                except Exception as exc:
+                    detail_warnings.append(f"读取 zone 详情失败: {exc}")
+            return (
+                name,
+                exists,
+                "",
+                {
+                    "email": email,
+                    "identity": identity,
+                    "elapsed": time.monotonic() - started_at,
+                    "detail_warnings": detail_warnings,
+                    "zone_info": zone_info,
+                },
+            )
         except KeyboardInterrupt:
-            return name, False, "interrupted", {}
+            return (
+                name,
+                False,
+                "interrupted",
+                {
+                    "email": email,
+                    "identity": identity,
+                    "elapsed": time.monotonic() - started_at,
+                },
+            )
         except Exception as exc:
-            return name, False, str(exc), {}
+            return (
+                name,
+                False,
+                str(exc),
+                {
+                    "email": email,
+                    "identity": identity,
+                    "elapsed": time.monotonic() - started_at,
+                },
+            )
 
     log_print(f"快速查找域名: {target_domain}，账号数: {len(accounts)}")
     found_results: list[dict] = []
@@ -3225,7 +3354,10 @@ def run_find_mode(
     executor = ThreadPoolExecutor(max_workers=max(1, account_workers))
     pending: set[Future[Any]] = set()
     try:
-        pending = {executor.submit(_find_one, account) for account in accounts}
+        pending = {
+            executor.submit(_find_one, account, account_index)
+            for account_index, account in enumerate(accounts, start=1)
+        }
         while pending and not stop_event.is_set():
             done, pending = wait(
                 pending,
@@ -3237,11 +3369,21 @@ def run_find_mode(
 
             for future in done:
                 name, exists, err, extra = future.result()
+                identity = extra.get("identity") or f"name={name}"
+                elapsed = float(extra.get("elapsed", 0.0))
                 if err:
                     if err == "interrupted":
                         continue
-                    log_print(f"[ERR] {name}: {err}")
+                    log_print(
+                        f"[ERR] {identity}, domain={target_domain}, "
+                        f"elapsed={elapsed:.2f}s: {err}"
+                    )
                     continue
+                for warning in extra.get("detail_warnings", []):
+                    log_print(
+                        f"[WARN] {identity}, domain={target_domain}, "
+                        f"elapsed={elapsed:.2f}s: {warning}"
+                    )
                 if exists:
                     zone_info = extra.get("zone_info", {})
                     email = extra.get("email", "")
@@ -3257,10 +3399,15 @@ def run_find_mode(
                     ns_preview = ""
                     if zone_info.get("name_servers"):
                         ns_preview = f" NS={zone_info['name_servers'][0]}"
-                    log_print(f"[FOUND] {name}" + (f" <{email}>" if email else "") +
-                              f" records={rec_count}{ns_preview}")
+                    log_print(
+                        f"[FOUND] {identity}, domain={target_domain}, "
+                        f"records={rec_count}{ns_preview}, elapsed={elapsed:.2f}s"
+                    )
                 else:
-                    log_print(f"[MISS]  {name}")
+                    log_print(
+                        f"[MISS] {identity}, domain={target_domain}, "
+                        f"elapsed={elapsed:.2f}s"
+                    )
     except KeyboardInterrupt:
         stop_event.set()
         log_print("\n[INTERRUPT] 收到 Ctrl+C，正在停止查询...")
@@ -3276,16 +3423,17 @@ def run_find_mode(
     if found_results:
         if args.json:
             import json
+
             output = {
                 "domain": target_domain,
                 "found": len(found_results),
-                "results": []
+                "results": [],
             }
             for r in found_results:
                 item = {
                     "account": r["name"],
                     "email": r.get("email") or None,
-                    "zone": r.get("zone_info", {})
+                    "zone": r.get("zone_info", {}),
                 }
                 output["results"].append(item)
             print(json.dumps(output, ensure_ascii=False, indent=2))
@@ -3309,14 +3457,21 @@ def run_find_mode(
                 if recs:
                     for rec in recs[:5]:
                         prox = " (proxied)" if rec.get("proxied") else ""
-                        log_print(f"    {rec['type']:5} {rec['name']:<30} -> {rec['content']}{prox}")
+                        log_print(
+                            f"    {rec['type']:5} {rec['name']:<30} -> {rec['content']}{prox}"
+                        )
                     if len(recs) > 5 or z.get("records_truncated"):
                         log_print(f"    ... ({z.get('record_count', '?')} total)")
         return 0
 
     if args.json:
         import json
-        print(json.dumps({"domain": target_domain, "found": 0, "results": []}, ensure_ascii=False))
+
+        print(
+            json.dumps(
+                {"domain": target_domain, "found": 0, "results": []}, ensure_ascii=False
+            )
+        )
     else:
         log_print("- 未在任何账号中找到")
     return 2
@@ -3391,7 +3546,7 @@ def run_operation_for_account(
         elif args.add_domain or args.add_record:
             # 默认启用代理，除非用户显式使用 --no-proxied
             use_proxied = not getattr(args, "no_proxied", False)
-            
+
             batch_result = updater.batch_add_domain_and_records(
                 add_domain=args.add_domain,
                 add_records=args.add_record,
@@ -3529,7 +3684,11 @@ def validate_action_args(args: argparse.Namespace) -> None:
         log_print("--find-domain 查询模式不能与更新/删除模式同时使用")
         sys.exit(1)
 
-    destructive_modes = [bool(args.delete_wildcard), bool(args.delete_ip), bool(args.delete_zone)]
+    destructive_modes = [
+        bool(args.delete_wildcard),
+        bool(args.delete_ip),
+        bool(args.delete_zone),
+    ]
     add_modes = [bool(args.add_domain), bool(args.add_record)]
 
     if args.new_content and any(destructive_modes):
