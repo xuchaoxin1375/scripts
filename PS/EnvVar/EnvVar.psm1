@@ -255,7 +255,7 @@ function Get-EnvPath
             # $Path = [System.Environment]::GetEnvironmentVariable('Path', 'Machine')
             $path = Get-EnvVarRawValue -EnvVar 'Path' -Scope 'Machine'
         }
-        Default
+        default
         {
             # $Path = [System.Environment]::GetEnvironmentVariable('Path', 'Process')
             $path = Get-EnvVarRawValue -EnvVar 'Path' -Scope 'Process'
@@ -964,9 +964,9 @@ function Update-EnvVarFromSysEnv
     更新所有环境变量的修改(包括添加新值/移除已有值/修改值),并且能够指出那些环境变量被修改了以及修改前后是什么样的
     可以手动调用来刷新当前shell的环境变量
 
-    👺鉴于Path变量的特殊性,本函数不会处理Path变量;并且PsModulePath和Path有类似的特点,也应该跳过不处理
+    鉴于Path变量的特殊性,本函数不会处理Path变量;并且PsModulePath和Path有类似的特点,也应该跳过不处理
 
-    😊本函数本身不会修改[Environment]中的环境变量,即不会影响系统保存的环境变量,无论是用户级还是系统,只更新当前shell中的环境变量
+    本函数本身不会修改[Environment]中的环境变量,即不会影响系统保存的环境变量,无论是用户级还是系统,只更新当前shell中的环境变量
 
     对于多个shell窗口同时发生修改环境变量的情形时很有用,当然如果您习惯用GUI修改环境变量,本方法也可以将您的修改同步到当前shell(除了Path变量外)
 
@@ -983,7 +983,8 @@ function Update-EnvVarFromSysEnv
     [CmdletBinding()]
     param(
 
-        $Scope = 'Combined'
+        [ValidateSet('Machine', 'User', 'process')]
+        $Scope = 'User'
     )
     $envs = [System.Environment]::GetEnvironmentVariables($Scope)
     # 扫描所有的注册表中已有的环境变量,将其同步到当前powershell中,防止在不同shell中操作环境变量导致的不一致性
