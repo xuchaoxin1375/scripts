@@ -1,0 +1,1448 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KeyLens · API Key 体检站</title>
+<style>
+  :root {
+    --bg: #070b14; --card: rgba(255,255,255,.05); --card-brd: rgba(255,255,255,.1);
+    --txt: #e6eaf2; --muted: #8b93a7; --sub: #a5adc0;
+    --accent1: #6366f1; --accent2: #22d3ee;
+    --blob1: #6366f1; --blob2: #0ea5e9;
+    --inp-bg: rgba(0,0,0,.28); --chip-bg: rgba(255,255,255,.04); --log-bg: rgba(0,0,0,.35);
+    --ok: #34d399; --err: #f87171; --warn: #fbbf24;
+    --shadow-main: rgba(99,102,241,.4);
+    --ripple: rgba(255,255,255,.3);
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  body[data-theme="ocean"] {
+    --bg: #020d1f; --accent1: #2563eb; --accent2: #06b6d4;
+    --blob1: #2563eb; --blob2: #0891b2; --shadow-main: rgba(37,99,235,.4);
+  }
+  body[data-theme="sakura"] {
+    --bg: #150720; --accent1: #ec4899; --accent2: #fb7185;
+    --blob1: #ec4899; --blob2: #8b5cf6; --shadow-main: rgba(236,72,153,.4);
+  }
+  body[data-theme="jade"] {
+    --bg: #021710; --accent1: #10b981; --accent2: #a3e635;
+    --blob1: #10b981; --blob2: #22c55e; --shadow-main: rgba(16,185,129,.4);
+  }
+  body[data-theme="ember"] {
+    --bg: #180902; --accent1: #f97316; --accent2: #f43f5e;
+    --blob1: #f97316; --blob2: #ef4444; --shadow-main: rgba(249,115,22,.4);
+  }
+  body[data-theme="light"] {
+    --bg: #eef2f9; --card: rgba(255,255,255,.78); --card-brd: rgba(15,23,42,.12);
+    --txt: #1a2233; --muted: #64748b; --sub: #475569;
+    --accent1: #4f46e5; --accent2: #0891b2;
+    --blob1: #6366f1; --blob2: #22d3ee;
+    --inp-bg: #fff; --chip-bg: #fff; --log-bg: #0f172a;
+    --ok: #059669; --err: #dc2626; --warn: #d97706;
+    --shadow-main: rgba(79,70,229,.35);
+    --ripple: rgba(15,23,42,.12);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg); color: var(--txt); min-height: 100vh; overflow-x: hidden;
+    padding: 40px 16px 60px; transition: background .6s ease, color .6s ease;
+  }
+  .aurora { position: fixed; inset: 0; z-index: 0; pointer-events: none; transition: opacity .6s; }
+  .aurora::before, .aurora::after {
+    content: ""; position: absolute; width: 55vw; height: 55vw; border-radius: 50%;
+    filter: blur(110px); opacity: .35; animation: drift 18s ease-in-out infinite alternate;
+    transition: background .6s ease;
+  }
+  .aurora::before { background: radial-gradient(circle, var(--blob1), transparent 60%); top: -20%; left: -10%; }
+  .aurora::after { background: radial-gradient(circle, var(--blob2), transparent 60%); bottom: -25%; right: -15%; animation-delay: -9s; }
+  @keyframes drift { from { transform: translate(0,0) scale(1); } to { transform: translate(6vw,4vh) scale(1.15); } }
+
+  .wrap { position: relative; z-index: 1; max-width: 980px; margin: 0 auto; }
+
+  header { text-align: center; margin-bottom: 28px; animation: fadeDown .5s ease; }
+  h1 {
+    font-size: 30px; font-weight: 800; letter-spacing: .5px;
+    background: linear-gradient(120deg, var(--txt), var(--accent2), var(--accent1));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    transition: filter .6s;
+  }
+  .sub { color: var(--muted); margin-top: 8px; font-size: 14px; line-height: 1.7; transition: color .6s; }
+  .badge {
+    display: inline-block; margin-top: 12px; padding: 4px 12px; font-size: 12px;
+    color: var(--ok); border: 1px solid rgba(52,211,153,.35); border-radius: 999px;
+    background: rgba(52,211,153,.08); transition: all .6s;
+  }
+  body[data-theme="light"] .badge { border-color: rgba(5,150,105,.35); background: rgba(5,150,105,.08); }
+  body[data-theme="light"] .aurora::before, body[data-theme="light"] .aurora::after { opacity: .2; }
+  body[data-theme="light"] .icon-btn:hover { border-color: rgba(15,23,42,.3); background: rgba(15,23,42,.06); }
+
+  .card {
+    background: var(--card); border: 1px solid var(--card-brd); border-radius: 20px;
+    backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+    padding: 26px; margin-bottom: 20px; box-shadow: 0 8px 40px rgba(0,0,0,.45);
+    animation: fadeUp .5s ease both;
+    transition: background .6s ease, border-color .6s ease, box-shadow .6s ease;
+  }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+  @keyframes fadeDown { from { opacity: 0; transform: translateY(-14px); } to { opacity: 1; transform: none; } }
+  .card:nth-child(2) { animation-delay: .08s; }
+  .card:nth-child(3) { animation-delay: .16s; }
+  .card-title { font-size: 15px; font-weight: 700; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; transition: color .6s; }
+  .card-title svg { color: var(--accent2); transition: color .6s; }
+
+  /* 服务商预设 */
+  .providers { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    position: relative; overflow: hidden; padding: 7px 14px; border-radius: 999px;
+    border: 1px solid var(--card-brd); cursor: pointer; font-size: 13px; color: var(--muted);
+    background: var(--chip-bg); transition: all .18s ease, background .6s, border-color .6s, color .6s;
+    user-select: none;
+  }
+  .chip:hover { color: var(--txt); border-color: rgba(255,255,255,.35); transform: translateY(-1px); }
+  .chip.active {
+    color: #fff; background: linear-gradient(120deg, var(--accent1), var(--accent2));
+    border-color: transparent; box-shadow: 0 4px 18px var(--shadow-main);
+  }
+  body[data-theme="light"] .chip:hover { border-color: rgba(15,23,42,.3); }
+
+  .sync-row { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+  .sync-row .sep { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .sel {
+    flex: 1; padding: 9px 12px; font-size: 13px; color: var(--txt); cursor: pointer;
+    background: var(--inp-bg); border: 1px solid var(--card-brd); border-radius: 10px; outline: none;
+    transition: border-color .2s, box-shadow .2s, background .6s, color .6s;
+  }
+  .sel:focus { border-color: var(--accent2); box-shadow: 0 0 0 3px rgba(34,211,238,.15); }
+  .sel option { background: var(--bg); color: var(--txt); }
+
+  .field { margin-bottom: 18px; }
+  .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: var(--sub); transition: color .6s; }
+  .input-row { display: flex; gap: 8px; }
+  /* 服务商下拉 + URL 输入组合行 */
+  .url-row { display: grid; grid-template-columns: 200px 1fr; gap: 8px; }
+  .url-row .sel { font-size: 13px; padding: 13px 12px; }
+  #baseUrl {
+    font-family: var(--mono); font-size: 14.5px; letter-spacing: .2px; padding: 13px 16px;
+  }
+  .inp {
+    flex: 1; min-width: 0; padding: 11px 14px; font-size: 14px; color: var(--txt);
+    background: var(--inp-bg); border: 1px solid var(--card-brd); border-radius: 12px;
+    outline: none; transition: border-color .2s, box-shadow .2s, background .6s, color .6s;
+    font-family: inherit;
+  }
+  .inp:focus { border-color: var(--accent2); box-shadow: 0 0 0 3px rgba(34,211,238,.15); }
+  .inp::placeholder { color: #565e73; }
+  body[data-theme="light"] .inp::placeholder { color: #94a3b8; }
+  .icon-btn {
+    position: relative; overflow: hidden; width: 42px; border-radius: 12px;
+    border: 1px solid var(--card-brd); cursor: pointer; background: rgba(255,255,255,.05);
+    color: var(--muted); display: flex; align-items: center; justify-content: center;
+    transition: all .18s, background .6s, border-color .6s, color .6s; flex-shrink: 0;
+  }
+  .icon-btn:hover { color: var(--txt); border-color: rgba(255,255,255,.35); }
+  .tip { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.6; transition: color .6s; }
+  .tip b { color: var(--sub); font-weight: 600; transition: color .6s; }
+  .tip code { font-size: 11px; background: rgba(255,255,255,.08); padding: 1px 5px; border-radius: 5px; }
+  body[data-theme="light"] .tip code { background: rgba(15,23,42,.08); }
+
+  /* 模型行：输入 + 下拉 */
+  .model-row { display: grid; grid-template-columns: 1fr 240px; gap: 8px; }
+  .model-row .inp { width: 100%; }
+  .model-sel-note { font-size: 11px; color: var(--muted); }
+
+  .opts { display: flex; align-items: center; gap: 16px; margin: 6px 0 18px; flex-wrap: wrap; }
+  .check { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--muted); cursor: pointer; user-select: none; transition: color .6s; }
+  .check input { accent-color: var(--accent1); width: 15px; height: 15px; cursor: pointer; }
+
+  .actions { display: flex; gap: 10px; }
+  .btn {
+    position: relative; overflow: hidden; flex: 1; padding: 13px; border: none; border-radius: 13px;
+    cursor: pointer; font-size: 15px; font-weight: 700; transition: all .2s ease, box-shadow .6s;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .btn-main {
+    background: linear-gradient(120deg, var(--accent1), var(--accent2)); color: #fff;
+    box-shadow: 0 6px 24px var(--shadow-main);
+  }
+  .btn-main:hover:not(:disabled) { transform: translateY(-2px); filter: brightness(1.1); }
+  .btn-main:disabled { opacity: .55; cursor: wait; }
+  .btn-ghost { flex: 0 0 auto; background: var(--chip-bg); color: var(--muted); border: 1px solid var(--card-brd); padding: 13px 18px; transition: all .18s, background .6s, color .6s, border-color .6s; }
+  .btn-ghost:hover { color: var(--txt); }
+
+  /* 步骤指示 */
+  .steps { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; }
+  .step { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); transition: color .6s; }
+  .step .dot {
+    width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--card-brd);
+    display: flex; align-items: center; justify-content: center; font-size: 10px;
+    transition: all .3s, background .6s, border-color .6s;
+  }
+  .step.done .dot { background: var(--ok); border-color: var(--ok); color: #06281c; }
+  .step.run .dot { background: var(--accent1); border-color: var(--accent1); color: #fff; animation: pulse 1.2s infinite; }
+  .step.run { color: var(--txt); }
+  .step-line { flex: 1; height: 2px; background: var(--card-brd); border-radius: 2px; overflow: hidden; transition: background .6s; }
+  .step-line::after { content: ""; display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent1), var(--accent2)); transition: width .4s; }
+  .step-line.filled::after { width: 100%; }
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 var(--shadow-main); } 50% { box-shadow: 0 0 0 7px rgba(99,102,241,0); } }
+
+  /* 结果区 */
+  #result { display: none; }
+  .verdict { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 14px; margin-bottom: 14px; font-size: 14px; font-weight: 600; animation: fadeUp .3s ease; transition: all .6s; }
+  .verdict.ok { background: rgba(52,211,153,.1); border: 1px solid rgba(52,211,153,.35); color: var(--ok); }
+  .verdict.err { background: rgba(248,113,113,.1); border: 1px solid rgba(248,113,113,.35); color: var(--err); }
+  .verdict.warn { background: rgba(251,191,36,.08); border: 1px solid rgba(251,191,36,.3); color: var(--warn); }
+  .verdict .meta { margin-left: auto; font-size: 12px; font-weight: 400; opacity: .8; text-align: right; }
+  .log {
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.8; white-space: pre-wrap; word-break: break-all;
+    background: #0f172a; border: 1px solid var(--card-brd); border-radius: 14px; color: #dde3ee;
+    padding: 16px; max-height: 380px; overflow: auto; transition: border-color .6s;
+  }
+  /* 终端式日志区固定配色，不随主题变化，保证任何主题下清晰可读 */
+  .log .l-ok { color: #34d399; } .log .l-err { color: #f87171; } .log .l-warn { color: #fbbf24; }
+  .log .l-dim { color: #8b93a7; } .log .l-info { color: #22d3ee; }
+  .log .l-line { display: block; animation: fadeUp .25s ease both; }
+
+  /* 历史 */
+  .hist-empty { color: var(--muted); font-size: 13px; text-align: center; padding: 14px 0; }
+  .hist-item {
+    position: relative; overflow: hidden; display: flex; align-items: center; gap: 12px; padding: 11px 14px;
+    border-radius: 12px; background: rgba(255,255,255,.03); border: 1px solid var(--card-brd);
+    margin-bottom: 8px; cursor: pointer; transition: all .18s, background .6s, border-color .6s;
+    animation: fadeUp .3s ease both;
+  }
+  .hist-item:hover { background: rgba(255,255,255,.07); border-color: rgba(255,255,255,.25); transform: translateX(3px); }
+  body[data-theme="light"] .hist-item { background: rgba(15,23,42,.03); }
+  body[data-theme="light"] .hist-item:hover { background: rgba(15,23,42,.07); }
+  .hist-item .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .hist-item .dot.ok { background: var(--ok); box-shadow: 0 0 8px rgba(52,211,153,.8); }
+  .hist-item .dot.bad { background: var(--err); box-shadow: 0 0 8px rgba(248,113,113,.8); }
+  .hist-item .info { flex: 1; min-width: 0; }
+  .hist-item .name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hist-item .meta2 { font-size: 11.5px; color: var(--muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hist-item .time { font-size: 11px; color: var(--muted); flex-shrink: 0; }
+  .hist-item .del { border: none; background: none; color: var(--muted); cursor: pointer; font-size: 16px; padding: 4px 8px; border-radius: 8px; flex-shrink: 0; }
+  .hist-item .del:hover { color: var(--err); background: rgba(248,113,113,.1); }
+  .hist-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .hist-head .clear { border: none; background: none; color: var(--muted); font-size: 12px; cursor: pointer; padding: 4px 8px; border-radius: 8px; transition: all .2s; }
+  .hist-head .clear:hover { color: var(--err); background: rgba(248,113,113,.08); }
+
+  footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 30px; line-height: 1.8; transition: color .6s; }
+  .spin { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: rot .7s linear infinite; }
+  @keyframes rot { to { transform: rotate(360deg); } }
+
+  /* 涟漪 */
+  .ripple {
+    position: absolute; border-radius: 50%; transform: scale(0); pointer-events: none;
+    background: var(--ripple); animation: ripple .6s ease-out forwards;
+  }
+  @keyframes ripple { to { transform: scale(1); opacity: 0; } }
+
+  /* 主题切换按钮与面板 */
+  .fab {
+    position: fixed; right: 22px; bottom: 22px; z-index: 60; width: 52px; height: 52px;
+    border-radius: 50%; border: 1px solid var(--card-brd); cursor: pointer;
+    background: linear-gradient(135deg, var(--accent1), var(--accent2)); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 8px 28px var(--shadow-main); transition: transform .25s, box-shadow .4s;
+  }
+  .fab:hover { transform: scale(1.1) rotate(20deg); }
+  .theme-panel {
+    position: fixed; right: 22px; bottom: 86px; z-index: 59; width: 250px;
+    background: var(--card); border: 1px solid var(--card-brd); border-radius: 18px;
+    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    padding: 18px; box-shadow: 0 12px 40px rgba(0,0,0,.5);
+    opacity: 0; transform: translateY(12px) scale(.95); pointer-events: none;
+    transition: opacity .25s, transform .25s, background .6s, border-color .6s;
+  }
+  .theme-panel.open { opacity: 1; transform: none; pointer-events: auto; }
+  .tp-title { font-size: 13px; font-weight: 700; margin-bottom: 12px; color: var(--sub); display: flex; justify-content: space-between; align-items: center; }
+  .tp-title .close { border: none; background: none; color: var(--muted); cursor: pointer; font-size: 14px; padding: 2px 6px; border-radius: 6px; }
+  .tp-title .close:hover { color: var(--err); }
+  .swatches { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .swatch {
+    position: relative; overflow: hidden; border-radius: 12px; padding: 8px 6px 7px; cursor: pointer;
+    border: 1px solid var(--card-brd); text-align: center; transition: all .2s, background .6s, border-color .6s;
+    user-select: none;
+  }
+  .swatch:hover { transform: translateY(-2px); }
+  .swatch .c1 { width: 22px; height: 22px; border-radius: 50%; margin: 0 auto 6px; box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+  .swatch .cn { font-size: 11px; color: var(--muted); }
+  .swatch.active { border-color: var(--accent2); box-shadow: 0 0 0 2px var(--accent2); }
+  .swatch.active .cn { color: var(--txt); font-weight: 700; }
+
+  /* 模态框（导出 / 导入） */
+  .overlay {
+    position: fixed; inset: 0; z-index: 90; display: none; align-items: center; justify-content: center;
+    background: rgba(0,0,0,.55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    padding: 16px;
+  }
+  .overlay.open { display: flex; animation: fadeIn .2s ease; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .modal {
+    width: min(760px, 94vw); max-height: 86vh; display: flex; flex-direction: column;
+    background: var(--card); border: 1px solid var(--card-brd); border-radius: 20px;
+    backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+    padding: 22px; box-shadow: 0 16px 60px rgba(0,0,0,.55); animation: fadeUp .25s ease;
+    transition: background .6s, border-color .6s;
+  }
+  .modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+  .modal-head h3 { font-size: 16px; font-weight: 800; }
+  .modal-head .close { border: none; background: none; color: var(--muted); cursor: pointer; font-size: 18px; padding: 4px 10px; border-radius: 8px; }
+  .modal-head .close:hover { color: var(--err); background: rgba(248,113,113,.1); }
+  .modal-sub { font-size: 12px; color: var(--muted); }
+  .tabs { display: flex; gap: 6px; margin: 14px 0 10px; flex-wrap: wrap; }
+  .tab {
+    padding: 6px 13px; border-radius: 999px; font-size: 12.5px; cursor: pointer;
+    border: 1px solid var(--card-brd); color: var(--muted); background: var(--chip-bg);
+    transition: all .18s, background .6s, color .6s, border-color .6s;
+  }
+  .tab:hover { color: var(--txt); }
+  .tab.active { color: #fff; background: linear-gradient(120deg, var(--accent1), var(--accent2)); border-color: transparent; box-shadow: 0 3px 12px var(--shadow-main); }
+  .codebox {
+    background: #0f172a; border: 1px solid var(--card-brd); border-radius: 12px; color: #dde3ee;
+    padding: 14px 0; font-family: var(--mono); font-size: 12px; line-height: 1.75;
+    overflow: auto; max-height: 42vh; transition: border-color .6s; counter-reset: ln;
+    flex: 1; min-height: 120px;
+  }
+  .code-line { display: block; white-space: pre; padding-right: 14px; counter-increment: ln; }
+  .code-line:hover { background: rgba(255,255,255,.05); }
+  .code-line::before {
+    content: counter(ln); display: inline-block; width: 2.4em; text-align: right;
+    margin-right: 12px; color: #4a5568; user-select: none; font-size: 11px;
+  }
+  .codebox .cmt { color: #8b93a7; font-style: italic; }
+  .codebox .kw { color: #c4b5fd; }
+  .codebox .str { color: #a5d6a5; }
+  .codebox .url { color: #67e8f9; text-decoration: underline; text-decoration-style: dotted; }
+  .modal-actions { display: flex; gap: 8px; margin-top: 14px; }
+  .modal-actions .btn-ghost { flex: 1; }
+  .import-ta {
+    width: 100%; min-height: 180px; resize: vertical; font-family: var(--mono); font-size: 12.5px; line-height: 1.7;
+    padding: 12px 14px; color: #dde3ee; background: #0f172a; border: 1px solid var(--card-brd);
+    border-radius: 12px; outline: none; transition: border-color .2s, box-shadow .2s;
+  }
+  .import-ta:focus { border-color: var(--accent2); box-shadow: 0 0 0 3px rgba(34,211,238,.15); }
+  .import-ta::placeholder { color: #56637a; }
+  .import-result { margin-top: 10px; font-size: 12.5px; line-height: 1.7; white-space: pre-wrap; word-break: break-all; }
+
+  /* 操作说明 */
+  #guide details {
+    border: 1px solid var(--card-brd); border-radius: 12px; padding: 2px 14px; margin-bottom: 8px;
+    background: rgba(255,255,255,.02); transition: background .3s, border-color .3s;
+  }
+  #guide details[open] { background: rgba(255,255,255,.04); }
+  #guide summary {
+    cursor: pointer; padding: 10px 0; font-size: 13.5px; font-weight: 600; color: var(--sub);
+    list-style: none; display: flex; align-items: center; gap: 8px; user-select: none; transition: color .2s;
+  }
+  #guide summary::-webkit-details-marker { display: none; }
+  #guide summary::before { content: '▸'; transition: transform .25s; color: var(--accent2); font-size: 11px; }
+  #guide details[open] summary::before { transform: rotate(90deg); }
+  #guide summary:hover { color: var(--txt); }
+  #guide .guide-body { padding: 2px 0 12px; font-size: 12.5px; line-height: 1.9; color: var(--muted); }
+  #guide .guide-body p { margin-bottom: 8px; }
+  #guide .guide-body b { color: var(--sub); }
+  #guide .guide-body ol, #guide .guide-body ul { padding-left: 18px; margin: 6px 0; }
+  #guide .guide-body li { margin-bottom: 4px; }
+  #guide .guide-body pre {
+    background: #0f172a; color: #dde3ee; font-family: var(--mono); font-size: 11.5px; line-height: 1.7;
+    padding: 10px 12px; border-radius: 10px; margin: 8px 0; overflow-x: auto; white-space: pre;
+  }
+  #guide .warn-box {
+    border: 1px solid rgba(251,191,36,.3); background: rgba(251,191,36,.07); color: var(--warn);
+    border-radius: 10px; padding: 8px 12px; margin: 8px 0; font-size: 12px;
+  }
+
+  @media (max-width: 620px) {
+    body { padding: 24px 12px 40px; }
+    h1 { font-size: 24px; }
+    .card { padding: 20px; }
+    .actions { flex-wrap: wrap; }
+    .btn-ghost { flex: 1; }
+    .model-row { grid-template-columns: 1fr; }
+    .url-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body data-theme="light">
+<div class="aurora"></div>
+<div class="wrap">
+
+<header>
+  <h1>KeyLens · API Key 体检站</h1>
+  <p class="sub">一站式检测 OpenAI / Anthropic / Gemini 及所有 OpenAI 兼容中转站的 Key 是否可用</p>
+  <span class="badge">隐私保障：Key 仅在本机浏览器中直连对应 API，不经过任何中间服务器</span>
+</header>
+
+<div class="card">
+  <div class="card-title">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+    ① 选择服务商
+  </div>
+  <div class="providers" id="providers"></div>
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+    ② 填写连接信息
+  </div>
+
+  <div class="field">
+    <label>API 地址（Base URL）</label>
+    <div class="url-row">
+      <select class="sel" id="providerSel"></select>
+      <input id="baseUrl" class="inp" type="text" placeholder="https://api.openai.com/v1" spellcheck="false">
+    </div>
+    <div class="tip"><b>小贴士：</b>中转站地址一般形如 <code>https://你的域名/v1</code>，结尾的 <code>/v1</code> 很重要，缺失时通常报 404。左侧下拉与服务商徽章联动。</div>
+  </div>
+
+  <div class="field">
+    <label>API Key</label>
+    <div class="input-row">
+      <input id="apiKey" class="inp" type="password" placeholder="粘贴 API Key（sk-… / sk-ant-… / 任意格式）" autocomplete="off" spellcheck="false">
+      <button class="icon-btn" id="toggleKey" title="显示 / 隐藏">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+      </button>
+    </div>
+    <div class="tip">点击右侧眼睛图标可临时查看明文；不同服务商的 Key 格式不同（OpenAI 为 <code>sk-…</code>，Anthropic 为 <code>sk-ant-…</code>），工具会自动按所选服务商采用正确的鉴权方式。</div>
+  </div>
+
+  <div class="field">
+    <label>测试模型（支持多个，用英文逗号分隔）</label>
+    <div class="model-row">
+      <input id="model" class="inp" type="text" placeholder="gpt-4o-mini" list="modelList" spellcheck="false">
+      <datalist id="modelList"></datalist>
+      <select class="sel" id="modelSel">
+        <option value="">— 验证 Key 后从模型列表点选 —</option>
+      </select>
+    </div>
+    <div class="tip">可直接输入模型名；也可先在下方点击 <b>"开始体检"</b> 验证 Key，随后用右侧下拉框挑选可用模型。</div>
+  </div>
+
+  <div class="opts">
+    <label class="check"><input type="checkbox" id="saveKey" checked> 在本机记住 Key，下次免填</label>
+    <label class="check"><input type="checkbox" id="detail" checked> 显示详细过程</label>
+  </div>
+
+  <div class="field" id="channelRow" style="display:none">
+    <label>测试通道</label>
+    <div class="providers" id="channel"></div>
+    <div class="tip" id="channelTip"></div>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-main" id="btn"><span id="btnLabel">开始体检</span></button>
+    <button class="btn btn-ghost" id="exportBtn">导出代码</button>
+    <button class="btn btn-ghost" id="importBtn">从 curl 导入</button>
+    <button class="btn btn-ghost" id="copyBtn">复制结果</button>
+    <button class="btn btn-ghost" id="resetBtn">重置</button>
+  </div>
+  <div class="tip" style="text-align:center">快捷键 <b>Ctrl/⌘ + Enter</b> 一键开始 · 导出可将当前配置转成 curl / Python / JS 代码直接使用<br>
+  若 <b>curl 可用但网页报错</b>，通常是服务商未开启浏览器跨域（CORS），体检报告会给出详细诊断与等价 curl</div>
+</div>
+
+<div class="card" id="result">
+  <div class="card-title">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg>
+    ③ 体检报告
+  </div>
+  <div class="steps">
+    <div class="step" id="s1"><span class="dot">1</span>验证 Key</div>
+    <div class="step-line" id="l1"></div>
+    <div class="step" id="s2"><span class="dot">2</span>获取模型</div>
+    <div class="step-line" id="l2"></div>
+    <div class="step" id="s3"><span class="dot">3</span>对话测试</div>
+  </div>
+  <div class="verdict" id="verdict"></div>
+  <div class="log" id="log"></div>
+</div>
+
+<div class="card">
+  <div class="hist-head">
+    <div class="card-title" style="margin:0">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>
+      测试历史（点击回填）
+    </div>
+    <button class="clear" id="clearHist">清空历史</button>
+  </div>
+  <div id="histList"><div class="hist-empty">暂无记录，测过一次后这里会自动保存</div></div>
+</div>
+
+<div class="card" id="guide">
+  <div class="card-title">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+    操作说明与常见问题
+  </div>
+
+  <details open>
+    <summary>快速上手（三步）</summary>
+    <div class="guide-body">
+      <ol>
+        <li><b>一键启动（推荐）</b>：终端执行 <code>~/api-key-tester/start.sh</code>，浏览器自动打开后端页面，测试自动走"服务器通道"，与 curl 行为一致，完全没有 CORS 问题</li>
+        <li><b>选服务商</b>：点上方徽章即可自动填地址；或直接粘贴你的 API 地址，左侧下拉会自动匹配</li>
+        <li><b>填 Key</b>：粘贴即可；模型留空时验证后会自动选用第一个可用模型</li>
+        <li><b>开始体检</b>：查看报告与诊断；失败时报告会给出原因、错误详情和可直接复现的 curl 命令</li>
+      </ol>
+    </div>
+  </details>
+
+  <details>
+    <summary>CORS 是什么？为什么 curl 能用、网页不行？</summary>
+    <div class="guide-body">
+      <p><b>CORS（跨域资源共享）</b>是浏览器的一项安全策略：网页只能读取"同源"（协议 + 域名 + 端口一致）服务器的响应；要跨域读取，服务商必须显式返回 CORS 授权响应头。</p>
+      <ul>
+        <li><b>curl / Python / 后端代码</b>：不受浏览器同源策略约束，天然可以访问任何 API —— 所以导出的 curl 能通</li>
+        <li><b>网页版</b>：请求其实已经发出去了，但如果服务商没返回 CORS 授权头，浏览器会把响应整包丢弃，表现为"请求被拦截（疑似 CORS）"</li>
+      </ul>
+      <div class="warn-box">结论：curl 可用而网页不行，几乎一定是 CORS 拦截，与 Key 是否正确无关。本工具失败时会自动探测服务器可达性（OPTIONS 预检）并给出等价 curl，帮你快速确认。</div>
+    </div>
+  </details>
+
+  <details>
+    <summary>CORS 的解决办法</summary>
+    <div class="guide-body">
+      <ol>
+        <li><b>用本工具自带的本地后端（推荐，一键解决）</b>：终端执行 <code>~/api-key-tester/start.sh</code>（停止用 <code>stop</code>，状态用 <code>status</code>）。页面会显示"测试通道"并默认使用<b>服务器通道</b>——由本地后端代发请求，行为与 curl 一致，不再受浏览器 CORS 限制</li>
+        <li><b>换用支持 CORS 的服务商</b>：OpenAI / Anthropic / Google / Groq 等官方接口普遍支持浏览器跨域；部分第三方中转站不支持，挑选时可优先选择支持 CORS 的</li>
+        <li><b>用终端 / 后端调用</b>：点"导出代码"得到 curl / Python / JS 代码，在命令行或服务器执行 —— 本工具测试用的请求与你导出的代码完全一致</li>
+        <li><b>本地起一个通用 CORS 转发代理</b>（不开后端时可用，示例）：
+<pre># 例如用 npx 起代理（无需安装到项目，按提示选择即可）
+npx local-cors-proxy --proxyUrl https://你的API域名 --port 8010
+# 然后网页里把 API 地址填成：
+http://localhost:8010/v1</pre>
+          代理会把浏览器请求原样转发到目标 API，并自动补上 CORS 授权头
+        </li>
+        <li><b>浏览器插件临时放行</b>：如各类 CORS 浏览器扩展（仅建议本地调试使用，请勿在处理敏感数据时依赖插件）</li>
+      </ol>
+    </div>
+  </details>
+
+  <details>
+    <summary>常见问题</summary>
+    <div class="guide-body">
+      <ul>
+        <li><b>401 / 403 / 404 / 429 分别代表什么？</b> 依次为：Key 无效或过期 / 无权访问该模型或渠道 / 地址或模型名不存在 / 请求过频或余额不足。每次测试报告都会给出对应中文解释</li>
+        <li><b>支持哪些服务商？</b> OpenAI、Anthropic、Gemini 及所有 OpenAI 兼容中转站；鉴权方式自动适配（Bearer / x-api-key / URL 参数）</li>
+        <li><b>我的 Key 安全吗？</b> Key 只存在你浏览器的 localStorage 中（本机），仅在点击体检时直连对应 API，无任何第三方服务器中转。可取消"记住 Key"并清空历史记录</li>
+        <li><b>如何一次测试多个模型？</b> 模型框用英文逗号分隔多个模型名；或先体检获得模型列表，再从右侧下拉挑选</li>
+        <li><b>导出代码与网页测试结果为什么一致？</b> 因为页面发送的请求就是导出代码中的那一条，只是多了浏览器的 CORS 检查</li>
+      </ul>
+    </div>
+  </details>
+</div>
+
+<footer>
+  KeyLens 纯前端工具 · 无服务端 · 无追踪<br>
+  仅提示：请妥善保管你的 Key，切勿分享给他人
+</footer>
+</div>
+
+<!-- 导出模态框 -->
+<div class="overlay" id="exportOverlay">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <h3>导出调用代码</h3>
+        <div class="modal-sub" id="exportSub">按当前所选服务商协议生成，可直接复制使用</div>
+      </div>
+      <button class="close" data-close="exportOverlay">✕</button>
+    </div>
+    <div class="tabs" id="exportTabs"></div>
+    <div class="codebox" id="exportCode"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="copyCode">复制代码</button>
+      <button class="btn btn-ghost" id="downloadCode">下载文件</button>
+      <button class="btn btn-ghost" data-close="exportOverlay">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- 导入模态框 -->
+<div class="overlay" id="importOverlay">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <h3>从 curl 命令导入</h3>
+        <div class="modal-sub">粘贴一条 API 调用 curl 命令，自动识别地址、Key、模型并回填表单</div>
+      </div>
+      <button class="close" data-close="importOverlay">✕</button>
+    </div>
+    <textarea class="import-ta" id="importTa" placeholder='示例：
+curl -X POST "https://api.openai.com/v1/chat/completions" \
+  -H "Authorization: Bearer sk-xxxx" \
+  -H "Content-Type: application/json" \
+  -d '"'"'{"model":"gpt-4o-mini","messages":[{"role":"user","content":"你好"}]}'"'"''></textarea>
+    <div class="import-result" id="importResult"></div>
+    <div class="modal-actions">
+      <button class="btn btn-main" id="importParse">解析并回填</button>
+      <button class="btn btn-ghost" data-close="importOverlay">关闭</button>
+    </div>
+  </div>
+</div>
+
+<button class="fab" id="themeFab" title="切换主题">
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
+</button>
+<div class="theme-panel" id="themePanel">
+  <div class="tp-title">切换主题
+    <button class="close" id="tpClose">✕</button>
+  </div>
+  <div class="swatches" id="swatches"></div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const PROVIDERS = [
+  { name: 'OpenAI',   base: 'https://api.openai.com/v1',   model: 'gpt-4o-mini',  color: '#10a37f', auth: 'bearer',    chat: 'openai' },
+  { name: 'Anthropic', base: 'https://api.anthropic.com/v1', model: 'claude-3-5-haiku-20241022', color: '#d97757', auth: 'x-api-key', chat: 'anthropic', extraHeaders: { 'anthropic-version': '2023-06-01' } },
+  { name: 'Gemini',   base: 'https://generativelanguage.googleapis.com/v1beta', model: 'gemini-2.0-flash', color: '#4285f4', auth: 'query-key', chat: 'gemini' },
+  { name: 'DeepSeek', base: 'https://api.deepseek.com/v1', model: 'deepseek-chat', color: '#4d6bfe', auth: 'bearer', chat: 'openai' },
+  { name: 'Moonshot', base: 'https://api.moonshot.cn/v1',  model: 'moonshot-v1-8k', color: '#1e1e1e', auth: 'bearer', chat: 'openai' },
+  { name: '硅基流动', base: 'https://api.siliconflow.cn/v1', model: 'Qwen/Qwen2.5-7B-Instruct', color: '#5ad7a3', auth: 'bearer', chat: 'openai' },
+  { name: 'Groq',     base: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile', color: '#f55036', auth: 'bearer', chat: 'openai' },
+  { name: 'OpenRouter', base: 'https://openrouter.ai/api/v1', model: 'openai/gpt-4o-mini', color: '#8b5cf6', auth: 'bearer', chat: 'openai' },
+  { name: '自定义',   base: '', model: '', color: '#8b93a7', auth: 'bearer', chat: 'openai' }
+];
+const THEMES = [
+  { id: 'light',  name: '日光白', c: 'linear-gradient(135deg,#4f46e5,#0891b2)' },
+  { id: 'aurora', name: '极光紫', c: 'linear-gradient(135deg,#6366f1,#22d3ee)' },
+  { id: 'ocean',  name: '深海蓝', c: 'linear-gradient(135deg,#2563eb,#06b6d4)' },
+  { id: 'sakura', name: '樱粉',   c: 'linear-gradient(135deg,#ec4899,#fb7185)' },
+  { id: 'jade',   name: '翡翠绿', c: 'linear-gradient(135deg,#10b981,#a3e635)' },
+  { id: 'ember',  name: '熔岩橙', c: 'linear-gradient(135deg,#f97316,#f43f5e)' }
+];
+const LS_HIST = 'keylens_hist';
+const LS_SAVEKEY = 'keylens_savekey';
+const LS_THEME = 'keylens_theme';
+
+let modelsCache = [];
+let lastResult = '';
+
+/* ---------- 涟漪效果 ---------- */
+function ripple(e) {
+  const el = e.currentTarget;
+  const rect = el.getBoundingClientRect();
+  const size = Math.max(rect.width, rect.height) * 2;
+  const r = document.createElement('span');
+  r.className = 'ripple';
+  r.style.width = r.style.height = size + 'px';
+  r.style.left = (e.clientX - rect.left - size / 2) + 'px';
+  r.style.top = (e.clientY - rect.top - size / 2) + 'px';
+  el.appendChild(r);
+  setTimeout(() => r.remove(), 650);
+}
+document.addEventListener('click', e => {
+  const host = e.target.closest('.ripple-host');
+  if (host && !e.target.closest('.del')) ripple({ currentTarget: host, clientX: e.clientX, clientY: e.clientY });
+});
+
+/* ---------- 主题系统 ---------- */
+function applyTheme(id) {
+  document.body.setAttribute('data-theme', id);
+  localStorage.setItem(LS_THEME, id);
+  document.querySelectorAll('.swatch').forEach(s => s.classList.toggle('active', s.dataset.theme === id));
+}
+function renderSwatches() {
+  const box = $('swatches');
+  box.innerHTML = '';
+  THEMES.forEach(t => {
+    const sw = document.createElement('div');
+    sw.className = 'swatch ripple-host' + (localStorage.getItem(LS_THEME) === t.id ? ' active' : '');
+    sw.dataset.theme = t.id;
+    sw.innerHTML = `<div class="c1" style="background:${t.c}"></div><div class="cn">${t.name}</div>`;
+    sw.onclick = () => applyTheme(t.id);
+    box.appendChild(sw);
+  });
+}
+$('themeFab').onclick = () => $('themePanel').classList.toggle('open');
+$('tpClose').onclick = () => $('themePanel').classList.remove('open');
+document.addEventListener('click', e => {
+  const p = $('themePanel');
+  if (p.classList.contains('open') && !e.target.closest('#themePanel') && !e.target.closest('#themeFab')) p.classList.remove('open');
+});
+
+/* ---------- 服务商预设 ---------- */
+function renderProviders() {
+  const box = $('providers');
+  box.innerHTML = '';
+  PROVIDERS.forEach((p, i) => {
+    const chip = document.createElement('div');
+    chip.className = 'chip ripple-host' + (i === 0 ? ' active' : '');
+    chip.textContent = p.name;
+    chip.onclick = () => selectProvider(i);
+    box.appendChild(chip);
+  });
+  $('providerSel').innerHTML = '';
+  PROVIDERS.forEach((p, i) => {
+    const o = document.createElement('option');
+    o.value = i; o.textContent = p.name;
+    $('providerSel').appendChild(o);
+  });
+  $('providerSel').onchange = e => selectProvider(+e.target.value);
+}
+function selectProvider(i) {
+  const p = PROVIDERS[i];
+  markProvider(i);
+  $('baseUrl').value = p.base;
+  if (p.model) $('model').value = p.model;
+}
+function markProvider(i) {
+  document.querySelectorAll('.chip').forEach((c, idx) => c.classList.toggle('active', idx === i));
+  $('providerSel').value = i;
+}
+
+/* ---------- Key 显隐 ---------- */
+$('toggleKey').onclick = () => {
+  const k = $('apiKey');
+  k.type = k.type === 'password' ? 'text' : 'password';
+};
+
+/* ---------- 历史记录 ---------- */
+function loadHist() { try { return JSON.parse(localStorage.getItem(LS_HIST)) || []; } catch { return []; } }
+function saveHist(h) { localStorage.setItem(LS_HIST, JSON.stringify(h.slice(0, 20))); }
+function maskKey(k) { return k.length <= 10 ? k[0] + '***' : k.slice(0, 4) + '...' + k.slice(-4); }
+function fmtTime(t) {
+  const d = new Date(t), now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  const hm = d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
+  return sameDay ? hm : d.getMonth() + 1 + '-' + d.getDate() + ' ' + hm;
+}
+
+function renderHist() {
+  const hist = loadHist();
+  const box = $('histList');
+  if (!hist.length) { box.innerHTML = '<div class="hist-empty">暂无记录，测过一次后这里会自动保存</div>'; return; }
+  box.innerHTML = '';
+  hist.forEach((h, i) => {
+    const el = document.createElement('div');
+    el.className = 'hist-item';
+    el.style.animationDelay = i * 0.04 + 's';
+    const provider = PROVIDERS.find(p => p.name === h.provider) || PROVIDERS[0];
+    el.innerHTML = `
+      <span class="dot ${h.ok ? 'ok' : 'bad'}" style="background:${provider.color}"></span>
+      <div class="info">
+        <div class="name">${h.provider} · ${h.ok ? '可用' : '不可用'}</div>
+        <div class="meta2">${h.base} · ${h.key ? maskKey(h.key) : '未存Key'} · ${h.model}</div>
+      </div>
+      <span class="time">${h.ms}ms · ${fmtTime(h.t)}</span>
+      <button class="del" title="删除">×</button>`;
+    el.onclick = e => {
+      if (e.target.classList.contains('del')) {
+        e.stopPropagation();
+        hist.splice(i, 1); saveHist(hist); renderHist();
+        return;
+      }
+      fillFromHist(h);
+    };
+    box.appendChild(el);
+  });
+}
+
+function fillFromHist(h) {
+  const idx = Math.max(0, PROVIDERS.findIndex(p => p.name === h.provider));
+  selectProvider(idx);
+  $('baseUrl').value = h.base;
+  $('model').value = h.model;
+  if (h.key) {
+    $('apiKey').value = h.key;
+    $('saveKey').checked = true;
+  } else {
+    $('apiKey').value = '';
+    $('saveKey').checked = false;
+    toast('该历史记录未保存 Key，请手动填写');
+  }
+  $('baseUrl').dispatchEvent(new Event('input'));
+}
+
+function addHist(h) { const hist = loadHist(); hist.unshift(h); saveHist(hist); renderHist(); }
+$('clearHist').onclick = () => { if (confirm('确定清空全部历史记录？')) { localStorage.removeItem(LS_HIST); renderHist(); } };
+
+/* ---------- 结果区 ---------- */
+const logEl = $('log');
+function log(msg, cls) {
+  if (!msg) { logEl.innerHTML += '<br>'; return; }
+  const span = document.createElement('span');
+  span.className = 'l-line ' + (cls || '');
+  span.innerHTML = escapeHtml(msg);
+  logEl.appendChild(span);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+function escapeHtml(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+const STEP = {
+  reset() {
+    [['s1', '1'], ['s2', '2'], ['s3', '3']].forEach(([id, n]) => { const s = $(id); s.className = 'step'; s.querySelector('.dot').textContent = n; });
+    ['l1', 'l2'].forEach(id => $(id).classList.remove('filled'));
+  },
+  run(n) { this.reset(); $('s' + n).classList.add('run'); },
+  done(n) {
+    const s = $('s' + n); s.classList.remove('run'); s.classList.add('done');
+    s.querySelector('.dot').textContent = '✓';
+    if (n === 1) $('l1').classList.add('filled');
+    if (n === 2) $('l2').classList.add('filled');
+  }
+};
+
+function verdict(type, title, meta) {
+  const v = $('verdict');
+  v.className = 'verdict ' + type;
+  const icon = type === 'ok' ? '✓' : type === 'err' ? '✕' : '!';
+  v.innerHTML = `<span style="font-size:18px">${icon}</span><span>${title}</span><span class="meta">${meta || ''}</span>`;
+}
+
+function errHint(code, body) {
+  const b = (body || '').toLowerCase();
+  if (code === 401) return '401 · Key 无效、被吊销或已过期，请检查是否复制完整（前后勿留空格）';
+  if (code === 403) return '403 · Key 有效但无权访问该接口或模型（中转站未授权此渠道）';
+  if (code === 404) return '404 · 接口路径或模型不存在，确认地址含 /v1、模型名是否正确';
+  if (code === 429) return '429 · 请求过频或余额不足，稍后再试；若持续如此大概率是余额耗尽';
+  if (code >= 500) return code + ' · 服务商服务器异常，稍后重试';
+  if (code === 0 || b.includes('network') || b.includes('cors') || b.includes('failed to fetch'))
+    return '网络错误 · 检查 API 地址、代理/VPN，或该中转站不允许浏览器跨域（可改用 Shell 脚本版）';
+  return code + ' · 未预期的响应，见下方详情';
+}
+
+function errDetail(body) {
+  try {
+    const j = JSON.parse(body);
+    if (j.error) return typeof j.error === 'string' ? j.error : (j.error.message || j.error.type || j.error.code || '');
+    if (j.message) return j.message;
+  } catch {}
+  return '';
+}
+
+async function corsProbe(url) {
+  try { const r = await fetch(url, { method: 'OPTIONS' }); return r.status; } catch { return -1; }
+}
+
+function curlFor(p, base, key, model, kind) {
+  const qk = p.auth === 'query-key' ? '?key=' + encodeURIComponent(key) : '';
+  const h = p.auth === 'bearer' ? `-H "Authorization: Bearer ${key}"` :
+           p.auth === 'x-api-key' ? `-H "x-api-key: ${key}" -H "anthropic-version: 2023-06-01"` : '';
+  const hd = h ? h + ' ' : '';
+  if (kind === 'models') return `curl -s ${hd}"${base}/models${qk}"`;
+  let url, data;
+  if (p.chat === 'anthropic') {
+    url = `${base}/messages`;
+    data = `{"model":"${model}","max_tokens":16,"messages":[{"role":"user","content":"请回复：收到"}]}`;
+  } else if (p.chat === 'gemini') {
+    url = `${base}/models/${model}:generateContent${qk}`;
+    data = `{"contents":[{"role":"user","parts":[{"text":"请回复：收到"}]}]}`;
+  } else {
+    url = `${base}/chat/completions`;
+    data = `{"model":"${model}","messages":[{"role":"user","content":"请回复：收到"}],"max_tokens":10}`;
+  }
+  return `curl -s -X POST "${url}" ${hd}-H "Content-Type: application/json" -d '${data}'`;
+}
+
+/* ---------- 测试通道：服务器 / 浏览器直连 ---------- */
+let serverMode = false;
+let apiBase = '';
+let channel = 'server';
+
+async function detectServer() {
+  for (const base of ['', 'http://localhost:8899']) {
+    try {
+      const r = await fetch(base + '/api/ping', { method: 'POST' });
+      if (r.ok) { serverMode = true; apiBase = base; renderChannel(); return; }
+    } catch {}
+  }
+}
+
+function renderChannel() {
+  const row = $('channelRow');
+  row.style.display = 'block';
+  const saved = localStorage.getItem('keylens_channel');
+  if (saved === 'server' || saved === 'browser') channel = saved;
+  const box = $('channel');
+  box.innerHTML = '';
+  [
+    ['server', '服务器测试（推荐）', '请求由本地后端发出，彻底绕开 CORS'],
+    ['browser', '浏览器直连', '请求直接发给 API，受 CORS 限制']
+  ].forEach(([v, name, desc]) => {
+    const c = document.createElement('div');
+    c.className = 'chip ripple-host' + (channel === v ? ' active' : '');
+    c.textContent = name;
+    c.title = desc;
+    c.onclick = () => { channel = v; localStorage.setItem('keylens_channel', v); renderChannel(); };
+    box.appendChild(c);
+  });
+  $('channelTip').textContent = channel === 'server'
+    ? '服务器通道：请求由本地后端发出（' + (apiBase || 'http://localhost:8899') + '/api/test），与 curl 行为一致，不受浏览器 CORS 限制'
+    : '浏览器直连：请求直接发给 API；若被 CORS 拦截，可切回服务器通道或用 curl 复现';
+}
+
+async function runServerTest(p, base, key, useModels, detail) {
+  const btn = $('btn'), label = $('btnLabel');
+  let totalMs = 0;
+  STEP.run(1);
+  log('> 服务器通道：由本地后端发出请求，与 curl 行为一致，不受 CORS 限制', 'l-info');
+  let j;
+  try {
+    const resp = await fetch(apiBase + '/api/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ base, key, models: useModels, auth: p.auth, chat: p.chat, extraHeaders: p.extraHeaders || {} })
+    });
+    j = await resp.json();
+    if (!resp.ok) throw new Error(j.error || ('HTTP ' + resp.status));
+  } catch (e) {
+    log('✕ 服务器通道请求失败：' + e.message, 'l-err');
+    log('  请确认本地后端已启动：~/api-key-tester/start.sh start', 'l-dim');
+    verdict('err', '服务器通道不可用', '');
+    finish();
+    return;
+  }
+  totalMs = j.totalMs || 0;
+  log(`验证 Key：HTTP ${j.modelsStatus} · ${j.modelsStatus === 200 ? '✓ 有效，可用模型 ' + j.modelIds.length + ' 个' : '✕ 无效或被拒绝'}`, j.modelsStatus === 200 ? 'l-ok' : 'l-err');
+
+  if (j.modelsStatus !== 200) {
+    STEP.done(1);
+    log('✕ ' + errHint(j.modelsStatus, ''), 'l-err');
+    if (j.modelsError) log('  服务商错误详情：' + j.modelsError, 'l-warn');
+    log('  等价 curl：' + curlFor(p, base, key, '', 'models'), 'l-dim');
+    verdict('err', 'Key 不可用', totalMs + 'ms');
+    saveResult(base, key, useModels.join(', '), false, totalMs, 'Key 无效');
+    finish();
+    return;
+  }
+  STEP.done(1);
+  $('modelList').innerHTML = '';
+  $('modelSel').innerHTML = '<option value="">— 选择要测试的模型 —</option>';
+  j.modelIds.forEach(m => {
+    const o = document.createElement('option');
+    o.value = m; o.textContent = m;
+    $('modelList').appendChild(o);
+    $('modelSel').appendChild(o.cloneNode(true));
+  });
+  $('modelSel').onchange = e => { if (e.target.value) $('model').value = e.target.value; };
+  if (!useModels.length && j.modelIds[0]) $('model').value = j.modelIds[0];
+  if (detail) log('  · ' + j.modelIds.slice(0, 10).join('\n  · ') + (j.modelIds.length > 10 ? `\n  · ... 共 ${j.modelIds.length} 个` : ''), 'l-dim');
+  STEP.run(2); STEP.done(2);
+
+  STEP.run(3);
+  log('> 开始对话测试：' + useModels.join(', '), 'l-info');
+  const results = [];
+  for (const r of j.results) {
+    log(`— ${r.model} —`, 'l-warn');
+    log('  等价 curl：' + curlFor(p, base, key, r.model), 'l-dim');
+    if (r.ok) {
+      log(`✓ 回复成功（${r.ms}ms）回复内容：${String(r.reply).slice(0, 60)}`, 'l-ok');
+      results.push({ m: r.model, ok: true });
+    } else {
+      log('✕ ' + errHint(r.status, r.error), 'l-err');
+      if (r.error) log('  服务商错误详情：' + r.error, 'l-warn');
+      if (detail && r.raw) log('  原始响应：' + r.raw, 'l-dim');
+      results.push({ m: r.model, ok: false });
+    }
+  }
+  STEP.done(3);
+
+  const okCount = results.filter(x => x.ok).length;
+  const summary = useModels.length === 1
+    ? (okCount ? '全部通过！该模型可用' : '该模型测试失败')
+    : `${okCount}/${useModels.length} 个模型可用`;
+  if (okCount === useModels.length) verdict('ok', '体检通过，Key 完全可用', `服务器通道 · ${totalMs}ms`);
+  else if (okCount > 0) verdict('warn', '部分可用：Key 有效，部分模型不可用', `${okCount}/${useModels.length} 个可用`);
+  else verdict('err', 'Key 有效，但模型均测试失败（余额/权限/模型名）', `总耗时 ${totalMs}ms`);
+  saveResult(base, key, useModels.join(', '), okCount === useModels.length, totalMs, summary);
+  finish();
+}
+
+/* ---------- 核心测试 ---------- */
+async function http(url, opts) {
+  const t0 = performance.now();
+  const res = await fetch(url, opts);
+  const text = await res.text();
+  return { code: res.status, body: text, ms: Math.round(performance.now() - t0) };
+}
+
+function currentProvider() {
+  const active = document.querySelector('.chip.active');
+  const idx = Math.max(0, [...document.querySelectorAll('.chip')].indexOf(active));
+  return PROVIDERS[idx] || PROVIDERS[0];
+}
+
+function buildHeaders(p, key) {
+  const h = { 'Content-Type': 'application/json' };
+  if (p.auth === 'bearer') h['Authorization'] = 'Bearer ' + key;
+  else if (p.auth === 'x-api-key') { h['x-api-key'] = key; Object.assign(h, p.extraHeaders || {}); }
+  return h;
+}
+
+function keyUrl(p, path, key) {
+  return p.auth === 'query-key'
+    ? p.base + path + (path.includes('?') ? '&' : '?') + 'key=' + encodeURIComponent(key)
+    : p.base + path;
+}
+
+function parseModels(body) {
+  const j = JSON.parse(body);
+  if (Array.isArray(j.data)) return j.data.map(m => m.id).filter(Boolean);
+  if (Array.isArray(j.models)) return j.models.map(m => (m.name || '').replace(/^models\//, '')).filter(Boolean);
+  return [];
+}
+
+async function chatRequest(p, key, model) {
+  const headers = buildHeaders(p, key);
+  if (p.chat === 'anthropic') {
+    return http(p.base + '/messages', { method: 'POST', headers,
+      body: JSON.stringify({ model, max_tokens: 16, messages: [{ role: 'user', content: '请回复：收到' }] }) });
+  }
+  if (p.chat === 'gemini') {
+    return http(keyUrl(p, '/models/' + encodeURIComponent(model) + ':generateContent', key), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: '请回复：收到' }] }] }) });
+  }
+  return http(p.base + '/chat/completions', { method: 'POST', headers,
+    body: JSON.stringify({ model, messages: [{ role: 'user', content: '请回复：收到' }], max_tokens: 10 }) });
+}
+
+function replyText(p, body) {
+  const j = JSON.parse(body);
+  if (p.chat === 'anthropic') return j.content && j.content[0] ? j.content[0].text : '';
+  if (p.chat === 'gemini') return j.candidates && j.candidates[0] && j.candidates[0].content ? j.candidates[0].content.parts[0].text : '';
+  return j.choices && j.choices[0] ? j.choices[0].message.content : '';
+}
+
+async function testAll() {
+  const btn = $('btn'), label = $('btnLabel');
+  const base = $('baseUrl').value.trim().replace(/\/+$/, '');
+  const key = $('apiKey').value.trim();
+  const models = $('model').value.split(',').map(s => s.trim()).filter(Boolean);
+  const detail = $('detail').checked;
+  const p = currentProvider();
+
+  if (!base) return showHint('请先填写 API 地址', 'API 地址不能为空');
+  if (!key) return showHint('请先填写 API Key', '粘贴 Key 后再开始体检');
+  const useModels = models.length ? models : [PROVIDERS[0].model];
+
+  $('result').style.display = 'block';
+  $('result').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  logEl.innerHTML = '';
+  $('verdict').innerHTML = '';
+  STEP.reset();
+  btn.disabled = true; btn.style.pointerEvents = 'none';
+  label.innerHTML = '<span class="spin"></span>&nbsp;体检中…';
+
+  if (serverMode && channel === 'server') {
+    await runServerTest(p, base, key, useModels, detail);
+    return;
+  }
+
+  let totalMs = 0;
+  lastResult = '';
+
+  /* 步骤 1-2：验证 Key + 获取模型 */
+  STEP.run(1);
+  log('> 正在验证 Key… (' + base + ')', 'l-info');
+  let r1;
+  try { r1 = await http(keyUrl(p, '/models', key), { headers: buildHeaders(p, key) }); }
+  catch (e) {
+    STEP.done(1);
+    const modelsUrl = keyUrl(p, '/models', key);
+    log('✕ 浏览器请求被拦截或网络失败', 'l-err');
+    log('  浏览器错误：' + (e && e.name ? e.name + ': ' : '') + (e && e.message ? e.message : '未知'), 'l-warn');
+    log('  请求地址：' + modelsUrl, 'l-dim');
+    log('  等价 curl（终端可复现）：' + curlFor(p, base, key, '', 'models'), 'l-dim');
+    const probe = await corsProbe(modelsUrl);
+    if (probe >= 0) {
+      log(`  诊断：服务器可达（OPTIONS 返回 HTTP ${probe}）—— 地址/网络正常，是该服务商未对浏览器开启 CORS 跨域授权。`, 'l-warn');
+    } else {
+      log('  诊断：连探测请求都无法到达服务器 —— 检查地址拼写、DNS、代理/VPN 或防火墙。', 'l-warn');
+    }
+    log('  说明：curl 能通而网页被拦 = 浏览器同源策略，与 Key 无关', 'l-warn');
+    log('  解决办法：1) 换用支持浏览器跨域的服务商/中转站；2) 用本页导出的 curl / Shell 脚本（已验证可用）；3) 本地代理或后端转发', 'l-dim');
+    verdict('err', '请求被浏览器拦截（疑似 CORS）', 'curl 可用但网页被拦');
+    saveResult(base, key, useModels.join(', '), false, totalMs, '浏览器 CORS 拦截');
+    finish();
+    return;
+  }
+  totalMs += r1.ms;
+  log(`HTTP ${r1.code} · ${r1.ms}ms`, r1.code === 200 ? 'l-ok' : 'l-err');
+
+  if (r1.code === 200) {
+    STEP.done(1);
+    try {
+      modelsCache = parseModels(r1.body);
+      log(`Key 有效！可用模型 ${modelsCache.length} 个` + (detail ? '：' : '（详见下方下拉框）'), 'l-ok');
+      if (detail) {
+        const shown = modelsCache.slice(0, 10).join('\n  · ') + (modelsCache.length > 10 ? `\n  · ... 共 ${modelsCache.length} 个` : '');
+        log('  · ' + shown, 'l-dim');
+      }
+      $('modelList').innerHTML = '';
+      $('modelSel').innerHTML = '<option value="">— 选择要测试的模型 —</option>';
+      modelsCache.forEach(m => {
+        const o = document.createElement('option');
+        o.value = m; o.textContent = m;
+        $('modelList').appendChild(o);
+        $('modelSel').appendChild(o.cloneNode(true));
+      });
+      $('modelSel').onchange = e => { if (e.target.value) $('model').value = e.target.value; };
+      if (!models.length && modelsCache[0]) $('model').value = modelsCache[0];
+    } catch { log('Key 有效，但返回格式异常（可能是服务商改版）', 'l-warn'); }
+    STEP.run(2); STEP.done(2);
+  } else {
+    STEP.done(1);
+    const hint = errHint(r1.code, r1.body);
+    log('✕ ' + hint, 'l-err');
+    log('  等价 curl：' + curlFor(p, base, key, '', 'models'), 'l-dim');
+    const em = errDetail(r1.body);
+    if (em) log('  服务商错误详情：' + em, 'l-warn');
+    if (detail) log(r1.body.slice(0, 400), 'l-dim');
+    verdict('err', 'Key 不可用', r1.ms + 'ms');
+    saveResult(base, key, useModels.join(', '), false, totalMs, 'Key 无效');
+    finish();
+    return;
+  }
+
+  /* 步骤 3：对话测试 */
+  STEP.run(3);
+  log('> 开始对话测试：' + useModels.join(', '), 'l-info');
+  const results = [];
+  for (const m of useModels) {
+    log(`— ${m} —`, 'l-warn');
+    let r2;
+    try { r2 = await chatRequest(p, key, m); }
+    catch (e) {
+      log('✕ 请求被拦截：' + (e && e.message ? e.message : e), 'l-err');
+      log('  等价 curl（终端可复现）：' + curlFor(p, base, key, m), 'l-dim');
+      log('  curl 能通说明是浏览器 CORS 拦截，与该模型/Key 无关', 'l-warn');
+      results.push({ m, ok: false }); continue;
+    }
+    totalMs += r2.ms;
+    log('  等价 curl：' + curlFor(p, base, key, m), 'l-dim');
+    if (r2.code === 200) {
+      try {
+        const content = replyText(p, r2.body);
+        log(`✓ 回复成功（${r2.ms}ms）回复内容：${String(content).slice(0, 60)}`, 'l-ok');
+        results.push({ m, ok: true, ms: r2.ms });
+      } catch { log('✓ 已收到响应（' + r2.ms + 'ms），格式略特殊，但可用', 'l-ok'); results.push({ m, ok: true, ms: r2.ms }); }
+    } else {
+      log('✕ ' + errHint(r2.code, r2.body), 'l-err');
+      const em = errDetail(r2.body);
+      if (em) log('  服务商错误详情：' + em, 'l-warn');
+      if (detail) log('  原始响应：' + r2.body.slice(0, 400), 'l-dim');
+      results.push({ m, ok: false });
+    }
+  }
+  STEP.done(3);
+
+  const okCount = results.filter(r => r.ok).length;
+  const summary = useModels.length === 1
+    ? (okCount ? '全部通过！该模型可用' : '该模型测试失败')
+    : `${okCount}/${useModels.length} 个模型可用`;
+  if (okCount === useModels.length) verdict('ok', '体检通过，Key 完全可用', `总耗时 ${totalMs}ms`);
+  else if (okCount > 0) verdict('warn', '部分可用：Key 有效，部分模型不可用', `${okCount}/${useModels.length} 个可用`);
+  else verdict('err', 'Key 有效，但模型均测试失败（余额/权限/模型名）', `总耗时 ${totalMs}ms`);
+  saveResult(base, key, useModels.join(', '), okCount === useModels.length, totalMs, summary);
+  finish();
+}
+
+function saveResult(base, key, model, ok, ms, summary) {
+  lastResult = `${ok ? '✓ 可用' : '✕ 不可用'} · ${summary}\n` +
+    `地址：${base}\n模型：${model}\n耗时：${ms}ms\n` +
+    `详情：\n${logEl.innerText}`;
+  if ($('saveKey').checked && key) {
+    addHist({ t: Date.now(), provider: currentProviderName(), base, key, model, ok, ms });
+  } else {
+    addHist({ t: Date.now(), provider: currentProviderName(), base, key: '', model, ok, ms });
+  }
+}
+
+function currentProviderName() {
+  const active = document.querySelector('.chip.active');
+  return active ? active.textContent : '自定义';
+}
+
+function finish() {
+  const btn = $('btn'), label = $('btnLabel');
+  btn.disabled = false; btn.style.pointerEvents = '';
+  label.textContent = '重新体检';
+}
+
+/* ---------- 其它 ---------- */
+function showHint(title, why) {
+  toast(title);
+  $('result').style.display = 'block';
+  logEl.innerHTML = '';
+  $('verdict').innerHTML = '';
+  STEP.reset();
+  verdict('err', title, '尚未开始');
+  log('✕ ' + why + '（在下方表单补全后点击"开始体检"即可）', 'l-err');
+  log('小提示：API 地址为 https://域名/v1 形式，Key 为 sk-… / sk-ant-… 等', 'l-dim');
+  $('result').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+let toastTimer;
+function toast(msg) {
+  let t = $('toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'toast';
+    t.style.cssText = 'position:fixed;top:24px;left:50%;transform:translateX(-50%);z-index:99;background:rgba(248,113,113,.15);border:1px solid rgba(248,113,113,.4);color:var(--err);padding:10px 20px;border-radius:12px;font-size:13px;backdrop-filter:blur(10px);animation:fadeDown .3s ease;';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.display = 'block';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.style.display = 'none', 2600);
+}
+
+$('copyBtn').onclick = async () => {
+  if (!lastResult) return toast('还没有测试结果');
+  try { await navigator.clipboard.writeText(lastResult); toast('已复制到剪贴板'); }
+  catch { toast('复制失败，请手动选择复制'); }
+};
+
+$('resetBtn').onclick = () => {
+  selectProvider(0);
+  $('apiKey').value = '';
+  logEl.innerHTML = ''; $('verdict').innerHTML = ''; $('result').style.display = 'none';
+  lastResult = '';
+};
+
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); testAll(); }
+});
+
+$('model').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); testAll(); } });
+$('apiKey').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); testAll(); } });
+
+/* 手动修改 URL 时自动同步服务商：精确匹配预设则选中对应服务商，否则切到自定义 */
+$('baseUrl').addEventListener('input', () => {
+  const v = $('baseUrl').value.trim().replace(/\/+$/, '');
+  if (!v) return;
+  const idx = PROVIDERS.findIndex(p => p.base && p.base === v);
+  if (idx >= 0) markProvider(idx);
+  else markProvider(PROVIDERS.length - 1);
+});
+
+/* ---------- 模态框通用 ---------- */
+function openModal(id) { $(id).classList.add('open'); }
+function closeModal(id) { $(id).classList.remove('open'); }
+document.querySelectorAll('.close, [data-close]').forEach(btn => {
+  btn.addEventListener('click', () => closeModal(btn.dataset.close || btn.closest('.overlay').id));
+});
+document.querySelectorAll('.overlay').forEach(ov => {
+  ov.addEventListener('click', e => { if (e.target === ov) ov.classList.remove('open'); });
+});
+
+/* ---------- 导出代码 ---------- */
+const EXPORT_FORMATS = [
+  { id: 'curl', name: 'curl', ext: '.sh', gen: exportCurl },
+  { id: 'py',   name: 'Python (requests)', ext: '.py', gen: exportPy },
+  { id: 'pysdk', name: 'Python (官方 SDK)', ext: '.py', gen: exportPySdk },
+  { id: 'js',   name: 'JavaScript (fetch)', ext: '.js', gen: exportJs }
+];
+let currentExportFmt = 0;
+let currentExportPlain = '';
+
+function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+function hlGap(text, kwRe) {
+  let html = '', last = 0, m;
+  kwRe.lastIndex = 0;
+  while ((m = kwRe.exec(text))) {
+    html += esc(text.slice(last, m.index)) + `<span class="kw">${esc(m[0])}</span>`;
+    last = m.index + m[0].length;
+  }
+  return html + esc(text.slice(last));
+}
+
+function highlightCode(code, fmt) {
+  const pattern = fmt === 'curl'
+    ? /(https?:\/\/[^\s"'`\\]+)|(-[A-Za-z]+(?=[\s=])|--[a-z-]+(?=[\s=]))|("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|(#.*$)/g
+    : /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)|(#.*$|\/\/.*$)/g;
+  const kwRe = fmt === 'js'
+    ? /\b(const|let|var|function|async|await|return|new|of|in)\b/g
+    : /\b(import|from|def|class|return|print|None|True|False|in|as)\b/g;
+  return code.split('\n').map(line => {
+    let html = '', pos = 0, m;
+    pattern.lastIndex = 0;
+    while ((m = pattern.exec(line))) {
+      const cls = m[1] ? 'url' : (m[2] ? 'kw' : (m[3] ? 'str' : 'cmt'));
+      if (m.index > pos) html += hlGap(line.slice(pos, m.index), kwRe);
+      html += `<span class="${cls}">${esc(line.slice(m.index, m.index + m[0].length))}</span>`;
+      pos = m.index + m[0].length;
+    }
+    return html + hlGap(line.slice(pos), kwRe);
+  });
+}
+
+function exportCurl(p, base, key, model) {
+  const qk = p.auth === 'query-key' ? '?key=' + encodeURIComponent(key) : '';
+  const h = p.auth === 'bearer' ? `  -H "Authorization: Bearer ${key}" \\\n` :
+           p.auth === 'x-api-key' ? `  -H "x-api-key: ${key}" \\\n  -H "anthropic-version: 2023-06-01" \\\n` : '';
+  let url, data;
+  if (p.chat === 'anthropic') {
+    url = base + '/messages';
+    data = `{\n    "model": "${model}",\n    "max_tokens": 1024,\n    "messages": [{"role": "user", "content": "你好"}]\n  }`;
+  } else if (p.chat === 'gemini') {
+    url = base + '/models/' + model + ':generateContent' + qk;
+    data = `{\n    "contents": [{"role": "user", "parts": [{"text": "你好"}]}]\n  }`;
+  } else {
+    url = base + '/chat/completions';
+    data = `{\n    "model": "${model}",\n    "messages": [{"role": "user", "content": "你好"}]\n  }`;
+  }
+  return `curl -X POST "${url}" \\\n${h}  -H "Content-Type: application/json" \\\n  -d '${data}'`;
+}
+
+function exportPy(p, base, key, model) {
+  const h = p.auth === 'bearer' ? `    "Authorization": "Bearer ${key}",` :
+           p.auth === 'x-api-key' ? `    "x-api-key": "${key}",\n    "anthropic-version": "2023-06-01",` : '';
+  const qk = p.auth === 'query-key' ? '?key=' + key : '';
+  let url, data;
+  if (p.chat === 'anthropic') {
+    url = base + '/messages';
+    data = `{"model": "${model}", "max_tokens": 1024, "messages": [{"role": "user", "content": "你好"}]}`;
+  } else if (p.chat === 'gemini') {
+    url = base + '/models/' + model + ':generateContent' + qk;
+    data = `{"contents": [{"role": "user", "parts": [{"text": "你好"}]}]}`;
+  } else {
+    url = base + '/chat/completions';
+    data = `{"model": "${model}", "messages": [{"role": "user", "content": "你好"}]}`;
+  }
+  return `import requests\n\nurl = "${url}"\nheaders = {\n${h}\n    "Content-Type": "application/json"\n}\ndata = ${data}\n\nresp = requests.post(url, headers=headers, json=data)\nprint(resp.status_code)\nprint(resp.json())`;
+}
+
+function exportPySdk(p, base, key, model) {
+  if (p.chat === 'anthropic') {
+    return `import anthropic\n\nclient = anthropic.Anthropic(\n    api_key="${key}",\n    base_url="${base}",\n)\n\nmsg = client.messages.create(\n    model="${model}",\n    max_tokens=1024,\n    messages=[{"role": "user", "content": "你好"}],\n)\nprint(msg.content[0].text)`;
+  }
+  if (p.chat === 'gemini') {
+    return `import google.generativeai as genai\n\ngenai.configure(api_key="${key}")\nmodel = genai.GenerativeModel("${model}")\n\nresp = model.generate_content("你好")\nprint(resp.text)`;
+  }
+  return `from openai import OpenAI\n\nclient = OpenAI(\n    api_key="${key}",\n    base_url="${base}",\n)\n\nresp = client.chat.completions.create(\n    model="${model}",\n    messages=[{"role": "user", "content": "你好"}],\n)\nprint(resp.choices[0].message.content)`;
+}
+
+function exportJs(p, base, key, model) {
+  const h = p.auth === 'bearer' ? `'Authorization': 'Bearer ${key}',` :
+           p.auth === 'x-api-key' ? `'x-api-key': '${key}',\n  'anthropic-version': '2023-06-01',` : '';
+  const qk = p.auth === 'query-key' ? '?key=' + key : '';
+  let url, data;
+  if (p.chat === 'anthropic') {
+    url = base + '/messages';
+    data = `{ model: '${model}', max_tokens: 1024, messages: [{ role: 'user', content: '你好' }] }`;
+  } else if (p.chat === 'gemini') {
+    url = base + '/models/' + model + ':generateContent' + qk;
+    data = `{ contents: [{ role: 'user', parts: [{ text: '你好' }] }] }`;
+  } else {
+    url = base + '/chat/completions';
+    data = `{ model: '${model}', messages: [{ role: 'user', content: '你好' }] }`;
+  }
+  return `const resp = await fetch('${url}', {\n  method: 'POST',\n  headers: {\n  ${h}\n    'Content-Type': 'application/json',\n  },\n  body: JSON.stringify(${data}),\n});\n\nconst json = await resp.json();\nconsole.log(json);`;
+}
+
+function renderExport() {
+  const p = currentProvider();
+  const base = $('baseUrl').value.trim().replace(/\/+$/, '') || p.base;
+  const key = $('apiKey').value.trim() || 'YOUR_API_KEY';
+  const model = $('model').value.trim() || p.model;
+  $('exportSub').textContent = `${p.name} · 鉴权方式：${p.auth === 'bearer' ? 'Bearer' : p.auth === 'x-api-key' ? 'x-api-key' : 'URL 参数 key'}`;
+  $('exportTabs').innerHTML = '';
+  EXPORT_FORMATS.forEach((f, i) => {
+    const tab = document.createElement('div');
+    tab.className = 'tab' + (i === currentExportFmt ? ' active' : '');
+    tab.textContent = f.name;
+    tab.onclick = () => { currentExportFmt = i; renderExport(); };
+    $('exportTabs').appendChild(tab);
+  });
+  currentExportPlain = EXPORT_FORMATS[currentExportFmt].gen(p, base, key, model);
+  $('exportCode').innerHTML = highlightCode(currentExportPlain, EXPORT_FORMATS[currentExportFmt].id)
+    .map(l => '<div class="code-line">' + l + '</div>').join('');
+}
+$('exportBtn').onclick = () => { renderExport(); openModal('exportOverlay'); };
+$('copyCode').onclick = async () => {
+  try { await navigator.clipboard.writeText(currentExportPlain); toast('代码已复制'); }
+  catch { toast('复制失败'); }
+};
+$('downloadCode').onclick = () => {
+  const f = EXPORT_FORMATS[currentExportFmt];
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([currentExportPlain], { type: 'text/plain;charset=utf-8' }));
+  a.download = 'api_call' + f.ext;
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+
+/* ---------- 从 curl 导入 ---------- */
+function parseCurl(cmd) {
+  const out = { base: '', key: '', model: '', provider: -1 };
+  const urlMatch = cmd.match(/https?:\/\/[^\s'"`]+/);
+  if (!urlMatch) return null;
+  const url = urlMatch[0].replace(/['"`]+/g, '');
+  const headers = {};
+  let m;
+  const hRe = /(?:-H|--header)\s+["']([^"']+)["']/g;
+  while ((m = hRe.exec(cmd))) {
+    const i = m[1].indexOf(':');
+    if (i > 0) headers[m[1].slice(0, i).trim().toLowerCase()] = m[1].slice(i + 1).trim();
+  }
+  const bodyMatch = cmd.match(/(?:-d|--data|--data-raw|--data-binary)\s+['"`]([\s\S]*?)['"`]/);
+  let body = {};
+  if (bodyMatch) { try { body = JSON.parse(bodyMatch[1]); } catch {} }
+  const q = new URLSearchParams(url.split('?')[1] || '');
+
+  if (headers['x-api-key']) out.key = headers['x-api-key'];
+  else if (headers['authorization'] && headers['authorization'].startsWith('Bearer ')) out.key = headers['authorization'].slice(7);
+  else if (q.get('key')) out.key = q.get('key');
+
+  if (url.includes('/models/') && url.includes(':generateContent')) {
+    out.base = url.split('/models/')[0];
+    const gm = url.match(/models\/([^:?]+):generateContent/);
+    if (gm) out.model = decodeURIComponent(gm[1]);
+    out.provider = 2;
+  } else if (headers['x-api-key']) {
+    out.base = url.replace(/\/messages$/, '');
+    out.provider = 1;
+  } else {
+    out.base = url.replace(/\/chat\/completions$/, '').replace(/\/messages$/, '');
+    const i = PROVIDERS.findIndex(p => p.base && p.base.length > 10 && out.base.startsWith(p.base));
+    out.provider = i >= 0 ? i : PROVIDERS.length - 1;
+  }
+  if (!out.model && body.model) out.model = body.model;
+  if (!out.model) out.model = '';
+  return out;
+}
+$('importBtn').onclick = () => { $('importTa').value = ''; $('importResult').textContent = ''; openModal('importOverlay'); };
+$('importParse').onclick = () => {
+  const parsed = parseCurl($('importTa').value);
+  const box = $('importResult');
+  if (!parsed) {
+    box.innerHTML = '<span style="color:var(--err)">✕ 未识别到有效 curl 命令（需包含 http 地址）</span>';
+    return;
+  }
+  selectProvider(parsed.provider >= 0 ? parsed.provider : 0);
+  if (parsed.base) $('baseUrl').value = parsed.base;
+  if (parsed.key) { $('apiKey').value = parsed.key; $('saveKey').checked = true; }
+  if (parsed.model) $('model').value = parsed.model;
+  const pname = parsed.provider >= 0 ? PROVIDERS[parsed.provider].name : '自定义';
+  box.innerHTML = `<span style="color:var(--ok)">✓ 识别成功，已回填</span>\n服务商：${pname}\n地址：${parsed.base || '（未识别）'}\n模型：${parsed.model || '（未识别，请手动填写）'}\nKey：${parsed.key ? '已填入（自动隐藏）' : '（未识别，请手动填写）'}`;
+  $('importResult').style.whiteSpace = 'pre-wrap';
+};
+
+/* ---------- 启动 ---------- */
+$('btn').onclick = testAll;
+detectServer();
+applyTheme(localStorage.getItem(LS_THEME) || 'light');
+renderSwatches();
+renderProviders();
+renderHist();
+if (localStorage.getItem(LS_SAVEKEY) === '1') {
+  const hist = loadHist();
+  if (hist.length) fillFromHist(hist[0]);
+}
+$('saveKey').onchange = () => {
+  localStorage.setItem(LS_SAVEKEY, $('saveKey').checked ? '1' : '0');
+  if (!$('saveKey').checked) {
+    const hist = loadHist();
+    hist.forEach(h => { h.key = ''; });
+    saveHist(hist); renderHist();
+  }
+};
+</script>
+</body>
+</html>
