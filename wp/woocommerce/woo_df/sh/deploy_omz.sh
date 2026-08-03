@@ -20,10 +20,10 @@
 # 这里的链接gitee也可以换成gitee(适合国内用户,但是可能要登录gitee账号)
 # 使用-h获取命令行帮助
 
-version=20260506
+version=20260803
 # 插件仓库源
 REPO_SOURCE="github" # gitee
-echo "Using repo source: $REPO_SOURCE"
+repo_source_explicit=false
 
 # 默认插件安装选项(仅补全类插件)
 install_zsh_completions=true               # zcp插件,可选值:true|false
@@ -34,6 +34,8 @@ install_zsh_syntax_highlighting=true       # zshp
 install_zsh_history_substring_search=false # zhssp
 install_omz="default"                      # default|github|gitee
 omz_only=false
+update_zsh_plugins_only=false
+assume_yes=false
 
 # 定义使用帮助(help)
 usage='
@@ -53,6 +55,11 @@ options:
         and then install omz again.(use -O install omz noly.)
     -O|--omz-only 
         install oh-my-zsh only without other plugins if true.
+    -U|--update-zsh-plugins
+        update installed zsh plugin repositories with fast-forward-only pulls,
+        then exit without changing oh-my-zsh or shell configuration files.
+    -y|--yes
+        skip the update confirmation prompt. Required for non-interactive updates.
     -zc | --install-zsh-completions [true|false]
         install zsh-completions plugin if true
     -zac | --install-zsh-autocomplete [omz|std|false]
@@ -67,13 +74,20 @@ options:
         install zsh-history-substring-search plugin if true
     --zsh-custom
         set oh-my-zsh custom directory [ZSH_CUSTOM].
-    -s|--repo-source [github|gitee] plugin repository source(其中gitee方式包含少量gitcode.)
+    -s|--repo-source [github|gitee]
+        select the preferred repository source for plugin installation or updates.
     -h,--help 
         show this help message.
 '"
 examples:
     # install oh-my-zsh only:
     bash $0 --omz-only
+
+    # update installed zsh plugins only:
+    bash $0 --update-zsh-plugins
+
+    # non-interactive update using the GitHub repository URLs:
+    bash $0 --update-zsh-plugins --repo-source github --yes
 
     # install without 'you-should-use' plugin or  disable the plugin in plugins list
     bash deploy_omz.sh -o false -zysu false
@@ -124,11 +138,22 @@ parse_args() {
                 ;;
             -s | --repo-source)
                 REPO_SOURCE="$2"
+                if ! [[ $REPO_SOURCE =~ ^(github|gitee)$ ]]; then
+                    echo "[error]:未知仓库源 '$REPO_SOURCE'，可选值为 github 或 gitee。" >&2
+                    exit 1
+                fi
+                repo_source_explicit=true
                 shift
                 ;;
             -O | --omz-only)
                 omz_only="true"
 
+                ;;
+            -U | --update-zsh-plugins)
+                update_zsh_plugins_only="true"
+                ;;
+            -y | --yes)
+                assume_yes=true
                 ;;
             --zsh-custom)
                 ZSH_CUSTOM="$2"
@@ -149,8 +174,86 @@ parse_args() {
 }
 parse_args "$@"
 
-# 检查依赖
-requirements=(git curl zsh)
+confirm_zsh_plugin_update() {
+    local choice answer
+
+    if [[ $assume_yes == true ]]; then
+        if [[ $repo_source_explicit == false ]]; then
+            echo "[error]:使用 --yes 时必须显式传入 --repo-source github|gitee。" >&2
+            return 1
+        fi
+        return 0
+    fi
+    if [[ ! -t 0 ]]; then
+        echo "[error]:非交互更新需要同时传入 --repo-source 和 --yes。" >&2
+        return 1
+    fi
+
+    if [[ $repo_source_explicit == false ]]; then
+        echo "请选择 Zsh 插件更新来源："
+        echo "  1) GitHub"
+        echo "  2) Gitee"
+        echo "  q) 取消"
+        read -r -p "请选择 [1]: " choice
+        case ${choice:-1} in
+            1 | github) REPO_SOURCE=github ;;
+            2 | gitee) REPO_SOURCE=gitee ;;
+            q | Q) echo "已取消更新。"; return 2 ;;
+            *) echo "[error]:无效选择 '$choice'。" >&2; return 1 ;;
+        esac
+    fi
+
+    echo "将使用 $REPO_SOURCE 来源更新已安装的 Zsh 插件；必要时会修改插件 origin。"
+    read -r -p "确认继续？[y/N]: " answer
+    [[ $answer == [yY] || $answer == [yY][eE][sS] ]] || {
+        echo "已取消更新。"
+        return 2
+    }
+}
+
+if [[ $update_zsh_plugins_only == true ]]; then
+    confirm_zsh_plugin_update || {
+        confirm_status=$?
+        [[ $confirm_status -eq 2 ]] && exit 0
+        exit "$confirm_status"
+    }
+fi
+
+# 根据命令行选择脚本维护的首选插件仓库。安装和仅更新模式共用同一组地址。
+set_zsh_plugin_repo_urls() {
+    if [[ $REPO_SOURCE == gitee ]]; then
+        zcp_repo=https://gitee.com/duchenpaul/zsh-completions.git
+        zac_repo=https://gitee.com/mirrors/zsh-autocomplete.git
+        zasp_repo=https://gitee.com/mirrors/zsh-autosuggestions.git
+        zysu_repo=https://gitee.com/mirrors/zsh-you-should-use.git
+        zshp_repo=https://gitee.com/mirrors/zsh-syntax-highlighting.git
+        zhssp_repo=https://gitee.com/mirror-hub/zsh-history-substring-search
+    elif [[ $REPO_SOURCE == github ]]; then
+        zcp_repo=https://github.com/zsh-users/zsh-completions.git
+        zac_repo=https://github.com/marlonrichert/zsh-autocomplete.git
+        zasp_repo=https://github.com/zsh-users/zsh-autosuggestions.git
+        zysu_repo=https://github.com/MichaelAquilina/zsh-you-should-use.git
+        zshp_repo=https://github.com/zsh-users/zsh-syntax-highlighting.git
+        zhssp_repo=https://github.com/zsh-users/zsh-history-substring-search.git
+    else
+        echo "[error]:未知仓库源 '$REPO_SOURCE'，可选值为 github 或 gitee。" >&2
+        exit 1
+    fi
+}
+set_zsh_plugin_repo_urls
+
+if [[ $update_zsh_plugins_only == true ]]; then
+    echo "Update mode prefers repository URLs configured for source: $REPO_SOURCE"
+else
+    echo "Using repo source: $REPO_SOURCE"
+fi
+
+# 检查依赖。仅更新插件时不需要 curl、zsh 或后续配置工具。
+if [[ $update_zsh_plugins_only == true ]]; then
+    requirements=(git)
+else
+    requirements=(git curl zsh)
+fi
 meet_req=true
 for req in "${requirements[@]}"; do
     if ! command -v "$req" >&/dev/null; then
@@ -160,6 +263,89 @@ for req in "${requirements[@]}"; do
 done
 
 if [[ $meet_req == false ]]; then exit 2; fi
+
+# 仅更新已安装的 Zsh 插件仓库，不安装插件，也不修改任何 shell 配置。
+update_zsh_plugins() {
+    local custom_dir=${ZSH_CUSTOM:-${ZSH:-$HOME/.oh-my-zsh}/custom}
+    local failed=false
+    local found=false
+
+    update_zsh_plugin_repo() {
+        local name=$1
+        local repo_dir=$2
+        local preferred_url=$3
+        local before after branch current_url
+
+        [[ -d $repo_dir ]] || return 0
+        found=true
+
+        if ! git -C "$repo_dir" rev-parse --is-inside-work-tree &> /dev/null; then
+            echo "[warn]:跳过 $name: $repo_dir 不是 Git 仓库。" >&2
+            failed=true
+            return 0
+        fi
+        if [[ -n $(git -C "$repo_dir" status --porcelain) ]]; then
+            echo "[warn]:跳过 $name: 仓库存在未提交改动。" >&2
+            failed=true
+            return 0
+        fi
+        if ! branch=$(git -C "$repo_dir" symbolic-ref --quiet --short HEAD); then
+            echo "[warn]:跳过 $name: 仓库当前处于 detached HEAD。" >&2
+            failed=true
+            return 0
+        fi
+
+        current_url=$(git -C "$repo_dir" remote get-url origin 2> /dev/null || true)
+        if [[ -z $current_url ]]; then
+            git -C "$repo_dir" remote add origin "$preferred_url"
+        elif [[ $current_url != "$preferred_url" ]]; then
+            echo "首选 $name origin: $current_url -> $preferred_url"
+            git -C "$repo_dir" remote set-url origin "$preferred_url"
+        fi
+
+        before=$(git -C "$repo_dir" rev-parse --short HEAD)
+        echo "更新 $name ($before) ..."
+        if git -C "$repo_dir" pull --ff-only origin "$branch"; then
+            after=$(git -C "$repo_dir" rev-parse --short HEAD)
+            echo "[ok]:$name $before -> $after"
+            return 0
+        fi
+
+        echo "[warn]:$name 的首选仓库更新失败: $preferred_url" >&2
+        if [[ -n $current_url && $current_url != "$preferred_url" ]]; then
+            echo "[warn]:$name 回退到原 upstream: $current_url" >&2
+            git -C "$repo_dir" remote set-url origin "$current_url"
+            if git -C "$repo_dir" pull --ff-only origin "$branch"; then
+                after=$(git -C "$repo_dir" rev-parse --short HEAD)
+                echo "[ok]:$name $before -> $after (fallback)"
+                return 0
+            fi
+        elif [[ -z $current_url ]]; then
+            git -C "$repo_dir" remote remove origin
+        fi
+
+        echo "[error]:$name 没有可用的更新仓库。" >&2
+        failed=true
+    }
+
+    update_zsh_plugin_repo zsh-completions "$custom_dir/plugins/zsh-completions" "$zcp_repo"
+    update_zsh_plugin_repo zsh-autocomplete "$custom_dir/plugins/zsh-autocomplete" "$zac_repo"
+    update_zsh_plugin_repo zsh-autosuggestions "$custom_dir/plugins/zsh-autosuggestions" "$zasp_repo"
+    update_zsh_plugin_repo you-should-use "$custom_dir/plugins/you-should-use" "$zysu_repo"
+    update_zsh_plugin_repo zsh-syntax-highlighting "$custom_dir/plugins/zsh-syntax-highlighting" "$zshp_repo"
+    update_zsh_plugin_repo zsh-history-substring-search "$custom_dir/plugins/zsh-history-substring-search" "$zhssp_repo"
+
+    if [[ $found == false ]]; then
+        echo "未在 $custom_dir/plugins 中找到已安装的目标插件。"
+    fi
+    [[ $failed == false ]]
+}
+
+if [[ $update_zsh_plugins_only == true ]]; then
+    update_zsh_plugins
+    exit $?
+fi
+
 # 以下代码需要gnu sed,如果gsed不可用,请用户安装
 if [[ $OSTYPE == darwin* ]]; then
     if command -v gsed &> /dev/null; then
@@ -241,22 +427,6 @@ zhssp=${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-history-substring-search
 zcp=${ZSH_CUSTOM:-${ZSH:-~/.oh-my-zsh}/custom}/plugins/zsh-completions
 zysu=${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/you-should-use
 zac=${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autocomplete
-if [[ $REPO_SOURCE == gitee ]]; then
-    zcp_repo=https://gitee.com/duchenpaul/zsh-completions.git
-    zac_repo=https://gitee.com/mirrors/zsh-autocomplete.git
-    zasp_repo=https://gitee.com/mirrors/zsh-autosuggestions.git
-    zysu_repo=https://gitee.com/mirrors/zsh-you-should-use.git
-    # zysu_repo=https://gitcode.com/gh_mirrors/zs/zsh-you-should-use.git
-    zshp_repo=https://gitee.com/mirrors/zsh-syntax-highlighting.git
-    zhssp_repo=https://gitee.com/mirror-hub/zsh-history-substring-search
-elif [[ $REPO_SOURCE == github ]]; then 
-    zcp_repo=https://github.com/zsh-users/zsh-completions.git
-    zac_repo=https://github.com/marlonrichert/zsh-autocomplete.git
-    zasp_repo=https://github.com/zsh-users/zsh-autosuggestions.git
-    zysu_repo=https://github.com/MichaelAquilina/zsh-you-should-use.git
-    zshp_repo=https://github.com/zsh-users/zsh-syntax-highlighting.git
-    zhssp_repo=https://github.com/zsh-users/zsh-history-substring-search.git
-fi
 # zsh-completions这个项目gitee官方可能没有镜像,使用个人用户的自镜像版本(建议有需要的可以自己拉取一份比较安全)
 # 另外这个插件比其他zsh插件不同,在配合oh my zsh使用时需要额外注意配置文件的写法;
 [[ $install_zsh_completions == true ]] &&
@@ -287,11 +457,11 @@ get_omz_plugins_list() {
         cat << EOF
 git
 z
-$([[ $install_zsh_syntax_highlighting == false ]] && echo '#')zsh-syntax-highlighting
 $([[ $install_zsh_autosuggestions == false ]] && echo '#')zsh-autosuggestions
 $([[ $install_zsh_history_substring_search == false ]] && echo '#')zsh-history-substring-search
 $([[ $install_zsh_you_should_use == false ]] && echo '#')you-should-use
 $([[ $install_zsh_autocomplete == false ]] && echo '#')zsh-autocomplete
+$([[ $install_zsh_syntax_highlighting == false ]] && echo '#')zsh-syntax-highlighting
 EOF
     )
     # 拼接法(比较啰嗦)
@@ -413,7 +583,9 @@ source ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autocomplete/zsh-autocompl
 ZSH_DISABLE_COMPFIX=true\
 # <<< disable_compfix\
 ' "$zshrc_path"
-            # 设置compinit
+            # 设置 compinit。Homebrew 的补全目录可能由其他账户持有，从而触发
+            # insecure directories 警报；这里暂时不报告该警告，并允许加载这些目录。
+            # 同时保留 -i/-u 以兼容既有配置，参数按顺序解析，最后的 -u 生效。
             # 插入前清空可能的旧片段
             sed -i '/# >>> zac_compinit/,/# <<< zac_compinit/d' "$zshrc_path"
             sed -i '$a\
@@ -428,7 +600,8 @@ zstyle '"'*:compinit'"' arguments -i -u \
             # 定义快捷键片段
             # shellcheck disable=SC2016
             # shellcheck disable=SC2125
-            local zsh_bindkey_config="$(
+            local zsh_bindkey_config
+            zsh_bindkey_config="$(
                 cat << 'EOF'
 # shellcheck disable=SC2148
 # 将 Tab 和 Shift 和 Tab 设置为更改菜单中的选择(menu-select)
@@ -443,6 +616,24 @@ bindkey -M menuselect '^M' .accept-line
 # zsh-autosuggestions 的旧异步实现会在取消请求时先关闭 fd，再移除
 # ZLE handler，可能报 "No handler installed for fd"。保留建议但改为同步获取。
 unset ZSH_AUTOSUGGEST_USE_ASYNC
+
+# zsh-autocomplete 20f6c34 的异步回调错误地只关闭 TTY fd，但这里实际使用
+# 的是管道 fd；clear 回调中还存在变量名拼写错误。在配置层覆盖函数正文，
+# 避免修改插件文件，并确保本文件被部署脚本重新生成后修复仍然存在。
+for fn in \
+    .autocomplete:async:wait:fd-widget \
+    .autocomplete:async:complete:fd-widget
+do
+    (( ${+functions[$fn]} )) || continue
+    functions[$fn]=${functions[$fn]/\[\[\ -t\ \$fd\ \]\]\ \&\&\ /}
+done
+
+fn=.autocomplete:async:clear
+if (( ${+functions[$fn]} )); then
+    functions[$fn]=${functions[$fn]//_autocomplete__async_fd/_autocomplete_async_fd}
+    functions[$fn]=${functions[$fn]/\ \&\&\ -t\ \$_autocomplete_async_fd/}
+fi
+unset fn
 
 # 不让 zsh-autocomplete 在历史命令后追加分号。
 zstyle ':autocomplete:*' add-semicolon no
