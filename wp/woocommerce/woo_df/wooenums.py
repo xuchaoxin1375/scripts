@@ -235,7 +235,7 @@ RATE_DICT_LOW = {
 }
 RATE_DICT = {
     "GBP": 1.3,
-    "EUR": 1.1,
+    "EUR": 1.0,# 特殊处理
     "CAD": 0.7,
     "AUD": 0.7,
     "SEK": 0.10,
