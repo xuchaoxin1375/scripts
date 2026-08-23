@@ -1,6 +1,25 @@
 ## abstract
 
-- 这部分脚本(.sh)在sh/shell_utils.sh中配置引用(间接被shellrc_addition.sh引用)
+- 这部分脚本(.sh)在`sh/shell_utils.sh`中配置引用(间接被`shellrc_addition.sh`引用)
+
+## 导入`shell_utils`目录中的脚本
+
+```shell
+# $sh/shell_utils.sh
+#...
+# 导入所有脚本
+# source 命令原生不支持一次性传入多个文件参数,所以 source "$SCRIPT_DIR/shell_utils/"*.sh # 不正确
+# 循环遍历并逐个 source
+if [ -d "$SCRIPT_DIR/shell_utils" ]; then
+    for file in "$SCRIPT_DIR/shell_utils"/*.sh; do
+        # [ -f "$file" ] 用于防止目录为空时，*.sh 字符串本身被直接当成文件处理
+        [ -f "$file" ] && source "$file"
+    done
+fi
+
+```
+
+
 
 ## 关于homebrew的安装和管理
 

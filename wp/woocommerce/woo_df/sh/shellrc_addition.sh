@@ -71,6 +71,7 @@ if [[ -d $SCRIPT_ROOT_SERVER ]]; then
   # 在家目录也创建一个符号链接便于使用
   #  ln -sfn "$SH_SCRIPT_DIR" "$SH_SYM"
 fi
+
 # 如果sh短路径(符号链接不存在或者虽然存在符号但是目标无效,则创建)
 # 最终目录结果
 echo "[INFO]:sh_sym=[$SH_SYM],sh_script_dir=[$SH_SCRIPT_DIR],script_root=[$SCRIPT_ROOT]"
@@ -117,6 +118,7 @@ remove_background_color() {
 mark="custom additional shell"
 mark_start="# >>>$mark>>>"
 mark_end="# <<<$mark<<<"
+
 # insert_shellrc_addition to shellrc files.
 insert_shellrc_addition() {
   # mark='# Load additional shell configs'
@@ -187,6 +189,14 @@ if [[ -d /mnt/c ]]; then
   # macos does not need remove the folder background colors
   remove_background_color
 fi
+
+# 需要注入到shell环境的工具(例如zoxide)
+## 如果 zoxide 命令存在，则初始化
+if command -v zoxide &> /dev/null; then
+  shell_name="$(current_shell)"
+  eval "$(zoxide init "$shell_name")" && echo "[zoxide] initiated for $shell_name."
+fi
+
 # 针对bash的配置(依赖于shopt命令和针对bash的prompt)
 if is_shell bash || check_dependency -q shopt; then
   # 插入bashrc的最后部分的配置

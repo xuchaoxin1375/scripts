@@ -31,6 +31,7 @@ if [ -d "$SCRIPT_DIR/shell_utils" ]; then
     done
 fi
 
+
 # 临时清理历史遗留配置(2026.5月份后移除)
 # cleanrc ~/.bashrc ~/.zshrc
 cleanrc() {

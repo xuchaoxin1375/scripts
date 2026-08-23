@@ -737,7 +737,7 @@ mysql  -e "SELECT 1" # &>/dev/null
 
 
 
-### 配置系统时间为北京时间
+### 配置系统时间为北京时间(beijin_date)
 
 ```bash
 sudo timedatectl set-timezone Asia/Shanghai
