@@ -47,15 +47,15 @@ SH_SYM="$HOME/sh"
 SH_WWW="/www/sh" #末尾不要加斜杠/
 
 # sh="$SH_SYM" # 简写或者直接用SH_SYM
-_REPO_BASE="repos/scripts"
+_SCRIPT_REPO_BASE="repos/scripts"
 _SH_RELATIVE="wp/woocommerce/woo_df/sh"
 
 # 计算最终的SCRIPT_ROOT路径
-SCRIPT_ROOT_DEFAULT="$HOME/$_REPO_BASE" # 默认的仓库目录(scripts仓库总目录)
+SCRIPT_ROOT_DEFAULT="$HOME/$_SCRIPT_REPO_BASE" # 默认的仓库目录(scripts仓库总目录)
 SCRIPT_ROOT="${SCRIPT_ROOT_DEFAULT}"    # /root/repos/scripts 或 /home/user/repos/scripts,历史遗留目录为/repos/scripts
 
 # (服务器端)兼容历史遗留路径,此时符号链接指向SCRIPT_ROOT_SERVER为主
-SCRIPT_ROOT_SERVER="/$_REPO_BASE"
+SCRIPT_ROOT_SERVER="/$_SCRIPT_REPO_BASE"
 # [[ -d $SCRIPT_ROOT_SERVER ]] && ln -snfv "$SCRIPT_ROOT" "$SCRIPT_ROOT_SERVER"
 if [[ -d $SCRIPT_ROOT_SERVER ]]; then
     SCRIPT_ROOT="$SCRIPT_ROOT_SERVER"

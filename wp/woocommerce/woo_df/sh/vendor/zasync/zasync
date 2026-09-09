@@ -1,0 +1,55 @@
+#!/bin/zsh
+
+if [[ $0 != zasync ]]; then
+  print -u2 -r -- 'zasync: must be run as a function, not sourced'
+  return 1
+fi
+
+# sysread/sysopen don't autoload by name.
+zmodload zsh/system
+
+typeset -gA _zasync_fd=()       # slot → current tracked fd
+typeset -gA _zasync_seq=()      # slot → sequence number of last-started job
+typeset -gA _zasync_fd_slot=()  # fd   → slot name
+typeset -gA _zasync_fd_seq=()   # fd   → sequence number at launch
+typeset -gA _zasync_fd_pwd=()   # fd   → $PWD at launch
+typeset -gA _zasync_fd_cb=()    # fd   → callback widget name
+typeset -gA _zasync_fd_pid=()   # fd   → pid of the process-substitution driver
+typeset -gA _zasync_fd_buf=()   # fd   → bytes read so far, until EOF
+typeset -gA _zasync_reply=()    # slot → most-recent raw output
+typeset -gi _zasync_n=0         # monotonic counter
+
+typeset -ga _zasync_commands=(start cancel reply help)
+
+# Subfunctions live in Functions/ next to this file and are autoloaded by
+# absolute path, so callers don't need them on $fpath.
+local funcdir=${${(%):-%x}:A:h}/Functions
+local -a funcfiles=("$funcdir"/.zasync.*)
+autoload -Uz "${(@)funcfiles:#*.zwc}"
+
+zle -N .zasync.fd-callback
+
+zasync() {
+  (( $# > 0 )) || {
+    .zasync.help
+    return 2
+  }
+
+  if [[ $1 == help ]]; then
+    shift
+    .zasync.help "$@"
+    return $?
+  fi
+
+  if (( ! ${_zasync_commands[(Ie)$1]} )); then
+    print -u2 -r -- "zasync: unknown command: $1"
+    .zasync.help
+    return 2
+  fi
+
+  local func=.zasync.$1
+  shift
+  "$func" "$@"
+}
+
+zasync "$@"

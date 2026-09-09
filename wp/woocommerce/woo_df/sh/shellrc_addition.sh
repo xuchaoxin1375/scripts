@@ -14,9 +14,9 @@ VERSION_UTILS="20260528"
 start_time=$(date +%s%N)
 # BASHRC_FILE="$HOME/.bashrc"
 # 服务器用的目录(by root user on server)
-_REPO_BASE="repos/scripts"
+_SCRIPT_REPO_BASE="repos/scripts"
 _SH_RELATIVE="wp/woocommerce/woo_df/sh"
-SCRIPT_ROOT_SERVER="/$_REPO_BASE"
+SCRIPT_ROOT_SERVER="/$_SCRIPT_REPO_BASE"
 _SHELL_DEBUG=0
 # 防止重复导入检查处理(如果想要设计为单会话单词运行的话)
 # if [ -z "$_SHELLX_LOADED" ]; then
@@ -31,12 +31,12 @@ _SHELL_DEBUG=0
 # 判断当前系统(平台)类型
 echo "Current Os type is [$OSTYPE] [shellrc version: $VERSION_UTILS]..."
 if [[ $OSTYPE == "darwin"* ]]; then
-  SCRIPT_ROOT="$HOME/$_REPO_BASE"
+  SCRIPT_ROOT="$HOME/$_SCRIPT_REPO_BASE"
 elif [[ $OSTYPE == "linux"* ]]; then
-  SCRIPT_ROOT="$HOME/$_REPO_BASE"
-  # ! [[ -e $SCRIPT_ROOT ]] && SCRIPT_ROOT="$HOME/$_REPO_BASE"
+  SCRIPT_ROOT="$HOME/$_SCRIPT_REPO_BASE"
+  # ! [[ -e $SCRIPT_ROOT ]] && SCRIPT_ROOT="$HOME/$_SCRIPT_REPO_BASE"
   # wsl可选:
-  [[ -d /mnt/c/ ]] && SCRIPT_ROOT="/mnt/c/$_REPO_BASE"
+  [[ -d /mnt/c/ ]] && SCRIPT_ROOT="/mnt/c/$_SCRIPT_REPO_BASE"
   # wsl的ble.sh用户专属配置(从PATH环境变量中移除/mnt/缓解性能问题.检查PATH取值以验证效果)
   if [ -e '/mnt/' ]; then
     blerc="$SH_SYM/env_sh/.blerc"
@@ -44,7 +44,7 @@ elif [[ $OSTYPE == "linux"* ]]; then
   fi
 else
   # msys*(windows上的一些模拟层)
-  [[ -d /c/ ]] && SCRIPT_ROOT="/c/$_REPO_BASE"
+  [[ -d /c/ ]] && SCRIPT_ROOT="/c/$_SCRIPT_REPO_BASE"
 fi
 
 SH_SYM="$HOME/sh"

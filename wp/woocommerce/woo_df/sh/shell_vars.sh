@@ -33,16 +33,24 @@ fi
 echo "Loading pre-defined variables..."
 # wsl 用户: 统一将使用wsl的设备设置桌面的统一别名目录C:/desktop->$desktop,使用符号链接可以在不改动的情况下优雅的实现这一点
 # New-Item -ItemType Junction  -Path C:/desktop -Target $home/desktop -Verbose -Force #powershell执行
-_REPO_BASE="repos/scripts"
+_REPOS="repos"
+_SCRIPT_REPO_BASE="$_REPOS/scripts"
 _WOO_DF_RELATIVE="wp/woocommerce/woo_df"
-# SCRIPT_ROOT_SERVER="/$_REPO_BASE"
+
+# SCRIPT_ROOT_SERVER="/$_SCRIPT_REPO_BASE"
 uploader_files="/srv/uploads/uploader/files"
+
+# 总仓库目录,存放各个仓库
+REPOS="$HOME/$_REPOS" # ~/repos/
 # 定义scripts 仓库clone 的保存路径
-SCRIPT_ROOT="$HOME/$_REPO_BASE" # 默认以家目录为基础路径
+SCRIPT_ROOT="$HOME/$_SCRIPT_REPO_BASE" # 默认以家目录为基础路径
+repos="$REPOS"
+# [[ -d "$repos" ]] && export repos
+scripts="$SCRIPT_ROOT"
 #普通linux系统（假设有 root 权限）：
-# SCRIPT_ROOT_LINUX="/$_REPO_BASE"
-# SCRIPT_ROOT_WSL="/mnt/c/$_REPO_BASE"
-# SCRIPT_ROOT_MSYS="/c/$_REPO_BASE"
+# SCRIPT_ROOT_LINUX="/$_SCRIPT_REPO_BASE"
+# SCRIPT_ROOT_WSL="/mnt/c/$_SCRIPT_REPO_BASE"
+# SCRIPT_ROOT_MSYS="/c/$_SCRIPT_REPO_BASE"
 woo_df="$SCRIPT_ROOT/$_WOO_DF_RELATIVE"
 pys="$woo_df/pys"
 
@@ -78,4 +86,5 @@ export desktop sh macos_sh omb_themes \
   bt_nginx_vhost_conf_home \
   bt_nginx_conf_home uploader_files woo_df pys \
   SH_SYM SCRIPT_ROOT SH_SCRIPT_DIR PYTHONPATH \
+  scripts \
   mihomo_config_dir

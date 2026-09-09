@@ -1,0 +1,39 @@
+case ${1-} in
+  :help-summary)
+    print -r -- '  cancel <slot>                 Cancel in-flight worker for slot.'
+    return 0
+    ;;
+  :help)
+    print -r -- 'Usage: zasync cancel <slot>'
+    print -r -- ''
+    print -r -- 'Cancel in-flight worker for slot.'
+    print -r -- ''
+    print -r -- 'Arguments:'
+    print -r -- '  slot    Name of the tracked slot to cancel.'
+    return 0
+    ;;
+esac
+
+(( $# == 1 )) || {
+  .zasync.cancel :help
+  return 2
+}
+
+local slot=$1
+local fd=${_zasync_fd[$slot]-}
+unset "_zasync_fd[$slot]"
+
+[[ -z $fd ]] && return 0
+
+local pid=${_zasync_fd_pid[$fd]-}
+unset "_zasync_fd_slot[$fd]" "_zasync_fd_seq[$fd]" "_zasync_fd_pwd[$fd]" "_zasync_fd_cb[$fd]" "_zasync_fd_pid[$fd]" "_zasync_fd_buf[$fd]"
+unset "_zasync_reply[$slot]"
+zle -F "$fd" 2>/dev/null
+
+# Never close fds below 10: those are stdin/stdout/stderr and other
+# reserved descriptors we did not allocate.
+(( fd >= 10 )) && exec {fd}<&-
+
+# pid 0 means the diff in .zasync.start found no new child; -0 would signal
+# our own process group, so guard against it explicitly.
+(( pid > 0 )) && kill -- -"$pid" 2>/dev/null

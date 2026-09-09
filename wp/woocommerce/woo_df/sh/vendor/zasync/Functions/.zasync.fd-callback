@@ -1,0 +1,50 @@
+local fd=$1
+
+local slot=${_zasync_fd_slot[$fd]-}
+local req_seq=${_zasync_fd_seq[$fd]-0}
+local req_pwd=${_zasync_fd_pwd[$fd]-}
+local callback=${_zasync_fd_cb[$fd]-}
+
+local chunk=
+sysread -i "$fd" chunk
+local rc=$?
+
+# More data may still arrive: buffer it and wait for the next wake, without
+# unregistering or closing the fd.
+if (( rc == 0 )); then
+  _zasync_fd_buf[$fd]+=$chunk
+  return 0
+fi
+
+# EOF (status 5) or an error both end the stream; either way, deliver
+# whatever was buffered and tear down.
+zle -F "$fd"
+
+local data=
+{
+  # Avoid interrupting yank/kill widget sequences.
+  if (( ${YANK_ACTIVE:-0} )); then
+    local before=
+    (( YANK_START <= CURSOR && YANK_END <= CURSOR )) && before=before
+    builtin zle -f yank$before
+  else
+    builtin zle -f kill
+  fi
+
+  data=${_zasync_fd_buf[$fd]-}
+} always {
+  exec {fd}<&-
+  if [[ -n $slot ]]; then
+    unset "_zasync_fd_slot[$fd]" "_zasync_fd_seq[$fd]" "_zasync_fd_pwd[$fd]" "_zasync_fd_cb[$fd]" "_zasync_fd_pid[$fd]" "_zasync_fd_buf[$fd]"
+    if [[ -v _zasync_fd[$slot] && ${_zasync_fd[$slot]} == $fd ]]; then
+      unset "_zasync_fd[$slot]"
+    fi
+  fi
+}
+
+# Discard stale results (wrong generation or wrong directory).
+local cur_seq=${_zasync_seq[$slot]-0}
+(( req_seq > 0 && req_seq == cur_seq )) && [[ $req_pwd == $PWD ]] || return 0
+
+_zasync_reply[$slot]=$data
+[[ -n $callback ]] && zle "$callback"

@@ -20,7 +20,7 @@
 # 这里的链接gitee也可以换成gitee(适合国内用户,但是可能要登录gitee账号)
 # 使用-h获取命令行帮助
 
-version=20260803
+version=20260909.2
 # 插件仓库源
 REPO_SOURCE="github" # gitee
 repo_source_explicit=false
@@ -56,8 +56,9 @@ options:
     -O|--omz-only 
         install oh-my-zsh only without other plugins if true.
     -U|--update-zsh-plugins
-        update installed zsh plugin repositories with fast-forward-only pulls,
-        then exit without changing oh-my-zsh or shell configuration files.
+        update installed zsh plugin repositories with fast-forward-only pulls.
+        Also install the zsh-autocomplete runtime dependency zasync
+        (vendor copy first, network fallback) and ensure ~/.zshrc can autoload it.
     -y|--yes
         skip the update confirmation prompt. Required for non-interactive updates.
     -zc | --install-zsh-completions [true|false]
@@ -74,8 +75,11 @@ options:
         install zsh-history-substring-search plugin if true
     --zsh-custom
         set oh-my-zsh custom directory [ZSH_CUSTOM].
-    -s|--repo-source [github|gitee]
+    -s|--repo-source [github|gitee|origin]
         select the preferred repository source for plugin installation or updates.
+        origin (aliases: keep, current, existing) keeps each plugin
+        current git remote during -U and does not rewrite origin.
+        Install mode still requires github or gitee.
     -h,--help 
         show this help message.
 '"
@@ -88,6 +92,12 @@ examples:
 
     # non-interactive update using the GitHub repository URLs:
     bash $0 --update-zsh-plugins --repo-source github --yes
+
+    # non-interactive update, keep each plugin's existing origin:
+    bash $0 -U -s origin -y
+
+    # non-interactive update from Gitee mirrors:
+    bash $0 -U -s gitee -y
 
     # install without 'you-should-use' plugin or  disable the plugin in plugins list
     bash deploy_omz.sh -o false -zysu false
@@ -138,10 +148,14 @@ parse_args() {
                 ;;
             -s | --repo-source)
                 REPO_SOURCE="$2"
-                if ! [[ $REPO_SOURCE =~ ^(github|gitee)$ ]]; then
-                    echo "[error]:未知仓库源 '$REPO_SOURCE'，可选值为 github 或 gitee。" >&2
-                    exit 1
-                fi
+                case $REPO_SOURCE in
+                    github | gitee) ;;
+                    origin | keep | current | existing) REPO_SOURCE=origin ;;
+                    *)
+                        echo "[error]:未知仓库源 '$REPO_SOURCE'，可选值为 github、gitee 或 origin。" >&2
+                        exit 1
+                        ;;
+                esac
                 repo_source_explicit=true
                 shift
                 ;;
@@ -179,7 +193,7 @@ confirm_zsh_plugin_update() {
 
     if [[ $assume_yes == true ]]; then
         if [[ $repo_source_explicit == false ]]; then
-            echo "[error]:使用 --yes 时必须显式传入 --repo-source github|gitee。" >&2
+            echo "[error]:使用 --yes 时必须显式传入 --repo-source github|gitee|origin。" >&2
             return 1
         fi
         return 0
@@ -191,19 +205,25 @@ confirm_zsh_plugin_update() {
 
     if [[ $repo_source_explicit == false ]]; then
         echo "请选择 Zsh 插件更新来源："
-        echo "  1) GitHub"
-        echo "  2) Gitee"
+        echo "  1) 沿用各插件当前 origin（不修改 remote）"
+        echo "  2) GitHub"
+        echo "  3) Gitee"
         echo "  q) 取消"
         read -r -p "请选择 [1]: " choice
         case ${choice:-1} in
-            1 | github) REPO_SOURCE=github ;;
-            2 | gitee) REPO_SOURCE=gitee ;;
+            1 | origin | keep | current | existing) REPO_SOURCE=origin ;;
+            2 | github) REPO_SOURCE=github ;;
+            3 | gitee) REPO_SOURCE=gitee ;;
             q | Q) echo "已取消更新。"; return 2 ;;
             *) echo "[error]:无效选择 '$choice'。" >&2; return 1 ;;
         esac
     fi
 
-    echo "将使用 $REPO_SOURCE 来源更新已安装的 Zsh 插件；必要时会修改插件 origin。"
+    if [[ $REPO_SOURCE == origin ]]; then
+        echo "将沿用各插件现有 origin 更新，不修改 remote。"
+    else
+        echo "将使用 $REPO_SOURCE 来源更新已安装的 Zsh 插件；必要时会修改插件 origin。"
+    fi
     read -r -p "确认继续？[y/N]: " answer
     [[ $answer == [yY] || $answer == [yY][eE][sS] ]] || {
         echo "已取消更新。"
@@ -221,6 +241,19 @@ fi
 
 # 根据命令行选择脚本维护的首选插件仓库。安装和仅更新模式共用同一组地址。
 set_zsh_plugin_repo_urls() {
+    if [[ $REPO_SOURCE == origin ]]; then
+        if [[ $update_zsh_plugins_only != true ]]; then
+            echo "[error]:仓库源 origin 仅适用于 -U/--update-zsh-plugins。" >&2
+            exit 1
+        fi
+        zcp_repo=
+        zac_repo=
+        zasp_repo=
+        zysu_repo=
+        zshp_repo=
+        zhssp_repo=
+        return 0
+    fi
     if [[ $REPO_SOURCE == gitee ]]; then
         zcp_repo=https://gitee.com/duchenpaul/zsh-completions.git
         zac_repo=https://gitee.com/mirrors/zsh-autocomplete.git
@@ -236,21 +269,25 @@ set_zsh_plugin_repo_urls() {
         zshp_repo=https://github.com/zsh-users/zsh-syntax-highlighting.git
         zhssp_repo=https://github.com/zsh-users/zsh-history-substring-search.git
     else
-        echo "[error]:未知仓库源 '$REPO_SOURCE'，可选值为 github 或 gitee。" >&2
+        echo "[error]:未知仓库源 '$REPO_SOURCE'，可选值为 github、gitee 或 origin。" >&2
         exit 1
     fi
 }
 set_zsh_plugin_repo_urls
 
 if [[ $update_zsh_plugins_only == true ]]; then
-    echo "Update mode prefers repository URLs configured for source: $REPO_SOURCE"
+    if [[ $REPO_SOURCE == origin ]]; then
+        echo "Update mode keeps each plugin's existing origin"
+    else
+        echo "Update mode prefers repository URLs configured for source: $REPO_SOURCE"
+    fi
 else
     echo "Using repo source: $REPO_SOURCE"
 fi
 
-# 检查依赖。仅更新插件时不需要 curl、zsh 或后续配置工具。
+# 检查依赖。仅更新插件时不需要后续配置工具，但仍需要 git/curl。
 if [[ $update_zsh_plugins_only == true ]]; then
-    requirements=(git)
+    requirements=(git curl)
 else
     requirements=(git curl zsh)
 fi
@@ -263,6 +300,173 @@ for req in "${requirements[@]}"; do
 done
 
 if [[ $meet_req == false ]]; then exit 2; fi
+
+# zsh-autocomplete 自 7633bc7 起不再内置 zasync，启动时会执行:
+#   git clone https://github.com/marlonrichert/zasync.git "$HOME/.cache/zsh/zasync"
+# 国内访问 GitHub 经常卡在 "Cloning into ..."。-U 也必须装好这份依赖，
+# 并写入 fpath，否则只更新插件后动态补全会失效。
+deploy_omz_script_dir() {
+    local source=${BASH_SOURCE[0]:-$0}
+    (cd "$(dirname "$source")" && pwd -P)
+}
+
+zasync_cache_dir() {
+    echo "${XDG_CACHE_HOME:-$HOME/.cache}/zsh/zasync"
+}
+
+zasync_plugin_dir() {
+    echo "${ZSH_CUSTOM:-${ZSH:-$HOME/.oh-my-zsh}/custom}/plugins/zasync"
+}
+
+zasync_vendor_dir() {
+    echo "$(deploy_omz_script_dir)/vendor/zasync"
+}
+
+zasync_tree_complete() {
+    local dest=$1
+    [[ -f $dest/zasync && -f $dest/Functions/.zasync.start && -f $dest/Functions/.zasync.fd-callback ]]
+}
+
+copy_zasync_tree() {
+    local src=$1 dest=$2
+    mkdir -p "$dest/Functions"
+    cp "$src/zasync" "$dest/zasync"
+    cp "$src/Functions"/.zasync.* "$dest/Functions/"
+    [[ -f $src/LICENSE ]] && cp "$src/LICENSE" "$dest/LICENSE"
+    zasync_tree_complete "$dest"
+}
+
+download_zasync_tarball() {
+    local tarball=$1
+    local url
+    local -a tarball_urls=(
+        "https://ghproxy.net/https://github.com/marlonrichert/zasync/archive/refs/heads/main.tar.gz"
+        "https://github.com/marlonrichert/zasync/archive/refs/heads/main.tar.gz"
+    )
+    for url in "${tarball_urls[@]}"; do
+        echo "下载 zasync: $url"
+        if curl -fsSL --max-time 30 -o "$tarball" "$url"; then
+            return 0
+        fi
+        echo "[warn]:zasync 下载失败: $url" >&2
+    done
+    return 1
+}
+
+install_zasync_from_network() {
+    local dest=$1
+    local tmp tarball
+    tmp=$(mktemp -d)
+    tarball="$tmp/zasync.tar.gz"
+    mkdir -p "$dest"
+    if ! download_zasync_tarball "$tarball"; then
+        return 1
+    fi
+    if ! tar -tzf "$tarball" &> /dev/null; then
+        echo "[warn]:zasync 下载内容不是 tar.gz" >&2
+        return 1
+    fi
+    if ! tar -xzf "$tarball" --strip-components=1 -C "$dest"; then
+        echo "[warn]:解压 zasync 失败。" >&2
+        return 1
+    fi
+    zasync_tree_complete "$dest"
+}
+
+download_zasync_via_jsdelivr() {
+    local dest=$1
+    local base="https://cdn.jsdelivr.net/gh/marlonrichert/zasync@main"
+    local file
+    mkdir -p "$dest/Functions"
+    if ! curl -fsSL --max-time 20 -o "$dest/zasync" "$base/zasync"; then
+        return 1
+    fi
+    for file in .zasync.cancel .zasync.fd-callback .zasync.help .zasync.reply .zasync.start; do
+        if ! curl -fsSL --max-time 20 -o "$dest/Functions/$file" "$base/Functions/$file"; then
+            return 1
+        fi
+    done
+    zasync_tree_complete "$dest"
+}
+
+mark_zasync_cache_fetched() {
+    local dest=$1
+    local origin
+    mkdir -p "$dest"
+    if ! git -C "$dest" rev-parse --is-inside-work-tree &> /dev/null; then
+        git -C "$dest" init -q
+    fi
+    origin=$(git -C "$dest" remote get-url origin 2> /dev/null || true)
+    if [[ $origin == *github.com* ]]; then
+        git -C "$dest" remote remove origin
+    fi
+    : > "$dest/.git/FETCH_HEAD"
+}
+
+ensure_zasync_zshrc() {
+    local zshrc=${1:-${zshrc_path:-$HOME/.zshrc}}
+    local tmp
+    [[ -f $zshrc ]] || return 0
+    tmp=$(mktemp)
+    awk '
+        BEGIN {
+            snippet = "# >>> zasync\n# 让 zsh-autocomplete 直接 autoload zasync，避免启动时 git clone GitHub。\nfpath+=${ZSH_CUSTOM:-${ZSH:-~/.oh-my-zsh}/custom}/plugins/zasync\n# <<< zasync"
+        }
+        $0 == "# >>> zasync" { skip = 1; next }
+        skip && $0 == "# <<< zasync" { skip = 0; next }
+        skip { next }
+        /^plugins=\(/ && !inserted {
+            print snippet
+            print ""
+            inserted = 1
+        }
+        { print }
+        END {
+            if (!inserted) {
+                print ""
+                print snippet
+            }
+        }
+    ' "$zshrc" > "$tmp"
+    cat "$tmp" > "$zshrc"
+}
+
+verify_zasync_autoload() {
+    local plugin_dir=$1
+    local quoted
+    command -v zsh &> /dev/null || return 0
+    printf -v quoted '%q' "$plugin_dir"
+    zsh -df -c "fpath+=($quoted); builtin autoload -Uz +X zasync" &> /dev/null
+}
+
+install_or_update_zasync() {
+    local cache_dir plugin_dir vendor_dir
+    cache_dir=$(zasync_cache_dir)
+    plugin_dir=$(zasync_plugin_dir)
+    vendor_dir=$(zasync_vendor_dir)
+    echo "安装/更新 zsh-autocomplete 依赖 zasync ..."
+    mkdir -p "$cache_dir" "$plugin_dir"
+
+    if [[ -f $vendor_dir/zasync ]] && copy_zasync_tree "$vendor_dir" "$cache_dir"; then
+        echo "[ok]:zasync 使用脚本内置副本 $vendor_dir"
+    elif install_zasync_from_network "$cache_dir"; then
+        echo "[ok]:zasync 使用网络 tarball"
+    elif download_zasync_via_jsdelivr "$cache_dir"; then
+        echo "[ok]:zasync 使用 jsDelivr"
+    else
+        echo "[error]:无法获取 zasync。zsh-autocomplete 动态补全会失效，启动时还可能卡在 git clone。" >&2
+        return 1
+    fi
+
+    copy_zasync_tree "$cache_dir" "$plugin_dir" || return 1
+    mark_zasync_cache_fetched "$cache_dir"
+    ensure_zasync_zshrc "${zshrc_path:-$HOME/.zshrc}"
+    if verify_zasync_autoload "$plugin_dir"; then
+        echo "[ok]:zasync autoload 检查通过 -> $plugin_dir"
+    else
+        echo "[warn]:zasync 文件已安装，但当前环境 autoload 检查未通过。" >&2
+    fi
+}
 
 # 仅更新已安装的 Zsh 插件仓库，不安装插件，也不修改任何 shell 配置。
 update_zsh_plugins() {
@@ -296,7 +500,14 @@ update_zsh_plugins() {
         fi
 
         current_url=$(git -C "$repo_dir" remote get-url origin 2> /dev/null || true)
-        if [[ -z $current_url ]]; then
+        if [[ $REPO_SOURCE == origin ]]; then
+            if [[ -z $current_url ]]; then
+                echo "[warn]:跳过 $name: 没有 origin，且选择了沿用原来源。" >&2
+                failed=true
+                return 0
+            fi
+            preferred_url=$current_url
+        elif [[ -z $current_url ]]; then
             git -C "$repo_dir" remote add origin "$preferred_url"
         elif [[ $current_url != "$preferred_url" ]]; then
             echo "首选 $name origin: $current_url -> $preferred_url"
@@ -304,7 +515,7 @@ update_zsh_plugins() {
         fi
 
         before=$(git -C "$repo_dir" rev-parse --short HEAD)
-        echo "更新 $name ($before) ..."
+        echo "更新 $name ($before) from $preferred_url ..."
         if git -C "$repo_dir" pull --ff-only origin "$branch"; then
             after=$(git -C "$repo_dir" rev-parse --short HEAD)
             echo "[ok]:$name $before -> $after"
@@ -312,7 +523,7 @@ update_zsh_plugins() {
         fi
 
         echo "[warn]:$name 的首选仓库更新失败: $preferred_url" >&2
-        if [[ -n $current_url && $current_url != "$preferred_url" ]]; then
+        if [[ $REPO_SOURCE != origin && -n $current_url && $current_url != "$preferred_url" ]]; then
             echo "[warn]:$name 回退到原 upstream: $current_url" >&2
             git -C "$repo_dir" remote set-url origin "$current_url"
             if git -C "$repo_dir" pull --ff-only origin "$branch"; then
@@ -320,7 +531,7 @@ update_zsh_plugins() {
                 echo "[ok]:$name $before -> $after (fallback)"
                 return 0
             fi
-        elif [[ -z $current_url ]]; then
+        elif [[ $REPO_SOURCE != origin && -z $current_url ]]; then
             git -C "$repo_dir" remote remove origin
         fi
 
@@ -335,6 +546,12 @@ update_zsh_plugins() {
     update_zsh_plugin_repo zsh-syntax-highlighting "$custom_dir/plugins/zsh-syntax-highlighting" "$zshp_repo"
     update_zsh_plugin_repo zsh-history-substring-search "$custom_dir/plugins/zsh-history-substring-search" "$zhssp_repo"
 
+    if [[ -d $custom_dir/plugins/zsh-autocomplete ]]; then
+        if ! install_or_update_zasync; then
+            failed=true
+        fi
+    fi
+
     if [[ $found == false ]]; then
         echo "未在 $custom_dir/plugins 中找到已安装的目标插件。"
     fi
@@ -342,6 +559,8 @@ update_zsh_plugins() {
 }
 
 if [[ $update_zsh_plugins_only == true ]]; then
+    zshrc_path="$HOME/.zshrc"
+    [[ -f $zshrc_path ]] || touch "$zshrc_path"
     update_zsh_plugins
     exit $?
 fi
@@ -434,6 +653,7 @@ zac=${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autocomplete
 # 自动动态的补全预测,属于较复杂插件(代替incr.zsh)
 [[ $install_zsh_autocomplete != false ]] &&
     ! [[ -d $zac ]] && git clone --depth 1 "$zac_repo" "$zac"
+[[ $install_zsh_autocomplete != false ]] && install_or_update_zasync
 
 [[ $install_zsh_autosuggestions == true ]] &&
     ! [[ -d $zasp ]] && git clone --depth 1 "$zasp_repo" "$zasp"
@@ -544,6 +764,9 @@ fpath+=${ZSH_CUSTOM:-${ZSH:-~/.oh-my-zsh}/custom}/plugins/zsh-completions/src\
         fi
     }
     update_zc_config_rc
+    if [[ $install_zsh_autocomplete != false ]]; then
+        ensure_zasync_zshrc "$zshrc_path"
+    fi
     # 安装zsh-autocomplete的方案分2类
     # 标准方式安装zsh-autocomplete(不依赖于oh my zsh等配置框架)
     update_zac_config_rc() {

@@ -1,0 +1,37 @@
+case ${1-} in
+  :help-summary)
+    print -r -- '  help [command]                Show help for a command.'
+    return 0
+    ;;
+  :help)
+    print -r -- 'Usage: zasync help [command]'
+    print -r -- ''
+    print -r -- 'Show help for a command.'
+    print -r -- ''
+    print -r -- 'Arguments:'
+    print -r -- '  command    Name of the command to show help for.'
+    return 0
+    ;;
+esac
+
+local cmd=${1-}
+
+if [[ -n $cmd ]]; then
+  if (( ${_zasync_commands[(Ie)$cmd]} )); then
+    .zasync.$cmd :help
+    return 0
+  fi
+
+  print -u2 -r -- "zasync: unknown command: $cmd"
+  .zasync.help
+  return 2
+fi
+
+print -r -- 'Usage: zasync help [command]'
+print -r -- 'Usage: zasync <command> [args]'
+print -r -- ''
+print -r -- 'Commands:'
+local c
+for c in $_zasync_commands; do
+  .zasync.$c :help-summary
+done

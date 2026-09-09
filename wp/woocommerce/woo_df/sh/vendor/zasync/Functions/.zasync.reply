@@ -1,0 +1,22 @@
+case ${1-} in
+  :help-summary)
+    print -r -- '  reply <slot>                  Print last reply for slot.'
+    return 0
+    ;;
+  :help)
+    print -r -- 'Usage: zasync reply <slot>'
+    print -r -- ''
+    print -r -- 'Print last reply for slot.'
+    print -r -- ''
+    print -r -- 'Arguments:'
+    print -r -- '  slot    Name of the tracked slot.'
+    return 0
+    ;;
+esac
+
+(( $# == 1 )) || {
+  .zasync.reply :help
+  return 2
+}
+
+print -r -- "${_zasync_reply[$1]-}"

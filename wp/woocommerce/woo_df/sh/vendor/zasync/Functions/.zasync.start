@@ -1,0 +1,44 @@
+case ${1-} in
+  :help-summary)
+    print -r -- '  start <slot> <worker> <cb>    Start worker and register callback.'
+    return 0
+    ;;
+  :help)
+    print -r -- 'Usage: zasync start <slot> <worker> <cb>'
+    print -r -- ''
+    print -r -- 'Start worker and register callback.'
+    print -r -- ''
+    print -r -- 'Arguments:'
+    print -r -- '  slot    Name used to track/cancel this in-flight job.'
+    print -r -- '  worker  Name of a command or function to run asynchronously (no arguments).'
+    print -r -- '  cb      ZLE widget called when worker output is ready.'
+    return 0
+    ;;
+esac
+
+(( $# == 3 )) || {
+  .zasync.start :help
+  return 2
+}
+
+local slot=$1 worker=$2 callback=$3
+
+# Cancel any previous in-flight job for this slot first.
+.zasync.cancel "$slot"
+
+# Process substitution never sets $!, but $sysparams[procsubstpid] gives
+# the driver's pid directly after it starts. It runs in its own process
+# group (pgid == pid), letting .zasync.cancel kill the whole group.
+local fd=
+sysopen -r -o cloexec -u fd <( "$worker" 2>/dev/null )
+
+local seq=$(( ++_zasync_n ))
+_zasync_fd[$slot]=$fd
+_zasync_seq[$slot]=$seq
+_zasync_fd_slot[$fd]=$slot
+_zasync_fd_seq[$fd]=$seq
+_zasync_fd_pwd[$fd]=$PWD
+_zasync_fd_cb[$fd]=$callback
+_zasync_fd_pid[$fd]=$sysparams[procsubstpid]
+
+zle -Fw "$fd" .zasync.fd-callback
