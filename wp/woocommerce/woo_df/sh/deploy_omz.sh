@@ -20,7 +20,7 @@
 # 这里的链接gitee也可以换成gitee(适合国内用户,但是可能要登录gitee账号)
 # 使用-h获取命令行帮助
 
-version=20260909.2
+version=20260909.7
 # 插件仓库源
 REPO_SOURCE="github" # gitee
 repo_source_explicit=false
@@ -57,8 +57,8 @@ options:
         install oh-my-zsh only without other plugins if true.
     -U|--update-zsh-plugins
         update installed zsh plugin repositories with fast-forward-only pulls.
-        Also install the zsh-autocomplete runtime dependency zasync
-        (vendor copy first, network fallback) and ensure ~/.zshrc can autoload it.
+        Also install zasync and refresh keybindings so Up/Down stay default
+        history; autoload Completions helpers missed by omz early compinit.
     -y|--yes
         skip the update confirmation prompt. Required for non-interactive updates.
     -zc | --install-zsh-completions [true|false]
@@ -468,7 +468,56 @@ install_or_update_zasync() {
     fi
 }
 
-# 仅更新已安装的 Zsh 插件仓库，不安装插件，也不修改任何 shell 配置。
+write_zac_bindkey_config() {
+    cat > "$HOME/zsh_bindkey_config.sh" << 'EOF'
+# shellcheck disable=SC2148
+# zsh-autocomplete 官方建议：在插件加载之后 bindkey。
+# omz 会在 source 插件之前 compinit，Completions/ 下的 _autocomplete__*
+# 不会进入 dump。必须在这里 autoload，上箭头的历史列表才能工作。
+() {
+  emulate -L zsh
+  local dir=${ZSH_CUSTOM:-${ZSH:-$HOME/.oh-my-zsh}/custom}/plugins/zsh-autocomplete/Completions
+  [[ -d $dir ]] || return
+  fpath=($dir $fpath)
+  autoload -Uz $dir/_autocomplete__*(N)
+}
+
+# Tab / Shift-Tab 进入菜单并在菜单中移动
+bindkey              '^I' menu-select
+[[ -n "${terminfo[kcbt]}" ]] && bindkey "${terminfo[kcbt]}" menu-select
+bindkey -M menuselect              '^I' menu-complete
+[[ -n "${terminfo[kcbt]}" ]] && bindkey -M menuselect "${terminfo[kcbt]}" reverse-menu-complete
+
+# 菜单中 Enter 始终提交命令行
+bindkey -M menuselect '^M' .accept-line
+
+# 菜单中左右键始终移动命令行光标
+bindkey -M menuselect \
+    '^[[C' .forward-char  '^[OC' .forward-char \
+    '^[[D' .backward-char '^[OD' .backward-char
+
+# 命令行左右键移动光标
+bindkey -M emacs \
+    '^[[C' forward-char  '^[OC' forward-char \
+    '^[[D' backward-char '^[OD' backward-char
+
+# 不要把 ↑/↓ 改成 .up-line-or-history。
+# 插件默认：↑ = up-line-or-search（弹出历史命令列表），
+# ↓ = down-line-or-select（进入补全菜单）。autoload 后即可恢复更新前效果。
+
+# 不让历史补全追加分号
+zstyle ':autocomplete:*' add-semicolon no
+EOF
+}
+
+ensure_zsh_autocomplete_compat() {
+    local zac_dir=${1:-${ZSH_CUSTOM:-${ZSH:-$HOME/.oh-my-zsh}/custom}/plugins/zsh-autocomplete}
+    [[ -d $zac_dir ]] || return 0
+    install_or_update_zasync || return 1
+    write_zac_bindkey_config
+}
+
+# 仅更新已安装的 Zsh 插件仓库，并处理 zsh-autocomplete 的 zasync 依赖。
 update_zsh_plugins() {
     local custom_dir=${ZSH_CUSTOM:-${ZSH:-$HOME/.oh-my-zsh}/custom}
     local failed=false
@@ -547,7 +596,7 @@ update_zsh_plugins() {
     update_zsh_plugin_repo zsh-history-substring-search "$custom_dir/plugins/zsh-history-substring-search" "$zhssp_repo"
 
     if [[ -d $custom_dir/plugins/zsh-autocomplete ]]; then
-        if ! install_or_update_zasync; then
+        if ! ensure_zsh_autocomplete_compat "$custom_dir/plugins/zsh-autocomplete"; then
             failed=true
         fi
     fi
@@ -653,7 +702,7 @@ zac=${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autocomplete
 # 自动动态的补全预测,属于较复杂插件(代替incr.zsh)
 [[ $install_zsh_autocomplete != false ]] &&
     ! [[ -d $zac ]] && git clone --depth 1 "$zac_repo" "$zac"
-[[ $install_zsh_autocomplete != false ]] && install_or_update_zasync
+[[ $install_zsh_autocomplete != false ]] && ensure_zsh_autocomplete_compat "$zac"
 
 [[ $install_zsh_autosuggestions == true ]] &&
     ! [[ -d $zasp ]] && git clone --depth 1 "$zasp_repo" "$zasp"
@@ -823,77 +872,7 @@ zstyle '"'*:compinit'"' arguments -i -u \
             # 定义快捷键片段
             # shellcheck disable=SC2016
             # shellcheck disable=SC2125
-            local zsh_bindkey_config
-            zsh_bindkey_config="$(
-                cat << 'EOF'
-# shellcheck disable=SC2148
-# 将 Tab 和 Shift 和 Tab 设置为更改菜单中的选择(menu-select)
-# 这样， Tab 和 ShiftTab 分别将菜单中的选择项向右和向左移动，而不是退出菜单：
-bindkey              '^I' menu-select
-[[ -n "${terminfo[kcbt]}" ]] && bindkey "${terminfo[kcbt]}" menu-select
-
-# 使 Enter 始终提交命令行
-# 这样一来，即使您在菜单中， Enter 也始终会提交命令行：
-bindkey -M menuselect '^M' .accept-line
-
-# zsh-autosuggestions 的旧异步实现会在取消请求时先关闭 fd，再移除
-# ZLE handler，可能报 "No handler installed for fd"。保留建议但改为同步获取。
-unset ZSH_AUTOSUGGEST_USE_ASYNC
-
-# zsh-autocomplete 20f6c34 的异步回调错误地只关闭 TTY fd，但这里实际使用
-# 的是管道 fd；clear 回调中还存在变量名拼写错误。在配置层覆盖函数正文，
-# 避免修改插件文件，并确保本文件被部署脚本重新生成后修复仍然存在。
-for fn in \
-    .autocomplete:async:wait:fd-widget \
-    .autocomplete:async:complete:fd-widget
-do
-    (( ${+functions[$fn]} )) || continue
-    functions[$fn]=${functions[$fn]/\[\[\ -t\ \$fd\ \]\]\ \&\&\ /}
-done
-
-fn=.autocomplete:async:clear
-if (( ${+functions[$fn]} )); then
-    functions[$fn]=${functions[$fn]//_autocomplete__async_fd/_autocomplete_async_fd}
-    functions[$fn]=${functions[$fn]/\ \&\&\ -t\ \$_autocomplete_async_fd/}
-fi
-unset fn
-
-# 不让 zsh-autocomplete 在历史命令后追加分号。
-zstyle ':autocomplete:*' add-semicolon no
-
-# 如果不使用 zsh-autocomplete 的方向键历史菜单,设置如下动作：
-## .up-line-or-history
-## .down-line-or-history
-
-# 上下键按 Zsh 默认方式逐条
-# 浏览历史，左右键始终移动命令行光标。覆盖常见的 CSI 和 SS3 序列。
-bindkey -M emacs \
-    '^[[C' forward-char           '^[OC' forward-char \
-    '^[[D' backward-char          '^[OD' backward-char
-    # '^[[A' .up-line-or-history    '^[OA' .up-line-or-history \
-    # '^[[B' .down-line-or-history  '^[OB' .down-line-or-history \
-
-bindkey -M menuselect \
-    '^[[C' .forward-char          '^[OC' .forward-char \
-    '^[[D' .backward-char         '^[OD' .backward-char
-    # '^[[A' .up-line-or-history    '^[OA' .up-line-or-history \
-    # '^[[B' .down-line-or-history  '^[OB' .down-line-or-history \
-
-# 其他 
-# 将 Tab 和 ShiftTab 添加到菜单中(menu-complete)
-# 这样，当在命令行中按下 Tab 和 ShiftTab 时，它们将进入菜单而不是插入补全命令：
-# bindkey              '^I'         menu-complete
-# bindkey "$terminfo[kcbt]" reverse-menu-complete
-
-# 使 ← 和 → 始终在命令行上移动光标
-# 这样，即使您在菜单中， ← 和 → 也始终会在命令行上移动光标：
-# bindkey -M menuselect  '^[[D' .backward-char  '^[OD' .backward-char
-# bindkey -M menuselect  '^[[C'  .forward-char  '^[OC'  .forward-char
-
-EOF
-            )"
-
-            echo "$zsh_bindkey_config" > ~/zsh_bindkey_config.sh
+            write_zac_bindkey_config
             # 如果此前配置过,则清空相应区域,以便统一更新相应配置
             sed -i '/# >>> zac bindkey config/,/# <<< zac bindkey config/d' "$zshrc_path"
             # 快捷键脚本文件插入到.zshrc

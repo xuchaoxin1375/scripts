@@ -70,6 +70,29 @@ git clone https://github.com/marlonrichert/zasync.git ~/.cache/zsh/zasync
 
 有 `zsh-autocomplete` 时不要再手动 `compinit`（脚本会注释掉 `zsh-completions` 那段里的 `compinit`）。
 
+### `zsh-autocomplete` 关键节点
+
+本环境今天 `-U` 之前钉在 **`20f6c34`（2026-03-26，Fix fd handling）**。Gitee 镜像随后快进到 **`bf8db6b`（2026-08-27）**，中间几个月的提交一次拉齐，所以体感是「突然大变」。
+
+显著变化从 **2026-08-03** 开始集中出现：
+
+| 日期 | 提交 | 变化 | 对本环境的影响 |
+| --- | --- | --- | --- |
+| 2026-03-26 | `20f6c34` | Fix fd handling | **更新前版本**。↑ = `up-line-or-search`，弹出历史命令列表；异步仍是旧 fd 实现 |
+| 2026-08-03 | `50a99a6` | 用 `marlonrichert/z-async` 子模块替换 fd 异步 | 实时补全的后台调度换掉；旧的 fd-widget 补丁失效 |
+| 2026-08-03 | `d3a08ee` | 把 `Completions` 的 `fpath` 挪到 `plugin.zsh` | omz 仍在 source 插件前 `compinit`，`_autocomplete__history_lines` 等进不了 dump |
+| 2026-08-04 | `52ce817` | 把 `z-async` 做成 subtree 内置 | 启动不必访问 GitHub |
+| 2026-08-05 | `027cdab` | `unambiguous` 展示兼容 zsh &lt; 5.9 | Ubuntu 22 / zsh 5.8.1 相关 |
+| 2026-08-26 | **`7633bc7`** | **不再内置 zasync，init 时 `git clone` GitHub** | **启动卡在 `Cloning into ~/.cache/zsh/zasync`** |
+| 2026-08-27 | `bf8db6b` | Remove unused images | **当前 main**，今日更新落到这里 |
+
+要恢复「↑ 弹出历史列表」：autoload Completions 后保留插件默认按键，不要绑 `.up-line-or-history`。脚本已按此生成 `~/zsh_bindkey_config.sh`。
+
+
+新版和 omz 的冲突点：omz 在 `source` 插件**之前**就 `compinit`，`Completions/_autocomplete__*` 进不了 dump。上箭头默认走 `up-line-or-search` → `_autocomplete__history_lines`，就会 `command not found`。
+
+修复：插件加载后 `autoload` 这些函数，**不要**把 ↑ 改成 `.up-line-or-history`，才能保留更新前的「弹出历史命令列表」。
+
 ---
 
 ## 和 `deploy_omz.sh` 的对应关系
@@ -186,10 +209,10 @@ bash deploy_omz.sh -U -s gitee -y
 `-U` 现在会：
 
 - pull 已安装插件
-- 安装/更新 `zasync`（vendor 优先）
-- 确保 `~/.zshrc` 能 `autoload zasync`
+- 安装/更新 `zasync`
+- 重写 `~/zsh_bindkey_config.sh`：autoload Completions，保留插件默认 ↑ 历史列表
 
-另一台机器更新前，先同步**新版脚本 + `vendor/zasync`**，再执行 `-U`。只跑旧脚本会把 `zsh-autocomplete` 升到需要 `zasync` 的版本，但装不好依赖，动态补全就会坏。
+另一台机器更新前先同步新版脚本再跑 `-U`。
 
 ---
 
@@ -226,6 +249,17 @@ git -C "${XDG_CACHE_HOME:-$HOME/.cache}/zsh/zasync" remote -v
 处理：用当前脚本再跑一次安装或 `-U`（带 `vendor/zasync`）。不要干等 GitHub。
 
 若曾 Ctrl-C 留下半截目录，脚本会用完整文件覆盖 cache，并刷新 `FETCH_HEAD`。
+
+### 上箭头报 `_autocomplete__history_lines` / `_autocomplete__unambiguous`
+
+这不是「新版取消了历史列表」，而是 Completions 函数没 autoload。更新前 ↑ 弹出历史列表，正是插件默认的 `up-line-or-search`。
+
+`~/zsh_bindkey_config.sh` 会 autoload `Completions/_autocomplete__*`，并且**不覆盖** ↑/↓。`exec zsh` 后应恢复列表。若仍没有列表，检查 bindkey：
+
+```zsh
+bindkey '^[[A'   # 应为 up-line-or-search
+bindkey '^[OA'
+```
 
 ### `-U` 之后动态补全没了
 

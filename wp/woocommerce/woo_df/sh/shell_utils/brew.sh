@@ -560,6 +560,53 @@ _brew_download_installer() {
         "$url" --output "$output_file"
 }
 
+_brew_exec_as_user() {
+    local target_user=$1 user_home env_args=()
+    shift
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --)
+                shift
+                break
+                ;;
+            *)
+                env_args+=("$1")
+                shift
+                ;;
+        esac
+    done
+    [ "$#" -gt 0 ] || {
+        _brew_error 'internal error: _brew_exec_as_user needs a command'
+        return 2
+    }
+    user_home=$(_brew_user_home "$target_user")
+    # Homebrew's brew wrapper aborts unless PWD exists and is readable by the
+    # target user. Root shells commonly stay in /root (0700), which produces:
+    # "The current working directory must be readable to linuxbrew to run brew."
+    # After dropping privileges, cd to that user's home when PWD is unusable.
+    # The inner script is always bash so this stays identical under zsh.
+    local inner
+    inner='if [ -z "${PWD:-}" ] || [ ! -d "$PWD" ] || [ ! -r "$PWD" ]; then
+    if [ -n "$1" ] && [ -d "$1" ] && [ -r "$1" ]; then
+        cd -- "$1" || exit 1
+    else
+        cd -- /tmp || exit 1
+    fi
+fi
+shift
+exec "$@"'
+    if command -v sudo > /dev/null 2>&1; then
+        sudo -H -u "$target_user" env HOME="$user_home" "${env_args[@]}" \
+            /bin/bash -c "$inner" bash "$user_home" "$@"
+    elif [ "$(id -u)" -eq 0 ] && command -v runuser > /dev/null 2>&1; then
+        runuser -u "$target_user" -- env HOME="$user_home" "${env_args[@]}" \
+            /bin/bash -c "$inner" bash "$user_home" "$@"
+    else
+        _brew_error 'sudo or runuser is required to execute as another user'
+        return 1
+    fi
+}
+
 _brew_run_installer() {
     local installer=$1 target_user=${2:-} noninteractive=${3:-false}
     local env_args=()
@@ -579,14 +626,7 @@ _brew_run_installer() {
     chmod 0755 "$installer" || return
     if [ -n "$target_user" ] && [ "$target_user" != "$(id -un)" ]; then
         _brew_as_root chown "$target_user" "$installer" || return
-        if command -v sudo > /dev/null 2>&1; then
-            sudo -H -u "$target_user" env "${env_args[@]}" /bin/bash "$installer"
-        elif [ "$(id -u)" -eq 0 ] && command -v runuser > /dev/null 2>&1; then
-            runuser -u "$target_user" -- env HOME="$(_brew_user_home "$target_user")" "${env_args[@]}" /bin/bash "$installer"
-        else
-            _brew_error 'sudo or runuser is required to install as another user'
-            return 1
-        fi
+        _brew_exec_as_user "$target_user" "${env_args[@]}" -- /bin/bash "$installer"
     else
         env "${env_args[@]}" /bin/bash "$installer"
     fi
@@ -920,7 +960,7 @@ EOF
 }
 
 brewr() {
-    local brew_user=${BREW_USER:-linuxbrew} brew_bin user_home
+    local brew_user=${BREW_USER:-linuxbrew} brew_bin
     local args=()
     local env_args=()
     while [ "$#" -gt 0 ]; do
@@ -937,8 +977,10 @@ brewr() {
                 cat << 'EOF'
 Usage: brewr [-u USER] BREW_ARGUMENTS...
 
-As root, execute Homebrew as BREW_USER (default: linuxbrew). As a normal user,
-execute the brew found in PATH. Set BREW_USER to change the persistent default.
+As root, execute Homebrew as BREW_USER (default: linuxbrew). If the current
+directory is not readable by that user (for example /root), brew runs from
+the user's home directory. As a normal user, execute the brew found in PATH.
+Set BREW_USER to change the persistent default.
 EOF
                 return 0
                 ;;
@@ -959,7 +1001,6 @@ EOF
         _brew_error "cannot find Homebrew installed for user $brew_user"
         return 1
     }
-    user_home=$(_brew_user_home "$brew_user")
     # sudo normally filters these variables. Passing only Homebrew and proxy
     # settings keeps mirror/proxy behavior consistent with the root shell.
     [ -z "${HOMEBREW_INSTALL_FROM_API:-}" ] || env_args+=("HOMEBREW_INSTALL_FROM_API=$HOMEBREW_INSTALL_FROM_API")
@@ -974,14 +1015,7 @@ EOF
     [ -z "${https_proxy:-}" ] || env_args+=("https_proxy=$https_proxy")
     [ -z "${http_proxy:-}" ] || env_args+=("http_proxy=$http_proxy")
     [ -z "${all_proxy:-}" ] || env_args+=("all_proxy=$all_proxy")
-    if command -v sudo > /dev/null 2>&1; then
-        sudo -H -u "$brew_user" env HOME="$user_home" "${env_args[@]}" "$brew_bin" "${args[@]}"
-    elif command -v runuser > /dev/null 2>&1; then
-        runuser -u "$brew_user" -- env HOME="$user_home" "${env_args[@]}" "$brew_bin" "${args[@]}"
-    else
-        _brew_error 'sudo or runuser is required to execute brew as another user'
-        return 1
-    fi
+    _brew_exec_as_user "$brew_user" "${env_args[@]}" -- "$brew_bin" "${args[@]}"
 }
 
 uninstall_brew() {
