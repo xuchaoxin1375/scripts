@@ -125,6 +125,16 @@ brewr --user linuxbrew install fd
 这是刻意的最小权限设计。root 通过 `sudo -u` 或 `runuser` 切换身份，Homebrew
 本身及其安装的软件仍归专用用户所有。
 
+root 的当前目录经常是 `/root`（权限 `0700`）。直接把这个工作目录留给
+`linuxbrew` 时，Homebrew 会拒绝运行并报：
+
+```text
+Error: The current working directory must be readable to linuxbrew to run brew.
+```
+
+`brewr`（以及 root 下 `alias brew=brewr`）会在目标用户读不了当前目录时，改到
+该用户家目录再执行 brew。从 `/tmp` 等本来就可读的目录调用时，则保持原目录。
+
 本节只适用于当前 shell 的有效 UID 是 0 的情况。普通用户即使拥有 sudo 权限，
 也应直接运行 `install_brew`，让官方安装器在准备标准前缀时按需请求 sudo 密码；
 不要先调用用户创建函数，也不要运行 `sudo install_linuxbrew`，除非明确决定采用
