@@ -44,5 +44,9 @@
 [credential "helperselector"]
 	selected = manager
 
+# 避免 Git 自动"帮忙"带来的意外改动和显示问题，让行为更可预测。(适合跨平台开发者)
 [core]
+	# 设为 false 后，Git 会原样保存和检出文件，换行符完全由你/编辑器决定。
 	autocrlf = false
+	# 控制 Git 在输出文件名时，是否对非 ASCII 字符（如中文）进行转义。
+	quotePath = false

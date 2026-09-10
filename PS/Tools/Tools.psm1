@@ -1719,19 +1719,30 @@ title
 }
 function Get-DomainRoutesMaps
 {
+    <# 
+    .SYNOPSIS
+    将站点登记表中网站域名及其所属的后端服务器信息提取处理来,并生成nginx的路由映射配置文件(例如vhosts/route.conf)
+    第二列的形式采用ip还是http://ip (协议名称)可以通过选项控制
+    #>
     param(
         [Alias('Table')]$FromTable = "$Desktop/table.conf",
+        
         [Parameter(Mandatory = $true)]
-        [Alias('Output')]$RoutesMap
-    )
+        [Alias('Output')]
+        $RoutesMap,
 
+        $Scheme = ''
+    )
+    if ($Scheme){
+        $Scheme += "://"
+    }
     $items = Get-DomainUserDictFromTableLite -Table $FromTable
     Write-Verbose "Get domain-ip mapping table from table.conf,save result to $RoutesMap"
     # 先清空旧文件
     Clear-Content $RoutesMap 
     foreach ($item in $items)
     {
-        $line = ".$($item.domain) http://$($item.ip);"
+        $line = ".$($item.domain) ${Scheme}$($item.ip);"
         $line | Tee-Object -Append -FilePath $RoutesMap 
     }
     Convert-CRLF -InputObject $RoutesMap -To LF -Replace

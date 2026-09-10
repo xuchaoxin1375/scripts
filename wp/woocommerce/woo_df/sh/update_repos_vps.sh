@@ -8,7 +8,7 @@
 # 包含了include com.conf的引用语句,请考虑全部移除,或者情况com.conf的内容,
 # 或者更新到最新的版本,使用此命令进行更新: bash /www/sh/nginx_conf/update_nginx_vhosts_conf.sh -m old --force
 
-VERSION="20260606.0903"
+VERSION="20260910.2230"
 
 NGINX_CONF_DIR="/etc/nginx"
 NGINX_CONFD="$NGINX_CONF_DIR/conf.d" # nginx自动include运行的配置文件目录
@@ -16,6 +16,9 @@ NGINX_LOG_DIR="/var/log/nginx"       # 默认值为标准安装的nginx的默认
 IP=""
 DEV_MODE=false      # 调试模式,不拉取远程代码,使用本地代码
 GATEWAY_MODE=simple # hostmap
+# hostmap 下的 proxy_pass 形态: url (默认, 与现网 gateway map 一致) 或 hostport
+PROXY_PASS_MODE="url"
+PROXY_PASS_MODE_CLI=false
 
 # 调整nginx map hash size参数组到较大值,建议标准安装nginx的用户启用此参数,宝塔用户可能会有冲突,默认不启用
 EXTEND_MAP_HASH_SIZE=false
@@ -36,14 +39,24 @@ Options:
     -D, --debug                   开发者模式,跳过拉取远程代码,使用本地代码,并打印调试信息
     -E, --extend-map-hash-size   调整map_hash_*size参数组到一个较大的值(如果需要更大,自行编辑gateway.conf配置文件.)
     -G, --gateway <mode>           反代模式,可选值:simple,hostmap,默认为simple
+    --proxy-pass-mode <hostport|url>
+                                   仅 hostmap 有效. 控制 routes.map 与 proxy_pass 的搭配.
+                                   url (hostmap 默认): map 写 http://ip:port ，proxy_pass \$backend_origin;
+                                   hostport:           map 写 ip:port        ，proxy_pass http://\$backend_origin;
+                                   与 update_repos_vps_tenants.sh 的同名选项含义一致.
+                                   未传时沿用 $NGINX_CONF_DIR/gateway/proxy-pass-mode ；没有记录则 url.
+                                   simple 模式会忽略此选项.
 EXAMPLES:
 
 # 非宝塔方案(apt或标准脚本安装的情况)
 
 ## simple
 bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos_vps.sh) -i <upstream_ip> # -G hostmap 
-## hostmap
-bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos_vps.sh)  -G hostmap 
+## hostmap (默认 url: map 里写 http://ip:port)
+bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos_vps.sh)  -G hostmap
+
+## hostmap + hostport (map 里写 ip:port，和 tenants 默认相同)
+bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos_vps.sh)  -G hostmap --proxy-pass-mode hostport
 
 # 宝塔方案
 
@@ -94,6 +107,11 @@ bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/h
                 GATEWAY_MODE="$2"
                 shift
                 ;;
+            --proxy-pass-mode)
+                PROXY_PASS_MODE="$2"
+                PROXY_PASS_MODE_CLI=true
+                shift
+                ;;
             --)
                 shift
                 break
@@ -114,6 +132,121 @@ bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/h
 parse_args "$@"
 set -- "${args_pos[@]}"
 
+trim() {
+    local s="$*"
+    s="${s#"${s%%[![:space:]]*}"}"
+    s="${s%"${s##*[![:space:]]}"}"
+    printf '%s' "$s"
+}
+
+normalize_proxy_pass_mode() {
+    local mode="$1"
+    case "$mode" in
+        hostport | host-port | host_port)
+            printf 'hostport'
+            ;;
+        url | hostmap | fullurl | full-url | full_url)
+            printf 'url'
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+resolve_proxy_pass_mode() {
+    local saved="" file="" normalized=""
+    file="$NGINX_CONF_DIR/gateway/proxy-pass-mode"
+
+    if [[ "$GATEWAY_MODE" != "hostmap" ]]; then
+        if [[ "$PROXY_PASS_MODE_CLI" == true ]]; then
+            echo "[WARN] --proxy-pass-mode 只对 -G hostmap 有效，simple 模式已忽略." >&2
+        fi
+        return 0
+    fi
+
+    if [[ -f "$file" ]]; then
+        saved="$(trim "$(head -n 1 "$file")")"
+        saved="$(normalize_proxy_pass_mode "$saved" || true)"
+    fi
+
+    if [[ "$PROXY_PASS_MODE_CLI" == true ]]; then
+        normalized="$(normalize_proxy_pass_mode "$PROXY_PASS_MODE")" || {
+            echo "[Error] 未知 --proxy-pass-mode: [$PROXY_PASS_MODE]. 使用 hostport 或 url" >&2
+            exit 1
+        }
+        PROXY_PASS_MODE="$normalized"
+        if [[ -n "$saved" && "$saved" != "$PROXY_PASS_MODE" ]]; then
+            echo "[WARN] proxy-pass-mode 从 [$saved] 改为 [$PROXY_PASS_MODE]. 请把 gateway/maps/routes.map.conf 改成对应格式再 reload." >&2
+        fi
+        return 0
+    fi
+
+    if [[ -n "$saved" ]]; then
+        PROXY_PASS_MODE="$saved"
+        echo "[INFO] 沿用 $file : $PROXY_PASS_MODE"
+        return 0
+    fi
+
+    PROXY_PASS_MODE="url"
+}
+
+apply_gateway_proxy_pass_mode() {
+    local conf="$1"
+    if [[ "$PROXY_PASS_MODE" == "hostport" ]]; then
+        sed -i -E             -e 's|^[[:space:]]*proxy_pass[[:space:]]+\$backend_origin;|# proxy_pass $backend_origin;|'             -e 's|^[[:space:]]*#[[:space:]]*proxy_pass[[:space:]]+http://\$backend_origin;|        proxy_pass http://$backend_origin;|'             "$conf"
+        echo "[INFO] gateway.conf: proxy_pass http://\$backend_origin;  (hostport)"
+    else
+        # 模板默认已是 url；若上次改成了 hostport，这里再拷过模板后仍是 url。
+        echo "[INFO] gateway.conf: proxy_pass \$backend_origin;  (url)"
+    fi
+}
+
+persist_proxy_pass_mode() {
+    local dir="$NGINX_CONF_DIR/gateway"
+    mkdir -pv "$dir"
+    printf '%s
+' "$PROXY_PASS_MODE" > "$dir/proxy-pass-mode"
+    echo "[INFO] 记录 proxy-pass-mode=$PROXY_PASS_MODE -> $dir/proxy-pass-mode"
+}
+
+warn_hostmap_routes_mode() {
+    local file="$1"
+    local line="" raw="" backend=""
+    local mismatch=0 shown=0
+    [[ -f "$file" ]] || return 0
+
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        raw="$(trim "$line")"
+        [[ -n "$raw" ]] || continue
+        [[ "$raw" == \#* ]] && continue
+        raw="${raw%%#*}"
+        raw="$(trim "$raw")"
+        raw="${raw%;}"
+        backend="${raw##* }"
+        backend="$(trim "$backend")"
+        [[ -n "$backend" ]] || continue
+
+        if [[ "$PROXY_PASS_MODE" == "url" ]]; then
+            [[ "$backend" == http://* || "$backend" == https://* ]] && continue
+        else
+            [[ "$backend" != http://* && "$backend" != https://* ]] && continue
+        fi
+
+        mismatch=$((mismatch + 1))
+        if ((shown < 3)); then
+            echo "[WARN] $file: [$backend] 与 proxy-pass-mode=${PROXY_PASS_MODE} 不符" >&2
+            shown=$((shown + 1))
+        fi
+    done < "$file"
+
+    if ((mismatch > 3)); then
+        echo "[WARN] $file: 另有 $((mismatch - 3)) 行格式不符. url 用 http://ip:port，hostport 用 ip:port" >&2
+    elif ((mismatch > 0)); then
+        echo "[WARN] $file: 请改成 ${PROXY_PASS_MODE} 格式后再 reload" >&2
+    fi
+}
+
 # main
 if [[ $DEV_MODE == true ]]; then
     echo "[debug]:开发者模式,跳过拉取远程代码,使用本地代码..."
@@ -125,6 +258,8 @@ fi
 shopt -s extglob
 NGINX_LOG_DIR="${NGINX_LOG_DIR%%+(/)}/"
 echo "检查当前日志路径取值: [$NGINX_LOG_DIR]"
+resolve_proxy_pass_mode
+echo "GATEWAY_MODE=[$GATEWAY_MODE] proxy-pass-mode=[$PROXY_PASS_MODE]"
 # echo "指定的IP=[$IP]"
 
 if [[ $EXTEND_MAP_HASH_SIZE == "true" ]]; then
@@ -188,6 +323,9 @@ elif [[ $GATEWAY_MODE == "hostmap" ]]; then
     fi
 
     reverse_conf="$NGINX_CONFD/gateway.conf"
+    apply_gateway_proxy_pass_mode "$reverse_conf"
+    persist_proxy_pass_mode
+    warn_hostmap_routes_mode "$gateway_dir/maps/routes.map.conf"
 else
     echo "请指定正确的GATEWAY_MODE参数." >&2
     exit 1

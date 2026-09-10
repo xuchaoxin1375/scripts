@@ -2794,7 +2794,7 @@ def parse_args() -> argparse.Namespace:
         Examples:
 
         # 查询某个域名
-        python cloudflare_dns_tool.py -s  --find-domain domain.com  --json # -s选项默认启用查询模式
+        python cloudflare_dns_tool.py  --find-domain domain.com  --json # -s选项默认可以指定账户名(缩写),不使用-s则全部账号中查找.
 
         # 为cf00这个cf账号中的domain.com域名添加dns记录,@表示主域名domain.com本身
         python cloudflare_dns_tool.py -s cf00  -z domain.com  --add-record  "@:auto:23.23.23.23" # -z选项指定域名,record参数指定三级域名段即可

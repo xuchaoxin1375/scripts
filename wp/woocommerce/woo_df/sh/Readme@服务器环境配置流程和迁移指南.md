@@ -741,6 +741,8 @@ mysql  -e "SELECT 1" # &>/dev/null
 
 ```bash
 sudo timedatectl set-timezone Asia/Shanghai
+# 重载日志服务
+systemctl restart rsyslog
 ```
 
 ### 修改主机名🎈
