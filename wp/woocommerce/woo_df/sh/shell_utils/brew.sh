@@ -7,10 +7,10 @@
 #
 # 常用场景：
 #   国外 Linux 服务器，当前是 root：
-#     install_linuxbrew                 # 创建/使用 linuxbrew 用户
-#     install_brew                      # root 默认创建/使用 linuxbrew
-#     brew install jq                   # 已包装为 brewr
-#     brewr install jq                  # 显式降权也可以
+#     install_linuxbrew                 # 官方源 + 专用用户
+#     install_brew                      # root 下转到同一套专用用户安装
+#     brewr install jq                  # 提示当前借用 linuxbrew，再降权执行
+#     brew install jq                   # 仅 alias 到 brewr，不会递归
 #
 #   国内 Linux 或 macOS，当前是普通用户：
 #     install_brew_cn --mirror ustc
@@ -64,21 +64,33 @@ _brew_user_home() {
 }
 
 _brew_find_binary() {
-    local target_user=${1:-} user_home candidate path_brew
+    local target_user=${1:-} user_home candidate dir old_ifs
+    # 不要用 command -v brew：root 下的 alias/function 会伪装成已安装，
+    # 再被 brewr 调回去就会循环。
     if [ -z "$target_user" ]; then
-        path_brew=$(command -v brew 2> /dev/null || true)
-        if [ -n "$path_brew" ] && [ -x "$path_brew" ]; then
-            printf '%s\n' "$path_brew"
+        old_ifs=$IFS
+        IFS=:
+        for dir in $PATH; do
+            IFS=$old_ifs
+            [ -n "$dir" ] || continue
+            if [ -f "$dir/brew" ] && [ -x "$dir/brew" ]; then
+                printf '%s\n' "$dir/brew"
+                return 0
+            fi
+        done
+        IFS=$old_ifs
+    else
+        user_home=$(_brew_user_home "$target_user")
+        if [ -f "$user_home/.linuxbrew/bin/brew" ] && [ -x "$user_home/.linuxbrew/bin/brew" ]; then
+            printf '%s\n' "$user_home/.linuxbrew/bin/brew"
             return 0
         fi
     fi
-    [ -n "$target_user" ] && user_home=$(_brew_user_home "$target_user")
     for candidate in \
-        "$user_home/.linuxbrew/bin/brew" \
         /home/linuxbrew/.linuxbrew/bin/brew \
         /opt/homebrew/bin/brew \
         /usr/local/bin/brew; do
-        if [ -x "$candidate" ]; then
+        if [ -f "$candidate" ] && [ -x "$candidate" ]; then
             printf '%s\n' "$candidate"
             return 0
         fi
@@ -513,8 +525,7 @@ set_brew_path_env_to_shellrc() {
 用法：set_brew_path_env_to_shellrc [选项]
 
 向当前用户的 shell rc 写入一段受管理的 brew shellenv。
-root 使用专用 linuxbrew 用户时不要调用本函数；请用 brewr，或让
-install_brew / 登录脚本启用 root 包装。
+root 使用专用 linuxbrew 用户时不要调用本函数；请用 brewr。
 
 选项：
   -h, --help                 显示本帮助
@@ -600,8 +611,9 @@ _brew_download_installer() {
     local source_name=$1 output_file=$2 url
     url=$(_brew_installer_url "$source_name") || return
     _brew_info "downloading installer from $url"
-    curl --fail --location --show-error --retry 3 --connect-timeout 15 \
-        "$url" --output "$output_file"
+    # 与官方安装方式一致：-fsSL。不要加很长的 connect-timeout/retry，
+    # 握手慢时会在 “downloading” 这一步空等很久。
+    curl -fsSL --retry 2 "$url" --output "$output_file"
 }
 
 _brew_exec_as_user() {
@@ -651,10 +663,54 @@ exec "$@"'
     fi
 }
 
-# root 不能直接运行 brew。把前缀加入 PATH，并把 brew 包装成 brewr。
-# 登录时用 --quiet；安装成功后再提示一次即可。
-_brew_root_enable() {
-    local quiet=false brew_user=${BREW_USER:-linuxbrew} brew_bin prefix shellenv_out
+# Homebrew 在 Linux 装了自己的 glibc 后，二进制会用
+# /home/linuxbrew/.linuxbrew/lib/ld.so。它不搜索 Debian 的
+# /lib/x86_64-linux-gnu。部分环境会注入 LD_PRELOAD=libkeyutils.so.1
+# （短名），于是 jq、readelf 等每次启动都打印：
+#   ERROR: ld.so: object 'libkeyutils.so.1' from LD_PRELOAD cannot be preloaded
+# 系统命令不受影响。能写前缀则拷进 prefix/lib；否则只把这一份 .so
+# 放到独立目录，再 prepend 到 LD_LIBRARY_PATH，绝不要加入系统 lib。
+_brew_system_keyutils() {
+    local candidate
+    for candidate in /lib/x86_64-linux-gnu/libkeyutils.so.1 \
+        /usr/lib/x86_64-linux-gnu/libkeyutils.so.1 \
+        /lib64/libkeyutils.so.1; do
+        if [ -f "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+_brew_compat_keyutils_preload() {
+    local prefix=/home/linuxbrew/.linuxbrew
+    local src dest dir
+    _brew_is_linux || return 0
+    [ -x "$prefix/lib/ld.so" ] || return 0
+    src=$(_brew_system_keyutils) || return 0
+    dest="$prefix/lib/libkeyutils.so.1"
+    if [ ! -e "$dest" ] && [ -w "$prefix/lib" ]; then
+        cp -L "$src" "$dest" 2> /dev/null || true
+    fi
+    if [ -f "$dest" ]; then
+        return 0
+    fi
+    dir="${TMPDIR:-/tmp}/homebrew-ld-preload"
+    mkdir -p "$dir" 2> /dev/null || return 0
+    if [ ! -f "$dir/libkeyutils.so.1" ]; then
+        cp -L "$src" "$dir/libkeyutils.so.1" 2> /dev/null || return 0
+    fi
+    case ":${LD_LIBRARY_PATH:-}:" in
+        *":$dir:"*) ;;
+        *) export LD_LIBRARY_PATH="$dir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ;;
+    esac
+}
+
+# root 下 brew 只做 alias，不做 function。
+# function brew { brewr } 会让 command -v brew 永远为真，也容易和 brewr 循环。
+_brew_enable_root_alias() {
+    local quiet=false brew_user=${BREW_USER:-linuxbrew}
     while [ "$#" -gt 0 ]; do
         case "$1" in
             --quiet) quiet=true ;;
@@ -665,29 +721,15 @@ _brew_root_enable() {
     [ "$(id -u)" -eq 0 ] || return 0
     _brew_is_linux || return 0
     id "$brew_user" > /dev/null 2>&1 || return 1
-    brew_bin=$(_brew_find_binary "$brew_user") || return 1
+    _brew_find_binary "$brew_user" > /dev/null || return 1
     export BREW_USER=$brew_user
-    prefix=$(cd -- "$(dirname -- "$brew_bin")/.." && pwd -P) || prefix=/home/linuxbrew/.linuxbrew
-    export HOMEBREW_PREFIX=$prefix
-    export HOMEBREW_CELLAR=$prefix/Cellar
-    export HOMEBREW_REPOSITORY=$prefix/Homebrew
-    case ":$PATH:" in
-        *":$prefix/bin:"*) ;;
-        *) PATH="$prefix/bin:$prefix/sbin${PATH:+:$PATH}" ;;
-    esac
-    export PATH
-    # 登录时的 --quiet 路径不要 sudo 去跑 brew shellenv。
-    if [ "$quiet" != true ]; then
-        shellenv_out=$(_brew_exec_as_user "$brew_user" -- "$brew_bin" shellenv 2> /dev/null) || shellenv_out=''
-        if [ -n "$shellenv_out" ]; then
-            eval "$shellenv_out"
-        fi
-    fi
+    _brew_compat_keyutils_preload
     unalias brew 2> /dev/null || true
-    brew() { brewr "$@"; }
+    unset -f brew 2> /dev/null || true
+    alias brew=brewr
     if [ "$quiet" != true ]; then
-        _brew_info "root 已包装 brew -> brewr（用户 $brew_user）"
-        _brew_info "可直接执行：brew install fd    或    brewr install fd"
+        _brew_info "root 已设置 alias brew=brewr（用户 $brew_user）"
+        _brew_info "可执行：brewr install fd    或    brew install fd"
     fi
 }
 
@@ -738,7 +780,8 @@ install_brew() {
 用法：install_brew [选项]
 
 统一安装和配置 Homebrew。镜像、安装脚本来源、代理、操作系统、安装身份
-彼此独立，不要靠包装函数暗中切换身份。
+彼此独立。Linux root 会按 install_linuxbrew 的思路借用专用用户，官方源
+直接调用 install_linuxbrew。
 
 选项：
   -h, --help                   显示本帮助
@@ -746,7 +789,7 @@ install_brew() {
                                默认 official
   -b, --installer-source NAME  安装脚本下载源；默认与 --mirror 相同
   -u, --user USER              实际拥有并运行 Homebrew 的非 root 用户
-      --create-user            用户不存在时创建（仅 root；root 下可省略）
+      --create-user            用户不存在时创建（仅 root；root 官方源安装可省略）
   -U, --update-mirror-only     只更新镜像环境变量，不安装
   -R, --reset-mirror           清除镜像并恢复官方源（不安装）
       --rc FILE                将持久配置写入 FILE（默认当前 shell 的 rc）
@@ -757,9 +800,9 @@ install_brew() {
 
 身份：
   普通用户：安装给自己。不要传 --user / --create-user，也不要先建 linuxbrew。
-  root：Homebrew 拒绝以 root 运行。未指定 --user 时默认使用 linuxbrew，
-        用户不存在则自动创建（无登录密码、无 sudo）。安装后当前 shell 会
-        把 brew 包装成 brewr，因此可直接：brew install fd
+  Linux root：Homebrew 拒绝以 root 运行。未指定 --user 时默认 linuxbrew，
+        用户不存在则创建（无密码、无 sudo）。官方源会调用 install_linuxbrew。
+        安装后 alias brew=brewr；brewr 会提示当前借用的用户。
 
 标准前缀（不要改装到 ~/.linuxbrew，否则可能无法用官方 bottle）：
   Linux               /home/linuxbrew/.linuxbrew
@@ -775,9 +818,9 @@ install_brew() {
   普通用户官方源：     install_brew
   普通用户中科大镜像： install_brew_cn
   普通用户清华镜像：   install_brew --mirror tuna
-  root 默认专用用户：  install_brew
-  root 显式指定：      install_brew --user linuxbrew --create-user
-  root + 国内镜像：    install_brew --mirror ustc --user linuxbrew --create-user
+  root 官方源：        install_brew    或    install_linuxbrew
+  root 显式指定用户：  install_brew --user linuxbrew
+  root + 国内镜像：    install_brew --mirror ustc --user linuxbrew
   只改镜像：           install_brew --mirror tuna --update-mirror-only
   恢复官方源：         install_brew --reset-mirror
 
@@ -841,11 +884,32 @@ EOF
         shift
     done
     [ -n "$installer_source" ] || installer_source=$mirror
-    if [ "$(id -u)" -eq 0 ] && [ "$uninstall" != true ] && [ -z "$target_user" ]; then
-        target_user=${BREW_USER:-linuxbrew}
-        _brew_info "Homebrew 不能以 root 运行；将使用专用用户 $target_user"
+    # Linux root：与 install_linuxbrew 同一套身份。官方源直接调用它，
+    # 避免再走一遍临时文件安装器。国内镜像则仍用下面的专用用户安装。
+    if [ "$(id -u)" -eq 0 ] && _brew_is_linux && [ "$uninstall" != true ] && [ "$update_only" != true ]; then
+        [ -n "$target_user" ] || target_user=${BREW_USER:-linuxbrew}
+        _brew_info "当前身份是 root，Homebrew 不能直接以 root 安装或运行"
+        _brew_info "将借用专用用户 $target_user（与 install_linuxbrew 相同）"
+        case "$installer_source" in
+            official | github)
+                if [ "$force" = true ]; then
+                    install_linuxbrew --force --user "$target_user"
+                else
+                    install_linuxbrew --user "$target_user"
+                fi
+                return
+                ;;
+            *)
+                create_user=true
+                write_rc=false
+                noninteractive=true
+                ;;
+        esac
     fi
     if [ "$uninstall" = true ]; then
+        if [ -z "$target_user" ] && [ "$(id -u)" -eq 0 ] && _brew_is_linux; then
+            target_user=${BREW_USER:-linuxbrew}
+        fi
         if [ -n "$target_user" ]; then
             uninstall_brew --user "$target_user"
         else
@@ -887,7 +951,8 @@ EOF
     if [ "$already_installed" = true ]; then
         _brew_info "Homebrew is already installed: $brew_bin"
         if [ "$(id -u)" -eq 0 ]; then
-            _brew_root_enable "${target_user:-${BREW_USER:-linuxbrew}}" || true
+            _brew_enable_root_alias "${target_user:-${BREW_USER:-linuxbrew}}" || true
+            _brew_info "当前身份: root，借用用户 ${target_user:-${BREW_USER:-linuxbrew}} 查看版本"
             _brew_exec_as_user "${target_user:-${BREW_USER:-linuxbrew}}" -- "$brew_bin" --version
         else
             "$brew_bin" --version
@@ -904,7 +969,7 @@ EOF
             return 2
         }
         if ! id "$target_user" > /dev/null 2>&1; then
-            if [ "$create_user" = true ] || [ "$target_user" = "${BREW_USER:-linuxbrew}" ]; then
+            if [ "$create_user" = true ]; then
                 _brew_info "creating dedicated user $target_user (no password, no sudo)"
                 new_user_linuxbrew "$target_user" || return
             else
@@ -935,8 +1000,8 @@ EOF
     if [ -z "$target_user" ] || [ "$target_user" = "$(id -un)" ]; then
         set_brew_path_env_to_shellrc --rc "$rc_file" --brew "$brew_bin"
     elif [ "$(id -u)" -eq 0 ]; then
-        _brew_root_enable "$target_user"
-        _brew_info "installed for $target_user; brew 已包装为 brewr"
+        _brew_enable_root_alias "$target_user"
+        _brew_info "installed for $target_user; use brewr, or alias brew=brewr"
     else
         _brew_info "installed for $target_user; run commands with: brewr --user $target_user ..."
     fi
@@ -1044,7 +1109,7 @@ install_brew_cn() {
 等价于：install_brew --mirror ustc --installer-source ustc [选项]
 
 身份规则与 install_brew 相同：
-  普通用户安装给自己；root 默认使用并创建 linuxbrew。
+  普通用户安装给自己；Linux root 与 install_brew 相同，默认借用 linuxbrew。
 后置 --mirror / --installer-source 可以覆盖这里的默认值。
 
 示例：
@@ -1061,32 +1126,34 @@ EOF
 }
 
 install_linuxbrew() {
-    local username
-    if [ "$(id -u)" -eq 0 ]; then username=linuxbrew; else username=$(id -un); fi
+    local username=linuxbrew brew_bin url script user_home env_args=()
+    local force=false
     while [ "$#" -gt 0 ]; do
         case "$1" in
             -h | --help)
                 cat << 'EOF'
 用法：install_linuxbrew [-u USER] [USER]
 
-仅供 Linux root shell：用官方源安装 Homebrew，并创建或复用专用普通用户
-（默认 linuxbrew）。该用户无登录密码、无 sudo。安装后当前 shell 会把
-brew 包装成 brewr，可直接 brew install fd。
+仅供 Linux root shell：用官方安装脚本安装 Homebrew，并创建或复用专用
+普通用户（默认 linuxbrew）。该用户无登录密码、无 sudo。root 通过
+brewr 使用 brew；当前 shell 只设置 alias brew=brewr，不会定义 brew 函数。
+install_brew 在 Linux root + 官方源时会调用本函数。
 
 选项：
   -h, --help             显示本帮助
   -u, --user USER        专用用户名，默认 linuxbrew
+      --force            已安装时仍重新跑官方安装脚本
   USER                   与 --user 相同的位置参数
 
 说明：
+  下载方式与官方相同：
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  只是改成以专用用户执行。
   普通用户不要调用本函数，也不要先创建 linuxbrew。请改用：
     install_brew
     install_brew_cn
   国内网络的 root 请用：
-    install_brew --mirror ustc --user linuxbrew --create-user
-  本函数等价于：
-    install_brew --mirror official --installer-source official \
-      --user USER --create-user --no-write-env --non-interactive
+    install_brew --mirror ustc
 
 系统依赖：
   Debian/Ubuntu: apt-get install build-essential procps curl file git
@@ -1105,6 +1172,7 @@ EOF
                 username=$2
                 shift
                 ;;
+            --force) force=true ;;
             --)
                 shift
                 break
@@ -1126,8 +1194,50 @@ EOF
         _brew_error 'normal users should run: install_brew (or install_brew_cn)'
         return 2
     }
-    install_brew --mirror official --installer-source official --user "$username" \
-        --create-user --no-write-env --non-interactive
+    [ "$username" != root ] || {
+        _brew_error 'the install user cannot be root'
+        return 2
+    }
+    if brew_bin=$(_brew_find_binary "$username" 2> /dev/null) && [ "$force" != true ]; then
+        _brew_info "Homebrew is already installed: $brew_bin"
+        _brew_enable_root_alias "$username" || true
+        _brew_info "当前身份: root，借用用户 $username 查看版本"
+        _brew_exec_as_user "$username" -- "$brew_bin" --version
+        return 0
+    fi
+    if ! id "$username" > /dev/null 2>&1; then
+        _brew_info "creating dedicated user $username (no password, no sudo)"
+        new_user_linuxbrew "$username" || return
+    fi
+    _brew_prepare_linux_prefix "$username" || return
+    _brew_need_command curl || return
+    url=$(_brew_installer_url official) || return
+    _brew_info "downloading official installer from $url"
+    script=$(curl -fsSL --retry 2 "$url") || {
+        _brew_error 'failed to download the official Homebrew installer'
+        return 1
+    }
+    [ -n "$script" ] || {
+        _brew_error 'downloaded installer is empty'
+        return 1
+    }
+    user_home=$(_brew_user_home "$username")
+    env_args+=(NONINTERACTIVE=1)
+    [ -z "${HTTPS_PROXY:-}" ] || env_args+=("HTTPS_PROXY=$HTTPS_PROXY")
+    [ -z "${HTTP_PROXY:-}" ] || env_args+=("HTTP_PROXY=$HTTP_PROXY")
+    [ -z "${ALL_PROXY:-}" ] || env_args+=("ALL_PROXY=$ALL_PROXY")
+    [ -z "${https_proxy:-}" ] || env_args+=("https_proxy=$https_proxy")
+    [ -z "${http_proxy:-}" ] || env_args+=("http_proxy=$http_proxy")
+    [ -z "${all_proxy:-}" ] || env_args+=("all_proxy=$all_proxy")
+    _brew_info "installing Homebrew as $username"
+    _brew_exec_as_user "$username" "${env_args[@]}" -- /bin/bash -c "$script" || return
+    brew_bin=$(_brew_find_binary "$username") || {
+        _brew_error 'installer completed, but the brew executable was not found'
+        return 1
+    }
+    _brew_compat_keyutils_preload
+    _brew_enable_root_alias "$username"
+    _brew_info "installed for $username; use: brewr install fd    or    brew install fd"
 }
 
 brewr() {
@@ -1148,9 +1258,10 @@ brewr() {
                 cat << 'EOF'
 用法：brewr [-u USER] [brew 参数...]
 
-root 降权到 BREW_USER（默认 linuxbrew）执行 brew。普通用户则直接调用
-PATH 中的 brew。root 登录并 source 本脚本后，brew 本身也会包装成 brewr，
-因此 brew install fd 与 brewr install fd 等价。
+root 降权到 BREW_USER（默认 linuxbrew），执行真正的 brew 二进制，不会
+再调用名为 brew 的函数或 alias。每次会提示：当前是 root、正在借用哪个用户。
+普通用户则调用 PATH 中的 brew 文件。
+安装完成后当前 shell 可 alias brew=brewr，两者都不会循环。
 
 选项：
   -h, --help                 显示本帮助
@@ -1164,6 +1275,7 @@ PATH 中的 brew。root 登录并 source 本脚本后，brew 本身也会包装�
 
 环境变量：
   BREW_USER                  默认专用用户
+  BREW_QUIET=1               关闭 root 身份借用提示
   HTTPS_PROXY / HTTP_PROXY / ALL_PROXY
   HOMEBREW_* 镜像相关变量
 
@@ -1195,6 +1307,14 @@ EOF
         _brew_error "or: install_brew --user $brew_user --create-user"
         return 1
     }
+    if [ "${BREW_QUIET:-}" != 1 ]; then
+        printf '[brew] 当前身份: root (uid %s)，借用用户 %s 执行 brew\n' "$(id -u)" "$brew_user" >&2
+        if [ "${#args[@]}" -gt 0 ]; then
+            printf '[brew] 命令: %s %s\n' "$brew_bin" "${args[*]}" >&2
+        else
+            printf '[brew] 命令: %s\n' "$brew_bin" >&2
+        fi
+    fi
     # sudo normally filters these variables. Passing only Homebrew and proxy
     # settings keeps mirror/proxy behavior consistent with the root shell.
     [ -z "${HOMEBREW_INSTALL_FROM_API:-}" ] || env_args+=("HOMEBREW_INSTALL_FROM_API=$HOMEBREW_INSTALL_FROM_API")
@@ -1209,6 +1329,8 @@ EOF
     [ -z "${https_proxy:-}" ] || env_args+=("https_proxy=$https_proxy")
     [ -z "${http_proxy:-}" ] || env_args+=("http_proxy=$http_proxy")
     [ -z "${all_proxy:-}" ] || env_args+=("all_proxy=$all_proxy")
+    _brew_compat_keyutils_preload
+    [ -z "${LD_LIBRARY_PATH:-}" ] || env_args+=("LD_LIBRARY_PATH=$LD_LIBRARY_PATH")
     _brew_exec_as_user "$brew_user" "${env_args[@]}" -- "$brew_bin" "${args[@]}"
 }
 
@@ -1252,7 +1374,7 @@ EOF
     _brew_need_command curl || return
     installer_file=$(mktemp "${TMPDIR:-/tmp}/brew-uninstall.XXXXXX") || return 1
     _brew_info "downloading official uninstaller from $url"
-    if ! curl --fail --location --show-error --retry 3 "$url" --output "$installer_file"; then
+    if ! curl -fsSL --retry 2 "$url" --output "$installer_file"; then
         rm -f "$installer_file"
         return 1
     fi
@@ -1265,9 +1387,10 @@ EOF
 # install_brew 的别名，兼容 brew_install --user linuxbrew --create-user 这种叫法。
 brew_install() { install_brew "$@"; }
 
-# root 登录后 brew 一律走 brewr，即使尚未安装 Homebrew。
+# root 仅在已经找到 linuxbrew 的 brew 文件时设置 alias。
+# 未安装时不要定义 brew 函数，否则 command -v brew 会误报已安装。
+_brew_compat_keyutils_preload
 if [ "$(id -u)" -eq 0 ] && _brew_is_linux; then
-    unalias brew 2> /dev/null || true
-    brew() { brewr "$@"; }
-    _brew_root_enable --quiet 2> /dev/null || true
+    unset -f brew 2> /dev/null || true
+    _brew_enable_root_alias --quiet 2> /dev/null || true
 fi

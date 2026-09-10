@@ -55,9 +55,13 @@ install_brew [options]
 原有函数继续保留，作为场景包装器：
 
 - `install_brew_cn`：只提供 USTC 镜像和安装脚本默认值，不创建或切换用户。
-- `install_linuxbrew`：仅供 root 使用，默认从官方源创建或复用
-  `linuxbrew` 专用用户；普通用户调用会直接报错。
-- `brewr`：root 以专用用户身份执行 brew；普通用户直接执行 PATH 中的 brew。
+- `install_linuxbrew`：仅供 root 使用，独立走官方 `curl -fsSL` 安装脚本，
+  创建或复用 `linuxbrew` 专用用户。普通用户调用会直接报错。
+- `install_brew`：Linux root + 官方源时会调用 `install_linuxbrew`；国内镜像则仍
+  借用同一套专用用户，只是安装脚本走镜像。
+- `brewr`：root 以专用用户身份执行真正的 brew 二进制，并提示当前借用的用户；
+  普通用户直接执行 PATH 中的 brew。root 下只用 `alias brew=brewr`，不要把
+  `brew` 定义成函数，以免和 `brewr` 循环。设 `BREW_QUIET=1` 可关闭身份提示。
 - `cleanup_linuxbrew_dedicated_user`：从专用用户布局迁移回普通 sudo 用户布局；
   默认只预览，必须显式传入 `--execute` 才修改系统。
 
@@ -105,7 +109,8 @@ Homebrew 拒绝直接以 root 身份运行。推荐创建独立普通用户，�
 安装和管理软件：
 
 ```bash
-install_linuxbrew
+install_brew
+# 或显式：install_linuxbrew
 brewr install jq
 brewr update
 ```
@@ -134,6 +139,7 @@ Error: The current working directory must be readable to linuxbrew to run brew.
 
 `brewr`（以及 root 下 `alias brew=brewr`）会在目标用户读不了当前目录时，改到
 该用户家目录再执行 brew。从 `/tmp` 等本来就可读的目录调用时，则保持原目录。
+不要定义 `brew() { brewr "$@"; }`，详见下方「常见坑」。
 
 本节只适用于当前 shell 的有效 UID 是 0 的情况。普通用户即使拥有 sudo 权限，
 也应直接运行 `install_brew`，让官方安装器在准备标准前缀时按需请求 sudo 密码；
@@ -230,6 +236,110 @@ sudo dnf install procps-ng curl file git
 # Arch Linux
 sudo pacman -S base-devel procps-ng curl file git
 ```
+
+### 常见坑
+
+#### `brew` 与 `brewr` 循环调用
+
+root 下只允许 `alias brew=brewr`，不要写：
+
+```bash
+brew() { brewr "$@"; }
+```
+
+函数会让 `command -v brew` 在尚未安装时也成功。若 `brewr` 或查找逻辑再解析到
+名为 `brew` 的函数，就会互相调用直到爆栈。`brewr` 必须执行 brew 二进制的
+绝对路径，不能再调用名为 `brew` 的命令。
+
+#### root 直接跑 PATH 里的 `brew`
+
+Homebrew 拒绝以 root 运行。若 root 的 PATH 里已有
+`/home/linuxbrew/.linuxbrew/bin`，`brew --version` 有时还能过，`brew config`
+或装包会报：
+
+```text
+Error: Running Homebrew as root is extremely dangerous and no longer supported.
+```
+
+正确用法：source `brew.sh` 后用 `brewr ...`，或 alias 后的 `brew ...`。
+`brewr` 会提示当前是 root、正在借用哪个用户。不需要提示时设 `BREW_QUIET=1`。
+
+#### `/root` 工作目录对 linuxbrew 不可读
+
+```text
+Error: The current working directory must be readable to linuxbrew to run brew.
+```
+
+`/root` 权限通常是 `0700`。`brewr` 会改到该用户家目录再执行。不要为了绕过
+这报错把 `/root` 改成对其他用户可读。
+
+#### `LD_PRELOAD=libkeyutils.so.1` 刷屏
+
+Linux 上第一次 `brew install jq` 往往会先装 `glibc`。之后 Homebrew 安装的
+`jq`、`readelf` 等二进制的解释器是：
+
+```text
+/home/linuxbrew/.linuxbrew/lib/ld.so
+```
+
+它不搜索 Debian 的 `/lib/x86_64-linux-gnu`。部分环境（容器、沙箱、主机加固）
+会给进程注入短名：
+
+```text
+LD_PRELOAD=libkeyutils.so.1
+```
+
+于是每次执行都出现：
+
+```text
+ERROR: ld.so: object 'libkeyutils.so.1' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+jq-1.8.2
+```
+
+末尾的 `jq-1.8.2` 说明命令其实成功了。系统自带的 `ls` 用系统 `ld.so`，所以
+没有注入 `LD_PRELOAD` 的机器上通常看不到。安装 glibc 时还可能看到：
+
+```text
+Warning: Sandbox unavailable: running post-install without sandboxing!
+```
+
+这是 post-install 没有 Linux user namespace 可用，一般可忽略。
+
+处理：source `shell_utils/brew.sh`。脚本会把系统里的 `libkeyutils.so.1` 放到
+Homebrew 能搜到的位置：优先复制到 `$HOMEBREW_PREFIX/lib`；前缀只读时则放到
+`${TMPDIR:-/tmp}/homebrew-ld-preload` 并 prepend `LD_LIBRARY_PATH`。
+`brewr` 会把该变量传给降权后的进程。当前 shell 需重新 source 一次才生效。
+
+不要把整个系统库目录加进去：
+
+```bash
+# 错误：Homebrew 的 jq 会链到系统 libc，直接失败
+export LD_LIBRARY_PATH=/lib/x86_64-linux-gnu
+# jq: /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.38' not found
+```
+
+自检：
+
+```bash
+file "$(command -v jq)"
+readelf -l "$(command -v jq)" | grep interpreter
+echo "LD_PRELOAD=$LD_PRELOAD"
+echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
+jq --version
+```
+
+#### 前缀属主不是 `linuxbrew`
+
+标准前缀应属于实际运行 brew 的普通用户。若看到 `nobody:nogroup` 或其它属主，
+多半是 root 直接写入，或在只读/映射层上安装导致的错位。先确认：
+
+```bash
+ls -ld /home/linuxbrew /home/linuxbrew/.linuxbrew
+getent passwd linuxbrew
+```
+
+属主与 `BREW_USER` 不一致时，不要对正在用的前缀盲目 `chown -R`。能确定是
+本次专用用户安装写乱的，再以 root 交还给该用户。
 
 ### 权限冲突排查
 
