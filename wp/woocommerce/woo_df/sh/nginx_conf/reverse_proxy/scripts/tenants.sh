@@ -6,13 +6,13 @@
 #   client -> Cloudflare(Flexible) -> P(tenant listen IP:80) -> 该租户 routes.map(Host->Backend) -> origin
 #
 # 和现有反代脚本的区别:
-#   update_repos_vps.sh -G simple:
+#   base.sh -G simple:
 #     全机一个入口，所有 Host 转到同一台上游 (-i A_IP)。
-#   update_repos_vps.sh -G hostmap:
+#   base.sh -G hostmap:
 #     全机一个入口(listen 80)，一张全局 Host->Backend map:
 #       $NGINX_CONF_HOME/gateway/maps/routes.map.conf
 #     所有管理员共用同一张表，Host 不按公网 IP 隔离。
-#   update_repos_vps_multi_plus.sh:
+#   vps_multi.sh:
 #     一组 B_IP -> 一个 A_IP；进入该 IP 的所有 Host 都转到同一台后端。
 #   本脚本:
 #     一组 tenant_id -> 一个 listen IP，再按该租户自己的 routes.map 查 Host。
@@ -35,28 +35,28 @@
 #   能保证 map_hash / log_format / map 先于 server 出现。
 #
 # Cloudflare 真实 IP 不在本脚本里重写，复用 nginx_conf/update_cf_ip_configs.sh
-# (与 update_repos_vps.sh / update_repos_vps_multi_plus.sh 相同)。
+# (与 base.sh / vps_multi.sh 相同)。
 #
 # 示例:
-#   bash update_repos_vps_tenants.sh \
+#   bash tenants.sh \
 #     -t 'a=203.0.113.10' \
 #     -t 'b=203.0.113.11' \
 #     -r 'a:site-a1.example.com->10.10.10.11:80' \
 #     -r 'b:site-b1.example.net->10.20.20.11:80'
 #
 # 预览:
-#   bash update_repos_vps_tenants.sh --dev \
+#   bash tenants.sh --dev \
 #     -t 'a=203.0.113.10' \
 #     -t 'b=203.0.113.11'
 #
 # 从文件读取:
-#   bash update_repos_vps_tenants.sh --tenant-file ~/tenants.list --routes-file ~/routes.list
+#   bash tenants.sh --tenant-file ~/tenants.list --routes-file ~/routes.list
 #
 # 注意:
 #   1. listen IP 必须已经配置在本机网卡上，否则 nginx listen 会失败。
 #   2. Flexible 模式下不要在 P 上做 http->https 强制跳转。
 #   3. 已存在的 tenants/<id>/routes.map 默认不会覆盖，方便管理员自己维护。
-#   4. 仓库更新、CF IP 更新、nginx -t/reload 流程对齐 update_repos_vps_multi_plus.sh。
+#   4. 仓库更新、CF IP 更新、nginx -t/reload 流程对齐 vps_multi.sh。
 
 set -Eeuo pipefail
 
@@ -199,7 +199,7 @@ Options:
         url
             map:  http://10.10.10.11:80
             nginx: proxy_pass $tenant_x_backend;
-            与 update_repos_vps.sh -G hostmap 相同，单站可写 https://.
+            与 base.sh -G hostmap 相同，单站可写 https://.
 
         未传时，若 $TENANTS_DIR/proxy-pass-mode 已有记录则沿用.
         切换模式后必须把已有 routes.map 改成对应格式再 reload.
@@ -272,7 +272,7 @@ Examples:
           'b site-b1.example.net 10.20.20.11:80')
 
     # 在线拉取并部署
-    bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos_vps_tenants.sh) \\
+    bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/tenants.sh) \\
       -t 'a=P_IP_A' \\
       -t 'b=P_IP_B'
 
@@ -845,7 +845,7 @@ EOF
 # AUTO GENERATED FILE - DO NOT EDIT MANUALLY
 # ======================================================================
 # 生成时间: ${generated_at}
-# 生成脚本: update_repos_vps_tenants.sh
+# 生成脚本: tenants.sh
 # 脚本版本: ${VERSION}
 #
 # 用途:
@@ -907,7 +907,7 @@ generate_tenant_maps() {
 # AUTO GENERATED FILE - DO NOT EDIT MANUALLY
 # ======================================================================
 # 生成时间: ${generated_at}
-# 生成脚本: update_repos_vps_tenants.sh
+# 生成脚本: tenants.sh
 # 脚本版本: ${VERSION}
 #
 # 每个租户一张 Host -> Backend map.
@@ -944,7 +944,7 @@ generate_gateways() {
 # AUTO GENERATED FILE - DO NOT EDIT MANUALLY
 # ======================================================================
 # 生成时间: ${generated_at}
-# 生成脚本: update_repos_vps_tenants.sh
+# 生成脚本: tenants.sh
 # 脚本版本: ${VERSION}
 #
 # 每个租户一个 server:
@@ -1216,7 +1216,7 @@ nginx_conf_includes_early_maps() {
 
 map_hash_snippet() {
     cat << EOF
-    # map_hash: managed by update_repos_vps_tenants.sh
+    # map_hash: managed by tenants.sh
     map_hash_bucket_size ${MAP_HASH_BUCKET_SIZE};
     map_hash_max_size ${MAP_HASH_MAX_SIZE};
 EOF
@@ -1249,7 +1249,7 @@ insert_map_hash_into_nginx_conf() {
         {
             print
             if (!inserted && $0 ~ /^[[:space:]]*http[[:space:]]*\{[[:space:]]*$/) {
-                print "    # map_hash: managed by update_repos_vps_tenants.sh"
+                print "    # map_hash: managed by tenants.sh"
                 print "    map_hash_bucket_size " bucket ";"
                 print "    map_hash_max_size " max ";"
                 inserted = 1

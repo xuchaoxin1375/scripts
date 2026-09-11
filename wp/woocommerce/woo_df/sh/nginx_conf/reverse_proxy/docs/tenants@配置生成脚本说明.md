@@ -1,32 +1,31 @@
 [toc]
 
-## 关于 update_repos_vps_tenants 的设计说明
+## 关于 tenants 的设计说明
 
-本脚本实现 `nginx_conf/nginx@单服务器多IP为分配给多个管理员反代方案.md`：
+一台反代机 P 上有多个公网 IP，每个 IP 分给一个管理员/租户。
 
-一台反代机 P 上有多个公网 IP，每个 IP 分给一个管理员/租户。  
 进入某个 IP 后，再只用该租户自己的 `routes.map` 按 Host 选后端。
 
 ---
 
-## 1. 和 update_repos_vps.sh 的 hostmap 对比
+## 1. tenants和 base.sh 的 hostmap 对比
 
 两边都是 “Host -> Backend” 的 map 反代，容易看成同一件事。差别在入口怎么切。
 
-| | `update_repos_vps.sh -G hostmap` | `update_repos_vps_tenants.sh` |
-| --- | --- | --- |
-| 入口 | 全机一个 `listen 80`（所有网卡 IP 共用） | 每个租户一个 `listen <该租户公网IP>:80` |
-| Host 表 | 一张全局表 | 每个租户一张表 |
-| 表文件 | `$NGINX_CONF_HOME/gateway/maps/routes.map.conf` | `$NGINX_CONF_HOME/tenants/<id>/routes.map` |
-| 查表变量 | `map $host $backend_origin` | `map $host $tenant_a_backend` / `$tenant_b_backend` |
-| 未知 Host | 444 | 444，而且只在当前 IP 的那张表里查 |
-| 跨管理员 | 同一张表，A 的域名写进去就能被任意入口打到 | 把 B 的 Host 打到 A 的 IP 上，A 的表里没有，直接 444 |
-| 配置来源 | 复制仓库模板 `gateway.conf` + `gateway/maps/` | 按 `-t/-r` 生成 `tenant-*.conf` |
-| 适用 | 一台反代机、一个管理员、很多站点 | 一台反代机、多个公网 IP、多个管理员 |
+|           | `base.sh -G hostmap`                                                                           | `tenants.sh`                                          |
+| --------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------- |
+| 入口      | 全机一个 `listen 80`（所有网卡 IP 共用）                                                       | 每个租户一个 `listen <该租户公网IP>:80`               |
+| Host 表   | 一张全局表                                                                                       | 每个租户一张表                                          |
+| 表文件    | `$NGINX_CONF_HOME/gateway/maps/routes.map.conf` | `$NGINX_CONF_HOME/tenants/<id>/routes.map` |                                                         |
+| 查表变量  | `map $host $backend_origin`                                                                    | `map $host $tenant_a_backend` / `$tenant_b_backend` |
+| 未知 Host | 444                                                                                              | 444，而且只在当前 IP 的那张表里查                       |
+| 跨管理员  | 同一张表，A 的域名写进去就能被任意入口打到                                                       | 把 B 的 Host 打到 A 的 IP 上，A 的表里没有，直接 444    |
+| 配置来源  | 复制仓库模板 `gateway.conf` + `gateway/maps/`                                                | 按 `-t/-r` 生成 `tenant-*.conf`                     |
+| 适用      | 一台反代机、一个管理员、很多站点                                                                 | 一台反代机、多个公网 IP、多个管理员                     |
 
-`update_repos_vps.sh` 另外还有 `-G simple`：不按 Host 查表，`-i A_IP` 后所有请求都转到那一台上游。那是更老的“整机对一台源站”。
+`base.sh` 另外还有 `-G simple`：不按 Host 查表，`-i A_IP` 后所有请求都转到那一台上游。那是更老的“整机对一台源站”。
 
-`update_repos_vps_multi_plus.sh` 也不按 Host 分流：一组 `B_IP -> A_IP`，进入该 IP 的所有 Host 都转到同一台 A。
+`vps_multi.sh` 也不按 Host 分流：一组 `B_IP -> A_IP`，进入该 IP 的所有 Host 都转到同一台 A。
 
 关系可以看成：
 
@@ -56,24 +55,24 @@ $NGINX_CONF_HOME/tenants/b/routes.map
 
 backend 由 `--proxy-pass-mode` 决定，不要和 nginx 指令混用。
 
-| 模式 | 何时用 | routes.map | nginx |
-| --- | --- | --- | --- |
-| `hostport`（默认） | 现网 `tenants/*/routes.map` 已是 `host ip:port;` | `10.10.10.11:80` | `proxy_pass http://$tenant_xcx_backend;` |
-| `url` | 想和 hostmap 默认一样，或单站 HTTPS 源站 | `http://10.10.10.11:80` | `proxy_pass $tenant_xcx_backend;` |
+| 模式                 | 何时用                                               | routes.map                | nginx                                      |
+| -------------------- | ---------------------------------------------------- | ------------------------- | ------------------------------------------ |
+| `hostport`（默认） | 现网 `tenants/*/routes.map` 已是 `host ip:port;` | `10.10.10.11:80`        | `proxy_pass http://$tenant_xcx_backend;` |
+| `url`              | 想和 hostmap 默认一样，或单站 HTTPS 源站             | `http://10.10.10.11:80` | `proxy_pass $tenant_xcx_backend;`        |
 
 ```bash
 # 默认，兼容现网 xcx map
-bash update_repos_vps_tenants.sh -t 'xcx=143.246.221.249'
+bash tenants.sh -t 'xcx=143.246.221.249'
 
-# 与 update_repos_vps.sh -G hostmap 相同
-bash update_repos_vps_tenants.sh --proxy-pass-mode url -t 'xcx=143.246.221.249'
+# 与 base.sh -G hostmap 相同
+bash tenants.sh --proxy-pass-mode url -t 'xcx=143.246.221.249'
 ```
 
 选择会写入 `$TENANTS_DIR/proxy-pass-mode`，下次不传参数也沿用。从 hostport 切到 url 时，必须把已有 map 改成带 `http://` 的完整 URL 再 reload，否则会 500。
 
 `-r` 会按当前模式规范化：hostport 剥掉 `http://`；url 没有协议就补上。
 
-`update_repos_vps.sh -G hostmap` 也有 `--proxy-pass-mode`，含义相同，但 **hostmap 默认是 url**（现网 `gateway/maps/routes.map.conf` 已是完整 URL）。tenants 默认是 hostport。选择分别记在：
+`base.sh -G hostmap` 也有 `--proxy-pass-mode`，含义相同，但 **hostmap 默认是 url**（现网 `gateway/maps/routes.map.conf` 已是完整 URL）。tenants 默认是 hostport。选择分别记在：
 
 - tenants: `$TENANTS_DIR/proxy-pass-mode`
 - hostmap: `$NGINX_CONF_DIR/gateway/proxy-pass-mode`
@@ -139,7 +138,7 @@ nginx: [warn] could not build optimal map_hash, you should increase either map_h
 
 ```mermaid
 flowchart TD
-    A([启动 update_repos_vps_tenants.sh]) --> B[解析参数]
+    A([启动 tenants.sh]) --> B[解析参数]
     B --> C[读取租户 -t / --tenant-file]
     C --> D[读取路由 -r / --routes-file]
     D --> E{至少 1 个租户?}
@@ -182,8 +181,7 @@ $NGINX_CONF_HOME/
     └── b/routes.map                 # 管理员 B 维护
 ```
 
-`tenant-*.conf` 每次运行都会覆盖。  
-`tenants/<id>/routes.map` 默认保留已有文件；只有下面情况才写：
+`tenant-*.conf` 每次运行都会覆盖。`tenants/<id>/routes.map` 默认保留已有文件；只有下面情况才写：
 
 - 文件还不存在
 - 本次用 `-r` / `--routes-file` 给了该租户新路由
@@ -220,7 +218,7 @@ flowchart LR
 标准 nginx：
 
 ```bash
-bash update_repos_vps_tenants.sh \
+bash tenants.sh \
   -t 'a=203.0.113.10' \
   -t 'b=203.0.113.11' \
   -r 'a:site-a1.example.com->10.10.10.11:80' \
@@ -230,7 +228,7 @@ bash update_repos_vps_tenants.sh \
 宝塔：
 
 ```bash
-bash update_repos_vps_tenants.sh \
+bash tenants.sh \
   -c /www/server/nginx/conf \
   -d /www/server/panel/vhost/nginx \
   -l /www/logs/ \
@@ -241,7 +239,7 @@ bash update_repos_vps_tenants.sh \
 只预览：
 
 ```bash
-bash update_repos_vps_tenants.sh --dev \
+bash tenants.sh --dev \
   -t 'a=203.0.113.10' \
   -t 'b=203.0.113.11'
 ```
@@ -252,9 +250,9 @@ bash update_repos_vps_tenants.sh --dev \
 
 ## 8. 复用关系
 
-- 仓库拉取：直接调用 `update_repos.sh`，与 `update_repos_vps.sh` / `update_repos_vps_multi_plus.sh` 相同。
+- 仓库拉取：直接调用 `update_repos.sh`，与 `base.sh` / `vps_multi.sh` 相同。
 - Cloudflare 访客 IP：复制并执行 `nginx_conf/update_cf_ip_configs.sh -s "$NGINX_CONFD" -n`，生成 `cf-realip.conf`。
-- IPv4/IPv6 校验、`--dev` 行为：对齐 `update_repos_vps_multi_plus.sh`。
+- IPv4/IPv6 校验、`--dev` 行为：对齐 `vps_multi.sh`。
 
 日常加站：管理员只改自己的 `tenants/<id>/routes.map`，然后：
 

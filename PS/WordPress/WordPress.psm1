@@ -1055,6 +1055,15 @@ function Deploy-WpSitesOnline
 
         # 域名绑定cf后解析cf返回的查询结果来传递给spaceship更新域名的nameservers的中间表格
         [alias('DomainTable')]$ToTable = "$Desktop/domains_nameservers.csv",
+        # proxy_pass 的风格,是否带上协议名
+        [ValidateSet('http', 'https', '')]
+        $Scheme = '',
+        # 反代模式,关乎反代服务器上的routes.map的路径构造.
+        [ValidateSet('base', 'tenants')]
+        $ReverseMode = 'base',
+        # 服务器管理员id (注意要和反代服务器上的配置一致,否则无法正确写入routes.map)
+        # 配置方式: Set-EnvVar -EnvVar SERVER_ADMIN_ID -NewValue xcx # 此处xcx为管理员id
+        $AdminId = $env:SERVER_ADMIN_ID,
         # 适用于反代的hostmap
         [alias('HostMap')]$RoutesMap = "$Desktop/routes.map.conf",
         $ReverseNginxConfDir = "",# 例如/etc/nginx,缺失将尝试从配置文件中获取.
@@ -1088,6 +1097,7 @@ function Deploy-WpSitesOnline
     # server name -> server ip
     $serverObj = $servers."$HostName"
     $HostName = $serverObj.ip
+
     # 计算反代服务器的ip(如果有的话,没有则发出警告,并设置为普通ip)
     $reverse = $serverObj.ip_reverse
     if (!$reverse)
@@ -1100,6 +1110,11 @@ function Deploy-WpSitesOnline
     # $hostmap=
     $items = Get-DomainUserDictFromTableLite -Table $FromTable
     Write-Verbose "Get domain-ip mapping table from table.conf,save result to $RoutesMap"
+    # proxy_pass 前缀修正
+    if ($Scheme)
+    {
+        $Scheme += "://"
+    }
     # 先清空旧文件
     Write-Output "" > $RoutesMap 
     foreach ($item in $items)
@@ -1110,7 +1125,7 @@ function Deploy-WpSitesOnline
             Write-Error "Invalid ip address: $($item.ip)" -ErrorAction Stop
             # continue
         }
-        $line = ".$($item.domain) http://$($item.ip);"
+        $line = ".$($item.domain) ${Scheme}$($item.ip);"
         $line | Tee-Object -Append -FilePath $RoutesMap 
     }
     Convert-CRLF -InputObject $RoutesMap -To LF -Replace
@@ -1124,8 +1139,20 @@ function Deploy-WpSitesOnline
     {
         $reverseNginxConfDir = $vps.nginx.prefix 
     }
+    # 反代服务器上routes.map.conf的路径判断
+    if ($ReverseMode -eq 'base')
+    {
 
-    $remoteRoutesMap = "$ReverseNginxConfDir/gateway/maps/routes.map.conf"
+        $remoteRoutesMap = "$ReverseNginxConfDir/gateway/maps/routes.map.conf"
+    }
+    elseif ($ReverseMode -eq 'tenants')
+    {
+        if (!$AdminId)
+        {
+            throw "Please specify admin id for tenants mode!" 
+        }
+        $remoteRoutesMap = "$ReverseNginxConfDir/tenants/${AdminId}/routes.map"
+    }
     Write-Host "Adding routes map to reverse server: $reverse on path:[$remoteRoutesMap]"
     # 删除所有会话前面可能残留的job
     Get-Job | Remove-Job -Verbose

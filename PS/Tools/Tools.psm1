@@ -1725,15 +1725,19 @@ function Get-DomainRoutesMaps
     第二列的形式采用ip还是http://ip (协议名称)可以通过选项控制
     #>
     param(
-        [Alias('Table')]$FromTable = "$Desktop/table.conf",
-        
+        [Alias('Table')]
+        $FromTable = "$Desktop/table.conf",
+        # proxy_pass 的风格,是否带上协议名
+        [ValidateSet('http', 'https', '')]
+        $Scheme = '',
+
         [Parameter(Mandatory = $true)]
         [Alias('Output')]
-        $RoutesMap,
-
-        $Scheme = ''
+        $RoutesMap
+        
     )
-    if ($Scheme){
+    if ($Scheme)
+    {
         $Scheme += "://"
     }
     $items = Get-DomainUserDictFromTableLite -Table $FromTable

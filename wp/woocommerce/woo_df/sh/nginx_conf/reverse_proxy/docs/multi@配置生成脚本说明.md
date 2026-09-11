@@ -10,7 +10,7 @@
 
 ```mermaid
 flowchart TD
-    A([启动 update_repos_vps_multi.sh]) --> B[初始化默认变量]
+    A([启动 multi.sh]) --> B[初始化默认变量]
     B --> C[解析命令行参数 parse_args]
 
     C --> D{是否指定 --help?}

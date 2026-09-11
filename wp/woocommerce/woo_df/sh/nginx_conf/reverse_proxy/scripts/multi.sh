@@ -11,42 +11,42 @@
 #   ...
 #
 # 每一组映射含义:
-#   B_IP:A_IP
+#   B_IP -> A_IP
 #
 # 其中:
 #   B_IP = 当前反代服务器上用于 listen/proxy_bind 的 IP
 #   A_IP = 被反代隐藏的后端源站服务器 IP
 #
 # 示例:
-#   bash update_repos_vps_multi.sh \
+#   bash multi.sh \
 #     -c /www/server/nginx/conf \
 #     -d /www/server/panel/vhost/nginx \
 #     -l /www/logs/ \
-#     -m '10.0.0.11:203.0.113.11' \
-#     -m '10.0.0.12:203.0.113.12' \
-#     -m '10.0.0.13:203.0.113.13'
+#     -m '10.0.0.11->203.0.113.11' \
+#     -m '10.0.0.12->203.0.113.12' \
+#     -m '10.0.0.13->203.0.113.13'
 #
 # 预览生成结果，不写文件、不 reload:
-#   bash update_repos_vps_multi.sh --dev \
+#   bash multi.sh --dev \
 #     -l /www/logs/ \
-#     -m '10.0.0.11:203.0.113.11' \
-#     -m '10.0.0.12:203.0.113.12'
+#     -m '10.0.0.11->203.0.113.11' \
+#     -m '10.0.0.12->203.0.113.12'
 #
 # 映射文件示例:
 #   cat > ~/reverse_multi_ip.maps <<'MAPS'
-#   # 格式: B_IP:A_IP，可带注释
-#   10.0.0.11:203.0.113.11
-#   10.0.0.12:203.0.113.12
+#   # 格式: B_IP->A_IP 或 B_IP A_IP，可带注释
+#   10.0.0.11->203.0.113.11
+#   10.0.0.12->203.0.113.12
 #   10.0.0.13 203.0.113.13
 #   MAPS
 #
-#   bash update_repos_vps_multi.sh --map-file ~/reverse_multi_ip.maps
+#   bash multi.sh --map-file ~/reverse_multi_ip.maps
 #
 # 注意:
 #   1. B_IP 必须是当前反代服务器 B 上已经配置好的本机 IP，否则 nginx listen/proxy_bind 会失败。
 #   2. A_IP 是后端源站服务器 IP，脚本默认反代到 A_IP:80。
 #   3. 生成文件默认写入: $NGINX_CONFD/reverse_multi_ip.conf
-#   4. 脚本会复用 update_repos_vps.sh 中更新仓库和更新 Cloudflare real IP 配置的流程。
+#   4. 脚本会复用 base.sh 中更新仓库和更新 Cloudflare real IP 配置的流程。
 #   5. --dev 仅用于调试输出，不进行任何写入或 reload(如果要输出到文件中查看,可以用shell的重定向功能保存到指定文件中)。
 #
 # 一键部署反代服务器的命令行请参考`-h`,`--help`的输出或者文档(这里就不重复定义)
@@ -69,10 +69,13 @@ DRY_RUN=false
 DEV_MODE=false
 # FORCE=false
 SYM_SH='/www/sh' #适用于服务器的仓库shell脚本目录
-mkdir -pv /www/
+mkdir -pv /www/ >&2
 
 MAPPINGS=()
+# 内部映射存储分隔符。不能使用冒号，避免 IPv6 地址被拆坏。
+MAPPING_SEP='|'
 
+# 输出脚本帮助信息，保持与当前支持的映射格式一致。
 usage() {
     cat << EOF
 部署多出口 IP 反向代理服务器的 shell 脚本. [version:$VERSION]
@@ -81,7 +84,7 @@ Usage:
     $0 [options]
 
 核心功能:
-    根据 N 组 B_IP:A_IP 映射关系，生成一个 nginx 配置文件:
+    根据 N 组 B_IP->A_IP 映射关系，生成一个 nginx 配置文件:
         B1_IP -> A1_IP
         B2_IP -> A2_IP
         B3_IP -> A3_IP
@@ -110,18 +113,18 @@ Options:
             /var/log/nginx
             /www/logs
 
-    -m, --mapping <B_IP:A_IP[,B_IP:A_IP,...]>
+    -m, --mapping <B_IP->A_IP[,B_IP->A_IP,...]>
         从命令行指定一组或多组映射(同一行内不同组间隔用逗号分隔).
         可以重复传入多次 -m.
 
         示例:
-            -m '10.0.0.11:203.0.113.11'
-            -m '10.0.0.11:203.0.113.11,10.0.0.12:203.0.113.12'
+            -m '10.0.0.11->203.0.113.11'
+            -m '10.0.0.11->203.0.113.11,10.0.0.12->203.0.113.12'
 
     -f, -M, --map-file <file>
         从文件读取映射关系.
         支持格式:
-            B_IP:A_IP
+            B_IP->A_IP
             B_IP A_IP
 
         支持空行和 # 注释.
@@ -163,23 +166,23 @@ Examples:
 # root用户可以直接运行下面的示例命令(参数自行替换)
     # 非宝塔 nginx 默认路径
     bash $0 \\
-      -m '10.0.0.11:203.0.113.11' \\
-      -m '10.0.0.12:203.0.113.12'
+      -m '10.0.0.11->203.0.113.11' \\
+      -m '10.0.0.12->203.0.113.12'
 
     # 宝塔路径
     bash $0 \\
       -c /www/server/nginx/conf \\
       -d /www/server/panel/vhost/nginx \\
       -l /www/logs/ \\
-      -m '10.0.0.11:203.0.113.11' \\
-      -m '10.0.0.12:203.0.113.12' \\
-      -m '10.0.0.13:203.0.113.13'
+      -m '10.0.0.11->203.0.113.11' \\
+      -m '10.0.0.12->203.0.113.12' \\
+      -m '10.0.0.13->203.0.113.13'
 
     # 预览生成配置
     bash $0 --dev \\
       -l /www/logs/ \\
-      -m '10.0.0.11:203.0.113.11' \\
-      -m '10.0.0.12:203.0.113.12'
+      -m '10.0.0.11->203.0.113.11' \\
+      -m '10.0.0.12->203.0.113.12'
 
     # 从文件读取映射
     bash $0 \\
@@ -191,20 +194,20 @@ Examples:
     # 在线拉取脚本并一键部署(要求事先安装好nginx)
     
     ## 标准包管理器或官方nginx标准安装:
-bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos_vps_multi.sh) \
-  -m 'B1_IP:A1_IP' \
-  -m 'B2_IP:A2_IP' 
+bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/multi.sh) \
+  -m 'B1_IP->A1_IP' \
+  -m 'B2_IP->A2_IP' 
 
     ## 宝塔方案:下面的-c,-d,-l适合于宝塔安装的nginx
-    bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos_vps_multi.sh) \\
+    bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/multi.sh) \\
     -c /www/server/nginx/conf \\
     -d /www/server/panel/vhost/nginx \\
     -l /www/wwwlogs/ \\
     -M <(
     echo "
     # 一行一个映射关系,修改为真实映射组
-    B1_IP:A1_IP
-    B2_IP:A2_IP
+    B1_IP->A1_IP
+    B2_IP->A2_IP
 "
     )\\
     # --dev #预览
@@ -216,18 +219,18 @@ bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/he
     进入root用户,然后执行脚本;
     或分步执行:
     将脚本保存到本地
-    curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos_vps_multi.sh -o ~/urvm.sh
+    curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/multi.sh -o ~/urvm.sh
     运行脚本(携带的参数更改为自己的真实映射组)
-    sudo bash ~/urvm.sh -m 'B1_IP:A1_IP' -m 'B2_IP:A2_IP' 
+    sudo bash ~/urvm.sh -m 'B1_IP->A1_IP' -m 'B2_IP->A2_IP' 
     
     重载nginx
     sudo nginx -t && sudo nginx -s reload
 
 映射文件示例:
-    默认使用分号':' 作为分隔符,也支持空格.
-    # B_IP:A_IP
-    10.0.0.11:203.0.113.11
-    10.0.0.12:203.0.113.12
+    默认使用 '->' 作为映射分隔符,也支持空格；不再把 ':' 作为分隔符，以兼容 IPv6.
+    # B_IP->A_IP
+    10.0.0.11->203.0.113.11
+    10.0.0.12->203.0.113.12
 
     # 也支持空格分隔
     10.0.0.13 203.0.113.13
@@ -235,19 +238,23 @@ bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/he
 EOF
 }
 
+# 输出错误信息并终止脚本。
 die() {
     echo "[Error][$0]: $*" >&2
     exit 1
 }
 
+# 输出普通提示信息到 stderr，避免污染 dry-run 生成的 nginx 配置内容。
 info() {
     echo "[INFO] $*" >&2
 }
 
+# 输出警告信息到 stderr。
 warn() {
     echo "[WARN] $*" >&2
 }
 
+# 去掉字符串首尾空白，供参数和映射行解析使用。
 trim() {
     local s="$*"
     s="${s#"${s%%[![:space:]]*}"}"
@@ -255,6 +262,7 @@ trim() {
     printf '%s' "$s"
 }
 
+# 校验 IPv4 字面量，要求 4 段十进制且每段 0-255。
 is_ipv4() {
     local ip="$1"
     [[ "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || return 1
@@ -337,6 +345,7 @@ is_ipv6() {
         ((n_left == 8)) || return 1
     fi
 }
+# 规范化目录路径，确保末尾保留一个 /。
 normalize_dir_slash() {
     local dir="$1"
     [[ -n "$dir" ]] || return 0
@@ -344,6 +353,20 @@ normalize_dir_slash() {
     printf '%s' "$dir"
 }
 
+# 生成 nginx 中带端口的 IP 地址格式。
+# IPv6 在 listen/upstream server 中必须写成 [IPv6]:port，IPv4 保持 IPv4:port。
+format_nginx_ip_port() {
+    local ip="$1"
+    local port="${2:-80}"
+
+    if is_ipv6 "$ip"; then
+        printf '[%s]:%s' "$ip" "$port"
+    else
+        printf '%s:%s' "$ip" "$port"
+    fi
+}
+
+# 解析并校验单组映射。支持 B_IP->A_IP、B_IP=>A_IP、B_IP A_IP；不再支持 B_IP:A_IP。
 add_mapping_pair() {
     local raw="$1"
     local b_ip=""
@@ -352,26 +375,26 @@ add_mapping_pair() {
     raw="$(trim "$raw")"
     [[ -n "$raw" ]] || return 0
 
-    # 去掉行尾注释: 10.0.0.11:203.0.113.11 # comment
+    # 去掉行尾注释: 10.0.0.11->203.0.113.11 # comment
     raw="${raw%%#*}"
     raw="$(trim "$raw")"
     [[ -n "$raw" ]] || return 0
 
     # 支持:
-    #   B:A
-    #   B A
-    #   B=>A
     #   B->A
-    raw="${raw//=>/:}"
-    raw="${raw//->/:}"
-
-    if [[ "$raw" == *:* ]]; then
-        b_ip="${raw%%:*}"
-        a_ip="${raw#*:}"
+    #   B=>A
+    #   B A
+    # 不再支持 B:A，因为 IPv6 地址本身包含冒号。
+    if [[ "$raw" == *"->"* ]]; then
+        b_ip="${raw%%->*}"
+        a_ip="${raw#*->}"
+    elif [[ "$raw" == *"=>"* ]]; then
+        b_ip="${raw%%=>*}"
+        a_ip="${raw#*=>}"
     else
         # shellcheck disable=SC2206
         local parts=($raw)
-        [[ ${#parts[@]} -ge 2 ]] || die "映射格式错误: [$raw], 期望 B_IP:A_IP 或 B_IP A_IP"
+        [[ ${#parts[@]} -ge 2 ]] || die "映射格式错误: [$raw], 期望 B_IP->A_IP、B_IP=>A_IP 或 B_IP A_IP；为兼容 IPv6，不再支持 B_IP:A_IP"
         b_ip="${parts[0]}"
         a_ip="${parts[1]}"
     fi
@@ -382,14 +405,14 @@ add_mapping_pair() {
     [[ -n "$b_ip" ]] || die "映射中的 B_IP 为空: [$raw]"
     [[ -n "$a_ip" ]] || die "映射中的 A_IP 为空: [$raw]"
 
-    # is_ipv4 "$b_ip" || die "B_IP 不是合法 IPv4: [$b_ip], 原始映射: [$raw]"
-    # is_ipv4 "$a_ip" || die "A_IP 不是合法 IPv4: [$a_ip], 原始映射: [$raw]"
     is_ipv4 "$b_ip" || is_ipv6 "$b_ip" || die "B_IP 不是合法 IP: [$b_ip], 原始映射: [$raw]"
-    is_ipv4 "$a_ip" || is_ipv6 "$b_ip" || die "A_IP 不是合法 IP: [$a_ip], 原始映射: [$raw]"
+    is_ipv4 "$a_ip" || is_ipv6 "$a_ip" || die "A_IP 不是合法 IP: [$a_ip], 原始映射: [$raw]"
 
-    MAPPINGS+=("${b_ip}:${a_ip}")
+    # 内部不能再用 B:A 存储，否则 IPv6 会在后续拆分时被冒号截断。
+    MAPPINGS+=("${b_ip}${MAPPING_SEP}${a_ip}")
 }
 
+# 解析 -m/--mapping 参数；允许用逗号在一个参数内传入多组映射。
 add_mapping_arg() {
     local arg="$1"
     local pair=""
@@ -400,6 +423,7 @@ add_mapping_arg() {
     done
 }
 
+# 从映射文件逐行读取映射，忽略空行和 # 注释。
 read_map_file() {
     local file="$1"
     # 考虑到用户可能通过进程替换<(echo ...)的方式指定,不按照普通方式检查文件存在性
@@ -411,6 +435,7 @@ read_map_file() {
     done < "$file"
 }
 # 命令行参数解析
+# 解析命令行参数，同时把 -m 提供的映射加入 MAPPINGS。
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -449,9 +474,7 @@ parse_args() {
                 shift
                 ;;
             --clean | --clean-legacy-conf)
-                LEGACY_CONF="$2"
-
-                shift
+                # --clean 本身不需要额外参数；避免误把下一个选项/映射吞掉。
                 ;;
             --conf-name)
                 [[ $# -ge 2 ]] || die "$1 需要参数"
@@ -505,6 +528,7 @@ parse_args() {
     done
 }
 
+# 根据已解析的 MAPPINGS 生成完整 nginx 配置。
 generate_nginx_conf() {
     local generated_at="$1"
     local mapping_count="${#MAPPINGS[@]}"
@@ -525,7 +549,7 @@ generate_nginx_conf() {
 #
 #
 # 生成脚本:
-#   update_repos_vps_multi.sh
+#   multi.sh
 #
 # 脚本版本:
 #   ${VERSION}
@@ -537,7 +561,7 @@ generate_nginx_conf() {
 #   ${mapping_count}
 #
 # 映射含义:
-#   B_IP:A_IP
+#   B_IP -> A_IP
 #
 #   B_IP = 当前反代服务器 B 上的本机 IP，用于 listen 和 proxy_bind.
 #   A_IP = 后端源站服务器 A 的 IP，默认代理到 A_IP:80.
@@ -558,8 +582,8 @@ EOF
 
     idx=1
     for item in "${MAPPINGS[@]}"; do
-        b_ip="${item%%:*}"
-        a_ip="${item#*:}"
+        b_ip="${item%%"${MAPPING_SEP}"*}"
+        a_ip="${item#*"${MAPPING_SEP}"}"
         cat << EOF
 #   b${idx}: ${b_ip} -> a${idx}: ${a_ip}
 EOF
@@ -627,8 +651,12 @@ EOF
 
     idx=1
     for item in "${MAPPINGS[@]}"; do
-        b_ip="${item%%:*}"
-        a_ip="${item#*:}"
+        b_ip="${item%%"${MAPPING_SEP}"*}"
+        a_ip="${item#*"${MAPPING_SEP}"}"
+        local b_listen_addr=""
+        local a_upstream_addr=""
+        b_listen_addr="$(format_nginx_ip_port "$b_ip" 80)"
+        a_upstream_addr="$(format_nginx_ip_port "$a_ip" 80)"
 
         cat << EOF
 
@@ -643,11 +671,11 @@ EOF
 #   ${a_ip}
 #
 # 请求路径:
-#   client -> Cloudflare -> ${b_ip}:80 -> ${a_ip}:80
+#   client -> Cloudflare -> ${b_listen_addr} -> ${a_upstream_addr}
 #
 # 设计意图:
-#   1. 监听 ${b_ip}:80。
-#   2. 将访问 ${b_ip}:80 的请求转发到 ${a_ip}:80。
+#   1. 监听 ${b_listen_addr}。
+#   2. 将访问 ${b_listen_addr} 的请求转发到 ${a_upstream_addr}。
 #   3. 使用 proxy_bind ${b_ip}，确保 B 连接 A 时的源 IP 为 ${b_ip}。
 #   4. 保留 Host 头，使后端 A 上的宝塔/OpenResty/nginx 可继续按域名分发站点。
 #   5. 传递 Cloudflare 与真实访客 IP 相关请求头，便于后端日志分析。
@@ -656,7 +684,7 @@ EOF
 upstream a${idx}_backend {
     # 后端源站服务器 a${idx}.
     # 当前默认代理到 HTTP 80 端口。
-    server ${a_ip}:80;
+    server ${a_upstream_addr};
 
     # 复用 B->A 的 TCP 连接，降低频繁握手带来的开销。
     keepalive 32;
@@ -666,7 +694,7 @@ upstream a${idx}_backend {
 server {
     # 只监听当前映射组指定的 B_IP.
     # 注意: ${b_ip} 必须已经绑定在当前 VPS/服务器网卡上。
-    listen ${b_ip}:80 default_server;
+    listen ${b_listen_addr} default_server;
 
     # 通配所有 Host.
     # 后端 A 仍然会收到原始 Host，并由 A 自己按域名分发站点。
@@ -689,8 +717,8 @@ server {
         proxy_pass http://a${idx}_backend;
 
         # 关键配置:
-        # 强制 B 连接 A 时使用当前 B_IP 作为源 IP。
-        proxy_bind ${b_ip};
+        # 强制 B 连接 A 时使用当前 B_IP 作为源 IP。(默认不启用绑定,以免阻碍ipv6,ipv4之间的转发)
+        # proxy_bind ${b_ip};
 
         # 保留原始 Host，让后端 A 按域名识别站点。
         proxy_set_header Host \$host;
@@ -737,6 +765,7 @@ EOF
     done
 }
 
+# 主流程：解析参数、生成配置、按模式写入/测试/重载 nginx。
 main() {
     parse_args "$@"
     # 尝试清理旧配置(可能会影响到新生成的配置.)
@@ -750,7 +779,7 @@ main() {
     [[ ${#MAPPINGS[@]} -gt 0 ]] || {
 
         usage >&2
-        die "必须提供至少一组映射关系. 示例: -m '10.0.0.11:203.0.113.11'"
+        die "必须提供至少一组映射关系. 示例: -m '10.0.0.11->203.0.113.11'"
     }
 
     NGINX_LOG_DIR="$(normalize_dir_slash "$NGINX_LOG_DIR")"
@@ -776,7 +805,7 @@ main() {
     local idx=1
     local item=""
     for item in "${MAPPINGS[@]}"; do
-        info "映射 b${idx}->a${idx}: ${item%%:*} -> ${item#*:}"
+        info "映射 b${idx}->a${idx}: ${item%%"${MAPPING_SEP}"*} -> ${item#*"${MAPPING_SEP}"}"
         idx=$((idx + 1))
     done
 

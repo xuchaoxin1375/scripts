@@ -1628,7 +1628,7 @@ merge_dir -u yxj ./s4 ./s1 deployed
 
 ### 限流配置
 
-服务器迁移后,限流等反爬配置通常会丢失,强烈建议根据`nginx_conf`目录下的文档[Readme@nginx_conf@Nginx配置总说明文档 .md](nginx_conf/Readme@nginx_conf@Nginx配置总说明文档.md)中的配置文档中的流程逐步核对,恢复限流.
+服务器迁移后,限流等反爬配置通常会丢失,强烈建议根据`nginx_conf`目录下的文档[Readme@nginx_conf@Nginx配置总说明文档 .md](nginx_conf/docs/Readme@nginx_conf@Nginx配置总说明文档.md)中的配置文档中的流程逐步核对,恢复限流.
 
 #### 站点检查
 

@@ -2,7 +2,7 @@
 # 将vps配置成反向代理服务器(反代网关),基于nginx(openresty).
 # 测试系统为ubuntu,nginx版本为标准安装(或者通过仓库中的nginx_conf/upgrade-nginx-ubt.sh安装较新版本)
 #
-# bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos_vps.sh) #  -c /www/server/nginx/conf -d /www/server/panel/vhost/nginx -l /www/logs/ -i <upstream_ip>
+# bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/base.sh) #  -c /www/server/nginx/conf -d /www/server/panel/vhost/nginx -l /www/logs/ -i <upstream_ip>
 #
 # 对于使用过本仓库的早期版本的宝塔用户,注意,如果早期的网站的/www/server/panel/vhost/nginx/目录中的网站配置
 # 包含了include com.conf的引用语句,请考虑全部移除,或者情况com.conf的内容,
@@ -43,7 +43,7 @@ Options:
                                    仅 hostmap 有效. 控制 routes.map 与 proxy_pass 的搭配.
                                    url (hostmap 默认): map 写 http://ip:port ，proxy_pass \$backend_origin;
                                    hostport:           map 写 ip:port        ，proxy_pass http://\$backend_origin;
-                                   与 update_repos_vps_tenants.sh 的同名选项含义一致.
+                                   与 tenants.sh 的同名选项含义一致.
                                    未传时沿用 $NGINX_CONF_DIR/gateway/proxy-pass-mode ；没有记录则 url.
                                    simple 模式会忽略此选项.
 EXAMPLES:
@@ -51,21 +51,21 @@ EXAMPLES:
 # 非宝塔方案(apt或标准脚本安装的情况)
 
 ## simple
-bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos_vps.sh) -i <upstream_ip> # -G hostmap 
+bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/base.sh) -i <upstream_ip> # -G hostmap 
 ## hostmap (默认 url: map 里写 http://ip:port)
-bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos_vps.sh)  -G hostmap
+bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/base.sh)  -G hostmap
 
 ## hostmap + hostport (map 里写 ip:port，和 tenants 默认相同)
-bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos_vps.sh)  -G hostmap --proxy-pass-mode hostport
+bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/base.sh)  -G hostmap --proxy-pass-mode hostport
 
 # 宝塔方案
 
 ## simple
-bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos_vps.sh) -c /www/server/nginx/conf -d /www/server/panel/vhost/nginx -l /www/logs/  -i <upstream_ip>
+bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/base.sh) -c /www/server/nginx/conf -d /www/server/panel/vhost/nginx -l /www/logs/  -i <upstream_ip>
 
 ## hostmap
 
-bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos_vps.sh) -c /www/server/nginx/conf -d /www/server/panel/vhost/nginx -l /www/logs/  -G hostmap 
+bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/base.sh) -c /www/server/nginx/conf -d /www/server/panel/vhost/nginx -l /www/logs/  -G hostmap 
 
     "
     while [[ $# -gt 0 ]]; do
