@@ -3,7 +3,7 @@
 本文说明本仓库用 `deploy_omz.sh` 部署的 zsh 环境：Oh My Zsh（omz）框架、一组补全/提示插件，以及更新时必须处理的 `zasync` 依赖。
 
 脚本路径：`deploy_omz.sh`  
-脚本版本：以文件内 `version=` 为准（当前文档对应 `20260909.2`）。
+脚本版本：以文件内 `version=` 为准（当前文档对应 `20260911.1`）。
 
 脚本只改 **zsh**（主要写 `~/.zshrc` 和 `$ZSH_CUSTOM/plugins`）。可以用 bash 执行部署，但对 bash 本身没有增强效果。
 
@@ -33,7 +33,7 @@
 | 插件 | 默认 | 作用 | 脚本选项 |
 | --- | --- | --- | --- |
 | `zsh-completions` | 开 | 额外补全定义，加入 `fpath` | `-zc true\|false` |
-| `zsh-autocomplete` | `omz` | **边输入边出补全菜单**（动态补全） | `-zac omz\|std\|false` |
+| `zsh-autocomplete` | `omz` | **边输入边出补全菜单**（动态补全） | `-zac omz\|std\|false`；版本钉扎 `-zac-ref` |
 | `zsh-autosuggestions` | 开 | 灰色历史建议 | `-zasp true\|false` |
 | `zsh-syntax-highlighting` | 开 | 命令语法高亮，须靠近 `plugins` 列表末尾 | `-zshp true\|false` |
 | `you-should-use` | 关 | 提醒已有 alias；个别环境会异常 | `-zysu true\|false` |
@@ -68,6 +68,52 @@ git clone https://github.com/marlonrichert/zasync.git ~/.cache/zsh/zasync
 - `std`：按上游建议在 `~/.zshrc` 靠前 `source` 插件文件
 - `false`：不装
 
+### 钉扎 `zsh-autocomplete` 版本
+
+上游从 2026-08 起改动很大：异步实现换成 `zasync`，随后又把 `zasync` 移出仓库，启动时 `git clone` GitHub。同一套 `deploy_omz.sh` 不能假设「永远跟 main」。用 `-zac-ref` 钉在已经验证过的提交，`.zshrc` 片段会跟着切：
+
+| `-zac-ref` | 实际提交 | 异步 | `.zshrc` |
+| --- | --- | --- | --- |
+| `latest`（默认） | `origin/main` | 外置 `zasync` | 写入 `# >>> zasync`，删 `# >>> zac pin` |
+| `classic` | `20f6c34`（2026-03-26） | 旧 fd，无 zasync | **删除** zasync 片段；写入 `# >>> zac pin` |
+| `bundled` | tag `26.08.04` / `52ce817` | zasync 仍在仓库内 | **删除** zasync 片段；写入 `# >>> zac pin` |
+| 任意 git ref | 该 commit/tag | 按检出树检测 | `external` 才写 zasync 片段 |
+
+别名：`classic` = `stable` / `pre-zasync` / `20f6c34`；`bundled` = `in-tree` / `52ce817` / `26.08.04`。
+
+```bash
+# 回到「zasync 移出之前」那套已验证的 classic
+bash deploy_omz.sh -o false -zac-ref classic -s github
+
+# 仍用内置 zasync，但不跟 main 盲升
+bash deploy_omz.sh -o false -zac-ref bundled -s github
+
+# 明确回到滚动更新
+bash deploy_omz.sh -U -zac-ref latest -s origin -y
+```
+
+钉扎后仓库是 detached HEAD，标记在：
+
+- `$ZSH_CUSTOM/plugins/zsh-autocomplete/.deploy_omz_ref`
+- `~/.zshrc` 的 `# >>> zac pin`
+
+之后只跑 `-U`（不带 `-zac-ref`）会**沿用钉扎**，不会快进到 main。其它插件仍按原规则更新。
+
+Gitee 浅克隆有时按 SHA 取不到 `classic`，脚本会回退到 GitHub 拉那一个 commit。
+
+### zsh 5.8 与 `unhandled ZLE widget`
+
+同一套 `plugins` 在 zsh ≥ 5.9 上启动安静，在 **Ubuntu 22 / zsh 5.8.1** 上会报：
+
+```text
+zsh-syntax-highlighting: unhandled ZLE widget 'menu-search'
+zsh-syntax-highlighting: unhandled ZLE widget 'recent-paths'
+```
+
+原因：`zsh-syntax-highlighting` 在 5.9 以下会在加载时 wrap 全部 ZLE widget；`zsh-autocomplete` 却先 `bindkey` 这两个名字，真正 `zle -N` / `zle -C` 要到 precmd。5.9+ 走 `add-zle-hook-widget`，不会去 wrap，所以其它设备上看不到这条。
+
+功能一般没坏，只是噪音。脚本在 `source $ZSH/oh-my-zsh.sh` 前写入 `# >>> zac zsyh widgets`，给这两个名字占位；precmd 仍会覆盖成正式 widget。关掉 autocomplete 时脚本会删掉该片段。
+
 有 `zsh-autocomplete` 时不要再手动 `compinit`（脚本会注释掉 `zsh-completions` 那段里的 `compinit`）。
 
 ### `zsh-autocomplete` 关键节点
@@ -86,7 +132,7 @@ git clone https://github.com/marlonrichert/zasync.git ~/.cache/zsh/zasync
 | 2026-08-26 | **`7633bc7`** | **不再内置 zasync，init 时 `git clone` GitHub** | **启动卡在 `Cloning into ~/.cache/zsh/zasync`** |
 | 2026-08-27 | `bf8db6b` | Remove unused images | **当前 main**，今日更新落到这里 |
 
-要恢复「↑ 弹出历史列表」：autoload Completions 后保留插件默认按键，不要绑 `.up-line-or-history`。脚本已按此生成 `~/zsh_bindkey_config.sh`。
+要恢复「↑ 弹出历史列表」：autoload Completions 后保留插件默认按键，不要把 ↑ **一律**绑成 `.up-line-or-history`。脚本已按此生成 `~/zsh_bindkey_config.sh`。当前词含 glob（如 `ls *md`）时例外，见下文故障排查。
 
 
 新版和 omz 的冲突点：omz 在 `source` 插件**之前**就 `compinit`，`Completions/_autocomplete__*` 进不了 dump。上箭头默认走 `up-line-or-search` → `_autocomplete__history_lines`，就会 `command not found`。
@@ -107,9 +153,16 @@ git clone https://github.com/marlonrichert/zasync.git ~/.cache/zsh/zasync
 # >>> zasync
 fpath+=${ZSH_CUSTOM:-${ZSH:-~/.oh-my-zsh}/custom}/plugins/zasync
 # <<< zasync
+
+# >>> zac zsyh widgets   # 必须在 source $ZSH/oh-my-zsh.sh 之前
+if autoload -Uz is-at-least 2>/dev/null && ! is-at-least 5.9; then
+  zle -N menu-search
+  zle -N recent-paths
+fi
+# <<< zac zsyh widgets
 ```
 
-其它标记包括：`disable_compfix`、`zac_compinit`、`zac bindkey config`、`zhss bindkey config`。
+其它标记包括：`disable_compfix`、`zac_compinit`、`zac bindkey config`、`zac zsyh widgets`、`zac pin`、`zhss bindkey config`。
 
 绑定键配置会生成独立文件再 source：
 
@@ -165,6 +218,9 @@ bash deploy_omz.sh -O
 
 # 关掉 you-should-use
 bash deploy_omz.sh -o false -zysu false
+
+# 钉扎 classic（20f6c34，旧 fd 异步）
+bash deploy_omz.sh -o false -zac-ref classic -s github
 ```
 
 `-o` / `--install-omz`：`default` | `github` | `gitee` | `false`。自定义 omz 路径时用 `--zsh-custom`，并与环境变量 `ZSH_CUSTOM` 一致。
@@ -173,8 +229,7 @@ bash deploy_omz.sh -o false -zysu false
 
 ## 更新（`-U`）
 
-`-U` / `--update-zsh-plugins` 只更新**已经存在**的插件仓库（fast-forward），并处理 `zasync`。  
-统一切到 GitHub/Gitee 时会改 origin；选 `origin` 则不改。
+`-U` / `--update-zsh-plugins` 更新**已经存在**的插件仓库。`zsh-autocomplete` 若已钉扎则保持该 commit；其它插件 fast-forward。统一切到 GitHub/Gitee 时会改 origin；选 `origin` 则不改。
 
 ### 交互
 
@@ -210,7 +265,9 @@ bash deploy_omz.sh -U -s gitee -y
 
 - pull 已安装插件
 - 安装/更新 `zasync`
-- 重写 `~/zsh_bindkey_config.sh`：autoload Completions，保留插件默认 ↑ 历史列表
+- 重写 `~/zsh_bindkey_config.sh`：autoload Completions，保留插件默认 ↑ 历史列表；含 glob 的当前词改走普通历史翻页
+- 写入/更新 `~/.zshrc` 的 `# >>> zac zsyh widgets`（zsh < 5.9 消除 syntax-highlighting 的 unhandled widget 警告）
+- 按当前 `zsh-autocomplete` 树决定是否保留 `# >>> zasync` / `# >>> zac pin`
 
 另一台机器更新前先同步新版脚本再跑 `-U`。
 
@@ -237,6 +294,7 @@ git -C "${XDG_CACHE_HOME:-$HOME/.cache}/zsh/zasync" remote -v
 - 下方应出现 `zsh-autocomplete` 的补全列表
 - 右侧/灰色建议来自 `zsh-autosuggestions`
 - 命令词着色来自 `zsh-syntax-highlighting`
+- 启动不应再出现 `unhandled ZLE widget 'menu-search'` / `'recent-paths'`（zsh 5.8 上靠 `# >>> zac zsyh widgets`）
 
 ---
 
@@ -276,6 +334,55 @@ bash deploy_omz.sh -U -s origin -y
 ```
 
 然后新开终端。
+
+### `ls *md` 再按上下箭头卡死
+
+`zsh-autocomplete` 的实时补全会把 `*md` 当成 glob，先画出 **globbed files / expansion**。此时再按 ↑（`up-line-or-search` / `history-search-backward`）会停在 `Loading...`，随后响铃或假死（上游 [#843](https://github.com/marlonrichert/zsh-autocomplete/issues/843)，zsh 5.8 上更明显）。↓ 的 `menu-select` 同样会走进这份展开列表。
+
+`~/zsh_bindkey_config.sh` 的处理：
+
+1. `zstyle ':autocomplete:*' ignored-input '*[\*\?\[]*'`：当前词含 `*` `?` `[` 时不实时列文件
+2. 这些词上 ↑/↓/`^P`/`^N` 改走 `.up-line-or-history` / `.down-line-or-history`，不进历史菜单、不进补全菜单
+
+不含 glob 的词（如 `ls`）仍然弹出历史命令列表。需要展开 glob 时用 Shift-Tab（`expand-word`）。
+
+手改后 `exec zsh`。或：
+
+```bash
+bash deploy_omz.sh -U -s origin -y
+```
+
+### `zsh-syntax-highlighting: unhandled ZLE widget 'menu-search'`
+
+当前机是 **zsh 5.8.1**（Ubuntu 22）。`zsh-syntax-highlighting` 在 5.9 以下会在加载时 wrap 全部 widget；`zsh-autocomplete` 却把 `menu-search` / `recent-paths` 先 bindkey，真正 `zle -N`/`zle -C` 要到 precmd。于是启动时报：
+
+```text
+zsh-syntax-highlighting: unhandled ZLE widget 'menu-search'
+zsh-syntax-highlighting: unhandled ZLE widget 'recent-paths'
+```
+
+其它机器若是 zsh ≥ 5.9，走 `add-zle-hook-widget`，不会出现这条。功能本身通常没坏，只是噪音。
+
+处理：完整部署或 `-U` 都会在 `source $ZSH/oh-my-zsh.sh` **之前**写入：
+
+```zsh
+# >>> zac zsyh widgets
+if autoload -Uz is-at-least 2>/dev/null && ! is-at-least 5.9; then
+  zle -N menu-search
+  zle -N recent-paths
+fi
+# <<< zac zsyh widgets
+```
+
+占位只为挡住 wrap；第一次 prompt 前 autocomplete 的 precmd 仍会 `zle -C menu-search` / `zle -N recent-paths`。不要把这段放到 `oh-my-zsh.sh` 之后，警告已经打印过了。
+
+手改 `~/.zshrc` 后 `exec zsh`。或：
+
+```bash
+bash deploy_omz.sh -U -s origin -y
+```
+
+`-zac false` 时脚本会删除该片段。
 
 ### `compinit: insecure directories`
 
@@ -327,7 +434,8 @@ bash deploy_omz.sh -o false -s gitee
 | --- | --- |
 | `deploy_omz.sh` | 部署/更新入口 |
 | `vendor/zasync/` | 内置 `zasync`，避免启动时访问 GitHub |
-| `~/.zshrc` | omz、`plugins`、`fpath`、标记片段 |
-| `~/zsh_bindkey_config.sh` | Tab/菜单键位 |
+| `~/.zshrc` | omz、`plugins`、`fpath`、标记片段（含 `zac zsyh widgets`、`zac pin`） |
+| `~/zsh_bindkey_config.sh` | Tab/菜单键位；glob 词绕开历史上拉卡死 |
+| `$ZSH_CUSTOM/plugins/zsh-autocomplete/.deploy_omz_ref` | `-zac-ref` 钉扎记录 |
 | `~/.oh-my-zsh/` | omz 框架 |
 | `~/.cache/zsh/zasync` | autocomplete 运行时 cache |

@@ -20,7 +20,7 @@
 # 这里的链接gitee也可以换成gitee(适合国内用户,但是可能要登录gitee账号)
 # 使用-h获取命令行帮助
 
-version=20260909.7
+version=20260911.1
 # 插件仓库源
 REPO_SOURCE="github" # gitee
 repo_source_explicit=false
@@ -28,6 +28,8 @@ repo_source_explicit=false
 # 默认插件安装选项(仅补全类插件)
 install_zsh_completions=true               # zcp插件,可选值:true|false
 install_zsh_autocomplete=omz               # zac插件安装模式:可选值:omz|std|false
+install_zsh_autocomplete_ref=latest        # latest|classic|bundled|<git-ref>
+zac_ref_explicit=false
 install_zsh_autosuggestions=true           # zasp
 install_zsh_you_should_use=false           # zysu 可能有bug,某些情况下可能会让zsh出现异常(输出:alias -g|sort ...)
 install_zsh_syntax_highlighting=true       # zshp
@@ -65,6 +67,11 @@ options:
         install zsh-completions plugin if true
     -zac | --install-zsh-autocomplete [omz|std|false]
         install zsh-autocomplete plugin if true,if use std (standard) mode,this plugin will be installed without oh my zsh plugins list
+    -zac-ref|--zsh-autocomplete-ref [latest|classic|bundled|<git-ref>]
+        pin zsh-autocomplete. latest follows main; classic is 20f6c34
+        (old fd async, before zasync); bundled is tag 26.08.04 / 52ce817
+        (zasync still in-tree). Also accepts a commit/tag. -U without this
+        flag keeps a previous pin. .zshrc snippets follow the checkout.
     -zasp|--install-zsh-autosuggesions [true|false]
         install zsh-autosuggestions plugin if true
     -zysu|--install-zsh-you-should-use [true|false]
@@ -103,7 +110,16 @@ examples:
     bash deploy_omz.sh -o false -zysu false
 
     # enable all predefined plugins
-    bash deploy_omz.sh 
+    bash deploy_omz.sh
+
+    # pin zsh-autocomplete to the pre-zasync classic commit
+    bash deploy_omz.sh -zac-ref classic -s github
+
+    # pin to in-tree zasync (tag 26.08.04)
+    bash deploy_omz.sh -zac-ref bundled -s github
+
+    # go back to rolling main, including zasync fpath snippets
+    bash deploy_omz.sh -U -zac-ref latest -s origin -y
 "
 parse_args() {
     while [[ $# -gt 0 ]]; do
@@ -124,6 +140,15 @@ parse_args() {
                     echo "$usage"
                     exit 1
                 fi
+                shift
+                ;;
+            -zac-ref | --zsh-autocomplete-ref)
+                install_zsh_autocomplete_ref="$2"
+                if [[ -z $install_zsh_autocomplete_ref ]]; then
+                    echo "[error]:-zac-ref 需要 latest|classic|bundled 或 git ref。" >&2
+                    exit 1
+                fi
+                zac_ref_explicit=true
                 shift
                 ;;
             -zasp | --install-zsh-autosuggestions)
@@ -507,14 +532,326 @@ bindkey -M emacs \
 
 # 不让历史补全追加分号
 zstyle ':autocomplete:*' add-semicolon no
+
+# 当前词含 glob（* ? [）时不要实时列出匹配文件。
+# 否则 ls *md 会先画出 globbed files/expansion，再按 ↑ 会 Loading 后卡死或响铃
+# （zsh-autocomplete #843，zsh 5.8 上更明显）。Shift-Tab 仍是 expand-word。
+zstyle ':autocomplete:*' ignored-input '*[\*\?\[]*'
+
+# 含 glob 的当前词不要走 history-search / menu-select，改用普通历史翻页。
+.zac:up-line-or-search() {
+  if [[ ${BUFFER##* } == *[\*\?\[]* ]]; then
+    builtin zle .up-line-or-history
+    return $?
+  fi
+  builtin zle up-line-or-search
+}
+.zac:down-line-or-select() {
+  if [[ ${BUFFER##* } == *[\*\?\[]* ]]; then
+    builtin zle .down-line-or-history
+    return $?
+  fi
+  builtin zle down-line-or-select
+}
+zle -N .zac:up-line-or-search
+zle -N .zac:down-line-or-select
+bindkey '^[[A' .zac:up-line-or-search
+bindkey '^[OA' .zac:up-line-or-search
+bindkey '^P'   .zac:up-line-or-search
+bindkey '^[[B' .zac:down-line-or-select
+bindkey '^[OB' .zac:down-line-or-select
+bindkey '^N'   .zac:down-line-or-select
+
 EOF
+}
+
+# zsh-autocomplete 在加载时 bindkey menu-search / recent-paths，
+# 真正 zle -N/-C 要到 precmd。zsh < 5.9 的 syntax-highlighting 会在
+# 加载时 wrap 全部 widget，看到残缺 widget 就报 unhandled ZLE widget。
+# 在 source oh-my-zsh.sh 之前占位，警告消失；precmd 仍会覆盖成正式 widget。
+ensure_zac_zsyh_widgets_zshrc() {
+    local zshrc=${1:-${zshrc_path:-$HOME/.zshrc}}
+    local mode=${2:-upsert}
+    local tmp
+    [[ -f $zshrc ]] || return 0
+    tmp=$(mktemp)
+    if [[ $mode == remove ]]; then
+        awk '
+            $0 == "# >>> zac zsyh widgets" { skip = 1; next }
+            skip && $0 == "# <<< zac zsyh widgets" { skip = 0; next }
+            skip { next }
+            { print }
+        ' "$zshrc" > "$tmp"
+        cat "$tmp" > "$zshrc"
+        rm -f "$tmp"
+        return 0
+    fi
+    awk '
+        BEGIN {
+            snippet = "# >>> zac zsyh widgets\n# zsh-autocomplete 在 bindkey 时引用 menu-search / recent-paths，\n# 真正 zle -N/-C 要到 precmd。zsh < 5.9 的 syntax-highlighting 会在加载时 wrap 全部 widget，\n# 从而报 unhandled ZLE widget。zsh >= 5.9 走 add-zle-hook-widget，不受影响。\nif autoload -Uz is-at-least 2>/dev/null && ! is-at-least 5.9; then\n  zle -N menu-search\n  zle -N recent-paths\nfi\n# <<< zac zsyh widgets"
+        }
+        $0 == "# >>> zac zsyh widgets" { skip = 1; next }
+        skip && $0 == "# <<< zac zsyh widgets" { skip = 0; next }
+        skip { next }
+        $0 ~ /^source[[:space:]]+\$ZSH\/oh-my-zsh\.sh/ && !inserted {
+            print snippet
+            print ""
+            inserted = 1
+        }
+        { print }
+        END {
+            if (!inserted) {
+                print ""
+                print snippet
+            }
+        }
+    ' "$zshrc" > "$tmp"
+    cat "$tmp" > "$zshrc"
+    rm -f "$tmp"
+}
+
+
+# zsh-autocomplete 钉扎。classic = 移出/引入 zasync 之前的旧 fd 实现；
+# bundled = zasync 仍在仓库内（tag 26.08.04）；latest = 跟随 main，需要外置 zasync。
+# classic 必须写满 40 位。GitHub 浅克隆不能 fetch 短 SHA。
+zac_ref_classic=20f6c34f20270084b21211428afb6d2534aae8e9
+zac_ref_bundled=26.08.04
+
+zac_normalize_ref_name() {
+    local raw=${1:-$install_zsh_autocomplete_ref}
+    raw=${raw,,}
+    case $raw in
+        '' | latest | main | master | origin) echo latest ;;
+        classic | stable | pre-zasync | fd | 20f6c34*) echo classic ;;
+        bundled | in-tree | subtree | 52ce817* | 26.08.04) echo bundled ;;
+        *) echo "$raw" ;;
+    esac
+}
+
+zac_resolve_ref() {
+    local name
+    name=$(zac_normalize_ref_name "$1")
+    case $name in
+        latest) echo '' ;;
+        classic) echo "$zac_ref_classic" ;;
+        bundled) echo "$zac_ref_bundled" ;;
+        *) echo "$1" ;;
+    esac
+}
+
+zac_pin_file() {
+    echo "${1:-${zac:-${ZSH_CUSTOM:-${ZSH:-$HOME/.oh-my-zsh}/custom}/plugins/zsh-autocomplete}}/.deploy_omz_ref"
+}
+
+zac_write_pin() {
+    local dir=$1 name=$2 resolved=$3
+    printf 'ref=%s\nresolved=%s\n' "$name" "$resolved" > "$(zac_pin_file "$dir")"
+}
+
+zac_read_pin_name() {
+    local file
+    file=$(zac_pin_file "$1")
+    [[ -f $file ]] || return 1
+    awk -F= '$1=="ref" {print $2; exit}' "$file"
+}
+
+remove_zasync_zshrc() {
+    local zshrc=${1:-${zshrc_path:-$HOME/.zshrc}}
+    local tmp
+    [[ -f $zshrc ]] || return 0
+    tmp=$(mktemp)
+    awk '
+        $0 == "# >>> zasync" { skip = 1; next }
+        skip && $0 == "# <<< zasync" { skip = 0; next }
+        skip { next }
+        { print }
+    ' "$zshrc" > "$tmp"
+    cat "$tmp" > "$zshrc"
+    rm -f "$tmp"
+}
+
+ensure_zac_pin_zshrc() {
+    local zshrc=${1:-${zshrc_path:-$HOME/.zshrc}}
+    local mode=${2:-upsert}
+    local name=$3 resolved=$4
+    local tmp
+    [[ -f $zshrc ]] || return 0
+    tmp=$(mktemp)
+    if [[ $mode == remove || $name == latest || -z $name ]]; then
+        awk '
+            $0 == "# >>> zac pin" { skip = 1; next }
+            skip && $0 == "# <<< zac pin" { skip = 0; next }
+            skip { next }
+            { print }
+        ' "$zshrc" > "$tmp"
+        cat "$tmp" > "$zshrc"
+        rm -f "$tmp"
+        return 0
+    fi
+    awk -v name="$name" -v resolved="$resolved" '
+        BEGIN {
+            snippet = "# >>> zac pin\n# zsh-autocomplete 钉扎: " name " (" resolved ")\n# 改回滚动 main: bash deploy_omz.sh -U -zac-ref latest -s origin -y\n# <<< zac pin"
+        }
+        $0 == "# >>> zac pin" { skip = 1; next }
+        skip && $0 == "# <<< zac pin" { skip = 0; next }
+        skip { next }
+        /^plugins=\(/ && !inserted {
+            print snippet
+            print ""
+            inserted = 1
+        }
+        { print }
+        END {
+            if (!inserted) {
+                print ""
+                print snippet
+            }
+        }
+    ' "$zshrc" > "$tmp"
+    cat "$tmp" > "$zshrc"
+    rm -f "$tmp"
+}
+
+zac_detect_profile() {
+    local dir=${1:-${zac:-${ZSH_CUSTOM:-${ZSH:-$HOME/.oh-my-zsh}/custom}/plugins/zsh-autocomplete}}
+    local f
+    for f in "$dir/Functions/Init/.autocomplete__async" "$dir/zsh-autocomplete.plugin.zsh"; do
+        if [[ -f $f ]] && grep -q 'marlonrichert/zasync.git' "$f"; then
+            echo external
+            return 0
+        fi
+    done
+    if [[ -f $dir/.gitmodules ]] && grep -qi zasync "$dir/.gitmodules"; then
+        echo bundled
+        return 0
+    fi
+    if [[ -f $dir/zasync || -d $dir/zasync || -d $dir/z-async ]]; then
+        echo bundled
+        return 0
+    fi
+    echo legacy
+}
+
+zac_fetch_ref() {
+    local dir=$1 url=$2 ref=$3
+    if git -C "$dir" fetch --depth 1 origin "$ref"; then
+        return 0
+    fi
+    echo "[warn]:origin 按 $ref 浅取失败，尝试完整 fetch。" >&2
+    if git -C "$dir" fetch origin "$ref"; then
+        return 0
+    fi
+    if [[ $url != *github.com/marlonrichert/zsh-autocomplete* ]]; then
+        echo "[warn]:回退到 GitHub 拉取 zsh-autocomplete $ref" >&2
+        if git -C "$dir" fetch --depth 1 https://github.com/marlonrichert/zsh-autocomplete.git "$ref"; then
+            return 0
+        fi
+        git -C "$dir" fetch https://github.com/marlonrichert/zsh-autocomplete.git "$ref"
+    fi
+}
+
+zac_checkout_latest() {
+    local dir=$1 url=$2
+    local branch current_url
+    if [[ -n $url ]]; then
+        current_url=$(git -C "$dir" remote get-url origin 2> /dev/null || true)
+        if [[ -z $current_url ]]; then
+            git -C "$dir" remote add origin "$url"
+        elif [[ $REPO_SOURCE != origin && $current_url != "$url" ]]; then
+            git -C "$dir" remote set-url origin "$url"
+        fi
+    fi
+    branch=$(git -C "$dir" ls-remote --symref origin HEAD 2> /dev/null | awk '/^ref:/ {print $2; exit}')
+    branch=${branch#refs/heads/}
+    branch=${branch:-main}
+    echo "zsh-autocomplete 跟随 $branch ..."
+    git -C "$dir" fetch --depth 1 origin "$branch" || git -C "$dir" fetch origin "$branch" || return 1
+    git -C "$dir" checkout -B "$branch" FETCH_HEAD || return 1
+    rm -f "$(zac_pin_file "$dir")"
+}
+
+install_or_checkout_zsh_autocomplete() {
+    local dir=$1 url=$2
+    local name resolved
+    name=$(zac_normalize_ref_name)
+    resolved=$(zac_resolve_ref)
+
+    if [[ $zac_ref_explicit == false && -d $dir ]]; then
+        local pinned
+        pinned=$(zac_read_pin_name "$dir" || true)
+        if [[ -n $pinned && $name == latest ]]; then
+            name=$pinned
+            install_zsh_autocomplete_ref=$pinned
+            resolved=$(zac_resolve_ref "$pinned")
+            echo "沿用已钉扎的 zsh-autocomplete: $name ($resolved)"
+        fi
+    fi
+
+    if [[ ! -d $dir ]]; then
+        if [[ -z $url ]]; then
+            echo "[error]:没有 zsh-autocomplete 仓库地址，无法 clone。" >&2
+            return 1
+        fi
+        echo "clone zsh-autocomplete -> $dir"
+        git clone --depth 1 "$url" "$dir" || git clone "$url" "$dir" || return 1
+    elif ! git -C "$dir" rev-parse --is-inside-work-tree &> /dev/null; then
+        echo "[warn]:$dir 不是 Git 仓库，跳过 checkout。" >&2
+        return 1
+    elif [[ -n $(git -C "$dir" status --porcelain) ]]; then
+        echo "[warn]:zsh-autocomplete 有未提交改动，跳过 checkout。" >&2
+        return 1
+    fi
+
+    if [[ $name == latest ]]; then
+        zac_checkout_latest "$dir" "$url" || return 1
+        echo "[ok]:zsh-autocomplete $(git -C "$dir" rev-parse --short HEAD) (latest)"
+        return 0
+    fi
+
+    echo "钉扎 zsh-autocomplete -> $name ($resolved)"
+    if ! git -C "$dir" cat-file -e "${resolved}^{commit}" 2> /dev/null; then
+        zac_fetch_ref "$dir" "$url" "$resolved" || {
+            echo "[error]:无法获取 zsh-autocomplete $resolved" >&2
+            return 1
+        }
+    fi
+    if git -C "$dir" checkout --detach "$resolved" 2> /dev/null \
+        || git -C "$dir" checkout --detach FETCH_HEAD; then
+        resolved=$(git -C "$dir" rev-parse --short HEAD)
+        zac_write_pin "$dir" "$name" "$resolved"
+        echo "[ok]:zsh-autocomplete 钉在 $name ($resolved)"
+        return 0
+    fi
+    echo "[error]:checkout zsh-autocomplete $resolved 失败。" >&2
+    return 1
 }
 
 ensure_zsh_autocomplete_compat() {
     local zac_dir=${1:-${ZSH_CUSTOM:-${ZSH:-$HOME/.oh-my-zsh}/custom}/plugins/zsh-autocomplete}
+    local profile name resolved zshrc
     [[ -d $zac_dir ]] || return 0
-    install_or_update_zasync || return 1
+    zshrc=${zshrc_path:-$HOME/.zshrc}
+    profile=$(zac_detect_profile "$zac_dir")
+    name=$(zac_normalize_ref_name)
+    resolved=$(git -C "$zac_dir" rev-parse --short HEAD 2> /dev/null || true)
+    echo "zsh-autocomplete 兼容配置: profile=$profile ref=$name commit=$resolved"
+
+    if [[ $profile == external ]]; then
+        install_or_update_zasync || return 1
+    else
+        echo "[ok]:$profile 不需要外置 zasync，移除 ~/.zshrc 中的 zasync 片段。"
+        remove_zasync_zshrc "$zshrc"
+    fi
     write_zac_bindkey_config
+    ensure_zac_zsyh_widgets_zshrc "$zshrc" upsert
+    if [[ $name == latest ]]; then
+        ensure_zac_pin_zshrc "$zshrc" remove
+        rm -f "$(zac_pin_file "$zac_dir")"
+    else
+        [[ -n $resolved ]] || resolved=$(zac_resolve_ref)
+        zac_write_pin "$zac_dir" "$name" "$resolved"
+        ensure_zac_pin_zshrc "$zshrc" upsert "$name" "$resolved"
+    fi
 }
 
 # 仅更新已安装的 Zsh 插件仓库，并处理 zsh-autocomplete 的 zasync 依赖。
@@ -589,7 +926,12 @@ update_zsh_plugins() {
     }
 
     update_zsh_plugin_repo zsh-completions "$custom_dir/plugins/zsh-completions" "$zcp_repo"
-    update_zsh_plugin_repo zsh-autocomplete "$custom_dir/plugins/zsh-autocomplete" "$zac_repo"
+    if [[ -d $custom_dir/plugins/zsh-autocomplete ]]; then
+        found=true
+        if ! install_or_checkout_zsh_autocomplete "$custom_dir/plugins/zsh-autocomplete" "$zac_repo"; then
+            failed=true
+        fi
+    fi
     update_zsh_plugin_repo zsh-autosuggestions "$custom_dir/plugins/zsh-autosuggestions" "$zasp_repo"
     update_zsh_plugin_repo you-should-use "$custom_dir/plugins/you-should-use" "$zysu_repo"
     update_zsh_plugin_repo zsh-syntax-highlighting "$custom_dir/plugins/zsh-syntax-highlighting" "$zshp_repo"
@@ -700,8 +1042,7 @@ zac=${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autocomplete
 [[ $install_zsh_completions == true ]] &&
     ! [[ -d $zcp ]] && git clone --depth 1 "$zcp_repo" "$zcp"
 # 自动动态的补全预测,属于较复杂插件(代替incr.zsh)
-[[ $install_zsh_autocomplete != false ]] &&
-    ! [[ -d $zac ]] && git clone --depth 1 "$zac_repo" "$zac"
+[[ $install_zsh_autocomplete != false ]] && install_or_checkout_zsh_autocomplete "$zac" "$zac_repo"
 [[ $install_zsh_autocomplete != false ]] && ensure_zsh_autocomplete_compat "$zac"
 
 [[ $install_zsh_autosuggestions == true ]] &&
@@ -814,7 +1155,10 @@ fpath+=${ZSH_CUSTOM:-${ZSH:-~/.oh-my-zsh}/custom}/plugins/zsh-completions/src\
     }
     update_zc_config_rc
     if [[ $install_zsh_autocomplete != false ]]; then
-        ensure_zasync_zshrc "$zshrc_path"
+        ensure_zsh_autocomplete_compat "$zac"
+    else
+        remove_zasync_zshrc "$zshrc_path"
+        ensure_zac_pin_zshrc "$zshrc_path" remove
     fi
     # 安装zsh-autocomplete的方案分2类
     # 标准方式安装zsh-autocomplete(不依赖于oh my zsh等配置框架)
@@ -847,6 +1191,9 @@ source ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autocomplete/zsh-autocompl
             sed -i '/# >>> zsh-autocomplete/,/# <<< zsh-autocomplete/d' "$zshrc_path"
             plugins_list="${plugins_list//zsh-autocomplete/}"
             sed -i '/# >>> zac bindkey config/,/# <<< zac bindkey config/d' "$zshrc_path"
+            ensure_zac_zsyh_widgets_zshrc "$zshrc_path" remove
+            remove_zasync_zshrc "$zshrc_path"
+            ensure_zac_pin_zshrc "$zshrc_path" remove
         else
             # 按需关闭补全代码检查(linuxbrew),将环境变量插入配置文件开头
             sed -i '/# >>> disable_compfix/,/# <<< disable_compfix/d' "$zshrc_path"

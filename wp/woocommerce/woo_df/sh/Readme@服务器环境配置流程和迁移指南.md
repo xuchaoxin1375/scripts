@@ -259,6 +259,8 @@ git pull
   
   部署(zsh系列插件,包括补全提示和prompt主题);
 
+  Ubuntu 22 自带 zsh 5.8.1 时，启动可能出现 `zsh-syntax-highlighting: unhandled ZLE widget 'menu-search'` / `'recent-paths'`。同一套配置在 zsh ≥ 5.9 的机器上没有这条。新版 `deploy_omz.sh` 会在 `~/.zshrc` 写入 `# >>> zac zsyh widgets` 占位；细节见 [Readme@deploy_omz.md](Readme@deploy_omz.md)。若系统包是 5.8，也可改用 `install_zsh_bymake` 装 5.9+。
+
 ### shell配置文件环境预定义
 
 写入一些便于使用的shell配置,比如常用别名和函数,以及预定义变量,有助于提高命令行交互效率;
