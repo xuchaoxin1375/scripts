@@ -142,6 +142,7 @@ show_help() {
         -n, --domain-name NAME     设置网站域名
         -N, --update-domain-name NAME  更新已上传包网站的域名
         -W, --site-root-name NAME  设置站点根目录名称 (默认:$SITE_ROOT_NAME)
+        --append-marker            设置 wp-config.php 文件中追加插入的标记(例如注释行 stop editing),新内容加查到该标记行下方.
         --uploader USER            设置 uploader 用户名 (默认:$UPLOADER)
         --tag-dir                  存放状态标记文件的目录:对于即时部署模式
                                     (解压部署一个站后立即删除对应的包文件组),为了记住是否已经部署过的状态,使用标记文件提供判断支持.
@@ -320,7 +321,7 @@ parse_args() {
                 SITE_ROOT_NAME="$2"
                 shift
                 ;;
-            --insert-marker)
+            --append-marker)
                 APPEND_MARKER="$2"
                 shift
                 ;;
