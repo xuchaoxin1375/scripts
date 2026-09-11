@@ -965,9 +965,13 @@ ssh-copy-id -i ~/.ssh/id_ed25519.pub -p 22  "remote_user@server"
 
 ## nginx配置
 
+相关文档: `$sh/nginx_conf/docs/`
+
 ### 总配置nginx.conf
 
-下载的代码仓库中相关文件位置:`$sh\nginx_conf\nginx.conf`(`nginx_nginx.conf`或`nginx_openresty.conf`,根据服务器的nginx版本来选用,部署脚本会自动选择,并映射到服务器中文件位置:`/www/sh/nginx_conf/nginx.conf`,不需要过于关心)
+下载的代码仓库中相关文件位置:`$sh/nginx_conf/nginx.conf`
+
+> (`nginx_nginx.conf`或`nginx_openresty.conf`,根据服务器的nginx版本来选用,部署脚本会自动选择,并映射到服务器中文件位置:`/www/sh/nginx_conf/nginx.conf`,不需要过于关心)
 
 如果将仓库中的 `nginx.conf`配置文件覆盖调用原配置文件(比如使用符号链接将文件从仓库位置指向到nginx配置文件路径)是一个有风险的行为
 
@@ -982,6 +986,17 @@ ssh-copy-id -i ~/.ssh/id_ed25519.pub -p 22  "remote_user@server"
 每次有需求修改完成后需要重载nginx配置才能逐渐生效 `nginx -t && nginx -s reload` (如果语法有误,会报错,如果通过检测,就会重载配置)
 
 为网站插入公用nginx配置片段的批量处理脚本:`/www/sh/nginx_conf/update_nginx_vhosts_conf.sh`,通过`-h`选项获取使用帮助
+
+### 批量更新vhost中的nginx配置
+
+按需执行:
+
+```bash
+# 按需启用--insert-marker (指定标记参数)来确定cha ,例如 --insert-marker '#ERROR-PAGE-START ' 
+bash /www/sh/nginx_conf/update_nginx_vhosts_conf.sh -m old --force  
+```
+
+
 
 ### nginx 日志文件过多问题🎈
 

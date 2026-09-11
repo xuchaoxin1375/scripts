@@ -74,7 +74,7 @@ SUCCESSED=0
 declare -A PID_TASK_MAP PID_TASK_MAP_FAILED PID_TASK_MAP_SUCCESSED
 
 # wp配置文件编辑标记
-STOP_EDITING_LINE='Add any custom values between this line and the "stop editing" line'
+APPEND_MARKER='Add any custom values between this line and the "stop editing" line'
 # 非原生包这部分可以跳过插入(已经有相应内容了,可以通过grep检查是否有'FORCE_SSL_ADMIN'字符串存在)
 HTTPS_CONFIG_LINE="\$_SERVER['HTTPS'] = 'on'; define('FORCE_SSL_LOGIN', true); define('FORCE_SSL_ADMIN', true);"
 SH=/www/sh # linux 软连接短路径风格
@@ -320,6 +320,10 @@ parse_args() {
                 SITE_ROOT_NAME="$2"
                 shift
                 ;;
+            --insert-marker)
+                APPEND_MARKER="$2"
+                shift
+                ;;
             --uploader)
                 UPLOADER="$2"
                 shift
@@ -458,7 +462,7 @@ update_wp_config() {
     # 使用 awk 查找包含 "stop editing" 的那一行号(第一次出现)
 
     local STOP_LINE
-    STOP_LINE=$(awk -v search="$STOP_EDITING_LINE" '$0 ~ search {print NR}' "$wp_config_path" | head -n 1)
+    STOP_LINE=$(awk -v search="$APPEND_MARKER" '$0 ~ search {print NR}' "$wp_config_path" | head -n 1)
     if [ -n "$STOP_LINE" ]; then
         # 插入用于启用https的代码片段
         sed -i "${STOP_LINE}a$HTTPS_CONFIG_LINE" "$wp_config_path"

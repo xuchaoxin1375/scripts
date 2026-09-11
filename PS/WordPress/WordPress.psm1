@@ -1056,11 +1056,11 @@ function Deploy-WpSitesOnline
         # 域名绑定cf后解析cf返回的查询结果来传递给spaceship更新域名的nameservers的中间表格
         [alias('DomainTable')]$ToTable = "$Desktop/domains_nameservers.csv",
         # proxy_pass 的风格,是否带上协议名
-        [ValidateSet('http', 'https', '')]
-        $Scheme = '',
-        # 反代模式,关乎反代服务器上的routes.map的路径构造.
+        [ValidateSet('http', 'https', '', 'auto')]
+        $Scheme = 'auto',
+        # 反代模式,关乎反代服务器上的routes.map的路径构造.(base对应的Scheme为'http',而tenants对应于'')
         [ValidateSet('base', 'tenants')]
-        $ReverseMode = 'base',
+        $ReverseMode = 'tenants',
         # 服务器管理员id (注意要和反代服务器上的配置一致,否则无法正确写入routes.map)
         # 配置方式: Set-EnvVar -EnvVar SERVER_ADMIN_ID -NewValue xcx # 此处xcx为管理员id
         $AdminId = $env:SERVER_ADMIN_ID,
@@ -1111,9 +1111,23 @@ function Deploy-WpSitesOnline
     $items = Get-DomainUserDictFromTableLite -Table $FromTable
     Write-Verbose "Get domain-ip mapping table from table.conf,save result to $RoutesMap"
     # proxy_pass 前缀修正
-    if ($Scheme)
+    if ($Scheme -ne 'auto')
     {
-        $Scheme += "://"
+        if($Scheme )
+        {
+            $Scheme += "://"
+        }
+    }
+    else
+    {
+        if ($ReverseMode -eq 'base')
+        {
+            $Scheme = "http://"
+        }
+        else
+        {
+            $Scheme = ""
+        }
     }
     # 先清空旧文件
     Write-Output "" > $RoutesMap 
