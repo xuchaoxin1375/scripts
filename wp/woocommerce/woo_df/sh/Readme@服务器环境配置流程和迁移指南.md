@@ -992,7 +992,7 @@ ssh-copy-id -i ~/.ssh/id_ed25519.pub -p 22  "remote_user@server"
 按需执行:
 
 ```bash
-# 按需启用--insert-marker (指定标记参数)来确定cha ,例如 --insert-marker '#ERROR-PAGE-START ' 
+# 按需启用--insert-marker (指定标记参数)来确定插入位置 ,例如 --insert-marker '#ERROR-PAGE-START ' 
 bash /www/sh/nginx_conf/update_nginx_vhosts_conf.sh -m old --force  
 ```
 
