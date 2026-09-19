@@ -194,12 +194,12 @@ Examples:
     # 在线拉取脚本并一键部署(要求事先安装好nginx)
     
     ## 标准包管理器或官方nginx标准安装:
-bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/multi.sh) \
+bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/nginx_conf/reverse_proxy/scripts/multi.sh) \
   -m 'B1_IP->A1_IP' \
   -m 'B2_IP->A2_IP' 
 
     ## 宝塔方案:下面的-c,-d,-l适合于宝塔安装的nginx
-    bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/multi.sh) \\
+    bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/nginx_conf/reverse_proxy/scripts/multi.sh) \\
     -c /www/server/nginx/conf \\
     -d /www/server/panel/vhost/nginx \\
     -l /www/wwwlogs/ \\

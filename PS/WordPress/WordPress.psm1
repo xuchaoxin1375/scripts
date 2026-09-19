@@ -1185,6 +1185,7 @@ function Deploy-WpSitesOnline
         ## 更可靠的方式是使用编写合适的脚本,放在服务器上,调用其脚本不冗余且安全的将map文件并入到原map中.
         $vpsUser = $vps.ssh.user
         $vpsPort = $vps.ssh.port
+        Write-Verbose "从配置文件中获取vps的登录用户名和端口号: $vpsUser, $vpsPort" -Verbose
         # 上传map文件
         scp -P $vpsPort $RoutesMap "$vpsUser@${reverse}:~/routes.map.conf"
         if ($LASTEXITCODE -ne 0)

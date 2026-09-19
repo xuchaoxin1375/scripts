@@ -225,7 +225,61 @@ function Get-MacOSOperatingSystemInfo
     return $osInfo
     
 }
-    
+class ProcessDetail
+{
+    [int]      $Id
+    [string]   $Name
+    [double]   $CPUSeconds
+    [double]   $WorkingSetMB
+    [datetime] $StartTime
+    [timespan] $RunTime
+    [string]   $User
+    [int]      $ParentPID
+    [string]   $Path
+    [string]   $CommandLine
+}
+
+function Get-ProcessDetail
+{
+    <# 
+    .SYNOPSIS
+    默认的 ps (即 Get-Process) 只显示基本列。
+    这里补充其他一些常用的列，例如启动命令行.
+    要获取更详细的信息（命令行、可执行路径、启动时间、父进程、用户等），推荐用 Get-CimInstance Win32_Process。
+    .NOTES
+    ⚠️ 注意：CommandLine、User 等字段需要 管理员权限 才能获取到其他用户的进程信息，你已经是 Administrator 所以没问题。
+    .EXAMPLE
+    # 使用：
+    Get-ProcessDetail ssh | Format-List
+    Get-ProcessDetail ssh | Format-Table -AutoSize
+    #>
+    [OutputType([ProcessDetail])]          # ← 关键：告诉补全器输出类型
+    param(
+        [Parameter(Mandatory)]
+        [string]$Name
+    )
+
+    $cim = Get-CimInstance Win32_Process -Filter "Name='$Name.exe'"
+
+    Get-Process -Name $Name | ForEach-Object {
+        $p = $_
+        $c = $cim | Where-Object ProcessId -EQ $p.Id
+        $o = Invoke-CimMethod -InputObject $c -MethodName GetOwner
+
+        [ProcessDetail]@{
+            Id           = $p.Id
+            Name         = $p.Name
+            CPUSeconds   = [math]::Round($p.CPU, 2)
+            WorkingSetMB = [math]::Round($p.WorkingSet64 / 1MB, 2)
+            StartTime    = $p.StartTime
+            RunTime      = (Get-Date) - $p.StartTime
+            User         = "$($o.Domain)\$($o.User)"
+            ParentPID    = $c.ParentProcessId
+            Path         = $p.Path
+            CommandLine  = $c.CommandLine
+        }
+    }
+}
 function Get-ProcessMemoryView
 {
     <#

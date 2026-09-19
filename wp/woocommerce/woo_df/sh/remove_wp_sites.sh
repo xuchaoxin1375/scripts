@@ -4,7 +4,10 @@ SITE_LIST_FILE=""
 # verbose开关,注意取名和verbose函数区别,这里使用大小表示变量
 VERBOSE=false
 DRY_RUN=false
-
+host=""
+port=""
+user=""
+pass=""
 project_roots_default=('/www/wwwroot' '/wwwdata/wwwroot')
 parse_args() {
     local project_roots=()

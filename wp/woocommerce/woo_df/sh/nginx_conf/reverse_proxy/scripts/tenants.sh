@@ -272,7 +272,7 @@ Examples:
           'b site-b1.example.net 10.20.20.11:80')
 
     # 在线拉取并部署
-    bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/tenants.sh) \\
+    bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/nginx_conf/reverse_proxy/scripts/tenants.sh) \\
       -t 'a=P_IP_A' \\
       -t 'b=P_IP_B'
 
