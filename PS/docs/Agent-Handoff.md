@@ -44,9 +44,14 @@
 7. **日志行序不可信**：`> file 2>&1` 下成功流/错误流/宿主输出的落盘顺序会重排。
    定罪靠“收进变量数个数”（`$o = init; @($o).Count`），不靠看日志行号。
 8. **bash 工具引号地狱**：行内 `pwsh -Command '...'` 转义必炸。一律写成 `.ps1` 文件再 `-File` 执行。
-9. **模块作用域**：`$global:` 显式前缀才跨模块；`prompt` 重载会重抓 `$originalPromptScript`
-    导致堆叠——改完 Prompt 模块让用户重进 shell（`Import-ModuleForce` 只跳过 `*completion*`，
-    跳 Prompt 的代码是注释状态，2026-09-20 核实，之前文档写错了已纠正）。
+9. **模块作用域**：`$global:` 显式前缀才跨模块。旧文档曾写“prompt 重载抓旧值堆叠”，
+    2026-09-20 沙箱最小复现证伪（纯重载抓空只报错不叠）；真凶是 conda 每次 import 重包
+    prompt（`Conda.psm1:232-247`，`Rename-Item` + `ChangePs1` 缺省真）。
+    `Import-ModuleForce` 已改白名单（仅仓库路径，动态模块 Path 为空天然排除）+
+    三卫哨（`*completion*`/`*predictor*`/`*conda*`），叠加防御；旧理论作废，以此条为准。
+    另补：`Prompt.psm1` 顶层已改“全局只抓一次”（`$global:__CxxuOriginalPrompt`），
+    沙箱三轮 Remove/Import（含空槽）实测无报错无叠层，故 Prompt 不用跳过、留在轮转里。
+    真机验证通过（2026-09-20，用户新开 shell + 多轮 ipmof|iex，单层无报错）。
 10. **manifest 是真相源**：增删函数必同步 `.psd1`（GUID 保持不动）；
     函数名解析要块注释感知（`Function that shows...` 曾被误收录成函数 `that`）。
 11. **重定向 vs 交互是两种宇宙**：`[Environment]::UserInteractive` 在重定向下仍为 True，

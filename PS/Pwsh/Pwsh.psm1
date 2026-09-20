@@ -319,21 +319,28 @@ function Import-ModuleForce
 {
     <# 
     .SYNOPSIS
-    默认重载已经加载了的模块,而不是重载所有模块来加快操作速度
+    只重载仓库内已加载模块(白名单即本意:刷新我改过的模块,变量不丢);第三方/系统模块一律不动,仍配合 iex 在当前作用域执行
     #>
     [CmdletBinding()]
     param (
         # [switch]$PassThru
     )
 
-    # 获取当前 已经加载了的模块
-    $modules = Get-Module | Select-Object -ExpandProperty Name
+    # 白名单根:本函数所在模块的上级目录(即 PS/ 仓库目录),自举不依赖外部变量
+    $repoRoot = Split-Path -Parent $PSScriptRoot
+
+    # 获取当前已经加载且位于仓库内的模块(动态模块 Path 为空,天然排除)
+    $modules = Get-Module | Where-Object {
+        $_.Path -and $_.Path.StartsWith($repoRoot, [System.StringComparison]::OrdinalIgnoreCase)
+    } | Select-Object -ExpandProperty Name
 
     $res = @()
     foreach ($module in $modules)
     {
-        # 跳过某些模块的重载(如果这个模块比较特殊的话,比如包含注册补全的模块，这个模块就要谨慎重载,默认跳过,可以根据自己的情况调整)
-        if ($module -like '*completion*')
+        # 纵深防御:import 有副作用的仍跳过(黑名单,和白名单叠加)
+        # completion:注册补全的模块谨慎重载;predictor:运行时注册+缓存表由加载器一次性建好,裸重载只恢复注册不恢复表,会静默放空
+        # conda:Conda.psm1 每次 import 都 Rename-Item prompt 为 CondaPromptBackup 再包一层(ChangePs1 缺省真),裸重载=每轮多一层 prompt
+        if ($module -like '*completion*' -or $module -like '*predictor*' -or $module -like '*conda*')
         { 
             Write-Warning "Skipping $module"
             continue 
@@ -361,7 +368,7 @@ function ipmof
     重新执行pwsh,或者使用ipmo(Import-Module) 配合-Force参数强制重载相应的模块
     前者重载得彻底,但是会无法继承父级会话中的环境,比如定义的变量在新开的pwsh中无法访问,而且开销比较大,速度慢
     后者一种方法更加轻量,由于不会创建新的pwsh进程,不会造成环境变量丢失,但是一个个检查模块然后重新加载对于开发者来说不方便
-    为此编写了此函数,可以直接重载已经加载了的模块,方便了这一个刷新变更了的模块的过程
+    为此编写了此函数,可以直接重载仓库内(PS/ 路径下)已经加载了的模块,方便了这一个刷新变更了的模块的过程
     .NOTES
     一个有意思的现象是,如果自动导入模块的路径$PsModulePath下的模块如果在当前powershell会话中没有加载,例如某个函数x在模块test中
     而当前shell环境没有调用x,也没有调用模块test中的任意函数,或定义的东西,此时对此摸块做了更改后,不需要刷新,在当前会话shell中调用test的变更的内容是自动更新的,也就是说会自动刷新

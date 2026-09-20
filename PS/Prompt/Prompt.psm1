@@ -5,7 +5,18 @@ Prompt 模块:提示符(prompt)及其片段(Write-*)、主题切换(Set-PsPrompt
 首次调用 prompt 或 Set-PsPrompt 时由 powershell 自动加载.
 #>
 
-$originalPromptScript = $Function:prompt #禁止在自定义prompt函数体内部执行此代码
+# 只抓一次(存全局):ipmof|iex 会 Remove 后裸重载,此时全局 prompt 为空,重抓只会抓到 $null 造成每回车报错;
+# 首轮非 Prompt 模块拥有的 prompt(conda 包壳/默认)才存,之后重载一律复用,不再跟随当前值;
+# 想换底(如后激活 conda):Remove-Variable global:__CxxuOriginalPrompt 后重载一次即可重抓
+if ($null -eq $global:__CxxuOriginalPrompt)
+{
+    $curPromptCmd = Get-Command prompt -ErrorAction SilentlyContinue
+    if ($curPromptCmd -and $curPromptCmd.ModuleName -ne 'Prompt' -and $null -ne $Function:prompt)
+    {
+        $global:__CxxuOriginalPrompt = $Function:prompt
+    }
+}
+$originalPromptScript = $global:__CxxuOriginalPrompt #禁止在自定义prompt函数体内部执行此代码
 function promptx
 {
     <# 
@@ -25,7 +36,8 @@ function promptx
     目前配置自动激活后(例如mamba shell init --shell powershell --root-prefix=~/.local/share/mamba)
     powershell的提示符才会带上(base)这类前缀
     .NOTES
-    这部分代码不宜在ipmof|iex命令在被重载,在使用conda这类环境程序时,容易会造成prompt堆积,暂时prompt函数放在这里,避免重载,等待更好的解决办法
+     2026-09-20 已有更好解决办法:顶层改"全局只抓一次"($global:__CxxuOriginalPrompt),
+     Remove 后裸重载复用首存,不再抓空/抓旧,故 Prompt 可留在 ipmof 轮转里正常刷新
     #>
     [CmdletBinding()]
     param()

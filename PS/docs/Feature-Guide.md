@@ -42,7 +42,7 @@ Sync-ModuleManifest <模块名> -Reload  # 偷懒版：自动把 .psm1 新增函
 Sync-ModuleManifest -Reload            # 不指定模块 = 全部 54 个自有模块（只打印有变化的+汇总；Prompt 跳过重载防嵌套）
 # -Name 支持 Tab 补全（空字列出全部）；单模块想手动挡就继续 Import-Module <模块名> -Force -DisableNameChecking
 # （-DisableNameChecking 定向压掉双横线警告，见 FAQ；其它警告不受影响）
-ipmof | iex                     # 重载所有已加载模块（跳过 *completion* 类；Prompt 见下）
+ipmof | iex                     # 只重载仓库内(PS/)已加载模块；第三方/系统不动；副作用模块(*completion*/*predictor*/*conda*)跳过
 ```
 
 - 模块还没加载过时更省事：直接敲新函数名，PSModulePath 自动发现并加载（前提：manifest 里已导出）。
@@ -83,9 +83,16 @@ p -Force                    # 看 init 分步耗时，定位慢项
   贵的是 conda + init + 模块发现（见基线表），不是重复 bug。
 - **prompt 显示空 IP**：`~/Data.json` 的 `IpPrompt` 为空且守护进程没跑；
   手动跑一次 `Get-IpAddressFormated` 即写回，以后就快了。
-- **`ipmof|iex` 后提示符叠了**：`Prompt` 模块加载时会抓 `$originalPromptScript`，
-  重载就抓到旧的自定义 prompt 造成嵌套（`Import-ModuleForce` 只跳过 `*completion*`，
-  不跳 Prompt，跳 Prompt 的代码还是注释状态）。改完 Prompt 模块直接重进 shell，别 ipmof。
+- **`ipmof|iex` 后提示符叠了**：根因不是 Prompt 模块（沙箱最小复现证伪：
+  纯 Prompt 重载只会因抓空报错，不会叠）。真凶是 `Conda.psm1:232-247`——每次 import
+  都 `Rename-Item prompt→CondaPromptBackup` 再包一层（`ChangePs1` 缺省真），旧 `ipmof`
+  全量重载每轮多包一层。2026-09-20 已改白名单：只重载仓库内模块 + `*conda*` 跳过。
+  已堆起来的会话跑一行恢复（变量不丢，空槽/叠层两种状态通用）：
+  `Remove-Module Prompt,Conda -Force; . $HOME/.conda_hook_cache.ps1; Import-Module Prompt -Force`。
+  另：`Prompt.psm1` 顶层已改“全局只抓一次”（`$global:__CxxuOriginalPrompt`），
+  裸重载复用首存不再抓空，故 Prompt 可留在轮转里；想换底（如后激活 conda）：
+  `Remove-Variable global:__CxxuOriginalPrompt` 后重载一次即重抓。
+  真机验证通过（2026-09-20）：新开 shell 单层正常，多轮 `ipmof|iex` 无叠层无报错，本条终结。
 - **启动进度条**：默认开（`Loading...` + 分步百分比，跑完自动消失）。
   不想要：`$env:PsShowProgress = 'False'`（当前会话）；一劳永逸：
   `Add-EnvVar -EnvVar PsShowProgress -NewValue 'False'`。agent/CI 等重定向场景自动关闭，不用管。
@@ -131,11 +138,9 @@ p -Force                    # 看 init 分步耗时，定位慢项
   所以命令名前缀它永远沉默，只看到历史是必然的，不是坏了。
   开新终端输个高频前缀（如 `git che`）对照一下：有候选 = 一切正常。
 - 想要 zsh-autocomplete 那种悬浮面板：原生没有（predictor 须 20ms 内返回，慢同步的
-  TabExpansion2 镜像不了）。**自研 predictor 已落地**（`CxxuPredictor`，只做裸命令名前缀，
-  `get-child` 应出 `[CxxuCommand]` 来源行；卸载用 `Remove-Module CxxuPredictor`）。
-  重型外挂仍按需自取：`inshellisense`（微软官方，600+ 工具）、
-  `hintshell`（Rust 常驻，2026 新）、`PSCue`（ML 学习型）、`PSPredictor` v2（AI 噱头重，
-  稳定性未知）——建议先用自研 + 官方路径一周，不够再试 `inshellisense`。
+  TabExpansion2 镜像不了）。**自研 predictor 已落地并真机验证通过**（`CxxuPredictor`，
+  只做裸命令名前缀，`get-child` 出 `[CxxuCommand]` 来源行；卸载用 `Remove-Module CxxuPredictor`）。
+  重型外挂不再考虑（`inshellisense` 用户已否决；`hintshell`/`PSCue`/`PSPredictor` v2 观察）。
 - 关预测：`predictNo`（当会话有效）；切回行内视图：`Set-PSReadLineOption -PredictionViewStyle InlineView`
   或按 `F2` 切换。
 - **ListView 为什么最多显示 10 行**：硬编码（`ListViewMaxHeight`，历史固定占前 3 行），

@@ -18,7 +18,7 @@
 | `EnvVar` | 1021/15 | 环境变量 User/Machine/Process 三档；热路径一律 `Set-ProcessEnvVar` |
 | `Startup` | 307/12 | 开机任务、后台守护进程、OS 版本缓存（`Confirm-EnvVarOfInfo`） |
 | `Json` | 251/5 | `Data.json` 读写校验（init 与 prompt 共用，无递归设计） |
-| `Pwsh` | 1410/32 | 通用工具箱：模块安装、profile 管理、`ipmof` 重载、`Sync-ModuleManifest` 偷懒同步（-Name Tab 补全）、`Set-PsExtension`（默认关） |
+| `Pwsh` | 1410/32 | 通用工具箱：模块安装、profile 管理、`ipmof` 重载（仅仓库内模块）、`Sync-ModuleManifest` 偷懒同步（-Name Tab 补全）、`Set-PsExtension`（默认关） |
 
 ## prompt 首渲染会顺带加载
 

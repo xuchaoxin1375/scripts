@@ -414,7 +414,7 @@ Set-PSReadLineOption: 句柄无效。
   自匹配排除，30 条封顶，无反馈接口；`OnIdle` loader 里 `-Global` 装载。
 - 验证（沙盒）：构建零警告；import 423ms 零错并顶层列出；反射直测过滤逻辑
   （`get-chi`→`Get-ChildItem`、自匹配排除、空前缀排除）；manifest 过；自动发现 OK。
-  真机待验证：输 `get-child`，ListView 应出现 `[CxxuCommand]` 来源行。
+  真机已验证（用户实测通过）：`get-child` 出 `[CxxuCommand]` 来源行，本轮终结。
 - 维护：dll 进仓库（`.gitattributes` 已有 `*.dll binary`）；逻辑变更才需重构建；
   卸载 `Remove-Module CxxuPredictor`；`Sync-ModuleManifest` 天然跳过（无 `.psm1`）。
 - 边界（已读源码 `CompletionPredictor.cs` 核实，不再是文档推测）：`GetSuggestion` 遇到
