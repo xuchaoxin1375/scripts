@@ -402,6 +402,7 @@ function ipmox
     光跑 ipmof 不管道,装的那半根本没执行(这就是"不用 iex 没生效",不是作用域魔法)。
     本函数把两半合一:复用 Import-ModuleForce 做卸+名单,重装一律显式 -Global(作用域确定,
     见 Agent-Handoff #12),Pwsh 自己殿后(执行中不拆自己的台)。ipmof|iex 照旧可用。
+    核心价值:不丢当前会话定义的变量/上下文(重开 pwsh 会丢一部分信息),这就是本函数存在的理由。
     .EXAMPLE
     ipmox
     #>

@@ -37,7 +37,7 @@ env(3) 变量+别名。`Update-PwshEnvIfNotYet` 按需补齐，不重复干活�
 ```powershell
 # 1) 在 PS/<模块>/<模块>.psm1 里写函数（UTF-8 无 BOM，换行跟文件原状走）
 # 2) 把函数名加进同目录 .psd1 的 FunctionsToExport（位置随意；GUID/版本不用动，日常改保持 1.0.4）
-# 3) 当前会话生效（不用重启 shell）：
+# 3) 当前会话生效（不用重启 shell；核心价值=保住当前会话变量上下文，新开 pwsh 会丢一部分信息）：
 Sync-ModuleManifest <模块名> -Reload  # 偷懒版：自动把 .psm1 新增函数补进 manifest 并重载，一条搞定
 Sync-ModuleManifest -Reload            # 不指定模块 = 全部 54 个自有模块（只打印有变化的+汇总；Prompt 跳过重载防嵌套）
 # -Name 支持 Tab 补全（空字列出全部）；单模块想手动挡就继续 Import-Module <模块名> -Force -DisableNameChecking
