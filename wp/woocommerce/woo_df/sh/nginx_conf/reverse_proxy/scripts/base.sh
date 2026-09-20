@@ -20,9 +20,6 @@ GATEWAY_MODE=simple # hostmap
 PROXY_PASS_MODE="url"
 PROXY_PASS_MODE_CLI=false
 
-# 调整nginx map hash size参数组到较大值,建议标准安装nginx的用户启用此参数,宝塔用户可能会有冲突,默认不启用
-EXTEND_MAP_HASH_SIZE=false
-
 # UPDATE_CODE=false
 # 参数解析
 args_pos=()
@@ -37,7 +34,6 @@ Options:
     -i, --ip <ip>                 指定反代的上游ip(需要对外隐藏的后端服务器ip),而不是反代服务器本身的ip
     -h, --help                  显示帮助信息
     -D, --debug                   开发者模式,跳过拉取远程代码,使用本地代码,并打印调试信息
-    -E, --extend-map-hash-size   调整map_hash_*size参数组到一个较大的值(如果需要更大,自行编辑gateway.conf配置文件.)
     -G, --gateway <mode>           反代模式,可选值:simple,hostmap,默认为simple
     --proxy-pass-mode <hostport|url>
                                    仅 hostmap 有效. 控制 routes.map 与 proxy_pass 的搭配.
@@ -99,9 +95,6 @@ bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/h
                 # UPDATE_CODE=false
                 # UPDATE_CF=false
                 # RELOAD_NGINX=false
-                ;;
-            -E | --extend-map-hash-size)
-                EXTEND_MAP_HASH_SIZE=true
                 ;;
             -G | --gateway)
                 GATEWAY_MODE="$2"
@@ -261,14 +254,6 @@ echo "检查当前日志路径取值: [$NGINX_LOG_DIR]"
 resolve_proxy_pass_mode
 echo "GATEWAY_MODE=[$GATEWAY_MODE] proxy-pass-mode=[$PROXY_PASS_MODE]"
 # echo "指定的IP=[$IP]"
-
-if [[ $EXTEND_MAP_HASH_SIZE == "true" ]]; then
-    echo "保留配置的扩展map_hash_bucket_size参数组"
-else
-    echo "关闭(注释掉)配置的扩展map_hash_bucket_size参数组"
-    sed -i -E 's|^[[:space:]]*(map_hash_bucket_size.*)|# \1|' r.conf
-    sed -i -E 's|^[[:space:]]*(map_hash_max_size.*)|# \1| ' r.conf
-fi
 
 # 确保相关目录存在:
 mkdir -pv "$NGINX_CONFD"
