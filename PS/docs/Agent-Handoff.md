@@ -81,6 +81,12 @@
     复用卸+名单、直调重装一律显式 `-Global`、Pwsh 自己殿后；`ipmof|iex` 照旧可用。
     沙箱仿真通过（解析+殿后排序）；真机验证通过（2026-09-20，用户三步全绿），本条终结。
     要点：`ipmof|iex`/`ipmox` 存在的理由就是保当前会话变量上下文（重开 pwsh 会丢一部分信息）。
+16. **`ipmox` 选项（新函数两步并一步）**：`-Name` 只动指定模块（Tab 补全，抄 `Sync-ModuleManifest`
+    的补全器模式；未加载的名字警告跳过）；`-Sync` 先 `Sync-ModuleManifest -Reload`（新函数先进
+    manifest）再统一重载——正好补上 Sync 自身跳过的 Prompt（capture-once 保护）。
+    沙箱真加载实测全绿：补全 `Pw`→`Pwsh,PwshVar`、错名警告跳过、裸跑自重载后 `ipmox` 可用、
+    `-Sync` 全 53 模块 0 追加且 prompt 完好。注意：`Sync` 只增不减，改名留下的悬空导出
+    （如 `Test: cchh`）只警告不清，需手改 manifest。
 
 ## 4. 环境事实（这台机器，2026-09 实测）
 

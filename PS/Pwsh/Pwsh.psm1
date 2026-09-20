@@ -323,6 +323,8 @@ function Import-ModuleForce
     #>
     [CmdletBinding()]
     param (
+        # 只处理指定模块(不指定=白名单内全部);ipmof 不传,行为不变
+        [string[]]$Name
         # [switch]$PassThru
     )
 
@@ -330,9 +332,24 @@ function Import-ModuleForce
     $repoRoot = Split-Path -Parent $PSScriptRoot
 
     # 获取当前已经加载且位于仓库内的模块(动态模块 Path 为空,天然排除)
-    $modules = Get-Module | Where-Object {
+    $loaded = @(Get-Module | Where-Object {
         $_.Path -and $_.Path.StartsWith($repoRoot, [System.StringComparison]::OrdinalIgnoreCase)
-    } | Select-Object -ExpandProperty Name
+    } | Select-Object -ExpandProperty Name)
+    if ($Name)
+    {
+        foreach ($wanted in $Name)
+        {
+            if ($wanted -notin $loaded)
+            {
+                Write-Warning "$wanted 未加载(未加载模块改完下次调用自动生效),跳过"
+            }
+        }
+        $modules = @($loaded | Where-Object { $_ -in $Name })
+    }
+    else
+    {
+        $modules = $loaded
+    }
 
     $res = @()
     foreach ($module in $modules)
@@ -402,15 +419,49 @@ function ipmox
     光跑 ipmof 不管道,装的那半根本没执行(这就是"不用 iex 没生效",不是作用域魔法)。
     本函数把两半合一:复用 Import-ModuleForce 做卸+名单,重装一律显式 -Global(作用域确定,
     见 Agent-Handoff #12),Pwsh 自己殿后(执行中不拆自己的台)。ipmof|iex 照旧可用。
+    本函数把两半合一:复用 Import-ModuleForce 做卸+名单,重装一律显式 -Global(作用域确定,
+    见 Agent-Handoff #12),Pwsh 自己殿后(执行中不拆自己的台)。ipmof|iex 照旧可用。
     核心价值:不丢当前会话定义的变量/上下文(重开 pwsh 会丢一部分信息),这就是本函数存在的理由。
+    选项:-Name 只动指定模块(Tab 补全);-Sync 先 Sync-ModuleManifest -Reload(新函数先进
+    manifest,再统一重载——Sync 自身跳过 Prompt,本函数的重载补上, Prompt 有 capture-once 保护)。
     .EXAMPLE
     ipmox
+    .EXAMPLE
+    ipmox -Name Prompt -Sync
     #>
     [CmdletBinding()]
     param (
+        # 只重载指定模块(Tab 补全仓库内有同名 .psm1 的目录);不指定=白名单内全部
+        [ArgumentCompleter({
+            param($commandName, $parameterName, $wordToComplete, $commandAst, $fakeBoundParameters)
+            $pwshMod = Get-Module Pwsh | Select-Object -First 1
+            if (-not $pwshMod) { return }
+            $root = Split-Path $pwshMod.ModuleBase -Parent
+            Get-ChildItem -LiteralPath $root -Directory -ErrorAction SilentlyContinue |
+                Where-Object {
+                    $_.Name -like "$wordToComplete*" -and
+                    (Test-Path -LiteralPath (Join-Path $_.FullName ($_.Name + '.psm1'))) } |
+                ForEach-Object {
+                    [System.Management.Automation.CompletionResult]::new(
+                        $_.Name, $_.Name, 'ParameterValue', "重载 $($_.Name)") }
+        })]
+        [string[]]$Name,
+        # 先同步 manifest(新函数场景),再统一重载
+        [switch]$Sync
     )
 
-    $script = Import-ModuleForce
+    if ($Sync)
+    {
+        if ($Name)
+        {
+            foreach ($n in $Name) { Sync-ModuleManifest -Name $n -Reload }
+        }
+        else
+        {
+            Sync-ModuleManifest -Reload
+        }
+    }
+    $script = if ($Name) { Import-ModuleForce -Name $Name } else { Import-ModuleForce }
     $names = @($script -split "`r?`n" | ForEach-Object {
         if ($_ -match '^Import-Module\s+(\S+)\s+-Force') { $Matches[1] }
     } | Where-Object { $_ })

@@ -6,7 +6,10 @@
     Description = 'Cxxu PowerShell module: Test'
     PowerShellVersion = '7.0'
     FunctionsToExport = @(
-        'cchh'
+        'cchh',
+        'test-hello',
+        'Test-Hello2',
+        'Test-Hello3'
     )
     CmdletsToExport = @()
     VariablesToExport = @()

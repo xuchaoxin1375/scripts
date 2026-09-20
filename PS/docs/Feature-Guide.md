@@ -42,7 +42,8 @@ Sync-ModuleManifest <模块名> -Reload  # 偷懒版：自动把 .psm1 新增函
 Sync-ModuleManifest -Reload            # 不指定模块 = 全部 54 个自有模块（只打印有变化的+汇总；Prompt 跳过重载防嵌套）
 # -Name 支持 Tab 补全（空字列出全部）；单模块想手动挡就继续 Import-Module <模块名> -Force -DisableNameChecking
 # （-DisableNameChecking 定向压掉双横线警告，见 FAQ；其它警告不受影响）
-ipmox                           # 单命令版（推荐）：同上但一步到位，不用管道（-Global 重装+Pwsh 殿后）
+ipmox                           # 单命令版（推荐）：同上但一步到位（-Global 重装+Pwsh 殿后）
+ipmox -Name Prompt -Sync        # 新函数场景：先同步 manifest 再重载；-Name 只动指定模块（Tab 补全）
 ipmof | iex                     # 旧版（兼容）：只重载仓库内(PS/)已加载模块；第三方/系统不动；副作用模块(*completion*/*predictor*/*conda*)跳过
 ```
 
