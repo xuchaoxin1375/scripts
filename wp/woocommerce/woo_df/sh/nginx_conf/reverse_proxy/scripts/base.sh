@@ -19,6 +19,7 @@ GATEWAY_MODE=simple # hostmap
 # hostmap 下的 proxy_pass 形态: url (默认, 与现网 gateway map 一致) 或 hostport
 PROXY_PASS_MODE="url"
 PROXY_PASS_MODE_CLI=false
+SKIP_ROUTES_CHECK=false # --no-check-routes: 跳过 routes.map 格式检查(表很大时省时间)
 
 # UPDATE_CODE=false
 # 参数解析
@@ -40,8 +41,9 @@ Options:
                                    url (hostmap 默认): map 写 http://ip:port ，proxy_pass \$backend_origin;
                                    hostport:           map 写 ip:port        ，proxy_pass http://\$backend_origin;
                                    与 tenants.sh 的同名选项含义一致.
-                                   未传时沿用 $NGINX_CONF_DIR/gateway/proxy-pass-mode ；没有记录则 url.
-                                   simple 模式会忽略此选项.
+                                    未传时沿用 $NGINX_CONF_DIR/gateway/proxy-pass-mode ；没有记录则 url.
+                                    simple 模式会忽略此选项.
+    --no-check-routes            跳过 routes.map.conf 格式检查(表很大时可省几十秒).
 EXAMPLES:
 
 # 非宝塔方案(apt或标准脚本安装的情况)
@@ -105,7 +107,9 @@ bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/h
                 PROXY_PASS_MODE_CLI=true
                 shift
                 ;;
-            --)
+            --no-check-routes | --no-routes-check)
+                SKIP_ROUTES_CHECK=true
+                ;;            --)
                 shift
                 break
                 ;;
@@ -205,39 +209,40 @@ persist_proxy_pass_mode() {
 
 warn_hostmap_routes_mode() {
     local file="$1"
-    local line="" raw="" backend=""
-    local mismatch=0 shown=0
-    [[ -f "$file" ]] || return 0
-
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        raw="$(trim "$line")"
-        [[ -n "$raw" ]] || continue
-        [[ "$raw" == \#* ]] && continue
-        raw="${raw%%#*}"
-        raw="$(trim "$raw")"
-        raw="${raw%;}"
-        backend="${raw##* }"
-        backend="$(trim "$backend")"
-        [[ -n "$backend" ]] || continue
-
-        if [[ "$PROXY_PASS_MODE" == "url" ]]; then
-            [[ "$backend" == http://* || "$backend" == https://* ]] && continue
-        else
-            [[ "$backend" != http://* && "$backend" != https://* ]] && continue
-        fi
-
-        mismatch=$((mismatch + 1))
-        if ((shown < 3)); then
-            echo "[WARN] $file: [$backend] 与 proxy-pass-mode=${PROXY_PASS_MODE} 不符" >&2
-            shown=$((shown + 1))
-        fi
-    done < "$file"
-
-    if ((mismatch > 3)); then
-        echo "[WARN] $file: 另有 $((mismatch - 3)) 行格式不符. url 用 http://ip:port，hostport 用 ip:port" >&2
-    elif ((mismatch > 0)); then
-        echo "[WARN] $file: 请改成 ${PROXY_PASS_MODE} 格式后再 reload" >&2
+    if [[ "$SKIP_ROUTES_CHECK" == true ]]; then
+        echo "[INFO] 跳过 routes.map 格式检查 (--no-check-routes)."
+        return 0
     fi
+    [[ -f "$file" ]] || return 0
+    # 单进程 awk 检查:原 bash 逐行循环每行 fork 数次,几千行会卡几十秒.
+    awk -v mode="$PROXY_PASS_MODE" -v mapfile="$file" '
+        {
+            line = $0
+            sub(/^[ \t]+/, "", line); sub(/[ \t]+$/, "", line)
+            if (line == "" || substr(line, 1, 1) == "#") next
+            sub(/#.*$/, "", line)
+            sub(/^[ \t]+/, "", line); sub(/[ \t]+$/, "", line)
+            sub(/;[ \t]*$/, "", line); sub(/[ \t]+$/, "", line)
+            if (line == "") next
+            n = split(line, parts, /[ \t]+/)
+            backend = parts[n]
+            if (backend == "") next
+            if (mode == "url") {
+                if (backend ~ /^https?:\/\//) next
+            } else {
+                if (backend !~ /^https?:\/\//) next
+            }
+            mismatch++
+            if (mismatch <= 3)
+                printf "[WARN] %s: [%s] 与 proxy-pass-mode=%s 不符\n", mapfile, backend, mode > "/dev/stderr"
+        }
+        END {
+            if (mismatch > 3)
+                printf "[WARN] %s: 另有 %d 行格式不符. url 用 http://ip:port，hostport 用 ip:port\n", mapfile, mismatch - 3 > "/dev/stderr"
+            else if (mismatch > 0)
+                printf "[WARN] %s: 请改成 %s 格式后再 reload\n", mapfile, mode > "/dev/stderr"
+        }
+    ' "$file"
 }
 
 # main

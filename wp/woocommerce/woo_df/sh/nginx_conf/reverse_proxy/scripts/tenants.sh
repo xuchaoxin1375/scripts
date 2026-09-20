@@ -92,6 +92,7 @@ MAP_HASH_MAX_SIZE=65536
 MAP_HASH_PLACE="common"
 FORCE_ROUTES=false
 CLEAN_LEGACY=false
+SKIP_ROUTES_CHECK=false # --no-check-routes: 跳过 routes.map 格式检查(表很大时省时间)
 
 SYM_SH="/www/sh"
 mkdir -pv /www/ >&2 || true
@@ -193,16 +194,19 @@ Options:
 
         hostport
             map:  10.10.10.11:80
-            nginx: proxy_pass http://$tenant_x_backend;
+            nginx: proxy_pass http://\$tenant_x_backend;
             现网 tenants/*/routes.map 已是这种，默认不要改.
 
         url
             map:  http://10.10.10.11:80
-            nginx: proxy_pass $tenant_x_backend;
+            nginx: proxy_pass \$tenant_x_backend;
             与 base.sh -G hostmap 相同，单站可写 https://.
 
         未传时，若 $TENANTS_DIR/proxy-pass-mode 已有记录则沿用.
         切换模式后必须把已有 routes.map 改成对应格式再 reload.
+
+    --no-check-routes
+        跳过已有 routes.map 的格式检查(表很大时可省几十秒).
 
     -E, --extend-map-hash-size
         把 map_hash_bucket_size / map_hash_max_size 提到 256 / 131072.
@@ -730,7 +734,9 @@ parse_args() {
                 PROXY_PASS_MODE_CLI=true
                 shift
                 ;;
-            -E | --extend-map-hash-size)
+            --no-check-routes | --no-routes-check)
+                SKIP_ROUTES_CHECK=true
+                ;;            -E | --extend-map-hash-size)
                 EXTEND_MAP_HASH_SIZE=true
                 ;;
             --no-map-hash)
@@ -1161,41 +1167,40 @@ persist_proxy_pass_mode() {
 
 warn_routes_mode_mismatch() {
     local file="$1"
-    local line="" raw="" backend=""
-    local mismatch=0
-    local shown=0
-
-    [[ -f "$file" ]] || return 0
-
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        raw="$(trim "$line")"
-        [[ -n "$raw" ]] || continue
-        [[ "$raw" == \#* ]] && continue
-        raw="${raw%%#*}"
-        raw="$(trim "$raw")"
-        raw="${raw%;}"
-        backend="${raw##* }"
-        backend="$(trim "$backend")"
-        [[ -n "$backend" ]] || continue
-
-        if [[ "$PROXY_PASS_MODE" == "url" ]]; then
-            [[ "$backend" == http://* || "$backend" == https://* ]] && continue
-        else
-            [[ "$backend" != http://* && "$backend" != https://* ]] && continue
-        fi
-
-        mismatch=$((mismatch + 1))
-        if ((shown < 3)); then
-            warn "${file}: [$backend] 与 proxy-pass-mode=${PROXY_PASS_MODE} 不符"
-            shown=$((shown + 1))
-        fi
-    done < "$file"
-
-    if ((mismatch > 3)); then
-        warn "${file}: 另有 $((mismatch - 3)) 行格式不符. hostport 用 ip:port，url 用 http://ip:port"
-    elif ((mismatch > 0)); then
-        warn "${file}: 请改成 ${PROXY_PASS_MODE} 格式后再 reload"
+    if [[ "$SKIP_ROUTES_CHECK" == true ]]; then
+        info "跳过 routes.map 格式检查 (--no-check-routes)."
+        return 0
     fi
+    [[ -f "$file" ]] || return 0
+    # 单进程 awk 检查:原 bash 逐行循环每行 fork 数次,几千行会卡几十秒.
+    awk -v mode="$PROXY_PASS_MODE" -v mapfile="$file" '
+        {
+            line = $0
+            sub(/^[ \t]+/, "", line); sub(/[ \t]+$/, "", line)
+            if (line == "" || substr(line, 1, 1) == "#") next
+            sub(/#.*$/, "", line)
+            sub(/^[ \t]+/, "", line); sub(/[ \t]+$/, "", line)
+            sub(/;[ \t]*$/, "", line); sub(/[ \t]+$/, "", line)
+            if (line == "") next
+            n = split(line, parts, /[ \t]+/)
+            backend = parts[n]
+            if (backend == "") next
+            if (mode == "url") {
+                if (backend ~ /^https?:\/\//) next
+            } else {
+                if (backend !~ /^https?:\/\//) next
+            }
+            mismatch++
+            if (mismatch <= 3)
+                printf "[WARN] %s: [%s] 与 proxy-pass-mode=%s 不符\n", mapfile, backend, mode > "/dev/stderr"
+        }
+        END {
+            if (mismatch > 3)
+                printf "[WARN] %s: 另有 %d 行格式不符. hostport 用 ip:port，url 用 http://ip:port\n", mapfile, mismatch - 3 > "/dev/stderr"
+            else if (mismatch > 0)
+                printf "[WARN] %s: 请改成 %s 格式后再 reload\n", mapfile, mode > "/dev/stderr"
+        }
+    ' "$file"
 }
 
 nginx_conf_file() {
