@@ -14,7 +14,9 @@ function init
     #>
     [CmdletBinding()]
     param(
-        [switch]$Force
+        [switch]$Force,
+        # 显示每步耗时报告(默认关闭以保启动速度;`p -Force` 通过 -InformationAction Continue 间接触发)
+        [switch]$Timing
     )
 
     Write-Host 'initing...'
@@ -38,69 +40,44 @@ function init
     # 获取当前日期时间
     $startTime = Get-Date
     Set-LastUpdateTime
-    $tasks = {
+    # 启动步骤表:直接调用(当前会话作用域),不要转字符串再 iex —— iex 慢且吞错误定位;
+    # 也不要 Write-Progress —— 进度条渲染是启动链上最贵的操作之一,应默认关闭
+    $steps = @(
         # 导入图标模块(建议放到extension部分中)
         # Import-TerminalIcons
         # Import-ANSIColorEnv
         # 补全模块PSReadline及其相关配置
-        Set-PSReadLinesCommon
-        Set-PSReadLinesAdvanced
-        Set-ArgumentCompleter
-        Confirm-EnvVarOfInfo
-        Set-PsExtension 
-        
+        @{ Name = 'Set-PSReadLinesCommon'; Action = { Set-PSReadLinesCommon } }
+        @{ Name = 'Set-PSReadLinesAdvanced'; Action = { Set-PSReadLinesAdvanced } }
+        @{ Name = 'Set-ArgumentCompleter'; Action = { Set-ArgumentCompleter } }
+        @{ Name = 'Confirm-EnvVarOfInfo'; Action = { Confirm-EnvVarOfInfo } }
+        @{ Name = 'Set-PsExtension'; Action = { Set-PsExtension } }
         # 设置prompt样式(这里面会导入基础的powershell预定变量和别名)
-        Set-PsPrompt  
-        Confirm-DataJson
-    }
-    $taskScriptStr = $tasks.ToString()
-    # 原始多行字符串
+        @{ Name = 'Set-PsPrompt'; Action = { Set-PsPrompt } }
+        # Confirm-DataJson 有返回值(路径,供调用方使用),init 只关心副作用,屏蔽回显
+        @{ Name = 'Confirm-DataJson'; Action = { Confirm-DataJson | Out-Null } }
+    )
 
-    # 提取非注释行
-    $TaskLines = $taskScriptStr -split "`n" 
-    | Where-Object { $_ -notmatch '^\s*#' -and $_ -notmatch '^\s*$' }
-    | ForEach-Object { $_.Trim() }
-
+    # 仅在要求时计时/报告(-Timing 或 -InformationAction Continue,`p -Force` 走后者)
+    $needTiming = $Timing -or ($InformationPreference -eq 'Continue')
     $report = @()
-    $i = 0
-    $count = $TaskLines.Count
-    $PSStyle.Progress.View = 'Classic'
-    foreach ($line in $TaskLines)
+    foreach ($step in $steps)
     {
-
-        $Completed = [math]::Round($i++ / $count * 100, 1)
-        Write-Progress -Activity 'Loading... ' -Id 0 -Status "$line -> Processing: $Completed%" -PercentComplete $Completed
-            
-        # Write-Verbose "Loading $line " # -ForegroundColor DarkCyan   
-        Write-Information "Loading $line " #-ForegroundColor DarkCyan # -NoNewline #配合执行时间显示
-
-        # & $line #不支持参数解析,不好用
-        # Invoke-Command -ScriptBlock { $line } #作用域不在当前会话
-
-        #iex 支持当前会话作用域，但是速度较慢
-        # $line | Invoke-Expression
-
-        $res = Measure-Command { Invoke-Expression $line -OutVariable out }
-        Write-Output $out #从Measure-commnd 内部获取输出
-
-
-        $time = [int]$res.TotalMilliseconds
-        # Write-Host "time: $time " -ForegroundColor Magenta
-        # 整理为表格对象(总结报告加载情况)
-        $res = [PSCustomObject]@{
-            Command = $line
-            Time    = $time
+        Write-Verbose "Loading $($step.Name)"
+        $t0 = [datetime]::UtcNow
+        & $step.Action
+        if ($needTiming)
+        {
+            $report += [PSCustomObject]@{
+                Command = $step.Name
+                Time    = [int]([datetime]::UtcNow - $t0).TotalMilliseconds
+            }
         }
-        $report += $res
-        # $res | Format-Table
-        # return $res 
-            
-        # Start-Sleep -Milliseconds 500
     }
 
-    if ($InformationPreference)
+    if ($needTiming -and $report.Count)
     {
-        $report | Sort-Object Time -Descending | Format-Table -AutoSize
+        $report | Sort-Object Time -Descending | Format-Table -AutoSize | Out-String | Write-Host
     }
 
     # 其他自定义绑定的任务🎈
@@ -251,7 +228,8 @@ function Set-CommonInit
     )
         
     Update-PwshEnv -Verbose:$VerbosePreference
-    Start-CoreInit -Verbose:$VerbosePreference
+    # 注:此处曾调用不存在的 Start-CoreInit(调用即报错),已删除;
+    # Update-PwshEnv 已覆盖变量+别名+prompt,"core 初始化"即它
     # 提示prompt当前的环境变量导入等级(模式),修改PsEnvMode
     #使用set-variable 语句来修改变量,而不是直接使用# $PSEnvMode = 1 或$Global:PSEnvMode = 1 的方式修改变量,可以避免IDE不当的警告提示(定义而未使用)
     Set-Variable -Name PsEnvMode -Value 3 -Scope Global
@@ -377,4 +355,145 @@ function Set-PSReadLinesAdvanced
     <# suggestion list #>
     # Set-PSReadLineOption -PredictionViewStyle ListView
     # Set-PSReadLineOption -EditMode Windows
+}
+
+# --- 从 Pwsh.psm1 迁入:环境等级跟踪与导入(职责:初始化) ---
+
+function Update-PwshEnv
+{
+    [CmdletBinding()]param()
+    # 先更新变量,再更新别名
+    Update-PwshVars -Verbose:$VerbosePreference
+    Update-PwshAliases -Verbose:$VerbosePreference
+    Set-Variable -Name PsEnvMode -Value 3 -Scope Global
+    Set-PsPrompt 
+    # Start-CoreInit
+}
+
+function Test-PsEnvMode
+{
+    <# 
+    .SYNOPSIS
+    获取当前的环境变量模式，函数没有太多逻辑，只是隐藏具体的模式变量
+    .EXAMPLE
+    PS C:\Users\cxxu\Desktop> test-PsEnvMode -Mode Vars
+    False
+
+    PS [C:\Users\cxxu\Desktop]> test-PsEnvMode -Mode Env
+    False
+
+    PS [C:\Users\cxxu\Desktop]> $PSEnvmode
+
+    PS [C:\Users\cxxu\Desktop]> update-PwshVars
+
+
+    PS [C:\Users\cxxu\Desktop]> Test-PsEnvMode -Mode Vars
+    True
+
+    PS [C:\Users\cxxu\Desktop]> Test-PsEnvMode -Mode Env
+    False
+
+    PS [C:\Users\cxxu\Desktop]> $PSEnvmode
+    1
+
+    PS [C:\Users\cxxu\Desktop]> init
+    updating envs!
+    updating aliases!
+    ...
+
+    2024/7/17 9:44:20
+
+    PS☀️[BAT:70%][MEM:33.02% (10.47/31.71)GB][9:44:20]
+    # [cxxu@CXXUCOLORFUL][~\Desktop]
+    PS> test-PsEnvMode -Mode Env
+    True
+
+    PS☀️[BAT:70%][MEM:33.02% (10.47/31.71)GB][9:44:26]
+    # [cxxu@CXXUCOLORFUL][~\Desktop]
+    PS> test-PsEnvMode -Mode vars
+    True
+    #>
+    param(
+        [ValidateSet('Vars', 'Env', 'core')]$Mode = 'Env'
+    )
+    if ($Mode -eq 'Env')
+    {
+
+        # $res = Get-Variable -Name 'PsEnvMode' -ErrorAction SilentlyContinue 
+        # 或者更直接地判断: $res=$PsEnvMode -ne $null
+        # 或者直接返回 $PsEnvMode
+        # $res = $PsEnvMode
+        $Value = 3
+    }
+    elseif ($Mode -eq 'Vars')
+    {
+        $Value = 2
+    }
+    elseif ($Mode -eq 'Core')
+    {
+        $Value = 1
+    }
+
+    return $PsEnvMode -ge $Value
+}
+
+function Update-PwshvarsIfNotYet
+{
+    <# 
+    .SYNOPSIS
+    检查当前powershell是否已经导入pwsh 变量
+    如果没有,则导入,否则不做任何事情
+    #>
+    Update-PwshVars
+    
+}
+function Update-PwshEnvIfNotYet
+{
+    <# 
+    .SYNOPSIS
+    检查当前powershell是否已经导入pwsh环境（包括两种模式）
+    如果没有,则导入,否则不做任何事情
+    .DESCRIPTION
+    这个函数单独调用时并不慢
+    但是如果在powershell载入之初就调用,则比较影响性能
+    因为单独载入pwsh是不慢的,而载入pwsh后单独调用Update-PwshEnvIfNotYet也是不慢的
+    但是在载入pwsh的时候调用update-pwshenvifnotyet会慢很多
+    我猜测是pwsh分分部导入环境,基础环境导入后命令提示符已经可以响应用户的输入了,但是后台还有内容需要继续加载,这部分是耗时逻辑
+    或者是采用懒惰加载的方式,在用到的时候会初次加载需要的运行时,因此第一次执行某个任务比较慢,但是第二次以及之后的执行速度机会快不少
+    #>
+    [CmdletBinding()]
+    param (
+
+        [ValidateSet(
+            'core',
+            'Vars', 
+            # 'Aliases',
+            'Env' #both Vars and Aliases
+        )]$Mode = 'Env',
+        $Force
+    )
+    # 如果环境模式(等级)不满足要求,则导入对应级别的环境
+    if ($Force)
+    {
+        Update-PwshEnv
+    }
+    elseif (! (Test-PsEnvMode -Mode $Mode ))
+    {
+        if ($Mode -eq 'core')
+        {
+            Update-PwshVars -Core
+        }
+        elseif ($Mode -eq 'Vars')
+        {
+            Update-PwshVars
+        }
+        elseif ($Mode -eq 'Env')
+        {
+            Update-PwshEnv
+        }
+        # 导入变量后,更新命令提示符
+        Set-PsPrompt -Verbose:$VerbosePreference
+    }
+
+    Write-Verbose 'Environment  have been Imported in the current powershell!'
 }

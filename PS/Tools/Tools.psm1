@@ -3841,6 +3841,62 @@ function Update-Json
     $config | ConvertTo-Json -Depth 32 | Set-Content $Path
 }
 
+function Confirm-DataJson
+{
+    <#
+    .SYNOPSIS
+    如果不存在默认的DataJson文件，就创建一个；如果文件损坏则备份后重建。
+    .NOTES
+    从 Startup.psm1 迁入：init 热路径与 prompt 缓存都依赖它，与 Get-Json/Update-Json 同模块。
+    无递归设计——校验失败直接重建，不再自调用(曾经因此死循环)。
+    #>
+    param(
+        $DataJson = $DataJson
+    )
+    # 守卫:$DataJson为空(未先执行Update-PwshVars时)直接定默认值,避免Test-Path/Get-Content抛错后无脑递归
+    if ([string]::IsNullOrWhiteSpace($DataJson))
+    {
+        $DataJson = Join-Path $HOME 'Data.json'
+    }
+    $defaultContent = @{
+        ConnectionName = '' ;
+        IpPrompt       = ''
+    }
+    try
+    {
+        if (!(Test-Path -LiteralPath $DataJson))
+        {
+            $parent = Split-Path $DataJson -Parent
+            if ($parent -and !(Test-Path -LiteralPath $parent))
+            {
+                New-Item -ItemType Directory -Path $parent -Force | Out-Null
+            }
+            $defaultContent | ConvertTo-Json | Set-Content -LiteralPath $DataJson -Encoding utf8
+            return $DataJson
+        }
+        $jsonContent = Get-Content -LiteralPath $DataJson -Raw -ErrorAction Stop
+        if ([string]::IsNullOrWhiteSpace($jsonContent)) { throw 'Empty DataJson file.' }
+        $null = $jsonContent | ConvertFrom-Json -ErrorAction Stop
+        Write-Verbose 'The JSON file is valid.'
+        return $DataJson
+    }
+    catch
+    {
+        Write-Warning "DataJson无效($DataJson): $_. 正在重建."
+        try
+        {
+            $bak = "$DataJson.bak.$((Get-Date).ToString('yyyy-MM-dd--HH-mm-ss'))"
+            Move-Item -LiteralPath $DataJson -Destination $bak -Force -ErrorAction SilentlyContinue
+            $defaultContent | ConvertTo-Json | Set-Content -LiteralPath $DataJson -Encoding utf8 -ErrorAction Stop
+        }
+        catch
+        {
+            Write-Error "重建DataJson失败: $_"
+        }
+        return $DataJson
+    }
+}
+
 function Convert-MarkdownToHtml
 {
     <#

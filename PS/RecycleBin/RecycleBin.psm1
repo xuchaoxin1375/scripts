@@ -163,12 +163,7 @@ Description
 -----------
 Executing this function will display the name, size and path of the files stored in the Recycle Bin for the current user
 #>
-function Get-RecycleBin
-{
-    (New-Object -ComObject Shell.Application).NameSpace(0x0a).Items() |
-    Select-Object Name, Size, Path
-}
-
+# Get-RecycleBin 唯一定义在文件头部,此处原有一份重复定义已删除(帮助注释保留作文档)
 # 定义名为 Move-ToRecycleBin 的函数，它接受一个必填参数（路径），用于指定要移动到回收站的文件或目录路径
 function Move-ToRecycleBin
 {
@@ -226,12 +221,4 @@ function Move-ToRecycleBin
         Write-Error -Message "Path not found: $path"
     }
 }
-
-
-function Clear-RecycleBinDir
-{
-    Get-ChildItem $RecycleBinDir -Force
-    Write-Output .
-    Write-Host 'Do you want to delete them permanently? ' -BackgroundColor Red
-    Remove-Item $RecycleBinDir\* -Verbose -Force -Confirm
-}
+# Clear-RecycleBinDir 唯一定义在文件前部,此处原有一份重复定义已删除

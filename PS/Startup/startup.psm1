@@ -298,41 +298,4 @@ function Update-ReposesConfigedIfNeed
         # Start-Process pwsh -WorkingDirectory $desktop 
     }
 }
-function Confirm-DataJson
-{
-    <# 
-    .SYNOPSIS
-    如果不存在默认的DataJson文件，就创建一个
-    否则什么事也不做
-    #>
-    param(
-        # $PassThru
-        $DataJson = $DataJson
-    )
-    if (!(Test-Path $DataJson))
-    {
-        $s = @{
-            ConnectionName = '' ;
-            IpPrompt       = ''
-        }
-        $s | ConvertTo-Json | Set-Content $DataJson
-    }
-    $jsonContent = Get-Content -Path $DataJson -Raw
-    $validity = $jsonContent | ConvertFrom-Json
-    if ($validity)
-    {
-        Write-Verbose 'The JSON file is valid.'
-        # return $true
-        # return $validity
-    }
-    else
-    {
-        Write-Warning 'The JSON file is not valid.'
-        Rename-Item $DataJson -NewName "$($DataJson).bak.$((Get-Date).ToString('yyyy-MM-dd--HH-mm-ss'))" -Force -Verbose
-
-        # 重新创建datajson文件
-        Write-Host 'Create new DataJson file.'
-        Confirm-DataJson
-        # return $false
-    }
-}
+# 注:Confirm-DataJson 已迁至 Tools.psm1(与 Get-Json/Update-Json 同模块),此处删除原定义

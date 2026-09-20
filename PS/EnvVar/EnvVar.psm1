@@ -937,6 +937,25 @@ function Set-EnvVar
     #添加新值
     Add-EnvVar -EnvVar $EnvVar -NewValue $NewValue -Scope $Scope 
 }
+function Set-ProcessEnvVar
+{
+    <#
+    .SYNOPSIS
+    仅设置当前进程的环境变量(不写注册表),供启动热路径使用
+    .DESCRIPTION
+    Set-EnvVar/Add-EnvVar 默认 Scope=User,每次调用都会全量扫描环境变量并写注册表,
+    在 init/Set-PsPrompt 这类高频路径上非常贵。如无跨会话持久化需求,一律用本函数;
+    需要持久化时再显式调用 Set-EnvVar(慢,但一次性)。
+    .EXAMPLE
+    Set-ProcessEnvVar PsPrompt fast
+    #>
+    [CmdletBinding()]
+    param(
+        [Alias('Key', 'Name')]$EnvVar = '',
+        [Alias('Value')]$NewValue = ''
+    )
+    Set-Item -Path "Env:\$EnvVar" -Value ([string]$NewValue) -Force
+}
 function Get-EnvCountedValues
 {
     <# 

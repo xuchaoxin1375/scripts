@@ -301,14 +301,6 @@ function pictures_
     
 }
 
-function exes_
-{
-    param (
-
-    )
-    Set-Location $exes
-
-}
 function books_
 {
     param (
@@ -325,10 +317,6 @@ function downloads_
     )
     Set-Location $Downloads
     
-}
-function dcs_Idm
-{
-    Set-Location $downloads\documents
 }
 function repos_ { Set-Location -Path $repos }
 # function usersByCxxu_ { Set-Location -Path $usersByCxxu }

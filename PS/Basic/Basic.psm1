@@ -1768,48 +1768,8 @@ function Test-AdminPermission2
     
 }
 
-function Disable-CredentialGuard 
-{
-
-    # 配置注册表以禁用 Credential Guard
-    # 确保以管理员权限运行PowerShell
-    if (-not(Test-AdminPermission))
-    {
-        Write-Warning '请以管理员身份运行此脚本。'
-        exit
-    }
-
-    # 设置注册表项以禁用Credential Guard相关设置
-
-    # 第一个注册表路径和值
-    $regPath1 = 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa'
-    $regName1 = 'LsaCfgFlags'
-    $regValue1 = 0
-
-    # 第二个注册表路径和值
-    $regPath2 = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DeviceGuard'
-    $regName2 = 'LsaCfgFlags'
-    $regValue2 = 0
-
-    # 设置第一个注册表项
-    New-ItemProperty -Path $regPath1 -Name $regName1 -Value $regValue1 -PropertyType DWord -Force 
-
-    foreach ($p in @($regPath1, $regPath2))
-    {
-
-        # 设置第二个注册表项
-        if (-not (Test-Path $p))
-        {
-            New-Item -Path $p -Force 
-        }
-    }
-
-    New-ItemProperty -Path $regPath2 -Name $regName2 -Value $regValue2 -PropertyType DWord -Force 
-
-    Write-Host '注册表项已设置完成。'
-    Write-Host '请重启计算机以使更改生效。'
-}
-
+# 注:Disable-CredentialGuard 唯一定义在 Security 模块,此处原有一份重复定义已删除
+#(旧版本含 exit 语句,非管理员调用时会直接退出 shell,不安全)
 function Set-HostsFile
 {
     Write-Host 'entering administrator mode...'

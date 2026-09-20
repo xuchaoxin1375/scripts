@@ -296,6 +296,8 @@ Add-CxxuPsModuleToProfile
 
 ## 响应性能说明👺🎈
 
+> 启动/初始化专项优化（实测基线、分步耗时、模块职责划分、待办）见 [PS/docs/Startup-Optimization.md](./PS/docs/Startup-Optimization.md)
+
 - powershell本身相比于其他shell的启动速度是明显慢的,如果载入过程中有过多的任务,会导致加速速度更慢
 - 因此本模块集采用了灵活的设计,通过自动导入来降低载入速度的影响
 - 默认情况下,配置好自动导入模块路径到`$PsModulePath`后,powershell的启动速度不会受到影响,只有当调用模块中的少数耗时函数或者环境导入函数,才会占用明显的时间,例如`init`函数,或者`p`函数
