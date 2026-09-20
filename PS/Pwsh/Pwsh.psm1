@@ -392,6 +392,37 @@ function ipmof
     # Set-Item -Path Function:prompt -Value $currentPromptScript
     
 }
+function ipmox
+{
+    <# 
+    .SYNOPSIS
+    ipmof|iex 的单命令版:白名单内模块先卸后装,一次搞定,不用管道 iex
+    .NOTES
+    ipmof 把活拆成两半:Remove 立刻做,Import 攒成文本靠 iex 在调用方全局作用域执行——
+    光跑 ipmof 不管道,装的那半根本没执行(这就是"不用 iex 没生效",不是作用域魔法)。
+    本函数把两半合一:复用 Import-ModuleForce 做卸+名单,重装一律显式 -Global(作用域确定,
+    见 Agent-Handoff #12),Pwsh 自己殿后(执行中不拆自己的台)。ipmof|iex 照旧可用。
+    .EXAMPLE
+    ipmox
+    #>
+    [CmdletBinding()]
+    param (
+    )
+
+    $script = Import-ModuleForce
+    $names = @($script -split "`r?`n" | ForEach-Object {
+        if ($_ -match '^Import-Module\s+(\S+)\s+-Force') { $Matches[1] }
+    } | Where-Object { $_ })
+    # Pwsh 自己殿后:卸自己发生在 Import-ModuleForce 里,装自己放最后,函数体跑完才收尾最稳
+    $ordered = @($names | Where-Object { $_ -ne 'Pwsh' }) + @($names | Where-Object { $_ -eq 'Pwsh' })
+    $ok = 0
+    foreach ($n in $ordered)
+    {
+        Import-Module $n -Force -Global -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+        $ok++
+    }
+    Write-Verbose "ipmox reloaded $ok modules: $($ordered -join ',')"
+}
 
 function Get-PathType
 {

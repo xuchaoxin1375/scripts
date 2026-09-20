@@ -75,6 +75,11 @@
     但换行翻了，`git diff` 整篇标红才发现）。改完 `.psm1`/`.psd1` 必跑换行断言：
     `git diff --stat` 与 `--ignore-cr-at-eol --stat` 对不上就是翻了；翻了就 python 按 HEAD
     惯例转回去（utf-8-sig 读、`newline=''` 写保 BOM），不要 `git add` 蒙混过去。
+15. **`ipmof|iex` 为什么要管道**：`Import-ModuleForce` 把活拆两半——Remove 立刻做，
+    Import 攒成文本返回；光跑 `ipmof` 不管道，装的那半根本没执行（“没生效”主因，
+    不是作用域魔法；另见 #12 嵌套/-Global）。新命令 `ipmox`（`Pwsh.psm1`）把两半合一：
+    复用卸+名单、直调重装一律显式 `-Global`、Pwsh 自己殿后；`ipmof|iex` 照旧可用。
+    沙箱仿真通过（解析+殿后排序）；真机三步验证法见 Feature-Guide（用户跑完再标终结）。
 
 ## 4. 环境事实（这台机器，2026-09 实测）
 

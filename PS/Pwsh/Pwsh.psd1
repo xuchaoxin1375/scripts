@@ -18,6 +18,7 @@
         'Test-SudoAvailability',
         'Import-ModuleForce',
         'ipmof',
+        'ipmox',
         'Get-PathType',
         'Get-PsProfilesPath',
         'Remove-PsProfiles',
