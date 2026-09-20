@@ -87,6 +87,11 @@
     沙箱真加载实测全绿：补全 `Pw`→`Pwsh,PwshVar`、错名警告跳过、裸跑自重载后 `ipmox` 可用、
     `-Sync` 全 53 模块 0 追加且 prompt 完好。注意：`Sync` 只增不减，改名留下的悬空导出
     （如 `Test: cchh`）只警告不清，需手改 manifest。
+17. **`Deploy-CompletionStack`（新机一键补全栈）**：`Deploy.psm1` 末尾；模块直装 +
+    二进制（有 scoop 则装、无则给命令）+ 7.5 版本门（不够只警告不停手）+
+    `-IncludePSCompletions`/`-SkipBinaries`；全程 `SupportsShouldProcess`，
+    `-WhatIf` 空跑零副作用（沙箱已验：前后 `ListAvailable` 一致）。
+    CxxuPredictor 随仓库零安装，不在其中。
 
 ## 4. 环境事实（这台机器，2026-09 实测）
 

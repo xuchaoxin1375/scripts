@@ -2687,6 +2687,7 @@ function Test-NewMachineReadiness
     & $chk 'git' '必备' { Get-Command git -ErrorAction SilentlyContinue } 'Confirm-GitCommand / 装 git'
     & $chk 'PSFzf 模块' '必备' { Get-Module -ListAvailable PSFzf } 'Confirm-ModuleInstalled -ModuleName PSFzf -Install'
     & $chk 'CompletionPredictor 模块' '必备' { Get-Module -ListAvailable CompletionPredictor } 'Confirm-ModuleInstalled -ModuleName CompletionPredictor -Install'
+    & $chk 'pwsh 7.5+(CxxuPredictor 需 net9)' '必备' { $PSVersionTable.PSVersion -ge [version]'7.5' } 'Update-PowerShell 到 7.5+(或进 PS/CxxuPredictor/src 重编 dll)'
     # 可选
     & $chk 'fzf 二进制' '可选' { Get-Command fzf -ErrorAction SilentlyContinue } 'scoop install fzf'
     & $chk 'zoxide 二进制' '可选' { Get-Command zoxide -ErrorAction SilentlyContinue } 'scoop install zoxide'
@@ -2700,4 +2701,73 @@ function Test-NewMachineReadiness
     $must = @($rows | Where-Object { $_.级别 -eq '必备' })
     $mustOk = @($must | Where-Object { $_.状态 -eq 'OK' }).Count
     Write-Host "必备 $($mustOk)/$($must.Count);缺的按“缺啥补啥”列补，补完重跑本检查。"
+}
+function Deploy-CompletionStack
+{
+    <#
+    .SYNOPSIS
+    新机一键补全栈:PSFzf/CompletionPredictor 模块 + fzf/zoxide 二进制 + 版本门(+可选 PSCompletions)。
+    .DESCRIPTION
+    Test-NewMachineReadiness 只读体检,本函数动手补:缺的模块直装,二进制有 scoop 就装、无则给命令;
+    pwsh 不够 7.5 只警告不停手(CxxuPredictor 用不上,其它照常);-WhatIf 空跑看动作,零副作用。
+    自研 CxxuPredictor 随仓库零安装,不在这里装。装完开新终端跑 init,首跑自建缓存。
+    .EXAMPLE
+    Deploy-CompletionStack -WhatIf
+    .EXAMPLE
+    Deploy-CompletionStack -IncludePSCompletions
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        # 按需装 PSCompletions(70+ 命令补全,延迟加载;默认不装)
+        [switch]$IncludePSCompletions,
+        # 跳过 fzf/zoxide 二进制(已装/不用)
+        [switch]$SkipBinaries
+    )
+
+    if ($PSVersionTable.PSVersion -lt [version]'7.5')
+    {
+        Write-Warning 'pwsh 版本低于 7.5:CxxuPredictor(net9 dll)用不上,其它补全照常;建议 Update-PowerShell 到 7.5+'
+    }
+    foreach ($mod in @('PSFzf', 'CompletionPredictor'))
+    {
+        if (Get-Module -ListAvailable $mod)
+        {
+            Write-Verbose "$mod 已有,跳过"
+            continue
+        }
+        if ($PSCmdlet.ShouldProcess($mod, '安装 PS 模块'))
+        {
+            Confirm-ModuleInstalled -ModuleName $mod -Install
+        }
+    }
+    if ($IncludePSCompletions -and -not (Get-Module -ListAvailable PSCompletions))
+    {
+        if ($PSCmdlet.ShouldProcess('PSCompletions', '安装 PS 模块(可选)'))
+        {
+            Confirm-ModuleInstalled -ModuleName PSCompletions -Install
+        }
+    }
+    if (-not $SkipBinaries)
+    {
+        foreach ($bin in @('fzf', 'zoxide'))
+        {
+            if (Get-Command $bin -ErrorAction SilentlyContinue)
+            {
+                Write-Verbose "$bin 已有,跳过"
+                continue
+            }
+            if (Get-Command scoop -ErrorAction SilentlyContinue)
+            {
+                if ($PSCmdlet.ShouldProcess($bin, 'scoop 安装二进制'))
+                {
+                    scoop install $bin
+                }
+            }
+            else
+            {
+                Write-Warning "$bin 缺失且无 scoop:先装 scoop(Deploy-ScoopByGithubMirrors),再 scoop install $bin"
+            }
+        }
+    }
+    Write-Host '补全栈就绪:开新终端跑 init,首跑自建缓存(Ctrl+R/z);开关 $env:PsFzf/$env:PsZoxide'
 }

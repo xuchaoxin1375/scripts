@@ -48,7 +48,8 @@
         'Deploy-EnvsByPwsh',
         'Deploy-MiniforgeConfig',
         'Deploy-TrafficMonitor',
-        'Test-NewMachineReadiness'
+        'Test-NewMachineReadiness',
+        'Deploy-CompletionStack'
     )
     CmdletsToExport = @()
     VariablesToExport = @()

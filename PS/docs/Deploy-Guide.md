@@ -45,9 +45,14 @@ conda 用户：跑 `conda init powershell` 后**重贴缓存块**（它会覆盖
 ## 5. 第三方 PS 模块
 
 ```powershell
+Deploy-CompletionStack            # 一键：PSFzf/CompletionPredictor + fzf/zoxide（有 scoop 则装）+ 版本门；先 -WhatIf 空跑看动作
+Deploy-CompletionStack -IncludePSCompletions   # 再加 PSCompletions（按需）
+# 手动挡（等价）：
 Confirm-ModuleInstalled -ModuleName PSFzf -Install
 Confirm-ModuleInstalled -ModuleName CompletionPredictor -Install
 # 按需：Terminal-Icons（`$env:PsExtension=True` 才用得上）、PSCompletions（70+ 命令补全，延迟加载）
+# 自研 CxxuPredictor 随仓库自带（PS/CxxuPredictor/，零安装，随 init 延迟加载）；
+# 要求 pwsh 7.5+（dll 按 net9.0 编译；其它版本进 PS/CxxuPredictor/src 跑 dotnet build -c Release 重编）
 ```
 
 ## 6. scoop 二进制
