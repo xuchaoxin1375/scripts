@@ -2498,7 +2498,7 @@ function Deploy-WpServerDF
     Write-Verbose "running command:  $tips to check screen tasks." -Verbose
     
 }
-function Get-XXXShopifyProductJsonUrl-Archived
+function Get-XXXShopifyProductJsonUrlArchived
 {
     <#
 .SYNOPSIS

@@ -169,6 +169,12 @@ function Confirm-EnvVarOfInfo
     )
     Confirm-OSVersionCaption > $null
     Confirm-OSVersionFullCode > $null
+    # DisplayVersion(如 24H2)供 prompt 每次渲染使用,注册表读约 10ms,此处持久化一次
+    if ($IsWindows -and ($null -eq $env:OSDisplayVersion))
+    {
+        $displayVersion = Get-WindowsOSVersionFromRegistry | Select-Object -ExpandProperty DisplayVersion
+        Set-EnvVar -Name 'OSDisplayVersion' -NewValue $displayVersion
+    }
     if ($null -eq $env:Scripts)
     {
         $scripts = $PSScriptRoot | Split-Path | Split-Path 

@@ -752,7 +752,7 @@ select * from wp_options WHERE option_name LIKE 'woocommerce_flat_rate_%_setting
     }
 
 }
-function Get-MySqlDatabaseNameCmdlet-Deprecated
+function Get-MySqlDatabaseNameCmdletDeprecated
 {
     <#
     .SYNOPSIS

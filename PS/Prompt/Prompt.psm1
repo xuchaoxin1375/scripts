@@ -269,8 +269,9 @@ function Write-OSVersionInfo
     $res = Confirm-OSVersionCaption
     if (!$CaptionOnly)
     {
-
-        $displayversion = Get-WindowsOSVersionFromRegistry | Select-Object -ExpandProperty DisplayVersion #例如24H2
+        # 优先读 init 持久化的缓存,缺失才读注册表(例如24H2)
+        $displayversion = if ($env:OSDisplayVersion) { $env:OSDisplayVersion } `
+            else { Get-WindowsOSVersionFromRegistry | Select-Object -ExpandProperty DisplayVersion }
         $OsVersionFullCode = (Confirm-OSVersionFullCode) #例如 10.0.26100.2152
         $res = $res + '@' + "${displayversion}:" + $OsVersionFullCode
     }

@@ -32,7 +32,7 @@ function init
     else
     {
 
-        Write-Verbose 'Init work loadded !' -Verbose
+        Write-Verbose 'Init work loaded !' -Verbose
         return
     }
 
@@ -41,7 +41,8 @@ function init
     $startTime = Get-Date
     Set-LastUpdateTime
     # 启动步骤表:直接调用(当前会话作用域),不要转字符串再 iex —— iex 慢且吞错误定位;
-    # 也不要 Write-Progress —— 进度条渲染是启动链上最贵的操作之一,应默认关闭
+    # 进度条默认开(真机实测开销可忽略,用户 306ms 全链含进度条),开关见 $env:PsShowProgress,
+    # 重定向下(无处渲染)自动关闭。
     $steps = @(
         # 导入图标模块(建议放到extension部分中)
         # Import-TerminalIcons
@@ -61,11 +62,42 @@ function init
     # 仅在要求时计时/报告(-Timing 或 -InformationAction Continue,`p -Force` 走后者)
     $needTiming = $Timing -or ($InformationPreference -eq 'Continue')
     $report = @()
-    foreach ($step in $steps)
+    # 单步失败只记账不中断:历史上 PSReadLine 在重定向下抛 terminating error,
+    # 曾导致后面 5 步静默被跳过(见 docs/Startup-Optimization.md §12);现在失败步骤
+    # 记入 $global:PsInitStepErrors,最后统一 Warning 汇总,成功路径行为/耗时不变。
+    # 进度条总开关(默认开):$env:PsShowProgress='False'/'0'/'No'/'Off' 关闭,
+    # 未设置或其它值均为开;stdout 重定向时(agent/CI/管道,无处渲染)强制关闭。
+    # 样式沿用历史原版:Classic 视图 + 一位小数百分比(用户偏爱,不要"优化"掉)。
+    $consoleInteractive = try { -not [Console]::IsOutputRedirected } catch { $false }
+    $showProgress = ($env:PsShowProgress -notmatch '^(False|0|No|Off)$') -and $consoleInteractive
+    if ($showProgress)
     {
+        $PSStyle.Progress.View = 'Classic'
+    }
+    $global:PsInitStepErrors = @()
+    for ($i = 0; $i -lt $steps.Count; $i++)
+    {
+        $step = $steps[$i]
         Write-Verbose "Loading $($step.Name)"
+        if ($showProgress)
+        {
+            $Completed = [math]::Round($i / $steps.Count * 100, 1)
+            Write-Progress -Activity 'Loading... ' -Id 0 -Status "$($step.Name) -> Processing: $Completed%" -PercentComplete $Completed
+            Write-Information "Loading $($step.Name) "
+        }
         $t0 = [datetime]::UtcNow
-        & $step.Action
+        try
+        {
+            & $step.Action
+        }
+        catch
+        {
+            $global:PsInitStepErrors += [PSCustomObject]@{
+                Step  = $step.Name
+                Error = $_.Exception.Message
+            }
+            Write-Verbose "步骤 $($step.Name) 失败(已跳过,继续后续): $($_.Exception.Message)"
+        }
         if ($needTiming)
         {
             $report += [PSCustomObject]@{
@@ -73,6 +105,17 @@ function init
                 Time    = [int]([datetime]::UtcNow - $t0).TotalMilliseconds
             }
         }
+    }
+
+    if ($showProgress)
+    {
+        Write-Progress -Activity 'Loading...' -Completed
+    }
+
+    if ($global:PsInitStepErrors.Count)
+    {
+        Write-Warning ("init 有 $($global:PsInitStepErrors.Count) 个步骤失败(其余已继续执行): " +
+            (($global:PsInitStepErrors | ForEach-Object { "$($_.Step): $($_.Error)" }) -join ' | '))
     }
 
     if ($needTiming -and $report.Count)
@@ -338,8 +381,29 @@ function Set-PSReadLinesAdvanced
     Write-Verbose ('loading psReadLines & keyHandler!(advanced)' + "`n")
     # Import-Module CompletionPredictor -Verbose #-Verbose:$VerbosePreference
 
-    Set-PSReadLineOption -PredictionSource HistoryAndPlugin # 设置预测文本来源为历史和插件
-    Set-PSReadLineOption -PredictionViewStyle ListView -BellStyle None  #使用视图列表显示预测后选
+    # 预测源与列表视图依赖可写控制台(VT/控制台句柄):
+    # - 交互场景(WT/终端直连):照常应用,行为与以前完全一致;
+    # - 重定向场景(agent/CI/计划任务/`pwsh -c` 管道):没有行编辑,跳过此二项,
+    #   否则两条 terminating error 会打断 init 后续步骤(步骤表无 try/catch)。
+    # 注意:[Environment]::UserInteractive 在重定向下仍为 True,不可用;
+    # 只有 [Console]::IsOutputRedirected 能区分。
+    $consoleInteractive = try { -not [Console]::IsOutputRedirected } catch { $false }
+    if ($consoleInteractive)
+    {
+        try
+        {
+            Set-PSReadLineOption -PredictionSource HistoryAndPlugin # 设置预测文本来源为历史和插件
+            Set-PSReadLineOption -PredictionViewStyle ListView -BellStyle None  #使用视图列表显示预测后选
+        }
+        catch
+        {
+            Write-Verbose "跳过 PSReadLine 预测视图(当前控制台不支持): $($_.Exception.Message)"
+        }
+    }
+    else
+    {
+        Write-Verbose 'stdout 已重定向,跳过 PSReadLine 预测源/列表视图(无交互行编辑)'
+    }
     # listView列表设置
     Set-PSReadLineOption -MaximumHistoryCount 3000  # 可选：增大历史记录总数
     Set-PSReadLineOption -CompletionQueryItems 100  # 可选：增大自动完成候选列表数量

@@ -1,0 +1,8 @@
+# PowerShell 模块集
+# 历史提交里文本 blob 多为 CRLF 原样入库:不要声明 `text`(会触发检入归一化,
+# 让 git diff 把每个 CRLF 文件整篇标成改过——2026-09 实测 Basic.psm1 2282 行被标 4571 行)。
+# 最小 diff 原则:各文件保持原换行不动(Info/FileSystem 等本就是 LF),新文件建议 CRLF。
+# Windows 快捷方式/二进制保持原样
+*.lnk binary
+*.exe binary
+*.dll binary

@@ -708,8 +708,8 @@ function Clear-EnvVar
     #>
     param (
         [ValidateSet('User', 'Machine')]
-        [string]$Scope,
-        [switch]$Refresh
+        [string]$Scope
+        # 注:曾有 -Refresh 开关但从未被使用,已删除(Analyzer:PSReviewUnusedParameter)
     )
 
     # $Scope = if ($Scope -eq 'User') { 'User' } else { 'Machine' }
@@ -867,7 +867,8 @@ function Remove-EnvVar
         [ValidateSet('Machine', 'User')]
         $Scope = 'User'
     )
-    $CurrentValue = "`$env:$EnvVar" | Invoke-Expression 
+    # 原用 "`$env:$EnvVar" | Invoke-Expression 查询,改直读 Env: 驱动(等价,更快,无注入风险)
+    $CurrentValue = (Get-Item -LiteralPath "Env:\$EnvVar" -ErrorAction SilentlyContinue).Value
     #虽然也可以考虑用Get-EnvVar -key $EnvVar|select value 查询当前值,但这不一定都是已经生效的值
     # 添加新路径到现有 Path
     #$CurrentValue如果没有提前设置值,则返回null,而不是'',不能用$CurrentValue -ne '' 判断是否新变量,直接用$CurrentValue 即可
@@ -1007,16 +1008,14 @@ function Update-EnvVarFromSysEnv
     )
     $envs = [System.Environment]::GetEnvironmentVariables($Scope)
     # 扫描所有的注册表中已有的环境变量,将其同步到当前powershell中,防止在不同shell中操作环境变量导致的不一致性
-    $envs.GetEnumerator() | Where-Object { $_.Key -notin 'Path', 'PsModulePath' } 
+    $envs.GetEnumerator() | Where-Object { $_.Key -notin 'Path', 'PsModulePath' }
     | ForEach-Object {
-        # Write-Output "$($_.Name)=$($_.Value)"
-        $left = "`$env:$($_.Name)"
-        $expressoin = "$left='$($_.Value)'"
-        $CurrentValue = $left | Invoke-Expression
+        # 原用 Invoke-Expression 拼接赋值语句,值含单引号即错;改直读写 Env: 驱动(等价且更快)
+        $name = [string]$_.Name
+        $CurrentValue = (Get-Item -LiteralPath "Env:\$name" -ErrorAction SilentlyContinue).Value
         if ($CurrentValue -ne $_.Value)
         {
-            # Write-Host "$left from `n`t[$(Invoke-Expression($left))] `n=TO=> `n`t [$($_.Value)]" -BackgroundColor Magenta
-            $expressoin | Invoke-Expression
+            Set-Item -LiteralPath "Env:\$name" -Value ([string]$_.Value) -Force
         }
     }
 }

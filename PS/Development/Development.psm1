@@ -283,3 +283,58 @@ function wmqtt
 #     java -jar C:\antlr4.jar $p1 $p2 $p3
 # }
 #  set proxy for pwsh
+
+# --- 从 Tools.psm1 迁入:python 别名(职责:开发环境) ---
+
+function Add-PythonAliasPy
+{
+    <# 
+    .SYNOPSIS
+    为当前用户添加Python的别名py
+    .DESCRIPTION
+    如果是通过scoop安装的python,会尝试创建shims目录下python.shim的符号链接
+    其余情况仅尝试创建python.exe的符号链接py.exe
+    .PARAMETER pythonPath
+    可选的,指定Python的路径(可执行程序的完整路径)，如果为空，则默认使用gcm命令尝试获取当前用户的python.exe路径
+    #>
+    [CmdletBinding()]
+    param(
+        $pythonPath = "",
+        $NewName = "py.exe"
+    )
+    if($pythonPath -eq "")
+    {
+
+        $pythonPath = Get-Command python | Select-Object -ExpandProperty Source
+        Write-Verbose "检测到当前python路径为：$pythonPath"
+
+    }
+
+    $PythonParentDir = Split-Path $pythonPath -Parent
+    Write-Verbose "准备在目录 $PythonParentDir 下创建py.exe符号链接"
+    # 检查是否通过scoop安装python，需要特殊处理shim
+    if($pythonPath -like "*scoop*")
+    {
+        Write-Verbose "检测当前python版本可能通过scoop安装的python，正在验证scoop可用性"
+        if(Get-Command scoop -ErrorAction SilentlyContinue)
+        {
+            # Write-Host "scoop可用，正在获取python.exe真实路径"
+            # $pythonPath = scoop which python
+            New-Item -ItemType SymbolicLink -Path $PythonParentDir/py.shim -Target $PythonParentDir/python.shim -Verbose -Force
+        }
+    }
+    # $PythonParentDir = Split-Path $pythonPath -Parent
+    $pyPath = "$PythonParentDir/$newName"
+    Write-Verbose "准备创建  指向 $pyPath 的符号链接(symbolic link 需要管理员权限)"
+    if ($NewName -notmatch ".*(\.exe|\.bat|\.cmd)")
+    {
+        Write-Warning "NewName参数没有以合适的扩展名结尾(.exe|.bat|.cmd)"
+    }
+    
+    New-Item -ItemType SymbolicLink -Path $pyPath -Target $pythonPath -Force -Verbose -ErrorAction Stop
+
+    Write-Host "检查名字为 $newName 的可执行文件列表:"
+    Get-Command $newName | Select-Object Path
+}
+
+Register-ArgumentCompleter -CommandName Get-Json -ParameterName Key -ScriptBlock ${function:Get-JsonItemCompleter}

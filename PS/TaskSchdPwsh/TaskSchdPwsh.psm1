@@ -469,7 +469,7 @@ function New-TimeNotification
     New-BurntToastNotification -Text "Clock:$(Get-Time)", "$(Get-Date)"
         
 }
-function New-TimeNotification-Robust
+function New-TimeNotificationRobust
 {
     param (
     )

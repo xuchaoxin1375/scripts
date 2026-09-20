@@ -124,10 +124,10 @@ function Set-PsExtension
                 Import-Module $module -Verbose:$false
             }
             
-            #显示进度条
+            #显示进度条(顶层 Id,不再挂 ParentId 0:init 已无父进度条,悬空父引用会导致残留)
             $completed = [math]::Round($i++ / $count * 100, 1)
             # Start-Sleep -Milliseconds 500
-            Write-Progress -Activity 'Importing Modules... ' -Id 1 -ParentId 0 -Status " $module progress: $completed %" -PercentComplete $completed
+            Write-Progress -Activity 'Importing Modules... ' -Id 1 -Status " $module progress: $completed %" -PercentComplete $completed
 
             #准备报告导入情况信息 
             $time = [int]$res.TotalMilliseconds
@@ -143,10 +143,11 @@ function Set-PsExtension
         $report = $report | Sort-Object -Descending time # | Format-Table #| Out-String 
         
         
+        Write-Progress -Activity 'Importing Modules... ' -Id 1 -Completed
         if ($InformationPreference)
         {
             # Write-Host $report
-            Write-Output $report 
+            Write-Output $report
 
             Write-Verbose "Time Of importing modules: $($totalTime)" -Verbose
         }
@@ -156,9 +157,6 @@ function Set-PsExtension
     }
     
 }
-# ==========================================
-# 模拟 Win32_OperatingSystem 在 macOS 上的信息抓取
-# ==========================================
 function Add-CxxuPsModuleToProfile
 
 {
@@ -288,7 +286,10 @@ function Get-ParametersList
         [parameter(ValueFromPipeline = $true)]
         [string]$Name
     )
-    Get-Command $Name | Select-Object -ExpandProperty Parameters | Select-Object -ExpandProperty Keys
+    process
+    {
+        Get-Command $Name | Select-Object -ExpandProperty Parameters | Select-Object -ExpandProperty Keys
+    }
 }
 function New-ModuleByCxxu
 {
@@ -726,7 +727,7 @@ function  Operators_Logical_pwsh
 
 
 
-function Update-Powershell-Leagcy
+function Update-PowerShellLegacy
 {
    
     Write-Output '@maybe you need to try severial times!...'
@@ -752,7 +753,8 @@ function Get-LatestPowerShellDownloadUrl
     throw 'No suitable installer found in the latest release.'
 }
 
-
+# 更新 PowerShell 并显示当前版本
+# Update-Powershell
 function Update-PowerShell
 {
     try
@@ -783,8 +785,6 @@ function Update-PowerShell
     Write-Host "Current PowerShell version: $currentVersion"
 }
 
-# 更新 PowerShell 并显示当前版本
-# Update-Powershell
 function Confirm-UserContinue
 {
     <# 
@@ -1229,6 +1229,181 @@ function Copy-Robocopy
     if($LogFile -and (Test-Path $LogFile))
     {
         Get-Content $logFile -Encoding $LogPreviewEncodings | Select-Object -Last 13
+    }
+}
+
+function Sync-ModuleManifest
+{
+    <#
+    .SYNOPSIS
+    偷懒同步:把 .psm1 里新增的函数自动补进 .psd1 的 FunctionsToExport(只增不减)。
+    .DESCRIPTION
+    改完 .psm1 后跑 Sync-ModuleManifest <模块名> -Reload,新函数即可调用,免手改 manifest。
+    不指定模块名则处理全部自有模块(只打印有变化的+汇总;批量重载跳过 Prompt 防嵌套)。
+    只追加缺失项(按 .psm1 定义顺序),从不删除;GUID/版本/其它字段原样保留,换行原样保留。
+    .EXAMPLE
+    Sync-ModuleManifest Mock -Reload
+    .EXAMPLE
+    Sync-ModuleManifest -Reload
+    #>
+    [CmdletBinding()]
+    param(
+        # 不指定 = 全部自有模块(PS/ 下有同名 .psm1 的目录;Tab 补全模块名)
+        [ArgumentCompleter({
+            param($commandName, $parameterName, $wordToComplete, $commandAst, $fakeBoundParameters)
+            $pwshMod = Get-Module Pwsh | Select-Object -First 1
+            if (-not $pwshMod) { return }
+            $root = Split-Path $pwshMod.ModuleBase -Parent
+            Get-ChildItem -LiteralPath $root -Directory -ErrorAction SilentlyContinue |
+                Where-Object {
+                    $_.Name -like "$wordToComplete*" -and
+                    (Test-Path -LiteralPath (Join-Path $_.FullName ($_.Name + '.psm1'))) } |
+                ForEach-Object {
+                    [System.Management.Automation.CompletionResult]::new(
+                        $_.Name, $_.Name, 'ParameterValue', "同步 $($_.Name) 的 manifest") }
+        })]
+        $Name,
+        [switch]$Reload,
+        # 批量内部递归用:静默(有变化才由调用方汇总打印)并返回结果对象
+        [switch]$Quiet
+    )
+    if (-not $Name)
+    {
+        $psRoot = Split-Path $PSScriptRoot -Parent
+        $targets = @(Get-ChildItem -LiteralPath $psRoot -Directory | Where-Object {
+            Test-Path -LiteralPath (Join-Path $_.FullName ($_.Name + '.psm1')) } |
+            Select-Object -ExpandProperty Name | Sort-Object)
+        $results = @(foreach ($n in $targets) { Sync-ModuleManifest -Name $n -Quiet })
+        $changedMods = @($results | Where-Object { -not $_.Failed -and $_.Added.Count -gt 0 })
+        $failedMods = @($results | Where-Object { $_.Failed })
+        foreach ($r in $changedMods)
+        {
+            Write-Host "$($r.Module) 已追加 $($r.Added.Count) 个: $($r.Added -join ', ')"
+        }
+        foreach ($f in $failedMods)
+        {
+            Write-Warning "$($f.Module): $($f.Failed)"
+        }
+        if ($Reload -and $changedMods.Count -gt 0)
+        {
+            foreach ($r in $changedMods)
+            {
+                if ($r.Module -eq 'Prompt')
+                {
+                    Write-Warning 'Prompt 有变更已同步文件,跳过重载(防提示符嵌套),请重进 shell'
+                    continue
+                }
+                Import-Module $r.Module -Force -DisableNameChecking -Global
+                foreach ($m in $r.Added)
+                {
+                    if (-not (Get-Command $m -ErrorAction SilentlyContinue))
+                    {
+                        Write-Warning "$m 同步后仍不可调用(请检查函数体是否有语法错)"
+                    }
+                }
+            }
+        }
+        $okCount = $targets.Count - $changedMods.Count - $failedMods.Count
+        Write-Host "同步完成:共 $($targets.Count) 个模块,$($changedMods.Count) 个有追加,$($failedMods.Count) 个失败,${okCount} 个已同步"
+        return
+    }
+    $n = $Name
+    $mod = Get-Module -ListAvailable $n | Select-Object -First 1
+    if (-not $mod)
+    {
+        $msg = "找不到模块 ${n}(PSModulePath 自动发现无此模块)"
+        if ($Quiet) { Write-Warning $msg; return [PSCustomObject]@{ Module = $n; Failed = $msg; Added = @() } }
+        Write-Error $msg
+        return
+    }
+    $psm1 = Join-Path $mod.ModuleBase "$n.psm1"
+    $psd1 = Join-Path $mod.ModuleBase "$n.psd1"
+    if (-not (Test-Path -LiteralPath $psm1))
+    {
+        $msg = "缺少 $psm1(目录名/模块名/psm1 基名必须一致)"
+        if ($Quiet) { Write-Warning $msg; return [PSCustomObject]@{ Module = $n; Failed = $msg; Added = @() } }
+        Write-Error $msg
+        return
+    }
+    if (-not (Test-Path -LiteralPath $psd1))
+    {
+        $msg = "缺少 $psd1(本函数只做同步,不新建 manifest)"
+        if ($Quiet) { Write-Warning $msg; return [PSCustomObject]@{ Module = $n; Failed = $msg; Added = @() } }
+        Write-Error $msg
+        return
+    }
+    # 块注释感知解析(与对账脚本同规则):先去 <#...#> 块,再取行首 function
+    $noBlock = [regex]::Replace((Get-Content -LiteralPath $psm1 -Raw), '<#.*?#>', '', 'Singleline')
+    $defined = @($noBlock -split "`r?`n" | ForEach-Object {
+        if ($_ -cmatch '^function\s+([\w-]+)\s*(\{|\(|$|#)') { $Matches[1] }
+    } | Select-Object -Unique)
+    $exported = @(Import-PowerShellDataFile -LiteralPath $psd1 | Select-Object -ExpandProperty FunctionsToExport)
+    $missing = @($defined | Where-Object { $_ -notin $exported })
+    $orphan = @($exported | Where-Object { $_ -notin $defined })
+    foreach ($o in $orphan)
+    {
+        Write-Warning "${n}: $o 在 manifest 中但 .psm1 里没有定义(只提醒,不删除)"
+    }
+    if ($missing.Count -eq 0)
+    {
+        if (-not $Quiet) { Write-Host "${n} 已同步(导出 $($exported.Count) 个,无新增)" }
+    }
+    else
+    {
+        # 文本级追加:换行/其它内容原样保留,只动 FunctionsToExport 数组尾
+        $raw = Get-Content -LiteralPath $psd1 -Raw
+        $eol = if ($raw -match "`r`n") { "`r`n" } else { "`n" }
+        $lines = @($raw -split "`r?`n")
+        $start = -1
+        for ($k = 0; $k -lt $lines.Count; $k++)
+        {
+            if ($lines[$k] -match 'FunctionsToExport\s*=\s*@\(') { $start = $k; break }
+        }
+        $end = -1
+        for ($k = $start + 1; $k -lt $lines.Count; $k++)
+        {
+            if ($lines[$k] -match '^\s*\)') { $end = $k; break }
+        }
+        if ($start -lt 0 -or $end -lt 0)
+        {
+            $msg = "$psd1 里找不到 FunctionsToExport 数组(模板被改过?请手改)"
+            if ($Quiet) { Write-Warning $msg; return [PSCustomObject]@{ Module = $n; Failed = $msg; Added = @() } }
+            Write-Error $msg
+            return
+        }
+        # manifest 受限语言不认数组尾逗号(@('a',) 非法):新增项只有非末项带逗号;
+        # 前一项若无逗号则补(模板末项本就没有);空数组(@( 后直接 ))则不动前行。
+        $prev = $end - 1
+        while ($prev -gt $start -and $lines[$prev] -match '^\s*$') { $prev-- }
+        if ($lines[$prev] -notmatch '@\($' -and $lines[$prev] -notmatch ',\s*(#.*)?$')
+        {
+            $lines[$prev] += ','
+        }
+        $add = @()
+        for ($m = 0; $m -lt $missing.Count; $m++)
+        {
+            $suffix = if ($m -eq $missing.Count - 1) { '' } else { ',' }
+            $add += "        '$($missing[$m])'$suffix"
+        }
+        $newLines = @($lines[0..($end - 1)] + $add + $lines[$end..($lines.Count - 1)])
+        [IO.File]::WriteAllText($psd1, ($newLines -join $eol), [Text.UTF8Encoding]::new($false))
+        if (-not $Quiet) { Write-Host "${n} 已追加 $($missing.Count) 个: $($missing -join ', ')" }
+    }
+    if ($Reload)
+    {
+        # -Global:在模块函数内 Import-Module 默认装成嵌套模块(Get-Module 列不出),强制顶层
+        Import-Module $n -Force -DisableNameChecking -Global
+        foreach ($m in $missing)
+        {
+            if (-not (Get-Command $m -ErrorAction SilentlyContinue))
+            {
+                Write-Warning "$m 同步后仍不可调用(请检查函数体是否有语法错)"
+            }
+        }
+    }
+    if ($Quiet)
+    {
+        return [PSCustomObject]@{ Module = $n; Failed = $null; Added = @($missing) }
     }
 }
 

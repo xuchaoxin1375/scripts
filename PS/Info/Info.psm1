@@ -192,6 +192,8 @@ function Update-NetConnectionInfo
         Start-Sleep $Interval
     }
 }
+# prompt 高频调用时的会话级记忆(文件缓存由守护进程维护,此处只兜底文件未命中;含 $null 也缓存以避免反复全量枚举)
+$script:IpFormatedCache = @{ Value = $null; Time = [datetime]::MinValue }
 function Get-IpAddressFormated
 {
     <# 
@@ -212,7 +214,9 @@ function Get-IpAddressFormated
         [switch]$Cache,
         # 是否强制置空缓存(不会触发重新计算)
         [switch]$Clear,
-        $dataJson = $DataJson
+        $dataJson = $DataJson,
+        # 会话内记忆秒数:文件缓存未命中(守护进程未跑/新文件)时,避免每回车都全量枚举网卡(单次可达上秒)
+        $TTLSeconds = 60
         # 是否重新计算并更新缓存
         # [parameter(ParameterSetName = 'Update')]
         # [switch]$UpdateIfWifiChange
@@ -238,16 +242,28 @@ function Get-IpAddressFormated
         return  $s
     }
     
+    # 会话级记忆:文件缓存未命中时,连续 prompt 只算一次(网络切换由守护进程写文件,文件命中不受 TTL 影响)
+    $expired = ($script:IpFormatedCache.Time -eq [datetime]::MinValue) -or `
+        (([datetime]::UtcNow - $script:IpFormatedCache.Time).TotalSeconds -ge $TTLSeconds)
+    if (-not $expired -and $null -ne $script:IpFormatedCache.Value)
+    {
+        return $script:IpFormatedCache.Value
+    }
+
     $adapters = Get-NetAdapter -Physical
     if ($Status -ne 'All')
     {
         $adapters = $adapters | Where-Object { $_.Status -eq $Status }
     }
-    $adapters = $adapters | Select-Object Name, Status 
-    
+
     # return $adapters
 
- 
+    # 一次性取全量 IPv4,内存中按 InterfaceIndex 配对(原逐网卡调用 Get-NetIPAddress,网卡多时成倍变慢)
+    $ipTable = @{}
+    Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | ForEach-Object {
+        if (-not $ipTable.ContainsKey($_.InterfaceIndex)) { $ipTable[$_.InterfaceIndex] = @() }
+        $ipTable[$_.InterfaceIndex] += $_.IPAddress
+    }
 
     if ($VerbosePreference)
     {
@@ -255,22 +271,23 @@ function Get-IpAddressFormated
     }
 
     $s = ''
-    foreach ($adapter in $adapters)
+    foreach ($adapter in ($adapters | Select-Object Name, Status, InterfaceIndex))
     {
         # if ($adapters)
         # $s += ("[$($ip.InterfaceAlias) : $($ip.IpAddress)]")
-        $ip = Get-NetIPAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4 | Select-Object IPAddress
-        $s += ("<$($adapter.Name[0]):$($ip.IPAddress)>")
+        $ips = $ipTable[$adapter.InterfaceIndex]
+        $s += ("<$($adapter.Name[0]):$ips>")
     }
-    # $ip = Get-IPAddressOfPhysicalAdapter | Select-Object -First 1 | Select-Object -ExpandProperty ipaddress 
+    # $ip = Get-IPAddressOfPhysicalAdapter | Select-Object -First 1 | Select-Object -ExpandProperty ipaddress
     # 将ip信息写入到环境变量保存起来,以便后续访问
     Write-Verbose $s
     # 写入环境变量
     # Set-EnvVar -EnvVar IpPrompt $s *> $null
     Update-Json -Key IpPrompt -Value $s -DataJson $dataJson
+    $script:IpFormatedCache = @{ Value = $s; Time = [datetime]::UtcNow }
 
     return $s
-    
+
 }
 
 function Get-IpAddressForPrompt
@@ -293,15 +310,11 @@ function Get-IpAddressForPrompt
     Confirm-DataJson | Out-Null
 
     $IpPrompt = Get-Json -Key IpPrompt -ErrorAction SilentlyContinue
-    if (!$IpPrompt )
+    if (!$IpPrompt -and !$env:ClearIpPrompt)
     {
-        # 如果dataJson没有IP字段或者字段为空,检查是否有意置空(虽然置空没什么大用)
-        if (!$env:ClearIpPrompt)
-        {
-
-            $ipPrompt = Get-IpAddressFormated
-            # $IpPrompt = Get-Json -Key IpPrompt
-        }
+        # 文件缓存未命中:即时计算并直接返回(原计算完丢弃,首屏无 IP 还白白耗时;
+        # 计算函数自带 60s 会话记忆 + 写文件,连续渲染不会反复枚举网卡)
+        $IpPrompt = Get-IpAddressFormated -dataJson $DataJson
     }
     # 去除潜在可能出现的重复情况
     # $IpPrompt
@@ -1712,4 +1725,12 @@ function Show-MemoryBar
         [Console]::ResetColor()
         Write-Host ""
     }
+}
+
+# --- 从 Basic.psm1 迁入:电池电量(与 Get-MemoryUseSummary 同为 prompt 电池内存段的数据源) ---
+function Get-BatteryLevel
+{
+    # get battery charge:
+    $charge = Get-CimInstance -ClassName Win32_Battery | Select-Object -ExpandProperty EstimatedChargeRemaining
+    return $charge
 }

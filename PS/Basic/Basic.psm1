@@ -1109,14 +1109,7 @@ function New-Junction
     New-Item -Force -ItemType junction -Path $Path -Target (Resolve-Path $Target) -Verbose:$VerbosePreference
     
 }
-function Get-BatteryLevel
-{
-    # get battery charge:
-    $charge = Get-CimInstance -ClassName Win32_Battery | Select-Object -ExpandProperty EstimatedChargeRemaining
-    return $charge
-    # "Current Charge:[ $charge %]."
-    # -replace '.*\[(.*)\].*', '$1'
-}
+# 注:Get-BatteryLevel 已迁至 Info 模块(与 Get-MemoryUseSummary 等 prompt 电池内存段同模块),此处删除原定义
 function u20
 {
     ssh cxxu@u20
