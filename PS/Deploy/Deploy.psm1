@@ -2651,3 +2651,53 @@ function Deploy-TrafficMonitor
 }
 
 # 注:镜像站测试函数已独立为 TestLinks 模块(同级目录),此处删除内联版本以降低 Deploy 解析成本
+
+function Test-NewMachineReadiness
+{
+    <#
+    .SYNOPSIS
+    新机部署前检查:逐项查必备件,缺什么补什么(只读,不改机器)。
+    .DESCRIPTION
+    配合 docs/Deploy-Guide.md 使用。分 必备/可选/首跑生成物 三档;表格展示,不返回值。
+    .EXAMPLE
+    Test-NewMachineReadiness
+    #>
+    [CmdletBinding()]
+    param(
+    )
+    $psRoot = Split-Path $PSScriptRoot -Parent
+    # 路径归一化(/ 与 \、尾部分隔符、大小写都不敏感比较)
+    $normPath = { param($p) ([string]$p) -replace '/', '\' -replace '\\+$', '' }.GetNewClosure()
+    # 用 ArrayList 攒行(闭包捕获同一对象引用)
+    $rows = [System.Collections.ArrayList]::new()
+    $chk = {
+        param($Item, $Level, $Test, $Need)
+        $ok = try { [bool](& $Test) } catch { $false }
+        [void]$rows.Add([PSCustomObject]@{
+                事项 = $Item
+                级别 = $Level
+                状态 = if ($ok) { 'OK' } else { '缺' }
+                缺啥补啥 = if ($ok) { '' } else { $Need }
+            })
+    }.GetNewClosure()
+    # 必备
+    & $chk 'pwsh 7+' '必备' { $PSVersionTable.PSVersion.Major -ge 7 } 'Update-PowerShell 或重装 pwsh 7'
+    & $chk 'PSModulePath 含模块集' '必备' { @(($env:PSModulePath -split ';') | ForEach-Object { & $normPath $_ }) -contains (& $normPath $psRoot) } "Add-EnvVar -EnvVar PSModulePath -NewValue '$psRoot'"
+    & $chk '$profile 有 init' '必备' { (Test-Path -LiteralPath $PROFILE.CurrentUserCurrentHost) -and ((Get-Content -LiteralPath $PROFILE.CurrentUserCurrentHost -Raw) -match '(?m)^\s*init\s*$') } 'Add-CxxuPsModuleToProfile 或手写 init'
+    & $chk 'git' '必备' { Get-Command git -ErrorAction SilentlyContinue } 'Confirm-GitCommand / 装 git'
+    & $chk 'PSFzf 模块' '必备' { Get-Module -ListAvailable PSFzf } 'Confirm-ModuleInstalled -ModuleName PSFzf -Install'
+    & $chk 'CompletionPredictor 模块' '必备' { Get-Module -ListAvailable CompletionPredictor } 'Confirm-ModuleInstalled -ModuleName CompletionPredictor -Install'
+    # 可选
+    & $chk 'fzf 二进制' '可选' { Get-Command fzf -ErrorAction SilentlyContinue } 'scoop install fzf'
+    & $chk 'zoxide 二进制' '可选' { Get-Command zoxide -ErrorAction SilentlyContinue } 'scoop install zoxide'
+    & $chk 'scoop' '可选' { Get-Command scoop -ErrorAction SilentlyContinue } '按官网装 scoop(参考 Deploy-ScoopByGithubMirrors)'
+    & $chk 'conda' '可选' { Get-Command conda -ErrorAction SilentlyContinue } 'Deploy-MiniforgeConfig'
+    & $chk 'fnm' '可选' { Get-Command fnm -ErrorAction SilentlyContinue } 'scoop install fnm(后解开 profile 钩子)'
+    & $chk 'PSCompletions 模块' '可选' { Get-Module -ListAvailable PSCompletions } 'Confirm-ModuleInstalled -ModuleName PSCompletions -Install(后解开 profile 钩子)'
+    # 首跑生成物(跑一次 init 自动建)
+    & $chk '~/Data.json' '生成物' { Test-Path -LiteralPath (Join-Path $HOME 'Data.json') } '跑一次 init'
+    $rows | Format-Table -AutoSize | Out-Host
+    $must = @($rows | Where-Object { $_.级别 -eq '必备' })
+    $mustOk = @($must | Where-Object { $_.状态 -eq 'OK' }).Count
+    Write-Host "必备 $($mustOk)/$($must.Count);缺的按“缺啥补啥”列补，补完重跑本检查。"
+}

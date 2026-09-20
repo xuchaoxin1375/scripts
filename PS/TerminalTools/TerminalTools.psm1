@@ -293,3 +293,69 @@ function mvExcludeFolder
     Get-ChildItem $pattern -Exclude $target_excludeDir | Move-Item -Verbose -Destination $target_excludeDir
     # | ForEach-Object { if ($_.Name -ne $target_excludeDir) { Move-Item -v $_ $target_excludeDir } }
 }
+
+function Register-PsUxLazyLoad
+{
+    <#
+    .SYNOPSIS
+    体验件延迟加载:OnIdle 装 PSFzf(Ctrl+T/R)、zoxide(缓存)与自研命令名 predictor,注册即返回,启动零开销。
+    .DESCRIPTION
+    默认启用;$env:PsFzf/$env:PsZoxide 置 'False'/'0'/'No'/'Off' 可各关一个;
+    -Now 立即执行(测试/非 idle 主机用,不受重定向门限制)。Tab 与预测补全都不动。
+    .EXAMPLE
+    Register-PsUxLazyLoad -Now
+    #>
+    [CmdletBinding()]
+    param(
+        [switch]$Now
+    )
+    $loadAction = {
+        # 已触发即摘掉自己。用 $global: 标记位而不用 try/catch 探路:
+        # terminating 错误抛出即进 $Error 记账,catch 只能止显示止不住记账。
+        if ($global:PsUxOnIdleRegistered)
+        {
+            $global:PsUxOnIdleRegistered = $false
+            try { Unregister-Event -SourceIdentifier PowerShell.OnIdle -ErrorAction Stop } catch { }
+        }
+        # PSFzf:只接管 Ctrl+T(文件)/Ctrl+R(历史),Tab 留给 MenuComplete
+        if ($env:PsFzf -notmatch '^(False|0|No|Off)$' -and (Get-Module -ListAvailable PSFzf))
+        {
+            # -Global:函数内 import 默认装成嵌套模块(Get-Module 列不出),强制顶层
+            Import-Module PSFzf -Global -ErrorAction SilentlyContinue
+            Set-PsFzfOption -PSReadlineChordProvider 'Ctrl+t' -PSReadlineChordReverseHistory 'Ctrl+r' -ErrorAction SilentlyContinue
+        }
+        # 自研命令名 predictor(只做裸命令名前缀查缓存表,import 时建表约百毫秒,放 idle 里无感)
+        # 用它不用 CompletionPredictor 补命令名:后者源码级跳过 CommandName token(见 §19)
+        Import-Module CxxuPredictor -Global -ErrorAction SilentlyContinue
+        # zoxide:init 输出缓存到文件,只有二进制更新才重建(仿 conda 缓存套路)
+        if ($env:PsZoxide -notmatch '^(False|0|No|Off)$')
+        {
+            $zoxideBin = (Get-Command zoxide -ErrorAction SilentlyContinue).Source
+            if ($zoxideBin)
+            {
+                $cache = Join-Path $HOME '.zoxide_init_cache.ps1'
+                if ((-not (Test-Path -LiteralPath $cache)) -or
+                    ((Get-Item -LiteralPath $zoxideBin).LastWriteTimeUtc -gt (Get-Item -LiteralPath $cache).LastWriteTimeUtc))
+                {
+                    (& $zoxideBin init powershell | Out-String) | Set-Content -LiteralPath $cache
+                }
+                . $cache | Out-Null
+            }
+        }
+    }
+    if ($Now)
+    {
+        & $loadAction | Out-Null
+        return
+    }
+    # 重定向下(agent/CI/管道)没有交互,不注册(显式 -Now 不受此限)
+    $consoleInteractive = try { -not [Console]::IsOutputRedirected } catch { $false }
+    if (-not $consoleInteractive) { return }
+    if (($env:PsFzf -match '^(False|0|No|Off)$') -and ($env:PsZoxide -match '^(False|0|No|Off)$'))
+    {
+        return
+    }
+    if ($global:PsUxOnIdleRegistered) { return }
+    Register-EngineEvent PowerShell.OnIdle -Action $loadAction | Out-Null
+    $global:PsUxOnIdleRegistered = $true
+}

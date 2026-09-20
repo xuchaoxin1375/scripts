@@ -100,3 +100,46 @@ p -Force                    # 看 init 分步耗时，定位慢项
   （对照表见 `Startup-Optimization.md §16`），警告连根拔起；130+ 无横线个人速记不受影响。
   之后若再见到此警告，先查是不是新加了双横线名（`Sync-ModuleManifest` 重载已内置
   `-DisableNameChecking` 压制，自动加载路径本来就不报）。
+
+## 7. 候选体验件（2026-09-20：推荐组合已启用，其余按需）
+
+> 已启用的走延迟加载（`init` 只注册 `OnIdle` 事件，18ms），默认启动盘不受影响。
+> 开关：`$env:PsFzf` / `$env:PsZoxide`（默认开，`False` 关）；重定向场景自动不加载。
+
+| 候选 | 状态 |
+|---|---|
+| `CompletionPredictor`（预测补全） | 一直在用 |
+| `PSFzf`（Ctrl+T 文件 / Ctrl+R 历史） | **已启用**（Tab 不动，仍是 MenuComplete） |
+| `zoxide`（`z` 跳转，init 缓存 `~/.zoxide_init_cache.ps1`） | **已启用** |
+| `PSCompletions`（70+ 命令补全） | 待定（与 carapace 二选一；import 287ms，要开请延迟） |
+| `fnm` | 待定（node 用户；profile 里放着注释） |
+| `carapace-bin`（千级命令补全） | 未装（`scoop install carapace-bin` 后再对比） |
+| `posh-git` | 未装（只要 git Tab 补全才装） |
+| `oh-my-posh` | 不开（每回车进程税 + 与现有定制片重叠） |
+| `argc` | 缺二进制，先装再说 |
+
+验：新开终端等一拍，`Ctrl+R` 翻历史、`z <目录>` 跳转；`Get-EventSubscriber` 应无残留
+（触发即摘）。若某主机 OnIdle 不触发导致没装上，跑 `Register-PsUxLazyLoad -Now` 或报回来。
+
+## 8. FAQ（续）：输入时下面没候选？
+
+- 先看 ListView 的候选**来源**：它只显示历史 + 插件（`HistoryAndPlugin`），Tab 走的是另一套
+  全量索引——两边结果不一样是正常的，不是谁坏了。
+- `get-child` 这类没候选：大概率历史里就没这么敲过（平时都用 `ls`/`gci` 别名）。
+  插件（`CompletionPredictor`）2026-09-20 已接入 `init`，但读过它源码：
+  **命令名位置直接跳过**（`command discovery 太贵`），只做参数/路径/`git`/小白名单——
+  所以命令名前缀它永远沉默，只看到历史是必然的，不是坏了。
+  开新终端输个高频前缀（如 `git che`）对照一下：有候选 = 一切正常。
+- 想要 zsh-autocomplete 那种悬浮面板：原生没有（predictor 须 20ms 内返回，慢同步的
+  TabExpansion2 镜像不了）。**自研 predictor 已落地**（`CxxuPredictor`，只做裸命令名前缀，
+  `get-child` 应出 `[CxxuCommand]` 来源行；卸载用 `Remove-Module CxxuPredictor`）。
+  重型外挂仍按需自取：`inshellisense`（微软官方，600+ 工具）、
+  `hintshell`（Rust 常驻，2026 新）、`PSCue`（ML 学习型）、`PSPredictor` v2（AI 噱头重，
+  稳定性未知）——建议先用自研 + 官方路径一周，不够再试 `inshellisense`。
+- 关预测：`predictNo`（当会话有效）；切回行内视图：`Set-PSReadLineOption -PredictionViewStyle InlineView`
+  或按 `F2` 切换。
+- **ListView 为什么最多显示 10 行**：硬编码（`ListViewMaxHeight`，历史固定占前 3 行），
+  **没有设置能改**（官方 issue 有人提过，未开放）。2.3+ 可用 `↑`/`↓` 滚动，最多翻到 50 条；
+  要全量翻历史用 `Ctrl+R`（PSFzf 模糊搜）。`CompletionQueryItems=100` 是另一套
+ （Tab 菜单的阈值），别混了。另：历史源内部还有个 `HistoryMaxCount=10` 的硬上限——
+  历史最多只贡献 10 条；总数到不了 50 往往是插件对该输入没返回（总数=历史+插件），不是卡住了。

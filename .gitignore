@@ -73,3 +73,7 @@ coverage.xml
 *.cover
 .hypothesis/
 .pytest_cache/
+
+# dotnet 构建产物(CxxuPredictor 自研 predictor;模块根的 dll 是发布件,要提交)
+PS/CxxuPredictor/src/bin/
+PS/CxxuPredictor/src/obj/

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 自研命令名 predictor:只做“裸命令名前缀查缓存表”,微秒级,20ms 预算内。
+       离线可构建:唯一引用是本机 pwsh 自带的 SMA,无 NuGet 包。
+       pwsh 7.5 = .NET 9 运行时,故 TargetFramework net9.0。 -->
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <AssemblyName>CxxuPredictor</AssemblyName>
+    <RootNamespace>CxxuPredictor</RootNamespace>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Management.Automation">
+      <HintPath>C:\scoop\apps\powershell\current\System.Management.Automation.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

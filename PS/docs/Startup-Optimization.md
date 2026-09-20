@@ -9,7 +9,7 @@
 |---|---|---|
 | `pwsh -NoProfile -c exit` | ~208ms | 裸启动，优化天花板 |
 | conda hook（`profile.ps1`） | ~450~700ms | 每个 shell 都 fork 一次 conda.exe，**是第一大户，比 init 还贵**；已用缓存方案解决（见 §8） |
-| `init`（7 步） | +460~770ms | 沙盒多次测量区间 |
+| `init`（8 步） | +460~770ms | 沙盒多次测量区间 |
 | 真实全 profile（conda + init） | ~800~1300ms | 沙盒 1279ms，真机约 800~950ms |
 | `prompt` 每次回车 | ~100ms | 主要是 `Get-MemoryUseSummary` 的 CIM 查询（~100ms/次，由 5s 节流摊薄） |
 | `Get-Module -ListAvailable Terminal-Icons` | ~78ms | 每次全盘扫描 PSModulePath，不可放热路径 |
@@ -41,6 +41,7 @@ Test-PromptDelay                            # prompt 延迟（默认测 10 次�
 | Set-ArgumentCompleter | ~36ms |
 | Set-PsExtension（默认 False，近乎 no-op） | ~22ms |
 | Confirm-DataJson（首调含 Json 模块解析，拆分前 65ms） | ~19ms |
+| Register-PsUxLazyLoad（只注册 OnIdle 事件，TerminalTools 首解析在内） | ~18ms |
 
 ## 2. 本次改动总览
 
@@ -363,5 +364,64 @@ Set-PSReadLineOption: 句柄无效。
   `Deploy-SmbSharing`/`Get-MemoryCapacity` 零误伤已核实），BOM/换行无附带改动。
 - 验证：54 模块导入零失败、manifest 全过、`STILL-WARN=NONE`（警告连根拔起）、
   新名归属正确、旧名已死、`init` 零回归。
+
+## 17. 第十轮：体验件延迟加载（2026-09-20，用户拍板推荐组合）
+
+- 开：`PSFzf`（仅 Ctrl+T 文件 / Ctrl+R 历史，Tab 不动）+ `zoxide`（init 输出缓存，
+  仿 conda 套路）+ 已有的 `CompletionPredictor`。不开：`oh-my-posh`（每回车进程税）、
+  `carapace`/`PSCompletions` 二选一待定、`posh-git`/`fnm`/`argc` 按需。
+- 实现：`TerminalTools.Register-PsUxLazyLoad`，`init` 第 8 步只注册
+  `PowerShell.OnIdle` 事件即返回（沙盒实测 18ms，含模块首解析）；idle 触发后
+  后台装模块，触发即摘掉自己。开关 `$env:PsFzf`/`$env:PsZoxide`（默认开，
+  `False`/`0`/`No`/`Off` 关）；重定向下不注册（无交互）；`-Now` 立即执行
+  （测试/非 idle 主机用，不受重定向门限制）。
+- 踩坑两则：①函数内 `Import-Module` 默认装成嵌套模块（`Get-Module` 列不出，
+  `Sync-ModuleManifest` 同款教训），重载/加载一律加 `-Global`；②`Unregister-Event`
+  缺订阅时 terminating 错误**抛出即进 `$Error` 记账**，`try/catch` 只能止显示止不住记账
+  （隔离实测）——改用 `$global:PsUxOnIdleRegistered` 标记位根治，`-Now`/重复调用零污染。
+  另：zoxide 的 `z` 是**别名**（指向 `__zoxide_z`）不是函数，判定时看类型别看名。
+- 验证（沙盒 `-Now`）：`ERRS=0`、`PSFzf` 顶层加载、双和弦绑定、`z $HOME` 真跳、
+  缓存干净可复用、双关全静默。真机待目测：新开终端等一拍，`Ctrl+R`/`z` 应可用；
+  若 OnIdle 在某主机不触发，用 `-Now` 或报回来改方案。
+
+## 18. 第十一轮：新机部署指南（2026-09-20）
+
+- 新增 `Deploy.Test-NewMachineReadiness`：部署前 checklist 即代码（必备 6/可选 6/首跑生成物 1，
+  表格 + 缺啥补啥列，只读不改机器；本机实测必备 6/6）。
+- 新增 `docs/Deploy-Guide.md`：11 节（缺口检查/pwsh7/git+clone/PSModulePath/profile/第三方模块/
+  scoop/python-conda/首次 init/WT 开机/多设备差异/回滚），命令全部核对过签名（宽松风格，直接抄）。
+- 附带：抓到 edit 工具整文件改写换行的毛病（见 `Agent-Handoff.md` 踩坑 #14），本轮 5 文件
+  diff 已用 `--ignore-cr-at-eol` 对照干净（119+/2- 全是预期行）。
+
+## 19. 第十二轮：CompletionPredictor 补加载（2026-09-20，用户问“输入时没候选”）
+- 根因：插件装了（0.1.1）但 `init` 里 `Import-Module` 是注释状态；predictor 必须显式 import
+  才会向 ListView 供稿，不会自动生效——ListView 一直只有历史源。用户常用 `ls`/`gci` 别名，
+  历史里少有 `Get-ChildItem` 开头条目，所以 `get-child` 无候选而 Tab 有（两套索引）。
+- 修法：交互分支内加 `Import-Module CompletionPredictor -ErrorAction SilentlyContinue`
+ （实测 35ms；缺失静默降级纯历史；重定向下照旧跳过）。沙盒只能验到语法/门禁，
+  交互分支需真机确认（开新终端输 `get-child`，ListView 应出现非 History 源的行）。
+- 同轮补：`init` 内加载加 `-Global`（函数内 import 嵌套坑第三次：`Sync`、`PSFzf`、本次）。
+
+## 20. 第十三轮：自研命令名 predictor（2026-09-20，用户拍板“值得就继续”）
+
+- 值得性论证（先实测后立项）：①纯 PowerShell 版**证伪**（predictor 线程无 runspace，
+  跑脚本必抛 `There is no Runspace available...`，隔离实测）；②C# 路全通（dotnet SDK 10.0.201
+  在，SMA 离线引用本机 pwsh 的 dll，无需 NuGet）；③建表一次 88ms（2831 命令，走 OnIdle 无感），
+  每次按键 C# 前缀过滤 1.6ms（PowerShell 版 13.5ms，20ms 预算擦边，C# 余量 10 倍）。
+- 实现：`PS/CxxuPredictor/`（`src/` 三文件 153 行 + `CxxuPredictor.dll` 7.6KB +
+  `.psd1` 零导出；构建 `dotnet build -c Release`，27s，0 警告）。
+  只处理裸命令名 token（参数/路径/`git` 留给 CompletionPredictor，不重叠），
+  自匹配排除，30 条封顶，无反馈接口；`OnIdle` loader 里 `-Global` 装载。
+- 验证（沙盒）：构建零警告；import 423ms 零错并顶层列出；反射直测过滤逻辑
+  （`get-chi`→`Get-ChildItem`、自匹配排除、空前缀排除）；manifest 过；自动发现 OK。
+  真机待验证：输 `get-child`，ListView 应出现 `[CxxuCommand]` 来源行。
+- 维护：dll 进仓库（`.gitattributes` 已有 `*.dll binary`）；逻辑变更才需重构建；
+  卸载 `Remove-Module CxxuPredictor`；`Sync-ModuleManifest` 天然跳过（无 `.psm1`）。
+- 边界（已读源码 `CompletionPredictor.cs` 核实，不再是文档推测）：`GetSuggestion` 遇到
+  `TokenFlags.CommandName` 直接 `return default`（源码注释：command discovery 太贵，跳过），
+  只做非命令位置（参数/路径/成员）+ `git` + `% ? cd dir foreach where` 白名单。
+  所以**命令名前缀（如 `get-child`）它永远沉默**，用户只看到历史是必然的，不是坏了。
+  原生 PSReadLine 没有“TabExpansion 边输边弹”；predictor 须 20ms 内返回
+  （官方硬性），慢同步的命令发现塞不进这个预算。更重的悬浮面板类另见 `Feature-Guide.md §7`。
 - 后续：同日用户拍板删除 `Deprecated` 模块（转正后归档无存在必要，零调用），`git rm` 整目录；
   上表作为历史记录保留，53 模块现数见 §2/§6。

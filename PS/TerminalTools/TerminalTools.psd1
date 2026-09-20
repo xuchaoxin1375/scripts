@@ -15,7 +15,8 @@
         'predictNo',
         'tree_pwsh',
         'tr_py',
-        'mvExcludeFolder'
+        'mvExcludeFolder',
+        'Register-PsUxLazyLoad'
     )
     CmdletsToExport = @()
     VariablesToExport = @()

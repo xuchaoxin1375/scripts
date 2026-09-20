@@ -57,6 +57,8 @@ function init
         @{ Name = 'Set-PsPrompt'; Action = { Set-PsPrompt } }
         # Confirm-DataJson 有返回值(路径,供调用方使用),init 只关心副作用,屏蔽回显
         @{ Name = 'Confirm-DataJson'; Action = { Confirm-DataJson | Out-Null } }
+        # 体验件(PSFzf/zoxide)OnIdle 延迟加载,只注册事件即返回,启动零开销
+        @{ Name = 'Register-PsUxLazyLoad'; Action = { Register-PsUxLazyLoad } }
     )
 
     # 仅在要求时计时/报告(-Timing 或 -InformationAction Continue,`p -Force` 走后者)
@@ -392,6 +394,9 @@ function Set-PSReadLinesAdvanced
     {
         try
         {
+            # 插件必须显式 import 才会向 ListView 供稿(装了不等于加载了);缺失时静默降级为纯历史
+            # -Global:函数内 import 默认嵌套(Get-Module 列不出),强制顶层
+            Import-Module CompletionPredictor -Global -ErrorAction SilentlyContinue
             Set-PSReadLineOption -PredictionSource HistoryAndPlugin # 设置预测文本来源为历史和插件
             Set-PSReadLineOption -PredictionViewStyle ListView -BellStyle None  #使用视图列表显示预测后选
         }

@@ -1,6 +1,7 @@
 # 模块地图（Module Map）
 
-> 53 个自有模块，全在 `PS/<Name>/<Name>.psm1` + 同名 `.psd1`。
+> 54 个自有模块，全在 `PS/<Name>/<Name>.psm1` + 同名 `.psd1`
+>（唯一例外 `CxxuPredictor`：二进制模块，`.psd1` + `.dll` + `src/`，无 `.psm1`）。
 > 规范见 `Module-Conventions.md`，性能史见 `Startup-Optimization.md`。
 > 图例：🔥 启动/提示热路径（改动先跑终验），❄️ 冷路径（按需加载）。
 
@@ -10,6 +11,7 @@
 |---|---|---|
 | `Init` | 499/12 | 启动编排：`init`/`p` 入口、7 步任务表（`-Timing` 看耗时）、`PsEnvMode` 等级跟踪 |
 | `Prompt` | 723/32 | 提示符：`prompt` 入口、`Prompt*` 主题、`Write-*` 片段、`Set-PsPrompt`（`-Persist` 才写注册表）、电池 30s 缓存 |
+| `CxxuPredictor` | 172/0导出 | 自研命令名前缀 predictor（二进制：dll 7.6KB + src；OnIdle 加载；卸载 `Remove-Module CxxuPredictor`） |
 | `PwshVar` | 329/6 | `.conf` 变量文件加载（预编译缓存，`Update-PwshVars -NoCache` 回退） |
 | `Aliases` | 68/2 | 别名文件加载（`alias_core`/`functions`/`shortcuts`，逐行 iex 是故意的） |
 | `ArgumentCompletion` | 115/2 | 参数补全注册（`prompt` 已迁出，只剩补全） |
@@ -54,7 +56,7 @@
 
 | 模块 | 行数/函数 | 职责 |
 |---|---|---|
-| `Deploy` | 2653/42 | 一键部署：scoop/github hosts/python/conda/开机任务等；`Get-SelectedMirror` 在此 |
+| `Deploy` | 2703/43 | 一键部署：scoop/github hosts/python/conda/开机任务等；`Get-SelectedMirror`、`Test-NewMachineReadiness` 在此 |
 | `Development` | 340/22 | Django 快捷命令、ssh 别名、文本清理 |
 | `Git` | 505/15 | git 日常：浅克隆、一键提交、镜像加速下载 |
 | `MySql` | 984/13 | MySQL 库表备份/建删/查询 |
@@ -65,7 +67,7 @@
 | `ArchiveProcess` | 610/8 | tar/zstd/lz4/gz 压缩解压 |
 | `Cloudflare` | 509/9 | CF Zone/DNS 管理 |
 | `BTCN` | 722/9 | 批量建站（宝塔）脚本生成 |
-| `TerminalTools` | 295/10 | WT 链接、scoop 安装、scp、目录树 |
+| `TerminalTools` | 360/11 | WT 链接、scoop 安装、scp、目录树、`Register-PsUxLazyLoad`（PSFzf/zoxide/predictor 延迟加载） |
 | `openApps` | 166/16 | 常用软件别名启动（qq/微信/typora 等） |
 | `Browser` | 24/4 | 浏览器搜索/收藏夹小命令 |
 | `Calendar` | 144/1 | `Show-Calendar`（唯一用 `Export-ModuleMember` 的模块，已与 manifest 对齐） |
@@ -95,7 +97,8 @@ $profile -> init
   ├─ Confirm-EnvVarOfInfo                  (Startup：OSCaption/FullCode/DisplayVersion 持久化)
   ├─ Set-PsExtension                       (默认 False，no-op)
   ├─ Set-PsPrompt                          (Prompt；内含 core 环境导入)
-  └─ Confirm-DataJson                      (Json：~/Data.json 兜底+校验)
+  ├─ Confirm-DataJson                      (Json：~/Data.json 兜底+校验)
+  └─ Register-PsUxLazyLoad                 (TerminalTools：只注册 OnIdle 事件即返回)
 首渲染 prompt (PromptFast 默认)
   ├─ Write-BatteryAndMemoryUse → Info(Get-MemoryUseSummary 5s节流 / Get-BatteryLevelCached 30s)
   ├─ Write-HostIp → Info(Get-IpAddressForPrompt：文件 3ms / 会话记忆 4ms / 重算 167ms)

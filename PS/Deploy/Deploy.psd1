@@ -47,7 +47,8 @@
         'Deploy-PortableGitPathEnvVar',
         'Deploy-EnvsByPwsh',
         'Deploy-MiniforgeConfig',
-        'Deploy-TrafficMonitor'
+        'Deploy-TrafficMonitor',
+        'Test-NewMachineReadiness'
     )
     CmdletsToExport = @()
     VariablesToExport = @()

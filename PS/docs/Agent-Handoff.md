@@ -66,6 +66,10 @@
     提交的是暂存区。2026-09-20 实测：脚本直写工作区后忘了 `git add`，提交漏了整轮改名，
     靠事后 `git show HEAD:file` 抓获。流程：`add` → `commit` → 必用
     `git show HEAD:<关键文件>` + 全新 `status` 复验（`c7cffe3` 就是 `--amend` 补救的）。
+14. **edit 工具可能整文件改写换行**：实测 `Pwsh.psm1` 在 LF/CRLF 间横跳过（内容 zero diff
+    但换行翻了，`git diff` 整篇标红才发现）。改完 `.psm1`/`.psd1` 必跑换行断言：
+    `git diff --stat` 与 `--ignore-cr-at-eol --stat` 对不上就是翻了；翻了就 python 按 HEAD
+    惯例转回去（utf-8-sig 读、`newline=''` 写保 BOM），不要 `git add` 蒙混过去。
 
 ## 4. 环境事实（这台机器，2026-09 实测）
 
@@ -111,6 +115,7 @@
 | 文档 | 内容 | 什么时候更新 |
 |---|---|---|
 | `Module-Map.md` | 53 模块画像、热路径链、数据流 | 增删模块/搬迁/热路径变化 |
+| `Deploy-Guide.md` | 新机部署：checklist 命令 + 分步指南 + 多设备差异 | 新机器部署/增删部署步骤 |
 | `Feature-Guide.md` | 用户手册：入口、主题、开机、FAQ | 用户可见行为变化 |
 | `Module-Conventions.md` | 编码铁律、已接受偏差清单 | 立新规矩/新例外 |
 | `Startup-Optimization.md` | 性能基线、搬迁史、TODO | 每次性能改动（附实测数） |
