@@ -17,81 +17,110 @@ if ($null -eq $global:__CxxuOriginalPrompt)
     }
 }
 $originalPromptScript = $global:__CxxuOriginalPrompt #禁止在自定义prompt函数体内部执行此代码
-# 5.1 兜底:Info/Startup 两模块留 7,prompt 热路径依赖的 6 个外部命令本地实现(与真身同口径,纯 CIM/注册表/内置 cmdlet,5.1 原生可用;7.x 永不进入,行为不变)
+# 5.1 兜底:Info/Startup 两模块留 7,prompt 热路径依赖的外部命令本地实现(与真身同口径,纯 CIM/注册表/内置 cmdlet,5.1 原生可用;7.x 永不进入,行为不变)。
+# 必须 function global: 定义:模块私有函数 prompt 内部能用,但用户直接调用走自动发现会撞上坏的 Info;全局定义两边都通。缓存同理用 $global: 命名空间变量。
 if ($PSVersionTable.PSVersion.Major -lt 7)
 {
     # 与 Info 真身方案 2 同口径
     if (-not (Get-Command Get-UserHostName -ErrorAction Ignore))
     {
-        function Get-UserHostName { "$([System.Environment]::UserName)@$([System.Environment]::MachineName)" }
+        function global:Get-UserHostName { "$([System.Environment]::UserName)@$([System.Environment]::MachineName)" }
     }
     # 5.1 无 Get-Uptime cmdlet;调用方只取 .TotalDays,TimeSpan 同形(开机时间小时级不变,缓存 120s)
-    $script:UptimeFallbackCache = @{ Value = $null; Time = [datetime]::MinValue }
+    $global:__Cxxu51Uptime = @{ Value = $null; Time = [datetime]::MinValue }
     if (-not (Get-Command Get-Uptime -ErrorAction Ignore))
     {
-        function Get-Uptime
+        function global:Get-Uptime
         {
-            $expired = ($script:UptimeFallbackCache.Time -eq [datetime]::MinValue) -or (([datetime]::UtcNow - $script:UptimeFallbackCache.Time).TotalSeconds -ge 120)
+            $expired = ($global:__Cxxu51Uptime.Time -eq [datetime]::MinValue) -or (([datetime]::UtcNow - $global:__Cxxu51Uptime.Time).TotalSeconds -ge 120)
             if ($expired)
             {
-                $script:UptimeFallbackCache = @{ Value = (New-TimeSpan -Start (Get-CimInstance -ClassName Win32_OperatingSystem).LastBootUpTime -End (Get-Date)); Time = [datetime]::UtcNow }
+                $global:__Cxxu51Uptime = @{ Value = (New-TimeSpan -Start (Get-CimInstance -ClassName Win32_OperatingSystem).LastBootUpTime -End (Get-Date)); Time = [datetime]::UtcNow }
             }
-            return $script:UptimeFallbackCache.Value
+            return $global:__Cxxu51Uptime.Value
         }
     }
     # 与 Info 真身同表达式(无电池机器同样 $null,调用方行为一致)
     if (-not (Get-Command Get-BatteryLevel -ErrorAction Ignore))
     {
-        function Get-BatteryLevel { Get-CimInstance -ClassName Win32_Battery | Select-Object -ExpandProperty EstimatedChargeRemaining }
+        function global:Get-BatteryLevel { Get-CimInstance -ClassName Win32_Battery | Select-Object -ExpandProperty EstimatedChargeRemaining }
     }
     # 与 Info 真身同形({.MemoryUsePercentage,.MemoryUseRatio},GB 两位小数);CIM 每回车查太贵,缓存 10s
-    $script:MemFallbackCache = @{ Value = $null; Time = [datetime]::MinValue }
+    $global:__Cxxu51Mem = @{ Value = $null; Time = [datetime]::MinValue }
     if (-not (Get-Command Get-MemoryUseSummary -ErrorAction Ignore))
     {
-        function Get-MemoryUseSummary
+        function global:Get-MemoryUseSummary
         {
-            $expired = ($script:MemFallbackCache.Time -eq [datetime]::MinValue) -or (([datetime]::UtcNow - $script:MemFallbackCache.Time).TotalSeconds -ge 10)
+            $expired = ($global:__Cxxu51Mem.Time -eq [datetime]::MinValue) -or (([datetime]::UtcNow - $global:__Cxxu51Mem.Time).TotalSeconds -ge 10)
             if ($expired)
             {
                 $os = Get-CimInstance -ClassName Win32_OperatingSystem
                 $total = $os.TotalVisibleMemorySize / 1MB
                 $used = $total - ($os.FreePhysicalMemory / 1MB)
-                $script:MemFallbackCache = @{ Value = ([PSCustomObject]@{
+                $global:__Cxxu51Mem = @{ Value = ([PSCustomObject]@{
                         MemoryUsePercentage = [math]::Round(($used / $total) * 100, 2)
                         MemoryUseRatio      = "$([math]::Round($used, 2))/$([math]::Round($total, 2))"
                     }); Time = [datetime]::UtcNow }
             }
-            return $script:MemFallbackCache.Value
+            return $global:__Cxxu51Mem.Value
         }
     }
-    # 真身走 DataJson 缓存链(留 7);5.1 按同格式<网卡首字:ip>即时算,会话缓存 60s(与真身 TTL 一致)
-    $script:IpPromptFallbackCache = @{ Value = $null; Time = [datetime]::MinValue }
+    # 真身(Get-IpAddressFormated)在 Info(留 7):同格式<网卡首字:ip>的 5.1 移植版(去文件缓存,会话 60s;参数集与真身对齐,直接调用也可用)
+    $global:__Cxxu51IpFormat = @{ Value = $null; Time = [datetime]::MinValue }
+    if (-not (Get-Command Get-IpAddressFormated -ErrorAction Ignore))
+    {
+        function global:Get-IpAddressFormated
+        {
+            [CmdletBinding(DefaultParameterSetName = 'Cache')]
+            param(
+                [ValidateSet('Up', 'Disconnected', 'All')]$Status = 'up',
+                [parameter(ParameterSetName = 'Cache')][switch]$Cache,
+                [switch]$Clear,
+                $dataJson = $null,
+                $TTLSeconds = 60
+            )
+            if ($Clear)
+            {
+                $global:__Cxxu51IpFormat = @{ Value = $null; Time = [datetime]::MinValue }
+                return
+            }
+            $expired = ($global:__Cxxu51IpFormat.Time -eq [datetime]::MinValue) -or (([datetime]::UtcNow - $global:__Cxxu51IpFormat.Time).TotalSeconds -ge $TTLSeconds)
+            if (-not $expired -and ($null -ne $global:__Cxxu51IpFormat.Value))
+            {
+                return $global:__Cxxu51IpFormat.Value
+            }
+            $ipTable = @{}
+            Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | ForEach-Object {
+                if (-not $ipTable.ContainsKey($_.InterfaceIndex)) { $ipTable[$_.InterfaceIndex] = @() }
+                $ipTable[$_.InterfaceIndex] += $_.IPAddress
+            }
+            $s = ''
+            $adapters = Get-NetAdapter -Physical -ErrorAction SilentlyContinue
+            if ($Status -ne 'All')
+            {
+                $adapters = $adapters | Where-Object { $_.Status -eq $Status }
+            }
+            foreach ($adapter in ($adapters | Select-Object Name, Status, InterfaceIndex))
+            {
+                $s += ("<$($adapter.Name[0]):$($ipTable[$adapter.InterfaceIndex])>")
+            }
+            $global:__Cxxu51IpFormat = @{ Value = $s; Time = [datetime]::UtcNow }
+            return $s
+        }
+    }
+    # 真身走 DataJson/环境缓存链(留 7);5.1 直接复用上面的移植版(调用时解析,定义顺序无关)
     if (-not (Get-Command Get-IpAddressForPrompt -ErrorAction Ignore))
     {
-        function Get-IpAddressForPrompt
+        function global:Get-IpAddressForPrompt
         {
-            $expired = ($script:IpPromptFallbackCache.Time -eq [datetime]::MinValue) -or (([datetime]::UtcNow - $script:IpPromptFallbackCache.Time).TotalSeconds -ge 60)
-            if ($expired)
-            {
-                $ipTable = @{}
-                Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | ForEach-Object {
-                    if (-not $ipTable.ContainsKey($_.InterfaceIndex)) { $ipTable[$_.InterfaceIndex] = @() }
-                    $ipTable[$_.InterfaceIndex] += $_.IPAddress
-                }
-                $s = ''
-                foreach ($adapter in (Get-NetAdapter -Physical -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Up' } | Select-Object Name, InterfaceIndex))
-                {
-                    $s += ("<$($adapter.Name[0]):$($ipTable[$adapter.InterfaceIndex])>")
-                }
-                $script:IpPromptFallbackCache = @{ Value = $s; Time = [datetime]::UtcNow }
-            }
-            return $script:IpPromptFallbackCache.Value
+            param([switch]$KeepUpdate)
+            return (Get-IpAddressFormated)
         }
     }
     # 与 Startup 真身同语义(缺失才算,进程级;Caption 拼接表达式逐字照抄)
     if (-not (Get-Command Confirm-OSVersionCaption -ErrorAction Ignore))
     {
-        function Confirm-OSVersionCaption
+        function global:Confirm-OSVersionCaption
         {
             param([alias('Update')][switch]$Force)
             if ($Force -or ($null -eq $env:OSCaption))
@@ -105,7 +134,7 @@ if ($PSVersionTable.PSVersion.Major -lt 7)
     # 真身读注册表 FullVersion(Startup 留 7);显示形如 10.0.26100.2152
     if (-not (Get-Command Confirm-OSVersionFullCode -ErrorAction Ignore))
     {
-        function Confirm-OSVersionFullCode
+        function global:Confirm-OSVersionFullCode
         {
             param([alias('Update')][switch]$Force)
             if ($Force -or ($null -eq $env:OSFullVersionCode))
@@ -119,7 +148,7 @@ if ($PSVersionTable.PSVersion.Major -lt 7)
     # Write-OSVersionInfo 在 $env:OSDisplayVersion 缺失时调 Startup 取 DisplayVersion;直读注册表
     if (-not (Get-Command Get-WindowsOSVersionFromRegistry -ErrorAction Ignore))
     {
-        function Get-WindowsOSVersionFromRegistry
+        function global:Get-WindowsOSVersionFromRegistry
         {
             $cv = Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
             [PSCustomObject]@{ DisplayVersion = $cv.DisplayVersion }
