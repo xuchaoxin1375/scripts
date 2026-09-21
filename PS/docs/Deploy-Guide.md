@@ -14,7 +14,7 @@
 ## 0. 先查缺口
 
 ```powershell
-Test-PsEnvReadiness   # 必备/可选/首跑生成物三档表格，缺啥补啥列直接给命令
+Test-PsEnvReadiness   # 必备/可选/首跑生成物三档表格，备注列直接给补法/对比结论
 ```
 
 ## 1. pwsh 7
@@ -103,7 +103,9 @@ conda 缓存（`~/.conda_hook_cache.ps1`）与 zoxide 缓存（`~/.zoxide_init_c
 - `PwshVar/confs/VarSet1.conf` 的 `$PC*` 主机名：新机器加自己的，不认识的别删。
 - conda 路径：profile 缓存块里的 `$condaExe`（scoop 版在 `C:\scoop\apps\miniforge\...`，改安装位置要同步）。
 - 镜像/代理：`Get-SelectedMirror`、`Update-GithubHosts`、`Deploy-ScoopApps` 按当地网络选。
-- `Test-PsEnvReadiness` 收尾再跑一遍，必备全绿。
+- `Test-PsEnvReadiness` 收尾再跑一遍，必备全绿。默认只做本地对比（零网络）；
+  想看远端有没有更新加 `-CheckRemote`（`ls-remote` 只读问远端，不动本地），表尾“建议”行给下一步：
+  有更新 → `Update-CxxuPsModules`（见 §13）；已是最新 + 活件一致 → 无事可做。
 
 ## 11. 回滚
 

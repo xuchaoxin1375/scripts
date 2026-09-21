@@ -56,7 +56,7 @@
 
 | 模块 | 行数/函数 | 职责 |
 |---|---|---|
-| `Deploy` | 2950/47 | 一键部署：scoop/github hosts/python/conda/开机任务等；`Get-SelectedMirror`/`Get-GithubMirrorPrefix`/`Get-RepoRawUrl`、`Test-PsEnvReadiness`（带版本表尾）、`Update-CxxuPsModules`（-Force）在此 |
+| `Deploy` | 2950/47 | 一键部署：scoop/github hosts/python/conda/开机任务等；`Get-SelectedMirror`/`Get-GithubMirrorPrefix`/`Get-RepoRawUrl`、`Test-PsEnvReadiness`（版本表尾 + `-CheckRemote` 远端对比 + 建议行）、`Update-CxxuPsModules`（-Force）在此 |
 | `Development` | 340/22 | Django 快捷命令、ssh 别名、文本清理 |
 | `Git` | 505/15 | git 日常：浅克隆、一键提交、镜像加速下载 |
 | `MySql` | 984/13 | MySQL 库表备份/建删/查询 |

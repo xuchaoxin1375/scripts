@@ -2718,9 +2718,13 @@ function Test-PsEnvReadiness
     配合 docs/Deploy-Guide.md 使用。分 必备/可选/首跑生成物 三档;表格展示,不返回值。
     .EXAMPLE
     Test-PsEnvReadiness
+    .EXAMPLE
+    Test-PsEnvReadiness -CheckRemote
     #>
     [CmdletBinding()]
     param(
+        # 问远端有没有更新(ls-remote 只读,不 fetch 不动本地;默认关,本地对比零网络)
+        [switch]$CheckRemote
     )
     $psRoot = Split-Path $PSScriptRoot -Parent
     # 路径归一化(/ 与 \、尾部分隔符、大小写都不敏感比较)
@@ -2728,23 +2732,27 @@ function Test-PsEnvReadiness
     # 用 ArrayList 攒行(闭包捕获同一对象引用)
     $rows = [System.Collections.ArrayList]::new()
     $chk = {
-        param($Item, $Level, $Test, $Need, $Date = { '' }, $Ver = { '' })
+        param($Item, $Level, $Test, $Need, $Date = { '' }, $Ver = { '' }, $Note = { '' })
         $ok = try { [bool](& $Test) } catch { $false }
         $date = try { & $Date } catch { '' }
         $ver = try { & $Ver } catch { '' }
+        # 备注:缺时给补法,OK 时给补充说明(如活件与仓库的版本对比)
+        $note = if ($ok) { try { & $Note } catch { '' } } else { $Need }
         [void]$rows.Add([PSCustomObject]@{
                 事项 = $Item
                 级别 = $Level
                 状态 = if ($ok) { 'OK' } else { '缺' }
                 版本 = $ver
                 日期 = $date
-                缺啥补啥 = if ($ok) { '' } else { $Need }
+                备注 = $note
             })
     }.GetNewClosure()
     # 日期小料:模块取 psd1 日期,二进制取 exe 日期,文件直接取,取不到空串(列对齐不断)
     $modDate = { param($n) try { (Get-Item -LiteralPath (Join-Path (Get-Module -ListAvailable $n | Select-Object -First 1).ModuleBase "$n.psd1") -ErrorAction Stop).LastWriteTime.ToString('yyyy-MM-dd HH:mm') } catch { '' } }.GetNewClosure()
     $binDate = { param($n) try { $src = (Get-Command $n -ErrorAction Stop).Source; if ([string]::IsNullOrWhiteSpace($src) -or -not (Test-Path -LiteralPath $src)) { '' } else { (Get-Item -LiteralPath $src).LastWriteTime.ToString('yyyy-MM-dd HH:mm') } } catch { '' } }.GetNewClosure()
     $fileDate = { param($p) try { (Get-Item -LiteralPath $p -ErrorAction Stop).LastWriteTime.ToString('yyyy-MM-dd HH:mm') } catch { '' } }.GetNewClosure()
+    # 活件版本对比小料:活件哈希 vs 仓库源 dll,结果进 备注 列(取不到空串,永不抛)
+    $dllSyncNote = { try { $lv = Join-Path (Join-Path (Join-Path $HOME '.cxxu') 'bin') 'CxxuPredictor.dll'; $rp = Join-Path (Join-Path $psRoot 'CxxuPredictor') 'CxxuPredictor.dll'; if (-not (Test-Path -LiteralPath $rp)) { '仓库无此文件?' } else { $lh = (Get-FileHash -LiteralPath $lv -Algorithm SHA256).Hash.Substring(0, 8); $rh = (Get-FileHash -LiteralPath $rp -Algorithm SHA256).Hash.Substring(0, 8); if ($lh -eq $rh) { "与仓库一致[$rh]" } else { "与仓库不一致(仓 $rh)→重开终端同步" } } } catch { '' } }.GetNewClosure()
     # 版本小料:只取文件级/内存级信息,不起新进程(git --version 这类免谈);取不到空串
     $modVer = { param($n) try { (Get-Module -ListAvailable $n | Select-Object -First 1).Version.ToString() } catch { '' } }.GetNewClosure()
     $binVer = { param($n) try { [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Get-Command $n -ErrorAction Stop).Source).FileVersion } catch { '' } }.GetNewClosure()
@@ -2765,16 +2773,17 @@ function Test-PsEnvReadiness
     & $chk 'PSCompletions 模块' '可选' { Get-Module -ListAvailable PSCompletions } 'Confirm-ModuleInstalled -ModuleName PSCompletions -Install(后解开 profile 钩子)' { & $modDate 'PSCompletions' } { & $modVer 'PSCompletions' }
     # 首跑生成物(跑一次 init 自动建)
     & $chk '~/Data.json' '生成物' { Test-Path -LiteralPath (Join-Path $HOME 'Data.json') } '跑一次 init' { & $fileDate (Join-Path $HOME 'Data.json') }
-    & $chk 'predictor 活件 ~/.cxxu/bin' '生成物' { Test-Path -LiteralPath (Join-Path (Join-Path (Join-Path $HOME '.cxxu') 'bin') 'CxxuPredictor.dll') } '跑一次 init(loader 按哈希同步外置)' { & $fileDate (Join-Path (Join-Path (Join-Path $HOME '.cxxu') 'bin') 'CxxuPredictor.dll') }
+    & $chk 'predictor 活件 ~/.cxxu/bin' '生成物' { Test-Path -LiteralPath (Join-Path (Join-Path (Join-Path $HOME '.cxxu') 'bin') 'CxxuPredictor.dll') } '跑一次 init(loader 按哈希同步外置)' { & $fileDate (Join-Path (Join-Path (Join-Path $HOME '.cxxu') 'bin') 'CxxuPredictor.dll') } { '' } { & $dllSyncNote }
     $rows | Format-Table -AutoSize | Out-Host
     $must = @($rows | Where-Object { $_.级别 -eq '必备' })
     $mustOk = @($must | Where-Object { $_.状态 -eq 'OK' }).Count
-    Write-Host "必备 $($mustOk)/$($must.Count);缺的按“缺啥补啥”列补，补完重跑本检查。"
+    Write-Host "必备 $($mustOk)/$($must.Count);缺的按“备注”列补，补完重跑本检查。"
     # 版本/日期表尾(只读,取不到标未知,永不抛;二进制不取进程版本,只取文件级信息)
     $repoRoot = Split-Path $psRoot -Parent
     $repoVer = try { (git -C $repoRoot log -1 --format='%h %ci' HEAD 2>$null).Trim() } catch { '' }
     if ([string]::IsNullOrWhiteSpace($repoVer)) { $repoVer = '未知(非 git 环境?)' }
     $liveDll = Join-Path (Join-Path (Join-Path $HOME '.cxxu') 'bin') 'CxxuPredictor.dll'
+    $dllMismatch = $false
     $dllInfo = '未生成(跑一次 init)'
     if (Test-Path -LiteralPath $liveDll)
     {
@@ -2787,13 +2796,55 @@ function Test-PsEnvReadiness
             if (Test-Path -LiteralPath $repoDll)
             {
                 $repoHash = (Get-FileHash -LiteralPath $repoDll -Algorithm SHA256).Hash.Substring(0, 8)
-                $syncState = if ($repoHash -eq $liveHash) { '与仓库一致' } else { "与仓库不一致(仓 $repoHash)" }
+                $syncState = if ($repoHash -eq $liveHash) { '与仓库一致' } else { $dllMismatch = $true; "与仓库不一致(仓 $repoHash)" }
             }
             $dllInfo = "$liveDate [$liveHash] $syncState"
         }
         catch { $dllInfo = '未知(读取失败)' }
     }
     Write-Host "仓库 $repoVer;pwsh $($PSVersionTable.PSVersion);dll 活件 $dllInfo"
+    # 远端版本对比(仅 -CheckRemote:ls-remote 只问远端,不 fetch 不动本地;12s 超时防卡死,离线/超时标未知,永不抛)
+    $remoteInfo = '未查(加 -CheckRemote 问远端)'
+    $remoteBehind = $false
+    if ($CheckRemote)
+    {
+    try
+    {
+        $branch = (git -C $repoRoot rev-parse --abbrev-ref HEAD 2>$null).Trim()
+        $url = (git -C $repoRoot remote get-url origin 2>$null).Trim()
+        if (-not [string]::IsNullOrWhiteSpace($url) -and -not [string]::IsNullOrWhiteSpace($branch) -and $branch -ne 'HEAD')
+        {
+            $tmpOut = Join-Path ([System.IO.Path]::GetTempPath()) 'CxxuLsRemote.txt'
+            $tmpErr = Join-Path ([System.IO.Path]::GetTempPath()) 'CxxuLsRemote.err'
+            $p = Start-Process git -ArgumentList @('-C', $repoRoot, 'ls-remote', $url, "refs/heads/$branch") -NoNewWindow -PassThru -RedirectStandardOutput $tmpOut -RedirectStandardError $tmpErr
+            if ($p.WaitForExit(12000))
+            {
+                $remoteHash = ((Get-Content -LiteralPath $tmpOut -ErrorAction SilentlyContinue | Select-Object -First 1) -split '\s+' | Select-Object -First 1)
+                Remove-Item -LiteralPath @($tmpOut, $tmpErr) -ErrorAction SilentlyContinue
+                if ($remoteHash -match '^[0-9a-f]{40}$')
+                {
+                    $localHash = (git -C $repoRoot rev-parse HEAD 2>$null).Trim()
+                    $remoteShort = $remoteHash.Substring(0, 7)
+                    if ($remoteHash -eq $localHash) { $remoteInfo = "$remoteShort 已是最新" }
+                    elseif ((git -C $repoRoot status -sb 2>$null | Select-Object -First 1) -match '\[ahead') { $remoteInfo = "$remoteShort 本地超前(有未推提交?)" }
+                    else { $remoteInfo = "$remoteShort 有更新"; $remoteBehind = $true }
+                }
+                else { $remoteInfo = '未知(远端无此分支?)' }
+            }
+            else { try { $p.Kill() } catch { }; Remove-Item -LiteralPath @($tmpOut, $tmpErr) -ErrorAction SilentlyContinue; $remoteInfo = '未知(查询超时)' }
+        }
+        else { $remoteInfo = '未知(无 origin/分支?)' }
+    }
+    catch { $remoteInfo = '未知(查询失败)' }
+    }
+    Write-Host "远端 $remoteInfo"
+    # 下一步建议(优先级:缺必备 > 有更新 > 活件不一致 > 远端未知/未查 > 无事)
+    $advice = if ($CheckRemote) { '无(已是最新,活件一致)' } else { '无(本地一致;加 -CheckRemote 问远端更新)' }
+    if ($mustOk -lt $must.Count) { $advice = '按“备注”列补,补完重跑本检查' }
+    elseif ($remoteBehind) { $advice = 'Update-CxxuPsModules(先看 Deploy-Guide §13:dll 变了就重开或 -Force)' }
+    elseif ($dllMismatch) { $advice = '重开终端(loader 按哈希同步活件)后再跑 init' }
+    elseif ($remoteInfo -like '未知*') { $advice = '远端未知(离线/超时?):联网后重跑看更新' }
+    Write-Host "建议 $advice"
 }
 function Deploy-CompletionStack
 {

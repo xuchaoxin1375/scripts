@@ -387,7 +387,7 @@ Set-PSReadLineOption: 句柄无效。
 ## 18. 第十一轮：新机部署指南（2026-09-20）
 
 - 新增 `Deploy.Test-PsEnvReadiness`（原名 Test-NewMachineReadiness，新老机器通用故改名）：
-  环境 checklist 即代码（必备 7/可选 6/首跑生成物 2，表格 + 缺啥补啥列，只读不改机器；
+  环境 checklist 即代码（必备 7/可选 6/首跑生成物 2，表格 + 备注列（缺时给补法，活件行给版本对比），只读不改机器；
   2026-09-21 加版本/日期列 + 表尾：仓库 commit/日期、pwsh 版本、dll 哈希一致性）。
 - 新增 `docs/Deploy-Guide.md`：11 节（缺口检查/pwsh7/git+clone/PSModulePath/profile/第三方模块/
   scoop/python-conda/首次 init/WT 开机/多设备差异/回滚），命令全部核对过签名（宽松风格，直接抄）。
