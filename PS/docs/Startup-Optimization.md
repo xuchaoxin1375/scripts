@@ -408,6 +408,8 @@ Set-PSReadLineOption: 句柄无效。
   跑脚本必抛 `There is no Runspace available...`，隔离实测）；②C# 路全通（dotnet SDK 10.0.201
   在，SMA 离线引用本机 pwsh 的 dll，无需 NuGet）；③建表一次 88ms（2831 命令，走 OnIdle 无感），
   每次按键 C# 前缀过滤 1.6ms（PowerShell 版 13.5ms，20ms 预算擦边，C# 余量 10 倍）。
+  后改 VSCode QuickOpen 式模糊（子序列 + 边界/连击打分 + 空格多片段 AND + 30 封顶；
+  通配符退化忽略，分支删除；3000 条 1.2~6.3ms，仍预算内）。
 - 实现：`PS/CxxuPredictor/`（`src/` 三文件 153 行 + `CxxuPredictor.dll` 7.6KB +
   `.psd1` 零导出；构建 `dotnet build -c Release`，27s，0 警告）。
   只处理裸命令名 token（参数/路径/`git` 留给 CompletionPredictor，不重叠），
@@ -416,6 +418,8 @@ Set-PSReadLineOption: 句柄无效。
   （`get-chi`→`Get-ChildItem`、自匹配排除、空前缀排除）；manifest 过；自动发现 OK。
   真机已验证（用户实测通过）：`get-child` 出 `[CxxuCommand]` 来源行，本轮终结。
 - 维护：dll 进仓库（`.gitattributes` 已有 `*.dll binary`）；逻辑变更才需重构建；
+  运行时加载的是 dll 二进制，`.cs` 只是图纸，所以改逻辑必须换根 dll（`src/bin/...` 拷过去）；
+  换文件若被锁：是有 pwsh 进程（常为残留的 `pwsh -noe -c p`）咬住，关掉再拷；
   卸载 `Remove-Module CxxuPredictor`；`Sync-ModuleManifest` 天然跳过（无 `.psm1`）。
 - 边界（已读源码 `CompletionPredictor.cs` 核实，不再是文档推测）：`GetSuggestion` 遇到
   `TokenFlags.CommandName` 直接 `return default`（源码注释：command discovery 太贵，跳过），

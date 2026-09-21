@@ -8,7 +8,8 @@ using System.Threading;
 
 namespace CxxuPredictor
 {
-    // 命令名前缀 predictor:只处理“裸命令名 token”(如 get-child),
+    // 命令名 predictor:VSCode QuickOpen 式模糊,只处理“裸命令名 token”,
+    // 通配符退化忽略(*ser→ser),空格分多片段 AND(如 get ser),按分取前 30;
     // 参数/路径/git 交给 CompletionPredictor,不重叠。
     // 缓存表 import 时建一次(约百毫秒,走 OnIdle 延迟加载,用户无感);
     // 每次按键只是内存前缀过滤,微秒级,远小于 20ms 超时。
@@ -25,7 +26,7 @@ namespace CxxuPredictor
 
         public Guid Id => _guid;
         public string Name => "CxxuCommand";
-        public string Description => "Prefix match on cached command names (command-name position only).";
+        public string Description => "Fuzzy match (VSCode QuickOpen style) on cached command names (command-name position only).";
 
         public SuggestionPackage GetSuggestion(PredictionClient client, PredictionContext context, CancellationToken cancellationToken)
         {
@@ -60,19 +61,108 @@ namespace CxxuPredictor
             {
                 return result;
             }
+            // 通配符退化忽略(*ser→ser,保持旧手感);空格切多片段,全中才算(AND)
+            string query = prefix.Replace("*", string.Empty).Replace("?", string.Empty);
+            string[] fragments = query.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            if (fragments.Length == 0)
+            {
+                return result;
+            }
+            List<KeyValuePair<string, int>> scored = new List<KeyValuePair<string, int>>();
             foreach (string c in commands)
             {
-                if (result.Count >= max)
+                if (string.Equals(c, prefix, StringComparison.OrdinalIgnoreCase))
                 {
-                    break;
+                    continue; // 自匹配排除:全名照打不提示自己
                 }
-                if (c.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) &&
-                    !string.Equals(c, prefix, StringComparison.OrdinalIgnoreCase))
+                int total = 0;
+                bool ok = true;
+                foreach (string f in fragments)
                 {
-                    result.Add(c);
+                    int s = ScoreFuzzy(c, f);
+                    if (s <= 0)
+                    {
+                        ok = false;
+                        break;
+                    }
+                    total += s;
+                }
+                if (ok)
+                {
+                    scored.Add(new KeyValuePair<string, int>(c, total));
                 }
             }
+            scored.Sort((a, b) =>
+            {
+                int d = b.Value.CompareTo(a.Value);
+                if (d != 0)
+                {
+                    return d;
+                }
+                d = a.Key.Length.CompareTo(b.Key.Length);
+                if (d != 0)
+                {
+                    return d;
+                }
+                return string.Compare(a.Key, b.Key, StringComparison.OrdinalIgnoreCase);
+            });
+            for (int i = 0; i < scored.Count && result.Count < max; i++)
+            {
+                result.Add(scored[i].Key);
+            }
             return result;
+        }
+
+        // 子序列模糊打分(大小写不敏感):命中+1,词边界(+2:-/首字母/驼峰)、连击(+2)、间隔扣分、起始越晚越亏
+        internal static int ScoreFuzzy(string target, string fragment)
+        {
+            int score = 0;
+            int pos = 0;
+            int prev = -1;
+            int first = -1;
+            for (int i = 0; i < fragment.Length; i++)
+            {
+                char q = char.ToLowerInvariant(fragment[i]);
+                int found = -1;
+                for (int j = pos; j < target.Length; j++)
+                {
+                    if (char.ToLowerInvariant(target[j]) == q)
+                    {
+                        found = j;
+                        break;
+                    }
+                }
+                if (found < 0)
+                {
+                    return 0;
+                }
+                if (first < 0)
+                {
+                    first = found;
+                }
+                score += 1;
+                if (found == 0 || target[found - 1] == '-' || IsCamelBoundary(target, found))
+                {
+                    score += 2;
+                }
+                else if (found == prev + 1)
+                {
+                    score += 2;
+                }
+                else if (prev >= 0)
+                {
+                    score -= (found - prev - 1);
+                }
+                prev = found;
+                pos = found + 1;
+            }
+            score -= first;
+            return score <= 0 ? 1 : score; // 命中即正分,多片段 AND 可累加;排序沉底,不污染头部
+        }
+
+        internal static bool IsCamelBoundary(string target, int pos)
+        {
+            return pos > 0 && char.IsLower(target[pos - 1]) && char.IsUpper(target[pos]);
         }
 
         private static List<string> LoadCommandNames()
