@@ -231,3 +231,12 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | pwsh 7.5 版本门 | 随安装 | `Update-PowerShell`（`CxxuPredictor` 需 net9） | 不够 7.5 只缺 predictor，其余照常 |
 
 - 新机按表自上而下过一遍即可；`Test-PsEnvReadiness` 全绿 + `doctor` 全绿 = 生效确认。
+
+## 12. 非 Windows 说明（Linux/macOS）
+
+> 本模块集按 Windows 日常开发，其它系统"核心可用、部署件受限"。`doctor` 会标出平台行。
+
+- 可直接用：纯 pwsh 模块（自动发现/`init`/补全栈/`doctor`）；`CxxuPredictor` 是 net9.0（pwsh 7 跨平台可加载，dll 随仓库分发）；活件/配置/历史/`Data.json` 全在 `$HOME` 下，路径跨平台；`Test-PsEnvReadiness` 的 `PSModulePath` 检查已做分隔符自适应（`:`/`;`）。
+- 不可用（Windows 专属，不做跨平台适配）：`scoop` 系（安装/换源/buckets）、注册表持久化（`Add-EnvVar`、`Set-PsPrompt -Persist`、镜像持久化——改走 `$profile` 或 env 文件）、计划任务与开机（`Deploy-StartupTasks`/`Start-StartupTasks`）、WT 下发、CIM/WMI 信息类、`conda` scoop 路径、业务模块硬编码路径（如 WordPress/phpstudy、`C:\` 前缀）。
+- 部分兼容：`PwshVar` 有分平台变量文件表（`$PwshVarFilesWindows`/`$PwshVarFilesMacOs`），新增变量按此模式分文件存放；`Info` 个别函数有 `$IsWindows`/`$IsMacOS` 分支，其余缺分支的函数在非 Windows 下报错即代表不支持。
+- 建议：先跑 `Test-PsEnvReadiness` 看缺口（缺的多为 Windows 专属，按 §11 逐项取舍）；`PwshVar/confs/VarSet1.conf` 的 `$PC*` 主机名按本机添加。

@@ -12,6 +12,7 @@
 | 出问题先看 | `doctor`（命令）→ `Feature-Guide.md §6/§8`（FAQ）→ `Agent-Handoff.md`（踩坑） | 定位→自助→避坑 |
 | 加模块/加函数 | `Feature-Guide.md §3` → `Module-Conventions.md`（§1 目录、§2 命名、§7 manifest）→ `Module-Map.md`（找位置） | 一次做对，不返工 |
 | 搞懂 dll/同步 | `Live-Versions.md`（设计专章，9 节 + 4 图）→ `Deploy-Guide.md §13` | 结构、流程、命令分工 |
+| 非 Windows 系统 | `Feature-Guide.md §12`（`doctor` 会标平台行） | 哪些可用、哪些是 Windows 专属 |
 | 启动太慢 | `Startup-Optimization.md`（基线表 + 搬迁史）→ `init -Timing` | 基线对比，定位慢项 |
 | 写 agent/自动化 | `AGENTS.md`（仓库根入口）→ `Agent-Handoff.md §3`（必读） | 红线、换行、提交规范 |
 

@@ -2727,8 +2727,9 @@ function Test-PsEnvReadiness
         [switch]$CheckRemote
     )
     $psRoot = Split-Path $PSScriptRoot -Parent
-    # 路径归一化(/ 与 \、尾部分隔符、大小写都不敏感比较)
-    $normPath = { param($p) ([string]$p) -replace '/', '\' -replace '\\+$', '' }.GetNewClosure()
+    # 路径归一化(分隔符统一为系统分隔符,尾部分隔符不敏感;PSModulePath 切分另用系统分隔符,见下)
+    $sep = [IO.Path]::DirectorySeparatorChar
+    $normPath = { param($p) (([string]$p) -replace '[/\\]', $sep).TrimEnd('/', '\') }.GetNewClosure()
     # 用 ArrayList 攒行(闭包捕获同一对象引用)
     $rows = [System.Collections.ArrayList]::new()
     $chk = {
@@ -2760,7 +2761,7 @@ function Test-PsEnvReadiness
     $binVer = { param($n) try { [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Get-Command $n -ErrorAction Stop).Source).FileVersion } catch { '' } }.GetNewClosure()
     # 必备
     & $chk 'pwsh 7+' '必备' { $PSVersionTable.PSVersion.Major -ge 7 } 'Update-PowerShell 或重装 pwsh 7' { & $binDate 'pwsh' } { $PSVersionTable.PSVersion.ToString() }
-    & $chk 'PSModulePath 含模块集' '必备' { @(($env:PSModulePath -split ';') | ForEach-Object { & $normPath $_ }) -contains (& $normPath $psRoot) } "Add-EnvVar -EnvVar PSModulePath -NewValue '$psRoot'"
+    & $chk 'PSModulePath 含模块集' '必备' { @(($env:PSModulePath -split [regex]::Escape([IO.Path]::PathSeparator)) | ForEach-Object { & $normPath $_ }) -contains (& $normPath $psRoot) } "Add-EnvVar -EnvVar PSModulePath -NewValue '$psRoot'"
     & $chk '$profile 有 init' '必备' { (Test-Path -LiteralPath $PROFILE.CurrentUserCurrentHost) -and ((Get-Content -LiteralPath $PROFILE.CurrentUserCurrentHost -Raw) -match '(?m)^\s*init\s*$') } 'Add-CxxuPsModuleToProfile 或手写 init' { & $fileDate $PROFILE.CurrentUserCurrentHost }
     & $chk 'git' '必备' { Get-Command git -ErrorAction SilentlyContinue } 'Confirm-GitCommand / 装 git' { & $binDate 'git' } { & $binVer 'git' }
     & $chk 'PSFzf 模块' '必备' { Get-Module -ListAvailable PSFzf } 'Confirm-ModuleInstalled -ModuleName PSFzf -Install' { & $modDate 'PSFzf' } { & $modVer 'PSFzf' }
@@ -2999,6 +3000,7 @@ function doctor
     # 三门控 + 懒加载
     $gates = @('PsFzf', 'PsZoxide', 'PsPredictor', 'PsTab') | ForEach-Object { "$_=$([string]::IsNullOrEmpty((Get-Item "env:$_" -ErrorAction SilentlyContinue).Value) ? '默认开' : (Get-Item "env:$_").Value)" }
     & $dchk '门控' $true ($gates -join ' ')
+    & $dchk '平台' $true $(if ($IsWindows) { 'Windows' } else { '非 Windows：scoop/注册表/计划任务/WT 系列不可用，详见 Feature-Guide §12' })
     $tabWrapped = try { (Get-Command TabExpansion2 -CommandType Function -ErrorAction Stop).ScriptBlock.ToString() -match 'CxxuTab' } catch { $false }
     & $dchk 'Tab 包装' ($tabWrapped -or $env:PsTab -match '^(False|0|No|Off)$') $(if ($tabWrapped) { 'CxxuTab 包装已装入' } elseif ($env:PsTab -match '^(False|0|No|Off)$') { '开关已关闭，按需开启' } else { '未装入：执行 Install-CxxuTabWrapper 或重开终端' })
     & $dchk '懒加载' ([bool](Get-Module PSFzf) -or $env:PsFzf -match '^(False|0|No|Off)$') $(if (Get-Module PSFzf) { 'PSFzf 已装入(OnIdle 已触发)' } elseif ($global:PsUxOnIdleRegistered) { 'OnIdle 已注册,等一拍' } else { '没注册:跑 Register-PsUxLazyLoad' })
