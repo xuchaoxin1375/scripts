@@ -1,4 +1,4 @@
-
+﻿
 function Add-Extension
 {
     <# 
@@ -405,9 +405,11 @@ function Get-Size
             'GB' = 1GB
             'TB' = 1TB
         }
-        #进度计数器
-        $PSStyle.Progress.View = 'Classic'
-        # $PSStyle.Progress.View = 'Minimal'
+        #进度计数器($PSStyle 仅 7.2+,5.1 无此变量,守卫后静默跳过)
+        if ($PSVersionTable.PSVersion.Major -ge 7)
+        {
+            $PSStyle.Progress.View = 'Classic'
+        }
         $items = Get-ChildItem $path
         $count = $items.count
         Write-Verbose "$count Path(s) will be processed" 
@@ -564,9 +566,10 @@ function Get-ItemSizeSorted
         $PSBoundParameters | Format-Table
     }
     $verbose = $VerbosePreference
-    if ($Parallel)
+    if ($Parallel -and ($PSVersionTable.PSVersion.Major -ge 7))
     {
         Write-Host 'Parallel Mode.'
+        # 5.1 无 ForEach-Object -Parallel,自动走下方串行分支
         $res = Get-ChildItem $Path | ForEach-Object -Parallel {
             $Unit = $using:Unit
             $Precision = $using:Precision

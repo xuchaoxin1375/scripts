@@ -1,4 +1,4 @@
-
+﻿
 
 # '-----------------add function below-----------'
 
@@ -787,7 +787,7 @@ function Get-Time
     if ($NoSeconds)
     {
 
-        $Format = ($NoSeconds) ? $Format -replace ':ss', '' : $Format
+        $Format = $Format -replace ':ss', ''
     }
     elseif ($SetSecondsToZero)
     {
@@ -1529,7 +1529,7 @@ function Update-ReposesConfiged
 
     # 导入环境变量(当前么有导入过),以便本函数确定默认值,即哪些仓库需要同步
     Update-PwshEnvIfNotYet -Mode Vars
-    $repoDirs = ($reposDirs) ? $repoDirs : $CommonRepos
+    $repoDirs = if ($reposDirs) { $reposDirs } else { $CommonRepos }
     
     Write-Verbose "$repoDirs will be try to update." -Verbose
     # 获取repos目录下所有子目录路径
@@ -1758,7 +1758,8 @@ function Test-AdminPermission
     $false.
 #>
 
-    if ($IsWindows)
+    # 5.1 无 $IsWindows($null),PSEdition Desktop 即 Windows,防误入 Linux 分支
+    if (($PSVersionTable.PSEdition -eq 'Desktop') -or $IsWindows)
     {
         # Windows 逻辑：检查 SID
         return ([Security.Principal.WindowsIdentity]::GetCurrent().Groups -contains 'S-1-5-32-544')
@@ -2093,8 +2094,7 @@ function Get-IPAddressOfPhysicalAdapter
     foreach ($name in @('ethernet', 'wi-fi', 'WLAN', '以太网'))
     {
         Get-NetIPAddress -InterfaceAlias $name -AddressFamily $AddressFamily `
-            -ErrorAction SilentlyContinue  
-        | Select-Object InterfaceAlias, IPAddress
+            -ErrorAction SilentlyContinue | Select-Object InterfaceAlias, IPAddress
     }
 }
 function Get-NetAdapterMainInfo

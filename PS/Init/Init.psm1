@@ -1,4 +1,4 @@
-# 其他函数都是通过init来调用或间接调用的,在这里可以注释掉某些模块来帮助调试bug
+﻿# 其他函数都是通过init来调用或间接调用的,在这里可以注释掉某些模块来帮助调试bug
  
 function init
 { 
@@ -51,15 +51,15 @@ function init
         # 补全模块PSReadline及其相关配置
         @{ Name = 'Set-PSReadLinesCommon'; Action = { Set-PSReadLinesCommon } }
         @{ Name = 'Set-PSReadLinesAdvanced'; Action = { Set-PSReadLinesAdvanced } }
-        @{ Name = 'Set-ArgumentCompleter'; Action = { Set-ArgumentCompleter } }
-        @{ Name = 'Confirm-EnvVarOfInfo'; Action = { Confirm-EnvVarOfInfo } }
-        @{ Name = 'Set-PsExtension'; Action = { Set-PsExtension } }
+        @{ Name = 'Set-ArgumentCompleter'; Action = { Set-ArgumentCompleter }; MinPS = 7 }
+        @{ Name = 'Confirm-EnvVarOfInfo'; Action = { Confirm-EnvVarOfInfo }; MinPS = 7 }
+        @{ Name = 'Set-PsExtension'; Action = { Set-PsExtension }; MinPS = 7 }
         # 设置prompt样式(这里面会导入基础的powershell预定变量和别名)
         @{ Name = 'Set-PsPrompt'; Action = { Set-PsPrompt } }
         # Confirm-DataJson 有返回值(路径,供调用方使用),init 只关心副作用,屏蔽回显
-        @{ Name = 'Confirm-DataJson'; Action = { Confirm-DataJson | Out-Null } }
+        @{ Name = 'Confirm-DataJson'; Action = { Confirm-DataJson | Out-Null }; MinPS = 7 }
         # 体验件(PSFzf/zoxide)OnIdle 延迟加载,只注册事件即返回,启动零开销
-        @{ Name = 'Register-PsUxLazyLoad'; Action = { Register-PsUxLazyLoad } }
+        @{ Name = 'Register-PsUxLazyLoad'; Action = { Register-PsUxLazyLoad }; MinPS = 7 }
     )
 
     # 仅在要求时计时/报告(-Timing 或 -InformationAction Continue,`p -Force` 走后者)
@@ -73,7 +73,7 @@ function init
     # 样式沿用历史原版:Classic 视图 + 一位小数百分比(用户偏爱,不要"优化"掉)。
     $consoleInteractive = try { -not [Console]::IsOutputRedirected } catch { $false }
     $showProgress = ($env:PsShowProgress -notmatch '^(False|0|No|Off)$') -and $consoleInteractive
-    if ($showProgress)
+    if ($showProgress -and ($PSVersionTable.PSVersion.Major -ge 7))
     {
         $PSStyle.Progress.View = 'Classic'
     }
@@ -81,6 +81,12 @@ function init
     for ($i = 0; $i -lt $steps.Count; $i++)
     {
         $step = $steps[$i]
+        # 7-only 步骤在 5.1 下静默跳过(Verbose 留痕),不记失败:ArgumentCompletion/Startup/Pwsh/Json/TerminalTools 明确留 7
+        if ($step.MinPS -and ($PSVersionTable.PSVersion.Major -lt $step.MinPS))
+        {
+            Write-Verbose "跳过 $($step.Name)(需 pwsh $($step.MinPS)+,当前 $($PSVersionTable.PSVersion))"
+            continue
+        }
         Write-Verbose "Loading $($step.Name)"
         if ($showProgress)
         {
@@ -423,7 +429,12 @@ function Set-PSReadLinesAdvanced
     }
     # listView列表设置
     Set-PSReadLineOption -MaximumHistoryCount 3000  # 可选：增大历史记录总数
-    Set-PSReadLineOption -HistoryNoDuplicates  # 历史不存重复命令(防 ConsoleHost_history.txt 无限膨胀,Ctl+R 读全文件,3 万行是它慢的主因)
+    # HistoryNoDuplicates 需 PSReadLine 2.1+;5.1 自带 2.0 无此参数,版本不足跳过
+    $rlVer = try { (Get-Module PSReadLine).Version } catch { $null }
+    if (($null -ne $rlVer) -and ($rlVer -ge [version]'2.1'))
+    {
+        Set-PSReadLineOption -HistoryNoDuplicates  # 历史不存重复命令(防 ConsoleHost_history.txt 无限膨胀,Ctl+R 读全文件,3 万行是它慢的主因)
+    }
     Set-PSReadLineOption -CompletionQueryItems 100  # 可选：增大自动完成候选列表数量
     Set-PSReadLineOption -HistorySearchCursorMovesToEnd
 
@@ -433,7 +444,8 @@ function Set-PSReadLinesAdvanced
     # 设置建议窗口高度为 30 行
 
     <# set colors #>
-    Set-PSReadLineOption -Colors @{'inlineprediction' = '#d0d0cb' }#grayLight(grayDark #babbb4)
+    # inlineprediction 配色需 PSReadLine 2.1+;低版本(5.1 自带 2.0)未知键会报错,跳过
+    try { Set-PSReadLineOption -Colors @{'inlineprediction' = '#d0d0cb' } } catch { Write-Verbose "跳过 inlineprediction 配色: $($_.Exception.Message)" }#grayLight(grayDark #babbb4)
     <# suggestion list #>
     # Set-PSReadLineOption -PredictionViewStyle ListView
     # Set-PSReadLineOption -EditMode Windows

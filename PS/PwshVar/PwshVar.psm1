@@ -1,4 +1,4 @@
-
+﻿
 function Import-PwshVarFileTesting
 {
     [CmdletBinding()]
@@ -106,9 +106,10 @@ function Update-PwshVars
         'VarAndroid',
         'VarFiles'
     )
-    if($IsWindows) 
+    # 5.1 无 $IsWindows($null);PSEdition Desktop 即 Windows(5.1 只跑在 Windows 上)
+    if (($PSVersionTable.PSEdition -eq 'Desktop') -or $IsWindows)
     {
-        $PwshVarFilesEnhance += $PwshVarFilesWindows 
+        $PwshVarFilesEnhance += $PwshVarFilesWindows
     }
     elseif($IsMacOS)
     {

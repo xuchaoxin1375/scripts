@@ -4,7 +4,7 @@
     GUID = '62949e73-dd5d-416a-bc20-bec551e97a34'
     Author = 'cxxu'
     Description = 'File and directory measurement and helpers'
-    PowerShellVersion = '7.0'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'Add-Extension',
         'Get-NonEmptySubdirectories',

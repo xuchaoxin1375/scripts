@@ -1,4 +1,4 @@
-# CxxuTab:自研 Tab 命令名补全(独立插件,TabExpansion2 包装)。
+﻿# CxxuTab:自研 Tab 命令名补全(独立插件,TabExpansion2 包装)。
 # ListView 预测进不了 Tab(两套管线),这里包全局 TabExpansion2,只在命令名位置合并
 # dll 公开接口的模糊结果,其余位置原样透传。开关逐调用读 $env:PsTab(默认开),
 # 关了就是纯透传,行为与没装一样;启停管理看 Enable/Disable-PsPlugin。

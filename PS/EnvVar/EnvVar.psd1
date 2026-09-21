@@ -4,7 +4,7 @@
     GUID = '0817e7ab-c5c2-4242-b4b4-46190f5f5674'
     Author = 'cxxu'
     Description = 'Environment variable management (User/Machine/Process scopes)'
-    PowerShellVersion = '7.0'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'Get-EnvList',
         'Get-EnvVar',

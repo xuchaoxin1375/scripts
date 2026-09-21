@@ -4,7 +4,7 @@
     GUID = 'ede1c668-6a26-4cd9-8cde-1e94c01595ef'
     Author = 'cxxu'
     Description = 'Cxxu PowerShell module: Search'
-    PowerShellVersion = '7.0'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'Get-ItemMatchedPattern',
         'Find-Directory',

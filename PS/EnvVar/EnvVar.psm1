@@ -1,4 +1,4 @@
-class EnvVar
+﻿class EnvVar
 {
     <# Define the class. Try constructors, properties, or methods. #>
     # [int]$Number
@@ -415,7 +415,7 @@ function Get-EnvVarExpandedValue
             Write-Verbose $value -Verbose
         }
     }
-    return $ExpandedValues | Join-String -Separator ';'
+    return $ExpandedValues -join ';'
 }
 function Add-EnvVar
 {
@@ -626,7 +626,7 @@ Number Scope Name Value
     {
         # 推荐用户清理重复值(不用着急预览,在最后更改前提示预览即可)
         
-        $NewValueFull = $NewValueFull -split ';' | Select-Object -Unique | Join-String -Separator ';' #移除重复的项目
+        $NewValueFull = ($NewValueFull -split ';' | Select-Object -Unique) -join ';' #移除重复的项目
 
     }
     if ($Sort)
@@ -815,7 +815,7 @@ function Remove-EnvVarValue
 
     if ( $CurrentValue )
     {
-        $NewValue = ($CurrentValue -split ";") | Where-Object { $_ -ne $ValueToRemove } | Join-String -Separator ";"
+        $NewValue = (($CurrentValue -split ';') | Where-Object { $_ -ne $ValueToRemove }) -join ';'
         
         [Environment]::SetEnvironmentVariable($EnvVar, $NewValue, $Scope)
         if ($NewValue.Length -lt $CurrentValue.Length)
@@ -872,7 +872,8 @@ function Remove-EnvVar
     #虽然也可以考虑用Get-EnvVar -key $EnvVar|select value 查询当前值,但这不一定都是已经生效的值
     # 添加新路径到现有 Path
     #$CurrentValue如果没有提前设置值,则返回null,而不是'',不能用$CurrentValue -ne '' 判断是否新变量,直接用$CurrentValue 即可
-    $NewValue = $CurrentValue  ? "$CurrentValue;$NewValue" : $NewValue 
+    #三元等价写法(5.1 无三元运算符,保持 if/else):if ($CurrentValue) { "$CurrentValue;$NewValue" } else { $NewValue }
+    $NewValue = if ($CurrentValue) { "$CurrentValue;$NewValue" } else { $NewValue }
     # Write-Output $NewValue
     
     # $expression = "`$env:$EnvVar = '$NewValue'" 
@@ -1008,8 +1009,7 @@ function Update-EnvVarFromSysEnv
     )
     $envs = [System.Environment]::GetEnvironmentVariables($Scope)
     # 扫描所有的注册表中已有的环境变量,将其同步到当前powershell中,防止在不同shell中操作环境变量导致的不一致性
-    $envs.GetEnumerator() | Where-Object { $_.Key -notin 'Path', 'PsModulePath' }
-    | ForEach-Object {
+    $envs.GetEnumerator() | Where-Object { $_.Key -notin 'Path', 'PsModulePath' } | ForEach-Object {
         # 原用 Invoke-Expression 拼接赋值语句,值含单引号即错;改直读写 Env: 驱动(等价且更快)
         $name = [string]$_.Name
         $CurrentValue = (Get-Item -LiteralPath "Env:\$name" -ErrorAction SilentlyContinue).Value

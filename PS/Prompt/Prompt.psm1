@@ -1,4 +1,4 @@
-<#
+﻿<#
 Prompt 模块:提示符(prompt)及其片段(Write-*)、主题切换(Set-PsPrompt* FutureWarning)
 从 Pwsh.psm1(Write-*/Prompt*/Set-PsPrompt/dm/Test-PromptDelay/oh-my-posh 相关)
 与 ArgumentCompletion.psm1(prompt/promptx 入口)迁入,职责单一:只管提示符渲染与切换.
@@ -17,6 +17,11 @@ if ($null -eq $global:__CxxuOriginalPrompt)
     }
 }
 $originalPromptScript = $global:__CxxuOriginalPrompt #禁止在自定义prompt函数体内部执行此代码
+# 5.1 兜底:Info 模块留 7,Get-UserHostName 不可用时本地实现(与真身方案 2 同口径;7.x 永不进入,行为不变)
+if (($PSVersionTable.PSVersion.Major -lt 7) -and (-not (Get-Command Get-UserHostName -ErrorAction SilentlyContinue)))
+{
+    function Get-UserHostName { "$([System.Environment]::UserName)@$([System.Environment]::MachineName)" }
+}
 function promptx
 {
     <# 

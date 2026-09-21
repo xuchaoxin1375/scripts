@@ -4,7 +4,7 @@
     GUID = 'dca6cb93-c6f3-4c53-a0ee-00f2da9a0e3c'
     Author = 'cxxu'
     Description = 'Predefined PowerShell variables loader (.conf files)'
-    PowerShellVersion = '7.0'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'Import-PwshVarFileTesting',
         'Update-PwshVars',

@@ -4,7 +4,7 @@
     GUID = '0cabeabe-fb5c-41a4-b90c-f3d011dec739'
     Author = 'cxxu'
     Description = 'Cxxu PowerShell module: Basic'
-    PowerShellVersion = '7.0'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'Install-SubModules',
         'Get-SpeechVoiceOptions',

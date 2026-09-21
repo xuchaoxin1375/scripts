@@ -4,7 +4,7 @@
     GUID = '55ff76df-c972-4ac7-ab2e-b034eba51fa2'
     Author = 'cxxu'
     Description = 'Pwsh startup orchestration: init/p entry points and env-level tracking'
-    PowerShellVersion = '7.0'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'init',
         'p',

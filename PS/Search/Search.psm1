@@ -1,4 +1,4 @@
-function Get-ItemMatchedPattern
+﻿function Get-ItemMatchedPattern
 {
     <#     
     .synopsis
@@ -44,9 +44,7 @@ function Get-ItemMatchedPattern
 
     # 开始查找
     Write-Host 'Start searching...'
-    $res = Get-ChildItem @gciParams 
-    | Sort-Object -Property $SortProperty -Descending 
-    | Select-Object Name, parent, Directory, LastAccessTime, LastWriteTime
+    $res = Get-ChildItem @gciParams | Sort-Object -Property $SortProperty -Descending | Select-Object Name, parent, Directory, LastAccessTime, LastWriteTime
 
     # 进一步过滤
     if ($First)
@@ -151,16 +149,16 @@ function search_item
         # 也可以用字符串方法定位和移除文件绝对路径的工作目录部分
     }
     #定义显示路径是文件还是文件夹的字段,比如也可以命名为FileOrDirectory,不要和参数$PathType混淆
-    $Type = @{n = 'Type'; e = 
+    $Type = @{n = 'Type'; e =
         {
-            $_.PSIsContainer ? 'Directory' : 'File' 
-        } 
+            if ($_.PSIsContainer) { 'Directory' } else { 'File' }
+        }
     }
     #利用where过滤掉空字符串参数
-    $fields = 'name', ($PathType ? $Type : ''), $RelativePath | Where-Object { $_ -ne '' }
+    $fields = 'name', $(if ($PathType) { $Type } else { '' }), $RelativePath | Where-Object { $_ -ne '' }
     # Write-Output "[$($fields -join ',')]"
     #使用三元运算符,根据参数$args_select 是否来创建新数组,以便传递给select 筛选需要的字段
-    $fields = $args_select -ne '' ? ($fields + $args_select):$fields
+    $fields = if ($args_select -ne '') { $fields + $args_select } else { $fields }
     "Get-ChildItem -filter $Filter -R $args_ls" | Invoke-Expression | Select-Object $fields
     
 

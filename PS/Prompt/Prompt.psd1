@@ -4,7 +4,7 @@
     GUID = 'e53eaf28-3bea-4906-b4de-3d281c161600'
     Author = 'cxxu'
     Description = 'PowerShell prompt themes, segments and switching (Set-PsPrompt)'
-    PowerShellVersion = '7.0'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'promptx',
         'prompt',
