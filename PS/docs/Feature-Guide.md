@@ -246,7 +246,8 @@ p -Force                    # 看 init 分步耗时，定位慢项
 > 目标是在 5.1 里 `init` + 提示符 + Tab 补全 + 历史可用；部署/预测/dll 链明确留 7。
 
 - 兼容集（psd1 已降 `5.1`，psm1 带 BOM，见 `Module-Conventions.md §8`）：`Basic`、`Aliases`、`FileSystem`、`PwshVar`、`Search`、`CxxuTab`、`Prompt`、`Init`、`EnvVar`。
-- 5.1 下自动降级：`init` 步骤表 `MinPS = 7` 的 5 步静默跳过（`ArgumentCompletion`/`Startup`/`Pwsh`/`Json`/`TerminalTools`）；`ForEach-Object -Parallel` 走串行分支；`CxxuTab` 探不到 dll 方法时纯透传；`HistoryNoDuplicates`/`inlineprediction` 配色按 PSReadLine 版本 gating（5.1 自带 2.0.0 跳过）；`prompt` 内 `Get-UserHostName` 本地兜底。
+- 5.1 下自动降级：`init` 步骤表 `MinPS = 7` 的 5 步静默跳过（`ArgumentCompletion`/`Startup`/`Pwsh`/`Json`/`TerminalTools`）；`ForEach-Object -Parallel` 走串行分支；`CxxuTab` 探不到 dll 方法时纯透传；`HistoryNoDuplicates`/`inlineprediction` 配色按 PSReadLine 版本 gating（5.1 自带 2.0.0 跳过）。
+- 提示符全对齐：`fast`/`Simple`/`Short`/`Default` 原生可用；`Balance` 的 6 个 Info/Startup 外部依赖在 `Prompt.psm1` 顶部有 5.1 本地兜底（CIM/注册表/内置 cmdlet 同口径，`$script:` 会话缓存：IP 60s/内存 10s/开机 120s/电池复用 30s），渲染与 7.5 逐字一致，稳态约 50ms/次（首屏冷缓存 1.4s 一次性）。
 - 明确不可用：`CxxuPredictor`（net9 dll）、预测视图（需 7.2+ 子系统）、`Deploy` 全系、`Test-PsEnvReadiness` 的 `pwsh 7+` 必备项（在 5.1 下即提示装 pwsh7）。
 - 用法：`powershell -NoProfile` 起 5.1，保证 `PSModulePath` 含模块集后 `init` 即可；`$env:PsTab='Off'` 可关 Tab 包裹。
 - 加新代码禁区：兼容集内禁三元 `?:`/行首管道/`Join-String`/`$PSStyle` 裸赋值/`$IsWindows` 裸分支；真机校验：`powershell -NoProfile -File <脚本>` 逐模块 `Import-Module` 全绿 + `init` 零失败（沙箱脚本见交接记录）。
