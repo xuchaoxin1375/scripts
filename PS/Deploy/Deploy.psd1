@@ -16,6 +16,8 @@
         'Update-ScoopMirror',
         'Set-ScoopVersion',
         'Get-SelectedMirror',
+        'Get-GithubMirrorPrefix',
+        'Get-RepoRawUrl',
         'Deploy-ScoopForCNUser',
         'Deploy-ScoopApps',
         'Deploy-ScoopStartMenuAppsStarter',
@@ -48,8 +50,9 @@
         'Deploy-EnvsByPwsh',
         'Deploy-MiniforgeConfig',
         'Deploy-TrafficMonitor',
-        'Test-NewMachineReadiness',
-        'Deploy-CompletionStack'
+        'Test-PsEnvReadiness',
+        'Deploy-CompletionStack',
+        'Update-CxxuPsModules'
     )
     CmdletsToExport = @()
     VariablesToExport = @()

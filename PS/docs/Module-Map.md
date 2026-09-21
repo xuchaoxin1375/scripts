@@ -11,14 +11,14 @@
 |---|---|---|
 | `Init` | 499/12 | 启动编排：`init`/`p` 入口、7 步任务表（`-Timing` 看耗时）、`PsEnvMode` 等级跟踪 |
 | `Prompt` | 723/32 | 提示符：`prompt` 入口、`Prompt*` 主题、`Write-*` 片段、`Set-PsPrompt`（`-Persist` 才写注册表）、电池 30s 缓存 |
-| `CxxuPredictor` | 172/0导出 | 自研命令名前缀 predictor（二进制：dll 7.6KB + src；OnIdle 加载；卸载 `Remove-Module CxxuPredictor`） |
+| `CxxuPredictor` | 231/0导出 | 自研命令名 predictor（模糊+严格通配，二进制：dll 发布件 + src；活件外置 `~/.cxxu/bin`，loader 同步装载；OnIdle 加载） |
 | `PwshVar` | 329/6 | `.conf` 变量文件加载（预编译缓存，`Update-PwshVars -NoCache` 回退） |
 | `Aliases` | 68/2 | 别名文件加载（`alias_core`/`functions`/`shortcuts`，逐行 iex 是故意的） |
 | `ArgumentCompletion` | 115/2 | 参数补全注册（`prompt` 已迁出，只剩补全） |
 | `EnvVar` | 1021/15 | 环境变量 User/Machine/Process 三档；热路径一律 `Set-ProcessEnvVar` |
 | `Startup` | 307/12 | 开机任务、后台守护进程、OS 版本缓存（`Confirm-EnvVarOfInfo`） |
 | `Json` | 251/5 | `Data.json` 读写校验（init 与 prompt 共用，无递归设计） |
-| `Pwsh` | 1410/32 | 通用工具箱：模块安装、profile 管理、`ipmox`/`ipmof` 重载（仅仓库内模块）、`Sync-ModuleManifest` 偷懒同步（-Name Tab 补全）、`Set-PsExtension`（默认关） |
+| `Pwsh` | 1501/33 | 通用工具箱：模块安装、profile 管理、`ipmox`/`ipmof` 重载（仅仓库内模块）、`Sync-ModuleManifest` 偷懒同步（-Name Tab 补全）、`Set-PsExtension`（默认关） |
 
 ## prompt 首渲染会顺带加载
 
@@ -56,7 +56,7 @@
 
 | 模块 | 行数/函数 | 职责 |
 |---|---|---|
-| `Deploy` | 2703/43 | 一键部署：scoop/github hosts/python/conda/开机任务等；`Get-SelectedMirror`、`Test-NewMachineReadiness` 在此 |
+| `Deploy` | 2950/47 | 一键部署：scoop/github hosts/python/conda/开机任务等；`Get-SelectedMirror`/`Get-GithubMirrorPrefix`/`Get-RepoRawUrl`、`Test-PsEnvReadiness`（带版本表尾）、`Update-CxxuPsModules`（-Force）在此 |
 | `Development` | 340/22 | Django 快捷命令、ssh 别名、文本清理 |
 | `Git` | 505/15 | git 日常：浅克隆、一键提交、镜像加速下载 |
 | `MySql` | 984/13 | MySQL 库表备份/建删/查询 |

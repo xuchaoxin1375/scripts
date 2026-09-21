@@ -386,8 +386,9 @@ Set-PSReadLineOption: 句柄无效。
 
 ## 18. 第十一轮：新机部署指南（2026-09-20）
 
-- 新增 `Deploy.Test-NewMachineReadiness`：部署前 checklist 即代码（必备 6/可选 6/首跑生成物 1，
-  表格 + 缺啥补啥列，只读不改机器；本机实测必备 6/6）。
+- 新增 `Deploy.Test-PsEnvReadiness`（原名 Test-NewMachineReadiness，新老机器通用故改名）：
+  环境 checklist 即代码（必备 7/可选 6/首跑生成物 2，表格 + 缺啥补啥列，只读不改机器；
+  2026-09-21 加版本/日期列 + 表尾：仓库 commit/日期、pwsh 版本、dll 哈希一致性）。
 - 新增 `docs/Deploy-Guide.md`：11 节（缺口检查/pwsh7/git+clone/PSModulePath/profile/第三方模块/
   scoop/python-conda/首次 init/WT 开机/多设备差异/回滚），命令全部核对过签名（宽松风格，直接抄）。
 - 附带：抓到 edit 工具整文件改写换行的毛病（见 `Agent-Handoff.md` 踩坑 #14），本轮 5 文件
@@ -419,9 +420,12 @@ Set-PSReadLineOption: 句柄无效。
 - 验证（沙盒）：构建零警告；import 423ms 零错并顶层列出；反射直测过滤逻辑
   （`get-chi`→`Get-ChildItem`、自匹配排除、空前缀排除）；manifest 过；自动发现 OK。
   真机已验证（用户实测通过）：`get-child` 出 `[CxxuCommand]` 来源行，本轮终结。
-- 维护：dll 进仓库（`.gitattributes` 已有 `*.dll binary`）；逻辑变更才需重构建；
-  运行时加载的是 dll 二进制，`.cs` 只是图纸，所以改逻辑必须换根 dll（`src/bin/...` 拷过去）；
-  换文件若被锁：是有 pwsh 进程（常为残留的 `pwsh -noe -c p`）咬住，关掉再拷；
+- 维护：dll 进仓库（`.gitattributes` 已有 `*.dll binary`，发布件）；活件外置 `~/.cxxu/bin`，
+  loader 按哈希同步后按路径装载（仓库版从不被加载，pull 永不撞锁；同步失败警告给手工命令，
+  照用旧版，新会话自愈）；运行时加载的是 dll 二进制，`.cs` 只是图纸，改逻辑重构建后等同步；
+  psd1 无 RootModule（防按名误装空壳）但诚实声明 `PowerShellVersion='7.5'`；
+  net8.0 单目标实测不可行：本机 7.5 的 SMA 自带 System.Runtime 9 引用（CS1705），
+  覆盖 7.4 需 7.4 的 SMA 或 PowerShellStandard（缺预测 API），暂不做；
   卸载 `Remove-Module CxxuPredictor`；`Sync-ModuleManifest` 天然跳过（无 `.psm1`）。
 - 边界（已读源码 `CompletionPredictor.cs` 核实，不再是文档推测）：`GetSuggestion` 遇到
   `TokenFlags.CommandName` 直接 `return default`（源码注释：command discovery 太贵，跳过），

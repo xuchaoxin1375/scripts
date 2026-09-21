@@ -621,6 +621,11 @@ Reporting timer end at:22:51:50
         # 如果启用RepeateInterval(取大于0的值),那么CheckInterval应该服从于$RepeateInterval
         $CheckInterval = 60
     )
+    # 守护进程用不上 predictor:经 -Command 起来的后台会话关掉它(交互会话手动调本函数不受影响,此时命令行无 -Command)
+    if (@([Environment]::GetCommandLineArgs()) -match '^-(?i:c|command)$')
+    {
+        $env:PsPredictor = 'False'
+    }
     # function New-TextToSpeech{}
     $PSBoundParameters
     # 默认要报的消息是时间,(那么仅需要报出时:分(而不报秒))

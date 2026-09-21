@@ -2,18 +2,20 @@
 # $github_mirror="https://gh-proxy.com"
 [CmdletBinding()]
 param(
-    # 仓库源
+    # 仓库源(默认 github+加速;gitee 仅保留兼容)
     [validateSet('gitee', 'github')]
-    $RepoSource = 'gitee',
+    $RepoSource = 'github',
     # 适用于开发(维护调整)的测试模式
     [switch]$Dev
     # [switch]$Force
 )
 if($RepoSource -eq 'github')
 {
-    $dplUrl = "https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1"
-    $tlUrl = "https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/TestLinks.psm1"
-    $gitUrl = "https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Git/Git.psm1"
+    # 中央镜像:$env:PsGithubMirror 优先,否则默认 gh-proxy(独立脚本内联一份,见 Get-GithubMirrorPrefix)
+    $repoMirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
+    $dplUrl = "$repoMirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1"
+    $tlUrl = "$repoMirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/TestLinks.psm1"
+    $gitUrl = "$repoMirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Git/Git.psm1"
 }
 else
 {

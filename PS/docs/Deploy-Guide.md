@@ -1,12 +1,20 @@
 # 新机部署指南（Deploy Guide）
 
-> 把这套 53 模块组合搬到另一台机器。先跑 `Test-NewMachineReadiness` 看缺口，再按节补。
+> 把这套 53 模块组合搬到另一台机器。先跑 `Test-PsEnvReadiness` 看缺口，再按节补。
 > 在新机器上还没有模块路径时，先：`Import-Module C:\repos\scripts\PS\Deploy\Deploy.psd1`
+
+> **极简版（只要补全栈，共 2 条命令）**：第 1 条落仓库+环境，第 2 条装补全栈；下面各节是分步详解。
+> ```powershell
+> irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1' | iex
+> # 关掉重开终端（自动 init），再：
+> Deploy-CompletionStack
+> # 再重开一次，缓存就绪。版本不够 7.5 会警告（自研 predictor 用不上，其它照常）。
+> ```
 
 ## 0. 先查缺口
 
 ```powershell
-Test-NewMachineReadiness   # 必备/可选/首跑生成物三档表格，缺啥补啥列直接给命令
+Test-PsEnvReadiness   # 必备/可选/首跑生成物三档表格，缺啥补啥列直接给命令
 ```
 
 ## 1. pwsh 7
@@ -95,9 +103,39 @@ conda 缓存（`~/.conda_hook_cache.ps1`）与 zoxide 缓存（`~/.zoxide_init_c
 - `PwshVar/confs/VarSet1.conf` 的 `$PC*` 主机名：新机器加自己的，不认识的别删。
 - conda 路径：profile 缓存块里的 `$condaExe`（scoop 版在 `C:\scoop\apps\miniforge\...`，改安装位置要同步）。
 - 镜像/代理：`Get-SelectedMirror`、`Update-GithubHosts`、`Deploy-ScoopApps` 按当地网络选。
-- `Test-NewMachineReadiness` 收尾再跑一遍，必备全绿。
+- `Test-PsEnvReadiness` 收尾再跑一遍，必备全绿。
 
 ## 11. 回滚
 
 - profile 改前先备份（`Copy-Item $profile "$profile.bak"`）；`$env:PsShowProgress='False'` 可关进度条。
 - 环境变量改错：注册表 `HKCU\Environment` 手工改，或对应 `Remove-EnvVar`/`Set-EnvVar`。
+
+## 12. GitHub 加速与中央变量（国内网络决策）
+
+- **决策**：gitee 对远程脚本执行（`irm|iex`）误报拦截、一键部署常被拦，不再作为默认源；
+  改走 github + 加速前缀。`-RepoSource` 默认已全切 `github`（gitee 只留兼容）。
+- **中央变量 `$env:PsGithubMirror`**：全仓库统一从它拿前缀。喜欢哪个镜像就持久化哪个：
+  `Add-EnvVar -EnvVar PsGithubMirror -NewValue 'https://gh-proxy.com'`（以你实测最快的为准，
+  `Get-AvailableGithubMirrors` 可测速）；不设则走默认 `gh-proxy.com`，模块内调用走
+  `Get-SelectedMirror -Silent` 静默测速（会话缓存一次）。
+- **统一出口**：模块内拼 raw 地址一律 `Get-RepoRawUrl -Path 'PS/...'`（自动套前缀），
+  别手拼；独立脚本（Deploy-*.ps1，模块还没加载）内联同策略三行（见 `Deploy-GitForWindows.ps1`）。
+
+## 13. 更新到新版本
+
+> 前提：`git pull` 只写仓库目录，纯文本**永远不锁**随便拉；dll 活件在仓库外
+> （`~/.cxxu/bin`），仓库版从不被加载——所以 pull 也永不撞锁。剩下唯一规矩：
+> dll 代码随进程，重开终端才换新。
+
+```powershell
+Update-CxxuPsModules          # fetch 看 dll 变不变→拉→分类报告
+Update-CxxuPsModules -Force    # 带 dll 就一条龙：跳过确认→关其它会话→守护重起→脱钩开新窗→退自己（变量会丢！）
+Update-ReposesConfiged        # 平时批量更新照旧，无需额外注意
+```
+
+- 拉完带 dll 变更：**重开终端**（新会话 loader 自动同步外置活件并自愈）；
+  只有 psm1 变更：`ipmox` 一把梭，会话变量不丢。
+- 守护进程（报时/IP）用不上 predictor：`$env:PsPredictor='False'` 门已置
+  （`Start-StartupBgProcesses` 继承 + 两个守护函数按 `-Command` 自断），它们永不加载/锁定 dll，
+  `-Force` 关它们无压力（无状态，重起即回）；交互会话手动调守护函数不受影响。
+- 顺序：更新函数 →（dll 变了就重开/`-Force`）→ `init` → `Test-PsEnvReadiness` 收尾。

@@ -15,10 +15,10 @@ $scripts="C:/repos/scripts"
 #>
 [CmdletBinding()]
 param(
-    # 仓库源
+    # 仓库源(默认 github+加速;gitee 对远程脚本执行误报拦截,已弃用,仅保留兼容)
     [validateSet('gitee', 'github')]
-    $RepoSource = 'gitee',
-    $GithubMirror = 'https://gh-proxy.com',
+    $RepoSource = 'github',
+    $GithubMirror = $(if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }),
     # 适用于开发(维护调整)的测试模式
     [switch]$Dev,
     [switch]$Force

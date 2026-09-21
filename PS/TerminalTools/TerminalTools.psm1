@@ -324,9 +324,46 @@ function Register-PsUxLazyLoad
             Import-Module PSFzf -Global -ErrorAction SilentlyContinue
             Set-PsFzfOption -PSReadlineChordProvider 'Ctrl+t' -PSReadlineChordReverseHistory 'Ctrl+r' -ErrorAction SilentlyContinue
         }
-        # 自研命令名 predictor(只做裸命令名前缀查缓存表,import 时建表约百毫秒,放 idle 里无感)
+        # 自研命令名 predictor(模糊+严格通配,import 时建表约百毫秒,放 idle 里无感)
         # 用它不用 CompletionPredictor 补命令名:后者源码级跳过 CommandName token(见 §19)
-        Import-Module CxxuPredictor -Global -ErrorAction SilentlyContinue
+        # 守护进程用不上 predictor:置 $env:PsPredictor='False' 即跳过(开关风格同 PsFzf/PsZoxide);
+        # 守护启动链(Start-StartupBgProcesses/定时任务)负责置位,交互会话默认开启
+        # dll 外置($HOME/.cxxu/bin,按哈希同步):仓库版从不被加载→git pull 永不撞锁;
+        # 同步失败(被咬住)警告给手工命令,照用旧版,下次新会话自愈;psd1 已去 RootModule,按名装不出 predictor,必须走这里
+        if ($env:PsPredictor -notmatch '^(False|0|No|Off)$')
+        {
+            $ttBase = (Get-Module TerminalTools).ModuleBase
+            if ($ttBase)
+            {
+                $cxxuRepoDll = Join-Path (Join-Path (Split-Path $ttBase -Parent) 'CxxuPredictor') 'CxxuPredictor.dll'
+                $cxxuLiveDll = Join-Path (Join-Path (Join-Path $HOME '.cxxu') 'bin') 'CxxuPredictor.dll'
+                $needSync = $true
+                if ((Test-Path -LiteralPath $cxxuRepoDll) -and (Test-Path -LiteralPath $cxxuLiveDll))
+                {
+                    $repoHash = (Get-FileHash -LiteralPath $cxxuRepoDll -Algorithm SHA256).Hash
+                    $liveHash = (Get-FileHash -LiteralPath $cxxuLiveDll -Algorithm SHA256).Hash
+                    $needSync = $repoHash -ne $liveHash
+                }
+                if ($needSync -and (Test-Path -LiteralPath $cxxuRepoDll))
+                {
+                    try
+                    {
+                        $cxxuLiveDir = Split-Path $cxxuLiveDll -Parent
+                        if (-not (Test-Path -LiteralPath $cxxuLiveDir)) { New-Item -ItemType Directory -Path $cxxuLiveDir -Force | Out-Null }
+                        Copy-Item -LiteralPath $cxxuRepoDll -Destination $cxxuLiveDll -Force -ErrorAction Stop
+                    }
+                    catch
+                    {
+                        Write-Warning "CxxuPredictor.dll 同步外置失败(被咬住):手工跑 Copy-Item '$cxxuRepoDll' '$cxxuLiveDll' (先关其它 pwsh);本次照用旧版。"
+                    }
+                }
+                if (Test-Path -LiteralPath $cxxuLiveDll)
+                {
+                    # 按路径装载(-Global 防嵌套)
+                    Import-Module $cxxuLiveDll -Global -ErrorAction SilentlyContinue
+                }
+            }
+        }
         # zoxide:init 输出缓存到文件,只有二进制更新才重建(仿 conda 缓存套路)
         if ($env:PsZoxide -notmatch '^(False|0|No|Off)$')
         {

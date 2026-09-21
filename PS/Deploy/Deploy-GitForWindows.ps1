@@ -1,15 +1,15 @@
 <# 
 .SYNOPSIS
 临时部署此脚本文件
-Invoke-RestMethod 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-GitForWindows.ps1' | Invoke-Expression
+Invoke-RestMethod 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-GitForWindows.ps1' | Invoke-Expression
 .DESCRIPTION
 此脚本文件用于部署Git for Windows到windows系统,可以自动下载最新版本的Git for Windows安装包,也可以指定下载链接,也可以指定本地安装包路径进行部署
 #>
 [CmdletBinding()]
 param(
-    # 仓库源
+    # 仓库源(默认 github+加速;gitee 仅保留兼容)
     [validateSet('gitee', 'github')]
-    $RepoSource = 'gitee',
+    $RepoSource = 'github',
     # 适用于开发(维护调整)的测试模式
     [switch]$Dev
     # [switch]$Force
@@ -23,9 +23,12 @@ if (Get-Command git -ErrorAction SilentlyContinue)
 }
 # $github_mirror="https://gh-proxy.com"
 ## 导入其他模块
+# 中央镜像:$env:PsGithubMirror 优先,否则默认 gh-proxy(与 Get-GithubMirrorPrefix 同策略,独立脚本内联一份)
+$repoMirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
+$rawBase = if ($RepoSource -eq 'github') { "$repoMirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main" } else { 'https://gitee.com/xuchaoxin1375/scripts/raw/main' }
 # 方案1:iex执行
-Invoke-RestMethod "https://$RepoSource.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy.psm1" | Invoke-Expression 
-Invoke-RestMethod "https://$RepoSource.com/xuchaoxin1375/scripts/raw/main/PS/Git/Git.psm1" | Invoke-Expression
+Invoke-RestMethod "$rawBase/PS/Deploy/Deploy.psm1" | Invoke-Expression 
+Invoke-RestMethod "$rawBase/PS/Git/Git.psm1" | Invoke-Expression
 
 # 方案2:下载 Deploy.psm1 到临时目录
 # $deployModulePath = Join-Path $env:TEMP 'Deploy.psm1'

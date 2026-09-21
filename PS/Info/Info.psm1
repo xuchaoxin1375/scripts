@@ -156,6 +156,11 @@ function Update-NetConnectionInfo
         $Interval = 6
     )
     # 注:此处曾有 Write-Host $DataJson 调试输出(每次守护进程启动都会向控制台吐一行路径),已删除
+    # 守护进程用不上 predictor:经 -Command/-c 起来的后台会话关掉它(交互会话手动调不受影响)
+    if (@([Environment]::GetCommandLineArgs()) -match '^-(?i:c|command)$')
+    {
+        $env:PsPredictor = 'False'
+    }
     while ($true)
     {
         $Name = @(Get-Json -Key $ConnectionName -dataJson $DataJson -ErrorAction SilentlyContinue)

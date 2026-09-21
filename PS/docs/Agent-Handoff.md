@@ -92,6 +92,27 @@
     `-IncludePSCompletions`/`-SkipBinaries`；全程 `SupportsShouldProcess`，
     `-WhatIf` 空跑零副作用（沙箱已验：前后 `ListAvailable` 一致）。
     CxxuPredictor 随仓库零安装，不在其中。
+18. **`Close-OtherPwsh`（换被锁文件前清场）**：`Pwsh.psm1`；列出除自己外的所有 pwsh
+    （PID/启动时间/标题），`ConfirmImpact=High` 默认逐个询问，`-WhatIf` 空跑；
+    守护进程也会被列出（杀了需重跑）。结论：dll 锁只影响本机热更新换文件，
+    新机部署全是新文件、无进程占用，不会因此失败。
+20. **`Update-CxxuPsModules`（更新命令）**：`Deploy.psm1`；fetch 看 dll 变不变→NoProfile 子进程
+    `git pull --ff-only`→分类报告（dll 变了重开终端，纯文本指去 `ipmox`）。`-WhatIf` 已验。
+21. **dll 外置决策（2026-09-21，用户拍板）**：活件搬 `~/.cxxu/bin`，loader 按哈希同步后按路径装载；
+    仓库版从不被加载→pull 永不撞锁。代价：`ipmof` 必须跳过 CxxuPredictor（按名重载装出空壳还注销 predictor，
+    守卫注释已换因）；psd1 去 RootModule（防误装）。退役：测锁/`-AutoFix`/`Close-OtherPwsh`/
+    Basic 守卫（未提交过，干净删除）；重启规矩不变（程序集随进程）。
+22. **退役记录**：#21 之前有过一套锁内 machinery（`Close-OtherPwsh`、`-AutoFix`、fetch 测锁），
+    外置后不再需要，已删；引号三层笔误教训保留：组装类字符串必断言内容，解析过不代表语义对。
+23. **守护进程不加载 predictor + `-Force`（2026-09-21）**：loader 加 `$env:PsPredictor` 门
+    （风格同 PsFzf/PsZoxide）；`Start-StartupBgProcesses` 置 False（子进程继承），
+    两个守护函数按 `-Command` 自断（交互手动调不受影响）。`-Force`（dll 变更时，跳过确认直接动手）：
+    关其它（含无状态守护，随后 `Start-StartupBgProcesses` 重起）→脱钩子进程等退→开新窗→退自己；
+    重定向拒绝。守护永不咬 dll，锁问题彻底收敛到交互会话。
+19. **国内网络：gitee→github+加速（2026-09-21 决策）**：gitee 对 `irm|iex` 误报拦截，
+    默认源全切 github；中央变量 `$env:PsGithubMirror`（持久化自选镜像，不设走默认/静默测速），
+    统一出口 `Get-GithubMirrorPrefix`/`Get-RepoRawUrl`（Deploy 模块内），独立脚本内联同策略；
+    `Get-SelectedMirror` 的 gitee fallback 已摘。动 URL 先查这两函数，别手拼。
 
 ## 4. 环境事实（这台机器，2026-09 实测）
 

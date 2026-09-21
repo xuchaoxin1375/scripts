@@ -765,8 +765,9 @@ PS C:\repos\scripts>
     }
     else
     {
-        # 临时获取链接测试函数
-        Invoke-RestMethod https://raw.giteeusercontent.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/TestLinks.psm1 | Invoke-Expression
+        # 临时获取链接测试函数(走中央镜像,不再依赖 gitee)
+        $tlMirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
+        Invoke-RestMethod "$tlMirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/TestLinks.psm1" | Invoke-Expression
     }
  
     $Mirrors = Get-AvailableGithubMirrors -PassThru -Linearly:$Linearly
@@ -849,6 +850,62 @@ PS C:\repos\scripts>
 
 
 
+function Get-GithubMirrorPrefix
+{
+    <#
+    .SYNOPSIS
+    中央镜像前缀:全仓库统一从这里拿(环境变量优先,会话缓存,其次静默测速)。
+    .DESCRIPTION
+    决策(2026-09-21):gitee 对远程脚本执行误报拦截,不再作为默认源;github 走加速前缀。
+    `$env:PsGithubMirror` 由用户持久化(喜欢哪个写哪个,Add-EnvVar),设了就用它,零探测;
+    没设则本会话第一次调用时 Get-SelectedMirror -Silent 测一次并缓存;实在没有返回 ''。
+    所有拼 raw URL 的地方调 Get-RepoRawUrl,不要自己拼前缀。
+    .EXAMPLE
+    Get-GithubMirrorPrefix
+    #>
+    [CmdletBinding()]
+    param(
+    )
+
+    if ($env:PsGithubMirror)
+    {
+        return ([string]$env:PsGithubMirror).TrimEnd('/')
+    }
+    if ($script:CachedGithubMirrorPrefix)
+    {
+        return $script:CachedGithubMirrorPrefix
+    }
+    $first = Get-SelectedMirror -Silent | Select-Object -First 1
+    if ([string]::IsNullOrWhiteSpace($first))
+    {
+        return ''
+    }
+    $script:CachedGithubMirrorPrefix = ([string]$first).TrimEnd('/')
+    return $script:CachedGithubMirrorPrefix
+}
+function Get-RepoRawUrl
+{
+    <#
+    .SYNOPSIS
+    仓库内文件 raw 地址统一出口:自动套中央镜像前缀。
+    .EXAMPLE
+    Get-RepoRawUrl -Path 'PS/Deploy/Deploy.psm1'
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        $Path,
+        $Branch = 'main'
+    )
+
+    $raw = "https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/$Branch/$Path"
+    $prefix = Get-GithubMirrorPrefix
+    if ($prefix)
+    {
+        return "$prefix/$raw"
+    }
+    return $raw
+}
 function Deploy-ScoopForCNUser
 {
  
@@ -2652,7 +2709,7 @@ function Deploy-TrafficMonitor
 
 # 注:镜像站测试函数已独立为 TestLinks 模块(同级目录),此处删除内联版本以降低 Deploy 解析成本
 
-function Test-NewMachineReadiness
+function Test-PsEnvReadiness
 {
     <#
     .SYNOPSIS
@@ -2660,7 +2717,7 @@ function Test-NewMachineReadiness
     .DESCRIPTION
     配合 docs/Deploy-Guide.md 使用。分 必备/可选/首跑生成物 三档;表格展示,不返回值。
     .EXAMPLE
-    Test-NewMachineReadiness
+    Test-PsEnvReadiness
     #>
     [CmdletBinding()]
     param(
@@ -2671,36 +2728,72 @@ function Test-NewMachineReadiness
     # 用 ArrayList 攒行(闭包捕获同一对象引用)
     $rows = [System.Collections.ArrayList]::new()
     $chk = {
-        param($Item, $Level, $Test, $Need)
+        param($Item, $Level, $Test, $Need, $Date = { '' }, $Ver = { '' })
         $ok = try { [bool](& $Test) } catch { $false }
+        $date = try { & $Date } catch { '' }
+        $ver = try { & $Ver } catch { '' }
         [void]$rows.Add([PSCustomObject]@{
                 事项 = $Item
                 级别 = $Level
                 状态 = if ($ok) { 'OK' } else { '缺' }
+                版本 = $ver
+                日期 = $date
                 缺啥补啥 = if ($ok) { '' } else { $Need }
             })
     }.GetNewClosure()
+    # 日期小料:模块取 psd1 日期,二进制取 exe 日期,文件直接取,取不到空串(列对齐不断)
+    $modDate = { param($n) try { (Get-Item -LiteralPath (Join-Path (Get-Module -ListAvailable $n | Select-Object -First 1).ModuleBase "$n.psd1") -ErrorAction Stop).LastWriteTime.ToString('yyyy-MM-dd HH:mm') } catch { '' } }.GetNewClosure()
+    $binDate = { param($n) try { $src = (Get-Command $n -ErrorAction Stop).Source; if ([string]::IsNullOrWhiteSpace($src) -or -not (Test-Path -LiteralPath $src)) { '' } else { (Get-Item -LiteralPath $src).LastWriteTime.ToString('yyyy-MM-dd HH:mm') } } catch { '' } }.GetNewClosure()
+    $fileDate = { param($p) try { (Get-Item -LiteralPath $p -ErrorAction Stop).LastWriteTime.ToString('yyyy-MM-dd HH:mm') } catch { '' } }.GetNewClosure()
+    # 版本小料:只取文件级/内存级信息,不起新进程(git --version 这类免谈);取不到空串
+    $modVer = { param($n) try { (Get-Module -ListAvailable $n | Select-Object -First 1).Version.ToString() } catch { '' } }.GetNewClosure()
+    $binVer = { param($n) try { [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Get-Command $n -ErrorAction Stop).Source).FileVersion } catch { '' } }.GetNewClosure()
     # 必备
-    & $chk 'pwsh 7+' '必备' { $PSVersionTable.PSVersion.Major -ge 7 } 'Update-PowerShell 或重装 pwsh 7'
+    & $chk 'pwsh 7+' '必备' { $PSVersionTable.PSVersion.Major -ge 7 } 'Update-PowerShell 或重装 pwsh 7' { & $binDate 'pwsh' } { $PSVersionTable.PSVersion.ToString() }
     & $chk 'PSModulePath 含模块集' '必备' { @(($env:PSModulePath -split ';') | ForEach-Object { & $normPath $_ }) -contains (& $normPath $psRoot) } "Add-EnvVar -EnvVar PSModulePath -NewValue '$psRoot'"
-    & $chk '$profile 有 init' '必备' { (Test-Path -LiteralPath $PROFILE.CurrentUserCurrentHost) -and ((Get-Content -LiteralPath $PROFILE.CurrentUserCurrentHost -Raw) -match '(?m)^\s*init\s*$') } 'Add-CxxuPsModuleToProfile 或手写 init'
-    & $chk 'git' '必备' { Get-Command git -ErrorAction SilentlyContinue } 'Confirm-GitCommand / 装 git'
-    & $chk 'PSFzf 模块' '必备' { Get-Module -ListAvailable PSFzf } 'Confirm-ModuleInstalled -ModuleName PSFzf -Install'
-    & $chk 'CompletionPredictor 模块' '必备' { Get-Module -ListAvailable CompletionPredictor } 'Confirm-ModuleInstalled -ModuleName CompletionPredictor -Install'
+    & $chk '$profile 有 init' '必备' { (Test-Path -LiteralPath $PROFILE.CurrentUserCurrentHost) -and ((Get-Content -LiteralPath $PROFILE.CurrentUserCurrentHost -Raw) -match '(?m)^\s*init\s*$') } 'Add-CxxuPsModuleToProfile 或手写 init' { & $fileDate $PROFILE.CurrentUserCurrentHost }
+    & $chk 'git' '必备' { Get-Command git -ErrorAction SilentlyContinue } 'Confirm-GitCommand / 装 git' { & $binDate 'git' } { & $binVer 'git' }
+    & $chk 'PSFzf 模块' '必备' { Get-Module -ListAvailable PSFzf } 'Confirm-ModuleInstalled -ModuleName PSFzf -Install' { & $modDate 'PSFzf' } { & $modVer 'PSFzf' }
+    & $chk 'CompletionPredictor 模块' '必备' { Get-Module -ListAvailable CompletionPredictor } 'Confirm-ModuleInstalled -ModuleName CompletionPredictor -Install' { & $modDate 'CompletionPredictor' } { & $modVer 'CompletionPredictor' }
     & $chk 'pwsh 7.5+(CxxuPredictor 需 net9)' '必备' { $PSVersionTable.PSVersion -ge [version]'7.5' } 'Update-PowerShell 到 7.5+(或进 PS/CxxuPredictor/src 重编 dll)'
     # 可选
-    & $chk 'fzf 二进制' '可选' { Get-Command fzf -ErrorAction SilentlyContinue } 'scoop install fzf'
-    & $chk 'zoxide 二进制' '可选' { Get-Command zoxide -ErrorAction SilentlyContinue } 'scoop install zoxide'
-    & $chk 'scoop' '可选' { Get-Command scoop -ErrorAction SilentlyContinue } '按官网装 scoop(参考 Deploy-ScoopByGithubMirrors)'
-    & $chk 'conda' '可选' { Get-Command conda -ErrorAction SilentlyContinue } 'Deploy-MiniforgeConfig'
-    & $chk 'fnm' '可选' { Get-Command fnm -ErrorAction SilentlyContinue } 'scoop install fnm(后解开 profile 钩子)'
-    & $chk 'PSCompletions 模块' '可选' { Get-Module -ListAvailable PSCompletions } 'Confirm-ModuleInstalled -ModuleName PSCompletions -Install(后解开 profile 钩子)'
+    & $chk 'fzf 二进制' '可选' { Get-Command fzf -ErrorAction SilentlyContinue } 'scoop install fzf' { & $binDate 'fzf' } { & $binVer 'fzf' }
+    & $chk 'zoxide 二进制' '可选' { Get-Command zoxide -ErrorAction SilentlyContinue } 'scoop install zoxide' { & $binDate 'zoxide' } { & $binVer 'zoxide' }
+    & $chk 'scoop' '可选' { Get-Command scoop -ErrorAction SilentlyContinue } '按官网装 scoop(参考 Deploy-ScoopByGithubMirrors)' { & $binDate 'scoop' } { & $binVer 'scoop' }
+    & $chk 'conda' '可选' { Get-Command conda -ErrorAction SilentlyContinue } 'Deploy-MiniforgeConfig' { & $binDate 'conda' } { & $binVer 'conda' }
+    & $chk 'fnm' '可选' { Get-Command fnm -ErrorAction SilentlyContinue } 'scoop install fnm(后解开 profile 钩子)' { & $binDate 'fnm' } { & $binVer 'fnm' }
+    & $chk 'PSCompletions 模块' '可选' { Get-Module -ListAvailable PSCompletions } 'Confirm-ModuleInstalled -ModuleName PSCompletions -Install(后解开 profile 钩子)' { & $modDate 'PSCompletions' } { & $modVer 'PSCompletions' }
     # 首跑生成物(跑一次 init 自动建)
-    & $chk '~/Data.json' '生成物' { Test-Path -LiteralPath (Join-Path $HOME 'Data.json') } '跑一次 init'
+    & $chk '~/Data.json' '生成物' { Test-Path -LiteralPath (Join-Path $HOME 'Data.json') } '跑一次 init' { & $fileDate (Join-Path $HOME 'Data.json') }
+    & $chk 'predictor 活件 ~/.cxxu/bin' '生成物' { Test-Path -LiteralPath (Join-Path (Join-Path (Join-Path $HOME '.cxxu') 'bin') 'CxxuPredictor.dll') } '跑一次 init(loader 按哈希同步外置)' { & $fileDate (Join-Path (Join-Path (Join-Path $HOME '.cxxu') 'bin') 'CxxuPredictor.dll') }
     $rows | Format-Table -AutoSize | Out-Host
     $must = @($rows | Where-Object { $_.级别 -eq '必备' })
     $mustOk = @($must | Where-Object { $_.状态 -eq 'OK' }).Count
     Write-Host "必备 $($mustOk)/$($must.Count);缺的按“缺啥补啥”列补，补完重跑本检查。"
+    # 版本/日期表尾(只读,取不到标未知,永不抛;二进制不取进程版本,只取文件级信息)
+    $repoRoot = Split-Path $psRoot -Parent
+    $repoVer = try { (git -C $repoRoot log -1 --format='%h %ci' HEAD 2>$null).Trim() } catch { '' }
+    if ([string]::IsNullOrWhiteSpace($repoVer)) { $repoVer = '未知(非 git 环境?)' }
+    $liveDll = Join-Path (Join-Path (Join-Path $HOME '.cxxu') 'bin') 'CxxuPredictor.dll'
+    $dllInfo = '未生成(跑一次 init)'
+    if (Test-Path -LiteralPath $liveDll)
+    {
+        try
+        {
+            $liveHash = (Get-FileHash -LiteralPath $liveDll -Algorithm SHA256).Hash.Substring(0, 8)
+            $liveDate = (Get-Item -LiteralPath $liveDll).LastWriteTime.ToString('yyyy-MM-dd HH:mm')
+            $repoDll = Join-Path (Join-Path $psRoot 'CxxuPredictor') 'CxxuPredictor.dll'
+            $syncState = '仓库无此文件?'
+            if (Test-Path -LiteralPath $repoDll)
+            {
+                $repoHash = (Get-FileHash -LiteralPath $repoDll -Algorithm SHA256).Hash.Substring(0, 8)
+                $syncState = if ($repoHash -eq $liveHash) { '与仓库一致' } else { "与仓库不一致(仓 $repoHash)" }
+            }
+            $dllInfo = "$liveDate [$liveHash] $syncState"
+        }
+        catch { $dllInfo = '未知(读取失败)' }
+    }
+    Write-Host "仓库 $repoVer;pwsh $($PSVersionTable.PSVersion);dll 活件 $dllInfo"
 }
 function Deploy-CompletionStack
 {
@@ -2708,7 +2801,7 @@ function Deploy-CompletionStack
     .SYNOPSIS
     新机一键补全栈:PSFzf/CompletionPredictor 模块 + fzf/zoxide 二进制 + 版本门(+可选 PSCompletions)。
     .DESCRIPTION
-    Test-NewMachineReadiness 只读体检,本函数动手补:缺的模块直装,二进制有 scoop 就装、无则给命令;
+    Test-PsEnvReadiness 只读体检,本函数动手补:缺的模块直装,二进制有 scoop 就装、无则给命令;
     pwsh 不够 7.5 只警告不停手(CxxuPredictor 用不上,其它照常);-WhatIf 空跑看动作,零副作用。
     自研 CxxuPredictor 随仓库零安装,不在这里装。装完开新终端跑 init,首跑自建缓存。
     .EXAMPLE
@@ -2770,4 +2863,100 @@ function Deploy-CompletionStack
         }
     }
     Write-Host '补全栈就绪:开新终端跑 init,首跑自建缓存(Ctrl+R/z);开关 $env:PsFzf/$env:PsZoxide'
+}
+function Update-CxxuPsModules
+{
+    <#
+    .SYNOPSIS
+    更新到新版本:fetch 看 dll 变不变→拉→分类报告(要不要重开一目了然)。
+    .DESCRIPTION
+    dll 外置($HOME/.cxxu/bin)后仓库版从不被加载,git pull 永不撞锁,本函数只管拉和报告:
+    fetch(只读)→diff 看 dll 变不变→NoProfile 子进程 pull --ff-only(不用 cmd 也行)。
+    拉完带 dll 变更:必须重开终端(内存里还是旧代码,ipmox 刷不动;新会话 loader 自动同步外置);
+    只有 psm1 变更:ipmox 一把梭。顺序:本函数 → (dll 变了就)重开终端 → init。
+    -Force(dll 变更时深度激活):跳过确认直接关会话重开一条龙(变量会丢!只给确信的人用;
+    不带则先确认再动手)。守护进程因 $env:PsPredictor 门永不咬 dll。
+    .EXAMPLE
+    Update-CxxuPsModules -WhatIf
+    .EXAMPLE
+    Update-CxxuPsModules
+    .EXAMPLE
+    Update-CxxuPsModules -Force
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        # dll 变更时深度激活:跳过确认,关其它会话(含无状态守护,随后重起)→脱钩开新窗→退自己(变量会丢;重定向拒绝)
+        [switch]$Force
+    )
+
+    $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+    if (-not (Get-Command git -ErrorAction SilentlyContinue))
+    {
+        Write-Warning '无 git:Confirm-GitCommand 先装 git'
+        return
+    }
+    if (-not $PSCmdlet.ShouldProcess($repoRoot, 'fetch+pull 更新仓库'))
+    {
+        Write-Host 'WhatIf 模式:未实际拉取。'
+        return
+    }
+    # fetch 只读,不碰工作区,在本会话跑也安全
+    git -C $repoRoot fetch origin 2>&1 | ForEach-Object { "$_" } | Out-Null
+    if ($LASTEXITCODE -ne 0)
+    {
+        Write-Warning 'fetch 失败(没网或远端不对),先查网络,本次不动工作区。'
+        return
+    }
+    $dllWillChange = [bool](git -C $repoRoot diff --name-only HEAD FETCH_HEAD -- 'PS/CxxuPredictor/CxxuPredictor.dll' 2>$null)
+    $out = @(pwsh -NoProfile -NonInteractive -Command "git -C '$repoRoot' pull --ff-only" 2>&1 | ForEach-Object { "$_" })
+    $code = $LASTEXITCODE
+    $text = $out -join "`n"
+    if ($text) { Write-Host $text }
+    if ($code -ne 0)
+    {
+        Write-Warning '拉取失败,看上面输出处理;--ff-only 挡合并,工作区一般干净。'
+        return
+    }
+    if ($dllWillChange)
+    {
+        Write-Warning 'dll 已更新:当前会话内存里还是旧代码(ipmox 刷不动,.NET 程序集不随模块卸载),请重开终端再 init'
+        if (-not $Force)
+        {
+            Write-Host '加 -Force 一条龙重开（跳过确认，变量会丢）；或手动重开终端。'
+            return
+        }
+        if ([Console]::IsOutputRedirected)
+        {
+            Write-Warning '-Force 拒绝在重定向/agent 会话里关当前会话:请交互运行。'
+            return
+        }
+        $go = $PSCmdlet.ShouldProcess('其它 pwsh + 当前会话(含未保存变量)', '全部关闭并重开(变量会丢失!),守护进程自动重起')
+        if (-not $go)
+        {
+            return
+        }
+        Get-Process pwsh -ErrorAction SilentlyContinue | Where-Object { $_.Id -ne $PID } | ForEach-Object {
+            Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+        }
+        if (Get-Command Start-StartupBgProcesses -ErrorAction SilentlyContinue)
+        {
+            Start-StartupBgProcesses
+        }
+        else
+        {
+            Write-Warning '缺 Start-StartupBgProcesses(Startup 模块):守护进程需手动重起。'
+        }
+        $safeHome = $HOME -replace "'", "''"
+        $childCmd = "Wait-Process -Id $PID; Start-Process pwsh -WorkingDirectory '$safeHome'"
+        Start-Process pwsh -NoProfile -NonInteractive -ArgumentList '-Command', $childCmd -WindowStyle Hidden
+        exit
+    }
+    elseif ($text -match 'Already up to date|已经是最新的')
+    {
+        Write-Host '已是最新,无事可做。'
+    }
+    else
+    {
+        Write-Host '只有文本变更:跑 ipmox 刷新即可(会话变量不丢)。'
+    }
 }

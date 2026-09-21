@@ -2,7 +2,9 @@
 
   <!-- 自研命令名 predictor:只做“裸命令名前缀查缓存表”,微秒级,20ms 预算内。
        离线可构建:唯一引用是本机 pwsh 自带的 SMA,无 NuGet 包。
-       pwsh 7.5 = .NET 9 运行时,故 TargetFramework net9.0。 -->
+       TargetFramework net9.0(2026-09-21 实测 net8.0 编不过:本机 7.5 的 SMA 自带
+       System.Runtime 9 引用,CS1705;覆盖 7.4 需 7.4 的 SMA 或 PowerShellStandard
+       (缺预测子系统 API),暂不做)。 -->
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>

@@ -355,7 +355,8 @@ function Import-ModuleForce
     foreach ($module in $modules)
     {
         # 纵深防御:import 有副作用的仍跳过(黑名单,和白名单叠加)
-        # completion:注册补全的模块谨慎重载;predictor:运行时注册+缓存表由加载器一次性建好,裸重载只恢复注册不恢复表,会静默放空
+        # completion:注册补全的模块谨慎重载;predictor:CxxuPredictor 只能由 loader 按外置路径装载,
+        # 裸重载按名装出空壳(还注销掉已注册的 predictor),必须跳过,改了它重开终端
         # conda:Conda.psm1 每次 import 都 Rename-Item prompt 为 CondaPromptBackup 再包一层(ChangePs1 缺省真),裸重载=每轮多一层 prompt
         if ($module -like '*completion*' -or $module -like '*predictor*' -or $module -like '*conda*')
         { 

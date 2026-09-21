@@ -252,6 +252,8 @@ function Start-StartupApps
 }
 function Start-StartupBgProcesses
 {
+    # 守护进程用不上 predictor:关掉,子进程继承此环境,永不加载/锁定 dll(交互会话默认开,不受影响)
+    $env:PsPredictor = 'False'
     # # 开机时刷新一下ip缓存(但是开机指出wifi可能会延迟一会儿才链接上,可以靠后执行它)
     #初始化或检查数据文件DataJson
     # 配置半点报时和整点报时后台进程(精简版系统可能没有可用TTS引擎,弹出一个窗口代替,或者弹出一条系统通知更好)
