@@ -408,8 +408,10 @@ Set-PSReadLineOption: 句柄无效。
   跑脚本必抛 `There is no Runspace available...`，隔离实测）；②C# 路全通（dotnet SDK 10.0.201
   在，SMA 离线引用本机 pwsh 的 dll，无需 NuGet）；③建表一次 88ms（2831 命令，走 OnIdle 无感），
   每次按键 C# 前缀过滤 1.6ms（PowerShell 版 13.5ms，20ms 预算擦边，C# 余量 10 倍）。
-  后改 VSCode QuickOpen 式模糊（子序列 + 边界/连击打分 + 空格多片段 AND + 30 封顶；
-  通配符退化忽略，分支删除；3000 条 1.2~6.3ms，仍预算内）。
+  后改 VSCode QuickOpen 式模糊（子序列 + 边界/连击打分 + 30 封顶，3000 条 1.2~6.3ms；
+  空格多片段 AND 仅 API 层有效，活体里空格分词进参数位、CommandName 门直接空；
+  通配符走严格分支回归（`get-*ive` 精确首尾，3000 条 1.9ms；裸 `*` 不放水，残缺括号兜底）；
+  同一插件同一张表，不另起（另起要复制门/表/注册，双倍成本）。
 - 实现：`PS/CxxuPredictor/`（`src/` 三文件 153 行 + `CxxuPredictor.dll` 7.6KB +
   `.psd1` 零导出；构建 `dotnet build -c Release`，27s，0 警告）。
   只处理裸命令名 token（参数/路径/`git` 留给 CompletionPredictor，不重叠），

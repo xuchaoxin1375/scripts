@@ -8,8 +8,8 @@ using System.Threading;
 
 namespace CxxuPredictor
 {
-    // 命令名 predictor:VSCode QuickOpen 式模糊,只处理“裸命令名 token”,
-    // 通配符退化忽略(*ser→ser),空格分多片段 AND(如 get ser),按分取前 30;
+    // 命令名 predictor:VSCode QuickOpen 式模糊 + 严格通配符,都只处理“裸命令名 token”,
+    // 含通配符(*/?/[],如 get-*ive)走 WildcardPattern 精确语义;其余走模糊(空格多片段 AND 仅 API 层);
     // 参数/路径/git 交给 CompletionPredictor,不重叠。
     // 缓存表 import 时建一次(约百毫秒,走 OnIdle 延迟加载,用户无感);
     // 每次按键只是内存前缀过滤,微秒级,远小于 20ms 超时。
@@ -26,7 +26,7 @@ namespace CxxuPredictor
 
         public Guid Id => _guid;
         public string Name => "CxxuCommand";
-        public string Description => "Fuzzy match (VSCode QuickOpen style) on cached command names (command-name position only).";
+        public string Description => "Fuzzy + strict wildcard match on cached command names (command-name position only).";
 
         public SuggestionPackage GetSuggestion(PredictionClient client, PredictionContext context, CancellationToken cancellationToken)
         {
@@ -61,8 +61,40 @@ namespace CxxuPredictor
             {
                 return result;
             }
-            // 通配符退化忽略(*ser→ser,保持旧手感);空格切多片段,全中才算(AND)
-            string query = prefix.Replace("*", string.Empty).Replace("?", string.Empty);
+            // 含通配符走严格语义(如 get-*ive 精确首尾);裸 * 不放水;残缺括号异常兜底,线程永不抛
+            if (WildcardPattern.ContainsWildcardCharacters(prefix))
+            {
+                try
+                {
+                    if (prefix.Replace("*", string.Empty).Replace("?", string.Empty).Length == 0)
+                    {
+                        return result;
+                    }
+                    WildcardPattern pattern = new WildcardPattern(prefix, WildcardOptions.IgnoreCase);
+                    foreach (string c in commands)
+                    {
+                        if (result.Count >= max)
+                        {
+                            break;
+                        }
+                        if (string.Equals(c, prefix, StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
+                        if (pattern.IsMatch(c))
+                        {
+                            result.Add(c);
+                        }
+                    }
+                }
+                catch
+                {
+                    result.Clear();
+                }
+                return result;
+            }
+            // 模糊:空格切多片段,全中才算(AND;活体里空格分词到不了这,见文档)
+            string query = prefix;
             string[] fragments = query.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
             if (fragments.Length == 0)
             {

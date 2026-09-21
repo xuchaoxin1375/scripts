@@ -141,7 +141,9 @@ p -Force                    # 看 init 分步耗时，定位慢项
   开新终端输个高频前缀（如 `git che`）对照一下：有候选 = 一切正常。
 - 想要 zsh-autocomplete 那种悬浮面板：原生没有（predictor 须 20ms 内返回，慢同步的
   TabExpansion2 镜像不了）。**自研 predictor 已落地并真机验证通过**（`CxxuPredictor`，
-  只做裸命令名模糊（VSCode QuickOpen 式：`get ser` 双片段、`chitem` 子序列都中；`get-child` 出 `[CxxuCommand]` 来源行；卸载用 `Remove-Module CxxuPredictor`）。
+  只做裸命令名：模糊（`getser` 连写子序列、`chitem` 跨驼峰）+ 严格通配符（`get-*ive` 精确首尾；
+  注意空格天然分词——光标后 token 进了参数位，预测器的 CommandName 门直接返回空，
+  所以多片段 AND 只存在于 API 层，活体里请连写；`get-child` 出 `[CxxuCommand]` 来源行；卸载用 `Remove-Module CxxuPredictor`）。
   重型外挂不再考虑（`inshellisense` 用户已否决；`hintshell`/`PSCue`/`PSPredictor` v2 观察）。
 - 关预测：`predictNo`（当会话有效）；切回行内视图：`Set-PSReadLineOption -PredictionViewStyle InlineView`
   或按 `F2` 切换。
