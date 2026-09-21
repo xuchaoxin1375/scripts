@@ -222,8 +222,39 @@ namespace CxxuPredictor
             return names;
         }
 
-        public bool CanAcceptFeedback(PredictionClient client, PredictorFeedbackKind feedback) => false;
-        public void OnSuggestionDisplayed(PredictionClient client, uint session, int countOrIndex) { }
+        // Tab 侧公开入口:独立缓存表(与 predictor 实例表互不干扰,本进程首次调用时建表);
+        // 给 TabExpansion2 包装调用,纯读共享表,并发安全,失败返回空数组永不抛。
+        private static readonly object _tabLock = new object();
+        private static List<string> _tabCommands;
+        public static string[] CompleteCommand(string word, int maxResults)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(word) || maxResults <= 0)
+                {
+                    return Array.Empty<string>();
+                }
+                List<string> table = _tabCommands;
+                if (table is null)
+                {
+                    lock (_tabLock)
+                    {
+                        if (_tabCommands is null)
+                        {
+                            _tabCommands = LoadCommandNames();
+                        }
+                        table = _tabCommands;
+                    }
+                }
+                return FilterCommands(table, word, maxResults).ToArray();
+            }
+            catch
+            {
+                return Array.Empty<string>();
+            }
+        }
+
+        public bool CanAcceptFeedback(PredictionClient client, PredictorFeedbackKind feedback) => false;        public void OnSuggestionDisplayed(PredictionClient client, uint session, int countOrIndex) { }
         public void OnSuggestionAccepted(PredictionClient client, uint session, string acceptedSuggestion) { }
         public void OnCommandLineAccepted(PredictionClient client, IReadOnlyList<string> history) { }
         public void OnCommandLineExecuted(PredictionClient client, string commandLine, bool success) { }

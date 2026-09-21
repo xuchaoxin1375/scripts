@@ -365,6 +365,13 @@ function Register-PsUxLazyLoad
                 Import-Module $cxxuLiveDll -Global -ErrorAction SilentlyContinue
             }
         }
+        # 自研 Tab 命令名补全(独立插件 CxxuTab:TabExpansion2 包装,命令名位合并 dll 模糊结果,
+        # 其余位置透传;门控逐调用,不装/关了都零影响;启停管理看 Enable/Disable-PsPlugin)
+        if ($env:PsTab -notmatch '^(False|0|No|Off)$')
+        {
+            # -Global:函数内 import 默认装成嵌套模块(Get-Module 列不出),强制顶层
+            Import-Module CxxuTab -Global -ErrorAction SilentlyContinue
+        }
         # zoxide:init 输出缓存到文件,只有二进制更新才重建(仿 conda 缓存套路)
         if ($env:PsZoxide -notmatch '^(False|0|No|Off)$')
         {

@@ -663,7 +663,7 @@ function Import-CxxuConfig
         Write-Warning "用户配置读失败($Path):$($_.Exception.Message);已忽略,用默认。"
         return
     }
-    foreach ($key in @('PsFzf', 'PsZoxide', 'PsPredictor', 'PsShowProgress', 'PsGithubMirror'))
+    foreach ($key in @('PsFzf', 'PsZoxide', 'PsPredictor', 'PsTab', 'PsShowProgress', 'PsGithubMirror'))
     {
         if (-not [string]::IsNullOrEmpty((Get-Item "env:$key" -ErrorAction SilentlyContinue).Value)) { continue }
         if (-not $data.Contains($key)) { continue }
@@ -710,10 +710,112 @@ function New-CxxuConfigTemplate
     PsFzf          = $true  # PSFzf Ctrl+T 文件 / Ctrl+R 历史
     PsZoxide       = $true  # zoxide z 跳转
     PsPredictor    = $true  # CxxuPredictor 命令名预测(守护进程由启动链强制 False,不受此影响)
+    PsTab          = $true  # CxxuTab 命令名 Tab 模糊补全(独立插件,见 Enable/Disable-PsPlugin)
     PsShowProgress = $true  # init 启动进度条
     PsGithubMirror = ''     # 为空走默认/静默测速;填镜像前缀如 'https://gh-proxy.com'
 }
 '@ | Set-Content -LiteralPath $Path -Encoding utf8NoBOM
         Write-Host "模板已写 $Path"
+    }
+}
+function Set-CxxuConfigValue
+{
+    # 写用户配置文件单键(供 Enable/Disable-PsPlugin -Persist 用,不导出):
+    # 行级改写(保注释保其余键);无键则追到 } 前;无文件先建模板。失败警告,永不抛。
+    param([string]$Path, [string]$Key, [bool]$Value)
+    try
+    {
+        if (-not (Test-Path -LiteralPath $Path)) { New-CxxuConfigTemplate -Path $Path }
+        $text = Get-Content -LiteralPath $Path -Raw -ErrorAction Stop
+        $val = if ($Value) { '$true' } else { '$false' }
+        $ls = $text -split '\r?\n'
+        $done = $false
+        for ($i = 0; $i -lt $ls.Count; $i++)
+        {
+            if ($ls[$i] -match ('^(?<ind>\s*)' + [regex]::Escape($Key) + '(?<rest>\s*=).*?(?<cmt>\s*#.*)?$'))
+            {
+                $ls[$i] = $Matches.ind + $Key.PadRight(15) + '= ' + $val + $Matches.cmt
+                $done = $true
+                break
+            }
+        }
+        if (-not $done)
+        {
+            $at = @($ls).Count - 1
+            for ($k = $ls.Count - 1; $k -ge 0; $k--) { if ($ls[$k] -match '^\s*\}\s*$') { $at = $k; break } }
+            if ($at -le 0) { $ls = @("$Key = $val") + @($ls) }
+            else { $ls = @($ls[0..($at - 1)]) + @("$Key = $val") + @($ls[$at..($ls.Count - 1)]) }
+        }
+        Set-Content -LiteralPath $Path -Value ($ls -join "`n") -Encoding utf8NoBOM -NoNewline
+        Write-Host "用户配置已持久化: $Key=$val($Path)"
+    }
+    catch
+    {
+        Write-Warning "用户配置持久化失败($Path):$($_.Exception.Message)"
+    }
+}
+function Disable-PsPlugin
+{
+    <#
+    .SYNOPSIS
+    停用体验插件(当会话生效;加 -Persist 长期禁用,重开也关)。
+    .DESCRIPTION
+    插件注册表：Fzf(PSFzf 快捷键)/Zoxide(z 跳转)/Predictor(命令名 ListView 预测)/
+    Tab(CxxuTab 命令名 Tab 模糊)。停用只关本命令的合并/加载，引擎原生行为不受影响；
+    持开关逐调用判定，无需重载。-Persist 写 ~/.cxxu/config.psd1（行级替换，保注释）。
+    .EXAMPLE
+    Disable-PsPlugin Tab
+    .EXAMPLE
+    Disable-PsPlugin Predictor -Persist
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        # 插件名(Tab 补全可用)
+        [Parameter(Mandatory)]
+        [ValidateSet('Fzf', 'Zoxide', 'Predictor', 'Tab')]
+        [string]$Name,
+        # 写入用户配置文件,长期有效(否则只关当会话)
+        [switch]$Persist,
+        # 配置文件路径(默认 ~/.cxxu/config.psd1)
+        [string]$Path = (Join-Path (Join-Path $HOME '.cxxu') 'config.psd1')
+    )
+    $key = @{ Fzf = 'PsFzf'; Zoxide = 'PsZoxide'; Predictor = 'PsPredictor'; Tab = 'PsTab' }[$Name]
+    if ($PSCmdlet.ShouldProcess($Name, '停用插件'))
+    {
+        Set-Item "env:$key" -Value 'False'
+        Write-Host "$Name 已停用(当会话)。"
+        if ($Persist) { Set-CxxuConfigValue -Path $Path -Key $key -Value $false }
+    }
+}
+function Enable-PsPlugin
+{
+    <#
+    .SYNOPSIS
+    启用体验插件(当会话生效;加 -Persist 长期启用,重开也开)。
+    .DESCRIPTION
+    启用是显式开(环境变量 True,盖过配置文件)。Tab/Predictor 即时生效(逐调用判定,
+    无需重载);Fzf/Zoxide 下次 OnIdle 加载时生效(已加载的不受影响,或重开终端)。
+    .EXAMPLE
+    Enable-PsPlugin Tab
+    .EXAMPLE
+    Enable-PsPlugin Predictor -Persist
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        # 插件名(Tab 补全可用)
+        [Parameter(Mandatory)]
+        [ValidateSet('Fzf', 'Zoxide', 'Predictor', 'Tab')]
+        [string]$Name,
+        # 写入用户配置文件,长期有效(否则只开当会话)
+        [switch]$Persist,
+        # 配置文件路径(默认 ~/.cxxu/config.psd1)
+        [string]$Path = (Join-Path (Join-Path $HOME '.cxxu') 'config.psd1')
+    )
+    $key = @{ Fzf = 'PsFzf'; Zoxide = 'PsZoxide'; Predictor = 'PsPredictor'; Tab = 'PsTab' }[$Name]
+    if ($PSCmdlet.ShouldProcess($Name, '启用插件'))
+    {
+        Set-Item "env:$key" -Value 'True'
+        Write-Host "$Name 已启用(当会话)。"
+        if ($Persist) { Set-CxxuConfigValue -Path $Path -Key $key -Value $true }
     }
 }

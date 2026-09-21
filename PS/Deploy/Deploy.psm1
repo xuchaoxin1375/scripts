@@ -2916,6 +2916,8 @@ function Deploy-CompletionStack
         }
     }
     Write-Host '补全栈就绪:开新终端跑 init,首跑自建缓存(Ctrl+R/z);开关 $env:PsFzf/$env:PsZoxide'
+    # 用户配置模板兜底(新机一键装后就有文件可改;已存在则 no-op;-WhatIf 下只显示意图)
+    if (Get-Command New-CxxuConfigTemplate -ErrorAction SilentlyContinue) { New-CxxuConfigTemplate }
 }
 
 function doctor
@@ -2995,8 +2997,10 @@ function doctor
         & $dchk 'predictor' $same $(if ($same) { '已加载且与仓库一致' } else { '内存中是旧版本：请重开终端，活件已可同步（Sync-CxxuPredictor 不受锁限制）' })
     }
     # 三门控 + 懒加载
-    $gates = @('PsFzf', 'PsZoxide', 'PsPredictor') | ForEach-Object { "$_=$([string]::IsNullOrEmpty((Get-Item "env:$_" -ErrorAction SilentlyContinue).Value) ? '默认开' : (Get-Item "env:$_").Value)" }
+    $gates = @('PsFzf', 'PsZoxide', 'PsPredictor', 'PsTab') | ForEach-Object { "$_=$([string]::IsNullOrEmpty((Get-Item "env:$_" -ErrorAction SilentlyContinue).Value) ? '默认开' : (Get-Item "env:$_").Value)" }
     & $dchk '门控' $true ($gates -join ' ')
+    $tabWrapped = try { (Get-Command TabExpansion2 -CommandType Function -ErrorAction Stop).ScriptBlock.ToString() -match 'CxxuTab' } catch { $false }
+    & $dchk 'Tab 包装' ($tabWrapped -or $env:PsTab -match '^(False|0|No|Off)$') $(if ($tabWrapped) { 'CxxuTab 包装已装入' } elseif ($env:PsTab -match '^(False|0|No|Off)$') { '开关已关闭，按需开启' } else { '未装入：执行 Install-CxxuTabWrapper 或重开终端' })
     & $dchk '懒加载' ([bool](Get-Module PSFzf) -or $env:PsFzf -match '^(False|0|No|Off)$') $(if (Get-Module PSFzf) { 'PSFzf 已装入(OnIdle 已触发)' } elseif ($global:PsUxOnIdleRegistered) { 'OnIdle 已注册,等一拍' } else { '没注册:跑 Register-PsUxLazyLoad' })
     # 守护进程代理:Data.json 新鲜度(>5 分钟没写=守护可能没跑)
     $dj = Join-Path $HOME 'Data.json'

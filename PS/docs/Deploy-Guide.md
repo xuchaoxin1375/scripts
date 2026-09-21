@@ -1,6 +1,6 @@
 # 新机部署指南（Deploy Guide）
 
-> 把这套 54 模块组合搬到另一台机器。先跑 `Test-PsEnvReadiness` 看缺口，再按节补。
+> 把这套 55 模块组合搬到另一台机器。先跑 `Test-PsEnvReadiness` 看缺口，再按节补。
 > 在新机器上还没有模块路径时，先：`Import-Module C:\repos\scripts\PS\Deploy\Deploy.psd1`
 
 > **极简版（只要补全栈，共 2 条命令）**：第 1 条落仓库+环境，第 2 条装补全栈；下面各节是分步详解。
@@ -101,7 +101,7 @@ conda 缓存（`~/.conda_hook_cache.ps1`）与 zoxide 缓存（`~/.zoxide_init_c
 ## 10. 多设备差异点（每台都要看一眼）
 
 - `PwshVar/confs/VarSet1.conf` 的 `$PC*` 主机名：新机器加自己的，不认识的别删。
-- 功能开关：`~/.cxxu/config.psd1`（仓库外，本机生效；`New-CxxuConfigTemplate` 生成模板；优先级环境变量 > 配置文件 > 默认开）。新机器要差异化开关，复制这个文件比改注册表轻。
+- 功能开关：`~/.cxxu/config.psd1`（仓库外，本机生效；`New-CxxuConfigTemplate` 生成模板，`Deploy-CompletionStack` 收尾自动补建；`Enable/Disable-PsPlugin -Persist` 单键管理；优先级环境变量 > 配置文件 > 默认开）。新机器要差异化开关，复制这个文件比改注册表轻。
 - conda 路径：profile 缓存块里的 `$condaExe`（scoop 版在 `C:\scoop\apps\miniforge\...`，改安装位置要同步）。
 - 镜像/代理：`Get-SelectedMirror`、`Update-GithubHosts`、`Deploy-ScoopApps` 按当地网络选。
 - `Test-PsEnvReadiness` 收尾再跑一遍，必备全绿。默认只做本地对比（零网络）；
@@ -122,7 +122,7 @@ conda 缓存（`~/.conda_hook_cache.ps1`）与 zoxide 缓存（`~/.zoxide_init_c
   `Get-AvailableGithubMirrors` 可测速）；不设则走默认 `gh-proxy.com`，模块内调用走
   `Get-SelectedMirror -Silent` 静默测速（会话缓存一次）。
 - **统一出口**：模块内拼 raw 地址一律 `Get-RepoRawUrl -Path 'PS/...'`（自动套前缀），
-  别手拼；独立脚本（Deploy-*.ps1，模块还没加载）内联同策略三行（见 `Deploy-GitForWindows.ps1`）。
+  别手拼；独立脚本（`Deploy-*.ps1`，模块还没加载）内联同策略三行（见 `Deploy-GitForWindows.ps1`）。
 
 ## 13. 更新到新版本
 

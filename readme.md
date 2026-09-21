@@ -17,4 +17,4 @@ Details:
 ## 详情
 
 - 中文完整文档[readme_zh.md](readme_zh.md)
-- PS 模块集（54 模块）：agent/维护者先读 [PS/AGENTS.md](./PS/AGENTS.md)，再碰代码
+- PS 模块集（55 模块）：新用户先读[文档入口地图](./PS/docs/README.md)，agent/维护者先读 [PS/AGENTS.md](./PS/AGENTS.md)，再碰代码

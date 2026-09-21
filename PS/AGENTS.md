@@ -2,9 +2,10 @@
 
 ## 先读文档，再碰代码
 本目录 `docs/` 是唯一真相源（若代码注释与文档矛盾，以文档为准，顺手修注释）：
+0. `docs/README.md` —— 文档入口地图（新用户按任务分流，别全读）
 1. `docs/Agent-Handoff.md` —— 踩坑清单（必读，尤其 §3；能省至少一次返工）
 2. `docs/Module-Conventions.md` —— 命名/编码铁律（§1 单横线、§8 换行）+ 文档语言（§11 术语、§12 行文）
-3. `docs/Module-Map.md` —— 54 模块画像（找功能先查表，别 grep 大海捞针）
+3. `docs/Module-Map.md` —— 55 模块画像（找功能先查表，别 grep 大海捞针）
 4. `docs/Feature-Guide.md` —— 用户手册 + FAQ（动用户可见行为先看）
 5. `docs/Startup-Optimization.md` —— 性能基线 + 搬迁史（动热路径先看基线表）
 6. `docs/Deploy-Guide.md` —— 新机部署（仅部署相关）

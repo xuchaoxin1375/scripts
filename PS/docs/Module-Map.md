@@ -1,6 +1,6 @@
 # 模块地图（Module Map）
 
-> 54 个自有模块，全在 `PS/<Name>/<Name>.psm1` + 同名 `.psd1`
+> 55 个自有模块，全在 `PS/<Name>/<Name>.psm1` + 同名 `.psd1`
 >（唯一例外 `CxxuPredictor`：二进制模块，`.psd1` + `.dll` + `src/`，无 `.psm1`）。
 > 规范见 `Module-Conventions.md`，性能史见 `Startup-Optimization.md`。
 > 图例：🔥 启动/提示热路径（改动先跑终验），❄️ 冷路径（按需加载）。
@@ -9,9 +9,10 @@
 
 | 模块 | 行数/函数 | 职责 |
 |---|---|---|
-| `Init` | 719/15 | 启动编排：`init`/`p` 入口、8 步任务表（`-Timing` 看耗时）、`PsEnvMode` 等级跟踪、`Optimize-PsHistory`、用户配置（`Import/New-CxxuConfig*`） |
+| `Init` | 821/17 | 启动编排：`init`/`p` 入口、8 步任务表（`-Timing` 看耗时）、`PsEnvMode` 等级跟踪、`Optimize-PsHistory`、用户配置（`Import/New-CxxuConfig*`）、插件启停（`Enable/Disable-PsPlugin`） |
 | `Prompt` | 723/32 | 提示符：`prompt` 入口、`Prompt*` 主题、`Write-*` 片段、`Set-PsPrompt`（`-Persist` 才写注册表）、电池 30s 缓存 |
-| `CxxuPredictor` | 231/0导出 | 自研命令名 predictor（模糊+严格通配，二进制：dll 发布件 + src；活件外置 `~/.cxxu/bin`，loader 同步装载；OnIdle 加载） |
+| `CxxuPredictor` | 262/0导出 | 自研命令名 predictor（模糊+严格通配，二进制：dll 发布件 + src；新增 `CompleteCommand` 公开 Tab 接口；活件并排版本 `~/.cxxu/bin`，loader 按指针装载；OnIdle 加载） |
+| `CxxuTab` | 111/1 | 自研 Tab 命令名补全（独立插件：`TabExpansion2` 包装，命令名位合并 dll 模糊结果，参数位透传；门控 `$env:PsTab` 逐调用判定；启停见 `Enable/Disable-PsPlugin`） |
 | `PwshVar` | 329/6 | `.conf` 变量文件加载（预编译缓存，`Update-PwshVars -NoCache` 回退） |
 | `Aliases` | 68/2 | 别名文件加载（`alias_core`/`functions`/`shortcuts`，逐行 iex 是故意的） |
 | `ArgumentCompletion` | 115/2 | 参数补全注册（`prompt` 已迁出，只剩补全） |
@@ -56,7 +57,7 @@
 
 | 模块 | 行数/函数 | 职责 |
 |---|---|---|
-| `Deploy` | 3018/46 | 一键部署：scoop/github hosts/python/conda/开机任务等；`Get-SelectedMirror`/`Get-GithubMirrorPrefix`/`Get-RepoRawUrl`、`Test-PsEnvReadiness`（版本表尾 + `-CheckRemote` 远端对比 + 建议行）、`doctor`（统一诊断入口）在此 |
+| `Deploy` | 3020/46 | 一键部署：scoop/github hosts/python/conda/开机任务等；`Get-SelectedMirror`/`Get-GithubMirrorPrefix`/`Get-RepoRawUrl`、`Test-PsEnvReadiness`（版本表尾 + `-CheckRemote` 远端对比 + 建议行）、`doctor`（统一诊断入口）在此 |
 | `Development` | 340/22 | Django 快捷命令、ssh 别名、文本清理 |
 | `Git` | 505/15 | git 日常：浅克隆、一键提交、镜像加速下载 |
 | `MySql` | 984/13 | MySQL 库表备份/建删/查询 |

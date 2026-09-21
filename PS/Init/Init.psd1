@@ -17,6 +17,8 @@
         'Optimize-PsHistory',
         'Import-CxxuConfig',
         'New-CxxuConfigTemplate',
+        'Disable-PsPlugin',
+        'Enable-PsPlugin',
         'Update-PwshEnv',
         'Test-PsEnvMode',
         'Update-PwshvarsIfNotYet',

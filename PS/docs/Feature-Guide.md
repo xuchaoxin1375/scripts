@@ -28,6 +28,7 @@ Add-EnvVar -EnvVar PSModulePath -NewValue $p -Verbose
 | `doctor` | 统一诊断入口（定位问题先执行它）：先跑 `Test-PsEnvReadiness`（安装态），再查运行态（init 错误/PSReadLine/历史大小/predictor/门控/懒加载/守护/仓库脏），只读，默认零网络 |
 | `New-CxxuConfigTemplate` | 生成用户配置模板（`~/.cxxu/config.psd1`，仓库外本机生效） |
 | `Import-CxxuConfig` | 读用户配置（init 首步自动调；优先级：环境变量 > 配置文件 > 默认开） |
+| `Enable-PsPlugin` / `Disable-PsPlugin` | 体验插件启停（Fzf/Zoxide/Predictor/Tab，当会话生效；加 `-Persist` 长期有效，写 `~/.cxxu/config.psd1`） |
 
 环境等级（`$PsEnvMode`，`Test-PsEnvMode` 查询）：core(1) 核心变量 → vars(2) 全量变量 →
 env(3) 变量+别名。`Update-PwshEnvIfNotYet` 按需补齐，不重复干活。
@@ -42,7 +43,7 @@ env(3) 变量+别名。`Update-PwshEnvIfNotYet` 按需补齐，不重复干活�
 # 2) 把函数名加进同目录 .psd1 的 FunctionsToExport（位置随意；GUID/版本不用动，日常改保持 1.0.4）
 # 3) 当前会话生效（不用重启 shell；核心价值=保住当前会话变量上下文，新开 pwsh 会丢一部分信息）：
 Sync-ModuleManifest <模块名> -Reload  # 偷懒版：自动把 .psm1 新增函数补进 manifest 并重载，一条搞定
-Sync-ModuleManifest -Reload            # 不指定模块 = 全部 54 个自有模块（只打印有变化的+汇总；Prompt 跳过重载防嵌套）
+Sync-ModuleManifest -Reload            # 不指定模块 = 全部 55 个自有模块（只打印有变化的+汇总；Prompt 跳过重载防嵌套）
 # -Name 支持 Tab 补全（空字列出全部）；单模块想手动挡就继续 Import-Module <模块名> -Force -DisableNameChecking
 # （-DisableNameChecking 定向压掉双横线警告，见 FAQ；其它警告不受影响）
 ipmox                           # 单命令版（推荐）：同上但一步到位（-Global 重装+Pwsh 殿后）
@@ -138,6 +139,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 |---|---|
 | `CompletionPredictor`（参数/路径预测，命令名位置源码级跳过） | 一直在用 |
 | `CxxuPredictor`（自研命令名预测：模糊连写 + 严格通配，3000 条 1~6ms，20ms 预算内） | **已启用**（详见 §8） |
+| `CxxuTab`（自研命令名 Tab 补全：独立插件，命令名位合并模糊结果，参数位零干扰） | **已启用**（开关 `$env:PsTab`，启停见 `Enable/Disable-PsPlugin`） |
 | `PSFzf`（Ctrl+T 文件 / Ctrl+R 历史） | **已启用**（Tab 不动，仍是 MenuComplete） |
 | `zoxide`（`z` 跳转，init 缓存 `~/.zoxide_init_cache.ps1`） | **已启用** |
 | `PSCompletions`（~200 命令的参数补全库） | 可选：已装 5.6.9；profile 里两行钩子默认注释着，解开即用 |
@@ -192,11 +194,40 @@ p -Force                    # 看 init 分步耗时，定位慢项
 
 | 层 | 按键/视图 | 来源 | 说明 |
 |---|---|---|---|
-| Tab 全量索引 | `Tab`（MenuComplete） | 引擎全量：函数/别名/文件/参数 | 和下面两层**不是同一套索引**，结果不一样正常 |
+| Tab 全量索引 | `Tab`（MenuComplete） | 引擎全量：函数/别名/文件/参数 | 命令名位经 `CxxuTab` 包装增强（模糊连写可选中，参数位零干扰；开关 `$env:PsTab`）；和下面两层**不是同一套索引**，结果不一样正常 |
 | ListView 预测 | 输入时自动浮现（`HistoryAndPlugin`） | 历史（最多 10 条，硬上限）+ 插件 | 插件= `CompletionPredictor`（参数/路径，命令名位跳过）+ `CxxuPredictor`（命令名，§8）；须 20ms 内返回，实测 3000 条 1~6ms |
 | 模糊搜历史/文件 | `Ctrl+R` / `Ctrl+T`（PSFzf） | 全量历史/文件 | 历史翻不完用这个，不走 10/50 上限 |
 | 参数值补全 | `Tab` 在参数位 | `PSCompletions`（~200 命令库，可选）+ 自带 `ArgumentCompleter`（EnvVar 系、`Get-Json -Key` 等，`Set-ArgumentCompleter` 批量注册） | PSCompletions 用法：解开 profile 里注释的两行 |
 
-- 相关命令：`doctor`（统一诊断入口，定位问题先执行它）、`Register-PsUxLazyLoad [-Now]`（延迟加载入口）、 `Deploy-CompletionStack [-WhatIf/-IncludePSCompletions/-SkipBinaries]`（新机一键装栈）、 `Test-PsEnvReadiness`（查缺）、`predictNo`（当会话关预测）。
+- 相关命令：`doctor`（统一诊断入口，定位问题先执行它）、`Register-PsUxLazyLoad [-Now]`（延迟加载入口）、
+  `Deploy-CompletionStack [-WhatIf/-IncludePSCompletions/-SkipBinaries]`（新机一键装栈）、
+  `Test-PsEnvReadiness`（查缺）、`predictNo`（当会话关预测）、
+  `Enable-PsPlugin` / `Disable-PsPlugin`（插件启停，Fzf/Zoxide/Predictor/Tab）。
 - **历史膨胀（Ctrl+R 变慢）**：`Optimize-PsHistory -WhatIf` 先看诊断（总数/去重率/重复 Top5）， `Optimize-PsHistory [-KeepLast 3000]` 动手（去重只留最后一次 + 去杂 + 截断，旧行进同目录 `.archive-时间.txt`，原文件留 `.bak-时间`，均可恢复）。治本：init 已开 `HistoryNoDuplicates`（新命令不再重复入库）+ `MaximumHistoryCount 3000`。注意历史文件无时间戳，切割按新旧顺序（文件尾=最近）；当前会话内存里的旧历史重启才换新。
 - 新终端对照：输高频前缀（如 `git che`）有候选 = 一切正常；`get-child` 这类没候选多半是历史里没敲过 + 命令名插件只认连写（空格分词进参数位，见 §8）。
+
+## 11. 手动启用清单（自动导入之外的东西）
+
+> 分界：`PSModulePath` 自动发现 + `init` + 延迟加载 + 缓存自建都是自动的，
+> 以下只有"缺了才管"，`Test-PsEnvReadiness` 的"可选"行即体检口（`doctor` 同步可见）。
+
+| 功能 | 默认状态 | 手动启用 | 说明 |
+|---|---|---|---|
+| `PSCompletions`（~200 命令参数补全） | 未装，profile 两行钩子注释中 | `Confirm-ModuleInstalled -ModuleName PSCompletions -Install`，再解开 profile 第 4~5 行 | 旧注"可能导致 `ipmof|iex` 报错"已过期（白名单+`ipmox` 时代），现可放心开 |
+| `fzf` / `zoxide` 二进制 | 无则 `Ctrl+T/R`、`z` 不可用 | `scoop install fzf zoxide`（或 `Deploy-CompletionStack` 一键） | 装完重开终端，init 缓存自建 |
+| `scoop` 本体 | 无则二进制系列全停 | 按官网装，或 `Deploy-ScoopByGithubMirrors`（国内） | 装完补 buckets（`Add-ScoopBuckets`） |
+| `conda` | 无则 prompt  conda 段静默缺失 | `Deploy-MiniforgeConfig`；`$condaExe` 路径按机器对（profile 缓存块） | 缓存 `~/.conda_hook_cache.ps1`，首跑慢一次 |
+| `fnm` + 钩子 | 未装，profile 末行注释中 | `scoop install fnm`，再解开 profile 末行 | node 用户才需要 |
+| `scoop-search` 钩子 | profile 6 行注释中 | 有 `scoop-search` 才解开（`--hook` 注入） | 无则不用管 |
+| `argc` 整块 | 缺二进制，profile 8 行注释中 | 先装 argc + `C:\repos\argc-completions` 仓库，再解开 | 不全则保持注释 |
+| `carapace-bin` / `posh-git` | 未装 | 逃生/按需：`scoop install carapace-bin`；只要 git Tab 才装 posh-git | 决策见 §7 |
+| prompt 主题持久化 | 当会话有效，重开复原 | `Set-PsPrompt -version <…> -Persist`（写注册表） | 临展用 `dm` 切极简，不持久化 |
+| 开机任务 + 守护进程 | 未注册 | `Start-StartupTasks`（或 `Deploy-StartupTasks` 部署） | 报时/IP 守护，无状态，`-Force` 可杀 |
+| WT 设置下发 | 仓库 `Config/wtConf*.json` 仅供参考 | `Deploy-WtSettings` | 线上 WT 无自定义 profile 时才需要 |
+| github hosts 定时更新 | 未装 | `Deploy-GithubHostsAutoUpdater` | hosts 拉胯地区按需 |
+| 镜像持久化 | 默认自动（静默测速+缓存） | `$env:PsGithubMirror` 持久化（`Add-EnvVar`）指定镜像 | 出国/回国切换用 |
+| 开关组 | 默认全开 | `~/.cxxu/config.psd1`（`New-CxxuConfigTemplate` 建模板）或 `Enable/Disable-PsPlugin [-Persist]` | `PsFzf/PsZoxide/PsPredictor/PsTab/PsShowProgress`；环境变量永远优先 |
+| 历史瘦身 | 从不自动执行 | `Optimize-PsHistory [-WhatIf]`（超 8000 行或 500KB 时 `doctor` 会提示） | 备份+归档双保险 |
+| pwsh 7.5 版本门 | 随安装 | `Update-PowerShell`（`CxxuPredictor` 需 net9） | 不够 7.5 只缺 predictor，其余照常 |
+
+- 新机按表自上而下过一遍即可；`Test-PsEnvReadiness` 全绿 + `doctor` 全绿 = 生效确认。

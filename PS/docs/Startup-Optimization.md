@@ -413,8 +413,7 @@ Set-PSReadLineOption: 句柄无效。
   空格多片段 AND 仅 API 层有效，活体里空格分词进参数位、CommandName 门直接空；
   通配符走严格分支回归（`get-*ive` 精确首尾，3000 条 1.9ms；裸 `*` 不放水，残缺括号兜底）；
   同一插件同一张表，不另起（另起要复制门/表/注册，双倍成本）。
-- 实现：`PS/CxxuPredictor/`（`src/` 三文件 153 行 + `CxxuPredictor.dll` 7.6KB +
-  `.psd1` 零导出；构建 `dotnet build -c Release`，27s，0 警告）。
+- 实现：`PS/CxxuPredictor/`（`src/` 三文件 153 行 + `CxxuPredictor.dll` 7.6KB + `.psd1` 零导出；构建 `dotnet build -c Release`，27s，0 警告）。构建输出在 `src/bin/Release`，仓库件是手工发布（覆盖拷贝；仓库源只会被外置之前的老会话锁定，新会话从不加载）。新增 `CompleteCommand` 公开 Tab 接口后 `src/` 262 行。
   只处理裸命令名 token（参数/路径/`git` 留给 CompletionPredictor，不重叠），
   自匹配排除，30 条封顶，无反馈接口；`OnIdle` loader 里 `-Global` 装载。
 - 验证（沙盒）：构建零警告；import 423ms 零错并顶层列出；反射直测过滤逻辑
