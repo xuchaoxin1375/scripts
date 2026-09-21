@@ -973,7 +973,9 @@ function Get-EnvCountedValues
 
     process
     {
-        $inputObject.value -split ';' | catn
+        # 自带编号输出(原调 catn,仅 Basic/examples 下示例文件定义,干净会话不可用,5.1 首爆)
+        $i = 0
+        $inputObject.value -split ';' | ForEach-Object { $i++; '{0,-5} {1}' -f $i, $_ }
     }
 }
 

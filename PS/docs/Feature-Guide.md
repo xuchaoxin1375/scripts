@@ -250,4 +250,6 @@ p -Force                    # 看 init 分步耗时，定位慢项
 - 提示符全对齐：`fast`/`Simple`/`Short`/`Default` 原生可用；`Balance` 的 6 个 Info/Startup 外部依赖在 `Prompt.psm1` 顶部有 5.1 本地兜底（CIM/注册表/内置 cmdlet 同口径，`$script:` 会话缓存：IP 60s/内存 10s/开机 120s/电池复用 30s），渲染与 7.5 逐字一致，稳态约 50ms/次（首屏冷缓存 1.4s 一次性）。
 - 明确不可用：`CxxuPredictor`（net9 dll）、预测视图（需 7.2+ 子系统）、`Deploy` 全系、`Test-PsEnvReadiness` 的 `pwsh 7+` 必备项（在 5.1 下即提示装 pwsh7）。
 - 用法：`powershell -NoProfile` 起 5.1，保证 `PSModulePath` 含模块集后 `init` 即可；`$env:PsTab='Off'` 可关 Tab 包裹。
+- 免手动：跑一次 `Install-Ps51Profile`（`Init` 模块，7/5.1 均可跑），写入 5.1 专属 profile（`~\Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1`，UTF8+BOM，与 7 互不干扰），之后开 `powershell.exe` 自动 `init` + 自定义 prompt；已有 profile 无标记则追加，有标记直接返回（`-Force` 重写）。
+- 修过的 5.1 专属坑：`Get-EnvCountedValues` 曾依赖仅示例文件定义的 `catn`（干净会话必炸），已改为自带编号输出；`Import-CxxuConfig` 的 env 探针改 `Ignore`（`SilentlyContinue` 仍会污染 `$Error`）。
 - 加新代码禁区：兼容集内禁三元 `?:`/行首管道/`Join-String`/`$PSStyle` 裸赋值/`$IsWindows` 裸分支；真机校验：`powershell -NoProfile -File <脚本>` 逐模块 `Import-Module` 全绿 + `init` 零失败（沙箱脚本见交接记录）。

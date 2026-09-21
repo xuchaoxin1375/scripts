@@ -677,7 +677,7 @@ function Import-CxxuConfig
     }
     foreach ($key in @('PsFzf', 'PsZoxide', 'PsPredictor', 'PsTab', 'PsShowProgress', 'PsGithubMirror'))
     {
-        if (-not [string]::IsNullOrEmpty((Get-Item "env:$key" -ErrorAction SilentlyContinue).Value)) { continue }
+        if (-not [string]::IsNullOrEmpty((Get-Item "env:$key" -ErrorAction Ignore).Value)) { continue }
         if (-not $data.Contains($key)) { continue }
         $v = $data[$key]
         if ($null -eq $v -or "$v" -eq '') { continue }
@@ -829,5 +829,46 @@ function Enable-PsPlugin
         Set-Item "env:$key" -Value 'True'
         Write-Host "$Name 已启用(当会话)。"
         if ($Persist) { Set-CxxuConfigValue -Path $Path -Key $key -Value $true }
+    }
+}
+
+function Install-Ps51Profile
+{
+    <#
+    .SYNOPSIS
+    为 Windows PowerShell 5.1 安装 profile 入口,之后 5.1 启动自动 init + 自定义 prompt,免手动。
+    .DESCRIPTION
+    写入位置固定为 5.1 的 CurrentUserCurrentHost profile
+    (~\Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1,与 pwsh7 互不干扰);
+    内容仅 3 行:确保 PSModulePath 含模块集、显式导入 Init、跑 init(主题/补全/历史全由 init 接管)。
+    幂等:已安装(标记行存在)直接返回,加 -Force 重写。从 pwsh7 或 5.1 跑均可,跑一次即可。
+    #>
+    [CmdletBinding(SupportsShouldProcess = $true)]
+    param([switch]$Force)
+    $psRoot = Split-Path $PSScriptRoot -Parent
+    $dir = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'WindowsPowerShell'
+    $profile51 = Join-Path $dir 'Microsoft.PowerShell_profile.ps1'
+    $marker = '# CxxuPsModules-ps51'
+    if ((Test-Path -LiteralPath $profile51) -and ((Get-Content -LiteralPath $profile51 -Raw) -match [regex]::Escape($marker)) -and (-not $Force))
+    {
+        Write-Host "5.1 profile 已安装($profile51),加 -Force 重写。"
+        return $profile51
+    }
+    if ($PSCmdlet.ShouldProcess($profile51, '写入 5.1 profile 入口'))
+    {
+        if (-not (Test-Path -LiteralPath $dir)) { $null = New-Item -ItemType Directory -Path $dir -Force }
+        # 已有 profile 无标记则追加(保用户旧内容),否则整写;读回统一按原文拼,编码恒为 UTF8+BOM
+        $old = if (Test-Path -LiteralPath $profile51) { [IO.File]::ReadAllText($profile51) } else { '' }
+        if ($old -ne '' -and (-not $old.EndsWith("`r`n")) -and (-not $old.EndsWith("`n"))) { $old += "`r`n" }
+        # 注意:字符串 + 数组会先按空格压平成标量(再 -join 也救不回),必须先 join 成标量再拼 $old
+        $body = $old + ((@(
+            "$marker(Install-Ps51Profile 生成;手动改前先看 Feature-Guide §13)"
+            "if ((`$env:PSModulePath -split ';') -notcontains '$psRoot') { `$env:PSModulePath = '$psRoot;' + `$env:PSModulePath }"
+            'Import-Module Init -ErrorAction SilentlyContinue'
+            'init'
+        ) -join "`r`n"))
+        [IO.File]::WriteAllText($profile51, $body, [Text.UTF8Encoding]::new($true))
+        Write-Host "已写入 $profile51,重开 powershell.exe 即生效。"
+        return $profile51
     }
 }
