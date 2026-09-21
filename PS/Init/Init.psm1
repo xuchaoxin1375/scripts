@@ -27,7 +27,8 @@ function init
         Write-Verbose 'Init pwsh env...'
         # $env:PsInit = 'True' 
         $global:PsInit = $True
-
+        # 用户配置文件先行(环境变量 > 配置文件 > 默认;缺文件静默跳过,见 Import-CxxuConfig)
+        Import-CxxuConfig
     }
     else
     {
@@ -422,6 +423,7 @@ function Set-PSReadLinesAdvanced
     }
     # listView列表设置
     Set-PSReadLineOption -MaximumHistoryCount 3000  # 可选：增大历史记录总数
+    Set-PSReadLineOption -HistoryNoDuplicates  # 历史不存重复命令(防 ConsoleHost_history.txt 无限膨胀,Ctl+R 读全文件,3 万行是它慢的主因)
     Set-PSReadLineOption -CompletionQueryItems 100  # 可选：增大自动完成候选列表数量
     Set-PSReadLineOption -HistorySearchCursorMovesToEnd
 
@@ -576,4 +578,142 @@ function Update-PwshEnvIfNotYet
     }
 
     Write-Verbose 'Environment  have been Imported in the current powershell!'
+}
+function Optimize-PsHistory
+{
+    <#
+    .SYNOPSIS
+    历史瘦身:去重(保最近一次,保序)+去杂+截断,被裁行进归档(默认留最近 3000 行)。
+    .DESCRIPTION
+    PSFzf Ctrl+R 每次读全文件,3 万行 1.5MB 是它慢的主因。流程:备份 .bak → 去重(同命令只留
+    最后一次,相对顺序不变) → 去杂(空行/纯空白/孤反引号) → 超 KeepLast 截断,被裁行追加进
+    同目录 archive 文件(可恢复)。-WhatIf 只出诊断(总数/去重率/ топ 重复),不动文件。
+    治本靠 init:HistoryNoDuplicates + MaximumHistoryCount 3000(新命令不再重复入库)。
+    注意:历史文件无时间戳,切割按"新旧顺序"(文件尾=最近),不是按日期。
+    .EXAMPLE
+    Optimize-PsHistory -WhatIf
+    .EXAMPLE
+    Optimize-PsHistory -KeepLast 2000
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        # 活动文件保留最近多少行(默认 3000,与 MaximumHistoryCount 对齐)
+        [int]$KeepLast = 3000
+    )
+    $file = try { (Get-PSReadLineOption).HistorySavePath } catch { '' }
+    if ([string]::IsNullOrWhiteSpace($file) -or -not (Test-Path -LiteralPath $file))
+    {
+        Write-Warning '取不到 PSReadLine 历史文件路径,先确认 PSReadLine 已加载。'
+        return
+    }
+    $lines = @(Get-Content -LiteralPath $file)
+    $total = $lines.Count
+    # 去重保最后:记每行最后下标,按最后下标排序(相对顺序=最近一次出现顺序)
+    $lastIdx = @{}
+    for ($i = 0; $i -lt $total; $i++) { $lastIdx[$lines[$i]] = $i }
+    $ordered = @($lastIdx.GetEnumerator() | Sort-Object Value | ForEach-Object { $_.Key })
+    # 去杂:空行/纯空白/孤反引号(续行手误)
+    $junk = @($ordered | Where-Object { $_ -notmatch '\S' -or $_ -eq '`' }).Count
+    $clean = @($ordered | Where-Object { $_ -match '\S' -and $_ -ne '`' })
+    $keep = @($clean | Select-Object -Last $KeepLast)
+    $drop = @($clean | Select-Object -SkipLast $KeepLast)
+    $top = @($lines | Group-Object | Sort-Object Count -Descending | Select-Object -First 5 | ForEach-Object { "$($_.Name)=$($_.Count)" })
+    Write-Host "历史 $file"
+    Write-Host "总数 $total;去重后 $($clean.Count)(杂 $junk);保留 $($keep.Count);归档 $($drop.Count)"
+    Write-Host "重复 Top5: $($top -join ', ')"
+    if ($drop.Count -eq 0 -and $junk -eq 0 -and $clean.Count -eq $total)
+    {
+        Write-Host '已是最简,无事可做。'
+        return
+    }
+    if ($PSCmdlet.ShouldProcess($file, "瘦身 $total→$($keep.Count),归档 $($drop.Count) 行"))
+    {
+        $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+        Copy-Item -LiteralPath $file -Destination "$file.bak-$stamp" -Force
+        $keep | Set-Content -LiteralPath $file -Encoding utf8NoBOM
+        if ($drop.Count)
+        {
+            $archive = "$file.archive-$stamp.txt"
+            $drop | Set-Content -LiteralPath $archive -Encoding utf8NoBOM
+            Write-Host "已备份 $file.bak-$stamp,归档 $archive"
+        }
+        else { Write-Host "已备份 $file.bak-$stamp(无行需归档)" }
+    }
+}
+function Import-CxxuConfig
+{
+    <#
+    .SYNOPSIS
+    读用户配置(默认 ~/.cxxu/config.psd1):只填环境变量的空位,不覆盖已设的值。
+    .DESCRIPTION
+    优先级:真正的环境变量 > 配置文件 > 默认(开)。缺文件静默跳过(首用零成本);
+    文件坏了警告一次然后忽略,不挡 init。已知键见 New-CxxuConfigTemplate 模板,未知键忽略。
+    init 首步自动调;改完配置重开终端(或 init -Force)生效。-Path 供测试/便携覆盖。
+    .EXAMPLE
+    Import-CxxuConfig
+    #>
+    [CmdletBinding()]
+    param(
+        # 配置文件路径(默认 ~/.cxxu/config.psd1,仓库外,本机生效)
+        [string]$Path = (Join-Path (Join-Path $HOME '.cxxu') 'config.psd1')
+    )
+    if (-not (Test-Path -LiteralPath $Path)) { return }
+    $data = try { Import-PowerShellDataFile -LiteralPath $Path -ErrorAction Stop } catch
+    {
+        Write-Warning "用户配置读失败($Path):$($_.Exception.Message);已忽略,用默认。"
+        return
+    }
+    foreach ($key in @('PsFzf', 'PsZoxide', 'PsPredictor', 'PsShowProgress', 'PsGithubMirror'))
+    {
+        if (-not [string]::IsNullOrEmpty((Get-Item "env:$key" -ErrorAction SilentlyContinue).Value)) { continue }
+        if (-not $data.Contains($key)) { continue }
+        $v = $data[$key]
+        if ($null -eq $v -or "$v" -eq '') { continue }
+        # 布尔转环境变量惯用字符串(True/False 正好命中各开关的正则)
+        Set-Item "env:$key" -Value "$v"
+        Write-Verbose "用户配置生效: $key=$v"
+    }
+}
+function New-CxxuConfigTemplate
+{
+    <#
+    .SYNOPSIS
+    生成用户配置模板(默认 ~/.cxxu/config.psd1):有文件默认不动,加 -Force 覆盖。
+    .DESCRIPTION
+    模板里每个键都有注释(作用+取值);全 True = 默认行为,想关哪个改 False。
+    记得:环境变量优先,注册表/Add-EnvVar 持久化的值会盖掉这里。
+    .EXAMPLE
+    New-CxxuConfigTemplate
+    .EXAMPLE
+    New-CxxuConfigTemplate -Force
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        # 配置文件路径(默认 ~/.cxxu/config.psd1,仓库外,本机生效)
+        [string]$Path = (Join-Path (Join-Path $HOME '.cxxu') 'config.psd1'),
+        # 已有文件也覆盖
+        [switch]$Force
+    )
+    if ((Test-Path -LiteralPath $Path) -and -not $Force)
+    {
+        Write-Host "模板已存在($Path):改值直接编辑;重建加 -Force。"
+        return
+    }
+    if ($PSCmdlet.ShouldProcess($Path, '写用户配置模板'))
+    {
+        $dir = Split-Path $Path -Parent
+        if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+        @'
+@{
+    # CxxuPsModules 用户配置(本机生效,仓库外;优先级:环境变量 > 本文件 > 默认开)
+    # 改完重开终端(或 init -Force)生效;生成:New-CxxuConfigTemplate;读取:每次 init 自动。
+    PsFzf          = $true  # PSFzf Ctrl+T 文件 / Ctrl+R 历史
+    PsZoxide       = $true  # zoxide z 跳转
+    PsPredictor    = $true  # CxxuPredictor 命令名预测(守护进程由启动链强制 False,不受此影响)
+    PsShowProgress = $true  # init 启动进度条
+    PsGithubMirror = ''     # 为空走默认/静默测速;填镜像前缀如 'https://gh-proxy.com'
+}
+'@ | Set-Content -LiteralPath $Path -Encoding utf8NoBOM
+        Write-Host "模板已写 $Path"
+    }
 }

@@ -50,8 +50,8 @@
         'Deploy-MiniforgeConfig',
         'Deploy-TrafficMonitor',
         'Test-PsEnvReadiness',
-        'Deploy-CompletionStack',
-        'Update-CxxuPsModules'
+        'doctor',
+        'Deploy-CompletionStack'
     )
     CmdletsToExport = @()
     VariablesToExport = @()

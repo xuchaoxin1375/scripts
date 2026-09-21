@@ -96,9 +96,9 @@
     （PID/启动时间/标题），`ConfirmImpact=High` 默认逐个询问，`-WhatIf` 空跑；
     守护进程也会被列出（杀了需重跑）。结论：dll 锁只影响本机热更新换文件，
     新机部署全是新文件、无进程占用，不会因此失败。
-20. **`Update-CxxuPsModules`（更新命令）**：`Deploy.psm1`；fetch 看 dll 变不变→NoProfile 子进程
-    `git pull --ff-only`→分类报告（dll 变了重开终端，纯文本指去 `ipmox`）。`-WhatIf` 已验。
-21. **dll 外置决策（2026-09-21，用户拍板）**：活件搬 `~/.cxxu/bin`，loader 按哈希同步后按路径装载；
+20. **（条目已移除，见 #31）**
+21. **dll 外置决策（2026-09-21，用户拍板）**：活件搬 `~/.cxxu/bin`
+    （后演进为并排版本 + 指针，见 #29；以下为当时形态，留档）；当时 loader 按哈希同步后按路径装载；
     仓库版从不被加载→pull 永不撞锁。代价：`ipmof` 必须跳过 CxxuPredictor（按名重载装出空壳还注销 predictor，
     守卫注释已换因）；psd1 去 RootModule（防误装）。退役：测锁/`-AutoFix`/`Close-OtherPwsh`/
     Basic 守卫（未提交过，干净删除）；重启规矩不变（程序集随进程）。
@@ -108,16 +108,19 @@
     （风格同 PsFzf/PsZoxide）；`Start-StartupBgProcesses` 置 False（子进程继承），
     两个守护函数按 `-Command` 自断（交互手动调不受影响）。`-Force`（dll 变更时，跳过确认直接动手）：
     关其它（含无状态守护，随后 `Start-StartupBgProcesses` 重起）→脱钩子进程等退→开新窗→退自己；
-    重定向拒绝。守护永不咬 dll，锁问题彻底收敛到交互会话。
+    重定向拒绝。守护进程从不加载 dll，锁问题当时收敛到交互会话（后并排版本根治，见 #29）。
 19. **国内网络：gitee→github+加速（2026-09-21 决策）**：gitee 对 `irm|iex` 误报拦截，
     默认源全切 github；中央变量 `$env:PsGithubMirror`（持久化自选镜像，不设走默认/静默测速），
     统一出口 `Get-GithubMirrorPrefix`/`Get-RepoRawUrl`（Deploy 模块内），独立脚本内联同策略；
     `Get-SelectedMirror` 的 gitee fallback 已摘。动 URL 先查这两函数，别手拼。
-24. **活件同步手动化（2026-09-21，用户偏好）**：入口 loader 只静默装载（旧版照用，零警告），
-    版本检查/同步全收归 `Sync-CxxuPredictor`（TerminalTools，哈希对比，不同才拷；
-    被咬住默认给手动步骤，`-Force` 关其它会话后重试，重定向拒绝；同步后重开终端才生效）。
-    readiness 活件行备注报不一致→指去本命令；`Update-CxxuPsModules` 的 dll 变更分支文案同步改。
-    原则：入口默认不做任何版本检查/网络动作，重活全手动（同 `-CheckRemote` opt-in 思路）。
+24. **活件同步手动化（2026-09-21，用户偏好）**：入口 loader 只静默装载（旧版照用，零警告），版本检查/同步收归 `Sync-CxxuPredictor`（以下为旧单文件时代描述，现并排版本见 #29；当时：哈希对比，不同才复制；被锁定时默认给手动步骤，`-Force` 关闭其它会话后重试，重定向拒绝；同步后重开终端才生效）。 readiness 活件行备注报不一致→指去本命令；当时专用更新命令的 dll 变更分支文案同步改。原则：入口默认不做任何版本检查/网络动作，重活全手动（同 `-CheckRemote` opt-in 思路）。
+25. **历史瘦身 + `doctor`（2026-09-21，用户要的）**：历史文件 3.2 万行/1.5MB（去重率仅 37%， `ipmof|iex` 750 遍）是 Ctrl+R 慢的主因。新 `Optimize-PsHistory`（Init 模块，去重保最近+去杂+截断，旧行进 `.archive-时间.txt`，原文件 `.bak-时间`；`-WhatIf` 诊断；历史无时间戳，只能按新旧顺序切）。init 加 `HistoryNoDuplicates` 治本。新 `doctor`（Deploy，无横线速记风格）：先调 `Test-PsEnvReadiness` 再查运行态（init 账本/PSReadLine/历史大小/predictor 三态/门控/懒加载/守护新鲜度/仓库脏/conda 缓存），只读默认零网络。注意 `@($null)` 会数出 1 个：`$global:PsInitStepErrors` 没跑过 init 时是 $null，必须 `Where-Object { $_ }` 先滤（已踩）。
+27. **自锁实测 + 更新合并（2026-09-21，已被 #29 推翻假设，留档）**：已加载旧 dll 的会话覆盖活件必败（`being used by another process`，锁定者是本会话）——所以“重开→Sync”有竞态， `Sync -Force` 也只能关闭其它会话、不能解除自锁。当时合并结论（子进程拉完一并同步，自认无锁）因"持有者存在即失败"不成立，已改并排版本。职责切分（现行）：Update=版本推进(git)+分发，Sync=单点文件动作，Test=检查，doctor=统一诊断入口。
+28. **移除真相（2026-09-21）**：`Remove-Module` 后文件照样锁（实测 `Loaded=False` 但 `Remove-Item` 报 `being used`，程序集锁跟进程到关闭）——指南旧"手动两行"已更正。真方案：`Sync-CxxuPredictor -Uninstall`（以下为旧单文件时代描述，现并排版本见 #29；当时：删除走无锁子进程；自锁/他锁失败给裸会话一行；`-Force` 只关闭其它会话）。删完若不禁用会自动装回，彻底不用要持久化 `PsPredictor=False`。
+29. **并排版本活件（2026-09-21，用户选的）**：自锁实测证明子进程复制同样撞锁（持有者存在即失败，上轮"无锁天生"假设不成立），改并排版本根治： `~/.cxxu/bin/<哈希8>/CxxuPredictor.dll`（文件名不变，模块名才正确；改名文件 import 后模块名跟文件名走，`Get-Module CxxuPredictor` 会空，已踩）， `current.txt` 单行指针指当前版本目录。同步只新增目录+更新指针（原子换文件），从不覆盖→永不撞锁，任何会话都可执行；loader 按指针装载+两级回退（最新版目录→旧单文件）； GC 每次同步一并回收非当前版本（被锁跳过）。当时专用更新命令拉完调 Sync（已退役，见 #31）， `Update-ReposesConfiged` 收尾 guarded 调 Sync（用户主流程，差异才出声）。 readiness/doctor 全改指针解析（Deploy 内自带 6 行 resolver，与 TT/Basic 各一份，三处重复是已知债，统一需导出 helper，会增命令数，暂缓）。设计专章：`docs/Live-Versions.md`（结构/指针协议/流程/GC/故障/命令分工 + mermaid 图）。
+26. **用户配置文件（2026-09-21，用户要的）**：`~/.cxxu/config.psd1`（psd1 数据文件，只读不执行；仓库外本机生效）。`Import-CxxuConfig`（init 首步自动调，只填环境变量空位）+ `New-CxxuConfigTemplate`（[-Force] 生成注释模板）。已知键：PsFzf/PsZoxide/PsPredictor/PsShowProgress/PsGithubMirror；优先级环境变量 > 文件 > 默认开；坏文件警告一次忽略。沙箱 5 项已验（缺文件静默/模板/文件生效/环境优先/坏文件警告）。
+30. **文档口径统一（2026-09-21，用户叫"到文档"）**：Handoff #21/#24/#27/#28 是编年留档，与现行 #29 不一致处已加"旧单文件时代"标注，不改写历史；现行口径唯一来源是 #29 + `Module-Conventions.md §11`（术语表）+ `Feature-Guide.md §9`（四件套表格）。 dll-why 定论记 `Startup-Optimization.md §20`（插件槽只认 .NET + 20ms 预算，纯 PS 3000 条 22ms 超预算，C# 1~6ms）。动用户可见行为前先看这三处定口径，改完同步三处。
+31. **退役 `Update-CxxuPsModules`（2026-09-21，用户：想不出调用它的情况）**：102 行整函数删除，导出同步摘除。`Sync` 并进 `Update` 的方案否决：钩子要的是纯文件同步，`Update` 得加"仅文件模式"，等于换名不换量，且活下来的 `Update` 依然无人调用。现行更新入口只剩 `Update-ReposesConfiged`（收尾 guarded 调 Sync）+ `Sync-CxxuPredictor`（单点）。代价：`-Force` 一键重开链消失，手动等价操作是关闭会话、重新打开、`init`；readiness 建议行、`Sync` 帮助、指南 §13、§9、Live §8、Map 行同步改。
 
 ## 4. 环境事实（这台机器，2026-09 实测）
 

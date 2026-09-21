@@ -420,18 +420,7 @@ Set-PSReadLineOption: 句柄无效。
 - 验证（沙盒）：构建零警告；import 423ms 零错并顶层列出；反射直测过滤逻辑
   （`get-chi`→`Get-ChildItem`、自匹配排除、空前缀排除）；manifest 过；自动发现 OK。
   真机已验证（用户实测通过）：`get-child` 出 `[CxxuCommand]` 来源行，本轮终结。
-- 维护：dll 进仓库（`.gitattributes` 已有 `*.dll binary`，发布件）；活件外置 `~/.cxxu/bin`，
-  loader 按哈希同步后按路径装载（仓库版从不被加载，pull 永不撞锁；同步失败警告给手工命令，
-  照用旧版，新会话自愈）；运行时加载的是 dll 二进制，`.cs` 只是图纸，改逻辑重构建后等同步；
-  psd1 无 RootModule（防按名误装空壳）但诚实声明 `PowerShellVersion='7.5'`；
-  net8.0 单目标实测不可行：本机 7.5 的 SMA 自带 System.Runtime 9 引用（CS1705），
-  覆盖 7.4 需 7.4 的 SMA 或 PowerShellStandard（缺预测 API），暂不做；
-  卸载 `Remove-Module CxxuPredictor`；`Sync-ModuleManifest` 天然跳过（无 `.psm1`）。
-- 边界（已读源码 `CompletionPredictor.cs` 核实，不再是文档推测）：`GetSuggestion` 遇到
-  `TokenFlags.CommandName` 直接 `return default`（源码注释：command discovery 太贵，跳过），
-  只做非命令位置（参数/路径/成员）+ `git` + `% ? cd dir foreach where` 白名单。
-  所以**命令名前缀（如 `get-child`）它永远沉默**，用户只看到历史是必然的，不是坏了。
-  原生 PSReadLine 没有“TabExpansion 边输边弹”；predictor 须 20ms 内返回
-  （官方硬性），慢同步的命令发现塞不进这个预算。更重的悬浮面板类另见 `Feature-Guide.md §7`。
-- 后续：同日用户拍板删除 `Deprecated` 模块（转正后归档无存在必要，零调用），`git rm` 整目录；
-  上表作为历史记录保留，53 模块现数见 §2/§6。
+- 为何编译成 dll（2026-09-21 定论）：两条硬约束。(1) PSReadLine 的 ListView 插件槽只接受 .NET 实现（`ICommandPredictor`），纯 `.psm1` 挂不进去，不用 dll 就没有命令名预测； (2) 预测 20ms 预算：纯 PowerShell 3000 条简单通配实测 22ms（已超，模糊+打分更贵）， C# 版全套 1~6ms。代价（锁/分发/版本门）由并排版本 + 自动化吸收，日常零手工；若不要该功能，退路：`Sync-CxxuPredictor -Uninstall` + 持久化 `PsPredictor='False'`。
+- 维护：dll 进仓库（`.gitattributes` 已有 `*.dll binary`，发布件）；活件并排版本 `~/.cxxu/bin/<哈希>/CxxuPredictor.dll` + `current.txt` 指针，loader 按指针装载（旧版照常使用，无警告；只新增目录从不覆盖，同步不受锁限制）；运行时加载的是 dll 二进制， `.cs` 只是图纸，改逻辑重构建后执行 Sync 分发；psd1 无 RootModule（防按名误装空壳）但诚实声明 `PowerShellVersion='7.5'`；net8.0 单目标实测不可行：本机 7.5 的 SMA 自带 System.Runtime 9 引用（CS1705），覆盖 7.4 需 7.4 的 SMA 或 PowerShellStandard（缺预测 API），暂不做；卸载用 `Sync-CxxuPredictor -Uninstall`； `Sync-ModuleManifest` 天然跳过（无 `.psm1`）。
+- 边界（已读源码 `CompletionPredictor.cs` 核实，不再是文档推测）：`GetSuggestion` 遇到 `TokenFlags.CommandName` 直接 `return default`（源码注释：command discovery 太贵，跳过），只做非命令位置（参数/路径/成员）+ `git` + `% ? cd dir foreach where` 白名单。所以**命令名前缀（如 `get-child`）它永远沉默**，用户只看到历史是必然的，不是坏了。原生 PSReadLine 没有“TabExpansion 边输边弹”；predictor 须 20ms 内返回（官方硬性），慢同步的命令发现塞不进这个预算。更重的悬浮面板类另见 `Feature-Guide.md §7`。
+- 后续：同日用户拍板删除 `Deprecated` 模块（转正后归档无存在必要，零调用），`git rm` 整目录；上表作为历史记录保留，53 模块现数见 §2/§6。

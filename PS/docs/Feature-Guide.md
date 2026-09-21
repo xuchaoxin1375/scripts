@@ -22,9 +22,12 @@ Add-EnvVar -EnvVar PSModulePath -NewValue $p -Verbose
 | `init` | 全量初始化（变量+别名+补全+prompt，约 400~700ms）；同会话重复调用直接返回 |
 | `init -Timing` | 同上，附每步耗时表（调优用） |
 | `p` | WT 启动行/轻量场景用；`-NoNewShell` 在当前 shell 原地执行，`-Force` 看耗时报告 |
-| `Set-PsPrompt -version < fast \| Balance \| Simple \| Brilliant \| Default \| Short >` | 切换提示符；加 `-Persist` 才写注册表记住选择 |
+| `Set-PsPrompt -version < fast/short/...>` | 切换提示符；加 `-Persist` 才写注册表记住选择 |
 | `dm` | 切极简 prompt（做笔记摘录时聚焦命令本身） |
 | `Test-PromptDelay` | 测当前 prompt 延迟 |
+| `doctor` | 统一诊断入口（定位问题先执行它）：先跑 `Test-PsEnvReadiness`（安装态），再查运行态（init 错误/PSReadLine/历史大小/predictor/门控/懒加载/守护/仓库脏），只读，默认零网络 |
+| `New-CxxuConfigTemplate` | 生成用户配置模板（`~/.cxxu/config.psd1`，仓库外本机生效） |
+| `Import-CxxuConfig` | 读用户配置（init 首步自动调；优先级：环境变量 > 配置文件 > 默认开） |
 
 环境等级（`$PsEnvMode`，`Test-PsEnvMode` 查询）：core(1) 核心变量 → vars(2) 全量变量 →
 env(3) 变量+别名。`Update-PwshEnvIfNotYet` 按需补齐，不重复干活。
@@ -47,10 +50,7 @@ ipmox -Name Prompt -Sync        # 新函数场景：先同步 manifest 再重载
 ipmof | iex                     # 旧版（兼容）：只重载仓库内(PS/)已加载模块；第三方/系统不动；副作用模块(*completion*/*predictor*/*conda*)跳过
 ```
 
-> **dll 是例外**：`.psm1` 改动 `ipmox` 当场生效，但 `CxxuPredictor.dll`
-> （.NET 程序集，不随模块卸载）**当前会话永远是旧代码**。dll 变了的唯一正确顺序：
-> `Update-CxxuPsModules` → 重开终端 → `Sync-CxxuPredictor` 同步活件 → `init`
-> （详见 §9；`Test-PsEnvReadiness` 备注列会告诉你活件是否落后）。
+> **dll 是例外**：`.psm1` 的改动执行 `ipmox` 当场生效，但 `CxxuPredictor.dll`（.NET 程序集，不随模块卸载而卸载）**在当前会话中永远是旧代码**。dll 变更后的正确顺序： `Update-ReposesConfiged`（拉取后自动同步活件）→ 重新打开终端 → `init`（详见 §9；`Test-PsEnvReadiness` 备注列会说明活件是否落后）。
 
 - 模块还没加载过时更省事：直接敲新函数名，PSModulePath 自动发现并加载（前提：manifest 里已导出）。
 - 只想模块内部用的 helper：只写 `.psm1`，别进 manifest，外部就不可见。
@@ -107,6 +107,14 @@ p -Force                    # 看 init 分步耗时，定位慢项
   2026-09-21 已在设 ListView 之前按尺寸分流（`Set-PSReadLinesAdvanced` 里）：
   窄窗口自动用内联视图，无警告；窗口拉大后重跑 `Set-PSReadLinesAdvanced` 即按新尺寸重选。
   同重定向跳过一样，这是控制台相关分流，有新选项先看这里。
+- **`source ~/.bashrc` 对应物**：
+  - 分三档。
+    1. 改了模块函数 → `ipmox`（不用碰 profile）；
+    2. 改了 init 期东西（别名/`.conf`/变量/prompt）→ `init -Force`（或对应 loader）；
+    3. 改了 profile 文件本身 → `. $profile`。
+  - 安全差异：bash 重 source 会叠 PATH，这边 `init` 有 `$global:PsInit` 防重复（`. $profile` 默认 no-op，真重跑靠 `-Force`），`Add-EnvVar` 自带去重（见 `EnvVar.psm1:621/629`），prompt 全局只抓一次，OnIdle 有标记位。
+    注意 `. $profile` 只跑 `CurrentUserCurrentHost` 这一级（conda 钩子在 `CurrentUserAllHosts`
+    里，碰不到；即使碰到，缓存 59ms 也不贵）。
 - **v5 能用吗**：不能。本模块集只要 PS7（manifest 已声明，进 v5 直接明确报错）。
 - **agent/CI 里曾出现两行 `Set-PSReadLineOption` 红字**（predictive suggestion…redirected、
   句柄无效）：那是 `init` 在 stdout 被重定向时硬设预测源/列表视图闹的，
@@ -140,8 +148,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | `argc` | 缺二进制，先装再说 |
 | `inshellisense` | **否决**（用户拍板，不再考虑） |
 
-验：新开终端等一拍，`Ctrl+R` 翻历史、`z <目录>` 跳转；`Get-EventSubscriber` 应无残留
-（触发即摘）。若某主机 OnIdle 不触发导致没装上，跑 `Register-PsUxLazyLoad -Now` 或报回来。
+验：新开终端等一拍，`Ctrl+R` 翻历史、`z <目录>` 跳转；`Get-EventSubscriber` 应无残留（触发即摘）。若某主机 OnIdle 不触发导致没装上，跑 `Register-PsUxLazyLoad -Now` 或报回来。
 
 ## 8. FAQ（续）：输入时下面没候选？
 
@@ -168,22 +175,17 @@ p -Force                    # 看 init 分步耗时，定位慢项
 
 ## 9. dll / 活件管理（检查 / 安装 / 更新 / 移除）
 
-> 背景：`CxxuPredictor` 是 net9.0 自研 dll（pwsh 须 7.5+）。仓库里的
-> `PS/CxxuPredictor/CxxuPredictor.dll` 是**源**（从不被加载，所以 `git pull` 永不撞锁）；
-> 真正被加载的是外置**活件** `~/.cxxu/bin/CxxuPredictor.dll`。两边靠哈希同步，
-> 程序集随进程：**同步后必须重开终端才换新代码**，`ipmox` 刷不动 dll。
-> 原则：入口 loader 只静默装载（旧版照用，零警告），版本动作全手动。
+> 设计原理见 `Live-Versions.md`（并排版本 + 指针）。背景一句话：`CxxuPredictor` 是 net9.0 自研 dll（pwsh 须 7.5+）。仓库里的 `PS/CxxuPredictor/CxxuPredictor.dll` 是**源**（从不被加载，所以 `git pull` 永不撞锁）；真正被加载的是外置**活件** `~/.cxxu/bin/CxxuPredictor.dll`。两边靠哈希同步，程序集随进程：**同步后必须重开终端才换新代码**，`ipmox` 刷不动 dll。原则：入口 loader 只静默装载（旧版照用，零警告），版本动作全手动。
 
 | 动作 | 命令 | 说明 |
 |---|---|---|
-| 检查 | `Test-PsEnvReadiness` | 活件行备注直接给结论（`与仓库一致[hash]` / `不一致→跑 Sync-CxxuPredictor`）；表尾另有仓库/pwsh/活件三行 |
-| 检查远端 | `Test-PsEnvReadiness -CheckRemote` | 默认零网络；加开关才问远端有没有更新（`ls-remote` 只读，12s 超时） |
-| 安装 | `Sync-CxxuPredictor` | 无活件时生成（拷源→`~/.cxxu/bin`，缺目录自建）；`-WhatIf` 可空跑看意图 |
-| 更新 | `Update-CxxuPsModules` → 重开 → `Sync-CxxuPredictor` → `init` | 拉完带 dll 变更才走全套；纯文本变更 `ipmox` 即可（见 §3）；被咬住加 `-Force`（关其它会话，变量会丢） |
-| 移除 | 手动两行（无专用命令） | `Remove-Module CxxuPredictor; Remove-Item ~/.cxxu/bin/CxxuPredictor.dll`；再也不想装：`$env:PsPredictor='False'` 持久化（风格同 PsFzf/PsZoxide 开关） |
+| 检查 | `Test-PsEnvReadiness` | 活件行备注直接给出结论（`与仓库一致[hash]` / `不一致→执行 Sync-CxxuPredictor`）；表尾另有仓库/pwsh/活件三行 |
+| 检查远端 | `Test-PsEnvReadiness -CheckRemote` | 默认零网络；加开关才询问远端是否有更新（`ls-remote` 只读，12s 超时） |
+| 安装 | `Sync-CxxuPredictor` | 无活件时生成（新增版本目录 `~/.cxxu/bin/<哈希>` 并更新指针，缺目录自动创建）；`-WhatIf` 可空跑查看意图 |
+| 更新 | `Update-ReposesConfiged` → 重开终端 → `init` | 拉取后自动调用 `Sync-CxxuPredictor` 同步活件（只新增版本目录，不受锁限制，任何会话都可执行）；纯文本变更执行 `ipmox` 即可（见 §3） |
+| 移除 | `Sync-CxxuPredictor -Uninstall`（有其他会话锁定加 `-Force`） | 删除指针与版本目录；被会话锁定的版本删不掉会报告，下次再收；`Remove-Module` 不能卸载程序集（锁随进程存在，已实测）；彻底停用请持久化 `$env:PsPredictor='False'`，否则下次同步或更新会重新安装 |
 
-- 守护进程（报时/IP）默认不碰 dll：`Start-StartupBgProcesses` 置 `PsPredictor=False`
-  继承 + 两个守护函数按 `-Command` 自断，所以 `-Force` 关它们无压力（无状态，重起即回）。
+- 守护进程（报时/IP）默认不碰 dll：`Start-StartupBgProcesses` 置 `PsPredictor=False` 继承 + 两个守护函数按 `-Command` 自断，所以 `-Force` 关它们无压力（无状态，重起即回）。
 - 同一结论在 `Test-PsEnvReadiness` 的“建议”行也会再说一遍（缺必备 > 有更新 > 活件不一致）。
 
 ## 10. 补全全景速查（三层 + 参数层）
@@ -195,7 +197,6 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | 模糊搜历史/文件 | `Ctrl+R` / `Ctrl+T`（PSFzf） | 全量历史/文件 | 历史翻不完用这个，不走 10/50 上限 |
 | 参数值补全 | `Tab` 在参数位 | `PSCompletions`（~200 命令库，可选）+ 自带 `ArgumentCompleter`（EnvVar 系、`Get-Json -Key` 等，`Set-ArgumentCompleter` 批量注册） | PSCompletions 用法：解开 profile 里注释的两行 |
 
-- 相关命令：`Register-PsUxLazyLoad [-Now]`（延迟加载总闸）、
-  `Deploy-CompletionStack [-WhatIf/-IncludePSCompletions/-SkipBinaries]`（新机一键装栈）、
-  `Test-PsEnvReadiness`（查缺）、`predictNo`（当会话关预测）。
+- 相关命令：`doctor`（统一诊断入口，定位问题先执行它）、`Register-PsUxLazyLoad [-Now]`（延迟加载入口）、 `Deploy-CompletionStack [-WhatIf/-IncludePSCompletions/-SkipBinaries]`（新机一键装栈）、 `Test-PsEnvReadiness`（查缺）、`predictNo`（当会话关预测）。
+- **历史膨胀（Ctrl+R 变慢）**：`Optimize-PsHistory -WhatIf` 先看诊断（总数/去重率/重复 Top5）， `Optimize-PsHistory [-KeepLast 3000]` 动手（去重只留最后一次 + 去杂 + 截断，旧行进同目录 `.archive-时间.txt`，原文件留 `.bak-时间`，均可恢复）。治本：init 已开 `HistoryNoDuplicates`（新命令不再重复入库）+ `MaximumHistoryCount 3000`。注意历史文件无时间戳，切割按新旧顺序（文件尾=最近）；当前会话内存里的旧历史重启才换新。
 - 新终端对照：输高频前缀（如 `git che`）有候选 = 一切正常；`get-child` 这类没候选多半是历史里没敲过 + 命令名插件只认连写（空格分词进参数位，见 §8）。

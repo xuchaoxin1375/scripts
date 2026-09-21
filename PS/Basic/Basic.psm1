@@ -1587,6 +1587,32 @@ function Update-ReposesConfiged
     # Set-Location $home/desktop
     Write-Verbose "current location is:$(Get-Location)"
 
+    # scripts 仓库若含 dll 变更:同步活件(并排版本只新增目录,不受锁限制,任何会话都可执行)并提示重开;
+    # 跨模块调用加守卫(无 Sync 命令则跳过,不硬依赖 TerminalTools)
+    $scriptsDir = Join-Path $repos 'scripts'
+    if ((Test-Path -LiteralPath (Join-Path $scriptsDir '.git')) -and (Get-Command Sync-CxxuPredictor -ErrorAction SilentlyContinue))
+    {
+        $repoDll = Join-Path $scriptsDir 'PS\CxxuPredictor\CxxuPredictor.dll'
+        $binDir = Join-Path (Join-Path $HOME '.cxxu') 'bin'
+        $liveDll = $null
+        $ptrF = Join-Path $binDir 'current.txt'
+        if (Test-Path -LiteralPath $ptrF)
+        {
+            $hd = Get-Content -LiteralPath $ptrF -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($hd) { $cd = Join-Path (Join-Path $binDir "$hd".Trim()) 'CxxuPredictor.dll'; if (Test-Path -LiteralPath $cd) { $liveDll = $cd } }
+        }
+        $needsSync = $true
+        if ((Test-Path -LiteralPath $repoDll) -and $liveDll)
+        {
+            $needsSync = (Get-FileHash -LiteralPath $repoDll -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $liveDll -Algorithm SHA256).Hash
+        }
+        if ($needsSync)
+        {
+            Sync-CxxuPredictor
+            Write-Host 'scripts 仓库含 dll 变更：活件已同步，当前会话内存中仍是旧代码，请重新打开终端再执行 init（纯文本变更执行 ipmox 即可）。'
+        }
+    }
+
     #启动新的powershell窗口,使得新的配置生效
     # Start-Process pwsh
 }

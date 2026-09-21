@@ -1,6 +1,6 @@
 # 新机部署指南（Deploy Guide）
 
-> 把这套 53 模块组合搬到另一台机器。先跑 `Test-PsEnvReadiness` 看缺口，再按节补。
+> 把这套 54 模块组合搬到另一台机器。先跑 `Test-PsEnvReadiness` 看缺口，再按节补。
 > 在新机器上还没有模块路径时，先：`Import-Module C:\repos\scripts\PS\Deploy\Deploy.psd1`
 
 > **极简版（只要补全栈，共 2 条命令）**：第 1 条落仓库+环境，第 2 条装补全栈；下面各节是分步详解。
@@ -32,7 +32,7 @@ git clone https://github.com/xuchaoxin1375/scripts C:/repos/scripts
 # 国内先定镜像：Get-SelectedMirror（gitee/github 按需）；hosts 拉胯用 Update-GithubHosts
 ```
 
-目录建议固定 `C:/repos/scripts`（profile/conda 缓存里的路径写的是这个，换地方要顺手改）。
+目录建议固定 `C:/repos/scripts`（profile/conda 缓存里的路径写的是这个，换地方要同步修改）。
 
 ## 3. PSModulePath
 
@@ -101,11 +101,12 @@ conda 缓存（`~/.conda_hook_cache.ps1`）与 zoxide 缓存（`~/.zoxide_init_c
 ## 10. 多设备差异点（每台都要看一眼）
 
 - `PwshVar/confs/VarSet1.conf` 的 `$PC*` 主机名：新机器加自己的，不认识的别删。
+- 功能开关：`~/.cxxu/config.psd1`（仓库外，本机生效；`New-CxxuConfigTemplate` 生成模板；优先级环境变量 > 配置文件 > 默认开）。新机器要差异化开关，复制这个文件比改注册表轻。
 - conda 路径：profile 缓存块里的 `$condaExe`（scoop 版在 `C:\scoop\apps\miniforge\...`，改安装位置要同步）。
 - 镜像/代理：`Get-SelectedMirror`、`Update-GithubHosts`、`Deploy-ScoopApps` 按当地网络选。
 - `Test-PsEnvReadiness` 收尾再跑一遍，必备全绿。默认只做本地对比（零网络）；
   想看远端有没有更新加 `-CheckRemote`（`ls-remote` 只读问远端，不动本地），表尾“建议”行给下一步：
-  有更新 → `Update-CxxuPsModules`（见 §13）；已是最新 + 活件一致 → 无事可做。
+  有更新 → `Update-ReposesConfiged`（见 §13）；已是最新 + 活件一致 → 无事可做。
 
 ## 11. 回滚
 
@@ -125,22 +126,14 @@ conda 缓存（`~/.conda_hook_cache.ps1`）与 zoxide 缓存（`~/.zoxide_init_c
 
 ## 13. 更新到新版本
 
-> 前提：`git pull` 只写仓库目录，纯文本**永远不锁**随便拉；dll 活件在仓库外
-> （`~/.cxxu/bin`），仓库版从不被加载——所以 pull 也永不撞锁。剩下唯一规矩：
-> dll 代码随进程，重开终端才换新。
+> 设计原理见 `Live-Versions.md`（并排版本 + 指针）。前提：`git pull` 只写仓库目录，纯文本**永远不锁**随便拉；dll 活件在仓库外（`~/.cxxu/bin`），仓库版从不被加载——所以 pull 也永不撞锁。剩下唯一规矩： dll 代码随进程，重开终端才换新。
 
 ```powershell
-Update-CxxuPsModules          # fetch 看 dll 变不变→拉→分类报告
-Update-CxxuPsModules -Force    # 带 dll 就一条龙：跳过确认→关其它会话→守护重起→脱钩开新窗→退自己（变量会丢！）
-Sync-CxxuPredictor            # 手动同步活件（仓库源→~/.cxxu/bin，不一致才拷；被咬住加 -Force）
-Update-ReposesConfiged        # 平时批量更新照旧，无需额外注意
+Update-ReposesConfiged        # 批量更新：拉取后若 scripts 含 dll 变更，自动同步活件并提示重开
+Sync-CxxuPredictor            # 单点操作（首次安装生成/手动修复/本地重编后分发；日常更新不需要执行）
 ```
 
-- 入口 loader 只静默装载（旧版照用，无警告）：版本检查/同步全手动，
-  `Test-PsEnvReadiness` 备注列报不一致 → 跑 `Sync-CxxuPredictor`（被咬住加 `-Force`）。
-- 拉完带 dll 变更：**重开终端** → 跑 `Sync-CxxuPredictor` 同步活件 → `init`；
-  只有 psm1 变更：`ipmox` 一把梭，会话变量不丢。
-- 守护进程（报时/IP）用不上 predictor：`$env:PsPredictor='False'` 门已置
-  （`Start-StartupBgProcesses` 继承 + 两个守护函数按 `-Command` 自断），它们永不加载/锁定 dll，
-  `-Force` 关它们无压力（无状态，重起即回）；交互会话手动调守护函数不受影响。
-- 顺序：更新函数 →（dll 变了就重开 + `Sync-CxxuPredictor`/`-Force`）→ `init` → `Test-PsEnvReadiness` 收尾。
+- 入口 loader 只静默装载（旧版照常使用，无警告）：版本检查使用 `Test-PsEnvReadiness` 备注列。活件并排版本存放（只新增版本目录，从不覆盖），同步不受锁限制，任何会话都可执行。
+- 拉取含 dll 变更：活件已同步完成，**重新打开终端** → 执行 `init` 即可；只有 psm1 变更：执行 `ipmox` 即可，会话变量不丢失。
+- 守护进程（报时/IP）用不上 predictor：`$env:PsPredictor='False'` 门已置（`Start-StartupBgProcesses` 继承 + 两个守护函数按 `-Command` 自断），它们永不加载/锁定 dll， `-Force` 关它们无压力（无状态，重起即回）；交互会话手动调守护函数不受影响。
+- 顺序：更新函数（活件已同步）→（dll 变更时重开终端/`-Force`）→ `init` → `Test-PsEnvReadiness` 收尾。

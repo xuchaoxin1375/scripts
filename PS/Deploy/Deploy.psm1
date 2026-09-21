@@ -2751,8 +2751,10 @@ function Test-PsEnvReadiness
     $modDate = { param($n) try { (Get-Item -LiteralPath (Join-Path (Get-Module -ListAvailable $n | Select-Object -First 1).ModuleBase "$n.psd1") -ErrorAction Stop).LastWriteTime.ToString('yyyy-MM-dd HH:mm') } catch { '' } }.GetNewClosure()
     $binDate = { param($n) try { $src = (Get-Command $n -ErrorAction Stop).Source; if ([string]::IsNullOrWhiteSpace($src) -or -not (Test-Path -LiteralPath $src)) { '' } else { (Get-Item -LiteralPath $src).LastWriteTime.ToString('yyyy-MM-dd HH:mm') } } catch { '' } }.GetNewClosure()
     $fileDate = { param($p) try { (Get-Item -LiteralPath $p -ErrorAction Stop).LastWriteTime.ToString('yyyy-MM-dd HH:mm') } catch { '' } }.GetNewClosure()
-    # 活件版本对比小料:活件哈希 vs 仓库源 dll,结果进 备注 列(取不到空串,永不抛)
-    $dllSyncNote = { try { $lv = Join-Path (Join-Path (Join-Path $HOME '.cxxu') 'bin') 'CxxuPredictor.dll'; $rp = Join-Path (Join-Path $psRoot 'CxxuPredictor') 'CxxuPredictor.dll'; if (-not (Test-Path -LiteralPath $rp)) { '仓库无此文件?' } else { $lh = (Get-FileHash -LiteralPath $lv -Algorithm SHA256).Hash.Substring(0, 8); $rh = (Get-FileHash -LiteralPath $rp -Algorithm SHA256).Hash.Substring(0, 8); if ($lh -eq $rh) { "与仓库一致[$rh]" } else { "与仓库不一致(仓 $rh)→跑 Sync-CxxuPredictor 同步" } } } catch { '' } }.GetNewClosure()
+    # 活件解析小料:指针→版本目录→旧单文件,返回可用 dll 路径(取不到空串,永不抛;定义须在使用者之前)
+    $liveDllPath = { try { $bd = Join-Path (Join-Path $HOME '.cxxu') 'bin'; $p = Join-Path $bd 'current.txt'; if (Test-Path -LiteralPath $p) { $h = Get-Content -LiteralPath $p -ErrorAction Stop | Select-Object -First 1; if ($h) { $c = Join-Path (Join-Path $bd "$h".Trim()) 'CxxuPredictor.dll'; if (Test-Path -LiteralPath $c) { return $c } } }; $best = Get-ChildItem -LiteralPath $bd -Directory -ErrorAction Stop | Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'CxxuPredictor.dll') } | Sort-Object LastWriteTime -Descending | Select-Object -First 1; if ($best) { return (Join-Path $best.FullName 'CxxuPredictor.dll') }; $lg = Join-Path $bd 'CxxuPredictor.dll'; if (Test-Path -LiteralPath $lg) { return $lg }; '' } catch { '' } }.GetNewClosure()
+    # 活件版本对比小料:指针解析出的活件哈希 vs 仓库源,结果进 备注 列(取不到空串,永不抛)
+    $dllSyncNote = { try { $lv = & $liveDllPath; $rp = Join-Path (Join-Path $psRoot 'CxxuPredictor') 'CxxuPredictor.dll'; if (-not (Test-Path -LiteralPath $rp)) { '仓库源不存在' } elseif (-not $lv) { '无活件' } else { $lh = (Get-FileHash -LiteralPath $lv -Algorithm SHA256).Hash.Substring(0, 8); $rh = (Get-FileHash -LiteralPath $rp -Algorithm SHA256).Hash.Substring(0, 8); if ($lh -eq $rh) { "与仓库一致[$rh]" } else { "与仓库不一致(仓 $rh)，请执行 Sync-CxxuPredictor 同步" } } } catch { '' } }.GetNewClosure()
     # 版本小料:只取文件级/内存级信息,不起新进程(git --version 这类免谈);取不到空串
     $modVer = { param($n) try { (Get-Module -ListAvailable $n | Select-Object -First 1).Version.ToString() } catch { '' } }.GetNewClosure()
     $binVer = { param($n) try { [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Get-Command $n -ErrorAction Stop).Source).FileVersion } catch { '' } }.GetNewClosure()
@@ -2773,7 +2775,7 @@ function Test-PsEnvReadiness
     & $chk 'PSCompletions 模块' '可选' { Get-Module -ListAvailable PSCompletions } 'Confirm-ModuleInstalled -ModuleName PSCompletions -Install(后解开 profile 钩子)' { & $modDate 'PSCompletions' } { & $modVer 'PSCompletions' }
     # 首跑生成物(跑一次 init 自动建)
     & $chk '~/Data.json' '生成物' { Test-Path -LiteralPath (Join-Path $HOME 'Data.json') } '跑一次 init' { & $fileDate (Join-Path $HOME 'Data.json') }
-    & $chk 'predictor 活件 ~/.cxxu/bin' '生成物' { Test-Path -LiteralPath (Join-Path (Join-Path (Join-Path $HOME '.cxxu') 'bin') 'CxxuPredictor.dll') } '跑 Sync-CxxuPredictor 生成活件' { & $fileDate (Join-Path (Join-Path (Join-Path $HOME '.cxxu') 'bin') 'CxxuPredictor.dll') } { '' } { & $dllSyncNote }
+    & $chk 'predictor 活件 ~/.cxxu/bin' '生成物' { [bool](& $liveDllPath) } '执行 Sync-CxxuPredictor 生成活件' { $lp = & $liveDllPath; if ($lp) { & $fileDate $lp } else { '' } } { '' } { & $dllSyncNote }
     $rows | Format-Table -AutoSize | Out-Host
     $must = @($rows | Where-Object { $_.级别 -eq '必备' })
     $mustOk = @($must | Where-Object { $_.状态 -eq 'OK' }).Count
@@ -2782,17 +2784,17 @@ function Test-PsEnvReadiness
     $repoRoot = Split-Path $psRoot -Parent
     $repoVer = try { (git -C $repoRoot log -1 --format='%h %ci' HEAD 2>$null).Trim() } catch { '' }
     if ([string]::IsNullOrWhiteSpace($repoVer)) { $repoVer = '未知(非 git 环境?)' }
-    $liveDll = Join-Path (Join-Path (Join-Path $HOME '.cxxu') 'bin') 'CxxuPredictor.dll'
+    $liveDll = & $liveDllPath
     $dllMismatch = $false
-    $dllInfo = '未生成(跑一次 init)'
-    if (Test-Path -LiteralPath $liveDll)
+    $dllInfo = '未生成(请执行 Sync-CxxuPredictor)'
+    if ($liveDll)
     {
         try
         {
             $liveHash = (Get-FileHash -LiteralPath $liveDll -Algorithm SHA256).Hash.Substring(0, 8)
             $liveDate = (Get-Item -LiteralPath $liveDll).LastWriteTime.ToString('yyyy-MM-dd HH:mm')
             $repoDll = Join-Path (Join-Path $psRoot 'CxxuPredictor') 'CxxuPredictor.dll'
-            $syncState = '仓库无此文件?'
+            $syncState = '仓库源不存在'
             if (Test-Path -LiteralPath $repoDll)
             {
                 $repoHash = (Get-FileHash -LiteralPath $repoDll -Algorithm SHA256).Hash.Substring(0, 8)
@@ -2841,8 +2843,8 @@ function Test-PsEnvReadiness
     # 下一步建议(优先级:缺必备 > 有更新 > 活件不一致 > 远端未知/未查 > 无事)
     $advice = if ($CheckRemote) { '无(已是最新,活件一致)' } else { '无(本地一致;加 -CheckRemote 问远端更新)' }
     if ($mustOk -lt $must.Count) { $advice = '按“备注”列补,补完重跑本检查' }
-    elseif ($remoteBehind) { $advice = 'Update-CxxuPsModules(先看 Deploy-Guide §13:dll 变了就重开或 -Force)' }
-    elseif ($dllMismatch) { $advice = '跑 Sync-CxxuPredictor 同步活件后再跑 init' }
+    elseif ($remoteBehind) { $advice = '请执行 Update-ReposesConfiged 拉取（dll 变更会自动同步活件，之后重开终端）' }
+    elseif ($dllMismatch) { $advice = '请执行 Sync-CxxuPredictor 同步活件后再执行 init' }
     elseif ($remoteInfo -like '未知*') { $advice = '远端未知(离线/超时?):联网后重跑看更新' }
     Write-Host "建议 $advice"
 }
@@ -2915,99 +2917,102 @@ function Deploy-CompletionStack
     }
     Write-Host '补全栈就绪:开新终端跑 init,首跑自建缓存(Ctrl+R/z);开关 $env:PsFzf/$env:PsZoxide'
 }
-function Update-CxxuPsModules
+
+function doctor
 {
     <#
     .SYNOPSIS
-    更新到新版本:fetch 看 dll 变不变→拉→分类报告(要不要重开一目了然)。
+    pwsh 健康诊断：先执行 Test-PsEnvReadiness（安装态），再检查运行态（init 错误/PSReadLine/历史大小/predictor/门控/懒加载/守护/仓库脏）。
     .DESCRIPTION
-    dll 外置($HOME/.cxxu/bin)后仓库版从不被加载,git pull 永不撞锁,本函数只管拉和报告:
-    fetch(只读)→diff 看 dll 变不变→NoProfile 子进程 pull --ff-only(不用 cmd 也行)。
-    拉完带 dll 变更:必须重开终端(内存里还是旧代码,ipmox 刷不动;新会话跑 Sync-CxxuPredictor 同步外置);
-    只有 psm1 变更:ipmox 一把梭。顺序:本函数 → (dll 变了就)重开终端 → init。
-    -Force(dll 变更时深度激活):跳过确认直接关会话重开一条龙(变量会丢!只给确信的人用;
-    不带则先确认再动手)。守护进程因 $env:PsPredictor 门永不咬 dll。
+    只读，不修改机器，默认零网络（远端版本通过 readiness 的 -CheckRemote 查看）。每行给出状态与处理动作，
+    收尾计数。定位问题时先执行本命令，再按行处理。
     .EXAMPLE
-    Update-CxxuPsModules -WhatIf
+    doctor
     .EXAMPLE
-    Update-CxxuPsModules
-    .EXAMPLE
-    Update-CxxuPsModules -Force
+    doctor -CheckRemote
     #>
-    [CmdletBinding(SupportsShouldProcess)]
+    [CmdletBinding()]
     param(
-        # dll 变更时深度激活:跳过确认,关其它会话(含无状态守护,随后重起)→脱钩开新窗→退自己(变量会丢;重定向拒绝)
-        [switch]$Force
+        # 转发给 Test-PsEnvReadiness:问远端有没有更新(默认关)
+        [switch]$CheckRemote
     )
-
-    $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-    if (-not (Get-Command git -ErrorAction SilentlyContinue))
+    Test-PsEnvReadiness -CheckRemote:$CheckRemote
+    $rows = [System.Collections.ArrayList]::new()
+    $dchk = {
+        param($Item, $Ok, $Note)
+        [void]$rows.Add([PSCustomObject]@{
+                检查 = $Item
+                状态 = if ($Ok) { 'OK' } else { 'WARN' }
+                备注 = $Note
+            })
+    }.GetNewClosure()
+    # init 错误账本(没跑过 init 时变量是 $null,先滤掉,不然 @($null) 数出 1 个空失败)
+    $stepErrs = @($global:PsInitStepErrors | Where-Object { $_ })
+    & $dchk 'init' ($global:PsInit -and -not $stepErrs.Count) $(if ($stepErrs.Count) { "有 $($stepErrs.Count) 步失败:$($stepErrs.Step -join ',')" } elseif (-not $global:PsInit) { '本会话没跑过 init' } else { 'clean' })
+    # PSReadLine 关键选项
+    $pr = try { Get-PSReadLineOption } catch { $null }
+    if ($pr)
     {
-        Write-Warning '无 git:Confirm-GitCommand 先装 git'
-        return
+        & $dchk '预测源/视图' ($pr.PredictionSource -match 'HistoryAndPlugin') "$($pr.PredictionSource)/$($pr.PredictionViewStyle)(窄窗 Inline 正常)"
+        & $dchk '历史策略' ($pr.HistoryNoDuplicates -and $pr.MaximumHistoryCount -ge 3000) "去重 $($pr.HistoryNoDuplicates),上限 $($pr.MaximumHistoryCount)"
     }
-    if (-not $PSCmdlet.ShouldProcess($repoRoot, 'fetch+pull 更新仓库'))
+    else { & $dchk 'PSReadLine' $false '取不到选项(模块没加载?)' }
+    # 历史文件大小(超 8000 行或 500KB 建议瘦身)
+    $histFile = try { (Get-PSReadLineOption).HistorySavePath } catch { '' }
+    if ($histFile -and (Test-Path -LiteralPath $histFile))
     {
-        Write-Host 'WhatIf 模式:未实际拉取。'
-        return
+        $hl = @(Get-Content -LiteralPath $histFile).Count
+        $hkb = [int]((Get-Item -LiteralPath $histFile).Length / 1KB)
+        & $dchk '历史大小' (($hl -le 8000) -and ($hkb -le 500)) "$hl 行/$hkb KB(超 8000 行或 500KB 跑 Optimize-PsHistory)"
     }
-    # fetch 只读,不碰工作区,在本会话跑也安全
-    git -C $repoRoot fetch origin 2>&1 | ForEach-Object { "$_" } | Out-Null
-    if ($LASTEXITCODE -ne 0)
+    else { & $dchk '历史大小' $false '历史文件不存在(还没存过?)' }
+    # predictor:门控/活件/加载三态(活件按指针解析,见 Test-PsEnvReadiness 的 $liveDllPath)
+    $gateOff = $env:PsPredictor -match '^(False|0|No|Off)$'
+    $binDir = Join-Path (Join-Path $HOME '.cxxu') 'bin'
+    $liveDll = $null
+    $ptrF = Join-Path $binDir 'current.txt'
+    if (Test-Path -LiteralPath $ptrF)
     {
-        Write-Warning 'fetch 失败(没网或远端不对),先查网络,本次不动工作区。'
-        return
+        $hd = Get-Content -LiteralPath $ptrF -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($hd) { $cd = Join-Path (Join-Path $binDir "$hd".Trim()) 'CxxuPredictor.dll'; if (Test-Path -LiteralPath $cd) { $liveDll = $cd } }
     }
-    $dllWillChange = [bool](git -C $repoRoot diff --name-only HEAD FETCH_HEAD -- 'PS/CxxuPredictor/CxxuPredictor.dll' 2>$null)
-    $out = @(pwsh -NoProfile -NonInteractive -Command "git -C '$repoRoot' pull --ff-only" 2>&1 | ForEach-Object { "$_" })
-    $code = $LASTEXITCODE
-    $text = $out -join "`n"
-    if ($text) { Write-Host $text }
-    if ($code -ne 0)
+    if (-not $liveDll)
     {
-        Write-Warning '拉取失败,看上面输出处理;--ff-only 挡合并,工作区一般干净。'
-        return
+        $bd = Get-ChildItem -LiteralPath $binDir -Directory -ErrorAction SilentlyContinue |
+            Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'CxxuPredictor.dll') } |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if ($bd) { $liveDll = Join-Path $bd.FullName 'CxxuPredictor.dll' }
+        else { $lgF = Join-Path $binDir 'CxxuPredictor.dll'; if (Test-Path -LiteralPath $lgF) { $liveDll = $lgF } }
     }
-    if ($dllWillChange)
-    {
-        Write-Warning 'dll 已更新:当前会话内存里还是旧代码(ipmox 刷不动,.NET 程序集不随模块卸载),请重开终端,跑 Sync-CxxuPredictor 同步活件,再 init'
-        if (-not $Force)
-        {
-            Write-Host '加 -Force 一条龙重开（跳过确认，变量会丢）；或手动重开终端。'
-            return
-        }
-        if ([Console]::IsOutputRedirected)
-        {
-            Write-Warning '-Force 拒绝在重定向/agent 会话里关当前会话:请交互运行。'
-            return
-        }
-        $go = $PSCmdlet.ShouldProcess('其它 pwsh + 当前会话(含未保存变量)', '全部关闭并重开(变量会丢失!),守护进程自动重起')
-        if (-not $go)
-        {
-            return
-        }
-        Get-Process pwsh -ErrorAction SilentlyContinue | Where-Object { $_.Id -ne $PID } | ForEach-Object {
-            Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
-        }
-        if (Get-Command Start-StartupBgProcesses -ErrorAction SilentlyContinue)
-        {
-            Start-StartupBgProcesses
-        }
-        else
-        {
-            Write-Warning '缺 Start-StartupBgProcesses(Startup 模块):守护进程需手动重起。'
-        }
-        $safeHome = $HOME -replace "'", "''"
-        $childCmd = "Wait-Process -Id $PID; Start-Process pwsh -WorkingDirectory '$safeHome'"
-        Start-Process pwsh -NoProfile -NonInteractive -ArgumentList '-Command', $childCmd -WindowStyle Hidden
-        exit
-    }
-    elseif ($text -match 'Already up to date|已经是最新的')
-    {
-        Write-Host '已是最新,无事可做。'
-    }
+    $loaded = [bool](Get-Module CxxuPredictor)
+    if ($gateOff) { & $dchk 'predictor' $true '开关已关闭(PsPredictor=False)，按需开启' }
+    elseif (-not $liveDll) { & $dchk 'predictor' $false '无活件：请执行 Sync-CxxuPredictor 生成' }
+    elseif (-not $loaded) { & $dchk 'predictor' $false '活件存在但未加载：等待一拍(OnIdle)或执行 Register-PsUxLazyLoad -Now' }
     else
     {
-        Write-Host '只有文本变更:跑 ipmox 刷新即可(会话变量不丢)。'
+        $repoDll = Join-Path (Join-Path (Split-Path $PSScriptRoot -Parent) 'CxxuPredictor') 'CxxuPredictor.dll'
+        $same = try { (Get-FileHash -LiteralPath $liveDll -Algorithm SHA256).Hash -eq (Get-FileHash -LiteralPath $repoDll -Algorithm SHA256).Hash } catch { $false }
+        & $dchk 'predictor' $same $(if ($same) { '已加载且与仓库一致' } else { '内存中是旧版本：请重开终端，活件已可同步（Sync-CxxuPredictor 不受锁限制）' })
     }
+    # 三门控 + 懒加载
+    $gates = @('PsFzf', 'PsZoxide', 'PsPredictor') | ForEach-Object { "$_=$([string]::IsNullOrEmpty((Get-Item "env:$_" -ErrorAction SilentlyContinue).Value) ? '默认开' : (Get-Item "env:$_").Value)" }
+    & $dchk '门控' $true ($gates -join ' ')
+    & $dchk '懒加载' ([bool](Get-Module PSFzf) -or $env:PsFzf -match '^(False|0|No|Off)$') $(if (Get-Module PSFzf) { 'PSFzf 已装入(OnIdle 已触发)' } elseif ($global:PsUxOnIdleRegistered) { 'OnIdle 已注册,等一拍' } else { '没注册:跑 Register-PsUxLazyLoad' })
+    # 守护进程代理:Data.json 新鲜度(>5 分钟没写=守护可能没跑)
+    $dj = Join-Path $HOME 'Data.json'
+    if (Test-Path -LiteralPath $dj)
+    {
+        $age = (Get-Date) - (Get-Item -LiteralPath $dj).LastWriteTime
+        & $dchk '守护(IP)' ($age.TotalMinutes -le 5) ("Data.json $($age.TotalMinutes.ToString('0')) 分钟前更新(超 5 分钟查守护)")
+    }
+    else { & $dchk '守护(IP)' $false '无 Data.json:跑一次 init' }
+    # 仓库脏检查(本地,只读)
+    $repoRoot = Split-Path $PSScriptRoot -Parent
+    $dirty = @(git -C $repoRoot status --porcelain 2>$null)
+    & $dchk '仓库干净' (-not $dirty.Count) $(if ($dirty.Count) { "$($dirty.Count) 个未提交改动(更新前先看)" } else { 'clean' })
+    # conda 缓存
+    & $dchk 'conda 缓存' (Test-Path -LiteralPath (Join-Path $HOME '.conda_hook_cache.ps1')) '无则下次 init 现场生成(慢一次)'
+    $rows | Format-Table -AutoSize | Out-Host
+    $warn = @($rows | Where-Object { $_.状态 -eq 'WARN' }).Count
+    Write-Host $(if ($warn) { "WARN $warn 项,按备注列逐个处理,处理完重跑 doctor。" } else { '全绿,无事可做。' })
 }

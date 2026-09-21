@@ -9,7 +9,7 @@
 
 | 模块 | 行数/函数 | 职责 |
 |---|---|---|
-| `Init` | 499/12 | 启动编排：`init`/`p` 入口、7 步任务表（`-Timing` 看耗时）、`PsEnvMode` 等级跟踪 |
+| `Init` | 719/15 | 启动编排：`init`/`p` 入口、8 步任务表（`-Timing` 看耗时）、`PsEnvMode` 等级跟踪、`Optimize-PsHistory`、用户配置（`Import/New-CxxuConfig*`） |
 | `Prompt` | 723/32 | 提示符：`prompt` 入口、`Prompt*` 主题、`Write-*` 片段、`Set-PsPrompt`（`-Persist` 才写注册表）、电池 30s 缓存 |
 | `CxxuPredictor` | 231/0导出 | 自研命令名 predictor（模糊+严格通配，二进制：dll 发布件 + src；活件外置 `~/.cxxu/bin`，loader 同步装载；OnIdle 加载） |
 | `PwshVar` | 329/6 | `.conf` 变量文件加载（预编译缓存，`Update-PwshVars -NoCache` 回退） |
@@ -25,7 +25,7 @@
 | 模块 | 行数/函数 | 职责 |
 |---|---|---|
 | `Info` | 1736/28 | 系统信息：内存/进程查看、IP（批量+60s 记忆）、电池已迁入 |
-| `Basic` | 2282/101 | 大杂烩（键盘/电源/网络小工具）；prompt 只剩间接依赖，保持不动 |
+| `Basic` | 2308/101 | 大杂烩（键盘/电源/网络小工具）；prompt 只剩间接依赖，保持不动 |
 | `TaskSchdPwsh` | 1146/14 | `Start-ScriptWhenIntervalEnough`（内存 5s 节流就靠它）、计划任务、报时守护进程 |
 
 ## 网络与系统
@@ -56,7 +56,7 @@
 
 | 模块 | 行数/函数 | 职责 |
 |---|---|---|
-| `Deploy` | 2950/47 | 一键部署：scoop/github hosts/python/conda/开机任务等；`Get-SelectedMirror`/`Get-GithubMirrorPrefix`/`Get-RepoRawUrl`、`Test-PsEnvReadiness`（版本表尾 + `-CheckRemote` 远端对比 + 建议行）、`Update-CxxuPsModules`（-Force）在此 |
+| `Deploy` | 3018/46 | 一键部署：scoop/github hosts/python/conda/开机任务等；`Get-SelectedMirror`/`Get-GithubMirrorPrefix`/`Get-RepoRawUrl`、`Test-PsEnvReadiness`（版本表尾 + `-CheckRemote` 远端对比 + 建议行）、`doctor`（统一诊断入口）在此 |
 | `Development` | 340/22 | Django 快捷命令、ssh 别名、文本清理 |
 | `Git` | 505/15 | git 日常：浅克隆、一键提交、镜像加速下载 |
 | `MySql` | 984/13 | MySQL 库表备份/建删/查询 |
@@ -67,7 +67,7 @@
 | `ArchiveProcess` | 610/8 | tar/zstd/lz4/gz 压缩解压 |
 | `Cloudflare` | 509/9 | CF Zone/DNS 管理 |
 | `BTCN` | 722/9 | 批量建站（宝塔）脚本生成 |
-| `TerminalTools` | 451/12 | WT 链接、scoop 安装、scp、目录树、`Register-PsUxLazyLoad`（PSFzf/zoxide/predictor 延迟加载，入口只静默装载）+ `Sync-CxxuPredictor`（手动同步活件，-Force） |
+| `TerminalTools` | 504/12 | WT 链接、scoop 安装、scp、目录树、`Register-PsUxLazyLoad`（PSFzf/zoxide/predictor 延迟加载，入口按指针静默装载）+ `Sync-CxxuPredictor`（并排版本同步活件，-Uninstall/-Force） |
 | `openApps` | 166/16 | 常用软件别名启动（qq/微信/typora 等） |
 | `Browser` | 24/4 | 浏览器搜索/收藏夹小命令 |
 | `Calendar` | 144/1 | `Show-Calendar`（唯一用 `Export-ModuleMember` 的模块，已与 manifest 对齐） |
