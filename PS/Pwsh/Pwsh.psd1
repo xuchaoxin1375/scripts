@@ -28,16 +28,12 @@
         'Grant-PermissionToPath',
         'Get-PipelineInput',
         'Get-SourceCode',
-        'Operators_Comparison_pwsh',
-        'Operators_Logical_pwsh',
         'Update-PowerShellLegacy',
         'Get-LatestPowerShellDownloadUrl',
         'Update-PowerShell',
         'Confirm-UserContinue',
         'Write-PsDebugLog',
         'Start-CodeSSh',
-        'Remove-RobocopyMirEmpty',
-        'Copy-Robocopy',
         'Sync-ModuleManifest'
     )
     CmdletsToExport = @()

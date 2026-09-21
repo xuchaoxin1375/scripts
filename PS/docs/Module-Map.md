@@ -1,6 +1,6 @@
 # 模块地图（Module Map）
 
-> 55 个自有模块，全在 `PS/<Name>/<Name>.psm1` + 同名 `.psd1`
+> 56 个自有模块，全在 `PS/<Name>/<Name>.psm1` + 同名 `.psd1`
 >（唯一例外 `CxxuPredictor`：二进制模块，`.psd1` + `.dll` + `src/`，无 `.psm1`）。
 > 规范见 `Module-Conventions.md`，性能史见 `Startup-Optimization.md`。
 > 图例：🔥 启动/提示热路径（改动先跑终验），❄️ 冷路径（按需加载）。
@@ -19,14 +19,14 @@
 | `EnvVar` | 1021/15 | 环境变量 User/Machine/Process 三档；热路径一律 `Set-ProcessEnvVar` |
 | `Startup` | 307/12 | 开机任务、后台守护进程、OS 版本缓存（`Confirm-EnvVarOfInfo`） |
 | `Json` | 251/5 | `Data.json` 读写校验（init 与 prompt 共用，无递归设计） |
-| `Pwsh` | 1501/33 | 通用工具箱：模块安装、profile 管理、`ipmox`/`ipmof` 重载（仅仓库内模块）、`Sync-ModuleManifest` 偷懒同步（-Name Tab 补全）、`Set-PsExtension`（默认关） |
+| `Pwsh` | 1162/29 | 通用工具箱：模块安装、profile 管理、`ipmox`/`ipmof` 重载（仅仓库内模块）、`Sync-ModuleManifest` 偷懒同步（-Name Tab 补全）、`Set-PsExtension`（默认关）；教学 2 函数迁 `HelpExamples`、Robocopy 2 函数迁 `FileSystem` |
 
 ## prompt 首渲染会顺带加载
 
 | 模块 | 行数/函数 | 职责 |
 |---|---|---|
 | `Info` | 1736/28 | 系统信息：内存/进程查看、IP（批量+60s 记忆）、电池已迁入 |
-| `Basic` | 2308/101 | 大杂烩（键盘/电源/网络小工具）；prompt 只剩间接依赖，保持不动 |
+| `Basic` | 1969/85 | 通用小工具（网络/git/时间/速记等）；键盘/TTS/电源 16 函数 2026-09-21 迁 `WinSys`，prompt 只剩间接依赖 |
 | `TaskSchdPwsh` | 1146/14 | `Start-ScriptWhenIntervalEnough`（内存 5s 节流就靠它）、计划任务、报时守护进程 |
 
 ## 网络与系统
@@ -41,7 +41,8 @@
 | `Proxy` | 168/5 | 代理开关与系统代理设置 |
 | `SSH` | 394/9 | SSH 密钥/服务端/客户端初始化 |
 | `TestLinks` | 347/4 | GitHub 镜像站可用性测试（含数据源） |
-| `FileSystem` | 708/8 | 文件/目录度量（`Get-Size` 等） |
+| `FileSystem` | 1041/10 | 文件/目录度量（`Get-Size` 等）+ Robocopy 封装（2026-09-21 从 `Pwsh` 迁入 2 函数） |
+| `WinSys` | 351/16 | Windows 本机设置：键盘输入法/TTS 语音/电源管理（2026-09-21 从 `Basic` 迁入，命令名不变） |
 | `PathProcess` | 315/5 | 路径压缩/转换/风格判定 |
 | `Link` | 178/5 | 硬链接/软链接/目录链接管理 |
 | `RecycleBin` | 224/5 | 回收站查看/移动/清空 |
@@ -76,7 +77,7 @@
 | `Mock` | 74/2 | 随机串/撑大文件（测试用） |
 | `Special` | 49/1 | alist 开机注册 |
 | `backup` | 248/14 | 各软件配置备份（与 `Deploy-*` 配对） |
-| `HelpExamples` | 62/1 | comment-based help 示例（原名 `CommentBasedHelpDocumentExamples` 过长，2026-09-20 改短名） |
+| `HelpExamples` | 71/3 | comment-based help 示例 + pwsh 运算符教学 2 函数（2026-09-21 从 `Pwsh` 迁入；原名 `CommentBasedHelpDocumentExamples` 过长，2026-09-20 改短名） |
 | `Test` | 3/0 | 临时函数草稿区（用户专用，不受命名规范约束；转正后删，见 `Module-Conventions.md §2`） |
 
 ## 存疑区（2026-09-20 用户已拍板，见下）

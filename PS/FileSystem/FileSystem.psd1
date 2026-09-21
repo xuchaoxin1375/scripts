@@ -13,7 +13,9 @@
         'Get-Size',
         'Get-ItemSizeSorted',
         'Get-ChildItemNameQuatation',
-        'Test-DirectoryEmpty'
+        'Test-DirectoryEmpty',
+        'Remove-RobocopyMirEmpty',
+        'Copy-Robocopy'
     )
     CmdletsToExport = @()
     VariablesToExport = @()

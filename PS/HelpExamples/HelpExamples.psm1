@@ -60,3 +60,12 @@ function Add-ExtensionExample
         Set-Item
     #>  
 }
+
+function Operators_Comparison_pwsh
+{
+    help about_Comparison_Operators
+}
+function  Operators_Logical_pwsh
+{
+    help about_Logical_Operators
+}

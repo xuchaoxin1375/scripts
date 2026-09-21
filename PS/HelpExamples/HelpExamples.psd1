@@ -6,7 +6,9 @@
     Description = 'Cxxu PowerShell module: HelpExamples'
     PowerShellVersion = '7.0'
     FunctionsToExport = @(
-        'Add-ExtensionExample'
+        'Add-ExtensionExample',
+        'Operators_Comparison_pwsh',
+        'Operators_Logical_pwsh'
     )
     CmdletsToExport = @()
     VariablesToExport = @()
