@@ -328,40 +328,17 @@ function Register-PsUxLazyLoad
         # 用它不用 CompletionPredictor 补命令名:后者源码级跳过 CommandName token(见 §19)
         # 守护进程用不上 predictor:置 $env:PsPredictor='False' 即跳过(开关风格同 PsFzf/PsZoxide);
         # 守护启动链(Start-StartupBgProcesses/定时任务)负责置位,交互会话默认开启
-        # dll 外置($HOME/.cxxu/bin,按哈希同步):仓库版从不被加载→git pull 永不撞锁;
-        # 同步失败(被咬住)警告给手工命令,照用旧版,下次新会话自愈;psd1 已去 RootModule,按名装不出 predictor,必须走这里
+        # dll 外置($HOME/.cxxu/bin):仓库版从不被加载→git pull 永不撞锁;
+        # 入口只静默装载(不对比不警告,旧版也照用):版本检查/同步全收归手动 Sync-CxxuPredictor
+        # (旧逻辑每次入口算哈希+试图同步,被咬住就 Warning 刷屏,现默认关闭);psd1 已去 RootModule,
+        # 按名装不出 predictor,必须走这里
         if ($env:PsPredictor -notmatch '^(False|0|No|Off)$')
         {
-            $ttBase = (Get-Module TerminalTools).ModuleBase
-            if ($ttBase)
+            $cxxuLiveDll = Join-Path (Join-Path (Join-Path $HOME '.cxxu') 'bin') 'CxxuPredictor.dll'
+            if (Test-Path -LiteralPath $cxxuLiveDll)
             {
-                $cxxuRepoDll = Join-Path (Join-Path (Split-Path $ttBase -Parent) 'CxxuPredictor') 'CxxuPredictor.dll'
-                $cxxuLiveDll = Join-Path (Join-Path (Join-Path $HOME '.cxxu') 'bin') 'CxxuPredictor.dll'
-                $needSync = $true
-                if ((Test-Path -LiteralPath $cxxuRepoDll) -and (Test-Path -LiteralPath $cxxuLiveDll))
-                {
-                    $repoHash = (Get-FileHash -LiteralPath $cxxuRepoDll -Algorithm SHA256).Hash
-                    $liveHash = (Get-FileHash -LiteralPath $cxxuLiveDll -Algorithm SHA256).Hash
-                    $needSync = $repoHash -ne $liveHash
-                }
-                if ($needSync -and (Test-Path -LiteralPath $cxxuRepoDll))
-                {
-                    try
-                    {
-                        $cxxuLiveDir = Split-Path $cxxuLiveDll -Parent
-                        if (-not (Test-Path -LiteralPath $cxxuLiveDir)) { New-Item -ItemType Directory -Path $cxxuLiveDir -Force | Out-Null }
-                        Copy-Item -LiteralPath $cxxuRepoDll -Destination $cxxuLiveDll -Force -ErrorAction Stop
-                    }
-                    catch
-                    {
-                        Write-Warning "CxxuPredictor.dll 同步外置失败(被咬住):手工跑 Copy-Item '$cxxuRepoDll' '$cxxuLiveDll' (先关其它 pwsh);本次照用旧版。"
-                    }
-                }
-                if (Test-Path -LiteralPath $cxxuLiveDll)
-                {
-                    # 按路径装载(-Global 防嵌套)
-                    Import-Module $cxxuLiveDll -Global -ErrorAction SilentlyContinue
-                }
+                # 按路径装载(-Global 防嵌套)
+                Import-Module $cxxuLiveDll -Global -ErrorAction SilentlyContinue
             }
         }
         # zoxide:init 输出缓存到文件,只有二进制更新才重建(仿 conda 缓存套路)
@@ -395,4 +372,80 @@ function Register-PsUxLazyLoad
     if ($global:PsUxOnIdleRegistered) { return }
     Register-EngineEvent PowerShell.OnIdle -Action $loadAction | Out-Null
     $global:PsUxOnIdleRegistered = $true
+}
+function Sync-CxxuPredictor
+{
+    <#
+    .SYNOPSIS
+    手动同步 CxxuPredictor 活件:仓库源 dll → ~/.cxxu/bin(按哈希对比,不同才拷)。
+    .DESCRIPTION
+    入口 loader 只静默装载(旧版照用,无警告),版本检查/同步全靠本命令手动跑。
+    活件被其它 pwsh 咬住拷不过去:默认给手动步骤;-Force 关其它会话后重试(变量会丢,只给确信的人用)。
+    同步后当前会话内存里还是旧代码(.NET 程序集不随模块卸载),重开终端才生效。
+    .EXAMPLE
+    Sync-CxxuPredictor
+    .EXAMPLE
+    Sync-CxxuPredictor -Force
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        # 活件被咬住时:关其它 pwsh 会话后重试(变量会丢;重定向拒绝)
+        [switch]$Force
+    )
+    $repoDll = Join-Path (Join-Path (Split-Path $PSScriptRoot -Parent) 'CxxuPredictor') 'CxxuPredictor.dll'
+    $liveDll = Join-Path (Join-Path (Join-Path $HOME '.cxxu') 'bin') 'CxxuPredictor.dll'
+    if (-not (Test-Path -LiteralPath $repoDll))
+    {
+        Write-Warning "仓库无源 dll($repoDll):先确认仓库状态。"
+        return
+    }
+    $liveDir = Split-Path $liveDll -Parent
+    if (-not (Test-Path -LiteralPath $liveDir)) { New-Item -ItemType Directory -Path $liveDir -Force | Out-Null }
+    $repoHash = (Get-FileHash -LiteralPath $repoDll -Algorithm SHA256).Hash.Substring(0, 8)
+    if (Test-Path -LiteralPath $liveDll)
+    {
+        $liveHash = (Get-FileHash -LiteralPath $liveDll -Algorithm SHA256).Hash.Substring(0, 8)
+        if ($repoHash -eq $liveHash)
+        {
+            Write-Host "活件已是最新[$repoHash],无事可做。"
+            return
+        }
+    }
+    else
+    {
+        $liveHash = '(无活件)'
+    }
+    try
+    {
+        Copy-Item -LiteralPath $repoDll -Destination $liveDll -Force -ErrorAction Stop
+        Write-Host "活件已同步($liveHash → $repoHash):当前会话内存仍是旧代码,重开终端生效。"
+    }
+    catch
+    {
+        if (-not $Force)
+        {
+            Write-Warning "活件被咬住拷不过去(其它 pwsh 正用着旧版):先关其它 pwsh 再跑本命令,或加 -Force 代劳;本次照用旧版。"
+            return
+        }
+        if ([Console]::IsOutputRedirected)
+        {
+            Write-Warning '-Force 拒绝在重定向/agent 会话里关其它会话:请交互运行。'
+            return
+        }
+        if ($PSCmdlet.ShouldProcess('其它 pwsh 会话(含未保存变量)', '全部关闭后重试同步(变量会丢失!)'))
+        {
+            Get-Process pwsh -ErrorAction SilentlyContinue | Where-Object { $_.Id -ne $PID } | ForEach-Object {
+                Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+            }
+            try
+            {
+                Copy-Item -LiteralPath $repoDll -Destination $liveDll -Force -ErrorAction Stop
+                Write-Host "活件已同步($liveHash → $repoHash):当前会话内存仍是旧代码,重开终端生效。"
+            }
+            catch
+            {
+                Write-Warning '重试仍失败:看上面错误处理,本次照用旧版。'
+            }
+        }
+    }
 }

@@ -132,12 +132,15 @@ conda 缓存（`~/.conda_hook_cache.ps1`）与 zoxide 缓存（`~/.zoxide_init_c
 ```powershell
 Update-CxxuPsModules          # fetch 看 dll 变不变→拉→分类报告
 Update-CxxuPsModules -Force    # 带 dll 就一条龙：跳过确认→关其它会话→守护重起→脱钩开新窗→退自己（变量会丢！）
+Sync-CxxuPredictor            # 手动同步活件（仓库源→~/.cxxu/bin，不一致才拷；被咬住加 -Force）
 Update-ReposesConfiged        # 平时批量更新照旧，无需额外注意
 ```
 
-- 拉完带 dll 变更：**重开终端**（新会话 loader 自动同步外置活件并自愈）；
+- 入口 loader 只静默装载（旧版照用，无警告）：版本检查/同步全手动，
+  `Test-PsEnvReadiness` 备注列报不一致 → 跑 `Sync-CxxuPredictor`（被咬住加 `-Force`）。
+- 拉完带 dll 变更：**重开终端** → 跑 `Sync-CxxuPredictor` 同步活件 → `init`；
   只有 psm1 变更：`ipmox` 一把梭，会话变量不丢。
 - 守护进程（报时/IP）用不上 predictor：`$env:PsPredictor='False'` 门已置
   （`Start-StartupBgProcesses` 继承 + 两个守护函数按 `-Command` 自断），它们永不加载/锁定 dll，
   `-Force` 关它们无压力（无状态，重起即回）；交互会话手动调守护函数不受影响。
-- 顺序：更新函数 →（dll 变了就重开/`-Force`）→ `init` → `Test-PsEnvReadiness` 收尾。
+- 顺序：更新函数 →（dll 变了就重开 + `Sync-CxxuPredictor`/`-Force`）→ `init` → `Test-PsEnvReadiness` 收尾。

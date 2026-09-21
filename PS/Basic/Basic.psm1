@@ -1509,14 +1509,14 @@ function Update-ReposesConfiged
     .SYNOPSIS
     从远程仓库拉取最新的配置覆盖本地版本
     .DESCRIPTION
-    如果本地在$repos目录下，那么会从gitee clone到$repos目录中
+    如果本地在$repos目录下，那么会从github clone到$repos目录中
 
     #>
     [CmdletBinding()]
     param(
         # $repoDirs = '',
         $repoDirs = $CommonRepos,
-        $RepoSource = 'gitee',
+        $RepoSource = 'github',
         $CxxuRepos = $CxxuRepos,
         # $Proxy = "http://127.0.0.1:8800",
         $Proxy = "",

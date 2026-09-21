@@ -2752,7 +2752,7 @@ function Test-PsEnvReadiness
     $binDate = { param($n) try { $src = (Get-Command $n -ErrorAction Stop).Source; if ([string]::IsNullOrWhiteSpace($src) -or -not (Test-Path -LiteralPath $src)) { '' } else { (Get-Item -LiteralPath $src).LastWriteTime.ToString('yyyy-MM-dd HH:mm') } } catch { '' } }.GetNewClosure()
     $fileDate = { param($p) try { (Get-Item -LiteralPath $p -ErrorAction Stop).LastWriteTime.ToString('yyyy-MM-dd HH:mm') } catch { '' } }.GetNewClosure()
     # 活件版本对比小料:活件哈希 vs 仓库源 dll,结果进 备注 列(取不到空串,永不抛)
-    $dllSyncNote = { try { $lv = Join-Path (Join-Path (Join-Path $HOME '.cxxu') 'bin') 'CxxuPredictor.dll'; $rp = Join-Path (Join-Path $psRoot 'CxxuPredictor') 'CxxuPredictor.dll'; if (-not (Test-Path -LiteralPath $rp)) { '仓库无此文件?' } else { $lh = (Get-FileHash -LiteralPath $lv -Algorithm SHA256).Hash.Substring(0, 8); $rh = (Get-FileHash -LiteralPath $rp -Algorithm SHA256).Hash.Substring(0, 8); if ($lh -eq $rh) { "与仓库一致[$rh]" } else { "与仓库不一致(仓 $rh)→重开终端同步" } } } catch { '' } }.GetNewClosure()
+    $dllSyncNote = { try { $lv = Join-Path (Join-Path (Join-Path $HOME '.cxxu') 'bin') 'CxxuPredictor.dll'; $rp = Join-Path (Join-Path $psRoot 'CxxuPredictor') 'CxxuPredictor.dll'; if (-not (Test-Path -LiteralPath $rp)) { '仓库无此文件?' } else { $lh = (Get-FileHash -LiteralPath $lv -Algorithm SHA256).Hash.Substring(0, 8); $rh = (Get-FileHash -LiteralPath $rp -Algorithm SHA256).Hash.Substring(0, 8); if ($lh -eq $rh) { "与仓库一致[$rh]" } else { "与仓库不一致(仓 $rh)→跑 Sync-CxxuPredictor 同步" } } } catch { '' } }.GetNewClosure()
     # 版本小料:只取文件级/内存级信息,不起新进程(git --version 这类免谈);取不到空串
     $modVer = { param($n) try { (Get-Module -ListAvailable $n | Select-Object -First 1).Version.ToString() } catch { '' } }.GetNewClosure()
     $binVer = { param($n) try { [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Get-Command $n -ErrorAction Stop).Source).FileVersion } catch { '' } }.GetNewClosure()
@@ -2773,7 +2773,7 @@ function Test-PsEnvReadiness
     & $chk 'PSCompletions 模块' '可选' { Get-Module -ListAvailable PSCompletions } 'Confirm-ModuleInstalled -ModuleName PSCompletions -Install(后解开 profile 钩子)' { & $modDate 'PSCompletions' } { & $modVer 'PSCompletions' }
     # 首跑生成物(跑一次 init 自动建)
     & $chk '~/Data.json' '生成物' { Test-Path -LiteralPath (Join-Path $HOME 'Data.json') } '跑一次 init' { & $fileDate (Join-Path $HOME 'Data.json') }
-    & $chk 'predictor 活件 ~/.cxxu/bin' '生成物' { Test-Path -LiteralPath (Join-Path (Join-Path (Join-Path $HOME '.cxxu') 'bin') 'CxxuPredictor.dll') } '跑一次 init(loader 按哈希同步外置)' { & $fileDate (Join-Path (Join-Path (Join-Path $HOME '.cxxu') 'bin') 'CxxuPredictor.dll') } { '' } { & $dllSyncNote }
+    & $chk 'predictor 活件 ~/.cxxu/bin' '生成物' { Test-Path -LiteralPath (Join-Path (Join-Path (Join-Path $HOME '.cxxu') 'bin') 'CxxuPredictor.dll') } '跑 Sync-CxxuPredictor 生成活件' { & $fileDate (Join-Path (Join-Path (Join-Path $HOME '.cxxu') 'bin') 'CxxuPredictor.dll') } { '' } { & $dllSyncNote }
     $rows | Format-Table -AutoSize | Out-Host
     $must = @($rows | Where-Object { $_.级别 -eq '必备' })
     $mustOk = @($must | Where-Object { $_.状态 -eq 'OK' }).Count
@@ -2842,7 +2842,7 @@ function Test-PsEnvReadiness
     $advice = if ($CheckRemote) { '无(已是最新,活件一致)' } else { '无(本地一致;加 -CheckRemote 问远端更新)' }
     if ($mustOk -lt $must.Count) { $advice = '按“备注”列补,补完重跑本检查' }
     elseif ($remoteBehind) { $advice = 'Update-CxxuPsModules(先看 Deploy-Guide §13:dll 变了就重开或 -Force)' }
-    elseif ($dllMismatch) { $advice = '重开终端(loader 按哈希同步活件)后再跑 init' }
+    elseif ($dllMismatch) { $advice = '跑 Sync-CxxuPredictor 同步活件后再跑 init' }
     elseif ($remoteInfo -like '未知*') { $advice = '远端未知(离线/超时?):联网后重跑看更新' }
     Write-Host "建议 $advice"
 }
@@ -2923,7 +2923,7 @@ function Update-CxxuPsModules
     .DESCRIPTION
     dll 外置($HOME/.cxxu/bin)后仓库版从不被加载,git pull 永不撞锁,本函数只管拉和报告:
     fetch(只读)→diff 看 dll 变不变→NoProfile 子进程 pull --ff-only(不用 cmd 也行)。
-    拉完带 dll 变更:必须重开终端(内存里还是旧代码,ipmox 刷不动;新会话 loader 自动同步外置);
+    拉完带 dll 变更:必须重开终端(内存里还是旧代码,ipmox 刷不动;新会话跑 Sync-CxxuPredictor 同步外置);
     只有 psm1 变更:ipmox 一把梭。顺序:本函数 → (dll 变了就)重开终端 → init。
     -Force(dll 变更时深度激活):跳过确认直接关会话重开一条龙(变量会丢!只给确信的人用;
     不带则先确认再动手)。守护进程因 $env:PsPredictor 门永不咬 dll。
@@ -2970,7 +2970,7 @@ function Update-CxxuPsModules
     }
     if ($dllWillChange)
     {
-        Write-Warning 'dll 已更新:当前会话内存里还是旧代码(ipmox 刷不动,.NET 程序集不随模块卸载),请重开终端再 init'
+        Write-Warning 'dll 已更新:当前会话内存里还是旧代码(ipmox 刷不动,.NET 程序集不随模块卸载),请重开终端,跑 Sync-CxxuPredictor 同步活件,再 init'
         if (-not $Force)
         {
             Write-Host '加 -Force 一条龙重开（跳过确认，变量会丢）；或手动重开终端。'

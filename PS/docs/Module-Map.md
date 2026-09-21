@@ -67,7 +67,7 @@
 | `ArchiveProcess` | 610/8 | tar/zstd/lz4/gz 压缩解压 |
 | `Cloudflare` | 509/9 | CF Zone/DNS 管理 |
 | `BTCN` | 722/9 | 批量建站（宝塔）脚本生成 |
-| `TerminalTools` | 360/11 | WT 链接、scoop 安装、scp、目录树、`Register-PsUxLazyLoad`（PSFzf/zoxide/predictor 延迟加载） |
+| `TerminalTools` | 451/12 | WT 链接、scoop 安装、scp、目录树、`Register-PsUxLazyLoad`（PSFzf/zoxide/predictor 延迟加载，入口只静默装载）+ `Sync-CxxuPredictor`（手动同步活件，-Force） |
 | `openApps` | 166/16 | 常用软件别名启动（qq/微信/typora 等） |
 | `Browser` | 24/4 | 浏览器搜索/收藏夹小命令 |
 | `Calendar` | 144/1 | `Show-Calendar`（唯一用 `Export-ModuleMember` 的模块，已与 manifest 对齐） |

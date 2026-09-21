@@ -113,6 +113,11 @@
     默认源全切 github；中央变量 `$env:PsGithubMirror`（持久化自选镜像，不设走默认/静默测速），
     统一出口 `Get-GithubMirrorPrefix`/`Get-RepoRawUrl`（Deploy 模块内），独立脚本内联同策略；
     `Get-SelectedMirror` 的 gitee fallback 已摘。动 URL 先查这两函数，别手拼。
+24. **活件同步手动化（2026-09-21，用户偏好）**：入口 loader 只静默装载（旧版照用，零警告），
+    版本检查/同步全收归 `Sync-CxxuPredictor`（TerminalTools，哈希对比，不同才拷；
+    被咬住默认给手动步骤，`-Force` 关其它会话后重试，重定向拒绝；同步后重开终端才生效）。
+    readiness 活件行备注报不一致→指去本命令；`Update-CxxuPsModules` 的 dll 变更分支文案同步改。
+    原则：入口默认不做任何版本检查/网络动作，重活全手动（同 `-CheckRemote` opt-in 思路）。
 
 ## 4. 环境事实（这台机器，2026-09 实测）
 

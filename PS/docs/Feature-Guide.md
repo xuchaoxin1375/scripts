@@ -47,6 +47,11 @@ ipmox -Name Prompt -Sync        # 新函数场景：先同步 manifest 再重载
 ipmof | iex                     # 旧版（兼容）：只重载仓库内(PS/)已加载模块；第三方/系统不动；副作用模块(*completion*/*predictor*/*conda*)跳过
 ```
 
+> **dll 是例外**：`.psm1` 改动 `ipmox` 当场生效，但 `CxxuPredictor.dll`
+> （.NET 程序集，不随模块卸载）**当前会话永远是旧代码**。dll 变了的唯一正确顺序：
+> `Update-CxxuPsModules` → 重开终端 → `Sync-CxxuPredictor` 同步活件 → `init`
+> （详见 §9；`Test-PsEnvReadiness` 备注列会告诉你活件是否落后）。
+
 - 模块还没加载过时更省事：直接敲新函数名，PSModulePath 自动发现并加载（前提：manifest 里已导出）。
 - 只想模块内部用的 helper：只写 `.psm1`，别进 manifest，外部就不可见。
 - 新建模块：`PS/<名>/` 目录 + `<名>.psm1` + `<名>.psd1`（抄 `Whois.psd1` 最小模板，
@@ -98,6 +103,10 @@ p -Force                    # 看 init 分步耗时，定位慢项
 - **启动进度条**：默认开（`Loading...` + 分步百分比，跑完自动消失）。
   不想要：`$env:PsShowProgress = 'False'`（当前会话）；一劳永逸：
   `Add-EnvVar -EnvVar PsShowProgress -NewValue 'False'`。agent/CI 等重定向场景自动关闭，不用管。
+- **窄窗口（宽<50 或高<5）启动刷 ListView WARNING**：PSReadLine 的硬门槛，
+  2026-09-21 已在设 ListView 之前按尺寸分流（`Set-PSReadLinesAdvanced` 里）：
+  窄窗口自动用内联视图，无警告；窗口拉大后重跑 `Set-PSReadLinesAdvanced` 即按新尺寸重选。
+  同重定向跳过一样，这是控制台相关分流，有新选项先看这里。
 - **v5 能用吗**：不能。本模块集只要 PS7（manifest 已声明，进 v5 直接明确报错）。
 - **agent/CI 里曾出现两行 `Set-PSReadLineOption` 红字**（predictive suggestion…redirected、
   句柄无效）：那是 `init` 在 stdout 被重定向时硬设预测源/列表视图闹的，
@@ -110,22 +119,26 @@ p -Force                    # 看 init 分步耗时，定位慢项
   之后若再见到此警告，先查是不是新加了双横线名（`Sync-ModuleManifest` 重载已内置
   `-DisableNameChecking` 压制，自动加载路径本来就不报）。
 
-## 7. 候选体验件（2026-09-20：推荐组合已启用，其余按需）
+## 7. 补全体验件（2026-09-21 现状：推荐组合已启用）
 
 > 已启用的走延迟加载（`init` 只注册 `OnIdle` 事件，18ms），默认启动盘不受影响。
-> 开关：`$env:PsFzf` / `$env:PsZoxide`（默认开，`False` 关）；重定向场景自动不加载。
+> 开关：`$env:PsFzf` / `$env:PsZoxide` / `$env:PsPredictor`（默认开，`False` 关；
+> 守护进程由 `Start-StartupBgProcesses` 统一置 `PsPredictor=False`，永不加载 dll）；
+> 重定向场景自动不加载。一键重装看 `Deploy-CompletionStack -WhatIf`。
 
 | 候选 | 状态 |
 |---|---|
-| `CompletionPredictor`（预测补全） | 一直在用 |
+| `CompletionPredictor`（参数/路径预测，命令名位置源码级跳过） | 一直在用 |
+| `CxxuPredictor`（自研命令名预测：模糊连写 + 严格通配，3000 条 1~6ms，20ms 预算内） | **已启用**（详见 §8） |
 | `PSFzf`（Ctrl+T 文件 / Ctrl+R 历史） | **已启用**（Tab 不动，仍是 MenuComplete） |
 | `zoxide`（`z` 跳转，init 缓存 `~/.zoxide_init_cache.ps1`） | **已启用** |
-| `PSCompletions`（70+ 命令补全） | 待定（与 carapace 二选一；import 287ms，要开请延迟） |
+| `PSCompletions`（~200 命令的参数补全库） | 可选：已装 5.6.9；profile 里两行钩子默认注释着，解开即用 |
 | `fnm` | 待定（node 用户；profile 里放着注释） |
-| `carapace-bin`（千级命令补全） | 未装（`scoop install carapace-bin` 后再对比） |
+| `carapace-bin`（千级命令补全） | 未装：逃生通道，真缺了再 `scoop install carapace-bin` 对比 |
 | `posh-git` | 未装（只要 git Tab 补全才装） |
 | `oh-my-posh` | 不开（每回车进程税 + 与现有定制片重叠） |
 | `argc` | 缺二进制，先装再说 |
+| `inshellisense` | **否决**（用户拍板，不再考虑） |
 
 验：新开终端等一拍，`Ctrl+R` 翻历史、`z <目录>` 跳转；`Get-EventSubscriber` 应无残留
 （触发即摘）。若某主机 OnIdle 不触发导致没装上，跑 `Register-PsUxLazyLoad -Now` 或报回来。
@@ -143,12 +156,46 @@ p -Force                    # 看 init 分步耗时，定位慢项
   TabExpansion2 镜像不了）。**自研 predictor 已落地并真机验证通过**（`CxxuPredictor`，
   只做裸命令名：模糊（`getser` 连写子序列、`chitem` 跨驼峰）+ 严格通配符（`get-*ive` 精确首尾；
   注意空格天然分词——光标后 token 进了参数位，预测器的 CommandName 门直接返回空，
-  所以多片段 AND 只存在于 API 层，活体里请连写；`get-child` 出 `[CxxuCommand]` 来源行；卸载用 `Remove-Module CxxuPredictor`）。
-  重型外挂不再考虑（`inshellisense` 用户已否决；`hintshell`/`PSCue`/`PSPredictor` v2 观察）。
+  所以多片段 AND 只存在于 API 层，活体里请连写；`get-child` 出 `[CxxuCommand]` 来源行；当会话卸载用 `Remove-Module CxxuPredictor`，彻底移除见 §9）。
+   重型外挂不再考虑（`inshellisense` 用户已否决；`hintshell`/`PSCue`/`PSPredictor` v2 观察）。
 - 关预测：`predictNo`（当会话有效）；切回行内视图：`Set-PSReadLineOption -PredictionViewStyle InlineView`
-  或按 `F2` 切换。
+  或按 `F2` 切换。彻底不用看 §9（删活件 + 关 `$env:PsPredictor`）。
 - **ListView 为什么最多显示 10 行**：硬编码（`ListViewMaxHeight`，历史固定占前 3 行），
   **没有设置能改**（官方 issue 有人提过，未开放）。2.3+ 可用 `↑`/`↓` 滚动，最多翻到 50 条；
   要全量翻历史用 `Ctrl+R`（PSFzf 模糊搜）。`CompletionQueryItems=100` 是另一套
- （Tab 菜单的阈值），别混了。另：历史源内部还有个 `HistoryMaxCount=10` 的硬上限——
+  （Tab 菜单的阈值），别混了。另：历史源内部还有个 `HistoryMaxCount=10` 的硬上限——
   历史最多只贡献 10 条；总数到不了 50 往往是插件对该输入没返回（总数=历史+插件），不是卡住了。
+
+## 9. dll / 活件管理（检查 / 安装 / 更新 / 移除）
+
+> 背景：`CxxuPredictor` 是 net9.0 自研 dll（pwsh 须 7.5+）。仓库里的
+> `PS/CxxuPredictor/CxxuPredictor.dll` 是**源**（从不被加载，所以 `git pull` 永不撞锁）；
+> 真正被加载的是外置**活件** `~/.cxxu/bin/CxxuPredictor.dll`。两边靠哈希同步，
+> 程序集随进程：**同步后必须重开终端才换新代码**，`ipmox` 刷不动 dll。
+> 原则：入口 loader 只静默装载（旧版照用，零警告），版本动作全手动。
+
+| 动作 | 命令 | 说明 |
+|---|---|---|
+| 检查 | `Test-PsEnvReadiness` | 活件行备注直接给结论（`与仓库一致[hash]` / `不一致→跑 Sync-CxxuPredictor`）；表尾另有仓库/pwsh/活件三行 |
+| 检查远端 | `Test-PsEnvReadiness -CheckRemote` | 默认零网络；加开关才问远端有没有更新（`ls-remote` 只读，12s 超时） |
+| 安装 | `Sync-CxxuPredictor` | 无活件时生成（拷源→`~/.cxxu/bin`，缺目录自建）；`-WhatIf` 可空跑看意图 |
+| 更新 | `Update-CxxuPsModules` → 重开 → `Sync-CxxuPredictor` → `init` | 拉完带 dll 变更才走全套；纯文本变更 `ipmox` 即可（见 §3）；被咬住加 `-Force`（关其它会话，变量会丢） |
+| 移除 | 手动两行（无专用命令） | `Remove-Module CxxuPredictor; Remove-Item ~/.cxxu/bin/CxxuPredictor.dll`；再也不想装：`$env:PsPredictor='False'` 持久化（风格同 PsFzf/PsZoxide 开关） |
+
+- 守护进程（报时/IP）默认不碰 dll：`Start-StartupBgProcesses` 置 `PsPredictor=False`
+  继承 + 两个守护函数按 `-Command` 自断，所以 `-Force` 关它们无压力（无状态，重起即回）。
+- 同一结论在 `Test-PsEnvReadiness` 的“建议”行也会再说一遍（缺必备 > 有更新 > 活件不一致）。
+
+## 10. 补全全景速查（三层 + 参数层）
+
+| 层 | 按键/视图 | 来源 | 说明 |
+|---|---|---|---|
+| Tab 全量索引 | `Tab`（MenuComplete） | 引擎全量：函数/别名/文件/参数 | 和下面两层**不是同一套索引**，结果不一样正常 |
+| ListView 预测 | 输入时自动浮现（`HistoryAndPlugin`） | 历史（最多 10 条，硬上限）+ 插件 | 插件= `CompletionPredictor`（参数/路径，命令名位跳过）+ `CxxuPredictor`（命令名，§8）；须 20ms 内返回，实测 3000 条 1~6ms |
+| 模糊搜历史/文件 | `Ctrl+R` / `Ctrl+T`（PSFzf） | 全量历史/文件 | 历史翻不完用这个，不走 10/50 上限 |
+| 参数值补全 | `Tab` 在参数位 | `PSCompletions`（~200 命令库，可选）+ 自带 `ArgumentCompleter`（EnvVar 系、`Get-Json -Key` 等，`Set-ArgumentCompleter` 批量注册） | PSCompletions 用法：解开 profile 里注释的两行 |
+
+- 相关命令：`Register-PsUxLazyLoad [-Now]`（延迟加载总闸）、
+  `Deploy-CompletionStack [-WhatIf/-IncludePSCompletions/-SkipBinaries]`（新机一键装栈）、
+  `Test-PsEnvReadiness`（查缺）、`predictNo`（当会话关预测）。
+- 新终端对照：输高频前缀（如 `git che`）有候选 = 一切正常；`get-child` 这类没候选多半是历史里没敲过 + 命令名插件只认连写（空格分词进参数位，见 §8）。

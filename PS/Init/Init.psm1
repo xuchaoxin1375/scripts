@@ -398,7 +398,18 @@ function Set-PSReadLinesAdvanced
             # -Global:函数内 import 默认嵌套(Get-Module 列不出),强制顶层
             Import-Module CompletionPredictor -Global -ErrorAction SilentlyContinue
             Set-PSReadLineOption -PredictionSource HistoryAndPlugin # 设置预测文本来源为历史和插件
-            Set-PSReadLineOption -PredictionViewStyle ListView -BellStyle None  #使用视图列表显示预测后选
+            # 窄窗口(<50 宽或 <5 高)PSReadLine 会刷 ListView WARNING:事先按尺寸分流,窄用内联
+            # (取不到尺寸按宽处理,行为与以前一致;窗口拉大后重跑本函数即按新尺寸重选)
+            $wideEnough = try { ([Console]::WindowWidth -ge 50) -and ([Console]::WindowHeight -ge 5) } catch { $true }
+            if ($wideEnough)
+            {
+                Set-PSReadLineOption -PredictionViewStyle ListView -BellStyle None  #使用视图列表显示预测后选
+            }
+            else
+            {
+                Set-PSReadLineOption -PredictionViewStyle InlineView -BellStyle None
+                Write-Verbose '窗口过窄(<50x5),预测视图用内联(避开 ListView 警告);拉大窗口后重跑 Set-PSReadLinesAdvanced 切回列表'
+            }
         }
         catch
         {

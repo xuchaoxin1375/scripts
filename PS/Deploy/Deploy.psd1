@@ -23,7 +23,6 @@
         'Deploy-ScoopStartMenuAppsStarter',
         'Update-GithubHosts',
         'Deploy-GithubHostsAutoUpdater',
-        'Deploy-GithubHostsAutoUpdaterDeprecated',
         'Deploy-LinksFromFile',
         'Deploy-Python',
         'Backup-IfNeed',
