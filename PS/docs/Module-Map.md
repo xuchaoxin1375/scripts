@@ -4,6 +4,8 @@
 >（唯一例外 `CxxuPredictor`：二进制模块，`.psd1` + `.dll` + `src/`，无 `.psm1`）。
 > 规范见 `Module-Conventions.md`，性能史见 `Startup-Optimization.md`。
 > 图例：🔥 启动/提示热路径（改动先跑终验），❄️ 冷路径（按需加载）。
+> 查询：`Get-ModuleByCxxu`（自有全家桶，`-SkipUnavailable` 只看可用；
+> 5.1 可用）→ `Get-Command -Module <名>`（看导出）→ `Get-Command <命令>`（反查归属）。
 
 ## 启动链与提示（🔥，改这里必须全量验证）
 
@@ -26,7 +28,7 @@
 | 模块 | 行数/函数 | 职责 |
 |---|---|---|
 | `Info` | 1736/28 | 系统信息：内存/进程查看、IP（批量+60s 记忆）、电池已迁入 |
-| `Basic` | 1969/85 | 通用小工具（网络/git/时间/速记等）；键盘/TTS/电源 16 函数 2026-09-21 迁 `WinSys`，prompt 只剩间接依赖 |
+| `Basic` | 1969/86 | 通用小工具（网络/git/时间/速记等）+ 模块查询（`Get-ModuleByCxxu`，2026-09-21 从 `Info` 迁入，5.1 可用）；键盘/TTS/电源 16 函数已迁 `WinSys`，prompt 只剩间接依赖 |
 | `TaskSchdPwsh` | 1146/14 | `Start-ScriptWhenIntervalEnough`（内存 5s 节流就靠它）、计划任务、报时守护进程 |
 
 ## 网络与系统

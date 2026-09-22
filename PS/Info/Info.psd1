@@ -22,7 +22,6 @@
         'Get-ScreenResolution',
         'Get-SystemInfoBasic',
         'Get-ComputerCoreHardwareInfo',
-        'Get-ModuleByCxxu',
         'Get-MotherBoardInfo',
         'Get-MemoryChipInfo',
         'Get-MaxMemoryCapacity',

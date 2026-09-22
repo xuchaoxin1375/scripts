@@ -1966,4 +1966,28 @@ function btm_cxxu
 
 <# functions with parameters #>
 
+function Get-ModuleByCxxu
+{
+    <#
+    .SYNOPSIS
+    获取CxxuPSModulePath下的模块信息(2026-09-21 从 Info 迁入:Info 留 7,查询命令要 5.1 可用)。
+    .DESCRIPTION
+    如果需要进一步调整信息显示，可以利用管道符进一步处理,比如排序等
+    #>
+    param(
+        [switch]$SkipUnavailable
+    )
+    # $env:CxxuPSModulePath 未设置(如 5.1 裸会话)时回退到本模块所在仓库根,行为与设置时一致
+    $root = if ($env:CxxuPSModulePath) { $env:CxxuPSModulePath } else { Split-Path $PSScriptRoot -Parent }
+    $res = Get-Module -ListAvailable | Where-Object { $_.ModuleBase -like "$root*" }
+    # $res = $res | Where-Object { $_.ExportedCommands }
+    if ($SkipUnavailable)
+    {
+
+        $res = $res | Where-Object { $_.ExportedCommands.Count }
+    }
+    return $res
+
+}
+
 

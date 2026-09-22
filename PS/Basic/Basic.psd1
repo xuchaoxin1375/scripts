@@ -90,7 +90,8 @@
         'status',
         'time_show',
         'Write-WorkingDir',
-        'btm_cxxu'
+        'btm_cxxu',
+        'Get-ModuleByCxxu'
     )
     CmdletsToExport = @()
     VariablesToExport = @()
