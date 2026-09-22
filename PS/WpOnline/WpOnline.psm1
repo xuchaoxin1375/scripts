@@ -59,7 +59,10 @@ function Deploy-WpSitesOnline
         $MaxRetryTimes = 20,
         # 重试间隔时间(秒),默认30秒
         $RetryGap = 30,
-        [switch]$Onebyone
+        [switch]$Onebyone,
+        # 本地调试模式:跳过所有联网操作(scp/ssh/CF API/宝塔 API/激活等待循环),
+        # 只跑本地逻辑(配置解析/routes.map 生成/路径计算)并列出本来要执行的操作,适合排查本地处理逻辑和效果
+        [switch]$LocalDebug
 
     
     )
@@ -90,27 +93,31 @@ function Deploy-WpSitesOnline
     # $hostmap=
     $items = Get-DomainUserDictFromTableLite -Table $FromTable
     Write-Verbose "Get domain-ip mapping table from table.conf,save result to $RoutesMap"
-    # proxy_pass 前缀修正
+    # proxy_pass 前缀修正(注意:不要回写 $Scheme 形参,其 ValidateSet 只认 http/https/auto/'',派生值 'http://' 会触发 MetadataError;用 $SchemePrefix)
     Write-Verbose "Scheme initial value: [$Scheme]."
     if ($Scheme -ne 'auto')
     {
-        if($Scheme )
+        if ($Scheme)
         {
-            $Scheme += "://"
+            $SchemePrefix = $Scheme + "://"
+        }
+        else
+        {
+            $SchemePrefix = ""
         }
     }
     else
     {
         if ($ReverseMode -eq 'base')
         {
-            $Scheme = "http://"
+            $SchemePrefix = "http://"
         }
         else
         {
-            $Scheme = ""
+            $SchemePrefix = ""
         }
     }
-    Write-Verbose "Scheme prefix for proxy_pass: [$Scheme]"
+    Write-Verbose "Scheme prefix for proxy_pass: [$SchemePrefix]"
     # 先清空旧文件
     Write-Output "" > $RoutesMap 
     foreach ($item in $items)
@@ -121,7 +128,7 @@ function Deploy-WpSitesOnline
             Write-Error "Invalid ip address: $($item.ip)" -ErrorAction Stop
             # continue
         }
-        $line = ".$($item.domain) ${Scheme}$($item.ip);"
+        $line = ".$($item.domain) ${SchemePrefix}$($item.ip);"
         $line | Tee-Object -Append -FilePath $RoutesMap 
     }
     Convert-CRLF -InputObject $RoutesMap -To LF -Replace
@@ -150,10 +157,19 @@ function Deploy-WpSitesOnline
         $remoteRoutesMap = "$ReverseNginxConfDir/tenants/${AdminId}/routes.map"
     }
     Write-Host "Adding routes map to reverse server: $reverse on path:[$remoteRoutesMap]"
-    # 删除所有会话前面可能残留的job
-    Get-Job | Remove-Job -Verbose
+    # 删除所有会话前面可能残留的job(调试模式不启动任何 job,也不碰会话现有 job)
+    if (-not $LocalDebug)
+    {
+        Get-Job | Remove-Job -Verbose
+    }
 
     # 后台运行vps 的routes.map.conf更新合并任务.
+    if ($LocalDebug)
+    {
+        Write-Host "[LocalDebug] 跳过:UpdateRoutesMap(scp $RoutesMap 到 ${reverse}:~/routes.map.conf + ssh 合并到 $remoteRoutesMap + nginx -t/reload)"
+    }
+    else
+    {
     Start-ThreadJob -Name "UpdateRoutesMap" -ScriptBlock {
         param(
             $vps,
@@ -190,6 +206,7 @@ function Deploy-WpSitesOnline
         )
 
     } -ArgumentList $vps, $reverse, $RoutesMap, $remoteRoutesMap
+    } # end else(非调试模式才起 UpdateRoutesMap job)
 
     # return "debuging"
 
@@ -202,15 +219,31 @@ function Deploy-WpSitesOnline
 
 
     # START SERIAL (串行,各步骤内局部并行,如果线程过多导致api错误(429),尤其是cloudflare api,则考虑降低线程数或者减少任务中的网站域名数量,分批部署)
+    if ($LocalDebug)
+    {
+        Write-Host "[LocalDebug] 跳过:Add-CFZoneDNSRecords(域名解析到 $reverse)"
+        Write-Host "[LocalDebug] 跳过:Get-CFZoneNameServersTable(写 $ToTable)"
+    }
+    else
+    {
     # 添加域名解析到cf(第一步执行)
     Add-CFZoneDNSRecords -AddRecordAtOnce -IP $reverse -Parallel:(!$Onebyone) -Domains $FromTable 
     # 从待部署域名列表更新spaceship域名的nameservers(cf添加后立即执行spaceship的nameservers更新)
     Get-CFZoneNameServersTable -FromTable $FromTable
+    }
     # 更新spaceship的nameservers(后续的CFZoneActivation依赖于此域名DNS配置)
     # Update-SSNameServers -Config $SpaceshipConfig -Table $ToTable
     # END SERIAL
 
     # START JOBS
+    if ($LocalDebug)
+    {
+        Write-Host "[LocalDebug] 跳过:CFZoneActivation(spaceship 更新 + CF 激活检查)"
+        Write-Host "[LocalDebug] 跳过:CFZoneConfig(CF 解析/邮箱转发/代理保护)"
+        Write-Host "[LocalDebug] 跳过:DeployBTSites(宝塔建空站)"
+    }
+    else
+    {
     # 让cf立即检查域名的激活
     # Add-CFZoneCheckActivation -Account $CfAccount -ConfigPath $CfConfig -Table $FromTable
     Start-ThreadJob -Name "CFZoneActivation" -ScriptBlock {
@@ -265,13 +298,19 @@ function Deploy-WpSitesOnline
         Deploy-BatchSiteBTOnline -Script "$using:pys/bt_api/create_sites.py" -Server $server -ServerConfig $using:ServerConfig -Table $using:FromTable -SitesHome $using:SitesHome 
         Write-Host "[END TIME::$(Get-DateTime)]Deploying sites on BT online done."
     } -Name "DeployBTSites"
+    } # end else(非调试模式才起 CFZoneActivation/CFZoneConfig/DeployBTSites 三个 job)
     # return "debug..."
     # Receive-Job
 
     # 上传本批次域名列表到对应服务器上
     # Push-ByScp -Server $HostName -Path $FromTable -Destination $RemoteSiteTable
    
-
+    if ($LocalDebug)
+    {
+        Write-Host "[LocalDebug] 跳过:job 等待/Receive-Job(无 job 启动)"
+    }
+    else
+    {
     Write-Host "等待所有后台作业完成..."
     $jobs = Get-Job
     # 等待1~2秒在查看作业启动状态,看看各个任务的启动情况(这不会阻塞后台job的运行,可以放心等待)
@@ -279,8 +318,22 @@ function Deploy-WpSitesOnline
     Write-Host "$($jobs|Out-String)"
 
     $jobs | Receive-Job -Wait 
+    }
     # END JOBS
     
+    if ($LocalDebug)
+    {
+        # 调试小结:本地产物一次看清,不碰网络直接返回
+        Write-Host "========== [LocalDebug] 本地逻辑执行完毕,以下操作均已跳过 =========="
+        Write-Host "server=$server,DeployIP=$HostName,reverseIP=$reverse"
+        Write-Host "remoteRoutesMap=$remoteRoutesMap"
+        $mapLines = @(Get-Content -LiteralPath $RoutesMap)
+        Write-Host "routes.map($RoutesMap):共 $($mapLines.Count) 行,预览前 5 行:"
+        $mapLines | Select-Object -First 5 | ForEach-Object { Write-Host "  $_" }
+        Write-Host "跳过项:UpdateRoutesMap(scp/ssh)/Set-CFCredentials 除外见上/Add-CFZoneDNSRecords/Get-CFZoneNameServersTable/CFZoneActivation/CFZoneConfig/DeployBTSites/Update-NginxVhostOnHost/激活等待循环"
+        Write-Host "======================================================================"
+        return 'LocalDebugDone'
+    }
     # 重启nginx 
     Update-NginxVhostOnHost -HostName $HostName -FromTable $FromTable
     # 等待环节
