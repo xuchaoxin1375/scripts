@@ -1,6 +1,6 @@
 # 模块地图（Module Map）
 
-> 56 个自有模块，全在 `PS/<Name>/<Name>.psm1` + 同名 `.psd1`
+> 58 个自有模块，全在 `PS/<Name>/<Name>.psm1` + 同名 `.psd1`
 >（唯一例外 `CxxuPredictor`：二进制模块，`.psd1` + `.dll` + `src/`，无 `.psm1`）。
 > 规范见 `Module-Conventions.md`，性能史见 `Startup-Optimization.md`。
 > 图例：🔥 启动/提示热路径（改动先跑终验），❄️ 冷路径（按需加载）。
@@ -21,14 +21,15 @@
 | `EnvVar` | 1021/15 | 环境变量 User/Machine/Process 三档；热路径一律 `Set-ProcessEnvVar` |
 | `Startup` | 307/12 | 开机任务、后台守护进程、OS 版本缓存（`Confirm-EnvVarOfInfo`） |
 | `Json` | 251/5 | `Data.json` 读写校验（init 与 prompt 共用，无递归设计） |
-| `Pwsh` | 1162/29 | 通用工具箱：模块安装、profile 管理、`ipmox`/`ipmof` 重载（仅仓库内模块）、`Sync-ModuleManifest` 偷懒同步（-Name Tab 补全）、`Set-PsExtension`（默认关）；教学 2 函数迁 `HelpExamples`、Robocopy 2 函数迁 `FileSystem` |
+| `Pwsh` | 460/8 | 模块加载脚手架：`ipmox`/`ipmof` 重载（仅仓库内模块）、`New-ModuleByCxxu`、`Sync-ModuleManifest` 偷懒同步（-Name Tab 补全）；版本环境 8 函数已迁 `PsEnv`、内省调试 13 函数已迁 `PsDebug`（2026-09-22，命令名不变） |
+| `PsEnv` | 261/8 | PowerShell 版本/环境：`Update-PowerShell` 升级、`Set-PsExtension`（init 调用，默认关）、profile 路径管理（2026-09-22 从 `Pwsh` 迁入，init 链会加载） |
 
 ## prompt 首渲染会顺带加载
 
 | 模块 | 行数/函数 | 职责 |
 |---|---|---|
 | `Info` | 1736/28 | 系统信息：内存/进程查看、IP（批量+60s 记忆）、电池已迁入 |
-| `Basic` | 1969/86 | 通用小工具（网络/git/时间/速记等）+ 模块查询（`Get-ModuleByCxxu`，2026-09-21 从 `Info` 迁入，5.1 可用）；键盘/TTS/电源 16 函数已迁 `WinSys`，prompt 只剩间接依赖 |
+| `Basic` | 2005/86 | 通用小工具（网络/git/时间/速记等）+ 模块查询（`Get-ModuleByCxxu`，2026-09-21 从 `Info` 迁入，5.1 可用）；键盘/TTS/电源 16 函数已迁 `WinSys`，`uploadPic` 已删（2026-09-22，`uploadPicMarkdown` 独立保留），prompt 只剩间接依赖 |
 | `TaskSchdPwsh` | 1146/14 | `Start-ScriptWhenIntervalEnough`（内存 5s 节流就靠它）、计划任务、报时守护进程 |
 
 ## 网络与系统
@@ -60,10 +61,10 @@
 
 | 模块 | 行数/函数 | 职责 |
 |---|---|---|
-| `Deploy` | 3020/46 | 一键部署：scoop/github hosts/python/conda/开机任务等；`Get-SelectedMirror`/`Get-GithubMirrorPrefix`/`Get-RepoRawUrl`、`Test-PsEnvReadiness`（版本表尾 + `-CheckRemote` 远端对比 + 建议行）、`doctor`（统一诊断入口）在此 |
+| `Deploy` | 2931/46 | 一键部署：scoop/github hosts/python/conda/开机任务等；`Get-SelectedMirror`/`Get-GithubMirrorPrefix`/`Get-RepoRawUrl`、`Test-PsEnvReadiness`（版本表尾 + `-CheckRemote` 远端对比 + 建议行）、`doctor`（统一诊断入口）在此；`Deploy-GithubHostsAutoUpdaterDeprecated` 已删（2026-09-22） |
 | `Development` | 340/22 | Django 快捷命令、ssh 别名、文本清理 |
 | `Git` | 505/15 | git 日常：浅克隆、一键提交、镜像加速下载 |
-| `MySql` | 984/13 | MySQL 库表备份/建删/查询 |
+| `MySql` | 905/12 | MySQL 库表备份/建删/查询（`Get-MySqlDatabaseNameCmdletDeprecated` 已删，2026-09-22） |
 | `WordPress` | 3793/33 | WP 站点本地/线上部署、插件/订单管理（最大业务模块，冷路径别碰） |
 | `CSV` | 837/9 | CSV 预览/切分/导出 |
 | `Sitemap` | 838/6 | sitemap 抓取/解析/URL 提取 |
@@ -72,6 +73,7 @@
 | `Cloudflare` | 509/9 | CF Zone/DNS 管理 |
 | `BTCN` | 722/9 | 批量建站（宝塔）脚本生成 |
 | `TerminalTools` | 504/12 | WT 链接、scoop 安装、scp、目录树、`Register-PsUxLazyLoad`（PSFzf/zoxide/predictor 延迟加载，入口按指针静默装载）+ `Sync-CxxuPredictor`（并排版本同步活件，-Uninstall/-Force） |
+| `PsDebug` | 463/13 | pwsh 内省/诊断：`Head`/`Tail`/`Get-SourceCode`/`Get-PipelineInput`、权限（`Set-Owner`/`Grant-PermissionToPath`，Deploy 用）、`Confirm-UserContinue`（Deploy/Link/Git 用）、`Write-PsDebugLog`（2026-09-22 从 `Pwsh` 迁入，冷路径按需加载） |
 | `openApps` | 166/16 | 常用软件别名启动（qq/微信/typora 等） |
 | `Browser` | 24/4 | 浏览器搜索/收藏夹小命令 |
 | `Calendar` | 144/1 | `Show-Calendar`（唯一用 `Export-ModuleMember` 的模块，已与 manifest 对齐） |

@@ -130,6 +130,7 @@
 38. **查询命令 5.1 可用化（2026-09-21，用户问"怎么查模块"）**：`Get-ModuleByCxxu` 住在留 7 的 Info 里，5.1 整模块导不出——迁入 B 档 `Basic`（体小、无依赖、5.1 原生语法），附带修 `$env:CxxuPSModulePath` 未设置时 `-like "*"` 全匹配噪音（回退到本模块所在仓库根）。查询链固定下来记 `Module-Map.md` 头：`Get-ModuleByCxxu` → `Get-Command -Module` → `Get-Command` 反查。教训：放查询/诊断类命令先问"5.1 能用吗"，留 7 模块里的便民命令等于半残。
 39. **文档 BOM 方案推翻（2026-09-21，用户：外部文档控不了）**：中间试过给仓库 18 个中文 `.md` 批量补 BOM（裸读当时已验），但写侧修只能覆盖自有文件，外部 uncontrolled 的 UTF-8 照样乱码，方向错，整单 revert（`f9d6e52`），conventions §8 回到 B 档例外原样。改读侧：新 `Get-ContentUTF8`（Basic，B 档；.NET `ReadAllLines`/`ReadAllText` 直读，默认 UTF-8 + 自动识别 BOM，5.1/7 同行为），外部文件一次解决。另记：5.1 沙箱捕获输出本身按 GBK，验证读正确性要用字节往返（读→写文件→对字节），不能看捕获屏显——屏显乱码≠读错了。
 41. **5.1 乱码归因（2026-09-21，用户问 GBK 行为取决于什么）**：取决于 Windows"非 Unicode 程序的语言"（ANSI 页，`GetACP`），不是 PowerShell；.NET Framework 的 `Encoding.Default` 跟系统走（本机实测 ANSI=`gb2312`）。读文件走 ANSI 页、控制台显示走 OEM 页（本机 `utf-8`），两旋钮独立，查乱码先分清读错还是显示错。非中文系统同样中招（ANSI=1252 等，错法不同）；.NET Core 的 `Encoding.Default` 恒为 UTF-8，跨版本对比时别被它骗了。不动系统（Beta UTF-8 worldwide 影响全局老软件），从读侧解决，见 §13。
+42. **大模块拆分开工（2026-09-22，用户：先拆到足够灵巧 + 删 uploadPic + 删 Deprecated）**：删除 `uploadPic`（`uploadPicMarkdown` 独立调 picgo，不受影响）、`Deploy-GithubHostsAutoUpdaterDeprecated`（未进 manifest，只删体）、`Get-MySqlDatabaseNameCmdletDeprecated`（含 manifest）；第一刀 `Pwsh(1162/29)→Pwsh(460/8)+PsEnv(261/8)+PsDebug(463/13)`，命令名不变，跨模块调用走自动发现（已验路由）。施工教训：`[IO.File]::WriteAllLines` 默认 CRLF，会把 LF 存量全改写——拆分脚本一律显式 join+`WriteAllText` 保换行；`Write` 工具建的新文件是 LF，记得转 CRLF；切除脚本禁止重复执行（锚点校验是唯一保险）。Module-Map 58 模块。
 
 ## 4. 环境事实（这台机器，2026-09 实测）
 
