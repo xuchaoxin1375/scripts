@@ -137,6 +137,7 @@
 46. **psd1 中文引号坑（2026-09-22，血泪）**：无 BOM 的 psd1 里，中文写进**引号字符串**（如 Description）会让 5.1 报"restricted language / string missing terminator"——5.1 按 GBK 解码，某些字的 UTF-8 字节重组后落单成 GBK lead（如"送"=E9 80 81 的 0x81），fallback 把后面的收引号一起吞掉，字符串从此不闭合。中文写进 **`#` 注释**则安全（坏只坏到行尾）。铁律：**无 BOM 的 psd1，中文只许进注释，不许进引号**（psm1 有 BOM 免疫）。已把本次引入的两处中文 Description 改回英文；新 B 档模块 Description 一律英文。
 47. **第五刀（2026-09-22）：`Deploy(2931/46)→Deploy(1401/24)+Scoop(827/10)+DevEnv(733/12)`**：46/46 函数体逐字对账零差异。Deploy 回归"新机收尾"本义。Module-Map 63 模块。
 48. **第六刀（2026-09-22）：`Web(1867/24)→Web(1498/21)+SSH(+3)`、`Info(1719/27)→Info(1086/12)+Hardware(438/11)+NetInfo(213/4)`**：两处 24/24、27/27 函数体逐字对账零差异。教训：`Info` 4 网络函数曾短暂进 B 档 `NetWork`，5.1 下 `Import-Module` 当时能过（20/20），但直调即炸——`Confirm-DataJson`（Json 留 7）运行时依赖会顶掉 Prompt 的 5.1 垫片（`Get-Command` 找得到就不定义垫片）。遂回滚独立成留 7 的 `NetInfo`，5.1 prompt/ Balance 双双 0 错误复验通过。铁律补一条：**往 B 档塞函数，光解析过不够，必须 5.1 直调跑一遍**；`Update-SSNameServers` 是 Spaceship 域名不是 SSH，留 Web。Module-Map 65 模块。
+49. **第七刀（2026-09-22）：`WordPress(3799/33)→WordPress(1685/9)+WpOnline(1382/18)+WpContent(748/6)`**：33/33 函数体逐字对账零差异；原文件尾本就无换行符，原样保留（这次没顺手补）。WordPress 留本地建站 + 总入口 `Deploy-Wp`（跨模块调用走自动发现）。Module-Map 67 模块。至此 Top8 全拆完。
 
 ## 4. 环境事实（这台机器，2026-09 实测）
 

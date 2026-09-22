@@ -1,6 +1,6 @@
 # 模块地图（Module Map）
 
-> 65 个自有模块，全在 `PS/<Name>/<Name>.psm1` + 同名 `.psd1`
+> 67 个自有模块，全在 `PS/<Name>/<Name>.psm1` + 同名 `.psd1`
 >（唯一例外 `CxxuPredictor`：二进制模块，`.psd1` + `.dll` + `src/`，无 `.psm1`）。
 > 规范见 `Module-Conventions.md`，性能史见 `Startup-Optimization.md`。
 > 图例：🔥 启动/提示热路径（改动先跑终验），❄️ 冷路径（按需加载）。
@@ -73,7 +73,9 @@
 | `Git` | 505/15 | git 日常：浅克隆、一键提交、镜像加速下载 |
 | `RepoSync` | 265/8 | 多仓库同步/开发环境同步：`Push/Update-ReposesConfiged*`、`update_functions`（2026-09-22 从 `Basic` 迁入，B 档 5.1） |
 | `MySql` | 905/12 | MySQL 库表备份/建删/查询（`Get-MySqlDatabaseNameCmdletDeprecated` 已删，2026-09-22） |
-| `WordPress` | 3793/33 | WP 站点本地/线上部署、插件/订单管理（最大业务模块，冷路径别碰） |
+| `WordPress` | 1685/9 | WP 本地建站 + 总入口 `Deploy-Wp`；线上运维 18 函数已迁 `WpOnline`、内容处理 6 函数已迁 `WpContent`（2026-09-22，命令名不变） |
+| `WpOnline` | 1382/18 | WP 线上运维：建站上线/插件/订单/远程更新（2026-09-22 从 `WordPress` 迁入，冷路径按需加载） |
+| `WpContent` | 748/6 | WP 内容处理：图片搬运/Shopify 采集/SQL 批量（2026-09-22 从 `WordPress` 迁入，冷路径按需加载） |
 | `CSV` | 837/9 | CSV 预览/切分/导出 |
 | `Sitemap` | 838/6 | sitemap 抓取/解析/URL 提取 |
 | `TextProcess` | 610/7 | 文本切分/行处理 |

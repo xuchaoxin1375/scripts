@@ -3,7 +3,7 @@
     ModuleVersion = '1.0.4'
     GUID = '8b2a8243-10db-42a0-8f2f-28840c7da403'
     Author = 'cxxu'
-    Description = 'Cxxu PowerShell module: WordPress'
+    Description = 'WordPress local sites build and Deploy-Wp entry'
     PowerShellVersion = '7.0'
     FunctionsToExport = @(
         'Remove-WpSitesLocal',
@@ -14,30 +14,6 @@
         'Stop-phpCgi',
         'Start-XpCgi',
         'Deploy-WpSitesLocal',
-        'Deploy-WpSitesOnline',
-        'Update-NginxVhostOnHost',
-        'Get-CFAccountsCodeDF',
-        'Get-ServerList',
-        'Update-WpAllPluginPackagesOnServers',
-        'Update-WpFunctionsphpOnServer',
-        'Update-WpFunctionsphpOnServers',
-        'update-WpSqlOnServers',
-        'Get-WpOrdersByEmailOnServers',
-        'Update-Servers',
-        'Push-ServerItem',
-        'Update-WpPluginsDFOnServer',
-        'Update-WpPluginsDFOnServers',
-        'Update-WpSitesRobots',
-        'Update-WpTitle',
-        'Update-WpUrl',
-        'Move-ItemImagesFromCsvPathFields',
-        'Get-WpImages',
-        'Import-WpSqlBatch',
-        'Deploy-WpServerDF',
-        'Get-XXXShopifyProductJsonUrlArchived',
-        'Get-ShopifyProductJsonUrl',
-        'Get-WpSitesLocalImagesCount',
-        'Backup-WpBaseSql',
         'Deploy-Wp'
     )
     CmdletsToExport = @()
