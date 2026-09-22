@@ -1,6 +1,6 @@
 # 模块地图（Module Map）
 
-> 61 个自有模块，全在 `PS/<Name>/<Name>.psm1` + 同名 `.psd1`
+> 63 个自有模块，全在 `PS/<Name>/<Name>.psm1` + 同名 `.psd1`
 >（唯一例外 `CxxuPredictor`：二进制模块，`.psd1` + `.dll` + `src/`，无 `.psm1`）。
 > 规范见 `Module-Conventions.md`，性能史见 `Startup-Optimization.md`。
 > 图例：🔥 启动/提示热路径（改动先跑终验），❄️ 冷路径（按需加载）。
@@ -64,7 +64,9 @@
 
 | 模块 | 行数/函数 | 职责 |
 |---|---|---|
-| `Deploy` | 2931/46 | 一键部署：scoop/github hosts/python/conda/开机任务等；`Get-SelectedMirror`/`Get-GithubMirrorPrefix`/`Get-RepoRawUrl`、`Test-PsEnvReadiness`（版本表尾 + `-CheckRemote` 远端对比 + 建议行）、`doctor`（统一诊断入口）在此；`Deploy-GithubHostsAutoUpdaterDeprecated` 已删（2026-09-22） |
+| `Deploy` | 1401/24 | 新机收尾：github hosts/镜像前缀、防火墙/SMB/自启任务、环境变量；`Test-PsEnvReadiness`、`doctor` 在此；Scoop 生态 10 函数已迁 `Scoop`、语言工具链 12 函数已迁 `DevEnv`（2026-09-22，命令名不变） |
+| `Scoop` | 827/10 | Scoop 包管理：国内镜像部署、批量装机、版本切换（2026-09-22 从 `Deploy` 迁入，冷路径按需加载） |
+| `DevEnv` | 733/12 | 语言工具链与编辑器开箱：Python/conda/C++/Typora/VSCode/WT/补全栈（2026-09-22 从 `Deploy` 迁入，冷路径按需加载） |
 | `Development` | 340/22 | Django 快捷命令、ssh 别名、文本清理 |
 | `Git` | 505/15 | git 日常：浅克隆、一键提交、镜像加速下载 |
 | `RepoSync` | 265/8 | 多仓库同步/开发环境同步：`Push/Update-ReposesConfiged*`、`update_functions`（2026-09-22 从 `Basic` 迁入，B 档 5.1） |
