@@ -677,7 +677,8 @@ server {
     }
     $tpl > $conf
     # 写入到系统的hosts配置文件中
-    if($IsWindows)
+    # 5.1 无 $IsWindows 自动变量:用 PSEdition 兜底(Desktop 即 Windows),排雷未来降档
+    if (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true))
     {
         # 使用专门的外部命令修改hosts文件
         if (Get-Command Add-NewDomainToHosts -ErrorAction SilentlyContinue)

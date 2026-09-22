@@ -323,7 +323,8 @@ function Test-SubItem
     $BasePath = Get-Item $BasePath | Select-Object -ExpandProperty FullName
     $FullPath = Get-Item $FullPath | Select-Object -ExpandProperty FullName
     # 路径规范化:字母大小写和路径分隔符规范化(统一为小写,并统一为斜杠方便对比)
-    if($IsWindows)
+    # 5.1 无 $IsWindows 自动变量:用 PSEdition 兜底(Desktop 即 Windows),排雷未来降档
+    if (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true))
     {
         Write-Verbose "IsWindows: [$IsWindows],normalize path..."
         $absFullPath = $FullPath.ToLower() -replace "\\", "/"

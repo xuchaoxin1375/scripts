@@ -117,7 +117,8 @@ url = `"$Mirror`"
 default = true
 "@
 
-    if ($IsWindows)
+    # 5.1 无 $IsWindows 自动变量:用 PSEdition 兜底(Desktop 即 Windows),排雷未来降档
+    if (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true))
     {
         $Path = "$env:AppData\uv\uv.toml"
         New-Item -ItemType File -Path $Path -Force -Verbose
@@ -249,7 +250,8 @@ function Deploy-Typora
     
     Write-Host 'continue to deploy...' -BackgroundColor Yellow
 
-    if($IsWindows)
+    # 5.1 无 $IsWindows 自动变量:用 PSEdition 兜底(Desktop 即 Windows),排雷未来降档
+    if (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true))
     {
         # 导入专门的环境变量
         Update-PwshEnvIfNotYet

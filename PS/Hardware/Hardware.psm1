@@ -40,8 +40,8 @@ function Get-MemoryCapacity
         [string]$Unit = ''
     )
 
-    # 获取总内存
-    $totalMemory = if($isWindows) { Get-CimInstance -ClassName Win32_ComputerSystem | Select-Object -ExpandProperty TotalPhysicalMemory }else
+    # 获取总内存(5.1 无 $IsWindows 自动变量,用 PSEdition 兜底:Desktop 即 Windows)
+    $totalMemory = if (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true)) { Get-CimInstance -ClassName Win32_ComputerSystem | Select-Object -ExpandProperty TotalPhysicalMemory }else
     {
         sysctl -n hw.memsize
     }

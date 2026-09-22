@@ -416,7 +416,8 @@ function Get-WindowsVersionInfoOnDrive
     {
         
         # 获取Windows版本信息
-        if ($IsWindows)
+        # 5.1 无 $IsWindows 自动变量:用 PSEdition 兜底(Desktop 即 Windows),排雷未来降档
+        if (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true))
         {
             # 加载指定盘符的注册表
             reg load HKLM\TempHive "$Driver\Windows\System32\config\SOFTWARE" | Out-Null

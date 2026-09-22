@@ -421,7 +421,8 @@ function Get-ProcessMemoryView
     # --- 初始化 ---
     $script:PercentSum = 0
     $script:CapacitySum = 0
-    if($IsWindows)
+    # 5.1 无 $IsWindows 自动变量(恒 $null):用 PSEdition 兜底(5.1 只跑 Windows,Desktop 即 Windows)
+    if (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true))
     {
 
         $osInfo = Get-CimInstance Win32_OperatingSystem
