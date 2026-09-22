@@ -1,4 +1,4 @@
-
+﻿
 
 
 function Backup-ScoopApps

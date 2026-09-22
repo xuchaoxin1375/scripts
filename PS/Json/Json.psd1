@@ -4,7 +4,7 @@
     GUID = '569c1f95-fe2c-40fc-99e0-2422ce752315'
     Author = 'cxxu'
     Description = 'JSON data file read/write/validation for module data files'
-    PowerShellVersion = '7.0'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'Update-DataJsonLastWriteTime',
         'Update-Json',

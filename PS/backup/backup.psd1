@@ -4,7 +4,7 @@
     GUID = 'd182d545-4779-453f-9be1-29ed789acfe0'
     Author = 'cxxu'
     Description = 'Cxxu PowerShell module: backup'
-    PowerShellVersion = '7.0'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'Backup-ScoopApps',
         'Backup-Shortcuts',

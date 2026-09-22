@@ -4,7 +4,7 @@
     GUID = '83771a1c-8b6c-4f37-bb68-4f9b31c38151'
     Author = 'cxxu'
     Description = 'Cxxu PowerShell module: Mock'
-    PowerShellVersion = '7.0'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'Get-RandomString',
         'New-GrowFile'

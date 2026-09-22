@@ -4,7 +4,7 @@
     GUID = 'c72e11e9-cfe1-4535-8913-f9260df16b2b'
     Author = 'cxxu'
     Description = 'Windows auto-start tasks, background daemons and OS version cache'
-    PowerShellVersion = '7.0'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'Get-SystemVersionCoreInfoOfWindows',
         'Get-WindowsOSVersionFromRegistry',

@@ -78,7 +78,7 @@
 ## 8. 编码与换行
 
 - 统一 UTF-8 **无 BOM**（PS7 默认即此；Analyzer 的 BOM 规则已在 settings 中排除）。
-- 例外：B 档 5.1 兼容集（见 `Feature-Guide.md §13`，17 模块 psm1 + `VarSet3.conf` + `VarLongStrings.ps1`）**必须带 BOM**——5.1 中文 Windows 无 BOM 按 GBK 解码，中文全乱码；psd1 降版行以 `# B档兼容集` 注释标记，BOM 文件不再回退。
+- 例外：B 档 5.1 兼容集（见 `Feature-Guide.md §13`，34 模块 psm1 + `VarSet3.conf` + `VarLongStrings.ps1`）**必须带 BOM**——5.1 中文 Windows 无 BOM 按 GBK 解码，中文全乱码；psd1 降版行以 `# B档兼容集` 注释标记，BOM 文件不再回退。
 - 换行 LF/CRLF 均可，存量文件保持原状（最小 diff 原则），新文件建议 CRLF。
   `.gitattributes` 只声明二进制（lnk/exe/dll），**不声明 `text`**——历史 blob 是 CRLF
   原样入库的，声明 `text` 会触发归一化、把全仓库标成假 diff（2026-09-20 实测，见

@@ -1,4 +1,4 @@
-# function Get-RandomFiles
+﻿# function Get-RandomFiles
 # {
 #     param(
         
@@ -24,6 +24,12 @@ function Get-RandomString
     )
 
     $charSet = @()
+    # 字符集自包含(此前依赖会话预定义的 $numericChars 等外部变量,干净会话必空；有预定义则尊重调用方)
+    if ($null -eq $numericChars) { $numericChars = 48..57 }
+    if ($null -eq $alphaCharsLower) { $alphaCharsLower = 97..122 }
+    if ($null -eq $alphaCharsUpper) { $alphaCharsUpper = 65..90 }
+    if ($null -eq $printableChars) { $printableChars = 33..126 }
+    if ($null -eq $cjkPunctuationArray) { $cjkPunctuationArray = @('，', '。', '！', '？', '；', '：', '“', '”', '‘', '’', '（', '）', '【', '】', '《', '》', '、') }
     switch ($Mode)
     {
         'Numeric' { $charSet = $numericChars }

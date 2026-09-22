@@ -1,4 +1,4 @@
-<#
+﻿<#
 TestLinks 模块:GitHub 镜像站可用性测试(曾与 Git.psm1 重复,现收敛到此,自包含数据源)。
 原 Deploy/TestLinks.psm1 因目录名与模块名不一致无法被自动发现,现为规范模块目录。
 #>

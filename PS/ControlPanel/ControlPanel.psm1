@@ -1,4 +1,4 @@
-$controlPanelMS = 'control /name Microsoft.'
+﻿$controlPanelMS = 'control /name Microsoft.'
 <# 
 when you maintain the following list,Using no wrap line to check the items is recommended to count it
 #>

@@ -1,4 +1,4 @@
-function Get-UsersGroupsCmdlets
+﻿function Get-UsersGroupsCmdlets
 {
     $cmds = Get-Command -Module Microsoft.PowerShell.LocalAccounts
     $res = $cmds | ForEach-Object { Get-Alias -Definition $_ } | ^ DisplayName

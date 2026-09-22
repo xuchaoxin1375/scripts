@@ -1,4 +1,4 @@
-
+﻿
 <# 
 # 为了更快的执行开机自启动脚本的执行速度,请在$startup_user目录内创建startup_basic.lnk,并且设置参数为如下
 # powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\repos\scripts\startup\startup_basic.ps1"
@@ -106,7 +106,8 @@ function Confirm-OSVersionCaption
         
     if ($Force -or $null -eq $env:OSCaption)
     {
-        if ($IsWindows)
+        # 5.1 无 $IsWindows 自动变量(恒 $null):PSEdition 兜底(5.1 只跑 Windows)
+        if (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true))
         {
 
             $os = Get-CimInstance Win32_OperatingSystem
@@ -138,7 +139,7 @@ function Confirm-OSVersionFullCode
         
     if ($Force -or $null -eq $env:OSFullVersionCode)
     {
-        if($IsWindows)
+        if (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true))
         {
 
             $code = Get-WindowsOSVersionFromRegistry | Select-Object -ExpandProperty FullVersion
@@ -170,7 +171,7 @@ function Confirm-EnvVarOfInfo
     Confirm-OSVersionCaption > $null
     Confirm-OSVersionFullCode > $null
     # DisplayVersion(如 24H2)供 prompt 每次渲染使用,注册表读约 10ms,此处持久化一次
-    if ($IsWindows -and ($null -eq $env:OSDisplayVersion))
+    if ((($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true)) -and ($null -eq $env:OSDisplayVersion))
     {
         $displayVersion = Get-WindowsOSVersionFromRegistry | Select-Object -ExpandProperty DisplayVersion
         Set-EnvVar -Name 'OSDisplayVersion' -NewValue $displayVersion

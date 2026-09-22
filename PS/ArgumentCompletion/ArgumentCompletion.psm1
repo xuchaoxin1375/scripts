@@ -1,4 +1,4 @@
-# prompt 入口(prompt/promptx)已迁至 Prompt 模块,本模块只保留参数补全注册.
+﻿# prompt 入口(prompt/promptx)已迁至 Prompt 模块,本模块只保留参数补全注册.
 # # 创建补全功能
 function Get-EnvVarCompleter
 {

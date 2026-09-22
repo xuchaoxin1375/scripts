@@ -4,7 +4,7 @@
     GUID = 'b770e464-54cc-4f92-85e2-f86120522691'
     Author = 'cxxu'
     Description = 'Cxxu PowerShell module: NetDrivers'
-    PowerShellVersion = '7.0'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'Get-PSNetDriveList',
         'Mount-AlistLocalhostDrive',

@@ -246,6 +246,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 > 目标是在 5.1 里 `init` + 提示符 + Tab 补全 + 历史可用；部署/预测/dll 链明确留 7。
 
 - 兼容集（psd1 已降 `5.1`，psm1 带 BOM，见 `Module-Conventions.md §8`）：`Basic`、`Aliases`、`FileSystem`、`PwshVar`、`Search`、`CxxuTab`、`Prompt`、`Init`、`EnvVar`、`NetWork`、`RepoSync`、`PsDebug`、`PsEnv`、`Shortcut`、`PathProcess`、`Hardware`、`Proxy`（后 8 个 2026-09-22 酌情降档：解析零错误 + 5.1 直调冒烟通过）。
+- 第二批（2026-09-22，从易到难：解析零错误 + 逐个 5.1 直调冒烟）：`Json`、`WinSys`、`Startup`（`$IsWindows` 加 `PSEdition` 兜底）、`ArgumentCompletion`、`Mock`（字符集自包含，旧代码依赖会话外变量）、`Users`、`Calendar`、`ColorSettings`（`inlineprediction` 配色按 PSReadLine 版本 gating）、`Browser`、`TestLinks`、`NetDrivers`、`ControlPanel`、`WIFI`、`HelpExamples`（教学函数需 help 文件）、`backup`、`BTCN`、`Cloudflare`。B 档 17→34。
 - 5.1 下自动降级：`init` 步骤表 `MinPS = 7` 的 5 步静默跳过（`ArgumentCompletion`/`Startup`/`Pwsh`/`Json`/`TerminalTools`）；`ForEach-Object -Parallel` 走串行分支；`CxxuTab` 探不到 dll 方法时纯透传；`HistoryNoDuplicates`/`inlineprediction` 配色按 PSReadLine 版本 gating（5.1 自带 2.0.0 跳过）。
 - 提示符全对齐：`fast`/`Simple`/`Short`/`Default` 原生可用；`Balance` 的 Info/Startup 外部依赖在 `Prompt.psm1` 顶部有 5.1 本地兜底（CIM/注册表/内置 cmdlet 同口径；必须 `function global:` 定义，否则模块私有、直接调用撞坏 Info；缓存用 `$global:__Cxxu51*`，`$script:` 跨不了作用域），渲染与 7.5 逐字一致，稳态约 50ms/次（首屏冷缓存 1.4s 一次性）；`Get-IpAddressFormated` 含参数集的移植版，直接调用也可用。
 - 明确不可用：`CxxuPredictor`（net9 dll）、预测视图（需 7.2+ 子系统）、`Deploy` 全系、`Test-PsEnvReadiness` 的 `pwsh 7+` 必备项（在 5.1 下即提示装 pwsh7）。

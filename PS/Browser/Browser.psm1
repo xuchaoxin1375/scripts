@@ -1,4 +1,4 @@
-
+﻿
 function edge_favoriates
 {
     https3w_start 'chrome://favorites/'

@@ -4,7 +4,7 @@
     GUID = 'ecc2bc41-76c9-4f95-b01c-c5b429f6f9ed'
     Author = 'cxxu'
     Description = 'Cxxu PowerShell module: HelpExamples'
-    PowerShellVersion = '7.0'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'Add-ExtensionExample',
         'Operators_Comparison_pwsh',

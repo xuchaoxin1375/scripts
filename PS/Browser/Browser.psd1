@@ -4,7 +4,7 @@
     GUID = 'd166fcde-f6a8-4778-b35b-c14523b2d411'
     Author = 'cxxu'
     Description = 'Cxxu PowerShell module: Browser'
-    PowerShellVersion = '7.0'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'edge_favoriates',
         'googleSearch',

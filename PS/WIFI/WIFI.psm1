@@ -1,4 +1,4 @@
-
+﻿
 function wifi_disconnect
 {
     Write-Output '尝试断开当前wifi'

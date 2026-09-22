@@ -17,10 +17,10 @@
 | `CxxuTab` | 111/1 | 自研 Tab 命令名补全（独立插件：`TabExpansion2` 包装，命令名位合并 dll 模糊结果，参数位透传；门控 `$env:PsTab` 逐调用判定；启停见 `Enable/Disable-PsPlugin`） |
 | `PwshVar` | 329/6 | `.conf` 变量文件加载（预编译缓存，`Update-PwshVars -NoCache` 回退） |
 | `Aliases` | 68/2 | 别名文件加载（`alias_core`/`functions`/`shortcuts`，逐行 iex 是故意的） |
-| `ArgumentCompletion` | 115/2 | 参数补全注册（`prompt` 已迁出，只剩补全） |
+| `ArgumentCompletion` | 115/2 | 参数补全注册（`prompt` 已迁出，只剩补全；B 档 5.1） |
 | `EnvVar` | 1021/15 | 环境变量 User/Machine/Process 三档；热路径一律 `Set-ProcessEnvVar` |
-| `Startup` | 307/12 | 开机任务、后台守护进程、OS 版本缓存（`Confirm-EnvVarOfInfo`） |
-| `Json` | 251/5 | `Data.json` 读写校验（init 与 prompt 共用，无递归设计） |
+| `Startup` | 307/12 | 开机任务、后台守护进程、OS 版本缓存（`Confirm-EnvVarOfInfo`；B 档 5.1，`$IsWindows` 加 `PSEdition` 兜底） |
+| `Json` | 251/5 | `Data.json` 读写校验（init 与 prompt 共用，无递归设计；B 档 5.1） |
 | `Pwsh` | 460/8 | 模块加载脚手架：`ipmox`/`ipmof` 重载（仅仓库内模块）、`New-ModuleByCxxu`、`Sync-ModuleManifest` 偷懒同步（-Name Tab 补全）；版本环境 8 函数已迁 `PsEnv`、内省调试 13 函数已迁 `PsDebug`（2026-09-22，命令名不变） |
 | `PsEnv` | 261/8 | PowerShell 版本/环境：`Update-PowerShell` 升级、`Set-PsExtension`（init 调用，默认关）、profile 路径管理（2026-09-22 从 `Pwsh` 迁入，init 链会加载；B 档 5.1） |
 
@@ -42,13 +42,13 @@
 | `NetWork` | 242/16 | 网络发现/共享/SMB 会话 + 连通性/IP 网卡/图床上传（2026-09-22 从 `Basic` 迁入 13 函数；顺手把 2 处三元改 `if`，psd1 降 5.1 进 B 档，补 BOM） |
 | `NetInfo` | 213/4 | 网络连接/IP 信息：连接名、`Get-IpAddressFormated/ForPrompt`（2026-09-22 从 `Info` 迁入，留 7；曾短暂进 `NetWork`，Json 运行时依赖会顶掉 5.1 垫片，遂独立） |
 | `Hardware` | 438/11 | 本机硬件与系统信息：CPU/主板/内存/BIOS/磁盘/显示（2026-09-22 从 `Info` 迁入；B 档 5.1，`$IsWindows` 分支加 `PSEdition` 兜底） |
-| `WIFI` | 77/6 | WiFi 连接/重连/测试 |
-| `NetDrivers` | 443/9 | 网络驱动器挂载、alist/chfs/aria2 服务 |
+| `WIFI` | 77/6 | WiFi 连接/重连/测试（B 档 5.1） |
+| `NetDrivers` | 443/9 | 网络驱动器挂载、alist/chfs/aria2 服务（B 档 5.1） |
 | `Proxy` | 168/5 | 代理开关与系统代理设置（B 档 5.1，2026-09-22 酌情降档） |
 | `SSH` | 766/12 | SSH 密钥/服务端/客户端初始化 + 远程执行（`Invoke-RemoteSSH(0)`、`Add-SSHkeyOnHost` 2026-09-22 从 `Web` 迁入） |
-| `TestLinks` | 347/4 | GitHub 镜像站可用性测试（含数据源） |
+| `TestLinks` | 347/4 | GitHub 镜像站可用性测试（含数据源；B 档 5.1） |
 | `FileSystem` | 1733/29 | 文件/目录度量（`Get-Size` 等）+ Robocopy 封装 + 日常操作（浏览/检索/改名/链接，2026-09-22 从 `Basic` 迁入 19 函数，B 档 5.1） |
-| `WinSys` | 351/16 | Windows 本机设置：键盘输入法/TTS 语音/电源管理（2026-09-21 从 `Basic` 迁入，命令名不变） |
+| `WinSys` | 351/16 | Windows 本机设置：键盘输入法/TTS 语音/电源管理（2026-09-21 从 `Basic` 迁入，命令名不变；B 档 5.1） |
 | `Tools` | 405/10 | 通用日常小工具：历史/版本/命令可用性/vscode 右键/conda 源（系统配置 14 函数已迁 `WinConfig`，2026-09-22） |
 | `WinConfig` | 696/14 | Windows 本机配置开关：Defender/小组件/更新/任务栏/时间同步/激活/分辨率/重启（2026-09-22 从 `Tools` 迁入，冷路径按需加载） |
 | `PathProcess` | 315/5 | 路径压缩/转换/风格判定（B 档 5.1，2026-09-22 酌情降档） |
@@ -56,9 +56,9 @@
 | `RecycleBin` | 224/5 | 回收站查看/移动/清空 |
 | `Security` | 113/4 | CredentialGuard/VBS/重启确认（`Disable-CredentialGuard` 唯一正本） |
 | `Shortcut` | 622/8 | 快捷方式读写（B 档 5.1，2026-09-22 酌情降档） |
-| `Users` | 14/2 | 用户组/profile 列表查询 |
+| `Users` | 14/2 | 用户组/profile 列表查询（B 档 5.1） |
 | `Window` | 110/1 | `Show-Message` 消息弹窗 |
-| `ControlPanel` | 147/1 | 控制面板小程序启动 |
+| `ControlPanel` | 147/1 | 控制面板小程序启动（B 档 5.1） |
 | `Search` | 565/9 | 文件内容/目录/服务搜索 |
 | `Whois` | 678/2 | whois 查询（原名 `Test` 名实不符，2026-09-20 改名；函数名未动） |
 
@@ -80,18 +80,18 @@
 | `Sitemap` | 838/6 | sitemap 抓取/解析/URL 提取 |
 | `TextProcess` | 610/7 | 文本切分/行处理 |
 | `ArchiveProcess` | 610/8 | tar/zstd/lz4/gz 压缩解压 |
-| `Cloudflare` | 509/9 | CF Zone/DNS 管理 |
-| `BTCN` | 722/9 | 批量建站（宝塔）脚本生成 |
+| `Cloudflare` | 509/9 | CF Zone/DNS 管理（B 档 5.1，调用走网络，5.1 下直调已验导入） |
+| `BTCN` | 722/9 | 批量建站（宝塔）脚本生成（B 档 5.1） |
 | `TerminalTools` | 504/12 | WT 链接、scoop 安装、scp、目录树、`Register-PsUxLazyLoad`（PSFzf/zoxide/predictor 延迟加载，入口按指针静默装载）+ `Sync-CxxuPredictor`（并排版本同步活件，-Uninstall/-Force） |
 | `PsDebug` | 463/13 | pwsh 内省/诊断：`Head`/`Tail`/`Get-SourceCode`/`Get-PipelineInput`、权限（`Set-Owner`/`Grant-PermissionToPath`，Deploy 用）、`Confirm-UserContinue`（Deploy/Link/Git 用）、`Write-PsDebugLog`（2026-09-22 从 `Pwsh` 迁入；B 档 5.1，冷路径按需加载） |
 | `openApps` | 166/16 | 常用软件别名启动（qq/微信/typora 等） |
-| `Browser` | 24/4 | 浏览器搜索/收藏夹小命令 |
-| `Calendar` | 144/1 | `Show-Calendar`（唯一用 `Export-ModuleMember` 的模块，已与 manifest 对齐） |
-| `ColorSettings` | 15/2 | 终端颜色开关 |
-| `Mock` | 74/2 | 随机串/撑大文件（测试用） |
+| `Browser` | 24/4 | 浏览器搜索/收藏夹小命令（B 档 5.1） |
+| `Calendar` | 144/1 | `Show-Calendar`（唯一用 `Export-ModuleMember` 的模块，已与 manifest 对齐；B 档 5.1） |
+| `ColorSettings` | 15/2 | 终端颜色开关（B 档 5.1，`inlineprediction` 配色按 PSReadLine 版本 gating） |
+| `Mock` | 74/2 | 随机串/撑大文件（测试用；B 档 5.1，字符集已自包含） |
 | `Special` | 49/1 | alist 开机注册 |
-| `backup` | 248/14 | 各软件配置备份（与 `Deploy-*` 配对） |
-| `HelpExamples` | 71/3 | comment-based help 示例 + pwsh 运算符教学 2 函数（2026-09-21 从 `Pwsh` 迁入；原名 `CommentBasedHelpDocumentExamples` 过长，2026-09-20 改短名） |
+| `backup` | 248/14 | 各软件配置备份（与 `Deploy-*` 配对；B 档 5.1） |
+| `HelpExamples` | 71/3 | comment-based help 示例 + pwsh 运算符教学 2 函数（2026-09-21 从 `Pwsh` 迁入；原名 `CommentBasedHelpDocumentExamples` 过长，2026-09-20 改短名；B 档 5.1，教学函数依赖 help 文件，沙箱无 help 会炸、真机正常） |
 | `Test` | 3/0 | 临时函数草稿区（用户专用，不受命名规范约束；转正后删，见 `Module-Conventions.md §2`） |
 
 ## 存疑区（2026-09-20 用户已拍板，见下）

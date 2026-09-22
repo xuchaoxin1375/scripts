@@ -1,4 +1,4 @@
-# 注:此示例函数原名 Add-Extension,与 FileSystem 模块的同名真实函数冲突(自动加载命中不确定),
+﻿# 注:此示例函数原名 Add-Extension,与 FileSystem 模块的同名真实函数冲突(自动加载命中不确定),
 # 已改名为 Add-ExtensionExample;FileSystem\Add-Extension 为唯一正本
 function Add-ExtensionExample
 {

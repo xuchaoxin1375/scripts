@@ -1,4 +1,4 @@
-<#
+﻿<#
 Json 模块:JSON 数据文件的读写与校验(从 Tools.psm1 迁入)。
 init 热路径(Confirm-DataJson)与 prompt 缓存都依赖本模块，保持精简以降低首次解析成本。
 #>

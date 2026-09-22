@@ -36,7 +36,7 @@ function Deploy-WpSitesOnline
         # 域名绑定cf后解析cf返回的查询结果来传递给spaceship更新域名的nameservers的中间表格
         [alias('DomainTable')]$ToTable = "$Desktop/domains_nameservers.csv",
         # proxy_pass 的风格,是否带上协议名
-        [ValidateSet('http', 'https', '', 'auto')]
+        [ValidateSet('http', 'https',  'auto','')]
         $Scheme = 'auto',
         # 反代模式,关乎反代服务器上的routes.map的路径构造.(base对应的Scheme为'http',而tenants对应于'')
         [ValidateSet('base', 'tenants')]
