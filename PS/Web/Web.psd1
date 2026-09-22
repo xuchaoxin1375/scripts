@@ -6,11 +6,8 @@
     Description = 'Web module: networking, HTTP servers, nginx sites, domains and downloads (split from Tools.psm1)'
     PowerShellVersion = '7.0'
     FunctionsToExport = @(
-        'Invoke-RemoteSSH0',
-        'Invoke-RemoteSSH',
         'Test-UrlOrHostAvailability',
         'Update-SSNameServers',
-        'Add-SSHkeyOnHost',
         'Get-DomainUserDictFromTable',
         'Get-UrlFromMarkdownUrl',
         'Get-MainDomain',

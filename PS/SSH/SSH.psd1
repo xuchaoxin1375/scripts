@@ -3,7 +3,7 @@
     ModuleVersion = '1.0.4'
     GUID = '93a30c37-caa2-44a3-9b18-d5133bda955f'
     Author = 'cxxu'
-    Description = 'Cxxu PowerShell module: SSH'
+    Description = 'SSH client/server init, keys, and remote execution'
     PowerShellVersion = '7.0'
     FunctionsToExport = @(
         'Enable-SSHPubkeyAuthentication',
@@ -14,7 +14,10 @@
         'Get-SSHPreRunPubkeyVarsScript',
         'New-SSHKeyPairs',
         'Deploy-SSHVersionWin32Zip',
-        'Set-SSHDefaultShell'
+        'Set-SSHDefaultShell',
+        'Invoke-RemoteSSH0',
+        'Invoke-RemoteSSH',
+        'Add-SSHkeyOnHost'
     )
     CmdletsToExport = @()
     VariablesToExport = @()

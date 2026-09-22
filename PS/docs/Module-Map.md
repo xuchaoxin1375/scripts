@@ -1,6 +1,6 @@
 # 模块地图（Module Map）
 
-> 63 个自有模块，全在 `PS/<Name>/<Name>.psm1` + 同名 `.psd1`
+> 65 个自有模块，全在 `PS/<Name>/<Name>.psm1` + 同名 `.psd1`
 >（唯一例外 `CxxuPredictor`：二进制模块，`.psd1` + `.dll` + `src/`，无 `.psm1`）。
 > 规范见 `Module-Conventions.md`，性能史见 `Startup-Optimization.md`。
 > 图例：🔥 启动/提示热路径（改动先跑终验），❄️ 冷路径（按需加载）。
@@ -28,7 +28,7 @@
 
 | 模块 | 行数/函数 | 职责 |
 |---|---|---|
-| `Info` | 1736/28 | 系统信息：内存/进程查看、IP（批量+60s 记忆）、电池已迁入 |
+| `Info` | 1086/12 | 系统信息：内存/进程查看、电池（留 7）；硬件 11 函数已迁 `Hardware`、网络连接/IP 4 函数已迁 `NetInfo`（2026-09-22；7 下 prompt 经自动发现走 `NetInfo` 真身，5.1 垫片不受影响已验） |
 | `Basic` | 908/46 | 通用小工具与查询（`Get-ModuleByCxxu` 5.1 可用）；文件操作 19 函数已迁 `FileSystem`、网络 13 函数已迁 `NetWork`、仓库同步 8 函数已迁 `RepoSync`（2026-09-22，命令名不变） |
 | `TaskSchdPwsh` | 711/9 | `Start-ScriptWhenIntervalEnough`（内存 5s 节流就靠它）、计划任务触发、守护进程；定时提醒 5 函数已迁 `TimeNotify`（2026-09-22，命令名不变） |
 | `TimeNotify` | 447/5 | 定时提醒：Toast 通知（`New-TimeNotification(Robust)`）、整点报时（`Start-TimeAnnouncer`）、消息上报（2026-09-22 从 `TaskSchdPwsh` 迁入，冷路径按需加载） |
@@ -37,13 +37,15 @@
 
 | 模块 | 行数/函数 | 职责 |
 |---|---|---|
-| `Web` | 1867/24 | HTTP 服务、nginx 站点、域名、下载（`Tools` 拆出） |
+| `Web` | 1498/21 | HTTP 服务、nginx 站点、域名、下载（`Tools` 拆出）；SSH 远程 3 函数已迁 `SSH`（2026-09-22，`Update-SSNameServers` 是 Spaceship 域名、留 Web） |
 | `Text` | 914/14 | 文本/编码/markdown/格式化（`Tools` 拆出） |
 | `NetWork` | 242/16 | 网络发现/共享/SMB 会话 + 连通性/IP 网卡/图床上传（2026-09-22 从 `Basic` 迁入 13 函数；顺手把 2 处三元改 `if`，psd1 降 5.1 进 B 档，补 BOM） |
+| `NetInfo` | 213/4 | 网络连接/IP 信息：连接名、`Get-IpAddressFormated/ForPrompt`（2026-09-22 从 `Info` 迁入，留 7；曾短暂进 `NetWork`，Json 运行时依赖会顶掉 5.1 垫片，遂独立） |
+| `Hardware` | 438/11 | 本机硬件与系统信息：CPU/主板/内存/BIOS/磁盘/显示（2026-09-22 从 `Info` 迁入，留 7，冷路径按需加载） |
 | `WIFI` | 77/6 | WiFi 连接/重连/测试 |
 | `NetDrivers` | 443/9 | 网络驱动器挂载、alist/chfs/aria2 服务 |
 | `Proxy` | 168/5 | 代理开关与系统代理设置 |
-| `SSH` | 394/9 | SSH 密钥/服务端/客户端初始化 |
+| `SSH` | 766/12 | SSH 密钥/服务端/客户端初始化 + 远程执行（`Invoke-RemoteSSH(0)`、`Add-SSHkeyOnHost` 2026-09-22 从 `Web` 迁入） |
 | `TestLinks` | 347/4 | GitHub 镜像站可用性测试（含数据源） |
 | `FileSystem` | 1733/29 | 文件/目录度量（`Get-Size` 等）+ Robocopy 封装 + 日常操作（浏览/检索/改名/链接，2026-09-22 从 `Basic` 迁入 19 函数，B 档 5.1） |
 | `WinSys` | 351/16 | Windows 本机设置：键盘输入法/TTS 语音/电源管理（2026-09-21 从 `Basic` 迁入，命令名不变） |
