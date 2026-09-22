@@ -1,4 +1,4 @@
-﻿# AGENTS.md — PS 模块集（CxxuPsModules）agent 入口
+# AGENTS.md — PS 模块集（CxxuPsModules）agent 入口
 
 ## 先读文档，再碰代码
 本目录 `docs/` 是唯一真相源（若代码注释与文档矛盾，以文档为准，顺手修注释）：

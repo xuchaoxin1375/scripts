@@ -1,4 +1,4 @@
-﻿# 新机部署指南（Deploy Guide）
+# 新机部署指南（Deploy Guide）
 
 > 把这套 55 模块组合搬到另一台机器。先跑 `Test-PsEnvReadiness` 看缺口，再按节补。
 > 在新机器上还没有模块路径时，先：`Import-Module C:\repos\scripts\PS\Deploy\Deploy.psd1`

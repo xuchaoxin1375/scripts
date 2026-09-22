@@ -1,4 +1,4 @@
-﻿* ```powershell
+* ```powershell
   #尝试重定向输出到日志文件,但这在powershell似乎无法做到,我们用start-job虽然隐藏了输出,却无法重定向到文件
   # 如果想要接受start-job启动的任务返回结果,使用Receive-Job -Id $job.id,其中$job是Start-job 赋值的对象
   #然而这里调用的vbs没有输出结果,因此是空白的输出,就不需要定向到日志文件中

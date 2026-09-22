@@ -1,4 +1,4 @@
-﻿# Pwsh 启动与初始化速度优化
+# Pwsh 启动与初始化速度优化
 
 > 适用：`PS/` 模块集（`$env:PSModulePath` 引用 `C:/repos/scripts/PS`，`$profile` 里只有 `init`）。
 > 测量环境：Windows Server 级虚拟机，pwsh 7.5。个人电脑数值不同，但瓶颈排序一致。

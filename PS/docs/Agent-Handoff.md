@@ -1,4 +1,4 @@
-﻿# Agent 交接（开发与维护手册）
+# Agent 交接（开发与维护手册）
 
 > 给下一个接手的 agent（或人）看的：怎么做事、怎么验证、哪里埋过雷。
 > 用户手册见 `Feature-Guide.md`，模块清单见 `Module-Map.md`，编码铁律见 `Module-Conventions.md`。
@@ -128,7 +128,6 @@
 36. **拆分 Basic/Pwsh（2026-09-21，用户选 Pwsh 小手术 + Basic 簇搬迁）**：新模块 `WinSys`（键盘 7/TTS 2/电源 7，命令名不变，自动发现即用）；Pwsh 教学 2 函数迁 `HelpExamples`、Robocopy 2 函数迁 `FileSystem`。WordPress 最大但用户在改 + 业务内聚，不碰；Info 拆了 prompt 反增跨模块调用，不拆；Deploy 按域拆是立项级，没选。教训：`Get-Content | Measure-Object -Line` 少算约 250 行（管道计数问题），看体量以 `[IO.File]::ReadAllLines.Count` 或编辑器 "of N" 为准；搬迁体与 HEAD 逐行字节对账（`Compare-Object` 遇近重复行会误报对齐，以 `rg` 行号复核为准）；大段搬迁用行号脚本删（锚点断言 fail-stop），`Edit` 转录 300 行必出注释空格误差。模块数 55→56，Map 已同步。
 37. **5.1 prompt 全对齐 + 免手动（2026-09-21，用户要的）**：`Balance` 差的 7 个 Info/Startup 命令在 `Prompt.psm1` 顶部移植（CIM/注册表同口径，IP 格式 `<网卡首字:ip>` 逐字照抄；会话缓存 IP 60s/内存 10s/开机 120s/电池复用 30s），渲染与 7.5 逐字一致，稳态 50ms/次（首屏冷缓存 1.4s 一次性）。`Install-Ps51Profile`（Init 模块）：写 5.1 专属 profile（UTF8+BOM，`Set-Content -Encoding utf8` 在 5.1/7 下含义不同，必须 .NET 写死；有旧 profile 无标记则追加不覆盖），之后开 `powershell.exe` 自动 init。另修 `Get-EnvCountedValues` 的 `catn` phantom 依赖（仅示例文件定义，干净会话必炸，7 亦然）改自带编号。
 38. **查询命令 5.1 可用化（2026-09-21，用户问"怎么查模块"）**：`Get-ModuleByCxxu` 住在留 7 的 Info 里，5.1 整模块导不出——迁入 B 档 `Basic`（体小、无依赖、5.1 原生语法），附带修 `$env:CxxuPSModulePath` 未设置时 `-like "*"` 全匹配噪音（回退到本模块所在仓库根）。查询链固定下来记 `Module-Map.md` 头：`Get-ModuleByCxxu` → `Get-Command -Module` → `Get-Command` 反查。教训：放查询/诊断类命令先问"5.1 能用吗"，留 7 模块里的便民命令等于半残。
-39. **文档批量补 BOM（2026-09-21，用户：大多数文档是 utf8，5.1 要直接能看）**：之前"读文档加 `-Encoding UTF8`，文件不动"被推翻——用户 5.1 高频，直接改文件更彻底。仓库 21 个 `.md` 里 18 个中文无 BOM 全补（前置三字节，其余零改动；`wp/` 不碰），裸 `Get-Content` 在 5.1 下已验可读。conventions §8 例外扩大到 `.md`，新文档建完就补 BOM。注意 BOM-only 改动 `git diff` 照样标 modified，别当成内容改了去"优化"掉。
 
 ## 4. 环境事实（这台机器，2026-09 实测）
 
