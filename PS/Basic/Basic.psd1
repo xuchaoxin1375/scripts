@@ -92,7 +92,7 @@
         'Write-WorkingDir',
         'btm_cxxu',
         'Get-ModuleByCxxu',
-        'Get-Utf8Content'
+        'Get-ContentUTF8'
     )
     CmdletsToExport = @()
     VariablesToExport = @()

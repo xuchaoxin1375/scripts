@@ -1990,7 +1990,7 @@ function Get-ModuleByCxxu
 
 }
 
-function Get-Utf8Content
+function Get-ContentUTF8
 {
     <#
     .SYNOPSIS
@@ -1999,8 +1999,8 @@ function Get-Utf8Content
     .NET 读文件默认即 UTF-8 且自动识别 BOM,有/无 BOM 通吃,5.1/7 行为一致。
     默认逐行输出(同 Get-Content),-Raw 整文返回。
     .EXAMPLE
-    Get-Utf8Content README.md
-    Get-Utf8Content C:\tmp\notes.md -Raw
+    Get-ContentUTF8 README.md
+    Get-ContentUTF8 C:\tmp\notes.md -Raw
     #>
     [CmdletBinding()]
     param(
