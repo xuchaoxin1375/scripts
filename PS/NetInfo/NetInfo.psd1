@@ -4,7 +4,7 @@
     GUID = 'd193bda8-b902-4a2a-ace1-d72a96c22268'
     Author = 'cxxu'
     Description = 'Network connection and IP info for prompt and daemons'
-    PowerShellVersion = '7.0'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'Get-NetConnectionInfo',
         'Update-NetConnectionInfo',

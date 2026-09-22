@@ -1,4 +1,4 @@
-
+﻿
 function Confirm-Restart
 {
     # 询问用户是否重启

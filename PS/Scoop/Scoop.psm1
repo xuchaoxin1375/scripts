@@ -1,4 +1,4 @@
-<#
+﻿<#
 Scoop 模块:Windows 包管理 Scoop 的国内镜像部署与批量装机。
 从 Deploy.psm1 迁入: Deploy 回归新机收尾本义,Scoop 生态归此模块;
 调用方命令名不变(自动发现同名模块)。

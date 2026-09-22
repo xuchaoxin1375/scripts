@@ -30,11 +30,12 @@ function Update-Json
     {
         Write-Verbose "Configuration file '$Path' does not exist. Creating a new one."
         $emptyConfig = @{}
-        $emptyConfig | ConvertTo-Json -Depth 32 | Set-Content $Path
+        # .NET 直写 UTF-8(无 BOM):5.1 的 Set-Content 默认 ANSI,中英文混排跨版本读写必乱码,双版本同行为优先
+        [IO.File]::WriteAllText($Path, ($emptyConfig | ConvertTo-Json -Depth 32))
     }
 
-    # 读取配置文件
-    $config = Get-Content $Path | ConvertFrom-Json
+    # 读取配置文件(.NET 直读 UTF-8 自动识别 BOM:5.1 的 Get-Content 默认按 ANSI 解码,中文必乱码)
+    $config = [IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
 
     if ($Remove)
     {
@@ -62,8 +63,8 @@ function Update-Json
         Write-Verbose "Updated '$Key' to '$Value' in '$Path'"
     }
 
-    # 保存配置文件
-    $config | ConvertTo-Json -Depth 32 | Set-Content $Path
+    # 保存配置文件(.NET 直写 UTF-8,理由同上:5.1 Set-Content 默认 ANSI)
+    [IO.File]::WriteAllText($Path, ($config | ConvertTo-Json -Depth 32))
 }
 
 function Confirm-DataJson
@@ -99,7 +100,8 @@ function Confirm-DataJson
             $defaultContent | ConvertTo-Json | Set-Content -LiteralPath $DataJson -Encoding utf8
             return $DataJson
         }
-        $jsonContent = Get-Content -LiteralPath $DataJson -Raw -ErrorAction Stop
+        # .NET 直读 UTF-8 自动识别 BOM(5.1 的 Get-Content -Raw 默认 ANSI,中文缓存如 IpPrompt 必乱码)
+        $jsonContent = [IO.File]::ReadAllText($DataJson, [System.Text.Encoding]::UTF8)
         if ([string]::IsNullOrWhiteSpace($jsonContent)) { throw 'Empty DataJson file.' }
         $null = $jsonContent | ConvertFrom-Json -ErrorAction Stop
         Write-Verbose 'The JSON file is valid.'
@@ -184,7 +186,8 @@ xxx
 
     $jsonContent = if (Test-Path $JsonInput)
     {
-        Get-Content -Path $JsonInput -Raw | ConvertFrom-Json
+        # .NET 直读 UTF-8 自动识别 BOM(5.1 的 Get-Content -Raw 默认 ANSI,中文必乱码)
+        [IO.File]::ReadAllText($JsonInput, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
     }
     else
     {
@@ -234,7 +237,8 @@ function Get-JsonItemCompleter
     {
         $Json = $DataJson
     }
-    $res = Get-Content $Json | ConvertFrom-Json
+    # .NET 直读 UTF-8 自动识别 BOM(5.1 的 Get-Content 默认 ANSI,中文必乱码)
+    $res = [IO.File]::ReadAllText($Json, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
     $Names = $res | Get-Member -MemberType NoteProperty | Select-Object -ExpandProperty Name
     $Names = $Names | Where-Object { $_ -like "$wordToComplete*" }
     foreach ($name in $Names)

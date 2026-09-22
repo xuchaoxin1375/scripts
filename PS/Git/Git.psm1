@@ -1,4 +1,4 @@
-# 注:镜像站测试函数(Test-Links*/Test-MirrorAvailability/Get-AvailableGithubMirrors)与数据源已独立为 TestLinks 模块,此处删除重复定义
+﻿# 注:镜像站测试函数(Test-Links*/Test-MirrorAvailability/Get-AvailableGithubMirrors)与数据源已独立为 TestLinks 模块,此处删除重复定义
 
 function git_clone_shallow
 {

@@ -3,8 +3,8 @@
     ModuleVersion = '1.0.4'
     GUID = 'edfc2706-8431-43b4-91a4-d9ce76f52857'
     Author = 'cxxu'
-    Description = '通用日常小工具:历史/版本/命令可用性/睡眠进度/vscode右键/仓库版本/conda源/北京时间'
-    PowerShellVersion = '7.0'
+    Description = 'Everyday utilities: history/version/command probe/sleep progress/vscode ext/repo version/conda source/beijing time'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'Get-PSConsoleHostHistory',
         'Get-CxxuPsModuleVersion',

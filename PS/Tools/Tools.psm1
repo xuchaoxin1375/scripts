@@ -1,4 +1,4 @@
-function Get-PSConsoleHostHistory
+﻿function Get-PSConsoleHostHistory
 {
     <# 
     .SYNOPSIS

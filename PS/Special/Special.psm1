@@ -1,4 +1,4 @@
-
+﻿
 function Register-AlistStartup
 {
     <# 

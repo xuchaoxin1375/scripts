@@ -4,7 +4,7 @@
     GUID = 'a1365b22-e69b-4914-be0e-3cba48e9a1e5'
     Author = 'cxxu'
     Description = 'Cxxu PowerShell module: Special'
-    PowerShellVersion = '7.0'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'Register-AlistStartup'
     )

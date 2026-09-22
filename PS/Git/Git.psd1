@@ -4,7 +4,7 @@
     GUID = 'dcb4f0eb-cda3-4d7f-99f5-b486ca2f4c9e'
     Author = 'cxxu'
     Description = 'Git daily operations and repository helpers'
-    PowerShellVersion = '7.0'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'git_clone_shallow',
         'gitUpdateReposSimply',

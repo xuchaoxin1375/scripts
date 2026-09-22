@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS   
 Function that shows the contents of the Recycle Bin
 
