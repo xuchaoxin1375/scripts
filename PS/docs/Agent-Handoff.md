@@ -133,6 +133,8 @@
 42. **大模块拆分开工（2026-09-22，用户：先拆到足够灵巧 + 删 uploadPic + 删 Deprecated）**：删除 `uploadPic`（`uploadPicMarkdown` 独立调 picgo，不受影响）、`Deploy-GithubHostsAutoUpdaterDeprecated`（未进 manifest，只删体）、`Get-MySqlDatabaseNameCmdletDeprecated`（含 manifest）；第一刀 `Pwsh(1162/29)→Pwsh(460/8)+PsEnv(261/8)+PsDebug(463/13)`，命令名不变，跨模块调用走自动发现（已验路由）。施工教训：`[IO.File]::WriteAllLines` 默认 CRLF，会把 LF 存量全改写——拆分脚本一律显式 join+`WriteAllText` 保换行；`Write` 工具建的新文件是 LF，记得转 CRLF；切除脚本禁止重复执行（锚点校验是唯一保险）。Module-Map 58 模块。
 43. **第二刀（2026-09-22）：`TaskSchdPwsh(1151/14)→TaskSchdPwsh(711/9)+TimeNotify(447/5)`**：提醒簇（Toast/报时/上报）迁出，`Start-Trigger` 内调 `New-TimeNotification` 走自动发现。另记：原文件尾无换行符，拆分顺手补上（diff 里单个 `+}` 即此）；`git diff` 与 `--ignore-cr-at-eol` 统计差 1 行时先查尾行换行符，别慌。
 44. **第三刀（2026-09-22）：`Tools(1089/24)→Tools(405/10)+WinConfig(696/14)`**：系统配置开关簇迁出（Defender/更新/任务栏/时间同步/激活/分辨率/重启）；`Tools` 留通用小工具，Map 里顺手补上一直缺失的 `Tools` 行。Module-Map 60 模块。第一批三刀收工，下一批 Basic/Deploy/Web/Info。
+45. **第四刀（2026-09-22）：`Basic(2005/86)→Basic(908/46)+FileSystem(+19)+NetWork(+13)+RepoSync(265/8)`**：86 函数体逐字对账零差异（86/86；13 个 EXTRA 全是 FS/Net 原有函数）。附带 `NetWork` 升 B 档：2 处三元改 `if` + psd1 降 5.1 + 补 BOM（11 个 B 档 manifest 5.1 全过）。
+46. **psd1 中文引号坑（2026-09-22，血泪）**：无 BOM 的 psd1 里，中文写进**引号字符串**（如 Description）会让 5.1 报"restricted language / string missing terminator"——5.1 按 GBK 解码，某些字的 UTF-8 字节重组后落单成 GBK lead（如"送"=E9 80 81 的 0x81），fallback 把后面的收引号一起吞掉，字符串从此不闭合。中文写进 **`#` 注释**则安全（坏只坏到行尾）。铁律：**无 BOM 的 psd1，中文只许进注释，不许进引号**（psm1 有 BOM 免疫）。已把本次引入的两处中文 Description 改回英文；新 B 档模块 Description 一律英文。
 
 ## 4. 环境事实（这台机器，2026-09 实测）
 

@@ -1,6 +1,6 @@
 # 模块地图（Module Map）
 
-> 60 个自有模块，全在 `PS/<Name>/<Name>.psm1` + 同名 `.psd1`
+> 61 个自有模块，全在 `PS/<Name>/<Name>.psm1` + 同名 `.psd1`
 >（唯一例外 `CxxuPredictor`：二进制模块，`.psd1` + `.dll` + `src/`，无 `.psm1`）。
 > 规范见 `Module-Conventions.md`，性能史见 `Startup-Optimization.md`。
 > 图例：🔥 启动/提示热路径（改动先跑终验），❄️ 冷路径（按需加载）。
@@ -29,7 +29,7 @@
 | 模块 | 行数/函数 | 职责 |
 |---|---|---|
 | `Info` | 1736/28 | 系统信息：内存/进程查看、IP（批量+60s 记忆）、电池已迁入 |
-| `Basic` | 2005/86 | 通用小工具（网络/git/时间/速记等）+ 模块查询（`Get-ModuleByCxxu`，2026-09-21 从 `Info` 迁入，5.1 可用）；键盘/TTS/电源 16 函数已迁 `WinSys`，`uploadPic` 已删（2026-09-22，`uploadPicMarkdown` 独立保留），prompt 只剩间接依赖 |
+| `Basic` | 908/46 | 通用小工具与查询（`Get-ModuleByCxxu` 5.1 可用）；文件操作 19 函数已迁 `FileSystem`、网络 13 函数已迁 `NetWork`、仓库同步 8 函数已迁 `RepoSync`（2026-09-22，命令名不变） |
 | `TaskSchdPwsh` | 711/9 | `Start-ScriptWhenIntervalEnough`（内存 5s 节流就靠它）、计划任务触发、守护进程；定时提醒 5 函数已迁 `TimeNotify`（2026-09-22，命令名不变） |
 | `TimeNotify` | 447/5 | 定时提醒：Toast 通知（`New-TimeNotification(Robust)`）、整点报时（`Start-TimeAnnouncer`）、消息上报（2026-09-22 从 `TaskSchdPwsh` 迁入，冷路径按需加载） |
 
@@ -39,13 +39,13 @@
 |---|---|---|
 | `Web` | 1867/24 | HTTP 服务、nginx 站点、域名、下载（`Tools` 拆出） |
 | `Text` | 914/14 | 文本/编码/markdown/格式化（`Tools` 拆出） |
-| `NetWork` | 60/3 | 网络发现/共享/SMB 会话 |
+| `NetWork` | 242/16 | 网络发现/共享/SMB 会话 + 连通性/IP 网卡/图床上传（2026-09-22 从 `Basic` 迁入 13 函数；顺手把 2 处三元改 `if`，psd1 降 5.1 进 B 档，补 BOM） |
 | `WIFI` | 77/6 | WiFi 连接/重连/测试 |
 | `NetDrivers` | 443/9 | 网络驱动器挂载、alist/chfs/aria2 服务 |
 | `Proxy` | 168/5 | 代理开关与系统代理设置 |
 | `SSH` | 394/9 | SSH 密钥/服务端/客户端初始化 |
 | `TestLinks` | 347/4 | GitHub 镜像站可用性测试（含数据源） |
-| `FileSystem` | 1041/10 | 文件/目录度量（`Get-Size` 等）+ Robocopy 封装（2026-09-21 从 `Pwsh` 迁入 2 函数） |
+| `FileSystem` | 1733/29 | 文件/目录度量（`Get-Size` 等）+ Robocopy 封装 + 日常操作（浏览/检索/改名/链接，2026-09-22 从 `Basic` 迁入 19 函数，B 档 5.1） |
 | `WinSys` | 351/16 | Windows 本机设置：键盘输入法/TTS 语音/电源管理（2026-09-21 从 `Basic` 迁入，命令名不变） |
 | `Tools` | 405/10 | 通用日常小工具：历史/版本/命令可用性/vscode 右键/conda 源（系统配置 14 函数已迁 `WinConfig`，2026-09-22） |
 | `WinConfig` | 696/14 | Windows 本机配置开关：Defender/小组件/更新/任务栏/时间同步/激活/分辨率/重启（2026-09-22 从 `Tools` 迁入，冷路径按需加载） |
@@ -67,6 +67,7 @@
 | `Deploy` | 2931/46 | 一键部署：scoop/github hosts/python/conda/开机任务等；`Get-SelectedMirror`/`Get-GithubMirrorPrefix`/`Get-RepoRawUrl`、`Test-PsEnvReadiness`（版本表尾 + `-CheckRemote` 远端对比 + 建议行）、`doctor`（统一诊断入口）在此；`Deploy-GithubHostsAutoUpdaterDeprecated` 已删（2026-09-22） |
 | `Development` | 340/22 | Django 快捷命令、ssh 别名、文本清理 |
 | `Git` | 505/15 | git 日常：浅克隆、一键提交、镜像加速下载 |
+| `RepoSync` | 265/8 | 多仓库同步/开发环境同步：`Push/Update-ReposesConfiged*`、`update_functions`（2026-09-22 从 `Basic` 迁入，B 档 5.1） |
 | `MySql` | 905/12 | MySQL 库表备份/建删/查询（`Get-MySqlDatabaseNameCmdletDeprecated` 已删，2026-09-22） |
 | `WordPress` | 3793/33 | WP 站点本地/线上部署、插件/订单管理（最大业务模块，冷路径别碰） |
 | `CSV` | 837/9 | CSV 预览/切分/导出 |

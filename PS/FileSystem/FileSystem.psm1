@@ -1039,3 +1039,695 @@ function Copy-Robocopy
         Get-Content $logFile -Encoding $LogPreviewEncodings | Select-Object -Last 13
     }
 }
+
+function ls_eza
+{
+    <# 
+.SYNOPSIS
+eza is a modern, maintained replacement for the venerable file-listing command-line program ls that ships with Unix and Linux operating systems, giving it more features and better defaults. It uses colours to distinguish file types and metadata. It knows about symlinks, extended attributes, and Git. And it’s small, fast, and just one single binary.
+
+By deliberately making some decisions differently, eza attempts to be a more featureful, more user-friendly version of ls.
+.description
+the windows version of eza is very easy to install (just need a good network)
+however, in the linux version, the installation may be difficult to success in the first time
+.LINK
+- https://github.com/eza-community/eza
+- https://www.sysgeek.cn/eza-command/
+.EXAMPLE
+PS>eza -ghil --icons
+Mode  Size Date Modified Name
+-a--- 331k 18 Mar 18:59   20240318_185950.mp4
+-a--- 1.2M 18 Mar 19:10   20240318_191010.mp4
+d----    - 10 Mar 23:22   ansel
+d-r--    - 18 Mar 19:34  󰉌 Contacts
+d-r--    - 18 Mar 19:36   Desktop
+.EXAMPLE
+PS>eza --icons -TL 2
+ .
+├──  20240318_185950.mp4
+├──  20240318_191010.mp4
+├──  ansel
+├── 󰉌 Contacts
+├──  Desktop
+│  ├──  blogs_home.lnk
+│  ├──  EM.lnk
+│  ├──  math.lnk
+│  ├──  neep.lnk
+│  └──  四边形加固为刚性结构.ggb
+├──  Documents
+│  ├──  Apowersoft
+│  ├──  Captura
+
+.EXAMPLE
+PS>eza --icons -ghilTL 2
+Mode  Size Date Modified Name
+d----    - 18 Mar 19:34   .
+-a--- 331k 18 Mar 18:59  ├──  20240318_185950.mp4
+-a--- 1.2M 18 Mar 19:10  ├──  20240318_191010.mp4
+d----    - 10 Mar 23:22  ├──  ansel
+d-r--    - 18 Mar 19:34  ├── 󰉌 Contacts
+d-r--    - 18 Mar 19:36  ├──  Desktop
+-a--- 1.4k 17 Jan 10:31  │  ├──  blogs_home.lnk
+-a--- 1.4k 19 Jan 14:15  │  ├──  EM.lnk
+-a--- 1.4k 19 Jan 14:14  │  ├──  math.lnk
+-a--- 1.4k 17 Jan 10:33  │  ├──  neep.lnk
+-a---  44k 15 Mar 20:13  │  └──  四边形加固为刚性结构.ggb
+d-r--    - 18 Mar 19:34  ├──  Documents
+d----    - 18 Mar 18:22  │  ├──  Apowersoft
+d----    - 18 Mar 18:03  │  ├──  Captura
+#>
+
+    [CmdletBinding()]
+    param (
+        [Parameter()]
+        [int]
+        $deepth = 2
+    )
+    eza -ghil --icons -TL $deepth
+
+    
+}
+
+function extract_markdown_titiles
+{
+    <# 
+    .synopsis
+    extract markdown titles,configs like 
+        1.level
+        2.indent char
+        3.show title text only 
+    are available to specifiy.
+
+    .example
+    PS C:\> extract_markdown_titiles .\01_导数和微分.md -level 2 -indent_with_chr '*'
+    * 一元函数微分
+    ** 函数在$x=x_0$导数的定义
+    ** 导函数的定义
+    ** 导数与微分@微商
+    ** 对数函数的导函数
+    ** 函数间四则运算组合函数的求导法则
+    ** 反函数求导法则
+    ** 对数求导法
+    ** 微积分和深度学习
+    * 导数表示法&导数记号系统
+    ** 莱布尼兹记号法@Leibniz's notation
+    ** 拉格朗日记号法@Lagrange's notation
+    ** 欧拉记号法@Euler's notation
+    ** 牛顿记号Newton's notation
+
+
+    #>
+    param(
+        # pass content from pipeline
+        # [Parameter(ValueFromPipeline)]
+        # [String]
+        # $content = 'Noting!',
+
+        $file,
+        $level = 3,
+        $indent_with_chr = '#',
+        # copy result to clipborad
+        $scb = $true,
+        [switch]$title_only
+
+    )
+    process
+    {
+        # write-host $level
+    
+        # $pattern = '^(#+)(\s+)(\S+)'
+        $pattern = '^(#+)(\s+)(.*)'
+        Write-Host $file.Length
+        if ($file -ne '')
+        {
+            $content = Get-Content $file 
+            Write-Host 'content from file'
+        }
+        else
+        {
+            Write-Host 'contents from clipboard'
+        }
+
+
+        $titles_with_level = $content | Where-Object { $_ -match $pattern } 
+        # Remove potential excess spaces as they can affect aesthetics 
+        # in titles "##[ ]<title content>",the '[]' indicate the space character width
+        $titles_with_level = $titles_with_level -replace $pattern, '$1 $3'
+
+        $titles_leveled = $titles_with_level | ForEach-Object {
+            $titles_sharps = $_ -replace $pattern, '$1' 
+            # write-host "'$titles_sharps'"
+            $title_level = $titles_sharps.Length
+
+            # write-host "$title_level;$_"
+
+            if ($title_level -gt $level)
+            {
+                return
+            }
+            else
+            {
+                # 在管道符中通过write的方式将被遍历的元素添加到数组中
+                Write-Host $_
+
+            }
+        }
+
+        # write-host $titles_leveled
+    
+        $titles_with_level = $titles_leveled
+
+        $titles = $titles_with_level | ForEach-Object { $_ -replace $pattern, '$3' }
+        $res = ''
+        if ($title_only)
+        {
+            $res = $titles
+        }
+        elseif ($indent_with_chr -eq '#')
+        {
+        
+            $res = $titles_with_level
+        }
+        else
+        {
+            $res = $titles_with_level | ForEach-Object {
+                $title_level = ( $_ -replace $pattern, '$1' ).Length
+                $_ -replace '^(#+)', ($indent_with_chr * $title_level)
+            }
+        }
+        # 根据需要将内容自动复制到剪切板
+        if ($scb)
+        {
+            $res | Set-Clipboard
+
+        }
+        return $res 
+    }
+    
+}
+
+function tree_lsd
+{
+    param(
+        $depth_opt = 3
+    )
+    lsd --tree --depth $depth_opt
+}
+function ld
+{
+    lsd -l --color never
+}
+function l1
+{
+    lsd -1
+}
+
+
+function remote_folder
+{
+    param(
+        $hostname_opt = "$AliCloudServerIP",
+        $dir = '/home/cxxu/cppCodes'
+    )
+    code --folder-uri "vscode-remote://ssh-remote+$hostname_opt$dir"
+}
+function Get-LineNumberWidth
+{
+    param (
+        $content
+    )
+    [math]::Max([int][math]::Log10($contents.Count) + 1, 2)
+}
+
+function Get-ContentNL
+{
+    <# 
+.SYNOPSIS
+该函数用于计数地输出文本内容:在每行的开头显示该行是文本中的第几行(行号),以及该行的内容
+支持管道符输入被统计对象
+#>
+    <# 
+.EXAMPLE
+#常规用法,通过参数指定文本文件路径来计数地输出文本内容
+Get-ContentNL -InputData .\r.txt
+.EXAMPLE
+rvpa .\r.txt |Get-ContentNL
+.EXAMPLE
+将一个三行的文本字符串作为管道输入，然后将其,显式指出将管道符内容视为字符串而不是路径字符串进行统计
+#创建测试多行字符串变量
+$mlstr=@'
+line1
+line2
+line3
+'@
+
+$mlstr|Get-ContentNL -AsString
+
+.EXAMPLE
+计数一个多行字符串变量的行数
+PS C:\repos\scripts\PS\Test> $mlstr=@'
+>> line1
+>> line2
+>> line3
+>> '@
+PS C:\repos\scripts\PS\Test> $mlstr
+line1
+line2
+line3
+PS C:\repos\scripts\PS\Test> Get-ContentNL -InputData $mlstr -AsString
+1:line1
+2:line2
+3:line3
+.EXAMPLE
+#跟踪文本文件内容的变化(每秒刷新一次内容);
+Get-ContentNL -InputData .\log.txt -RepetitionInterval 1
+.EXAMPLE
+#在powershell新窗口中更新
+Start-Process powershell -ArgumentList '-NoExit -Command Get-ContentNL -InputData .\log.txt -RepetitionInterval 1'
+.EXAMPLE
+ls传递给cat读取合并,然后在传给Get-ContentNL来计数处理
+
+PS> ls ab*.cpp|cat|Get-ContentNL -AsString -Verbose
+VERBOSE: Checking contents...
+1:#include <iostream>
+2:using namespace std;
+3:int main()
+4:{
+5:
+6:    int a, b, c;
+7:    cin >> a >> b;
+8:    c = a + b;
+9:    cout << c << endl;
+10:    return 0;
+11:}
+12:#include <iostream>
+13:using namespace std;
+14:int main()
+15:{
+16:
+17:
+18:    int a, b, c;
+19:    cin >> a >> b >> c;
+20:    cout << (a + b) * c << endl;
+21:    return 0;
+22:}
+VERBOSE: 2024/9/14 22:03:43
+ 
+.EXAMPLE
+#从ls命令通过管道符传递多个文件进行读取
+PS🌙[BAT:79%][MEM:48.16% (15.27/31.71)GB][22:03:52]
+# [cxxu@CXXUCOLORFUL][<W:192.168.1.178>][C:\repos\scripts\Cpp\stars_printer]
+PS> ls ab*.cpp|Get-ContentNL
+# Start File(1) [C:\repos\scripts\Cpp\stars_printer\ab.cpp]:
+
+1:#include <iostream>
+2:using namespace std;
+3:int main()
+4:{
+5:
+6:    int a, b, c;
+7:    cin >> a >> b;
+8:    c = a + b;
+9:    cout << c << endl;
+10:    return 0;
+11:}
+
+# End File(1) [C:\repos\scripts\Cpp\stars_printer\ab.cpp]:
+
+# Start File(2) [C:\repos\scripts\Cpp\stars_printer\abc.cpp]:
+
+1:#include <iostream>
+2:using namespace std;
+3:int main()
+4:{
+5:
+6:
+7:    int a, b, c;
+8:    cin >> a >> b >> c;
+9:    cout << (a + b) * c << endl;
+10:    return 0;
+11:}
+
+# End File(2) [C:\repos\scripts\Cpp\stars_printer\abc.cpp]:
+
+.EXAMPLE
+通过get-item命令(别名gi)获取字符串对应的文件
+PS🌙[BAT:79%][MEM:48.52% (15.39/31.71)GB][22:04:07]
+# [cxxu@CXXUCOLORFUL][<W:192.168.1.178>][C:\repos\scripts\Cpp\stars_printer]
+PS> gi .\ab.cpp|Get-ContentNL
+# Start File(1) [C:\repos\scripts\Cpp\stars_printer\ab.cpp]:
+
+1:#include <iostream>
+2:using namespace std;
+3:int main()
+4:{
+5:
+6:    int a, b, c;
+7:    cin >> a >> b;
+8:    c = a + b;
+9:    cout << c << endl;
+10:    return 0;
+11:}
+
+# End File(1) [C:\repos\scripts\Cpp\stars_printer\ab.cpp]:
+
+.Notes
+可以设置别名,比如pscatn,psnl
+#>
+    [CmdletBinding()]
+    param(
+        # 可以是一个表示文件路径的字符串，也可以是一个需要被统计行数并显示内容的字符串;后者需要追加 -AsString 选项
+        [Parameter(
+            Mandatory = $false, #这里如果使用这个参数的话，必须要指定非空值,为了增强兼容性,不适用改参数,或者指定为$false
+            ValueFromPipeline = $true,
+            ValueFromPipelineByPropertyName = $true
+        )]
+        # [string]
+        [Alias('InputObject')]$InputData,
+        
+        # [Parameter(ParameterSetName = 'FilePath')]
+        # [switch]$AsFilePath,
+
+        # [Parameter(ParameterSetName = 'String')]
+        [switch]$AsString,
+        # 定时刷新查看文件内容的间隔时间（秒）,0表示一次性查看
+        $RepetitionInterval = 0,
+        [switch]$Clear,
+        $LineSeparator = '#'
+        # [switch]$NewShell #todo
+
+    )
+
+    begin
+    {
+        Write-Verbose 'Checking contents...'
+        $itemNumber = 1
+        $lineNumber = 0 #为了支持列表输入,对多个文件分别计数,此变量放到process块中
+    }
+
+    process
+    {
+        
+        
+        if ($AsString)
+        # if ($PSCmdlet.ParameterSetName -eq 'String')
+        {
+            # 如果是字符串，则认为是直接传入的文件内容
+            $InputData -split "`n" | ForEach-Object {
+                $lineNumber++
+                "${lineNumber}:$_"
+            }
+        }
+        else
+        {
+            # 否则，认为是文件路径,但是还是要检查文件是否存在或者合法
+            if (!(Test-Path $InputData -PathType Leaf))
+            {
+                Write-Error "File does not exist:$($InputData.Trim()) Do you want to consider the Input as a string?(use -AsString option ) "
+                return
+            }
+            $lineNumber = 0
+
+            Write-Host "$LineSeparator Start File($itemNumber) [$_]" -BackgroundColor Yellow -NoNewline
+            Write-Host "`n"
+            
+            try
+            {
+                if (Test-Path $InputData -PathType Leaf)
+                {
+                    Get-Content $InputData | ForEach-Object {
+                        $lineNumber++
+                        "${lineNumber}:$_"
+                    }
+                }
+                else
+                {
+                    Write-Error "File does not exist: $InputData"
+                }
+            }
+            catch
+            {
+                Write-Error "An error occurred: $_"
+            }
+
+            Write-Host ''
+            Write-Host "$LineSeparator End File($itemNumber) [$_]:"-BackgroundColor Blue -NoNewline
+            Write-Host "`n"
+            $itemNumber++
+
+        }
+        # 定时刷新查看指定文件内容
+        if ($RepetitionInterval)
+        {
+            
+            while (1)
+            {
+                # 清空屏幕(上一轮的内容会被覆盖)
+                if ($Clear) { Clear-Host }
+
+                # 这里使用递归调用(并且将此处调用的RepetitionInterval指定为不刷新(0),否则嵌套停不下来了)
+                Get-ContentNL -InputData $InputData -RepetitionInterval 0
+                # 也可以简单使用 
+                # Get-Content $InputData
+                Start-Sleep $RepetitionInterval
+            }
+
+        }
+     
+
+    }
+    end
+    {
+        Write-Verbose (Get-DateTime)
+    }
+}
+
+function Open-AllFiles
+{
+    <# 
+    .synopsis
+    open all file that exist in the current directory with default program 
+    #>
+    # --------------
+    <#     if (Test-Path ./Open-AllFilesFiles.ps1)
+    {
+        Remove-Item Open-AllFilesFiles.ps1 -V
+    }
+    Get-ChildItem -File | ForEach-Object { ".`/" + $_.Name>>Open-AllFilesFiles.ps1 }
+    ./Open-AllFilesFiles.ps1
+    write-host 'end the Open-AllFiles script running'
+    # 删除临时脚本:
+    Remove-Item ./Open-AllFilesFiles.ps1 #>
+
+    # ----------------------
+
+    Get-ChildItem -File | ForEach-Object { Write-Host $_; & $_ }
+}
+
+function New-Junction
+{
+    [cmdletbinding()]
+    param(
+        $Path,
+        [alias('Destination')]$Target
+    )
+    # Write-Host 'if failed(access Denied), please run the terminal with administor permission.(考虑到部署的门槛，scoope未必可用，您需要手动打开带有管理员权限的terminal进行操作（而不在这里使用sudo;这里提供了参数，您可以传入sudo选项）'
+    if (Test-Path $path)
+    {
+        Write-Host 'removing the existing dir/symbolicLink!'
+        # Remove-Item -Force -Verbose $path 
+        # timer_tips
+    }
+    if (!(Test-Path $Target))
+    {
+        Write-Host 'target does not exist!'
+        New-Item -ItemType Directory -Force -Verbose $Target
+    }
+
+    New-Item -Force -ItemType junction -Path $Path -Target (Resolve-Path $Target) -Verbose:$VerbosePreference
+    
+}
+# 注:Get-BatteryLevel 已迁至 Info 模块(与 Get-MemoryUseSummary 等 prompt 电池内存段同模块),此处删除原定义
+
+function New-File
+{
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+    
+    if (Test-Path $Path)
+    {
+        # 文件已存在，更新最后写入时间
+        (Get-Item $Path).LastWriteTime = Get-Date
+    }
+    else
+    {
+        # 文件不存在，创建文件
+        New-Item -ItemType File -Path $Path | Out-Null
+    }
+}
+
+function mvToNEEPSub
+{
+    param (
+        $obj,
+        $desBase
+    )
+    $des = "$env:Neep`\$desBase"
+
+    Move-Item $obj $des
+    Write-Host "displayed:$des = $env:Neep`\$desBase"
+}
+
+function renamePrefix
+{
+    param (
+        $dirName
+    )
+    EnvironmentRequireTips
+    py $scripts\pythonScripts\rename_prefix.py $dirName
+}
+
+
+
+
+function search_contents
+{
+    param(
+        #选择需要扫描的目录路径,默认为当前路径
+        $path = '.',
+        $content_pattern = 'text',
+        $file_pattern = '*',
+        #使用groupby进行分组(每个文件在匹配到的所有行及其行数统计,所有存在被匹配行的文件总数统计),并将分组结果输出为表格,支持进一步排序
+        [switch]$TableViewGroup
+    )
+    $res = Get-ChildItem -Path $path -R -File -FollowSymlink $file_pattern | Select-String -Pattern $content_pattern
+    $sum = $($res | Group-Object -Property Filename).Count
+    if ($TableViewGroup)
+    {
+        $res = $res | Select-Object Filename, LineNumber, Line | Group-Object -Property Filename 
+        $res = $res | Format-Table -AutoSize
+    }
+    Write-Host $res
+    Write-Host args: -ForegroundColor DarkMagenta -BackgroundColor Cyan
+    $params = "
+        path = $path,
+        content_pattern = $content_pattern,
+        file_pattern = $file_pattern,
+        TableViewGroup=$TableViewGroup"
+    Write-Host $params -ForegroundColor Yellow
+
+    Write-Host "Total files matched pattern_contents:$sum" -ForegroundColor 'Blue' #-BackgroundColor Yellow
+
+    <# 
+    .SYNOPSIS
+    扫描指定目录下所有包含特定内容的文件，输出文件名，行号，行内容
+    支持切换为分组显示,并将分组结果输出为表格
+    .EXAMPLE
+    PS 🕰️1:24:27 AM [C:\repos\scripts\testDir] 🔋100%→search_contents  -content_pattern tex
+
+    f1:1:text2
+    f1:2:text3
+    f1:3:text abc
+    f2:1:!text abc
+    dir_test\f4:1:text x abc
+    args:
+
+            path = .,
+            content_pattern = tex,
+            file_pattern = *,
+            TableViewGroup=False
+    Total files matched pattern_contents:4
+    .EXAMPLE
+    PS 🕰️1:24:29 AM [C:\repos\scripts\testDir] 🔋100%→search_contents  -content_pattern tex -TableViewGroup
+
+    Count Name     Group
+    ----- ----     -----
+        3 f1       {@{Filename=f1; LineNumber=1; Line=text2}, @{Filename=f1; LineNumber=2; Line=text3}, @{Filename=f1; Lin…
+        1 f2       {@{Filename=f2; LineNumber=1; Line=!text abc}}
+        1 f4       {@{Filename=f4; LineNumber=1; Line=text x abc}}
+
+    args:
+
+            path = .,
+            content_pattern = tex,
+            file_pattern = *,
+            TableViewGroup=True
+    Total files matched pattern_contents:4
+    #>
+    
+}
+
+function aliasEdit
+{
+    param(
+        #[functions,shortcuts]
+        $type = 'shortcuts'
+    )
+    vim $aliases\shortcuts
+}
+
+
+
+
+
+
+
+# testing.
+function mkdirSafeCd
+{
+    param(
+        $DirectoryName
+
+    )
+    if ( Test-Path $DirectoryName)
+    {
+        Write-Host "directory already exist, now Set-Location to the directory:$DirectoryName"
+        Set-Location $DirectoryName
+    }
+    else
+    {
+        New-Item -ItemType Directory $DirectoryName
+        Set-Location $DirectoryName
+    }
+}
+
+function c
+{
+    <# use vscode open specified dir or file #>
+    param(
+        $dirName = '.'
+    )
+    # code_pwsh $dirName 
+    code $dirName
+    # --proxy-pac-url=http://127.0.0.1:1083/proxy.pac
+}
+
+
+function Get-ScriptRootPath
+{
+    <# .synopsis
+    获取当前脚本所在的绝对路径 
+    #>
+    Resolve-Path $PSScriptRoot
+}
+
+
+
+function Write-WorkingDir
+{
+    param(
+        $path = './'
+    )
+    Write-Host "`t 📁❤️function working on dir: $((Resolve-Path $path))..."
+    Write-SeparatorLine '..'
+}
+
+
+
+#(please note that the function name can't not have a same name with a certain Alias).
+
+<# start comman software by name #>
+
+
