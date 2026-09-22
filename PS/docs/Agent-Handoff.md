@@ -132,6 +132,7 @@
 41. **5.1 乱码归因（2026-09-21，用户问 GBK 行为取决于什么）**：取决于 Windows"非 Unicode 程序的语言"（ANSI 页，`GetACP`），不是 PowerShell；.NET Framework 的 `Encoding.Default` 跟系统走（本机实测 ANSI=`gb2312`）。读文件走 ANSI 页、控制台显示走 OEM 页（本机 `utf-8`），两旋钮独立，查乱码先分清读错还是显示错。非中文系统同样中招（ANSI=1252 等，错法不同）；.NET Core 的 `Encoding.Default` 恒为 UTF-8，跨版本对比时别被它骗了。不动系统（Beta UTF-8 worldwide 影响全局老软件），从读侧解决，见 §13。
 42. **大模块拆分开工（2026-09-22，用户：先拆到足够灵巧 + 删 uploadPic + 删 Deprecated）**：删除 `uploadPic`（`uploadPicMarkdown` 独立调 picgo，不受影响）、`Deploy-GithubHostsAutoUpdaterDeprecated`（未进 manifest，只删体）、`Get-MySqlDatabaseNameCmdletDeprecated`（含 manifest）；第一刀 `Pwsh(1162/29)→Pwsh(460/8)+PsEnv(261/8)+PsDebug(463/13)`，命令名不变，跨模块调用走自动发现（已验路由）。施工教训：`[IO.File]::WriteAllLines` 默认 CRLF，会把 LF 存量全改写——拆分脚本一律显式 join+`WriteAllText` 保换行；`Write` 工具建的新文件是 LF，记得转 CRLF；切除脚本禁止重复执行（锚点校验是唯一保险）。Module-Map 58 模块。
 43. **第二刀（2026-09-22）：`TaskSchdPwsh(1151/14)→TaskSchdPwsh(711/9)+TimeNotify(447/5)`**：提醒簇（Toast/报时/上报）迁出，`Start-Trigger` 内调 `New-TimeNotification` 走自动发现。另记：原文件尾无换行符，拆分顺手补上（diff 里单个 `+}` 即此）；`git diff` 与 `--ignore-cr-at-eol` 统计差 1 行时先查尾行换行符，别慌。
+44. **第三刀（2026-09-22）：`Tools(1089/24)→Tools(405/10)+WinConfig(696/14)`**：系统配置开关簇迁出（Defender/更新/任务栏/时间同步/激活/分辨率/重启）；`Tools` 留通用小工具，Map 里顺手补上一直缺失的 `Tools` 行。Module-Map 60 模块。第一批三刀收工，下一批 Basic/Deploy/Web/Info。
 
 ## 4. 环境事实（这台机器，2026-09 实测）
 

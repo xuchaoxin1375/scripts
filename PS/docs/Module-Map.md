@@ -1,6 +1,6 @@
 # 模块地图（Module Map）
 
-> 59 个自有模块，全在 `PS/<Name>/<Name>.psm1` + 同名 `.psd1`
+> 60 个自有模块，全在 `PS/<Name>/<Name>.psm1` + 同名 `.psd1`
 >（唯一例外 `CxxuPredictor`：二进制模块，`.psd1` + `.dll` + `src/`，无 `.psm1`）。
 > 规范见 `Module-Conventions.md`，性能史见 `Startup-Optimization.md`。
 > 图例：🔥 启动/提示热路径（改动先跑终验），❄️ 冷路径（按需加载）。
@@ -47,6 +47,8 @@
 | `TestLinks` | 347/4 | GitHub 镜像站可用性测试（含数据源） |
 | `FileSystem` | 1041/10 | 文件/目录度量（`Get-Size` 等）+ Robocopy 封装（2026-09-21 从 `Pwsh` 迁入 2 函数） |
 | `WinSys` | 351/16 | Windows 本机设置：键盘输入法/TTS 语音/电源管理（2026-09-21 从 `Basic` 迁入，命令名不变） |
+| `Tools` | 405/10 | 通用日常小工具：历史/版本/命令可用性/vscode 右键/conda 源（系统配置 14 函数已迁 `WinConfig`，2026-09-22） |
+| `WinConfig` | 696/14 | Windows 本机配置开关：Defender/小组件/更新/任务栏/时间同步/激活/分辨率/重启（2026-09-22 从 `Tools` 迁入，冷路径按需加载） |
 | `PathProcess` | 315/5 | 路径压缩/转换/风格判定 |
 | `Link` | 178/5 | 硬链接/软链接/目录链接管理 |
 | `RecycleBin` | 224/5 | 回收站查看/移动/清空 |
