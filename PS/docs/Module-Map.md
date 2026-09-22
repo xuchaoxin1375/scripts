@@ -1,4 +1,4 @@
-# 模块地图（Module Map）
+﻿# 模块地图（Module Map）
 
 > 56 个自有模块，全在 `PS/<Name>/<Name>.psm1` + 同名 `.psd1`
 >（唯一例外 `CxxuPredictor`：二进制模块，`.psd1` + `.dll` + `src/`，无 `.psm1`）。

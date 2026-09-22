@@ -1,4 +1,4 @@
-# 并排版本活件
+﻿# 并排版本活件
 
 > 本章讲一件事：`CxxuPredictor.dll` 的活件为什么按版本并排存放，以及各命令如何分工。术语（仓库源/活件/指针/自锁/他锁）以 `Module-Conventions.md §11` 为准。操作速查见 `Feature-Guide.md §9`，部署流程见 `Deploy-Guide.md §13`。
 
