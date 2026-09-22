@@ -1,4 +1,4 @@
-function Compress-PathDots
+﻿function Compress-PathDots
 {
     <# 
     .SYNOPSIS

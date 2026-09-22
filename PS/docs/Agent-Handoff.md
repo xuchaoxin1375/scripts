@@ -138,6 +138,7 @@
 47. **第五刀（2026-09-22）：`Deploy(2931/46)→Deploy(1401/24)+Scoop(827/10)+DevEnv(733/12)`**：46/46 函数体逐字对账零差异。Deploy 回归"新机收尾"本义。Module-Map 63 模块。
 48. **第六刀（2026-09-22）：`Web(1867/24)→Web(1498/21)+SSH(+3)`、`Info(1719/27)→Info(1086/12)+Hardware(438/11)+NetInfo(213/4)`**：两处 24/24、27/27 函数体逐字对账零差异。教训：`Info` 4 网络函数曾短暂进 B 档 `NetWork`，5.1 下 `Import-Module` 当时能过（20/20），但直调即炸——`Confirm-DataJson`（Json 留 7）运行时依赖会顶掉 Prompt 的 5.1 垫片（`Get-Command` 找得到就不定义垫片）。遂回滚独立成留 7 的 `NetInfo`，5.1 prompt/ Balance 双双 0 错误复验通过。铁律补一条：**往 B 档塞函数，光解析过不够，必须 5.1 直调跑一遍**；`Update-SSNameServers` 是 Spaceship 域名不是 SSH，留 Web。Module-Map 65 模块。
 49. **第七刀（2026-09-22）：`WordPress(3799/33)→WordPress(1685/9)+WpOnline(1382/18)+WpContent(748/6)`**：33/33 函数体逐字对账零差异；原文件尾本就无换行符，原样保留（这次没顺手补）。WordPress 留本地建站 + 总入口 `Deploy-Wp`（跨模块调用走自动发现）。Module-Map 67 模块。至此 Top8 全拆完。
+50. **酌情 5.1 第一批（2026-09-22）：`PsDebug`/`PsEnv`/`Shortcut`/`PathProcess`/`Hardware`/`Proxy` 降 B 档**：全仓库 5.1 解析扫描先行（25 个 7.0 模块解析零错误，余下全有 7 语法），这 6 个日常价值高 + 运行时无 7 依赖，逐个 5.1 直调冒烟（11 个调用 0 错误）+ 7 回归后降档，psm1 补 BOM。`Hardware` 修一处 `$IsWindows` 空值穿透（`($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true)`，mac/linux 分支加 `-eq $true`）。B 档 9→17。剩下解析零错误的（Json/Startup/WinSys/ArgumentCompletion 等）要动 init 链或价值低，留待下一批按需定级。
 
 ## 4. 环境事实（这台机器，2026-09 实测）
 

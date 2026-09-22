@@ -4,7 +4,7 @@
     GUID = 'c1847d23-b3b2-4e8d-9c32-0ea18e49a103'
     Author = 'cxxu'
     Description = 'PowerShell 内省/诊断/调试辅助:管道/源码/权限/日志'
-    PowerShellVersion = '7.0'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'Head',
         'Tail',

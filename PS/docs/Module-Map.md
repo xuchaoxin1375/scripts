@@ -22,7 +22,7 @@
 | `Startup` | 307/12 | 开机任务、后台守护进程、OS 版本缓存（`Confirm-EnvVarOfInfo`） |
 | `Json` | 251/5 | `Data.json` 读写校验（init 与 prompt 共用，无递归设计） |
 | `Pwsh` | 460/8 | 模块加载脚手架：`ipmox`/`ipmof` 重载（仅仓库内模块）、`New-ModuleByCxxu`、`Sync-ModuleManifest` 偷懒同步（-Name Tab 补全）；版本环境 8 函数已迁 `PsEnv`、内省调试 13 函数已迁 `PsDebug`（2026-09-22，命令名不变） |
-| `PsEnv` | 261/8 | PowerShell 版本/环境：`Update-PowerShell` 升级、`Set-PsExtension`（init 调用，默认关）、profile 路径管理（2026-09-22 从 `Pwsh` 迁入，init 链会加载） |
+| `PsEnv` | 261/8 | PowerShell 版本/环境：`Update-PowerShell` 升级、`Set-PsExtension`（init 调用，默认关）、profile 路径管理（2026-09-22 从 `Pwsh` 迁入，init 链会加载；B 档 5.1） |
 
 ## prompt 首渲染会顺带加载
 
@@ -41,21 +41,21 @@
 | `Text` | 914/14 | 文本/编码/markdown/格式化（`Tools` 拆出） |
 | `NetWork` | 242/16 | 网络发现/共享/SMB 会话 + 连通性/IP 网卡/图床上传（2026-09-22 从 `Basic` 迁入 13 函数；顺手把 2 处三元改 `if`，psd1 降 5.1 进 B 档，补 BOM） |
 | `NetInfo` | 213/4 | 网络连接/IP 信息：连接名、`Get-IpAddressFormated/ForPrompt`（2026-09-22 从 `Info` 迁入，留 7；曾短暂进 `NetWork`，Json 运行时依赖会顶掉 5.1 垫片，遂独立） |
-| `Hardware` | 438/11 | 本机硬件与系统信息：CPU/主板/内存/BIOS/磁盘/显示（2026-09-22 从 `Info` 迁入，留 7，冷路径按需加载） |
+| `Hardware` | 438/11 | 本机硬件与系统信息：CPU/主板/内存/BIOS/磁盘/显示（2026-09-22 从 `Info` 迁入；B 档 5.1，`$IsWindows` 分支加 `PSEdition` 兜底） |
 | `WIFI` | 77/6 | WiFi 连接/重连/测试 |
 | `NetDrivers` | 443/9 | 网络驱动器挂载、alist/chfs/aria2 服务 |
-| `Proxy` | 168/5 | 代理开关与系统代理设置 |
+| `Proxy` | 168/5 | 代理开关与系统代理设置（B 档 5.1，2026-09-22 酌情降档） |
 | `SSH` | 766/12 | SSH 密钥/服务端/客户端初始化 + 远程执行（`Invoke-RemoteSSH(0)`、`Add-SSHkeyOnHost` 2026-09-22 从 `Web` 迁入） |
 | `TestLinks` | 347/4 | GitHub 镜像站可用性测试（含数据源） |
 | `FileSystem` | 1733/29 | 文件/目录度量（`Get-Size` 等）+ Robocopy 封装 + 日常操作（浏览/检索/改名/链接，2026-09-22 从 `Basic` 迁入 19 函数，B 档 5.1） |
 | `WinSys` | 351/16 | Windows 本机设置：键盘输入法/TTS 语音/电源管理（2026-09-21 从 `Basic` 迁入，命令名不变） |
 | `Tools` | 405/10 | 通用日常小工具：历史/版本/命令可用性/vscode 右键/conda 源（系统配置 14 函数已迁 `WinConfig`，2026-09-22） |
 | `WinConfig` | 696/14 | Windows 本机配置开关：Defender/小组件/更新/任务栏/时间同步/激活/分辨率/重启（2026-09-22 从 `Tools` 迁入，冷路径按需加载） |
-| `PathProcess` | 315/5 | 路径压缩/转换/风格判定 |
+| `PathProcess` | 315/5 | 路径压缩/转换/风格判定（B 档 5.1，2026-09-22 酌情降档） |
 | `Link` | 178/5 | 硬链接/软链接/目录链接管理 |
 | `RecycleBin` | 224/5 | 回收站查看/移动/清空 |
 | `Security` | 113/4 | CredentialGuard/VBS/重启确认（`Disable-CredentialGuard` 唯一正本） |
-| `Shortcut` | 622/8 | 快捷方式读写 |
+| `Shortcut` | 622/8 | 快捷方式读写（B 档 5.1，2026-09-22 酌情降档） |
 | `Users` | 14/2 | 用户组/profile 列表查询 |
 | `Window` | 110/1 | `Show-Message` 消息弹窗 |
 | `ControlPanel` | 147/1 | 控制面板小程序启动 |
@@ -83,7 +83,7 @@
 | `Cloudflare` | 509/9 | CF Zone/DNS 管理 |
 | `BTCN` | 722/9 | 批量建站（宝塔）脚本生成 |
 | `TerminalTools` | 504/12 | WT 链接、scoop 安装、scp、目录树、`Register-PsUxLazyLoad`（PSFzf/zoxide/predictor 延迟加载，入口按指针静默装载）+ `Sync-CxxuPredictor`（并排版本同步活件，-Uninstall/-Force） |
-| `PsDebug` | 463/13 | pwsh 内省/诊断：`Head`/`Tail`/`Get-SourceCode`/`Get-PipelineInput`、权限（`Set-Owner`/`Grant-PermissionToPath`，Deploy 用）、`Confirm-UserContinue`（Deploy/Link/Git 用）、`Write-PsDebugLog`（2026-09-22 从 `Pwsh` 迁入，冷路径按需加载） |
+| `PsDebug` | 463/13 | pwsh 内省/诊断：`Head`/`Tail`/`Get-SourceCode`/`Get-PipelineInput`、权限（`Set-Owner`/`Grant-PermissionToPath`，Deploy 用）、`Confirm-UserContinue`（Deploy/Link/Git 用）、`Write-PsDebugLog`（2026-09-22 从 `Pwsh` 迁入；B 档 5.1，冷路径按需加载） |
 | `openApps` | 166/16 | 常用软件别名启动（qq/微信/typora 等） |
 | `Browser` | 24/4 | 浏览器搜索/收藏夹小命令 |
 | `Calendar` | 144/1 | `Show-Calendar`（唯一用 `Export-ModuleMember` 的模块，已与 manifest 对齐） |

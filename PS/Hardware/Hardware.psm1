@@ -1,4 +1,4 @@
-<#
+﻿<#
 Hardware 模块:本机硬件与系统信息(CPU/主板/内存/BIOS/磁盘/显示/macOS)。
 从 Info.psm1 迁入: Info 只留内存/进程/电池,硬件信息类归此模块;
 调用方命令名不变(自动发现同名模块)。
@@ -263,11 +263,12 @@ function Get-ComputerCoreHardwareInfo
 function Get-MotherBoardInfo
 {
 
-    if ($IsWindows)
+    # 5.1 无 $IsWindows 自动变量(恒 $null):用 PSEdition 兜底(5.1 只跑 Windows,Desktop 即 Windows)
+    if (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true))
     {
         return Get-CimInstance -ClassName Win32_BaseBoard
     }
-    elseif ($IsMacOS)
+    elseif ($IsMacOS -eq $true)
     {
         $model = (sysctl -n hw.model)
         $serial = (ioreg -l | Select-String IOPlatformSerialNumber).ToString().Split('"')[-2]
@@ -290,7 +291,7 @@ function Get-MotherBoardInfo
     #     }
     # }
 
-    elseif ($IsLinux)
+    elseif ($IsLinux -eq $true)
     {
         return Get-Content /sys/class/dmi/id/board_* | Out-String
     }

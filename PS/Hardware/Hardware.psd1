@@ -4,7 +4,7 @@
     GUID = '32582e91-2791-4dc6-8f95-252a42bb8417'
     Author = 'cxxu'
     Description = 'Local hardware and system info: CPU/board/memory/BIOS/disk/display'
-    PowerShellVersion = '7.0'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'Get-CapacityUnitized',
         'Get-MemoryCapacity',

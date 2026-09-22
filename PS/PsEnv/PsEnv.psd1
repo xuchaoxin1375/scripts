@@ -4,7 +4,7 @@
     GUID = '6d3a057a-cac9-4d98-bba1-442ca9e9b500'
     Author = 'cxxu'
     Description = 'PowerShell 版本/环境/profile 管理:升级/扩展关联/profile 路径'
-    PowerShellVersion = '7.0'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'Set-PsExtension',
         'Get-PsProfilesPath',

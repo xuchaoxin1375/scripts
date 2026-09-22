@@ -1,4 +1,4 @@
-function  Get-ProxyEnvVarSettings
+﻿function  Get-ProxyEnvVarSettings
 {
     if ($env:http_proxy -or $env:https_proxy)
     {

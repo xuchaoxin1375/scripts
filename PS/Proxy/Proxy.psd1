@@ -4,7 +4,7 @@
     GUID = 'e62ee49c-58d2-4252-b3e4-a13d3bb340bb'
     Author = 'cxxu'
     Description = 'Cxxu PowerShell module: Proxy'
-    PowerShellVersion = '7.0'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'Get-ProxyEnvVarSettings',
         'Get-ProxySystemSettings',

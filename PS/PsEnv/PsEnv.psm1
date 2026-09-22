@@ -1,4 +1,4 @@
-<#
+﻿<#
 PsEnv 模块:PowerShell 版本/环境/profile 管理(升级/扩展关联/profile 路径)。
 从 Pwsh.psm1 迁入: Pwsh 只留模块加载脚手架,版本环境类归此模块;
 调用方命令名不变(自动发现同名模块),init 等跨模块调用走自动加载。
