@@ -91,7 +91,8 @@
         'time_show',
         'Write-WorkingDir',
         'btm_cxxu',
-        'Get-ModuleByCxxu'
+        'Get-ModuleByCxxu',
+        'Get-Utf8Content'
     )
     CmdletsToExport = @()
     VariablesToExport = @()

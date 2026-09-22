@@ -1990,4 +1990,29 @@ function Get-ModuleByCxxu
 
 }
 
+function Get-Utf8Content
+{
+    <#
+    .SYNOPSIS
+    按 UTF-8 读文本文件(5.1 的 Get-Content 默认按系统 GBK 解码,无 BOM 中文必乱码;外部文件控不了编码,只能读侧解决)。
+    .DESCRIPTION
+    .NET 读文件默认即 UTF-8 且自动识别 BOM,有/无 BOM 通吃,5.1/7 行为一致。
+    默认逐行输出(同 Get-Content),-Raw 整文返回。
+    .EXAMPLE
+    Get-Utf8Content README.md
+    Get-Utf8Content C:\tmp\notes.md -Raw
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true, Position = 0)]
+        $Path,
+        [switch]$Raw
+    )
+    foreach ($r in @(Resolve-Path -Path $Path -ErrorAction Stop))
+    {
+        if ($Raw) { [IO.File]::ReadAllText($r.ProviderPath) }
+        else { [IO.File]::ReadAllLines($r.ProviderPath) }
+    }
+}
+
 

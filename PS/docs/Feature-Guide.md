@@ -252,5 +252,5 @@ p -Force                    # 看 init 分步耗时，定位慢项
 - 用法：`powershell -NoProfile` 起 5.1，保证 `PSModulePath` 含模块集后 `init` 即可；`$env:PsTab='Off'` 可关 Tab 包裹。
 - 免手动：跑一次 `Install-Ps51Profile`（`Init` 模块，7/5.1 均可跑），写入 5.1 专属 profile（`~\Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1`，UTF8+BOM，与 7 互不干扰），之后开 `powershell.exe` 自动 `init` + 自定义 prompt；已有 profile 无标记则追加，有标记直接返回（`-Force` 重写）。
 - 修过的 5.1 专属坑：`Get-EnvCountedValues` 曾依赖仅示例文件定义的 `catn`（干净会话必炸），已改为自带编号输出；`Import-CxxuConfig` 的 env 探针改 `Ignore`（`SilentlyContinue` 仍会污染 `$Error`）。
-- 读文档：仓库 `.md` 是无 BOM 的 UTF-8（铁律，不改），5.1 下 `Get-Content` 默认按 GBK 解码必乱码，一律加 `-Encoding UTF8`（7 下可省略）。
+- 读 UTF-8 文档：5.1 的 `Get-Content` 默认按 GBK 解码，无 BOM 中文必乱码；外部文件控不了编码，一律用 `Get-Utf8Content <路径>`（`Basic` 模块，.NET 直读，自动识别 BOM，有无通吃，`-Raw` 整文）。
 - 加新代码禁区：兼容集内禁三元 `?:`/行首管道/`Join-String`/`$PSStyle` 裸赋值/`$IsWindows` 裸分支；真机校验：`powershell -NoProfile -File <脚本>` 逐模块 `Import-Module` 全绿 + `init` 零失败（沙箱脚本见交接记录）。
