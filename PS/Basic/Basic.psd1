@@ -65,7 +65,6 @@
         'curlBD',
         'pingBD',
         'pingGG',
-        'uploadPic',
         'jupyter2markdown',
         'uploadPicMarkdown',
         'Write-SeparatorLine',

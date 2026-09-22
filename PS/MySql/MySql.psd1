@@ -15,7 +15,6 @@
         'Get-MySqlDatabaseNameNative',
         'Get-MysqlTablesList',
         'Start-MySqlQueryForDbs',
-        'Get-MySqlDatabaseNameCmdletDeprecated',
         'Start-MysqlConnectionFromConfig',
         'Get-MysqlKeyInline',
         'New-MysqlDB'

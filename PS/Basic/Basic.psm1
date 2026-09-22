@@ -1483,19 +1483,6 @@ function pingGG
     Write-Host $domain
     ping $domain
 }
-function uploadPic
-{
-    param (
-        $path = ' '
-    )
-    if ($path -eq ' ')
-    {
-        Write-Host 'try to upload pictures from clipboard(the default behaviour)'
-    }
-    $resLink = picgo upload $path | Select-Object -Last 1 
-    Set-Clipboard $resLink
-    Write-Host "🎶🎶🎶`n$resLink"
-}
 function jupyter2markdown
 {
     param(
