@@ -4,7 +4,7 @@
     GUID = '5fd59d6a-f208-4b6a-ac8b-9442892573e5'
     Author = 'cxxu'
     Description = 'Cxxu PowerShell module: openApps'
-    PowerShellVersion = '7.0'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'Set-DefaultAppForExtension',
         'set-PsScriptDefaultRunner',

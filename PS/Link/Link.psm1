@@ -1,4 +1,4 @@
-
+﻿
 function openLink
 {
     param (
@@ -132,7 +132,7 @@ function Get-Links
     )
     $all = Get-ChildItem $Directory | Where-Object { $_.LinkType } | Sort-Object -Property LinkType
     $Specifiedtype = $all | Where-Object { $_.LinkType -eq $linkType } 
-    $res = ($LinkType -eq 'all') ? $all : $Specifiedtype
+    if ($LinkType -eq 'all') { $res = $all } else { $res = $Specifiedtype }
     $res = $res | Format-Table name, LinkType, LinkTarget, Mode
     return $res
 }

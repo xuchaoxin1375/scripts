@@ -1,4 +1,4 @@
-
+﻿
 
 function Confirm-ModuleInstalled
 {
@@ -387,7 +387,8 @@ function Sync-ModuleManifest
     $defined = @($noBlock -split "`r?`n" | ForEach-Object {
         if ($_ -cmatch '^function\s+([\w-]+)\s*(\{|\(|$|#)') { $Matches[1] }
     } | Select-Object -Unique)
-    $exported = @(Import-PowerShellDataFile -LiteralPath $psd1 | Select-Object -ExpandProperty FunctionsToExport)
+    # 5.1 的 Select-Object -ExpandProperty 看不见哈希表键(7 可以):一律点号取值,双版本同行为
+    $exported = @((Import-PowerShellDataFile -LiteralPath $psd1).FunctionsToExport)
     $missing = @($defined | Where-Object { $_ -notin $exported })
     $orphan = @($exported | Where-Object { $_ -notin $defined })
     foreach ($o in $orphan)
@@ -401,7 +402,8 @@ function Sync-ModuleManifest
     else
     {
         # 文本级追加:换行/其它内容原样保留,只动 FunctionsToExport 数组尾
-        $raw = Get-Content -LiteralPath $psd1 -Raw
+        # 显式 UTF-8 读(自动识别 BOM):Get-Content -Raw 在 5.1 按 GBK 解码,中文注释会被读成乱码再写回造成双重编码(已踩坑,见交接)
+        $raw = [IO.File]::ReadAllText($psd1, [Text.Encoding]::UTF8)
         $eol = if ($raw -match "`r`n") { "`r`n" } else { "`n" }
         $lines = @($raw -split "`r?`n")
         $start = -1

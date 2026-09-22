@@ -4,7 +4,7 @@
     GUID = 'a92ff02b-239e-4ead-bdf3-ba336326d073'
     Author = 'cxxu'
     Description = 'New-machine final setup: mirrors/hosts/firewall/SMB/startup/env check'
-    PowerShellVersion = '7.0'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'Confirm-GitCommand',
         'Get-SelectedMirror',

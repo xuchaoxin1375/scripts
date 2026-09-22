@@ -1,4 +1,4 @@
-
+﻿
 <# 😎😎😎😎
 .SYNOPSIS
 - 优先使用aliases.ps1来配置命令行别名启动软件
@@ -121,8 +121,8 @@ function Start-ProcessSilentlyFromShortcut
         $Path = Get-Command $ShortcutName
     }
     $p = $Path | Select-Object -ExpandProperty Source; 
-    #方案1
-    Start-Process $p &
+    #方案1(Start-Process 本就不阻塞,7 的后台 & 是冗余的,去之以兼容 5.1,行为不变)
+    Start-Process $p
     #方案2
     # $s = Get-ShortcutLinkInfo $p | Select-Object -ExpandProperty TargetPath; 
     # & $s *>$null

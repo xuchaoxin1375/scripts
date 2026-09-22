@@ -1,4 +1,4 @@
-<# 
+﻿<# 
 .SYNOPSIS
 临时部署此模块
 
@@ -1374,10 +1374,10 @@ function doctor
         $same = try { (Get-FileHash -LiteralPath $liveDll -Algorithm SHA256).Hash -eq (Get-FileHash -LiteralPath $repoDll -Algorithm SHA256).Hash } catch { $false }
         & $dchk 'predictor' $same $(if ($same) { '已加载且与仓库一致' } else { '内存中是旧版本：请重开终端，活件已可同步（Sync-CxxuPredictor 不受锁限制）' })
     }
-    # 三门控 + 懒加载
-    $gates = @('PsFzf', 'PsZoxide', 'PsPredictor', 'PsTab') | ForEach-Object { "$_=$([string]::IsNullOrEmpty((Get-Item "env:$_" -ErrorAction SilentlyContinue).Value) ? '默认开' : (Get-Item "env:$_").Value)" }
+    # 三门控 + 懒加载(5.1 无三元:子表达式内 if/else,双版本同行为)
+    $gates = @('PsFzf', 'PsZoxide', 'PsPredictor', 'PsTab') | ForEach-Object { $v = (Get-Item "env:$_" -ErrorAction SilentlyContinue).Value; "$_=$(if ([string]::IsNullOrEmpty($v)) { '默认开' } else { $v })" }
     & $dchk '门控' $true ($gates -join ' ')
-    & $dchk '平台' $true $(if ($IsWindows) { 'Windows' } else { '非 Windows：scoop/注册表/计划任务/WT 系列不可用，详见 Feature-Guide §12' })
+    & $dchk '平台' $true $(if (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true)) { 'Windows' } else { '非 Windows：scoop/注册表/计划任务/WT 系列不可用，详见 Feature-Guide §12' })
     $tabWrapped = try { (Get-Command TabExpansion2 -CommandType Function -ErrorAction Stop).ScriptBlock.ToString() -match 'CxxuTab' } catch { $false }
     & $dchk 'Tab 包装' ($tabWrapped -or $env:PsTab -match '^(False|0|No|Off)$') $(if ($tabWrapped) { 'CxxuTab 包装已装入' } elseif ($env:PsTab -match '^(False|0|No|Off)$') { '开关已关闭，按需开启' } else { '未装入：执行 Install-CxxuTabWrapper 或重开终端' })
     & $dchk '懒加载' ([bool](Get-Module PSFzf) -or $env:PsFzf -match '^(False|0|No|Off)$') $(if (Get-Module PSFzf) { 'PSFzf 已装入(OnIdle 已触发)' } elseif ($global:PsUxOnIdleRegistered) { 'OnIdle 已注册,等一拍' } else { '没注册:跑 Register-PsUxLazyLoad' })

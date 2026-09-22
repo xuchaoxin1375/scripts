@@ -21,7 +21,7 @@
 | `EnvVar` | 1021/15 | 环境变量 User/Machine/Process 三档；热路径一律 `Set-ProcessEnvVar` |
 | `Startup` | 307/12 | 开机任务、后台守护进程、OS 版本缓存（`Confirm-EnvVarOfInfo`；B 档 5.1，`$IsWindows` 加 `PSEdition` 兜底） |
 | `Json` | 251/5 | `Data.json` 读写校验（init 与 prompt 共用，无递归设计；B 档 5.1） |
-| `Pwsh` | 460/8 | 模块加载脚手架：`ipmox`/`ipmof` 重载（仅仓库内模块）、`New-ModuleByCxxu`、`Sync-ModuleManifest` 偷懒同步（-Name Tab 补全）；版本环境 8 函数已迁 `PsEnv`、内省调试 13 函数已迁 `PsDebug`（2026-09-22，命令名不变） |
+| `Pwsh` | 460/8 | 模块加载脚手架：`ipmox`/`ipmof` 重载（仅仓库内模块）、`New-ModuleByCxxu`、`Sync-ModuleManifest` 偷懒同步（-Name Tab 补全）；版本环境 8 函数已迁 `PsEnv`、内省调试 13 函数已迁 `PsDebug`（2026-09-22，命令名不变；B 档 5.1，哈希表键改点号取值） |
 | `PsEnv` | 261/8 | PowerShell 版本/环境：`Update-PowerShell` 升级、`Set-PsExtension`（init 调用，默认关）、profile 路径管理（2026-09-22 从 `Pwsh` 迁入，init 链会加载；B 档 5.1） |
 
 ## prompt 首渲染会顺带加载
@@ -52,7 +52,7 @@
 | `Tools` | 405/10 | 通用日常小工具：历史/版本/命令可用性/vscode 右键/conda 源（系统配置 14 函数已迁 `WinConfig`，2026-09-22） |
 | `WinConfig` | 696/14 | Windows 本机配置开关：Defender/小组件/更新/任务栏/时间同步/激活/分辨率/重启（2026-09-22 从 `Tools` 迁入，冷路径按需加载） |
 | `PathProcess` | 315/5 | 路径压缩/转换/风格判定（B 档 5.1，2026-09-22 酌情降档） |
-| `Link` | 178/5 | 硬链接/软链接/目录链接管理 |
+| `Link` | 178/5 | 硬链接/软链接/目录链接管理（B 档 5.1，三元改 `if`） |
 | `RecycleBin` | 224/5 | 回收站查看/移动/清空 |
 | `Security` | 113/4 | CredentialGuard/VBS/重启确认（`Disable-CredentialGuard` 唯一正本） |
 | `Shortcut` | 622/8 | 快捷方式读写（B 档 5.1，2026-09-22 酌情降档） |
@@ -66,7 +66,7 @@
 
 | 模块 | 行数/函数 | 职责 |
 |---|---|---|
-| `Deploy` | 1401/24 | 新机收尾：github hosts/镜像前缀、防火墙/SMB/自启任务、环境变量；`Test-PsEnvReadiness`、`doctor` 在此；Scoop 生态 10 函数已迁 `Scoop`、语言工具链 12 函数已迁 `DevEnv`（2026-09-22，命令名不变） |
+| `Deploy` | 1401/24 | 新机收尾：github hosts/镜像前缀、防火墙/SMB/自启任务、环境变量；`Test-PsEnvReadiness`、`doctor` 在此；Scoop 生态 10 函数已迁 `Scoop`、语言工具链 12 函数已迁 `DevEnv`（2026-09-22，命令名不变；B 档 5.1，doctor 三元改子表达式 `if`） |
 | `Scoop` | 827/10 | Scoop 包管理：国内镜像部署、批量装机、版本切换（2026-09-22 从 `Deploy` 迁入，冷路径按需加载） |
 | `DevEnv` | 733/12 | 语言工具链与编辑器开箱：Python/conda/C++/Typora/VSCode/WT/补全栈（2026-09-22 从 `Deploy` 迁入，冷路径按需加载） |
 | `Development` | 340/22 | Django 快捷命令、ssh 别名、文本清理 |
@@ -84,7 +84,7 @@
 | `BTCN` | 722/9 | 批量建站（宝塔）脚本生成（B 档 5.1） |
 | `TerminalTools` | 504/12 | WT 链接、scoop 安装、scp、目录树、`Register-PsUxLazyLoad`（PSFzf/zoxide/predictor 延迟加载，入口按指针静默装载）+ `Sync-CxxuPredictor`（并排版本同步活件，-Uninstall/-Force） |
 | `PsDebug` | 463/13 | pwsh 内省/诊断：`Head`/`Tail`/`Get-SourceCode`/`Get-PipelineInput`、权限（`Set-Owner`/`Grant-PermissionToPath`，Deploy 用）、`Confirm-UserContinue`（Deploy/Link/Git 用）、`Write-PsDebugLog`（2026-09-22 从 `Pwsh` 迁入；B 档 5.1，冷路径按需加载） |
-| `openApps` | 166/16 | 常用软件别名启动（qq/微信/typora 等） |
+| `openApps` | 166/16 | 常用软件别名启动（qq/微信/typora 等；B 档 5.1，冗余后台 `&` 去掉） |
 | `Browser` | 24/4 | 浏览器搜索/收藏夹小命令（B 档 5.1） |
 | `Calendar` | 144/1 | `Show-Calendar`（唯一用 `Export-ModuleMember` 的模块，已与 manifest 对齐；B 档 5.1） |
 | `ColorSettings` | 15/2 | 终端颜色开关（B 档 5.1，`inlineprediction` 配色按 PSReadLine 版本 gating） |
