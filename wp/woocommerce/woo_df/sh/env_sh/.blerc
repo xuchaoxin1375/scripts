@@ -1,1 +1,2 @@
-ble/path#remove-glob PATH '/mnt/*'
+# wsl中如果使用ble.sh,如果补全卡顿考虑使用如下配置(会切断和windows的Path的联系,导致相关功能,例如vscode的code命令无法在wsl中直接启动)
+# ble/path#remove-glob PATH '/mnt/*'

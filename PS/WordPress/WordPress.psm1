@@ -1111,6 +1111,7 @@ function Deploy-WpSitesOnline
     $items = Get-DomainUserDictFromTableLite -Table $FromTable
     Write-Verbose "Get domain-ip mapping table from table.conf,save result to $RoutesMap"
     # proxy_pass 前缀修正
+    Write-Verbose "Scheme initial value: [$Scheme]."
     if ($Scheme -ne 'auto')
     {
         if($Scheme )
@@ -1129,6 +1130,7 @@ function Deploy-WpSitesOnline
             $Scheme = ""
         }
     }
+    Write-Verbose "Scheme prefix for proxy_pass: [$Scheme]"
     # 先清空旧文件
     Write-Output "" > $RoutesMap 
     foreach ($item in $items)
@@ -1185,7 +1187,11 @@ function Deploy-WpSitesOnline
         ## 更可靠的方式是使用编写合适的脚本,放在服务器上,调用其脚本不冗余且安全的将map文件并入到原map中.
         $vpsUser = $vps.ssh.user
         $vpsPort = $vps.ssh.port
-        Write-Verbose "从配置文件中获取vps的登录用户名和端口号: $vpsUser, $vpsPort" -Verbose
+        Write-Verbose "从配置文件中获取vps的登录用户名和端口号: [vpsUser=($vpsUser), vpsPort=($vpsPort)]" -Verbose
+        # 容错处理
+        if (!$vpsUser) { $vpsUser = "root" }
+        if (!$vpsPort) { $vpsPort = "22" }
+        Write-Verbose "本轮使用vps的登录用户名和端口号: [vpsUser=($vpsUser), vpsPort=($vpsPort)]" -Verbose
         # 上传map文件
         scp -P $vpsPort $RoutesMap "$vpsUser@${reverse}:~/routes.map.conf"
         if ($LASTEXITCODE -ne 0)

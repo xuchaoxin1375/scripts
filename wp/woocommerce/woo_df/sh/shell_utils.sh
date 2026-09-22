@@ -303,8 +303,7 @@ options:
                 return 1
                 ;;
             -?*)
-                echo "错误: 未知选项 " >&2
-                echo "$usage"
+                echo "$usage" >&2
                 return 2
                 ;;
             *)
@@ -320,7 +319,10 @@ options:
         on)
             export http_proxy="http://$proxy_addr"
             export https_proxy="http://$proxy_addr"
-            export all_proxy="socks5://$proxy_addr"
+            # 忽略本地和局域网的代理
+            export no_proxy="localhost,127.0.0.1,::1"
+            # sock5代理部分程序不支持,容易出问题
+            # export all_proxy="socks5://$proxy_addr"
             echo -e "\033[32m[✔] 已开启终端代理 ($proxy_addr)\033[0m"
             ;;
         off)
