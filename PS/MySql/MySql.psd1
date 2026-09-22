@@ -4,7 +4,7 @@
     GUID = 'fa230ac9-7fee-4846-891e-366c79eb021e'
     Author = 'cxxu'
     Description = 'Cxxu PowerShell module: MySql'
-    PowerShellVersion = '7.0'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'Get-MysqlDbInfo',
         'Import-MysqlFile',

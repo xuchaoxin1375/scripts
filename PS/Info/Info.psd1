@@ -4,7 +4,7 @@
     GUID = '364a6efe-875d-4b78-bfac-de65ecea1155'
     Author = 'cxxu'
     Description = 'System information queries and process/memory views'
-    PowerShellVersion = '7.0'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'ResourceMonitor',
         'Get-LocalGroupOfUser',

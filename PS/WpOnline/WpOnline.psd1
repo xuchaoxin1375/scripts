@@ -4,7 +4,7 @@
     GUID = '38c8829a-67ff-45e5-8237-8eeadf8dc112'
     Author = 'cxxu'
     Description = 'WordPress online ops: deploy/plugins/orders/remote update'
-    PowerShellVersion = '7.0'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'Deploy-WpSitesOnline',
         'Update-NginxVhostOnHost',

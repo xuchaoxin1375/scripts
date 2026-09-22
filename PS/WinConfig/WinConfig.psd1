@@ -3,8 +3,8 @@
     ModuleVersion = '1.0.4'
     GUID = '3d558b37-d0ba-4f9d-a754-29eb385f47fd'
     Author = 'cxxu'
-    Description = 'Windows 本机配置开关:Defender/小组件/更新/任务栏/时间同步/激活/分辨率'
-    PowerShellVersion = '7.0'
+    Description = 'Windows local toggles: Defender/widgets/update/taskbar/time sync/activation/resolution'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'Set-Defender',
         'Set-ExplorerSoftwareIcons',

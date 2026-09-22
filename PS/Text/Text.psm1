@@ -1,4 +1,4 @@
-<#
+﻿<#
 Text 模块:文本/编码/markdown/格式化相关(从 Tools.psm1 迁入)。
 #>
 

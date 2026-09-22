@@ -4,7 +4,7 @@
     GUID = 'd417f649-d5ce-48ce-82f7-e980051d43a0'
     Author = 'cxxu'
     Description = 'Language toolchains and editors setup: Python/conda/C++/editors/completion'
-    PowerShellVersion = '7.0'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'Install-BasicSoftwares',
         'Deploy-Python',

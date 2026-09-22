@@ -1,4 +1,4 @@
-
+﻿
 function Compress-Tar
 {
     <# 
@@ -126,7 +126,8 @@ function Test-TarFile
         Write-Warning "File not found: [$Path]"
         return $false 
     }
-    $ext = Split-Path -Path $Path -Extension
+    # [IO.Path] 双版本通用:Split-Path -Extension 是 6+ 才有的参数,5.1 不认
+    $ext = [IO.Path]::GetExtension($Path)
     if($ext.ToLower() -eq ".tar")
     {
         return $true

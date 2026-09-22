@@ -4,7 +4,7 @@
     GUID = '9da0acaf-e999-4080-94a1-d058a57c6585'
     Author = 'cxxu'
     Description = 'Cxxu PowerShell module: Development'
-    PowerShellVersion = '7.0'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'EggNew',
         'dj_start_proj',

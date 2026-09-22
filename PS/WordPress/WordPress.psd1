@@ -4,7 +4,7 @@
     GUID = '8b2a8243-10db-42a0-8f2f-28840c7da403'
     Author = 'cxxu'
     Description = 'WordPress local sites build and Deploy-Wp entry'
-    PowerShellVersion = '7.0'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'Remove-WpSitesLocal',
         'Get-WpSitePacks',

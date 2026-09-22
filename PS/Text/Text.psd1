@@ -4,7 +4,7 @@
     GUID = '0bde055e-d5aa-48b1-bf27-332b9b221194'
     Author = 'cxxu'
     Description = 'Text module: text, encoding, markdown and formatting helpers (split from Tools.psm1)'
-    PowerShellVersion = '7.0'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'Get-LineDataFromMultilineString',
         'Get-DictView',

@@ -1,4 +1,4 @@
-<#
+﻿<#
 WpContent 模块:WordPress 内容处理(图片搬运/Shopify 采集/SQL 批量)。
 从 WordPress.psm1 迁入: WordPress 只留本地建站与总入口 Deploy-Wp,内容处理归此模块;
 调用方命令名不变(自动发现同名模块)。

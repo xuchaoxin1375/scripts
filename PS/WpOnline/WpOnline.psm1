@@ -1,4 +1,4 @@
-<#
+﻿<#
 WpOnline 模块:WordPress 线上运维(建站上线/插件/订单/远程更新)。
 从 WordPress.psm1 迁入: WordPress 只留本地建站与总入口 Deploy-Wp,线上运维归此模块;
 调用方命令名不变(自动发现同名模块)。

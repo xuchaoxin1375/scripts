@@ -1,4 +1,4 @@
-
+﻿
 function Remove-WpSitesLocal
 {
     <# 

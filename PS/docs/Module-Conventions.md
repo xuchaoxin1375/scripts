@@ -78,12 +78,52 @@
 ## 8. 编码与换行
 
 - 统一 UTF-8 **无 BOM**（PS7 默认即此；Analyzer 的 BOM 规则已在 settings 中排除）。
-- 例外：B 档 5.1 兼容集（见 `Feature-Guide.md §13`，47 模块 psm1 + `VarSet3.conf` + `VarLongStrings.ps1`）**必须带 BOM**——5.1 中文 Windows 无 BOM 按 GBK 解码，中文全乱码；psd1 降版行以 `# B档兼容集` 注释标记，BOM 文件不再回退。
+- 例外：B 档 5.1 兼容集（见 `Feature-Guide.md §13`，62 模块 psm1 + `VarSet3.conf` + `VarLongStrings.ps1`）**必须带 BOM**——5.1 中文 Windows 无 BOM 按 GBK 解码，中文全乱码；psd1 降版行以 `# B档兼容集` 注释标记，BOM 文件不再回退。
 - 换行 LF/CRLF 均可，存量文件保持原状（最小 diff 原则），新文件建议 CRLF。
   `.gitattributes` 只声明二进制（lnk/exe/dll），**不声明 `text`**——历史 blob 是 CRLF
   原样入库的，声明 `text` 会触发归一化、把全仓库标成假 diff（2026-09-20 实测，见
   `Startup-Optimization.md §13`）。仓库本地 `core.autocrlf=false`（两侧共享），不要改；
   WSL 访问注意事项见 `Agent-Handoff.md §4`。
+
+### 8.1 跨设备编辑（Linux/macOS）与 BOM
+
+- 结论先行：**git 传不丢 BOM**——本仓库无 `text`/filter 声明 + `core.autocrlf=false`，
+  git 对文件字节完全透明（入库即原样）；BOM 只会在某台设备上"编辑保存"那一瞬间丢，
+  丢只丢在编辑器里，不丢在传输里。查 BOM 问题先查编辑器，别查 git。
+- 为什么在 Linux/mac 上"丢了也不炸"：pwsh7 全平台默认 UTF-8，有无 BOM 都对；
+  5.1 只存在于 Windows。所以 BOM 丢失的爆炸半径**只在 Windows 5.1 会话**
+  （乱码/#46 引号吞没/#57 注释吃行），在 Linux/mac 上编辑测试全绿、回 Windows 5.1
+  才炸——跨设备协作最阴的一点，本地绿≠没事。
+- 各编辑器行为（2026-09 实测结论，按风险排）：
+  - vim：**默认 strip**（`bomb` 选项默认 off，`:w` 直接写无 BOM 版，不管原文件有没有），
+    头号雷。守住办法：`set bomb` 进个人 vimrc，或改完跑门禁。
+  - VS Code：默认自动识别并保留（状态栏显示 `UTF-8 with BOM` 即安全），跨平台最稳；
+    危险动作只有显式的"Save with Encoding > UTF-8"（无 BOM 版）和部分重写文件的格式化插件。
+  - 其他编辑器/网页编辑行为不一，一律不假设，保存前看状态栏，保存后跑门禁。
+  - 新建文件：Linux/mac 默认全是无 BOM——B 档新 psm1 落地必须补 BOM（与降档流程同一步）。
+  - `sed/awk/perl -i` 等字节流工具一般保留 BOM；`dos2unix/unix2dos` 只动换行不动 BOM。
+    拿不准的一律跑门禁。
+- 换行附带：Linux 编辑器常存 LF；仓库不归一化，LF 直接入库无碍（5.1/7 都认 LF），
+  别为了"统一"整文件转 CRLF（最小 diff 原则）。
+- 门禁（跨设备 pull 后 / 提交前跑，7 全平台通用，当前 62/62 全绿）：
+  ```powershell
+  foreach ($d in Get-ChildItem PS -Directory | Where-Object { Test-Path (Join-Path $_.FullName ($_.Name + '.psd1')) }) {
+      $psd1 = Join-Path $d.FullName ($d.Name + '.psd1')
+      $m = Select-String -LiteralPath $psd1 -Pattern "PowerShellVersion\s*=\s*'([^']+)'" | Select-Object -First 1
+      if ($null -eq $m -or $m.Matches[0].Groups[1].Value -ne '5.1') { continue }
+      $p = Join-Path $d.FullName ($d.Name + '.psm1')
+      $b = [IO.File]::ReadAllBytes($p)
+      if (!($b[0] -eq 0xEF -and $b[1] -eq 0xBB -and $b[2] -eq 0xBF)) { 'missing BOM: ' + $d.Name }
+  }
+  ```
+  补 BOM（3 字节前置，不碰换行与内容）：
+  ```powershell
+  $b = [IO.File]::ReadAllBytes($p)
+  $n = New-Object byte[] ($b.Count + 3)
+  $n[0] = 0xEF; $n[1] = 0xBB; $n[2] = 0xBF
+  [Array]::Copy($b, 0, $n, 3, $b.Count)
+  [IO.File]::WriteAllBytes($p, $n)
+  ```
 
 ## 9. 版本与变更
 

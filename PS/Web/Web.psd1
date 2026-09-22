@@ -4,7 +4,7 @@
     GUID = '69bb0442-f05f-4dac-a788-e1f2d7c93582'
     Author = 'cxxu'
     Description = 'Web module: networking, HTTP servers, nginx sites, domains and downloads (split from Tools.psm1)'
-    PowerShellVersion = '7.0'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'Test-UrlOrHostAvailability',
         'Update-SSNameServers',

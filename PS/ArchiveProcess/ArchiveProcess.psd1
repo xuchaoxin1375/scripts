@@ -4,7 +4,7 @@
     GUID = '4f848320-1223-45c0-acbc-25bddf3d1070'
     Author = 'cxxu'
     Description = 'Cxxu PowerShell module: ArchiveProcess'
-    PowerShellVersion = '7.0'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'Compress-Tar',
         'Test-TarFile',

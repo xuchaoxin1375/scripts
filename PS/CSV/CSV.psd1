@@ -4,7 +4,7 @@
     GUID = 'ec209d9e-b173-4ee7-951c-f6ee628e8a3f'
     Author = 'cxxu'
     Description = 'Cxxu PowerShell module: CSV'
-    PowerShellVersion = '7.0'
+    PowerShellVersion = '5.1' # B档兼容集:5.1 可用(其余模块保持 7.0)
     FunctionsToExport = @(
         'Get-CsvTailRowsArchived',
         'Get-CsvPreview',

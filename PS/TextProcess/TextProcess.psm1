@@ -1,4 +1,4 @@
-function ConvertTo-LowerCase
+﻿function ConvertTo-LowerCase
 {
     <# 
     .SYNOPSIS

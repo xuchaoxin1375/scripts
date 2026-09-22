@@ -525,13 +525,14 @@ function Write-Highlighted
     begin
     {
 
-        $RESET = "`e[0m"
+        # [char]0x1b 即 ESC:`` `e `` 是 6.0+ 转义,5.1 下退化成字母 e,B 档一律用 [char]
+        $RESET = "$([char]0x1b)[0m"
     }
     process
     {
         
         # 使用 ANSI 转义码高亮
-        $highlighted = $Text -replace "($Pattern)", "`e[${ForegroundColorCode};${BackgroundColorCode}m`$1${RESET}"
+        $highlighted = $Text -replace "($Pattern)", "$([char]0x1b)[${ForegroundColorCode};${BackgroundColorCode}m`$1${RESET}"
         Write-Host $highlighted
     }
 

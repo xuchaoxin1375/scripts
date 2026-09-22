@@ -1,4 +1,4 @@
-function ResourceMonitor
+﻿function ResourceMonitor
 {
     <#
     .SYNOPSIS
@@ -79,7 +79,15 @@ function Get-MemoryUseRatio
         Update-Json -Key cachedFreeMemory -Value $cachedFreeMemory -DataJson $DataJson
     }
     # 跟据指定时间间隔参数$Interval执行耗时逻辑
-    Start-ScriptWhenIntervalEnough -Interval $Interval -ScriptBlock $s
+    # 5.1 下 TaskSchdPwsh 留 7 不加载:探不到 Start-ScriptWhenIntervalEnough 就直接执行(失去节流,与首建缓存分支行为一致;7 下走原路径)
+    if (Get-Command Start-ScriptWhenIntervalEnough -ErrorAction Ignore)
+    {
+        Start-ScriptWhenIntervalEnough -Interval $Interval -ScriptBlock $s
+    }
+    else
+    {
+        & $s
+    }
 
     # 从Json文件获取已用内存和占用信息(速度很快)
     $cachedFreeMemory = Get-Json -Key cachedFreeMemory -ErrorAction SilentlyContinue
@@ -816,6 +824,35 @@ function Show-MemoryBar
         else { "{0:N0} B" -f $Bytes }
     }
 
+    function Enable-VirtualTerminalProcessing
+    {
+        # 5.1 老 conhost 默认关闭 VT 解析,`e[1A 之类会原文输出(满屏 e[1A`e[2K);
+        # Win10+ 可用 SetConsoleMode 打开,打开后原位刷新才生效。
+        # 返回 $true=可用 VT(或本来就开), $false=打不开(老系统/重定向/非 Windows),调用方走 RawUI 兜底。
+        # Add-Type 只编译一次(首调),双版本通用。
+        try
+        {
+            if ([Console]::IsOutputRedirected) { return $false }
+            if (-not ([System.Management.Automation.PSTypeName]'CxxuVT').Type)
+            {
+                $def = 'using System; using System.Runtime.InteropServices; public static class CxxuVT { [DllImport("kernel32.dll", SetLastError=true)] public static extern IntPtr GetStdHandle(int nStdHandle); [DllImport("kernel32.dll", SetLastError=true)] public static extern bool GetConsoleMode(IntPtr h, out uint mode); [DllImport("kernel32.dll", SetLastError=true)] public static extern bool SetConsoleMode(IntPtr h, uint mode); }'
+                Add-Type -TypeDefinition $def -ErrorAction Stop
+            }
+            $hConsole = [CxxuVT]::GetStdHandle(-11)
+            $consoleMode = 0
+            if (-not [CxxuVT]::GetConsoleMode($hConsole, [ref]$consoleMode)) { return $false }
+            if (($consoleMode -band 0x0004) -eq 0)
+            {
+                if (-not [CxxuVT]::SetConsoleMode($hConsole, ($consoleMode -bor 0x0004))) { return $false }
+            }
+            return $true
+        }
+        catch
+        {
+            return $false
+        }
+    }
+
     function Get-TruePhysicalMemory
     {
         $sticks = Get-CimInstance Win32_PhysicalMemory -ErrorAction SilentlyContinue
@@ -909,6 +946,9 @@ function Show-MemoryBar
 
     $trueTotal = Get-TruePhysicalMemory
 
+    # 先试开 VT(5.1 老 conhost 必经之路);打不开就走 RawUI 光标复位兜底,行为一致
+    $vtOn = Enable-VirtualTerminalProcessing
+
     $segDefs = @(
         @{ Name = "硬件保留"; BgColor = [ConsoleColor]::Gray; LegendFg = [ConsoleColor]::Gray }
         @{ Name = "正在使用"; BgColor = [ConsoleColor]::DarkGreen; LegendFg = [ConsoleColor]::Green }
@@ -985,9 +1025,32 @@ function Show-MemoryBar
             # ── 清除上次输出 ──
             if (-not $firstRun -and $lineCount -gt 0)
             {
-                for ($j = 0; $j -lt $lineCount; $j++)
+                if ($vtOn)
                 {
-                    Write-Host "`e[1A`e[2K" -NoNewline
+                    for ($j = 0; $j -lt $lineCount; $j++)
+                    {
+                        # [char]0x1b 即 ESC:`` `e `` 是 6.0+ 转义,5.1 下退化成字母 e(满屏 e[1A 的根因),B 档一律用 [char]
+                        Write-Host "$([char]0x1b)[1A$([char]0x1b)[2K" -NoNewline
+                    }
+                }
+                else
+                {
+                    # RawUI 兜底(5.1 老 conhost/打不开 VT 时):光标回块首,按行覆空格清尾,再回块首等重绘
+                    try
+                    {
+                        $cursorNow = $Host.UI.RawUI.CursorPosition
+                        $blockTop = $cursorNow.Y - $lineCount
+                        if ($blockTop -lt 0) { $blockTop = 0 }
+                        $topPos = New-Object System.Management.Automation.Host.Coordinates 0, $blockTop
+                        $Host.UI.RawUI.CursorPosition = $topPos
+                        $blankLine = ' ' * $termWidth
+                        for ($j = 0; $j -lt $lineCount; $j++)
+                        {
+                            Write-Host $blankLine
+                        }
+                        $Host.UI.RawUI.CursorPosition = $topPos
+                    }
+                    catch { }
                 }
             }
 
