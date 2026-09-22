@@ -58,7 +58,7 @@ function init
         @{ Name = 'Set-PsPrompt'; Action = { Set-PsPrompt } }
         # Confirm-DataJson 有返回值(路径,供调用方使用),init 只关心副作用,屏蔽回显
         @{ Name = 'Confirm-DataJson'; Action = { Confirm-DataJson | Out-Null }; MinPS = 7 }
-        # 体验件(PSFzf/zoxide)OnIdle 延迟加载,只注册事件即返回,启动零开销
+        # 体验件手势桩+单发收尾(PSFzf/Tab 首用才装,predictor/zoxide 首屏单发),只装桩即返回,启动零开销
         @{ Name = 'Register-PsUxLazyLoad'; Action = { Register-PsUxLazyLoad }; MinPS = 7 }
     )
 
@@ -211,6 +211,107 @@ function init
     # 清理竞争关系变量
     # $env:PsInit = $null
     # Remove-Variable $env:PsInit
+}
+function Test-StartupPerformance
+{
+    <#
+    .SYNOPSIS
+    自查 pwsh 启动性能:分段计时(裸启动/profile 税/init 合计+步骤表/OnIdle 体验件/prompt)并给结论。
+    .DESCRIPTION
+    每段都在全新 pwsh 进程里测(冷数字,排除本会话已摊销的解析成本);本机改动对照看 Startup-Optimization.md。
+    耗时组成(沙盒 VM 参考,真机按比例):裸 211ms + profile 税(含 conda 缓存约 59ms + init 约 416ms)≈700ms
+    + 首屏单发(predictor 约 400/zoxide 约 20,先摘后装一次);PSFzf/CxxuTab 转手势按需
+    (首按 Ctrl+T/R、首个 Tab 才装,手势可归因,无随机冻结)。
+    首屏"能看见 prompt 但打字滞后"= 常驻 OnIdle 订阅随机冻结(分片时代已回滚,见 Startup-Optimization.md §21);
+    现只有首屏一次单发(用户还没打字),之后全程无后台加载。
+    .EXAMPLE
+    Test-StartupPerformance
+    .EXAMPLE
+    Test-StartupPerformance -Repeat 3 -Detail
+    #>
+    [CmdletBinding()]
+    param(
+        # 每段重复次数(默认 1;传 3 取中位数,压住机器抖动;代价是总耗时翻倍)
+        [int]$Repeat = 1,
+        # 加测 OnIdle 四片各自耗时(默认只测合计;排查"哪片最重"时开)
+        [switch]$Detail
+    )
+    # 嵌套 helper:与 Show-MemoryBar 内嵌套风格一致;顶层解析器看不见,不进 manifest
+    function Get-MedianMs([scriptblock]$Probe, [int]$N)
+    {
+        $v = @(1..([Math]::Max(1, $N)) | ForEach-Object { & $Probe })
+        $s = @($v | Sort-Object)
+        return [int]$s[[int]($s.Count / 2)]
+    }
+    $pwsh = Get-Command pwsh -ErrorAction SilentlyContinue
+    if (-not $pwsh)
+    {
+        Write-Warning '没找到 pwsh(本工具在新进程里测 7 的启动链);5.1 会话可用 init -Timing 看步骤表。'
+        return
+    }
+    if ($Repeat -lt 1) { $Repeat = 1 }
+    Write-Host "分段计时中(新进程每段 $Repeat 次,约需 $((10 + 5 * $Repeat)) 秒)..." -ForegroundColor Cyan
+    $null = & $pwsh -NoProfile -NonInteractive -Command 'exit'
+    $bare = Get-MedianMs { [int](Measure-Command { & $pwsh -NoProfile -NonInteractive -Command 'exit' }).TotalMilliseconds } $Repeat
+    $null = & $pwsh -NonInteractive -Command 'exit'
+    $prof = Get-MedianMs { [int](Measure-Command { & $pwsh -NonInteractive -Command 'exit' }).TotalMilliseconds } $Repeat
+    $probeInit = @'
+Import-Module Init -ErrorAction Stop
+[int](Measure-Command { init *> $null }).TotalMilliseconds
+'@
+    $tInit = [int](& $pwsh -NoProfile -NonInteractive -Command $probeInit)
+    $probeIdle = @'
+Import-Module TerminalTools -ErrorAction Stop
+[int](Measure-Command { Register-PsUxLazyLoad -Now *> $null }).TotalMilliseconds
+'@
+    $tIdle = [int](& $pwsh -NoProfile -NonInteractive -Command $probeIdle)
+    $rows = @(
+        [PSCustomObject]@{ 段 = 'bare(裸启动,天花板)'; ms = $bare },
+        [PSCustomObject]@{ 段 = 'profile(含 conda+init,OnIdle 未触发)'; ms = $prof },
+        [PSCustomObject]@{ 段 = 'profile 税(profile-bare)'; ms = ($prof - $bare) },
+        [PSCustomObject]@{ 段 = 'init 合计(8 步)'; ms = $tInit },
+        [PSCustomObject]@{ 段 = 'idle 全载合计(-Now 4 件;首屏单发只跑 predictor+zoxide)'; ms = $tIdle }
+    )
+    $rows | Format-Table -AutoSize | Out-String | Write-Host
+    Write-Host '--- init -Timing 步骤表(当前值,看头两名) ---' -ForegroundColor Cyan
+    & $pwsh -NoProfile -NonInteractive -Command 'Import-Module Init; init -Timing' 2>$null |
+        Select-Object -Skip 1 | Write-Host
+    if ($Detail)
+    {
+        Write-Host '--- -Now 全载四件各自耗时(与 Register-PsUxLazyLoad -Now 同源,改动两边同步) ---' -ForegroundColor Cyan
+        $probeDetail = @'
+$r = @()
+$r += 'PSFzf:' + [int](Measure-Command { if (Get-Module -ListAvailable PSFzf) { Import-Module PSFzf -Global; Set-PsFzfOption -PSReadlineChordProvider 'Ctrl+t' -PSReadlineChordReverseHistory 'Ctrl+r' } }).TotalMilliseconds
+$dll = $null; $ptr = Join-Path (Join-Path $HOME '.cxxu/bin') 'current.txt'
+if (Test-Path -LiteralPath $ptr) { $h = (Get-Content -LiteralPath $ptr | Select-Object -First 1).Trim(); $c = Join-Path (Join-Path (Join-Path $HOME '.cxxu') 'bin') $h 'CxxuPredictor.dll'; if (Test-Path -LiteralPath $c) { $dll = $c } }
+$r += 'Predictor:' + $(if ($dll) { [int](Measure-Command { Import-Module $dll -Global }).TotalMilliseconds } else { -1 })
+$r += 'CxxuTab:' + [int](Measure-Command { Import-Module CxxuTab -Global -ErrorAction SilentlyContinue }).TotalMilliseconds
+$zc = Join-Path $HOME '.zoxide_init_cache.ps1'
+$r += 'zoxide:' + $(if (Test-Path -LiteralPath $zc) { [int](Measure-Command { . $zc | Out-Null }).TotalMilliseconds } else { -1 })
+$r -join ' '
+'@
+        Write-Host (& $pwsh -NoProfile -NonInteractive -Command $probeDetail)
+        Write-Host '(-1=本机缺件,已跳过)'
+    }
+    Write-Host '--- prompt 均值(5 次) ---' -ForegroundColor Cyan
+    $promptLine = & $pwsh -NoProfile -NonInteractive -Command 'Test-PromptDelay 5' 2>$null | Select-Object -Last 1
+    Write-Host $promptLine
+    $promptSec = 0
+    if ($promptLine -match '([\d.]+)') { $promptSec = [double]$Matches[1] }
+    Write-Host '--- 开关与延迟加载(本会话) ---' -ForegroundColor Cyan
+    # 5.1 无 ??,不用;单发模式无队列,$null 直接 .Count 会吞显示,先归零
+    $uxErrs = 0
+    if ($global:PsUxLoadErrors) { $uxErrs = $global:PsUxLoadErrors.Count }
+    Write-Host ("PsFzf=$env:PsFzf PsZoxide=$env:PsZoxide PsTab=$env:PsTab PsPredictor=$env:PsPredictor | " +
+        "OnIdle已注册=$global:PsUxOnIdleRegistered(单发,触发即摘) 加载错误=$uxErrs")
+    Write-Host '--- 结论 ---' -ForegroundColor Cyan
+    $verdicts = @()
+    if (($prof - $bare) -gt 1200) { $verdicts += 'profile 税偏高:查 conda 缓存是否命中(~/.conda_hook_cache.ps1 时间戳应早于 conda.exe)与 profile 杂项' }
+    if ($tInit -gt 800) { $verdicts += 'init 偏高:看上面步骤表头两名(常见 Set-PsPrompt/PSReadLine 两项)' }
+    if ($tIdle -gt 800) { $verdicts += '体验件(首屏单发)偏高:PSFzf/CxxuTab 已转手势按需,首屏只剩 predictor + zoxide;还想更快则关 PsPredictor/PsZoxide(见 Register-PsUxLazyLoad 帮助)' }
+    if ($promptSec -gt 0.3) { $verdicts += 'prompt 偏高:换 Set-PsPrompt -version Simple 或给主题做减法(见 Startup-Optimization.md §5)' }
+    if (-not $verdicts.Count) { $verdicts += '各项正常:首屏微顿来自 OnIdle 分片(百毫秒级),打字即回显即符合预期' }
+    $verdicts | ForEach-Object { Write-Host "- $_" }
 }
 function p
 {
@@ -806,7 +907,8 @@ function Enable-PsPlugin
     启用体验插件(当会话生效;加 -Persist 长期启用,重开也开)。
     .DESCRIPTION
     启用是显式开(环境变量 True,盖过配置文件)。Tab/Predictor 即时生效(逐调用判定,
-    无需重载);Fzf/Zoxide 下次 OnIdle 加载时生效(已加载的不受影响,或重开终端)。
+    无需重载);Fzf/Tab 立装桩即时生效(重调安装器,幂等,只补缺);Predictor/Zoxide 单发已过
+    则重开终端(或 Register-PsUxLazyLoad -Now 立装)。
     .EXAMPLE
     Enable-PsPlugin Tab
     .EXAMPLE
@@ -828,6 +930,11 @@ function Enable-PsPlugin
     {
         Set-Item "env:$key" -Value 'True'
         Write-Host "$Name 已启用(当会话)。"
+        if ((($Name -eq 'Fzf') -or ($Name -eq 'Tab')) -and ($PSVersionTable.PSVersion.Major -ge 7))
+        {
+            # 立装桩即时生效(幂等,只补缺;交互门由安装器自己判定,重定向下静默跳过)
+            Install-PsUxGestureStubs -ErrorAction SilentlyContinue
+        }
         if ($Persist) { Set-CxxuConfigValue -Path $Path -Key $key -Value $true }
     }
 }

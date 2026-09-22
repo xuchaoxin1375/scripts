@@ -17,6 +17,7 @@
         'tr_py',
         'mvExcludeFolder',
         'Register-PsUxLazyLoad',
+        'Install-PsUxGestureStubs',
         'Sync-CxxuPredictor'
     )
     CmdletsToExport = @()

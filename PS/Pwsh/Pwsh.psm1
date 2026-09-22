@@ -458,5 +458,75 @@ function Sync-ModuleManifest
         return [PSCustomObject]@{ Module = $n; Failed = $null; Added = @($missing) }
     }
 }
+function Get-CxxuModuleCompatibility
+{
+    <#
+    .SYNOPSIS
+    查模块集 5.1/7 兼容声明总表:逐模块读 psd1 的 PowerShellVersion + psm1 首字节 BOM。
+    .DESCRIPTION
+    真相源是各模块自己的 .psd1(文档 Feature-Guide.md §13 是批次流水账,查数以本命令为准)。
+    B 档=声明 5.1 且 psm1 带 BOM(5.1 中文 Windows 无 BOM 按 GBK 解码,中文必乱码);
+    声明 5.1 但缺 BOM 会单拎出来(补 BOM 即好);留 7 的附登记理由,没登记的报回来补。
+    只读文件头、不导入任何模块,秒出。运行时冒烟另用 init -Timing / Test-StartupPerformance。
+    .EXAMPLE
+    Get-CxxuModuleCompatibility
+    .EXAMPLE
+    Get-CxxuModuleCompatibility -Name 'Git*' | Format-Table -AutoSize
+    #>
+    [CmdletBinding()]
+    param(
+        # 模块名过滤(通配符,默认全量)
+        [string]$Name = '*'
+    )
+    $psRoot = Split-Path -Parent $PSScriptRoot
+    $stay7Reasons = @{
+        'Whois'               = '34 个 ??(空合并)待重写'
+        'TaskSchdPwsh'        = '后台 & 在 5.1 无等价写法,留 7'
+        'TimeNotify'          = '后台 & 在 5.1 无等价写法,留 7'
+        'Test'                = '用户草稿区,不动'
+        'CompletionPredictor' = '第三方模块,不管'
+        'CxxuPredictor'       = 'net9 dll,永不降'
+    }
+    $rows = @()
+    $dirs = Get-ChildItem -LiteralPath $psRoot -Directory | Where-Object { $_.Name -like $Name } | Sort-Object Name
+    foreach ($dir in $dirs)
+    {
+        $psd1 = Join-Path $dir.FullName ($dir.Name + '.psd1')
+        if (-not (Test-Path -LiteralPath $psd1)) { continue }
+        $ver = ''
+        $m = [regex]::Match([IO.File]::ReadAllText($psd1), "PowerShellVersion\s*=\s*'([^']+)'")
+        if ($m.Success) { $ver = $m.Groups[1].Value }
+        $bom = $false
+        $psm1 = Join-Path $dir.FullName ($dir.Name + '.psm1')
+        if (Test-Path -LiteralPath $psm1)
+        {
+            $fs = [IO.File]::OpenRead($psm1)
+            try
+            {
+                $head = New-Object byte[] 3
+                $n = $fs.Read($head, 0, 3)
+                $bom = ($n -eq 3) -and ($head[0] -eq 0xEF) -and ($head[1] -eq 0xBB) -and ($head[2] -eq 0xBF)
+            }
+            finally { $fs.Close() }
+        }
+        if ($ver -eq '5.1')
+        {
+            if ($bom) { $verdict = 'B档5.1' }
+            else { $verdict = '缺BOM(5.1中文必乱码)' }
+        }
+        elseif ($ver -like '7.*')
+        {
+            if ($stay7Reasons.ContainsKey($dir.Name)) { $verdict = '留7:' + $stay7Reasons[$dir.Name] }
+            else { $verdict = '留7:原因未登记' }
+        }
+        else { $verdict = '未声明(看一眼)' }
+        $rows += [PSCustomObject]@{ Module = $dir.Name; Declared = $ver; BOM = $bom; Verdict = $verdict }
+    }
+    $b = @($rows | Where-Object { $_.Verdict -eq 'B档5.1' }).Count
+    $s = @($rows | Where-Object { $_.Verdict -like '留7*' }).Count
+    $bad = @($rows | Where-Object { ($_.Verdict -like '缺BOM*') -or ($_.Verdict -like '未声明*') -or ($_.Verdict -like '*未登记') }).Count
+    Write-Host "B档5.1=$b 留7=$s 待处理=$bad(缺BOM/未声明/未登记)" -ForegroundColor Cyan
+    return $rows
+}
 
 

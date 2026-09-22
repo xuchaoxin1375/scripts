@@ -82,7 +82,7 @@
 | `ArchiveProcess` | 610/8 | tar/zstd/lz4/gz 压缩解压 |
 | `Cloudflare` | 509/9 | CF Zone/DNS 管理（B 档 5.1，调用走网络，5.1 下直调已验导入） |
 | `BTCN` | 722/9 | 批量建站（宝塔）脚本生成（B 档 5.1） |
-| `TerminalTools` | 504/12 | WT 链接、scoop 安装、scp、目录树、`Register-PsUxLazyLoad`（PSFzf/zoxide/predictor 延迟加载，入口按指针静默装载）+ `Sync-CxxuPredictor`（并排版本同步活件，-Uninstall/-Force） |
+| `TerminalTools` | 504/12 | WT 链接、scoop 安装、scp、目录树、`Register-PsUxLazyLoad`（手势按需：Ctrl+T/R 首按装 PSFzf、首个 Tab 装 CxxuTab；predictor/zoxide 首屏单发）+ `Install-PsUxGestureStubs`（手势桩安装器，幂等）+ `Sync-CxxuPredictor`（并排版本同步活件，-Uninstall/-Force） |
 | `PsDebug` | 463/13 | pwsh 内省/诊断：`Head`/`Tail`/`Get-SourceCode`/`Get-PipelineInput`、权限（`Set-Owner`/`Grant-PermissionToPath`，Deploy 用）、`Confirm-UserContinue`（Deploy/Link/Git 用）、`Write-PsDebugLog`（2026-09-22 从 `Pwsh` 迁入；B 档 5.1，冷路径按需加载） |
 | `openApps` | 166/16 | 常用软件别名启动（qq/微信/typora 等；B 档 5.1，冗余后台 `&` 去掉） |
 | `Browser` | 24/4 | 浏览器搜索/收藏夹小命令（B 档 5.1） |

@@ -423,3 +423,56 @@ Set-PSReadLineOption: 句柄无效。
 - 维护：dll 进仓库（`.gitattributes` 已有 `*.dll binary`，发布件）；活件并排版本 `~/.cxxu/bin/<哈希>/CxxuPredictor.dll` + `current.txt` 指针，loader 按指针装载（旧版照常使用，无警告；只新增目录从不覆盖，同步不受锁限制）；运行时加载的是 dll 二进制， `.cs` 只是图纸，改逻辑重构建后执行 Sync 分发；psd1 无 RootModule（防按名误装空壳）但诚实声明 `PowerShellVersion='7.5'`；net8.0 单目标实测不可行：本机 7.5 的 SMA 自带 System.Runtime 9 引用（CS1705），覆盖 7.4 需 7.4 的 SMA 或 PowerShellStandard（缺预测 API），暂不做；卸载用 `Sync-CxxuPredictor -Uninstall`； `Sync-ModuleManifest` 天然跳过（无 `.psm1`）。
 - 边界（已读源码 `CompletionPredictor.cs` 核实，不再是文档推测）：`GetSuggestion` 遇到 `TokenFlags.CommandName` 直接 `return default`（源码注释：command discovery 太贵，跳过），只做非命令位置（参数/路径/成员）+ `git` + `% ? cd dir foreach where` 白名单。所以**命令名前缀（如 `get-child`）它永远沉默**，用户只看到历史是必然的，不是坏了。原生 PSReadLine 没有“TabExpansion 边输边弹”；predictor 须 20ms 内返回（官方硬性），慢同步的命令发现塞不进这个预算。更重的悬浮面板类另见 `Feature-Guide.md §7`。
 - 后续：同日用户拍板删除 `Deprecated` 模块（转正后归档无存在必要，零调用），`git rm` 整目录；上表作为历史记录保留，53 模块现数见 §2/§6。
+
+## 21. 第十四轮：首屏输入卡顿分片 + 用户自查工具（2026-09-22，用户报“启动后 1~2 秒打字滞后”）
+
+- 排查（沙盒 VM，冷进程实测）：裸启动 201~211ms；全 profile 848~907ms（profile 税约 650ms =
+  conda 缓存 + `init` 416~442ms，步骤头两名 `Set-PsPrompt` 136~139 + `Set-PSReadLinesCommon` 87~90，
+  都是 core 变量/别名与 PSReadLine 选项，无大头可砍）；**首屏 OnIdle 整包约 944~1031ms**
+  （`ListAvailable` 探测 71 + PSFzf 238~299 + predictor 380~421 + CxxuTab 276~281 + zoxide 15~20，
+  全跑在主线程）——prompt 出现后用户立刻打字，PSReadLine 要等整包跑完才处理输入，
+  即“看得见、打不动”的 1~2 秒。
+- 修法（`TerminalTools.Register-PsUxLazyLoad`，manifest 不动）：整包改**分片队列**
+  （PSFzf→zoxide→CxxuTab→predictor，最重的 predictor 压轴，压轴前 History+CompletionPredictor
+  照常供稿），一次 OnIdle 只跑一片，片间引擎处理 pending 输入，打字即回显；队空才摘订阅
+  （旧语“触发即摘”作废）；单片失败只记 `$global:PsUxLoadErrors` + Verbose，首屏不刷屏；
+  全关（四开关）= 不注册；`-Now` 按序全跑（立测通道不变）。附带省一次扫描：
+  PSFzf 去掉 `Get-Module -ListAvailable` 预探测（71ms），直接 import、装上才绑和弦。
+- 用户自查：`Init.Test-StartupPerformance [-Repeat 3] [-Detail]`（init 旁边，缺 pwsh 时警告退出，
+  5.1 安全）。全新进程分段：裸/profile 税/init 合计+`init -Timing` 原表+idle 合计/
+  `-Detail` 四片各测/prompt 5 次均值，文末打印四开关与本会话队列状态并给阈值结论
+  （profile 税>1200/init>800/idle>800/prompt>0.3s）。沙盒首跑：201/848/442/944/prompt 0.06s，
+  结论仅 idle 一条（VM 值，真机按比例）。
+- 验证：双版本解析零错（5.1 侧禁三元/`??`，已守）；`Test-StartupPerformance -Detail` 全绿；
+  `-Now` 四件齐（PSFzf/CxxuTab/predictor 顶层列出、`z` 为 Function，ERRS=0）；
+  事件分片逻辑与旧“标记位防记账”同机制（$global 队列在动作内可见），
+  真机 idle 逐片触发效果以用户首屏打字手感为准。
+- **回滚（2026-09-22，用户报“第二条命令卡顿甚至假死、第一条回不来提示符”）**：分片是回归。
+  机理——PSReadLine 行编辑等待按键时引擎算 idle，`OnIdle` 照样触发；常驻订阅熬过首屏后，
+  第 2~4 片随机砸在“命令刚跑完/正在打字第二条”的当口，主线程一冻几百毫秒到数秒
+  （用户机器比沙盒慢，dll/AV 扫描再放大），键吞掉、屏不刷，看着就是卡死/回不来。
+  旧单发逻辑“首屏跑一次、跑之前先摘订阅”反而是安全的（用户还没开始打字）。
+  处置：`TerminalTools.psm1` 整文件 `git checkout HEAD` 精确回滚（diff 为空实锤），
+  分片代码一个字不留；`Test-StartupPerformance` 的队列状态行同步改回单发口径。
+  教训：OnIdle 动作=主线程同步执行，“分片让出”是个错觉——让出的是动作之间的缝，
+  但每片该冻还是冻，且触发时机不可控。以后延迟加载只两条路：单发整包（可预测的一次），
+  或手势按需（Ctrl+T/R 首按、首个 Tab 才装，可预测的归因）；常驻订阅逐片喂不许再用。
+
+## 22. 第十五轮：手势按需（2026-09-22，用户拍板执行“优化 3”）
+
+- 设计：后台冻结全消，成本挪到用户手势上（可归因）。`Install-PsUxGestureStubs`
+  （新导出，幂等）：Ctrl+T/R 和弦桩（毫秒级，首按才 Import-Module + 绑原生，
+  本次按键直接调 PSFzf 导出函数 `Invoke-FzfPsReadlineHandlerProvider/History`，
+  2.7.10 已核实导出；无 PSFzf 的机器记 `$global:PsUxNoPSFzf` 之后零开销）与全局
+  `TabExpansion2` 桩（原函数存 `$global:PsUxTabOriginal`；首个 Tab 先恢复原函数再装
+  CxxuTab——它会把“当前”TabExpansion2 存为 `__CxxuTabOriginal` 再包，包到桩上即无限递归，
+  然后转交新包装；装失败时原函数已恢复，直接透传）。predictor dll + zoxide 仍首屏
+  单发（先摘后装，用户没打字；预测是被动显示等不及手势，zoxide 20ms 搭车）。
+  `-Now` 全载四件不变；`Enable-PsPlugin Fzf/Tab` 改为立装桩即时生效（7+ 才调安装器）。
+- 联动：Deploy 就绪检查认桩（Tab 看 `__CxxuTabOriginal`/`PsUxTabOriginal` 三态，
+  PSFzf 看模块/`$global:PsUxFzfStub` 三态）；`Test-StartupPerformance` 文案同步单发口径。
+- 验证（沙盒）：双版本解析零错；Tab 桩全流程——装桩（原函数捕获）→首 Tab 519ms 自动装
+  CxxuTab（29 候选含 `Get-ChildItem`，dll 模糊已合并，无递归）→次 Tab 28ms 直走包装→
+  非命令位透传（`-Path` 在）→`$Error` 零污染；PsTab 关则不装桩、默认 Tab 原样；
+  重复安装幂等（包装激活后不再重装桩，原函数不被覆盖）；和弦桩重定向下零污染；
+  `-Now` 四件齐 ERRS=0。真机待验：首按 Ctrl+T/R、首个 Tab 的一次性耗时手感。

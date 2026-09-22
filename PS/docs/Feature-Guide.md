@@ -150,7 +150,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | `argc` | 缺二进制，先装再说 |
 | `inshellisense` | **否决**（用户拍板，不再考虑） |
 
-验：新开终端等一拍，`Ctrl+R` 翻历史、`z <目录>` 跳转；`Get-EventSubscriber` 应无残留（触发即摘）。若某主机 OnIdle 不触发导致没装上，跑 `Register-PsUxLazyLoad -Now` 或报回来。
+验：新开终端直接可用，`Ctrl+R`/`Ctrl+T` 首按装 PSFzf（本次按键即生效）、首个 `Tab` 装 CxxuTab（约半秒一次）；`z <目录>` 跳转（zoxide 首屏单发已装）；`Get-EventSubscriber` 应无残留（单发先摘后装）。若某主机 OnIdle 不触发（predictor 没装上），跑 `Register-PsUxLazyLoad -Now` 或报回来。自查跑 `Test-StartupPerformance`（分段计时+结论）。
 
 ## 8. FAQ（续）：输入时下面没候选？
 
@@ -244,6 +244,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 ## 13. Windows PowerShell 5.1 兼容（B 档：交互可用）
 
 > 目标是在 5.1 里 `init` + 提示符 + Tab 补全 + 历史可用；部署/预测/dll 链明确留 7。
+> 查数用命令（真相源是各模块自己的 `.psd1`，下面批次是流水账）：`Get-CxxuModuleCompatibility`（`Pwsh` 模块，只读文件头秒出：B 档 62/留 7 有理由/缺 BOM 或未声明单拎）。
 
 - 兼容集（psd1 已降 `5.1`，psm1 带 BOM，见 `Module-Conventions.md §8`）：`Basic`、`Aliases`、`FileSystem`、`PwshVar`、`Search`、`CxxuTab`、`Prompt`、`Init`、`EnvVar`、`NetWork`、`RepoSync`、`PsDebug`、`PsEnv`、`Shortcut`、`PathProcess`、`Hardware`、`Proxy`（后 8 个 2026-09-22 酌情降档：解析零错误 + 5.1 直调冒烟通过）。
 - 第二批（2026-09-22，从易到难：解析零错误 + 逐个 5.1 直调冒烟）：`Json`、`WinSys`、`Startup`（`$IsWindows` 加 `PSEdition` 兜底）、`ArgumentCompletion`、`Mock`（字符集自包含，旧代码依赖会话外变量）、`Users`、`Calendar`、`ColorSettings`（`inlineprediction` 配色按 PSReadLine 版本 gating）、`Browser`、`TestLinks`、`NetDrivers`、`ControlPanel`、`WIFI`、`HelpExamples`（教学函数需 help 文件）、`backup`、`BTCN`、`Cloudflare`。B 档 17→34。

@@ -23,7 +23,8 @@
         'Test-PsEnvMode',
         'Update-PwshvarsIfNotYet',
         'Update-PwshEnvIfNotYet',
-        'Install-Ps51Profile'
+        'Install-Ps51Profile',
+        'Test-StartupPerformance'
     )
     CmdletsToExport = @()
     VariablesToExport = @()

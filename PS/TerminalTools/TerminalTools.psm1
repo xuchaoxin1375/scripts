@@ -294,14 +294,116 @@ function mvExcludeFolder
     # | ForEach-Object { if ($_.Name -ne $target_excludeDir) { Move-Item -v $_ $target_excludeDir } }
 }
 
+function Install-PsUxGestureStubs
+{
+    <#
+    .SYNOPSIS
+    装体验件手势桩(Ctrl+T/R 首按装 PSFzf,首个 Tab 装 CxxuTab):毫秒级,零导入。
+    .DESCRIPTION
+    幂等:重复调用只补缺(PSFzf/CxxuTab 已装入则跳过对应桩;CxxuTab 已装时绝不重装 Tab 桩,
+    否则会把它的包装存成"原函数"导致无限递归)。开关逐项判定,关了的不装。
+    -Force 跳过重定向门(测试/怪主机用);正常只跑在交互会话。
+    桩逻辑只用 $env:/$global:/cmdlet,不引用任何函数局部变量。
+    .EXAMPLE
+    Install-PsUxGestureStubs -Force
+    #>
+    [CmdletBinding()]
+    param(
+        [switch]$Force
+    )
+    if (-not $Force)
+    {
+        $consoleInteractive = try { -not [Console]::IsOutputRedirected } catch { $false }
+        if (-not $consoleInteractive) { return }
+    }
+    # PSFzf 桩:只接管 Ctrl+T(文件)/Ctrl+R(历史),Tab 留给 MenuComplete。
+    # 首按才 Import-Module + 绑原生和弦,本次按键直接调 PSFzf 导出函数(已核实 2.7.10 导出),
+    # 不用等下次按键;没装过 PSFzf 的机器首按静默记 $global:PsUxNoPSFzf,之后零开销。
+    if (($env:PsFzf -notmatch '^(False|0|No|Off)$') -and (-not (Get-Module PSFzf -ErrorAction SilentlyContinue)))
+    {
+        Set-PSReadLineKeyHandler -Key 'Ctrl+t' -BriefDescription 'PSFzf file (lazy)' -Description '首按装入 PSFzf 并取文件' -ScriptBlock {
+            if (-not (Get-Module PSFzf -ErrorAction SilentlyContinue))
+            {
+                if ($global:PsUxNoPSFzf) { return }
+                # -Global:函数内 import 默认装成嵌套模块(Get-Module 列不出),强制顶层
+                Import-Module PSFzf -Global -ErrorAction SilentlyContinue
+                if (Get-Module PSFzf -ErrorAction SilentlyContinue)
+                {
+                    Set-PsFzfOption -PSReadlineChordProvider 'Ctrl+t' -PSReadlineChordReverseHistory 'Ctrl+r' -ErrorAction SilentlyContinue
+                }
+                else { $global:PsUxNoPSFzf = $true; return }
+            }
+            if (Get-Command Invoke-FzfPsReadlineHandlerProvider -CommandType Function -ErrorAction SilentlyContinue)
+            {
+                Invoke-FzfPsReadlineHandlerProvider
+            }
+        } -ErrorAction SilentlyContinue
+        Set-PSReadLineKeyHandler -Key 'Ctrl+r' -BriefDescription 'PSFzf history (lazy)' -Description '首按装入 PSFzf 并搜历史' -ScriptBlock {
+            if (-not (Get-Module PSFzf -ErrorAction SilentlyContinue))
+            {
+                if ($global:PsUxNoPSFzf) { return }
+                Import-Module PSFzf -Global -ErrorAction SilentlyContinue
+                if (Get-Module PSFzf -ErrorAction SilentlyContinue)
+                {
+                    Set-PsFzfOption -PSReadlineChordProvider 'Ctrl+t' -PSReadlineChordReverseHistory 'Ctrl+r' -ErrorAction SilentlyContinue
+                }
+                else { $global:PsUxNoPSFzf = $true; return }
+            }
+            if (Get-Command Invoke-FzfPsReadlineHandlerHistory -CommandType Function -ErrorAction SilentlyContinue)
+            {
+                Invoke-FzfPsReadlineHandlerHistory
+            }
+        } -ErrorAction SilentlyContinue
+        $global:PsUxFzfStub = $true
+    }
+    # Tab 桩:存原函数,首个 Tab 先恢复原函数再装 CxxuTab(它会把"当前" TabExpansion2 存为
+    # __CxxuTabOriginal 再包,包到桩上即无限递归),然后转交新包装;装失败时原函数已恢复,直接透传。
+    if (($env:PsTab -notmatch '^(False|0|No|Off)$') -and (-not (Get-Module CxxuTab -ErrorAction SilentlyContinue)) -and (-not $global:PsUxTabStub))
+    {
+        $origTab = Get-Command TabExpansion2 -CommandType Function -ErrorAction SilentlyContinue
+        $global:PsUxTabOriginal = if ($origTab) { $origTab.ScriptBlock } else { $null }
+        function global:TabExpansion2
+        {
+            param($inputScript, $cursorColumn)
+            $fallBack = {
+                if ($global:PsUxTabOriginal) { & $global:PsUxTabOriginal $inputScript $cursorColumn }
+                else { [System.Management.Automation.CommandCompletion]::CompleteInput($inputScript, $cursorColumn, $null) }
+            }
+            try
+            {
+                if (($env:PsTab -notmatch '^(False|0|No|Off)$') -and (-not (Get-Module CxxuTab -ErrorAction SilentlyContinue)) -and (-not $global:PsUxNoCxxuTab))
+                {
+                    if ($global:PsUxTabOriginal) { Set-Item -Path 'function:global:TabExpansion2' -Value $global:PsUxTabOriginal }
+                    else { Remove-Item -Path 'function:global:TabExpansion2' -ErrorAction SilentlyContinue }
+                    # -Global 防嵌套;CxxuTab 按字节装 dll(不锁文件)+预热建表,导入即包 TabExpansion2
+                    Import-Module CxxuTab -Global -ErrorAction SilentlyContinue
+                    if (Get-Module CxxuTab -ErrorAction SilentlyContinue)
+                    {
+                        return (TabExpansion2 $inputScript $cursorColumn)
+                    }
+                    $global:PsUxNoCxxuTab = $true
+                }
+                return (& $fallBack)
+            }
+            catch { return (& $fallBack) }
+        }
+        $global:PsUxTabStub = $true
+    }
+}
 function Register-PsUxLazyLoad
 {
     <#
     .SYNOPSIS
-    体验件延迟加载:OnIdle 装 PSFzf(Ctrl+T/R)、zoxide(缓存)与自研命令名 predictor,注册即返回,启动零开销。
+    体验件加载:手势按需 + 单发收尾,全程无后台冻结。
     .DESCRIPTION
-    默认启用;$env:PsFzf/$env:PsZoxide 置 'False'/'0'/'No'/'Off' 可各关一个;
-    -Now 立即执行(测试/非 idle 主机用,不受重定向门限制)。Tab 与预测补全都不动。
+    默认启用;$env:PsFzf/$env:PsZoxide/$env:PsTab/$env:PsPredictor 置 'False'/'0'/'No'/'Off' 可各关一个;
+    -Now 立即全装(测试/非 idle 主机用,不受重定向门限制)。Tab 与预测补全都不动。
+    机制(2026-09-22 第三轮;分片常驻曾回归,见 Startup-Optimization.md §21):
+    - PSFzf/CxxuTab:走手势桩(见 Install-PsUxGestureStubs),init 只花毫秒装桩,导入成本挪到
+      首按 Ctrl+T/R 与首个 Tab(用户手势,可归因,无随机冻结)。
+    - predictor dll + zoxide:单发 OnIdle(首屏跑一次、跑之前先摘订阅;用户还没打字,安全)。
+      预测是被动显示等不及手势;zoxide 仅 20ms 搭车。
+    幂等:重复调用只补缺。常驻订阅已死:OnIdle 在行编辑等键时也会触发,常驻=随机冻。
     .EXAMPLE
     Register-PsUxLazyLoad -Now
     #>
@@ -309,29 +411,28 @@ function Register-PsUxLazyLoad
     param(
         [switch]$Now
     )
-    $loadAction = {
-        # 已触发即摘掉自己。用 $global: 标记位而不用 try/catch 探路:
-        # terminating 错误抛出即进 $Error 记账,catch 只能止显示止不住记账。
-        if ($global:PsUxOnIdleRegistered)
-        {
-            $global:PsUxOnIdleRegistered = $false
-            try { Unregister-Event -SourceIdentifier PowerShell.OnIdle -ErrorAction Stop } catch { }
-        }
+    # 分片(块内只用 $env:/$HOME/cmdlet,不引用函数局部变量;-Now 与单发共用同一块,行为一致)
+    $pieceFzf = {
         # PSFzf:只接管 Ctrl+T(文件)/Ctrl+R(历史),Tab 留给 MenuComplete
-        if ($env:PsFzf -notmatch '^(False|0|No|Off)$' -and (Get-Module -ListAvailable PSFzf))
+        if ($env:PsFzf -notmatch '^(False|0|No|Off)$')
         {
             # -Global:函数内 import 默认装成嵌套模块(Get-Module 列不出),强制顶层
             Import-Module PSFzf -Global -ErrorAction SilentlyContinue
-            Set-PsFzfOption -PSReadlineChordProvider 'Ctrl+t' -PSReadlineChordReverseHistory 'Ctrl+r' -ErrorAction SilentlyContinue
+            if (Get-Module PSFzf -ErrorAction SilentlyContinue)
+            {
+                Set-PsFzfOption -PSReadlineChordProvider 'Ctrl+t' -PSReadlineChordReverseHistory 'Ctrl+r' -ErrorAction SilentlyContinue
+            }
         }
-        # 自研命令名 predictor(模糊+严格通配,import 时建表约百毫秒,放 idle 里无感)
-        # 用它不用 CompletionPredictor 补命令名:后者源码级跳过 CommandName token(见 §19)
-        # 守护进程用不上 predictor:置 $env:PsPredictor='False' 即跳过(开关风格同 PsFzf/PsZoxide);
-        # 守护启动链(Start-StartupBgProcesses/定时任务)负责置位,交互会话默认开启
-        # dll 外置并排版本(~/.cxxu/bin/<哈希>/CxxuPredictor.dll + current.txt 指针;
-        # 文件名保持 CxxuPredictor.dll 不变,模块名才正确;目录按版本隔离):
-        # 仓库源从不被加载→git pull 不受锁限制;新版本只新增目录、从不覆盖旧文件→复制不受锁限制;
-        # 入口只按指针静默装载(旧版照常使用,无警告);psd1 已去 RootModule,按名装不出 predictor,必须走这里
+    }
+    # 自研命令名 predictor(模糊+严格通配,import 时建表约百毫秒,放单发里无感)
+    # 用它不用 CompletionPredictor 补命令名:后者源码级跳过 CommandName token(见 §19)
+    # 守护进程用不上 predictor:置 $env:PsPredictor='False' 即跳过(开关风格同 PsFzf/PsZoxide);
+    # 守护启动链(Start-StartupBgProcesses/定时任务)负责置位,交互会话默认开启
+    # dll 外置并排版本(~/.cxxu/bin/<哈希>/CxxuPredictor.dll + current.txt 指针;
+    # 文件名保持 CxxuPredictor.dll 不变,模块名才正确;目录按版本隔离):
+    # 仓库源从不被加载→git pull 不受锁限制;新版本只新增目录、从不覆盖旧文件→复制不受锁限制;
+    # 入口只按指针静默装载(旧版照常使用,无警告);psd1 已去 RootModule,按名装不出 predictor,必须走这里
+    $piecePredictor = {
         if ($env:PsPredictor -notmatch '^(False|0|No|Off)$')
         {
             $cxxuBinDir = Join-Path (Join-Path $HOME '.cxxu') 'bin'
@@ -365,14 +466,18 @@ function Register-PsUxLazyLoad
                 Import-Module $cxxuLiveDll -Global -ErrorAction SilentlyContinue
             }
         }
-        # 自研 Tab 命令名补全(独立插件 CxxuTab:TabExpansion2 包装,命令名位合并 dll 模糊结果,
-        # 其余位置透传;门控逐调用,不装/关了都零影响;启停管理看 Enable/Disable-PsPlugin)
+    }
+    # 自研 Tab 命令名补全(独立插件 CxxuTab:TabExpansion2 包装,命令名位合并 dll 模糊结果,
+    # 其余位置透传;门控逐调用,不装/关了都零影响;启停管理看 Enable/Disable-PsPlugin)
+    $pieceTab = {
         if ($env:PsTab -notmatch '^(False|0|No|Off)$')
         {
             # -Global:函数内 import 默认装成嵌套模块(Get-Module 列不出),强制顶层
             Import-Module CxxuTab -Global -ErrorAction SilentlyContinue
         }
-        # zoxide:init 输出缓存到文件,只有二进制更新才重建(仿 conda 缓存套路)
+    }
+    # zoxide:init 输出缓存到文件,只有二进制更新才重建(仿 conda 缓存套路)
+    $pieceZoxide = {
         if ($env:PsZoxide -notmatch '^(False|0|No|Off)$')
         {
             $zoxideBin = (Get-Command zoxide -ErrorAction SilentlyContinue).Source
@@ -390,18 +495,56 @@ function Register-PsUxLazyLoad
     }
     if ($Now)
     {
-        & $loadAction | Out-Null
+        # 全载通道:按序全跑;单片失败记账不抛,免污染调用方
+        $global:PsUxLoadErrors = @()
+        $allPieces = @(
+            @{ Name = 'PSFzf'; Action = $pieceFzf },
+            @{ Name = 'zoxide'; Action = $pieceZoxide },
+            @{ Name = 'CxxuTab'; Action = $pieceTab },
+            @{ Name = 'CxxuPredictor'; Action = $piecePredictor }
+        )
+        foreach ($p in $allPieces)
+        {
+            try { & $p.Action | Out-Null }
+            catch { $global:PsUxLoadErrors += "$($p.Name): $($_.Exception.Message)" }
+        }
         return
     }
-    # 重定向下(agent/CI/管道)没有交互,不注册(显式 -Now 不受此限)
+    # 重定向下(agent/CI/管道)没有交互,不装桩不注册(显式 -Now 不受此限)
     $consoleInteractive = try { -not [Console]::IsOutputRedirected } catch { $false }
     if (-not $consoleInteractive) { return }
-    if (($env:PsFzf -match '^(False|0|No|Off)$') -and ($env:PsZoxide -match '^(False|0|No|Off)$'))
+    # 手势桩先行(毫秒级,失败静默:桩内自带降级)
+    Install-PsUxGestureStubs
+    # 单发收尾只剩 predictor + zoxide:全关即无事可做,直接返回
+    if ((($env:PsPredictor -match '^(False|0|No|Off)$') -and ($env:PsZoxide -match '^(False|0|No|Off)$')) -or
+        $global:PsUxOnIdleRegistered)
     {
         return
     }
-    if ($global:PsUxOnIdleRegistered) { return }
-    Register-EngineEvent PowerShell.OnIdle -Action $loadAction | Out-Null
+    # 存一份给动作线程:动作跑在主线程但函数作用域已退,只能走 $global:
+    # (块内无函数局部引用,存取安全)。跑完即清,不留尾巴。
+    $global:PsUxIdlePieces = @(
+        @{ Name = 'CxxuPredictor'; Action = $piecePredictor },
+        @{ Name = 'zoxide'; Action = $pieceZoxide }
+    )
+    $global:PsUxLoadErrors = @()
+    $singleAction = {
+        # 先摘后装:跑之前即摘订阅,装再久也不再触发(单发安全性的全部)。
+        # 用 $global: 标记位而不用 try/catch 探路:terminating 错误抛出即进 $Error 记账,
+        # catch 只能止显示止不住记账。
+        if ($global:PsUxOnIdleRegistered)
+        {
+            $global:PsUxOnIdleRegistered = $false
+            try { Unregister-Event -SourceIdentifier PowerShell.OnIdle -ErrorAction Stop } catch { }
+        }
+        foreach ($p in @($global:PsUxIdlePieces))
+        {
+            try { & $p.Action | Out-Null }
+            catch { $global:PsUxLoadErrors += "$($p.Name): $($_.Exception.Message)" }
+        }
+        $global:PsUxIdlePieces = @()
+    }
+    Register-EngineEvent PowerShell.OnIdle -Action $singleAction | Out-Null
     $global:PsUxOnIdleRegistered = $true
 }
 function Sync-CxxuPredictor

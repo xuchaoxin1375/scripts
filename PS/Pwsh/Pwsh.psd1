@@ -13,7 +13,8 @@
         'Import-ModuleForce',
         'ipmof',
         'ipmox',
-        'Sync-ModuleManifest'
+        'Sync-ModuleManifest',
+        'Get-CxxuModuleCompatibility'
     )
     CmdletsToExport = @()
     VariablesToExport = @()
