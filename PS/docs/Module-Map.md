@@ -1,6 +1,6 @@
 # 模块地图（Module Map）
 
-> 58 个自有模块，全在 `PS/<Name>/<Name>.psm1` + 同名 `.psd1`
+> 59 个自有模块，全在 `PS/<Name>/<Name>.psm1` + 同名 `.psd1`
 >（唯一例外 `CxxuPredictor`：二进制模块，`.psd1` + `.dll` + `src/`，无 `.psm1`）。
 > 规范见 `Module-Conventions.md`，性能史见 `Startup-Optimization.md`。
 > 图例：🔥 启动/提示热路径（改动先跑终验），❄️ 冷路径（按需加载）。
@@ -30,7 +30,8 @@
 |---|---|---|
 | `Info` | 1736/28 | 系统信息：内存/进程查看、IP（批量+60s 记忆）、电池已迁入 |
 | `Basic` | 2005/86 | 通用小工具（网络/git/时间/速记等）+ 模块查询（`Get-ModuleByCxxu`，2026-09-21 从 `Info` 迁入，5.1 可用）；键盘/TTS/电源 16 函数已迁 `WinSys`，`uploadPic` 已删（2026-09-22，`uploadPicMarkdown` 独立保留），prompt 只剩间接依赖 |
-| `TaskSchdPwsh` | 1146/14 | `Start-ScriptWhenIntervalEnough`（内存 5s 节流就靠它）、计划任务、报时守护进程 |
+| `TaskSchdPwsh` | 711/9 | `Start-ScriptWhenIntervalEnough`（内存 5s 节流就靠它）、计划任务触发、守护进程；定时提醒 5 函数已迁 `TimeNotify`（2026-09-22，命令名不变） |
+| `TimeNotify` | 447/5 | 定时提醒：Toast 通知（`New-TimeNotification(Robust)`）、整点报时（`Start-TimeAnnouncer`）、消息上报（2026-09-22 从 `TaskSchdPwsh` 迁入，冷路径按需加载） |
 
 ## 网络与系统
 
