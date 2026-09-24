@@ -214,7 +214,8 @@ function Get-LatestPowerShellDownloadUrl
         [ValidateSet('msi', 'zip')]$PackageType = 'msi'
     )
     $releasesUrl = 'https://api.github.com/repos/PowerShell/PowerShell/releases/latest'
-    $releaseInfo = Invoke-RestMethod -Uri $releasesUrl -Headers @{ 'User-Agent' = 'PowerShell-Script' }
+    # api.github.com 国内直连可能失败,失败抛给调用方回退处理(独立脚本 Deploy-Pwsh7Portable 内有同逻辑副本,改逻辑两边同步)
+    $releaseInfo = Invoke-RestMethod -Uri $releasesUrl -Headers @{ 'User-Agent' = 'PowerShell-Script' } -TimeoutSec 15 -ErrorAction Stop
 
     Write-Host "Trying to get latest PowerShell ${PackageType}..."
     foreach ($asset in $releaseInfo.assets)

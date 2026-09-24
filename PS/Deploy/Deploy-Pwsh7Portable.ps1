@@ -1,36 +1,62 @@
-
+﻿
 # $github_mirror="https://gh-proxy.com"
 [CmdletBinding()]
 param(
     # 仓库源(默认 github+加速;gitee 仅保留兼容)
     [validateSet('gitee', 'github')]
     $RepoSource = 'github',
-    # 适用于开发(维护调整)的测试模式
-    [switch]$Dev
+    # 开发模式:用本地最新模块(Deploy.psm1/TestLinks.psm1/Git.psm1),不拉远程;仓库根自动从脚本位置推导
+    [switch]$Dev,
+    $DevRoot = ''
     # [switch]$Force
 )
-if($RepoSource -eq 'github')
+if ($Dev)
 {
-    # 中央镜像:$env:PsGithubMirror 优先,否则默认 gh-proxy(独立脚本内联一份,见 Get-GithubMirrorPrefix)
-    $repoMirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
-    $dplUrl = "$repoMirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1"
-    $tlUrl = "$repoMirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/TestLinks/TestLinks.psm1"
-    $gitUrl = "$repoMirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Git/Git.psm1"
+    if ([string]::IsNullOrWhiteSpace($DevRoot))
+    {
+        $DevRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+    }
+    $devDpl = Join-Path $DevRoot 'PS/Deploy/Deploy.psm1'
+    $devTl = Join-Path $DevRoot 'PS/TestLinks/TestLinks.psm1'
+    $devGit = Join-Path $DevRoot 'PS/Git/Git.psm1'
+    if ((Test-Path -LiteralPath $devDpl) -and (Test-Path -LiteralPath $devTl) -and (Test-Path -LiteralPath $devGit))
+    {
+        Write-Host '[Deploy-Pwsh7Portable]:Dev mode, use local modules.' -ForegroundColor Yellow
+        . $devDpl
+        . $devTl
+        . $devGit
+    }
+    else
+    {
+        Write-Warning "Dev mode requested but local modules not found under [$DevRoot], fall back to remote."
+        $Dev = $false
+    }
 }
-else
+if (-not $Dev)
 {
+    if ($RepoSource -eq 'github')
+    {
+        # 中央镜像:$env:PsGithubMirror 优先,否则默认 gh-proxy(独立脚本内联一份,见 Get-GithubMirrorPrefix)
+        $repoMirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
+        $dplUrl = "$repoMirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1"
+        $tlUrl = "$repoMirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/TestLinks/TestLinks.psm1"
+        $gitUrl = "$repoMirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Git/Git.psm1"
+    }
+    else
+    {
 
-    
-    $dplUrl = "https://raw.giteeusercontent.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy.psm1" 
-    $tlUrl = "https://raw.giteeusercontent.com/xuchaoxin1375/scripts/raw/main/PS/TestLinks/TestLinks.psm1"
-    $gitUrl = "https://raw.giteeusercontent.com/xuchaoxin1375/scripts/raw/main/PS/Git/Git.psm1"
+
+        $dplUrl = "https://raw.giteeusercontent.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy.psm1"
+        $tlUrl = "https://raw.giteeusercontent.com/xuchaoxin1375/scripts/raw/main/PS/TestLinks/TestLinks.psm1"
+        $gitUrl = "https://raw.giteeusercontent.com/xuchaoxin1375/scripts/raw/main/PS/Git/Git.psm1"
+    }
+
+    Write-Host "[Deploy-Pwsh7Portable]: Pull Deploy.psm1 and TestLinks.psm1 modules [$dplUrl] & [$tlUrl]..."
+
+    Invoke-RestMethod $dplUrl | Invoke-Expression
+    Invoke-RestMethod $tlurl | Invoke-Expression
+    Invoke-RestMethod $gitUrl | Invoke-Expression
 }
-    
-Write-Host "[Deploy-Pwsh7Portable]: Pull Deploy.psm1 and TestLinks.psm1 modules [$dplUrl] & [$tlUrl]..." 
-
-Invoke-RestMethod $dplUrl | Invoke-Expression
-Invoke-RestMethod $tlurl | Invoke-Expression
-Invoke-RestMethod $gitUrl | Invoke-Expression
 # get functions or commands about mirror operations!
 Get-Command *mirror* 
 Write-Host "check commands usage (syntax)"

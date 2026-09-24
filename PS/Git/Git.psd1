@@ -11,6 +11,7 @@
         'Remove-GitImagesFromHistory',
         'Set-GitProxy',
         'Get-SpeedUpUrl',
+        'Get-SpeedUpUri',
         'Invoke-GithubResourcesSpeedup',
         'Update-CodeiumVScodeExtension',
         'gitconfigEdit',

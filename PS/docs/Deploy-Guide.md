@@ -126,6 +126,31 @@ conda 缓存（`~/.conda_hook_cache.ps1`）与 zoxide 缓存（`~/.zoxide_init_c
 
 ## 13. 更新到新版本
 
+## 14. 时效性资源清单（会过期的东西都在这里）
+
+> 快照日期 2026-09-24（本机实测）。这些资源控制权在外部（镜像站/第三方仓库/上游发版），会随时间失效；
+> 检查列是只读命令，更新列是人工动作。想加自动检查先看 Handoff #65 的命令建议。
+
+| 资源 | 位置 | 现状快照 | 检查（只读） | 更新动作 | 频率 |
+|---|---|---|---|---|---|
+| GH 镜像站 13 个 | `TestLinks.psm1` 头部 | 全可用（本机 raw 实测） | `Get-AvailableGithubMirrors` | 删失效条目，改头注日期 | 季度 / 部署失败时 |
+| 默认镜像 `gh-proxy.com` | 各独立脚本内联 + `$env:PsGithubMirror` | OK（约 500ms） | `Test-MirrorAvailability -Url <镜像>` | 挑最快的 `Add-EnvVar PsGithubMirror` 持久化 | 同上 |
+| Git for Windows 默认版 | `Deploy-GitForWindows.ps1:70`（纯回退，`-url`/`-PackagePath` 可覆盖） | `v2.55.0.windows.5`（api 实测 latest） | 查 `api.github.com/repos/git-for-windows/git/releases/latest` 的 tag | 改默认值（api 失败自动回退，不急） | 有新版时 |
+| pwsh Ubuntu deb 版 | `Install-PwshUbuntu.ps1` 头部 `$pwsh_version`（一处，环境变量可覆盖） | `v7.6.6`（LTS 现行） | 查 PowerShell releases | 改头变量即可 | LTS 更新时 |
+| pwsh 最新版查询（两份） | `Deploy-Pwsh7Portable.ps1:86` / `PsEnv.psm1:211`（均带超时；独立脚本须自包含故保留两份，改逻辑两边同步） | `v7.6.6` | 同上 | 勿两头各改各的 | 按需 |
+| WT 安装包查询 | `TerminalTools.psm1:16` | 超时已加；旧死代码/自递归已修（2026-09-24） | 手动跑 `Get-LatestWindowsTerminalLink` | — | 按需 |
+| `scoop.201704.xyz`（第三方域） | `Scoop.psm1:166,173` / `Deploy-GitForWindows.ps1:117` | 存活未变，但说死就死 | `Invoke-WebRequest -Method Head` 探活 | 切官方 `get.scoop.sh` | 失败时 |
+| gitee `scoop-installer` forks | `Scoop.psm1`（buckets/gitee 方案） | 第三方控制，同步可能滞后 | `scoop bucket list` 看 Updated 列 | 切回官方源 + 镜像前缀 | 失败时 |
+| `duzyn/scoop-cn` raw 路径 | `DevEnv.psm1:16-30` | 第三方仓库，改名/删文件即坏 | 跑一次相关 Deploy 命令 | 跟随上游改路径 | 失败时 |
+| 自有 `spc` fork 同步 | `Scoop.psm1:202`（`gitee.com/xuchaoxin1375/spc`） | 自有可控 | 看 gitee 仓库同步时间 | 重跑同步 action | 半年 |
+| gitcode 归档包 | `Deploy-CxxuPsModules.ps1:356` | `HEAD 200` 存活（2026-09-24） | `HEAD` 探活 | 删/换 | 失败时 |
+| hosts 数据（天然过期） | `Update-GithubHosts`（`raw.hellogithub.com` + GitHub520 回退） | IP 常变 | 看 hosts 尾 `# Update time` 距今 | `Update-GithubHosts`；已装定时任务则自动 | 自动（每小时+开机） |
+| pip/conda 高校源 | `DevEnv.psm1` / `ConstantString.conf` / `Tools.psm1:381` | 稳定，偶改路径 | 安装失败时对照 `help.mirrorz.org` | 改 URL | 失败时 |
+| `Get-SpeedUpUri` 未定义 | `PsEnv.psm1:238` / `TerminalTools.psm1:9,42` | 已修（2026-09-24，见 Handoff #66） | 跑 `Update-PowerShell` 即验 | — | — |
+| net9.0 / pwsh 版本门 | `CxxuPredictor.csproj` | pwsh 8 出来才需动 | — | 重编 dll（见 `Live-Versions.md`） | 慢变量 |
+| 文档外链（博客/商店/聚合页） | `readme_zh.md` / `Deploy-Guide.md` | 腐烂风险，低优 | 抽查 | 换链 | 年 |
+| PSGallery 第三方模块 | `Deploy-CompletionStack` | 浮动最新，不钉版 | `Test-PsEnvReadiness` | `Deploy-CompletionStack` | 按需 |
+
 > 设计原理见 `Live-Versions.md`（并排版本 + 指针）。前提：`git pull` 只写仓库目录，纯文本**永远不锁**随便拉；dll 活件在仓库外（`~/.cxxu/bin`），仓库版从不被加载——所以 pull 也永不撞锁。剩下唯一规矩： dll 代码随进程，重开终端才换新。
 
 ```powershell

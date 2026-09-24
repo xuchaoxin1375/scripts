@@ -1,6 +1,15 @@
-
+﻿
+param(
+    # 开发模式:从脚本所在目录拷贝 AutoFetch/fetch-github-hosts,不从远程下载(未推送时本地测试用)
+    [switch]$Dev
+)
 function Register-GithubHostsAutoUpdater-Archive
 {
+    [CmdletBinding()]
+    param(
+        # 开发模式:从脚本所在目录拷贝,不从远程下载(未推送时本地测试用)
+        [switch]$Dev
+    )
     #设置执行策略
     Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy bypass -Force
 
@@ -13,9 +22,29 @@ function Register-GithubHostsAutoUpdater-Archive
     }
 
     $files = ('AutoFetch.ps1', 'fetch-github-hosts.ps1')
-    $files | ForEach-Object {
-        Invoke-RestMethod https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/GithubHostsUpdater/$_ > $GHU\$_
-        # $home\desktop\$_ 
+    if ($Dev)
+    {
+        Write-Host '[Register-GithubHostsAutoUpdater]:Dev mode, copy local files.' -ForegroundColor Yellow
+        $files | ForEach-Object {
+            Copy-Item -LiteralPath (Join-Path $PSScriptRoot $_) -Destination (Join-Path $GHU $_) -Force -Verbose
+        }
+    }
+    else
+    {
+        # 中央镜像优先,失败回直连(与 Deploy-GithubHostsAutoUpdater 同策略,不再只走 gitee)
+        $ghuMirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
+        $ghuRawBase = 'https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/GithubHostsUpdater'
+        $files | ForEach-Object {
+            try
+            {
+                Invoke-RestMethod "$ghuMirror/$ghuRawBase/$_" > $GHU\$_
+            }
+            catch
+            {
+                Invoke-RestMethod "$ghuRawBase/$_" > $GHU\$_
+            }
+            # $home\desktop\$_
+        }
     }
 
   
@@ -31,7 +60,7 @@ function Register-GithubHostsAutoUpdater-Archive
 
 }
 #组织调用相关函数
-Register-GithubHostsAutoUpdater-Archive
+Register-GithubHostsAutoUpdater-Archive -Dev:$Dev
 
 #初次启动相应的任务
 Start-ScheduledTask -TaskName Update-Githubhosts

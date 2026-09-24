@@ -353,6 +353,40 @@ function Invoke-GithubResourcesSpeedup
 # 'https://github.com/user/repo/file.zip' | Invoke-GithubResourcesSpeedup
 # 或者
 # Invoke-GithubResourcesSpeedup -Url 'https://github.com/user/repo/file.zip'
+function Get-SpeedUpUri
+{
+    <#
+    .SYNOPSIS
+    单链接加速:Get-SpeedUpUrl 的轻量版,只套前缀,不探测不弹窗。
+    .DESCRIPTION
+    前缀来源:显式 -Prefix 优先;其次借 Deploy 模块的 Get-GithubMirrorPrefix
+    (环境变量优先,会话缓存,其次静默测速;Deploy 没加载就跳过);
+    拿不到前缀就原样返回,绝不拼出 "/https://..." 坏链接。
+    要交互选镜/多镜像用 Get-SpeedUpUrl。
+    .EXAMPLE
+    Get-SpeedUpUri https://github.com/PowerShell/PowerShell/releases/download/v7.6.6/PowerShell-7.6.6-win-x64.zip
+    https://gh-proxy.com/https://github.com/PowerShell/PowerShell/releases/download/v7.6.6/PowerShell-7.6.6-win-x64.zip
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Position = 0)]
+        $Uri,
+        $Prefix
+    )
+    if ([string]::IsNullOrWhiteSpace($Prefix))
+    {
+        # Deploy 模块在就借它的中央前缀,不在(独立 iex 等)就直连,不抛
+        if (Get-Command Get-GithubMirrorPrefix -ErrorAction Ignore)
+        {
+            $Prefix = try { Get-GithubMirrorPrefix -ErrorAction Ignore } catch { '' }
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($Prefix))
+    {
+        return $Uri
+    }
+    return "$(([string]$Prefix).TrimEnd('/'))/$Uri"
+}
 # function Get-SpeedUpGithubRaw
 
 # {

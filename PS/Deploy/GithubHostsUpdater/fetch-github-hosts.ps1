@@ -1,4 +1,4 @@
-
+﻿
 # 加速镜像站可能会失效,也可能是部分时段失效,可用镜像见 PS/TestLinks/TestLinks.psm1(2026-09-24 本机实测)
 $fetchMirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
 $fetchRaw = 'https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1'

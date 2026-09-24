@@ -257,6 +257,13 @@ p -Force                    # 看 init 分步耗时，定位慢项
 - 提示符全对齐：`fast`/`Simple`/`Short`/`Default` 原生可用；`Balance` 的 Info/Startup 外部依赖在 `Prompt.psm1` 顶部有 5.1 本地兜底（CIM/注册表/内置 cmdlet 同口径；必须 `function global:` 定义，否则模块私有、直接调用撞坏 Info；缓存用 `$global:__Cxxu51*`，`$script:` 跨不了作用域），渲染与 7.5 逐字一致，稳态约 50ms/次（首屏冷缓存 1.4s 一次性）；`Get-IpAddressFormated` 含参数集的移植版，直接调用也可用。
 - 明确不可用：`CxxuPredictor`（net9 dll）、预测视图（需 7.2+ 子系统）、`Deploy` 全系、`Test-PsEnvReadiness` 的 `pwsh 7+` 必备项（在 5.1 下即提示装 pwsh7）。
 - 用法：`powershell -NoProfile` 起 5.1，保证 `PSModulePath` 含模块集后 `init` 即可；`$env:PsTab='Off'` 可关 Tab 包裹。
+- 轻量部署（免 git 免 pwsh，新机器只有 v5 时）：在 `powershell.exe` 里跑一键脚本加 `-Light`，
+  走离线包下载（codeload + 中央镜像静默，不弹窗选源），落 `PSModulePath`（setx 追加，不覆盖），
+  写 5.1 专属 profile，重开 `powershell.exe` 跑 `init` 即用：
+  ```powershell
+  irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1' > ~/dcp.ps1
+  ~/dcp.ps1 -Light
+  ```
 - 免手动：跑一次 `Install-Ps51Profile`（`Init` 模块，7/5.1 均可跑），写入 5.1 专属 profile（`~\Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1`，UTF8+BOM，与 7 互不干扰），之后开 `powershell.exe` 自动 `init` + 自定义 prompt；已有 profile 无标记则追加，有标记直接返回（`-Force` 重写）。
 - 修过的 5.1 专属坑：`Get-EnvCountedValues` 曾依赖仅示例文件定义的 `catn`（干净会话必炸），已改为自带编号输出；`Import-CxxuConfig` 的 env 探针改 `Ignore`（`SilentlyContinue` 仍会污染 `$Error`）。
 - 读 UTF-8 文档：5.1 的 `Get-Content` 默认按 GBK 解码，无 BOM 中文必乱码；外部文件控不了编码，一律用 `Get-ContentUTF8 <路径>`（`Basic` 模块，.NET 直读，自动识别 BOM，有无通吃，`-Raw` 整文）。

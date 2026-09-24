@@ -1,4 +1,4 @@
-<# 
+﻿<# 
 .SYNOPSIS
 部署CxxuPsModules
 
@@ -8,9 +8,9 @@
 如果本地调整此脚本时,注意在线仓库中的版本可能不是最新的.
 也可以考虑用本地导入的方式暂时代替默认的导入在线版本.
 .NOTES
-本地开发测试命令行参考: 
-$scripts="C:/repos/scripts"
-. $scripts/PS/Deploy/Deploy-CxxuPsModules.ps1 -Dev # 默认无参数
+本地开发测试(未推送到远程时,用本地最新代码测试部署效果):
+在仓库目录中直接运行此脚本并加 -Dev 即可,不拉取远程代码
+PS> C:/repos/scripts/PS/Deploy/Deploy-CxxuPsModules.ps1 -Dev -Light -WhatIf
 
 #>
 [CmdletBinding()]
@@ -19,18 +19,41 @@ param(
     [validateSet('gitee', 'github')]
     $RepoSource = 'github',
     $GithubMirror = $(if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }),
-    # 适用于开发(维护调整)的测试模式
+    # 适用于开发(维护调整)的测试模式(用本地最新代码,不拉远程;仓库根自动从脚本位置推导)
     [switch]$Dev,
-    [switch]$Force
+    $DevRoot = '',
+    [switch]$Force,
+    # 轻量部署(仅 Windows PowerShell 5.1):免 git(走离线包下载),免 pwsh(不装 portable),
+    # 落 PSModulePath + 写 5.1 专属 profile,新开 powershell.exe 即用(B 档交互可用,见 Feature-Guide §13)
+    [switch]$Light
 )
 Write-Host "[Deploy-CxxuPsModules]:开始运行CxxuPsModules部署脚本(来源:${RepoSource})..."
 # 导入 Deploy-GitForWindows 命令(适合独立部署用户使用),分开放置确保灵活性
-if($Dev)
+# Light 模式免 git,跳过导入(其尾部会直接执行安装,不跳过就装上了)
+if ($Light)
 {
-    # 测试版:
-    . $Scripts/PS/Deploy/Deploy-GitForWindows.ps1 -RepoSource $RepoSource
+    Write-Host '[Deploy-CxxuPsModules]:Light mode, skip Deploy-GitForWindows.'
 }
-else
+elseif ($Dev)
+{
+    # 开发模式:用本地最新代码,不拉远程(仓库根从脚本位置自动推导:PS/Deploy 上两级)
+    if ([string]::IsNullOrWhiteSpace($DevRoot))
+    {
+        $DevRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+    }
+    $devDgw = Join-Path $DevRoot 'PS/Deploy/Deploy-GitForWindows.ps1'
+    if (Test-Path -LiteralPath $devDgw)
+    {
+        Write-Host "[Deploy-CxxuPsModules]:Dev mode, use local [$devDgw]..." -ForegroundColor Yellow
+        . $devDgw -RepoSource $RepoSource -Dev -DevRoot $DevRoot
+    }
+    else
+    {
+        Write-Warning "Dev mode requested but local file not found [$devDgw], fall back to remote."
+        $Dev = $false
+    }
+}
+if (!$Light -and !$Dev)
 {
     # 正式版(github 走加速前缀,gitee 直连;raw 一律用 raw.githubusercontent 形式)
     if ($RepoSource -eq 'github')
@@ -64,6 +87,10 @@ function Deploy-CxxuPsModules
     .EXAMPLE
     直接调用,不是用参数,适合第一次部署
     deploy-CxxuPsModules
+    .EXAMPLE
+    轻量部署(仅 Windows PowerShell 5.1,免 git 免 pwsh):无 git 时不提示安装,直走离线包下载;
+    结尾不装 pwsh,改写 5.1 专属 profile,新开 powershell.exe 跑 init 即用
+    deploy-CxxuPsModules -Light -Verbose
     .EXAMPLE
     使用在线方案,从默认的gitee/github(要求预先安装Git软件)
     PS C:\Users\cxxu > deploy-CxxuPsModules -Mode FromRemoteGit -RepoPath C:/TestPsM -Verbose
@@ -119,7 +146,9 @@ function Deploy-CxxuPsModules
         # default 自动切换策略(优先尝试从本地包安装,如果失败,则尝试从远程仓库克隆)
         [ValidateSet('Default', 'FromPackage', 'FromRemoteGit')]
         $Mode = 'Default', 
-        [switch]$Force
+        [switch]$Force,
+        # 轻量部署(仅 Windows PowerShell 5.1):无 git 时不提示安装,直走离线包;结尾不装 pwsh,改写 5.1 profile
+        [switch]$Light
     )
     
     # 打印此函数的所有参数极其取值,方便用户排查问题
@@ -250,13 +279,20 @@ function Deploy-CxxuPsModules
             if (!$GitAvailability)
             {
 
-                #向用户推荐一键安装git的方案,然后使用默认的下载方案
-                Write-Host 'Git is not available on your system now!' -ForegroundColor cyan
-                $InstallGit = Read-Host 'Do you want to install it (it take a few seconds)!(y/n)(Default: y)'
-                if ($InstallGit -eq 'y' -or $InstallGit.Trim() -eq '')
+                if ($Light)
                 {
-                    Deploy-GitForwindows -Verbose
-                    # & $RemoteGitCloneScript
+                    Write-Host 'Light mode: git not found, skip installation, use offline package instead.' -ForegroundColor cyan
+                }
+                else
+                {
+                    #向用户推荐一键安装git的方案,然后使用默认的下载方案
+                    Write-Host 'Git is not available on your system now!' -ForegroundColor cyan
+                    $InstallGit = Read-Host 'Do you want to install it (it take a few seconds)!(y/n)(Default: y)'
+                    if ($InstallGit -eq 'y' -or $InstallGit.Trim() -eq '')
+                    {
+                        Deploy-GitForwindows -Verbose
+                        # & $RemoteGitCloneScript
+                    }
                 }
                 #重新计算Git是否可用
                 $GitAvailability = Get-Command git -ErrorAction SilentlyContinue
@@ -271,9 +307,10 @@ function Deploy-CxxuPsModules
             else
             {
     
-
+    
                 #没有Git且不想安装git的用户使用此方案(前面检测过了没有本地包,git又不可用,所以从云端仓库clone代码)
-                $PackagePath = Get-CxxuPsModulePackage
+                # Light 模式 -Silent:不弹窗选源,直走 codeload + 中央镜像
+                $PackagePath = Get-CxxuPsModulePackage -Silent:$Light
                 & $LocalScript
             } 
         }
@@ -282,7 +319,7 @@ function Deploy-CxxuPsModules
     {
         # 自动调用默认的下载行为
         # 您也可以手动调用Get-CxxuPsModulePackage下载包到指定位置,然后通过外部传递包的目录
-        $PackagePath = Get-CxxuPsModulePackage
+        $PackagePath = Get-CxxuPsModulePackage -Silent:$Light
         & $LocalScript
     }
     elseif ($Mode -eq 'FromRemoteGit')
@@ -304,7 +341,20 @@ function Deploy-CxxuPsModules
     {
         # 在powershel了低版本上，无法使用Add-EnvVar,使用setx 来设置相应的环境变量,PsModulePath的用户级别变量默认情况下通常是空的
         # 而系统级别的PsModulePath则是有预设值的(和windows powershell共用)
-        setx PSModulePath $newPsPath 
+        # 追加而非覆盖:用户级已有取值要保留(旧代码直接覆盖会丢用户原有模块路径)
+        $curUserPsmp = [Environment]::GetEnvironmentVariable('PSModulePath', 'User')
+        if ($curUserPsmp -like "*$newPsPath*")
+        {
+            Write-Verbose 'PSModulePath already contains the new path, skip setx.'
+        }
+        elseif ([string]::IsNullOrWhiteSpace($curUserPsmp))
+        {
+            setx PSModulePath $newPsPath
+        }
+        else
+        {
+            setx PSModulePath "$newPsPath;$curUserPsmp"
+        }
     }
 
     # 你也可以替换`off`为`LTS`不完全禁用更新但是降低更新频率(仅更新LTS长期支持版powershell)
@@ -314,6 +364,21 @@ function Deploy-CxxuPsModules
     # Add-CxxuPsModuleToProfile
     Write-Warning 'Please use powershell7 use full feature of the CxxuPsModules!' 
     $PwshAvailability = Get-Command pwsh -ErrorAction SilentlyContinue
+    if ($Light)
+    {
+        # 轻量模式:免 pwsh,不装 portable;写 5.1 专属 profile(幂等),新开 powershell.exe 即用
+        Write-Host 'Light mode: skip pwsh installation.' -ForegroundColor cyan
+        try
+        {
+            Install-Ps51Profile -ErrorAction Stop
+        }
+        catch
+        {
+            Write-Warning "Install-Ps51Profile failed ($($_.Exception.Message)). After reopening powershell.exe, run it manually (needs PSModulePath set)."
+        }
+        Write-Host "Done. Reopen powershell.exe (Windows PowerShell 5.1) and run 'init'." -ForegroundColor Green
+        return
+    }
     if(! $PwshAvailability)
     # if ($host.Version.Major -lt 7)
     {
@@ -350,29 +415,46 @@ function Get-CxxuPsModulePackage
     param(
         $Directory = "$home/Downloads/CxxuPsModules",
         $url = 'https://codeload.github.com/xuchaoxin1375/scripts/zip/refs/heads/main',
-        $outputFile = "scripts-$( Get-Date -Format 'yyyy-MM-dd--hh-mm-ss').zip"
+        $outputFile = "scripts-$( Get-Date -Format 'yyyy-MM-dd--hh-mm-ss').zip",
+        # 静默:不弹窗选源,直走 codeload + 中央镜像(给 -Light 轻量部署用)
+        [switch]$Silent
     )
     $urls = @(
         'https://gitcode.net/xuchaoxin1375/scripts/-/archive/SourceCodePackage/scripts-SourceCodePackage.zip',
         'https://codeload.github.com/xuchaoxin1375/scripts/zip/refs/heads/main'
     )
-    $index = 0
-    foreach ($url in $urls)
+    if ($Silent)
     {
-
-        Write-Host "${index}:[${url}]" -ForegroundColor cyan
-        $index++
+        # 取 codeload 直链套中央镜像,不弹窗(脚本头部 $GithubMirror 与中央同策略)
+        $dlMirror = if ($GithubMirror) { ([string]$GithubMirror).TrimEnd('/') } else { '' }
+        $dlUrl = $urls[1]
+        if ($dlMirror)
+        {
+            $dlUrl = "$dlMirror/$dlUrl"
+        }
+        Write-Host "Silent mode, downloading [$dlUrl]" -ForegroundColor cyan
     }
-    $UrlCode = Read-Host "Enter the Deploy Scheme code [0..$($urls.Count-1)](default:0)"
-    if ($UrlCode.Trim() -eq '') { $UrlCode = 0 }
-    $url = $urls[$UrlCode]
+    else
+    {
+        $index = 0
+        foreach ($url in $urls)
+        {
+
+            Write-Host "${index}:[${url}]" -ForegroundColor cyan
+            $index++
+        }
+        $UrlCode = Read-Host "Enter the Deploy Scheme code [0..$($urls.Count-1)](default:0)"
+        if ($UrlCode.Trim() -eq '') { $UrlCode = 0 }
+        $dlUrl = $urls[$UrlCode]
+    }
     if (!(Test-Path $Directory))
     {
-        New-Item -ItemType Directory -Path $Directory -Verbose
+        # Out-Null:目录对象别漏进成功流,否则 return 的包路径会被污染成数组
+        New-Item -ItemType Directory -Path $Directory -Verbose | Out-Null
     }
     $PackgePath = "$Directory/$outputFile"
-    Write-Verbose "Downloading [$url] to $PackgePath" -Verbose
-    Invoke-WebRequest -Uri $url -OutFile $PackgePath -Verbose
+    Write-Verbose "Downloading [$dlUrl] to $PackgePath" -Verbose
+    Invoke-WebRequest -Uri $dlUrl -OutFile $PackgePath -TimeoutSec 120 -Verbose
     return $PackgePath
 }
 
@@ -407,4 +489,4 @@ function Remove-CxxuPsModulesEnvVars
     
 }
 # 调用函数执行安装(配置默认行为)
-Deploy-CxxuPsModules -RepoSource $RepoSource -Verbose -Force:$Force
+Deploy-CxxuPsModules -RepoSource $RepoSource -Verbose -Force:$Force -Light:$Light

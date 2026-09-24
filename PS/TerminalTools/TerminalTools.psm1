@@ -16,27 +16,34 @@ function Get-LatestWindowsTerminalLink
     $apiUrl = 'https://api.github.com/repos/microsoft/terminal/releases'
 
     # Send a request to the GitHub API to get the releases
-    $response = Invoke-RestMethod -Uri $apiUrl -Headers @{'User-Agent' = 'PowerShell' }
+    # api.github.com 国内直连可能失败,失败直接抛给调用方,不递归(旧代码无 asset 时掉进自递归,会栈溢出)
+    try
+    {
+        $response = Invoke-RestMethod -Uri $apiUrl -Headers @{'User-Agent' = 'PowerShell' } -TimeoutSec 15 -ErrorAction Stop
+    }
+    catch
+    {
+        throw "Query Windows Terminal releases failed ($($_.Exception.Message)). Check network or pass a manual msixbundle URL."
+    }
 
     # Filter out pre-release versions and sort releases by the created date
-    $stableReleases = $response | Where-Object { -not $_.prerelease } | Sort-Object { $_.created_at } -Descending
+    $stableReleases = @($response | Where-Object { -not $_.prerelease } | Sort-Object { $_.created_at } -Descending)
 
     # Get the latest stable release
-    $latestRelease = $stableReleases[0]
+    $latestRelease = $stableReleases | Select-Object -First 1
+    if (-not $latestRelease)
+    {
+        throw 'No stable release found for Windows Terminal.'
+    }
 
     # Find the asset that is an .msixbundle
-    $asset = $latestRelease.assets | Where-Object { $_.browser_download_url -like '*.msixbundle' }
+    $asset = $latestRelease.assets | Where-Object { $_.browser_download_url -like '*.msixbundle' } | Select-Object -First 1
 
-    if ($asset)
+    if (-not $asset)
     {
-        # Output the download URL
-        return $asset.browser_download_url
+        throw 'No .msixbundle asset found in the latest stable release.'
     }
-    else
-    {
-        Write-Error 'No .msixbundle asset found in the latest stable release.'
-    }
-    $link = Get-LatestWindowsTerminalLink
+    $link = $asset.browser_download_url
     if ($speedUpLink)
     {
         $link = Get-SpeedUpUri $link

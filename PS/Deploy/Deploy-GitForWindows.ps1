@@ -1,4 +1,4 @@
-<# 
+﻿<# 
 .SYNOPSIS
 临时部署此脚本文件
 Invoke-RestMethod 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-GitForWindows.ps1' | Invoke-Expression
@@ -10,8 +10,9 @@ param(
     # 仓库源(默认 github+加速;gitee 仅保留兼容)
     [validateSet('gitee', 'github')]
     $RepoSource = 'github',
-    # 适用于开发(维护调整)的测试模式
-    [switch]$Dev
+    # 开发模式:用本地最新模块(Deploy.psm1/Git.psm1),不拉远程;仓库根自动从脚本位置推导
+    [switch]$Dev,
+    $DevRoot = ''
     # [switch]$Force
 )
 Write-Host "[Deploy-GitForWindows]:RepoSource=$RepoSource,Dev=$Dev"
@@ -22,13 +23,36 @@ if (Get-Command git -ErrorAction SilentlyContinue)
     return $true
 }
 # $github_mirror="https://gh-proxy.com"
-## 导入其他模块
-# 中央镜像:$env:PsGithubMirror 优先,否则默认 gh-proxy(与 Get-GithubMirrorPrefix 同策略,独立脚本内联一份)
-$repoMirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
-$rawBase = if ($RepoSource -eq 'github') { "$repoMirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main" } else { 'https://gitee.com/xuchaoxin1375/scripts/raw/main' }
-# 方案1:iex执行
-Invoke-RestMethod "$rawBase/PS/Deploy/Deploy.psm1" | Invoke-Expression 
-Invoke-RestMethod "$rawBase/PS/Git/Git.psm1" | Invoke-Expression
+## 导入其他模块(Deploy.psm1/Git.psm1 只提供函数定义,点源本地版与 irm 远端版等价)
+if ($Dev)
+{
+    if ([string]::IsNullOrWhiteSpace($DevRoot))
+    {
+        $DevRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+    }
+    $devDeploy = Join-Path $DevRoot 'PS/Deploy/Deploy.psm1'
+    $devGit = Join-Path $DevRoot 'PS/Git/Git.psm1'
+    if ((Test-Path -LiteralPath $devDeploy) -and (Test-Path -LiteralPath $devGit))
+    {
+        Write-Host '[Deploy-GitForWindows]:Dev mode, use local modules.' -ForegroundColor Yellow
+        . $devDeploy
+        . $devGit
+    }
+    else
+    {
+        Write-Warning "Dev mode requested but local modules not found under [$DevRoot], fall back to remote."
+        $Dev = $false
+    }
+}
+if (-not $Dev)
+{
+    # 中央镜像:$env:PsGithubMirror 优先,否则默认 gh-proxy(与 Get-GithubMirrorPrefix 同策略,独立脚本内联一份)
+    $repoMirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
+    $rawBase = if ($RepoSource -eq 'github') { "$repoMirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main" } else { 'https://gitee.com/xuchaoxin1375/scripts/raw/main' }
+    # 方案1:iex执行
+    Invoke-RestMethod "$rawBase/PS/Deploy/Deploy.psm1" | Invoke-Expression
+    Invoke-RestMethod "$rawBase/PS/Git/Git.psm1" | Invoke-Expression
+}
 
 # 方案2:下载 Deploy.psm1 到临时目录
 # $deployModulePath = Join-Path $env:TEMP 'Deploy.psm1'
@@ -66,6 +90,7 @@ function Deploy-GitForwindows
         $mirror = $github_mirror,
         # 注意区分这url是一个自解压文件还是压缩包文件
         # url可以是从git for windows 的二进制文件镜像站提供的文件下载链接(网页中右键复制指定文件的链接即可,注意是Portable版本的(一般后缀为.7z.exe),而不是普通的安装版)
+        # 下面默认值只是回退(api 查不到才用,最新版跟踪见 Deploy-Guide §14);要用指定版本传 -url,或离线包传 -PackagePath
         [parameter(ParameterSetName = 'Online')]
         $url = 'https://github.com/git-for-windows/git/releases/download/v2.55.0.windows.5/PortableGit-2.55.0.5-64-bit.7z.exe',
 

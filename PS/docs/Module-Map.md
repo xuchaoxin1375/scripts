@@ -70,7 +70,7 @@
 | `Scoop` | 984/11 | Scoop 包管理：国内镜像部署、批量装机、版本切换、`Repair-ScoopUpdate`（修复 update 被未提交更改中断，2026-09-22 从 `Deploy` 迁入，冷路径按需加载） |
 | `DevEnv` | 733/12 | 语言工具链与编辑器开箱：Python/conda/C++/Typora/VSCode/WT/补全栈（2026-09-22 从 `Deploy` 迁入，冷路径按需加载） |
 | `Development` | 340/22 | Django 快捷命令、ssh 别名、文本清理 |
-| `Git` | 505/15 | git 日常：浅克隆、一键提交、镜像加速下载 |
+| `Git` | 548/16 | git 日常：浅克隆、一键提交、镜像加速下载（`Get-SpeedUpUri` 轻量单链版，2026-09-24 补） |
 | `RepoSync` | 265/8 | 多仓库同步/开发环境同步：`Push/Update-ReposesConfiged*`、`update_functions`（2026-09-22 从 `Basic` 迁入，B 档 5.1） |
 | `MySql` | 905/12 | MySQL 库表备份/建删/查询（`Get-MySqlDatabaseNameCmdletDeprecated` 已删，2026-09-22） |
 | `WordPress` | 1685/9 | WP 本地建站 + 总入口 `Deploy-Wp`；线上运维 18 函数已迁 `WpOnline`、内容处理 6 函数已迁 `WpContent`（2026-09-22，命令名不变） |

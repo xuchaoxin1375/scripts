@@ -1,4 +1,4 @@
-
+﻿
 param(
     $File = "$PSScriptRoot\fetch-github-hosts.ps1",
     [ValidateSet('pwsh', 'powershell')]$shell = 'powershell',
