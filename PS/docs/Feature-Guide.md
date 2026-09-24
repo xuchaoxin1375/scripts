@@ -84,7 +84,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 - `argc`/`fnm` 钩子保持注释；`argc` 二进制缺失时不要放开。
 
 ## 6. FAQ
-
+- **`scoop update/install` 报 `cannot pull with rebase: Your index contains uncommitted changes`**：任一仓库（scoop 本体 `apps\scoop\current` 或某个 bucket）处于脏状态，git 拒绝执行 pull --rebase。修复：`Repair-ScoopUpdate`（`Scoop` 模块，逐个检查本体与全部 bucket，默认 stash 保留现场，加 `-Discard` 丢弃改动，收尾自动 `scoop update`，只看不动加 `-NoUpdate -WhatIf`）。
 - **看不到 `Loading personal and system profiles took ...ms`**：正常。引擎只在四个
   profile 合计 >500ms（硬编码）才打印，不到就静默。
 - **嵌套 `pwsh` 又跑一遍 init**：新进程不继承 `$global:PsInit`，只能重跑；

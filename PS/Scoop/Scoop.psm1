@@ -825,3 +825,160 @@ function Deploy-ScoopStartMenuAppsStarter
     }
     Write-Host '环境变量修改完成。请重新启动命令提示符或 PowerShell 以使更改生效。'
 }
+
+function Repair-ScoopUpdate
+{
+    <#
+    .SYNOPSIS
+    修复 scoop update 或 scoop install 更新阶段被 git 中断的问题。
+    .DESCRIPTION
+    前置条件:scoop 本体与各 bucket 均为 git 仓库,scoop update 内部执行 git pull --rebase。
+    当任一仓库存在未提交的更改(中断的更新、误编辑、换行符改动均可造成)时,git 拒绝执行
+    pull --rebase,表现为 Updating Scoop... 或 Updating Buckets... 之后报错
+    cannot pull with rebase: Your index contains uncommitted changes。
+    本函数逐个检查 scoop 本体仓库与全部 bucket 仓库,定位处于脏状态的仓库并恢复为干净
+    状态,恢复后可重新执行 scoop update。默认执行 git stash 保留现场,加 -Discard 则
+    执行 git reset --hard 与 git clean,丢弃本地改动(各 bucket 内容与上游保持一致)。
+    执行者为当前用户,无需管理员权限。善后:默认收尾执行一次 scoop update,加 -NoUpdate
+    则只修复 git 状态,不执行更新;stash 保留的现场可用 git stash list 查看。
+    .PARAMETER ScoopRoot
+    用户级 scoop 根目录。缺省时取环境变量 SCOOP,未设置时取 HOME 下 scoop 目录。
+    如需修复全局安装,请显式传入全局根目录。
+    .PARAMETER Discard
+    丢弃脏仓库中的本地改动并清理未跟踪文件。缺省不加时执行 stash 保留现场。
+    .PARAMETER NoUpdate
+    只修复各仓库的 git 状态,跳过收尾的 scoop update。
+    .EXAMPLE
+    Repair-ScoopUpdate
+    定位全部脏仓库并 stash,收尾执行 scoop update。
+    .EXAMPLE
+    Repair-ScoopUpdate -Discard
+    丢弃全部脏仓库的本地改动,收尾执行 scoop update。
+    .EXAMPLE
+    Repair-ScoopUpdate -NoUpdate -WhatIf
+    空跑查看哪些仓库处于脏状态,不改动文件,不执行更新。
+    #>
+    [CmdletBinding(SupportsShouldProcess = $true)]
+    param(
+        [string]$ScoopRoot = '',
+        [switch]$Discard,
+        [switch]$NoUpdate
+    )
+    $git = Get-Command git -ErrorAction SilentlyContinue
+    if ($null -eq $git)
+    {
+        Write-Warning '未找到 git 命令,请先安装 git 后再执行本函数。'
+        return
+    }
+    if ([string]::IsNullOrEmpty($ScoopRoot))
+    {
+        if ([string]::IsNullOrEmpty($env:SCOOP))
+        {
+            $ScoopRoot = Join-Path $HOME 'scoop'
+        }
+        else
+        {
+            $ScoopRoot = $env:SCOOP
+        }
+    }
+    if (-not (Test-Path -LiteralPath $ScoopRoot))
+    {
+        Write-Warning "Scoop 根目录不存在: $ScoopRoot"
+        return
+    }
+    $repos = @()
+    $corePath = Join-Path $ScoopRoot 'apps\scoop\current'
+    if ((Test-Path -LiteralPath (Join-Path $corePath '.git')))
+    {
+        $repos += $corePath
+    }
+    $bucketsPath = Join-Path $ScoopRoot 'buckets'
+    if (Test-Path -LiteralPath $bucketsPath)
+    {
+        $bucketDirs = Get-ChildItem -LiteralPath $bucketsPath -Directory -ErrorAction SilentlyContinue
+        foreach ($dir in $bucketDirs)
+        {
+            if (Test-Path -LiteralPath (Join-Path $dir.FullName '.git'))
+            {
+                $repos += $dir.FullName
+            }
+        }
+    }
+    if ($repos.Count -eq 0)
+    {
+        Write-Warning "在 $ScoopRoot 下未找到任何 git 仓库(scoop 本体或 bucket)。"
+        return
+    }
+    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    foreach ($repo in $repos)
+    {
+        $status = & git -C $repo status --porcelain 2>&1
+        if ([string]::IsNullOrEmpty("$status".Trim()))
+        {
+            Write-Verbose "干净: $repo"
+            [pscustomobject]@{
+                Repository = (Split-Path $repo -Leaf)
+                Path       = $repo
+                Status     = 'Clean'
+                Detail     = ''
+            }
+            continue
+        }
+        $detail = ($status | Out-String).Trim()
+        Write-Verbose "发现脏仓库: $repo"
+        Write-Verbose $detail
+        if ($Discard)
+        {
+            if ($PSCmdlet.ShouldProcess($repo, 'git reset --hard HEAD 并清理未跟踪文件'))
+            {
+                $resetOut = & git -C $repo reset --hard HEAD 2>&1
+                $cleanOut = & git -C $repo clean -fd 2>&1
+                $recheck = & git -C $repo status --porcelain 2>&1
+                $state = 'Reset'
+                if (-not [string]::IsNullOrEmpty("$recheck".Trim()))
+                {
+                    $state = 'ResetFailed'
+                }
+                [pscustomobject]@{
+                    Repository = (Split-Path $repo -Leaf)
+                    Path       = $repo
+                    Status     = $state
+                    Detail     = (($resetOut, $cleanOut | Out-String).Trim())
+                }
+            }
+        }
+        else
+        {
+            if ($PSCmdlet.ShouldProcess($repo, 'git stash 保留现场'))
+            {
+                $stashOut = & git -C $repo stash push -u -m "Repair-ScoopUpdate $stamp" 2>&1
+                $recheck = & git -C $repo status --porcelain 2>&1
+                $state = 'Stashed'
+                if (-not [string]::IsNullOrEmpty("$recheck".Trim()))
+                {
+                    $state = 'StashFailed'
+                }
+                [pscustomobject]@{
+                    Repository = (Split-Path $repo -Leaf)
+                    Path       = $repo
+                    Status     = $state
+                    Detail     = (($stashOut | Out-String).Trim())
+                }
+            }
+        }
+    }
+    if ($NoUpdate)
+    {
+        return
+    }
+    $scoop = Get-Command scoop -ErrorAction SilentlyContinue
+    if ($null -eq $scoop)
+    {
+        Write-Warning 'git 状态已修复,但未找到 scoop 命令,收尾的 scoop update 未执行。'
+        return
+    }
+    if ($PSCmdlet.ShouldProcess('scoop', 'scoop update'))
+    {
+        scoop update
+    }
+}
