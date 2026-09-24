@@ -739,20 +739,16 @@ mysql  -e "SELECT 1" # &>/dev/null
 
 
 
-### 配置系统时间为北京时间(beijin_date)
+### 配置系统主机名和时间
 
-```bash
-sudo timedatectl set-timezone Asia/Shanghai
-# 重载日志服务
-systemctl restart rsyslog
-```
-
-### 修改主机名🎈
+修改主机名和北京时间(beijin_date)
 
 ```bash
 # 务必自行修改NewHostName.
 sudo hostnamectl set-hostname "NewHostName"
-#重载日志服务(否则许多日志还是使用旧主机名,例如:/var/log/auth.log)
+# 北京时间
+sudo timedatectl set-timezone Asia/Shanghai
+# 重载日志服务(否则许多日志还是使用旧主机名,例如:/var/log/auth.log)
 systemctl restart rsyslog
 ```
 
