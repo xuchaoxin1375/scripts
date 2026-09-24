@@ -32,13 +32,16 @@ if($Dev)
 }
 else
 {
-    # 正式版:
-    $dgwUrl = "https://${RepoSource}.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-GitForWindows.ps1"
-    # github镜像
-    if ($RepoSource -eq 'github' -and $GithubMirror)
+    # 正式版(github 走加速前缀,gitee 直连;raw 一律用 raw.githubusercontent 形式)
+    if ($RepoSource -eq 'github')
     {
-        $dgwUrl = "$GithubMirror/$dgwUrl" 
+        $dgwRaw = 'https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-GitForWindows.ps1'
+        $dgwUrl = if ($GithubMirror) { "$GithubMirror/$dgwRaw" } else { $dgwRaw }
         Write-Verbose "GithubMirror:[$GithubMirror]"
+    }
+    else
+    {
+        $dgwUrl = 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-GitForWindows.ps1'
     }
 
     Write-Host "拉取Deploy-GitForWindows 命令:[$dgwUrl]..."
@@ -107,7 +110,7 @@ function Deploy-CxxuPsModules
         $NewPsPath = "$RepoPath\PS",
         
         [ValidateSet('gitee', 'github')]
-        $RepoSource = 'gitee',
+        $RepoSource = 'github',
         # 如果使用从包安装的方案,需要指定包的位置,这里的路径是包文件路径,而不是包文件所在目录
         #和从远程仓库克隆有多个来源可选一样,下载离线包也有多种选择,同样是github可以直接下载,但是速度慢或者下不动,
         # 而gitee等仓库平台需要登录,条件允许的话,登录下载快,成功率高
@@ -288,8 +291,9 @@ function Deploy-CxxuPsModules
     }
  
     # $RepoPath = 'C:\repos\scripts\PS' #这里修改为您下载的模块所在目录,这里的取值作为示范
-    $env:PSModulePath = ";$NewPsPath" #为了能够调用CxxuPSModules中的函数,这里需要这么临时设置一下
-    if ($host.Version.Major -gt 7)
+    # 临时生效以便调用模块中的函数(前置追加,不要覆盖原有取值)
+    $env:PSModulePath = "$NewPsPath;$env:PSModulePath"
+    if ($host.Version.Major -ge 7)
     {
 
         Add-EnvVar -EnvVar PsModulePath -NewValue $newPsPath -Verbose #这里$RepoPath上面定义的(默认是User作用于,并且基于User的原有取值插入新值)
@@ -318,7 +322,15 @@ function Deploy-CxxuPsModules
         {
 
             # Invoke-RestMethod "https://$RepoSource.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-Pwsh7Portable.ps1" | Invoke-Expression
-            $dp7Url = "https://$RepoSource.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-Pwsh7Portable.ps1"
+            if ($RepoSource -eq 'github')
+            {
+                $dp7Raw = 'https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-Pwsh7Portable.ps1'
+                $dp7Url = if ($GithubMirror) { "$GithubMirror/$dp7Raw" } else { $dp7Raw }
+            }
+            else
+            {
+                $dp7Url = 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-Pwsh7Portable.ps1'
+            }
             Write-Verbose "Downloading Deploy-Pwsh7Portable.ps1 from $dp7Url"
             Invoke-RestMethod $dp7Url > ~/dp7.ps1
             ~/dp7.ps1 -RepoSource $RepoSource -Verbose

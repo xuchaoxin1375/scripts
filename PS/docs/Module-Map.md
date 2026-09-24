@@ -102,7 +102,7 @@
 | `JumpDirectory` | — | 已删除（61 函数零引用，用户动手） |
 
 已解决：`Test`（whois，名实不符）→ 改名 `Whois`；`CommentBasedHelpDocumentExamples`
-→ 改名 `HelpExamples`。函数名一律未动，GUID 未动，53 模块总数不变。
+→ 改名 `HelpExamples`。函数名一律未动，GUID 未动；后续拆分到 67 模块（见各搬迁记录）。
 
 ## 热路径调用链（启动/首渲染）
 

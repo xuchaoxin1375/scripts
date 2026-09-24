@@ -26,7 +26,7 @@
 对于**windows**用户,建议关闭`autocrlf`,否则一些bash脚本的换行方式会被修改为CRLF,造成脚本运行出错,包括git-bash.
 
 ```bash
-git config --global core.autocrlf true
+git config --global core.autocrlf false
 ```
 
 补救措施:(如果上述配置之前已经clone好代码了,有2种方案:
@@ -59,8 +59,8 @@ cd $sh;ls -Recurse *.sh,.inputrc.conf|Convert-CRLF -Replace -To LF ;cd -
 
 - powershell模块部分详情查看说明文档:
 
-  - 仓库内查看[pwshModulebyCxxu.md](./PwshModuleByCxxu.md)
-  - 文档此文档内提供了一键部署此项目的方案
+  - 先看[文档入口地图](./PS/docs/README.md)(新用户按任务分流),新机部署看[部署指南](./PS/docs/Deploy-Guide.md)
+  - 旧结构文档[ archive:pwshModulebyCxxu.md](./PwshModuleByCxxu.md)仅供考古,现状以 `PS/docs/` 为准
 - 其他入口
 
   - [Scripts:PwshModuleByCxxu - GitCode](https://gitcode.com/xuchaoxin1375/Scripts/blob/main/PwshModuleByCxxu.md)
@@ -73,20 +73,21 @@ cd $sh;ls -Recurse *.sh,.inputrc.conf|Convert-CRLF -Replace -To LF ;cd -
 
 部署完整的powershell模块,适合长期使用.
 
-> gitee 可能要求登录账号;
+> 默认走 github + 加速镜像(2026-09-24 本机实测可用,见 `PS/TestLinks/TestLinks.psm1`);
+> gitee 对 `irm|iex` 常误报拦截,只留兼容,不再作为默认源.
 
 ```powershell
-irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1'|iex
+irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1'|iex
 
 ```
 
-> 分步执行:(可以指定参数,例如仓库源指向github.)
+> 分步执行:(可审查脚本内容,也可指定参数.)
 >
 > ```powershell
-> irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1' > ~/dcp.ps1
+> irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1' > ~/dcp.ps1
 > ~/dcp.ps1 -RepoSource github
 > # 如果需要强制覆盖已有仓库,可以运行
-> Deploy-CxxuPsModules  -Verbose -Confirm # -RepoSource github 也可以zhi'd
+> Deploy-CxxuPsModules  -Verbose -Confirm
 > ```
 >
 > 
@@ -122,7 +123,7 @@ irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsMod
 #### Tools系列
 
 ```powershell
-irm https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Tools/Tools.psm1|iex
+irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Tools/Tools.psm1'|iex
 
 ```
 
@@ -240,14 +241,14 @@ bash ~/sh/shellrc_addition.sh && exec bash
 ```powershell
 # 创建仓库存放目录
 New-Item -itemtype directory C:/repos -Verbose -ErrorAction SilentlyContinue
-# 开始clone:
-git clone --recursive --depth 1 --shallow-submodules https://gitee.com/xuchaoxin1375/scripts.git C:/repos/scripts
+# 开始clone(默认走 github;国内网络可先配好镜像/代理,见本文“github公益加速站”一节):
+git clone --recursive --depth 1 --shallow-submodules https://github.com/xuchaoxin1375/scripts.git C:/repos/scripts
 # 可选的设置环境变量：
 setx PsModulePath C:/repos/scripts/PS
 
 ```
 
-> gitee可能要求用户登录自己的gitee账号才能clone.
+> 国内从 gitee clone 可能要求登录；github 免登录但直连不一定通，不通可走镜像或代理.
 
 如果不想登录且网络环境允许,可用走github方案:将上述命令行中的`gitee`替换为`github`,当然还可以选择配置加速镜像或者代理:
 
@@ -268,7 +269,7 @@ setx PsModulePath C:/repos/scripts/PS
 ```bash
 repos="$HOME/repos"
 scripts="$repos/scripts"
-repo_source="gitee.com" # 根据需要可以切换为github.com
+repo_source="github.com" # 国内直连不通可切换代理/镜像,备选 gitee.com(可能要求登录)
 mkdir -p "$repos" 
 # clone代码
 git clone --recursive --depth 1 --shallow-submodules https://"$repo_source"/xuchaoxin1375/scripts.git "$scripts"
@@ -298,23 +299,23 @@ exec bash
 
 ### 部署失败问题👺
 
-本项目的许多一键部署脚本依赖于 `github.com`的加速站点,如果这些站点过期了,那么会导致相关下载行为无法顺利执行 `irm,wget`等
+本项目的许多一键部署脚本依赖于 `github.com` 的加速站点,如果这些站点过期了,那么会导致相关下载行为无法顺利执行 `irm,wget`等
 
-并且这些加速镜像站点是硬编码内置在代码中,当然大多情况下你可以在命令行中指定最新可用的加速镜像站来修复过期的加速站链接
-
-仓库中许多代码都使用了这种不完美的配置方案,以便于提供独立的功能(比如用户可以独立调用 `Deploy-GitForwindows`,`Deploy-Pwsh7Portable`等,维护这些模块时,需要注意批量替换这些加速站地址
+仓库已收敛到统一方案(2026-09-24 本机实测,见 `PS/TestLinks/TestLinks.psm1`):
+中央变量 `$env:PsGithubMirror`(不设则默认 `https://gh-proxy.com`,模块内静默测速会话缓存一次),
+拼 raw 地址一律走 `Get-RepoRawUrl`(模块内)或同策略三行内联(独立 `Deploy-*.ps1` 脚本).
+大多数情况下你可以在命令行中指定最新可用的加速镜像站来替换过期的加速站链接(例如 `-RepoSource github` 配合 `$env:PsGithubMirror`)
 
 ## github公益加速站👺
 
-- 加速下载依赖于github加速镜像站,如果内置的镜像站过期或不可用,您可以通过github相关加速站点获取可用方案
+- 加速下载依赖于github加速镜像站,如果内置的镜像站过期或不可用,先跑 `Get-AvailableGithubMirrors` 测速,
+  挑最快的持久化:`Add-EnvVar -EnvVar PsGithubMirror -NewValue 'https://xxx'`;
+  也可以对照下面的搜集页自找(注意甄别,很多已停服):
 
-  - [GitHub文件加速|列表集合](https://yishijie.gitlab.io/ziyuan/)
-  - [GitHub Mirror 文件加速|列表集合](https://github-mirror.us.kg/)
+  - [GitHub文件加速|列表集合](https://yishijie.gitlab.io/ziyuan/)(聚合页,非下载前缀)
   - [【镜像站点搜集】 · Issue #116 · hunshcn/gh-proxy (github.com)](https://github.com/hunshcn/gh-proxy/issues/116#issuecomment-2339526975)
-- powershell模块中,几乎用到镜像加速站的独立模块都用 `$github_mirror`变量来存储和管理,如果需要替换镜像链接
-
-  - 设 `$github_mirror='https://olddomain.com'`,如果你要替换为新的镜像链接 `https://newdomain.com`
-  - 可以打开vscode,然后在仓库中搜索所有 `https://olddomain.com`,替换为 `https://newdomain.com`
+- powershell模块中,几乎用到镜像加速站的独立模块都用 `$github_mirror`/`$env:PsGithubMirror` 变量来管理,
+  不要再硬编码旧域名(`github.moeyy.xyz` 已停服,`ghproxy.cc`/`mirror.ghproxy.com` 已不可用,详见 `PS/TestLinks/TestLinks.psm1` 头部注释)
 
 ### 文档相对路径
 

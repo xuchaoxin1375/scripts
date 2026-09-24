@@ -14,7 +14,7 @@ if($RepoSource -eq 'github')
     # 中央镜像:$env:PsGithubMirror 优先,否则默认 gh-proxy(独立脚本内联一份,见 Get-GithubMirrorPrefix)
     $repoMirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
     $dplUrl = "$repoMirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1"
-    $tlUrl = "$repoMirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/TestLinks.psm1"
+    $tlUrl = "$repoMirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/TestLinks/TestLinks.psm1"
     $gitUrl = "$repoMirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Git/Git.psm1"
 }
 else
@@ -22,7 +22,7 @@ else
 
     
     $dplUrl = "https://raw.giteeusercontent.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy.psm1" 
-    $tlUrl = "https://raw.giteeusercontent.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/TestLinks.psm1"
+    $tlUrl = "https://raw.giteeusercontent.com/xuchaoxin1375/scripts/raw/main/PS/TestLinks/TestLinks.psm1"
     $gitUrl = "https://raw.giteeusercontent.com/xuchaoxin1375/scripts/raw/main/PS/Git/Git.psm1"
 }
     
@@ -84,7 +84,15 @@ function Deploy-Pwsh7Portable
             [ValidateSet('msi', 'zip')]$PackageType = 'msi'
         )
         $releasesUrl = 'https://api.github.com/repos/PowerShell/PowerShell/releases/latest'
-        $releaseInfo = Invoke-RestMethod -Uri $releasesUrl -Headers @{ 'User-Agent' = 'PowerShell-Script' }
+        # api.github.com 国内直连可能失败,失败则抛给调用方回退处理
+        try
+        {
+            $releaseInfo = Invoke-RestMethod -Uri $releasesUrl -Headers @{ 'User-Agent' = 'PowerShell-Script' } -TimeoutSec 15 -ErrorAction Stop
+        }
+        catch
+        {
+            throw "Query latest PowerShell release failed ($($_.Exception.Message)). Pass -BaseUrl explicitly, e.g. a mirror-prefixed zip URL."
+        }
 
         Write-Host "Trying to get latest PowerShell ${PackageType}..."
         foreach ($asset in $releaseInfo.assets)
@@ -106,14 +114,15 @@ function Deploy-Pwsh7Portable
     if ( $mirror )
     {
         Write-Host "try use mirror: $mirror to speed up link"
-        $BaseUrl = "$mirror/$BaseUrl".trim('/')
+        # $mirror 为空字符串表示不走镜像,不要拼出 "/https://..." 坏链接
+        $BaseUrl = "$(([string]$mirror).TrimEnd('/'))/$BaseUrl"
         Write-Host "Downloading from $BaseUrl"
     }
     else
     {
         Write-Host 'Use no mirror'
     }
-    $versionCode = $s -replace '.*(\d+\.\d+\.\d+).*', '$1'
+    $versionCode = $BaseUrl -replace '.*(\d+\.\d+\.\d+).*', '$1'
     # 下载文件
     $outputPath = "$env:TEMP\powershell-$versionCode.zip"
     $downloadNeed = $True
@@ -124,8 +133,8 @@ function Deploy-Pwsh7Portable
     else
     {
         Write-Output "$outputPath is already exist"
-        $downloadNeed = Read-Host "Download again ？(Y/N)"
-        if ($response -like 'Y')
+        $answer = Read-Host "Download again ?(Y/N)"
+        if ($answer -like 'Y*')
         {
             Write-Host "Redownload..."
             $downloadNeed = $True
@@ -134,6 +143,7 @@ function Deploy-Pwsh7Portable
         else
         {
             Write-Host "Use cached file: $outputPath"
+            $downloadNeed = $False
         }
     }
     

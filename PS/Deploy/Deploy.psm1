@@ -1,8 +1,8 @@
-﻿<# 
+﻿<#
 .SYNOPSIS
 临时部署此模块
 
-Invoke-RestMethod 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy.psm1' | Invoke-Expression
+Invoke-RestMethod 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1' | Invoke-Expression
 .DESCRIPTION
 
 #如果你懒得添加引号,那么将镜像链接逐个添加到下面的多行字符串中,即便包含了引号或者双引号逗号也都能够正确处理
@@ -60,31 +60,29 @@ function Get-SelectedMirror
     包含单个字符串的数组被返回时会被自动解包,这种情况下会是一个字符串
     如果确实需要外部接受数组,那么可以在外部使用@()来包装返回结果即可
     .EXAMPLE
-    PS C:\repos\scripts> Get-SelectedMirror         
+    PS C:\repos\scripts> Get-SelectedMirror
 Checking available Mirrors...
-         https://demo.testNew.com.
-         https://gh.ddlc.top
+         https://gh-proxy.com
+         https://gh-proxy.org
 ...
 
 Available Mirrors:
  0: Use No Mirror
- 1: https://gh.ddlc.top
- 2: https://ghps.cc
- 3: https://gh.con.sh
- 4: https://gh.noki.icu
- 5: https://slink.ltd
- 6: https://github.moeyy.xyz
- 7: https://ghproxy.homeboyc.cn
+ 1: https://gh-proxy.com
+ 2: https://gh-proxy.org
+ 3: https://ghfast.top
+ 4: https://ghproxy.net
+ 5: https://cors.isteed.cc
 
-Select the number(s) of the mirror you want to use [0~15] ?(default: 1): 1,3,5
-Selected mirror:[ 
-        https://gh.ddlc.top
-        https://gh.con.sh
-        https://slink.ltd
+Select the number(s) of the mirror you want to use [0~13] ?(default: 1): 1,3,5
+Selected mirror:[
+        https://gh-proxy.com
+        https://ghfast.top
+        https://cors.isteed.cc
 ]
-https://gh.ddlc.top
-https://gh.con.sh
-https://slink.ltd
+https://gh-proxy.com
+https://ghfast.top
+https://cors.isteed.cc
 PS C:\repos\scripts>
     #>
     [CmdletBinding()]
@@ -102,7 +100,7 @@ PS C:\repos\scripts>
     {
         # 临时获取链接测试函数(走中央镜像,不再依赖 gitee)
         $tlMirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
-        Invoke-RestMethod "$tlMirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/TestLinks.psm1" | Invoke-Expression
+        Invoke-RestMethod "$tlMirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/TestLinks/TestLinks.psm1" | Invoke-Expression
     }
  
     $Mirrors = Get-AvailableGithubMirrors -PassThru -Linearly:$Linearly
@@ -114,7 +112,7 @@ PS C:\repos\scripts>
         $numOfMirrors = $Mirrors.Count
         $range = "[0~$($numOfMirrors-1)]"
         $num = Read-Host -Prompt "Select the number(s) of the mirror you want to use $range ?(default: $default)"
-        # $mirror = 'https://mirror.ghproxy.com'
+        # $mirror = 'https://gh-proxy.com'
         # if($num.ToCharArray() -contains ','){
         # }
 
@@ -342,7 +340,16 @@ function Deploy-GithubHostsAutoUpdater
     #>
     param (
     )
-    Invoke-RestMethod https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/GithubHostsUpdater/Register-GithubHostsAutoUpdater.ps1 | Invoke-Expression
+    $tlMirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
+    $regRaw = 'https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/GithubHostsUpdater/Register-GithubHostsAutoUpdater.ps1'
+    try
+    {
+        Invoke-RestMethod "$tlMirror/$regRaw" | Invoke-Expression
+    }
+    catch
+    {
+        Invoke-RestMethod $regRaw | Invoke-Expression
+    }
 
     
 }

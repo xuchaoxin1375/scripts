@@ -19,10 +19,11 @@
   - 或者尝试手动下载仓库包，调用 `Deploy-CxxuPsModule`函数,并使用合适的参数,尝试离线安装
 
 ```powershell
-$url = 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1'
+$mirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
+$url = "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1"
 $scripts = Invoke-RestMethod $url
 $scripts | Invoke-Expression
-# Deploy-CxxuPsModules 
+# Deploy-CxxuPsModules
 ```
 
 ### 一行搞定👺
@@ -30,21 +31,20 @@ $scripts | Invoke-Expression
 下面虽然提供了更短的方案,可以一行搞定,但是为了便于审查,使用上面的多行版本会更推荐,比如方便我们引用`$url`以及`$scripts`进行其他操作
 
 ```powershell
-Invoke-Expression (Invoke-RestMethod 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1')
+Invoke-Expression (Invoke-RestMethod 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1')
 
 ```
 
 或者
 
 ```powershell
-irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1'|iex
+irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1'|iex
 ```
 
-还可以做短链转换
-
-```powershell
-irm 'http://b.mtw.so/62WaCm'|iex
-```
+> 默认镜像 `gh-proxy.com` 若不可用,先换一个可用镜像(跑 `Get-AvailableGithubMirrors` 测速,或见
+> `PS/TestLinks/TestLinks.psm1` 头部实测列表),再把上面链接中的镜像前缀替换掉即可;
+> gitee 只留兼容(`https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1`),
+> 但 `irm|iex` 常被拦截,不再推荐.
 
 
 
@@ -54,12 +54,12 @@ irm 'http://b.mtw.so/62WaCm'|iex
 
 ```powershell
 Set-ExecutionPolicy Bypass -Scope CurrentUser -Force
-$mirror = 'https://github.moeyy.xyz' #如果采用github方案，那么推荐使用加速镜像来下载脚本文件，如果此镜像不可用，请自行搜搜可用镜像，然后替换此值即可
-#默认使用国内平台 gitee加速
-$url1 = 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1'
-$url2= 'https://raw.gitcode.com/xuchaoxin1375/Scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1'
-#国外Github平台
-$url3 = "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1"
+$mirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' } #github加速镜像,不可用就换一个(见 PS/TestLinks/TestLinks.psm1 头部实测列表)
+#默认使用 github + 加速镜像;gitee 只留兼容
+$url1 = "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1"
+$url2 = 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1'
+#国外Github平台直连(不走镜像,不一定连得上)
+$url3 = 'https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1'
 $urls = @($url1, $url2,$url3)
 $code = Read-Host "Enter the Deploy Scheme code [0..$($urls.Count-1)](default:1)"
 $code = $code -as [int]
@@ -88,7 +88,7 @@ $scripts | Invoke-Expression
 - 在失败的情况下,您有两种方案可以提高成功率(通常都是百分百成功,甚至不需要你的计算机直接连接互联网):
 
   1. 下载并安装Git软件(如果是便携版,需要手动配置环境变量Path),此软件可以从联想应用商店等应用市场下载,安装完成git后关闭所有powershell终端窗口,打开新powershell7窗口,然后重新尝上述脚本(这种方案最简单,代码也不用改)
-  2. 另一种方案不依赖于Git,你需要到项目的仓库(gitee/gitcode/github)中人一一个在线网站上下载项目的压缩包(体积很小),然后复制下载到的包的路径,使用适合的参数调用 `Deploy-CxxuPsModules`重新安装,下面的演示环节演示了此方式的部署过程(注意,gitee,gitcode等平台下载项目的压缩包需要你登录,github可以不登录,但是不一定下的下来,因此我推荐登录国内平台然后顺利下载)
+  2. 另一种方案不依赖于Git,你需要到项目的仓库(gitee/github)中任选一个在线网站上下载项目的压缩包(体积很小),然后复制下载到的包的路径,使用适合的参数调用 `Deploy-CxxuPsModules`重新安装,下面的演示环节演示了此方式的部署过程(注意,gitee 等国内平台下载仓库压缩包可能需要登录;github 免登录但直连不一定通,不通就换加速镜像前缀后下载,例如 `https://gh-proxy.com/https://github.com/xuchaoxin1375/scripts/archive/refs/heads/main.zip`)
 - 无参数直接调用部署函数版本要求你已经安装git,以下版本尝试从github下载本仓库包(版本可能滞后),如果你不想安装git可以尝试指定 `Mode`选择离线安装以下方案
 
   - Gitee下载源代码也可以,但是需要登陆才能获取下载链接
@@ -98,7 +98,8 @@ $scripts | Invoke-Expression
 
 ```powershell
 PS C:\ProgramData\scoop\apps\powershell\current> cd
-PS C:\Users\cxxu> $url = 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1'
+PS C:\Users\cxxu> $mirror = 'https://gh-proxy.com'
+>> $url = "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1"
 >> $scripts = Invoke-RestMethod $url
 >> $scripts | Invoke-Expression
 >> #尝试执行默认的安装行为,如果失败(很可能是没有安装Git,这时候需要手动下载仓库文件包),尝试手动调用Deploy-CxxuPsModule函数,并使用合适的参数,尝试离线安装
@@ -152,7 +153,7 @@ Deploy模块含有大量实用函数(基本上其他单独的deploy-xxx都能在
 建议使用powershell7来执行,powershell v5可能会不兼容或部分函数不兼容
 
 ```powershell
-irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy.psm1'|iex
+irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1'|iex
 
 ```
 
@@ -168,7 +169,7 @@ Deploy-SmbSharing
 部署smbsharing
 
 ```powershell
-irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy.psm1'|iex
+irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1'|iex
 gcm Deploy-SmbSharing -syntax
 # help Deploy-SmbSharing #执行这一行查看使用帮助,默认不执行直接部署配置
 Deploy-SmbSharing -DisableSmbUserLogonLocally -Verbose -confirm:$false #使用$true会逐步向你询问确认
@@ -186,7 +187,7 @@ Remove-SmbShare share
 ### 部署ScoopForCnUser
 
 ```powershell
-irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy.psm1'|iex
+irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1'|iex
 gcm Deploy-ScoopForCnUser -syntax
 Deploy-ScoopForCNUser -UseGiteeForkAndBucket -InstallBasicSoftwares # -InstallForAdmin
 Add-ScoopBuckets -Silent
@@ -196,7 +197,7 @@ Add-ScoopBuckets -Silent
 ### 查看可用的github_mirror加速镜像站
 
 ```powershell
-irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy.psm1'|iex
+irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1'|iex
 # get functions or commands about mirror operations!
 gcm *mirror* 
 #check commands usage (syntax)
@@ -204,7 +205,7 @@ gcm Get-AvailableGithubMirrors -Syntax #use this is enough in general cases
 gcm Get-SelectedMirror -Syntax
 #choose a mirror which is available
 
-$gihtub_mirror=Get-SelectedMirror #choose default mirror
+$github_mirror = Get-SelectedMirror #choose default mirror
 Write-Verbose $github_mirror -Verbose #check what mirror is chosen
 
 ```
@@ -218,7 +219,7 @@ Write-Verbose $github_mirror -Verbose #check what mirror is chosen
 - 以下是部署脚本
 
   ```powershell
-  irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-Pwsh7Portable.ps1'|iex
+  irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-Pwsh7Portable.ps1'|iex
   ```
 
   - 安装过程中会提示你是否要删除安装包,根据需要选择是否删除即可
@@ -228,7 +229,7 @@ Write-Verbose $github_mirror -Verbose #check what mirror is chosen
 ## 部署Git for windows🎈
 
 ```powershell
-irm 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-GitForWindows.ps1'|iex
+irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-GitForWindows.ps1'|iex
 Deploy-GitForWindows -IgnoreCache
 
 ```

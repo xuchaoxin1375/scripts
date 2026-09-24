@@ -1,6 +1,15 @@
 
-# $github_mirror = 'https://gh-proxy.com' #加速镜像站,可能会失效,也可能是部分时段失效,需要注意更新维护
-Invoke-RestMethod 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy.psm1' | Invoke-Expression
+# 加速镜像站可能会失效,也可能是部分时段失效,可用镜像见 PS/TestLinks/TestLinks.psm1(2026-09-24 本机实测)
+$fetchMirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
+$fetchRaw = 'https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1'
+try
+{
+    Invoke-RestMethod "$fetchMirror/$fetchRaw" | Invoke-Expression
+}
+catch
+{
+    Invoke-RestMethod $fetchRaw | Invoke-Expression
+}
 # get functions or commands about mirror operations!
 Get-Command *mirror* 
 #check commands usage (syntax)
@@ -32,7 +41,7 @@ function Update-GithubHosts-Archive
         $remote = 'https://raw.hellogithub.com/hosts',
         # 如果原站不可用,考虑访问github,用加速站获取文件
         [switch]$UseLink2,
-        $mirror = $github_mirror, #加速镜像站可能会失效,需要注意更新维护(https://ghproxy.link/)
+        $mirror = $github_mirror, #加速镜像站可能会失效,可用列表见 TestLinks 模块(PS/TestLinks/TestLinks.psm1)
         $remote_github_raw = 'https://raw.githubusercontent.com/521xueweihan/GitHub520/refs/heads/main/hosts',
 
         $UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.66 Safari/537.36'

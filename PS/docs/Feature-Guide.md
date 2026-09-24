@@ -43,7 +43,7 @@ env(3) 变量+别名。`Update-PwshEnvIfNotYet` 按需补齐，不重复干活�
 # 2) 把函数名加进同目录 .psd1 的 FunctionsToExport（位置随意；GUID/版本不用动，日常改保持 1.0.4）
 # 3) 当前会话生效（不用重启 shell；核心价值=保住当前会话变量上下文，新开 pwsh 会丢一部分信息）：
 Sync-ModuleManifest <模块名> -Reload  # 偷懒版：自动把 .psm1 新增函数补进 manifest 并重载，一条搞定
-Sync-ModuleManifest -Reload            # 不指定模块 = 全部 55 个自有模块（只打印有变化的+汇总；Prompt 跳过重载防嵌套）
+Sync-ModuleManifest -Reload            # 不指定模块 = 全部 67 个自有模块（只打印有变化的+汇总；Prompt 跳过重载防嵌套）
 # -Name 支持 Tab 补全（空字列出全部）；单模块想手动挡就继续 Import-Module <模块名> -Force -DisableNameChecking
 # （-DisableNameChecking 定向压掉双横线警告，见 FAQ；其它警告不受影响）
 ipmox                           # 单命令版（推荐）：同上但一步到位（-Global 重装+Pwsh 殿后）
@@ -116,7 +116,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
   - 安全差异：bash 重 source 会叠 PATH，这边 `init` 有 `$global:PsInit` 防重复（`. $profile` 默认 no-op，真重跑靠 `-Force`），`Add-EnvVar` 自带去重（见 `EnvVar.psm1:621/629`），prompt 全局只抓一次，OnIdle 有标记位。
     注意 `. $profile` 只跑 `CurrentUserCurrentHost` 这一级（conda 钩子在 `CurrentUserAllHosts`
     里，碰不到；即使碰到，缓存 59ms 也不贵）。
-- **v5 能用吗**：不能。本模块集只要 PS7（manifest 已声明，进 v5 直接明确报错）。
+- **v5 能用吗**：部分能。B 档 62 模块已降 `5.1`（`init` + 提示符 + Tab 补全 + 历史可用），部署/预测/dll 链明确留 7，详见 §13；其余留 7 模块进 v5 会明确报错。
 - **agent/CI 里曾出现两行 `Set-PSReadLineOption` 红字**（predictive suggestion…redirected、
   句柄无效）：那是 `init` 在 stdout 被重定向时硬设预测源/列表视图闹的，
   2026-09-20 已修（重定向下自动跳过这两项，其余照常；详见 `Startup-Optimization.md §12`）。

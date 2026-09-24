@@ -13,7 +13,7 @@
 | 加模块/加函数 | `Feature-Guide.md §3` → `Module-Conventions.md`（§1 目录、§2 命名、§7 manifest）→ `Module-Map.md`（找位置） | 一次做对，不返工 |
 | 搞懂 dll/同步 | `Live-Versions.md`（设计专章，9 节 + 4 图）→ `Deploy-Guide.md §13` | 结构、流程、命令分工 |
 | 非 Windows 系统 | `Feature-Guide.md §12`（`doctor` 会标平台行） | 哪些可用、哪些是 Windows 专属 |
-| 5.1 兼容 | `Feature-Guide.md §13`（B 档 9 模块，`init` 零失败） | 降级清单、加码禁区 |
+| 5.1 兼容 | `Feature-Guide.md §13`（B 档 62 模块，`init` 零失败） | 降级清单、加码禁区 |
 | 启动太慢 | `Startup-Optimization.md`（基线表 + 搬迁史）→ `init -Timing` | 基线对比，定位慢项 |
 | 写 agent/自动化 | `AGENTS.md`（仓库根入口）→ `Agent-Handoff.md §3`（必读） | 红线、换行、提交规范 |
 
@@ -26,7 +26,7 @@
 | `Live-Versions.md` | 并排版本活件设计专章：结构、指针协议、流程、故障、命令分工 | 约 130 行 + 4 图 |
 | `Agent-Handoff.md` | 踩坑编年史：每个决策的起因、实测、教训（#24 起为现行区，之前多为历史） | 约 190 行 |
 | `Module-Conventions.md` | 规范：命名/编码铁律 + 文档语言（§11 术语表、§12 行文风格） | 约 130 行 |
-| `Module-Map.md` | 55 模块画像表：找功能先查表，别 grep 大海捞针 | 约 120 行 |
+| `Module-Map.md` | 67 模块画像表：找功能先查表，别 grep 大海捞针 | 约 120 行 |
 | `Startup-Optimization.md` | 性能基线 + 搬迁史：动热路径先看基线表 | 约 430 行 |
 | `AGENTS.md`（仓库 `PS/` 根） | agent 入口：红线、换行、提交规范 | 约 20 行 |
 

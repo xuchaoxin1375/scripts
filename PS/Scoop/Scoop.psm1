@@ -60,14 +60,23 @@ function Deploy-ScoopByGithubMirrors
     # 获取可用的github加速镜像站(用户选择的)
     $mirrors = Get-SelectedMirror -Silent:$Silent
     $mirror = @($mirrors)[0]
+    # $mirror 为空字符串表示不走镜像,不要拼出 "/https://..." 坏链接
+    $mirrorPrefix = if ([string]::IsNullOrWhiteSpace($mirror)) { '' } else { "$(([string]$mirror).TrimEnd('/'))/" }
     ## 加速下载scoop原生安装脚本
-    $script = (Invoke-RestMethod $mirror/https://raw.githubusercontent.com/scoopinstaller/install/master/install.ps1)
- 
+    $script = (Invoke-RestMethod "${mirrorPrefix}https://raw.githubusercontent.com/scoopinstaller/install/master/install.ps1")
+
     $installer = "$ScriptsDirectory/scoop_installer.ps1"
     $installer_cn = "$ScriptsDirectory/scoop_cn_installer.ps1"
-    # 利用字符串的Replace方法，将 https://github.com 替换为 $mirror/https://github.com加速
-    $script> $installer
-    $script.Replace('https://github.com', "$mirror/https://github.com") > $installer_cn
+    # 利用字符串的Replace方法，将 https://github.com 替换为 $mirror/https://github.com加速(无镜像则原样)
+    $script > $installer
+    if ($mirrorPrefix)
+    {
+        $script.Replace('https://github.com', "${mirrorPrefix}https://github.com") > $installer_cn
+    }
+    else
+    {
+        $script > $installer_cn
+    }
  
     # 根据scoopd官方文档,管理员(权限)安装scoop时需要添加参数 -RunAsAdmin参数,否则会无法安装
     # 或者你可以直接将上述代码下载下来的家目录scoop_installer_cn文件中的相关代码片段注释掉(Deny-Install 调用语句注释掉)
@@ -93,7 +102,7 @@ function Deploy-ScoopByGithubMirrors
     }
  
     # 将 Scoop 的仓库源替换为proxy的
-    scoop config scoop_repo $mirror/https://github.com/ScoopInstaller/Scoop
+    scoop config scoop_repo "${mirrorPrefix}https://github.com/ScoopInstaller/Scoop"
  
     #确保git可用
     Confirm-GitCommand
@@ -118,7 +127,7 @@ function Deploy-ScoopByGithubMirrors
         scoop bucket rm main
     }
     Write-Host 'Adding speedup main bucket...'+" powered by： [$mirror]"
-    scoop bucket add main $mirror/https://github.com/ScoopInstaller/Main
+    scoop bucket add main "${mirrorPrefix}https://github.com/ScoopInstaller/Main"
  
     # 之前的scoop-cn 库是临时的,还不是来自Git拉取的完整库，删掉后，重新添加 Git 仓库
     Write-Host 'remove Temporary scoop-cn bucket...'
@@ -127,7 +136,7 @@ function Deploy-ScoopByGithubMirrors
         scoop bucket rm scoop-cn
     }
     Write-Host 'Adding scoop-cn bucket (from git repository)...'
-    scoop bucket add scoop-cn $mirror/https://github.com/duzyn/scoop-cn
+    scoop bucket add scoop-cn "${mirrorPrefix}https://github.com/duzyn/scoop-cn"
  
     # Set-Location "$env:USERPROFILE\scoop\buckets\scoop-cn"
     # git config pull.rebase true
@@ -194,15 +203,16 @@ function Add-ScoopBuckets
 
     补充方案才是直接利用github配合镜像加速
     创建冗余bucket,提高可用性和更大几率,更好的加速备选选择(使用scoop install -k 来避免可能造成错误的断点恢复下载)
-    scoop bucket add spc https://github.moeyy.xyz/https://github.com/lzwme/scoop-proxy-cn
-    scoop bucket add spc1 https://ghproxy.cc/https://github.com/lzwme/scoop-proxy-cn 
-    scoop bucket add spc2 https://ghproxy.net/https://github.com/lzwme/scoop-proxy-cn
-    scoop bucket add spc3 'https://mirror.ghproxy.com/https://github.com/lzwme/scoop-proxy-cn'
+    可用镜像见 TestLinks 模块(PS/TestLinks/TestLinks.psm1,2026-09-24 本机实测),例如:
+    scoop bucket add spc https://gh-proxy.com/https://github.com/lzwme/scoop-proxy-cn
+    scoop bucket add spc1 https://ghproxy.net/https://github.com/lzwme/scoop-proxy-cn
+    scoop bucket add spc2 https://ghfast.top/https://github.com/lzwme/scoop-proxy-cn
+    scoop bucket add spc3 https://gh-proxy.org/https://github.com/lzwme/scoop-proxy-cn
 
     .NOTES
     建议在Deploy-ScoopForCNUser调用时就指定相应的参数,不推荐单独调用(需要传入加速镜像地址参数)
     .EXAMPLE
-    Add-ScoopBuckets -mirror  'https://mirror.ghproxy.com'
+    Add-ScoopBuckets -mirror  'https://gh-proxy.com'
      
     #>
     [CmdletBinding()]
@@ -228,7 +238,16 @@ function Add-ScoopBuckets
         # $mirror=@($mirror)[0]
         Write-Verbose "The mirror is: $mirror"
     }
-    $spc = "$mirror/https://github.com/lzwme/scoop-proxy-cn".Trim('/')
+    $spcSource = 'https://github.com/lzwme/scoop-proxy-cn'
+    # -NoMirror 时 $mirror 为空,直接用源地址,不要拼出 "/https://..." 坏链接
+    if ([string]::IsNullOrWhiteSpace($mirror))
+    {
+        $spc = $spcSource
+    }
+    else
+    {
+        $spc = "$(([string]$mirror).TrimEnd('/'))/$spcSource"
+    }
     # $spc = 'https://gitee.com/xuchaoxin1375/spc'
 
     Write-Host 'Adding more buckets...(It may take a while, please be patient!)'
@@ -444,9 +463,14 @@ The spc1 bucket was added successfully.
 
         $newSource = $Source -replace '(http.*)(http)', $($mirror + '/$2')
     }
+    elseif ([string]::IsNullOrWhiteSpace($mirror))
+    {
+        # 选了 0(不走镜像):源地址原样用,不要拼出 "/https://..." 坏链接
+        $newSource = $Source
+    }
     else
     {
-        $newSource = "$mirror/$Source"
+        $newSource = "$(([string]$mirror).TrimEnd('/'))/$Source"
     }
     Write-Verbose "newSource: $newSource"
     if ($UpdateBucket)
@@ -469,10 +493,11 @@ The spc1 bucket was added successfully.
     # 是否只更新bucket而不更新scoop_repo,如果不特别说明,那么连同scoop_repo一起更新
     elseif ($BasicRepoBuckets)
     {
-        # 添加(更新)基本 bucket
-        $scoop_repo = "$mirror/https://github.com/ScoopInstaller/Scoop".Trim('/')
-        $main = "$mirror/https://github.com/ScoopInstaller/Main".Trim('/')
-        $extras = "$mirror/https://github.com/ScoopInstaller/Extras".Trim('/')
+        # 添加(更新)基本 bucket(无镜像则直连,不拼坏链接)
+        $repoPfx = if ([string]::IsNullOrWhiteSpace($mirror)) { '' } else { "$(([string]$mirror).TrimEnd('/'))/" }
+        $scoop_repo = "${repoPfx}https://github.com/ScoopInstaller/Scoop"
+        $main = "${repoPfx}https://github.com/ScoopInstaller/Main"
+        $extras = "${repoPfx}https://github.com/ScoopInstaller/Extras"
         scoop config scoop_repo $scoop_repo
         scoop update #这里不适合后面一起调用,当场调用以便后续更新main,extras
 

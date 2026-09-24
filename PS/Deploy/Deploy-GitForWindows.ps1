@@ -67,7 +67,7 @@ function Deploy-GitForwindows
         # 注意区分这url是一个自解压文件还是压缩包文件
         # url可以是从git for windows 的二进制文件镜像站提供的文件下载链接(网页中右键复制指定文件的链接即可,注意是Portable版本的(一般后缀为.7z.exe),而不是普通的安装版)
         [parameter(ParameterSetName = 'Online')]
-        $url = 'https://github.com/git-for-windows/git/releases/download/v2.46.2.windows.1/PortableGit-2.46.2-64-bit.7z.exe',
+        $url = 'https://github.com/git-for-windows/git/releases/download/v2.55.0.windows.5/PortableGit-2.55.0.5-64-bit.7z.exe',
 
         [parameter(ParameterSetName = 'PackagePath')]
         # 出来上述指定提供链接的方法来下载,还可以自己手动下载,然后将保存的路径作为$PackagePath的取值来调用函数部署Git
@@ -87,7 +87,16 @@ function Deploy-GitForwindows
         return $true
     }
     Write-Verbose 'Try to get the lastest version of git portable version...'
-    $latestRelease = Invoke-WebRequest -UseBasicParsing -Uri 'https://api.github.com/repos/git-for-windows/git/releases/latest' -Method Get | ConvertFrom-Json
+    # api.github.com 国内直连可能失败,失败则回退到默认 $url,不中断部署
+    try
+    {
+        $latestRelease = Invoke-WebRequest -UseBasicParsing -Uri 'https://api.github.com/repos/git-for-windows/git/releases/latest' -Method Get -TimeoutSec 15 -ErrorAction Stop | ConvertFrom-Json
+    }
+    catch
+    {
+        Write-Warning "Query latest git release failed ($($_.Exception.Message)). Use default version link."
+        $latestRelease = $null
+    }
     if ($latestRelease)
     {
         
@@ -122,9 +131,17 @@ function Deploy-GitForwindows
         $Package = "$Path\PortableGit.7z.exe"
         if ($IgnoreCache -or !(Test-Path $Package))
         {
-            $url = "${mirror}/${url}".Trim('/')
-            Write-Host "Downloading [$url] to $Package" -ForegroundColor cyan
-            Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $Package -Verbose
+            # $mirror 为空字符串表示不走镜像,不要拼出 "/https://..." 坏链接
+            if ([string]::IsNullOrWhiteSpace($mirror))
+            {
+                $dlUrl = $url
+            }
+            else
+            {
+                $dlUrl = "$(([string]$mirror).TrimEnd('/'))/$url"
+            }
+            Write-Host "Downloading [$dlUrl] to $Package" -ForegroundColor cyan
+            Invoke-WebRequest -UseBasicParsing -Uri $dlUrl -OutFile $Package -Verbose
         }
         
     }

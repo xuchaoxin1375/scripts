@@ -180,12 +180,11 @@ function Get-SpeedUpUrl
     .NOTES
     如果是其他替换域名的方式,可以修改实现代码,这里隐藏获取链接的方式
     .EXAMPLE
-    获取加速修改后的链接(默认为追加头域名)
+    获取加速修改后的链接(默认为追加头域名,可用镜像见 TestLinks 模块)
     PS C:\> Get-SpeedUpUrl -Url https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip
-    https://hub.fgit.cf/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip
-    另一种方式
-    PS C:\> Get-SpeedUpUrl -Url https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip -Option InsteadOf
-    https://hub.fgit.cf/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip
+    https://gh-proxy.com/https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip
+    另一种方式(-Option InsteadOf 把 github.com 整体替换为你自备的加速域名)
+    PS C:\> Get-SpeedUpUrl -Url https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip -Option InsteadOf -InsteadOf 'your-mirror.example.com'
     .EXAMPLE
     加速下载github release
     PS C:\Users\cxxu\Desktop> $link=Get-SpeedUpUrl https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip
@@ -199,13 +198,13 @@ function Get-SpeedUpUrl
     param (
         # 被加速的链接,比如github release 的链接,或githubusercontent的链接;至于能不能够加速需要看源是否支持,比较好的源都支持
         $Url,
-        # 源可能会失效,默认的源可能会失效,可以找找新的源
-        $Prefix = '', #https://mirror.ghproxy.com/
+        # 源可能会失效,默认的源可能会失效,可以找找新的源(可用列表见 TestLinks 模块,2026-09-24 本机实测)
+        $Prefix = '', #https://gh-proxy.com/
 
-        # 其他通过替换域名的方式加速
+        # 其他通过替换域名的方式加速(自备替换域名,默认空表示不替换)
         $OriginDomain = 'github.com',
         #替换成加速域名
-        $InsteadOf = 'hub.fgit.cf',
+        $InsteadOf = '',
         $LinkNumber = 1,
         [validateSet('Prefix', 'InsteadOf')]$Option = 'Prefix',
         [switch]$NotToClipboard,
@@ -221,8 +220,9 @@ function Get-SpeedUpUrl
             if ($Silent)
             {
                 Write-Host 'Mode:Silent', "`$LinkNumber=$LinkNumber" Cyan
-                $Urls = Get-AvailableGithubMirrors -PassThru #$urls第一个是空字符串,表示不用镜像
-                $Urls[1.. ($LinkNumber)] | ForEach-Object { 
+                # PassThru 首元素是空串(直连),取前 $LinkNumber 个真实镜像;不足则有多少用多少
+                $Urls = @(Get-AvailableGithubMirrors -PassThru) | Where-Object { $_ } | Select-Object -First $LinkNumber
+                $Urls | ForEach-Object { 
                     $prefix = $_; 
                     $speedUrl = "$prefix/$Url" 
                     Write-Verbose $SpeedUrl  
@@ -244,7 +244,16 @@ function Get-SpeedUpUrl
         }
         'InsteadOf'
         {
-            $Url = $Url -replace $OriginDomain, $InsteadOf 
+            # 未指定替换域名则原样返回,不拼坏链接
+            if ([string]::IsNullOrWhiteSpace($InsteadOf))
+            {
+                Write-Warning 'InsteadOf is empty, return the original Url. Pass -InsteadOf your own mirror host to replace.'
+                $res = @($Url)
+            }
+            else
+            {
+                $res = @($Url -replace $OriginDomain, $InsteadOf)
+            }
         }
         Default {}
     }
@@ -269,7 +278,7 @@ function Invoke-GithubResourcesSpeedup
     Set user agent for HTTP(S) downloads. Default: aria2/$VERSION, $VERSION is replaced by package version.
     .EXAMPLE
     PS> Invoke-GithubResourcesSpeedup -Url https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip
-    Download from: https://mirror.ghproxy.com/https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip
+    Download from: https://gh-proxy.com/https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip
     .EXAMPLE
     PS> 'https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip'|Invoke-GithubResourcesSpeedup
 
