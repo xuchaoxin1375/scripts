@@ -240,7 +240,22 @@ function Update-ReposesConfiged
         {
             $needsSync = (Get-FileHash -LiteralPath $repoDll -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $liveDll -Algorithm SHA256).Hash
         }
-        if ($needsSync)
+        # 自编译活件保持不动：标记为 local 且活件哈希与标记一致时，更新也不碰指针（否则会把可用活件换回仓库源）
+        $keepLocal = $false
+        if ($liveDll)
+        {
+            $mk = Get-Content -LiteralPath (Join-Path $binDir 'local-build.txt') -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($mk -match 'src=local' -and $mk -match 'hash=([0-9A-Fa-f]{8})')
+            {
+                $liveHash8 = try { (Get-FileHash -LiteralPath $liveDll -Algorithm SHA256).Hash.Substring(0, 8) } catch { '' }
+                if ($liveHash8 -eq $Matches[1]) { $keepLocal = $true }
+            }
+        }
+        if ($keepLocal)
+        {
+            Write-Host '活件是本地自编译版本，保持不动（想跟进仓库源：重编后执行 Sync-CxxuPredictor -DllPath 再同步）。'
+        }
+        elseif ($needsSync)
         {
             Sync-CxxuPredictor
             Write-Host 'scripts 仓库含 dll 变更：活件已同步，当前会话内存中仍是旧代码，请重新打开终端再执行 init（纯文本变更执行 ipmox 即可）。'

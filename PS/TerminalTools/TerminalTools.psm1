@@ -565,11 +565,17 @@ function Sync-CxxuPredictor
     因此不受文件锁限制，在任何会话中执行都成功；入口 loader 按指针装载，
     旧会话继续使用旧版本，新会话使用新版本。
     本命令适用于：首次安装时生成活件、手动修复不一致、本地重新编译后分发、卸载活件（-Uninstall）。
+    本地自编译场景（macOS/新版 pwsh 与仓库源 dll 的 SMA 对不上时）：先在
+    PS/CxxuPredictor/src 下按 Live-Versions.md §10 构建，再用 -DllPath 指定产物发布，
+    不碰仓库源；发布成功会写 local-build.txt 标记，只读检查据此不再误报“与仓库不一致”，
+    Update-ReposesConfiged 也会保持活件不动。
     日常版本更新请使用 Update-ReposesConfiged（拉取后自动调用本命令同步）。
     生效条件：同步完成后必须重新打开终端，当前会话内存中的旧代码才会替换
     （.NET 程序集不随模块卸载而卸载）。
     .EXAMPLE
     Sync-CxxuPredictor
+    .EXAMPLE
+    Sync-CxxuPredictor -DllPath ./bin/Release/net9.0/CxxuPredictor.dll
     .EXAMPLE
     Sync-CxxuPredictor -Uninstall
     #>
@@ -578,7 +584,9 @@ function Sync-CxxuPredictor
         # 卸载活件：删除指针与全部版本文件（被会话锁定的文件删不掉，会报告并给出路）
         [switch]$Uninstall,
         # 卸载时若有其他会话锁定文件：先关闭其他会话再重试（未保存的变量会丢失；重定向会话中拒绝执行）
-        [switch]$Force
+        [switch]$Force,
+        # 本地自编译 dll 路径：不用仓库源，改用此文件发布活件（macOS/新版 pwsh 本地重编场景；哈希目录按此文件内容算）
+        [string]$DllPath = ''
     )
     $repoDll = Join-Path (Join-Path (Split-Path $PSScriptRoot -Parent) 'CxxuPredictor') 'CxxuPredictor.dll'
     $binDir = Join-Path (Join-Path $HOME '.cxxu') 'bin'
@@ -615,6 +623,7 @@ function Sync-CxxuPredictor
             Remove-Item -LiteralPath $legacyDll -Force -ErrorAction SilentlyContinue
             if (Test-Path -LiteralPath $legacyDll) { $left += 'CxxuPredictor.dll' }
             Remove-Item -LiteralPath $ptrFile -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath (Join-Path $binDir 'local-build.txt') -Force -ErrorAction SilentlyContinue
             Remove-Module CxxuPredictor -ErrorAction SilentlyContinue
             if ($left.Count)
             {
@@ -624,12 +633,25 @@ function Sync-CxxuPredictor
         }
         return
     }
-    if (-not (Test-Path -LiteralPath $repoDll))
+    # 同步源：默认仓库源；-DllPath 指定时用本地自编译文件（不碰仓库源，哈希按此文件算）
+    $srcDll = $repoDll
+    $srcKind = 'repo'
+    if (-not [string]::IsNullOrWhiteSpace($DllPath))
+    {
+        if (-not (Test-Path -LiteralPath $DllPath))
+        {
+            Write-Warning "自编译 dll 不存在[$DllPath]，请检查路径后重试。"
+            return
+        }
+        $srcDll = $DllPath
+        $srcKind = 'local'
+    }
+    elseif (-not (Test-Path -LiteralPath $repoDll))
     {
         Write-Warning "仓库源不存在($repoDll)，请先确认仓库状态。"
         return
     }
-    $repoHash = (Get-FileHash -LiteralPath $repoDll -Algorithm SHA256).Hash.Substring(0, 8)
+    $repoHash = (Get-FileHash -LiteralPath $srcDll -Algorithm SHA256).Hash.Substring(0, 8)
     $targetDir = Join-Path $binDir $repoHash
     $targetPath = Join-Path $targetDir 'CxxuPredictor.dll'
     $pointed = Get-Content -LiteralPath $ptrFile -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -643,10 +665,15 @@ function Sync-CxxuPredictor
     {
         if (-not (Test-Path -LiteralPath $targetDir)) { New-Item -ItemType Directory -Path $targetDir -Force | Out-Null }
         # 同哈希即同内容：目录已存在则跳过复制（被锁定的旧版本从不触碰）
-        if (-not (Test-Path -LiteralPath $targetPath)) { Copy-Item -LiteralPath $repoDll -Destination $targetPath -Force -ErrorAction Stop }
+        if (-not (Test-Path -LiteralPath $targetPath)) { Copy-Item -LiteralPath $srcDll -Destination $targetPath -Force -ErrorAction Stop }
         $tmpPtr = "$ptrFile.tmp"
-        Set-Content -LiteralPath $tmpPtr -Value $repoHash -Encoding utf8NoBOM -NoNewline
+        # .NET 直写（5.1 的 Set-Content 不认 utf8NoBOM；与旧行为同字节：无 BOM、无尾换行）
+        [IO.File]::WriteAllText($tmpPtr, $repoHash, [Text.UTF8Encoding]::new($false))
         Move-Item -LiteralPath $tmpPtr -Destination $ptrFile -Force
+        # 来源标记（只记 repo/local 与哈希日期，不记路径，防隐私泄露；只读检查与更新命令据此识别自编译活件）
+        $markerFile = Join-Path $binDir 'local-build.txt'
+        $markerText = "src=$srcKind hash=$repoHash date=$((Get-Item -LiteralPath $targetPath).LastWriteTime.ToString('yyyy-MM-dd HH:mm'))"
+        [IO.File]::WriteAllText($markerFile, $markerText, [Text.UTF8Encoding]::new($false))
         # 回收非当前版本目录与旧扁平文件（被锁定的跳过，下次再收）
         Get-ChildItem -LiteralPath $binDir -Directory -ErrorAction SilentlyContinue |
             Where-Object { $_.Name -ne $repoHash } | ForEach-Object {
@@ -655,6 +682,6 @@ function Sync-CxxuPredictor
         Get-ChildItem -LiteralPath $binDir -Filter 'CxxuPredictor.*.dll' -ErrorAction SilentlyContinue | ForEach-Object {
             Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue
         }
-        Write-Host "活件已同步[$repoHash]。当前会话内存中仍是旧代码，请重新打开终端使新代码生效。"
+        Write-Host "活件已同步[$repoHash]（来源 $srcKind）。当前会话内存中仍是旧代码，请重新打开终端使新代码生效。"
     }
 }

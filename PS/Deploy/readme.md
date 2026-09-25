@@ -46,6 +46,23 @@ irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/script
 > gitee 只留兼容(`https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1`),
 > 但 `irm|iex` 常被拦截,不再推荐.
 
+### 轻量部署（仅 Windows PowerShell 5.1，免 git 免 pwsh）
+
+新机器只有 v5 时，在 `powershell.exe` 里存下脚本再加 `-Light` 跑：无 git 不提示安装、直走离线包下载（codeload + 中央镜像静默，不弹窗选源），落 `PSModulePath`（追加不覆盖），结尾不装 pwsh、改写 5.1 专属 profile，重开 `powershell.exe` 跑 `init` 即用（B 档可用范围与禁区见 `PS/docs/Feature-Guide.md §13`）。
+
+```powershell
+irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1' > ~/dcp.ps1
+~/dcp.ps1 -Light
+```
+
+### 开发模式（用本地最新代码，不拉远程）
+
+未推送到远程时，用本地代码测部署效果：仓库内直接运行一键脚本并加 `-Dev`（仓库根从脚本位置自动推导，marker 文件不存在则警告并回退远端；4 个一键脚本通用：`Deploy-CxxuPsModules`、`Deploy-GitForWindows`、`Deploy-Pwsh7Portable`、`Register-GithubHostsAutoUpdater`）。
+
+```powershell
+C:/repos/scripts/PS/Deploy/Deploy-CxxuPsModules.ps1 -Dev # 可叠 -Light -WhatIf（注意脚本尾部有真实调用）
+```
+
 
 
 ### 备用方案版

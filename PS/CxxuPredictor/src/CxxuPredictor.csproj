@@ -4,7 +4,10 @@
        离线可构建:唯一引用是本机 pwsh 自带的 SMA,无 NuGet 包。
        TargetFramework net9.0(2026-09-21 实测 net8.0 编不过:本机 7.5 的 SMA 自带
        System.Runtime 9 引用,CS1705;覆盖 7.4 需 7.4 的 SMA 或 PowerShellStandard
-       (缺预测子系统 API),暂不做)。 -->
+       (缺预测子系统 API),暂不做)。
+       SMA 路径默认 Windows 本机 pwsh;macOS/其它位置构建时用 -p:SmaPath=... 覆盖
+       (例: dotnet build -c Release -p:SmaPath="$PSHOME/System.Management.Automation.dll"),
+       构建产物进 src/bin(已 gitignore),再用 Sync-CxxuPredictor -DllPath 发布为活件。 -->
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
@@ -12,11 +15,12 @@
     <RootNamespace>CxxuPredictor</RootNamespace>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
+    <SmaPath Condition="'$(SmaPath)' == ''">C:\scoop\apps\powershell\current\System.Management.Automation.dll</SmaPath>
   </PropertyGroup>
 
   <ItemGroup>
     <Reference Include="System.Management.Automation">
-      <HintPath>C:\scoop\apps\powershell\current\System.Management.Automation.dll</HintPath>
+      <HintPath>$(SmaPath)</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>

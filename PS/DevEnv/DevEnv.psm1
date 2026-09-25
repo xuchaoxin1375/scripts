@@ -685,7 +685,8 @@ function Deploy-CompletionStack
 
     if ($PSVersionTable.PSVersion -lt [version]'7.5')
     {
-        Write-Warning 'pwsh 版本低于 7.5:CxxuPredictor(net9 dll)用不上,其它补全照常;建议 Update-PowerShell 到 7.5+'
+        if (($IsMacOS -eq $true)) { Write-Warning 'pwsh 版本低于 7.5:CxxuPredictor(net9 dll)用不上,其它补全照常;建议 brew upgrade --cask powershell 到 7.5+' }
+        else { Write-Warning 'pwsh 版本低于 7.5:CxxuPredictor(net9 dll)用不上,其它补全照常;建议 Update-PowerShell 到 7.5+' }
     }
     foreach ($mod in @('PSFzf', 'CompletionPredictor'))
     {
@@ -722,9 +723,16 @@ function Deploy-CompletionStack
                     scoop install $bin
                 }
             }
+            elseif (Get-Command brew -ErrorAction SilentlyContinue)
+            {
+                if ($PSCmdlet.ShouldProcess($bin, 'brew 安装二进制'))
+                {
+                    brew install $bin
+                }
+            }
             else
             {
-                Write-Warning "$bin 缺失且无 scoop:先装 scoop(Deploy-ScoopByGithubMirrors),再 scoop install $bin"
+                Write-Warning "$bin 缺失且无包管理器:Windows 先装 scoop(Deploy-ScoopByGithubMirrors)再 scoop install $bin;macOS 跑 brew install $bin"
             }
         }
     }

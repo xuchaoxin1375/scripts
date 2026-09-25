@@ -126,3 +126,25 @@ flowchart TD
 - 部署流程：`Deploy-Guide.md §13`。
 - 决策演进：`Agent-Handoff.md` #21（外置）、#27（自锁实测，已被推翻部分留档）、 #28（移除）、#29（并排版本，现行）。
 - 语言规范：`Module-Conventions.md §11`（术语）、§12（行文风格）。
+
+## 10. 本地构建与自编译 dll（macOS / 新版 pwsh）
+
+> 本节讲一件事：仓库源 dll 在你的 pwsh 上点不亮时，如何用本机 SMA 重编并发布为活件，全程不碰仓库源。
+
+- 何时需要：仓库源 dll 随构建机 pwsh 的 SMA 版本而定；若在你的 pwsh 上加载失败（以 `Test-PsEnvReadiness` 表尾的仓库/pwsh/活件三行为准），或你的 pwsh 已新于仓库源覆盖的版本，走本地重编。Windows 本机一般不需要（构建机即 Windows）。
+- 前置条件：.NET 9 SDK（`dotnet --list-sdks` 须见到 9.x；若只有新版 SDK，net9 目标包需联网还原一次）；本机 SMA 路径为 `$PSHOME/System.Management.Automation.dll`（pwsh 内执行 `$PSHOME` 即得，macOS 如 `/usr/local/microsoft/powershell/7/...`）。
+- 构建（产物进 `src/bin`，已 gitignore，不污染仓库）：
+```powershell
+cd PS/CxxuPredictor/src
+dotnet build -c Release -p:SmaPath="$PSHOME/System.Management.Automation.dll"
+```
+- `csproj` 的 SMA 引用已改为 `$(SmaPath)` 属性（默认 Windows 本机路径，不传参行为不变，Windows 回归已验）；`-p:SmaPath=` 只影响本次构建，不写文件。
+- 发布（不碰仓库源，按产物内容哈希建版本目录、更新指针、写 `local-build.txt` 标记，只记 `repo/local` 与哈希日期，不记路径）：
+```powershell
+Sync-CxxuPredictor -DllPath ./bin/Release/net9.0/CxxuPredictor.dll
+```
+- 验证：重开终端 → `init`；`Test-PsEnvReadiness` 活件行应显示 `自编译版本[哈希]`（不再误报与仓库不一致）；`doctor` predictor 行应显示已加载自编译版本；输入命令名应有预测浮现。
+- 与更新的关系：`Update-ReposesConfiged` 检测到自编译标记会保持活件不动并提示（不会把可用活件换回仓库源）；想跟进仓库源时，重编后重新 `Sync-CxxuPredictor -DllPath`，或裸 `Sync-CxxuPredictor` 直接切回仓库源。
+- 回退与停用：切回仓库源用裸 `Sync-CxxuPredictor`；彻底不用走 §6 卸载 + 持久化 `$env:PsPredictor='False'`。
+- 警告：不要把本机构建覆盖提交为共享 `CxxuPredictor.dll`（仓库源面向多机多版本，跨 SMA 版本互相点不亮的风险见 `csproj` 头注；共享 dll 的更新须在多版本验证后单独提交）。
+- 故障：`CS1705` 多为 SDK/TFM 与 SMA 代际错配（回看 `csproj` 头注的 net8 不可行结论）；`找不到 SMA` 检查 `-p:SmaPath` 路径是否存在；构建成功但加载失败确认 pwsh 7.5+（net9 运行时可用 `dotnet --list-runtimes` 佐证）。

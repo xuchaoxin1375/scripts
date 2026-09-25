@@ -1182,6 +1182,9 @@ function Test-PsEnvReadiness
         [switch]$CheckRemote
     )
     $psRoot = Split-Path $PSScriptRoot -Parent
+    # 平台判定(macOS 备注列给 brew 建议；5.1 无 $IsMacOS 自动变量，$null 比 -eq $true 为假，安全)
+    $isMac = ($IsMacOS -eq $true)
+    $macNeed = { param($brew, $win) if ($isMac) { $brew } else { $win } }.GetNewClosure()
     # 路径归一化(分隔符统一为系统分隔符,尾部分隔符不敏感;PSModulePath 切分另用系统分隔符,见下)
     $sep = [IO.Path]::DirectorySeparatorChar
     $normPath = { param($p) (([string]$p) -replace '[/\\]', $sep).TrimEnd('/', '\') }.GetNewClosure()
@@ -1209,29 +1212,30 @@ function Test-PsEnvReadiness
     $fileDate = { param($p) try { (Get-Item -LiteralPath $p -ErrorAction Stop).LastWriteTime.ToString('yyyy-MM-dd HH:mm') } catch { '' } }.GetNewClosure()
     # 活件解析小料:指针→版本目录→旧单文件,返回可用 dll 路径(取不到空串,永不抛;定义须在使用者之前)
     $liveDllPath = { try { $bd = Join-Path (Join-Path $HOME '.cxxu') 'bin'; $p = Join-Path $bd 'current.txt'; if (Test-Path -LiteralPath $p) { $h = Get-Content -LiteralPath $p -ErrorAction Stop | Select-Object -First 1; if ($h) { $c = Join-Path (Join-Path $bd "$h".Trim()) 'CxxuPredictor.dll'; if (Test-Path -LiteralPath $c) { return $c } } }; $best = Get-ChildItem -LiteralPath $bd -Directory -ErrorAction Stop | Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'CxxuPredictor.dll') } | Sort-Object LastWriteTime -Descending | Select-Object -First 1; if ($best) { return (Join-Path $best.FullName 'CxxuPredictor.dll') }; $lg = Join-Path $bd 'CxxuPredictor.dll'; if (Test-Path -LiteralPath $lg) { return $lg }; '' } catch { '' } }.GetNewClosure()
-    # 活件版本对比小料:指针解析出的活件哈希 vs 仓库源,结果进 备注 列(取不到空串,永不抛)
-    $dllSyncNote = { try { $lv = & $liveDllPath; $rp = Join-Path (Join-Path $psRoot 'CxxuPredictor') 'CxxuPredictor.dll'; if (-not (Test-Path -LiteralPath $rp)) { '仓库源不存在' } elseif (-not $lv) { '无活件' } else { $lh = (Get-FileHash -LiteralPath $lv -Algorithm SHA256).Hash.Substring(0, 8); $rh = (Get-FileHash -LiteralPath $rp -Algorithm SHA256).Hash.Substring(0, 8); if ($lh -eq $rh) { "与仓库一致[$rh]" } else { "与仓库不一致(仓 $rh)，请执行 Sync-CxxuPredictor 同步" } } } catch { '' } }.GetNewClosure()
+    # 活件版本对比小料:指针解析出的活件哈希 vs 仓库源,结果进 备注 列(取不到空串,永不抛;
+    # 自编译活件(标记 src=local 且哈希对得上)显示正常结论,不误报"不一致")
+    $dllSyncNote = { try { $lv = & $liveDllPath; $rp = Join-Path (Join-Path $psRoot 'CxxuPredictor') 'CxxuPredictor.dll'; if (-not (Test-Path -LiteralPath $rp)) { '仓库源不存在' } elseif (-not $lv) { '无活件' } else { $lh = (Get-FileHash -LiteralPath $lv -Algorithm SHA256).Hash.Substring(0, 8); $rh = (Get-FileHash -LiteralPath $rp -Algorithm SHA256).Hash.Substring(0, 8); if ($lh -eq $rh) { "与仓库一致[$rh]" } else { $mk = Get-Content -LiteralPath (Join-Path (Join-Path (Join-Path $HOME '.cxxu') 'bin') 'local-build.txt') -ErrorAction SilentlyContinue | Select-Object -First 1; if ($mk -match 'src=local' -and $mk -match 'hash=([0-9A-Fa-f]{8})' -and ($Matches[1] -eq $lh)) { "自编译版本[$lh]（与仓库源不同，属正常；以加载成功为准）" } else { "与仓库不一致(仓 $rh)，请执行 Sync-CxxuPredictor 同步" } } } } catch { '' } }.GetNewClosure()
     # 版本小料:只取文件级/内存级信息,不起新进程(git --version 这类免谈);取不到空串
     $modVer = { param($n) try { (Get-Module -ListAvailable $n | Select-Object -First 1).Version.ToString() } catch { '' } }.GetNewClosure()
     $binVer = { param($n) try { [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Get-Command $n -ErrorAction Stop).Source).FileVersion } catch { '' } }.GetNewClosure()
     # 必备
-    & $chk 'pwsh 7+' '必备' { $PSVersionTable.PSVersion.Major -ge 7 } 'Update-PowerShell 或重装 pwsh 7' { & $binDate 'pwsh' } { $PSVersionTable.PSVersion.ToString() }
+    & $chk 'pwsh 7+' '必备' { $PSVersionTable.PSVersion.Major -ge 7 } (& $macNeed 'brew upgrade --cask powershell（或官网 pkg 重装）' 'Update-PowerShell 或重装 pwsh 7') { & $binDate 'pwsh' } { $PSVersionTable.PSVersion.ToString() }
     & $chk 'PSModulePath 含模块集' '必备' { @(($env:PSModulePath -split [regex]::Escape([IO.Path]::PathSeparator)) | ForEach-Object { & $normPath $_ }) -contains (& $normPath $psRoot) } "Add-EnvVar -EnvVar PSModulePath -NewValue '$psRoot'"
     & $chk '$profile 有 init' '必备' { (Test-Path -LiteralPath $PROFILE.CurrentUserCurrentHost) -and ((Get-Content -LiteralPath $PROFILE.CurrentUserCurrentHost -Raw) -match '(?m)^\s*init\s*$') } 'Add-CxxuPsModuleToProfile 或手写 init' { & $fileDate $PROFILE.CurrentUserCurrentHost }
     & $chk 'git' '必备' { Get-Command git -ErrorAction SilentlyContinue } 'Confirm-GitCommand / 装 git' { & $binDate 'git' } { & $binVer 'git' }
     & $chk 'PSFzf 模块' '必备' { Get-Module -ListAvailable PSFzf } 'Confirm-ModuleInstalled -ModuleName PSFzf -Install' { & $modDate 'PSFzf' } { & $modVer 'PSFzf' }
     & $chk 'CompletionPredictor 模块' '必备' { Get-Module -ListAvailable CompletionPredictor } 'Confirm-ModuleInstalled -ModuleName CompletionPredictor -Install' { & $modDate 'CompletionPredictor' } { & $modVer 'CompletionPredictor' }
-    & $chk 'pwsh 7.5+(CxxuPredictor 需 net9)' '必备' { $PSVersionTable.PSVersion -ge [version]'7.5' } 'Update-PowerShell 到 7.5+(或进 PS/CxxuPredictor/src 重编 dll)'
+    & $chk 'pwsh 7.5+(CxxuPredictor 需 net9)' '必备' { $PSVersionTable.PSVersion -ge [version]'7.5' } (& $macNeed 'brew upgrade --cask powershell 到 7.5+（SMA 对不上则本地重编，见 Live-Versions §10）' 'Update-PowerShell 到 7.5+(或进 PS/CxxuPredictor/src 重编 dll)')
     # 可选
-    & $chk 'fzf 二进制' '可选' { Get-Command fzf -ErrorAction SilentlyContinue } 'scoop install fzf' { & $binDate 'fzf' } { & $binVer 'fzf' }
-    & $chk 'zoxide 二进制' '可选' { Get-Command zoxide -ErrorAction SilentlyContinue } 'scoop install zoxide' { & $binDate 'zoxide' } { & $binVer 'zoxide' }
-    & $chk 'scoop' '可选' { Get-Command scoop -ErrorAction SilentlyContinue } '按官网装 scoop(参考 Deploy-ScoopByGithubMirrors)' { & $binDate 'scoop' } { & $binVer 'scoop' }
-    & $chk 'conda' '可选' { Get-Command conda -ErrorAction SilentlyContinue } 'Deploy-MiniforgeConfig' { & $binDate 'conda' } { & $binVer 'conda' }
-    & $chk 'fnm' '可选' { Get-Command fnm -ErrorAction SilentlyContinue } 'scoop install fnm(后解开 profile 钩子)' { & $binDate 'fnm' } { & $binVer 'fnm' }
+    & $chk 'fzf 二进制' '可选' { Get-Command fzf -ErrorAction SilentlyContinue } (& $macNeed 'brew install fzf' 'scoop install fzf') { & $binDate 'fzf' } { & $binVer 'fzf' }
+    & $chk 'zoxide 二进制' '可选' { Get-Command zoxide -ErrorAction SilentlyContinue } (& $macNeed 'brew install zoxide' 'scoop install zoxide') { & $binDate 'zoxide' } { & $binVer 'zoxide' }
+    & $chk 'scoop' '可选' { Get-Command scoop -ErrorAction SilentlyContinue } (& $macNeed 'macOS 无 scoop，此行忽略（改用 brew 装二进制）' '按官网装 scoop(参考 Deploy-ScoopByGithubMirrors)') { & $binDate 'scoop' } { & $binVer 'scoop' }
+    & $chk 'conda' '可选' { Get-Command conda -ErrorAction SilentlyContinue } (& $macNeed 'miniforge 官网装好后跑 Deploy-MiniforgeConfig 写配置' 'Deploy-MiniforgeConfig') { & $binDate 'conda' } { & $binVer 'conda' }
+    & $chk 'fnm' '可选' { Get-Command fnm -ErrorAction SilentlyContinue } (& $macNeed 'brew install fnm(后解开 profile 钩子)' 'scoop install fnm(后解开 profile 钩子)') { & $binDate 'fnm' } { & $binVer 'fnm' }
     & $chk 'PSCompletions 模块' '可选' { Get-Module -ListAvailable PSCompletions } 'Confirm-ModuleInstalled -ModuleName PSCompletions -Install(后解开 profile 钩子)' { & $modDate 'PSCompletions' } { & $modVer 'PSCompletions' }
     # 首跑生成物(跑一次 init 自动建)
     & $chk '~/Data.json' '生成物' { Test-Path -LiteralPath (Join-Path $HOME 'Data.json') } '跑一次 init' { & $fileDate (Join-Path $HOME 'Data.json') }
-    & $chk 'predictor 活件 ~/.cxxu/bin' '生成物' { [bool](& $liveDllPath) } '执行 Sync-CxxuPredictor 生成活件' { $lp = & $liveDllPath; if ($lp) { & $fileDate $lp } else { '' } } { '' } { & $dllSyncNote }
+    & $chk 'predictor 活件 ~/.cxxu/bin' '生成物' { [bool](& $liveDllPath) } (& $macNeed 'Sync-CxxuPredictor（仓库 dll 若加载失败，本地重编后加 -DllPath，见 Live-Versions §10）' '执行 Sync-CxxuPredictor 生成活件') { $lp = & $liveDllPath; if ($lp) { & $fileDate $lp } else { '' } } { '' } { & $dllSyncNote }
     $rows | Format-Table -AutoSize | Out-Host
     $must = @($rows | Where-Object { $_.级别 -eq '必备' })
     $mustOk = @($must | Where-Object { $_.状态 -eq 'OK' }).Count
@@ -1260,7 +1264,7 @@ function Test-PsEnvReadiness
         }
         catch { $dllInfo = '未知(读取失败)' }
     }
-    Write-Host "仓库 $repoVer;pwsh $($PSVersionTable.PSVersion);dll 活件 $dllInfo"
+    Write-Host "仓库 $repoVer;pwsh $($PSVersionTable.PSVersion);dll 活件 $dllInfo;平台 $(if ($isMac) { 'macOS' } elseif (($IsLinux -eq $true)) { 'Linux' } else { 'Windows' })"
     # 远端版本对比(仅 -CheckRemote:ls-remote 只问远端,不 fetch 不动本地;12s 超时防卡死,离线/超时标未知,永不抛)
     $remoteInfo = '未查(加 -CheckRemote 问远端)'
     $remoteBehind = $false
@@ -1379,7 +1383,16 @@ function doctor
     {
         $repoDll = Join-Path (Join-Path (Split-Path $PSScriptRoot -Parent) 'CxxuPredictor') 'CxxuPredictor.dll'
         $same = try { (Get-FileHash -LiteralPath $liveDll -Algorithm SHA256).Hash -eq (Get-FileHash -LiteralPath $repoDll -Algorithm SHA256).Hash } catch { $false }
-        & $dchk 'predictor' $same $(if ($same) { '已加载且与仓库一致' } else { '内存中是旧版本：请重开终端，活件已可同步（Sync-CxxuPredictor 不受锁限制）' })
+        # 自编译活件（标记 src=local 且哈希对得上）属正常，不报旧版本
+        $localHash = ''
+        try
+        {
+            $mk = Get-Content -LiteralPath (Join-Path $binDir 'local-build.txt') -ErrorAction Stop | Select-Object -First 1
+            $liveHash8 = (Get-FileHash -LiteralPath $liveDll -Algorithm SHA256).Hash.Substring(0, 8)
+            if (($mk -match 'src=local') -and ($mk -match 'hash=([0-9A-Fa-f]{8})') -and ($Matches[1] -eq $liveHash8)) { $localHash = $liveHash8 }
+        }
+        catch { }
+        & $dchk 'predictor' ($same -or [bool]$localHash) $(if ($same) { '已加载且与仓库一致' } elseif ($localHash) { "已加载自编译版本[$localHash]（与仓库源不同，属正常）" } else { '内存中是旧版本：请重开终端，活件已可同步（Sync-CxxuPredictor 不受锁限制）' })
     }
     # 三门控 + 懒加载(5.1 无三元:子表达式内 if/else,双版本同行为)
     $gates = @('PsFzf', 'PsZoxide', 'PsPredictor', 'PsTab') | ForEach-Object { $v = (Get-Item "env:$_" -ErrorAction SilentlyContinue).Value; "$_=$(if ([string]::IsNullOrEmpty($v)) { '默认开' } else { $v })" }

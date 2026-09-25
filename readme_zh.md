@@ -94,6 +94,20 @@ irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/script
 
 更具体的说明查看此文档：[部署说明](./PS/Deploy/readme.md)
 
+### 轻量部署（仅 Windows PowerShell 5.1，免 git 免 pwsh）
+
+新机器只有 v5 时，在 `powershell.exe` 里存下脚本再加 `-Light` 跑：走离线包下载（codeload + 中央镜像静默，不弹窗选源），落 `PSModulePath`（追加不覆盖），写 5.1 专属 profile，重开 `powershell.exe` 跑 `init` 即用（B 档可用范围与禁区见 [Feature-Guide §13](./PS/docs/Feature-Guide.md)）：
+
+```powershell
+irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1' > ~/dcp.ps1
+~/dcp.ps1 -Light
+```
+
+### 落仓库后的第二步与本地开发
+
+- 补全栈（`Deploy-CompletionStack`）与 2 条命令极简版见 [部署指南](./PS/docs/Deploy-Guide.md)；出问题先跑 `doctor`，再按 [文档入口地图](./PS/docs/README.md) 分流。
+- 未推送到远程时用本地最新代码测部署：仓库内直接运行一键脚本并加 `-Dev`（仓库根自动推导，4 个一键脚本通用），例如 `C:/repos/scripts/PS/Deploy/Deploy-CxxuPsModules.ps1 -Dev`（可叠 `-Light -WhatIf`）；会过期的资源清单与检查命令见 [部署指南 §14](./PS/docs/Deploy-Guide.md)。
+
 > 如果clone过程中出错(比如git读取git配置出错,可以执行如下命令移除或备份配置)
 >
 > ```shell
@@ -305,6 +319,7 @@ exec bash
 中央变量 `$env:PsGithubMirror`(不设则默认 `https://gh-proxy.com`,模块内静默测速会话缓存一次),
 拼 raw 地址一律走 `Get-RepoRawUrl`(模块内)或同策略三行内联(独立 `Deploy-*.ps1` 脚本).
 大多数情况下你可以在命令行中指定最新可用的加速镜像站来替换过期的加速站链接(例如 `-RepoSource github` 配合 `$env:PsGithubMirror`)
+会过期的外部资源(镜像站/上游版本/第三方域)统一登记在 [部署指南 §14](./PS/docs/Deploy-Guide.md),部署失败时先查该表再换链接.
 
 ## github公益加速站👺
 
@@ -327,7 +342,6 @@ exec bash
 
 ### 适配说明
 
-- 适配于powershell7的模块/函数/别名集合,对于windows powershell5.1仅提供有限的支持
-  - 部分简单函数支持powershell5.1,但是用到新特性的powershell函数需要powershell7+
-  - powershell模块集中如果存在powershell5.1不支持的语法或排版,就可能导致整个模块中定义的函数都无法被powershell5.1使用,这种情况下,你需要手动复制对应的函数(支持powershell5.1),然后存放到对应的脚本文件或模块中以提供兼容,例如 `scoop`国内加速版的部署相关函数
-  - 这里在强调一下,**强烈建议使用powershell7+以上的版本**,您可以到联想应用商店或利用github加速镜像下载powershell7(前者成功率高,但是版本可能不是最新的,本模块集不要求最新版即可运行)
+- 67 模块中 62 个兼容 Windows PowerShell 5.1（B 档：`init` + 提示符 + Tab 补全 + 历史可用；预测视图与 dll 链留 7 不降）；查数用 `Get-CxxuModuleCompatibility`（真相源是各模块自己的 `.psd1`），完整清单、降级用法与加码禁区见 [Feature-Guide §13](./PS/docs/Feature-Guide.md)。
+- 5.1 下读 UTF-8 文档（含中文）用 `Get-ContentUTF8`（裸 `Get-Content` 按 GBK 解码必乱码）；新机器只有 v5 时走轻量部署（本文“一键部署”一节 `-Light`）。
+- 仍强烈建议使用 PowerShell 7+（完整功能与最佳性能）；您可以到联想应用商店或利用 GitHub 加速镜像下载 PowerShell 7（前者成功率高，但版本可能不是最新，本模块集不要求最新版即可运行）。
