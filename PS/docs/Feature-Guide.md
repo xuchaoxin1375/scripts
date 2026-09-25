@@ -237,7 +237,8 @@ p -Force                    # 看 init 分步耗时，定位慢项
 
 > 本模块集按 Windows 日常开发，其它系统"核心可用、部署件受限"。`doctor` 会标出平台行。
 
-- 可直接用：纯 pwsh 模块（自动发现/`init`/补全栈/`doctor`）；`CxxuPredictor` 是 net9.0（pwsh 7 跨平台可加载，dll 随仓库分发；仓库源点不亮时本地重编，见 `Live-Versions.md §10`）；活件/配置/历史/`Data.json` 全在 `$HOME` 下，路径跨平台；`Test-PsEnvReadiness` 的 `PSModulePath` 检查已做分隔符自适应（`:`/`;`），备注列按平台给建议（macOS 走 brew，scoop 行忽略）。
+- 可直接用：纯 pwsh 模块（自动发现/`init`/补全栈/`doctor`）；`CxxuPredictor` 是 net9.0（pwsh 7 跨平台可加载，dll 随仓库分发；仓库源点不亮时本地重编，见 `Live-Versions.md §10`）；活件/配置/历史/`Data.json` 全在 `$HOME` 下，路径跨平台；`Test-PsEnvReadiness` 的 `PSModulePath` 检查已做分隔符自适应（`:`/`;`），备注列按 Win/macOS/Linux 三平台给安装建议（scoop 行非 Windows 直接忽略）。
+- Linux 可用链（2026-09-25 静态链路梳理，非全模块真机验证）：`init` 热路径已跨平台（变量文件/活件路径全走 `Join-Path`，`Startup`/`Prompt` 的 CIM/注册表分支凭 PSEdition 兜底跳过，`Test-AdminPermission` 走 `id -u`）；`Update-ReposesConfiged` 更新链可用（含自编译保持）；`PwshVar` 在 Linux 下不套 Windows/macOS 专属变量文件（仅基础集），conf 里 Windows 路径变量会指向空，需按本机改。仍不可用：scoop/注册表/计划任务/WT/CIM 信息类（`Hardware`/`Info` 多数为 Windows 专属，调用即报错，不做跨平台适配）。
 - 不可用（Windows 专属，不做跨平台适配）：`scoop` 系（安装/换源/buckets）、注册表持久化（`Add-EnvVar`、`Set-PsPrompt -Persist`、镜像持久化——改走 `$profile` 或 env 文件）、计划任务与开机（`Deploy-StartupTasks`/`Start-StartupTasks`）、WT 下发、CIM/WMI 信息类、`conda` scoop 路径、业务模块硬编码路径（如 WordPress/phpstudy、`C:\` 前缀）。
 - 部分兼容：`PwshVar` 有分平台变量文件表（`$PwshVarFilesWindows`/`$PwshVarFilesMacOs`），新增变量按此模式分文件存放；`Info` 个别函数有 `$IsWindows`/`$IsMacOS` 分支，其余缺分支的函数在非 Windows 下报错即代表不支持。
 - 建议：先跑 `Test-PsEnvReadiness` 看缺口（缺的多为 Windows 专属，按 §11 逐项取舍）；`PwshVar/confs/VarSet1.conf` 的 `$PC*` 主机名按本机添加。

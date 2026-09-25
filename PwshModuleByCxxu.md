@@ -6,7 +6,7 @@
 
 包含了许多实用的powershell函数，想要直接部署，请跳转到**自动部署**一节
 
-更加简短的说明,参考 [readme_zh.md](readme_zh.md)
+更加简短的说明,参考 [readme.md](readme.md)（原 `readme_zh.md` 已合并至此）
 
 ### 本模块设计风格与配置说明
 

@@ -124,7 +124,7 @@ function Update-PwshVars
     #🎈在需要添加新的环境变量配置文件时,只需要在PwshVarFiles中追加即可
     # 单独导入长字符串,手动声明为$global:变量
 
-    $express = ". `"$PSScriptRoot\VarLongStrings.ps1`""
+    $express = ". `"$(Join-Path $PSScriptRoot 'VarLongStrings.ps1')`""
     Write-Verbose "executing $express"
     Invoke-Expression $express
     
@@ -279,9 +279,9 @@ function Import-PwshVarFile
 
         Write-Host "`t$VarFile" -ForegroundColor Cyan
     }
-    # 变量文件存储位置
-    $VarFilesDir = $PSScriptRoot + '\confs'
-    $VarFileFullPath = "$VarFilesDir\${VarFile}.conf"
+    # 变量文件存储位置(Join-Path 跨平台；反斜杠拼接在 Linux 下解析不出文件，init 会断)
+    $VarFilesDir = Join-Path $PSScriptRoot 'confs'
+    $VarFileFullPath = Join-Path $VarFilesDir "$VarFile.conf"
     Write-Debug "`t$VarFileFullPath" #-ForegroundColor yellow
 
     $execLines = @()

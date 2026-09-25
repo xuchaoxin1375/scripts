@@ -732,7 +732,7 @@ function Deploy-CompletionStack
             }
             else
             {
-                Write-Warning "$bin 缺失且无包管理器:Windows 先装 scoop(Deploy-ScoopByGithubMirrors)再 scoop install $bin;macOS 跑 brew install $bin"
+                Write-Warning "$bin 缺失且无包管理器:Windows 先装 scoop(Deploy-ScoopByGithubMirrors)再 scoop install $bin;macOS 跑 brew install $bin;Linux 用系统包管理器(apt/dnf)或装 brew"
             }
         }
     }

@@ -1182,9 +1182,10 @@ function Test-PsEnvReadiness
         [switch]$CheckRemote
     )
     $psRoot = Split-Path $PSScriptRoot -Parent
-    # 平台判定(macOS 备注列给 brew 建议；5.1 无 $IsMacOS 自动变量，$null 比 -eq $true 为假，安全)
+    # 平台判定(备注列按平台给建议；5.1 无 $IsMacOS/$IsLinux 自动变量，$null 比 -eq $true 为假，安全)
     $isMac = ($IsMacOS -eq $true)
-    $macNeed = { param($brew, $win) if ($isMac) { $brew } else { $win } }.GetNewClosure()
+    $isLinuxOS = ($IsLinux -eq $true)
+    $platNeed = { param($win, $mac, $lin) if ($isMac) { $mac } elseif ($isLinuxOS) { $lin } else { $win } }.GetNewClosure()
     # 路径归一化(分隔符统一为系统分隔符,尾部分隔符不敏感;PSModulePath 切分另用系统分隔符,见下)
     $sep = [IO.Path]::DirectorySeparatorChar
     $normPath = { param($p) (([string]$p) -replace '[/\\]', $sep).TrimEnd('/', '\') }.GetNewClosure()
@@ -1219,23 +1220,23 @@ function Test-PsEnvReadiness
     $modVer = { param($n) try { (Get-Module -ListAvailable $n | Select-Object -First 1).Version.ToString() } catch { '' } }.GetNewClosure()
     $binVer = { param($n) try { [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Get-Command $n -ErrorAction Stop).Source).FileVersion } catch { '' } }.GetNewClosure()
     # 必备
-    & $chk 'pwsh 7+' '必备' { $PSVersionTable.PSVersion.Major -ge 7 } (& $macNeed 'brew upgrade --cask powershell（或官网 pkg 重装）' 'Update-PowerShell 或重装 pwsh 7') { & $binDate 'pwsh' } { $PSVersionTable.PSVersion.ToString() }
+    & $chk 'pwsh 7+' '必备' { $PSVersionTable.PSVersion.Major -ge 7 } (& $platNeed 'Update-PowerShell 或重装 pwsh 7' 'brew upgrade --cask powershell（或官网 pkg 重装）' '微软文档 apt/dnf 装 pwsh（Ubuntu 可跑 Install-PwshUbuntu.ps1）') { & $binDate 'pwsh' } { $PSVersionTable.PSVersion.ToString() }
     & $chk 'PSModulePath 含模块集' '必备' { @(($env:PSModulePath -split [regex]::Escape([IO.Path]::PathSeparator)) | ForEach-Object { & $normPath $_ }) -contains (& $normPath $psRoot) } "Add-EnvVar -EnvVar PSModulePath -NewValue '$psRoot'"
     & $chk '$profile 有 init' '必备' { (Test-Path -LiteralPath $PROFILE.CurrentUserCurrentHost) -and ((Get-Content -LiteralPath $PROFILE.CurrentUserCurrentHost -Raw) -match '(?m)^\s*init\s*$') } 'Add-CxxuPsModuleToProfile 或手写 init' { & $fileDate $PROFILE.CurrentUserCurrentHost }
     & $chk 'git' '必备' { Get-Command git -ErrorAction SilentlyContinue } 'Confirm-GitCommand / 装 git' { & $binDate 'git' } { & $binVer 'git' }
     & $chk 'PSFzf 模块' '必备' { Get-Module -ListAvailable PSFzf } 'Confirm-ModuleInstalled -ModuleName PSFzf -Install' { & $modDate 'PSFzf' } { & $modVer 'PSFzf' }
     & $chk 'CompletionPredictor 模块' '必备' { Get-Module -ListAvailable CompletionPredictor } 'Confirm-ModuleInstalled -ModuleName CompletionPredictor -Install' { & $modDate 'CompletionPredictor' } { & $modVer 'CompletionPredictor' }
-    & $chk 'pwsh 7.5+(CxxuPredictor 需 net9)' '必备' { $PSVersionTable.PSVersion -ge [version]'7.5' } (& $macNeed 'brew upgrade --cask powershell 到 7.5+（SMA 对不上则本地重编，见 Live-Versions §10）' 'Update-PowerShell 到 7.5+(或进 PS/CxxuPredictor/src 重编 dll)')
+    & $chk 'pwsh 7.5+(CxxuPredictor 需 net9)' '必备' { $PSVersionTable.PSVersion -ge [version]'7.5' } (& $platNeed 'Update-PowerShell 到 7.5+(或进 PS/CxxuPredictor/src 重编 dll)' 'brew upgrade --cask powershell 到 7.5+（SMA 对不上则本地重编，见 Live-Versions §10）' '升级 pwsh 到 7.5+（SMA 对不上则本地重编，见 Live-Versions §10）')
     # 可选
-    & $chk 'fzf 二进制' '可选' { Get-Command fzf -ErrorAction SilentlyContinue } (& $macNeed 'brew install fzf' 'scoop install fzf') { & $binDate 'fzf' } { & $binVer 'fzf' }
-    & $chk 'zoxide 二进制' '可选' { Get-Command zoxide -ErrorAction SilentlyContinue } (& $macNeed 'brew install zoxide' 'scoop install zoxide') { & $binDate 'zoxide' } { & $binVer 'zoxide' }
-    & $chk 'scoop' '可选' { Get-Command scoop -ErrorAction SilentlyContinue } (& $macNeed 'macOS 无 scoop，此行忽略（改用 brew 装二进制）' '按官网装 scoop(参考 Deploy-ScoopByGithubMirrors)') { & $binDate 'scoop' } { & $binVer 'scoop' }
-    & $chk 'conda' '可选' { Get-Command conda -ErrorAction SilentlyContinue } (& $macNeed 'miniforge 官网装好后跑 Deploy-MiniforgeConfig 写配置' 'Deploy-MiniforgeConfig') { & $binDate 'conda' } { & $binVer 'conda' }
-    & $chk 'fnm' '可选' { Get-Command fnm -ErrorAction SilentlyContinue } (& $macNeed 'brew install fnm(后解开 profile 钩子)' 'scoop install fnm(后解开 profile 钩子)') { & $binDate 'fnm' } { & $binVer 'fnm' }
+    & $chk 'fzf 二进制' '可选' { Get-Command fzf -ErrorAction SilentlyContinue } (& $platNeed 'scoop install fzf' 'brew install fzf' '包管理器装 fzf（apt/dnf/brew）') { & $binDate 'fzf' } { & $binVer 'fzf' }
+    & $chk 'zoxide 二进制' '可选' { Get-Command zoxide -ErrorAction SilentlyContinue } (& $platNeed 'scoop install zoxide' 'brew install zoxide' '包管理器装 zoxide（apt/dnf/brew）') { & $binDate 'zoxide' } { & $binVer 'zoxide' }
+    & $chk 'scoop' '可选' { Get-Command scoop -ErrorAction SilentlyContinue } (& $platNeed '按官网装 scoop(参考 Deploy-ScoopByGithubMirrors)' 'macOS 无 scoop，此行忽略（改用 brew 装二进制）' 'Linux 无 scoop，此行忽略（改用系统包管理器装二进制）') { & $binDate 'scoop' } { & $binVer 'scoop' }
+    & $chk 'conda' '可选' { Get-Command conda -ErrorAction SilentlyContinue } (& $platNeed 'Deploy-MiniforgeConfig' 'miniforge 官网装好后跑 Deploy-MiniforgeConfig 写配置' 'miniforge 官网装好后跑 Deploy-MiniforgeConfig 写配置') { & $binDate 'conda' } { & $binVer 'conda' }
+    & $chk 'fnm' '可选' { Get-Command fnm -ErrorAction SilentlyContinue } (& $platNeed 'scoop install fnm(后解开 profile 钩子)' 'brew install fnm(后解开 profile 钩子)' '包管理器/官网脚本装 fnm（后解开 profile 钩子）') { & $binDate 'fnm' } { & $binVer 'fnm' }
     & $chk 'PSCompletions 模块' '可选' { Get-Module -ListAvailable PSCompletions } 'Confirm-ModuleInstalled -ModuleName PSCompletions -Install(后解开 profile 钩子)' { & $modDate 'PSCompletions' } { & $modVer 'PSCompletions' }
     # 首跑生成物(跑一次 init 自动建)
     & $chk '~/Data.json' '生成物' { Test-Path -LiteralPath (Join-Path $HOME 'Data.json') } '跑一次 init' { & $fileDate (Join-Path $HOME 'Data.json') }
-    & $chk 'predictor 活件 ~/.cxxu/bin' '生成物' { [bool](& $liveDllPath) } (& $macNeed 'Sync-CxxuPredictor（仓库 dll 若加载失败，本地重编后加 -DllPath，见 Live-Versions §10）' '执行 Sync-CxxuPredictor 生成活件') { $lp = & $liveDllPath; if ($lp) { & $fileDate $lp } else { '' } } { '' } { & $dllSyncNote }
+    & $chk 'predictor 活件 ~/.cxxu/bin' '生成物' { [bool](& $liveDllPath) } (& $platNeed '执行 Sync-CxxuPredictor 生成活件' 'Sync-CxxuPredictor（仓库 dll 若加载失败，本地重编后加 -DllPath，见 Live-Versions §10）' 'Sync-CxxuPredictor（仓库 dll 若加载失败，本地重编后加 -DllPath，见 Live-Versions §10）') { $lp = & $liveDllPath; if ($lp) { & $fileDate $lp } else { '' } } { '' } { & $dllSyncNote }
     $rows | Format-Table -AutoSize | Out-Host
     $must = @($rows | Where-Object { $_.级别 -eq '必备' })
     $mustOk = @($must | Where-Object { $_.状态 -eq 'OK' }).Count

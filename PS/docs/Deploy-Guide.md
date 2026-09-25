@@ -161,7 +161,7 @@ Sync-CxxuPredictor            # 单点操作（首次安装生成/手动修复/�
 | pip/conda 高校源 | `DevEnv.psm1` / `ConstantString.conf` / `Tools.psm1:381` | 稳定，偶改路径 | 安装失败时对照 `help.mirrorz.org` | 改 URL | 失败时 |
 | `Get-SpeedUpUri` 未定义 | `PsEnv.psm1:238` / `TerminalTools.psm1:9,42` | 已修（2026-09-24，见 Handoff #66） | 跑 `Update-PowerShell` 即验 | — | — |
 | net9.0 / pwsh 版本门 | `CxxuPredictor.csproj` | pwsh 8 出来才需动 | — | 重编 dll（见 `Live-Versions.md §10`） | 慢变量 |
-| 文档外链（博客/商店/聚合页） | `readme_zh.md` / `Deploy-Guide.md` | 腐烂风险，低优 | 抽查 | 换链 | 年 |
+| 文档外链（博客/商店/聚合页） | `readme.md` / `Deploy-Guide.md` | 腐烂风险，低优 | 抽查 | 换链 | 年 |
 | PSGallery 第三方模块 | `Deploy-CompletionStack` | 浮动最新，不钉版 | `Test-PsEnvReadiness` | `Deploy-CompletionStack` | 按需 |
 
 > 更新流程见 §13（`Update-ReposesConfiged` 批量更新 + 活件同步 + 重开终端）。

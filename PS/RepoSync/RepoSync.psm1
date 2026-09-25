@@ -226,7 +226,7 @@ function Update-ReposesConfiged
     $scriptsDir = Join-Path $repos 'scripts'
     if ((Test-Path -LiteralPath (Join-Path $scriptsDir '.git')) -and (Get-Command Sync-CxxuPredictor -ErrorAction SilentlyContinue))
     {
-        $repoDll = Join-Path $scriptsDir 'PS\CxxuPredictor\CxxuPredictor.dll'
+        $repoDll = Join-Path $scriptsDir (Join-Path 'PS' (Join-Path 'CxxuPredictor' 'CxxuPredictor.dll'))
         $binDir = Join-Path (Join-Path $HOME '.cxxu') 'bin'
         $liveDll = $null
         $ptrF = Join-Path $binDir 'current.txt'

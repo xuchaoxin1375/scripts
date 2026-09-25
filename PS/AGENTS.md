@@ -1,5 +1,7 @@
 # AGENTS.md — PS 模块集（CxxuPsModules）agent 入口
 
+> 全仓入口见根 `../AGENTS.md`（作用范围与全仓红线）；本文件为 `PS/` 工作细则。
+
 ## 先读文档，再碰代码
 本目录 `docs/` 是唯一真相源（若代码注释与文档矛盾，以文档为准，顺手修注释）：
 0. `docs/README.md` —— 文档入口地图（新用户按任务分流，别全读）
@@ -17,6 +19,7 @@
 - 只动 `PS/` 与仓库根；`wp/` 是用户领地不动；`PS/Pwsh/demo.ps1` 的删除不是你干的，别碰。
 - 换行：存量不动，新文件 CRLF；提交前必跑 `git diff` vs `git diff --ignore-cr-at-eol` 对照。
 - 中文用户：中文回复；行内 `pwsh -Command` 引号必炸，复杂命令写 `.ps1` 再 `-File` 执行。
+- 用户可见文本（根 `readme.md`、指南、帮助、警告）：遵循 `docs/Module-Conventions.md §11` 用词与 `§12` 行文（正式、规范、严谨）；改用户可见行为先看 `Feature-Guide.md`，改完自查动作三要素（前置条件、执行者、善后）与术语一致；入口文档只放指引不复制正文。
 - 提交/推送/PR：用户明确说才做；提交后必验 HEAD（`git show HEAD:<关键文件>` + 状态干净）。
 
 ## 根目录旧文档
