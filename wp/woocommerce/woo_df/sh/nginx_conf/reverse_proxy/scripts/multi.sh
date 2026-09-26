@@ -68,6 +68,11 @@ RELOAD_NGINX=true
 DRY_RUN=false
 DEV_MODE=false
 # FORCE=false
+# 端口检查:重载后检查的端口列表 / 询问放行时的操作对象 / 跳过开关 / 非交互自动确认
+PORTS_CHECK_LIST="80"
+PORTS_FIX_LIST="80,443"
+SKIP_PORTS_CHECK=false
+AUTO_YES=false
 SYM_SH='/www/sh' #适用于服务器的仓库shell脚本目录
 mkdir -pv /www/ >&2
 
@@ -158,6 +163,18 @@ Options:
             --dry-run --no-update-code --no-update-cf --no-reload
     --force
         预留参数. 当前版本不强制覆盖额外文件，仅保留兼容入口.
+
+    --ports-check <list>
+        部署后检查的端口列表,默认 80.
+
+    --fix-ports <list>
+        询问放行时的操作对象,默认 80,443.
+
+    --skip-ports-check
+        跳过部署后的端口与防火墙检查.
+
+    --yes
+        端口检查的交互询问一律按 yes 处理(自动尝试放行并继续).
 
     -h, --help
         显示帮助信息.
@@ -507,6 +524,26 @@ parse_args() {
                 RELOAD_NGINX=false
                 ;;
 
+            --ports-check)
+                [[ $# -ge 2 ]] || die "$1 需要参数"
+                PORTS_CHECK_LIST="$2"
+                shift
+                ;;
+
+            --fix-ports)
+                [[ $# -ge 2 ]] || die "$1 需要参数"
+                PORTS_FIX_LIST="$2"
+                shift
+                ;;
+
+            --skip-ports-check)
+                SKIP_PORTS_CHECK=true
+                ;;
+
+            --yes)
+                AUTO_YES=true
+                ;;
+
             # --force)
             #     FORCE=true
             #     ;;
@@ -765,6 +802,112 @@ EOF
     done
 }
 
+# ---- 端口与防火墙检查(复用同目录 check_ports.sh) ----
+# 时机:nginx 重载成功后,确认检查列表端口的监听与防火墙放行状态.
+# 未通过时先询问是否尝试放行(默认对象 80,443);放行失败或后端无法识别则
+# 告警并询问是否继续部署.非交互环境(无法询问)默认告警并继续,不中断部署.
+_ports_check_info() {
+    printf '[INFO] %s\n' "$*" >&2
+}
+
+_ports_check_warn() {
+    printf '[WARN] %s\n' "$*" >&2
+}
+
+find_check_ports_script() {
+    local here
+    here="$(cd "$(dirname "${BASH_SOURCE[0]:-}")" >/dev/null 2>&1 && pwd || true)"
+    local c
+    for c in "${CHECK_PORTS_SCRIPT:-}" \
+        "${here}/check_ports.sh" \
+        "${HOME:-}/sh/nginx_conf/reverse_proxy/scripts/check_ports.sh" \
+        "/www/sh/nginx_conf/reverse_proxy/scripts/check_ports.sh"; do
+        if [[ -n "$c" && -f "$c" ]]; then
+            printf '%s' "$c"
+            return 0
+        fi
+    done
+    return 1
+}
+
+ask_yes_no() {
+    local prompt
+    prompt="$1"
+    if [[ "$AUTO_YES" == true ]]; then
+        _ports_check_info "已按 --yes 自动确认: ${prompt}"
+        return 0
+    fi
+    # 必须能真实打开 /dev/tty 才能交互;仅 test -r 不可靠
+    # (无控终端时 test 可通过,但 open 报 ENXIO).
+    if ! : < /dev/tty 2>/dev/null; then
+        return 2
+    fi
+    local ans
+    ans=""
+    printf '%s [y/N] ' "$prompt" >&2
+    read -r ans < /dev/tty 2>/dev/null || return 1
+    case "$ans" in
+        y | Y | yes | YES)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+run_ports_check() {
+    if [[ "$SKIP_PORTS_CHECK" == true ]]; then
+        _ports_check_info "已跳过端口检查 (--skip-ports-check)."
+        return 0
+    fi
+    local checker
+    checker=""
+    if ! checker="$(find_check_ports_script)"; then
+        _ports_check_warn "未找到 check_ports.sh,跳过端口检查.部署完成后可手工执行同目录 check_ports.sh --ports 80,443."
+        return 0
+    fi
+    local check_list
+    check_list="${PORTS_CHECK_LIST:-80}"
+    local fix_list
+    fix_list="${PORTS_FIX_LIST:-80,443}"
+    _ports_check_info "检查端口监听与防火墙放行状态: [${check_list}] (执行 bash ${checker} --ports ${check_list})."
+    if bash "$checker" --ports "$check_list" >&2; then
+        _ports_check_info "端口检查通过."
+        return 0
+    fi
+    _ports_check_warn "端口检查未通过,详见上方输出."
+    local answer
+    answer=0
+    ask_yes_no "是否尝试放行端口 [${fix_list}]" || answer=$?
+    if [[ "$answer" -eq 0 ]]; then
+        if bash "$checker" --fix --ports "$fix_list" >&2; then
+            _ports_check_info "端口放行成功."
+        else
+            _ports_check_warn "端口放行未完成(后端无法识别或执行失败)."
+        fi
+        if bash "$checker" --ports "$check_list" >&2; then
+            _ports_check_info "复查通过."
+            return 0
+        fi
+        _ports_check_warn "复查仍未通过."
+    elif [[ "$answer" -eq 2 ]]; then
+        _ports_check_warn "非交互环境,跳过自动放行."
+    fi
+    answer=0
+    ask_yes_no "是否继续完成部署" || answer=$?
+    if [[ "$answer" -eq 0 ]]; then
+        _ports_check_warn "已确认继续完成部署,端口问题请后续自行处理."
+        return 0
+    elif [[ "$answer" -eq 2 ]]; then
+        _ports_check_warn "非交互环境,无法确认,默认继续完成部署.端口问题请后续自行处理."
+        return 0
+    fi
+    _ports_check_warn "用户取消部署(端口检查未通过)."
+    return 1
+}
+# ---- 端口与防火墙检查结束 ----
+
 # 主流程：解析参数、生成配置、按模式写入/测试/重载 nginx。
 main() {
     parse_args "$@"
@@ -862,8 +1005,10 @@ main() {
     if [[ "$RELOAD_NGINX" == true ]]; then
         info "重载 nginx..."
         nginx -s reload
+        run_ports_check || exit 1
     else
         info "跳过 nginx reload (--no-reload 或 --dev)"
+        info "跳过端口检查(未 reload).重载后可执行同目录 check_ports.sh --ports ${PORTS_CHECK_LIST:-80} 复查."
     fi
 
     info "完成."

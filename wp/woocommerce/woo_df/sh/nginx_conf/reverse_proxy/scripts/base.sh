@@ -20,6 +20,11 @@ GATEWAY_MODE=simple # hostmap
 PROXY_PASS_MODE="url"
 PROXY_PASS_MODE_CLI=false
 SKIP_ROUTES_CHECK=false # --no-check-routes: 跳过 routes.map 格式检查(表很大时省时间)
+# 端口检查:重载后检查的端口列表 / 询问放行时的操作对象 / 跳过开关 / 非交互自动确认
+PORTS_CHECK_LIST="80"
+PORTS_FIX_LIST="80,443"
+SKIP_PORTS_CHECK=false
+AUTO_YES=false
 
 # UPDATE_CODE=false
 # 参数解析
@@ -44,6 +49,10 @@ Options:
                                     未传时沿用 $NGINX_CONF_DIR/gateway/proxy-pass-mode ；没有记录则 url.
                                     simple 模式会忽略此选项.
     --no-check-routes            跳过 routes.map.conf 格式检查(表很大时可省几十秒).
+    --ports-check <list>         部署后检查的端口列表,默认 80
+    --fix-ports <list>             询问放行时的操作对象,默认 80,443
+    --skip-ports-check             跳过部署后的端口与防火墙检查
+    --yes                          端口检查的交互询问一律按 yes 处理
 EXAMPLES:
 
 # 非宝塔方案(apt或标准脚本安装的情况)
@@ -109,7 +118,22 @@ bash  <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/h
                 ;;
             --no-check-routes | --no-routes-check)
                 SKIP_ROUTES_CHECK=true
-                ;;            --)
+                ;;
+            --ports-check)
+                PORTS_CHECK_LIST="$2"
+                shift
+                ;;
+            --fix-ports)
+                PORTS_FIX_LIST="$2"
+                shift
+                ;;
+            --skip-ports-check)
+                SKIP_PORTS_CHECK=true
+                ;;
+            --yes)
+                AUTO_YES=true
+                ;;
+            --)
                 shift
                 break
                 ;;
@@ -245,6 +269,112 @@ warn_hostmap_routes_mode() {
     ' "$file"
 }
 
+# ---- 端口与防火墙检查(复用同目录 check_ports.sh) ----
+# 时机:nginx 重载成功后,确认检查列表端口的监听与防火墙放行状态.
+# 未通过时先询问是否尝试放行(默认对象 80,443);放行失败或后端无法识别则
+# 告警并询问是否继续部署.非交互环境(无法询问)默认告警并继续,不中断部署.
+_ports_check_info() {
+    printf '[INFO] %s\n' "$*" >&2
+}
+
+_ports_check_warn() {
+    printf '[WARN] %s\n' "$*" >&2
+}
+
+find_check_ports_script() {
+    local here
+    here="$(cd "$(dirname "${BASH_SOURCE[0]:-}")" >/dev/null 2>&1 && pwd || true)"
+    local c
+    for c in "${CHECK_PORTS_SCRIPT:-}" \
+        "${here}/check_ports.sh" \
+        "${HOME:-}/sh/nginx_conf/reverse_proxy/scripts/check_ports.sh" \
+        "/www/sh/nginx_conf/reverse_proxy/scripts/check_ports.sh"; do
+        if [[ -n "$c" && -f "$c" ]]; then
+            printf '%s' "$c"
+            return 0
+        fi
+    done
+    return 1
+}
+
+ask_yes_no() {
+    local prompt
+    prompt="$1"
+    if [[ "$AUTO_YES" == true ]]; then
+        _ports_check_info "已按 --yes 自动确认: ${prompt}"
+        return 0
+    fi
+    # 必须能真实打开 /dev/tty 才能交互;仅 test -r 不可靠
+    # (无控终端时 test 可通过,但 open 报 ENXIO).
+    if ! : < /dev/tty 2>/dev/null; then
+        return 2
+    fi
+    local ans
+    ans=""
+    printf '%s [y/N] ' "$prompt" >&2
+    read -r ans < /dev/tty 2>/dev/null || return 1
+    case "$ans" in
+        y | Y | yes | YES)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+run_ports_check() {
+    if [[ "$SKIP_PORTS_CHECK" == true ]]; then
+        _ports_check_info "已跳过端口检查 (--skip-ports-check)."
+        return 0
+    fi
+    local checker
+    checker=""
+    if ! checker="$(find_check_ports_script)"; then
+        _ports_check_warn "未找到 check_ports.sh,跳过端口检查.部署完成后可手工执行同目录 check_ports.sh --ports 80,443."
+        return 0
+    fi
+    local check_list
+    check_list="${PORTS_CHECK_LIST:-80}"
+    local fix_list
+    fix_list="${PORTS_FIX_LIST:-80,443}"
+    _ports_check_info "检查端口监听与防火墙放行状态: [${check_list}] (执行 bash ${checker} --ports ${check_list})."
+    if bash "$checker" --ports "$check_list" >&2; then
+        _ports_check_info "端口检查通过."
+        return 0
+    fi
+    _ports_check_warn "端口检查未通过,详见上方输出."
+    local answer
+    answer=0
+    ask_yes_no "是否尝试放行端口 [${fix_list}]" || answer=$?
+    if [[ "$answer" -eq 0 ]]; then
+        if bash "$checker" --fix --ports "$fix_list" >&2; then
+            _ports_check_info "端口放行成功."
+        else
+            _ports_check_warn "端口放行未完成(后端无法识别或执行失败)."
+        fi
+        if bash "$checker" --ports "$check_list" >&2; then
+            _ports_check_info "复查通过."
+            return 0
+        fi
+        _ports_check_warn "复查仍未通过."
+    elif [[ "$answer" -eq 2 ]]; then
+        _ports_check_warn "非交互环境,跳过自动放行."
+    fi
+    answer=0
+    ask_yes_no "是否继续完成部署" || answer=$?
+    if [[ "$answer" -eq 0 ]]; then
+        _ports_check_warn "已确认继续完成部署,端口问题请后续自行处理."
+        return 0
+    elif [[ "$answer" -eq 2 ]]; then
+        _ports_check_warn "非交互环境,无法确认,默认继续完成部署.端口问题请后续自行处理."
+        return 0
+    fi
+    _ports_check_warn "用户取消部署(端口检查未通过)."
+    return 1
+}
+# ---- 端口与防火墙检查结束 ----
+
 # main
 if [[ $DEV_MODE == true ]]; then
     echo "[debug]:开发者模式,跳过拉取远程代码,使用本地代码..."
@@ -351,5 +481,7 @@ fi
 
 echo "重载nginx"
 nginx -t && nginx -s reload
+
+run_ports_check || exit 1
 
 bash ~/sh/shellrc_addition.sh && exec bash # 激活bash样式和环境
