@@ -11,3 +11,8 @@
 - 换行：存量文件不动，新文件 CRLF；提交前必跑 `git diff` vs `git diff --ignore-cr-at-eol` 对照。
 - 用户可见文本遵循 `PS/docs/Module-Conventions.md §11` 用词与 `§12` 行文（正式、规范、严谨）。
 - 中文用户：中文回复；复杂命令写 `.ps1` 再 `-File` 执行，不拼行内 `pwsh -Command` 引号。
+
+## 提交前检查（每次必做，无需用户提醒）
+
+- 暂存审查：`git add` 只点名本次任务文件；提交前复核 `git diff --cached --stat`，与任务无关的孤立文件一律移出暂存（数据转储与个人临时输出不得入库）。
+- 隐私扫描：对暂存内容检查口令、密钥、Token、私钥块、真实服务器 IP 与域名映射、客户数据等不宜公开的内容；命中即停止并报告用户，不得提交。参考：`git diff --cached | grep -nEi 'password|passwd|secret|token|api[_-]?key|BEGIN [A-Z ]*PRIVATE KEY'`；数据类文件超 100KB 须有正当理由。
