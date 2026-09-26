@@ -77,3 +77,6 @@ coverage.xml
 # dotnet 构建产物(CxxuPredictor 自研 predictor;模块根的 dll 是发布件,要提交)
 PS/CxxuPredictor/src/bin/
 PS/CxxuPredictor/src/obj/
+
+# 反代网关运行时路由数据，禁止入库（曾因此做过全历史清除）
+routes.map.txt
