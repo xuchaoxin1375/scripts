@@ -416,7 +416,7 @@ bash "$NGINX_CONF_DIR/update_cf_ip_configs.sh" -s "$NGINX_CONFD" -n
 echo "将反代服务器nginx配置文件复制一份到:[$NGINX_CONFD]..."
 # 不要用ln 创建链接,因为这里的文件要自定义修改.
 if [[ $GATEWAY_MODE == "simple" ]]; then
-    cp -fv "$sh"/nginx_conf/reverse_proxy/reverse_to_a.conf "$NGINX_CONFD/"
+    cp -fv "$sh"/nginx_conf/reverse_proxy/gateway.simple.template.conf "$NGINX_CONFD/reverse_to_a.conf"
     reverse_conf="$NGINX_CONFD/reverse_to_a.conf"
 elif [[ $GATEWAY_MODE == "hostmap" ]]; then
     # 情况特殊一点,建议放到配置总目录NGINX_CONF_DIR
@@ -424,9 +424,9 @@ elif [[ $GATEWAY_MODE == "hostmap" ]]; then
     # cp -rfv "$sh"/nginx_conf/reverse_proxy/gateway/ "$NGINX_CONF_DIR/"
     gateway_dir_tpl="$sh"/nginx_conf/reverse_proxy/gateway
     gateway_dir="$NGINX_CONF_DIR/gateway"
-    gateway_conf="$sh"/nginx_conf/reverse_proxy/gateway.conf
+    gateway_conf="$sh"/nginx_conf/reverse_proxy/gateway.hostmap.template.conf
     echo "复制[$gateway_conf]配置文件到[$NGINX_CONFD]..."
-    cp -fv "$sh"/nginx_conf/reverse_proxy/gateway.conf "$NGINX_CONFD/" || {
+    cp -fv "$gateway_conf" "$NGINX_CONFD/gateway.conf" || {
         echo "复制失败,退出" >&2
         exit 1
     }
@@ -453,7 +453,7 @@ fi
 
 if [[ -e $reverse_conf ]]; then
     echo "正在用sed编辑文件:[$reverse_conf]..."
-    # 编辑nginx配置文件(reverse_to_a.conf)
+    # 编辑nginx配置文件(reverse_to_a.conf，模板见 gateway.simple.template.conf)
     if [[ $GATEWAY_MODE == "simple" ]]; then
         # [[ $IP ]] || echo "请设置需要被反代隐藏的上游IP" >&2 && exit 1
         [[ $IP ]] || {

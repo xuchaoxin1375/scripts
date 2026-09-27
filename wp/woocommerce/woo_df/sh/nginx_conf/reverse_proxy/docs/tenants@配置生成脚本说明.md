@@ -20,7 +20,7 @@
 | 查表变量  | `map $host $backend_origin`                                                                    | `map $host $tenant_a_backend` / `$tenant_b_backend` |
 | 未知 Host | 444                                                                                              | 444，而且只在当前 IP 的那张表里查                       |
 | 跨管理员  | 同一张表，A 的域名写进去就能被任意入口打到                                                       | 把 B 的 Host 打到 A 的 IP 上，A 的表里没有，直接 444    |
-| 配置来源  | 复制仓库模板 `gateway.conf` + `gateway/maps/`                                                | 按 `-t/-r` 生成 `tenant-*.conf`                     |
+| 配置来源  | 复制仓库模板 `gateway.hostmap.template.conf` + `gateway/maps/`                                                | 按 `-t/-r` 生成 `tenant-*.conf`                     |
 | 适用      | 一台反代机、一个管理员、很多站点                                                                 | 一台反代机、多个公网 IP、多个管理员                     |
 
 `base.sh` 另外还有 `-G simple`：不按 Host 查表，`-i A_IP` 后所有请求都转到那一台上游。那是更老的“整机对一台源站”。

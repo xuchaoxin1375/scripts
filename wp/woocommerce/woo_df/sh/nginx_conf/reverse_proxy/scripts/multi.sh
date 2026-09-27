@@ -53,7 +53,7 @@
 
 set -Eeuo pipefail
 
-VERSION="20260608.15:40"
+VERSION="20260927.10:57"
 
 NGINX_CONF_HOME="/etc/nginx"
 NGINX_CONFD="$NGINX_CONF_HOME/conf.d"
@@ -383,6 +383,16 @@ format_nginx_ip_port() {
     fi
 }
 
+# 将 IP 转为可用于 nginx 标识符/文件名的安全形式。
+# upstream 名仅允许 [A-Za-z0-9_]，文件名要避开冒号，因此把 . 和 : 统一换成 _。
+# 示例: 10.0.0.11 -> 10_0_0_11；2001:db8::1 -> 2001_db8__1。
+sanitize_ip_for_name() {
+    local ip="$1"
+    ip="${ip//./_}"
+    ip="${ip//:/_}"
+    printf '%s' "$ip"
+}
+
 # 解析并校验单组映射。支持 B_IP->A_IP、B_IP=>A_IP、B_IP A_IP；不再支持 B_IP:A_IP。
 add_mapping_pair() {
     local raw="$1"
@@ -611,7 +621,7 @@ generate_nginx_conf() {
 #   2. 若需修改映射关系，请调整脚本参数 -m 或 --map-file 后重新生成。
 #   3. B_IP 必须已经配置在当前服务器网卡上。
 #   4. proxy_bind 会强制 B 访问对应 A 时使用指定 B_IP 作为源 IP。
-#   5. 每组映射会生成一个 upstream 和一个 server 块。
+#   5. 每组映射会生成一个 upstream(b_<B_IP>_to_a_<A_IP>_backend，IP 中的 ./: 转为 _)和一个 server 块；日志文件名同样按此规则，便于按 IP 排查。
 #   6. 当前配置默认只监听 HTTP 80，如需 HTTPS/443，可在脚本中扩展生成逻辑。
 #
 # 当前映射表:
@@ -622,7 +632,7 @@ EOF
         b_ip="${item%%"${MAPPING_SEP}"*}"
         a_ip="${item#*"${MAPPING_SEP}"}"
         cat << EOF
-#   b${idx}: ${b_ip} -> a${idx}: ${a_ip}
+#   [${idx}] ${b_ip} -> ${a_ip}
 EOF
         idx=$((idx + 1))
     done
@@ -694,11 +704,19 @@ EOF
         local a_upstream_addr=""
         b_listen_addr="$(format_nginx_ip_port "$b_ip" 80)"
         a_upstream_addr="$(format_nginx_ip_port "$a_ip" 80)"
+        local b_safe=""
+        local a_safe=""
+        local group_tag=""
+        local upstream_name=""
+        b_safe="$(sanitize_ip_for_name "$b_ip")"
+        a_safe="$(sanitize_ip_for_name "$a_ip")"
+        group_tag="b_${b_safe}_to_a_${a_safe}"
+        upstream_name="${group_tag}_backend"
 
         cat << EOF
 
 # ======================================================================
-# 映射组 b${idx} -> a${idx}
+# 映射组 [${idx}] ${b_ip} -> ${a_ip}
 # ======================================================================
 #
 # B 侧出口/监听 IP:
@@ -718,8 +736,8 @@ EOF
 #   5. 传递 Cloudflare 与真实访客 IP 相关请求头，便于后端日志分析。
 #
 
-upstream a${idx}_backend {
-    # 后端源站服务器 a${idx}.
+upstream ${upstream_name} {
+    # 后端源站服务器 ${a_ip}.
     # 当前默认代理到 HTTP 80 端口。
     server ${a_upstream_addr};
 
@@ -738,20 +756,20 @@ server {
     server_name _;
 
     # 每组映射单独记录 access/error 日志，便于按出口 IP 排查问题。
-    access_log ${NGINX_LOG_DIR}b${idx}_to_a${idx}_access.log cf_proxy_main;
-    error_log  ${NGINX_LOG_DIR}b${idx}_to_a${idx}_error.log warn;
+    access_log ${NGINX_LOG_DIR}${group_tag}_access.log cf_proxy_main;
+    error_log  ${NGINX_LOG_DIR}${group_tag}_error.log warn;
 
     # 健康检查路径.
-    # 可用于确认当前 b${idx}->a${idx} 映射对应的 nginx server 块已命中。
+    # 可用于确认当前 ${b_ip}->${a_ip} 映射对应的 nginx server 块已命中。
     location = /__b_health {
         access_log off;
-        return 200 "b${idx} -> a${idx} gateway ok\n";
+        return 200 "${b_ip} -> ${a_ip} gateway ok\n";
         add_header Content-Type text/plain;
     }
 
     location / {
         # 将请求转发到当前映射组的 upstream.
-        proxy_pass http://a${idx}_backend;
+        proxy_pass http://${upstream_name};
 
         # 关键配置:
         # 强制 B 连接 A 时使用当前 B_IP 作为源 IP。(默认不启用绑定,以免阻碍ipv6,ipv4之间的转发)
@@ -789,7 +807,7 @@ server {
 
         # 调试响应头.
         # 稳定运行后可按需删除或在脚本中做成开关。
-        add_header X-Debug-Gateway "b${idx}-to-a${idx}" always;
+        add_header X-Debug-Gateway "${b_ip}-to-${a_ip}" always;
         add_header X-Debug-Server-Addr \$server_addr always;
         add_header X-Debug-Upstream-Addr \$upstream_addr always;
         add_header X-Debug-Upstream-Status \$upstream_status always;
@@ -948,7 +966,7 @@ main() {
     local idx=1
     local item=""
     for item in "${MAPPINGS[@]}"; do
-        info "映射 b${idx}->a${idx}: ${item%%"${MAPPING_SEP}"*} -> ${item#*"${MAPPING_SEP}"}"
+        info "映射 [${idx}] ${item%%"${MAPPING_SEP}"*} -> ${item#*"${MAPPING_SEP}"}"
         idx=$((idx + 1))
     done
 
