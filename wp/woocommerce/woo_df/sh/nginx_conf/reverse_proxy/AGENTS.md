@@ -9,7 +9,8 @@
 
 ## 红线（本目录适用）
 
-- 换行：存量文件不动；`.sh` 文件必须 `LF`（`CRLF` 在 Linux 报 `$'\r': command not found`）；`.md` 新文件 `CRLF`。提交前必跑 `git diff` 与 `git diff --ignore-cr-at-eol` 对照。
+- 换行：存量文件不动；`.sh` 文件必须 `LF`（`CRLF` 在 Linux 报 `$'\r': command not found`）；`.md` 文件不限（`LF`/`CRLF` 均可）。提交前必跑 `git diff` 与 `git diff --ignore-cr-at-eol` 对照。
+- 记住指令入库：用户以“记住”下达的长期约束，须同步落盘到本 `AGENTS.md` 对应条款，不只记在会话内。
 - 三部署脚本中的端口检查代码块（起止标记内）必须字节一致，改一处即改三处，校验见维护指南 §5。
 - `shellcheck` 只允许两处存量告警（`base.sh` 的 `SC2016`、`tenants.sh` 的 `SC1111`）；不整文件重排存量脚本格式。
 - 暂存只点名本次文件，禁止 `git add -A`（工作区常有无关文件）。

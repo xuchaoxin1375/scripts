@@ -8,9 +8,10 @@
 ## 红线（全仓适用）
 
 - 提交/推送/PR：用户明确说才做；提交信息用 `fix:`/`feat:`/`chore:` + 中文简述；提交后必验 HEAD（`git show HEAD:<关键文件>` + 状态干净）。
-- 换行：存量文件不动，新文件 CRLF；提交前必跑 `git diff` vs `git diff --ignore-cr-at-eol` 对照。
+- 换行：存量文件不动；新文件 CRLF（`.md` 文件不限，`LF`/`CRLF` 均可）；提交前必跑 `git diff` vs `git diff --ignore-cr-at-eol` 对照。
 - 用户可见文本遵循 `PS/docs/Module-Conventions.md §11` 用词与 `§12` 行文（正式、规范、严谨）。
 - 中文用户：中文回复；复杂命令写 `.ps1` 再 `-File` 执行，不拼行内 `pwsh -Command` 引号。
+- 记住指令入库：用户以“记住”下达的长期约束，须同步落盘到对应治理文档（全仓事项进根 `AGENTS.md`，分区事项进对应分区 `AGENTS.md`），不只记在会话内。
 
 ## 提交前检查（每次必做，无需用户提醒）
 
