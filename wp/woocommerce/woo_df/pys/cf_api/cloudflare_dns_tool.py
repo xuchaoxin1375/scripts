@@ -32,15 +32,28 @@ Cloudflare DNS 批量修改 / 查询 / 清理工具
    - 处理账号内域名时输出：[i/n] 正在处理域名 xxx。
    - 若白名单只匹配部分域名，同时输出“账号共 N 个域名，本次待处理 M 个”。
 
-6. Cloudflare API 保守限流模式
+6. Cloudflare API 限流与速度档位
    - Cloudflare 官方 REST API 全局限额通常为 1200 次 / 5 分钟 / 用户或账号 Token。
-   - 使用 --conservative 可启用保守模式：降低账号/域名并发，并对本进程内所有 API 请求串行限速。
+   - 默认 --speed eco 保守执行，尽量不触碰限流；着急时用 balanced/fast/turbo 提速。
    - 使用 --request-interval 可自定义本进程内相邻两次 Cloudflare API 请求的最小间隔。
    - 收到 HTTP 429 时会读取 retry-after / Ratelimit 响应头并自动退避重试。
+   - 可重试状态码覆盖 408/409/425/5xx 与 Cloudflare 520~527/530；触发限流后
+     限速器临时叠加等待（自适应），成功后逐步衰减，小账号快速场景不受影响。
 
 7. 中断处理
    - 支持 Ctrl+C 通知所有账号/域名工作线程停止。
-   - 尚未开始的 future 会被取消；已经运行中的线程会在下一次检查 stop_event 或当前 HTTP 请求返回后退出。
+   - 尚未开始的 future 会被取消并记为 cancelled；已经运行中的线程会在下一次检查 stop_event 或当前 HTTP 请求返回后退出。
+   - 每次批量结束输出对账行（expected/completed/cancelled），保证 expected == completed + cancelled。
+
+8. 失败清单与重跑（CSV）
+   - 使用 --failed-output failures.csv 将失败/取消行导出（UTF-8-SIG）。
+   - 使用 --resume-from failures.csv 仅重跑清单中的域名；已完成项因内容一致自动跳过，天然幂等。
+
+9. 出口代理（可选）
+   - 使用 -P/--proxy（可多次）或 --proxy-file 配置 1 到多个 HTTP/HTTPS 代理。
+   - 调度模式 --proxy-mode：round-robin / sticky / failover；网络错误自动冷却切换。
+   - 代理改变出口 IP 与链路，可缓解 IP 级限流/封禁并提高重试成功率；
+     Cloudflare 配额按 credential 计算，配额侧仍需 --conservative/--request-interval。
 
 维护约定：
 - 每次修改本文件后，都应执行项目文档“代码质量检查”章节推荐的完整检查。
@@ -75,18 +88,19 @@ import re
 import signal
 import sys
 import time
+from collections import Counter
 from collections.abc import Iterable, Mapping
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from threading import Event, Lock, local as thread_local
-from typing import Any, Optional, Union
+from typing import Any, Callable, Optional, Union
 from urllib.parse import urlparse
 
 import requests
 
-VERSION = "20260630"
+VERSION = "20260929"
 
 # ============ 默认配置区 ============
 # 说明：
@@ -125,12 +139,102 @@ CONSERVATIVE_REQUEST_INTERVAL = 0.5
 CONSERVATIVE_ACCOUNT_WORKERS = 3
 CONSERVATIVE_ZONE_WORKERS = 2
 DEFAULT_RATE_LIMIT_SCOPE = "account"
+DEFAULT_SPEED = "eco"
+# 速度档位：默认 eco 保守（尽量不触碰限流），着急时用更高档位。
+# 各档含义（account_workers / workers / request_interval 秒）：
+# - eco：多账号各 3 并发、单账号内 2 并发、每账号约 2 请求/秒；
+# - balanced：略微偏快，适合账号多、每账号域名少的日常批量；
+# - fast：快速档，429 风险明显上升，失败项进清单需重跑；
+# - turbo：不额外限速，仅保留自适应退避，限流几乎必然发生，只建议配合清单重跑使用。
+SPEED_PRESETS: dict[str, dict[str, float]] = {
+    "eco": {
+        "account_workers": 3,
+        "workers": 2,
+        "request_interval": 0.5,
+    },
+    "balanced": {
+        "account_workers": 5,
+        "workers": 4,
+        "request_interval": 0.2,
+    },
+    "fast": {
+        "account_workers": 8,
+        "workers": 6,
+        "request_interval": 0.1,
+    },
+    "turbo": {
+        "account_workers": 20,
+        "workers": 20,
+        "request_interval": 0.0,
+    },
+}
+HARD_MAX_WORKERS = 20
 DEFAULT_API_MAX_RETRIES = 5
 DEFAULT_API_RETRY_BASE_DELAY = 2.0
 DEFAULT_API_RETRY_MAX_SLEEP = 300.0
 
+# 可重试的 HTTP 状态码。除 429 与常见 5xx 外，还覆盖 Cloudflare 源站错误
+# 520~527/530（缓存/源站异常，常为临时性）以及 408/409/425 等临时性错误。
+# 401/403/404 等语义性错误不在其中，失败即记账等待重跑，不做无意义重试。
+RETRYABLE_HTTP_STATUS = frozenset(
+    {
+        408,
+        409,
+        425,
+        429,
+        500,
+        502,
+        503,
+        504,
+        520,
+        521,
+        522,
+        523,
+        524,
+        525,
+        526,
+        527,
+        530,
+    }
+)
+
+# 自适应限速上限：连续触发限流时，限速器在用户配置间隔之上最多再叠加的秒数。
+# 无 429/可重试错误时不叠加，小账号快速场景不受影响。
+ADAPTIVE_MAX_EXTRA_INTERVAL = 5.0
+
+# 失败清单 CSV 列。默认只写入 failed/cancelled 行，保持文件简洁；
+# dry_run 预览行不写入失败清单。
+FAILURE_CSV_FIELDNAMES = [
+    "account",
+    "zone",
+    "record_id",
+    "name",
+    "type",
+    "old_content",
+    "new_content",
+    "action",
+    "status",
+    "attempts",
+    "error",
+    "timestamp",
+]
+
+# 视为“未完成、需要重跑”的结果状态。done/skipped/dry_run_* 不在此列。
+FAILURE_STATUSES = frozenset(
+    {
+        "error",
+        "error_delete_old_after_migrate",
+        "cancelled",
+    }
+)
+
+# zone 级读取失败时最多尝试次数（初次 + 1 次补偿重试）。
+ZONE_FETCH_MAX_ATTEMPTS = 2
+
 LOGGER = logging.getLogger("cloudflare_dns_tool")
-SENSITIVE_ARG_NAMES = {"-t", "--token", "-k", "--key", "--api-key"}
+SENSITIVE_ARG_NAMES = {"-t", "--token", "-k", "--key", "--api-key", "-P", "--proxy"}
+PROXY_DEFAULT_MODE = "round-robin"
+PROXY_FAILURE_COOLDOWN = 60.0
 
 
 def configure_logging(log_file: Optional[str], log_level: str, overwrite: bool) -> None:
@@ -453,6 +557,259 @@ def is_wildcard_record_name(record_name: str) -> bool:
     return str(record_name or "").strip().startswith("*")
 
 
+def normalize_content_for_compare(value: Optional[str]) -> str:
+    """归一化 DNS 内容用于相等比对，不改变实际下发的原始值。
+
+    - 去首尾空白；CNAME 忽略大小写与尾点；
+    - IP 地址用 ipaddress 压缩表示，避免 IPv6 多种写法被误判为不同。
+    """
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if not text:
+        return ""
+    lowered = text.lower().rstrip(".")
+    try:
+        return ipaddress.ip_address(text).compressed.lower()
+    except ValueError:
+        return lowered
+
+
+def contents_equal(first: Optional[str], second: Optional[str]) -> bool:
+    """比对两条 DNS 内容是否等价（归一化后）。"""
+    return normalize_content_for_compare(first) == normalize_content_for_compare(second)
+
+
+def is_rate_limit_api_payload(data: object) -> bool:
+    """判断 success:false 的响应体是否实质为限流（值得重试）。
+
+    Cloudflare 有时以 HTTP 200 + success:false 返回限流错误，
+    此时不能按普通失败直接记账，应走 429 退避重试。
+    """
+    if not isinstance(data, dict):
+        return False
+    errors = data.get("errors")
+    if not isinstance(errors, list):
+        return False
+    for item in errors:
+        if not isinstance(item, dict):
+            continue
+        try:
+            code = int(item.get("code", 0) or 0)
+        except (TypeError, ValueError):
+            code = 0
+        message = str(item.get("message", "") or "").lower()
+        if code in {10000, 8000000, 8000001}:
+            return True
+        if "rate limit" in message or "too many requests" in message:
+            return True
+    return False
+
+
+def utc_now_iso() -> str:
+    """返回当前 UTC 时间的 ISO8601 字符串，用于失败清单。"""
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def write_failure_csv(path: str, rows: list[dict[str, Any]]) -> None:
+    """写入失败清单 CSV（UTF-8-SIG，兼容 Excel 中文）。
+
+    只写入 failed/cancelled 行；调用方负责过滤。父目录自动创建。
+    """
+    import csv
+
+    parent = os.path.dirname(os.path.abspath(path))
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    with open(path, "w", newline="", encoding="utf-8-sig") as file_obj:
+        writer = csv.DictWriter(file_obj, fieldnames=FAILURE_CSV_FIELDNAMES)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({key: row.get(key, "") for key in FAILURE_CSV_FIELDNAMES})
+
+
+def load_resume_entries(path: str) -> list[tuple[str, str]]:
+    """读取 --resume-from CSV，返回 (account, zone) 小写元组列表。
+
+    account 为空表示适用于所有账号；zone 为空表示整个账号（账号级失败哨兵行），
+    重跑时该账号不过滤、全量执行。
+    """
+    import csv
+
+    entries: list[tuple[str, str]] = []
+    with open(path, "r", newline="", encoding="utf-8-sig") as file_obj:
+        reader = csv.DictReader(file_obj)
+        if reader.fieldnames is None:
+            return entries
+        lowered = {str(name or "").strip().lower() for name in reader.fieldnames}
+        if "zone" not in lowered:
+            raise ValueError(f"重跑文件缺少 zone 列: {path}")
+        for row in reader:
+            account = (
+                str(row.get("account") or row.get("Account") or "").strip().lower()
+            )
+            zone = str(row.get("zone") or row.get("Zone") or "").strip().lower()
+            entries.append((account, zone))
+    return entries
+
+
+def resume_filter_for_account(
+    entries: Optional[list[tuple[str, str]]], account_name: str
+) -> Optional[set[str]]:
+    """计算当前账号的重跑过滤集合。
+
+    返回 None 表示不过滤（无重跑文件，或清单含本账号整账号哨兵行）；
+    返回集合（含空集合）表示仅处理其中 zone，空集合即本账号无待重跑域名。
+    """
+    if entries is None:
+        return None
+    current = (account_name or "").strip().lower()
+    for account, zone in entries:
+        if not zone and account in {"", current}:
+            return None
+    return {zone for account, zone in entries if zone and account in {"", current}}
+
+
+def resume_zones_for_account(
+    entries: list[tuple[str, str]], account_name: str
+) -> set[str]:
+    """兼容旧语义：返回属于当前账号的 zone 集合（小写）。"""
+    result = resume_filter_for_account(entries, account_name)
+    return set() if result is None else result
+
+
+def infer_action_from_status(status: str) -> str:
+    """从结果状态推断失败清单的 action 列。"""
+    mapping = {
+        "updated": "update",
+        "updated_full": "full_replace",
+        "created": "migrate",
+        "deleted": "delete",
+        "deleted_ip": "delete_ip",
+        "deleted_old_after_migrate": "migrate",
+        "deleted_old_full_migrate": "full_replace",
+        "deleted_zone": "delete_zone",
+        "cleared_dns": "delete_zone",
+        "added_domain": "add",
+        "added_record": "add",
+        "updated_attrs": "set_attrs",
+        "exported": "export",
+        "error": "batch",
+        "error_delete_old_after_migrate": "migrate",
+        "cancelled": "batch",
+    }
+    return mapping.get(status, "batch")
+
+
+def failure_rows_for_results(
+    account_name: str, results: list["DNSOperationResult"]
+) -> list[dict[str, Any]]:
+    """提取失败/取消行并补齐账号，供失败清单 CSV 使用。"""
+    rows: list[dict[str, Any]] = []
+    for item in results:
+        if item.status not in FAILURE_STATUSES:
+            continue
+        if not item.account:
+            item.account = account_name
+        rows.append(item.to_failure_row(infer_action_from_status(item.status)))
+    return rows
+
+
+def serialize_zone_backup(
+    account_name: str, zone: dict, records: list[dict]
+) -> dict[str, Any]:
+    """序列化单个 zone 的备份载荷（JSON 全量，可读可审计）。"""
+    slim_records = [
+        {
+            "id": record.get("id", ""),
+            "type": record.get("type", ""),
+            "name": record.get("name", ""),
+            "content": record.get("content", ""),
+            "ttl": record.get("ttl", 1),
+            "proxied": bool(record.get("proxied", False)),
+        }
+        for record in records
+    ]
+    return {
+        "tool": "cloudflare_dns_tool",
+        "version": VERSION,
+        "account": account_name,
+        "zone": zone.get("name", ""),
+        "zone_id": zone.get("id", ""),
+        "exported_at": utc_now_iso(),
+        "record_count": len(slim_records),
+        "records": slim_records,
+    }
+
+
+def format_bind_zone(zone_name: str, records: list[dict]) -> str:
+    """生成简化 BIND 区域文件（仅记录行，供人阅读与外部工具消费）。
+
+    注意：不含 SOA/NS 权威记录，不可直接灌入权威服务，仅作备份参考。
+    """
+    lines = [
+        f"; cloudflare_dns_tool export, zone={zone_name}, at={utc_now_iso()}",
+        f"$ORIGIN {zone_name}.",
+    ]
+    for record in records:
+        r_type = str(record.get("type", ""))
+        r_name = str(record.get("name", ""))
+        short = "@" if r_name.lower() == zone_name.lower() else r_name
+        content = str(record.get("content", ""))
+        ttl = record.get("ttl", 1)
+        proxied = "yes" if record.get("proxied") else "no"
+        lines.append(f"{short}\t{ttl}\tIN\t{r_type}\t{content} ; proxied={proxied}")
+    return "\n".join(lines) + "\n"
+
+
+def write_zone_backup_file(
+    base_dir: str, account_name: str, zone_name: str, payload: dict[str, Any], fmt: str
+) -> str:
+    """写入单个 zone 备份文件，返回写入路径。"""
+    safe_account = re.sub(r"[^\w\-.]+", "_", account_name or "unknown")
+    safe_zone = re.sub(r"[^\w\-.]+", "_", zone_name or "unknown")
+    account_dir = os.path.join(os.path.abspath(base_dir), safe_account)
+    os.makedirs(account_dir, exist_ok=True)
+    if fmt == "bind":
+        path = os.path.join(account_dir, f"{safe_zone}.bind")
+        with open(path, "w", encoding="utf-8") as file_obj:
+            file_obj.write(format_bind_zone(zone_name, payload.get("records", [])))
+    else:
+        path = os.path.join(account_dir, f"{safe_zone}.json")
+        with open(path, "w", encoding="utf-8") as file_obj:
+            json.dump(payload, file_obj, ensure_ascii=False, indent=2)
+    return path
+
+
+def parse_add_record_spec(spec: str) -> tuple[str, str, str]:
+    """解析 --add-record 参数，兼容 IPv6 内容中的冒号。
+
+    支持 name:type:content、name-type-content、空格分隔。中间的 type
+    通过已知类型 token 定位，避免 IPv6 的冒号破坏切分。
+    """
+    text = (spec or "").strip()
+    if not text:
+        raise ValueError("记录格式为空")
+    match = re.match(
+        r"^(?P<name>.+?)[\s:\-]+(?P<rtype>[A-Za-z]+)[\s:\-]+(?P<content>.+)$",
+        text,
+    )
+    if not match:
+        raise ValueError(
+            "格式错误，支持 name:type:content / name-type-content / name type content，"
+            f"收到: {spec}"
+        )
+    name = match.group("name").strip()
+    rtype = match.group("rtype").strip().upper()
+    content = match.group("content").strip()
+    if not name or not rtype or not content:
+        raise ValueError(
+            "格式错误，支持 name:type:content / name-type-content / name type content，"
+            f"收到: {spec}"
+        )
+    return name, rtype, content
+
+
 def mask_secret(value: Optional[str], show: bool = False) -> str:
     """列表展示账号时默认隐藏 token/key，避免误泄露。"""
     if not value:
@@ -584,13 +941,15 @@ def calc_retry_delay(
 
 class ApiRateLimiter:
     """
-    本进程内共享的 Cloudflare API 调用限速器。
+    本进程内共享的 Cloudflare API 调用限速器（ floor + 自适应叠加 ）。
 
     设计要点：
     - 账号多、zone 多时，即使每个账号/zone 线程并发，实际 API 请求仍会被统一限速。
     - 限速器只影响本脚本进程内的请求，无法感知其他脚本或 Cloudflare Dashboard。
       因此保守模式默认使用 0.5 秒/请求，为外部调用留出余量。
     - 该限速器是“最小请求间隔”模型，简单、可维护，不依赖第三方包。
+    - 自适应部分只在触发 429/可重试错误后临时叠加等待；无错误时保持用户配置
+      的 floor 不变，小账号快速场景不受影响（不漏优先、速度其次）。
     """
 
     def __init__(self, min_interval: float = 0.0, stop_event: Optional[Event] = None):
@@ -598,28 +957,188 @@ class ApiRateLimiter:
         self._stop_event = stop_event or Event()
         self._lock = Lock()
         self._next_allowed_at = 0.0
+        self._adaptive_extra = 0.0
 
     @property
     def enabled(self) -> bool:
-        return self.min_interval > 0
+        return self.min_interval > 0 or self._adaptive_extra > 0
+
+    @property
+    def adaptive_extra(self) -> float:
+        with self._lock:
+            return self._adaptive_extra
+
+    def note_rate_limited(self) -> None:
+        """记录一次限流/可重试错误，临时放大后续等待间隔。"""
+        with self._lock:
+            if self._adaptive_extra <= 0:
+                self._adaptive_extra = 0.5
+            else:
+                self._adaptive_extra = min(
+                    ADAPTIVE_MAX_EXTRA_INTERVAL, self._adaptive_extra * 2.0
+                )
+
+    def note_success(self) -> None:
+        """记录一次成功，逐步衰减自适应叠加。"""
+        with self._lock:
+            if self._adaptive_extra > 0:
+                self._adaptive_extra = max(0.0, self._adaptive_extra * 0.9)
+                if self._adaptive_extra < 0.05:
+                    self._adaptive_extra = 0.0
 
     def wait(self) -> None:
-        """在发起 API 请求前调用，确保相邻请求至少间隔 min_interval 秒。"""
-        if not self.enabled:
-            return
-
+        """在发起 API 请求前调用，确保相邻请求至少间隔 floor + 自适应秒数。"""
         while True:
             if self._stop_event.is_set():
                 raise KeyboardInterrupt
 
             with self._lock:
+                interval = self.min_interval + self._adaptive_extra
+                if interval <= 0:
+                    return
                 now = time.monotonic()
                 wait_seconds = self._next_allowed_at - now
                 if wait_seconds <= 0:
-                    self._next_allowed_at = now + self.min_interval
+                    self._next_allowed_at = now + interval
                     return
 
             interruptible_sleep(min(wait_seconds, 0.5), self._stop_event)
+
+
+def sanitize_proxy_url(url: str) -> str:
+    """脱敏代理 URL：去掉 userinfo，仅保留 scheme://host:port，用于日志展示。"""
+    try:
+        parsed = urlparse(str(url).strip())
+        host = parsed.hostname or ""
+        port = f":{parsed.port}" if parsed.port else ""
+        scheme = (parsed.scheme or "http").lower()
+        return f"{scheme}://{host}{port}" if host else "***"
+    except (ValueError, TypeError):
+        return "***"
+
+
+def validate_proxy_url(url: str) -> str:
+    """校验代理 URL，返回规范化后的原始串（保留凭证供 requests 使用）。
+
+    仅支持 http/https（requests 原生支持，无需额外依赖）。
+    """
+    text = str(url or "").strip()
+    parsed = urlparse(text)
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
+        raise ValueError(
+            f"代理地址格式错误，需为 http(s)://[user:pass@]host:port，收到: {url}"
+        )
+    return text
+
+
+def load_proxy_file(path: str) -> list[str]:
+    """读取代理文件，每行一个 URL，空行与 # 注释忽略。"""
+    proxies: list[str] = []
+    try:
+        with open(path, "r", encoding="utf-8") as file_obj:
+            for line_no, raw_line in enumerate(file_obj, start=1):
+                line = raw_line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                try:
+                    proxies.append(validate_proxy_url(line))
+                except ValueError as exc:
+                    log_print(f"[WARN] 代理文件第 {line_no} 行无效，已跳过: {exc}")
+    except FileNotFoundError:
+        log_print(f"代理文件不存在: {path}")
+        sys.exit(1)
+    return proxies
+
+
+class ProxyPool:
+    """线程安全的出口代理池（HTTP/HTTPS）。
+
+    作用与边界（诚实说明）：
+    - 代理切换改变的是出口 IP 与链路，可缓解 egress-IP 级限流/封禁、
+      本地链路故障，并在网络错误时自动切换，提高重试成功率；
+    - Cloudflare REST 配额按 credential 计算（1200/5min），换代理
+      不能提高该配额，配额侧仍需 --conservative/--request-interval。
+    - 模式：round-robin（逐请求轮转，默认）、sticky（每线程固定一个）、
+      failover（首个健康代理，仅故障时切换）。
+    - 网络错误（RequestException）触发故障标记与冷却；429/5xx 属于
+      服务端语义，不标记代理故障（round-robin 下次自然换出口）。
+    """
+
+    def __init__(
+        self,
+        urls: list[str],
+        mode: str = PROXY_DEFAULT_MODE,
+        failure_cooldown: float = PROXY_FAILURE_COOLDOWN,
+    ):
+        if mode not in {"round-robin", "sticky", "failover"}:
+            raise ValueError(f"不支持的代理模式: {mode}")
+        unique = list(dict.fromkeys(urls))
+        if not unique:
+            raise ValueError("代理池为空")
+        self._urls = unique
+        self._mode = mode
+        self._cooldown = max(1.0, float(failure_cooldown))
+        self._lock = Lock()
+        self._counter = 0
+        self._current = 0
+        self._unhealthy: dict[str, float] = {}
+        self._local = thread_local()
+
+    @property
+    def urls(self) -> list[str]:
+        return list(self._urls)
+
+    @property
+    def mode(self) -> str:
+        return self._mode
+
+    def sanitized_list(self) -> str:
+        return ", ".join(sanitize_proxy_url(url) for url in self._urls)
+
+    def _healthy(self, url: str, now: float) -> bool:
+        return self._unhealthy.get(url, 0.0) <= now
+
+    def _pick_fallback(self) -> str:
+        """全部不健康时仍选最早过期的，保证请求不被饿死。"""
+        return min(self._urls, key=lambda url: self._unhealthy.get(url, 0.0))
+
+    def next_proxy(self) -> str:
+        """取下一个出口代理（必定返回一个，不断流）。"""
+        now = time.monotonic()
+        with self._lock:
+            if self._mode == "sticky":
+                idx = getattr(self._local, "proxy_index", None)
+                if idx is None or not self._healthy(self._urls[idx], now):
+                    idx = self._counter % len(self._urls)
+                    self._counter += 1
+                    self._local.proxy_index = idx
+                url = self._urls[idx]
+                return url if self._healthy(url, now) else self._pick_fallback()
+            if self._mode == "failover":
+                url = self._urls[self._current % len(self._urls)]
+                if self._healthy(url, now):
+                    return url
+                for step in range(1, len(self._urls) + 1):
+                    candidate = self._urls[(self._current + step) % len(self._urls)]
+                    if self._healthy(candidate, now):
+                        self._current += step
+                        return candidate
+                return self._pick_fallback()
+            # round-robin
+            for _ in range(len(self._urls)):
+                url = self._urls[self._counter % len(self._urls)]
+                self._counter += 1
+                if self._healthy(url, now):
+                    return url
+            return self._pick_fallback()
+
+    def report_success(self, url: str) -> None:
+        with self._lock:
+            self._unhealthy.pop(url, None)
+
+    def report_failure(self, url: str) -> None:
+        with self._lock:
+            self._unhealthy[url] = time.monotonic() + self._cooldown
 
 
 def install_ctrl_c_handler(stop_event: Event) -> None:
@@ -647,20 +1166,46 @@ def cancel_pending_futures(futures: Iterable[Future[Any]]) -> None:
 
 @dataclass
 class DNSOperationResult:
-    """单条 DNS 记录操作结果，便于后续扩展为 CSV/JSON 输出。"""
+    """单条 DNS 记录操作结果，可直接导出为失败清单 CSV。"""
 
     zone: str
     name: str
     record_type: str
     old_content: Optional[str]
     new_content: Optional[str]
-    status: str  # updated / deleted / dry_run_update / dry_run_delete / skipped / error
+    # updated / created / deleted / dry_run_* / skipped / error /
+    # error_delete_old_after_migrate / cancelled
+    status: str
     message: str = ""
+    account: str = ""
+    attempts: int = 1
+    record_id: str = ""
+
+    def to_failure_row(self, action: str) -> dict[str, Any]:
+        """转换为失败清单 CSV 行；调用方保证 status 已属于失败集合。"""
+        return {
+            "account": self.account,
+            "zone": self.zone,
+            "record_id": self.record_id,
+            "name": self.name,
+            "type": self.record_type,
+            "old_content": self.old_content or "",
+            "new_content": self.new_content or "",
+            "action": action or infer_action_from_status(self.status),
+            "status": self.status,
+            "attempts": self.attempts,
+            "error": self.message,
+            "timestamp": utc_now_iso(),
+        }
 
 
 @dataclass
 class OperationStats:
-    """线程安全统计信息。多个 zone 并发处理时统一累加。"""
+    """线程安全统计信息。多个 zone 并发处理时统一累加。
+
+    cancelled 统计因中断/取消而未执行的条目，与 errors 并列为
+    “需要重跑”信号；skipped 仅表示本次按规则跳过，无需重跑。
+    """
 
     updated: int = 0
     created: int = 0
@@ -668,6 +1213,7 @@ class OperationStats:
     dry_run: int = 0
     skipped: int = 0
     errors: int = 0
+    cancelled: int = 0
     _lock: Lock = field(default_factory=Lock, repr=False)
 
     def inc_updated(self) -> None:
@@ -694,13 +1240,36 @@ class OperationStats:
         with self._lock:
             self.errors += 1
 
+    def inc_cancelled(self, count: int = 1) -> None:
+        with self._lock:
+            self.cancelled += count
+
+    def summary(self) -> str:
+        with self._lock:
+            return (
+                f"updated={self.updated}, created={self.created}, "
+                f"deleted={self.deleted}, dry_run={self.dry_run}, "
+                f"skipped={self.skipped}, errors={self.errors}, "
+                f"cancelled={self.cancelled}"
+            )
+
 
 @dataclass
 class BatchRunResult:
-    """单账号批处理结果。"""
+    """单账号批处理结果（含对账字段）。"""
 
     results: list[DNSOperationResult]
     stats: OperationStats
+    expected_zones: int = 0
+    completed_zones: int = 0
+    cancelled_zones: int = 0
+
+    def reconcile_text(self) -> str:
+        return (
+            f"zones expected={self.expected_zones}, "
+            f"completed={self.completed_zones}, "
+            f"cancelled={self.cancelled_zones}"
+        )
 
 
 class CloudflareDNSUpdater:
@@ -733,6 +1302,7 @@ class CloudflareDNSUpdater:
         api_retry_base_delay: float = DEFAULT_API_RETRY_BASE_DELAY,
         api_retry_max_sleep: float = DEFAULT_API_RETRY_MAX_SLEEP,
         explicit_domains: Optional[list[str]] = None,
+        proxy_pool: Optional[ProxyPool] = None,
     ):
         self.max_workers = max_workers
         self.account_name = account_name
@@ -741,6 +1311,10 @@ class CloudflareDNSUpdater:
         self._stop_event = stop_event or Event()
         self._thread_local = thread_local()
         self._rate_limiter = rate_limiter
+        self._proxy_pool = proxy_pool
+        # 可选进度回调 progress_cb(zone_name, state)，state 为 done/error/cancelled。
+        # CLI 不设置；Web 任务层可设置以接收 zone 级进度，回调异常不影响引擎。
+        self.progress_cb: Optional[Callable[[str, str], None]] = None
         self._api_max_retries = max(0, int(api_max_retries))
         self._api_retry_base_delay = max(0.1, float(api_retry_base_delay))
         self._api_retry_max_sleep = max(1.0, float(api_retry_max_sleep))
@@ -791,7 +1365,11 @@ class CloudflareDNSUpdater:
         限流处理策略：
         - 请求前先经过 ApiRateLimiter，控制本脚本进程内的总体请求间隔。
         - 收到 HTTP 429 时，优先使用 retry-after，其次使用 Ratelimit 头中的 t。
-        - 对 5xx 和短暂网络错误做有限次数指数退避重试。
+        - 对 RETRYABLE_HTTP_STATUS（含 Cloudflare 520~527/530）与短暂网络错误
+          做有限次数指数退避重试；401/403/404 等语义错误直接失败记账。
+        - HTTP 200 + success:false 若为限流载荷，同样走 429 退避重试。
+        - 每次限流/可重试错误会通知限速器临时叠加等待；成功则逐步衰减，
+          因此小账号快速场景不受影响，大批量限流场景自动变慢但不丢。
         """
         url = f"{self.BASE_URL}{endpoint}"
         last_error = ""
@@ -800,17 +1378,22 @@ class CloudflareDNSUpdater:
             self._check_stop()
             if self._rate_limiter:
                 self._rate_limiter.wait()
+            proxy_url = self._proxy_pool.next_proxy() if self._proxy_pool else None
+            proxies = {"http": proxy_url, "https": proxy_url} if proxy_url else None
 
             LOGGER.debug(
-                "API request account=%s method=%s endpoint=%s attempt=%s params=%s",
+                "API request account=%s method=%s endpoint=%s attempt=%s params=%s proxy=%s",
                 self.account_name,
                 method,
                 endpoint,
                 attempt + 1,
                 kwargs.get("params"),
+                sanitize_proxy_url(proxy_url) if proxy_url else "-",
             )
             try:
-                resp = self._get_session().request(method, url, timeout=30, **kwargs)
+                resp = self._get_session().request(
+                    method, url, timeout=30, proxies=proxies, **kwargs
+                )
                 LOGGER.debug(
                     "API response account=%s method=%s endpoint=%s status=%s",
                     self.account_name,
@@ -819,6 +1402,10 @@ class CloudflareDNSUpdater:
                     resp.status_code,
                 )
             except requests.RequestException as exc:
+                if self._proxy_pool and proxy_url:
+                    self._proxy_pool.report_failure(proxy_url)
+                if self._rate_limiter:
+                    self._rate_limiter.note_rate_limited()
                 last_error = f"网络请求失败: {exc}"
                 if attempt >= self._api_max_retries:
                     raise Exception(last_error) from exc
@@ -834,8 +1421,11 @@ class CloudflareDNSUpdater:
                 interruptible_sleep(delay, self._stop_event)
                 continue
 
-            if resp.status_code == 429:
-                last_error = f"HTTP 429 Too Many Requests: {resp.text[:300]}"
+            status = resp.status_code
+            if status in RETRYABLE_HTTP_STATUS:
+                if self._rate_limiter:
+                    self._rate_limiter.note_rate_limited()
+                last_error = f"HTTP {status}: {resp.text[:300]}"
                 if attempt >= self._api_max_retries:
                     raise Exception(last_error)
 
@@ -845,24 +1435,9 @@ class CloudflareDNSUpdater:
                     base_delay=self._api_retry_base_delay,
                     max_sleep=self._api_retry_max_sleep,
                 )
+                label = "触发 Cloudflare 限流" if status == 429 else "服务端临时错误"
                 self._safe_print(
-                    f"[RATE-LIMIT] {method} {endpoint} 触发 Cloudflare 限流，"
-                    f"{delay:.1f}s 后重试 ({attempt + 1}/{self._api_max_retries})"
-                )
-                interruptible_sleep(delay, self._stop_event)
-                continue
-
-            if (
-                resp.status_code in {500, 502, 503, 504}
-                and attempt < self._api_max_retries
-            ):
-                last_error = f"HTTP {resp.status_code}: {resp.text[:300]}"
-                delay = min(
-                    self._api_retry_base_delay * (2**attempt),
-                    self._api_retry_max_sleep,
-                )
-                self._safe_print(
-                    f"[RETRY] {method} {endpoint} 服务端临时错误 {resp.status_code}，"
+                    f"[RETRY] {method} {endpoint} {label} {status}，"
                     f"{delay:.1f}s 后重试 ({attempt + 1}/{self._api_max_retries})"
                 )
                 interruptible_sleep(delay, self._stop_event)
@@ -871,15 +1446,40 @@ class CloudflareDNSUpdater:
             try:
                 data = resp.json()
             except ValueError as exc:
+                # 可重试状态已在上一步处理；此处非 JSON 视为硬失败。
                 raise Exception(
-                    f"HTTP {resp.status_code}: 返回非 JSON 内容: {resp.text[:300]}"
+                    f"HTTP {status}: 返回非 JSON 内容: {resp.text[:300]}"
                 ) from exc
 
             if not resp.ok or not data.get("success"):
+                if is_rate_limit_api_payload(data):
+                    if self._rate_limiter:
+                        self._rate_limiter.note_rate_limited()
+                    last_error = (
+                        f"HTTP {status}, API 限流载荷: {data.get('errors', [])}"
+                    )
+                    if attempt >= self._api_max_retries:
+                        raise Exception(last_error)
+                    delay = calc_retry_delay(
+                        resp.headers,
+                        attempt_index=attempt,
+                        base_delay=self._api_retry_base_delay,
+                        max_sleep=self._api_retry_max_sleep,
+                    )
+                    self._safe_print(
+                        f"[RETRY] {method} {endpoint} 限流载荷，"
+                        f"{delay:.1f}s 后重试 ({attempt + 1}/{self._api_max_retries})"
+                    )
+                    interruptible_sleep(delay, self._stop_event)
+                    continue
                 raise Exception(
-                    f"HTTP {resp.status_code}, API 请求失败: {data.get('errors', [])}"
+                    f"HTTP {status}, API 请求失败: {data.get('errors', [])}"
                 )
 
+            if self._rate_limiter:
+                self._rate_limiter.note_success()
+            if self._proxy_pool and proxy_url:
+                self._proxy_pool.report_success(proxy_url)
             return data
 
         raise Exception(last_error or f"API 请求失败: {method} {endpoint}")
@@ -911,7 +1511,8 @@ class CloudflareDNSUpdater:
             if page >= total_pages:
                 break
             page += 1
-            time.sleep(0.2)  # 轻微限速，减少触发 Cloudflare API rate limit 的概率。
+            # 分页间隔走可中断 sleep；真正的请求节流由 ApiRateLimiter 承担。
+            interruptible_sleep(0.2, self._stop_event)
         return zones
 
     def get_dns_records(
@@ -942,8 +1543,222 @@ class CloudflareDNSUpdater:
             if page >= total_pages:
                 break
             page += 1
-            time.sleep(0.1)
+            interruptible_sleep(0.1, self._stop_event)
         return records
+
+    def _fetch_records_with_retry(
+        self,
+        zone_id: str,
+        zone_name: str,
+        record_type: Optional[str],
+        stats: OperationStats,
+        results: list[DNSOperationResult],
+        action: str,
+    ) -> Optional[list[dict]]:
+        """读取单个 zone 的记录，失败时做一次补偿重试，仍失败则记账返回 None。
+
+        避免“读失败 = 整个 zone 本次静默跳过”：最终失败会产生一条
+        record_type=ZONE、status=error 的记账，供失败清单与重跑使用。
+        """
+        last_error = ""
+        for attempt in range(1, ZONE_FETCH_MAX_ATTEMPTS + 1):
+            try:
+                return self.get_dns_records(zone_id, record_type)
+            except KeyboardInterrupt:
+                raise
+            except Exception as exc:
+                last_error = str(exc)
+                if attempt < ZONE_FETCH_MAX_ATTEMPTS:
+                    self._safe_print(
+                        f"  [zone] {zone_name} 读取记录失败，第 {attempt} 次重试: {exc}"
+                    )
+                    interruptible_sleep(float(attempt), self._stop_event)
+        self._safe_print(f"  [zone] {zone_name} 获取记录失败: {last_error}")
+        stats.inc_errors()
+        results.append(
+            DNSOperationResult(
+                zone=zone_name,
+                name="",
+                record_type="ZONE",
+                old_content=None,
+                new_content=None,
+                status="error",
+                message=f"{action} 读取记录失败: {last_error}",
+                account=self.account_name,
+                attempts=ZONE_FETCH_MAX_ATTEMPTS,
+            )
+        )
+        return None
+
+    def _mark_remaining_cancelled(
+        self,
+        results: list[DNSOperationResult],
+        stats: OperationStats,
+        zone_name: str,
+        record_type_label: str,
+        remaining: list[dict],
+        action: str,
+    ) -> None:
+        """中断时把未处理的记录记为 cancelled，避免静默丢失。
+
+        剩余条数较多时记一条聚合行，避免失败清单膨胀。
+        """
+        if not remaining:
+            return
+        stats.inc_cancelled(len(remaining))
+        if len(remaining) > 50:
+            results.append(
+                DNSOperationResult(
+                    zone=zone_name,
+                    name=f"(剩余 {len(remaining)} 条记录未执行)",
+                    record_type=record_type_label,
+                    old_content=None,
+                    new_content=None,
+                    status="cancelled",
+                    message=f"{action} 被中断",
+                    account=self.account_name,
+                )
+            )
+            return
+        for record in remaining:
+            results.append(
+                DNSOperationResult(
+                    zone=zone_name,
+                    name=str(record.get("name", "")),
+                    record_type=str(record.get("type", record_type_label)),
+                    old_content=str(record.get("content", "")),
+                    new_content=None,
+                    status="cancelled",
+                    message=f"{action} 被中断",
+                    account=self.account_name,
+                    record_id=str(record.get("id", "")),
+                )
+            )
+
+    def _drain_zone_futures(
+        self,
+        future_to_zone: dict[Future[Any], dict],
+        stats: OperationStats,
+        all_results: list[DNSOperationResult],
+        action: str,
+    ) -> tuple[int, int]:
+        """回收 zone fan-out 的 future，返回 (completed_zones, cancelled_zones)。
+
+        - future 自身抛异常时记一条 zone 级 error，不吞掉整个 zone；
+        - 中断时取消未开始的 future 并为每个未完成 zone 记 cancelled，
+          保证 expected == completed + cancelled 可对账。
+        - 进度回调：若实例属性 progress_cb 可调用，则以上报
+          progress_cb(zone_name, state) 通知外部，state 为
+          done/error/cancelled 之一；回调异常会被吞掉，不影响引擎。
+        """
+        notify = getattr(self, "progress_cb", None)
+        if not callable(notify):
+            notify = None
+
+        def _report(zone_name: str, state: str) -> None:
+            if notify is None:
+                return
+            try:
+                notify(zone_name, state)
+            except Exception:
+                pass
+
+        pending: set[Future[Any]] = set(future_to_zone)
+        completed = 0
+        cancelled = 0
+        try:
+            while pending and not self._should_stop():
+                done, pending = wait(
+                    pending,
+                    timeout=0.5,
+                    return_when=FIRST_COMPLETED,
+                )
+                if not done:
+                    continue
+                for future in done:
+                    zone = future_to_zone[future]
+                    zone_name = str(zone.get("name", "unknown"))
+                    try:
+                        all_results.extend(future.result())
+                        completed += 1
+                        _report(zone_name, "done")
+                    except KeyboardInterrupt:
+                        self._stop_event.set()
+                        pending.add(future)
+                        break
+                    except Exception as exc:
+                        completed += 1
+                        self._safe_print(f"[zone-error] {zone_name}: {exc}")
+                        stats.inc_errors()
+                        all_results.append(
+                            DNSOperationResult(
+                                zone=zone_name,
+                                name="",
+                                record_type="ZONE",
+                                old_content=None,
+                                new_content=None,
+                                status="error",
+                                message=f"{action} zone 任务异常: {exc}",
+                                account=self.account_name,
+                            )
+                        )
+                        _report(zone_name, "error")
+        except KeyboardInterrupt:
+            self._stop_event.set()
+            self._safe_print("\n[INTERRUPT] 收到 Ctrl+C，正在停止当前账号任务...")
+        if self._should_stop() and pending:
+            cancel_pending_futures(pending)
+            for future in pending:
+                zone = future_to_zone.get(future, {})
+                zone_name = str(zone.get("name", "unknown"))
+                if not future.done() or future.cancelled():
+                    cancelled += 1
+                    stats.inc_cancelled()
+                    all_results.append(
+                        DNSOperationResult(
+                            zone=zone_name,
+                            name="",
+                            record_type="ZONE",
+                            old_content=None,
+                            new_content=None,
+                            status="cancelled",
+                            message=f"{action} 未执行（任务被取消）",
+                            account=self.account_name,
+                        )
+                    )
+                    _report(zone_name, "cancelled")
+                else:
+                    try:
+                        all_results.extend(future.result())
+                        completed += 1
+                        _report(zone_name, "done")
+                    except Exception as exc:
+                        completed += 1
+                        stats.inc_errors()
+                        all_results.append(
+                            DNSOperationResult(
+                                zone=zone_name,
+                                name="",
+                                record_type="ZONE",
+                                old_content=None,
+                                new_content=None,
+                                status="error",
+                                message=f"{action} zone 任务异常: {exc}",
+                                account=self.account_name,
+                            )
+                        )
+                        _report(zone_name, "error")
+        return completed, cancelled
+
+    def _report_zone(self, zone_name: str, state: str) -> None:
+        """串行批量循环用的进度上报（与 _drain 内 _report 语义一致）。"""
+        notify = getattr(self, "progress_cb", None)
+        if not callable(notify):
+            return
+        try:
+            notify(zone_name, state)
+        except Exception:
+            pass
 
     def update_dns_record(
         self,
@@ -1076,20 +1891,28 @@ class CloudflareDNSUpdater:
         )
 
         try:
-            records = self.get_dns_records(zone_id, record_type)
+            records = self._fetch_records_with_retry(
+                zone_id, zone_name, record_type, stats, results, action="更新"
+            )
         except KeyboardInterrupt:
             return results
-        except Exception as exc:
-            self._safe_print(f"  [zone] {zone_name} 获取记录失败: {exc}")
-            stats.inc_errors()
+        if records is None:
             return results
 
         if not records:
             self._safe_print(f"  [zone] {zone_name} 未找到 {record_type} 记录,跳过处理")
             return results
 
-        for record in records:
+        for index, record in enumerate(records):
             if self._should_stop():
+                self._mark_remaining_cancelled(
+                    results,
+                    stats,
+                    zone_name,
+                    record_type,
+                    records[index:],
+                    action="更新",
+                )
                 return results
 
             r_name = record.get("name", "")
@@ -1107,13 +1930,14 @@ class CloudflareDNSUpdater:
             ):
                 continue
 
-            # 如果指定了 old-content/old-ip，则只更新内容完全匹配的记录。
-            if old_content and r_content != old_content:
+            # 如果指定了 old-content/old-ip，则只更新内容归一化后匹配的记录
+            # （兼容 IPv6 多种写法与 CNAME 尾点/大小写差异）。
+            if old_content and not contents_equal(r_content, old_content):
                 stats.inc_skipped()
                 continue
 
-            # 新旧内容一致，无需重复更新。
-            if r_content == new_content:
+            # 新旧内容一致，无需重复更新（幂等：重跑已完成项自动跳过）。
+            if contents_equal(r_content, new_content):
                 stats.inc_skipped()
                 continue
 
@@ -1130,6 +1954,7 @@ class CloudflareDNSUpdater:
                         old_content=r_content,
                         new_content=new_content,
                         status="dry_run_update",
+                        account=self.account_name,
                     )
                 )
                 continue
@@ -1156,9 +1981,10 @@ class CloudflareDNSUpdater:
                         old_content=r_content,
                         new_content=new_content,
                         status="updated",
+                        account=self.account_name,
                     )
                 )
-                time.sleep(0.1)
+                interruptible_sleep(0.1, self._stop_event)
             except Exception as exc:
                 self._safe_print(f"  [ERR] {r_type} {r_name}: {exc}")
                 stats.inc_errors()
@@ -1171,6 +1997,7 @@ class CloudflareDNSUpdater:
                         new_content=new_content,
                         status="error",
                         message=str(exc),
+                        account=self.account_name,
                     )
                 )
 
@@ -1190,7 +2017,11 @@ class CloudflareDNSUpdater:
         whitelist_active: bool,
         stats: "OperationStats",
     ) -> list["DNSOperationResult"]:
-        """未指定 --old-ip 时的全量替换处理：处理当前类型 + 对立类型记录。"""
+        """未指定 --old-ip 时的全量替换处理：处理当前类型 + 对立类型记录。
+
+        以 record id 为单位处理，同一主机名下多条同类型记录都会被处理；
+        创建去重依靠 existing_targets（同名同内容），删除按 id 逐条执行。
+        """
         zone_name = zone["name"]
         zone_id = zone["id"]
         results: list["DNSOperationResult"] = []
@@ -1210,30 +2041,49 @@ class CloudflareDNSUpdater:
         )
 
         try:
-            # 获取当前类型记录
-            target_records = self.get_dns_records(zone_id, record_type)
-            # 获取对立类型记录（用于跨类型迁移）
+            target_records = self._fetch_records_with_retry(
+                zone_id, zone_name, record_type, stats, results, action="全量替换"
+            )
+            if target_records is None:
+                return results
             opposite_records: list[dict] = []
             if opposite_record_type:
-                opposite_records = self.get_dns_records(zone_id, opposite_record_type)
+                fetched = self._fetch_records_with_retry(
+                    zone_id,
+                    zone_name,
+                    opposite_record_type,
+                    stats,
+                    results,
+                    action="全量替换",
+                )
+                if fetched is None:
+                    return results
+                opposite_records = fetched
         except KeyboardInterrupt:
             return results
-        except Exception as exc:
-            self._safe_print(f"  [zone] {zone_name} 获取记录失败: {exc}")
-            stats.inc_errors()
-            return results
 
-        # 去重：避免重复创建已存在的目标记录
+        # 已存在的目标（同名 + 归一化内容），用于避免重复创建。
         existing_targets = {
-            (record.get("name", "").lower(), record.get("content", ""))
+            (
+                str(record.get("name", "")).lower(),
+                normalize_content_for_compare(record.get("content", "")),
+            )
             for record in target_records
         }
+        normalized_new = normalize_content_for_compare(new_content)
+        handled = 0
 
-        processed_names: set[str] = set()
-
-        # ========== 1. 处理当前类型记录（同类型更新） ==========
-        for record in target_records:
+        # ========== 1. 处理当前类型记录（同类型更新，逐 id） ==========
+        for index, record in enumerate(target_records):
             if self._should_stop():
+                self._mark_remaining_cancelled(
+                    results,
+                    stats,
+                    zone_name,
+                    record_type,
+                    target_records[index:],
+                    action="全量替换",
+                )
                 return results
 
             r_name = record.get("name", "")
@@ -1250,18 +2100,10 @@ class CloudflareDNSUpdater:
             ):
                 continue
 
-            # 跳过已处理过的记录名
-            key = r_name.lower()
-            if key in processed_names:
-                continue
-
-            # 新旧内容一致则跳过
-            if r_content == new_content:
+            handled += 1
+            if contents_equal(r_content, new_content):
                 stats.inc_skipped()
-                processed_names.add(key)
                 continue
-
-            processed_names.add(key)
 
             if dry_run:
                 self._safe_print(
@@ -1276,6 +2118,7 @@ class CloudflareDNSUpdater:
                         old_content=r_content,
                         new_content=new_content,
                         status="dry_run_full_update",
+                        account=self.account_name,
                     )
                 )
                 continue
@@ -1290,6 +2133,7 @@ class CloudflareDNSUpdater:
                     ttl=r_ttl,
                     record_type=record_type,
                 )
+                existing_targets.add((r_name.lower(), normalized_new))
                 self._safe_print(
                     f"  [OK-FULL] {r_type} {r_name}: {r_content} -> {new_content}"
                 )
@@ -1302,9 +2146,10 @@ class CloudflareDNSUpdater:
                         old_content=r_content,
                         new_content=new_content,
                         status="updated_full",
+                        account=self.account_name,
                     )
                 )
-                time.sleep(0.08)
+                interruptible_sleep(0.08, self._stop_event)
             except Exception as exc:
                 self._safe_print(f"  [ERR-FULL] {r_type} {r_name}: {exc}")
                 stats.inc_errors()
@@ -1317,17 +2162,26 @@ class CloudflareDNSUpdater:
                         new_content=new_content,
                         status="error",
                         message=str(exc),
+                        account=self.account_name,
                     )
                 )
 
-        # ========== 2. 处理对立类型记录（跨类型迁移） ==========
+        # ========== 2. 处理对立类型记录（跨类型迁移，逐 id 删除） ==========
         if opposite_record_type and opposite_records:
             self._safe_print(
                 f"  [INFO] 检测到 {len(opposite_records)} 条 {opposite_record_type} 记录，执行跨类型迁移..."
             )
 
-            for record in opposite_records:
+            for index, record in enumerate(opposite_records):
                 if self._should_stop():
+                    self._mark_remaining_cancelled(
+                        results,
+                        stats,
+                        zone_name,
+                        opposite_record_type,
+                        opposite_records[index:],
+                        action="全量替换迁移",
+                    )
                     return results
 
                 r_name = record.get("name", "")
@@ -1343,15 +2197,8 @@ class CloudflareDNSUpdater:
                 ):
                     continue
 
-                key = r_name.lower()
-                if key in processed_names:
-                    # 已在此域名下处理过（可能是根记录或子域名）
-                    stats.inc_skipped()
-                    continue
-
-                processed_names.add(key)
-
-                target_exists = (r_name.lower(), new_content) in existing_targets
+                handled += 1
+                target_exists = (r_name.lower(), normalized_new) in existing_targets
 
                 if dry_run:
                     self._safe_print(
@@ -1367,6 +2214,7 @@ class CloudflareDNSUpdater:
                             old_content=r_content,
                             new_content=new_content,
                             status="dry_run_full_migrate",
+                            account=self.account_name,
                         )
                     )
                     continue
@@ -1381,12 +2229,12 @@ class CloudflareDNSUpdater:
                             ttl=r_ttl,
                             record_type=record_type,
                         )
-                        existing_targets.add((r_name.lower(), new_content))
+                        existing_targets.add((r_name.lower(), normalized_new))
                         stats.inc_created()
                         self._safe_print(
                             f"  [CREATE-FULL] {record_type} {r_name}: {new_content}"
                         )
-                        time.sleep(0.08)
+                        interruptible_sleep(0.08, self._stop_event)
                     except Exception as exc:
                         self._safe_print(
                             f"  [ERR-FULL-CREATE] {record_type} {r_name}: {exc}"
@@ -1401,11 +2249,12 @@ class CloudflareDNSUpdater:
                                 new_content=new_content,
                                 status="error",
                                 message=str(exc),
+                                account=self.account_name,
                             )
                         )
                         continue
 
-                # 删除旧记录
+                # 删除旧记录（逐 id；失败记半迁移状态，便于重跑清理）。
                 try:
                     self.delete_dns_record(zone_id, r_id)
                     stats.inc_deleted()
@@ -1420,16 +2269,29 @@ class CloudflareDNSUpdater:
                             old_content=r_content,
                             new_content=None,
                             status="deleted_old_full_migrate",
+                            account=self.account_name,
                         )
                     )
-                    time.sleep(0.08)
+                    interruptible_sleep(0.08, self._stop_event)
                 except Exception as exc:
                     self._safe_print(
                         f"  [ERR-FULL-DEL] 删除旧 {opposite_record_type} {r_name}: {exc}"
                     )
                     stats.inc_errors()
+                    results.append(
+                        DNSOperationResult(
+                            zone=zone_name,
+                            name=r_name,
+                            record_type=opposite_record_type,
+                            old_content=r_content,
+                            new_content=None,
+                            status="error_delete_old_after_migrate",
+                            message=str(exc),
+                            account=self.account_name,
+                        )
+                    )
 
-        if not processed_names:
+        if handled == 0:
             self._safe_print(f"  [zone] {zone_name} 未找到任何 A/AAAA 记录需要处理")
 
         return results
@@ -1465,23 +2327,39 @@ class CloudflareDNSUpdater:
         )
 
         try:
-            old_records = self.get_dns_records(zone_id, old_record_type)
-            target_records = self.get_dns_records(zone_id, new_record_type)
+            old_records = self._fetch_records_with_retry(
+                zone_id, zone_name, old_record_type, stats, results, action="迁移"
+            )
+            if old_records is None:
+                return results
+            target_records = self._fetch_records_with_retry(
+                zone_id, zone_name, new_record_type, stats, results, action="迁移"
+            )
+            if target_records is None:
+                return results
         except KeyboardInterrupt:
-            return results
-        except Exception as exc:
-            self._safe_print(f"  [zone] 获取记录失败: {exc}")
-            stats.inc_errors()
             return results
 
         existing_targets = {
-            (record.get("name", "").lower(), record.get("content", ""))
+            (
+                str(record.get("name", "")).lower(),
+                normalize_content_for_compare(record.get("content", "")),
+            )
             for record in target_records
         }
+        normalized_new = normalize_content_for_compare(new_content)
         matched = 0
 
-        for record in old_records:
+        for index, record in enumerate(old_records):
             if self._should_stop():
+                self._mark_remaining_cancelled(
+                    results,
+                    stats,
+                    zone_name,
+                    old_record_type,
+                    old_records[index:],
+                    action="迁移",
+                )
                 return results
 
             r_name = record.get("name", "")
@@ -1497,12 +2375,12 @@ class CloudflareDNSUpdater:
             ):
                 continue
 
-            if r_content != old_content:
+            if not contents_equal(r_content, old_content):
                 stats.inc_skipped()
                 continue
 
             matched += 1
-            target_exists = (r_name.lower(), new_content) in existing_targets
+            target_exists = (r_name.lower(), normalized_new) in existing_targets
             create_text = "目标记录已存在" if target_exists else "创建目标记录"
 
             if dry_run:
@@ -1519,6 +2397,7 @@ class CloudflareDNSUpdater:
                         old_content=old_content,
                         new_content=new_content,
                         status="dry_run_migrate",
+                        account=self.account_name,
                     )
                 )
                 continue
@@ -1533,7 +2412,7 @@ class CloudflareDNSUpdater:
                         ttl=r_ttl,
                         record_type=new_record_type,
                     )
-                    existing_targets.add((r_name.lower(), new_content))
+                    existing_targets.add((r_name.lower(), normalized_new))
                     stats.inc_created()
                     self._safe_print(
                         f"  [CREATE] {new_record_type} {r_name}: {new_content}"
@@ -1546,9 +2425,10 @@ class CloudflareDNSUpdater:
                             old_content="",
                             new_content=new_content,
                             status="created",
+                            account=self.account_name,
                         )
                     )
-                    time.sleep(0.1)
+                    interruptible_sleep(0.1, self._stop_event)
                 except Exception as exc:
                     self._safe_print(
                         f"  [ERR] 创建 {new_record_type} {r_name}: {exc}; 已保留旧记录"
@@ -1563,6 +2443,7 @@ class CloudflareDNSUpdater:
                             new_content=new_content,
                             status="error",
                             message=str(exc),
+                            account=self.account_name,
                         )
                     )
                     continue
@@ -1586,9 +2467,10 @@ class CloudflareDNSUpdater:
                         old_content=old_content,
                         new_content=None,
                         status="deleted_old_after_migrate",
+                        account=self.account_name,
                     )
                 )
-                time.sleep(0.1)
+                interruptible_sleep(0.1, self._stop_event)
             except Exception as exc:
                 self._safe_print(
                     f"  [ERR] 删除旧记录失败 {old_record_type} {r_name}: {exc}"
@@ -1601,8 +2483,9 @@ class CloudflareDNSUpdater:
                         record_type=old_record_type,
                         old_content=old_content,
                         new_content=None,
-                        status="error",
+                        status="error_delete_old_after_migrate",
                         message=str(exc),
+                        account=self.account_name,
                     )
                 )
 
@@ -1640,17 +2523,25 @@ class CloudflareDNSUpdater:
         )
 
         try:
-            records = self.get_dns_records(zone_id, record_type)
+            records = self._fetch_records_with_retry(
+                zone_id, zone_name, record_type, stats, results, action="删除指定 IP"
+            )
         except KeyboardInterrupt:
             return results
-        except Exception as exc:
-            self._safe_print(f"  [zone] 获取记录失败: {exc}")
-            stats.inc_errors()
+        if records is None:
             return results
 
         matched = 0
-        for record in records:
+        for index, record in enumerate(records):
             if self._should_stop():
+                self._mark_remaining_cancelled(
+                    results,
+                    stats,
+                    zone_name,
+                    record_type,
+                    records[index:],
+                    action="删除指定 IP",
+                )
                 return results
 
             r_name = record.get("name", "")
@@ -1665,7 +2556,7 @@ class CloudflareDNSUpdater:
             ):
                 continue
 
-            if r_content != delete_ip:
+            if not contents_equal(r_content, delete_ip):
                 stats.inc_skipped()
                 continue
 
@@ -1681,6 +2572,7 @@ class CloudflareDNSUpdater:
                         old_content=r_content,
                         new_content=None,
                         status="dry_run_delete_ip",
+                        account=self.account_name,
                     )
                 )
                 continue
@@ -1697,9 +2589,10 @@ class CloudflareDNSUpdater:
                         old_content=r_content,
                         new_content=None,
                         status="deleted_ip",
+                        account=self.account_name,
                     )
                 )
-                time.sleep(0.1)
+                interruptible_sleep(0.1, self._stop_event)
             except Exception as exc:
                 self._safe_print(f"  [ERR] 删除失败 {r_type} {r_name}: {exc}")
                 stats.inc_errors()
@@ -1712,6 +2605,7 @@ class CloudflareDNSUpdater:
                         new_content=None,
                         status="error",
                         message=str(exc),
+                        account=self.account_name,
                     )
                 )
 
@@ -1747,19 +2641,30 @@ class CloudflareDNSUpdater:
         )
 
         try:
-            records = self.get_dns_records(
-                zone_id, None if record_type == "ALL" else record_type
+            records = self._fetch_records_with_retry(
+                zone_id,
+                zone_name,
+                None if record_type == "ALL" else record_type,
+                stats,
+                results,
+                action="删除通配符",
             )
         except KeyboardInterrupt:
             return results
-        except Exception as exc:
-            self._safe_print(f"  [zone] 获取记录失败: {exc}")
-            stats.inc_errors()
+        if records is None:
             return results
 
         matched = 0
-        for record in records:
+        for index, record in enumerate(records):
             if self._should_stop():
+                self._mark_remaining_cancelled(
+                    results,
+                    stats,
+                    zone_name,
+                    record_type,
+                    records[index:],
+                    action="删除通配符",
+                )
                 return results
 
             r_name = record.get("name", "")
@@ -1772,7 +2677,7 @@ class CloudflareDNSUpdater:
             matched += 1
 
             # 删除模式下也复用 --old-content/--old-ip 作为内容过滤器，便于只删除指向旧地址的通配符记录。
-            if old_content and r_content != old_content:
+            if old_content and not contents_equal(r_content, old_content):
                 stats.inc_skipped()
                 continue
 
@@ -1787,6 +2692,7 @@ class CloudflareDNSUpdater:
                         old_content=r_content,
                         new_content=None,
                         status="dry_run_delete",
+                        account=self.account_name,
                     )
                 )
                 continue
@@ -1803,9 +2709,10 @@ class CloudflareDNSUpdater:
                         old_content=r_content,
                         new_content=None,
                         status="deleted",
+                        account=self.account_name,
                     )
                 )
-                time.sleep(0.1)
+                interruptible_sleep(0.1, self._stop_event)
             except Exception as exc:
                 self._safe_print(f"  [ERR] 删除失败 {r_type} {r_name}: {exc}")
                 stats.inc_errors()
@@ -1818,6 +2725,7 @@ class CloudflareDNSUpdater:
                         new_content=None,
                         status="error",
                         message=str(exc),
+                        account=self.account_name,
                     )
                 )
 
@@ -1876,6 +2784,28 @@ class CloudflareDNSUpdater:
         )
         return zones, target_set if target_set else None
 
+    def _apply_resume_filter(
+        self, zones: list[dict], resume_zones: Optional[set[str]]
+    ) -> list[dict]:
+        """按 --resume-from 失败清单过滤 zone（zone 级重跑）。
+
+        已完成的记录天然幂等（内容一致自动跳过），因此重跑整个失败 zone
+        即可补齐失败/取消项，无需记录级精确定位。
+
+        resume_zones 为 None 表示无重跑文件（不过滤）；空集合表示本账号
+        在清单中无待重跑域名（全部跳过）。
+        """
+        if resume_zones is None:
+            return zones
+        kept = [
+            zone for zone in zones if str(zone.get("name", "")).lower() in resume_zones
+        ]
+        self._safe_print(
+            f"[resume] 失败清单涉及 {len(resume_zones)} 个域名，"
+            f"本账号匹配 {len(kept)} 个"
+        )
+        return kept
+
     def batch_update(
         self,
         new_content: str,
@@ -1885,6 +2815,7 @@ class CloudflareDNSUpdater:
         dry_run: bool = False,
         include_subdomains: bool = True,
         explicit_domains: Optional[list[str]] = None,
+        resume_zones: Optional[set[str]] = None,
     ) -> BatchRunResult:
         """当前账号下批量更新 DNS 记录。"""
         self._check_stop()
@@ -1929,6 +2860,7 @@ class CloudflareDNSUpdater:
         zones, whitelist_set = self._filter_zones(
             all_zones, whitelist=whitelist, explicit_domains=final_explicit
         )
+        zones = self._apply_resume_filter(zones, resume_zones)
         if not zones:
             self._safe_print("没有需要处理的域名")
             return BatchRunResult(results=[], stats=OperationStats())
@@ -1938,7 +2870,7 @@ class CloudflareDNSUpdater:
         selected_zone_total = len(zones)
 
         executor = ThreadPoolExecutor(max_workers=self.max_workers)
-        pending: set[Future[Any]] = set()
+        future_to_zone: dict[Future[Any], dict] = {}
         try:
             future_to_zone: dict[Future[Any], dict] = {}
             for zone_index, zone in enumerate(zones, start=1):
@@ -1991,43 +2923,34 @@ class CloudflareDNSUpdater:
                         stats=stats,
                     )
                 future_to_zone[future] = zone
-            pending = set(future_to_zone)
 
-            while pending and not self._should_stop():
-                done, pending = wait(
-                    pending,
-                    timeout=0.5,
-                    return_when=FIRST_COMPLETED,
-                )
-                if not done:
-                    continue
-
-                for future in done:
-                    zone = future_to_zone[future]
-                    try:
-                        all_results.extend(future.result())
-                    except KeyboardInterrupt:
-                        self._stop_event.set()
-                        break
-                    except Exception as exc:
-                        self._safe_print(f"[zone-error] {zone.get('name')}: {exc}")
-                        stats.inc_errors()
+            completed, cancelled = self._drain_zone_futures(
+                future_to_zone, stats, all_results, action="批量更新"
+            )
         except KeyboardInterrupt:
             self._stop_event.set()
             self._safe_print("\n[INTERRUPT] 收到 Ctrl+C，正在停止当前账号任务...")
+            completed, cancelled = self._drain_zone_futures(
+                future_to_zone, stats, all_results, action="批量更新"
+            )
         finally:
-            if self._should_stop():
-                cancel_pending_futures(pending)
-            executor.shutdown(wait=False, cancel_futures=True)
+            # 正常路径排空等待，保证不丢任务；中断路径才立即取消。
+            executor.shutdown(
+                wait=not self._should_stop(), cancel_futures=bool(self._should_stop())
+            )
 
         self._safe_print("\n" + "=" * 70)
-        self._safe_print(
-            f"账号 {self.account_name} 完成: "
-            f"updated={stats.updated}, created={stats.created}, deleted={stats.deleted}, "
-            f"dry_run={stats.dry_run}, skipped={stats.skipped}, errors={stats.errors}"
+        self._safe_print(f"账号 {self.account_name} 完成: {stats.summary()}")
+        result = BatchRunResult(
+            results=all_results,
+            stats=stats,
+            expected_zones=selected_zone_total,
+            completed_zones=completed,
+            cancelled_zones=cancelled,
         )
+        self._safe_print(f"对账: {result.reconcile_text()}")
         self._safe_print("=" * 70)
-        return BatchRunResult(results=all_results, stats=stats)
+        return result
 
     def batch_delete_wildcard(
         self,
@@ -2036,6 +2959,7 @@ class CloudflareDNSUpdater:
         old_content: Optional[str] = None,
         dry_run: bool = False,
         explicit_domains: Optional[list[str]] = None,
+        resume_zones: Optional[set[str]] = None,
     ) -> BatchRunResult:
         """当前账号下批量删除所有名称以 * 开头的 DNS 记录。"""
         self._check_stop()
@@ -2057,6 +2981,7 @@ class CloudflareDNSUpdater:
         zones, _ = self._filter_zones(
             all_zones, whitelist=whitelist, explicit_domains=final_explicit
         )
+        zones = self._apply_resume_filter(zones, resume_zones)
         if not zones:
             self._safe_print("没有需要处理的域名")
             return BatchRunResult(results=[], stats=OperationStats())
@@ -2066,7 +2991,7 @@ class CloudflareDNSUpdater:
         selected_zone_total = len(zones)
 
         executor = ThreadPoolExecutor(max_workers=self.max_workers)
-        pending: set[Future[Any]] = set()
+        future_to_zone: dict[Future[Any], dict] = {}
         try:
             future_to_zone = {
                 executor.submit(
@@ -2082,43 +3007,33 @@ class CloudflareDNSUpdater:
                 ): zone
                 for zone_index, zone in enumerate(zones, start=1)
             }
-            pending = set(future_to_zone)
 
-            while pending and not self._should_stop():
-                done, pending = wait(
-                    pending,
-                    timeout=0.5,
-                    return_when=FIRST_COMPLETED,
-                )
-                if not done:
-                    continue
-
-                for future in done:
-                    zone = future_to_zone[future]
-                    try:
-                        all_results.extend(future.result())
-                    except KeyboardInterrupt:
-                        self._stop_event.set()
-                        break
-                    except Exception as exc:
-                        self._safe_print(f"[zone-error] {zone.get('name')}: {exc}")
-                        stats.inc_errors()
+            completed, cancelled = self._drain_zone_futures(
+                future_to_zone, stats, all_results, action="删除通配符"
+            )
         except KeyboardInterrupt:
             self._stop_event.set()
             self._safe_print("\n[INTERRUPT] 收到 Ctrl+C，正在停止当前账号任务...")
+            completed, cancelled = self._drain_zone_futures(
+                future_to_zone, stats, all_results, action="删除通配符"
+            )
         finally:
-            if self._should_stop():
-                cancel_pending_futures(pending)
-            executor.shutdown(wait=False, cancel_futures=True)
+            executor.shutdown(
+                wait=not self._should_stop(), cancel_futures=bool(self._should_stop())
+            )
 
         self._safe_print("\n" + "=" * 70)
-        self._safe_print(
-            f"账号 {self.account_name} 完成: "
-            f"updated={stats.updated}, created={stats.created}, deleted={stats.deleted}, "
-            f"dry_run={stats.dry_run}, skipped={stats.skipped}, errors={stats.errors}"
+        self._safe_print(f"账号 {self.account_name} 完成: {stats.summary()}")
+        result = BatchRunResult(
+            results=all_results,
+            stats=stats,
+            expected_zones=selected_zone_total,
+            completed_zones=completed,
+            cancelled_zones=cancelled,
         )
+        self._safe_print(f"对账: {result.reconcile_text()}")
         self._safe_print("=" * 70)
-        return BatchRunResult(results=all_results, stats=stats)
+        return result
 
     def batch_add_domain_and_records(
         self,
@@ -2130,6 +3045,7 @@ class CloudflareDNSUpdater:
         existing_zone_id: Optional[str] = None,
         existing_zone_name: Optional[str] = None,
         explicit_domains: Optional[list[str]] = None,
+        resume_zones: Optional[set[str]] = None,
     ) -> BatchRunResult:
         """添加域名（可选）并批量添加 DNS 记录。"""
         self._check_stop()
@@ -2150,6 +3066,13 @@ class CloudflareDNSUpdater:
         stats = OperationStats()
         results: list[DNSOperationResult] = []
 
+        if resume_zones is not None and target_zone_name:
+            if target_zone_name.strip().lower() not in resume_zones:
+                self._safe_print(
+                    f"[resume] 目标域名 {target_zone_name} 不在失败清单中，跳过"
+                )
+                return BatchRunResult(results=[], stats=OperationStats())
+
         # 1. 处理 zone（优先使用已有 zone，其次添加新域名）
         zone_id = existing_zone_id
         zone_name = target_zone_name
@@ -2168,6 +3091,7 @@ class CloudflareDNSUpdater:
                         old_content=None,
                         new_content=None,
                         status="dry_run_add_domain",
+                        account=self.account_name,
                     )
                 )
             else:
@@ -2187,6 +3111,7 @@ class CloudflareDNSUpdater:
                             old_content=None,
                             new_content=None,
                             status="added_domain",
+                            account=self.account_name,
                         )
                     )
                 except Exception as exc:
@@ -2201,6 +3126,7 @@ class CloudflareDNSUpdater:
                             new_content=None,
                             status="error",
                             message=str(exc),
+                            account=self.account_name,
                         )
                     )
                     return BatchRunResult(results=results, stats=stats)
@@ -2220,6 +3146,18 @@ class CloudflareDNSUpdater:
                 if not zone_id:
                     self._safe_print(f"  [ERR] 未在账号中找到域名: {zone_name}")
                     stats.inc_errors()
+                    results.append(
+                        DNSOperationResult(
+                            zone=zone_name,
+                            name="",
+                            record_type="ZONE",
+                            old_content=None,
+                            new_content=None,
+                            status="error",
+                            message="账号中未找到该域名",
+                            account=self.account_name,
+                        )
+                    )
                     return BatchRunResult(results=results, stats=stats)
             except Exception as exc:
                 self._safe_print(f"  [ERR] 获取域名列表失败: {exc}")
@@ -2232,36 +3170,45 @@ class CloudflareDNSUpdater:
                 self._safe_print(
                     "  [ERR] 没有可用的 zone_id，请使用 --add-domain 添加域名，或使用 -z 指定已有域名"
                 )
+                stats.inc_errors()
+                results.append(
+                    DNSOperationResult(
+                        zone=zone_name or "unknown",
+                        name="",
+                        record_type="ZONE",
+                        old_content=None,
+                        new_content=None,
+                        status="error",
+                        message="没有可用的 zone_id",
+                        account=self.account_name,
+                    )
+                )
 
             if zone_id:
-                for rec_str in add_records:
+                for record_index, rec_str in enumerate(add_records):
                     if self._should_stop():
+                        for pending_spec in add_records[record_index:]:
+                            stats.inc_cancelled()
+                            results.append(
+                                DNSOperationResult(
+                                    zone=zone_name or "unknown",
+                                    name=pending_spec,
+                                    record_type="RECORD",
+                                    old_content=None,
+                                    new_content=None,
+                                    status="cancelled",
+                                    message="添加任务被中断",
+                                    account=self.account_name,
+                                )
+                            )
                         break
                     try:
-                        # 支持三种分隔符：: 、 - 、 空格
-                        rec_str_clean = rec_str.strip()
-                        if ":" in rec_str_clean:
-                            parts = [p.strip() for p in rec_str_clean.split(":", 2)]
-                        elif "-" in rec_str_clean and rec_str_clean.count("-") >= 2:
-                            # 避免误判 IPv6 地址中的冒号，先尝试 - 分隔
-                            parts = [p.strip() for p in rec_str_clean.split("-", 2)]
-                        else:
-                            # 空格分隔（至少两个空格）
-                            parts = rec_str_clean.split(None, 2)
-
-                        if len(parts) != 3:
-                            raise ValueError(
-                                f"格式错误，支持 name:type:content / name-type-content / name type content，"
-                                f"收到: {rec_str}"
-                            )
-
-                        rec_name, rec_type, rec_content = [p.strip() for p in parts]
-                        rec_type = rec_type.upper()
+                        rec_name, rec_type, rec_content = parse_add_record_spec(rec_str)
 
                         # auto 自动判断记录类型（最常用场景）
                         if rec_type in ("AUTO", "auto", ""):
                             rec_type = infer_record_type_from_content(rec_content)
-                            print(
+                            self._safe_print(
                                 f"  [AUTO] 自动判断记录类型: {rec_content} -> {rec_type}"
                             )
 
@@ -2278,6 +3225,7 @@ class CloudflareDNSUpdater:
                                     old_content=None,
                                     new_content=rec_content,
                                     status="dry_run_add_record",
+                                    account=self.account_name,
                                 )
                             )
                             continue
@@ -2302,9 +3250,10 @@ class CloudflareDNSUpdater:
                                 old_content=None,
                                 new_content=rec_content,
                                 status="added_record",
+                                account=self.account_name,
                             )
                         )
-                        time.sleep(0.08)
+                        interruptible_sleep(0.08, self._stop_event)
 
                     except Exception as exc:
                         self._safe_print(f"  [ERR-ADD] 添加记录失败 {rec_str}: {exc}")
@@ -2318,14 +3267,12 @@ class CloudflareDNSUpdater:
                                 new_content=None,
                                 status="error",
                                 message=str(exc),
+                                account=self.account_name,
                             )
                         )
 
         self._safe_print("\n" + "=" * 70)
-        self._safe_print(
-            f"账号 {self.account_name} 完成: "
-            f"created={stats.created}, dry_run={stats.dry_run}, errors={stats.errors}"
-        )
+        self._safe_print(f"账号 {self.account_name} 完成: {stats.summary()}")
         self._safe_print("=" * 70)
         return BatchRunResult(results=results, stats=stats)
 
@@ -2335,6 +3282,7 @@ class CloudflareDNSUpdater:
         dry_run: bool = False,
         delete_zone_completely: bool = False,
         explicit_domains: Optional[list[str]] = None,
+        resume_zones: Optional[set[str]] = None,
     ) -> BatchRunResult:
         """清空域名所有 DNS 记录（dns 模式），或彻底删除域名（full 模式）。
 
@@ -2356,6 +3304,7 @@ class CloudflareDNSUpdater:
         zones, target_set = self._filter_zones(
             all_zones, whitelist=whitelist, explicit_domains=explicit_domains
         )
+        zones = self._apply_resume_filter(zones, resume_zones)
         if not zones:
             self._safe_print("没有需要处理的域名")
             return BatchRunResult(results=[], stats=OperationStats())
@@ -2363,9 +3312,26 @@ class CloudflareDNSUpdater:
         stats = OperationStats()
         all_results: list[DNSOperationResult] = []
         selected_zone_total = len(zones)
+        completed_zones = 0
 
         for zone_index, zone in enumerate(zones, start=1):
             if self._should_stop():
+                for pending_zone in zones[zone_index - 1 :]:
+                    pending_name = str(pending_zone.get("name", "unknown"))
+                    stats.inc_cancelled()
+                    all_results.append(
+                        DNSOperationResult(
+                            zone=pending_name,
+                            name="",
+                            record_type="ZONE",
+                            old_content=None,
+                            new_content=None,
+                            status="cancelled",
+                            message="删除域名任务被中断",
+                            account=self.account_name,
+                        )
+                    )
+                    self._report_zone(pending_name, "cancelled")
                 break
 
             zone_name = zone["name"]
@@ -2385,7 +3351,11 @@ class CloudflareDNSUpdater:
 
             try:
                 # 1. 获取该 zone 下的所有 DNS 记录
-                records = self.get_dns_records(zone_id, record_type="ALL")
+                records = self._fetch_records_with_retry(
+                    zone_id, zone_name, "ALL", stats, all_results, action="删除域名"
+                )
+                if records is None:
+                    continue
                 record_count = len(records)
                 self._safe_print(f"  [zone] 发现 {record_count} 条 DNS 记录")
 
@@ -2408,8 +3378,11 @@ class CloudflareDNSUpdater:
                             status="dry_run_delete_zone"
                             if delete_zone_completely
                             else "dry_run_clear_dns",
+                            account=self.account_name,
                         )
                     )
+                    self._report_zone(zone_name, "done")
+                    completed_zones += 1
                     continue
 
                 # 2. 删除所有 DNS 记录
@@ -2420,12 +3393,24 @@ class CloudflareDNSUpdater:
                     try:
                         self.delete_dns_record(zone_id, record["id"])
                         deleted_count += 1
-                        time.sleep(0.05)
+                        interruptible_sleep(0.05, self._stop_event)
                     except Exception as exc:
                         self._safe_print(
                             f"  [ERR] 删除记录失败 {record.get('name')}: {exc}"
                         )
                         stats.inc_errors()
+                        all_results.append(
+                            DNSOperationResult(
+                                zone=zone_name,
+                                name=str(record.get("name", "")),
+                                record_type=str(record.get("type", "")),
+                                old_content=str(record.get("content", "")),
+                                new_content=None,
+                                status="error",
+                                message=str(exc),
+                                account=self.account_name,
+                            )
+                        )
 
                 stats.inc_deleted(deleted_count)
                 self._safe_print(
@@ -2446,8 +3431,10 @@ class CloudflareDNSUpdater:
                                 old_content=None,
                                 new_content=None,
                                 status="deleted_zone",
+                                account=self.account_name,
                             )
                         )
+                        self._report_zone(zone_name, "done")
                     except Exception as exc:
                         self._safe_print(f"  [ERR-FULL] 删除域名失败: {exc}")
                         stats.inc_errors()
@@ -2460,8 +3447,10 @@ class CloudflareDNSUpdater:
                                 new_content=None,
                                 status="error",
                                 message=str(exc),
+                                account=self.account_name,
                             )
                         )
+                        self._report_zone(zone_name, "error")
                 else:
                     all_results.append(
                         DNSOperationResult(
@@ -2471,22 +3460,464 @@ class CloudflareDNSUpdater:
                             old_content=None,
                             new_content=None,
                             status="cleared_dns",
+                            account=self.account_name,
                         )
                     )
+                    self._report_zone(zone_name, "done")
+                completed_zones += 1
 
             except KeyboardInterrupt:
+                self._stop_event.set()
+                for pending_zone in zones[zone_index:]:
+                    pending_name = str(pending_zone.get("name", "unknown"))
+                    stats.inc_cancelled()
+                    all_results.append(
+                        DNSOperationResult(
+                            zone=pending_name,
+                            name="",
+                            record_type="ZONE",
+                            old_content=None,
+                            new_content=None,
+                            status="cancelled",
+                            message="删除域名任务被中断",
+                            account=self.account_name,
+                        )
+                    )
+                    self._report_zone(pending_name, "cancelled")
                 break
             except Exception as exc:
                 self._safe_print(f"  [zone] 处理失败: {exc}")
                 stats.inc_errors()
+                all_results.append(
+                    DNSOperationResult(
+                        zone=zone_name,
+                        name="",
+                        record_type="ZONE",
+                        old_content=None,
+                        new_content=None,
+                        status="error",
+                        message=str(exc),
+                        account=self.account_name,
+                    )
+                )
+                self._report_zone(zone_name, "error")
 
         self._safe_print("\n" + "=" * 70)
+        self._safe_print(f"账号 {self.account_name} 完成: {stats.summary()}")
+        result = BatchRunResult(
+            results=all_results,
+            stats=stats,
+            expected_zones=selected_zone_total,
+            completed_zones=completed_zones,
+            cancelled_zones=stats.cancelled,
+        )
+        self._safe_print(f"对账: {result.reconcile_text()}")
+        self._safe_print("=" * 70)
+        return result
+
+    def _process_zone_set_attrs(
+        self,
+        zone: dict,
+        zone_index: int,
+        selected_zone_total: int,
+        account_zone_total: int,
+        fetch_types: list[str],
+        set_proxied: Optional[bool],
+        set_ttl: Optional[int],
+        old_content: Optional[str],
+        dry_run: bool,
+        include_subdomains: bool,
+        whitelist_active: bool,
+        stats: OperationStats,
+    ) -> list[DNSOperationResult]:
+        """处理单个 zone 的代理状态/TTL 批量设置（内容保持不变）。"""
+        zone_name = zone["name"]
+        zone_id = zone["id"]
+        results: list[DNSOperationResult] = []
+
         self._safe_print(
-            f"账号 {self.account_name} 完成: "
-            f"deleted={stats.deleted}, dry_run={stats.dry_run}, errors={stats.errors}"
+            self._progress_prefix(
+                zone_name,
+                zone_index,
+                selected_zone_total,
+                account_zone_total,
+                action_name=f"设置属性(proxied={set_proxied}, ttl={set_ttl})",
+            )
+        )
+
+        all_records: list[dict] = []
+        try:
+            for fetch_type in fetch_types:
+                fetched = self._fetch_records_with_retry(
+                    zone_id, zone_name, fetch_type, stats, results, action="设置属性"
+                )
+                if fetched is None:
+                    return results
+                all_records.extend(fetched)
+        except KeyboardInterrupt:
+            return results
+
+        for index, record in enumerate(all_records):
+            if self._should_stop():
+                self._mark_remaining_cancelled(
+                    results,
+                    stats,
+                    zone_name,
+                    "RECORD",
+                    all_records[index:],
+                    action="设置属性",
+                )
+                return results
+
+            r_name = record.get("name", "")
+            r_content = record.get("content", "")
+            r_id = record.get("id", "")
+            r_type = record.get("type", "")
+            r_proxied = bool(record.get("proxied", False))
+            r_ttl = int(record.get("ttl", 1) or 1)
+
+            if (
+                whitelist_active
+                and not include_subdomains
+                and r_name.lower() != zone_name.lower()
+            ):
+                continue
+            if old_content and not contents_equal(r_content, old_content):
+                stats.inc_skipped()
+                continue
+
+            new_proxied = r_proxied if set_proxied is None else set_proxied
+            new_ttl = r_ttl if set_ttl is None else set_ttl
+            if new_proxied == r_proxied and new_ttl == r_ttl:
+                stats.inc_skipped()
+                continue
+
+            if dry_run:
+                self._safe_print(
+                    f"  [DRY-ATTRS] {r_type} {r_name}: "
+                    f"proxied {r_proxied}->{new_proxied}, ttl {r_ttl}->{new_ttl}"
+                )
+                stats.inc_dry_run()
+                results.append(
+                    DNSOperationResult(
+                        zone=zone_name,
+                        name=r_name,
+                        record_type=r_type,
+                        old_content=r_content,
+                        new_content=r_content,
+                        status="dry_run_set_attrs",
+                        account=self.account_name,
+                    )
+                )
+                continue
+
+            try:
+                self.update_dns_record(
+                    zone_id=zone_id,
+                    record_id=r_id,
+                    record_name=r_name,
+                    new_content=r_content,
+                    proxied=new_proxied,
+                    ttl=new_ttl,
+                    record_type=r_type,
+                )
+                self._safe_print(
+                    f"  [OK-ATTRS] {r_type} {r_name}: "
+                    f"proxied {r_proxied}->{new_proxied}, ttl {r_ttl}->{new_ttl}"
+                )
+                stats.inc_updated()
+                results.append(
+                    DNSOperationResult(
+                        zone=zone_name,
+                        name=r_name,
+                        record_type=r_type,
+                        old_content=r_content,
+                        new_content=r_content,
+                        status="updated_attrs",
+                        account=self.account_name,
+                    )
+                )
+                interruptible_sleep(0.1, self._stop_event)
+            except Exception as exc:
+                self._safe_print(f"  [ERR-ATTRS] {r_type} {r_name}: {exc}")
+                stats.inc_errors()
+                results.append(
+                    DNSOperationResult(
+                        zone=zone_name,
+                        name=r_name,
+                        record_type=r_type,
+                        old_content=r_content,
+                        new_content=r_content,
+                        status="error",
+                        message=str(exc),
+                        account=self.account_name,
+                    )
+                )
+
+        return results
+
+    def batch_set_attrs(
+        self,
+        set_proxied: Optional[bool] = None,
+        set_ttl: Optional[int] = None,
+        whitelist: Optional[list[str]] = None,
+        record_type: str = "auto",
+        old_content: Optional[str] = None,
+        dry_run: bool = False,
+        include_subdomains: bool = True,
+        explicit_domains: Optional[list[str]] = None,
+        resume_zones: Optional[set[str]] = None,
+    ) -> BatchRunResult:
+        """当前账号下批量设置 DNS 记录的代理状态/TTL（内容不变）。"""
+        self._check_stop()
+        if set_proxied is None and set_ttl is None:
+            raise ValueError("至少指定 --set-proxied 或 --set-ttl 之一")
+        if set_ttl is not None and set_ttl < 1:
+            raise ValueError("--set-ttl 必须为正整数（1 表示自动）")
+
+        normalized = (record_type or "auto").strip().upper()
+        if normalized in {"AUTO", "ALL"}:
+            fetch_types = ["A", "AAAA", "CNAME"]
+        elif normalized in UPDATABLE_RECORD_TYPES:
+            fetch_types = [normalized]
+        else:
+            raise ValueError(f"属性设置不支持记录类型: {record_type}")
+
+        self._safe_print("=" * 70)
+        self._safe_print(f"Cloudflare DNS 属性批量设置 | 账号: {self.account_name}")
+        self._safe_print(
+            f"set_proxied={set_proxied}, set_ttl={set_ttl}, types={fetch_types}, "
+            f"workers={self.max_workers}, dry_run={dry_run}"
         )
         self._safe_print("=" * 70)
-        return BatchRunResult(results=all_results, stats=stats)
+
+        all_zones = self.get_all_zones()
+        account_zone_total = len(all_zones)
+        self._safe_print(f"账号 {self.account_name} 下共 {account_zone_total} 个域名")
+
+        final_explicit = explicit_domains or getattr(self, "_explicit_domains", None)
+        zones, whitelist_set = self._filter_zones(
+            all_zones, whitelist=whitelist, explicit_domains=final_explicit
+        )
+        zones = self._apply_resume_filter(zones, resume_zones)
+        if not zones:
+            self._safe_print("没有需要处理的域名")
+            return BatchRunResult(results=[], stats=OperationStats())
+
+        stats = OperationStats()
+        all_results: list[DNSOperationResult] = []
+        selected_zone_total = len(zones)
+
+        executor = ThreadPoolExecutor(max_workers=self.max_workers)
+        future_to_zone: dict[Future[Any], dict] = {}
+        try:
+            for zone_index, zone in enumerate(zones, start=1):
+                future = executor.submit(
+                    self._process_zone_set_attrs,
+                    zone,
+                    zone_index,
+                    selected_zone_total,
+                    account_zone_total,
+                    fetch_types,
+                    set_proxied,
+                    set_ttl,
+                    old_content,
+                    dry_run,
+                    include_subdomains,
+                    whitelist_set is not None,
+                    stats,
+                )
+                future_to_zone[future] = zone
+
+            completed, cancelled = self._drain_zone_futures(
+                future_to_zone, stats, all_results, action="设置属性"
+            )
+        except KeyboardInterrupt:
+            self._stop_event.set()
+            self._safe_print("\n[INTERRUPT] 收到 Ctrl+C，正在停止当前账号任务...")
+            completed, cancelled = self._drain_zone_futures(
+                future_to_zone, stats, all_results, action="设置属性"
+            )
+        finally:
+            executor.shutdown(
+                wait=not self._should_stop(), cancel_futures=bool(self._should_stop())
+            )
+
+        self._safe_print("\n" + "=" * 70)
+        self._safe_print(f"账号 {self.account_name} 完成: {stats.summary()}")
+        result = BatchRunResult(
+            results=all_results,
+            stats=stats,
+            expected_zones=selected_zone_total,
+            completed_zones=completed,
+            cancelled_zones=cancelled,
+        )
+        self._safe_print(f"对账: {result.reconcile_text()}")
+        self._safe_print("=" * 70)
+        return result
+
+    def batch_export(
+        self,
+        export_dir: str,
+        fmt: str = "json",
+        whitelist: Optional[list[str]] = None,
+        explicit_domains: Optional[list[str]] = None,
+        resume_zones: Optional[set[str]] = None,
+    ) -> BatchRunResult:
+        """导出当前账号下 zone 的 DNS 记录（变更前备份/审计用）。"""
+        self._check_stop()
+        if fmt not in {"json", "bind"}:
+            raise ValueError("--export 仅支持 json/bind")
+
+        self._safe_print("=" * 70)
+        self._safe_print(f"Cloudflare DNS 导出 | 账号: {self.account_name}")
+        self._safe_print(f"format={fmt}, dir={export_dir}")
+        self._safe_print("=" * 70)
+
+        all_zones = self.get_all_zones()
+        account_zone_total = len(all_zones)
+        self._safe_print(f"账号 {self.account_name} 下共 {account_zone_total} 个域名")
+
+        final_explicit = explicit_domains or getattr(self, "_explicit_domains", None)
+        zones, _ = self._filter_zones(
+            all_zones, whitelist=whitelist, explicit_domains=final_explicit
+        )
+        zones = self._apply_resume_filter(zones, resume_zones)
+        if not zones:
+            self._safe_print("没有需要处理的域名")
+            return BatchRunResult(results=[], stats=OperationStats())
+
+        stats = OperationStats()
+        all_results: list[DNSOperationResult] = []
+        selected_zone_total = len(zones)
+        completed = 0
+
+        for zone_index, zone in enumerate(zones, start=1):
+            if self._should_stop():
+                for pending_zone in zones[zone_index - 1 :]:
+                    stats.inc_cancelled()
+                    pending_name = str(pending_zone.get("name", "unknown"))
+                    all_results.append(
+                        DNSOperationResult(
+                            zone=pending_name,
+                            name="",
+                            record_type="ZONE",
+                            old_content=None,
+                            new_content=None,
+                            status="cancelled",
+                            message="导出任务被中断",
+                            account=self.account_name,
+                        )
+                    )
+                    self._report_zone(pending_name, "cancelled")
+                break
+            zone_name = zone.get("name", "unknown")
+            zone_id = zone.get("id", "")
+            self._safe_print(
+                f"[{zone_index}/{selected_zone_total}] 导出域名: {zone_name}"
+            )
+            try:
+                records = self._fetch_records_with_retry(
+                    zone_id, zone_name, "ALL", stats, all_results, action="导出"
+                )
+                if records is None:
+                    self._report_zone(zone_name, "error")
+                    continue
+                payload = serialize_zone_backup(self.account_name, zone, records)
+                path = write_zone_backup_file(
+                    export_dir, self.account_name, zone_name, payload, fmt
+                )
+                self._safe_print(f"  [OK-EXPORT] {zone_name} -> {path}")
+                stats.inc_updated()
+                all_results.append(
+                    DNSOperationResult(
+                        zone=zone_name,
+                        name=zone_name,
+                        record_type="ZONE",
+                        old_content=None,
+                        new_content=path,
+                        status="exported",
+                        account=self.account_name,
+                    )
+                )
+                self._report_zone(zone_name, "done")
+                completed += 1
+            except KeyboardInterrupt:
+                self._stop_event.set()
+                self._report_zone(zone_name, "cancelled")
+                break
+            except Exception as exc:
+                self._safe_print(f"  [ERR-EXPORT] {zone_name}: {exc}")
+                stats.inc_errors()
+                all_results.append(
+                    DNSOperationResult(
+                        zone=zone_name,
+                        name="",
+                        record_type="ZONE",
+                        old_content=None,
+                        new_content=None,
+                        status="error",
+                        message=str(exc),
+                        account=self.account_name,
+                    )
+                )
+                self._report_zone(zone_name, "error")
+
+        self._safe_print("\n" + "=" * 70)
+        self._safe_print(f"账号 {self.account_name} 完成: {stats.summary()}")
+        result = BatchRunResult(
+            results=all_results,
+            stats=stats,
+            expected_zones=selected_zone_total,
+            completed_zones=completed,
+            cancelled_zones=stats.cancelled,
+        )
+        self._safe_print(f"对账: {result.reconcile_text()}")
+        self._safe_print("=" * 70)
+        return result
+
+    def batch_backup(
+        self,
+        backup_dir: str,
+        whitelist: Optional[list[str]] = None,
+        explicit_domains: Optional[list[str]] = None,
+        resume_zones: Optional[set[str]] = None,
+    ) -> tuple[bool, str]:
+        """变更前自动快照：将待处理 zone 全量导出为 JSON。
+
+        任一 zone 快照失败即返回 False，调用方应中止变更，保证“无备份不变更”。
+        """
+        self._check_stop()
+        all_zones = self.get_all_zones()
+        final_explicit = explicit_domains or getattr(self, "_explicit_domains", None)
+        zones, _ = self._filter_zones(
+            all_zones, whitelist=whitelist, explicit_domains=final_explicit
+        )
+        zones = self._apply_resume_filter(zones, resume_zones)
+        if not zones:
+            return True, "无待处理域名，无需备份"
+
+        stats = OperationStats()
+        ledger: list[DNSOperationResult] = []
+        for zone in zones:
+            self._check_stop()
+            zone_name = zone.get("name", "unknown")
+            records = self._fetch_records_with_retry(
+                zone.get("id", ""), zone_name, "ALL", stats, ledger, action="备份"
+            )
+            if records is None:
+                return False, f"备份失败：{zone_name} 记录读取失败，已中止变更"
+            try:
+                payload = serialize_zone_backup(self.account_name, zone, records)
+                write_zone_backup_file(
+                    backup_dir, self.account_name, zone_name, payload, "json"
+                )
+            except (OSError, ValueError) as exc:
+                return False, f"备份失败：{zone_name} 写入失败({exc})，已中止变更"
+        self._safe_print(
+            f"[BACKUP] 账号 {self.account_name} 已快照 {len(zones)} 个域名到 {backup_dir}"
+        )
+        return True, f"已备份 {len(zones)} 个域名"
 
     def batch_delete_ip(
         self,
@@ -2496,6 +3927,7 @@ class CloudflareDNSUpdater:
         dry_run: bool = False,
         include_subdomains: bool = True,
         explicit_domains: Optional[list[str]] = None,
+        resume_zones: Optional[set[str]] = None,
     ) -> BatchRunResult:
         """当前账号下批量删除所有指向指定 IP 的 A/AAAA 记录。"""
         self._check_stop()
@@ -2518,6 +3950,7 @@ class CloudflareDNSUpdater:
         zones, whitelist_set = self._filter_zones(
             all_zones, whitelist=whitelist, explicit_domains=final_explicit
         )
+        zones = self._apply_resume_filter(zones, resume_zones)
         if not zones:
             self._safe_print("没有需要处理的域名")
             return BatchRunResult(results=[], stats=OperationStats())
@@ -2527,7 +3960,7 @@ class CloudflareDNSUpdater:
         selected_zone_total = len(zones)
 
         executor = ThreadPoolExecutor(max_workers=self.max_workers)
-        pending: set[Future[Any]] = set()
+        future_to_zone: dict[Future[Any], dict] = {}
         try:
             future_to_zone = {
                 executor.submit(
@@ -2545,43 +3978,33 @@ class CloudflareDNSUpdater:
                 ): zone
                 for zone_index, zone in enumerate(zones, start=1)
             }
-            pending = set(future_to_zone)
 
-            while pending and not self._should_stop():
-                done, pending = wait(
-                    pending,
-                    timeout=0.5,
-                    return_when=FIRST_COMPLETED,
-                )
-                if not done:
-                    continue
-
-                for future in done:
-                    zone = future_to_zone[future]
-                    try:
-                        all_results.extend(future.result())
-                    except KeyboardInterrupt:
-                        self._stop_event.set()
-                        break
-                    except Exception as exc:
-                        self._safe_print(f"[zone-error] {zone.get('name')}: {exc}")
-                        stats.inc_errors()
+            completed, cancelled = self._drain_zone_futures(
+                future_to_zone, stats, all_results, action="删除指定 IP"
+            )
         except KeyboardInterrupt:
             self._stop_event.set()
             self._safe_print("\n[INTERRUPT] 收到 Ctrl+C，正在停止当前账号任务...")
+            completed, cancelled = self._drain_zone_futures(
+                future_to_zone, stats, all_results, action="删除指定 IP"
+            )
         finally:
-            if self._should_stop():
-                cancel_pending_futures(pending)
-            executor.shutdown(wait=False, cancel_futures=True)
+            executor.shutdown(
+                wait=not self._should_stop(), cancel_futures=bool(self._should_stop())
+            )
 
         self._safe_print("\n" + "=" * 70)
-        self._safe_print(
-            f"账号 {self.account_name} 完成: "
-            f"updated={stats.updated}, created={stats.created}, deleted={stats.deleted}, "
-            f"dry_run={stats.dry_run}, skipped={stats.skipped}, errors={stats.errors}"
+        self._safe_print(f"账号 {self.account_name} 完成: {stats.summary()}")
+        result = BatchRunResult(
+            results=all_results,
+            stats=stats,
+            expected_zones=selected_zone_total,
+            completed_zones=completed,
+            cancelled_zones=cancelled,
         )
+        self._safe_print(f"对账: {result.reconcile_text()}")
         self._safe_print("=" * 70)
-        return BatchRunResult(results=all_results, stats=stats)
+        return result
 
 
 def load_whitelist(filepath: str) -> list[str]:
@@ -2823,6 +4246,13 @@ def parse_args() -> argparse.Namespace:
         # 删除所有指向指定 IP 的 A/AAAA 记录
         python cloudflare_dns_tool.py --delete-ip 1.2.3.4 --dry-run
 
+        # 失败清单与重跑：先导出失败/取消行，再仅重跑清单中的域名
+        python cloudflare_dns_tool.py --new-ip 1.2.3.4 --failed-output failures.csv
+        python cloudflare_dns_tool.py --new-ip 1.2.3.4 --resume-from failures.csv
+
+        # 经本地代理出口（mihomo 等），多代理轮转并故障切换
+        python cloudflare_dns_tool.py --new-ip 1.2.3.4 -P http://127.0.0.1:7897 --dry-run
+
         # 更新 CNAME
         python cloudflare_dns_tool.py --record-type CNAME --old-content old.example.com --new-content new.example.com
 
@@ -2949,32 +4379,73 @@ def parse_args() -> argparse.Namespace:
         help="添加记录的 TTL（默认 1 = 自动）。",
     )
 
-    # 并发控制。
+    # P0：备份导出与属性批量设置。
+    parser.add_argument(
+        "--export",
+        choices=["json", "bind"],
+        default=None,
+        metavar="FORMAT",
+        help="导出模式：将待处理 zone 的 DNS 记录导出为 json 或简化 bind 文件。需配合 --export-dir。",
+    )
+    parser.add_argument(
+        "--export-dir",
+        default=None,
+        metavar="DIR",
+        help="导出目录（默认 ./cf_export），按 <账号>/<域名>.json|bind 存放。",
+    )
+    parser.add_argument(
+        "--backup-dir",
+        default=None,
+        metavar="DIR",
+        help="变更前自动快照目录：正式执行（非 dry-run）前先全量备份待处理 zone，备份失败则中止变更。",
+    )
+    parser.add_argument(
+        "--set-proxied",
+        choices=["on", "off"],
+        default=None,
+        help="批量设置记录代理状态：on=启用橙云，off=关闭。内容保持不变，可与 --set-ttl 同用。",
+    )
+    parser.add_argument(
+        "--set-ttl",
+        type=int,
+        default=None,
+        metavar="N",
+        help="批量设置记录 TTL（1=自动）。内容保持不变，可与 --set-proxied 同用。",
+    )
+
+    # 并发与速度档位。-W/-A/-i 默认 None 表示“未显式指定”，由 --speed 档位填充；
+    # 显式指定的值优先（仍钳制在 1~20），档位只填未指定的项。
     parser.add_argument(
         "-W",
         "--workers",
         type=int,
-        default=5,
+        default=None,
         metavar="N",
-        help="单账号内 zone/域名并发数（默认 5，最大自动限制为 20）。",
+        help="单账号内 zone/域名并发数。不指定时按 --speed 取值（eco:2，最大 20）。",
     )
     parser.add_argument(
         "-A",
         "--account-workers",
         type=int,
-        default=3,
+        default=None,
         metavar="N",
-        help="多账号并发数（默认 3，最大自动限制为 20）。",
+        help="多账号并发数。不指定时按 --speed 取值（eco:3，最大 20）。",
+    )
+    parser.add_argument(
+        "--speed",
+        default=DEFAULT_SPEED,
+        choices=["eco", "balanced", "fast", "turbo"],
+        help=(
+            "速度档位（默认 eco 保守，尽量不触碰限流）:"
+            "eco=保守，balanced=略微偏快，fast=快速档，turbo=不额外限速。"
+            "显式指定的 -W/-A/-i 优先于档位。"
+        ),
     )
     parser.add_argument(
         "-c",
         "--conservative",
         action="store_true",
-        help=(
-            f"保守限流模式：自动将 --account-workers 限制为 {CONSERVATIVE_ACCOUNT_WORKERS}、"
-            f"--workers 限制为 {CONSERVATIVE_ZONE_WORKERS}，"
-            f"并设置 API 调用间隔为 {CONSERVATIVE_REQUEST_INTERVAL}s。"
-        ),
+        help="保守限流模式（等价于 --speed eco，兼容旧用法）。",
     )
     parser.add_argument(
         "-i",
@@ -3003,7 +4474,7 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=DEFAULT_API_MAX_RETRIES,
         metavar="N",
-        help="Cloudflare API 429/5xx/网络临时错误的最大重试次数（默认 5）。",
+        help="Cloudflare API 429/可重试状态码/网络临时错误的最大重试次数（默认 5）。",
     )
     parser.add_argument(
         "-B",
@@ -3020,6 +4491,26 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_API_RETRY_MAX_SLEEP,
         metavar="SECONDS",
         help="单次重试等待上限秒数（默认 300，匹配 Cloudflare 5 分钟限流窗口）。",
+    )
+    parser.add_argument(
+        "-P",
+        "--proxy",
+        action="append",
+        default=None,
+        metavar="URL",
+        help="出口代理，可多次使用（例如 -P http://127.0.0.1:7897）。仅支持 http/https；URL 中的账号口令只用于连接，不会写入日志。",
+    )
+    parser.add_argument(
+        "--proxy-file",
+        default=None,
+        metavar="PATH",
+        help="代理文件路径，每行一个代理 URL（# 注释忽略），与 -P 合并使用。",
+    )
+    parser.add_argument(
+        "--proxy-mode",
+        default=PROXY_DEFAULT_MODE,
+        choices=["round-robin", "sticky", "failover"],
+        help="多代理调度：round-robin 逐请求轮转（默认），sticky 每线程固定，failover 仅故障切换。",
     )
 
     # 日志 / 审计相关。
@@ -3091,6 +4582,18 @@ def parse_args() -> argparse.Namespace:
         "--json",
         action="store_true",
         help="以 JSON 格式输出结果（目前主要用于 -f/--find-domain）。",
+    )
+    parser.add_argument(
+        "--failed-output",
+        default=None,
+        metavar="PATH",
+        help="将失败/取消清单写入 CSV（UTF-8-SIG，含 account/zone/record/name/type/action/status/error 列），便于重跑补齐。默认不写文件。",
+    )
+    parser.add_argument(
+        "--resume-from",
+        default=None,
+        metavar="PATH",
+        help="从失败清单 CSV 重跑：仅处理清单中列出的域名；已完成项因内容一致会自动跳过，天然幂等。",
     )
 
     return parser.parse_args()
@@ -3236,6 +4739,7 @@ def run_find_mode(
     stop_event: Event,
     rate_limiter: Optional[ApiRateLimiter],
     args: argparse.Namespace,
+    proxy_pool: Optional[ProxyPool] = None,
 ) -> int:
     """并发检查某个域名/zone 是否存在于多个账号中。"""
     print_lock = Lock()
@@ -3269,6 +4773,7 @@ def run_find_mode(
                 api_max_retries=args.api_max_retries,
                 api_retry_base_delay=args.api_retry_base_delay,
                 api_retry_max_sleep=args.api_retry_max_sleep,
+                proxy_pool=proxy_pool,
             )
             exists = updater.zone_exists(target_domain)
             zone_info = {}
@@ -3414,7 +4919,9 @@ def run_find_mode(
     finally:
         if stop_event.is_set():
             cancel_pending_futures(pending)
-        executor.shutdown(wait=False, cancel_futures=True)
+        executor.shutdown(
+            wait=not stop_event.is_set(), cancel_futures=bool(stop_event.is_set())
+        )
 
     if stop_event.is_set():
         return 130
@@ -3486,8 +4993,13 @@ def run_operation_for_account(
     print_lock: Lock,
     stop_event: Event,
     rate_limiter: Optional[ApiRateLimiter],
-) -> tuple[str, bool, str]:
-    """在单个账号中执行更新或删除操作。"""
+    proxy_pool: Optional[ProxyPool] = None,
+) -> tuple[str, bool, str, list[dict[str, Any]]]:
+    """在单个账号中执行更新或删除操作。
+
+    返回 (账号名, 是否成功, 错误信息, 失败清单行)。
+    成功判定：无 errors 且无 cancelled；中断返回 interrupted，由主循环汇总。
+    """
     name = account.get("name") or account.get("email") or "unknown"
     try:
         account_rate_limiter = get_account_rate_limiter(
@@ -3495,6 +5007,8 @@ def run_operation_for_account(
             stop_event,
             rate_limiter,
         )
+        resume_entries = getattr(args, "_resume_entries", None)
+        resume_zones = resume_filter_for_account(resume_entries, name)
         # 传递命令行直接指定的域名（--domain）
         explicit_domains = getattr(args, "domain", None)
         updater = CloudflareDNSUpdater(
@@ -3511,6 +5025,7 @@ def run_operation_for_account(
             api_retry_base_delay=args.api_retry_base_delay,
             api_retry_max_sleep=args.api_retry_max_sleep,
             explicit_domains=explicit_domains,
+            proxy_pool=proxy_pool,
         )
         updater._safe_print(
             f"\n=== [账号 {account_index}/{account_total}] 开始处理账号: {name} ==="
@@ -3518,6 +5033,46 @@ def run_operation_for_account(
 
         # 传递 --domain 指定的域名列表
         explicit_domains = getattr(args, "domain", None)
+        backup_dir = getattr(args, "backup_dir", None)
+        mutating = bool(
+            args.delete_wildcard
+            or args.delete_ip
+            or args.delete_zone
+            or args.add_domain
+            or args.add_record
+            or args.new_content
+            or args.set_proxied is not None
+            or args.set_ttl is not None
+        )
+        if backup_dir and mutating and not args.dry_run:
+            backup_ok, backup_msg = updater.batch_backup(
+                backup_dir,
+                whitelist=whitelist,
+                explicit_domains=explicit_domains,
+                resume_zones=resume_zones,
+            )
+            if not backup_ok:
+                return (
+                    name,
+                    False,
+                    backup_msg,
+                    [
+                        {
+                            "account": name,
+                            "zone": "",
+                            "record_id": "",
+                            "name": "",
+                            "type": "ZONE",
+                            "old_content": "",
+                            "new_content": "",
+                            "action": "backup",
+                            "status": "error",
+                            "attempts": 1,
+                            "error": backup_msg,
+                            "timestamp": utc_now_iso(),
+                        }
+                    ],
+                )
         if args.delete_wildcard:
             batch_result = updater.batch_delete_wildcard(
                 whitelist=whitelist,
@@ -3525,6 +5080,7 @@ def run_operation_for_account(
                 old_content=args.old_content,
                 dry_run=args.dry_run,
                 explicit_domains=explicit_domains,
+                resume_zones=resume_zones,
             )
         elif args.delete_ip:
             batch_result = updater.batch_delete_ip(
@@ -3534,6 +5090,7 @@ def run_operation_for_account(
                 dry_run=args.dry_run,
                 include_subdomains=not args.no_subdomains,
                 explicit_domains=explicit_domains,
+                resume_zones=resume_zones,
             )
         elif args.delete_zone:
             delete_completely = args.delete_zone == "full"
@@ -3542,6 +5099,7 @@ def run_operation_for_account(
                 dry_run=args.dry_run,
                 delete_zone_completely=delete_completely,
                 explicit_domains=explicit_domains,
+                resume_zones=resume_zones,
             )
         elif args.add_domain or args.add_record:
             # 默认启用代理，除非用户显式使用 --no-proxied
@@ -3554,6 +5112,29 @@ def run_operation_for_account(
                 ttl=args.ttl,
                 dry_run=args.dry_run,
                 explicit_domains=explicit_domains,
+                resume_zones=resume_zones,
+            )
+        elif args.export:
+            batch_result = updater.batch_export(
+                export_dir=args.export_dir or "./cf_export",
+                fmt=args.export,
+                whitelist=whitelist,
+                explicit_domains=explicit_domains,
+                resume_zones=resume_zones,
+            )
+        elif args.set_proxied is not None or args.set_ttl is not None:
+            batch_result = updater.batch_set_attrs(
+                set_proxied=(args.set_proxied == "on")
+                if args.set_proxied is not None
+                else None,
+                set_ttl=args.set_ttl,
+                whitelist=whitelist,
+                record_type=args.record_type,
+                old_content=args.old_content,
+                dry_run=args.dry_run,
+                include_subdomains=not args.no_subdomains,
+                explicit_domains=explicit_domains,
+                resume_zones=resume_zones,
             )
         else:
             batch_result = updater.batch_update(
@@ -3564,53 +5145,146 @@ def run_operation_for_account(
                 dry_run=args.dry_run,
                 include_subdomains=not args.no_subdomains,
                 explicit_domains=explicit_domains,
+                resume_zones=resume_zones,
             )
 
+        failure_rows = failure_rows_for_results(name, batch_result.results)
+
         if stop_event.is_set():
-            return name, False, "interrupted"
+            return name, False, "interrupted", failure_rows
 
-        if batch_result.stats.errors > 0:
-            return name, False, f"账号内存在 {batch_result.stats.errors} 个错误"
+        pending_count = batch_result.stats.errors + batch_result.stats.cancelled
+        if pending_count > 0:
+            return (
+                name,
+                False,
+                f"账号内存在 {batch_result.stats.errors} 个错误、"
+                f"{batch_result.stats.cancelled} 个取消",
+                failure_rows,
+            )
 
-        return name, True, ""
+        return name, True, "", failure_rows
     except KeyboardInterrupt:
-        return name, False, "interrupted"
+        return (
+            name,
+            False,
+            "interrupted",
+            [
+                {
+                    "account": name,
+                    "zone": "",
+                    "record_id": "",
+                    "name": "",
+                    "type": "ZONE",
+                    "old_content": "",
+                    "new_content": "",
+                    "action": "batch",
+                    "status": "cancelled",
+                    "attempts": 1,
+                    "error": "账号任务被中断（zone 列表未知，需整账号重跑）",
+                    "timestamp": utc_now_iso(),
+                }
+            ],
+        )
     except Exception as exc:
-        return name, False, str(exc)
+        # 账号级硬失败（如 zone 列表拉取失败）：zone 未知，记整账号哨兵行，
+        # 重跑时该账号全量执行，保证不遗漏。
+        return (
+            name,
+            False,
+            str(exc),
+            [
+                {
+                    "account": name,
+                    "zone": "",
+                    "record_id": "",
+                    "name": "",
+                    "type": "ZONE",
+                    "old_content": "",
+                    "new_content": "",
+                    "action": "fetch_zones",
+                    "status": "error",
+                    "attempts": 1,
+                    "error": f"账号级失败（需整账号重跑）: {exc}",
+                    "timestamp": utc_now_iso(),
+                }
+            ],
+        )
+
+
+def resolve_speed_values(
+    speed: str,
+    workers: Optional[int],
+    account_workers: Optional[int],
+    request_interval: Optional[float],
+) -> tuple[int, int, float]:
+    """纯函数：按档位填充未显式指定的并发/间隔，返回 (workers, account_workers, interval)。
+
+    显式指定的值优先（仅做合法性校验，不按档位下调）。
+    """
+    preset = SPEED_PRESETS[speed]
+    resolved_workers = int(preset["workers"]) if workers is None else int(workers)
+    resolved_accounts = (
+        int(preset["account_workers"])
+        if account_workers is None
+        else int(account_workers)
+    )
+    resolved_interval = (
+        float(preset["request_interval"])
+        if request_interval is None
+        else float(request_interval)
+    )
+    return resolved_workers, resolved_accounts, resolved_interval
 
 
 def configure_rate_limit_args(args: argparse.Namespace) -> None:
     """
-    配置保守限流模式与 API 重试参数。
+    配置速度档位、限流与 API 重试参数。
 
-    Cloudflare REST API 常规全局限额为 1200 请求 / 5 分钟，折算约 4 请求 / 秒。
-    考虑到：
-    - 同一用户的 Dashboard、API key、API token 调用会累计；
-    - 用户可能同时运行多个脚本；
-    - 多账号/多域名并发会放大瞬时请求；
-    保守模式默认采用每账号约 2 请求 / 秒，并降低单账号内 zone 并发。
+    默认 --speed eco：尽量不触碰 Cloudflare 限流（每账号约 2 请求/秒）。
+    着急时用 --speed balanced/fast/turbo 提速；显式指定的 -W/-A/-i
+    优先于档位。fast/turbo 会明确提示 429 风险，失败项进清单重跑。
     """
+    speed = args.speed
+    if args.conservative:
+        if speed != "eco":
+            log_print("--conservative 与 --speed 冲突，已按保守（eco）执行")
+        speed = "eco"
+        args.speed = "eco"
+    if speed not in SPEED_PRESETS:
+        log_print(f"--speed 仅支持 {sorted(SPEED_PRESETS)}")
+        sys.exit(1)
+
     if args.request_interval is not None and args.request_interval < 0:
         log_print("--request-interval 不能为负数")
         sys.exit(1)
+    if args.workers is not None and args.workers < 1:
+        log_print("--workers 至少为 1")
+        sys.exit(1)
+    if args.account_workers is not None and args.account_workers < 1:
+        log_print("--account-workers 至少为 1")
+        sys.exit(1)
 
-    if args.conservative:
-        if args.request_interval is None:
-            args.request_interval = CONSERVATIVE_REQUEST_INTERVAL
-        if args.account_workers > CONSERVATIVE_ACCOUNT_WORKERS:
-            log_print(
-                "保守模式: 已将 --account-workers "
-                f"从 {args.account_workers} 调整为 {CONSERVATIVE_ACCOUNT_WORKERS}"
-            )
-            args.account_workers = CONSERVATIVE_ACCOUNT_WORKERS
-        if args.workers > CONSERVATIVE_ZONE_WORKERS:
-            log_print(
-                "保守模式: 已将 --workers "
-                f"从 {args.workers} 调整为 {CONSERVATIVE_ZONE_WORKERS}"
-            )
-            args.workers = CONSERVATIVE_ZONE_WORKERS
-    elif args.request_interval is None:
-        args.request_interval = 0.0
+    args.workers, args.account_workers, args.request_interval = resolve_speed_values(
+        speed, args.workers, args.account_workers, args.request_interval
+    )
+
+    if args.workers > HARD_MAX_WORKERS:
+        log_print(f"线程数过高，已自动调整为 {HARD_MAX_WORKERS}")
+        args.workers = HARD_MAX_WORKERS
+    if args.account_workers > HARD_MAX_WORKERS:
+        log_print(f"账号并发数过高，已自动调整为 {HARD_MAX_WORKERS}")
+        args.account_workers = HARD_MAX_WORKERS
+
+    if speed in {"fast", "turbo"}:
+        log_print(
+            f"速度档位 {speed}：请求密度高，触发 429/限流的概率明显上升；"
+            "失败与取消项会记入失败清单，请配合 --failed-output/--resume-from 重跑补齐。"
+        )
+    log_print(
+        f"速度档位: {speed}，account-workers={args.account_workers}，"
+        f"workers={args.workers}，request-interval={args.request_interval}s"
+    )
 
     if args.api_max_retries < 0:
         log_print("--api-max-retries 不能为负数")
@@ -3659,6 +5333,32 @@ def get_account_rate_limiter(
     return build_rate_limiter(args, stop_event)
 
 
+def build_proxy_pool(args: argparse.Namespace) -> Optional[ProxyPool]:
+    """根据 -P/--proxy 与 --proxy-file 构建全进程共享代理池，无配置返回 None。"""
+    urls: list[str] = []
+    if getattr(args, "proxy", None):
+        for raw in args.proxy:
+            try:
+                urls.append(validate_proxy_url(raw))
+            except ValueError as exc:
+                log_print(f"参数错误: {exc}")
+                sys.exit(1)
+    if getattr(args, "proxy_file", None):
+        urls.extend(load_proxy_file(args.proxy_file))
+    if not urls:
+        return None
+    try:
+        pool = ProxyPool(urls, mode=args.proxy_mode)
+    except ValueError as exc:
+        log_print(f"参数错误: {exc}")
+        sys.exit(1)
+    log_print(
+        f"出口代理已启用: 模式={pool.mode}，数量={len(pool.urls)}，"
+        f"列表={pool.sanitized_list()}"
+    )
+    return pool
+
+
 def validate_worker_args(args: argparse.Namespace) -> None:
     """限制并发参数，避免误设过高导致 API 限流或本机资源耗尽。"""
     if args.workers < 1:
@@ -3679,9 +5379,15 @@ def validate_worker_args(args: argparse.Namespace) -> None:
 def validate_action_args(args: argparse.Namespace) -> None:
     """校验运行模式参数，避免更新和删除模式同时触发。"""
     if args.find_domain and (
-        args.new_content or args.delete_wildcard or args.delete_ip or args.delete_zone
+        args.new_content
+        or args.delete_wildcard
+        or args.delete_ip
+        or args.delete_zone
+        or args.export
+        or args.set_proxied is not None
+        or args.set_ttl is not None
     ):
-        log_print("--find-domain 查询模式不能与更新/删除模式同时使用")
+        log_print("--find-domain 查询模式不能与更新/删除/导出/设置模式同时使用")
         sys.exit(1)
 
     destructive_modes = [
@@ -3690,6 +5396,11 @@ def validate_action_args(args: argparse.Namespace) -> None:
         bool(args.delete_zone),
     ]
     add_modes = [bool(args.add_domain), bool(args.add_record)]
+    new_modes = [
+        bool(args.new_content),
+        bool(args.export),
+        bool(args.set_proxied is not None or args.set_ttl is not None),
+    ]
 
     if args.new_content and any(destructive_modes):
         log_print("更新模式不能与删除模式同时使用")
@@ -3703,6 +5414,15 @@ def validate_action_args(args: argparse.Namespace) -> None:
         log_print("--delete-wildcard、--delete-ip 和 --delete-zone 不能同时使用")
         sys.exit(1)
 
+    if sum(new_modes) > 1 or (
+        any(new_modes) and (any(destructive_modes) or any(add_modes))
+    ):
+        log_print(
+            "更新、导出、属性设置、删除、添加模式之间不能同时使用，"
+            "请分次执行（建议先 --export 备份）"
+        )
+        sys.exit(1)
+
     if sum(add_modes) == 1 and not (args.add_domain or args.add_record):
         log_print("--add-domain 和 --add-record 建议同时使用或至少提供一个")
         # 不强制退出，允许单独使用
@@ -3712,6 +5432,14 @@ def validate_action_args(args: argparse.Namespace) -> None:
             "--delete-ip 已经指定要删除的 IP，不能再同时使用 --old-ip/--old-content"
         )
         sys.exit(1)
+
+    if args.set_ttl is not None and args.set_ttl < 1:
+        log_print("--set-ttl 必须为正整数（1=自动）")
+        sys.exit(1)
+
+    if args.export and not args.export_dir:
+        args.export_dir = "./cf_export"
+        log_print(f"未指定 --export-dir，默认使用 {args.export_dir}")
 
     if args.new_content:
         try:
@@ -3751,6 +5479,205 @@ def validate_action_args(args: argparse.Namespace) -> None:
             sys.exit(1)
 
 
+def build_final_verdict(
+    success: int,
+    failed: int,
+    cancelled_accounts: int,
+    failure_rows: list[dict[str, Any]],
+    interrupted: bool,
+    failed_output: Optional[str],
+    prog: str,
+) -> tuple[int, list[str]]:
+    """构建本次运行的最终结论（是否完美执行）。
+
+    返回 (exit_code, 输出行)。判定标准：
+    - 完美执行：无失败账号、无取消账号、无失败清单行、未被中断；
+    - 否则明确给出失败/取消统计、主要原因 Top5 与重跑命令。
+    """
+    error_rows = [
+        row for row in failure_rows if str(row.get("status", "")) != "cancelled"
+    ]
+    cancelled_rows = [
+        row for row in failure_rows if str(row.get("status", "")) == "cancelled"
+    ]
+    lines = ["", "账号汇总:", f"- 成功: {success}", f"- 失败: {failed}"]
+    if cancelled_accounts:
+        lines.append(f"- 取消账号: {cancelled_accounts}")
+    if failure_rows:
+        lines.append(
+            f"- 未完成条目: {len(failure_rows)}"
+            f"（失败 {len(error_rows)}，取消 {len(cancelled_rows)}）"
+        )
+
+    causes = Counter()
+    for row in failure_rows:
+        action = str(row.get("action", "batch"))
+        error = str(row.get("error", ""))[:100]
+        causes[(action, error)] += 1
+
+    rerun_hint: list[str] = []
+    if failure_rows:
+        if failed_output:
+            rerun_hint = [
+                f"失败清单: {failed_output}（共 {len(failure_rows)} 行）",
+                "建议重跑（其余参数保持本次不变）:",
+                f"{prog} --resume-from {failed_output}",
+            ]
+        else:
+            rerun_hint = [
+                "建议下次加 --failed-output <path> 生成清单后用 --resume-from 重跑。"
+            ]
+
+    if interrupted:
+        lines.append(
+            "[VERDICT] 任务被中断：未能完美执行，"
+            f"成功 {success}，失败 {failed}，取消账号 {cancelled_accounts}，"
+            f"未完成条目 {len(failure_rows)}。"
+        )
+        lines.extend(verdict_cause_lines(causes))
+        lines.extend(rerun_hint)
+        return 130, lines
+
+    if failed == 0 and cancelled_accounts == 0 and not failure_rows:
+        lines.append(
+            "[VERDICT] 完美执行："
+            f"{success} 个账号全部成功，无失败、无取消、无未完成条目。"
+        )
+        return 0, lines
+
+    lines.append(
+        "[VERDICT] 未完美执行："
+        f"成功 {success}，失败 {failed}，取消账号 {cancelled_accounts}，"
+        f"未完成条目 {len(failure_rows)}"
+        f"（失败 {len(error_rows)}，取消 {len(cancelled_rows)}）。"
+        "重试未能挽救的条目见失败清单。"
+    )
+    lines.extend(verdict_cause_lines(causes))
+    lines.extend(rerun_hint)
+    return 1, lines
+
+
+def verdict_cause_lines(causes: Counter[tuple[str, str]]) -> list[str]:
+    """将原因计数器转为 Top5 输出行。"""
+    if not causes:
+        return []
+    lines = ["主要原因 Top:"]
+    for (action, error), count in causes.most_common(5):
+        lines.append(f"- [{action}] x{count}: {error}")
+    return lines
+
+
+def run_accounts_fanout(
+    accounts: list[dict],
+    args: argparse.Namespace,
+    whitelist: Optional[list[str]],
+    print_lock: Lock,
+    stop_event: Event,
+    rate_limiter: Optional[ApiRateLimiter],
+    proxy_pool: Optional[ProxyPool] = None,
+) -> tuple[int, int, list[dict[str, Any]], int]:
+    """账号级 fan-out：返回 (成功数, 失败数, 失败清单行, 取消账号数)。
+
+    中断时未开始的账号 future 会被取消并计数为取消，不计入失败；
+    已返回 failure_rows 的账号（即使中断）仍会保留其清单行，保证可重跑。
+    """
+    success = 0
+    failed = 0
+    cancelled_accounts = 0
+    failure_rows: list[dict[str, Any]] = []
+    account_total = len(accounts)
+
+    executor = ThreadPoolExecutor(max_workers=args.account_workers)
+    future_to_account: dict[Future[Any], dict] = {}
+    pending: set[Future[Any]] = set()
+    try:
+        for account_index, account in enumerate(accounts, start=1):
+            future = executor.submit(
+                run_operation_for_account,
+                account,
+                account_index,
+                account_total,
+                args,
+                whitelist,
+                print_lock,
+                stop_event,
+                rate_limiter,
+                proxy_pool,
+            )
+            future_to_account[future] = account
+        pending = set(future_to_account)
+
+        while pending and not stop_event.is_set():
+            done, pending = wait(
+                pending,
+                timeout=0.5,
+                return_when=FIRST_COMPLETED,
+            )
+            if not done:
+                continue
+
+            for future in done:
+                name, ok, err, rows = future.result()
+                failure_rows.extend(rows)
+                if ok:
+                    success += 1
+                    log_print(f"[ACCOUNT-OK] {name}")
+                else:
+                    if err == "interrupted":
+                        continue
+                    failed += 1
+                    log_print(f"[ACCOUNT-ERR] {name}: {err}")
+    except KeyboardInterrupt:
+        stop_event.set()
+        log_print("\n[INTERRUPT] 收到 Ctrl+C，正在终止所有线程...")
+    finally:
+        if stop_event.is_set():
+            cancel_pending_futures(pending)
+            for future in pending:
+                account = future_to_account.get(future, {})
+                name = account.get("name") or account.get("email") or "unknown"
+                if not future.done() or future.cancelled():
+                    cancelled_accounts += 1
+                    log_print(f"[ACCOUNT-CANCELLED] {name} 未执行（任务被取消）")
+                else:
+                    try:
+                        res_name, ok, err, rows = future.result()
+                        failure_rows.extend(rows)
+                        if ok:
+                            success += 1
+                            log_print(f"[ACCOUNT-OK] {res_name}")
+                        elif err != "interrupted":
+                            failed += 1
+                            log_print(f"[ACCOUNT-ERR] {res_name}: {err}")
+                    except Exception as exc:
+                        failed += 1
+                        log_print(f"[ACCOUNT-ERR] {name}: {exc}")
+        executor.shutdown(
+            wait=not stop_event.is_set(), cancel_futures=bool(stop_event.is_set())
+        )
+
+    return success, failed, failure_rows, cancelled_accounts
+
+
+def write_failure_report(
+    args: argparse.Namespace, failure_rows: list[dict[str, Any]]
+) -> None:
+    """按 --failed-output 写失败清单；无清单时给出重跑提示。"""
+    if not failure_rows:
+        return
+    if args.failed_output:
+        write_failure_csv(args.failed_output, failure_rows)
+        log_print(
+            f"\n失败清单已写入: {args.failed_output}（共 {len(failure_rows)} 行），"
+            "可用 --resume-from 重跑补齐。"
+        )
+    else:
+        log_print(
+            f"\n本次有 {len(failure_rows)} 条未完成（失败/取消），"
+            "建议下次加 --failed-output <path> 生成清单后用 --resume-from 重跑。"
+        )
+
+
 def main() -> None:
     args = parse_args()
     configure_logging(args.log_file, args.log_level, args.log_overwrite)
@@ -3762,6 +5689,7 @@ def main() -> None:
     stop_event = Event()
     install_ctrl_c_handler(stop_event)
     rate_limiter = build_shared_rate_limiter(args, stop_event)
+    proxy_pool = build_proxy_pool(args)
     if args.request_interval and args.request_interval > 0:
         scope_text = "全进程共享" if args.rate_limit_scope == "global" else "每账号独立"
         log_print(
@@ -3771,6 +5699,21 @@ def main() -> None:
         )
 
     accounts = build_accounts(args)
+
+    # 重跑清单：提前加载，账号/zone 过滤在 run_operation_for_account 内完成。
+    if getattr(args, "resume_from", None):
+        try:
+            args._resume_entries = load_resume_entries(args.resume_from)
+        except FileNotFoundError:
+            log_print(f"重跑文件不存在: {args.resume_from}")
+            sys.exit(1)
+        except ValueError as exc:
+            log_print(f"重跑文件错误: {exc}")
+            sys.exit(1)
+        log_print(
+            f"已加载重跑清单: {args.resume_from}（{len(args._resume_entries)} 行），"
+            "仅处理清单中的域名"
+        )
 
     # 模式 0：列出可用账号。
     if args.list_accounts:
@@ -3787,11 +5730,20 @@ def main() -> None:
             stop_event=stop_event,
             rate_limiter=rate_limiter,
             args=args,
+            proxy_pool=proxy_pool,
         )
         sys.exit(code)
 
-    # 模式 2：批量更新或删除记录。
-    if args.new_content or args.delete_wildcard or args.delete_ip or args.delete_zone:
+    # 模式 2：批量更新 / 删除 / 属性设置 / 导出记录。
+    if (
+        args.new_content
+        or args.delete_wildcard
+        or args.delete_ip
+        or args.delete_zone
+        or args.export
+        or args.set_proxied is not None
+        or args.set_ttl is not None
+    ):
         whitelist: Optional[list[str]] = None
         if args.whitelist:
             whitelist = load_whitelist(args.whitelist)
@@ -3801,125 +5753,45 @@ def main() -> None:
             log_print(f"已加载白名单: {len(whitelist)}")
 
         print_lock = Lock()
-        success = 0
-        failed = 0
-        account_total = len(accounts)
+        success, failed, failure_rows, cancelled_accounts = run_accounts_fanout(
+            accounts, args, whitelist, print_lock, stop_event, rate_limiter, proxy_pool
+        )
+        write_failure_report(args, failure_rows)
 
-        executor = ThreadPoolExecutor(max_workers=args.account_workers)
-        pending: set[Future[Any]] = set()
-        try:
-            pending = {
-                executor.submit(
-                    run_operation_for_account,
-                    account,
-                    account_index,
-                    account_total,
-                    args,
-                    whitelist,
-                    print_lock,
-                    stop_event,
-                    rate_limiter,
-                )
-                for account_index, account in enumerate(accounts, start=1)
-            }
-
-            while pending and not stop_event.is_set():
-                done, pending = wait(
-                    pending,
-                    timeout=0.5,
-                    return_when=FIRST_COMPLETED,
-                )
-                if not done:
-                    continue
-
-                for future in done:
-                    name, ok, err = future.result()
-                    if ok:
-                        success += 1
-                        log_print(f"[ACCOUNT-OK] {name}")
-                    else:
-                        if err == "interrupted":
-                            continue
-                        failed += 1
-                        log_print(f"[ACCOUNT-ERR] {name}: {err}")
-        except KeyboardInterrupt:
-            stop_event.set()
-            log_print("\n[INTERRUPT] 收到 Ctrl+C，正在终止所有线程...")
-        finally:
-            if stop_event.is_set():
-                cancel_pending_futures(pending)
-            executor.shutdown(wait=False, cancel_futures=True)
-
-        if stop_event.is_set():
-            log_print("任务已被用户中断")
-            sys.exit(130)
-
-        log_print("\n账号汇总:")
-        log_print(f"- 成功: {success}")
-        log_print(f"- 失败: {failed}")
-        sys.exit(1 if failed > 0 else 0)
+        exit_code, verdict_lines = build_final_verdict(
+            success,
+            failed,
+            cancelled_accounts,
+            failure_rows,
+            interrupted=bool(stop_event.is_set()),
+            failed_output=args.failed_output,
+            prog=os.path.basename(sys.argv[0]) or "cloudflare_dns_tool.py",
+        )
+        for line in verdict_lines:
+            log_print(line)
+        sys.exit(exit_code)
 
     # 模式 3：添加域名或 DNS 记录
     if args.add_domain or args.add_record:
         whitelist = None  # 添加模式通常不需要白名单
         print_lock = Lock()
-        success = 0
-        failed = 0
-        account_total = len(accounts)
+        success, failed, failure_rows, cancelled_accounts = run_accounts_fanout(
+            accounts, args, whitelist, print_lock, stop_event, rate_limiter, proxy_pool
+        )
+        write_failure_report(args, failure_rows)
 
-        executor = ThreadPoolExecutor(max_workers=args.account_workers)
-        pending: set[Future[Any]] = set()
-        try:
-            pending = {
-                executor.submit(
-                    run_operation_for_account,
-                    account,
-                    account_index,
-                    account_total,
-                    args,
-                    whitelist,
-                    print_lock,
-                    stop_event,
-                    rate_limiter,
-                )
-                for account_index, account in enumerate(accounts, start=1)
-            }
-
-            while pending and not stop_event.is_set():
-                done, pending = wait(
-                    pending,
-                    timeout=0.5,
-                    return_when=FIRST_COMPLETED,
-                )
-                if not done:
-                    continue
-
-                for future in done:
-                    name, ok, err = future.result()
-                    if ok:
-                        success += 1
-                        log_print(f"[ACCOUNT-OK] {name}")
-                    else:
-                        if err == "interrupted":
-                            continue
-                        failed += 1
-                        log_print(f"[ACCOUNT-ERR] {name}: {err}")
-        except KeyboardInterrupt:
-            stop_event.set()
-            log_print("\n[INTERRUPT] 收到 Ctrl+C，正在终止所有线程...")
-        finally:
-            if stop_event.is_set():
-                cancel_pending_futures(pending)
-            executor.shutdown(wait=False, cancel_futures=True)
-
-        if stop_event.is_set():
-            log_print("任务已被用户中断")
-            sys.exit(130)
-
-        log_print("\n账号汇总:")
-        log_print(f"- 成功: {success}")
-        log_print(f"- 失败: {failed}")
-        sys.exit(1 if failed > 0 else 0)
+        exit_code, verdict_lines = build_final_verdict(
+            success,
+            failed,
+            cancelled_accounts,
+            failure_rows,
+            interrupted=bool(stop_event.is_set()),
+            failed_output=args.failed_output,
+            prog=os.path.basename(sys.argv[0]) or "cloudflare_dns_tool.py",
+        )
+        for line in verdict_lines:
+            log_print(line)
+        sys.exit(exit_code)
 
     # 默认模式：没有指定动作时列出账号，给用户操作提示。
     list_accounts(accounts, show_secrets=args.show_secrets)

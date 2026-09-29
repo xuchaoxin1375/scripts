@@ -160,7 +160,77 @@ Cloudflare REST API 常规全局限制通常为：
 - 每账号独立或全进程共享的 API 请求间隔控制
 - 保守模式自动降低单账号内并发，并可保留多个账号并行处理
 - HTTP 429 自动读取 `retry-after` / `Ratelimit` 响应头并退避重试
-- 5xx / 网络临时错误指数退避重试
+- 可重试状态码（含 Cloudflare 520~527/530）/ 网络临时错误指数退避重试
+- 触发限流后限速器临时叠加等待（自适应），成功后逐步衰减
+
+### 失败清单与重跑
+
+批量结束输出对账行（`expected/completed/cancelled`），失败与取消行可导出 CSV：
+
+```bash
+# 先导出失败/取消清单
+python cloudflare_dns_tool.py -n 1.2.3.4 --failed-output failures.csv
+
+# 仅重跑清单中的域名；已完成项因内容一致自动跳过，天然幂等
+python cloudflare_dns_tool.py -n 1.2.3.4 --resume-from failures.csv
+```
+
+CSV 列：`account,zone,record_id,name,type,old_content,new_content,action,status,attempts,error,timestamp`（UTF-8-SIG，Excel 可直接打开）。
+
+- `zone` 为空的行是账号级哨兵（例如 zone 列表拉取失败）：重跑时该账号全量执行。
+- 清单中没有的域名会被有意跳过；`--resume-from` 是白名单语义。
+
+### 运行结论（verdict）
+
+每次批量结束都会输出 `[VERDICT]` 行，明确三态之一：
+
+```text
+[VERDICT] 完美执行：2 个账号全部成功，无失败、无取消、无未完成条目。
+[VERDICT] 未完美执行：成功 1，失败 2，取消账号 0，未完成条目 9（失败 7，取消 2）。重试未能挽救的条目见失败清单。
+[VERDICT] 任务被中断：未能完美执行，成功 1，失败 0，取消账号 1，未完成条目 5。
+```
+
+非完美时附主要原因 Top5 与重跑命令（`--resume-from <清单>`，其余参数保持本次不变）。退出码：`0`=完美，`1`=有失败/取消，`130`=被中断。
+
+### 变更前备份与导出
+
+```bash
+# 导出待处理 zone（json 全量，可读可审计；bind 为简化记录格式，仅供参考）
+python cloudflare_dns_tool.py -w whitelist.txt --export json --export-dir ./cf_export -d
+python cloudflare_dns_tool.py -s account-a --export bind --export-dir ./cf_export
+
+# 正式变更前自动快照，备份失败则中止变更（无备份不变更）
+python cloudflare_dns_tool.py -n 1.2.3.4 --backup-dir ./cf_backup --failed-output failures.csv
+```
+
+### 批量设置代理状态与 TTL（内容不变）
+
+```bash
+# 全量开启橙云，先预览
+python cloudflare_dns_tool.py --set-proxied on -d
+
+# 仅对指向旧 IP 的 A 记录关闭代理并改 TTL
+python cloudflare_dns_tool.py --set-proxied off --set-ttl 300 -o 1.1.1.1 -d
+```
+
+### 出口代理
+
+经代理出口访问 Cloudflare API（例如本机 mihomo `http://127.0.0.1:7897`）：
+
+```bash
+# 单个代理
+python cloudflare_dns_tool.py -n 1.2.3.4 -P http://127.0.0.1:7897 -d
+
+# 多个代理轮转（默认 round-robin），也可写入文件每行一个
+python cloudflare_dns_tool.py -n 1.2.3.4 -P http://127.0.0.1:7897 -P http://127.0.0.1:7898
+python cloudflare_dns_tool.py -n 1.2.3.4 --proxy-file ./proxies.txt --proxy-mode failover -d
+```
+
+说明：
+
+- 仅支持 `http` / `https` 代理；URL 中的账号口令只用于建连，日志中自动脱敏为 `scheme://host:port`。
+- 网络错误触发代理冷却（默认 60 秒）与自动切换；`429` / `5xx` 属服务端语义，不标记代理故障（轮转模式下次自然换出口）。
+- 代理改变出口 IP 与链路，可缓解 IP 级限流/封禁并提高重试成功率；但 Cloudflare 配额按 credential 计算（1200/5min），配额侧仍需 `--conservative` / `--request-interval`。
 
 ---
 
@@ -465,12 +535,13 @@ python cloudflare_dns_tool.py -w whitelist.txt -n 1.2.3.4 -N -d
 | `-N`           | `--no-subdomains`                            | 白名单更新模式下只处理根域名                                 |
 | `-D`           | `--delete-wildcard`, `--delete-star-records` | 删除名称以 `*` 开头的 DNS 记录                               |
 | `-x`           | `--delete-ip`                                | 删除所有指向指定 IPv4/IPv6 的 A/AAAA 记录                    |
-| `-W`           | `--workers`                                  | 单账号内 zone/domain 并发数                                  |
-| `-A`           | `--account-workers`                          | 多账号并发数                                                 |
-| `-c`           | `--conservative`                             | 保守限流模式                                                 |
+| `-W`           | `--workers`                                  | 单账号内 zone/domain 并发数，不指定时按 `--speed` 取值         |
+| `-A`           | `--account-workers`                          | 多账号并发数，不指定时按 `--speed` 取值                       |
+| 无             | `--speed {eco,balanced,fast,turbo}`          | 速度档位，默认 `eco` 保守；显式 `-W/-A/-i` 优先于档位          |
+| `-c`           | `--conservative`                             | 保守模式（等价于 `--speed eco`，兼容旧用法）                   |
 | `-i`           | `--request-interval`                         | 相邻 API 请求的最小间隔，单位秒；作用范围由 `-q / --rate-limit-scope` 控制 |
 | `-q`           | `--rate-limit-scope`                         | 限速范围：`account` 每账号独立限速，`global` 全进程共享限速；默认 `account` |
-| `-R`           | `--api-max-retries`                          | 429 / 5xx / 网络错误最大重试次数                             |
+| `-R`           | `--api-max-retries`                          | 429 / 可重试状态码 / 网络错误最大重试次数                          |
 | `-B`           | `--api-retry-base-delay`                     | 指数退避初始等待秒数                                         |
 | `-M`           | `--api-retry-max-sleep`                      | 单次重试最大等待秒数                                         |
 | `-L`           | `--log-file`                                 | 保存运行日志到指定文件，便于后期审计                         |
@@ -489,6 +560,16 @@ python cloudflare_dns_tool.py -w whitelist.txt -n 1.2.3.4 -N -d
 | `--proxied`    | `--proxied`                                  | 添加记录时启用 Cloudflare 代理                                 |
 | `--ttl`        | `--ttl N`                                    | 添加记录的 TTL（默认 1=自动）                                  |
 | `--delete-zone`| `--delete-zone {dns,full}`                   | 删除域名模式：`dns`=仅清空记录，`full`=彻底删除域名            |
+| 无             | `--export {json,bind}`                       | 导出模式：将待处理 zone 的记录导出为文件                      |
+| 无             | `--export-dir DIR`                           | 导出目录（默认 `./cf_export`）                                |
+| 无             | `--backup-dir DIR`                           | 变更前自动快照目录；备份失败则中止变更                        |
+| 无             | `--set-proxied {on,off}`                     | 批量设置记录代理状态（内容不变）                              |
+| 无             | `--set-ttl N`                                | 批量设置记录 TTL（1=自动，内容不变）                          |
+| 无             | `--failed-output PATH`                       | 失败/取消清单写入 CSV（UTF-8-SIG），便于重跑补齐             |
+| 无             | `--resume-from PATH`                         | 从失败清单 CSV 重跑，仅处理清单中的域名                      |
+| `-P`           | `--proxy URL`                                | 出口代理，可多次使用（例如 `-P http://127.0.0.1:7897`）      |
+| 无             | `--proxy-file PATH`                          | 代理文件路径，每行一个代理 URL，与 `-P` 合并使用              |
+| 无             | `--proxy-mode MODE`                          | 多代理调度：`round-robin` / `sticky` / `failover`，默认轮转   |
 
 ---
 
@@ -664,6 +745,35 @@ flowchart TD
 ```bash
  python cloudflare_dns_tool.py  --account-workers 7   --workers 3   --request-interval 0.3 # 其他参数...
 ```
+
+### 速度档位
+
+默认 `--speed eco` 保守执行，尽量不触碰 Cloudflare 限流。着急时可提档：
+
+```bash
+# 默认即保守档，等价旧 -c
+python cloudflare_dns_tool.py -n 1.2.3.4 -d
+
+# 略微偏快：账号多、每账号域名少时的日常批量
+python cloudflare_dns_tool.py -n 1.2.3.4 --speed balanced -d
+
+# 快速档：429 风险明显上升，失败项进清单后重跑
+python cloudflare_dns_tool.py -n 1.2.3.4 --speed fast --failed-output failures.csv
+
+# 极限档：不额外限速，只建议配合清单重跑使用
+python cloudflare_dns_tool.py -n 1.2.3.4 --speed turbo --failed-output failures.csv
+```
+
+| 档位       | 账号并发 | 单账号内并发 | 请求间隔（每账号） | 说明                           |
+| ---------- | -------- | ------------ | ------------------ | ------------------------------ |
+| `eco`      | 3        | 2            | 0.5s（约 2 请求/秒） | 默认，尽量不触碰限流           |
+| `balanced` | 5        | 4            | 0.2s               | 略微偏快                       |
+| `fast`     | 8        | 6            | 0.1s               | 快速档，限流风险明显上升       |
+| `turbo`    | 20       | 20           | 0s                 | 不额外限速，需配合清单重跑     |
+
+显式指定的 `-W / -A / -i` 优先于档位（仍钳制在 1~20）。`fast` / `turbo` 启动时会明确打印风险提示；提速档下触发的失败与取消同样记入失败清单，不静默丢失。
+
+旧 `-c / --conservative` 保留，等价于 `--speed eco`。
 
 ### 保守模式
 
@@ -905,6 +1015,72 @@ flowchart LR
 
 ---
 
+## Web 操作台
+
+基于 FastAPI + 纯静态前端（原生 HTML/CSS/JS，无 Node 构建、无 NiceGUI）的可视化操作台：账号/域名/记录浏览、操作表单、dry-run 预览、二次确认执行、实时日志与三级进度、verdict 结论、失败清单 CSV 下载。后端 `/api` 与页面同服务，脚本可直接调用。
+
+```bash
+pip install fastapi uvicorn
+python start_web_ui.py --port 8080
+# 浏览器打开 http://127.0.0.1:8080
+```
+
+常用参数：`-C` 预置配置文件路径（默认与 CLI 同源的引擎 `CF_CONFIG_PATH` 预设，可用环境变量 `CF_CONFIG_PATH` 覆盖，可在页面内修改），`--password` 或环境变量 `CF_WEB_PASSWORD` 设置访问口令，`-P` 配置出口代理。
+
+使用流程：打开“浏览”页即按预设路径自动填入并加载账号一次（失败会提示，不阻塞页面），“操作”页复选框账号列表与“浏览”页同源自动同步（附搜索与全选/清空），再到“任务”页看三级进度。操作表单按模式动态只显示相关字段，高级速度项收纳在折叠区。
+
+快照/导出目录默认派生自账号配置文件所在目录（`cf_backup`/`cf_export`），留空自动回落该预设，无需每次手填。
+
+安全说明：默认仅监听 `127.0.0.1`；对外监听必须设置口令，否则拒绝启动；页面仅展示脱敏密钥。
+
+### 表单与命令行预设同源
+
+操作表单的默认值全部派生自引擎常量，与 CLI 一致：记录类型 `auto`、速度档位 `eco`（档位解析出的并发与间隔只读展示）、限速范围 `account`、重试 5 次、预览优先（dry-run）。另支持白名单文件路径、重跑清单 CSV 上传、快照/导出目录（默认均为账号配置文件所在目录下的 `cf_backup`/`cf_export`）；删域名模式快照目录留空即用该预设。
+
+### 列表与长数据设计
+
+所有长列表统一分页 + 滚动容器 + 粘性表头，单页最多渲染 100 行：账号/域名/记录/预览结果/任务域名明细均带实时搜索过滤与上一页/下一页；日志为独立滚动框（可跟随、可暂停感知的增量拉取）；账号卡片网格展示三级进度，避免整页无限撑高。
+
+### 删域名（高危）
+
+Web 端开放 `dns` 与 `full`，但必须同时满足：快照目录有效（留空即用配置文件目录下的 `cf_backup` 预设）、在确认框输入 `DELETE`。`full` 会彻底删除域名，请先预览。
+
+### 三级进度
+
+任务页展示三级进度：任务总进度条（已完成账号/账号总数）、账号卡片网格（每账号状态与迷你进度条）、域名明细表（分页 + 状态筛选 + 搜索）；日志增量拉取实时追加，结束显示 verdict，失败清单一键下载。
+
+```
+GET  /api/meta                  # 预设路径、速度档位、默认目录（前端初始化用）
+POST /api/config                # 切换账号配置文件
+GET  /api/accounts
+GET  /api/zones?account=NAME&filter=
+GET  /api/records?account=NAME&zone=example.com
+POST /api/jobs                 # 提交（dry_run 默认 true，先预览）
+GET  /api/jobs
+GET  /api/jobs/{id}            # 状态、进度、verdict
+GET  /api/jobs/{id}/zones?account=NAME
+GET  /api/jobs/{id}/results?limit=500
+GET  /api/jobs/{id}/logs?offset=0  # 增量日志，前端轮询用
+POST /api/jobs/{id}/cancel
+GET  /api/jobs/{id}/failures.csv
+POST /api/resume-upload        # 上传重跑清单，返回服务端路径
+```
+
+设口令时请求头携带 `X-Auth-Token`；示例：
+
+```bash
+curl -H "X-Auth-Token: $CF_WEB_PASSWORD" http://127.0.0.1:8080/api/jobs
+curl -H "X-Auth-Token: $CF_WEB_PASSWORD" -H "Content-Type: application/json" \
+  -d '{"mode":"export","accounts":["account-a"],"dry_run":true}' \
+  http://127.0.0.1:8080/api/jobs
+```
+
+冒烟测试（含接口探活）：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File web_smoke.ps1 -Port 18080
+```
+
 ## 代码质量检查
 
 每次修改 `cloudflare_dns_tool.py` 后，都应执行本节推荐的完整检查。不要只运行语法检查；
@@ -913,11 +1089,11 @@ flowchart LR
 在仓库根目录 `pys` 下执行：
 
 ```bash
-ruff format cf_api/cloudflare_dns_tool.py
-ruff check cf_api/cloudflare_dns_tool.py
-ruff format --check cf_api/cloudflare_dns_tool.py
-pyright cf_api/cloudflare_dns_tool.py
-python -m py_compile cf_api/cloudflare_dns_tool.py
+ruff format cf_api/cloudflare_dns_tool.py cf_api/start_web_ui.py cf_api/webui/ cf_api/tests/
+ruff check cf_api/cloudflare_dns_tool.py cf_api/start_web_ui.py cf_api/webui/ cf_api/tests/
+ruff format --check cf_api/cloudflare_dns_tool.py cf_api/start_web_ui.py cf_api/webui/ cf_api/tests/
+pyright cf_api/cloudflare_dns_tool.py cf_api/start_web_ui.py cf_api/webui/
+python -m py_compile cf_api/cloudflare_dns_tool.py cf_api/start_web_ui.py cf_api/webui/
 git diff --check -- cf_api/cloudflare_dns_tool.py
 ```
 
@@ -937,10 +1113,11 @@ All checks passed!
 - `py_compile`：Python 语法编译检查
 - `git diff --check`：检查尾随空格等差异格式问题
 
-若修改影响命令行参数或启动流程，还应执行冒烟测试：
+若修改影响命令行参数或启动流程，还应执行冒烟测试与回归测试：
 
 ```bash
 python cf_api/cloudflare_dns_tool.py --help
+python -m unittest cf_api.tests.test_cf_dns_reliability cf_api.tests.test_webui
 ```
 
 ---
@@ -1114,7 +1291,7 @@ flowchart TD
 当前脚本版本常量：
 
 ```python
-VERSION = "20260630"
+VERSION = "20260929"
 ```
 
 查看版本：
