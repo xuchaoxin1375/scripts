@@ -1,9 +1,9 @@
 ﻿function  Get-ProxyEnvVarSettings
 {
-    if ($env:http_proxy -or $env:https_proxy)
+    if ($env:HTTP_PROXY -or $env:HTTPS_PROXY)
     {
-        Write-Host "`$env:http_proxy=$env:http_proxy" -ForegroundColor DarkBlue
-        Write-Host "`$env:https_proxy=$env:https_proxy" -ForegroundColor DarkYellow
+        Write-Host "`$env:HTTP_PROXY=$env:HTTP_PROXY" -ForegroundColor DarkBlue
+        Write-Host "`$env:HTTPS_PROXY=$env:HTTPS_PROXY" -ForegroundColor DarkYellow
     }
     elseif ($env:all_proxy)
     {
@@ -79,8 +79,8 @@ function Test-Proxy
 
     $Envs = @(
     
-        "`$env:http_proxy=$env:http_proxy",
-        "`$env:https_proxy=$env:https_proxy"    
+        "`$env:HTTP_PROXY=$env:HTTP_PROXY",
+        "`$env:HTTPS_PROXY=$env:HTTPS_PROXY"    
     )
     $Envs | Format-Table
 
@@ -99,17 +99,20 @@ function Set-Proxy
    
     <# 
     .synopsis
-    通过配置环境变量来设置powershell的代理(自动识别$env:http_proxy和$env:https_proxy)
+    通过配置环境变量来设置powershell的代理(自动识别$env:HTTP_PROXY和$env:HTTPS_PROXY)
     我们可以配置临时的环境变量,也可以配置永久的环境变量,这里用临时的就足够了
 
     准确的说,这里配置的是http,https两种协议的代理,并且局限于当前的powershell环境
 
-    通过配置$env:http_proxy和$env:https_proxy,只能让cmdlet走代理,有些应用不受上述配置项目的影响,例如ping,仍然无法走代理
+    通过配置$env:HTTP_PROXY和$env:HTTPS_PROXY,只能让cmdlet走代理,有些应用不受上述配置项目的影响,例如ping,仍然无法走代理
     而curl在powershell中invoke-webRequset,是可以走代理的
 
     如果想要ping也能走代理,就需要其他方案,例如cfw中安装服务模式并且启用tun;
     或者再其他设备配置代理,例如android设备安装every proxy将代理环境分享给其他设备,从底层走代理(这和局域网内系统代理有区别)
     这对于vscode中许多插件的下载加速是有用的,例如codeium插件
+    .NOTES
+    HTTP_PROXY和HTTPS_PROXY的大小写问题说明:
+    强烈推荐使用大写方案, 虽然windows上通常不区分大小写,但是部分要求严格的程序(例如opencode v2+)不识别小写.
     .EXAMPLE
     PS> Set-Proxy On -TestProxyAvailable
     use curl(invoke-webRequset) google to test the environment! ...
@@ -119,8 +122,8 @@ function Set-Proxy
         200
 
     proxy is available!
-    $env:http_proxy=http://localhost:7897
-    $env:https_proxy=http://localhost:7897
+    $env:HTTP_PROXY=http://localhost:7897
+    $env:HTTPS_PROXY=http://localhost:7897
 
     PS🌙[BAT:80%][MEM:37.4% (11.86/31.71)GB][21:16:35]
     # [cxxu@CXXUCOLORFUL][<W:192.168.1.178>][C:\repos\scripts]{Git:main}
@@ -143,9 +146,9 @@ function Set-Proxy
     if ($Status -eq 'On')
     {
         
-        Set-Item Env:http_proxy $socket  # 代理地址
-        Set-Item Env:https_proxy $socket # 代理地址
-        #也可用$env:https_proxy = $socket;$env:http_proxy = $socket代替上述set-item的用法
+        Set-Item Env:HTTP_PROXY $socket  # 代理地址
+        Set-Item Env:HTTPS_PROXY $socket # 代理地址
+        #也可用$env:HTTPS_PROXY = $socket;$env:HTTP_PROXY = $socket代替上述set-item的用法
         #注意set-item和set-variable 是不同的
 
         if ($TestProxyAvailable)
@@ -155,14 +158,14 @@ function Set-Proxy
         }
         return @(
     
-            "`$env:http_proxy=$env:http_proxy",
-            "`$env:https_proxy=$env:https_proxy"    
+            "`$env:HTTP_PROXY=$env:HTTP_PROXY",
+            "`$env:HTTPS_PROXY=$env:HTTPS_PROXY"    
         )
     }
     elseif ($Status -eq 'Off' -or $status -eq '')
     {   
-        Remove-Item Env:http_proxy
-        Remove-Item Env:https_proxy
+        Remove-Item Env:HTTP_PROXY
+        Remove-Item Env:HTTPS_PROXY
     }
     
 }

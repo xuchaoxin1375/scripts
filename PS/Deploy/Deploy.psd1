@@ -14,7 +14,6 @@
         'Deploy-GithubHostsAutoUpdater',
         'Deploy-LinksFromFile',
         'Backup-IfNeed',
-        'Deploy-Userconfig',
         'Deploy-UserConfigFromAnotherDrive',
         'Deploy-FirewallByNetsh',
         'Confirm-AdminPermission',

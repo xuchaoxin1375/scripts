@@ -286,7 +286,7 @@ function Deploy-WpSitesOnline
             -script $Script `
             -Ip $Ip
         Write-Host "[END TIME::$(Get-DateTime)]CFZoneConfig done."
-    } -ArgumentList $CfAccount, $CfConfig, $FromTable, "$pys/cf_api/cf_config_api.py", $reverse
+    } -ArgumentList $CfAccount, $CfConfig, $FromTable, "$pys/cf_api/cloudflare_dns_tool.py", $reverse
     
     # 创建宝塔远程空站点创建
     # Deploy-BatchSiteBTOnline -Server $HostName -ServerConfig $ServerConfig -Table $FromTable -SitesHome $SitesHome 
@@ -392,7 +392,7 @@ function Deploy-WpSitesOnline
 
         }
         # 计算下一轮需要查询的域名(本轮未激活的域名)
-        $domainsInfo = $inactiveDomains | ForEach-Object { flarectl --json zone info --zone $_ | ConvertFrom-Json }
+        $domainsInfo = Get-CFZoneInfoFromTable -Domains $inactiveDomains -Json | ConvertFrom-Json
         Start-SleepWithProgress $RetryGap
         $retryTimes--
     }

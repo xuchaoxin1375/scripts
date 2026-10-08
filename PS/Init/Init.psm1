@@ -25,10 +25,25 @@ function init
     if ($Force -or $null -eq $PsInit)
     {
         Write-Verbose 'Init pwsh env...'
+        # 首次初始化与"重跑已初始化会话"分流:只有后者需要重载变量 conf
+        #(p -Force 是新进程首次路径,不叠加重载,保住启动基线)
+        $reInit = $null -ne $PsInit
         # $env:PsInit = 'True' 
         $global:PsInit = $True
         # 用户配置文件先行(环境变量 > 配置文件 > 默认;缺文件静默跳过,见 Import-CxxuConfig)
         Import-CxxuConfig
+        if ($reInit)
+        {
+            # -Force 必须真重载变量 conf:步骤表唯一变量入口(Set-PsPrompt 内的
+            # Update-PwshEnvIfNotYet -Mode core)受 $PsEnvMode 门控(>=core 即跳过),
+            # 已初始化会话必被跳过,conf 改动刷不进当前会话(见 Agent-Handoff #75)。
+            # 两连跑取并集:Core 名单(含 ConstantString) + 全量名单(VarSet3/GlobalConfig 等
+            # 平时懒加载的部分);VarSet1/2 幂等重跑,预编译缓存命中,开销低。
+            # VarSet1.conf 会把等级恒写 1,步骤尾恢复原等级,Env 级会话不被打回。
+            $prevEnvMode = $global:PsEnvMode
+            Update-PwshVars -Core
+            Update-PwshVars
+        }
     }
     else
     {
@@ -114,6 +129,13 @@ function init
                 Time    = [int]([datetime]::UtcNow - $t0).TotalMilliseconds
             }
         }
+    }
+
+    # -Force 重载后恢复环境等级:VarSet1.conf 恒写 1,已到 Env 级的会话不被打回,
+    # 免得后续第一个 Update-PwshEnvIfNotYet 调用再多跑一次全量补齐
+    if ($reInit -and $prevEnvMode -gt $global:PsEnvMode)
+    {
+        Set-Variable -Name PsEnvMode -Value $prevEnvMode -Scope Global
     }
 
     if ($showProgress)

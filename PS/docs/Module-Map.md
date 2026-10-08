@@ -80,7 +80,7 @@
 | `Sitemap` | 838/6 | sitemap 抓取/解析/URL 提取 |
 | `TextProcess` | 610/7 | 文本切分/行处理 |
 | `ArchiveProcess` | 610/8 | tar/zstd/lz4/gz 压缩解压 |
-| `Cloudflare` | 509/9 | CF Zone/DNS 管理（B 档 5.1，调用走网络，5.1 下直调已验导入） |
+| `Cloudflare` | 509/9 | CF Zone/DNS 管理（B 档 5.1，调用走网络，5.1 下直调已验导入）；域名配置经 `cf_api/cloudflare_dns_tool.py --provision`（旧 `cf_config_api.py` 已退役），zone/DNS 查询经 `--list-zones`/`--list-dns`（外部 `flarectl` 已淘汰） |
 | `BTCN` | 722/9 | 批量建站（宝塔）脚本生成（B 档 5.1） |
 | `TerminalTools` | 504/12 | WT 链接、scoop 安装、scp、目录树、`Register-PsUxLazyLoad`（手势按需：Ctrl+T/R 首按装 PSFzf、首个 Tab 装 CxxuTab；predictor/zoxide 首屏单发）+ `Install-PsUxGestureStubs`（手势桩安装器，幂等）+ `Sync-CxxuPredictor`（并排版本同步活件，-Uninstall/-Force） |
 | `PsDebug` | 463/13 | pwsh 内省/诊断：`Head`/`Tail`/`Get-SourceCode`/`Get-PipelineInput`、权限（`Set-Owner`/`Grant-PermissionToPath`，Deploy 用）、`Confirm-UserContinue`（Deploy/Link/Git 用）、`Write-PsDebugLog`（2026-09-22 从 `Pwsh` 迁入；B 档 5.1，冷路径按需加载） |

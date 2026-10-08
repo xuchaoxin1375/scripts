@@ -21,8 +21,6 @@ function Set-CFCredentials
     cat $cf_config
     .Notes
     部分情况下,此命令修改CF相关环境变量会失败,如果出现这种情况,请手动设置环境变量,或者新开一个powershell窗口再试
-    TODO:添加flarectl 读取环境变量后返回用户信息与指定账号对比检验
-
     #>
     [CmdletBinding(DefaultParameterSetName = 'FromFile')]
     param (
@@ -38,10 +36,7 @@ function Set-CFCredentials
 
         # [parameter(ParameterSetName = 'FromFile', Mandatory = $true)]
         [alias("Account")]
-        $CfAccount,
-        # 测试配置信息有效性测试方案
-        [ValidateSet('Curl', 'Flarectl')]
-        $TestBy = 'Curl'
+        $CfAccount
     )
     if($PSCmdlet.ParameterSetName -eq 'FromFile')
     {
@@ -62,6 +57,11 @@ function Set-CFCredentials
     }
     if ($ApiToken)
     {
+        # 切换为 token 认证时清理可能残留的 key/email,避免认证参数取值歧义
+        Remove-Item Env:CF_API_KEY -ErrorAction SilentlyContinue
+        Remove-Item Env:CLOUDFLARE_API_KEY -ErrorAction SilentlyContinue
+        Remove-Item Env:CF_API_EMAIL -ErrorAction SilentlyContinue
+        Remove-Item Env:CLOUDFLARE_EMAIL -ErrorAction SilentlyContinue
         $env:CF_API_TOKEN = $ApiToken
         $env:CLOUDFLARE_API_TOKEN = $ApiToken
         $global:CLOUDFLARE_API_TOKEN = $ApiToken
@@ -75,6 +75,10 @@ function Set-CFCredentials
     }
     if ($ApiKey -and $ApiEmail)
     {
+        # 切换为 key/email 认证时清理可能残留的 token,避免认证参数取值歧义
+        Remove-Item Env:CF_API_TOKEN -ErrorAction SilentlyContinue
+        Remove-Item Env:CLOUDFLARE_API_TOKEN -ErrorAction SilentlyContinue
+        $global:CLOUDFLARE_API_TOKEN = $null
         # 
         $env:CF_API_EMAIL = $ApiEmail
         $env:CLOUDFLARE_EMAIL = $ApiEmail
@@ -87,31 +91,10 @@ function Set-CFCredentials
 
         Write-Output "Cloudflare API Key 和 Email 已配置:($env:CF_API_EMAIL)&($env:CF_API_KEY)"
 
-        # 测试配置信息是否能成功获取信息
-        # 方案1:curl
-        if($TestBy -eq 'Curl')
-        {
-            Write-Host "Testing curl command..."
-            $userInfo = curl https://api.cloudflare.com/client/v4/user -H "X-Auth-Email: $CLOUDFLARE_EMAIL" -H "X-Auth-Key: $CLOUDFLARE_API_KEY"
-            $userID = ($userInfo | ConvertFrom-Json).result.id
-            
-        }
-        elseif($TestBy -eq 'Flarectl')
-        {
-            # 方案2 flarectl
-            Write-Debug "相关环境变量取值:CF_API_EMAIL=$env:CF_API_EMAIL; CF_API_KEY=$env:CF_API_KEY"
-            if(Get-Command flarectl -ErrorAction SilentlyContinue)
-            {
-                Write-Host "Testing connection by flarectl command..."
-                # flarectl user info 
-                $userInfo = flarectl --json user info 
-                $userID = $userInfo | ConvertFrom-Json | Select-Object -ExpandProperty id
-            }
-            else
-            {
-                Write-Warning "flarectl command not found in PATH. Please ensure flarectl is installed and available in your system PATH."
-            }
-        }
+        # 测试配置信息是否能成功获取信息(统一走 curl,不再依赖 flarectl)
+        Write-Host "Testing curl command..."
+        $userInfo = curl https://api.cloudflare.com/client/v4/user -H "X-Auth-Email: $CLOUDFLARE_EMAIL" -H "X-Auth-Key: $CLOUDFLARE_API_KEY"
+        $userID = ($userInfo | ConvertFrom-Json).result.id
 
         
         $env:ACCOUNT_ID = $userID
@@ -134,35 +117,36 @@ function Set-CFCredentials
 function Get-CFZoneID
 {
     <# 
-    # todo
+    .SYNOPSIS
+    查询指定域名在 Cloudflare 账号中的 Zone ID。
+    .DESCRIPTION
+    调用 cloudflare_dns_tool.py 的查找模式(-f/--json --quiet),从结果中提取 zone_id。
+    认证优先取当前环境变量(由 Set-CFCredentials 设置),否则回退到配置文件。
     #>
     [CmdletBinding()]
     param (
         [alias("Zone")][string]$Domain, # 要查询的域名
         [string]$Email = $env:CF_API_EMAIL, # Cloudflare 账户 Email
-        [string]$APIKey = $env:cf_api_key # Cloudflare 全局 API Key
+        [string]$APIKey = $env:CF_API_KEY, # Cloudflare 全局 API Key
+        $CfConfig = "$cf_config",
+        $script = "$pys/cf_api/cloudflare_dns_tool.py"
     )
-    $env:CF_API_EMAIL = $env:CF_API_EMAIL
-    $env:cf_api_key = $env:cf_api_key
-    Write-Verbose "Domain: $Domain" 
-    Write-Verbose "Email: $Email" 
-    Write-Verbose "APIKey: $APIKey" 
-    # 执行 flarectl 命令获取域名列表
-    $output = flarectl zone list 
-    $output = $output | Out-String
-    $zoneRecords = $output -split "`r?`n" | Where-Object { $_.Trim() }
-    Write-Verbose "$output"
-    # 查找对应的 Zone ID
-    $zoneRecord = $zoneRecords | Where-Object { $_ -match $Domain }
-    # Write-Host $zoneRecord
-    Write-Verbose "[$zoneRecord]"
+    Write-Verbose "Domain: $Domain"
+    Write-Verbose "Email: $Email"
+    Write-Verbose "APIKey: $APIKey"
 
-    $zoneID = $zoneRecord -replace '^\s*(\w+).*', '$1'
-    # | ForEach-Object { ($_ -split '\s+')[0] }
+    $authArgs = @()
+    if ($env:CF_API_TOKEN) { $authArgs = @('-t', $env:CF_API_TOKEN) }
+    elseif ($Email -and $APIKey) { $authArgs = @('-e', $Email, '-k', $APIKey) }
+    else { $authArgs = @('--config', $CfConfig) }
 
-    # Write-Verbose "ZoneID: $zoneID"
+    $raw = python $script -f $Domain --json --quiet @authArgs | Out-String
+    $data = $null
+    try { $data = $raw | ConvertFrom-Json } catch { Write-Warning "解析查询结果失败: $raw"; return $null }
+    $results = @($data.results)
+    $zoneID = ""
+    if ($results.Count -gt 0) { $zoneID = $results[0].zone.zone_id }
 
-    # 返回 Zone ID
     if ($zoneID)
     {
         Write-Output $zoneID
@@ -176,7 +160,7 @@ function Get-CFZoneDnsInfo
 {
     <# 
     .SYNOPSIS
-    获取域名的DNS信息
+    获取域名的DNS信息(调用 cloudflare_dns_tool.py --list-dns)。
     #>
     [CmdletBinding()]
     param(
@@ -187,8 +171,12 @@ function Get-CFZoneDnsInfo
     process
     {
         Write-Verbose "processing domain: $Domain"
-        $j = if($json) { '--json' }else { '' }
-        $item = flarectl.exe $j dns list --zone $Domain 
+        $authArgs = @()
+        if ($env:CF_API_TOKEN) { $authArgs = @('-t', $env:CF_API_TOKEN) }
+        elseif ($env:CF_API_EMAIL -and $env:CF_API_KEY) { $authArgs = @('-e', $env:CF_API_EMAIL, '-k', $env:CF_API_KEY) }
+        $jsonArg = @()
+        if ($Json) { $jsonArg = @('--json', '--quiet') }
+        $item = python "$pys/cf_api/cloudflare_dns_tool.py" --list-dns $Domain @jsonArg @authArgs | Out-String
         return $item + "`n"
     }
 }
@@ -198,13 +186,13 @@ function Add-CFZoneDNSRecords
     <# 
     .SYNOPSIS
     利用cloudflare API设置域名的DNS记录
-    这里通过flarectl命令行工具来操作
+    这里调用 cloudflare_dns_tool.py(--add-domain / --add-record)操作
     
     默认情况下(不使用额外参数),此命令会尝试从读取到的域名列表添加cloudflare账户中,但是dns不会默认立即添加,除非使用-AddRecordAtOnce参数
     此外,如果你的cloudflare验证了你的账号对dns的所有权,那么你可以利用此函数的-AddRecordOnly参数,添加dns记录到对应的域名解析记录
 
     .DESCRIPTION
-    你需要配置环境变量才能够以简洁的方式使用flarectl命令行工具
+    认证优先取当前环境变量(由 Set-CFCredentials 设置),否则回退到配置文件
     根据授权方式不同,有不同的配置api key/api token
     例如使用传统的api key
     配置两个环境变量:
@@ -216,7 +204,7 @@ function Add-CFZoneDNSRecords
     Add-CFZoneDNSRecords -Domains .\table-s3.conf -Parallel -Verbose -Debug
 
     .NOTES
-    如果没有安装flarectl工具,请到官网或者github对应项目下载(可执行文件只在个别release中提供,请耐心寻找)
+    -Parallel 参数保留以兼容旧调用,但实现为串行调用 Python 工具(工具自带限流与重试)
     cloudflare推荐使用新式地api token,而非旧式的api key,因此如果你要使用api key,可能更不容易找到入口
     api key的形式是否被启用,请查看cloudflare的官方文档
     如果没有被弃用,可以参考如下链接到你的cloudflare账号中找到设置入口
@@ -249,6 +237,8 @@ function Add-CFZoneDNSRecords
         [switch]$AddRecordAtOnce,
         # 仅添加域名的DNS记录,不检查域名是否被添加(如果域名尚未被添加到cloudflare,那么添加dns记录就会失败跳过)
         [switch]$AddRecordOnly,
+        # 允许同名 A/AAAA 多值(同一主机名多个 IP);默认关闭,同名只保留一条
+        [switch]$AllowMultiValue,
         # 强制执行,不进行确认
         [switch]$Parallel,
         [switch]$Force
@@ -289,105 +279,42 @@ function Add-CFZoneDNSRecords
         Write-Host "Skipped"
         return
     }
-    if($Parallel)
+    # 统一走 cloudflare_dns_tool.py:逐个域名创建 zone(可选)并添加 DNS 记录。
+    # Python 工具自带限流与重试,这里保持串行,避免外部再叠加并发。
+    $authArgs = @()
+    if ($env:CF_API_TOKEN) { $authArgs = @('-t', $env:CF_API_TOKEN) }
+    elseif ($env:CF_API_EMAIL -and $env:CF_API_KEY) { $authArgs = @('-e', $env:CF_API_EMAIL, '-k', $env:CF_API_KEY) }
+    else { $authArgs = @('--config', "$cf_config") }
+    $multiArgs = @()
+    if ($AllowMultiValue) { $multiArgs = @('--allow-multi-value') }
+
+    foreach ($domainItem in $Domains)
     {
+        $domain = "$domainItem".ToLower()
+        Write-Host "正在处理域名:$domain"
+        $addArgs = @()
+        if (!$AddRecordOnly) { $addArgs += @('--add-domain', $domain) } else { $addArgs += @('-z', $domain) }
 
-    
-        $Domains | ForEach-Object -Parallel {
-     
-            $domain = $_.ToLower()
-            Write-Host "正在处理域名:$_"
-            Write-Host "当前CF账号(环境变量)信息:$env:CF_API_EMAIL"
-            # 默认情况下总是尝试先创建域名(无论是否已经存在),使用AddRecordOnly参数时则不创建域名
-            if(!$using:AddRecordOnly)
+        if ($AddRecordAtOnce -or $AddRecordOnly)
+        {
+            $recordNamesForIt = @($RecordNames)
+            if (!$No2LDDomain) { $recordNamesForIt += $domain }
+            Write-Host "Record names to add: $recordNamesForIt"
+            foreach ($item in $recordNamesForIt)
             {
-
-                Write-Host "尝试创建域名[$domain] (如果不存在的话)..."
-                flarectl zone create --zone "$domain" 
-                # flarectl zone create --zone "$domain" *> $null # 创建域名
-            }
-        
-            $value = $using:Value
-            $Type = $using:Type
-            Write-Host "Set DNS record for domain: $domain" 
-            Write-Host "add type:$type; value:$value; domain:$domain"
-            if($using:AddRecordAtOnce -or $using:AddRecordOnly)
-            {
-
-                # 常用类型DNS记录的添加
-                # 一次性添加两条:一条*和$domain;记得启用代理选项保护ip
-                if(!$using:No2LDDomain)
+                Write-Host "Adding DNS record: $domain|$item -> $Value ($Type)"
+                if ($Type -eq 'MX')
                 {
-                    $RecordNamesForIt = ($using:RecordNames).clone()
-                    $RecordNamesForIt += $domain
+                    $addArgs += @('--add-record', "${item}:MX:$Value", '--no-proxied')
                 }
-                
-                Write-Host "Record names to add: $RecordNamesForIt"
-                foreach ($item in $RecordNamesForIt)
+                else
                 {
-                    Write-Host "Adding DNS record[$(Get-DateTime)]: $domain|$item -> $value ($type)"
-                    # continue
-                    # 调用flarectl命令行工具,并将运行结果保存到变量$res中
-                    $cmd = "flarectl --json dns create --zone $domain --name $item --type $type --content $value --proxy "
-                    Write-Host "Starting cmd:[ $cmd ]"
-                    $res = $cmd | Invoke-Expression 
-                    Write-Host $res
-                    Write-Host "Add $domain done!"
-                }
-                
-          
-            }
-        } -ThrottleLimit 5
-    }
-    else
-    {
-        # 串行添加
-        $Domains | ForEach-Object {
-     
-            $domain = $_.ToLower()
-            Write-Host "正在处理域名:$_"
-            # 默认情况下总是尝试先创建域名(无论是否已经存在),使用AddRecordOnly参数时则不创建域名
-            if(!$AddRecordOnly)
-            {
-
-                Write-Host "尝试创建域名[$domain] (如果不存在的话)..."
-                flarectl zone create --zone "$domain" 
-                # flarectl zone create --zone "$domain" *> $null # 创建域名
-            }
-        
-            Write-Host "Set DNS record for domain: $domain" 
-            if ($type -eq "MX")
-            {
-                # 比较少用
-                $priority = $record
-                Write-Host "Adding MX record: $domain -> $value (Priority: $priority)"
-                $res = flarectl dns create --zone "$domain" --name "$domain" --type "$type" --content "$value" --priority "$priority" --proxy 
-                Write-Host $res
-            }
-            else
-            {
-                if($AddRecordAtOnce -or $AddRecordOnly)
-                {
-
-                    # 常用类型DNS记录的添加
-                    # 一次性添加两条:一条*和$domain;记得启用代理选项保护ip
-                    if(!$No2LDDomain)
-                    {
-                        $RecordNamesForIt = $RecordNames.clone()
-                        $RecordNamesForIt += $domain
-                    }
-                
-               
-                    foreach ($item in $RecordNamesForIt)
-                    {
-                        Write-Host "Adding DNS record: $domain|$item -> $value ($type)"
-                        $res = flarectl --json dns create --zone "$domain" --name "$item" --type "$type" --content "$value" --proxy true
-                        Write-Host $res
-                    }
-
+                    $addArgs += @('--add-record', "${item}:${Type}:$Value")
                 }
             }
         }
+
+        python "$pys/cf_api/cloudflare_dns_tool.py" @addArgs @authArgs @multiArgs
     }
 }
 
@@ -403,27 +330,30 @@ function Add-CFZoneConfig
         $Account,
         $Ip = "",
         $CfConfig = "$cf_config",
-        $script = "$pys/cf_api/cf_config_api.py",
+        $script = "$pys/cf_api/cloudflare_dns_tool.py",
         $Table = "$desktop/table.conf"
     )
     Write-Host "正在配置cloudflare域名邮箱转发和安全选项开关..."
     Write-Output $PSBoundParameters
     Get-DomainUserDictFromTableLite -Table $Table
-    Write-Verbose "调用python脚本cf_config_api.py设置域名配置..."
+    Write-Verbose "调用python脚本cloudflare_dns_tool.py(provision模式)设置域名配置..."
 
-    python $script configure -c $CfConfig -f $Table -a $Account -ip $ip
+    # 仅在提供值时附加可选参数,避免空账号/空IP传给 argparse
+    $selectArgs = @()
+    if ($Account) { $selectArgs = @('--select-account', $Account) }
+    $ipArgs = @()
+    if ($Ip) { $ipArgs = @('--server-ip', $Ip) }
+
+    python $script --provision --provision-table $Table --config $CfConfig @selectArgs @ipArgs --no-activation
 }
 function Add-CFZoneCheckActivation
 {
     <# 
     .SYNOPSIS
-    利用请求cf检查域名的激活状态
-    .Description
-    核心步骤是调用flarectl 命令行工具来执行检查
-    具体的命令为:
-    flarectl zone check --zone <domain>
-    但是这个命令在运行过程中可能会报错,但是实际测试下来应该是有效果,所以不用管这些错误,用将该命令的输出重定向到$null,也就是不管输出
-    而为了查看执行进度,使用write-host来输出域名,这样可以看到执行的进度
+    检查表格中域名的 Cloudflare 激活状态
+    .DESCRIPTION
+    调用 cloudflare_dns_tool.py --list-zones 读取各 zone 状态并打印。
+    认证优先取当前环境变量(由 Set-CFCredentials 设置),否则回退配置文件。
     #>
     [CmdletBinding()]
     param (
@@ -432,46 +362,83 @@ function Add-CFZoneCheckActivation
         $ConfigPath = "$cf_config"
     )
     Write-Host "Account format is: account[x[-y]]"
-    $config = Get-Content $ConfigPath | ConvertFrom-Json
-    $account = $config."accounts"."$Account"
-    Set-CFCredentials -ApiKey $account.cf_api_key -ApiEmail $account.cf_api_email -CfAccount $Account
-    # 查看当前的环境变量
-    # Get-ChildItem env:cf*
+    Set-CFCredentials -CfConfig $ConfigPath -CfAccount $Account
 
-    Get-Content $Table | Where-Object { $_.Trim() } | ForEach-Object { ($_.trim() -split '\s+')[0] | Get-MainDomain } | ForEach-Object -Parallel { flarectl zone check --zone $_ *> $null; Write-Host $_ } -ThrottleLimit 5
+    $info = Get-CFZoneInfoFromTable -Table $Table
+    foreach ($item in @($info))
+    {
+        Write-Host "$($item.Zone): $($item.status)"
+    }
 }
 function Get-CFZoneInfoFromTable
 {
     <# 
     .SYNOPSIS
     查询cloudflare中的域名信息
-    从表格中获取域名列表,并获取对应的域名,从而获取相应的信息,比如激活状态等
+    从表格(或 -Domains 传入的域名)获取域名列表,调用 cloudflare_dns_tool.py --list-zones 获取信息,
+    返回对象含 Zone / status / ID / 'Name Servers' 字段(兼容旧的 flarectl 输出形状)。
     #>
     [CmdletBinding()]
     param(
         [alias('Domain')]$Table = "$home/desktop/table.conf",
+        [string[]]$Domains,
         [switch]$Json,
-        [alias('Threads')]$ThrottleLimit = 5
+        [alias('Threads')]$ThrottleLimit = 5,
+        $script = "$pys/cf_api/cloudflare_dns_tool.py"
     )
-    Write-Host $Table
-    $info = Get-DomainUserDictFromTable -Table $Table 
-    $jsonFormat = if($Json) { "--json" } else { "" }
-    $res = $info | ForEach-Object { $_.domain } | ForEach-Object -Parallel { 
-        $item = "flarectl $using:JsonFormat zone info $_" | Invoke-Expression 
-        Write-Host $item 
-        Write-Output $item
-    } -ThrottleLimit $ThrottleLimit
+    $targets = @()
+    if ($Domains)
+    {
+        $targets = @($Domains)
+    }
+    else
+    {
+        $targets = @(Get-DomainUserDictFromTable -Table $Table | ForEach-Object { $_.domain })
+    }
+
+    $authArgs = @()
+    if ($env:CF_API_TOKEN) { $authArgs = @('-t', $env:CF_API_TOKEN) }
+    elseif ($env:CF_API_EMAIL -and $env:CF_API_KEY) { $authArgs = @('-e', $env:CF_API_EMAIL, '-k', $env:CF_API_KEY) }
+
+    $tmp = [IO.Path]::GetTempFileName()
+    try
+    {
+        python $script --list-zones --zone-status all --zones-output $tmp @authArgs | Out-Null
+        $rows = @(Import-Csv -Path $tmp)
+    }
+    finally
+    {
+        Remove-Item -Path $tmp -Force -ErrorAction SilentlyContinue
+    }
+
+    $targetSet = @{}
+    foreach ($d in $targets) { $targetSet["$d".Trim().ToLower()] = $true }
+
+    $res = @()
+    foreach ($row in $rows)
+    {
+        if (!$targetSet.ContainsKey("$($row.name)".Trim().ToLower())) { continue }
+        $res += [pscustomobject]@{
+            Zone           = $row.name
+            status         = $row.status
+            ID             = $row.zone_id
+            'Name Servers' = ($row.nameservers -replace ';', ',')
+        }
+    }
+
+    if ($Json)
+    {
+        if ($res.Count -eq 0) { return '[]' }
+        return ($res | ConvertTo-Json)
+    }
     return $res
 }
 function Get-CFZoneNameServersTable
 {
     <# 
     .SYNOPSIS
-    读取cloudflare命令行工具flarectl的输出中的域名信息(json格式),并获取域名对应的name servers,并保存到表格中(csv文件)
-    此转换的过程会为flarectl返回的json做如下处理:
-    1.转换为pscustomobject
-    2.解析'name servers'属性,并添加nameserver1和nameserver2两个属性
-    3.保存到带有3列(zone,nameserver1,nameserver2)的表格中csv文件中,这个格式可以和配套的spaceship_api脚本配合使用,实现精准的域名服务器更改
+    读取域名信息并提取 name servers,保存到 3 列(domain,nameserver1,nameserver2)的 csv 文件中
+    该格式可与配套的 spaceship_api 脚本配合使用,实现精准的域名服务器更改
     #>
     [CmdletBinding()]
     param (
@@ -480,21 +447,21 @@ function Get-CFZoneNameServersTable
         $Threads = 5
     )
     Write-Debug "CF account:[$env:CF_API_EMAIL]"
-    $j = Get-CFZoneInfoFromTable -Table $FromTable -Json -Threads $Threads | ConvertFrom-Json  # | Select-Object 'zone', 'name servers'
-    $res = $j | ForEach-Object -Parallel {
-        $nameservers = $_.'Name Servers' -split ','
-        $nameserver1, $nameserver2 = $nameservers[0].trim(), $nameservers[1].trim()
-        # Write-Host $nameservers
-        $_ | Add-Member -Name 'domain' -Value $_.'Zone' -MemberType NoteProperty
-        $_ | Add-Member -Name 'nameserver1' -Value $nameserver1 -MemberType NoteProperty
-        $_ | Add-Member -Name 'nameserver2' -Value $nameserver2 -MemberType NoteProperty
-        Write-Output $_
-    } -ThrottleLimit 5
-    $core = $res | Select-Object 'domain', 'nameserver1', 'nameserver2' 
+    $j = @(Get-CFZoneInfoFromTable -Table $FromTable -Threads $Threads)
+    $core = foreach ($zoneInfo in $j)
+    {
+        $nameservers = "$($zoneInfo.'Name Servers')" -split ','
+        [pscustomobject]@{
+            domain      = $zoneInfo.Zone
+            nameserver1 = "$($nameservers[0])".Trim()
+            nameserver2 = "$($nameservers[1])".Trim()
+        }
+    }
     $core | Export-Csv -Path $ToTable -NoTypeInformation -Encoding utf8 -Force
     Write-Host "Name servers table has been saved to $ToTable"
     return $core
 }
+
 function Get-CFDNSDomains
 {
     <# 

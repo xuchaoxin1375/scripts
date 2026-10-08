@@ -19,7 +19,7 @@ Add-EnvVar -EnvVar PSModulePath -NewValue $p -Verbose
 
 | 命令 | 用途 |
 |---|---|
-| `init` | 全量初始化（变量+别名+补全+prompt，约 400~700ms）；同会话重复调用直接返回 |
+| `init` | 全量初始化（变量+别名+补全+prompt，约 400~700ms）；同会话重复调用直接返回；`-Force` 重跑步骤表，并在已初始化会话真重载全部变量 conf（2026-10-03 起，重载开销约零点几秒；首次初始化路径不变） |
 | `init -Timing` | 同上，附每步耗时表（调优用） |
 | `p` | WT 启动行/轻量场景用；`-NoNewShell` 在当前 shell 原地执行，`-Force` 看耗时报告 |
 | `Set-PsPrompt -version < fast/short/...>` | 切换提示符；加 `-Persist` 才写注册表记住选择 |
@@ -58,8 +58,9 @@ ipmof | iex                     # 旧版（兼容）：只重载仓库内(PS/)�
 - 新建模块：`PS/<名>/` 目录 + `<名>.psm1` + `<名>.psd1`（抄 `Whois.psd1` 最小模板，
   GUID 用 `[guid]::NewGuid()` 换一个）；**目录名 = 模块名 = psm1 基名**，否则自动加载找不到。
   建完直接敲函数名即用，再跑 `Test-ModuleManifest` 验一下。
-- 改 init 期文件（`Aliases/` 下别名文件、`.conf`、profile）：改完跑对应 loader
- （`Update-PwshEnv` / `Update-PwshVars`）或 `init -Force`（`$global:PsInit` 防重复，`-Force` 强制重跑）。
+- 改 init 期文件（`Aliases/` 下别名文件、`.conf`、profile）：改完跑对应 loader——变量 conf →
+ `init -Force`（2026-10-03 起真重载全部变量 conf）或 `Update-PwshVars` 直刷，别名 → `Update-PwshEnv`，
+ profile → `. $profile`；三档分流详见 §6「`source ~/.bashrc` 对应物」。
 - 验：`Get-Command <函数名>` 看 Source 是不是你的模块（撞名先查这个）。
 
 ```powershell
@@ -111,7 +112,13 @@ p -Force                    # 看 init 分步耗时，定位慢项
 - **`source ~/.bashrc` 对应物**：
   - 分三档。
     1. 改了模块函数 → `ipmox`（不用碰 profile）；
-    2. 改了 init 期东西（别名/`.conf`/变量/prompt）→ `init -Force`（或对应 loader）；
+    2. 改了 init 期东西 → `init -Force`：2026-10-03 起真重载全部变量 conf（core 名单
+       VarSet1/VarSet2/ConstantString + 平时懒加载的全量名单 VarSet3/GlobalConfig 等；
+       已初始化会话重载开销约零点几秒，环境等级保持不被打回；首次初始化与 `p -Force`
+       新进程路径不叠加重载，启动基线不变）。也可用对应 loader 直刷：变量 `Update-PwshVars`
+       （`-Fast` 只刷 VarSet1/2，预编译缓存按 mtime 自动失效，无需清理）、别名 `Update-PwshEnv`、
+       prompt/PSReadLine 由步骤表重跑。曾有门控缺陷导致 `init -Force` 刷不动变量 conf，
+       根因与修复见 `Agent-Handoff.md` #75/#101；
     3. 改了 profile 文件本身 → `. $profile`。
   - 安全差异：bash 重 source 会叠 PATH，这边 `init` 有 `$global:PsInit` 防重复（`. $profile` 默认 no-op，真重跑靠 `-Force`），`Add-EnvVar` 自带去重（见 `EnvVar.psm1:621/629`），prompt 全局只抓一次，OnIdle 有标记位。
     注意 `. $profile` 只跑 `CurrentUserCurrentHost` 这一级（conda 钩子在 `CurrentUserAllHosts`

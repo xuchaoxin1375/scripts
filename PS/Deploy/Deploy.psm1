@@ -425,26 +425,7 @@ function Backup-IfNeed
     }
     
 }
-function Deploy-Userconfig
-{
-    param (
-    )
-    
-    Update-PwshEnvIfNotYet -Mode Vars
 
-    $path = "$home\.config"
-    $Destination = "$configs\user\.config"
-    Backup-IfNeed -Path $path
-    if (Test-Path $Destination)
-    {
-
-        New-Item -ItemType SymbolicLink -Path $path -Target $Destination -Force -Verbose 
-    }
-    else
-    {
-        Write-Verbose "$Destination does not exist!,pass it!"
-    }
-}
 function Deploy-UserConfigFromAnotherDrive
 {
     <# 
