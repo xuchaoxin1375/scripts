@@ -1,0 +1,27 @@
+# 工程开发清单（需求对照/架构/功能/测试/效率预算）
+
+- [x] 需求：仅自己本机用，浏览器本地 WebUI，全量 CLI 能力
+- [x] 架构：FastAPI + 单文件原生前端，引擎零侵入，/api/v1 主接口 + /api 兼容
+- [x] 功能：浏览/批量更新/删通配符/删IP/删域/添加/设属性/导出/provision/失败清单重跑
+- [x] 安全：127.0.0.1 默认，口令 X-Auth-Token，脱敏，删域 DELETE 确认，dry-run 默认开
+- [x] 测试：unittest 全过（含增量 test_webui_extra），冒烟 SMOKE PASS，静态验收 VISUAL PASS
+- [x] 效率：分页上限 200/页，日志 deque 2000，结果 2000 上限，速度档位同源下发
+- [x] 全部功能：find 跨账号查找、单条 PATCH/DELETE、resume-upload 落盘、provision 全流程、zones 状态过滤、meta 代理信息
+- [x] 本轮改进：-N/添加开关接线、通配符说明、zones.csv/exports 下载、create-zone/激活可调、显式调参、白名单上传、填入按钮、加载错误态、结果翻页、预览执行徽章、一键重跑
+- [x] 浏览器门禁：`browser_accept.py` 真机渲染（390/768/1440 开闭抽屉双态无横滚、路由切换、填表提交→verdict→日志非空、零 pageerror、视口截图 TEMP）；修出 2 个真缺陷：长路径撑开 grid（`min-width:0`+断行）、rail/at-767 特异性打架（rail 收进 ≥768）
+- [x] 文档同步：webui/README 架构 mermaid、USAGE 能力对照表与流程图、WEBUI_LESSONS 第四/五节、TASKS 本清单
+- [x] 首屏与参考稿对齐：路由先行（空/错配置不再白屏）、meta/accounts 并行、zoneList 空闲延迟、逐卡失败降级、head 内联主题防闪、骨架 shimmer、概览 alert 首屏一件事、浏览工具栏 primary 最右、类型 pill＋代理图标双通道
+- [x] 侧栏 fable 化：槽占位解耦（peek 改 fixed 覆盖、内容零位移）、suppressed/forced 补齐六态、图标列 x 两态 19px 不变、行高 38px 不变、文字展开延迟 75ms/折叠立即、底部收起/展开 `[` 按钮、main  dim .92
+- [x] 侧栏结构复刻 fable：搜索框（开命令面板）、返回概览、管理/快捷入口双分组、双行标签（标题＋灰副标题）、rail 分组合拢、门禁选择器改 data-route 防重框
+- [x] 侧栏图标同一：对位图标 fable 原文复用（search/arrow-left/layout-dashboard/panel-left-close/open），非对位用同语义 Lucide 并声明（database/form-input/history），42+ 图标补 round 线帽，toggle 按态切换 open/close
+- [x] 侧栏图标互异：10 图标全不同（search/arrow-left/dashboard/network/form/history/database/settings/monitor/panel），对位复用＋非对位声明，DOM 断言互异通过
+- [x] 浏览页账号表＋域名表：账号名/邮箱、双击或选择钮选中（高亮＋toast 仅变化时）、域名服务端分页（10/20/50/100＋关键字＋状态联动）、点击域名填入并查记录、加载/空/错三态
+- [x] 长列表分页：记录表补 20/50/100/200 页大小（与域名表对齐）；mock 65 域名＋120 记录验证账号→域名→DNS 视图全链（翻页、切页大小、点查看填入查询）
+- [x] 现网只读验证：真实配置 59 账号、cftest 2 域名、cleanlinehouse.com 2 条 A 记录全链通过（仅 GET，未提交任务），截图留证
+- [x] 列表不过屏：表框限高内滚（表头 sticky）＋账号表客户端分页（10/20/50，选中自动跳页，越界钳制）；现网 59 账号 6 页、表底 701px 在屏内
+- [x] 查看无记录 bug：根因是陈旧过滤无解释；补骨架 shimmer 行、可行动空态（过滤原因＋清除过滤一键恢复）、请求竞态序号；探针覆盖空态/骨架/恢复全链
+- [x] 请求 hung 真凶：读接口无超时，CF 一慢骨架永不消失；加 30s 超时＋可读错误；现网新建 TXT＋删除全链通过（建完即删）
+- [x] 失败链竞态：旧请求慢失败覆盖新数据（A 记录正常＋查询失败并存）；成功/失败双链序号守卫（记录＋域名表），正反双验（去守卫必现 bug，回守卫必过）
+- [x] 表单 skill 落地：记录弹窗按 forms.md 补齐 Field＋hint＋error、两级校验＋首错聚焦＋留输、可行动文案、MX/TXT 联动关代理、开焦首字段＋关回焦＋Esc、脏保护、保存防重；接线放 openRecord 内（load 时序曾吞覆盖）；模拟操作全链通过，现网建删各一（已清零），`tools/verify.ps1` 9/9
+- [x] 记录表按参考稿重建：工具栏（搜索＋筛选草稿应用＋显示＋导入＋导出＋新增 primary 最右）、计数条、复选列（三态排序名称/类型/内容＋aria-sort）、代理/TTL/备注/详情/警告列、短名显示、列宽调节（8px 热区＋键盘 8/32＋双击/Home 还原＋显示区重置＋本地持久）、行内展开与新增卡共用同一校验、悬浮批量条＋删除撤销（快照重建，新 ID 声明）、导入预检门（超量/重复/非法零写入）、窄屏卡片；后端补备注与优先级透传、代理筛选、批量删除/更新/恢复、导入接口、写路径名称归一化；现网建改删撤销全链通过且零残留，`tools/verify.ps1` 9/9
+- [ ] 有意未做：配置切换、任务级代理、日志文件（见 WEBUI_LESSONS 第五节）；配额上限数（见 DECISIONS 最新节）

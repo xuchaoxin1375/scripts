@@ -90,7 +90,13 @@ import sys
 import time
 from collections import Counter
 from collections.abc import Iterable, Mapping
-from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+from concurrent.futures import (
+    FIRST_COMPLETED,
+    Future,
+    ThreadPoolExecutor,
+    as_completed,
+    wait,
+)
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -228,6 +234,43 @@ FAILURE_STATUSES = frozenset(
     }
 )
 
+# --list-zones 导出 CSV 列。active 表示 Cloudflare 侧处于激活状态的 zone。
+ZONES_CSV_FIELDNAMES = [
+    "account",
+    "name",
+    "status",
+    "zone_id",
+    "nameservers",
+]
+
+# --provision 导出 CSV 列：域名配置结果（DNS/激活/邮箱/SSL/安全）。
+PROVISION_CSV_FIELDNAMES = [
+    "account",
+    "domain",
+    "zone_id",
+    "zone_status",
+    "activation",
+    "record_status",
+    "email_status",
+    "ssl_status",
+    "security_status",
+    "error",
+    "timestamp",
+]
+
+# 基础安全设置：反机器人 / RUM 等默认不开启，只启用低风险基础项。
+PROVISION_BASIC_SECURITY: dict[str, Any] = {
+    "always_use_https": "on",
+    "browser_check": "on",
+    "security_level": "medium",
+}
+# 免费加速增益（与旧 cf_config_api.py 一致），默认开启。
+PROVISION_SPEED: dict[str, Any] = {
+    "speed_brain": "on",
+    "0rtt": "on",
+    "early_hints": "on",
+}
+
 # zone 级读取失败时最多尝试次数（初次 + 1 次补偿重试）。
 ZONE_FETCH_MAX_ATTEMPTS = 2
 
@@ -235,6 +278,9 @@ LOGGER = logging.getLogger("cloudflare_dns_tool")
 SENSITIVE_ARG_NAMES = {"-t", "--token", "-k", "--key", "--api-key", "-P", "--proxy"}
 PROXY_DEFAULT_MODE = "round-robin"
 PROXY_FAILURE_COOLDOWN = 60.0
+
+# --quiet: 把人类可读日志改道到 stderr，保持 stdout 只含机器可解析输出(JSON/CSV 行)。
+QUIET = False
 
 
 def configure_logging(log_file: Optional[str], log_level: str, overwrite: bool) -> None:
@@ -277,7 +323,9 @@ def logging_enabled() -> bool:
 
 
 def log_print(*args, level: int = logging.INFO, **kwargs) -> None:
-    """同时输出到控制台和日志文件。"""
+    """同时输出到控制台和日志文件。--quiet 时改道 stderr。"""
+    if QUIET:
+        kwargs.setdefault("file", sys.stderr)
     builtins.print(*args, **kwargs)
     if not logging_enabled():
         return
@@ -626,6 +674,34 @@ def write_failure_csv(path: str, rows: list[dict[str, Any]]) -> None:
         writer.writeheader()
         for row in rows:
             writer.writerow({key: row.get(key, "") for key in FAILURE_CSV_FIELDNAMES})
+
+
+def write_zones_csv(path: str, rows: list[dict[str, Any]]) -> None:
+    """写入 zone 列表 CSV（UTF-8-SIG，兼容 Excel 中文）。父目录自动创建。"""
+    import csv
+
+    parent = os.path.dirname(os.path.abspath(path))
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    with open(path, "w", newline="", encoding="utf-8-sig") as file_obj:
+        writer = csv.DictWriter(file_obj, fieldnames=ZONES_CSV_FIELDNAMES)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({key: row.get(key, "") for key in ZONES_CSV_FIELDNAMES})
+
+
+def write_provision_csv(path: str, rows: list[dict[str, Any]]) -> None:
+    """写入域名配置结果 CSV（UTF-8-SIG）。父目录自动创建。"""
+    import csv
+
+    parent = os.path.dirname(os.path.abspath(path))
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    with open(path, "w", newline="", encoding="utf-8-sig") as file_obj:
+        writer = csv.DictWriter(file_obj, fieldnames=PROVISION_CSV_FIELDNAMES)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({key: row.get(key, "") for key in PROVISION_CSV_FIELDNAMES})
 
 
 def load_resume_entries(path: str) -> list[tuple[str, str]]:
@@ -1318,6 +1394,9 @@ class CloudflareDNSUpdater:
         self._api_max_retries = max(0, int(api_max_retries))
         self._api_retry_base_delay = max(0.1, float(api_retry_base_delay))
         self._api_retry_max_sleep = max(1.0, float(api_retry_max_sleep))
+        # 账号 ID 缓存:zone 创建、邮箱转发等接口需要,按凭证解析一次即可。
+        self._account_id: Optional[str] = None
+        self._account_id_loaded = False
 
         if auth_method == "token":
             if not api_token:
@@ -1819,10 +1898,96 @@ class CloudflareDNSUpdater:
         """删除整个 zone（域名）。此操作不可逆，请谨慎使用。"""
         return self._request("DELETE", f"/zones/{zone_id}")
 
-    def create_zone(self, domain: str) -> dict:
-        """在当前账号下添加新域名（zone）。"""
-        payload = {"name": domain}
+    def get_account_id(self) -> Optional[str]:
+        """解析当前凭证可访问的账号 ID(取第一个),结果缓存。
+
+        部分接口(创建 zone、邮箱转发)需要 account id。若凭证无权访问
+        /accounts(例如仅 zone 级权限),返回 None 而不是抛错,由调用方决定降级行为。
+        """
+        if self._account_id_loaded:
+            return self._account_id
+        self._account_id_loaded = True
+        try:
+            data = self._request("GET", "/accounts", params={"page": 1, "per_page": 50})
+        except Exception as exc:  # noqa: BLE001 - 无权限时降级为 None
+            self._safe_print(f"  [WARN] 获取账号 ID 失败,将不带 account 继续: {exc}")
+            self._account_id = None
+            return None
+        for account in data.get("result", []):
+            if not isinstance(account, dict):
+                continue
+            account_id = account.get("id")
+            if account_id:
+                self._account_id = account_id
+                return account_id
+        self._account_id = None
+        return None
+
+    def create_zone(
+        self, domain: str, account_id: Optional[str] = None, zone_type: str = "full"
+    ) -> dict:
+        """在当前账号下添加新域名(zone)。
+
+        优先带上 account id(创建 zone 的推荐写法);拿不到 account id 时保持旧行为。
+        """
+        payload: dict[str, Any] = {"name": domain, "type": zone_type}
+        resolved_account = account_id or self.get_account_id()
+        if resolved_account:
+            payload["account"] = {"id": resolved_account}
         return self._request("POST", "/zones", json=payload)
+
+    def get_zone_by_name(self, domain: str) -> Optional[dict]:
+        """按域名查询 zone 详情;不存在返回 None。"""
+        target = (get_main_domain_name_from_str(domain) or domain.strip()).lower()
+        data = self._request(
+            "GET", "/zones", params={"name": target, "page": 1, "per_page": 1}
+        )
+        for zone in data.get("result", []):
+            if zone.get("name", "").lower() == target:
+                return zone
+        return None
+
+    def get_zone(self, zone_id: str) -> dict:
+        """读取单个 zone 详情。"""
+        return self._request("GET", f"/zones/{zone_id}")
+
+    def trigger_activation_check(self, zone_id: str) -> dict:
+        """触发一次 zone 激活检查（催激活），仅对 pending/moved zone 有意义。
+
+        对应 `PUT /zones/{zone_id}/activation_check`。成功仅表示已进入 Cloudflare
+        的优先重查队列，**不等于立即激活**（通常数分钟到数小时，取决于 NS 是否已生效）。
+        """
+        return self._request("PUT", f"/zones/{zone_id}/activation_check")
+
+    def wait_zone_active(
+        self,
+        zone_id: str,
+        timeout: float = 300.0,
+        interval: float = 5.0,
+        on_tick: Optional[Callable[[str, float], None]] = None,
+    ) -> tuple[bool, str]:
+        """轮询 zone 状态直到 active 或超时。
+
+        Returns:
+            (是否已激活, 最后一次观察到的状态)
+        """
+        deadline = time.monotonic() + max(0.0, timeout)
+        last_status = ""
+        while True:
+            self._check_stop()
+            try:
+                zone = self.get_zone(zone_id)
+                last_status = str((zone.get("result") or {}).get("status") or "")
+            except Exception as exc:  # noqa: BLE001 - 轮询期间的临时错误继续重试
+                last_status = f"error: {exc}"
+            if last_status == "active":
+                return True, last_status
+            remaining = deadline - time.monotonic()
+            if on_tick:
+                on_tick(last_status, max(0.0, remaining))
+            if remaining <= 0:
+                return False, last_status
+            interruptible_sleep(min(interval, remaining), self._stop_event)
 
     def add_dns_record(
         self,
@@ -1832,16 +1997,433 @@ class CloudflareDNSUpdater:
         record_type: str,
         proxied: bool = False,
         ttl: int = 1,
+        priority: Optional[int] = None,
     ) -> dict:
         """添加单条 DNS 记录。"""
-        payload = {
+        payload: dict[str, Any] = {
             "type": record_type,
             "name": record_name,
             "content": content,
             "proxied": proxied,
             "ttl": ttl,
         }
+        if priority is not None:
+            payload["priority"] = priority
         return self._request("POST", f"/zones/{zone_id}/dns_records", json=payload)
+
+    def ensure_dns_record(
+        self,
+        zone_id: str,
+        zone_name: str,
+        record_name: str,
+        record_type: str,
+        content: str,
+        proxied: bool = False,
+        ttl: int = 1,
+        priority: Optional[int] = None,
+        allow_multi: bool = False,
+        _records_cache: Optional[dict] = None,
+    ) -> tuple[str, str]:
+        """幂等地确保某条 DNS 记录存在，并避免同名劈叉。
+
+        语义：
+
+        - A/AAAA/CNAME 默认视为「同名单值」：同名同类型已有记录时，内容一致则跳过，
+          不一致则覆盖（PUT）；并删除同名同类型的多余记录。
+        - 指定 allow_multi=True 时，A/AAAA 改为允许多值（同名可指向多个 IP）：
+          存在完全相同的记录则跳过，否则追加，不覆盖、不去重。
+        - CNAME 与其它类型互斥：新增 CNAME 会清理同名其它记录；新增 A/AAAA 会清理同名 CNAME。
+          CNAME 始终为单值（DNS 规则不允许同名多 CNAME）。
+        - 其它类型（TXT/MX 等）本就走多值逻辑：仅当存在完全相同的记录时跳过，否则新增。
+        - _records_cache：可选的同 zone 记录缓存（调用方每 zone 一个 dict），命中则跳过
+          LIST 查询；函数内在增/删后同步维护缓存（改走失效重查）。跨 zone/跨线程不得共用。
+
+        Returns:
+            (状态, 说明)；状态取值 added/updated/unchanged/error。
+        """
+        normalized_type = (record_type or "").upper()
+        # allow_multi 仅放宽 A/AAAA；CNAME 因 DNS 规则始终单值。
+        if allow_multi and normalized_type in {"A", "AAAA"}:
+            single_value = False
+        else:
+            single_value = normalized_type in {"A", "AAAA", "CNAME"}
+        if record_name in ("", "@"):
+            fqdn = zone_name.lower()
+        elif record_name.endswith(zone_name.lower()):
+            fqdn = record_name.lower()
+        else:
+            fqdn = f"{record_name}.{zone_name}".lower()
+
+        cache = _records_cache
+
+        def _fetch(rtype):
+            key = rtype or "ALL"
+            if cache is not None and key in cache:
+                return cache[key]
+            records = self.get_dns_records(zone_id, record_type=rtype)
+            if cache is not None:
+                cache[key] = records
+            return records
+
+        def _cache_forget(record_id):
+            """删除成功后把该记录从缓存各表中摘除（精确，剩余条目依然有效）。"""
+            if cache is None or not record_id:
+                return
+            rid = str(record_id)
+            for records in cache.values():
+                if isinstance(records, list):
+                    records[:] = [r for r in records if str(r.get("id", "")) != rid]
+
+        def _cache_invalidate():
+            """覆盖成功后使相关表失效，下次重查（改是低频路径，简单且正确）。"""
+            if cache is None:
+                return
+            cache.pop(normalized_type, None)
+            cache.pop("ALL", None)
+
+        def _cache_append(record):
+            """新增成功后把返回的记录并入缓存（服务端已规范化为 FQDN，可直接用于后继比对）。"""
+            if cache is None or not isinstance(record, dict):
+                return
+            rid = str(record.get("id", ""))
+            for key in {normalized_type, "ALL"}:
+                records = cache.get(key)
+                if isinstance(records, list):
+                    cache[key] = [r for r in records if str(r.get("id", "")) != rid]
+                    cache[key].append(record)
+
+        try:
+            same_type = _fetch(normalized_type)
+            conflicts: list[dict] = []
+            if normalized_type == "CNAME":
+                all_records = _fetch(None)
+                conflicts = [
+                    r
+                    for r in all_records
+                    if str(r.get("name", "")).lower() == fqdn
+                    and str(r.get("type", "")).upper() != "CNAME"
+                ]
+            elif normalized_type in {"A", "AAAA"}:
+                cname_records = _fetch("CNAME")
+                conflicts = [
+                    r for r in cname_records if str(r.get("name", "")).lower() == fqdn
+                ]
+        except Exception as exc:  # noqa: BLE001
+            return "error", f"读取现有记录失败: {exc}"
+
+        matches = [
+            r
+            for r in same_type
+            if str(r.get("name", "")).lower() == fqdn
+            and str(r.get("type", "")).upper() == normalized_type
+        ]
+
+        payload: dict[str, Any] = {
+            "type": normalized_type,
+            "name": record_name,
+            "content": content,
+            "proxied": proxied,
+            "ttl": ttl,
+        }
+        if priority is not None:
+            payload["priority"] = priority
+
+        def _identical(record: dict) -> bool:
+            return (
+                str(record.get("content", "")) == str(content)
+                and bool(record.get("proxied", False)) == bool(proxied)
+                and int(record.get("ttl", 1) or 1) == int(ttl)
+                and (
+                    priority is None
+                    or int(record.get("priority", 0) or 0) == int(priority)
+                )
+            )
+
+        # 1) 清理冲突记录（CNAME 与其它类型互斥）
+        cleaned = 0
+        for conflict in conflicts:
+            conflict_id = conflict.get("id")
+            if not conflict_id:
+                continue
+            try:
+                self.delete_dns_record(zone_id, str(conflict_id))
+                _cache_forget(conflict_id)
+                cleaned += 1
+            except Exception as exc:  # noqa: BLE001
+                return "error", f"清理冲突记录失败: {exc}"
+
+        # 2) 多值记录（TXT/MX，或 allow_multi 的 A/AAAA）：存在完全相同则跳过，否则新增
+        if not single_value:
+            if any(_identical(record) for record in matches):
+                return "unchanged", "记录已存在且一致"
+            try:
+                created = self.add_dns_record(
+                    zone_id,
+                    record_name,
+                    content,
+                    normalized_type,
+                    proxied=proxied,
+                    ttl=ttl,
+                    priority=priority,
+                )
+                _cache_append((created or {}).get("result"))
+            except Exception as exc:  # noqa: BLE001
+                return "error", f"新增记录失败: {exc}"
+            if cleaned:
+                return "added", f"已新增记录；清理冲突 {cleaned} 条"
+            return "added", "已新增记录"
+
+        # 3) 同名单值类型：覆盖 + 去重
+        if matches:
+            primary = matches[0]
+            identical = _identical(primary)
+            if not identical:
+                try:
+                    self._request(
+                        "PUT",
+                        f"/zones/{zone_id}/dns_records/{primary.get('id')}",
+                        json=payload,
+                    )
+                    _cache_invalidate()
+                except Exception as exc:  # noqa: BLE001
+                    return "error", f"更新记录失败: {exc}"
+            removed = 0
+            for extra in matches[1:]:
+                extra_id = extra.get("id")
+                if not extra_id:
+                    continue
+                try:
+                    self.delete_dns_record(zone_id, str(extra_id))
+                    _cache_forget(extra_id)
+                    removed += 1
+                except Exception as exc:  # noqa: BLE001
+                    return "error", f"删除重复记录失败: {exc}"
+            if identical and cleaned == 0 and removed == 0:
+                return "unchanged", "记录已存在且一致"
+            notes: list[str] = []
+            if not identical:
+                notes.append("已覆盖为指定内容")
+            if removed:
+                notes.append(f"删除重复 {removed} 条")
+            if cleaned:
+                notes.append(f"清理冲突 {cleaned} 条")
+            return "updated", "；".join(notes) or "已更新"
+
+        try:
+            created = self.add_dns_record(
+                zone_id,
+                record_name,
+                content,
+                normalized_type,
+                proxied=proxied,
+                ttl=ttl,
+                priority=priority,
+            )
+            _cache_append((created or {}).get("result"))
+        except Exception as exc:  # noqa: BLE001
+            return "error", f"新增记录失败: {exc}"
+        if cleaned:
+            return "added", f"已新增记录；清理冲突 {cleaned} 条"
+        return "added", "已新增记录"
+
+    def update_zone_setting(self, zone_id: str, setting_id: str, value: Any) -> dict:
+        """更新单个 zone 设置(如 ssl、speed_brain、always_use_https)。"""
+        return self._request(
+            "PATCH", f"/zones/{zone_id}/settings/{setting_id}", json={"value": value}
+        )
+
+    def list_email_routing_addresses(
+        self, account_id: Optional[str] = None
+    ) -> list[dict]:
+        """列出账号下已配置的邮箱转发目标地址。"""
+        aid = account_id or self.get_account_id()
+        if not aid:
+            raise Exception("无法获取账号 ID,不能管理邮箱转发地址")
+        data = self._request(
+            "GET",
+            f"/accounts/{aid}/email/routing/addresses",
+            params={"page": 1, "per_page": 50},
+        )
+        return data.get("result", [])
+
+    def create_email_routing_address(
+        self, email: str, account_id: Optional[str] = None
+    ) -> dict:
+        """创建邮箱转发目标地址(需要收件人点击验证邮件后才会 verified)。"""
+        aid = account_id or self.get_account_id()
+        if not aid:
+            raise Exception("无法获取账号 ID,不能创建邮箱转发地址")
+        return self._request(
+            "POST",
+            f"/accounts/{aid}/email/routing/addresses",
+            json={"email": email},
+        )
+
+    def ensure_email_routing_address(
+        self, email: str, account_id: Optional[str] = None
+    ) -> tuple[bool, str]:
+        """确保目标邮箱存在,返回 (是否已验证, 状态)。
+
+        状态: verified / unverified / created_pending_verification。
+        """
+        target = (email or "").strip().lower()
+        if not target:
+            return False, "empty"
+        for address in self.list_email_routing_addresses(account_id):
+            # API 在不同账号/版本下可能返回字符串列表或对象列表，二者均兼容；
+            # 字符串元素无法确认验证状态，一律按未验证处理（只配路由、不设 catch-all）。
+            if isinstance(address, str):
+                addr_email, addr_verified = address, False
+            elif isinstance(address, dict):
+                addr_email = str(address.get("email", ""))
+                addr_verified = bool(address.get("verified"))
+            else:
+                continue
+            if addr_email.strip().lower() == target:
+                return addr_verified, "verified" if addr_verified else "unverified"
+        self.create_email_routing_address(target, account_id)
+        return False, "created_pending_verification"
+
+    def get_email_routing_settings(self, zone_id: str) -> dict:
+        """读取 zone 的邮箱路由设置（是否已启用等）。
+
+        对应 `GET /zones/{zone_id}/email/routing`，返回 settings 对象；
+        形状异常时返回空 dict（调用方按“未启用”继续走启用流程）。
+        """
+        try:
+            data = self._request("GET", f"/zones/{zone_id}/email/routing")
+        except Exception:
+            return {}
+        result = (data or {}).get("result", {})
+        return result if isinstance(result, dict) else {}
+
+    def get_email_routing_required_records(self, zone_id: str) -> list[dict]:
+        """获取启用邮箱路由所需的 DNS 记录(MX/SPF/DKIM)。
+
+        对应 `GET /zones/{zone_id}/email/routing/dns`，返回 DNSRecord 数组
+        （`{type, name, content, priority, ttl}`）。注意：`POST` 同路径是
+        “启用路由”端点（返回 settings 对象），不可用于取记录。
+        """
+        data = self._request("GET", f"/zones/{zone_id}/email/routing/dns")
+        return data.get("result", [])
+
+    def enable_email_routing(self, zone_id: str) -> dict:
+        """启用 zone 的邮箱路由（新版规范端点；旧 `POST .../enable` 已废弃）。
+
+        对应 `POST /zones/{zone_id}/email/routing/dns`，返回 settings 对象。
+        同 pending zone 会 403（Active zone required），调用前须确认已激活。
+        """
+        return self._request("POST", f"/zones/{zone_id}/email/routing/dns")
+
+    def update_email_routing_catch_all(self, zone_id: str, forward_email: str) -> dict:
+        """设置 catch-all 规则,把所有收件转发到指定邮箱。"""
+        payload = {
+            "name": f"catch-all-{zone_id}",
+            "enabled": True,
+            "matchers": [{"type": "all"}],
+            "actions": [{"type": "forward", "value": [forward_email]}],
+        }
+        return self._request(
+            "PUT", f"/zones/{zone_id}/email/routing/rules/catch_all", json=payload
+        )
+
+    def apply_zone_settings(
+        self, zone_id: str, settings: Mapping[str, Any]
+    ) -> list[tuple[str, str, str]]:
+        """批量应用 zone 设置,逐项容错。
+
+        Returns:
+            [(setting_id, status, message)];status 为 ok/error。
+        """
+        results: list[tuple[str, str, str]] = []
+        for setting_id, value in settings.items():
+            try:
+                self.update_zone_setting(zone_id, setting_id, value)
+                results.append((setting_id, "ok", ""))
+            except Exception as exc:  # noqa: BLE001 - 单项失败不影响其它设置
+                results.append((setting_id, "error", str(exc)))
+        return results
+
+    def configure_email_routing(
+        self,
+        zone_id: str,
+        zone_name: str,
+        forward_email: str,
+        catch_all: bool = True,
+    ) -> tuple[str, str, list[str]]:
+        """完整配置邮箱路由:补齐所需 DNS、启用路由、设置 catch-all。
+
+        Returns:
+            (status, message, records_status)
+            status: ok / pending_verification / error
+        """
+        verified, addr_status = self.ensure_email_routing_address(forward_email)
+        records_status: list[str] = []
+        try:
+            required = self.get_email_routing_required_records(zone_id)
+        except Exception as exc:  # noqa: BLE001
+            return "error", f"获取邮箱路由所需记录失败: {exc}", records_status
+
+        # 不同账号/版本下 result 可能是对象数组，也可能包一层 dict；
+        # 先归一化，归一化失败则报明错（带实际形状），不再以 AttributeError 裸崩。
+        normalized: Optional[list] = None
+        if isinstance(required, list):
+            normalized = required
+        elif isinstance(required, dict):
+            for key in ("records", "result", "items", "data"):
+                if isinstance(required.get(key), list):
+                    normalized = required[key]
+                    break
+        if normalized is None or any(
+            not isinstance(record, dict) for record in normalized
+        ):
+            preview = str(required)[:200]
+            return (
+                "error",
+                f"邮箱路由所需记录格式异常: {type(required).__name__}:{preview}",
+                records_status,
+            )
+        required = normalized
+
+        for record in required:
+            name = str(record.get("name", ""))
+            record_type = str(record.get("type", ""))
+            content = str(record.get("content", ""))
+            priority = record.get("priority")
+            status, msg = self.ensure_dns_record(
+                zone_id,
+                zone_name,
+                name,
+                record_type,
+                content,
+                proxied=bool(record.get("proxied", False)),
+                ttl=int(record.get("ttl", 1) or 1),
+                priority=int(priority) if priority is not None else None,
+            )
+            detail = f"（{msg}）" if msg else ""
+            records_status.append(f"{record_type} {name}: {status}{detail}")
+
+        # 已启用则跳过启用调用（幂等）；settings 查不到时按未启用继续走启用流程。
+        if not self.get_email_routing_settings(zone_id).get("enabled"):
+            try:
+                self.enable_email_routing(zone_id)
+            except Exception as exc:  # noqa: BLE001
+                return "error", f"启用邮箱路由失败: {exc}", records_status
+
+        if not catch_all:
+            return "ok", "邮箱路由已启用(未设置 catch-all)", records_status
+        if not verified:
+            return (
+                "pending_verification",
+                f"目标邮箱 {forward_email} 未验证({addr_status}),"
+                "已启用路由但暂不设置 catch-all,请先完成邮箱验证",
+                records_status,
+            )
+        try:
+            self.update_email_routing_catch_all(zone_id, forward_email)
+        except Exception as exc:  # noqa: BLE001
+            return "error", f"设置 catch-all 失败: {exc}", records_status
+        return "ok", f"邮箱转发已配置到 {forward_email}", records_status
 
     def _progress_prefix(
         self,
@@ -3046,6 +3628,7 @@ class CloudflareDNSUpdater:
         existing_zone_name: Optional[str] = None,
         explicit_domains: Optional[list[str]] = None,
         resume_zones: Optional[set[str]] = None,
+        allow_multi_value: bool = False,
     ) -> BatchRunResult:
         """添加域名（可选）并批量添加 DNS 记录。"""
         self._check_stop()
@@ -3166,6 +3749,12 @@ class CloudflareDNSUpdater:
 
         # 2. 添加 DNS 记录
         if add_records:
+            if zone_id and not zone_name:
+                try:
+                    zone_data = self.get_zone(zone_id)
+                    zone_name = (zone_data.get("result") or {}).get("name") or zone_name
+                except Exception:  # noqa: BLE001 - 仅用于补全 zone 名,失败不阻塞
+                    pass
             if not zone_id:
                 self._safe_print(
                     "  [ERR] 没有可用的 zone_id，请使用 --add-domain 添加域名，或使用 -z 指定已有域名"
@@ -3230,18 +3819,52 @@ class CloudflareDNSUpdater:
                             )
                             continue
 
-                        resp = self.add_dns_record(
+                        status, message = self.ensure_dns_record(
                             zone_id=zone_id,
+                            zone_name=zone_name or "",
                             record_name=rec_name,
-                            content=rec_content,
                             record_type=rec_type,
+                            content=rec_content,
                             proxied=proxied,
                             ttl=ttl,
+                            allow_multi=allow_multi_value,
                         )
-                        self._safe_print(
-                            f"  [OK-ADD] {rec_type} {rec_name} -> {rec_content}"
-                        )
-                        stats.inc_created()
+                        if status == "error":
+                            self._safe_print(
+                                f"  [ERR-ADD] {rec_type} {rec_name} -> {rec_content}: {message}"
+                            )
+                            stats.inc_errors()
+                            results.append(
+                                DNSOperationResult(
+                                    zone=zone_name or "unknown",
+                                    name=rec_name,
+                                    record_type=rec_type,
+                                    old_content=None,
+                                    new_content=rec_content,
+                                    status="error",
+                                    message=message,
+                                    account=self.account_name,
+                                )
+                            )
+                            continue
+                        if status == "unchanged":
+                            self._safe_print(
+                                f"  [SKIP-ADD] {rec_type} {rec_name} -> {rec_content}（已存在且一致）"
+                            )
+                            stats.inc_skipped()
+                            result_status = "skipped"
+                        elif status == "updated":
+                            self._safe_print(
+                                f"  [OK-UPDATE] {rec_type} {rec_name} -> {rec_content}（已覆盖旧记录）"
+                            )
+                            stats.inc_updated()
+                            result_status = "updated_record"
+                        else:
+                            self._safe_print(
+                                f"  [OK-ADD] {rec_type} {rec_name} -> {rec_content}"
+                            )
+                            stats.inc_created()
+                            result_status = "added_record"
                         results.append(
                             DNSOperationResult(
                                 zone=zone_name or "unknown",
@@ -3249,7 +3872,8 @@ class CloudflareDNSUpdater:
                                 record_type=rec_type,
                                 old_content=None,
                                 new_content=rec_content,
-                                status="added_record",
+                                status=result_status,
+                                message=message,
                                 account=self.account_name,
                             )
                         )
@@ -4177,6 +4801,15 @@ def get_cf_accounts(config_path: str) -> list[dict]:
         email = normalize_config_text(acc_obj.get("cf_api_email"))
         key = normalize_config_text(acc_obj.get("cf_api_key"))
         account_name = normalize_config_text(name) or email or "unknown"
+        # 透传旧配置里的可选字段(默认服务器 IP、邮箱路由验证状态),供上层编排使用。
+        extras: dict = {}
+        server_ip = normalize_config_text(acc_obj.get("default_server_ip"))
+        if server_ip:
+            extras["default_server_ip"] = server_ip
+        if "email_routing_verified" in acc_obj:
+            extras["email_routing_verified"] = bool(
+                acc_obj.get("email_routing_verified")
+            )
 
         if token:
             accounts.append(
@@ -4186,6 +4819,7 @@ def get_cf_accounts(config_path: str) -> list[dict]:
                     "token": token,
                     "email": None,
                     "key": None,
+                    **extras,
                 }
             )
         elif email and key:
@@ -4196,6 +4830,7 @@ def get_cf_accounts(config_path: str) -> list[dict]:
                     "token": None,
                     "email": email,
                     "key": key,
+                    **extras,
                 }
             )
         else:
@@ -4206,6 +4841,101 @@ def get_cf_accounts(config_path: str) -> list[dict]:
             )
 
     return accounts
+
+
+def load_cf_globals(config_path: str) -> dict:
+    """读取 Cloudflare 配置中的全局默认值(仅 JSON 格式支持)。
+
+    兼容旧 cf_config.json 的顶层字段,供域名修复流程复用:
+        default_forward_email / ssl_mode / security_mode
+
+    表格(csv/xlsx)没有顶层全局字段,返回空 dict。
+    """
+    ext = os.path.splitext(config_path)[1].lower()
+    if ext != ".json" or not os.path.exists(config_path):
+        return {}
+    try:
+        with open(config_path, "r", encoding="utf-8") as file_obj:
+            data = json.load(file_obj) or {}
+    except Exception:  # noqa: BLE001 - 读取失败按无全局配置处理
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    result: dict = {}
+    for key in ("default_forward_email", "ssl_mode", "security_mode"):
+        value = data.get(key)
+        if value not in (None, ""):
+            result[key] = value
+    return result
+
+
+def load_provision_table(path: str) -> dict[str, dict[str, str]]:
+    """读取 --provision 的域名表格(兼容旧 cf_domains 格式)。
+
+    支持 csv/xlsx(列: domain,ip,forward,security,ssl,Note)与 conf/txt
+    (每行第一个 token 视为域名)。返回 domain -> {ip,forward,security,ssl}。
+    """
+    result: dict[str, dict[str, str]] = {}
+    if not path or not os.path.exists(path):
+        return result
+    ext = os.path.splitext(path)[1].lower()
+    rows: list[dict] = []
+    if ext == ".csv":
+        import csv
+
+        with open(path, "r", newline="", encoding="utf-8-sig") as file_obj:
+            rows = [dict(row) for row in csv.DictReader(file_obj)]
+    elif ext in {".xlsx", ".xls"}:
+        try:
+            import pandas as pd
+        except ImportError:
+            log_print("读取 Excel 表格需要安装 pandas：pip install pandas openpyxl")
+            sys.exit(1)
+        frame = pd.read_excel(path, keep_default_na=False)
+        rows = [
+            {str(k).strip().lower(): v for k, v in row.items()}
+            for row in frame.to_dict(orient="records")
+        ]
+    else:
+        with open(path, "r", encoding="utf-8-sig") as file_obj:
+            for raw in file_obj:
+                line = raw.strip()
+                if not line or line.startswith("#"):
+                    continue
+                domain = (
+                    (get_main_domain_name_from_str(line.split()[0]) or line.split()[0])
+                    .strip()
+                    .lower()
+                )
+                if domain:
+                    result.setdefault(
+                        domain,
+                        {"ip": "", "forward": "", "security": "", "ssl": ""},
+                    )
+        return result
+
+    for row in rows:
+        lowered = {
+            str(k).strip().lower(): ("" if v is None else str(v).strip())
+            for k, v in row.items()
+        }
+        domain = (
+            (
+                get_main_domain_name_from_str(lowered.get("domain", ""))
+                or lowered.get("domain", "")
+            )
+            .strip()
+            .lower()
+        )
+        if not domain:
+            continue
+        result[domain] = {
+            "ip": lowered.get("ip", ""),
+            "forward": lowered.get("forward", ""),
+            "security": lowered.get("security", ""),
+            "ssl": lowered.get("ssl", ""),
+        }
+    return result
 
 
 def parse_args() -> argparse.Namespace:
@@ -4365,7 +5095,7 @@ def parse_args() -> argparse.Namespace:
         action="append",
         default=None,
         metavar="NAME:TYPE:CONTENT",
-        help="添加 DNS 记录（可多次使用）。格式支持 name:type:content、name-type-content、name space content。支持 auto 自动判断类型，例如 www:auto:1.2.3.4。默认启用 Cloudflare 代理。",
+        help="添加 DNS 记录（可多次使用）。格式支持 name:type:content、name-type-content、name space content。支持 auto 自动判断类型，例如 www:auto:1.2.3.4。默认启用 Cloudflare 代理。同名同类型记录幂等：内容一致则跳过，不一致则覆盖（A/AAAA/CNAME），不会产生重复或分叉。",
     )
     parser.add_argument(
         "--no-proxied",
@@ -4377,6 +5107,11 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=1,
         help="添加记录的 TTL（默认 1 = 自动）。",
+    )
+    parser.add_argument(
+        "--allow-multi-value",
+        action="store_true",
+        help="允许同名 A/AAAA 多值（同一主机名指向多个 IP）；默认关闭，同名只保留一条。CNAME 始终单值。",
     )
 
     # P0：备份导出与属性批量设置。
@@ -4558,6 +5293,118 @@ def parse_args() -> argparse.Namespace:
         "-f", "--find-domain", default=None, help="快速查找某个域名是否存在于账号中。"
     )
     parser.add_argument(
+        "--list-zones",
+        action="store_true",
+        help="列出所有账号下的 zone（域名），默认只看 active 状态；可用 --zones-output 导出 CSV。",
+    )
+    parser.add_argument(
+        "--zones-output",
+        default=None,
+        metavar="PATH",
+        help="--list-zones 的 CSV 输出路径（UTF-8-SIG，Excel 可直接打开）。缺省时打印到屏幕。",
+    )
+    parser.add_argument(
+        "--zone-status",
+        default="active",
+        choices=["active", "all"],
+        help="--list-zones 的 zone 状态过滤：active（默认，即正常/激活）或 all（全部）。",
+    )
+    parser.add_argument(
+        "--list-dns",
+        default=None,
+        metavar="ZONE",
+        help="列出指定 zone 的 DNS 记录（配合 --json 输出 JSON，否则打印表格）。",
+    )
+    parser.add_argument(
+        "--provision",
+        action="store_true",
+        help="域名配置模式：按表格对域名配置 DNS/邮箱转发/SSL/基础安全/加速。",
+    )
+    parser.add_argument(
+        "--provision-table",
+        default=None,
+        metavar="PATH",
+        help="--provision 的域名表格（domain,ip,forward,security,ssl,Note 或每行一个域名）。",
+    )
+    parser.add_argument(
+        "--provision-output",
+        default=None,
+        metavar="PATH",
+        help="--provision 结果 CSV 输出路径（UTF-8-SIG）。缺省打印到屏幕。",
+    )
+    parser.add_argument(
+        "--server-ip",
+        default="",
+        metavar="IP",
+        help="--provision 默认服务器 IP；无记录配置时生成 @ 与 www 两条 A/AAAA 记录。",
+    )
+    parser.add_argument(
+        "--forward-email",
+        default="",
+        help="--provision 默认邮箱转发目标地址（缺省取配置 default_forward_email）。",
+    )
+    parser.add_argument(
+        "--ssl-mode",
+        default=None,
+        choices=["flexible", "full", "strict", "off"],
+        help="--provision 的 SSL 模式（缺省取配置 ssl_mode）。",
+    )
+    parser.add_argument(
+        "--security",
+        action="store_true",
+        dest="security",
+        default=None,
+        help="--provision 启用基础安全设置（always_use_https/browser_check/security_level）。",
+    )
+    parser.add_argument(
+        "--no-security",
+        action="store_false",
+        dest="security",
+        help="--provision 不修改基础安全设置。",
+    )
+    parser.add_argument(
+        "--optimize",
+        action="store_true",
+        dest="optimize",
+        default=None,
+        help="--provision 启用免费加速增益（默认开启）。",
+    )
+    parser.add_argument(
+        "--no-optimize",
+        action="store_false",
+        dest="optimize",
+        help="--provision 不修改加速设置。",
+    )
+    parser.add_argument(
+        "--no-dns", action="store_true", help="--provision 不添加 DNS 记录。"
+    )
+    parser.add_argument(
+        "--no-email", action="store_true", help="--provision 不配置邮箱转发。"
+    )
+    parser.add_argument(
+        "--no-ssl", action="store_true", help="--provision 不设置 SSL 模式。"
+    )
+    parser.add_argument(
+        "--no-activation", action="store_true", help="--provision 不等待 zone 激活。"
+    )
+    parser.add_argument(
+        "--create-zone",
+        action="store_true",
+        help="--provision 时若账号中不存在该 zone 则在首个账号创建。",
+    )
+    parser.add_argument(
+        "--activation-timeout",
+        type=float,
+        default=300.0,
+        help="--provision 等待 zone 激活的最长秒数（默认 300）。",
+    )
+    parser.add_argument(
+        "--activation-interval",
+        type=float,
+        default=5.0,
+        help="--provision 激活轮询间隔秒数（默认 5）。",
+    )
+    parser.add_argument(
         "-l", "--list-accounts", action="store_true", help="列出所有可用账号。"
     )
     parser.add_argument(
@@ -4581,7 +5428,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--json",
         action="store_true",
-        help="以 JSON 格式输出结果（目前主要用于 -f/--find-domain）。",
+        help="以 JSON 格式输出结果（目前主要用于 -f/--find-domain 与 --list-dns）。",
+    )
+    parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="把日志改道到 stderr，stdout 只保留 JSON/CSV 等机器可解析输出。",
     )
     parser.add_argument(
         "--failed-output",
@@ -4729,6 +5581,568 @@ def build_accounts(args: argparse.Namespace) -> list[dict]:
         return [account]
 
     return accounts
+
+
+def collect_account_zones(
+    account: dict,
+    args: argparse.Namespace,
+    stop_event: Event,
+    rate_limiter: Optional[ApiRateLimiter],
+    proxy_pool: Optional[ProxyPool] = None,
+) -> tuple[str, list[dict], str]:
+    """读取单个账号的 zone 列表并转换为 CSV 行。
+
+    Returns:
+        (account_name, rows, error_message)；error_message 为空表示读取成功。
+    """
+    name = account.get("name") or account.get("email") or "unknown"
+    try:
+        updater = CloudflareDNSUpdater(
+            auth_method=account["auth_method"],
+            api_token=account.get("token"),
+            api_email=account.get("email"),
+            api_key=account.get("key"),
+            max_workers=args.workers,
+            account_name=name,
+            stop_event=stop_event,
+            rate_limiter=get_account_rate_limiter(args, stop_event, rate_limiter),
+            api_max_retries=args.api_max_retries,
+            api_retry_base_delay=args.api_retry_base_delay,
+            api_retry_max_sleep=args.api_retry_max_sleep,
+            proxy_pool=proxy_pool,
+        )
+        zones = updater.get_all_zones()
+    except KeyboardInterrupt:
+        raise
+    except Exception as exc:
+        return name, [], str(exc)
+
+    rows: list[dict] = []
+    for zone in zones:
+        status = str(zone.get("status") or "")
+        if args.zone_status != "all" and status != args.zone_status:
+            continue
+        rows.append(
+            {
+                "account": name,
+                "name": zone.get("name", ""),
+                "status": status,
+                "zone_id": zone.get("id", ""),
+                "nameservers": ";".join(zone.get("name_servers") or []),
+            }
+        )
+    return name, rows, ""
+
+
+def run_list_zones_mode(
+    accounts: list[dict],
+    args: argparse.Namespace,
+    stop_event: Event,
+    rate_limiter: Optional[ApiRateLimiter],
+    proxy_pool: Optional[ProxyPool] = None,
+) -> int:
+    """并发读取所有账号的 zone 列表，按状态过滤，可导出 CSV。
+
+    退出码：0=全部账号读取成功，1=存在读取失败的账号。
+    """
+    account_total = len(accounts)
+    all_rows: list[dict] = []
+    errors: list[tuple[str, str]] = []
+    print_lock = Lock()
+
+    def _one(index: int, account: dict) -> tuple[str, list[dict], str]:
+        name = account.get("name") or account.get("email") or "unknown"
+        with print_lock:
+            log_print(
+                f"[ZONES] [{index}/{account_total}] 读取账号 {name} 的 zone 列表 ..."
+            )
+        return collect_account_zones(
+            account, args, stop_event, rate_limiter, proxy_pool
+        )
+
+    max_workers = max(1, int(args.account_workers or 1))
+    executor = ThreadPoolExecutor(max_workers=max_workers)
+    futures = {
+        executor.submit(_one, idx, account): account
+        for idx, account in enumerate(accounts, start=1)
+    }
+    try:
+        for future in as_completed(futures):
+            name, rows, err = future.result()
+            if err:
+                errors.append((name, err))
+                with print_lock:
+                    log_print(f"[ZONES] 账号 {name} 读取失败: {err}")
+            else:
+                all_rows.extend(rows)
+                with print_lock:
+                    log_print(
+                        f"[ZONES] 账号 {name}: {len(rows)} 个 zone（状态={args.zone_status}）"
+                    )
+    except KeyboardInterrupt:
+        # 中断时先广播停止信号，再取消排队任务；已开始的账号读取线程会在
+        # 下一次 stop_event 检查处尽快退出，随后向上抛出由主流程统一收尾。
+        stop_event.set()
+        cancel_pending_futures(futures)
+        executor.shutdown(wait=True, cancel_futures=True)
+        log_print("[ZONES] 已中断，停止读取 zone。", level=logging.WARNING)
+        raise
+    finally:
+        executor.shutdown(wait=True)
+
+    if args.zones_output and not stop_event.is_set():
+        write_zones_csv(args.zones_output, all_rows)
+        log_print(f"[ZONES] 已写入 CSV: {args.zones_output}（{len(all_rows)} 行）")
+    else:
+        log_print("account\tname\tstatus\tzone_id\tnameservers")
+        for row in all_rows:
+            log_print(
+                f"{row['account']}\t{row['name']}\t{row['status']}\t"
+                f"{row['zone_id']}\t{row['nameservers']}"
+            )
+
+    log_print(
+        f"[ZONES] 汇总: 账号 {account_total} 个，成功 "
+        f"{account_total - len(errors)}，失败 {len(errors)}，"
+        f"zone {len(all_rows)} 个（状态={args.zone_status}）。"
+    )
+    return 1 if errors else 0
+
+
+@dataclass
+class ZoneProvisionOptions:
+    """单个 zone 的配置选项（供 --provision 与外部编排复用）。"""
+
+    records: list[dict] = field(default_factory=list)
+    forward_email: str = ""
+    ssl_mode: str = ""
+    do_dns: bool = True
+    do_activation: bool = True
+    do_email: bool = True
+    do_ssl: bool = True
+    do_security: bool = True
+    do_optimize: bool = True
+    activation_timeout: float = 300.0
+    activation_interval: float = 5.0
+    on_tick: Optional[Callable[[str, float], None]] = None
+    allow_multi_value: bool = False
+    # 详情日志：逐条打印 DNS 记录（名/类型/内容/状态）与邮箱各步骤/所需记录。
+    verbose: bool = False
+
+
+def _zone_is_active(updater: CloudflareDNSUpdater, zone_id: str) -> bool:
+    """查询 zone 是否已激活。
+
+    查询失败或无状态字段时返回 True（走原逻辑，由各步骤 API 报错为准），
+    避免一次查询抖动导致整站跳过。
+    """
+    try:
+        zone = updater.get_zone(zone_id) or {}
+    except Exception:  # noqa: BLE001
+        return True
+    status = str((zone.get("result") or {}).get("status") or "").lower()
+    return status in ("", "active")
+
+
+def provision_zone(
+    updater: CloudflareDNSUpdater,
+    zone_id: str,
+    zone_name: str,
+    domain: str,
+    options: ZoneProvisionOptions,
+) -> dict[str, str]:
+    """对一个已存在的 zone 执行 DNS/激活/邮箱/SSL/安全/加速配置。
+
+    返回状态字典(activation/record_status/email_status/ssl_status/security_status/error)。
+    所有步骤均容错，单项失败不影响其它步骤。邮箱步骤要求 zone 为 active，
+    未激活时记 `deferred:requires-active-zone`（待激活后重跑补配），不记 error。
+    """
+    result: dict[str, str] = {
+        "activation": "skipped",
+        "record_status": "skipped",
+        "email_status": "skipped",
+        "ssl_status": "skipped",
+        "security_status": "skipped",
+        "error": "",
+    }
+
+    if options.do_dns:
+        if options.records:
+            statuses: list[str] = []
+            records_cache: dict = {}
+            for record in options.records:
+                name = str(record.get("name", "@"))
+                record_type = str(record.get("type", "A"))
+                content = str(record.get("content", ""))
+                status, msg = updater.ensure_dns_record(
+                    zone_id,
+                    zone_name,
+                    name,
+                    record_type,
+                    content,
+                    proxied=bool(record.get("proxied", False)),
+                    ttl=int(record.get("ttl", 1) or 1),
+                    priority=record.get("priority"),
+                    allow_multi=options.allow_multi_value,
+                    _records_cache=records_cache,
+                )
+                statuses.append(f"{name}:{status}")
+                if options.verbose:
+                    detail = f"（{msg}）" if msg else ""
+                    log_print(
+                        f"      [DNS] {zone_name} {record_type} {name} -> {content} "
+                        f"[{status}]{detail}"
+                    )
+            result["record_status"] = ";".join(statuses)
+        else:
+            result["record_status"] = "no-records"
+
+    if options.do_activation:
+        try:
+            activated, status = updater.wait_zone_active(
+                zone_id,
+                timeout=options.activation_timeout,
+                interval=options.activation_interval,
+                on_tick=options.on_tick,
+            )
+            result["activation"] = "active" if activated else f"pending:{status}"
+        except Exception as exc:  # noqa: BLE001
+            result["activation"] = f"error:{exc}"
+
+    if options.do_email:
+        if options.forward_email:
+            # Email Routing 要求 zone 为 active；pending 时硬调只会吃 403
+            # (code 2009)，故先查状态，未激活则延期，待激活后重跑补配。
+            if _zone_is_active(updater, zone_id):
+                try:
+                    status, message, records = updater.configure_email_routing(
+                        zone_id, zone_name, options.forward_email
+                    )
+                    result["email_status"] = (
+                        status if status == "ok" else f"{status}:{message}"
+                    )
+                    if options.verbose:
+                        for item in records:
+                            log_print(f"      [邮箱] {zone_name} {item}")
+                        log_print(
+                            f"      [邮箱] {zone_name} 结果: {status}"
+                            + (f"（{message}）" if message else "")
+                        )
+                except Exception as exc:  # noqa: BLE001
+                    result["email_status"] = f"error:{exc}"
+            else:
+                result["email_status"] = "deferred:requires-active-zone"
+                if options.verbose:
+                    log_print(
+                        f"      [邮箱] {zone_name} 暂缓: zone 未激活，"
+                        "待激活后由回访补配"
+                    )
+        else:
+            result["email_status"] = "no-forward-email"
+
+    if options.do_ssl:
+        if options.ssl_mode:
+            try:
+                updater.update_zone_setting(zone_id, "ssl", options.ssl_mode)
+                result["ssl_status"] = options.ssl_mode
+            except Exception as exc:  # noqa: BLE001
+                result["ssl_status"] = f"error:{exc}"
+        else:
+            result["ssl_status"] = "no-ssl-mode"
+
+    if options.do_security or options.do_optimize:
+        settings: dict[str, Any] = {}
+        if options.do_security:
+            settings.update(PROVISION_BASIC_SECURITY)
+        if options.do_optimize:
+            settings.update(PROVISION_SPEED)
+        setting_results = updater.apply_zone_settings(zone_id, settings)
+        ok = sum(1 for _s, status, _m in setting_results if status == "ok")
+        errs = [f"{s}:{m}" for s, status, m in setting_results if status != "ok"]
+        result["security_status"] = f"ok={ok}/{len(setting_results)}" + (
+            ";errors=" + "|".join(errs) if errs else ""
+        )
+
+    return result
+
+
+def build_records_for_domain(
+    domain: str,
+    table: dict[str, dict[str, str]],
+    server_ip: str,
+    proxied: bool,
+    ttl: int,
+) -> list[dict]:
+    """按旧表格/默认 IP 生成典型记录：@ 与 www 的 A/AAAA。"""
+    ip = (table.get(domain, {}) or {}).get("ip") or server_ip
+    if not ip:
+        return []
+    record_type = "A"
+    try:
+        if isinstance(ipaddress.ip_address(ip), ipaddress.IPv6Address):
+            record_type = "AAAA"
+    except ValueError:
+        record_type = "A"
+    return [
+        {
+            "name": "@",
+            "type": record_type,
+            "content": ip,
+            "proxied": proxied,
+            "ttl": ttl,
+            "priority": None,
+        },
+        {
+            "name": "www",
+            "type": record_type,
+            "content": ip,
+            "proxied": proxied,
+            "ttl": ttl,
+            "priority": None,
+        },
+    ]
+
+
+def run_provision_mode(
+    accounts: list[dict],
+    args: argparse.Namespace,
+    stop_event: Event,
+    rate_limiter: Optional[ApiRateLimiter],
+    proxy_pool: Optional[ProxyPool] = None,
+) -> int:
+    """域名配置模式:对表格中的域名配置 DNS/邮箱/SSL/安全/加速。
+
+    先在各账号中定位 zone(未找到且 --create-zone 时在首个账号创建),再逐项配置。
+    退出码:0=全部成功,1=存在失败或未找到的域名。
+    """
+    table = load_provision_table(args.provision_table)
+    if not table:
+        log_print(f"--provision 表格为空或不存在: {args.provision_table}")
+        return 1
+
+    globals_ = load_cf_globals(args.config)
+    forward_default = args.forward_email or str(
+        globals_.get("default_forward_email") or ""
+    )
+    ssl_default = args.ssl_mode or str(globals_.get("ssl_mode") or "")
+    security_default = bool(globals_.get("security_mode", 0))
+    do_security = security_default if args.security is None else bool(args.security)
+    do_optimize = True if args.optimize is None else bool(args.optimize)
+
+    print_lock = Lock()
+
+    def _make_updater(account: dict) -> CloudflareDNSUpdater:
+        name = account.get("name") or account.get("email") or "unknown"
+        return CloudflareDNSUpdater(
+            auth_method=account["auth_method"],
+            api_token=account.get("token"),
+            api_email=account.get("email"),
+            api_key=account.get("key"),
+            max_workers=args.workers,
+            account_name=name,
+            rate_limiter=get_account_rate_limiter(args, stop_event, rate_limiter),
+            api_max_retries=args.api_max_retries,
+            api_retry_base_delay=args.api_retry_base_delay,
+            api_retry_max_sleep=args.api_retry_max_sleep,
+            proxy_pool=proxy_pool,
+        )
+
+    # 建立 zone -> 账号 映射(每账号只拉一次 zone 列表)
+    updaters: dict[str, CloudflareDNSUpdater] = {}
+    zone_owner: dict[str, tuple[dict, dict]] = {}
+    for account in accounts:
+        updater = _make_updater(account)
+        name = updater.account_name
+        updaters[name] = updater
+        try:
+            zones = updater.get_all_zones()
+        except Exception as exc:  # noqa: BLE001
+            with print_lock:
+                log_print(f"[PROVISION] 账号 {name} 读取 zone 失败: {exc}")
+            continue
+        for zone in zones:
+            zone_name = str(zone.get("name", "")).lower()
+            if zone_name and zone_name not in zone_owner:
+                zone_owner[zone_name] = (account, zone)
+
+    results: list[dict[str, str]] = []
+    for domain, row_cfg in table.items():
+        owner = zone_owner.get(domain)
+        zone_status = ""
+        if owner is None:
+            if not args.create_zone:
+                results.append(
+                    {
+                        "account": "",
+                        "domain": domain,
+                        "zone_id": "",
+                        "zone_status": "not-found",
+                        "activation": "skipped",
+                        "record_status": "skipped",
+                        "email_status": "skipped",
+                        "ssl_status": "skipped",
+                        "security_status": "skipped",
+                        "error": "账号中未找到该 zone（可用 --create-zone 新建）",
+                        "timestamp": utc_now_iso(),
+                    }
+                )
+                continue
+            first = accounts[0]
+            updater = updaters.get(
+                first.get("name") or first.get("email") or "unknown"
+            ) or _make_updater(first)
+            try:
+                created = updater.create_zone(domain)
+                zone = created.get("result", {}) or {}
+                owner = (first, zone)
+                zone_status = str(zone.get("status", "created"))
+            except Exception as exc:  # noqa: BLE001
+                results.append(
+                    {
+                        "account": updater.account_name,
+                        "domain": domain,
+                        "zone_id": "",
+                        "zone_status": "create-failed",
+                        "activation": "skipped",
+                        "record_status": "skipped",
+                        "email_status": "skipped",
+                        "ssl_status": "skipped",
+                        "security_status": "skipped",
+                        "error": f"创建 zone 失败: {exc}",
+                        "timestamp": utc_now_iso(),
+                    }
+                )
+                continue
+
+        owner_account, zone = owner
+        account_name = (
+            owner_account.get("name") or owner_account.get("email") or "unknown"
+        )
+        updater = updaters.get(account_name) or _make_updater(owner_account)
+        zone_id = str(zone.get("id", ""))
+        zone_name = str(zone.get("name") or domain)
+        if not zone_status:
+            zone_status = str(zone.get("status", ""))
+
+        effective_ip = args.server_ip or str(
+            owner_account.get("default_server_ip") or ""
+        )
+        records = build_records_for_domain(
+            domain,
+            table,
+            effective_ip,
+            not args.no_proxied,
+            args.ttl,
+        )
+        options = ZoneProvisionOptions(
+            records=records,
+            forward_email=row_cfg.get("forward") or forward_default,
+            ssl_mode=row_cfg.get("ssl") or ssl_default,
+            do_dns=not args.no_dns,
+            do_activation=not args.no_activation,
+            do_email=not args.no_email,
+            do_ssl=bool(row_cfg.get("ssl") or ssl_default) and not args.no_ssl,
+            do_security=do_security,
+            do_optimize=do_optimize,
+            activation_timeout=args.activation_timeout,
+            activation_interval=args.activation_interval,
+            allow_multi_value=args.allow_multi_value,
+        )
+        statuses = provision_zone(updater, zone_id, zone_name, domain, options)
+        record = {
+            "account": account_name,
+            "domain": domain,
+            "zone_id": zone_id,
+            "zone_status": zone_status,
+            "timestamp": utc_now_iso(),
+        }
+        record.update(statuses)
+        results.append(record)
+        with print_lock:
+            log_print(
+                f"[PROVISION] {domain}: zone={zone_status}, "
+                f"dns={record['record_status']}, email={record['email_status']}, "
+                f"ssl={record['ssl_status']}"
+            )
+
+    if args.provision_output:
+        write_provision_csv(args.provision_output, results)
+        log_print(
+            f"[PROVISION] 已写入 CSV: {args.provision_output}（{len(results)} 行）"
+        )
+    failed = sum(
+        1
+        for r in results
+        if r.get("error") or r.get("zone_status") in {"not-found", "create-failed"}
+    )
+    log_print(f"[PROVISION] 汇总: 域名 {len(results)} 个，失败/未找到 {failed} 个。")
+    return 1 if failed else 0
+
+
+def run_list_dns_mode(
+    accounts: list[dict],
+    args: argparse.Namespace,
+    stop_event: Event,
+    rate_limiter: Optional[ApiRateLimiter],
+    proxy_pool: Optional[ProxyPool] = None,
+) -> int:
+    """列出指定 zone 的 DNS 记录；支持 --json。退出码 0=成功，1=未找到或失败。"""
+    zone = (args.list_dns or "").strip()
+    target = (get_main_domain_name_from_str(zone) or zone).lower()
+    for account in accounts:
+        name = account.get("name") or account.get("email") or "unknown"
+        try:
+            updater = CloudflareDNSUpdater(
+                auth_method=account["auth_method"],
+                api_token=account.get("token"),
+                api_email=account.get("email"),
+                api_key=account.get("key"),
+                max_workers=args.workers,
+                account_name=name,
+                rate_limiter=get_account_rate_limiter(args, stop_event, rate_limiter),
+                api_max_retries=args.api_max_retries,
+                api_retry_base_delay=args.api_retry_base_delay,
+                api_retry_max_sleep=args.api_retry_max_sleep,
+                proxy_pool=proxy_pool,
+            )
+            found = updater.get_zone_by_name(target)
+            if not found:
+                continue
+            zone_id = found.get("id")
+            if not isinstance(zone_id, str) or not zone_id:
+                log_print(f"[DNS] 账号 {name} 的 zone {target} 缺少有效 zone_id")
+                continue
+            records = updater.get_dns_records(zone_id, record_type=None)
+        except Exception as exc:  # noqa: BLE001
+            log_print(f"[DNS] 账号 {name} 查询 {target} 失败: {exc}")
+            continue
+        if args.json:
+            import json
+
+            print(
+                json.dumps(
+                    {
+                        "account": name,
+                        "zone": target,
+                        "zone_id": zone_id,
+                        "records": records,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+        else:
+            log_print(f"[DNS] 账号 {name}, zone={target}, 记录数={len(records)}")
+            for record in records:
+                prox = " (proxied)" if record.get("proxied") else ""
+                log_print(
+                    f"  {str(record.get('type', '')):6} "
+                    f"{str(record.get('name', '')):<32} -> "
+                    f"{record.get('content', '')}{prox}"
+                )
+        return 0
+    log_print(f"[DNS] 未在账号中找到 zone: {target}")
+    return 1
 
 
 def run_find_mode(
@@ -5113,6 +6527,7 @@ def run_operation_for_account(
                 dry_run=args.dry_run,
                 explicit_domains=explicit_domains,
                 resume_zones=resume_zones,
+                allow_multi_value=args.allow_multi_value,
             )
         elif args.export:
             batch_result = updater.batch_export(
@@ -5378,6 +6793,57 @@ def validate_worker_args(args: argparse.Namespace) -> None:
 
 def validate_action_args(args: argparse.Namespace) -> None:
     """校验运行模式参数，避免更新和删除模式同时触发。"""
+    if args.list_dns and (
+        args.find_domain
+        or args.new_content
+        or args.delete_wildcard
+        or args.delete_ip
+        or args.delete_zone
+        or args.export
+        or args.set_proxied is not None
+        or args.set_ttl is not None
+        or args.add_domain
+        or args.add_record
+        or args.list_zones
+        or args.provision
+    ):
+        log_print("--list-dns 不能与其他模式同时使用")
+        sys.exit(1)
+
+    if args.provision and not args.provision_table:
+        log_print("--provision 需要配合 --provision-table 指定域名表格")
+        sys.exit(1)
+    if args.provision and (
+        args.find_domain
+        or args.new_content
+        or args.delete_wildcard
+        or args.delete_ip
+        or args.delete_zone
+        or args.export
+        or args.set_proxied is not None
+        or args.set_ttl is not None
+        or args.add_domain
+        or args.add_record
+        or args.list_zones
+    ):
+        log_print("--provision 不能与其他更新/删除/添加/导出/查询模式同时使用")
+        sys.exit(1)
+
+    if args.list_zones and (
+        args.find_domain
+        or args.new_content
+        or args.delete_wildcard
+        or args.delete_ip
+        or args.delete_zone
+        or args.export
+        or args.set_proxied is not None
+        or args.set_ttl is not None
+        or args.add_domain
+        or args.add_record
+    ):
+        log_print("--list-zones 不能与其他更新/删除/添加/导出/设置模式同时使用")
+        sys.exit(1)
+
     if args.find_domain and (
         args.new_content
         or args.delete_wildcard
@@ -5680,6 +7146,8 @@ def write_failure_report(
 
 def main() -> None:
     args = parse_args()
+    global QUIET
+    QUIET = bool(getattr(args, "quiet", False))
     configure_logging(args.log_file, args.log_level, args.log_overwrite)
     configure_rate_limit_args(args)
     log_startup(args)
@@ -5719,6 +7187,39 @@ def main() -> None:
     if args.list_accounts:
         list_accounts(accounts, show_secrets=args.show_secrets)
         sys.exit(0)
+
+    # 模式 0.5：列出所有账号的 zone（域名），可导出 CSV。
+    if args.list_zones:
+        code = run_list_zones_mode(
+            accounts=accounts,
+            args=args,
+            stop_event=stop_event,
+            rate_limiter=rate_limiter,
+            proxy_pool=proxy_pool,
+        )
+        sys.exit(code)
+
+    # 模式 0.6：按表格配置域名（DNS/邮箱/SSL/安全/加速）。
+    if args.provision:
+        code = run_provision_mode(
+            accounts=accounts,
+            args=args,
+            stop_event=stop_event,
+            rate_limiter=rate_limiter,
+            proxy_pool=proxy_pool,
+        )
+        sys.exit(code)
+
+    # 模式 0.7：列出指定 zone 的 DNS 记录。
+    if args.list_dns:
+        code = run_list_dns_mode(
+            accounts=accounts,
+            args=args,
+            stop_event=stop_event,
+            rate_limiter=rate_limiter,
+            proxy_pool=proxy_pool,
+        )
+        sys.exit(code)
 
     # 模式 1：快速查域名。
     if args.find_domain:
@@ -5804,6 +7305,9 @@ def main() -> None:
     log_print("- 使用 --delete-ip 删除所有指向指定 IP 的 A/AAAA 记录。")
     log_print("- 使用 --add-domain / --add-record 添加域名或 DNS 记录。")
     log_print("- 使用 -f/--find-domain 查询域名所在账号。")
+    log_print("- 使用 --list-zones [--zones-output out.csv] 导出所有账号的 zone。")
+    log_print("- 使用 --list-dns <zone> [--json] 查看某域名的 DNS 记录。")
+    log_print("- 使用 --provision --provision-table table.csv 批量配置域名。")
     sys.exit(0)
 
 

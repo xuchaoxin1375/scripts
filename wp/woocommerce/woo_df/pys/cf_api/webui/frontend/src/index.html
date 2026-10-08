@@ -1,0 +1,1052 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cloudflare DNS 操作台</title>
+<script>try{var t=localStorage.getItem("cf_theme")||"light";var d=(t==="system")?((matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light"):t;document.documentElement.dataset.theme=d;}catch(e){}</script>
+<style>
+:root{
+--bg:#ffffff;--subtle:#f4f6fa;--hover:#eef2f8;--surface:#ffffff;--canvas:#f7f9fc;
+--text1:#1a2233;--text2:#4b5568;--text3:#7b8499;--border:#dfe5ef;
+--primary:#0051c3;--primary-hover:#003f9e;--primary-soft:#e3edff;
+--success:#0f7a3d;--success-soft:#e0f3e7;--warning:#9a5b00;--warning-soft:#fdf0d5;
+--danger:#c01f2e;--danger-soft:#fde7e9;--brand:#f6821f;
+--focus:#0051c3;--link:#0051c3;
+--radius-s:4px;--radius-m:6px;--radius-l:8px;--radius-xl:12px;
+--shadow-1:0 1px 2px rgba(16,24,40,.08);--shadow-2:0 4px 12px rgba(16,24,40,.10);--shadow-3:0 12px 32px rgba(16,24,40,.16);
+--topbar-h:56px;--sidebar-w:240px;--rail-w:56px;--content-w:1440px;
+--ease:cubic-bezier(.2,0,0,1);
+color-scheme:light;
+}
+[data-theme="dark"]{
+--bg:#0d1117;--subtle:#151b24;--hover:#1c2431;--surface:#131926;--canvas:#0d1117;
+--text1:#e8edf5;--text2:#aeb8cc;--text3:#7d879c;--border:#243044;
+--primary:#6ea8ff;--primary-hover:#8db9ff;--primary-soft:#1a2a4a;
+--success:#4cc38a;--success-soft:#12362a;--warning:#f5b544;--warning-soft:#3a2c12;
+--danger:#ff7b8a;--danger-soft:#3d1a20;--brand:#f6821f;
+--focus:#8db9ff;--link:#8db9ff;
+color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--canvas);color:var(--text1);font:14px/1.6 -apple-system,"Segoe UI",PingFangSC,"Microsoft YaHei",Inter,sans-serif}
+a{color:var(--link)}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.skip{position:absolute;left:8px;top:-48px;z-index:100;background:var(--primary);color:#fff;padding:8px 12px;border-radius:var(--radius-m);transition:top 120ms var(--ease)}
+.skip:focus{top:8px;color:#fff}
+.topbar{position:sticky;top:0;z-index:50;height:var(--topbar-h);display:flex;align-items:center;gap:12px;padding:0 16px;background:var(--surface);border-bottom:1px solid var(--border)}
+.logo{display:flex;align-items:center;gap:8px;font-weight:700;white-space:nowrap}
+.logo-mark{width:24px;height:24px;border-radius:6px;background:var(--brand);display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:800}
+.res-switch{max-width:60vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2)}
+.topbar .spacer{flex:1;min-width:0}
+.btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);background:var(--surface);color:var(--text1);border-radius:var(--radius-m);padding:6px 12px;min-height:36px;cursor:pointer;font-size:13px;line-height:1.2}
+.btn svg{width:16px;height:16px;flex:none}
+.btn:hover{background:var(--hover)}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.btn.primary:hover{background:var(--primary-hover)}
+.btn.danger{border-color:var(--danger);color:var(--danger)}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.icon-btn{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:var(--radius-m);border:1px solid transparent;background:transparent;color:var(--text2);cursor:pointer}
+.icon-btn:hover{background:var(--hover);color:var(--text1)}
+.icon-btn svg{width:18px;height:18px}
+.shell{display:flex;align-items:stretch;min-height:calc(100vh - var(--topbar-h))}
+.sb-slot{flex:none;width:var(--sidebar-w);transition:width 240ms var(--ease)}
+.main{transition:opacity 200ms var(--ease)}
+body.peeking .main{opacity:.92}
+.sidebar{width:var(--sidebar-w);flex:none;position:sticky;top:var(--topbar-h);height:calc(100vh - var(--topbar-h));background:var(--surface);border-right:1px solid var(--border);z-index:20;transition:width 240ms var(--ease),box-shadow 200ms var(--ease);overflow:hidden;display:flex;flex-direction:column}
+.sidebar .nav{display:flex;flex-direction:column;gap:4px;padding:12px;flex:1;min-height:0}
+.nav a{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--radius-m);color:var(--text2);text-decoration:none;white-space:nowrap}
+.nav a svg{width:18px;height:18px;flex:none}
+.nav a[aria-current="page"]{background:var(--primary-soft);color:var(--primary)}
+.nav .lbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:opacity 120ms var(--ease),visibility 0s;transition-delay:75ms,75ms}
+.nav a{min-height:36px}
+.rail-toggle{display:flex;align-items:center;gap:10px;width:calc(100% - 24px);margin:auto 12px 12px;padding:8px 10px;min-height:36px;background:none;border:0;border-radius:var(--radius-m);color:var(--text2);cursor:pointer;font:inherit;white-space:nowrap}
+.rail-toggle:hover{background:var(--hover);color:var(--text1)}
+.rail-toggle svg{width:18px;height:18px;flex:none}
+.rail-toggle kbd{font:11px/1 inherit;border:1px solid var(--border);border-radius:4px;padding:1px 5px;color:var(--text3)}
+.nav-search{display:flex;align-items:center;gap:10px;width:calc(100% - 24px);margin:12px 12px 4px;padding:8px 10px;min-height:36px;background:var(--subtle);border:1px solid var(--border);border-radius:var(--radius-m);color:var(--text2);cursor:pointer;font:inherit;white-space:nowrap;text-align:left}
+.nav-search:hover{background:var(--hover);color:var(--text1)}
+.nav-search svg{width:16px;height:16px;flex:none}
+.nav-search kbd{font:11px/1 inherit;border:1px solid var(--border);border-radius:4px;padding:1px 5px;color:var(--text3);margin-left:auto}
+.back{display:flex;align-items:center;gap:10px;padding:8px 10px;margin:0 12px 4px;border-radius:var(--radius-m);color:var(--text2);text-decoration:none;white-space:nowrap;min-height:36px}
+.back:hover{background:var(--hover);color:var(--text1)}
+.back svg{width:18px;height:18px;flex:none}
+.nav-group{padding:12px 22px 2px;font-size:11px;font-weight:700;color:var(--text3);letter-spacing:.04em}
+.nav .lbl small.sub{display:block;font-size:11px;font-weight:400;color:var(--text3)}
+@media (min-width:768px){
+body[data-rail="1"] .sb-slot{width:var(--rail-w)}
+body[data-rail="1"] .sidebar{width:var(--rail-w)}
+body[data-rail="1"] .sidebar .lbl{opacity:0;visibility:hidden;width:0;transition-delay:0s,0s}
+body[data-rail="1"] .sidebar .nav a,body[data-rail="1"] .sidebar .rail-toggle,body[data-rail="1"] .sidebar .nav-search,body[data-rail="1"] .sidebar .back{justify-content:center;gap:0;padding-left:0;padding-right:0}
+body[data-rail="1"] .sidebar .nav-search{width:36px;margin-left:10px;margin-right:10px}
+body[data-rail="1"] .sidebar .nav-group{height:0;margin:0;padding:0;overflow:hidden;opacity:0;visibility:hidden}
+body[data-rail="1"] .sidebar.peek{position:fixed;left:0;top:var(--topbar-h);bottom:0;height:auto;width:var(--sidebar-w);z-index:40;box-shadow:var(--shadow-3)}
+body[data-rail="1"] .sidebar.peek .lbl{opacity:1;visibility:visible;width:auto;transition-delay:75ms,75ms}
+body[data-rail="1"] .sidebar.peek .nav a,body[data-rail="1"] .sidebar.peek .rail-toggle,body[data-rail="1"] .sidebar.peek .nav-search,body[data-rail="1"] .sidebar.peek .back{justify-content:flex-start;gap:10px;padding:8px 10px 8px 7px}
+body[data-rail="1"] .sidebar.peek .nav-search{width:calc(100% - 24px);margin-left:12px;margin-right:12px}
+body[data-rail="1"] .sidebar.peek .nav-group{height:auto;margin:0;padding:12px 22px 2px;opacity:1;visibility:visible}
+}
+.main{flex:1;min-width:0;max-width:var(--content-w);margin:0 auto;padding:16px;width:100%}
+.page{display:none}
+.page.active{display:block}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:12px 0}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-l);box-shadow:var(--shadow-1);padding:16px;min-width:0;overflow-wrap:anywhere}
+.card .small{overflow-wrap:anywhere;word-break:break-all}
+.card h3{margin:0 0 8px;font-size:13px;color:var(--text2);font-weight:600}
+.card .big{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums}
+.muted{color:var(--text2)}.small{font-size:12px;color:var(--text3)}
+.ctxbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-l);padding:12px;margin:12px 0}
+.ctxbar input,.ctxbar select,.form input,.form select,.form textarea,.pager input,.pager select{border:1px solid var(--border);border-radius:var(--radius-m);background:var(--bg);color:var(--text1);min-height:36px;padding:6px 10px;font-size:13px}
+.ctxbar input[type="search"]{flex:1;min-width:160px;max-width:520px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+.chip{border:1px solid var(--border);background:var(--surface);border-radius:999px;padding:4px 10px;cursor:pointer;font-size:12px;color:var(--text2)}
+.chip[aria-pressed="true"]{background:var(--primary-soft);color:var(--primary);border-color:var(--primary)}
+.table-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-l);overflow:hidden}
+.table-wrap{overflow:auto;max-width:100%;max-height:min(560px,calc(100vh - 240px))}
+#jList{max-height:min(480px,calc(100vh - 300px));overflow:auto}
+.table-wrap:focus{outline:2px solid var(--focus)}
+table{border-collapse:collapse;width:100%;table-layout:fixed;font-size:13px}
+th,td{padding:8px 10px;border-bottom:1px solid var(--border);text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.warn-ic{display:inline-flex;color:var(--warning);flex:none}
+.warn-ic svg{width:16px;height:16px}
+td.nm .warn-ic{margin-right:6px;vertical-align:-3px}
+thead th{position:sticky;top:0;background:var(--subtle);z-index:1}
+thead th button{background:none;border:0;color:inherit;cursor:pointer;font:inherit;display:inline-flex;gap:4px;align-items:center}
+td.op{position:sticky;right:0;background:var(--surface)}
+.table-wrap.scrolled td.op{box-shadow:-8px 0 8px -8px rgba(0,0,0,.15)}
+.pager{display:flex;align-items:center;gap:8px;padding:10px 12px;flex-wrap:wrap}
+.pager input[type="search"]{flex:1;min-width:120px}
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0}
+.tsearch{flex:1;min-width:160px;max-width:520px;display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:var(--radius-m);background:var(--bg);padding:0 10px;min-height:36px}
+.tsearch svg{width:16px;height:16px;flex:none;color:var(--text3)}
+.tsearch input{flex:1;border:0;background:none;color:var(--text1);min-height:34px;font-size:13px;min-width:0}
+.tsearch input:focus{outline:none}
+.tsearch:focus-within{outline:2px solid var(--focus);outline-offset:1px}
+.popwrap{position:relative}
+#recWrap{container-type:inline-size;min-width:0}
+#pFilters{width:min(360px,100vw - 32px)}
+.popover{position:absolute;top:calc(100% + 6px);left:0;z-index:70;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-l);box-shadow:var(--shadow-3);padding:12px;width:min(300px,100vw - 32px)}
+.popover .field:last-child{margin-bottom:0}
+.popover footer{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}
+.quota{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-l) var(--radius-l) 0 0;border-bottom:0;padding:10px 14px;color:var(--text2);font-size:13px}
+.quota strong{color:var(--text1)}
+table .cb{width:36px;text-align:center;font-size:0;line-height:0}
+table .cb input{width:16px;height:16px;margin:0;vertical-align:middle;accent-color:var(--primary)}
+table.compact th,table.compact td{padding:4px 8px}
+table.hide-c [data-col="comment"]{display:none}
+table.hide-d [data-col="details"]{display:none}
+td.mono{font-family:Consolas,Menlo,monospace;font-size:12px}
+.det{font-size:11px;border:1px solid var(--border);border-radius:4px;padding:1px 6px;background:var(--subtle);color:var(--text2);white-space:nowrap}
+tr.ed>td{background:var(--canvas);white-space:normal}
+.rec-ed{padding:4px 2px}
+.grid-ed{display:grid;grid-template-columns:2fr 4fr 6fr;gap:12px}
+.grid-ed2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+.rec-ed .full{grid-column:1/-1}
+.rec-ed footer{display:flex;gap:8px;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
+.rec-ed footer .sp{flex:1}
+.switch{display:inline-flex;align-items:center;gap:8px;background:none;border:0;padding:4px 0;cursor:pointer;font:inherit;color:var(--text1)}
+.switch .tk{width:40px;height:22px;border-radius:999px;background:var(--border);position:relative;transition:background 120ms var(--ease);flex:none}
+.switch .tk::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:var(--shadow-1);transition:left 120ms var(--ease)}
+.switch[aria-checked="true"] .tk{background:var(--success)}
+.switch[aria-checked="true"] .tk::after{left:20px}
+.bulkbar{position:fixed;left:50%;transform:translateX(-50%);bottom:16px;z-index:35;max-width:520px;width:calc(100% - 32px);background:#1a2233;color:#fff;border-radius:var(--radius-l);box-shadow:var(--shadow-3);padding:10px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.bulkbar[hidden]{display:none}
+.bulkbar .btn{background:transparent;border-color:#3a4761;color:#fff}
+.bulkbar .btn:hover{background:#2a3652}
+.bulkbar .btn.danger{border-color:#ff7b8a;color:#ff9aa4}
+.bulkbar .btn.primary{background:var(--primary);border-color:var(--primary)}
+.cards-list{display:grid;gap:10px;margin:0 0 12px;padding:0;list-style:none}
+.cards-list[hidden]{display:none}
+.rcard{list-style:none}
+thead th .rz-handle{position:absolute;top:0;right:-4px;width:8px;height:100%;cursor:col-resize;z-index:3}
+thead th .rz-handle::after{content:"";position:absolute;left:3px;top:0;width:1px;height:100%;background:var(--border)}
+thead th .rz-handle:hover::after,thead th .rz-handle:focus-visible::after{left:2px;width:3px;background:var(--primary)}
+thead th .rz-handle:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+body.rz-drag,body.rz-drag *{user-select:none !important;cursor:col-resize !important}
+.rcard{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-l);padding:12px}
+.rcard .rh{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+.rcard .rh .nm{font-weight:700;overflow:hidden;text-overflow:ellipsis}
+.rcard .rm{font-family:Consolas,Menlo,monospace;font-size:12px;overflow-wrap:anywhere;margin:4px 0}
+.rcard .rk{display:flex;gap:12px;flex-wrap:wrap;color:var(--text2);font-size:12px}
+tr.flash td{animation:fl 2.4s}
+@keyframes fl{0%{background:var(--primary-soft)}70%{background:var(--primary-soft)}100%{background:none}}
+@media (max-width:1023px){.grid-ed{grid-template-columns:1fr 1fr}.rec-ed .full{grid-column:1/-1}}
+@media (max-width:639px){.grid-ed,.grid-ed2{grid-template-columns:1fr}}
+tr[aria-selected="true"] td{background:var(--primary-soft)}
+.st-active{color:var(--success);font-weight:700}
+.st-pending{color:var(--warning);font-weight:700}
+.form{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-l);padding:16px;max-width:720px}
+.field{margin-bottom:12px}
+.field label{display:block;font-weight:600;margin-bottom:4px}
+.field .hint{font-size:12px;color:var(--text3)}
+.field .err{font-size:12px;color:var(--danger)}
+textarea{width:100%;min-height:72px;resize:vertical}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+details.adv{border:1px solid var(--border);border-radius:var(--radius-m);padding:8px 12px;margin:12px 0;background:var(--subtle)}
+details.adv summary{cursor:pointer;font-weight:600}
+.job-head{position:sticky;top:var(--topbar-h);z-index:10;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-l);padding:10px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0}
+.progress{height:8px;background:var(--subtle);border-radius:999px;overflow:hidden;min-width:160px;flex:1}
+.progress i{display:block;height:100%;background:var(--primary);width:0;transition:width 200ms var(--ease)}
+.logbox{background:#0b0e14;color:#d7e0f0;border-radius:var(--radius-m);padding:12px;height:220px;overflow:auto;font-family:Consolas,Menlo,monospace;font-size:12px;white-space:pre-wrap;word-break:break-all}
+.verdict{border-left:4px solid var(--primary);padding:8px 12px;background:var(--subtle);border-radius:0 var(--radius-m) var(--radius-m) 0;margin:12px 0;white-space:pre-wrap}
+.modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:90;padding:16px}
+.modal.open{display:flex}
+.modal .backdrop{position:absolute;inset:0;background:rgba(0,0,0,.45)}
+.modal .box{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-xl);box-shadow:var(--shadow-3);width:min(640px,100vw - 32px);max-height:80vh;display:flex;flex-direction:column}
+.modal .box header{padding:12px 16px;border-bottom:1px solid var(--border);font-weight:700}
+.modal .box .body{padding:12px 16px;overflow:auto}
+.modal .box footer{padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
+.toasts{position:fixed;right:16px;bottom:16px;z-index:100;display:flex;flex-direction:column;gap:8px}
+.toast{background:#1a2233;color:#fff;border-radius:var(--radius-m);padding:10px 14px;box-shadow:var(--shadow-2);font-size:13px}
+.cmdk{position:fixed;inset:0;display:none;z-index:95;padding:10vh 16px 16px;background:rgba(0,0,0,.35)}
+.cmdk.open{display:block}
+.cmdk .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-l);max-width:560px;margin:0 auto;overflow:hidden}
+.cmdk input{width:100%;border:0;border-bottom:1px solid var(--border);padding:12px 14px;font-size:14px;background:var(--surface);color:var(--text1)}
+.cmdk ul{list-style:none;margin:0;padding:8px;max-height:300px;overflow:auto}
+.cmdk li{padding:8px 10px;border-radius:var(--radius-m);cursor:pointer}
+.cmdk li[aria-selected="true"]{background:var(--primary-soft)}
+.cmdk .cmdk-foot{display:flex;gap:12px;padding:8px 14px;border-top:1px solid var(--border);color:var(--text3);font-size:12px}
+.cmdk .cmdk-group{padding:8px 10px 0;font-size:11px;font-weight:700;color:var(--text3)}
+.danger-zone{border:1px solid var(--danger);border-radius:var(--radius-l);padding:12px;background:var(--danger-soft);margin:12px 0}
+.op-sum{margin:8px 0}
+@media (max-width:639px){
+.modal{align-items:flex-end;padding:0}
+.modal .box{width:100%;max-height:92vh;border-radius:12px 12px 0 0}
+}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.alert{display:flex;gap:10px;align-items:flex-start;background:var(--primary-soft);border:1px solid var(--border);border-left:4px solid var(--primary);border-radius:var(--radius-m);padding:10px 12px;margin:12px 0}
+.skel{position:relative;overflow:hidden;background:var(--subtle);border-radius:var(--radius-s);min-height:1em}
+.skel::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(127,140,160,.25),transparent);animation:sk 1.2s infinite}
+@keyframes sk{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+.pill{display:inline-block;min-width:44px;text-align:center;font-size:11px;font-weight:700;border-radius:4px;padding:1px 6px;background:var(--subtle);color:var(--text2);border:1px solid var(--border)}
+.pill-a{background:#e3edff;color:#0051c3;border-color:#bcd0f5}
+.pill-aaaa{background:#e3edff;color:#0051c3;border-color:#bcd0f5}
+.pill-cname{background:#f0e6fb;color:#6b3fa0;border-color:#d9c6f2}
+.pill-mx{background:#fde7e9;color:#c01f2e;border-color:#f3b8be}
+.pill-txt{background:var(--subtle);color:var(--text2)}
+.proxy-ok{color:var(--text1);font-weight:700}
+.proxy-ok i{color:var(--brand);font-style:normal}
+.proxy-off{color:var(--text3)}
+@media (max-width:1023px){
+.cards{grid-template-columns:1fr 1fr}
+.grid2{grid-template-columns:1fr}
+}
+@media (max-width:767px){
+.sb-slot{display:contents}
+body .sidebar{position:fixed;left:0;top:var(--topbar-h);transform:translateX(-100%);transition:transform 200ms var(--ease),visibility 0s 200ms;visibility:hidden;width:min(288px,100vw - 48px)}
+body[data-drawer="1"] .sidebar{transform:none;box-shadow:var(--shadow-3);visibility:visible;transition:transform 200ms var(--ease),visibility 0s 0s;z-index:60}
+#resSwitch{display:none}
+.cards{grid-template-columns:1fr}
+.topbar .hide-narrow{display:none}
+.topbar{gap:8px;padding:0 12px}
+.main{padding:12px}
+}
+@media (max-width:479px){
+#btnCmdk{font-size:0;gap:0;padding:6px 8px}
+.logo span:last-child{display:none}
+}
+@media (prefers-reduced-motion:reduce){
+*{transition:none !important;animation:none !important}
+}
+</style>
+</head>
+<body data-rail="0" data-drawer="0">
+<a class="skip" href="#main">跳到主内容</a>
+<div id="root">
+<header class="topbar">
+<button class="icon-btn" id="btnMenu" aria-label="菜单"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+<div class="logo"><span class="logo-mark">C</span><span>Cloudflare DNS 操作台</span></div>
+<span class="res-switch" id="resSwitch" title="当前配置">未加载配置</span>
+<span class="spacer"></span>
+<span class="small hide-narrow" id="authState">本机模式</span>
+<button class="icon-btn" id="btnTheme" aria-label="切换主题"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+<button class="btn" id="btnCmdk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.34-4.34"></path><circle cx="11" cy="11" r="8"></circle></svg>命令 Ctrl+K</button>
+</header>
+<div class="shell">
+<div class="sb-slot" id="sbSlot">
+<aside class="sidebar" id="sidebar" aria-label="主导航">
+<button class="nav-search" id="btnNavSearch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.34-4.34"></path><circle cx="11" cy="11" r="8"></circle></svg><span class="lbl">快速搜索 <kbd>Ctrl K</kbd></span></button>
+<a class="back" href="#/overview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"></path><path d="M19 12H5"></path></svg><span class="lbl">返回概览</span></a>
+<nav class="nav">
+<div class="nav-group"><span class="lbl">管理</span></div>
+<a href="#/overview" data-route="overview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"></rect><rect width="7" height="5" x="14" y="3" rx="1"></rect><rect width="7" height="9" x="14" y="12" rx="1"></rect><rect width="7" height="5" x="3" y="16" rx="1"></rect></svg><span class="lbl">概览<small class="sub">状态总览</small></span></a>
+<a href="#/browse" data-route="browse"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="16" y="16" width="6" height="6" rx="1"></rect><rect x="2" y="16" width="6" height="6" rx="1"></rect><rect x="9" y="2" width="6" height="6" rx="1"></rect><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"></path><path d="M12 12V8"></path></svg><span class="lbl">浏览 DNS<small class="sub">记录查询</small></span></a>
+<a href="#/operate" data-route="operate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="12" x="2" y="6" rx="2"></rect><path d="M12 12h.01"></path><path d="M17 12h.01"></path><path d="M7 12h.01"></path></svg><span class="lbl">批量操作<small class="sub">批量执行</small></span></a>
+<a href="#/jobs" data-route="jobs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M12 7v5l4 2"></path></svg><span class="lbl">任务<small class="sub">执行跟踪</small></span></a>
+<div class="nav-group"><span class="lbl">快捷入口</span></div>
+<a href="#/browse"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5V19A9 3 0 0 0 21 19V5"></path><path d="M3 12A9 3 0 0 0 21 12"></path></svg><span class="lbl">查记录<small class="sub">搜名称与内容</small></span></a>
+<a href="#/operate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"></path><circle cx="12" cy="12" r="3"></circle></svg><span class="lbl">批量改 IP<small class="sub">dry-run 先行</small></span></a>
+<a href="#/jobs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"></rect><line x1="8" x2="16" y1="21" y2="21"></line><line x1="12" x2="12" y1="17" y2="21"></line></svg><span class="lbl">看任务<small class="sub">verdict 与重跑</small></span></a>
+</nav>
+<button class="rail-toggle" id="btnRail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M9 3v18"></path><path d="m14 9 3 3-3 3"></path></svg><span class="lbl">收起 <kbd>[</kbd></span></button>
+</aside>
+</div>
+<main class="main" id="main" tabindex="-1">
+<section class="page" id="page-overview">
+<h2>概览</h2>
+<div class="alert" role="status"><span aria-hidden="true">ⓘ</span><div>先浏览确认 → 操作页 dry-run 预览 → 去掉预览正式执行 → 任务页看 verdict。数据不出本机，Token 只存配置文件。</div></div>
+<div class="cards" aria-busy="true" id="statCards">
+<div class="card"><h3>账号</h3><div class="big" id="statAccounts"><span class="skel" style="display:inline-block;width:2em">&nbsp;</span></div><div class="small" id="statCfg">配置加载中…</div></div>
+<div class="card"><h3>域名总数（首账号抽样）</h3><div class="big" id="statZones"><span class="skel" style="display:inline-block;width:2em">&nbsp;</span></div><div class="small">浏览页可按账号分页查看</div></div>
+<div class="card"><h3>未完成任务</h3><div class="big" id="statJobs"><span class="skel" style="display:inline-block;width:2em">&nbsp;</span></div><div class="small">任务页可下载失败清单重跑</div></div>
+</div>
+<div class="card">
+<h3>快捷入口</h3>
+<p><button class="btn primary" data-go="#/browse"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.34-4.34"></path><circle cx="11" cy="11" r="8"></circle></svg>查记录</button>
+<button class="btn" data-go="#/operate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="12" x="2" y="6" rx="2"></rect><path d="M12 12h.01"></path><path d="M17 12h.01"></path><path d="M7 12h.01"></path></svg>批量改 IP</button>
+<button class="btn" data-go="#/jobs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M12 7v5l4 2"></path></svg>看任务</button></p>
+<p class="small">建议顺序：先浏览确认 → 操作页 dry-run 预览 → 去掉预览正式执行 → 任务页看 verdict。</p>
+</div>
+</section>
+<section class="page" id="page-browse">
+<h2>浏览 DNS</h2>
+<div class="grid2">
+<div class="table-card"><div class="table-wrap" tabindex="0" role="region" aria-label="账号表">
+<table id="bAccTable"><colgroup><col><col><col style="width:76px"></colgroup>
+<thead><tr><th>账号</th><th>邮箱</th><th>操作</th></tr></thead>
+<tbody id="bAccBody"><tr><td colspan="3" class="muted">账号加载中…</td></tr></tbody>
+</table>
+</div><div class="pager"><span class="small" id="bAccInfo">–</span><span class="spacer" style="flex:1"></span>
+<select id="bAccPer" aria-label="每页账号数"><option value="10" selected>10/页</option><option value="20">20/页</option><option value="50">50/页</option></select>
+<button class="btn" id="bAccPrev">上一页</button>
+<button class="btn" id="bAccNext">下一页</button></div></div>
+<div class="table-card"><div class="table-wrap" tabindex="0" role="region" aria-label="域名表">
+<table id="bZoneTable"><colgroup><col><col style="width:96px"><col style="width:76px"></colgroup>
+<thead><tr><th>域名</th><th>状态</th><th>操作</th></tr></thead>
+<tbody id="bZoneBody"><tr><td colspan="3" class="muted">先选账号</td></tr></tbody>
+</table>
+</div><div class="pager"><input type="search" id="bZoneFind" placeholder="过滤域名" aria-label="过滤域名"><select id="bZonePer" aria-label="每页条数"><option value="10">10/页</option><option value="20" selected>20/页</option><option value="50">50/页</option><option value="100">100/页</option></select></div>
+<div class="pager"><span class="small" id="bZoneInfo">–</span><span class="spacer" style="flex:1"></span>
+<button class="btn" id="bZonePrev">上一页</button>
+<button class="btn" id="bZoneNext">下一页</button></div></div>
+</div>
+<div class="ctxbar">
+<select id="bAccount" aria-label="账号"></select>
+<input id="bZone" list="zoneList" placeholder="域名 zone，如 example.com" aria-label="域名">
+<datalist id="zoneList"></datalist>
+<select id="bStatus" aria-label="zone 状态"><option value="all">全部状态</option><option value="active">仅 active</option></select>
+<button class="btn" id="bZonesCsv"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg>域名 CSV</button>
+<button class="btn primary" id="bQuery"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.34-4.34"></path><circle cx="11" cy="11" r="8"></circle></svg>查询</button></div>
+<div class="small" id="bErr" role="alert" hidden></div>
+<div class="ctxbar">
+<input type="search" id="bFind" placeholder="全账号查找域名（对应 -f），回车搜索" aria-label="全账号查找">
+<button class="btn" id="bFindBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.34-4.34"></path><circle cx="11" cy="11" r="8"></circle></svg>全账号查找</button>
+<span class="small" id="bFindRes"></span>
+</div>
+<div class="chips" id="bChips" aria-live="polite"></div>
+<div id="recWrap">
+<div class="toolbar" role="toolbar" aria-label="记录工具栏">
+<div class="tsearch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 21-4.34-4.34"></path><circle cx="11" cy="11" r="8"></circle></svg><input type="search" id="bSearch" placeholder="搜索名称/内容" aria-label="搜索记录"></div>
+<div class="popwrap"><button class="btn" id="bFilters" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M7 12h10m-7 6h4"/></svg>筛选<span class="small" id="bFilterCount"></span></button>
+<div class="popover" id="pFilters" role="dialog" aria-label="筛选" hidden>
+<div class="field"><label for="fType">类型</label><select id="fType"><option value="ALL">全部类型</option><option>A</option><option>AAAA</option><option>CNAME</option><option>TXT</option><option>MX</option></select></div>
+<div class="field"><label for="fProxy">代理状态</label><select id="fProxy"><option value="all">全部</option><option value="proxied">已代理</option><option value="dnsonly">仅 DNS</option></select></div>
+<footer><button class="btn" id="fClear">清除</button><button class="btn primary" id="fApply">应用</button></footer>
+</div></div>
+<div class="popwrap"><button class="btn" id="bDisplay" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h7"/></svg>显示</button>
+<div class="popover" id="pDisplay" role="dialog" aria-label="显示选项" hidden>
+<div class="field"><label for="dComment"><input type="checkbox" id="dComment" checked> 备注列</label></div>
+<div class="field"><label for="dDetails"><input type="checkbox" id="dDetails" checked> 详情列</label></div>
+<div class="field"><label for="dCompact"><input type="checkbox" id="dCompact"> 紧凑密度</label></div>
+<div class="field"><button class="btn" id="dResetW">重置列宽</button></div>
+</div></div>
+<button class="btn" id="bImport"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4m0 0 4 4m-4-4-4 4M4 20h16"/></svg>导入</button>
+<button class="btn" id="bExport"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12m0 0 4-4m-4 4-4-4M4 20h16"/></svg>导出</button>
+<button class="btn primary" id="bCreate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14m-7-7h14"/></svg>新增记录</button>
+</div>
+<div class="quota" id="bQuota" role="status">先选账号填域名后查询</div>
+<div class="table-card" id="bTableCard">
+<div class="table-wrap" id="bTableWrap" tabindex="0" role="region" aria-label="DNS 记录表">
+<table id="bTable"><caption class="sr">DNS 记录</caption><colgroup><col style="width:36px"><col data-ck="name"><col style="width:90px" data-ck="type"><col data-ck="content"><col style="width:110px" data-ck="proxy"><col style="width:70px" data-ck="ttl"><col style="width:140px" data-col="comment" data-ck="comment"><col style="width:110px" data-col="details" data-ck="details"><col style="width:76px"><col data-ck="fill"></colgroup>
+<thead><tr><th class="cb" scope="col"><input type="checkbox" id="bSelAll" aria-label="全选本页"></th><th id="thName" scope="col" aria-sort="none"><button data-sort="name">名称 <span class="mk">▲▼</span></button></th><th id="thType" scope="col" aria-sort="none"><button data-sort="type">类型 <span class="mk">▲▼</span></button></th><th id="thContent" scope="col" aria-sort="none"><button data-sort="content">内容 <span class="mk">▲▼</span></button></th><th scope="col">代理状态</th><th scope="col">TTL</th><th data-col="comment" scope="col">备注</th><th data-col="details" scope="col">详情</th><th class="op" scope="col">操作</th></tr></thead>
+<tbody id="bBody"><tr><td colspan="9" class="muted">先选账号填域名后查询</td></tr></tbody>
+</table>
+</div>
+<div class="pager"><span class="small" id="bInfo" aria-live="polite">–</span><span class="spacer" style="flex:1"></span>
+<select id="bPer" aria-label="每页条数"><option value="20">20/页</option><option value="50" selected>50/页</option><option value="100">100/页</option><option value="200">200/页</option></select>
+<button class="btn" id="bPrev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>上一页</button>
+<button class="btn" id="bNext">下一页<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button></div>
+</div>
+<ul class="cards-list" id="bCards" hidden></ul>
+<div class="bulkbar" id="bBulk" role="toolbar" aria-label="批量操作" hidden>
+<span id="bBulkCount" aria-live="polite"></span>
+<button class="btn" id="bBulkAll">选择全部匹配</button>
+<button class="btn" id="bBulkPxOn">设为已代理</button>
+<button class="btn" id="bBulkPxOff">设为仅 DNS</button>
+<button class="btn danger" id="bBulkDel">删除</button>
+<button class="btn" id="bBulkClear">清除</button>
+</div>
+</div>
+<div class="modal" id="mImport" role="dialog" aria-modal="true" aria-label="导入记录">
+<div class="backdrop" data-close-imp></div><div class="box">
+<header>导入记录（JSON，先预检后写入）</header>
+<div class="body">
+<div class="field"><label for="iFile">JSON 文件（数组，每项含 type/name/content，可含 ttl/proxied/comment/priority）</label><input id="iFile" type="file" accept=".json,application/json"></div>
+<p class="small">上限 200 条、1MB；文件内重复或任一非法即整批拒绝、零写入。</p>
+<div class="err" id="iSum" role="alert"></div><div class="small" id="iMsg" role="status"></div>
+</div>
+<footer><button class="btn" data-close-imp>关闭</button><button class="btn" id="iCheck">预检</button><button class="btn primary" id="iGo" disabled>确认导入</button></footer>
+</div></div>
+<p class="small">编辑器中可填入操作页旧内容与类型。代理开时 TTL 锁定为自动。</p>
+</section>
+<section class="page" id="page-operate">
+<h2>批量操作</h2>
+<div class="form">
+<div class="field"><label for="oMode">模式</label>
+<select id="oMode">
+<option value="update">批量更新 IP/CNAME</option>
+<option value="delete_wildcard">删除通配符 *</option>
+<option value="delete_ip">删除指向指定 IP</option>
+<option value="delete_zone">删域名（清空或彻底删除）</option>
+<option value="add">添加域名/记录</option>
+<option value="set_attrs">设代理/TTL（内容不变）</option>
+<option value="export">导出备份</option>
+<option value="provision">配置域名（DNS+SSL/安全）</option>
+</select>
+<div class="hint">更新与删除互斥；删除类必须限定域名范围；dry-run 默认开。</div></div>
+<div class="field"><label>账号（复选保留）</label><div id="oAccounts" class="chips"></div></div>
+<div class="grid2">
+<div class="field"><label for="oDomains">指定域名（每行一个）</label><textarea id="oDomains" placeholder="example.com"></textarea></div>
+<div class="field"><label for="oWhitelist">白名单（每行一个，可选）</label><textarea id="oWhitelist" placeholder="与指定域名取交集"></textarea>
+<div class="hint">或上传白名单文件（每行一个域名/URL，2MB 内），上传后自动填入并记入提交。</div>
+<p><input id="oWlFile" type="file" accept=".txt,.csv"> <button class="btn" id="oWlUp"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m0 0 4 4m-4-4-4 4M4 20h16"/></svg>上传白名单</button><input id="oWlPath" type="hidden"></p></div>
+</div>
+<div id="fUpdate">
+<div class="grid2">
+<div class="field"><label for="oNew">新内容 new_content</label><input id="oNew" placeholder="1.2.3.4 或 2001:db8::1"><div class="hint">auto 按 IP 推断 A/AAAA；CNAME 需选类型。</div></div>
+<div class="field"><label for="oOld">旧内容过滤（可选）</label><input id="oOld" placeholder="只改内容一致的记录"></div>
+</div>
+<div class="field"><label for="oRtype">记录类型</label><select id="oRtype"><option>auto</option><option>A</option><option>AAAA</option><option>CNAME</option><option>ALL</option></select></div>
+</div>
+<div id="fDeleteIp" hidden>
+<div class="field"><label for="oDelIp">delete_ip</label><input id="oDelIp" placeholder="1.2.3.4"></div>
+</div>
+<div id="fDeleteZone" class="danger-zone" hidden>
+<div class="small"><strong>危险区</strong>：删域名不可恢复。先导出备份，再填快照目录并输入 DELETE 确认。</div>
+<div class="grid2">
+<div class="field"><label for="oDelMode">删域模式</label><select id="oDelMode"><option value="dns">dns 仅清空解析</option><option value="full">full 彻底删除域名</option></select></div>
+<div class="field"><label for="oBackup">快照目录 backup_dir（必填）</label><input id="oBackup"></div>
+</div>
+<div class="field"><label for="oConfirm">二次确认（输入 DELETE）</label><input id="oConfirm" placeholder="DELETE"></div>
+</div>
+<div id="fAdd" hidden>
+<div class="field"><label for="oAddDomain">新域名（可选，与指定域名二选一）</label><input id="oAddDomain" placeholder="example.com"></div>
+<div class="field"><label for="oAddRecords">记录（每行 name:type:content）</label><textarea id="oAddRecords" placeholder="www:A:1.2.3.4"></textarea><div class="hint">支持 auto 自动判断；同名同类型幂等覆盖。</div></div>
+<div class="grid2">
+<div class="field"><label for="oAddProxied">代理</label><select id="oAddProxied"><option value="on">on 开橙云（默认）</option><option value="off">off 关橙云</option></select></div>
+<div class="field"><label for="oAddTtl">TTL（1=自动）</label><input id="oAddTtl" type="number" min="1" value="1"></div>
+</div>
+<div class="field"><label for="oAllowMulti"><input type="checkbox" id="oAllowMulti"> 允许同名 A/AAAA 多值（默认关闭：覆盖去重）</label></div>
+</div>
+<div id="fWildcard" hidden>
+<p class="small">删除名称以 <code>*</code> 开头的记录（如 <code>*.example.com</code>）。记录类型在上方“记录类型”中选择（auto 等同 ALL）；建议先 dry-run 预览，且必须限定域名范围。</p>
+</div>
+<div id="fAttrs" hidden>
+<div class="grid2">
+<div class="field"><label for="oProxied">代理</label><select id="oProxied"><option value="">不改</option><option value="on">on 开橙云</option><option value="off">off 关橙云</option></select></div>
+<div class="field"><label for="oTtl">TTL</label><input id="oTtl" type="number" min="1" placeholder="1=自动"></div>
+</div>
+</div>
+<div id="fExport" hidden>
+<div class="field"><label for="oExportDir">导出目录</label><input id="oExportDir"></div>
+<div class="field"><label for="oExportFmt">格式</label><select id="oExportFmt"><option value="json">json</option><option value="bind">bind</option></select></div>
+</div>
+<div id="fProvision" hidden>
+<div class="grid2">
+<div class="field"><label for="oServerIp">默认服务器 IP（无记录配置时生成 @ 与 www）</label><input id="oServerIp" placeholder="1.2.3.4"></div>
+<div class="field"><label for="oForward">邮箱转发目标</label><input id="oForward" placeholder="admin@example.com"></div>
+</div>
+<div class="grid2">
+<div class="field"><label for="oSsl">SSL 模式（空=不改）</label><select id="oSsl"><option value="">不改</option><option>flexible</option><option>full</option><option>strict</option><option>off</option></select></div>
+<div class="field"><label>步骤开关</label><div class="chips" id="oProvToggles">
+<button class="chip" data-k="dns" aria-pressed="true">DNS</button>
+<button class="chip" data-k="activation" aria-pressed="true">等激活</button>
+<button class="chip" data-k="email" aria-pressed="true">邮箱</button>
+<button class="chip" data-k="ssl" aria-pressed="true">SSL</button>
+<button class="chip" data-k="security" aria-pressed="true">安全</button>
+<button class="chip" data-k="optimize" aria-pressed="true">加速</button>
+</div></div>
+<div class="grid2">
+<div class="field"><label for="oCreateZone"><input type="checkbox" id="oCreateZone"> 不存在时创建 zone</label></div>
+<div class="field"><label for="oActTimeout">激活等待（秒）</label><input id="oActTimeout" type="number" min="1" placeholder="300"></div>
+</div>
+<div class="field"><label for="oActInterval">激活轮询间隔（秒）</label><input id="oActInterval" type="number" min="1" placeholder="5"></div>
+</div>
+<p class="small">provision 复用引擎完整流程：DNS→等激活→邮箱→SSL→安全/加速；邮箱要求 zone 已 active，否则记延期待重跑。</p>
+</div>
+<div class="field"><label for="oResume">重跑清单（可选，2MB 内 CSV）</label><input id="oResumeFile" type="file" accept=".csv"><input id="oResumePath" type="hidden"><div class="hint" id="oResumeHint">上传后服务端落盘，提交时按路径重跑；或预览后一键填入域名。</div>
+<p><button class="btn" id="oResumePrev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M12 7v5l4 2"></path></svg>预览清单</button>
+<button class="btn" id="oResumeUp"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m0 0 4 4m-4-4-4 4M4 20h16"/></svg>上传重跑</button>
+<button class="btn" id="oResumeFill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14m-7-7h14"/></svg>填入域名</button></p></div>
+<details class="adv"><summary>高级：速度与限流（默认 eco 最稳）</summary>
+<div class="grid2">
+<div class="field"><label for="oSpeed">速度档位</label><select id="oSpeed"><option>eco</option><option>balanced</option><option>fast</option><option>turbo</option></select></div>
+<div class="field"><label for="oScope">限速范围</label><select id="oScope"><option value="account">account 每账号独立</option><option value="global">global 全进程共享</option></select></div>
+</div>
+<div class="grid2">
+<div class="field"><label for="oWorkers">单账号并发 -W（空=按档位）</label><input id="oWorkers" type="number" min="1" max="20" placeholder="eco:2"></div>
+<div class="field"><label for="oAW">多账号并发 -A（空=按档位）</label><input id="oAW" type="number" min="1" max="20" placeholder="eco:3"></div>
+</div>
+<div class="grid2">
+<div class="field"><label for="oInterval">请求间隔 -i 秒（空=按档位）</label><input id="oInterval" type="number" min="0" step="0.1" placeholder="eco:0.5"></div>
+<div class="field"><label for="oRetries">最大重试 -R（空=5）</label><input id="oRetries" type="number" min="0" placeholder="5"></div>
+</div>
+<div class="grid2">
+<div class="field"><label for="oRetryBase">退避初始 -B 秒（空=2.0）</label><input id="oRetryBase" type="number" min="0.1" step="0.1" placeholder="2.0"></div>
+<div class="field"><label for="oRetryMax">单次等待上限 -M 秒（空=300）</label><input id="oRetryMax" type="number" min="1" placeholder="300"></div>
+</div>
+<p class="small">fast/turbo 易触 429，请配合失败清单重跑。</p>
+</details>
+<div class="field"><label><input type="checkbox" id="oDry" checked> dry-run 预览（先开后关）</label></div>
+<div class="field"><label for="oNoSub"><input type="checkbox" id="oNoSub"> 白名单仅根记录（不含子域）</label></div>
+<p><button class="btn primary" id="oSubmit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14m-7-7 7 7-7 7"/></svg>提交任务</button>
+<span class="small" id="oMsg" role="status"></span></p>
+<div class="err op-sum" id="oSum" role="alert"></div>
+</div>
+</section>
+<section class="page" id="page-jobs">
+<h2>任务</h2>
+<div class="ctxbar"><button class="btn" id="jRefresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7M21 3v6h-6"/></svg>刷新</button>
+<button class="btn" id="jHistory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>历史</button>
+<button class="btn" id="jAudit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>审计</button></div>
+<div id="jList"></div>
+<div class="job-head" id="jHead" hidden>
+<strong id="jTitle">–</strong>
+<div class="progress" aria-label="进度"><i id="jBar"></i></div>
+<span class="small" id="jPct">–</span>
+<button class="btn danger" id="jCancel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6m0-6-6 6"/></svg>取消</button>
+<button class="btn" id="jCsv"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg>失败清单</button>
+<button class="btn" id="jRerun"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7M21 3v6h-6"/></svg>一键重跑失败域</button>
+<button class="btn" id="jExports"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>导出文件</button>
+</div>
+<div class="small" id="jExportsList"></div>
+<div class="verdict" id="jVerdict" hidden></div>
+<div class="table-card"><div class="table-wrap" tabindex="0" role="region" aria-label="任务结果">
+<table><thead><tr><th>账号</th><th>域名</th><th>名称</th><th>类型</th><th>状态</th><th>说明</th></tr></thead>
+<tbody id="jBody"><tr><td colspan="6" class="muted">未选任务</td></tr></tbody></table>
+</div><div class="pager"><span class="small" id="jInfo">–</span><span class="spacer" style="flex:1"></span>
+<button class="btn" id="jPrev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>上一页</button>
+<button class="btn" id="jNext">下一页<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></button></div></div>
+<h3>日志</h3>
+<div class="logbox" id="jLogs" tabindex="0">–</div>
+</section>
+</main>
+</div>
+</div>
+<div class="modal" id="mList" role="dialog" aria-modal="true" aria-label="明细">
+<div class="backdrop" data-close></div><div class="box">
+<header id="mTitle">明细</header><div class="body"><div class="logbox" id="mBody" style="height:300px">–</div></div>
+<footer><button class="btn" data-close><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>关闭</button></footer>
+</div></div>
+<div class="cmdk" id="cmdk"><div class="panel" role="dialog" aria-modal="false" aria-label="命令面板"><input id="cmdkInput" role="combobox" aria-expanded="true" aria-controls="cmdkList" aria-autocomplete="list" placeholder="输入域名或账号，回车跳转浏览" aria-label="命令面板">
+<ul id="cmdkList" role="listbox" aria-label="命令结果"></ul><div class="cmdk-foot" aria-hidden="true"><span>↑↓ 选择</span><span>回车 打开</span><span>Esc 关闭</span></div></div></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<script>
+"use strict";
+const $=s=>document.querySelector(s),$$=s=>Array.from(document.querySelectorAll(s));
+const store={token:localStorage.getItem("cf_token")||"",theme:localStorage.getItem("cf_theme")||"light",pinned:localStorage.getItem("cf_pinned")||"0"};
+let META=null,ACCOUNTS=[],B={page:1,per_page:50,total:0,sort:""},CUR={account:"",zone:""},JOB=null,JTIMER=null,LOFF=0,JPG=1,RESUME_ZONES=[];
+function toast(m,kind){const d=document.createElement("div");d.className="toast";d.textContent=m;$("#toasts").appendChild(d);setTimeout(()=>d.remove(),kind==="error"?8000:5000)}
+async function api(p,o){o=o||{};o.headers=o.headers||{};if(store.token)o.headers["X-Auth-Token"]=store.token;
+if(o.json){o.headers["Content-Type"]="application/json";o.body=JSON.stringify(o.json)}
+const ctl=("AbortController" in window)?new AbortController():null;let timer=0;
+try{
+if(ctl){o.signal=ctl.signal;timer=setTimeout(()=>ctl.abort(),30000)}
+const r=await fetch(p,{method:o.method||"GET",headers:o.headers,body:o.body,signal:o.signal});
+if(timer)clearTimeout(timer);
+if(r.status===401){const t=prompt("需要口令（X-Auth-Token）：");if(t!==null){store.token=t;localStorage.setItem("cf_token",t);return api(p,o)}throw new Error("未授权")}
+if(!r.ok){let m=r.status;try{const j=await r.json();m=j.detail||m}catch(e){}throw new Error(typeof m==="string"?m:JSON.stringify(m))}
+const ct=r.headers.get("content-type")||"";return ct.includes("json")?r.json():r.text()}
+catch(e){if(timer)clearTimeout(timer);if(e&&e.name==="AbortError")throw new Error("请求超时（30 秒），请重试");throw e}}
+function setTheme(t){store.theme=t;localStorage.setItem("cf_theme",t);document.documentElement.dataset.theme=(t==="system"?(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"):t);syncThemeBtn()}
+function themeLabel(){return store.theme==="light"?"浅色":store.theme==="dark"?"深色":"跟随系统"}
+function syncThemeBtn(){const b=$("#btnTheme");if(!b)return;b.setAttribute("aria-label","主题："+themeLabel()+"（点击切换）");b.title="主题："+themeLabel()}
+function cycleTheme(){setTheme(store.theme==="light"?"dark":store.theme==="dark"?"system":"light");toast("主题："+themeLabel())}
+function route(){const h=(location.hash||"#/overview").replace("#/","");$$(".page").forEach(p=>p.classList.remove("active"));const pg=$("#page-"+h)||$("#page-overview");pg.classList.add("active");$$(".nav a").forEach(a=>a.getAttribute("data-route")===h?a.setAttribute("aria-current","page"):a.removeAttribute("aria-current"));document.body.dataset.drawer="0"}
+function railMode(){const w=innerWidth;document.body.dataset.rail=(w>=768&&(w<1024||store.pinned==="0"))?"1":"0";syncRailBtn()}
+function setPinned(v){store.pinned=v;localStorage.setItem("cf_pinned",v);railMode()}
+const ICO_CLOSE='<rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M9 3v18"></path><path d="m16 15-3-3 3-3"></path>';const ICO_OPEN='<rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M9 3v18"></path><path d="m14 9 3 3-3 3"></path>';
+function syncRailBtn(){const b=$("#btnRail");if(!b)return;const ic=b.querySelector("svg");if(ic)ic.innerHTML=document.body.dataset.rail==="1"?ICO_OPEN:ICO_CLOSE;const rail=document.body.dataset.rail==="1";const l=b.querySelector(".lbl");if(l)l.innerHTML=(rail?"\u5c55\u5f00":"\u6536\u8d77")+" <kbd>[</kbd>";b.setAttribute("aria-label",rail?"\u5c55\u5f00\u4fa7\u8fb9\u680f":"\u6536\u8d77\u4fa7\u8fb9\u680f")}
+let suppressed=false,forced=false;
+function addPeek(){const sb=$("#sidebar");if(!sb||document.body.dataset.rail!=="1")return;sb.classList.add("peek");document.body.classList.add("peeking")}
+function rmPeek(){const sb=$("#sidebar");if(sb)sb.classList.remove("peek");document.body.classList.remove("peeking")}
+async function init(){setTheme(store.theme);railMode();route();addEventListener("resize",railMode);addEventListener("hashchange",route);
+$$("[data-go]").forEach(b=>b.onclick=()=>location.hash=b.dataset.go);
+$("#btnTheme").onclick=cycleTheme;syncThemeBtn();
+$("#btnMenu").onclick=()=>{if(innerWidth<768)document.body.dataset.drawer=document.body.dataset.drawer==="1"?"0":"1";else{rmPeek();setPinned(store.pinned==="1"?"0":"1")}};
+let peT=0,plT=0;const sb=$("#sidebar");sb.addEventListener("mouseenter",()=>{if(suppressed)return;clearTimeout(plT);peT=setTimeout(addPeek,120)});
+sb.addEventListener("mouseleave",()=>{suppressed=false;forced=false;clearTimeout(peT);plT=setTimeout(rmPeek,220)});
+sb.addEventListener("focusin",()=>{if(!suppressed)addPeek()});sb.addEventListener("focusout",()=>{if(!forced)rmPeek()});
+const btnRail=$("#btnRail");if(btnRail)btnRail.onclick=()=>{if(innerWidth<768){document.body.dataset.drawer="0";return}rmPeek();forced=false;const toRail=document.body.dataset.rail!=="1";setPinned(toRail?"0":"1");suppressed=toRail};
+sb.addEventListener("click",e=>{if(document.body.dataset.rail!=="1"||sb.classList.contains("peek")||innerWidth<768)return;if(matchMedia("(hover: none)").matches){forced=true;addPeek()}});
+document.addEventListener("click",e=>{if(forced&&sb&&!sb.contains(e.target)){forced=false;rmPeek()}});
+document.addEventListener("keydown",e=>{if(e.key==="["&&!/input|textarea|select/i.test(document.activeElement.tagName)){rmPeek();const toRail=document.body.dataset.rail!=="1";setPinned(toRail?"0":"1");suppressed=toRail}
+if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="k"){e.preventDefault();openCmdk()}});
+$$("[data-close]").forEach(b=>b.onclick=()=>b.closest(".modal").classList.remove("open"));
+boot();
+$("#bQuery").onclick=()=>{B.page=1;RS.sel.clear();RS.allIds=null;queryRecords()};$("#bZonesCsv").onclick=zonesCsv;
+$("#bAccount").onchange=()=>{reloadZones();const v=$("#bAccount").value;if(v)selectAccount(v)};$("#bStatus").onchange=()=>{reloadZones();Z.page=1;loadZoneTable()};$("#bCreate").onclick=()=>openNewCard();$("#bFindBtn").onclick=findDomain;
+$("#bFind").addEventListener("keydown",e=>{if(e.key==="Enter")findDomain()});
+$("#bPrev").onclick=()=>{if(B.page>1){B.page--;queryRecords()}};
+$("#bPer").onchange=e=>{B.per_page=Number(e.target.value)||50;B.page=1;queryRecords()};
+$("#bZonePrev").onclick=()=>{if(Z.page>1){Z.page--;loadZoneTable()}};
+$("#bAccPrev").onclick=()=>{if(AP.page>1){AP.page--;renderAccountTable()}};$("#bAccNext").onclick=()=>{AP.page++;renderAccountTable()};
+$("#bAccPer").onchange=e=>{AP.per_page=Number(e.target.value)||10;AP.page=1;renderAccountTable()};$("#bZoneNext").onclick=()=>{Z.page++;loadZoneTable()};
+$("#bZonePer").onchange=e=>{Z.per_page=Number(e.target.value)||20;Z.page=1;loadZoneTable()};
+let zdeb=null;$("#bZoneFind").addEventListener("input",()=>{clearTimeout(zdeb);zdeb=setTimeout(()=>{Z.page=1;loadZoneTable()},300)});
+$("#bNext").onclick=()=>{B.page++;queryRecords()};
+let deb=null;$("#bSearch").addEventListener("input",()=>{clearTimeout(deb);deb=setTimeout(()=>{B.page=1;RS.sel.clear();RS.allIds=null;queryRecords()},150)});
+
+
+bindSort();
+
+$("#oMode").onchange=()=>{syncMode();opSaveDraft()};syncMode();$("#oSubmit").onclick=submitJob;
+if(opRestoreDraft())toast("操作页草稿已恢复");window._opDeb=0;["#oDomains","#oWhitelist","#oNew","#oOld","#oDelIp","#oBackup","#oConfirm","#oAddDomain","#oAddRecords","#oAddTtl","#oTtl","#oExportDir","#oServerIp","#oForward","#oActTimeout","#oActInterval"].forEach(id=>{const el=$(id);if(el)el.addEventListener("input",()=>{clearTimeout(window._opDeb);window._opDeb=setTimeout(opSaveDraft,300)})});
+addEventListener("beforeunload",e=>{if(opDirty()&&!window._opBusy){e.preventDefault();e.returnValue=""}});
+$$("#oProvToggles .chip").forEach(c=>c.onclick=()=>c.setAttribute("aria-pressed",c.getAttribute("aria-pressed")==="true"?"false":"true"));
+$("#oResumePrev").onclick=previewResume;$("#oResumeUp").onclick=uploadResume;$("#oWlUp").onclick=uploadWhitelist;$("#oResumeFill").onclick=()=>{if(RESUME_ZONES.length){$("#oDomains").value=RESUME_ZONES.join("\n");toast("已填入 "+RESUME_ZONES.length+" 个域名")}else toast("先预览清单")};
+$("#jRefresh").onclick=listJobs;$("#jHistory").onclick=showHistory;$("#jAudit").onclick=showAudit;
+$("#jCancel").onclick=cancelJob;$("#jCsv").onclick=dlCsv;$("#jRerun").onclick=rerunFailed;$("#jExports").onclick=listExports;
+$("#jPrev").onclick=()=>{if(JPG>1){JPG--;pollJob()}};$("#jNext").onclick=()=>{JPG++;pollJob()};bindRecordsUI();
+$("#btnCmdk").onclick=openCmdk;const bns=$("#btnNavSearch");if(bns)bns.onclick=openCmdk;$("#cmdkInput").addEventListener("input",renderCmdk);
+$("#cmdkInput").addEventListener("keydown",e=>{if(e.key==="ArrowDown"){e.preventDefault();moveCmdk(1)}else if(e.key==="ArrowUp"){e.preventDefault();moveCmdk(-1)}else if(e.key==="Enter"){const it=CMDK[CMDK_ACT];if(it)pickCmdk(it.v)}else if(e.key==="Escape")closeCmdk()});
+$("#cmdk").addEventListener("click",e=>{if(e.target.id==="cmdk")closeCmdk()});
+listJobs();
+}
+async function boot(){
+$("#resSwitch").textContent="配置加载中…";
+const metaP=api("/api/v1/meta"),accP=api("/api/v1/accounts");
+try{META=await metaP;
+$("#resSwitch").textContent="配置："+(META.config_path||"未知");
+if(META.proxy&&META.proxy.count)$("#authState").textContent=`本机模式 · 代理${META.proxy.mode}x${META.proxy.count}`;
+$("#statCfg").textContent=META.config_path||"";$("#oBackup").value=META.dirs.backup_dir||"";$("#oExportDir").value=META.dirs.export_dir||"";
+}catch(e){$("#resSwitch").textContent="配置加载失败";$("#statCfg").textContent="meta 失败，刷新重试";toast("meta 加载失败："+e.message,"error")}
+try{const d=await accP;setAccounts(d.items||[])}catch(e){$("#statAccounts").textContent="失败";toast("账号加载失败："+e.message,"error");return}
+refreshStats();
+if("requestIdleCallback" in window)requestIdleCallback(preloadZones,{timeout:3000});else setTimeout(preloadZones,800);
+}
+function setAccounts(list){ACCOUNTS=list||[];
+$("#statAccounts").textContent=ACCOUNTS.length;
+const cards=$("#statCards");if(cards)cards.setAttribute("aria-busy","false");
+const sel=$("#bAccount");sel.innerHTML=ACCOUNTS.map(a=>`<option>${a.name}</option>`).join("");
+$("#oAccounts").innerHTML=ACCOUNTS.map(a=>`<button class="chip" data-a="${a.name}" aria-pressed="true">${a.name}</button>`).join("");
+$$("#oAccounts .chip").forEach(c=>c.onclick=()=>c.setAttribute("aria-pressed",c.getAttribute("aria-pressed")==="true"?"false":"true"));
+if(ACCOUNTS[0])CUR.account=ACCOUNTS[0].name;renderAccountTable();if(ACCOUNTS[0]){Z.page=1;loadZoneTable();}}
+async function refreshStats(){
+try{if(ACCOUNTS[0]){const z=await api("/api/v1/zones?account="+encodeURIComponent(ACCOUNTS[0].name)+"&per_page=1");$("#statZones").textContent=z.total||0}else{$("#statZones").textContent=0}}catch(e){$("#statZones").textContent="失败"}
+try{const j=await api("/api/v1/jobs");$("#statJobs").textContent=(j.jobs||[]).filter(x=>x.status==="running").length}catch(e){$("#statJobs").textContent="失败"}}
+async function preloadZones(){if(!ACCOUNTS[0])return;const acc=$("#bAccount").value||ACCOUNTS[0].name;const st=($("#bStatus")||{value:"all"}).value||"all";
+try{const z2=await api("/api/v1/zones?account="+encodeURIComponent(acc)+"&status="+encodeURIComponent(st)+"&per_page=100");$("#zoneList").innerHTML=(z2.items||[]).map(x=>`<option value="${x.name}">`).join("")}catch(e){}}
+function skelRows(n,cols){let h="";for(let i=0;i<n;i++){h+=`<tr aria-hidden="true">${"<td><span class=\"skel\" style=\"display:block\">&nbsp;</span></td>".repeat(cols)}</tr>`}return h}
+let BQ=0;
+function pill(t){const k=String(t||"").toLowerCase();const c=k==="a"?"pill-a":k==="aaaa"?"pill-aaaa":k==="cname"?"pill-cname":k==="mx"?"pill-mx":"pill-txt";return `<span class="pill ${c}">${t}</span>`}
+function proxyCell(r){return r.proxied?`<span class="proxy-ok"><i aria-hidden="true">●</i> 已代理</span>`:`<span class="proxy-off">○ 仅DNS</span>`}
+let Z={page:1,per_page:20,total:0};
+let ZQ=0;
+let AP={page:1,per_page:10};
+function zoneStatus(s){return s==="active"?`<span class="st-active">● active</span>`:s?`<span class="st-pending">○ ${s}</span>`:`<span class="muted">–</span>`}
+function renderAccountTable(){const tb=$("#bAccBody");if(!tb)return;
+if(!ACCOUNTS.length){tb.innerHTML=`<tr><td colspan="3" class="muted">暂无账号，检查配置</td></tr>`;$("#bAccInfo").textContent="共 0 个账号";return}
+const pages=Math.max(1,Math.ceil(ACCOUNTS.length/AP.per_page));if(AP.page>pages)AP.page=pages;
+const rows=ACCOUNTS.slice((AP.page-1)*AP.per_page,AP.page*AP.per_page);
+tb.innerHTML=rows.map(a=>{const n=a.name||"";const sel=n===CUR.account;
+return `<tr data-acc="${n}" aria-selected="${sel}"><td title="${n}">${n}</td><td title="${a.email||""}">${a.email||"不可用"}</td><td class="op"><button class="btn" data-pick="${n}">选择</button></td></tr>`}).join("");
+$("#bAccInfo").textContent=`共 ${ACCOUNTS.length} 个账号 · 第 ${AP.page}/${pages} 页 · 双击行选中`;
+tb.querySelectorAll("[data-pick]").forEach(b=>b.onclick=e=>{e.stopPropagation();selectAccount(b.dataset.pick)});
+tb.querySelectorAll("tr[data-acc]").forEach(tr=>{tr.ondblclick=()=>selectAccount(tr.dataset.acc);tr.onclick=e=>{if(e.target.closest("button"))return;selectAccount(tr.dataset.acc)}})}
+function selectAccount(n){if(!n)return;const changed=n!==CUR.account;CUR.account=n;
+const ix=ACCOUNTS.findIndex(a=>(a.name||"")===n);if(ix>=0)AP.page=Math.floor(ix/AP.per_page)+1;const sel=$("#bAccount");if(sel)sel.value=n;renderAccountTable();Z.page=1;loadZoneTable();if(changed)toast("已选账号 "+n)}
+async function loadZoneTable(){const tb=$("#bZoneBody");const acc=CUR.account||($("#bAccount")||{value:""}).value;
+if(!acc){tb.innerHTML=`<tr><td colspan="3" class="muted">先选账号</td></tr>`;return}
+tb.innerHTML=skelRows(5,3);const __zq=++ZQ;
+try{const q=new URLSearchParams({account:acc,status:(($("#bStatus")||{value:"all"}).value||"all"),page:Z.page,per_page:Z.per_page});
+const f=(($("#bZoneFind")||{value:""}).value||"").trim();if(f)q.set("filter",f);
+const d=await api("/api/v1/zones?"+q.toString());if(__zq!==ZQ)return;Z.total=d.total;Z.page=d.page;
+$("#bZoneInfo").textContent=`${acc} 共 ${d.total} 个域名 · 第 ${d.page} 页`;
+if(!(d.items||[]).length){const st=(($("#bStatus")||{value:"all"}).value||"all");const fk=(($("#bZoneFind")||{value:""}).value||"").trim();
+tb.innerHTML=`<tr><td colspan="3" class="muted">该账号下无匹配域名（状态 ${st}${fk?` · 过滤“${fk}”`:""}） <button class="btn" id="zClearFilter">清除过滤</button></td></tr>`;
+const zc=$("#zClearFilter");if(zc)zc.onclick=()=>{const zf=$("#bZoneFind");if(zf)zf.value="";const bs=$("#bStatus");if(bs)bs.value="all";Z.page=1;loadZoneTable()};return}
+tb.innerHTML=d.items.map(z=>`<tr data-zone="${z.name}"><td title="${z.name}">${z.name}</td><td>${zoneStatus(z.status)}</td><td class="op"><button class="btn" data-view="${z.name}">查看</button></td></tr>`).join("");
+tb.querySelectorAll("[data-view]").forEach(b=>b.onclick=e=>{e.stopPropagation();fillZoneAndQuery(b.dataset.view)});
+tb.querySelectorAll("tr[data-zone]").forEach(tr=>tr.onclick=e=>{if(e.target.closest("button"))return;fillZoneAndQuery(tr.dataset.zone)});
+}catch(e){if(__zq!==ZQ)return;tb.innerHTML=`<tr><td colspan="3" class="muted">域名加载失败：${String(e.message||e)}，点击账号重试</td></tr>`;$("#bZoneInfo").textContent="加载失败"}}
+function fillZoneAndQuery(z){$("#bZone").value=z||"";B.page=1;queryRecords()}
+
+function selAccounts(){return $$("#oAccounts .chip").filter(c=>c.getAttribute("aria-pressed")==="true").map(c=>c.dataset.a)}
+function lines(id){return $(id).value.split("\n").map(s=>s.trim()).filter(Boolean)}
+async function reloadZones(){const acc=$("#bAccount").value;if(!acc)return;const st=($("#bStatus")||{value:"all"}).value||"all";
+try{const z=await api("/api/v1/zones?account="+encodeURIComponent(acc)+"&status="+encodeURIComponent(st)+"&per_page=100");$("#zoneList").innerHTML=(z.items||[]).map(x=>`<option value="${x.name}">`).join("")}catch(e){}}
+async function zonesCsv(){const acc=$("#bAccount").value;if(!acc){toast("先选账号");return}
+const st=($("#bStatus")||{value:"all"}).value||"all";const r=await fetch(`/api/v1/zones.csv?account=${encodeURIComponent(acc)}&status=${encodeURIComponent(st)}`,{headers:store.token?{"X-Auth-Token":store.token}:{}});
+if(!r.ok){toast("下载失败","error");return}const b=await r.blob();const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=`zones_${acc}.csv`;a.click()}
+const CW={name:[140,520],type:[70,200],content:[160,720],proxy:[90,200],ttl:[60,140],comment:[100,300],details:[90,200]};
+const CW_DEF={type:90,proxy:110,ttl:70,comment:140,details:110};
+let CWS={};
+try{const _w=JSON.parse(localStorage.getItem("cf_rec_widths")||"null");if(_w&&typeof _w==="object")CWS=_w}catch(e){}
+function colKeyOf(col){return col.getAttribute("data-ck")||""}
+function colCurPx(key){if(CWS[key]!=null)return CWS[key];const col=document.querySelector(`#bTable col[data-ck="${key}"]`);return col?Math.round(col.getBoundingClientRect().width):0}
+function applyColWidths(){document.querySelectorAll("#bTable col[data-ck]").forEach(col=>{const k=colKeyOf(col);if(!(k in CW))return;if(CWS[k]!=null)col.style.setProperty("width",CWS[k]+"px");else if(CW_DEF[k]!=null)col.style.setProperty("width",CW_DEF[k]+"px");else col.style.removeProperty("width")});
+document.querySelectorAll("#bTable .rz-handle").forEach(h=>{const k=h.dataset.ck;if(k&&CWS[k]!=null)h.setAttribute("aria-valuenow",String(CWS[k]))})}
+function saveColWidths(){try{localStorage.setItem("cf_rec_widths",JSON.stringify(CWS))}catch(e){}}
+function bindColResize(){const tbl=document.querySelector("#bTable");if(!tbl)return;
+tbl.querySelectorAll(".rz-handle").forEach(h=>{const k=h.dataset.ck;const hideC=k==="comment"&&tbl.classList.contains("hide-c");const hideD=k==="details"&&tbl.classList.contains("hide-d");if(!(k in CW)||hideC||hideD)h.remove()});
+const ths=document.querySelectorAll("#bTable thead th");const cols=document.querySelectorAll("#bTable col");
+ths.forEach((th,i)=>{const col=cols[i];if(!col)return;const k=colKeyOf(col);if(!(k in CW))return;
+if(th.closest("table").classList.contains("hide-c")&&th.hasAttribute("data-col")&&th.getAttribute("data-col")==="comment")return;
+if(th.closest("table").classList.contains("hide-d")&&th.hasAttribute("data-col")&&th.getAttribute("data-col")==="details")return;
+if(th.querySelector(":scope > .rz-handle"))return;
+const h=document.createElement("div");h.className="rz-handle";h.dataset.ck=k;h.tabIndex=0;
+h.setAttribute("role","separator");h.setAttribute("aria-label","调整列宽："+th.innerText.replace(/▲▼|▲|▼/g,"").trim());
+h.setAttribute("aria-valuemin",String(CW[k][0]));h.setAttribute("aria-valuemax",String(CW[k][1]));h.setAttribute("aria-valuenow",String(colCurPx(k)));
+h.addEventListener("mousedown",e=>{if(e.button!==0)return;e.preventDefault();e.stopPropagation();startColDrag(e,k)});
+h.addEventListener("click",e=>e.stopPropagation());
+h.addEventListener("dblclick",e=>{e.stopPropagation();resetColWidth(k)});
+h.addEventListener("keydown",e=>{let d=0;if(e.key==="ArrowRight")d=e.shiftKey?32:8;else if(e.key==="ArrowLeft")d=e.shiftKey?-32:-8;else if(e.key==="Home"){e.preventDefault();resetColWidth(k);return}else return;e.preventDefault();stepColWidth(k,d)});
+th.appendChild(h)})}
+function setColPx(k,px,silent){const col=document.querySelector(`#bTable col[data-ck="${k}"]`);if(!col)return;const lim=CW[k];px=Math.max(lim[0],Math.min(lim[1],Math.round(px)));col.style.setProperty("width",px+"px");if(!silent){CWS[k]=px;saveColWidths()}document.querySelectorAll(`#bTable .rz-handle[data-ck="${k}"]`).forEach(h=>h.setAttribute("aria-valuenow",String(px)))}
+function stepColWidth(k,d){setColPx(k,colCurPx(k)+d)}
+function resetColWidth(k){const col=document.querySelector(`#bTable col[data-ck="${k}"]`);if(col){if(CW_DEF[k]!=null)col.style.setProperty("width",CW_DEF[k]+"px");else col.style.removeProperty("width")}delete CWS[k];saveColWidths();document.querySelectorAll(`#bTable .rz-handle[data-ck="${k}"]`).forEach(h=>h.setAttribute("aria-valuenow",String(colCurPx(k))))}
+function startColDrag(e,k){const x0=e.clientX,w0=colCurPx(k);document.body.classList.add("rz-drag");
+const mv=ev=>{const lim=CW[k];const w=Math.max(lim[0],Math.min(lim[1],Math.round(w0+ev.clientX-x0)));const col=document.querySelector(`#bTable col[data-ck="${k}"]`);if(col)col.style.setProperty("width",w+"px");document.querySelectorAll(`#bTable .rz-handle[data-ck="${k}"]`).forEach(h=>h.setAttribute("aria-valuenow",String(w)))};
+const up=ev=>{document.removeEventListener("mousemove",mv);document.removeEventListener("mouseup",up);document.body.classList.remove("rz-drag");const col=document.querySelector(`#bTable col[data-ck="${k}"]`);const w=col?Math.round(col.getBoundingClientRect().width):w0;const lim=CW[k];CWS[k]=Math.max(lim[0],Math.min(lim[1],w));saveColWidths();document.querySelectorAll(`#bTable .rz-handle[data-ck="${k}"]`).forEach(h=>h.setAttribute("aria-valuenow",String(CWS[k])))};
+document.addEventListener("mousemove",mv);document.addEventListener("mouseup",up)}
+
+async function queryRecords(){const acc=$("#bAccount").value||CUR.account;const zone=$("#bZone").value.trim();const err=$("#bErr");if(err){err.hidden=true;err.textContent=""}
+if(!acc||!zone){toast("先选账号并填写域名");return}
+$("#bBody").innerHTML=skelRows(6,9);const __bq=++BQ;
+try{CUR={account:acc,zone};const q=new URLSearchParams({account:acc,zone,type:RF.type,search:$("#bSearch").value.trim(),page:B.page,per_page:B.per_page});
+if(B.sort)q.set("sort",B.sort);if(RF.proxied!=="all")q.set("proxied",RF.proxied);
+const d=await api("/api/v1/records?"+q.toString());if(__bq!==BQ)return;B.total=d.total;B.page=d.page;
+RS.items=d.items||[];RS.lastIdx=-1;renderRecords();renderChips();
+}catch(e){if(__bq!==BQ)return;const tb=$("#bBody");tb.innerHTML=`<tr><td colspan="9" class="muted">查询失败：${esc(String(e.message||e))} <button class="btn" id="bRetry">重试</button></td></tr>`;const rt=$("#bRetry");if(rt)rt.onclick=()=>queryRecords();$("#bQuota").textContent="查询失败";if(err){err.hidden=false;err.textContent=String(e.message||e)}else toast(String(e.message||e),"error")}}
+const RS={items:[],sel:new Set(),allIds:null,lastIdx:-1,flash:null,pendSwitch:false};
+const RF={type:"ALL",proxied:"all"};
+const RD={comment:true,details:true,compact:false};
+try{const _dd=JSON.parse(localStorage.getItem("cf_rec_display")||"null");if(_dd&&typeof _dd==="object")Object.assign(RD,_dd)}catch(e){}
+const TTL_OPTS=[["1","自动"],["60","60 秒"],["120","120 秒"],["300","5 分钟"],["600","10 分钟"],["3600","1 小时"],["14400","4 小时"],["86400","1 天"]];
+const E_LAB={A:"IPv4 地址 *",AAAA:"IPv6 地址 *",CNAME:"目标域名 *",TXT:"文本内容 *",MX:"邮件服务器 *"};
+const SORT_FIELDS=["name","type","content"];
+function esc(x){return String(x==null?"":x).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")}
+function isNarrow(){var w=document.getElementById("recWrap");if(w&&w.clientWidth)return w.clientWidth<640;return matchMedia("(max-width: 639px)").matches}
+function ttlText(t){return Number(t)===1?"自动":String(t)}
+function shortName(full,zone){const f=String(full==null?"":full),z=String(zone==null?"":zone);if(!z)return f;if(f.toLowerCase()===z.toLowerCase())return f;const suf="."+z.toLowerCase();if(f.toLowerCase().endsWith(suf))return f.slice(0,f.length-suf.length);return f}
+function edName(raw,zone){const f=String(raw==null?"":raw),z=String(zone==null?"":zone);if(z&&f.toLowerCase()===z.toLowerCase())return "@";return shortName(f,z)}
+function warnReason(r){return (r.type==="A"||r.type==="AAAA")&&!r.proxied?"仅 DNS 解析：源站 IP 直接暴露；开启代理可隐藏":""}
+const WARN_SVG='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>';
+function warnCell(r){const w=warnReason(r);if(!w)return "";return `<span class="warn-ic" role="img" aria-label="${esc(w)}" title="${esc(w)}">${WARN_SVG}</span>`}
+function bindSort(){$$("#bTable [data-sort]").forEach(b=>b.onclick=()=>{const f=b.dataset.sort;B.sort=B.sort===f?"-"+f:B.sort==="-"+f?"":f;syncSort();B.page=1;queryRecords()});syncSort()}
+function syncSort(){SORT_FIELDS.forEach(f=>{const th=$("#th"+f[0].toUpperCase()+f.slice(1));if(!th)return;const mk=th.querySelector(".mk");const st=B.sort===f?"ascending":B.sort==="-"+f?"descending":"none";th.setAttribute("aria-sort",st);if(mk)mk.textContent=st==="ascending"?"▲":st==="descending"?"▼":"▲▼"})}
+function applyDisplay(){const t=$("#bTable");if(!t)return;t.classList.toggle("hide-c",!RD.comment);t.classList.toggle("hide-d",!RD.details);t.classList.toggle("compact",!!RD.compact)}
+function renderRecords(){syncSort();applyDisplay();
+$("#bQuota").innerHTML=`共 <strong>${B.total}</strong> 条记录 · ${esc(CUR.account)} / ${esc(CUR.zone)}`;
+const narrow=isNarrow();const wrap=$("#bTableCard .table-wrap"),cards=$("#bCards");
+if(narrow){wrap.hidden=true;cards.hidden=false;renderCards()}else{wrap.hidden=false;cards.hidden=true;renderTable()}
+const s=B.total?(B.page-1)*B.per_page+1:0,e=Math.min(B.total,B.page*B.per_page);
+$("#bInfo").textContent=B.total?`第 ${s}–${e} 条，共 ${B.total} 条`:"共 0 条";
+updateBulk();applyColWidths();bindColResize();}
+function rowHtml(r,i){const sel=RS.sel.has(r.id);const fl=RS.flash&&((RS.flash.id&&RS.flash.id===r.id)||(RS.flash.key&&RS.flash.key===r.name+"|"+r.type+"|"+r.content));
+return `<tr data-id="${esc(r.id)}" data-idx="${i}"${fl?' class="flash"':""}><td class="cb"><input type="checkbox" data-sel aria-label="选择记录 ${esc(shortName(r.name,CUR.zone))}"${sel?" checked":""}></td><td class="nm" title="${esc(r.name)}">${warnCell(r)}${esc(shortName(r.name,CUR.zone))}</td><td>${pill(r.type)}</td><td class="mono" title="${esc(r.content)}">${esc(r.content)}</td><td>${proxyCell(r)}</td><td>${ttlText(r.ttl)}</td><td data-col="comment" title="${esc(r.comment||"")}">${esc(r.comment||"—")}</td><td data-col="details">${r.type==="MX"&&r.priority!=null?`<span class="det">Priority ${r.priority}</span>`:"—"}</td><td class="op"><button class="btn" data-edit="${esc(r.id)}" aria-expanded="false" aria-label="编辑 ${esc(r.type)} 记录 ${esc(shortName(r.name,CUR.zone))}">编辑</button></td></tr>`}
+function renderTable(){const tb=$("#bBody");
+if(!RS.items.length){const ft=RF.type!=="ALL"?"类型 "+RF.type:"",px=RF.proxied!=="all"?(RF.proxied==="proxied"?"已代理":"仅 DNS"):"",kw=$("#bSearch").value.trim();
+const hasF=ft||px||kw;
+tb.innerHTML=hasF?`<tr><td colspan="9" class="muted">无匹配记录（${[ft,px,kw?`关键字“${esc(kw)}”`:""].filter(Boolean).join(" · ")}） <button class="btn" id="bClearFilter">清除过滤</button></td></tr>`:`<tr><td colspan="9" class="muted">暂无记录 <button class="btn" id="bNewEmpty">新增记录</button></td></tr>`;
+const cf=$("#bClearFilter");if(cf)cf.onclick=()=>{RF.type="ALL";RF.proxied="all";$("#bSearch").value="";B.page=1;RS.sel.clear();RS.allIds=null;queryRecords()};
+const ne=$("#bNewEmpty");if(ne)ne.onclick=()=>openNewCard();syncHead();return}
+tb.innerHTML=RS.items.map(rowHtml).join("");
+bindRowHandlers(tb);syncHead();
+if(RS.flash){const fr=tb.querySelector("tr.flash");if(fr)fr.scrollIntoView({block:"nearest"});RS.flash=null}}
+function renderCards(){const box=$("#bCards");
+if(!RS.items.length){box.innerHTML=`<div class="card"><p class="muted">暂无记录或无匹配</p><p><button class="btn" id="bNewEmpty">新增记录</button></p></div>`;const ne=$("#bNewEmpty");if(ne)ne.onclick=()=>openNewCard();syncHead();return}
+box.innerHTML=RS.items.map((r,i)=>{const sel=RS.sel.has(r.id);const fl=RS.flash&&((RS.flash.id&&RS.flash.id===r.id)||(RS.flash.key&&RS.flash.key===r.name+"|"+r.type+"|"+r.content));
+return `<li class="rcard" data-id="${esc(r.id)}" data-idx="${i}"${fl?' style="outline:2px solid var(--primary)"':""}><div class="rh"><input type="checkbox" data-sel aria-label="选择记录 ${esc(shortName(r.name,CUR.zone))}"${sel?" checked":""}>${pill(r.type)}<span class="nm">${esc(shortName(r.name,CUR.zone))}</span>${warnCell(r)}<span style="flex:1"></span><button class="btn" data-edit="${esc(r.id)}" aria-expanded="false">编辑</button></div><div class="rm">${esc(r.content)}</div><div class="rk"><span>${proxyCell(r)}</span><span>TTL ${ttlText(r.ttl)}</span>${RD.comment&&r.comment?`<span>备注 ${esc(r.comment)}</span>`:""}${RD.details&&r.type==="MX"&&r.priority!=null?`<span class="det">Priority ${r.priority}</span>`:""}</div></li>`}).join("");
+bindRowHandlers(box);syncHead();RS.flash=null}
+function bindRowHandlers(scope){scope.querySelectorAll("[data-sel]").forEach(cb=>cb.onchange=()=>{const host=cb.closest("[data-idx]");const idx=host?+host.dataset.idx:-1;const on=cb.checked;
+if(cb.shiftKey&&RS.lastIdx>=0&&idx>=0){const a=Math.min(RS.lastIdx,idx),b2=Math.max(RS.lastIdx,idx);scope.querySelectorAll("[data-idx]").forEach(row=>{const k=+row.dataset.idx;if(k>=a&&k<=b2){const c=row.querySelector("[data-sel]");if(c)c.checked=on;const rec=RS.items[k];if(rec){if(on)RS.sel.add(rec.id);else RS.sel.delete(rec.id)}}})}else if(idx>=0){const rec=RS.items[idx];if(rec){if(on)RS.sel.add(rec.id);else RS.sel.delete(rec.id)}}
+RS.lastIdx=idx;syncHead();updateBulk()});
+scope.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>openEditor(b.dataset.edit))}
+function syncHead(){const scope=isNarrow()?$("#bCards"):$("#bBody");const boxes=[...(scope?scope.querySelectorAll("[data-sel]"):[])];const all=boxes.filter(c=>c.checked);
+const head=$("#bSelAll");if(head){head.checked=boxes.length>0&&all.length===boxes.length;head.indeterminate=all.length>0&&all.length<boxes.length}}
+function updateBulk(){const n=RS.sel.size;const bar=$("#bBulk");if(!bar)return;bar.hidden=n===0;const c=$("#bBulkCount");if(c)c.textContent=n?`已选 ${n} 条`:""}
+function renderChips(){const box=$("#bChips");if(!box)return;const out=[];const kw=$("#bSearch").value.trim();
+if(RF.type!=="ALL")out.push({k:"type",t:"类型 "+RF.type});if(RF.proxied!=="all")out.push({k:"proxied",t:RF.proxied==="proxied"?"已代理":"仅 DNS"});if(kw)out.push({k:"search",t:`关键字“${kw}”`});
+box.innerHTML=out.map(o=>`<button class="chip" data-chip="${o.k}" aria-pressed="true">${esc(o.t)} ×</button>`).join("");
+box.querySelectorAll("[data-chip]").forEach(c=>c.onclick=()=>{const k=c.dataset.chip;if(k==="type")RF.type="ALL";if(k==="proxied")RF.proxied="all";if(k==="search")$("#bSearch").value="";B.page=1;RS.sel.clear();RS.allIds=null;queryRecords()});
+const fc=$("#bFilterCount");if(fc)fc.textContent=(RF.type!=="ALL"||RF.proxied!=="all")?"（已筛）":""}
+async function fetchAllBodies(){const rows=[];let page=1;const per=200;
+while(rows.length<2000){const q=new URLSearchParams({account:CUR.account,zone:CUR.zone,type:RF.type,search:$("#bSearch").value.trim(),page,per_page:per});if(B.sort)q.set("sort",B.sort);if(RF.proxied!=="all")q.set("proxied",RF.proxied);
+const d=await api("/api/v1/records?"+q.toString());rows.push(...(d.items||[]));if((d.items||[]).length<per)break;page++}
+return {rows,truncated:rows.length>=2000}}
+function toastUndo(msg,snaps){const box=$("#toasts");const d=document.createElement("div");d.className="toast";
+const sp=document.createElement("span");sp.textContent=msg;d.appendChild(sp);
+const b=document.createElement("button");b.className="btn";b.style.marginLeft="8px";b.textContent="撤销";
+b.onclick=async()=>{d.remove();await restoreSnapshots(snaps)};d.appendChild(b);box.appendChild(d);setTimeout(()=>{if(d.isConnected)d.remove()},8000)}
+async function restoreSnapshots(snaps){try{const r=await api("/api/v1/records/bulk-restore",{method:"POST",json:{account:CUR.account,zone:CUR.zone,records:snaps.map(x=>({name:x.name,type:x.type,content:x.content,proxied:!!x.proxied,ttl:Number(x.ttl||1),comment:x.comment||"",priority:x.priority==null?null:Number(x.priority)}))}});
+if((r.failed||[]).length)toast(`恢复部分失败：${r.failed.length} 条（${(r.failed[0]||{}).error||""}）`,"error");else toast(`已恢复 ${r.restored.length} 条（新 ID）`);queryRecords()}catch(e){toast("恢复失败："+String(e.message||e),"error")}}
+async function undoBulkUpdate(prev){let ok=0;const bad=[];
+for(const p of prev){try{await api("/api/v1/records",{method:"PATCH",json:{account:CUR.account,zone:CUR.zone,id:p.id,proxied:!!p.proxied,ttl:Number(p.ttl||1)}});ok++}catch(e){bad.push(String(e.message||e))}}
+if(bad.length)toast(`撤销部分失败：${bad.length} 条`,"error");else toast(`已撤销代理/TTL 修改 ${ok} 条`);queryRecords()}
+async function doBulkDelete(ids){let r;try{r=await api("/api/v1/records/bulk-delete",{method:"POST",json:{account:CUR.account,zone:CUR.zone,ids}})}catch(e){toast("批量删除失败："+String(e.message||e),"error");return}
+ids.forEach(id=>RS.sel.delete(id));RS.allIds=null;queryRecords();
+const n=(r.deleted||[]).length,m=(r.failed||[]).length;
+if(n)toastUndo(`已删除 ${n} 条${m?`，${m} 条失败`:""}`,r.deleted||[]);
+if(m&&!n)toast(`删除失败：${(r.failed[0]||{}).error||""}`,"error")}
+let ED=null;
+function blankRec(){return {id:"",type:"A",name:"",content:"",proxied:false,ttl:1,comment:"",priority:null}}
+function edHtml(r){const isMX=r.type==="MX";
+return `<div class="rec-ed" id="recEd">
+<div class="grid-ed">
+<div class="field"><label for="eType">类型 *</label><select id="eType">${["A","AAAA","CNAME","TXT","MX"].map(t=>`<option${t===r.type?" selected":""}>${t}</option>`).join("")}</select></div>
+<div class="field"><label for="eName">名称 *</label><input id="eName" value="${esc(r.name)}" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="eNameHint eNameErr"><div class="small" id="eNameHint">@ 为根域名，如 www 为主机名</div><div class="err" id="eNameErr" role="alert"></div></div>
+<div class="field"><label for="eContent" id="eContentLabel">${E_LAB[r.type]||"内容 *"}</label><span id="eContentWrap">${r.type==="TXT"?`<textarea id="eContent" rows="2" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="eContentErr">${esc(r.content)}</textarea>`:`<input id="eContent" value="${esc(r.content)}" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="eContentErr">`}</span><div class="err" id="eContentErr" role="alert"></div></div>
+</div>
+<div class="grid-ed2">
+<div class="field"><label>代理状态</label><button class="switch" id="eProxy" role="switch"><span class="tk" aria-hidden="true"></span><span id="eProxyTx"></span></button><div class="small" id="eProxyWhy"></div></div>
+<div class="field"><label for="eTtl">TTL</label><select id="eTtl">${TTL_OPTS.map(o=>`<option value="${o[0]}"${String(r.ttl)===o[0]?" selected":""}>${o[1]}</option>`).join("")}</select><div class="small" id="eTtlWhy">被代理时锁定自动</div><div class="err" id="eTtlErr" role="alert"></div></div>
+</div>
+<div class="field" id="ePrioWrap"${isMX?"":" hidden"}><label for="ePrio">优先级 *</label><input id="ePrio" type="number" min="0" max="65535" value="${r.priority==null?"":r.priority}"><div class="err" id="ePrioErr" role="alert"></div></div>
+<div class="field"><label for="eComment">备注（可选）</label><input id="eComment" value="${esc(r.comment||"")}" maxlength="100" aria-describedby="eCommentErr"><div class="small"><span id="eCount">0</span>/100</div><div class="err" id="eCommentErr" role="alert"></div></div>
+<div class="err" id="eSum" role="alert"></div>
+<footer>${ED.id?'<button class="btn danger" id="eDel">删除</button>':""}<span class="sp"></span><button class="btn" id="eFill">填入操作页</button><button class="btn" id="eCancel">取消</button><button class="btn primary" id="eSave">保存</button></footer>
+</div>`}
+function edVals(){return {name:$("#eName").value.trim(),type:$("#eType").value,content:$("#eContent").value.trim(),ttl:Number($("#eTtl").value||0),proxied:$("#eProxy").getAttribute("aria-checked")==="true",comment:$("#eComment").value,prio:$("#ePrio")?$("#ePrio").value.trim():""}}
+function edSnapOf(){return JSON.stringify(edVals())}
+function edDirty(){return ED&&JSON.stringify(edVals())!==ED.snap}
+function guardEditor(){if(!ED)return true;if(!edDirty()){closeEditor(true);return true}toast("先完成当前编辑：保存或取消","error");const f=$("#eType");if(f)f.focus();return false}
+function closeEditor(silent){const row=$("#edRow");if(row)row.remove();if(ED&&ED.opener&&document.contains(ED.opener)){ED.opener.setAttribute("aria-expanded","false");if(!silent)ED.opener.focus()}ED=null;if(RS.pendSwitch){RS.pendSwitch=false;renderRecords()}}
+function eSetErr(input,el,msg){const bad=!!msg;if(input)input.setAttribute("aria-invalid",bad?"true":"false");if(el)el.textContent=msg||"";return !bad}
+function eValidateOne(k){const v=edVals(),e=validateRecord(v);
+if(k==="name")return eSetErr($("#eName"),$("#eNameErr"),e.name);
+if(k==="content")return eSetErr($("#eContent"),$("#eContentErr"),e.content);
+if(k==="comment"){const m=v.comment.length>100?`备注至多 100 字（当前 ${v.comment.length} 字）`:"";return eSetErr($("#eComment"),$("#eCommentErr"),m)}
+if(k==="prio"){const m=edPrioErr(v);return eSetErr($("#ePrio"),$("#ePrioErr"),m)}
+return true}
+function edPrioErr(v){if(v.type!=="MX")return "";if(v.prio===""||v.prio==null)return "MX 记录须填优先级：如 10";const n=Number(v.prio);if(!Number.isInteger(n)||n<0||n>65535)return `优先级须为 0~65535 的整数（当前“${v.prio}”）`;return ""}
+function eValidateAll(){const v=edVals(),e=validateRecord(v);const errs={...e};
+if(v.comment.length>100)errs.comment=`备注至多 100 字（当前 ${v.comment.length} 字）`;
+const pe=edPrioErr(v);if(pe)errs.prio=pe;
+let first=null;
+if(!eSetErr($("#eName"),$("#eNameErr"),errs.name))first=first||"#eName";
+if(!eSetErr($("#eContent"),$("#eContentErr"),errs.content))first=first||"#eContent";
+if(!eSetErr($("#eTtl"),$("#eTtlErr"),errs.ttl))first=first||"#eTtl";
+if(!eSetErr($("#eComment"),$("#eCommentErr"),errs.comment))first=first||"#eComment";
+if(v.type==="MX"&&!eSetErr($("#ePrio"),$("#ePrioErr"),errs.prio))first=first||"#ePrio";
+const sum=$("#eSum");const keys=Object.keys(errs).filter(k=>errs[k]);
+if(first){sum.textContent="有 "+keys.length+" 项需修正："+keys.map(k=>errs[k]).join("；");const el=$(first);if(el){el.focus();if(el.scrollIntoView)el.scrollIntoView({block:"nearest"})}}else sum.textContent="";
+return first?false:true}
+function eSyncType(){const t=$("#eType").value;const lb=$("#eContentLabel");if(lb)lb.textContent=E_LAB[t]||"内容 *";
+const wrap=$("#eContentWrap");if(wrap){const cur=$("#eContent")?$("#eContent").value:"";const wantTXT=t==="TXT";const isTXT=$("#eContent")&&$("#eContent").tagName==="TEXTAREA";
+if(wantTXT!==isTXT){wrap.innerHTML=wantTXT?`<textarea id="eContent" rows="2" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="eContentErr"></textarea>`:`<input id="eContent" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="eContentErr">`;$("#eContent").value=cur;$("#eContent").addEventListener("blur",()=>eValidateOne("content"))}}
+const pw=$("#ePrioWrap");if(pw)pw.hidden=t!=="MX";
+const sw=$("#eProxy"),tx=$("#eProxyTx"),why=$("#eProxyWhy");const noProxy=t==="MX"||t==="TXT";
+if(sw){if(noProxy){sw.setAttribute("aria-checked","false");sw.disabled=true;if(why)why.textContent=t+" 记录不可代理：已自动关闭"}else{sw.disabled=false;if(why)why.textContent="";if(tx)tx.textContent=sw.getAttribute("aria-checked")==="true"?"已代理":"仅 DNS"}}
+const ttl=$("#eTtl");if(ttl){const px=sw&&sw.getAttribute("aria-checked")==="true"&&!sw.disabled;if(px){ttl.value="1";ttl.disabled=true}else{ttl.disabled=false}}}
+function wireEditor(){eSyncType();ED.snap=edSnapOf();updCount();
+$("#eType").addEventListener("change",()=>{eSyncType();eValidateOne("content")});
+$("#eProxy").addEventListener("click",()=>{const sw=$("#eProxy");if(sw.disabled)return;sw.setAttribute("aria-checked",sw.getAttribute("aria-checked")==="true"?"false":"true");eSyncType()});
+$("#eTtl").addEventListener("change",eSyncType);
+["eName","eContent","eComment"].forEach(id=>{const el=$("#"+id);if(el)el.addEventListener("blur",()=>{eValidateOne(id.slice(1).toLowerCase());const v=edVals();if(!Object.keys(validateRecord(v)).length&&v.comment.length<=100&&!edPrioErr(v))$("#eSum").textContent=""})});
+const pr=$("#ePrio");if(pr)pr.addEventListener("blur",()=>eValidateOne("prio"));
+const cm=$("#eComment");if(cm)cm.addEventListener("input",updCount);
+$("#eFill").onclick=()=>fillOperate($("#eContent").value,$("#eType").value);
+$("#eCancel").onclick=()=>{const b=$("#eCancel");if(edDirty()&&!b.dataset.armed){b.dataset.armed="1";b.textContent="确认放弃？";setTimeout(()=>{if(b.isConnected){delete b.dataset.armed;b.textContent="取消"}},6000);return}closeEditor()};
+$("#eSave").onclick=saveEditor;
+const del=$("#eDel");if(del)del.onclick=()=>{if(!del.dataset.armed){del.dataset.armed="1";del.textContent="确认删除？";setTimeout(()=>{if(del.isConnected){delete del.dataset.armed;del.textContent="删除"}},6000);return}delEditor()};
+$("#eType").focus()}
+function updCount(){const cm=$("#eComment"),c=$("#eCount");if(cm&&c)c.textContent=String(cm.value.length)}
+async function saveEditor(){if(!eValidateAll())return;const btn=$("#eSave");if(btn.disabled)return;btn.disabled=true;btn.setAttribute("aria-busy","true");const old=btn.textContent;btn.textContent="保存中…";
+const v=edVals();const prio=v.type==="MX"?Number(v.prio):null;
+try{let key=null;
+if(ED.id){await api("/api/v1/records",{method:"PATCH",json:{account:CUR.account,zone:CUR.zone,id:ED.id,name:v.name,type:v.type,content:v.content,proxied:v.proxied,ttl:v.ttl,comment:v.comment,priority:prio}});key={id:ED.id}}
+else{await api("/api/v1/records",{method:"POST",json:{account:CUR.account,zone:CUR.zone,name:v.name||"@",type:v.type,content:v.content,proxied:v.proxied,ttl:v.ttl,comment:v.comment,priority:prio}});key={key:v.name+"|"+v.type+"|"+v.content}}
+RS.flash=key;const wasNew=!ED.id;closeEditor(true);toast(wasNew?"已新增记录":"已保存修改");queryRecords()}catch(e){const sm=$("#eSum");if(sm)sm.textContent="保存失败："+String(e.message||e);toast("保存失败："+String(e.message||e),"error")}finally{const b2=$("#eSave");if(b2){b2.disabled=false;b2.removeAttribute("aria-busy");b2.textContent=old}}}
+async function delEditor(){const id=ED.id;let snap=null;try{const all=await api("/api/v1/records?"+new URLSearchParams({account:CUR.account,zone:CUR.zone,per_page:200,page:1}));snap=(all.items||[]).find(x=>x.id===id)||null}catch(e){}
+try{await api(`/api/v1/records?account=${encodeURIComponent(CUR.account)}&zone=${encodeURIComponent(CUR.zone)}&id=${encodeURIComponent(id)}`,{method:"DELETE"})}catch(e){toast("删除失败："+String(e.message||e),"error");return}
+RS.sel.delete(id);closeEditor(true);queryRecords();
+if(snap)toastUndo("已删除 1 条",[snap]);else toast("已删除")}
+function openNewCard(){if(!CUR.zone){toast("先选账号填域名后查询");return}if(!guardEditor())return;
+const r=blankRec();ED={id:null,opener:document.activeElement,snap:null};
+if(isNarrow()){$("#bCards").hidden=false;$("#bCards").insertAdjacentHTML("afterbegin",`<div id="edRow">${edHtml(r)}</div>`)}else{const tb=$("#bBody");tb.insertAdjacentHTML("afterbegin",`<tr class="ed" id="edRow"><td colspan="9">${edHtml(r)}</td></tr>`)}
+wireEditor();const er=$("#edRow");if(er&&er.scrollIntoView)er.scrollIntoView({block:"nearest"})}
+function openEditor(id){if(!guardEditor())return;const raw=RS.items.find(x=>x.id===id);if(!raw){toast("记录不在当前页，请翻页后重试","error");return}
+const r={...raw,name:edName(raw.name,CUR.zone)};
+const opener=document.activeElement;if(opener&&opener.dataset&&opener.dataset.edit)opener.setAttribute("aria-expanded","true");
+ED={id,snap:null,opener};
+if(isNarrow()){const card=(opener?opener.closest(".rcard"):null)||$(`.rcard[data-id="${CSS.escape(id)}"]`);if(!card){ED=null;return}card.insertAdjacentHTML("afterend",`<li class="rcard" id="edRow">${edHtml(r)}</li>`)}else{const tr=(opener?opener.closest("tr"):null)||$(`#bBody tr[data-id="${CSS.escape(id)}"]`);if(!tr){ED=null;return}tr.insertAdjacentHTML("afterend",`<tr class="ed" id="edRow"><td colspan="9">${edHtml(r)}</td></tr>`)}
+wireEditor();const er=$("#edRow");if(er&&er.scrollIntoView)er.scrollIntoView({block:"nearest"})}
+function togglePop(id,btn){const p=$(id);if(!p)return;const open=p.hidden;closePops();if(open){if(id==="#pFilters"){$("#fType").value=RF.type;$("#fProxy").value=RF.proxied}$(btn).setAttribute("aria-expanded","true");p.hidden=false;const f=p.querySelector("select,button,input");if(f)f.focus()}}
+function closePops(){["#pFilters","#pDisplay"].forEach(id=>{const p=$(id);if(p&&!p.hidden){p.hidden=true}});["#bFilters","#bDisplay"].forEach(id=>{const b=$(id);if(b)b.setAttribute("aria-expanded","false")})}
+function bindRecordsUI(){applyDisplay();
+document.querySelectorAll("#bTable thead th").forEach(th=>th.setAttribute("scope","col"));
+const dc=$("#dComment"),dd=$("#dDetails"),dx=$("#dCompact");if(dc)dc.checked=RD.comment;if(dd)dd.checked=RD.details;if(dx)dx.checked=!!RD.compact;
+const save=()=>{RD.comment=dc.checked;RD.details=dd.checked;RD.compact=dx.checked;try{localStorage.setItem("cf_rec_display",JSON.stringify(RD))}catch(e){}applyDisplay();bindColResize()};
+if(dc)dc.onchange=save;if(dd)dd.onchange=save;if(dx)dx.onchange=save;
+const drw=$("#dResetW");if(drw)drw.onclick=()=>{CWS={};try{localStorage.removeItem("cf_rec_widths")}catch(e){}applyColWidths();toast("列宽已重置")};
+$("#bFilters").onclick=e=>{e.stopPropagation();togglePop("#pFilters","#bFilters")};
+$("#bDisplay").onclick=e=>{e.stopPropagation();togglePop("#pDisplay","#bDisplay")};
+document.addEventListener("click",e=>{if(!e.target.closest||(!e.target.closest(".popwrap")))closePops()});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"){if(!$("#pFilters").hidden||!$("#pDisplay").hidden){closePops();const a=document.activeElement;if(a&&a.blur)a.blur();$("#bFilters").focus()}else if($("#mImport").classList.contains("open"))closeImport()}});
+$("#fApply").onclick=()=>{RF.type=$("#fType").value;RF.proxied=$("#fProxy").value;B.page=1;RS.sel.clear();RS.allIds=null;closePops();queryRecords()};
+$("#fClear").onclick=()=>{RF.type="ALL";RF.proxied="all";B.page=1;RS.sel.clear();RS.allIds=null;closePops();queryRecords()};
+$("#bSelAll").onchange=e=>{const on=e.target.checked;const scope=isNarrow()?$("#bCards"):$("#bBody");scope.querySelectorAll("[data-idx]").forEach(row=>{const rec=RS.items[+row.dataset.idx];if(!rec)return;const c=row.querySelector("[data-sel]");if(c)c.checked=on;if(on)RS.sel.add(rec.id);else RS.sel.delete(rec.id)});RS.allIds=null;updateBulk()};
+$("#bBulkClear").onclick=()=>{RS.sel.clear();RS.allIds=null;renderRecords()};
+$("#bBulkAll").onclick=async()=>{try{toast("正在读取全部匹配…");const all=await fetchAllBodies();RS.sel=new Set(all.rows.map(r=>r.id));RS.allIds=true;if(all.truncated)toast("匹配超过 2000 条，仅选择前 2000 条","error");renderRecords()}catch(e){toast("读取失败："+String(e.message||e),"error")}};
+$("#bBulkPxOn").onclick=()=>doBulkProxy(true);$("#bBulkPxOff").onclick=()=>doBulkProxy(false);
+$("#bBulkDel").onclick=()=>{doBulkDelete([...RS.sel])};
+$("#bImport").onclick=openImport;$("#iCheck").onclick=checkImport;$("#iGo").onclick=runImport;
+$$("#mImport [data-close-imp]").forEach(b=>b.onclick=()=>closeImport());
+$("#bExport").onclick=doExport;
+const wrap0=$("#bTableWrap");if(wrap0)wrap0.addEventListener("scroll",()=>{wrap0.classList.toggle("scrolled",(wrap0.scrollLeft||0)>1)},{passive:true});
+const pf=$("#pFilters");if(pf)pf.addEventListener("keydown",e=>{if(e.key==="Enter"&&(e.target===$("#fType")||e.target===$("#fProxy"))){e.preventDefault();$("#fApply").click()}});
+const mq=matchMedia("(max-width: 639px)");const onMq=()=>{if(ED&&edDirty()){RS.pendSwitch=true;toast("布局切换已推迟：先完成当前编辑","error")}else renderRecords()};
+if(mq.addEventListener)mq.addEventListener("change",onMq);else if(mq.addListener)mq.addListener(onMq);
+const rw=$("#recWrap");if(rw&&"ResizeObserver" in window){let rT=0;new ResizeObserver(()=>{clearTimeout(rT);rT=setTimeout(onMq,150)}).observe(rw)}}
+async function doBulkProxy(on){const ids=[...RS.sel];if(!ids.length)return;let r;try{r=await api("/api/v1/records/bulk-update",{method:"POST",json:{account:CUR.account,zone:CUR.zone,ids,proxied:on}})}catch(e){toast("批量设置失败："+String(e.message||e),"error");return}
+queryRecords();const n=(r.updated||[]).length,m=(r.failed||[]).length;
+if(n){const prev=r.prev||[];const box=$("#toasts");const d=document.createElement("div");d.className="toast";const sp=document.createElement("span");sp.textContent=`已设为${on?"已代理":"仅 DNS"} ${n} 条${m?`，${m} 条失败`:""}`;d.appendChild(sp);
+const b=document.createElement("button");b.className="btn";b.style.marginLeft="8px";b.textContent="撤销";b.onclick=async()=>{d.remove();await undoBulkUpdate(prev)};d.appendChild(b);box.appendChild(d);setTimeout(()=>{if(d.isConnected)d.remove()},8000)}
+if(m&&!n)toast(`批量设置失败：${(r.failed[0]||{}).error||""}`,"error")}
+function openImport(){if(!CUR.zone){toast("先选账号填域名后查询");return}window._imp=null;const f=$("#iFile");if(f)f.value="";$("#iSum").textContent="";$("#iMsg").textContent="";$("#iGo").disabled=true;window._impOpener=document.activeElement;$("#mImport").classList.add("open");if(f)f.focus()}
+function closeImport(){$("#mImport").classList.remove("open");if(window._impOpener&&document.contains(window._impOpener))window._impOpener.focus()}
+async function readImportFile(){const f=$("#iFile").files[0];if(!f){$("#iSum").textContent="先选择 JSON 文件";return null}
+let arr;try{arr=JSON.parse(await f.text())}catch(e){$("#iSum").textContent="JSON 解析失败："+String(e.message||e);return null}
+if(!Array.isArray(arr)){$("#iSum").textContent="文件顶层须为数组";return null}
+return arr}
+async function checkImport(){const arr=await readImportFile();if(!arr)return;$("#iMsg").textContent="预检中…";$("#iGo").disabled=true;
+try{const r=await api("/api/v1/records/import",{method:"POST",json:{account:CUR.account,zone:CUR.zone,records:arr,dry_run:true}});
+window._imp=arr;$("#iMsg").textContent=`预检通过：${r.checked} 条可写`;$("#iSum").textContent="";$("#iGo").disabled=false}catch(e){window._imp=null;$("#iMsg").textContent="";$("#iSum").textContent=String(e.message||e)}}
+async function runImport(){if(!window._imp)return;const btn=$("#iGo");btn.disabled=true;btn.textContent="导入中…";
+try{const r=await api("/api/v1/records/import",{method:"POST",json:{account:CUR.account,zone:CUR.zone,records:window._imp,dry_run:false}});
+$("#iMsg").textContent=`导入完成：新增 ${r.added} 更新 ${r.updated} 未变 ${r.unchanged} 失败 ${r.failed.length}`;
+$("#iSum").textContent=(r.failed||[]).slice(0,5).map(x=>`第${x.index}条：${x.error}`).join("；");
+window._imp=null;queryRecords()}catch(e){$("#iSum").textContent=String(e.message||e)}finally{btn.disabled=false;btn.textContent="确认导入"}}
+async function doExport(){if(!CUR.zone){toast("先选账号填域名后查询");return}
+try{let rows,note="";
+if(RS.sel.size){const all=await fetchAllBodies();rows=all.rows.filter(r=>RS.sel.has(r.id));note=`已选 ${rows.length} 条`}
+else{const all=await fetchAllBodies();rows=all.rows;note=`全部 ${rows.length} 条${all.truncated?"（前 2000）":""}`}
+const blob=new Blob([JSON.stringify(rows,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`records_${CUR.zone}_${rows.length}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000);toast(`已导出${note}`)}catch(e){toast("导出失败："+String(e.message||e),"error")}}
+function fillOperate(c,t){$("#oOld").value=c||"";if(["A","AAAA","CNAME"].includes(t))$("#oRtype").value=t;location.hash="#/operate";toast("已填入操作页旧内容")}
+async function findDomain(){const v=$("#bFind").value.trim();if(!v){toast("先输入域名");return}
+const d=await api("/api/v1/find?domain="+encodeURIComponent(v));const hits=(d.results||[]).filter(x=>!x.error);
+$("#bFindRes").textContent=`${d.domain} 在 ${hits.length} 个账号中找到`;
+if(hits.length){const h=hits[0];$("#bAccount").value=h.account;$("#bZone").value=h.zone;B.page=1;queryRecords()}}
+function validateRecord(v){const e={};
+if(!v.name)e.name="名称必填：填 @（根域名）或主机名如 www";
+else if(!/^[A-Za-z0-9@_.*-]+$/.test(v.name))e.name="名称含非法字符：只可用字母、数字及 @ . - _ *，示例 www";
+if(!v.content)e.content="内容必填：A 记录示例 192.0.2.1，CNAME 示例 target.example.com";
+else if(v.type==="A"&&!/^\d{1,3}(\.\d{1,3}){3}$/.test(v.content))e.content="A 记录内容须为 IPv4：如 192.0.2.1，当前不是合法格式";
+else if(v.type==="CNAME"&&/^\d{1,3}(\.\d{1,3}){3}$/.test(v.content))e.content="CNAME 内容须为目标域名：不能填 IP，如 target.example.com";
+if(!(v.ttl>=1))e.ttl="TTL 须 ≥1：被代理时填 1（自动）";
+return e}
+function syncMode(){const m=$("#oMode").value;["fUpdate","fDeleteIp","fDeleteZone","fAdd","fAttrs","fExport","fProvision","fWildcard"].forEach(id=>$("#"+id).hidden=true);
+if(m==="update")$("#fUpdate").hidden=false;if(m==="delete_ip")$("#fDeleteIp").hidden=false;
+if(m==="delete_zone")$("#fDeleteZone").hidden=false;if(m==="add")$("#fAdd").hidden=false;
+if(m==="set_attrs")$("#fAttrs").hidden=false;if(m==="export")$("#fExport").hidden=false;if(m==="provision")$("#fProvision").hidden=false;if(m==="delete_wildcard")$("#fWildcard").hidden=false}
+async function previewResume(){const f=$("#oResumeFile").files[0];if(!f){toast("先选择 CSV");return}
+const buf=await f.arrayBuffer();const r=await fetch("/api/v1/resume-preview",{method:"POST",headers:store.token?{"X-Auth-Token":store.token}:{},body:buf});
+if(!r.ok){const j=await r.json().catch(()=>({}));toast("清单错误："+(j.detail||r.status),"error");return}
+const d=await r.json();RESUME_ZONES=(d.preview||[]).map(x=>x.zone).filter(Boolean);
+$("#oResumeHint").textContent=`清单 ${d.rows} 行，预览 ${RESUME_ZONES.length} 个，可一键填入域名。`;toast(`清单 ${d.rows} 行`)}
+async function uploadWhitelist(){const f=$("#oWlFile").files[0];if(!f){toast("先选择白名单文件");return}
+const fd=new FormData();fd.append("file",f);const r=await fetch("/api/v1/whitelist-upload",{method:"POST",headers:store.token?{"X-Auth-Token":store.token}:{},body:fd});
+if(!r.ok){const j=await r.json().catch(()=>({}));toast("上传失败："+(j.detail||r.status),"error");return}
+const d=await r.json();$("#oWlPath").value=d.path||"";if((d.domains||[]).length)$("#oWhitelist").value=d.domains.join("\n");toast(`白名单 ${d.count} 个域名`)}
+async function uploadResume(){const f=$("#oResumeFile").files[0];if(!f){toast("先选择 CSV");return}
+const fd=new FormData();fd.append("file",f);const r=await fetch("/api/v1/resume-upload",{method:"POST",headers:store.token?{"X-Auth-Token":store.token}:{},body:fd});
+if(!r.ok){const j=await r.json().catch(()=>({}));toast("上传失败："+(j.detail||r.status),"error");return}
+const d=await r.json();$("#oResumePath").value=d.path||"";RESUME_ZONES=d.zones||[];
+$("#oResumeHint").textContent=`已上传 ${d.rows} 行，路径已记入提交（不落配置）。可预览/填入域名。`;toast(`已上传 ${d.rows} 行`)}
+function oSetInvalid(id,bad){const el=document.getElementById(id);if(el)el.setAttribute("aria-invalid",bad?"true":"false")}
+function oClearInvalid(){["oNew","oOld","oDomains","oWhitelist","oDelIp","oBackup","oConfirm","oAddDomain","oAddRecords","oExportDir","oServerIp","oActTimeout","oActInterval"].forEach(id=>oSetInvalid(id,false))}
+function oValidate(m){const e=[];const needScope=()=>{const d=lines("#oDomains").length>0||lines("#oWhitelist").length>0||($("#oResumePath").value||"")!=="";return d};
+const accs=selAccounts();if(!accs.length)e.push({f:"oAccounts",m:"至少选择一个账号：在“账号”区点保留至少一个（当前全关）"});
+if(m==="update"){if(!$("#oNew").value.trim())e.push({f:"oNew",m:"新内容必填：填 IPv4 如 1.2.3.4 或域名，auto 按 IP 推断"})}
+else if(m==="delete_wildcard"){if(!needScope())e.push({f:"oDomains",m:"删除类必须限定范围：指定域名或白名单至少填一处（当前都空）"})}
+else if(m==="delete_ip"){if(!$("#oDelIp").value.trim())e.push({f:"oDelIp",m:"待删 IP 必填：如 1.2.3.4"});if(!needScope())e.push({f:"oDomains",m:"删除类必须限定范围：指定域名或白名单至少填一处（当前都空）"})}
+else if(m==="delete_zone"){if(!needScope())e.push({f:"oDomains",m:"删除类必须限定范围：指定域名或白名单至少填一处（当前都空）"});if(!$("#oBackup").value.trim())e.push({f:"oBackup",m:"快照目录必填：删前先快照，如备份目录路径（当前空）"});if($("#oConfirm").value.trim()!=="DELETE")e.push({f:"oConfirm",m:"二次确认须输入 DELETE（当前“"+($("#oConfirm").value.trim()||"空")+"”）：输对才可提交"})}
+else if(m==="add"){const recs=lines("#oAddRecords");if(!$("#oAddDomain").value.trim()&&!lines("#oDomains").length)e.push({f:"oAddDomain",m:"添加模式必须有目标：新域名或指定域名至少填一处"});if(!$("#oAddDomain").value.trim()&&!recs.length)e.push({f:"oAddRecords",m:"记录必填：每行 name:type:content，如 www:A:1.2.3.4"})}
+else if(m==="set_attrs"){if(!$("#oProxied").value&&!$("#oTtl").value.trim())e.push({f:"oProxied",m:"属性至少改一项：代理或 TTL 选其一（当前都是不改/空）"})}
+else if(m==="export"){if(!$("#oExportDir").value.trim())e.push({f:"oExportDir",m:"导出目录必填：如导出目录路径"})}
+else if(m==="provision"){if(!lines("#oDomains").length)e.push({f:"oDomains",m:"配置模式必须指定域名：每行一个"});const pv=id=>{const v=($(id)||{value:""}).value.trim();return v===""?null:Number(v)};const t1=pv("#oActTimeout"),t2=pv("#oActInterval");if(t1!==null&&!(t1>0))e.push({f:"oActTimeout",m:"激活等待须大于 0（当前 "+$("#oActTimeout").value.trim()+"）"});if(t2!==null&&!(t2>0))e.push({f:"oActInterval",m:"激活轮询间隔须大于 0（当前 "+$("#oActInterval").value.trim()+"）"})}
+return e}
+function oShowErrs(errs){oClearInvalid();const sum=$("#oSum");if(!errs.length){sum.textContent="";return true}
+errs.forEach(x=>{if(x.f==="oAccounts"){$$("#oAccounts .chip").slice(0,1).forEach(c=>c.setAttribute("aria-invalid","true"))}else oSetInvalid(x.f,true)});
+sum.textContent="有 "+errs.length+" 项需修正："+errs.map(x=>x.m).join("；");
+const f0=errs[0].f;let el=document.getElementById(f0);if(f0==="oAccounts")el=$("#oAccounts .chip");
+if(el){el.focus();if(el.scrollIntoView)el.scrollIntoView({block:"nearest"})}return false}
+const OP_DRAFT_KEY="cf_operate_draft";
+function opCollect(){const g=id=>{const el=$(id);return el?el.value:""};return{oMode:$("#oMode").value,oDomains:g("#oDomains"),oWhitelist:g("#oWhitelist"),oNew:g("#oNew"),oOld:g("#oOld"),oRtype:$("#oRtype").value,oDelIp:g("#oDelIp"),oDelMode:$("#oDelMode").value,oBackup:g("#oBackup"),oConfirm:g("#oConfirm"),oAddDomain:g("#oAddDomain"),oAddRecords:g("#oAddRecords"),oAddProxied:$("#oAddProxied").value,oAddTtl:g("#oAddTtl"),oProxied:$("#oProxied").value,oTtl:g("#oTtl"),oExportDir:g("#oExportDir"),oExportFmt:$("#oExportFmt").value,oServerIp:g("#oServerIp"),oForward:g("#oForward"),oSsl:$("#oSsl").value,oActTimeout:g("#oActTimeout"),oActInterval:g("#oActInterval"),oDry:$("#oDry").checked,oNoSub:$("#oNoSub").checked}}
+function opSaveDraft(){if(window._opBusy)return;try{localStorage.setItem(OP_DRAFT_KEY,JSON.stringify(opCollect()))}catch(e){}}
+function opRestoreDraft(){let d=null;try{d=JSON.parse(localStorage.getItem(OP_DRAFT_KEY)||"null")}catch(e){}if(!d||typeof d!=="object")return false;
+const s=(id,v)=>{const el=$(id);if(el&&typeof v==="string")el.value=v};
+$("#oMode").value=d.oMode||"update";s("#oDomains",d.oDomains);s("#oWhitelist",d.oWhitelist);s("#oNew",d.oNew);s("#oOld",d.oOld);if(d.oRtype)$("#oRtype").value=d.oRtype;
+s("#oDelIp",d.oDelIp);if(d.oDelMode)$("#oDelMode").value=d.oDelMode;s("#oBackup",d.oBackup);s("#oConfirm",d.oConfirm);s("#oAddDomain",d.oAddDomain);s("#oAddRecords",d.oAddRecords);
+if(d.oAddProxied)$("#oAddProxied").value=d.oAddProxied;s("#oAddTtl",d.oAddTtl);if(d.oProxied!==undefined)$("#oProxied").value=d.oProxied;s("#oTtl",d.oTtl);s("#oExportDir",d.oExportDir);if(d.oExportFmt)$("#oExportFmt").value=d.oExportFmt;
+s("#oServerIp",d.oServerIp);s("#oForward",d.oForward);if(d.oSsl!==undefined)$("#oSsl").value=d.oSsl;s("#oActTimeout",d.oActTimeout);s("#oActInterval",d.oActInterval);
+if(d.oDry!==undefined)$("#oDry").checked=!!d.oDry;if(d.oNoSub!==undefined)$("#oNoSub").checked=!!d.oNoSub;
+syncMode();return !!(d.oDomains||d.oNew||d.oAddRecords)}
+function opDirty(){return ($("#oDomains")&&$("#oDomains").value.trim())||($("#oNew")&&$("#oNew").value.trim())||($("#oAddRecords")&&$("#oAddRecords").value.trim())}
+async function submitJob(){if(window._opBusy)return;const m=$("#oMode").value;const errs=oValidate(m);if(!oShowErrs(errs))return;
+window._opBusy=true;const btn=$("#oSubmit");btn.disabled=true;btn.setAttribute("aria-busy","true");const oldHtml=btn.innerHTML;btn.innerHTML="提交中…";
+const toggles={};$$("#oProvToggles .chip").forEach(c=>toggles[c.dataset.k]=c.getAttribute("aria-pressed")==="true");
+const num=(id)=>{const v=($(id)||{value:""}).value.trim();return v===""?null:Number(v)};
+const body={mode:m,accounts:selAccounts(),domains:lines("#oDomains"),whitelist:lines("#oWhitelist"),whitelist_file:$("#oWlPath").value||null,
+include_subdomains:!($("#oNoSub")||{checked:false}).checked,
+record_type:$("#oRtype").value,old_content:$("#oOld").value.trim()||null,new_content:$("#oNew").value.trim()||null,
+delete_ip:$("#oDelIp").value.trim()||null,delete_zone_mode:$("#oDelMode").value,backup_dir:$("#oBackup").value.trim()||null,confirm:$("#oConfirm").value.trim()||null,
+add_domain:$("#oAddDomain").value.trim()||null,add_records:lines("#oAddRecords"),proxied:(($("#oAddProxied")||{value:"on"}).value!=="off"),ttl:num("#oAddTtl")||1,allow_multi_value:!!(($("#oAllowMulti")||{checked:false}).checked),
+set_proxied:$("#oProxied").value||null,set_ttl:$("#oTtl").value?Number($("#oTtl").value):null,
+export_dir:$("#oExportDir").value.trim()||null,export_fmt:$("#oExportFmt").value,speed:$("#oSpeed").value,scope:$("#oScope").value,
+workers:num("#oWorkers"),account_workers:num("#oAW"),request_interval:num("#oInterval"),max_retries:num("#oRetries")??5,retry_base:num("#oRetryBase"),retry_max:num("#oRetryMax"),
+resume_csv:$("#oResumePath").value||null,
+server_ip:($("#oServerIp")||{value:""}).value.trim()||"",forward_email:($("#oForward")||{value:""}).value.trim()||"",ssl_mode:($("#oSsl")||{value:""}).value||"",
+create_zone:!!(($("#oCreateZone")||{checked:false}).checked),activation_timeout:num("#oActTimeout"),activation_interval:num("#oActInterval"),
+do_dns:toggles.dns!==false,do_activation:toggles.activation!==false,do_email:toggles.email!==false,do_ssl:toggles.ssl!==false,do_security:toggles.security!==false,do_optimize:toggles.optimize!==false,
+dry_run:$("#oDry").checked,label:null};
+$("#oMsg").textContent="提交中…";try{const d=await api("/api/v1/jobs",{method:"POST",json:body});$("#oMsg").textContent="已提交 "+d.job_id;$("#oSum").textContent="";try{localStorage.removeItem(OP_DRAFT_KEY)}catch(e){}clearTimeout(window._opDeb);toast("已提交 "+d.job_id);location.hash="#/jobs";openJob(d.job_id)}catch(e){$("#oMsg").textContent=String(e.message||e);toast(String(e.message||e),"error")}finally{window._opBusy=false;btn.disabled=false;btn.removeAttribute("aria-busy");btn.innerHTML=oldHtml}}
+async function listJobs(){const d=await api("/api/v1/jobs");const el=$("#jList");
+if(!(d.jobs||[]).length){el.innerHTML=`<p class="muted">暂无任务，先去操作页提交（dry-run 默认开）。</p>`;return}
+el.innerHTML=(d.jobs||[]).map(j=>`<p><button class="btn" data-j="${j.job_id||j.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14m-7-7 7 7-7 7"/></svg>${j.job_id||j.id} · ${j.mode} · ${j.status} · ${(j.kind==="preview"?"预览":"执行")}</button> <span class="small">${j.label||""}</span></p>`).join("");
+el.querySelectorAll("[data-j]").forEach(b=>b.onclick=()=>openJob(b.dataset.j))}
+async function openJob(id){JOB=id;LOFF=0;JPG=1;$("#jLogs").textContent="–";$("#jExportsList").textContent="";clearInterval(JTIMER);pollJob();JTIMER=setInterval(pollJob,2000)}
+async function pollJob(){if(!JOB)return;const j=await api("/api/v1/jobs/"+JOB);
+$("#jHead").hidden=false;$("#jTitle").textContent=`${j.job_id} · ${j.mode} · ${j.status} · ${(j.kind==="preview"?"预览":"执行")}`;
+const done=Object.values(j.zone_summary||{}).reduce((a,s)=>a+s.done,0),tot=Object.values(j.zone_summary||{}).reduce((a,s)=>a+s.total,0)||j.accounts_total||1;
+$("#jBar").style.width=Math.round(done/Math.max(1,tot)*100)+"%";$("#jPct").textContent=`${done}/${tot} · 失败 ${j.failure_count||0}`;
+const v=$("#jVerdict");if((j.verdict||[]).length){v.hidden=false;v.textContent=j.verdict.join("\n")}else v.hidden=true;
+const r=await api(`/api/v1/jobs/${JOB}/results?page=${JPG}&per_page=50`);$("#jInfo").textContent=`结果共 ${r.total} 条 · 第 ${r.page} 页`;
+$("#jBody").innerHTML=(r.items||[]).map(x=>`<tr><td>${x.account||""}</td><td>${x.zone||""}</td><td>${x.name||""}</td><td>${x.type||""}</td><td>${x.status||""}</td><td>${(x.message||"").slice(0,80)}</td></tr>`).join("")||`<tr><td colspan="6" class="muted">暂无明细（进行中或全部跳过）</td></tr>`;
+const l=await api(`/api/v1/jobs/${JOB}/logs?offset=${LOFF}&limit=500`);if((l.logs||[]).length){const box=$("#jLogs");if(LOFF===0)box.textContent="";box.textContent+=(l.logs.join("\n")+"\n");LOFF=l.total;box.scrollTop=box.scrollHeight}
+if(["done","failed","cancelled"].includes(j.status))clearInterval(JTIMER)}
+async function cancelJob(){if(!JOB)return;await api(`/api/v1/jobs/${JOB}/cancel`,{method:"POST"});toast("已请求取消")}
+async function rerunFailed(){if(!JOB)return;const f=await api(`/api/v1/jobs/${JOB}/failures?page=1&per_page=200`);const zones=[...new Set((f.items||[]).map(x=>x.zone).filter(Boolean))];
+if(!zones.length){toast("该任务无失败域名");return}$("#oDomains").value=zones.join("\n");location.hash="#/operate";toast(`已填入 ${zones.length} 个失败域名，请确认模式后提交`)}
+async function listExports(){if(!JOB)return;const d=await api(`/api/v1/jobs/${JOB}/exports`);const el=$("#jExportsList");
+if(!d.items.length){el.textContent="该任务无导出文件";return}
+el.innerHTML=d.items.map(x=>`<button class="btn" data-x="${x.index}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg>${x.zone}</button> `).join("");
+el.querySelectorAll("[data-x]").forEach(b=>b.onclick=async()=>{const r=await fetch(`/api/v1/jobs/${JOB}/exports/${b.dataset.x}`,{headers:store.token?{"X-Auth-Token":store.token}:{}});if(!r.ok){toast("下载失败","error");return}const bl=await r.blob();const a=document.createElement("a");a.href=URL.createObjectURL(bl);a.download=`export_${JOB}_${b.dataset.x}.json`;a.click()})}
+async function dlCsv(){if(!JOB)return;const r=await fetch(`/api/v1/jobs/${JOB}/failures.csv`,{headers:store.token?{"X-Auth-Token":store.token}:{}});
+if(!r.ok){toast("无失败清单","error");return}const b=await r.blob();const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=`failures_${JOB}.csv`;a.click()}
+async function showHistory(){const d=await api("/api/v1/history?limit=20");$("#mTitle").textContent="历史（终态）";$("#mBody").textContent=JSON.stringify(d.items||[],null,2);$("#mList").classList.add("open")}
+async function showAudit(){const d=await api("/api/v1/audit?limit=20");$("#mTitle").textContent="审计（execute/单条写入）";$("#mBody").textContent=JSON.stringify(d.items||[],null,2);$("#mList").classList.add("open")}
+function openCmdk(){window._cmdkOpener=document.activeElement;$("#cmdk").classList.add("open");$("#cmdkInput").value="";CMDK_ACT=0;renderCmdk();setTimeout(()=>$("#cmdkInput").focus(),50)}
+function closeCmdk(){if(!$("#cmdk").classList.contains("open"))return;$("#cmdk").classList.remove("open");if(window._cmdkOpener&&document.contains(window._cmdkOpener))window._cmdkOpener.focus()}
+let CMDK=[],CMDK_ACT=0;
+function renderCmdk(){const q=$("#cmdkInput").value.trim().toLowerCase();const groups=[];
+const pages=[{l:"页面 概览",v:"page:overview"},{l:"页面 浏览 DNS",v:"page:browse"},{l:"页面 批量操作",v:"page:operate"},{l:"页面 任务",v:"page:jobs"}].filter(x=>!q||x.l.toLowerCase().includes(q));
+const accs=ACCOUNTS.map(a=>({l:`账号 ${a.name}`,v:"acc:"+a.name})).filter(x=>!q||x.l.toLowerCase().includes(q)).slice(0,8);
+const zones=(RESUME_ZONES||[]).map(z=>({l:`域名 ${z}`,v:"zone:"+z})).filter(x=>!q||x.l.toLowerCase().includes(q)).slice(0,8);
+if(pages.length)groups.push({g:"页面",items:pages});if(accs.length)groups.push({g:"账号",items:accs});if(zones.length)groups.push({g:"域名",items:zones});
+CMDK=[];groups.forEach(gr=>gr.items.forEach(it=>CMDK.push(it)));
+if(CMDK_ACT>=CMDK.length)CMDK_ACT=0;
+let h="",i=0;groups.forEach(gr=>{h+=`<li role="presentation" aria-hidden="true" class="cmdk-group">${gr.g}</li>`;gr.items.forEach(it=>{h+=`<li role="option" id="cmdk-o${i}" data-v="${it.v}" aria-selected="${i===CMDK_ACT}">${it.l}</li>`;i++})});
+if(!CMDK.length)h=`<li role="option" aria-selected="false" aria-disabled="true">无匹配：换关键词或先去浏览页加载账号</li>`;
+$("#cmdkList").innerHTML=h;$("#cmdkInput").setAttribute("aria-activedescendant",CMDK.length?`cmdk-o${CMDK_ACT}`:"");
+$$("#cmdkList li[role='option'][data-v]").forEach(li=>{li.onclick=()=>pickCmdk(li.dataset.v);li.onmousemove=()=>{const ix=CMDK.findIndex(x=>x.v===li.dataset.v);if(ix>=0&&ix!==CMDK_ACT){CMDK_ACT=ix;renderCmdk()}}})}
+function moveCmdk(d){if(!CMDK.length)return;CMDK_ACT=(CMDK_ACT+d+CMDK.length)%CMDK.length;renderCmdk();const el=$("#cmdk-o"+CMDK_ACT);if(el)el.scrollIntoView({block:"nearest"})}
+function pickCmdk(v){closeCmdk();if(v.startsWith("page:")){location.hash="#/"+v.slice(5);return}const[k,val]=v.split(":");location.hash="#/browse";
+if(k==="acc"){const s=$("#bAccount");if(s){s.value=val;if(typeof selectAccount==="function")selectAccount(val)}}else{$("#bZone").value=val;queryRecords()}}
+document.addEventListener("DOMContentLoaded",init);
+</script>
+</body>
+</html>

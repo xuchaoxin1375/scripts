@@ -1,0 +1,6 @@
+# domain_fix 运行产物与缓存（不入库）
+__pycache__/
+*.pyc
+.ruff_cache/
+*.csv
+*.log

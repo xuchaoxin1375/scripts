@@ -1,10 +1,8 @@
-#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Web UI 启动入口：python start_web_ui.py [--host 127.0.0.1] [--port 8080]。
+"""WebUI 启动入口（FastAPI + 单一前端）。
 
-安全说明：
-- 默认仅监听 127.0.0.1；对外监听必须设置访问口令。
-- 口令来源：--password，或环境变量 CF_WEB_PASSWORD。
+- 默认仅监听 127.0.0.1；对外监听无口令拒绝启动；
+- 口令走 X-Auth-Token；代理仅全局（任务级代理不落盘、不进审计）。
 """
 
 from __future__ import annotations
@@ -13,67 +11,68 @@ import argparse
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from webui.server import PASSWORD_ENV, create_app  # noqa: E402
+DESKTOP = r"C:/Users/Administrator/Desktop"
+DEFAULT_CONFIG = os.getenv("CF_CONFIG_PATH", f"{DESKTOP}/deploy_configs/cf_config.csv")
 
 
 def parse_args() -> argparse.Namespace:
-    # 默认值与 CLI -C 同源（引擎 CF_CONFIG_PATH），避免 Web 端每次手填。
-    try:
-        from webui.engine_adapter import default_config_path
-
-        _preset = default_config_path()
-    except Exception:  # noqa: BLE001 - 引擎加载失败时保持空预设
-        _preset = os.getenv("CF_CONFIG_PATH", "")
-    parser = argparse.ArgumentParser(description="Cloudflare DNS Web 操作台")
-    parser.add_argument("--host", default="127.0.0.1", help="监听地址（默认仅本机）。")
-    parser.add_argument(
-        "--port", type=int, default=8080, help="监听端口（默认 8080）。"
-    )
-    parser.add_argument(
-        "-C",
-        "--config",
-        default=_preset,
-        help=f"账号配置文件路径（默认预设 {_preset or '（空）'}，可在页面内修改）。",
-    )
-    parser.add_argument(
-        "--password",
-        default=None,
-        help="访问口令（也可用环境变量 CF_WEB_PASSWORD）。",
-    )
-    parser.add_argument(
-        "-P",
-        "--proxy",
-        action="append",
-        default=None,
-        metavar="URL",
-        help="出口代理，可多次使用。",
-    )
-    parser.add_argument(
+    p = argparse.ArgumentParser(description="Cloudflare DNS WebUI")
+    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--port", type=int, default=8600)
+    p.add_argument("--config", default=DEFAULT_CONFIG)
+    p.add_argument("--password", default=os.getenv("CF_WEB_PASSWORD", ""))
+    p.add_argument("-P", "--proxy", action="append", default=None)
+    p.add_argument("--proxy-file", default=None)
+    p.add_argument(
         "--proxy-mode",
         default="round-robin",
         choices=["round-robin", "sticky", "failover"],
-        help="多代理调度模式。",
     )
-    return parser.parse_args()
+    return p.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    password = args.password or os.getenv(PASSWORD_ENV, "")
-    print(f"Cloudflare DNS Web 操作台: http://{args.host}:{args.port}")
-    if not password:
-        print("警告: 未设置访问口令，仅允许本机访问。")
-    create_app(
-        config_path=args.config or "",
-        password=password,
-        proxy_urls=args.proxy or [],
-        proxy_mode=args.proxy_mode,
-        host=args.host,
-        port=args.port,
+    if args.host not in {"127.0.0.1", "localhost", "::1"} and not args.password:
+        print("对外监听必须设置 --password（或 CF_WEB_PASSWORD），已拒绝启动")
+        sys.exit(2)
+    if not os.path.exists(args.config):
+        print(f"配置文件不存在: {args.config}")
+        sys.exit(2)
+
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from webui.backend import deps
+    from webui.backend.app import create_app
+    from webui.backend.engine_adapter import get_engine
+
+    eng = get_engine()
+    # 全局代理池（任务级代理已移除，仅驻内存全局池；审计只记数量与模式）。
+    proxy_pool = None
+    urls: list[str] = []
+    if args.proxy:
+        for raw in args.proxy:
+            try:
+                urls.append(eng.validate_proxy_url(raw))
+            except ValueError as exc:
+                print(f"代理参数错误: {exc}")
+                sys.exit(2)
+    if args.proxy_file:
+        urls.extend(eng.load_proxy_file(args.proxy_file))
+    if urls:
+        proxy_pool = eng.ProxyPool(urls, mode=args.proxy_mode)
+        print(f"出口代理: 模式={proxy_pool.mode} 数量={len(proxy_pool.urls)}")
+
+    deps.configure(args.config, password=args.password, proxy_pool=proxy_pool)
+    frontend = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "webui", "frontend", "dist"
     )
+    app = create_app(frontend if os.path.isdir(frontend) else "")
+
+    import uvicorn
+
+    print(f"WebUI: http://{args.host}:{args.port} config={args.config}")
+    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 
 
-if __name__ in {"__main__", "__mp_main__"}:
+if __name__ == "__main__":
     main()

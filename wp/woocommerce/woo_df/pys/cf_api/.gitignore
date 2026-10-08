@@ -1,0 +1,8 @@
+# Cloudflare DNS 工具：运行时产物与构建输出（不入库）
+__pycache__/
+*.pyc
+.ruff_cache/
+cf_web.db*
+cf_export/
+cf_backup/
+node_modules/

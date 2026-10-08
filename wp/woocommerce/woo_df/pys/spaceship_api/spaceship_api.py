@@ -22,12 +22,13 @@ FAQ:
 """
 
 import argparse
+import csv
+from datetime import datetime, timezone
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import os
 import sys
-import time
 
 import requests
 
@@ -40,6 +41,342 @@ DEPLOY_CONFIGS = f"{DESKTOP}/deploy_configs"
 # 默认配置文件路径
 DEFAULT_CONFIG_PATH = os.path.join(DEPLOY_CONFIGS, "spaceship_config.json")
 TIMEOUT = 120  # 默认请求超时时间(秒)
+
+# 域名 CSV 导出的默认列(顺序即 CSV 列顺序,可通过 --csv-fields 子集排序自定义)
+DEFAULT_CSV_FIELDS = [
+    "account",
+    "name",
+    "unicodeName",
+    "registrationDate",
+    "expirationDate",
+    "autoRenew",
+    "isPremium",
+    "lifecycleStatus",
+    "verificationStatus",
+    "eppStatuses",
+    "suspensions",
+    "nsProvider",
+    "nameservers",
+    "privacyLevel",
+]
+# 允许的 CSV 列集合(与 DEFAULT_CSV_FIELDS 一致,单独列出便于校验报错)
+ALLOWED_CSV_FIELDS = set(DEFAULT_CSV_FIELDS)
+
+# 域名状态过滤的可选值: all=全部, normal=正常(无 suspensions), suspended=被停用(有 suspensions)
+DOMAIN_STATUS_CHOICES = ("all", "normal", "suspended")
+
+
+def is_suspended_domain(domain):
+    """判断单个域名是否为被停用状态(有 suspensions 即视为被停用)"""
+    if isinstance(domain, str):
+        return False
+    if not isinstance(domain, dict):
+        return False
+    sus = domain.get("suspensions", "")
+    return bool(sus)
+
+
+def is_normal_domain(domain):
+    """判断单个域名是否为正常状态(无 suspensions)"""
+    return not is_suspended_domain(domain)
+
+
+def parse_expiration_date(value):
+    """解析 spaceship 的 expirationDate 为带时区的时间,失败返回 None。
+
+    兼容 ISO-8601(含 Z/毫秒/时区偏移)、空格分隔与纯日期等写法;无时区视为 UTC。
+    """
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    candidate = text[:-1] + "+00:00" if text.endswith(("Z", "z")) else text
+    try:
+        parsed = datetime.fromisoformat(candidate)
+    except ValueError:
+        parsed = None
+    if parsed is None:
+        for fmt in (
+            "%Y-%m-%dT%H:%M:%S.%fZ",
+            "%Y-%m-%dT%H:%M:%SZ",
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d",
+        ):
+            try:
+                parsed = datetime.strptime(text, fmt)
+                break
+            except ValueError:
+                continue
+    if parsed is None:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def is_expired_domain(domain, now=None):
+    """判断单个域名是否已过期(expirationDate <= 当前时间)。
+
+    缺少 expirationDate 或无法解析时返回 False(保留,避免误删)。
+    """
+    if isinstance(domain, str):
+        return False
+    if not isinstance(domain, dict):
+        return False
+    expired_at = parse_expiration_date(domain.get("expirationDate", ""))
+    if expired_at is None:
+        return False
+    current = now if now is not None else datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    return expired_at <= current
+
+
+def filter_out_expired(items, now=None):
+    """剔除已过期域名,返回 (保留列表, 被剔除列表)。"""
+    kept, dropped = [], []
+    for item in items or []:
+        (dropped if is_expired_domain(item, now=now) else kept).append(item)
+    return kept, dropped
+
+
+def filter_domains_by_status(items, status="all", exclude_expired=False):
+    """按状态过滤域名列表
+
+    Args:
+        items (list): 域名信息对象列表(元素为 dict,或极简的 str 域名)
+        status (str): 'all' | 'normal' | 'suspended'
+        exclude_expired (bool): 为 True 时额外剔除已过期域名
+            (expirationDate <= 当前时间;缺失/无法解析则保留)
+
+    Returns:
+        list: 过滤后的列表(保持原元素形态,不做拷贝转换)
+    """
+    status = (status or "all").lower()
+    if status not in DOMAIN_STATUS_CHOICES:
+        raise ValueError(
+            f"status 必须为 {DOMAIN_STATUS_CHOICES} 之一,当前为 {status!r}"
+        )
+    if status == "all":
+        result = list(items or [])
+    elif status == "normal":
+        result = [d for d in (items or []) if is_normal_domain(d)]
+    else:
+        result = [d for d in (items or []) if is_suspended_domain(d)]
+    if exclude_expired:
+        result, _ = filter_out_expired(result)
+    return result
+
+
+def _format_suspensions(domain):
+    """将 suspensions 字段格式化为 CSV 友好的字符串(多个 reasonCode 用 ';' 连接)"""
+    sus = domain.get("suspensions", "")
+    if not sus:
+        return ""
+    if isinstance(sus, str):
+        return sus
+    if isinstance(sus, list):
+        parts = []
+        for s in sus:
+            if isinstance(s, dict):
+                parts.append(str(s.get("reasonCode", s)))
+            else:
+                parts.append(str(s))
+        return ";".join(parts)
+    return str(sus)
+
+
+def _format_list_field(value):
+    """将 eppStatuses 这类列表字段格式化为 ';' 连接的字符串"""
+    if not value:
+        return ""
+    if isinstance(value, list):
+        return ";".join(str(v) for v in value)
+    return str(value)
+
+
+def domain_to_csv_row(domain, account="", fields=None):
+    """将单个域名对象转换为 CSV 行字典
+
+    Args:
+        domain (dict|str): 域名信息对象; str 会被视为只有 name 的极简对象
+        account (str): 所属账号(当 domain 内无 account 信息时使用)
+        fields (list|None): 需要的列,为空则使用 DEFAULT_CSV_FIELDS
+
+    Returns:
+        dict: 以 field 名为键的行字典(键顺序与 fields 一致)
+    """
+    fields = list(fields) if fields else list(DEFAULT_CSV_FIELDS)
+    if isinstance(domain, str):
+        domain = {"name": domain}
+    if not isinstance(domain, dict):
+        domain = {"name": str(domain)}
+    nameservers = domain.get("nameservers", {}) or {}
+    if not isinstance(nameservers, dict):
+        nameservers = {}
+    hosts = nameservers.get("hosts", "") or ""
+    privacy = domain.get("privacyProtection", {}) or {}
+    if not isinstance(privacy, dict):
+        privacy = {}
+    row_account = account or domain.get("account", "") or domain.get("_account", "")
+    full_row = {
+        "account": row_account,
+        "name": domain.get("name", ""),
+        "unicodeName": domain.get("unicodeName", ""),
+        "registrationDate": domain.get("registrationDate", ""),
+        "expirationDate": domain.get("expirationDate", ""),
+        "autoRenew": domain.get("autoRenew", ""),
+        "isPremium": domain.get("isPremium", ""),
+        "lifecycleStatus": domain.get("lifecycleStatus", ""),
+        "verificationStatus": domain.get("verificationStatus", ""),
+        "eppStatuses": _format_list_field(domain.get("eppStatuses", "")),
+        "suspensions": _format_suspensions(domain),
+        "nsProvider": nameservers.get("provider", ""),
+        "nameservers": _format_list_field(hosts),
+        "privacyLevel": privacy.get("level", ""),
+    }
+    return {k: full_row.get(k, "") for k in fields}
+
+
+def resolve_csv_fields(csv_fields_arg):
+    """解析 --csv-fields 参数(逗号分隔)为空则返回默认列
+
+    Args:
+        csv_fields_arg (str|list|None): 如 "name,expirationDate,account"
+
+    Returns:
+        list: 校验通过的列名列表
+
+    Raises:
+        ValueError: 包含未知列名时抛出,并提示可用列
+    """
+    if not csv_fields_arg:
+        return list(DEFAULT_CSV_FIELDS)
+    if isinstance(csv_fields_arg, str):
+        fields = [f.strip() for f in csv_fields_arg.split(",") if f.strip()]
+    else:
+        fields = [str(f).strip() for f in csv_fields_arg if str(f).strip()]
+    if not fields:
+        return list(DEFAULT_CSV_FIELDS)
+    unknown = [f for f in fields if f not in ALLOWED_CSV_FIELDS]
+    if unknown:
+        raise ValueError(f"未知 CSV 列: {unknown},可用列为: {DEFAULT_CSV_FIELDS}")
+    return fields
+
+
+def normalize_to_account_rows(payload, default_account=""):
+    """将各种形态的域名查询结果归一化为 [(account, domain_dict), ...]
+
+    兼容形态:
+    - {"items": [...]} (单账号 list_domains 返回)
+    - [...] 域名对象列表(元素为 dict 或 str)
+    - [...] all-accounts 结果 [{"account":..., "domains": {"items": [...]}, "total":...}]
+    - [...] suspended-all 结果 [{"account":..., "domain": {...|str}, ...}]
+    """
+    rows = []
+    if payload is None:
+        return rows
+    if isinstance(payload, dict):
+        if "items" in payload:
+            items = payload.get("items", []) or []
+            for d in items:
+                if isinstance(d, str):
+                    rows.append((default_account, {"name": d}))
+                elif isinstance(d, dict):
+                    rows.append(
+                        (
+                            d.get("account", "")
+                            or d.get("_account", "")
+                            or default_account,
+                            d,
+                        )
+                    )
+            return rows
+        # 单个域名对象
+        if "name" in payload or "domain" in payload:
+            d = payload
+            if isinstance(d, dict) and "domain" in d and "name" not in d:
+                d = {"name": d.get("domain", "")}
+            rows.append(
+                (default_account, d if isinstance(d, dict) else {"name": str(d)})
+            )
+            return rows
+        return rows
+    if isinstance(payload, list):
+        if not payload:
+            return rows
+        first = payload[0]
+        # all-accounts 或 suspended-all 的分组形态
+        if isinstance(first, dict) and (
+            "domains" in first or ("account" in first and "domain" in first)
+        ):
+            for entry in payload:
+                if not isinstance(entry, dict):
+                    continue
+                acct = entry.get("account", "") or default_account
+                if "domains" in entry:
+                    doms = entry.get("domains")
+                    if isinstance(doms, dict) and "items" in doms:
+                        items = doms.get("items", []) or []
+                    elif isinstance(doms, list):
+                        items = doms
+                    else:
+                        items = []
+                    for d in items:
+                        if isinstance(d, str):
+                            rows.append((acct, {"name": d}))
+                        elif isinstance(d, dict):
+                            rows.append((acct, d))
+                elif "domain" in entry:
+                    d = entry.get("domain")
+                    extra_reg = entry.get("registrationDate", "")
+                    if isinstance(d, str):
+                        row_d = {"name": d}
+                        if extra_reg:
+                            row_d["registrationDate"] = extra_reg
+                        rows.append((acct, row_d))
+                    elif isinstance(d, dict):
+                        rows.append((acct, d))
+            return rows
+        # 普通域名列表
+        for d in payload:
+            if isinstance(d, str):
+                rows.append((default_account, {"name": d}))
+            elif isinstance(d, dict):
+                acct = d.get("account", "") or d.get("_account", "") or default_account
+                rows.append((acct, d))
+        return rows
+    return rows
+
+
+def export_domains_to_csv(payload, csv_path, fields=None, default_account=""):
+    """将域名查询结果导出为 CSV(正常/被停用/全部均可,调用前自行过滤)
+
+    Args:
+        payload: 见 normalize_to_account_rows 支持的各种形态
+        csv_path (str): CSV 输出路径(父目录不存在会自动创建)
+        fields (list|None): 列名列表,为空使用 DEFAULT_CSV_FIELDS
+        default_account (str): 缺省账号名(单账号导出时填充 account 列)
+
+    Returns:
+        tuple: (csv_path, 写入的数据行数,不含表头)
+    """
+    fields = list(fields) if fields else list(DEFAULT_CSV_FIELDS)
+    unknown = [f for f in fields if f not in ALLOWED_CSV_FIELDS]
+    if unknown:
+        raise ValueError(f"未知 CSV 列: {unknown},可用列为: {DEFAULT_CSV_FIELDS}")
+    rows = normalize_to_account_rows(payload, default_account=default_account)
+    parent = os.path.dirname(os.path.abspath(csv_path))
+    if parent and not os.path.exists(parent):
+        os.makedirs(parent, exist_ok=True)
+    # utf-8-sig 便于 Excel 直接打开不乱码
+    with open(csv_path, "w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
+        writer.writeheader()
+        for acct, domain in rows:
+            writer.writerow(domain_to_csv_row(domain, account=acct, fields=fields))
+    return csv_path, len(rows)
 
 
 class APIClient:
@@ -84,12 +421,10 @@ class APIClient:
                 for accunt in accounts
             }
         else:
-            self.accounts={
-                
-            }
+            self.accounts = {}
         # print("self.accounts", self.accounts)
         # exit()
-        
+
         return getattr(self, "accounts", {})
         # return self.accounts
 
@@ -261,7 +596,7 @@ class APIClient:
             output (str): 输出文件路径,为空则仅输出到屏幕
         """
         if brief:
-            print(f"结果模式:brief")
+            print("结果模式:brief")
         self.suspended_domains = []
         if mode == "current":
             domains = self.list_domains(take=0)
@@ -303,7 +638,145 @@ class APIClient:
                 json.dump(self.suspended_domains, f, ensure_ascii=False, indent=2)
         return self.suspended_domains
 
-    def list_domains_from_all_accounts(self, config, output, names_only=False):
+    @staticmethod
+    def is_suspended(domain):
+        """判断单个域名是否被停用(代理到模块函数,便于实例调用)"""
+        return is_suspended_domain(domain)
+
+    @staticmethod
+    def is_normal(domain):
+        """判断单个域名是否正常(无 suspensions)"""
+        return is_normal_domain(domain)
+
+    def list_filtered_domains(
+        self,
+        take=0,
+        skip=0,
+        order_by="expirationDate",
+        status="all",
+        exclude_expired=False,
+    ):
+        """列出当前账号下按状态过滤后的域名
+
+        Args:
+            take (int): 最多获取数量,0 表示尽可能多获取
+            skip (int): 跳过数量
+            order_by (str): 排序字段
+            status (str): 'all' | 'normal' | 'suspended'
+            exclude_expired (bool): 为 True 时额外剔除已过期域名
+
+        Returns:
+            {"items": [...], "total": ...}: 过滤后的域名集合
+        """
+        result = self.list_domains(take=take, skip=skip, order_by=order_by)
+        items = result.get("items", []) if isinstance(result, dict) else []
+        filtered = filter_domains_by_status(
+            items, status=status, exclude_expired=exclude_expired
+        )
+        return {"items": filtered, "total": len(filtered)}
+
+    def list_normal_domains(
+        self, take=0, skip=0, order_by="expirationDate", exclude_expired=False
+    ):
+        """列出当前账号下的正常域名(无 suspensions),等价于 status='normal'"""
+        return self.list_filtered_domains(
+            take=take,
+            skip=skip,
+            order_by=order_by,
+            status="normal",
+            exclude_expired=exclude_expired,
+        )
+
+    def export_domains_to_csv(self, payload, csv_path, fields=None, default_account=""):
+        """将域名结果导出为 CSV(实例方法,代理到模块函数)
+
+        Args:
+            payload: 单账号 {"items": [...]} / 域名列表 / all-accounts 结果均可
+            csv_path (str): 输出 CSV 路径
+            fields (list|None): 自定义列,为空使用默认列
+            default_account (str): 缺省账号名,为空则使用 self.account
+
+        Returns:
+            tuple: (csv_path, 数据行数)
+        """
+        return export_domains_to_csv(
+            payload,
+            csv_path,
+            fields=fields,
+            default_account=default_account or self.account or "",
+        )
+
+    def export_normal_domains_to_csv(
+        self,
+        csv_path,
+        take=0,
+        skip=0,
+        order_by="expirationDate",
+        fields=None,
+        mode="current",
+        config=None,
+        exclude_expired=False,
+    ):
+        """一键导出正常域名到 CSV(最常用入口)
+
+        Args:
+            csv_path (str): 输出 CSV 路径,如 "normal_domains.csv"
+            take/skip/order_by: 仅 mode='current' 时生效
+            fields (list|None): 自定义列,为空使用默认列
+            mode (str): 'current' 仅当前账号, 'all' 为配置文件中所有账号(需 config)
+            config (dict): mode='all' 时传入 auth/config,需含 accounts
+            exclude_expired (bool): 为 True 时额外剔除已过期域名
+
+        Returns:
+            tuple: (csv_path, 数据行数)
+
+        示例:
+            client.export_normal_domains_to_csv("normal.csv")
+            client.export_normal_domains_to_csv("all_normal.csv", mode="all", config=auth)
+        """
+        if mode == "all":
+            if not config:
+                config = self.auth or {}
+            results = self.list_domains_from_all_accounts(
+                config, output="", names_only=False
+            )
+            # 按账号分组过滤,保留分组结构后再归一化导出
+            filtered_grouped = []
+            for entry in results:
+                doms = entry.get("domains", {})
+                if isinstance(doms, dict) and "items" in doms:
+                    items = filter_domains_by_status(
+                        doms.get("items", []),
+                        status="normal",
+                        exclude_expired=exclude_expired,
+                    )
+                    filtered_grouped.append(
+                        {
+                            "account": entry.get("account", ""),
+                            "domains": {"items": items, "total": len(items)},
+                            "total": len(items),
+                        }
+                    )
+                elif isinstance(doms, list):
+                    items = filter_domains_by_status(
+                        doms, status="normal", exclude_expired=exclude_expired
+                    )
+                    filtered_grouped.append(
+                        {
+                            "account": entry.get("account", ""),
+                            "domains": items,
+                            "total": len(items),
+                        }
+                    )
+            return export_domains_to_csv(filtered_grouped, csv_path, fields=fields)
+        result = self.list_normal_domains(
+            take=take, skip=skip, order_by=order_by, exclude_expired=exclude_expired
+        )
+        return export_domains_to_csv(
+            result, csv_path, fields=fields, default_account=self.account or ""
+        )
+
+    def list_domains_from_all_accounts(self, config, output="", names_only=False):
         """从配置文件中读取所有账号信息,并发获取各个账号中的全部域名列表(只获取域名名字)"""
         if output:
             print(f"文件将被保存到{output}")
@@ -332,8 +805,14 @@ class APIClient:
             else:
                 domains = client.list_domains(take=0, skip=0)
             print(f"\t完成{account_name}账号域名列表的获取")
-            # 返回指定格式的字典
-            return {"account": account_name, "domains": domains, "total": len(domains)}
+            # 返回指定格式的字典(注意 domains 在 names_only=True 时为 list,否则为 {"items":..., "total":...})
+            if isinstance(domains, list):
+                total = len(domains)
+            elif isinstance(domains, dict) and "items" in domains:
+                total = len(domains.get("items", []))
+            else:
+                total = 0
+            return {"account": account_name, "domains": domains, "total": total}
 
         with ThreadPoolExecutor(max_workers=min(8, len(accounts))) as executor:
             futures = [executor.submit(fetch_domains, account) for account in accounts]
@@ -706,11 +1185,16 @@ def get_auth(config_path, args=None):
             if acc == default_account_name:
                 key = account["api_key"]
                 secret = account["api_secret"]
-        # debug:打印确定最终使用的账号(key和secret)
+
+        # debug:仅打印选中的账号名;key/secret 脱敏(防控制台与日志泄露)
+        def _mask(value):
+            text = str(value or "")
+            return f"***{text[-4:]}" if len(text) > 4 else "****"
+
         print(
             ["selected_account", default_account_name],
-            ["api key:", key],
-            ["secret:", secret],
+            ["api key:", _mask(key)],
+            ["secret:", _mask(secret)],
         )
         config["api_key"] = key
         config["api_secret"] = secret
@@ -728,9 +1212,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Spaceship API Client: 多子命令支持，域名/DNS/联系人管理"
     )
-    parser.add_argument("--api_key", type=str, help="Spaceship API Key (可全局指定)")
+    parser.add_argument("--api-key", type=str, help="Spaceship API Key (可全局指定)")
     parser.add_argument(
-        "--api_secret", type=str, help="Spaceship API Secret (可全局指定)"
+        "--api-secret", type=str, help="Spaceship API Secret (可全局指定)"
     )
     parser.add_argument(
         "--config",
@@ -745,10 +1229,10 @@ def parse_args() -> argparse.Namespace:
     parser_list_domains.add_argument("--take", type=int, default=12, help="返回条数")
     parser_list_domains.add_argument("--skip", type=int, default=0, help="跳过条数")
     parser_list_domains.add_argument(
-        "--order_by", type=str, default="expirationDate", help="排序字段"
+        "--order-by", type=str, default="expirationDate", help="排序字段"
     )
     parser_list_domains.add_argument(
-        "--names_only", action="store_true", help="只输出域名，每行一个"
+        "--names-only", action="store_true", help="只输出域名，每行一个"
     )
     parser_list_domains.add_argument(
         "--all",
@@ -756,14 +1240,52 @@ def parse_args() -> argparse.Namespace:
         help="列出账号中的全部域名（不与take参数同时使用）",
     )
     parser_list_domains.add_argument(
-        "--from_all_accounts",
+        "--from-all-accounts",
         # action="store_true",
         required=False,
         default="",
-        help="列出所有账号中的域名,指定值作为输出文件名,缺省则输出到屏幕,内容过长可能会显示不全!",
+        help="列出所有账号中的域名,指定值作为 JSON 输出文件名(兼容旧用法);如需 CSV 请配合 --export-csv 使用",
     )
     parser_list_domains.add_argument(
-        "--list_suspended_domains",
+        "--all-accounts",
+        action="store_true",
+        help="查询配置文件中所有账号的域名(与 --from-all-accounts 有值等效,推荐的新写法)",
+    )
+    parser_list_domains.add_argument(
+        "--status",
+        type=str,
+        choices=["all", "normal", "suspended"],
+        default="all",
+        help="按域名状态过滤: all=全部, normal=正常(无 suspensions), suspended=被停用(默认: all)",
+    )
+    parser_list_domains.add_argument(
+        "--exclude-expired",
+        action="store_true",
+        help="额外剔除已过期域名(expirationDate<=当前时间);缺失/无法解析则保留",
+    )
+    parser_list_domains.add_argument(
+        "--export-csv",
+        "--csv",
+        dest="export_csv",
+        type=str,
+        default="",
+        help="将过滤后的域名导出为 CSV,值为输出路径,如 normal.csv(Excel 可直接打开,编码 utf-8-sig)",
+    )
+    parser_list_domains.add_argument(
+        "--csv-fields",
+        type=str,
+        default="",
+        help="自定义 CSV 列,逗号分隔,如 name,expirationDate,account;缺省为全部默认列",
+    )
+    parser_list_domains.add_argument(
+        "--output",
+        "-o",
+        type=str,
+        default="",
+        help="将过滤后的域名结果保存为 JSON 文件,值为输出路径;缺省仅输出到屏幕",
+    )
+    parser_list_domains.add_argument(
+        "--list-suspended-domains",
         nargs="+",
         default=[],
         help="列出被停用的域名: current|all [输出文件路径]",
@@ -803,7 +1325,7 @@ def parse_args() -> argparse.Namespace:
     parser_get_domain = subparsers.add_parser("get-domain", help="查询域名详情")
     parser_get_domain.add_argument("--domain", type=str, required=True, help="域名")
     parser_get_domain.add_argument(
-        "--from_all_accounts",
+        "--from-all-accounts",
         # type=bool,
         default=False,
         action="store_true",
@@ -814,10 +1336,10 @@ def parse_args() -> argparse.Namespace:
         "--domain", type=str, required=True, help="域名"
     )
     parser_register_domain.add_argument(
-        "--auto_renew", action="store_true", help="自动续费(默认开启)", default=True
+        "--auto-renew", action="store_true", help="自动续费(默认开启)", default=True
     )
     parser_register_domain.add_argument(
-        "--privacy_level",
+        "--privacy-level",
         type=str,
         choices=["public", "high"],
         default="high",
@@ -831,7 +1353,7 @@ def parse_args() -> argparse.Namespace:
         "--years", type=int, required=True, help="续费年数"
     )
     parser_renew_domain.add_argument(
-        "--current_expiration_date",
+        "--current-expiration-date",
         type=str,
         required=True,
         help="当前到期时间(ISO格式)",
@@ -843,36 +1365,36 @@ def parse_args() -> argparse.Namespace:
         "--domain", type=str, required=True, help="域名"
     )
     parser_transfer_domain.add_argument(
-        "--auth_code", type=str, required=True, help="转移授权码"
+        "--auth-code", type=str, required=True, help="转移授权码"
     )
     parser_lock_domain = subparsers.add_parser("lock-domain", help="设置域名转移锁")
     parser_lock_domain.add_argument("--domain", type=str, required=True, help="域名")
     parser_lock_domain.add_argument(
-        "--is_locked", action="store_true", help="是否锁定(加锁)"
+        "--is-locked", action="store_true", help="是否锁定(加锁)"
     )
     parser_lock_domain.add_argument(
-        "--no_lock", action="store_true", help="是否解锁(解锁)"
+        "--no-lock", action="store_true", help="是否解锁(解锁)"
     )
     parser_privacy_domain = subparsers.add_parser(
         "privacy-domain", help="设置域名隐私保护"
     )
     parser_privacy_domain.add_argument("--domain", type=str, required=True, help="域名")
     parser_privacy_domain.add_argument(
-        "--privacy_level",
+        "--privacy-level",
         type=str,
         choices=["public", "high"],
         required=True,
         help="隐私保护等级",
     )
     parser_privacy_domain.add_argument(
-        "--user_consent", action="store_true", help="用户同意变更"
+        "--user-consent", action="store_true", help="用户同意变更"
     )
     parser_email_protect = subparsers.add_parser(
         "email-protect", help="设置域名邮箱保护"
     )
     parser_email_protect.add_argument("--domain", type=str, required=True, help="域名")
     parser_email_protect.add_argument(
-        "--contact_form", action="store_true", help="显示联系表单"
+        "--contact-form", action="store_true", help="显示联系表单"
     )
     # DNS相关
     parser_list_dns = subparsers.add_parser("list-dns", help="查询域名 DNS 记录")
@@ -882,7 +1404,7 @@ def parse_args() -> argparse.Namespace:
     parser_list_dns.add_argument("--take", type=int, default=100, help="返回条数")
     parser_list_dns.add_argument("--skip", type=int, default=0, help="跳过条数")
     parser_list_dns.add_argument(
-        "--order_by", type=str, default="type", help="排序字段"
+        "--order-by", type=str, default="type", help="排序字段"
     )
     parser_add_dns = subparsers.add_parser("add-dns", help="添加 DNS 记录")
     parser_add_dns.add_argument("--domain", type=str, required=True, help="域名")
@@ -899,8 +1421,8 @@ def parse_args() -> argparse.Namespace:
     parser_delete_dns.add_argument("--address", type=str, required=True, help="记录值")
     # 联系人相关
     parser_save_contact = subparsers.add_parser("save-contact", help="创建联系人")
-    parser_save_contact.add_argument("--first_name", type=str, required=True, help="名")
-    parser_save_contact.add_argument("--last_name", type=str, required=True, help="姓")
+    parser_save_contact.add_argument("--first-name", type=str, required=True, help="名")
+    parser_save_contact.add_argument("--last-name", type=str, required=True, help="姓")
     parser_save_contact.add_argument("--email", type=str, required=True, help="邮箱")
     parser_save_contact.add_argument(
         "--country", type=str, required=True, help="国家代码"
@@ -910,22 +1432,22 @@ def parse_args() -> argparse.Namespace:
     parser_save_contact.add_argument("--address1", type=str, help="地址1")
     parser_save_contact.add_argument("--address2", type=str, help="地址2")
     parser_save_contact.add_argument("--city", type=str, help="城市")
-    parser_save_contact.add_argument("--state_province", type=str, help="省/州")
-    parser_save_contact.add_argument("--postal_code", type=str, help="邮编")
-    parser_save_contact.add_argument("--phone_ext", type=str, help="电话分机")
+    parser_save_contact.add_argument("--state-province", type=str, help="省/州")
+    parser_save_contact.add_argument("--postal-code", type=str, help="邮编")
+    parser_save_contact.add_argument("--phone-ext", type=str, help="电话分机")
     parser_save_contact.add_argument("--fax", type=str, help="传真")
-    parser_save_contact.add_argument("--fax_ext", type=str, help="传真分机")
-    parser_save_contact.add_argument("--tax_number", type=str, help="税号")
+    parser_save_contact.add_argument("--fax-ext", type=str, help="传真分机")
+    parser_save_contact.add_argument("--tax-number", type=str, help="税号")
     parser_get_contact = subparsers.add_parser("get-contact", help="查询联系人")
     parser_get_contact.add_argument(
-        "--contact_id", type=str, required=True, help="联系人ID"
+        "--contact-id", type=str, required=True, help="联系人ID"
     )
     parser_update_contact = subparsers.add_parser("update-contact", help="更新联系人")
     parser_update_contact.add_argument(
-        "--contact_id", type=str, required=True, help="联系人ID"
+        "--contact-id", type=str, required=True, help="联系人ID"
     )
-    parser_update_contact.add_argument("--first_name", type=str, help="名")
-    parser_update_contact.add_argument("--last_name", type=str, help="姓")
+    parser_update_contact.add_argument("--first-name", type=str, help="名")
+    parser_update_contact.add_argument("--last-name", type=str, help="姓")
     parser_update_contact.add_argument("--email", type=str, help="邮箱")
     parser_update_contact.add_argument("--country", type=str, help="国家代码")
     parser_update_contact.add_argument("--phone", type=str, help="电话")
@@ -933,12 +1455,12 @@ def parse_args() -> argparse.Namespace:
     parser_update_contact.add_argument("--address1", type=str, help="地址1")
     parser_update_contact.add_argument("--address2", type=str, help="地址2")
     parser_update_contact.add_argument("--city", type=str, help="城市")
-    parser_update_contact.add_argument("--state_province", type=str, help="省/州")
-    parser_update_contact.add_argument("--postal_code", type=str, help="邮编")
-    parser_update_contact.add_argument("--phone_ext", type=str, help="电话分机")
+    parser_update_contact.add_argument("--state-province", type=str, help="省/州")
+    parser_update_contact.add_argument("--postal-code", type=str, help="邮编")
+    parser_update_contact.add_argument("--phone-ext", type=str, help="电话分机")
     parser_update_contact.add_argument("--fax", type=str, help="传真")
-    parser_update_contact.add_argument("--fax_ext", type=str, help="传真分机")
-    parser_update_contact.add_argument("--tax_number", type=str, help="税号")
+    parser_update_contact.add_argument("--fax-ext", type=str, help="传真分机")
+    parser_update_contact.add_argument("--tax-number", type=str, help="税号")
     # 联系人属性相关
     parser_save_contact_attr = subparsers.add_parser(
         "save-contact-attr", help="保存联系人属性"
@@ -948,18 +1470,18 @@ def parse_args() -> argparse.Namespace:
     )
     parser_save_contact_attr.add_argument("--euAdrLang", type=str, help="语言")
     parser_save_contact_attr.add_argument(
-        "--is_natural_person", action="store_true", help="是否自然人"
+        "--is-natural-person", action="store_true", help="是否自然人"
     )
     parser_get_contact_attr = subparsers.add_parser(
         "get-contact-attr", help="查询联系人属性"
     )
     parser_get_contact_attr.add_argument(
-        "--contact_id", type=str, required=True, help="联系人ID"
+        "--contact-id", type=str, required=True, help="联系人ID"
     )
     # 异步操作相关
     parser_get_async = subparsers.add_parser("get-async", help="查询异步操作状态")
     parser_get_async.add_argument(
-        "--operation_id", type=str, required=True, help="异步操作ID"
+        "--operation-id", type=str, required=True, help="异步操作ID"
     )
     # 多账户管理
     parser.add_argument(
@@ -1002,43 +1524,41 @@ def main():
     if args.command == "list-domains":
         print("正在获取域名列表,请稍后...")
         brief = getattr(args, "brief", False)
-
-        if getattr(args, "all", False):
-            # print("获取账号下的尽可能多的域名")
-            result = client.list_domains(take=0, skip=args.skip, order_by=args.order_by)
-            # print(result,'🎈')
-        else:
-            take = args.take
-            print(f"非[all]模式,尝试获取指定数量{take}(个)域名")
-            result = client.list_domains(
-                take=take, skip=args.skip, order_by=args.order_by
+        status = (getattr(args, "status", "all") or "all").lower()
+        exclude_expired = bool(getattr(args, "exclude_expired", False))
+        export_csv = (getattr(args, "export_csv", "") or "").strip()
+        csv_fields_arg = (getattr(args, "csv_fields", "") or "").strip()
+        json_output = (getattr(args, "output", "") or "").strip()
+        from_all_val = (getattr(args, "from_all_accounts", "") or "").strip()
+        names_only = bool(getattr(args, "names_only", False))
+        try:
+            eff_fields_global = (
+                resolve_csv_fields(csv_fields_arg) if csv_fields_arg else None
             )
+        except ValueError as e:
+            print(str(e), file=sys.stderr)
+            sys.exit(2)
+        if eff_fields_global is None and export_csv:
+            eff_fields_global = list(DEFAULT_CSV_FIELDS)
 
-        if getattr(args, "names_only", False):
-            # 只输出域名，每行一个(与上一步相关联)
-            if result and "items" in result:
-                if isinstance(result, dict):
-                    items_list = result.get("items", [])
+        # 兼容旧用法: --from-all-accounts xxx.csv(未配 --export-csv)视为 CSV 输出
+        want_all_accounts = bool(getattr(args, "all_accounts", False) or from_all_val)
+        if from_all_val and not export_csv and not json_output:
+            if from_all_val.lower().endswith(".csv"):
+                export_csv = from_all_val
+                from_all_val = ""
+                want_all_accounts = True
+
+        def _print_name_list(items):
+            for item in items or []:
+                if isinstance(item, dict):
+                    print(item.get("name", ""))
+                elif isinstance(item, str):
+                    print(item)
                 else:
-                    items_list = []
-                for item in items_list:
-                    if isinstance(item, dict):
-                        print(item.get("name", ""))
-                    elif isinstance(item, str):
-                        print(item)
-                    else:
-                        print(str(item))
-            else:
-                print("")
-            return
-        if getattr(args, "from_all_accounts", False):
-            # 列出所有账号中的域名
-            result = client.list_domains_from_all_accounts(
-                config=auth, output=args.from_all_accounts
-            )
-            print(result)
-            return
-            # 将导出的字典数据存储成json文件
+                    print(str(item))
+
+        # 1) 被停用域名旧链路(保留兼容,并新增 CSV 导出能力)
         if (
             getattr(args, "list_suspended_domains", None)
             and len(args.list_suspended_domains) > 0
@@ -1064,14 +1584,144 @@ def main():
                 result = client.list_suspended_domains(
                     mode="current", output=output, brief=brief
                 )
+            if export_csv:
+                fields = eff_fields_global or list(DEFAULT_CSV_FIELDS)
+                if not csv_fields_arg and result and isinstance(result, list):
+                    # brief 模式多为纯字符串列表,默认只导出 name 列更干净
+                    if result and all(isinstance(x, str) for x in result):
+                        fields = ["name"]
+                _, n = export_domains_to_csv(result, export_csv, fields=fields)
+                print(f"已导出 {n} 个被停用域名(模式={mode})到 {export_csv}")
+                return
+            if json_output and not output:
+                with open(json_output, "w", encoding="utf-8") as f:
+                    json.dump(result, f, ensure_ascii=False, indent=2)
+                print(f"已保存被停用域名(JSON)到 {json_output}")
+                return
             if not output:
                 print(json.dumps(result, ensure_ascii=False, indent=2))
             return
-        else:
-            # result = client.list_domains(args.take, args.skip, args.order_by)
-            # print(json.dumps(result, ensure_ascii=False, indent=2))
-            print(result)  # 打印未格式还的json
+
+        # 2) 所有账号链路(新:支持 --status 过滤 + CSV/JSON 指定输出)
+        if want_all_accounts:
+            raw = client.list_domains_from_all_accounts(
+                config=auth, output="", names_only=False
+            )
+            filtered_grouped = []
+            for entry in raw or []:
+                doms = entry.get("domains", {})
+                if isinstance(doms, dict) and "items" in doms:
+                    items = filter_domains_by_status(
+                        doms.get("items", []),
+                        status=status,
+                        exclude_expired=exclude_expired,
+                    )
+                    filtered_grouped.append(
+                        {
+                            "account": entry.get("account", ""),
+                            "domains": {"items": items, "total": len(items)},
+                            "total": len(items),
+                        }
+                    )
+                elif isinstance(doms, list):
+                    items = filter_domains_by_status(
+                        doms, status=status, exclude_expired=exclude_expired
+                    )
+                    filtered_grouped.append(
+                        {
+                            "account": entry.get("account", ""),
+                            "domains": items,
+                            "total": len(items),
+                        }
+                    )
+            total_n = sum(g.get("total", 0) for g in filtered_grouped)
+            # JSON 输出路径:显式 --output 优先,否则沿用旧 --from-all-accounts 文件名
+            json_path = json_output
+            if not json_path and from_all_val:
+                if not from_all_val.lower().endswith(".csv"):
+                    json_path = from_all_val
+            if json_path:
+                with open(json_path, "w", encoding="utf-8") as f:
+                    json.dump(filtered_grouped, f, ensure_ascii=False, indent=2)
+                print(f"已保存 {total_n} 个域名(JSON,状态={status})到 {json_path}")
+            if export_csv:
+                fields = eff_fields_global or list(DEFAULT_CSV_FIELDS)
+                if names_only and not csv_fields_arg:
+                    fields = ["name"]
+                _, n = export_domains_to_csv(
+                    filtered_grouped, export_csv, fields=fields
+                )
+                print(f"已导出 {n} 个域名(状态={status})到 {export_csv}")
+                if names_only:
+                    for _acct, _d in normalize_to_account_rows(filtered_grouped):
+                        print(_d.get("name", "") if isinstance(_d, dict) else str(_d))
+                elif not json_path:
+                    print(
+                        f"共 {n} 个域名(状态={status}),CSV 已保存,不再全量打印 JSON。如需查看请加 --output xxx.json"
+                    )
+                return
+            if names_only:
+                for entry in filtered_grouped:
+                    doms = entry.get("domains", {})
+                    items = (
+                        doms.get("items", [])
+                        if isinstance(doms, dict)
+                        else (doms or [])
+                    )
+                    _print_name_list(items)
+                return
+            if not json_path:
+                print(json.dumps(filtered_grouped, ensure_ascii=False, indent=2))
             return
+
+        # 3) 当前账号链路(新:支持 --status 过滤 + CSV/JSON 指定输出)
+        if getattr(args, "all", False):
+            result = client.list_domains(take=0, skip=args.skip, order_by=args.order_by)
+        else:
+            take = args.take
+            print(
+                f"非[all]模式,尝试获取指定数量{take}(个)域名(过滤前数量,状态={status})"
+            )
+            print(
+                "提示:要导出全部正常域名请使用 --all --status normal --export-csv xxx.csv"
+            )
+            result = client.list_domains(
+                take=take, skip=args.skip, order_by=args.order_by
+            )
+        items = result.get("items", []) if isinstance(result, dict) else []
+        filtered_items = filter_domains_by_status(
+            items, status=status, exclude_expired=exclude_expired
+        )
+        filtered_result = {"items": filtered_items, "total": len(filtered_items)}
+        if export_csv:
+            fields = eff_fields_global or list(DEFAULT_CSV_FIELDS)
+            if names_only and not csv_fields_arg:
+                fields = ["name"]
+            _, n = client.export_domains_to_csv(
+                filtered_result,
+                export_csv,
+                fields=fields,
+                default_account=client.account or "",
+            )
+            print(f"已导出 {n} 个域名(状态={status})到 {export_csv}")
+            if names_only:
+                _print_name_list(filtered_items)
+            return
+        if json_output:
+            with open(json_output, "w", encoding="utf-8") as f:
+                json.dump(filtered_result, f, ensure_ascii=False, indent=2)
+            print(
+                f"已保存 {len(filtered_items)} 个域名(JSON,状态={status})到 {json_output}"
+            )
+            if names_only:
+                _print_name_list(filtered_items)
+            return
+        if names_only:
+            # 只输出域名，每行一个
+            _print_name_list(filtered_items)
+            return
+        print(json.dumps(filtered_result, ensure_ascii=False, indent=2))
+        return
 
     elif args.command == "get-domain":
         from_all_accounts = getattr(args, "from_all_accounts", False)
