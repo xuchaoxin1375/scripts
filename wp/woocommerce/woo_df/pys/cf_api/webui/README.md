@@ -2,7 +2,27 @@
 
 后端 `webui/backend/`，前端 `webui/frontend/`（源码 `src/index.html`，构建产物 `dist/index.html`，`npm run build` 仅复制，无重型依赖）。
 
-## 启动
+## 启动（后台，不占 shell）
+
+```powershell
+.\serve-webui.ps1                        # 启动 8600（Hidden 后台，shell 立即返回；已在跑则复用）
+.\serve-webui.ps1 -Status                # 快查 8600（进程 PID + 端口探活 + meta）
+.\serve-webui.ps1 -Restart               # 重启 8600（配置/绑定/代理保持现状，口令复用旧值或环境变量）
+.\serve-webui.ps1 -Restart -Lan -Password <pwd>  # 重启并绑定 0.0.0.0 对外分享（无口令拒绝）
+.\serve-webui.ps1 -Restart -NoLan        # 重启并切回仅本机
+.\serve-webui.ps1 -Port 8601 -Status     # 查别的端口（Status/Stop/Restart 均可组合 -Port）
+.\serve-webui.ps1 -Ports                 # 列出本机所有 WebUI 服务（只读）
+.\serve-webui.ps1 -RestartAll            # 重启本机所有 WebUI 服务（逐个模式保持）
+.\serve-webui.ps1 -Logs -Lines 100       # 看 webui.log 末尾（Hidden 启动排障全靠它）
+.\serve-webui.ps1 -Stop                  # 停掉 8600 上的服务（按端口精确匹配）
+```
+
+- 对标 `frontend_design/serve-preview.ps1` 的管理模型：端口空闲直接拉起并等就绪反馈；
+  已是本服务则复用；被别的程序占用则询问新端口（回车自动顺延）。
+- 日志 `webui.log`（`--log-file` 追加，超 512KB 转 `.1` 备份，无 ANSI 着色）；Hidden 进程不保证跨会话存活，每次先 `-Status` 确认。
+- 直接 `python start_web_ui.py` 仍可用（前台阻塞，仅调试用）；日常用 `serve-webui.ps1`。
+
+## 前台启动（仅调试）
 
 ```bash
 python start_web_ui.py --config <cf_config.csv|json> --port 8600

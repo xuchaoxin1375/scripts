@@ -165,7 +165,7 @@ curl -v -L -A "$ua" --resolve $domain$:80:"$server" http://$domain/content/2026/
    
 3. 创建/覆盖配置目录
 
-   - 运行 `bash /update_repos.sh -g -f` 这个命令会处理:
+   - 运行 `bash $sh/update_repos.sh -g -f` 这个命令会处理:
      - 将 `/www/sh`脚本目录中的脚本更新到最新.(里面包含许多服务器管理脚本,`/www/sh/nginx_conf/`这个目录包含 `nginx`配置管理脚本)
      - 并在服务器上的nginx配置目录 `/www/server/nginx/conf`中创建所需的文件(主要是一些 `.conf`,还可能包括 `html`文件)
 
@@ -205,13 +205,20 @@ bash /www/sh/nginx_conf/update_nginx_vhosts_conf.sh -m old --force  --insert-mar
 
 2. 如果已经使用普通nginx,并且也已经使用本代码仓库的配置代码,则需要注意:
 
-- 版本切换会重置 `nginx.conf`及其所在目录的其他配置文件,此时nginx暂时无法启动,需要用户重新执行脚本部署:
+版本切换会重置 `nginx.conf`及其所在目录的其他配置文件,此时nginx暂时无法启动,需要用户重新执行脚本部署:
 
-  > 因为使用本代码后,各个站点的vhost中的配置(`/www/server/panel/vhost/nginx`)引用的文件会因为版本切换而清空;
-  >
-  > 因此需要重新运行部署脚本创建所需的文件;
-  >
-  > 一般只需要再跑一遍`bash /update_repos.sh -g -f`
+> 因为使用本代码后,各个站点的vhost中的配置(`/www/server/panel/vhost/nginx`)引用的文件会因为版本切换而清空;
+>
+> 因此需要重新运行部署脚本创建所需的文件;
+>
+
+一般只需要再跑一遍:
+
+```bash
+bash $sh/update_repos.sh -F -R
+```
+
+
 
 ### 选择工作模式(js挑战/限流)
 

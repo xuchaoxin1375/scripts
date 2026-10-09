@@ -52,23 +52,21 @@ C:/repos/configs/deploy_configs/domain_fix/
 第 2 步）。默认直接执行（`--apply`），仅预览时加 `--dry-run`：
 
 ```bash
-# 第 1 步：算差集（联网导出两侧 CSV，加 --dry-run 只预览、不改动任何东西）
-python domain_fix.py --dry-run
+# 第 1 步：算差集（脚本会调用相关平台的api(注意鉴权配置文件路径和格式),联网导出两侧 CSV，加 --dry-run 只预览、不改动任何东西）
+python domain_fix.py 
 # -> <配置目录>/domain_fix/missing_domains.csv（完整待修复清单）
 
-# 第 2 步：白名单取交集（复用已导出 CSV，不再联网）
-python domain_fix.py --dry-run --no-export --whitelist "C:/Users/Administrator/Desktop/dms.txt"
+# 第 2 步：白名单取交集计算最终的csv（复用第一部已导出的 CSV，不再重复联网,这里可以指定白名单做交集,但是不必须 ）
+python domain_fix.py --no-export --whitelist "C:/Users/Administrator/Desktop/dms.txt"
 # -> <配置目录>/domain_fix/missing_domains_whitelisted.csv（待重加域名列表）
 
-# 第 3 步：打开交集清单核对（控制台只预览前 20 个，以 CSV 为准）；
+# 第 3 步(可选)：人工打开交集清单核对（控制台只预览前 20 个，以 CSV 为准）；
 # 若手工增删过行，按“手工编辑清单”一节用 --missing-csv 喂回
 
-# 第 4 步：小批量试跑 2 个，确认链路与配置无误
-python domain_fix.py --no-export --whitelist "C:/Users/Administrator/Desktop/dms.txt" --apply --limit 2 --server-ip 1.2.3.4
+# 第 4 步：确认链路与配置无误并开始配置(可以先通过--limit 2 指定小批量试跑 2 个,--server-ip 指定的ip一般是vps或反代服务器,而非真实后端服务器ip)
+python domain_fix.py --no-export --whitelist "C:/Users/Administrator/Desktop/dms.txt" --server-ip 1.2.3.4
 # -> <配置目录>/domain_fix/fix_results.csv（逐域名结果）
 
-# 第 5 步：试跑无误后，去掉 --limit 全量执行（第一遍快速建站/NS/DNS，随后批量回访等激活、激活一个补一个邮箱，一次跑完）
-python domain_fix.py --no-export --whitelist "C:/Users/Administrator/Desktop/dms.txt" --apply --server-ip 1.2.3.4
 ```
 
 说明：
@@ -228,16 +226,16 @@ python domain_fix.py --apply --record @:A:1.2.3.4 --record www:A:1.2.3.4
 
 `--apply` 默认执行下列步骤（有对应数据时），`--activation` 默认开启：
 
-| 步骤 | 说明 | 开关 |
-|---|---|---|
-| 添加 zone | `create_zone`（自动带 account id，已存在则回查复用） | 无法关闭（核心动作） |
-| 改 NS | 通过 spaceship API 把 NS 指向新 zone 的 nameservers（默认开启） | `--no-set-nameservers` |
-| DNS 记录 | 按上一节规则写入，幂等（存在且一致则跳过） | `--no-dns` |
-| 等待激活 | 第一遍不等；批量回访轮询 `status` 到 `active`，并对未激活 zone 触发一次激活检查（默认开启） | `--no-activation` |
-| 邮箱转发 | 补齐 MX/SPF/DKIM、启用路由、设置 catch-all | `--no-email` |
-| SSL 模式 | 取 cf 配置 `ssl_mode` 或 `--ssl-mode` | `--no-ssl` |
-| 基础安全 | `always_use_https` / `browser_check` / `security_level` | `--no-security` |
-| 加速增益 | `speed_brain` / `0rtt` / `early_hints` | `--no-optimize` |
+| 步骤      | 说明                                                                                            | 开关                     |
+| --------- | ----------------------------------------------------------------------------------------------- | ------------------------ |
+| 添加 zone | `create_zone`（自动带 account id，已存在则回查复用）                                          | 无法关闭（核心动作）     |
+| 改 NS     | 通过 spaceship API 把 NS 指向新 zone 的 nameservers（默认开启）                                 | `--no-set-nameservers` |
+| DNS 记录  | 按上一节规则写入，幂等（存在且一致则跳过）                                                      | `--no-dns`             |
+| 等待激活  | 第一遍不等；批量回访轮询 `status` 到 `active`，并对未激活 zone 触发一次激活检查（默认开启） | `--no-activation`      |
+| 邮箱转发  | 补齐 MX/SPF/DKIM、启用路由、设置 catch-all                                                      | `--no-email`           |
+| SSL 模式  | 取 cf 配置 `ssl_mode` 或 `--ssl-mode`                                                       | `--no-ssl`             |
+| 基础安全  | `always_use_https` / `browser_check` / `security_level`                                   | `--no-security`        |
+| 加速增益  | `speed_brain` / `0rtt` / `early_hints`                                                    | `--no-optimize`        |
 
 - NS：新 zone 建好后立即改 NS（不等激活），让 CF 尽早开始检测；按差集 CSV 的 `account` 列
   预选 spaceship 账号凭证（避免遍历全部账号），先查 spaceship 侧现状，已是目标组合则跳过
@@ -308,13 +306,13 @@ CF 秒判 `active`，50 秒绰绰有余，所以体感像“没等”。今天�
 上面这套步骤与 PS 侧 `Deploy-WpSitesOnline`（`PS/WpOnline/WpOnline.psm1:7`）定义的加域流程一一对应，
 底层走的是同一套 `cloudflare_dns_tool.py` 能力：
 
-| 标准流程 | Deploy-WpSitesOnline（PS 侧） | domain_fix（本工具） |
-|---|---|---|
-| 域名加入 CF 账号 | `Add-CFZoneDNSRecords -AddRecordAtOnce` 建 zone | `create_zone`（已存在回查复用） |
-| 查 CF 分配的 NS 并落盘 | `Get-CFZoneNameServersTable` → `domains_nameservers.csv`（domain,ns1,ns2） | `fix_results.csv` 的 `nameservers` 列（`;` 连接） |
-| 注册商侧改 NS | `Update-SSNameServers` 调 `update_nameservers.py`（流程内必做） | `--set-nameservers` 内联调 spaceship API（默认开启，可用 `--no-set-nameservers` 关闭） |
-| DNS/邮箱/安全配置 | `Add-CFZoneConfig`（`--provision --no-activation`） | `provision_zone` 同一引擎（激活等待交由回访承担） |
-| 等待激活 | `Add-CFZoneCheckActivation` 读状态 + 外层 20×30 秒轮询 | 回访轮询到 `active` 或预算耗尽（并触发激活检查） |
+| 标准流程               | Deploy-WpSitesOnline（PS 侧）                                                   | domain_fix（本工具）                                                                       |
+| ---------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| 域名加入 CF 账号       | `Add-CFZoneDNSRecords -AddRecordAtOnce` 建 zone                               | `create_zone`（已存在回查复用）                                                          |
+| 查 CF 分配的 NS 并落盘 | `Get-CFZoneNameServersTable` → `domains_nameservers.csv`（domain,ns1,ns2） | `fix_results.csv` 的 `nameservers` 列（`;` 连接）                                    |
+| 注册商侧改 NS          | `Update-SSNameServers` 调 `update_nameservers.py`（流程内必做）             | `--set-nameservers` 内联调 spaceship API（默认开启，可用 `--no-set-nameservers` 关闭） |
+| DNS/邮箱/安全配置      | `Add-CFZoneConfig`（`--provision --no-activation`）                         | `provision_zone` 同一引擎（激活等待交由回访承担）                                        |
+| 等待激活               | `Add-CFZoneCheckActivation` 读状态 + 外层 20×30 秒轮询                       | 回访轮询到 `active` 或预算耗尽（并触发激活检查）                                         |
 
 两处差异注意：
 
@@ -331,10 +329,10 @@ CF 秒判 `active`，50 秒绰绰有余，所以体感像“没等”。今天�
 
 全局默认值优先从 **cf 配置的 JSON** 读取：
 
-| 来源 | 字段 |
-|---|---|
+| 来源        | 字段                                                       |
+| ----------- | ---------------------------------------------------------- |
 | cf 配置顶层 | `default_forward_email`、`ssl_mode`、`security_mode` |
-| cf 账号 | `default_server_ip` |
+| cf 账号     | `default_server_ip`                                      |
 
 若 `--cf-config` 指向的是 `cf_config.csv`，但同目录存在 `cf_config.json`，脚本会回退到该
 JSON 读取上述旧字段（账号来源仍以 `--cf-config` 为准）。命令行 `--server-ip`、`--forward-email`、
@@ -342,38 +340,38 @@ JSON 读取上述旧字段（账号来源仍以 `--cf-config` 为准）。命令
 
 ## 七、参数速查
 
-| 参数 | 默认值 | 说明 |
-|---|---|---|
-| `--ss-config` / `--cf-config` | 自动探测 | spaceship / Cloudflare 配置 |
-| `--output-dir` | `<配置目录>/domain_fix` | CSV 输出目录 |
-| `--ss-status` / `--zone-status` | `normal` / `active` | 两侧状态过滤 |
-| `--exclude-expired` | 关闭 | 剔除已过期域名（未过期且正常才进入差集） |
-| `--no-export` / `--ss-csv` / `--cf-csv` / `--missing-csv` | — | 数据来源选择 |
-| `--whitelist PATH` | 空 | 白名单；只修复「差集 ∩ 白名单」 |
-| `--add-account` | 最后一个 CF 账号 | 修复目标账号（账号名/邮箱/序号） |
-| `--limit N` | `0`（不限） | 单次最多修复多少个域名 |
-| `--apply` / `--dry-run` | 执行 | 真正执行；`--dry-run` 仅预览 |
-| `--server-ip` | 账号 `default_server_ip` | 默认记录 IP（生成 @ 与 www） |
-| `--records-file PATH` | 空 | 记录 CSV（见第四节） |
-| `--record NAME:TYPE:CONTENT` | 空 | 全局记录，可重复 |
-| `--proxied` / `--no-proxied` | 开启 | 新增记录默认代理状态 |
-| `--ttl N` | `1` | 新增记录默认 TTL |
-| `--allow-multi-value` | 关闭 | 允许同名 A/AAAA 多值（默认同名只保留一条） |
-| `--zones-file PATH` | 空 | 旧格式域名配置表 |
-| `--forward-email` | cf 配置默认值 | 邮箱转发目标地址 |
-| `--ssl-mode` | cf 配置 `ssl_mode` | `flexible`/`full`/`strict`/`off` |
-| `--security` / `--no-security` | 取 `security_mode` | 基础安全开关 |
-| `--optimize` / `--no-optimize` | 开启 | 加速增益开关 |
-| `--no-dns` / `--no-email` / `--no-ssl` | 关闭 | 关闭对应步骤 |
-| `--activation` / `--no-activation` | 开启 | 等待激活（批量回访轮询到 `active` 或超预算；`--no-activation` 跳过） |
-| `--activation-timeout` / `--activation-interval` | `300` / `5` | 单域等待预算（仅 `--revisit-timeout 0` 回退时生效）/ 轮询间隔 |
-| `--revisit-timeout` | `1800`（0 关闭） | 批量回访总预算（`--activation` 开启时；0 则回退为单域内等待） |
-| `--set-nameservers` / `--no-set-nameservers` | 开启 | 自动改 spaceship 侧 NS（默认开启） |
-| `-L` / `--log-file` | 空（不写文件） | 运行日志文件：全量捕获屏幕输出（含库的裸 print/traceback）+ 结构化行，UTF-8 |
-| `-G` / `--log-level` | `INFO` | 结构化日志行（`log_print`）的记录级别；裸输出不受此过滤 |
-| `--log-overwrite` | 追加 | 覆盖已有日志文件 |
-| `--add-workers` | `4` | 修复并发线程数（共享限速器兜底，提速用） |
-| `--detail` / `--no-detail` | 开启 | 逐条打印 DNS 记录与邮箱步骤；`--no-detail` 只看逐域汇总 |
+| 参数                                                              | 默认值                     | 说明                                                                        |
+| ----------------------------------------------------------------- | -------------------------- | --------------------------------------------------------------------------- |
+| `--ss-config` / `--cf-config`                                 | 自动探测                   | spaceship / Cloudflare 配置                                                 |
+| `--output-dir`                                                  | `<配置目录>/domain_fix`  | CSV 输出目录                                                                |
+| `--ss-status` / `--zone-status`                               | `normal` / `active`    | 两侧状态过滤                                                                |
+| `--exclude-expired`                                             | 关闭                       | 剔除已过期域名（未过期且正常才进入差集）                                    |
+| `--no-export` / `--ss-csv` / `--cf-csv` / `--missing-csv` | —                         | 数据来源选择                                                                |
+| `--whitelist PATH`                                              | 空                         | 白名单；只修复「差集 ∩ 白名单」                                            |
+| `--add-account`                                                 | 最后一个 CF 账号           | 修复目标账号（账号名/邮箱/序号）                                            |
+| `--limit N`                                                     | `0`（不限）              | 单次最多修复多少个域名                                                      |
+| `--apply` / `--dry-run`                                       | 执行                       | 真正执行；`--dry-run` 仅预览                                              |
+| `--server-ip`                                                   | 账号 `default_server_ip` | 默认记录 IP（生成 @ 与 www）                                                |
+| `--records-file PATH`                                           | 空                         | 记录 CSV（见第四节）                                                        |
+| `--record NAME:TYPE:CONTENT`                                    | 空                         | 全局记录，可重复                                                            |
+| `--proxied` / `--no-proxied`                                  | 开启                       | 新增记录默认代理状态                                                        |
+| `--ttl N`                                                       | `1`                      | 新增记录默认 TTL                                                            |
+| `--allow-multi-value`                                           | 关闭                       | 允许同名 A/AAAA 多值（默认同名只保留一条）                                  |
+| `--zones-file PATH`                                             | 空                         | 旧格式域名配置表                                                            |
+| `--forward-email`                                               | cf 配置默认值              | 邮箱转发目标地址                                                            |
+| `--ssl-mode`                                                    | cf 配置 `ssl_mode`       | `flexible`/`full`/`strict`/`off`                                    |
+| `--security` / `--no-security`                                | 取 `security_mode`       | 基础安全开关                                                                |
+| `--optimize` / `--no-optimize`                                | 开启                       | 加速增益开关                                                                |
+| `--no-dns` / `--no-email` / `--no-ssl`                      | 关闭                       | 关闭对应步骤                                                                |
+| `--activation` / `--no-activation`                            | 开启                       | 等待激活（批量回访轮询到 `active` 或超预算；`--no-activation` 跳过）    |
+| `--activation-timeout` / `--activation-interval`              | `300` / `5`            | 单域等待预算（仅 `--revisit-timeout 0` 回退时生效）/ 轮询间隔             |
+| `--revisit-timeout`                                             | `1800`（0 关闭）         | 批量回访总预算（`--activation` 开启时；0 则回退为单域内等待）             |
+| `--set-nameservers` / `--no-set-nameservers`                  | 开启                       | 自动改 spaceship 侧 NS（默认开启）                                          |
+| `-L` / `--log-file`                                           | 空（不写文件）             | 运行日志文件：全量捕获屏幕输出（含库的裸 print/traceback）+ 结构化行，UTF-8 |
+| `-G` / `--log-level`                                          | `INFO`                   | 结构化日志行（`log_print`）的记录级别；裸输出不受此过滤                   |
+| `--log-overwrite`                                               | 追加                       | 覆盖已有日志文件                                                            |
+| `--add-workers`                                                 | `4`                      | 修复并发线程数（共享限速器兜底，提速用）                                    |
+| `--detail` / `--no-detail`                                    | 开启                       | 逐条打印 DNS 记录与邮箱步骤；`--no-detail` 只看逐域汇总                   |
 
 ## 八、fix_results.csv 列
 
@@ -381,15 +379,15 @@ JSON 读取上述旧字段（账号来源仍以 `--cf-config` 为准）。命令
 
 常见状态值：
 
-| 字段 | 取值示例 | 含义 |
-|---|---|---|
-| `zone_status` | `pending`/`active`/`exists` | zone 当前状态；回访确认为 active 时会刷新（不再出现“pending 却 activation=active”的矛盾）；`exists` 为已存在但回查不到状态 |
-| `activation` | `active`/`pending:<status>`/`skipped`/`error:<msg>`（可带 `nameservers-set`/`unchanged` 前缀，见下） | 激活结果 |
-| `record_status` | `@:added;www:unchanged` | 每条记录状态（added/updated/unchanged/error） |
-| `email_status` | `ok`/`pending_verification:<msg>`/`deferred:requires-active-zone`/`error:<msg>`/`no-forward-email` | 邮箱转发结果（`deferred` 为 zone 未激活，待激活后重跑补配）。注意：邮箱所需 MX/SPF/DKIM 若某条写入失败，目前只在详情日志的 `[邮箱] …: error（原因）` 体现，不改变本列（见第九节“已知限制”） |
-| `ssl_status` | `flexible`/`no-ssl-mode`/`error:<msg>` | SSL 结果 |
-| `security_status` | `ok=6/6`/`ok=4/6;errors=...` | 安全/加速设置结果 |
-| `timestamp` | ISO8601(UTC) | 统一为**完成时间**：第一遍收尾时间，被回访刷新后为最近一次回访时间 |
+| 字段                | 取值示例                                                                                                         | 含义                                                                                                                                                                                               |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `zone_status`     | `pending`/`active`/`exists`                                                                                | zone 当前状态；回访确认为 active 时会刷新（不再出现“pending 却 activation=active”的矛盾）；`exists` 为已存在但回查不到状态                                                                     |
+| `activation`      | `active`/`pending:<status>`/`skipped`/`error:<msg>`（可带 `nameservers-set`/`unchanged` 前缀，见下） | 激活结果                                                                                                                                                                                           |
+| `record_status`   | `@:added;www:unchanged`                                                                                        | 每条记录状态（added/updated/unchanged/error）                                                                                                                                                      |
+| `email_status`    | `ok`/`pending_verification:<msg>`/`deferred:requires-active-zone`/`error:<msg>`/`no-forward-email`     | 邮箱转发结果（`deferred` 为 zone 未激活，待激活后重跑补配）。注意：邮箱所需 MX/SPF/DKIM 若某条写入失败，目前只在详情日志的 `[邮箱] …: error（原因）` 体现，不改变本列（见第九节“已知限制”） |
+| `ssl_status`      | `flexible`/`no-ssl-mode`/`error:<msg>`                                                                     | SSL 结果                                                                                                                                                                                           |
+| `security_status` | `ok=6/6`/`ok=4/6;errors=...`                                                                                 | 安全/加速设置结果                                                                                                                                                                                  |
+| `timestamp`       | ISO8601(UTC)                                                                                                     | 统一为**完成时间**：第一遍收尾时间，被回访刷新后为最近一次回访时间                                                                                                                           |
 
 ### 控制台逐域行解读（示例）
 
@@ -430,9 +428,9 @@ JSON 读取上述旧字段（账号来源仍以 `--cf-config` 为准）。命令
 - 并发与限流（已按官方配额审计，2026-10-02）：Cloudflare 官方配额为每凭证 1200 请求/5 分钟
   （约 4 请求/秒，另有按 IP 200/秒），429 附 `retry-after` 秒数。修复默认 `--add-workers 4`
   + `--request-interval 0.3`（单限速器全局约 3.3 请求/秒，低于配额）；多线程共享同一个线程安全
-  限速器（`Lock` + 到达间隔下限 + 429 后自适应退避）与线程独立 `Session`，429 按 `retry-after`
-  退避、指数重试（默认最多 5 次）。提速（`--add-workers` 调大）时保持 `--request-interval`
-  不低于 0.3；spaceship 侧无客户端限流，保持默认串行即可。
+    限速器（`Lock` + 到达间隔下限 + 429 后自适应退避）与线程独立 `Session`，429 按 `retry-after`
+    退避、指数重试（默认最多 5 次）。提速（`--add-workers` 调大）时保持 `--request-interval`
+    不低于 0.3；spaceship 侧无客户端限流，保持默认串行即可。
 - 并发模型：第一遍采用**有界窗口**并发——同时最多 `--add-workers` 个域名在执行，完成一个再补一个
   （不会一次性排队全部任务），且一定会排空最后一窗；每完成一个立即落盘 `fix_results.csv`，
   中断/强制退出尽量不丢结果。第一遍不逐域等待激活（只建站/NS/DNS），激活与补邮箱交给批量回访

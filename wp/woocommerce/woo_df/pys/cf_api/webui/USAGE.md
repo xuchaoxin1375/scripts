@@ -2,11 +2,11 @@
 
 ## 1 打开
 
-```bash
-python start_web_ui.py --port 8600
+```powershell
+.\serve-webui.ps1              # 后台启动 8600（推荐，shell 立即返回）
 ```
 
-浏览器访问 `http://127.0.0.1:8600`。
+浏览器访问 `http://127.0.0.1:8600`。排障看 `.\serve-webui.ps1 -Logs`；前台调试才用 `python start_web_ui.py --port 8600`。
 
 ## 2 建议顺序
 

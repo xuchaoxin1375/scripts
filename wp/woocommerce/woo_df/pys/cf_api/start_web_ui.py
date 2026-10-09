@@ -21,6 +21,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--port", type=int, default=8600)
     p.add_argument("--config", default=DEFAULT_CONFIG)
     p.add_argument("--password", default=os.getenv("CF_WEB_PASSWORD", ""))
+    p.add_argument("--log-file", default=os.getenv("CF_WEB_LOG", ""))
     p.add_argument("-P", "--proxy", action="append", default=None)
     p.add_argument("--proxy-file", default=None)
     p.add_argument(
@@ -31,8 +32,71 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
+def _setup_file_log(path: str) -> None:
+    """Hidden 后台运行时全靠文件排障：追加写入，超 512KB 转一个 .1 备份。"""
+    import datetime
+
+    try:
+        if os.path.getsize(path) > 512 * 1024:
+            try:
+                os.replace(path, path + ".1")
+            except OSError:
+                pass
+    except OSError:
+        pass
+    try:
+        parent = os.path.dirname(os.path.abspath(path))
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+    except OSError:
+        pass
+
+    class _Tee:
+        def __init__(self, stream, fp):  # type: ignore[no-untyped-def]
+            self._stream = stream
+            self._fp = fp
+
+        def write(self, s):  # type: ignore[no-untyped-def]
+            try:
+                self._fp.write(s)
+                self._fp.flush()
+            except OSError:
+                pass
+            try:
+                return self._stream.write(s)
+            except OSError:
+                return 0
+
+        def flush(self):  # type: ignore[no-untyped-def]
+            try:
+                self._fp.flush()
+            except OSError:
+                pass
+            try:
+                self._stream.flush()
+            except OSError:
+                pass
+
+        def isatty(self):  # type: ignore[no-untyped-def]
+            try:
+                return self._stream.isatty()
+            except Exception:
+                return False
+
+    try:
+        fp = open(path, "a", encoding="utf-8", errors="replace")
+        fp.write(f"[{datetime.datetime.now():%Y-%m-%d %H:%M:%S}] WebUI 日志开始\n")
+        fp.flush()
+        sys.stdout = _Tee(sys.stdout, fp)  # type: ignore[assignment]
+        sys.stderr = _Tee(sys.stderr, fp)  # type: ignore[assignment]
+    except OSError as exc:
+        print(f"日志文件不可写: {exc}")
+
+
 def main() -> None:
     args = parse_args()
+    if getattr(args, "log_file", ""):
+        _setup_file_log(args.log_file)
     if args.host not in {"127.0.0.1", "localhost", "::1"} and not args.password:
         print("对外监听必须设置 --password（或 CF_WEB_PASSWORD），已拒绝启动")
         sys.exit(2)
@@ -71,7 +135,8 @@ def main() -> None:
     import uvicorn
 
     print(f"WebUI: http://{args.host}:{args.port} config={args.config}")
-    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+    # Hidden 后台日志落盘：关掉着色（否则 webui.log 满是 ANSI 转义，与 serve-preview 的 stripAnsi 同理）。
+    uvicorn.run(app, host=args.host, port=args.port, log_level="info", use_colors=False)
 
 
 if __name__ == "__main__":

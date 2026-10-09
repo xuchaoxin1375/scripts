@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .ruff_cache/
 cf_web.db*
+webui.log*
 cf_export/
 cf_backup/
 node_modules/
