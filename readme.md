@@ -155,7 +155,7 @@ bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/he
 bash <(curl -SfL https://raw.giteeusercontent.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/update_repos.sh) -U # -F -R
 ```
 
-更新脚本自身损坏时的自救：某次更新引入错误导致更新脚本不可用时，绕过 `$sh` 直接获取并执行（原因：首次使用时 `$sh` 未定义，脚本会尝试下载到根目录）。
+更新脚本自身损坏时的修复/自救(尤其是早期仓库)：某次更新引入错误导致更新脚本不可用时，绕过 `$sh` 直接获取并执行（原因：首次使用时 `$sh` 未定义，脚本会尝试下载到根目录）。
 
 ```bash
 curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos.sh -o $HOME/update_repos.sh && bash $HOME/update_repos.sh
