@@ -8,24 +8,24 @@
 <style>
 :root{
 --bg:#ffffff;--subtle:#f4f6fa;--hover:#eef2f8;--surface:#ffffff;--canvas:#f7f9fc;
---text1:#1a2233;--text2:#4b5568;--text3:#7b8499;--border:#dfe5ef;
---primary:#0051c3;--primary-hover:#003f9e;--primary-soft:#e3edff;
---success:#0f7a3d;--success-soft:#e0f3e7;--warning:#9a5b00;--warning-soft:#fdf0d5;
---danger:#c01f2e;--danger-soft:#fde7e9;--brand:#f6821f;
+--text1:#1a2233;--text2:#4b5568;--text3:#626872;--border:#dde0e4;
+--primary:#0051c3;--primary-hover:#003f99;--on-primary:#ffffff;--primary-soft:#e8f0fc;
+--success:#0f7a3d;--success-soft:#e0f3e7;--warning:#9a6700;--warning-soft:#fdf0d5;
+--danger:#c62828;--danger-soft:#fde7e9;--brand:#f6821f;
 --focus:#0051c3;--link:#0051c3;
---radius-s:4px;--radius-m:6px;--radius-l:8px;--radius-xl:12px;
---shadow-1:0 1px 2px rgba(16,24,40,.08);--shadow-2:0 4px 12px rgba(16,24,40,.10);--shadow-3:0 12px 32px rgba(16,24,40,.16);
+--radius-s:4px;--radius-m:8px;--radius-l:12px;--radius-xl:12px;--radius-full:9999px;
+--shadow-1:0 1px 2px rgba(0,81,195,.08);--shadow-2:0 4px 12px rgba(0,81,195,.10);--shadow-3:0 12px 32px rgba(0,81,195,.16);
 --topbar-h:56px;--sidebar-w:240px;--rail-w:56px;--content-w:1440px;
---ease:cubic-bezier(.2,0,0,1);
+--ease:cubic-bezier(.2,0,0,1);--dur-1:120ms;--dur-2:200ms;--dur-3:320ms;
 color-scheme:light;
 }
 [data-theme="dark"]{
---bg:#0d1117;--subtle:#151b24;--hover:#1c2431;--surface:#131926;--canvas:#0d1117;
---text1:#e8edf5;--text2:#aeb8cc;--text3:#7d879c;--border:#243044;
---primary:#6ea8ff;--primary-hover:#8db9ff;--primary-soft:#1a2a4a;
---success:#4cc38a;--success-soft:#12362a;--warning:#f5b544;--warning-soft:#3a2c12;
---danger:#ff7b8a;--danger-soft:#3d1a20;--brand:#f6821f;
---focus:#8db9ff;--link:#8db9ff;
+--bg:#0f1114;--subtle:#1e2126;--hover:#23272e;--surface:#17191d;--canvas:#0f1114;
+--text1:#e8eaed;--text2:#b4b9c1;--text3:#a0a6af;--border:#2c3037;
+--primary:#6ea8ff;--primary-hover:#8dbaff;--on-primary:#0f1114;--primary-soft:#16233a;
+--success:#4cc275;--success-soft:#12362a;--warning:#e3b341;--warning-soft:#3a2c12;
+--danger:#ff7b72;--danger-soft:#3d1a20;--brand:#f6821f;
+--focus:#7fb0ff;--link:#8dbaff;
 color-scheme:dark;
 }
 *{box-sizing:border-box}
@@ -33,8 +33,8 @@ html,body{margin:0;padding:0}
 body{background:var(--canvas);color:var(--text1);font:14px/1.6 -apple-system,"Segoe UI",PingFangSC,"Microsoft YaHei",Inter,sans-serif}
 a{color:var(--link)}
 :focus-visible{outline:2px solid var(--focus);outline-offset:2px}
-.skip{position:absolute;left:8px;top:-48px;z-index:100;background:var(--primary);color:#fff;padding:8px 12px;border-radius:var(--radius-m);transition:top 120ms var(--ease)}
-.skip:focus{top:8px;color:#fff}
+.skip{position:absolute;left:8px;top:-48px;z-index:100;background:var(--primary);color:var(--on-primary);padding:8px 12px;border-radius:var(--radius-m);transition:top var(--dur-1) var(--ease)}
+.skip:focus{top:8px;color:var(--on-primary)}
 .topbar{position:sticky;top:0;z-index:50;height:var(--topbar-h);display:flex;align-items:center;gap:12px;padding:0 16px;background:var(--surface);border-bottom:1px solid var(--border)}
 .logo{display:flex;align-items:center;gap:8px;font-weight:700;white-space:nowrap}
 .logo-mark{width:24px;height:24px;border-radius:6px;background:var(--brand);display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:800}
@@ -43,8 +43,8 @@ a{color:var(--link)}
 .btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);background:var(--surface);color:var(--text1);border-radius:var(--radius-m);padding:6px 12px;min-height:36px;cursor:pointer;font-size:13px;line-height:1.2}
 .btn svg{width:16px;height:16px;flex:none}
 .btn:hover{background:var(--hover)}
-.btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
-.btn.primary:hover{background:var(--primary-hover)}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:var(--on-primary)}
+.btn.primary:hover{background:var(--primary-hover);color:var(--on-primary)}
 .btn.danger{border-color:var(--danger);color:var(--danger)}
 .btn:disabled{opacity:.55;cursor:not-allowed}
 .icon-btn{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:var(--radius-m);border:1px solid transparent;background:transparent;color:var(--text2);cursor:pointer}
@@ -190,18 +190,20 @@ details.adv summary{cursor:pointer;font-weight:600}
 .progress i{display:block;height:100%;background:var(--primary);width:0;transition:width 200ms var(--ease)}
 .logbox{background:#0b0e14;color:#d7e0f0;border-radius:var(--radius-m);padding:12px;height:220px;overflow:auto;font-family:Consolas,Menlo,monospace;font-size:12px;white-space:pre-wrap;word-break:break-all}
 .verdict{border-left:4px solid var(--primary);padding:8px 12px;background:var(--subtle);border-radius:0 var(--radius-m) var(--radius-m) 0;margin:12px 0;white-space:pre-wrap}
-.modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:90;padding:16px}
-.modal.open{display:flex}
+.modal{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:90;padding:16px;visibility:hidden;opacity:0;transition:opacity var(--dur-2) var(--ease),visibility 0s var(--dur-2)}
+.modal.open{visibility:visible;opacity:1;transition:opacity var(--dur-2) var(--ease),visibility 0s 0s}
 .modal .backdrop{position:absolute;inset:0;background:rgba(0,0,0,.45)}
-.modal .box{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-xl);box-shadow:var(--shadow-3);width:min(640px,100vw - 32px);max-height:80vh;display:flex;flex-direction:column}
+.modal .box{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-l);box-shadow:var(--shadow-3);width:min(640px,100vw - 32px);max-height:80vh;display:flex;flex-direction:column;transform:translateY(8px) scale(.99);transition:transform var(--dur-2) var(--ease)}
+.modal.open .box{transform:none}
 .modal .box header{padding:12px 16px;border-bottom:1px solid var(--border);font-weight:700}
 .modal .box .body{padding:12px 16px;overflow:auto}
 .modal .box footer{padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
 .toasts{position:fixed;right:16px;bottom:16px;z-index:100;display:flex;flex-direction:column;gap:8px}
 .toast{background:#1a2233;color:#fff;border-radius:var(--radius-m);padding:10px 14px;box-shadow:var(--shadow-2);font-size:13px}
-.cmdk{position:fixed;inset:0;display:none;z-index:95;padding:10vh 16px 16px;background:rgba(0,0,0,.35)}
-.cmdk.open{display:block}
-.cmdk .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-l);max-width:560px;margin:0 auto;overflow:hidden}
+.cmdk{position:fixed;inset:0;z-index:95;padding:10vh 16px 16px;background:rgba(0,0,0,.35);visibility:hidden;opacity:0;transition:opacity var(--dur-2) var(--ease),visibility 0s var(--dur-2)}
+.cmdk.open{visibility:visible;opacity:1;transition:opacity var(--dur-2) var(--ease),visibility 0s 0s}
+.cmdk .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-l);max-width:560px;margin:0 auto;overflow:hidden;transform:translateY(8px);transition:transform var(--dur-2) var(--ease)}
+.cmdk.open .panel{transform:none}
 .cmdk input{width:100%;border:0;border-bottom:1px solid var(--border);padding:12px 14px;font-size:14px;background:var(--surface);color:var(--text1)}
 .cmdk ul{list-style:none;margin:0;padding:8px;max-height:300px;overflow:auto}
 .cmdk li{padding:8px 10px;border-radius:var(--radius-m);cursor:pointer}
@@ -219,15 +221,28 @@ details.adv summary{cursor:pointer;font-weight:600}
 .skel{position:relative;overflow:hidden;background:var(--subtle);border-radius:var(--radius-s);min-height:1em}
 .skel::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(127,140,160,.25),transparent);animation:sk 1.2s infinite}
 @keyframes sk{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
-.pill{display:inline-block;min-width:44px;text-align:center;font-size:11px;font-weight:700;border-radius:4px;padding:1px 6px;background:var(--subtle);color:var(--text2);border:1px solid var(--border)}
-.pill-a{background:#e3edff;color:#0051c3;border-color:#bcd0f5}
-.pill-aaaa{background:#e3edff;color:#0051c3;border-color:#bcd0f5}
+.pill{display:inline-block;min-width:44px;text-align:center;font-size:11px;font-weight:700;border-radius:var(--radius-s);padding:1px 6px;background:var(--subtle);color:var(--text2);border:1px solid var(--border)}
+.pill-a{background:var(--primary-soft);color:var(--primary);border-color:var(--border)}
+.pill-aaaa{background:var(--primary-soft);color:var(--primary);border-color:var(--border)}
 .pill-cname{background:#f0e6fb;color:#6b3fa0;border-color:#d9c6f2}
-.pill-mx{background:#fde7e9;color:#c01f2e;border-color:#f3b8be}
+.pill-mx{background:var(--danger-soft);color:var(--danger);border-color:var(--border)}
 .pill-txt{background:var(--subtle);color:var(--text2)}
 .proxy-ok{color:var(--text1);font-weight:700}
 .proxy-ok i{color:var(--brand);font-style:normal}
 .proxy-off{color:var(--text3)}
+.pagehead{margin:4px 0 0}
+.pagehead h2{margin:0 0 4px;font-size:20px;line-height:1.4}
+.pagehead p{margin:0 0 8px;color:var(--text2)}
+.stepper{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-l);padding:8px 12px;margin:12px 0;list-style:none}
+.stepper li{display:flex;align-items:center;gap:8px;color:var(--text2);font-size:13px}
+.stepper li .n{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;border:1px solid var(--border);background:var(--subtle);color:var(--text2);font-weight:700;flex:none}
+.stepper li[aria-current="step"]{color:var(--text1);font-weight:700}
+.stepper li[aria-current="step"] .n{background:var(--primary);border-color:var(--primary);color:var(--on-primary)}
+.stepper li a{color:inherit;text-decoration:none;display:inline-flex;align-items:center;gap:8px;border-radius:var(--radius-m)}
+.stepper li+li::before{content:"→";color:var(--text3);margin-right:8px}
+.field-why{font-size:12px;color:var(--text2)}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.btn[aria-disabled="true"]{opacity:.55;cursor:not-allowed}
 @media (max-width:1023px){
 .cards{grid-template-columns:1fr 1fr}
 .grid2{grid-template-columns:1fr}
@@ -268,39 +283,37 @@ body[data-drawer="1"] .sidebar{transform:none;box-shadow:var(--shadow-3);visibil
 <aside class="sidebar" id="sidebar" aria-label="主导航">
 <button class="nav-search" id="btnNavSearch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.34-4.34"></path><circle cx="11" cy="11" r="8"></circle></svg><span class="lbl">快速搜索 <kbd>Ctrl K</kbd></span></button>
 <a class="back" href="#/overview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"></path><path d="M19 12H5"></path></svg><span class="lbl">返回概览</span></a>
-<nav class="nav">
+<nav class="nav" aria-label="主导航">
 <div class="nav-group"><span class="lbl">管理</span></div>
 <a href="#/overview" data-route="overview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"></rect><rect width="7" height="5" x="14" y="3" rx="1"></rect><rect width="7" height="9" x="14" y="12" rx="1"></rect><rect width="7" height="5" x="3" y="16" rx="1"></rect></svg><span class="lbl">概览<small class="sub">状态总览</small></span></a>
-<a href="#/browse" data-route="browse"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="16" y="16" width="6" height="6" rx="1"></rect><rect x="2" y="16" width="6" height="6" rx="1"></rect><rect x="9" y="2" width="6" height="6" rx="1"></rect><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"></path><path d="M12 12V8"></path></svg><span class="lbl">浏览 DNS<small class="sub">记录查询</small></span></a>
-<a href="#/operate" data-route="operate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="12" x="2" y="6" rx="2"></rect><path d="M12 12h.01"></path><path d="M17 12h.01"></path><path d="M7 12h.01"></path></svg><span class="lbl">批量操作<small class="sub">批量执行</small></span></a>
-<a href="#/jobs" data-route="jobs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M12 7v5l4 2"></path></svg><span class="lbl">任务<small class="sub">执行跟踪</small></span></a>
-<div class="nav-group"><span class="lbl">快捷入口</span></div>
-<a href="#/browse"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5V19A9 3 0 0 0 21 19V5"></path><path d="M3 12A9 3 0 0 0 21 12"></path></svg><span class="lbl">查记录<small class="sub">搜名称与内容</small></span></a>
-<a href="#/operate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"></path><circle cx="12" cy="12" r="3"></circle></svg><span class="lbl">批量改 IP<small class="sub">dry-run 先行</small></span></a>
-<a href="#/jobs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"></rect><line x1="8" x2="16" y1="21" y2="21"></line><line x1="12" x2="12" y1="17" y2="21"></line></svg><span class="lbl">看任务<small class="sub">verdict 与重跑</small></span></a>
+<a href="#/browse" data-route="browse"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="16" y="16" width="6" height="6" rx="1"></rect><rect x="2" y="16" width="6" height="6" rx="1"></rect><rect x="9" y="2" width="6" height="6" rx="1"></rect><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"></path><path d="M12 12V8"></path></svg><span class="lbl">浏览 DNS<small class="sub">圈定范围</small></span></a>
+<a href="#/operate" data-route="operate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="12" x="2" y="6" rx="2"></rect><path d="M12 12h.01"></path><path d="M17 12h.01"></path><path d="M7 12h.01"></path></svg><span class="lbl">批量操作<small class="sub">预览与执行</small></span></a>
+<a href="#/jobs" data-route="jobs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M12 7v5l4 2"></path></svg><span class="lbl">任务<small class="sub">凭据核对</small></span></a>
 </nav>
 <button class="rail-toggle" id="btnRail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M9 3v18"></path><path d="m14 9 3 3-3 3"></path></svg><span class="lbl">收起 <kbd>[</kbd></span></button>
 </aside>
 </div>
 <main class="main" id="main" tabindex="-1">
 <section class="page" id="page-overview">
-<h2>概览</h2>
+<div class="pagehead"><h2>概览</h2><p>清单式控制台：先圈定范围，再预览执行，最后凭证据闭环。</p></div>
+<ol class="stepper" aria-label="操作步骤"><li aria-current="step"><span class="n" aria-hidden="true">1</span>范围</li><li><a href="#/browse"><span class="n" aria-hidden="true">2</span>预览</a></li><li><a href="#/operate"><span class="n" aria-hidden="true">3</span>执行</a></li><li><a href="#/jobs"><span class="n" aria-hidden="true">4</span>核对</a></li></ol>
 <div class="alert" role="status"><span aria-hidden="true">ⓘ</span><div>先浏览确认 → 操作页 dry-run 预览 → 去掉预览正式执行 → 任务页看 verdict。数据不出本机，Token 只存配置文件。</div></div>
 <div class="cards" aria-busy="true" id="statCards">
 <div class="card"><h3>账号</h3><div class="big" id="statAccounts"><span class="skel" style="display:inline-block;width:2em">&nbsp;</span></div><div class="small" id="statCfg">配置加载中…</div></div>
-<div class="card"><h3>域名总数（首账号抽样）</h3><div class="big" id="statZones"><span class="skel" style="display:inline-block;width:2em">&nbsp;</span></div><div class="small">浏览页可按账号分页查看</div></div>
-<div class="card"><h3>未完成任务</h3><div class="big" id="statJobs"><span class="skel" style="display:inline-block;width:2em">&nbsp;</span></div><div class="small">任务页可下载失败清单重跑</div></div>
+<div class="card"><h3>首账号域名数（抽样，非总数）</h3><div class="big" id="statZones"><span class="skel" style="display:inline-block;width:2em">&nbsp;</span></div><div class="small">测量条件：首账号 per_page=1 取 total；全量总数请去浏览页按账号查看</div></div>
+<div class="card"><h3>运行中任务</h3><div class="big" id="statJobs"><span class="skel" style="display:inline-block;width:2em">&nbsp;</span></div><div class="small">任务页可下载失败清单重跑</div></div>
 </div>
 <div class="card">
-<h3>快捷入口</h3>
-<p><button class="btn primary" data-go="#/browse"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.34-4.34"></path><circle cx="11" cy="11" r="8"></circle></svg>查记录</button>
+<h3>下一步</h3>
+<p><button class="btn primary" data-go="#/browse"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.34-4.34"></path><circle cx="11" cy="11" r="8"></circle></svg>查询记录</button>
 <button class="btn" data-go="#/operate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="12" x="2" y="6" rx="2"></rect><path d="M12 12h.01"></path><path d="M17 12h.01"></path><path d="M7 12h.01"></path></svg>批量改 IP</button>
-<button class="btn" data-go="#/jobs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M12 7v5l4 2"></path></svg>看任务</button></p>
+<button class="btn" data-go="#/jobs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M12 7v5l4 2"></path></svg>查看任务</button></p>
 <p class="small">建议顺序：先浏览确认 → 操作页 dry-run 预览 → 去掉预览正式执行 → 任务页看 verdict。</p>
 </div>
 </section>
 <section class="page" id="page-browse">
-<h2>浏览 DNS</h2>
+<div class="pagehead"><h2>浏览 DNS</h2><p>圈定范围：选账号填域名查记录，核对后再去操作页。</p></div>
+<ol class="stepper" aria-label="操作步骤"><li aria-current="step"><span class="n" aria-hidden="true">1</span>范围</li><li><a href="#/operate"><span class="n" aria-hidden="true">2</span>预览</a></li><li><a href="#/operate"><span class="n" aria-hidden="true">3</span>执行</a></li><li><a href="#/jobs"><span class="n" aria-hidden="true">4</span>核对</a></li></ol>
 <div class="grid2">
 <div class="table-card"><div class="table-wrap" tabindex="0" role="region" aria-label="账号表">
 <table id="bAccTable"><colgroup><col><col><col style="width:76px"></colgroup>
@@ -309,8 +322,8 @@ body[data-drawer="1"] .sidebar{transform:none;box-shadow:var(--shadow-3);visibil
 </table>
 </div><div class="pager"><span class="small" id="bAccInfo">–</span><span class="spacer" style="flex:1"></span>
 <select id="bAccPer" aria-label="每页账号数"><option value="10" selected>10/页</option><option value="20">20/页</option><option value="50">50/页</option></select>
-<button class="btn" id="bAccPrev">上一页</button>
-<button class="btn" id="bAccNext">下一页</button></div></div>
+<button class="btn" id="bAccPrev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>上一页</button>
+<button class="btn" id="bAccNext">下一页<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button></div></div>
 <div class="table-card"><div class="table-wrap" tabindex="0" role="region" aria-label="域名表">
 <table id="bZoneTable"><colgroup><col><col style="width:96px"><col style="width:76px"></colgroup>
 <thead><tr><th>域名</th><th>状态</th><th>操作</th></tr></thead>
@@ -318,16 +331,16 @@ body[data-drawer="1"] .sidebar{transform:none;box-shadow:var(--shadow-3);visibil
 </table>
 </div><div class="pager"><input type="search" id="bZoneFind" placeholder="过滤域名" aria-label="过滤域名"><select id="bZonePer" aria-label="每页条数"><option value="10">10/页</option><option value="20" selected>20/页</option><option value="50">50/页</option><option value="100">100/页</option></select></div>
 <div class="pager"><span class="small" id="bZoneInfo">–</span><span class="spacer" style="flex:1"></span>
-<button class="btn" id="bZonePrev">上一页</button>
-<button class="btn" id="bZoneNext">下一页</button></div></div>
+<button class="btn" id="bZonePrev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>上一页</button>
+<button class="btn" id="bZoneNext">下一页<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button></div></div>
 </div>
 <div class="ctxbar">
 <select id="bAccount" aria-label="账号"></select>
 <input id="bZone" list="zoneList" placeholder="域名 zone，如 example.com" aria-label="域名">
 <datalist id="zoneList"></datalist>
 <select id="bStatus" aria-label="zone 状态"><option value="all">全部状态</option><option value="active">仅 active</option></select>
-<button class="btn" id="bZonesCsv"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg>域名 CSV</button>
-<button class="btn primary" id="bQuery"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.34-4.34"></path><circle cx="11" cy="11" r="8"></circle></svg>查询</button></div>
+<button class="btn" id="bZonesCsv"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg>下载域名 CSV</button>
+<button class="btn primary" id="bQuery" disabled title="先选账号并填写域名"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.34-4.34"></path><circle cx="11" cy="11" r="8"></circle></svg>查询记录</button><span class="small field-why" id="bQueryWhy">先选账号并填写域名后可查</span></div>
 <div class="small" id="bErr" role="alert" hidden></div>
 <div class="ctxbar">
 <input type="search" id="bFind" placeholder="全账号查找域名（对应 -f），回车搜索" aria-label="全账号查找">
@@ -342,17 +355,17 @@ body[data-drawer="1"] .sidebar{transform:none;box-shadow:var(--shadow-3);visibil
 <div class="popover" id="pFilters" role="dialog" aria-label="筛选" hidden>
 <div class="field"><label for="fType">类型</label><select id="fType"><option value="ALL">全部类型</option><option>A</option><option>AAAA</option><option>CNAME</option><option>TXT</option><option>MX</option></select></div>
 <div class="field"><label for="fProxy">代理状态</label><select id="fProxy"><option value="all">全部</option><option value="proxied">已代理</option><option value="dnsonly">仅 DNS</option></select></div>
-<footer><button class="btn" id="fClear">清除</button><button class="btn primary" id="fApply">应用</button></footer>
+<footer><button class="btn" id="fClear"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>清除筛选</button><button class="btn primary" id="fApply"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>应用筛选</button></footer>
 </div></div>
 <div class="popwrap"><button class="btn" id="bDisplay" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h7"/></svg>显示</button>
 <div class="popover" id="pDisplay" role="dialog" aria-label="显示选项" hidden>
 <div class="field"><label for="dComment"><input type="checkbox" id="dComment" checked> 备注列</label></div>
 <div class="field"><label for="dDetails"><input type="checkbox" id="dDetails" checked> 详情列</label></div>
 <div class="field"><label for="dCompact"><input type="checkbox" id="dCompact"> 紧凑密度</label></div>
-<div class="field"><button class="btn" id="dResetW">重置列宽</button></div>
+<div class="field"><button class="btn" id="dResetW"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>重置列宽</button></div>
 </div></div>
-<button class="btn" id="bImport"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4m0 0 4 4m-4-4-4 4M4 20h16"/></svg>导入</button>
-<button class="btn" id="bExport"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12m0 0 4-4m-4 4-4-4M4 20h16"/></svg>导出</button>
+<button class="btn" id="bImport"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4m0 0 4 4m-4-4-4 4M4 20h16"/></svg>导入记录</button>
+<button class="btn" id="bExport"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12m0 0 4-4m-4 4-4-4M4 20h16"/></svg>导出记录</button>
 <button class="btn primary" id="bCreate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14m-7-7h14"/></svg>新增记录</button>
 </div>
 <div class="quota" id="bQuota" role="status">先选账号填域名后查询</div>
@@ -371,11 +384,11 @@ body[data-drawer="1"] .sidebar{transform:none;box-shadow:var(--shadow-3);visibil
 <ul class="cards-list" id="bCards" hidden></ul>
 <div class="bulkbar" id="bBulk" role="toolbar" aria-label="批量操作" hidden>
 <span id="bBulkCount" aria-live="polite"></span>
-<button class="btn" id="bBulkAll">选择全部匹配</button>
-<button class="btn" id="bBulkPxOn">设为已代理</button>
-<button class="btn" id="bBulkPxOff">设为仅 DNS</button>
-<button class="btn danger" id="bBulkDel">删除</button>
-<button class="btn" id="bBulkClear">清除</button>
+<button class="btn" id="bBulkAll"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>选择全部匹配</button>
+<button class="btn" id="bBulkPxOn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m9 12 2 2 4-4"/></svg>设为已代理</button>
+<button class="btn" id="bBulkPxOff"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12h8"/></svg>设为仅 DNS</button>
+<button class="btn danger" id="bBulkDel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>删除所选</button>
+<button class="btn" id="bBulkClear"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>清除选择</button>
 </div>
 </div>
 <div class="modal" id="mImport" role="dialog" aria-modal="true" aria-label="导入记录">
@@ -386,25 +399,15 @@ body[data-drawer="1"] .sidebar{transform:none;box-shadow:var(--shadow-3);visibil
 <p class="small">上限 200 条、1MB；文件内重复或任一非法即整批拒绝、零写入。</p>
 <div class="err" id="iSum" role="alert"></div><div class="small" id="iMsg" role="status"></div>
 </div>
-<footer><button class="btn" data-close-imp>关闭</button><button class="btn" id="iCheck">预检</button><button class="btn primary" id="iGo" disabled>确认导入</button></footer>
+<footer><button class="btn" data-close-imp><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>关闭</button><button class="btn" id="iCheck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>预检记录</button><button class="btn primary" id="iGo" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m0 0 4 4m-4-4-4 4M4 20h16"/></svg>确认导入</button></footer>
 </div></div>
 <p class="small">编辑器中可填入操作页旧内容与类型。代理开时 TTL 锁定为自动。</p>
 </section>
 <section class="page" id="page-operate">
-<h2>批量操作</h2>
+<div class="pagehead"><h2>批量操作</h2><p>分三组填：范围→动作→确认。危险动作在独立红区，默认先预览。</p></div>
+<ol class="stepper" aria-label="操作步骤"><li><a href="#/browse"><span class="n" aria-hidden="true">1</span>范围</a></li><li aria-current="step"><span class="n" aria-hidden="true">2</span>预览</li><li><span class="n" aria-hidden="true">3</span>执行</li><li><a href="#/jobs"><span class="n" aria-hidden="true">4</span>核对</a></li></ol>
 <div class="form">
-<div class="field"><label for="oMode">模式</label>
-<select id="oMode">
-<option value="update">批量更新 IP/CNAME</option>
-<option value="delete_wildcard">删除通配符 *</option>
-<option value="delete_ip">删除指向指定 IP</option>
-<option value="delete_zone">删域名（清空或彻底删除）</option>
-<option value="add">添加域名/记录</option>
-<option value="set_attrs">设代理/TTL（内容不变）</option>
-<option value="export">导出备份</option>
-<option value="provision">配置域名（DNS+SSL/安全）</option>
-</select>
-<div class="hint">更新与删除互斥；删除类必须限定域名范围；dry-run 默认开。</div></div>
+<h3>1 范围</h3>
 <div class="field"><label>账号（复选保留）</label><div id="oAccounts" class="chips"></div></div>
 <div class="grid2">
 <div class="field"><label for="oDomains">指定域名（每行一个）</label><textarea id="oDomains" placeholder="example.com"></textarea></div>
@@ -412,6 +415,19 @@ body[data-drawer="1"] .sidebar{transform:none;box-shadow:var(--shadow-3);visibil
 <div class="hint">或上传白名单文件（每行一个域名/URL，2MB 内），上传后自动填入并记入提交。</div>
 <p><input id="oWlFile" type="file" accept=".txt,.csv"> <button class="btn" id="oWlUp"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m0 0 4 4m-4-4-4 4M4 20h16"/></svg>上传白名单</button><input id="oWlPath" type="hidden"></p></div>
 </div>
+<h3>2 动作</h3>
+<div class="field"><label for="oMode">模式（日常与危险分组）</label>
+<select id="oMode">
+<option value="update">日常：批量更新 IP/CNAME</option>
+<option value="add">日常：添加域名/记录</option>
+<option value="set_attrs">日常：设代理/TTL（内容不变）</option>
+<option value="export">日常：导出备份</option>
+<option value="provision">日常：配置域名（DNS+SSL/安全）</option>
+<option value="delete_wildcard">危险：删除通配符 *</option>
+<option value="delete_ip">危险：删除指向指定 IP</option>
+<option value="delete_zone">危险：删域名（清空或彻底删除）</option>
+</select>
+<div class="hint">更新与删除互斥；删除类必须限定域名范围；dry-run 默认开。</div></div>
 <div id="fUpdate">
 <div class="grid2">
 <div class="field"><label for="oNew">新内容 new_content</label><input id="oNew" placeholder="1.2.3.4 或 2001:db8::1"><div class="hint">auto 按 IP 推断 A/AAAA；CNAME 需选类型。</div></div>
@@ -500,16 +516,18 @@ body[data-drawer="1"] .sidebar{transform:none;box-shadow:var(--shadow-3);visibil
 </details>
 <div class="field"><label><input type="checkbox" id="oDry" checked> dry-run 预览（先开后关）</label></div>
 <div class="field"><label for="oNoSub"><input type="checkbox" id="oNoSub"> 白名单仅根记录（不含子域）</label></div>
-<p><button class="btn primary" id="oSubmit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14m-7-7 7 7-7 7"/></svg>提交任务</button>
+<h3>3 确认并提交</h3>
+<p><button class="btn primary" id="oSubmit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14m-7-7 7 7-7 7"/></svg>提交预览任务</button>
 <span class="small" id="oMsg" role="status"></span></p>
 <div class="err op-sum" id="oSum" role="alert"></div>
 </div>
 </section>
 <section class="page" id="page-jobs">
-<h2>任务</h2>
-<div class="ctxbar"><button class="btn" id="jRefresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7M21 3v6h-6"/></svg>刷新</button>
-<button class="btn" id="jHistory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>历史</button>
-<button class="btn" id="jAudit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>审计</button></div>
+<div class="pagehead"><h2>任务</h2><p>凭 verdict 与失败清单闭环：确认无误再关预览正式执行。</p></div>
+<ol class="stepper" aria-label="操作步骤"><li><a href="#/browse"><span class="n" aria-hidden="true">1</span>范围</a></li><li><a href="#/operate"><span class="n" aria-hidden="true">2</span>预览</a></li><li><a href="#/operate"><span class="n" aria-hidden="true">3</span>执行</a></li><li aria-current="step"><span class="n" aria-hidden="true">4</span>核对</li></ol>
+<div class="ctxbar"><button class="btn" id="jRefresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7M21 3v6h-6"/></svg>刷新任务</button>
+<button class="btn" id="jHistory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>查看历史</button>
+<button class="btn" id="jAudit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>查看审计</button></div>
 <div id="jList"></div>
 <div class="job-head" id="jHead" hidden>
 <strong id="jTitle">–</strong>
@@ -563,7 +581,9 @@ function setTheme(t){store.theme=t;localStorage.setItem("cf_theme",t);document.d
 function themeLabel(){return store.theme==="light"?"浅色":store.theme==="dark"?"深色":"跟随系统"}
 function syncThemeBtn(){const b=$("#btnTheme");if(!b)return;b.setAttribute("aria-label","主题："+themeLabel()+"（点击切换）");b.title="主题："+themeLabel()}
 function cycleTheme(){setTheme(store.theme==="light"?"dark":store.theme==="dark"?"system":"light");toast("主题："+themeLabel())}
-function route(){const h=(location.hash||"#/overview").replace("#/","");$$(".page").forEach(p=>p.classList.remove("active"));const pg=$("#page-"+h)||$("#page-overview");pg.classList.add("active");$$(".nav a").forEach(a=>a.getAttribute("data-route")===h?a.setAttribute("aria-current","page"):a.removeAttribute("aria-current"));document.body.dataset.drawer="0"}
+function route(){const h=(location.hash||"#/overview").replace("#/","");$$(".page").forEach(p=>p.classList.remove("active"));const pg=$("#page-"+h)||$("#page-overview");pg.classList.add("active");$$(".nav a").forEach(a=>a.getAttribute("data-route")===h?a.setAttribute("aria-current","page"):a.removeAttribute("aria-current"));document.body.dataset.drawer="0";const titles={overview:"概览",browse:"浏览 DNS",operate:"批量操作",jobs:"任务"};document.title=(titles[h]||"概览")+" - Cloudflare DNS 操作台";if(typeof closePops==="function")closePops()}
+function syncQueryBtn(){const acc=($("#bAccount")||{value:""}).value||"",zone=($("#bZone")||{value:""}).value.trim();const btn=$("#bQuery"),why=$("#bQueryWhy");const ok=!!(acc&&zone);if(btn){btn.disabled=!ok;btn.title=ok?"查询所选账号与域名的记录":"先选账号并填写域名后可查"}if(why)why.textContent=ok?"已选 "+acc+" / "+zone:"先选账号并填写域名后可查"}
+function syncSubmitLabel(){const dry=($("#oDry")||{checked:true}).checked;const btn=$("#oSubmit");if(!btn)return;const label=dry?"提交预览任务":"提交执行任务";const svg=btn.querySelector("svg");btn.textContent="";if(svg)btn.appendChild(svg);btn.appendChild(document.createTextNode(label))}
 function railMode(){const w=innerWidth;document.body.dataset.rail=(w>=768&&(w<1024||store.pinned==="0"))?"1":"0";syncRailBtn()}
 function setPinned(v){store.pinned=v;localStorage.setItem("cf_pinned",v);railMode()}
 const ICO_CLOSE='<rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M9 3v18"></path><path d="m16 15-3-3 3-3"></path>';const ICO_OPEN='<rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M9 3v18"></path><path d="m14 9 3 3-3 3"></path>';
@@ -583,11 +603,11 @@ sb.addEventListener("click",e=>{if(document.body.dataset.rail!=="1"||sb.classLis
 document.addEventListener("click",e=>{if(forced&&sb&&!sb.contains(e.target)){forced=false;rmPeek()}});
 document.addEventListener("keydown",e=>{if(e.key==="["&&!/input|textarea|select/i.test(document.activeElement.tagName)){rmPeek();const toRail=document.body.dataset.rail!=="1";setPinned(toRail?"0":"1");suppressed=toRail}
 if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="k"){e.preventDefault();openCmdk()}});
-$$("[data-close]").forEach(b=>b.onclick=()=>b.closest(".modal").classList.remove("open"));
+$$("[data-close]").forEach(b=>b.onclick=()=>{const m=b.closest(".modal");if(m)m.classList.remove("open")});
 boot();
-$("#bQuery").onclick=()=>{B.page=1;RS.sel.clear();RS.allIds=null;queryRecords()};$("#bZonesCsv").onclick=zonesCsv;
-$("#bAccount").onchange=()=>{reloadZones();const v=$("#bAccount").value;if(v)selectAccount(v)};$("#bStatus").onchange=()=>{reloadZones();Z.page=1;loadZoneTable()};$("#bCreate").onclick=()=>openNewCard();$("#bFindBtn").onclick=findDomain;
-$("#bFind").addEventListener("keydown",e=>{if(e.key==="Enter")findDomain()});
+$("#bQuery").onclick=()=>{if($("#bQuery").disabled){toast("先选账号并填写域名后可查","error");return}B.page=1;RS.sel.clear();RS.allIds=null;queryRecords()};$("#bZonesCsv").onclick=zonesCsv;
+$("#bAccount").onchange=()=>{reloadZones();const v=$("#bAccount").value;if(v)selectAccount(v);syncQueryBtn()};$("#bZone").addEventListener("input",syncQueryBtn);$("#bStatus").onchange=()=>{reloadZones();Z.page=1;loadZoneTable()};$("#bCreate").onclick=()=>openNewCard();$("#bFindBtn").onclick=findDomain;
+$("#bFind").addEventListener("keydown",e=>{if(e.isComposing||e.keyCode===229)return;if(e.key==="Enter")findDomain()});
 $("#bPrev").onclick=()=>{if(B.page>1){B.page--;queryRecords()}};
 $("#bPer").onchange=e=>{B.per_page=Number(e.target.value)||50;B.page=1;queryRecords()};
 $("#bZonePrev").onclick=()=>{if(Z.page>1){Z.page--;loadZoneTable()}};
@@ -601,7 +621,7 @@ let deb=null;$("#bSearch").addEventListener("input",()=>{clearTimeout(deb);deb=s
 
 bindSort();
 
-$("#oMode").onchange=()=>{syncMode();opSaveDraft()};syncMode();$("#oSubmit").onclick=submitJob;
+$("#oMode").onchange=()=>{syncMode();opSaveDraft()};syncMode();$("#oSubmit").onclick=submitJob;syncSubmitLabel();const _dry=$("#oDry");if(_dry)_dry.onchange=syncSubmitLabel;
 if(opRestoreDraft())toast("操作页草稿已恢复");window._opDeb=0;["#oDomains","#oWhitelist","#oNew","#oOld","#oDelIp","#oBackup","#oConfirm","#oAddDomain","#oAddRecords","#oAddTtl","#oTtl","#oExportDir","#oServerIp","#oForward","#oActTimeout","#oActInterval"].forEach(id=>{const el=$(id);if(el)el.addEventListener("input",()=>{clearTimeout(window._opDeb);window._opDeb=setTimeout(opSaveDraft,300)})});
 addEventListener("beforeunload",e=>{if(opDirty()&&!window._opBusy){e.preventDefault();e.returnValue=""}});
 $$("#oProvToggles .chip").forEach(c=>c.onclick=()=>c.setAttribute("aria-pressed",c.getAttribute("aria-pressed")==="true"?"false":"true"));
@@ -610,7 +630,7 @@ $("#jRefresh").onclick=listJobs;$("#jHistory").onclick=showHistory;$("#jAudit").
 $("#jCancel").onclick=cancelJob;$("#jCsv").onclick=dlCsv;$("#jRerun").onclick=rerunFailed;$("#jExports").onclick=listExports;
 $("#jPrev").onclick=()=>{if(JPG>1){JPG--;pollJob()}};$("#jNext").onclick=()=>{JPG++;pollJob()};bindRecordsUI();
 $("#btnCmdk").onclick=openCmdk;const bns=$("#btnNavSearch");if(bns)bns.onclick=openCmdk;$("#cmdkInput").addEventListener("input",renderCmdk);
-$("#cmdkInput").addEventListener("keydown",e=>{if(e.key==="ArrowDown"){e.preventDefault();moveCmdk(1)}else if(e.key==="ArrowUp"){e.preventDefault();moveCmdk(-1)}else if(e.key==="Enter"){const it=CMDK[CMDK_ACT];if(it)pickCmdk(it.v)}else if(e.key==="Escape")closeCmdk()});
+$("#cmdkInput").addEventListener("keydown",e=>{if(e.isComposing||e.keyCode===229)return;if(e.key==="ArrowDown"){e.preventDefault();moveCmdk(1)}else if(e.key==="ArrowUp"){e.preventDefault();moveCmdk(-1)}else if(e.key==="Enter"){const it=CMDK[CMDK_ACT];if(it)pickCmdk(it.v)}else if(e.key==="Escape")closeCmdk()});
 $("#cmdk").addEventListener("click",e=>{if(e.target.id==="cmdk")closeCmdk()});
 listJobs();
 }
@@ -632,7 +652,9 @@ const cards=$("#statCards");if(cards)cards.setAttribute("aria-busy","false");
 const sel=$("#bAccount");sel.innerHTML=ACCOUNTS.map(a=>`<option>${a.name}</option>`).join("");
 $("#oAccounts").innerHTML=ACCOUNTS.map(a=>`<button class="chip" data-a="${a.name}" aria-pressed="true">${a.name}</button>`).join("");
 $$("#oAccounts .chip").forEach(c=>c.onclick=()=>c.setAttribute("aria-pressed",c.getAttribute("aria-pressed")==="true"?"false":"true"));
-if(ACCOUNTS[0])CUR.account=ACCOUNTS[0].name;renderAccountTable();if(ACCOUNTS[0]){Z.page=1;loadZoneTable();}}
+if(ACCOUNTS[0])CUR.account=ACCOUNTS[0].name;renderAccountTable();
+try{const sv=JSON.parse(sessionStorage.getItem("cf_browse")||"null");if(sv&&sv.acc&&ACCOUNTS.some(a=>a.name===sv.acc)){CUR.account=sv.acc;sel.value=sv.acc;if(sv.zone)$("#bZone").value=sv.zone;if(sv.page)B.page=sv.page;if(sv.per)B.per_page=sv.per;const bp=$("#bPer");if(bp)bp.value=String(B.per_page);if(sv.sort!==undefined)B.sort=sv.sort||"";if(sv.type)RF.type=sv.type;if(sv.proxied)RF.proxied=sv.proxied;if(sv.search!==undefined)$("#bSearch").value=sv.search;const ix=ACCOUNTS.findIndex(a=>a.name===sv.acc);if(ix>=0)AP.page=Math.floor(ix/AP.per_page)+1;renderAccountTable();syncQueryBtn();if(sv.zone){Z.page=1;loadZoneTable();queryRecords();return}}else syncQueryBtn()}catch(e){try{syncQueryBtn()}catch(e2){}}
+syncQueryBtn();if(ACCOUNTS[0]){Z.page=1;loadZoneTable();}}
 async function refreshStats(){
 try{if(ACCOUNTS[0]){const z=await api("/api/v1/zones?account="+encodeURIComponent(ACCOUNTS[0].name)+"&per_page=1");$("#statZones").textContent=z.total||0}else{$("#statZones").textContent=0}}catch(e){$("#statZones").textContent="失败"}
 try{const j=await api("/api/v1/jobs");$("#statJobs").textContent=(j.jobs||[]).filter(x=>x.status==="running").length}catch(e){$("#statJobs").textContent="失败"}}
@@ -651,12 +673,12 @@ if(!ACCOUNTS.length){tb.innerHTML=`<tr><td colspan="3" class="muted">暂无账�
 const pages=Math.max(1,Math.ceil(ACCOUNTS.length/AP.per_page));if(AP.page>pages)AP.page=pages;
 const rows=ACCOUNTS.slice((AP.page-1)*AP.per_page,AP.page*AP.per_page);
 tb.innerHTML=rows.map(a=>{const n=a.name||"";const sel=n===CUR.account;
-return `<tr data-acc="${n}" aria-selected="${sel}"><td title="${n}">${n}</td><td title="${a.email||""}">${a.email||"不可用"}</td><td class="op"><button class="btn" data-pick="${n}">选择</button></td></tr>`}).join("");
+return `<tr data-acc="${n}" aria-selected="${sel}"><td title="${n}">${n}</td><td title="${a.email||""}">${a.email||"不可用"}</td><td class="op"><button class="btn" data-pick="${n}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>选择账号</button></td></tr>`}).join("");
 $("#bAccInfo").textContent=`共 ${ACCOUNTS.length} 个账号 · 第 ${AP.page}/${pages} 页 · 双击行选中`;
 tb.querySelectorAll("[data-pick]").forEach(b=>b.onclick=e=>{e.stopPropagation();selectAccount(b.dataset.pick)});
 tb.querySelectorAll("tr[data-acc]").forEach(tr=>{tr.ondblclick=()=>selectAccount(tr.dataset.acc);tr.onclick=e=>{if(e.target.closest("button"))return;selectAccount(tr.dataset.acc)}})}
 function selectAccount(n){if(!n)return;const changed=n!==CUR.account;CUR.account=n;
-const ix=ACCOUNTS.findIndex(a=>(a.name||"")===n);if(ix>=0)AP.page=Math.floor(ix/AP.per_page)+1;const sel=$("#bAccount");if(sel)sel.value=n;renderAccountTable();Z.page=1;loadZoneTable();if(changed)toast("已选账号 "+n)}
+const ix=ACCOUNTS.findIndex(a=>(a.name||"")===n);if(ix>=0)AP.page=Math.floor(ix/AP.per_page)+1;const sel=$("#bAccount");if(sel)sel.value=n;renderAccountTable();Z.page=1;loadZoneTable();syncQueryBtn();if(changed)toast("已选账号 "+n)}
 async function loadZoneTable(){const tb=$("#bZoneBody");const acc=CUR.account||($("#bAccount")||{value:""}).value;
 if(!acc){tb.innerHTML=`<tr><td colspan="3" class="muted">先选账号</td></tr>`;return}
 tb.innerHTML=skelRows(5,3);const __zq=++ZQ;
@@ -665,13 +687,13 @@ const f=(($("#bZoneFind")||{value:""}).value||"").trim();if(f)q.set("filter",f);
 const d=await api("/api/v1/zones?"+q.toString());if(__zq!==ZQ)return;Z.total=d.total;Z.page=d.page;
 $("#bZoneInfo").textContent=`${acc} 共 ${d.total} 个域名 · 第 ${d.page} 页`;
 if(!(d.items||[]).length){const st=(($("#bStatus")||{value:"all"}).value||"all");const fk=(($("#bZoneFind")||{value:""}).value||"").trim();
-tb.innerHTML=`<tr><td colspan="3" class="muted">该账号下无匹配域名（状态 ${st}${fk?` · 过滤“${fk}”`:""}） <button class="btn" id="zClearFilter">清除过滤</button></td></tr>`;
+tb.innerHTML=`<tr><td colspan="3" class="muted">该账号下无匹配域名（状态 ${st}${fk?` · 过滤“${fk}”`:""}） <button class="btn" id="zClearFilter"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>清除过滤</button></td></tr>`;
 const zc=$("#zClearFilter");if(zc)zc.onclick=()=>{const zf=$("#bZoneFind");if(zf)zf.value="";const bs=$("#bStatus");if(bs)bs.value="all";Z.page=1;loadZoneTable()};return}
-tb.innerHTML=d.items.map(z=>`<tr data-zone="${z.name}"><td title="${z.name}">${z.name}</td><td>${zoneStatus(z.status)}</td><td class="op"><button class="btn" data-view="${z.name}">查看</button></td></tr>`).join("");
+tb.innerHTML=d.items.map(z=>`<tr data-zone="${z.name}"><td title="${z.name}">${z.name}</td><td>${zoneStatus(z.status)}</td><td class="op"><button class="btn" data-view="${z.name}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 21-4.34-4.34"></path><circle cx="11" cy="11" r="8"></circle></svg>查看记录</button></td></tr>`).join("");
 tb.querySelectorAll("[data-view]").forEach(b=>b.onclick=e=>{e.stopPropagation();fillZoneAndQuery(b.dataset.view)});
 tb.querySelectorAll("tr[data-zone]").forEach(tr=>tr.onclick=e=>{if(e.target.closest("button"))return;fillZoneAndQuery(tr.dataset.zone)});
 }catch(e){if(__zq!==ZQ)return;tb.innerHTML=`<tr><td colspan="3" class="muted">域名加载失败：${String(e.message||e)}，点击账号重试</td></tr>`;$("#bZoneInfo").textContent="加载失败"}}
-function fillZoneAndQuery(z){$("#bZone").value=z||"";B.page=1;queryRecords()}
+function fillZoneAndQuery(z){$("#bZone").value=z||"";syncQueryBtn();B.page=1;queryRecords()}
 
 function selAccounts(){return $$("#oAccounts .chip").filter(c=>c.getAttribute("aria-pressed")==="true").map(c=>c.dataset.a)}
 function lines(id){return $(id).value.split("\n").map(s=>s.trim()).filter(Boolean)}
@@ -702,7 +724,7 @@ h.setAttribute("aria-valuemin",String(CW[k][0]));h.setAttribute("aria-valuemax",
 h.addEventListener("mousedown",e=>{if(e.button!==0)return;e.preventDefault();e.stopPropagation();startColDrag(e,k)});
 h.addEventListener("click",e=>e.stopPropagation());
 h.addEventListener("dblclick",e=>{e.stopPropagation();resetColWidth(k)});
-h.addEventListener("keydown",e=>{let d=0;if(e.key==="ArrowRight")d=e.shiftKey?32:8;else if(e.key==="ArrowLeft")d=e.shiftKey?-32:-8;else if(e.key==="Home"){e.preventDefault();resetColWidth(k);return}else return;e.preventDefault();stepColWidth(k,d)});
+h.addEventListener("keydown",e=>{if(e.key==="ArrowRight"||e.key==="ArrowLeft"){let d=e.key==="ArrowRight"?(e.shiftKey?32:8):(e.shiftKey?-32:-8);e.preventDefault();stepColWidth(k,d)}else if(e.key==="Home"){e.preventDefault();setColPx(k,CW[k][0])}else if(e.key==="End"){e.preventDefault();setColPx(k,CW[k][1])}else if(e.key==="Enter"){e.preventDefault();resetColWidth(k)}else return});
 th.appendChild(h)})}
 function setColPx(k,px,silent){const col=document.querySelector(`#bTable col[data-ck="${k}"]`);if(!col)return;const lim=CW[k];px=Math.max(lim[0],Math.min(lim[1],Math.round(px)));col.style.setProperty("width",px+"px");if(!silent){CWS[k]=px;saveColWidths()}document.querySelectorAll(`#bTable .rz-handle[data-ck="${k}"]`).forEach(h=>h.setAttribute("aria-valuenow",String(px)))}
 function stepColWidth(k,d){setColPx(k,colCurPx(k)+d)}
@@ -713,13 +735,14 @@ const up=ev=>{document.removeEventListener("mousemove",mv);document.removeEventL
 document.addEventListener("mousemove",mv);document.addEventListener("mouseup",up)}
 
 async function queryRecords(){const acc=$("#bAccount").value||CUR.account;const zone=$("#bZone").value.trim();const err=$("#bErr");if(err){err.hidden=true;err.textContent=""}
-if(!acc||!zone){toast("先选账号并填写域名");return}
-$("#bBody").innerHTML=skelRows(6,9);const __bq=++BQ;
+if(!acc||!zone){syncQueryBtn();toast("先选账号并填写域名后可查","error");return}
+syncQueryBtn();const hadOld=(typeof RS!=="undefined"&&RS.items&&RS.items.length>0);
+if(!hadOld)$("#bBody").innerHTML=skelRows(6,9);else $("#bQuota").textContent=`刷新中… · ${esc(CUR.account)} / ${esc(CUR.zone)}`;const __bq=++BQ;
 try{CUR={account:acc,zone};const q=new URLSearchParams({account:acc,zone,type:RF.type,search:$("#bSearch").value.trim(),page:B.page,per_page:B.per_page});
 if(B.sort)q.set("sort",B.sort);if(RF.proxied!=="all")q.set("proxied",RF.proxied);
 const d=await api("/api/v1/records?"+q.toString());if(__bq!==BQ)return;B.total=d.total;B.page=d.page;
-RS.items=d.items||[];RS.lastIdx=-1;renderRecords();renderChips();
-}catch(e){if(__bq!==BQ)return;const tb=$("#bBody");tb.innerHTML=`<tr><td colspan="9" class="muted">查询失败：${esc(String(e.message||e))} <button class="btn" id="bRetry">重试</button></td></tr>`;const rt=$("#bRetry");if(rt)rt.onclick=()=>queryRecords();$("#bQuota").textContent="查询失败";if(err){err.hidden=false;err.textContent=String(e.message||e)}else toast(String(e.message||e),"error")}}
+RS.items=d.items||[];RS.lastIdx=-1;renderRecords();renderChips();try{sessionStorage.setItem("cf_browse",JSON.stringify({acc:CUR.account,zone:CUR.zone,page:B.page,per:B.per_page,sort:B.sort,type:RF.type,proxied:RF.proxied,search:$("#bSearch").value.trim()}))}catch(e){}
+}catch(e){if(__bq!==BQ)return;const tb=$("#bBody");tb.innerHTML=`<tr><td colspan="9" class="muted">查询失败：${esc(String(e.message||e))} <button class="btn" id="bRetry"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7M21 3v6h-6"/></svg>重试查询</button></td></tr>`;const rt=$("#bRetry");if(rt)rt.onclick=()=>queryRecords();$("#bQuota").textContent="查询失败";if(err){err.hidden=false;err.textContent=String(e.message||e)}else toast(String(e.message||e),"error")}}
 const RS={items:[],sel:new Set(),allIds:null,lastIdx:-1,flash:null,pendSwitch:false};
 const RF={type:"ALL",proxied:"all"};
 const RD={comment:true,details:true,compact:false};
@@ -746,20 +769,20 @@ const s=B.total?(B.page-1)*B.per_page+1:0,e=Math.min(B.total,B.page*B.per_page);
 $("#bInfo").textContent=B.total?`第 ${s}–${e} 条，共 ${B.total} 条`:"共 0 条";
 updateBulk();applyColWidths();bindColResize();}
 function rowHtml(r,i){const sel=RS.sel.has(r.id);const fl=RS.flash&&((RS.flash.id&&RS.flash.id===r.id)||(RS.flash.key&&RS.flash.key===r.name+"|"+r.type+"|"+r.content));
-return `<tr data-id="${esc(r.id)}" data-idx="${i}"${fl?' class="flash"':""}><td class="cb"><input type="checkbox" data-sel aria-label="选择记录 ${esc(shortName(r.name,CUR.zone))}"${sel?" checked":""}></td><td class="nm" title="${esc(r.name)}">${warnCell(r)}${esc(shortName(r.name,CUR.zone))}</td><td>${pill(r.type)}</td><td class="mono" title="${esc(r.content)}">${esc(r.content)}</td><td>${proxyCell(r)}</td><td>${ttlText(r.ttl)}</td><td data-col="comment" title="${esc(r.comment||"")}">${esc(r.comment||"—")}</td><td data-col="details">${r.type==="MX"&&r.priority!=null?`<span class="det">Priority ${r.priority}</span>`:"—"}</td><td class="op"><button class="btn" data-edit="${esc(r.id)}" aria-expanded="false" aria-label="编辑 ${esc(r.type)} 记录 ${esc(shortName(r.name,CUR.zone))}">编辑</button></td></tr>`}
+return `<tr data-id="${esc(r.id)}" data-idx="${i}"${fl?' class="flash"':""}><td class="cb"><input type="checkbox" data-sel aria-label="选择记录 ${esc(shortName(r.name,CUR.zone))}"${sel?" checked":""}></td><td class="nm" title="${esc(r.name)}">${warnCell(r)}${esc(shortName(r.name,CUR.zone))}</td><td>${pill(r.type)}</td><td class="mono" title="${esc(r.content)}">${esc(r.content)}</td><td>${proxyCell(r)}</td><td>${ttlText(r.ttl)}</td><td data-col="comment" title="${esc(r.comment||"")}">${esc(r.comment||"—")}</td><td data-col="details">${r.type==="MX"&&r.priority!=null?`<span class="det">Priority ${r.priority}</span>`:"—"}</td><td class="op"><button class="btn" data-edit="${esc(r.id)}" aria-expanded="false" aria-label="编辑 ${esc(r.type)} 记录 ${esc(shortName(r.name,CUR.zone))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>编辑</button></td></tr>`}
 function renderTable(){const tb=$("#bBody");
 if(!RS.items.length){const ft=RF.type!=="ALL"?"类型 "+RF.type:"",px=RF.proxied!=="all"?(RF.proxied==="proxied"?"已代理":"仅 DNS"):"",kw=$("#bSearch").value.trim();
 const hasF=ft||px||kw;
-tb.innerHTML=hasF?`<tr><td colspan="9" class="muted">无匹配记录（${[ft,px,kw?`关键字“${esc(kw)}”`:""].filter(Boolean).join(" · ")}） <button class="btn" id="bClearFilter">清除过滤</button></td></tr>`:`<tr><td colspan="9" class="muted">暂无记录 <button class="btn" id="bNewEmpty">新增记录</button></td></tr>`;
+tb.innerHTML=hasF?`<tr><td colspan="9" class="muted">无匹配记录（${[ft,px,kw?`关键字“${esc(kw)}”`:""].filter(Boolean).join(" · ")}） <button class="btn" id="bClearFilter"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>清除过滤</button></td></tr>`:`<tr><td colspan="9" class="muted">暂无记录 <button class="btn" id="bNewEmpty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14m-7-7h14"/></svg>新增记录</button></td></tr>`;
 const cf=$("#bClearFilter");if(cf)cf.onclick=()=>{RF.type="ALL";RF.proxied="all";$("#bSearch").value="";B.page=1;RS.sel.clear();RS.allIds=null;queryRecords()};
 const ne=$("#bNewEmpty");if(ne)ne.onclick=()=>openNewCard();syncHead();return}
 tb.innerHTML=RS.items.map(rowHtml).join("");
 bindRowHandlers(tb);syncHead();
 if(RS.flash){const fr=tb.querySelector("tr.flash");if(fr)fr.scrollIntoView({block:"nearest"});RS.flash=null}}
 function renderCards(){const box=$("#bCards");
-if(!RS.items.length){box.innerHTML=`<div class="card"><p class="muted">暂无记录或无匹配</p><p><button class="btn" id="bNewEmpty">新增记录</button></p></div>`;const ne=$("#bNewEmpty");if(ne)ne.onclick=()=>openNewCard();syncHead();return}
+if(!RS.items.length){box.innerHTML=`<div class="card"><p class="muted">暂无记录或无匹配</p><p><button class="btn" id="bNewEmpty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14m-7-7h14"/></svg>新增记录</button></p></div>`;const ne=$("#bNewEmpty");if(ne)ne.onclick=()=>openNewCard();syncHead();return}
 box.innerHTML=RS.items.map((r,i)=>{const sel=RS.sel.has(r.id);const fl=RS.flash&&((RS.flash.id&&RS.flash.id===r.id)||(RS.flash.key&&RS.flash.key===r.name+"|"+r.type+"|"+r.content));
-return `<li class="rcard" data-id="${esc(r.id)}" data-idx="${i}"${fl?' style="outline:2px solid var(--primary)"':""}><div class="rh"><input type="checkbox" data-sel aria-label="选择记录 ${esc(shortName(r.name,CUR.zone))}"${sel?" checked":""}>${pill(r.type)}<span class="nm">${esc(shortName(r.name,CUR.zone))}</span>${warnCell(r)}<span style="flex:1"></span><button class="btn" data-edit="${esc(r.id)}" aria-expanded="false">编辑</button></div><div class="rm">${esc(r.content)}</div><div class="rk"><span>${proxyCell(r)}</span><span>TTL ${ttlText(r.ttl)}</span>${RD.comment&&r.comment?`<span>备注 ${esc(r.comment)}</span>`:""}${RD.details&&r.type==="MX"&&r.priority!=null?`<span class="det">Priority ${r.priority}</span>`:""}</div></li>`}).join("");
+return `<li class="rcard" data-id="${esc(r.id)}" data-idx="${i}"${fl?' style="outline:2px solid var(--primary)"':""}><div class="rh"><input type="checkbox" data-sel aria-label="选择记录 ${esc(shortName(r.name,CUR.zone))}"${sel?" checked":""}>${pill(r.type)}<span class="nm">${esc(shortName(r.name,CUR.zone))}</span>${warnCell(r)}<span style="flex:1"></span><button class="btn" data-edit="${esc(r.id)}" aria-expanded="false" aria-label="编辑 ${esc(r.type)} 记录 ${esc(shortName(r.name,CUR.zone))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>编辑</button></div><div class="rm">${esc(r.content)}</div><div class="rk"><span>${proxyCell(r)}</span><span>TTL ${ttlText(r.ttl)}</span>${RD.comment&&r.comment?`<span>备注 ${esc(r.comment)}</span>`:""}${RD.details&&r.type==="MX"&&r.priority!=null?`<span class="det">Priority ${r.priority}</span>`:""}</div></li>`}).join("");
 bindRowHandlers(box);syncHead();RS.flash=null}
 function bindRowHandlers(scope){scope.querySelectorAll("[data-sel]").forEach(cb=>cb.onchange=()=>{const host=cb.closest("[data-idx]");const idx=host?+host.dataset.idx:-1;const on=cb.checked;
 if(cb.shiftKey&&RS.lastIdx>=0&&idx>=0){const a=Math.min(RS.lastIdx,idx),b2=Math.max(RS.lastIdx,idx);scope.querySelectorAll("[data-idx]").forEach(row=>{const k=+row.dataset.idx;if(k>=a&&k<=b2){const c=row.querySelector("[data-sel]");if(c)c.checked=on;const rec=RS.items[k];if(rec){if(on)RS.sel.add(rec.id);else RS.sel.delete(rec.id)}}})}else if(idx>=0){const rec=RS.items[idx];if(rec){if(on)RS.sel.add(rec.id);else RS.sel.delete(rec.id)}}
@@ -779,14 +802,16 @@ const d=await api("/api/v1/records?"+q.toString());rows.push(...(d.items||[]));i
 return {rows,truncated:rows.length>=2000}}
 function toastUndo(msg,snaps){const box=$("#toasts");const d=document.createElement("div");d.className="toast";
 const sp=document.createElement("span");sp.textContent=msg;d.appendChild(sp);
-const b=document.createElement("button");b.className="btn";b.style.marginLeft="8px";b.textContent="撤销";
+const b=document.createElement("button");b.className="btn";b.style.marginLeft="8px";b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>撤销删除';
 b.onclick=async()=>{d.remove();await restoreSnapshots(snaps)};d.appendChild(b);box.appendChild(d);setTimeout(()=>{if(d.isConnected)d.remove()},8000)}
 async function restoreSnapshots(snaps){try{const r=await api("/api/v1/records/bulk-restore",{method:"POST",json:{account:CUR.account,zone:CUR.zone,records:snaps.map(x=>({name:x.name,type:x.type,content:x.content,proxied:!!x.proxied,ttl:Number(x.ttl||1),comment:x.comment||"",priority:x.priority==null?null:Number(x.priority)}))}});
 if((r.failed||[]).length)toast(`恢复部分失败：${r.failed.length} 条（${(r.failed[0]||{}).error||""}）`,"error");else toast(`已恢复 ${r.restored.length} 条（新 ID）`);queryRecords()}catch(e){toast("恢复失败："+String(e.message||e),"error")}}
 async function undoBulkUpdate(prev){let ok=0;const bad=[];
 for(const p of prev){try{await api("/api/v1/records",{method:"PATCH",json:{account:CUR.account,zone:CUR.zone,id:p.id,proxied:!!p.proxied,ttl:Number(p.ttl||1)}});ok++}catch(e){bad.push(String(e.message||e))}}
 if(bad.length)toast(`撤销部分失败：${bad.length} 条`,"error");else toast(`已撤销代理/TTL 修改 ${ok} 条`);queryRecords()}
-async function doBulkDelete(ids){let r;try{r=await api("/api/v1/records/bulk-delete",{method:"POST",json:{account:CUR.account,zone:CUR.zone,ids}})}catch(e){toast("批量删除失败："+String(e.message||e),"error");return}
+async function doBulkDelete(ids){const btn=$("#bBulkDel");if(btn&&!btn.dataset.armed){const first=(RS.items.find(r=>ids.includes(r.id))||{});const nm=first.name?shortName(first.name,CUR.zone):"";btn.dataset.armed="1";const old=btn.innerHTML;btn.dataset.old=old;btn.innerHTML=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>确认删除 ${ids.length} 条${nm?`（含 ${esc(nm)}）`:""}？`;setTimeout(()=>{if(btn.isConnected){delete btn.dataset.armed;btn.innerHTML=old}},6000);return}
+if(btn){delete btn.dataset.armed;btn.innerHTML=btn.dataset.old||btn.innerHTML}
+let r;try{r=await api("/api/v1/records/bulk-delete",{method:"POST",json:{account:CUR.account,zone:CUR.zone,ids}})}catch(e){toast("批量删除失败："+String(e.message||e),"error");return}
 ids.forEach(id=>RS.sel.delete(id));RS.allIds=null;queryRecords();
 const n=(r.deleted||[]).length,m=(r.failed||[]).length;
 if(n)toastUndo(`已删除 ${n} 条${m?`，${m} 条失败`:""}`,r.deleted||[]);
@@ -807,7 +832,7 @@ return `<div class="rec-ed" id="recEd">
 <div class="field" id="ePrioWrap"${isMX?"":" hidden"}><label for="ePrio">优先级 *</label><input id="ePrio" type="number" min="0" max="65535" value="${r.priority==null?"":r.priority}"><div class="err" id="ePrioErr" role="alert"></div></div>
 <div class="field"><label for="eComment">备注（可选）</label><input id="eComment" value="${esc(r.comment||"")}" maxlength="100" aria-describedby="eCommentErr"><div class="small"><span id="eCount">0</span>/100</div><div class="err" id="eCommentErr" role="alert"></div></div>
 <div class="err" id="eSum" role="alert"></div>
-<footer>${ED.id?'<button class="btn danger" id="eDel">删除</button>':""}<span class="sp"></span><button class="btn" id="eFill">填入操作页</button><button class="btn" id="eCancel">取消</button><button class="btn primary" id="eSave">保存</button></footer>
+<footer>${ED.id?'<button class="btn danger" id="eDel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>删除记录</button>':""}<span class="sp"></span><button class="btn" id="eFill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-7-7 7 7-7 7"/></svg>填入操作页</button><button class="btn" id="eCancel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>取消编辑</button><button class="btn primary" id="eSave"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>保存记录</button></footer>
 </div>`}
 function edVals(){return {name:$("#eName").value.trim(),type:$("#eType").value,content:$("#eContent").value.trim(),ttl:Number($("#eTtl").value||0),proxied:$("#eProxy").getAttribute("aria-checked")==="true",comment:$("#eComment").value,prio:$("#ePrio")?$("#ePrio").value.trim():""}}
 function edSnapOf(){return JSON.stringify(edVals())}
@@ -849,17 +874,17 @@ $("#eTtl").addEventListener("change",eSyncType);
 const pr=$("#ePrio");if(pr)pr.addEventListener("blur",()=>eValidateOne("prio"));
 const cm=$("#eComment");if(cm)cm.addEventListener("input",updCount);
 $("#eFill").onclick=()=>fillOperate($("#eContent").value,$("#eType").value);
-$("#eCancel").onclick=()=>{const b=$("#eCancel");if(edDirty()&&!b.dataset.armed){b.dataset.armed="1";b.textContent="确认放弃？";setTimeout(()=>{if(b.isConnected){delete b.dataset.armed;b.textContent="取消"}},6000);return}closeEditor()};
+$("#eCancel").onclick=()=>{const b=$("#eCancel");if(edDirty()&&!b.dataset.armed){b.dataset.armed="1";const old=b.innerHTML;b.dataset.old=old;b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>确认放弃修改？';setTimeout(()=>{if(b.isConnected){delete b.dataset.armed;b.innerHTML=b.dataset.old||old}},6000);return}closeEditor()};
 $("#eSave").onclick=saveEditor;
-const del=$("#eDel");if(del)del.onclick=()=>{if(!del.dataset.armed){del.dataset.armed="1";del.textContent="确认删除？";setTimeout(()=>{if(del.isConnected){delete del.dataset.armed;del.textContent="删除"}},6000);return}delEditor()};
+const del=$("#eDel");if(del)del.onclick=()=>{if(!del.dataset.armed){del.dataset.armed="1";const old=del.innerHTML;del.dataset.old=old;del.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>确认删除该记录？';setTimeout(()=>{if(del.isConnected){delete del.dataset.armed;del.innerHTML=del.dataset.old||old}},6000);return}delEditor()};
 $("#eType").focus()}
 function updCount(){const cm=$("#eComment"),c=$("#eCount");if(cm&&c)c.textContent=String(cm.value.length)}
-async function saveEditor(){if(!eValidateAll())return;const btn=$("#eSave");if(btn.disabled)return;btn.disabled=true;btn.setAttribute("aria-busy","true");const old=btn.textContent;btn.textContent="保存中…";
+async function saveEditor(){if(!eValidateAll())return;const btn=$("#eSave");if(btn.disabled)return;btn.disabled=true;btn.setAttribute("aria-busy","true");const old=btn.innerHTML;btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>保存中…';
 const v=edVals();const prio=v.type==="MX"?Number(v.prio):null;
 try{let key=null;
 if(ED.id){await api("/api/v1/records",{method:"PATCH",json:{account:CUR.account,zone:CUR.zone,id:ED.id,name:v.name,type:v.type,content:v.content,proxied:v.proxied,ttl:v.ttl,comment:v.comment,priority:prio}});key={id:ED.id}}
 else{await api("/api/v1/records",{method:"POST",json:{account:CUR.account,zone:CUR.zone,name:v.name||"@",type:v.type,content:v.content,proxied:v.proxied,ttl:v.ttl,comment:v.comment,priority:prio}});key={key:v.name+"|"+v.type+"|"+v.content}}
-RS.flash=key;const wasNew=!ED.id;closeEditor(true);toast(wasNew?"已新增记录":"已保存修改");queryRecords()}catch(e){const sm=$("#eSum");if(sm)sm.textContent="保存失败："+String(e.message||e);toast("保存失败："+String(e.message||e),"error")}finally{const b2=$("#eSave");if(b2){b2.disabled=false;b2.removeAttribute("aria-busy");b2.textContent=old}}}
+RS.flash=key;const wasNew=!ED.id;closeEditor(true);toast(wasNew?"已新增记录":"已保存修改");queryRecords()}catch(e){const sm=$("#eSum");if(sm)sm.textContent="保存失败："+String(e.message||e);toast("保存失败："+String(e.message||e),"error")}finally{const b2=$("#eSave");if(b2){b2.disabled=false;b2.removeAttribute("aria-busy");b2.innerHTML=old}}}
 async function delEditor(){const id=ED.id;let snap=null;try{const all=await api("/api/v1/records?"+new URLSearchParams({account:CUR.account,zone:CUR.zone,per_page:200,page:1}));snap=(all.items||[]).find(x=>x.id===id)||null}catch(e){}
 try{await api(`/api/v1/records?account=${encodeURIComponent(CUR.account)}&zone=${encodeURIComponent(CUR.zone)}&id=${encodeURIComponent(id)}`,{method:"DELETE"})}catch(e){toast("删除失败："+String(e.message||e),"error");return}
 RS.sel.delete(id);closeEditor(true);queryRecords();
@@ -904,7 +929,7 @@ const rw=$("#recWrap");if(rw&&"ResizeObserver" in window){let rT=0;new ResizeObs
 async function doBulkProxy(on){const ids=[...RS.sel];if(!ids.length)return;let r;try{r=await api("/api/v1/records/bulk-update",{method:"POST",json:{account:CUR.account,zone:CUR.zone,ids,proxied:on}})}catch(e){toast("批量设置失败："+String(e.message||e),"error");return}
 queryRecords();const n=(r.updated||[]).length,m=(r.failed||[]).length;
 if(n){const prev=r.prev||[];const box=$("#toasts");const d=document.createElement("div");d.className="toast";const sp=document.createElement("span");sp.textContent=`已设为${on?"已代理":"仅 DNS"} ${n} 条${m?`，${m} 条失败`:""}`;d.appendChild(sp);
-const b=document.createElement("button");b.className="btn";b.style.marginLeft="8px";b.textContent="撤销";b.onclick=async()=>{d.remove();await undoBulkUpdate(prev)};d.appendChild(b);box.appendChild(d);setTimeout(()=>{if(d.isConnected)d.remove()},8000)}
+const b=document.createElement("button");b.className="btn";b.style.marginLeft="8px";b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>撤销修改';b.onclick=async()=>{d.remove();await undoBulkUpdate(prev)};d.appendChild(b);box.appendChild(d);setTimeout(()=>{if(d.isConnected)d.remove()},8000)}
 if(m&&!n)toast(`批量设置失败：${(r.failed[0]||{}).error||""}`,"error")}
 function openImport(){if(!CUR.zone){toast("先选账号填域名后查询");return}window._imp=null;const f=$("#iFile");if(f)f.value="";$("#iSum").textContent="";$("#iMsg").textContent="";$("#iGo").disabled=true;window._impOpener=document.activeElement;$("#mImport").classList.add("open");if(f)f.focus()}
 function closeImport(){$("#mImport").classList.remove("open");if(window._impOpener&&document.contains(window._impOpener))window._impOpener.focus()}
@@ -915,11 +940,11 @@ return arr}
 async function checkImport(){const arr=await readImportFile();if(!arr)return;$("#iMsg").textContent="预检中…";$("#iGo").disabled=true;
 try{const r=await api("/api/v1/records/import",{method:"POST",json:{account:CUR.account,zone:CUR.zone,records:arr,dry_run:true}});
 window._imp=arr;$("#iMsg").textContent=`预检通过：${r.checked} 条可写`;$("#iSum").textContent="";$("#iGo").disabled=false}catch(e){window._imp=null;$("#iMsg").textContent="";$("#iSum").textContent=String(e.message||e)}}
-async function runImport(){if(!window._imp)return;const btn=$("#iGo");btn.disabled=true;btn.textContent="导入中…";
+async function runImport(){if(!window._imp)return;const btn=$("#iGo");btn.disabled=true;const oldGo=btn.innerHTML;btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m0 0 4 4m-4-4-4 4M4 20h16"/></svg>导入中…';
 try{const r=await api("/api/v1/records/import",{method:"POST",json:{account:CUR.account,zone:CUR.zone,records:window._imp,dry_run:false}});
 $("#iMsg").textContent=`导入完成：新增 ${r.added} 更新 ${r.updated} 未变 ${r.unchanged} 失败 ${r.failed.length}`;
 $("#iSum").textContent=(r.failed||[]).slice(0,5).map(x=>`第${x.index}条：${x.error}`).join("；");
-window._imp=null;queryRecords()}catch(e){$("#iSum").textContent=String(e.message||e)}finally{btn.disabled=false;btn.textContent="确认导入"}}
+window._imp=null;queryRecords()}catch(e){$("#iSum").textContent=String(e.message||e)}finally{btn.disabled=false;btn.innerHTML=oldGo}}
 async function doExport(){if(!CUR.zone){toast("先选账号填域名后查询");return}
 try{let rows,note="";
 if(RS.sel.size){const all=await fetchAllBodies();rows=all.rows.filter(r=>RS.sel.has(r.id));note=`已选 ${rows.length} 条`}
@@ -987,7 +1012,7 @@ if(d.oDry!==undefined)$("#oDry").checked=!!d.oDry;if(d.oNoSub!==undefined)$("#oN
 syncMode();return !!(d.oDomains||d.oNew||d.oAddRecords)}
 function opDirty(){return ($("#oDomains")&&$("#oDomains").value.trim())||($("#oNew")&&$("#oNew").value.trim())||($("#oAddRecords")&&$("#oAddRecords").value.trim())}
 async function submitJob(){if(window._opBusy)return;const m=$("#oMode").value;const errs=oValidate(m);if(!oShowErrs(errs))return;
-window._opBusy=true;const btn=$("#oSubmit");btn.disabled=true;btn.setAttribute("aria-busy","true");const oldHtml=btn.innerHTML;btn.innerHTML="提交中…";
+window._opBusy=true;const btn=$("#oSubmit");btn.disabled=true;btn.setAttribute("aria-busy","true");const oldHtml=btn.innerHTML;btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-7-7 7 7-7 7"/></svg>提交中…';
 const toggles={};$$("#oProvToggles .chip").forEach(c=>toggles[c.dataset.k]=c.getAttribute("aria-pressed")==="true");
 const num=(id)=>{const v=($(id)||{value:""}).value.trim();return v===""?null:Number(v)};
 const body={mode:m,accounts:selAccounts(),domains:lines("#oDomains"),whitelist:lines("#oWhitelist"),whitelist_file:$("#oWlPath").value||null,

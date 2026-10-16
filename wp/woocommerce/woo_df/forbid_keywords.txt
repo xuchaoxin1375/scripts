@@ -1,3 +1,5 @@
+# TROBOLO
+# Viadurini
 # Kirkland Signature
 # Allpets
 # Lottis Häppchen
@@ -17,6 +19,7 @@
 # FXR
 # LogOX
 # Mora 
+Lippert
 thule
 simplehuman
 Cath Kidston

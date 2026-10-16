@@ -1,3 +1,4 @@
+curl-cffi
 pillow
 pillow-avif-plugin
 requests
@@ -20,6 +21,10 @@ uv
 # please run:[  playwright install  ] this command in your terminal to install playwright browser automation tool
 # playwright
 # playwright_stealth
-patchright
+# patchright
+scrapling
+scrapling[shell]
+# please run:[  scrapling install  ] this command in your terminal to install playwright browser automation tool
+# scrapling install
 dotenv
 # opencv-python
