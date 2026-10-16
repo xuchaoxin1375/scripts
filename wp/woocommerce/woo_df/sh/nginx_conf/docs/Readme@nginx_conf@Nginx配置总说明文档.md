@@ -222,9 +222,9 @@ bash $sh/update_repos.sh -F -R
 
 ### 选择工作模式(js挑战/限流)
 
-2026-10-16 起两者已合并同时生效，无需二选一：`com_js_signed.conf` 内 product 路径已内置原 `com_js_429.conf` 的三层 `limit_req`（`user/bot/site_global`，超限 429），原 `com_js_429.conf` 现为兼容垫片（仅 `include` signed），新站直接引用 `com_js_signed.conf` 即可。
+2026-10-16 起两者已合并同时生效，无需二选一：`com_js_signed.conf` 内 product 路径已内置原 `com_js_429.conf` 的多层 `limit_req`（`user/bot/site_global`，超限 429），原 `com_js_429.conf` 现为兼容垫片（仅 `include` signed），新站直接引用 `com_js_signed.conf` 即可。2026-10-17 起另有 apple_global 聚合桶（com_limit_zone.conf）与 wp-json 产品接口 location。
 
-> 白名单分级策略：google/bing 经 `com_ua_map.conf` 跳过 `bot_limit`（暂时放开，仅 `site_global` 兜底），applebot 仍受 `bot_limit` 约束；挑战开关见 signed 内 `$allow_*`，限流开关见 `$se_unlimited/$bot_limit_key`。详见 `docs/README_js_challenge_signed.md` §8/§8.1。
+> 白名单分级策略：google/bing 经 `com_ua_map.conf` 跳过 `bot_limit`（暂时放开，仅 `site_global` 兜底），applebot 受 `bot_limit`（per-IP）+ `apple_global`（全站聚合，防多 IP 总量失控）双层约束；挑战开关见 signed 内 `$allow_*`，限流开关见 `$se_unlimited/$bot_limit_key/$apple_key/$apple_key`。详见 `docs/README_js_challenge_signed.md` §8/§8.1。
 
 
 
@@ -307,4 +307,4 @@ js挑战的正式版配置(`js_challenge`)出来之前,有过简化版或者设�
 - `com_js_plus.conf`这个也是基于原版nginx做的,不过增加了专门的挑战页面过渡更自然,看起来更加美观,但是受限于原版nginx的功能,和上面最初版本有类似的问题.
 - `com_js_signed_fake.conf`,是引入openresty的雏形版本,相比于上面的版本,在cookie防盗用方面有所增强,但是有设计缺陷,cookie的获取没有强制浏览器(其他非浏览器客户端第一次请求会被要求验证,但是仍然分发cookie,如果客户端请求时保存cookie并在第二次请求时携带,则仍然可以请求成功)
 - `com_js_signed.conf`,修复上面的非浏览器客户端能够间接访问的问题,要求客户端执行js才能获取最终有效的凭据,并考虑了主流爬虫的放行和反向校验(避免被简单的user-agent伪装成搜索引擎而轻易绕过js挑战)
-- 2026-10-16 合并：`com_js_signed.conf` 已并入原 `com_js_429.conf` 的 product 路径三层限流，原 `com_js_429.conf` 仅作兼容垫片；白名单分级（google/bing 放开 `bot_limit`、applebot 仍限流）通过 `com_ua_map.conf` 的 `$se_unlimited/$bot_limit_key` 控制，细节见 `docs/README_js_challenge_signed.md` §8.1
+- 2026-10-16 合并：`com_js_signed.conf` 已并入原 `com_js_429.conf` 的 product 路径三层限流，原 `com_js_429.conf` 仅作兼容垫片；白名单分级（google/bing 放开 `bot_limit`、applebot 仍限流）通过 `com_ua_map.conf` 的 `$se_unlimited/$bot_limit_key` 控制；2026-10-17 新增 `apple_global` 全站聚合桶（`$apple_key` 常量 key，防 Applebot 多 IP 总量失控）与 wp-json 产品接口 location，细节见 `docs/README_js_challenge_signed.md` §8.1
