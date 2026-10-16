@@ -333,7 +333,7 @@ include /www/server/nginx/conf/com_js_signed.conf;
 - 内部接口 `/__sc_verify` 和 `/_sc/challenge` 会跳过整站校验，避免挑战流程被自身拦截
 - AI bot、社交媒体爬虫、支付/监控服务仍按配置策略放行
 - Google/Bing/Applebot 等疑似搜索引擎 UA 仍需 PTR + A/AAAA 回查验证，通过后才免 JS 挑战（伪造 UA 直接 403，不回落挑战）
-- 白名单分级限流（可配置，详见 §8.1）：google/bing 暂时放开 `bot_limit`（仅 `site_global` 兜底）；applebot 除 `bot_limit`（per-IP）外另受 `apple_global` 全站聚合桶约束（超限 429，防多 IP 总量失控）；AI 仍受 `bot_limit`/`user_limit` 约束
+- 白名单分级限流（可配置，详见 §8.1）：google/bing 暂时放开 `bot_limit`（仅 `site_global` 兜底）；applebot 跳过 `bot_limit`、只受按站 `apple_global` 聚合桶约束（超限 429，防多 IP 总量失控）；AI 仍受 `bot_limit`/`user_limit` 约束
 
 文件中仍保留了旧版显式保护路径：
 
@@ -708,25 +708,25 @@ flowchart TD
 
 结论：好改，全是配置项，改完 `nginx -t && nginx -s reload` 即生效，无需改 Lua。
 
-为什么 per-IP 不够：Applebot 来自大量 IP，`bot_limit`（key=`$binary_remote_addr`，3r/m）是按单 IP 漏桶，IP 一多总量就失控。因此 Applebot 在 per-IP 之外再叠一层**全站聚合桶** `apple_global`（key=常量，全站所有 Applebot 共用一个漏桶），两层正交、任一超限即 429。
+为什么 per-IP 不够：Applebot 来自大量 IP，`bot_limit`（key=`$binary_remote_addr`，3r/m）是按单 IP 漏桶，IP 一多总量就失控，且同 IP 抓多站时预算还被分摊。因此 Applebot 改走**按站聚合桶** `apple_global`，彻底跳过 per-IP 层。
 
-Applebot 当前行为（“DNS 验证通过后免 JS 挑战，但受 per-IP + 聚合双层限流”）由三层配置叠加实现：
+Applebot 当前行为（“DNS 验证通过后免 JS 挑战，只受按站聚合限流”）由三层配置叠加实现：
 
 1. 挑战层（`com_js_signed.conf`）：`set $allow_applebot 1;` → UA 命中 `Applebot`（Applebot-Extended 的 UA 同样包含该子串，一并命中）即置 `$sc_suspected_se_bot=1`，走 PTR（`*.applebot.apple.com`）+ 正向回查；通过则 `need_challenge=0`（不走 JS 挑战），伪造则 403。
-2. 限流层 per-IP（`com_ua_map.conf` + `com_limit_zone.conf` + location）：`$se_unlimited` 只放开 `google`/`bing`，Applebot 不在其中，故 `$bot_limit_key=$binary_remote_addr` 非空，命中 `zone=bot_limit rate=3r/m burst=1`，超限即 429。
-3. 限流层聚合（`$apple_key` + `apple_global`）：`com_ua_map.conf` 中 Applebot UA 置 `$apple_key="applebot"`（常量；非 Applebot 为空则该 zone 直接跳过），`com_limit_zone.conf` 定义 `zone=apple_global rate=100r/m`，product 路径与 wp-json 产品接口两个 location 各加 `limit_req zone=apple_global burst=20`。`limit_req` 先于 Lua 执行，所以验证通过也照样限流。
+2. 限流层 per-IP：`$se_unlimited` 已放开 `google`/`bing`/`applebot`，故 Applebot 的 `$bot_limit_key` 为空、跳过 `zone=bot_limit`；AI 仍受该层约束。
+3. 限流层聚合（`$apple_key` + `apple_global`）：`com_ua_map.conf` 中 Applebot UA 置 `$apple_key="$server_name:applebot"`（按站分桶，每站独立漏桶；非 Applebot 为空则该 zone 直接跳过），`com_limit_zone.conf` 定义 `zone=apple_global rate=100r/m`（每站 100r/m），product 路径与 wp-json 产品接口两个 location 各加 `limit_req zone=apple_global burst=20`。`limit_req` 先于 Lua 执行，所以验证通过也照样限流。
 
-注意：`apple_global` 的 zone 定义在 http 级共享内存，本机所有 vhost 共用同一个 100r/m 预算（多站服务器会被分摊）。如需按站独立预算，把 `$apple_key` 的值改为带站名的 key（如 `"$server_name:applebot"`），或另建 zone。
+注意：如需改回全站共享一桶，把 `$apple_key` 的值改回常量 `"applebot"`；重点站要更高配额则另建 zone。
 
 对照表（只改配置，不动 Lua）：
 
 | 想要的效果 | 改法 |
 | --- | --- |
 | Applebot 聚合放宽/收紧（只调阈值） | rate 改 `com_limit_zone.conf` 的 `apple_global`；burst 改两个 location 的 `limit_req zone=apple_global burst=N` |
-| Applebot 彻底放开聚合限流（保留 per-IP 与 DNS 验证） | 删掉两个 location 内的 `limit_req zone=apple_global ...` 行后 reload |
-| Applebot 彻底放开所有限流（只保留 DNS 验证） | 上一条 + `com_ua_map.conf` 的 `$se_unlimited` 加一行 `~*applebot 1;` |
+| Applebot 彻底放开所有限流（只留 DNS 验证） | 删掉两个 location 内的 `limit_req zone=apple_global ...` 行（`bot_limit` 已跳过，无需动 `$se_unlimited`） |
+| Applebot 重新纳入 per-IP 约束 | `com_ua_map.conf` 的 `$se_unlimited` 删除 `~*applebot` 行（将与 AI 共用 `bot_limit` 3r/m） |
 | Applebot 回落到 JS 挑战（不再免挑战） | `com_js_signed.conf` 置 `set $allow_applebot 0;`（此时仍受 `user_limit` 约束，走挑战流程） |
-| Applebot per-IP 更严/更松 | rate 改 `com_limit_zone.conf` 的 `bot_limit`；burst 改 product location 的对应行（注意会影响同 zone 的其他 AI 爬虫） |
+| AI 类 per-IP 调阈 | rate 改 `com_limit_zone.conf` 的 `bot_limit`；burst 改 product location 对应行 |
 | Google/Bing 重新收紧（结束放开） | `com_ua_map.conf` 的 `$se_unlimited` 删除 `~*google` / `~*bing` 行，`$bot_limit_key` 即恢复非空 |
 | 给 Google/Bing 独立配额（如 20r/m） | 参考 `$apple_key` 写法新增 key + zone，并在 location 加对应 `limit_req` 行；空 key 即跳过该 zone |
 
@@ -833,8 +833,8 @@ Applebot 当前行为（“DNS 验证通过后免 JS 挑战，但受 per-IP + �
 | `$hit_googlebot` / `$hit_bingbot` / `$hit_applebot` | `0` | 各引擎 UA 中间命中标记 | UA 命中且对应 `$allow_*=1` 时置 `1`，汇总置 `$sc_suspected_se_bot=1` |
 | `$sc_suspected_se_bot` |        `0` | 是否“疑似搜索引擎爬虫”的UA        | UA 命中 Google/Bing/Applebot 关键词且开关允许时置 `1`        |
 | `$se_unlimited`        |        `0` | 限流放开标记（http 级，`com_ua_map.conf`） | UA 命中 `google`/`bing` 置 `1`，使 `$bot_limit_key` 为空而跳过 `bot_limit` |
-| `$bot_limit_key` / `$user_limit_key` | 按 `$allow_bot` | 限流 zone 的 key，空 key 即跳过该 zone | `$bot_limit_key` 仅 `allow_bot=1` 且 `se_unlimited=0`（即 applebot/AI）时为 IP；google/bing 为空 |
-| `$apple_key` | `""` | Applebot 聚合桶 key（http 级，`com_ua_map.conf`） | Applebot UA（含 Extended）置常量 `"applebot"`，全站共用 `apple_global` 漏桶；非 Applebot 为空则跳过 |
+| `$bot_limit_key` / `$user_limit_key` | 按 `$allow_bot` | 限流 zone 的 key，空 key 即跳过该 zone | `$bot_limit_key` 仅 `allow_bot=1` 且 `se_unlimited=0`（即 AI；applebot 已放开）时为 IP；google/bing 为空 |
+| `$apple_key` | `""` | Applebot 聚合桶 key（http 级，`com_ua_map.conf`） | Applebot UA（含 Extended）置 `"$server_name:applebot"`，按站分桶、每站独立 `apple_global` 漏桶；非 Applebot 为空则跳过 |
 | `$is_ai_bot`           |        `0` | 是否“疑似 AI 爬虫”                | UA 命中 GPTBot/ClaudeBot 等置 `1`                            |
 | `$ai_allow`            |        `0` | AI 爬虫弱放行开关                 | AI UA + 非敏感路径 + GET/HEAD 时置 `1`，并将 `$need_challenge=0` |
 | `$sc_secret`           | 无固定默认 | 签名密钥（可来自 include 或 env） | 用于 `sct/sc2` 的签名和验签                                  |
