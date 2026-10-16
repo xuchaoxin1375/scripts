@@ -320,6 +320,9 @@ include /www/server/nginx/conf/com_js_signed.conf;
 
 ## 5. 默认保护范围（以及如何调整）
 
+> 版本注记（2026-10-16）：`com_js_signed.conf` 已合并原 `com_js_429.conf` 的 product 路径三层 `limit_req` 限流；
+> 原 `com_js_429.conf` 现为兼容垫片（仅 `include` 本文件），新站直接引用本文件即可。
+
 当前 `com_js_signed.conf` 默认使用 **server 级 `access_by_lua_block` 做整站页面保护**：
 
 - 默认所有非白名单页面请求都需要 `sc2`
@@ -328,7 +331,8 @@ include /www/server/nginx/conf/com_js_signed.conf;
 
 - 内部接口 `/__sc_verify` 和 `/_sc/challenge` 会跳过整站校验，避免挑战流程被自身拦截
 - AI bot、社交媒体爬虫、支付/监控服务仍按配置策略放行
-- Google/Bing/Applebot 等疑似搜索引擎 UA 仍需 PTR + A/AAAA 回查验证，通过后才放行
+- Google/Bing/Applebot 等疑似搜索引擎 UA 仍需 PTR + A/AAAA 回查验证，通过后才免 JS 挑战（伪造 UA 直接 403，不回落挑战）
+- 白名单分级限流（可配置，详见 §8.1）：google/bing 暂时放开 `bot_limit`（仅 `site_global` 兜底），applebot/AI 仍受 `bot_limit` 约束（超限 429）
 
 文件中仍保留了旧版显式保护路径：
 
@@ -358,16 +362,21 @@ include /www/server/nginx/conf/com_js_signed.conf;
 配置里仍然有：
 
 ```nginx
-location ~ ^/(product|shop|category|cart|checkout|account|admin){
+location ~ ^/(product|shop|category|cart|checkout|account|admin) {
+    limit_req zone=user_limit burst=7 nodelay;
+    limit_req zone=bot_limit burst=1 nodelay;
+    limit_req zone=site_global burst=5 nodelay;
+    limit_req_status 429;
     ...
     try_files $uri $uri/ /index.php?$args;
 }
 ```
 
-这不是因为整站保护还依赖它，而是为了兼容旧配置里对 WooCommerce 常见路径的处理方式。
+它现在有两个作用：兼容旧配置里对 WooCommerce 常见路径的 `try_files` 处理方式，以及承载合并自原 `com_js_429.conf` 的三层 `limit_req` 限流（与 JS 挑战正交，`limit_req` 在 preaccess 阶段执行，即使 `need_challenge=0` 仍会限流）。
 
 注意：
 
+- 该正则历史上缺过右括号，合并时已修复为 `...|admin) {`；修改时注意保留。
 - location 级 `access_by_lua_block` 会覆盖 server 级 `access_by_lua_block`。
 - 所以这些旧路径内部仍保留了一份校验逻辑。
 - 如果未来要重构，建议先抽成 Lua 文件再 `access_by_lua_file` 复用，避免两份逻辑长期手动同步。
@@ -458,7 +467,7 @@ curl -I https://www.example.com/backup/assets.zip # 使用-f获取状态码
 - `200`：请求成功。Googlebot 验证通过后拿到真实页面，通常就是 `200`。
 - `302`：浏览器被引导到挑战页，这是正常流程的一部分。
 - `403`：没有通过挑战、伪装爬虫验证失败、或访问敏感归档文件；很多场景是正常拦截。
-- `429`：同一 IP 触发挑战过于频繁，被限速。
+- `429`：被限速。两个来源：① `@challenge` 内 Lua 计数（同一 IP 挑战页 60 次/分钟，伪装 AI UA 30 次/分钟）；② product 路径三层 `limit_req`（`user/bot/site_global`，见 §5.2，超限即 429，与是否通过挑战无关）。
 - `500`：服务端内部错误。偶发扫描路径的 `500` 不一定代表整站故障，但需要看 error log 确认原因。
 - `503`：挑战模板缺失，通常说明 `/www/server/nginx/conf/js_challenge_openresty.html` 不存在或路径不对。
 
@@ -589,11 +598,18 @@ grep "challenge template missing" /www/wwwlogs/nginx_error.log | tail -20
 
 实现方式（与 Cloudflare Verified Bots 思路类似）：
 
-- 当请求 UA 命中疑似搜索引擎（如 `Googlebot`/`Bingbot`/`Google-InspectionTool`/`Applebot`）时，使用 **反向 DNS（PTR）+ 正向 DNS（A/AAAA）回查确认** 该 IP 是否确实属于对应搜索引擎。
-- 验证通过才放行（`need_challenge=0`），否则继续走挑战（方案 A）。
+- 当请求 UA 命中疑似搜索引擎（如 `Googlebot`/`Bingbot`/`Google-InspectionTool`/`Applebot`）且对应 `$allow_*` 开关为 1 时，使用 **反向 DNS（PTR）+ 正向 DNS（A/AAAA）回查确认** 该 IP 是否确实属于对应搜索引擎。
+- 验证通过才免 JS 挑战（`need_challenge=0`），验证失败直接返回 **403**，不回落挑战（仅凭 UA 不可信，需防伪造）。
 - 使用 `lua_shared_dict sc_bot_cache` 对验证结果按 IP 缓存：
   - 通过：缓存较长时间（例如 6 小时）
   - 不通过：缓存较短时间（例如 10 分钟）
+
+挑战开关（`com_js_signed.conf`，server 上下文，改后 reload）：
+
+- `$allow_googlebot` / `$allow_bingbot` / `$allow_applebot`：`1`=允许验证通过后免 JS 挑战；`0`=视为普通访客，不进反查、走 JS 挑战流程。
+- 当前值：三者均为 `1`（见 §8.1 分级限流说明）。
+
+注意限流与挑战是两层正交机制：DNS 验证只决定“是否走 JS 挑战”，`limit_req` 在 preaccess 阶段先执行，即使 `need_challenge=0` 也可能因超限返回 429。白名单爬虫的限流差异见 §8.1。
 
 注意：
 
@@ -686,6 +702,27 @@ flowchart TD
     J -- 否 --> K["缓存 vbot:ip=0(600s) + 403<br/>X-SC-Block=unverified_bot<br/>X-Robots-Tag=noindex"]
 ```
 
+### 8.1 白名单分级限流：Applebot 429 是怎么配的，后续好改吗
+
+结论：好改，全是配置项，改完 `nginx -t && nginx -s reload` 即生效，无需改 Lua。
+
+Applebot 当前行为（“DNS 验证通过后免 JS 挑战，但仍受 `bot_limit` 限流”）由两层配置叠加实现：
+
+1. 挑战层（`com_js_signed.conf`）：`set $allow_applebot 1;` → UA 命中 `Applebot` 即置 `$sc_suspected_se_bot=1`，走 PTR（`*.applebot.apple.com`）+ 正向回查；通过则 `need_challenge=0`（不走 JS 挑战），伪造则 403。
+2. 限流层（`com_ua_map.conf` + `com_limit_zone.conf` + product location）：`$se_unlimited` 只放开 `google`/`bing`，Applebot 不在其中，故 `$bot_limit_key=$binary_remote_addr` 非空，命中 `zone=bot_limit rate=3r/m burst=1`（`com_limit_zone.conf:4`，burst 见 product location），超限即 429。`limit_req` 先于 Lua 执行，所以验证通过也照样限流。
+
+对照表（只改配置，不动 Lua）：
+
+| 想要的效果 | 改法 |
+| --- | --- |
+| Applebot 彻底放开（不限流，只保留 DNS 验证） | `com_ua_map.conf` 的 `$se_unlimited` 加一行 `~*applebot 1;` |
+| Applebot 回落到 JS 挑战（不再免挑战） | `com_js_signed.conf` 置 `set $allow_applebot 0;`（此时仍受 `user_limit` 约束，走挑战流程） |
+| Applebot 更严/更松（只调阈值） | rate 改 `com_limit_zone.conf` 的 `bot_limit`；burst 改 product location 的 `limit_req zone=bot_limit burst=N` |
+| Google/Bing 重新收紧（结束放开） | `com_ua_map.conf` 的 `$se_unlimited` 删除 `~*google` / `~*bing` 行，`$bot_limit_key` 即恢复非空 |
+| 给某引擎独立配额（如 Apple 2r/m、Google 20r/m） | `com_limit_zone.conf` 新增 `zone=apple_limit` / `zone=google_limit`（各自定义 key，参考 `$se_unlimited` 写法），product location 加对应 `limit_req` 行；空 key 即跳过该 zone |
+
+验证方法：`tail -f /www/wwwlogs/spider.log | grep '429 '` 观察超限；`X-SC-Block: unverified_bot*` + 403 为伪造拦截；`X-SC-PTR` 头可确认 PTR 结果。
+
 
 
 ## 9. AI 爬虫策略（弱校验 + 严格限速）
@@ -724,11 +761,11 @@ flowchart TD
 - `/account/`、`/my-account/`
 - `/cart/`、`/checkout/`
 
-严格限速建议：
+严格限速现状（2026-10-16 合并后）：
 
-- 若你希望 AI bot 可抓取“几乎全站”，建议在全局启用专用限速区，例如：
-  - `limit_req_zone $binary_remote_addr zone=ai_limit:10m rate=30r/m;`
-- 并仅对 AI bot 生效（例如只对其访问的主要页面类型/路径开启）。
+- AI bot 弱放行（`need_challenge=0`）后仍受 product 路径三层 `limit_req` 约束：`openai/gptbot` 类经 `$allow_bot=1` 命中 `bot_limit`，其余 AI UA 经 `$allow_bot=0` 命中 `user_limit`，另有 `site_global` 兜底。
+- `@challenge` 内另有 Lua 计数对伪装 AI UA 反复触发挑战做限制（`ai:<ip>` 30 次/分钟，见 `com_js_signed.conf`）。
+- `com_limit_zone.conf` 中的 `ai_limit` zone 当前为注释备用；如需给 AI 独立配额，参考 §8.1 表格最后一行新增 `zone=ai_limit` 并在 product location 加 `limit_req` 行即可。
 
 附加限制（可选）：
 
@@ -751,8 +788,9 @@ flowchart TD
 
 - [ ] `http {}` 内已设置 `lua_shared_dict sc_token_store 10m;`
 - [ ] `http {}` 内已设置 `lua_shared_dict sc_bot_cache 10m;`
+- [ ] `http {}` 已 include `com_ua_map.conf`（`$se_unlimited/$bot_limit_key`）与 `com_limit_zone.conf`（`user/bot/site_global` zones，通常经 `com_com.conf` 引入）
 - [ ] `com_secret.conf` 内已设置 `set $sc_secret "...";`
-- [ ] 站点 vhost 已 include `com_js_signed.conf`
+- [ ] 站点 vhost 已 include `com_js_signed.conf`（新站；旧 `com_js_429.conf` 为垫片，二者勿同时引用）
 - [ ] 挑战页模板存在：`/www/server/nginx/conf/js_challenge_openresty.html`
 - [ ] `nginx -t` 通过
 - [ ] reload 使用：`-c /www/server/nginx/conf/nginx.conf`
@@ -782,7 +820,11 @@ flowchart TD
 | ---------------------- | ---------: | --------------------------------- | ------------------------------------------------------------ |
 | `$need_challenge`      |        `1` | 是否需要进入挑战/验签主流程       | 白名单或校验通过后置 `0`                                     |
 | `$sc2_ok`              |        `0` | 标记 `sc2` 验签是否通过           | `access_by_lua` 验签成功后置 `1`                             |
-| `$sc_suspected_se_bot` |        `0` | 是否“疑似搜索引擎爬虫”的UA        | UA 命中 Google/Bing/Applebot 关键词置 `1`                    |
+| `$allow_googlebot` / `$allow_bingbot` / `$allow_applebot` | `1/1/1` | 各引擎免挑战总开关 | 置 `0` 则该引擎视为普通访客，不进反查 |
+| `$hit_googlebot` / `$hit_bingbot` / `$hit_applebot` | `0` | 各引擎 UA 中间命中标记 | UA 命中且对应 `$allow_*=1` 时置 `1`，汇总置 `$sc_suspected_se_bot=1` |
+| `$sc_suspected_se_bot` |        `0` | 是否“疑似搜索引擎爬虫”的UA        | UA 命中 Google/Bing/Applebot 关键词且开关允许时置 `1`        |
+| `$se_unlimited`        |        `0` | 限流放开标记（http 级，`com_ua_map.conf`） | UA 命中 `google`/`bing` 置 `1`，使 `$bot_limit_key` 为空而跳过 `bot_limit` |
+| `$bot_limit_key` / `$user_limit_key` | 按 `$allow_bot` | 限流 zone 的 key，空 key 即跳过该 zone | `$bot_limit_key` 仅 `allow_bot=1` 且 `se_unlimited=0`（即 applebot/AI）时为 IP；google/bing 为空 |
 | `$is_ai_bot`           |        `0` | 是否“疑似 AI 爬虫”                | UA 命中 GPTBot/ClaudeBot 等置 `1`                            |
 | `$ai_allow`            |        `0` | AI 爬虫弱放行开关                 | AI UA + 非敏感路径 + GET/HEAD 时置 `1`，并将 `$need_challenge=0` |
 | `$sc_secret`           | 无固定默认 | 签名密钥（可来自 include 或 env） | 用于 `sct/sc2` 的签名和验签                                  |
