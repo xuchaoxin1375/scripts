@@ -17,3 +17,4 @@
 
 - 暂存审查：`git add` 只点名本次任务文件；提交前复核 `git diff --cached --stat`，与任务无关的孤立文件一律移出暂存（数据转储与个人临时输出不得入库）。
 - 隐私扫描：对暂存内容检查口令、密钥、Token、私钥块、真实服务器 IP 与域名映射、客户数据等不宜公开的内容；命中即停止并报告用户，不得提交。参考：`git diff --cached | grep -nEi 'password|passwd|secret|token|api[_-]?key|BEGIN [A-Z ]*PRIVATE KEY'`；数据类文件超 100KB 须有正当理由。
+- 提交信息编码：含中文的提交信息禁止以 `git commit -m` 经 `powershell` 5.1 传递；一律先写 UTF-8 信息文件，再由 `pwsh` 7 执行 `git commit -F <信息文件>`（`--amend` 同理）；提交后必须复验 `git log` 中文可读，乱码即停并报告，不得推送。
