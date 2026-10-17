@@ -140,13 +140,14 @@ p -Force                    # 看 init 分步耗时，定位慢项
 > 已启用的走延迟加载（`init` 只注册 `OnIdle` 事件，18ms），默认启动盘不受影响。
 > 开关：`$env:PsFzf` / `$env:PsZoxide` / `$env:PsPredictor`（默认开，`False` 关；
 > 守护进程由 `Start-StartupBgProcesses` 统一置 `PsPredictor=False`，永不加载 dll）；
+> `$env:PsTab`（CxxuTab Tab 补全，**默认关，置 `True` 才开**）；
 > 重定向场景自动不加载。一键重装看 `Deploy-CompletionStack -WhatIf`。
 
 | 候选 | 状态 |
 |---|---|
 | `CompletionPredictor`（参数/路径预测，命令名位置源码级跳过） | 一直在用 |
 | `CxxuPredictor`（自研命令名预测：模糊连写 + 严格通配，3000 条 1~6ms，20ms 预算内） | **已启用**（详见 §8） |
-| `CxxuTab`（自研命令名 Tab 补全：独立插件，命令名位合并模糊结果，参数位零干扰） | **已启用**（开关 `$env:PsTab`，启停见 `Enable/Disable-PsPlugin`） |
+| `CxxuTab`（自研命令名 Tab 补全：独立插件，命令名位合并模糊结果，参数位零干扰） | 默认关（需要时 `Enable-PsPlugin Tab`，开关 `$env:PsTab`，置 `True` 开） |
 | `PSFzf`（Ctrl+T 文件 / Ctrl+R 历史） | **已启用**（Tab 不动，仍是 MenuComplete） |
 | `zoxide`（`z` 跳转，init 缓存 `~/.zoxide_init_cache.ps1`） | **已启用** |
 | `PSCompletions`（~200 命令的参数补全库） | 可选：已装 5.6.9；profile 里两行钩子默认注释着，解开即用 |
@@ -157,7 +158,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | `argc` | 缺二进制，先装再说 |
 | `inshellisense` | **否决**（用户拍板，不再考虑） |
 
-验：新开终端直接可用，`Ctrl+R`/`Ctrl+T` 首按装 PSFzf（本次按键即生效）、首个 `Tab` 装 CxxuTab（约半秒一次）；`z <目录>` 跳转（zoxide 首屏单发已装）；`Get-EventSubscriber` 应无残留（单发先摘后装）。若某主机 OnIdle 不触发（predictor 没装上），跑 `Register-PsUxLazyLoad -Now` 或报回来。自查跑 `Test-StartupPerformance`（分段计时+结论）。
+验：新开终端直接可用，`Ctrl+R`/`Ctrl+T` 首按装 PSFzf（本次按键即生效）；`z <目录>` 跳转（zoxide 首屏单发已装）。`CxxuTab` 默认关，开启（`Enable-PsPlugin Tab -Persist`）后首个 `Tab` 才装它（约半秒一次）。`Get-EventSubscriber` 应无残留（单发先摘后装）。若某主机 OnIdle 不触发（predictor 没装上），跑 `Register-PsUxLazyLoad -Now` 或报回来。自查跑 `Test-StartupPerformance`（分段计时+结论）。
 
 ## 8. FAQ（续）：输入时下面没候选？
 
@@ -202,7 +203,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 
 | 层 | 按键/视图 | 来源 | 说明 |
 |---|---|---|---|
-| Tab 全量索引 | `Tab`（MenuComplete） | 引擎全量：函数/别名/文件/参数 | 命令名位经 `CxxuTab` 包装增强（模糊连写可选中，参数位零干扰；开关 `$env:PsTab`）；和下面两层**不是同一套索引**，结果不一样正常 |
+| Tab 全量索引 | `Tab`（MenuComplete） | 引擎全量：函数/别名/文件/参数 | 命令名位经 `CxxuTab` 包装增强（模糊连写可选中，参数位零干扰；默认关，需 `Enable-PsPlugin Tab`，开关 `$env:PsTab`）；和下面两层**不是同一套索引**，结果不一样正常 |
 | ListView 预测 | 输入时自动浮现（`HistoryAndPlugin`） | 历史（最多 10 条，硬上限）+ 插件 | 插件= `CompletionPredictor`（参数/路径，命令名位跳过）+ `CxxuPredictor`（命令名，§8）；须 20ms 内返回，实测 3000 条 1~6ms |
 | 模糊搜历史/文件 | `Ctrl+R` / `Ctrl+T`（PSFzf） | 全量历史/文件 | 历史翻不完用这个，不走 10/50 上限 |
 | 参数值补全 | `Tab` 在参数位 | `PSCompletions`（~200 命令库，可选）+ 自带 `ArgumentCompleter`（EnvVar 系、`Get-Json -Key` 等，`Set-ArgumentCompleter` 批量注册） | PSCompletions 用法：解开 profile 里注释的两行 |
@@ -234,7 +235,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | WT 设置下发 | 仓库 `Config/wtConf*.json` 仅供参考 | `Deploy-WtSettings` | 线上 WT 无自定义 profile 时才需要 |
 | github hosts 定时更新 | 未装 | `Deploy-GithubHostsAutoUpdater` | hosts 拉胯地区按需 |
 | 镜像持久化 | 默认自动（静默测速+缓存） | `$env:PsGithubMirror` 持久化（`Add-EnvVar`）指定镜像 | 出国/回国切换用 |
-| 开关组 | 默认全开 | `~/.cxxu/config.psd1`（`New-CxxuConfigTemplate` 建模板）或 `Enable/Disable-PsPlugin [-Persist]` | `PsFzf/PsZoxide/PsPredictor/PsTab/PsShowProgress`；环境变量永远优先 |
+| 开关组 | 多数默认开（`PsTab` 默认关） | `~/.cxxu/config.psd1`（`New-CxxuConfigTemplate` 建模板）或 `Enable/Disable-PsPlugin [-Persist]` | `PsFzf/PsZoxide/PsPredictor/PsTab/PsShowProgress`；环境变量永远优先 |
 | 历史瘦身 | 从不自动执行 | `Optimize-PsHistory [-WhatIf]`（超 8000 行或 500KB 时 `doctor` 会提示） | 备份+归档双保险 |
 | pwsh 7.5 版本门 | 随安装 | `Update-PowerShell`（`CxxuPredictor` 需 net9） | 不够 7.5 只缺 predictor，其余照常 |
 
@@ -265,7 +266,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 - 5.1 下自动降级：`init` 步骤表 `MinPS = 7` 的 5 步静默跳过（`ArgumentCompletion`/`Startup`/`Pwsh`/`Json`/`TerminalTools`）；`ForEach-Object -Parallel` 走串行分支；`CxxuTab` 探不到 dll 方法时纯透传；`HistoryNoDuplicates`/`inlineprediction` 配色按 PSReadLine 版本 gating（5.1 自带 2.0.0 跳过）。
 - 提示符全对齐：`fast`/`Simple`/`Short`/`Default` 原生可用；`Balance` 的 Info/Startup 外部依赖在 `Prompt.psm1` 顶部有 5.1 本地兜底（CIM/注册表/内置 cmdlet 同口径；必须 `function global:` 定义，否则模块私有、直接调用撞坏 Info；缓存用 `$global:__Cxxu51*`，`$script:` 跨不了作用域），渲染与 7.5 逐字一致，稳态约 50ms/次（首屏冷缓存 1.4s 一次性）；`Get-IpAddressFormated` 含参数集的移植版，直接调用也可用。
 - 明确不可用：`CxxuPredictor`（net9 dll）、预测视图（需 7.2+ 子系统）、`Deploy` 全系、`Test-PsEnvReadiness` 的 `pwsh 7+` 必备项（在 5.1 下即提示装 pwsh7）。
-- 用法：`powershell -NoProfile` 起 5.1，保证 `PSModulePath` 含模块集后 `init` 即可；`$env:PsTab='Off'` 可关 Tab 包裹。
+- 用法：`powershell -NoProfile` 起 5.1，保证 `PSModulePath` 含模块集后 `init` 即可；`$env:PsTab='True'` 可开 Tab 包裹（默认关）。
 - 轻量部署（免 git 免 pwsh，新机器只有 v5 时）：在 `powershell.exe` 里跑一键脚本加 `-Light`，
   走离线包下载（codeload + 中央镜像静默，不弹窗选源），落 `PSModulePath`（setx 追加，不覆盖），
   写 5.1 专属 profile，重开 `powershell.exe` 跑 `init` 即用：

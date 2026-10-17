@@ -365,7 +365,8 @@ function Install-PsUxGestureStubs
     }
     # Tab 桩:存原函数,首个 Tab 先恢复原函数再装 CxxuTab(它会把"当前" TabExpansion2 存为
     # __CxxuTabOriginal 再包,包到桩上即无限递归),然后转交新包装;装失败时原函数已恢复,直接透传。
-    if (($env:PsTab -notmatch '^(False|0|No|Off)$') -and (-not (Get-Module CxxuTab -ErrorAction SilentlyContinue)) -and (-not $global:PsUxTabStub))
+    # PsTab 默认关:只有显式 True 才装桩(要开用 Enable-PsPlugin Tab -Persist)。
+    if (($env:PsTab -match '^(True|1|Yes|On)$') -and (-not (Get-Module CxxuTab -ErrorAction SilentlyContinue)) -and (-not $global:PsUxTabStub))
     {
         $origTab = Get-Command TabExpansion2 -CommandType Function -ErrorAction SilentlyContinue
         $global:PsUxTabOriginal = if ($origTab) { $origTab.ScriptBlock } else { $null }
@@ -378,7 +379,7 @@ function Install-PsUxGestureStubs
             }
             try
             {
-                if (($env:PsTab -notmatch '^(False|0|No|Off)$') -and (-not (Get-Module CxxuTab -ErrorAction SilentlyContinue)) -and (-not $global:PsUxNoCxxuTab))
+                if (($env:PsTab -match '^(True|1|Yes|On)$') -and (-not (Get-Module CxxuTab -ErrorAction SilentlyContinue)) -and (-not $global:PsUxNoCxxuTab))
                 {
                     if ($global:PsUxTabOriginal) { Set-Item -Path 'function:global:TabExpansion2' -Value $global:PsUxTabOriginal }
                     else { Remove-Item -Path 'function:global:TabExpansion2' -ErrorAction SilentlyContinue }
@@ -403,7 +404,8 @@ function Register-PsUxLazyLoad
     .SYNOPSIS
     体验件加载:手势按需 + 单发收尾,全程无后台冻结。
     .DESCRIPTION
-    默认启用;$env:PsFzf/$env:PsZoxide/$env:PsTab/$env:PsPredictor 置 'False'/'0'/'No'/'Off' 可各关一个;
+    默认启用(唯 CxxuTab 例外:默认关,显式置 $env:PsTab='True' 才开);
+    $env:PsFzf/$env:PsZoxide/$env:PsPredictor 置 'False'/'0'/'No'/'Off' 可各关一个;
     -Now 立即全装(测试/非 idle 主机用,不受重定向门限制)。Tab 与预测补全都不动。
     机制(2026-09-22 第三轮;分片常驻曾回归,见 Startup-Optimization.md §21):
     - PSFzf/CxxuTab:走手势桩(见 Install-PsUxGestureStubs),init 只花毫秒装桩,导入成本挪到
@@ -475,9 +477,9 @@ function Register-PsUxLazyLoad
         }
     }
     # 自研 Tab 命令名补全(独立插件 CxxuTab:TabExpansion2 包装,命令名位合并 dll 模糊结果,
-    # 其余位置透传;门控逐调用,不装/关了都零影响;启停管理看 Enable/Disable-PsPlugin)
+    # 其余位置透传;默认关,门控逐调用,不装/未开都零影响;启停管理看 Enable/Disable-PsPlugin)
     $pieceTab = {
-        if ($env:PsTab -notmatch '^(False|0|No|Off)$')
+        if ($env:PsTab -match '^(True|1|Yes|On)$')
         {
             # -Global:函数内 import 默认装成嵌套模块(Get-Module 列不出),强制顶层
             Import-Module CxxuTab -Global -ErrorAction SilentlyContinue

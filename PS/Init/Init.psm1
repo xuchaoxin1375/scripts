@@ -815,7 +815,7 @@ function New-CxxuConfigTemplate
     .SYNOPSIS
     生成用户配置模板(默认 ~/.cxxu/config.psd1):有文件默认不动,加 -Force 覆盖。
     .DESCRIPTION
-    模板里每个键都有注释(作用+取值);全 True = 默认行为,想关哪个改 False。
+    模板里每个键都有注释(作用+取值);除 PsTab 默认关外,其余 True = 默认行为,想关哪个改 False。
     记得:环境变量优先,注册表/Add-EnvVar 持久化的值会盖掉这里。
     .EXAMPLE
     New-CxxuConfigTemplate
@@ -840,12 +840,13 @@ function New-CxxuConfigTemplate
         if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
         @'
 @{
-    # CxxuPsModules 用户配置(本机生效,仓库外;优先级:环境变量 > 本文件 > 默认开)
+    # CxxuPsModules 用户配置(本机生效,仓库外;优先级:环境变量 > 本文件 > 默认值)
     # 改完重开终端(或 init -Force)生效;生成:New-CxxuConfigTemplate;读取:每次 init 自动。
+    # 多数默认开(置 False 关);唯 PsTab 默认关(置 True 才开)。
     PsFzf          = $true  # PSFzf Ctrl+T 文件 / Ctrl+R 历史
     PsZoxide       = $true  # zoxide z 跳转
     PsPredictor    = $true  # CxxuPredictor 命令名预测(守护进程由启动链强制 False,不受此影响)
-    PsTab          = $true  # CxxuTab 命令名 Tab 模糊补全(独立插件,见 Enable/Disable-PsPlugin)
+    PsTab          = $false # CxxuTab 命令名 Tab 模糊补全(独立插件;默认关,改 $true 开,见 Enable/Disable-PsPlugin)
     PsShowProgress = $true  # init 启动进度条
     PsGithubMirror = ''     # 为空走默认/静默测速;填镜像前缀如 'https://gh-proxy.com'
 }
@@ -896,7 +897,7 @@ function Disable-PsPlugin
     停用体验插件(当会话生效;加 -Persist 长期禁用,重开也关)。
     .DESCRIPTION
     插件注册表：Fzf(PSFzf 快捷键)/Zoxide(z 跳转)/Predictor(命令名 ListView 预测)/
-    Tab(CxxuTab 命令名 Tab 模糊)。停用只关本命令的合并/加载，引擎原生行为不受影响；
+    Tab(CxxuTab 命令名 Tab 模糊，默认关,需要时 Enable-PsPlugin Tab)。停用只关本命令的合并/加载，引擎原生行为不受影响；
     持开关逐调用判定，无需重载。-Persist 写 ~/.cxxu/config.psd1（行级替换，保注释）。
     .EXAMPLE
     Disable-PsPlugin Tab

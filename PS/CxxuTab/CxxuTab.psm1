@@ -1,7 +1,7 @@
 ﻿# CxxuTab:自研 Tab 命令名补全(独立插件,TabExpansion2 包装)。
 # ListView 预测进不了 Tab(两套管线),这里包全局 TabExpansion2,只在命令名位置合并
-# dll 公开接口的模糊结果,其余位置原样透传。开关逐调用读 $env:PsTab(默认开),
-# 关了就是纯透传,行为与没装一样;启停管理看 Enable/Disable-PsPlugin。
+# dll 公开接口的模糊结果,其余位置原样透传。开关逐调用读 $env:PsTab(默认关,
+# 置 True 才启用),未开就是纯透传,行为与没装一样;启停管理看 Enable/Disable-PsPlugin。
 # 跨作用域说明:global:TabExpansion2 运行在全局作用域,看不到模块 $script:,
 # 方法缓存必须放 $global:__CxxuTabMethod(命名避冲突)。
 
@@ -60,8 +60,8 @@ function Install-CxxuTabWrapper
         }
         try
         {
-            # 门控逐调用:关了就是纯透传
-            if ($env:PsTab -match '^(False|0|No|Off)$') { return (& $fallBack) }
+            # 门控逐调用:默认关,未显式开启就是纯透传
+            if ($env:PsTab -notmatch '^(True|1|Yes|On)$') { return (& $fallBack) }
             if ([string]::IsNullOrEmpty($inputScript)) { return (& $fallBack) }
             $tokens = $null; $errors = $null
             $ast = [System.Management.Automation.Language.Parser]::ParseInput($inputScript, [ref]$tokens, [ref]$errors)

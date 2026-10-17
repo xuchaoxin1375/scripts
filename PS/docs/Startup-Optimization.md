@@ -473,6 +473,6 @@ Set-PSReadLineOption: 句柄无效。
   PSFzf 看模块/`$global:PsUxFzfStub` 三态）；`Test-StartupPerformance` 文案同步单发口径。
 - 验证（沙盒）：双版本解析零错；Tab 桩全流程——装桩（原函数捕获）→首 Tab 519ms 自动装
   CxxuTab（29 候选含 `Get-ChildItem`，dll 模糊已合并，无递归）→次 Tab 28ms 直走包装→
-  非命令位透传（`-Path` 在）→`$Error` 零污染；PsTab 关则不装桩、默认 Tab 原样；
+  非命令位透传（`-Path` 在）→`$Error` 零污染；PsTab 默认关（不装桩、默认 Tab 原样），置 True 才启用；
   重复安装幂等（包装激活后不再重装桩，原函数不被覆盖）；和弦桩重定向下零污染；
   `-Now` 四件齐 ERRS=0。真机待验：首按 Ctrl+T/R、首个 Tab 的一次性耗时手感。
