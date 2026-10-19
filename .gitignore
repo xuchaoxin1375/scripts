@@ -63,13 +63,13 @@ pip-log.txt
 pip-delete-this-directory.txt
 
 # 单元测试/覆盖率
+nosetests.xml
+coverage.xml
 htmlcov/
 .tox/
 .coverage
 .coverage.*
 .cache
-nosetests.xml
-coverage.xml
 *.cover
 .hypothesis/
 .pytest_cache/
@@ -78,5 +78,5 @@ coverage.xml
 PS/CxxuPredictor/src/bin/
 PS/CxxuPredictor/src/obj/
 
-# 反代网关运行时路由数据，禁止入库（曾因此做过全历史清除）
-routes.map.txt
+# 反代网关运行时路由数据，禁止入库
+routes.map.txt

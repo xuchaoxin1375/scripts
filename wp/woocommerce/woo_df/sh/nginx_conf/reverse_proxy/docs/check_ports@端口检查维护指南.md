@@ -98,7 +98,6 @@ cmp helper_base.inc helper_multi.inc && cmp helper_multi.inc helper_tenants.inc
 ## 8. 换行与提交红线
 
 - 默认忽略 CRLF/LF 差异，不做提交前对照；`.sh` 文件必须 `LF`（`CRLF` 在 Linux 报 `$'\r': command not found`），`.cmd`/`.bat` 用 `CRLF`，`.md` 不限。不给 `.gitattributes` 加 `text` 声明（会触发全仓归一化假 diff）。
-- 提交默认包含全部改动（用户手动改动可询问是否单独提交，分多次提交亦可）；`routes.map.txt` 等临时输出不入库。
 - 提交信息 `feat:/fix:/chore:` 加中文简述；提交后验 `HEAD`（`git show HEAD --stat`、抽查关键文件、状态干净）。推送与 `PR` 须用户明确指示。
 
 ---
