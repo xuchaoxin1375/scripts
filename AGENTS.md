@@ -9,6 +9,7 @@
 
 - 提交/推送/PR：用户明确说才做；提交信息用 `fix:`/`feat:`/`chore:` + 中文简述；提交后必验 HEAD（`git show HEAD:<关键文件>` + 状态干净）。
 - 换行：存量文件不动；新文件 CRLF（`.md` 文件不限，`LF`/`CRLF` 均可；非系统 shell 的脚本文件 `.ps1`/`.cmd`/`.bat`/`.sh` 不强求 CRLF，`LF` 亦可）；提交前必跑 `git diff` vs `git diff --ignore-cr-at-eol` 对照。
+- Shell 脚本（`.sh`）：新写或改动的脚本必须过 `shellcheck`（`shellcheck <file>`）与 `shfmt`（`shfmt -d <file>` 查差异、`shfmt -w <file>` 落格式）检查，本机与 `WSL` 均已安装；仅当两者都不可用且无法安装时方可豁免，并须在交付说明中注明；不为通过检查而整文件重排存量脚本格式。
 - 用户可见文本遵循 `PS/docs/Module-Conventions.md §11` 用词与 `§12` 行文（正式、规范、严谨）。
 - 中文用户：中文回复；复杂命令写 `.ps1` 再 `-File` 执行，不拼行内 `pwsh -Command` 引号。
 - 记住指令入库：用户以“记住”下达的长期约束，须同步落盘到对应治理文档（全仓事项进根 `AGENTS.md`，分区事项进对应分区 `AGENTS.md`），不只记在会话内。
