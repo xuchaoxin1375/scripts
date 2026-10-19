@@ -90,16 +90,15 @@ cmp helper_base.inc helper_multi.inc && cmp helper_multi.inc helper_tenants.inc
 1. `bash -n` 三脚本；`shellcheck` 对照基线：只允许存量 `base.sh` 的 `SC2016` 与 `tenants.sh` 的 `SC1111`，新增告警必须清零。
 2. `--help` 含新选项；新参数可解析，缺参数时 `multi/tenants` 非零退出。
 3. 复跑本机临时目录的 `harness_ports_check.sh`（桩测试：跳过、通过、放行恢复、放行失败继续、缺失检查器、非交互探测）。
-4. 换行检查：四个 `.sh` 文件零 `CR`；本指南等 `.md` 新文件为 `CRLF`。
+4. 换行检查：`scripts/` 下四个 `.sh` 文件零 `CR`（`.md` 不限）。
 5. 交互式 `y/n` 分支无法离线覆盖，上目标机后人工确认一次。
 
 ---
 
 ## 8. 换行与提交红线
 
-- 存量文件不动换行；`.sh` 文件必须 `LF`（`CRLF` 在 Linux 报 `$'\r': command not found`）；`.md` 新文件 `CRLF`。不给 `.gitattributes` 加 `text` 声明（会触发全仓归一化假 diff）。
-- 提交前跑 `git diff` 与 `git diff --ignore-cr-at-eol` 对照，确认无换行噪音。
-- `git add` 只加本次文件，禁止 `-A`（工作区常有无关文件，如仓库根的 `routes.map.txt`）。
+- 默认忽略 CRLF/LF 差异，不做提交前对照；`.sh` 文件必须 `LF`（`CRLF` 在 Linux 报 `$'\r': command not found`），`.cmd`/`.bat` 用 `CRLF`，`.md` 不限。不给 `.gitattributes` 加 `text` 声明（会触发全仓归一化假 diff）。
+- 提交默认包含全部改动（用户手动改动可询问是否单独提交，分多次提交亦可）；`routes.map.txt` 等临时输出不入库。
 - 提交信息 `feat:/fix:/chore:` 加中文简述；提交后验 `HEAD`（`git show HEAD --stat`、抽查关键文件、状态干净）。推送与 `PR` 须用户明确指示。
 
 ---

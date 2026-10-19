@@ -16,11 +16,11 @@
 改完代码必看 `Agent-Handoff.md §5` 要不要同步文档。
 
 ## 红线
-- 只动 `PS/` 与仓库根；`wp/` 是用户领地不动；`PS/Pwsh/demo.ps1` 的删除不是你干的，别碰。
-- 换行：存量不动，新文件 CRLF；提交前必跑 `git diff` vs `git diff --ignore-cr-at-eol` 对照。
+- 本文件约束 `PS/` 内的改动，跨区工作按根 `AGENTS.md` 执行；`PS/Pwsh/demo.ps1` 的删除不是你干的，别碰。
+- 换行：默认忽略 CRLF/LF 差异，不做提交前对照与整文件转换（`.psm1`/`.psd1` 跟随文件原状）；仅 `.sh` 用 LF、`.cmd`/`.bat` 用 CRLF。
 - 中文用户：中文回复；行内 `pwsh -Command` 引号必炸，复杂命令写 `.ps1` 再 `-File` 执行。
 - 用户可见文本（根 `readme.md`、指南、帮助、警告）：遵循 `docs/Module-Conventions.md §11` 用词与 `§12` 行文（正式、规范、严谨）；改用户可见行为先看 `Feature-Guide.md`，改完自查动作三要素（前置条件、执行者、善后）与术语一致；入口文档只放指引不复制正文。
-- 提交/推送/PR：用户明确说才做；提交后必验 HEAD（`git show HEAD:<关键文件>` + 状态干净）。
+- 提交：默认直接提交全部改动（用户手动改动可询问是否单独提交，分多次提交亦可）；推送/PR 须用户明确指示；提交后必验 HEAD（`git show HEAD:<关键文件>` + 状态干净）。
 
 ## 根目录旧文档
 `../PwshModuleByCxxu.md` 描述的是旧结构，仅考古用；现状以本目录 `docs/` 为准。

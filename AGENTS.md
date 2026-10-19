@@ -2,13 +2,13 @@
 
 ## 作用范围
 
-- 本仓库活跃区为 `PS/`（PowerShell 模块集）与仓库根文档；`wp/` 为用户领地，一律不碰（不读无关文件、不暂存、不提交）。
+- 本仓库工作面：`PS/`（PowerShell 模块集）、`wp/`（WooCommerce 建站与服务器运维脚本/配置）、仓库根文档。
 - `PS/` 内工作细则见 `PS/AGENTS.md`（进入 `PS/` 工作前必读）；`PS/docs/` 为唯一真相源（代码注释与文档矛盾时以文档为准）。
 
 ## 红线（全仓适用）
 
-- 提交/推送/PR：用户明确说才做；提交信息用 `fix:`/`feat:`/`chore:` + 中文简述；提交后必验 HEAD（`git show HEAD:<关键文件>` + 状态干净）。
-- 换行：存量文件不动；新文件 CRLF（`.md` 文件不限，`LF`/`CRLF` 均可；非系统 shell 的脚本文件 `.ps1`/`.cmd`/`.bat`/`.sh` 不强求 CRLF，`LF` 亦可）；提交前必跑 `git diff` vs `git diff --ignore-cr-at-eol` 对照。
+- 提交：默认直接提交全部改动，无需先问；工作区有用户手动改动（非本次 agent 所改）时，可询问是否单独成一次提交，未区分时一并提交，分多次提交亦可；提交信息用 `fix:`/`feat:`/`chore:` + 中文简述；提交后必验 HEAD（`git show HEAD:<关键文件>` + 状态干净）。推送/PR：用户明确说才做。
+- 换行：默认忽略 CRLF/LF 差异——不做提交前对照、不因 EOL 差异中断或询问、不整文件转换（`.md`/`.ps1`/`.psd1`/`.py`/`.json` 等一律不限）；仅 `.sh` 保持 LF（CRLF 在 Linux 报 `$'\r': command not found`）、`.cmd`/`.bat` 保持 CRLF（cmd.exe 解析更稳），改这两类文件时顺手确认即可。
 - Shell 脚本（`.sh`）：新写或改动的脚本必须过 `shellcheck`（`shellcheck <file>`）与 `shfmt`（`shfmt -d <file>` 查差异、`shfmt -w <file>` 落格式）检查，本机与 `WSL` 均已安装；仅当两者都不可用且无法安装时方可豁免，并须在交付说明中注明；不为通过检查而整文件重排存量脚本格式。
 - 用户可见文本遵循 `PS/docs/Module-Conventions.md §11` 用词与 `§12` 行文（正式、规范、严谨）。
 - 中文用户：中文回复；复杂命令写 `.ps1` 再 `-File` 执行，不拼行内 `pwsh -Command` 引号。
@@ -16,6 +16,6 @@
 
 ## 提交前检查（每次必做，无需用户提醒）
 
-- 暂存审查：`git add` 只点名本次任务文件；提交前复核 `git diff --cached --stat`，与任务无关的孤立文件一律移出暂存（数据转储与个人临时输出不得入库）。
+- 暂存审查：提交前复核 `git diff --cached --stat`；数据转储、个人临时输出与密钥类内容不得入库。
 - 隐私扫描：对暂存内容检查口令、密钥、Token、私钥块、真实服务器 IP 与域名映射、客户数据等不宜公开的内容；命中即停止并报告用户，不得提交。参考：`git diff --cached | grep -nEi 'password|passwd|secret|token|api[_-]?key|BEGIN [A-Z ]*PRIVATE KEY'`；数据类文件超 100KB 须有正当理由。
 - 提交信息编码：含中文的提交信息禁止以 `git commit -m` 经 `powershell` 5.1 传递；一律先写 UTF-8 信息文件，再由 `pwsh` 7 执行 `git commit -F <信息文件>`（`--amend` 同理）；提交后必须复验 `git log` 中文可读，乱码即停并报告，不得推送。

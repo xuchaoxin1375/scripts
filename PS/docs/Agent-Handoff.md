@@ -10,8 +10,7 @@
    行号断言 → 搬运 → 落盘。行号变了就先 abort，绝不硬搬。
 3. 跑门禁（§2），不过不落盘、不提交。
 4. 更新受影响的 manifest + 相关文档（本目录四份 md 分工见 §5）。
-5. 提交信息沿用 `perf:/fix:/chore:` + 中文简述；只暂存自己动的文件
-   （`wp/` 下常有别人未提交的修改，别碰）。
+5. 提交信息沿用 `perf:/fix:/chore:` + 中文简述；默认直接提交全部改动，用户手动改动可询问是否单独成一次提交（分多次提交亦可）；推送须明确指示。
 
 ## 2. 验证门禁（按顺序跑，全绿才算完）
 
@@ -37,8 +36,8 @@
    调用方一律 `@(...)` 归一化后再判空；失败路径用裸 `return`。
 4. **管道里 `$Matches` 跨作用域失效**：`... | Where { $_ -match } | ForEach { $Matches[1] }`
    拿到的是脏数据。匹配和取值必须在**同一个** scriptblock 里。
-5. **换行符**：仓库混用 LF/CRLF。`edit` 工具保留原样；凡用脚本写文件，先查原编码
-   （`Info`/`FileSystem` 是 LF，别翻成 CRLF），新文件用 CRLF。
+5. **换行符**：仓库混用 LF/CRLF，默认忽略差异、不计入提交门禁。`edit` 工具保留原样；
+   只有 `.sh`（用 LF）与 `.cmd`/`.bat`（用 CRLF）需要留意，其余不检查、不转换。
 6. **成功流泄漏**：函数 `return` 的值会被调用方管道消费。热路径调用一律确认：
    要值就接住，不要就 `| Out-Null`（`Confirm-DataJson` 裸路径污染控制台事件）。
 7. **日志行序不可信**：`> file 2>&1` 下成功流/错误流/宿主输出的落盘顺序会重排。
@@ -71,10 +70,9 @@
     提交的是暂存区。2026-09-20 实测：脚本直写工作区后忘了 `git add`，提交漏了整轮改名，
     靠事后 `git show HEAD:file` 抓获。流程：`add` → `commit` → 必用
     `git show HEAD:<关键文件>` + 全新 `status` 复验（`c7cffe3` 就是 `--amend` 补救的）。
-14. **edit 工具可能整文件改写换行**：实测 `Pwsh.psm1` 在 LF/CRLF 间横跳过（内容 zero diff
-    但换行翻了，`git diff` 整篇标红才发现）。改完 `.psm1`/`.psd1` 必跑换行断言：
-    `git diff --stat` 与 `--ignore-cr-at-eol --stat` 对不上就是翻了；翻了就 python 按 HEAD
-    惯例转回去（utf-8-sig 读、`newline=''` 写保 BOM），不要 `git add` 蒙混过去。
+14. **edit 工具可能整文件改写换行（历史坑）**：实测 `Pwsh.psm1` 在 LF/CRLF 间横跳过
+    （内容 zero diff 但换行翻了）。EOL 现已不作门禁，无需每次断言；仅当整篇标红淹没真实改动时，
+    用 `git diff --ignore-cr-at-eol --stat` 定位、必要时按 HEAD 转回，消掉 review 噪音即可。
 15. **`ipmof|iex` 为什么要管道**：`Import-ModuleForce` 把活拆两半——Remove 立刻做，
     Import 攒成文本返回；光跑 `ipmof` 不管道，装的那半根本没执行（“没生效”主因，
     不是作用域魔法；另见 #12 嵌套/-Global）。新命令 `ipmox`（`Pwsh.psm1`）把两半合一：
@@ -219,17 +217,18 @@
 - **红线 2——racy-git 缓存会瞎**：只改配置/属性不动文件时，mtime/size 全一样，
   `git add` 会信 stat 跳过重哈希（配置变了但 stat 没变）。强制重哈希：`touch` 文件再 `add`
  （或 `git add --renormalize`，但注意它会把真改动也顺手暂存）。修完必用 `blob()` 验 index。
-- **红线 3——`wp/` 是用户领地**：WSL 可能比 Windows 更早看到 ` M`
+- **红线 3——暂存范围只限本次任务文件**：WSL 可能比 Windows 更早看到 ` M`
   （DrvFs 的 stat 视角不同，会逼 git 重哈希说真话；Windows 的陈旧 stat 缓存过期后也会显示）。
   如那 5 个 conf/sql（用户编辑器翻成 CRLF 相对 LF 历史是真修改）：**别顺手 add**，
-  更别 `--renormalize` 整个仓库——范围永远限定在 `PS/` 与根。
+  更别 `--renormalize` 整个仓库——只暂存本次任务涉及的文件。
 - 其余：换机器若报 `detected dubious ownership`，在 WSL 里跑
   `git config --global --add safe.directory '/mnt/c/repos/scripts'`（注意是 WSL 路径格式）；
   两侧不要同时跑 git（抢 `index.lock`）；WSL 下 push 要单独配 credential（远端是 gitee+github
   双 pushurl）；`/mnt/c` IO 慢，`status` 耗时长正常；`wsl` 偶发
   `Failed to start the systemd user session` 不影响 git 命令本身，无视。
-- WSL 里新建/改文件同样守 `Module-Conventions.md §8`（存量换行不动，新文件 CRLF）；
-  诊断三件套：`git ls-files --eol`、`git diff --ignore-cr-at-eol --stat`、blob 哈希对账。
+- WSL 里新建/改文件同样守 `Module-Conventions.md §8`（EOL 默认忽略，仅 `.sh` 用 LF、
+  `.cmd`/`.bat` 用 CRLF）；需要排查 index 污染时再看 `git ls-files --eol`、
+  `git diff --ignore-cr-at-eol --stat` 与 blob 哈希对账。
 
 ## 5. 文档分工（改代码必看要不要同步）
 
