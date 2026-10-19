@@ -426,54 +426,6 @@ function Backup-IfNeed
     
 }
 
-function Deploy-UserConfigFromAnotherDrive
-{
-    <# 
-    .SYNOPSIS
-    部署家目录中常用目录，适用于双系统跨盘创建符号链接的情况
-
-    #>
-    param (
-        $ConfigList = '',
-        $r = 'C', #一般是C盘,但允许更改
-        $s = 'D' , #可以做必要的修改,比如E盘
-        $UserName = "$env:UserName" #修改此值为你需要修改的用户家目录名字(一般是用户名)
-    )
-    if (! $ConfigList  )
-    {
-        
-        $ConfigList = @(
-            'documents\powershell',
-            'scoop',
-            '.config'
-        )
-    }
-    $UserHome = "${r}:\users\$UserName"
-    $TargetUserHome = "${s}:\Users\$UserName"
-    foreach ($origin in $ConfigList)
-    {
-        $p = "$userhome\$origin"
-        $b = "$userhome\${origin}.bak"
-        $t = "$targetuserhome\$origin"
-        Write-Host "$p;$b;$t"
-        #备份(如果需要的话)
-        if (Test-Path $p)
-        {
-            Write-Host 'origin path exist! try do the backup!'
-            # 如果原路径存在,则备份(重命名)
-            Rename-Item -Path $p -NewName $b -Force
-        }
-        else
-        {
-            Write-Host 'Origin path: '+$origin+' does not exist,Create the symbolic link directly!'
-        }
-        # 创建符号链接
-        New-Item -ItemType SymbolicLink -Path $p -target $t -Force
-    }
-
-    
-}
-
 function Deploy-FirewallByNetsh
 {
     netsh advfirewall firewall add rule dir=out action=block program="C:\Program Files\Mozilla Firefox\firefox.exe" name="blockFirefox" description="createByNetsh" enable=yes

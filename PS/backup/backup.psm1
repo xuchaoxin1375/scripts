@@ -32,43 +32,6 @@ function Deploy-Shortcuts
     
 }
 
-function Backup-UserConfig
-{
-    <# 
-    .SYNOPSIS
-    backup the user home .xxx files
-    Be caution:only copy the .file not .dir,so the junction(symbolickLink) would not affect this operation.
-    #>
-    
-    param(
-
-        # $Path = "$configs\user",
-        # $Destination = "$configs\user"
-
-    )
-    Update-PwshEnvIfNotYet -Mode Vars
-    # Get-ChildItem $target_path
-    $path = "$home\.config\"
-    $Destination = "$configs\user\.config"
-    Copy-Item -Path $path -Destination $Destination -Recurse -Force -Verbose 
-}
-
-function Backup-CppVscode
-{
-    cpFVR $env:repos\cpp\acmconsoleapps\.vscode $configs\CppVscodeConfig
-}
-
-function Backup-PicgoConfig
-{
-    param (
-        
-    )
-    Write-Verbose 'for CLI part'
-    cpFVR $env:picgo_CLI_config\*.json $configs\PicgoConfigs
-    Write-Verbose 'for GUI part'
-    cpFVR $env:picGo_Conf\data.json $configs\PicgoConfigs
-}
-
 function Backup-TyporaConf
 {
     Write-Verbose 'deprecated! please considering the symlink!'
