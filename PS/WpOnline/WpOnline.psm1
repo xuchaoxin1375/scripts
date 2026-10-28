@@ -1,4 +1,4 @@
-﻿<#
+<#
 WpOnline 模块:WordPress 线上运维(建站上线/插件/订单/远程更新)。
 从 WordPress.psm1 迁入: WordPress 只留本地建站与总入口 Deploy-Wp,线上运维归此模块;
 调用方命令名不变(自动发现同名模块)。
@@ -1507,18 +1507,18 @@ function ConvertTo-LinuxTextFile
     规范化结果的输出路径，支持相对路径；允许与 -Path 相同，此时为原地规范化。
 
     .EXAMPLE
-    ConvertTo-LinuxTextFile -Path .\update-cron.cron -Destination .\out\update-cron
+    ConvertTo-LinuxTextFile -Path ./update-cron.cron -Destination ./out/update-cron
 
     把本地模板规范化到另一个文件，原文件保持不变。
 
     .EXAMPLE
-    ConvertTo-LinuxTextFile -Path .\update_wp_functions.sh -Destination .\update_wp_functions.sh
+    ConvertTo-LinuxTextFile -Path ./update_wp_functions.sh -Destination ./update_wp_functions.sh
 
     原地规范化；覆盖原文件前应先提交到版本库或另行备份。
 
     .EXAMPLE
     $tmp = Join-Path $env:TEMP 'probe.txt'
-    ConvertTo-LinuxTextFile -Path .\crlf.txt -Destination $tmp
+    ConvertTo-LinuxTextFile -Path ./crlf.txt -Destination $tmp
     [System.IO.File]::ReadAllBytes($tmp)[-1]
 
     检查结果末字节，应为 10（LF）。
@@ -1661,17 +1661,17 @@ function Push-FileToServers
     目标目录不存在时先创建。
 
     .EXAMPLE
-    Push-FileToServers -Path .\work\update-cron.cron -RemotePath /etc/cron.d/update-cron -Linuxify
+    Push-FileToServers -Path ./work/update-cron.cron -RemotePath /etc/cron.d/update-cron -Linuxify
 
     推送定时任务文件：去掉 BOM 与 CR，落地为 644 root root，默认 10 台并发。
 
     .EXAMPLE
-    Push-FileToServers -Path .\update_wp_functions.sh -RemotePath /www/sh/wp-functions-update/update_wp_functions.sh -Linuxify -Mode 0755 -Backup
+    Push-FileToServers -Path ./update_wp_functions.sh -RemotePath /www/sh/wp-functions-update/update_wp_functions.sh -Linuxify -Mode 0755 -Backup
 
     推送脚本并保留可执行位，同时备份旧版本。
 
     .EXAMPLE
-    Push-FileToServers -Path .\hosts.txt -RemotePath /www/hosts.txt -Server 192.0.2.10,192.0.2.11 -ThrottleLimit 1 -WhatIf
+    Push-FileToServers -Path ./hosts.txt -RemotePath /www/hosts.txt -Server 192.0.2.10,192.0.2.11 -ThrottleLimit 1 -WhatIf
 
     只查看将要执行的操作，不连接目标机；-ThrottleLimit 1 表示顺序执行。
 

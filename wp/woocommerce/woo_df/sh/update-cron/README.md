@@ -31,7 +31,7 @@
 仓库是公开的，本目录里的模板只作示例，不是可直接投产的配置：
 
 - 模板中的任务、脚本路径、日志位置都按示例填写，实际环境不同就要改。
-- 真实下发用的模板应复制到仓库外单独维护，例如 `~/wpfc/update-cron.cron` 或 `.\work\update-cron.cron`，只改自己的副本；仓库内的两份保持通用示例，避免把真实路径提交进公开仓库。
+- 真实下发用的模板应复制到仓库外单独维护，例如 `~/wpfc/update-cron.cron` 或 `./work/update-cron.cron`，只改自己的副本；仓库内的两份保持通用示例，避免把真实路径提交进公开仓库。
 - 下文命令里的模板参数一律指**你自己的副本**；`deploy.sh` 用 `--template`，`Push-FileToServers` 用 `-Path`。
 - 不传 `--template` 时，`deploy.sh` 使用仓库目录内的两份示例，仅适合试跑或时区自动选择验证。
 
@@ -134,13 +134,13 @@ ssh root@203.0.113.11 'crontab -e'
 
 ```powershell
 # 在仓库根目录执行
-Import-Module .\PS\WpOnline\WpOnline.psd1
-New-Item -ItemType Directory -Force .\work | Out-Null
-Copy-Item .\wp\woocommerce\woo_df\sh\update-cron\cron.cst .\work\update-cron.cron
-notepad .\work\update-cron.cron
+Import-Module ./PS/WpOnline/WpOnline.psd1
+New-Item -ItemType Directory -Force ./work | Out-Null
+Copy-Item ./wp/woocommerce/woo_df/sh/update-cron/cron.cst ./work/update-cron.cron
+notepad ./work/update-cron.cron
 ```
 
-`.\work` 放在仓库外或已被忽略均可，关键是真实的任务、路径与日志按自己的环境改，仓库内的示例保持原样。
+`./work` 放在仓库外或已被忽略均可，关键是真实的任务、路径与日志按自己的环境改，仓库内的示例保持原样。
 
 1. 确认时区与依赖文件。
 
@@ -154,7 +154,7 @@ notepad .\work\update-cron.cron
 2. 预演。`-WhatIf` 只打印将要执行的动作，不连接目标机。
 
    ```powershell
-   Push-FileToServers -Path .\work\update-cron.cron -RemotePath /etc/cron.d/update-cron -Linuxify -Backup -BackupDirectory /var/backups/update-cron -WhatIf
+   Push-FileToServers -Path ./work/update-cron.cron -RemotePath /etc/cron.d/update-cron -Linuxify -Backup -BackupDirectory /var/backups/update-cron -WhatIf
    ```
 
 3. 下发：去掉 `-WhatIf` 重跑上一条命令。上传与落地都由它完成，不需要再手写 `scp`。
@@ -238,8 +238,8 @@ Windows 侧有两种落地方式，区别只是**谁来做上传**：
 已加载模块时不需要手写 `scp`：`Push-FileToServers` 固定为每台目标机两次连接，先上传到 `/tmp`，再在一个 `ssh` 会话内完成比对、备份、原子替换与写后校验，重复执行幂等：
 
 ```powershell
-Import-Module .\PS\WpOnline\WpOnline.psd1
-Push-FileToServers -Path .\work\update-cron.cron -RemotePath /etc/cron.d/update-cron -Linuxify -Backup -BackupDirectory /var/backups/update-cron
+Import-Module ./PS/WpOnline/WpOnline.psd1
+Push-FileToServers -Path /path/to/update-cron-file.cron -RemotePath /etc/cron.d/update-cron -Linuxify -Backup -BackupDirectory /var/backups/update-cron
 ```
 
 | 参数 | 说明 |
@@ -266,7 +266,7 @@ Push-FileToServers -Path .\work\update-cron.cron -RemotePath /etc/cron.d/update-
 失败不会中断整批，也不抛异常：汇总行之后逐台打印警告，失败只体现在 `Status` 与警告里。`deploy.sh` 的退出码语义不适用于这条路径，脚本化或放进 CI 时要显式检查失败台数：
 
 ```powershell
-$r = Push-FileToServers -Path .\work\update-cron.cron -RemotePath /etc/cron.d/update-cron -Linuxify -Backup -BackupDirectory /var/backups/update-cron
+$r = Push-FileToServers -Path ./work/update-cron.cron -RemotePath /etc/cron.d/update-cron -Linuxify -Backup -BackupDirectory /var/backups/update-cron
 if (@($r | Where-Object Status -eq 'Failed').Count -gt 0) { throw '下发存在失败机器' }
 ```
 
@@ -278,12 +278,12 @@ if (@($r | Where-Object Status -eq 'Failed').Count -gt 0) { throw '下发存在�
 
 没有加载模块，或需要目标机本地安装器做重复条目预检时用这条路径。它需要手写命令，并且每台目标机各执行一次：
 
-1. 在本地编辑自己的模板副本 `.\work\update-cron.cron`（从仓库示例复制而来）。
+1. 在本地编辑自己的模板副本 `./work/update-cron.cron`（从仓库示例复制而来）。
 2. 上传到目标机的 `/tmp`。
 3. 在目标机执行 `install-cron.sh`，由它完成去 BOM、去 CR、备份、原子替换、写后校验与重复条目检查。
 
 ```powershell
-scp .\work\update-cron.cron root@${h}:/tmp/update-cron.cron
+scp ./work/update-cron.cron root@${h}:/tmp/update-cron.cron
 ssh root@${h} 'bash /www/sh/update-cron/install-cron.sh -f /tmp/update-cron.cron'
 ```
 
