@@ -18,9 +18,11 @@
 | `hosts.txt` | 实际主机清单，由使用者创建，已被 `.gitignore` 忽略 |
 | `方案.md` | 方案说明、取舍、验收标准与风险边界 |
 
+`deploy.sh` 面向 Bash 控制机，`install-cron.sh` 在目标机本地执行。Windows 控制机另有模块命令 `Push-FileToServers`（仓库 `PS/WpOnline`）可一条命令完成并发下发，见“Windows 侧单文件下发”。
+
 ## 前置条件
 
-- 控制机安装 OpenSSH 客户端，能够以 root 身份免密登录全部目标机。`deploy.sh` 需要 Bash，应在 Linux、WSL 或 Git Bash 中运行；`install-cron.sh` 在目标机本地执行，Windows 侧只需 `scp` 与 `ssh`。
+- 控制机安装 OpenSSH 客户端，能够以 root 身份免密登录全部目标机。`deploy.sh` 需要 Bash，应在 Linux、WSL 或 Git Bash 中运行；`install-cron.sh` 在目标机本地执行，Windows 侧只需 `scp` 与 `ssh`。控制机若已加载仓库的 `PS/WpOnline` 模块，也可以直接用 `Push-FileToServers` 完成批量下发，不依赖 Bash。
 - 目标机已经安装并运行 cron，服务名可能是 `cron`、`crond` 或 `cronie`；cron 实现需要读取 `/etc/cron.d`，Debian、Ubuntu、RHEL 与 CentOS 的默认实现均满足该条件。
 - 目标机已经存在 `/www/sh/wp-functions-update/update_wp_functions.sh`、`/www/functions4.php` 和 `/www/functions24.php`。
 - 目标机的系统时区为 `Asia/Shanghai` 或 `UTC`，或其他固定 UTC+8 时区（后者用 `--template` 指定 CST 模板）；观察夏令时的时区不在本方案范围内。
@@ -55,6 +57,8 @@ ssh root@203.0.113.11 'crontab -e'
 宝塔面板中的任务需要在面板界面删除，不能只改文件。面板通常维护 root 的 crontab，删除后可以用上面的 `crontab -l` 命令复核。
 
 ## 快速开始
+
+### 控制机有 Bash
 
 1. 复制主机清单并填写实际目标机。
 
@@ -91,6 +95,36 @@ ssh root@203.0.113.11 'crontab -e'
    ```
 
    文件权限应为 `644 root root`，`crontab -l` 中不应出现这两条任务的旧副本，其余条目应与下发前一致。
+
+### 控制机只有 Windows PowerShell
+
+前提是全部目标机的系统时区一致（典型情况都是 `Asia/Shanghai`），且旧任务条目已按“已有同名任务时的迁移”清理完毕。先在控制机加载模块：
+
+```powershell
+# 在仓库根目录执行
+Import-Module .\PS\WpOnline\WpOnline.psd1
+```
+
+1. 确认时区与前置文件。
+
+   ```powershell
+   Update-Servers -cmd 'timedatectl show -p Timezone --value'
+   Update-Servers -cmd 'ls -l /www/sh/wp-functions-update/update_wp_functions.sh /www/functions4.php /www/functions24.php'
+   ```
+
+   `Update-Servers` 对服务器清单中的全部机器执行同一条命令，默认在 `/www` 下运行。
+
+2. 预演。`-WhatIf` 只打印将要执行的动作，不连接目标机。
+
+   ```powershell
+   Push-FileToServers -Path .\wp-functions-cron\wp-functions.cron.cst -RemotePath /etc/cron.d/wp-functions -Linuxify -Backup -BackupDirectory /var/backups/wp-functions-cron -WhatIf
+   ```
+
+3. 下发：去掉 `-WhatIf` 重跑上一条命令。
+
+4. 校验：再跑一次同一条命令（不带 `-WhatIf`）。内容与权限已一致的机器显示 `Skipped`，不一致或缺失的显示 `Updated`；随后按上一节登录任意一台核对 `stat` 与 `crontab -l`。
+
+时区混合时不要用这条路径，改用 `deploy.sh` 按机器选择模板。
 
 ## deploy.sh 命令说明
 
@@ -140,15 +174,15 @@ Windows PowerShell 在传递远程命令时对引号、`$` 与反斜杠敏感。
 
 ## Windows 侧单文件下发
 
-如果全部目标机的系统时区一致（例如都是 `Asia/Shanghai`），可以只维护一份 cron 文件，从 Windows 侧用 `scp` 下发。这种形态不依赖 WSL 或 Git Bash，控制机也不需要安装 Bash。
+如果全部目标机的系统时区一致（例如都是 `Asia/Shanghai`），可以只维护一份 cron 文件，从 Windows 侧下发。这种形态不依赖 WSL 或 Git Bash，控制机也不需要安装 Bash。
 
-先批量确认时区：
+先批量确认时区。Windows 侧经 `Update-Servers` 逐台查询，命令在每台目标机本地执行：
 
-```bash
-# timedatectl show -p Timezone --value
-# 批量测试
- Update-Servers -cmd 'timedatectl show -p Timezone --value' 
+```powershell
+Update-Servers -cmd 'timedatectl show -p Timezone --value'
 ```
+
+Bash 侧直接跑 `bash deploy.sh --dry-run`，它会同时打印识别到的时区与将选用的模板。
 
 全部为 `Asia/Shanghai` 时，只需使用 `wp-functions.cron.cst`，`0 16` 与 `0 0` 在所有机器上语义一致。存在 `UTC` 机器时按“时区与模板”一节分组，不要用同一份文件覆盖全部机器。
 
@@ -173,11 +207,21 @@ ssh root@${h} 'bash /www/sh/wp-functions-cron/install-cron.sh -f /www/sh/wp-func
 
 `/www/sh` 按实际部署路径调整。这种形态下模板随仓库走 Git，换行由 `.gitattributes` 保证，`install-cron.sh` 再去一次 BOM 与 CR 作为兜底。
 
-本机若已加载仓库的 `PS` 模块，可以直接用 `Push-FileToServers` 完成同样的落地动作，它同样做去 BOM、去 CR、原子替换、备份与写后校验：
+本机若已加载仓库的 `PS/WpOnline` 模块，可以直接用 `Push-FileToServers` 完成同样的落地动作。它固定为每台目标机两次连接：先 `scp` 上传到 `/tmp`，再在一个 `ssh` 会话内完成比对、备份、原子替换与写后校验，重复执行幂等：
 
 ```powershell
-Push-FileToServers -Path .\wp-functions-cron\wp-functions.cron.cst -RemotePath /etc/cron.d/wp-functions -Linuxify -Backup
+Push-FileToServers -Path .\wp-functions-cron\wp-functions.cron.cst -RemotePath /etc/cron.d/wp-functions -Linuxify -Backup -BackupDirectory /var/backups/wp-functions-cron
 ```
+
+| 参数 | 说明 |
+| --- | --- |
+| `-Path` / `-RemotePath` | 本地模板与目标机上的受管路径 |
+| `-Linuxify` | 去 UTF-8 BOM、把 CRLF 转为 LF、补齐结尾换行；模板必须带这个开关 |
+| `-Backup` | 覆盖前备份旧文件，文件名与 `install-cron.sh` 一致（`wp-functions.<时间戳>`） |
+| `-BackupDirectory` | 备份目录，默认 `/var/backups`；按上一条命令固定为 `/var/backups/wp-functions-cron` 后，回滚命令与“回滚”一节通用 |
+| `-Server` | 目标机列表，元素可以是 IP、主机名或 `user@host`，不带用户名按 root 处理；省略时读取 `Get-ServerList` 的 `ip` 字段（需已配置服务器清单），并跳过开头 1 条 |
+| `-ThrottleLimit` | 并发度，默认 10，取值 1 到 64；设为 1 时顺序执行 |
+| `-WhatIf` | 只打印将执行的动作，不连接目标机；结果状态为 `WhatIf` |
 
 执行时会先打印目标数量与并发度，随后逐台输出开始行与结果行（状态、权限、耗时），结束后给出汇总；每行带本地时间，便于与目标机日志对照：
 
@@ -190,15 +234,29 @@ Push-FileToServers -Path .\wp-functions-cron\wp-functions.cron.cst -RemotePath /
 [2026-10-28 16:02:37] 完成：共 7 台，更新 7，跳过 0，失败 0，用时 6.2 秒
 ```
 
-该命令不检查重复任务条目，首次迁移仍需按“已有同名任务时的迁移”手工核对，或改用 `install-cron.sh`。
+失败不会中断整批，也不抛异常：汇总行之后逐台打印警告，失败只体现在 `Status` 与警告里。`deploy.sh` 的退出码语义不适用于这条路径，脚本化或放进 CI 时要显式检查失败台数：
+
+```powershell
+$r = Push-FileToServers -Path .\wp-functions-cron\wp-functions.cron.cst -RemotePath /etc/cron.d/wp-functions -Linuxify -Backup -BackupDirectory /var/backups/wp-functions-cron
+if (@($r | Where-Object Status -eq 'Failed').Count -gt 0) { throw '下发存在失败机器' }
+```
+
+该命令只负责文件落地：不检查重复任务条目，也不检查 `update_wp_functions.sh`、源文件与 cron 服务是否就绪。重复条目与 cron 服务由 `install-cron.sh` 覆盖，`deploy.sh` 还会额外检查更新脚本与两个源文件。首次迁移必须按“已有同名任务时的迁移”手工核对，或改用 `install-cron.sh`。
 
 并发在 `-ThrottleLimit` 大于 1 时启用：PowerShell 7 使用自带的 `ThreadJob`，Windows PowerShell 5.1 装了 `ThreadJob` 模块同样可用，缺装时退回 `Start-Job` 进程级作业（功能一致，每台多一次进程启动）；`-ThrottleLimit 1` 不建作业，直接顺序执行。中断或异常退出时，本轮创建的作业会被统一清理。
 
-校验与删除：
+校验与删除。用 `install-cron.sh` 落地时按单台或经 `Update-Servers` 批量执行：
 
 ```powershell
 ssh root@${h} 'bash /www/sh/wp-functions-cron/install-cron.sh --check -f /tmp/wp-functions.cron'
+Update-Servers -cmd 'bash /www/sh/wp-functions-cron/install-cron.sh --check -f /tmp/wp-functions.cron'
 ssh root@${h} 'bash /www/sh/wp-functions-cron/install-cron.sh --remove'
+```
+
+用 `Push-FileToServers` 落地时，重跑同一条命令即为校验：内容与权限一致的机器显示 `Skipped`，缺失或不一致的显示 `Updated`。需要停止调度时先备份再删除：
+
+```powershell
+ssh root@${h} 'mkdir -p /var/backups/wp-functions-cron && cp -p /etc/cron.d/wp-functions /var/backups/wp-functions-cron/wp-functions.removed.$(date +%Y%m%d-%H%M%S) && rm -f /etc/cron.d/wp-functions'
 ```
 
 `install-cron.sh` 以 root 身份运行，检查 root crontab、`/etc/crontab` 与其他 `/etc/cron.d` 文件中的重复条目，备份到 `/var/backups/wp-functions-cron/`，并在写后复核 SHA-256 与 `644 root root`。重复执行是安全的：内容与权限已一致时直接跳过，不产生额外备份。上传到 `/tmp` 的临时文件不会被删除，便于重复执行 `--check`。
@@ -207,19 +265,21 @@ ssh root@${h} 'bash /www/sh/wp-functions-cron/install-cron.sh --remove'
 
 | 场景 | 建议 |
 | --- | --- |
-| 目标机同一时区，控制机已有批量 SSH 与 `scp` 能力 | `scp` + `install-cron.sh`，Windows 侧无需 Bash |
+| 目标机同一时区，控制机已加载 `PS/WpOnline` 模块 | `Push-FileToServers`，一条命令并发下发并逐台输出结果 |
+| 目标机同一时区，控制机只有 `scp` 与 `ssh` | `scp` + `install-cron.sh`，Windows 侧无需 Bash |
 | 目标机时区混合（部分 CST、部分 UTC） | `deploy.sh`，按机器自动选择模板 |
-| 需要在一台机器上反复执行并跳过无变化写入 | 两者都支持；`deploy.sh` 在控制机比对，减少一次写入和备份 |
+| 需要预检源文件、cron 服务与重复条目 | `deploy.sh` 三项全查；`install-cron.sh` 查 cron 服务与重复条目；`Push-FileToServers` 都不查 |
+| 需要在一台机器上反复执行并跳过无变化写入 | 三者都支持；`deploy.sh` 在控制机比对，`Push-FileToServers` 上传后在目标机比对，都不产生多余写入与备份 |
 
 ### 三个容易错的地方
 
-- 落地文件名必须是 `wp-functions`，不能带点号。`/etc/cron.d` 中带点号的文件会被 `run-parts` 静默跳过，`install-cron.sh` 会直接拒绝这类目标名。
-- `scp` 直接覆盖目标路径不是原子写，cron 可能读到半截文件。`install-cron.sh` 先写同目录临时文件再改名。
-- `scp` 落地后的属主与权限取决于源文件和登录用户。`install-cron.sh` 用 `install -m 0644 -o root -g root` 固定，并在写后复核。
+- 落地文件名必须是 `wp-functions`，不能带点号。`/etc/cron.d` 中带点号的文件会被 `run-parts` 静默跳过，`install-cron.sh` 会直接拒绝这类目标名，`Push-FileToServers` 在调用时就会抛错。
+- `scp` 直接覆盖目标路径不是原子写，cron 可能读到半截文件。三种方式都先写同目录临时文件再改名。
+- `scp` 落地后的属主与权限取决于源文件和登录用户。三种方式都用 `install -m 0644 -o root -g root` 固定，并在写后复核。
 
 ## 下发后的验证
 
-`deploy.sh --check` 通过只说明文件和权限正确，任务是否被 cron 调度还需要查看系统日志。该检查不覆盖 root crontab 或其他 cron 文件中的重复条目，首次迁移时仍需按“已有同名任务时的迁移”一节手工核对。cron 每分钟扫描一次配置，新文件通常在下一分钟生效；如果超过两分钟仍未生效，重启对应 cron 服务并查看系统日志。
+`deploy.sh --check` 通过只说明文件和权限正确，任务是否被 cron 调度还需要查看系统日志。用 `Push-FileToServers` 下发时，`Skipped` 同样只证明内容与权限一致。这两种检查都不覆盖 root crontab 或其他 cron 文件中的重复条目，首次迁移时仍需按“已有同名任务时的迁移”一节手工核对。cron 每分钟扫描一次配置，新文件通常在下一分钟生效；如果超过两分钟仍未生效，重启对应 cron 服务并查看系统日志。
 
 Debian 与 Ubuntu：
 
@@ -294,6 +354,28 @@ bash deploy.sh --check
 
 `--remove` 会先备份为 `wp-functions.removed.<时间戳>`，再删除受管文件。`--check` 在删除后应当失败并提示目标文件不存在，这是预期结果。删除只影响本方案管理的两条任务，不会修改 `crontab -l` 中的任何条目。
 
+### PowerShell 路径的等价操作
+
+控制机没有 Bash 时，上文的日常操作对应关系如下。三条路径写的是同一份模板、同一个受管路径。
+
+| 操作 | Bash 控制机 | Windows 控制机 |
+| --- | --- | --- |
+| 预演 | `bash deploy.sh --dry-run` | `Push-FileToServers … -WhatIf` |
+| 下发或修改后重发 | `bash deploy.sh` | 重跑 `Push-FileToServers` |
+| 校验 | `bash deploy.sh --check` | 重跑 `Push-FileToServers`，应全部 `Skipped` |
+| 新增机器 | `hosts.txt` 增加一行后 `bash deploy.sh` | 服务器清单增加一行后重跑；或用 `-Server` 只指定新增机器 |
+| 移除单台机器 | `bash deploy.sh -f hosts-remove.txt --remove` | 登录该机备份并删除受管文件，见“Windows 侧单文件下发 · 校验与删除” |
+| 回滚 | `cp -p` 备份回受管路径 | 同左；也可把备份文件作为 `-Path`，用 `Push-FileToServers` 推回 |
+| 删除全部任务 | `bash deploy.sh --remove` | 先用 `Update-Servers -cmd` 批量备份并删除受管文件 |
+
+`Update-Servers` 只接受服务器清单，会对清单内**全部**机器执行同一条命令，不能用来只操作一台；单台操作直接 `ssh root@<host> '...'`。PowerShell 路径不预检重复条目与 cron 服务，模板改动后仍应人工核对一次 `crontab -l` 与 `/etc/cron.d`。
+
+批量停止调度时，先备份再删除受管文件：
+
+```powershell
+Update-Servers -cmd 'mkdir -p /var/backups/wp-functions-cron && cp -p /etc/cron.d/wp-functions /var/backups/wp-functions-cron/wp-functions.removed.$(date +%Y%m%d-%H%M%S) && rm -f /etc/cron.d/wp-functions'
+```
+
 ## 故障排查
 
 | 现象 | 可能原因 | 处理 |
@@ -310,6 +392,11 @@ bash deploy.sh --check
 | 同一任务执行了两次 | 宝塔面板或用户 crontab 中存在同名任务 | 执行 `crontab -l` 与 `grep -r wp-functions /etc/cron.d`，只保留一套 |
 | 日志文件没有内容 | 命令路径错误、脚本无执行权限或 cron 未运行 | 手工执行一次命令，检查 cron 日志与 `/var/log/wp-functions-update.log` 权限 |
 | `restorecon` 报错 | 目标机未启用 SELinux，或文件上下文无法修正 | 未启用 SELinux 时可以忽略；已启用时手工执行 `restorecon -v /etc/cron.d/wp-functions` 检查上下文 |
+| 全部目标机显示 `Skipped` | 内容与权限已一致，未发生写入 | 预期结果；需要强制重写时先删除受管文件再下发 |
+| `Failed 上传失败` | `scp` 无法连通、host key 未接受或密钥未授权 | 按本表前两行排查；失败时 `/tmp` 可能残留 `push-file-*`，用 `rm -f /tmp/push-file-*` 清理 |
+| `Failed 写入失败: install: cannot create regular file` | 目标目录不存在 | 首次下发加 `-CreateDirectory` |
+| `Failed 作业异常` | 后台作业未正常返回结果 | 改用 `-ThrottleLimit 1` 顺序执行，绕开并发层后复现 |
+| 远端报 `unexpected end of file` 或 `parse error near` | 下发的命令换行或引号被破坏 | 确认调用的是最新版 `Push-FileToServers`；清理 `/tmp/push-file-*` 后重试 |
 
 ## 与现有 crontab 和宝塔面板的关系
 
