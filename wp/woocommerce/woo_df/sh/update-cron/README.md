@@ -218,12 +218,13 @@ Update-Servers -cmd 'timedatectl show -p Timezone --value'
 
 Bash 侧直接跑 `bash deploy.sh --dry-run`，它会同时打印识别到的时区与将选用的模板。全部为 `Asia/Shanghai` 时一份模板通吃；存在 `UTC` 机器时按“时区与模板”一节分组，不要用同一份文件覆盖全部机器。
 
-Windows 侧有两种落地方式，区别只是**谁来做上传**：
+Windows 侧有三种落地方式，区别在于上传由谁完成，以及是否在目标机本地做预检：
 
 | 方式 | 上传 | 逐台操作 | 适用 |
 | --- | --- | --- | --- |
-| 一条命令下发 | `Push-FileToServers` 内部执行 `scp`，不需要自己写 | 否，一条命令处理清单内全部机器 | 已加载 `PS/WpOnline` 模块 |
-| 手工 `scp` + `install-cron.sh` | 自己写 `scp`，每台一条 | 是 | 未加载模块，或需要目标机本地安装器做预检 |
+| 方式一：直接落到受管路径 | `Push-FileToServers` 内部执行 `scp` | 否，一条命令处理清单内全部机器 | 旧条目已清理，不需要额外预检 |
+| 方式一（预检变体）：上传到 `/tmp` 再安装 | 同上，两条命令都是批量 | 否，两条命令处理全部机器 | 需要重复条目与 cron 服务检查 |
+| 方式二：手工 `scp` + `install-cron.sh` | 自己写 `scp`，每台一条 | 是 | 未加载 `PS/WpOnline` 模块 |
 
 ### 方式一：一条命令下发（推荐）
 
@@ -238,6 +239,17 @@ Push-FileToServers -Path /path/to/update-cron-file.cron -RemotePath /etc/cron.d/
 - `-Linuxify` 去 BOM、CRLF 转 LF，模板必须带；`-BackupDirectory` 与 `install-cron.sh` 一致时，“回滚”一节的命令可直接通用。
 - 默认 10 台并发，`-ThrottleLimit` 取 1 到 64；目标目录不存在时加 `-CreateDirectory`；`-WhatIf` 只打印不连接。运行中逐台打印状态与耗时，末尾给汇总行。
 
+`-RemotePath` 就是最终受管路径，落地时用 `install -m 0644 -o root -g root` 加同目录改名，cron 下一分钟读取，**推送即安装**：不需要再执行 `install-cron.sh`，也不需要重启 cron。
+
+需要 `install-cron.sh` 的重复条目与 cron 服务预检时，先批量上传到 `/tmp`，再批量安装：
+
+```powershell
+Push-FileToServers -Path /path/to/update-cron-file.cron -RemotePath /tmp/update-cron.cron -Linuxify
+Update-Servers -cmd 'bash /www/sh/update-cron/install-cron.sh -f /tmp/update-cron.cron'
+```
+
+`/tmp` 下带点号的文件名不受 `/etc/cron.d` 命名限制，安装、预检与写后校验都由服务器端脚本完成，其中的脚本路径按实际部署位置调整；把第二条换成 `--check` 或 `--remove` 即为校验与删除。
+
 失败不中断整批，也不抛异常，只体现在返回对象的 `Status` 与警告里，脚本化时要显式检查：
 
 ```powershell
@@ -245,11 +257,11 @@ $r = Push-FileToServers -Path /path/to/update-cron-file.cron -RemotePath /etc/cr
 if (@($r | Where-Object Status -eq 'Failed').Count -gt 0) { throw '下发存在失败机器' }
 ```
 
-这条路径只负责文件落地，不检查重复任务条目、模板依赖文件与 cron 服务；这些由 `install-cron.sh` 与 `deploy.sh --require` 覆盖。完整参数见 `Get-Help Push-FileToServers -Full`。
+直接落到 `/etc/cron.d/update-cron` 时只负责文件落地，不检查重复任务条目、模板依赖文件与 cron 服务；需要这些检查就用上面的 `/tmp` + `install-cron.sh` 组合，或改用 `deploy.sh --require`。完整参数见 `Get-Help Push-FileToServers -Full`。
 
 ### 方式二：手工 `scp` + `install-cron.sh`
 
-没有加载模块，或需要目标机本地安装器做重复条目预检时用这条路径。它需要手写命令，并且每台目标机各执行一次：
+没有加载模块时用这条路径。它需要手写命令，并且每台目标机各执行一次：
 
 1. 在本地编辑自己的模板副本 `./work/update-cron.cron`（从仓库示例复制而来）。
 2. 上传到目标机的 `/tmp`。
@@ -309,16 +321,17 @@ ssh root@${h} 'mkdir -p /var/backups/update-cron && cp -p /etc/cron.d/update-cro
 | 场景 | 建议 |
 | --- | --- |
 | 目标机同一时区，控制机已加载 `PS/WpOnline` 模块 | `Push-FileToServers`，一条命令并发下发并逐台输出结果 |
+| 目标机同一时区，需要预检又不想逐台 `scp` | `Push-FileToServers` 上传到 `/tmp`，再用 `Update-Servers` 调 `install-cron.sh` |
 | 目标机同一时区，控制机未加载模块 | 手工 `scp` + `install-cron.sh`，`scp` 每台一条 |
 | 目标机时区混合（部分 CST、部分 UTC） | `deploy.sh`，按机器自动选择模板 |
 | 需要预检依赖文件、cron 服务与重复条目 | `deploy.sh` 全部覆盖（依赖由 `--require` 声明）；`install-cron.sh` 查 cron 服务与重复条目；`Push-FileToServers` 都不查 |
-| 需要在一台机器上反复执行并跳过无变化写入 | 三者都支持；`deploy.sh` 在控制机比对，`Push-FileToServers` 上传后在目标机比对，都不产生多余写入与备份 |
+| 需要在一台机器上反复执行并跳过无变化写入 | 各方式都支持；`deploy.sh` 在控制机比对，`Push-FileToServers` 与 `install-cron.sh` 在目标机比对，都不产生多余写入与备份 |
 
 ### 三个容易错的地方
 
 - 受管文件名不能带点号。`/etc/cron.d` 中带点号的文件会被 `run-parts` 静默跳过，两个脚本都会直接拒绝这类目标名，`Push-FileToServers` 在调用时就会抛错。
-- `scp` 直接覆盖目标路径不是原子写，cron 可能读到半截文件。三种方式都先写同目录临时文件再改名。
-- `scp` 落地后的属主与权限取决于源文件和登录用户。三种方式都用 `install -m 0644 -o root -g root` 固定，并在写后复核。
+- `scp` 直接覆盖目标路径不是原子写，cron 可能读到半截文件。各方式都先写同目录临时文件再改名。
+- `scp` 落地后的属主与权限取决于源文件和登录用户。各方式都用 `install -m 0644 -o root -g root` 固定，并在写后复核。
 
 ## 下发后的验证
 
