@@ -1614,6 +1614,9 @@ function Push-FileToServers
     每台目标机固定两次连接：一次 scp 上传到 /tmp，一次 ssh 完成比对、备份、原子替换与写后校验。
     远端命令在同一个会话内先比对 SHA-256 与权限，一致则直接跳过并清理临时文件，避免重复写入。
     命令以 LF 下发、只用单引号与 POSIX 语法，目标机登录 shell 为 bash、zsh 或 sh 都能执行。
+    执行过程中直接向控制台输出进度：先打印目标数量与并发度，每台开始时输出一行，完成时输出状态、权限与耗时，最后输出汇总行。
+    每行都以本地时间 `yyyy-MM-dd HH:mm:ss` 开头，便于事后与目标机日志对齐。
+    进度写主机流而不是成功流，结果对象照常返回，可继续用管道处理。
 
     并发使用 PowerShell 7 的 ForEach-Object -Parallel；Windows PowerShell 5.1 没有该参数，会自动退回顺序执行并给出提示。
 
@@ -1757,6 +1760,7 @@ function Push-FileToServers
             RemotePath   = $RemotePath
             LocalHash    = $localHash
             ExpectedMode = $expectedMode
+            Total        = $Server.Count
         }
 
         # 远端脚本：比对、备份、原子替换、写后回显，全部在一次 ssh 会话内完成。
@@ -1811,47 +1815,75 @@ echo UPDATED $(sha256sum $target | cut -d' ' -f1) $(stat -c %a $target) $(stat -
                 Message = ''
             }
 
-            $uploadOutput = & scp -q -o BatchMode=yes -o ConnectTimeout=10 $Item.LocalFile "$($Item.Target):$($Item.RemoteTemp)" 2>&1
-            if ($LASTEXITCODE -ne 0)
-            {
-                $result.Status = 'Failed'
-                $result.Message = "上传失败: " + (($uploadOutput | Out-String).Trim())
-                return $result
-            }
+            # 进度直接写控制台：并发时也能立刻看到哪台在跑，结果对象照常从成功流返回
+            $label = "[$($Item.Index + 1)/$($Context.Total)] $($Item.Target)"
+            $clock = [System.Diagnostics.Stopwatch]::StartNew()
+            Write-Host ("[{0}] {1} 开始" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $label)
 
-            $output = & ssh -nT -o BatchMode=yes -o ConnectTimeout=10 $Item.Target $Item.RemoteCmd 2>&1
-            if ($LASTEXITCODE -ne 0)
+            # 单台失败只记录状态并跳出，不影响其余目标机
+            do
             {
-                $result.Status = 'Failed'
-                $result.Message = "写入失败: " + (($output | Out-String).Trim())
-                return $result
-            }
+                $uploadOutput = & scp -q -o BatchMode=yes -o ConnectTimeout=10 $Item.LocalFile "$($Item.Target):$($Item.RemoteTemp)" 2>&1
+                if ($LASTEXITCODE -ne 0)
+                {
+                    $result.Status = 'Failed'
+                    $result.Message = "上传失败: " + (($uploadOutput | Out-String).Trim())
+                    break
+                }
 
-            $line = @($output | ForEach-Object { "$_".Trim() } | Where-Object { $_ -match '^(SKIPPED|UPDATED) ' } | Select-Object -Last 1)
-            if ($line.Count -eq 0)
-            {
-                $result.Status = 'Failed'
-                $result.Message = "未取得目标文件状态: " + (($output | Out-String).Trim())
-                return $result
-            }
+                $output = & ssh -nT -o BatchMode=yes -o ConnectTimeout=10 $Item.Target $Item.RemoteCmd 2>&1
+                if ($LASTEXITCODE -ne 0)
+                {
+                    $result.Status = 'Failed'
+                    $result.Message = "写入失败: " + (($output | Out-String).Trim())
+                    break
+                }
 
-            $parts = $line[0] -split '\s+'
-            $result.Mode = ($parts[2..4] -join ' ')
-            if ($parts[0] -eq 'SKIPPED')
-            {
-                $result.Status = 'Skipped'
-                $result.Message = '内容与权限已一致'
+                $line = @($output | ForEach-Object { "$_".Trim() } | Where-Object { $_ -match '^(SKIPPED|UPDATED) ' } | Select-Object -Last 1)
+                if ($line.Count -eq 0)
+                {
+                    $result.Status = 'Failed'
+                    $result.Message = "未取得目标文件状态: " + (($output | Out-String).Trim())
+                    break
+                }
+
+                $parts = $line[0] -split '\s+'
+                $result.Mode = ($parts[2..4] -join ' ')
+                if ($parts[0] -eq 'SKIPPED')
+                {
+                    $result.Status = 'Skipped'
+                    $result.Message = '内容与权限已一致'
+                }
+                elseif ($parts[1] -eq $Context.LocalHash -and $result.Mode -eq $Context.ExpectedMode)
+                {
+                    $result.Status = 'Updated'
+                    $result.Message = '已写入并校验通过'
+                }
+                else
+                {
+                    $result.Status = 'Failed'
+                    $result.Message = "写后校验不通过：hash=$($parts[1]) 权限=$($result.Mode)，期望 $($Context.ExpectedMode)"
+                }
             }
-            elseif ($parts[1] -eq $Context.LocalHash -and $result.Mode -eq $Context.ExpectedMode)
+            while ($false)
+
+            $clock.Stop()
+            $detail = $result.Mode
+            if ($result.Status -eq 'Failed')
             {
-                $result.Status = 'Updated'
-                $result.Message = '已写入并校验通过'
+                $detail = ($result.Message -split "`n")[0]
             }
-            else
+            if ($detail.Length -gt 120)
             {
-                $result.Status = 'Failed'
-                $result.Message = "写后校验不通过：hash=$($parts[1]) 权限=$($result.Mode)，期望 $($Context.ExpectedMode)"
+                $detail = $detail.Substring(0, 120) + '…'
             }
+            $color = switch ($result.Status)
+            {
+                'Updated' { 'Green' }
+                'Skipped' { 'DarkGray' }
+                default { 'Red' }
+            }
+            Write-Host ("[{0}] {1} {2} {3}（{4:N1} 秒）" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $label, $result.Status, $detail, $clock.Elapsed.TotalSeconds) -ForegroundColor $color
             return $result
         }
 
@@ -1907,6 +1939,10 @@ echo UPDATED $(sha256sum $target | cut -d' ' -f1) $(stat -c %a $target) $(stat -
 
         if ($queue.Count -gt 0)
         {
+            $modeText = if ($ThrottleLimit -gt 1 -and $PSVersionTable.PSVersion.Major -ge 7) { "并发 $ThrottleLimit" } else { '顺序执行' }
+            Write-Host ("[{0}] 推送 {1} 台 → {2}（{3}）" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $queue.Count, $RemotePath, $modeText)
+            $batchClock = [System.Diagnostics.Stopwatch]::StartNew()
+
             if ($ThrottleLimit -gt 1 -and $PSVersionTable.PSVersion.Major -ge 7)
             {
                 $workText = $work.ToString()
@@ -1932,6 +1968,14 @@ echo UPDATED $(sha256sum $target | cut -d' ' -f1) $(stat -c %a $target) $(stat -
         $results = @($results | Sort-Object -Property Index)
 
         $failed = @($results | Where-Object { $_.Status -eq 'Failed' })
+        if ($batchClock)
+        {
+            $batchClock.Stop()
+            $updated = @($results | Where-Object { $_.Status -eq 'Updated' }).Count
+            $skipped = @($results | Where-Object { $_.Status -eq 'Skipped' }).Count
+            Write-Host ("[{0}] 完成：共 {1} 台，更新 {2}，跳过 {3}，失败 {4}，用时 {5:N1} 秒" -f `
+                    (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $results.Count, $updated, $skipped, $failed.Count, $batchClock.Elapsed.TotalSeconds)
+        }
         foreach ($item in $failed)
         {
             Write-Warning "$($item.Server) 失败：$($item.Message)"

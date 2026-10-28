@@ -177,6 +177,17 @@ ssh root@${h} 'bash /www/sh/wp-functions-cron/install-cron.sh -f /www/sh/wp-func
 Push-FileToServers -Path .\wp-functions-cron\wp-functions.cron.cst -RemotePath /etc/cron.d/wp-functions -Linuxify -Backup
 ```
 
+执行时会先打印目标数量与并发度，随后逐台输出开始行与结果行（状态、权限、耗时），结束后给出汇总；每行带本地时间，便于与目标机日志对照：
+
+```
+[2026-10-28 16:02:31] 推送 7 台 → /etc/cron.d/wp-functions（并发 10）
+[2026-10-28 16:02:31] [1/7] root@203.0.113.11 开始
+[2026-10-28 16:02:31] [2/7] root@203.0.113.12 开始
+[2026-10-28 16:02:35] [1/7] root@203.0.113.11 Updated 644 root root（4.3 秒）
+...
+[2026-10-28 16:02:37] 完成：共 7 台，更新 7，跳过 0，失败 0，用时 6.2 秒
+```
+
 该命令不检查重复任务条目，首次迁移仍需按“已有同名任务时的迁移”手工核对，或改用 `install-cron.sh`。
 
 校验与删除：
