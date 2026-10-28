@@ -151,17 +151,9 @@ notepad ./work/update-cron.cron
 
    `Update-Servers` 对服务器清单中的全部机器执行同一条命令，默认在 `/www` 下运行；Windows PowerShell 5.1 需先安装 `ThreadJob` 模块，否则改用 `pwsh` 7。能力与限制见“Update-Servers 的适用边界”。
 
-2. 预演。`-WhatIf` 只打印将要执行的动作，不连接目标机。
+2. 预演、下发、校验都使用同一条 `Push-FileToServers` 命令：加 `-WhatIf` 预演，去掉即为下发，再跑一次即为校验（已一致的机器显示 `Skipped`）。完整命令与参数见“Windows 侧单文件下发 · 方式一”。
 
-   ```powershell
-   Push-FileToServers -Path ./work/update-cron.cron -RemotePath /etc/cron.d/update-cron -Linuxify -Backup -BackupDirectory /var/backups/update-cron -WhatIf
-   ```
-
-3. 下发：去掉 `-WhatIf` 重跑上一条命令。上传与落地都由它完成，不需要再手写 `scp`。
-
-4. 校验：再跑一次同一条命令（不带 `-WhatIf`）。内容与权限已一致的机器显示 `Skipped`，不一致或缺失的显示 `Updated`；随后按上一节登录任意一台核对 `stat` 与 `crontab -l`。
-
-时区混合时不要用这条路径，改用 `deploy.sh` 按机器选择模板。
+   下发后按上一节登录任意一台，核对 `stat` 与 `crontab -l`。时区混合时不要用这条路径，改用 `deploy.sh` 按机器选择模板。
 
 ## deploy.sh 命令说明
 
@@ -235,44 +227,25 @@ Windows 侧有两种落地方式，区别只是**谁来做上传**：
 
 ### 方式一：一条命令下发（推荐）
 
-已加载模块时不需要手写 `scp`：`Push-FileToServers` 固定为每台目标机两次连接，先上传到 `/tmp`，再在一个 `ssh` 会话内完成比对、备份、原子替换与写后校验，重复执行幂等：
+已加载模块时不需要手写 `scp`：一条命令内完成上传、比对、备份、原子替换与写后校验，重复执行幂等。
 
 ```powershell
 Import-Module ./PS/WpOnline/WpOnline.psd1
-Push-FileToServers -Path /path/to/update-cron-file.cron -RemotePath /etc/cron.d/update-cron -Linuxify -Backup -BackupDirectory /var/backups/update-cron
+Push-FileToServers -Path ./work/update-cron.cron -RemotePath /etc/cron.d/update-cron -Linuxify -Backup -BackupDirectory /var/backups/update-cron
 ```
 
-| 参数 | 说明 |
-| --- | --- |
-| `-Path` / `-RemotePath` | 本地模板副本（放在仓库外）与目标机上的受管路径 |
-| `-Linuxify` | 去 UTF-8 BOM、把 CRLF 转为 LF、补齐结尾换行；模板必须带这个开关 |
-| `-Backup` | 覆盖前备份旧文件，文件名与 `install-cron.sh` 一致（`update-cron.<时间戳>`） |
-| `-BackupDirectory` | 备份目录，默认 `/var/backups`；按上一条命令固定为 `/var/backups/update-cron` 后，回滚命令与“回滚”一节通用 |
-| `-Server` | 目标机列表，元素可以是 IP、主机名或 `user@host`，不带用户名按 root 处理；省略时读取 `Get-ServerList` 的 `ip` 字段（需已配置服务器清单），并跳过开头 1 条 |
-| `-ThrottleLimit` | 并发度，默认 10，取值 1 到 64；设为 1 时顺序执行 |
-| `-WhatIf` | 只打印将执行的动作，不连接目标机；结果状态为 `WhatIf` |
+- 目标机默认取服务器清单的 `ip` 字段（跳过开头 1 条），也可以用 `-Server 203.0.113.11,root@203.0.113.12` 直接指定。
+- `-Linuxify` 去 BOM、CRLF 转 LF，模板必须带；`-BackupDirectory` 与 `install-cron.sh` 一致时，“回滚”一节的命令可直接通用。
+- 默认 10 台并发，`-ThrottleLimit` 取 1 到 64；目标目录不存在时加 `-CreateDirectory`；`-WhatIf` 只打印不连接。运行中逐台打印状态与耗时，末尾给汇总行。
 
-执行时会先打印目标数量与并发度，随后逐台输出开始行与结果行（状态、权限、耗时），结束后给出汇总；每行带本地时间，便于与目标机日志对照：
-
-```
-[2026-10-28 16:02:31] 推送 7 台 → /etc/cron.d/update-cron（并发 10）
-[2026-10-28 16:02:31] [1/7] root@203.0.113.11 开始
-[2026-10-28 16:02:31] [2/7] root@203.0.113.12 开始
-[2026-10-28 16:02:35] [1/7] root@203.0.113.11 Updated 644 root root（4.3 秒）
-...
-[2026-10-28 16:02:37] 完成：共 7 台，更新 7，跳过 0，失败 0，用时 6.2 秒
-```
-
-失败不会中断整批，也不抛异常：汇总行之后逐台打印警告，失败只体现在 `Status` 与警告里。`deploy.sh` 的退出码语义不适用于这条路径，脚本化或放进 CI 时要显式检查失败台数：
+失败不中断整批，也不抛异常，只体现在返回对象的 `Status` 与警告里，脚本化时要显式检查：
 
 ```powershell
-$r = Push-FileToServers -Path ./work/update-cron.cron -RemotePath /etc/cron.d/update-cron -Linuxify -Backup -BackupDirectory /var/backups/update-cron
+$r = Push-FileToServers -Path ./work/update-cron.cron -RemotePath /etc/cron.d/update-cron -Linuxify
 if (@($r | Where-Object Status -eq 'Failed').Count -gt 0) { throw '下发存在失败机器' }
 ```
 
-该命令只负责文件落地：不检查重复任务条目，也不检查模板依赖的文件与 cron 服务是否就绪。重复条目与 cron 服务由 `install-cron.sh` 覆盖，`deploy.sh` 还会按 `--require` 检查依赖文件。首次迁移必须按“已有相同任务时的迁移”手工核对，或改用 `install-cron.sh`。
-
-并发在 `-ThrottleLimit` 大于 1 时启用：PowerShell 7 使用自带的 `ThreadJob`，Windows PowerShell 5.1 装了 `ThreadJob` 模块同样可用，缺装时退回 `Start-Job` 进程级作业（功能一致，每台多一次进程启动）；`-ThrottleLimit 1` 不建作业，直接顺序执行。中断或异常退出时，本轮创建的作业会被统一清理。
+这条路径只负责文件落地，不检查重复任务条目、模板依赖文件与 cron 服务；这些由 `install-cron.sh` 与 `deploy.sh --require` 覆盖。完整参数见 `Get-Help Push-FileToServers -Full`。
 
 ### 方式二：手工 `scp` + `install-cron.sh`
 
