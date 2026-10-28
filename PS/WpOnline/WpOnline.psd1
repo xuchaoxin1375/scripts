@@ -18,6 +18,7 @@
         'Update-Servers',
         'Push-ServerItem',
         'Push-FileToServers',
+        'Deploy-CronFile',
         'ConvertTo-LinuxTextFile',
         'Update-WpPluginsDFOnServer',
         'Update-WpPluginsDFOnServers',

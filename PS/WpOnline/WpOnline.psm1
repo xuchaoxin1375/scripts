@@ -1,4 +1,4 @@
-<#
+﻿<#
 WpOnline 模块:WordPress 线上运维(建站上线/插件/订单/远程更新)。
 从 WordPress.psm1 迁入: WordPress 只留本地建站与总入口 Deploy-Wp,线上运维归此模块;
 调用方命令名不变(自动发现同名模块)。
@@ -2072,4 +2072,619 @@ echo UPDATED $(sha256sum $target | cut -d' ' -f1) $(stat -c %a $target) $(stat -
             Remove-Item -LiteralPath $tempFile -Force -ErrorAction SilentlyContinue -WhatIf:$false
         }
     }
+}
+function Deploy-CronFile
+{
+    <#
+    .SYNOPSIS
+    批量部署一份受管 cron 文件：预检、按时区选模板、落地、校验与汇总。
+
+    .DESCRIPTION
+    前置条件：目标机已配置 root 免密登录，已安装并运行 cron，模板引用的脚本已部署到目标机。
+    执行者：当前会话逐台 SSH 预检，落地阶段调用 Push-FileToServers 完成上传与安装；单台失败不中断整批。
+    善后：无需额外操作；重复执行时内容与权限一致的机器直接跳过。
+
+    与仓库 update-cron/deploy.sh 行为对齐：预检 root 权限、目标目录、依赖文件、cron 服务与重复任务条目，
+    支持按目标机系统时区在 cron.cst 与 cron.utc 之间选择，写入前备份，写后由 Push-FileToServers 校验哈希与权限。
+    每台目标机三次连接：预检、上传、安装；用 -TemplateDirectory 自动选模板时再加一次时区探测。
+    进度行带本地时间，结果按清单顺序返回，Status 取 Deployed、Skipped、Checked、Removed、Failed、WhatIf。
+
+    .PARAMETER Template
+    模板文件，与 -TemplateDirectory 二选一，-Remove 时不需要。
+
+    .PARAMETER TemplateDirectory
+    存放 cron.cst 与 cron.utc 的目录，按目标机系统时区选择模板；无法识别的时区判为失败。
+
+    .PARAMETER RemotePath
+    受管文件路径，默认 /etc/cron.d/update-cron，文件名不能含点号。
+
+    .PARAMETER BackupDirectory
+    备份目录，默认 /var/backups/<受管文件名>。
+
+    .PARAMETER Require
+    下发前要求目标机存在的文件，可传多个；路径不能含空白。
+
+    .PARAMETER AllowExisting
+    跳过重复任务条目检查，仅在确认不会重复执行时使用。
+
+    .PARAMETER Check
+    只校验受管文件的内容与权限，不写入。
+
+    .PARAMETER Remove
+    备份后删除受管文件，不需要模板。
+
+    .PARAMETER FailOnError
+    处理完成后若存在失败机器则抛出异常，供脚本或 CI 判定。
+
+    .PARAMETER ThrottleLimit
+    推送阶段的并发度，默认 10，取值 1 到 64；预检始终逐台执行。设为 1 时全程顺序执行。
+
+    .EXAMPLE
+    Deploy-CronFile -Template ./work/update-cron.cron -Require /www/functions4.php
+
+    按清单逐台预检并部署，已是最新的目标机跳过。
+
+    .EXAMPLE
+    Deploy-CronFile -TemplateDirectory ./work/templates -WhatIf
+
+    只打印将执行的动作，不连接目标机。
+
+    .EXAMPLE
+    Deploy-CronFile -Check -Template ./work/update-cron.cron -FailOnError
+
+    校验全部目标机，存在不一致时抛异常。
+
+    .NOTES
+    -Server 省略时读取 Get-ServerList 的 ip 字段并跳过开头 1 条。
+    与 deploy.sh 的差别：不解析 hosts.txt，-WhatIf 不读取远端状态；其余预检与写入语义一致。
+    #>
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
+    param(
+        [string]$Template,
+
+        [string]$TemplateDirectory,
+
+        [ValidatePattern('^/[A-Za-z0-9_./-]+$')]
+        [string]$RemotePath = '/etc/cron.d/update-cron',
+
+        [ValidatePattern('^/[A-Za-z0-9_./-]+$')]
+        [string]$BackupDirectory,
+
+        [string[]]$Require,
+
+        [switch]$AllowExisting,
+
+        [string[]]$Server,
+
+        $ServerConfig = $server_config,
+
+        [int]$Skip = 1,
+
+        [ValidateRange(1, 64)]
+        [int]$ThrottleLimit = 10,
+
+        [ValidatePattern('^[0-7]{3,4}$')]
+        [string]$Mode = '0644',
+
+        [ValidatePattern('^[A-Za-z0-9_][A-Za-z0-9_.-]*$')]
+        [string]$Owner = 'root',
+
+        [ValidatePattern('^[A-Za-z0-9_][A-Za-z0-9_.-]*$')]
+        [string]$Group = 'root',
+
+        [switch]$Check,
+
+        [switch]$Remove,
+
+        [switch]$FailOnError
+    )
+
+    # Windows PowerShell 5.1 在 ErrorActionPreference=Stop 时会把原生命令的 stderr 变成终止错误，
+    # 这里降为 Continue，失败统一由退出码判断，避免单台失败中断整批
+    $ErrorActionPreference = 'Continue'
+
+    if ($Check -and $Remove)
+    {
+        throw '-Check 与 -Remove 不能同时使用。'
+    }
+    if ($Template -and $TemplateDirectory)
+    {
+        throw '-Template 与 -TemplateDirectory 只能给一个。'
+    }
+    if (-not $Remove -and -not $Template -and -not $TemplateDirectory)
+    {
+        throw '需要 -Template 或 -TemplateDirectory；只删除时用 -Remove。'
+    }
+
+    $leaf = Split-Path -Leaf $RemotePath
+    $parent = $RemotePath.Substring(0, $RemotePath.LastIndexOf('/'))
+    if ($parent -eq '/etc/cron.d' -and $leaf.Contains('.'))
+    {
+        throw "目标文件 $leaf 含点号，/etc/cron.d 中这类文件会被 run-parts 跳过；请改用不含点号的名称。"
+    }
+    if (-not $BackupDirectory)
+    {
+        $BackupDirectory = "/var/backups/$leaf"
+    }
+
+    $requireList = @()
+    foreach ($item in @($Require))
+    {
+        if (-not $item)
+        {
+            continue
+        }
+        if ($item -notmatch '^/[^\s]+$')
+        {
+            throw "依赖路径必须是不含空白的绝对路径: $item"
+        }
+        $requireList += $item
+    }
+
+    $templateMap = @{}
+    if ($Template)
+    {
+        $templateMap['forced'] = (Resolve-Path -LiteralPath $Template -ErrorAction Stop).ProviderPath
+    }
+    elseif ($TemplateDirectory)
+    {
+        $dir = (Resolve-Path -LiteralPath $TemplateDirectory -ErrorAction Stop).ProviderPath
+        $cst = Join-Path $dir 'cron.cst'
+        $utc = Join-Path $dir 'cron.utc'
+        foreach ($p in @($cst, $utc))
+        {
+            if (-not (Test-Path -LiteralPath $p))
+            {
+                throw "模板目录缺少 $(Split-Path -Leaf $p): $dir"
+            }
+        }
+        $templateMap['cst'] = $cst
+        $templateMap['utc'] = $utc
+    }
+
+    if (-not $Server)
+    {
+        $Server = @(Get-ServerList -Path $ServerConfig -Skip $Skip | ForEach-Object { $_.ip } | Where-Object { $_ })
+    }
+    if (-not $Server -or $Server.Count -eq 0)
+    {
+        throw '没有可用的目标机；请用 -Server 指定，或检查 Get-ServerList 的配置。'
+    }
+
+    $statMode = $Mode.TrimStart('0')
+    if ($statMode -eq '')
+    {
+        $statMode = '0'
+    }
+    $expectedMode = "$statMode $Owner $Group"
+
+    # 把模板转成 LF、算哈希、提取 .php 与 .sh 基名；同一模板只处理一次
+    $prepare = {
+        param($TemplatePath)
+        $temp = Join-Path ([System.IO.Path]::GetTempPath()) ("cron-deploy-" + [guid]::NewGuid().ToString('N') + '.cron')
+        ConvertTo-LinuxTextFile -Path $TemplatePath -Destination $temp
+        $hash = (Get-FileHash -LiteralPath $temp -Algorithm SHA256).Hash.ToLower()
+        $patterns = @()
+        foreach ($line in [System.IO.File]::ReadAllLines($temp))
+        {
+            if ($line -match '^\s*(#|$)')
+            {
+                continue
+            }
+            foreach ($match in [regex]::Matches($line, '\S+\.(?:php|sh)'))
+            {
+                $patterns += [System.IO.Path]::GetFileName($match.Value)
+            }
+        }
+        [pscustomobject]@{
+            Path     = $TemplatePath
+            Temp     = $temp
+            Hash     = $hash
+            Patterns = @($patterns | Sort-Object -Unique)
+        }
+    }
+
+    # 远端按行读取的名单走 base64，避免空参数与引号问题；空名单用 '-' 占位
+    $encodeLines = {
+        param($Lines)
+        $list = @($Lines | Where-Object { $_ })
+        if ($list.Count -eq 0)
+        {
+            return '-'
+        }
+        $text = ($list -join "`n") + "`n"
+        return [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($text))
+    }
+
+    $runRemote = {
+        param($Target, $ScriptText)
+        # 5.1 在 Stop 下会把 ssh 的 stderr 变成终止错误，这里固定为 Continue，失败看退出码
+        $ErrorActionPreference = 'Continue'
+        $text = ($ScriptText -replace "`r`n", "`n") -replace "`r", ''
+        $output = & ssh -nT -o BatchMode=yes -o ConnectTimeout=10 $Target $text 2>&1
+        [pscustomobject]@{
+            Code   = $LASTEXITCODE
+            Output = @($output | ForEach-Object { "$_" })
+        }
+    }
+
+    $timezoneScript = @'
+set -u
+tz=
+if command -v timedatectl >/dev/null 2>&1; then
+  tz=$(timedatectl show -p Timezone --value 2>/dev/null || true)
+fi
+if [ -z $tz ] && [ -r /etc/timezone ]; then
+  tz=$(cat /etc/timezone 2>/dev/null || true)
+fi
+if [ -z $tz ] && [ -L /etc/localtime ]; then
+  tz=$(readlink -f /etc/localtime 2>/dev/null | sed 's#.*/zoneinfo/##')
+fi
+echo TZ=$tz
+'@
+
+    # 只在远端用单引号与 POSIX 语法：Windows PowerShell 5.1 传参时会吃掉双引号
+    $precheckScript = @'
+set -eu
+target=__TARGET__
+allow_existing=__ALLOW__
+patterns_b64=__PATTERNS__
+requires_b64=__REQUIRES__
+target_dir=__PARENT__
+
+[ $(id -u) -eq 0 ] || { echo 需要 root 权限 >&2; exit 1; }
+[ -d $target_dir ] || { echo 目标目录不存在: $target_dir >&2; exit 1; }
+for c in install mktemp sha256sum stat base64; do
+  command -v $c >/dev/null 2>&1 || { echo 缺少命令: $c >&2; exit 1; }
+done
+
+if [ $requires_b64 != - ]; then
+  rl=$(mktemp)
+  printf '%s' $requires_b64 | base64 -d > $rl
+  while IFS= read -r f; do
+    if [ -z $f ]; then continue; fi
+    [ -f $f ] || { rm -f $rl; echo 缺少文件: $f >&2; exit 1; }
+  done < $rl
+  rm -f $rl
+fi
+
+cron_ok=0
+if command -v systemctl >/dev/null 2>&1; then
+  if systemctl is-active --quiet cron 2>/dev/null || systemctl is-active --quiet crond 2>/dev/null || systemctl is-active --quiet cronie 2>/dev/null; then
+    cron_ok=1
+  fi
+fi
+if [ $cron_ok -eq 0 ] && (pgrep -x cron >/dev/null 2>&1 || pgrep -x crond >/dev/null 2>&1 || pgrep -x cronie >/dev/null 2>&1); then
+  cron_ok=1
+fi
+if [ $cron_ok -eq 0 ]; then
+  echo cron 服务未运行，请先启动 cron、crond 或 cronie >&2
+  exit 1
+fi
+
+if [ $allow_existing -eq 0 ] && [ $patterns_b64 != - ]; then
+  pf=$(mktemp)
+  out=$(mktemp)
+  printf '%s' $patterns_b64 | base64 -d > $pf
+  if crontab -l >/dev/null 2>&1; then
+    crontab -l 2>/dev/null | grep -nF -f $pf > $out 2>/dev/null || true
+    if [ -s $out ]; then
+      echo root crontab 中已存在引用下列脚本的条目: >&2
+      cat $out >&2
+      echo 请先备份并删除旧条目，确认后重试，或用 -AllowExisting 跳过 >&2
+      rm -f $pf $out
+      exit 2
+    fi
+  fi
+  for f in /etc/crontab /etc/cron.d/*; do
+    if [ ! -f $f ]; then continue; fi
+    if [ $f = $target ]; then continue; fi
+    case $(basename $f) in .*) continue ;; esac
+    grep -nF -f $pf $f > $out 2>/dev/null || true
+    if [ -s $out ]; then
+      echo 文件 $f 中已存在引用下列脚本的条目: >&2
+      cat $out >&2
+      echo 请先删除旧条目，或用 -AllowExisting 跳过 >&2
+      rm -f $pf $out
+      exit 2
+    fi
+  done
+  rm -f $pf $out
+fi
+
+if [ -f $target ]; then
+  hash=$(sha256sum $target | awk '{print $1}')
+  mode=$(stat -c '%a %U %G' $target)
+  echo STATE=PRESENT HASH=$hash MODE=$mode
+else
+  echo STATE=MISSING
+fi
+'@
+
+    $statusScript = @'
+if [ -f __TARGET__ ]; then
+  sha256sum __TARGET__
+  stat -c '%a %U %G' __TARGET__
+else
+  echo MISSING
+fi
+'@
+
+    $removeScript = @'
+set -eu
+target=__TARGET__
+backup_dir=__BACKUP__
+name=__LEAF__
+
+[ $(id -u) -eq 0 ] || { echo 需要 root 权限 >&2; exit 1; }
+
+if [ -f $target ]; then
+  mkdir -p $backup_dir
+  cp -p $target $backup_dir/$name.removed.$(date +%Y%m%d-%H%M%S)
+  rm -f $target
+  echo REMOVED
+else
+  echo MISSING
+fi
+'@
+
+    $records = @()
+    $prepared = @{}
+    $pushGroups = @{}
+    $temps = @()
+    $total = $Server.Count
+    $index = 0
+    $clock = [System.Diagnostics.Stopwatch]::StartNew()
+
+    try
+    {
+        foreach ($item in $Server)
+        {
+            $target = "$item"
+            if ($target -notmatch '@')
+            {
+                $target = "root@$target"
+            }
+            $index++
+
+            $record = [pscustomobject]@{
+                Index    = $index
+                Server   = $target
+                Status   = 'Pending'
+                Mode     = ''
+                Timezone = ''
+                Template = ''
+                Message  = ''
+            }
+            $records += $record
+
+            if (-not $PSCmdlet.ShouldProcess("$target`:$RemotePath", '部署 cron 文件'))
+            {
+                $record.Status = 'WhatIf'
+                $record.Message = '未连接目标机'
+                Write-Host ("[{0}] [{1}/{2}] {3} WhatIf 未连接目标机" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $index, $total, $target) -ForegroundColor DarkGray
+                continue
+            }
+
+            Write-Host ("[{0}] [{1}/{2}] {3} 预检" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $index, $total, $target) -ForegroundColor DarkGray
+
+            if ($Remove)
+            {
+                $scriptText = $removeScript.Replace('__TARGET__', $RemotePath).Replace('__BACKUP__', $BackupDirectory).Replace('__LEAF__', $leaf)
+                $remote = & $runRemote $target $scriptText
+                if ($remote.Code -ne 0)
+                {
+                    $record.Status = 'Failed'
+                    $record.Message = (@($remote.Output) -join ' ').Trim()
+                }
+                elseif (@($remote.Output | Where-Object { $_ -eq 'REMOVED' }).Count -gt 0)
+                {
+                    $record.Status = 'Removed'
+                    $record.Message = '已备份并删除'
+                }
+                else
+                {
+                    $record.Status = 'Skipped'
+                    $record.Message = '目标文件不存在'
+                }
+                Write-Host ("[{0}] [{1}/{2}] {3} {4} {5}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $index, $total, $target, $record.Status, $record.Message)
+                continue
+            }
+
+            $key = 'forced'
+            if (-not $Template)
+            {
+                $remote = & $runRemote $target $timezoneScript
+                $tzLine = @($remote.Output | Where-Object { $_ -match '^TZ=' } | Select-Object -Last 1)
+                if ($remote.Code -ne 0 -or $tzLine.Count -eq 0)
+                {
+                    $record.Status = 'Failed'
+                    $record.Message = '无法获取系统时区'
+                    continue
+                }
+                $tz = "$($tzLine[0])".Substring(3).Trim()
+                $record.Timezone = $tz
+                $key = ''
+                if ($tz -match '^(Asia/Shanghai|Asia/Chongqing|Asia/Harbin|PRC)$')
+                {
+                    $key = 'cst'
+                }
+                elseif ($tz -match '^(UTC|Etc/UTC|Etc/GMT|Etc/GMT\+0|Etc/GMT-0|GMT|UCT|Zulu)$')
+                {
+                    $key = 'utc'
+                }
+                if (-not $key)
+                {
+                    $record.Status = 'Failed'
+                    $record.Message = "不支持的时区 $tz，请用 -Template 指定模板"
+                    continue
+                }
+            }
+
+            $templatePath = $templateMap[$key]
+            if (-not $prepared.ContainsKey($templatePath))
+            {
+                $prepared[$templatePath] = & $prepare $templatePath
+                $temps += $prepared[$templatePath].Temp
+            }
+            $tpl = $prepared[$templatePath]
+            $record.Template = Split-Path -Leaf $templatePath
+
+            if ($Check)
+            {
+                $remote = & $runRemote $target $statusScript.Replace('__TARGET__', $RemotePath)
+                $lines = @($remote.Output | Where-Object { $_.Trim() })
+                if ($remote.Code -ne 0)
+                {
+                    $record.Status = 'Failed'
+                    $record.Message = (@($remote.Output) -join ' ').Trim()
+                }
+                elseif ($lines.Count -eq 1 -and $lines[0].Trim() -eq 'MISSING')
+                {
+                    $record.Status = 'Failed'
+                    $record.Message = '目标文件不存在'
+                }
+                elseif ($lines.Count -ge 2)
+                {
+                    $remoteHash = ($lines[0].Trim() -split '\s+')[0]
+                    $remoteMode = $lines[$lines.Count - 1].Trim()
+                    $record.Mode = $remoteMode
+                    if ($remoteHash -ne $tpl.Hash)
+                    {
+                        $record.Status = 'Failed'
+                        $record.Message = '内容与模板不一致'
+                    }
+                    elseif ($remoteMode -ne $expectedMode)
+                    {
+                        $record.Status = 'Failed'
+                        $record.Message = "权限或属主不符合要求: $remoteMode"
+                    }
+                    else
+                    {
+                        $record.Status = 'Checked'
+                        $record.Message = '内容与权限一致'
+                    }
+                }
+                else
+                {
+                    $record.Status = 'Failed'
+                    $record.Message = '未取得目标文件状态: ' + (@($remote.Output) -join ' ').Trim()
+                }
+                Write-Host ("[{0}] [{1}/{2}] {3} {4} {5}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $index, $total, $target, $record.Status, $record.Message)
+                continue
+            }
+
+            $scriptText = $precheckScript.Replace('__TARGET__', $RemotePath)
+            $scriptText = $scriptText.Replace('__PARENT__', $parent)
+            $scriptText = $scriptText.Replace('__ALLOW__', $(if ($AllowExisting) { '1' } else { '0' }))
+            $scriptText = $scriptText.Replace('__PATTERNS__', (& $encodeLines $tpl.Patterns))
+            $scriptText = $scriptText.Replace('__REQUIRES__', (& $encodeLines $requireList))
+
+            $remote = & $runRemote $target $scriptText
+            if ($remote.Code -eq 2)
+            {
+                $record.Status = 'Failed'
+                $record.Message = '已存在重复任务条目'
+                foreach ($line in @($remote.Output | Where-Object { $_.Trim() }))
+                {
+                    Write-Warning "$target $line"
+                }
+                continue
+            }
+            if ($remote.Code -ne 0)
+            {
+                $record.Status = 'Failed'
+                $record.Message = (@($remote.Output) -join ' ').Trim()
+                continue
+            }
+
+            $stateLine = @($remote.Output | Where-Object { $_ -match '^STATE=' } | Select-Object -Last 1)
+            if ($stateLine.Count -eq 0)
+            {
+                $record.Status = 'Failed'
+                $record.Message = '未取得目标文件状态: ' + (@($remote.Output) -join ' ').Trim()
+                continue
+            }
+
+            $stateText = "$($stateLine[0])"
+            if ($stateText -match '^STATE=PRESENT HASH=(\S+) MODE=(.+)$')
+            {
+                $remoteHash = $Matches[1]
+                $remoteMode = $Matches[2].Trim()
+                $record.Mode = $remoteMode
+                if ($remoteHash -eq $tpl.Hash -and $remoteMode -eq $expectedMode)
+                {
+                    $record.Status = 'Skipped'
+                    $record.Message = '内容与权限已一致'
+                    Write-Host ("[{0}] [{1}/{2}] {3} Skipped 内容与权限已一致" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $index, $total, $target) -ForegroundColor DarkGray
+                    continue
+                }
+            }
+
+            $record.Message = '待推送'
+            if (-not $pushGroups.ContainsKey($templatePath))
+            {
+                $pushGroups[$templatePath] = @()
+            }
+            $pushGroups[$templatePath] += $target
+        }
+
+        foreach ($templatePath in @($pushGroups.Keys))
+        {
+            $targets = @($pushGroups[$templatePath])
+            $tpl = $prepared[$templatePath]
+            $pushed = @(Push-FileToServers -Path $tpl.Temp -RemotePath $RemotePath -Server $targets -Linuxify -Mode $Mode -Owner $Owner -Group $Group -Backup -BackupDirectory $BackupDirectory -ThrottleLimit $ThrottleLimit)
+            foreach ($pushResult in $pushed)
+            {
+                $record = $records | Where-Object { $_.Server -eq $pushResult.Server } | Select-Object -First 1
+                if (-not $record)
+                {
+                    continue
+                }
+                switch ($pushResult.Status)
+                {
+                    'Updated' {
+                        $record.Status = 'Deployed'
+                        $record.Message = '已写入并校验通过'
+                    }
+                    'Skipped' {
+                        $record.Status = 'Skipped'
+                        $record.Message = '内容与权限已一致'
+                    }
+                    default {
+                        $record.Status = 'Failed'
+                        $record.Message = $pushResult.Message
+                    }
+                }
+                $record.Mode = $pushResult.Mode
+            }
+        }
+    }
+    finally
+    {
+        foreach ($tempFile in $temps)
+        {
+            if ($tempFile -and (Test-Path -LiteralPath $tempFile))
+            {
+                Remove-Item -LiteralPath $tempFile -Force -ErrorAction SilentlyContinue
+            }
+        }
+        $clock.Stop()
+    }
+
+    $deployed = @($records | Where-Object { $_.Status -eq 'Deployed' }).Count
+    $skipped = @($records | Where-Object { $_.Status -eq 'Skipped' }).Count
+    $failed = @($records | Where-Object { $_.Status -eq 'Failed' })
+
+    Write-Host ("[{0}] 完成：共 {1} 台，部署 {2}，跳过 {3}，失败 {4}，用时 {5:N1} 秒" -f `
+            (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $records.Count, $deployed, $skipped, $failed.Count, $clock.Elapsed.TotalSeconds)
+    foreach ($item in $failed)
+    {
+        Write-Warning "$($item.Server) 失败：$($item.Message)"
+    }
+    if ($failed.Count -gt 0 -and $FailOnError)
+    {
+        throw "共 $($records.Count) 台，失败 $($failed.Count) 台。"
+    }
+    return $records
 }

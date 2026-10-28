@@ -24,7 +24,7 @@
 | `hosts.txt` | 实际主机清单，由使用者创建，已被 `.gitignore` 忽略 |
 | `方案.md` | 方案说明、取舍、验收标准与风险边界 |
 
-`deploy.sh` 面向 Bash 控制机，`install-cron.sh` 在目标机本地执行。Windows 控制机另有模块命令 `Push-FileToServers`（仓库 `PS/WpOnline`）可一条命令完成并发下发，见“Windows 侧单文件下发”。
+`deploy.sh` 面向 Bash 控制机，`install-cron.sh` 在目标机本地执行。Windows 控制机另有模块命令 `Deploy-CronFile`（仓库 `PS/WpOnline`）可一条命令完成预检、按时区选模板、下发与校验，见“Windows 侧下发”。
 
 ## 模板与主机清单不入库
 
@@ -32,12 +32,12 @@
 
 - 模板中的任务、脚本路径、日志位置都按示例填写，实际环境不同就要改。
 - 真实下发用的模板应复制到仓库外单独维护，例如 `~/wpfc/update-cron.cron` 或 `./work/update-cron.cron`，只改自己的副本；仓库内的两份保持通用示例，避免把真实路径提交进公开仓库。
-- 下文命令里的模板参数一律指**你自己的副本**；`deploy.sh` 用 `--template`，`Push-FileToServers` 用 `-Path`。
+- 下文命令里的模板参数一律指**你自己的副本**；`deploy.sh` 用 `--template`，`Deploy-CronFile` 用 `-Template`，`Push-FileToServers` 用 `-Path`。
 - 不传 `--template` 时，`deploy.sh` 使用仓库目录内的两份示例，仅适合试跑或时区自动选择验证。
 
 ## 前置条件
 
-- 控制机安装 OpenSSH 客户端，能够以 root 身份免密登录全部目标机。`deploy.sh` 需要 Bash，应在 Linux、WSL 或 Git Bash 中运行；`install-cron.sh` 在目标机本地执行，Windows 侧只需 `scp` 与 `ssh`。控制机若已加载仓库的 `PS/WpOnline` 模块，也可以直接用 `Push-FileToServers` 完成批量下发，不依赖 Bash。
+- 控制机安装 OpenSSH 客户端，能够以 root 身份免密登录全部目标机。`deploy.sh` 需要 Bash，应在 Linux、WSL 或 Git Bash 中运行；`install-cron.sh` 在目标机本地执行，Windows 侧只需 `scp` 与 `ssh`。控制机若已加载仓库的 `PS/WpOnline` 模块，改用 `Deploy-CronFile` 完成预检、下发与校验，或只用 `Push-FileToServers` 落地文件，都不依赖 Bash。
 - 目标机已经安装并运行 cron，服务名可能是 `cron`、`crond` 或 `cronie`；cron 实现需要读取 `/etc/cron.d`，Debian、Ubuntu、RHEL 与 CentOS 的默认实现均满足该条件。
 - 目标机的系统时区为 `Asia/Shanghai` 或 `UTC`，或其他固定 UTC+8 时区（后者用 `--template` 指定 CST 模板）；观察夏令时的时区不在本方案范围内。
 - 模板中的任务依赖的文件（更新脚本、数据源等）已经部署，必要时用 `--require` 声明，让 `deploy.sh` 在下发前检查。
@@ -151,9 +151,21 @@ notepad ./work/update-cron.cron
 
    `Update-Servers` 对服务器清单中的全部机器执行同一条命令，默认在 `/www` 下运行；Windows PowerShell 5.1 需先安装 `ThreadJob` 模块，否则改用 `pwsh` 7。能力与限制见“Update-Servers 的适用边界”。
 
-2. 预演、下发、校验都使用同一条 `Push-FileToServers` 命令：加 `-WhatIf` 预演，去掉即为下发，再跑一次即为校验（已一致的机器显示 `Skipped`）。完整命令与参数见“Windows 侧单文件下发 · 方式一”。
+2. 预演与下发用 `Deploy-CronFile`：加 `-WhatIf` 预演，去掉即为下发，预检与写入规则见“Windows 侧下发 · 方式一”。
 
-   下发后按上一节登录任意一台，核对 `stat` 与 `crontab -l`。时区混合时不要用这条路径，改用 `deploy.sh` 按机器选择模板。
+   ```powershell
+   Deploy-CronFile -Template ./work/update-cron.cron -WhatIf
+   Deploy-CronFile -Template ./work/update-cron.cron -Require /www/functions4.php
+   ```
+
+3. 校验与删除同样是一条命令：
+
+   ```powershell
+   Deploy-CronFile -Check -Template ./work/update-cron.cron
+   Deploy-CronFile -Remove
+   ```
+
+下发后按上一节登录任意一台，核对 `stat` 与 `crontab -l`。时区混合时改用 `-TemplateDirectory` 让函数按目标机时区选模板，见“Windows 侧下发 · 方式一”。
 
 ## deploy.sh 命令说明
 
@@ -206,7 +218,7 @@ Windows PowerShell 在传递远程命令时对引号、`$` 与反斜杠敏感。
 
 `Push-FileToServers` 的远端命令按同样的原则构造：只用单引号，不含双引号，并且以 LF 下发。远端登录 shell 不把 CR 当作空白字符，命令带 CRLF 会让 `then`、`fi`、`}` 等标记失效；Windows PowerShell 5.1 传参时还会吃掉双引号。命令内容只使用 POSIX 语法，root 登录 shell 是 bash、zsh 或 sh 都能执行。
 
-## Windows 侧单文件下发
+## Windows 侧下发
 
 如果全部目标机的系统时区一致（例如都是 `Asia/Shanghai`），可以只维护一份 cron 文件，从 Windows 侧下发。这种形态不依赖 WSL 或 Git Bash。
 
@@ -216,30 +228,39 @@ Windows PowerShell 在传递远程命令时对引号、`$` 与反斜杠敏感。
 Update-Servers -cmd 'timedatectl show -p Timezone --value'
 ```
 
-Bash 侧直接跑 `bash deploy.sh --dry-run`，它会同时打印识别到的时区与将选用的模板。全部为 `Asia/Shanghai` 时一份模板通吃；存在 `UTC` 机器时按“时区与模板”一节分组，不要用同一份文件覆盖全部机器。
+Windows 侧有三种落地方式，区别在预检覆盖与是否逐台操作：
 
-Windows 侧有两种落地方式，区别只在**谁来做上传**：方式一把上传和安装一起做完，方式二把两步拆开、自己写 `scp`。
-
-| 方式 | 上传 | 逐台操作 | 适用 |
+| 方式 | 预检 | 逐台操作 | 适用 |
 | --- | --- | --- | --- |
-| 方式一：直接落到受管路径 | `Push-FileToServers` 内部执行 `scp` | 否，一条命令处理清单内全部机器 | 已加载 `PS/WpOnline` 模块 |
-| 方式二：手工 `scp` + `install-cron.sh` | 自己写 `scp`，每台一条 | 是 | 未加载模块 |
+| `Deploy-CronFile` | 依赖文件、cron 服务、重复条目、root 与目标目录 | 否，一条命令 | 已加载 `PS/WpOnline` 模块（推荐） |
+| `Push-FileToServers` | 无 | 否，一条命令 | 只需要文件落地 |
+| 手工 `scp` + `install-cron.sh` | 重复条目、cron 服务 | 是 | 未加载模块 |
 
-### 方式一：一条命令下发（推荐）
+### 方式一：Deploy-CronFile（推荐）
 
-已加载模块时不需要手写 `scp`：一条命令内完成上传、比对、备份、原子替换与写后校验，重复执行幂等。
+与 `deploy.sh` 行为对齐，只是运行在 Windows：
 
 ```powershell
-Import-Module ./PS/WpOnline/WpOnline.psd1
+Deploy-CronFile -Template /path/to/update-cron.cron -Require /www/functions4.php
+```
+
+- 每台三次连接：预检、上传、安装；预检通过且内容与权限一致时跳过写入，不产生备份。
+- 模板目录同时有 `cron.cst` 与 `cron.utc` 时，交给 `-TemplateDirectory` 按目标机时区自动选择，时区混合也能一条命令跑完，每台多一次时区探测。
+- 失败不中断整批，末尾给出汇总；加 `-FailOnError` 后存在失败机器即抛异常，可直接用于脚本或 CI。
+- `-WhatIf` 只打印将执行的动作，不连接目标机。默认受管路径 `/etc/cron.d/update-cron`，默认备份目录 `/var/backups/<受管文件名>`；完整参数见 `Get-Help Deploy-CronFile -Full`。
+
+### 方式二：Push-FileToServers（只要落地）
+
+不需要预检、只把文件推上去时用它：
+
+```powershell
 Push-FileToServers -Path /path/to/update-cron-file.cron -RemotePath /etc/cron.d/update-cron -Linuxify -Backup -BackupDirectory /var/backups/update-cron
 ```
 
+- `-RemotePath` 就是最终受管路径，落地时用 `install -m 0644 -o root -g root` 加同目录改名，cron 下一分钟读取，推送即安装。
+- `-Linuxify` 去 BOM、CRLF 转 LF，模板必须带；目标目录不存在时加 `-CreateDirectory`，`-ThrottleLimit` 默认 10。
+- 不查重复条目、依赖文件与 cron 服务；首次迁移用方式一，或按“已有相同任务时的迁移”人工核对。
 - 目标机默认取服务器清单的 `ip` 字段（跳过开头 1 条），也可以用 `-Server 203.0.113.11,root@203.0.113.12` 直接指定。
-- `-Linuxify` 去 BOM、CRLF 转 LF，模板必须带；
-- `-BackupDirectory` 与 `install-cron.sh` 一致时，“回滚”一节的命令可直接通用。
-- 默认 10 台并发，`-ThrottleLimit` 取 1 到 64；目标目录不存在时加 `-CreateDirectory`；`-WhatIf` 只打印不连接。运行中逐台打印状态与耗时，末尾给汇总行。
-
-`-RemotePath` 就是最终受管路径，落地时用 `install -m 0644 -o root -g root` 加同目录改名，cron 下一分钟读取，**推送即安装**：不需要再执行 `install-cron.sh`，也不需要重启 cron。`install-cron.sh` 只服务于方式二那种"自己 `scp`、需要目标机本地安装"的情形。
 
 失败不中断整批，也不抛异常，只体现在返回对象的 `Status` 与警告里，脚本化时要显式检查：
 
@@ -248,21 +269,9 @@ $r = Push-FileToServers -Path /path/to/update-cron-file.cron -RemotePath /etc/cr
 if (@($r | Where-Object Status -eq 'Failed').Count -gt 0) { throw '下发存在失败机器' }
 ```
 
-这条路径不做业务预检：不查重复任务条目、不查模板依赖文件、不查 cron 服务。这三项可以用 `Update-Servers` 补，不必改代码。`-Threads 1` 让输出按机器分组，命令开头的 `hostname` 用来区分主机，正常时每台只有一行主机名：
+`-BackupDirectory` 与 `install-cron.sh` 一致时，“回滚”一节的命令可直接通用。完整参数见 `Get-Help Push-FileToServers -Full`。
 
-```powershell
-Update-Servers -Threads 1 -cmd 'hostname; systemctl is-active cron crond cronie 2>/dev/null | grep -m1 -x active || echo cron-service=inactive'
-
-Update-Servers -Threads 1 -cmd 'hostname; grep -rnF --exclude=update-cron -e update_wp_functions.sh -e functions4.php /etc/crontab /etc/cron.d/ 2>/dev/null; crontab -l 2>/dev/null | grep -nF -e update_wp_functions.sh -e functions4.php'
-
-Update-Servers -Threads 1 -cmd 'hostname; for f in /www/sh/wp-functions-update/update_wp_functions.sh /www/functions4.php /www/functions24.php; do [ -f $f ] || echo missing:$f; done'
-```
-
-异常时对应位置会出现 `cron-service=inactive`、命中的 cron 行或 `missing:/...`。`-e` 与 `for f in` 后面换成自己模板里的脚本名，`--exclude` 用来排除刚写入的受管文件本身。
-
-第二条要在推送**之前**跑：cron 每分钟读一次配置，重复条目一旦被读到就会和旧条目一起执行，推送后再查只能补救。依赖与 cron 服务两条在推送前后都行，提前跑可以避免装上一份不生效的配置。完整预检（含 `--require`）仍用 `deploy.sh`。完整参数见 `Get-Help Push-FileToServers -Full`。
-
-### 方式二：手工 `scp` + `install-cron.sh`
+### 方式三：手工 `scp` + `install-cron.sh`
 
 没有加载模块时用这条路径。它需要手写命令，并且每台目标机各执行一次：
 
@@ -289,15 +298,6 @@ Update-Servers -cmd 'bash /www/sh/update-cron/install-cron.sh -f /www/sh/update-
 
 `/www/sh` 按实际部署路径调整。这种形态下模板随仓库走 Git，换行由 `.gitattributes` 保证，`install-cron.sh` 再去一次 BOM 与 CR 作为兜底。
 
-如果连 `scp` 也不想逐台写，可以把上传换成模块的一条命令，安装仍由 `install-cron.sh` 完成：
-
-```powershell
-Push-FileToServers -Path /path/to/update-cron-file.cron -RemotePath /tmp/update-cron.cron -Linuxify
-Update-Servers -cmd 'bash /www/sh/update-cron/install-cron.sh -f /tmp/update-cron.cron'
-```
-
-这与方式一的区别只在落点：传 `/tmp` 是只上传，安装交给 `install-cron.sh`；直接传 `/etc/cron.d/update-cron` 则由 `Push-FileToServers` 自己完成安装，不必再传一份到 `/tmp`。
-
 ### Update-Servers 的适用边界
 
 本文多处用 `Update-Servers` 做批量只读检查与批量执行，它适合的场景很窄：
@@ -311,6 +311,13 @@ Update-Servers -cmd 'bash /www/sh/update-cron/install-cron.sh -f /tmp/update-cro
 - 依赖 `Start-ThreadJob`：PowerShell 7 自带；Windows PowerShell 5.1 需先安装 `ThreadJob` 模块，否则整条命令直接报 `CommandNotFoundException`，一台都不会执行。
 
 ### 校验与删除
+
+用 `Deploy-CronFile` 落地时，校验与删除各一条命令：
+
+```powershell
+Deploy-CronFile -Check -Template /path/to/update-cron.cron
+Deploy-CronFile -Remove
+```
 
 用 `install-cron.sh` 落地时按单台或经 `Update-Servers` 批量执行：
 
@@ -332,15 +339,15 @@ ssh root@${h} 'mkdir -p /var/backups/update-cron && cp -p /etc/cron.d/update-cro
 
 | 场景 | 建议 |
 | --- | --- |
-| 目标机同一时区，控制机已加载 `PS/WpOnline` 模块 | `Push-FileToServers`，一条命令并发下发并逐台输出结果 |
-| 目标机同一时区，控制机未加载模块 | 手工 `scp` + `install-cron.sh`，`scp` 每台一条 |
-| 目标机时区混合（部分 CST、部分 UTC） | `deploy.sh`，按机器自动选择模板 |
-| 需要预检依赖文件、cron 服务与重复条目 | `deploy.sh` 全部覆盖（依赖由 `--require` 声明）；`install-cron.sh` 查 cron 服务与重复条目；`Push-FileToServers` 都不查 |
-| 需要在一台机器上反复执行并跳过无变化写入 | 各方式都支持；`deploy.sh` 在控制机比对，`Push-FileToServers` 与 `install-cron.sh` 在目标机比对，都不产生多余写入与备份 |
+| 目标机同一时区或时区混合，控制机已加载 `PS/WpOnline` 模块 | `Deploy-CronFile`；时区混合时用 `-TemplateDirectory` |
+| 只要文件落地，不需要预检 | `Push-FileToServers` |
+| 控制机未加载模块 | 手工 `scp` + `install-cron.sh`，`scp` 每台一条 |
+| 控制机有 Bash，想把流程固化成脚本 | `deploy.sh`，退出码与预检语义完整 |
+| 反复执行并跳过无变化写入 | 各方式都支持；`deploy.sh` 在控制机比对，`Deploy-CronFile`、`Push-FileToServers` 与 `install-cron.sh` 在目标机比对 |
 
 ### 三个容易错的地方
 
-- 受管文件名不能带点号。`/etc/cron.d` 中带点号的文件会被 `run-parts` 静默跳过，两个脚本都会直接拒绝这类目标名，`Push-FileToServers` 在调用时就会抛错。
+- 受管文件名不能带点号。`/etc/cron.d` 中带点号的文件会被 `run-parts` 静默跳过，脚本与模块函数都会直接拒绝这类目标名。
 - `scp` 直接覆盖目标路径不是原子写，cron 可能读到半截文件。各方式都先写同目录临时文件再改名。
 - `scp` 落地后的属主与权限取决于源文件和登录用户。各方式都用 `install -m 0644 -o root -g root` 固定，并在写后复核。
 
@@ -426,15 +433,15 @@ bash deploy.sh --remove
 
 | 操作 | Bash 控制机 | Windows 控制机 |
 | --- | --- | --- |
-| 预演 | `bash deploy.sh --template <模板> --dry-run` | `Push-FileToServers … -WhatIf` |
-| 下发或修改后重发 | `bash deploy.sh --template <模板>` | 重跑 `Push-FileToServers` |
-| 校验 | `bash deploy.sh --template <模板> --check` | 重跑 `Push-FileToServers`，应全部 `Skipped` |
+| 预演 | `bash deploy.sh --template <模板> --dry-run` | `Deploy-CronFile -Template <模板> -WhatIf` |
+| 下发或修改后重发 | `bash deploy.sh --template <模板>` | `Deploy-CronFile -Template <模板>` |
+| 校验 | `bash deploy.sh --template <模板> --check` | `Deploy-CronFile -Check -Template <模板>` |
 | 新增机器 | `hosts.txt` 增加一行后 `bash deploy.sh --template <模板>` | 服务器清单增加一行后重跑；或用 `-Server` 只指定新增机器 |
-| 移除单台机器 | `bash deploy.sh -f hosts-remove.txt --remove` | 登录该机备份并删除受管文件，见“Windows 侧单文件下发 · 校验与删除” |
+| 移除单台机器 | `bash deploy.sh -f hosts-remove.txt --remove` | `Deploy-CronFile -Remove -Server <host>` |
 | 回滚 | `cp -p` 备份回受管路径 | 同左；也可把备份文件作为 `-Path`，用 `Push-FileToServers` 推回 |
-| 删除全部任务 | `bash deploy.sh --remove` | 先用 `Update-Servers -cmd` 批量备份并删除受管文件 |
+| 删除全部任务 | `bash deploy.sh --remove` | `Deploy-CronFile -Remove` |
 
-`Update-Servers` 只处理服务器清单内的全部机器，单台操作直接 `ssh root@<host> '...'`，能力与限制见“Update-Servers 的适用边界”。PowerShell 路径不预检重复条目与 cron 服务，模板改动后仍应人工核对一次 `crontab -l` 与 `/etc/cron.d`。
+`Update-Servers` 只处理服务器清单内的全部机器，单台操作直接 `ssh root@<host> '...'`，能力与限制见“Update-Servers 的适用边界”。`Deploy-CronFile` 覆盖重复条目与 cron 服务预检；`Push-FileToServers` 不预检，模板改动后仍应人工核对一次 `crontab -l` 与 `/etc/cron.d`。
 
 批量停止调度时，先备份再删除受管文件：
 

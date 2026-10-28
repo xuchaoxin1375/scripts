@@ -169,15 +169,20 @@ if [[ -n $requires_b64 ]]; then
   rm -f "$require_list"
 fi
 
+cron_ok=0
 if command -v systemctl >/dev/null 2>&1; then
-  if ! systemctl is-active --quiet cron 2>/dev/null &&
-    ! systemctl is-active --quiet crond 2>/dev/null &&
-    ! systemctl is-active --quiet cronie 2>/dev/null; then
-    echo "cron 服务未运行，请先启动 cron、crond 或 cronie" >&2
-    exit 1
+  if systemctl is-active --quiet cron 2>/dev/null ||
+    systemctl is-active --quiet crond 2>/dev/null ||
+    systemctl is-active --quiet cronie 2>/dev/null; then
+    cron_ok=1
   fi
-elif ! pgrep -x cron >/dev/null 2>&1 && ! pgrep -x crond >/dev/null 2>&1; then
-  echo "cron 进程未运行" >&2
+fi
+# 容器与 WSL 里 systemctl 可能存在但不是 PID 1，补一次进程判断，避免误报未运行
+if [[ $cron_ok -eq 0 ]] && (pgrep -x cron >/dev/null 2>&1 || pgrep -x crond >/dev/null 2>&1 || pgrep -x cronie >/dev/null 2>&1); then
+  cron_ok=1
+fi
+if [[ $cron_ok -eq 0 ]]; then
+  echo "cron 服务未运行，请先启动 cron、crond 或 cronie" >&2
   exit 1
 fi
 
