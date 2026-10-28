@@ -112,7 +112,7 @@ Import-Module .\PS\WpOnline\WpOnline.psd1
    Update-Servers -cmd 'ls -l /www/sh/wp-functions-update/update_wp_functions.sh /www/functions4.php /www/functions24.php'
    ```
 
-   `Update-Servers` 对服务器清单中的全部机器执行同一条命令，默认在 `/www` 下运行。
+   `Update-Servers` 对服务器清单中的全部机器执行同一条命令，默认在 `/www` 下运行；Windows PowerShell 5.1 需先安装 `ThreadJob` 模块，否则改用 `pwsh` 7。
 
 2. 预演。`-WhatIf` 只打印将要执行的动作，不连接目标机。
 
@@ -120,7 +120,7 @@ Import-Module .\PS\WpOnline\WpOnline.psd1
    Push-FileToServers -Path .\wp-functions-cron\wp-functions.cron.cst -RemotePath /etc/cron.d/wp-functions -Linuxify -Backup -BackupDirectory /var/backups/wp-functions-cron -WhatIf
    ```
 
-3. 下发：去掉 `-WhatIf` 重跑上一条命令。
+3. 下发：去掉 `-WhatIf` 重跑上一条命令。上传与落地都由它完成，不需要再手写 `scp`。
 
 4. 校验：再跑一次同一条命令（不带 `-WhatIf`）。内容与权限已一致的机器显示 `Skipped`，不一致或缺失的显示 `Updated`；随后按上一节登录任意一台核对 `stat` 与 `crontab -l`。
 
@@ -174,42 +174,29 @@ Windows PowerShell 在传递远程命令时对引号、`$` 与反斜杠敏感。
 
 ## Windows 侧单文件下发
 
-如果全部目标机的系统时区一致（例如都是 `Asia/Shanghai`），可以只维护一份 cron 文件，从 Windows 侧下发。这种形态不依赖 WSL 或 Git Bash，控制机也不需要安装 Bash。
+如果全部目标机的系统时区一致（例如都是 `Asia/Shanghai`），可以只维护一份 cron 文件 `wp-functions.cron.cst`，从 Windows 侧下发。这种形态不依赖 WSL 或 Git Bash。
 
-先批量确认时区。Windows 侧经 `Update-Servers` 逐台查询，命令在每台目标机本地执行：
+先批量确认时区，命令在每台目标机本地执行：
 
 ```powershell
 Update-Servers -cmd 'timedatectl show -p Timezone --value'
 ```
 
-Bash 侧直接跑 `bash deploy.sh --dry-run`，它会同时打印识别到的时区与将选用的模板。
+Bash 侧直接跑 `bash deploy.sh --dry-run`，它会同时打印识别到的时区与将选用的模板。全部为 `Asia/Shanghai` 时一份模板通吃；存在 `UTC` 机器时按“时区与模板”一节分组，不要用同一份文件覆盖全部机器。
 
-全部为 `Asia/Shanghai` 时，只需使用 `wp-functions.cron.cst`，`0 16` 与 `0 0` 在所有机器上语义一致。存在 `UTC` 机器时按“时区与模板”一节分组，不要用同一份文件覆盖全部机器。
+Windows 侧有两种落地方式，区别只是**谁来做上传**：
 
-下发流程：
+| 方式 | 上传 | 逐台操作 | 适用 |
+| --- | --- | --- | --- |
+| 一条命令下发 | `Push-FileToServers` 内部执行 `scp`，不需要自己写 | 否，一条命令处理清单内全部机器 | 已加载 `PS/WpOnline` 模块 |
+| 手工 `scp` + `install-cron.sh` | 自己写 `scp`，每台一条 | 是 | 未加载模块，或需要目标机本地安装器做预检 |
 
-1. 在本地编辑 `wp-functions.cron.cst`，它就是最终落地内容。
-2. 上传到目标机的临时路径。
-3. 在目标机执行 `install-cron.sh`，由它完成剩余处理。
+### 方式一：一条命令下发（推荐）
 
-```powershell
-scp .\wp-functions-cron\wp-functions.cron.cst root@${h}:/tmp/wp-functions.cron
-ssh root@${h} 'bash /www/sh/wp-functions-cron/install-cron.sh -f /tmp/wp-functions.cron'
-```
-
-`${h}` 替换为 `Get-ServerList` 返回的主机名或地址；通过 `Update-Servers` 批量执行时，第二条命令可直接复用，不需要按主机改参数。
-
-如果仓库已经整体部署到目标机，可以省掉 `scp`，让安装器读取仓库内的模板：
+已加载模块时不需要手写 `scp`：`Push-FileToServers` 固定为每台目标机两次连接，先上传到 `/tmp`，再在一个 `ssh` 会话内完成比对、备份、原子替换与写后校验，重复执行幂等：
 
 ```powershell
-ssh root@${h} 'bash /www/sh/wp-functions-cron/install-cron.sh -f /www/sh/wp-functions-cron/wp-functions.cron.cst'
-```
-
-`/www/sh` 按实际部署路径调整。这种形态下模板随仓库走 Git，换行由 `.gitattributes` 保证，`install-cron.sh` 再去一次 BOM 与 CR 作为兜底。
-
-本机若已加载仓库的 `PS/WpOnline` 模块，可以直接用 `Push-FileToServers` 完成同样的落地动作。它固定为每台目标机两次连接：先 `scp` 上传到 `/tmp`，再在一个 `ssh` 会话内完成比对、备份、原子替换与写后校验，重复执行幂等：
-
-```powershell
+Import-Module .\PS\WpOnline\WpOnline.psd1
 Push-FileToServers -Path .\wp-functions-cron\wp-functions.cron.cst -RemotePath /etc/cron.d/wp-functions -Linuxify -Backup -BackupDirectory /var/backups/wp-functions-cron
 ```
 
@@ -245,7 +232,48 @@ if (@($r | Where-Object Status -eq 'Failed').Count -gt 0) { throw '下发存在�
 
 并发在 `-ThrottleLimit` 大于 1 时启用：PowerShell 7 使用自带的 `ThreadJob`，Windows PowerShell 5.1 装了 `ThreadJob` 模块同样可用，缺装时退回 `Start-Job` 进程级作业（功能一致，每台多一次进程启动）；`-ThrottleLimit 1` 不建作业，直接顺序执行。中断或异常退出时，本轮创建的作业会被统一清理。
 
-校验与删除。用 `install-cron.sh` 落地时按单台或经 `Update-Servers` 批量执行：
+### 方式二：手工 `scp` + `install-cron.sh`
+
+没有加载模块，或需要目标机本地安装器做重复条目预检时用这条路径。它需要手写命令，并且每台目标机各执行一次：
+
+1. 在本地编辑 `wp-functions.cron.cst`，它就是最终落地内容。
+2. 上传到目标机的 `/tmp`。
+3. 在目标机执行 `install-cron.sh`，由它完成去 BOM、去 CR、备份、原子替换、写后校验与重复条目检查。
+
+```powershell
+scp .\wp-functions-cron\wp-functions.cron.cst root@${h}:/tmp/wp-functions.cron
+ssh root@${h} 'bash /www/sh/wp-functions-cron/install-cron.sh -f /tmp/wp-functions.cron'
+```
+
+`${h}` 替换为目标机地址。`scp` 每台一条，需要自己循环；`ssh` 这一步不含按主机变化的参数，可以交给 `Update-Servers` 批量执行：
+
+```powershell
+Update-Servers -cmd 'bash /www/sh/wp-functions-cron/install-cron.sh -f /tmp/wp-functions.cron'
+```
+
+`Update-Servers` 只负责执行命令、不做上传，前提是每台的 `scp` 都已经执行。如果仓库已经整体部署到目标机，可以省掉 `scp`，让安装器直接读仓库内的模板：
+
+```powershell
+Update-Servers -cmd 'bash /www/sh/wp-functions-cron/install-cron.sh -f /www/sh/wp-functions-cron/wp-functions.cron.cst'
+```
+
+`/www/sh` 按实际部署路径调整。这种形态下模板随仓库走 Git，换行由 `.gitattributes` 保证，`install-cron.sh` 再去一次 BOM 与 CR 作为兜底。
+
+### Update-Servers 的适用边界
+
+本文多处用 `Update-Servers` 做批量只读检查与批量执行，它适合的场景很窄：
+
+- 对服务器清单内**全部**机器执行同一条命令：查时区、查文件是否存在、批量执行 `install-cron.sh --check`、批量备份并删除受管文件。
+- 只做执行，不做上传：文件下发用 `Push-FileToServers` 或手工 `scp`。
+- 固定以 `root` 登录，并先切到 `-WorkingDirectory`（默认 `/www`）；目标机没有该目录时命令直接失败。
+- 没有 `-Server` 参数，不能只处理一台；单台操作用 `ssh root@<host> '...'`。
+- 输出不区分主机，多台结果混在一起；需要逐台状态时看 `Push-FileToServers` 的结果对象，或自己循环单台 `ssh`。
+- 不返回失败汇总与退出码，只回显远端 stdout 与 stderr。
+- 依赖 `Start-ThreadJob`：PowerShell 7 自带；Windows PowerShell 5.1 需先安装 `ThreadJob` 模块，否则整条命令直接报 `CommandNotFoundException`，一台都不会执行。
+
+### 校验与删除
+
+用 `install-cron.sh` 落地时按单台或经 `Update-Servers` 批量执行：
 
 ```powershell
 ssh root@${h} 'bash /www/sh/wp-functions-cron/install-cron.sh --check -f /tmp/wp-functions.cron'
@@ -266,7 +294,7 @@ ssh root@${h} 'mkdir -p /var/backups/wp-functions-cron && cp -p /etc/cron.d/wp-f
 | 场景 | 建议 |
 | --- | --- |
 | 目标机同一时区，控制机已加载 `PS/WpOnline` 模块 | `Push-FileToServers`，一条命令并发下发并逐台输出结果 |
-| 目标机同一时区，控制机只有 `scp` 与 `ssh` | `scp` + `install-cron.sh`，Windows 侧无需 Bash |
+| 目标机同一时区，控制机未加载模块 | 手工 `scp` + `install-cron.sh`，`scp` 每台一条 |
 | 目标机时区混合（部分 CST、部分 UTC） | `deploy.sh`，按机器自动选择模板 |
 | 需要预检源文件、cron 服务与重复条目 | `deploy.sh` 三项全查；`install-cron.sh` 查 cron 服务与重复条目；`Push-FileToServers` 都不查 |
 | 需要在一台机器上反复执行并跳过无变化写入 | 三者都支持；`deploy.sh` 在控制机比对，`Push-FileToServers` 上传后在目标机比对，都不产生多余写入与备份 |
@@ -368,7 +396,7 @@ bash deploy.sh --check
 | 回滚 | `cp -p` 备份回受管路径 | 同左；也可把备份文件作为 `-Path`，用 `Push-FileToServers` 推回 |
 | 删除全部任务 | `bash deploy.sh --remove` | 先用 `Update-Servers -cmd` 批量备份并删除受管文件 |
 
-`Update-Servers` 只接受服务器清单，会对清单内**全部**机器执行同一条命令，不能用来只操作一台；单台操作直接 `ssh root@<host> '...'`。PowerShell 路径不预检重复条目与 cron 服务，模板改动后仍应人工核对一次 `crontab -l` 与 `/etc/cron.d`。
+`Update-Servers` 只处理服务器清单内的全部机器，单台操作直接 `ssh root@<host> '...'`，能力与限制见“Update-Servers 的适用边界”。PowerShell 路径不预检重复条目与 cron 服务，模板改动后仍应人工核对一次 `crontab -l` 与 `/etc/cron.d`。
 
 批量停止调度时，先备份再删除受管文件：
 
@@ -397,6 +425,8 @@ Update-Servers -cmd 'mkdir -p /var/backups/wp-functions-cron && cp -p /etc/cron.
 | `Failed 写入失败: install: cannot create regular file` | 目标目录不存在 | 首次下发加 `-CreateDirectory` |
 | `Failed 作业异常` | 后台作业未正常返回结果 | 改用 `-ThrottleLimit 1` 顺序执行，绕开并发层后复现 |
 | 远端报 `unexpected end of file` 或 `parse error near` | 下发的命令换行或引号被破坏 | 确认调用的是最新版 `Push-FileToServers`；清理 `/tmp/push-file-*` 后重试 |
+| `Update-Servers` 报 `Start-ThreadJob is not recognized` | 当前是 Windows PowerShell 5.1 且未安装 `ThreadJob` 模块 | 改用 `pwsh` 7 执行，或先安装 `ThreadJob` 模块 |
+| `Update-Servers` 输出没有对应主机名，无法定位 | 该命令只回显远端输出，不标注主机 | 单台改用 `ssh root@<host> '...'` 逐个确认 |
 
 ## 与现有 crontab 和宝塔面板的关系
 
