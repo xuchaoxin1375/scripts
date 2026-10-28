@@ -218,13 +218,12 @@ Update-Servers -cmd 'timedatectl show -p Timezone --value'
 
 Bash 侧直接跑 `bash deploy.sh --dry-run`，它会同时打印识别到的时区与将选用的模板。全部为 `Asia/Shanghai` 时一份模板通吃；存在 `UTC` 机器时按“时区与模板”一节分组，不要用同一份文件覆盖全部机器。
 
-Windows 侧有三种落地方式，区别在于上传由谁完成，以及是否在目标机本地做预检：
+Windows 侧有两种落地方式，区别只在**谁来做上传**：方式一把上传和安装一起做完，方式二把两步拆开、自己写 `scp`。
 
 | 方式 | 上传 | 逐台操作 | 适用 |
 | --- | --- | --- | --- |
-| 方式一：直接落到受管路径 | `Push-FileToServers` 内部执行 `scp` | 否，一条命令处理清单内全部机器 | 旧条目已清理，不需要额外预检 |
-| 方式一（预检变体）：上传到 `/tmp` 再安装 | 同上，两条命令都是批量 | 否，两条命令处理全部机器 | 需要重复条目与 cron 服务检查 |
-| 方式二：手工 `scp` + `install-cron.sh` | 自己写 `scp`，每台一条 | 是 | 未加载 `PS/WpOnline` 模块 |
+| 方式一：直接落到受管路径 | `Push-FileToServers` 内部执行 `scp` | 否，一条命令处理清单内全部机器 | 已加载 `PS/WpOnline` 模块 |
+| 方式二：手工 `scp` + `install-cron.sh` | 自己写 `scp`，每台一条 | 是 | 未加载模块 |
 
 ### 方式一：一条命令下发（推荐）
 
@@ -236,19 +235,11 @@ Push-FileToServers -Path /path/to/update-cron-file.cron -RemotePath /etc/cron.d/
 ```
 
 - 目标机默认取服务器清单的 `ip` 字段（跳过开头 1 条），也可以用 `-Server 203.0.113.11,root@203.0.113.12` 直接指定。
-- `-Linuxify` 去 BOM、CRLF 转 LF，模板必须带；`-BackupDirectory` 与 `install-cron.sh` 一致时，“回滚”一节的命令可直接通用。
+- `-Linuxify` 去 BOM、CRLF 转 LF，模板必须带；
+- `-BackupDirectory` 与 `install-cron.sh` 一致时，“回滚”一节的命令可直接通用。
 - 默认 10 台并发，`-ThrottleLimit` 取 1 到 64；目标目录不存在时加 `-CreateDirectory`；`-WhatIf` 只打印不连接。运行中逐台打印状态与耗时，末尾给汇总行。
 
-`-RemotePath` 就是最终受管路径，落地时用 `install -m 0644 -o root -g root` 加同目录改名，cron 下一分钟读取，**推送即安装**：不需要再执行 `install-cron.sh`，也不需要重启 cron。
-
-需要 `install-cron.sh` 的重复条目与 cron 服务预检时，先批量上传到 `/tmp`，再批量安装：
-
-```powershell
-Push-FileToServers -Path /path/to/update-cron-file.cron -RemotePath /tmp/update-cron.cron -Linuxify
-Update-Servers -cmd 'bash /www/sh/update-cron/install-cron.sh -f /tmp/update-cron.cron'
-```
-
-`/tmp` 下带点号的文件名不受 `/etc/cron.d` 命名限制，安装、预检与写后校验都由服务器端脚本完成，其中的脚本路径按实际部署位置调整；把第二条换成 `--check` 或 `--remove` 即为校验与删除。
+`-RemotePath` 就是最终受管路径，落地时用 `install -m 0644 -o root -g root` 加同目录改名，cron 下一分钟读取，**推送即安装**：不需要再执行 `install-cron.sh`，也不需要重启 cron。`install-cron.sh` 只服务于方式二那种"自己 `scp`、需要目标机本地安装"的情形。
 
 失败不中断整批，也不抛异常，只体现在返回对象的 `Status` 与警告里，脚本化时要显式检查：
 
@@ -257,7 +248,7 @@ $r = Push-FileToServers -Path /path/to/update-cron-file.cron -RemotePath /etc/cr
 if (@($r | Where-Object Status -eq 'Failed').Count -gt 0) { throw '下发存在失败机器' }
 ```
 
-直接落到 `/etc/cron.d/update-cron` 时只负责文件落地，不检查重复任务条目、模板依赖文件与 cron 服务；需要这些检查就用上面的 `/tmp` + `install-cron.sh` 组合，或改用 `deploy.sh --require`。完整参数见 `Get-Help Push-FileToServers -Full`。
+这条路径不做业务预检：不查重复任务条目、不查模板依赖文件、不查 cron 服务。重复条目只在首次迁移时出现，按“已有相同任务时的迁移”手工核对一次即可；依赖文件与完整预检用 `deploy.sh --require`。完整参数见 `Get-Help Push-FileToServers -Full`。
 
 ### 方式二：手工 `scp` + `install-cron.sh`
 
@@ -285,6 +276,15 @@ Update-Servers -cmd 'bash /www/sh/update-cron/install-cron.sh -f /www/sh/update-
 ```
 
 `/www/sh` 按实际部署路径调整。这种形态下模板随仓库走 Git，换行由 `.gitattributes` 保证，`install-cron.sh` 再去一次 BOM 与 CR 作为兜底。
+
+如果连 `scp` 也不想逐台写，可以把上传换成模块的一条命令，安装仍由 `install-cron.sh` 完成：
+
+```powershell
+Push-FileToServers -Path /path/to/update-cron-file.cron -RemotePath /tmp/update-cron.cron -Linuxify
+Update-Servers -cmd 'bash /www/sh/update-cron/install-cron.sh -f /tmp/update-cron.cron'
+```
+
+这与方式一的区别只在落点：传 `/tmp` 是只上传，安装交给 `install-cron.sh`；直接传 `/etc/cron.d/update-cron` 则由 `Push-FileToServers` 自己完成安装，不必再传一份到 `/tmp`。
 
 ### Update-Servers 的适用边界
 
@@ -321,7 +321,6 @@ ssh root@${h} 'mkdir -p /var/backups/update-cron && cp -p /etc/cron.d/update-cro
 | 场景 | 建议 |
 | --- | --- |
 | 目标机同一时区，控制机已加载 `PS/WpOnline` 模块 | `Push-FileToServers`，一条命令并发下发并逐台输出结果 |
-| 目标机同一时区，需要预检又不想逐台 `scp` | `Push-FileToServers` 上传到 `/tmp`，再用 `Update-Servers` 调 `install-cron.sh` |
 | 目标机同一时区，控制机未加载模块 | 手工 `scp` + `install-cron.sh`，`scp` 每台一条 |
 | 目标机时区混合（部分 CST、部分 UTC） | `deploy.sh`，按机器自动选择模板 |
 | 需要预检依赖文件、cron 服务与重复条目 | `deploy.sh` 全部覆盖（依赖由 `--require` 声明）；`install-cron.sh` 查 cron 服务与重复条目；`Push-FileToServers` 都不查 |
