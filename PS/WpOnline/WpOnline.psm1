@@ -1507,7 +1507,7 @@ function ConvertTo-LinuxTextFile
     规范化结果的输出路径，支持相对路径；允许与 -Path 相同，此时为原地规范化。
 
     .EXAMPLE
-    ConvertTo-LinuxTextFile -Path .\wp-functions.cron.cst -Destination .\out\wp-functions
+    ConvertTo-LinuxTextFile -Path .\update-cron.cron -Destination .\out\update-cron
 
     把本地模板规范化到另一个文件，原文件保持不变。
 
@@ -1625,7 +1625,7 @@ function Push-FileToServers
     本地文件路径。
 
     .PARAMETER RemotePath
-    目标机上的完整路径，例如 /etc/cron.d/wp-functions。
+    目标机上的完整路径，例如 /etc/cron.d/update-cron。
 
     .PARAMETER Server
     目标机列表，元素可以是 IP、主机名或 user@host；不带用户名的元素按 root 处理。省略时读取 Get-ServerList 的 ip 字段。
@@ -1661,7 +1661,7 @@ function Push-FileToServers
     目标目录不存在时先创建。
 
     .EXAMPLE
-    Push-FileToServers -Path .\wp-functions-cron\wp-functions.cron.cst -RemotePath /etc/cron.d/wp-functions -Linuxify
+    Push-FileToServers -Path .\work\update-cron.cron -RemotePath /etc/cron.d/update-cron -Linuxify
 
     推送定时任务文件：去掉 BOM 与 CR，落地为 644 root root，默认 10 台并发。
 

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# 在目标服务器本地安装 /etc/cron.d/wp-functions。
+# 在目标服务器本地把一份 cron 文件安装为受管文件，默认 /etc/cron.d/update-cron。
 # 典型用法：Windows 侧先 scp 上传 cron 文件，再通过 ssh 调用本脚本；
 # 也可让本脚本直接读取随仓库部署的模板文件。
 set -euo pipefail
 
-SOURCE_FILE="/tmp/wp-functions.cron"
-TARGET_FILE="/etc/cron.d/wp-functions"
-BACKUP_DIR="/var/backups/wp-functions-cron"
+SOURCE_FILE="/tmp/update-cron.cron"
+TARGET_FILE="/etc/cron.d/update-cron"
+BACKUP_DIR=""
 ACTION="apply"
 ALLOW_EXISTING=0
 
@@ -14,20 +14,22 @@ usage() {
 	cat <<'EOF'
 用法: bash install-cron.sh [选项]
 
-在目标服务器本地把一份 cron 文件安装到 /etc/cron.d/wp-functions。
+在目标服务器本地把一份 cron 文件安装为受管文件，默认 /etc/cron.d/update-cron。
 脚本负责去 BOM、去 CR、补齐尾换行、备份、原子替换和写后校验。
 
 选项:
-  -f, --file <路径>      待安装的 cron 文件，默认 /tmp/wp-functions.cron
-  -t, --target <路径>    目标文件，默认 /etc/cron.d/wp-functions
+  -f, --file <路径>      待安装的 cron 文件，默认 /tmp/update-cron.cron
+  -t, --target <路径>    目标文件，默认 /etc/cron.d/update-cron；文件名不能含点号
+      --backup-dir <路径> 备份目录，默认 /var/backups/<目标文件名>
       --check            只校验目标文件是否与 --file 一致
       --remove           备份后删除目标文件
       --allow-existing   跳过重复条目检查
   -h, --help             显示本帮助
 
 示例:
-  bash install-cron.sh -f /tmp/wp-functions.cron
-  bash install-cron.sh --check -f /tmp/wp-functions.cron
+  bash install-cron.sh -f /tmp/update-cron.cron
+  bash install-cron.sh --check -f /tmp/update-cron.cron
+  bash install-cron.sh --target /etc/cron.d/my-tasks -f /tmp/my-tasks.cron
   bash install-cron.sh --remove
 EOF
 }
@@ -133,8 +135,9 @@ backup_current() {
 }
 
 apply_file() {
-	local file=$1
-	backup_current "wp-functions"
+	local file=$1 name
+	name=$(basename "$TARGET_FILE")
+	backup_current "$name"
 	install -m 0644 -o root -g root "$file" "$TARGET_FILE.tmp.$$"
 	mv -f "$TARGET_FILE.tmp.$$" "$TARGET_FILE"
 	if command -v restorecon >/dev/null 2>&1; then
@@ -174,11 +177,13 @@ check_file() {
 }
 
 remove_file() {
+	local name
 	[[ -f $TARGET_FILE ]] || {
 		log "目标文件不存在: $TARGET_FILE"
 		return 0
 	}
-	backup_current "wp-functions.removed"
+	name=$(basename "$TARGET_FILE")
+	backup_current "$name.removed"
 	rm -f "$TARGET_FILE"
 	log "已删除: $TARGET_FILE"
 }
@@ -203,6 +208,11 @@ while (($# > 0)); do
 	-t | --target)
 		(($# >= 2)) || die "参数 $1 缺少取值"
 		TARGET_FILE=$2
+		shift 2
+		;;
+	--backup-dir)
+		(($# >= 2)) || die "参数 $1 缺少取值"
+		BACKUP_DIR=$2
 		shift 2
 		;;
 	--check)
@@ -230,6 +240,12 @@ done
 if [[ $ACTION == "check" && $ALLOW_EXISTING == 1 ]]; then
 	die "--check 与 --allow-existing 不能同时使用"
 fi
+
+[[ $TARGET_FILE == /* ]] || die "目标文件必须是绝对路径: $TARGET_FILE"
+if [[ -z $BACKUP_DIR ]]; then
+	BACKUP_DIR="/var/backups/$(basename "$TARGET_FILE")"
+fi
+[[ $BACKUP_DIR == /* ]] || die "备份目录必须是绝对路径: $BACKUP_DIR"
 
 check_target_name
 

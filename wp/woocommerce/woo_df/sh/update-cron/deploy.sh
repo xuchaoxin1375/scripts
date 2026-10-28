@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# 批量维护目标机的 /etc/cron.d/wp-functions。
+# 批量维护目标机上的一份受管 cron 文件，默认 /etc/cron.d/update-cron。
+# 不改动现有 crontab，也不修改系统时区。
 # 设计说明与使用方式见同目录的 方案.md 与 README.md。
 set -euo pipefail
 
@@ -10,11 +11,12 @@ DRY_RUN=0
 CHECK_ONLY=0
 REMOVE=0
 ALLOW_EXISTING=0
+REQUIRED_FILES=()
 
-REMOTE_FILE="/etc/cron.d/wp-functions"
-BACKUP_DIR="/var/backups/wp-functions-cron"
-CRON_TEMPLATE_CST="$SCRIPT_DIR/wp-functions.cron.cst"
-CRON_TEMPLATE_UTC="$SCRIPT_DIR/wp-functions.cron.utc"
+REMOTE_FILE="/etc/cron.d/update-cron"
+BACKUP_DIR=""
+CRON_TEMPLATE_CST="$SCRIPT_DIR/cron.cst"
+CRON_TEMPLATE_UTC="$SCRIPT_DIR/cron.utc"
 
 SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=10)
 if [[ -n ${SSH_EXTRA_OPTS:-} ]]; then
@@ -28,26 +30,28 @@ usage() {
 	cat <<'EOF'
 用法: bash deploy.sh [选项]
 
-在每台目标机上创建或更新 /etc/cron.d/wp-functions，不改动现有 crontab。
+在每台目标机上创建或更新一份受管 cron 文件，默认 /etc/cron.d/update-cron，不改动现有 crontab。
 
 选项:
   -f, --hosts <文件>      主机清单，默认 hosts.txt；每行一个 SSH 目标，如 root@192.0.2.10
-  -t, --template <文件>   强制指定 cron 模板；默认按目标机系统时区自动选择
+  -t, --template <文件>   强制指定 cron 模板；默认按目标机系统时区选择脚本目录的 cron.cst 或 cron.utc
+      --target <路径>     受管文件路径，默认 /etc/cron.d/update-cron；文件名不能含点号
+      --backup-dir <路径> 备份目录，默认 /var/backups/<受管文件名>
+      --require <路径>    下发前要求目标机存在的文件，可重复用于预检依赖
   -n, --dry-run           只检测并打印将要执行的操作，不写入目标机
       --check             只校验目标机上的文件内容与权限，不写入
-      --remove            删除目标机上的 /etc/cron.d/wp-functions，删除前备份
-      --allow-existing    允许 root crontab 或其它 cron.d 文件中已存在引用这两个源文件的条目
+      --remove            删除目标机上的受管文件，删除前备份
+      --allow-existing    允许 root crontab 或其它 cron 配置中已存在相同任务
   -h, --help              显示本帮助
 
 环境变量:
   SSH_EXTRA_OPTS          追加给 ssh 的参数，例如 "-p 2222 -i ~/.ssh/id_ed25519"
 
 示例:
-  bash deploy.sh --dry-run
-  bash deploy.sh
-  bash deploy.sh --check
-  bash deploy.sh -f hosts-prod.txt
-  bash deploy.sh --template wp-functions.cron.cst
+  bash deploy.sh --template ~/wpfc/update-cron.cron --dry-run
+  bash deploy.sh --template ~/wpfc/update-cron.cron
+  bash deploy.sh --template ~/wpfc/update-cron.cron --check
+  bash deploy.sh -f hosts-prod.txt --target /etc/cron.d/my-tasks
   bash deploy.sh --remove
 EOF
 }
@@ -112,25 +116,58 @@ select_template() {
 	esac
 }
 
+# 从模板中提取被引用脚本的基名，用于判断其它 cron 配置里是否已有相同任务
+template_patterns() {
+	local file=$1
+	grep -vE '^[[:space:]]*(#|$)' "$file" |
+		grep -oE '[^[:space:]]+\.(php|sh)' |
+		while IFS= read -r entry; do basename "$entry"; done |
+		sort -u
+}
+
+encode_list() {
+	base64 | tr -d '\n'
+}
+
 remote_precheck() {
-	local host=$1
+	local host=$1 template=$2 patterns_b64 requires_b64
+	patterns_b64=$(template_patterns "$template" | encode_list)
+	requires_b64=""
+	if ((${#REQUIRED_FILES[@]} > 0)); then
+		requires_b64=$(printf '%s\n' "${REQUIRED_FILES[@]}" | encode_list)
+	fi
+	# ssh 会把多个参数拼成一行再交给远端 shell 解析，空参数会直接消失；
+	# 用 '-' 作为空列表的占位符，远端再还原
+	patterns_b64=${patterns_b64:--}
+	requires_b64=${requires_b64:--}
 	# shellcheck disable=SC2029
-	ssh_run "$host" bash -s -- "$ALLOW_EXISTING" "$REMOTE_FILE" <<'REMOTE'
+	ssh_run "$host" bash -s -- "$ALLOW_EXISTING" "$REMOTE_FILE" "$patterns_b64" "$requires_b64" <<'REMOTE'
 set -euo pipefail
 
 allow_existing=$1
 target=$2
+patterns_b64=$3
+requires_b64=$4
+[[ $patterns_b64 == '-' ]] && patterns_b64=''
+[[ $requires_b64 == '-' ]] && requires_b64=''
+target_dir=$(dirname "$target")
 
 [[ $(id -u) -eq 0 ]] || { echo "需要 root 权限" >&2; exit 1; }
-[[ -d /etc/cron.d ]] || { echo "/etc/cron.d 不存在" >&2; exit 1; }
+[[ -d $target_dir ]] || { echo "目标目录不存在: $target_dir" >&2; exit 1; }
 
-for file in /www/sh/wp-functions-update/update_wp_functions.sh /www/functions4.php /www/functions24.php; do
-  [[ -f $file ]] || { echo "缺少文件: $file" >&2; exit 1; }
-done
-
-for cmd in install mktemp sha256sum stat; do
+for cmd in install mktemp sha256sum stat base64; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "缺少命令: $cmd" >&2; exit 1; }
 done
+
+if [[ -n $requires_b64 ]]; then
+  require_list=$(mktemp)
+  printf '%s' "$requires_b64" | base64 -d >"$require_list"
+  while IFS= read -r file; do
+    [[ -n $file ]] || continue
+    [[ -f $file ]] || { rm -f "$require_list"; echo "缺少文件: $file" >&2; exit 1; }
+  done <"$require_list"
+  rm -f "$require_list"
+fi
 
 if command -v systemctl >/dev/null 2>&1; then
   if ! systemctl is-active --quiet cron 2>/dev/null &&
@@ -144,14 +181,18 @@ elif ! pgrep -x cron >/dev/null 2>&1 && ! pgrep -x crond >/dev/null 2>&1; then
   exit 1
 fi
 
-if [[ $allow_existing -eq 0 ]]; then
+if [[ $allow_existing -eq 0 && -n $patterns_b64 ]]; then
+  patterns=$(mktemp)
+  printf '%s' "$patterns_b64" | base64 -d >"$patterns"
+
   if crontab -l >/dev/null 2>&1; then
-    matches=$(crontab -l 2>/dev/null | grep -nE 'functions4\.php|functions24\.php' || true)
+    matches=$(crontab -l 2>/dev/null | grep -nF -f "$patterns" || true)
     if [[ -n $matches ]]; then
-      echo "root crontab 中已存在引用 functions4.php 或 functions24.php 的条目:" >&2
+      echo "root crontab 中已存在引用下列脚本的条目:" >&2
       printf '%s\n' "$matches" >&2
       echo "请先备份并删除旧条目: crontab -l > ~/crontab.bak && crontab -e" >&2
       echo "确认后重新执行，或使用 --allow-existing 跳过本检查。" >&2
+      rm -f "$patterns"
       exit 2
     fi
   fi
@@ -159,14 +200,18 @@ if [[ $allow_existing -eq 0 ]]; then
   for file in /etc/crontab /etc/cron.d/*; do
     [[ -f $file ]] || continue
     [[ $file == "$target" ]] && continue
-    matches=$(grep -nE 'functions4\.php|functions24\.php' "$file" 2>/dev/null || true)
+    case $(basename "$file") in .*) continue ;; esac
+    matches=$(grep -nF -f "$patterns" "$file" 2>/dev/null || true)
     if [[ -n $matches ]]; then
-      echo "文件 $file 中已存在引用 functions4.php 或 functions24.php 的条目:" >&2
+      echo "文件 $file 中已存在引用下列脚本的条目:" >&2
       printf '%s\n' "$matches" >&2
       echo "请先删除旧条目，或使用 --allow-existing 跳过本检查。" >&2
+      rm -f "$patterns"
       exit 2
     fi
   done
+
+  rm -f "$patterns"
 fi
 REMOTE
 }
@@ -216,7 +261,7 @@ upload_template() {
 
 create_remote_tmp() {
 	local host=$1 tmp
-	tmp=$(ssh_run "$host" 'mktemp /tmp/wp-functions-cron.XXXXXX' 2>/dev/null) || return 1
+	tmp=$(ssh_run "$host" 'mktemp /tmp/update-cron.XXXXXX' 2>/dev/null) || return 1
 	tmp=${tmp//$'\r'/}
 	tmp=${tmp##*$'\n'}
 	[[ -n $tmp ]] || return 1
@@ -238,12 +283,13 @@ set -euo pipefail
 tmp=$1
 target=$2
 backup_dir=$3
+name=$(basename "$target")
 
 [[ $(id -u) -eq 0 ]] || { echo "需要 root 权限" >&2; exit 1; }
 
 if [[ -f $target ]]; then
   mkdir -p "$backup_dir"
-  cp -p "$target" "$backup_dir/wp-functions.$(date +%Y%m%d-%H%M%S)"
+  cp -p "$target" "$backup_dir/$name.$(date +%Y%m%d-%H%M%S)"
 fi
 
 install -m 0644 -o root -g root "$tmp" "$target.tmp.$$"
@@ -264,12 +310,13 @@ set -euo pipefail
 
 target=$1
 backup_dir=$2
+name=$(basename "$target")
 
 [[ $(id -u) -eq 0 ]] || { echo "需要 root 权限" >&2; exit 1; }
 
 if [[ -f $target ]]; then
   mkdir -p "$backup_dir"
-  cp -p "$target" "$backup_dir/wp-functions.removed.$(date +%Y%m%d-%H%M%S)"
+  cp -p "$target" "$backup_dir/$name.removed.$(date +%Y%m%d-%H%M%S)"
   rm -f "$target"
 fi
 REMOTE
@@ -345,7 +392,7 @@ process_host() {
 		return 1
 	fi
 
-	if ! remote_precheck "$host"; then
+	if ! remote_precheck "$host" "$template"; then
 		log "预检失败: $host"
 		return 1
 	fi
@@ -379,6 +426,21 @@ while (($# > 0)); do
 		TEMPLATE_FILE=$2
 		shift 2
 		;;
+	--target)
+		(($# >= 2)) || die "参数 $1 缺少取值"
+		REMOTE_FILE=$2
+		shift 2
+		;;
+	--backup-dir)
+		(($# >= 2)) || die "参数 $1 缺少取值"
+		BACKUP_DIR=$2
+		shift 2
+		;;
+	--require)
+		(($# >= 2)) || die "参数 $1 缺少取值"
+		REQUIRED_FILES+=("$2")
+		shift 2
+		;;
 	-n | --dry-run)
 		DRY_RUN=1
 		shift
@@ -409,10 +471,18 @@ if ((CHECK_ONLY && REMOVE)); then
 	die "--check 与 --remove 不能同时使用"
 fi
 
+[[ $REMOTE_FILE == /* ]] || die "受管文件必须是绝对路径: $REMOTE_FILE"
+remote_name=$(basename "$REMOTE_FILE")
+[[ $remote_name =~ ^[A-Za-z0-9_-]+$ ]] || die "受管文件名 $remote_name 含非法字符；/etc/cron.d 中带点号的文件会被 run-parts 跳过"
+if [[ -z $BACKUP_DIR ]]; then
+	BACKUP_DIR="/var/backups/$remote_name"
+fi
+[[ $BACKUP_DIR == /* ]] || die "备份目录必须是绝对路径: $BACKUP_DIR"
+
 HOSTS_FILE=$(resolve_path "$HOSTS_FILE")
 [[ -f $HOSTS_FILE ]] || die "主机清单不存在: $HOSTS_FILE（可复制 hosts.example.txt 为 hosts.txt）"
 
-for cmd in ssh sha256sum awk sed tail head; do
+for cmd in ssh sha256sum awk sed tail head base64; do
 	command -v "$cmd" >/dev/null 2>&1 || die "缺少命令: $cmd"
 done
 
