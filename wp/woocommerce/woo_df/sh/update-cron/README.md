@@ -231,7 +231,7 @@ Windows 侧有两种落地方式，区别只是**谁来做上传**：
 
 ```powershell
 Import-Module ./PS/WpOnline/WpOnline.psd1
-Push-FileToServers -Path ./work/update-cron.cron -RemotePath /etc/cron.d/update-cron -Linuxify -Backup -BackupDirectory /var/backups/update-cron
+Push-FileToServers -Path /path/to/update-cron-file.cron -RemotePath /etc/cron.d/update-cron -Linuxify -Backup -BackupDirectory /var/backups/update-cron
 ```
 
 - 目标机默认取服务器清单的 `ip` 字段（跳过开头 1 条），也可以用 `-Server 203.0.113.11,root@203.0.113.12` 直接指定。
@@ -241,7 +241,7 @@ Push-FileToServers -Path ./work/update-cron.cron -RemotePath /etc/cron.d/update-
 失败不中断整批，也不抛异常，只体现在返回对象的 `Status` 与警告里，脚本化时要显式检查：
 
 ```powershell
-$r = Push-FileToServers -Path ./work/update-cron.cron -RemotePath /etc/cron.d/update-cron -Linuxify
+$r = Push-FileToServers -Path /path/to/update-cron-file.cron -RemotePath /etc/cron.d/update-cron -Linuxify
 if (@($r | Where-Object Status -eq 'Failed').Count -gt 0) { throw '下发存在失败机器' }
 ```
 
