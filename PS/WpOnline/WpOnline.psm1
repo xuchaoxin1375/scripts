@@ -36,7 +36,7 @@ function Deploy-WpSitesOnline
         # 域名绑定cf后解析cf返回的查询结果来传递给spaceship更新域名的nameservers的中间表格
         [alias('DomainTable')]$ToTable = "$Desktop/domains_nameservers.csv",
         # proxy_pass 的风格,是否带上协议名
-        [ValidateSet('http', 'https',  'auto','')]
+        [ValidateSet('http', 'https', 'auto', '')]
         $Scheme = 'auto',
         # 反代模式,关乎反代服务器上的routes.map的路径构造.(base对应的Scheme为'http',而tenants对应于'')
         [ValidateSet('base', 'tenants')]
@@ -170,42 +170,42 @@ function Deploy-WpSitesOnline
     }
     else
     {
-    Start-ThreadJob -Name "UpdateRoutesMap" -ScriptBlock {
-        param(
-            $vps,
-            $reverse,
-            $RoutesMap,
-            $remoteRoutesMap
-        )
-        # 将域名-ip映射表上传到远程vps(内容追加到配置文件末尾)
-        ## 使用标准收入的情况下不能使用ssh的 -n
-        # Get-Content -Raw $RoutesMap| ssh -T "$($vps.ssh.user)@$reverse"  -p $vps.ssh.port "sudo tee -a $remoteRoutesMap " 
-        ## 更可靠的方式是使用编写合适的脚本,放在服务器上,调用其脚本不冗余且安全的将map文件并入到原map中.
-        $vpsUser = $vps.ssh.user
-        $vpsPort = $vps.ssh.port
-        Write-Verbose "从配置文件中获取vps的登录用户名和端口号: [vpsUser=($vpsUser), vpsPort=($vpsPort)]" -Verbose
-        # 容错处理
-        if (!$vpsUser) { $vpsUser = "root" }
-        if (!$vpsPort) { $vpsPort = "22" }
-        Write-Verbose "本轮使用vps的登录用户名和端口号: [vpsUser=($vpsUser), vpsPort=($vpsPort)]" -Verbose
-        # 上传map文件
-        scp -P $vpsPort $RoutesMap "$vpsUser@${reverse}:~/routes.map.conf"
-        if ($LASTEXITCODE -ne 0)
-        {
-            Write-Warning "[UpdateRoutesMap] SCP 传输文件失败！退出码: $LASTEXITCODE。将跳过后续的 Nginx 配置合并。"
-            # return # 结束当前任务，不再执行后面的 ssh
-        }
-        # 将新map合并到原map中
-        ssh -Tn "$vpsUser@${reverse}" -p $vpsPort (@"
+        Start-ThreadJob -Name "UpdateRoutesMap" -ScriptBlock {
+            param(
+                $vps,
+                $reverse,
+                $RoutesMap,
+                $remoteRoutesMap
+            )
+            # 将域名-ip映射表上传到远程vps(内容追加到配置文件末尾)
+            ## 使用标准收入的情况下不能使用ssh的 -n
+            # Get-Content -Raw $RoutesMap| ssh -T "$($vps.ssh.user)@$reverse"  -p $vps.ssh.port "sudo tee -a $remoteRoutesMap " 
+            ## 更可靠的方式是使用编写合适的脚本,放在服务器上,调用其脚本不冗余且安全的将map文件并入到原map中.
+            $vpsUser = $vps.ssh.user
+            $vpsPort = $vps.ssh.port
+            Write-Verbose "从配置文件中获取vps的登录用户名和端口号: [vpsUser=($vpsUser), vpsPort=($vpsPort)]" -Verbose
+            # 容错处理
+            if (!$vpsUser) { $vpsUser = "root" }
+            if (!$vpsPort) { $vpsPort = "22" }
+            Write-Verbose "本轮使用vps的登录用户名和端口号: [vpsUser=($vpsUser), vpsPort=($vpsPort)]" -Verbose
+            # 上传map文件
+            scp -P $vpsPort $RoutesMap "$vpsUser@${reverse}:~/routes.map.conf"
+            if ($LASTEXITCODE -ne 0)
+            {
+                Write-Warning "[UpdateRoutesMap] SCP 传输文件失败！退出码: $LASTEXITCODE。将跳过后续的 Nginx 配置合并。"
+                # return # 结束当前任务，不再执行后面的 ssh
+            }
+            # 将新map合并到原map中
+            ssh -Tn "$vpsUser@${reverse}" -p $vpsPort (@"
     # 确保目标文件存在,否则创建空文件(建议在脚本中实现安全检查)
     bash ~/sh/nginx_conf/merge_routes_map.sh -a $remoteRoutesMap -b ~/routes.map.conf --add ;
     tail  $remoteRoutesMap |nl; 
     nginx -t && nginx -s reload 
 "@| Convert-CRLF -To LF
 
-        )
+            )
 
-    } -ArgumentList $vps, $reverse, $RoutesMap, $remoteRoutesMap
+        } -ArgumentList $vps, $reverse, $RoutesMap, $remoteRoutesMap
     } # end else(非调试模式才起 UpdateRoutesMap job)
 
     # return "debuging"
@@ -226,10 +226,10 @@ function Deploy-WpSitesOnline
     }
     else
     {
-    # 添加域名解析到cf(第一步执行)
-    Add-CFZoneDNSRecords -AddRecordAtOnce -IP $reverse -Parallel:(!$Onebyone) -Domains $FromTable 
-    # 从待部署域名列表更新spaceship域名的nameservers(cf添加后立即执行spaceship的nameservers更新)
-    Get-CFZoneNameServersTable -FromTable $FromTable
+        # 添加域名解析到cf(第一步执行)
+        Add-CFZoneDNSRecords -AddRecordAtOnce -IP $reverse -Parallel:(!$Onebyone) -Domains $FromTable 
+        # 从待部署域名列表更新spaceship域名的nameservers(cf添加后立即执行spaceship的nameservers更新)
+        Get-CFZoneNameServersTable -FromTable $FromTable
     }
     # 更新spaceship的nameservers(后续的CFZoneActivation依赖于此域名DNS配置)
     # Update-SSNameServers -Config $SpaceshipConfig -Table $ToTable
@@ -244,60 +244,60 @@ function Deploy-WpSitesOnline
     }
     else
     {
-    # 让cf立即检查域名的激活
-    # Add-CFZoneCheckActivation -Account $CfAccount -ConfigPath $CfConfig -Table $FromTable
-    Start-ThreadJob -Name "CFZoneActivation" -ScriptBlock {
-        <# 
+        # 让cf立即检查域名的激活
+        # Add-CFZoneCheckActivation -Account $CfAccount -ConfigPath $CfConfig -Table $FromTable
+        Start-ThreadJob -Name "CFZoneActivation" -ScriptBlock {
+            <# 
         实验性局部串行,此小节包含两个任务(需要串行)
         #>
-        param (
-            # part1
-            $Account, $ConfigPath, $Table,
-            # part2
-            $SpaceshipConfig, $ToTable, $spaceshipScript
+            param (
+                # part1
+                $Account, $ConfigPath, $Table,
+                # part2
+                $SpaceshipConfig, $ToTable, $spaceshipScript
         
-        )
-        $OutputEncoding = [System.Text.Encoding]::UTF8
-        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-        # part1
-        Write-Host "[START TIME:$(Get-DateTime)]Update-SSNameServers..."
-        Update-SSNameServers -Config $SpaceshipConfig -Table $ToTable -script $spaceshipScript
-        Write-Host "[END TIME::$(Get-DateTime)]Update-SSNameServers done."
-        # part2
-        Write-Host "[START TIME:$(Get-DateTime)]CFZoneActivation..."
-        Add-CFZoneCheckActivation `
-            -Account $Account `
-            -ConfigPath $ConfigPath `
-            -Table $Table
-        Write-Host "[END TIME::$(Get-DateTime)]CFZoneActivation done."
-    } -ArgumentList $CfAccount, $CfConfig, $FromTable , $SpaceshipConfig, $ToTable , "$pys/spaceship_api/update_nameservers.py" -ThrottleLimit 5
+            )
+            $OutputEncoding = [System.Text.Encoding]::UTF8
+            [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+            # part1
+            Write-Host "[START TIME:$(Get-DateTime)]Update-SSNameServers..."
+            Update-SSNameServers -Config $SpaceshipConfig -Table $ToTable -script $spaceshipScript
+            Write-Host "[END TIME::$(Get-DateTime)]Update-SSNameServers done."
+            # part2
+            Write-Host "[START TIME:$(Get-DateTime)]CFZoneActivation..."
+            Add-CFZoneCheckActivation `
+                -Account $Account `
+                -ConfigPath $ConfigPath `
+                -Table $Table
+            Write-Host "[END TIME::$(Get-DateTime)]CFZoneActivation done."
+        } -ArgumentList $CfAccount, $CfConfig, $FromTable , $SpaceshipConfig, $ToTable , "$pys/spaceship_api/update_nameservers.py" -ThrottleLimit 5
 
-    # 配置cf域名解析,邮箱转发和代理保护(位置1)
-    # Add-CFZoneConfig -Account $CfAccount -CfConfig $CfConfig -Table $FromTable -Ip $reverse
-    Start-ThreadJob -Name "CFZoneConfig" -ScriptBlock {  
-        param ($Account, $CfConfig, $Table, $script, $Ip)
-        $OutputEncoding = [System.Text.Encoding]::UTF8
-        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-        Write-Host "[START TIME:$(Get-DateTime)]CFZoneConfig..."
-        Add-CFZoneConfig `
-            -Account $Account `
-            -CfConfig $CfConfig `
-            -Table $Table `
-            -script $Script `
-            -Ip $Ip
-        Write-Host "[END TIME::$(Get-DateTime)]CFZoneConfig done."
-    } -ArgumentList $CfAccount, $CfConfig, $FromTable, "$pys/cf_api/cloudflare_dns_tool.py", $reverse
+        # 配置cf域名解析,邮箱转发和代理保护(位置1)
+        # Add-CFZoneConfig -Account $CfAccount -CfConfig $CfConfig -Table $FromTable -Ip $reverse
+        Start-ThreadJob -Name "CFZoneConfig" -ScriptBlock {  
+            param ($Account, $CfConfig, $Table, $script, $Ip)
+            $OutputEncoding = [System.Text.Encoding]::UTF8
+            [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+            Write-Host "[START TIME:$(Get-DateTime)]CFZoneConfig..."
+            Add-CFZoneConfig `
+                -Account $Account `
+                -CfConfig $CfConfig `
+                -Table $Table `
+                -script $Script `
+                -Ip $Ip
+            Write-Host "[END TIME::$(Get-DateTime)]CFZoneConfig done."
+        } -ArgumentList $CfAccount, $CfConfig, $FromTable, "$pys/cf_api/cloudflare_dns_tool.py", $reverse
     
-    # 创建宝塔远程空站点创建
-    # Deploy-BatchSiteBTOnline -Server $HostName -ServerConfig $ServerConfig -Table $FromTable -SitesHome $SitesHome 
-    # 后台运行远程站点创建
-    Start-ThreadJob -ScriptBlock { 
-        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-        $server = $using:server
-        Write-Host "[START TIME:$(Get-DateTime)][$server]Deploying sites on BT online..."
-        Deploy-BatchSiteBTOnline -Script "$using:pys/bt_api/create_sites.py" -Server $server -ServerConfig $using:ServerConfig -Table $using:FromTable -SitesHome $using:SitesHome 
-        Write-Host "[END TIME::$(Get-DateTime)]Deploying sites on BT online done."
-    } -Name "DeployBTSites"
+        # 创建宝塔远程空站点创建
+        # Deploy-BatchSiteBTOnline -Server $HostName -ServerConfig $ServerConfig -Table $FromTable -SitesHome $SitesHome 
+        # 后台运行远程站点创建
+        Start-ThreadJob -ScriptBlock { 
+            [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+            $server = $using:server
+            Write-Host "[START TIME:$(Get-DateTime)][$server]Deploying sites on BT online..."
+            Deploy-BatchSiteBTOnline -Script "$using:pys/bt_api/create_sites.py" -Server $server -ServerConfig $using:ServerConfig -Table $using:FromTable -SitesHome $using:SitesHome 
+            Write-Host "[END TIME::$(Get-DateTime)]Deploying sites on BT online done."
+        } -Name "DeployBTSites"
     } # end else(非调试模式才起 CFZoneActivation/CFZoneConfig/DeployBTSites 三个 job)
     # return "debug..."
     # Receive-Job
@@ -311,13 +311,13 @@ function Deploy-WpSitesOnline
     }
     else
     {
-    Write-Host "等待所有后台作业完成..."
-    $jobs = Get-Job
-    # 等待1~2秒在查看作业启动状态,看看各个任务的启动情况(这不会阻塞后台job的运行,可以放心等待)
-    Start-Sleep 2
-    Write-Host "$($jobs|Out-String)"
+        Write-Host "等待所有后台作业完成..."
+        $jobs = Get-Job
+        # 等待1~2秒在查看作业启动状态,看看各个任务的启动情况(这不会阻塞后台job的运行,可以放心等待)
+        Start-Sleep 2
+        Write-Host "$($jobs|Out-String)"
 
-    $jobs | Receive-Job -Wait 
+        $jobs | Receive-Job -Wait 
     }
     # END JOBS
     
@@ -575,32 +575,53 @@ function Update-WpFunctionsphpOnServer
         $BashScript = '/www/sh/wp-functions-update/update_wp_functions.sh',
         # 注意,Target目录在远程服务器上应该存在,否则scp上传会失败(scp不会创建缺失的中间路径目录),-r选在跟也不会帮助你创建缺失起始目录
         $RemoteDirectory = "/www",
+        $RemoteName = "",
         # 需要检索functions.php替换路径的项目目录,尤其是多磁盘的情况
         $WorkingDirectory = "/www/wwwroot,/wwwdata/wwwroot",
         $ServerConfig = $server_config,
         [ValidateSet('copy', 'symlink')]
-        $InstallMode = 'copy'
-    )
+        $InstallMode = 'copy',
+        # 仅更新文件不立即部署(可以供定时任务搭配使用)
+        [switch]$NoDeploy
 
+    )
+    if($RemoteName -eq "")
+    {
+        $RemoteName = Get-Item $Path | Select-Object -ExpandProperty Name
+    }
     # 管道流向外部程序的数据设置为UTF-8
     $OutputEncoding = [System.Text.Encoding]::UTF8
     # 设置控制台输出编码为 UTF-8
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-    Write-Host "Updating functions.php to $Server ..."
+    Write-Host "Updating $RemoteName to $Server ..."
     $RemoteDirectory = $RemoteDirectory
-    Write-Host "Uploading functions.php to $Server ..."
-    scp -r $Path root@"$Server":$RemoteDirectory
-    $remoteFunctionsFile = "$RemoteDirectory/functions.php"
-    ssh -Tn root@$Server "bash $BashScript --src $remoteFunctionsFile --workdir $WorkingDirectory --install-mode $InstallMode"
+    Write-Host "Uploading $RemoteName to $Server ..."
+    $remoteFunctionsFile = "$RemoteDirectory/$RemoteName"
+    scp -r $Path root@"$Server":$remoteFunctionsFile
+
+    # 调用服务器上的部署执行脚本
+    if ($NoDeploy)
+    {
+        Write-Host "Skipping deploying..."
+        return
+    }
+    else
+    {
+        ssh -Tn root@$Server "bash $BashScript --src $remoteFunctionsFile --workdir $WorkingDirectory --install-mode $InstallMode"
+    }
         
         
 
-    Write-Output "检查更新状态:服务器上的版本(日期)是否正确更新:"
+    # Write-Output "检查更新状态:服务器上的版本(日期)是否正确更新(正确部署依赖于部署脚本):"
 
-    ssh -Tn root@$Server "echo -n `"[`$(hostname)]:`" ; stat -c %y $RemoteDirectory/functions.php"
+    # ssh -Tn root@$Server "echo -n `"[`$(hostname)]:`" ; stat -c %y $RemoteDirectory/$RemoteName"
+    # Write-Output "检查服务器上的部署脚本是否存在."
+    # ssh -Tn root@$Server "if [ -f $BashScript ]; then echo '[$(hostname)]:存在'; else echo '[$(hostname)]:不存在'; fi"
   
-    
+    Write-Output "检查更新状态:服务器上的版本(日期)是否正确更新(正确部署依赖于部署脚本):"
+    ssh -Tn root@$Server "echo -n `"[`$(hostname)]:`"  ;printf '%s' `"[`$(stat -c %y $remoteFunctionsFile)]`"; if [ -f $BashScript ]; then echo '$BashScript 存在'; else echo '[ERROR]:$BashScript 不存在'; fi"
+
 }
 function Update-WpFunctionsphpOnServers
 {
@@ -615,37 +636,71 @@ function Update-WpFunctionsphpOnServers
     服务器配置文件路径,默认值为"$server_config"
     #>
     param (
+        # 要推送上去的脚本文件(functions文件)
         $Path = "$wp_plugins/functions.php",
         $BashScript = '/www/sh/wp-functions-update/update_wp_functions.sh',
         # 注意,Target目录在远程服务器上应该存在,否则scp上传会失败(scp不会创建缺失的中间路径目录),-r选在跟也不会帮助你创建缺失起始目录
         $RemoteDirectory = "/www",
+        $RemoteName = "",
         $WorkingDirectory = "/www/wwwroot,/wwwdata/wwwroot",
         $ServerConfig = $server_config,
         [ValidateSet('copy', 'symlink')]
         $InstallMode = 'copy',
+        # 仅更新文件不立即部署(可以供定时任务搭配使用)
+        [switch]
+        $NoDeploy,
         $Threads = 10
     )
     $servers = Get-ServerList -Path $ServerConfig
-
+    if($RemoteName -eq "")
+    {
+        $RemoteName = Get-Item $Path | Select-Object -ExpandProperty Name
+    }
     # 管道流向外部程序的数据设置为UTF-8
     $OutputEncoding = [System.Text.Encoding]::UTF8
     # 设置控制台输出编码为 UTF-8
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
     $servers.ip | ForEach-Object -Parallel {
-        Write-Host "Updating functions.php to $_"
-        # Push-ByScp -Server $_ -SourcePath $Path -TargetPath $Target  -Verbose
         $RemoteDirectory = $using:RemoteDirectory
-        scp -r $using:Path root@"$_":$RemoteDirectory
-        $remoteFunctionsFile = "$RemoteDirectory/functions.php"
-        ssh -Tn root@$_ "bash $using:BashScript --src $remoteFunctionsFile --workdir $using:WorkingDirectory --install-mode $using:InstallMode"
+        $WorkingDirectory = $using:WorkingDirectory
+        $RemoteName = $using:RemoteName
+        $NoDeploy = $using:NoDeploy
+        $BashScript = $using:BashScript
+        $InstallMode = $using:InstallMode
+        
+        $remoteFunctionsFile = "$RemoteDirectory/$RemoteName"
+        
+        # Push-ByScp -Server $_ -SourcePath $Path -TargetPath $Target  -Verbose
+        
+        Write-Host "Updating $RemoteName to ${_}:$remoteFunctionsFile ..." 
+        scp -r $using:Path root@"$_":$remoteFunctionsFile # -v 详细输出
+
+        if ($NoDeploy)
+        {
+            Write-Host "Skipping deploying on $_ ..."
+            return
+        }
+        else
+        {
+
+            ssh -Tn root@$_ "bash $BashScript --src $remoteFunctionsFile --workdir $WorkingDirectory --install-mode $InstallMode"
+        }
         
         
     } -ThrottleLimit $Threads
 
-    Write-Output "检查更新状态:服务器上的版本(日期)都正确更新:"
+    Write-Output "检查更新状态:服务器上的版本(日期)是否正确更新(正确部署依赖于部署脚本):"
     $servers.ip | ForEach-Object -Parallel { 
-        ssh -Tn root@$_ "echo -n `"[`$(hostname)]:`" ; stat -c %y $using:RemoteDirectory/functions.php"
+        $RemoteDirectory = $using:RemoteDirectory
+        $RemoteName = $using:RemoteName
+        $NoDeploy = $using:NoDeploy
+        $BashScript = $using:BashScript
+        $remoteFunctionsFile = "$RemoteDirectory/$RemoteName"
+        
+        # ssh -Tn root@$_ "echo -n `"[`$(hostname)]:`" ; stat -c %y $RemoteDirectory/$RemoteName"
+        ssh -Tn root@$_ "echo -n `"[`$(hostname)]:`" ; printf '%s' `"[`$(stat -c %y $remoteFunctionsFile)]`"; if [ -f $BashScript ]; then echo '$BashScript 存在'; else echo '[ERROR]:$BashScript 不存在'; fi"
+
     } -ThrottleLimit $Threads
     
 }
