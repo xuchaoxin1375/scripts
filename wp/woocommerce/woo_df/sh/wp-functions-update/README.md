@@ -40,66 +40,66 @@
 
 ## 使用示例
 
-1. **默认批量覆盖所有站点所有主题 functions.php**
+- **默认批量覆盖所有站点所有主题 functions.php**
 
-   ```bash
-   bash update_wp_functions.sh
-   ```
+  ```bash
+  bash update_wp_functions.sh
+  ```
 
-2. **指定源文件和工作目录**
+- **指定源文件和工作目录**
 
-   ```bash
-   bash update_wp_functions.sh --src /tmp/new_functions.php --workdir /data/wwwroot
-   ```
+  ```bash
+  bash update_wp_functions.sh --src /tmp/new_functions.php --workdir /data/wwwroot
+  ```
 
-3. **源文件名与目标文件名不同（复制到各主题的 functions.php）**
+- **源文件名与目标文件名不同（复制到各主题的 functions.php）**
 
-   ```bash
-   # 源文件为 /www/functions-a.php，写入目标仍为各主题目录下的 functions.php
-   bash update_wp_functions.sh --src /www/functions-a.php --dest-name functions.php
-   ```
+  ```bash
+  # 源文件为 /www/functions-a.php，写入目标仍为各主题目录下的 functions.php
+  bash update_wp_functions.sh --src /www/functions-a.php --dest-name functions.php
+  ```
 
-4. **以软链接方式写入，并指定链接名**
+- **以软链接方式写入，并指定链接名**
 
-   ```bash
-   bash update_wp_functions.sh --src /www/functions-a.php --dest-name functions.php --install-mode symlink
-   ```
+  ```bash
+  bash update_wp_functions.sh --src /www/functions-a.php --dest-name functions.php --install-mode symlink
+  ```
 
-5. **仅 dry-run 预览，不实际写入**
+- **仅 dry-run 预览，不实际写入**
 
-   ```bash
-   bash update_wp_functions.sh --dry-run
-   ```
+  ```bash
+  bash update_wp_functions.sh --dry-run
+  ```
 
-6. **仅处理指定用户名下的网站**
+- **仅处理指定用户名下的网站**
 
-   ```bash
-   bash update_wp_functions.sh --user zsh
-   ```
+  ```bash
+  bash update_wp_functions.sh --user zsh
+  ```
 
-7. **使用白名单，仅操作指定域名**
+- **使用白名单，仅操作指定域名**
 
-   ```bash
-   bash update_wp_functions.sh --whitelist whitelist.txt
-   # whitelist.txt 内容示例：
-   # domain1.com
-   # domain2.com
-   ```
+  ```bash
+  bash update_wp_functions.sh --whitelist whitelist.txt
+  # whitelist.txt 内容示例：
+  # domain1.com
+  # domain2.com
+  ```
 
-8. **使用黑名单，跳过指定域名**
+- **使用黑名单，跳过指定域名**
 
-   ```bash
-   bash update_wp_functions.sh --blacklist blacklist.txt
-   # blacklist.txt 内容示例：
-   # domain3.com
-   # domain4.com
-   ```
+  ```bash
+  bash update_wp_functions.sh --blacklist blacklist.txt
+  # blacklist.txt 内容示例：
+  # domain3.com
+  # domain4.com
+  ```
 
-9. **记录操作日志**
+- **记录操作日志**
 
-   ```bash
-   bash update_wp_functions.sh --log update.log
-   ```
+  ```bash
+  bash update_wp_functions.sh --log update.log
+  ```
 
 ## 日志与错误处理
 

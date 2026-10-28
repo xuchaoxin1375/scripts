@@ -1,8 +1,8 @@
 #!/bin/bash
 # 更新重点日志(todo):251204
-# 1.为参数WORKDIR提供接收单个或多个路径的支持,即允许指定1个或多个工作目录,默认为 /www/wwwroot,/wwwdata/wwwroot
-# 2.改进查找WordPress站点的逻辑,使用find命令提高灵活性
-# 3.新增 --dest-name 参数: 允许指定写入主题目录时使用的文件名或符号链接名,不必与源文件名同名
+# - 为参数WORKDIR提供接收单个或多个路径的支持,即允许指定1个或多个工作目录,默认为 /www/wwwroot,/wwwdata/wwwroot
+# - 改进查找WordPress站点的逻辑,使用find命令提高灵活性
+# - 新增 --dest-name 参数: 允许指定写入主题目录时使用的文件名或符号链接名,不必与源文件名同名
 #   例如源文件为 /www/functions-a.php 时,仍可写入 <主题目录>/functions.php
 
 # 用法说明
