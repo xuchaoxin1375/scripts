@@ -1618,7 +1618,8 @@ function Push-FileToServers
     每行都以本地时间 `yyyy-MM-dd HH:mm:ss` 开头，便于事后与目标机日志对齐。
     进度写主机流而不是成功流，结果对象照常返回，可继续用管道处理。
 
-    并发使用 PowerShell 7 的 ForEach-Object -Parallel；Windows PowerShell 5.1 没有该参数，会自动退回顺序执行并给出提示。
+    并发按 -ThrottleLimit 从队列取目标机启动作业：优先用 ThreadJob（PowerShell 7 自带，5.1 需另装 ThreadJob 模块），
+    缺装时退回 Start-Job 进程级作业，两条路径都可在 5.1 与 7 上并发；-ThrottleLimit 1 时不建作业，直接顺序调用。
 
     .PARAMETER Path
     本地文件路径。
@@ -1806,6 +1807,10 @@ echo UPDATED $(sha256sum $target | cut -d' ' -f1) $(stat -c %a $target) $(stat -
         $work = {
             param($Item, $Context)
 
+            # Windows PowerShell 5.1 在 ErrorActionPreference=Stop 时会把原生命令的 stderr 变成终止错误，
+            # 这里降为 Continue，失败统一由退出码判断，避免单台失败中断整批
+            $ErrorActionPreference = 'Continue'
+
             $result = [pscustomobject]@{
                 Index   = $Item.Index
                 Server  = $Item.Target
@@ -1814,11 +1819,6 @@ echo UPDATED $(sha256sum $target | cut -d' ' -f1) $(stat -c %a $target) $(stat -
                 Mode    = ''
                 Message = ''
             }
-
-            # 进度直接写控制台：并发时也能立刻看到哪台在跑，结果对象照常从成功流返回
-            $label = "[$($Item.Index + 1)/$($Context.Total)] $($Item.Target)"
-            $clock = [System.Diagnostics.Stopwatch]::StartNew()
-            Write-Host ("[{0}] {1} 开始" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $label)
 
             # 单台失败只记录状态并跳出，不影响其余目标机
             do
@@ -1867,28 +1867,12 @@ echo UPDATED $(sha256sum $target | cut -d' ' -f1) $(stat -c %a $target) $(stat -
             }
             while ($false)
 
-            $clock.Stop()
-            $detail = $result.Mode
-            if ($result.Status -eq 'Failed')
-            {
-                $detail = ($result.Message -split "`n")[0]
-            }
-            if ($detail.Length -gt 120)
-            {
-                $detail = $detail.Substring(0, 120) + '…'
-            }
-            $color = switch ($result.Status)
-            {
-                'Updated' { 'Green' }
-                'Skipped' { 'DarkGray' }
-                default { 'Red' }
-            }
-            Write-Host ("[{0}] {1} {2} {3}（{4:N1} 秒）" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $label, $result.Status, $detail, $clock.Elapsed.TotalSeconds) -ForegroundColor $color
             return $result
         }
 
         $results = @()
         $queue = @()
+        $createdJobs = @()
         $index = 0
         foreach ($item in $Server)
         {
@@ -1937,30 +1921,120 @@ echo UPDATED $(sha256sum $target | cut -d' ' -f1) $(stat -c %a $target) $(stat -
             $index++
         }
 
+        # 进度行统一由调用方输出：作业方式的 runspace 里 Write-Host 不会实时冒泡到控制台
+        $announceStart = {
+            param($Item, $Total)
+            Write-Host ("[{0}] [{1}/{2}] {3} 开始" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), ($Item.Index + 1), $Total, $Item.Target)
+        }
+        $announceDone = {
+            param($Result, $Total, $Seconds)
+            $detail = $Result.Mode
+            if ($Result.Status -eq 'Failed')
+            {
+                $detail = ($Result.Message -split "`n")[0]
+            }
+            if ($detail.Length -gt 120)
+            {
+                $detail = $detail.Substring(0, 120) + '…'
+            }
+            $color = switch ($Result.Status)
+            {
+                'Updated' { 'Green' }
+                'Skipped' { 'DarkGray' }
+                default { 'Red' }
+            }
+            Write-Host ("[{0}] [{1}/{2}] {3} {4} {5}（{6:N1} 秒）" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), ($Result.Index + 1), $Total, $Result.Server, $Result.Status, $detail, $Seconds) -ForegroundColor $color
+        }
+
         if ($queue.Count -gt 0)
         {
-            $modeText = if ($ThrottleLimit -gt 1 -and $PSVersionTable.PSVersion.Major -ge 7) { "并发 $ThrottleLimit" } else { '顺序执行' }
-            Write-Host ("[{0}] 推送 {1} 台 → {2}（{3}）" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $queue.Count, $RemotePath, $modeText)
+            $total = $queue.Count
+            $throttle = [Math]::Max(1, [Math]::Min($ThrottleLimit, $total))
+            $modeText = if ($throttle -gt 1) { "并发 $throttle" } else { '顺序执行' }
+            Write-Host ("[{0}] 推送 {1} 台 → {2}（{3}）" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $total, $RemotePath, $modeText)
             $batchClock = [System.Diagnostics.Stopwatch]::StartNew()
 
-            if ($ThrottleLimit -gt 1 -and $PSVersionTable.PSVersion.Major -ge 7)
+            if ($throttle -le 1)
             {
-                $workText = $work.ToString()
-                Write-Verbose "并发处理 $($queue.Count) 台，并发度 $ThrottleLimit"
-                $results += @($queue | ForEach-Object -Parallel {
-                        & ([scriptblock]::Create($using:workText)) $_ $using:context
-                    } -ThrottleLimit $ThrottleLimit)
+                foreach ($item in $queue)
+                {
+                    & $announceStart $item $total
+                    $clock = [System.Diagnostics.Stopwatch]::StartNew()
+                    $result = & $work $item $context
+                    $clock.Stop()
+                    & $announceDone $result $total $clock.Elapsed.TotalSeconds
+                    $results += $result
+                }
             }
             else
             {
-                if ($ThrottleLimit -gt 1)
+                # ThreadJob 5.1 需另行安装，缺装时退回进程级后台作业，功能一致但每台多一次进程启动
+                $threadJob = Get-Command -Name Start-ThreadJob -ErrorAction SilentlyContinue
+                if (-not $threadJob)
                 {
-                    Write-Warning "当前 Windows PowerShell 版本不支持 ForEach-Object -Parallel，已退回顺序执行；如需并发请在 PowerShell 7 中运行。"
+                    Write-Verbose "未检测到 ThreadJob 模块，改用后台作业（独立进程）执行；安装 ThreadJob 可减少启动开销。"
                 }
-                foreach ($item in $queue)
+
+                $workText = $work.ToString()
+                $running = @()
+                $entries = @{}
+                $next = 0
+                while ($next -lt $total -or $running.Count -gt 0)
                 {
-                    Write-Verbose "处理 $($item.Target)"
-                    $results += (& $work $item $context)
+                    while ($next -lt $total -and $running.Count -lt $throttle)
+                    {
+                        $item = $queue[$next]
+                        $next++
+                        & $announceStart $item $total
+                        $scriptBlock = [scriptblock]::Create($workText)
+                        if ($threadJob)
+                        {
+                            $job = Start-ThreadJob -ScriptBlock $scriptBlock -ArgumentList $item, $context
+                        }
+                        else
+                        {
+                            $job = Start-Job -ScriptBlock $scriptBlock -ArgumentList $item, $context
+                        }
+                        $createdJobs += $job
+                        $entries[$job.Id] = [pscustomobject]@{
+                            Item  = $item
+                            Clock = [System.Diagnostics.Stopwatch]::StartNew()
+                        }
+                        $running += $job
+                    }
+
+                    $completed = @($running | Wait-Job -Any)
+                    foreach ($job in $completed)
+                    {
+                        if ($job.State -eq 'Running' -or $job.State -eq 'NotStarted')
+                        {
+                            continue
+                        }
+
+                        $entry = $entries[$job.Id]
+                        $received = @(Receive-Job -Job $job)
+                        $entry.Clock.Stop()
+                        $result = $received | Select-Object -First 1
+                        if (-not $result -or -not $result.PSObject.Properties['Status'])
+                        {
+                            $reason = $job.ChildJobs[0].JobStateInfo.Reason
+                            $message = if ($reason) { $reason.Message } else { ($received | Out-String).Trim() }
+                            $result = [pscustomobject]@{
+                                Index   = $entry.Item.Index
+                                Server  = $entry.Item.Target
+                                Remote  = $RemotePath
+                                Status  = 'Failed'
+                                Mode    = ''
+                                Message = "作业异常: $message"
+                            }
+                        }
+
+                        & $announceDone $result $total $entry.Clock.Elapsed.TotalSeconds
+                        $results += $result
+                        $entries.Remove($job.Id)
+                        Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
+                        $running = @($running | Where-Object { $_.Id -ne $job.Id })
+                    }
                 }
             }
         }
@@ -1988,6 +2062,11 @@ echo UPDATED $(sha256sum $target | cut -d' ' -f1) $(stat -c %a $target) $(stat -
     }
     finally
     {
+        # 中断或异常退出时停掉本轮创建的后台作业，不碰调用方自己的作业
+        if ($createdJobs)
+        {
+            $createdJobs | Remove-Job -Force -ErrorAction SilentlyContinue
+        }
         if (Test-Path -LiteralPath $tempFile)
         {
             Remove-Item -LiteralPath $tempFile -Force -ErrorAction SilentlyContinue -WhatIf:$false

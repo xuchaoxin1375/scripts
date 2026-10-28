@@ -145,7 +145,9 @@ Windows PowerShell 在传递远程命令时对引号、`$` 与反斜杠敏感。
 先批量确认时区：
 
 ```bash
-ssh root@203.0.113.11 'timedatectl show -p Timezone --value'
+# timedatectl show -p Timezone --value
+# 批量测试
+ Update-Servers -cmd 'timedatectl show -p Timezone --value' 
 ```
 
 全部为 `Asia/Shanghai` 时，只需使用 `wp-functions.cron.cst`，`0 16` 与 `0 0` 在所有机器上语义一致。存在 `UTC` 机器时按“时区与模板”一节分组，不要用同一份文件覆盖全部机器。
@@ -189,6 +191,8 @@ Push-FileToServers -Path .\wp-functions-cron\wp-functions.cron.cst -RemotePath /
 ```
 
 该命令不检查重复任务条目，首次迁移仍需按“已有同名任务时的迁移”手工核对，或改用 `install-cron.sh`。
+
+并发在 `-ThrottleLimit` 大于 1 时启用：PowerShell 7 使用自带的 `ThreadJob`，Windows PowerShell 5.1 装了 `ThreadJob` 模块同样可用，缺装时退回 `Start-Job` 进程级作业（功能一致，每台多一次进程启动）；`-ThrottleLimit 1` 不建作业，直接顺序执行。中断或异常退出时，本轮创建的作业会被统一清理。
 
 校验与删除：
 
