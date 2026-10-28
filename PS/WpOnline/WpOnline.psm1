@@ -1654,7 +1654,13 @@ function Push-FileToServers
             [System.IO.File]::Copy($source, $tempFile, $true)
         }
         $localHash = (Get-FileHash -LiteralPath $tempFile -Algorithm SHA256).Hash.ToLower()
-        $expectedMode = "$Mode $Owner $Group"
+        # stat -c %a 不输出前导零，0644 与 644 表示同一权限，比较前统一为无前导零形式
+        $statMode = $Mode.TrimStart('0')
+        if ($statMode -eq '')
+        {
+            $statMode = '0'
+        }
+        $expectedMode = "$statMode $Owner $Group"
 
         $results = @()
         foreach ($item in $Server)
