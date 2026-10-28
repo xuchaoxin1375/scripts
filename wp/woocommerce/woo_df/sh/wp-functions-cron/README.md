@@ -169,6 +169,14 @@ ssh root@${h} 'bash /www/sh/wp-functions-cron/install-cron.sh -f /www/sh/wp-func
 
 `/www/sh` 按实际部署路径调整。这种形态下模板随仓库走 Git，换行由 `.gitattributes` 保证，`install-cron.sh` 再去一次 BOM 与 CR 作为兜底。
 
+本机若已加载仓库的 `PS` 模块，可以直接用 `Push-FileToServers` 完成同样的落地动作，它同样做去 BOM、去 CR、原子替换、备份与写后校验：
+
+```powershell
+Push-FileToServers -Path .\wp-functions-cron\wp-functions.cron.cst -RemotePath /etc/cron.d/wp-functions -Linuxify -Backup
+```
+
+该命令不检查重复任务条目，首次迁移仍需按“已有同名任务时的迁移”手工核对，或改用 `install-cron.sh`。
+
 校验与删除：
 
 ```powershell

@@ -1488,3 +1488,311 @@ function Backup-WpBaseSql
     }
     
 }
+
+function ConvertTo-LinuxTextFile
+{
+    <#
+    .SYNOPSIS
+    把文本文件规范化为 Linux 约定：UTF-8 无 BOM、LF 换行、结尾有换行符。
+    .DESCRIPTION
+    读取时由 .NET 自动识别并去除 BOM，写入固定为 UTF-8 无 BOM；CRLF 与单独的 CR 都转换为 LF，结尾缺少换行时补一个。
+    供 Push-FileToServers 的 -Linuxify 使用，也可单独调用处理待上传的文本文件。
+    .PARAMETER Path
+    源文件路径。
+    .PARAMETER Destination
+    规范化结果的输出路径。
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path,
+        [Parameter(Mandatory)]
+        [string]$Destination
+    )
+    $text = [System.IO.File]::ReadAllText($Path)
+    $text = $text -replace "`r`n", "`n" -replace "`r", "`n"
+    if (-not $text.EndsWith("`n"))
+    {
+        $text += "`n"
+    }
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($Destination, $text, $utf8NoBom)
+}
+
+function Push-FileToServers
+{
+    <#
+    .SYNOPSIS
+    把同一个本地文件推送到多台服务器的同一路径，可选按 Linux 文本规范处理。
+
+    .DESCRIPTION
+    前置条件：已为目标机配置 root 免密登录；目标目录存在，或加 -CreateDirectory。
+    执行者：当前会话通过 scp 上传、ssh 落地，逐台顺序处理。
+    善后：无需额外操作；重复执行时，内容与权限已一致的机器直接跳过。
+
+    落地采用"上传到 /tmp、install 到同目录临时文件、改名替换"的顺序，避免 cron 等读者读到半截文件。
+    写入完成后复核 SHA-256 与权限，复核不通过记为失败。
+
+    .PARAMETER Path
+    本地文件路径。
+
+    .PARAMETER RemotePath
+    目标机上的完整路径，例如 /etc/cron.d/wp-functions。
+
+    .PARAMETER Server
+    目标机列表，元素可以是 IP、主机名或 user@host；不带用户名的元素按 root 处理。省略时读取 Get-ServerList 的 ip 字段。
+
+    .PARAMETER ServerConfig
+    服务器配置文件路径，仅在省略 -Server 时使用。
+
+    .PARAMETER Skip
+    读取服务器清单时跳过的开头条目数，默认 1，与 Update-Servers 的默认行为一致；显式传入 -Server 时本参数无效。
+
+    .PARAMETER Linuxify
+    按 Linux 文本文件处理：去掉 UTF-8 BOM、把 CRLF 转成 LF、补齐结尾换行。二进制文件不要加此开关。
+
+    .PARAMETER Mode
+    目标文件权限，默认 0644；可执行脚本用 0755。
+
+    .PARAMETER Owner
+    目标文件属主，默认 root。
+
+    .PARAMETER Group
+    目标文件属组，默认 root。
+
+    .PARAMETER Backup
+    覆盖前把旧文件复制到 -BackupDirectory，文件名带时间戳。
+
+    .PARAMETER BackupDirectory
+    备份目录，默认 /var/backups。
+
+    .PARAMETER CreateDirectory
+    目标目录不存在时先创建。
+
+    .EXAMPLE
+    Push-FileToServers -Path .\wp-functions-cron\wp-functions.cron.cst -RemotePath /etc/cron.d/wp-functions -Linuxify
+
+    推送定时任务文件：去掉 BOM 与 CR，落地为 644 root root。
+
+    .EXAMPLE
+    Push-FileToServers -Path .\update_wp_functions.sh -RemotePath /www/sh/wp-functions-update/update_wp_functions.sh -Linuxify -Mode 0755 -Backup -CreateDirectory
+
+    推送脚本并保留可执行位，同时备份旧版本。
+
+    .EXAMPLE
+    Push-FileToServers -Path .\hosts.txt -RemotePath /www/hosts.txt -Server 192.0.2.10,192.0.2.11 -WhatIf
+
+    只查看将要执行的操作，不连接目标机。
+
+    .NOTES
+    多台机器按顺序处理，输出顺序与服务器清单一致，便于逐台核对。
+    首次连接目标机前需先手工 ssh 一次，接受 host key 并确认免密登录可用；本命令使用 BatchMode=yes，不会弹出密码提示。
+    本命令只负责文件落地，不检查目标机是否存在重复的定时任务等业务冲突。
+    #>
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
+    param(
+        [Parameter(Mandatory, Position = 0)]
+        [string]$Path,
+
+        [Parameter(Mandatory, Position = 1)]
+        [ValidatePattern('^/[A-Za-z0-9_./-]+$')]
+        [string]$RemotePath,
+
+        [string[]]$Server,
+
+        $ServerConfig = $server_config,
+
+        [int]$Skip = 1,
+
+        [switch]$Linuxify,
+
+        [ValidatePattern('^[0-7]{3,4}$')]
+        [string]$Mode = '0644',
+
+        [ValidatePattern('^[A-Za-z0-9_][A-Za-z0-9_.-]*$')]
+        [string]$Owner = 'root',
+
+        [ValidatePattern('^[A-Za-z0-9_][A-Za-z0-9_.-]*$')]
+        [string]$Group = 'root',
+
+        [switch]$Backup,
+
+        [ValidatePattern('^/[A-Za-z0-9_./-]+$')]
+        [string]$BackupDirectory = '/var/backups',
+
+        [switch]$CreateDirectory
+    )
+
+    $source = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).ProviderPath
+
+    # /etc/cron.d 中带点号的文件会被 run-parts 跳过，落地前先拦下这类目标
+    $leaf = Split-Path -Leaf $RemotePath
+    $parent = $RemotePath.Substring(0, $RemotePath.LastIndexOf('/'))
+    if ($parent -eq '/etc/cron.d' -and $leaf.Contains('.'))
+    {
+        throw "目标文件 $leaf 含点号，/etc/cron.d 中这类文件会被 run-parts 跳过；请改用不含点号的名称，例如 $($leaf.Split('.')[0])。"
+    }
+
+    if (-not $Server)
+    {
+        $Server = @(Get-ServerList -Path $ServerConfig -Skip $Skip | ForEach-Object { $_.ip } | Where-Object { $_ })
+    }
+    if (-not $Server -or $Server.Count -eq 0)
+    {
+        throw "没有可用的目标机；请用 -Server 指定，或检查 Get-ServerList 的配置。"
+    }
+
+    $tempFile = Join-Path ([System.IO.Path]::GetTempPath()) ("push-file-" + [guid]::NewGuid().ToString('N'))
+    try
+    {
+        if ($Linuxify)
+        {
+            ConvertTo-LinuxTextFile -Path $source -Destination $tempFile
+        }
+        else
+        {
+            [System.IO.File]::Copy($source, $tempFile, $true)
+        }
+        $localHash = (Get-FileHash -LiteralPath $tempFile -Algorithm SHA256).Hash.ToLower()
+        $expectedMode = "$Mode $Owner $Group"
+
+        $results = @()
+        foreach ($item in $Server)
+        {
+            $target = "$item"
+            if ($target -notmatch '@')
+            {
+                $target = "root@$target"
+            }
+
+            $result = [pscustomobject]@{
+                Server   = $target
+                Remote   = $RemotePath
+                Status   = 'Pending'
+                Mode     = ''
+                Message  = ''
+            }
+
+            if (-not $PSCmdlet.ShouldProcess("$target`:$RemotePath", '推送文件'))
+            {
+                $result.Status = 'WhatIf'
+                $result.Message = '未连接目标机'
+                $results += $result
+                continue
+            }
+
+            Write-Verbose "处理 $target`: 检查 $RemotePath"
+
+            $checkCmd = "if [ -f '$RemotePath' ]; then sha256sum '$RemotePath' | cut -d' ' -f1; stat -c '%a %U %G' '$RemotePath'; else echo MISSING; fi"
+            $state = & ssh -nT -o BatchMode=yes -o ConnectTimeout=10 $target $checkCmd 2>&1
+            $stateCode = $LASTEXITCODE
+            if ($stateCode -ne 0)
+            {
+                $result.Status = 'Failed'
+                $result.Message = "无法读取目标文件状态: " + (($state | Out-String).Trim())
+                Write-Warning "$target 失败：$($result.Message)"
+                $results += $result
+                continue
+            }
+
+            $lines = @($state | ForEach-Object { "$_".Trim() } | Where-Object { $_ -ne '' })
+            $currentHash = $null
+            $currentMode = $null
+            if ($lines.Count -gt 0 -and $lines[-1] -ne 'MISSING')
+            {
+                $currentMode = $lines[-1]
+                if ($lines.Count -ge 2)
+                {
+                    $currentHash = $lines[-2]
+                }
+            }
+
+            if ($currentHash -eq $localHash -and $currentMode -eq $expectedMode)
+            {
+                $result.Status = 'Skipped'
+                $result.Mode = $currentMode
+                $result.Message = '内容与权限已一致'
+                Write-Verbose "$target 已是最新，跳过"
+                $results += $result
+                continue
+            }
+
+            if (-not $PSCmdlet.ShouldProcess("$target`:$RemotePath", '推送文件'))
+            {
+                continue
+            }
+
+            $remoteTemp = "/tmp/push-file-" + [guid]::NewGuid().ToString('N').Substring(0, 12)
+            Write-Verbose "上传到 $target`:$remoteTemp"
+            $uploadOutput = & scp -q -o BatchMode=yes -o ConnectTimeout=10 $tempFile "${target}:$remoteTemp" 2>&1
+            if ($LASTEXITCODE -ne 0)
+            {
+                $result.Status = 'Failed'
+                $result.Message = "上传失败: " + (($uploadOutput | Out-String).Trim())
+                Write-Warning "$target 失败：$($result.Message)"
+                $results += $result
+                continue
+            }
+
+            $steps = @()
+            if ($CreateDirectory)
+            {
+                $steps += "mkdir -p '$parent'"
+            }
+            if ($Backup)
+            {
+                $backupTarget = "'$BackupDirectory/$leaf.'" + '$(date +%Y%m%d-%H%M%S)'
+                $steps += "mkdir -p '$BackupDirectory'"
+                $steps += "if [ -f '$RemotePath' ]; then cp -p '$RemotePath' $backupTarget; fi"
+            }
+            $steps += "install -m $Mode -o $Owner -g $Group '$remoteTemp' '$RemotePath.tmp'"
+            $steps += "mv -f '$RemotePath.tmp' '$RemotePath'"
+            $steps += "rm -f '$remoteTemp'"
+            $remoteCmd = $steps -join ' && '
+
+            Write-Verbose "落地 $target`:$RemotePath"
+            $installOutput = & ssh -nT -o BatchMode=yes -o ConnectTimeout=10 $target $remoteCmd 2>&1
+            if ($LASTEXITCODE -ne 0)
+            {
+                $result.Status = 'Failed'
+                $result.Message = "写入失败: " + (($installOutput | Out-String).Trim())
+                Write-Warning "$target 失败：$($result.Message)"
+                $results += $result
+                continue
+            }
+
+            $verifyCmd = "sha256sum '$RemotePath' | cut -d' ' -f1; stat -c '%a %U %G' '$RemotePath'"
+            $verify = & ssh -nT -o BatchMode=yes -o ConnectTimeout=10 $target $verifyCmd 2>&1
+            $verifyLines = @($verify | ForEach-Object { "$_".Trim() } | Where-Object { $_ -ne '' })
+            $result.Mode = if ($verifyLines.Count -ge 1) { $verifyLines[-1] } else { '' }
+            $remoteHash = if ($verifyLines.Count -ge 2) { $verifyLines[-2] } else { '' }
+
+            if ($remoteHash -eq $localHash -and $result.Mode -eq $expectedMode)
+            {
+                $result.Status = 'Updated'
+                $result.Message = '已写入并校验通过'
+            }
+            else
+            {
+                $result.Status = 'Failed'
+                $result.Message = "写后校验不通过：hash=$remoteHash 权限=$($result.Mode)，期望 $expectedMode"
+                Write-Warning "$target 失败：$($result.Message)"
+            }
+            $results += $result
+        }
+
+        $failed = @($results | Where-Object { $_.Status -eq 'Failed' })
+        if ($failed.Count -gt 0)
+        {
+            Write-Warning "共 $($results.Count) 台，失败 $($failed.Count) 台；失败机器可用 -WhatIf 复核后再重试。"
+        }
+        return $results
+    }
+    finally
+    {
+        if (Test-Path -LiteralPath $tempFile)
+        {
+            Remove-Item -LiteralPath $tempFile -Force -ErrorAction SilentlyContinue -WhatIf:$false
+        }
+    }
+}

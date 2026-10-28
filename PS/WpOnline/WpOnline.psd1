@@ -17,6 +17,8 @@
         'Get-WpOrdersByEmailOnServers',
         'Update-Servers',
         'Push-ServerItem',
+        'Push-FileToServers',
+        'ConvertTo-LinuxTextFile',
         'Update-WpPluginsDFOnServer',
         'Update-WpPluginsDFOnServers',
         'Update-WpSitesRobots',
