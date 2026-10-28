@@ -10,7 +10,8 @@
 
 | 文件 | 用途 |
 | --- | --- |
-| `deploy.sh` | 批量下发、校验、删除受管文件 |
+| `deploy.sh` | 批量下发、校验、删除受管文件（控制机执行） |
+| `install-cron.sh` | 在目标机本地安装、校验、删除受管文件（服务器执行） |
 | `wp-functions.cron.cst` | 系统时区为 `Asia/Shanghai` 时使用的模板 |
 | `wp-functions.cron.utc` | 系统时区为 `UTC` 时使用的模板 |
 | `hosts.example.txt` | 主机清单示例 |
@@ -19,7 +20,7 @@
 
 ## 前置条件
 
-- 控制机安装 OpenSSH 客户端，能够以 root 身份免密登录全部目标机；脚本使用 Bash，应在 Linux、WSL 或 Git Bash 中运行。
+- 控制机安装 OpenSSH 客户端，能够以 root 身份免密登录全部目标机。`deploy.sh` 需要 Bash，应在 Linux、WSL 或 Git Bash 中运行；`install-cron.sh` 在目标机本地执行，Windows 侧只需 `scp` 与 `ssh`。
 - 目标机已经安装并运行 cron，服务名可能是 `cron`、`crond` 或 `cronie`；cron 实现需要读取 `/etc/cron.d`，Debian、Ubuntu、RHEL 与 CentOS 的默认实现均满足该条件。
 - 目标机已经存在 `/www/sh/wp-functions-update/update_wp_functions.sh`、`/www/functions4.php` 和 `/www/functions24.php`。
 - 目标机的系统时区为 `Asia/Shanghai` 或 `UTC`，或其他固定 UTC+8 时区（后者用 `--template` 指定 CST 模板）；观察夏令时的时区不在本方案范围内。
@@ -49,7 +50,7 @@ ssh root@203.0.113.11 'crontab -l > ~/crontab.bak'
 ssh root@203.0.113.11 'crontab -e'
 ```
 
-删除引用 `functions4.php` 和 `functions24.php` 的旧行后，执行 `crontab -l` 确认条目已消失，再运行本方案。`deploy.sh` 在预检阶段会检查 root crontab、`/etc/crontab` 和其他 `/etc/cron.d` 文件，发现同名条目时拒绝下发。只有在确认重复条目不会造成重复执行时，才使用 `--allow-existing` 跳过该检查。
+删除引用 `functions4.php` 和 `functions24.php` 的旧行后，执行 `crontab -l` 确认条目已消失，再运行本方案。`deploy.sh` 与 `install-cron.sh` 都会检查 root crontab、`/etc/crontab` 和其他 `/etc/cron.d` 文件，发现同名条目时拒绝下发。只有在确认重复条目不会造成重复执行时，才使用 `--allow-existing` 跳过该检查。
 
 宝塔面板中的任务需要在面板界面删除，不能只改文件。面板通常维护 root 的 crontab，删除后可以用上面的 `crontab -l` 命令复核。
 
@@ -91,7 +92,7 @@ ssh root@203.0.113.11 'crontab -e'
 
    文件权限应为 `644 root root`，`crontab -l` 中不应出现这两条任务的旧副本，其余条目应与下发前一致。
 
-## 命令说明
+## deploy.sh 命令说明
 
 | 命令 | 作用 |
 | --- | --- |
@@ -132,6 +133,64 @@ bash deploy.sh --template wp-functions.cron.cst
 如果目标机使用观察夏令时的时区，固定小时无法在全年保持北京时间。此时应改用带 `OnCalendar=... Asia/Shanghai` 的 systemd timer，或在充分评估存量任务影响后统一系统时区。本方案不自动处理这类环境。
 
 `TZ=Asia/Shanghai` 同时保证脚本内的 `date` 使用北京时间。北京时间 00:00 在 UTC 机器上对应前一天 16:00，若进程没有设置 `TZ`，按日期生成的文件名或判断会落到前一天。
+
+Windows PowerShell 在传递远程命令时对引号、`$` 与反斜杠敏感。本方案把复杂逻辑收敛到服务端脚本，远程命令只剩一条带固定参数的 `bash ...`，可以避开转义问题。
+
+## Windows 侧单文件下发
+
+如果全部目标机的系统时区一致（例如都是 `Asia/Shanghai`），可以只维护一份 cron 文件，从 Windows 侧用 `scp` 下发。这种形态不依赖 WSL 或 Git Bash，控制机也不需要安装 Bash。
+
+先批量确认时区：
+
+```bash
+ssh root@203.0.113.11 'timedatectl show -p Timezone --value'
+```
+
+全部为 `Asia/Shanghai` 时，只需使用 `wp-functions.cron.cst`，`0 16` 与 `0 0` 在所有机器上语义一致。存在 `UTC` 机器时按“时区与模板”一节分组，不要用同一份文件覆盖全部机器。
+
+下发流程：
+
+1. 在本地编辑 `wp-functions.cron.cst`，它就是最终落地内容。
+2. 上传到目标机的临时路径。
+3. 在目标机执行 `install-cron.sh`，由它完成剩余处理。
+
+```powershell
+scp .\wp-functions-cron\wp-functions.cron.cst root@${h}:/tmp/wp-functions.cron
+ssh root@${h} 'bash /www/sh/wp-functions-cron/install-cron.sh -f /tmp/wp-functions.cron'
+```
+
+`${h}` 替换为 `Get-ServerList` 返回的主机名或地址；通过 `Update-Servers` 批量执行时，第二条命令可直接复用，不需要按主机改参数。
+
+如果仓库已经整体部署到目标机，可以省掉 `scp`，让安装器读取仓库内的模板：
+
+```powershell
+ssh root@${h} 'bash /www/sh/wp-functions-cron/install-cron.sh -f /www/sh/wp-functions-cron/wp-functions.cron.cst'
+```
+
+`/www/sh` 按实际部署路径调整。这种形态下模板随仓库走 Git，换行由 `.gitattributes` 保证，`install-cron.sh` 再去一次 BOM 与 CR 作为兜底。
+
+校验与删除：
+
+```powershell
+ssh root@${h} 'bash /www/sh/wp-functions-cron/install-cron.sh --check -f /tmp/wp-functions.cron'
+ssh root@${h} 'bash /www/sh/wp-functions-cron/install-cron.sh --remove'
+```
+
+`install-cron.sh` 以 root 身份运行，检查 root crontab、`/etc/crontab` 与其他 `/etc/cron.d` 文件中的重复条目，备份到 `/var/backups/wp-functions-cron/`，并在写后复核 SHA-256 与 `644 root root`。重复执行是安全的：内容与权限已一致时直接跳过，不产生额外备份。上传到 `/tmp` 的临时文件不会被删除，便于重复执行 `--check`。
+
+### 与 deploy.sh 的分工
+
+| 场景 | 建议 |
+| --- | --- |
+| 目标机同一时区，控制机已有批量 SSH 与 `scp` 能力 | `scp` + `install-cron.sh`，Windows 侧无需 Bash |
+| 目标机时区混合（部分 CST、部分 UTC） | `deploy.sh`，按机器自动选择模板 |
+| 需要在一台机器上反复执行并跳过无变化写入 | 两者都支持；`deploy.sh` 在控制机比对，减少一次写入和备份 |
+
+### 三个容易错的地方
+
+- 落地文件名必须是 `wp-functions`，不能带点号。`/etc/cron.d` 中带点号的文件会被 `run-parts` 静默跳过，`install-cron.sh` 会直接拒绝这类目标名。
+- `scp` 直接覆盖目标路径不是原子写，cron 可能读到半截文件。`install-cron.sh` 先写同目录临时文件再改名。
+- `scp` 落地后的属主与权限取决于源文件和登录用户。`install-cron.sh` 用 `install -m 0644 -o root -g root` 固定，并在写后复核。
 
 ## 下发后的验证
 
