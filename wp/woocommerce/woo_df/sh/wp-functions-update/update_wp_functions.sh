@@ -2,24 +2,52 @@
 # 更新重点日志(todo):251204
 # 1.为参数WORKDIR提供接收单个或多个路径的支持,即允许指定1个或多个工作目录,默认为 /www/wwwroot,/wwwdata/wwwroot
 # 2.改进查找WordPress站点的逻辑,使用find命令提高灵活性
+# 3.新增 --dest-name 参数: 允许指定写入主题目录时使用的文件名或符号链接名,不必与源文件名同名
+#   例如源文件为 /www/functions-a.php 时,仍可写入 <主题目录>/functions.php
+
 # 用法说明
 usage() {
-    echo "用法: $0 [--src <源文件>] [--workdir <工作目录>] [--user <用户名>] [--dry-run] [--blacklist <黑名单文件>] [--whitelist <白名单文件>] [--log <日志文件>]"
-    echo "参数说明："
-    echo "  --src <源文件>           要覆盖/补充的 functions.php 文件，默认为 /www/wwwroot/functions.php"
-    echo "  --workdir <工作目录>     网站根目录,可指定多个" #(改进此参数及其使用逻辑)
-    echo "  --user <用户名>          仅处理指定用户名称(不要求系统上真实存在此用户)下的网站"
-    echo "  --dry-run                预览操作，不实际执行"
-    echo "  --install-mode           指定安装模式(copy,symlink)"
-    echo "  --blacklist <文件>       黑名单文件（每行一个域名）"
-    echo "  --whitelist <文件>       白名单文件（每行一个域名，只操作这些域名）"
-    echo "  --log <日志文件>         日志文件"
+    cat << EOF
+用法: $0 [选项]
+
+选项:
+  -s, --src <源文件>        要写入主题目录的源文件,默认为 /www/functions.php
+  -n, --dest-name <文件名>  写入主题目录时使用的文件名或符号链接名,默认为 functions.php
+                            仅接受纯文件名(不含目录部分),例如源文件为 functions-a.php 时可指定为 functions.php
+  -w, --workdir <目录>      网站根目录,多个目录用逗号分隔,默认为 /www/wwwroot,/wwwdata/wwwroot
+  -u, --user <用户名>       仅处理指定用户名称(不要求系统上真实存在此用户)下的网站
+  -m, --install-mode <模式> 安装模式: copy(复制,默认) 或 symlink(软链接)
+  -d, --dry-run             预览操作,不实际执行
+      --blacklist <文件>    黑名单文件(每行一个域名)
+      --whitelist <文件>    白名单文件(每行一个域名,只操作这些域名)
+      --log <日志文件>      日志文件
+  -h, --help                显示本帮助并退出
+EOF
+    exit "${1:-1}"
+}
+
+die() {
+    echo "$*" >&2
     exit 1
+}
+
+# 校验需要取值的选项,避免漏写取值时被误判为其它选项
+require_arg() {
+    [[ -n "${2:-}" ]] || die "参数 $1 缺少取值,可用 --help 查看用法"
+}
+
+# 目标文件名校验: 只允许纯文件名,避免被当成路径拼接到主题目录之外
+validate_dest_name() {
+    local name="$1"
+    [[ -n "$name" ]] || die "目标文件名不能为空"
+    [[ "$name" != */* ]] || die "目标文件名只能是纯文件名,不能包含目录部分: $name"
+    [[ "$name" != "." && "$name" != ".." ]] || die "目标文件名不合法: $name"
 }
 
 # 参数解析
 HOSTNAME=$(hostname)
 SRC_FILE="/www/functions.php"
+DEST_NAME="functions.php"
 WORKDIR="/www/wwwroot,/wwwdata/wwwroot"
 USER_NAME=""
 INSTALL_MODE="copy"
@@ -30,63 +58,88 @@ LOG_FILE=""
 
 while [[ "$#" -gt 0 ]]; do
     case $1 in
-        --src)
-            SRC_FILE="$2"
-            shift
-            ;;
-        --workdir)
-            WORKDIR="$2"
-            shift
-            ;;
-        --user)
-            USER_NAME="$2"
-            shift
-            ;;
-        --install-mode)
-            INSTALL_MODE="$2"
-            shift
-            ;;
-        --dry-run) DRY_RUN=true ;;
-        --blacklist)
-            BLACKLIST_FILE="$2"
-            shift
-            ;;
-        --whitelist)
-            WHITELIST_FILE="$2"
-            shift
-            ;;
-        --log)
-            LOG_FILE="$2"
-            shift
-            ;;
-        *) usage ;;
+    -s | --src)
+        require_arg "$1" "${2:-}"
+        SRC_FILE="$2"
+        shift
+        ;;
+    -n | --dest-name)
+        require_arg "$1" "${2:-}"
+        DEST_NAME="$2"
+        shift
+        ;;
+    -w | --workdir)
+        require_arg "$1" "${2:-}"
+        WORKDIR="$2"
+        shift
+        ;;
+    -u | --user)
+        require_arg "$1" "${2:-}"
+        USER_NAME="$2"
+        shift
+        ;;
+    -m | --install-mode)
+        require_arg "$1" "${2:-}"
+        INSTALL_MODE="$2"
+        shift
+        ;;
+    -d | --dry-run) DRY_RUN=true ;;
+    --blacklist)
+        require_arg "$1" "${2:-}"
+        BLACKLIST_FILE="$2"
+        shift
+        ;;
+    --whitelist)
+        require_arg "$1" "${2:-}"
+        WHITELIST_FILE="$2"
+        shift
+        ;;
+    --log)
+        require_arg "$1" "${2:-}"
+        LOG_FILE="$2"
+        shift
+        ;;
+    -h | --help) usage 0 ;;
+    *) usage ;;
     esac
     shift
 done
 
 if [[ ! -f "$SRC_FILE" ]]; then
-    echo "源文件不存在: $SRC_FILE"
-    exit 1
+    die "源文件不存在: $SRC_FILE"
+fi
+
+validate_dest_name "$DEST_NAME"
+
+case $INSTALL_MODE in
+copy | symlink) ;;
+*) die "不支持的安装模式: $INSTALL_MODE(可选: copy, symlink)" ;;
+esac
+
+# 统一解析为绝对路径: symlink 模式下的软链接目标需为绝对路径,否则相对路径会相对主题目录解析而失效
+if command -v realpath > /dev/null 2>&1; then
+    RESOLVED_SRC=$(realpath -- "$SRC_FILE" 2> /dev/null)
+    [[ -n "$RESOLVED_SRC" ]] && SRC_FILE="$RESOLVED_SRC"
+elif command -v readlink > /dev/null 2>&1; then
+    RESOLVED_SRC=$(readlink -f -- "$SRC_FILE" 2> /dev/null)
+    [[ -n "$RESOLVED_SRC" ]] && SRC_FILE="$RESOLVED_SRC"
 fi
 
 # 读取黑白名单
 BLACKLIST=()
 WHITELIST=()
 if [[ -n "$WHITELIST_FILE" && -n "$BLACKLIST_FILE" ]]; then
-    echo "不能同时指定白名单和黑名单！"
-    exit 1
+    die "不能同时指定白名单和黑名单！"
 fi
 if [[ -n "$BLACKLIST_FILE" ]]; then
     [[ -f "$BLACKLIST_FILE" ]] || {
-        echo "黑名单文件不存在: $BLACKLIST_FILE"
-        exit 1
+        die "黑名单文件不存在: $BLACKLIST_FILE"
     }
     mapfile -t BLACKLIST < "$BLACKLIST_FILE"
 fi
 if [[ -n "$WHITELIST_FILE" ]]; then
     [[ -f "$WHITELIST_FILE" ]] || {
-        echo "白名单文件不存在: $WHITELIST_FILE"
-        exit 1
+        die "白名单文件不存在: $WHITELIST_FILE"
     }
     mapfile -t WHITELIST < "$WHITELIST_FILE"
 fi
@@ -162,19 +215,21 @@ for site in "${SITE_PATHS[@]}"; do
     }
     for theme in "$THEME_DIR"/*; do
         [[ -d "$theme" ]] || continue
-        TARGET="$theme/functions.php"
+        # 目标名由 --dest-name 指定,默认 functions.php,可与源文件名不同
+        TARGET="$theme/$DEST_NAME"
         if $DRY_RUN; then
-            log_action "[DRY RUN] 将覆盖 $SRC_FILE 到 $TARGET"
+            log_action "[DRY RUN] 将写入 $SRC_FILE 到 $TARGET($INSTALL_MODE)"
         else
             if [[ $INSTALL_MODE = "copy" ]]; then
-                [[ -f "$TARGET" ]] && rm -f "$TARGET"
-                if cp -f "$SRC_FILE" "$TARGET"; then
+                # 先删除既有目标(含指向其它文件的软链接),避免 cp 透过软链接改写其指向的文件
+                rm -f -- "$TARGET"
+                if cp -f -- "$SRC_FILE" "$TARGET"; then
                     log_action "已覆盖 $SRC_FILE 到 $TARGET"
                 else
                     log_action "覆盖失败: $TARGET"
                 fi
             elif [[ $INSTALL_MODE = "symlink" ]]; then
-                if ln -sf "$SRC_FILE" "$TARGET"; then
+                if ln -sfn -- "$SRC_FILE" "$TARGET"; then
                     log_action "已强制创建软链接 $SRC_FILE 到 $TARGET"
                 else
                     log_action "创建软链接失败: $TARGET"
