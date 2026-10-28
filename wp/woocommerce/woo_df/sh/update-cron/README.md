@@ -248,7 +248,19 @@ $r = Push-FileToServers -Path /path/to/update-cron-file.cron -RemotePath /etc/cr
 if (@($r | Where-Object Status -eq 'Failed').Count -gt 0) { throw '下发存在失败机器' }
 ```
 
-这条路径不做业务预检：不查重复任务条目、不查模板依赖文件、不查 cron 服务。重复条目只在首次迁移时出现，按“已有相同任务时的迁移”手工核对一次即可；依赖文件与完整预检用 `deploy.sh --require`。完整参数见 `Get-Help Push-FileToServers -Full`。
+这条路径不做业务预检：不查重复任务条目、不查模板依赖文件、不查 cron 服务。这三项可以用 `Update-Servers` 补，不必改代码。`-Threads 1` 让输出按机器分组，命令开头的 `hostname` 用来区分主机，正常时每台只有一行主机名：
+
+```powershell
+Update-Servers -Threads 1 -cmd 'hostname; systemctl is-active cron crond cronie 2>/dev/null | grep -m1 -x active || echo cron-service=inactive'
+
+Update-Servers -Threads 1 -cmd 'hostname; grep -rnF --exclude=update-cron -e update_wp_functions.sh -e functions4.php /etc/crontab /etc/cron.d/ 2>/dev/null; crontab -l 2>/dev/null | grep -nF -e update_wp_functions.sh -e functions4.php'
+
+Update-Servers -Threads 1 -cmd 'hostname; for f in /www/sh/wp-functions-update/update_wp_functions.sh /www/functions4.php /www/functions24.php; do [ -f $f ] || echo missing:$f; done'
+```
+
+异常时对应位置会出现 `cron-service=inactive`、命中的 cron 行或 `missing:/...`。`-e` 与 `for f in` 后面换成自己模板里的脚本名，`--exclude` 用来排除刚写入的受管文件本身。
+
+第二条要在推送**之前**跑：cron 每分钟读一次配置，重复条目一旦被读到就会和旧条目一起执行，推送后再查只能补救。依赖与 cron 服务两条在推送前后都行，提前跑可以避免装上一份不生效的配置。完整预检（含 `--require`）仍用 `deploy.sh`。完整参数见 `Get-Help Push-FileToServers -Full`。
 
 ### 方式二：手工 `scp` + `install-cron.sh`
 
@@ -294,7 +306,7 @@ Update-Servers -cmd 'bash /www/sh/update-cron/install-cron.sh -f /tmp/update-cro
 - 只做执行，不做上传：文件下发用 `Push-FileToServers` 或手工 `scp`。
 - 固定以 `root` 登录，并先切到 `-WorkingDirectory`（默认 `/www`）；目标机没有该目录时命令直接失败。
 - 没有 `-Server` 参数，不能只处理一台；单台操作用 `ssh root@<host> '...'`。
-- 输出不区分主机，多台结果混在一起；需要逐台状态时看 `Push-FileToServers` 的结果对象，或自己循环单台 `ssh`。
+- 输出不区分主机，多台结果混在一起；需要逐台定位时在命令里以 `hostname;` 开头并配 `-Threads 1`，或看 `Push-FileToServers` 的结果对象。
 - 不返回失败汇总与退出码，只回显远端 stdout 与 stderr。
 - 依赖 `Start-ThreadJob`：PowerShell 7 自带；Windows PowerShell 5.1 需先安装 `ThreadJob` 模块，否则整条命令直接报 `CommandNotFoundException`，一台都不会执行。
 
@@ -453,7 +465,7 @@ Update-Servers -cmd 'mkdir -p /var/backups/update-cron && cp -p /etc/cron.d/upda
 | `Failed 作业异常` | 后台作业未正常返回结果 | 改用 `-ThrottleLimit 1` 顺序执行，绕开并发层后复现 |
 | 远端报 `unexpected end of file` 或 `parse error near` | 下发的命令换行或引号被破坏 | 确认调用的是最新版 `Push-FileToServers`；清理 `/tmp/push-file-*` 后重试 |
 | `Update-Servers` 报 `Start-ThreadJob is not recognized` | 当前是 Windows PowerShell 5.1 且未安装 `ThreadJob` 模块 | 改用 `pwsh` 7 执行，或先安装 `ThreadJob` 模块 |
-| `Update-Servers` 输出没有对应主机名，无法定位 | 该命令只回显远端输出，不标注主机 | 单台改用 `ssh root@<host> '...'` 逐个确认 |
+| `Update-Servers` 输出没有对应主机名，无法定位 | 该命令只回显远端输出，不标注主机 | 在命令前加 `hostname;` 并配 `-Threads 1`，或单台改用 `ssh root@<host> '...'` |
 
 ## 与现有 crontab 和宝塔面板的关系
 
