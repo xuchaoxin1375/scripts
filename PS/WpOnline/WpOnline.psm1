@@ -1494,29 +1494,110 @@ function ConvertTo-LinuxTextFile
     <#
     .SYNOPSIS
     把文本文件规范化为 Linux 约定：UTF-8 无 BOM、LF 换行、结尾有换行符。
+
     .DESCRIPTION
-    读取时由 .NET 自动识别并去除 BOM，写入固定为 UTF-8 无 BOM；CRLF 与单独的 CR 都转换为 LF，结尾缺少换行时补一个。
+    读取时按 BOM 识别 UTF-8 与 UTF-16，没有 BOM 时按 UTF-8 严格解码；写入固定为 UTF-8 无 BOM。
+    CRLF 与单独的 CR 都转换为 LF；非空文件缺少结尾换行时补一个，空文件保持为空。
     供 Push-FileToServers 的 -Linuxify 使用，也可单独调用处理待上传的文本文件。
+
     .PARAMETER Path
-    源文件路径。
+    源文件路径，支持相对路径，按当前 PowerShell 位置解析。
+
     .PARAMETER Destination
-    规范化结果的输出路径。
+    规范化结果的输出路径，支持相对路径；允许与 -Path 相同，此时为原地规范化。
+
+    .EXAMPLE
+    ConvertTo-LinuxTextFile -Path .\wp-functions.cron.cst -Destination .\out\wp-functions
+
+    把本地模板规范化到另一个文件，原文件保持不变。
+
+    .EXAMPLE
+    ConvertTo-LinuxTextFile -Path .\update_wp_functions.sh -Destination .\update_wp_functions.sh
+
+    原地规范化；覆盖原文件前应先提交到版本库或另行备份。
+
+    .EXAMPLE
+    $tmp = Join-Path $env:TEMP 'probe.txt'
+    ConvertTo-LinuxTextFile -Path .\crlf.txt -Destination $tmp
+    [System.IO.File]::ReadAllBytes($tmp)[-1]
+
+    检查结果末字节，应为 10（LF）。
+
+    .INPUTS
+    None.
+
+    .OUTPUTS
+    None. 本命令不向成功流输出对象，结果只体现在目标文件上。
+
+    .NOTES
+    GBK/ANSI 编码的文件无法按 UTF-8 解码，命令会报错并提示转换方式。
+    不要对二进制文件使用本命令；内容包含 NUL 字节时会直接报错。
+    文件已符合规范时不会改变字节内容，可重复执行。
+
+    .LINK
+    Push-FileToServers
     #>
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)]
+        [Parameter(Mandatory, Position = 0)]
         [string]$Path,
-        [Parameter(Mandatory)]
+        [Parameter(Mandatory, Position = 1)]
         [string]$Destination
     )
-    $text = [System.IO.File]::ReadAllText($Path)
+
+    $sourcePath = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).ProviderPath
+    $targetPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Destination)
+
+    $targetDirectory = Split-Path -Parent $targetPath
+    if ($targetDirectory -and -not (Test-Path -LiteralPath $targetDirectory))
+    {
+        throw "目标目录不存在: $targetDirectory；请先创建该目录，或改用已存在的路径。"
+    }
+
+    $bytes = [System.IO.File]::ReadAllBytes($sourcePath)
+    $offset = 0
+    if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF)
+    {
+        $offset = 3
+        $encoding = New-Object System.Text.UTF8Encoding($false, $true)
+    }
+    elseif ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE)
+    {
+        $offset = 2
+        $encoding = New-Object System.Text.UnicodeEncoding($false, $false, $true)
+    }
+    elseif ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFE -and $bytes[1] -eq 0xFF)
+    {
+        $offset = 2
+        $encoding = New-Object System.Text.UnicodeEncoding($true, $false, $true)
+    }
+    else
+    {
+        $encoding = New-Object System.Text.UTF8Encoding($false, $true)
+    }
+
+    try
+    {
+        $text = $encoding.GetString($bytes, $offset, $bytes.Length - $offset)
+    }
+    catch
+    {
+        throw "无法解码 $sourcePath：内容不是有效的 UTF-8 或 UTF-16 文本。若文件是 GBK/ANSI 编码，请先另存为 UTF-8，或执行 iconv -f GBK -t UTF-8 后再试。"
+    }
+
+    if ($text.IndexOf([char]0) -ge 0)
+    {
+        throw "无法处理 $sourcePath：内容包含 NUL 字节，看起来是二进制文件。"
+    }
+
     $text = $text -replace "`r`n", "`n" -replace "`r", "`n"
-    if (-not $text.EndsWith("`n"))
+    if ($text.Length -gt 0 -and -not $text.EndsWith("`n"))
     {
         $text += "`n"
     }
+
     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-    [System.IO.File]::WriteAllText($Destination, $text, $utf8NoBom)
+    [System.IO.File]::WriteAllText($targetPath, $text, $utf8NoBom)
 }
 
 function Push-FileToServers
@@ -1530,8 +1611,8 @@ function Push-FileToServers
     执行者：当前会话通过 scp 上传、ssh 落地，按 -ThrottleLimit 并发处理多台机器。
     善后：无需额外操作；重复执行时，内容与权限已一致的机器直接跳过。
 
-    落地采用"上传到 /tmp、install 到同目录临时文件、改名替换"的顺序，避免 cron 等读者读到半截文件。
-    写入完成后复核 SHA-256 与权限，复核不通过记为失败。
+    每台目标机固定两次连接：一次 scp 上传到 /tmp，一次 ssh 完成比对、备份、原子替换与写后校验。
+    远端命令在同一个会话内先比对 SHA-256 与权限，一致则直接跳过并清理临时文件，避免重复写入。
 
     并发使用 PowerShell 7 的 ForEach-Object -Parallel；Windows PowerShell 5.1 没有该参数，会自动退回顺序执行并给出提示。
 
@@ -1551,7 +1632,7 @@ function Push-FileToServers
     读取服务器清单时跳过的开头条目数，默认 1，与 Update-Servers 的默认行为一致；显式传入 -Server 时本参数无效。
 
     .PARAMETER ThrottleLimit
-    同时处理的目标机数量，默认 5，取值范围 1 到 64；设为 1 时按顺序执行。
+    同时处理的目标机数量，默认 10，取值范围 1 到 64；设为 1 时按顺序执行。
 
     .PARAMETER Linuxify
     按 Linux 文本文件处理：去掉 UTF-8 BOM、把 CRLF 转成 LF、补齐结尾换行。二进制文件不要加此开关。
@@ -1577,12 +1658,12 @@ function Push-FileToServers
     .EXAMPLE
     Push-FileToServers -Path .\wp-functions-cron\wp-functions.cron.cst -RemotePath /etc/cron.d/wp-functions -Linuxify
 
-    推送定时任务文件：去掉 BOM 与 CR，落地为 644 root root，默认 5 台并发。
+    推送定时任务文件：去掉 BOM 与 CR，落地为 644 root root，默认 10 台并发。
 
     .EXAMPLE
-    Push-FileToServers -Path .\update_wp_functions.sh -RemotePath /www/sh/wp-functions-update/update_wp_functions.sh -Linuxify -Mode 0755 -Backup -ThrottleLimit 10
+    Push-FileToServers -Path .\update_wp_functions.sh -RemotePath /www/sh/wp-functions-update/update_wp_functions.sh -Linuxify -Mode 0755 -Backup
 
-    推送脚本并保留可执行位，10 台并发。
+    推送脚本并保留可执行位，同时备份旧版本。
 
     .EXAMPLE
     Push-FileToServers -Path .\hosts.txt -RemotePath /www/hosts.txt -Server 192.0.2.10,192.0.2.11 -ThrottleLimit 1 -WhatIf
@@ -1610,7 +1691,7 @@ function Push-FileToServers
         [int]$Skip = 1,
 
         [ValidateRange(1, 64)]
-        [int]$ThrottleLimit = 5,
+        [int]$ThrottleLimit = 10,
 
         [switch]$Linuxify,
 
@@ -1671,15 +1752,43 @@ function Push-FileToServers
         $expectedMode = "$statMode $Owner $Group"
 
         $context = [pscustomobject]@{
-            RemotePath      = $RemotePath
-            LocalHash       = $localHash
-            ExpectedMode    = $expectedMode
-            Mode            = $Mode
-            Owner           = $Owner
-            Group           = $Group
-            Backup          = [bool]$Backup
-            BackupDirectory = $BackupDirectory
-            CreateDirectory = [bool]$CreateDirectory
+            RemotePath   = $RemotePath
+            LocalHash    = $localHash
+            ExpectedMode = $expectedMode
+        }
+
+        # 远端脚本：比对、备份、原子替换、写后回显，全部在一次 ssh 会话内完成
+        $scriptTemplate = @'
+target='__TARGET__'
+tmp='__TMP__'
+if [ -f "$target" ]; then
+  h=$(sha256sum "$target" | cut -d' ' -f1)
+  m=$(stat -c '%a %U %G' "$target")
+  if [ "$h" = '__HASH__' ] && [ "$m" = '__MODE__' ]; then
+    rm -f "$tmp"
+    echo "SKIPPED $h $m"
+    exit 0
+  fi
+fi
+__MKDIR____BACKUP__install -m __PMODE__ -o __OWNER__ -g __GROUP__ "$tmp" "$target.tmp" && mv -f "$target.tmp" "$target" || { rm -f "$tmp"; exit 1; }
+rm -f "$tmp"
+echo "UPDATED $(sha256sum "$target" | cut -d' ' -f1) $(stat -c '%a %U %G' "$target")"
+'@
+
+        $mkdirStep = ''
+        if ($CreateDirectory)
+        {
+            $mkdirStep = "mkdir -p '$parent'`n"
+        }
+        $backupStep = ''
+        if ($Backup)
+        {
+            $backupPath = "$BackupDirectory/$leaf." + '$(date +%Y%m%d-%H%M%S)'
+            $backupStep = @(
+                "mkdir -p '$BackupDirectory'"
+                "if [ -f `"`$target`" ]; then cp -p `"`$target`" `"$backupPath`"; fi"
+            ) -join "`n"
+            $backupStep += "`n"
         }
 
         # 单台目标机的全部动作集中在这一个脚本块里，顺序执行与并行走同一份逻辑
@@ -1695,37 +1804,7 @@ function Push-FileToServers
                 Message = ''
             }
 
-            $checkCmd = "if [ -f '$($Context.RemotePath)' ]; then sha256sum '$($Context.RemotePath)' | cut -d' ' -f1; stat -c '%a %U %G' '$($Context.RemotePath)'; else echo MISSING; fi"
-            $state = & ssh -nT -o BatchMode=yes -o ConnectTimeout=10 $Item.Target $checkCmd 2>&1
-            if ($LASTEXITCODE -ne 0)
-            {
-                $result.Status = 'Failed'
-                $result.Message = "无法读取目标文件状态: " + (($state | Out-String).Trim())
-                return $result
-            }
-
-            $lines = @($state | ForEach-Object { "$_".Trim() } | Where-Object { $_ -ne '' })
-            $currentHash = $null
-            $currentMode = $null
-            if ($lines.Count -gt 0 -and $lines[-1] -ne 'MISSING')
-            {
-                $currentMode = $lines[-1]
-                if ($lines.Count -ge 2)
-                {
-                    $currentHash = $lines[-2]
-                }
-            }
-
-            if ($currentHash -eq $Context.LocalHash -and $currentMode -eq $Context.ExpectedMode)
-            {
-                $result.Status = 'Skipped'
-                $result.Mode = $currentMode
-                $result.Message = '内容与权限已一致'
-                return $result
-            }
-
-            $remoteTemp = "/tmp/push-file-" + [guid]::NewGuid().ToString('N').Substring(0, 12)
-            $uploadOutput = & scp -q -o BatchMode=yes -o ConnectTimeout=10 $Item.LocalFile "$($Item.Target):$remoteTemp" 2>&1
+            $uploadOutput = & scp -q -o BatchMode=yes -o ConnectTimeout=10 $Item.LocalFile "$($Item.Target):$($Item.RemoteTemp)" 2>&1
             if ($LASTEXITCODE -ne 0)
             {
                 $result.Status = 'Failed'
@@ -1733,39 +1812,30 @@ function Push-FileToServers
                 return $result
             }
 
-            $steps = @()
-            $remoteLeaf = Split-Path -Leaf $Context.RemotePath
-            $remoteParent = $Context.RemotePath.Substring(0, $Context.RemotePath.LastIndexOf('/'))
-            if ($Context.CreateDirectory)
-            {
-                $steps += "mkdir -p '$remoteParent'"
-            }
-            if ($Context.Backup)
-            {
-                $backupTarget = "'$($Context.BackupDirectory)/$remoteLeaf.'" + '$(date +%Y%m%d-%H%M%S)'
-                $steps += "mkdir -p '$($Context.BackupDirectory)'"
-                $steps += "if [ -f '$($Context.RemotePath)' ]; then cp -p '$($Context.RemotePath)' $backupTarget; fi"
-            }
-            $steps += "install -m $($Context.Mode) -o $($Context.Owner) -g $($Context.Group) '$remoteTemp' '$($Context.RemotePath).tmp'"
-            $steps += "mv -f '$($Context.RemotePath).tmp' '$($Context.RemotePath)'"
-            $steps += "rm -f '$remoteTemp'"
-            $remoteCmd = $steps -join ' && '
-
-            $installOutput = & ssh -nT -o BatchMode=yes -o ConnectTimeout=10 $Item.Target $remoteCmd 2>&1
+            $output = & ssh -nT -o BatchMode=yes -o ConnectTimeout=10 $Item.Target $Item.RemoteCmd 2>&1
             if ($LASTEXITCODE -ne 0)
             {
                 $result.Status = 'Failed'
-                $result.Message = "写入失败: " + (($installOutput | Out-String).Trim())
+                $result.Message = "写入失败: " + (($output | Out-String).Trim())
                 return $result
             }
 
-            $verifyCmd = "sha256sum '$($Context.RemotePath)' | cut -d' ' -f1; stat -c '%a %U %G' '$($Context.RemotePath)'"
-            $verify = & ssh -nT -o BatchMode=yes -o ConnectTimeout=10 $Item.Target $verifyCmd 2>&1
-            $verifyLines = @($verify | ForEach-Object { "$_".Trim() } | Where-Object { $_ -ne '' })
-            $result.Mode = if ($verifyLines.Count -ge 1) { $verifyLines[-1] } else { '' }
-            $remoteHash = if ($verifyLines.Count -ge 2) { $verifyLines[-2] } else { '' }
+            $line = @($output | ForEach-Object { "$_".Trim() } | Where-Object { $_ -match '^(SKIPPED|UPDATED) ' } | Select-Object -Last 1)
+            if ($line.Count -eq 0)
+            {
+                $result.Status = 'Failed'
+                $result.Message = "未取得目标文件状态: " + (($output | Out-String).Trim())
+                return $result
+            }
 
-            if ($remoteHash -eq $Context.LocalHash -and $result.Mode -eq $Context.ExpectedMode)
+            $parts = $line[0] -split '\s+'
+            $result.Mode = ($parts[2..4] -join ' ')
+            if ($parts[0] -eq 'SKIPPED')
+            {
+                $result.Status = 'Skipped'
+                $result.Message = '内容与权限已一致'
+            }
+            elseif ($parts[1] -eq $Context.LocalHash -and $result.Mode -eq $Context.ExpectedMode)
             {
                 $result.Status = 'Updated'
                 $result.Message = '已写入并校验通过'
@@ -1773,7 +1843,7 @@ function Push-FileToServers
             else
             {
                 $result.Status = 'Failed'
-                $result.Message = "写后校验不通过：hash=$remoteHash 权限=$($result.Mode)，期望 $($Context.ExpectedMode)"
+                $result.Message = "写后校验不通过：hash=$($parts[1]) 权限=$($result.Mode)，期望 $($Context.ExpectedMode)"
             }
             return $result
         }
@@ -1803,11 +1873,25 @@ function Push-FileToServers
                 continue
             }
 
+            $remoteTemp = "/tmp/push-file-" + [guid]::NewGuid().ToString('N').Substring(0, 12)
+            $remoteCmd = $scriptTemplate
+            $remoteCmd = $remoteCmd.Replace('__TARGET__', $RemotePath)
+            $remoteCmd = $remoteCmd.Replace('__TMP__', $remoteTemp)
+            $remoteCmd = $remoteCmd.Replace('__HASH__', $localHash)
+            $remoteCmd = $remoteCmd.Replace('__MODE__', $expectedMode)
+            $remoteCmd = $remoteCmd.Replace('__PMODE__', $Mode)
+            $remoteCmd = $remoteCmd.Replace('__OWNER__', $Owner)
+            $remoteCmd = $remoteCmd.Replace('__GROUP__', $Group)
+            $remoteCmd = $remoteCmd.Replace('__MKDIR__', $mkdirStep)
+            $remoteCmd = $remoteCmd.Replace('__BACKUP__', $backupStep)
+
             Write-Verbose "排队推送 $target`:$RemotePath"
             $queue += [pscustomobject]@{
-                Index     = $index
-                Target    = $target
-                LocalFile = $tempFile
+                Index      = $index
+                Target     = $target
+                LocalFile  = $tempFile
+                RemoteTemp = $remoteTemp
+                RemoteCmd  = $remoteCmd
             }
             $index++
         }
