@@ -136,6 +136,8 @@ bash deploy.sh --template wp-functions.cron.cst
 
 Windows PowerShell 在传递远程命令时对引号、`$` 与反斜杠敏感。本方案把复杂逻辑收敛到服务端脚本，远程命令只剩一条带固定参数的 `bash ...`，可以避开转义问题。
 
+`Push-FileToServers` 的远端命令按同样的原则构造：只用单引号，不含双引号，并且以 LF 下发。远端登录 shell 不把 CR 当作空白字符，命令带 CRLF 会让 `then`、`fi`、`}` 等标记失效；Windows PowerShell 5.1 传参时还会吃掉双引号。命令内容只使用 POSIX 语法，root 登录 shell 是 bash、zsh 或 sh 都能执行。
+
 ## Windows 侧单文件下发
 
 如果全部目标机的系统时区一致（例如都是 `Asia/Shanghai`），可以只维护一份 cron 文件，从 Windows 侧用 `scp` 下发。这种形态不依赖 WSL 或 Git Bash，控制机也不需要安装 Bash。

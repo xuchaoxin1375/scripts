@@ -1613,6 +1613,7 @@ function Push-FileToServers
 
     每台目标机固定两次连接：一次 scp 上传到 /tmp，一次 ssh 完成比对、备份、原子替换与写后校验。
     远端命令在同一个会话内先比对 SHA-256 与权限，一致则直接跳过并清理临时文件，避免重复写入。
+    命令以 LF 下发、只用单引号与 POSIX 语法，目标机登录 shell 为 bash、zsh 或 sh 都能执行。
 
     并发使用 PowerShell 7 的 ForEach-Object -Parallel；Windows PowerShell 5.1 没有该参数，会自动退回顺序执行并给出提示。
 
@@ -1674,6 +1675,7 @@ function Push-FileToServers
     结果按服务器清单顺序输出，便于逐台核对；并发完成顺序不影响结果顺序。
     首次连接目标机前需先手工 ssh 一次，接受 host key 并确认免密登录可用；本命令使用 BatchMode=yes，不会弹出密码提示。
     本命令只负责文件落地，不检查目标机是否存在重复的定时任务等业务冲突。
+    远端命令未执行到清理语句时（例如解析失败或连接中断），已上传的临时文件会留在 /tmp，可用 rm -f /tmp/push-file-* 清理。
     #>
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
     param(
@@ -1757,22 +1759,26 @@ function Push-FileToServers
             ExpectedMode = $expectedMode
         }
 
-        # 远端脚本：比对、备份、原子替换、写后回显，全部在一次 ssh 会话内完成
+        # 远端脚本：比对、备份、原子替换、写后回显，全部在一次 ssh 会话内完成。
+        # 脚本内只用单引号，且所有路径都由参数校验保证不含空白与通配符，因此变量保持不加引号的用法：
+        # 双引号会随 Windows 命令行解析变形，单引号不会；换行符由下方统一规范为 LF。
         $scriptTemplate = @'
 target='__TARGET__'
 tmp='__TMP__'
-if [ -f "$target" ]; then
-  h=$(sha256sum "$target" | cut -d' ' -f1)
-  m=$(stat -c '%a %U %G' "$target")
-  if [ "$h" = '__HASH__' ] && [ "$m" = '__MODE__' ]; then
-    rm -f "$tmp"
-    echo "SKIPPED $h $m"
+if [ -f $target ]; then
+  h=$(sha256sum $target | cut -d' ' -f1)
+  m=$(stat -c %a $target)
+  u=$(stat -c %U $target)
+  g=$(stat -c %G $target)
+  if [ x$h = x__HASH__ ] && [ x$m = x__SMODE__ ] && [ x$u = x__OWNER__ ] && [ x$g = x__GROUP__ ]; then
+    rm -f $tmp
+    echo SKIPPED $h $m $u $g
     exit 0
   fi
 fi
-__MKDIR____BACKUP__install -m __PMODE__ -o __OWNER__ -g __GROUP__ "$tmp" "$target.tmp" && mv -f "$target.tmp" "$target" || { rm -f "$tmp"; exit 1; }
-rm -f "$tmp"
-echo "UPDATED $(sha256sum "$target" | cut -d' ' -f1) $(stat -c '%a %U %G' "$target")"
+__MKDIR____BACKUP__install -m __PMODE__ -o __OWNER__ -g __GROUP__ $tmp $target.tmp && mv -f $target.tmp $target || { rm -f $tmp; exit 1; }
+rm -f $tmp
+echo UPDATED $(sha256sum $target | cut -d' ' -f1) $(stat -c %a $target) $(stat -c %U $target) $(stat -c %G $target)
 '@
 
         $mkdirStep = ''
@@ -1783,10 +1789,11 @@ echo "UPDATED $(sha256sum "$target" | cut -d' ' -f1) $(stat -c '%a %U %G' "$targ
         $backupStep = ''
         if ($Backup)
         {
-            $backupPath = "$BackupDirectory/$leaf." + '$(date +%Y%m%d-%H%M%S)'
+            $backupPath = "bk='$BackupDirectory/$leaf.'" + '$(date +%Y%m%d-%H%M%S)'
             $backupStep = @(
                 "mkdir -p '$BackupDirectory'"
-                "if [ -f `"`$target`" ]; then cp -p `"`$target`" `"$backupPath`"; fi"
+                $backupPath
+                'if [ -f $target ]; then cp -p $target $bk; fi'
             ) -join "`n"
             $backupStep += "`n"
         }
@@ -1878,12 +1885,14 @@ echo "UPDATED $(sha256sum "$target" | cut -d' ' -f1) $(stat -c '%a %U %G' "$targ
             $remoteCmd = $remoteCmd.Replace('__TARGET__', $RemotePath)
             $remoteCmd = $remoteCmd.Replace('__TMP__', $remoteTemp)
             $remoteCmd = $remoteCmd.Replace('__HASH__', $localHash)
-            $remoteCmd = $remoteCmd.Replace('__MODE__', $expectedMode)
+            $remoteCmd = $remoteCmd.Replace('__SMODE__', $statMode)
             $remoteCmd = $remoteCmd.Replace('__PMODE__', $Mode)
             $remoteCmd = $remoteCmd.Replace('__OWNER__', $Owner)
             $remoteCmd = $remoteCmd.Replace('__GROUP__', $Group)
             $remoteCmd = $remoteCmd.Replace('__MKDIR__', $mkdirStep)
             $remoteCmd = $remoteCmd.Replace('__BACKUP__', $backupStep)
+            # 远端 shell 不把 CR 当空白：CRLF 会让 then、fi、} 等标记失效，脚本必须以 LF 下发
+            $remoteCmd = ($remoteCmd -replace "`r`n", "`n") -replace "`r", ''
 
             Write-Verbose "排队推送 $target`:$RemotePath"
             $queue += [pscustomobject]@{
