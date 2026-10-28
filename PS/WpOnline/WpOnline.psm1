@@ -1523,15 +1523,17 @@ function Push-FileToServers
 {
     <#
     .SYNOPSIS
-    把同一个本地文件推送到多台服务器的同一路径，可选按 Linux 文本规范处理。
+    把同一个本地文件批量推送到多台服务器的同一路径，可选按 Linux 文本规范处理。
 
     .DESCRIPTION
     前置条件：已为目标机配置 root 免密登录；目标目录存在，或加 -CreateDirectory。
-    执行者：当前会话通过 scp 上传、ssh 落地，逐台顺序处理。
+    执行者：当前会话通过 scp 上传、ssh 落地，按 -ThrottleLimit 并发处理多台机器。
     善后：无需额外操作；重复执行时，内容与权限已一致的机器直接跳过。
 
     落地采用"上传到 /tmp、install 到同目录临时文件、改名替换"的顺序，避免 cron 等读者读到半截文件。
     写入完成后复核 SHA-256 与权限，复核不通过记为失败。
+
+    并发使用 PowerShell 7 的 ForEach-Object -Parallel；Windows PowerShell 5.1 没有该参数，会自动退回顺序执行并给出提示。
 
     .PARAMETER Path
     本地文件路径。
@@ -1547,6 +1549,9 @@ function Push-FileToServers
 
     .PARAMETER Skip
     读取服务器清单时跳过的开头条目数，默认 1，与 Update-Servers 的默认行为一致；显式传入 -Server 时本参数无效。
+
+    .PARAMETER ThrottleLimit
+    同时处理的目标机数量，默认 5，取值范围 1 到 64；设为 1 时按顺序执行。
 
     .PARAMETER Linuxify
     按 Linux 文本文件处理：去掉 UTF-8 BOM、把 CRLF 转成 LF、补齐结尾换行。二进制文件不要加此开关。
@@ -1572,20 +1577,20 @@ function Push-FileToServers
     .EXAMPLE
     Push-FileToServers -Path .\wp-functions-cron\wp-functions.cron.cst -RemotePath /etc/cron.d/wp-functions -Linuxify
 
-    推送定时任务文件：去掉 BOM 与 CR，落地为 644 root root。
+    推送定时任务文件：去掉 BOM 与 CR，落地为 644 root root，默认 5 台并发。
 
     .EXAMPLE
-    Push-FileToServers -Path .\update_wp_functions.sh -RemotePath /www/sh/wp-functions-update/update_wp_functions.sh -Linuxify -Mode 0755 -Backup -CreateDirectory
+    Push-FileToServers -Path .\update_wp_functions.sh -RemotePath /www/sh/wp-functions-update/update_wp_functions.sh -Linuxify -Mode 0755 -Backup -ThrottleLimit 10
 
-    推送脚本并保留可执行位，同时备份旧版本。
+    推送脚本并保留可执行位，10 台并发。
 
     .EXAMPLE
-    Push-FileToServers -Path .\hosts.txt -RemotePath /www/hosts.txt -Server 192.0.2.10,192.0.2.11 -WhatIf
+    Push-FileToServers -Path .\hosts.txt -RemotePath /www/hosts.txt -Server 192.0.2.10,192.0.2.11 -ThrottleLimit 1 -WhatIf
 
-    只查看将要执行的操作，不连接目标机。
+    只查看将要执行的操作，不连接目标机；-ThrottleLimit 1 表示顺序执行。
 
     .NOTES
-    多台机器按顺序处理，输出顺序与服务器清单一致，便于逐台核对。
+    结果按服务器清单顺序输出，便于逐台核对；并发完成顺序不影响结果顺序。
     首次连接目标机前需先手工 ssh 一次，接受 host key 并确认免密登录可用；本命令使用 BatchMode=yes，不会弹出密码提示。
     本命令只负责文件落地，不检查目标机是否存在重复的定时任务等业务冲突。
     #>
@@ -1603,6 +1608,9 @@ function Push-FileToServers
         $ServerConfig = $server_config,
 
         [int]$Skip = 1,
+
+        [ValidateRange(1, 64)]
+        [int]$ThrottleLimit = 5,
 
         [switch]$Linuxify,
 
@@ -1662,43 +1670,38 @@ function Push-FileToServers
         }
         $expectedMode = "$statMode $Owner $Group"
 
-        $results = @()
-        foreach ($item in $Server)
-        {
-            $target = "$item"
-            if ($target -notmatch '@')
-            {
-                $target = "root@$target"
-            }
+        $context = [pscustomobject]@{
+            RemotePath      = $RemotePath
+            LocalHash       = $localHash
+            ExpectedMode    = $expectedMode
+            Mode            = $Mode
+            Owner           = $Owner
+            Group           = $Group
+            Backup          = [bool]$Backup
+            BackupDirectory = $BackupDirectory
+            CreateDirectory = [bool]$CreateDirectory
+        }
+
+        # 单台目标机的全部动作集中在这一个脚本块里，顺序执行与并行走同一份逻辑
+        $work = {
+            param($Item, $Context)
 
             $result = [pscustomobject]@{
-                Server   = $target
-                Remote   = $RemotePath
-                Status   = 'Pending'
-                Mode     = ''
-                Message  = ''
+                Index   = $Item.Index
+                Server  = $Item.Target
+                Remote  = $Context.RemotePath
+                Status  = 'Pending'
+                Mode    = ''
+                Message = ''
             }
 
-            if (-not $PSCmdlet.ShouldProcess("$target`:$RemotePath", '推送文件'))
-            {
-                $result.Status = 'WhatIf'
-                $result.Message = '未连接目标机'
-                $results += $result
-                continue
-            }
-
-            Write-Verbose "处理 $target`: 检查 $RemotePath"
-
-            $checkCmd = "if [ -f '$RemotePath' ]; then sha256sum '$RemotePath' | cut -d' ' -f1; stat -c '%a %U %G' '$RemotePath'; else echo MISSING; fi"
-            $state = & ssh -nT -o BatchMode=yes -o ConnectTimeout=10 $target $checkCmd 2>&1
-            $stateCode = $LASTEXITCODE
-            if ($stateCode -ne 0)
+            $checkCmd = "if [ -f '$($Context.RemotePath)' ]; then sha256sum '$($Context.RemotePath)' | cut -d' ' -f1; stat -c '%a %U %G' '$($Context.RemotePath)'; else echo MISSING; fi"
+            $state = & ssh -nT -o BatchMode=yes -o ConnectTimeout=10 $Item.Target $checkCmd 2>&1
+            if ($LASTEXITCODE -ne 0)
             {
                 $result.Status = 'Failed'
                 $result.Message = "无法读取目标文件状态: " + (($state | Out-String).Trim())
-                Write-Warning "$target 失败：$($result.Message)"
-                $results += $result
-                continue
+                return $result
             }
 
             $lines = @($state | ForEach-Object { "$_".Trim() } | Where-Object { $_ -ne '' })
@@ -1713,67 +1716,56 @@ function Push-FileToServers
                 }
             }
 
-            if ($currentHash -eq $localHash -and $currentMode -eq $expectedMode)
+            if ($currentHash -eq $Context.LocalHash -and $currentMode -eq $Context.ExpectedMode)
             {
                 $result.Status = 'Skipped'
                 $result.Mode = $currentMode
                 $result.Message = '内容与权限已一致'
-                Write-Verbose "$target 已是最新，跳过"
-                $results += $result
-                continue
-            }
-
-            if (-not $PSCmdlet.ShouldProcess("$target`:$RemotePath", '推送文件'))
-            {
-                continue
+                return $result
             }
 
             $remoteTemp = "/tmp/push-file-" + [guid]::NewGuid().ToString('N').Substring(0, 12)
-            Write-Verbose "上传到 $target`:$remoteTemp"
-            $uploadOutput = & scp -q -o BatchMode=yes -o ConnectTimeout=10 $tempFile "${target}:$remoteTemp" 2>&1
+            $uploadOutput = & scp -q -o BatchMode=yes -o ConnectTimeout=10 $Item.LocalFile "$($Item.Target):$remoteTemp" 2>&1
             if ($LASTEXITCODE -ne 0)
             {
                 $result.Status = 'Failed'
                 $result.Message = "上传失败: " + (($uploadOutput | Out-String).Trim())
-                Write-Warning "$target 失败：$($result.Message)"
-                $results += $result
-                continue
+                return $result
             }
 
             $steps = @()
-            if ($CreateDirectory)
+            $remoteLeaf = Split-Path -Leaf $Context.RemotePath
+            $remoteParent = $Context.RemotePath.Substring(0, $Context.RemotePath.LastIndexOf('/'))
+            if ($Context.CreateDirectory)
             {
-                $steps += "mkdir -p '$parent'"
+                $steps += "mkdir -p '$remoteParent'"
             }
-            if ($Backup)
+            if ($Context.Backup)
             {
-                $backupTarget = "'$BackupDirectory/$leaf.'" + '$(date +%Y%m%d-%H%M%S)'
-                $steps += "mkdir -p '$BackupDirectory'"
-                $steps += "if [ -f '$RemotePath' ]; then cp -p '$RemotePath' $backupTarget; fi"
+                $backupTarget = "'$($Context.BackupDirectory)/$remoteLeaf.'" + '$(date +%Y%m%d-%H%M%S)'
+                $steps += "mkdir -p '$($Context.BackupDirectory)'"
+                $steps += "if [ -f '$($Context.RemotePath)' ]; then cp -p '$($Context.RemotePath)' $backupTarget; fi"
             }
-            $steps += "install -m $Mode -o $Owner -g $Group '$remoteTemp' '$RemotePath.tmp'"
-            $steps += "mv -f '$RemotePath.tmp' '$RemotePath'"
+            $steps += "install -m $($Context.Mode) -o $($Context.Owner) -g $($Context.Group) '$remoteTemp' '$($Context.RemotePath).tmp'"
+            $steps += "mv -f '$($Context.RemotePath).tmp' '$($Context.RemotePath)'"
             $steps += "rm -f '$remoteTemp'"
             $remoteCmd = $steps -join ' && '
 
-            Write-Verbose "落地 $target`:$RemotePath"
-            $installOutput = & ssh -nT -o BatchMode=yes -o ConnectTimeout=10 $target $remoteCmd 2>&1
+            $installOutput = & ssh -nT -o BatchMode=yes -o ConnectTimeout=10 $Item.Target $remoteCmd 2>&1
             if ($LASTEXITCODE -ne 0)
             {
                 $result.Status = 'Failed'
                 $result.Message = "写入失败: " + (($installOutput | Out-String).Trim())
-                Write-Warning "$target 失败：$($result.Message)"
-                $results += $result
-                continue
+                return $result
             }
 
-            $verifyCmd = "sha256sum '$RemotePath' | cut -d' ' -f1; stat -c '%a %U %G' '$RemotePath'"
-            $verify = & ssh -nT -o BatchMode=yes -o ConnectTimeout=10 $target $verifyCmd 2>&1
+            $verifyCmd = "sha256sum '$($Context.RemotePath)' | cut -d' ' -f1; stat -c '%a %U %G' '$($Context.RemotePath)'"
+            $verify = & ssh -nT -o BatchMode=yes -o ConnectTimeout=10 $Item.Target $verifyCmd 2>&1
             $verifyLines = @($verify | ForEach-Object { "$_".Trim() } | Where-Object { $_ -ne '' })
             $result.Mode = if ($verifyLines.Count -ge 1) { $verifyLines[-1] } else { '' }
             $remoteHash = if ($verifyLines.Count -ge 2) { $verifyLines[-2] } else { '' }
 
-            if ($remoteHash -eq $localHash -and $result.Mode -eq $expectedMode)
+            if ($remoteHash -eq $Context.LocalHash -and $result.Mode -eq $Context.ExpectedMode)
             {
                 $result.Status = 'Updated'
                 $result.Message = '已写入并校验通过'
@@ -1781,13 +1773,76 @@ function Push-FileToServers
             else
             {
                 $result.Status = 'Failed'
-                $result.Message = "写后校验不通过：hash=$remoteHash 权限=$($result.Mode)，期望 $expectedMode"
-                Write-Warning "$target 失败：$($result.Message)"
+                $result.Message = "写后校验不通过：hash=$remoteHash 权限=$($result.Mode)，期望 $($Context.ExpectedMode)"
             }
-            $results += $result
+            return $result
         }
 
+        $results = @()
+        $queue = @()
+        $index = 0
+        foreach ($item in $Server)
+        {
+            $target = "$item"
+            if ($target -notmatch '@')
+            {
+                $target = "root@$target"
+            }
+
+            if (-not $PSCmdlet.ShouldProcess("$target`:$RemotePath", '推送文件'))
+            {
+                $results += [pscustomobject]@{
+                    Index   = $index
+                    Server  = $target
+                    Remote  = $RemotePath
+                    Status  = 'WhatIf'
+                    Mode    = ''
+                    Message = '未连接目标机'
+                }
+                $index++
+                continue
+            }
+
+            Write-Verbose "排队推送 $target`:$RemotePath"
+            $queue += [pscustomobject]@{
+                Index     = $index
+                Target    = $target
+                LocalFile = $tempFile
+            }
+            $index++
+        }
+
+        if ($queue.Count -gt 0)
+        {
+            if ($ThrottleLimit -gt 1 -and $PSVersionTable.PSVersion.Major -ge 7)
+            {
+                $workText = $work.ToString()
+                Write-Verbose "并发处理 $($queue.Count) 台，并发度 $ThrottleLimit"
+                $results += @($queue | ForEach-Object -Parallel {
+                        & ([scriptblock]::Create($using:workText)) $_ $using:context
+                    } -ThrottleLimit $ThrottleLimit)
+            }
+            else
+            {
+                if ($ThrottleLimit -gt 1)
+                {
+                    Write-Warning "当前 Windows PowerShell 版本不支持 ForEach-Object -Parallel，已退回顺序执行；如需并发请在 PowerShell 7 中运行。"
+                }
+                foreach ($item in $queue)
+                {
+                    Write-Verbose "处理 $($item.Target)"
+                    $results += (& $work $item $context)
+                }
+            }
+        }
+
+        $results = @($results | Sort-Object -Property Index)
+
         $failed = @($results | Where-Object { $_.Status -eq 'Failed' })
+        foreach ($item in $failed)
+        {
+            Write-Warning "$($item.Server) 失败：$($item.Message)"
+        }
         if ($failed.Count -gt 0)
         {
             Write-Warning "共 $($results.Count) 台，失败 $($failed.Count) 台；失败机器可用 -WhatIf 复核后再重试。"
