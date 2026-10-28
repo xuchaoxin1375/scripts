@@ -1,0 +1,12 @@
+# 由 deploy.sh 管理，请勿手工修改。
+# 适用系统时区：UTC。
+# 北京时间 16:00 对应 UTC 08:00；北京时间 00:00 对应 UTC 16:00。
+# TZ 只影响任务进程看到的时间，不改变触发时刻。
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+LANG=C.UTF-8
+TZ=Asia/Shanghai
+MAILTO=""
+
+0 8  * * * root /bin/bash /www/sh/wp-functions-update/update_wp_functions.sh --src /www/functions4.php >>/var/log/wp-functions-update.log 2>&1
+0 16 * * * root /bin/bash /www/sh/wp-functions-update/update_wp_functions.sh --src /www/functions24.php >>/var/log/wp-functions-update.log 2>&1
