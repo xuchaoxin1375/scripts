@@ -10,7 +10,6 @@ TEMPLATE_FILE=""
 DRY_RUN=0
 CHECK_ONLY=0
 REMOVE=0
-ALLOW_EXISTING=0
 REQUIRED_FILES=()
 
 REMOTE_FILE="/etc/cron.d/update-cron"
@@ -41,7 +40,6 @@ usage() {
   -n, --dry-run           只检测并打印将要执行的操作，不写入目标机
       --check             只校验目标机上的文件内容与权限，不写入
       --remove            删除目标机上的受管文件，删除前备份
-      --allow-existing    允许 root crontab 或其它 cron 配置中已存在相同任务
   -h, --help              显示本帮助
 
 环境变量:
@@ -116,39 +114,25 @@ select_template() {
 	esac
 }
 
-# 从模板中提取被引用脚本的基名，用于判断其它 cron 配置里是否已有相同任务
-template_patterns() {
-	local file=$1
-	grep -vE '^[[:space:]]*(#|$)' "$file" |
-		grep -oE '[^[:space:]]+\.(php|sh)' |
-		while IFS= read -r entry; do basename "$entry"; done |
-		sort -u
-}
-
 encode_list() {
 	base64 | tr -d '\n'
 }
 
 remote_precheck() {
-	local host=$1 template=$2 patterns_b64 requires_b64
-	patterns_b64=$(template_patterns "$template" | encode_list)
+	local host=$1 requires_b64
 	requires_b64=""
 	if ((${#REQUIRED_FILES[@]} > 0)); then
 		requires_b64=$(printf '%s\n' "${REQUIRED_FILES[@]}" | encode_list)
 	fi
 	# ssh 会把多个参数拼成一行再交给远端 shell 解析，空参数会直接消失；
 	# 用 '-' 作为空列表的占位符，远端再还原
-	patterns_b64=${patterns_b64:--}
 	requires_b64=${requires_b64:--}
 	# shellcheck disable=SC2029
-	ssh_run "$host" bash -s -- "$ALLOW_EXISTING" "$REMOTE_FILE" "$patterns_b64" "$requires_b64" <<'REMOTE'
+	ssh_run "$host" bash -s -- "$REMOTE_FILE" "$requires_b64" <<'REMOTE'
 set -euo pipefail
 
-allow_existing=$1
-target=$2
-patterns_b64=$3
-requires_b64=$4
-[[ $patterns_b64 == '-' ]] && patterns_b64=''
+target=$1
+requires_b64=$2
 [[ $requires_b64 == '-' ]] && requires_b64=''
 target_dir=$(dirname "$target")
 
@@ -184,39 +168,6 @@ fi
 if [[ $cron_ok -eq 0 ]]; then
   echo "cron 服务未运行，请先启动 cron、crond 或 cronie" >&2
   exit 1
-fi
-
-if [[ $allow_existing -eq 0 && -n $patterns_b64 ]]; then
-  patterns=$(mktemp)
-  printf '%s' "$patterns_b64" | base64 -d >"$patterns"
-
-  if crontab -l >/dev/null 2>&1; then
-    matches=$(crontab -l 2>/dev/null | grep -nF -f "$patterns" || true)
-    if [[ -n $matches ]]; then
-      echo "root crontab 中已存在引用下列脚本的条目:" >&2
-      printf '%s\n' "$matches" >&2
-      echo "请先备份并删除旧条目: crontab -l > ~/crontab.bak && crontab -e" >&2
-      echo "确认后重新执行，或使用 --allow-existing 跳过本检查。" >&2
-      rm -f "$patterns"
-      exit 2
-    fi
-  fi
-
-  for file in /etc/crontab /etc/cron.d/*; do
-    [[ -f $file ]] || continue
-    [[ $file == "$target" ]] && continue
-    case $(basename "$file") in .*) continue ;; esac
-    matches=$(grep -nF -f "$patterns" "$file" 2>/dev/null || true)
-    if [[ -n $matches ]]; then
-      echo "文件 $file 中已存在引用下列脚本的条目:" >&2
-      printf '%s\n' "$matches" >&2
-      echo "请先删除旧条目，或使用 --allow-existing 跳过本检查。" >&2
-      rm -f "$patterns"
-      exit 2
-    fi
-  done
-
-  rm -f "$patterns"
 fi
 REMOTE
 }
@@ -397,7 +348,7 @@ process_host() {
 		return 1
 	fi
 
-	if ! remote_precheck "$host" "$template"; then
+	if ! remote_precheck "$host"; then
 		log "预检失败: $host"
 		return 1
 	fi
@@ -456,10 +407,6 @@ while (($# > 0)); do
 		;;
 	--remove)
 		REMOVE=1
-		shift
-		;;
-	--allow-existing)
-		ALLOW_EXISTING=1
 		shift
 		;;
 	-h | --help)

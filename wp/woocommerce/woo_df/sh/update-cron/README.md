@@ -60,7 +60,7 @@ ssh root@203.0.113.11 "crontab -l | grep -nF -e update_wp_functions.sh"
 ssh root@203.0.113.11 "grep -rnF -e update_wp_functions.sh /etc/crontab /etc/cron.d/"
 ```
 
-检查用的名字换成你模板里的脚本基名，可以一次传多个 `-e`。`deploy.sh` 与 `install-cron.sh` 都会自动做同样的检查：从模板中提取 `.php` 与 `.sh` 的基名，比对 root crontab、`/etc/crontab` 和其他 `/etc/cron.d` 文件，命中即拒绝下发。
+检查用的名字换成你模板里的脚本基名，可以一次传多个 `-e`。这一步只能人工完成：脚本无法可靠判断"同名脚本是否就是同一个任务"——同一脚本配不同参数、不同站点，命令行前面加了别的命令，都会让文本匹配失效；反过来注释、日志路径和残留临时文件又会造成误报。因此各入口都不再自动做这项检查，只按目标文件的内容与权限决定是否写入。
 
 如果发现旧条目，先备份再删除。root crontab 的备份与编辑命令如下：
 
@@ -69,7 +69,7 @@ ssh root@203.0.113.11 'crontab -l > ~/crontab.bak'
 ssh root@203.0.113.11 'crontab -e'
 ```
 
-删除旧行后执行 `crontab -l` 确认条目已消失，再运行本方案。只有在确认重复条目不会造成重复执行时，才使用 `--allow-existing` 跳过该检查。
+删除旧行后执行 `crontab -l` 确认条目已消失，再运行本方案。
 
 宝塔面板中的任务需要在面板界面删除，不能只改文件。面板通常维护 root 的 crontab，删除后可以用上面的 `crontab -l` 命令复核。
 
@@ -175,7 +175,6 @@ notepad ./work/update-cron.cron
 | `bash deploy.sh --dry-run` | 只读取目标机状态并打印将执行的操作，不写入 |
 | `bash deploy.sh --check` | 只校验受管文件的内容与权限，不写入 |
 | `bash deploy.sh --remove` | 备份后删除受管文件，停止调度其中的任务 |
-| `bash deploy.sh --allow-existing` | 跳过“已有相同任务”检查，仅在确认不会重复执行时使用 |
 | `bash deploy.sh -f hosts-prod.txt` | 使用指定主机清单 |
 | `bash deploy.sh --template ~/wpfc/update-cron.cron` | 强制使用指定模板，跳过时区自动识别 |
 | `bash deploy.sh --target /etc/cron.d/my-tasks` | 改受管文件路径，默认 `/etc/cron.d/update-cron` |
@@ -232,9 +231,9 @@ Windows 侧有三种落地方式，区别在预检覆盖与是否逐台操作：
 
 | 方式 | 预检 | 逐台操作 | 适用 |
 | --- | --- | --- | --- |
-| `Deploy-CronFile` | 依赖文件、cron 服务、重复条目、root 与目标目录 | 否，一条命令 | 已加载 `PS/WpOnline` 模块（推荐） |
+| `Deploy-CronFile` | 依赖文件、cron 服务、root 与目标目录 | 否，一条命令 | 已加载 `PS/WpOnline` 模块（推荐） |
 | `Push-FileToServers` | 无 | 否，一条命令 | 只需要文件落地 |
-| 手工 `scp` + `install-cron.sh` | 重复条目、cron 服务 | 是 | 未加载模块 |
+| 手工 `scp` + `install-cron.sh` | cron 服务 | 是 | 未加载模块 |
 
 ### 方式一：Deploy-CronFile（推荐）
 
@@ -259,7 +258,7 @@ Push-FileToServers -Path /path/to/update-cron-file.cron -RemotePath /etc/cron.d/
 
 - `-RemotePath` 就是最终受管路径，落地时用 `install -m 0644 -o root -g root` 加同目录改名，cron 下一分钟读取，推送即安装。
 - `-Linuxify` 去 BOM、CRLF 转 LF，模板必须带；目标目录不存在时加 `-CreateDirectory`，`-ThrottleLimit` 默认 10。
-- 不查重复条目、依赖文件与 cron 服务；首次迁移用方式一，或按“已有相同任务时的迁移”人工核对。
+- 不查依赖文件与 cron 服务；首次迁移按“已有相同任务时的迁移”人工核对。
 - 目标机默认取服务器清单的 `ip` 字段（跳过开头 1 条），也可以用 `-Server 203.0.113.11,root@203.0.113.12` 直接指定。
 
 失败不中断整批，也不抛异常，只体现在返回对象的 `Status` 与警告里，脚本化时要显式检查：
@@ -277,7 +276,7 @@ if (@($r | Where-Object Status -eq 'Failed').Count -gt 0) { throw '下发存在�
 
 1. 在本地编辑自己的模板副本 `./work/update-cron.cron`（从仓库示例复制而来）。
 2. 上传到目标机的 `/tmp`。
-3. 在目标机执行 `install-cron.sh`，由它完成去 BOM、去 CR、备份、原子替换、写后校验与重复条目检查。
+3. 在目标机执行 `install-cron.sh`，由它完成去 BOM、去 CR、备份、原子替换与写后校验。
 
 ```powershell
 scp ./work/update-cron.cron root@${h}:/tmp/update-cron.cron
@@ -333,7 +332,7 @@ ssh root@${h} 'bash /www/sh/update-cron/install-cron.sh --remove'
 ssh root@${h} 'mkdir -p /var/backups/update-cron && cp -p /etc/cron.d/update-cron /var/backups/update-cron/update-cron.removed.$(date +%Y%m%d-%H%M%S) && rm -f /etc/cron.d/update-cron'
 ```
 
-`install-cron.sh` 以 root 身份运行，检查 root crontab、`/etc/crontab` 与其他 `/etc/cron.d` 文件中的重复条目，备份到 `/var/backups/<受管文件名>/`，并在写后复核 SHA-256 与 `644 root root`。重复执行是安全的：内容与权限已一致时直接跳过，不产生额外备份。上传到 `/tmp` 的临时文件不会被删除，便于重复执行 `--check`。
+`install-cron.sh` 以 root 身份运行，备份到 `/var/backups/<受管文件名>/`，并在写后复核 SHA-256 与 `644 root root`。重复执行是安全的：内容与权限已一致时直接跳过，不产生额外备份。上传到 `/tmp` 的临时文件不会被删除，便于重复执行 `--check`。
 
 ### 与 deploy.sh 的分工
 
@@ -350,11 +349,11 @@ ssh root@${h} 'mkdir -p /var/backups/update-cron && cp -p /etc/cron.d/update-cro
 - 受管文件名不能带点号。`/etc/cron.d` 中带点号的文件会被 `run-parts` 静默跳过，脚本与模块函数都会直接拒绝这类目标名。
 - `scp` 直接覆盖目标路径不是原子写，cron 可能读到半截文件。各方式都先写同目录临时文件再改名。
 - `scp` 落地后的属主与权限取决于源文件和登录用户。各方式都用 `install -m 0644 -o root -g root` 固定，并在写后复核。
-- 重复任务检查命中时会拒绝下发，即使你只是改了模板里的前置命令。该检查按 `.php`、`.sh` 的基名匹配其他 cron 配置，与内容是否相同无关；确认不会重复执行时用 `--allow-existing`，或改用没有这项检查的 `Push-FileToServers`。取舍说明见 `方案.md` 的“决策记录”。
+- 重复任务不会自动识别。各入口只按受管文件的内容与权限决定写不写，不比对其他 cron 配置里是否有同名脚本；首次迁移或怀疑重复时，按“已有相同任务时的迁移”手工核对 `crontab -l` 与 `/etc/cron.d`。
 
 ## 下发后的验证
 
-`deploy.sh --check` 通过只说明文件和权限正确，任务是否被 cron 调度还需要查看系统日志。用 `Push-FileToServers` 下发时，`Skipped` 同样只证明内容与权限一致。这两种检查都不覆盖 root crontab 或其他 cron 文件中的重复条目，首次迁移时仍需按“已有相同任务时的迁移”一节手工核对。cron 每分钟扫描一次配置，新文件通常在下一分钟生效；如果超过两分钟仍未生效，重启对应 cron 服务并查看系统日志。
+`deploy.sh --check` 通过只说明文件和权限正确，任务是否被 cron 调度还需要查看系统日志。用 `Push-FileToServers` 下发时，`Skipped` 同样只证明内容与权限一致。这些检查都不覆盖 root crontab 或其他 cron 文件中的重复条目，首次迁移时仍需按“已有相同任务时的迁移”一节手工核对。cron 每分钟扫描一次配置，新文件通常在下一分钟生效；如果超过两分钟仍未生效，重启对应 cron 服务并查看系统日志。
 
 Debian 与 Ubuntu：
 
@@ -442,7 +441,7 @@ bash deploy.sh --remove
 | 回滚 | `cp -p` 备份回受管路径 | 同左；也可把备份文件作为 `-Path`，用 `Push-FileToServers` 推回 |
 | 删除全部任务 | `bash deploy.sh --remove` | `Deploy-CronFile -Remove` |
 
-`Update-Servers` 只处理服务器清单内的全部机器，单台操作直接 `ssh root@<host> '...'`，能力与限制见“Update-Servers 的适用边界”。`Deploy-CronFile` 覆盖重复条目与 cron 服务预检；`Push-FileToServers` 不预检，模板改动后仍应人工核对一次 `crontab -l` 与 `/etc/cron.d`。
+`Update-Servers` 只处理服务器清单内的全部机器，单台操作直接 `ssh root@<host> '...'`，能力与限制见“Update-Servers 的适用边界”。`Deploy-CronFile` 覆盖依赖文件与 cron 服务预检；`Push-FileToServers` 不预检，模板改动后仍应人工核对一次 `crontab -l` 与 `/etc/cron.d`。
 
 批量停止调度时，先备份再删除受管文件：
 
@@ -460,7 +459,6 @@ Update-Servers -cmd 'mkdir -p /var/backups/update-cron && cp -p /etc/cron.d/upda
 | `不支持的时区` | 系统时区不在自动识别范围 | 用 `--template` 指向自己的模板显式指定 |
 | `缺少文件` | `--require` 声明的依赖未部署 | 先部署依赖，或去掉对应的 `--require` |
 | `cron 服务未运行` | cron、crond 或 cronie 未启动 | 启动对应服务并设置开机自启 |
-| 预检提示已有相同任务 | root crontab 或其他 cron 配置中存在旧条目 | 按“已有相同任务时的迁移”备份并删除旧条目，确认后再下发 |
 | `--check` 失败但文件内容看起来正确 | 权限、属主或换行符不符 | 用 `stat` 检查 `644 root root`，并确认模板保持 LF 换行 |
 | `目标目录不存在` | `--target` 指向的目录未创建 | 先创建目录，或改用已存在的目录 |
 | 任务没有按预期执行 | cron 未加载、时间语义不符或系统时区不是预期值 | 查看 cron 日志，并用 `systemctl status cron` 或 `systemctl status crond` 与 `timedatectl` 交叉确认 |

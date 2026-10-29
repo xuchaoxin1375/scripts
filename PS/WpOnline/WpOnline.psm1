@@ -2084,7 +2084,7 @@ function Deploy-CronFile
     执行者：当前会话逐台 SSH 预检，落地阶段调用 Push-FileToServers 完成上传与安装；单台失败不中断整批。
     善后：无需额外操作；重复执行时内容与权限一致的机器直接跳过。
 
-    与仓库 update-cron/deploy.sh 行为对齐：预检 root 权限、目标目录、依赖文件、cron 服务与重复任务条目，
+    与仓库 update-cron/deploy.sh 行为对齐：预检 root 权限、目标目录、依赖文件与 cron 服务，
     支持按目标机系统时区在 cron.cst 与 cron.utc 之间选择，写入前备份，写后由 Push-FileToServers 校验哈希与权限。
     每台目标机三次连接：预检、上传、安装；用 -TemplateDirectory 自动选模板时再加一次时区探测。
     进度行带本地时间，结果按清单顺序返回，Status 取 Deployed、Skipped、Checked、Removed、Failed、WhatIf。
@@ -2103,9 +2103,6 @@ function Deploy-CronFile
 
     .PARAMETER Require
     下发前要求目标机存在的文件，可传多个；路径不能含空白。
-
-    .PARAMETER AllowExisting
-    跳过重复任务条目检查，仅在确认不会重复执行时使用。
 
     .PARAMETER Check
     只校验受管文件的内容与权限，不写入。
@@ -2151,8 +2148,6 @@ function Deploy-CronFile
         [string]$BackupDirectory,
 
         [string[]]$Require,
-
-        [switch]$AllowExisting,
 
         [string[]]$Server,
 
@@ -2258,29 +2253,16 @@ function Deploy-CronFile
     }
     $expectedMode = "$statMode $Owner $Group"
 
-    # 把模板转成 LF、算哈希、提取 .php 与 .sh 基名；同一模板只处理一次
+    # 把模板转成 LF 并算哈希；同一模板只处理一次
     $prepare = {
         param($TemplatePath)
         $temp = Join-Path ([System.IO.Path]::GetTempPath()) ("cron-deploy-" + [guid]::NewGuid().ToString('N') + '.cron')
         ConvertTo-LinuxTextFile -Path $TemplatePath -Destination $temp
         $hash = (Get-FileHash -LiteralPath $temp -Algorithm SHA256).Hash.ToLower()
-        $patterns = @()
-        foreach ($line in [System.IO.File]::ReadAllLines($temp))
-        {
-            if ($line -match '^\s*(#|$)')
-            {
-                continue
-            }
-            foreach ($match in [regex]::Matches($line, '\S+\.(?:php|sh)'))
-            {
-                $patterns += [System.IO.Path]::GetFileName($match.Value)
-            }
-        }
         [pscustomobject]@{
-            Path     = $TemplatePath
-            Temp     = $temp
-            Hash     = $hash
-            Patterns = @($patterns | Sort-Object -Unique)
+            Path = $TemplatePath
+            Temp = $temp
+            Hash = $hash
         }
     }
 
@@ -2327,8 +2309,6 @@ echo TZ=$tz
     $precheckScript = @'
 set -eu
 target=__TARGET__
-allow_existing=__ALLOW__
-patterns_b64=__PATTERNS__
 requires_b64=__REQUIRES__
 target_dir=__PARENT__
 
@@ -2360,36 +2340,6 @@ fi
 if [ $cron_ok -eq 0 ]; then
   echo cron 服务未运行，请先启动 cron、crond 或 cronie >&2
   exit 1
-fi
-
-if [ $allow_existing -eq 0 ] && [ $patterns_b64 != - ]; then
-  pf=$(mktemp)
-  out=$(mktemp)
-  printf '%s' $patterns_b64 | base64 -d > $pf
-  if crontab -l >/dev/null 2>&1; then
-    crontab -l 2>/dev/null | grep -nF -f $pf > $out 2>/dev/null || true
-    if [ -s $out ]; then
-      echo root crontab 中已存在引用下列脚本的条目: >&2
-      cat $out >&2
-      echo 请先备份并删除旧条目，确认后重试，或用 -AllowExisting 跳过 >&2
-      rm -f $pf $out
-      exit 2
-    fi
-  fi
-  for f in /etc/crontab /etc/cron.d/*; do
-    if [ ! -f $f ]; then continue; fi
-    if [ $f = $target ]; then continue; fi
-    case $(basename $f) in .*) continue ;; esac
-    grep -nF -f $pf $f > $out 2>/dev/null || true
-    if [ -s $out ]; then
-      echo 文件 $f 中已存在引用下列脚本的条目: >&2
-      cat $out >&2
-      echo 请先删除旧条目，或用 -AllowExisting 跳过 >&2
-      rm -f $pf $out
-      exit 2
-    fi
-  done
-  rm -f $pf $out
 fi
 
 if [ -f $target ]; then
@@ -2576,21 +2526,9 @@ fi
 
             $scriptText = $precheckScript.Replace('__TARGET__', $RemotePath)
             $scriptText = $scriptText.Replace('__PARENT__', $parent)
-            $scriptText = $scriptText.Replace('__ALLOW__', $(if ($AllowExisting) { '1' } else { '0' }))
-            $scriptText = $scriptText.Replace('__PATTERNS__', (& $encodeLines $tpl.Patterns))
             $scriptText = $scriptText.Replace('__REQUIRES__', (& $encodeLines $requireList))
 
             $remote = & $runRemote $target $scriptText
-            if ($remote.Code -eq 2)
-            {
-                $record.Status = 'Failed'
-                $record.Message = '已存在重复任务条目'
-                foreach ($line in @($remote.Output | Where-Object { $_.Trim() }))
-                {
-                    Write-Warning "$target $line"
-                }
-                continue
-            }
             if ($remote.Code -ne 0)
             {
                 $record.Status = 'Failed'

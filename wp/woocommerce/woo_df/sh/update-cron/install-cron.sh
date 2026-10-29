@@ -8,7 +8,6 @@ SOURCE_FILE="/tmp/update-cron.cron"
 TARGET_FILE="/etc/cron.d/update-cron"
 BACKUP_DIR=""
 ACTION="apply"
-ALLOW_EXISTING=0
 
 usage() {
 	cat <<'EOF'
@@ -23,7 +22,6 @@ usage() {
       --backup-dir <路径> 备份目录，默认 /var/backups/<目标文件名>
       --check            只校验目标文件是否与 --file 一致
       --remove           备份后删除目标文件
-      --allow-existing   跳过重复条目检查
   -h, --help             显示本帮助
 
 示例:
@@ -79,52 +77,6 @@ normalize_file() {
 check_content() {
 	local file=$1
 	grep -qvE '^[[:space:]]*(#|$)' "$file" || die "没有找到可执行的任务行: $file"
-}
-
-# 从待安装文件中提取 .php 与 .sh 的基名，检查其它 cron 配置里是否已有同名任务
-duplicate_check() {
-	local file=$1 patterns found=0 matches entry
-	patterns=$(mktemp)
-	# shellcheck disable=SC2016
-	grep -vE '^[[:space:]]*(#|$)' "$file" |
-		grep -oE '[^[:space:]]+\.(php|sh)' |
-		while IFS= read -r entry; do basename "$entry"; done |
-		sort -u >"$patterns" || true
-
-	if [[ ! -s $patterns ]]; then
-		rm -f "$patterns"
-		return 0
-	fi
-
-	if command -v crontab >/dev/null 2>&1 && crontab -l >/dev/null 2>&1; then
-		matches=$(crontab -l 2>/dev/null | grep -Fn -f "$patterns" || true)
-		if [[ -n $matches ]]; then
-			printf 'root crontab 中已存在引用下列文件的条目:\n%s\n' "$matches" >&2
-			found=1
-		fi
-	fi
-
-	for entry in /etc/crontab /etc/cron.d/*; do
-		[[ -f $entry ]] || continue
-		[[ $entry == "$TARGET_FILE" ]] && continue
-		case $(basename "$entry") in .*) continue ;; esac
-		matches=$(grep -Fn -f "$patterns" "$entry" 2>/dev/null || true)
-		if [[ -n $matches ]]; then
-			printf '文件 %s 中已存在引用下列文件的条目:\n%s\n' "$entry" "$matches" >&2
-			found=1
-		fi
-	done
-
-	rm -f "$patterns"
-
-	if ((found == 0)); then
-		return 0
-	fi
-	if ((ALLOW_EXISTING == 1)); then
-		warn "存在重复条目，已按 --allow-existing 继续"
-		return 0
-	fi
-	die "请先备份并删除上述旧条目，或使用 --allow-existing 跳过本检查"
 }
 
 backup_current() {
@@ -223,10 +175,6 @@ while (($# > 0)); do
 		ACTION="remove"
 		shift
 		;;
-	--allow-existing)
-		ALLOW_EXISTING=1
-		shift
-		;;
 	-h | --help)
 		usage
 		exit 0
@@ -236,10 +184,6 @@ while (($# > 0)); do
 		;;
 	esac
 done
-
-if [[ $ACTION == "check" && $ALLOW_EXISTING == 1 ]]; then
-	die "--check 与 --allow-existing 不能同时使用"
-fi
 
 [[ $TARGET_FILE == /* ]] || die "目标文件必须是绝对路径: $TARGET_FILE"
 if [[ -z $BACKUP_DIR ]]; then
@@ -270,7 +214,6 @@ if is_current "$tmp"; then
 	log "已是最新，跳过: $TARGET_FILE"
 	exit 0
 fi
-duplicate_check "$tmp"
 apply_file "$tmp"
 verify_file "$tmp"
 
