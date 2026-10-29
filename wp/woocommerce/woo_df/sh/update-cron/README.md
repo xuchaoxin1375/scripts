@@ -242,7 +242,7 @@ Windows 侧有三种落地方式，区别在预检覆盖与是否逐台操作：
 与 `deploy.sh` 行为对齐，只是运行在 Windows：
 
 ```powershell
-Deploy-CronFile -Template /path/to/update-cron.cron -Require /www/functions4.php
+Deploy-CronFile -Template /path/to/update-cron.cron 
 ```
 
 - 预检、校验与推送都按 `-ThrottleLimit` 并发（默认 10），结果按清单顺序返回；设为 1 时全程顺序执行。
@@ -250,6 +250,7 @@ Deploy-CronFile -Template /path/to/update-cron.cron -Require /www/functions4.php
   - 预检（一次 `ssh`）：以 root 登录，检查目标目录是否存在、`install`、`mktemp`、`sha256sum`、`stat`、`base64` 是否齐备、`-Require` 声明的依赖是否存在、cron 服务是否运行，并读回受管文件的 SHA-256 与 `0644 root root`。
   - 上传（一次 `scp`）：把模板转成 LF 后传到目标机 `/tmp/push-file-*`。
   - 安装（一次 `ssh`）：用 `install -m 0644 -o root -g root` 写同目录临时文件，改名覆盖，按需备份旧文件，再复核哈希与权限。
+- 上传与安装分成两次连接是刻意的：`scp` 只负责把字节放到 `/tmp`，原子替换、属主与权限、备份和写后校验都在随后的 `ssh` 里完成。直接用 `scp` 覆盖最终路径虽然只需一次连接，但 cron 可能读到半截文件，也没有写后复核。
 - 已是最新的机器只做预检：一次连接，不上传，也不产生备份；用 `-TemplateDirectory` 时每台再加一次时区探测。`-Check` 与 `-Remove` 各只需一次连接（`-Check` 用 `-TemplateDirectory` 时两次；`-Remove` 仍逐台执行）。
 - 依赖文件已全部就绪、不需要预检时加 `-SkipPrecheck`：直接上传安装，每台两次连接（用 `-TemplateDirectory` 时三次）。推送阶段仍比对哈希与权限，内容一致的机器显示 `Skipped`，不写入、不备份；它与 `-Require` 不能同时使用。
 - `-Require` 默认不检查任何依赖文件，不传就跳过这一项；需要多个文件时用逗号分隔，PowerShell 不允许把同一个参数写两遍：
