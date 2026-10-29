@@ -2102,7 +2102,7 @@ function Deploy-CronFile
     备份目录，默认 /var/backups/<受管文件名>。
 
     .PARAMETER Require
-    下发前要求目标机存在的文件，可传多个；路径不能含空白。
+    下发前要求目标机存在的文件；多个用逗号分隔（PowerShell 不允许重复写同一参数），路径不能含空白。
 
     .PARAMETER Check
     只校验受管文件的内容与权限，不写入。
@@ -2117,9 +2117,9 @@ function Deploy-CronFile
     推送阶段的并发度，默认 10，取值 1 到 64；预检始终逐台执行。设为 1 时全程顺序执行。
 
     .EXAMPLE
-    Deploy-CronFile -Template ./work/update-cron.cron -Require /www/functions4.php
+    Deploy-CronFile -Template ./work/update-cron.cron -Require /www/functions4.php,/www/functions24.php
 
-    按清单逐台预检并部署，已是最新的目标机跳过。
+    按清单逐台预检并部署，已是最新的目标机跳过；多个依赖文件用逗号分隔。
 
     .EXAMPLE
     Deploy-CronFile -TemplateDirectory ./work/templates -WhatIf

@@ -40,7 +40,7 @@
 - 控制机安装 OpenSSH 客户端，能够以 root 身份免密登录全部目标机。`deploy.sh` 需要 Bash，应在 Linux、WSL 或 Git Bash 中运行；`install-cron.sh` 在目标机本地执行，Windows 侧只需 `scp` 与 `ssh`。控制机若已加载仓库的 `PS/WpOnline` 模块，改用 `Deploy-CronFile` 完成预检、下发与校验，或只用 `Push-FileToServers` 落地文件，都不依赖 Bash。
 - 目标机已经安装并运行 cron，服务名可能是 `cron`、`crond` 或 `cronie`；cron 实现需要读取 `/etc/cron.d`，Debian、Ubuntu、RHEL 与 CentOS 的默认实现均满足该条件。
 - 目标机的系统时区为 `Asia/Shanghai` 或 `UTC`，或其他固定 UTC+8 时区（后者用 `--template` 指定 CST 模板）；观察夏令时的时区不在本方案范围内。
-- 模板中的任务依赖的文件（更新脚本、数据源等）已经部署，必要时用 `--require` 声明，让 `deploy.sh` 在下发前检查。
+- 模板中的任务依赖的文件（更新脚本、数据源等）已经部署，必要时用 `--require`（Windows 侧为 `-Require`）声明，让下发前先检查这些文件是否存在。
 - 目标机的 root crontab 与其他 cron 配置中没有相同任务的旧副本；如果已经存在，按下一节迁移，避免重复执行。
 
 首次使用前，建议先手工验证 SSH：
@@ -155,7 +155,7 @@ notepad ./work/update-cron.cron
 
    ```powershell
    Deploy-CronFile -Template ./work/update-cron.cron -WhatIf
-   Deploy-CronFile -Template ./work/update-cron.cron -Require /www/functions4.php
+   Deploy-CronFile -Template ./work/update-cron.cron -Require /www/sh/wp-functions-update/update_wp_functions.sh,/www/functions4.php,/www/functions24.php
    ```
 
 3. 校验与删除同样是一条命令：
@@ -243,8 +243,19 @@ Windows 侧有三种落地方式，区别在预检覆盖与是否逐台操作：
 Deploy-CronFile -Template /path/to/update-cron.cron -Require /www/functions4.php
 ```
 
-- 每台三次连接：预检、上传、安装；预检通过且内容与权限一致时跳过写入，不产生备份。
-- 模板目录同时有 `cron.cst` 与 `cron.utc` 时，交给 `-TemplateDirectory` 按目标机时区自动选择，时区混合也能一条命令跑完，每台多一次时区探测。
+- 写入一台机器需要三次连接，顺序如下，并且先逐台预检、再统一推送：
+  - 预检（一次 `ssh`，逐台执行）：以 root 登录，检查目标目录是否存在、`install`、`mktemp`、`sha256sum`、`stat`、`base64` 是否齐备、`-Require` 声明的依赖是否存在、cron 服务是否运行，并读回受管文件的 SHA-256 与 `0644 root root`。
+  - 上传（一次 `scp`）：把模板转成 LF 后传到目标机 `/tmp/push-file-*`。
+  - 安装（一次 `ssh`）：用 `install -m 0644 -o root -g root` 写同目录临时文件，改名覆盖，按需备份旧文件，再复核哈希与权限。
+- 已是最新的机器只做预检：一次连接，不上传，也不产生备份；用 `-TemplateDirectory` 时每台再加一次时区探测。`-Check` 与 `-Remove` 各只需一次连接。预检始终逐台执行，只有上传与安装按 `-ThrottleLimit` 并发。
+- `-Require` 默认不检查任何依赖文件，不传就跳过这一项；需要多个文件时用逗号分隔，PowerShell 不允许把同一个参数写两遍：
+
+  ```powershell
+  Deploy-CronFile -Template /path/to/update-cron.cron -Require /www/sh/wp-functions-update/update_wp_functions.sh,/www/functions4.php,/www/functions24.php
+  ```
+
+  路径必须是不含空白的绝对路径。每台目标机按给定顺序逐个检查，遇到第一个缺失就判该机失败并报 `缺少文件: <路径>`，后面的文件不再检查；依赖检查排在文件状态比对之前，所以已是最新的机器也会因依赖缺失判失败。`-Check` 不做依赖与 cron 检查，只比对内容与权限。`deploy.sh` 的 `--require` 与这里不同，可以重复写多次。
+- 模板目录同时有 `cron.cst` 与 `cron.utc` 时，交给 `-TemplateDirectory` 按目标机时区自动选择，时区混合也能一条命令跑完。
 - 失败不中断整批，末尾给出汇总；加 `-FailOnError` 后存在失败机器即抛异常，可直接用于脚本或 CI。
 - `-WhatIf` 只打印将执行的动作，不连接目标机。默认受管路径 `/etc/cron.d/update-cron`，默认备份目录 `/var/backups/<受管文件名>`；完整参数见 `Get-Help Deploy-CronFile -Full`。
 
@@ -457,7 +468,7 @@ Update-Servers -cmd 'mkdir -p /var/backups/update-cron && cp -p /etc/cron.d/upda
 | `Permission denied (publickey)` | 控制机密钥未获授权 | 将公钥加入目标机 root 的 `authorized_keys` |
 | `需要 root 权限` | 登录用户不是 root | 使用 `root@host`，或按实际环境改造远程执行部分 |
 | `不支持的时区` | 系统时区不在自动识别范围 | 用 `--template` 指向自己的模板显式指定 |
-| `缺少文件` | `--require` 声明的依赖未部署 | 先部署依赖，或去掉对应的 `--require` |
+| `缺少文件` | `--require` 或 `-Require` 声明的依赖未部署 | 先部署依赖，或去掉对应的依赖声明 |
 | `cron 服务未运行` | cron、crond 或 cronie 未启动 | 启动对应服务并设置开机自启 |
 | `--check` 失败但文件内容看起来正确 | 权限、属主或换行符不符 | 用 `stat` 检查 `644 root root`，并确认模板保持 LF 换行 |
 | `目标目录不存在` | `--target` 指向的目录未创建 | 先创建目录，或改用已存在的目录 |
