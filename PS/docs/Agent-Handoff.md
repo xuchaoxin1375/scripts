@@ -193,6 +193,8 @@
 
 104. **移除重复任务启发式检查（2026-10-29，用户判定该功能低质且堵住更新通路）**：原实现从模板提取 `.php`/`.sh` 基名，在 root crontab、`/etc/crontab` 与其他 `/etc/cron.d` 中 `grep -F`，命中即拒绝下发（`exit 2`）。问题：同名脚本不等于同一任务（同脚本不同参数/不同站点都算不同任务），注释、日志路径、残留临时文件会误报，解释器前缀与包装脚本会漏检；用户给任务加前置命令后仍被判重复，正常更新被堵死。已从三处入口一并移除：`update-cron/deploy.sh`（删 `template_patterns` 与远端 grep 段，`remote_precheck` 只留 root/目录/命令/依赖/cron）、`update-cron/install-cron.sh`（删 `duplicate_check`）、`Deploy-CronFile`（删 `-AllowExisting`、`Patterns` 提取与 `exit 2` 分支）；两处 `--allow-existing` 开关随之删除。验证：WSL root 下伪造"别处已有同名脚本"，三处预检均返回 0 且缺依赖仍返回 1；`install-cron.sh` 安装后哈希一致；`--help` 不再含旧开关，传旧开关退出码 2；`shellcheck`/`shfmt` 0 告警，psm1 在 5.1 与 7 下 ParseFile 均 0 错。规则依据：skill `scripting-best-practices` 的"覆盖写入与写入前检查"、根 `AGENTS.md` 红线。
 
+105. **`Deploy-CronFile` 只读阶段并发 + `-SkipPrecheck`（2026-10-29）**：预检原为逐台 `foreach`，`-ThrottleLimit` 只作用于推送，几十台时写入前要串行等几十次 SSH。现改为三阶段：本地生成每台的脚本 → 只读阶段按 `-ThrottleLimit` 并发执行（每台一个 ThreadJob，缺 ThreadJob 时退回 `Start-Job`，与 `Push-FileToServers` 同一模式）→ 按清单顺序应用结果、选模板、登记推送。时区探测放在同一作业内先执行，`-Check` 走同一并发路径；`-Remove` 仍逐台执行。新增 `-SkipPrecheck`：跳过预检直接上传安装（每台两次连接，`-TemplateDirectory` 时三次），推送阶段仍比对哈希与权限，一致时不写入、不备份；与 `-Require` 互斥并显式报错。**顺带修一个真问题**：作业里的脚本必须像 `$runRemote` 一样先去掉 CR（模块文件是 CRLF，here-string 带 `\r`，远端报 `set: - : invalid option` 与 `$'\r': command not found`）。测试：假 `ssh`/`scp` 转发 WSL root，`-ThrottleLimit 1` 下覆盖首次下发、重复下发（2 次 ssh、0 次 scp）、`-SkipPrecheck`（一致时不备份、变更后备份 1 份）、`-Require` 多文件与缺失、`-Check`、`-WhatIf`（0 连接）、`-Remove`、`-TemplateDirectory`（时区 `Asia/Shanghai`，6 次 ssh + 2 次 scp）；并发路径用 3 台不可达主机实测 10.3 秒（串行约 30 秒），结果按 Index 排序、无作业残留；psm1 在 5.1 与 7 下 ParseFile 均 0 错。注：并发作业不继承调用方的同名函数，假 `ssh`/`scp` 只能覆盖顺序路径。
+
 ## 4. 环境事实（这台机器，2026-09 实测）
 
 - pwsh 7.5，`$HOME=C:\Users\Administrator`，`$env:PSModulePath` 首位是

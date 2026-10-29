@@ -2086,7 +2086,8 @@ function Deploy-CronFile
 
     与仓库 update-cron/deploy.sh 行为对齐：预检 root 权限、目标目录、依赖文件与 cron 服务，
     支持按目标机系统时区在 cron.cst 与 cron.utc 之间选择，写入前备份，写后由 Push-FileToServers 校验哈希与权限。
-    每台目标机三次连接：预检、上传、安装；用 -TemplateDirectory 自动选模板时再加一次时区探测。
+    只读阶段（预检或 -Check）与推送阶段都按 -ThrottleLimit 并发。写入一台目标机需要三次连接（预检、上传、安装），
+    用 -TemplateDirectory 自动选模板时再加一次时区探测；加 -SkipPrecheck 跳过预检，直接上传安装，每台两次连接。
     进度行带本地时间，结果按清单顺序返回，Status 取 Deployed、Skipped、Checked、Removed、Failed、WhatIf。
 
     .PARAMETER Template
@@ -2102,7 +2103,11 @@ function Deploy-CronFile
     备份目录，默认 /var/backups/<受管文件名>。
 
     .PARAMETER Require
-    下发前要求目标机存在的文件；多个用逗号分隔（PowerShell 不允许重复写同一参数），路径不能含空白。
+    下发前要求目标机存在的文件；多个用逗号分隔（PowerShell 不允许重复写同一参数），路径不能含空白。不能与 -SkipPrecheck 同用。
+
+    .PARAMETER SkipPrecheck
+    跳过下发前的远端预检，直接上传安装；依赖文件、cron 服务与目标目录由调用方自行保证。
+    推送阶段仍比对哈希与权限，内容一致时不写入、不产生备份；不能与 -Require 同用。
 
     .PARAMETER Check
     只校验受管文件的内容与权限，不写入。
@@ -2114,7 +2119,7 @@ function Deploy-CronFile
     处理完成后若存在失败机器则抛出异常，供脚本或 CI 判定。
 
     .PARAMETER ThrottleLimit
-    推送阶段的并发度，默认 10，取值 1 到 64；预检始终逐台执行。设为 1 时全程顺序执行。
+    预检、校验与推送的并发度，默认 10，取值 1 到 64。设为 1 时全程顺序执行。
 
     .EXAMPLE
     Deploy-CronFile -Template ./work/update-cron.cron -Require /www/functions4.php,/www/functions24.php
@@ -2130,6 +2135,11 @@ function Deploy-CronFile
     Deploy-CronFile -Check -Template ./work/update-cron.cron -FailOnError
 
     校验全部目标机，存在不一致时抛异常。
+
+    .EXAMPLE
+    Deploy-CronFile -Template ./work/update-cron.cron -SkipPrecheck
+
+    依赖文件已在目标机就绪时跳过预检，直接上传安装；内容一致的机器仍显示 Skipped，不写入也不备份。
 
     .NOTES
     -Server 省略时读取 Get-ServerList 的 ip 字段并跳过开头 1 条。
@@ -2148,6 +2158,8 @@ function Deploy-CronFile
         [string]$BackupDirectory,
 
         [string[]]$Require,
+
+        [switch]$SkipPrecheck,
 
         [string[]]$Server,
 
@@ -2214,6 +2226,10 @@ function Deploy-CronFile
             throw "依赖路径必须是不含空白的绝对路径: $item"
         }
         $requireList += $item
+    }
+    if ($SkipPrecheck -and -not $Check -and -not $Remove -and @($requireList).Count -gt 0)
+    {
+        throw '-SkipPrecheck 不执行预检，不能与 -Require 同用；依赖文件请在下发前自行确认。'
     }
 
     $templateMap = @{}
@@ -2386,8 +2402,127 @@ fi
     $index = 0
     $clock = [System.Diagnostics.Stopwatch]::StartNew()
 
+    # 只读远端脚本的并发执行器：每台一个作业，作业内按顺序执行该台的脚本（时区探测在前）
+    # 作业方式与 Push-FileToServers 一致：优先 ThreadJob，缺装时退回进程级后台作业
+    $probeWork = {
+        param($Item)
+        $ErrorActionPreference = 'Continue'
+        $all = @()
+        $code = 0
+        foreach ($s in $Item.Scripts)
+        {
+            # 远端登录 shell 不把 CR 当空白，脚本必须以 LF 下发
+            $text = ($s -replace "`r`n", "`n") -replace "`r", ''
+            $out = & ssh -nT -o BatchMode=yes -o ConnectTimeout=10 $Item.Target $text 2>&1
+            $code = $LASTEXITCODE
+            $all += @($out | ForEach-Object { "$_" })
+            if ($code -ne 0)
+            {
+                break
+            }
+        }
+        [pscustomobject]@{
+            Index  = $Item.Index
+            Code   = $code
+            Output = $all
+        }
+    }
+
+    $runRemoteMany = {
+        param($Items)
+        $results = @()
+        $count = @($Items).Count
+        $throttle = [Math]::Max(1, [Math]::Min($ThrottleLimit, $count))
+        $createdJobs = @()
+        try
+        {
+            if ($throttle -le 1)
+            {
+                foreach ($item in $Items)
+                {
+                    $results += & $probeWork $item
+                }
+                return @($results)
+            }
+
+            $threadJob = Get-Command -Name Start-ThreadJob -ErrorAction SilentlyContinue
+            if (-not $threadJob)
+            {
+                Write-Verbose '未检测到 ThreadJob 模块，改用后台作业（独立进程）执行只读阶段；安装 ThreadJob 可减少启动开销。'
+            }
+            $workText = $probeWork.ToString()
+            $running = @()
+            $entries = @{}
+            $next = 0
+            while ($next -lt $count -or $running.Count -gt 0)
+            {
+                while ($next -lt $count -and $running.Count -lt $throttle)
+                {
+                    $item = @($Items)[$next]
+                    $next++
+                    $scriptBlock = [scriptblock]::Create($workText)
+                    if ($threadJob)
+                    {
+                        $job = Start-ThreadJob -ScriptBlock $scriptBlock -ArgumentList $item
+                    }
+                    else
+                    {
+                        $job = Start-Job -ScriptBlock $scriptBlock -ArgumentList $item
+                    }
+                    $createdJobs += $job
+                    $entries[$job.Id] = $item
+                    $running += $job
+                }
+
+                $completed = @($running | Wait-Job -Any)
+                foreach ($job in $completed)
+                {
+                    if ($job.State -eq 'Running' -or $job.State -eq 'NotStarted')
+                    {
+                        continue
+                    }
+
+                    $item = $entries[$job.Id]
+                    $received = @(Receive-Job -Job $job -ErrorAction SilentlyContinue)
+                    $payload = $received | Where-Object { $_ -is [pscustomobject] -and $_.PSObject.Properties['Code'] } | Select-Object -Last 1
+                    if ($payload)
+                    {
+                        $results += [pscustomobject]@{
+                            Index  = $item.Index
+                            Code   = $payload.Code
+                            Output = @($payload.Output)
+                        }
+                    }
+                    else
+                    {
+                        $reason = $job.ChildJobs[0].JobStateInfo.Reason
+                        $message = if ($reason) { $reason.Message } else { ($received | Out-String).Trim() }
+                        $results += [pscustomobject]@{
+                            Index  = $item.Index
+                            Code   = 255
+                            Output = @("作业异常: $message")
+                        }
+                    }
+                    $entries.Remove($job.Id)
+                    Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
+                    $running = @($running | Where-Object { $_.Id -ne $job.Id })
+                }
+            }
+            return @($results | Sort-Object -Property Index)
+        }
+        finally
+        {
+            foreach ($job in $createdJobs)
+            {
+                Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
     try
     {
+        # 第一阶段：本地准备，逐台登记记录并生成该台要执行的远端脚本（此阶段不连接）
+        $plan = @()
         foreach ($item in $Server)
         {
             $target = "$item"
@@ -2416,10 +2551,9 @@ fi
                 continue
             }
 
-            Write-Host ("[{0}] [{1}/{2}] {3} 预检" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $index, $total, $target) -ForegroundColor DarkGray
-
             if ($Remove)
             {
+                # 删除是破坏性操作，保持逐台执行
                 $scriptText = $removeScript.Replace('__TARGET__', $RemotePath).Replace('__BACKUP__', $BackupDirectory).Replace('__LEAF__', $leaf)
                 $remote = & $runRemote $target $scriptText
                 if ($remote.Code -ne 0)
@@ -2441,12 +2575,72 @@ fi
                 continue
             }
 
+            # 只读阶段：需要时先探测时区，再做状态校验或预检；-SkipPrecheck 时只剩时区探测
+            $scripts = @()
+            if (-not $Template)
+            {
+                $scripts += $timezoneScript
+            }
+            $kind = 'push'
+            if ($Check)
+            {
+                $kind = 'check'
+                $scripts += $statusScript.Replace('__TARGET__', $RemotePath)
+            }
+            elseif (-not $SkipPrecheck)
+            {
+                $kind = 'precheck'
+                $scriptText = $precheckScript.Replace('__TARGET__', $RemotePath)
+                $scriptText = $scriptText.Replace('__PARENT__', $parent)
+                $scriptText = $scriptText.Replace('__REQUIRES__', (& $encodeLines $requireList))
+                $scripts += $scriptText
+            }
+
+            $plan += [pscustomobject]@{
+                Index   = $index
+                Target  = $target
+                Record  = $record
+                Kind    = $kind
+                Scripts = $scripts
+            }
+        }
+
+        # 第二阶段：并发执行只读脚本（每台一个作业，作业内按顺序执行该台的时区探测与状态/预检）
+        $remoteByIndex = @{}
+        $probes = @($plan | Where-Object { $_.Scripts.Count -gt 0 })
+        if ($probes.Count -gt 0)
+        {
+            $probeLabel = if ($Check) { '校验' } elseif ($SkipPrecheck) { '时区探测' } else { '预检' }
+            $probeThrottle = [Math]::Max(1, [Math]::Min($ThrottleLimit, $probes.Count))
+            $probeMode = if ($probeThrottle -gt 1) { "并发 $probeThrottle" } else { '顺序执行' }
+            Write-Host ("[{0}] {1} {2} 台（{3}）" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $probeLabel, $probes.Count, $probeMode)
+            foreach ($probe in (& $runRemoteMany $probes))
+            {
+                $remoteByIndex[$probe.Index] = $probe
+            }
+        }
+
+        # 第三阶段：按清单顺序应用结果，选模板并登记待推送目标
+        foreach ($step in $plan)
+        {
+            $record = $step.Record
+            $target = $step.Target
+            $remote = $remoteByIndex[$step.Index]
+            $remoteOutput = @()
+            $remoteCode = 0
+            if ($remote)
+            {
+                $remoteOutput = @($remote.Output)
+                $remoteCode = $remote.Code
+            }
+            # 时区探测行不参与状态解析与错误信息
+            $cleanOutput = @($remoteOutput | Where-Object { $_.Trim() -and $_ -notmatch '^TZ=' })
+
             $key = 'forced'
             if (-not $Template)
             {
-                $remote = & $runRemote $target $timezoneScript
-                $tzLine = @($remote.Output | Where-Object { $_ -match '^TZ=' } | Select-Object -Last 1)
-                if ($remote.Code -ne 0 -or $tzLine.Count -eq 0)
+                $tzLine = @($remoteOutput | Where-Object { $_ -match '^TZ=' } | Select-Object -Last 1)
+                if ($remoteCode -ne 0 -or $tzLine.Count -eq 0)
                 {
                     $record.Status = 'Failed'
                     $record.Message = '无法获取系统时区'
@@ -2480,24 +2674,22 @@ fi
             $tpl = $prepared[$templatePath]
             $record.Template = Split-Path -Leaf $templatePath
 
-            if ($Check)
+            if ($step.Kind -eq 'check')
             {
-                $remote = & $runRemote $target $statusScript.Replace('__TARGET__', $RemotePath)
-                $lines = @($remote.Output | Where-Object { $_.Trim() })
-                if ($remote.Code -ne 0)
+                if ($remoteCode -ne 0)
                 {
                     $record.Status = 'Failed'
-                    $record.Message = (@($remote.Output) -join ' ').Trim()
+                    $record.Message = ($cleanOutput -join ' ').Trim()
                 }
-                elseif ($lines.Count -eq 1 -and $lines[0].Trim() -eq 'MISSING')
+                elseif ($cleanOutput.Count -eq 1 -and $cleanOutput[0].Trim() -eq 'MISSING')
                 {
                     $record.Status = 'Failed'
                     $record.Message = '目标文件不存在'
                 }
-                elseif ($lines.Count -ge 2)
+                elseif ($cleanOutput.Count -ge 2)
                 {
-                    $remoteHash = ($lines[0].Trim() -split '\s+')[0]
-                    $remoteMode = $lines[$lines.Count - 1].Trim()
+                    $remoteHash = ($cleanOutput[0].Trim() -split '\s+')[0]
+                    $remoteMode = $cleanOutput[$cleanOutput.Count - 1].Trim()
                     $record.Mode = $remoteMode
                     if ($remoteHash -ne $tpl.Hash)
                     {
@@ -2518,44 +2710,42 @@ fi
                 else
                 {
                     $record.Status = 'Failed'
-                    $record.Message = '未取得目标文件状态: ' + (@($remote.Output) -join ' ').Trim()
+                    $record.Message = '未取得目标文件状态: ' + ($cleanOutput -join ' ').Trim()
                 }
-                Write-Host ("[{0}] [{1}/{2}] {3} {4} {5}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $index, $total, $target, $record.Status, $record.Message)
+                Write-Host ("[{0}] [{1}/{2}] {3} {4} {5}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $step.Index, $total, $target, $record.Status, $record.Message)
                 continue
             }
 
-            $scriptText = $precheckScript.Replace('__TARGET__', $RemotePath)
-            $scriptText = $scriptText.Replace('__PARENT__', $parent)
-            $scriptText = $scriptText.Replace('__REQUIRES__', (& $encodeLines $requireList))
-
-            $remote = & $runRemote $target $scriptText
-            if ($remote.Code -ne 0)
+            if ($step.Kind -eq 'precheck')
             {
-                $record.Status = 'Failed'
-                $record.Message = (@($remote.Output) -join ' ').Trim()
-                continue
-            }
-
-            $stateLine = @($remote.Output | Where-Object { $_ -match '^STATE=' } | Select-Object -Last 1)
-            if ($stateLine.Count -eq 0)
-            {
-                $record.Status = 'Failed'
-                $record.Message = '未取得目标文件状态: ' + (@($remote.Output) -join ' ').Trim()
-                continue
-            }
-
-            $stateText = "$($stateLine[0])"
-            if ($stateText -match '^STATE=PRESENT HASH=(\S+) MODE=(.+)$')
-            {
-                $remoteHash = $Matches[1]
-                $remoteMode = $Matches[2].Trim()
-                $record.Mode = $remoteMode
-                if ($remoteHash -eq $tpl.Hash -and $remoteMode -eq $expectedMode)
+                if ($remoteCode -ne 0)
                 {
-                    $record.Status = 'Skipped'
-                    $record.Message = '内容与权限已一致'
-                    Write-Host ("[{0}] [{1}/{2}] {3} Skipped 内容与权限已一致" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $index, $total, $target) -ForegroundColor DarkGray
+                    $record.Status = 'Failed'
+                    $record.Message = ($cleanOutput -join ' ').Trim()
                     continue
+                }
+
+                $stateLine = @($cleanOutput | Where-Object { $_ -match '^STATE=' } | Select-Object -Last 1)
+                if ($stateLine.Count -eq 0)
+                {
+                    $record.Status = 'Failed'
+                    $record.Message = '未取得目标文件状态: ' + ($cleanOutput -join ' ').Trim()
+                    continue
+                }
+
+                $stateText = "$($stateLine[0])"
+                if ($stateText -match '^STATE=PRESENT HASH=(\S+) MODE=(.+)$')
+                {
+                    $remoteHash = $Matches[1]
+                    $remoteMode = $Matches[2].Trim()
+                    $record.Mode = $remoteMode
+                    if ($remoteHash -eq $tpl.Hash -and $remoteMode -eq $expectedMode)
+                    {
+                        $record.Status = 'Skipped'
+                        $record.Message = '内容与权限已一致'
+                        Write-Host ("[{0}] [{1}/{2}] {3} Skipped 内容与权限已一致" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $step.Index, $total, $target) -ForegroundColor DarkGray
+                        continue
+                    }
                 }
             }
 

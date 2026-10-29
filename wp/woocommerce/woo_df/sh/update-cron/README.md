@@ -158,6 +158,8 @@ notepad ./work/update-cron.cron
    Deploy-CronFile -Template ./work/update-cron.cron -Require /www/sh/wp-functions-update/update_wp_functions.sh,/www/functions4.php,/www/functions24.php
    ```
 
+   依赖文件已在每台目标机就绪时，加 `-SkipPrecheck` 跳过预检，直接上传安装。
+
 3. 校验与删除同样是一条命令：
 
    ```powershell
@@ -231,7 +233,7 @@ Windows 侧有三种落地方式，区别在预检覆盖与是否逐台操作：
 
 | 方式 | 预检 | 逐台操作 | 适用 |
 | --- | --- | --- | --- |
-| `Deploy-CronFile` | 依赖文件、cron 服务、root 与目标目录 | 否，一条命令 | 已加载 `PS/WpOnline` 模块（推荐） |
+| `Deploy-CronFile` | 依赖文件、cron 服务、root 与目标目录（可 `-SkipPrecheck` 跳过） | 否，一条命令 | 已加载 `PS/WpOnline` 模块（推荐） |
 | `Push-FileToServers` | 无 | 否，一条命令 | 只需要文件落地 |
 | 手工 `scp` + `install-cron.sh` | cron 服务 | 是 | 未加载模块 |
 
@@ -243,11 +245,13 @@ Windows 侧有三种落地方式，区别在预检覆盖与是否逐台操作：
 Deploy-CronFile -Template /path/to/update-cron.cron -Require /www/functions4.php
 ```
 
-- 写入一台机器需要三次连接，顺序如下，并且先逐台预检、再统一推送：
-  - 预检（一次 `ssh`，逐台执行）：以 root 登录，检查目标目录是否存在、`install`、`mktemp`、`sha256sum`、`stat`、`base64` 是否齐备、`-Require` 声明的依赖是否存在、cron 服务是否运行，并读回受管文件的 SHA-256 与 `0644 root root`。
+- 预检、校验与推送都按 `-ThrottleLimit` 并发（默认 10），结果按清单顺序返回；设为 1 时全程顺序执行。
+- 写入一台机器需要三次连接，顺序如下，并且先完成预检、再统一推送：
+  - 预检（一次 `ssh`）：以 root 登录，检查目标目录是否存在、`install`、`mktemp`、`sha256sum`、`stat`、`base64` 是否齐备、`-Require` 声明的依赖是否存在、cron 服务是否运行，并读回受管文件的 SHA-256 与 `0644 root root`。
   - 上传（一次 `scp`）：把模板转成 LF 后传到目标机 `/tmp/push-file-*`。
   - 安装（一次 `ssh`）：用 `install -m 0644 -o root -g root` 写同目录临时文件，改名覆盖，按需备份旧文件，再复核哈希与权限。
-- 已是最新的机器只做预检：一次连接，不上传，也不产生备份；用 `-TemplateDirectory` 时每台再加一次时区探测。`-Check` 与 `-Remove` 各只需一次连接。预检始终逐台执行，只有上传与安装按 `-ThrottleLimit` 并发。
+- 已是最新的机器只做预检：一次连接，不上传，也不产生备份；用 `-TemplateDirectory` 时每台再加一次时区探测。`-Check` 与 `-Remove` 各只需一次连接（`-Check` 用 `-TemplateDirectory` 时两次；`-Remove` 仍逐台执行）。
+- 依赖文件已全部就绪、不需要预检时加 `-SkipPrecheck`：直接上传安装，每台两次连接（用 `-TemplateDirectory` 时三次）。推送阶段仍比对哈希与权限，内容一致的机器显示 `Skipped`，不写入、不备份；它与 `-Require` 不能同时使用。
 - `-Require` 默认不检查任何依赖文件，不传就跳过这一项；需要多个文件时用逗号分隔，PowerShell 不允许把同一个参数写两遍：
 
   ```powershell
@@ -469,6 +473,7 @@ Update-Servers -cmd 'mkdir -p /var/backups/update-cron && cp -p /etc/cron.d/upda
 | `需要 root 权限` | 登录用户不是 root | 使用 `root@host`，或按实际环境改造远程执行部分 |
 | `不支持的时区` | 系统时区不在自动识别范围 | 用 `--template` 指向自己的模板显式指定 |
 | `缺少文件` | `--require` 或 `-Require` 声明的依赖未部署 | 先部署依赖，或去掉对应的依赖声明 |
+| `-SkipPrecheck 不执行预检，不能与 -Require 同用` | 同时传了两个互斥参数 | 依赖已就绪时去掉 `-Require`，需要检查依赖时去掉 `-SkipPrecheck` |
 | `cron 服务未运行` | cron、crond 或 cronie 未启动 | 启动对应服务并设置开机自启 |
 | `--check` 失败但文件内容看起来正确 | 权限、属主或换行符不符 | 用 `stat` 检查 `644 root root`，并确认模板保持 LF 换行 |
 | `目标目录不存在` | `--target` 指向的目录未创建 | 先创建目录，或改用已存在的目录 |
