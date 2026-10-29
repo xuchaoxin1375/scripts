@@ -22,7 +22,7 @@
 | `cron.utc` | 示例模板：系统时区为 `UTC` 时使用 |
 | `hosts.example.txt` | 主机清单示例 |
 | `hosts.txt` | 实际主机清单，由使用者创建，已被 `.gitignore` 忽略 |
-| `方案.md` | 方案说明、取舍、验收标准与风险边界 |
+| `方案.md` | 方案说明、取舍、验收标准与风险边界；末尾的“决策记录”记放弃的方案与重新评估条件 |
 
 `deploy.sh` 面向 Bash 控制机，`install-cron.sh` 在目标机本地执行。Windows 控制机另有模块命令 `Deploy-CronFile`（仓库 `PS/WpOnline`）可一条命令完成预检、按时区选模板、下发与校验，见“Windows 侧下发”。
 
@@ -350,6 +350,7 @@ ssh root@${h} 'mkdir -p /var/backups/update-cron && cp -p /etc/cron.d/update-cro
 - 受管文件名不能带点号。`/etc/cron.d` 中带点号的文件会被 `run-parts` 静默跳过，脚本与模块函数都会直接拒绝这类目标名。
 - `scp` 直接覆盖目标路径不是原子写，cron 可能读到半截文件。各方式都先写同目录临时文件再改名。
 - `scp` 落地后的属主与权限取决于源文件和登录用户。各方式都用 `install -m 0644 -o root -g root` 固定，并在写后复核。
+- 重复任务检查命中时会拒绝下发，即使你只是改了模板里的前置命令。该检查按 `.php`、`.sh` 的基名匹配其他 cron 配置，与内容是否相同无关；确认不会重复执行时用 `--allow-existing`，或改用没有这项检查的 `Push-FileToServers`。取舍说明见 `方案.md` 的“决策记录”。
 
 ## 下发后的验证
 
