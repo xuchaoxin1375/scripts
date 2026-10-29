@@ -2081,13 +2081,14 @@ function Deploy-CronFile
 
     .DESCRIPTION
     前置条件：目标机已配置 root 免密登录，已安装并运行 cron，模板引用的脚本已部署到目标机。
-    执行者：当前会话逐台 SSH 预检，落地阶段调用 Push-FileToServers 完成上传与安装；单台失败不中断整批。
+    执行者：当前会话按 -ThrottleLimit 并发 SSH 预检，落地阶段调用 Push-FileToServers 完成上传与安装；单台失败不中断整批。
     善后：无需额外操作；重复执行时内容与权限一致的机器直接跳过。
 
     与仓库 update-cron/deploy.sh 行为对齐：预检 root 权限、目标目录、依赖文件与 cron 服务，
     支持按目标机系统时区在 cron.cst 与 cron.utc 之间选择，写入前备份，写后由 Push-FileToServers 校验哈希与权限。
     只读阶段（预检或 -Check）与推送阶段都按 -ThrottleLimit 并发。写入一台目标机需要三次连接（预检、上传、安装），
-    用 -TemplateDirectory 自动选模板时再加一次时区探测；加 -SkipPrecheck 跳过预检，直接上传安装，每台两次连接。
+    预检发现内容与权限一致时不写入，只花一次预检连接；用 -TemplateDirectory 自动选模板时再加一次时区探测；
+    加 -SkipPrecheck 跳过预检，直接上传安装，每台两次连接。
     进度行带本地时间，结果按清单顺序返回，Status 取 Deployed、Skipped、Checked、Removed、Failed、WhatIf。
 
     .PARAMETER Template
@@ -2124,7 +2125,7 @@ function Deploy-CronFile
     .EXAMPLE
     Deploy-CronFile -Template ./work/update-cron.cron -Require /www/functions4.php,/www/functions24.php
 
-    按清单逐台预检并部署，已是最新的目标机跳过；多个依赖文件用逗号分隔。
+    按清单预检并部署，已是最新的目标机跳过；多个依赖文件用逗号分隔。
 
     .EXAMPLE
     Deploy-CronFile -TemplateDirectory ./work/templates -WhatIf

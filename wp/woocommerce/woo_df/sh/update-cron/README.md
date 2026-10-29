@@ -231,28 +231,34 @@ Update-Servers -cmd 'timedatectl show -p Timezone --value'
 
 Windows 侧有三种落地方式，区别在预检覆盖与是否逐台操作：
 
-| 方式 | 预检 | 逐台操作 | 适用 |
-| --- | --- | --- | --- |
-| `Deploy-CronFile` | 依赖文件、cron 服务、root 与目标目录（可 `-SkipPrecheck` 跳过） | 否，一条命令 | 已加载 `PS/WpOnline` 模块（推荐） |
-| `Push-FileToServers` | 无 | 否，一条命令 | 只需要文件落地 |
-| 手工 `scp` + `install-cron.sh` | cron 服务 | 是 | 未加载模块 |
+| 方式 | 预检 | 每台连接数 | 逐台操作 | 适用 |
+| --- | --- | --- | --- | --- |
+| `Deploy-CronFile` | 依赖文件、cron 服务、root 与目标目录（可 `-SkipPrecheck` 跳过） | 见方式一表格 | 否，一条命令 | 已加载 `PS/WpOnline` 模块（推荐） |
+| `Push-FileToServers` | 无 | 2（`scp` + `ssh`） | 否，一条命令 | 只需要文件落地 |
+| 手工 `scp` + `install-cron.sh` | cron 服务 | 2（`scp` + `ssh`） | 是 | 未加载模块 |
 
 ### 方式一：Deploy-CronFile（推荐）
 
 与 `deploy.sh` 行为对齐，只是运行在 Windows：
 
 ```powershell
-Deploy-CronFile -Template /path/to/update-cron.cron 
+Deploy-CronFile -Template /path/to/update-cron.cron -Require /www/functions4.php
 ```
 
-- 预检、校验与推送都按 `-ThrottleLimit` 并发（默认 10），结果按清单顺序返回；设为 1 时全程顺序执行。
-- 写入一台机器需要三次连接，顺序如下，并且先完成预检、再统一推送：
-  - 预检（一次 `ssh`）：以 root 登录，检查目标目录是否存在、`install`、`mktemp`、`sha256sum`、`stat`、`base64` 是否齐备、`-Require` 声明的依赖是否存在、cron 服务是否运行，并读回受管文件的 SHA-256 与 `0644 root root`。
-  - 上传（一次 `scp`）：把模板转成 LF 后传到目标机 `/tmp/push-file-*`。
-  - 安装（一次 `ssh`）：用 `install -m 0644 -o root -g root` 写同目录临时文件，改名覆盖，按需备份旧文件，再复核哈希与权限。
-- 上传与安装分成两次连接是刻意的：`scp` 只负责把字节放到 `/tmp`，原子替换、属主与权限、备份和写后校验都在随后的 `ssh` 里完成。直接用 `scp` 覆盖最终路径虽然只需一次连接，但 cron 可能读到半截文件，也没有写后复核。
-- 已是最新的机器只做预检：一次连接，不上传，也不产生备份；用 `-TemplateDirectory` 时每台再加一次时区探测。`-Check` 与 `-Remove` 各只需一次连接（`-Check` 用 `-TemplateDirectory` 时两次；`-Remove` 仍逐台执行）。
-- 依赖文件已全部就绪、不需要预检时加 `-SkipPrecheck`：直接上传安装，每台两次连接（用 `-TemplateDirectory` 时三次）。推送阶段仍比对哈希与权限，内容一致的机器显示 `Skipped`，不写入、不备份；它与 `-Require` 不能同时使用。
+- 预检、校验与推送都按 `-ThrottleLimit` 并发（默认 10），结果按清单顺序返回；`-Remove` 仍逐台执行，设为 1 时全程顺序。
+- 各模式的每台连接数与写入行为：
+
+  | 模式 | 每台连接数 | 写入与备份 |
+  | --- | --- | --- |
+  | 默认下发 | 3（写入）/ 1（已一致） | 预检一致则跳过；否则上传、安装，覆盖前备份旧文件 |
+  | 默认下发 + `-TemplateDirectory` | 4 / 2 | 同上，另加一次时区探测 |
+  | `-SkipPrecheck` | 2 | 上传后由安装阶段比对，一致则不写入、不备份，结果为 `Skipped` |
+  | `-SkipPrecheck` + `-TemplateDirectory` | 3 | 同上，另加一次时区探测 |
+  | `-Check` | 1（`-TemplateDirectory` 时 2） | 只读，不写入 |
+  | `-Remove` | 1 | 备份后删除，逐台执行 |
+
+  三次连接的分工：预检（`ssh`，检查 root、目标目录、必需命令、`-Require` 依赖与 cron 服务，并读回哈希与权限）→ 上传（`scp` 到 `/tmp/push-file-*`）→ 安装（`ssh`，用 `install -m 0644 -o root -g root` 写同目录临时文件、改名覆盖、备份旧文件、复核哈希与权限）。上传与安装分开是刻意的：`scp` 只负责传字节，原子替换、属主与权限、备份和写后校验都在随后的 `ssh` 里完成；直接 `scp` 覆盖最终路径会让 cron 读到半截文件。
+- `-SkipPrecheck` 与 `-Require` 互斥；`-Check` 与 `-Remove` 本来不做预检，不受它影响。
 - `-Require` 默认不检查任何依赖文件，不传就跳过这一项；需要多个文件时用逗号分隔，PowerShell 不允许把同一个参数写两遍：
 
   ```powershell
