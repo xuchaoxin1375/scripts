@@ -215,6 +215,35 @@ function Get-PathStyleByDotNet
     Write-Verbose "convert process(by dotnet): $path -> $convertedPath"
     return $convertedPath
 }
+function ConvertTo-PathStyleString
+{
+    <# 
+    .SYNOPSIS
+    将路径对象统一转换为路径字符串
+    .DESCRIPTION
+    Get-Location 返回 PathInfo,Get-ChildItem 返回 FileInfo/DirectoryInfo,这些对象本身没有 Trim() 方法。
+    优先取出 Path 属性(适配 PathInfo),其次 FullName(适配 FileSystemInfo),最后按字符串处理。
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowNull()]
+        $InputObject
+    )
+    if ($InputObject -is [string])
+    {
+        return $InputObject
+    }
+    foreach ($propertyName in @('Path', 'FullName', 'Location'))
+    {
+        $property = $InputObject.PSObject.Properties[$propertyName]
+        if ($null -ne $property -and $null -ne $property.Value)
+        {
+            return [string]$property.Value
+        }
+    }
+    return [string]$InputObject
+}
 function Get-PathStyle
 {
     <# 
@@ -223,8 +252,9 @@ function Get-PathStyle
     .DESCRIPTION
     windows(反斜杠)风格:将路径中的/(1个或多个连续的`/`)替换为单个\ (注意,可以使用DoubleBackSlash选项,它将`/`以及单独的`\`替换为`\\`)
     posix/uri(正斜杠)风格:将路径中的\(1个或多个连续的`\`)替换为单个/
+    管道输入可以是字符串,也可以是 Get-Location(PathInfo)、Get-ChildItem(FileInfo/DirectoryInfo)等路径对象。
     .PARAMETER Path
-    待转换的路径字符串
+    待转换的路径字符串,也接受带 Path/FullName 属性的路径对象
     .PARAMETER Style
     转换的风格,可选"Windows"或"posix"
     .NOTES
@@ -239,6 +269,12 @@ function Get-PathStyle
     #⚡️[Administrator@CXXUDESK][C:\repos\scripts\wp\woocommerce\woo_df\sh][16:33:58] PS >
     "C:/a//b//c\d\\e/"|Get-PathStyle -Style Windows -DoubleBackSlash
     C:\\a\\b\\c\\d\\e\\
+    .EXAMPLE
+    Get-Location|Get-PathStyle -Style posix
+    C:/repos/scripts/PS
+    .EXAMPLE
+    Get-ChildItem -File|Get-PathStyle -Style posix
+    C:/repos/scripts/PS/readme.md
     #>
     [CmdletBinding()]
     param(
@@ -268,48 +304,51 @@ function Get-PathStyle
     }
     process
     {
-        # 对每个管道输入项进行处理
-        if ($null -eq $Path)
+        # 对每个输入项进行处理:管道逐项传入,显式传数组时逐个展开
+        foreach ($pathItem in @($Path))
         {
-            return 
-        }
-        # 去掉左右多余空格
-        $normalizedPath = $Path.Trim()
-        if ($KeepColon2Slash)
-        {
-            $tag = '__COLON_2SLASH__'
-            $colon2Slash = '://'
-            $normalizedPath = $normalizedPath -replace $colon2Slash, $tag
-        }
-        Write-Debug "normalize path: [$normalizedPath]" 
-        switch ($Style)
-        {
-            "Windows"
+            if ($null -eq $pathItem)
             {
-                # 替换所有正斜杠为反斜杠
-                $separator = '\'
-                if($DoubleBackSlash)
+                continue
+            }
+            # 接受 Get-Location / Get-ChildItem 等路径对象,统一取出字符串
+            $pathString = ConvertTo-PathStyleString -InputObject $pathItem
+            # 去掉左右多余空格
+            $normalizedPath = $pathString.Trim()
+            if ($KeepColon2Slash)
+            {
+                $tag = '__COLON_2SLASH__'
+                $colon2Slash = '://'
+                $normalizedPath = $normalizedPath -replace $colon2Slash, $tag
+            }
+            Write-Debug "normalize path: [$normalizedPath]" 
+            switch ($Style)
+            {
+                "Windows"
                 {
-                    $separator = '\\'
+                    # 替换所有正斜杠为反斜杠
+                    $separator = '\'
+                    if($DoubleBackSlash)
+                    {
+                        $separator = '\\'
+                    }
+                    $convertedPath = $normalizedPath -replace $separaterPattern, $separator # \号本身在正则中需要转义为\\
                 }
-                $convertedPath = $normalizedPath -replace $separaterPattern, $separator # \号本身在正则中需要转义为\\
+                "posix"
+                {
+                    # 替换所有反斜杠为正斜杠
+                    $separator = '/'
+                    $convertedPath = $normalizedPath -replace $separaterPattern, $separator
+                }
             }
-            "posix"
+            # 替换标记
+            if($KeepColon2Slash)
             {
-                # 替换所有反斜杠为正斜杠
-                $separator = '/'
-                $convertedPath = $normalizedPath -replace $separaterPattern, $separator
+                $convertedPath = $convertedPath -replace $tag, $colon2Slash
             }
+            Write-Verbose "convert process: $pathString -> $convertedPath"
+            $convertedPath
         }
-        # 替换标记
-        if($KeepColon2Slash)
-        {
-            $convertedPath = $convertedPath -replace $tag, $colon2Slash
-        }
-        Write-Verbose "convert process: $path -> $convertedPath"
-    }end
-    {
-        return $convertedPath
     }
 }
     

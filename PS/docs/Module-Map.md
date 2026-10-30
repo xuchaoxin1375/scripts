@@ -51,7 +51,7 @@
 | `WinSys` | 351/16 | Windows 本机设置：键盘输入法/TTS 语音/电源管理（2026-09-21 从 `Basic` 迁入，命令名不变；B 档 5.1） |
 | `Tools` | 405/10 | 通用日常小工具：历史/版本/命令可用性/vscode 右键/conda 源（系统配置 14 函数已迁 `WinConfig`，2026-09-22） |
 | `WinConfig` | 696/14 | Windows 本机配置开关：Defender/小组件/更新/任务栏/时间同步/激活/分辨率/重启（2026-09-22 从 `Tools` 迁入，冷路径按需加载） |
-| `PathProcess` | 315/5 | 路径压缩/转换/风格判定（B 档 5.1，2026-09-22 酌情降档） |
+| `PathProcess` | 351/6 | 路径压缩/转换/风格判定（B 档 5.1，2026-09-22 酌情降档；2026-10-30 `Get-PathStyle` 支持 `Get-Location`/`Get-ChildItem` 等路径对象管道输入） |
 | `Link` | 178/5 | 硬链接/软链接/目录链接管理（B 档 5.1，三元改 `if`） |
 | `RecycleBin` | 224/5 | 回收站查看/移动/清空 |
 | `Security` | 113/4 | CredentialGuard/VBS/重启确认（`Disable-CredentialGuard` 唯一正本） |
