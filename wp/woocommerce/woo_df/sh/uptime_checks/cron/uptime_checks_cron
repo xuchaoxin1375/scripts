@@ -1,0 +1,8 @@
+# 由 install.sh 渲染后安装到 /etc/cron.d/uptime_checks_cron
+# 作用: 每分钟以指定用户执行一轮拨测,正常输出静默,告警由脚本自身发送.
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+MAILTO=""
+UPTIME_CONFIG_DIR=@CONFIG_DIR@
+UPTIME_STATE_DIR=@STATE_DIR@
+* * * * * @RUN_USER@ @PREFIX@/probe.sh --once --quiet >> @LOG@ 2>&1

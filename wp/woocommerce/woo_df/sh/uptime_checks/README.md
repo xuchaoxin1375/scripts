@@ -23,7 +23,7 @@
 | --- | --- |
 | Linux 主机 | 单台，长期运行；时间和时区应正确 |
 | Bash 4 及以上 | 使用关联数组等 Bash 4 特性 |
-| systemd 或 cron | 二选一，负责每分钟触发；不要求 systemd |
+| cron 或 systemd | 二选一，负责每分钟触发；默认使用 cron |
 | curl | 发起 HTTP 探测与 SMTP 投递，需支持 HTTPS 与 SMTP 协议 |
 | coreutils、grep、sed、awk | 系统自带即可 |
 | util-linux 的 flock | 防止相邻两轮并发执行 |
@@ -58,12 +58,43 @@
 
 **正文断言**：`expect_body` 使用固定字符串匹配响应正文。它适合确认页面确实由应用返回，而不是静态兜底页、缓存页或挑战页。不要填写随机内容或会随请求变化的文本。单次响应最多读取 1 MiB，超出时该检查按失败处理。
 
+## 工作流程
+
+```mermaid
+flowchart TD
+  T["cron 或 systemd 定时器"] --> P["probe.sh --once"]
+  P --> N["node：锚定节点健康接口"]
+  P --> B["biz：经节点回源业务页面"]
+  P --> U["public：公网入口"]
+  N --> S["连续计数与分组状态"]
+  B --> S
+  U --> S
+  S --> D{"达到阈值或状态变化"}
+  D -- "故障" --> Q["写事件并生成通知"]
+  D -- "恢复" --> Q
+  D -- "未变化" --> W["继续观察"]
+  Q --> M["SMTP 投递"]
+  M -- "成功" --> X["完成"]
+  M -- "失败" --> R["队列退避重试"]
+  R --> M
+```
+
+图中的关键含义：
+
+- 每次定时执行只做一轮探测，连续计数由状态目录跨轮保留。
+- 三类检查共用同一个分组状态机，故障、恢复与提醒按分组合并。
+- 通知先入队再投递；投递失败不阻塞检测，也不会因为状态已更新而丢消息。
+- 维护窗口在状态机之前截断告警，但检查本身仍会执行并留痕。
+
 ## 文件清单
 
 | 文件 | 作用 |
 | --- | --- |
 | `probe.sh` | 检查调度、状态判定、事件记录、通知入队与重试 |
 | `notify-email.sh` | 读取消息并通过 SMTP 投递 |
+| `install.sh` | 一键安装脚本、运行目录与 cron 任务 |
+| `cron/uptime_checks_cron` | `/etc/cron.d` 任务模板 |
+| `logrotate/uptime-checks` | 运行日志轮转模板 |
 | `checks.tsv.example` | 检查项配置示例 |
 | `maintenance.tsv.example` | 维护窗口示例 |
 | `notify.env.example` | 邮件配置示例 |
@@ -72,30 +103,48 @@
 
 运行数据默认写入 `/var/lib/uptime-checks`；使用 systemd 时由 `StateDirectory` 创建并授权，使用 cron 时需按安装步骤提前创建并授权。
 
-## 安装
+## 一键安装（默认 cron）
 
-以下步骤以 `/opt/uptime_checks` 为安装目录、`uptime` 为运行用户。目录和用户可按实际情况调整，调整后同步修改 systemd 单元。
+在仓库的 `uptime_checks` 目录执行：
 
 ```sh
-sudo useradd --system --home /var/lib/uptime-checks --shell /usr/sbin/nologin uptime
-sudo install -d -m 755 /opt/uptime_checks
-sudo cp probe.sh notify-email.sh checks.tsv.example maintenance.tsv.example notify.env.example README.md /opt/uptime_checks/
-sudo cp -r systemd /opt/uptime_checks/
-cd /opt/uptime_checks
-sudo cp checks.tsv.example checks.tsv
-sudo cp maintenance.tsv.example maintenance.tsv
-sudo cp notify.env.example notify.env
-sudo chmod 755 probe.sh notify-email.sh
-sudo chown -R root:root /opt/uptime_checks
-sudo chown uptime:uptime notify.env
-sudo chmod 600 notify.env
-sudo install -d -m 700 -o uptime -g uptime /var/lib/uptime-checks
-sudo cp systemd/uptime-probe.service systemd/uptime-probe.timer /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable uptime-probe.timer
+sudo ./install.sh
 ```
 
-这里只启用开机自启，不立即开始探测。先完成配置校验与测试邮件，再按“启用定时器”一节启动。使用 cron 时跳过本节最后的两个 `systemctl` 命令，改按“使用 cron 代替 systemd”配置，并确认定时器未启用。
+安装脚本自动完成：
+
+- 创建 `uptime` 系统用户（已存在则复用）。
+- 安装脚本到 `/opt/uptime_checks`，配置到 `/etc/uptime-checks`，运行数据到 `/var/lib/uptime-checks`。
+- 写入 `/etc/cron.d/uptime_checks_cron`，默认每分钟执行一轮。
+- 安装 logrotate 配置，运行日志写入 `/var/lib/uptime-checks/cron.log`。
+- 从示例生成 `checks.tsv`、`maintenance.tsv`、`notify.env`；示例检查默认 `enabled=0`，不会探测占位地址。
+- 已有配置默认保留，脚本文件会随版本更新；`--force` 才会覆盖配置。
+
+常用参数：
+
+| 参数 | 默认值 | 说明 |
+| --- | --- | --- |
+| `--prefix DIR` | `/opt/uptime_checks` | 脚本安装目录 |
+| `--config-dir DIR` | `/etc/uptime-checks` | 配置目录 |
+| `--state-dir DIR` | `/var/lib/uptime-checks` | 状态、日志与队列目录 |
+| `--user USER` | `uptime` | 运行用户 |
+| `--no-cron` | 不启用 | 只安装文件，不写 cron |
+| `--no-logrotate` | 不启用 | 不安装 logrotate 配置 |
+| `--dry-run` | 关闭 | 只打印操作，不修改系统 |
+| `--force` | 关闭 | 覆盖已有配置与 cron 文件，慎用 |
+
+安装后必须完成两处配置：
+
+- 编辑 `/etc/uptime-checks/checks.tsv`，替换节点、域名和业务标记，确认后把最后一列改为 `1`。
+- 编辑 `/etc/uptime-checks/notify.env`，填写 SMTP 地址、账号与授权码。
+
+配置完成后再执行测试邮件和试跑：
+
+```sh
+sudo -u uptime /opt/uptime_checks/notify-email.sh --env /etc/uptime-checks/notify.env --test
+sudo -u uptime /opt/uptime_checks/probe.sh --config-dir /etc/uptime-checks --state-dir /var/lib/uptime-checks --check-config
+sudo -u uptime /opt/uptime_checks/probe.sh --config-dir /etc/uptime-checks --state-dir /var/lib/uptime-checks --dry-run
+```
 
 `checks.tsv`、`maintenance.tsv` 与 `notify.env` 已在 `.gitignore` 中排除，避免把真实节点和凭据提交到仓库。
 
@@ -127,12 +176,28 @@ node-a-biz	biz	group-a	http://www.example.com/	192.0.2.10	www.example.com	200	�
 public-entry	public	public-entry	https://www.example.com/			200	示例商品	8		1
 ```
 
+这里的 `enabled` 写 `1` 是为了展示完整字段；仓库附带的 `checks.tsv.example` 默认写 `0`，避免安装后探测占位地址。
+
 字段含义与取舍：
 
 - **`group` 决定告警粒度**。同一节点的健康检查与回源检查放同一分组，故障时合并为一封邮件；公网入口单独分组，避免和节点结论混在一起。
 - **`expect_body` 是业务判据的关键**。只断言 200 时，静态兜底页、缓存页和挑战页都可能通过；代表性页面应填写稳定标记。
 - **`address` 只支持 IPv4 或普通域名**，当前版本不支持 IPv6 字面量。
 - **`ca_bundle` 用于私有 CA**。公共证书无需填写。
+
+### 为什么使用 TSV 而不是 CSV
+
+选用 TSV 的主要原因是**探测地址本身经常包含逗号**：查询串、参数列表和多值参数都可能破坏 CSV 的列边界，CSV 需要额外加引号和转义规则，手写和脚本生成都更容易出错。TSV 用制表符分隔，普通 URL 与正文标记通常不会包含制表符，列边界更直接。
+
+TSV 的代价是**空字段必须保留制表符**，肉眼不容易发现少了一个制表符。为此做了三层兜底：
+
+- `--check-config` 按列数和字段规则校验，错误会指出具体行号。
+- 示例行默认 `enabled=0`，配置错误不会在安装后立刻触发探测。
+- `--dry-run` 可以在不写状态、不发通知的情况下先验证真实请求。
+
+如果更愿意用表格软件维护，导出时务必选择“制表符分隔”，并在部署前运行一次 `--check-config`。CSV 需要额外的引号与逗号转义，当前版本不提供 CSV 解析。
+
+配置邮箱仍需要准备 SMTP 地址、账号和授权码，这一步无法由脚本代替；`notify-email.sh --test` 是判断配置是否真正可用的唯一依据。
 
 修改配置后先执行校验，再交给定时器：
 
@@ -199,71 +264,56 @@ sudo -u uptime /opt/uptime_checks/notify-email.sh --test
 - 重试间隔从 1 分钟开始翻倍，最长 30 分钟；达到 20 次后移入 `queue/failed/` 并记录事件。
 - 这避免了“先更新状态、发送失败后不再补发”的缺口。
 
-### 启用定时器
+## 定时任务与 cron
 
-配置校验和测试邮件都通过后，再启动定时器：
-
-```sh
-sudo systemctl start uptime-probe.timer
-sudo systemctl list-timers uptime-probe.timer
-```
-
-## 使用 cron 代替 systemd
-
-脚本只要求能每分钟执行一次 `probe.sh --once`，不依赖 systemd。没有 systemd、或希望复用现有 cron 时使用本节。**systemd 定时器与 cron 只能启用一种**，同时启用会让检查频率翻倍，更容易提前达到失败阈值。
-
-以 `uptime` 用户安装 crontab：
-
-```sh
-sudo crontab -u uptime -e
-```
-
-写入以下内容：
+默认使用 cron。`install.sh` 会渲染并写入 `/etc/cron.d/uptime_checks_cron`，内容形态如下：
 
 ```cron
-PATH=/usr/local/bin:/usr/bin:/bin
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 MAILTO=""
-* * * * * /opt/uptime_checks/probe.sh --once --quiet >> /var/log/uptime-checks.log 2>&1
+UPTIME_CONFIG_DIR=/etc/uptime-checks
+UPTIME_STATE_DIR=/var/lib/uptime-checks
+* * * * * uptime /opt/uptime_checks/probe.sh --once --quiet >> /var/lib/uptime-checks/cron.log 2>&1
 ```
 
 各部分的含义：
 
+- `/etc/cron.d` 文件带用户字段，这里以 `uptime` 执行，不需要登录 shell。
 - `PATH`：cron 的环境变量很少，显式包含 curl、flock 所在目录。
 - `MAILTO=""`：不让 cron 把脚本输出再发一封邮件；故障邮件由脚本自己的 SMTP 通道发送。
 - `--quiet`：抑制每分钟的逐项 INFO 输出，只保留警告与错误。事件记录和邮件不受影响。
-- `>> /var/log/uptime-checks.log`：保存少量运行告警，便于排查；若不需要，可改为 `>/dev/null 2>&1`。
-- 默认状态目录仍是 `/var/lib/uptime-checks`。自定义目录时在 crontab 顶部加 `UPTIME_STATE_DIR=/path`，或给命令加 `--state-dir`。
-
-日志会随 cron 每分钟追加。建议配置 logrotate，避免长期增长：
-
-```text
-/var/log/uptime-checks.log {
-  weekly
-  rotate 8
-  compress
-  missingok
-  notifempty
-  create 0640 uptime adm
-}
-```
-
-把这段保存为 `/etc/logrotate.d/uptime-checks`，并按实际用户组调整 `create`。
+- 运行日志默认在状态目录内，避免额外处理 `/var/log` 的属主；安装器同时写入 logrotate 配置。
 
 确认 cron 已生效：
 
 ```sh
-sudo crontab -u uptime -l
-sudo tail -n 20 /var/log/uptime-checks.log
+sudo cat /etc/cron.d/uptime_checks_cron
+sudo tail -n 20 /var/lib/uptime-checks/cron.log
 sudo tail -n 20 /var/lib/uptime-checks/events.log
 ```
 
 cron 的调度精度是分钟级，与默认阈值配合仍是连续 3 轮、约 3 分钟判定故障。相邻两轮重叠时，`probe.sh` 会用 `flock` 跳过本轮，不会并发探测。
 
-如果之前启用过 systemd 定时器，先停用：
+**cron 与 systemd 定时器只能启用一种**。仓库仍提供 systemd 单元；如果改用 systemd，先删除或注释 `/etc/cron.d/uptime_checks_cron`，再按下面步骤安装，否则检查频率会翻倍。
+
+### 改用 systemd 定时器
 
 ```sh
-sudo systemctl disable --now uptime-probe.timer
+sudo install -m 644 systemd/uptime-probe.service systemd/uptime-probe.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now uptime-probe.timer
+sudo rm -f /etc/cron.d/uptime_checks_cron
 ```
+
+确认：
+
+```sh
+sudo systemctl list-timers uptime-probe.timer
+sudo journalctl -u uptime-probe.service -n 20 --no-pager
+```
+
+单元假定脚本在 `/opt/uptime_checks`、配置在 `/etc/uptime-checks`、状态在 `/var/lib/uptime-checks`；自定义安装路径时同步修改 `ExecStart` 与环境变量。
 
 ## 判定与调度
 

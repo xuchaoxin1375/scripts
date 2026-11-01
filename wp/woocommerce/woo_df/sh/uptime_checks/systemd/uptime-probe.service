@@ -8,6 +8,8 @@ Wants=network-online.target
 Type=oneshot
 User=uptime
 Group=uptime
+Environment=UPTIME_CONFIG_DIR=/etc/uptime-checks
+Environment=UPTIME_STATE_DIR=/var/lib/uptime-checks
 ExecStart=/opt/uptime_checks/probe.sh --once
 StateDirectory=uptime-checks
 StateDirectoryMode=0700

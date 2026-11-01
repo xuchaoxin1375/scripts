@@ -10,6 +10,7 @@
 # 健康路径随模板不同,常见为 /__gateway_health、/__b_health、/__tenant_health。
 # expect_body 填入页面中稳定出现的短文本,不要使用可能变化的随机内容。
 
-node-a-health	node	group-a	http://www.example.com/__gateway_health	192.0.2.10	www.example.com	200	gateway ok	8		1
-node-a-biz	biz	group-a	http://www.example.com/	192.0.2.10	www.example.com	200	示例商品	8		1
-public-entry	public	public-entry	https://www.example.com/			200	示例商品	8		1
+# 示例默认 enabled=0,填写真实目标并确认后再改为 1,避免安装后立即探测示例地址.
+node-a-health	node	group-a	http://www.example.com/__gateway_health	192.0.2.10	www.example.com	200	gateway ok	8		0
+node-a-biz	biz	group-a	http://www.example.com/	192.0.2.10	www.example.com	200	示例商品	8		0
+public-entry	public	public-entry	https://www.example.com/			200	示例商品	8		0

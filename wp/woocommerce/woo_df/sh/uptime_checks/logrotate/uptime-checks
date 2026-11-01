@@ -1,0 +1,9 @@
+# 由 install.sh 渲染后安装到 /etc/logrotate.d/uptime-checks
+@LOG@ {
+  weekly
+  rotate 8
+  compress
+  missingok
+  notifempty
+  create 0640 @RUN_USER@ @RUN_USER@
+}
