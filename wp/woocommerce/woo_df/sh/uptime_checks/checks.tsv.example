@@ -1,0 +1,15 @@
+# 检查项配置示例。复制为 checks.tsv 后按实际拓扑修改。
+# 字段以制表符分隔,共 11 列,顺序固定;空字段保留占位,不要删除制表符。
+# id	kind	group	url	address	host_header	expect_status	expect_body	timeout	ca_bundle	enabled
+#
+# node:   锚定指定节点,检查代理自身健康接口。
+# biz:    锚定指定节点,检查经该节点回源的代表性业务页面。
+# public: 走正常 DNS,检查用户实际访问的公网入口。
+#
+# hostmap 模式对未登记 Host 可能直接拒绝,此时必须填写 host_header。
+# 健康路径随模板不同,常见为 /__gateway_health、/__b_health、/__tenant_health。
+# expect_body 填入页面中稳定出现的短文本,不要使用可能变化的随机内容。
+
+node-a-health	node	group-a	http://www.example.com/__gateway_health	192.0.2.10	www.example.com	200	gateway ok	8		1
+node-a-biz	biz	group-a	http://www.example.com/	192.0.2.10	www.example.com	200	示例商品	8		1
+public-entry	public	public-entry	https://www.example.com/			200	示例商品	8		1

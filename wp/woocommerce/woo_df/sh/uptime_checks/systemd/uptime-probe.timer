@@ -1,0 +1,11 @@
+[Unit]
+Description=每分钟执行一次 VPS 拨测
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=10s
+Unit=uptime-probe.service
+
+[Install]
+WantedBy=timers.target

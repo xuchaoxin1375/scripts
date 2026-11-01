@@ -1,0 +1,19 @@
+[Unit]
+Description=VPS 反向代理节点与业务页面拨测
+Documentation=file:/opt/uptime_checks/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=uptime
+Group=uptime
+ExecStart=/opt/uptime_checks/probe.sh --once
+StateDirectory=uptime-checks
+StateDirectoryMode=0700
+TimeoutStartSec=300
+Nice=10
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
