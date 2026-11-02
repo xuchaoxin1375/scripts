@@ -239,7 +239,11 @@ git pull
 
 简单介绍:
 
-- 请事先安装zsh,git等基本软件
+- 请事先安装zsh,git等基本软件。可用同目录的 `install_shell_deps.sh` 自动检查并安装缺失依赖（Linux 走发行版包管理器，macOS 走 Homebrew）：
+
+  ```bash
+  bash <(curl -sSfL https://github.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/install_shell_deps.sh) -y
+  ```
 
 - 执行如下命令行
 

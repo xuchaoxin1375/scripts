@@ -1,3 +1,5 @@
+[toc]
+
 # scripts
 
 > A collection of practical scripts for daily use: PowerShell modules (`PS/`, 67 modules, pwsh-first) and shell scripts (bash/zsh).
@@ -11,6 +13,7 @@
 |---|---|
 | 在新机器部署 PowerShell 环境 | 本文 §2 → `PS/docs/Deploy-Guide.md` |
 | 日常使用（命令查询、补全配置） | `PS/docs/Feature-Guide.md`（§2 命令表；§7、§8、§10 补全；§9 dll 管理） |
+| 部署 zsh / Oh My Zsh 环境 | 本文 §6「zsh / Oh My Zsh 环境」→ `wp/woocommerce/woo_df/sh/Readme@deploy_omz.md` |
 | 故障定位 | 先执行 `doctor`，再按 `PS/docs/README.md` 分流 |
 | 机器仅有 Windows PowerShell 5.1 | 本文 §2.3 → `PS/docs/Feature-Guide.md §13` |
 | 查找功能归属的模块 | `PS/docs/Module-Map.md`（67 模块画像表） |
@@ -140,13 +143,40 @@ exec bash # 使配置生效
 
 范围界定：个人电脑与服务器共用一套 shell 库（位于 `wp/woocommerce/woo_df/sh`，`$sh` 指向该目录）；服务器另有 nginx、fail2ban 等专用配置，本节方案不触碰服务器软件配置。
 
-一键部署 shell 环境（未部署过则完整克隆，已部署则更新代码）：
+脚本链接从仓库页面的“原始数据”（raw）处获取，`github` 与 `gitee` 均可：[github 仓库页](https://github.com/xuchaoxin1375/scripts/blob/main/wp/woocommerce/woo_df/sh/update_repos.sh) · [gitee 仓库页](https://gitee.com/xuchaoxin1375/scripts/blob/main/wp/woocommerce/woo_df/sh/update_repos.sh)。
+
+### 一键部署 **shell 环境**
+
+未部署过则完整克隆，已部署则更新代码
+
+### 个人电脑端
+
+具备bash的设备都可以使用:(会跳过服务器软件相关配置的处理阶段)
 
 ```bash
-bash <( curl -sSfL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/update_shell_config.sh)
+bash <( curl -sSfL https://github.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/update_shell_config.sh)
 ```
 
-服务器仅获取代码（参数语义以脚本内 `print_usage` 为准：`-U` 更新 shellrc，`-F` 强制更新配置文件，含覆盖 `nginx.conf`，酌情使用，`-R` 使用非默认的客户 IP 解析）：
+### zsh / Oh My Zsh 环境
+
+需要 zsh 交互增强（动态补全、历史建议、语法高亮）时，先补齐系统依赖，再部署 omz 与插件。两步都只改当前用户的家目录，不影响 bash 配置：
+
+```bash
+# 依赖检查（只读，缺失时返回非零状态）
+bash <(curl -sSfL https://github.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/install_shell_deps.sh) --check
+# 安装缺失依赖（Linux 走发行版包管理器，macOS 走 Homebrew）
+bash <(curl -sSfL https://github.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/install_shell_deps.sh) -y
+# 部署 oh-my-zsh 与插件；首次安装 omz 后脚本会中断，重跑一次即可
+bash <(curl -sSfL https://github.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_omz.sh) -s github
+```
+
+- `install_shell_deps.sh`：检查并安装 `zsh`、`git`、`curl`、`tar`（macOS 另需 `gnu-sed`）；支持 apt-get、dnf、yum、apk、pacman、zypper、xbps-install、emerge、eopkg 与 Homebrew。参数：`--check` 只检查，`-n` 空跑，`-y` 非交互安装。Windows 的 git-bash / MSYS2 / Cygwin 没有可安装的 zsh，脚本只做检查并给出 WSL 指引。
+- `deploy_omz.sh`：安装 omz、补全/建议/高亮插件及 `zasync` 依赖；`-U` 更新已装插件，`-zac-ref` 钉扎 `zsh-autocomplete` 版本，`-o false` 跳过 omz 安装。
+- 插件清单、版本钉扎、更新与故障排查见 `wp/woocommerce/woo_df/sh/Readme@deploy_omz.md`。
+
+### linux服务器端
+
+参数语义以脚本内 `print_usage` 为准：`-U` 更新 shellrc，`-F` 强制更新配置文件，含覆盖 `nginx.conf`，酌情使用，`-R` 使用非默认的客户 IP 解析
 
 ```bash
 ## github
@@ -155,15 +185,25 @@ bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/he
 bash <(curl -SfL https://raw.giteeusercontent.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/update_repos.sh) -U # -F -R
 ```
 
+#### 仓库目录统一与修复
+
 更新脚本自身损坏时的修复/自救(尤其是早期仓库)：某次更新引入错误导致更新脚本不可用时，绕过 `$sh` 直接获取并执行（原因：首次使用时 `$sh` 未定义，脚本会尝试下载到根目录）。
 
 ```bash
 curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos.sh -o $HOME/update_repos.sh && bash $HOME/update_repos.sh
 ```
 
-脚本链接从仓库页面的“原始数据”（raw）处获取，github 与 gitee 均可：[github 仓库页](https://github.com/xuchaoxin1375/scripts/blob/main/wp/woocommerce/woo_df/sh/update_repos.sh) · [gitee 仓库页](https://gitee.com/xuchaoxin1375/scripts/blob/main/wp/woocommerce/woo_df/sh/update_repos.sh)。
+#### 配置流程和迁移指南
 
-虚拟机或模拟层与宿主机共用仓库（前置：先定义 `_REPO_BASE="repos/scripts"` 与 `_SH_RELATIVE="wp/woocommerce/woo_df/sh"`；wsl 连接 Windows 侧仓库，lima 连接 macOS 宿主仓库）：
+参考: [Readme@服务器环境配置流程和迁移指南.md](wp\woocommerce\woo_df\sh\Readme@服务器环境配置流程和迁移指南.md) 
+
+
+
+### 虚拟机或模拟层
+
+wsl或者lima等轻量虚拟平台可以按普通linux系统的方式部署.
+
+但考虑维护和一致性方便期间,可以与宿主机共用仓库（前置：先定义 `_REPO_BASE="repos/scripts"` 与 `_SH_RELATIVE="wp/woocommerce/woo_df/sh"`；wsl 连接 Windows 侧仓库，lima 连接 macOS 宿主仓库）：
 
 ```bash
 # wsl
@@ -176,7 +216,7 @@ ln -snfv $HOME/$_REPO_BASE/$_SH_RELATIVE ~/sh
 bash ~/sh/shellrc_addition.sh && exec bash
 ```
 
-## 7. 日常使用与更新
+## 7. powershell模块集日常使用与更新
 
 - 开新终端后执行 `init`（完整环境）或 `p`（轻量常用）；`init -Timing` 输出分步耗时，启动缓慢时对照 `PS/docs/Startup-Optimization.md` 的性能基线定位。
 - 命令查询按三段式：`Get-ModuleByCxxu`（5.1 可用）→ `Get-Command -Module <模块名>` 查看导出 → `Get-Command <命令>` 反查归属。补全、开机任务、手动启用清单见 `PS/docs/Feature-Guide.md`（§4、§7、§8、§10、§11）。

@@ -103,9 +103,9 @@ flowchart TD
 
 运行数据默认写入 `/var/lib/uptime-checks`；使用 systemd 时由 `StateDirectory` 创建并授权，使用 cron 时需按安装步骤提前创建并授权。
 
-## 一键安装（默认 cron）
+## 一键安装
 
-在仓库的 `uptime_checks` 目录执行：
+在仓库的 `uptime_checks` 目录执行（默认 cron）：
 
 ```sh
 sudo ./install.sh
@@ -264,7 +264,9 @@ sudo -u uptime /opt/uptime_checks/notify-email.sh --test
 - 重试间隔从 1 分钟开始翻倍，最长 30 分钟；达到 20 次后移入 `queue/failed/` 并记录事件。
 - 这避免了“先更新状态、发送失败后不再补发”的缺口。
 
-## 定时任务与 cron
+## 定时任务
+
+### cron
 
 默认使用 cron。`install.sh` 会渲染并写入 `/etc/cron.d/uptime_checks_cron`，内容形态如下：
 
@@ -297,7 +299,7 @@ cron 的调度精度是分钟级，与默认阈值配合仍是连续 3 轮、约
 
 **cron 与 systemd 定时器只能启用一种**。仓库仍提供 systemd 单元；如果改用 systemd，先删除或注释 `/etc/cron.d/uptime_checks_cron`，再按下面步骤安装，否则检查频率会翻倍。
 
-### 改用 systemd 定时器
+### systemd timer
 
 ```sh
 sudo install -m 644 systemd/uptime-probe.service systemd/uptime-probe.timer /etc/systemd/system/

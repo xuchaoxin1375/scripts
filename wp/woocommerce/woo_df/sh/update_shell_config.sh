@@ -1,7 +1,7 @@
 #!/bin/bash
-# 针对个人电脑(windows(wsl),macos,linux)的shell配置部署/更新脚本
+# 针对个人电脑(windows(wsl,git-bash等模拟层),macos,linux)的bash/zsh的shell配置部署/更新脚本
 # 如果没有部署过,则完整克隆,否则执行代码更新
-# bash <( curl -sSfL https://gitee.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/update_shell_config.sh)
+# bash <( curl -sSfL https://github.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/update_shell_config.sh)
 # 服务器版本的参考deploy_srv.sh,update_repos.sh脚本
 
 version=20260419

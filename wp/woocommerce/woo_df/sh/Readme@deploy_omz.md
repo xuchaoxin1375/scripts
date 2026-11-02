@@ -22,7 +22,12 @@
 | 自定义插件 | 补全、建议、高亮等 | clone 到 `$ZSH_CUSTOM/plugins`，并改 `~/.zshrc` |
 | `zasync` | `zsh-autocomplete` 的运行时依赖 | 安装/`-U` 时写入 cache、`fpath` 和 `vendor/zasync` |
 
-未安装 zsh 时请先装好，并保证有 `git`、`curl`。精简系统常缺这两者。
+未安装 zsh 时请先装好，并保证有 `git`、`curl`。精简系统常缺这两者。可用同目录的 `install_shell_deps.sh` 一次性检查或安装（Linux 走发行版包管理器，macOS 走 Homebrew）：
+
+```bash
+bash install_shell_deps.sh --check   # 只检查
+bash install_shell_deps.sh -y        # 安装缺失依赖
+```
 
 ---
 
@@ -195,7 +200,7 @@ ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/
 
 ## 安装
 
-依赖：已安装的 `zsh`，以及 `git`、`curl`。macOS 全量部署还需要 GNU sed（`gsed`）。
+依赖：已安装的 `zsh`，以及 `git`、`curl`。macOS 全量部署还需要 GNU sed（`gsed`）。这些依赖可交给 `install_shell_deps.sh` 检查与安装；Windows 的 git-bash / MSYS2 没有 zsh，需改用 WSL。
 
 第一次若尚未安装 omz：脚本会装 omz、可能把默认 shell 改成 zsh 并 `exec zsh`，**当前这次部署中断**。再跑一次才会装插件、改 `~/.zshrc`。
 
@@ -432,6 +437,7 @@ bash deploy_omz.sh -o false -s gitee
 
 | 路径 | 说明 |
 | --- | --- |
+| `install_shell_deps.sh` | 检查/安装 zsh、git、curl、tar 等系统依赖 |
 | `deploy_omz.sh` | 部署/更新入口 |
 | `vendor/zasync/` | 内置 `zasync`，避免启动时访问 GitHub |
 | `~/.zshrc` | omz、`plugins`、`fpath`、标记片段（含 `zac zsyh widgets`、`zac pin`） |
