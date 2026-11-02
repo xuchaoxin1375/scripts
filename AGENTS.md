@@ -12,6 +12,7 @@
 - Shell 脚本（`.sh`）：新写或改动的脚本必须过 `shellcheck`（`shellcheck <file>`）与 `shfmt`（`shfmt -d <file>` 查差异、`shfmt -w <file>` 落格式）检查，本机与 `WSL` 均已安装；仅当两者都不可用且无法安装时方可豁免，并须在交付说明中注明；不为通过检查而整文件重排存量脚本格式。
 - 用户可见文本遵循 `PS/docs/Module-Conventions.md §11` 用词与 `§12` 行文（正式、规范、严谨）。
 - 工具与脚本文档：面向不读代码的读者写全工作模式、参数默认值与互斥、前置条件、写入与连接行为、失败表现；连接数、预检范围这类跨模式说明集中在一处，其他位置引用。依据见 skill `scripting-best-practices` 的“面向使用者的文档”，PS 模块帮助另按 `Module-Conventions.md §13`。
+- 工具安装脚本（`wp/woocommerce/woo_df/sh/tool_installer/`）：新脚本默认按 [`README.installers-best-practices.md`](wp/woocommerce/woo_df/sh/tool_installer/README.installers-best-practices.md) 的「基础层」规格编写——主流 Linux（Ubuntu/Debian 为必测基线）、预编译优先、latest 检测与更新确认、镜像/代理下载；固定版本、卸载、SHA-256、附属资源与全架构矩阵只在明确需要时添加，不把完整层脚本当模板整体复制。
 - 文档与注释的并列列举（功能点、用例、示例、选项、待办）用无序列表或小标题，不用任何数字编号——阿拉伯数字（`1.`、`2.`）、中文数字（一、二、三）、带圈数字（`①②③`）都不使用；插入新条目时不必调整既有序号，只有确有先后顺序的步骤才用有序列表。
 - 批量覆盖/下发类脚本的写入前检查只做可证实的判定；用脚本名或子串匹配推断"重复"只能提示，不能阻断下发，且必须留 `--force` 一类强制覆盖入口（是否备份另设开关）。依据见 skill `scripting-best-practices` 的"覆盖写入与写入前检查"。
 - 中文用户：中文回复；复杂命令写 `.ps1` 再 `-File` 执行，不拼行内 `pwsh -Command` 引号。
