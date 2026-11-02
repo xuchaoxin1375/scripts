@@ -130,5 +130,5 @@ nginx -t && nginx -s reload
 
 * 清理脚本：`../scripts/clean.sh`
 * 部署脚本：`../scripts/base.sh`、`../scripts/multi.sh`、`../scripts/tenants.sh`
-* 在线部署：[在线部署@反代方案脚本.md](在线部署@反代方案脚本.md)
+* 部署说明：[部署@反代方案脚本.md](部署@反代方案脚本.md)
 * 结构参考：`不同反代模式下(hostmap)nginx目录结构参考.md`
