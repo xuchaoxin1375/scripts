@@ -207,6 +207,13 @@ bash ~/sh/shellrc_addition.sh && exec bash
 
 需要 zsh 交互增强（动态补全、历史建议、语法高亮）时，先补齐系统依赖，再部署 omz 与插件。两步都只改当前用户的家目录，不影响 bash 配置：
 
+```shell
+# 如果了解系统包管理器,直接安装依赖,例如:
+apt install zsh # 适用于:debain/ubuntu
+```
+
+通用依赖检查/安装(对不同系统包管理器的一层薄包装)
+
 ```bash
 curl -SfL https://github.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/install_shell_deps.sh -o ~/install_shell_deps.sh
 
@@ -215,11 +222,15 @@ bash ~/install_shell_deps.sh --check
 # 安装缺失依赖（Linux 走发行版包管理器，macOS 走 Homebrew）
 bash ~/install_shell_deps.sh  -y
 
+```
+
+- `install_shell_deps.sh`：检查并安装 `zsh`、`git`、`curl`、`tar`（macOS 另需 `gnu-sed`）；支持 apt-get、dnf、yum、apk、pacman、zypper、xbps-install、emerge、eopkg 与 Homebrew。参数：`--check` 只检查，`-n` 空跑，`-y` 非交互安装。Windows 的 git-bash / MSYS2 / Cygwin 没有可安装的 zsh，脚本只做检查并给出 WSL 指引。
+
+```shell
 # 部署 oh-my-zsh 与插件；首次安装 omz 后脚本会中断，重跑一次即可
 bash <(curl -sSfL https://github.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_omz.sh) -s github
 ```
 
-- `install_shell_deps.sh`：检查并安装 `zsh`、`git`、`curl`、`tar`（macOS 另需 `gnu-sed`）；支持 apt-get、dnf、yum、apk、pacman、zypper、xbps-install、emerge、eopkg 与 Homebrew。参数：`--check` 只检查，`-n` 空跑，`-y` 非交互安装。Windows 的 git-bash / MSYS2 / Cygwin 没有可安装的 zsh，脚本只做检查并给出 WSL 指引。
 - `deploy_omz.sh`：安装 omz、补全/建议/高亮插件及 `zasync` 依赖；`-U` 更新已装插件，`-zac-ref` 钉扎 `zsh-autocomplete` 版本，`-o false` 跳过 omz 安装。
 - 插件清单、版本钉扎、更新与故障排查见 `wp/woocommerce/woo_df/sh/Readme@deploy_omz.md`。
 
