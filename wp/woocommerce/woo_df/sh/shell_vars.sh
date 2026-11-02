@@ -42,9 +42,9 @@ uploader_files="/srv/uploads/uploader/files"
 
 # 总仓库目录,存放各个仓库
 REPOS="$HOME/$_REPOS" # ~/repos/
+repos="$REPOS"
 # 定义scripts 仓库clone 的保存路径
 SCRIPT_ROOT="$HOME/$_SCRIPT_REPO_BASE" # 默认以家目录为基础路径
-repos="$REPOS"
 # [[ -d "$repos" ]] && export repos
 scripts="$SCRIPT_ROOT"
 #普通linux系统（假设有 root 权限）：
@@ -62,6 +62,7 @@ PYTHONPATH="$woo_df:$pys/bt_api:$pys/cf_api:$pys/spaceship_api"
 # 符号链接SH_SYM的TARGET：
 SH_SCRIPT_DIR="$SCRIPT_ROOT/wp/woocommerce/woo_df/sh"
 sh="$SH_SYM"
+reverse_proxy_scripts="$sh/nginx_conf/reverse_proxy/scripts"
 macos_sh="$sh/macos_sh"
 
 # mihomo默认配置目录
@@ -82,8 +83,9 @@ bt_nginx_vhost_conf_home="/www/server/panel/vhost/nginx"
 bt_nginx_conf_home="/www/server/nginx/conf"
 
 # 将定义的变量声明为环境变量
-export desktop sh macos_sh omb_themes \
+export desktop repos sh macos_sh omb_themes \
   bt_nginx_vhost_conf_home \
+  reverse_proxy_scripts \
   bt_nginx_conf_home uploader_files woo_df pys \
   SH_SYM SCRIPT_ROOT SH_SCRIPT_DIR PYTHONPATH \
   scripts \
