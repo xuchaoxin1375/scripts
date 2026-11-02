@@ -46,6 +46,10 @@ class FakeResponse:
         return self._payload
 
 
+class FakeApiError(Exception):
+    """测试用 API 错误（避免裸 Exception 触发 lint）。"""
+
+
 class FakeSession:
     def __init__(self, responses):
         self._responses = list(responses)
@@ -175,6 +179,137 @@ class FullReplaceTest(unittest.TestCase):
         self.assertEqual(stats.created, 1)
         self.assertEqual(stats.deleted, 2)
         self.assertTrue(any(r.status == "deleted_old_full_migrate" for r in results))
+
+
+class FullReplaceDedupeTest(unittest.TestCase):
+    """全量替换的同名收敛：每个主机名最终只保留一条记录。"""
+
+    def _run(self, records, new_content="9.9.9.9", update=None, dry_run=False):
+        updater = make_updater()
+        zone = {"name": "example.com", "id": "z1"}
+        updater.get_dns_records = lambda zid, rtype=None: (
+            [] if rtype == "AAAA" else [dict(item) for item in records]
+        )
+        updated, deleted = [], []
+        updater.update_dns_record = update or (
+            lambda **kw: updated.append(kw) or {"success": True}
+        )
+        updater.delete_dns_record = lambda zid, rid: deleted.append(rid) or {}
+        stats = tool.OperationStats()
+        results = updater._process_zone_full_replace(
+            zone, 1, 1, 1, new_content, "A", None, dry_run, True, False, stats
+        )
+        return stats, results, updated, deleted
+
+    @staticmethod
+    def _record(record_id, content, name="example.com"):
+        return {
+            "id": record_id,
+            "name": name,
+            "content": content,
+            "type": "A",
+            "proxied": False,
+            "ttl": 1,
+        }
+
+    def test_same_name_duplicates_collapse_to_single_record(self):
+        stats, results, updated, deleted = self._run(
+            [self._record("a1", "1.1.1.1"), self._record("a2", "1.1.1.2")]
+        )
+        self.assertEqual([call["record_id"] for call in updated], ["a1"])
+        self.assertEqual(deleted, ["a2"])
+        self.assertEqual(stats.updated, 1)
+        self.assertEqual(stats.deleted, 1)
+        self.assertEqual(stats.errors, 0)
+        self.assertTrue(any(r.status == "deleted_duplicate_full" for r in results))
+
+    def test_existing_target_record_is_kept_and_others_removed(self):
+        stats, _, updated, deleted = self._run(
+            [self._record("a1", "9.9.9.9"), self._record("a2", "1.1.1.2")]
+        )
+        self.assertEqual(updated, [])
+        self.assertEqual(deleted, ["a2"])
+        self.assertEqual(stats.skipped, 1)
+        self.assertEqual(stats.deleted, 1)
+        self.assertEqual(stats.errors, 0)
+
+    def test_identical_record_error_treated_as_converged(self):
+        def raise_identical(**kwargs):
+            raise FakeApiError(
+                "HTTP 400, API 请求失败: [{'code': 81058, "
+                "'message': 'An identical record already exists.'}]"
+            )
+
+        stats, results, _, deleted = self._run(
+            [self._record("a1", "1.1.1.1"), self._record("a2", "1.1.1.2")],
+            update=raise_identical,
+        )
+        # 撞 81058 说明目标内容已存在：记为跳过，但仍清理同名多余记录。
+        self.assertEqual(stats.errors, 0)
+        self.assertEqual(stats.skipped, 1)
+        self.assertEqual(deleted, ["a2"])
+        self.assertFalse(any(r.status == "error" for r in results))
+
+    def test_update_failure_keeps_duplicates_for_manual_cleanup(self):
+        def raise_forbidden(**kwargs):
+            raise FakeApiError("HTTP 403, API 请求失败: [{'code': 9109}]")
+
+        stats, results, _, deleted = self._run(
+            [self._record("a1", "1.1.1.1"), self._record("a2", "1.1.1.2")],
+            update=raise_forbidden,
+        )
+        self.assertEqual(deleted, [])
+        self.assertEqual(stats.errors, 1)
+        error = next(r for r in results if r.status == "error")
+        self.assertEqual(error.action, "full_replace")
+        self.assertIn("保留现场", error.message)
+
+    def test_dry_run_previews_update_and_dedupe(self):
+        stats, results, updated, deleted = self._run(
+            [self._record("a1", "1.1.1.1"), self._record("a2", "1.1.1.2")],
+            dry_run=True,
+        )
+        self.assertEqual(updated, [])
+        self.assertEqual(deleted, [])
+        self.assertEqual(stats.dry_run, 2)
+        self.assertTrue(any(r.status == "dry_run_full_dedupe" for r in results))
+
+
+class UpdateMergeTest(unittest.TestCase):
+    """指定 --old-ip 时撞 81058：删除旧记录完成收敛，而不是记失败。"""
+
+    def test_identical_target_removes_old_record(self):
+        updater = make_updater()
+        zone = {"name": "example.com", "id": "z1"}
+        records = [
+            {
+                "id": "a1",
+                "name": "example.com",
+                "content": "1.1.1.1",
+                "type": "A",
+                "proxied": False,
+                "ttl": 1,
+            }
+        ]
+        updater.get_dns_records = lambda zid, rtype=None: [dict(r) for r in records]
+
+        def raise_identical(**kwargs):
+            raise FakeApiError(
+                "HTTP 400, API 请求失败: [{'code': 81058, "
+                "'message': 'An identical record already exists.'}]"
+            )
+
+        deleted = []
+        updater.update_dns_record = raise_identical
+        updater.delete_dns_record = lambda zid, rid: deleted.append(rid) or {}
+        stats = tool.OperationStats()
+        results = updater._process_zone_update(
+            zone, 1, 1, 1, "9.9.9.9", "1.1.1.1", "A", False, True, False, stats
+        )
+        self.assertEqual(deleted, ["a1"])
+        self.assertEqual(stats.errors, 0)
+        self.assertEqual(stats.deleted, 1)
+        self.assertTrue(any(r.status == "merged_duplicate" for r in results))
 
 
 class NormalizeTest(unittest.TestCase):
@@ -309,6 +444,38 @@ class VerdictTest(unittest.TestCase):
         code, lines = tool.build_final_verdict(1, 0, 1, [], True, None, "prog")
         self.assertEqual(code, 130)
         self.assertTrue(any("中断" in line for line in lines))
+
+    def test_deterministic_failure_does_not_suggest_resume(self):
+        rows = [
+            {
+                "status": "error",
+                "action": "full_replace",
+                "error": "HTTP 400, API 请求失败: [{'code': 81058, "
+                "'message': 'An identical record already exists.'}]",
+                "account": "acct-a",
+                "zone": "example.com",
+                "type": "A",
+                "name": "www.example.com",
+            }
+        ]
+        code, lines = tool.build_final_verdict(1, 1, 0, rows, False, "f.csv", "prog")
+        text = "\n".join(lines)
+        self.assertEqual(code, 1)
+        self.assertIn("重跑无效", text)
+        self.assertIn("确定性错误", text)
+        self.assertIn("example.com", text)
+        self.assertNotIn("--resume-from f.csv", text)
+
+    def test_mixed_failures_warn_about_deterministic_rows(self):
+        rows = [
+            {"status": "error", "action": "full_replace", "error": "HTTP 429 boom"},
+            {"status": "error", "action": "full_replace", "error": "HTTP 403 denied"},
+        ]
+        code, lines = tool.build_final_verdict(1, 1, 0, rows, False, "f.csv", "prog")
+        text = "\n".join(lines)
+        self.assertEqual(code, 1)
+        self.assertIn("--resume-from f.csv", text)
+        self.assertIn("另有 1 条为确定性错误", text)
 
 
 class SpeedPresetTest(unittest.TestCase):

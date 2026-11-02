@@ -12,6 +12,8 @@ Cloudflare DNS 批量修改 / 查询 / 清理工具
      * CNAME 无法通过 IP 自动判断，需显式指定 --record-type CNAME。
     - 支持白名单、old-ip/old-content 过滤、dry-run 预览。
    - 支持 IPv4 <-> IPv6 跨类型迁移：例如 A(IPv4) -> AAAA(IPv6) 时创建新 AAAA 并删除旧 A。
+    - 未指定 --old-ip 时按全量替换处理：同一主机名收敛为一条记录，其余同名旧记录
+      更新后删除；服务端 81058（同名同内容已存在）按“目标已达成”处理，不计失败。
 
 2. 删除以星号开头的通配符 DNS 记录
    - 使用 --delete-wildcard 启用删除模式。
@@ -233,6 +235,19 @@ FAILURE_STATUSES = frozenset(
         "cancelled",
     }
 )
+
+# Cloudflare 拒绝同名同类型同内容的重复记录。撞上该错误说明目标内容已由
+# 另一条记录达成，属于“已收敛”而非可重试故障，必须与临时错误区分处理。
+CF_IDENTICAL_RECORD_ERROR_CODE = 81058
+
+
+def is_identical_record_error(exc: BaseException | str) -> bool:
+    """判断异常是否为 Cloudflare 81058（同名同内容记录已存在）。"""
+    text = str(exc)
+    if str(CF_IDENTICAL_RECORD_ERROR_CODE) in text:
+        return True
+    return "identical record" in text.lower()
+
 
 # --list-zones 导出 CSV 列。active 表示 Cloudflare 侧处于激活状态的 zone。
 ZONES_CSV_FIELDNAMES = [
@@ -773,8 +788,54 @@ def infer_action_from_status(status: str) -> str:
         "error": "batch",
         "error_delete_old_after_migrate": "migrate",
         "cancelled": "batch",
+        "deleted_duplicate_full": "full_replace",
+        "dry_run_full_dedupe": "full_replace",
+        "merged_duplicate": "update",
     }
     return mapping.get(status, "batch")
+
+
+def classify_failure(error: str) -> tuple[str, bool]:
+    """归类失败原因，返回 (原因说明, 是否可重跑)。
+
+    可重跑仅指限流、服务端 5xx 与网络类临时错误；其余（4xx 语义错误、
+    81058 重复记录、权限问题）重跑结果不变，必须人工处理后才能继续。
+    """
+    text = (error or "").lower()
+    if "81058" in text or "identical record" in text:
+        return "同名记录已存在（需确认是否保留多值）", False
+    if "429" in text or "rate limit" in text or "限流" in text:
+        return "触发 Cloudflare 限流", True
+    for status in (
+        "500",
+        "502",
+        "503",
+        "504",
+        "520",
+        "521",
+        "522",
+        "523",
+        "524",
+        "525",
+        "526",
+        "527",
+        "530",
+    ):
+        if f"http {status}" in text:
+            return f"服务端临时错误 {status}", True
+    if "网络请求失败" in error or "connection" in text or "timeout" in text:
+        return "网络错误", True
+    if "中断" in error or "取消" in error:
+        return "任务中断或取消", True
+    if "http 4" in text:
+        return "请求被拒绝（重跑结果不变）", False
+    return "需人工处理", False
+
+
+def failure_row_sample(row: dict[str, Any]) -> str:
+    """取失败行中最能定位问题的 account/zone/type/name 片段。"""
+    parts = [str(row.get(key) or "") for key in ("account", "zone", "type", "name")]
+    return "/".join(part for part in parts if part) or "-"
 
 
 def failure_rows_for_results(
@@ -1256,6 +1317,8 @@ class DNSOperationResult:
     account: str = ""
     attempts: int = 1
     record_id: str = ""
+    # 失败清单的 action 列；为空时由状态推断，避免全部退化成 "batch"。
+    action: str = ""
 
     def to_failure_row(self, action: str) -> dict[str, Any]:
         """转换为失败清单 CSV 行；调用方保证 status 已属于失败集合。"""
@@ -1267,7 +1330,7 @@ class DNSOperationResult:
             "type": self.record_type,
             "old_content": self.old_content or "",
             "new_content": self.new_content or "",
-            "action": action or infer_action_from_status(self.status),
+            "action": self.action or action or infer_action_from_status(self.status),
             "status": self.status,
             "attempts": self.attempts,
             "error": self.message,
@@ -2568,6 +2631,52 @@ class CloudflareDNSUpdater:
                 )
                 interruptible_sleep(0.1, self._stop_event)
             except Exception as exc:
+                if is_identical_record_error(exc):
+                    # 同名记录已指向目标内容：删除本条旧记录即可完成收敛，
+                    # 否则旧内容会残留在 DNS 中继续分流。
+                    try:
+                        self.delete_dns_record(zone_id, r_id)
+                        stats.inc_deleted()
+                        self._safe_print(
+                            f"  [MERGE] {r_type} {r_name}: 已存在指向 {new_content} "
+                            f"的同名记录，删除旧记录 {r_content}"
+                        )
+                        results.append(
+                            DNSOperationResult(
+                                zone=zone_name,
+                                name=r_name,
+                                record_type=r_type,
+                                old_content=r_content,
+                                new_content=None,
+                                status="merged_duplicate",
+                                message="同名记录已指向新内容，旧记录已删除",
+                                account=self.account_name,
+                                record_id=r_id,
+                                action="update",
+                            )
+                        )
+                        interruptible_sleep(0.1, self._stop_event)
+                    except Exception as del_exc:  # noqa: BLE001 - 删除失败需单独记账
+                        self._safe_print(
+                            f"  [ERR] {r_type} {r_name}: 目标内容已存在，"
+                            f"但删除旧记录失败: {del_exc}"
+                        )
+                        stats.inc_errors()
+                        results.append(
+                            DNSOperationResult(
+                                zone=zone_name,
+                                name=r_name,
+                                record_type=r_type,
+                                old_content=r_content,
+                                new_content=new_content,
+                                status="error",
+                                message=f"目标内容已存在，删除旧记录失败: {del_exc}",
+                                account=self.account_name,
+                                record_id=r_id,
+                                action="update",
+                            )
+                        )
+                    continue
                 self._safe_print(f"  [ERR] {r_type} {r_name}: {exc}")
                 stats.inc_errors()
                 results.append(
@@ -2580,6 +2689,8 @@ class CloudflareDNSUpdater:
                         status="error",
                         message=str(exc),
                         account=self.account_name,
+                        record_id=r_id,
+                        action="update",
                     )
                 )
 
@@ -2655,39 +2766,66 @@ class CloudflareDNSUpdater:
         normalized_new = normalize_content_for_compare(new_content)
         handled = 0
 
-        # ========== 1. 处理当前类型记录（同类型更新，逐 id） ==========
-        for index, record in enumerate(target_records):
-            if self._should_stop():
-                self._mark_remaining_cancelled(
-                    results,
-                    stats,
-                    zone_name,
-                    record_type,
-                    target_records[index:],
-                    action="全量替换",
-                )
-                return results
-
-            r_name = record.get("name", "")
-            r_content = record.get("content", "")
-            r_id = record.get("id", "")
-            r_proxied = bool(record.get("proxied", False))
-            r_ttl = int(record.get("ttl", 1) or 1)
-            r_type = record.get("type", record_type)
-
+        # ========== 1. 处理当前类型记录（同名收敛后逐组更新） ==========
+        # Cloudflare 不允许同名同类型同内容重复，因此全量替换的收敛状态只能是
+        # 每个主机名一条记录：优先改一条，其余同名旧记录按 id 删除。
+        # 这与 --add-record 的「同名只保留一条」语义一致；否则第二条 PUT 会
+        # 触发 81058，旧 IP 残留导致流量仍打向旧服务器（半迁移）。
+        groups: list[tuple[str, list[dict]]] = []
+        group_positions: dict[str, int] = {}
+        for record in target_records:
+            r_name = str(record.get("name", ""))
             if (
                 whitelist_active
                 and not include_subdomains
                 and r_name.lower() != zone_name.lower()
             ):
                 continue
+            key = r_name.lower()
+            position = group_positions.get(key)
+            if position is None:
+                group_positions[key] = len(groups)
+                groups.append((r_name, [record]))
+            else:
+                groups[position][1].append(record)
 
-            handled += 1
+        for position, (r_name, group) in enumerate(groups):
+            if self._should_stop():
+                remaining = [
+                    record for _, records in groups[position:] for record in records
+                ]
+                self._mark_remaining_cancelled(
+                    results,
+                    stats,
+                    zone_name,
+                    record_type,
+                    remaining,
+                    action="全量替换",
+                )
+                return results
+
+            handled += len(group)
+            # 已等于目标内容的记录直接沿用，避免先改成别的值再改回来。
+            primary = next(
+                (
+                    record
+                    for record in group
+                    if contents_equal(record.get("content", ""), new_content)
+                ),
+                group[0],
+            )
+            duplicates = [record for record in group if record is not primary]
+
+            r_id = primary.get("id", "")
+            r_content = primary.get("content", "")
+            r_proxied = bool(primary.get("proxied", False))
+            r_ttl = int(primary.get("ttl", 1) or 1)
+            r_type = primary.get("type", record_type)
+            primary_ready = True
+
             if contents_equal(r_content, new_content):
                 stats.inc_skipped()
-                continue
-
-            if dry_run:
+            elif dry_run:
                 self._safe_print(
                     f"  [DRY-FULL] {r_type} {r_name}: {r_content} -> {new_content}"
                 )
@@ -2703,50 +2841,144 @@ class CloudflareDNSUpdater:
                         account=self.account_name,
                     )
                 )
+            else:
+                try:
+                    self.update_dns_record(
+                        zone_id=zone_id,
+                        record_id=r_id,
+                        record_name=r_name,
+                        new_content=new_content,
+                        proxied=r_proxied,
+                        ttl=r_ttl,
+                        record_type=record_type,
+                    )
+                    existing_targets.add((r_name.lower(), normalized_new))
+                    self._safe_print(
+                        f"  [OK-FULL] {r_type} {r_name}: {r_content} -> {new_content}"
+                    )
+                    stats.inc_updated()
+                    results.append(
+                        DNSOperationResult(
+                            zone=zone_name,
+                            name=r_name,
+                            record_type=r_type,
+                            old_content=r_content,
+                            new_content=new_content,
+                            status="updated_full",
+                            account=self.account_name,
+                            record_id=r_id,
+                        )
+                    )
+                    interruptible_sleep(0.08, self._stop_event)
+                except Exception as exc:
+                    if is_identical_record_error(exc):
+                        # 目标内容已由同名记录达成：更新不需要再做，继续清理多余记录。
+                        existing_targets.add((r_name.lower(), normalized_new))
+                        stats.inc_skipped()
+                        self._safe_print(
+                            f"  [SKIP-FULL] {r_type} {r_name}: {new_content} 已存在相同记录"
+                        )
+                        results.append(
+                            DNSOperationResult(
+                                zone=zone_name,
+                                name=r_name,
+                                record_type=r_type,
+                                old_content=r_content,
+                                new_content=new_content,
+                                status="skipped",
+                                message="目标内容已存在相同记录",
+                                account=self.account_name,
+                                record_id=r_id,
+                            )
+                        )
+                    else:
+                        primary_ready = False
+                        keep_note = (
+                            f"；同名其余 {len(duplicates)} 条记录未删除（保留现场）"
+                            if duplicates
+                            else ""
+                        )
+                        self._safe_print(
+                            f"  [ERR-FULL] {r_type} {r_name}: {exc}{keep_note}"
+                        )
+                        stats.inc_errors()
+                        results.append(
+                            DNSOperationResult(
+                                zone=zone_name,
+                                name=r_name,
+                                record_type=r_type,
+                                old_content=r_content,
+                                new_content=new_content,
+                                status="error",
+                                message=f"{exc}{keep_note}",
+                                account=self.account_name,
+                                record_id=r_id,
+                                action="full_replace",
+                            )
+                        )
+
+            if not primary_ready:
+                # 主记录未达成目标内容时不动其余同名记录，避免删除后无记录指向新 IP。
                 continue
 
-            try:
-                self.update_dns_record(
-                    zone_id=zone_id,
-                    record_id=r_id,
-                    record_name=r_name,
-                    new_content=new_content,
-                    proxied=r_proxied,
-                    ttl=r_ttl,
-                    record_type=record_type,
-                )
-                existing_targets.add((r_name.lower(), normalized_new))
-                self._safe_print(
-                    f"  [OK-FULL] {r_type} {r_name}: {r_content} -> {new_content}"
-                )
-                stats.inc_updated()
-                results.append(
-                    DNSOperationResult(
-                        zone=zone_name,
-                        name=r_name,
-                        record_type=r_type,
-                        old_content=r_content,
-                        new_content=new_content,
-                        status="updated_full",
-                        account=self.account_name,
+            for duplicate in duplicates:
+                d_id = duplicate.get("id", "")
+                d_content = duplicate.get("content", "")
+                d_type = duplicate.get("type", record_type)
+                if dry_run:
+                    self._safe_print(
+                        f"  [DRY-DEDUPE] {d_type} {r_name}: 将删除同名多余记录 {d_content}"
                     )
-                )
-                interruptible_sleep(0.08, self._stop_event)
-            except Exception as exc:
-                self._safe_print(f"  [ERR-FULL] {r_type} {r_name}: {exc}")
-                stats.inc_errors()
-                results.append(
-                    DNSOperationResult(
-                        zone=zone_name,
-                        name=r_name,
-                        record_type=r_type,
-                        old_content=r_content,
-                        new_content=new_content,
-                        status="error",
-                        message=str(exc),
-                        account=self.account_name,
+                    stats.inc_dry_run()
+                    results.append(
+                        DNSOperationResult(
+                            zone=zone_name,
+                            name=r_name,
+                            record_type=d_type,
+                            old_content=d_content,
+                            new_content=None,
+                            status="dry_run_full_dedupe",
+                            account=self.account_name,
+                            record_id=d_id,
+                        )
                     )
-                )
+                    continue
+                try:
+                    self.delete_dns_record(zone_id, d_id)
+                    stats.inc_deleted()
+                    self._safe_print(
+                        f"  [DEL-DEDUPE] {d_type} {r_name}: {d_content}（同名收敛为单值）"
+                    )
+                    results.append(
+                        DNSOperationResult(
+                            zone=zone_name,
+                            name=r_name,
+                            record_type=d_type,
+                            old_content=d_content,
+                            new_content=None,
+                            status="deleted_duplicate_full",
+                            account=self.account_name,
+                            record_id=d_id,
+                        )
+                    )
+                    interruptible_sleep(0.08, self._stop_event)
+                except Exception as exc:  # noqa: BLE001 - 逐条删除需继续处理其余记录
+                    self._safe_print(f"  [ERR-FULL-DEDUPE] {d_type} {r_name}: {exc}")
+                    stats.inc_errors()
+                    results.append(
+                        DNSOperationResult(
+                            zone=zone_name,
+                            name=r_name,
+                            record_type=d_type,
+                            old_content=d_content,
+                            new_content=None,
+                            status="error",
+                            message=f"删除同名多余记录失败: {exc}",
+                            account=self.account_name,
+                            record_id=d_id,
+                            action="full_replace",
+                        )
+                    )
 
         # ========== 2. 处理对立类型记录（跨类型迁移，逐 id 删除） ==========
         if opposite_record_type and opposite_records:
@@ -2818,23 +3050,34 @@ class CloudflareDNSUpdater:
                         )
                         interruptible_sleep(0.08, self._stop_event)
                     except Exception as exc:
-                        self._safe_print(
-                            f"  [ERR-FULL-CREATE] {record_type} {r_name}: {exc}"
-                        )
-                        stats.inc_errors()
-                        results.append(
-                            DNSOperationResult(
-                                zone=zone_name,
-                                name=r_name,
-                                record_type=record_type,
-                                old_content=r_content,
-                                new_content=new_content,
-                                status="error",
-                                message=str(exc),
-                                account=self.account_name,
+                        if is_identical_record_error(exc):
+                            # 并发或缓存未覆盖到：目标记录其实已存在，跳过创建继续删旧。
+                            existing_targets.add((r_name.lower(), normalized_new))
+                            stats.inc_skipped()
+                            self._safe_print(
+                                f"  [SKIP-CREATE] {record_type} {r_name}: "
+                                f"{new_content} 已存在"
                             )
-                        )
-                        continue
+                        else:
+                            self._safe_print(
+                                f"  [ERR-FULL-CREATE] {record_type} {r_name}: {exc}"
+                            )
+                            stats.inc_errors()
+                            results.append(
+                                DNSOperationResult(
+                                    zone=zone_name,
+                                    name=r_name,
+                                    record_type=record_type,
+                                    old_content=r_content,
+                                    new_content=new_content,
+                                    status="error",
+                                    message=str(exc),
+                                    account=self.account_name,
+                                    record_id=r_id,
+                                    action="full_replace",
+                                )
+                            )
+                            continue
 
                 # 删除旧记录（逐 id；失败记半迁移状态，便于重跑清理）。
                 try:
@@ -2870,6 +3113,8 @@ class CloudflareDNSUpdater:
                             status="error_delete_old_after_migrate",
                             message=str(exc),
                             account=self.account_name,
+                            record_id=r_id,
+                            action="full_replace",
                         )
                     )
 
@@ -3012,23 +3257,34 @@ class CloudflareDNSUpdater:
                     )
                     interruptible_sleep(0.1, self._stop_event)
                 except Exception as exc:
-                    self._safe_print(
-                        f"  [ERR] 创建 {new_record_type} {r_name}: {exc}; 已保留旧记录"
-                    )
-                    stats.inc_errors()
-                    results.append(
-                        DNSOperationResult(
-                            zone=zone_name,
-                            name=r_name,
-                            record_type=new_record_type,
-                            old_content=old_content,
-                            new_content=new_content,
-                            status="error",
-                            message=str(exc),
-                            account=self.account_name,
+                    if is_identical_record_error(exc):
+                        # 目标记录已由并发或先前操作创建，跳过创建继续删旧。
+                        existing_targets.add((r_name.lower(), normalized_new))
+                        stats.inc_skipped()
+                        self._safe_print(
+                            f"  [SKIP-CREATE] {new_record_type} {r_name}: "
+                            f"{new_content} 已存在"
                         )
-                    )
-                    continue
+                    else:
+                        self._safe_print(
+                            f"  [ERR] 创建 {new_record_type} {r_name}: {exc}; 已保留旧记录"
+                        )
+                        stats.inc_errors()
+                        results.append(
+                            DNSOperationResult(
+                                zone=zone_name,
+                                name=r_name,
+                                record_type=new_record_type,
+                                old_content=old_content,
+                                new_content=new_content,
+                                status="error",
+                                message=str(exc),
+                                account=self.account_name,
+                                record_id=r_id,
+                                action="migrate",
+                            )
+                        )
+                        continue
             else:
                 stats.inc_skipped()
                 self._safe_print(
@@ -3068,6 +3324,8 @@ class CloudflareDNSUpdater:
                         status="error_delete_old_after_migrate",
                         message=str(exc),
                         account=self.account_name,
+                        record_id=r_id,
+                        action="migrate",
                     )
                 )
 
@@ -6975,14 +7233,17 @@ def build_final_verdict(
             f"（失败 {len(error_rows)}，取消 {len(cancelled_rows)}）"
         )
 
-    causes = Counter()
-    for row in failure_rows:
-        action = str(row.get("action", "batch"))
-        error = str(row.get("error", ""))[:100]
-        causes[(action, error)] += 1
+    causes, samples = group_failure_causes(failure_rows)
+    # 只有限流、5xx、网络类错误值得重跑；4xx 与 81058 重跑结果不变。
+    retryable_errors = [
+        row for row in error_rows if classify_failure(str(row.get("error", "")))[1]
+    ]
+    deterministic_errors = [
+        row for row in error_rows if not classify_failure(str(row.get("error", "")))[1]
+    ]
 
     rerun_hint: list[str] = []
-    if failure_rows:
+    if retryable_errors or cancelled_rows:
         if failed_output:
             rerun_hint = [
                 f"失败清单: {failed_output}（共 {len(failure_rows)} 行）",
@@ -6993,6 +7254,28 @@ def build_final_verdict(
             rerun_hint = [
                 "建议下次加 --failed-output <path> 生成清单后用 --resume-from 重跑。"
             ]
+        if deterministic_errors:
+            prefix = "清单中另有" if failed_output else "其中另有"
+            rerun_hint.append(
+                f"注意：{prefix} {len(deterministic_errors)} 条为确定性错误，"
+                "重跑仍会失败，需先人工处理（见上方主要原因）。"
+            )
+    elif deterministic_errors:
+        rerun_hint = [
+            (
+                f"本次 {len(deterministic_errors)} 条失败均为确定性错误，直接重跑无效；"
+                "请按上方主要原因人工修正后再执行。"
+            )
+        ]
+
+    if retryable_errors or cancelled_rows:
+        verdict_tail = (
+            "重试未能挽救的条目见失败清单。"
+            if failed_output
+            else "重试未成功的条目请用 --failed-output 导出清单确认明细。"
+        )
+    else:
+        verdict_tail = "全部为确定性错误，需人工处理后再执行。"
 
     if interrupted:
         lines.append(
@@ -7000,7 +7283,7 @@ def build_final_verdict(
             f"成功 {success}，失败 {failed}，取消账号 {cancelled_accounts}，"
             f"未完成条目 {len(failure_rows)}。"
         )
-        lines.extend(verdict_cause_lines(causes))
+        lines.extend(verdict_cause_lines(causes, samples))
         lines.extend(rerun_hint)
         return 130, lines
 
@@ -7016,20 +7299,51 @@ def build_final_verdict(
         f"成功 {success}，失败 {failed}，取消账号 {cancelled_accounts}，"
         f"未完成条目 {len(failure_rows)}"
         f"（失败 {len(error_rows)}，取消 {len(cancelled_rows)}）。"
-        "重试未能挽救的条目见失败清单。"
+        f"{verdict_tail}"
     )
-    lines.extend(verdict_cause_lines(causes))
+    lines.extend(verdict_cause_lines(causes, samples))
     lines.extend(rerun_hint)
     return 1, lines
 
 
-def verdict_cause_lines(causes: Counter[tuple[str, str]]) -> list[str]:
-    """将原因计数器转为 Top5 输出行。"""
+def group_failure_causes(
+    failure_rows: list[dict[str, Any]],
+) -> tuple[Counter[tuple[str, str]], dict[tuple[str, str], list[str]]]:
+    """按 (action, 错误摘要) 聚合失败原因，并保留最多 3 条定位样例。
+
+    聚合只用于 Top5 展示；完整明细仍以 --failed-output 的 CSV 为准。
+    """
+    causes: Counter[tuple[str, str]] = Counter()
+    samples: dict[tuple[str, str], list[str]] = {}
+    for row in failure_rows:
+        action = str(row.get("action") or "batch")
+        error = str(row.get("error", ""))[:120]
+        key = (action, error)
+        causes[key] += 1
+        bucket = samples.setdefault(key, [])
+        if len(bucket) < 3:
+            sample = failure_row_sample(row)
+            if sample not in bucket:
+                bucket.append(sample)
+    return causes, samples
+
+
+def verdict_cause_lines(
+    causes: Counter[tuple[str, str]],
+    samples: dict[tuple[str, str], list[str]] | None = None,
+) -> list[str]:
+    """将原因计数器转为 Top5 输出行，标注可重跑性与定位样例。"""
     if not causes:
         return []
     lines = ["主要原因 Top:"]
     for (action, error), count in causes.most_common(5):
-        lines.append(f"- [{action}] x{count}: {error}")
+        reason, retryable = classify_failure(error)
+        hint = "可重跑" if retryable else "重跑无效"
+        line = f"- [{action}] x{count}（{hint}：{reason}）: {error}"
+        examples = samples.get((action, error)) if samples else None
+        if examples:
+            line += f"；示例 {', '.join(examples)}"
+        lines.append(line)
     return lines
 
 
@@ -7128,19 +7442,24 @@ def run_accounts_fanout(
 def write_failure_report(
     args: argparse.Namespace, failure_rows: list[dict[str, Any]]
 ) -> None:
-    """按 --failed-output 写失败清单；无清单时给出重跑提示。"""
+    """按 --failed-output 写失败清单；无清单时给出准确的重跑提示。"""
     if not failure_rows:
         return
+    error_count = sum(1 for row in failure_rows if row.get("status") != "cancelled")
+    cancelled_count = len(failure_rows) - error_count
+    breakdown = f"失败 {error_count} / 取消 {cancelled_count}"
     if args.failed_output:
         write_failure_csv(args.failed_output, failure_rows)
         log_print(
-            f"\n失败清单已写入: {args.failed_output}（共 {len(failure_rows)} 行），"
-            "可用 --resume-from 重跑补齐。"
+            f"\n失败清单已写入: {args.failed_output}"
+            f"（共 {len(failure_rows)} 行，{breakdown}），"
+            "可用 --resume-from 重跑；确定性错误重跑仍会失败，需先人工处理。"
         )
     else:
         log_print(
-            f"\n本次有 {len(failure_rows)} 条未完成（失败/取消），"
-            "建议下次加 --failed-output <path> 生成清单后用 --resume-from 重跑。"
+            f"\n本次有 {len(failure_rows)} 条未完成（{breakdown}），未落盘失败清单；"
+            "加 --failed-output <path> 可导出明细（含 zone/name），"
+            "便于人工确认或按清单重跑。"
         )
 
 
