@@ -1,32 +1,45 @@
 [toc]
 
-> 日常使用的脚本集合：PowerShell 模块集([PS/](PS/)，pwsh 优先)与 shell 脚本库(bash/zsh，个人电脑与服务器共用)。
->
-> 仓库地址：[github.com/xuchaoxin1375/scripts](https://github.com/xuchaoxin1375/scripts) · [gitee.com/xuchaoxin1375/scripts](https://gitee.com/xuchaoxin1375/scripts)
+日常使用的脚本集合：PowerShell 模块集([PS/](PS/)，pwsh 优先)与 shell 脚本库(bash/zsh，个人电脑与服务器共用)。
+
+不同网络环境可以访问不同的在线地址:
+
+- [github](https://github.com/xuchaoxin1375/scripts) 
+-  [gitee](https://gitee.com/xuchaoxin1375/scripts)
 
 ## 定位与设计
 
-本仓库是长期自用的脚本集合，目标是把日常环境配置、命令补全、仓库更新与服务器运维收敛成可重复执行的脚本，而不是一次性命令的堆叠。仓库分为两条主线：PowerShell 模块集以 Windows 日常使用为主；shell 脚本库面向 Linux/macOS 与服务器，覆盖 shell 环境、nginx 配置与 WordPress 批量运维。
+本仓库是长期自用的脚本集合，目标是把日常环境配置、命令补全、仓库更新与服务器运维收敛成可重复执行的脚本，而不是一次性命令的堆叠。仓库分为两条主线：
+
+- PowerShell 模块集以 Windows 日常使用为主；
+- shell(bash/zsh) 脚本库面向 Linux/macOS 与服务器，覆盖 shell 环境、nginx 配置等内容。
+
+### 关于powershell(pwsh)的部分
 
 - **模块化按需加载**：每个 PowerShell 模块有独立的清单文件与显式导出表；模块经 `PSModulePath` 按需自动加载，`init` 只负责环境初始化。
-- **更新不打断会话**：dll 采用并排版本加指针的活件机制，更新时写入新版本目录，不锁文件，也不要求关闭终端。
-- **部署与更新可重复执行**：一键脚本先判断当前状态，未部署则安装、已部署则更新，不在已有环境上重复安装。
+- **提示/补全插件**: dll 采用并排版本加指针的活件机制，更新时写入新版本目录，不锁文件，也不要求关闭终端。
 - **文档单一真相源**：[PS/docs/](PS/docs/) 是模块集的唯一真相源；各入口文档只放指引，细节留在对应模块或子目录的文档里。
-- **国内网络优先**：默认经 GitHub 加速镜像获取资源，gitee 只保留兼容(实测对远程脚本执行常误报拦截)。
 
-## 应用场景
+### 关于bash脚本的部分
+
+- **部署与更新可重复执行**：一键脚本先判断当前状态，未部署则安装、已部署则更新，不在已有环境上重复安装。
+
+### 其他
+
+- **考虑不同网络场景**：默认经 GitHub 加速镜像获取资源，gitee 只保留兼容(实测对远程脚本执行常误报拦截)。
+
+## 内部文档入口
 
 | 场景 | 从这里开始 |
 |---|---|
 | 新机器部署 PowerShell 环境 | [PS/docs/Deploy-Guide.md](PS/docs/Deploy-Guide.md) |
 | 日常使用：初始化、命令查询、补全、更新 | [PS/docs/Feature-Guide.md](PS/docs/Feature-Guide.md) |
 | 目标机器只有 Windows PowerShell 5.1 | [PS/Deploy/readme.md](PS/Deploy/readme.md)(轻量部署) |
-| 部署 shell 环境(个人电脑、服务器、WSL/Lima) | [sh/README.md](wp/woocommerce/woo_df/sh/README.md) |
-| zsh / Oh My Zsh / fish 增强 | [sh/README.md](wp/woocommerce/woo_df/sh/README.md) |
 | nginx 与反向代理配置 | [nginx_conf/Readme.md](wp/woocommerce/woo_df/sh/nginx_conf/Readme.md) |
-| 故障定位 | 先执行 `doctor`，再按 [PS/docs/README.md](PS/docs/README.md) 分流 |
+| 故障定位 | powershell内先执行 `doctor`，再按 [PS/docs/README.md](PS/docs/README.md) 分流 |
 | 查找功能归属的模块 | [PS/docs/Module-Map.md](PS/docs/Module-Map.md) |
 | 开发模块或编写自动化 | [AGENTS.md](AGENTS.md) |
+| 部署 shell 环境/交互式shell体验增强(个人电脑、服务器、WSL/Lima) | [sh/README.md](wp/woocommerce/woo_df/sh/README.md) |
 
 ## 快速开始
 
