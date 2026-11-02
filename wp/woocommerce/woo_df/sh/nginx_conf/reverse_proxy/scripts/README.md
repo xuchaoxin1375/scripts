@@ -11,6 +11,7 @@
 | `tenants.sh` | 多租户：每租户独立 listen IP + 自有 `routes.map`，未知 Host 回 444 | `tenant-common/hostmap/server.conf` + `tenants/<id>/routes.map` |
 | `clean.sh` | 清理 / 巡检各模式残留配置，防止 `listen` 抢口与 include 冲突；先 `--status` 只看不动 | 默认只删被 include 目录中的冲突源 |
 | `check_ports.sh` | 端口监听与防火墙放行检查（`--ports`）/ 放行（`--fix`）；部署脚本重载后自动调用，也可单独跑或 `source` 复用函数 | 退出码 0 通过、1 阻断、2 用法错误 |
+| `install_reverse_log_clean_cron.sh` | 安装/更新/删除反代日志清理的 `/etc/cron.d` 任务；自动定位清理脚本与仓库目录 | `/etc/cron.d/clean-reverse-logs`（可用 `--target` 改） |
 
 ## 模式路由
 

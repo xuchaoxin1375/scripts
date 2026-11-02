@@ -111,7 +111,7 @@ nginx -t && nginx -s reload
 * `multi --conf-name` 改过名的文件，清理时必须用同样的 `--conf-name` 指出来，否则扫不到。
 * `multi.sh` 预览也会删 `D/reverse_to_a.conf`，跑 `--dev/--dry-run` 前建议先 `--status` 或先备份。
 * `nginx.conf` 回退只认 `# managed by tenants.sh` 标记块；被原地改值的旧块不会自动还原，以备份为准。
-* `--with-logs` 只在切换/下线时删除反代专属日志，而且用 `rm` 删除：nginx 仍持有文件描述符时，磁盘空间要等 `reload`/重启后才会释放。日常日志增长不要用 `clean.sh`，改用 [clean_reverse_server_logs.sh](../../../clean_reverse_server_logs.sh) 定时 `truncate`，配置与验证见[部署@反代方案脚本.md](部署@反代方案脚本.md#日志清理与定时任务)。
+* `--with-logs` 只在切换/下线时删除反代专属日志，而且用 `rm` 删除：nginx 仍持有文件描述符时，磁盘空间要等 `reload`/重启后才会释放。日常日志增长不要用 `clean.sh`，改用 [clean_reverse_server_logs.sh](../../../clean_reverse_server_logs.sh) 定时 `truncate`；脚本支持 `--dir` 指定目录、`--dry-run` 预览。定时任务的安装与验证见[部署@反代方案脚本.md](部署@反代方案脚本.md#日志清理与定时任务)，可直接用 [install_reverse_log_clean_cron.sh](../scripts/install_reverse_log_clean_cron.sh) 安装。
 * 宝塔常见日志目录是 `/www/wwwlogs/`；文档示例里的 `-l /www/logs/` 是占位写法，按实际安装替换。传错目录会导致 `--with-logs` 和定时清理都扫不到日志。
 
 ---
@@ -132,5 +132,7 @@ nginx -t && nginx -s reload
 
 * 清理脚本：`../scripts/clean.sh`
 * 部署脚本：`../scripts/base.sh`、`../scripts/multi.sh`、`../scripts/tenants.sh`
+* 日志清理脚本：[clean_reverse_server_logs.sh](../../../clean_reverse_server_logs.sh)
+* 日志定时任务安装脚本：[install_reverse_log_clean_cron.sh](../scripts/install_reverse_log_clean_cron.sh)
 * 部署说明：[部署@反代方案脚本.md](部署@反代方案脚本.md)
 * 结构参考：`不同反代模式下(hostmap)nginx目录结构参考.md`

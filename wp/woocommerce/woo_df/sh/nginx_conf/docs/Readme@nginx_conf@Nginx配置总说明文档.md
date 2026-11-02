@@ -67,7 +67,7 @@
 10 0 * * * root /bin/bash /root/sh/clean_reverse_server_logs.sh >> /root/clean_log_actions.log 2>&1
 ```
 
-完整的文件内容、权限与验证步骤见 [部署@反代方案脚本.md](../reverse_proxy/docs/部署@反代方案脚本.md#日志清理与定时任务)。
+完整的文件内容、权限与验证步骤见 [部署@反代方案脚本.md](../reverse_proxy/docs/部署@反代方案脚本.md#日志清理与定时任务)，也可以用 [install_reverse_log_clean_cron.sh](../reverse_proxy/scripts/install_reverse_log_clean_cron.sh) 自动安装。
 
 定期更新`cf_realip.conf`
 

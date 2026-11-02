@@ -4,7 +4,7 @@
 
 ## 作用范围
 
-- 本目录：`scripts/`（`base.sh`、`multi.sh`、`tenants.sh`、`clean.sh`、`check_ports.sh`）、`docs/`（五份说明）、`gateway/`、`gateway.hostmap.template.conf`、`gateway.simple.template.conf`。
+- 本目录：`scripts/`（`base.sh`、`multi.sh`、`tenants.sh`、`clean.sh`、`check_ports.sh`、`install_reverse_log_clean_cron.sh`）、`docs/`（说明文档）、`gateway/`、`gateway.hostmap.template.conf`、`gateway.simple.template.conf`。
 - 不碰目录外文件；现有文档只读不改，除非任务明确要求。
 
 ## 红线（本目录适用）
