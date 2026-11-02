@@ -146,7 +146,7 @@ exec bash # 使配置生效
 
 ### 一键部署 shell 环境
 
-未部署过则完整克隆，已部署则更新代码。
+未部署过则完整克隆，已部署则更新代码。分三类场景。
 
 #### 个人电脑端
 
@@ -179,7 +179,7 @@ curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/mai
 
 参考：[Readme@服务器环境配置流程和迁移指南.md](wp/woocommerce/woo_df/sh/Readme@服务器环境配置流程和迁移指南.md)
 
-### Linux 虚拟机或模拟层
+#### Linux 虚拟机或模拟层
 
 WSL 或 Lima 等轻量虚拟平台可以按普通 Linux 系统的方式部署。
 
