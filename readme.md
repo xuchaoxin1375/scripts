@@ -14,6 +14,7 @@
 | 在新机器部署 PowerShell 环境 | 本文 §2 → `PS/docs/Deploy-Guide.md` |
 | 日常使用（命令查询、补全配置） | `PS/docs/Feature-Guide.md`（§2 命令表；§7、§8、§10 补全；§9 dll 管理） |
 | 部署 zsh / Oh My Zsh 环境 | 本文 §6「zsh / Oh My Zsh 环境」→ `wp/woocommerce/woo_df/sh/Readme@deploy_omz.md` |
+| 部署反向代理(反代网关) | 本文「nginx 与反向代理配置」→ `wp/woocommerce/woo_df/sh/nginx_conf/reverse_proxy/scripts/README.md` |
 | 故障定位 | 先执行 `doctor`，再按 `PS/docs/README.md` 分流 |
 | 机器仅有 Windows PowerShell 5.1 | 本文 §2.3 → `PS/docs/Feature-Guide.md §13` |
 | 查找功能归属的模块 | `PS/docs/Module-Map.md`（67 模块画像表） |
@@ -237,6 +238,16 @@ bash <(curl -sSfL https://github.com/xuchaoxin1375/scripts/raw/main/wp/woocommer
 #### fish
 
 开箱即用的交互式友好shell,可以通过系统包管理器安装.
+
+## nginx 与反向代理配置
+
+服务器端 nginx 配置涵盖 **反向代理网关**、限流与 JS 挑战，入口如下；细节以对应文档与脚本 `--help` 为准：
+
+| 入口 | 说明 |
+|---|---|
+| `wp/woocommerce/woo_df/sh/nginx_conf/Readme.md` | nginx 配置总入口 |
+| `wp/woocommerce/woo_df/sh/nginx_conf/reverse_proxy/scripts/README.md` | 反向代理配置入口，含脚本一览与模式路由；细节见同目录 `docs/` |
+| `wp/woocommerce/woo_df/sh/Readme@服务器环境配置流程和迁移指南.md` | 服务器部署与迁移流程 |
 
 ## 7. powershell模块集日常使用与更新
 
