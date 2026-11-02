@@ -25,6 +25,7 @@ cloudflare_dns_tool.py
 | 代理/TTL 设置 | 内容不变，批量改代理与 TTL | [批量设置代理状态与 TTL](#批量设置代理状态与-ttl) |
 | 备份与导出 | 变更前快照，json/bind 导出 | [变更前备份与导出](#变更前备份与导出) |
 | 失败清单与 verdict | 未完成项 CSV 重跑，三态结论 | [失败清单、重跑与运行结论](#失败清单重跑与运行结论) |
+| 请求异常报告 | 含重试成功的 429/5xx/网络异常汇总与 CSV | [请求异常报告](#请求异常报告含重试成功) |
 | 出口代理 | 代理出口访问 API，故障切换 | [出口代理](#出口代理) |
 | 限流/中断/日志 | 速度档位，Ctrl+C，审计日志 | [限流模式](#限流模式) |
 | 批量添加（Web，已移除） | 曾为操作页批量添加模式，对应 `--add-domain/--add-record` | [WEBUI_LESSONS.md](WEBUI_LESSONS.md) |
@@ -800,6 +801,29 @@ CSV 列：`account,zone,record_id,name,type,old_content,new_content,action,statu
 
 ---
 
+## 请求异常报告（含重试成功）
+
+域名多的账号更容易撞上限流（429）、5xx 与网络抖动。批量模式（更新/删除/添加/属性/导出）结束后会额外输出请求异常汇总，统计“出现过失败尝试”的请求，即使重试后已经成功：
+
+```text
+请求异常汇总（含重试后成功）:
+- 异常请求 37 次：已恢复 35，未恢复 2；涉及账号 6 个、域名 9 个
+- 按类型: 触发 Cloudflare 限流 28，服务端临时错误 522 6，网络错误 1，请求被拒绝（重跑结果不变） 2
+- 域名 Top: shop.example.com(12)，api.example.net(8)
+```
+
+- 每个请求出现失败尝试即记一条；`attempts` 是总尝试次数，`resolved` 标注最终是否成功。
+- 4xx 等不可重试错误也会记录（`resolved=no`）；它与失败清单的“条目级最终失败”是两个口径：这里按请求统计，失败清单按 DNS 条目统计。
+- 汇总始终打印；需要逐条复盘时加 `--retry-output`：
+
+```bash
+python cloudflare_dns_tool.py -n 1.2.3.4 --retry-output retry.csv
+```
+
+CSV 列：`account,zone,zone_id,method,endpoint,kind,attempts,resolved,error,timestamp`（UTF-8-SIG，Excel 可直接打开）。`zone` 取自本次已读取的 zone 列表；账号级请求（如 `GET /zones`）的 `zone` 为空，可用 `zone_id` 定位。
+
+---
+
 ## 出口代理
 经代理出口访问 Cloudflare API（例如本机 mihomo `http://127.0.0.1:7897`）：
 
@@ -1161,6 +1185,7 @@ flowchart LR
 | 无             | `--set-proxied {on,off}`                     | 批量设置记录代理状态（内容不变）                              |
 | 无             | `--set-ttl N`                                | 批量设置记录 TTL（1=自动，内容不变）                          |
 | 无             | `--failed-output PATH`                       | 失败/取消清单写入 CSV（UTF-8-SIG），便于重跑补齐             |
+| 无             | `--retry-output PATH`                        | 请求异常清单写入 CSV（含重试成功），便于复盘限流/5xx          |
 | 无             | `--resume-from PATH`                         | 从失败清单 CSV 重跑，仅处理清单中的域名                      |
 | `-P`           | `--proxy URL`                                | 出口代理，可多次使用（例如 `-P http://127.0.0.1:7897`）      |
 | 无             | `--proxy-file PATH`                          | 代理文件路径，每行一个代理 URL，与 `-P` 合并使用              |
@@ -1227,6 +1252,7 @@ python -m unittest cf_api.tests.test_cf_dns_reliability
 | `ApiRateLimiter`              | 本进程内共享 API 请求限速器                 |
 | `OperationStats`              | 多线程安全统计更新 / 删除 / 跳过 / 错误数量 |
 | `DNSOperationResult`          | 单条 DNS 操作结果结构                       |
+| `RequestAnomaly`              | 单次请求异常记录（含重试后成功）             |
 | `get_all_zones()`             | 分页读取账号下所有 zone                     |
 | `get_dns_records()`           | 分页读取 DNS 记录                           |
 | `batch_update()`              | 当前账号批量更新 DNS 记录                   |

@@ -141,6 +141,106 @@ class RequestRetryTest(unittest.TestCase):
         self.assertEqual(session.calls, 1)
 
 
+class RequestAnomalyTest(unittest.TestCase):
+    """请求异常历史：重试后成功也要留痕。"""
+
+    def test_retry_then_success_records_resolved_anomaly(self):
+        updater = make_updater()
+        session = FakeSession(
+            [
+                FakeResponse(520, text="origin error"),
+                FakeResponse(200, ok_payload()),
+            ]
+        )
+        updater._get_session = lambda: session
+        updater._request(
+            "PUT", "/zones/" + "a" * 32 + "/dns_records/r1", json={"content": "x"}
+        )
+        rows = updater.request_anomalies()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["resolved"], "yes")
+        self.assertEqual(rows[0]["attempts"], 2)
+        self.assertEqual(rows[0]["zone_id"], "a" * 32)
+        self.assertIn("520", rows[0]["error"])
+
+    def test_zone_name_is_resolved_from_cache(self):
+        updater = make_updater()
+        zone_id = "b" * 32
+        updater._zone_names[zone_id] = "example.com"
+        session = FakeSession(
+            [
+                FakeResponse(429, headers={"retry-after": "0"}, text="rate"),
+                FakeResponse(200, ok_payload()),
+            ]
+        )
+        updater._get_session = lambda: session
+        updater._request("GET", f"/zones/{zone_id}/dns_records")
+        rows = updater.request_anomalies()
+        self.assertEqual(rows[0]["zone"], "example.com")
+        self.assertIn("限流", rows[0]["kind"])
+
+    def test_final_failure_records_unresolved_anomaly(self):
+        updater = make_updater(api_max_retries=0)
+        session = FakeSession(
+            [
+                FakeResponse(
+                    403,
+                    {"success": False, "errors": [{"code": 9109, "message": "no"}]},
+                )
+            ]
+        )
+        updater._get_session = lambda: session
+        with self.assertRaisesRegex(Exception, "403"):
+            updater._request("GET", "/zones")
+        rows = updater.request_anomalies()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["resolved"], "no")
+        self.assertIn("请求被拒绝", rows[0]["kind"])
+
+    def test_retry_summary_and_csv(self):
+        rows = [
+            {
+                "account": "acct-a",
+                "zone": "example.com",
+                "zone_id": "z1",
+                "method": "PUT",
+                "endpoint": "/zones/z1/dns_records/r1",
+                "kind": "触发 Cloudflare 限流",
+                "attempts": 3,
+                "resolved": "yes",
+                "error": "HTTP 429",
+                "timestamp": "2026-01-01T00:00:00Z",
+            },
+            {
+                "account": "acct-b",
+                "zone": "example.com",
+                "zone_id": "z2",
+                "method": "GET",
+                "endpoint": "/zones/z2/dns_records",
+                "kind": "服务端临时错误 520",
+                "attempts": 2,
+                "resolved": "no",
+                "error": "HTTP 520",
+                "timestamp": "2026-01-01T00:00:01Z",
+            },
+        ]
+        lines = tool.retry_summary_lines(rows)
+        text = "\n".join(lines)
+        self.assertIn("异常请求 2 次", text)
+        self.assertIn("已恢复 1，未恢复 1", text)
+        self.assertIn("涉及账号 2 个、域名 1 个", text)
+        self.assertIn("example.com(2)", text)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "retry.csv")
+            tool.write_retry_csv(path, rows)
+            with open(path, encoding="utf-8-sig") as file_obj:
+                content = file_obj.read()
+        self.assertIn("account,zone,zone_id,method,endpoint", content)
+        self.assertIn("acct-a", content)
+        self.assertIn("resolved", content)
+
+
 class FullReplaceTest(unittest.TestCase):
     def test_same_name_multi_records_all_processed(self):
         updater = make_updater()
