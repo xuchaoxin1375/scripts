@@ -30,7 +30,7 @@
 - 性能要求:要求很低,单核心的vps足够
   - 但是如果要用宝塔的话,安装软件,例如nginx可能会比较卡)
   - 如果不用宝塔的话,资源监控可以用`htop,btop,top`,文件编辑用vim或nano
-  - 磁盘要求也低,定期清理日志(每天清理一次即可)
+  - 磁盘要求也低;反代 `access_log` 按请求逐条增长,必须配置每天一次的清理任务,否则日志可能写满磁盘,脚本与定时任务见 [部署@反代方案脚本.md](../reverse_proxy/docs/部署@反代方案脚本.md#日志清理与定时任务)
 - linux系统(推荐ubuntu/debian,但不是必须的.)
 - 安装nginx或openresty,前者最简单,可以考虑包管理器直接安装,或者通过脚本安装最新版本的nginx,如果用宝塔也可以考虑宝塔安装,但是安装速度慢.
   - 通过标准安装(系统包管理器或脚本安装)的默认配置路径是`/etc/nginx`,日志`/var/log/nginx`,其他情况自行修改部署脚本相关路径参数(如果要手动配置也要确保路径对应实际情况.)
@@ -60,7 +60,16 @@
 
 ```
 
-更新`cf_realip.conf`
+上面是用户 crontab 的写法。放进 `/etc/cron.d/` 时每行要多一个用户字段,并建议改用绝对路径,否则 cron 不会执行:
+
+```bash
+# /etc/cron.d/clean-reverse-logs
+10 0 * * * root /bin/bash /root/sh/clean_reverse_server_logs.sh >> /root/clean_log_actions.log 2>&1
+```
+
+完整的文件内容、权限与验证步骤见 [部署@反代方案脚本.md](../reverse_proxy/docs/部署@反代方案脚本.md#日志清理与定时任务)。
+
+定期更新`cf_realip.conf`
 
 ```bash
 # 每天凌晨3点更新cf_realip.sh,并重载nginx.(路径适用于ubuntu/debian vps)

@@ -6,7 +6,7 @@
 
 `../scripts/clean.sh` 是统一收口：先备份再删，默认只删被 `include` 的 `D` 侧冲突源，保留用户 `map` 数据；彻底下线才加 `--purge-data` 等扩展项。
 
-路径记号：`C=$NGINX_CONF_HOME`（标准 `/etc/nginx`，宝塔 `/www/server/nginx/conf`），`D=$NGINX_CONFD`（标准 `$C/conf.d`，宝塔 `/www/server/panel/vhost/nginx`），`L=$NGINX_LOG_DIR`（标准 `/var/log/nginx/`，宝塔 `/www/logs/`）。
+路径记号：`C=$NGINX_CONF_HOME`(标准 `/etc/nginx`，宝塔 `/www/server/nginx/conf`)，`D=$NGINX_CONFD`(标准 `$C/conf.d`，宝塔 `/www/server/panel/vhost/nginx`)，`L=$NGINX_LOG_DIR`(标准 `/var/log/nginx/`，宝塔常见 `/www/wwwlogs/`，以实际安装的 `-l` 为准)。
 
 ---
 
@@ -111,6 +111,8 @@ nginx -t && nginx -s reload
 * `multi --conf-name` 改过名的文件，清理时必须用同样的 `--conf-name` 指出来，否则扫不到。
 * `multi.sh` 预览也会删 `D/reverse_to_a.conf`，跑 `--dev/--dry-run` 前建议先 `--status` 或先备份。
 * `nginx.conf` 回退只认 `# managed by tenants.sh` 标记块；被原地改值的旧块不会自动还原，以备份为准。
+* `--with-logs` 只在切换/下线时删除反代专属日志，而且用 `rm` 删除：nginx 仍持有文件描述符时，磁盘空间要等 `reload`/重启后才会释放。日常日志增长不要用 `clean.sh`，改用 [clean_reverse_server_logs.sh](../../../clean_reverse_server_logs.sh) 定时 `truncate`，配置与验证见[部署@反代方案脚本.md](部署@反代方案脚本.md#日志清理与定时任务)。
+* 宝塔常见日志目录是 `/www/wwwlogs/`；文档示例里的 `-l /www/logs/` 是占位写法，按实际安装替换。传错目录会导致 `--with-logs` 和定时清理都扫不到日志。
 
 ---
 
