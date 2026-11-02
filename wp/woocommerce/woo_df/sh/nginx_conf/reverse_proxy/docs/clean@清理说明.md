@@ -78,9 +78,6 @@ bash ../scripts/clean.sh --mode multi --conf-name my-multi.conf --force
 
 # 单租户裁剪（只删 tenants/a 数据，不碰共享 conf；后续必须重跑 tenants.sh 或手工摘引用，见第 5 节）
 bash ../scripts/clean.sh --mode tenants --tenant a --force
-
-# 在线执行
-bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/nginx_conf/reverse_proxy/scripts/clean.sh) --status
 ```
 
 ---
@@ -133,4 +130,5 @@ nginx -t && nginx -s reload
 
 * 清理脚本：`../scripts/clean.sh`
 * 部署脚本：`../scripts/base.sh`、`../scripts/multi.sh`、`../scripts/tenants.sh`
+* 在线部署：[在线部署@反代方案脚本.md](在线部署@反代方案脚本.md)
 * 结构参考：`不同反代模式下(hostmap)nginx目录结构参考.md`

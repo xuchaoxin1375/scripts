@@ -29,11 +29,12 @@
 
 | 文档 | 说明 |
 | --- | --- |
+| [在线部署@反代方案脚本.md](../docs/在线部署@反代方案脚本.md) | 不克隆仓库直接执行各脚本：命令、前置条件与验证 |
 | [check_ports@端口检查维护指南.md](../docs/check_ports@端口检查维护指南.md) | 端口检查契约、接入点、交互语义、验证协议（先读） |
 | [clean@清理说明.md](../docs/clean@清理说明.md) | 四脚本产物与冲突、清理用法 |
 | [multi@配置生成脚本说明.md](../docs/multi@配置生成脚本说明.md) | `multi.sh` 设计说明 |
 | [tenants@配置生成脚本说明.md](../docs/tenants@配置生成脚本说明.md) | `tenants.sh` 设计说明 |
-| [不同反代模式下(hostmap)nginx目录结构参考.md](../docs/不同反代模式下(hostmap)nginx目录结构参考.md) | `hostmap` 目录结构参考 |
+| [不同反代模式下(hostmap)nginx目录结构参考.md](<../docs/不同反代模式下(hostmap)nginx目录结构参考.md>) | `hostmap` 目录结构参考 |
 
 ## 验证入口
 

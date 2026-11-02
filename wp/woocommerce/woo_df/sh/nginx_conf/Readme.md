@@ -8,4 +8,5 @@
 | [限流配置脚本说明](docs/Readme@Nginx配置修改脚本说明@Nginx分批次施加限流@为新站配置宽松限流.md) | 分批次施加限流、为新站配置宽松限流 |
 | [OpenResty JS 挑战](docs/README_js_challenge_signed.md) | 签名 Cookie 的 JS 反爬挑战：部署与运维 |
 | [反向代理网关](reverse_proxy/scripts/README.md) | 单机、多出口与多租户反代脚本、模式路由 |
+| [反代脚本在线部署](reverse_proxy/docs/在线部署@反代方案脚本.md) | 不克隆仓库直接执行各反代与清理脚本 |
 | [反向代理细节文档](reverse_proxy/docs/) | 各模式目录结构、端口检查、清理与配置生成 |
