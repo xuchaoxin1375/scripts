@@ -34,6 +34,12 @@ git clone https://github.com/xuchaoxin1375/scripts C:/repos/scripts
 
 目录建议固定 `C:/repos/scripts`（profile/conda 缓存里的路径写的是这个，换地方要同步修改）。
 
+- Windows 手动克隆前先关闭 `core.autocrlf`（`git config --global core.autocrlf false`），否则 `.sh` 的换行会被改写为 CRLF，在 git-bash 中执行失败；已在开启状态下克隆的仓库，可用 `Convert-CRLF` 批量改回 LF。
+- 克隆参数 `--recursive --depth 1 --shallow-submodules` 可减少体积；需要 `ble.sh` 等子模块时保留 `--recursive`。
+- 直连不通时经代理克隆：`git -c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897 clone ...`（端口按本机代理替换）；gitee 克隆可能要求登录。
+- `PSModulePath` 用下一节的 `Add-EnvVar` 追加，不要直接 `setx` 覆盖既有值。
+- git 读取配置报错（`~/.gitconfig` 损坏）时，备份或移除后重试：`mv ~/.gitconfig ~/.gitconfig.bak`。
+
 ## 3. PSModulePath
 
 ```powershell

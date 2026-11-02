@@ -1,283 +1,77 @@
 [toc]
 
-> A collection of practical scripts for daily use: PowerShell modules ([PS/](PS/), pwsh-first) and shell scripts (bash/zsh).
-> 本仓库收录日常使用的实用脚本，包括 PowerShell 模块集([PS/](PS/)，来源：[PS/docs/Module-Map.md](PS/docs/Module-Map.md))与 shell 脚本库(bash/zsh)；本文档以中文撰写。
+> 日常使用的脚本集合：PowerShell 模块集([PS/](PS/)，pwsh 优先)与 shell 脚本库(bash/zsh，个人电脑与服务器共用)。
 >
 > 仓库地址：[github.com/xuchaoxin1375/scripts](https://github.com/xuchaoxin1375/scripts) · [gitee.com/xuchaoxin1375/scripts](https://gitee.com/xuchaoxin1375/scripts)
 
-## 读者指引
+## 定位与设计
 
-| 使用目标 | 建议阅读顺序 |
+本仓库是长期自用的脚本集合，目标是把日常环境配置、命令补全、仓库更新与服务器运维收敛成可重复执行的脚本，而不是一次性命令的堆叠。仓库分为两条主线：PowerShell 模块集以 Windows 日常使用为主；shell 脚本库面向 Linux/macOS 与服务器，覆盖 shell 环境、nginx 配置与 WordPress 批量运维。
+
+- **模块化按需加载**：每个 PowerShell 模块有独立的清单文件与显式导出表；模块经 `PSModulePath` 按需自动加载，`init` 只负责环境初始化。
+- **更新不打断会话**：dll 采用并排版本加指针的活件机制，更新时写入新版本目录，不锁文件，也不要求关闭终端。
+- **部署与更新可重复执行**：一键脚本先判断当前状态，未部署则安装、已部署则更新，不在已有环境上重复安装。
+- **文档单一真相源**：[PS/docs/](PS/docs/) 是模块集的唯一真相源；各入口文档只放指引，细节留在对应模块或子目录的文档里。
+- **国内网络优先**：默认经 GitHub 加速镜像获取资源，gitee 只保留兼容(实测对远程脚本执行常误报拦截)。
+
+## 应用场景
+
+| 场景 | 从这里开始 |
 |---|---|
-| 在新机器部署 PowerShell 环境 | [PS/docs/Deploy-Guide.md](PS/docs/Deploy-Guide.md)(一键命令与分步说明) |
-| 日常使用(命令查询、补全配置) | [PS/docs/Feature-Guide.md](PS/docs/Feature-Guide.md)(命令表、补全配置、dll 管理) |
-| 部署 zsh / Oh My Zsh 环境 | [wp/woocommerce/woo_df/sh/Readme@deploy_omz.md](wp/woocommerce/woo_df/sh/Readme@deploy_omz.md) |
-| 部署反向代理(反代网关) | [wp/woocommerce/woo_df/sh/nginx_conf/reverse_proxy/scripts/README.md](wp/woocommerce/woo_df/sh/nginx_conf/reverse_proxy/scripts/README.md) |
+| 新机器部署 PowerShell 环境 | [PS/docs/Deploy-Guide.md](PS/docs/Deploy-Guide.md) |
+| 日常使用：初始化、命令查询、补全、更新 | [PS/docs/Feature-Guide.md](PS/docs/Feature-Guide.md) |
+| 目标机器只有 Windows PowerShell 5.1 | [PS/Deploy/readme.md](PS/Deploy/readme.md)(轻量部署) |
+| 部署 shell 环境(个人电脑、服务器、WSL/Lima) | [sh/README.md](wp/woocommerce/woo_df/sh/README.md) |
+| zsh / Oh My Zsh / fish 增强 | [sh/README.md](wp/woocommerce/woo_df/sh/README.md) |
+| nginx 与反向代理配置 | [nginx_conf/Readme.md](wp/woocommerce/woo_df/sh/nginx_conf/Readme.md) |
 | 故障定位 | 先执行 `doctor`，再按 [PS/docs/README.md](PS/docs/README.md) 分流 |
-| 机器仅有 Windows PowerShell 5.1 | [PS/docs/Feature-Guide.md](PS/docs/Feature-Guide.md)(轻量部署说明) |
-| 查找功能归属的模块 | [PS/docs/Module-Map.md](PS/docs/Module-Map.md)(模块画像表) |
-| 开发模块或编写自动化 | [AGENTS.md](AGENTS.md) → [PS/AGENTS.md](PS/AGENTS.md) → [PS/docs/Agent-Handoff.md](PS/docs/Agent-Handoff.md)(agent 必读部分) |
+| 查找功能归属的模块 | [PS/docs/Module-Map.md](PS/docs/Module-Map.md) |
+| 开发模块或编写自动化 | [AGENTS.md](AGENTS.md) |
 
-## 安装与部署(PowerShell 模块集)
+## 快速开始
 
-### 一键部署
+### PowerShell 模块集
 
-前置条件：具备 PowerShell 执行环境(`powershell.exe` 或 `pwsh`)与可用网络(直连或经镜像访问 `raw.githubusercontent.com`)。部署脚本默认从 github 经加速镜像获取；gitee 仅保留兼容(其实测对 `irm|iex` 常误报拦截，不作为默认源)。
+前置条件：具备 PowerShell 执行环境(`powershell.exe` 或 `pwsh`)与可用网络。脚本会检查 PowerShell 7 与 git：已安装则直接拉取仓库，未安装则尝试自动安装，失败时按 [Deploy-Guide.md](PS/docs/Deploy-Guide.md) 的镜像说明更换源后重试。
 
 ```powershell
 irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1'|iex
 ```
 
-执行者与行为：脚本先检查 PowerShell 7 与 git；已安装则跳过安装、直接拉取仓库(速度更快)；未安装则尝试自动安装，成功率取决于网络与权限，不保证成功，失败时按 [PS/docs/Deploy-Guide.md](PS/docs/Deploy-Guide.md) 的镜像与时效性说明更换镜像后重试。需审查脚本内容或指定参数时，分步执行：
-
-```powershell
-irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1' > ~/dcp.ps1
-~/dcp.ps1 -RepoSource github
-# 已有仓库需强制覆盖：Deploy-CxxuPsModules -Verbose -Confirm
-```
-
-完整参数与备用源见 [PS/Deploy/readme.md](PS/Deploy/readme.md)。
-
-### 部署后配置(补全栈)
-
-上述一键部署仅完成仓库落地与环境变量配置；补全栈需另行安装。前置条件：**关闭并重新打开终端**(profile 写入后生效，自动执行 `init`)。执行：
+重新打开终端(profile 自动执行 `init`)，再安装补全栈：
 
 ```powershell
 Deploy-CompletionStack
-# 善后再重开一次终端，缓存即就绪。边界：pwsh 低于 7.5 时给出警告(自研 predictor 不可用，其余补全正常)。
 ```
 
-极简命令版见 [PS/docs/Deploy-Guide.md](PS/docs/Deploy-Guide.md) 开头。
+轻量部署(仅 5.1、免 git)、临时使用单个模块、用本地代码验证部署，见 [PS/Deploy/readme.md](PS/Deploy/readme.md)；分步部署与多设备差异见 [PS/docs/Deploy-Guide.md](PS/docs/Deploy-Guide.md)。
 
-### 轻量部署
+### shell 脚本库
 
-适用条件：目标机器仅有 Windows PowerShell 5.1，且无 git、无 pwsh 7。执行(在 `powershell.exe` 中)：
-
-```powershell
-irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1' > ~/dcp.ps1
-~/dcp.ps1 -Light
-```
-
-机制：无 git 时不提示安装，直接下载离线包(经 codeload 与中央镜像静默下载，不弹窗选择源)；`PSModulePath` 采用追加写入(不覆盖既有值)；结尾跳过 pwsh 安装，改为写入 5.1 专属 profile。善后：重新打开 `powershell.exe` 并执行 `init`。适用边界(B 档范围与禁区)见 [PS/docs/Feature-Guide.md](PS/docs/Feature-Guide.md) 的轻量部署说明。
-
-### 临时使用
-
-适用条件：仅需个别模块，不获取全仓。执行：
-
-```powershell
-irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1'|iex   # Deploy 系列(含镜像测速、scoop、smb 等)
-irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Tools/Tools.psm1'|iex     # Tools 系列小工具
-```
-
-### 本地开发验证
-
-前置条件：本地已检出仓库；适用场景：改动尚未推送，需用本地代码验证部署效果。在仓库内直接执行一键脚本并附加 `-Dev`：
-
-```powershell
-C:/repos/scripts/PS/Deploy/Deploy-CxxuPsModules.ps1 -Dev # 可叠加 -Light -WhatIf；注意脚本尾部存在真实调用，先用 -WhatIf 空跑确认意图
-```
-
-机制：仓库根从脚本位置自动推导；`-Dev`(及 `-DevRoot`)透传全部一键脚本(`Deploy-CxxuPsModules`、`Deploy-GitForWindows`、`Deploy-Pwsh7Portable`、`Register-GithubHostsAutoUpdater`)；本地标记文件缺失时给出警告并回退远端，不中断执行。
-
-## 兼容性说明
-
-- 本模块集建议使用 PowerShell 7 及以上版本(理由：完整功能与最佳性能；获取渠道包括联想应用商店，其版本可能非最新，不影响使用)。
-- 模块是否兼容 Windows PowerShell 5.1 以各模块 `.psd1` 的声明为准，自查命令为 `Get-CxxuModuleCompatibility`。兼容范围为 `init`、提示符、Tab 补全与历史记录；边界：预测视图与 dll 加载链保留在 7 及以上版本，不降级。
-- 5.1 下读取含中文的 UTF-8 文档须使用 `Get-ContentUTF8`(原因：裸 `Get-Content` 按 GBK 解码，中文必乱码)。
-- 5.1 专属 profile 可执行 `Install-Ps51Profile` 一键写入(与 7 的 profile 互不干扰)。
-
-## 加速镜像与故障排查
-
-- 中央变量 `$env:PsGithubMirror` 统一管理镜像前缀(未设置时默认 `https://gh-proxy.com`；模块内静默测速，结果按会话缓存一次)。内置镜像过期时的处理：先执行 `Get-AvailableGithubMirrors` 测速，挑选最快者持久化(`Add-EnvVar -EnvVar PsGithubMirror -NewValue 'https://xxx'`)；可用列表与实测日期见 [PS/TestLinks/TestLinks.psm1](PS/TestLinks/TestLinks.psm1) 头部注释。
-- **禁止硬编码已失效的镜像域名**(`github.moeyy.xyz` 已停服，`ghproxy.cc` 与 `mirror.ghproxy.com` 已不可用，来源：同上头部注释实测记录)。自行搜集镜像时对照聚合页并注意甄别(多数已停服)：[GitHub文件加速|列表集合](https://yishijie.gitlab.io/ziyuan/)(聚合页，非下载前缀)、[镜像站点搜集 Issue #116](https://github.com/hunshcn/gh-proxy/issues/116#issuecomment-2339526975)。
-- 会过期的外部资源(镜像站、上游版本、第三方域)统一登记于 [PS/docs/Deploy-Guide.md](PS/docs/Deploy-Guide.md) 的时效性清单；部署失败时先查该清单，再更换链接。
-- 执行策略报错给出路：先执行 `Set-ExecutionPolicy Bypass -Scope CurrentUser -Force` 后重试。git 读取配置报错给出路：移除或备份 `~/.gitconfig`(`rm ~/.gitconfig`，或 `mv ~/.gitconfig ~/.gitconfig.bak`)。
-
-## 手动克隆(不使用一键脚本时)
-
-前置条件(Windows 必做)：先关闭 `autocrlf` 再克隆。原因：开启时 bash 脚本的换行会被改写为 CRLF，导致其在 git-bash 中执行失败。
-
-```bash
-git config --global core.autocrlf false
-```
-
-已在开启状态下克隆的补救(二选一)：删除仓库重克隆；或配置好模块后执行 `cd $sh;ls -Recurse *.sh,.inputrc.conf|Convert-CRLF -Replace -To LF;cd -` 将换行改回 LF。精简系统(如 alpine linux)需先安装 bash 与 git：`sudo apk add bash git`。
-
-Windows(在 powershell 中执行；目录建议固定为 `C:/repos/scripts`，profile 与 conda 缓存中记录的即该路径)：
-
-```powershell
-New-Item -itemtype directory C:/repos -Verbose -ErrorAction SilentlyContinue
-git clone --recursive --depth 1 --shallow-submodules https://github.com/xuchaoxin1375/scripts.git C:/repos/scripts
-setx PsModulePath C:/repos/scripts/PS
-```
-
-国内从 gitee 克隆可能要求登录；github 免登录但直连不一定可用，不可用时经代理克隆：
-
-```powershell
-$proxy = "http://127.0.0.1:8800" # 代理 url
-New-Item -itemtype directory C:/repos -Verbose -ErrorAction SilentlyContinue
-git -c http.proxy="$Proxy" -c https.proxy="$Proxy" clone --recursive --depth 1 --shallow-submodules https://github.com/xuchaoxin1375/scripts.git C:/repos/scripts
-setx PsModulePath C:/repos/scripts/PS
-```
-
-`*nix` 系统(`repo_source` 国内直连不通时更换代理或镜像，备选 gitee 可能要求登录)：
-
-```bash
-repos="$HOME/repos"
-scripts="$repos/scripts"
-repo_source="github.com"
-mkdir -p "$repos"
-git clone --recursive --depth 1 --shallow-submodules https://"$repo_source"/xuchaoxin1375/scripts.git "$scripts"
-# 配置 shell 脚本库(兼容 bash/zsh)
-sh_script_dir="$scripts/wp/woocommerce/woo_df/sh"
-sh_sym="$HOME/sh" sh="$sh_sym"
-ln -snfv "$sh_script_dir" "$sh_sym"
-bash $sh/shellrc_addition.sh # 部署 prompt 主题与补全
-exec bash # 使配置生效
-```
-
-克隆参数说明：`--depth 1` 仅获取最近一次提交(最省空间)；`--recursive` 一并获取子模块(`ble.sh` 建议携带)；`--shallow-submodules` 使子模块同样仅取最新；`--single-branch` 仅获取主分支。
-
-## Shell 脚本库与服务器
-
-范围界定：个人电脑与服务器共用一套 shell 库(位于 [wp/woocommerce/woo_df/sh](wp/woocommerce/woo_df/sh)，`$sh` 指向该目录)；服务器另有 nginx、fail2ban 等专用配置，本节方案不触碰服务器软件配置。
-
-脚本链接从仓库页面的“原始数据”(raw)处获取，`github` 与 `gitee` 均可：[github 仓库页](https://github.com/xuchaoxin1375/scripts/blob/main/wp/woocommerce/woo_df/sh/update_repos.sh) · [gitee 仓库页](https://gitee.com/xuchaoxin1375/scripts/blob/main/wp/woocommerce/woo_df/sh/update_repos.sh)。
-
-### 一键部署 shell 环境
-
-未部署过则完整克隆，已部署则更新代码。分三类场景。
-
-#### 个人电脑端
-
-具备 bash 的设备都可以使用(会跳过服务器软件相关配置的处理阶段)。
+个人电脑(具备 bash 即可)：
 
 ```bash
 bash <(curl -sSfL https://github.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/update_shell_config.sh)
 ```
 
-#### Linux 服务器端
-
-参数语义以脚本内 `print_usage` 为准：`-U` 更新 shellrc，`-F` 强制更新配置文件，含覆盖 `nginx.conf`，酌情使用，`-R` 使用非默认的客户 IP 解析。
+Linux 服务器(未部署过则完整克隆，已部署则更新代码)：
 
 ```bash
-## github
-bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos.sh) -U # -F -R
-## gitee(国内)
-bash <(curl -SfL https://raw.giteeusercontent.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/update_repos.sh) -U # -F -R
+bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos.sh) -U
 ```
 
-##### 仓库目录统一与修复
+服务器参数、WSL/Lima 共用宿主仓库、更新脚本自救与 zsh 增强，见 [sh/README.md](wp/woocommerce/woo_df/sh/README.md)。
 
-更新脚本自身损坏时的修复/自救(尤其是早期仓库)：某次更新引入错误导致更新脚本不可用时，绕过 `$sh` 直接获取并执行(原因：首次使用时 `$sh` 未定义，脚本会尝试下载到根目录)。
+## 仓库结构
 
-```bash
-curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/wp/woocommerce/woo_df/sh/update_repos.sh -o $HOME/update_repos.sh && bash $HOME/update_repos.sh
-```
+- [PS/](PS/)：PowerShell 模块集，含部署脚本与模块文档；入口 [PS/docs/README.md](PS/docs/README.md)(按任务分流的文档地图)。
+- [wp/woocommerce/woo_df/sh/](wp/woocommerce/woo_df/sh/)：shell 脚本库，含 shell 环境、nginx 配置与 WordPress 运维脚本；入口 [README.md](wp/woocommerce/woo_df/sh/README.md)。
+- [AGENTS.md](AGENTS.md)：agent 工作入口与全仓红线。
+- [PwshModuleByCxxu.md](PwshModuleByCxxu.md)：旧结构说明，仅供考古，现状以 [PS/docs/](PS/docs/) 为准。
+- 许可：[Apache License 2.0](LICENSE)。
 
-##### 配置流程和迁移指南
+## 兼容与网络
 
-参考：[Readme@服务器环境配置流程和迁移指南.md](wp/woocommerce/woo_df/sh/Readme@服务器环境配置流程和迁移指南.md)
-
-#### Linux 虚拟机或模拟层
-
-WSL 或 Lima 等轻量虚拟平台可以按普通 Linux 系统的方式部署。
-
-但考虑到维护与一致性，可以与宿主机共用仓库(前置：先定义 `_REPO_BASE="repos/scripts"` 与 `_SH_RELATIVE="wp/woocommerce/woo_df/sh"`；WSL 连接 Windows 侧仓库，Lima 连接 macOS 宿主仓库)：
-
-```bash
-# wsl
-ln -snfv /mnt/c/repos ~/repos
-ln -snfv /mnt/c/$_REPO_BASE/$_SH_RELATIVE ~/sh
-bash ~/sh/shellrc_addition.sh && exec bash
-# lima(mac)
-ln -snfv $HOME/repos ~/repos
-ln -snfv $HOME/$_REPO_BASE/$_SH_RELATIVE ~/sh
-bash ~/sh/shellrc_addition.sh && exec bash
-```
-
-### 交互式 shell 可选增强
-
-适用于 Linux/macOS 的方案，旨在提供交互式补全和提示增强体验。
-
-#### zsh / Oh My Zsh 环境
-
-需要 zsh 交互增强(动态补全、历史建议、语法高亮)时，先补齐系统依赖，再部署 omz 与插件。上述操作都只改当前用户的家目录，不影响 bash 配置：
-
-```bash
-# 如果了解系统包管理器，直接安装依赖，例如：
-apt install zsh # 适用于 Debian/Ubuntu
-```
-
-通用依赖检查/安装(对不同系统包管理器的一层薄包装)。
-
-```bash
-curl -SfL https://github.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/install_shell_deps.sh -o ~/install_shell_deps.sh
-
-# 依赖检查(只读，缺失时返回非零状态)
-bash ~/install_shell_deps.sh --check
-# 安装缺失依赖(Linux 走发行版包管理器，macOS 走 Homebrew)
-bash ~/install_shell_deps.sh -y
-```
-
-- [install_shell_deps.sh](wp/woocommerce/woo_df/sh/install_shell_deps.sh)：检查并安装 `zsh`、`git`、`curl`、`tar`(macOS 另需 `gnu-sed`)；支持 apt-get、dnf、yum、apk、pacman、zypper、xbps-install、emerge、eopkg 与 Homebrew。参数：`--check` 只检查，`-n` 空跑，`-y` 非交互安装。Windows 的 git-bash / MSYS2 / Cygwin 没有可安装的 zsh，脚本只做检查并给出 WSL 指引。
-
-```bash
-# 部署 oh-my-zsh 与插件；首次安装 omz 后脚本会中断，重跑一次即可
-bash <(curl -sSfL https://github.com/xuchaoxin1375/scripts/raw/main/wp/woocommerce/woo_df/sh/deploy_omz.sh) -s github
-```
-
-- [deploy_omz.sh](wp/woocommerce/woo_df/sh/deploy_omz.sh)：安装 omz、补全/建议/高亮插件及 `zasync` 依赖；`-U` 更新已装插件，`-zac-ref` 钉扎 `zsh-autocomplete` 版本，`-o false` 跳过 omz 安装。
-- 插件清单、版本钉扎、更新与故障排查见 [wp/woocommerce/woo_df/sh/Readme@deploy_omz.md](wp/woocommerce/woo_df/sh/Readme@deploy_omz.md)。
-
-#### fish
-
-开箱即用的交互式友好 shell，可以通过系统包管理器安装。
-
-## nginx 与反向代理配置
-
-服务器端 nginx 配置涵盖 **反向代理网关**、限流与 JS 挑战，入口如下；细节以对应文档与脚本 `--help` 为准：
-
-| 入口 | 说明 |
-|---|---|
-| [wp/woocommerce/woo_df/sh/nginx_conf/Readme.md](wp/woocommerce/woo_df/sh/nginx_conf/Readme.md) | nginx 配置总入口 |
-| [wp/woocommerce/woo_df/sh/nginx_conf/reverse_proxy/scripts/README.md](wp/woocommerce/woo_df/sh/nginx_conf/reverse_proxy/scripts/README.md) | 反向代理配置入口，含脚本一览与模式路由；细节见上级 [docs/](wp/woocommerce/woo_df/sh/nginx_conf/reverse_proxy/docs/) |
-| [wp/woocommerce/woo_df/sh/Readme@服务器环境配置流程和迁移指南.md](wp/woocommerce/woo_df/sh/Readme@服务器环境配置流程和迁移指南.md) | 服务器部署与迁移流程 |
-
-## PowerShell 模块集日常使用与更新
-
-- 开新终端后执行 `init`(完整环境)或 `p`(轻量常用)；`init -Timing` 输出分步耗时，启动缓慢时对照 [PS/docs/Startup-Optimization.md](PS/docs/Startup-Optimization.md) 的性能基线定位。
-- 命令查询按顺序：`Get-ModuleByCxxu`(5.1 可用)→ `Get-Command -Module <模块名>` 查看导出 → `Get-Command <命令>` 反查归属。补全、开机任务、手动启用清单见 [PS/docs/Feature-Guide.md](PS/docs/Feature-Guide.md)。
-- 更新流程如下(`Update-ReposesConfiged` 批量拉取；`git pull` 仅写入仓库目录，**纯文本变更不会触发文件锁定**，可随时执行)：
-
-```mermaid
-flowchart TD
-    A["执行 Update-ReposesConfiged"] --> B{"本次是否含 dll 变更？"}
-    B -->|"是"| C["活件已自动同步"]
-    C --> D["重新打开终端"]
-    D --> E["执行 init"]
-    B -->|"否"| F["执行 ipmox，会话变量不丢失"]
-    E --> G["执行 Test-PsEnvReadiness 收尾"]
-    F --> G
-```
-
-- 上图的结论：含 dll 变更时必须重开终端再 `init`(程序集随进程，旧代码驻留内存)；纯文本变更执行 `ipmox` 即可。收尾统一执行 `Test-PsEnvReadiness`(附加 `-CheckRemote` 可顺便查看远端有无更新，该开关只读远端，不改动本地)。
-- dll 活件机制(并排版本与指针，术语定义见 [PS/docs/Module-Conventions.md](PS/docs/Module-Conventions.md))见 [PS/docs/Live-Versions.md](PS/docs/Live-Versions.md)；仓库源 dll 无法加载时(macOS 或新版 pwsh 与构建机 SMA 不一致)按该文档的本地重编说明处理。
-
-## 文档索引
-
-[PS/docs/](PS/docs/) 为唯一真相源(代码注释与文档矛盾时以文档为准)：
-
-| 文档 | 内容说明 |
-|---|---|
-| [PS/docs/Feature-Guide.md](PS/docs/Feature-Guide.md) | 用户手册：命令表、补全、dll 管理、FAQ、手动启用清单 |
-| [PS/docs/Deploy-Guide.md](PS/docs/Deploy-Guide.md) | 新机部署：极简命令、分步详解、多设备差异、更新与时效性清单 |
-| [PS/docs/Live-Versions.md](PS/docs/Live-Versions.md) | 并排版本活件设计专章：结构、指针协议、流程、故障、命令分工 |
-| [PS/docs/Module-Map.md](PS/docs/Module-Map.md) | 模块画像表：查找功能时先查表 |
-| [PS/docs/Startup-Optimization.md](PS/docs/Startup-Optimization.md) | 性能基线与搬迁史：改动热路径前先查阅 |
-| [PS/docs/Agent-Handoff.md](PS/docs/Agent-Handoff.md) | 踩坑编年史：记录每个决策的起因、实测与教训(agent 必读部分) |
-| [PS/docs/Module-Conventions.md](PS/docs/Module-Conventions.md) | 命名与编码铁律、文档语言规范 |
-| [PS/docs/README.md](PS/docs/README.md) | 文档入口地图：新用户按任务分流 |
-| [PS/AGENTS.md](PS/AGENTS.md) | agent 工作入口：作用范围、换行、提交规范 |
-
-检索方法：查找命令按上文的查询顺序；定位故障先执行 `doctor`(其输出会点名文档章节)；查找决策理由按 Handoff 中的记录查阅。[PwshModuleByCxxu.md](PwshModuleByCxxu.md) 描述旧结构，仅供考古(镜像：[GitCode](https://gitcode.com/xuchaoxin1375/Scripts/blob/main/PwshModuleByCxxu.md) · [Gitee](https://gitee.com/xuchaoxin1375/scripts/blob/main/PwshModuleByCxxu.md) · [GitHub](https://github.com/xuchaoxin1375/scripts/blob/main/PwshModuleByCxxu.md))。
+- 推荐 PowerShell 7 及以上；Windows PowerShell 5.1 的可用范围、轻量部署与 UTF-8 读取注意事项，见 [Feature-Guide.md](PS/docs/Feature-Guide.md) 的 5.1 兼容说明，模块级兼容性用 `Get-CxxuModuleCompatibility` 自查。
+- 国内网络默认经 `gh-proxy.com` 加速；镜像测速与时效性清单见 [Deploy-Guide.md](PS/docs/Deploy-Guide.md) 的镜像与时效性说明。
+- 执行策略报错时先执行 `Set-ExecutionPolicy Bypass -Scope CurrentUser -Force`；git 配置损坏时备份或移除 `~/.gitconfig` 后重试。
