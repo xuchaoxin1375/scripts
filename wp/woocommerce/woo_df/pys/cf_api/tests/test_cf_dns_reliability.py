@@ -9,6 +9,7 @@
 - 最终 verdict（完美/未完美/中断与重跑提示）。
 """
 
+import argparse
 import importlib.util
 import os
 import sys
@@ -16,6 +17,7 @@ import tempfile
 import unittest
 from concurrent.futures import Future
 from threading import Event, Lock
+from unittest import mock
 
 TOOL_PATH = os.path.join(os.path.dirname(__file__), "..", "cloudflare_dns_tool.py")
 
@@ -161,6 +163,7 @@ class RequestAnomalyTest(unittest.TestCase):
         self.assertEqual(rows[0]["resolved"], "yes")
         self.assertEqual(rows[0]["attempts"], 2)
         self.assertEqual(rows[0]["zone_id"], "a" * 32)
+        self.assertEqual(rows[0]["http_status"], "520")
         self.assertIn("520", rows[0]["error"])
 
     def test_zone_name_is_resolved_from_cache(self):
@@ -177,6 +180,7 @@ class RequestAnomalyTest(unittest.TestCase):
         updater._request("GET", f"/zones/{zone_id}/dns_records")
         rows = updater.request_anomalies()
         self.assertEqual(rows[0]["zone"], "example.com")
+        self.assertEqual(rows[0]["http_status"], "429")
         self.assertIn("限流", rows[0]["kind"])
 
     def test_final_failure_records_unresolved_anomaly(self):
@@ -195,6 +199,7 @@ class RequestAnomalyTest(unittest.TestCase):
         rows = updater.request_anomalies()
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["resolved"], "no")
+        self.assertEqual(rows[0]["http_status"], "403")
         self.assertIn("请求被拒绝", rows[0]["kind"])
 
     def test_retry_summary_and_csv(self):
@@ -206,6 +211,7 @@ class RequestAnomalyTest(unittest.TestCase):
                 "method": "PUT",
                 "endpoint": "/zones/z1/dns_records/r1",
                 "kind": "触发 Cloudflare 限流",
+                "http_status": "429",
                 "attempts": 3,
                 "resolved": "yes",
                 "error": "HTTP 429",
@@ -218,6 +224,7 @@ class RequestAnomalyTest(unittest.TestCase):
                 "method": "GET",
                 "endpoint": "/zones/z2/dns_records",
                 "kind": "服务端临时错误 520",
+                "http_status": "520",
                 "attempts": 2,
                 "resolved": "no",
                 "error": "HTTP 520",
@@ -228,8 +235,12 @@ class RequestAnomalyTest(unittest.TestCase):
         text = "\n".join(lines)
         self.assertIn("异常请求 2 次", text)
         self.assertIn("已恢复 1，未恢复 1", text)
-        self.assertIn("涉及账号 2 个、域名 1 个", text)
-        self.assertIn("example.com(2)", text)
+        self.assertIn("异常涉及账号 2 个、域名 1 个", text)
+        self.assertIn("- 按错误码: HTTP 429 — 触发 Cloudflare 限流 1", text)
+        self.assertIn("[1] HTTP 429 — 触发 Cloudflare 限流", text)
+        self.assertIn("[2] HTTP 520 — 服务端临时错误 520", text)
+        self.assertIn("账号", text)
+        self.assertIn("异常请求", text)
 
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "retry.csv")
@@ -237,8 +248,141 @@ class RequestAnomalyTest(unittest.TestCase):
             with open(path, encoding="utf-8-sig") as file_obj:
                 content = file_obj.read()
         self.assertIn("account,zone,zone_id,method,endpoint", content)
+        self.assertIn("http_status", content)
         self.assertIn("acct-a", content)
         self.assertIn("resolved", content)
+
+    def test_same_code_groups_account_zone_and_truncates(self):
+        rows = [
+            {
+                "account": f"acct-{index}",
+                "zone": f"zone{index}.example.com",
+                "zone_id": f"z{index}",
+                "method": "PUT",
+                "endpoint": f"/zones/z{index}/dns_records/r{index}",
+                "kind": "触发 Cloudflare 限流",
+                "http_status": "429",
+                "attempts": 2,
+                "resolved": "yes",
+                "error": "HTTP 429",
+                "timestamp": "2026-01-01T00:00:00Z",
+            }
+            for index in range(12)
+        ]
+        text = "\n".join(tool.retry_summary_lines(rows))
+        self.assertIn("[1] HTTP 429 — 触发 Cloudflare 限流（12 次", text)
+        # 每段最多 10 行，剩余 2 个组合提示导出。
+        self.assertIn("另有 2 个账号/域名组合未显示", text)
+        self.assertNotIn("acct-9", text)
+
+    def test_scope_summary_reports_final_success_and_failure(self):
+        scope = tool.RunScopeStats(
+            accounts_total=2,
+            accounts_ok=1,
+            accounts_failed=1,
+            zones_attempted=10,
+            zones_succeeded=9,
+            zones_failed=1,
+        )
+        text = "\n".join(tool.scope_summary_lines(scope))
+        self.assertIn("尝试 2 个，成功 1 个，失败 1 个", text)
+        self.assertIn("尝试 10 个", text)
+        self.assertIn("最终成功 9 个（含重试后成功）", text)
+        self.assertIn("最终失败 1 个", text)
+
+    def test_summarize_zone_outcomes_uses_final_state(self):
+        results = [
+            tool.DNSOperationResult(
+                zone="ok.example.com",
+                name="a",
+                record_type="A",
+                old_content="1.1.1.1",
+                new_content="2.2.2.2",
+                status="updated",
+            ),
+            tool.DNSOperationResult(
+                zone="bad.example.com",
+                name="b",
+                record_type="A",
+                old_content="1.1.1.1",
+                new_content="2.2.2.2",
+                status="error",
+            ),
+            tool.DNSOperationResult(
+                zone="skip.example.com",
+                name="c",
+                record_type="A",
+                old_content="1.1.1.1",
+                new_content="2.2.2.2",
+                status="skipped",
+            ),
+        ]
+        batch_result = tool.BatchRunResult(
+            results=results,
+            stats=tool.OperationStats(),
+            expected_zones=3,
+        )
+        attempted, succeeded, failed, cancelled = tool.summarize_zone_outcomes(
+            batch_result
+        )
+        self.assertEqual((attempted, succeeded, failed, cancelled), (3, 2, 1, 0))
+
+
+class FanoutScopeTest(unittest.TestCase):
+    """账号级 fan-out 汇总账号成功/失败与 zone 最终状态。"""
+
+    def test_scope_aggregates_account_and_zone_outcomes(self):
+        outcomes = {
+            "ok": tool.AccountOutcome(
+                name="ok",
+                ok=True,
+                error="",
+                failure_rows=[],
+                anomaly_rows=[],
+                zones_attempted=2,
+                zones_succeeded=2,
+            ),
+            "bad": tool.AccountOutcome(
+                name="bad",
+                ok=False,
+                error="账号内存在 1 个错误、0 个取消",
+                failure_rows=[{"account": "bad"}],
+                anomaly_rows=[{"account": "bad", "http_status": "429"}],
+                zones_attempted=2,
+                zones_succeeded=1,
+                zones_failed=1,
+            ),
+        }
+
+        def fake_run(account, *_args, **_kwargs):
+            return outcomes[account["name"]]
+
+        with mock.patch.object(tool, "run_operation_for_account", fake_run):
+            (
+                success,
+                failed,
+                failure_rows,
+                cancelled_accounts,
+                anomaly_rows,
+                scope,
+            ) = tool.run_accounts_fanout(
+                [{"name": "ok"}, {"name": "bad"}],
+                argparse.Namespace(account_workers=2),
+                None,
+                Lock(),
+                Event(),
+                None,
+            )
+
+        self.assertEqual((success, failed, cancelled_accounts), (1, 1, 0))
+        self.assertEqual(len(failure_rows), 1)
+        self.assertEqual(len(anomaly_rows), 1)
+        self.assertEqual(scope.accounts_total, 2)
+        self.assertEqual(scope.accounts_ok, 1)
+        self.assertEqual(scope.accounts_failed, 1)
+        self.assertEqual(scope.zones_attempted, 4)
+        self.assertEqual(scope.zones_succeeded, 3)
+        self.assertEqual(scope.zones_failed, 1)
 
 
 class FullReplaceTest(unittest.TestCase):

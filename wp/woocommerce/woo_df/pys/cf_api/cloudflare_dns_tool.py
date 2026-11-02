@@ -39,8 +39,9 @@ Cloudflare DNS 批量修改 / 查询 / 清理工具
    - 默认 --speed eco 保守执行，尽量不触碰限流；着急时用 balanced/fast/turbo 提速。
    - 使用 --request-interval 可自定义本进程内相邻两次 Cloudflare API 请求的最小间隔。
    - 收到 HTTP 429 时会读取 retry-after / Ratelimit 响应头并自动退避重试。
-    - 每次请求出现失败尝试（含重试后成功）都会记入请求异常历史；批量结束输出
-      汇总，--retry-output 可导出 CSV，供大批量账号复盘限流与 5xx 分布。
+   - 每次请求出现失败尝试（含重试后成功）都会记入请求异常历史；批量结束输出
+     账号/域名范围（域名成功含重试后成功），并按 HTTP 状态码分段给出
+     账号/域名聚合表；--retry-output 可导出 CSV，供大批量账号复盘。
    - 可重试状态码覆盖 408/409/425/5xx 与 Cloudflare 520~527/530；触发限流后
      限速器临时叠加等待（自适应），成功后逐步衰减，小账号快速场景不受影响。
 
@@ -92,6 +93,7 @@ import re
 import signal
 import sys
 import time
+import unicodedata
 from collections import Counter
 from collections.abc import Iterable, Mapping
 from concurrent.futures import (
@@ -247,6 +249,7 @@ RETRY_CSV_FIELDNAMES = [
     "method",
     "endpoint",
     "kind",
+    "http_status",
     "attempts",
     "resolved",
     "error",
@@ -869,6 +872,38 @@ def failure_rows_for_results(
     return rows
 
 
+def summarize_zone_outcomes(
+    batch_result: "BatchRunResult",
+) -> tuple[int, int, int, int]:
+    """按 zone 汇总本次运行结果，返回 (尝试, 成功, 有错误, 取消)。
+
+    - 尝试数优先取引擎对账的 expected_zones；未设置时（如添加模式）
+      退化为结果中出现过的 zone 数。
+    - 同一 zone 只要有记录级错误就算“有错误”；取消优先于错误，
+      避免 expected = 成功 + 有错误 + 取消 被重复扣减。
+    - skipped 与 dry_run 视为成功：规则内跳过不代表失败。
+    """
+    results = batch_result.results
+    result_zones = {
+        item.zone for item in results if item.zone and item.zone != "unknown"
+    }
+    attempted = batch_result.expected_zones or len(result_zones)
+    cancelled_zones = {
+        item.zone for item in results if item.zone and item.status == "cancelled"
+    }
+    failed_zones = {
+        item.zone
+        for item in results
+        if item.zone
+        and item.zone not in cancelled_zones
+        and item.status in FAILURE_STATUSES
+    }
+    cancelled = max(batch_result.cancelled_zones, len(cancelled_zones))
+    failed = len(failed_zones)
+    succeeded = max(0, attempted - failed - cancelled)
+    return attempted, succeeded, failed, cancelled
+
+
 def serialize_zone_backup(
     account_name: str, zone: dict, records: list[dict]
 ) -> dict[str, Any]:
@@ -1369,6 +1404,7 @@ class RequestAnomaly:
     zone_id: str
     zone: str
     kind: str
+    http_status: str
     attempts: int
     resolved: bool
     error: str
@@ -1382,6 +1418,7 @@ class RequestAnomaly:
             "method": self.method,
             "endpoint": self.endpoint,
             "kind": self.kind,
+            "http_status": self.http_status,
             "attempts": self.attempts,
             "resolved": "yes" if self.resolved else "no",
             "error": self.error,
@@ -1460,6 +1497,39 @@ class BatchRunResult:
             f"completed={self.completed_zones}, "
             f"cancelled={self.cancelled_zones}"
         )
+
+
+@dataclass
+class RunScopeStats:
+    """一次批量运行的账号/域名范围统计，用于结束报告。
+
+    域名按 Cloudflare zone 口径：一个 zone 内只要有记录级错误，
+    该 zone 即计入 failed；skipped 不影响成功判定。
+    """
+
+    accounts_total: int = 0
+    accounts_ok: int = 0
+    accounts_failed: int = 0
+    accounts_cancelled: int = 0
+    zones_attempted: int = 0
+    zones_succeeded: int = 0
+    zones_failed: int = 0
+    zones_cancelled: int = 0
+
+
+@dataclass
+class AccountOutcome:
+    """单账号执行结果，供账号级 fan-out 汇总。"""
+
+    name: str
+    ok: bool
+    error: str
+    failure_rows: list[dict[str, Any]]
+    anomaly_rows: list[dict[str, Any]]
+    zones_attempted: int = 0
+    zones_succeeded: int = 0
+    zones_failed: int = 0
+    zones_cancelled: int = 0
 
 
 class CloudflareDNSUpdater:
@@ -1571,10 +1641,14 @@ class CloudflareDNSUpdater:
         """
         url = f"{self.BASE_URL}{endpoint}"
         last_error = ""
+        last_status = ""
         failed_attempts: list[str] = []
+        failed_statuses: list[str] = []
 
         def record_final_failure(
-            message: str, cause: BaseException | None = None
+            message: str,
+            http_status: str = "",
+            cause: BaseException | None = None,
         ) -> NoReturn:
             """记录最终失败（含重试耗尽）并抛出，保证异常报告不遗漏。"""
             self._record_request_anomaly(
@@ -1583,6 +1657,7 @@ class CloudflareDNSUpdater:
                 attempts=len(failed_attempts) + 1,
                 error=message,
                 resolved=False,
+                http_status=http_status,
             )
             if cause is not None:
                 raise Exception(message) from cause  # noqa: TRY002 - 保持既有异常契约
@@ -1621,9 +1696,11 @@ class CloudflareDNSUpdater:
                 if self._rate_limiter:
                     self._rate_limiter.note_rate_limited()
                 last_error = f"网络请求失败: {exc}"
+                last_status = ""
                 if attempt >= self._api_max_retries:
-                    record_final_failure(last_error, exc)
+                    record_final_failure(last_error, "", exc)
                 failed_attempts.append(last_error)
+                failed_statuses.append("")
 
                 delay = min(
                     self._api_retry_base_delay * (2**attempt),
@@ -1641,9 +1718,11 @@ class CloudflareDNSUpdater:
                 if self._rate_limiter:
                     self._rate_limiter.note_rate_limited()
                 last_error = f"HTTP {status}: {resp.text[:300]}"
+                last_status = str(status)
                 if attempt >= self._api_max_retries:
-                    record_final_failure(last_error)
+                    record_final_failure(last_error, last_status)
                 failed_attempts.append(last_error)
+                failed_statuses.append(last_status)
 
                 delay = calc_retry_delay(
                     resp.headers,
@@ -1664,7 +1743,9 @@ class CloudflareDNSUpdater:
             except ValueError as exc:
                 # 可重试状态已在上一步处理；此处非 JSON 视为硬失败。
                 record_final_failure(
-                    f"HTTP {status}: 返回非 JSON 内容: {resp.text[:300]}", exc
+                    f"HTTP {status}: 返回非 JSON 内容: {resp.text[:300]}",
+                    str(status) if not resp.ok else "",
+                    exc,
                 )
 
             if not resp.ok or not data.get("success"):
@@ -1674,9 +1755,11 @@ class CloudflareDNSUpdater:
                     last_error = (
                         f"HTTP {status}, API 限流载荷: {data.get('errors', [])}"
                     )
+                    last_status = str(status) if not resp.ok else ""
                     if attempt >= self._api_max_retries:
-                        record_final_failure(last_error)
+                        record_final_failure(last_error, last_status)
                     failed_attempts.append(last_error)
+                    failed_statuses.append(last_status)
                     delay = calc_retry_delay(
                         resp.headers,
                         attempt_index=attempt,
@@ -1690,7 +1773,8 @@ class CloudflareDNSUpdater:
                     interruptible_sleep(delay, self._stop_event)
                     continue
                 record_final_failure(
-                    f"HTTP {status}, API 请求失败: {data.get('errors', [])}"
+                    f"HTTP {status}, API 请求失败: {data.get('errors', [])}",
+                    str(status) if not resp.ok else "",
                 )
 
             if failed_attempts:
@@ -1700,6 +1784,7 @@ class CloudflareDNSUpdater:
                     attempts=len(failed_attempts) + 1,
                     error=failed_attempts[-1],
                     resolved=True,
+                    http_status=failed_statuses[-1] if failed_statuses else "",
                 )
             if self._rate_limiter:
                 self._rate_limiter.note_success()
@@ -1707,7 +1792,9 @@ class CloudflareDNSUpdater:
                 self._proxy_pool.report_success(proxy_url)
             return data
 
-        record_final_failure(last_error or f"API 请求失败: {method} {endpoint}")
+        record_final_failure(
+            last_error or f"API 请求失败: {method} {endpoint}", last_status
+        )
 
     def _zone_name_for_endpoint(self, endpoint: str) -> tuple[str, str]:
         """从 /zones/<id>/... 端点解析 zone id 与已知名称。"""
@@ -1724,6 +1811,7 @@ class CloudflareDNSUpdater:
         attempts: int,
         error: str,
         resolved: bool,
+        http_status: str = "",
     ) -> None:
         """记录一条请求异常（含重试后成功），线程安全。"""
         zone_id, zone = self._zone_name_for_endpoint(endpoint)
@@ -1735,6 +1823,7 @@ class CloudflareDNSUpdater:
             zone_id=zone_id,
             zone=zone,
             kind=kind,
+            http_status=http_status,
             attempts=attempts,
             resolved=resolved,
             error=error,
@@ -5830,7 +5919,7 @@ def parse_args() -> argparse.Namespace:
         "--retry-output",
         default=None,
         metavar="PATH",
-        help="将请求异常清单写入 CSV（UTF-8-SIG），含重试后成功的请求（account/zone/method/endpoint/kind/attempts/resolved/error），用于大批量账号复盘限流与 5xx 分布。默认只打印汇总。",
+        help="将请求异常清单写入 CSV（UTF-8-SIG），含重试后成功的请求（account/zone/method/endpoint/kind/http_status/attempts/resolved/error），用于按账号/域名复盘。默认只打印范围统计与按状态码分段的聚合表。",
     )
     parser.add_argument(
         "--resume-from",
@@ -6799,10 +6888,10 @@ def run_operation_for_account(
     stop_event: Event,
     rate_limiter: Optional[ApiRateLimiter],
     proxy_pool: Optional[ProxyPool] = None,
-) -> tuple[str, bool, str, list[dict[str, Any]], list[dict[str, Any]]]:
+) -> AccountOutcome:
     """在单个账号中执行更新或删除操作。
 
-    返回 (账号名, 是否成功, 错误信息, 失败清单行, 请求异常行)。
+    返回账号级结果对象（含失败清单行、请求异常行与 zone 统计）。
     成功判定：无 errors 且无 cancelled；中断返回 interrupted，由主循环汇总。
     请求异常行包含“重试后成功”的历史错误，用于大批量账号复盘。
     """
@@ -6859,11 +6948,11 @@ def run_operation_for_account(
                 resume_zones=resume_zones,
             )
             if not backup_ok:
-                return (
-                    name,
-                    False,
-                    backup_msg,
-                    [
+                return AccountOutcome(
+                    name=name,
+                    ok=False,
+                    error=backup_msg,
+                    failure_rows=[
                         {
                             "account": name,
                             "zone": "",
@@ -6879,7 +6968,7 @@ def run_operation_for_account(
                             "timestamp": utc_now_iso(),
                         }
                     ],
-                    updater.request_anomalies(),
+                    anomaly_rows=updater.request_anomalies(),
                 )
         if args.delete_wildcard:
             batch_result = updater.batch_delete_wildcard(
@@ -6958,34 +7047,56 @@ def run_operation_for_account(
             )
 
         failure_rows = failure_rows_for_results(name, batch_result.results)
+        zones_attempted, zones_ok, zones_failed, zones_cancelled = (
+            summarize_zone_outcomes(batch_result)
+        )
+        anomaly_rows = updater.request_anomalies()
 
         if stop_event.is_set():
-            return (
-                name,
-                False,
-                "interrupted",
-                failure_rows,
-                updater.request_anomalies(),
+            return AccountOutcome(
+                name=name,
+                ok=False,
+                error="interrupted",
+                failure_rows=failure_rows,
+                anomaly_rows=anomaly_rows,
+                zones_attempted=zones_attempted,
+                zones_succeeded=zones_ok,
+                zones_failed=zones_failed,
+                zones_cancelled=zones_cancelled,
             )
 
-        pending_count = batch_result.stats.errors + batch_result.stats.cancelled
+        stats = batch_result.stats
+        pending_count = stats.errors + stats.cancelled
         if pending_count > 0:
-            return (
-                name,
-                False,
-                f"账号内存在 {batch_result.stats.errors} 个错误、"
-                f"{batch_result.stats.cancelled} 个取消",
-                failure_rows,
-                updater.request_anomalies(),
+            return AccountOutcome(
+                name=name,
+                ok=False,
+                error=f"账号内存在 {stats.errors} 个错误、{stats.cancelled} 个取消",
+                failure_rows=failure_rows,
+                anomaly_rows=anomaly_rows,
+                zones_attempted=zones_attempted,
+                zones_succeeded=zones_ok,
+                zones_failed=zones_failed,
+                zones_cancelled=zones_cancelled,
             )
 
-        return name, True, "", failure_rows, updater.request_anomalies()
+        return AccountOutcome(
+            name=name,
+            ok=True,
+            error="",
+            failure_rows=failure_rows,
+            anomaly_rows=anomaly_rows,
+            zones_attempted=zones_attempted,
+            zones_succeeded=zones_ok,
+            zones_failed=zones_failed,
+            zones_cancelled=zones_cancelled,
+        )
     except KeyboardInterrupt:
-        return (
-            name,
-            False,
-            "interrupted",
-            [
+        return AccountOutcome(
+            name=name,
+            ok=False,
+            error="interrupted",
+            failure_rows=[
                 {
                     "account": name,
                     "zone": "",
@@ -7001,16 +7112,16 @@ def run_operation_for_account(
                     "timestamp": utc_now_iso(),
                 }
             ],
-            updater.request_anomalies() if updater else [],
+            anomaly_rows=updater.request_anomalies() if updater else [],
         )
     except Exception as exc:
         # 账号级硬失败（如 zone 列表拉取失败）：zone 未知，记整账号哨兵行，
         # 重跑时该账号全量执行，保证不遗漏。
-        return (
-            name,
-            False,
-            str(exc),
-            [
+        return AccountOutcome(
+            name=name,
+            ok=False,
+            error=str(exc),
+            failure_rows=[
                 {
                     "account": name,
                     "zone": "",
@@ -7026,7 +7137,7 @@ def run_operation_for_account(
                     "timestamp": utc_now_iso(),
                 }
             ],
-            updater.request_anomalies() if updater else [],
+            anomaly_rows=updater.request_anomalies() if updater else [],
         )
 
 
@@ -7500,12 +7611,13 @@ def run_accounts_fanout(
     stop_event: Event,
     rate_limiter: Optional[ApiRateLimiter],
     proxy_pool: Optional[ProxyPool] = None,
-) -> tuple[int, int, list[dict[str, Any]], int, list[dict[str, Any]]]:
-    """账号级 fan-out：返回 (成功数, 失败数, 失败清单行, 取消账号数, 请求异常行)。
+) -> tuple[int, int, list[dict[str, Any]], int, list[dict[str, Any]], RunScopeStats]:
+    """账号级 fan-out：返回 (成功数, 失败数, 失败清单行, 取消账号数, 请求异常行, 范围统计)。
 
     中断时未开始的账号 future 会被取消并计数为取消，不计入失败；
     已返回 failure_rows 的账号（即使中断）仍会保留其清单行，保证可重跑。
     请求异常行包含重试后成功的历史错误，不影响成功/失败判定。
+    范围统计中的域名成功数按最终状态计：重试后成功也计入成功。
     """
     success = 0
     failed = 0
@@ -7513,6 +7625,16 @@ def run_accounts_fanout(
     failure_rows: list[dict[str, Any]] = []
     anomaly_rows: list[dict[str, Any]] = []
     account_total = len(accounts)
+    scope = RunScopeStats(accounts_total=account_total)
+
+    def absorb(outcome: AccountOutcome) -> None:
+        """回收单账号结果，累加失败清单、请求异常与 zone 统计。"""
+        failure_rows.extend(outcome.failure_rows)
+        anomaly_rows.extend(outcome.anomaly_rows)
+        scope.zones_attempted += outcome.zones_attempted
+        scope.zones_succeeded += outcome.zones_succeeded
+        scope.zones_failed += outcome.zones_failed
+        scope.zones_cancelled += outcome.zones_cancelled
 
     executor = ThreadPoolExecutor(max_workers=args.account_workers)
     future_to_account: dict[Future[Any], dict] = {}
@@ -7544,17 +7666,18 @@ def run_accounts_fanout(
                 continue
 
             for future in done:
-                name, ok, err, rows, anomalies = future.result()
-                failure_rows.extend(rows)
-                anomaly_rows.extend(anomalies)
-                if ok:
+                outcome = future.result()
+                absorb(outcome)
+                if outcome.ok:
                     success += 1
-                    log_print(f"[ACCOUNT-OK] {name}")
+                    scope.accounts_ok += 1
+                    log_print(f"[ACCOUNT-OK] {outcome.name}")
+                elif outcome.error == "interrupted":
+                    scope.accounts_cancelled += 1
                 else:
-                    if err == "interrupted":
-                        continue
                     failed += 1
-                    log_print(f"[ACCOUNT-ERR] {name}: {err}")
+                    scope.accounts_failed += 1
+                    log_print(f"[ACCOUNT-ERR] {outcome.name}: {outcome.error}")
     except KeyboardInterrupt:
         stop_event.set()
         log_print("\n[INTERRUPT] 收到 Ctrl+C，正在终止所有线程...")
@@ -7566,26 +7689,38 @@ def run_accounts_fanout(
                 name = account.get("name") or account.get("email") or "unknown"
                 if not future.done() or future.cancelled():
                     cancelled_accounts += 1
+                    scope.accounts_cancelled += 1
                     log_print(f"[ACCOUNT-CANCELLED] {name} 未执行（任务被取消）")
                 else:
                     try:
-                        res_name, ok, err, rows, anomalies = future.result()
-                        failure_rows.extend(rows)
-                        anomaly_rows.extend(anomalies)
-                        if ok:
+                        outcome = future.result()
+                        absorb(outcome)
+                        if outcome.ok:
                             success += 1
-                            log_print(f"[ACCOUNT-OK] {res_name}")
-                        elif err != "interrupted":
+                            scope.accounts_ok += 1
+                            log_print(f"[ACCOUNT-OK] {outcome.name}")
+                        elif outcome.error == "interrupted":
+                            scope.accounts_cancelled += 1
+                        else:
                             failed += 1
-                            log_print(f"[ACCOUNT-ERR] {res_name}: {err}")
+                            scope.accounts_failed += 1
+                            log_print(f"[ACCOUNT-ERR] {outcome.name}: {outcome.error}")
                     except Exception as exc:
                         failed += 1
+                        scope.accounts_failed += 1
                         log_print(f"[ACCOUNT-ERR] {name}: {exc}")
         executor.shutdown(
             wait=not stop_event.is_set(), cancel_futures=bool(stop_event.is_set())
         )
 
-    return success, failed, failure_rows, cancelled_accounts, anomaly_rows
+    return (
+        success,
+        failed,
+        failure_rows,
+        cancelled_accounts,
+        anomaly_rows,
+        scope,
+    )
 
 
 def write_failure_report(
@@ -7626,26 +7761,183 @@ def write_retry_csv(path: str, rows: list[dict[str, Any]]) -> None:
             writer.writerow({key: row.get(key, "") for key in RETRY_CSV_FIELDNAMES})
 
 
-def retry_summary_lines(rows: list[dict[str, Any]], max_zones: int = 5) -> list[str]:
-    """生成请求异常汇总（含重试后成功），按类型与域名聚合。"""
+def _display_width(text: str) -> int:
+    """按终端显示列宽计算文本宽度（中文/全角字符占 2 列）。"""
+    return sum(
+        2 if unicodedata.east_asian_width(ch) in {"W", "F"} else 1 for ch in text
+    )
+
+
+def _truncate_display(text: str, width: int) -> str:
+    """按显示列宽截断文本，超长时以省略号结尾。"""
+    if _display_width(text) <= width:
+        return text
+    kept: list[str] = []
+    used = 0
+    limit = max(1, width - 1)
+    for ch in text:
+        char_width = 2 if unicodedata.east_asian_width(ch) in {"W", "F"} else 1
+        if used + char_width > limit:
+            break
+        kept.append(ch)
+        used += char_width
+    return "".join(kept) + "…"
+
+
+def _pad_cell(text: str, width: int, align: str = "left") -> str:
+    """按显示列宽补空格；数字列可用右对齐。"""
+    gap = max(0, width - _display_width(text))
+    padding = " " * gap
+    return padding + text if align == "right" else text + padding
+
+
+def _anomaly_zone_label(row: dict[str, Any]) -> str:
+    """异常行的域名定位：zone 名优先，其次 zone_id，最后账号级。"""
+    zone = str(row.get("zone") or "")
+    if zone:
+        return zone
+    zone_id = str(row.get("zone_id") or "")
+    if zone_id:
+        return f"zone_id:{zone_id[:8]}"
+    return "(账号级)"
+
+
+def _anomaly_section(row: dict[str, Any]) -> tuple[str, str]:
+    """按 HTTP 状态码 + 失败类型分段；无状态码（如网络错误）时只用类型。"""
+    status = str(row.get("http_status") or "").strip()
+    kind = str(row.get("kind") or "未知错误")
+    if status:
+        return f"http:{status}:{kind}", f"HTTP {status} — {kind}"
+    return f"kind:{kind}", kind
+
+
+def _anomaly_table_lines(rows: list[dict[str, Any]], max_rows: int = 10) -> list[str]:
+    """为同一错误码生成“账号/域名”聚合表，超过上限时提示导出 CSV。"""
+    grouped: dict[tuple[str, str], dict[str, int]] = {}
+    for row in rows:
+        account = str(row.get("account") or "-")
+        zone = _anomaly_zone_label(row)
+        item = grouped.setdefault(
+            (account, zone),
+            {"count": 0, "resolved": 0, "unresolved": 0, "max_attempts": 0},
+        )
+        item["count"] += 1
+        if str(row.get("resolved", "")) == "yes":
+            item["resolved"] += 1
+        else:
+            item["unresolved"] += 1
+        try:
+            attempts = int(row.get("attempts") or 0)
+        except (TypeError, ValueError):
+            attempts = 0
+        item["max_attempts"] = max(item["max_attempts"], attempts)
+
+    ordered = sorted(
+        grouped.items(), key=lambda kv: (-kv[1]["count"], kv[0][0], kv[0][1])
+    )
+    shown = ordered[:max_rows]
+    headers = ["账号", "域名", "异常请求", "已恢复", "未恢复", "最大尝试"]
+    aligns = ["left", "left", "right", "right", "right", "right"]
+    rows_text = [
+        [
+            _truncate_display(account, 24),
+            _truncate_display(zone, 40),
+            str(item["count"]),
+            str(item["resolved"]),
+            str(item["unresolved"]),
+            str(item["max_attempts"]),
+        ]
+        for (account, zone), item in shown
+    ]
+    widths = [
+        max(
+            _display_width(header),
+            max((_display_width(line[idx]) for line in rows_text), default=0),
+        )
+        for idx, header in enumerate(headers)
+    ]
+    indent = "  "
+    lines = [
+        indent
+        + "  ".join(
+            _pad_cell(header, widths[idx], aligns[idx])
+            for idx, header in enumerate(headers)
+        ),
+        indent + "  ".join("-" * width for width in widths),
+    ]
+    lines.extend(
+        indent
+        + "  ".join(
+            _pad_cell(cell, widths[idx], aligns[idx]) for idx, cell in enumerate(line)
+        )
+        for line in rows_text
+    )
+    remaining = len(ordered) - len(shown)
+    if remaining > 0:
+        lines.append(
+            f"{indent}… 另有 {remaining} 个账号/域名组合未显示；"
+            "加 --retry-output <path> 导出完整明细。"
+        )
+    return lines
+
+
+def scope_summary_lines(scope: RunScopeStats | None) -> list[str]:
+    """生成本次运行的账号/域名范围统计。"""
+    if scope is None:
+        return []
+    lines = [
+        "",
+        "本次处理范围:",
+        (
+            f"- 账号: 尝试 {scope.accounts_total} 个，成功 {scope.accounts_ok} 个，"
+            f"失败 {scope.accounts_failed} 个，取消 {scope.accounts_cancelled} 个"
+        ),
+    ]
+    if scope.zones_attempted:
+        lines.append(
+            f"- 域名: 尝试 {scope.zones_attempted} 个，"
+            f"最终成功 {scope.zones_succeeded} 个（含重试后成功），"
+            f"最终失败 {scope.zones_failed} 个，取消 {scope.zones_cancelled} 个"
+        )
+    else:
+        lines.append(
+            "- 域名: 未统计（没有匹配到可处理的 zone，"
+            "或账号在取得 zone 列表前失败/取消）"
+        )
+    if scope.accounts_failed or scope.accounts_cancelled:
+        lines.append(
+            "- 说明: 账号在取得 zone 列表前失败/取消时，其 zone 无法计入域名统计。"
+        )
+    return lines
+
+
+def retry_summary_lines(
+    rows: list[dict[str, Any]], max_rows_per_code: int = 10
+) -> list[str]:
+    """生成请求异常汇总：按 HTTP 状态码分段，每段附账号/域名聚合表。"""
     if not rows:
         return []
     resolved = sum(1 for row in rows if str(row.get("resolved", "")) == "yes")
-    kinds = Counter(str(row.get("kind") or "未知") for row in rows)
-    zones: Counter[str] = Counter()
-    account_level = 0
-    for row in rows:
-        zone = str(row.get("zone") or "")
-        if zone:
-            zones[zone] += 1
-            continue
-        zone_id = str(row.get("zone_id") or "")
-        if zone_id:
-            zones[f"zone_id:{zone_id[:8]}"] += 1
-        else:
-            account_level += 1
+    zones = {
+        _anomaly_zone_label(row)
+        for row in rows
+        if str(row.get("zone") or "") or str(row.get("zone_id") or "")
+    }
     accounts = {str(row.get("account") or "") for row in rows if row.get("account")}
-    scope = f"涉及账号 {len(accounts)} 个、域名 {len(zones)} 个"
+    account_level = sum(
+        1
+        for row in rows
+        if not str(row.get("zone") or "") and not str(row.get("zone_id") or "")
+    )
+    section_counts: Counter[str] = Counter()
+    sections: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        key, title = _anomaly_section(row)
+        section_counts[key] += 1
+        section = sections.setdefault(key, {"title": title, "rows": []})
+        section["rows"].append(row)
+
+    scope = f"异常涉及账号 {len(accounts)} 个、域名 {len(zones)} 个"
     if account_level:
         scope += f"，账号级请求 {account_level} 次"
     lines = [
@@ -7655,20 +7947,42 @@ def retry_summary_lines(rows: list[dict[str, Any]], max_zones: int = 5) -> list[
             f"- 异常请求 {len(rows)} 次：已恢复 {resolved}，未恢复 {len(rows) - resolved}；"
             f"{scope}"
         ),
-        "- 按类型: "
-        + "，".join(f"{kind} {count}" for kind, count in kinds.most_common()),
+        "- 按错误码: "
+        + "，".join(
+            f"{sections[key]['title']} {count}"
+            for key, count in section_counts.most_common()
+        ),
     ]
-    top_zones = "，".join(
-        f"{zone}({count})" for zone, count in zones.most_common(max_zones)
-    )
-    if top_zones:
-        lines.append(f"- 域名 Top: {top_zones}")
+    for index, (key, count) in enumerate(section_counts.most_common(), start=1):
+        section_rows = sections[key]["rows"]
+        section_resolved = sum(
+            1 for row in section_rows if str(row.get("resolved", "")) == "yes"
+        )
+        lines.append("")
+        lines.append(
+            f"[{index}] {sections[key]['title']}（{count} 次："
+            f"已恢复 {section_resolved}，未恢复 {count - section_resolved}）"
+        )
+        lines.extend(_anomaly_table_lines(section_rows, max_rows_per_code))
     return lines
 
 
-def write_retry_report(args: argparse.Namespace, rows: list[dict[str, Any]]) -> None:
-    """输出请求异常汇总；给了 --retry-output 时同时写 CSV。"""
+def write_retry_report(
+    args: argparse.Namespace,
+    rows: list[dict[str, Any]],
+    scope: RunScopeStats | None = None,
+) -> None:
+    """输出处理范围与请求异常汇总；给了 --retry-output 时同时写 CSV。"""
+    for line in scope_summary_lines(scope):
+        log_print(line)
     if not rows:
+        if scope is not None and scope.zones_attempted:
+            log_print(
+                "\n请求异常汇总: 无异常请求（本次未出现需要重试的 429/5xx/网络错误）。"
+            )
+        retry_output = getattr(args, "retry_output", None)
+        if retry_output:
+            log_print(f"请求异常清单: 本次无异常请求，未写入 {retry_output}。")
         return
     for line in retry_summary_lines(rows):
         log_print(line)
@@ -7682,7 +7996,7 @@ def write_retry_report(args: argparse.Namespace, rows: list[dict[str, Any]]) -> 
     elif any(str(row.get("resolved", "")) == "yes" for row in rows):
         log_print(
             "提示: 加 --retry-output <path> 可导出逐条异常请求（含重试后成功），"
-            "便于复盘限流与 5xx 分布。"
+            "便于按账号/域名复盘限流与 5xx 分布。"
         )
 
 
@@ -7796,7 +8110,7 @@ def main() -> None:
             log_print(f"已加载白名单: {len(whitelist)}")
 
         print_lock = Lock()
-        success, failed, failure_rows, cancelled_accounts, anomaly_rows = (
+        success, failed, failure_rows, cancelled_accounts, anomaly_rows, scope = (
             run_accounts_fanout(
                 accounts,
                 args,
@@ -7808,7 +8122,7 @@ def main() -> None:
             )
         )
         write_failure_report(args, failure_rows)
-        write_retry_report(args, anomaly_rows)
+        write_retry_report(args, anomaly_rows, scope)
 
         exit_code, verdict_lines = build_final_verdict(
             success,
@@ -7827,7 +8141,7 @@ def main() -> None:
     if args.add_domain or args.add_record:
         whitelist = None  # 添加模式通常不需要白名单
         print_lock = Lock()
-        success, failed, failure_rows, cancelled_accounts, anomaly_rows = (
+        success, failed, failure_rows, cancelled_accounts, anomaly_rows, scope = (
             run_accounts_fanout(
                 accounts,
                 args,
@@ -7839,7 +8153,7 @@ def main() -> None:
             )
         )
         write_failure_report(args, failure_rows)
-        write_retry_report(args, anomaly_rows)
+        write_retry_report(args, anomaly_rows, scope)
 
         exit_code, verdict_lines = build_final_verdict(
             success,

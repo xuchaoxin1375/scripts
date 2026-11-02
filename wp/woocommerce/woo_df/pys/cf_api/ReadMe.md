@@ -25,7 +25,7 @@ cloudflare_dns_tool.py
 | 代理/TTL 设置 | 内容不变，批量改代理与 TTL | [批量设置代理状态与 TTL](#批量设置代理状态与-ttl) |
 | 备份与导出 | 变更前快照，json/bind 导出 | [变更前备份与导出](#变更前备份与导出) |
 | 失败清单与 verdict | 未完成项 CSV 重跑，三态结论 | [失败清单、重跑与运行结论](#失败清单重跑与运行结论) |
-| 请求异常报告 | 含重试成功的 429/5xx/网络异常汇总与 CSV | [请求异常报告](#请求异常报告含重试成功) |
+| 请求异常报告 | 域名最终成功/失败统计，按状态码分段的异常表与 CSV | [请求异常报告](#请求异常报告含重试成功) |
 | 出口代理 | 代理出口访问 API，故障切换 | [出口代理](#出口代理) |
 | 限流/中断/日志 | 速度档位，Ctrl+C，审计日志 | [限流模式](#限流模式) |
 | 批量添加（Web，已移除） | 曾为操作页批量添加模式，对应 `--add-domain/--add-record` | [WEBUI_LESSONS.md](WEBUI_LESSONS.md) |
@@ -803,16 +803,32 @@ CSV 列：`account,zone,record_id,name,type,old_content,new_content,action,statu
 
 ## 请求异常报告（含重试成功）
 
-域名多的账号更容易撞上限流（429）、5xx 与网络抖动。批量模式（更新/删除/添加/属性/导出）结束后会额外输出请求异常汇总，统计“出现过失败尝试”的请求，即使重试后已经成功：
+域名多的账号更容易撞上限流（429）、5xx 与网络抖动。批量模式（更新/删除/添加/属性/导出）结束后会先输出本次处理范围，再按 HTTP 状态码分段输出请求异常汇总。统计的是“出现过失败尝试”的请求，即使重试后已经成功：
 
 ```text
+本次处理范围:
+- 账号: 尝试 6 个，成功 5 个，失败 1 个，取消 0 个
+- 域名: 尝试 41 个，最终成功 39 个（含重试后成功），最终失败 2 个，取消 0 个
+
 请求异常汇总（含重试后成功）:
-- 异常请求 37 次：已恢复 35，未恢复 2；涉及账号 6 个、域名 9 个
-- 按类型: 触发 Cloudflare 限流 28，服务端临时错误 522 6，网络错误 1，请求被拒绝（重跑结果不变） 2
-- 域名 Top: shop.example.com(12)，api.example.net(8)
+- 异常请求 37 次：已恢复 35，未恢复 2；异常涉及账号 6 个、域名 9 个，账号级请求 1 次
+- 按错误码: HTTP 429 — 触发 Cloudflare 限流 28，HTTP 522 — 服务端临时错误 522 6，网络错误 1，HTTP 403 — 请求被拒绝（重跑结果不变） 2
+
+[1] HTTP 429 — 触发 Cloudflare 限流（28 次：已恢复 28，未恢复 0）
+  账号    域名                  异常请求  已恢复  未恢复  最大尝试
+  ------  --------------------  --------  ------  ------  --------
+  cfz46   shop.example.com            12      12       0         3
+  cfz46   api.example.net              8       8       0         2
+
+[2] HTTP 403 — 请求被拒绝（重跑结果不变）（2 次：已恢复 0，未恢复 2）
+  账号    域名                  异常请求  已恢复  未恢复  最大尝试
+  ------  --------------------  --------  ------  ------  --------
+  cfz46   legacy.example.com           2       0       2         1
 ```
 
+- 域名计数按 Cloudflare zone 口径：一个 zone 内只要有记录级最终失败，该 zone 即计入“最终失败”；429/5xx 重试后成功仍计入“最终成功”。
 - 每个请求出现失败尝试即记一条；`attempts` 是总尝试次数，`resolved` 标注最终是否成功。
+- 分段按 HTTP 状态码（429、5xx、4xx 等）；网络错误没有状态码，单独成段。每段表格按“账号 + 域名”聚合，最多显示 10 行，超出部分提示导出 CSV。
 - 4xx 等不可重试错误也会记录（`resolved=no`）；它与失败清单的“条目级最终失败”是两个口径：这里按请求统计，失败清单按 DNS 条目统计。
 - 汇总始终打印；需要逐条复盘时加 `--retry-output`：
 
@@ -820,7 +836,7 @@ CSV 列：`account,zone,record_id,name,type,old_content,new_content,action,statu
 python cloudflare_dns_tool.py -n 1.2.3.4 --retry-output retry.csv
 ```
 
-CSV 列：`account,zone,zone_id,method,endpoint,kind,attempts,resolved,error,timestamp`（UTF-8-SIG，Excel 可直接打开）。`zone` 取自本次已读取的 zone 列表；账号级请求（如 `GET /zones`）的 `zone` 为空，可用 `zone_id` 定位。
+CSV 列：`account,zone,zone_id,method,endpoint,kind,http_status,attempts,resolved,error,timestamp`（UTF-8-SIG，Excel 可直接打开）。`zone` 取自本次已读取的 zone 列表；账号级请求（如 `GET /zones`）的 `zone` 为空，可用 `zone_id` 定位。
 
 ---
 
@@ -1253,6 +1269,9 @@ python -m unittest cf_api.tests.test_cf_dns_reliability
 | `OperationStats`              | 多线程安全统计更新 / 删除 / 跳过 / 错误数量 |
 | `DNSOperationResult`          | 单条 DNS 操作结果结构                       |
 | `RequestAnomaly`              | 单次请求异常记录（含重试后成功）             |
+| `RunScopeStats`               | 本次运行的账号 / zone 最终成功与失败统计     |
+| `summarize_zone_outcomes()`   | 按 zone 归并最终状态（重试成功计入成功）     |
+| `retry_summary_lines()`       | 按 HTTP 状态码分段的异常汇总与聚合表         |
 | `get_all_zones()`             | 分页读取账号下所有 zone                     |
 | `get_dns_records()`           | 分页读取 DNS 记录                           |
 | `batch_update()`              | 当前账号批量更新 DNS 记录                   |
