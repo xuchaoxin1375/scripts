@@ -839,6 +839,10 @@ if ($Sandbox)
     }
     catch
     {
+        if (-not (Test-Path -LiteralPath $sandboxRoot))
+        {
+            New-Item -ItemType Directory -Path $sandboxRoot -Force | Out-Null
+        }
         Write-Warning "Sandbox deployment failed; kept at [$sandboxRoot] for inspection."
         throw
     }
