@@ -487,3 +487,7 @@
 
 107. **`VarSet3.conf` 三元运算符在 5.1 报 `Unexpected token '?'`（2026-11-06，用户实测 `Update-ReposesConfiged`）**：`PwshVar` 把 conf 逐行转换后 `iex` 执行（预编译缓存路径先整文件 `Parser` 校验，失败即回退逐行），`Geogebra_home= ... ? ... : ...` 是 PS7 才有的三元，5.1 在 `PwshVar.psm1` 的 `Invoke-Expression` 处抛 ParseException，且 `-ErrorAction SilentlyContinue` 挡不住解析错误，每次 `init` 都刷红字。改为 `if (...) { } else { }` 赋值（语义不变：路径不存在取 `$GeoGebra_download`，存在取 `(rvpa ...)[-1].ToString()`）。校验：按缓存构建规则把整文件转换后 `Parser::ParseInput`，5.1 改前 1 错（行号即该行）、改后 0 错，7 两边皆 0；5.1 实跑两个分支取值正确。规则已入 `Feature-Guide` 的 5.1 加码禁区（conf 文件同样禁三元）。附带发现：`$GeoGebra_download` 在仓库内没有定义，GeoGebra 未安装时该分支本就是 `$null`，属既有行为，未改动。
 
+#### #108
+
+108. **5.1 重定义内置别名（`rm`/`r`/`ps`/`h`）报 `The AllScope option cannot be removed`（2026-11-06，用户新机实测 `Add-CxxuPsModuleToProfile`）**：`Aliases/Aliases.psm1` 把别名文件每行拼成 `set-alias <名> <目标> -Scope Global` 再 `iex`。5.1 的 `rm`/`r`/`ps`/`h` 等内置别名带 `AllScope` 选项，`Set-Alias` 未声明 `-Option AllScope` 时会尝试去掉该选项，抛非终止错误 `The AllScope option cannot be removed`；别名定义保持原样（`rm` 仍是 `Remove-Item`、`r` 仍是 `Invoke-History`、`h` 仍是 `Get-History`），自定义别名静默失效。7.x 这些别名 `Options=None`，同一条命令不报错，所以问题只在 5.1 暴露。修复：先按别名名查现有 `Options`，命中 `AllScope` 时拼 `-Option AllScope -Scope Global`，其余仍用原写法。验证：沙盒别名文件同时包含四个内置名与一个新名，5.1 下四个都改到自定义目标且 `Options=AllScope`、新名 `Options=None`；7 下五个均 `Options=None`，两版本零错误；模块 psm1 保持 BOM。规则已入 `Feature-Guide` 的 5.1 加码禁区。
+

@@ -60,7 +60,19 @@ function Set-PwshAliasFile
         Write-Debug $line -ErrorAction Ignore
         if ($line -match '^[\^a-zA-Z]')
         {
-            $line = "set-alias $line -Scope Global"
+            # 5.1 的内置别名(rm/r/ps/h 等)带 AllScope。Set-Alias 默认会去掉 AllScope,
+            # 于是报 "The AllScope option cannot be removed";这是非终止错误,别名保持原样,
+            # 表现为自定义别名静默失效。这类别名必须显式带 -Option AllScope 才能改定义。
+            $aliasName = ($line -split '\s+', 2)[0]
+            $existing = Get-Alias -Name $aliasName -ErrorAction Ignore |
+                Where-Object { $_.Name -eq $aliasName } |
+                Select-Object -First 1
+            $option = ''
+            if ($existing -and ($existing.Options -band [System.Management.Automation.ScopedItemOptions]::AllScope))
+            {
+                $option = ' -Option AllScope'
+            }
+            $line = "set-alias $line$option -Scope Global"
             Write-Debug $line
             Invoke-Expression "`t$line" -ErrorAction Ignore
         }

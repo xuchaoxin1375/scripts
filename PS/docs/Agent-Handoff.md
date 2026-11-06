@@ -132,6 +132,7 @@
 | [#105](archive/agent-handoff-history.md#105) | Deploy-CronFile：只读阶段并发 + `-SkipPrecheck` | 现行 | 主题文档：[update-cron/README.md](../../wp/woocommerce/woo_df/sh/update-cron/README.md)「只读预检与并发」 | 2026-10-29 |
 | [#106](archive/agent-handoff-history.md#106) | `irm\|iex` 前必须裁 `U+FEFF`；落盘用 `-OutFile` | 现行 | 主题文档：[Module-Conventions.md](Module-Conventions.md)「Invoke-Expression 使用规范」 | 2026-11-06 |
 | [#107](archive/agent-handoff-history.md#107) | `PwshVar/confs/*.conf` 禁三元（5.1 逐行 `iex` 报 `Unexpected token '?'`），条件赋值用 `if/else` | 现行 | 主题文档：[Feature-Guide.md](Feature-Guide.md)「5.1 兼容」 | 2026-11-06 |
+| [#108](archive/agent-handoff-history.md#108) | 5.1 重定义内置别名（`rm`/`r`/`ps`/`h`）必须带 `-Option AllScope`，否则报错且别名静默失效 | 现行 | 主题文档：[Feature-Guide.md](Feature-Guide.md)「5.1 兼容」 | 2026-11-06 |
 
 批次线索：模块拆分是 `#36`、`#42`–`#49` 的一串切片（一次性过程，收在下面的折叠区，其中 `#46` 是单列规则）；5.1 降档是 `#50`–`#57` 的连续批次，结论统一归到 [Feature-Guide.md](Feature-Guide.md)「5.1 兼容」，检索时按范围看即可。
 
