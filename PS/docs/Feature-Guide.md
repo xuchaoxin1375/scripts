@@ -285,11 +285,13 @@ p -Force                    # 看 init 分步耗时，定位慢项
 - 提示符全对齐：`fast`/`Simple`/`Short`/`Default` 原生可用；`Balance` 的 Info/Startup 外部依赖在 `Prompt.psm1` 顶部有 5.1 本地兜底（CIM/注册表/内置 cmdlet 同口径；必须 `function global:` 定义，否则模块私有、直接调用撞坏 Info；缓存用 `$global:__Cxxu51*`，`$script:` 跨不了作用域），渲染与 7.5 逐字一致，稳态约 50ms/次（首屏冷缓存 1.4s 一次性）；`Get-IpAddressFormated` 含参数集的移植版，直接调用也可用。
 - 明确不可用：`CxxuPredictor`（net9 dll）、预测视图（需 7.2+ 子系统）、`Deploy` 全系、`Test-PsEnvReadiness` 的 `pwsh 7+` 必备项（在 5.1 下即提示装 pwsh7）。
 - 用法：`powershell -NoProfile` 起 5.1，保证 `PSModulePath` 含模块集后 `init` 即可；`$env:PsTab='True'` 可开 Tab 包裹（默认关）。
-- 轻量部署（免 git，新机器只有 v5 时）：先保存部署脚本，再运行 `& $deployScript -Light`；`$deployScript` 是仓库 `PS/Deploy/Deploy-CxxuPsModules.ps1` 的本地副本，保存方法与参数说明见 [Deploy-Guide](Deploy-Guide.md) 和 [PS/Deploy/readme](../Deploy/readme.md)。
+- 轻量部署（免 git，新机器只有 v5 时）：先按 Deploy-Guide 的「前置：执行策略」设置执行策略，再保存部署脚本并运行 `& $deployScript -Light`；`$deployScript` 是仓库 `PS/Deploy/Deploy-CxxuPsModules.ps1` 的本地副本，保存方法与参数说明见 [Deploy-Guide](Deploy-Guide.md) 和 [PS/Deploy/readme](../Deploy/readme.md)。
   走离线包下载（codeload + 中央镜像静默，不弹窗选源），落 `PSModulePath`（setx 追加，不覆盖），
   写 5.1 专属 profile，重开 `powershell.exe` 跑 `init` 即用。默认不安装 PowerShell 7，
   需要完整功能时再加 `-InstallPwsh7`：
   ```powershell
+  # 前置：允许当前用户运行本地脚本（与 Scoop 安装前置相同）
+  Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
   $deployScript = "$HOME\Downloads\Deploy-CxxuPsModules.ps1"
   $mirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }  # 换源只改这一行
   irm "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1" -OutFile $deployScript
