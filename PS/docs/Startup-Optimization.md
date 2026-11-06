@@ -476,3 +476,20 @@ Set-PSReadLineOption: 句柄无效。
   非命令位透传（`-Path` 在）→`$Error` 零污染；PsTab 默认关（不装桩、默认 Tab 原样），置 True 才启用；
   重复安装幂等（包装激活后不再重装桩，原函数不被覆盖）；和弦桩重定向下零污染；
   `-Now` 四件齐 ERRS=0。真机待验：首按 Ctrl+T/R、首个 Tab 的一次性耗时手感。
+
+## 23. 第十六轮：CxxuCommand 排序重做与补全栈定位（2026-11-06，用户报“模糊提示策略不好”）
+
+- 触发：用户开头贴出 `Deploy-CompletionStack` 的 fzf/zoxide 警告后说明——补全插件里只重视 CxxuCommand，但当前提示策略不好。实测旧算法确认：`gci` 首条是 `gcim`、`Get-ChildItem` 掉到第 18；`ls` 前 30 条没有 `Get-ChildItem`；`sel` 被 `Set-*` 混排；单字母 `s`/`x` 灌满 30 条无关命令。
+- 根因：单一加权分（命中 +1、边界 +2、连击 +2、间隔与起始扣分）没有硬分层，长度做次键导致短名乱插队；无别名映射与使用频率；固定 30 条且无质量门槛。
+- 新排序（层级优先；同层看“得分 + 历史频率”，最后长度与字母序）：
+  别名精确（`ls`/`gci`/`ps` → 目标命令；目标名与别名可能没有共同子序列，必须先判）→
+  完整前缀 → 词边界子序列/首字母（`gci` → Get-ChildItem）→ 从词边界起的连续片段（`chitem` → Get-ChildItem）→
+  一般子序列（查询长度 ≥4、跨度 ≤ 2n+3、最大间隔 ≤4）。
+  有强层级时自动丢弃弱层级（别名命中只留前缀，前缀命中丢掉一般子序列）；单字符只认前缀；
+  打全名（非别名）时返回空，参数交给 CompletionPredictor。
+- 别名与频率：`Get-Command` 一次取 Name/CommandType/Definition，别名归并到目标；读 PSReadLine 历史尾部 5000 条统计首个 token（最近 300 条加权 4），别名调用计入目标，权重封顶 20。历史默认路径先直接猜（省约 80ms 的 `Get-PSReadLineOption` 调用），默认文件不存在才回退查询。
+- 条数与性能（本机 2497 条命令，pwsh 7.5.4）：predictor 默认 8 条，Tab 仍按 `maxResults`；建表含历史读取 169ms，按键过滤 0.03~0.43ms。
+- 实测（新）：`gci`→Get-ChildItem；`ls`→Get-ChildItem、ls_eza；`gi`→Get-Item + git*；`ps`→Get-Process；`gp`→Get-ItemProperty；`sel`→Select-* 占头部；`get-chi`→仅 Get-ChildItem 系；`get-childitem`→空；`s`/`x` 不再灌无关命令。
+- 补全栈定位：`Deploy-CompletionStack` 改为先同步 CxxuCommand 活件（核心），PSFzf/CompletionPredictor 与 fzf/zoxide 标为可选；缺二进制合成一行提示，不再逐条 `Write-Warning`。
+- 发布：`dotnet build -c Release -p:SmaPath=...` → 覆盖 `PS/CxxuPredictor/CxxuPredictor.dll` → `Sync-CxxuPredictor`；重开终端生效（dll 锁随进程）。
+

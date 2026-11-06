@@ -665,15 +665,18 @@ function Deploy-CompletionStack
 {
     <#
     .SYNOPSIS
-    新机一键补全栈:PSFzf/CompletionPredictor 模块 + fzf/zoxide 二进制 + 版本门(+可选 PSCompletions)。
+    新机补全栈:核心 CxxuCommand 命令名提示 + 可选 PSFzf/CompletionPredictor 与 fzf/zoxide 二进制。
     .DESCRIPTION
-    Test-PsEnvReadiness 只读体检,本函数动手补:缺的模块直装,二进制有 scoop 就装、无则给命令;
-    pwsh 不够 7.5 只警告不停手(CxxuPredictor 用不上,其它照常);-WhatIf 空跑看动作,零副作用。
-    自研 CxxuPredictor 随仓库零安装,不在这里装。装完开新终端跑 init,首跑自建缓存。
+    Test-PsEnvReadiness 只读体检,本函数动手补。核心是自研 CxxuCommand(仓库自带,零安装),
+    先同步 predictor 活件;PSFzf/CompletionPredictor 模块与 fzf/zoxide 二进制是可选增强,
+    缺少时只给一行提示,不阻塞、不影响 CxxuCommand。pwsh 不够 7.5 时 CxxuCommand 不可用,
+    其余补全照常。-WhatIf 空跑看动作,零副作用。装完开新终端跑 init。
     .EXAMPLE
     Deploy-CompletionStack -WhatIf
     .EXAMPLE
     Deploy-CompletionStack -IncludePSCompletions
+    .EXAMPLE
+    Deploy-CompletionStack -SkipBinaries
     #>
     [CmdletBinding(SupportsShouldProcess)]
     param(
@@ -683,11 +686,32 @@ function Deploy-CompletionStack
         [switch]$SkipBinaries
     )
 
+    # 核心:CxxuCommand(命令名分层模糊提示)随仓库分发,需要的是活件,不是安装模块
+    # $coreReady:True=已同步;False=不可用;$null=WhatIf 只报告计划
+    $coreReady = $false
     if ($PSVersionTable.PSVersion -lt [version]'7.5')
     {
-        if (($IsMacOS -eq $true)) { Write-Warning 'pwsh 版本低于 7.5:CxxuPredictor(net9 dll)用不上,其它补全照常;建议 brew upgrade --cask powershell 到 7.5+' }
-        else { Write-Warning 'pwsh 版本低于 7.5:CxxuPredictor(net9 dll)用不上,其它补全照常;建议 Update-PowerShell 到 7.5+' }
+        if (($IsMacOS -eq $true)) { Write-Warning 'pwsh 版本低于 7.5:CxxuCommand(net9 dll)不可用,其余补全照常;建议 brew upgrade --cask powershell 到 7.5+' }
+        else { Write-Warning 'pwsh 版本低于 7.5:CxxuCommand(net9 dll)不可用,其余补全照常;建议 Update-PowerShell 到 7.5+' }
     }
+    elseif (Get-Command Sync-CxxuPredictor -ErrorAction SilentlyContinue)
+    {
+        if ($PSCmdlet.ShouldProcess('CxxuCommand', '同步 predictor 活件'))
+        {
+            Sync-CxxuPredictor
+            $coreReady = $true
+        }
+        else
+        {
+            $coreReady = $null
+        }
+    }
+    else
+    {
+        Write-Warning '未找到 Sync-CxxuPredictor(TerminalTools 未加载),无法生成 CxxuCommand 活件;可重开终端后重试'
+    }
+
+    # 以下均为可选增强,缺失不阻塞
     foreach ($mod in @('PSFzf', 'CompletionPredictor'))
     {
         if (Get-Module -ListAvailable $mod)
@@ -695,7 +719,7 @@ function Deploy-CompletionStack
             Write-Verbose "$mod 已有,跳过"
             continue
         }
-        if ($PSCmdlet.ShouldProcess($mod, '安装 PS 模块'))
+        if ($PSCmdlet.ShouldProcess($mod, '安装 PS 模块(可选)'))
         {
             Confirm-ModuleInstalled -ModuleName $mod -Install
         }
@@ -709,6 +733,9 @@ function Deploy-CompletionStack
     }
     if (-not $SkipBinaries)
     {
+        $missingBins = @()
+        $hasScoop = [bool](Get-Command scoop -ErrorAction SilentlyContinue)
+        $hasBrew = [bool](Get-Command brew -ErrorAction SilentlyContinue)
         foreach ($bin in @('fzf', 'zoxide'))
         {
             if (Get-Command $bin -ErrorAction SilentlyContinue)
@@ -716,28 +743,37 @@ function Deploy-CompletionStack
                 Write-Verbose "$bin 已有,跳过"
                 continue
             }
-            if (Get-Command scoop -ErrorAction SilentlyContinue)
+            if ($hasScoop)
             {
-                if ($PSCmdlet.ShouldProcess($bin, 'scoop 安装二进制'))
+                if ($PSCmdlet.ShouldProcess($bin, 'scoop 安装二进制(可选)'))
                 {
                     scoop install $bin
                 }
             }
-            elseif (Get-Command brew -ErrorAction SilentlyContinue)
+            elseif ($hasBrew)
             {
-                if ($PSCmdlet.ShouldProcess($bin, 'brew 安装二进制'))
+                if ($PSCmdlet.ShouldProcess($bin, 'brew 安装二进制(可选)'))
                 {
                     brew install $bin
                 }
             }
             else
             {
-                Write-Warning "$bin 缺失且无包管理器:Windows 先装 scoop(Deploy-ScoopByGithubMirrors)再 scoop install $bin;macOS 跑 brew install $bin;Linux 用系统包管理器(apt/dnf)或装 brew"
+                $missingBins += $bin
             }
         }
+        if ($missingBins.Count -gt 0)
+        {
+            Write-Host ('提示:未安装 {0}(可选,仅影响 Ctrl+R/Ctrl+T 与 z;需要时先装 scoop 再 scoop install {0},或跳过)' -f ($missingBins -join '/'))
+        }
     }
-    Write-Host '补全栈就绪:开新终端跑 init,首跑自建缓存(Ctrl+R/z);开关 $env:PsFzf/$env:PsZoxide'
+
+    if ($coreReady -eq $true) { Write-Host '核心 CxxuCommand:活件已就绪,新终端跑 init 生效(开关 $env:PsPredictor)' }
+    elseif ($null -eq $coreReady) { Write-Host '核心 CxxuCommand:本次为空跑(-WhatIf),未同步活件;去掉 -WhatIf 执行' }
+    else { Write-Host '核心 CxxuCommand:未就绪(需 pwsh 7.5+ 并执行 Sync-CxxuPredictor)' }
+    Write-Host '可选增强:PSFzf/CompletionPredictor 模块、fzf/zoxide 二进制;开关 $env:PsFzf/$env:PsZoxide'
     # 用户配置模板兜底(新机一键装后就有文件可改;已存在则 no-op;-WhatIf 下只显示意图)
     if (Get-Command New-CxxuConfigTemplate -ErrorAction SilentlyContinue) { New-CxxuConfigTemplate }
 }
+
 

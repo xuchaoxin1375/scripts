@@ -15,7 +15,7 @@ Deploy-CompletionStack
 - 默认不安装 PowerShell 7：只使用 Windows PowerShell 5.1 时，直接执行上面的命令即可；若同时没有 git，改用 `-Light`（见下）。
 - 需要完整功能时，首次命令改为 `irm ... -OutFile ~/dcp.ps1; ~/dcp.ps1 -InstallPwsh7`。
 - 默认下载前缀为 `https://gh-proxy.com`，用于 git 克隆、raw 脚本与离线包；可用 `-GithubMirror '<镜像>'` 或持久化 `$env:PsGithubMirror` 覆盖。
-- 自研 `CxxuPredictor` 要求 PowerShell 7.5 及以上；版本不足时只有警告，其余功能照常。
+- 核心 `CxxuCommand`（`CxxuPredictor`）要求 PowerShell 7.5 及以上；版本不足时只有警告，其余功能照常。
 - 参数的完整说明、离线安装、开发模式与沙箱调试见 [PS/Deploy/readme.md](../Deploy/readme.md)。
 
 ### 典型参数组合
@@ -75,16 +75,17 @@ Add-CxxuPsModuleToProfile  # 往 $profile（CurrentUserCurrentHost）写推荐�
 conda 用户：跑 `conda init powershell` 后**重贴缓存块**（它会覆盖，贴法见 `Feature-Guide.md §5`）；
 `argc`/`fnm` 钩子保持注释（`argc` 二进制、`fnm` 按需再开，见 `Feature-Guide.md §7`）。
 
-## 5. 第三方 PS 模块
+## 5. 补全栈与第三方 PS 模块
 
 ```powershell
-Deploy-CompletionStack            # 一键：PSFzf/CompletionPredictor + fzf/zoxide（有 scoop 则装）+ 版本门；先 -WhatIf 空跑看动作
+Deploy-CompletionStack            # 核心 CxxuCommand 同步活件 + 可选 PSFzf/CompletionPredictor 与 fzf/zoxide；先 -WhatIf 空跑看动作
 Deploy-CompletionStack -IncludePSCompletions   # 再加 PSCompletions（按需）
 # 手动挡（等价）：
-Confirm-ModuleInstalled -ModuleName PSFzf -Install
-Confirm-ModuleInstalled -ModuleName CompletionPredictor -Install
+Sync-CxxuPredictor                                  # 核心：生成/对齐 CxxuCommand 活件
+Confirm-ModuleInstalled -ModuleName PSFzf -Install  # 可选：Ctrl+T/Ctrl+R
+Confirm-ModuleInstalled -ModuleName CompletionPredictor -Install  # 可选：参数/路径预测
 # 按需：Terminal-Icons（`$env:PsExtension=True` 才用得上）、PSCompletions（70+ 命令补全，延迟加载）
-# 自研 CxxuPredictor 随仓库自带（PS/CxxuPredictor/，零安装，随 init 延迟加载）；
+# 自研 CxxuPredictor 随仓库自带（PS/CxxuPredictor/，零模块安装，随 init 延迟加载）；
 # 要求 pwsh 7.5+（dll 按 net9.0 编译；其它版本进 PS/CxxuPredictor/src 跑 dotnet build -c Release 重编）
 ```
 

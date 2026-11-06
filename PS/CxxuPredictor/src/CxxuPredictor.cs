@@ -1,32 +1,55 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Management.Automation;
 using System.Management.Automation.Language;
-using System.Management.Automation.Runspaces;
 using System.Management.Automation.Subsystem.Prediction;
 using System.Threading;
 
 namespace CxxuPredictor
 {
-    // 命令名 predictor:VSCode QuickOpen 式模糊 + 严格通配符,都只处理“裸命令名 token”,
-    // 含通配符(*/?/[],如 get-*ive)走 WildcardPattern 精确语义;其余走模糊(空格多片段 AND 仅 API 层);
-    // 参数/路径/git 交给 CompletionPredictor,不重叠。
-    // 缓存表 import 时建一次(约百毫秒,走 OnIdle 延迟加载,用户无感);
-    // 每次按键只是内存前缀过滤,微秒级,远小于 20ms 超时。
+    // 命令表条目:名字 + 指向它的别名(小写比较)+ 使用频率权重(来自 PSReadLine 历史)。
+    internal sealed class CommandEntry
+    {
+        public string Name;
+        public List<string> Aliases;
+        public int Weight;
+    }
+
+    // 命令表:条目、非别名名字集合(用于“打全名不再提示”)、以及目标反查用的字典。
+    internal sealed class CommandTable
+    {
+        public List<CommandEntry> Commands;
+        public HashSet<string> RealNames;
+        public Dictionary<string, CommandEntry> ByName;
+    }
+
+    // 命令名 predictor:分层模糊匹配,只处理“裸命令名 token”:
+    //   优先级 0:别名精确命中(ls → Get-ChildItem)
+    //   优先级 1:完整前缀(get-chi → Get-ChildItem)
+    //   优先级 2:词边界子序列/首字母缩写(gci → Get-ChildItem, chitem → Get-ChildItem)
+    //   优先级 3:从词边界起的连续片段
+    //   优先级 4:一般子序列(仅长查询且跨度收敛,避免单字母灌榜)
+    // 同层内按“历史使用频率 + 匹配得分”排序,最后按长度与字母序稳定。
+    // 含通配符(*/?/[])走 WildcardPattern 严格语义,不做模糊。
     public class CxxuCommandPredictor : ICommandPredictor
     {
+        // ListView 一屏只显示约 10 行且历史占前几行,插件结果收敛到 8 条足够;
+        // Tab 侧由 CompleteCommand 的 maxResults 另行控制。
+        private const int PredictorMaxResults = 8;
+
         private readonly Guid _guid;
-        private readonly List<string> _commands;
+        private readonly CommandTable _table;
 
         internal CxxuCommandPredictor(string guid)
         {
             _guid = new Guid(guid);
-            _commands = LoadCommandNames();
+            _table = LoadCommands();
         }
 
         public Guid Id => _guid;
         public string Name => "CxxuCommand";
-        public string Description => "Fuzzy + strict wildcard match on cached command names (command-name position only).";
+        public string Description => "Tiered fuzzy and strict wildcard match on cached command names (command-name position only).";
 
         public SuggestionPackage GetSuggestion(PredictionClient client, PredictionContext context, CancellationToken cancellationToken)
         {
@@ -40,7 +63,7 @@ namespace CxxuPredictor
             {
                 return default;
             }
-            List<string> matches = FilterCommands(_commands, prefix, 30);
+            List<string> matches = FilterCommands(_table, prefix, PredictorMaxResults);
             if (matches.Count == 0 || cancellationToken.IsCancellationRequested)
             {
                 return default;
@@ -54,111 +77,257 @@ namespace CxxuPredictor
         }
 
         // 纯函数,便于 headless 反射测试;只读共享表,多线程并发读安全。
-        internal static List<string> FilterCommands(List<string> commands, string prefix, int max)
+        internal static List<string> FilterCommands(CommandTable table, string query, int max)
         {
             List<string> result = new List<string>();
-            if (commands is null || string.IsNullOrEmpty(prefix) || max <= 0)
+            if (table is null || table.Commands is null || string.IsNullOrEmpty(query) || max <= 0)
             {
                 return result;
             }
-            // 含通配符走严格语义(如 get-*ive 精确首尾);裸 * 不放水;残缺括号异常兜底,线程永不抛
-            if (WildcardPattern.ContainsWildcardCharacters(prefix))
+            if (WildcardPattern.ContainsWildcardCharacters(query))
             {
-                try
-                {
-                    if (prefix.Replace("*", string.Empty).Replace("?", string.Empty).Length == 0)
-                    {
-                        return result;
-                    }
-                    WildcardPattern pattern = new WildcardPattern(prefix, WildcardOptions.IgnoreCase);
-                    foreach (string c in commands)
-                    {
-                        if (result.Count >= max)
-                        {
-                            break;
-                        }
-                        if (string.Equals(c, prefix, StringComparison.OrdinalIgnoreCase))
-                        {
-                            continue;
-                        }
-                        if (pattern.IsMatch(c))
-                        {
-                            result.Add(c);
-                        }
-                    }
-                }
-                catch
-                {
-                    result.Clear();
-                }
-                return result;
+                return FilterWildcard(table, query, max);
             }
-            // 模糊:空格切多片段,全中才算(AND;活体里空格分词到不了这,见文档)
-            string query = prefix;
             string[] fragments = query.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
             if (fragments.Length == 0)
             {
                 return result;
             }
-            List<KeyValuePair<string, int>> scored = new List<KeyValuePair<string, int>>();
-            foreach (string c in commands)
+            // 打全名(非别名)时不再提示更长的名字:参数由 CompletionPredictor 负责
+            if (fragments.Length == 1 && query.Length >= 3 && table.RealNames.Contains(query))
             {
-                if (string.Equals(c, prefix, StringComparison.OrdinalIgnoreCase))
+                return result;
+            }
+
+            List<Candidate> scored = new List<Candidate>();
+            foreach (CommandEntry entry in table.Commands)
+            {
+                if (fragments.Length == 1 && string.Equals(entry.Name, query, StringComparison.OrdinalIgnoreCase))
                 {
                     continue; // 自匹配排除:全名照打不提示自己
                 }
-                int total = 0;
-                bool ok = true;
-                foreach (string f in fragments)
+                // 别名精确命中优先于文本匹配:ls/ps 与目标名没有共同子序列,
+                // 必须先判定,否则到不了排序阶段(打 ls 提示 Get-ChildItem)。
+                bool aliasExact = false;
+                if (fragments.Length == 1 && entry.Aliases != null)
                 {
-                    int s = ScoreFuzzy(c, f);
-                    if (s <= 0)
+                    for (int i = 0; i < entry.Aliases.Count; i++)
                     {
-                        ok = false;
-                        break;
+                        if (string.Equals(entry.Aliases[i], query, StringComparison.OrdinalIgnoreCase))
+                        {
+                            aliasExact = true;
+                            break;
+                        }
                     }
-                    total += s;
                 }
-                if (ok)
+                int tier;
+                int score;
+                if (aliasExact)
                 {
-                    scored.Add(new KeyValuePair<string, int>(c, total));
+                    tier = 0;
+                    score = 400;
                 }
+                else if (!MatchAll(entry.Name, fragments, out tier, out score))
+                {
+                    continue;
+                }
+                scored.Add(new Candidate(entry.Name, tier, score, entry.Weight));
             }
-            scored.Sort((a, b) =>
+            // 已有强信号时,弱层级只添噪音:别名命中时只留前缀,前缀命中时丢掉散字母子序列
+            if (scored.Count > 0)
             {
-                int d = b.Value.CompareTo(a.Value);
-                if (d != 0)
+                int bestTier = 4;
+                for (int i = 0; i < scored.Count; i++)
                 {
-                    return d;
+                    if (scored[i].Tier < bestTier)
+                    {
+                        bestTier = scored[i].Tier;
+                    }
                 }
-                d = a.Key.Length.CompareTo(b.Key.Length);
-                if (d != 0)
-                {
-                    return d;
-                }
-                return string.Compare(a.Key, b.Key, StringComparison.OrdinalIgnoreCase);
-            });
+                int maxTier = bestTier == 0 ? 1 : (bestTier == 1 ? 3 : 4);
+                scored.RemoveAll(c => c.Tier > maxTier);
+            }
+            scored.Sort(CompareCandidates);
             for (int i = 0; i < scored.Count && result.Count < max; i++)
             {
-                result.Add(scored[i].Key);
+                result.Add(scored[i].Name);
             }
             return result;
         }
 
-        // 子序列模糊打分(大小写不敏感):命中+1,词边界(+2:-/首字母/驼峰)、连击(+2)、间隔扣分、起始越晚越亏
-        internal static int ScoreFuzzy(string target, string fragment)
+        private struct Candidate
         {
-            int score = 0;
+            public string Name;
+            public int Tier;
+            public int Score;
+            public int Weight;
+
+            public Candidate(string name, int tier, int score, int weight)
+            {
+                Name = name;
+                Tier = tier;
+                Score = score;
+                Weight = weight;
+            }
+        }
+
+        private static int CompareCandidates(Candidate a, Candidate b)
+        {
+            int d = a.Tier.CompareTo(b.Tier);
+            if (d != 0)
+            {
+                return d;
+            }
+            // 同层内历史频率优先于微小分差,但封顶 20 防止单条历史霸榜
+            d = (b.Score + b.Weight * 10).CompareTo(a.Score + a.Weight * 10);
+            if (d != 0)
+            {
+                return d;
+            }
+            d = a.Name.Length.CompareTo(b.Name.Length);
+            if (d != 0)
+            {
+                return d;
+            }
+            return string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // 多片段 AND:每段都要命中,整体层级取最差的一段,得分累加。
+        private static bool MatchAll(string name, string[] fragments, out int tier, out int score)
+        {
+            tier = 0;
+            score = 0;
+            for (int i = 0; i < fragments.Length; i++)
+            {
+                int t;
+                int s;
+                if (!MatchOne(name, fragments[i], out t, out s))
+                {
+                    return false;
+                }
+                if (t > tier)
+                {
+                    tier = t;
+                }
+                score += s;
+            }
+            return true;
+        }
+
+        private static bool MatchOne(string name, string frag, out int tier, out int score)
+        {
+            tier = 0;
+            score = 0;
+            if (string.IsNullOrEmpty(frag) || frag.Length > name.Length)
+            {
+                return false;
+            }
+
+            // 层级 1:完整前缀
+            if (name.StartsWith(frag, StringComparison.OrdinalIgnoreCase))
+            {
+                tier = 1;
+                score = 220 - (name.Length - frag.Length);
+                if (score < 1)
+                {
+                    score = 1;
+                }
+                return true;
+            }
+
+            // 单字符只认前缀:首字母缩写/子序列会让 x、s 这类输入灌满无关命令
+            if (frag.Length == 1)
+            {
+                return false;
+            }
+
+            // 层级 2:词边界子序列/首字母缩写(gci → Get-ChildItem,不要求连续)
+            int first;
+            int boundaryHits;
+            if (BoundarySubsequence(name, frag, out first, out boundaryHits))
+            {
+                tier = 2;
+                score = 160 + boundaryHits * 4 - first;
+                return true;
+            }
+
+            // 层级 3:从词边界开始的连续片段(chitem → Get-ChildItem,get-chi 之外的连写)
+            int index = name.IndexOf(frag, StringComparison.OrdinalIgnoreCase);
+            while (index >= 0)
+            {
+                if (IsBoundary(name, index))
+                {
+                    tier = 3;
+                    score = 120 - index;
+                    if (score < 1)
+                    {
+                        score = 1;
+                    }
+                    return true;
+                }
+                index = name.IndexOf(frag, index + 1, StringComparison.OrdinalIgnoreCase);
+            }
+
+            // 层级 4:一般子序列。只收长查询且跨度收敛的,避免单字母/散字母灌榜。
+            int span;
+            int maxGap;
+            if (frag.Length >= 4 && GreedySubsequence(name, frag, out first, out span, out maxGap))
+            {
+                if (span <= frag.Length * 2 + 3 && maxGap <= 4)
+                {
+                    tier = 4;
+                    score = 60 - first;
+                    if (score < 1)
+                    {
+                        score = 1;
+                    }
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // 只允许查询字符落在词边界上,用于识别首字母缩写(gci)。
+        private static bool BoundarySubsequence(string name, string frag, out int first, out int hits)
+        {
+            first = -1;
+            hits = 0;
+            int qi = 0;
+            for (int i = 0; i < name.Length && qi < frag.Length; i++)
+            {
+                if (!IsBoundary(name, i))
+                {
+                    continue;
+                }
+                if (char.ToLowerInvariant(name[i]) != char.ToLowerInvariant(frag[qi]))
+                {
+                    continue;
+                }
+                if (first < 0)
+                {
+                    first = i;
+                }
+                qi++;
+                hits++;
+            }
+            return qi == frag.Length;
+        }
+
+        // 贪心子序列:返回首位置、跨度与最大间隔,用于过滤“散得太开”的弱匹配。
+        private static bool GreedySubsequence(string name, string frag, out int first, out int span, out int maxGap)
+        {
+            first = -1;
+            span = 0;
+            maxGap = 0;
             int pos = 0;
             int prev = -1;
-            int first = -1;
-            for (int i = 0; i < fragment.Length; i++)
+            for (int qi = 0; qi < frag.Length; qi++)
             {
-                char q = char.ToLowerInvariant(fragment[i]);
                 int found = -1;
-                for (int j = pos; j < target.Length; j++)
+                char q = char.ToLowerInvariant(frag[qi]);
+                for (int j = pos; j < name.Length; j++)
                 {
-                    if (char.ToLowerInvariant(target[j]) == q)
+                    if (char.ToLowerInvariant(name[j]) == q)
                     {
                         found = j;
                         break;
@@ -166,66 +335,321 @@ namespace CxxuPredictor
                 }
                 if (found < 0)
                 {
-                    return 0;
+                    return false;
                 }
                 if (first < 0)
                 {
                     first = found;
                 }
-                score += 1;
-                if (found == 0 || target[found - 1] == '-' || IsCamelBoundary(target, found))
+                if (prev >= 0)
                 {
-                    score += 2;
-                }
-                else if (found == prev + 1)
-                {
-                    score += 2;
-                }
-                else if (prev >= 0)
-                {
-                    score -= (found - prev - 1);
+                    int gap = found - prev - 1;
+                    if (gap > maxGap)
+                    {
+                        maxGap = gap;
+                    }
                 }
                 prev = found;
                 pos = found + 1;
             }
-            score -= first;
-            return score <= 0 ? 1 : score; // 命中即正分,多片段 AND 可累加;排序沉底,不污染头部
+            span = prev - first + 1;
+            return true;
         }
 
-        internal static bool IsCamelBoundary(string target, int pos)
+        private static bool IsBoundary(string s, int i)
         {
-            return pos > 0 && char.IsLower(target[pos - 1]) && char.IsUpper(target[pos]);
+            if (i == 0)
+            {
+                return true;
+            }
+            char prev = s[i - 1];
+            char cur = s[i];
+            if (prev == '-' || prev == '_' || prev == '.' || prev == ' ')
+            {
+                return true;
+            }
+            return char.IsLower(prev) && char.IsUpper(cur);
         }
 
-        private static List<string> LoadCommandNames()
+        // 通配符走严格语义(get-*ive 精确首尾);裸 * 不放水;残缺括号兜底,线程永不抛。
+        private static List<string> FilterWildcard(CommandTable table, string query, int max)
         {
-            List<string> names = new List<string>();
+            List<string> result = new List<string>();
+            if (query.Replace("*", string.Empty).Replace("?", string.Empty).Length == 0)
+            {
+                return result;
+            }
+            try
+            {
+                WildcardPattern pattern = new WildcardPattern(query, WildcardOptions.IgnoreCase);
+                List<CommandEntry> hits = new List<CommandEntry>();
+                foreach (CommandEntry entry in table.Commands)
+                {
+                    if (string.Equals(entry.Name, query, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+                    if (pattern.IsMatch(entry.Name))
+                    {
+                        hits.Add(entry);
+                    }
+                }
+                hits.Sort((a, b) =>
+                {
+                    int d = b.Weight.CompareTo(a.Weight);
+                    if (d != 0)
+                    {
+                        return d;
+                    }
+                    d = a.Name.Length.CompareTo(b.Name.Length);
+                    if (d != 0)
+                    {
+                        return d;
+                    }
+                    return string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase);
+                });
+                for (int i = 0; i < hits.Count && result.Count < max; i++)
+                {
+                    result.Add(hits[i].Name);
+                }
+            }
+            catch
+            {
+                result.Clear();
+            }
+            return result;
+        }
+
+        private static CommandTable LoadCommands()
+        {
+            CommandTable table = new CommandTable();
+            table.Commands = new List<CommandEntry>();
+            table.RealNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            table.ByName = new Dictionary<string, CommandEntry>(StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, string> aliasDefs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             try
             {
                 using (System.Management.Automation.PowerShell ps =
                     System.Management.Automation.PowerShell.Create(RunspaceMode.CurrentRunspace))
                 {
-                    ps.AddScript("Get-Command -CommandType Function,Cmdlet,Alias | Select-Object -ExpandProperty Name -Unique | Sort-Object");
+                    ps.AddScript("Get-Command -CommandType Function,Cmdlet,Alias | ForEach-Object { $_.Name + [char]1 + $_.CommandType + [char]1 + $_.Definition }");
                     foreach (PSObject o in ps.Invoke())
                     {
-                        if (o?.BaseObject is string s && s.Length > 0)
+                        string line = o?.BaseObject as string;
+                        if (string.IsNullOrEmpty(line))
                         {
-                            names.Add(s);
+                            continue;
                         }
+                        string[] parts = line.Split('\u0001');
+                        string name = parts.Length > 0 ? parts[0] : null;
+                        if (string.IsNullOrEmpty(name))
+                        {
+                            continue;
+                        }
+                        string type = parts.Length > 1 ? parts[1] : null;
+                        if (string.Equals(type, "Alias", StringComparison.OrdinalIgnoreCase))
+                        {
+                            string def = parts.Length > 2 ? parts[2] : null;
+                            if (!string.IsNullOrEmpty(def))
+                            {
+                                aliasDefs[name] = def.Trim();
+                            }
+                            continue;
+                        }
+                        if (table.ByName.ContainsKey(name))
+                        {
+                            continue;
+                        }
+                        CommandEntry entry = new CommandEntry();
+                        entry.Name = name;
+                        entry.Aliases = new List<string>();
+                        entry.Weight = 0;
+                        table.ByName[name] = entry;
+                        table.Commands.Add(entry);
+                        table.RealNames.Add(name);
                     }
                 }
+                // 别名归并到目标(链式别名解析到底;目标不在表内则忽略)
+                Dictionary<string, string> resolvedAliases = new Dictionary<string, string>(aliasDefs.Count, StringComparer.OrdinalIgnoreCase);
+                foreach (KeyValuePair<string, string> kv in aliasDefs)
+                {
+                    string target = kv.Value;
+                    for (int hop = 0; hop < 3; hop++)
+                    {
+                        string next;
+                        if (!aliasDefs.TryGetValue(target, out next) || string.Equals(next, target, StringComparison.OrdinalIgnoreCase))
+                        {
+                            break;
+                        }
+                        target = next;
+                    }
+                    resolvedAliases[kv.Key] = target;
+                    CommandEntry entry;
+                    if (table.ByName.TryGetValue(target, out entry))
+                    {
+                        entry.Aliases.Add(kv.Key);
+                    }
+                }
+                ApplyFrecency(table, resolvedAliases);
             }
             catch
             {
                 // 建表失败就空表运行(静默降级),不炸 import。
             }
-            return names;
+            table.Commands.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
+            return table;
+        }
+
+        // 先猜 PSReadLine 默认历史文件(省一次 Get-PSReadLineOption 调用,约 80ms);
+        // 默认文件不存在时才回退查询,兼容自定义 HistorySavePath。
+        private static string GetHistoryPath()
+        {
+            string guess = null;
+            try
+            {
+                if (OperatingSystem.IsWindows())
+                {
+                    guess = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                        "Microsoft", "Windows", "PowerShell", "PSReadLine", "ConsoleHost_history.txt");
+                }
+                else
+                {
+                    guess = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                        "powershell", "PSReadLine", "ConsoleHost_history.txt");
+                }
+            }
+            catch
+            {
+                guess = null;
+            }
+            if (!string.IsNullOrEmpty(guess) && File.Exists(guess))
+            {
+                return guess;
+            }
+            try
+            {
+                using (System.Management.Automation.PowerShell ps =
+                    System.Management.Automation.PowerShell.Create(RunspaceMode.CurrentRunspace))
+                {
+                    ps.AddScript("if (Get-Command Get-PSReadLineOption -ErrorAction SilentlyContinue) { (Get-PSReadLineOption).HistorySavePath }");
+                    System.Collections.ObjectModel.Collection<PSObject> r = ps.Invoke();
+                    if (r.Count > 0)
+                    {
+                        return r[0]?.BaseObject as string;
+                    }
+                }
+            }
+            catch
+            {
+            }
+            return null;
+        }
+
+        // 从 PSReadLine 历史统计常用命令,作为同层排序权重;读不到就全 0,不影响功能。
+        private static void ApplyFrecency(CommandTable table, Dictionary<string, string> aliasTargets)
+        {
+            string path = GetHistoryPath();
+            if (string.IsNullOrEmpty(path) || !File.Exists(path))
+            {
+                return;
+            }
+
+            const int MaxLines = 5000;
+            Queue<string> tail = new Queue<string>(MaxLines);
+            try
+            {
+                foreach (string line in File.ReadLines(path))
+                {
+                    if (tail.Count == MaxLines)
+                    {
+                        tail.Dequeue();
+                    }
+                    tail.Enqueue(line);
+                }
+            }
+            catch
+            {
+                return;
+            }
+
+            Dictionary<string, int> counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            int total = tail.Count;
+            int index = 0;
+            foreach (string line in tail)
+            {
+                index++;
+                string token = FirstToken(line);
+                if (token is null)
+                {
+                    continue;
+                }
+                int add = index > total - 300 ? 4 : 1; // 最近 300 条加权
+                AddCount(counts, table, token, add);
+                string target;
+                if (aliasTargets.TryGetValue(token, out target))
+                {
+                    AddCount(counts, table, target, add);
+                }
+            }
+            foreach (KeyValuePair<string, int> kv in counts)
+            {
+                CommandEntry entry;
+                if (table.ByName.TryGetValue(kv.Key, out entry))
+                {
+                    entry.Weight = Math.Min(kv.Value, 20);
+                }
+            }
+        }
+
+        private static void AddCount(Dictionary<string, int> counts, CommandTable table, string name, int add)
+        {
+            if (!table.ByName.ContainsKey(name))
+            {
+                return;
+            }
+            int old;
+            counts.TryGetValue(name, out old);
+            counts[name] = old + add;
+        }
+
+        private static string FirstToken(string line)
+        {
+            if (line is null)
+            {
+                return null;
+            }
+            string s = line.Trim();
+            if (s.Length == 0 || s[0] == '#')
+            {
+                return null;
+            }
+            int end = 0;
+            while (end < s.Length && !char.IsWhiteSpace(s[end]))
+            {
+                end++;
+            }
+            if (end == 0)
+            {
+                return null;
+            }
+            if (end > 64)
+            {
+                end = 64;
+            }
+            string token = s.Substring(0, end);
+            if (token.Length > 1 && token[0] == '&')
+            {
+                token = token.Substring(1);
+            }
+            return token.Length == 0 ? null : token;
         }
 
         // Tab 侧公开入口:独立缓存表(与 predictor 实例表互不干扰,本进程首次调用时建表);
         // 给 TabExpansion2 包装调用,纯读共享表,并发安全,失败返回空数组永不抛。
         private static readonly object _tabLock = new object();
-        private static List<string> _tabCommands;
+        private static CommandTable _tabTable;
         public static string[] CompleteCommand(string word, int maxResults)
         {
             try
@@ -234,16 +658,16 @@ namespace CxxuPredictor
                 {
                     return Array.Empty<string>();
                 }
-                List<string> table = _tabCommands;
+                CommandTable table = _tabTable;
                 if (table is null)
                 {
                     lock (_tabLock)
                     {
-                        if (_tabCommands is null)
+                        if (_tabTable is null)
                         {
-                            _tabCommands = LoadCommandNames();
+                            _tabTable = LoadCommands();
                         }
-                        table = _tabCommands;
+                        table = _tabTable;
                     }
                 }
                 return FilterCommands(table, word, maxResults).ToArray();
@@ -254,7 +678,8 @@ namespace CxxuPredictor
             }
         }
 
-        public bool CanAcceptFeedback(PredictionClient client, PredictorFeedbackKind feedback) => false;        public void OnSuggestionDisplayed(PredictionClient client, uint session, int countOrIndex) { }
+        public bool CanAcceptFeedback(PredictionClient client, PredictorFeedbackKind feedback) => false;
+        public void OnSuggestionDisplayed(PredictionClient client, uint session, int countOrIndex) { }
         public void OnSuggestionAccepted(PredictionClient client, uint session, string acceptedSuggestion) { }
         public void OnCommandLineAccepted(PredictionClient client, IReadOnlyList<string> history) { }
         public void OnCommandLineExecuted(PredictionClient client, string commandLine, bool success) { }
