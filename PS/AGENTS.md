@@ -21,6 +21,7 @@
 - 中文用户：中文回复；行内 `pwsh -Command` 引号必炸，复杂命令写 `.ps1` 再 `-File` 执行。
 - 用户可见文本（根 `readme.md`、指南、帮助、警告）：遵循 `docs/Module-Conventions.md §11` 用词、`§12` 行文与 `§13` 用户文档结构（正式、规范、严谨）；改用户可见行为先看 `Feature-Guide.md`，改完自查动作三要素（前置条件、执行者、善后）与术语一致；入口文档只放指引不复制正文。
 - 提交：默认直接提交全部改动（用户手动改动可询问是否单独提交，分多次提交亦可）；推送/PR 须用户明确指示；提交后必验 HEAD（`git show HEAD:<关键文件>` + 状态干净）。
+- 改过 `docs/Agent-Handoff.md` 或其归档：提交前跑 `docs/tools/Test-HandoffIndex.ps1`（`pwsh -NoProfile -File`，5.1 用 `powershell -NoProfile -File`），有错误不提交。
 
 ## 根目录旧文档
 `../PwshModuleByCxxu.md` 描述的是旧结构，仅考古用；现状以本目录 `docs/` 为准。
