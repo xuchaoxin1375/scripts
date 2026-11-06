@@ -163,8 +163,13 @@ namespace CxxuPredictor
             {
                 return d;
             }
-            // 同层内历史频率优先于微小分差,但封顶 20 防止单条历史霸榜
-            d = (b.Score + b.Weight * 10).CompareTo(a.Score + a.Weight * 10);
+            // 同层内先比匹配质量,再比历史频率,避免高频但劣质的匹配压过好匹配
+            d = b.Score.CompareTo(a.Score);
+            if (d != 0)
+            {
+                return d;
+            }
+            d = b.Weight.CompareTo(a.Weight);
             if (d != 0)
             {
                 return d;
@@ -208,15 +213,11 @@ namespace CxxuPredictor
                 return false;
             }
 
-            // 层级 1:完整前缀
+            // 层级 1:完整前缀(同层内交给历史频率与长度决定先后)
             if (name.StartsWith(frag, StringComparison.OrdinalIgnoreCase))
             {
                 tier = 1;
-                score = 220 - (name.Length - frag.Length);
-                if (score < 1)
-                {
-                    score = 1;
-                }
+                score = 220;
                 return true;
             }
 
@@ -253,19 +254,14 @@ namespace CxxuPredictor
                 index = name.IndexOf(frag, index + 1, StringComparison.OrdinalIgnoreCase);
             }
 
-            // 层级 4:一般子序列。只收长查询且跨度收敛的,避免单字母/散字母灌榜。
-            int span;
-            int maxGap;
-            if (frag.Length >= 4 && GreedySubsequence(name, frag, out first, out span, out maxGap))
+            // 层级 4:一般子序列。不设跨度门槛——groute → Get-NetRoute 这类跨词连写必须保留;
+            // 质量交给 FuzzyScore 排序,弱匹配自然沉底。
+            if (frag.Length >= 2)
             {
-                if (span <= frag.Length * 2 + 3 && maxGap <= 4)
+                score = FuzzyScore(name, frag);
+                if (score > 0)
                 {
                     tier = 4;
-                    score = 60 - first;
-                    if (score < 1)
-                    {
-                        score = 1;
-                    }
                     return true;
                 }
             }
@@ -298,14 +294,14 @@ namespace CxxuPredictor
             return qi == frag.Length;
         }
 
-        // 贪心子序列:返回首位置、跨度与最大间隔,用于过滤“散得太开”的弱匹配。
-        private static bool GreedySubsequence(string name, string frag, out int first, out int span, out int maxGap)
+        // 一般子序列打分(大小写不敏感):命中 +2、词边界 +6、连击 +4、间隔按长度扣分,起始越晚越亏。
+        // 只要求字符按序出现;散得越开分越低,用于把 Get-NetRoute 这类跨词匹配排在弱匹配前面。
+        private static int FuzzyScore(string name, string frag)
         {
-            first = -1;
-            span = 0;
-            maxGap = 0;
+            int score = 0;
             int pos = 0;
             int prev = -1;
+            int first = -1;
             for (int qi = 0; qi < frag.Length; qi++)
             {
                 int found = -1;
@@ -320,25 +316,34 @@ namespace CxxuPredictor
                 }
                 if (found < 0)
                 {
-                    return false;
+                    return 0;
                 }
                 if (first < 0)
                 {
                     first = found;
                 }
+                score += 2;
+                if (IsBoundary(name, found))
+                {
+                    score += 6;
+                }
                 if (prev >= 0)
                 {
                     int gap = found - prev - 1;
-                    if (gap > maxGap)
+                    if (gap == 0)
                     {
-                        maxGap = gap;
+                        score += 4;
+                    }
+                    else
+                    {
+                        score -= gap;
                     }
                 }
                 prev = found;
                 pos = found + 1;
             }
-            span = prev - first + 1;
-            return true;
+            score -= first;
+            return score <= 0 ? 1 : score;
         }
 
         private static bool IsBoundary(string s, int i)

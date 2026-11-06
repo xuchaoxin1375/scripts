@@ -481,16 +481,18 @@ Set-PSReadLineOption: 句柄无效。
 
 - 触发：用户开头贴出 `Deploy-CompletionStack` 的 fzf/zoxide 警告后说明——补全插件里只重视 CxxuCommand，但当前提示策略不好。实测旧算法确认：`gci` 首条是 `gcim`、`Get-ChildItem` 掉到第 18；`ls` 前 30 条没有 `Get-ChildItem`；`sel` 被 `Set-*` 混排；单字母 `s`/`x` 灌满 30 条无关命令。
 - 根因：单一加权分（命中 +1、边界 +2、连击 +2、间隔与起始扣分）没有硬分层，长度做次键导致短名乱插队；无别名映射与使用频率；固定 30 条且无质量门槛。
-- 新排序（层级优先；同层看“得分 + 历史频率”，最后长度与字母序）：
+- 新排序（层级优先；同层先比匹配质量，再比历史频率，最后长度与字母序）：
   别名精确（`ls`/`gci`/`ps` → 目标命令；目标名与别名可能没有共同子序列，必须先判）→
   完整前缀 → 词边界子序列/首字母（`gci` → Get-ChildItem）→ 从词边界起的连续片段（`chitem` → Get-ChildItem）→
-  一般子序列（查询长度 ≥4、跨度 ≤ 2n+3、最大间隔 ≤4）。
+  一般子序列（不设跨度门槛；命中 +2、词边界 +6、连击 +4、间隔按长度扣分，`groute` → `Get-NetRoute`）。
   单字符只认前缀；打全名（非别名）时返回空，参数交给 CompletionPredictor。
   不做层级裁剪——用户要的是“排序好”，不是“只留一条”。
 - 别名与频率：`Get-Command` 一次取 Name/CommandType/Definition；别名本身也作为候选（`gci` 能列出 `gcim`，即使该模块未导入、Definition 为空也保留名字），有 Definition 的别名再归并到目标并参与精确命中加权；读 PSReadLine 历史尾部 5000 条统计首个 token（最近 300 条加权 4），别名调用计入目标，权重封顶 20。历史默认路径先直接猜（省约 80ms 的 `Get-PSReadLineOption` 调用），默认文件不存在才回退查询。
-- 条数与性能（本机 2633 条候选，pwsh 7.5.4）：predictor 默认 15 条，Tab 仍按 `maxResults`；建表含历史读取 149ms，按键过滤 0.04~0.47ms。
+- 条数与性能（本机 2633 条候选，pwsh 7.5.4）：predictor 默认 15 条，Tab 仍按 `maxResults`；建表含历史读取 151ms，按键过滤 0.03~0.58ms。
 - 实测（新）：`gci`→Get-ChildItem、gcim、Get-CimInstance…（15 条）；`ls`→Get-ChildItem、ls_eza…；`gi`→Get-Item、gin、gip、git*；`ps`→Get-Process、ps_group；`gp`→Get-ItemProperty、gps、gpv；`sel`→Select-* 占头部；`gcm`→Get-Command、gcms、gcmw；`get-chi`→Get-ChildItem 系在前；`get-childitem`→空；`s`/`x` 不再灌无关命令。
-- 中途修正（同日）：第一版把“别名命中只留前缀、前缀命中丢掉子序列”做成硬裁剪，`gci` 只剩 Get-ChildItem 一条，用户指出“用户写 gci 也可能不只匹配 Get-ChildItem”。撤掉裁剪、把别名纳入候选、候选数 8→15 后恢复广度。
+- 中途修正一（同日）：第一版把“别名命中只留前缀、前缀命中丢掉子序列”做成硬裁剪，`gci` 只剩 Get-ChildItem 一条，用户指出“用户写 gci 也可能不只匹配 Get-ChildItem”。撤掉裁剪、把别名纳入候选、候选数 8→15 后恢复广度。
+- 中途修正二（同日）：第二版把一般子序列卡在“长度 ≥4 且最大间隔 ≤4”，`groute` → `Get-NetRoute` 这类跨词连写被误杀（用户当日报回退）。撤掉跨度/间隔门槛，只保留“单字符只认前缀”，弱匹配交给间隔扣分沉底。
+- 召回核对（旧 vs 新，同一台机、同一无配置会话）：`groute`/`grou`/`route`/`gchil`/`getchild`/`gmod`/`gwmi`/`gnr`/`gr`/`get-chi`/`chitem`/`rem-it`/`new-it` 等旧首条仍在新结果中，旧前 5 条多数 4~5 条保留；差异集中在别名场景（`gci`/`ls`/`gi`/`ps`/`gp`/`gcm`/`gc`），新排序把别名目标提到第一，属预期改进。
 
 - 补全栈定位：`Deploy-CompletionStack` 改为先同步 CxxuCommand 活件（核心），PSFzf/CompletionPredictor 与 fzf/zoxide 标为可选；缺二进制合成一行提示，不再逐条 `Write-Warning`。
 - 发布：`dotnet build -c Release -p:SmaPath=...` → 覆盖 `PS/CxxuPredictor/CxxuPredictor.dll` → `Sync-CxxuPredictor`；重开终端生效（dll 锁随进程）。
