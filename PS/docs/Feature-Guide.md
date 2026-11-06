@@ -145,7 +145,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | 候选 | 状态 |
 |---|---|
 | `CompletionPredictor`（参数/路径预测，命令名位置源码级跳过） | 一直在用 |
-| `CxxuPredictor`（自研命令名预测：分层模糊 `别名 > 前缀 > 词边界/首字母 > 连续片段 > 收敛子序列` + 严格通配，按历史频率加权，默认 8 条，3000 条 1ms 内） | **已启用**（详见 §8） |
+| `CxxuPredictor`（自研命令名预测：分层模糊 `别名 > 前缀 > 词边界/首字母 > 连续片段 > 收敛子序列` + 严格通配，按历史频率加权，默认 15 条，3000 条 1ms 内） | **已启用**（详见 §8） |
 | `CxxuTab`（自研命令名 Tab 补全：独立插件，命令名位合并模糊结果，参数位零干扰） | 默认关（需要时 `Enable-PsPlugin Tab`，开关 `$env:PsTab`，置 `True` 开） |
 | `PSFzf`（Ctrl+T 文件 / Ctrl+R 历史） | **已启用**（Tab 不动，仍是 MenuComplete） |
 | `zoxide`（`z` 跳转，init 缓存 `~/.zoxide_init_cache.ps1`） | **已启用** |
@@ -172,7 +172,8 @@ p -Force                    # 看 init 分步耗时，定位慢项
   TabExpansion2 镜像不了）。**自研 predictor 已落地并真机验证通过**（`CxxuPredictor`，
   只做裸命令名，按可信度分层：
   别名精确（`ls`/`gci`/`ps` → 目标命令）→ 完整前缀 → 词边界/首字母（`gci`、`getser`、`chitem`）→
-  从词边界起的连续片段 → 收敛的子序列；同层内按 PSReadLine 历史频率加权，默认只返回 8 条。
+  从词边界起的连续片段 → 收敛的子序列；同层内按 PSReadLine 历史频率加权，默认返回 15 条。
+  别名本身也作为候选（`gci` 会同时列出 `gcim` 这类同前缀别名），不按层级裁剪；`ls` 等别名精确命中时目标命令排第一。
   严格通配符（`get-*ive` 精确首尾）不受影响。
   注意空格天然分词——光标后 token 进了参数位，预测器的 CommandName 门直接返回空，
   所以多片段 AND 只存在于 API 层，活体里请连写；`get-child` 出 `[CxxuCommand]` 来源行；
@@ -208,7 +209,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | 层 | 按键/视图 | 来源 | 说明 |
 |---|---|---|---|
 | Tab 全量索引 | `Tab`（MenuComplete） | 引擎全量：函数/别名/文件/参数 | 命令名位经 `CxxuTab` 包装增强（模糊连写可选中，参数位零干扰；默认关，需 `Enable-PsPlugin Tab`，开关 `$env:PsTab`）；和下面两层**不是同一套索引**，结果不一样正常 |
-| ListView 预测 | 输入时自动浮现（`HistoryAndPlugin`） | 历史（最多 10 条，硬上限）+ 插件 | 插件= `CompletionPredictor`（参数/路径，命令名位跳过）+ `CxxuPredictor`（命令名，分层排序 + 别名/历史加权，默认 8 条，§8）；须 20ms 内返回，实测 2500 条 <1ms |
+| ListView 预测 | 输入时自动浮现（`HistoryAndPlugin`） | 历史（最多 10 条，硬上限）+ 插件 | 插件= `CompletionPredictor`（参数/路径，命令名位跳过）+ `CxxuPredictor`（命令名，分层排序 + 别名/历史加权，默认 15 条，§8）；须 20ms 内返回，实测 2600 条 <1ms |
 | 模糊搜历史/文件 | `Ctrl+R` / `Ctrl+T`（PSFzf） | 全量历史/文件 | 历史翻不完用这个，不走 10/50 上限 |
 | 参数值补全 | `Tab` 在参数位 | `PSCompletions`（~200 命令库，可选）+ 自带 `ArgumentCompleter`（EnvVar 系、`Get-Json -Key` 等，`Set-ArgumentCompleter` 批量注册） | PSCompletions 用法：解开 profile 里注释的两行 |
 

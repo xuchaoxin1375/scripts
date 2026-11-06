@@ -34,9 +34,8 @@ namespace CxxuPredictor
     // 含通配符(*/?/[])走 WildcardPattern 严格语义,不做模糊。
     public class CxxuCommandPredictor : ICommandPredictor
     {
-        // ListView 一屏只显示约 10 行且历史占前几行,插件结果收敛到 8 条足够;
-        // Tab 侧由 CompleteCommand 的 maxResults 另行控制。
-        private const int PredictorMaxResults = 8;
+        // ListView 一屏显示约 10 行(历史占前几行),可上下滚动;给足候选,不做层级裁剪。
+        private const int PredictorMaxResults = 15;
 
         private readonly Guid _guid;
         private readonly CommandTable _table;
@@ -132,20 +131,6 @@ namespace CxxuPredictor
                     continue;
                 }
                 scored.Add(new Candidate(entry.Name, tier, score, entry.Weight));
-            }
-            // 已有强信号时,弱层级只添噪音:别名命中时只留前缀,前缀命中时丢掉散字母子序列
-            if (scored.Count > 0)
-            {
-                int bestTier = 4;
-                for (int i = 0; i < scored.Count; i++)
-                {
-                    if (scored[i].Tier < bestTier)
-                    {
-                        bestTier = scored[i].Tier;
-                    }
-                }
-                int maxTier = bestTier == 0 ? 1 : (bestTier == 1 ? 3 : 4);
-                scored.RemoveAll(c => c.Tier > maxTier);
             }
             scored.Sort(CompareCandidates);
             for (int i = 0; i < scored.Count && result.Count < max; i++)
@@ -427,6 +412,7 @@ namespace CxxuPredictor
             table.RealNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             table.ByName = new Dictionary<string, CommandEntry>(StringComparer.OrdinalIgnoreCase);
             Dictionary<string, string> aliasDefs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> aliasNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             try
             {
                 using (System.Management.Automation.PowerShell ps =
@@ -449,6 +435,8 @@ namespace CxxuPredictor
                         string type = parts.Length > 1 ? parts[1] : null;
                         if (string.Equals(type, "Alias", StringComparison.OrdinalIgnoreCase))
                         {
+                            // 未导入模块的别名可能拿不到 Definition,名字仍要进候选(gci 要能看到 gcim)
+                            aliasNames.Add(name);
                             string def = parts.Length > 2 ? parts[2] : null;
                             if (!string.IsNullOrEmpty(def))
                             {
@@ -468,6 +456,20 @@ namespace CxxuPredictor
                         table.Commands.Add(entry);
                         table.RealNames.Add(name);
                     }
+                }
+                // 别名本身也作为候选:输入 gci 时除了目标 Get-ChildItem,还能列出 gcim 这类同前缀别名
+                foreach (string aliasName in aliasNames)
+                {
+                    if (table.ByName.ContainsKey(aliasName))
+                    {
+                        continue;
+                    }
+                    CommandEntry aliasEntry = new CommandEntry();
+                    aliasEntry.Name = aliasName;
+                    aliasEntry.Aliases = null;
+                    aliasEntry.Weight = 0;
+                    table.ByName[aliasName] = aliasEntry;
+                    table.Commands.Add(aliasEntry);
                 }
                 // 别名归并到目标(链式别名解析到底;目标不在表内则忽略)
                 Dictionary<string, string> resolvedAliases = new Dictionary<string, string>(aliasDefs.Count, StringComparer.OrdinalIgnoreCase);

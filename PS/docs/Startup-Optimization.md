@@ -485,11 +485,13 @@ Set-PSReadLineOption: 句柄无效。
   别名精确（`ls`/`gci`/`ps` → 目标命令；目标名与别名可能没有共同子序列，必须先判）→
   完整前缀 → 词边界子序列/首字母（`gci` → Get-ChildItem）→ 从词边界起的连续片段（`chitem` → Get-ChildItem）→
   一般子序列（查询长度 ≥4、跨度 ≤ 2n+3、最大间隔 ≤4）。
-  有强层级时自动丢弃弱层级（别名命中只留前缀，前缀命中丢掉一般子序列）；单字符只认前缀；
-  打全名（非别名）时返回空，参数交给 CompletionPredictor。
-- 别名与频率：`Get-Command` 一次取 Name/CommandType/Definition，别名归并到目标；读 PSReadLine 历史尾部 5000 条统计首个 token（最近 300 条加权 4），别名调用计入目标，权重封顶 20。历史默认路径先直接猜（省约 80ms 的 `Get-PSReadLineOption` 调用），默认文件不存在才回退查询。
-- 条数与性能（本机 2497 条命令，pwsh 7.5.4）：predictor 默认 8 条，Tab 仍按 `maxResults`；建表含历史读取 169ms，按键过滤 0.03~0.43ms。
-- 实测（新）：`gci`→Get-ChildItem；`ls`→Get-ChildItem、ls_eza；`gi`→Get-Item + git*；`ps`→Get-Process；`gp`→Get-ItemProperty；`sel`→Select-* 占头部；`get-chi`→仅 Get-ChildItem 系；`get-childitem`→空；`s`/`x` 不再灌无关命令。
+  单字符只认前缀；打全名（非别名）时返回空，参数交给 CompletionPredictor。
+  不做层级裁剪——用户要的是“排序好”，不是“只留一条”。
+- 别名与频率：`Get-Command` 一次取 Name/CommandType/Definition；别名本身也作为候选（`gci` 能列出 `gcim`，即使该模块未导入、Definition 为空也保留名字），有 Definition 的别名再归并到目标并参与精确命中加权；读 PSReadLine 历史尾部 5000 条统计首个 token（最近 300 条加权 4），别名调用计入目标，权重封顶 20。历史默认路径先直接猜（省约 80ms 的 `Get-PSReadLineOption` 调用），默认文件不存在才回退查询。
+- 条数与性能（本机 2633 条候选，pwsh 7.5.4）：predictor 默认 15 条，Tab 仍按 `maxResults`；建表含历史读取 149ms，按键过滤 0.04~0.47ms。
+- 实测（新）：`gci`→Get-ChildItem、gcim、Get-CimInstance…（15 条）；`ls`→Get-ChildItem、ls_eza…；`gi`→Get-Item、gin、gip、git*；`ps`→Get-Process、ps_group；`gp`→Get-ItemProperty、gps、gpv；`sel`→Select-* 占头部；`gcm`→Get-Command、gcms、gcmw；`get-chi`→Get-ChildItem 系在前；`get-childitem`→空；`s`/`x` 不再灌无关命令。
+- 中途修正（同日）：第一版把“别名命中只留前缀、前缀命中丢掉子序列”做成硬裁剪，`gci` 只剩 Get-ChildItem 一条，用户指出“用户写 gci 也可能不只匹配 Get-ChildItem”。撤掉裁剪、把别名纳入候选、候选数 8→15 后恢复广度。
+
 - 补全栈定位：`Deploy-CompletionStack` 改为先同步 CxxuCommand 活件（核心），PSFzf/CompletionPredictor 与 fzf/zoxide 标为可选；缺二进制合成一行提示，不再逐条 `Write-Warning`。
 - 发布：`dotnet build -c Release -p:SmaPath=...` → 覆盖 `PS/CxxuPredictor/CxxuPredictor.dll` → `Sync-CxxuPredictor`；重开终端生效（dll 锁随进程）。
 
