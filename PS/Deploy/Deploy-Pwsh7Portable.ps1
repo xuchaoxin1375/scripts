@@ -5,11 +5,39 @@ param(
     # 仓库源(默认 github+加速;gitee 仅保留兼容)
     [validateSet('gitee', 'github')]
     $RepoSource = 'github',
+    # 下载加速镜像:显式指定时不再测速/弹窗;$env:PsGithubMirror 优先,否则默认 gh-proxy
+    [Alias('Mirror')]
+    $GithubMirror = $(if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }),
     # 开发模式:用本地最新模块(Deploy.psm1/TestLinks.psm1/Git.psm1),不拉远程;仓库根自动从脚本位置推导
     [switch]$Dev,
     $DevRoot = ''
     # [switch]$Force
 )
+# 预先放行脚本执行:本脚本会落盘并执行下载的模块,执行策略过严会直接中断
+try
+{
+    if ((Get-ExecutionPolicy -Scope Process) -notin @('Bypass', 'Unrestricted'))
+    {
+        Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction Stop
+    }
+}
+catch
+{
+    Write-Warning "Set-ExecutionPolicy(Process) failed: $($_.Exception.Message)"
+}
+try
+{
+    $userPolicy = Get-ExecutionPolicy -Scope CurrentUser
+    if ($userPolicy -in @('Restricted', 'AllSigned'))
+    {
+        Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force -ErrorAction Stop
+        Write-Host 'ExecutionPolicy(CurrentUser) was set to RemoteSigned.' -ForegroundColor Yellow
+    }
+}
+catch
+{
+    Write-Verbose "Set-ExecutionPolicy(CurrentUser) failed: $($_.Exception.Message)"
+}
 if ($Dev)
 {
     if ([string]::IsNullOrWhiteSpace($DevRoot))
@@ -36,36 +64,45 @@ if (-not $Dev)
 {
     if ($RepoSource -eq 'github')
     {
-        # 中央镜像:$env:PsGithubMirror 优先,否则默认 gh-proxy(独立脚本内联一份,见 Get-GithubMirrorPrefix)
-        $repoMirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
-        $dplUrl = "$repoMirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1"
-        $tlUrl = "$repoMirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/TestLinks/TestLinks.psm1"
-        $gitUrl = "$repoMirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Git/Git.psm1"
+        # 中央镜像:显式参数优先,其次 $env:PsGithubMirror,否则默认 gh-proxy;直连作回退
+        $repoMirror = ([string]$GithubMirror).TrimEnd('/')
+        $rawDirect = 'https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main'
+        $rawBase = if ($repoMirror) { "$repoMirror/$rawDirect" } else { $rawDirect }
     }
     else
     {
-
-
-        $dplUrl = "https://raw.giteeusercontent.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy.psm1"
-        $tlUrl = "https://raw.giteeusercontent.com/xuchaoxin1375/scripts/raw/main/PS/TestLinks/TestLinks.psm1"
-        $gitUrl = "https://raw.giteeusercontent.com/xuchaoxin1375/scripts/raw/main/PS/Git/Git.psm1"
+        $rawBase = 'https://raw.giteeusercontent.com/xuchaoxin1375/scripts/raw/main'
+        $rawDirect = $rawBase
     }
 
-    Write-Host "[Deploy-Pwsh7Portable]: Pull Deploy.psm1 and TestLinks.psm1 modules [$dplUrl] & [$tlUrl]..."
+    Write-Host "[Deploy-Pwsh7Portable]: Pull Deploy.psm1 and TestLinks.psm1 modules [$rawBase]..."
 
     # 远端模块带 UTF-8 BOM,irm 保留为 U+FEFF,不裁掉会让首行 <# 注释失效(解析报错)
-    (Invoke-RestMethod $dplUrl).TrimStart([char]0xFEFF) | Invoke-Expression
-    (Invoke-RestMethod $tlUrl).TrimStart([char]0xFEFF) | Invoke-Expression
-    (Invoke-RestMethod $gitUrl).TrimStart([char]0xFEFF) | Invoke-Expression
+    foreach ($modulePath in @('PS/Deploy/Deploy.psm1', 'PS/TestLinks/TestLinks.psm1', 'PS/Git/Git.psm1'))
+    {
+        try
+        {
+            (Invoke-RestMethod "$rawBase/$modulePath" -TimeoutSec 60).TrimStart([char]0xFEFF) | Invoke-Expression
+        }
+        catch
+        {
+            Write-Warning "Download $modulePath via mirror failed ($($_.Exception.Message)), retry direct..."
+            (Invoke-RestMethod "$rawDirect/$modulePath" -TimeoutSec 60).TrimStart([char]0xFEFF) | Invoke-Expression
+        }
+    }
 }
-# get functions or commands about mirror operations!
-Get-Command *mirror* 
-Write-Host "check commands usage (syntax)"
-Get-Command Get-AvailableGithubMirrors -Syntax #use this is enough in general cases
-Get-Command Get-SelectedMirror -Syntax
+# 镜像命令自检(只列存在的,避免 TestLinks 未加载时报 CommandNotFound 刷红)
+if (Get-Command Get-AvailableGithubMirrors -ErrorAction SilentlyContinue)
+{
+    Write-Verbose 'Mirror commands loaded: Get-AvailableGithubMirrors / Get-SelectedMirror / Test-MirrorAvailability'
+}
 
-Write-Host "choose a mirror which is available..."
-$github_mirror = Get-SelectedMirror  
+# 显式镜像(参数或 $env:PsGithubMirror)直接使用,不测速、不弹窗;都没有才进入交互选择
+$github_mirror = ([string]$GithubMirror).TrimEnd('/')
+if ([string]::IsNullOrWhiteSpace($github_mirror))
+{
+    $github_mirror = @(Get-SelectedMirror)[0]
+}
 
 # Write-Verbose $github_mirror -Verbose
 
@@ -138,6 +175,7 @@ function Deploy-Pwsh7Portable
     {
         $baseUrl = Get-LatestPowerShellDownloadUrl -PackageType zip
     }
+    $directUrl = $baseUrl
     if ( $mirror )
     {
         Write-Host "try use mirror: $mirror to speed up link"
@@ -176,26 +214,57 @@ function Deploy-Pwsh7Portable
     
     if($downloadNeed)
     {
-        
-        Write-Host "Downloading from $BaseUrl"
-        # 调用 Invoke-WebRequest 下载文件
-        Invoke-WebRequest -Uri $baseUrl -UseBasicParsing -OutFile $outputPath
+        $dlUrls = @($BaseUrl, $directUrl) | Select-Object -Unique
+        $downloaded = $false
+        foreach ($dlUrl in $dlUrls)
+        {
+            Write-Host "Downloading from $dlUrl"
+            # 调用 Invoke-WebRequest 下载文件(5.1 用 -UseBasicParsing,避免 IE 解析器;大文件给足超时)
+            try
+            {
+                Invoke-WebRequest -Uri $dlUrl -UseBasicParsing -OutFile $outputPath -TimeoutSec 900 -ErrorAction Stop
+                if ((Test-Path -LiteralPath $outputPath) -and (Get-Item -LiteralPath $outputPath).Length -gt 0)
+                {
+                    # 只认 zip 签名(PK),避免把镜像返回的 HTML 错误页当成安装包
+                    $head = New-Object byte[] 2
+                    $fs = [IO.File]::OpenRead($outputPath)
+                    try { $n = $fs.Read($head, 0, 2) } finally { $fs.Close() }
+                    if ($n -eq 2 -and $head[0] -eq 0x50 -and $head[1] -eq 0x4B)
+                    {
+                        $downloaded = $true
+                        break
+                    }
+                    throw 'Downloaded file is not a zip package.'
+                }
+                throw 'Downloaded file is empty.'
+            }
+            catch
+            {
+                Write-Warning "Download failed ($($_.Exception.Message)): $dlUrl"
+                Remove-Item -LiteralPath $outputPath -Force -ErrorAction SilentlyContinue
+            }
+        }
+        if (-not $downloaded)
+        {
+            throw 'PowerShell 7 package download failed from mirror and direct link. Pass -BaseUrl with a reachable zip URL.'
+        }
     }
     
     # 确保安装路径存在
     # $InstallPath="$InstallPath\$versionCode"
     if ((Test-Path -Path $installPath))
     {
-        # 备份原来的路径
-        Rename-Item -Path $InstallPath -NewName "$($InstallPath).bak.$((Get-Date).ToString('yyyy-MM-dd--HH-mm-ss'))" -Verbose
+        # 备份原来的路径(Rename-Item 的 -NewName 只能是叶子名)
+        $backupName = "$([IO.Path]::GetFileName($InstallPath)).bak.$((Get-Date).ToString('yyyy-MM-dd--HH-mm-ss'))"
+        Rename-Item -Path $InstallPath -NewName $backupName -Verbose
         # 新建一个路径用于全新安装
         New-Item -ItemType Directory -Path $installPath -Verbose
     }
     # 解压文件
     Expand-Archive -Path $outputPath -DestinationPath $installPath -Force 
 
-    # 清理下载的压缩包
-    Remove-Item -Path $outputPath -Verbose -Confirm
+    # 清理下载的压缩包(明确不确认,避免部署中途停下来等回车)
+    Remove-Item -Path $outputPath -Verbose -Confirm:$false
     
     if ($PSCmdlet.ShouldProcess("$installPath", 'Add to PATH'))
     {

@@ -41,7 +41,7 @@
 > - 归位：能落主题文档的先落（规则进 `Module-Conventions`，用户行为进 `Feature-Guide`，性能进 `Startup-Optimization`，dll 进 `Live-Versions`，部署进 `Deploy-Guide`，wp 工具进 `wp/…/README`），本区只留检索短句。
 > - 取号：ID 取现有最大值 + 1，同时在 `archive/agent-handoff-history.md` 增加 `#### #<ID>` 小节，否则链接断裂。
 > - 填表：补效力、位置（具体文档与主题）、最后验证日期；`已废止` 必须写指针。
-> - 正文宜短：结论 + 关键验证即可，长过程留在提交信息里；归档只作"可链接的考古"，不是第二份手册。
+> - 正文宜短：归档只写结论 + 关键验证（1–3 句），详细过程、日志与命令输出留在提交信息；不写逐日流水账，归档只作"可链接的考古"，不是第二份手册。
 >
 > 改动本区后跑 [tools/Test-HandoffIndex.ps1](tools/Test-HandoffIndex.ps1)（仓库根执行 `pwsh -NoProfile -File PS/docs/tools/Test-HandoffIndex.ps1`，5.1 把 `pwsh` 换成 `powershell`），全绿再提交。
 
@@ -133,6 +133,8 @@
 | [#106](archive/agent-handoff-history.md#106) | `irm\|iex` 前必须裁 `U+FEFF`；落盘用 `-OutFile` | 现行 | 主题文档：[Module-Conventions.md](Module-Conventions.md)「Invoke-Expression 使用规范」 | 2026-11-06 |
 | [#107](archive/agent-handoff-history.md#107) | `PwshVar/confs/*.conf` 禁三元（5.1 逐行 `iex` 报 `Unexpected token '?'`），条件赋值用 `if/else` | 现行 | 主题文档：[Feature-Guide.md](Feature-Guide.md)「5.1 兼容」 | 2026-11-06 |
 | [#108](archive/agent-handoff-history.md#108) | 5.1 重定义内置别名（`rm`/`r`/`ps`/`h`）必须带 `-Option AllScope`，否则报错且别名静默失效 | 现行 | 主题文档：[Feature-Guide.md](Feature-Guide.md)「5.1 兼容」 | 2026-11-06 |
+| [#109](archive/agent-handoff-history.md#109) | 一键部署 5.1 修复：镜像克隆/失败回退、默认不装 pwsh、镜像探测并发 | 现行 | 主题文档：[Deploy-Guide.md](Deploy-Guide.md)「镜像」 | 2026-11-06 |
+| [#110](archive/agent-handoff-history.md#110) | 一键部署本地沙箱：临时目录验证、不碰真实环境、可离线回归 | 现行 | 主题文档：[PS/Deploy/readme.md](../Deploy/readme.md)「本地调试（沙箱）」 | 2026-11-06 |
 
 批次线索：模块拆分是 `#36`、`#42`–`#49` 的一串切片（一次性过程，收在下面的折叠区，其中 `#46` 是单列规则）；5.1 降档是 `#50`–`#57` 的连续批次，结论统一归到 [Feature-Guide.md](Feature-Guide.md)「5.1 兼容」，检索时按范围看即可。
 

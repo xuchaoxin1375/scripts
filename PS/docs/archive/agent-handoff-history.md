@@ -491,3 +491,10 @@
 
 108. **5.1 重定义内置别名（`rm`/`r`/`ps`/`h`）报 `The AllScope option cannot be removed`（2026-11-06，用户新机实测 `Add-CxxuPsModuleToProfile`）**：`Aliases/Aliases.psm1` 把别名文件每行拼成 `set-alias <名> <目标> -Scope Global` 再 `iex`。5.1 的 `rm`/`r`/`ps`/`h` 等内置别名带 `AllScope` 选项，`Set-Alias` 未声明 `-Option AllScope` 时会尝试去掉该选项，抛非终止错误 `The AllScope option cannot be removed`；别名定义保持原样（`rm` 仍是 `Remove-Item`、`r` 仍是 `Invoke-History`、`h` 仍是 `Get-History`），自定义别名静默失效。7.x 这些别名 `Options=None`，同一条命令不报错，所以问题只在 5.1 暴露。修复：先按别名名查现有 `Options`，命中 `AllScope` 时拼 `-Option AllScope -Scope Global`，其余仍用原写法。验证：沙盒别名文件同时包含四个内置名与一个新名，5.1 下四个都改到自定义目标且 `Options=AllScope`、新名 `Options=None`；7 下五个均 `Options=None`，两版本零错误；模块 psm1 保持 BOM。规则已入 `Feature-Guide` 的 5.1 加码禁区。
 
+#### #109
+
+109. **一键部署在 5.1 的报错与重复测速（2026-11-06，用户新机日志）**：修四类问题：①`dgw.ps1` 未加载 TestLinks，`Get-AvailableGithubMirrors` 报 `CommandNotFound`；②5.1 镜像检查退化为串行，新增 `Test-LinksConcurrently`（runspace 池，整体截止时间兜底），13 个镜像约 7 秒；③`git clone` 直连 github 被重置，改为镜像优先、直连回退、失败再回退离线包，并校验 `$LASTEXITCODE` 与 `PS` 目录；④默认不再安装 pwsh7，仅 `-InstallPwsh7` 才装，5.1 无 pwsh 时写专属 profile。另：入口先放行执行策略、`Get-SelectedMirror -Mirror`/`$env:PsGithubMirror` 零探测、dgw/dp7 透传 `-GithubMirror`、下载包校验 zip/PE 签名、修 `Rename-Item -NewName` 完整路径 bug。验证：5.1/7 解析 0 错，镜像并行 3 个约 2.5 秒、13 个约 7 秒，镜像浅克隆 24 秒成功，镜像离线包 3.9MB 下载成功。
+
+#### #110
+
+110. **一键部署本地沙箱（2026-11-06，用户要求）**：`Deploy-CxxuPsModules.ps1` 新增 `-Sandbox`/`-KeepSandbox`/`-Mode`/`-PackagePath`：临时目录部署，不装 git/pwsh、不写环境变量与 profile，成功后清理、失败保留；校验 `Deploy.psd1`/`Init.psd1`/`.gitattributes`。`-Mode Default -PackagePath <zip>` 可完全离线回归，`FromRemoteGit`/`FromPackage` 分别验证克隆与下载路径。文档记 `PS/Deploy/readme.md`。

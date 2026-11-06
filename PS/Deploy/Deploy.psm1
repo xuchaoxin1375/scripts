@@ -84,14 +84,32 @@ https://gh-proxy.com
 https://ghfast.top
 https://cors.isteed.cc
 PS C:\repos\scripts>
+    .EXAMPLE
+    指定镜像时不测速、不弹窗(部署脚本的默认路径):
+    Get-SelectedMirror -Mirror 'https://gh-proxy.com'
     #>
     [CmdletBinding()]
     param (
-        
+
         $Default = 1, # 默认选择第一个(可能是响应最快的)
         [switch]$Linearly,
-        [switch]$Silent # 是否静默模式,不询问用户,返回第$Default个链接($Default默认为1)
-    ) 
+        [switch]$Silent, # 是否静默模式,不询问用户,返回第$Default个链接($Default默认为1)
+        # 显式指定镜像:直接返回,不测速、不弹窗;为空则回退到环境变量/测速选择
+        [string]$Mirror
+    )
+    # 显式镜像优先,其次 $env:PsGithubMirror;两者都命中时零探测,避免部署时重复测速
+    $chosen = $Mirror
+    if ([string]::IsNullOrWhiteSpace($chosen))
+    {
+        $chosen = $env:PsGithubMirror
+    }
+    if (-not [string]::IsNullOrWhiteSpace($chosen))
+    {
+        $chosen = ([string]$chosen).TrimEnd('/')
+        Write-Verbose "Use specified mirror: $chosen"
+        return @($chosen)
+    }
+
     if (Get-Command -Name Get-AvailableGithubMirrors -ErrorAction SilentlyContinue)
     {
         Write-Verbose 'Checking available Mirrors...'

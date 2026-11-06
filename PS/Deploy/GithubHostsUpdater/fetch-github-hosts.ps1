@@ -11,12 +11,13 @@ catch
 {
     (Invoke-RestMethod $fetchRaw).TrimStart([char]0xFEFF) | Invoke-Expression
 }
-# get functions or commands about mirror operations!
-Get-Command *mirror* 
-#check commands usage (syntax)
-Get-Command Get-AvailableGithubMirrors -Syntax #use this is enough in general cases
-Get-Command Get-SelectedMirror -Syntax
-$github_mirror = Get-SelectedMirror   
+# 镜像命令自检(只列存在的,避免 TestLinks 未加载时报 CommandNotFound 刷红)
+if (Get-Command Get-AvailableGithubMirrors -ErrorAction SilentlyContinue)
+{
+    Write-Verbose 'Mirror commands loaded: Get-AvailableGithubMirrors / Get-SelectedMirror / Test-MirrorAvailability'
+}
+# 计划任务/无人值守场景不弹窗:直接用脚本头部的镜像选择
+$github_mirror = @(Get-SelectedMirror -Mirror $fetchMirror)[0]
 
 function Update-GithubHosts-Archive
 {

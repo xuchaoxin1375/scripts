@@ -59,7 +59,8 @@ function Test-LinksLinearly
     .SYNOPSIS
     线性地(串行地)测试链接是否能够在指定时间内响应,为powershell5 设计
     .NOTES
-    链接数量多的话会造成测试时间很长,尽量使用并行方案(pwsh7),或者考虑设置小的$timeoutSec=1
+    链接数量多的话会造成测试时间很长,尽量使用并行方案(Test-LinksParallel,pwsh7 与 5.1 都支持),
+    或者考虑设置小的$timeoutSec=1
     #>
     [cmdletbinding(DefaultParameterSetName = 'First')]
     param (
@@ -111,14 +112,135 @@ function Test-LinksLinearly
     return $availableMirrors
 }
 
+function Test-LinksConcurrently
+{
+    <#
+    .SYNOPSIS
+    用 runspace 池并发测试镜像可用性,为 Windows PowerShell 5.1 提供并行能力。
+    .DESCRIPTION
+    5.1 没有 ForEach-Object -Parallel,但 runspace 池在 5.1/7 都可用。
+    每个 runspace 注入 Test-MirrorAvailability 的源码后独立探测,结果按原列表顺序返回。
+    单个探测受 -TimeOutSec 约束;等待时再留 2 秒余量,超时即 Stop,避免个别站点拖住整体。
+    #>
+    [CmdletBinding()]
+    param (
+        $Mirrors = $GithubMirrors,
+        $TimeOutSec = 6,
+        $ThrottleLimits = 16
+    )
+    $probeSrc = ${function:Test-MirrorAvailability}.ToString()
+    $limit = [Math]::Max(1, [int]$ThrottleLimits)
+    $pool = [runspacefactory]::CreateRunspacePool(1, $limit)
+    $jobs = @()
+    try
+    {
+        $pool.Open()
+        $index = 0
+        foreach ($mirror in $Mirrors)
+        {
+            $ps = [powershell]::Create()
+            $ps.RunspacePool = $pool
+            [void]$ps.AddScript(@'
+param($Mirror, $TimeOutSec, $ProbeSrc, $Index)
+. ([scriptblock]::Create($ProbeSrc))
+[pscustomobject]@{
+    Index     = $Index
+    Mirror    = $Mirror
+    Available = [bool](Test-MirrorAvailability -Url $Mirror -TimeoutSec $TimeOutSec)
+}
+'@).AddArgument($mirror).AddArgument($TimeOutSec).AddArgument($probeSrc).AddArgument($index)
+            $jobs += [pscustomobject]@{
+                Handle = $ps.BeginInvoke()
+                PS     = $ps
+            }
+            $index += 1
+        }
+
+        $results = @()
+        # 单探测自身有 -TimeOutSec;整体再留 2 秒余量,超时直接 Stop,避免个别站点拖住整体
+        $deadline = [DateTime]::UtcNow.AddSeconds($TimeOutSec + 2)
+        foreach ($job in $jobs)
+        {
+            $remainingMs = [int](($deadline - [DateTime]::UtcNow).TotalMilliseconds)
+            $completed = $false
+            if ($remainingMs -gt 0)
+            {
+                $completed = $job.Handle.AsyncWaitHandle.WaitOne($remainingMs)
+            }
+            if (-not $completed)
+            {
+                # 已完成的即使过了截止时间也要收结果,不能白白丢掉
+                if ($job.Handle.IsCompleted)
+                {
+                    $completed = $true
+                }
+                else
+                {
+                    Write-Verbose 'Mirror probe timed out in runspace, skip it.'
+                    try { $job.PS.Stop() } catch { }
+                    continue
+                }
+            }
+            try
+            {
+                $out = $job.PS.EndInvoke($job.Handle)
+                foreach ($item in $out)
+                {
+                    if ($item -is [pscustomobject] -and $item.PSObject.Properties['Mirror'])
+                    {
+                        $results += $item
+                    }
+                }
+            }
+            catch
+            {
+                Write-Verbose "Mirror probe failed: $($_.Exception.Message)"
+            }
+            finally
+            {
+                $job.PS.Dispose()
+            }
+        }
+
+        $availableMirrors = @()
+        foreach ($item in ($results | Sort-Object Index))
+        {
+            if ($item.Available)
+            {
+                Write-Verbose "$($item.Mirror) is available "
+                Write-Host "`t $($item.Mirror)" -ForegroundColor Green
+                $availableMirrors += $item.Mirror
+            }
+            else
+            {
+                Write-Verbose "$($item.Mirror) is not available "
+                Write-Host "`t $($item.Mirror) " -ForegroundColor Red
+            }
+        }
+        return $availableMirrors
+    }
+    finally
+    {
+        foreach ($job in $jobs)
+        {
+            if ($job.PS)
+            {
+                try { $job.PS.Dispose() } catch { }
+            }
+        }
+        try { $pool.Close() } catch { }
+        try { $pool.Dispose() } catch { }
+    }
+}
+
 function Test-LinksParallel
 {
     <#
     .SYNOPSIS
-    为powershell 7+设计的并行测试链接是否能够在指定时间内响应
+    并行测试链接是否能够在指定时间内响应。
     .NOTES
-    powershell5 没有 ForEach-Object -Parallel,自动退居二线走串行测试
-    (与 Test-LinksLinearly -All 等价,调用方无需再分支)。
+    powershell 7+ 使用 ForEach-Object -Parallel;Windows PowerShell 5.1
+    自动改走 runspace 池(Test-LinksConcurrently),两边都是并发探测。
     并行 runspace 看不到父作用域函数,这里用 $using: 把
     Test-MirrorAvailability 的定义注入进去,否则全部误判为不可用。
     #>
@@ -129,11 +251,11 @@ function Test-LinksParallel
         $ThrottleLimits = 16
         # $First = 5
     )
-    # 5.1 先分流:退居二线走串行(此处 Write-Debug 不带 -Debug,5.1 非交互下 -Debug 会抛)
+    # 5.1 分流:ForEach-Object -Parallel 不可用,改走 runspace 池(仍然并发)
     if ($host.Version.Major -lt 7)
     {
-        Write-Warning 'PowerShell 7 or higher is required for parallel foreach! Falling back to linear test...'
-        return @(Test-LinksLinearly -Mirrors $Mirrors -TimeOutSec $TimeOutSec -All)
+        Write-Verbose 'PowerShell 5.1: use runspace pool for parallel mirror check.'
+        return @(Test-LinksConcurrently -Mirrors $Mirrors -TimeOutSec $TimeOutSec -ThrottleLimits $ThrottleLimits)
     }
     Write-Debug 'Test links parallel...'
     # 检查镜像测试命令是否可用(断言存在,不污染成功流)
@@ -241,8 +363,23 @@ function Test-MirrorAvailability
     catch
     {
         $availability = $false
+        # 超时/DNS/连接失败再试 GET 只是白等一倍时间;只有服务器明确回了非 200 才值得换 GET 重试
+        $skipGet = $false
+        $ex = $_.Exception
+        while ($ex)
+        {
+            $typeName = $ex.GetType().FullName
+            if (($ex -is [System.Net.WebException] -and $ex.Status -ne 'ProtocolError') -or
+                $typeName -eq 'System.Threading.Tasks.TaskCanceledException' -or
+                $typeName -eq 'System.Net.Http.HttpRequestException')
+            {
+                $skipGet = $true
+                break
+            }
+            $ex = $ex.InnerException
+        }
     }
-    if (-not $availability)
+    if (-not $availability -and -not $skipGet)
     {
         try
         {
@@ -313,16 +450,8 @@ function Get-AvailableGithubMirrors
     # 检查可用的镜像列表
     if (!$SkipCheckAvailability)
     {
-        $psVersion = $host.Version.Major 
-        # 默认尝试并行测试
-        if ($psVersion -lt 7 -and !$Linearly)
-        {
-
-            Write-Host 'PowerShell 7 or higher is required to run parallel foreach!' -ForegroundColor Red
-            Write-Host 'Testing Links Linearly...'
-            $Linearly = $true
-        }
-        if ($Linearly ) #-or $PSVersion -lt 7
+        # 默认并行测试(pwsh7 走 ForEach-Object -Parallel,5.1 走 runspace 池)
+        if ($Linearly )
         {
             #简单起见,这里仅简单调用 Test-LinksLinearly的Frist参数集语法,而不做分支判断
             $availableMirrors = Test-LinksLinearly -Mirrors $Mirrors -TimeOutSec $TimeOutSec -First $First -Verbose:$VerbosePreference

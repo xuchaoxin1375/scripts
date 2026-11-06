@@ -6,7 +6,8 @@
   - 关于快速部署此powershell7模块集(及其所在仓库),这里创建的专用脚本文件为 `Deploy-CxxuPsModules.ps1`
   - 这里着重介绍如何快速部署此项目
 
-- 虽然模块是为powershell7(pwsh)编写的,但是一键部署脚本是支持在windows powershell(v5)上运行和启动的,也就是说,部署脚本允许你后安装pwsh
+- 虽然模块是为powershell7(pwsh)编写的,但是一键部署脚本是支持在windows powershell(v5)上运行和启动的,也就是说,部署脚本允许你后安装pwsh;默认不再强制安装pwsh7,需要时显式加 `-InstallPwsh7`
+- 默认下载走 `https://gh-proxy.com`(git clone、raw 脚本、离线包同一前缀),可用 `-GithubMirror` 指定其他镜像;克隆失败会自动回退离线包
 
 ## 部署本仓库的方法
 
@@ -52,22 +53,45 @@ iex ((irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/
 > gitee 只留兼容(`https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1`),
 > 但 `irm|iex` 常被拦截,不再推荐.
 
-### 轻量部署（仅 Windows PowerShell 5.1，免 git 免 pwsh）
+### 轻量部署（仅 Windows PowerShell 5.1，免 git）
 
-新机器只有 v5 时，在 `powershell.exe` 里存下脚本再加 `-Light` 跑：无 git 不提示安装、直走离线包下载（codeload + 中央镜像静默，不弹窗选源），落 `PSModulePath`（追加不覆盖），结尾不装 pwsh、改写 5.1 专属 profile，重开 `powershell.exe` 跑 `init` 即用（B 档可用范围与禁区见 `PS/docs/Feature-Guide.md §13`）。
+新机器只有 v5 时，在 `powershell.exe` 里存下脚本再加 `-Light` 跑：无 git 不提示安装、直走离线包下载（codeload + 中央镜像静默，不弹窗选源），落 `PSModulePath`（追加不覆盖），写 5.1 专属 profile，重开 `powershell.exe` 跑 `init` 即用（B 档可用范围与禁区见 `PS/docs/Feature-Guide.md §13`）。
 
 ```powershell
 irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1' -OutFile ~/dcp.ps1
 ~/dcp.ps1 -Light
+# 需要 PowerShell 7 时（默认不装）：~/dcp.ps1 -InstallPwsh7
 ```
+
+默认部署同样不再要求 PowerShell 7：不加 `-Light` 时也会检查 git、优先镜像克隆，克隆失败回退离线包；结尾只在 `-InstallPwsh7` 时才下载 pwsh7。脚本启动时会先放行当前进程执行策略，必要时把用户级执行策略从 Restricted/AllSigned 调为 RemoteSigned。
 
 ### 开发模式（用本地最新代码，不拉远程）
 
 未推送到远程时，用本地代码测部署效果：仓库内直接运行一键脚本并加 `-Dev`（仓库根从脚本位置自动推导，marker 文件不存在则警告并回退远端；4 个一键脚本通用：`Deploy-CxxuPsModules`、`Deploy-GitForWindows`、`Deploy-Pwsh7Portable`、`Register-GithubHostsAutoUpdater`）。
 
 ```powershell
-C:/repos/scripts/PS/Deploy/Deploy-CxxuPsModules.ps1 -Dev # 可叠 -Light -WhatIf（注意脚本尾部有真实调用）
+C:/repos/scripts/PS/Deploy/Deploy-CxxuPsModules.ps1 -Dev # 可叠 -Light -Verbose（注意脚本尾部有真实调用）
 ```
+
+### 本地调试（沙箱，不碰真实环境）
+
+不想为每次改动找一台干净 Windows 时，用 `-Sandbox`：部署到独立临时目录，不装 git/pwsh、不写环境变量、不改 profile；成功后默认清理，失败或加 `-KeepSandbox` 时保留目录便于检查。脚本代码用当前本地文件（无需先推送），目标仓库仍按 `-Mode` 走镜像克隆或离线包。
+
+```powershell
+# 测镜像克隆(真实下载,但不落真实目录)
+C:/repos/scripts/PS/Deploy/Deploy-CxxuPsModules.ps1 -Sandbox -Mode FromRemoteGit -KeepSandbox
+
+# 测离线包路径(镜像下载 codeload zip)
+C:/repos/scripts/PS/Deploy/Deploy-CxxuPsModules.ps1 -Sandbox -Mode FromPackage
+
+# 完全离线:用本地打的 zip 包,不联网
+C:/repos/scripts/PS/Deploy/Deploy-CxxuPsModules.ps1 -Sandbox -Mode Default -PackagePath ./scripts-main.zip -KeepSandbox
+
+# 默认自动模式:有本地包用包,否则 git 克隆,克隆失败回退离线包
+C:/repos/scripts/PS/Deploy/Deploy-CxxuPsModules.ps1 -Sandbox
+```
+
+沙箱结果会列出 `RepoPath` / `NewPsPath` 与 `DeployManifest`、`InitManifest`、`GitAttributes` 三项校验；失败时保留目录并给出路径。`-InstallPwsh7` 在沙箱中会被忽略。
 
 
 
@@ -100,7 +124,7 @@ $scripts | Invoke-Expression
 
 ### 补充说明
 
-- Notes:如果上述代码执行顺利,部署时间5秒钟左右即可完成
+- Notes:如果上述代码执行顺利,部署时间取决于网络;镜像克隆通常几十秒内完成,离线包约几十 MB 下载时间
 - 如果不顺利,比如报错,那么尝试调整 `Deploy-CxxuPsModules`函数的调用参数,具体参数参考函数用法文档
 
   - > 可选的,在变量 `$scripts`保存了部署脚本的内容,您可以粘贴到文本编辑器或代码编辑器中查看和调整
@@ -245,7 +269,7 @@ Write-Verbose $github_mirror -Verbose #check what mirror is chosen
   iex ((irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-Pwsh7Portable.ps1').TrimStart([char]0xFEFF))
   ```
 
-  - 安装过程中会提示你是否要删除安装包,根据需要选择是否删除即可
+  - 安装过程中会复用 `%temp%` 下已下载的 zip；若已存在会询问是否重新下载，安装完成后自动清理压缩包
   - 不一定能够一次性成功,如果失败,您可以多尝试几次,或者检查该脚本的输出信息中的下载连接是否可用(比如粘贴到浏览器中手动尝试下载,如果可以下载,那么重试是有意义的,否则需要从别的地方下载便携版安装包放置到指定位置($env:temp)目录,这个目录可以通过poweshell打开或者资源管理器中地址栏输入`%temp%`打开,将包放置到里面,然后再次运行脚本进行部署)
   - 会自动为你配置环境变量(用户级别的Path),便于你后续直接从任意位置通过`pwsh`来启动powershell7
 

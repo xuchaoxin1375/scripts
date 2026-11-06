@@ -10,12 +10,40 @@ param(
     # 仓库源(默认 github+加速;gitee 仅保留兼容)
     [validateSet('gitee', 'github')]
     $RepoSource = 'github',
+    # 下载加速镜像:显式指定时不再测速/弹窗;$env:PsGithubMirror 优先,否则默认 gh-proxy
+    [Alias('Mirror')]
+    $GithubMirror = $(if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }),
     # 开发模式:用本地最新模块(Deploy.psm1/Git.psm1),不拉远程;仓库根自动从脚本位置推导
     [switch]$Dev,
     $DevRoot = ''
     # [switch]$Force
 )
-Write-Host "[Deploy-GitForWindows]:RepoSource=$RepoSource,Dev=$Dev"
+# 预先放行脚本执行:本脚本会落盘并执行下载的模块/脚本,执行策略过严会直接中断
+try
+{
+    if ((Get-ExecutionPolicy -Scope Process) -notin @('Bypass', 'Unrestricted'))
+    {
+        Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction Stop
+    }
+}
+catch
+{
+    Write-Warning "Set-ExecutionPolicy(Process) failed: $($_.Exception.Message)"
+}
+try
+{
+    $userPolicy = Get-ExecutionPolicy -Scope CurrentUser
+    if ($userPolicy -in @('Restricted', 'AllSigned'))
+    {
+        Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force -ErrorAction Stop
+        Write-Host 'ExecutionPolicy(CurrentUser) was set to RemoteSigned.' -ForegroundColor Yellow
+    }
+}
+catch
+{
+    Write-Verbose "Set-ExecutionPolicy(CurrentUser) failed: $($_.Exception.Message)"
+}
+Write-Host "[Deploy-GitForWindows]:RepoSource=$RepoSource,Dev=$Dev,Mirror=$GithubMirror"
 # 检查git是否已经可用,如果已经可用,则跳过后续安装步骤.
 if (Get-Command git -ErrorAction SilentlyContinue)
 {
@@ -32,10 +60,12 @@ if ($Dev)
     }
     $devDeploy = Join-Path $DevRoot 'PS/Deploy/Deploy.psm1'
     $devGit = Join-Path $DevRoot 'PS/Git/Git.psm1'
-    if ((Test-Path -LiteralPath $devDeploy) -and (Test-Path -LiteralPath $devGit))
+    $devTl = Join-Path $DevRoot 'PS/TestLinks/TestLinks.psm1'
+    if ((Test-Path -LiteralPath $devDeploy) -and (Test-Path -LiteralPath $devGit) -and (Test-Path -LiteralPath $devTl))
     {
         Write-Host '[Deploy-GitForWindows]:Dev mode, use local modules.' -ForegroundColor Yellow
         . $devDeploy
+        . $devTl
         . $devGit
     }
     else
@@ -46,13 +76,29 @@ if ($Dev)
 }
 if (-not $Dev)
 {
-    # 中央镜像:$env:PsGithubMirror 优先,否则默认 gh-proxy(与 Get-GithubMirrorPrefix 同策略,独立脚本内联一份)
-    $repoMirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
-    $rawBase = if ($RepoSource -eq 'github') { "$repoMirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main" } else { 'https://gitee.com/xuchaoxin1375/scripts/raw/main' }
+    # 中央镜像:显式参数优先,其次 $env:PsGithubMirror,否则默认 gh-proxy;直连作回退
+    $repoMirror = ([string]$GithubMirror).TrimEnd('/')
+    $rawDirect = 'https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main'
+    $rawBase = if ($RepoSource -eq 'github') {
+        if ($repoMirror) { "$repoMirror/$rawDirect" }
+        else { $rawDirect }
+    }
+    else { 'https://gitee.com/xuchaoxin1375/scripts/raw/main' }
+    if ($RepoSource -ne 'github') { $rawDirect = $rawBase }
     # 方案1:iex执行
     # 远端模块带 UTF-8 BOM,irm 保留为 U+FEFF,不裁掉会让首行 <# 注释失效(解析报错)
-    (Invoke-RestMethod "$rawBase/PS/Deploy/Deploy.psm1").TrimStart([char]0xFEFF) | Invoke-Expression
-    (Invoke-RestMethod "$rawBase/PS/Git/Git.psm1").TrimStart([char]0xFEFF) | Invoke-Expression
+    foreach ($modulePath in @('PS/Deploy/Deploy.psm1', 'PS/TestLinks/TestLinks.psm1', 'PS/Git/Git.psm1'))
+    {
+        try
+        {
+            (Invoke-RestMethod "$rawBase/$modulePath" -TimeoutSec 60).TrimStart([char]0xFEFF) | Invoke-Expression
+        }
+        catch
+        {
+            Write-Warning "Download $modulePath via mirror failed ($($_.Exception.Message)), retry direct..."
+            (Invoke-RestMethod "$rawDirect/$modulePath" -TimeoutSec 60).TrimStart([char]0xFEFF) | Invoke-Expression
+        }
+    }
 }
 
 # 方案2:下载 Deploy.psm1 到临时目录
@@ -62,14 +108,19 @@ if (-not $Dev)
 # # 导入模块
 # Import-Module $deployModulePath -Force
 
-# list functions or commands about mirror operations!
-Get-Command *mirror* 
-#check commands usage (syntax)
-Get-Command Get-AvailableGithubMirrors -Syntax #use this is enough in general cases
-Get-Command Get-SelectedMirror -Syntax
+# 镜像命令自检(只列存在的,避免 TestLinks 未加载时报 CommandNotFound 刷红)
+if (Get-Command Get-AvailableGithubMirrors -ErrorAction SilentlyContinue)
+{
+    Write-Verbose 'Mirror commands loaded: Get-AvailableGithubMirrors / Get-SelectedMirror / Test-MirrorAvailability'
+}
 
-$github_mirror = Get-SelectedMirror   
-Write-Verbose "Selected mirror: $github_mirror" -Verbose
+# 显式镜像(参数或 $env:PsGithubMirror)直接使用,不测速、不弹窗;都没有才进入交互选择
+$github_mirror = ([string]$GithubMirror).TrimEnd('/')
+if ([string]::IsNullOrWhiteSpace($github_mirror))
+{
+    $github_mirror = @(Get-SelectedMirror)[0]
+}
+Write-Verbose "Selected mirror: $github_mirror"
 function Deploy-GitForwindows
 {
     <# 
@@ -157,17 +208,46 @@ function Deploy-GitForwindows
         $Package = "$Path\PortableGit.7z.exe"
         if ($IgnoreCache -or !(Test-Path $Package))
         {
-            # $mirror 为空字符串表示不走镜像,不要拼出 "/https://..." 坏链接
-            if ([string]::IsNullOrWhiteSpace($mirror))
+            # 镜像优先,失败再直连;空镜像不拼 "/https://..." 坏链接
+            $dlUrls = @()
+            if (-not [string]::IsNullOrWhiteSpace($mirror))
             {
-                $dlUrl = $url
+                $dlUrls += "$(([string]$mirror).TrimEnd('/'))/$url"
             }
-            else
+            $dlUrls += $url
+            $dlUrls = @($dlUrls | Select-Object -Unique)
+            $downloaded = $false
+            foreach ($dlUrl in $dlUrls)
             {
-                $dlUrl = "$(([string]$mirror).TrimEnd('/'))/$url"
+                Write-Host "Downloading [$dlUrl] to $Package" -ForegroundColor cyan
+                try
+                {
+                    Invoke-WebRequest -UseBasicParsing -Uri $dlUrl -OutFile $Package -TimeoutSec 600 -ErrorAction Stop
+                    if ((Test-Path -LiteralPath $Package) -and (Get-Item -LiteralPath $Package).Length -gt 0)
+                    {
+                        # 只认 PE 签名(MZ),避免把镜像返回的 HTML 错误页当成安装包
+                        $head = New-Object byte[] 2
+                        $fs = [IO.File]::OpenRead($Package)
+                        try { $n = $fs.Read($head, 0, 2) } finally { $fs.Close() }
+                        if ($n -eq 2 -and $head[0] -eq 0x4D -and $head[1] -eq 0x5A)
+                        {
+                            $downloaded = $true
+                            break
+                        }
+                        throw 'Downloaded file is not an executable.'
+                    }
+                    throw 'Downloaded file is empty.'
+                }
+                catch
+                {
+                    Write-Warning "Download failed ($($_.Exception.Message)): $dlUrl"
+                    Remove-Item -LiteralPath $Package -Force -ErrorAction SilentlyContinue
+                }
             }
-            Write-Host "Downloading [$dlUrl] to $Package" -ForegroundColor cyan
-            Invoke-WebRequest -UseBasicParsing -Uri $dlUrl -OutFile $Package -Verbose
+            if (-not $downloaded)
+            {
+                throw 'Git package download failed from mirror and direct link. Pass -url or -PackagePath manually.'
+            }
         }
         
     }
@@ -178,9 +258,14 @@ function Deploy-GitForwindows
     Write-Host 'Installing PortableGit...(it may take a while)' -ForegroundColor cyan
 
     Start-Process "$Package" -ArgumentList '-y' -Wait #使用Start-Process命令执行安装,配合-wait参数等待安装完成再执行后续内容
-    #将目录转移到专门的目录下
-    # Move-Item $Path\PortableGit "$env:SystemDrive\" -Verbose -Force
-    Move-Item $Path\PortableGit\* "$path" -Verbose -Force -Confirm:$false
+    #将目录转移到专门的目录下(连隐藏文件一起搬)
+    $extracted = Join-Path $Path 'PortableGit'
+    if (-not (Test-Path -LiteralPath $extracted))
+    {
+        throw "PortableGit extraction failed: [$extracted] not found."
+    }
+    Get-ChildItem -LiteralPath $extracted -Force | Move-Item -Destination $Path -Force
+    Remove-Item -LiteralPath $extracted -Recurse -Force -ErrorAction SilentlyContinue
     # Expand-Archive -Path $Package -DestinationPath $Path 
 
     # 临时地(在当前powershell会话内,让git命令可以在任意目录下调用),如果需要后续任意目录下调用，需要添加git.exe所在目录到环境变量Path
@@ -213,4 +298,4 @@ function Deploy-GitForwindows
 #检查当前命令是否可用
 Get-Command Deploy-GitForwindows -Syntax
 
-Deploy-GitForwindows
+Deploy-GitForwindows -mirror $github_mirror

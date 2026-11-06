@@ -10,6 +10,10 @@
 > Deploy-CompletionStack
 > # 再重开一次，缓存就绪。版本不够 7.5 会警告（自研 predictor 用不上，其它照常）。
 > ```
+> 默认不安装 PowerShell 7：只想要 5.1 时直接跑上面的命令即可，脚本会写 5.1 专属 profile；
+> 需要完整功能时加 `-InstallPwsh7`，或改用 `irm ... -OutFile ~/dcp.ps1; ~/dcp.ps1 -InstallPwsh7`。
+> 下载默认走 `https://gh-proxy.com`（git clone、raw 脚本、离线包同一前缀），
+> 可用 `-GithubMirror '<你的镜像>'` 或持久化 `$env:PsGithubMirror` 覆盖。
 
 ## 0. 先查缺口
 
@@ -125,8 +129,10 @@ conda 缓存（`~/.conda_hook_cache.ps1`）与 zoxide 缓存（`~/.zoxide_init_c
   改走 github + 加速前缀。`-RepoSource` 默认已全切 `github`（gitee 只留兼容）。
 - **中央变量 `$env:PsGithubMirror`**：全仓库统一从它拿前缀。喜欢哪个镜像就持久化哪个：
   `Add-EnvVar -EnvVar PsGithubMirror -NewValue 'https://gh-proxy.com'`（以你实测最快的为准，
-  `Get-AvailableGithubMirrors` 可测速）；不设则走默认 `gh-proxy.com`，模块内调用走
-  `Get-SelectedMirror -Silent` 静默测速（会话缓存一次）。
+  `Get-AvailableGithubMirrors` 可测速；5.1 下同样并发探测，不再退化为串行）；不设则走默认 `gh-proxy.com`，
+  模块内调用走 `Get-SelectedMirror -Silent` 静默测速（会话缓存一次）。
+- **一键部署的镜像**：`Deploy-CxxuPsModules -GithubMirror 'https://gh-proxy.com'` 显式指定，
+  同一前缀用于 git clone、raw 脚本与离线包下载；克隆失败会自动回退离线包，直连失败不再让部署中断。
 - **统一出口**：模块内拼 raw 地址一律 `Get-RepoRawUrl -Path 'PS/...'`（自动套前缀），
   别手拼；独立脚本（`Deploy-*.ps1`，模块还没加载）内联同策略三行（见 `Deploy-GitForWindows.ps1`）。
 
@@ -154,15 +160,15 @@ Sync-CxxuPredictor            # 单点操作（首次安装生成/手动修复/�
 |---|---|---|---|---|---|
 | GH 镜像站 13 个 | `TestLinks.psm1` 头部 | 全可用（本机 raw 实测） | `Get-AvailableGithubMirrors` | 删失效条目，改头注日期 | 季度 / 部署失败时 |
 | 默认镜像 `gh-proxy.com` | 各独立脚本内联 + `$env:PsGithubMirror` | OK（约 500ms） | `Test-MirrorAvailability -Url <镜像>` | 挑最快的 `Add-EnvVar PsGithubMirror` 持久化 | 同上 |
-| Git for Windows 默认版 | `Deploy-GitForWindows.ps1:70`（纯回退，`-url`/`-PackagePath` 可覆盖） | `v2.55.0.windows.5`（api 实测 latest） | 查 `api.github.com/repos/git-for-windows/git/releases/latest` 的 tag | 改默认值（api 失败自动回退，不急） | 有新版时 |
+| Git for Windows 默认版 | `Deploy-GitForWindows.ps1` 的 `$url` 回退值（`-url`/`-PackagePath` 可覆盖） | `v2.55.0.windows.5`（api 实测 latest） | 查 `api.github.com/repos/git-for-windows/git/releases/latest` 的 tag | 改默认值（api 失败自动回退，不急） | 有新版时 |
 | pwsh Ubuntu deb 版 | `Install-PwshUbuntu.ps1` 头部 `$pwsh_version`（一处，环境变量可覆盖） | `v7.6.6`（LTS 现行） | 查 PowerShell releases | 改头变量即可 | LTS 更新时 |
-| pwsh 最新版查询（两份） | `Deploy-Pwsh7Portable.ps1:86` / `PsEnv.psm1:211`（均带超时；独立脚本须自包含故保留两份，改逻辑两边同步） | `v7.6.6` | 同上 | 勿两头各改各的 | 按需 |
+| pwsh 最新版查询（两份） | `Deploy-Pwsh7Portable.ps1` 的 `Get-LatestPowerShellDownloadUrl` / `PsEnv.psm1` 对应逻辑（均带超时；独立脚本须自包含故保留两份，改逻辑两边同步） | `v7.6.6` | 同上 | 勿两头各改各的 | 按需 |
 | WT 安装包查询 | `TerminalTools.psm1:16` | 超时已加；旧死代码/自递归已修（2026-09-24） | 手动跑 `Get-LatestWindowsTerminalLink` | — | 按需 |
 | `scoop.201704.xyz`（第三方域） | `Scoop.psm1:166,173` / `Deploy-GitForWindows.ps1:117` | 存活未变，但说死就死 | `Invoke-WebRequest -Method Head` 探活 | 切官方 `get.scoop.sh` | 失败时 |
 | gitee `scoop-installer` forks | `Scoop.psm1`（buckets/gitee 方案） | 第三方控制，同步可能滞后 | `scoop bucket list` 看 Updated 列 | 切回官方源 + 镜像前缀 | 失败时 |
 | `duzyn/scoop-cn` raw 路径 | `DevEnv.psm1:16-30` | 第三方仓库，改名/删文件即坏 | 跑一次相关 Deploy 命令 | 跟随上游改路径 | 失败时 |
 | 自有 `spc` fork 同步 | `Scoop.psm1:202`（`gitee.com/xuchaoxin1375/spc`） | 自有可控 | 看 gitee 仓库同步时间 | 重跑同步 action | 半年 |
-| gitcode 归档包 | `Deploy-CxxuPsModules.ps1:356` | `HEAD 200` 存活（2026-09-24） | `HEAD` 探活 | 删/换 | 失败时 |
+| gitcode 归档包 | `Get-CxxuPsModulePackage` 的候选源列表 | `HEAD 200` 存活（2026-09-24） | `HEAD` 探活 | 删/换 | 失败时 |
 | hosts 数据（天然过期） | `Update-GithubHosts`（`raw.hellogithub.com` + GitHub520 回退） | IP 常变 | 看 hosts 尾 `# Update time` 距今 | `Update-GithubHosts`；已装定时任务则自动 | 自动（每小时+开机） |
 | pip/conda 高校源 | `DevEnv.psm1` / `ConstantString.conf` / `Tools.psm1:381` | 稳定，偶改路径 | 安装失败时对照 `help.mirrorz.org` | 改 URL | 失败时 |
 | `Get-SpeedUpUri` 未定义 | `PsEnv.psm1:238` / `TerminalTools.psm1:9,42` | 已修（2026-09-24，见 Handoff #66） | 跑 `Update-PowerShell` 即验 | — | — |
