@@ -3,11 +3,22 @@
 ## 说明
 
 - 本目录提供 PowerShell 模块集的部署脚本，部署入口为 `Deploy-CxxuPsModules.ps1`；保存到本地后按参数运行。
-- 模块面向 PowerShell 7 编写，部署脚本同时支持 Windows PowerShell 5.1 与 PowerShell 7，允许先部署模块再安装 PowerShell 7。
+- 模块面向 PowerShell 7 编写（`CxxuPredictor` 需 7.5+，7.6 可直接用），部署脚本同时支持 Windows PowerShell 5.1 与 PowerShell 7，允许先部署模块再安装 PowerShell 7。
 - 默认不安装 PowerShell 7；需要时显式加 `-InstallPwsh7`。
 - 默认下载前缀为 `https://gh-proxy.com`，用于 git 克隆、raw 脚本与离线包；可用 `-GithubMirror` 或 `$env:PsGithubMirror` 替换。克隆失败会自动回退离线包。
 - 部署完成后需重开终端并执行 `init`；Windows PowerShell 5.1 的可用功能与限制见 [Feature-Guide.md](../docs/Feature-Guide.md) 的 5.1 兼容章节。
 - 本文示例统一使用两个变量：`$mirror`（下载镜像）与 `$deployScript`（部署脚本副本），两者都在「准备部署脚本」中赋值；新开终端窗口后需重新执行该节。
+
+## 前置：执行策略
+
+与 Scoop 安装前置相同，先允许当前用户运行本地脚本：
+
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
+- 只改当前用户，不需要管理员；若报错，说明由 `MachinePolicy`/`UserPolicy` 组策略管控，需要管理员处理后再继续。
+- 下载的脚本或 zip 带 Mark-of-the-Web 时，保存后执行 `Unblock-File`；`irm -OutFile` 保存的通常没有这个标记。
 
 ## 准备部署脚本
 
@@ -28,7 +39,7 @@ irm "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/
 
 ## 选择部署方式
 
-下表命令都以 `& $deployScript` 开头，表示运行上一步保存的脚本。
+下表命令都以 `& $deployScript` 开头，表示运行上一步保存的脚本；执行前先完成「前置：执行策略」。
 
 | 目标 | 命令 | 行为 |
 |---|---|---|
@@ -111,7 +122,7 @@ Deploy-CxxuPsModules -RepoPath 'D:\repos\scripts' -Mode Default -PackagePath 'D:
 
 ## 轻量部署（仅 Windows PowerShell 5.1，免 git）
 
-适用条件：目标机只有 Windows PowerShell 5.1，且不安装 git 与 PowerShell 7。先按「准备部署脚本」保存并设置 `$deployScript`，再运行：
+适用条件：目标机只有 Windows PowerShell 5.1，且不安装 git 与 PowerShell 7。先按「前置：执行策略」与「准备部署脚本」完成设置，再运行：
 
 ```powershell
 & $deployScript -Light
@@ -179,7 +190,7 @@ C:/repos/scripts/PS/Deploy/Deploy-CxxuPsModules.ps1 -Sandbox
 | 提示 Git 不可用 | 未安装 git | 按提示选择安装 Git 后重开终端重试，或选 2 直接下载压缩包；也可改用 `-Light` |
 | 目标目录已存在 | 之前部署残留 | 加 `-Force` 重命名旧目录；或用 `-RepoPath` 指定新目录 |
 | 镜像超时或返回错误页 | 镜像不可用或网络受限 | 换 `-GithubMirror`；或手动下载 zip 后用 `-PackagePath` |
-| 执行策略拒绝运行 | 用户级策略为 Restricted/AllSigned | 用 `powershell -ExecutionPolicy Bypass -File $deployScript` 启动（只影响本次进程） |
+| 执行策略拒绝运行 | 用户级策略为 Restricted/AllSigned | 先执行 `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`；临时一次性也可用 `powershell -ExecutionPolicy Bypass -File $deployScript`（只影响本次进程） |
 | 解压后提示模块未签名 | 下载的 zip 带 Mark-of-the-Web | 对解压目录执行 `Get-ChildItem -Recurse` 再接 `Unblock-File` |
 | 5.1 下部分功能不可用 | 模块要求 PowerShell 7 | 见 [Feature-Guide.md](../docs/Feature-Guide.md) 的 5.1 兼容章节 |
 
@@ -195,7 +206,7 @@ C:/repos/scripts/PS/Deploy/Deploy-CxxuPsModules.ps1 -Sandbox
 镜像与直连都不稳定时，可交互选择脚本下载源。方案码依次对应镜像、gitee、github 直连；选好后保存到本地再运行：
 
 ```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force  # 只影响当前窗口；用户级建议保持 RemoteSigned
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser  # 与 Scoop 安装前置相同；不需要管理员
 $mirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
 $urls = @(
     "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1"

@@ -45,7 +45,7 @@
 
 ### PowerShell 模块集
 
-前置条件：具备 PowerShell 执行环境(`powershell.exe` 或 `pwsh`)与可用网络。
+前置条件：具备 PowerShell 执行环境(`powershell.exe` 或 `pwsh`)与可用网络；先按下面第 1 步设置执行策略。
 
 - 部署脚本是仓库里的 `PS/Deploy/Deploy-CxxuPsModules.ps1`。先保存到本地，再按参数运行；保存后可反复使用，也便于查看内容。
 - 脚本会检查 git：已安装则用镜像克隆仓库；未安装时提示选择安装 Git 或直接下载仓库压缩包；克隆失败自动回退离线包。
@@ -54,16 +54,25 @@
 - 参数较多时建议写进哈希表，完整参数、离线安装与沙箱调试见 [PS/Deploy/readme.md](PS/Deploy/readme.md)。
 
 ```powershell
-# 后文用 $deployScript 指这份本地副本；目录和文件名可自定
+# 1. 前置：允许当前用户运行本地脚本（与 Scoop 安装前置相同）
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+
+# 2. 保存脚本
 $deployScript = "$HOME\Downloads\Deploy-CxxuPsModules.ps1"
-# 镜像单独设置：换源只改这一行
 $mirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
 irm "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1" -OutFile $deployScript
+
+# 3. 下载文件带 Mark-of-the-Web 时先解锁（irm 保存的通常没有）
+Unblock-File $deployScript
+
+# 4. 运行
 & $deployScript
 # 需要时改用参数，例如：
 # & $deployScript -Light          # 只有 5.1、免 git
 # & $deployScript -InstallPwsh7   # 顺便安装 PowerShell 7
 ```
+
+> 第 1 步若报错，通常是 `MachinePolicy`/`UserPolicy` 组策略在管控，`Set-ExecutionPolicy` 改不动，需要管理员处理后再运行。
 
 > 保存必须用 `-OutFile`：它写出原始字节。Windows PowerShell 5.1 用 `>` 会把脚本写成 UTF-16，叠加脚本自带的 BOM 后解析失败。
 
@@ -72,6 +81,8 @@ irm "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/
 ```powershell
 Deploy-CompletionStack
 ```
+
+> 若提示找不到 `Deploy-CompletionStack`，说明 profile 的 `init` 没有执行；先回到第 2 步检查执行策略，而不是重复运行部署脚本。
 
 轻量部署(仅 5.1、免 git)、临时使用单个模块、用本地代码验证部署，见 [PS/Deploy/readme.md](PS/Deploy/readme.md)；分步部署与多设备差异见 [PS/docs/Deploy-Guide.md](PS/docs/Deploy-Guide.md)。
 
@@ -103,4 +114,4 @@ bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/he
 
 - 推荐 PowerShell 7 及以上；Windows PowerShell 5.1 的可用范围、轻量部署与 UTF-8 读取注意事项，见 [Feature-Guide.md](PS/docs/Feature-Guide.md) 的 5.1 兼容说明，模块级兼容性用 `Get-CxxuModuleCompatibility` 自查。
 - 国内网络默认经 `gh-proxy.com` 加速；镜像测速与时效性清单见 [Deploy-Guide.md](PS/docs/Deploy-Guide.md) 的镜像与时效性说明。
-- 执行策略报错时，优先用进程级绕过运行部署脚本（`powershell -ExecutionPolicy Bypass -File $deployScript`），用户级建议保持 `RemoteSigned`；下载的 zip 解压后若提示未签名，先对解压目录执行 `Get-ChildItem -Recurse | Unblock-File`。dll 加载不受执行策略影响，排查见 [Feature-Guide.md](PS/docs/Feature-Guide.md) 的 dll/活件章节。git 配置损坏时备份或移除 `~/.gitconfig` 后重试。
+- 执行策略报错时，先按 Scoop 同款前置设置：`Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`；仍被下载标记拦截时对文件执行 `Unblock-File`。dll 加载不受执行策略影响，排查见 [Feature-Guide.md](PS/docs/Feature-Guide.md) 的 dll/活件章节。git 配置损坏时备份或移除 `~/.gitconfig` 后重试。

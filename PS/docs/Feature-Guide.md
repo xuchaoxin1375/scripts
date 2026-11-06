@@ -211,11 +211,11 @@ p -Force                    # 看 init 分步耗时，定位慢项
 |---|---|---|
 | `doctor` 报 `pwsh 7.5+` 必备项缺失 | `$PSVersionTable.PSVersion` | 升级到 7.5 及以上；7.6 可直接用，不需要重编 dll |
 | 活件存在但未加载 | `$Error[0]`、`$global:PsUxLoadErrors` | 看具体异常；多为 SMA 代际不匹配，按 `Live-Versions.md §10` 用本机 SMA 重编后 `Sync-CxxuPredictor -DllPath` |
-| 脚本或模块被策略拦 | `Get-ExecutionPolicy -List` | 用进程级绕过运行部署脚本（`powershell -ExecutionPolicy Bypass -File ...`）；用户级保持 `RemoteSigned`；`MachinePolicy`/`UserPolicy` 由组策略控制，需管理员 |
+| 脚本或模块被策略拦 | `Get-ExecutionPolicy -List` | 先按 Scoop 同款前置设置 `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`；仍被下载标记拦截时执行 `Unblock-File`；`MachinePolicy`/`UserPolicy` 由组策略控制，需管理员 |
 | 下载的 zip 解压后提示未签名 | `Get-Item <文件> -Stream Zone.Identifier` | 对解压目录执行 `Get-ChildItem -Recurse` 再接 `Unblock-File`（MOTW 只影响 `.ps1`/`.psm1`，不影响 dll） |
 | 同步后行为没变 | `doctor` 的 predictor 行 | 重开终端；`ipmox` 刷不动 dll |
 
-- 执行策略只约束脚本与模块脚本文件，不约束 `.dll`；dll 加载失败时改执行策略无效。
+- 执行策略只约束脚本与模块脚本文件，不约束 `.dll`；dll 加载失败时改执行策略无效。临时一次性运行也可用 `powershell -ExecutionPolicy Bypass -File ...`，日常保持 `RemoteSigned`。
 
 ## 10. 补全全景速查（三层 + 参数层）
 

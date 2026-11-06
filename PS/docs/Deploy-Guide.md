@@ -5,6 +5,17 @@
 
 ## 极简版
 
+### 前置：执行策略
+
+与 Scoop 安装前置相同，先允许当前用户运行本地脚本：
+
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
+- 只改当前用户，不需要管理员；若报错，说明由 `MachinePolicy`/`UserPolicy` 组策略管控，需要管理员处理后再继续。
+- 下载的脚本或 zip 带 Mark-of-the-Web 时，保存后执行 `Unblock-File`；`irm -OutFile` 保存的通常没有这个标记。
+
 ### 保存部署脚本
 
 部署脚本就是仓库里的 `PS/Deploy/Deploy-CxxuPsModules.ps1`。先保存到本地，再按参数运行；保存一次可反复使用，也便于查看内容和修改参数。
@@ -35,6 +46,7 @@ Deploy-CompletionStack
 - 默认下载前缀为 `https://gh-proxy.com`，用于 git 克隆、raw 脚本与离线包；可用 `-GithubMirror '<镜像>'` 或持久化 `$env:PsGithubMirror` 覆盖。
 - 核心 `CxxuCommand`（`CxxuPredictor`）要求 PowerShell 7.5 及以上（7.5/7.6 均可，7.6 基于 .NET 10 可直接加载）；版本不足时只有警告，其余功能照常。
 - 参数的完整说明、离线安装、开发模式与沙箱调试见 [PS/Deploy/readme.md](../Deploy/readme.md)。
+- 若 `& $deployScript` 仍报“禁止运行脚本”，回到“前置：执行策略”；重开后找不到 `Deploy-CompletionStack`，说明 profile 的 `init` 未执行，同样先处理策略。
 
 ### 按需修改参数
 
