@@ -21,7 +21,7 @@ PS> C:/repos/scripts/PS/Deploy/Deploy-CxxuPsModules.ps1 -Dev -Light -Verbose
 默认行为:可用 git 时优先镜像克隆,克隆失败自动回退离线包;默认不安装 PowerShell 7,
 需要时显式加 -InstallPwsh7。脚本启动时会先放行当前进程的执行策略,必要时把用户级
 执行策略从 Restricted/AllSigned 调为 RemoteSigned。
-本地调试(不碰真实环境,失败或加 -KeepSandbox 时保留临时目录):
+本地调试(不碰真实环境,产物落用户下载目录,失败或加 -KeepSandbox 时保留):
 PS> C:/repos/scripts/PS/Deploy/Deploy-CxxuPsModules.ps1 -Sandbox -Mode FromPackage -KeepSandbox
 PS> C:/repos/scripts/PS/Deploy/Deploy-CxxuPsModules.ps1 -Sandbox -Mode Default -PackagePath ./scripts-main.zip
 #>
@@ -47,7 +47,7 @@ param(
     $Mode = 'Default',
     # 本地包路径(可选):Default 模式下优先使用,便于用当前仓库打的 zip 离线测试
     $PackagePath = '',
-    # 本地调试:临时目录部署,不改环境变量、不装 git/pwsh、不写 profile;默认成功后清理
+    # 本地调试:用户下载目录下的独立目录部署,不改环境变量、不装 git/pwsh、不写 profile;默认成功后清理
     [switch]$Sandbox,
     # 本地调试:保留沙箱目录(失败时也会保留),便于检查解压/克隆结果
     [switch]$KeepSandbox
@@ -80,7 +80,7 @@ catch
 {
     Write-Verbose "Set-ExecutionPolicy(CurrentUser) failed: $($_.Exception.Message)"
 }
-# 本地调试:使用独立临时目录,跑完不碰真实环境
+# 本地调试:使用独立沙箱目录(优先用户下载目录),跑完不碰真实环境
 $sandboxRoot = $null
 if ($Sandbox)
 {
@@ -89,7 +89,28 @@ if ($Sandbox)
         Write-Warning 'Sandbox mode does not install PowerShell 7; -InstallPwsh7 is ignored.'
         $InstallPwsh7 = $false
     }
-    $sandboxRoot = Join-Path ([IO.Path]::GetTempPath()) ("CxxuPsModules-Sandbox-" + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N').Substring(0, 6))
+    # 沙箱根目录:优先用户下载目录(便于查看/保留),取不到再回退系统临时目录
+    $sandboxBase = $null
+    try
+    {
+        # 从资源管理器登记项取实际下载目录,兼容 OneDrive/自定义重定向
+        $downloadsReg = Get-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders' -Name '{374DE290-123F-4565-9164-39C4925E467B}' -ErrorAction Stop
+        $sandboxBase = [Environment]::ExpandEnvironmentVariables([string]$downloadsReg.'{374DE290-123F-4565-9164-39C4925E467B}')
+    }
+    catch
+    {
+        $sandboxBase = $null
+    }
+    if ([string]::IsNullOrWhiteSpace($sandboxBase) -or -not (Test-Path -LiteralPath $sandboxBase -PathType Container))
+    {
+        $sandboxBase = Join-Path $home 'Downloads'
+    }
+    if (-not (Test-Path -LiteralPath $sandboxBase -PathType Container))
+    {
+        # 下载目录不可用时退回系统临时目录,保证沙箱模式始终可跑
+        $sandboxBase = [IO.Path]::GetTempPath()
+    }
+    $sandboxRoot = Join-Path $sandboxBase ("CxxuPsModules-Sandbox-" + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N').Substring(0, 6))
     Write-Host "[Sandbox] target: $sandboxRoot" -ForegroundColor Cyan
 }
 Write-Host "[Deploy-CxxuPsModules]:开始运行CxxuPsModules部署脚本(来源:${RepoSource};镜像:${GithubMirror})..."
@@ -179,9 +200,10 @@ function Deploy-CxxuPsModules
     .PARAMETER InstallPwsh7
     部署完成后安装 PowerShell 7 portable;默认关闭,只想要 Windows PowerShell 5.1 的机器不必下载。
     .PARAMETER Sandbox
-    本地调试模式:临时目录部署,不改环境变量、不装 git/pwsh、不写 profile;成功后默认清理。
+    本地调试模式:在用户下载目录下建独立沙箱目录部署(下载目录不可用时回退系统临时目录),
+    不改环境变量、不装 git/pwsh、不写 profile;成功后默认清理。
     .PARAMETER KeepSandbox
-    本地调试时保留临时目录,便于检查解压/克隆结果;失败时无论是否指定都会保留。
+    本地调试时保留沙箱目录,便于检查解压/克隆结果;失败时无论是否指定都会保留。
     .PARAMETER PackagePath
     本地 zip 包路径;默认模式下优先使用,配合 -Sandbox 可在不通网时快速回归。
     .EXAMPLE
@@ -195,7 +217,7 @@ function Deploy-CxxuPsModules
     需要完整功能时显式安装 PowerShell 7
     deploy-CxxuPsModules -InstallPwsh7 -Verbose
     .EXAMPLE
-    本地调试:临时目录部署,不改真实环境;用本地 zip 包可完全离线回归
+    本地调试:在用户下载目录下建沙箱部署,不改真实环境;用本地 zip 包可完全离线回归
     deploy-CxxuPsModules -Sandbox -Mode Default -PackagePath ./scripts-main.zip -KeepSandbox
     .EXAMPLE
     使用在线方案,从默认的gitee/github(要求预先安装Git软件)
@@ -275,7 +297,7 @@ function Deploy-CxxuPsModules
         # 沙箱不安装任何持久组件
         $InstallPwsh7 = $false
     }
-    # 沙箱把离线包也放在沙箱目录,避免污染 Downloads 或用户指定的包目录
+    # 沙箱把离线包也放在沙箱目录,不混入常规包目录或用户指定的包目录
     $packageDirectory = if ($Sandbox) { Join-Path $RepoPath 'packages' } else { "$home/Downloads/CxxuPsModules" }
 
     # 打印此函数的所有参数极其取值,方便用户排查问题

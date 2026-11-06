@@ -75,7 +75,7 @@ C:/repos/scripts/PS/Deploy/Deploy-CxxuPsModules.ps1 -Dev # 可叠 -Light -Verbos
 
 ### 本地调试（沙箱，不碰真实环境）
 
-不想为每次改动找一台干净 Windows 时，用 `-Sandbox`：部署到独立临时目录，不装 git/pwsh、不写环境变量、不改 profile；成功后默认清理，失败或加 `-KeepSandbox` 时保留目录便于检查。脚本代码用当前本地文件（无需先推送），目标仓库仍按 `-Mode` 走镜像克隆或离线包。
+不想为每次改动找一台干净 Windows 时，用 `-Sandbox`：在用户下载目录下建独立沙箱目录部署（下载目录取资源管理器登记的实际路径，兼容 OneDrive/自定义重定向；取不到时回退系统临时目录），不装 git/pwsh、不写环境变量、不改 profile；成功后默认清理，失败或加 `-KeepSandbox` 时保留目录便于检查。脚本代码用当前本地文件（无需先推送），目标仓库仍按 `-Mode` 走镜像克隆或离线包。
 
 ```powershell
 # 测镜像克隆(真实下载,但不落真实目录)
@@ -91,7 +91,7 @@ C:/repos/scripts/PS/Deploy/Deploy-CxxuPsModules.ps1 -Sandbox -Mode Default -Pack
 C:/repos/scripts/PS/Deploy/Deploy-CxxuPsModules.ps1 -Sandbox
 ```
 
-沙箱结果会列出 `RepoPath` / `NewPsPath` 与 `DeployManifest`、`InitManifest`、`GitAttributes` 三项校验；失败时保留目录并给出路径。所有产物只落在 `%TEMP%\CxxuPsModules-Sandbox-*`（含 `PS/` 与 `packages/`），不会写 `Downloads`，也不会生成 `~/dgw.ps1` / `~/dp7.ps1`；成功后默认整目录删除，`-KeepSandbox` 或失败时保留。`-InstallPwsh7` 在沙箱中会被忽略。
+沙箱结果会列出 `RepoPath` / `NewPsPath` 与 `DeployManifest`、`InitManifest`、`GitAttributes` 三项校验；失败时保留目录并给出路径。所有产物落在用户下载目录的 `CxxuPsModules-Sandbox-*`（含 `PS/` 与 `packages/`；下载目录不可用时回退 `%TEMP%`），不混入常规包目录 `~/Downloads/CxxuPsModules`，也不会生成 `~/dgw.ps1` / `~/dp7.ps1`；成功后默认整目录删除，`-KeepSandbox` 或失败时保留。`-InstallPwsh7` 在沙箱中会被忽略。
 
 已有 git 时，一键部署会跳过 `Deploy-GitForWindows` 的下载与安装；已有 pwsh 时 `-InstallPwsh7` 不会重装。单独运行 `Deploy-Pwsh7Portable.ps1` 时，默认检测到 `pwsh` 也跳过，需要重装/覆盖请加 `-Force`。
 
