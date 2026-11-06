@@ -47,18 +47,23 @@
 
 前置条件：具备 PowerShell 执行环境(`powershell.exe` 或 `pwsh`)与可用网络。
 
+- 部署脚本是仓库里的 `PS/Deploy/Deploy-CxxuPsModules.ps1`。先保存到本地，再按参数运行；保存后可反复使用，也便于查看内容。
 - 脚本会检查 git：已安装则用镜像克隆仓库；未安装时提示选择安装 Git 或直接下载仓库压缩包；克隆失败自动回退离线包。
 - 默认不安装 PowerShell 7，需要时加 `-InstallPwsh7`。
 - 下载默认走 `https://gh-proxy.com`，可用 `-GithubMirror` 或 `$env:PsGithubMirror` 覆盖；镜像与代理细节见 [Deploy-Guide.md](PS/docs/Deploy-Guide.md)。
-- 典型参数组合、离线安装与沙箱调试见 [PS/Deploy/readme.md](PS/Deploy/readme.md)。
+- 参数较多时建议写进哈希表，完整参数、离线安装与沙箱调试见 [PS/Deploy/readme.md](PS/Deploy/readme.md)。
 
 ```powershell
-iex ((irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1').TrimStart([char]0xFEFF))
+# 后文用 $deployScript 指这份本地副本；目录和文件名可自定
+$deployScript = "$HOME\Downloads\Deploy-CxxuPsModules.ps1"
+irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1' -OutFile $deployScript
+& $deployScript
+# 需要时改用参数，例如：
+# & $deployScript -Light          # 只有 5.1、免 git
+# & $deployScript -InstallPwsh7   # 顺便安装 PowerShell 7
 ```
 
-> 脚本以 UTF-8 BOM 保存(`powershell.exe` 5.1 直接执行含中文脚本时需要),`irm` 会把 BOM 解码成首字符 U+FEFF,
-> 直接 `| iex` 会让首行 `<#` 块注释失效并报"参数列表中缺少参量",故先 `TrimStart([char]0xFEFF)`。
-> 不方便写这段裁剪时,可先落盘再执行:`irm '<同上地址>' -OutFile ~/dcp.ps1; ~/dcp.ps1`(必须是 `-OutFile`,用 `>` 在 5.1 会写成 UTF-16 双 BOM,脚本反而解析失败)。
+> 保存必须用 `-OutFile`：它写出原始字节。Windows PowerShell 5.1 用 `>` 会把脚本写成 UTF-16，叠加脚本自带的 BOM 后解析失败。
 
 重新打开终端(profile 自动执行 `init`)，再安装补全栈：
 

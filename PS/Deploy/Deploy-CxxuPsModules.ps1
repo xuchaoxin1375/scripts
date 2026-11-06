@@ -37,6 +37,10 @@ param(
     [switch]$Dev,
     $DevRoot = '',
     [switch]$Force,
+    # 仓库解压或克隆的目标目录(默认 $env:SystemDrive\repos\scripts)
+    $RepoPath = '',
+    # 写入 PSModulePath 的模块根目录(默认 <RepoPath>\PS)
+    $NewPsPath = '',
     # 轻量部署(仅 Windows PowerShell 5.1):免 git(走离线包下载),落 PSModulePath + 写 5.1 专属 profile,
     # 新开 powershell.exe 即用(B 档交互可用,见 Feature-Guide §13)。默认就不装 pwsh,本开关保留兼容。
     [switch]$Light,
@@ -88,6 +92,10 @@ if ($Sandbox)
     {
         Write-Warning '沙箱模式不安装 PowerShell 7,已忽略 -InstallPwsh7。'
         $InstallPwsh7 = $false
+    }
+    if (-not [string]::IsNullOrWhiteSpace($RepoPath) -or -not [string]::IsNullOrWhiteSpace($NewPsPath))
+    {
+        Write-Warning '沙箱模式使用独立的沙箱目录,已忽略 -RepoPath/-NewPsPath。'
     }
     # 沙箱根目录:优先用户下载目录(便于查看/保留),取不到再回退系统临时目录
     $sandboxBase = $null
@@ -916,6 +924,14 @@ else
     if (-not [string]::IsNullOrWhiteSpace($PackagePath))
     {
         $deployArgs.PackagePath = $PackagePath
+    }
+    if (-not [string]::IsNullOrWhiteSpace($RepoPath))
+    {
+        $deployArgs.RepoPath = $RepoPath
+    }
+    if (-not [string]::IsNullOrWhiteSpace($NewPsPath))
+    {
+        $deployArgs.NewPsPath = $NewPsPath
     }
     Deploy-CxxuPsModules @deployArgs
 }

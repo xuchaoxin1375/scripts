@@ -5,28 +5,66 @@
 
 ## 极简版
 
+### 保存部署脚本
+
+部署脚本就是仓库里的 `PS/Deploy/Deploy-CxxuPsModules.ps1`。先保存到本地，再按参数运行；保存一次可反复使用，也便于查看内容和修改参数。
+
 ```powershell
-iex ((irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1').TrimStart([char]0xFEFF))
+# 后文用 $deployScript 指这份副本；目录和文件名可以自定
+$deployScript = "$HOME\Downloads\Deploy-CxxuPsModules.ps1"
+$mirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
+irm "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1" -OutFile $deployScript
+```
+
+- 保存下来的是同一个部署脚本，不是另一个版本；改名不影响运行。
+- `$deployScript` 只在当前窗口有效；新开窗口后重新执行上面的赋值。
+- 必须用 `-OutFile` 保存原始字节；Windows PowerShell 5.1 用 `>` 会写成 UTF-16，脚本解析失败。
+
+### 运行部署
+
+```powershell
+& $deployScript
 # 关闭并重开终端，profile 自动执行 init
 Deploy-CompletionStack
 # 再次重开终端，补全缓存就绪
 ```
 
-- 默认不安装 PowerShell 7：只使用 Windows PowerShell 5.1 时，直接执行上面的命令即可；若同时没有 git，改用 `-Light`（见下）。
-- 需要完整功能时，首次命令改为 `irm ... -OutFile ~/dcp.ps1; ~/dcp.ps1 -InstallPwsh7`。
+- 只使用 Windows PowerShell 5.1 时直接运行即可；若同时没有 git，改用 `& $deployScript -Light`（见下）。
+- 需要 PowerShell 7 时用 `& $deployScript -InstallPwsh7`；默认不安装。
 - 默认下载前缀为 `https://gh-proxy.com`，用于 git 克隆、raw 脚本与离线包；可用 `-GithubMirror '<镜像>'` 或持久化 `$env:PsGithubMirror` 覆盖。
 - 核心 `CxxuCommand`（`CxxuPredictor`）要求 PowerShell 7.5 及以上；版本不足时只有警告，其余功能照常。
 - 参数的完整说明、离线安装、开发模式与沙箱调试见 [PS/Deploy/readme.md](../Deploy/readme.md)。
 
+### 按需修改参数
+
+参数较多时，一长串命令既难读也难改。把参数写进哈希表，需要哪项就取消哪行的注释：
+
+```powershell
+$deployParams = @{
+    # 只有 Windows PowerShell 5.1 且不装 git 时启用
+    # Light        = $true
+    # 部署完成后安装 PowerShell 7
+    # InstallPwsh7 = $true
+    # 部署到其他目录
+    # RepoPath     = 'D:\repos\scripts'
+    # 使用已下载的 zip，完全离线
+    # Mode         = 'Default'
+    # PackagePath  = 'D:\downloads\scripts-main.zip'
+}
+& $deployScript @deployParams
+```
+
+- 全部注释掉时等同于不带参数运行；只改一项也可以直接写 `& $deployScript -Light`。
+- 不建议用 `irm ... | iex` 直接执行：不能传参数、不方便先检查内容，5.1 下还要额外裁剪 BOM。
+
 ### 典型参数组合
 
-以下命令中的 `~/dcp.ps1` 指按极简版保存到用户主目录的脚本副本。
-
-- 只有 Windows PowerShell 5.1、免 git：`~/dcp.ps1 -Light`
-- 标准部署（有 git，镜像克隆）：`~/dcp.ps1`
-- 同时安装 PowerShell 7：`~/dcp.ps1 -InstallPwsh7`
-- 已下载 zip、完全离线：`~/dcp.ps1 -Mode Default -PackagePath /path/to/scripts-main.zip`
-- 默认目录已存在、重新部署：`~/dcp.ps1 -Force`
+- 只有 Windows PowerShell 5.1、免 git：`& $deployScript -Light`
+- 标准部署（有 git，镜像克隆）：`& $deployScript`
+- 同时安装 PowerShell 7：`& $deployScript -InstallPwsh7`
+- 已下载 zip、完全离线：`& $deployScript -Mode Default -PackagePath D:\downloads\scripts-main.zip`
+- 默认目录已存在、重新部署：`& $deployScript -Force`
+- 部署到其他目录：`& $deployScript -RepoPath D:\repos\scripts`
 
 ## 0. 先查缺口
 
@@ -43,7 +81,7 @@ $PSVersionTable.PSVersion  # 完整功能需要 Major >= 7；5.1 的可用范围
 
 ## 2. git + 拉仓库
 
-> 只有 Windows PowerShell 5.1 且不安装 git 时，跳过本节，按极简版执行 `~/dcp.ps1 -Light`，脚本会直接下载离线包并写 5.1 专属 profile。
+> 只有 Windows PowerShell 5.1 且不安装 git 时，跳过本节，直接运行 `& $deployScript -Light`，脚本会下载离线包并写 5.1 专属 profile。
 
 ```powershell
 Confirm-GitCommand         # 查 git，没有就装

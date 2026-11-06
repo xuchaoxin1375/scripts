@@ -2,72 +2,74 @@
 
 ## 说明
 
-- 本目录提供 PowerShell 模块集的部署脚本，一键入口为 `Deploy-CxxuPsModules.ps1`。
-- 模块面向 PowerShell 7 编写，一键部署脚本同时支持 Windows PowerShell 5.1 与 PowerShell 7，允许先部署模块再安装 PowerShell 7。
+- 本目录提供 PowerShell 模块集的部署脚本，部署入口为 `Deploy-CxxuPsModules.ps1`；保存到本地后按参数运行。
+- 模块面向 PowerShell 7 编写，部署脚本同时支持 Windows PowerShell 5.1 与 PowerShell 7，允许先部署模块再安装 PowerShell 7。
 - 默认不安装 PowerShell 7；需要时显式加 `-InstallPwsh7`。
 - 默认下载前缀为 `https://gh-proxy.com`，用于 git 克隆、raw 脚本与离线包；可用 `-GithubMirror` 或 `$env:PsGithubMirror` 替换。克隆失败会自动回退离线包。
 - 部署完成后需重开终端并执行 `init`；Windows PowerShell 5.1 的可用功能与限制见 [Feature-Guide.md](../docs/Feature-Guide.md) 的 5.1 兼容章节。
 
+## 准备部署脚本
+
+部署脚本本身是仓库中的 [Deploy-CxxuPsModules.ps1](Deploy-CxxuPsModules.ps1)。从网络部署时，先把脚本保存到本地，再运行；保存一次即可反复使用，也便于先查看内容、按需修改参数。
+
+```powershell
+# 后文用 $deployScript 指这份副本；目录和文件名都可以自定
+$deployScript = "$HOME\Downloads\Deploy-CxxuPsModules.ps1"
+$mirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
+irm "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1" -OutFile $deployScript
+```
+
+- 保存下来的是仓库里同一个脚本，不是另一个版本。文件名只用于识别，改成其他名字也能运行。
+- `$deployScript` 只在当前终端窗口有效；新开窗口后重新执行上面的赋值。
+- 保存必须用 `-OutFile`：它写出原始字节。Windows PowerShell 5.1 用 `>` 会把脚本写成 UTF-16，叠加脚本自带的 BOM 后解析失败。
+- 默认镜像不可用时，把 `$mirror` 换成可用镜像，或按「部署失败时」改用离线包。
+
 ## 选择部署方式
 
-下表的 `~/dcp.ps1` 指按「快速部署」保存到用户主目录的脚本副本。
+下表命令都以 `& $deployScript` 开头，表示运行上一步保存的脚本。
 
-| 目标 | 推荐入口 | 行为 |
+| 目标 | 命令 | 行为 |
 |---|---|---|
-| 新机器首次部署 | `~/dcp.ps1` | 有 git 时镜像克隆；无 git 时可选安装 Git 或直接下载压缩包；克隆失败回退离线包 |
-| 只有 Windows PowerShell 5.1，且不装 git | `~/dcp.ps1 -Light` | 无 git 不提示安装，改走离线包；不安装 PowerShell 7 |
-| 已下载仓库 zip 或网络不稳定 | `~/dcp.ps1 -Mode Default -PackagePath <zip>` | 优先使用本地 zip，不依赖 git |
-| 默认目录已存在，需要重新部署 | `~/dcp.ps1 -Force` | 旧目录重命名为 `<名称>.bak.<时间戳>` 后重新部署 |
+| 新机器首次部署 | `& $deployScript` | 有 git 时镜像克隆；无 git 时可选安装 Git 或直接下载压缩包；克隆失败回退离线包 |
+| 只有 Windows PowerShell 5.1，且不装 git | `& $deployScript -Light` | 无 git 不提示安装，改走离线包；不安装 PowerShell 7 |
+| 需要 PowerShell 7 | `& $deployScript -InstallPwsh7` | 部署完成后安装便携版；已有 `pwsh` 时跳过 |
+| 已下载仓库 zip 或网络不稳定 | `& $deployScript -Mode Default -PackagePath <zip>` | 优先使用本地 zip，不依赖 git |
+| 部署到其他目录 | `& $deployScript -RepoPath <目录>` | 仓库解压或克隆到指定目录，模块根默认为 `<目录>\PS` |
+| 默认目录已存在，需要重新部署 | `& $deployScript -Force` | 旧目录重命名为 `<名称>.bak.<时间戳>` 后重新部署 |
 | 更新已有部署 | `Update-ReposesConfiged` | 拉取代码并按需同步 dll 活件，见 [Deploy-Guide.md](../docs/Deploy-Guide.md) 的更新章节 |
-| 修改部署脚本本身 | `-Dev` | 使用仓库内的本地脚本，不拉远端 |
-| 验证部署流程 | `-Sandbox` | 在下载目录下建沙箱目录，不写环境变量与 profile |
+| 修改部署脚本本身 | `& $deployScript -Dev` | 使用仓库内的本地脚本，不拉远端 |
+| 验证部署流程 | `& $deployScript -Sandbox` | 在下载目录下建沙箱目录，不写环境变量与 profile |
 
-## 快速部署（在线）
+## 按需修改参数
 
-下面两种写法等价，任选一种。推荐先落盘再执行，便于检查脚本内容、复用参数和重复运行。
-
-### 方式一：先落盘再执行（推荐）
-
-`-OutFile` 保存原始字节，避免 5.1 用 `>` 重定向时写成 UTF-16。脚本下载后按需追加参数：
-
-- 不带参数：标准部署，有 git 时镜像克隆；无 git 时在提示中选择安装 Git 或直接下载仓库压缩包。
-- `-Light`：只有 Windows PowerShell 5.1 且不想安装 git 时使用。
-- `-InstallPwsh7`：部署完成后安装 PowerShell 7 便携版。
+参数较多时，一长串命令既难读也难改。把参数写进哈希表，需要哪项就取消哪行的注释：
 
 ```powershell
-irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1' -OutFile ~/dcp.ps1
-# 任选一条执行
-~/dcp.ps1
-# ~/dcp.ps1 -Light
-# ~/dcp.ps1 -InstallPwsh7
+$deployParams = @{
+    # 只有 Windows PowerShell 5.1 且不装 git 时启用
+    # Light        = $true
+    # 部署完成后安装 PowerShell 7
+    # InstallPwsh7 = $true
+    # 部署到其他目录
+    # RepoPath     = 'D:\repos\scripts'
+    # 使用已下载的 zip，完全离线
+    # Mode         = 'Default'
+    # PackagePath  = 'D:\downloads\scripts-main.zip'
+    # 目标目录已存在时先备份再重新部署
+    # Force        = $true
+    # 替换下载镜像
+    # GithubMirror = 'https://gh-proxy.com'
+}
+& $deployScript @deployParams
 ```
 
-执行策略为 Restricted/AllSigned 时，脚本会先放行当前进程；若策略仍阻止脚本文件启动，改用 `powershell -ExecutionPolicy Bypass -File ~/dcp.ps1` 启动。
-
-### 方式二：管道执行
-
-适合一次性执行，不落盘。多行写法便于检查镜像变量与地址：
-
-```powershell
-$mirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
-$url = "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1"
-$scripts = (Invoke-RestMethod $url).TrimStart([char]0xFEFF)
-$scripts | Invoke-Expression
-```
-
-一行等价写法：
-
-```powershell
-iex ((irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1').TrimStart([char]0xFEFF))
-```
-
-- 脚本以 UTF-8 BOM 保存，Windows PowerShell 5.1 直接执行含中文脚本时依赖它。`irm` 会把 BOM 解码成首字符 U+FEFF，直接 `iex` 可能让首行 `<#` 块注释失效并报“参数列表中缺少参量”，因此先 `TrimStart([char]0xFEFF)`。
-- 不想写这段裁剪时，改用上面的落盘方式；落盘必须用 `-OutFile`，用 `>` 在 5.1 会写成 UTF-16 双 BOM。
-- 默认镜像 `gh-proxy.com` 不可用时，可直接查 [TestLinks.psm1](../TestLinks/TestLinks.psm1) 头部的镜像列表；部署完成后也可运行 `Get-AvailableGithubMirrors` 测速，再替换链接前缀。gitee 仅保留兼容，`irm|iex` 常被拦截，不再推荐。
+- 全部注释掉时等同于不带参数运行；只改一项也可以直接写 `& $deployScript -Light`。
+- 参数取值和默认值见下一节。
+- 不建议用 `irm ... | iex` 直接执行：这种方式不能传参数、不方便先检查内容，Windows PowerShell 5.1 下还要额外裁剪 BOM。优先保存到本地再运行。
 
 ## 部署参数
 
-### 一键脚本参数
+### 脚本参数
 
 | 参数 | 默认值 | 作用 |
 |---|---|---|
@@ -75,6 +77,8 @@ iex ((irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/
 | `-GithubMirror`（别名 `-Mirror`） | `$env:PsGithubMirror`；未设置时 `https://gh-proxy.com` | 克隆、raw 与离线包共用的加速前缀；传空字符串表示直连 |
 | `-Mode` | `Default` | `Default`：本地包 → git 克隆 → 离线包；`FromPackage`：重新下载离线包；`FromRemoteGit`：只走克隆 |
 | `-PackagePath` | 空 | 本地 zip 文件路径；与 `-Mode Default` 配合时优先使用，配合 `-Sandbox` 可完全离线 |
+| `-RepoPath` | `$env:SystemDrive\repos\scripts` | 仓库解压或克隆的目标目录 |
+| `-NewPsPath` | `<RepoPath>\PS` | 写入 `PSModulePath` 的模块根目录 |
 | `-Light` | 关 | 无 git 时不提示安装，改走离线包；不安装 PowerShell 7；写 5.1 专属 profile |
 | `-InstallPwsh7` | 关 | 部署完成后安装 PowerShell 7 便携版；已有 `pwsh` 时跳过 |
 | `-Force` | 关 | 目标目录已存在时，先重命名为 `<名称>.bak.<时间戳>` 再部署 |
@@ -82,37 +86,33 @@ iex ((irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/
 | `-Sandbox` | 关 | 沙箱部署：下载目录下独立目录；不写环境变量与 profile，不装 git 与 PowerShell 7 |
 | `-KeepSandbox` | 关 | 保留沙箱目录；失败时总是保留 |
 
-### 部署函数参数
+- 运行时脚本还会定义同名函数 `Deploy-CxxuPsModules`，参数与上表基本一致；日常部署用脚本参数即可，不需要先加载函数。
+- 需要先加载再反复调整时，可用点源执行（会先按默认参数部署一次，默认目录已存在时会提前返回）：
 
-通过 `Invoke-Expression`（上面的管道方式）加载后，`Deploy-CxxuPsModules` 函数在当前会话可用；也可在已导入 `Deploy` 模块的会话中直接调用。函数与一键脚本的主要差别是目标目录与本地包默认值：
-
-| 参数 | 默认值 | 作用 |
-|---|---|---|
-| `-RepoPath` | `$env:SystemDrive\repos\scripts` | 仓库解压或克隆目录 |
-| `-NewPsPath` | `$RepoPath\PS` | 写入 `PSModulePath` 的模块根目录 |
-| `-PackagePath` | `$home/Downloads/CxxuPsModules/scripts*.zip` | 本地 zip 匹配模式；命中多个时取最新；仅在 `Default` 模式下使用 |
-
-- 其余参数与一键脚本同名同义，见上表。
-- 脚本被加载时会按默认参数执行一次部署；需要用其他目录或离线包重试时，再调用函数并显式传参。
+```powershell
+. $deployScript
+Deploy-CxxuPsModules -RepoPath 'D:\repos\scripts' -Mode Default -PackagePath 'D:\downloads\scripts-main.zip' -Verbose
+```
 
 ### 典型参数组合
 
-- 5.1 最小部署：`~/dcp.ps1 -Light`
-- 标准部署（有 git）：`~/dcp.ps1`
-- 标准部署并安装 PowerShell 7：`~/dcp.ps1 -InstallPwsh7`
-- 重新部署默认目录：`~/dcp.ps1 -Force`
-- 完全离线（已下载 zip）：`~/dcp.ps1 -Mode Default -PackagePath /path/to/scripts-main.zip`
-- 指定镜像：`~/dcp.ps1 -GithubMirror 'https://gh-proxy.com'`
-- 自定义目录（加载脚本后调用函数）：`Deploy-CxxuPsModules -RepoPath /path/to/scripts -Mode Default -PackagePath /path/to/scripts-main.zip`
-- 沙箱回归：`C:/repos/scripts/PS/Deploy/Deploy-CxxuPsModules.ps1 -Sandbox -Mode FromPackage -KeepSandbox`
+在仓库内调试时，也可把 `$deployScript` 换成 `C:/repos/scripts/PS/Deploy/Deploy-CxxuPsModules.ps1`。
+
+- 5.1 最小部署：`& $deployScript -Light`
+- 标准部署（有 git）：`& $deployScript`
+- 标准部署并安装 PowerShell 7：`& $deployScript -InstallPwsh7`
+- 重新部署默认目录：`& $deployScript -Force`
+- 完全离线（已下载 zip）：`& $deployScript -Mode Default -PackagePath D:\downloads\scripts-main.zip`
+- 指定镜像：`& $deployScript -GithubMirror 'https://gh-proxy.com'`
+- 部署到其他目录：`& $deployScript -RepoPath D:\repos\scripts`
+- 沙箱回归：`& $deployScript -Sandbox -Mode FromPackage -KeepSandbox`
 
 ## 轻量部署（仅 Windows PowerShell 5.1，免 git）
 
-适用条件：目标机只有 Windows PowerShell 5.1，且不安装 git 与 PowerShell 7。
+适用条件：目标机只有 Windows PowerShell 5.1，且不安装 git 与 PowerShell 7。先按「准备部署脚本」保存并设置 `$deployScript`，再运行：
 
 ```powershell
-irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1' -OutFile ~/dcp.ps1
-~/dcp.ps1 -Light
+& $deployScript -Light
 ```
 
 - 无 git 时不提示安装，改为下载离线包；包源按镜像、codeload、gitcode 顺序静默重试，不弹窗选源。
@@ -175,21 +175,21 @@ C:/repos/scripts/PS/Deploy/Deploy-CxxuPsModules.ps1 -Sandbox
 | 现象 | 原因 | 处理 |
 |---|---|---|
 | 提示 Git 不可用 | 未安装 git | 按提示选择安装 Git 后重开终端重试，或选 2 直接下载压缩包；也可改用 `-Light` |
-| 目标目录已存在 | 之前部署残留 | 加 `-Force` 重命名旧目录；或加载脚本后调用函数并指定 `-RepoPath` |
+| 目标目录已存在 | 之前部署残留 | 加 `-Force` 重命名旧目录；或用 `-RepoPath` 指定新目录 |
 | 镜像超时或返回错误页 | 镜像不可用或网络受限 | 换 `-GithubMirror`；或手动下载 zip 后用 `-PackagePath` |
-| 执行策略拒绝运行 | 用户级策略为 Restricted/AllSigned | 用 `powershell -ExecutionPolicy Bypass -File ~/dcp.ps1` 启动 |
+| 执行策略拒绝运行 | 用户级策略为 Restricted/AllSigned | 用 `powershell -ExecutionPolicy Bypass -File $deployScript` 启动 |
 | 5.1 下部分功能不可用 | 模块要求 PowerShell 7 | 见 [Feature-Guide.md](../docs/Feature-Guide.md) 的 5.1 兼容章节 |
 
 ### 提高成功率的方式
 
 - 安装 Git for Windows：最简单，部署命令与参数都不改。安装后关闭所有 PowerShell 终端，重新打开再执行部署命令。
-- 使用离线包：不依赖 git。到仓库的 gitee 或 github 页面下载 zip，记下文件路径，执行 `~/dcp.ps1 -Mode Default -PackagePath /path/to/scripts-main.zip`。
+- 使用离线包：不依赖 git。到仓库的 gitee 或 github 页面下载 zip，记下文件路径，执行 `& $deployScript -Mode Default -PackagePath D:\downloads\scripts-main.zip`。
 
 > gitee 下载仓库压缩包可能需要登录；github 免登录，但直连不一定通，不通时在下载地址前加镜像前缀，例如 `https://gh-proxy.com/https://github.com/xuchaoxin1375/scripts/archive/refs/heads/main.zip`。
 
 ### 备用入口：手动选择下载源
 
-镜像与直连都不稳定时，可交互选择脚本下载源。方案码依次对应镜像、gitee、github 直连：
+镜像与直连都不稳定时，可交互选择脚本下载源。方案码依次对应镜像、gitee、github 直连；选好后保存到本地再运行：
 
 ```powershell
 Set-ExecutionPolicy Bypass -Scope CurrentUser -Force
@@ -204,34 +204,35 @@ $code = Read-Host "请输入编号 [0..$($urls.Count - 1)],直接回车使用 0"
 if ([string]::IsNullOrWhiteSpace($code)) { $code = 0 }
 $code = $code -as [int]
 if ($null -eq $code -or $code -lt 0 -or $code -ge $urls.Count) { $code = 0 }
-$scripts = (Invoke-RestMethod $urls[$code]).TrimStart([char]0xFEFF)
-$scripts | Invoke-Expression
+$deployScript = "$HOME\Downloads\Deploy-CxxuPsModules.ps1"
+irm $urls[$code] -OutFile $deployScript
+& $deployScript
 ```
 
-## 操作演示（分步骤离线安装）
+## 操作演示（用本地 zip 离线安装）
 
-下面的演示假设已下载仓库 zip，并在同一会话内执行：
+下面的演示假设已下载仓库 zip，并按「准备部署脚本」保存了脚本；参数集中写在哈希表里，便于逐项修改：
 
 ```powershell
-$mirror = 'https://gh-proxy.com'
-$url = "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1"
-$scripts = (Invoke-RestMethod $url).TrimStart([char]0xFEFF)
-$scripts | Invoke-Expression
-# 默认部署失败后，用本地 zip 重试（函数已由上面的脚本定义）
-Deploy-CxxuPsModules -PackagePath '/path/to/scripts-main.zip' -RepoPath '/path/to/CxxuPS' -Verbose
+$deployParams = @{
+    Mode        = 'Default'
+    PackagePath = 'D:\downloads\scripts-main.zip'
+    RepoPath    = 'D:\repos\scripts'
+}
+& $deployScript @deployParams
 ```
 
 - `-PackagePath` 指向 zip 文件本身，不是所在目录。
-- `-RepoPath` 是解压目标；目标已存在时函数会返回并提示，需加 `-Force` 或换目录。
-- 成功后输出 `PSModulePath` 与 `CxxuPsModulePath`，用于确认写入结果；重开终端执行 `init` 后生效。
+- `-RepoPath` 是解压目标；目标已存在时脚本会返回并提示，需加 `-Force` 或换目录。
+- 成功后输出模块路径的写入结果；重开终端执行 `init` 后生效。
 
-## 查看命令语法与帮助
+## 查看参数与帮助
 
 ```powershell
-Get-Command Deploy-CxxuPsModules -Syntax
-Get-Help Deploy-CxxuPsModules -Full
+Get-Help $deployScript -Full
 ```
 
+- 也可直接打开脚本查看开头的 `param` 段，参数含义见上一节表格。
 - 需要排查时加 `-Verbose`：脚本会额外打印参数取值与关键步骤；默认只显示进度与结果。
 
 ## 部署临时使用 CxxuPsModule Deploy 模块

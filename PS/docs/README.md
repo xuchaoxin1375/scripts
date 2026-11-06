@@ -7,7 +7,7 @@
 
 | 你要做什么 | 读什么（按顺序） | 解决什么 |
 |---|---|---|
-| 新机部署 | `Deploy-Guide.md`（极简版 2 条命令先行）→ `Feature-Guide.md §1/§11` | 从零到可用 + 手动项查漏 |
+| 新机部署 | `Deploy-Guide.md`（保存脚本后按参数运行）→ `Feature-Guide.md §1/§11` | 从零到可用 + 手动项查漏 |
 | 日常使用 | `Feature-Guide.md §2`（命令表）→ §7/§8/§10（补全）→ §9（dll 四件套） | 查命令、配补全、管更新 |
 | 出问题先看 | `doctor`（命令）→ `Feature-Guide.md §6/§8`（FAQ）→ `Dev-Notes.md`（常见坑） | 定位→自助→避坑 |
 | 加模块/加函数 | `Feature-Guide.md §3` → `Module-Conventions.md`（§1 目录、§2 命名、§7 manifest）→ `Module-Map.md`（找位置） | 一次做对，不返工 |
