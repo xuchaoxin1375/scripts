@@ -1,0 +1,485 @@
+# 踩坑正文归档（Agent-Handoff）
+
+> 本文件是 `Agent-Handoff.md` 踩坑清单的正文归档（2026-11-06 结构治理时迁出），按 ID 检索；
+> 每个小节保留原始条目（含编号与续行），只作追溯，不再维护。现行状态与一句话结论见 [Agent-Handoff.md](../Agent-Handoff.md) 的踩坑索引。
+
+#### #1
+
+1. **变量名大小写不敏感**：`$keep` 和 `$KEEP` 是同一个变量。
+   教训：搬迁脚本里计数器/行号表用绝不撞名的名字（`$keepLines`/`$keepRanges`）。
+
+#### #2
+
+2. **`@( (a,b) )` 单元素数组自动解包**：`$INFO = @( (162,1088) )` 结果是 `@(162,1088)`，
+   循环会跑两次倒序垃圾。单区间用 `,@(...)` 或直接写标量逻辑。
+
+#### #3
+
+3. **`return @()`/`return $array` 解包**：空数组 return 出去变 `$null`，单元素变标量。
+   调用方一律 `@(...)` 归一化后再判空；失败路径用裸 `return`。
+
+#### #4
+
+4. **管道里 `$Matches` 跨作用域失效**：`... | Where { $_ -match } | ForEach { $Matches[1] }`
+   拿到的是脏数据。匹配和取值必须在**同一个** scriptblock 里。
+
+#### #5
+
+5. **换行符**：仓库混用 LF/CRLF，默认忽略差异、不计入提交门禁。`edit` 工具保留原样；
+   只有 `.sh`（用 LF）与 `.cmd`/`.bat`（用 CRLF）需要留意，其余不检查、不转换。
+
+#### #6
+
+6. **成功流泄漏**：函数 `return` 的值会被调用方管道消费。热路径调用一律确认：
+   要值就接住，不要就 `| Out-Null`（`Confirm-DataJson` 裸路径污染控制台事件）。
+
+#### #7
+
+7. **日志行序不可信**：`> file 2>&1` 下成功流/错误流/宿主输出的落盘顺序会重排。
+   定罪靠“收进变量数个数”（`$o = init; @($o).Count`），不靠看日志行号。
+
+#### #8
+
+8. **bash 工具引号地狱**：行内 `pwsh -Command '...'` 转义必炸。一律写成 `.ps1` 文件再 `-File` 执行。
+
+#### #9
+
+9. **模块作用域**：`$global:` 显式前缀才跨模块。旧文档曾写“prompt 重载抓旧值堆叠”，
+    2026-09-20 沙箱最小复现证伪（纯重载抓空只报错不叠）；真凶是 conda 每次 import 重包
+    prompt（`Conda.psm1:232-247`，`Rename-Item` + `ChangePs1` 缺省真）。
+    `Import-ModuleForce` 已改白名单（仅仓库路径，动态模块 Path 为空天然排除）+
+    三卫哨（`*completion*`/`*predictor*`/`*conda*`），叠加防御；旧理论作废，以此条为准。
+    另补：`Prompt.psm1` 顶层已改“全局只抓一次”（`$global:__CxxuOriginalPrompt`），
+    沙箱三轮 Remove/Import（含空槽）实测无报错无叠层，故 Prompt 不用跳过、留在轮转里。
+    真机验证通过（2026-09-20，用户新开 shell + 多轮 ipmof|iex，单层无报错）。
+
+#### #10
+
+10. **manifest 是真相源**：增删函数必同步 `.psd1`（GUID 保持不动）；
+    函数名解析要块注释感知（`Function that shows...` 曾被误收录成函数 `that`）。
+
+#### #11
+
+11. **重定向 vs 交互是两种宇宙**：`[Environment]::UserInteractive` 在重定向下仍为 True，
+    唯一探针是 `[Console]::IsOutputRedirected`。`Set-PSReadLinesAdvanced` 已按此分流
+    （交互全量 / 重定向跳过预测源+列表视图，详见 `Startup-Optimization.md §12`）；
+    计时仍以真机为准，沙盒数只看相对变化。另：`$Error` 里几条 `Env:\X does not exist`
+    是 `EnvVar.psm1:871/1015` 的 SilentlyContinue 记账，不打印，不用追。
+
+#### #12
+
+12. **restricted characters 警告 = 双横线**：`Import-Module` 报它，当且仅当导出名含 2 个以上 `-`
+    （16 组合成模块实测；2026-09-20 已转正 18 个，`STILL-WARN=NONE`，对照表见
+    `Startup-Optimization.md §16`；之后再见先查新加的双横线名）。
+    修法：在**我们的** import 处加 `-DisableNameChecking`（定向压制），不改名；
+    手动 `Import-Module` 也请带上。另：模块函数内调 `Import-Module` 默认装成**嵌套模块**
+    （命令可用但 `Get-Module` 列不出），要顶层必须加 `-Global`（`Sync-ModuleManifest`
+    的 `-Reload` 已加）。教训：给函数加批量分支后，单路径回归漏测导致 `$n` 未赋值发布出去，
+    测试脚本当场抓获——**改批量逻辑必重跑单路径用例**。
+
+#### #13
+
+13. **提交看第二列**：`git status` 第一列是已暂存、第二列是未暂存——门禁测的是工作区，
+    提交的是暂存区。2026-09-20 实测：脚本直写工作区后忘了 `git add`，提交漏了整轮改名，
+    靠事后 `git show HEAD:file` 抓获。流程：`add` → `commit` → 必用
+    `git show HEAD:<关键文件>` + 全新 `status` 复验（`c7cffe3` 就是 `--amend` 补救的）。
+
+#### #14
+
+14. **edit 工具可能整文件改写换行（历史坑）**：实测 `Pwsh.psm1` 在 LF/CRLF 间横跳过
+    （内容 zero diff 但换行翻了）。EOL 现已不作门禁，无需每次断言；仅当整篇标红淹没真实改动时，
+    用 `git diff --ignore-cr-at-eol --stat` 定位、必要时按 HEAD 转回，消掉 review 噪音即可。
+
+#### #15
+
+15. **`ipmof|iex` 为什么要管道**：`Import-ModuleForce` 把活拆两半——Remove 立刻做，
+    Import 攒成文本返回；光跑 `ipmof` 不管道，装的那半根本没执行（“没生效”主因，
+    不是作用域魔法；另见 #12 嵌套/-Global）。新命令 `ipmox`（`Pwsh.psm1`）把两半合一：
+    复用卸+名单、直调重装一律显式 `-Global`、Pwsh 自己殿后；`ipmof|iex` 照旧可用。
+    沙箱仿真通过（解析+殿后排序）；真机验证通过（2026-09-20，用户三步全绿），本条终结。
+    要点：`ipmof|iex`/`ipmox` 存在的理由就是保当前会话变量上下文（重开 pwsh 会丢一部分信息）。
+
+#### #16
+
+16. **`ipmox` 选项（新函数两步并一步）**：`-Name` 只动指定模块（Tab 补全，抄 `Sync-ModuleManifest`
+    的补全器模式；未加载的名字警告跳过）；`-Sync` 先 `Sync-ModuleManifest -Reload`（新函数先进
+    manifest）再统一重载——正好补上 Sync 自身跳过的 Prompt（capture-once 保护）。
+    沙箱真加载实测全绿：补全 `Pw`→`Pwsh,PwshVar`、错名警告跳过、裸跑自重载后 `ipmox` 可用、
+    `-Sync` 全 53 模块 0 追加且 prompt 完好。注意：`Sync` 只增不减，改名留下的悬空导出
+    （如 `Test: cchh`）只警告不清，需手改 manifest。
+
+#### #17
+
+17. **`Deploy-CompletionStack`（新机一键补全栈）**：`Deploy.psm1` 末尾；模块直装 +
+    二进制（有 scoop 则装、无则给命令）+ 7.5 版本门（不够只警告不停手）+
+    `-IncludePSCompletions`/`-SkipBinaries`；全程 `SupportsShouldProcess`，
+    `-WhatIf` 空跑零副作用（沙箱已验：前后 `ListAvailable` 一致）。
+    CxxuPredictor 随仓库零安装，不在其中。
+
+#### #18
+
+18. **`Close-OtherPwsh`（换被锁文件前清场）**：`Pwsh.psm1`；列出除自己外的所有 pwsh
+    （PID/启动时间/标题），`ConfirmImpact=High` 默认逐个询问，`-WhatIf` 空跑；
+    守护进程也会被列出（杀了需重跑）。结论：dll 锁只影响本机热更新换文件，
+    新机部署全是新文件、无进程占用，不会因此失败。
+
+#### #19
+
+19. **国内网络：gitee→github+加速（2026-09-21 决策）**：gitee 对 `irm|iex` 误报拦截，
+    默认源全切 github；中央变量 `$env:PsGithubMirror`（持久化自选镜像，不设走默认/静默测速），
+    统一出口 `Get-GithubMirrorPrefix`/`Get-RepoRawUrl`（Deploy 模块内），独立脚本内联同策略；
+    `Get-SelectedMirror` 的 gitee fallback 已摘。动 URL 先查这两函数，别手拼。
+
+#### #20
+
+20. **（条目已移除，见 #31）**
+
+#### #21
+
+21. **dll 外置决策（2026-09-21，用户拍板）**：活件搬 `~/.cxxu/bin`
+    （后演进为并排版本 + 指针，见 #29；以下为当时形态，留档）；当时 loader 按哈希同步后按路径装载；
+    仓库版从不被加载→pull 永不撞锁。代价：`ipmof` 必须跳过 CxxuPredictor（按名重载装出空壳还注销 predictor，
+    守卫注释已换因）；psd1 去 RootModule（防误装）。退役：测锁/`-AutoFix`/`Close-OtherPwsh`/
+    Basic 守卫（未提交过，干净删除）；重启规矩不变（程序集随进程）。
+
+#### #22
+
+22. **退役记录**：#21 之前有过一套锁内 machinery（`Close-OtherPwsh`、`-AutoFix`、fetch 测锁），
+    外置后不再需要，已删；引号三层笔误教训保留：组装类字符串必断言内容，解析过不代表语义对。
+
+#### #23
+
+23. **守护进程不加载 predictor + `-Force`（2026-09-21）**：loader 加 `$env:PsPredictor` 门
+    （风格同 PsFzf/PsZoxide）；`Start-StartupBgProcesses` 置 False（子进程继承），
+    两个守护函数按 `-Command` 自断（交互手动调不受影响）。`-Force`（dll 变更时，跳过确认直接动手）：
+    关其它（含无状态守护，随后 `Start-StartupBgProcesses` 重起）→脱钩子进程等退→开新窗→退自己；
+    重定向拒绝。守护进程从不加载 dll，锁问题当时收敛到交互会话（后并排版本根治，见 #29）。
+
+#### #24
+
+24. **活件同步手动化（2026-09-21，用户偏好）**：入口 loader 只静默装载（旧版照用，零警告），版本检查/同步收归 `Sync-CxxuPredictor`（以下为旧单文件时代描述，现并排版本见 #29；当时：哈希对比，不同才复制；被锁定时默认给手动步骤，`-Force` 关闭其它会话后重试，重定向拒绝；同步后重开终端才生效）。 readiness 活件行备注报不一致→指去本命令；当时专用更新命令的 dll 变更分支文案同步改。原则：入口默认不做任何版本检查/网络动作，重活全手动（同 `-CheckRemote` opt-in 思路）。
+
+#### #25
+
+25. **历史瘦身 + `doctor`（2026-09-21，用户要的）**：历史文件 3.2 万行/1.5MB（去重率仅 37%， `ipmof|iex` 750 遍）是 Ctrl+R 慢的主因。新 `Optimize-PsHistory`（Init 模块，去重保最近+去杂+截断，旧行进 `.archive-时间.txt`，原文件 `.bak-时间`；`-WhatIf` 诊断；历史无时间戳，只能按新旧顺序切）。init 加 `HistoryNoDuplicates` 治本。新 `doctor`（Deploy，无横线速记风格）：先调 `Test-PsEnvReadiness` 再查运行态（init 账本/PSReadLine/历史大小/predictor 三态/门控/懒加载/守护新鲜度/仓库脏/conda 缓存），只读默认零网络。注意 `@($null)` 会数出 1 个：`$global:PsInitStepErrors` 没跑过 init 时是 $null，必须 `Where-Object { $_ }` 先滤（已踩）。
+
+#### #26
+
+26. **用户配置文件（2026-09-21，用户要的）**：`~/.cxxu/config.psd1`（psd1 数据文件，只读不执行；仓库外本机生效）。`Import-CxxuConfig`（init 首步自动调，只填环境变量空位）+ `New-CxxuConfigTemplate`（[-Force] 生成注释模板）。已知键：PsFzf/PsZoxide/PsPredictor/PsTab/PsShowProgress/PsGithubMirror；优先级环境变量 > 文件 > 默认开；坏文件警告一次忽略。沙箱 5 项已验（缺文件静默/模板/文件生效/环境优先/坏文件警告）。后补：真机回环已验（建模板→读回填充→双向持久化→环境复位）；持久化改写保列对齐（键宽 15）；`Deploy-CompletionStack` 收尾自动补建模板（已存在 no-op，`-WhatIf` 安全）。
+
+#### #27
+
+27. **自锁实测 + 更新合并（2026-09-21，已被 #29 推翻假设，留档）**：已加载旧 dll 的会话覆盖活件必败（`being used by another process`，锁定者是本会话）——所以“重开→Sync”有竞态， `Sync -Force` 也只能关闭其它会话、不能解除自锁。当时合并结论（子进程拉完一并同步，自认无锁）因"持有者存在即失败"不成立，已改并排版本。职责切分（现行）：Update=版本推进(git)+分发，Sync=单点文件动作，Test=检查，doctor=统一诊断入口。
+
+#### #28
+
+28. **移除真相（2026-09-21）**：`Remove-Module` 后文件照样锁（实测 `Loaded=False` 但 `Remove-Item` 报 `being used`，程序集锁跟进程到关闭）——指南旧"手动两行"已更正。真方案：`Sync-CxxuPredictor -Uninstall`（以下为旧单文件时代描述，现并排版本见 #29；当时：删除走无锁子进程；自锁/他锁失败给裸会话一行；`-Force` 只关闭其它会话）。删完若不禁用会自动装回，彻底不用要持久化 `PsPredictor=False`。
+
+#### #29
+
+29. **并排版本活件（2026-09-21，用户选的）**：自锁实测证明子进程复制同样撞锁（持有者存在即失败，上轮"无锁天生"假设不成立），改并排版本根治： `~/.cxxu/bin/<哈希8>/CxxuPredictor.dll`（文件名不变，模块名才正确；改名文件 import 后模块名跟文件名走，`Get-Module CxxuPredictor` 会空，已踩）， `current.txt` 单行指针指当前版本目录。同步只新增目录+更新指针（原子换文件），从不覆盖→永不撞锁，任何会话都可执行；loader 按指针装载+两级回退（最新版目录→旧单文件）； GC 每次同步一并回收非当前版本（被锁跳过）。当时专用更新命令拉完调 Sync（已退役，见 #31）， `Update-ReposesConfiged` 收尾 guarded 调 Sync（用户主流程，差异才出声）。 readiness/doctor 全改指针解析（Deploy 内自带 6 行 resolver，与 TT/Basic 各一份，三处重复是已知债，统一需导出 helper，会增命令数，暂缓）。设计专章：`docs/Live-Versions.md`（结构/指针协议/流程/GC/故障/命令分工 + mermaid 图）。
+
+#### #30
+
+30. **文档口径统一（2026-09-21，用户叫"到文档"）**：Handoff #21/#24/#27/#28 是编年留档，与现行 #29 不一致处已加"旧单文件时代"标注，不改写历史；现行口径唯一来源是 #29 + `Module-Conventions.md §11`（术语表）+ `Feature-Guide.md §9`（四件套表格）。 dll-why 定论记 `Startup-Optimization.md §20`（插件槽只认 .NET + 20ms 预算，纯 PS 3000 条 22ms 超预算，C# 1~6ms）。动用户可见行为前先看这三处定口径，改完同步三处。
+
+#### #31
+
+31. **退役 `Update-CxxuPsModules`（2026-09-21，用户：想不出调用它的情况）**：102 行整函数删除，导出同步摘除。`Sync` 并进 `Update` 的方案否决：钩子要的是纯文件同步，`Update` 得加"仅文件模式"，等于换名不换量，且活下来的 `Update` 依然无人调用。现行更新入口只剩 `Update-ReposesConfiged`（收尾 guarded 调 Sync）+ `Sync-CxxuPredictor`（单点）。代价：`-Force` 一键重开链消失，手动等价操作是关闭会话、重新打开、`init`；readiness 建议行、`Sync` 帮助、指南 §13、§9、Live §8、Map 行同步改。
+
+#### #32
+
+32. **独立 Tab 插件 + 插件启停（2026-09-21，用户要的）**：ListView 预测进不了 Tab（两套管线），新模块 `CxxuTab`（`TabExpansion2` 包装，只在命令名位置合并 dll 模糊结果，参数位透传；dll 新增 `CompleteCommand` 公开静态接口，独立缓存表，失败返空数组）。踩坑：`global:` 函数看不到模块 `$script:`，方法缓存必须放 `$global:__CxxuTabMethod`；改名文件 import 会跟走模块名，并排目录布局保住 `CxxuPredictor.dll` 文件名才没事。启停：`Enable/Disable-PsPlugin`（Fzf/Zoxide/Predictor/Tab，当会话环境变量；`-Persist` 行级写 config 保注释；`-Path` 可覆盖）。教训：双引号字符串里 `$(` 会被当子表达式执行，持久化改行级处理（`[regex]::Escape` 拼 pattern，不用 `-replace` 写值）。模块数 54→55 相关三处已同步。
+
+#### #33
+
+33. **Tab 发版实录（2026-09-21）**：构建输出在 `src/bin/Release`，仓库件是手工发布（`Copy-Item` 覆盖）。发布时仓库源被两个 09:28 的 VSCode 旧终端锁定——它们是外置之前的会话，直接从仓库路径加载；新会话从不加载仓库源，这是最后一批，死后仓库源永久无锁（已验证零持有）。教训：并排版本保的是活件，不管发布；发布要动仓库源就得先清老会话。发版 `0203935B`→`E7CF2C8A`，`Sync` 全程无感（旧会话留旧版），新终端 `getser` Tab 首选 `Get-Service`，参数位零干扰，用户已体验确认。另：首调用建表约 400ms，包装在导入时预热，首 Tab 不卡。
+
+#### #34
+
+34. **5.1 兼容 B 档（2026-09-21，用户选 B：交互可用）**：拦路虎分三级——P0 import 即炸（psd1 版本声明、三元 `?:`、行首管道、`Join-String`、`$PSStyle` 裸赋值、`$IsWindows` 裸分支）、P1 跑到才炸（`-Parallel`、PSReadLine 2.0 缺参数）、P2 架构不可兼（predictor dll/预测子系统/UTF-8 无 BOM 中文乱码，接受不修）。兼容集 9 模块（Basic/Aliases/FileSystem/PwshVar/Search/CxxuTab/Prompt/Init/EnvVar，psd1 降 5.1，psm1 补 BOM，conventions §8 已开口）；init 步骤表 `MinPS = 7` 静默跳过 5 个 7-only 步骤。真机 `powershell.exe` 全绿：9 模块导入 + init 零失败 + prompt 渲染 + Tab 包裹。用法与禁区见 `Feature-Guide.md §13`。
+
+#### #35
+
+35. **5.1 真机抓到的四个坑（2026-09-21，全是静态扫描漏网）**：(1) `SilentlyContinue` 照样往 `$Error` 记账，探针一律 `-ErrorAction Ignore`（v3+ 通用）；(2) `$old + @(...) -join X` 里字符串+数组先按空格压平成标量，`-join` 直接失效——先 join 成标量再拼；(3) 模块私有兜底函数用户直接调用撞坏模块（自动发现找到导不出的 Info 就报错），5.1 兜底必须 `function global:` 定义，缓存变量同步从 `$script:` 换 `$global:` 命名空间（全局函数读不到模块 `$script:`，见 #32 同类教训）；(4) `Get-Command` 探针在 5.1 下对导不出的模块返回 $null，不要信 CommandInfo 残留，`local-fns=0`（`Get-ChildItem function:` 全局不可见）才是模块私有的铁证。
+
+#### #36
+
+36. **拆分 Basic/Pwsh（2026-09-21，用户选 Pwsh 小手术 + Basic 簇搬迁）**：新模块 `WinSys`（键盘 7/TTS 2/电源 7，命令名不变，自动发现即用）；Pwsh 教学 2 函数迁 `HelpExamples`、Robocopy 2 函数迁 `FileSystem`。WordPress 最大但用户在改 + 业务内聚，不碰；Info 拆了 prompt 反增跨模块调用，不拆；Deploy 按域拆是立项级，没选。教训：`Get-Content | Measure-Object -Line` 少算约 250 行（管道计数问题），看体量以 `[IO.File]::ReadAllLines.Count` 或编辑器 "of N" 为准；搬迁体与 HEAD 逐行字节对账（`Compare-Object` 遇近重复行会误报对齐，以 `rg` 行号复核为准）；大段搬迁用行号脚本删（锚点断言 fail-stop），`Edit` 转录 300 行必出注释空格误差。模块数 55→56，Map 已同步。
+
+#### #37
+
+37. **5.1 prompt 全对齐 + 免手动（2026-09-21，用户要的）**：`Balance` 差的 7 个 Info/Startup 命令在 `Prompt.psm1` 顶部移植（CIM/注册表同口径，IP 格式 `<网卡首字:ip>` 逐字照抄；会话缓存 IP 60s/内存 10s/开机 120s/电池复用 30s），渲染与 7.5 逐字一致，稳态 50ms/次（首屏冷缓存 1.4s 一次性）。`Install-Ps51Profile`（Init 模块）：写 5.1 专属 profile（UTF8+BOM，`Set-Content -Encoding utf8` 在 5.1/7 下含义不同，必须 .NET 写死；有旧 profile 无标记则追加不覆盖），之后开 `powershell.exe` 自动 init。另修 `Get-EnvCountedValues` 的 `catn` phantom 依赖（仅示例文件定义，干净会话必炸，7 亦然）改自带编号。
+
+#### #38
+
+38. **查询命令 5.1 可用化（2026-09-21，用户问"怎么查模块"）**：`Get-ModuleByCxxu` 住在留 7 的 Info 里，5.1 整模块导不出——迁入 B 档 `Basic`（体小、无依赖、5.1 原生语法），附带修 `$env:CxxuPSModulePath` 未设置时 `-like "*"` 全匹配噪音（回退到本模块所在仓库根）。查询链固定下来记 `Module-Map.md` 头：`Get-ModuleByCxxu` → `Get-Command -Module` → `Get-Command` 反查。教训：放查询/诊断类命令先问"5.1 能用吗"，留 7 模块里的便民命令等于半残。
+
+#### #39
+
+39. **文档 BOM 方案推翻（2026-09-21，用户：外部文档控不了）**：中间试过给仓库 18 个中文 `.md` 批量补 BOM（裸读当时已验），但写侧修只能覆盖自有文件，外部 uncontrolled 的 UTF-8 照样乱码，方向错，整单 revert（`f9d6e52`），conventions §8 回到 B 档例外原样。改读侧：新 `Get-ContentUTF8`（Basic，B 档；.NET `ReadAllLines`/`ReadAllText` 直读，默认 UTF-8 + 自动识别 BOM，5.1/7 同行为），外部文件一次解决。另记：5.1 沙箱捕获输出本身按 GBK，验证读正确性要用字节往返（读→写文件→对字节），不能看捕获屏显——屏显乱码≠读错了。
+
+#### #41
+
+41. **5.1 乱码归因（2026-09-21，用户问 GBK 行为取决于什么）**：取决于 Windows"非 Unicode 程序的语言"（ANSI 页，`GetACP`），不是 PowerShell；.NET Framework 的 `Encoding.Default` 跟系统走（本机实测 ANSI=`gb2312`）。读文件走 ANSI 页、控制台显示走 OEM 页（本机 `utf-8`），两旋钮独立，查乱码先分清读错还是显示错。非中文系统同样中招（ANSI=1252 等，错法不同）；.NET Core 的 `Encoding.Default` 恒为 UTF-8，跨版本对比时别被它骗了。不动系统（Beta UTF-8 worldwide 影响全局老软件），从读侧解决，见 §13。
+
+#### #42
+
+42. **大模块拆分开工（2026-09-22，用户：先拆到足够灵巧 + 删 uploadPic + 删 Deprecated）**：删除 `uploadPic`（`uploadPicMarkdown` 独立调 picgo，不受影响）、`Deploy-GithubHostsAutoUpdaterDeprecated`（未进 manifest，只删体）、`Get-MySqlDatabaseNameCmdletDeprecated`（含 manifest）；第一刀 `Pwsh(1162/29)→Pwsh(460/8)+PsEnv(261/8)+PsDebug(463/13)`，命令名不变，跨模块调用走自动发现（已验路由）。施工教训：`[IO.File]::WriteAllLines` 默认 CRLF，会把 LF 存量全改写——拆分脚本一律显式 join+`WriteAllText` 保换行；`Write` 工具建的新文件是 LF，记得转 CRLF；切除脚本禁止重复执行（锚点校验是唯一保险）。Module-Map 58 模块。
+
+#### #43
+
+43. **第二刀（2026-09-22）：`TaskSchdPwsh(1151/14)→TaskSchdPwsh(711/9)+TimeNotify(447/5)`**：提醒簇（Toast/报时/上报）迁出，`Start-Trigger` 内调 `New-TimeNotification` 走自动发现。另记：原文件尾无换行符，拆分顺手补上（diff 里单个 `+}` 即此）；`git diff` 与 `--ignore-cr-at-eol` 统计差 1 行时先查尾行换行符，别慌。
+
+#### #44
+
+44. **第三刀（2026-09-22）：`Tools(1089/24)→Tools(405/10)+WinConfig(696/14)`**：系统配置开关簇迁出（Defender/更新/任务栏/时间同步/激活/分辨率/重启）；`Tools` 留通用小工具，Map 里顺手补上一直缺失的 `Tools` 行。Module-Map 60 模块。第一批三刀收工，下一批 Basic/Deploy/Web/Info。
+
+#### #45
+
+45. **第四刀（2026-09-22）：`Basic(2005/86)→Basic(908/46)+FileSystem(+19)+NetWork(+13)+RepoSync(265/8)`**：86 函数体逐字对账零差异（86/86；13 个 EXTRA 全是 FS/Net 原有函数）。附带 `NetWork` 升 B 档：2 处三元改 `if` + psd1 降 5.1 + 补 BOM（11 个 B 档 manifest 5.1 全过）。
+
+#### #46
+
+46. **psd1 中文引号坑（2026-09-22，血泪）**：无 BOM 的 psd1 里，中文写进**引号字符串**（如 Description）会让 5.1 报"restricted language / string missing terminator"——5.1 按 GBK 解码，某些字的 UTF-8 字节重组后落单成 GBK lead（如"送"=E9 80 81 的 0x81），fallback 把后面的收引号一起吞掉，字符串从此不闭合。中文写进 **`#` 注释**则安全（坏只坏到行尾）。铁律：**无 BOM 的 psd1，中文只许进注释，不许进引号**（psm1 有 BOM 免疫）。已把本次引入的两处中文 Description 改回英文；新 B 档模块 Description 一律英文。
+
+#### #47
+
+47. **第五刀（2026-09-22）：`Deploy(2931/46)→Deploy(1401/24)+Scoop(827/10)+DevEnv(733/12)`**：46/46 函数体逐字对账零差异。Deploy 回归"新机收尾"本义。Module-Map 63 模块。
+
+#### #48
+
+48. **第六刀（2026-09-22）：`Web(1867/24)→Web(1498/21)+SSH(+3)`、`Info(1719/27)→Info(1086/12)+Hardware(438/11)+NetInfo(213/4)`**：两处 24/24、27/27 函数体逐字对账零差异。教训：`Info` 4 网络函数曾短暂进 B 档 `NetWork`，5.1 下 `Import-Module` 当时能过（20/20），但直调即炸——`Confirm-DataJson`（Json 留 7）运行时依赖会顶掉 Prompt 的 5.1 垫片（`Get-Command` 找得到就不定义垫片）。遂回滚独立成留 7 的 `NetInfo`，5.1 prompt/ Balance 双双 0 错误复验通过。铁律补一条：**往 B 档塞函数，光解析过不够，必须 5.1 直调跑一遍**；`Update-SSNameServers` 是 Spaceship 域名不是 SSH，留 Web。Module-Map 65 模块。
+
+#### #49
+
+49. **第七刀（2026-09-22）：`WordPress(3799/33)→WordPress(1685/9)+WpOnline(1382/18)+WpContent(748/6)`**：33/33 函数体逐字对账零差异；原文件尾本就无换行符，原样保留（这次没顺手补）。WordPress 留本地建站 + 总入口 `Deploy-Wp`（跨模块调用走自动发现）。Module-Map 67 模块。至此 Top8 全拆完。
+
+#### #50
+
+50. **酌情 5.1 第一批（2026-09-22）：`PsDebug`/`PsEnv`/`Shortcut`/`PathProcess`/`Hardware`/`Proxy` 降 B 档**：全仓库 5.1 解析扫描先行（25 个 7.0 模块解析零错误，余下全有 7 语法），这 6 个日常价值高 + 运行时无 7 依赖，逐个 5.1 直调冒烟（11 个调用 0 错误）+ 7 回归后降档，psm1 补 BOM。`Hardware` 修一处 `$IsWindows` 空值穿透（`($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true)`，mac/linux 分支加 `-eq $true`）。B 档 9→17。剩下解析零错误的（Json/Startup/WinSys/ArgumentCompletion 等）要动 init 链或价值低，留待下一批按需定级。
+
+#### #51
+
+51. **酌情 5.1 第二批（2026-09-22，从易到难）：17 个解析零错误模块降 B 档**：`Json`/`WinSys`/`Startup`/`ArgumentCompletion`/`Mock`/`Users`/`Calendar`/`ColorSettings`/`Browser`/`TestLinks`/`NetDrivers`/`ControlPanel`/`WIFI`/`HelpExamples`/`backup`/`BTCN`/`Cloudflare`，逐个 5.1 导入 + 代表函数直调冒烟 + 7 回归。两处真修：`Mock` 的 `$printableChars` 等 5 个字符集全仓库无定义（catn 式 phantom，7 下静默空串、5.1 下 `Get-Random` 抛错），改函数内自包含（有预定义仍尊重调用方）；`colorSet` 的 `inlineprediction` 配色在 PSReadLine 2.0.0（5.1 自带）必炸，改"未加载跳过 + 2.1 才设 inlineprediction"，双版本已验。`Startup` 三处 `$IsWindows` 同 Hardware  pattern 兜底。副作用类（backup 全写文件/Cloudflare-TestLinks 走网络/Browser 开页面）只验导入不直调；`HelpExamples` 教学函数沙箱无 help 文件会炸、7 沙箱同炸，系环境缺 help 非版本问题。B 档 17→34。
+
+#### #52
+
+52. **酌情 5.1 第三批（2026-09-22）：`Pwsh`/`Deploy`/`Link`/`openApps` 降 B 档，BOM 归一重扫先行**：教训——无 BOM 中文在 5.1 下 GBK 解码吞引号，报的全是误报位置；内存加 BOM 后重扫才是真错误数（`Deploy`28→1、`Web`22→0、`Tools`24→0，`Whois`47→34 仍是真硬）。`Pwsh` 的 1 处即 BOM 误报，另修 `Sync-ModuleManifest` 取哈希表键（5.1 的 `Select-Object -ExpandProperty` 看不见，改点号取值，双版本同行为）；`Deploy` 修 doctor 三元 + `$IsWindows` 文案分支；`Link` 修三元；`openApps` 去冗余后台 `&`。`TaskSchdPwsh`/`TimeNotify` 的真后台 `&` 在 5.1 无等价写法，留 7（已记 §13）。B 档 34→38。另记两坑：我自己的验证命令 `Measure-Object | Select-Object -ExpandProperty Count` 在 5.1 下同炸（以后验证脚本只用点号/索引取值）；`Get-GithubMirrorPrefix` 交互选镜在非交互会话 5.1/7 同炸（7 侧还有 `.Trim()` 老 bug，待修）。
+
+#### #53
+
+53. **`Sync-ModuleManifest` 5.1 双重编码事故（2026-09-22，自摆乌龙）**：验证跑 `Sync-ModuleManifest -Name Mock` 时，5.1 下 `Select-Object -ExpandProperty` 取键失败是非终止错误，执行流带着空 `$exported` 继续走，把"缺失"误判全量追加（`Mock.psd1` 被写出重复导出）；更糟的是读路径 `Get-Content -Raw` 按 GBK 解、写路径 `[IO.File]::WriteAllText(UTF8)`，中文注释被双重编码洗坏（56→62 字符，逐字节对 HB 查出）。已修两处（点号取值 + `[IO.File]::ReadAllText($psd1, UTF8)` 自动识别 BOM），`Mock.psd1` 从 HEAD 恢复，双版本空跑哈希一致已验。铁律：**验证脚本不许调用会写仓库的函数**（`Sync-ModuleManifest -Reload`、各类 `Deploy-*`、`Install-*`），只读验证；真要测写路径，拷到沙箱外测。
+
+#### #54
+
+54. **裸 `$IsWindows` 探针门禁（2026-09-22，用户问"有好方法修类似问题吗"）**：5.1 根本没有 `$IsWindows` 自动变量，`if($IsWindows)` 恒假，Windows 分支被跳过、掉进 mac/linux 分支（`Get-MemoryCapacity` 在 5.1 下调 `sysctl` 即此病）。三件套治本：(1)**分诊**——只有 psd1=5.1 的 B 档模块才会被 5.1 加载，裸探针只查 B 档，7.0 模块的今天无害；(2)**门禁**——降档/动平台分支必跑 `rg -n 'if\s*\(\s*\$[Ii]sWindows\s*\)' PS/<模块>/<模块>.psm1`，活代码必须零命中（`#` 注释除外），命中即换 `($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true)`；(3)**双版本冒烟**——7 跑通 + 5.1 真跑（如 `Get-MemoryCapacity` 双版本同吐 31.77GB）。不建中央 `Test-IsWindows()` 函数：跨模块调用拉依赖，单独 `Import-Module` 即断，违背灵巧模块初衷，内联探针零耦合（7 上 `($PSEdition -eq 'Desktop')` 恒假，语义与旧条件逐字等价）。本次预修 5 处 7.0 潜伏点（`DevEnv:120/252`、`Sitemap:326`、`Web:680`、`WinConfig:419`，另 `Info:424` 同修），最阴的是 `Sitemap:326`——降档后会静默跳过路径归一化（错得无声，比报错更坏）。
+
+#### #55
+
+55. **酌情 5.1 第四批 + `Json` 读写根治（2026-09-22，用户：值得兼容的继续）**：BOM 归一重扫颠覆认知——剩余 7.0 模块里 25 个真错误数是 0（之前 `Scoop/Security` 的 2、`Git/SSH` 的 3 全是无 BOM 误报；真硬只剩 `Whois`34 个 `??`、`TaskSchdPwsh`1 个 `&`、`TimeNotify`2 个 `&`）。本批降 6 小模块（`Special`/`Window`/`Security`/`RecycleBin`/`NetInfo`/`Tools`，B 档 38→44），抓到两条运行时刻录：(1)`Special` 无 BOM 时 5.1 报 `Missing ')' in function parameter list`——BOM 归一解析零错也拦不住，铁律再加一条：**解析过≠能跑，必须 5.1 真机直调**（#48 铁律的回声）；(2)`NetInfo` 的 prompt IP 缓存在 5.1 下读出 `浠?`——`Json` 读路径 `Get-Content -Raw` 按 GBK 解 UTF-8（`E4 BB`→`浠`），修 `Json` 4 读 2 写为 `[IO.File]::ReadAllText/WriteAllText(UTF8)`（`ReadAllText` 自动识别 BOM；有意不用 `Get-ContentUTF8`：跨模块调用在单独 `Import-Module Json` 时即断，零耦合优先），`Update-Json→Get-Json` 双向字节往返已验（`以`=`E4 BB A5` 双向无损），5.1 的 prompt IP 回到 `<以:192.168.0.104>`。另记三事：验证脚本本身含中文必须带 BOM 跑 5.1（否则入参进函数前已乱码，修出误报冤案）；行内 `pwsh -Command` 里 `$b[0]` 之类索引写法会被吃掉，复杂命令一律写 `.ps1` 再 `-File`；`PsFzf`/`PsZoxide` 不是本仓库模块（是第三方模块的环境变量开关），`Test` 是用户草稿区（manifest 还有幽灵导出），两类都不碰。
+
+#### #56
+
+56. **酌情 5.1 第五批（2026-09-22，日常高频）：`Git`/`Scoop`/`SSH`，B 档 47**：三模块 BOM 归一真错误数都是 0，psd1 Description 本就英文，直降。冒烟分三档：`Git` 的 `gitS`（`git status` 只读）双版本直调；`Scoop` 全员 `Deploy/Set/Update` 副作用（装软件/换源/写配置，多需管理员+联网）、`SSH` 全员需远端主机/密钥——只验导入不直调（副作用/外依赖类一律如此，前批 `backup`/`Cloudflare` 同例）。5.1/7 双版本 `Test-ModuleManifest` + 导入函数数一致（Git 15/Scoop 10/SSH 12；5.1 下 `Deploy-*` 动词警告是既有命名风格，7 同制，非阻塞）。另记：`Git.psm1` 有两处 `function git` 重复定义（后胜前），历史包袱，行为不变，不动。
+
+#### #57
+
+57. **酌情 5.1 第六批 + 第七批（2026-09-22，非高风险全收，B 档 47→62）**：第六批低风险（`TextProcess`/`Text`/`CSV`/`ArchiveProcess`/`Info`/`Sitemap`，代表函数双版本直调），第七批中风险（`TerminalTools`/`Development`/`DevEnv`/`MySql`/`WinConfig`/`Web`/`WordPress`/`WpContent`/`WpOnline`，只验导入+逐项注明，`Test-IsIPAddress` 直调）。三处真修：(1)`ArchiveProcess:129` 的 `Split-Path -Extension` 是 6+ 独占参数，改 `[IO.Path]::GetExtension`（与 `TextProcess` 内既有写法统一）；(2)`Info` 的 `Get-MemoryUseRatio` 跨模块调留 7 的 `Start-ScriptWhenIntervalEnough`，5.1 下 `Get-Command -ErrorAction Ignore` 探不到就直接 `& $s`（与首建缓存分支一致；注意 `& 脚本块` 调用在 5.1 合法，禁的是后台 `&`）；(3)`WinConfig.psd1` 中文 Description 转英文（#46）。`Sitemap` 的 `-Parallel` 只在 `-Threads` 非零时触发，默认串行，5.1 不传参即安全。本轮最大收获是**注释吃行**机制（#55 预告的验证脚本 BOM 要求之根因）：无 BOM 的 LF 文件里，`#` 注释尾字若是中文，其 UTF-8 尾字节常落单成 GBK lead（如 `给`=`E7 BB 99` 的 `0x99`），吞掉后面的换行符，注释把下一行代码"吃掉"——下一行静默不执行、无报错（实测 `$global:DataJson` 赋值凭空丢失就是这么来的；mini 复现：纯 ASCII 脚本正常，加一行中文注释即复现；GBK 视角看两行已合并为一行）。推论与处置：B 档 psm1 全有 BOM，免疫；全仓库无 BOM psd1 扫描——行首/行尾 `#` 中文尾字仅 `PSScriptAnalyzerSettings.psd1:1`（Analyzer 自读 UTF-8，不进 5.1 引擎，无害），其余全是留 7 模块的休眠雷（降档补 BOM 时自然消除）。铁律升级：**验证脚本含中文必须带 BOM**（#55）+ **psd1 中文注释尾字禁 CJK**（行尾加个 ASCII 标点即破，如 `# B档兼容集` 行尾的 `)` 就是安全的）。
+
+#### #58
+
+58. **跨设备编辑与 BOM（2026-09-22，用户问 Linux/mac 改完会不会丢 BOM）**：结论——**git 传不丢**（无 `text`/filter 声明 + `core.autocrlf=false`，字节透明；本仓库无 `.editorconfig`，更无服务端改写），BOM 只会在编辑保存瞬间丢。风险排序：vim 默认 strip（`bomb` 默认 off，头号雷）> 显式"Save with Encoding" > 格式化插件重写 > VS Code 默认（自动识别保留，最稳）；新建文件各家默认都无 BOM。最阴的是爆炸半径只在 Windows 5.1（乱码/#46/#57），Linux/mac 上全绿、回 Windows 才炸。处置见 `Module-Conventions.md §8.1`（机制 + 门禁扫描命令 + 补 BOM 命令，当前 62/62 全绿已验；门禁片段照抄可跑，初版缺 `Test-Path` 守卫已修）。另：Linux 编辑器常存 LF，入库无碍（5.1/7 都认），别整文件转 CRLF。
+
+#### #59
+
+59. **5.1 老 conhost 下 VT 序列原文输出（2026-09-22，用户报 `Show-MemoryBar` 满屏 `e[1A`e[2K` 且刷新起新行）**：根因——`` `e `` 转义本身 5.1 合法，坏的是 conhost 默认没开 VT 解析（`ENABLE_VIRTUAL_TERMINAL_PROCESSING`），`[1A`上移/`[2K`清行全成字面量，刷新自然只能另起新行。全仓库活 VT 仅此一处（`Prompt` 的是注释，`BTCN:528/534` 的 SGR 颜色码另案）。修法（`Info.psm1`，嵌套 helper 与函数原有风格一致）：首帧前 `Enable-VirtualTerminalProcessing`（Add-Type 调 kernel32 开 VT，只编译一次；重定向/老系统/非 Windows 返回 `$false`）；开成就走原 VT 逻辑（与 7/WT 行为一致），打不开走 RawUI 兜底（光标回块首→按行覆空格清尾→回块首等重绘，全版本通用，try/catch 包裹，终极失败退化为现状）。沙箱验证：双版本解析零错 + `-NoLoop` 单帧 + 5.1 后台两帧输出无 VT 残留；真 conhost 原位覆盖效果需用户真机确认（沙箱重定向测不到）。
+
+#### #60
+
+60. **真机打回：`` `e `` 是 6.0+ 转义，5.1 下退化成字母 `e`（2026-09-22，接 #59）**：用户真机仍满屏 `e[1A`——注意是字母 `e` 不是 ESC 控制符，说明发的根本不是 ESC 字节，开 VT 也白开。`` `e `` 系 6.0 新增，5.1 遇到未知转义直接掉字面（与 `Split-Path -Extension` 同类：解析零错、运行时跨版本行为不一致）。修法：`Info:1032` 与 `BTCN:528/534`（同类连带，B 档 `Write-Highlighted` 的 SGR 颜色在 5.1 下同样吐 `e[0m` 字面）一律换 `$([char]0x1b)`（从远古版本通用，双版本逐字节同行为）。5.1 字节实锤：清行串=`1B 5B 31 41 1B 5B 32 4B`（真 ESC），`Write-Highlighted` 输出 `[31;40m…[0m` 无 `e` 字面（该函数走 `Write-Host`，管道收不到是预期，字节以屏显为准）。禁区行已加：B 档禁 `` `e ``。`Init:376` 的 `` `ep `` 在 `<# #>` 注释块内，不执行，不管。待用户真机复验（真 ESC + VT 开启两条件齐了，原位刷新应好）。
+
+#### #61
+
+61. **首屏 1~2 秒打字滞后（2026-09-22，用户报启动后输入不跟手）**：根因——OnIdle 整包约 1 秒全跑主线程（探测 71+PSFzf 238~299+predictor 380~421+CxxuTab 276~281+zoxide 15~20），prompt 出现后打字要等整包跑完。修法：`Register-PsUxLazyLoad` 改分片队列（PSFzf→zoxide→CxxuTab→predictor，队空才摘；旧语“触发即摘”作废，`Feature-Guide` 验法行已同步），PSFzf 去 `ListAvailable` 预探测。新增用户自查 `Init.Test-StartupPerformance [-Repeat 3] [-Detail]`（新进程分段+阈值结论；嵌套中位数 helper 不进 manifest，psd1 手工追加末项；5.1 侧禁三元/`??` 已守，缺 pwsh 警告退出）。沙盒数：裸 201/profile 848/init 442/idle 944/prompt 0.06s。真机逐片触发与手感待用户确认。另：`z` 是 Function（`Get-Command z` 判类型别查错）。
+
+#### #62
+
+62. **兼容性文档说清楚了吗/能否命令检查（2026-09-22，用户问）**：结论——文档说了（`Feature-Guide §13` 主力+`Module-Conventions §8/§8.1`+`Module-Map` 零散标注），但 §13 是批次流水账、`Module-Map` 标注不齐（`Info`/`Basic` 行没写 B 档），想查某模块得翻三处；命令侧之前没有（`Test-PsEnvReadiness` 查机器不查模块，`Confirm-PsVersion` 只看宿主版本）。新增 `Pwsh.Get-CxxuModuleCompatibility [-Name 通配]`（只读文件头：psd1 的 `PowerShellVersion` + psm1 首 3 字节 BOM；B 档=5.1+有 BOM；留 7 附 6 条登记理由；输出对象可管道过滤，附一行汇总）。实测 62/6/0（`PSScriptAnalyzerSettings.psd1` 非模块，枚举天然跳过）。坑两则：①`Test-ModuleManifest` 没有 `-LiteralPath`（只有 `-Path`），探测脚本别写错；②留 7 版不止 `7.0`（`CompletionPredictor 7.2`/`CxxuPredictor 7.5`），判定用 `7.*` 通配别写死。§13 头已加命令指引。
+
+#### #63
+
+63. **分片回滚：常驻 OnIdle 订阅是回归（2026-09-22，用户报第二条命令卡顿/假死、第一条回不来提示符）**：机理——PSReadLine 等按键时引擎算 idle，OnIdle 照触发；分片队熬过首屏后随机冻在打字/回车间（用户机器慢+AV 放大，看着像死）。旧单发“首屏一次、先摘后装”反而安全。`TerminalTools.psm1` 整文件 checkout 精确回滚（diff 空）；`Test-StartupPerformance` 状态行改回单发口径；`Feature-Guide` 验法行同步。铁律：OnIdle 动作跑主线程，“分片让出”是错觉；以后只许单发整包或手势按需，不许常驻逐片。注意用户旧会话里还是分片代码，必须开新终端才生效；卡死的窗口先 Ctrl+C，不行直接关。
+
+#### #64
+
+64. **手势按需（2026-09-22，用户拍板“优化 3”）**：后台冻结全消，成本归因到手势。新增 `TerminalTools.Install-PsUxGestureStubs [-Force]`（导出+1，幂等）：Ctrl+T/R 桩首按装 PSFzf（直接调 2.7.10 已核实导出的 `Invoke-FzfPsReadlineHandler*`，无模块记 `PsUxNoPSFzf`）；Tab 桩首个 Tab 先恢复原函数再装 CxxuTab（防包桩递归），转交/透传；predictor/zoxide 首屏单发不变；`-Now` 全载不变；`Enable-PsPlugin Fzf/Tab` 立装桩（7+）；Deploy 就绪检查认桩三态。沙盒实锤：首 Tab 519ms 自动装（29 候选含 gci、无递归、$Error 零污染）、次 Tab 28ms、非命令位透传、PsTab 关不装桩、重复安装不覆盖原函数。真机待验首按手感。注意：用户旧会话仍是单发整包代码，开新终端才有桩。
+
+#### #65
+
+65. **时效性盘点（2026-09-24，用户要的）**：全仓 grep 盘出 17 类会过期资源，清单落 `Deploy-Guide.md §14`（表格：位置/快照/检查/更新/频率，快照日期 2026-09-24）。顺手修 `Register-GithubHostsAutoUpdater.ps1:17` 的 gitee-only（违反 #19 中央镜像决策，改镜像+直连回退，与 `Deploy-GithubHostsAutoUpdater` 同策略）。另抓到 `Get-SpeedUpUri` 被两处调用但从未定义（`PsEnv:238`、`TerminalTools:9,42`，跑即炸）：不动代码，已记 §14 待修——修之前先定行为（交互 `Get-SelectedMirror` 还是静默测速），再包装 `Get-SpeedUpUrl`，别直接改名替换（参数语义不同：`$Url` 首位置可接，但 Silent 全量测速太重）。自动更新命令建议（待用户拍板）：只做只读 `Test-ResourceFreshness`（Deploy 模块，export+1，psd1 同步），逐项 try/catch+超时、表格输出、指去 §14；**不做自动改写**——pins 是稳定性选择（默认版 api 失败有回退），换默认镜像/版本/第三方域都要人工判断，更新动作复用现有命令（测速/Hosts/CompletionStack/Update）。
+
+#### #66
+
+66. **时效性修复实录（2026-09-24，接 #65）**：三处全修，双版本已验。①`Get-SpeedUpUri` 新定义在 `Git.psm1`（Git 505/15→548/16，psd1 同步加导出，Map 已同步）：行为拍板为**中央前缀静默版**——显式 `-Prefix` 优先，其次借 `Get-GithubMirrorPrefix`（Deploy 没加载如独立 iex 则跳过），拿不到前缀原样返回（永不拼坏链接）；交互选镜仍走 `Get-SpeedUpUrl`。5.1 侧经中央前缀会自动退居线性串行（已验）；跨模块调用走自动发现（TerminalTools 调 Git 已验）。②`Get-LatestWindowsTerminalLink` 除加 `-TimeoutSec 15`，另修真 bug：旧代码无 asset 时 `Write-Error`（非终止）掉进自递归 `Get-LatestWindowsTerminalLink`，会栈溢出——改直抛；`$stableReleases[0]` 空数组改 `Select-Object -First 1`（#52 同类坑，5.1 下 ExpandProperty/索引同样炸过）。③`PsEnv` 的 `Get-LatestPowerShellDownloadUrl` 补 `-TimeoutSec 15`（5.1 原生支持）；"合流"否决：独立脚本须自包含（同 #19 内联三行 dplUrl 之理），保留两份，改逻辑两边同步（注释已写明）。回归：7 下导出/显式前缀/中央前缀/WT 直连+加速全绿，5.1 下三模块导入+显式前缀+中央退串行+manifest 全绿；`Test-ModuleManifest` Git 双版本过。
+
+#### #67
+
+67. **轻量部署 + 去硬编码（2026-09-24，用户要的）**：①git/pwsh 版本**不全去**：git 默认值是纯回退（api 查不到才用，`api 直连挂但镜像能下` 恰是国内常见情形，去掉等于自断后路），pwsh portable 本来就是全动态（api 挂则抛错指去 `-BaseUrl`）；做的收敛是：Ubuntu deb 版收成头部 `$pwsh_version` 一处（环境变量可覆盖），git 默认值标回退注释（`-url`/`-PackagePath` 覆盖），§14 两行同步。②`Deploy-CxxuPsModules -Light`（脚本+函数两级透传）：跳过 dgw 导入（其尾部会真装 git）、无 git 不提示安装直走离线包（`Get-CxxuPsModulePackage -Silent`：不弹窗、codeload+中央镜像、`-TimeoutSec 120`）、结尾不装 pwsh 改调 `Install-Ps51Profile`（幂等，try/catch 兜底）、`Start-Process pwsh` 跳过。另修两顺手：5.1 setx 分支改追加（旧代码覆盖丢用户原有路径）/`New-Item` 加 `Out-Null`（目录对象污染返回值，下游 `Get-ChildItem` 靠运气）。验证：双版本 AST（脚本+函数开关齐）+ bash -n 全过；Silent 下载真跑（3.4MB、`PK` 签名、干净单串返回）。用法记 `Feature-Guide.md §13`。
+
+#### #68
+
+68. **一键部署 `-Dev` 模式（2026-09-24，用户要的）**：4 个独立脚本统一加 `-Dev`（+可选 `-DevRoot`，默认从 `$PSScriptRoot` 上两级自动推导，marker 文件不存在则警告回退远端）：`Deploy-CxxuPsModules`（转调本地 dgw 并透传 `-Dev -DevRoot`；旧 `$Scripts` 变量已死，头注更新）、`Deploy-GitForWindows`（既有 `-Dev` 从未实现，本次点源本地 `Deploy.psm1`/`Git.psm1`）、`Deploy-Pwsh7Portable`（同理三模块；顺手修 gitee 分支 `tlUrl` 陈旧路径 `PS/Deploy/TestLinks.psm1`）、`Register-GithubHostsAutoUpdater`（本地 `Copy-Item` 代下载）。用法：仓库内 `PS/Deploy/Deploy-CxxuPsModules.ps1 -Dev`（可叠 `-Light -WhatIf` 注意底部真调用）。另挖到真坑：`Deploy-Pwsh7Portable.ps1` 无 BOM+中文在 5.1 严格解析下 3~4 错（HEAD 亦然，#46/#57 机制；此脚本恰给 v5 用）——6 个 v5 独立脚本统一补 BOM（换行不动，仅 3 字节头；BOM-only 文件 diff 1/1），双版本严格解析全绿。
+
+#### #69
+
+69. **防泄密盘点（2026-09-24，用户问方案，待拍板）**：密钥模式扫全仓 22080 文件仅 4 命中，全 benign（CF 帮助占位符/GitHub scrap 页残留/unban 占位符）；公网 IP 扫 41 文件命中，多为版本号/示例/攻击者 IP/占位符（个别 `tenants@…`/`本地建站…`/`nginx-warn-imgs` 待用户 eyeball）；跟踪文件无活密钥（仅模板）。结论：硬拦不可行（误报太多），推荐三件套（未实现）：①只读 `Test-SecretLeak [-Staged]`（Deploy 模块：密钥模式高优 + 公网 IP 中优 + IP 与域名同文件高亮"扎堆"，掩码输出+上下文行，`$env:` 引用/占位符/`your_*` 降级，WARN 计数返回）；②`Install-SecretScanHook` 装 git pre-commit 钩子调它（非常绿不挡，WARN 需确认）；③`Update-ReposesConfiged` 收尾提醒+`AGENTS.md` 工作流加一条。另：`.gitignore` 缺 `*.bak/*.bk`/`cf_config*.json`(非模板)/`.env` 类兜底，建议补（`cf_config_template_readonly.*` 用白名单豁免）。
+
+#### #70
+
+70. **仓库入口补齐（2026-09-24，用户要的）**：根 `readme.md` 新增 Highlights（`-Light`/B 档 62/`Deploy-CompletionStack`+`doctor`/§14 四个指针）；`readme_zh.md` 新增轻量部署小节与第二步/开发模式小节、部署失败节补 §14 指针，并重写已过时适配说明（旧文称 v5 无适配计划，与 B 档 62 现状矛盾，现指去 `Feature-Guide §13` + `Get-CxxuModuleCompatibility` + `Get-ContentUTF8`）；`PS/Deploy/readme.md` 新增轻量与 `-Dev` 两节（4 脚本通用，marker 缺失警告回退远端）。入口只放指针不复制正文，真相源仍在 `docs/`（`PwshModuleByCxxu.md` 系归档不动）。
+
+#### #71
+
+71. **readiness macOS 适配 + 自编译 dll（2026-09-25，用户要的）**：①`Test-PsEnvReadiness` 备注列平台自适应（`$isMac` 闭包，5.1 安全）：pwsh 行 mac 指 `brew upgrade --cask powershell`（`Update-PowerShell` 系 Windows msi/aria2 专属），fzf/zoxide/fnm 指 brew，scoop 行 mac 注明忽略，conda 指官网 miniforge + `Deploy-MiniforgeConfig`，predictor 行 mac 指 `-DllPath` + `Live-Versions §10`；表尾追加平台。②`csproj` SMA 改 `$(SmaPath)` 属性（默认 Windows 路径不变；mac 用 `-p:SmaPath="$PSHOME/..."` 覆盖），Windows 默认/覆盖双构建 0 警告 0 错误已验。③`Sync-CxxuPredictor -DllPath`（自编译发布，不碰仓库源；写 `local-build.txt` 只记 repo/local + 哈希日期不记路径；附带把指针写的 `Set-Content utf8NoBOM` 换 .NET 直写，该参数 5.1 不认；卸载清标记）。④`Update-ReposesConfiged` 遇自编译标记保持活件不动并提示（否则更新会把可用活件换回仓库源）；readiness/doctor 认标记报 `自编译版本[哈希]` 不误报。⑤`Deploy-CompletionStack` 二进制缺且无 scoop 时有 brew 则 brew 装（原警告在 mac 上指错路）。⑥文档：`Live-Versions §10` 本地构建专节（前置/构建/发布/验证/更新关系/回退/勿提交共享 dll 警告/故障），`Feature-Guide §9` 加自编译行 + §12 mac 行同步，`Deploy-Guide` 把错位在 §14 尾的更新块搬回 §13 并补自编译条目。
+
+#### #72
+
+72. **删 `readme_zh.md` + Linux 链路（2026-09-25，用户要的）**：①`readme_zh.md` 全文已并入 `readme.md`（上轮重组），`git rm` 删除，只修两处活引用（`PwshModuleByCxxu.md:9` 改指 `readme.md` 并注明合并，`Deploy-Guide §14` 外链行同改；Handoff 历史与 `FileSystem` 示例不动）。②readiness 备注列从二元扩三元（`$platNeed` win/mac/lin，5.1 安全）：Linux 指系统包管理器（fzf/zoxide 走 apt/dnf/brew，pwsh 行指微软文档/`Install-PwshUbuntu.ps1`，fnm 指包管理器/官网脚本），scoop 行 Linux 注明忽略；`Deploy-CompletionStack` 无包管理器警告补 Linux 分支。③init 热路径真 bug：`PwshVar.psm1:127/283-284` 反斜杠拼接在 Linux 下解析不出文件（`init` 第一步即断），改 `Join-Path`；`RepoSync.psm1:229` 同类（Linux 下仓库源永远找不到→每次更新空同步），同改；`GlobalConfig.conf:24` caption 补 Linux 分支（旧 else 误标 MacOS）；`Test-AdminPermission` 早有 `id -u` 分支，无需动。④结论（`Feature-Guide §12` 同步）：Linux 可用链为 init/变量/prompt/补全/doctor/更新/predictor（本地编），scoop/注册表/计划任务/WT/CIM 信息类明确不可用；全量 Linux 真机验证仍缺（本机无 Linux），§12 已如实标注“链路”非“全模块”。
+
+#### #73
+
+73. **文档风格偏好入治理（2026-09-25，用户要的）**：用户偏好正式、规范、严谨（`Module-Conventions §11` 用词 + `§12` 行文），此前仅设计型章节强制，入口与指南无门禁。落实三处：①`AGENTS.md` 红线加语言门禁（用户可见文本必遵 §11/§12，改完自查三要素与术语，入口只放指引不复制正文）；②`§12` 追加适用范围款（根 readme 与用户指南参照执行为硬要求，mermaid 只在超三步且确有分支时配；入口真相源唯一 + 示例与源码一致性随代码同步检查）；③后续 `readme.md` 改写即按此执行，门禁自查（主谓完整、中文标点、前置与善后写全、术语复用 §11 表）。
+
+#### #74
+
+74. **readme.md 正式改写 + 根 AGENTS.md（2026-09-25，用户要的）**：①`readme.md` 全文按 §11/§12 重写（编号到 §8；动作三要素；数字给来源：67 出自 Module-Map，62 出自 psd1 + 自查命令；`-U/-R` 语义按 `update_repos.sh` usage 如实写，不沿用旧“反向代理”说法；更新流程 §7 配 flowchart + 文字复述结论；加粗仅 3 处：重开终端/禁硬编码旧域名/pull 不锁；口语残留 grep 零命中；命令与原文逐字节一致，仅 `$Proxy` 大小写未动）。②治理位置结论：细则留 `PS/`（不断链），根加薄 `AGENTS.md`（新文件 CRLF；仅作用范围 + 全仓红线 + 指针，agent 落根可发现）；`PS/AGENTS.md` 加父级注。LF 存量（readme）与 CRLF 新文件对照均一致。
+
+#### #75
+
+75. **`init -Force` 刷不动变量 conf（2026-10-02，用户实测）**：改 `VarSet2.conf` 后 `init -Force` 无效、`Update-PwshVars` 有效。根因：`init -Force` 只绕过 `$PsInit` 早退（`Init.psm1:25`）重跑 8 步步骤表，表内唯一变量入口是 `Set-PsPrompt` 步的 `Update-PwshEnvIfNotYet -Mode core`（`Prompt.psm1:848`），受 `Test-PsEnvMode` 门控（`Init.psm1:675`）——已初始化会话 `$global:PsEnvMode=3 ≥ core(1)` 即跳过，`Update-PwshVars` 永不执行；`init` 的 `-Force` 不透传给 `IfNotYet`。别名同理半盲：core 别名随表无条件重跑（`Set-PsPrompt` 内 `Update-PwshAliases -Core`），全量别名（functions/shortcuts）只有 `Update-PwshEnv` 才刷。处置：变量 conf 一律 `Update-PwshVars`（`-Fast` 即含 VarSet1/2；预编译缓存按 conf mtime 自动失效，无需清理），一步到位用 `Update-PwshEnvIfNotYet -Force`。文档已同步：`Feature-Guide.md §3` init 期文件行 + §6「`source ~/.bashrc` 对应物」第 2 档（原口径"改了 `.conf`/变量 → `init -Force`"系错误指引，已改）。→ 2026-10-03 已修：`init -Force` 现真重载变量 conf，见 #101；本条留档根因，§3/§6 口径已再改为现行。
+
+#### #76
+
+76. **PS 模块改调新 CF 工具（2026-10-02，旧 `cf_config_api.py` 退役）**：`Cloudflare.psm1` 的 `Add-CFZoneConfig` 与 `WpOnline.psm1` 的 `Start-ThreadJob` 原调用 `$pys/cf_api/cf_config_api.py configure`，而该脚本依赖已不可用的 `cloudflare` Python SDK（`import cloudflare` 失败），实际已不可运行。改调 `$pys/cf_api/cloudflare_dns_tool.py --provision --provision-table $Table --config $CfConfig --select-account $Account --server-ip $ip --no-activation`：参数一一对应（`-a`→`--select-account`、`-c`→`--config`、`-f`→`--provision-table`、`-ip`→`--server-ip`），行为保持（DNS `@`/`www`、SSL、邮箱转发、基础安全；`--no-activation` 因激活由 `Add-CFZoneCheckActivation` 单独处理）；`--server-ip` 为空时回退账号 `default_server_ip`，与旧脚本一致。两个 psm1 均为 B 档（BOM + CRLF 原样保留，`git diff` 与 `--ignore-cr-at-eol` 统计一致，3/3 与 1/1）。新能力与 CLI 细节见 `cf_api/ReadMe.md`。
+
+#### #77
+
+77. **淘汰 flarectl（2026-10-02，用户要求）**：`PS/Cloudflare` 多处调用外部二进制 `flarectl`，改由 `cloudflare_dns_tool.py` 承担，并为其补两个 CLI 能力：`--list-zones`（导出全部 zone：account/name/status/zone_id/nameservers）与 `--list-dns ZONE`（列出 DNS 记录，`--json` 输出）；另加 `--quiet`（日志改道 stderr，stdout 只留 JSON/CSV，供脚本 `ConvertFrom-Json`）。逐函数替换：`Set-CFCredentials` 删 `-TestBy`/Flarectl 分支（统一 curl）；`Get-CFZoneID` 改用 `-f --json --quiet`；`Get-CFZoneDnsInfo` 改用 `--list-dns`；`Add-CFZoneDNSRecords` 改用 `--add-domain`/`--add-record`（`-Parallel` 参数保留但实现为串行，工具自带限流重试）；`Add-CFZoneCheckActivation`/`Get-CFZoneInfoFromTable`/`Get-CFZoneNameServersTable` 改用 `--list-zones --zones-output <临时CSV>` 并在 PS 侧还原旧字段形状（`Zone`/`status`/`ID`/`Name Servers`），`Get-CFZoneInfoFromTable` 新增 `-Domains` 参数供 `WpOnline` 激活等待循环复用；`WpOnline:395` 的 `flarectl --json zone info` 同步替换。认证取当前环境变量（`Set-CFCredentials` 设置），否则回退配置文件；`Set-CFCredentials` 切换认证方式时会清理对侧残留环境变量（切 token 清 key/email，切 key 清 token），避免取值歧义。两个 psm1 仍 B 档（BOM+CRLF，`git diff` 与 `--ignore-cr-at-eol` 一致，152/189 与 2/2），双版本（7/5.1）解析 0 错误，manifest 9/18 不变。全仓 `PS/` 已无 flarectl 调用（仅两处注释留说明）。
+
+#### #78
+
+78. **DNS 记录幂等与防劈叉（2026-10-02，用户要求）**：原 `ensure_dns_record` 只按 name+type 更新单条，且 `--add-record`（`batch_add_domain_and_records`）直接 POST，导致重复添加与同名多 IP 共存（劈叉）。重写 `ensure_dns_record`：A/AAAA/CNAME 视为同名单值——内容一致跳过（unchanged），不一致覆盖（PUT），并删除同名同类型多余记录；CNAME 与其它类型互斥（新增 CNAME 清同名其它记录，新增 A/AAAA 清同名 CNAME）；TXT/MX 等多值类型仅跳过完全相同项、否则追加；A 与 AAAA 可共存。`batch_add_domain_and_records` 的写记录改调 `ensure_dns_record`（状态映射 unchanged→skipped、updated→updated_record、added→added_record），并在 zone_name 缺失时用 `get_zone` 补全。`--add-record` 帮助与 `cf_api/ReadMe.md` 新增「DNS 记录幂等与防劈叉」表。离线用例 7 组（一致跳过/覆盖/去重/CNAME 互斥双向/双栈共存/TXT 多值）全过，cf_api 原 39 单测 + ruff/pyright 全绿。
+
+#### #79
+
+79. **`--allow-multi-value`（2026-10-02，接 #78，用户要）**：为需要「同一主机名多个 IP」的场景加开关。`ensure_dns_record` 增 `allow_multi` 参数：为真时 A/AAAA 走多值逻辑（完全相同跳过、否则追加，不覆盖不去重），CNAME 仍单值；CNAME 互斥清理不受影响。`ZoneProvisionOptions.allow_multi_value`、`batch_add_domain_and_records(allow_multi_value=...)`、CLI `--allow-multi-value`（`--add-record` 与 `--provision` 共用）贯通；`domain_fix.py` 加同名开关并透传；`PS/Cloudflare` 的 `Add-CFZoneDNSRecords` 加 `-AllowMultiValue` 并传 `--allow-multi-value`。默认关闭（保持 #78 的同名单值防劈叉）。离线用例 5 组（多值追加/一致跳过/仍清 CNAME/CNAME 单值/默认仍覆盖）全过；两个 psm1 BOM+CRLF 与 `--ignore-cr-at-eol` 一致（156/189、2/2），双版本解析 0 错误，manifest 9/18 不变。
+
+#### #80
+
+80. **domain_fix 对照 Deploy-WpSitesOnline（2026-10-02，用户指认参照）**：`Deploy-WpSitesOnline`（`WpOnline.psm1:7`）的 CF 链为串行 `Add-CFZoneDNSRecords -AddRecordAtOnce`（建 zone+DNS）→ `Get-CFZoneNameServersTable`（落 `domains_nameservers.csv` 供 `Update-SSNameServers` 调 `update_nameservers.py` 改 spaceship NS）→ 并行 job（`Add-CFZoneCheckActivation` 读状态、`Add-CFZoneConfig` 走 `--provision --no-activation` 配 DNS/邮箱/SSL/安全、`DeployBTSites`）→ 外层 20×30s 轮询 `Get-CFZoneInfoFromTable -Json` 等激活。`domain_fix.py` 的 `--apply` 覆盖同一链条（`create_zone`+exists 复用 → DNS upsert → 可选 `--set-nameservers` → `provision_zone` 同一引擎 → 内轮询激活 → `fix_results.csv`），仅在 `domain_fix/README.md §五` 补对照表，不改行为。两点差异已写入文档：NS 更新默认策略相反（Deploy 必做 vs `--set-nameservers` 默认关；重加可能换 NS，必须核对 `fix_results.csv` 的 nameservers）、`Add-CFZoneCheckActivation` 现状仅读状态打印（真等待在外层循环 / domain_fix 内轮询）。只动 `wp/.../domain_fix/README.md` 与本文件，无代码变更。
+
+#### #81
+
+81. **翻转激活等待与 NS 默认值（2026-10-02，用户要求）**：`domain_fix.py` 的 `--apply` 默认不再等待激活（删 `--no-activation`，改 `--activation` 显式启用；旧脚本传 `--no-activation` 会直接报未知参数）；改 NS 改为默认开启（`--set-nameservers`/`--no-set-nameservers` 双开关，`dest` 同 `set_nameservers`，缺省 True），且 `provision_one` 去掉 `opt.do_activation` 门控（建好 zone 有 NS 即改，不再等激活开关）。`ss.get_auth` 失败时（`--missing-csv` 等不经过新鲜导出的路径可能无 spaceship 配置）警告并自动降级关闭改 NS，不中断修复。`domain_fix/README.md` §五表头改「开关」并增改 NS 行、§七参数表与注意事项同步；#80 的对照表差异点同步改写。本项只动 `wp/.../domain_fix/` 两文件，不碰 `cf_api --provision`（PS 部署流保持原行为）。
+
+#### #82
+
+82. **邮箱步骤加 active 门控（2026-10-02，用户实测报错）**：`--apply` 在 `pending` zone 上配邮箱吃 403（`Active zone required`，code 2009），此前记 `error`。确认两点后改：DNS/SSL/安全在 pending 上可写（用户实测 `@:added`，与 flarectl 时代一致，顺序不动）；只有 Email Routing 要求 active。`provision_zone` 在配邮箱前经 `_zone_is_active()` 查一次 `get_zone`（复用 `wait_zone_active` 的状态提取范式），未激活记 `deferred:requires-active-zone` 而非 error，待激活后重跑补配；查询失败回退旧行为（直接配，由 API 报错为准）。`--provision`（PS `Add-CFZoneConfig`）同享该门控。离线 4 组（pending 延期且 DNS 照做/active 照做/查询失败回退/无转发地址不变）全过；两份 README 的邮箱说明与 `email_status` 表同步。改后用户原报错行变为 `email=deferred:requires-active-zone`，`failed` 计数不再被它污染，重跑（zone 已 `exists` 复用、激活后）自动补上邮箱。
+
+#### #83
+
+83. **工作流程 mermaid 与邮箱时机落文档（2026-10-02，用户要求）**：`domain_fix/README.md §五` 增 `### 全流程示意`（`flowchart TD`，18 行：取数→差集→白名单分支→核对/手工编辑→试跑→全量→建站/NS/DNS→active 分支→收尾→重跑；节点引号+`<br>` 换行、无分号，已脚本校验配平）与 `### 转发邮箱：激活前能否设置，激活后能否生效`（结论：激活前设不上——`get_email_routing_required_records` 即 `POST /zones/{id}/email/routing/dns` 在 pending 直接 403，整步 `deferred`；激活后重跑 `exists` 复用即配上；目标地址创建是账号级但工具整步延期，MX 不单独预写；未验证则 `pending_verification`）。只动该 README，无代码变更。
+
+#### #84
+
+84. **旧脚本是否“不等激活配邮箱”考证（2026-10-02，用户追问）**：翻 `legacy/cf_config_api.py` 还原——旧流程也是先等后配：`get_or_create_zone`（L226）建站后等激活最多约 53 秒（先睡 3 秒 + 10 轮×5 秒轮询，另有“能查 DNS 记录即视为激活”的变通），等不到才硬着头皮返回 zone；且加域（`process_domain`）与配邮箱（`configure_zone`→`deal_forward`）本就是两个独立环节。用户记忆“一次跑完”成立的原因是误删重加时 NS 往往没变、CF 秒判 active，50 秒等待绰绰有余。结论：今天做不到的是“pending 一次配完且不重跑”（API 变严，`POST /email/routing/dns` 在 pending 直接 403/code 2009，用户实测），不是工具缺功能；等效做法是加 `--activation` 并调大 `--activation-timeout`（如 1800），即旧 53 秒等待的加长版。已写入 `domain_fix/README.md §五` 邮箱小节末尾。
+
+#### #85
+
+85. **批量回访、一次跑完（2026-10-02，接 #84，用户要免二次运行）**：`domain_fix.py` 新增两阶段机制（仅 `--activation` 开启时）：第一遍建站/NS/DNS/SSL/安全照常（快）；第二遍 `_revisit_until_done` 按 `--activation-interval` 轮询未完成行，`_revisit_row` 刷新激活状态、active 且邮箱 `deferred` 则调 `provision_zone` 邮件专用选项补配（`_needs_revisit` 判定：有 zone_id、无 error、且（邮箱 deferred 或激活非 active）；`pending_verification` 等人工项不重试）。总预算 `--revisit-timeout`（默认 1800 秒，0 关闭）；每轮落盘，Ctrl+C 不丢数；预算耗尽剩余行保持 `deferred` 下次重跑。`ProvisionOptions.revisit_timeout` 末尾字段（避 dataclass 默认值排序坑）；`ss.get_auth` 失败降级逻辑不变。离线用例 9 组（判定规则 7 + 翻转补配 + 预算耗尽）全过；README §五回访说明、§七参数表、案例步骤 5 改推 `--activation` 一次跑完。
+
+#### #86
+
+86. **邮箱地址列表形态兼容（2026-10-02，用户实测报错）**：重跑（zone 已 active）配邮箱时 `ensure_email_routing_address` 抛 `'str' object has no attribute 'get'`——该账号 `GET /accounts/{id}/email/routing/addresses` 返回字符串列表而非对象列表，旧代码只按 dict 取 `.get("email")/.get("verified")`。改为二者兼容：字符串元素按未验证处理（只配路由、不设 catch-all，最安全）；异常元素跳过。离线 4 组（字符串命中大小写/字典已验证未验证不存在创建/混合跳过/空目标）全过。另注：`失败 N` 只计 zone 级 `error`，邮箱列的 `error:` 不计入，属既有语义未改，看邮箱结果以 `email_status` 列为准。
+
+#### #87
+
+87. **README 第三节重排为推荐流程（2026-10-02，用户要求去“续”字样）**：`domain_fix/README.md §三` 由散例（1–7）+`### 案例`+`### 案例（续）`重排为五步推荐流程（算差集→白名单交集→核对→试跑→全量 `--activation` 一次跑完，`dms.txt` 为例）+`### 数据来源`+`### 白名单文件格式`+`### 手工编辑清单`+`### 目标账号指定`+`### 结果判读`；“案例/续/接上例”字样清零（grep 验证），原 7 例折入流程与“其它常用组合”，内容零丢失。只动该 README，无代码变更。
+
+#### #88
+
+88. **改 NS 先查后改、一致跳过（2026-10-02，用户问每次是否重写）**：此前 `provision_one` 每次无条件 PUT（PS 的 `update_nameservers.py` 亦然，只读 before 做展示）。新增 `_ns_host_set`（兼容 dict/list/str、大小写/尾点/乱序归一）与 `_ns_already_points`（查不到或查询失败返回 False，走原更新逻辑，不阻断）；一致记 `nameservers-unchanged`（回访的 `|` 前缀与 `|active` 判定兼容）。离线 8 组全过；README §五 NS 条同步。重跑已激活域名时：NS 一致跳过、DNS `unchanged` 跳过，只剩未完成的邮箱等补配。
+
+#### #89
+
+89. **版本时间串与详细输出（2026-10-02，用户要求）**：`VERSION` 改取自身文件 mtime（`YYYY.MM.DD-HHMM`，如 `2026.10.02-1853`），每次运行与 `--version` 自动带上，改脚本即变；`[4/4]` 行补账号邮箱（与名不同时才附，不打印密钥）、`修复步骤` 行补 `server-ip`/`forward-email` 实际取值、逐域行补 `activation` 状态。README 结果判读同步；只动 `domain_fix.py` + 该 README。
+
+#### #90
+
+90. **引入 logging（2026-10-02，用户要求）**：与 `cf_api` 对齐——`domain_fix.py` 新增模块 `LOGGER`（名 `domain_fix`）+`configure_logging`+`log_print`（控制台打印并同步写文件，与 `cf_api.log_print` 同行为）；40 处 `print(` 经脚本批量替换（正则 `(?<![\w.])print\(`，零残留、CRLF 保持），3 处告警（无可修复域名/回访预算耗尽/SS 配置不可用）提级 WARNING。CLI 加 `-L/--log-file`（默认关闭，避免无意落敏感记录）、`-G/--log-level`、`--log-overwrite`（短开关与 cf 工具一致）；`main` 入口首行装配。文件日志只收本工具消息（不含密钥），`spaceship_api` 内部打印不受影响。离线 5 组（双写/级别过滤/覆盖/控制台原样/无 handler）全过；README §七参数表同步。
+
+#### #91
+
+91. **控制台时间戳 + 所需记录形状归一（2026-10-02，用户要时间戳 + 实测裸错未消）**：`log_print` 控制台行首加本地时间戳（`YYYY-MM-DD HH:MM:SS`，文件日志本就有；`sep/end/file` 照旧透传）。用户重跑仍见裸 `'str' object has no attribute 'get'`——其报错无三类前缀（获取记录/启用/设 catch-all），而地址循环已修，遂锁定 `POST /email/routing/dns` 的 `result` 在该账号下非对象数组：加归一化（包一层 dict 时拆 `records/result/items/data`，元素非 dict 则整体报 `邮箱路由所需记录格式异常:<类型>:<预览>`，不再裸崩）；同账号同类风险的 `get_account_id` 循环跳过非 dict 元素。离线复验（包 dict/字符串/未知结构/正常数组 + 账号跳过）全过；`pyright` 收窄改用新变量（复用变量报 `__getitem__`）。请用户重跑，若仍见 `格式异常` 请贴出冒号后的类型与预览，即可定到具体形状。
+
+#### #92
+
+92. **调错端点实锤并修正（2026-10-02，用户贴出形状后定案）**：用户实测 `格式异常: dict:{'id','tag','name','enabled','created','modified'...}`——正是路由**设置对象**。联网核官方 API 参考确认：取所需 DNS 记录是 `GET /zones/{id}/email/routing/dns`（返回记录数组），而 `POST` 同路径是“启用路由”（返回 settings 对象）；旧代码用 POST 取记录，从根上就错了（pending 时它 403、active 时它返回设置对象，两头都不对）。修正：`get_email_routing_required_records` 改 GET；`enable_email_routing` 改新版规范端点 `POST .../dns`（旧 `POST .../enable` 已废弃）；`configure_email_routing` 在启用前先 `GET .../email/routing` 读设置（新增 `get_email_routing_settings`，查不到按未启用继续），已启用则跳过启用调用。归一化兜底保留。离线 4 组（GET 取记录/已启用跳过/未启用调新端点/settings 失败回退）全过。此前 #86/#91 的形状兼容均是误诊表象，根因在此。
+
+#### #93
+
+93. **`--activation` 改默认开启（2026-10-02，用户要求默认等完）**：`--activation`（store_true）加 `default=True`，`--no-activation`（store_false，同 `dest`）退回 opt-out；三态断言（缺省开/`--no-activation` 关/显式开）全过。连带：回访机制默认生效（`--revisit-timeout` 1800s 预算），`--apply` 默认一次跑完；`--no-activation` 跳过等待与回访。README §三步骤 5、§五表/条、§七参数表、对照表、邮箱小节 8 处同步；`main` 的 `do_activation=args.activation` 与步骤打印无需改（已是新开关）。
+
+#### #94
+
+94. **逐域输出行详解落文档（2026-10-02，用户指定示例行）**：`domain_fix/README.md §八` 增 `### 控制台逐域行解读（示例）`，以 `domain.com: zone=pending, activation=nameservers-set|skipped, ...` 为例逐段拆解（`zone` 四态；`activation` 的 `NS动作|等待结果` 两段式及全部取值；`dns` 四态；`email=deferred` 含义与重跑补配；`ssl` 在 pending 可写），并给出下一步（等 active 后重跑）。顺带修正 §八 `activation`/`ssl_status` 行（旧表把 `nameservers-set` 列为激活值、漏 `skipped`/`no-ssl-mode`）。只动该 README。
+
+#### #95
+
+95. **并发与限流审计（2026-10-02，用户问是否合理/合规）**：结论合理，符合官方最佳实践。核官方文档：Client API 按凭证 1200/5 分钟（约 4/s），429 带 `retry-after` 秒数。实现对照：`domain_fix` 默认 `--add-workers 1` + `--request-interval 0.3`（共享限速器全局约 3.3/s，低于配额）；`ApiRateLimiter` 线程安全（`Lock` 到达间隔 + 429 自适应退避）；`_request` 每次先 `wait()`、429 优先读 `retry-after` 再指数退避（默认 5 次）；线程独立 `Session`（无共享竞争）、串行打印锁。35 域批量约 500 调用/3 分钟以上，远离配额线；提速只调 `--add-workers` 且保持 interval≥0.3，超限也有重试兜底。唯一缺口：spaceship 侧无客户端限流（保持默认串行即可）。只补 `domain_fix/README.md §九` 并发条目，无代码变更。
+
+#### #96
+
+96. **默认 `--apply`、`--dry-run` 预览（2026-10-02，用户要求）**：`--apply`（store_true）加 `default=True`，新增 `--dry-run`（store_false，同 `dest`）；三态断言（缺省执行/`--dry-run` 预览/显式 `--apply` 执行）全过。`main` 的模式打印与预览分支沿用 `args.apply`，无改动。注意裸跑即改动：README §三第 1/2 步与合并命令补 `--dry-run`，§七参数表与 §九注意事项同步翻转；第 4/5 步与手工编辑示例保留显式 `--apply`（自解释）。未做 debug 模式（`--dry-run` 预览 + `-G` 文件日志已覆盖需求）。
+
+#### #97
+
+97. **并行日志直观化（2026-10-02，用户说并行看着像串行）**：病因是 `executor.map` 按提交顺序返回完成行。改 `provision_domains`：开始/完成双行 + `[序号/总数]` 计数（`_format_result` 收敛两处打印），并行改 `submit` + `as_completed`（完成乱序到达，一眼可辨）；`[4/4]` 行缀 `（串行）`/`（并行xN）` 模式。`fix_results.csv` 行序在并行下不再稳定（结果台账，无影响）。离线 monkeypatch 全过（串行/并行格式、计数、落盘）；`ruff`/`pyright` 全绿；README §八示例补 `[2/35]` 前缀。
+
+#### #98
+
+98. **认错：并发“合理”只论证了安全，没回答速度 + 密钥明文打印（2026-10-02，用户追问慢）**：承认把“不会被限”和“跑得快”混为一谈；默认串行 + 0.3 秒下限是求稳不是求快。量化：单域约 12–15 次 CF 调用 ×（0.3 下限 + 接口延迟），串行 8–12 秒/域与用户实测（2 域约 18 秒）吻合；35 域约 4–6 分钟。给法：`--add-workers 4` 约快 3 倍（共享限速器兜底总量 ≤3.3/s，不触配额），`--request-interval` 不低于 0.3；已写入 README §九速度说明。另发现 `spaceship_api.get_auth` 每次明文打印 live key/secret（`# debug` 遗留，用户已贴出真凭据）：改为只打后 4 位脱敏（功能无损，离线断言脱敏 + 取值正常）；**已泄露的凭据请用户去 spaceship 后台轮换**。`ruff`/`pyright` 全绿。
+
+#### #99
+
+99. **提速到约 3 记录/秒 + Ctrl+C 优雅退出（2026-10-02，用户要速度 + 可中断）**：慢的主因是 `ensure_dns_record` 每条记录 1–2 次全量 LIST。加同 zone 缓存（`_records_cache` 可选参数，向后兼容；`provision_zone` 每 zone 一个）：命中跳过 LIST，新增并入缓存、删除摘除、覆盖走失效重查（实现中抓到并修掉一处真 bug：覆盖后若只摘单条会致后继误判重复添加，即防劈叉失效）。离线 7 组全过（LIST 计数 4→2、覆盖/去重/CNAME 互斥/TXT 多值、与无缓存行为等价性断言）。`--add-workers` 默认改 4（共享限速器总量仍 ≤3.3/s，配额安全；CSV 行序不定已在 #97 说明）。中断复用 cf 现成机制：`main` 装 `install_ctrl_c_handler`、stop 透传限速器/updater/回访（`interruptible_sleep`），并行分支取消排队 future、进行中靠 stop 速退；落盘后无 traceback 返回，退出码 130（`main` 尾判 stop、`__main__` 兜底）。离线 3 组（串行中断落盘 1 行/回访跳过/预置 stop）全过。README §七/§九、Handoff 同步。
+
+#### #100
+
+100. **开始行改由干活线程打印（2026-10-02，接 #97，用户说 35 个开始一口气刷屏不合理）**：`submit` 循环里预打开始行是假进度。收敛为 `_run_one`（打开始行 + 调 `provision_one`，返回三元组），串行/并行共用；开始行随线程开工出现，完成行乱序到达，`[序号/总数]` 可对齐。离线断言交错性（首个完成先于末个开始）通过；门禁全绿。
+
+#### #101
+
+101. **`init -Force` 真重载变量 conf（2026-10-03，接 #75 修复）**：改法三处全在 `Init.psm1`（+22 行，门控链不动 Prompt/`Update-PwshEnvIfNotYet`）：①Force 分支分流 `$reInit = $null -ne $PsInit`——只有"重跑已初始化会话"才重载，首次初始化与 `p -Force`（新进程首次）不叠加重载，保启动基线；②重载取并集 `Update-PwshVars -Core` + `Update-PwshVars`（Core 名单含 ConstantString、全量名单含 VarSet3/GlobalConfig 等平时懒加载件；VarSet1/2 幂等重跑、预编译缓存命中）；③步骤尾 `$prevEnvMode -gt $global:PsEnvMode` 才写回——`VarSet1.conf` 恒写 1，Env 级会话不被打回，免得后续首个 `IfNotYet` 调用多跑一次全量补齐。另纠 #75 措辞：裸 init 后 `$PsEnvMode=1`（VarSet1 写 1），Env 补齐后才 3，门控条件 ≥core 对两者同样跳过，原结论不变。验证（哨兵探针：改内存值 → `init -Force` → 看 conf 值写回）：修复前 reforce 4/4 False、FORCE_MS=13；修复后 4/4 True（VarSet2/VarSet1/ConstantString/VarSet3 四档）、MODE 3→3、FORCE_MS=371、STEP_ERRORS=0、prompt 正常；fresh 场景 620→616ms 且 `SteamChina` 仍 `<unset>`（不叠全量，基线不变）；双 `init -Force` 幂等 + 普通二次 `init` no-op 冒烟过。5.1 门禁：ParseFile 0 错 + Import-Module Init 过；BOM=EF-BB-BF、diff 双统计一致（22+ 纯新增）。文档同步：`Feature-Guide §2` init 行、§3 init 期文件行、§6 第 2 档改现行口径（根因史留 #75）。教训：模块内 `Write-Verbose` 看不到调用方脚本块设的 `$VerbosePreference`（首版 verbose 探针 0 命中），跨模块断言用哨兵副作用，别赌 verbose。
+
+#### #102
+
+102. **CxxuTab 改默认关（2026-10-17，用户报"有时帮倒忙"）**：自研 Tab 补全改为**默认不启用**（保留可启用，非删除）。门控语义由"空值即开"（`-notmatch '^(False|0|No|Off)$'`）翻转为"显式开"（`-match '^(True|1|Yes|On)$'`），共 6 处：`CxxuTab.psm1` 逐调用门、`TerminalTools.psm1`（桩安装条件 + 桩内门 + `pieceTab` 单片）、`Deploy.psm1` 就绪检查（门控读数 + Tab 三态判定）。`Init` 配置模板 `PsTab` 默认值改 `$false`（新机默认关）；**已有机器还要把 `~/.cxxu/config.psd1` 的 `PsTab` 改 `$false`**（或 `Disable-PsPlugin Tab -Persist`）——旧模板写入的 `$true` 会继续启用。开启：`Enable-PsPlugin Tab [-Persist]`（7+ 立装桩即时生效）。文档同步：`Module-Map`、`Feature-Guide`（§7 表/§11 开关组/§13 用法）、`Startup-Optimization §22`、`Live-Versions`。教训：改开关默认值不能只改仓库默认——本机 `~/.cxxu/config.psd1`（优先级：环境变量 > 本文件 > 默认值）不跟着改，用户机上就形同没改。
+
+#### #103
+
+103. **`Deploy-CronFile`：Windows 上的 `deploy.sh` 等价物（2026-10-28）**：`WpOnline` 新增导出函数，逐台预检（root、目标目录、`-Require` 依赖、cron 服务、重复条目）→ `-TemplateDirectory` 时按目标机时区选 `cron.cst`/`cron.utc` → 调用 `Push-FileToServers` 落地 → 汇总并可用 `-FailOnError` 抛异常；`-Check`/`-Remove`/`-WhatIf` 与 `deploy.sh` 同名语义。每台三次连接（预检、上传、安装），自动选模板加一次时区探测。**顺带修两处真问题**：①`WpOnline.psm1` 是 B 档却无 BOM，5.1 下按 GBK 解码直接解析失败（全模块不可用），已补 BOM；②cron 服务检查改为"systemd 任一 active 或 pgrep 命中"，容器/WSL 里 `systemctl` 存在但无 PID 1 时不再误报未运行。测试：假 `ssh`/`scp` 转发 WSL root，16 项断言在 pwsh 7.5 与 Windows PowerShell 5.1 均 0 失败（部署/幂等/备份/校验/漂移/重复条目/缺依赖/删除/WhatIf/时区选模板）。注：假 scp 是函数，只在 `-ThrottleLimit 1` 的顺序路径生效，并发路径仍走 `Push-FileToServers` 既有作业实现。（其中"重复条目"预检已于 #104 移除。）
+
+#### #104
+
+104. **移除重复任务启发式检查（2026-10-29，用户判定该功能低质且堵住更新通路）**：原实现从模板提取 `.php`/`.sh` 基名，在 root crontab、`/etc/crontab` 与其他 `/etc/cron.d` 中 `grep -F`，命中即拒绝下发（`exit 2`）。问题：同名脚本不等于同一任务（同脚本不同参数/不同站点都算不同任务），注释、日志路径、残留临时文件会误报，解释器前缀与包装脚本会漏检；用户给任务加前置命令后仍被判重复，正常更新被堵死。已从三处入口一并移除：`update-cron/deploy.sh`（删 `template_patterns` 与远端 grep 段，`remote_precheck` 只留 root/目录/命令/依赖/cron）、`update-cron/install-cron.sh`（删 `duplicate_check`）、`Deploy-CronFile`（删 `-AllowExisting`、`Patterns` 提取与 `exit 2` 分支）；两处 `--allow-existing` 开关随之删除。验证：WSL root 下伪造"别处已有同名脚本"，三处预检均返回 0 且缺依赖仍返回 1；`install-cron.sh` 安装后哈希一致；`--help` 不再含旧开关，传旧开关退出码 2；`shellcheck`/`shfmt` 0 告警，psm1 在 5.1 与 7 下 ParseFile 均 0 错。规则依据：skill `scripting-best-practices` 的"覆盖写入与写入前检查"、根 `AGENTS.md` 红线。
+
+#### #105
+
+105. **`Deploy-CronFile` 只读阶段并发 + `-SkipPrecheck`（2026-10-29）**：预检原为逐台 `foreach`，`-ThrottleLimit` 只作用于推送，几十台时写入前要串行等几十次 SSH。现改为三阶段：本地生成每台的脚本 → 只读阶段按 `-ThrottleLimit` 并发执行（每台一个 ThreadJob，缺 ThreadJob 时退回 `Start-Job`，与 `Push-FileToServers` 同一模式）→ 按清单顺序应用结果、选模板、登记推送。时区探测放在同一作业内先执行，`-Check` 走同一并发路径；`-Remove` 仍逐台执行。新增 `-SkipPrecheck`：跳过预检直接上传安装（每台两次连接，`-TemplateDirectory` 时三次），推送阶段仍比对哈希与权限，一致时不写入、不备份；与 `-Require` 互斥并显式报错。**顺带修一个真问题**：作业里的脚本必须像 `$runRemote` 一样先去掉 CR（模块文件是 CRLF，here-string 带 `\r`，远端报 `set: - : invalid option` 与 `$'\r': command not found`）。测试：假 `ssh`/`scp` 转发 WSL root，`-ThrottleLimit 1` 下覆盖首次下发、重复下发（2 次 ssh、0 次 scp）、`-SkipPrecheck`（一致时不备份、变更后备份 1 份）、`-Require` 多文件与缺失、`-Check`、`-WhatIf`（0 连接）、`-Remove`、`-TemplateDirectory`（时区 `Asia/Shanghai`，6 次 ssh + 2 次 scp）；并发路径用 3 台不可达主机实测 10.3 秒（串行约 30 秒），结果按 Index 排序、无作业残留；psm1 在 5.1 与 7 下 ParseFile 均 0 错。注：并发作业不继承调用方的同名函数，假 `ssh`/`scp` 只能覆盖顺序路径。
+
+#### #106
+
+106. **`irm|iex` 在线执行全系脚本在 5.1 报"参数列表中缺少参量"（2026-11-06，用户新机实测）**：根因是**UTF-8 BOM 与 iex 的冲突**，不是脚本内容。仓库 6 个 v5 独立脚本按 #68 统一带 BOM（`powershell.exe` 5.1 直接执行含中文脚本时按 ANSI 代码页解码，无 BOM 解析必错），但 `Invoke-RestMethod`/`irm` 按 `charset=utf-8` 解码后**不剥 BOM**，字符串首字符是 U+FEFF；U+FEFF 不属于空白，词法上被并进首个 token，于是首行 `<#` 不再是块注释起点，整段头注释被当成一条命令的参数，注释里的中文逗号触发"参数列表中缺少参量"（报错行号即逗号位置，5.1 与 7.5 表现一致，`[scriptblock]::Create` 可只读复现）。**所以 `#` 行注释也救不了**（实测 `U+FEFF + "# ..."` 同样并进 token，文件首行加注释无效），BOM 也不能删（删了 5.1 跑文件必炸），只能在执行侧裁掉。修复：所有 `irm 远端仓库脚本 | iex` 改为 `(Invoke-RestMethod $url).TrimStart([char]0xFEFF) | Invoke-Expression`；一处不落——`Deploy-GitForWindows`（Deploy.psm1/Git.psm1）、`Deploy-Pwsh7Portable`（三个模块）、`Deploy.psm1`（TestLinks 与 Register-GithubHostsAutoUpdater 两处）、`GithubHostsUpdater/fetch-github-hosts.ps1`，以及文档示例（根 `readme.md`、`Deploy-Guide`、`PS/Deploy/readme.md` 全部在线一行式、`WordPress.psm1` 帮助文本）。`Deploy-CxxuPsModules.ps1` 入口本身不受首行解析影响（它先落盘再跑），但落盘用的 `Invoke-RestMethod $url > ~/x.ps1` 是同一根因的第二个入口：5.1 的 `>` 以 UTF-16 写出并附带 BOM，与内容自带的 U+FEFF 叠成 `FF FE FF FE`，执行该文件仍按"首字符 U+FEFF"解析失败（7 的 `>` 写 UTF-8 无 BOM，恰好只留单个 BOM 才长期没暴露）。四处统一改 `-OutFile` 直存原始字节（5.1 实测落盘后头字节 `EF BB BF`、ParseFile 0 错）：`Deploy-CxxuPsModules` 的 dgw/dp7 两处、`Register-GithubHostsAutoUpdater` 两处；文档落盘示例同步改 `-OutFile` 并注明不能用 `>`；`Deploy-CxxuPsModules.ps1` 头部补 BOM 约束说明。验证：`Deploy-CxxuPsModules.ps1` 经 `irm` 取回后 `[scriptblock]::Create(raw)` 5.1/7 均报 line:8 char:11，`TrimStart([char]0xFEFF)` 后均 PARSE-OK；改动的 psm1/ps1 在 5.1 与 7 下 ParseFile 0 错，BOM 保持原状（diff 只动目标行）。教训：BOM 是"文件执行友好、iex 不友好"的开关，凡"取远端文本 → 执行"的链路都要先裁 U+FEFF；写脚本帮助里的示例也算链路。**为什么 get.scoop.sh 能直接 `irm|iex`（2026-11-06 实测 5.1）**：该脚本 28743 字节、**无 BOM**、**0 个非 ASCII 字节**、首字符 `0x23`（`#`），`irm` 原样取回后 ParseInput 0 错。它不冲突是因为两个入口都不需要 BOM——`iex` 时无 U+FEFF 可并进 token；5.1 按 ANSI 页解码纯 ASCII 结果不变。我们的脚本有中文注释，5.1 跑文件必须有 BOM，故不能照抄它的做法，只能在执行侧裁。要在 `irm|iex` 上做到它的"裸一行"，只有三条路：保留 BOM 并在执行侧裁 `U+FEFF`（现行方案，脚本与落盘两个入口都不受限）；或另发一个纯 ASCII 无 BOM 的引导脚本，由它转下载执行（会丢 `-Light` 等参数传递，多一层维护）；或全仓库 ASCII 化（注释也英文，不现实）。**决议：维持现行方案，不要把"去 BOM"当修法。**
+

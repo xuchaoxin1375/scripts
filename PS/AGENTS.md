@@ -5,7 +5,7 @@
 ## 先读文档，再碰代码
 本目录 `docs/` 是唯一真相源（若代码注释与文档矛盾，以文档为准，顺手修注释）：
 0. `docs/README.md` —— 文档入口地图（新用户按任务分流，别全读）
-1. `docs/Agent-Handoff.md` —— 踩坑清单（必读，尤其 §3；能省至少一次返工）
+1. `docs/Agent-Handoff.md` —— 交接手册与踩坑索引（必读，尤其「踩坑清单」；正文归档在 `docs/archive/agent-handoff-history.md`）
 2. `docs/Module-Conventions.md` —— 命名/编码铁律（§1 单横线、§8 换行）+ 文档语言（§11 术语、§12 行文、§13 用户文档结构）
 3. `docs/Module-Map.md` —— 67 模块画像（找功能先查表，别 grep 大海捞针）
 4. `docs/Feature-Guide.md` —— 用户手册 + FAQ（动用户可见行为先看）
@@ -13,7 +13,7 @@
 6. `docs/Deploy-Guide.md` —— 新机部署（仅部署相关）
 7. `docs/Live-Versions.md` —— 并排版本活件设计专章（动 dll/同步/加载先看）
 
-改完代码必看 `Agent-Handoff.md §5` 要不要同步文档。
+改完代码必看 `Agent-Handoff.md`「文档分工」要不要同步文档。
 
 ## 红线
 - 本文件约束 `PS/` 内的改动，跨区工作按根 `AGENTS.md` 执行；`PS/Pwsh/demo.ps1` 的删除不是你干的，别碰。
