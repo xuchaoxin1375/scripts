@@ -197,7 +197,8 @@ conda 缓存（`~/.conda_hook_cache.ps1`）与 zoxide 缓存（`~/.zoxide_init_c
 - **中央变量 `$env:PsGithubMirror`**：全仓库统一从它拿前缀。喜欢哪个镜像就持久化哪个：
   `Add-EnvVar -EnvVar PsGithubMirror -NewValue 'https://gh-proxy.com'`（以你实测最快的为准，
   `Get-AvailableGithubMirrors` 可测速；5.1 下同样并发探测，不再退化为串行）；不设则走默认 `gh-proxy.com`，
-  模块内调用走 `Get-SelectedMirror -Silent` 静默测速（会话缓存一次）。
+  需要自动挑选时由 `Get-GithubMirrorPrefix`（部署链）调用 `Get-SelectedMirror -Silent` 静默测速并缓存一次会话；
+  `Update-ReposesConfiged` 为保证更新可复现，固定使用默认值或 `-GithubMirror`，不做测速。
 - **一键部署的镜像**：`Deploy-CxxuPsModules -GithubMirror 'https://gh-proxy.com'` 显式指定，
   同一前缀用于 git clone、raw 脚本与离线包下载；克隆失败会自动回退离线包，直连失败不再让部署中断。
 - **统一出口**：模块内拼 raw 地址一律 `Get-RepoRawUrl -Path 'PS/...'`（自动套前缀），
@@ -213,6 +214,8 @@ Sync-CxxuPredictor            # 单点操作（首次安装生成/手动修复/�
 ```
 
 - 入口 loader 只静默装载（旧版照常使用，无警告）：版本检查使用 `Test-PsEnvReadiness` 备注列。活件并排版本存放（只新增版本目录，从不覆盖），同步不受锁限制，任何会话都可执行。
+- 镜像与代理：`Update-ReposesConfiged` 默认经 `https://gh-proxy.com` 拉取，固定默认值，不做会话测速；未显式传参时读 `$env:PsGithubMirror`，该变量为空时仍用默认值。`-GithubMirror '<前缀>'` 临时换镜像，`-NoMirror` 或 `-GithubMirror ''` 直连。代理默认依次读 `HTTPS_PROXY`、`HTTP_PROXY`、`ALL_PROXY`（兼容小写形式），也可用 `-Proxy '<地址>'` 指定、用 `-NoProxy` 忽略环境变量。命令会把指向 `xuchaoxin1375/<仓库>` 的 http(s) `origin` 改为当前镜像或直连地址，使后续拉取沿用本次选择；镜像只用于下载，推送地址设为直连 GitHub（保留 gitee 等其他推送地址），`Push-ReposesConfiged` 不受影响；SSH 与自定义远端不改写。
+- 更新范围：默认处理 `$CommonRepos`，本机在 `CxxuComputers` 名单内时追加 `$CxxuRepos`；`-RepoDirs 'blogs','scripts'` 只处理列出的仓库。`-Force` 先执行 `fetch`，再执行 `reset --hard origin/<当前分支>`，会丢弃该仓库已跟踪文件的本地未提交改动；未跟踪文件不受影响。
 - 拉取含 dll 变更：活件已同步完成，**重新打开终端** → 执行 `init` 即可；只有 psm1 变更：执行 `ipmox` 即可，会话变量不丢失。
 - 自编译活件（`local-build.txt` 标记为 local）：`Update-ReposesConfiged` 保持活件不动并提示，不会换回仓库源；想跟进仓库源时，重编后重新 `Sync-CxxuPredictor -DllPath`，或裸 `Sync-CxxuPredictor` 切回（流程见 `Live-Versions.md §10`）。
 - 守护进程（报时/IP）用不上 predictor：`$env:PsPredictor='False'` 门已置（`Start-StartupBgProcesses` 继承 + 两个守护函数按 `-Command` 自断），它们永不加载/锁定 dll， `-Force` 关它们无压力（无状态，重起即回）；交互会话手动调守护函数不受影响。

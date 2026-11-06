@@ -50,7 +50,7 @@
 - 部署脚本是仓库里的 `PS/Deploy/Deploy-CxxuPsModules.ps1`。先保存到本地，再按参数运行；保存后可反复使用，也便于查看内容。
 - 脚本会检查 git：已安装则用镜像克隆仓库；未安装时提示选择安装 Git 或直接下载仓库压缩包；克隆失败自动回退离线包。
 - 默认不安装 PowerShell 7，需要时加 `-InstallPwsh7`。
-- 下载默认走 `https://gh-proxy.com`，可用 `-GithubMirror` 或 `$env:PsGithubMirror` 覆盖；镜像与代理细节见 [Deploy-Guide.md](PS/docs/Deploy-Guide.md)。
+- 下载与仓库更新默认走 `https://gh-proxy.com`，可用 `-GithubMirror` 或 `$env:PsGithubMirror` 覆盖，更新时也可用 `-NoMirror` 直连；镜像与代理细节见 [Deploy-Guide.md](PS/docs/Deploy-Guide.md)。
 - 参数较多时建议写进哈希表，完整参数、离线安装与沙箱调试见 [PS/Deploy/readme.md](PS/Deploy/readme.md)。
 
 ```powershell

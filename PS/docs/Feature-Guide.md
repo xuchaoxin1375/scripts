@@ -202,6 +202,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | 移除 | `Sync-CxxuPredictor -Uninstall`（有其他会话锁定加 `-Force`） | 删除指针与版本目录；被会话锁定的版本删不掉会报告，下次再收；`Remove-Module` 不能卸载程序集（锁随进程存在，已实测）；彻底停用请持久化 `$env:PsPredictor='False'`，否则下次同步或更新会重新安装 |
 | 自编译 | 先 `dotnet build`（见 `Live-Versions.md §10`），再 `Sync-CxxuPredictor -DllPath <产物>` | macOS/新版 pwsh 与仓库源 dll 的 SMA 对不上时用；不碰仓库源，检查端显示 `自编译版本[哈希]` 属正常，`Update-ReposesConfiged` 会保持活件不动 |
 
+- 拉取网络：`Update-ReposesConfiged` 默认走 `https://gh-proxy.com`，`-NoMirror` 直连、`-GithubMirror` 换镜像、`-Proxy`/`-NoProxy` 控制代理；优先级与 `-Force` 的丢弃范围见 [Deploy-Guide.md](Deploy-Guide.md) 的更新章节。
 - 守护进程（报时/IP）默认不碰 dll：`Start-StartupBgProcesses` 置 `PsPredictor=False` 继承 + 两个守护函数按 `-Command` 自断，所以 `-Force` 关它们无压力（无状态，重起即回）。
 - 同一结论在 `Test-PsEnvReadiness` 的“建议”行也会再说一遍（缺必备 > 有更新 > 活件不一致）。
 

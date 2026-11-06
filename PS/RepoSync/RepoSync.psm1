@@ -139,128 +139,404 @@ function Push-ReposesConfigedFromMainPC
 
 function Update-ReposesConfiged
 {
-    <# 
+    <#
     .SYNOPSIS
-    从远程仓库拉取最新的配置覆盖本地版本
-    .DESCRIPTION
-    如果本地在$repos目录下，那么会从github clone到$repos目录中
+    批量更新常用仓库:默认经 GitHub 加速镜像拉取,可切换镜像/直连,并支持网络代理。
 
+    .DESCRIPTION
+    依次处理 $CommonRepos 中的仓库;当前主机在 CxxuComputers 名单内时追加 $CxxuRepos。
+    目录不存在时执行浅克隆(--depth=1);已存在的 git 仓库先校正 origin 地址,再拉取当前分支。
+    镜像与代理只作用于 git 的网络访问,不修改工作区内容;需要丢弃本地改动并对齐远端时使用 -Force。
+
+    源地址优先级(加速前缀仅对 github 源生效):
+    - -NoMirror 或 -GithubMirror '' :直连 https://github.com。
+    - -GithubMirror <前缀> :使用指定加速前缀。
+    - 未指定时读 $env:PsGithubMirror。
+    - 以上都没有时使用默认前缀 https://gh-proxy.com。
+
+    代理优先级:
+    - -NoProxy :本次不传入代理参数,也不读取代理环境变量。
+    - -Proxy <地址> :使用指定代理。
+    - 未指定时依次读 $env:HTTPS_PROXY、$env:HTTP_PROXY、$env:ALL_PROXY(兼容小写形式),取第一个非空值。
+    - 都没有时不传代理参数。
+    未显式指定代理时,git 自身的代理配置(如 http.proxy)仍会生效。
+
+    .PARAMETER RepoDirs
+    要更新的仓库目录名(相对 $repos),可传多个。省略时处理 $CommonRepos,当前主机属于
+    CxxuComputers 时追加 $CxxuRepos;显式传入时只处理这些目录,不再追加。
+
+    .PARAMETER RepoSource
+    仓库源域名:github(默认)或 gitee。加速前缀只对 github 生效。
+
+    .PARAMETER GithubMirror
+    GitHub 加速前缀,例如 https://gh-proxy.com。默认读 $env:PsGithubMirror,未设置或为空时用
+    https://gh-proxy.com;传空字符串表示直连。已存在仓库的 origin 若指向本账号同名仓库,
+    会改为当前前缀对应的地址,使后续拉取沿用同一配置;镜像仅用于下载,推送地址设为
+    直连 GitHub(保留 gitee 等其他推送地址),不影响 Push-ReposesConfiged。
+
+    .PARAMETER NoMirror
+    强制直连 GitHub,忽略 -GithubMirror 与 $env:PsGithubMirror。
+
+    .PARAMETER Proxy
+    代理地址,例如 http://127.0.0.1:7897。未指定时按环境变量顺序自动识别。
+
+    .PARAMETER NoProxy
+    本次不传入代理参数,忽略 -Proxy 与代理环境变量。
+
+    .PARAMETER CxxuRepos
+    额外仓库目录名列表,仅在当前主机属于 CxxuComputers 时追加。默认读 $CxxuRepos。
+
+    .PARAMETER CxxuComputers
+    主机名名单。显式传入时用它替代 $CxxuComputers 判断当前主机,可传 $env:ComputerName
+    临时放开 $CxxuRepos 的更新;仅在未显式指定 -RepoDirs 时生效。
+
+    .PARAMETER Force
+    拉取前执行 git fetch,再执行 git reset --hard origin/<当前分支>。会丢弃该仓库已跟踪
+    文件的本地未提交改动;未跟踪文件不受影响。
+
+    .EXAMPLE
+    Update-ReposesConfiged
+    按默认镜像和自动识别的代理更新全部配置仓库。
+
+    .EXAMPLE
+    Update-ReposesConfiged -NoMirror
+    直连 GitHub,用于镜像不可用或需要核对原始远端。
+
+    .EXAMPLE
+    Update-ReposesConfiged -GithubMirror 'https://ghfast.top' -Proxy 'http://127.0.0.1:7897'
+    使用指定加速镜像,并通过本地代理访问。
+
+    .EXAMPLE
+    Update-ReposesConfiged -RepoDirs 'scripts' -Force
+    只更新 scripts 仓库,并丢弃该仓库已跟踪文件的本地未提交改动。
+
+    .NOTES
+    需要 git 已安装并在 PATH 中。单个仓库失败不会中断其余仓库,结束时汇总失败项并给出处理建议;
+    scripts 仓库含 dll 变更时自动同步活件并提示重新打开终端。
     #>
     [CmdletBinding()]
     param(
-        # $repoDirs = '',
-        $repoDirs = $CommonRepos,
-        $RepoSource = 'github',
-        $CxxuRepos = $CxxuRepos,
-        # $Proxy = "http://127.0.0.1:8800",
-        $Proxy = "",
-        # 默认读取GlobalConfig中的配置,也可以通过命令行覆盖这个列表(传入$env:ComputerName就可以临时地获取拉取CxxuRepos仓库的权限)
-        $CxxuComputers = $CxxuComputers,
+        [Alias('RepoNames')]
+        [string[]]$RepoDirs = @(),
+        [ValidateSet('github', 'gitee')]
+        [string]$RepoSource = 'github',
+        [Alias('Mirror')]
+        [string]$GithubMirror,
+        [switch]$NoMirror,
+        [string]$Proxy,
+        [switch]$NoProxy,
+        [string[]]$CxxuRepos = @(),
+        [string[]]$CxxuComputers = @(),
         [switch]$Force
     )
+
+    $succeeded = 0
+    $failures = @()
+    $skipped = @()
+
     #记录当前路径
     Push-Location
-
-    # 导入环境变量(当前么有导入过),以便本函数确定默认值,即哪些仓库需要同步
-    Update-PwshEnvIfNotYet -Mode Vars
-    $repoDirs = if ($reposDirs) { $reposDirs } else { $CommonRepos }
-    
-    Write-Verbose "$repoDirs will be try to update." -Verbose
-    # 获取repos目录下所有子目录路径
-    # $repoDirs = Get-ChildItem -Path $repos -Directory
-    
-    $repoDirs = $CommonRepos
-    if(Test-CxxuComputer)
+    try
     {
-        $repoDirs += $CxxuRepos
-    }
+        # 导入环境变量(当前没有导入过),以便本函数确定默认值,即哪些仓库需要同步
+        Update-PwshEnvIfNotYet -Mode Vars
 
-    foreach ($repoDir in $repoDirs)
-    {
-
-        $P = Join-Path -Path $repos -ChildPath $repoDir
-        # Set-Location $repos
-        Write-Verbose $P
-        if (!(Test-Path $P))
+        # init 可能把 scoop 版 git 加入 PATH,因此导入环境后再检查
+        if (-not (Get-Command git -ErrorAction SilentlyContinue))
         {
-            $gitUrl = "https://${RepoSource}.com/xuchaoxin1375/$repoDir" #.Trim('\\')
-            $Path = "$repos/$repoDir"
-            Write-Verbose "[$giturl] will be cloned to [$Path] !" -Verbose
-            git -c http.proxy="$Proxy" -c https.proxy="$Proxy" clone --depth=1 $gitUrl $Path 
-            continue
-
+            Write-Warning '未找到 git,无法更新仓库。请先安装 Git for Windows,并确认 git 在 PATH 中。'
+            return
         }
-        # 切换到当前仓库目录
-        Set-Location -Path "$repos/$repoDir"
-        Write-Host "$repos/$repoDir" 
 
-        # 执行任务
-        if (Test-Path -Path '.git')
+        if ([string]::IsNullOrWhiteSpace($repos))
         {
-            # 如果副设备上的仓库被污染，执行清空,然后强制拉取
-            # 假设每个仓库的主分支为main(而不是master或其他)
-            # git fetch origin
-            if ($Force)
+            Write-Warning '未读取到仓库根目录 $repos。请先执行 init 导入环境变量,然后重试。'
+            return
+        }
+        if (-not (Test-Path -LiteralPath $repos))
+        {
+            New-Item -ItemType Directory -Path $repos -Force | Out-Null
+        }
+
+        # 解析加速前缀:显式参数优先,-NoMirror 优先级最高,gitee 不使用前缀
+        $mirrorPrefix = ''
+        if (-not $NoMirror -and $RepoSource -eq 'github')
+        {
+            if ($PSBoundParameters.ContainsKey('GithubMirror'))
             {
-
-                git -c http.proxy="$Proxy" -c https.proxy="$Proxy" reset --hard origin/main 
+                $mirrorPrefix = [string]$GithubMirror
             }
-            git -c http.proxy="$Proxy" -c https.proxy="$Proxy" pull origin main 
-            # 上述命令对于不会引起冲突的文件或目录不造成影响,只有和云端仓库冲突的文件或目录才会被移除更改
-            # 如果想要完全一样,那么执行以下清理命令(清除未跟踪的文件或目录)
-            # git clean -fd
-
-            Write-Host "$reposDir was try to updated." -ForegroundColor Cyan
-    
+            elseif (-not [string]::IsNullOrWhiteSpace($env:PsGithubMirror))
+            {
+                $mirrorPrefix = [string]$env:PsGithubMirror
+            }
+            else
+            {
+                $mirrorPrefix = 'https://gh-proxy.com'
+            }
+            if ([string]::IsNullOrWhiteSpace($mirrorPrefix))
+            {
+                $mirrorPrefix = ''
+            }
+            else
+            {
+                $mirrorPrefix = ([string]$mirrorPrefix).Trim().TrimEnd('/')
+            }
         }
 
+        # 解析代理:显式参数优先,-NoProxy 优先级最高,否则读环境变量
+        $proxyUrl = ''
+        if (-not $NoProxy)
+        {
+            if ($PSBoundParameters.ContainsKey('Proxy'))
+            {
+                $proxyUrl = [string]$Proxy
+            }
+            else
+            {
+                $proxyUrl = @(
+                    $env:HTTPS_PROXY, $env:https_proxy,
+                    $env:HTTP_PROXY, $env:http_proxy,
+                    $env:ALL_PROXY, $env:all_proxy
+                ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+                    Select-Object -First 1
+            }
+            if ([string]::IsNullOrWhiteSpace($proxyUrl))
+            {
+                $proxyUrl = ''
+            }
+            else
+            {
+                $proxyUrl = ([string]$proxyUrl).Trim()
+            }
+        }
+        $gitNetworkArgs = @()
+        if ($proxyUrl)
+        {
+            $gitNetworkArgs = @('-c', "http.proxy=$proxyUrl", '-c', "https.proxy=$proxyUrl")
+        }
+
+        # 解析仓库列表:显式 -RepoDirs 覆盖默认集合
+        if ($PSBoundParameters.ContainsKey('RepoDirs'))
+        {
+            $targetNames = @($RepoDirs)
+        }
+        else
+        {
+            $targetNames = @($CommonRepos)
+            $cxxuList = if ($CxxuRepos.Count -gt 0) { @($CxxuRepos) } else { @(Get-Variable -Name CxxuRepos -Scope Global -ValueOnly -ErrorAction SilentlyContinue) }
+            $isCxxuComputer = if ($PSBoundParameters.ContainsKey('CxxuComputers'))
+            {
+                Test-CxxuComputer -CxxuComputers $CxxuComputers
+            }
+            else
+            {
+                Test-CxxuComputer
+            }
+            if ($isCxxuComputer)
+            {
+                $targetNames += $cxxuList
+            }
+        }
+        $targetNames = @($targetNames | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+        if ($targetNames.Count -eq 0)
+        {
+            Write-Warning '没有需要更新的仓库:请检查 $CommonRepos 或 -RepoDirs。'
+            return
+        }
+
+        $mirrorDisplay = if ($mirrorPrefix) { $mirrorPrefix } else { '直连' }
+        $proxyDisplay = if ($proxyUrl) { $proxyUrl } else { '未指定' }
+        Write-Verbose "仓库源:$RepoSource;加速镜像:$mirrorDisplay;代理:$proxyDisplay"
+
+        foreach ($repoName in $targetNames)
+        {
+            $repoPath = Join-Path -Path $repos -ChildPath $repoName
+            $directUrl = "https://$RepoSource.com/xuchaoxin1375/$repoName.git"
+            $targetUrl = if ($mirrorPrefix) { "$mirrorPrefix/$directUrl" } else { $directUrl }
+
+            Write-Host "==> $repoName" -ForegroundColor Cyan
+
+            if (-not (Test-Path -LiteralPath $repoPath))
+            {
+                Write-Host "克隆:$targetUrl"
+                & git @gitNetworkArgs clone --depth=1 $targetUrl $repoPath
+                $clonedWithMirror = ($LASTEXITCODE -eq 0 -and $mirrorPrefix)
+                if ($LASTEXITCODE -ne 0 -and $mirrorPrefix)
+                {
+                    Write-Warning "经镜像克隆 $repoName 失败(退出码 $LASTEXITCODE),改为直连重试。"
+                    # 克隆失败可能残留半成品目录,清理后再试直连
+                    if (Test-Path -LiteralPath $repoPath)
+                    {
+                        Remove-Item -LiteralPath $repoPath -Recurse -Force
+                    }
+                    & git @gitNetworkArgs clone --depth=1 $directUrl $repoPath
+                    $clonedWithMirror = $false
+                }
+                if ($LASTEXITCODE -eq 0)
+                {
+                    # 加速镜像只用于下载:推送地址改回直连,避免 Push-ReposesConfiged 走只读镜像失败
+                    if ($clonedWithMirror)
+                    {
+                        & git -C $repoPath remote set-url --push origin $directUrl
+                    }
+                    $succeeded++
+                    Write-Host "[$repoName] 克隆完成。" -ForegroundColor Green
+                }
+                else
+                {
+                    $failures += $repoName
+                    Write-Warning "[$repoName] 克隆失败(退出码 $LASTEXITCODE)。"
+                }
+                continue
+            }
+
+            if (-not (Test-Path -LiteralPath (Join-Path $repoPath '.git')))
+            {
+                $skipped += $repoName
+                Write-Warning "[$repoName] 目录已存在但不是 git 仓库,已跳过。如需纳入更新,请手动移走该目录后重试。"
+                continue
+            }
+
+            Push-Location -LiteralPath $repoPath
+            try
+            {
+                # 校正 origin:仅改写指向本账号同名仓库的 http(s) 地址,SSH 与自定义远端不动
+                $originUrl = [string](& git remote get-url origin 2>$null)
+                $originMatches = $originUrl -match '^https?://' -and
+                    $originUrl -match ('xuchaoxin1375/' + [regex]::Escape($repoName) + '(?:\.git)?/?$')
+                if ($LASTEXITCODE -eq 0 -and $originMatches)
+                {
+                    if ($originUrl.TrimEnd('/') -ne $targetUrl)
+                    {
+                        & git remote set-url origin $targetUrl
+                        Write-Verbose "已更新 origin:$originUrl -> $targetUrl"
+                    }
+                    # 镜像只用于下载:推送地址若仍指向镜像则改为直连,保证 Push-ReposesConfiged 可用;
+                    # 已有的多路推送配置(如 gitee)原样保留
+                    $pushUrls = @(& git remote get-url --push --all origin 2>$null | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+                    $mirrorPushUrls = @($pushUrls | Where-Object { $_ -match '/https?://github\.com/' })
+                    if ($mirrorPushUrls.Count -gt 0)
+                    {
+                        $keepPushUrls = @($pushUrls | Where-Object { $_ -notmatch '/https?://github\.com/' })
+                        if ($keepPushUrls -notcontains $directUrl)
+                        {
+                            $keepPushUrls = @($directUrl) + $keepPushUrls
+                        }
+                        # 先清空 pushurl 再重建,避免 set-url 只替换首项而留下重复项
+                        & git config --unset-all remote.origin.pushurl 2>$null
+                        & git remote set-url --push origin $keepPushUrls[0]
+                        for ($i = 1; $i -lt $keepPushUrls.Count; $i++)
+                        {
+                            & git remote set-url --add --push origin $keepPushUrls[$i]
+                        }
+                    }
+                }
+
+                # 使用仓库当前分支,无法判断时回退 main(兼容旧仓库)
+                $branch = [string](& git rev-parse --abbrev-ref HEAD 2>$null)
+                if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($branch) -or $branch -eq 'HEAD')
+                {
+                    $branch = 'main'
+                }
+                $branch = $branch.Trim()
+
+                $exitCode = 0
+                if ($Force)
+                {
+                    Write-Host "强制对齐:origin/$branch"
+                    & git @gitNetworkArgs fetch origin $branch
+                    $exitCode = $LASTEXITCODE
+                    if ($exitCode -eq 0)
+                    {
+                        & git @gitNetworkArgs reset --hard "origin/$branch"
+                        $exitCode = $LASTEXITCODE
+                    }
+                }
+                else
+                {
+                    Write-Host "拉取:origin/$branch"
+                    & git @gitNetworkArgs pull origin $branch
+                    $exitCode = $LASTEXITCODE
+                }
+
+                if ($exitCode -eq 0)
+                {
+                    $succeeded++
+                    $action = if ($Force) { '已强制对齐远端' } else { '拉取完成' }
+                    Write-Host "[$repoName] $action。" -ForegroundColor Green
+                }
+                else
+                {
+                    $failures += $repoName
+                    Write-Warning "[$repoName] 更新失败(退出码 $exitCode)。"
+                }
+            }
+            finally
+            {
+                Pop-Location
+            }
+        }
+
+        Write-Host ''
+        if ($failures.Count -eq 0)
+        {
+            Write-Host "更新完成:成功 $succeeded 个仓库,跳过 $($skipped.Count) 个。" -ForegroundColor Green
+        }
+        else
+        {
+            Write-Warning ("更新完成:成功 $succeeded 个,失败 $($failures.Count) 个($($failures -join '、')),跳过 $($skipped.Count) 个。" +
+                '镜像不可用时改用 -NoMirror 或 -GithubMirror <其他镜像>;网络受限时加 -Proxy <代理地址> 后重试。')
+        }
+
+        # scripts 仓库若含 dll 变更:同步活件(并排版本只新增目录,不受锁限制,任何会话都可执行)并提示重开;
+        # 跨模块调用加守卫(无 Sync 命令则跳过,不硬依赖 TerminalTools)
+        $scriptsDir = Join-Path $repos 'scripts'
+        if (($targetNames -contains 'scripts') -and (Test-Path -LiteralPath (Join-Path $scriptsDir '.git')) -and (Get-Command Sync-CxxuPredictor -ErrorAction SilentlyContinue))
+        {
+            $repoDll = Join-Path $scriptsDir (Join-Path 'PS' (Join-Path 'CxxuPredictor' 'CxxuPredictor.dll'))
+            $binDir = Join-Path (Join-Path $HOME '.cxxu') 'bin'
+            $liveDll = $null
+            $ptrF = Join-Path $binDir 'current.txt'
+            if (Test-Path -LiteralPath $ptrF)
+            {
+                $hd = Get-Content -LiteralPath $ptrF -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($hd) { $cd = Join-Path (Join-Path $binDir "$hd".Trim()) 'CxxuPredictor.dll'; if (Test-Path -LiteralPath $cd) { $liveDll = $cd } }
+            }
+            $needsSync = $true
+            if ((Test-Path -LiteralPath $repoDll) -and $liveDll)
+            {
+                $needsSync = (Get-FileHash -LiteralPath $repoDll -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $liveDll -Algorithm SHA256).Hash
+            }
+            # 自编译活件保持不动：标记为 local 且活件哈希与标记一致时，更新也不碰指针（否则会把可用活件换回仓库源）
+            $keepLocal = $false
+            if ($liveDll)
+            {
+                $mk = Get-Content -LiteralPath (Join-Path $binDir 'local-build.txt') -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($mk -match 'src=local' -and $mk -match 'hash=([0-9A-Fa-f]{8})')
+                {
+                    $liveHash8 = try { (Get-FileHash -LiteralPath $liveDll -Algorithm SHA256).Hash.Substring(0, 8) } catch { '' }
+                    if ($liveHash8 -eq $Matches[1]) { $keepLocal = $true }
+                }
+            }
+            if ($keepLocal)
+            {
+                Write-Host '活件是本地自编译版本，保持不动（想跟进仓库源：重编后执行 Sync-CxxuPredictor -DllPath 再同步）。'
+            }
+            elseif ($needsSync)
+            {
+                Sync-CxxuPredictor
+                Write-Host 'scripts 仓库含 dll 变更：活件已同步，当前会话内存中仍是旧代码，请重新打开终端再执行 init（纯文本变更执行 ipmox 即可）。'
+            }
+        }
+    }
+    finally
+    {
+        # 恢复当前路径
+        Pop-Location
     }
 
-    # 恢复当前路径
-    Pop-Location
-    # Set-Location $home/desktop
     Write-Verbose "current location is:$(Get-Location)"
-
-    # scripts 仓库若含 dll 变更:同步活件(并排版本只新增目录,不受锁限制,任何会话都可执行)并提示重开;
-    # 跨模块调用加守卫(无 Sync 命令则跳过,不硬依赖 TerminalTools)
-    $scriptsDir = Join-Path $repos 'scripts'
-    if ((Test-Path -LiteralPath (Join-Path $scriptsDir '.git')) -and (Get-Command Sync-CxxuPredictor -ErrorAction SilentlyContinue))
-    {
-        $repoDll = Join-Path $scriptsDir (Join-Path 'PS' (Join-Path 'CxxuPredictor' 'CxxuPredictor.dll'))
-        $binDir = Join-Path (Join-Path $HOME '.cxxu') 'bin'
-        $liveDll = $null
-        $ptrF = Join-Path $binDir 'current.txt'
-        if (Test-Path -LiteralPath $ptrF)
-        {
-            $hd = Get-Content -LiteralPath $ptrF -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($hd) { $cd = Join-Path (Join-Path $binDir "$hd".Trim()) 'CxxuPredictor.dll'; if (Test-Path -LiteralPath $cd) { $liveDll = $cd } }
-        }
-        $needsSync = $true
-        if ((Test-Path -LiteralPath $repoDll) -and $liveDll)
-        {
-            $needsSync = (Get-FileHash -LiteralPath $repoDll -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $liveDll -Algorithm SHA256).Hash
-        }
-        # 自编译活件保持不动：标记为 local 且活件哈希与标记一致时，更新也不碰指针（否则会把可用活件换回仓库源）
-        $keepLocal = $false
-        if ($liveDll)
-        {
-            $mk = Get-Content -LiteralPath (Join-Path $binDir 'local-build.txt') -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($mk -match 'src=local' -and $mk -match 'hash=([0-9A-Fa-f]{8})')
-            {
-                $liveHash8 = try { (Get-FileHash -LiteralPath $liveDll -Algorithm SHA256).Hash.Substring(0, 8) } catch { '' }
-                if ($liveHash8 -eq $Matches[1]) { $keepLocal = $true }
-            }
-        }
-        if ($keepLocal)
-        {
-            Write-Host '活件是本地自编译版本，保持不动（想跟进仓库源：重编后执行 Sync-CxxuPredictor -DllPath 再同步）。'
-        }
-        elseif ($needsSync)
-        {
-            Sync-CxxuPredictor
-            Write-Host 'scripts 仓库含 dll 变更：活件已同步，当前会话内存中仍是旧代码，请重新打开终端再执行 init（纯文本变更执行 ipmox 即可）。'
-        }
-    }
 
     #启动新的powershell窗口,使得新的配置生效
     # Start-Process pwsh
