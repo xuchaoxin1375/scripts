@@ -124,7 +124,7 @@ flowchart TD
 
 - 操作速查：`Feature-Guide.md §9`（检查/安装/更新/移除四件套）。
 - 部署流程：`Deploy-Guide.md §13`。
-- 决策演进：`Agent-Handoff.md` #21（外置）、#27（自锁实测，已被推翻部分留档）、 #28（移除）、#29（并排版本，现行）。
+- 现行决策：dll 外置到 `~/.cxxu/bin`，采用并排版本 + 指针；不要改回仓库内直接加载。
 - 语言规范：`Module-Conventions.md §11`（术语）、§12（行文风格）。
 
 ## 10. 本地构建与自编译 dll（macOS / 新版 pwsh）

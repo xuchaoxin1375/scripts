@@ -117,8 +117,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
        已初始化会话重载开销约零点几秒，环境等级保持不被打回；首次初始化与 `p -Force`
        新进程路径不叠加重载，启动基线不变）。也可用对应 loader 直刷：变量 `Update-PwshVars`
        （`-Fast` 只刷 VarSet1/2，预编译缓存按 mtime 自动失效，无需清理）、别名 `Update-PwshEnv`、
-       prompt/PSReadLine 由步骤表重跑。曾有门控缺陷导致 `init -Force` 刷不动变量 conf，
-       根因与修复见 `Agent-Handoff.md` #75/#101；
+       prompt/PSReadLine 由步骤表重跑。
     3. 改了 profile 文件本身 → `. $profile`。
   - 安全差异：bash 重 source 会叠 PATH，这边 `init` 有 `$global:PsInit` 防重复（`. $profile` 默认 no-op，真重跑靠 `-Force`），`Add-EnvVar` 自带去重（见 `EnvVar.psm1:621/629`），prompt 全局只抓一次，OnIdle 有标记位。
     注意 `. $profile` 只跑 `CurrentUserCurrentHost` 这一级（conda 钩子在 `CurrentUserAllHosts`

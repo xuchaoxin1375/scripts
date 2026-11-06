@@ -391,7 +391,7 @@ Set-PSReadLineOption: 句柄无效。
   2026-09-21 加版本/日期列 + 表尾：仓库 commit/日期、pwsh 版本、dll 哈希一致性）。
 - 新增 `docs/Deploy-Guide.md`：11 节（缺口检查/pwsh7/git+clone/PSModulePath/profile/第三方模块/
   scoop/python-conda/首次 init/WT 开机/多设备差异/回滚），命令全部核对过签名（宽松风格，直接抄）。
-- 附带：抓到 edit 工具整文件改写换行的毛病（见 `Agent-Handoff.md` 踩坑 #14），本轮 5 文件
+- 附带：edit 工具可能整文件改写换行；本轮 5 文件
   diff 已用 `--ignore-cr-at-eol` 对照干净（119+/2- 全是预期行）。
 
 ## 19. 第十二轮：CompletionPredictor 补加载（2026-09-20，用户问“输入时没候选”）

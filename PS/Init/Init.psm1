@@ -36,7 +36,7 @@ function init
         {
             # -Force 必须真重载变量 conf:步骤表唯一变量入口(Set-PsPrompt 内的
             # Update-PwshEnvIfNotYet -Mode core)受 $PsEnvMode 门控(>=core 即跳过),
-            # 已初始化会话必被跳过,conf 改动刷不进当前会话(见 Agent-Handoff #75)。
+            # 已初始化会话必被跳过,conf 改动刷不进当前会话。
             # 两连跑取并集:Core 名单(含 ConstantString) + 全量名单(VarSet3/GlobalConfig 等
             # 平时懒加载的部分);VarSet1/2 幂等重跑,预编译缓存命中,开销低。
             # VarSet1.conf 会把等级恒写 1,步骤尾恢复原等级,Env 级会话不被打回。
