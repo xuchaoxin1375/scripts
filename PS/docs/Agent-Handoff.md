@@ -140,6 +140,7 @@
 | [#104](archive/agent-handoff-history.md#104) | 移除"同名脚本即重复"的阻断式预检（只提示，可覆盖） | 已沉淀 | AGENTS.md「批量覆盖与下发」 | 2026-10-29 |
 | [#105](archive/agent-handoff-history.md#105) | Deploy-CronFile：只读阶段并发 + `-SkipPrecheck` | 现行 | 归档正文 | 2026-10-29 |
 | [#106](archive/agent-handoff-history.md#106) | `irm\|iex` 前必须裁 `U+FEFF`；落盘用 `-OutFile` | 现行 | Module-Conventions「Invoke-Expression 使用规范」 | 2026-11-06 |
+| [#107](archive/agent-handoff-history.md#107) | `PwshVar/confs/*.conf` 禁三元（5.1 逐行 `iex` 报 `Unexpected token '?'`），条件赋值用 `if/else` | 现行 | Feature-Guide「5.1 兼容」 | 2026-11-06 |
 
 ## 4. 环境事实（这台机器，2026-09 实测）
 
