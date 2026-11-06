@@ -193,8 +193,8 @@ function Deploy-CxxuPsModules
     默认不安装 PowerShell 7;需要时加 -InstallPwsh7。可用 git 时优先用镜像克隆,
     克隆失败(例如直连 github 被重置)会自动回退到离线包下载。
     .PARAMETER Mode
-    选择部署模式:如果选择FromPackage,则仅尝试查找本地包,如果没有,则通过下载模块集包到本地,然后执行安装(不保证成功下载)
-    如果选择默认的Default,则依次检查本地包是否存在,如果不存在,则尝试通过克隆的方式下载(要求已经安装git)
+    选择部署模式:Default 优先使用 -PackagePath 指定的本地包,没有则尝试镜像克隆,克隆失败再下载离线包;
+    FromPackage 重新下载离线包后安装(不使用 -PackagePath);FromRemoteGit 只从远程仓库克隆(要求已安装 git)。
     .PARAMETER GithubMirror
     下载加速镜像,默认 https://gh-proxy.com;用于 git clone、raw 脚本与离线包下载。
     .PARAMETER InstallPwsh7

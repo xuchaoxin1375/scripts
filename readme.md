@@ -45,7 +45,12 @@
 
 ### PowerShell 模块集
 
-前置条件：具备 PowerShell 执行环境(`powershell.exe` 或 `pwsh`)与可用网络。脚本会检查 git：已安装则用镜像克隆仓库，未安装则提示安装，克隆失败自动回退离线包。默认不安装 PowerShell 7，需要时加 `-InstallPwsh7`；下载默认走 `https://gh-proxy.com`，可用 `-GithubMirror` 或 `$env:PsGithubMirror` 覆盖，详见 [Deploy-Guide.md](PS/docs/Deploy-Guide.md) 的镜像说明。
+前置条件：具备 PowerShell 执行环境(`powershell.exe` 或 `pwsh`)与可用网络。
+
+- 脚本会检查 git：已安装则用镜像克隆仓库，未安装则提示安装，克隆失败自动回退离线包。
+- 默认不安装 PowerShell 7，需要时加 `-InstallPwsh7`。
+- 下载默认走 `https://gh-proxy.com`，可用 `-GithubMirror` 或 `$env:PsGithubMirror` 覆盖；镜像与代理细节见 [Deploy-Guide.md](PS/docs/Deploy-Guide.md)。
+- 典型参数组合、离线安装与沙箱调试见 [PS/Deploy/readme.md](PS/Deploy/readme.md)。
 
 ```powershell
 iex ((irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1').TrimStart([char]0xFEFF))

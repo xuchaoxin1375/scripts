@@ -1,19 +1,32 @@
 # 新机部署指南（Deploy Guide）
 
-> 把这套 67 模块组合搬到另一台机器。先跑 `Test-PsEnvReadiness` 看缺口，再按节补。
-> 在新机器上还没有模块路径时，先：`Import-Module C:\repos\scripts\PS\Deploy\Deploy.psd1`
+> 目标：把模块集搬到另一台机器。先跑 `Test-PsEnvReadiness` 查缺口，再按需补；下面的极简版覆盖大多数新机器。
+> 新机器还没有模块路径时，可直接导入脚本目录的清单：`Import-Module C:\repos\scripts\PS\Deploy\Deploy.psd1`。
 
-> **极简版（只要补全栈，共 2 条命令）**：第 1 条落仓库+环境，第 2 条装补全栈；下面各节是分步详解。
-> ```powershell
-> iex ((irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1').TrimStart([char]0xFEFF))
-> # 关掉重开终端（自动 init），再：
-> Deploy-CompletionStack
-> # 再重开一次，缓存就绪。版本不够 7.5 会警告（自研 predictor 用不上，其它照常）。
-> ```
-> 默认不安装 PowerShell 7：只想要 5.1 时直接跑上面的命令即可，脚本会写 5.1 专属 profile；
-> 需要完整功能时加 `-InstallPwsh7`，或改用 `irm ... -OutFile ~/dcp.ps1; ~/dcp.ps1 -InstallPwsh7`。
-> 下载默认走 `https://gh-proxy.com`（git clone、raw 脚本、离线包同一前缀），
-> 可用 `-GithubMirror '<你的镜像>'` 或持久化 `$env:PsGithubMirror` 覆盖。
+## 极简版
+
+```powershell
+iex ((irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1').TrimStart([char]0xFEFF))
+# 关闭并重开终端，profile 自动执行 init
+Deploy-CompletionStack
+# 再次重开终端，补全缓存就绪
+```
+
+- 默认不安装 PowerShell 7：只使用 Windows PowerShell 5.1 时，直接执行上面的命令即可；若同时没有 git，改用 `-Light`（见下）。
+- 需要完整功能时，首次命令改为 `irm ... -OutFile ~/dcp.ps1; ~/dcp.ps1 -InstallPwsh7`。
+- 默认下载前缀为 `https://gh-proxy.com`，用于 git 克隆、raw 脚本与离线包；可用 `-GithubMirror '<镜像>'` 或持久化 `$env:PsGithubMirror` 覆盖。
+- 自研 `CxxuPredictor` 要求 PowerShell 7.5 及以上；版本不足时只有警告，其余功能照常。
+- 参数的完整说明、离线安装、开发模式与沙箱调试见 [PS/Deploy/readme.md](../Deploy/readme.md)。
+
+### 典型参数组合
+
+以下命令中的 `~/dcp.ps1` 指按极简版保存到用户主目录的脚本副本。
+
+- 只有 Windows PowerShell 5.1、免 git：`~/dcp.ps1 -Light`
+- 标准部署（有 git，镜像克隆）：`~/dcp.ps1`
+- 同时安装 PowerShell 7：`~/dcp.ps1 -InstallPwsh7`
+- 已下载 zip、完全离线：`~/dcp.ps1 -Mode Default -PackagePath /path/to/scripts-main.zip`
+- 默认目录已存在、重新部署：`~/dcp.ps1 -Force`
 
 ## 0. 先查缺口
 
@@ -25,10 +38,12 @@ Test-PsEnvReadiness   # 必备/可选/首跑生成物三档表格，备注列直
 
 ```powershell
 Update-PowerShell          # 自带升级；或 winget/scoop 重装
-$PSVersionTable.PSVersion  # 确认 Major >= 7（v5 不可用，manifest 会明确报错）
+$PSVersionTable.PSVersion  # 完整功能需要 Major >= 7；5.1 的可用范围见 Feature-Guide 的 5.1 章节
 ```
 
 ## 2. git + 拉仓库
+
+> 只有 Windows PowerShell 5.1 且不安装 git 时，跳过本节，按极简版执行 `~/dcp.ps1 -Light`，脚本会直接下载离线包并写 5.1 专属 profile。
 
 ```powershell
 Confirm-GitCommand         # 查 git，没有就装
