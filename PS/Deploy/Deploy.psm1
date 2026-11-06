@@ -2,7 +2,7 @@
 .SYNOPSIS
 临时部署此模块
 
-Invoke-RestMethod 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1' | Invoke-Expression
+Invoke-Expression ((Invoke-RestMethod 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1').TrimStart([char]0xFEFF))
 .DESCRIPTION
 
 #如果你懒得添加引号,那么将镜像链接逐个添加到下面的多行字符串中,即便包含了引号或者双引号逗号也都能够正确处理
@@ -99,8 +99,9 @@ PS C:\repos\scripts>
     else
     {
         # 临时获取链接测试函数(走中央镜像,不再依赖 gitee)
+        # 远端模块带 UTF-8 BOM,irm 保留为 U+FEFF,不裁掉会让首行 <# 注释失效(解析报错)
         $tlMirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
-        Invoke-RestMethod "$tlMirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/TestLinks/TestLinks.psm1" | Invoke-Expression
+        (Invoke-RestMethod "$tlMirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/TestLinks/TestLinks.psm1").TrimStart([char]0xFEFF) | Invoke-Expression
     }
  
     $Mirrors = Get-AvailableGithubMirrors -PassThru -Linearly:$Linearly
@@ -342,13 +343,14 @@ function Deploy-GithubHostsAutoUpdater
     )
     $tlMirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
     $regRaw = 'https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/GithubHostsUpdater/Register-GithubHostsAutoUpdater.ps1'
+    # 远端脚本带 UTF-8 BOM,irm 保留为 U+FEFF,不裁掉会让首行 <# 注释失效(解析报错)
     try
     {
-        Invoke-RestMethod "$tlMirror/$regRaw" | Invoke-Expression
+        (Invoke-RestMethod "$tlMirror/$regRaw").TrimStart([char]0xFEFF) | Invoke-Expression
     }
     catch
     {
-        Invoke-RestMethod $regRaw | Invoke-Expression
+        (Invoke-RestMethod $regRaw).TrimStart([char]0xFEFF) | Invoke-Expression
     }
 
     

@@ -53,9 +53,10 @@ if (-not $Dev)
 
     Write-Host "[Deploy-Pwsh7Portable]: Pull Deploy.psm1 and TestLinks.psm1 modules [$dplUrl] & [$tlUrl]..."
 
-    Invoke-RestMethod $dplUrl | Invoke-Expression
-    Invoke-RestMethod $tlurl | Invoke-Expression
-    Invoke-RestMethod $gitUrl | Invoke-Expression
+    # 远端模块带 UTF-8 BOM,irm 保留为 U+FEFF,不裁掉会让首行 <# 注释失效(解析报错)
+    (Invoke-RestMethod $dplUrl).TrimStart([char]0xFEFF) | Invoke-Expression
+    (Invoke-RestMethod $tlUrl).TrimStart([char]0xFEFF) | Invoke-Expression
+    (Invoke-RestMethod $gitUrl).TrimStart([char]0xFEFF) | Invoke-Expression
 }
 # get functions or commands about mirror operations!
 Get-Command *mirror* 

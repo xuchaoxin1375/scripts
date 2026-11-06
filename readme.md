@@ -48,8 +48,12 @@
 前置条件：具备 PowerShell 执行环境(`powershell.exe` 或 `pwsh`)与可用网络。脚本会检查 PowerShell 7 与 git：已安装则直接拉取仓库，未安装则尝试自动安装，失败时按 [Deploy-Guide.md](PS/docs/Deploy-Guide.md) 的镜像说明更换源后重试。
 
 ```powershell
-irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1'|iex
+iex ((irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1').TrimStart([char]0xFEFF))
 ```
+
+> 脚本以 UTF-8 BOM 保存(`powershell.exe` 5.1 直接执行含中文脚本时需要),`irm` 会把 BOM 解码成首字符 U+FEFF,
+> 直接 `| iex` 会让首行 `<#` 块注释失效并报"参数列表中缺少参量",故先 `TrimStart([char]0xFEFF)`。
+> 不方便写这段裁剪时,可先落盘再执行:`irm '<同上地址>' -OutFile ~/dcp.ps1; ~/dcp.ps1`(必须是 `-OutFile`,用 `>` 在 5.1 会写成 UTF-16 双 BOM,脚本反而解析失败)。
 
 重新打开终端(profile 自动执行 `init`)，再安装补全栈：
 

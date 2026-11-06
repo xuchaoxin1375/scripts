@@ -21,7 +21,8 @@
 ```powershell
 $mirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
 $url = "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1"
-$scripts = Invoke-RestMethod $url
+# 脚本带 UTF-8 BOM,irm 会把 BOM 解码成首字符 U+FEFF,不裁掉会让首行 <# 注释失效(报"参数列表中缺少参量")
+$scripts = (Invoke-RestMethod $url).TrimStart([char]0xFEFF)
 $scripts | Invoke-Expression
 # Deploy-CxxuPsModules
 ```
@@ -31,15 +32,20 @@ $scripts | Invoke-Expression
 下面虽然提供了更短的方案,可以一行搞定,但是为了便于审查,使用上面的多行版本会更推荐,比如方便我们引用`$url`以及`$scripts`进行其他操作
 
 ```powershell
-Invoke-Expression (Invoke-RestMethod 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1')
+Invoke-Expression ((Invoke-RestMethod 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1').TrimStart([char]0xFEFF))
 
 ```
 
 或者
 
 ```powershell
-irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1'|iex
+iex ((irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1').TrimStart([char]0xFEFF))
 ```
+
+> `.TrimStart([char]0xFEFF)` 不能省:脚本以 UTF-8 BOM 保存(5.1 直接执行含中文脚本时依赖它),
+> 而 `irm` 把 BOM 解码成首字符 U+FEFF,直接 `iex` 会让首行 `<#` 块注释失效,
+> 表现为 5.1 报"参数列表中缺少参量"、7 报首行不是命令。若不想写这段裁剪,
+> 也可以先落盘再执行:`irm '<同上地址>' -OutFile ~/dcp.ps1; ~/dcp.ps1`(用 `-OutFile` 存原始字节;直接 `> ~/dcp.ps1` 在 5.1 会写成 UTF-16 双 BOM,导致脚本解析失败)。
 
 > 默认镜像 `gh-proxy.com` 若不可用,先换一个可用镜像(跑 `Get-AvailableGithubMirrors` 测速,或见
 > `PS/TestLinks/TestLinks.psm1` 头部实测列表),再把上面链接中的镜像前缀替换掉即可;
@@ -51,7 +57,7 @@ irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/script
 新机器只有 v5 时，在 `powershell.exe` 里存下脚本再加 `-Light` 跑：无 git 不提示安装、直走离线包下载（codeload + 中央镜像静默，不弹窗选源），落 `PSModulePath`（追加不覆盖），结尾不装 pwsh、改写 5.1 专属 profile，重开 `powershell.exe` 跑 `init` 即用（B 档可用范围与禁区见 `PS/docs/Feature-Guide.md §13`）。
 
 ```powershell
-irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1' > ~/dcp.ps1
+irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1' -OutFile ~/dcp.ps1
 ~/dcp.ps1 -Light
 ```
 
@@ -84,7 +90,7 @@ if(!$code){
 	$code=1 #默认选择第一个链接(数组索引0)
 }
 
-$scripts = Invoke-RestMethod $urls[$code]
+$scripts = (Invoke-RestMethod $urls[$code]).TrimStart([char]0xFEFF) # 裁掉 irm 保留的 BOM 字符 U+FEFF
 
 $scripts | Invoke-Expression
 
@@ -117,7 +123,7 @@ $scripts | Invoke-Expression
 PS C:\ProgramData\scoop\apps\powershell\current> cd
 PS C:\Users\cxxu> $mirror = 'https://gh-proxy.com'
 >> $url = "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1"
->> $scripts = Invoke-RestMethod $url
+>> $scripts = (Invoke-RestMethod $url).TrimStart([char]0xFEFF)
 >> $scripts | Invoke-Expression
 >> #尝试执行默认的安装行为,如果失败(很可能是没有安装Git,这时候需要手动下载仓库文件包),尝试手动调用Deploy-CxxuPsModule函数,并使用合适的参数,尝试离线安装
 PS C:\Users\cxxu> Deploy-CxxuPsModules^C#假设这一步报错或者遇到失败(如果是目录名冲突,那么您可在调用`Deploy-CxxuPsModules`时使用路径RepoPath参数新指定取值,或者使用Force选项)
@@ -170,7 +176,7 @@ Deploy模块含有大量实用函数(基本上其他单独的deploy-xxx都能在
 建议使用powershell7来执行,powershell v5可能会不兼容或部分函数不兼容
 
 ```powershell
-irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1'|iex
+iex ((irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1').TrimStart([char]0xFEFF))
 
 ```
 
@@ -186,7 +192,7 @@ Deploy-SmbSharing
 部署smbsharing
 
 ```powershell
-irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1'|iex
+iex ((irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1').TrimStart([char]0xFEFF))
 gcm Deploy-SmbSharing -syntax
 # help Deploy-SmbSharing #执行这一行查看使用帮助,默认不执行直接部署配置
 Deploy-SmbSharing -DisableSmbUserLogonLocally -Verbose -confirm:$false #使用$true会逐步向你询问确认
@@ -204,7 +210,7 @@ Remove-SmbShare share
 ### 部署ScoopForCnUser
 
 ```powershell
-irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1'|iex
+iex ((irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1').TrimStart([char]0xFEFF))
 gcm Deploy-ScoopForCnUser -syntax
 Deploy-ScoopForCNUser -UseGiteeForkAndBucket -InstallBasicSoftwares # -InstallForAdmin
 Add-ScoopBuckets -Silent
@@ -214,7 +220,7 @@ Add-ScoopBuckets -Silent
 ### 查看可用的github_mirror加速镜像站
 
 ```powershell
-irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1'|iex
+iex ((irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1').TrimStart([char]0xFEFF))
 # get functions or commands about mirror operations!
 gcm *mirror* 
 #check commands usage (syntax)
@@ -236,7 +242,7 @@ Write-Verbose $github_mirror -Verbose #check what mirror is chosen
 - 以下是部署脚本
 
   ```powershell
-  irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-Pwsh7Portable.ps1'|iex
+  iex ((irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-Pwsh7Portable.ps1').TrimStart([char]0xFEFF))
   ```
 
   - 安装过程中会提示你是否要删除安装包,根据需要选择是否删除即可
@@ -246,7 +252,7 @@ Write-Verbose $github_mirror -Verbose #check what mirror is chosen
 ## 部署Git for windows🎈
 
 ```powershell
-irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-GitForWindows.ps1'|iex
+iex ((irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-GitForWindows.ps1').TrimStart([char]0xFEFF))
 Deploy-GitForWindows -IgnoreCache
 
 ```

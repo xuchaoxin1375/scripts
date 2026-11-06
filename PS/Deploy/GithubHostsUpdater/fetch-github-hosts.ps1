@@ -2,13 +2,14 @@
 # 加速镜像站可能会失效,也可能是部分时段失效,可用镜像见 PS/TestLinks/TestLinks.psm1(2026-09-24 本机实测)
 $fetchMirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
 $fetchRaw = 'https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1'
+# 远端模块带 UTF-8 BOM,irm 保留为 U+FEFF,不裁掉会让首行 <# 注释失效(解析报错)
 try
 {
-    Invoke-RestMethod "$fetchMirror/$fetchRaw" | Invoke-Expression
+    (Invoke-RestMethod "$fetchMirror/$fetchRaw").TrimStart([char]0xFEFF) | Invoke-Expression
 }
 catch
 {
-    Invoke-RestMethod $fetchRaw | Invoke-Expression
+    (Invoke-RestMethod $fetchRaw).TrimStart([char]0xFEFF) | Invoke-Expression
 }
 # get functions or commands about mirror operations!
 Get-Command *mirror* 

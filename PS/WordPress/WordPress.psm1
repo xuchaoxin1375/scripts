@@ -1187,9 +1187,10 @@ return $SiteOwnersDict
 [配置powershell模块]
 运行此脚本需要安装powershell7和git并配置模块:(下面是一键部署,但是建议手动安装上述两个软件,自动部署会自定下载安装软件,但是速度不是那么稳定,主要用他来下载powershell的模块)
 
-irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1'|iex
+iex ((irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1').TrimStart([char]0xFEFF))
 
 此命令行在powershell7或者windows 自带的powershell(v5)中都可以执行
+(脚本以 UTF-8 BOM 保存,`irm` 会把 BOM 解码成首字符 U+FEFF,不裁掉会让首行 `<#` 注释失效并报"参数列表中缺少参量")
 
 参数文档说明(可能有滞后,仅供参考)
 .PARAMETER User

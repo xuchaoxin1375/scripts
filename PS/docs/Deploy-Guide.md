@@ -5,7 +5,7 @@
 
 > **极简版（只要补全栈，共 2 条命令）**：第 1 条落仓库+环境，第 2 条装补全栈；下面各节是分步详解。
 > ```powershell
-> irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1' | iex
+> iex ((irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1').TrimStart([char]0xFEFF))
 > # 关掉重开终端（自动 init），再：
 > Deploy-CompletionStack
 > # 再重开一次，缓存就绪。版本不够 7.5 会警告（自研 predictor 用不上，其它照常）。

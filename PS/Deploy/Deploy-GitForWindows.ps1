@@ -1,7 +1,7 @@
 ﻿<# 
 .SYNOPSIS
 临时部署此脚本文件
-Invoke-RestMethod 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-GitForWindows.ps1' | Invoke-Expression
+Invoke-Expression ((Invoke-RestMethod 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-GitForWindows.ps1').TrimStart([char]0xFEFF))
 .DESCRIPTION
 此脚本文件用于部署Git for Windows到windows系统,可以自动下载最新版本的Git for Windows安装包,也可以指定下载链接,也可以指定本地安装包路径进行部署
 #>
@@ -50,8 +50,9 @@ if (-not $Dev)
     $repoMirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
     $rawBase = if ($RepoSource -eq 'github') { "$repoMirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main" } else { 'https://gitee.com/xuchaoxin1375/scripts/raw/main' }
     # 方案1:iex执行
-    Invoke-RestMethod "$rawBase/PS/Deploy/Deploy.psm1" | Invoke-Expression
-    Invoke-RestMethod "$rawBase/PS/Git/Git.psm1" | Invoke-Expression
+    # 远端模块带 UTF-8 BOM,irm 保留为 U+FEFF,不裁掉会让首行 <# 注释失效(解析报错)
+    (Invoke-RestMethod "$rawBase/PS/Deploy/Deploy.psm1").TrimStart([char]0xFEFF) | Invoke-Expression
+    (Invoke-RestMethod "$rawBase/PS/Git/Git.psm1").TrimStart([char]0xFEFF) | Invoke-Expression
 }
 
 # 方案2:下载 Deploy.psm1 到临时目录

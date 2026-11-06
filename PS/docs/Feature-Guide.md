@@ -271,7 +271,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
   走离线包下载（codeload + 中央镜像静默，不弹窗选源），落 `PSModulePath`（setx 追加，不覆盖），
   写 5.1 专属 profile，重开 `powershell.exe` 跑 `init` 即用：
   ```powershell
-  irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1' > ~/dcp.ps1
+  irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1' -OutFile ~/dcp.ps1
   ~/dcp.ps1 -Light
   ```
 - 免手动：跑一次 `Install-Ps51Profile`（`Init` 模块，7/5.1 均可跑），写入 5.1 专属 profile（`~\Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1`，UTF8+BOM，与 7 互不干扰），之后开 `powershell.exe` 自动 `init` + 自定义 prompt；已有 profile 无标记则追加，有标记直接返回（`-Force` 重写）。

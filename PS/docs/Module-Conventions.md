@@ -60,6 +60,13 @@
 
 远程内容（`irm ... | iex`）只允许出现在文档示例和一次性部署脚本，禁止进入模块函数。
 
+- **远程执行必须裁 BOM**：写成 `(Invoke-RestMethod $url).TrimStart([char]0xFEFF) | Invoke-Expression`。
+  远端脚本带 UTF-8 BOM（B 档必需，见「编码与换行」），`irm` 解码后首字符是 `U+FEFF` 且不剥离，
+  该字符会并进首个 token，使首行 `<#` 注释失效（5.1 报"参数列表中缺少参量"、7 报首行不是命令）；
+  首行加 `#` 注释同样无效，只能在执行侧裁剪。
+- **落盘再执行必须用 `-OutFile`**：`irm $url -OutFile $path`。5.1 的 `>` 以 UTF-16 写出并附带 BOM，
+  与内容自带的 `U+FEFF` 叠加成双 BOM，执行该文件同样解析失败；`-OutFile` 直存原始字节，保留单 BOM。
+
 ## 6. 管道与参数
 
 - 声明 `ValueFromPipeline` 的必须写 `process {}` 块（曾有 `Get-Json` 无 process 块，
@@ -79,6 +86,7 @@
 
 - 统一 UTF-8 **无 BOM**（PS7 默认即此；Analyzer 的 BOM 规则已在 settings 中排除）。
 - 例外：B 档 5.1 兼容集（见 `Feature-Guide.md §13`，62 模块 psm1 + `VarSet3.conf` + `VarLongStrings.ps1`）**必须带 BOM**——5.1 中文 Windows 无 BOM 按 GBK 解码，中文全乱码；psd1 降版行以 `# B档兼容集` 注释标记，BOM 文件不再回退。
+- BOM 不可为了迁就 `irm|iex` 而删除：远端取回的内容要先把 `U+FEFF` 裁掉再执行，落盘要走 `-OutFile`（见「Invoke-Expression 使用规范」）。纯 ASCII 的第三方脚本（如 `get.scoop.sh`）无 BOM 也能一行执行，是因为两处都不需要 BOM；本仓库脚本含中文，5.1 跑文件离不开 BOM。
 - 换行 LF/CRLF 均可，默认忽略差异（不设提交门禁、不做整文件转换）；仅 `.sh` 必须 LF、
   `.cmd`/`.bat` 必须 CRLF，其余文件跟随原状即可。
   `.gitattributes` 只声明二进制（lnk/exe/dll），**不声明 `text`**——历史 blob 是 CRLF

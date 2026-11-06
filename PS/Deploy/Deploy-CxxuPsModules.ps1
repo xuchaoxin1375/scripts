@@ -8,6 +8,12 @@
 如果本地调整此脚本时,注意在线仓库中的版本可能不是最新的.
 也可以考虑用本地导入的方式暂时代替默认的导入在线版本.
 .NOTES
+本文件保留 UTF-8 BOM:Windows PowerShell 5.1 会把无 BOM 的含中文脚本按 ANSI 代码页解码而解析报错,
+所以不要为了在线执行而删 BOM。在线执行时 irm 会把该 BOM 解码成 U+FEFF 留在字符串开头,
+使首行 <# 块注释失效(表现为 "参数列表中缺少参量"),须先裁掉再 iex:
+PS> iex ((irm '<此文件的在线地址>').TrimStart([char]0xFEFF))
+或者先落盘再执行(保留完整中文与参数;必须用 -OutFile,用 ">" 在 5.1 会写出 UTF-16 双 BOM 而解析失败):
+PS> irm '<此文件的在线地址>' -OutFile ~/dcp.ps1; ~/dcp.ps1 -Light
 本地开发测试(未推送到远程时,用本地最新代码测试部署效果):
 在仓库目录中直接运行此脚本并加 -Dev 即可,不拉取远程代码
 PS> C:/repos/scripts/PS/Deploy/Deploy-CxxuPsModules.ps1 -Dev -Light -WhatIf
@@ -68,7 +74,8 @@ if (!$Light -and !$Dev)
     }
 
     Write-Host "拉取Deploy-GitForWindows 命令:[$dgwUrl]..."
-    Invoke-RestMethod $dgwUrl > ~/dgw.ps1
+    # 用 -OutFile 直存原始字节:5.1 的 ">" 会把内容写成 UTF-16,叠加内容自带的 BOM 变成双 BOM,脚本随即解析失败
+    Invoke-RestMethod $dgwUrl -OutFile ~/dgw.ps1
     ~/dgw.ps1 -RepoSource $RepoSource -Verbose
 }
 
@@ -397,7 +404,8 @@ function Deploy-CxxuPsModules
                 $dp7Url = 'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-Pwsh7Portable.ps1'
             }
             Write-Verbose "Downloading Deploy-Pwsh7Portable.ps1 from $dp7Url"
-            Invoke-RestMethod $dp7Url > ~/dp7.ps1
+            # 同上:统一 -OutFile,避免 5.1 的 ">" 写出双 BOM
+            Invoke-RestMethod $dp7Url -OutFile ~/dp7.ps1
             ~/dp7.ps1 -RepoSource $RepoSource -Verbose
         }
     }
