@@ -24,7 +24,7 @@
 | `Feature-Guide.md` | 用户手册：命令表、补全、dll 管理、FAQ、手动启用清单（§11） | 约 230 行 |
 | `Deploy-Guide.md` | 新机部署：一键脚本、分步详解、多设备差异、更新到新版本（§13） | 约 140 行 |
 | `Live-Versions.md` | 并排版本活件设计专章：结构、指针协议、流程、故障、命令分工 | 约 130 行 + 4 图 |
-| `Agent-Handoff.md` | 交接手册 + 踩坑索引：一句话结论、状态（现行/已沉淀/已废止/考古）与归属 | 约 200 行 |
+| `Agent-Handoff.md` | 交接手册 + 踩坑索引：一句话结论、效力（现行/已废止）与位置（主题文档/索引/归档） | 约 210 行 |
 | `archive/agent-handoff-history.md` | 踩坑正文归档：按 ID 检索的历史原文，只作追溯 | 约 480 行 |
 | `Module-Conventions.md` | 规范：命名/编码铁律 + 文档语言（§11 术语表、§12 行文风格） | 约 130 行 |
 | `Module-Map.md` | 67 模块画像表：找功能先查表，别 grep 大海捞针 | 约 120 行 |
@@ -35,5 +35,5 @@
 
 - 找命令：`Module-Map.md` 按模块查，或会话里 `Get-Command <片段>` + `Get-Help <命令>`（帮助与文档同源）。
 - 找故障：先跑 `doctor`（它会点名文档章节），再 `rg` 关键字搜 `docs/`。
-- 找决策理由：`Agent-Handoff.md`「踩坑清单」按 ID 查（ID 即 `archive/agent-handoff-history.md` 的锚点）；现行口径以主题文档为准，索引里的「归属」列给出落点。
+- 找决策理由：`Agent-Handoff.md`「踩坑清单」按 ID 查（ID 即 `archive/agent-handoff-history.md` 的锚点）；现行口径以「位置」指向的文档为准，索引短句只是检索标签。
 - 名词不懂：`Module-Conventions.md §11` 术语表。
