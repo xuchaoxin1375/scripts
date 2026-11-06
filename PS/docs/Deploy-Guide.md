@@ -12,6 +12,7 @@
 ```powershell
 # 后文用 $deployScript 指这份副本；目录和文件名可以自定
 $deployScript = "$HOME\Downloads\Deploy-CxxuPsModules.ps1"
+# 镜像单独设置：换源只改这一行
 $mirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
 irm "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1" -OutFile $deployScript
 ```

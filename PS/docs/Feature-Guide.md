@@ -278,7 +278,8 @@ p -Force                    # 看 init 分步耗时，定位慢项
   需要完整功能时再加 `-InstallPwsh7`：
   ```powershell
   $deployScript = "$HOME\Downloads\Deploy-CxxuPsModules.ps1"
-  irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1' -OutFile $deployScript
+  $mirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }  # 换源只改这一行
+  irm "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1" -OutFile $deployScript
   & $deployScript -Light
   # 需要 pwsh 7 时：& $deployScript -InstallPwsh7
   ```

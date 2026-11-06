@@ -7,6 +7,7 @@
 - 默认不安装 PowerShell 7；需要时显式加 `-InstallPwsh7`。
 - 默认下载前缀为 `https://gh-proxy.com`，用于 git 克隆、raw 脚本与离线包；可用 `-GithubMirror` 或 `$env:PsGithubMirror` 替换。克隆失败会自动回退离线包。
 - 部署完成后需重开终端并执行 `init`；Windows PowerShell 5.1 的可用功能与限制见 [Feature-Guide.md](../docs/Feature-Guide.md) 的 5.1 兼容章节。
+- 本文示例统一使用两个变量：`$mirror`（下载镜像）与 `$deployScript`（部署脚本副本），两者都在「准备部署脚本」中赋值；新开终端窗口后需重新执行该节。
 
 ## 准备部署脚本
 
@@ -15,6 +16,7 @@
 ```powershell
 # 后文用 $deployScript 指这份副本；目录和文件名都可以自定
 $deployScript = "$HOME\Downloads\Deploy-CxxuPsModules.ps1"
+# 镜像单独设置：换源只改这一行
 $mirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
 irm "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1" -OutFile $deployScript
 ```
@@ -185,7 +187,7 @@ C:/repos/scripts/PS/Deploy/Deploy-CxxuPsModules.ps1 -Sandbox
 - 安装 Git for Windows：最简单，部署命令与参数都不改。安装后关闭所有 PowerShell 终端，重新打开再执行部署命令。
 - 使用离线包：不依赖 git。到仓库的 gitee 或 github 页面下载 zip，记下文件路径，执行 `& $deployScript -Mode Default -PackagePath D:\downloads\scripts-main.zip`。
 
-> gitee 下载仓库压缩包可能需要登录；github 免登录，但直连不一定通，不通时在下载地址前加镜像前缀，例如 `https://gh-proxy.com/https://github.com/xuchaoxin1375/scripts/archive/refs/heads/main.zip`。
+> gitee 下载仓库压缩包可能需要登录；github 免登录，但直连不一定通，不通时用上文的 `$mirror` 拼出镜像地址，例如 `"$mirror/https://github.com/xuchaoxin1375/scripts/archive/refs/heads/main.zip"`。
 
 ### 备用入口：手动选择下载源
 
@@ -237,11 +239,13 @@ Get-Help $deployScript -Full
 
 ## 部署临时使用 CxxuPsModule Deploy 模块
 
+以下命令沿用「准备部署脚本」中的 `$mirror`；在新窗口执行时先重新运行该节的赋值。
+
 - `Deploy` 模块集中了大部分 `Deploy-*` 函数，单独的 `Deploy-*.ps1` 中能找到的功能通常也能在模块中找到。
 - 模块内容较多，可能被杀毒软件误判；建议使用 PowerShell 7 执行，Windows PowerShell 5.1 仅部分函数可用。
 
 ```powershell
-iex ((irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1').TrimStart([char]0xFEFF))
+iex ((irm "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1").TrimStart([char]0xFEFF))
 
 ```
 
@@ -257,7 +261,7 @@ Deploy-SmbSharing
 部署smbsharing
 
 ```powershell
-iex ((irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1').TrimStart([char]0xFEFF))
+iex ((irm "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1").TrimStart([char]0xFEFF))
 gcm Deploy-SmbSharing -syntax
 # help Deploy-SmbSharing #执行这一行查看使用帮助,默认不执行直接部署配置
 Deploy-SmbSharing -DisableSmbUserLogonLocally -Verbose -confirm:$false #使用$true会逐步向你询问确认
@@ -275,7 +279,7 @@ Remove-SmbShare share
 ### 部署ScoopForCnUser
 
 ```powershell
-iex ((irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1').TrimStart([char]0xFEFF))
+iex ((irm "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1").TrimStart([char]0xFEFF))
 gcm Deploy-ScoopForCnUser -syntax
 Deploy-ScoopForCNUser -UseGiteeForkAndBucket -InstallBasicSoftwares # -InstallForAdmin
 Add-ScoopBuckets -Silent
@@ -285,7 +289,7 @@ Add-ScoopBuckets -Silent
 ### 查看可用的github_mirror加速镜像站
 
 ```powershell
-iex ((irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1').TrimStart([char]0xFEFF))
+iex ((irm "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1").TrimStart([char]0xFEFF))
 # get functions or commands about mirror operations!
 gcm *mirror* 
 #check commands usage (syntax)
@@ -302,19 +306,23 @@ Write-Verbose $github_mirror -Verbose #check what mirror is chosen
 
 ## 部署 PowerShell 7
 
+以下命令沿用「准备部署脚本」中的 `$mirror`。
+
 - 安装 PowerShell 7 的方式较多，下面给出一键安装便携版的脚本；该方式不保证每次成功。
 - 安装过程会复用 `%temp%` 下已下载的 zip；若已存在会询问是否重新下载，安装完成后自动清理压缩包。
 - 若失败，可重试，或检查输出中的下载地址是否可用；能在浏览器中手动下载说明重试有意义，否则把便携版安装包放到 `%temp%` 后重跑脚本。
 - 脚本会把 PowerShell 7 所在目录加入用户级 `Path`，之后可在任意位置用 `pwsh` 启动。
 
 ```powershell
-iex ((irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-Pwsh7Portable.ps1').TrimStart([char]0xFEFF))
+iex ((irm "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-Pwsh7Portable.ps1").TrimStart([char]0xFEFF))
 ```
 
 ## 部署 Git for Windows
 
+以下命令沿用「准备部署脚本」中的 `$mirror`。
+
 ```powershell
-iex ((irm 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-GitForWindows.ps1').TrimStart([char]0xFEFF))
+iex ((irm "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-GitForWindows.ps1").TrimStart([char]0xFEFF))
 Deploy-GitForWindows -IgnoreCache
 
 ```

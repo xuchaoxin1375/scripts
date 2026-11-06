@@ -2,7 +2,8 @@
 .SYNOPSIS
 临时部署此模块
 
-Invoke-Expression ((Invoke-RestMethod 'https://gh-proxy.com/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1').TrimStart([char]0xFEFF))
+$mirror = 'https://gh-proxy.com'   # 镜像单独设置；也可用 $env:PsGithubMirror
+Invoke-Expression ((Invoke-RestMethod "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1").TrimStart([char]0xFEFF))
 .DESCRIPTION
 
 #如果你懒得添加引号,那么将镜像链接逐个添加到下面的多行字符串中,即便包含了引号或者双引号逗号也都能够正确处理
