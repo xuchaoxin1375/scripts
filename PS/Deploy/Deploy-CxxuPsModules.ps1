@@ -62,7 +62,7 @@ try
 }
 catch
 {
-    Write-Warning "Set-ExecutionPolicy(Process) failed: $($_.Exception.Message)"
+    Write-Warning "设置执行策略(Process)失败:$($_.Exception.Message)"
 }
 try
 {
@@ -72,13 +72,13 @@ try
         if ($userPolicy -in @('Restricted', 'AllSigned'))
         {
             Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force -ErrorAction Stop
-            Write-Host 'ExecutionPolicy(CurrentUser) was set to RemoteSigned.' -ForegroundColor Yellow
+            Write-Host '已将当前用户的执行策略调整为 RemoteSigned。' -ForegroundColor Yellow
         }
     }
 }
 catch
 {
-    Write-Verbose "Set-ExecutionPolicy(CurrentUser) failed: $($_.Exception.Message)"
+    Write-Verbose "设置执行策略(CurrentUser)失败:$($_.Exception.Message)"
 }
 # 本地调试:使用独立沙箱目录(优先用户下载目录),跑完不碰真实环境
 $sandboxRoot = $null
@@ -86,7 +86,7 @@ if ($Sandbox)
 {
     if ($InstallPwsh7)
     {
-        Write-Warning 'Sandbox mode does not install PowerShell 7; -InstallPwsh7 is ignored.'
+        Write-Warning '沙箱模式不安装 PowerShell 7,已忽略 -InstallPwsh7。'
         $InstallPwsh7 = $false
     }
     # 沙箱根目录:优先用户下载目录(便于查看/保留),取不到再回退系统临时目录
@@ -113,12 +113,13 @@ if ($Sandbox)
     $sandboxRoot = Join-Path $sandboxBase ("CxxuPsModules-Sandbox-" + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N').Substring(0, 6))
     Write-Host "[Sandbox] target: $sandboxRoot" -ForegroundColor Cyan
 }
-Write-Host "[Deploy-CxxuPsModules]:开始运行CxxuPsModules部署脚本(来源:${RepoSource};镜像:${GithubMirror})..."
+$mirrorDisplay = if ([string]::IsNullOrWhiteSpace($GithubMirror)) { '未使用(直连)' } else { $GithubMirror }
+Write-Host "[Deploy-CxxuPsModules] 开始部署:仓库来源 ${RepoSource},下载镜像 ${mirrorDisplay}" -ForegroundColor Cyan
 # 导入 Deploy-GitForWindows 命令(适合独立部署用户使用),分开放置确保灵活性
 # Light 模式免 git,跳过导入(其尾部会直接执行安装,不跳过就装上了)
 if ($Light -or $Sandbox)
 {
-    Write-Host '[Deploy-CxxuPsModules]:Light/Sandbox mode, skip Deploy-GitForWindows.'
+    Write-Host '[Deploy-CxxuPsModules] 轻量/沙箱模式:跳过 Deploy-GitForWindows。'
 }
 elseif ($Dev)
 {
@@ -130,18 +131,18 @@ elseif ($Dev)
     $devDgw = Join-Path $DevRoot 'PS/Deploy/Deploy-GitForWindows.ps1'
     if (Test-Path -LiteralPath $devDgw)
     {
-        Write-Host "[Deploy-CxxuPsModules]:Dev mode, use local [$devDgw]..." -ForegroundColor Yellow
+        Write-Host "[Deploy-CxxuPsModules] 开发模式:使用本地脚本 [$devDgw] ..." -ForegroundColor Yellow
         . $devDgw -RepoSource $RepoSource -Dev -DevRoot $DevRoot -GithubMirror $GithubMirror
     }
     else
     {
-        Write-Warning "Dev mode requested but local file not found [$devDgw], fall back to remote."
+        Write-Warning "已要求开发模式,但本地文件 [$devDgw] 不存在,回退到远程版本。"
         $Dev = $false
     }
 }
 if (!$Light -and !$Dev -and !$Sandbox -and (Get-Command git -ErrorAction SilentlyContinue))
 {
-    Write-Host '[Deploy-CxxuPsModules]:Git already available, skip Deploy-GitForWindows.' -ForegroundColor Yellow
+    Write-Host '[Deploy-CxxuPsModules] 已检测到 Git,跳过 Deploy-GitForWindows。' -ForegroundColor Yellow
 }
 elseif (!$Light -and !$Dev -and !$Sandbox)
 {
@@ -167,7 +168,7 @@ elseif (!$Light -and !$Dev -and !$Sandbox)
     }
     catch
     {
-        Write-Warning "Download Deploy-GitForWindows from mirror failed ($($_.Exception.Message)), retry direct..."
+        Write-Warning "从镜像下载 Deploy-GitForWindows 失败($($_.Exception.Message)),改为直连重试..."
         Invoke-RestMethod $dgwRaw -OutFile ~/dgw.ps1 -TimeoutSec 60
     }
     # 兼容旧版 dgw(尚未声明 -GithubMirror):有参数才透传,没有就只传 RepoSource
@@ -191,7 +192,8 @@ function Deploy-CxxuPsModules
     部署方案有多种,可以自动操作,如果失败,可以尝试分步骤操作
     此脚本部署的模块为windows适配,调用了.Net API,其他平台部署可能会出错或不适用
     默认不安装 PowerShell 7;需要时加 -InstallPwsh7。可用 git 时优先用镜像克隆,
-    克隆失败(例如直连 github 被重置)会自动回退到离线包下载。
+    克隆失败(例如直连 github 被重置)会自动回退到离线包下载。未安装 Git 时会提示选择:
+    安装 Git 后克隆,或直接下载仓库压缩包;克隆过程会显示实时进度。
     .PARAMETER Mode
     选择部署模式:Default 优先使用 -PackagePath 指定的本地包,没有则尝试镜像克隆,克隆失败再下载离线包;
     FromPackage 重新下载离线包后安装(不使用 -PackagePath);FromRemoteGit 只从远程仓库克隆(要求已安装 git)。
@@ -319,7 +321,7 @@ function Deploy-CxxuPsModules
     if ($isContinue)
     {
         # 用户选择继续执行
-        Write-Host 'Deploy CxxuPsModules...'
+        Write-Host '正在部署 CxxuPsModules...'
     }
     else
     {
@@ -340,20 +342,17 @@ function Deploy-CxxuPsModules
     # 检查路径占用
     if (Test-Path $RepoPath)
     {
-        Write-Host "$($RepoPath) already exists!"
-        # if (! (Test-DirectoryEmpty $RepoPath )){
-        # }
         if ($Force)
         {
             # Rename-Item 的 -NewName 只能是叶子名,不能带路径分隔符
             $backupName = "$([IO.Path]::GetFileName($RepoPath)).bak.$((Get-Date).ToString('yyyy-MM-dd--HH-mm-ss'))"
-            Rename-Item -Path $RepoPath -NewName $backupName -Verbose
+            Write-Host "目标目录已存在,按 -Force 将其改名为 [$backupName],然后重新部署。" -ForegroundColor Yellow
+            Rename-Item -Path $RepoPath -NewName $backupName
         }
         else
         {
-
-            Write-Host "The default RepoPath directory [$RepoPath] is already exist!(Remove or rename the old dir and try again.)" -ForegroundColor Magenta
-
+            Write-Host "目标目录 [$RepoPath] 已存在,本次不覆盖。" -ForegroundColor Magenta
+            Write-Host '需要重新部署时加 -Force(旧目录会改名为 <目录名>.bak.<时间戳>),或用 -RepoPath 指定其他目录。' -ForegroundColor Magenta
 
             # Throw 'Try another path(RepoPath)! OR delete or rename(backup) the exist directory!' #报错可能会让新用户不知所措,这里直接退出即可
             return $false
@@ -364,7 +363,7 @@ function Deploy-CxxuPsModules
             # $NewPsPath = $NewPsPathPattern | Invoke-Expression
             # Write-Verbose "Updated newPsPath to [$newPsPath]"
         }
-        New-Item -ItemType Directory $RepoPath -Verbose
+        New-Item -ItemType Directory $RepoPath | Out-Null
     }
     # if (!(Test-Path $RepoPath))
     # {
@@ -374,11 +373,11 @@ function Deploy-CxxuPsModules
     # 定义代码下载安装模式片段
     # 模式1:从远程Git仓库克隆(镜像优先,失败再直连,最后交给调用方回退离线包)
     $RemoteGitCloneScript = { 
-        Write-Host "Mode:Clone From Remote repository:[$RepoSource]" -ForegroundColor cyan
+        Write-Host "部署方式:从远程仓库克隆(来源:$RepoSource)" -ForegroundColor cyan
         $GitCmdAvailability = Get-Command git -ErrorAction SilentlyContinue
         if (!$GitCmdAvailability)
         {
-            throw 'Git is not available on your system,please install it first!'
+            throw 'Git 不可用。请先安装 Git,或改用离线包(-Mode FromPackage 或 -PackagePath)。'
         }
         $directUrl = "https://${RepoSource}.com/xuchaoxin1375/scripts.git"
         $cloneUrls = @()
@@ -400,21 +399,45 @@ function Deploy-CxxuPsModules
                 }
                 Remove-Item -LiteralPath $RepoPath -Recurse -Force -ErrorAction SilentlyContinue
             }
-            Write-Host "Cloning from [$url]..." -ForegroundColor cyan
-            # 输出先转成字符串再决定是否显示,避免 5.1 把 git 的 stderr 当成红色错误刷屏
-            $gitOutput = @(& git clone --recursive --depth 1 --shallow-submodules $url $RepoPath 2>&1 | ForEach-Object { "$_" })
-            if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath (Join-Path $RepoPath 'PS')))
+            Write-Host "正在从 [$url] 克隆仓库(首次克隆需要下载整个仓库,请稍候)..." -ForegroundColor cyan
+            # --progress:git 在输出被重定向时默认不打印进度,需要显式打开;逐行转成字符串再转发,
+            # 既保留实时进度,又避免 5.1 把 git 的 stderr 当成红色错误刷屏
+            $progressState = @{}
+            & git clone --progress --recursive --depth 1 --shallow-submodules $url $RepoPath 2>&1 | ForEach-Object {
+                # 进度行用 \r 原地刷新,重定向后可能挤在同一条记录里,只取最后一段
+                $parts = @("$_" -split "`r" | Where-Object { $_.Trim() })
+                if ($parts.Count -gt 0)
+                {
+                    $line = $parts[-1].TrimEnd()
+                    # 百分比进度每 10% 才输出一行,避免刷屏;其余信息(分支、错误等)原样输出
+                    if ($line -match '^(?<stage>.+?):\s+(?<pct>\d+)%')
+                    {
+                        $stage = $Matches['stage']
+                        $percent = [int]$Matches['pct']
+                        $lastPercent = if ($progressState.ContainsKey($stage)) { $progressState[$stage] } else { -1 }
+                        if ($percent -eq 100 -or $percent -ge $lastPercent + 10)
+                        {
+                            Write-Host "  $line"
+                            $progressState[$stage] = $percent
+                        }
+                    }
+                    else
+                    {
+                        Write-Host "  $line"
+                    }
+                }
+            }
+            $gitExitCode = $LASTEXITCODE
+            if ($gitExitCode -eq 0 -and (Test-Path -LiteralPath (Join-Path $RepoPath 'PS')))
             {
-                Write-Verbose ($gitOutput -join [Environment]::NewLine)
                 return $true
             }
-            Write-Warning "Clone failed from [$url] (exit $LASTEXITCODE), try next source..."
-            Write-Host ($gitOutput -join [Environment]::NewLine)
+            Write-Warning "从 [$url] 克隆失败(退出码 $gitExitCode),尝试下一个下载源..."
         }
         return $false
     }
     $LocalScript = {
-        Write-Host "Mode:Expanding local pacakge:[$PackagePath]" -ForegroundColor Green
+        Write-Host "部署方式:解压本地离线包 [$PackagePath]" -ForegroundColor Green
         # $RepoPathParentDir = Split-Path $RepoPath -Parent
         # 指定要解压到的目录,如果不存在Expand-archive会自动创建相应的目录
         # 获取本地已下载的可用的最新版本
@@ -436,12 +459,12 @@ function Deploy-CxxuPsModules
         }
         $newPath = "$RepoPath/scripts"
 
-        Write-Host @($rawPath, $newPath  ) -ForegroundColor cyan
+        Write-Host '解压完成,正在整理目录结构...' -ForegroundColor cyan
 
         # 用 -Force 连隐藏文件(.gitattributes/.gitignore)一起搬,避免解压后的仓库缺文件
         Get-ChildItem -LiteralPath $rawPath -Force | Move-Item -Destination $RepoPath -Force
         #移除空目录(如果上述步骤顺利的话)
-        Remove-Item $rawPath -Recurse -Force -Confirm:$false -Verbose #如果非空,会警报用户
+        Remove-Item $rawPath -Recurse -Force -Confirm:$false #如果非空,会警报用户
         # Rename-Item $rawPath $newPath -Verbose
         if (-not (Test-Path -LiteralPath (Join-Path $RepoPath 'PS')))
         {
@@ -462,39 +485,36 @@ function Deploy-CxxuPsModules
         # 本地包优先(有则省一次网络);损坏/解压失败时继续走 git 或重新下载
         if ((Test-Path $PackagePath))
         {
-            Write-Verbose "Local package exist,try local mode..."
+            Write-Verbose "已找到本地离线包,优先使用本地包..."
             try
             {
                 & $LocalScript | Out-Null
             }
             catch
             {
-                Write-Warning "Local package deploy failed ($($_.Exception.Message)), try git/download instead."
+                Write-Warning "本地离线包部署失败($($_.Exception.Message)),改为克隆或重新下载。"
                 & $ResetRepoPath
             }
         }
 
         if (-not (Test-Path -LiteralPath (Join-Path $RepoPath 'PS')))
         {
-            Write-Verbose @"
-            检查Git是否可用:
-            1.如果可用,采用最可靠的克隆方案执行,否则采用下载仓库,和本地解压方案;
-            2.如果不可用,则尝试安装git,然后情况变回第一种情况
-"@
             $GitAvailability = Get-Command git -ErrorAction SilentlyContinue
             if (!$GitAvailability)
             {
-
                 if ($Light -or $Sandbox)
                 {
-                    Write-Host 'Light/Sandbox mode: git not found, skip installation, use offline package instead.' -ForegroundColor cyan
+                    Write-Host '未检测到 Git;当前为轻量/沙箱模式,跳过安装,直接下载离线包。' -ForegroundColor cyan
                 }
                 else
                 {
-                    #向用户推荐一键安装git的方案,然后使用默认的下载方案
-                    Write-Host 'Git is not available on your system now!' -ForegroundColor cyan
-                    $InstallGit = Read-Host 'Do you want to install it (it take a few seconds)!(y/n)(Default: y)'
-                    if ($InstallGit -eq 'y' -or $InstallGit.Trim() -eq '')
+                    # 让用户在“安装 git”和“直接下压缩包”之间明确选择,并说明各自的后果
+                    Write-Host '未检测到 Git,请选择继续方式:' -ForegroundColor Yellow
+                    Write-Host '  1) 安装 Git,然后用克隆方式部署(默认;安装包较大,通常需要 1 分钟左右)'
+                    Write-Host '  2) 不安装 Git,直接下载仓库压缩包(约 4 MB,解压后部署;下载会走镜像加速)'
+                    $GitChoice = Read-Host '请输入 1 或 2,直接回车使用 1'
+                    $InstallGit = [string]::IsNullOrWhiteSpace($GitChoice) -or $GitChoice -match '^\s*(1|y|yes)\s*$'
+                    if ($InstallGit)
                     {
                         # 正常模式下 dgw 是以脚本方式执行的,其内部函数不会留在当前作用域;
                         # 有函数就直调,没有就重新执行已下载的 dgw.ps1(同样先检查 git)
@@ -516,13 +536,20 @@ function Deploy-CxxuPsModules
                         }
                         else
                         {
-                            Write-Warning 'Deploy-GitForWindows script is not available; skip git installation.'
+                            Write-Warning '未找到 Deploy-GitForWindows 脚本,跳过 Git 安装。'
                         }
-                        # & $RemoteGitCloneScript
+                    }
+                    else
+                    {
+                        Write-Host '已选择不安装 Git,改为下载仓库压缩包。' -ForegroundColor Cyan
                     }
                 }
                 #重新计算Git是否可用
                 $GitAvailability = Get-Command git -ErrorAction SilentlyContinue
+                if (!$GitAvailability -and !$Light -and !$Sandbox)
+                {
+                    Write-Host 'Git 目前仍不可用,改为下载仓库压缩包。' -ForegroundColor Cyan
+                }
             }
             # 根据用户是否有git，调用不同的方案
             if ($GitAvailability)
@@ -531,7 +558,7 @@ function Deploy-CxxuPsModules
                 $cloned = & $RemoteGitCloneScript
                 if (-not $cloned)
                 {
-                    Write-Warning 'Git clone failed from all sources, fall back to offline package.'
+                    Write-Warning 'Git 克隆在所有源上都失败,回退到离线包。'
                     & $ResetRepoPath
                     $PackagePath = Get-CxxuPsModulePackage -Silent:$true -Directory $packageDirectory
                     & $LocalScript | Out-Null
@@ -583,20 +610,20 @@ function Deploy-CxxuPsModules
         }
         $ok = $hasDeploy -and $hasInit -and $hasGitAttr
         $result.Kept = $KeepSandbox -or (-not $ok)
-        Write-Host '--- Sandbox result ---' -ForegroundColor Cyan
+        Write-Host '--- 沙箱校验结果 ---' -ForegroundColor Cyan
         $result | Format-List | Out-Host
         if (-not $ok)
         {
-            Write-Warning 'Sandbox verification found missing files; directory kept for inspection.'
+            Write-Warning '沙箱校验发现文件缺失,已保留目录以便检查。'
         }
         elseif ($KeepSandbox)
         {
-            Write-Host "Sandbox kept: $RepoPath (use -KeepSandbox to keep it next time)" -ForegroundColor Yellow
+            Write-Host "沙箱目录已保留:$RepoPath(下次需要保留时加 -KeepSandbox)" -ForegroundColor Yellow
         }
         else
         {
             Remove-Item -LiteralPath $RepoPath -Recurse -Force -ErrorAction SilentlyContinue
-            Write-Host 'Sandbox removed (use -KeepSandbox to keep it for inspection).' -ForegroundColor Cyan
+            Write-Host '已删除沙箱目录(需要检查时请加 -KeepSandbox)。' -ForegroundColor Cyan
         }
         return $result
     }
@@ -607,9 +634,10 @@ function Deploy-CxxuPsModules
     if ($host.Version.Major -ge 7)
     {
 
-        Add-EnvVar -EnvVar PsModulePath -NewValue $newPsPath -Verbose #这里$RepoPath上面定义的(默认是User作用于,并且基于User的原有取值插入新值)
+        Add-EnvVar -EnvVar PsModulePath -NewValue $newPsPath | Out-Null #这里$RepoPath上面定义的(默认是User作用于,并且基于User的原有取值插入新值)
         # 添加本模块集所在目录的环境变量,便于后续引用(虽然不是必须的)
-        Set-EnvVar -EnvVar CxxuPsModulePath $NewPsPath -Verbose
+        Set-EnvVar -EnvVar CxxuPsModulePath $NewPsPath | Out-Null
+        Write-Host "已写入用户级 PSModulePath 与 CxxuPsModulePath:$newPsPath(新开的终端生效)" -ForegroundColor Green
     }
     else
     {
@@ -619,15 +647,21 @@ function Deploy-CxxuPsModules
         $curUserPsmp = [Environment]::GetEnvironmentVariable('PSModulePath', 'User')
         if ($curUserPsmp -like "*$newPsPath*")
         {
-            Write-Verbose 'PSModulePath already contains the new path, skip setx.'
-        }
-        elseif ([string]::IsNullOrWhiteSpace($curUserPsmp))
-        {
-            setx PSModulePath $newPsPath
+            Write-Verbose 'PSModulePath 已包含目标路径,跳过 setx。'
         }
         else
         {
-            setx PSModulePath "$newPsPath;$curUserPsmp"
+            $psmpValue = if ([string]::IsNullOrWhiteSpace($curUserPsmp)) { $newPsPath } else { "$newPsPath;$curUserPsmp" }
+            # setx 会打印系统本地化的“成功: 指定的值已得到保存”,容易被误认为部署结果,这里收走并由脚本自己报告
+            $setxOutput = @(setx PSModulePath $psmpValue 2>&1)
+            if ($LASTEXITCODE -eq 0)
+            {
+                Write-Host "已写入用户级 PSModulePath:$newPsPath(新开的终端生效)" -ForegroundColor Green
+            }
+            else
+            {
+                Write-Warning "写入用户级 PSModulePath 失败:$($setxOutput -join ' ')"
+            }
         }
     }
 
@@ -665,7 +699,7 @@ function Deploy-CxxuPsModules
                 }
                 catch
                 {
-                    Write-Warning "Download Deploy-Pwsh7Portable from mirror failed ($($_.Exception.Message)), retry direct..."
+                    Write-Warning "从镜像下载 Deploy-Pwsh7Portable 失败($($_.Exception.Message)),改为直连重试..."
                     Invoke-RestMethod $dp7Raw -OutFile ~/dp7.ps1 -TimeoutSec 60
                 }
                 $dp7Cmd = Get-Command ~/dp7.ps1 -ErrorAction SilentlyContinue
@@ -680,14 +714,14 @@ function Deploy-CxxuPsModules
             }
             catch
             {
-                Write-Warning "Install PowerShell 7 failed ($($_.Exception.Message)). Deployment of CxxuPsModules still continues."
+                Write-Warning "安装 PowerShell 7 失败($($_.Exception.Message)),继续完成 CxxuPsModules 的部署。"
             }
             $PwshAvailability = Get-Command pwsh -ErrorAction SilentlyContinue
         }
     }
     elseif (-not $PwshAvailability)
     {
-        Write-Host 'Skip PowerShell 7 installation (default). Use -InstallPwsh7 if you need full features.' -ForegroundColor Yellow
+        Write-Host '按默认设置跳过 PowerShell 7 安装;需要完整功能时加 -InstallPwsh7。' -ForegroundColor Yellow
     }
 
     if ($Light -or (-not $PwshAvailability -and $host.Version.Major -lt 7))
@@ -695,7 +729,7 @@ function Deploy-CxxuPsModules
         # 轻量模式或 5.1 未装 pwsh:写 5.1 专属 profile(幂等),新开 powershell.exe 即用
         if ($Light)
         {
-            Write-Host 'Light mode: skip pwsh installation.' -ForegroundColor cyan
+            Write-Host '轻量模式:跳过 PowerShell 7 安装。' -ForegroundColor cyan
         }
         try
         {
@@ -708,18 +742,18 @@ function Deploy-CxxuPsModules
                 }
             }
             Install-Ps51Profile -ErrorAction Stop
-            Write-Host "Done. Reopen powershell.exe (Windows PowerShell 5.1) and run 'init'." -ForegroundColor Green
+            Write-Host "部署完成。请重新打开 powershell.exe(Windows PowerShell 5.1),再执行 init。" -ForegroundColor Green
         }
         catch
         {
-            Write-Warning "Install-Ps51Profile failed ($($_.Exception.Message)). After reopening powershell.exe, run it manually (needs PSModulePath set)."
+            Write-Warning "Install-Ps51Profile 执行失败($($_.Exception.Message))。重新打开 powershell.exe 后,请在已设置 PSModulePath 的会话中手动执行 Install-Ps51Profile。"
         }
         return
     }
 
     if ($PwshAvailability)
     {
-        Write-Host "Done. Reopen your terminal and run 'init'." -ForegroundColor Green
+        Write-Host "部署完成。请重新打开终端,再执行 init。" -ForegroundColor Green
     }
 }
 function Get-CxxuPsModulePackage
@@ -756,16 +790,17 @@ function Get-CxxuPsModulePackage
 
     if ($Silent)
     {
-        Write-Host "Silent mode, try package sources in order: $($candidates -join ', ')" -ForegroundColor cyan
+        Write-Host "静默模式:按以下顺序自动尝试下载离线包: $($candidates -join ' , ')" -ForegroundColor cyan
         $order = $candidates
     }
     else
     {
+        Write-Host '下载仓库压缩包需要选择线路(编号越小越优先,镜像线路通常更快):' -ForegroundColor Yellow
         for ($i = 0; $i -lt $candidates.Count; $i++)
         {
-            Write-Host "${i}:[$($candidates[$i])]" -ForegroundColor cyan
+            Write-Host "  ${i}: $($candidates[$i])"
         }
-        $UrlCode = Read-Host "Enter the Deploy Scheme code [0..$($candidates.Count-1)](default:0)"
+        $UrlCode = Read-Host "请输入线路编号 [0..$($candidates.Count-1)],直接回车使用 0"
         if ([string]::IsNullOrWhiteSpace($UrlCode)) { $UrlCode = 0 }
         $UrlCode = $UrlCode -as [int]
         if ($null -eq $UrlCode -or $UrlCode -lt 0 -or $UrlCode -ge $candidates.Count) { $UrlCode = 0 }
@@ -776,12 +811,12 @@ function Get-CxxuPsModulePackage
     if (!(Test-Path $Directory))
     {
         # Out-Null:目录对象别漏进成功流,否则 return 的包路径会被污染成数组
-        New-Item -ItemType Directory -Path $Directory -Verbose | Out-Null
+        New-Item -ItemType Directory -Path $Directory | Out-Null
     }
     $PackagePath = "$Directory/$outputFile"
     foreach ($dlUrl in $order)
     {
-        Write-Host "Downloading [$dlUrl] to [$PackagePath]..." -ForegroundColor cyan
+        Write-Host "正在下载 [$dlUrl] 到 [$PackagePath]..." -ForegroundColor cyan
         try
         {
             # 5.1 用 -UseBasicParsing 避开 IE 解析器;包不大,超时给足
@@ -796,17 +831,17 @@ function Get-CxxuPsModulePackage
                 {
                     return $PackagePath
                 }
-                throw 'Downloaded file is not a zip package.'
+                throw '下载到的文件不是 zip 压缩包(可能是镜像的错误页)。'
             }
-            throw 'Downloaded file is empty.'
+            throw '下载到的文件为空。'
         }
         catch
         {
-            Write-Warning "Package source failed ($($_.Exception.Message)): $dlUrl"
+            Write-Warning "该线路下载失败($($_.Exception.Message)):$dlUrl"
             Remove-Item -LiteralPath $PackagePath -Force -ErrorAction SilentlyContinue
         }
     }
-    throw 'All package sources failed. Download the repository zip manually, then use -PackagePath.'
+    throw '所有线路都下载失败。请手动下载仓库压缩包,再用 -PackagePath 指定该文件。'
 }
 
 
@@ -853,7 +888,6 @@ if ($Sandbox)
         KeepSandbox  = $KeepSandbox
         Force        = $Force
         Confirm      = $false
-        Verbose      = $true
     }
     try
     {
@@ -865,7 +899,7 @@ if ($Sandbox)
         {
             New-Item -ItemType Directory -Path $sandboxRoot -Force | Out-Null
         }
-        Write-Warning "Sandbox deployment failed; kept at [$sandboxRoot] for inspection."
+        Write-Warning "沙箱部署失败,目录已保留在 [$sandboxRoot] 以便检查。"
         throw
     }
 }
@@ -875,7 +909,6 @@ else
         RepoSource   = $RepoSource
         GithubMirror = $GithubMirror
         Mode         = $Mode
-        Verbose      = $true
         Force        = $Force
         Light        = $Light
         InstallPwsh7 = $InstallPwsh7

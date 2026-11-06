@@ -14,7 +14,7 @@
 
 | 目标 | 推荐入口 | 行为 |
 |---|---|---|
-| 新机器首次部署 | `~/dcp.ps1` | 有 git 时镜像克隆；无 git 时提示安装；克隆失败回退离线包 |
+| 新机器首次部署 | `~/dcp.ps1` | 有 git 时镜像克隆；无 git 时可选安装 Git 或直接下载压缩包；克隆失败回退离线包 |
 | 只有 Windows PowerShell 5.1，且不装 git | `~/dcp.ps1 -Light` | 无 git 不提示安装，改走离线包；不安装 PowerShell 7 |
 | 已下载仓库 zip 或网络不稳定 | `~/dcp.ps1 -Mode Default -PackagePath <zip>` | 优先使用本地 zip，不依赖 git |
 | 默认目录已存在，需要重新部署 | `~/dcp.ps1 -Force` | 旧目录重命名为 `<名称>.bak.<时间戳>` 后重新部署 |
@@ -30,7 +30,7 @@
 
 `-OutFile` 保存原始字节，避免 5.1 用 `>` 重定向时写成 UTF-16。脚本下载后按需追加参数：
 
-- 不带参数：标准部署，有 git 时镜像克隆，无 git 时提示安装。
+- 不带参数：标准部署，有 git 时镜像克隆；无 git 时在提示中选择安装 Git 或直接下载仓库压缩包。
 - `-Light`：只有 Windows PowerShell 5.1 且不想安装 git 时使用。
 - `-InstallPwsh7`：部署完成后安装 PowerShell 7 便携版。
 
@@ -174,7 +174,7 @@ C:/repos/scripts/PS/Deploy/Deploy-CxxuPsModules.ps1 -Sandbox
 
 | 现象 | 原因 | 处理 |
 |---|---|---|
-| 提示 Git 不可用 | 未安装 git | 安装 Git for Windows 后重开终端重试；或改用 `-Light` / 离线包 |
+| 提示 Git 不可用 | 未安装 git | 按提示选择安装 Git 后重开终端重试，或选 2 直接下载压缩包；也可改用 `-Light` |
 | 目标目录已存在 | 之前部署残留 | 加 `-Force` 重命名旧目录；或加载脚本后调用函数并指定 `-RepoPath` |
 | 镜像超时或返回错误页 | 镜像不可用或网络受限 | 换 `-GithubMirror`；或手动下载 zip 后用 `-PackagePath` |
 | 执行策略拒绝运行 | 用户级策略为 Restricted/AllSigned | 用 `powershell -ExecutionPolicy Bypass -File ~/dcp.ps1` 启动 |
@@ -199,8 +199,8 @@ $urls = @(
     'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1'
     'https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1'
 )
-for ($i = 0; $i -lt $urls.Count; $i++) { Write-Host "${i}: $($urls[$i])" }
-$code = Read-Host "Enter the Deploy Scheme code [0..$($urls.Count - 1)] (default: 0)"
+for ($i = 0; $i -lt $urls.Count; $i++) { Write-Host "  ${i}: $($urls[$i])" }
+$code = Read-Host "请输入编号 [0..$($urls.Count - 1)],直接回车使用 0"
 if ([string]::IsNullOrWhiteSpace($code)) { $code = 0 }
 $code = $code -as [int]
 if ($null -eq $code -or $code -lt 0 -or $code -ge $urls.Count) { $code = 0 }
@@ -231,6 +231,8 @@ Deploy-CxxuPsModules -PackagePath '/path/to/scripts-main.zip' -RepoPath '/path/t
 Get-Command Deploy-CxxuPsModules -Syntax
 Get-Help Deploy-CxxuPsModules -Full
 ```
+
+- 需要排查时加 `-Verbose`：脚本会额外打印参数取值与关键步骤；默认只显示进度与结果。
 
 ## 部署临时使用 CxxuPsModule Deploy 模块
 
