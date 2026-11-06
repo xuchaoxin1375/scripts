@@ -118,7 +118,11 @@ elseif ($Dev)
         $Dev = $false
     }
 }
-if (!$Light -and !$Dev -and !$Sandbox)
+if (!$Light -and !$Dev -and !$Sandbox -and (Get-Command git -ErrorAction SilentlyContinue))
+{
+    Write-Host '[Deploy-CxxuPsModules]:Git already available, skip Deploy-GitForWindows.' -ForegroundColor Yellow
+}
+elseif (!$Light -and !$Dev -and !$Sandbox)
 {
     # 正式版(github 走加速前缀,gitee 直连;raw 一律用 raw.githubusercontent 形式)
     if ($RepoSource -eq 'github')
@@ -271,8 +275,8 @@ function Deploy-CxxuPsModules
         # 沙箱不安装任何持久组件
         $InstallPwsh7 = $false
     }
-    # 沙箱把离线包也放在沙箱目录,避免污染 Downloads
-    $packageDirectory = if ($Sandbox) { Split-Path -Parent $PackagePath } else { "$home/Downloads/CxxuPsModules" }
+    # 沙箱把离线包也放在沙箱目录,避免污染 Downloads 或用户指定的包目录
+    $packageDirectory = if ($Sandbox) { Join-Path $RepoPath 'packages' } else { "$home/Downloads/CxxuPsModules" }
 
     # 打印此函数的所有参数极其取值,方便用户排查问题
     $params = [pscustomobject]@{

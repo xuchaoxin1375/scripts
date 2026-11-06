@@ -10,8 +10,9 @@ param(
     $GithubMirror = $(if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }),
     # 开发模式:用本地最新模块(Deploy.psm1/TestLinks.psm1/Git.psm1),不拉远程;仓库根自动从脚本位置推导
     [switch]$Dev,
-    $DevRoot = ''
-    # [switch]$Force
+    $DevRoot = '',
+    # 已存在 pwsh 时默认跳过;需要重装/覆盖时显式加 -Force
+    [switch]$Force
 )
 # 预先放行脚本执行:本脚本会落盘并执行下载的模块,执行策略过严会直接中断
 try
@@ -37,6 +38,12 @@ try
 catch
 {
     Write-Verbose "Set-ExecutionPolicy(CurrentUser) failed: $($_.Exception.Message)"
+}
+# 已经能调用 pwsh 时默认不重复安装(避免覆盖用户现有安装);需要重装加 -Force
+if ((Get-Command pwsh -ErrorAction SilentlyContinue) -and -not $Force)
+{
+    Write-Host 'pwsh is already available, skip installation (use -Force to reinstall).' -ForegroundColor Yellow
+    return
 }
 if ($Dev)
 {

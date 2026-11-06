@@ -91,7 +91,9 @@ C:/repos/scripts/PS/Deploy/Deploy-CxxuPsModules.ps1 -Sandbox -Mode Default -Pack
 C:/repos/scripts/PS/Deploy/Deploy-CxxuPsModules.ps1 -Sandbox
 ```
 
-沙箱结果会列出 `RepoPath` / `NewPsPath` 与 `DeployManifest`、`InitManifest`、`GitAttributes` 三项校验；失败时保留目录并给出路径。`-InstallPwsh7` 在沙箱中会被忽略。
+沙箱结果会列出 `RepoPath` / `NewPsPath` 与 `DeployManifest`、`InitManifest`、`GitAttributes` 三项校验；失败时保留目录并给出路径。所有产物只落在 `%TEMP%\CxxuPsModules-Sandbox-*`（含 `PS/` 与 `packages/`），不会写 `Downloads`，也不会生成 `~/dgw.ps1` / `~/dp7.ps1`；成功后默认整目录删除，`-KeepSandbox` 或失败时保留。`-InstallPwsh7` 在沙箱中会被忽略。
+
+已有 git 时，一键部署会跳过 `Deploy-GitForWindows` 的下载与安装；已有 pwsh 时 `-InstallPwsh7` 不会重装。单独运行 `Deploy-Pwsh7Portable.ps1` 时，默认检测到 `pwsh` 也跳过，需要重装/覆盖请加 `-Force`。
 
 
 
