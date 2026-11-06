@@ -132,6 +132,7 @@ flowchart TD
 > 本节讲一件事：仓库源 dll 在你的 pwsh 上点不亮时，如何用本机 SMA 重编并发布为活件，全程不碰仓库源。
 
 - 何时需要：仓库源 dll 随构建机 pwsh 的 SMA 版本而定；若在你的 pwsh 上加载失败（以 `Test-PsEnvReadiness` 表尾的仓库/pwsh/活件三行为准），或你的 pwsh 已新于仓库源覆盖的版本，走本地重编。Windows 本机一般不需要（构建机即 Windows）。
+- 兼容范围：仓库源按 pwsh 7.5（net9.0）构建；pwsh 7.6 基于 .NET 10，可直接加载 net9.0 产物，不需要重编。pwsh 8 发布后先按本节验证，加载失败再重编。
 - 前置条件：.NET 9 SDK（`dotnet --list-sdks` 须见到 9.x；若只有新版 SDK，net9 目标包需联网还原一次）；本机 SMA 路径为 `$PSHOME/System.Management.Automation.dll`（pwsh 内执行 `$PSHOME` 即得，macOS 如 `/usr/local/microsoft/powershell/7/...`）。
 - 构建（产物进 `src/bin`，已 gitignore，不污染仓库）：
 ```powershell
@@ -147,4 +148,4 @@ Sync-CxxuPredictor -DllPath ./bin/Release/net9.0/CxxuPredictor.dll
 - 与更新的关系：`Update-ReposesConfiged` 检测到自编译标记会保持活件不动并提示（不会把可用活件换回仓库源）；想跟进仓库源时，重编后重新 `Sync-CxxuPredictor -DllPath`，或裸 `Sync-CxxuPredictor` 直接切回仓库源。
 - 回退与停用：切回仓库源用裸 `Sync-CxxuPredictor`；彻底不用走 §6 卸载 + 持久化 `$env:PsPredictor='False'`。
 - 警告：不要把本机构建覆盖提交为共享 `CxxuPredictor.dll`（仓库源面向多机多版本，跨 SMA 版本互相点不亮的风险见 `csproj` 头注；共享 dll 的更新须在多版本验证后单独提交）。
-- 故障：`CS1705` 多为 SDK/TFM 与 SMA 代际错配（回看 `csproj` 头注的 net8 不可行结论）；`找不到 SMA` 检查 `-p:SmaPath` 路径是否存在；构建成功但加载失败确认 pwsh 7.5+（net9 运行时可用 `dotnet --list-runtimes` 佐证）。
+- 故障：`CS1705` 多为 SDK/TFM 与 SMA 代际错配（回看 `csproj` 头注的 net8 不可行结论）；`找不到 SMA` 检查 `-p:SmaPath` 路径是否存在；构建成功但加载失败确认 pwsh 7.5+（7.6 可直接加载；更高版本以实际加载为准，`dotnet --list-runtimes` 可佐证运行时）。

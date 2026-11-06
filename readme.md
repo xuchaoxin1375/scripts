@@ -103,4 +103,4 @@ bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/he
 
 - 推荐 PowerShell 7 及以上；Windows PowerShell 5.1 的可用范围、轻量部署与 UTF-8 读取注意事项，见 [Feature-Guide.md](PS/docs/Feature-Guide.md) 的 5.1 兼容说明，模块级兼容性用 `Get-CxxuModuleCompatibility` 自查。
 - 国内网络默认经 `gh-proxy.com` 加速；镜像测速与时效性清单见 [Deploy-Guide.md](PS/docs/Deploy-Guide.md) 的镜像与时效性说明。
-- 执行策略报错时先执行 `Set-ExecutionPolicy Bypass -Scope CurrentUser -Force`；git 配置损坏时备份或移除 `~/.gitconfig` 后重试。
+- 执行策略报错时，优先用进程级绕过运行部署脚本（`powershell -ExecutionPolicy Bypass -File $deployScript`），用户级建议保持 `RemoteSigned`；下载的 zip 解压后若提示未签名，先对解压目录执行 `Get-ChildItem -Recurse | Unblock-File`。dll 加载不受执行策略影响，排查见 [Feature-Guide.md](PS/docs/Feature-Guide.md) 的 dll/活件章节。git 配置损坏时备份或移除 `~/.gitconfig` 后重试。

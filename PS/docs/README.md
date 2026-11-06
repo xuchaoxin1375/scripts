@@ -9,7 +9,7 @@
 |---|---|---|
 | 新机部署 | `Deploy-Guide.md`（保存脚本后按参数运行）→ `Feature-Guide.md §1/§11` | 从零到可用 + 手动项查漏 |
 | 日常使用 | `Feature-Guide.md §2`（命令表）→ §7/§8/§10（补全）→ §9（dll 四件套） | 查命令、配补全、管更新 |
-| 出问题先看 | `doctor`（命令）→ `Feature-Guide.md §6/§8`（FAQ）→ `Dev-Notes.md`（常见坑） | 定位→自助→避坑 |
+| 出问题先看 | `doctor`（命令）→ `Feature-Guide.md §9`（dll/活件排查）/§6/§8（FAQ）→ `Dev-Notes.md`（常见坑） | 定位→自助→避坑 |
 | 加模块/加函数 | `Feature-Guide.md §3` → `Module-Conventions.md`（§1 目录、§2 命名、§7 manifest）→ `Module-Map.md`（找位置） | 一次做对，不返工 |
 | 搞懂 dll/同步 | `Live-Versions.md`（设计专章，9 节 + 4 图）→ `Deploy-Guide.md §13` | 结构、流程、命令分工 |
 | 非 Windows 系统 | `Feature-Guide.md §12`（`doctor` 会标平台行） | 哪些可用、哪些是 Windows 专属 |

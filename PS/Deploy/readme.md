@@ -179,7 +179,8 @@ C:/repos/scripts/PS/Deploy/Deploy-CxxuPsModules.ps1 -Sandbox
 | 提示 Git 不可用 | 未安装 git | 按提示选择安装 Git 后重开终端重试，或选 2 直接下载压缩包；也可改用 `-Light` |
 | 目标目录已存在 | 之前部署残留 | 加 `-Force` 重命名旧目录；或用 `-RepoPath` 指定新目录 |
 | 镜像超时或返回错误页 | 镜像不可用或网络受限 | 换 `-GithubMirror`；或手动下载 zip 后用 `-PackagePath` |
-| 执行策略拒绝运行 | 用户级策略为 Restricted/AllSigned | 用 `powershell -ExecutionPolicy Bypass -File $deployScript` 启动 |
+| 执行策略拒绝运行 | 用户级策略为 Restricted/AllSigned | 用 `powershell -ExecutionPolicy Bypass -File $deployScript` 启动（只影响本次进程） |
+| 解压后提示模块未签名 | 下载的 zip 带 Mark-of-the-Web | 对解压目录执行 `Get-ChildItem -Recurse` 再接 `Unblock-File` |
 | 5.1 下部分功能不可用 | 模块要求 PowerShell 7 | 见 [Feature-Guide.md](../docs/Feature-Guide.md) 的 5.1 兼容章节 |
 
 ### 提高成功率的方式
@@ -194,7 +195,7 @@ C:/repos/scripts/PS/Deploy/Deploy-CxxuPsModules.ps1 -Sandbox
 镜像与直连都不稳定时，可交互选择脚本下载源。方案码依次对应镜像、gitee、github 直连；选好后保存到本地再运行：
 
 ```powershell
-Set-ExecutionPolicy Bypass -Scope CurrentUser -Force
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force  # 只影响当前窗口；用户级建议保持 RemoteSigned
 $mirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
 $urls = @(
     "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1"

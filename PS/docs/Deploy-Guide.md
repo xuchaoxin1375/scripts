@@ -33,7 +33,7 @@ Deploy-CompletionStack
 - 只使用 Windows PowerShell 5.1 时直接运行即可；若同时没有 git，改用 `& $deployScript -Light`（见下）。
 - 需要 PowerShell 7 时用 `& $deployScript -InstallPwsh7`；默认不安装。
 - 默认下载前缀为 `https://gh-proxy.com`，用于 git 克隆、raw 脚本与离线包；可用 `-GithubMirror '<镜像>'` 或持久化 `$env:PsGithubMirror` 覆盖。
-- 核心 `CxxuCommand`（`CxxuPredictor`）要求 PowerShell 7.5 及以上；版本不足时只有警告，其余功能照常。
+- 核心 `CxxuCommand`（`CxxuPredictor`）要求 PowerShell 7.5 及以上（7.5/7.6 均可，7.6 基于 .NET 10 可直接加载）；版本不足时只有警告，其余功能照常。
 - 参数的完整说明、离线安装、开发模式与沙箱调试见 [PS/Deploy/readme.md](../Deploy/readme.md)。
 
 ### 按需修改参数
@@ -125,7 +125,7 @@ Confirm-ModuleInstalled -ModuleName PSFzf -Install  # 可选：Ctrl+T/Ctrl+R
 Confirm-ModuleInstalled -ModuleName CompletionPredictor -Install  # 可选：参数/路径预测
 # 按需：Terminal-Icons（`$env:PsExtension=True` 才用得上）、PSCompletions（70+ 命令补全，延迟加载）
 # 自研 CxxuPredictor 随仓库自带（PS/CxxuPredictor/，零模块安装，随 init 延迟加载）；
-# 要求 pwsh 7.5+（dll 按 net9.0 编译；其它版本进 PS/CxxuPredictor/src 跑 dotnet build -c Release 重编）
+# 要求 pwsh 7.5+（7.6 可直接用；dll 按 net9.0 编译，加载失败再进 PS/CxxuPredictor/src 重编）
 ```
 
 ## 6. scoop 二进制
@@ -227,7 +227,7 @@ Sync-CxxuPredictor            # 单点操作（首次安装生成/手动修复/�
 | hosts 数据（天然过期） | `Update-GithubHosts`（`raw.hellogithub.com` + GitHub520 回退） | IP 常变 | 看 hosts 尾 `# Update time` 距今 | `Update-GithubHosts`；已装定时任务则自动 | 自动（每小时+开机） |
 | pip/conda 高校源 | `DevEnv.psm1` / `ConstantString.conf` / `Tools.psm1:381` | 稳定，偶改路径 | 安装失败时对照 `help.mirrorz.org` | 改 URL | 失败时 |
 | `Get-SpeedUpUri` 未定义 | `PsEnv.psm1:238` / `TerminalTools.psm1:9,42` | 已修 | 跑 `Update-PowerShell` 即验 | — | — |
-| net9.0 / pwsh 版本门 | `CxxuPredictor.csproj` | pwsh 8 出来才需动 | — | 重编 dll（见 `Live-Versions.md §10`） | 慢变量 |
+| net9.0 / pwsh 版本门 | `CxxuPredictor.csproj` | 7.6 可直接用；pwsh 8 发布后再复核 | — | 加载失败时重编 dll（见 `Live-Versions.md §10`） | 慢变量 |
 | 文档外链（博客/商店/聚合页） | `readme.md` / `Deploy-Guide.md` | 腐烂风险，低优 | 抽查 | 换链 | 年 |
 | PSGallery 第三方模块 | `Deploy-CompletionStack` | 浮动最新，不钉版 | `Test-PsEnvReadiness` | `Deploy-CompletionStack` | 按需 |
 

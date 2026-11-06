@@ -191,11 +191,11 @@ p -Force                    # 看 init 分步耗时，定位慢项
 
 ## 9. dll / 活件管理（检查 / 安装 / 更新 / 移除）
 
-> 设计原理见 `Live-Versions.md`（并排版本 + 指针）。背景一句话：`CxxuPredictor` 是 net9.0 自研 dll（pwsh 须 7.5+）。仓库里的 `PS/CxxuPredictor/CxxuPredictor.dll` 是**源**（从不被加载，所以 `git pull` 永不撞锁）；真正被加载的是外置**活件** `~/.cxxu/bin/CxxuPredictor.dll`。两边靠哈希同步，程序集随进程：**同步后必须重开终端才换新代码**，`ipmox` 刷不动 dll。原则：入口 loader 只静默装载（旧版照用，零警告），版本动作全手动。
+> 设计原理见 `Live-Versions.md`（并排版本 + 指针）。背景一句话：`CxxuPredictor` 是 net9.0 自研 dll（pwsh 须 7.5+；7.5/7.6 均可，7.6 基于 .NET 10，可直接加载 net9.0 产物）。仓库里的 `PS/CxxuPredictor/CxxuPredictor.dll` 是**源**（从不被加载，所以 `git pull` 永不撞锁）；真正被加载的是外置**活件** `~/.cxxu/bin/CxxuPredictor.dll`。两边靠哈希同步，程序集随进程：**同步后必须重开终端才换新代码**，`ipmox` 刷不动 dll。原则：入口 loader 只静默装载（旧版照用，零警告），版本动作全手动。
 
 | 动作 | 命令 | 说明 |
 |---|---|---|
-| 检查 | `Test-PsEnvReadiness` | 活件行备注直接给出结论（`与仓库一致[hash]` / `不一致→执行 Sync-CxxuPredictor`）；表尾另有仓库/pwsh/活件三行 |
+| 检查 | `doctor` / `Test-PsEnvReadiness` | `doctor` 先跑（安装态 + 运行态）；readiness 活件行备注直接给出结论（`与仓库一致[hash]` / `不一致→执行 Sync-CxxuPredictor`），表尾另有仓库/pwsh/活件三行 |
 | 检查远端 | `Test-PsEnvReadiness -CheckRemote` | 默认零网络；加开关才询问远端是否有更新（`ls-remote` 只读，12s 超时） |
 | 安装 | `Sync-CxxuPredictor` | 无活件时生成（新增版本目录 `~/.cxxu/bin/<哈希>` 并更新指针，缺目录自动创建）；`-WhatIf` 可空跑查看意图 |
 | 更新 | `Update-ReposesConfiged` → 重开终端 → `init` | 拉取后自动调用 `Sync-CxxuPredictor` 同步活件（只新增版本目录，不受锁限制，任何会话都可执行）；纯文本变更执行 `ipmox` 即可（见 §3） |
@@ -204,6 +204,18 @@ p -Force                    # 看 init 分步耗时，定位慢项
 
 - 守护进程（报时/IP）默认不碰 dll：`Start-StartupBgProcesses` 置 `PsPredictor=False` 继承 + 两个守护函数按 `-Command` 自断，所以 `-Force` 关它们无压力（无状态，重起即回）。
 - 同一结论在 `Test-PsEnvReadiness` 的“建议”行也会再说一遍（缺必备 > 有更新 > 活件不一致）。
+
+**加载失败排查**（先跑 `doctor`，再按行对照）：
+
+| 现象 | 先查 | 处理 |
+|---|---|---|
+| `doctor` 报 `pwsh 7.5+` 必备项缺失 | `$PSVersionTable.PSVersion` | 升级到 7.5 及以上；7.6 可直接用，不需要重编 dll |
+| 活件存在但未加载 | `$Error[0]`、`$global:PsUxLoadErrors` | 看具体异常；多为 SMA 代际不匹配，按 `Live-Versions.md §10` 用本机 SMA 重编后 `Sync-CxxuPredictor -DllPath` |
+| 脚本或模块被策略拦 | `Get-ExecutionPolicy -List` | 用进程级绕过运行部署脚本（`powershell -ExecutionPolicy Bypass -File ...`）；用户级保持 `RemoteSigned`；`MachinePolicy`/`UserPolicy` 由组策略控制，需管理员 |
+| 下载的 zip 解压后提示未签名 | `Get-Item <文件> -Stream Zone.Identifier` | 对解压目录执行 `Get-ChildItem -Recurse` 再接 `Unblock-File`（MOTW 只影响 `.ps1`/`.psm1`，不影响 dll） |
+| 同步后行为没变 | `doctor` 的 predictor 行 | 重开终端；`ipmox` 刷不动 dll |
+
+- 执行策略只约束脚本与模块脚本文件，不约束 `.dll`；dll 加载失败时改执行策略无效。
 
 ## 10. 补全全景速查（三层 + 参数层）
 
@@ -243,7 +255,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | 镜像持久化 | 默认自动（静默测速+缓存） | `$env:PsGithubMirror` 持久化（`Add-EnvVar`）指定镜像 | 出国/回国切换用 |
 | 开关组 | 多数默认开（`PsTab` 默认关） | `~/.cxxu/config.psd1`（`New-CxxuConfigTemplate` 建模板）或 `Enable/Disable-PsPlugin [-Persist]` | `PsFzf/PsZoxide/PsPredictor/PsTab/PsShowProgress`；环境变量永远优先 |
 | 历史瘦身 | 从不自动执行 | `Optimize-PsHistory [-WhatIf]`（超 8000 行或 500KB 时 `doctor` 会提示） | 备份+归档双保险 |
-| pwsh 7.5 版本门 | 随安装 | `Update-PowerShell`（`CxxuPredictor` 需 net9） | 不够 7.5 只缺 predictor，其余照常 |
+| pwsh 7.5+ 版本门 | 随安装 | `Update-PowerShell`（`CxxuPredictor` 需 net9；7.6 可直接用） | 不够 7.5 只缺 predictor，其余照常 |
 
 - 新机按表自上而下过一遍即可；`Test-PsEnvReadiness` 全绿 + `doctor` 全绿 = 生效确认。
 
