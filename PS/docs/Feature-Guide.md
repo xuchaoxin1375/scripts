@@ -28,7 +28,7 @@ Add-EnvVar -EnvVar PSModulePath -NewValue $p -Verbose
 | `doctor` | 统一诊断入口（定位问题先执行它）：先跑 `Test-PsEnvReadiness`（安装态），再查运行态（init 错误/PSReadLine/历史大小/predictor/门控/懒加载/守护/仓库脏），只读，默认零网络 |
 | `New-CxxuConfigTemplate` | 生成用户配置模板（`~/.cxxu/config.psd1`，仓库外本机生效） |
 | `Import-CxxuConfig` | 读用户配置（init 首步自动调；优先级：环境变量 > 配置文件 > 默认开） |
-| `Enable-PsPlugin` / `Disable-PsPlugin` | 体验插件启停（Fzf/Zoxide/Predictor/Tab，当会话生效；加 `-Persist` 长期有效，写 `~/.cxxu/config.psd1`） |
+| `Enable-PsPlugin` / `Disable-PsPlugin` | 体验插件启停（Fzf/Zoxide/Predictor/Tab/Argc，当会话生效；加 `-Persist` 长期有效，写 `~/.cxxu/config.psd1`） |
 
 环境等级（`$PsEnvMode`，`Test-PsEnvMode` 查询）：core(1) 核心变量 → vars(2) 全量变量 →
 env(3) 变量+别名。`Update-PwshEnvIfNotYet` 按需补齐，不重复干活。
@@ -140,6 +140,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 > 开关：`$env:PsFzf` / `$env:PsZoxide` / `$env:PsPredictor`（默认开，`False` 关；
 > 守护进程由 `Start-StartupBgProcesses` 统一置 `PsPredictor=False`，永不加载 dll）；
 > `$env:PsTab`（CxxuTab Tab 补全，**默认关，置 `True` 才开**）；
+> `$env:PsArgc`（argc-completions 参数补全，默认开，首个 Tab 才注册）；
 > 重定向场景自动不加载。一键重装看 `Deploy-CompletionStack -WhatIf`。
 
 | 候选 | 状态 |
@@ -154,10 +155,10 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | `carapace-bin`（千级命令补全） | 未装：逃生通道，真缺了再 `scoop install carapace-bin` 对比 |
 | `posh-git` | 未装（只要 git Tab 补全才装） |
 | `oh-my-posh` | 不开（每回车进程税 + 与现有定制片重叠） |
-| `argc` | 缺二进制，先装再说 |
+| `argc-completions`（800+ 命令参数补全；懒加载，首个 Tab 注册约 150ms；选中行反显高亮） | **已启用**（仓库 `C:\repos\argc-completions`；开关 `$env:PsArgc`） |
 | `inshellisense` | **否决**（用户拍板，不再考虑） |
 
-验：新开终端直接可用，`Ctrl+R`/`Ctrl+T` 首按装 PSFzf（本次按键即生效）；`z <目录>` 跳转（zoxide 首屏单发已装）。`CxxuTab` 默认关，开启（`Enable-PsPlugin Tab -Persist`）后首个 `Tab` 才装它（约半秒一次）。`Get-EventSubscriber` 应无残留（单发先摘后装）。若某主机 OnIdle 不触发（predictor 没装上），跑 `Register-PsUxLazyLoad -Now` 或报回来。自查跑 `Test-StartupPerformance`（分段计时+结论）。
+验：新开终端直接可用，`Ctrl+R`/`Ctrl+T` 首按装 PSFzf（本次按键即生效）；`z <目录>` 跳转（zoxide 首屏单发已装）。`CxxuTab` 默认关，开启（`Enable-PsPlugin Tab -Persist`）后首个 `Tab` 才装它（约半秒一次）。`argc-completions` 默认开，首个 `Tab` 才注册（约 150ms，之后零开销）。`Get-EventSubscriber` 应无残留（单发先摘后装）。若某主机 OnIdle 不触发（predictor 没装上），跑 `Register-PsUxLazyLoad -Now` 或报回来。自查跑 `Test-StartupPerformance`（分段计时+结论）。
 
 ## 8. FAQ（续）：输入时下面没候选？
 
@@ -225,12 +226,12 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | Tab 全量索引 | `Tab`（MenuComplete） | 引擎全量：函数/别名/文件/参数 | 命令名位经 `CxxuTab` 包装增强（模糊连写可选中，参数位零干扰；默认关，需 `Enable-PsPlugin Tab`，开关 `$env:PsTab`）；和下面两层**不是同一套索引**，结果不一样正常 |
 | ListView 预测 | 输入时自动浮现（`HistoryAndPlugin`） | 历史（最多 10 条，硬上限）+ 插件 | 插件= `CompletionPredictor`（参数/路径，命令名位跳过）+ `CxxuPredictor`（命令名，分层排序 + 别名/历史加权，默认 15 条，§8）；须 20ms 内返回，实测 2600 条 <1ms |
 | 模糊搜历史/文件 | `Ctrl+R` / `Ctrl+T`（PSFzf） | 全量历史/文件 | 历史翻不完用这个，不走 10/50 上限 |
-| 参数值补全 | `Tab` 在参数位 | `PSCompletions`（~200 命令库，可选）+ 自带 `ArgumentCompleter`（EnvVar 系、`Get-Json -Key` 等，`Set-ArgumentCompleter` 批量注册） | PSCompletions 用法：解开 profile 里注释的两行 |
+| 参数值补全 | `Tab` 在参数位 | `argc-completions`（800+ 命令库，默认开、懒加载）+ `PSCompletions`（~200 命令库，可选）+ 自带 `ArgumentCompleter`（EnvVar 系、`Get-Json -Key` 等，`Set-ArgumentCompleter` 批量注册） | PSCompletions 用法：解开 profile 里注释的两行；argc 开关 `$env:PsArgc`，首个 Tab 注册 |
 
 - 相关命令：`doctor`（统一诊断入口，定位问题先执行它）、`Register-PsUxLazyLoad [-Now]`（延迟加载入口）、
   `Deploy-CompletionStack [-WhatIf/-IncludePSCompletions/-SkipBinaries]`（新机一键装栈）、
   `Test-PsEnvReadiness`（查缺）、`predictNo`（当会话关预测）、
-  `Enable-PsPlugin` / `Disable-PsPlugin`（插件启停，Fzf/Zoxide/Predictor/Tab）。
+  `Enable-PsPlugin` / `Disable-PsPlugin`（插件启停，Fzf/Zoxide/Predictor/Tab/Argc）。
 - **历史膨胀（Ctrl+R 变慢）**：`Optimize-PsHistory -WhatIf` 先看诊断（总数/去重率/重复 Top5）， `Optimize-PsHistory [-KeepLast 3000]` 动手（去重只留最后一次 + 去杂 + 截断，旧行进同目录 `.archive-时间.txt`，原文件留 `.bak-时间`，均可恢复）。治本：init 已开 `HistoryNoDuplicates`（新命令不再重复入库）+ `MaximumHistoryCount 3000`。注意历史文件无时间戳，切割按新旧顺序（文件尾=最近）；当前会话内存里的旧历史重启才换新。
 - 新终端对照：输高频前缀（如 `git che`）有候选 = 一切正常；`get-child` 这类没候选多半是历史里没敲过 + 命令名插件只认连写（空格分词进参数位，见 §8）。
 
@@ -254,7 +255,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | WT 设置下发 | 仓库 `Config/wtConf*.json` 仅供参考 | `Deploy-WtSettings` | 线上 WT 无自定义 profile 时才需要 |
 | github hosts 定时更新 | 未装 | `Deploy-GithubHostsAutoUpdater` | hosts 拉胯地区按需 |
 | 镜像持久化 | 默认自动（静默测速+缓存） | `$env:PsGithubMirror` 持久化（`Add-EnvVar`）指定镜像 | 出国/回国切换用 |
-| 开关组 | 多数默认开（`PsTab` 默认关） | `~/.cxxu/config.psd1`（`New-CxxuConfigTemplate` 建模板）或 `Enable/Disable-PsPlugin [-Persist]` | `PsFzf/PsZoxide/PsPredictor/PsTab/PsShowProgress`；环境变量永远优先 |
+| 开关组 | 多数默认开（`PsTab` 默认关） | `~/.cxxu/config.psd1`（`New-CxxuConfigTemplate` 建模板）或 `Enable/Disable-PsPlugin [-Persist]` | `PsFzf/PsZoxide/PsPredictor/PsTab/PsArgc/PsShowProgress`；环境变量永远优先 |
 | 历史瘦身 | 从不自动执行 | `Optimize-PsHistory [-WhatIf]`（超 8000 行或 500KB 时 `doctor` 会提示） | 备份+归档双保险 |
 | pwsh 7.5+ 版本门 | 随安装 | `Update-PowerShell`（`CxxuPredictor` 需 net9；7.6 可直接用） | 不够 7.5 只缺 predictor，其余照常 |
 

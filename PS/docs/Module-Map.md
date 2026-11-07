@@ -11,7 +11,7 @@
 
 | 模块 | 行数/函数 | 职责 |
 |---|---|---|
-| `Init` | 821/17 | 启动编排：`init`/`p` 入口、8 步任务表（`-Timing` 看耗时）、`PsEnvMode` 等级跟踪、`Optimize-PsHistory`、用户配置（`Import/New-CxxuConfig*`）、插件启停（`Enable/Disable-PsPlugin`） |
+| `Init` | 1177/24 | 启动编排：`init`/`p` 入口、9 步任务表（`-Timing` 看耗时）、`PsEnvMode` 等级跟踪、`Optimize-PsHistory`、用户配置（`Import/New-CxxuConfig*`）、插件启停（`Enable/Disable-PsPlugin`）、argc-completions（懒加载） |
 | `Prompt` | 723/32 | 提示符：`prompt` 入口、`Prompt*` 主题、`Write-*` 片段、`Set-PsPrompt`（`-Persist` 才写注册表）、电池 30s 缓存 |
 | `CxxuPredictor` | 716/0导出 | 自研命令名 predictor（分层模糊：别名精确/前缀/词边界/连续片段/一般子序列 + 严格通配；别名本身也进候选，PSReadLine 历史频率加权，默认 15 条；二进制：dll 发布件 + src；`CompleteCommand` 公开 Tab 接口；活件并排版本 `~/.cxxu/bin`，loader 按指针装载；OnIdle 加载） |
 | `CxxuTab` | 111/1 | 自研 Tab 命令名补全（独立插件：`TabExpansion2` 包装，命令名位合并 dll 模糊结果，参数位透传；门控 `$env:PsTab` 逐调用判定，**默认关**（置 `True` 开）；启停见 `Enable/Disable-PsPlugin`） |
@@ -110,6 +110,7 @@
 $profile -> init
   ├─ Set-PSReadLinesCommon / Advanced      (PSReadLine + 按键)
   ├─ Set-ArgumentCompleter                 (EnvVar 模块，补全注册)
+  ├─ Set-ArgcCompletions                   (argc-completions：设环境 + Tab 懒加载桩)
   ├─ Confirm-EnvVarOfInfo                  (Startup：OSCaption/FullCode/DisplayVersion 持久化)
   ├─ Set-PsExtension                       (默认 False，no-op)
   ├─ Set-PsPrompt                          (Prompt；内含 core 环境导入)

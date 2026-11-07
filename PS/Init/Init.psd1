@@ -14,6 +14,8 @@
         'Import-TerminalIcons',
         'Set-PSReadLinesCommon',
         'Set-PSReadLinesAdvanced',
+        'Set-ArgcCompletions',
+        'Initialize-ArgcCompletions',
         'Optimize-PsHistory',
         'Import-CxxuConfig',
         'New-CxxuConfigTemplate',

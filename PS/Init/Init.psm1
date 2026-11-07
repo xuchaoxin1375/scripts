@@ -67,6 +67,8 @@ function init
         @{ Name = 'Set-PSReadLinesCommon'; Action = { Set-PSReadLinesCommon } }
         @{ Name = 'Set-PSReadLinesAdvanced'; Action = { Set-PSReadLinesAdvanced } }
         @{ Name = 'Set-ArgumentCompleter'; Action = { Set-ArgumentCompleter }; MinPS = 7 }
+        # argc-completions:启动只设环境与 Tab 桩,首个 Tab 才注册(开关 $env:PsArgc)
+        @{ Name = 'Set-ArgcCompletions'; Action = { Set-ArgcCompletions }; MinPS = 7 }
         @{ Name = 'Confirm-EnvVarOfInfo'; Action = { Confirm-EnvVarOfInfo }; MinPS = 7 }
         @{ Name = 'Set-PsExtension'; Action = { Set-PsExtension }; MinPS = 7 }
         # 设置prompt样式(这里面会导入基础的powershell预定变量和别名)
@@ -474,7 +476,10 @@ function Set-PSReadLinesCommon
     # Set-PSReadLineOption -Colors @{"inlineprediction"="#51ed9c"}#green
 
     #modify the color of selection:
-    Set-PSReadLineOption -Colors @{'selection' = '#0080ff' } 
+    # 菜单补全选中行用反显(ESC[7m):浅色/深色主题各自反转前景/背景,对比度由主题保证;
+    # 固定前景色会被候选自带的 ANSI 覆盖(argc-completions 的描述就是),不要改回单色。
+    try { Set-PSReadLineOption -Colors @{'selection' = ([char]27 + '[7m') } }
+    catch { Write-Verbose "跳过 selection 反显配色: $($_.Exception.Message)" }
   
     # PSColor to color the folders(in the ls command excute result.)
     # Import-Module Get-ChildItemColor
@@ -572,6 +577,167 @@ function Set-PSReadLinesAdvanced
     <# suggestion list #>
     # Set-PSReadLineOption -PredictionViewStyle ListView
     # Set-PSReadLineOption -EditMode Windows
+}
+
+function Get-ArgcCompletionsRoot
+{
+    # 仓库定位顺序:环境变量 > 用户目录 > 本机固定仓库
+    $root = $env:ARGC_COMPLETIONS_ROOT
+    if (-not $root)
+    {
+        foreach ($cand in @((Join-Path $HOME 'argc-completions'), 'C:\repos\argc-completions'))
+        {
+            if (Test-Path -LiteralPath (Join-Path $cand 'bin\argc.exe')) { $root = $cand; break }
+        }
+    }
+    if ($root -and (Test-Path -LiteralPath (Join-Path $root 'bin\argc.exe'))) { return $root }
+    return $null
+}
+
+function Set-ArgcCompletionsEnvironment
+{
+    param([string]$Root)
+    $env:ARGC_COMPLETIONS_ROOT = $Root
+    $env:ARGC_COMPLETIONS_PATH = ($Root + '\completions\windows;' + $Root + '\completions')
+    $bin = $Root + '\bin'
+    if (($env:PATH -split [IO.Path]::PathSeparator) -notcontains $bin)
+    {
+        $env:PATH = $bin + [IO.Path]::PathSeparator + $env:PATH
+    }
+}
+
+function Set-ArgcCompletions
+{
+    <#
+    .SYNOPSIS
+    启用 argc-completions(懒加载:首个 Tab 才注册,启动零开销)。
+    .DESCRIPTION
+    只做轻量准备(定位仓库、设 ARGC_COMPLETIONS_ROOT/PATH、PATH 前置)并装 Tab 桩;
+    真正注册 845+ 个命令的补全推迟到第一次按 Tab。仓库定位顺序:
+    ARGC_COMPLETIONS_ROOT > ~/argc-completions > C:\repos\argc-completions。
+    关闭:$env:PsArgc='False'/'0'/'No'/'Off'(逐次判定,无需重载);关闭后
+    Register 的 completer 直接返回空,不影响 PowerShell 原生补全。
+    .EXAMPLE
+    Set-ArgcCompletions
+    .EXAMPLE
+    Initialize-ArgcCompletions -Force   # 更新补全仓库后重新注册
+    #>
+    [CmdletBinding()]
+    param()
+
+    $root = Get-ArgcCompletionsRoot
+    if (-not $root)
+    {
+        Write-Verbose 'argc-completions 未找到(需 bin\argc.exe),跳过'
+        return
+    }
+    Set-ArgcCompletionsEnvironment -Root $root
+
+    if ($env:PsArgc -match '^(False|0|No|Off)$') { return }
+
+    # 每次 init 都重装(Set-PSReadLinesCommon 会把 Tab 重置成 MenuComplete;
+    # init -Force 重跑时不能因为全局标记而跳过)
+    try
+    {
+        Set-PSReadLineKeyHandler -Key Tab -ScriptBlock {
+            if (($env:PsArgc -notmatch '^(False|0|No|Off)$') -and
+                (-not $global:PsArgcLoaded) -and (-not $global:PsArgcUnavailable))
+            {
+                Initialize-ArgcCompletions
+            }
+            [Microsoft.PowerShell.PSConsoleReadLine]::MenuComplete()
+        }
+        $global:PsArgcTabStub = $true
+        Write-Verbose 'argc-completions: 已装 Tab 懒加载桩'
+    }
+    catch
+    {
+        Write-Verbose "argc-completions: 安装 Tab 桩失败,跳过: $($_.Exception.Message)"
+    }
+}
+
+function Initialize-ArgcCompletions
+{
+    <#
+    .SYNOPSIS
+    注册 argc-completions 的原生参数补全(幂等;首次 Tab 由桩自动调用)。
+    .DESCRIPTION
+    描述文本去掉 argc 自带的 ANSI,改由 PSReadLine 的 Selection(反显)统一着色,
+    这样菜单选中行在浅色/深色主题下都有完整、可读的高亮。协议取自
+    argc --argc-completions 生成的 completer(argc 1.24),仅移除颜色与加上 PsArgc 开关。
+    #>
+    [CmdletBinding()]
+    param([switch]$Force)
+
+    if ($global:PsArgcLoaded -and -not $Force) { return }
+
+    $root = Get-ArgcCompletionsRoot
+    if (-not $root)
+    {
+        $global:PsArgcUnavailable = $true
+        return
+    }
+    Set-ArgcCompletionsEnvironment -Root $root
+    $argcExe = Join-Path $root 'bin\argc.exe'
+
+    $dirs = @((Join-Path $root 'completions'))
+    $winDir = Join-Path $root 'completions\windows'
+    if (Test-Path -LiteralPath $winDir) { $dirs += $winDir }
+    $scripts = @(Get-ChildItem -File -Path $dirs -ErrorAction SilentlyContinue | ForEach-Object { $_.BaseName })
+    # argc 自身也注册(与上游生成器一致;无专用脚本时由引擎回退路径补全)
+    $scripts = @('argc') + @($scripts)
+    $scripts = @($scripts | Select-Object -Unique)
+    if (-not $scripts.Count)
+    {
+        $global:PsArgcUnavailable = $true
+        return
+    }
+
+    $completer = {
+        param($wordToComplete, $commandAst, $cursorPosition)
+        if ($env:PsArgc -match '^(False|0|No|Off)$') { return }
+        $words = @($commandAst.CommandElements | Where-Object { $_.Extent.StartOffset -lt $cursorPosition } | ForEach-Object {
+            $word = $_.ToString()
+            if ($word.Length -gt 2)
+            {
+                if (($word.StartsWith('"') -and $word.EndsWith('"')) -or ($word.StartsWith("'") -and $word.EndsWith("'")))
+                {
+                    $word = $word.Substring(1, $word.Length - 2)
+                }
+            }
+            return $word
+        })
+        $emptyS = ''
+        if ($PSVersionTable.PSVersion.Major -eq 5) { $emptyS = '""' }
+        $lastElemIndex = -1
+        if ($words.Count -lt $commandAst.CommandElements.Count) { $lastElemIndex = $words.Count - 1 }
+        if ($commandAst.CommandElements[$lastElemIndex].Extent.EndOffset -lt $cursorPosition) { $words += $emptyS }
+        $lines = & $argcExe --argc-compgen powershell $emptyS @words 2>$null
+        foreach ($line in ($lines -split "`n"))
+        {
+            $line = $line.TrimEnd("`r")
+            if (-not $line) { continue }
+            $parts = $line -split "`t"
+            if ($parts.Count -lt 3) { continue }
+            $value = if ($parts[1] -eq '1') { $parts[0] + ' ' } else { $parts[0] }
+            # 不带 ANSI:选中行由 PSReadLine 的 Selection 统一反显
+            $text = if ($parts.Count -ge 4 -and $parts[3]) { $parts[2] + ' (' + $parts[3] + ')' } else { $parts[2] }
+            [System.Management.Automation.CompletionResult]::new($value, $text, [System.Management.Automation.CompletionResultType]::ParameterValue, ' ')
+        }
+    }.GetNewClosure()
+
+    try
+    {
+        $scripts | ForEach-Object { Register-ArgumentCompleter -Native -ScriptBlock $completer -CommandName $_ }
+        $global:PsArgcLoaded = $true
+        $global:PsArgcUnavailable = $false
+        Write-Verbose "argc-completions: 已注册 $($scripts.Count) 个命令"
+    }
+    catch
+    {
+        $global:PsArgcUnavailable = $true
+        Write-Verbose "argc-completions: 注册失败: $($_.Exception.Message)"
+    }
 }
 
 # --- 从 Pwsh.psm1 迁入:环境等级跟踪与导入(职责:初始化) ---
@@ -798,7 +964,7 @@ function Import-CxxuConfig
         Write-Warning "用户配置读失败($Path):$($_.Exception.Message);已忽略,用默认。"
         return
     }
-    foreach ($key in @('PsFzf', 'PsZoxide', 'PsPredictor', 'PsTab', 'PsShowProgress', 'PsGithubMirror'))
+    foreach ($key in @('PsFzf', 'PsZoxide', 'PsPredictor', 'PsTab', 'PsArgc', 'PsShowProgress', 'PsGithubMirror'))
     {
         if (-not [string]::IsNullOrEmpty((Get-Item "env:$key" -ErrorAction Ignore).Value)) { continue }
         if (-not $data.Contains($key)) { continue }
@@ -847,6 +1013,7 @@ function New-CxxuConfigTemplate
     PsZoxide       = $true  # zoxide z 跳转
     PsPredictor    = $true  # CxxuPredictor 命令名预测(守护进程由启动链强制 False,不受此影响)
     PsTab          = $false # CxxuTab 命令名 Tab 模糊补全(独立插件;默认关,改 $true 开,见 Enable/Disable-PsPlugin)
+    PsArgc         = $true  # argc-completions 参数补全(懒加载:首个 Tab 才注册;置 $false 关)
     PsShowProgress = $true  # init 启动进度条
     PsGithubMirror = ''     # 为空走默认/静默测速;填镜像前缀如 'https://gh-proxy.com'
 }
@@ -897,7 +1064,8 @@ function Disable-PsPlugin
     停用体验插件(当会话生效;加 -Persist 长期禁用,重开也关)。
     .DESCRIPTION
     插件注册表：Fzf(PSFzf 快捷键)/Zoxide(z 跳转)/Predictor(命令名 ListView 预测)/
-    Tab(CxxuTab 命令名 Tab 模糊，默认关,需要时 Enable-PsPlugin Tab)。停用只关本命令的合并/加载，引擎原生行为不受影响；
+    Tab(CxxuTab 命令名 Tab 模糊，默认关,需要时 Enable-PsPlugin Tab)/
+    Argc(argc-completions 参数补全,默认开,懒加载)。停用只关本命令的合并/加载，引擎原生行为不受影响；
     持开关逐调用判定，无需重载。-Persist 写 ~/.cxxu/config.psd1（行级替换，保注释）。
     .EXAMPLE
     Disable-PsPlugin Tab
@@ -908,14 +1076,14 @@ function Disable-PsPlugin
     param(
         # 插件名(Tab 补全可用)
         [Parameter(Mandatory)]
-        [ValidateSet('Fzf', 'Zoxide', 'Predictor', 'Tab')]
+        [ValidateSet('Fzf', 'Zoxide', 'Predictor', 'Tab', 'Argc')]
         [string]$Name,
         # 写入用户配置文件,长期有效(否则只关当会话)
         [switch]$Persist,
         # 配置文件路径(默认 ~/.cxxu/config.psd1)
         [string]$Path = (Join-Path (Join-Path $HOME '.cxxu') 'config.psd1')
     )
-    $key = @{ Fzf = 'PsFzf'; Zoxide = 'PsZoxide'; Predictor = 'PsPredictor'; Tab = 'PsTab' }[$Name]
+    $key = @{ Fzf = 'PsFzf'; Zoxide = 'PsZoxide'; Predictor = 'PsPredictor'; Tab = 'PsTab'; Argc = 'PsArgc' }[$Name]
     if ($PSCmdlet.ShouldProcess($Name, '停用插件'))
     {
         Set-Item "env:$key" -Value 'False'
@@ -930,8 +1098,8 @@ function Enable-PsPlugin
     启用体验插件(当会话生效;加 -Persist 长期启用,重开也开)。
     .DESCRIPTION
     启用是显式开(环境变量 True,盖过配置文件)。Tab/Predictor 即时生效(逐调用判定,
-    无需重载);Fzf/Tab 立装桩即时生效(重调安装器,幂等,只补缺);Predictor/Zoxide 单发已过
-    则重开终端(或 Register-PsUxLazyLoad -Now 立装)。
+    无需重载);Fzf/Tab 立装桩即时生效(重调安装器,幂等,只补缺);Argc 立装 Tab 桩,
+    真正的注册仍在首个 Tab;Predictor/Zoxide 单发已过则重开终端(或 Register-PsUxLazyLoad -Now 立装)。
     .EXAMPLE
     Enable-PsPlugin Tab
     .EXAMPLE
@@ -941,18 +1109,23 @@ function Enable-PsPlugin
     param(
         # 插件名(Tab 补全可用)
         [Parameter(Mandatory)]
-        [ValidateSet('Fzf', 'Zoxide', 'Predictor', 'Tab')]
+        [ValidateSet('Fzf', 'Zoxide', 'Predictor', 'Tab', 'Argc')]
         [string]$Name,
         # 写入用户配置文件,长期有效(否则只开当会话)
         [switch]$Persist,
         # 配置文件路径(默认 ~/.cxxu/config.psd1)
         [string]$Path = (Join-Path (Join-Path $HOME '.cxxu') 'config.psd1')
     )
-    $key = @{ Fzf = 'PsFzf'; Zoxide = 'PsZoxide'; Predictor = 'PsPredictor'; Tab = 'PsTab' }[$Name]
+    $key = @{ Fzf = 'PsFzf'; Zoxide = 'PsZoxide'; Predictor = 'PsPredictor'; Tab = 'PsTab'; Argc = 'PsArgc' }[$Name]
     if ($PSCmdlet.ShouldProcess($Name, '启用插件'))
     {
         Set-Item "env:$key" -Value 'True'
         Write-Host "$Name 已启用(当会话)。"
+        if ($Name -eq 'Argc')
+        {
+            # 只补环境/PATH 与 Tab 桩(幂等);实际注册仍在首个 Tab
+            Set-ArgcCompletions -ErrorAction SilentlyContinue
+        }
         if ((($Name -eq 'Fzf') -or ($Name -eq 'Tab')) -and ($PSVersionTable.PSVersion.Major -ge 7))
         {
             # 立装桩即时生效(幂等,只补缺;交互门由安装器自己判定,重定向下静默跳过)

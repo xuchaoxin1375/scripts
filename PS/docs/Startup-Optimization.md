@@ -9,7 +9,7 @@
 |---|---|---|
 | `pwsh -NoProfile -c exit` | ~208ms | 裸启动，优化天花板 |
 | conda hook（`profile.ps1`） | ~450~700ms | 每个 shell 都 fork 一次 conda.exe，**是第一大户，比 init 还贵**；已用缓存方案解决（见 §8） |
-| `init`（8 步） | +460~770ms | 沙盒多次测量区间 |
+| `init`（9 步） | +460~770ms | 沙盒多次测量区间 |
 | 真实全 profile（conda + init） | ~800~1300ms | 沙盒 1279ms，真机约 800~950ms |
 | `prompt` 每次回车 | ~100ms | 主要是 `Get-MemoryUseSummary` 的 CIM 查询（~100ms/次，由 5s 节流摊薄） |
 | `Get-Module -ListAvailable Terminal-Icons` | ~78ms | 每次全盘扫描 PSModulePath，不可放热路径 |
@@ -369,8 +369,8 @@ Set-PSReadLineOption: 句柄无效。
 
 - 开：`PSFzf`（仅 Ctrl+T 文件 / Ctrl+R 历史，Tab 不动）+ `zoxide`（init 输出缓存，
   仿 conda 套路）+ 已有的 `CompletionPredictor`。不开：`oh-my-posh`（每回车进程税）、
-  `carapace`/`PSCompletions` 二选一待定、`posh-git`/`fnm`/`argc` 按需。
-- 实现：`TerminalTools.Register-PsUxLazyLoad`，`init` 第 8 步只注册
+  `carapace`/`PSCompletions` 二选一待定、`posh-git`/`fnm` 按需。
+- 实现：`TerminalTools.Register-PsUxLazyLoad`，`init` 第 9 步只注册
   `PowerShell.OnIdle` 事件即返回（沙盒实测 18ms，含模块首解析）；idle 触发后
   后台装模块，触发即摘掉自己。开关 `$env:PsFzf`/`$env:PsZoxide`（默认开，
   `False`/`0`/`No`/`Off` 关）；重定向下不注册（无交互）；`-Now` 立即执行
