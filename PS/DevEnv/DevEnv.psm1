@@ -672,14 +672,23 @@ function Invoke-CxxuDownload
     $candidates += ($mirror.TrimEnd('/') + '/' + $Url)
     $candidates += $Url
     $last = $null
-    foreach ($u in $candidates)
+    for ($i = 0; $i -lt $candidates.Count; $i++)
     {
         try
         {
-            Invoke-WebRequest -Uri $u -OutFile $OutFile -UseBasicParsing -TimeoutSec 120
+            Write-Verbose ("下载源 {0}/{1}:{2}" -f ($i + 1), $candidates.Count, $candidates[$i])
+            Invoke-WebRequest -Uri $candidates[$i] -OutFile $OutFile -UseBasicParsing -TimeoutSec 120
             return
         }
-        catch { $last = $_ }
+        catch
+        {
+            $last = $_
+            # 仅剩最后一个候选时不再提示回退,直接抛错
+            if ($i -lt ($candidates.Count - 1))
+            {
+                Write-Host ("  镜像不可用，回退直连：{0}" -f $_.Exception.Message)
+            }
+        }
     }
     throw "下载失败: $Url ($($last.Exception.Message))"
 }
@@ -703,11 +712,12 @@ function Deploy-ArgcCompletions
 {
     <#
     .SYNOPSIS
-    部署 argc-completions:补全仓库 + argc.exe/yq.exe + 当前会话注册。
+    部署 argc-completions：补全仓库 + argc.exe/yq.exe + 当前会话注册。
     .DESCRIPTION
-    默认装到 ~/argc-completions(已存在则复用;可用 -Root 指定),仓库取 GitHub main 压缩包,
-    二进制取最新 release。网络失败只警告,不影响其他补全。-SkipBinaries 只准备仓库,
-    -Force 重新下载仓库与二进制。仓库就位后调用 Set-ArgcCompletions 装 Tab 桩。
+    默认装到 ~/argc-completions（已存在则复用；可用 -Root 指定），仓库取 GitHub main 压缩包，
+    二进制取最新 release。执行时按“仓库 → 二进制 → 当前会话注册”三步输出进度与结果，
+    下载优先镜像，失败自动回退直连；任一步失败只警告，不影响其他补全，并在结尾汇总失败项。
+    -SkipBinaries 只准备仓库，-Force 重新下载仓库与二进制。仓库就位后调用 Set-ArgcCompletions 装 Tab 桩。
     .EXAMPLE
     Deploy-ArgcCompletions -WhatIf
     .EXAMPLE
@@ -744,16 +754,32 @@ function Deploy-ArgcCompletions
         $SkipBinaries = $true
     }
 
+    $deployStart = Get-Date
+    $failed = New-Object System.Collections.ArrayList
+    $canceled = $false
+    $bashMissing = $false
+    Write-Host ("argc-completions 部署开始：根目录 {0}" -f $Root)
+
     # 1) 仓库:优先压缩包,避免新机必须先装 git
+    Write-Host '步骤 1/3：补全仓库'
+    if (Test-Path -LiteralPath $completions)
+    {
+        if ($Force) { Write-Host '  已就位，按 -Force 重新下载覆盖（保留 bin）' }
+        else { Write-Host '  已就位，复用现有仓库；需要重新下载时加 -Force' }
+    }
+    else { Write-Host '  未找到，下载 GitHub main 压缩包；优先镜像，失败回退直连' }
+
     if ((-not (Test-Path -LiteralPath $completions)) -or $Force)
     {
         if ($PSCmdlet.ShouldProcess($Root, '下载并解压 argc-completions'))
         {
+            $repoStart = Get-Date
             $tmp = Join-Path ([IO.Path]::GetTempPath()) ('cxxu-argc-' + [guid]::NewGuid().ToString('N'))
             $zip = $tmp + '.zip'
             try
             {
                 Invoke-CxxuDownload -Url 'https://github.com/sigoden/argc-completions/archive/refs/heads/main.zip' -OutFile $zip
+                $zipMb = [Math]::Round((Get-Item -LiteralPath $zip).Length / 1MB, 1)
                 Expand-Archive -LiteralPath $zip -DestinationPath $tmp -Force
                 $src = @(Get-ChildItem -LiteralPath $tmp -Directory | Select-Object -First 1)
                 if (-not $src.Count) { throw '压缩包结构异常' }
@@ -762,91 +788,207 @@ function Deploy-ArgcCompletions
                 Get-ChildItem -LiteralPath $src[0].FullName -Force | Where-Object { $_.Name -ne 'bin' } | ForEach-Object {
                     Copy-Item -LiteralPath $_.FullName -Destination $Root -Recurse -Force
                 }
+                Write-Host ("  完成：{0} MB，耗时 {1:N1} 秒" -f $zipMb, ((Get-Date) - $repoStart).TotalSeconds)
             }
-            catch { Write-Warning "argc-completions 仓库下载失败: $($_.Exception.Message)" }
+            catch
+            {
+                Write-Warning ("argc-completions 仓库下载失败：{0}；重新运行会重试，镜像异常时可设置 `$env:PsGithubMirror 后重试" -f $_.Exception.Message)
+                [void]$failed.Add('仓库')
+            }
             finally
             {
                 Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
                 Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
             }
         }
+        elseif ($WhatIfPreference) { Write-Host '  空跑（-WhatIf）：未执行下载' }
+        else { $canceled = $true; Write-Host '  已取消该步骤' }
     }
 
     # 2) 二进制:argc.exe 来自 zip,yq.exe 是单文件
-    if (-not $SkipBinaries)
+    Write-Host '步骤 2/3：argc.exe 与 yq.exe'
+    if ($SkipBinaries)
+    {
+        Write-Host '  已按 -SkipBinaries 跳过；Tab 参数补全仍需要 bin\argc.exe'
+    }
+    elseif (-not (Test-Path -LiteralPath $completions))
+    {
+        Write-Host '  仓库未就位，跳过二进制；请先完成步骤 1'
+    }
+    else
     {
         $isArm = ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64')
         $arch = 'x86_64'
         $yqArch = 'amd64'
         if ($isArm) { $arch = 'aarch64'; $yqArch = 'arm64' }
-        if (Test-Path -LiteralPath $completions)
+        if (-not (Test-Path -LiteralPath $bin)) { New-Item -ItemType Directory -Path $bin -Force | Out-Null }
+
+        $argcExe = Join-Path $bin 'argc.exe'
+        if ((Test-Path -LiteralPath $argcExe) -and -not $Force)
         {
-            if (-not (Test-Path -LiteralPath $bin)) { New-Item -ItemType Directory -Path $bin -Force | Out-Null }
-            if ((-not (Test-Path -LiteralPath (Join-Path $bin 'argc.exe'))) -or $Force)
+            $ver = & $argcExe --argc-version 2>$null | Select-Object -First 1
+            Write-Host ("  argc.exe 已存在（{0}），跳过；更新加 -Force" -f $ver)
+        }
+        elseif ($PSCmdlet.ShouldProcess('argc.exe', '下载最新 argc release'))
+        {
+            $binStart = Get-Date
+            $zip = Join-Path ([IO.Path]::GetTempPath()) ('cxxu-argc-exe-' + [guid]::NewGuid().ToString('N') + '.zip')
+            $tmp = Join-Path ([IO.Path]::GetTempPath()) ('cxxu-argc-exe-' + [guid]::NewGuid().ToString('N'))
+            try
             {
-                if ($PSCmdlet.ShouldProcess('argc.exe', '下载最新 argc release'))
-                {
-                    try
-                    {
-                        $rel = Get-CxxuLatestRelease -Repo 'sigoden/argc'
-                        $asset = @($rel.assets | Where-Object { $_.name -match ('-' + $arch + '-pc-windows-msvc\.zip$') } | Select-Object -First 1)
-                        if (-not $asset.Count) { throw "未找到 $arch Windows 产物" }
-                        $zip = Join-Path ([IO.Path]::GetTempPath()) ('cxxu-argc-exe-' + [guid]::NewGuid().ToString('N') + '.zip')
-                        $tmp = Join-Path ([IO.Path]::GetTempPath()) ('cxxu-argc-exe-' + [guid]::NewGuid().ToString('N'))
-                        Invoke-CxxuDownload -Url $asset[0].browser_download_url -OutFile $zip
-                        Expand-Archive -LiteralPath $zip -DestinationPath $tmp -Force
-                        $exe = @(Get-ChildItem -LiteralPath $tmp -Recurse -Filter 'argc.exe' -File | Select-Object -First 1)
-                        if (-not $exe.Count) { throw '压缩包内没有 argc.exe' }
-                        Copy-Item -LiteralPath $exe[0].FullName -Destination (Join-Path $bin 'argc.exe') -Force
-                        Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
-                        Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
-                    }
-                    catch { Write-Warning "argc.exe 安装失败: $($_.Exception.Message)" }
-                }
+                Write-Host '  查询 argc 最新 release ...'
+                $rel = Get-CxxuLatestRelease -Repo 'sigoden/argc'
+                $asset = @($rel.assets | Where-Object { $_.name -match ('-' + $arch + '-pc-windows-msvc\.zip$') } | Select-Object -First 1)
+                if (-not $asset.Count) { throw "未找到 $arch Windows 产物" }
+                $tag = $rel.tag_name
+                if (-not $tag) { $tag = 'latest' }
+                Write-Host ("  下载 argc {0}（{1}）..." -f $tag, $arch)
+                Invoke-CxxuDownload -Url $asset[0].browser_download_url -OutFile $zip
+                Expand-Archive -LiteralPath $zip -DestinationPath $tmp -Force
+                $exe = @(Get-ChildItem -LiteralPath $tmp -Recurse -Filter 'argc.exe' -File | Select-Object -First 1)
+                if (-not $exe.Count) { throw '压缩包内没有 argc.exe' }
+                Copy-Item -LiteralPath $exe[0].FullName -Destination $argcExe -Force
+                $ver = & $argcExe --argc-version 2>$null | Select-Object -First 1
+                Write-Host ("  完成：{0}，耗时 {1:N1} 秒" -f $ver, ((Get-Date) - $binStart).TotalSeconds)
             }
-            if ((-not (Test-Path -LiteralPath (Join-Path $bin 'yq.exe'))) -or $Force)
+            catch
             {
-                if ($PSCmdlet.ShouldProcess('yq.exe', '下载最新 yq release'))
-                {
-                    try
-                    {
-                        $rel = Get-CxxuLatestRelease -Repo 'mikefarah/yq'
-                        $asset = @($rel.assets | Where-Object { $_.name -eq ('yq_windows_' + $yqArch + '.exe') } | Select-Object -First 1)
-                        if (-not $asset.Count) { throw "未找到 yq_windows_$yqArch.exe" }
-                        Invoke-CxxuDownload -Url $asset[0].browser_download_url -OutFile (Join-Path $bin 'yq.exe')
-                    }
-                    catch { Write-Warning "yq.exe 安装失败: $($_.Exception.Message)" }
-                }
+                Write-Warning ("argc.exe 安装失败：{0}；重新运行 Deploy-ArgcCompletions 会补齐" -f $_.Exception.Message)
+                [void]$failed.Add('argc.exe')
+            }
+            finally
+            {
+                Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+                Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
             }
         }
+        elseif ($WhatIfPreference) { Write-Host '  空跑（-WhatIf）：未下载 argc.exe' }
+        else { $canceled = $true; Write-Host '  已取消 argc.exe 下载' }
+
+        $yqExe = Join-Path $bin 'yq.exe'
+        if ((Test-Path -LiteralPath $yqExe) -and -not $Force)
+        {
+            $ver = & $yqExe --version 2>$null | Select-Object -First 1
+            if ($ver -match 'version\s+(\S+)') { $ver = $Matches[1] }
+            Write-Host ("  yq.exe 已存在（{0}），跳过；更新加 -Force" -f $ver)
+        }
+        elseif ($PSCmdlet.ShouldProcess('yq.exe', '下载最新 yq release'))
+        {
+            $binStart = Get-Date
+            # 先下到同目录临时文件,成功后再替换;避免失败时留下半截 yq.exe 被下次误判为已安装
+            $yqTmp = $yqExe + '.download'
+            try
+            {
+                Write-Host '  查询 yq 最新 release ...'
+                $rel = Get-CxxuLatestRelease -Repo 'mikefarah/yq'
+                $asset = @($rel.assets | Where-Object { $_.name -eq ('yq_windows_' + $yqArch + '.exe') } | Select-Object -First 1)
+                if (-not $asset.Count) { throw "未找到 yq_windows_$yqArch.exe" }
+                $tag = $rel.tag_name
+                if (-not $tag) { $tag = 'latest' }
+                Write-Host ("  下载 yq {0}（{1}）..." -f $tag, $yqArch)
+                Invoke-CxxuDownload -Url $asset[0].browser_download_url -OutFile $yqTmp
+                Move-Item -LiteralPath $yqTmp -Destination $yqExe -Force
+                $ver = & $yqExe --version 2>$null | Select-Object -First 1
+                if ($ver -match 'version\s+(\S+)') { $ver = $Matches[1] }
+                Write-Host ("  完成：yq {0}，耗时 {1:N1} 秒" -f $ver, ((Get-Date) - $binStart).TotalSeconds)
+            }
+            catch
+            {
+                Write-Warning ("yq.exe 安装失败：{0}；重新运行 Deploy-ArgcCompletions 会补齐" -f $_.Exception.Message)
+                [void]$failed.Add('yq.exe')
+            }
+            finally { Remove-Item -LiteralPath $yqTmp -Force -ErrorAction SilentlyContinue }
+        }
+        elseif ($WhatIfPreference) { Write-Host '  空跑（-WhatIf）：未下载 yq.exe' }
+        else { $canceled = $true; Write-Host '  已取消 yq.exe 下载' }
     }
 
     # 3) 当前会话:装 Tab 桩并注册;bash 路径无效会显著影响 argc 补全,提前告警
+    Write-Host '步骤 3/3：当前会话注册'
     if (Test-Path -LiteralPath $completions)
     {
         if ($PSCmdlet.ShouldProcess($Root, '设置 argc 环境并注册当前会话'))
         {
             # 指定/新建的根优先于环境里已有的旧路径,否则 Set-ArgcCompletions 会探测到别处
             $env:ARGC_COMPLETIONS_ROOT = $Root
-            if (Get-Command Set-ArgcCompletions -ErrorAction SilentlyContinue) { Set-ArgcCompletions }
-            if (Get-Command Initialize-ArgcCompletions -ErrorAction SilentlyContinue)
+            $hasSet = [bool](Get-Command Set-ArgcCompletions -ErrorAction SilentlyContinue)
+            $hasInit = [bool](Get-Command Initialize-ArgcCompletions -ErrorAction SilentlyContinue)
+            if ($hasSet) { Set-ArgcCompletions }
+            if ($hasInit)
             {
-                try { Initialize-ArgcCompletions -Force } catch { Write-Warning "argc 注册失败: $($_.Exception.Message)" }
+                Write-Host '  注册 Tab 补全（约 150-200ms）...'
+                try { Initialize-ArgcCompletions -Force }
+                catch
+                {
+                    Write-Warning ("argc 注册失败：{0}" -f $_.Exception.Message)
+                    [void]$failed.Add('当前会话注册')
+                }
             }
+            else
+            {
+                Write-Warning '未找到 Initialize-ArgcCompletions（Init 模块未加载）；当前会话未注册，重开终端后按 Tab 生效'
+                [void]$failed.Add('当前会话注册')
+            }
+
             $argcExe = Join-Path $bin 'argc.exe'
             if (Test-Path -LiteralPath $argcExe)
             {
                 $shell = & $argcExe --argc-shell-path 2>$null | Select-Object -First 1
                 if (-not $shell -or -not (Test-Path -LiteralPath $shell))
                 {
+                    $bashMissing = $true
                     Write-Warning "argc 找不到可用的 bash（argc --argc-shell-path 返回 '$shell'）；Tab 参数补全会失败，装 Git for Windows 后重试"
                 }
-                Write-Host ("argc-completions: {0}（{1}）" -f $Root, (& $argcExe --argc-version 2>$null))
+                $ver = & $argcExe --argc-version 2>$null | Select-Object -First 1
+                if ($hasInit -and $global:PsArgcLoaded)
+                {
+                    $count = 0
+                    if ($global:PsArgcScripts) { $count = $global:PsArgcScripts.Count }
+                    Write-Host ("  已注册：{0}，{1} 个命令补全" -f $ver, $count)
+                }
+                elseif ($hasInit)
+                {
+                    Write-Warning '当前会话未注册 argc 补全：补全脚本缺失或 $env:PsArgc 已关闭；补齐后重开终端重试'
+                    [void]$failed.Add('当前会话注册')
+                }
             }
-            else { Write-Warning "argc.exe 未就位：仓库已下载，但 Tab 参数补全需要 $bin\argc.exe" }
+            else
+            {
+                Write-Warning "argc.exe 未就位：仓库已下载，但 Tab 参数补全需要 $bin\argc.exe"
+                [void]$failed.Add('argc.exe')
+            }
         }
+        elseif ($WhatIfPreference) { Write-Host '  空跑（-WhatIf）：未注册当前会话' }
+        else { $canceled = $true; Write-Host '  已取消当前会话注册' }
     }
-    else { Write-Warning "argc-completions 未就位：$Root 下没有 completions" }
+    else
+    {
+        Write-Warning "argc-completions 未就位：$Root 下没有 completions"
+        [void]$failed.Add('仓库')
+    }
+
+    $elapsed = ((Get-Date) - $deployStart).TotalSeconds
+    if ($WhatIfPreference)
+    {
+        Write-Host ("空跑结束：未做任何改动，耗时 {0:N1} 秒；去掉 -WhatIf 执行。" -f $elapsed)
+        return
+    }
+    if ($failed.Count -gt 0)
+    {
+        Write-Warning ("argc-completions 部署未全部完成，失败项：{0}。重新运行 Deploy-ArgcCompletions 会补齐缺失项；网络问题可设置 `$env:PsGithubMirror 后重试。" -f ($failed -join '、'))
+    }
+    elseif ($canceled)
+    {
+        Write-Warning 'argc-completions 部署已取消部分步骤，未做全部改动；需要时重新运行 Deploy-ArgcCompletions。'
+    }
+    else
+    {
+        Write-Host ("argc-completions 部署完成：总耗时 {0:N1} 秒；首次 Tab 时注册补全，新终端也会自动生效。" -f $elapsed)
+    }
+    if ($bashMissing)
+    {
+        Write-Warning 'bash 未就绪：argc 参数补全在 Tab 时会失败；安装 Git for Windows（或 scoop install git）后重试 Deploy-ArgcCompletions。'
+    }
 }
 
 function Deploy-CompletionStack
@@ -920,7 +1062,7 @@ function Deploy-CompletionStack
     }
 
     # argc-completions:默认随补全栈部署(仓库 + 二进制 + 当前会话注册);失败只警告
-    if ($SkipArgc) { Write-Verbose 'argc-completions: 按 -SkipArgc 跳过' }
+    if ($SkipArgc) { Write-Host 'argc-completions：按 -SkipArgc 跳过' }
     else { Deploy-ArgcCompletions -Root $ArgcRoot -WhatIf:$WhatIfPreference }
 
     # 以下均为可选增强,缺失不阻塞
