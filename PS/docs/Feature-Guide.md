@@ -82,7 +82,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 - 想只走一边：删 WT 启动行参数（推荐，行为统一），别删 `$profile`。
 - conda 初始化已换缓存方案（`~/.conda_hook_cache.ps1`，573→59ms）；
   下次跑 `conda init` 会覆盖，届时重新应用（见 `Startup-Optimization.md §8`）。
-- `argc`/`fnm` 钩子保持注释；`argc` 二进制缺失时不要放开。
+- profile 里的 `argc` 钩子保持注释（Init 已接管，部署见 [Argc-Completions-Deploy](Argc-Completions-Deploy.md)）；`fnm` 按需再开。
 
 ## 6. FAQ
 - **`scoop update/install` 报 `cannot pull with rebase: Your index contains uncommitted changes`**：任一仓库（scoop 本体 `apps\scoop\current` 或某个 bucket）处于脏状态，git 拒绝执行 pull --rebase。修复：`Repair-ScoopUpdate`（`Scoop` 模块，逐个检查本体与全部 bucket，默认 stash 保留现场，加 `-Discard` 丢弃改动，收尾自动 `scoop update`，只看不动加 `-NoUpdate -WhatIf`）。
@@ -257,6 +257,11 @@ p -Force                    # 看 init 分步耗时，定位慢项
   只关预测用 `Disable-PsPlugin Predictor`；强制重建表删 `~/.cxxu/cache/argc-flags.tsv` 或重开终端。
 - 实测（pwsh 7.5.4，新 dll）：`nginx -`→10 条（`-?`/`-h`/`-v`/`-V`/`-t`/`-T`…）、`docker --con`→2 条、
   `git -`→10 条顶层 flag、`git checkout -`→0、`Get-ChildItem -F`→0、`nginx -s reload`→0、`PsArgc=False`→0。
+- 部署最短路径（详见 [Argc-Completions-Deploy](Argc-Completions-Deploy.md)）：
+  `git clone https://github.com/sigoden/argc-completions.git C:\repos\argc-completions` →
+  `bin\argc.exe`/`bin\yq.exe` 就位 → `init`（首次 Tab 注册 846 个 completer）→
+  更新仓库后 `Initialize-ArgcCompletions -Force`；5.1 用自带 PSReadLine 2.0 即可。
+- 部署/更新/开关/排障全文：[Argc-Completions-Deploy](Argc-Completions-Deploy.md)。
 
 ## 11. 手动启用清单（自动导入之外的东西）
 

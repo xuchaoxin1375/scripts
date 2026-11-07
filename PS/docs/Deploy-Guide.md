@@ -124,7 +124,7 @@ Add-CxxuPsModuleToProfile  # 往 $profile（CurrentUserCurrentHost）写推荐�
 ```
 
 conda 用户：跑 `conda init powershell` 后**重贴缓存块**（它会覆盖，贴法见 `Feature-Guide.md §5`）；
-`argc`/`fnm` 钩子保持注释（`argc` 二进制、`fnm` 按需再开，见 `Feature-Guide.md §7`）。
+`argc` 钩子在 profile 里保持注释（Init 已接管，见 [Argc-Completions-Deploy](Argc-Completions-Deploy.md)）；`fnm` 按需再开（见 `Feature-Guide.md §7`）。
 
 ## 5. 补全栈与第三方 PS 模块
 
@@ -139,6 +139,8 @@ Confirm-ModuleInstalled -ModuleName CompletionPredictor -Install  # 可选：参
 # 自研 CxxuPredictor 随仓库自带（PS/CxxuPredictor/，零模块安装，随 init 延迟加载）；
 # 要求 pwsh 7.5+（7.6 可直接用；dll 按 net9.0 编译，加载失败再进 PS/CxxuPredictor/src 重编）
 ```
+
+> `argc-completions`（800+ 命令参数补全）不在 `Deploy-CompletionStack` 内：仓库 + `bin\argc.exe`/`bin\yq.exe` 就位后由 `init` 自动接管；首次部署、更新、开关与 5.1 注意事项见 [Argc-Completions-Deploy](Argc-Completions-Deploy.md)。
 
 ## 6. scoop 二进制
 
