@@ -234,7 +234,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | 开关 | `$env:PsTab` | 空（默认开）或 `True`；只有 `False` 才是关闭 |
 | 模块 | `Get-Module CxxuTab` | 首个 Tab 后应有；5.1 与 7 都靠它装包装 |
 | dll 方法 | `$global:__CxxuTabMethod` | 非空；空 = 活件没找到或加载失败 |
-| 命令表缓存 | `Get-ChildItem $HOME\.cxxu\cache\tab-commands-*.tsv` | 存在且 24h 内为命中；过期/缺失会自动重建 |
+| 命令表缓存 | `Get-ChildItem $HOME\.cxxu\cache\tab-commands-*.tsv` | 存在且 24h 内为命中；过期/缺失会自动重建；比仓库模块文件旧时 `init` 会删除（只对新终端生效） |
 | 包装/桩 | `doctor` 的 `Tab 包装` 行 | `CxxuTab 包装已装入` 或 `桩已装,首个 Tab 自动装入` |
 | 熔断 | `$global:__CxxuTabFuse` | 正常为 `$false`/空；`True` 表示本会话已退回原生 Tab |
 | argc 仓库 | `$env:ARGC_COMPLETIONS_ROOT`、`$env:ARGC_COMPLETIONS_ROOT\bin\argc.exe` | 有值且文件存在；空 = 未部署（`Deploy-CompletionStack` 默认装） |
@@ -244,10 +244,12 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | Tab 只有原生候选，没有 `CxxuTab fuzzy:` | `$env:PsTab` 被显式关；`CxxuTab` 未导入；`__CxxuTabMethod` 为空；5.1 缺 `ps51` 活件 | 按上表逐项查；`Enable-PsPlugin Tab`；5.1 执行 `Sync-CxxuPredictor` 后重开终端 |
 | Tab 完全没反应（连原生候选也没有） | Tab 键绑定异常（旧会话/argc 桩残留），或 PSReadLine 未加载 | `doctor` 看 `Tab 键` 行；`Import-Module Init -Force; init -Force` 或重开终端 |
 | 应用命令的 `-` 参数没候选（如 `nginx -<Tab>`） | argc 未部署；`argc --argc-shell-path` 的 bash 不存在；`PsArgc=False` | 跑 `Deploy-CompletionStack`（默认含 argc）或 `Deploy-ArgcCompletions`；`doctor` 看 `argc 补全`/`Tab 键`；细节见 Argc 文档 §7 |
-| 首个 Tab 卡 0.1~0.4s | 命令表缓存未命中（首次/过期/损坏） | 正常一次性，之后约 20ms；想立刻重建删 `tab-commands-*.tsv` 再重开终端 |
-| 候选里缺新装模块的命令 | 缓存 24h 内未刷新 | 原生 Tab 仍能补；删缓存文件后重开终端可立即刷新 |
+| 首个 Tab 卡 0.1~0.4s | 命令表缓存未命中（首次/过期/损坏） | 正常一次性，之后约 20ms；想立刻重建执行 `Reset-PsCommandCache` 后重开终端 |
+| 候选里缺新装模块的命令 | 缓存仍是旧表，或当前窗口在更新前已建表 | 仓库更新后 `init` 会自动删除比模块文件旧的缓存；执行 `Reset-PsCommandCache` 并重开终端可立即刷新。原生 Tab 的前缀匹配不受缓存影响 |
 | 用一会儿后突然只剩原生候选 | 自熔断触发（单次调用 >800ms 或异常） | `$global:__CxxuTabFuse` 为 `True`；重开终端恢复；反复出现查主机/杀软扫描 |
 | 5.1 完全没有模糊增补 | `ps51` 活件/指针缺失，或 `PsTab=False` | `Sync-CxxuPredictor` → `doctor` 的 `CxxuTab 5.1` 行；确认开关 |
+
+命令表在每个进程**只建一次**（predictor 构造时、Tab 首次调用时各建一份内存表）。因此删除缓存或 `init` 自动清理都只影响之后启动的进程：当前窗口继续使用旧表，必须新开终端；新终端首次 Tab 或 predictor 首次触发时才重建。
 
 ## 10. 补全全景速查（三层 + 参数层）
 

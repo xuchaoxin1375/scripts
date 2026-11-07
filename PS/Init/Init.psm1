@@ -3,6 +3,8 @@
 # 本会话由用户配置文件注入的开关(键=值),供 Get-CxxuConfig 标注来源;
 # Import-CxxuConfig 每次执行先清空,避免 init -Force 后残留旧记录。
 $script:CxxuConfigAppliedFromFile = @{}
+# 模块根目录:5.1 的 $PSScriptRoot 在函数内是动态作用域(取调用方脚本),不能用于定位 PS 根
+$script:CxxuModuleRoot = $PSScriptRoot
 
 function init
 { 
@@ -36,6 +38,9 @@ function init
         $global:PsInit = $True
         # 用户配置文件先行(环境变量 > 配置文件 > 默认;缺文件静默跳过,见 Import-CxxuConfig)
         Import-CxxuConfig
+        # 仓库模块文件比命令表缓存新时删缓存:插件每进程只建一次表(见 CxxuPredictor),
+        # 这里只保证“之后启动的进程”不再读到旧表,当前会话未建表时首次 Tab 也会直接重建。
+        Clear-PsCommandCacheIfStale
         if ($reInit)
         {
             # -Force 必须真重载变量 conf:步骤表唯一变量入口(Set-PsPrompt 内的
@@ -1062,12 +1067,49 @@ function Optimize-PsHistory
         else { Write-Host "已备份 $file.bak-$stamp(无行需归档)" }
     }
 }
+function Clear-PsCommandCacheIfStale
+{
+    # 仓库模块文件比命令表缓存新时删除缓存(不导出)。
+    # 补全插件每进程只建一次表(CxxuPredictor 实例字段与 CompleteCommand 静态字段),
+    # 删除只影响之后启动的进程;当前会话已建表时继续用旧表,不做无效刷新。
+    # 模块目录只扫一层(PS/<模块>/*.psm1|*.psd1),与插件建表口径一致,约 5ms。
+    param([string]$CacheDir, [string]$ModuleRoot)
+    try
+    {
+        if (-not $CacheDir) { $CacheDir = Join-Path (Join-Path $HOME '.cxxu') 'cache' }
+        if (-not $ModuleRoot) { $ModuleRoot = Split-Path $script:CxxuModuleRoot -Parent }
+        $cache = Join-Path $CacheDir ('tab-commands-' + [Environment]::Version.Major + '.tsv')
+        if (-not (Test-Path -LiteralPath $cache)) { return }
+        if (-not (Test-Path -LiteralPath $ModuleRoot)) { return }
+        $cacheTime = (Get-Item -LiteralPath $cache).LastWriteTimeUtc
+        $newest = [datetime]::MinValue
+        foreach ($dir in [IO.Directory]::EnumerateDirectories($ModuleRoot))
+        {
+            foreach ($file in [IO.Directory]::EnumerateFiles($dir))
+            {
+                $name = [IO.Path]::GetFileName($file)
+                if (-not ($name.EndsWith('.psm1') -or $name.EndsWith('.psd1'))) { continue }
+                $t = [IO.File]::GetLastWriteTimeUtc($file)
+                if ($t -gt $newest) { $newest = $t }
+            }
+        }
+        if ($newest -gt $cacheTime)
+        {
+            Remove-Item -LiteralPath $cache -Force -ErrorAction Stop
+            Write-Verbose "命令表缓存早于仓库模块文件,已删除($cache);新终端首次 Tab 会重建。"
+        }
+    }
+    catch
+    {
+        Write-Verbose "命令表缓存检查跳过: $($_.Exception.Message)"
+    }
+}
 function Read-CxxuConfigDefaultList
 {
     # 读仓库默认偏好真源(不导出):PS/Init/config.defaults.psd1。
     # 读取失败时警告一次并返回空数组,调用方按“无默认值”降级,不挡 init。
     param(
-        [string]$Path = (Join-Path $PSScriptRoot 'config.defaults.psd1')
+        [string]$Path = (Join-Path $script:CxxuModuleRoot 'config.defaults.psd1')
     )
     try
     {
@@ -1243,7 +1285,7 @@ function New-CxxuConfigTemplate
     $defaults = Read-CxxuConfigDefaultList
     if (-not $defaults.Count)
     {
-        Write-Warning "默认偏好文件缺失或为空,未生成模板:$(Join-Path $PSScriptRoot 'config.defaults.psd1')"
+        Write-Warning "默认偏好文件缺失或为空,未生成模板:$(Join-Path $script:CxxuModuleRoot 'config.defaults.psd1')"
         return
     }
     if ($PSCmdlet.ShouldProcess($Path, '写用户配置模板'))

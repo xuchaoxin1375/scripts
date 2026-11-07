@@ -18,6 +18,7 @@
         'mvExcludeFolder',
         'Register-PsUxLazyLoad',
         'Install-PsUxGestureStubs',
+        'Reset-PsCommandCache',
         'Sync-CxxuPredictor'
     )
     CmdletsToExport = @()
