@@ -969,6 +969,27 @@ function Update-PwshEnvIfNotYet
 
     Write-Verbose 'Environment  have been Imported in the current powershell!'
 }
+function Read-CxxuUtf8Text
+{
+    # 5.1/7 通用:按 UTF-8 读文本。5.1 的 Get-Content 对无 BOM 文件按 ANSI 解码,
+    # 会把配置里的中文注释读成乱码,写回即永久损坏;有 BOM 时 StreamReader 自动识别并去掉。
+    param([Parameter(Mandatory)][string]$Path)
+    return [IO.File]::ReadAllText($Path, [Text.UTF8Encoding]::new($false))
+}
+function Write-CxxuUtf8Text
+{
+    # 5.1/7 通用:按无 BOM UTF-8 写文本。5.1 的 Set-Content 不认 -Encoding utf8NoBOM
+    # (枚举只有 UTF8,且会加 BOM),故统一走 .NET。
+    # -NoNewline 对齐 Set-Content:默认在末尾补一个换行,指定时逐字节写 $Text
+    # (空文本不补换行,对应空数组管道 Set-Content 的 0 字节结果)。
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Text,
+        [switch]$NoNewline
+    )
+    if (-not $NoNewline -and $Text.Length -gt 0) { $Text += "`n" }
+    [IO.File]::WriteAllText($Path, $Text, [Text.UTF8Encoding]::new($false))
+}
 function Optimize-PsHistory
 {
     <#
@@ -996,7 +1017,10 @@ function Optimize-PsHistory
         Write-Warning '取不到 PSReadLine 历史文件路径,先确认 PSReadLine 已加载。'
         return
     }
-    $lines = @(Get-Content -LiteralPath $file)
+    $raw = Read-CxxuUtf8Text -Path $file
+    $lines = @($raw -split '\r?\n')
+    # 与 Get-Content 对齐:文件末尾的换行不算一行
+    if ($lines.Count -gt 1 -and $lines[-1] -eq '') { $lines = @($lines[0..($lines.Count - 2)]) }
     $total = $lines.Count
     # 去重保最后:记每行最后下标,按最后下标排序(相对顺序=最近一次出现顺序)
     $lastIdx = @{}
@@ -1020,11 +1044,11 @@ function Optimize-PsHistory
     {
         $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
         Copy-Item -LiteralPath $file -Destination "$file.bak-$stamp" -Force
-        $keep | Set-Content -LiteralPath $file -Encoding utf8NoBOM
+        Write-CxxuUtf8Text -Path $file -Text ($keep -join "`n")
         if ($drop.Count)
         {
             $archive = "$file.archive-$stamp.txt"
-            $drop | Set-Content -LiteralPath $archive -Encoding utf8NoBOM
+            Write-CxxuUtf8Text -Path $archive -Text ($drop -join "`n")
             Write-Host "已备份 $file.bak-$stamp,归档 $archive"
         }
         else { Write-Host "已备份 $file.bak-$stamp(无行需归档)" }
@@ -1093,7 +1117,7 @@ function New-CxxuConfigTemplate
     {
         $dir = Split-Path $Path -Parent
         if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
-        @'
+        Write-CxxuUtf8Text -Path $Path -Text @'
 @{
     # CxxuPsModules 用户配置(本机生效,仓库外;优先级:环境变量 > 本文件 > 默认值)
     # 改完重开终端(或 init -Force)生效;生成:New-CxxuConfigTemplate;读取:每次 init 自动。
@@ -1106,7 +1130,7 @@ function New-CxxuConfigTemplate
     PsShowProgress = $true  # init 启动进度条
     PsGithubMirror = ''     # 为空走默认/静默测速;填镜像前缀如 'https://gh-proxy.com'
 }
-'@ | Set-Content -LiteralPath $Path -Encoding utf8NoBOM
+'@
         Write-Host "模板已写 $Path"
     }
 }
@@ -1118,7 +1142,7 @@ function Set-CxxuConfigValue
     try
     {
         if (-not (Test-Path -LiteralPath $Path)) { New-CxxuConfigTemplate -Path $Path }
-        $text = Get-Content -LiteralPath $Path -Raw -ErrorAction Stop
+        $text = Read-CxxuUtf8Text -Path $Path
         $val = if ($Value) { '$true' } else { '$false' }
         $ls = $text -split '\r?\n'
         $done = $false
@@ -1138,7 +1162,7 @@ function Set-CxxuConfigValue
             if ($at -le 0) { $ls = @("$Key = $val") + @($ls) }
             else { $ls = @($ls[0..($at - 1)]) + @("$Key = $val") + @($ls[$at..($ls.Count - 1)]) }
         }
-        Set-Content -LiteralPath $Path -Value ($ls -join "`n") -Encoding utf8NoBOM -NoNewline
+        Write-CxxuUtf8Text -Path $Path -Text ($ls -join "`n") -NoNewline
         Write-Host "用户配置已持久化: $Key=$val($Path)"
     }
     catch

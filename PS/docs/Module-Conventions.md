@@ -87,6 +87,7 @@
 
 - 统一 UTF-8 **无 BOM**（PS7 默认即此；Analyzer 的 BOM 规则已在 settings 中排除）。
 - 例外：B 档 5.1 兼容集（见 `Feature-Guide.md §13`，62 模块 psm1 + `VarSet3.conf` + `VarLongStrings.ps1`）**必须带 BOM**——5.1 中文 Windows 无 BOM 按 GBK 解码，中文全乱码；psd1 降版行以 `# B档兼容集` 注释标记，BOM 文件不再回退。
+- 运行期文本读写（配置、历史等用户文件）同样要过 5.1：一律 `[IO.File]::ReadAllText/WriteAllText($path, UTF8)`（有 BOM 自动识别，写侧无 BOM）。禁 `Set-Content -Encoding utf8NoBOM`（5.1 的枚举没有该值，绑定即失败），也禁裸 `Get-Content`/`Set-Content`（5.1 按 ANSI 页解码，中文注释读坏后写回即永久损坏）。
 - BOM 不可为了迁就 `irm|iex` 而删除：远端取回的内容要先把 `U+FEFF` 裁掉再执行，落盘要走 `-OutFile`（见「Invoke-Expression 使用规范」）。纯 ASCII 的第三方脚本（如 `get.scoop.sh`）无 BOM 也能一行执行，是因为两处都不需要 BOM；本仓库脚本含中文，5.1 跑文件离不开 BOM。
 - 换行 LF/CRLF 均可，默认忽略差异（不设提交门禁、不做整文件转换）；仅 `.sh` 必须 LF、
   `.cmd`/`.bat` 必须 CRLF，其余文件跟随原状即可。
