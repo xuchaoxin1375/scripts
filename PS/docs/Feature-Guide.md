@@ -155,7 +155,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | `carapace-bin`（千级命令补全） | 未装：逃生通道，真缺了再 `scoop install carapace-bin` 对比 |
 | `posh-git` | 未装（只要 git Tab 补全才装） |
 | `oh-my-posh` | 不开（每回车进程税 + 与现有定制片重叠） |
-| `argc-completions`（800+ 命令参数补全；懒加载，首个 Tab 注册约 150ms；选中行反显高亮） | **已启用**（仓库 `C:\repos\argc-completions`；开关 `$env:PsArgc`；7/5.1 均可用） |
+| `argc-completions`（800+ 命令参数补全；懒加载，首个 Tab 注册约 150ms；选中行反显高亮；首个参数位的静态 flag 自动进 ListView） | **已启用**（仓库 `C:\repos\argc-completions`；开关 `$env:PsArgc`；Tab 7/5.1 均可用，自动 flag 提示仅 7.5+） |
 | `inshellisense` | **否决**（用户拍板，不再考虑） |
 
 验：新开终端直接可用，`Ctrl+R`/`Ctrl+T` 首按装 PSFzf（本次按键即生效）；`z <目录>` 跳转（zoxide 首屏单发已装）。`CxxuTab` 默认关，开启（`Enable-PsPlugin Tab -Persist`）后首个 `Tab` 才装它（约半秒一次）。`argc-completions` 默认开，首个 `Tab` 才注册（约 150ms，之后零开销）。`Get-EventSubscriber` 应无残留（单发先摘后装）。若某主机 OnIdle 不触发（predictor 没装上），跑 `Register-PsUxLazyLoad -Now` 或报回来。自查跑 `Test-StartupPerformance`（分段计时+结论）。
@@ -180,7 +180,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
   注意空格天然分词——光标后 token 进了参数位，预测器的 CommandName 门直接返回空，
   所以多片段 AND 只存在于 API 层，活体里请连写；`get-child` 出 `[CxxuCommand]` 来源行；
   打全名（如 `get-childitem`）时不再提示更长的命令；当会话卸载用 `Remove-Module CxxuPredictor`，
-  彻底移除见 §9）。
+  彻底移除见 §9）。参数位首个 `-` 的静态 flag 由同一 dll 的 `CxxuArgcFlags` 补充，边界见 §10。
    重型外挂不再考虑（`inshellisense` 用户已否决；`hintshell`/`PSCue`/`PSPredictor` v2 观察）。
 - 关预测：`predictNo`（当会话有效）；切回行内视图：`Set-PSReadLineOption -PredictionViewStyle InlineView`
   或按 `F2` 切换。彻底不用看 §9（删活件 + 关 `$env:PsPredictor`）。
@@ -224,7 +224,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | 层 | 按键/视图 | 来源 | 说明 |
 |---|---|---|---|
 | Tab 全量索引 | `Tab`（MenuComplete） | 引擎全量：函数/别名/文件/参数 | 命令名位经 `CxxuTab` 包装增强（模糊连写可选中，参数位零干扰；默认关，需 `Enable-PsPlugin Tab`，开关 `$env:PsTab`）；和下面两层**不是同一套索引**，结果不一样正常 |
-| ListView 预测 | 输入时自动浮现（`HistoryAndPlugin`） | 历史（最多 10 条，硬上限）+ 插件 | 插件= `CompletionPredictor`（参数/路径，命令名位跳过）+ `CxxuPredictor`（命令名，分层排序 + 别名/历史加权，默认 15 条，§8）；须 20ms 内返回，实测 2600 条 <1ms |
+| ListView 预测 | 输入时自动浮现（`HistoryAndPlugin`） | 历史（最多 10 条，硬上限）+ 插件 | 插件= `CompletionPredictor`（参数/路径，命令名位跳过）+ `CxxuPredictor`（命令名，分层排序 + 别名/历史加权，默认 15 条，§8）+ `CxxuArgcFlags`（argc 覆盖命令的首个参数位，`-` 前缀，静态 flag ≤10 条；7.5+）；须 20ms 内返回，实测 2600 条 <1ms、flag 查表 <1ms |
 | 模糊搜历史/文件 | `Ctrl+R` / `Ctrl+T`（PSFzf） | 全量历史/文件 | 历史翻不完用这个，不走 10/50 上限 |
 | 参数值补全 | `Tab` 在参数位 | `argc-completions`（800+ 命令库，默认开、懒加载）+ `PSCompletions`（~200 命令库，可选）+ 自带 `ArgumentCompleter`（EnvVar 系、`Get-Json -Key` 等，`Set-ArgumentCompleter` 批量注册） | PSCompletions 用法：解开 profile 里注释的两行；argc 开关 `$env:PsArgc`，首个 Tab 注册 |
 
@@ -234,6 +234,29 @@ p -Force                    # 看 init 分步耗时，定位慢项
   `Enable-PsPlugin` / `Disable-PsPlugin`（插件启停，Fzf/Zoxide/Predictor/Tab/Argc）。
 - **历史膨胀（Ctrl+R 变慢）**：`Optimize-PsHistory -WhatIf` 先看诊断（总数/去重率/重复 Top5）， `Optimize-PsHistory [-KeepLast 3000]` 动手（去重只留最后一次 + 去杂 + 截断，旧行进同目录 `.archive-时间.txt`，原文件留 `.bak-时间`，均可恢复）。治本：init 已开 `HistoryNoDuplicates`（新命令不再重复入库）+ `MaximumHistoryCount 3000`。注意历史文件无时间戳，切割按新旧顺序（文件尾=最近）；当前会话内存里的旧历史重启才换新。
 - 新终端对照：输高频前缀（如 `git che`）有候选 = 一切正常；`get-child` 这类没候选多半是历史里没敲过 + 命令名插件只认连写（空格分词进参数位，见 §8）。
+
+### 参数自动提示的边界（为什么不是 argc 全量）
+
+- 三条管线互不相通：`Tab` 走 `CommandCompletion/MenuComplete`（全量、带描述、可选中），
+  自动提示走 `ICommandPredictor`（只接受整行文本 + tooltip，没有描述列/反显/菜单语义）；
+  PSReadLine **没有**“输入即自动开 MenuComplete”的开关。
+- `CompletionPredictor` 看不到 argc：它在私有 runspace（`InitialSessionState.CreateDefault`）
+  里调 `CommandCompletion`，用户会话 `Register-ArgumentCompleter -Native` 的 846 个 completer 不在其中。
+  实测：`Get-ChildItem -F` 有 4 条（内置），`nginx -`/`docker --con` 0 条，`nginx -s r` 反而回退成 4 个文件名。
+- 所以“argc 全量自动提示”只能自写 predictor 每次按键调 `argc --argc-compgen`。本机实测：
+  裸 compgen 8–13ms（静态 flag），完整补全调用 `nginx -` 16–18ms、`docker --con` 57–70ms、
+  `git ch` 84–184ms、`git checkout ` 83–135ms；PSReadLine 预测预算约 20ms，慢命令会拖预测，
+  且 ListView 只剩整行文本、描述丢失。
+- 现方案（`CxxuArgcFlags`，与 `CxxuPredictor` 同一 dll 的第二个 predictor）：
+  从 `completions/*.sh` 顶层 `@flag/@option` 注释预生成静态表（缓存 `~/.cxxu/cache/argc-flags.tsv`，
+  约 3 万行/1.9MB；补全脚本更新后首个会话自动重建，冷建表约 100ms、热读表约 30ms，都在 OnIdle 单发里）；
+  只处理 **argc 覆盖命令的首个参数位** + 当前词以 `-` 开头，查表 + 前缀过滤，<1ms，不启动进程。
+- 范围/限制：只覆盖顶层 flag（`# {{` 子命令块不解析，`docker run -`、`git checkout -` 这类走 Tab）；
+  动态值（分支、容器、文件）仍走 Tab；不改变 `Tab`/`CompletionPredictor` 的现有行为；5.1 无预测视图，只有 Tab。
+- 关闭：`Disable-PsPlugin Argc`（predictor 每次调用读 `$env:PsArgc`，立即停供稿，Tab 也停）；
+  只关预测用 `Disable-PsPlugin Predictor`；强制重建表删 `~/.cxxu/cache/argc-flags.tsv` 或重开终端。
+- 实测（pwsh 7.5.4，新 dll）：`nginx -`→10 条（`-?`/`-h`/`-v`/`-V`/`-t`/`-T`…）、`docker --con`→2 条、
+  `git -`→10 条顶层 flag、`git checkout -`→0、`Get-ChildItem -F`→0、`nginx -s reload`→0、`PsArgc=False`→0。
 
 ## 11. 手动启用清单（自动导入之外的东西）
 

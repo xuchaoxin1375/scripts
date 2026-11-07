@@ -6,6 +6,8 @@
 
 `CxxuPredictor` 必须编译成 `dll`（原因见 `Startup-Optimization.md §20`：PSReadLine 插件槽只接受 .NET 实现，且预测 20ms 预算纯 PowerShell 达不到）。 `dll` 一旦被会话加载，文件即被该进程锁定直到进程退出（.NET 程序集不随模块卸载而卸载，`Remove-Module` 后文件依然锁定，已实测）。
 
+一个 dll 内含两个 predictor：`CxxuCommand`（命令名分层模糊）与 `CxxuArgcFlags`（argc 覆盖命令首参数位的静态 flag 提示）。flag 表缓存 `~/.cxxu/cache/argc-flags.tsv`，与 dll 版本独立；argc 补全脚本更新后首个会话自动重建（见 `Feature-Guide.md §10`）。
+
 由此产生两个历史阶段：
 
 - 仓库内加载：运行期直接加载仓库中的 `dll`，`git pull` 因文件锁定而失败，被迫配一整套清场逻辑（关闭其它会话、探测定锁、失败重试）。

@@ -497,3 +497,15 @@ Set-PSReadLineOption: 句柄无效。
 - 补全栈定位：`Deploy-CompletionStack` 改为先同步 CxxuCommand 活件（核心），PSFzf/CompletionPredictor 与 fzf/zoxide 标为可选；缺二进制合成一行提示，不再逐条 `Write-Warning`。
 - 发布：`dotnet build -c Release -p:SmaPath=...` → 覆盖 `PS/CxxuPredictor/CxxuPredictor.dll` → `Sync-CxxuPredictor`；重开终端生效（dll 锁随进程）。
 
+## 24. 第十七轮：argc 静态参数提示（2026-11-07，用户问“argc 能否像 CxxuCommand 一样自动提示”）
+
+- 触发：argc 目前 Tab 唤醒；用户问能否接进 CxxuCommand 的自动 ListView，以及是否推荐。
+- 结论：可以结合，但不建议把 argc 全量塞进每键预测；落地为同 dll 的第二个 predictor `CxxuArgcFlags`（静态 flag 表）。
+- 管线差异：`CxxuCommand` 只处理 `TokenFlags.CommandName`；argc 是 `Register-ArgumentCompleter -Native`，只在 `CommandCompletion`/Tab 生效；PSReadLine 的自动提示只接受 `PredictiveSuggestion`（整行文本 + tooltip），没有自动开菜单的 API。
+- 关键实测：`CompletionPredictor` 在私有 runspace（`InitialSessionState.CreateDefault`）里调 `CommandCompletion`，看不到会话注册的 argc；`Get-ChildItem -F`→4、`nginx -`→0、`docker --con`→0、`nginx -s r`→4 个文件名（回退）。走完整补全调用的每键成本：`nginx -` 16–18ms、`docker --con` 57–70ms、`git ch` 84–184ms、`git checkout ` 83–135ms（预测预算约 20ms）。
+- 方案：解析 `completions/*.sh` 顶层（遇 `# {{` 即停）的 `@flag/@option` → `~/.cxxu/cache/argc-flags.tsv`（30,769 行 / 1.9MB）；只做“首个参数位 + `-` 前缀”，字典查表 + 前缀过滤 <1ms，不启动进程。别名 flag 分别入表（`-p`/`--paginate`），去重键区分大小写（`-v`/`-V`、`-t`/`-T` 都保留）。
+- 性能：dll import（含 CxxuCommand 建表 + flag 表加载）本机 150ms（缓存热）；冷建表约 100ms、热读表约 30ms，都在 OnIdle 单发里；预测调用 0–4ms（首调 JIT）。
+- 范围：只解析顶层 flag，子命令 flag 与动态值（分支/容器/文件）仍走 Tab；5.1 无预测视图，维持 Tab-only。
+- 验证（新 dll，pwsh 7.5.4）：`nginx -` 10 条、`docker --con` 2 条、`git -` 10 条、`git checkout -` 0、`Get-ChildItem -F` 0、`nginx -s reload` 0、`nginx.exe -`/`NGINX -`/管道/`&` 均命中、`PsArgc=False` 0、表过期自动重建。
+- 发布：`dotnet build -c Release` → 覆盖 `PS/CxxuPredictor/CxxuPredictor.dll` → `Sync-CxxuPredictor`（哈希 `F57A131B`）；重开终端生效。
+
