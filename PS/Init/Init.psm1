@@ -640,12 +640,94 @@ function Set-ArgcCompletions
     try
     {
         Set-PSReadLineKeyHandler -Key Tab -ScriptBlock {
-            if (($env:PsArgc -notmatch '^(False|0|No|Off)$') -and
-                (-not $global:PsArgcLoaded) -and (-not $global:PsArgcUnavailable))
+            if ($env:PsArgc -match '^(False|0|No|Off)$')
+            {
+                [Microsoft.PowerShell.PSConsoleReadLine]::MenuComplete()
+                return
+            }
+            if ((-not $global:PsArgcLoaded) -and (-not $global:PsArgcUnavailable))
             {
                 Initialize-ArgcCompletions
             }
-            [Microsoft.PowerShell.PSConsoleReadLine]::MenuComplete()
+            if ($global:PsArgcUnavailable)
+            {
+                [Microsoft.PowerShell.PSConsoleReadLine]::MenuComplete()
+                return
+            }
+
+            # PS 5.1 的补全引擎不会把 - 开头的词交给 Native 补全器(6.0 才修),
+            # 先在词首临时插一个零宽字符(引擎当作普通词),MenuComplete 返回后再删掉;
+            # 选中候选时该字符随整个词被替换,不会残留。只对 argc 注册过的
+            # 应用命令生效,cmdlet/函数的参数补全仍走引擎原生逻辑(不能被破坏)。
+            $sentinel = [char]0x200B
+            $sentinelIndex = -1
+            $cursor = 0
+            if (($PSVersionTable.PSVersion.Major -lt 6) -and $global:PsArgcScripts)
+            {
+                $line = ''
+                [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref]$line, [ref]$cursor)
+                if ($cursor -gt 0)
+                {
+                    $start = $cursor
+                    while ($start -gt 0 -and -not [char]::IsWhiteSpace($line[$start - 1])) { $start-- }
+                    if (($start -lt $cursor) -and ($line[$start] -eq '-'))
+                    {
+                        $cmdName = $null
+                        try
+                        {
+                            $astTokens = $null
+                            $astErrors = $null
+                            $ast = [System.Management.Automation.Language.Parser]::ParseInput($line, [ref]$astTokens, [ref]$astErrors)
+                            $cmdAst = $ast.Find({
+                                param($node)
+                                ($node -is [System.Management.Automation.Language.CommandAst]) -and
+                                ($node.Extent.StartOffset -le $cursor) -and
+                                ($node.Extent.EndOffset -ge $cursor)
+                            }, $true)
+                            if ($cmdAst) { $cmdName = $cmdAst.GetCommandName() }
+                        }
+                        catch { }
+                        $isArgcCommand = $false
+                        if ($cmdName)
+                        {
+                            $isArgcCommand = $global:PsArgcScripts.ContainsKey([string]$cmdName) -or
+                                $global:PsArgcScripts.ContainsKey([IO.Path]::GetFileNameWithoutExtension([string]$cmdName))
+                        }
+                        if ($isArgcCommand)
+                        {
+                            $sentinelIndex = $start
+                            [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($start)
+                            [Microsoft.PowerShell.PSConsoleReadLine]::Insert([string]$sentinel)
+                            [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($cursor + 1)
+                        }
+                    }
+                }
+            }
+
+            try
+            {
+                [Microsoft.PowerShell.PSConsoleReadLine]::MenuComplete()
+            }
+            finally
+            {
+                if ($sentinelIndex -ge 0)
+                {
+                    try
+                    {
+                        $line = ''
+                        $nowCursor = 0
+                        [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref]$line, [ref]$nowCursor)
+                        $idx = $line.IndexOf($sentinel)
+                        if ($idx -ge 0)
+                        {
+                            $newPos = if ($nowCursor -gt $idx) { $nowCursor - 1 } else { $nowCursor }
+                            [Microsoft.PowerShell.PSConsoleReadLine]::Delete($idx, 1)
+                            [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($newPos)
+                        }
+                    }
+                    catch { }
+                }
+            }
         }
         $global:PsArgcTabStub = $true
         Write-Verbose 'argc-completions: 已装 Tab 懒加载桩'
@@ -696,6 +778,8 @@ function Initialize-ArgcCompletions
     $completer = {
         param($wordToComplete, $commandAst, $cursorPosition)
         if ($env:PsArgc -match '^(False|0|No|Off)$') { return }
+        # 5.1 的 Tab 桩会在词首插零宽字符,查询前去掉
+        $zw = [string][char]0x200B
         $words = @($commandAst.CommandElements | Where-Object { $_.Extent.StartOffset -lt $cursorPosition } | ForEach-Object {
             $word = $_.ToString()
             if ($word.Length -gt 2)
@@ -705,7 +789,7 @@ function Initialize-ArgcCompletions
                     $word = $word.Substring(1, $word.Length - 2)
                 }
             }
-            return $word
+            return $word.Replace($zw, '')
         })
         $emptyS = ''
         if ($PSVersionTable.PSVersion.Major -eq 5) { $emptyS = '""' }
@@ -729,6 +813,9 @@ function Initialize-ArgcCompletions
     try
     {
         $scripts | ForEach-Object { Register-ArgumentCompleter -Native -ScriptBlock $completer -CommandName $_ }
+        # 5.1 的 Tab 桩靠它判断该不该补 - 开头的参数(只处理应用命令)
+        $global:PsArgcScripts = @{}
+        foreach ($scriptName in $scripts) { $global:PsArgcScripts[$scriptName] = $true }
         $global:PsArgcLoaded = $true
         $global:PsArgcUnavailable = $false
         Write-Verbose "argc-completions: 已注册 $($scripts.Count) 个命令"
