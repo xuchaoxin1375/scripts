@@ -1368,6 +1368,17 @@ function doctor
     if (-not (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true))) { & $dchk 'CxxuTab 5.1' $true '非 Windows 忽略（5.1 仅 Windows）' }
     elseif ($ps51Live) { & $dchk 'CxxuTab 5.1' $true '5.1 Tab 活件存在（仅 Tab 补全，无内联预测）' }
     else { & $dchk 'CxxuTab 5.1' $false '无 5.1 Tab 活件：执行 Sync-CxxuPredictor 生成' }
+    # Tab 命令表缓存（仅提示）：命中时首个 Tab 约 20ms；过期/缺失会自动重建，不算故障
+    $tabCacheDir = Join-Path (Join-Path $HOME '.cxxu') 'cache'
+    $tabCache = @(Get-ChildItem -LiteralPath $tabCacheDir -Filter 'tab-commands-*.tsv' -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending | Select-Object -First 1)
+    if ($tabCache.Count)
+    {
+        $tabCacheAge = [int]((Get-Date) - $tabCache[0].LastWriteTime).TotalHours
+        if ($tabCacheAge -le 24) { & $dchk 'Tab 缓存' $true ("命中（{0}h 前建；删文件可强制重建）" -f $tabCacheAge) }
+        else { & $dchk 'Tab 缓存' $true ("已过期（{0}h）；首个 Tab 自动重建" -f $tabCacheAge) }
+    }
+    else { & $dchk 'Tab 缓存' $true '无缓存；首个 Tab 现建（5.1 约 0.4s、7 约 0.1s），之后约 20ms' }
     # 三门控 + 懒加载(5.1 无三元:子表达式内 if/else,双版本同行为)
     $gates = @('PsFzf', 'PsZoxide', 'PsPredictor', 'PsTab') | ForEach-Object { $v = (Get-Item "env:$_" -ErrorAction SilentlyContinue).Value; "$_=$(if (-not [string]::IsNullOrEmpty($v)) { $v } else { '默认开' })" }
     & $dchk '门控' $true ($gates -join ' ')

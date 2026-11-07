@@ -46,6 +46,7 @@ graph TD
 以上三条即指针协议的全部内容。图讲的是"东西放在哪"，下一节讲"怎么变过去"。
 
 - 5.1 Tab-only 产物是第二套独立活件：仓库源 `PS/CxxuPredictor/ps51/CxxuPredictor.dll`，活件 `~/.cxxu/bin/ps51/<哈希>/CxxuPredictor.dll`，指针 `~/.cxxu/bin/ps51/current.txt`。它只保留 `CompleteCommand` 静态入口，不参与上面的 predictor 指针；原因、加载方式与构建见本章『5.1 Tab-only 产物』。
+- 命令表缓存 `~/.cxxu/cache/tab-commands-<CLR主版本>.tsv` 不属于活件：它是 dll 按当前命令集生成的推导物，可随时删除，下次建表自动重建（TTL 24h，见 `Feature-Guide.md §9` 的 Tab 自查）。
 
 ## 4. 同步流程
 
@@ -105,6 +106,7 @@ flowchart TD
 | 卸载后又出现 | 未禁用自动加载 | 持久化 `$env:PsPredictor='False'`；5.1 Tab 另加 `$env:PsTab='False'` |
 | 5.1 按 Tab 没有模糊候选 | `ps51` 活件未生成，或 CxxuTab 未导入 | 执行 `Sync-CxxuPredictor`，确认 `$env:PsTab` 没有被显式置 False，再重开终端；确认 `~/.cxxu/bin/ps51/current.txt` 指向的 dll 存在 |
 | 5.1 能用 Tab 但没有内联预测 | 5.1 引擎没有预测子系统 | 正常；内联预测需 pwsh 7.2+，见本章『5.1 Tab-only 产物』 |
+| Tab 模糊候选缺新装模块命令 | 命令表缓存 24h 内未刷新 | 原生 Tab 仍能补；删 `~/.cxxu/cache/tab-commands-*.tsv` 后重开终端；其余症状见 `Feature-Guide.md §9` 的 Tab 自查 |
 
 ## 8. 命令分工：更新为什么不需要专用命令
 

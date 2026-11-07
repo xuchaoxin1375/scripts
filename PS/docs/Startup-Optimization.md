@@ -12,6 +12,7 @@
 | `init`（9 步） | +460~770ms | 沙盒多次测量区间 |
 | 真实全 profile（conda + init） | ~800~1300ms | 沙盒 1279ms，真机约 800~950ms |
 | `prompt` 每次回车 | ~100ms | 主要是 `Get-MemoryUseSummary` 的 CIM 查询（~100ms/次，由 5s 节流摊薄） |
+| 首屏 OnIdle 单发（predictor + zoxide，命令表缓存热） | ~30ms | 手势桩另计（毫秒级）；缓存缺失时 predictor 建表 +0.1~0.4s，24h 最多一次（§26；2026-11-07 本机实测） |
 | `Get-Module -ListAvailable Terminal-Icons` | ~78ms | 每次全盘扫描 PSModulePath，不可放热路径 |
 | `Get-CimInstance Win32_OperatingSystem` | ~192ms | 同上，必须缓存 |
 
@@ -421,7 +422,7 @@ Set-PSReadLineOption: 句柄无效。
   真机已验证（用户实测通过）：`get-child` 出 `[CxxuCommand]` 来源行，本轮终结。
 - 为何编译成 dll（2026-09-21 定论）：两条硬约束。(1) PSReadLine 的 ListView 插件槽只接受 .NET 实现（`ICommandPredictor`），纯 `.psm1` 挂不进去，不用 dll 就没有命令名预测； (2) 预测 20ms 预算：纯 PowerShell 3000 条简单通配实测 22ms（已超，模糊+打分更贵）， C# 版全套 1~6ms。代价（锁/分发/版本门）由并排版本 + 自动化吸收，日常零手工；若不要该功能，退路：`Sync-CxxuPredictor -Uninstall` + 持久化 `PsPredictor='False'`。
 - 维护：dll 进仓库（`.gitattributes` 已有 `*.dll binary`，发布件）；活件并排版本 `~/.cxxu/bin/<哈希>/CxxuPredictor.dll` + `current.txt` 指针，loader 按指针装载（旧版照常使用，无警告；只新增目录从不覆盖，同步不受锁限制）；运行时加载的是 dll 二进制， `.cs` 只是图纸，改逻辑重构建后执行 Sync 分发；psd1 无 RootModule（防按名误装空壳）但诚实声明 `PowerShellVersion='7.5'`；net8.0 单目标实测不可行：本机 7.5 的 SMA 自带 System.Runtime 9 引用（CS1705），覆盖 7.4 需 7.4 的 SMA 或 PowerShellStandard（缺预测 API），暂不做；卸载用 `Sync-CxxuPredictor -Uninstall`； `Sync-ModuleManifest` 天然跳过（无 `.psm1`）。
-- 边界（已读源码 `CompletionPredictor.cs` 核实，不再是文档推测）：`GetSuggestion` 遇到 `TokenFlags.CommandName` 直接 `return default`（源码注释：command discovery 太贵，跳过），只做非命令位置（参数/路径/成员）+ `git` + `% ? cd dir foreach where` 白名单。所以**命令名前缀（如 `get-child`）它永远沉默**，用户只看到历史是必然的，不是坏了。原生 PSReadLine 没有“TabExpansion 边输边弹”；predictor 须 20ms 内返回（官方硬性），慢同步的命令发现塞不进这个预算。更重的悬浮面板类另见 `Feature-Guide.md §7`。
+- 边界（已读源码 `CompletionPredictor.cs` 核实，不再是文档推测）：`GetSuggestion` 遇到 `TokenFlags.CommandName` 直接 `return default`（源码注释：command discovery 太贵，跳过），只做非命令位置（参数/路径/成员）+ `git` + `% ? cd dir foreach where` 白名单。所以**命令名前缀（如 `get-child`）它永远沉默**，用户只看到历史是必然的，不是坏了。原生 PSReadLine 没有“TabExpansion 边输边弹”；predictor 须 20ms 内返回（官方硬性），慢同步的命令发现塞不进这个预算。更重的悬浮面板类另见 `Feature-Guide.md §7`。（2026-11-07 补注：命令名候选现已由自研 `CxxuCommand` 提供，本条只说明 `CompletionPredictor` 的边界。）
 - 后续：同日用户拍板删除 `Deprecated` 模块（转正后归档无存在必要，零调用），`git rm` 整目录；上表作为历史记录保留，53 模块现数见 §2/§6。
 
 ## 21. 第十四轮：首屏输入卡顿分片 + 用户自查工具（2026-09-22，用户报“启动后 1~2 秒打字滞后”）
@@ -473,7 +474,7 @@ Set-PSReadLineOption: 句柄无效。
   PSFzf 看模块/`$global:PsUxFzfStub` 三态）；`Test-StartupPerformance` 文案同步单发口径。
 - 验证（沙盒）：双版本解析零错；Tab 桩全流程——装桩（原函数捕获）→首 Tab 519ms 自动装
   CxxuTab（29 候选含 `Get-ChildItem`，dll 模糊已合并，无递归）→次 Tab 28ms 直走包装→
-  非命令位透传（`-Path` 在）→`$Error` 零污染；PsTab 默认关（不装桩、默认 Tab 原样），置 True 才启用；
+  非命令位透传（`-Path` 在）→`$Error` 零污染；PsTab 默认关（不装桩、默认 Tab 原样），置 True 才启用（2026-11-07 起改为默认开，见 §26）；
   重复安装幂等（包装激活后不再重装桩，原函数不被覆盖）；和弦桩重定向下零污染；
   `-Now` 四件齐 ERRS=0。真机待验：首按 Ctrl+T/R、首个 Tab 的一次性耗时手感。
 
@@ -515,7 +516,7 @@ Set-PSReadLineOption: 句柄无效。
 - 构建：`CxxuPredictor.csproj` 在 Windows 上多目标 `net9.0;netstandard2.0`；`netstandard2.0` 定义 `PS51`，同一份 `CxxuPredictor.cs` 条件编译去掉 `ICommandPredictor` 实现，只保留 `CompleteCommand`，引用 5.1 的 GAC SMA。产物 `PS/CxxuPredictor/ps51/CxxuPredictor.dll`（12KB）。
 - 分发：`Sync-CxxuPredictor` 同时发布 `~/.cxxu/bin/<哈希>`（net9）与 `~/.cxxu/bin/ps51/<哈希>`（5.1 Tab）；根目录回收时保留 `ps51`。`CxxuTab` 在 5.1 只读 `ps51` 指针，按字节装载（不锁文件），7+ 仍读根活件。
 - 启动：`Register-PsUxLazyLoad` 在 5.1 只装 CxxuTab 手势桩，首个 Tab 才导入模块并建表；`Enable-PsPlugin Tab` 在 5.1 直接导入，二者都不给启动加负担。
-- 验证（5.1.26100 / .NET Framework 4.8）：`get-chi`、`gci`、`ls`、`get-*item`、`get-netr` 均返回；接 CxxuTab 的 `TabExpansion2` 合并 27 条；冷启动约 380ms（建表），之后约 1ms。7.5 的 net9 构建回归通过（`ICommandPredictor` 可赋值、`CompleteCommand` 正常）。
+- 验证（5.1.26100 / .NET Framework 4.8）：`get-chi`、`gci`、`ls`、`get-*item`、`get-netr` 均返回；接 CxxuTab 的 `TabExpansion2` 合并 27 条；冷启动约 380ms（建表），之后约 1ms；2026-11-07 加命令表缓存后建表约 20ms（见 §26）。7.5 的 net9 构建回归通过（`ICommandPredictor` 可赋值、`CompleteCommand` 正常）。
 - 边界：5.1 只有 Tab 菜单，没有边输边弹的 ListView；内联预测需 pwsh 7.2+（本仓库现成 dll 要求 7.5+）。
 
 ## 26. 第十九轮：Tab 补全默认开 + 命令表缓存（2026-11-07，用户要求“默认启用 tab 补全”）

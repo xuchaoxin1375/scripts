@@ -122,7 +122,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
   - 安全差异：bash 重 source 会叠 PATH，这边 `init` 有 `$global:PsInit` 防重复（`. $profile` 默认 no-op，真重跑靠 `-Force`），`Add-EnvVar` 自带去重（见 `EnvVar.psm1:621/629`），prompt 全局只抓一次，OnIdle 有标记位。
     注意 `. $profile` 只跑 `CurrentUserCurrentHost` 这一级（conda 钩子在 `CurrentUserAllHosts`
     里，碰不到；即使碰到，缓存 59ms 也不贵）。
-- **v5 能用吗**：部分能。B 档 62 模块已降 `5.1`（`init` + 提示符 + Tab 补全 + 历史可用），部署/预测/dll 链明确留 7，详见 §13；其余留 7 模块进 v5 会明确报错。
+- **v5 能用吗**：部分能。B 档 62 模块已降 `5.1`（`init` + 提示符 + Tab 补全 + 历史可用），部署与内联预测明确留 7；5.1 的 Tab 走专用 `ps51` 活件，见 §13。其余留 7 模块进 v5 会明确报错。
 - **agent/CI 里曾出现两行 `Set-PSReadLineOption` 红字**（predictive suggestion…redirected、
   句柄无效）：那是 `init` 在 stdout 被重定向时硬设预测源/列表视图闹的，
   2026-09-20 已修（重定向下自动跳过这两项，其余照常；详见 `Startup-Optimization.md §12`）。
@@ -134,7 +134,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
   之后若再见到此警告，先查是不是新加了双横线名（`Sync-ModuleManifest` 重载已内置
   `-DisableNameChecking` 压制，自动加载路径本来就不报）。
 
-## 7. 补全体验件（2026-09-21 现状：推荐组合已启用）
+## 7. 补全体验件（推荐组合，默认启用）
 
 > 已启用的走延迟加载（`init` 只注册 `OnIdle` 事件，18ms），默认启动盘不受影响。
 > 开关：`$env:PsFzf` / `$env:PsZoxide` / `$env:PsPredictor`（默认开，`False` 关；
@@ -158,17 +158,19 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | `argc-completions`（800+ 命令参数补全；懒加载，首个 Tab 注册约 150ms；选中行反显高亮；首个参数位的静态 flag 自动进 ListView） | **已启用**（仓库 `C:\repos\argc-completions`；开关 `$env:PsArgc`；Tab 7/5.1 均可用，自动 flag 提示仅 7.5+） |
 | `inshellisense` | **否决**（用户拍板，不再考虑） |
 
-验：新开终端直接可用，`Ctrl+R`/`Ctrl+T` 首按装 PSFzf（本次按键即生效）；`z <目录>` 跳转（zoxide 首屏单发已装）。`CxxuTab` 默认开，首个 `Tab` 才装它（命令表缓存命中时建表约 20ms，模块导入另计；缓存缺失/过期时现建，5.1 约 0.4s、7 约 0.1s，24h 内最多一次）。`argc-completions` 默认开，首个 `Tab` 才注册（约 150ms，之后零开销）。`Get-EventSubscriber` 应无残留（单发先摘后装）。若某主机 OnIdle 不触发（predictor 没装上），跑 `Register-PsUxLazyLoad -Now` 或报回来。自查跑 `Test-StartupPerformance`（分段计时+结论）。
+验：新开终端直接可用，`Ctrl+R`/`Ctrl+T` 首按装 PSFzf（本次按键即生效）；`z <目录>` 跳转（zoxide 首屏单发已装）。`CxxuTab` 默认开，首个 `Tab` 才导入它（命令表缓存命中时建表约 20ms，模块导入另计；缓存缺失/过期时现建，5.1 约 0.4s、7 约 0.1s，24h 内最多一次）。`argc-completions` 默认开，首个 `Tab` 才注册（约 150ms，之后零开销）。`Get-EventSubscriber` 应无残留（单发先摘后装）。若某主机 OnIdle 不触发（predictor 没装上），跑 `Register-PsUxLazyLoad -Now` 或报回来。自查跑 `Test-StartupPerformance`（分段计时+结论）。
 
-## 8. FAQ（续）：输入时下面没候选？
+## 8. FAQ（续）：补全候选与预测视图
 
 - 先看 ListView 的候选**来源**：它只显示历史 + 插件（`HistoryAndPlugin`），Tab 走的是另一套
   全量索引——两边结果不一样是正常的，不是谁坏了。
-- `get-child` 这类没候选：大概率历史里就没这么敲过（平时都用 `ls`/`gci` 别名）。
-  插件（`CompletionPredictor`）2026-09-20 已接入 `init`，但读过它源码：
-  **命令名位置直接跳过**（`command discovery 太贵`），只做参数/路径/`git`/小白名单——
-  所以命令名前缀它永远沉默，只看到历史是必然的，不是坏了。
-  开新终端输个高频前缀（如 `git che`）对照一下：有候选 = 一切正常。
+- `get-child` 这类没候选，先分清是哪一层：
+  - ListView（边输边弹）：应出现 `[CxxuCommand]` 来源的 `Get-ChildItem`。`CompletionPredictor`
+    在源码层跳过 `CommandName`，命令名候选只由 `CxxuCommand` 提供；它没出现时先查
+    `$env:PsPredictor` 与活件（§9）。
+  - Tab 菜单：原生索引本来就能补到 `Get-ChildItem`；连写前缀的模糊增补走 `CxxuTab`
+    （默认开），不达预期按 §9 的「Tab 补全自查」定位。
+  - 输 `get child`（有空格）时第二段已进参数位，两套补全都不会把它当命令名——多片段请连写。
 - 想要 zsh-autocomplete 那种悬浮面板：原生没有（predictor 须 20ms 内返回，慢同步的
   TabExpansion2 镜像不了）。**自研 predictor 已落地并真机验证通过**（`CxxuPredictor`，
   只做裸命令名，按可信度分层：
@@ -192,13 +194,13 @@ p -Force                    # 看 init 分步耗时，定位慢项
 
 ## 9. dll / 活件管理（检查 / 安装 / 更新 / 移除）
 
-> 设计原理见 `Live-Versions.md`（并排版本 + 指针）。背景一句话：`CxxuPredictor` 的 net9.0 自研 dll 提供内联预测（pwsh 须 7.5+；7.5/7.6 均可，7.6 基于 .NET 10，可直接加载 net9.0 产物）。仓库里的 `PS/CxxuPredictor/CxxuPredictor.dll` 是**源**（从不被加载，所以 `git pull` 永不撞锁）；真正被加载的是外置**活件** `~/.cxxu/bin/CxxuPredictor.dll`。两边靠哈希同步，程序集随进程：**同步后必须重开终端才换新代码**，`ipmox` 刷不动 dll。原则：入口 loader 只静默装载（旧版照用，零警告），版本动作全手动。
+> 设计原理见 `Live-Versions.md`（并排版本 + 指针）。背景一句话：`CxxuPredictor` 的 net9.0 自研 dll 提供内联预测（pwsh 须 7.5+；7.5/7.6 均可，7.6 基于 .NET 10，可直接加载 net9.0 产物）。仓库里的 `PS/CxxuPredictor/CxxuPredictor.dll` 是**源**（从不被加载，所以 `git pull` 永不撞锁）；真正被加载的是外置**活件** `~/.cxxu/bin/<哈希>/CxxuPredictor.dll`（由 `~/.cxxu/bin/current.txt` 指针选中）。两边靠哈希同步，程序集随进程：**同步后必须重开终端才换新代码**，`ipmox` 刷不动 dll。原则：入口 loader 只静默装载（旧版照用，零警告），版本动作全手动。
 >
 > 5.1 另有 Tab-only 产物 `~/.cxxu/bin/ps51/<哈希>/CxxuPredictor.dll`（netstandard2.0，只保留 `CompleteCommand`，由 `CxxuTab` 按字节装载；5.1 引擎没有预测子系统，不能注册 ListView predictor），同由 `Sync-CxxuPredictor` 发布。
 
 | 动作 | 命令 | 说明 |
 |---|---|---|
-| 检查 | `doctor` / `Test-PsEnvReadiness` | `doctor` 先跑（安装态 + 运行态）；readiness 活件行备注直接给出结论（`与仓库一致[hash]` / `不一致→执行 Sync-CxxuPredictor`），表尾另有仓库/pwsh/活件三行 |
+| 检查 | `doctor` / `Test-PsEnvReadiness` | `doctor` 先跑（安装态 + 运行态，含 `Tab 包装`/`Tab 缓存`/`CxxuTab 5.1` 行）；readiness 活件行备注直接给出结论（`与仓库一致[hash]` / `不一致→执行 Sync-CxxuPredictor`），表尾另有仓库/pwsh/活件三行 |
 | 检查远端 | `Test-PsEnvReadiness -CheckRemote` | 默认零网络；加开关才询问远端是否有更新（`ls-remote` 只读，12s 超时） |
 | 安装 | `Sync-CxxuPredictor` | 无活件时生成两套产物（net9 predictor 写 `~/.cxxu/bin/<哈希>`；5.1 Tab 写 `~/.cxxu/bin/ps51/<哈希>`）并更新各自指针，缺目录自动创建；`-WhatIf` 可空跑查看意图 |
 | 更新 | `Update-ReposesConfiged` → 重开终端 → `init` | 拉取后自动调用 `Sync-CxxuPredictor` 同步活件（只新增版本目录，不受锁限制，任何会话都可执行）；纯文本变更执行 `ipmox` 即可（见 §3） |
@@ -223,6 +225,25 @@ p -Force                    # 看 init 分步耗时，定位慢项
 
 - 执行策略只约束脚本与模块脚本文件，不约束 `.dll`；dll 加载失败时改执行策略无效。临时一次性运行也可用 `powershell -ExecutionPolicy Bypass -File ...`，日常保持 `RemoteSigned`。
 
+**Tab 补全自查**（`CxxuTab`；先跑 `doctor`，看 `Tab 包装`、`Tab 缓存`、`CxxuTab 5.1` 三行）：
+
+| 检查项 | 命令 | 正常表现 |
+|---|---|---|
+| 开关 | `$env:PsTab` | 空（默认开）或 `True`；只有 `False` 才是关闭 |
+| 模块 | `Get-Module CxxuTab` | 首个 Tab 后应有；5.1 与 7 都靠它装包装 |
+| dll 方法 | `$global:__CxxuTabMethod` | 非空；空 = 活件没找到或加载失败 |
+| 命令表缓存 | `Get-ChildItem $HOME\.cxxu\cache\tab-commands-*.tsv` | 存在且 24h 内为命中；过期/缺失会自动重建 |
+| 包装/桩 | `doctor` 的 `Tab 包装` 行 | `CxxuTab 包装已装入` 或 `桩已装,首个 Tab 自动装入` |
+| 熔断 | `$global:__CxxuTabFuse` | 正常为 `$false`/空；`True` 表示本会话已退回原生 Tab |
+
+| 现象 | 原因 | 处理 |
+|---|---|---|
+| Tab 只有原生候选，没有 `CxxuTab fuzzy:` | `$env:PsTab` 被显式关；`CxxuTab` 未导入；`__CxxuTabMethod` 为空；5.1 缺 `ps51` 活件 | 按上表逐项查；`Enable-PsPlugin Tab`；5.1 执行 `Sync-CxxuPredictor` 后重开终端 |
+| 首个 Tab 卡 0.1~0.4s | 命令表缓存未命中（首次/过期/损坏） | 正常一次性，之后约 20ms；想立刻重建删 `tab-commands-*.tsv` 再重开终端 |
+| 候选里缺新装模块的命令 | 缓存 24h 内未刷新 | 原生 Tab 仍能补；删缓存文件后重开终端可立即刷新 |
+| 用一会儿后突然只剩原生候选 | 自熔断触发（单次调用 >800ms 或异常） | `$global:__CxxuTabFuse` 为 `True`；重开终端恢复；反复出现查主机/杀软扫描 |
+| 5.1 完全没有模糊增补 | `ps51` 活件/指针缺失，或 `PsTab=False` | `Sync-CxxuPredictor` → `doctor` 的 `CxxuTab 5.1` 行；确认开关 |
+
 ## 10. 补全全景速查（三层 + 参数层）
 
 | 层 | 按键/视图 | 来源 | 说明 |
@@ -237,7 +258,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
   `Test-PsEnvReadiness`（查缺）、`predictNo`（当会话关预测）、
   `Enable-PsPlugin` / `Disable-PsPlugin`（插件启停，Fzf/Zoxide/Predictor/Tab/Argc）。
 - **历史膨胀（Ctrl+R 变慢）**：`Optimize-PsHistory -WhatIf` 先看诊断（总数/去重率/重复 Top5）， `Optimize-PsHistory [-KeepLast 3000]` 动手（去重只留最后一次 + 去杂 + 截断，旧行进同目录 `.archive-时间.txt`，原文件留 `.bak-时间`，均可恢复）。治本：init 已开 `HistoryNoDuplicates`（新命令不再重复入库）+ `MaximumHistoryCount 3000`。注意历史文件无时间戳，切割按新旧顺序（文件尾=最近）；当前会话内存里的旧历史重启才换新。
-- 新终端对照：输高频前缀（如 `git che`）有候选 = 一切正常；`get-child` 这类没候选多半是历史里没敲过 + 命令名插件只认连写（空格分词进参数位，见 §8）。
+- 新终端对照：ListView 输 `get-child` 应出现 `Get-ChildItem`（`[CxxuCommand]`），Tab 输 `get-chi` 也应含它；`get child`（有空格）第二段进参数位，不会按命令名补（§8）。仍不对就按 §9 的「Tab 补全自查」/`doctor` 定位。
 
 ### 参数自动提示的边界（为什么不是 argc 全量）
 
@@ -319,7 +340,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 - `argc-completions` 在 5.1 也可用：依赖现有 `argc.exe` + Git Bash（`bash`/GNU 工具在 PATH），PSReadLine 2.0 的 `MenuComplete`/`Selection` 均支持；首个 Tab 注册约 200ms，之后零开销，开关 `$env:PsArgc`，与 7 同一套懒加载。5.1 的补全引擎不会把 `-`/`--` 开头的词交给 Native 补全器（6.0 才修），Tab 桩会在词首临时插一个零宽字符绕过（只对 argc 注册过的应用命令，cmdlet/函数参数补全不受影响；Esc 取消或选中后都会清掉，缓冲区不留字符）。
 - 提示符全对齐：`fast`/`Simple`/`Short`/`Default` 原生可用；`Balance` 的 Info/Startup 外部依赖在 `Prompt.psm1` 顶部有 5.1 本地兜底（CIM/注册表/内置 cmdlet 同口径；必须 `function global:` 定义，否则模块私有、直接调用撞坏 Info；缓存用 `$global:__Cxxu51*`，`$script:` 跨不了作用域），渲染与 7.5 逐字一致，稳态约 50ms/次（首屏冷缓存 1.4s 一次性）；`Get-IpAddressFormated` 含参数集的移植版，直接调用也可用。
 - 明确不可用：`CxxuCommand` 内联预测（net9 predictor）、预测视图（需 7.2+ 子系统）、`Deploy` 全系、`Test-PsEnvReadiness` 的 `pwsh 7+` 必备项（在 5.1 下即提示装 pwsh7）。
-- 5.1 Tab 补全可用（默认开）：`CxxuTab` 读 `~/.cxxu/bin/ps51/<哈希>/CxxuPredictor.dll`（netstandard2.0，只含 `CompleteCommand`），由 `Sync-CxxuPredictor` 发布。首个 Tab 才导入模块并读命令表缓存（`~/.cxxu/cache/tab-commands-4.tsv`；命中时建表约 20ms，缺失/过期时现建约 0.4s，24h 内最多一次），启动不加负担；只有 Tab 菜单，没有内联预测。不用时 `Disable-PsPlugin Tab -Persist`。
+- 5.1 Tab 补全可用（默认开）：`CxxuTab` 读 `~/.cxxu/bin/ps51/<哈希>/CxxuPredictor.dll`（netstandard2.0，只含 `CompleteCommand`），由 `Sync-CxxuPredictor` 发布。首个 Tab 才导入模块并读命令表缓存（命中约 20ms，缺失/过期时现建约 0.4s；缓存与排查见 §9「Tab 补全自查」），启动不加负担；只有 Tab 菜单，没有内联预测。不用时 `Disable-PsPlugin Tab -Persist`。
 - 用法：`powershell -NoProfile` 起 5.1，保证 `PSModulePath` 含模块集后 `init` 即可；Tab 包裹默认开，`$env:PsTab='False'` 关。
 - 轻量部署（免 git，新机器只有 v5 时）：先按 Deploy-Guide 的「前置：执行策略」设置执行策略，再保存部署脚本并运行 `& $deployScript -Light`；`$deployScript` 是仓库 `PS/Deploy/Deploy-CxxuPsModules.ps1` 的本地副本，保存方法与参数说明见 [Deploy-Guide](Deploy-Guide.md) 和 [PS/Deploy/readme](../Deploy/readme.md)。
   走离线包下载（codeload + 中央镜像静默，不弹窗选源），落 `PSModulePath`（setx 追加，不覆盖），
