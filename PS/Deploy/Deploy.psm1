@@ -1387,6 +1387,28 @@ function doctor
     $tabWrapped = $tabSb -match '__CxxuTabOriginal'
     $tabStub = $tabSb -match 'PsUxTabOriginal'
     & $dchk 'Tab 包装' ($tabWrapped -or $tabStub -or ($env:PsTab -match '^(False|0|No|Off)$')) $(if ($tabWrapped) { 'CxxuTab 包装已装入' } elseif ($tabStub) { '桩已装,首个 Tab 自动装入' } elseif ($env:PsTab -match '^(False|0|No|Off)$') { '已显式关闭(PsTab=False)' } else { '没装桩:跑 Register-PsUxLazyLoad' })
+    # argc 参数补全:仓库/二进制/bash 任缺都会让应用命令的 - 参数没候选
+    $argcRoot = $env:ARGC_COMPLETIONS_ROOT
+    if (-not $argcRoot)
+    {
+        foreach ($cand in @((Join-Path $HOME 'argc-completions'), 'C:\repos\argc-completions'))
+        {
+            if (Test-Path -LiteralPath (Join-Path $cand 'completions')) { $argcRoot = $cand; break }
+        }
+    }
+    if ($env:PsArgc -match '^(False|0|No|Off)$') { & $dchk 'argc 补全' $true '开关已关闭(PsArgc=False)，按需开启' }
+    elseif (-not $argcRoot) { & $dchk 'argc 补全' $false '未部署：跑 Deploy-CompletionStack（默认含 argc）或看 Argc-Completions-Deploy.md' }
+    elseif (-not (Test-Path -LiteralPath (Join-Path $argcRoot 'bin\argc.exe'))) { & $dchk 'argc 补全' $false "缺 argc.exe：$argcRoot\bin" }
+    elseif (-not (Test-Path -LiteralPath (Join-Path $argcRoot 'bin\yq.exe'))) { & $dchk 'argc 补全' $false "缺 yq.exe：$argcRoot\bin" }
+    else
+    {
+        $argcBash = try { (& (Join-Path $argcRoot 'bin\argc.exe') --argc-shell-path 2>$null | Select-Object -First 1) } catch { '' }
+        if (-not $argcBash -or -not (Test-Path -LiteralPath $argcBash)) { & $dchk 'argc 补全' $false "bash 路径无效：$argcBash" }
+        elseif ($global:PsArgcLoaded) { & $dchk 'argc 补全' $true "已注册 $($global:PsArgcScripts.Count) 个命令" }
+        else { & $dchk 'argc 补全' $true '仓库就位，首个 Tab 自动注册' }
+    }
+    $tabKey = try { (Get-PSReadLineKeyHandler -Bound -ErrorAction Stop | Where-Object { $_.Key -eq 'Tab' } | Select-Object -First 1).Function } catch { '' }
+    & $dchk 'Tab 键' (@('MenuComplete', 'TabCompleteNext', 'Complete', 'CustomAction') -contains $tabKey) $(if ($tabKey) { "当前=$tabKey（原生=MenuComplete/TabCompleteNext；argc 桩=CustomAction）" } else { '读不到绑定：交互会话里重跑 doctor' })
     & $dchk '懒加载' ([bool](Get-Module PSFzf) -or $global:PsUxFzfStub -or $env:PsFzf -match '^(False|0|No|Off)$') $(if (Get-Module PSFzf) { 'PSFzf 已装入(首按 Ctrl+T/R 即用)' } elseif ($global:PsUxFzfStub) { '桩已装,首按 Ctrl+T/R 自动装入' } elseif ($env:PsFzf -match '^(False|0|No|Off)$') { '开关已关闭，按需开启' } else { '没装桩:跑 Register-PsUxLazyLoad' })
     # 守护进程代理:Data.json 新鲜度(>5 分钟没写=守护可能没跑)
     $dj = Join-Path $HOME 'Data.json'

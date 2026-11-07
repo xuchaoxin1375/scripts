@@ -132,20 +132,22 @@ conda 用户：跑 `conda init powershell` 后**重贴缓存块**（它会覆盖
 
 ```powershell
 Deploy-CompletionStack -WhatIf   # 空跑：看会同步/安装什么
-Deploy-CompletionStack           # 核心活件 + 可选 PSFzf/CompletionPredictor、fzf/zoxide
+Deploy-CompletionStack           # 核心活件 + argc-completions + 可选 PSFzf/CompletionPredictor、fzf/zoxide
 # 重开终端；profile 的 init 按默认开关加载
 ```
 
 - 内联预测要 pwsh 7.5+；Windows PowerShell 5.1 只有 Tab 菜单，命令会自动发布 `ps51` 活件。
 - 开关默认全开；单关用 `Disable-PsPlugin Predictor|Tab|Fzf|Zoxide -Persist`，完整开关与优先级见 `Feature-Guide.md §7`。
+- argc-completions 默认一起部署（仓库 + `argc.exe`/`yq.exe`）；不需要时加 `-SkipArgc`，只装它用 `Deploy-ArgcCompletions`。
 - 验收：ListView 输 `get-child` 应见 `[CxxuCommand]`；Tab 输 `get-chi` 应含 `Get-ChildItem`。不达预期按 `Feature-Guide.md §9` 的「Tab 补全自查」定位。
 - 仓库、模块路径或 profile 还没配好时，先走上面的极简版或 §0~§4。
 
 ```powershell
-Deploy-CompletionStack            # 核心 CxxuCommand 同步两套活件 + 可选 PSFzf/CompletionPredictor 与 fzf/zoxide；先 -WhatIf 空跑看动作
+Deploy-CompletionStack            # 核心 CxxuCommand 同步两套活件 + argc-completions + 可选 PSFzf/CompletionPredictor 与 fzf/zoxide；先 -WhatIf 空跑看动作
 Deploy-CompletionStack -IncludePSCompletions   # 再加 PSCompletions（按需）
 # 手动挡（等价）：
 Sync-CxxuPredictor                                  # 核心：生成/对齐 net9 predictor 与 5.1 Tab 两套活件
+Deploy-ArgcCompletions                              # 只装/重装 argc-completions（默认 ~/argc-completions）
 Confirm-ModuleInstalled -ModuleName PSFzf -Install  # 可选：Ctrl+T/Ctrl+R
 Confirm-ModuleInstalled -ModuleName CompletionPredictor -Install  # 可选：参数/路径预测
 # 按需：Terminal-Icons（`$env:PsExtension=True` 才用得上）、PSCompletions（70+ 命令补全，延迟加载）
@@ -154,7 +156,7 @@ Confirm-ModuleInstalled -ModuleName CompletionPredictor -Install  # 可选：参
 # 5.1 Tab 版在 PS/CxxuPredictor/ps51/（netstandard2.0），由 Sync-CxxuPredictor 一并发布
 ```
 
-> `argc-completions`（800+ 命令参数补全）不在 `Deploy-CompletionStack` 内：仓库 + `bin\argc.exe`/`bin\yq.exe` 就位后由 `init` 自动接管；首次部署、更新、开关与 5.1 注意事项见 [Argc-Completions-Deploy](Argc-Completions-Deploy.md)。
+> `argc-completions`（800+ 命令参数补全）默认随 `Deploy-CompletionStack` 部署（仓库 + `bin\argc.exe`/`bin\yq.exe`）；只想单独重装或指定目录用 `Deploy-ArgcCompletions [-Root <目录>]`。首次部署、更新、开关与 5.1 注意事项见 [Argc-Completions-Deploy](Argc-Completions-Deploy.md)。
 
 ## 6. scoop 二进制
 

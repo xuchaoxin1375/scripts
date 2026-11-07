@@ -17,6 +17,7 @@
         'Deploy-VsCodeSettings_depends',
         'Deploy-WtSettings',
         'Deploy-MiniforgeConfig',
+        'Deploy-ArgcCompletions',
         'Deploy-CompletionStack'
     )
     CmdletsToExport = @()

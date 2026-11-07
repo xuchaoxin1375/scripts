@@ -19,15 +19,16 @@
 
 ## 2. 首次部署
 
-> 一键部署提示：`Deploy-CompletionStack` 只处理 CxxuCommand / PSFzf / CompletionPredictor / fzf / zoxide，**不包含 argc**；argc 按本节手动部署，其余补全件可用该命令收尾。
+> 一键部署提示：`Deploy-CompletionStack` 默认包含 argc（仓库 + `argc.exe`/`yq.exe`；`-SkipArgc` 跳过）；只想单独部署或指定目录用 `Deploy-ArgcCompletions [-Root <目录>]`。以下手动步骤用于离线、自定义镜像或排障。
 
 ### 2.1 克隆仓库
 
 ```powershell
+# 默认装到 ~/argc-completions；也可放 C:\repos\argc-completions
 git clone https://github.com/sigoden/argc-completions.git C:\repos\argc-completions
 ```
 
-`Set-ArgcCompletions` 的探测顺序：
+`Deploy-ArgcCompletions` 默认用 `~/argc-completions`，已存在则复用；`Set-ArgcCompletions` 的探测顺序：
 
 1. `$env:ARGC_COMPLETIONS_ROOT`
 2. `$HOME\argc-completions`
@@ -105,6 +106,7 @@ Initialize-ArgcCompletions
 ```powershell
 git -C C:\repos\argc-completions pull
 Initialize-ArgcCompletions -Force   # 当前会话重新注册 Tab 补全
+# 或用 Deploy-ArgcCompletions -Force 重新下载仓库与缺失二进制
 ```
 
 - 静态 flag 表（`~/.cxxu/cache/argc-flags.tsv`）按补全脚本的 mtime 自动重建；**已加载进内存的表不热更新**，重开终端生效（或删表后重开）。

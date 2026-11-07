@@ -661,6 +661,194 @@ mirrored_channels:
     Get-Content ~/.mambarc -ErrorAction SilentlyContinue
 }
 
+function Invoke-CxxuDownload
+{
+    # 依次尝试 gh 镜像前缀与直连;都失败才抛错。5.1 需要显式开 TLS 1.2。
+    param([string]$Url, [string]$OutFile)
+    try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }
+    $candidates = @()
+    $mirror = $env:PsGithubMirror
+    if (-not $mirror) { $mirror = 'https://gh-proxy.com' }
+    $candidates += ($mirror.TrimEnd('/') + '/' + $Url)
+    $candidates += $Url
+    $last = $null
+    foreach ($u in $candidates)
+    {
+        try
+        {
+            Invoke-WebRequest -Uri $u -OutFile $OutFile -UseBasicParsing -TimeoutSec 120
+            return
+        }
+        catch { $last = $_ }
+    }
+    throw "下载失败: $Url ($($last.Exception.Message))"
+}
+
+function Get-CxxuLatestRelease
+{
+    # GitHub API 直连失败时再试镜像前缀;两者都失败则抛错。
+    param([string]$Repo)
+    try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }
+    $url = "https://api.github.com/repos/$Repo/releases/latest"
+    try { return Invoke-RestMethod -Uri $url -TimeoutSec 30 }
+    catch
+    {
+        $mirror = $env:PsGithubMirror
+        if (-not $mirror) { $mirror = 'https://gh-proxy.com' }
+        return Invoke-RestMethod -Uri ($mirror.TrimEnd('/') + '/' + $url) -TimeoutSec 30
+    }
+}
+
+function Deploy-ArgcCompletions
+{
+    <#
+    .SYNOPSIS
+    部署 argc-completions:补全仓库 + argc.exe/yq.exe + 当前会话注册。
+    .DESCRIPTION
+    默认装到 ~/argc-completions(已存在则复用;可用 -Root 指定),仓库取 GitHub main 压缩包,
+    二进制取最新 release。网络失败只警告,不影响其他补全。-SkipBinaries 只准备仓库,
+    -Force 重新下载仓库与二进制。仓库就位后调用 Set-ArgcCompletions 装 Tab 桩。
+    .EXAMPLE
+    Deploy-ArgcCompletions -WhatIf
+    .EXAMPLE
+    Deploy-ArgcCompletions -Root D:\tools\argc-completions
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        # 安装目录;默认 ARGC_COMPLETIONS_ROOT > ~/argc-completions > C:\repos\argc-completions
+        [string]$Root = '',
+        # 只准备仓库,不下载 argc.exe/yq.exe
+        [switch]$SkipBinaries,
+        # 重新下载仓库与缺失二进制
+        [switch]$Force
+    )
+
+    if (-not $Root)
+    {
+        $Root = $env:ARGC_COMPLETIONS_ROOT
+        if (-not $Root)
+        {
+            foreach ($cand in @((Join-Path $HOME 'argc-completions'), 'C:\repos\argc-completions'))
+            {
+                if (Test-Path -LiteralPath (Join-Path $cand 'completions')) { $Root = $cand; break }
+            }
+        }
+        if (-not $Root) { $Root = Join-Path $HOME 'argc-completions' }
+    }
+    $completions = Join-Path $Root 'completions'
+    $bin = Join-Path $Root 'bin'
+    $isWindowsHost = ($PSVersionTable.PSEdition -eq 'Desktop') -or ($env:OS -eq 'Windows_NT')
+    if (-not $isWindowsHost -and -not $SkipBinaries)
+    {
+        Write-Warning 'Deploy-ArgcCompletions 目前只自动下载 Windows 二进制；请按 Argc-Completions-Deploy.md 手动装 argc/yq'
+        $SkipBinaries = $true
+    }
+
+    # 1) 仓库:优先压缩包,避免新机必须先装 git
+    if ((-not (Test-Path -LiteralPath $completions)) -or $Force)
+    {
+        if ($PSCmdlet.ShouldProcess($Root, '下载并解压 argc-completions'))
+        {
+            $tmp = Join-Path ([IO.Path]::GetTempPath()) ('cxxu-argc-' + [guid]::NewGuid().ToString('N'))
+            $zip = $tmp + '.zip'
+            try
+            {
+                Invoke-CxxuDownload -Url 'https://github.com/sigoden/argc-completions/archive/refs/heads/main.zip' -OutFile $zip
+                Expand-Archive -LiteralPath $zip -DestinationPath $tmp -Force
+                $src = @(Get-ChildItem -LiteralPath $tmp -Directory | Select-Object -First 1)
+                if (-not $src.Count) { throw '压缩包结构异常' }
+                if (-not (Test-Path -LiteralPath $Root)) { New-Item -ItemType Directory -Path $Root -Force | Out-Null }
+                # 保留已有 bin:二进制不随仓库覆盖
+                Get-ChildItem -LiteralPath $src[0].FullName -Force | Where-Object { $_.Name -ne 'bin' } | ForEach-Object {
+                    Copy-Item -LiteralPath $_.FullName -Destination $Root -Recurse -Force
+                }
+            }
+            catch { Write-Warning "argc-completions 仓库下载失败: $($_.Exception.Message)" }
+            finally
+            {
+                Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+                Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
+    # 2) 二进制:argc.exe 来自 zip,yq.exe 是单文件
+    if (-not $SkipBinaries)
+    {
+        $isArm = ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64')
+        $arch = 'x86_64'
+        $yqArch = 'amd64'
+        if ($isArm) { $arch = 'aarch64'; $yqArch = 'arm64' }
+        if (Test-Path -LiteralPath $completions)
+        {
+            if (-not (Test-Path -LiteralPath $bin)) { New-Item -ItemType Directory -Path $bin -Force | Out-Null }
+            if ((-not (Test-Path -LiteralPath (Join-Path $bin 'argc.exe'))) -or $Force)
+            {
+                if ($PSCmdlet.ShouldProcess('argc.exe', '下载最新 argc release'))
+                {
+                    try
+                    {
+                        $rel = Get-CxxuLatestRelease -Repo 'sigoden/argc'
+                        $asset = @($rel.assets | Where-Object { $_.name -match ('-' + $arch + '-pc-windows-msvc\.zip$') } | Select-Object -First 1)
+                        if (-not $asset.Count) { throw "未找到 $arch Windows 产物" }
+                        $zip = Join-Path ([IO.Path]::GetTempPath()) ('cxxu-argc-exe-' + [guid]::NewGuid().ToString('N') + '.zip')
+                        $tmp = Join-Path ([IO.Path]::GetTempPath()) ('cxxu-argc-exe-' + [guid]::NewGuid().ToString('N'))
+                        Invoke-CxxuDownload -Url $asset[0].browser_download_url -OutFile $zip
+                        Expand-Archive -LiteralPath $zip -DestinationPath $tmp -Force
+                        $exe = @(Get-ChildItem -LiteralPath $tmp -Recurse -Filter 'argc.exe' -File | Select-Object -First 1)
+                        if (-not $exe.Count) { throw '压缩包内没有 argc.exe' }
+                        Copy-Item -LiteralPath $exe[0].FullName -Destination (Join-Path $bin 'argc.exe') -Force
+                        Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+                        Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
+                    }
+                    catch { Write-Warning "argc.exe 安装失败: $($_.Exception.Message)" }
+                }
+            }
+            if ((-not (Test-Path -LiteralPath (Join-Path $bin 'yq.exe'))) -or $Force)
+            {
+                if ($PSCmdlet.ShouldProcess('yq.exe', '下载最新 yq release'))
+                {
+                    try
+                    {
+                        $rel = Get-CxxuLatestRelease -Repo 'mikefarah/yq'
+                        $asset = @($rel.assets | Where-Object { $_.name -eq ('yq_windows_' + $yqArch + '.exe') } | Select-Object -First 1)
+                        if (-not $asset.Count) { throw "未找到 yq_windows_$yqArch.exe" }
+                        Invoke-CxxuDownload -Url $asset[0].browser_download_url -OutFile (Join-Path $bin 'yq.exe')
+                    }
+                    catch { Write-Warning "yq.exe 安装失败: $($_.Exception.Message)" }
+                }
+            }
+        }
+    }
+
+    # 3) 当前会话:装 Tab 桩并注册;bash 路径无效会显著影响 argc 补全,提前告警
+    if (Test-Path -LiteralPath $completions)
+    {
+        if ($PSCmdlet.ShouldProcess($Root, '设置 argc 环境并注册当前会话'))
+        {
+            # 指定/新建的根优先于环境里已有的旧路径,否则 Set-ArgcCompletions 会探测到别处
+            $env:ARGC_COMPLETIONS_ROOT = $Root
+            if (Get-Command Set-ArgcCompletions -ErrorAction SilentlyContinue) { Set-ArgcCompletions }
+            if (Get-Command Initialize-ArgcCompletions -ErrorAction SilentlyContinue)
+            {
+                try { Initialize-ArgcCompletions -Force } catch { Write-Warning "argc 注册失败: $($_.Exception.Message)" }
+            }
+            $argcExe = Join-Path $bin 'argc.exe'
+            if (Test-Path -LiteralPath $argcExe)
+            {
+                $shell = & $argcExe --argc-shell-path 2>$null | Select-Object -First 1
+                if (-not $shell -or -not (Test-Path -LiteralPath $shell))
+                {
+                    Write-Warning "argc 找不到可用的 bash（argc --argc-shell-path 返回 '$shell'）；Tab 参数补全会失败，装 Git for Windows 后重试"
+                }
+                Write-Host ("argc-completions: {0}（{1}）" -f $Root, (& $argcExe --argc-version 2>$null))
+            }
+            else { Write-Warning "argc.exe 未就位：仓库已下载，但 Tab 参数补全需要 $bin\argc.exe" }
+        }
+    }
+    else { Write-Warning "argc-completions 未就位：$Root 下没有 completions" }
+}
+
 function Deploy-CompletionStack
 {
     <#
@@ -668,7 +856,8 @@ function Deploy-CompletionStack
     新机补全栈:核心 CxxuCommand 命令名提示 + 可选 PSFzf/CompletionPredictor 与 fzf/zoxide 二进制。
     .DESCRIPTION
     Test-PsEnvReadiness 只读体检,本函数动手补。核心是自研 CxxuCommand(仓库自带,零安装),
-    先同步 predictor 活件;PSFzf/CompletionPredictor 模块与 fzf/zoxide 二进制是可选增强,
+    先同步 predictor 活件;默认还部署 argc-completions(仓库 + argc.exe/yq.exe,-SkipArgc 可跳过)。
+    PSFzf/CompletionPredictor 模块与 fzf/zoxide 二进制是可选增强,
     缺少时只给一行提示,不阻塞、不影响 CxxuCommand。pwsh 不够 7.5 时 CxxuCommand 不可用,
     但会自动发布 5.1 的 Tab 活件（仅 Tab,无内联预测）;其余补全照常。-WhatIf 空跑看动作,零副作用。装完开新终端跑 init。
     .EXAMPLE
@@ -676,14 +865,18 @@ function Deploy-CompletionStack
     .EXAMPLE
     Deploy-CompletionStack -IncludePSCompletions
     .EXAMPLE
-    Deploy-CompletionStack -SkipBinaries
+    Deploy-CompletionStack -SkipBinaries -SkipArgc
     #>
     [CmdletBinding(SupportsShouldProcess)]
     param(
         # 按需装 PSCompletions(70+ 命令补全,延迟加载;默认不装)
         [switch]$IncludePSCompletions,
         # 跳过 fzf/zoxide 二进制(已装/不用)
-        [switch]$SkipBinaries
+        [switch]$SkipBinaries,
+        # 跳过 argc-completions(默认随补全栈部署)
+        [switch]$SkipArgc,
+        # argc-completions 安装目录(默认 ~/argc-completions;已存在则复用)
+        [string]$ArgcRoot = ''
     )
 
     # 核心:CxxuCommand(命令名分层模糊提示)随仓库分发,需要的是活件,不是安装模块
@@ -725,6 +918,10 @@ function Deploy-CompletionStack
     {
         Write-Warning '未找到 Sync-CxxuPredictor(TerminalTools 未加载),无法生成 CxxuCommand 活件;可重开终端后重试'
     }
+
+    # argc-completions:默认随补全栈部署(仓库 + 二进制 + 当前会话注册);失败只警告
+    if ($SkipArgc) { Write-Verbose 'argc-completions: 按 -SkipArgc 跳过' }
+    else { Deploy-ArgcCompletions -Root $ArgcRoot -WhatIf:$WhatIfPreference }
 
     # 以下均为可选增强,缺失不阻塞
     foreach ($mod in @('PSFzf', 'CompletionPredictor'))
@@ -789,6 +986,9 @@ function Deploy-CompletionStack
     elseif ($null -eq $tabReady) { Write-Host '核心 CxxuCommand:本次为空跑(-WhatIf),未同步 5.1 Tab 活件;去掉 -WhatIf 执行' }
     else { Write-Host '核心 CxxuCommand:未就绪(内联预测需 pwsh 7.5+;5.1 Tab 需执行 Sync-CxxuPredictor)' }
     Write-Host '可选增强:PSFzf/CompletionPredictor 模块、fzf/zoxide 二进制;开关 $env:PsFzf/$env:PsZoxide'
+    if ($env:PsTab -match '^(False|0|No|Off)$') { Write-Warning 'PsTab 当前为关闭:Tab 增强不会加载;需要时 Enable-PsPlugin Tab -Persist' }
+    if ($env:PsArgc -match '^(False|0|No|Off)$') { Write-Warning 'PsArgc 当前为关闭:argc 参数补全不会加载;需要时 Enable-PsPlugin Argc -Persist' }
+    Write-Host '验收:重开终端后 ListView 输 get-child、Tab 输 get-chi、参数输 nginx -<Tab>;异常先跑 doctor。'
     # 用户配置模板兜底(新机一键装后就有文件可改;已存在则 no-op;-WhatIf 下只显示意图)
     if (Get-Command New-CxxuConfigTemplate -ErrorAction SilentlyContinue) { New-CxxuConfigTemplate }
 }

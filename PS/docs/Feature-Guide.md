@@ -140,7 +140,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 > 开关：`$env:PsFzf` / `$env:PsZoxide` / `$env:PsPredictor`（默认开，`False` 关；
 > 守护进程由 `Start-StartupBgProcesses` 统一置 `PsPredictor=False`，永不加载 dll）；
 > `$env:PsTab`（CxxuTab Tab 补全，**默认开，置 `False` 关**）；
-> `$env:PsArgc`（argc-completions 参数补全，默认开，首个 Tab 才注册）；
+> `$env:PsArgc`（argc-completions 参数补全，默认开，首个 Tab 才注册；新机由 `Deploy-CompletionStack` 一并部署）；
 > 重定向场景自动不加载。新机安装或一键重装看 `Deploy-Guide.md §5`（`Deploy-CompletionStack -WhatIf` 可空跑）。
 
 | 候选 | 状态 |
@@ -155,7 +155,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | `carapace-bin`（千级命令补全） | 未装：逃生通道，真缺了再 `scoop install carapace-bin` 对比 |
 | `posh-git` | 未装（只要 git Tab 补全才装） |
 | `oh-my-posh` | 不开（每回车进程税 + 与现有定制片重叠） |
-| `argc-completions`（800+ 命令参数补全；懒加载，首个 Tab 注册约 150ms；选中行反显高亮；首个参数位的静态 flag 自动进 ListView） | **已启用**（仓库 `C:\repos\argc-completions`；开关 `$env:PsArgc`；Tab 7/5.1 均可用，自动 flag 提示仅 7.5+） |
+| `argc-completions`（800+ 命令参数补全；懒加载，首个 Tab 注册约 150ms；选中行反显高亮；首个参数位的静态 flag 自动进 ListView） | **已启用**（仓库 `~/argc-completions` 或 `C:\repos\argc-completions`；开关 `$env:PsArgc`；Tab 7/5.1 均可用，自动 flag 提示仅 7.5+） |
 | `inshellisense` | **否决**（用户拍板，不再考虑） |
 
 验：新开终端直接可用，`Ctrl+R`/`Ctrl+T` 首按装 PSFzf（本次按键即生效）；`z <目录>` 跳转（zoxide 首屏单发已装）。`CxxuTab` 默认开，首个 `Tab` 才导入它（命令表缓存命中时建表约 20ms，模块导入另计；缓存缺失/过期时现建，5.1 约 0.4s、7 约 0.1s，24h 内最多一次）。`argc-completions` 默认开，首个 `Tab` 才注册（约 150ms，之后零开销）。`Get-EventSubscriber` 应无残留（单发先摘后装）。若某主机 OnIdle 不触发（predictor 没装上），跑 `Register-PsUxLazyLoad -Now` 或报回来。自查跑 `Test-StartupPerformance`（分段计时+结论）。
@@ -225,7 +225,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 
 - 执行策略只约束脚本与模块脚本文件，不约束 `.dll`；dll 加载失败时改执行策略无效。临时一次性运行也可用 `powershell -ExecutionPolicy Bypass -File ...`，日常保持 `RemoteSigned`。
 
-**Tab 补全自查**（`CxxuTab`；先跑 `doctor`，看 `Tab 包装`、`Tab 缓存`、`CxxuTab 5.1` 三行）：
+**Tab 补全自查**（`CxxuTab` + `argc`；先跑 `doctor`，看 `Tab 包装`、`Tab 键`、`Tab 缓存`、`CxxuTab 5.1`、`argc 补全` 行）：
 
 | 检查项 | 命令 | 正常表现 |
 |---|---|---|
@@ -235,10 +235,13 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | 命令表缓存 | `Get-ChildItem $HOME\.cxxu\cache\tab-commands-*.tsv` | 存在且 24h 内为命中；过期/缺失会自动重建 |
 | 包装/桩 | `doctor` 的 `Tab 包装` 行 | `CxxuTab 包装已装入` 或 `桩已装,首个 Tab 自动装入` |
 | 熔断 | `$global:__CxxuTabFuse` | 正常为 `$false`/空；`True` 表示本会话已退回原生 Tab |
+| argc 仓库 | `$env:ARGC_COMPLETIONS_ROOT`、`$env:ARGC_COMPLETIONS_ROOT\bin\argc.exe` | 有值且文件存在；空 = 未部署（`Deploy-CompletionStack` 默认装） |
 
 | 现象 | 原因 | 处理 |
 |---|---|---|
 | Tab 只有原生候选，没有 `CxxuTab fuzzy:` | `$env:PsTab` 被显式关；`CxxuTab` 未导入；`__CxxuTabMethod` 为空；5.1 缺 `ps51` 活件 | 按上表逐项查；`Enable-PsPlugin Tab`；5.1 执行 `Sync-CxxuPredictor` 后重开终端 |
+| Tab 完全没反应（连原生候选也没有） | Tab 键绑定异常（旧会话/argc 桩残留），或 PSReadLine 未加载 | `doctor` 看 `Tab 键` 行；`Import-Module Init -Force; init -Force` 或重开终端 |
+| 应用命令的 `-` 参数没候选（如 `nginx -<Tab>`） | argc 未部署；`argc --argc-shell-path` 的 bash 不存在；`PsArgc=False` | 跑 `Deploy-CompletionStack`（默认含 argc）或 `Deploy-ArgcCompletions`；`doctor` 看 `argc 补全`/`Tab 键`；细节见 Argc 文档 §7 |
 | 首个 Tab 卡 0.1~0.4s | 命令表缓存未命中（首次/过期/损坏） | 正常一次性，之后约 20ms；想立刻重建删 `tab-commands-*.tsv` 再重开终端 |
 | 候选里缺新装模块的命令 | 缓存 24h 内未刷新 | 原生 Tab 仍能补；删缓存文件后重开终端可立即刷新 |
 | 用一会儿后突然只剩原生候选 | 自熔断触发（单次调用 >800ms 或异常） | `$global:__CxxuTabFuse` 为 `True`；重开终端恢复；反复出现查主机/杀软扫描 |
@@ -283,8 +286,8 @@ p -Force                    # 看 init 分步耗时，定位慢项
 - 实测（pwsh 7.5.4，新 dll）：`nginx -`→10 条（`-?`/`-h`/`-v`/`-V`/`-t`/`-T`…）、`docker --con`→2 条、
   `git -`→10 条顶层 flag、`git checkout -`→0、`Get-ChildItem -F`→0、`nginx -s reload`→0、`PsArgc=False`→0。
 - 部署最短路径（详见 [Argc-Completions-Deploy](Argc-Completions-Deploy.md)）：
-  `git clone https://github.com/sigoden/argc-completions.git C:\repos\argc-completions` →
-  `bin\argc.exe`/`bin\yq.exe` 就位 → `init`（首次 Tab 注册 846 个 completer）→
+  `Deploy-CompletionStack`（默认含 argc；也可单跑 `Deploy-ArgcCompletions`）→
+  仓库与 `bin\argc.exe`/`bin\yq.exe` 就位 → 重开终端/`init`（首次 Tab 注册 846 个 completer）→
   更新仓库后 `Initialize-ArgcCompletions -Force`；5.1 用自带 PSReadLine 2.0 即可。
 - 部署/更新/开关/排障全文：[Argc-Completions-Deploy](Argc-Completions-Deploy.md)。
 
@@ -301,7 +304,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | `conda` | 无则 prompt  conda 段静默缺失 | `Deploy-MiniforgeConfig`；`$condaExe` 路径按机器对（profile 缓存块） | 缓存 `~/.conda_hook_cache.ps1`，首跑慢一次 |
 | `fnm` + 钩子 | 未装，profile 末行注释中 | `scoop install fnm`，再解开 profile 末行 | node 用户才需要 |
 | `scoop-search` 钩子 | profile 6 行注释中 | 有 `scoop-search` 才解开（`--hook` 注入） | 无则不用管 |
-| `argc` 整块 | 缺二进制，profile 8 行注释中 | 先装 argc + `C:\repos\argc-completions` 仓库，再解开 | 不全则保持注释 |
+| `argc` 整块 | 未部署 | `Deploy-ArgcCompletions`（或 `Deploy-CompletionStack` 默认含） | profile 钩子保持注释（Init 接管）；装完重开终端/`init` |
 | `carapace-bin` / `posh-git` | 未装 | 逃生/按需：`scoop install carapace-bin`；只要 git Tab 才装 posh-git | 决策见 §7 |
 | prompt 主题持久化 | 当会话有效，重开复原 | `Set-PsPrompt -version <…> -Persist`（写注册表） | 临展用 `dm` 切极简，不持久化 |
 | 开机任务 + 守护进程 | 未注册 | `Start-StartupTasks`（或 `Deploy-StartupTasks` 部署） | 报时/IP 守护，无状态，`-Force` 可杀 |
