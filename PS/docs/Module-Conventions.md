@@ -8,7 +8,8 @@
 - 一个模块 = `PS/<Name>/` 目录 + 同名 `<Name>.psm1`（自动发现只认这个组合；
   曾有 `Deploy/TestLinks.psm1` 因名实不符从未被加载过，已整改为 `PS/TestLinks/TestLinks.psm1`）。
   唯一例外 `CxxuPredictor`：二进制模块（`.psd1` + `.dll` + `src/`，无 `.psm1`；
-  `Sync-ModuleManifest` 按“有同名 `.psm1`”枚举，天然跳过它）。
+  `Sync-ModuleManifest` 按“有同名 `.psm1`”枚举，天然跳过它）。`ps51/` 是 5.1 Tab-only
+  的 netstandard2.0 产物（由 `CxxuTab` 按字节装载，不作为模块导入），随 `Sync-CxxuPredictor` 分发。
 - 每个模块必须有同名 `<Name>.psd1`：
   `RootModule`、`ModuleVersion`（当前集版本见 `Init` 的 manifest，本次 `1.0.4`，破坏性变更才 bump）、
   `GUID`（稳定不变）、`Author`、`PowerShellVersion = '7.0'`、

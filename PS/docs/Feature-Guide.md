@@ -192,17 +192,21 @@ p -Force                    # 看 init 分步耗时，定位慢项
 
 ## 9. dll / 活件管理（检查 / 安装 / 更新 / 移除）
 
-> 设计原理见 `Live-Versions.md`（并排版本 + 指针）。背景一句话：`CxxuPredictor` 是 net9.0 自研 dll（pwsh 须 7.5+；7.5/7.6 均可，7.6 基于 .NET 10，可直接加载 net9.0 产物）。仓库里的 `PS/CxxuPredictor/CxxuPredictor.dll` 是**源**（从不被加载，所以 `git pull` 永不撞锁）；真正被加载的是外置**活件** `~/.cxxu/bin/CxxuPredictor.dll`。两边靠哈希同步，程序集随进程：**同步后必须重开终端才换新代码**，`ipmox` 刷不动 dll。原则：入口 loader 只静默装载（旧版照用，零警告），版本动作全手动。
+> 设计原理见 `Live-Versions.md`（并排版本 + 指针）。背景一句话：`CxxuPredictor` 的 net9.0 自研 dll 提供内联预测（pwsh 须 7.5+；7.5/7.6 均可，7.6 基于 .NET 10，可直接加载 net9.0 产物）。仓库里的 `PS/CxxuPredictor/CxxuPredictor.dll` 是**源**（从不被加载，所以 `git pull` 永不撞锁）；真正被加载的是外置**活件** `~/.cxxu/bin/CxxuPredictor.dll`。两边靠哈希同步，程序集随进程：**同步后必须重开终端才换新代码**，`ipmox` 刷不动 dll。原则：入口 loader 只静默装载（旧版照用，零警告），版本动作全手动。
+>
+> 5.1 另有 Tab-only 产物 `~/.cxxu/bin/ps51/<哈希>/CxxuPredictor.dll`（netstandard2.0，只保留 `CompleteCommand`，由 `CxxuTab` 按字节装载；5.1 引擎没有预测子系统，不能注册 ListView predictor），同由 `Sync-CxxuPredictor` 发布。
 
 | 动作 | 命令 | 说明 |
 |---|---|---|
 | 检查 | `doctor` / `Test-PsEnvReadiness` | `doctor` 先跑（安装态 + 运行态）；readiness 活件行备注直接给出结论（`与仓库一致[hash]` / `不一致→执行 Sync-CxxuPredictor`），表尾另有仓库/pwsh/活件三行 |
 | 检查远端 | `Test-PsEnvReadiness -CheckRemote` | 默认零网络；加开关才询问远端是否有更新（`ls-remote` 只读，12s 超时） |
-| 安装 | `Sync-CxxuPredictor` | 无活件时生成（新增版本目录 `~/.cxxu/bin/<哈希>` 并更新指针，缺目录自动创建）；`-WhatIf` 可空跑查看意图 |
+| 安装 | `Sync-CxxuPredictor` | 无活件时生成两套产物（net9 predictor 写 `~/.cxxu/bin/<哈希>`；5.1 Tab 写 `~/.cxxu/bin/ps51/<哈希>`）并更新各自指针，缺目录自动创建；`-WhatIf` 可空跑查看意图 |
 | 更新 | `Update-ReposesConfiged` → 重开终端 → `init` | 拉取后自动调用 `Sync-CxxuPredictor` 同步活件（只新增版本目录，不受锁限制，任何会话都可执行）；纯文本变更执行 `ipmox` 即可（见 §3） |
-| 移除 | `Sync-CxxuPredictor -Uninstall`（有其他会话锁定加 `-Force`） | 删除指针与版本目录；被会话锁定的版本删不掉会报告，下次再收；`Remove-Module` 不能卸载程序集（锁随进程存在，已实测）；彻底停用请持久化 `$env:PsPredictor='False'`，否则下次同步或更新会重新安装 |
-| 自编译 | 先 `dotnet build`（见 `Live-Versions.md §10`），再 `Sync-CxxuPredictor -DllPath <产物>` | macOS/新版 pwsh 与仓库源 dll 的 SMA 对不上时用；不碰仓库源，检查端显示 `自编译版本[哈希]` 属正常，`Update-ReposesConfiged` 会保持活件不动 |
+| 移除 | `Sync-CxxuPredictor -Uninstall`（有其他会话锁定加 `-Force`） | 删除两套指针与版本目录（含 `ps51`）；被会话锁定的版本删不掉会报告，下次再收；`Remove-Module` 不能卸载程序集（锁随进程存在，已实测）；彻底停用请持久化 `$env:PsPredictor='False'`（5.1 Tab 另加 `$env:PsTab='False'`），否则下次同步或更新会重新安装 |
+| 自编译 | 先 `dotnet build`（见 `Live-Versions.md §10`），再 `Sync-CxxuPredictor -DllPath <产物>`；5.1 Tab 用 `-Ps51DllPath <产物>` | macOS/新版 pwsh 与仓库源 dll 的 SMA 对不上时用；不碰仓库源，检查端显示 `自编译版本[哈希]` 属正常，`Update-ReposesConfiged` 会保持活件不动 |
 
+- 5.1 Tab：`Sync-CxxuPredictor` 生成的 `ps51` 活件由 `CxxuTab` 在 PowerShell 5.1 下选用；启用用 `Enable-PsPlugin Tab`（或 `$env:PsTab='True'` 后重跑 `init`），首个 Tab 才导入模块并建表。只提供 Tab 菜单，不提供边输边弹的内联预测。
+- 自编译 net9 活件保持不动时，更新流程只对 5.1 Tab 活件调用 `Sync-CxxuPredictor -Ps51Only`；手动等价命令相同。
 - 拉取网络：`Update-ReposesConfiged` 默认走 `https://gh-proxy.com`，`-NoMirror` 直连、`-GithubMirror` 换镜像、`-Proxy`/`-NoProxy` 控制代理；优先级与 `-Force` 的丢弃范围见 [Deploy-Guide.md](Deploy-Guide.md) 的更新章节。
 - 守护进程（报时/IP）默认不碰 dll：`Start-StartupBgProcesses` 置 `PsPredictor=False` 继承 + 两个守护函数按 `-Command` 自断，所以 `-Force` 关它们无压力（无状态，重起即回）。
 - 同一结论在 `Test-PsEnvReadiness` 的“建议”行也会再说一遍（缺必备 > 有更新 > 活件不一致）。
@@ -301,7 +305,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 
 ## 13. Windows PowerShell 5.1 兼容（B 档：交互可用）
 
-> 目标是在 5.1 里 `init` + 提示符 + Tab/参数补全 + 历史可用；部署/预测/dll 链明确留 7。
+> 目标是在 5.1 里 `init` + 提示符 + Tab/参数补全 + 历史可用；部署与内联预测明确留 7，Tab 补全走 5.1 专用 dll 活件。
 > 查数用命令（真相源是各模块自己的 `.psd1`，下面批次是流水账）：`Get-CxxuModuleCompatibility`（`Pwsh` 模块，只读文件头秒出：B 档 62/留 7 有理由/缺 BOM 或未声明单拎）。
 
 - 兼容集（psd1 已降 `5.1`，psm1 带 BOM，见 `Module-Conventions.md §8`）：`Basic`、`Aliases`、`FileSystem`、`PwshVar`、`Search`、`CxxuTab`、`Prompt`、`Init`、`EnvVar`、`NetWork`、`RepoSync`、`PsDebug`、`PsEnv`、`Shortcut`、`PathProcess`、`Hardware`、`Proxy`（后 8 个 2026-09-22 酌情降档：解析零错误 + 5.1 直调冒烟通过）。
@@ -310,11 +314,12 @@ p -Force                    # 看 init 分步耗时，定位慢项
 - 第四批（2026-09-22，小模块 + 真 bug 在运行时）：`Special`（补 BOM 即好，`Register-AlistStartup` 只验导入不直调，写计划任务副作用）、`Window`（`Show-Message` 弹窗只验导入）、`Security`（`Get-CredentialGuardStatus` 直调）、`RecycleBin`（`Get-RecycleBin` 直调）、`NetInfo`（`Get-NetConnectionInfo`/`Get-IpAddressForPrompt` 直调）、`Tools`（`pow`/`Test-CommandAvailability`/`Get-CxxuPsModuleVersion` 直调，`Description` 中文按 #46 铁律转英文，`Get-BeijingTime` 联网只验导入）。B 档 38→44。`Test` 是用户草稿区且 manifest 有幽灵导出，不碰。本批抓到运行时刻录：`Special` 无 BOM 时 5.1 报 `Missing ')' in function parameter list`（BOM 归一解析零错也拦不住，必须 5.1 真跑）；`NetInfo` 的 IP 缓存在 5.1 下读出 `浠?`（`Json` 模块读路径 `Get-Content -Raw` 按 GBK 解 UTF-8 缓存），已修 `Json` 4 处读 + 2 处写为 .NET UTF-8 直读写（零跨模块依赖），双向字节往返已验，5.1 的 prompt IP 回到 `以:192.168.0.104`。
 - 第五批（2026-09-22，日常高频）：`Git`（`gitS` 直调，`Get-SpeedUpUrl` 联网只验导入；`Git.psm1` 有两处 `function git` 重复定义，后胜前，历史包袱不动）、`Scoop`（全 `Deploy/Set/Update` 副作用，只验导入）、`SSH`（全需远端主机/密钥，只验导入）。三模块 psd1 的 Description 本就是英文，无 #46 坑；补 BOM + 双版本 manifest 全绿。B 档 44→47。
 - 第六批（2026-09-22，低风险本地组）：`TextProcess`（`Measure-AlphabeticChars` 等纯函数直调）、`Text`（`Format-FileSize`/`Get-CharCount` 直调，GUI 类只验导入）、`CSV`（自建小表 `Get-CsvPreview` 直调，`Get-CsvTailRowsGUI` 弹窗只验导入；注意 `Get-CsvPreview` 的 `$csv` 参数非管道绑定，必须具名传）、`ArchiveProcess`（`tar.exe` 现场打小包后 `Test-TarFile` 直调；修 1 处真 7 独占：`Split-Path -Extension` 是 6+ 参数，改 `[IO.Path]::GetExtension`，与 `TextProcess` 内既有写法统一）、`Info`（`Get-UserHostName`/`Get-MemoryUseSummary`/`Get-MemoryUseRatio`/`Test-SubItem` 直调；修跨模块运行时依赖：`Get-MemoryUseRatio` 调留 7 的 `TaskSchdPwsh` 的 `Start-ScriptWhenIntervalEnough`，5.1 探不到时直接 `& $s` 执行，与首建缓存分支行为一致，`Get-Command -ErrorAction Ignore` 探针无 `$Error` 污染）、`Sitemap`（`Test-SubItem` 直调；`Get-SourceFromUrls` 的 `ForEach-Object -Parallel` 只在 `-Threads` 非零时进并行分支，默认 0 走串行，5.1 不传参即安全，见 §13 串行分支惯例；`Sitemap:326` 的裸探针上轮已预修）。B 档 47→53。
-- 第七批（2026-09-22，中风险组，只验导入 + 逐项注明）：`TerminalTools`（`Install-Scoop`/`Push-ByScp`/`Sync-CxxuPredictor` 高 stakes，只验导入）、`Development`（短名裸命令包装多，只验导入）、`DevEnv`（全 `Deploy` 写配置/装软件，只验导入）、`MySql`（需服务端+配置，只验导入）、`WinConfig`（注册表/Defender/激活/`Restart-OS`，`Description` 中文转英文，只验导入）、`Web`（`Test-IsIPAddress` 直调，其余 hosts/nginx/phpstudy 只验导入）、`WordPress`/`WpContent`（硬编码路径+外部依赖，只验导入）、`WpOnline`（`Test-IsIPAddress` 同源直调已验；`Start-ThreadJob` 在 5.1 非内置，需 `Install-Module ThreadJob` 才能真跑部署流，只验导入）。15 模块双版本 manifest 全绿（函数数两边一致）。B 档 53→62。剩余 7.0：`Whois`（34 个 `??` 待重写）、`TaskSchdPwsh`/`TimeNotify`（`&` 无等价写法留 7）、`Test`（用户草稿区不动）、`CompletionPredictor`（第三方不管）、`CxxuPredictor`（net9 dll 永不降）。
-- 5.1 下自动降级：`init` 步骤表 `MinPS = 7` 的 5 步静默跳过（`ArgumentCompletion`/`Startup`/`Pwsh`/`Json`/`TerminalTools`）；`ForEach-Object -Parallel` 走串行分支；`CxxuTab` 探不到 dll 方法时纯透传；`HistoryNoDuplicates`/`inlineprediction` 配色按 PSReadLine 版本 gating（5.1 自带 2.0.0 跳过）。
+- 第七批（2026-09-22，中风险组，只验导入 + 逐项注明）：`TerminalTools`（`Install-Scoop`/`Push-ByScp`/`Sync-CxxuPredictor` 高 stakes，只验导入）、`Development`（短名裸命令包装多，只验导入）、`DevEnv`（全 `Deploy` 写配置/装软件，只验导入）、`MySql`（需服务端+配置，只验导入）、`WinConfig`（注册表/Defender/激活/`Restart-OS`，`Description` 中文转英文，只验导入）、`Web`（`Test-IsIPAddress` 直调，其余 hosts/nginx/phpstudy 只验导入）、`WordPress`/`WpContent`（硬编码路径+外部依赖，只验导入）、`WpOnline`（`Test-IsIPAddress` 同源直调已验；`Start-ThreadJob` 在 5.1 非内置，需 `Install-Module ThreadJob` 才能真跑部署流，只验导入）。15 模块双版本 manifest 全绿（函数数两边一致）。B 档 53→62。剩余 7.0：`Whois`（34 个 `??` 待重写）、`TaskSchdPwsh`/`TimeNotify`（`&` 无等价写法留 7）、`Test`（用户草稿区不动）、`CompletionPredictor`（第三方不管）、`CxxuPredictor`（内联预测留 7；5.1 Tab 另走 ps51 构建）。
+- 5.1 下自动降级：`init` 步骤表 `MinPS = 7` 的步骤静默跳过（`ArgumentCompletion`/`Startup`/`Pwsh`/`Json`）；`ForEach-Object -Parallel` 走串行分支；`Register-PsUxLazyLoad` 在 5.1 只装 CxxuTab 手势桩；`CxxuTab` 读 `~/.cxxu/bin/ps51` 的 netstandard2.0 活件（缺活件时纯透传）；`HistoryNoDuplicates`/`inlineprediction` 配色按 PSReadLine 版本 gating（5.1 自带 2.0.0 跳过）。
 - `argc-completions` 在 5.1 也可用：依赖现有 `argc.exe` + Git Bash（`bash`/GNU 工具在 PATH），PSReadLine 2.0 的 `MenuComplete`/`Selection` 均支持；首个 Tab 注册约 200ms，之后零开销，开关 `$env:PsArgc`，与 7 同一套懒加载。5.1 的补全引擎不会把 `-`/`--` 开头的词交给 Native 补全器（6.0 才修），Tab 桩会在词首临时插一个零宽字符绕过（只对 argc 注册过的应用命令，cmdlet/函数参数补全不受影响；Esc 取消或选中后都会清掉，缓冲区不留字符）。
 - 提示符全对齐：`fast`/`Simple`/`Short`/`Default` 原生可用；`Balance` 的 Info/Startup 外部依赖在 `Prompt.psm1` 顶部有 5.1 本地兜底（CIM/注册表/内置 cmdlet 同口径；必须 `function global:` 定义，否则模块私有、直接调用撞坏 Info；缓存用 `$global:__Cxxu51*`，`$script:` 跨不了作用域），渲染与 7.5 逐字一致，稳态约 50ms/次（首屏冷缓存 1.4s 一次性）；`Get-IpAddressFormated` 含参数集的移植版，直接调用也可用。
-- 明确不可用：`CxxuPredictor`（net9 dll）、预测视图（需 7.2+ 子系统）、`Deploy` 全系、`Test-PsEnvReadiness` 的 `pwsh 7+` 必备项（在 5.1 下即提示装 pwsh7）。
+- 明确不可用：`CxxuCommand` 内联预测（net9 predictor）、预测视图（需 7.2+ 子系统）、`Deploy` 全系、`Test-PsEnvReadiness` 的 `pwsh 7+` 必备项（在 5.1 下即提示装 pwsh7）。
+- 5.1 Tab 补全可用：`CxxuTab` 读 `~/.cxxu/bin/ps51/<哈希>/CxxuPredictor.dll`（netstandard2.0，只含 `CompleteCommand`），由 `Sync-CxxuPredictor` 发布。启用：`Sync-CxxuPredictor` → `Enable-PsPlugin Tab -Persist`（或 `$env:PsTab='True'` 后重跑 `init`）→ 重开 `powershell.exe` → 输入命令名前缀按 Tab。首个 Tab 才导入模块并建表，启动不加负担；只有 Tab 菜单，没有内联预测。
 - 用法：`powershell -NoProfile` 起 5.1，保证 `PSModulePath` 含模块集后 `init` 即可；`$env:PsTab='True'` 可开 Tab 包裹（默认关）。
 - 轻量部署（免 git，新机器只有 v5 时）：先按 Deploy-Guide 的「前置：执行策略」设置执行策略，再保存部署脚本并运行 `& $deployScript -Light`；`$deployScript` 是仓库 `PS/Deploy/Deploy-CxxuPsModules.ps1` 的本地副本，保存方法与参数说明见 [Deploy-Guide](Deploy-Guide.md) 和 [PS/Deploy/readme](../Deploy/readme.md)。
   走离线包下载（codeload + 中央镜像静默，不弹窗选源），落 `PSModulePath`（setx 追加，不覆盖），

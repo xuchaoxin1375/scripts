@@ -75,8 +75,9 @@ function init
         @{ Name = 'Set-PsPrompt'; Action = { Set-PsPrompt } }
         # Confirm-DataJson 有返回值(路径,供调用方使用),init 只关心副作用,屏蔽回显
         @{ Name = 'Confirm-DataJson'; Action = { Confirm-DataJson | Out-Null }; MinPS = 7 }
-        # 体验件手势桩+单发收尾(PSFzf/Tab 首用才装,predictor/zoxide 首屏单发),只装桩即返回,启动零开销
-        @{ Name = 'Register-PsUxLazyLoad'; Action = { Register-PsUxLazyLoad }; MinPS = 7 }
+        # 体验件手势桩+单发收尾(7: PSFzf/Tab 首用才装,predictor/zoxide 首屏单发;
+        # 5.1: 只装 CxxuTab 的手势桩,其余 7-only 项跳过),启动零开销
+        @{ Name = 'Register-PsUxLazyLoad'; Action = { Register-PsUxLazyLoad } }
     )
 
     # 仅在要求时计时/报告(-Timing 或 -InformationAction Continue,`p -Force` 走后者)
@@ -98,7 +99,8 @@ function init
     for ($i = 0; $i -lt $steps.Count; $i++)
     {
         $step = $steps[$i]
-        # 7-only 步骤在 5.1 下静默跳过(Verbose 留痕),不记失败:ArgumentCompletion/Startup/Pwsh/Json/TerminalTools 明确留 7
+        # MinPS 步骤在低版本下静默跳过(Verbose 留痕),不记失败:ArgumentCompletion/Startup/Pwsh/Json 明确留 7;
+        # TerminalTools 的 Register-PsUxLazyLoad 已按版本分支,5.1 只装 Tab 桩
         if ($step.MinPS -and ($PSVersionTable.PSVersion.Major -lt $step.MinPS))
         {
             Write-Verbose "跳过 $($step.Name)(需 pwsh $($step.MinPS)+,当前 $($PSVersionTable.PSVersion))"
@@ -1185,8 +1187,9 @@ function Enable-PsPlugin
     启用体验插件(当会话生效;加 -Persist 长期启用,重开也开)。
     .DESCRIPTION
     启用是显式开(环境变量 True,盖过配置文件)。Tab/Predictor 即时生效(逐调用判定,
-    无需重载);Fzf/Tab 立装桩即时生效(重调安装器,幂等,只补缺);Argc 立装 Tab 桩,
-    真正的注册仍在首个 Tab;Predictor/Zoxide 单发已过则重开终端(或 Register-PsUxLazyLoad -Now 立装)。
+    无需重载);7+ 的 Fzf/Tab 立装桩即时生效(重调安装器,幂等,只补缺);5.1 的 Tab
+    直接导入 CxxuTab;Argc 立装 Tab 桩,真正的注册仍在首个 Tab;Predictor/Zoxide
+    单发已过则重开终端(或 Register-PsUxLazyLoad -Now 立装)。
     .EXAMPLE
     Enable-PsPlugin Tab
     .EXAMPLE
@@ -1217,6 +1220,11 @@ function Enable-PsPlugin
         {
             # 立装桩即时生效(幂等,只补缺;交互门由安装器自己判定,重定向下静默跳过)
             Install-PsUxGestureStubs -ErrorAction SilentlyContinue
+        }
+        elseif (($Name -eq 'Tab') -and ($PSVersionTable.PSVersion.Major -lt 7))
+        {
+            # 5.1 直接导入 CxxuTab 立即生效(默认关,显式开启才走到这里)
+            Import-Module CxxuTab -Global -ErrorAction SilentlyContinue
         }
         if ($Persist) { Set-CxxuConfigValue -Path $Path -Key $key -Value $true }
     }

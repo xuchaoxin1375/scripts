@@ -44,7 +44,7 @@ Deploy-CompletionStack
 - 只使用 Windows PowerShell 5.1 时直接运行即可；若同时没有 git，改用 `& $deployScript -Light`（见下）。
 - 需要 PowerShell 7 时用 `& $deployScript -InstallPwsh7`；默认不安装。
 - 默认下载前缀为 `https://gh-proxy.com`，用于 git 克隆、raw 脚本与离线包；可用 `-GithubMirror '<镜像>'` 或持久化 `$env:PsGithubMirror` 覆盖。
-- 核心 `CxxuCommand`（`CxxuPredictor`）要求 PowerShell 7.5 及以上（7.5/7.6 均可，7.6 基于 .NET 10 可直接加载）；版本不足时只有警告，其余功能照常。
+- 核心 `CxxuCommand` 的内联预测要求 PowerShell 7.5 及以上（7.5/7.6 均可，7.6 基于 .NET 10 可直接加载）；版本不足时只有警告，其余功能照常。仅用 Windows PowerShell 5.1 时另有 Tab 补全（`ps51` netstandard2.0 活件），没有内联预测。
 - 参数的完整说明、离线安装、开发模式与沙箱调试见 [PS/Deploy/readme.md](../Deploy/readme.md)。
 - 若 `& $deployScript` 仍报“禁止运行脚本”，回到“前置：执行策略”；重开后找不到 `Deploy-CompletionStack`，说明 profile 的 `init` 未执行，同样先处理策略。
 
@@ -129,15 +129,16 @@ conda 用户：跑 `conda init powershell` 后**重贴缓存块**（它会覆盖
 ## 5. 补全栈与第三方 PS 模块
 
 ```powershell
-Deploy-CompletionStack            # 核心 CxxuCommand 同步活件 + 可选 PSFzf/CompletionPredictor 与 fzf/zoxide；先 -WhatIf 空跑看动作
+Deploy-CompletionStack            # 核心 CxxuCommand 同步两套活件 + 可选 PSFzf/CompletionPredictor 与 fzf/zoxide；先 -WhatIf 空跑看动作
 Deploy-CompletionStack -IncludePSCompletions   # 再加 PSCompletions（按需）
 # 手动挡（等价）：
-Sync-CxxuPredictor                                  # 核心：生成/对齐 CxxuCommand 活件
+Sync-CxxuPredictor                                  # 核心：生成/对齐 net9 predictor 与 5.1 Tab 两套活件
 Confirm-ModuleInstalled -ModuleName PSFzf -Install  # 可选：Ctrl+T/Ctrl+R
 Confirm-ModuleInstalled -ModuleName CompletionPredictor -Install  # 可选：参数/路径预测
 # 按需：Terminal-Icons（`$env:PsExtension=True` 才用得上）、PSCompletions（70+ 命令补全，延迟加载）
 # 自研 CxxuPredictor 随仓库自带（PS/CxxuPredictor/，零模块安装，随 init 延迟加载）；
-# 要求 pwsh 7.5+（7.6 可直接用；dll 按 net9.0 编译，加载失败再进 PS/CxxuPredictor/src 重编）
+# 内联预测要求 pwsh 7.5+（7.6 可直接用；dll 按 net9.0 编译，加载失败再进 PS/CxxuPredictor/src 重编）；
+# 5.1 Tab 版在 PS/CxxuPredictor/ps51/（netstandard2.0），由 Sync-CxxuPredictor 一并发布
 ```
 
 > `argc-completions`（800+ 命令参数补全）不在 `Deploy-CompletionStack` 内：仓库 + `bin\argc.exe`/`bin\yq.exe` 就位后由 `init` 自动接管；首次部署、更新、开关与 5.1 注意事项见 [Argc-Completions-Deploy](Argc-Completions-Deploy.md)。
@@ -212,14 +213,14 @@ conda 缓存（`~/.conda_hook_cache.ps1`）与 zoxide 缓存（`~/.zoxide_init_c
 
 ```powershell
 Update-ReposesConfiged        # 批量更新：拉取后若 scripts 含 dll 变更，自动同步活件并提示重开
-Sync-CxxuPredictor            # 单点操作（首次安装生成/手动修复/本地重编后分发；日常更新不需要执行）
+Sync-CxxuPredictor            # 单点操作（首次安装生成/手动修复/本地重编后分发；同时发布 net9 predictor 与 5.1 Tab；日常更新不需要执行）
 ```
 
 - 入口 loader 只静默装载（旧版照常使用，无警告）：版本检查使用 `Test-PsEnvReadiness` 备注列。活件并排版本存放（只新增版本目录，从不覆盖），同步不受锁限制，任何会话都可执行。
 - 镜像与代理：`Update-ReposesConfiged` 默认经 `https://gh-proxy.com` 拉取，固定默认值，不做会话测速；未显式传参时读 `$env:PsGithubMirror`，该变量为空时仍用默认值。`-GithubMirror '<前缀>'` 临时换镜像，`-NoMirror` 或 `-GithubMirror ''` 直连。代理默认依次读 `HTTPS_PROXY`、`HTTP_PROXY`、`ALL_PROXY`（兼容小写形式），也可用 `-Proxy '<地址>'` 指定、用 `-NoProxy` 忽略环境变量。命令会把指向 `xuchaoxin1375/<仓库>` 的 http(s) `origin` 改为当前镜像或直连地址，使后续拉取沿用本次选择；镜像只用于下载，推送地址设为直连 GitHub（保留 gitee 等其他推送地址），`Push-ReposesConfiged` 不受影响；SSH 与自定义远端不改写。
 - 更新范围：默认处理 `$CommonRepos`，本机在 `CxxuComputers` 名单内时追加 `$CxxuRepos`；`-RepoDirs 'blogs','scripts'` 只处理列出的仓库。`-Force` 先执行 `fetch`，再执行 `reset --hard origin/<当前分支>`，会丢弃该仓库已跟踪文件的本地未提交改动；未跟踪文件不受影响。
 - 拉取含 dll 变更：活件已同步完成，**重新打开终端** → 执行 `init` 即可；只有 psm1 变更：执行 `ipmox` 即可，会话变量不丢失。
-- 自编译活件（`local-build.txt` 标记为 local）：`Update-ReposesConfiged` 保持活件不动并提示，不会换回仓库源；想跟进仓库源时，重编后重新 `Sync-CxxuPredictor -DllPath`，或裸 `Sync-CxxuPredictor` 切回（流程见 `Live-Versions.md §10`）。
+- 自编译活件（`local-build.txt` 标记为 local）：`Update-ReposesConfiged` 保持活件不动并提示，不会换回仓库源；若同时有 5.1 Tab 活件更新，更新流程会用 `Sync-CxxuPredictor -Ps51Only` 只同步那一套。想跟进仓库源时，重编后重新 `Sync-CxxuPredictor -DllPath`（net9）或 `-Ps51DllPath`（5.1 Tab），或裸 `Sync-CxxuPredictor` 切回（流程见 `Live-Versions.md §10`）。
 - 守护进程（报时/IP）用不上 predictor：`$env:PsPredictor='False'` 门已置（`Start-StartupBgProcesses` 继承 + 两个守护函数按 `-Command` 自断），它们永不加载/锁定 dll， `-Force` 关它们无压力（无状态，重起即回）；交互会话手动调守护函数不受影响。
 - 顺序：更新函数（活件已同步）→（dll 变更时重开终端/`-Force`）→ `init` → `Test-PsEnvReadiness` 收尾。
 
@@ -245,6 +246,7 @@ Sync-CxxuPredictor            # 单点操作（首次安装生成/手动修复/�
 | pip/conda 高校源 | `DevEnv.psm1` / `ConstantString.conf` / `Tools.psm1:381` | 稳定，偶改路径 | 安装失败时对照 `help.mirrorz.org` | 改 URL | 失败时 |
 | `Get-SpeedUpUri` 未定义 | `PsEnv.psm1:238` / `TerminalTools.psm1:9,42` | 已修 | 跑 `Update-PowerShell` 即验 | — | — |
 | net9.0 / pwsh 版本门 | `CxxuPredictor.csproj` | 7.6 可直接用；pwsh 8 发布后再复核 | — | 加载失败时重编 dll（见 `Live-Versions.md §10`） | 慢变量 |
+| netstandard2.0 / 5.1 Tab | `CxxuPredictor.csproj` / `ps51` 活件 | 仅 Windows；5.1 固定在 .NET Framework 4.8 | 5.1 按 Tab 有模糊候选 | `Sync-CxxuPredictor` 重新发布 | 慢变量 |
 | 文档外链（博客/商店/聚合页） | `readme.md` / `Deploy-Guide.md` | 腐烂风险，低优 | 抽查 | 换链 | 年 |
 | PSGallery 第三方模块 | `Deploy-CompletionStack` | 浮动最新，不钉版 | `Test-PsEnvReadiness` | `Deploy-CompletionStack` | 按需 |
 

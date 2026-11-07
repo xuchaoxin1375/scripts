@@ -770,7 +770,7 @@ function Deploy-CompletionStack
 
     if ($coreReady -eq $true) { Write-Host '核心 CxxuCommand:活件已就绪,新终端跑 init 生效(开关 $env:PsPredictor)' }
     elseif ($null -eq $coreReady) { Write-Host '核心 CxxuCommand:本次为空跑(-WhatIf),未同步活件;去掉 -WhatIf 执行' }
-    else { Write-Host '核心 CxxuCommand:未就绪(需 pwsh 7.5+ 并执行 Sync-CxxuPredictor)' }
+    else { Write-Host '核心 CxxuCommand:未就绪(内联预测需 pwsh 7.5+;5.1 Tab 需执行 Sync-CxxuPredictor)' }
     Write-Host '可选增强:PSFzf/CompletionPredictor 模块、fzf/zoxide 二进制;开关 $env:PsFzf/$env:PsZoxide'
     # 用户配置模板兜底(新机一键装后就有文件可改;已存在则 no-op;-WhatIf 下只显示意图)
     if (Get-Command New-CxxuConfigTemplate -ErrorAction SilentlyContinue) { New-CxxuConfigTemplate }

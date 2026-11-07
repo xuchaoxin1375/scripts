@@ -1,6 +1,6 @@
 # 并排版本活件
 
-> 本章讲一件事：`CxxuPredictor.dll` 的活件为什么按版本并排存放，以及各命令如何分工。术语（仓库源/活件/指针/自锁/他锁）以 `Module-Conventions.md §11` 为准。操作速查见 `Feature-Guide.md §9`，部署流程见 `Deploy-Guide.md §13`。
+> 本章讲 `CxxuPredictor` 的两套活件（net9.0 内联 predictor + 5.1 Tab-only）为什么按版本并排存放，以及各命令如何分工。术语（仓库源/活件/指针/自锁/他锁）以 `Module-Conventions.md §11` 为准。操作速查见 `Feature-Guide.md §9`，部署流程见 `Deploy-Guide.md §13`。
 
 ## 1. 背景
 
@@ -45,6 +45,8 @@ graph TD
 
 以上三条即指针协议的全部内容。图讲的是"东西放在哪"，下一节讲"怎么变过去"。
 
+- 5.1 Tab-only 产物是第二套独立活件：仓库源 `PS/CxxuPredictor/ps51/CxxuPredictor.dll`，活件 `~/.cxxu/bin/ps51/<哈希>/CxxuPredictor.dll`，指针 `~/.cxxu/bin/ps51/current.txt`。它只保留 `CompleteCommand` 静态入口，不参与上面的 predictor 指针；原因、加载方式与构建见本章『5.1 Tab-only 产物』。
+
 ## 4. 同步流程
 
 ```mermaid
@@ -68,6 +70,7 @@ flowchart TD
   2. 被锁定的旧版本文件从不触碰。**因此同步在任何会话中执行都成功**，无需关闭会话.  `-Force` 在同步路径上无意义（仅用于卸载路径保留，用于关闭其它会话）。
 - 幂等：重复执行结果不变（第二次走"已是最新"分支），因此 `Update-ReposesConfiged` 可以无条件调用，无需预检。
 - `-WhatIf` 显示将要新增的版本路径与指针目标，不执行写入。
+- 两套产物各跑一次同样的流程；`ps51` 是根活件目录下的保留子目录，根目录回收旧版本时不会删除它。
 
 ## 5. 加载流程
 
@@ -83,13 +86,13 @@ flowchart TD
 ```
 
 - 旧会话继续使用装载时的旧版本，新会话使用指针指向的新版本。同一时刻存在多版本**是设计允许的状态，不是故障**。
-- `CxxuTab`（Tab 插件）不经过模块装载，直接按字节读取指针指向的版本文件（不锁定文件，不注册 ListView 预测），因此与 `PsPredictor` 门独立，可单独启停（默认关，置 `$env:PsTab='True'` 开）。
+- `CxxuTab`（Tab 插件）不经过模块装载，直接按字节读取指针指向的版本文件（不锁定文件，不注册 ListView 预测），因此与 `PsPredictor` 门独立，可单独启停（默认关，置 `$env:PsTab='True'` 开）。5.1 读 `ps51` 活件，7+ 读根活件，见本章『5.1 Tab-only 产物』。
 - 指针损坏（空文件/指向不存在的目录）时自动降级，不报错；检查命令会报版本不一致，执行一次同步即恢复正常。
 
 ## 6. 回收与卸载
 
 - 回收：每次同步后删除非当前版本的版本目录；被会话锁定的删除失败会被静默跳过，下次同步重试。旧单文件（迁移前产物）在无人持有时同样回收。
-- 卸载（`Sync-CxxuPredictor -Uninstall`）：删除指针与全部版本目录；被锁定的版本会逐个报告，请关闭持有会话后重新执行。卸载后若不禁用自动加载（持久化 `$env:PsPredictor='False'`），下次同步或更新会重新安装。
+- 卸载（`Sync-CxxuPredictor -Uninstall`）：删除两套指针与全部版本目录（含 `ps51`）；被锁定的版本会逐个报告，请关闭持有会话后重新执行。卸载后若不禁用自动加载（持久化 `$env:PsPredictor='False'`；5.1 Tab 另加 `$env:PsTab='False'`），下次同步或更新会重新安装。
 
 ## 7. 故障模式
 
@@ -99,7 +102,9 @@ flowchart TD
 | 指针损坏或丢失 | 文件损坏/误删 | 执行一次同步即重建；期间 loader 自动降级，不中断使用 |
 | 旧版本目录长期存在 | 一直有会话持有旧版，GC 跳过 | 正常。持有会话全部退出后的下次同步会回收 |
 | 同步后本会话仍是旧行为 | 不变量 2：内存中是旧代码 | **重新打开终端**，再执行 `init` |
-| 卸载后又出现 | 未禁用自动加载 | 持久化 `$env:PsPredictor='False'` |
+| 卸载后又出现 | 未禁用自动加载 | 持久化 `$env:PsPredictor='False'`；5.1 Tab 另加 `$env:PsTab='False'` |
+| 5.1 按 Tab 没有模糊候选 | `ps51` 活件未生成，或 CxxuTab 未导入 | 执行 `Sync-CxxuPredictor`，再 `Enable-PsPlugin Tab`；确认 `~/.cxxu/bin/ps51/current.txt` 指向的 dll 存在 |
+| 5.1 能用 Tab 但没有内联预测 | 5.1 引擎没有预测子系统 | 正常；内联预测需 pwsh 7.2+，见本章『5.1 Tab-only 产物』 |
 
 ## 8. 命令分工：更新为什么不需要专用命令
 
@@ -140,14 +145,29 @@ flowchart TD
 ```powershell
 cd PS/CxxuPredictor/src
 dotnet build -c Release -p:SmaPath="$PSHOME/System.Management.Automation.dll"
+# 5.1 Tab-only（仅 Windows；引用 5.1 的 GAC SMA，可用 -p:SmaPathPs51=... 覆盖）
+dotnet build -c Release -f netstandard2.0 -p:SmaPathPs51="C:\WINDOWS\Microsoft.Net\assembly\GAC_MSIL\System.Management.Automation\v4.0_3.0.0.0__31bf3856ad364e35\System.Management.Automation.dll"
 ```
 - `csproj` 的 SMA 引用已改为 `$(SmaPath)` 属性（默认 Windows 本机路径，不传参行为不变，Windows 回归已验）；`-p:SmaPath=` 只影响本次构建，不写文件。
 - 发布（不碰仓库源，按产物内容哈希建版本目录、更新指针、写 `local-build.txt` 标记，只记 `repo/local` 与哈希日期，不记路径）：
 ```powershell
 Sync-CxxuPredictor -DllPath ./bin/Release/net9.0/CxxuPredictor.dll
+# 5.1 Tab-only 单独发布（默认用仓库源 PS/CxxuPredictor/ps51/；本地重编时显式指定）
+Sync-CxxuPredictor -Ps51DllPath ./bin/Release/netstandard2.0/CxxuPredictor.dll
 ```
-- 验证：重开终端 → `init`；`Test-PsEnvReadiness` 活件行应显示 `自编译版本[哈希]`（不再误报与仓库不一致）；`doctor` predictor 行应显示已加载自编译版本；输入命令名应有预测浮现。
+- 验证：重开终端 → `init`；`Test-PsEnvReadiness` 活件行应显示 `自编译版本[哈希]`（不再误报与仓库不一致）；`doctor` predictor 行应显示已加载自编译版本；输入命令名应有预测浮现。5.1 Tab 另见本章『5.1 Tab-only 产物』的验收步骤。
 - 与更新的关系：`Update-ReposesConfiged` 检测到自编译标记会保持活件不动并提示（不会把可用活件换回仓库源）；想跟进仓库源时，重编后重新 `Sync-CxxuPredictor -DllPath`，或裸 `Sync-CxxuPredictor` 直接切回仓库源。
 - 回退与停用：切回仓库源用裸 `Sync-CxxuPredictor`；彻底不用走 §6 卸载 + 持久化 `$env:PsPredictor='False'`。
 - 警告：不要把本机构建覆盖提交为共享 `CxxuPredictor.dll`（仓库源面向多机多版本，跨 SMA 版本互相点不亮的风险见 `csproj` 头注；共享 dll 的更新须在多版本验证后单独提交）。
 - 故障：`CS1705` 多为 SDK/TFM 与 SMA 代际错配（回看 `csproj` 头注的 net8 不可行结论）；`找不到 SMA` 检查 `-p:SmaPath` 路径是否存在；构建成功但加载失败确认 pwsh 7.5+（7.6 可直接加载；更高版本以实际加载为准，`dotnet --list-runtimes` 可佐证运行时）。
+
+## 11. 5.1 Tab-only 产物
+
+> 5.1 的引擎只到 SMA 3.0，没有 `System.Management.Automation.Subsystem.Prediction`，`ICommandPredictor` 注册不了；装 .NET 9 也不能让 5.1 加载 net9 程序集（5.1 固定在 .NET Framework 4.8 CLR）。因此 5.1 只提供 Tab 补全，不提供内联预测。
+
+- 仓库源：`PS/CxxuPredictor/ps51/CxxuPredictor.dll`，`netstandard2.0`，引用 5.1 的 GAC SMA；同一份 `CxxuPredictor.cs` 用 `PS51` 条件编译，去掉 `ICommandPredictor` 实现，只保留 `CompleteCommand`。
+- 活件：`~/.cxxu/bin/ps51/<哈希>/CxxuPredictor.dll` + `ps51/current.txt`；`Sync-CxxuPredictor` 与 net9 产物一起发布，根目录回收时保留 `ps51` 子目录。自编译 net9 活件保持不动时，更新流程用 `Sync-CxxuPredictor -Ps51Only` 只同步这一套。
+- 加载：`CxxuTab` 在 `$PSVersionTable.PSVersion.Major -lt 6` 时只读 `ps51` 指针；按字节 `Assembly.Load`，不锁定文件，不注册 predictor。7+ 仍读根活件。
+- 启用：`Sync-CxxuPredictor` → `Enable-PsPlugin Tab -Persist`（或 `$env:PsTab='True'` 后重跑 `init`）→ 重开 5.1 终端；首个 Tab 才导入 CxxuTab 并建表（冷启动约 400ms，之后 1ms 级）。
+- 验收：5.1 中输入 `get-chi` 按 Tab，候选里应出现 `Get-ChildItem` 等模糊结果；`Get-Module CxxuTab` 应有模块；`~/.cxxu/bin/ps51/current.txt` 指向的 dll 应存在。
+- 限制：只有 Tab 菜单，没有边输边弹的 ListView；后者需要 pwsh 7.2+（本仓库现成 net9 predictor 要求 7.5+）。

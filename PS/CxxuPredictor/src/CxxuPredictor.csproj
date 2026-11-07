@@ -1,26 +1,51 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!-- 自研命令名 predictor:只做“裸命令名前缀查缓存表”,微秒级,20ms 预算内。
-       离线可构建:唯一引用是本机 pwsh 自带的 SMA,无 NuGet 包。
-       TargetFramework net9.0(2026-09-21 实测 net8.0 编不过:本机 7.5 的 SMA 自带
-       System.Runtime 9 引用,CS1705;覆盖 7.4 需 7.4 的 SMA 或 PowerShellStandard
-       (缺预测子系统 API),暂不做)。
-       SMA 路径默认 Windows 本机 pwsh;macOS/其它位置构建时用 -p:SmaPath=... 覆盖
-       (例: dotnet build -c Release -p:SmaPath="$PSHOME/System.Management.Automation.dll"),
-       构建产物进 src/bin(已 gitignore),再用 Sync-CxxuPredictor -DllPath 发布为活件。 -->
+       双目标:
+         net9.0         → 完整 ICommandPredictor(psd1 要求 pwsh 7.5+)
+         netstandard2.0 → PS51 构建,仅保留 CompleteCommand 静态入口,供 Windows
+                          PowerShell 5.1 的 CxxuTab 按字节装载(5.1 引擎没有
+                          Subsystem.Prediction,注册不了 predictor)
+       离线可构建:唯一引用是本机 PowerShell 自带的 SMA,无 NuGet 包。
+       net9.0 的 SMA 路径默认 Windows 本机 pwsh;macOS/其它位置构建时用
+       -p:SmaPath=... 覆盖(例: dotnet build -c Release -p:SmaPath="$PSHOME/System.Management.Automation.dll")。
+       netstandard2.0 只在 Windows 上构建,默认引用 5.1 的 GAC SMA;其它位置用
+       -p:SmaPathPs51=... 覆盖。构建产物进 src/bin(已 gitignore),发布时:
+         net9.0         → 覆盖 PS/CxxuPredictor/CxxuPredictor.dll
+         netstandard2.0 → 覆盖 PS/CxxuPredictor/ps51/CxxuPredictor.dll
+       再用 Sync-CxxuPredictor 分发为活件。 -->
 
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFrameworks Condition="'$(OS)' == 'Windows_NT'">net9.0;netstandard2.0</TargetFrameworks>
+    <TargetFrameworks Condition="'$(OS)' != 'Windows_NT'">net9.0</TargetFrameworks>
     <AssemblyName>CxxuPredictor</AssemblyName>
     <RootNamespace>CxxuPredictor</RootNamespace>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
+    <!-- 源文件显式列出:netstandard2.0 只编 CxxuPredictor.cs;新增 .cs 要同步 net9 的 Compile 项 -->
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <SmaPath Condition="'$(SmaPath)' == ''">C:\scoop\apps\powershell\current\System.Management.Automation.dll</SmaPath>
+    <SmaPathPs51 Condition="'$(SmaPathPs51)' == ''">C:\WINDOWS\Microsoft.Net\assembly\GAC_MSIL\System.Management.Automation\v4.0_3.0.0.0__31bf3856ad364e35\System.Management.Automation.dll</SmaPathPs51>
   </PropertyGroup>
 
-  <ItemGroup>
+  <PropertyGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+    <DefineConstants>$(DefineConstants);PS51</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
+    <Compile Include="CxxuPredictor.cs" />
+    <Compile Include="CxxuArgcFlagsPredictor.cs" />
+    <Compile Include="Init.cs" />
     <Reference Include="System.Management.Automation">
       <HintPath>$(SmaPath)</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+    <Compile Include="CxxuPredictor.cs" />
+    <Reference Include="System.Management.Automation">
+      <HintPath>$(SmaPathPs51)</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>

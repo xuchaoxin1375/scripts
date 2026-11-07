@@ -495,7 +495,9 @@ function Update-ReposesConfiged
         if (($targetNames -contains 'scripts') -and (Test-Path -LiteralPath (Join-Path $scriptsDir '.git')) -and (Get-Command Sync-CxxuPredictor -ErrorAction SilentlyContinue))
         {
             $repoDll = Join-Path $scriptsDir (Join-Path 'PS' (Join-Path 'CxxuPredictor' 'CxxuPredictor.dll'))
+            $repoPs51Dll = Join-Path $scriptsDir (Join-Path 'PS' (Join-Path 'CxxuPredictor' (Join-Path 'ps51' 'CxxuPredictor.dll')))
             $binDir = Join-Path (Join-Path $HOME '.cxxu') 'bin'
+            $ps51Dir = Join-Path $binDir 'ps51'
             $liveDll = $null
             $ptrF = Join-Path $binDir 'current.txt'
             if (Test-Path -LiteralPath $ptrF)
@@ -503,11 +505,25 @@ function Update-ReposesConfiged
                 $hd = Get-Content -LiteralPath $ptrF -ErrorAction SilentlyContinue | Select-Object -First 1
                 if ($hd) { $cd = Join-Path (Join-Path $binDir "$hd".Trim()) 'CxxuPredictor.dll'; if (Test-Path -LiteralPath $cd) { $liveDll = $cd } }
             }
-            $needsSync = $true
+            $livePs51Dll = $null
+            $ps51PtrF = Join-Path $ps51Dir 'current.txt'
+            if (Test-Path -LiteralPath $ps51PtrF)
+            {
+                $hd = Get-Content -LiteralPath $ps51PtrF -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($hd) { $cd = Join-Path (Join-Path $ps51Dir "$hd".Trim()) 'CxxuPredictor.dll'; if (Test-Path -LiteralPath $cd) { $livePs51Dll = $cd } }
+            }
+            $needsNet9Sync = $true
             if ((Test-Path -LiteralPath $repoDll) -and $liveDll)
             {
-                $needsSync = (Get-FileHash -LiteralPath $repoDll -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $liveDll -Algorithm SHA256).Hash
+                $needsNet9Sync = (Get-FileHash -LiteralPath $repoDll -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $liveDll -Algorithm SHA256).Hash
             }
+            $needsPs51Sync = $false
+            if ((($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true)) -and (Test-Path -LiteralPath $repoPs51Dll))
+            {
+                if (-not $livePs51Dll) { $needsPs51Sync = $true }
+                else { $needsPs51Sync = (Get-FileHash -LiteralPath $repoPs51Dll -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $livePs51Dll -Algorithm SHA256).Hash }
+            }
+            $needsSync = $needsNet9Sync -or $needsPs51Sync
             # 自编译活件保持不动：标记为 local 且活件哈希与标记一致时，更新也不碰指针（否则会把可用活件换回仓库源）
             $keepLocal = $false
             if ($liveDll)
@@ -521,7 +537,15 @@ function Update-ReposesConfiged
             }
             if ($keepLocal)
             {
-                Write-Host '活件是本地自编译版本，保持不动（想跟进仓库源：重编后执行 Sync-CxxuPredictor -DllPath 再同步）。'
+                if ($needsPs51Sync)
+                {
+                    Sync-CxxuPredictor -Ps51Only
+                    Write-Host 'net9 活件是本地自编译版本，保持不动；5.1 Tab 活件已按仓库源同步。'
+                }
+                else
+                {
+                    Write-Host '活件是本地自编译版本，保持不动（想跟进仓库源：重编后执行 Sync-CxxuPredictor -DllPath 再同步）。'
+                }
             }
             elseif ($needsSync)
             {

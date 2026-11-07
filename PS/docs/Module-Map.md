@@ -13,8 +13,8 @@
 |---|---|---|
 | `Init` | 1177/24 | 启动编排：`init`/`p` 入口、9 步任务表（`-Timing` 看耗时）、`PsEnvMode` 等级跟踪、`Optimize-PsHistory`、用户配置（`Import/New-CxxuConfig*`）、插件启停（`Enable/Disable-PsPlugin`）、argc-completions（懒加载） |
 | `Prompt` | 723/32 | 提示符：`prompt` 入口、`Prompt*` 主题、`Write-*` 片段、`Set-PsPrompt`（`-Persist` 才写注册表）、电池 30s 缓存 |
-| `CxxuPredictor` | 1170/0导出 | 自研双 predictor：`CxxuCommand` 命令名（分层模糊：别名精确/前缀/词边界/连续片段/一般子序列 + 严格通配；别名也进候选，PSReadLine 历史频率加权，默认 15 条）+ `CxxuArgcFlags`（argc 覆盖命令首参数位的静态 flag，`-` 前缀，≤10 条，表缓存 `~/.cxxu/cache/argc-flags.tsv`）；二进制：dll 发布件 + src；`CompleteCommand` 公开 Tab 接口；活件并排版本 `~/.cxxu/bin`，loader 按指针装载；OnIdle 加载 |
-| `CxxuTab` | 111/1 | 自研 Tab 命令名补全（独立插件：`TabExpansion2` 包装，命令名位合并 dll 模糊结果，参数位透传；门控 `$env:PsTab` 逐调用判定，**默认关**（置 `True` 开）；启停见 `Enable/Disable-PsPlugin`） |
+| `CxxuPredictor` | 1170/0导出 | 自研双 predictor：`CxxuCommand` 命令名（分层模糊：别名精确/前缀/词边界/连续片段/一般子序列 + 严格通配；别名也进候选，PSReadLine 历史频率加权，默认 15 条）+ `CxxuArgcFlags`（argc 覆盖命令首参数位的静态 flag，`-` 前缀，≤10 条，表缓存 `~/.cxxu/cache/argc-flags.tsv`）；二进制：dll 发布件 + src；`CompleteCommand` 公开 Tab 接口；活件并排版本 `~/.cxxu/bin`，loader 按指针装载；OnIdle 加载；5.1 Tab-only 产物 `ps51/CxxuPredictor.dll`（netstandard2.0，仅 `CompleteCommand`，见 [Live-Versions.md](Live-Versions.md) 的『5.1 Tab-only 产物』） |
+| `CxxuTab` | 111/1 | 自研 Tab 命令名补全（独立插件：`TabExpansion2` 包装，命令名位合并 dll 模糊结果，参数位透传；门控 `$env:PsTab` 逐调用判定，**默认关**（置 `True` 开）；启停见 `Enable/Disable-PsPlugin`；5.1 读 `~/.cxxu/bin/ps51` 活件，7+ 读根活件） |
 | `PwshVar` | 329/6 | `.conf` 变量文件加载（预编译缓存，`Update-PwshVars -NoCache` 回退） |
 | `Aliases` | 68/2 | 别名文件加载（`alias_core`/`functions`/`shortcuts`，逐行 iex 是故意的） |
 | `ArgumentCompletion` | 115/2 | 参数补全注册（`prompt` 已迁出，只剩补全；B 档 5.1） |
@@ -82,7 +82,7 @@
 | `ArchiveProcess` | 610/8 | tar/zstd/lz4/gz 压缩解压 |
 | `Cloudflare` | 509/9 | CF Zone/DNS 管理（B 档 5.1，调用走网络，5.1 下直调已验导入）；域名配置经 `cf_api/cloudflare_dns_tool.py --provision`（旧 `cf_config_api.py` 已退役），zone/DNS 查询经 `--list-zones`/`--list-dns`（外部 `flarectl` 已淘汰） |
 | `BTCN` | 722/9 | 批量建站（宝塔）脚本生成（B 档 5.1） |
-| `TerminalTools` | 504/12 | WT 链接、scoop 安装、scp、目录树、`Register-PsUxLazyLoad`（手势按需：Ctrl+T/R 首按装 PSFzf、首个 Tab 装 CxxuTab；predictor/zoxide 首屏单发）+ `Install-PsUxGestureStubs`（手势桩安装器，幂等）+ `Sync-CxxuPredictor`（并排版本同步活件，-Uninstall/-Force） |
+| `TerminalTools` | 504/12 | WT 链接、scoop 安装、scp、目录树、`Register-PsUxLazyLoad`（手势按需：Ctrl+T/R 首按装 PSFzf、首个 Tab 装 CxxuTab；predictor/zoxide 首屏单发）+ `Install-PsUxGestureStubs`（手势桩安装器，幂等）+ `Sync-CxxuPredictor`（并排版本同步 net9 predictor 与 5.1 Tab 两套活件，-Uninstall/-Force） |
 | `PsDebug` | 463/13 | pwsh 内省/诊断：`Head`/`Tail`/`Get-SourceCode`/`Get-PipelineInput`、权限（`Set-Owner`/`Grant-PermissionToPath`，Deploy 用）、`Confirm-UserContinue`（Deploy/Link/Git 用）、`Write-PsDebugLog`（2026-09-22 从 `Pwsh` 迁入；B 档 5.1，冷路径按需加载） |
 | `openApps` | 166/16 | 常用软件别名启动（qq/微信/typora 等；B 档 5.1，冗余后台 `&` 去掉） |
 | `Browser` | 24/4 | 浏览器搜索/收藏夹小命令（B 档 5.1） |

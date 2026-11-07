@@ -509,3 +509,12 @@ Set-PSReadLineOption: 句柄无效。
 - 验证（新 dll，pwsh 7.5.4）：`nginx -` 10 条、`docker --con` 2 条、`git -` 10 条、`git checkout -` 0、`Get-ChildItem -F` 0、`nginx -s reload` 0、`nginx.exe -`/`NGINX -`/管道/`&` 均命中、`PsArgc=False` 0、表过期自动重建。
 - 发布：`dotnet build -c Release` → 覆盖 `PS/CxxuPredictor/CxxuPredictor.dll` → `Sync-CxxuPredictor`（哈希 `F57A131B`）；重开终端生效。
 
+## 25. 第十八轮：5.1 Tab-only 构建（2026-11-07，用户问“CxxuCommand 能否适配 PowerShell 5.1”）
+
+- 结论：内联预测不能，Tab 补全可以。5.1 的引擎是 SMA 3.0，没有 `System.Management.Automation.Subsystem.Prediction`，`ICommandPredictor` 注册不了；装 .NET 9 也不会改变 5.1 固定在 .NET Framework 4.8 CLR 的事实（实测加载 net9 dll 取类型即报 `System.Runtime, Version=9.0.0.0` 找不到）。
+- 构建：`CxxuPredictor.csproj` 在 Windows 上多目标 `net9.0;netstandard2.0`；`netstandard2.0` 定义 `PS51`，同一份 `CxxuPredictor.cs` 条件编译去掉 `ICommandPredictor` 实现，只保留 `CompleteCommand`，引用 5.1 的 GAC SMA。产物 `PS/CxxuPredictor/ps51/CxxuPredictor.dll`（12KB）。
+- 分发：`Sync-CxxuPredictor` 同时发布 `~/.cxxu/bin/<哈希>`（net9）与 `~/.cxxu/bin/ps51/<哈希>`（5.1 Tab）；根目录回收时保留 `ps51`。`CxxuTab` 在 5.1 只读 `ps51` 指针，按字节装载（不锁文件），7+ 仍读根活件。
+- 启动：`Register-PsUxLazyLoad` 在 5.1 只装 CxxuTab 手势桩，首个 Tab 才导入模块并建表；`Enable-PsPlugin Tab` 在 5.1 直接导入，二者都不给启动加负担。
+- 验证（5.1.26100 / .NET Framework 4.8）：`get-chi`、`gci`、`ls`、`get-*item`、`get-netr` 均返回；接 CxxuTab 的 `TabExpansion2` 合并 27 条；冷启动约 380ms（建表），之后约 1ms。7.5 的 net9 构建回归通过（`ICommandPredictor` 可赋值、`CompleteCommand` 正常）。
+- 边界：5.1 只有 Tab 菜单，没有边输边弹的 ListView；内联预测需 pwsh 7.2+（本仓库现成 dll 要求 7.5+）。
+

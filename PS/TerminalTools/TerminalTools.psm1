@@ -326,7 +326,9 @@ function Install-PsUxGestureStubs
     # PSFzf 桩:只接管 Ctrl+T(文件)/Ctrl+R(历史),Tab 留给 MenuComplete。
     # 首按才 Import-Module + 绑原生和弦,本次按键直接调 PSFzf 导出函数(已核实 2.7.10 导出),
     # 不用等下次按键;没装过 PSFzf 的机器首按静默记 $global:PsUxNoPSFzf,之后零开销。
-    if (($env:PsFzf -notmatch '^(False|0|No|Off)$') -and (-not (Get-Module PSFzf -ErrorAction SilentlyContinue)))
+    # PSFzf 仅 7+ 使用;5.1 只装下面的 Tab 桩。
+    if (($PSVersionTable.PSVersion.Major -ge 7) -and
+        ($env:PsFzf -notmatch '^(False|0|No|Off)$') -and (-not (Get-Module PSFzf -ErrorAction SilentlyContinue)))
     {
         Set-PSReadLineKeyHandler -Key 'Ctrl+t' -BriefDescription 'PSFzf file (lazy)' -Description '首按装入 PSFzf 并取文件' -ScriptBlock {
             if (-not (Get-Module PSFzf -ErrorAction SilentlyContinue))
@@ -420,6 +422,24 @@ function Register-PsUxLazyLoad
     param(
         [switch]$Now
     )
+    # 5.1：只装 Tab 手势桩（PSFzf/predictor/zoxide 均为 7-only）。
+    # 桩本身零导入，首个 Tab 才导入 CxxuTab，避免把建表的数百毫秒摊到启动。
+    if ($PSVersionTable.PSVersion.Major -lt 7)
+    {
+        if ($Now)
+        {
+            # 立即全载通道：直接导入 CxxuTab；不要再装桩，否则桩会被 CxxuTab 当成原函数套一层
+            if ($env:PsTab -match '^(True|1|Yes|On)$')
+            {
+                Import-Module CxxuTab -Global -ErrorAction SilentlyContinue
+            }
+            return
+        }
+        $consoleInteractive = try { -not [Console]::IsOutputRedirected } catch { $false }
+        if (-not $consoleInteractive) { return }
+        Install-PsUxGestureStubs
+        return
+    }
     # 分片(块内只用 $env:/$HOME/cmdlet,不引用函数局部变量;-Now 与单发共用同一块,行为一致)
     $pieceFzf = {
         # PSFzf:只接管 Ctrl+T(文件)/Ctrl+R(历史),Tab 留给 MenuComplete
@@ -556,54 +576,127 @@ function Register-PsUxLazyLoad
     Register-EngineEvent PowerShell.OnIdle -Action $singleAction | Out-Null
     $global:PsUxOnIdleRegistered = $true
 }
+function Sync-CxxuPredictorArtifact
+{
+    # 单一活件的同步核心：net9 predictor 与 5.1 Tab 版共用，避免两份复制逻辑分叉。
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter(Mandatory)][string]$SrcDll,
+        [Parameter(Mandatory)][string]$BaseDir,
+        [string]$Label = 'CxxuPredictor',
+        [string]$SrcKind = 'repo',
+        # 顶层目录里需要保留、不参与旧版本回收的子目录（根活件目录用 ps51）
+        [string[]]$KeepSubDirs = @()
+    )
+    if (-not (Test-Path -LiteralPath $SrcDll))
+    {
+        Write-Warning "$Label 源不存在($SrcDll)。"
+        return $false
+    }
+    $hash = (Get-FileHash -LiteralPath $SrcDll -Algorithm SHA256).Hash.Substring(0, 8)
+    $ptrFile = Join-Path $BaseDir 'current.txt'
+    $targetDir = Join-Path $BaseDir $hash
+    $targetPath = Join-Path $targetDir 'CxxuPredictor.dll'
+    $pointed = Get-Content -LiteralPath $ptrFile -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($pointed) { $pointed = "$pointed".Trim() } else { $pointed = '' }
+    if (($pointed -eq $hash) -and (Test-Path -LiteralPath $targetPath))
+    {
+        Write-Host "$Label 活件已是最新版本[$hash]，无需同步。"
+        return $false
+    }
+    if (-not $PSCmdlet.ShouldProcess($targetPath, "$Label 新增活件版本[$hash]并更新指针"))
+    {
+        return $false
+    }
+    if (-not (Test-Path -LiteralPath $targetDir)) { New-Item -ItemType Directory -Path $targetDir -Force | Out-Null }
+    # 同哈希即同内容：目录已存在则跳过复制（被锁定的旧版本从不触碰）
+    if (-not (Test-Path -LiteralPath $targetPath)) { Copy-Item -LiteralPath $SrcDll -Destination $targetPath -Force -ErrorAction Stop }
+    $tmpPtr = "$ptrFile.tmp"
+    # .NET 直写（5.1 的 Set-Content 不认 utf8NoBOM；与旧行为同字节：无 BOM、无尾换行）
+    [IO.File]::WriteAllText($tmpPtr, $hash, [Text.UTF8Encoding]::new($false))
+    Move-Item -LiteralPath $tmpPtr -Destination $ptrFile -Force
+    # 来源标记（只记 repo/local 与哈希日期，不记路径，防隐私泄露；只读检查与更新命令据此识别自编译活件）
+    $markerFile = Join-Path $BaseDir 'local-build.txt'
+    $markerText = "src=$SrcKind hash=$hash date=$((Get-Item -LiteralPath $targetPath).LastWriteTime.ToString('yyyy-MM-dd HH:mm'))"
+    [IO.File]::WriteAllText($markerFile, $markerText, [Text.UTF8Encoding]::new($false))
+    # 回收非当前版本目录与旧扁平文件（被锁定的跳过，下次再收；ps51 容器不回收）
+    Get-ChildItem -LiteralPath $BaseDir -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -ne $hash -and ($KeepSubDirs -notcontains $_.Name) } | ForEach-Object {
+            Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    Get-ChildItem -LiteralPath $BaseDir -Filter 'CxxuPredictor.*.dll' -ErrorAction SilentlyContinue | ForEach-Object {
+        Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue
+    }
+    Write-Host "$Label 活件已同步[$hash]（来源 $SrcKind）。"
+    return $true
+}
+
 function Sync-CxxuPredictor
 {
     <#
     .SYNOPSIS
-    同步或卸载 CxxuPredictor 活件。
+    同步或卸载 CxxuPredictor 活件（含 5.1 Tab 版）。
     .DESCRIPTION
     活件采用并排版本存放（~/.cxxu/bin/<哈希>/CxxuPredictor.dll，文件名不变以保证模块名正确），
     由 current.txt 指针指定当前版本目录。同步时只新增目录、从不覆盖旧文件，
     因此不受文件锁限制，在任何会话中执行都成功；入口 loader 按指针装载，
     旧会话继续使用旧版本，新会话使用新版本。
+    同时发布两个产物：
+    - net9.0 predictor：~/.cxxu/bin/<哈希>/CxxuPredictor.dll，供 pwsh 7.5+ 的 ListView 预测；
+    - netstandard2.0 Tab 版：~/.cxxu/bin/ps51/<哈希>/CxxuPredictor.dll，供 5.1 的 CxxuTab 按字节装载。
+    5.1 只有 Tab 补全，没有内联预测；两套活件独立回收，互不覆盖。
+    默认两套都同步；-Ps51Only 只同步 5.1 Tab 活件（自编译 net9 活件保持不动时用）。
     本命令适用于：首次安装时生成活件、手动修复不一致、本地重新编译后分发、卸载活件（-Uninstall）。
     本地自编译场景（macOS/新版 pwsh 与仓库源 dll 的 SMA 对不上时）：先在
-    PS/CxxuPredictor/src 下按 Live-Versions.md §10 构建，再用 -DllPath 指定产物发布，
-    不碰仓库源；发布成功会写 local-build.txt 标记，只读检查据此不再误报“与仓库不一致”，
-    Update-ReposesConfiged 也会保持活件不动。
+    PS/CxxuPredictor/src 下按 Live-Versions.md §10 构建，再用 -DllPath（net9）或
+    -Ps51DllPath（5.1 Tab）指定产物发布，不碰仓库源；发布成功会写 local-build.txt 标记，
+    只读检查据此不再误报“与仓库不一致”，Update-ReposesConfiged 也会保持活件不动。
     日常版本更新请使用 Update-ReposesConfiged（拉取后自动调用本命令同步）。
     生效条件：同步完成后必须重新打开终端，当前会话内存中的旧代码才会替换
-    （.NET 程序集不随模块卸载而卸载）。
+    （.NET 程序集不随模块卸载而卸载；5.1 Tab 版按字节装载，不锁定文件）。
     .EXAMPLE
     Sync-CxxuPredictor
     .EXAMPLE
     Sync-CxxuPredictor -DllPath ./bin/Release/net9.0/CxxuPredictor.dll
     .EXAMPLE
+    Sync-CxxuPredictor -Ps51DllPath ./bin/Release/netstandard2.0/CxxuPredictor.dll
+    .EXAMPLE
+    Sync-CxxuPredictor -Ps51Only
+    .EXAMPLE
     Sync-CxxuPredictor -Uninstall
     #>
     [CmdletBinding(SupportsShouldProcess)]
     param(
-        # 卸载活件：删除指针与全部版本文件（被会话锁定的文件删不掉，会报告并给出路）
+        # 卸载活件：删除指针与全部版本文件（含 5.1 Tab 版；被会话锁定的文件删不掉，会报告并给出路）
         [switch]$Uninstall,
         # 卸载时若有其他会话锁定文件：先关闭其他会话再重试（未保存的变量会丢失；重定向会话中拒绝执行）
         [switch]$Force,
-        # 本地自编译 dll 路径：不用仓库源，改用此文件发布活件（macOS/新版 pwsh 本地重编场景；哈希目录按此文件内容算）
-        [string]$DllPath = ''
+        # net9 predictor 本地自编译 dll 路径：不用仓库源，改用此文件发布活件（macOS/新版 pwsh 本地重编场景；哈希目录按此文件内容算）
+        [string]$DllPath = '',
+        # 5.1 Tab 版本地自编译 dll 路径：默认用仓库源 PS/CxxuPredictor/ps51/CxxuPredictor.dll
+        [string]$Ps51DllPath = '',
+        # 只同步 5.1 Tab 活件，不动 net9 predictor（自编译 net9 活件保持不动的场景）
+        [switch]$Ps51Only
     )
-    $repoDll = Join-Path (Join-Path (Split-Path $PSScriptRoot -Parent) 'CxxuPredictor') 'CxxuPredictor.dll'
+    $predictorDir = Join-Path (Split-Path $PSScriptRoot -Parent) 'CxxuPredictor'
+    $repoDll = Join-Path $predictorDir 'CxxuPredictor.dll'
+    $repoPs51Dll = Join-Path (Join-Path $predictorDir 'ps51') 'CxxuPredictor.dll'
     $binDir = Join-Path (Join-Path $HOME '.cxxu') 'bin'
+    $ps51Dir = Join-Path $binDir 'ps51'
     $ptrFile = Join-Path $binDir 'current.txt'
     if ($Uninstall)
     {
+        if ($Ps51Only) { Write-Warning '-Uninstall 总是删除两套活件，-Ps51Only 仅用于同步。' }
         $vers = @(Get-ChildItem -LiteralPath $binDir -Directory -ErrorAction SilentlyContinue |
-            Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'CxxuPredictor.dll') })
+            Where-Object { $_.Name -ne 'ps51' -and (Test-Path -LiteralPath (Join-Path $_.FullName 'CxxuPredictor.dll')) })
         $legacyDll = Join-Path $binDir 'CxxuPredictor.dll'
-        if (-not $vers.Count -and -not (Test-Path -LiteralPath $legacyDll) -and -not (Test-Path -LiteralPath $ptrFile))
+        $ps51Exists = Test-Path -LiteralPath $ps51Dir
+        if (-not $vers.Count -and -not (Test-Path -LiteralPath $legacyDll) -and -not (Test-Path -LiteralPath $ptrFile) -and -not $ps51Exists)
         {
             Write-Host '活件不存在，无需卸载。'
             return
         }
-        if ($PSCmdlet.ShouldProcess($binDir, '删除指针与全部活件版本'))
+        if ($PSCmdlet.ShouldProcess($binDir, '删除指针与全部活件版本（含 5.1 Tab 版）'))
         {
             if ($Force)
             {
@@ -626,64 +719,78 @@ function Sync-CxxuPredictor
             if (Test-Path -LiteralPath $legacyDll) { $left += 'CxxuPredictor.dll' }
             Remove-Item -LiteralPath $ptrFile -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath (Join-Path $binDir 'local-build.txt') -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $ps51Dir -Recurse -Force -ErrorAction SilentlyContinue
+            if (Test-Path -LiteralPath $ps51Dir) { $left += 'ps51' }
             Remove-Module CxxuPredictor -ErrorAction SilentlyContinue
             if ($left.Count)
             {
                 Write-Warning "以下版本仍被会话锁定，未能删除：$($left -join ', ')。请关闭持有会话后重新执行，或换用干净会话（裸 pwsh -NoProfile）删除。"
             }
-            else { Write-Host '活件已删除。若彻底停用，请将 $env:PsPredictor 持久化为 False，否则下次同步或更新时活件会被重新安装。' }
+            else { Write-Host '活件已删除。若彻底停用，请将 $env:PsPredictor 与 $env:PsTab 持久化为 False，否则下次同步或更新时活件会被重新安装。' }
         }
         return
     }
-    # 同步源：默认仓库源；-DllPath 指定时用本地自编译文件（不碰仓库源，哈希按此文件算）
-    $srcDll = $repoDll
-    $srcKind = 'repo'
-    if (-not [string]::IsNullOrWhiteSpace($DllPath))
+    # 同步源：默认仓库源；-DllPath / -Ps51DllPath 指定时用本地自编译文件（不碰仓库源，哈希按文件算）
+    $changed = $false
+    if (-not $Ps51Only)
     {
-        if (-not (Test-Path -LiteralPath $DllPath))
+        $srcDll = $repoDll
+        $srcKind = 'repo'
+        if (-not [string]::IsNullOrWhiteSpace($DllPath))
         {
-            Write-Warning "自编译 dll 不存在[$DllPath]，请检查路径后重试。"
+            if (-not (Test-Path -LiteralPath $DllPath))
+            {
+                Write-Warning "自编译 dll 不存在[$DllPath]，请检查路径后重试。"
+                return
+            }
+            $srcDll = $DllPath
+            $srcKind = 'local'
+        }
+        elseif (-not (Test-Path -LiteralPath $repoDll))
+        {
+            Write-Warning "仓库源不存在($repoDll)，请先确认仓库状态。"
             return
         }
-        $srcDll = $DllPath
-        $srcKind = 'local'
-    }
-    elseif (-not (Test-Path -LiteralPath $repoDll))
-    {
-        Write-Warning "仓库源不存在($repoDll)，请先确认仓库状态。"
-        return
-    }
-    $repoHash = (Get-FileHash -LiteralPath $srcDll -Algorithm SHA256).Hash.Substring(0, 8)
-    $targetDir = Join-Path $binDir $repoHash
-    $targetPath = Join-Path $targetDir 'CxxuPredictor.dll'
-    $pointed = Get-Content -LiteralPath $ptrFile -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($pointed) { $pointed = "$pointed".Trim() } else { $pointed = '' }
-    if (($pointed -eq $repoHash) -and (Test-Path -LiteralPath $targetPath))
-    {
-        Write-Host "活件已是最新版本[$repoHash]，无需同步。"
-        return
-    }
-    if ($PSCmdlet.ShouldProcess($targetPath, "新增活件版本[$repoHash]并更新指针"))
-    {
-        if (-not (Test-Path -LiteralPath $targetDir)) { New-Item -ItemType Directory -Path $targetDir -Force | Out-Null }
-        # 同哈希即同内容：目录已存在则跳过复制（被锁定的旧版本从不触碰）
-        if (-not (Test-Path -LiteralPath $targetPath)) { Copy-Item -LiteralPath $srcDll -Destination $targetPath -Force -ErrorAction Stop }
-        $tmpPtr = "$ptrFile.tmp"
-        # .NET 直写（5.1 的 Set-Content 不认 utf8NoBOM；与旧行为同字节：无 BOM、无尾换行）
-        [IO.File]::WriteAllText($tmpPtr, $repoHash, [Text.UTF8Encoding]::new($false))
-        Move-Item -LiteralPath $tmpPtr -Destination $ptrFile -Force
-        # 来源标记（只记 repo/local 与哈希日期，不记路径，防隐私泄露；只读检查与更新命令据此识别自编译活件）
-        $markerFile = Join-Path $binDir 'local-build.txt'
-        $markerText = "src=$srcKind hash=$repoHash date=$((Get-Item -LiteralPath $targetPath).LastWriteTime.ToString('yyyy-MM-dd HH:mm'))"
-        [IO.File]::WriteAllText($markerFile, $markerText, [Text.UTF8Encoding]::new($false))
-        # 回收非当前版本目录与旧扁平文件（被锁定的跳过，下次再收）
-        Get-ChildItem -LiteralPath $binDir -Directory -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -ne $repoHash } | ForEach-Object {
-                Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
-            }
-        Get-ChildItem -LiteralPath $binDir -Filter 'CxxuPredictor.*.dll' -ErrorAction SilentlyContinue | ForEach-Object {
-            Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue
+        if (Sync-CxxuPredictorArtifact -SrcDll $srcDll -BaseDir $binDir -Label 'CxxuPredictor' -SrcKind $srcKind -KeepSubDirs @('ps51'))
+        {
+            $changed = $true
         }
-        Write-Host "活件已同步[$repoHash]（来源 $srcKind）。当前会话内存中仍是旧代码，请重新打开终端使新代码生效。"
+    }
+    $ps51Src = $repoPs51Dll
+    $ps51Kind = 'repo'
+    if (-not [string]::IsNullOrWhiteSpace($Ps51DllPath))
+    {
+        if (-not (Test-Path -LiteralPath $Ps51DllPath))
+        {
+            Write-Warning "5.1 Tab 版自编译 dll 不存在[$Ps51DllPath]，请检查路径后重试。"
+            return
+        }
+        $ps51Src = $Ps51DllPath
+        $ps51Kind = 'local'
+    }
+    elseif (-not (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true)))
+    {
+        # 5.1 仅 Windows;非 Windows 不发布第二套活件
+        $ps51Src = $null
+    }
+    elseif (-not (Test-Path -LiteralPath $repoPs51Dll))
+    {
+        $ps51Src = $null
+    }
+    if ($ps51Src)
+    {
+        if (Sync-CxxuPredictorArtifact -SrcDll $ps51Src -BaseDir $ps51Dir -Label 'CxxuPredictor 5.1 Tab' -SrcKind $ps51Kind)
+        {
+            $changed = $true
+        }
+    }
+    else
+    {
+        if (-not (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true))) { Write-Host '非 Windows 不需要 5.1 Tab 活件，跳过。' }
+        else { Write-Host '5.1 Tab 活件源不存在（PS/CxxuPredictor/ps51/CxxuPredictor.dll），跳过。' }
+    }
+    if ($changed)
+    {
+        Write-Host '当前会话内存中仍是旧代码，请重新打开终端使新代码生效。'
     }
 }

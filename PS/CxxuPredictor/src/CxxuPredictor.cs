@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Management.Automation;
 using System.Management.Automation.Language;
+#if !PS51
 using System.Management.Automation.Subsystem.Prediction;
+#endif
 using System.Threading;
 
 namespace CxxuPredictor
@@ -32,11 +34,18 @@ namespace CxxuPredictor
     //   优先级 4:一般子序列(仅长查询且跨度收敛,避免单字母灌榜)
     // 同层内按“历史使用频率 + 匹配得分”排序,最后按长度与字母序稳定。
     // 含通配符(*/?/[])走 WildcardPattern 严格语义,不做模糊。
+    // 双目标:net9.0 完整 predictor;netstandard2.0(PS51)只保留 CompleteCommand
+    // 静态入口,供 Windows PowerShell 5.1 的 CxxuTab 按字节装载。
+#if PS51
+    public class CxxuCommandPredictor
+#else
     public class CxxuCommandPredictor : ICommandPredictor
+#endif
     {
         // ListView 一屏显示约 10 行(历史占前几行),可上下滚动;给足候选,不做层级裁剪。
         private const int PredictorMaxResults = 15;
 
+#if !PS51
         private readonly Guid _guid;
         private readonly CommandTable _table;
 
@@ -74,6 +83,7 @@ namespace CxxuPredictor
             }
             return new SuggestionPackage(list);
         }
+#endif
 
         // 纯函数,便于 headless 反射测试;只读共享表,多线程并发读安全。
         internal static List<string> FilterCommands(CommandTable table, string query, int max)
@@ -514,7 +524,11 @@ namespace CxxuPredictor
             string guess = null;
             try
             {
+#if PS51
+                if (Environment.OSVersion.Platform == PlatformID.Win32NT)
+#else
                 if (OperatingSystem.IsWindows())
+#endif
                 {
                     guess = Path.Combine(
                         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -685,10 +699,12 @@ namespace CxxuPredictor
             }
         }
 
+#if !PS51
         public bool CanAcceptFeedback(PredictionClient client, PredictorFeedbackKind feedback) => false;
         public void OnSuggestionDisplayed(PredictionClient client, uint session, int countOrIndex) { }
         public void OnSuggestionAccepted(PredictionClient client, uint session, string acceptedSuggestion) { }
         public void OnCommandLineAccepted(PredictionClient client, IReadOnlyList<string> history) { }
         public void OnCommandLineExecuted(PredictionClient client, string commandLine, bool success) { }
+#endif
     }
 }

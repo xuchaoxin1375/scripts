@@ -1167,6 +1167,8 @@ function Test-PsEnvReadiness
     $fileDate = { param($p) try { (Get-Item -LiteralPath $p -ErrorAction Stop).LastWriteTime.ToString('yyyy-MM-dd HH:mm') } catch { '' } }.GetNewClosure()
     # 活件解析小料:指针→版本目录→旧单文件,返回可用 dll 路径(取不到空串,永不抛;定义须在使用者之前)
     $liveDllPath = { try { $bd = Join-Path (Join-Path $HOME '.cxxu') 'bin'; $p = Join-Path $bd 'current.txt'; if (Test-Path -LiteralPath $p) { $h = Get-Content -LiteralPath $p -ErrorAction Stop | Select-Object -First 1; if ($h) { $c = Join-Path (Join-Path $bd "$h".Trim()) 'CxxuPredictor.dll'; if (Test-Path -LiteralPath $c) { return $c } } }; $best = Get-ChildItem -LiteralPath $bd -Directory -ErrorAction Stop | Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'CxxuPredictor.dll') } | Sort-Object LastWriteTime -Descending | Select-Object -First 1; if ($best) { return (Join-Path $best.FullName 'CxxuPredictor.dll') }; $lg = Join-Path $bd 'CxxuPredictor.dll'; if (Test-Path -LiteralPath $lg) { return $lg }; '' } catch { '' } }.GetNewClosure()
+    # 5.1 Tab 活件解析:只看 ~/.cxxu/bin/ps51（netstandard2.0,5.1 不能加载 net9 版）
+    $livePs51DllPath = { try { $p51 = Join-Path (Join-Path (Join-Path $HOME '.cxxu') 'bin') 'ps51'; $p = Join-Path $p51 'current.txt'; if (Test-Path -LiteralPath $p) { $h = Get-Content -LiteralPath $p -ErrorAction Stop | Select-Object -First 1; if ($h) { $c = Join-Path (Join-Path $p51 "$h".Trim()) 'CxxuPredictor.dll'; if (Test-Path -LiteralPath $c) { return $c } } }; $best = Get-ChildItem -LiteralPath $p51 -Directory -ErrorAction Stop | Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'CxxuPredictor.dll') } | Sort-Object LastWriteTime -Descending | Select-Object -First 1; if ($best) { return (Join-Path $best.FullName 'CxxuPredictor.dll') }; '' } catch { '' } }.GetNewClosure()
     # 活件版本对比小料:指针解析出的活件哈希 vs 仓库源,结果进 备注 列(取不到空串,永不抛;
     # 自编译活件(标记 src=local 且哈希对得上)显示正常结论,不误报"不一致")
     $dllSyncNote = { try { $lv = & $liveDllPath; $rp = Join-Path (Join-Path $psRoot 'CxxuPredictor') 'CxxuPredictor.dll'; if (-not (Test-Path -LiteralPath $rp)) { '仓库源不存在' } elseif (-not $lv) { '无活件' } else { $lh = (Get-FileHash -LiteralPath $lv -Algorithm SHA256).Hash.Substring(0, 8); $rh = (Get-FileHash -LiteralPath $rp -Algorithm SHA256).Hash.Substring(0, 8); if ($lh -eq $rh) { "与仓库一致[$rh]" } else { $mk = Get-Content -LiteralPath (Join-Path (Join-Path (Join-Path $HOME '.cxxu') 'bin') 'local-build.txt') -ErrorAction SilentlyContinue | Select-Object -First 1; if ($mk -match 'src=local' -and $mk -match 'hash=([0-9A-Fa-f]{8})' -and ($Matches[1] -eq $lh)) { "自编译版本[$lh]（与仓库源不同，属正常；以加载成功为准）" } else { "与仓库不一致(仓 $rh)，请执行 Sync-CxxuPredictor 同步" } } } } catch { '' } }.GetNewClosure()
@@ -1191,6 +1193,7 @@ function Test-PsEnvReadiness
     # 首跑生成物(跑一次 init 自动建)
     & $chk '~/Data.json' '生成物' { Test-Path -LiteralPath (Join-Path $HOME 'Data.json') } '跑一次 init' { & $fileDate (Join-Path $HOME 'Data.json') }
     & $chk 'predictor 活件 ~/.cxxu/bin' '生成物' { [bool](& $liveDllPath) } (& $platNeed '执行 Sync-CxxuPredictor 生成活件' 'Sync-CxxuPredictor（仓库 dll 若加载失败，本地重编后加 -DllPath，见 Live-Versions §10）' 'Sync-CxxuPredictor（仓库 dll 若加载失败，本地重编后加 -DllPath，见 Live-Versions §10）') { $lp = & $liveDllPath; if ($lp) { & $fileDate $lp } else { '' } } { '' } { & $dllSyncNote }
+    & $chk 'CxxuTab 5.1 活件 ~/.cxxu/bin/ps51' '生成物' { if (-not (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true))) { $true } else { [bool](& $livePs51DllPath) } } (& $platNeed '执行 Sync-CxxuPredictor 生成（5.1 只有 Tab 补全；内联预测仍需 pwsh 7.2+）' '非 Windows 不需要 5.1 Tab 活件' '非 Windows 不需要 5.1 Tab 活件') { $lp = & $livePs51DllPath; if ($lp) { & $fileDate $lp } else { '' } }
     $rows | Format-Table -AutoSize | Out-Host
     $must = @($rows | Where-Object { $_.级别 -eq '必备' })
     $mustOk = @($must | Where-Object { $_.状态 -eq 'OK' }).Count
@@ -1349,6 +1352,22 @@ function doctor
         catch { }
         & $dchk 'predictor' ($same -or [bool]$localHash) $(if ($same) { '已加载且与仓库一致' } elseif ($localHash) { "已加载自编译版本[$localHash]（与仓库源不同，属正常）" } else { '内存中是旧版本：请重开终端，活件已可同步（Sync-CxxuPredictor 不受锁限制）' })
     }
+    # 5.1 Tab 活件:只查生成物,不要求在 7 会话里加载
+    $ps51Live = try
+    {
+        $p51 = Join-Path $binDir 'ps51'
+        $p = Join-Path $p51 'current.txt'
+        $h = Get-Content -LiteralPath $p -ErrorAction Stop | Select-Object -First 1
+        if ($h)
+        {
+            $c = Join-Path (Join-Path $p51 "$h".Trim()) 'CxxuPredictor.dll'
+            if (Test-Path -LiteralPath $c) { $c }
+        }
+    }
+    catch { $null }
+    if (-not (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true))) { & $dchk 'CxxuTab 5.1' $true '非 Windows 忽略（5.1 仅 Windows）' }
+    elseif ($ps51Live) { & $dchk 'CxxuTab 5.1' $true '5.1 Tab 活件存在（仅 Tab 补全，无内联预测）' }
+    else { & $dchk 'CxxuTab 5.1' $false '无 5.1 Tab 活件：执行 Sync-CxxuPredictor 生成' }
     # 三门控 + 懒加载(5.1 无三元:子表达式内 if/else,双版本同行为)
     $gates = @('PsFzf', 'PsZoxide', 'PsPredictor', 'PsTab') | ForEach-Object { $v = (Get-Item "env:$_" -ErrorAction SilentlyContinue).Value; "$_=$(if (-not [string]::IsNullOrEmpty($v)) { $v } elseif ($_ -eq 'PsTab') { '默认关' } else { '默认开' })" }
     & $dchk '门控' $true ($gates -join ' ')

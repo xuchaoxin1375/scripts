@@ -4,11 +4,15 @@
 # 置 True 才启用),未开就是纯透传,行为与没装一样;启停管理看 Enable/Disable-PsPlugin。
 # 跨作用域说明:global:TabExpansion2 运行在全局作用域,看不到模块 $script:,
 # 方法缓存必须放 $global:__CxxuTabMethod(命名避冲突)。
+# 5.1 走 ps51 活件(netstandard2.0,只有 CompleteCommand);7+ 走预测器活件
+# (net9.0,同一程序集同时提供 predictor 与 CompleteCommand)。两套活件互不混用。
 
 function Get-CxxuTabLiveDll
 {
-    # 与 loader 同规则解析指针(目录隔离布局):指针→最新版目录→旧单文件
+    # 与 loader 同规则解析指针(目录隔离布局):指针→最新版目录→旧单文件。
+    # 5.1 的 SMA 没有预测子系统,不能加载 net9 版;固定读 ~/.cxxu/bin/ps51。
     $binDir = Join-Path (Join-Path $HOME '.cxxu') 'bin'
+    if ($PSVersionTable.PSVersion.Major -lt 6) { $binDir = Join-Path $binDir 'ps51' }
     $ptrFile = Join-Path $binDir 'current.txt'
     if (Test-Path -LiteralPath $ptrFile)
     {

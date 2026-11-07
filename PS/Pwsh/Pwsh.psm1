@@ -483,7 +483,7 @@ function Get-CxxuModuleCompatibility
         'TimeNotify'          = '后台 & 在 5.1 无等价写法,留 7'
         'Test'                = '用户草稿区,不动'
         'CompletionPredictor' = '第三方模块,不管'
-        'CxxuPredictor'       = 'net9 dll,永不降'
+        'CxxuPredictor'       = 'net9 predictor 需 7.5+;5.1 有 Tab-only 构建(ps51,netstandard2.0)'
     }
     $rows = @()
     $dirs = Get-ChildItem -LiteralPath $psRoot -Directory | Where-Object { $_.Name -like $Name } | Sort-Object Name
