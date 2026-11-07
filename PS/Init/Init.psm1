@@ -67,8 +67,8 @@ function init
         @{ Name = 'Set-PSReadLinesCommon'; Action = { Set-PSReadLinesCommon } }
         @{ Name = 'Set-PSReadLinesAdvanced'; Action = { Set-PSReadLinesAdvanced } }
         @{ Name = 'Set-ArgumentCompleter'; Action = { Set-ArgumentCompleter }; MinPS = 7 }
-        # argc-completions:启动只设环境与 Tab 桩,首个 Tab 才注册(开关 $env:PsArgc)
-        @{ Name = 'Set-ArgcCompletions'; Action = { Set-ArgcCompletions }; MinPS = 7 }
+        # argc-completions:启动只设环境与 Tab 桩,首个 Tab 才注册(开关 $env:PsArgc;5.1 也可用)
+        @{ Name = 'Set-ArgcCompletions'; Action = { Set-ArgcCompletions } }
         @{ Name = 'Confirm-EnvVarOfInfo'; Action = { Confirm-EnvVarOfInfo }; MinPS = 7 }
         @{ Name = 'Set-PsExtension'; Action = { Set-PsExtension }; MinPS = 7 }
         # 设置prompt样式(这里面会导入基础的powershell预定变量和别名)

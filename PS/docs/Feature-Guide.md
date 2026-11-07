@@ -155,7 +155,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | `carapace-bin`（千级命令补全） | 未装：逃生通道，真缺了再 `scoop install carapace-bin` 对比 |
 | `posh-git` | 未装（只要 git Tab 补全才装） |
 | `oh-my-posh` | 不开（每回车进程税 + 与现有定制片重叠） |
-| `argc-completions`（800+ 命令参数补全；懒加载，首个 Tab 注册约 150ms；选中行反显高亮） | **已启用**（仓库 `C:\repos\argc-completions`；开关 `$env:PsArgc`） |
+| `argc-completions`（800+ 命令参数补全；懒加载，首个 Tab 注册约 150ms；选中行反显高亮） | **已启用**（仓库 `C:\repos\argc-completions`；开关 `$env:PsArgc`；7/5.1 均可用） |
 | `inshellisense` | **否决**（用户拍板，不再考虑） |
 
 验：新开终端直接可用，`Ctrl+R`/`Ctrl+T` 首按装 PSFzf（本次按键即生效）；`z <目录>` 跳转（zoxide 首屏单发已装）。`CxxuTab` 默认关，开启（`Enable-PsPlugin Tab -Persist`）后首个 `Tab` 才装它（约半秒一次）。`argc-completions` 默认开，首个 `Tab` 才注册（约 150ms，之后零开销）。`Get-EventSubscriber` 应无残留（单发先摘后装）。若某主机 OnIdle 不触发（predictor 没装上），跑 `Register-PsUxLazyLoad -Now` 或报回来。自查跑 `Test-StartupPerformance`（分段计时+结论）。
@@ -273,7 +273,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 
 ## 13. Windows PowerShell 5.1 兼容（B 档：交互可用）
 
-> 目标是在 5.1 里 `init` + 提示符 + Tab 补全 + 历史可用；部署/预测/dll 链明确留 7。
+> 目标是在 5.1 里 `init` + 提示符 + Tab/参数补全 + 历史可用；部署/预测/dll 链明确留 7。
 > 查数用命令（真相源是各模块自己的 `.psd1`，下面批次是流水账）：`Get-CxxuModuleCompatibility`（`Pwsh` 模块，只读文件头秒出：B 档 62/留 7 有理由/缺 BOM 或未声明单拎）。
 
 - 兼容集（psd1 已降 `5.1`，psm1 带 BOM，见 `Module-Conventions.md §8`）：`Basic`、`Aliases`、`FileSystem`、`PwshVar`、`Search`、`CxxuTab`、`Prompt`、`Init`、`EnvVar`、`NetWork`、`RepoSync`、`PsDebug`、`PsEnv`、`Shortcut`、`PathProcess`、`Hardware`、`Proxy`（后 8 个 2026-09-22 酌情降档：解析零错误 + 5.1 直调冒烟通过）。
@@ -284,6 +284,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 - 第六批（2026-09-22，低风险本地组）：`TextProcess`（`Measure-AlphabeticChars` 等纯函数直调）、`Text`（`Format-FileSize`/`Get-CharCount` 直调，GUI 类只验导入）、`CSV`（自建小表 `Get-CsvPreview` 直调，`Get-CsvTailRowsGUI` 弹窗只验导入；注意 `Get-CsvPreview` 的 `$csv` 参数非管道绑定，必须具名传）、`ArchiveProcess`（`tar.exe` 现场打小包后 `Test-TarFile` 直调；修 1 处真 7 独占：`Split-Path -Extension` 是 6+ 参数，改 `[IO.Path]::GetExtension`，与 `TextProcess` 内既有写法统一）、`Info`（`Get-UserHostName`/`Get-MemoryUseSummary`/`Get-MemoryUseRatio`/`Test-SubItem` 直调；修跨模块运行时依赖：`Get-MemoryUseRatio` 调留 7 的 `TaskSchdPwsh` 的 `Start-ScriptWhenIntervalEnough`，5.1 探不到时直接 `& $s` 执行，与首建缓存分支行为一致，`Get-Command -ErrorAction Ignore` 探针无 `$Error` 污染）、`Sitemap`（`Test-SubItem` 直调；`Get-SourceFromUrls` 的 `ForEach-Object -Parallel` 只在 `-Threads` 非零时进并行分支，默认 0 走串行，5.1 不传参即安全，见 §13 串行分支惯例；`Sitemap:326` 的裸探针上轮已预修）。B 档 47→53。
 - 第七批（2026-09-22，中风险组，只验导入 + 逐项注明）：`TerminalTools`（`Install-Scoop`/`Push-ByScp`/`Sync-CxxuPredictor` 高 stakes，只验导入）、`Development`（短名裸命令包装多，只验导入）、`DevEnv`（全 `Deploy` 写配置/装软件，只验导入）、`MySql`（需服务端+配置，只验导入）、`WinConfig`（注册表/Defender/激活/`Restart-OS`，`Description` 中文转英文，只验导入）、`Web`（`Test-IsIPAddress` 直调，其余 hosts/nginx/phpstudy 只验导入）、`WordPress`/`WpContent`（硬编码路径+外部依赖，只验导入）、`WpOnline`（`Test-IsIPAddress` 同源直调已验；`Start-ThreadJob` 在 5.1 非内置，需 `Install-Module ThreadJob` 才能真跑部署流，只验导入）。15 模块双版本 manifest 全绿（函数数两边一致）。B 档 53→62。剩余 7.0：`Whois`（34 个 `??` 待重写）、`TaskSchdPwsh`/`TimeNotify`（`&` 无等价写法留 7）、`Test`（用户草稿区不动）、`CompletionPredictor`（第三方不管）、`CxxuPredictor`（net9 dll 永不降）。
 - 5.1 下自动降级：`init` 步骤表 `MinPS = 7` 的 5 步静默跳过（`ArgumentCompletion`/`Startup`/`Pwsh`/`Json`/`TerminalTools`）；`ForEach-Object -Parallel` 走串行分支；`CxxuTab` 探不到 dll 方法时纯透传；`HistoryNoDuplicates`/`inlineprediction` 配色按 PSReadLine 版本 gating（5.1 自带 2.0.0 跳过）。
+- `argc-completions` 在 5.1 也可用：依赖现有 `argc.exe` + Git Bash（`bash`/GNU 工具在 PATH），PSReadLine 2.0 的 `MenuComplete`/`Selection` 均支持；首个 Tab 注册约 200ms，之后零开销，开关 `$env:PsArgc`，与 7 同一套懒加载。
 - 提示符全对齐：`fast`/`Simple`/`Short`/`Default` 原生可用；`Balance` 的 Info/Startup 外部依赖在 `Prompt.psm1` 顶部有 5.1 本地兜底（CIM/注册表/内置 cmdlet 同口径；必须 `function global:` 定义，否则模块私有、直接调用撞坏 Info；缓存用 `$global:__Cxxu51*`，`$script:` 跨不了作用域），渲染与 7.5 逐字一致，稳态约 50ms/次（首屏冷缓存 1.4s 一次性）；`Get-IpAddressFormated` 含参数集的移植版，直接调用也可用。
 - 明确不可用：`CxxuPredictor`（net9 dll）、预测视图（需 7.2+ 子系统）、`Deploy` 全系、`Test-PsEnvReadiness` 的 `pwsh 7+` 必备项（在 5.1 下即提示装 pwsh7）。
 - 用法：`powershell -NoProfile` 起 5.1，保证 `PSModulePath` 含模块集后 `init` 即可；`$env:PsTab='True'` 可开 Tab 包裹（默认关）。
