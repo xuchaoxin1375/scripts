@@ -6,6 +6,7 @@ using System.Management.Automation.Language;
 #if !PS51
 using System.Management.Automation.Subsystem.Prediction;
 #endif
+using System.Text;
 using System.Threading;
 
 namespace CxxuPredictor
@@ -420,20 +421,44 @@ namespace CxxuPredictor
             return result;
         }
 
+        // 命令表:先读磁盘缓存(命中约几十毫秒),失效再现场建表并回写。
+        // 5.1 的 `Get-Command` 约 300~400ms(7 约 60~130ms),不缓存则每个新进程首个 Tab
+        // 都要冻一次;缓存见下方 CommandCache* 常量与 TryLoadCommandCache/TrySaveCommandCache。
         private static CommandTable LoadCommands()
+        {
+            CommandTable cached = TryLoadCommandCache();
+            if (cached != null)
+            {
+                return cached;
+            }
+            Dictionary<string, string> resolvedAliases;
+            CommandTable table = BuildCommands(out resolvedAliases);
+            TrySaveCommandCache(table, resolvedAliases);
+            return table;
+        }
+
+        private static CommandTable NewTable()
         {
             CommandTable table = new CommandTable();
             table.Commands = new List<CommandEntry>();
             table.RealNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             table.ByName = new Dictionary<string, CommandEntry>(StringComparer.OrdinalIgnoreCase);
+            return table;
+        }
+
+        private static CommandTable BuildCommands(out Dictionary<string, string> resolvedAliases)
+        {
+            CommandTable table = NewTable();
             Dictionary<string, string> aliasDefs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             HashSet<string> aliasNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            resolvedAliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             try
             {
                 using (System.Management.Automation.PowerShell ps =
                     System.Management.Automation.PowerShell.Create(RunspaceMode.CurrentRunspace))
                 {
-                    ps.AddScript("Get-Command -CommandType Function,Cmdlet,Alias | ForEach-Object { $_.Name + [char]1 + $_.CommandType + [char]1 + $_.Definition }");
+                    // Definition 只对别名取(函数 Definition 是整段脚本文本,全取会白付几十毫秒)
+                    ps.AddScript("Get-Command -CommandType Function,Cmdlet,Alias | ForEach-Object { $_.Name + [char]1 + $_.CommandType + [char]1 + $(if ($_.CommandType -eq 'Alias') { [string]$_.Definition } else { '' }) }");
                     foreach (PSObject o in ps.Invoke())
                     {
                         string line = o?.BaseObject as string;
@@ -487,7 +512,7 @@ namespace CxxuPredictor
                     table.Commands.Add(aliasEntry);
                 }
                 // 别名归并到目标(链式别名解析到底;目标不在表内则忽略)
-                Dictionary<string, string> resolvedAliases = new Dictionary<string, string>(aliasDefs.Count, StringComparer.OrdinalIgnoreCase);
+                resolvedAliases = new Dictionary<string, string>(aliasDefs.Count, StringComparer.OrdinalIgnoreCase);
                 foreach (KeyValuePair<string, string> kv in aliasDefs)
                 {
                     string target = kv.Value;
@@ -515,6 +540,174 @@ namespace CxxuPredictor
             }
             table.Commands.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
             return table;
+        }
+
+        // 命令表磁盘缓存(~/.cxxu/cache/tab-commands-<CLR主版本>.tsv)。
+        // 目标:让每个新进程的首个 Tab 不重复付 `Get-Command` 的数百毫秒。
+        // 失效:宿主(Environment.Version/BaseDirectory)不符,或超过 TTL;删文件可立即强制重建。
+        // 代价:新装模块的模糊候选最多晚 TTL 生效——原生 Tab 仍能补该命令(自动加载),
+        // 只是少了本插件的模糊/别名加权;想立刻刷新删掉缓存文件即可。
+        private const int CommandCacheTtlHours = 24;
+        private const string CommandCacheHeader = "#cxxu-tab-cache v1";
+
+        private static string GetCommandCachePath()
+        {
+            string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            if (string.IsNullOrEmpty(home))
+            {
+                home = Environment.GetEnvironmentVariable("HOME");
+            }
+            if (string.IsNullOrEmpty(home))
+            {
+                return null;
+            }
+            string file = "tab-commands-" + Environment.Version.Major + ".tsv";
+            return Path.Combine(Path.Combine(Path.Combine(home, ".cxxu"), "cache"), file);
+        }
+
+        private static string CommandCacheStamp()
+        {
+            return CommandCacheHeader + "|" + Environment.Version + "|" + AppDomain.CurrentDomain.BaseDirectory;
+        }
+
+        private static CommandTable TryLoadCommandCache()
+        {
+            string path = GetCommandCachePath();
+            if (string.IsNullOrEmpty(path) || !File.Exists(path))
+            {
+                return null;
+            }
+            try
+            {
+                if ((DateTime.UtcNow - File.GetLastWriteTimeUtc(path)).TotalHours > CommandCacheTtlHours)
+                {
+                    return null;
+                }
+                using (StreamReader reader = new StreamReader(path, new UTF8Encoding(false), false))
+                {
+                    if (!string.Equals(reader.ReadLine(), CommandCacheStamp(), StringComparison.Ordinal))
+                    {
+                        return null;
+                    }
+                    CommandTable table = NewTable();
+                    List<string[]> aliasTargets = new List<string[]>();
+                    string line;
+                    while ((line = reader.ReadLine()) != null)
+                    {
+                        if (line.Length < 3)
+                        {
+                            continue;
+                        }
+                        string[] parts = line.Split('\t');
+                        string kind = parts[0];
+                        string name = parts.Length > 1 ? parts[1] : null;
+                        if (string.IsNullOrEmpty(name))
+                        {
+                            continue;
+                        }
+                        if (kind == "C")
+                        {
+                            if (table.ByName.ContainsKey(name))
+                            {
+                                continue;
+                            }
+                            CommandEntry entry = new CommandEntry();
+                            entry.Name = name;
+                            entry.Aliases = new List<string>();
+                            entry.Weight = 0;
+                            table.ByName[name] = entry;
+                            table.Commands.Add(entry);
+                            table.RealNames.Add(name);
+                        }
+                        else if (kind == "A")
+                        {
+                            if (table.ByName.ContainsKey(name))
+                            {
+                                continue;
+                            }
+                            CommandEntry entry = new CommandEntry();
+                            entry.Name = name;
+                            entry.Aliases = null;
+                            entry.Weight = 0;
+                            table.ByName[name] = entry;
+                            table.Commands.Add(entry);
+                            string target = parts.Length > 2 ? parts[2] : null;
+                            if (!string.IsNullOrEmpty(target))
+                            {
+                                aliasTargets.Add(new string[] { name, target });
+                            }
+                        }
+                    }
+                    if (table.Commands.Count == 0)
+                    {
+                        return null;
+                    }
+                    Dictionary<string, string> resolvedAliases = new Dictionary<string, string>(aliasTargets.Count, StringComparer.OrdinalIgnoreCase);
+                    foreach (string[] pair in aliasTargets)
+                    {
+                        resolvedAliases[pair[0]] = pair[1];
+                        CommandEntry target;
+                        if (table.ByName.TryGetValue(pair[1], out target) && target.Aliases != null)
+                        {
+                            target.Aliases.Add(pair[0]);
+                        }
+                    }
+                    ApplyFrecency(table, resolvedAliases);
+                    table.Commands.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
+                    return table;
+                }
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static void TrySaveCommandCache(CommandTable table, Dictionary<string, string> resolvedAliases)
+        {
+            if (table == null || table.Commands.Count == 0)
+            {
+                return;
+            }
+            string path = GetCommandCachePath();
+            if (string.IsNullOrEmpty(path))
+            {
+                return;
+            }
+            try
+            {
+                StringBuilder builder = new StringBuilder(table.Commands.Count * 24);
+                builder.Append(CommandCacheStamp()).Append('\n');
+                foreach (CommandEntry entry in table.Commands)
+                {
+                    if (entry.Aliases == null)
+                    {
+                        string target;
+                        if (resolvedAliases == null || !resolvedAliases.TryGetValue(entry.Name, out target))
+                        {
+                            target = string.Empty;
+                        }
+                        builder.Append("A\t").Append(entry.Name).Append('\t').Append(target ?? string.Empty).Append('\n');
+                    }
+                    else
+                    {
+                        builder.Append("C\t").Append(entry.Name).Append('\n');
+                    }
+                }
+                string dir = Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(dir))
+                {
+                    Directory.CreateDirectory(dir);
+                }
+                string tmp = path + ".tmp";
+                File.WriteAllText(tmp, builder.ToString(), new UTF8Encoding(false));
+                File.Copy(tmp, path, true);
+                File.Delete(tmp);
+            }
+            catch
+            {
+                // 缓存写失败不影响本次结果,下次再试。
+            }
         }
 
         // 先猜 PSReadLine 默认历史文件(省一次 Get-PSReadLineOption 调用,约 80ms);

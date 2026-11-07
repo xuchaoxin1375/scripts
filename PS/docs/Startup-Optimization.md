@@ -518,3 +518,13 @@ Set-PSReadLineOption: 句柄无效。
 - 验证（5.1.26100 / .NET Framework 4.8）：`get-chi`、`gci`、`ls`、`get-*item`、`get-netr` 均返回；接 CxxuTab 的 `TabExpansion2` 合并 27 条；冷启动约 380ms（建表），之后约 1ms。7.5 的 net9 构建回归通过（`ICommandPredictor` 可赋值、`CompleteCommand` 正常）。
 - 边界：5.1 只有 Tab 菜单，没有边输边弹的 ListView；内联预测需 pwsh 7.2+（本仓库现成 dll 要求 7.5+）。
 
+## 26. 第十九轮：Tab 补全默认开 + 命令表缓存（2026-11-07，用户要求“默认启用 tab 补全”）
+
+- 历史顾虑核对：早期“卡顿/假死”的实锤是 §21 的 OnIdle 分片回归（常驻订阅砸在第二条命令上），已回滚；CxxuTab 自身只在按键时同步执行，不会在后台冻主线程。默认关是当时的保守选择，不是遗留缺陷。既然按 Tab 的代价可控，改为默认开。
+- 门控统一：`PsTab` 与 `PsFzf`/`PsZoxide`/`PsPredictor` 同风格——**未设 = 开，显式 `False`/`0`/`No`/`Off` = 关**。改到 `CxxuTab` 包装、`Install-PsUxGestureStubs`（桩与桩内判定）、`Register-PsUxLazyLoad`（5.1 `-Now`、`$pieceTab`）、配置模板、`doctor` 门控行。
+- 首 Tab 提速（实测）：命令表建表 5.1 约 373ms、7 约 104ms，来自 `Get-Command -CommandType Function,Cmdlet,Alias`；新增磁盘缓存 `~/.cxxu/cache/tab-commands-<CLR主版本>.tsv`（`C` 行存真实命令、`A` 行存别名及目标），命中后建表部分两项都是 **19ms**（CxxuTab 模块导入本身另约 80~90ms），预测器 import 从 124ms 降到 10ms。
+- 缓存失效：宿主不符（`Environment.Version`/`BaseDirectory`）、超过 24h、文件损坏/只有表头时现建并回写；`Definition` 只对别名取（7 约省 24ms）。代价：新装模块的模糊候选最多晚 24h 生效（原生 Tab 仍可补），删缓存文件可立即强制重建。
+- 自熔断：包装内单次 dll 调用超过 800ms 或抛异常，则本会话置 `$global:__CxxuTabFuse`，之后纯透传——异常主机/杀软扫描不会每次 Tab 都冻结；重复 `Import-Module -Force` 不再重载程序集/重建表。
+- 验证：5.1/7 冷热两轮候选列表逐条一致；损坏/过期/截断缓存均触发重建且回写无 BOM；5.1 `TabExpansion2` 合并 27 条、7 合并 29 条；双版本解析/导入/`Test-ModuleManifest` 全绿。
+
+

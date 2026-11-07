@@ -1,7 +1,8 @@
 ﻿# CxxuTab:自研 Tab 命令名补全(独立插件,TabExpansion2 包装)。
 # ListView 预测进不了 Tab(两套管线),这里包全局 TabExpansion2,只在命令名位置合并
-# dll 公开接口的模糊结果,其余位置原样透传。开关逐调用读 $env:PsTab(默认关,
-# 置 True 才启用),未开就是纯透传,行为与没装一样;启停管理看 Enable/Disable-PsPlugin。
+# dll 公开接口的模糊结果,其余位置原样透传。开关逐调用读 $env:PsTab(默认开,
+# 显式置 False/0/No/Off 才关),关掉就是纯透传,行为与没装一样;启停管理看
+# Enable/Disable-PsPlugin。异常/超慢调用会自熔断(本会话只透传),不拖死 Tab。
 # 跨作用域说明:global:TabExpansion2 运行在全局作用域,看不到模块 $script:,
 # 方法缓存必须放 $global:__CxxuTabMethod(命名避冲突)。
 # 5.1 走 ps51 活件(netstandard2.0,只有 CompleteCommand);7+ 走预测器活件
@@ -38,16 +39,21 @@ function Install-CxxuTabWrapper
     .SYNOPSIS
     安装 TabExpansion2 包装(命令名位置合并自研模糊结果,缺省 30 条)。
     #>
-    # 程序集按字节加载(不锁定文件,不注册 ListView predictor,与 PsPredictor 门独立)
-    $dll = Get-CxxuTabLiveDll
-    if ($dll)
+    # 程序集按字节加载(不锁定文件,不注册 ListView predictor,与 PsPredictor 门独立)。
+    # 已装过就不再重载:重复 Import-Module -Force 不该再付一次加载/建表成本;
+    # 新 dll 仍按活件的"重开终端生效"规则走(与 predictor 一致)。
+    if (-not $global:__CxxuTabMethod)
     {
-        try
+        $dll = Get-CxxuTabLiveDll
+        if ($dll)
         {
-            $asm = [System.Reflection.Assembly]::Load([System.IO.File]::ReadAllBytes($dll))
-            $global:__CxxuTabMethod = $asm.GetType('CxxuPredictor.CxxuCommandPredictor').GetMethod('CompleteCommand')
+            try
+            {
+                $asm = [System.Reflection.Assembly]::Load([System.IO.File]::ReadAllBytes($dll))
+                $global:__CxxuTabMethod = $asm.GetType('CxxuPredictor.CxxuCommandPredictor').GetMethod('CompleteCommand')
+            }
+            catch { $global:__CxxuTabMethod = $null }
         }
-        catch { $global:__CxxuTabMethod = $null }
     }
     # 原函数只存一次(重复 import 不叠包装)
     if (-not $global:__CxxuTabOriginal)
@@ -64,8 +70,8 @@ function Install-CxxuTabWrapper
         }
         try
         {
-            # 门控逐调用:默认关,未显式开启就是纯透传
-            if ($env:PsTab -notmatch '^(True|1|Yes|On)$') { return (& $fallBack) }
+            # 门控逐调用:默认开,显式 False/0/No/Off 才纯透传
+            if ($env:PsTab -match '^(False|0|No|Off)$') { return (& $fallBack) }
             if ([string]::IsNullOrEmpty($inputScript)) { return (& $fallBack) }
             $tokens = $null; $errors = $null
             $ast = [System.Management.Automation.Language.Parser]::ParseInput($inputScript, [ref]$tokens, [ref]$errors)
@@ -82,11 +88,15 @@ function Install-CxxuTabWrapper
                 }
             }
             $base = & $fallBack
-            if (-not $isCmdName -or [string]::IsNullOrEmpty($word) -or -not $global:__CxxuTabMethod)
+            if (-not $isCmdName -or [string]::IsNullOrEmpty($word) -or -not $global:__CxxuTabMethod -or $global:__CxxuTabFuse)
             {
                 return $base
             }
+            # 自熔断:正常 1ms 级;单次超过 800ms 说明主机/杀软异常,本会话不再加重负担
+            $sw = [System.Diagnostics.Stopwatch]::StartNew()
             $extra = @($global:__CxxuTabMethod.Invoke($null, @($word, 30)))
+            $sw.Stop()
+            if ($sw.ElapsedMilliseconds -gt 800) { $global:__CxxuTabFuse = $true }
             if (-not $extra.Count) { return $base }
             $seen = @{}
             foreach ($m in @($base.CompletionMatches | ForEach-Object { $_.CompletionText })) { $seen[$m] = $true }
@@ -104,6 +114,8 @@ function Install-CxxuTabWrapper
         }
         catch
         {
+            # 异常也只伤增强层:本会话熔断为纯透传,避免每次 Tab 重复报错/耗时
+            $global:__CxxuTabFuse = $true
             return (& $fallBack)
         }
     }

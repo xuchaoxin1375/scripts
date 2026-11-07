@@ -86,7 +86,7 @@ flowchart TD
 ```
 
 - 旧会话继续使用装载时的旧版本，新会话使用指针指向的新版本。同一时刻存在多版本**是设计允许的状态，不是故障**。
-- `CxxuTab`（Tab 插件）不经过模块装载，直接按字节读取指针指向的版本文件（不锁定文件，不注册 ListView 预测），因此与 `PsPredictor` 门独立，可单独启停（默认关，置 `$env:PsTab='True'` 开）。5.1 读 `ps51` 活件，7+ 读根活件，见本章『5.1 Tab-only 产物』。
+- `CxxuTab`（Tab 插件）不经过模块装载，直接按字节读取指针指向的版本文件（不锁定文件，不注册 ListView 预测），因此与 `PsPredictor` 门独立，可单独启停（默认开，置 `$env:PsTab='False'` 关）。5.1 读 `ps51` 活件，7+ 读根活件，见本章『5.1 Tab-only 产物』。
 - 指针损坏（空文件/指向不存在的目录）时自动降级，不报错；检查命令会报版本不一致，执行一次同步即恢复正常。
 
 ## 6. 回收与卸载
@@ -103,7 +103,7 @@ flowchart TD
 | 旧版本目录长期存在 | 一直有会话持有旧版，GC 跳过 | 正常。持有会话全部退出后的下次同步会回收 |
 | 同步后本会话仍是旧行为 | 不变量 2：内存中是旧代码 | **重新打开终端**，再执行 `init` |
 | 卸载后又出现 | 未禁用自动加载 | 持久化 `$env:PsPredictor='False'`；5.1 Tab 另加 `$env:PsTab='False'` |
-| 5.1 按 Tab 没有模糊候选 | `ps51` 活件未生成，或 CxxuTab 未导入 | 执行 `Sync-CxxuPredictor`，再 `Enable-PsPlugin Tab`；确认 `~/.cxxu/bin/ps51/current.txt` 指向的 dll 存在 |
+| 5.1 按 Tab 没有模糊候选 | `ps51` 活件未生成，或 CxxuTab 未导入 | 执行 `Sync-CxxuPredictor`，确认 `$env:PsTab` 没有被显式置 False，再重开终端；确认 `~/.cxxu/bin/ps51/current.txt` 指向的 dll 存在 |
 | 5.1 能用 Tab 但没有内联预测 | 5.1 引擎没有预测子系统 | 正常；内联预测需 pwsh 7.2+，见本章『5.1 Tab-only 产物』 |
 
 ## 8. 命令分工：更新为什么不需要专用命令
@@ -168,6 +168,6 @@ Sync-CxxuPredictor -Ps51DllPath ./bin/Release/netstandard2.0/CxxuPredictor.dll
 - 仓库源：`PS/CxxuPredictor/ps51/CxxuPredictor.dll`，`netstandard2.0`，引用 5.1 的 GAC SMA；同一份 `CxxuPredictor.cs` 用 `PS51` 条件编译，去掉 `ICommandPredictor` 实现，只保留 `CompleteCommand`。
 - 活件：`~/.cxxu/bin/ps51/<哈希>/CxxuPredictor.dll` + `ps51/current.txt`；`Sync-CxxuPredictor` 与 net9 产物一起发布，根目录回收时保留 `ps51` 子目录。自编译 net9 活件保持不动时，更新流程用 `Sync-CxxuPredictor -Ps51Only` 只同步这一套。
 - 加载：`CxxuTab` 在 `$PSVersionTable.PSVersion.Major -lt 6` 时只读 `ps51` 指针；按字节 `Assembly.Load`，不锁定文件，不注册 predictor。7+ 仍读根活件。
-- 启用：`Sync-CxxuPredictor` → `Enable-PsPlugin Tab -Persist`（或 `$env:PsTab='True'` 后重跑 `init`）→ 重开 5.1 终端；首个 Tab 才导入 CxxuTab 并建表（冷启动约 400ms，之后 1ms 级）。
+- 启用：默认开（`$env:PsTab='False'` 关）；重开 5.1 终端后首个 Tab 才导入 CxxuTab 并读命令表缓存（命中时建表约 20ms，模块导入另计；缺失/过期时现建约 0.4s，24h 内最多一次；之后 1ms 级）。
 - 验收：5.1 中输入 `get-chi` 按 Tab，候选里应出现 `Get-ChildItem` 等模糊结果；`Get-Module CxxuTab` 应有模块；`~/.cxxu/bin/ps51/current.txt` 指向的 dll 应存在。
 - 限制：只有 Tab 菜单，没有边输边弹的 ListView；后者需要 pwsh 7.2+（本仓库现成 net9 predictor 要求 7.5+）。
