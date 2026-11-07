@@ -68,8 +68,10 @@ _argc_completions_main() {
 		return 0
 	fi
 
-	# bash 没有独立的描述列，上游默认把“候选 (说明)”拼成同一个字符串；
-	# ble.sh 选中菜单项时会把说明一并写入命令行，因此默认关闭描述。
+	# bash 没有独立的描述列，上游默认把“候选 (说明)”拼成同一个字符串。
+	# 描述开启后，menu-complete 或 ble.sh 选中候选时会把说明写进命令行，
+	# 因此为保证插入内容干净，默认关闭；确认 Tab 仍是普通 complete 且
+	# 未加载 ble.sh 时，可显式设为 1。
 	export ARGC_COMPGEN_DESCRIPTION="${ARGC_COMPGEN_DESCRIPTION:-0}"
 
 	local file base
