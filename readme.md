@@ -33,6 +33,7 @@
 | 场景 | 从这里开始 |
 |---|---|
 | 新机器部署 PowerShell 环境 | [PS/docs/Deploy-Guide.md](PS/docs/Deploy-Guide.md) |
+| 只启用补全（机器已就绪） | [PS/docs/Deploy-Guide.md](PS/docs/Deploy-Guide.md) §5 → [Feature-Guide.md](PS/docs/Feature-Guide.md) §7/§9 |
 | 日常使用：初始化、命令查询、补全、更新 | [PS/docs/Feature-Guide.md](PS/docs/Feature-Guide.md) |
 | 目标机器只有 Windows PowerShell 5.1 | [PS/Deploy/readme.md](PS/Deploy/readme.md)(轻量部署) |
 | nginx 与反向代理配置 | [nginx_conf/Readme.md](wp/woocommerce/woo_df/sh/nginx_conf/Readme.md) |

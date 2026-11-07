@@ -670,7 +670,7 @@ function Deploy-CompletionStack
     Test-PsEnvReadiness 只读体检,本函数动手补。核心是自研 CxxuCommand(仓库自带,零安装),
     先同步 predictor 活件;PSFzf/CompletionPredictor 模块与 fzf/zoxide 二进制是可选增强,
     缺少时只给一行提示,不阻塞、不影响 CxxuCommand。pwsh 不够 7.5 时 CxxuCommand 不可用,
-    其余补全照常。-WhatIf 空跑看动作,零副作用。装完开新终端跑 init。
+    但会自动发布 5.1 的 Tab 活件（仅 Tab,无内联预测）;其余补全照常。-WhatIf 空跑看动作,零副作用。装完开新终端跑 init。
     .EXAMPLE
     Deploy-CompletionStack -WhatIf
     .EXAMPLE
@@ -688,11 +688,26 @@ function Deploy-CompletionStack
 
     # 核心:CxxuCommand(命令名分层模糊提示)随仓库分发,需要的是活件,不是安装模块
     # $coreReady:True=已同步;False=不可用;$null=WhatIf 只报告计划
+    # $tabReady:同义,用于 5.1 只能发布 Tab 活件的分支
     $coreReady = $false
+    $tabReady = $false
     if ($PSVersionTable.PSVersion -lt [version]'7.5')
     {
         if (($IsMacOS -eq $true)) { Write-Warning 'pwsh 版本低于 7.5:CxxuCommand(net9 dll)不可用,其余补全照常;建议 brew upgrade --cask powershell 到 7.5+' }
         else { Write-Warning 'pwsh 版本低于 7.5:CxxuCommand(net9 dll)不可用,其余补全照常;建议 Update-PowerShell 到 7.5+' }
+        # 5.1 没有预测子系统,但 Tab 活件仍可用;同一命令按 -Ps51Only 只发布 ps51 产物
+        if (($PSVersionTable.PSEdition -eq 'Desktop') -and (Get-Command Sync-CxxuPredictor -ErrorAction SilentlyContinue))
+        {
+            if ($PSCmdlet.ShouldProcess('CxxuTab 5.1', '同步 Tab 活件'))
+            {
+                Sync-CxxuPredictor -Ps51Only
+                $tabReady = $true
+            }
+            else
+            {
+                $tabReady = $null
+            }
+        }
     }
     elseif (Get-Command Sync-CxxuPredictor -ErrorAction SilentlyContinue)
     {
@@ -770,6 +785,8 @@ function Deploy-CompletionStack
 
     if ($coreReady -eq $true) { Write-Host '核心 CxxuCommand:活件已就绪,新终端跑 init 生效(开关 $env:PsPredictor)' }
     elseif ($null -eq $coreReady) { Write-Host '核心 CxxuCommand:本次为空跑(-WhatIf),未同步活件;去掉 -WhatIf 执行' }
+    elseif ($tabReady -eq $true) { Write-Host '核心 CxxuCommand:5.1 仅 Tab 补全,Tab 活件已就绪;重开终端后按 Tab 生效(开关 $env:PsTab)' }
+    elseif ($null -eq $tabReady) { Write-Host '核心 CxxuCommand:本次为空跑(-WhatIf),未同步 5.1 Tab 活件;去掉 -WhatIf 执行' }
     else { Write-Host '核心 CxxuCommand:未就绪(内联预测需 pwsh 7.5+;5.1 Tab 需执行 Sync-CxxuPredictor)' }
     Write-Host '可选增强:PSFzf/CompletionPredictor 模块、fzf/zoxide 二进制;开关 $env:PsFzf/$env:PsZoxide'
     # 用户配置模板兜底(新机一键装后就有文件可改;已存在则 no-op;-WhatIf 下只显示意图)

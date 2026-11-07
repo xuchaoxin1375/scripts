@@ -128,6 +128,19 @@ conda 用户：跑 `conda init powershell` 后**重贴缓存块**（它会覆盖
 
 ## 5. 补全栈与第三方 PS 模块
 
+### 只启用补全（仓库、`PSModulePath`、profile 已就绪）
+
+```powershell
+Deploy-CompletionStack -WhatIf   # 空跑：看会同步/安装什么
+Deploy-CompletionStack           # 核心活件 + 可选 PSFzf/CompletionPredictor、fzf/zoxide
+# 重开终端；profile 的 init 按默认开关加载
+```
+
+- 内联预测要 pwsh 7.5+；Windows PowerShell 5.1 只有 Tab 菜单，命令会自动发布 `ps51` 活件。
+- 开关默认全开；单关用 `Disable-PsPlugin Predictor|Tab|Fzf|Zoxide -Persist`，完整开关与优先级见 `Feature-Guide.md §7`。
+- 验收：ListView 输 `get-child` 应见 `[CxxuCommand]`；Tab 输 `get-chi` 应含 `Get-ChildItem`。不达预期按 `Feature-Guide.md §9` 的「Tab 补全自查」定位。
+- 仓库、模块路径或 profile 还没配好时，先走上面的极简版或 §0~§4。
+
 ```powershell
 Deploy-CompletionStack            # 核心 CxxuCommand 同步两套活件 + 可选 PSFzf/CompletionPredictor 与 fzf/zoxide；先 -WhatIf 空跑看动作
 Deploy-CompletionStack -IncludePSCompletions   # 再加 PSCompletions（按需）

@@ -141,7 +141,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 > 守护进程由 `Start-StartupBgProcesses` 统一置 `PsPredictor=False`，永不加载 dll）；
 > `$env:PsTab`（CxxuTab Tab 补全，**默认开，置 `False` 关**）；
 > `$env:PsArgc`（argc-completions 参数补全，默认开，首个 Tab 才注册）；
-> 重定向场景自动不加载。一键重装看 `Deploy-CompletionStack -WhatIf`。
+> 重定向场景自动不加载。新机安装或一键重装看 `Deploy-Guide.md §5`（`Deploy-CompletionStack -WhatIf` 可空跑）。
 
 | 候选 | 状态 |
 |---|---|
