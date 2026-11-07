@@ -1,5 +1,9 @@
 ﻿# 其他函数都是通过init来调用或间接调用的,在这里可以注释掉某些模块来帮助调试bug
  
+# 本会话由用户配置文件注入的开关(键=值),供 Get-CxxuConfig 标注来源;
+# Import-CxxuConfig 每次执行先清空,避免 init -Force 后残留旧记录。
+$script:CxxuConfigAppliedFromFile = @{}
+
 function init
 { 
     <# 
@@ -978,17 +982,21 @@ function Read-CxxuUtf8Text
 }
 function Write-CxxuUtf8Text
 {
-    # 5.1/7 通用:按无 BOM UTF-8 写文本。5.1 的 Set-Content 不认 -Encoding utf8NoBOM
+    # 5.1/7 通用:按 UTF-8 写文本。5.1 的 Set-Content 不认 -Encoding utf8NoBOM
     # (枚举只有 UTF8,且会加 BOM),故统一走 .NET。
     # -NoNewline 对齐 Set-Content:默认在末尾补一个换行,指定时逐字节写 $Text
     # (空文本不补换行,对应空数组管道 Set-Content 的 0 字节结果)。
+    # -Bom 供 5.1 必须识别的配置文件使用(无 BOM 时 5.1 按 GBK 解码,中文注释会解析失败)。
     param(
         [Parameter(Mandatory)][string]$Path,
         [Parameter(Mandatory)][AllowEmptyString()][string]$Text,
-        [switch]$NoNewline
+        [switch]$NoNewline,
+        [switch]$Bom
     )
     if (-not $NoNewline -and $Text.Length -gt 0) { $Text += "`n" }
-    [IO.File]::WriteAllText($Path, $Text, [Text.UTF8Encoding]::new($false))
+    $encoding = [Text.UTF8Encoding]::new($false)
+    if ($Bom) { $encoding = [Text.UTF8Encoding]::new($true) }
+    [IO.File]::WriteAllText($Path, $Text, $encoding)
 }
 function Optimize-PsHistory
 {
@@ -1054,14 +1062,69 @@ function Optimize-PsHistory
         else { Write-Host "已备份 $file.bak-$stamp(无行需归档)" }
     }
 }
+function Read-CxxuConfigDefaultList
+{
+    # 读仓库默认偏好真源(不导出):PS/Init/config.defaults.psd1。
+    # 读取失败时警告一次并返回空数组,调用方按“无默认值”降级,不挡 init。
+    param(
+        [string]$Path = (Join-Path $PSScriptRoot 'config.defaults.psd1')
+    )
+    try
+    {
+        $data = Import-PowerShellDataFile -LiteralPath $Path -ErrorAction Stop
+        return @($data.Defaults)
+    }
+    catch
+    {
+        Write-Warning "默认偏好文件读失败($Path):$($_.Exception.Message);本次按无默认值处理。"
+        return @()
+    }
+}
+function Format-CxxuConfigValue
+{
+    # 把默认值渲染成 psd1 字面量(不导出):布尔写 $true/$false,其余按单引号字符串转义。
+    param($Value)
+    if ($Value -is [bool])
+    {
+        if ($Value) { return '$true' }
+        return '$false'
+    }
+    if ($null -eq $Value) { return "''" }
+    return "'" + ([string]$Value).Replace("'", "''") + "'"
+}
+function Import-CxxuConfigData
+{
+    # 读用户配置(不导出):优先标准 psd1 解析;失败时按 UTF-8 读出另存带 BOM 的临时文件再解析。
+    # 5.1 对无 BOM 的中文配置按 ANSI 页解码,直接 Import-PowerShellDataFile 会解析失败;
+    # 该兜底让历史配置无需先重置即可继续生效,真实语法错误仍会在第二次解析时暴露。
+    param([Parameter(Mandatory)][string]$Path)
+    try
+    {
+        return Import-PowerShellDataFile -LiteralPath $Path -ErrorAction Stop
+    }
+    catch
+    {
+        $tmp = Join-Path ([IO.Path]::GetTempPath()) ('cxxu-cfg-' + [guid]::NewGuid().ToString('N') + '.psd1')
+        try
+        {
+            Write-CxxuUtf8Text -Path $tmp -Text (Read-CxxuUtf8Text -Path $Path) -NoNewline -Bom
+            return Import-PowerShellDataFile -LiteralPath $tmp -ErrorAction Stop
+        }
+        finally
+        {
+            Remove-Item -LiteralPath $tmp -Force -ErrorAction Ignore
+        }
+    }
+}
 function Import-CxxuConfig
 {
     <#
     .SYNOPSIS
     读用户配置(默认 ~/.cxxu/config.psd1):只填环境变量的空位,不覆盖已设的值。
     .DESCRIPTION
-    优先级:真正的环境变量 > 配置文件 > 默认(开)。缺文件静默跳过(首用零成本);
-    文件坏了警告一次然后忽略,不挡 init。已知键见 New-CxxuConfigTemplate 模板,未知键忽略。
+    优先级:环境变量 > 配置文件 > 默认值(默认值真源见 PS/Init/config.defaults.psd1)。
+    缺文件静默跳过(首用零成本);文件损坏或含未知键时警告,但都不阻塞 init。
+    本函数记录哪些键由配置文件注入,供 Get-CxxuConfig 标注来源。
     init 首步自动调;改完配置重开终端(或 init -Force)生效。-Path 供测试/便携覆盖。
     .EXAMPLE
     Import-CxxuConfig
@@ -1071,21 +1134,85 @@ function Import-CxxuConfig
         # 配置文件路径(默认 ~/.cxxu/config.psd1,仓库外,本机生效)
         [string]$Path = (Join-Path (Join-Path $HOME '.cxxu') 'config.psd1')
     )
+    $script:CxxuConfigAppliedFromFile = @{}
     if (-not (Test-Path -LiteralPath $Path)) { return }
-    $data = try { Import-PowerShellDataFile -LiteralPath $Path -ErrorAction Stop } catch
+    $data = try { Import-CxxuConfigData -Path $Path } catch
     {
-        Write-Warning "用户配置读失败($Path):$($_.Exception.Message);已忽略,用默认。"
+        Write-Warning "用户配置读失败($Path):$($_.Exception.Message);已忽略,用默认值。"
         return
     }
-    foreach ($key in @('PsFzf', 'PsZoxide', 'PsPredictor', 'PsTab', 'PsArgc', 'PsShowProgress', 'PsGithubMirror'))
+    $defaults = Read-CxxuConfigDefaultList
+    $known = @($defaults | ForEach-Object { [string]$_.Key })
+    $unknown = @($data.Keys | Where-Object { $known -notcontains [string]$_ })
+    if ($unknown.Count)
     {
-        if (-not [string]::IsNullOrEmpty((Get-Item "env:$key" -ErrorAction Ignore).Value)) { continue }
+        Write-Warning ("用户配置含未知键,已忽略:{0};可用键见 Get-CxxuConfig。" -f ($unknown -join '、'))
+    }
+    foreach ($item in $defaults)
+    {
+        $key = [string]$item.Key
         if (-not $data.Contains($key)) { continue }
+        if (-not [string]::IsNullOrEmpty((Get-Item "env:$key" -ErrorAction Ignore).Value)) { continue }
         $v = $data[$key]
         if ($null -eq $v -or "$v" -eq '') { continue }
         # 布尔转环境变量惯用字符串(True/False 正好命中各开关的正则)
         Set-Item "env:$key" -Value "$v"
+        $script:CxxuConfigAppliedFromFile[$key] = "$v"
         Write-Verbose "用户配置生效: $key=$v"
+    }
+}
+function Get-CxxuConfig
+{
+    <#
+    .SYNOPSIS
+    查看配置开关的当前生效值、来源与默认值。
+    .DESCRIPTION
+    逐项列出插件与 init 行为开关,来源为“环境变量”“配置文件”“默认值”之一:
+    环境变量优先于用户配置文件,配置文件优先于仓库默认值(PS/Init/config.defaults.psd1)。
+    配置文件的键由 init 首步注入环境变量,因此来源标注依赖本会话的注入记录;未跑过 init 时,
+    已存在的环境变量一律标为“环境变量”。输出为对象,可用 Format-List 查看完整说明。
+    .EXAMPLE
+    Get-CxxuConfig
+    .EXAMPLE
+    Get-CxxuConfig | Format-List
+    #>
+    [CmdletBinding()]
+    param(
+        # 用户配置文件路径(默认 ~/.cxxu/config.psd1)
+        [string]$Path = (Join-Path (Join-Path $HOME '.cxxu') 'config.psd1')
+    )
+    if (Test-Path -LiteralPath $Path)
+    {
+        try { $null = Import-CxxuConfigData -Path $Path }
+        catch { Write-Warning "用户配置读失败($Path):$($_.Exception.Message);来源按环境变量与默认值判定。" }
+    }
+    foreach ($item in (Read-CxxuConfigDefaultList))
+    {
+        $key = [string]$item.Key
+        $envValue = (Get-Item "env:$key" -ErrorAction Ignore).Value
+        if ([string]::IsNullOrEmpty($envValue))
+        {
+            $value = $item.Default
+            $source = '默认值'
+        }
+        elseif ($script:CxxuConfigAppliedFromFile -and $script:CxxuConfigAppliedFromFile[$key] -eq $envValue)
+        {
+            $value = $envValue
+            $source = '配置文件'
+        }
+        else
+        {
+            $value = $envValue
+            $source = '环境变量'
+        }
+        [pscustomobject]@{
+            Name        = [string]$item.Name
+            Key         = $key
+            Value       = [string]$value
+            Source      = $source
+            Default     = [string]$item.Default
+            Description = [string]$item.Description
+        }
     }
 }
 function New-CxxuConfigTemplate
@@ -1094,8 +1221,8 @@ function New-CxxuConfigTemplate
     .SYNOPSIS
     生成用户配置模板(默认 ~/.cxxu/config.psd1):有文件默认不动,加 -Force 覆盖。
     .DESCRIPTION
-    模板里每个键都有注释(作用+取值);全部 True = 默认行为,想关哪个改 False。
-    记得:环境变量优先,注册表/Add-EnvVar 持久化的值会盖掉这里。
+    模板由仓库默认偏好(PS/Init/config.defaults.psd1)渲染,每个键都带取值说明。
+    环境变量优先于本文件;要恢复默认偏好用 Reset-CxxuConfig,查看生效值用 Get-CxxuConfig。
     .EXAMPLE
     New-CxxuConfigTemplate
     .EXAMPLE
@@ -1113,25 +1240,76 @@ function New-CxxuConfigTemplate
         Write-Host "模板已存在($Path):改值直接编辑;重建加 -Force。"
         return
     }
+    $defaults = Read-CxxuConfigDefaultList
+    if (-not $defaults.Count)
+    {
+        Write-Warning "默认偏好文件缺失或为空,未生成模板:$(Join-Path $PSScriptRoot 'config.defaults.psd1')"
+        return
+    }
     if ($PSCmdlet.ShouldProcess($Path, '写用户配置模板'))
     {
         $dir = Split-Path $Path -Parent
         if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
-        Write-CxxuUtf8Text -Path $Path -Text @'
-@{
-    # CxxuPsModules 用户配置(本机生效,仓库外;优先级:环境变量 > 本文件 > 默认值)
-    # 改完重开终端(或 init -Force)生效;生成:New-CxxuConfigTemplate;读取:每次 init 自动。
-    # 全部默认开(置 False 关)。
-    PsFzf          = $true  # PSFzf Ctrl+T 文件 / Ctrl+R 历史
-    PsZoxide       = $true  # zoxide z 跳转
-    PsPredictor    = $true  # CxxuPredictor 命令名预测(守护进程由启动链强制 False,不受此影响)
-    PsTab          = $true  # CxxuTab 命令名 Tab 模糊补全(独立插件;默认开,置 $false 关,见 Enable/Disable-PsPlugin)
-    PsArgc         = $true  # argc-completions 参数补全(懒加载:首个 Tab 才注册;置 $false 关)
-    PsShowProgress = $true  # init 启动进度条
-    PsGithubMirror = ''     # 为空走默认/静默测速;填镜像前缀如 'https://gh-proxy.com'
-}
-'@
+        $lines = New-Object System.Collections.Generic.List[string]
+        $lines.Add('@{')
+        $lines.Add('    # CxxuPsModules 用户配置(本机生效,仓库外;优先级:环境变量 > 本文件 > 默认值)')
+        $lines.Add('    # 改完重开终端(或 init -Force)生效;读取:每次 init 自动调 Import-CxxuConfig。')
+        $lines.Add('    # 查看生效值与来源:Get-CxxuConfig;恢复仓库默认偏好:Reset-CxxuConfig。')
+        foreach ($item in $defaults)
+        {
+            $key = [string]$item.Key
+            $lines.Add('    ' + $key.PadRight(15) + '= ' + (Format-CxxuConfigValue $item.Default) + '  # ' + [string]$item.Description)
+        }
+        $lines.Add('}')
+        Write-CxxuUtf8Text -Path $Path -Text ($lines -join "`n") -Bom
         Write-Host "模板已写 $Path"
+    }
+}
+function Reset-CxxuConfig
+{
+    <#
+    .SYNOPSIS
+    把用户配置重置为仓库默认偏好(默认 ~/.cxxu/config.psd1)。
+    .DESCRIPTION
+    以仓库 PS/Init/config.defaults.psd1 为准重写用户配置文件;各设备拉同一仓库后执行本命令,
+    即可得到同一份默认偏好。重置只改写配置文件,不改当前会话:$env: 中的值在会话结束前仍然生效,
+    重开终端(或 init -Force)后按新配置生效。
+    若同名环境变量已在用户级或机器级持久化,按“环境变量 > 配置文件”仍会覆盖默认值;
+    本命令会逐项列出这些覆盖项及其作用域。-WhatIf 只显示将改写的路径,不落盘。
+    .EXAMPLE
+    Reset-CxxuConfig
+    .EXAMPLE
+    Reset-CxxuConfig -WhatIf
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        # 配置文件路径(默认 ~/.cxxu/config.psd1,仓库外,本机生效)
+        [string]$Path = (Join-Path (Join-Path $HOME '.cxxu') 'config.psd1')
+    )
+    $blocked = New-Object System.Collections.Generic.List[string]
+    foreach ($item in (Read-CxxuConfigDefaultList))
+    {
+        $key = [string]$item.Key
+        $value = (Get-Item "env:$key" -ErrorAction Ignore).Value
+        if ([string]::IsNullOrEmpty($value)) { continue }
+        if ($script:CxxuConfigAppliedFromFile -and $script:CxxuConfigAppliedFromFile[$key] -eq $value) { continue }
+        $scope = '进程级'
+        try
+        {
+            if ($value -eq [Environment]::GetEnvironmentVariable($key, 'User')) { $scope = '用户级' }
+            elseif ($value -eq [Environment]::GetEnvironmentVariable($key, 'Machine')) { $scope = '机器级' }
+        }
+        catch { $scope = '进程级' }
+        $blocked.Add("$key=$value($scope)")
+    }
+    if ($PSCmdlet.ShouldProcess($Path, '重置为仓库默认偏好'))
+    {
+        New-CxxuConfigTemplate -Path $Path -Force -Confirm:$false
+        Write-Host '重置完成:重开终端(或 init -Force)后按默认偏好生效。'
+    }
+    if ($blocked.Count)
+    {
+        Write-Warning ("以下环境变量优先于配置文件,重置后仍按环境变量值生效:{0}。需要彻底回到默认时,先清除对应环境变量(如 Add-EnvVar 或 [Environment]::SetEnvironmentVariable)。" -f ($blocked -join '、'))
     }
 }
 function Set-CxxuConfigValue
@@ -1162,7 +1340,7 @@ function Set-CxxuConfigValue
             if ($at -le 0) { $ls = @("$Key = $val") + @($ls) }
             else { $ls = @($ls[0..($at - 1)]) + @("$Key = $val") + @($ls[$at..($ls.Count - 1)]) }
         }
-        Write-CxxuUtf8Text -Path $Path -Text ($ls -join "`n") -NoNewline
+        Write-CxxuUtf8Text -Path $Path -Text ($ls -join "`n") -NoNewline -Bom
         Write-Host "用户配置已持久化: $Key=$val($Path)"
     }
     catch
@@ -1177,7 +1355,7 @@ function Disable-PsPlugin
     停用体验插件(当会话生效;加 -Persist 长期禁用,重开也关)。
     .DESCRIPTION
     插件注册表：Fzf(PSFzf 快捷键)/Zoxide(z 跳转)/Predictor(命令名 ListView 预测)/
-    Tab(CxxuTab 命令名 Tab 模糊，默认关,需要时 Enable-PsPlugin Tab)/
+    Tab(CxxuTab 命令名 Tab 模糊，默认开,不需要时停用)/
     Argc(argc-completions 参数补全,默认开,懒加载)。停用只关本命令的合并/加载，引擎原生行为不受影响；
     持开关逐调用判定，无需重载。-Persist 写 ~/.cxxu/config.psd1（行级替换，保注释）。
     .EXAMPLE

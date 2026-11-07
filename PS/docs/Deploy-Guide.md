@@ -198,7 +198,7 @@ conda 缓存（`~/.conda_hook_cache.ps1`）与 zoxide 缓存（`~/.zoxide_init_c
 ## 10. 多设备差异点（每台都要看一眼）
 
 - `PwshVar/confs/VarSet1.conf` 的 `$PC*` 主机名：新机器加自己的，不认识的别删。
-- 功能开关：`~/.cxxu/config.psd1`（仓库外，本机生效；`New-CxxuConfigTemplate` 生成模板，`Deploy-CompletionStack` 收尾自动补建；`Enable/Disable-PsPlugin -Persist` 单键管理；优先级环境变量 > 配置文件 > 默认开）。新机器要差异化开关，复制这个文件比改注册表轻。
+- 功能开关：`~/.cxxu/config.psd1`（仓库外，本机生效；`New-CxxuConfigTemplate` 生成模板，`Deploy-CompletionStack` 收尾自动补建；`Enable/Disable-PsPlugin -Persist` 单键管理；`Get-CxxuConfig` 查生效值与来源；优先级环境变量 > 配置文件 > 默认值）。默认值只在仓库 `PS/Init/config.defaults.psd1` 维护；`Reset-CxxuConfig` 按它重写用户配置文件，各设备拉同一仓库后执行一次即可统一到同一默认偏好（被用户级/机器级环境变量覆盖的项会列出，需先清除对应环境变量）。
 - conda 路径：profile 缓存块里的 `$condaExe`（scoop 版在 `C:\scoop\apps\miniforge\...`，改安装位置要同步）。
 - 镜像/代理：`Get-SelectedMirror`、`Update-GithubHosts`、`Deploy-ScoopApps` 按当地网络选。
 - `Test-PsEnvReadiness` 收尾再跑一遍，必备全绿。默认只做本地对比（零网络）；
