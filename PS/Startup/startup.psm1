@@ -117,8 +117,9 @@ function Confirm-OSVersionCaption
         }
         else
         {
-            $Catption = "macOS $(sw_vers -productVersion)"
-            Set-EnvVar -Name 'OSCaption' -NewValue $Catption
+            # $PSVersionTable.OS 在引擎启动时已经填好(形如 macOS 27.2.0),不再 spawn sw_vers(本机实测 ~25ms)
+            $Catption = $PSVersionTable.OS
+            Set-ProcessEnvVar -EnvVar 'OSCaption' -NewValue $Catption
         }
     }
     return $env:OSCaption
@@ -146,14 +147,33 @@ function Confirm-OSVersionFullCode
         }
         else
         {
-            $info = Get-WindowsVersionInfoOnDrive
-            $OsVersion = $info.OSVersion
-            $BuildNumber = $info.BuildNumber
-            $code = "${OsVersion}-$BuildNumber"
+            # 原实现调用 Get-WindowsVersionInfoOnDrive:macOS 分支要 spawn sw_vers 三次、sysctl、uname 各一次,
+            # 本机实测 ~197ms,而该变量在 macOS 上只作展示。引擎启动时已算好 $PSVersionTable.OS,直接复用。
+            $code = $PSVersionTable.OS
         }
-        Set-EnvVar -Name 'OSFullVersionCode' -NewValue $code
+        Set-ProcessEnvVar -EnvVar 'OSFullVersionCode' -NewValue $code
     }
     return $env:OSFullVersionCode
+}
+function Set-StartupInfoEnvVar
+{
+    <#
+    .SYNOPSIS
+    写入启动期系统信息变量:Windows 保留 User 级持久化,非 Windows 只写当前进程。
+    .DESCRIPTION
+    Windows 上外部程序可能读取 %scripts% 等持久化变量,保持原有 Set-EnvVar 行为;
+    macOS/Linux 上 Set-EnvVar 的持久化路径本机实测每次约 105ms,且没有跨进程消费者,
+    改用 Set-ProcessEnvVar(<1ms)。
+    #>
+    param([string]$Name, [string]$Value)
+    if (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true))
+    {
+        Set-EnvVar -Name $Name -NewValue $Value | Out-Null
+    }
+    else
+    {
+        Set-ProcessEnvVar -EnvVar $Name -NewValue $Value
+    }
 }
 function Confirm-EnvVarOfInfo
 {
@@ -180,18 +200,19 @@ function Confirm-EnvVarOfInfo
     {
         $scripts = $PSScriptRoot | Split-Path | Split-Path 
         # $scripts=Split-Path $env:CxxuPSModulePath
-        Set-EnvVar -Name 'Scripts' -NewValue $scripts
+        Set-StartupInfoEnvVar -Name 'Scripts' -Value $scripts
     }
     if ($null -eq $env:CxxuPSModulePath)
     {
         $CxxuPsModulePath = $PSScriptRoot | Split-Path
-        Set-EnvVar -Name 'CxxuPSModulePath' -NewValue $CxxuPsModulePath
+        Set-StartupInfoEnvVar -Name 'CxxuPSModulePath' -Value $CxxuPsModulePath
     }
     #确认是否启用扩展功能
     if ($null -eq $env:PsExtension)
     {
         Write-Verbose 'confrim pwsh extension functions' -Verbose
-        Set-EnvVar -Name 'PsExtension' -NewValue 'False' #默认禁用扩展部分，加快安装和pwsh启动速度
+        # 默认禁用扩展部分，加快安装和pwsh启动速度
+        Set-StartupInfoEnvVar -Name 'PsExtension' -Value 'False'
     }
 }
 function Start-StartupTasks

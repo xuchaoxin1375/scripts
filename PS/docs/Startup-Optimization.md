@@ -2,7 +2,7 @@
 
 > 适用：`PS/` 模块集（`$env:PSModulePath` 引用 `C:/repos/scripts/PS`，`$profile` 里只有 `init`）。
 > 测量环境：Windows Server 级虚拟机，pwsh 7.5。个人电脑数值不同，但瓶颈排序一致。
-> 本文件按轮次追加历史实测；**现行默认值与性能以 §1 基线表和 §26 为准**（最近更新 2026-11-07）。旧轮次中的“默认关/冷启动约 400ms”等结论只代表当时状态。
+> 本文件按轮次追加历史实测；**现行默认值与性能以 §1 基线表和 §26 为准**（最近更新 2026-11-08）。旧轮次中的“默认关/冷启动约 400ms”等结论只代表当时状态。
 
 ## 1. 基线数据
 
@@ -530,3 +530,14 @@ Set-PSReadLineOption: 句柄无效。
 - 验证：5.1/7 冷热两轮候选列表逐条一致；损坏/过期/截断缓存均触发重建且回写无 BOM；5.1 `TabExpansion2` 合并 27 条、7 合并 29 条；双版本解析/导入/`Test-ModuleManifest` 全绿。
 
 
+
+## 27. 第二十轮：macOS 启动基线（2026-11-08，用户报“pwsh 加载太慢”）
+
+- 测量环境：macOS 27.2（26B123）、Apple Silicon、pwsh 7.6.9、PSReadLine 2.4.5；`median` 取 n=12 次独立进程。裸启动 305ms，完整 profile 优化前 **1524ms**。
+- 分项实测（均为冷进程，含 305ms 裸启动基线）：`Confirm-EnvVarOfInfo` 421ms、conda/mamba hook 254ms、`argc --argc-completions` 整包注册 250ms、`Set-PsPrompt` 153ms、`Set-PSReadLinesCommon` 101ms、`Set-ArgumentCompleter` 54ms；`init` 步骤表合计约 469ms，另有模块导入等约 200ms 不在步骤计时内。
+- 四处贵项都有明确成因。`Set-EnvVar` 每次走 User 作用域持久化，本机单次约 105ms，`Confirm-EnvVarOfInfo` 连调四次；非 Windows 分支调 `Get-WindowsVersionInfoOnDrive`，macOS 下要 spawn `sw_vers` 三次、`sysctl`、`uname` 各一次，合计约 197ms；conda hook 的真实成本是 `Import-Module Mamba.psm1`（约 226ms），生成 hook 文本本身只有 163 字节；argc 整包注册里 `argc` 二进制只占 3.8ms，其余是 PowerShell 解析并执行数百个 `Register-ArgumentCompleter`。
+- 处置：`Confirm-EnvVarOfInfo` 新增 `Set-StartupInfoEnvVar` 分流——Windows 保留原 `Set-EnvVar` 的 User 级持久化（外部程序可能读 `%scripts%`），非 Windows 改 `Set-ProcessEnvVar`（这些值在 macOS 上没有跨进程消费者）；非 Windows 的 `OSCaption`/`OSFullVersionCode` 改用引擎已算好的 `$PSVersionTable.OS`，不再 spawn；用户 profile 删掉 `init` 之前那次重复的 `Set-PsPrompt`（步骤表里已有）；删掉 profile 里的 argc 整包注册，统一交给 `Set-ArgcCompletions` 的 Tab 桩懒加载；本机 `profile.ps1` 的 mamba hook 改为首次调用 `mamba` 才 `Import-Module`。
+- 结果：完整 profile 从 1524ms 降到 **972ms**（n=12，median），约减 36%。剩余构成为裸启动 305ms 加 `init` 实测约 670ms（其中步骤表 469ms、模块导入约 200ms）。
+- 行为变化：非 Windows 上 `OSCaption` 与 `OSFullVersionCode` 的值由原来的 `macOS 27.2`、`27.2-26B123` 统一变为 `macOS 27.2.0`（`$PSVersionTable.OS` 原样）；两者只作展示，macOS 的 prompt 不读取。mamba 的环境变量仍在启动时设置，`mamba activate`/`deactivate` 在首次调用时可用，prompt 环境前缀也随首次导入生效。
+- 验证：`mamba --version` 输出 2.5.0 且 `Invoke-Mamba` 按需出现；`Initialize-ArgcCompletions` 后 `$global:PsArgcLoaded=True`；`init -Timing` 显示 `Confirm-EnvVarOfInfo` 从 421ms 降到 26ms，`Set-PsPrompt` 129ms、`Set-PSReadLinesCommon` 94ms。
+- 边界：本机 `~/.config/powershell/profile.ps1` 由 `mamba shell init` 管理，重跑该命令会覆盖懒加载块；该文件不入仓库，换机需另配。`init` 剩余步骤（`Set-PsPrompt`、`Set-PSReadLinesCommon` 等）未动，单项都在百毫秒级，继续压缩需要拆 core 变量与别名导入，收益小于改动风险。
