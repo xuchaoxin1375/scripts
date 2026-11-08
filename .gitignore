@@ -28,6 +28,16 @@ images/
 *.pdf
 *.docx
 *.doc
+# 可执行文件与安装包:工具链二进制走 Release/转存仓库,不入库
+# 模块发布件 dll 不在此列(CxxuPredictor/CompletionPredictor 需要提交)
+*.exe
+*.msi
+*.msix
+*.appx
+*.7z
+*.iso
+*.dmp
+*.pdb
 browser_profile
 chrome_debug_profile
 
