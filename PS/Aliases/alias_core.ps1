@@ -12,3 +12,6 @@ nlps Get-ContentNL
 Set-PSRLO Set-PSReadLineOption
 satjb Start-ThreadJob
 touch New-File
+# macOS 的 /usr/local/bin/typora 在 Typora 升级后可能是失效符号链接;别名优先于 Application,
+# 目标函数由 openApps 按需自动加载,不增加启动开销
+typora Start-Typora

@@ -84,7 +84,7 @@
 | `BTCN` | 722/9 | 批量建站（宝塔）脚本生成（B 档 5.1） |
 | `TerminalTools` | 845/15 | WT 链接、scoop 安装、scp、目录树、`Register-PsUxLazyLoad`（手势按需：Ctrl+T/R 首按装 PSFzf、首个 Tab 装 CxxuTab；predictor/zoxide 首屏单发）+ `Install-PsUxGestureStubs`（手势桩安装器，幂等）+ `Reset-PsCommandCache`（删除命令表缓存，配合新终端刷新候选）+ `Sync-CxxuPredictor`（并排版本同步 net9 predictor 与 5.1 Tab 两套活件，-Uninstall/-Force） |
 | `PsDebug` | 463/13 | pwsh 内省/诊断：`Head`/`Tail`/`Get-SourceCode`/`Get-PipelineInput`、权限（`Set-Owner`/`Grant-PermissionToPath`，Deploy 用）、`Confirm-UserContinue`（Deploy/Link/Git 用）、`Write-PsDebugLog`（2026-09-22 从 `Pwsh` 迁入；B 档 5.1，冷路径按需加载） |
-| `openApps` | 166/16 | 常用软件别名启动（qq/微信/typora 等；B 档 5.1，冗余后台 `&` 去掉） |
+| `openApps` | 256/17 | 常用软件别名启动（qq/微信/typora 等；`Start-Typora` 跨平台打开文件/目录；B 档 5.1，冗余后台 `&` 去掉） |
 | `Browser` | 24/4 | 浏览器搜索/收藏夹小命令（B 档 5.1） |
 | `Calendar` | 144/1 | `Show-Calendar`（唯一用 `Export-ModuleMember` 的模块，已与 manifest 对齐；B 档 5.1） |
 | `ColorSettings` | 15/2 | 终端颜色开关（B 档 5.1，`inlineprediction` 配色按 PSReadLine 版本 gating） |

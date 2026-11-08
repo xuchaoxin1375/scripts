@@ -9,6 +9,7 @@
         'Set-DefaultAppForExtension',
         'set-PsScriptDefaultRunner',
         'typora_home',
+        'Start-Typora',
         'qq_run',
         'clash_run',
         'run_silently',

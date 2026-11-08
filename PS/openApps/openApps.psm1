@@ -80,8 +80,98 @@ function typora_home
     param (
         
     )
-    typora $blogs
+    Start-Typora $blogs
     
+}
+
+function Start-Typora
+{
+    <#
+    .SYNOPSIS
+    用 Typora 打开文件、目录，或直接启动 Typora。
+
+    .DESCRIPTION
+    macOS 通过 `open -a` 调用 Typora，可同时接受多个目标；省略目标时只启动应用。
+    Windows 调用 `typora.exe`（优先使用 `$typora_home` 下的安装路径）。
+    支持从管道接收路径，例如 `Get-ChildItem *.md | Start-Typora`。
+    `typora` 别名在 `Aliases/alias_core.ps1` 中定义，指向本函数。
+
+    .PARAMETER Path
+    要打开的文件或目录；省略时只启动 Typora。
+
+    .EXAMPLE
+    Start-Typora .
+    # 用 Typora 打开当前目录
+
+    .EXAMPLE
+    Get-ChildItem *.md | Start-Typora
+    # 批量打开当前目录下的 Markdown 文件
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(ValueFromPipeline = $true, ValueFromRemainingArguments = $true)]
+        [string[]]$Path
+    )
+
+    begin
+    {
+        $targets = [System.Collections.Generic.List[string]]::new()
+    }
+    process
+    {
+        foreach ($item in $Path)
+        {
+            if (-not [string]::IsNullOrWhiteSpace($item))
+            {
+                $targets.Add($item)
+            }
+        }
+    }
+    end
+    {
+        # 5.1 无 $IsWindows:Desktop 即 Windows(5.1 只跑 Windows)
+        if (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true))
+        {
+            $exe = if ($typora_home)
+            {
+                Join-Path $typora_home 'typora.exe'
+            }
+            else
+            {
+                'typora.exe'
+            }
+            if ($targets.Count -eq 0)
+            {
+                Start-Process -FilePath $exe
+            }
+            else
+            {
+                foreach ($target in $targets)
+                {
+                    Start-Process -FilePath $exe -ArgumentList $target
+                }
+            }
+            return
+        }
+        if ($IsMacOS -ne $true)
+        {
+            Write-Error 'Start-Typora 仅支持 Windows 与 macOS。'
+            return
+        }
+
+        if ($targets.Count -eq 0)
+        {
+            & open -a '/Applications/Typora.app'
+        }
+        else
+        {
+            & open -a '/Applications/Typora.app' $targets
+        }
+        if ($LASTEXITCODE -ne 0)
+        {
+            Write-Error "Typora 打开失败(open 退出码 $LASTEXITCODE),请确认已安装 /Applications/Typora.app。"
+        }
+    }
 }
 
 # 压制输出日志

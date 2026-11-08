@@ -333,6 +333,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 - 不可用（Windows 专属，不做跨平台适配）：`scoop` 系（安装/换源/buckets）、注册表持久化（`Add-EnvVar`、`Set-PsPrompt -Persist`、镜像持久化——改走 `$profile` 或 env 文件）、计划任务与开机（`Deploy-StartupTasks`/`Start-StartupTasks`）、WT 下发、CIM/WMI 信息类、`conda` scoop 路径、业务模块硬编码路径（如 WordPress/phpstudy、`C:\` 前缀）。
 - 部分兼容：`PwshVar` 有分平台变量文件表（`$PwshVarFilesWindows`/`$PwshVarFilesMacOs`），新增变量按此模式分文件存放；`Info` 个别函数有 `$IsWindows`/`$IsMacOS` 分支，其余缺分支的函数在非 Windows 下报错即代表不支持。
 - 建议：先跑 `Get-CxxuDependencyReport -Missing` 看外部依赖，再跑 `Test-PsEnvReadiness` 看安装态（Windows 专属项已按平台隐藏，剩下的按需补齐）；`PwshVar/confs/VarSet1.conf` 的 `$PC*` 主机名按本机添加。
+- `typora` 命令：由别名 `typora` → `openApps` 的 `Start-Typora` 提供（首次调用才自动加载模块），macOS 用 `open -a /Applications/Typora.app` 打开文件或目录，省略参数只启动应用；支持管道（`Get-ChildItem *.md | typora`）。该别名优先于 PATH 中的同名程序，因此 `/usr/local/bin/typora` 变成失效符号链接时仍可用。
 
 ## 13. Windows PowerShell 5.1 兼容（B 档：交互可用）
 
