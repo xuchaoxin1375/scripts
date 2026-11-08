@@ -1,7 +1,7 @@
 # macOS 上 pwsh 的运行时故障与处置
 
 > 适用：macOS + cmux（Ghostty 终端内核）+ pwsh 7.6.9（随附 PSReadLine 2.4.5）的交互式会话。Windows、其他终端模拟器与其他 pwsh 版本未验证；凡未实测的推断在下文标注为“待验证”。
-> 本文只记录进程层与终端层的故障（假死、残留进程空转），启动耗时问题见 [Startup-Optimization.md](Startup-Optimization.md)；模块功能问题见 [Feature-Guide.md](Feature-Guide.md)。
+> 本文只记录进程层与终端层的故障（假死、残留进程空转），启动耗时问题见 [Startup-Optimization.md](Startup-Optimization.md)；模块功能问题见 [Feature-Guide.md](Feature-Guide.md)；shell 配置接线与 mamba/conda 停用记录见 [macOS-Shell-Setup.md](macOS-Shell-Setup.md)。
 
 ## 1. 故障一：交互式 pwsh 假死
 

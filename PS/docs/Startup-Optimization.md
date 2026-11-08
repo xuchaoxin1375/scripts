@@ -2,7 +2,7 @@
 
 > 适用：`PS/` 模块集（`$env:PSModulePath` 引用 `C:/repos/scripts/PS`，`$profile` 里只有 `init`）。
 > 测量环境：Windows Server 级虚拟机，pwsh 7.5。个人电脑数值不同，但瓶颈排序一致。
-> 本文件按轮次追加历史实测；**现行默认值与性能以 §1 基线表和 §26 为准**（最近更新 2026-11-08）。旧轮次中的“默认关/冷启动约 400ms”等结论只代表当时状态。
+> 本文件按轮次追加历史实测；**现行默认值与性能以 §1 基线表和最后一轮实测为准**（最近更新 2026-11-08）。旧轮次中的“默认关/冷启动约 400ms”等结论只代表当时状态。
 
 ## 1. 基线数据
 
@@ -540,5 +540,5 @@ Set-PSReadLineOption: 句柄无效。
 - 结果：完整 profile 从 1524ms 降到 **972ms**（n=12，median），约减 36%。剩余构成为裸启动 305ms 加 `init` 实测约 670ms（其中步骤表 469ms、模块导入约 200ms）。
 - 行为变化：非 Windows 上 `OSCaption` 与 `OSFullVersionCode` 的值由原来的 `macOS 27.2`、`27.2-26B123` 统一变为 `macOS 27.2.0`（`$PSVersionTable.OS` 原样）；两者只作展示，macOS 的 prompt 不读取。mamba 的环境变量仍在启动时设置，`mamba activate`/`deactivate` 在首次调用时可用，prompt 环境前缀也随首次导入生效。
 - 验证：`mamba --version` 输出 2.5.0 且 `Invoke-Mamba` 按需出现；`Initialize-ArgcCompletions` 后 `$global:PsArgcLoaded=True`；`init -Timing` 显示 `Confirm-EnvVarOfInfo` 从 421ms 降到 26ms，`Set-PsPrompt` 129ms、`Set-PSReadLinesCommon` 94ms。
-- 后续（同日）：用户停用 mamba/conda，两处 shell 集成整体移除。`~/.config/powershell/profile.ps1` 清空并留迁移注释；`~/.zshrc` 的 `conda initialize` 块删除（备份为 `~/.zshrc.bak.<时间戳>`），zsh 交互启动从 1485ms 降到 914ms。miniforge 安装保留，`conda`/`mamba` 仍在 `/opt/homebrew/bin`，但 `conda activate` 需重新执行 `conda init zsh` 才可用。两个文件都不入仓库，换机需另配。
+- 后续（同日）：用户停用 mamba/conda，两处 shell 集成整体移除。`~/.config/powershell/profile.ps1` 清空并留迁移注释；`~/.zshrc` 的 `conda initialize` 块删除（备份为 `~/.zshrc.bak.<时间戳>`），zsh 交互启动从 1485ms 降到 914ms。miniforge 安装保留，`conda`/`mamba` 仍在 `/opt/homebrew/bin`，但 `conda activate` 需重新执行 `conda init zsh` 才可用。两个文件都不入仓库，换机需另配。接线与恢复步骤见 [macOS-Shell-Setup.md](macOS-Shell-Setup.md)。
 - 边界：`init` 剩余步骤（`Set-PsPrompt`、`Set-PSReadLinesCommon` 等）未动，单项都在百毫秒级，继续压缩需要拆 core 变量与别名导入，收益小于改动风险。zsh 侧剩余约 910ms 与 mamba 无关，是 omz/补全等其它初始化，未在本轮范围内。

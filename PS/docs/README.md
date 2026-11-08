@@ -13,6 +13,7 @@
 | 查功能依赖与安装状态 | `Feature-Dependencies.md` → `Get-CxxuDependencyReport` | 哪些功能需要外部组件、缺什么、怎么补 |
 | 出问题先看 | `doctor`（命令）→ `Feature-Guide.md §9`（dll/活件/Tab 补全排查）/§6/§8（FAQ）→ `Dev-Notes.md`（常见坑） | 定位→自助→避坑 |
 | macOS 上 pwsh 假死或残留进程烧 CPU | [macOS-Pwsh-Runtime.md](macOS-Pwsh-Runtime.md) | 现场判据、清理步骤与防复发 |
+| macOS 上 shell 配置接线、恢复 mamba/conda | [macOS-Shell-Setup.md](macOS-Shell-Setup.md) | profile 链路、停用范围、实测变化与恢复命令 |
 | 补全不工作/变慢 | `doctor` → `Feature-Guide.md §9`「加载失败排查」+「Tab 补全自查」→ §8（ListView 候选）/§10（全景） | 先分清 Tab/ListView/参数层，再查开关/缓存/活件 |
 | 加模块/加函数 | `Feature-Guide.md §3` → `Module-Conventions.md`（§1 目录、§2 命名、§7 manifest）→ `Module-Map.md`（找位置） | 一次做对，不返工 |
 | 搞懂 dll/同步 | `Live-Versions.md`（设计专章）→ `Deploy-Guide.md §13` | 结构、流程、命令分工、5.1 Tab 产物 |
@@ -34,6 +35,7 @@
 | `Module-Map.md` | 模块画像表：找功能先查表，别 grep 大海捞针 | 中 |
 | `Startup-Optimization.md` | 性能基线 + 搬迁史：动热路径先看基线表 | 长（历史日志） |
 | [macOS-Pwsh-Runtime.md](macOS-Pwsh-Runtime.md) | macOS 运行层故障：假死与残留 pwsh 空转的判据、清理与防复发 | 短 |
+| [macOS-Shell-Setup.md](macOS-Shell-Setup.md) | macOS shell 配置现状：profile 接线、mamba/conda 停用记录、实测变化与恢复方式 | 短 |
 | `AGENTS.md`（仓库 `PS/` 根） | agent 入口：红线、换行、提交规范 | 短 |
 
 ## 检索方法
