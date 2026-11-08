@@ -556,6 +556,18 @@ Set-PSReadLineOption: 句柄无效。
 - 触发条件：`TerminalTools.Register-PsUxLazyLoad` 的单发动作第一句是
   `Unregister-Event -SourceIdentifier PowerShell.OnIdle`，在动作内部自摘订阅。
   与 Tab 补全、CxxuTab/CxxuPredictor 无关。
+- 最小复现（`profile.ps1`，pwsh 7.6.9 / macOS 27.2）：同一源注册两次、动作里自摘。
+  首屏出现后即卡死；只注册一次不复现，说明死锁还需要“该订阅另有待执行动作”：
+
+  ```powershell
+  $a = { Unregister-Event -SourceIdentifier PowerShell.OnIdle }
+  Register-EngineEvent PowerShell.OnIdle -Action $a | Out-Null
+  Register-EngineEvent PowerShell.OnIdle -Action $a | Out-Null
+  ```
+- 上游已知：PowerShell/PowerShell#16154（2021 年报告，因长期无活动被自动关闭，未修复），
+  其中已指出“`Unregister-Event` 调用时若还有其他事件待处理就会挂起”。本次补充的是交互式后果：
+  事件动作由 PSReadLine 的 `ReadKey` 触发，管线线程被 `DrainPendingActions` 占住后，
+  整个终端的按键都不再被读取。
 - 修法：动作内不再调 `Unregister-Event`；注册改用
   `Register-EngineEvent PowerShell.OnIdle -MaxTriggerCount 1`，由事件管理器在动作结束后
   自动退订。`$global:PsUxOnIdleRegistered` 标记位保留，继续承担幂等判断。
