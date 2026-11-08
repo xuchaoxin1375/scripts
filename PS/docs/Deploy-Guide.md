@@ -134,32 +134,44 @@ conda 用户：跑 `conda init powershell` 后**重贴缓存块**（它会覆盖
 ### 只启用补全（仓库、`PSModulePath`、profile 已就绪）
 
 ```powershell
-Deploy-CompletionStack -WhatIf   # 空跑：看会同步/安装什么
-Deploy-CompletionStack           # 核心活件 + argc-completions + 可选 PSFzf/CompletionPredictor、fzf/zoxide
+Deploy-CompletionStack -WhatIf   # 空跑：看会同步什么
+Deploy-CompletionStack           # 默认层：仅仓库内 CxxuCommand + CxxuTab，无网络、无仓库外依赖
 # 重开终端；profile 的 init 按默认开关加载
 ```
 
-- 内联预测要 pwsh 7.5+；Windows PowerShell 5.1 只有 Tab 菜单，命令会自动发布 `ps51` 活件。
-- 开关默认全开；单关用 `Disable-PsPlugin Predictor|Tab|Fzf|Zoxide -Persist`，完整开关与优先级见 `Feature-Guide.md §7`。
-- argc-completions 默认一起部署（仓库 + `argc.exe`/`yq.exe`）；不需要时加 `-SkipArgc`，只装它用 `Deploy-ArgcCompletions`。
+- 默认层只同步 net9 predictor 与 5.1 Tab 两套活件，并补建用户配置模板；Tab 补全默认开启（`$env:PsTab` 未显式关闭时首个 Tab 自动加载）。
+- 可选层按需追加（默认不装，避免新机拉一堆仓库外依赖）：
+
+```powershell
+Deploy-CompletionStack -IncludeArgc            # argc-completions 仓库 + argc.exe/yq.exe（并发下载）
+Deploy-CompletionStack -IncludeFuzzy           # PSFzf 模块 + fzf/zoxide 二进制
+Deploy-CompletionStack -IncludePredictor       # CompletionPredictor 模块
+Deploy-CompletionStack -IncludePSCompletions   # PSCompletions 模块
+Deploy-CompletionStack -All                    # 以上全部
+Deploy-CompletionStack -All -SkipBinaries      # 全部但跳过 fzf/zoxide 二进制
+```
+
+- 内联预测要 pwsh 7.5+；Windows PowerShell 5.1 只有 Tab 菜单，命令会自动发布 `ps51` 活件（新机也会顺带准备 net9 活件）。
+- 开关默认全开（组件未安装时对应开关不产生实际效果）；单关用 `Disable-PsPlugin Predictor|Tab|Fzf|Zoxide|Argc -Persist`，完整开关与优先级见 `Feature-Guide.md §7`。
+- 可选层需要网络。国内下载不稳定时，先 `Set-Proxy On`（或设置 `HTTPS_PROXY`/`HTTP_PROXY`）再执行；下载会自动识别代理，也可用 `-Proxy <地址>` / `-NoProxy` 单次覆盖。`Set-Proxy` 只影响当前会话（默认端口 7897，`-Port` 可改），新终端需重设或持久化 `HTTPS_PROXY`。缺少可选组件只提示，不影响默认层。
+- `-IncludeArgc` 的仓库、`argc.exe` 与 `yq.exe` 会并发下载（`-NoParallel` 可串行）；只想单独重装 argc 或指定目录用 `Deploy-ArgcCompletions [-Root <目录>]`。
 - 验收：ListView 输 `get-child` 应见 `[CxxuCommand]`；Tab 输 `get-chi` 应含 `Get-ChildItem`。不达预期按 `Feature-Guide.md §9` 的「Tab 补全自查」定位。
 - 仓库、模块路径或 profile 还没配好时，先走上面的极简版或 §0~§4。
 
 ```powershell
-Deploy-CompletionStack            # 核心 CxxuCommand 同步两套活件 + argc-completions + 可选 PSFzf/CompletionPredictor 与 fzf/zoxide；先 -WhatIf 空跑看动作
-Deploy-CompletionStack -IncludePSCompletions   # 再加 PSCompletions（按需）
+Deploy-CompletionStack -All                       # 核心 + argc + PSFzf/zoxide + CompletionPredictor + PSCompletions
 # 手动挡（等价）：
-Sync-CxxuPredictor                                  # 核心：生成/对齐 net9 predictor 与 5.1 Tab 两套活件
-Deploy-ArgcCompletions                              # 只装/重装 argc-completions（默认 ~/argc-completions）
+Sync-CxxuPredictor                                  # 默认层：生成/对齐 net9 predictor 与 5.1 Tab 两套活件
+Deploy-ArgcCompletions                              # 可选：只装/重装 argc-completions（默认 ~/argc-completions）
 Confirm-ModuleInstalled -ModuleName PSFzf -Install  # 可选：Ctrl+T/Ctrl+R
 Confirm-ModuleInstalled -ModuleName CompletionPredictor -Install  # 可选：参数/路径预测
-# 按需：Terminal-Icons（`$env:PsExtension=True` 才用得上）、PSCompletions（70+ 命令补全，延迟加载）
+# 按需：Terminal-Icons（`$env:PsExtension=True` 才用得上）、PSCompletions（延迟加载）
 # 自研 CxxuPredictor 随仓库自带（PS/CxxuPredictor/，零模块安装，随 init 延迟加载）；
 # 内联预测要求 pwsh 7.5+（7.6 可直接用；dll 按 net9.0 编译，加载失败再进 PS/CxxuPredictor/src 重编）；
 # 5.1 Tab 版在 PS/CxxuPredictor/ps51/（netstandard2.0），由 Sync-CxxuPredictor 一并发布
 ```
 
-> `argc-completions`（800+ 命令参数补全）默认随 `Deploy-CompletionStack` 部署（仓库 + `bin\argc.exe`/`bin\yq.exe`）；只想单独重装或指定目录用 `Deploy-ArgcCompletions [-Root <目录>]`。首次部署、更新、开关与 5.1 注意事项见 [Argc-Completions-Deploy](Argc-Completions-Deploy.md)。
+> `argc-completions`（800+ 命令参数补全）不再默认随 `Deploy-CompletionStack` 部署；需要时加 `-IncludeArgc`，或单独运行 `Deploy-ArgcCompletions [-Root <目录>]`。首次部署、更新、开关与 5.1 注意事项见 [Argc-Completions-Deploy](Argc-Completions-Deploy.md)。
 
 ## 6. scoop 二进制
 
@@ -168,6 +180,8 @@ Deploy-ScoopByGithubMirrors   # 国内先换源；或 Deploy-ScoopByGitee
 Install-BasicSoftwares        # 基础包
 Deploy-ScoopApps              # 应用包（fzf/zoxide/fnm/oh-my-posh 按需在里面）
 ```
+
+> `fzf`/`zoxide` 也可由 `Deploy-CompletionStack -IncludeFuzzy` 安装：优先 scoop，其次 winget（Windows）或 brew（macOS），最后回退 GitHub release 到 `~/.cxxu/bin`（自动加入用户 PATH）。scoop 下载不稳定时可直接用后两条。
 
 ## 7. python/conda
 

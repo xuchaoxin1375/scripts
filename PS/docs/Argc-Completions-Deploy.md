@@ -19,9 +19,9 @@
 
 ## 2. 首次部署
 
-> 一键部署提示：`Deploy-CompletionStack` 默认包含 argc（仓库 + `argc.exe`/`yq.exe`；`-SkipArgc` 跳过）；只想单独部署或指定目录用 `Deploy-ArgcCompletions [-Root <目录>]`。以下手动步骤用于离线、自定义镜像或排障。
+> 一键部署提示：`Deploy-CompletionStack -IncludeArgc` 会一并部署 argc（仓库 + `argc.exe`/`yq.exe`）；只想单独部署或指定目录用 `Deploy-ArgcCompletions [-Root <目录>] [-Proxy <地址>]`。以下手动步骤用于离线、自定义镜像或排障。
 >
-> `Deploy-ArgcCompletions` 按“仓库 → 二进制 → 当前会话注册”三步输出进度：复用的组件会说明跳过原因，下载会标明目标与来源并在结束后报告大小或版本与耗时，镜像失败自动回退直连。任一步失败只告警，结尾汇总失败项并提示重跑；重新执行会补齐缺失项，`-Force` 可强制重新下载。
+> `Deploy-ArgcCompletions` 按“确认缺失项 → 解析并下载 → 安装 → 当前会话注册”四步输出进度：复用的组件会说明跳过原因，下载会标明目标与来源并在结束后报告大小或版本与耗时，镜像失败自动回退直连。缺少的仓库与二进制会并发下载（`-NoParallel` 改串行）；设置 `HTTPS_PROXY`/`HTTP_PROXY` 或加 `-Proxy` 可走代理，`-NoProxy` 强制直连。任一步失败只告警，结尾汇总失败项并提示重跑；重新执行会补齐缺失项，`-Force` 可强制重新下载。
 
 ### 2.1 克隆仓库
 
@@ -157,6 +157,7 @@ Initialize-ArgcCompletions -Force   # 当前会话重新注册 Tab 补全
 | 更新仓库后仍是旧候选 | `Initialize-ArgcCompletions -Force` 是否执行 | flag 表需重开终端；Tab completer 当前会话强制重注册 |
 | flag 提示不出现 | pwsh 是否 7.5+；`PsArgc`/`PsPredictor` 是否被关；是否首个参数位 | `GetSubsystemInfo` 查 `CxxuArgcFlags` 是否注册；删缓存重开 |
 | 选中行看不清 / 描述带颜色码 | `Selection` 是否为 `ESC[7m` | 保持反显方案；completer 已剥掉 ANSI，不要改回固定前景色 |
+| 下载经常失败或很慢 | 镜像是否可用；是否已设置代理 | 换 `$env:PsGithubMirror`；先 `Set-Proxy On` 或加 `-Proxy <地址>`；排除代理故障时加 `-NoProxy` |
 
 ## 8. 卸载
 

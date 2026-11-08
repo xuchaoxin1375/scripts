@@ -141,7 +141,7 @@ $homeDir = $HOME
         Name      = 'PSFzf'
         Gate      = 'PsFzf'
         Impact    = 'Ctrl+T 选文件、Ctrl+R 搜历史不可用；Tab 补全不受影响。'
-        Install   = 'Confirm-ModuleInstalled -ModuleName PSFzf -Install'
+        Install   = 'Deploy-CompletionStack -IncludeFuzzy，或 Confirm-ModuleInstalled -ModuleName PSFzf -Install'
         Docs      = 'Feature-Guide.md §7'
     }
     [PSCustomObject]@{
@@ -153,8 +153,8 @@ $homeDir = $HOME
         Gate      = 'PsFzf'
         Impact    = 'PSFzf 缺少底层 fzf 可执行文件，Ctrl+T/Ctrl+R 仍不可用。'
         Install   = @{
-            Windows = 'scoop install fzf'
-            Mac     = 'brew install fzf'
+            Windows = 'Deploy-CompletionStack -IncludeFuzzy（scoop→winget→GitHub release），或 scoop install fzf'
+            Mac     = 'Deploy-CompletionStack -IncludeFuzzy（brew），或 brew install fzf'
             Linux   = '系统包管理器安装 fzf'
         }
         Docs      = 'Feature-Guide.md §7'
@@ -182,7 +182,7 @@ $homeDir = $HOME
         Gate          = 'PsArgc'
         MissingStatus = '未部署'
         Impact        = '应用命令的参数补全不可用；CxxuCommand 与原生 Tab 不受影响。'
-        Install       = 'Deploy-ArgcCompletions，或 Deploy-CompletionStack（默认包含 argc）'
+        Install       = 'Deploy-CompletionStack -IncludeArgc，或 Deploy-ArgcCompletions'
         Docs          = 'Argc-Completions-Deploy.md'
     }
     [PSCustomObject]@{
@@ -247,8 +247,8 @@ $homeDir = $HOME
         Gate      = 'PsZoxide'
         Impact    = 'z 目录跳转不可用；不影响补全与提示符。'
         Install   = @{
-            Windows = 'scoop install zoxide'
-            Mac     = 'brew install zoxide'
+            Windows = 'Deploy-CompletionStack -IncludeFuzzy（scoop→winget→GitHub release），或 scoop install zoxide'
+            Mac     = 'Deploy-CompletionStack -IncludeFuzzy（brew），或 brew install zoxide'
             Linux   = '系统包管理器安装 zoxide'
         }
         Docs      = 'Feature-Guide.md §7'

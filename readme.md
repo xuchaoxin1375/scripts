@@ -84,6 +84,8 @@ Unblock-File $deployScript
 Deploy-CompletionStack
 ```
 
+> 默认只装仓库内核心补全（CxxuCommand + Tab），不下载仓库外依赖；需要 argc、PSFzf、fzf/zoxide 等加对应 `-Include*` 或 `-All`，详见 [PS/docs/Deploy-Guide.md](PS/docs/Deploy-Guide.md)。
+
 > 若提示找不到 `Deploy-CompletionStack`，说明 profile 的 `init` 没有执行；先回到第 2 步检查执行策略，而不是重复运行部署脚本。
 
 轻量部署(仅 5.1、免 git)、临时使用单个模块、用本地代码验证部署，见 [PS/Deploy/readme.md](PS/Deploy/readme.md)；分步部署与多设备差异见 [PS/docs/Deploy-Guide.md](PS/docs/Deploy-Guide.md)。

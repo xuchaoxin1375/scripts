@@ -9,7 +9,7 @@
 |---|---|---|
 | 新机部署 | `Deploy-Guide.md`（保存脚本后按参数运行）→ `Feature-Guide.md §1/§11` | 从零到可用 + 手动项查漏 |
 | 日常使用 | `Feature-Guide.md §2`（命令表）→ §7/§8/§10（补全）→ §9（dll 四件套 + Tab 自查） | 查命令、配补全、管更新 |
-| 只启用补全（新机或已有环境） | `Deploy-Guide.md §5`（`Deploy-CompletionStack`）→ `Feature-Guide.md §7/§9`（开关/自查） | 一条命令装核心活件、argc 与可选增强 |
+| 只启用补全（新机或已有环境） | `Deploy-Guide.md §5`（`Deploy-CompletionStack`）→ `Feature-Guide.md §7/§9`（开关/自查） | 默认只装核心活件；argc、PSFzf、fzf/zoxide 等按需加 `-Include*` |
 | 查功能依赖与安装状态 | `Feature-Dependencies.md` → `Get-CxxuDependencyReport` | 哪些功能需要外部组件、缺什么、怎么补 |
 | 出问题先看 | `doctor`（命令）→ `Feature-Guide.md §9`（dll/活件/Tab 补全排查）/§6/§8（FAQ）→ `Dev-Notes.md`（常见坑） | 定位→自助→避坑 |
 | 补全不工作/变慢 | `doctor` → `Feature-Guide.md §9`「加载失败排查」+「Tab 补全自查」→ §8（ListView 候选）/§10（全景） | 先分清 Tab/ListView/参数层，再查开关/缓存/活件 |

@@ -140,11 +140,12 @@ p -Force                    # 看 init 分步耗时，定位慢项
 ## 7. 补全体验件（推荐组合，默认启用）
 
 > 已启用的走延迟加载（`init` 只注册 `OnIdle` 事件，18ms），默认启动盘不受影响。
+> 安装层面：默认层只含 CxxuCommand/CxxuTab；PSFzf、CompletionPredictor、fzf/zoxide 需 `Deploy-CompletionStack -IncludeFuzzy` / `-IncludePredictor`，或按 §11 单独安装。
 > 开关：`$env:PsFzf` / `$env:PsZoxide` / `$env:PsPredictor`（默认开，`False` 关；
 > 守护进程由 `Start-StartupBgProcesses` 统一置 `PsPredictor=False`，永不加载 dll）；
 > `$env:PsTab`（CxxuTab Tab 补全，**默认开，置 `False` 关**）；
-> `$env:PsArgc`（argc-completions 参数补全，默认开，首个 Tab 才注册；新机由 `Deploy-CompletionStack` 一并部署）；
-> 重定向场景自动不加载。新机安装或一键重装看 `Deploy-Guide.md §5`（`Deploy-CompletionStack -WhatIf` 可空跑）。
+> `$env:PsArgc`（argc-completions 参数补全，默认开，首个 Tab 才注册；需要时由 `Deploy-CompletionStack -IncludeArgc` 部署）；
+> 重定向场景自动不加载。可选层需要网络；国内下载不稳定可先 `Set-Proxy On`（或设置 `HTTPS_PROXY`）再部署。新机安装或一键重装看 `Deploy-Guide.md §5`（`Deploy-CompletionStack -WhatIf` 可空跑）。
 
 | 候选 | 状态 |
 |---|---|
@@ -161,7 +162,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | `argc-completions`（800+ 命令参数补全；懒加载，首个 Tab 注册约 150ms；选中行反显高亮；首个参数位的静态 flag 自动进 ListView） | **已启用**（仓库 `~/argc-completions` 或 `C:\repos\argc-completions`；开关 `$env:PsArgc`；Tab 7/5.1 均可用，自动 flag 提示仅 7.5+） |
 | `inshellisense` | **否决**（用户拍板，不再考虑） |
 
-验：新开终端直接可用，`Ctrl+R`/`Ctrl+T` 首按装 PSFzf（本次按键即生效）；`z <目录>` 跳转（zoxide 首屏单发已装）。`CxxuTab` 默认开，首个 `Tab` 才导入它（命令表缓存命中时建表约 20ms，模块导入另计；缓存缺失/过期时现建，5.1 约 0.4s、7 约 0.1s，24h 内最多一次）。`argc-completions` 默认开，首个 `Tab` 才注册（约 150ms，之后零开销）。`Get-EventSubscriber` 应无残留（单发先摘后装）。若某主机 OnIdle 不触发（predictor 没装上），跑 `Register-PsUxLazyLoad -Now` 或报回来。自查跑 `Test-StartupPerformance`（分段计时+结论）。
+验：新开终端直接可用，`Ctrl+R`/`Ctrl+T` 首按装 PSFzf（本次按键即生效）；`z <目录>` 跳转（zoxide 首屏单发已装）。`CxxuTab` 默认开，首个 `Tab` 才导入它（命令表缓存命中时建表约 20ms，模块导入另计；缓存缺失/过期时现建，5.1 约 0.4s、7 约 0.1s，24h 内最多一次）。`argc-completions` 开关默认开，首个 `Tab` 才注册（需先用 `Deploy-CompletionStack -IncludeArgc` 部署；未部署时自动回退原生补全，约 150ms 的注册不会发生）。`Get-EventSubscriber` 应无残留（单发先摘后装）。若某主机 OnIdle 不触发（predictor 没装上），跑 `Register-PsUxLazyLoad -Now` 或报回来。自查跑 `Test-StartupPerformance`（分段计时+结论）。
 
 ## 8. FAQ（续）：补全候选与预测视图
 
@@ -239,13 +240,13 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | 命令表缓存 | `Get-ChildItem $HOME\.cxxu\cache\tab-commands-*.tsv` | 存在且 24h 内为命中；过期/缺失会自动重建；比仓库模块文件旧时 `init` 会删除（只对新终端生效） |
 | 包装/桩 | `doctor` 的 `Tab 包装` 行 | `CxxuTab 包装已装入` 或 `桩已装,首个 Tab 自动装入` |
 | 熔断 | `$global:__CxxuTabFuse` | 正常为 `$false`/空；`True` 表示本会话已退回原生 Tab |
-| argc 仓库 | `$env:ARGC_COMPLETIONS_ROOT`、`<根>\completions`、`argc --argc-version` | 根有值且 `completions` 在；`get-command argc` 有输出（仓库 `bin` 或 PATH，macOS/Linux 用系统安装的 argc）；空 = 未部署（`Deploy-CompletionStack` 默认装） |
+| argc 仓库 | `$env:ARGC_COMPLETIONS_ROOT`、`<根>\completions`、`argc --argc-version` | 根有值且 `completions` 在；`get-command argc` 有输出（仓库 `bin` 或 PATH，macOS/Linux 用系统安装的 argc）；空 = 未部署（`Deploy-CompletionStack -IncludeArgc` 可装） |
 
 | 现象 | 原因 | 处理 |
 |---|---|---|
 | Tab 只有原生候选，没有 `CxxuTab fuzzy:` | `$env:PsTab` 被显式关；`CxxuTab` 未导入；`__CxxuTabMethod` 为空；5.1 缺 `ps51` 活件 | 按上表逐项查；`Enable-PsPlugin Tab`；5.1 执行 `Sync-CxxuPredictor` 后重开终端 |
 | Tab 完全没反应（连原生候选也没有） | Tab 键绑定异常（旧会话/argc 桩残留），或 PSReadLine 未加载 | `doctor` 看 `Tab 键` 行；`Import-Module Init -Force; init -Force` 或重开终端 |
-| 应用命令的 `-` 参数没候选（如 `nginx -<Tab>`） | argc 未部署；`argc --argc-shell-path` 的 bash 不存在；`PsArgc=False` | 跑 `Deploy-CompletionStack`（默认含 argc）或 `Deploy-ArgcCompletions`；`doctor` 看 `argc 补全`/`Tab 键`；细节见 Argc 文档 §7 |
+| 应用命令的 `-` 参数没候选（如 `nginx -<Tab>`） | argc 未部署；`argc --argc-shell-path` 的 bash 不存在；`PsArgc=False` | 跑 `Deploy-CompletionStack -IncludeArgc` 或 `Deploy-ArgcCompletions`；`doctor` 看 `argc 补全`/`Tab 键`；细节见 Argc 文档 §7 |
 | 首个 Tab 卡 0.1~0.4s | 命令表缓存未命中（首次/过期/损坏） | 正常一次性，之后约 20ms；想立刻重建执行 `Reset-PsCommandCache` 后重开终端 |
 | 候选里缺新装模块的命令 | 缓存仍是旧表，或当前窗口在更新前已建表 | 仓库更新后 `init` 会自动删除比模块文件旧的缓存；执行 `Reset-PsCommandCache` 并重开终端可立即刷新。原生 Tab 的前缀匹配不受缓存影响 |
 | 用一会儿后突然只剩原生候选 | 自熔断触发（单次调用 >800ms 或异常） | `$global:__CxxuTabFuse` 为 `True`；重开终端恢复；反复出现查主机/杀软扫描 |
@@ -260,10 +261,10 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | Tab 全量索引 | `Tab`（MenuComplete） | 引擎全量：函数/别名/文件/参数 | 命令名位经 `CxxuTab` 包装增强（模糊连写可选中，参数位零干扰；默认开，置 `$env:PsTab='False'` 关）；和下面两层**不是同一套索引**，结果不一样正常 |
 | ListView 预测 | 输入时自动浮现（`HistoryAndPlugin`） | 历史（最多 10 条，硬上限）+ 插件 | 插件= `CompletionPredictor`（参数/路径，命令名位跳过）+ `CxxuPredictor`（命令名，分层排序 + 别名/历史加权，默认 15 条，§8）+ `CxxuArgcFlags`（argc 覆盖命令的首个参数位，`-` 前缀，静态 flag ≤10 条；7.5+）；须 20ms 内返回，实测 2600 条 <1ms、flag 查表 <1ms |
 | 模糊搜历史/文件 | `Ctrl+R` / `Ctrl+T`（PSFzf） | 全量历史/文件 | 历史翻不完用这个，不走 10/50 上限 |
-| 参数值补全 | `Tab` 在参数位 | `argc-completions`（800+ 命令库，默认开、懒加载）+ `PSCompletions`（~200 命令库，可选）+ 自带 `ArgumentCompleter`（EnvVar 系、`Get-Json -Key` 等，`Set-ArgumentCompleter` 批量注册） | PSCompletions 用法：解开 profile 里注释的两行；argc 开关 `$env:PsArgc`，首个 Tab 注册 |
+| 参数值补全 | `Tab` 在参数位 | `argc-completions`（800+ 命令库，开关默认开、懒加载；按需 `-IncludeArgc` 部署）+ `PSCompletions`（~200 命令库，可选）+ 自带 `ArgumentCompleter`（EnvVar 系、`Get-Json -Key` 等，`Set-ArgumentCompleter` 批量注册） | PSCompletions 用法：解开 profile 里注释的两行；argc 开关 `$env:PsArgc`，首个 Tab 注册 |
 
 - 相关命令：`doctor`（统一诊断入口，定位问题先执行它）、`Get-CxxuDependencyReport [-Missing]`（按功能查外部依赖与安装建议，详见 [Feature-Dependencies.md](Feature-Dependencies.md)）、`Register-PsUxLazyLoad [-Now]`（延迟加载入口）、
-  `Deploy-CompletionStack [-WhatIf/-IncludePSCompletions/-SkipBinaries]`（新机一键装栈）、
+  `Deploy-CompletionStack [-WhatIf] [-IncludeArgc] [-IncludeFuzzy] [-IncludePredictor] [-IncludePSCompletions] [-All]`（新机一键装栈）、
   `Test-PsEnvReadiness`（查缺）、`predictNo`（当会话关预测）、
   `Enable-PsPlugin` / `Disable-PsPlugin`（插件启停，Fzf/Zoxide/Predictor/Tab/Argc）。
 - **历史膨胀（Ctrl+R 变慢）**：`Optimize-PsHistory -WhatIf` 先看诊断（总数/去重率/重复 Top5）， `Optimize-PsHistory [-KeepLast 3000]` 动手（去重只留最后一次 + 去杂 + 截断，旧行进同目录 `.archive-时间.txt`，原文件留 `.bak-时间`，均可恢复）。治本：init 已开 `HistoryNoDuplicates`（新命令不再重复入库）+ `MaximumHistoryCount 3000`。注意历史文件无时间戳，切割按新旧顺序（文件尾=最近）；当前会话内存里的旧历史重启才换新。
@@ -292,7 +293,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 - 实测（pwsh 7.5.4，新 dll）：`nginx -`→10 条（`-?`/`-h`/`-v`/`-V`/`-t`/`-T`…）、`docker --con`→2 条、
   `git -`→10 条顶层 flag、`git checkout -`→0、`Get-ChildItem -F`→0、`nginx -s reload`→0、`PsArgc=False`→0。
 - 部署最短路径（详见 [Argc-Completions-Deploy](Argc-Completions-Deploy.md)）：
-  `Deploy-CompletionStack`（默认含 argc；也可单跑 `Deploy-ArgcCompletions`）→
+  `Deploy-CompletionStack -IncludeArgc`（或单跑 `Deploy-ArgcCompletions`）→
   仓库与 `bin\argc.exe`/`bin\yq.exe` 就位 → 重开终端/`init`（首次 Tab 注册 846 个 completer）→
   更新仓库后 `Initialize-ArgcCompletions -Force`；5.1 用自带 PSReadLine 2.0 即可。
 - 部署/更新/开关/排障全文：[Argc-Completions-Deploy](Argc-Completions-Deploy.md)。
@@ -306,12 +307,12 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | 功能 | 默认状态 | 手动启用 | 说明 |
 |---|---|---|---|
 | `PSCompletions`（~200 命令参数补全） | 未装，profile 两行钩子注释中 | `Confirm-ModuleInstalled -ModuleName PSCompletions -Install`，再解开 profile 第 4~5 行 | 旧注"可能导致 `ipmof|iex` 报错"已过期（白名单+`ipmox` 时代），现可放心开 |
-| `fzf` / `zoxide` 二进制 | 无则 `Ctrl+T/R`、`z` 不可用（不影响 CxxuCommand） | `scoop install fzf zoxide`（可选，`Deploy-CompletionStack` 会尝试安装） | 装完重开终端，init 缓存自建 |
+| `fzf` / `zoxide` 二进制 | 无则 `Ctrl+T/R`、`z` 不可用（不影响 CxxuCommand） | `Deploy-CompletionStack -IncludeFuzzy`（scoop→winget/brew→GitHub release），或 `scoop install fzf zoxide` | 装完重开终端，init 缓存自建 |
 | `scoop` 本体 | 无则二进制系列全停 | 按官网装，或 `Deploy-ScoopByGithubMirrors`（国内） | 装完补 buckets（`Add-ScoopBuckets`） |
 | `conda` | 无则 prompt  conda 段静默缺失 | `Deploy-MiniforgeConfig`；`$condaExe` 路径按机器对（profile 缓存块） | 缓存 `~/.conda_hook_cache.ps1`，首跑慢一次 |
 | `fnm` + 钩子 | 未装，profile 末行注释中 | `scoop install fnm`，再解开 profile 末行 | node 用户才需要 |
 | `scoop-search` 钩子 | profile 6 行注释中 | 有 `scoop-search` 才解开（`--hook` 注入） | 无则不用管 |
-| `argc` 整块 | 未部署 | `Deploy-ArgcCompletions`（或 `Deploy-CompletionStack` 默认含） | profile 钩子保持注释（Init 接管）；装完重开终端/`init` |
+| `argc` 整块 | 未部署 | `Deploy-CompletionStack -IncludeArgc`（或 `Deploy-ArgcCompletions`） | profile 钩子保持注释（Init 接管）；装完重开终端/`init` |
 | `carapace-bin` / `posh-git` | 未装 | 逃生/按需：`scoop install carapace-bin`；只要 git Tab 才装 posh-git | 决策见 §7 |
 | prompt 主题持久化 | 当会话有效，重开复原 | `Set-PsPrompt -version <…> -Persist`（写注册表） | 临展用 `dm` 切极简，不持久化 |
 | 开机任务 + 守护进程 | 未注册 | `Start-StartupTasks`（或 `Deploy-StartupTasks` 部署） | 报时/IP 守护，无状态，`-Force` 可杀 |

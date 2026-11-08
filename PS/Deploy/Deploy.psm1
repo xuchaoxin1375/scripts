@@ -1480,7 +1480,7 @@ function doctor
     if ($env:PsArgc -match '^(False|0|No|Off)$') { & $dchk 'argc 补全' $true '开关已关闭(PsArgc=False)，按需开启' }
     elseif (-not $argcRoot)
     {
-        & $dchk 'argc 补全' $false (& $platNeed '未部署：跑 Deploy-CompletionStack（默认含 argc）或看 Argc-Completions-Deploy.md' '未部署：clone argc-completions 到 ~/argc-completions 或 ~/repos/argc-completions，并 brew install argc' '未部署：clone argc-completions 到 ~/argc-completions 或 ~/repos/argc-completions，并装 argc（系统包管理器/cargo）')
+        & $dchk 'argc 补全' $false (& $platNeed '未部署：跑 Deploy-CompletionStack -IncludeArgc（或 Deploy-ArgcCompletions）或看 Argc-Completions-Deploy.md' '未部署：clone argc-completions 到 ~/argc-completions 或 ~/repos/argc-completions，并 brew install argc' '未部署：clone argc-completions 到 ~/argc-completions 或 ~/repos/argc-completions，并装 argc（系统包管理器/cargo）')
     }
     elseif (-not (Test-Path -LiteralPath (Join-Path (Join-Path $argcRoot 'completions') $plat.ArgcDir)))
     {

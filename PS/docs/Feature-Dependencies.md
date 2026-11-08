@@ -93,10 +93,10 @@ Get-CxxuDependencyReport -Json           # 供其他程序消费
 | 核心运行环境 | `PSModulePath` 含模块集、profile 含 `init`、pwsh 7.5+、git、PSReadLine 2.1+ | 必需/推荐 | 模块不自动加载、新终端不初始化、命令名预测不可用、更新与克隆不可用、历史增强不可用 | `Add-EnvVar`、`Add-CxxuPsModuleToProfile`、`Update-PowerShell`、`Confirm-GitCommand`、`Install-Module PSReadLine` |
 | 补全：命令名预测 | `CxxuPredictor` 活件；本地重编另需 `dotnet` SDK | 生成物/可选 | 命令名内联预测不工作；Tab 补全仍可用 | `Sync-CxxuPredictor`；本地重编另装 .NET SDK 9+ |
 | 补全：Tab 增强 | `CxxuTab` 的 Windows PowerShell 5.1 活件 | 生成物 | 5.1 的 Tab 模糊补全不可用；pwsh 7 使用根活件 | `Sync-CxxuPredictor` |
-| 补全：模糊搜索 | `PSFzf` 模块、`fzf` 二进制 | 推荐 | `Ctrl+T` 选文件、`Ctrl+R` 搜历史不可用 | `Confirm-ModuleInstalled -ModuleName PSFzf -Install`、`scoop install fzf` 或 `brew install fzf` |
+| 补全：模糊搜索 | `PSFzf` 模块、`fzf` 二进制 | 推荐 | `Ctrl+T` 选文件、`Ctrl+R` 搜历史不可用 | `Deploy-CompletionStack -IncludeFuzzy`；或 `Confirm-ModuleInstalled -ModuleName PSFzf -Install`、`scoop install fzf` 或 `brew install fzf` |
 | 补全：参数/路径预测 | `CompletionPredictor` 模块 | 推荐 | 参数值与路径的内联预测不可用 | `Confirm-ModuleInstalled -ModuleName CompletionPredictor -Install` |
-| 补全：参数补全（argc） | `argc-completions` 仓库、`argc`、`yq`、Windows 下的 `bash` | 推荐 | 应用命令的参数补全不可用 | `Deploy-ArgcCompletions` 或 `Deploy-CompletionStack` |
-| 补全：目录跳转 | `zoxide` 二进制 | 可选 | `z` 目录跳转不可用 | `scoop install zoxide` 或 `brew install zoxide` |
+| 补全：参数补全（argc） | `argc-completions` 仓库、`argc`、`yq`、Windows 下的 `bash` | 推荐 | 应用命令的参数补全不可用 | `Deploy-CompletionStack -IncludeArgc` 或 `Deploy-ArgcCompletions` |
+| 补全：目录跳转 | `zoxide` 二进制 | 可选 | `z` 目录跳转不可用 | `Deploy-CompletionStack -IncludeFuzzy`；或 `scoop install zoxide` 或 `brew install zoxide` |
 | 补全：参数补全（PSCompletions） | `PSCompletions` 模块 | 可选 | 约 200 个命令的参数补全不可用 | `Confirm-ModuleInstalled -ModuleName PSCompletions -Install`，再解开 profile 钩子 |
 | 交互：文件图标 | `Terminal-Icons` 模块 | 可选 | `Get-ChildItem` 的文件图标不显示 | `Confirm-ModuleInstalled -ModuleName Terminal-Icons -Install` |
 | 提示符：conda | `conda` | 可选 | 提示符 conda 段不显示；`Deploy-MiniforgeConfig` 也需要 | `Deploy-MiniforgeConfig` 或 `scoop install miniforge` / `brew install miniforge` |
