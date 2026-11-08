@@ -237,7 +237,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | 命令表缓存 | `Get-ChildItem $HOME\.cxxu\cache\tab-commands-*.tsv` | 存在且 24h 内为命中；过期/缺失会自动重建；比仓库模块文件旧时 `init` 会删除（只对新终端生效） |
 | 包装/桩 | `doctor` 的 `Tab 包装` 行 | `CxxuTab 包装已装入` 或 `桩已装,首个 Tab 自动装入` |
 | 熔断 | `$global:__CxxuTabFuse` | 正常为 `$false`/空；`True` 表示本会话已退回原生 Tab |
-| argc 仓库 | `$env:ARGC_COMPLETIONS_ROOT`、`$env:ARGC_COMPLETIONS_ROOT\bin\argc.exe` | 有值且文件存在；空 = 未部署（`Deploy-CompletionStack` 默认装） |
+| argc 仓库 | `$env:ARGC_COMPLETIONS_ROOT`、`<根>\completions`、`argc --argc-version` | 根有值且 `completions` 在；`get-command argc` 有输出（仓库 `bin` 或 PATH，macOS/Linux 用系统安装的 argc）；空 = 未部署（`Deploy-CompletionStack` 默认装） |
 
 | 现象 | 原因 | 处理 |
 |---|---|---|

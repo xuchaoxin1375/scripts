@@ -33,10 +33,11 @@ git clone https://github.com/sigoden/argc-completions.git C:\repos\argc-completi
 `Deploy-ArgcCompletions` 默认用 `~/argc-completions`，已存在则复用；`Set-ArgcCompletions` 的探测顺序：
 
 1. `$env:ARGC_COMPLETIONS_ROOT`
-2. `$HOME\argc-completions`
-3. `C:\repos\argc-completions`
+2. `~/argc-completions`
+3. `~/repos/argc-completions`
+4. `C:\repos\argc-completions`（仅 Windows 探测：非 Windows 没有 C 盘）
 
-仓库放在别处时，在 `init` 前设置（写进 profile 或系统环境变量）：
+仓库判定要求存在 `completions` 目录，且 argc 可执行文件可定位：仓库 `bin` 优先，其次 PATH（macOS/Linux 用系统安装的 argc 即可，例如 Homebrew）。放在别处时，在 `init` 前设置（写进 profile 或系统环境变量）：
 
 ```powershell
 $env:ARGC_COMPLETIONS_ROOT = 'D:\tools\argc-completions'
@@ -67,6 +68,7 @@ init          # 或直接打开一个新终端
 
 1. 定位仓库并设置 `ARGC_COMPLETIONS_ROOT`
 2. 设置 `ARGC_COMPLETIONS_PATH`（Windows 用 `;` 分隔；`completions\windows` 在前，Windows 专用脚本覆盖同名脚本）
+   - 非 Windows 用 `:` 分隔，平台目录为 `completions/macos`（Linux 为 `completions/linux`），其余同上
 3. 把 `bin` 前置进 `PATH`，并安装 Tab 懒加载桩
 
 启动只花约 1ms，不注册 846 个 completer。
@@ -145,7 +147,7 @@ Initialize-ArgcCompletions -Force   # 当前会话重新注册 Tab 补全
 
 | 现象 | 先查 | 处理 |
 |---|---|---|
-| `init` 后 `$env:ARGC_COMPLETIONS_ROOT` 为空 | 仓库是否在三个默认位置 | 设置 `ARGC_COMPLETIONS_ROOT` 后重开终端 |
+| `init` 后 `$env:ARGC_COMPLETIONS_ROOT` 为空 | 仓库是否在默认位置（`~/argc-completions`、`~/repos/argc-completions`、Windows 的 `C:\repos\argc-completions`）且 argc 可用 | 设置 `ARGC_COMPLETIONS_ROOT` 后重开终端 |
 | `Tab` 完全没反应 | `(Get-PSReadLineKeyHandler -Bound \| Where-Object Key -eq 'Tab').Function` 应为 `CustomAction`；`$global:PsArgcScripts.Count` 应为 846 | 旧会话未重载：`Import-Module Init -Force; init -Force`；5.1 不要用 `p -Force`（它开的是 pwsh 7） |
 | 首次 Tab 后仍无候选 | `Initialize-ArgcCompletions -Verbose` 的报错；`argc --argc-compgen powershell '' git ch` 是否输出 `checkout`/`cherry`/`cherry-pick` | 补全脚本缺失或脚本依赖的工具不在 Git Bash 中；按报错补依赖 |
 | `argc --argc-compgen` 无输出 | `argc --argc-shell-path`；`$env:ARGC_COMPLETIONS_PATH` | bash 路径无效 / 仓库路径错 / 环境变量被清 |

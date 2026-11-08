@@ -5,6 +5,17 @@
 $script:CxxuConfigAppliedFromFile = @{}
 # 模块根目录:5.1 的 $PSScriptRoot 在函数内是动态作用域(取调用方脚本),不能用于定位 PS 根
 $script:CxxuModuleRoot = $PSScriptRoot
+# argc-completions 的平台差异:可执行名与专用补全目录。
+# 5.1 无 $IsWindows/$IsMacOS 自动变量,先用 PSEdition 兜底判 Windows(5.1 只跑在 Windows 上)。
+$script:ArgcPlatform = @{ Executable = 'argc'; CompletionDir = 'linux' }
+if (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true))
+{
+    $script:ArgcPlatform = @{ Executable = 'argc.exe'; CompletionDir = 'windows' }
+}
+elseif ($IsMacOS -eq $true)
+{
+    $script:ArgcPlatform.CompletionDir = 'macos'
+}
 
 function init
 { 
@@ -590,27 +601,64 @@ function Set-PSReadLinesAdvanced
     # Set-PSReadLineOption -EditMode Windows
 }
 
+function Get-CxxuArgcExecutable
+{
+    # 定位 argc 可执行文件(不导出):仓库 bin 优先,其次 PATH(Homebrew 等系统安装)。
+    param([string]$Root)
+    if ($Root)
+    {
+        $local = Join-Path (Join-Path $Root 'bin') $script:ArgcPlatform.Executable
+        if (Test-Path -LiteralPath $local) { return $local }
+    }
+    $cmd = Get-Command $script:ArgcPlatform.Executable -CommandType Application -ErrorAction Ignore
+    if ($cmd) { return [string]$cmd.Source }
+    return $null
+}
+
+function Test-CxxuArgcCompletionsRoot
+{
+    # 仓库可用 = 有 completions 目录且 argc 可定位(仓库 bin 或 PATH);(不导出)
+    param([string]$Path)
+    if ([string]::IsNullOrWhiteSpace($Path)) { return $false }
+    if (-not (Test-Path -LiteralPath (Join-Path $Path 'completions'))) { return $false }
+    return [bool](Get-CxxuArgcExecutable -Root $Path)
+}
+
 function Get-ArgcCompletionsRoot
 {
-    # 仓库定位顺序:环境变量 > 用户目录 > 本机固定仓库
+    # 仓库定位顺序:环境变量 > 用户目录 > 本机固定仓库。
+    # C:\repos\argc-completions 只在 Windows 探测:非 Windows 没有 C 盘,
+    # 对 'C:\...' 调 Join-Path 会抛 "Cannot find drive",成为 init 启动报错来源。
     $root = $env:ARGC_COMPLETIONS_ROOT
     if (-not $root)
     {
-        foreach ($cand in @((Join-Path $HOME 'argc-completions'), 'C:\repos\argc-completions'))
+        $candidates = @(
+            (Join-Path $HOME 'argc-completions')
+            (Join-Path (Join-Path $HOME 'repos') 'argc-completions')
+        )
+        if (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true))
         {
-            if (Test-Path -LiteralPath (Join-Path $cand 'bin\argc.exe')) { $root = $cand; break }
+            $candidates += 'C:\repos\argc-completions'
+        }
+        foreach ($cand in $candidates)
+        {
+            if (Test-CxxuArgcCompletionsRoot -Path $cand) { $root = $cand; break }
         }
     }
-    if ($root -and (Test-Path -LiteralPath (Join-Path $root 'bin\argc.exe'))) { return $root }
+    if (Test-CxxuArgcCompletionsRoot -Path $root) { return $root }
     return $null
 }
 
 function Set-ArgcCompletionsEnvironment
 {
+    # 环境变量按平台拼:Windows 用 ';' 与 completions\windows,
+    # macOS 用 ':' 与 completions/macos,Linux 用 ':' 与 completions/linux。
     param([string]$Root)
     $env:ARGC_COMPLETIONS_ROOT = $Root
-    $env:ARGC_COMPLETIONS_PATH = ($Root + '\completions\windows;' + $Root + '\completions')
-    $bin = $Root + '\bin'
+    $completions = Join-Path $Root 'completions'
+    $platformDir = Join-Path $completions $script:ArgcPlatform.CompletionDir
+    $env:ARGC_COMPLETIONS_PATH = ($platformDir + [IO.Path]::PathSeparator + $completions)
+    $bin = Join-Path $Root 'bin'
     if (($env:PATH -split [IO.Path]::PathSeparator) -notcontains $bin)
     {
         $env:PATH = $bin + [IO.Path]::PathSeparator + $env:PATH
@@ -625,7 +673,9 @@ function Set-ArgcCompletions
     .DESCRIPTION
     只做轻量准备(定位仓库、设 ARGC_COMPLETIONS_ROOT/PATH、PATH 前置)并装 Tab 桩;
     真正注册 845+ 个命令的补全推迟到第一次按 Tab。仓库定位顺序:
-    ARGC_COMPLETIONS_ROOT > ~/argc-completions > C:\repos\argc-completions。
+    ARGC_COMPLETIONS_ROOT > ~/argc-completions > ~/repos/argc-completions
+    > C:\repos\argc-completions(仅 Windows)。仓库判定要求有 completions 目录,
+    argc 可执行文件可来自仓库 bin 或 PATH(macOS/Linux 用系统安装的 argc)。
     关闭:$env:PsArgc='False'/'0'/'No'/'Off'(逐次判定,无需重载);关闭后
     Register 的 completer 直接返回空,不影响 PowerShell 原生补全。
     .EXAMPLE
@@ -639,7 +689,7 @@ function Set-ArgcCompletions
     $root = Get-ArgcCompletionsRoot
     if (-not $root)
     {
-        Write-Verbose 'argc-completions 未找到(需 bin\argc.exe),跳过'
+        Write-Verbose 'argc-completions 未找到(需 completions 目录 + 可用的 argc),跳过'
         return
     }
     Set-ArgcCompletionsEnvironment -Root $root
@@ -771,11 +821,16 @@ function Initialize-ArgcCompletions
         return
     }
     Set-ArgcCompletionsEnvironment -Root $root
-    $argcExe = Join-Path $root 'bin\argc.exe'
+    $argcExe = Get-CxxuArgcExecutable -Root $root
+    if (-not $argcExe)
+    {
+        $global:PsArgcUnavailable = $true
+        return
+    }
 
     $dirs = @((Join-Path $root 'completions'))
-    $winDir = Join-Path $root 'completions\windows'
-    if (Test-Path -LiteralPath $winDir) { $dirs += $winDir }
+    $platformDir = Join-Path $dirs[0] $script:ArgcPlatform.CompletionDir
+    if (Test-Path -LiteralPath $platformDir) { $dirs += $platformDir }
     $scripts = @(Get-ChildItem -File -Path $dirs -ErrorAction SilentlyContinue | ForEach-Object { $_.BaseName })
     # argc 自身也注册(与上游生成器一致;无专用脚本时由引擎回退路径补全)
     $scripts = @('argc') + @($scripts)
