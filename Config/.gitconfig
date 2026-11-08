@@ -37,12 +37,11 @@
 	
 [credential "https://gitee.com"]
 	provider = generic
-[credential]
-	helper = manager
+# 凭据助手不在此写死,交给各系统自带的全局配置:macOS 的 Homebrew 写入 osxkeychain,
+# Windows 的 Git 安装器写入 manager;写死 manager 会在未安装 Git Credential Manager 的机器上
+# 退化为交互式询问用户名,并使钥匙串中的既有凭据失效。
 [pull]
 	rebase = true
-[credential "helperselector"]
-	selected = manager
 
 # 避免 Git 自动"帮忙"带来的意外改动和显示问题，让行为更可预测。(适合跨平台开发者)
 [core]

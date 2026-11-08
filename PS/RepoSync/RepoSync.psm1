@@ -153,6 +153,13 @@ function Update-ReposesConfiged
     - -GithubMirror <前缀> :使用指定加速前缀。
     - 未指定时读 $env:PsGithubMirror。
     - 以上都没有时使用默认前缀 https://gh-proxy.com。
+    加速镜像只能代理公开仓库,私有仓库经镜像会得到 401;因此私有仓库始终直连,优先使用
+    gitee 源,不走加速镜像。已存在的仓库以 origin 主机判断源域名,不强制改写主机;
+    名单外的仓库先经镜像尝试(关闭交互式凭据询问),失败后自动改为直连重试。
+    私有仓库名单优先级:
+    - -PrivateRepos <名称> :本次指定名单(别名 -DirectRepos)。
+    - $env:PsPrivateRepos :以逗号、分号或空白分隔的仓库名。
+    - $PrivateRepos :环境变量导入的全局名单,默认在 GlobalConfig.conf 中定义。
 
     代理优先级:
     - -NoProxy :本次不传入代理参数,也不读取代理环境变量。
@@ -166,16 +173,22 @@ function Update-ReposesConfiged
     CxxuComputers 时追加 $CxxuRepos;显式传入时只处理这些目录,不再追加。
 
     .PARAMETER RepoSource
-    仓库源域名:github(默认)或 gitee。加速前缀只对 github 生效。
+    仓库源域名:github(默认)或 gitee。加速前缀只对 github 生效,且只用于公开仓库。
+    已存在的仓库按 origin 主机判断源域名,此参数只决定新克隆仓库的默认源;
+    新克隆的私有仓库优先 gitee。
 
     .PARAMETER GithubMirror
     GitHub 加速前缀,例如 https://gh-proxy.com。默认读 $env:PsGithubMirror,未设置或为空时用
     https://gh-proxy.com;传空字符串表示直连。已存在仓库的 origin 若指向本账号同名仓库,
-    会改为当前前缀对应的地址,使后续拉取沿用同一配置;镜像仅用于下载,推送地址设为
+    会改为当前前缀对应的地址,使后续拉取沿用同一配置;镜像仅用于公开仓库下载,推送地址设为
     直连 GitHub(保留 gitee 等其他推送地址),不影响 Push-ReposesConfiged。
 
     .PARAMETER NoMirror
     强制直连 GitHub,忽略 -GithubMirror 与 $env:PsGithubMirror。
+
+    .PARAMETER PrivateRepos
+    私有仓库目录名,始终直连并优先使用 gitee 源、不经过加速镜像。
+    省略时读 $env:PsPrivateRepos,再读 $PrivateRepos;显式传入时只使用本次传入的名单。
 
     .PARAMETER Proxy
     代理地址,例如 http://127.0.0.1:7897。未指定时按环境变量顺序自动识别。
@@ -223,6 +236,8 @@ function Update-ReposesConfiged
         [Alias('Mirror')]
         [string]$GithubMirror,
         [switch]$NoMirror,
+        [Alias('DirectRepos')]
+        [string[]]$PrivateRepos = @(),
         [string]$Proxy,
         [switch]$NoProxy,
         [string[]]$CxxuRepos = @(),
@@ -283,6 +298,25 @@ function Update-ReposesConfiged
                 $mirrorPrefix = ([string]$mirrorPrefix).Trim().TrimEnd('/')
             }
         }
+
+        # 解析私有仓库名单:优先 gitee,且不经过加速镜像
+        $privateNames = @()
+        if ($PSBoundParameters.ContainsKey('PrivateRepos'))
+        {
+            $privateNames = @($PrivateRepos)
+        }
+        elseif (-not [string]::IsNullOrWhiteSpace($env:PsPrivateRepos))
+        {
+            $privateNames = @(([string]$env:PsPrivateRepos) -split '[,;\s]+')
+        }
+        else
+        {
+            $privateNames = @(Get-Variable -Name PrivateRepos -Scope Global -ValueOnly -ErrorAction SilentlyContinue)
+        }
+        $privateNames = @($privateNames |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            ForEach-Object { ([string]$_).Trim() } |
+            Select-Object -Unique)
 
         # 解析代理:显式参数优先,-NoProxy 优先级最高,否则读环境变量
         $proxyUrl = ''
@@ -347,24 +381,64 @@ function Update-ReposesConfiged
 
         $mirrorDisplay = if ($mirrorPrefix) { $mirrorPrefix } else { '直连' }
         $proxyDisplay = if ($proxyUrl) { $proxyUrl } else { '未指定' }
-        Write-Verbose "仓库源:$RepoSource;加速镜像:$mirrorDisplay;代理:$proxyDisplay"
+        $privateDisplay = if ($privateNames.Count -gt 0) { $privateNames -join '、' } else { '无' }
+        Write-Verbose "仓库源:$RepoSource;加速镜像:$mirrorDisplay;私有仓库:$privateDisplay;代理:$proxyDisplay"
 
         foreach ($repoName in $targetNames)
         {
             $repoPath = Join-Path -Path $repos -ChildPath $repoName
-            $directUrl = "https://$RepoSource.com/xuchaoxin1375/$repoName.git"
-            $targetUrl = if ($mirrorPrefix) { "$mirrorPrefix/$directUrl" } else { $directUrl }
+            $repoExists = Test-Path -LiteralPath (Join-Path $repoPath '.git')
+            $isPrivate = $privateNames -contains $repoName
+
+            # 源域名:已存在的仓库以 origin 主机为准,避免把 gitee 仓库改写为 github 地址;
+            # 新克隆的私有仓库优先 gitee,其余按 -RepoSource
+            $repoSource = $RepoSource
+            if ($repoExists)
+            {
+                $existingOrigin = [string](& git -C $repoPath remote get-url origin 2>$null)
+                if ($existingOrigin -match '(^|/)https?://gitee\.com/')
+                {
+                    $repoSource = 'gitee'
+                }
+                elseif ($existingOrigin -match '(^|/)https?://github\.com/')
+                {
+                    $repoSource = 'github'
+                }
+            }
+            elseif ($isPrivate)
+            {
+                $repoSource = 'gitee'
+            }
+
+            $directUrl = "https://$repoSource.com/xuchaoxin1375/$repoName.git"
+            # 私有仓库无法经公开镜像拉取,镜像只用于公开的 github 仓库
+            $repoMirrorPrefix = if ($mirrorPrefix -and $repoSource -eq 'github' -and -not $isPrivate) { $mirrorPrefix } else { '' }
+            $targetUrl = if ($repoMirrorPrefix) { "$repoMirrorPrefix/$directUrl" } else { $directUrl }
 
             Write-Host "==> $repoName" -ForegroundColor Cyan
 
             if (-not (Test-Path -LiteralPath $repoPath))
             {
                 Write-Host "克隆:$targetUrl"
-                & git @gitNetworkArgs clone --depth=1 $targetUrl $repoPath
-                $clonedWithMirror = ($LASTEXITCODE -eq 0 -and $mirrorPrefix)
-                if ($LASTEXITCODE -ne 0 -and $mirrorPrefix)
+                $previousPrompt = $env:GIT_TERMINAL_PROMPT
+                if ($repoMirrorPrefix -or $isPrivate)
                 {
-                    Write-Warning "经镜像克隆 $repoName 失败(退出码 $LASTEXITCODE),改为直连重试。"
+                    # 镜像不代理私有仓库;gitee 凭据缺失时也不应停在交互式输入处
+                    $env:GIT_TERMINAL_PROMPT = '0'
+                }
+                try
+                {
+                    & git @gitNetworkArgs clone --depth=1 $targetUrl $repoPath
+                }
+                finally
+                {
+                    $env:GIT_TERMINAL_PROMPT = $previousPrompt
+                }
+                $clonedWithMirror = ($LASTEXITCODE -eq 0 -and $repoMirrorPrefix)
+                if ($LASTEXITCODE -ne 0 -and $repoMirrorPrefix)
+                {
+                    Write-Warning ("经镜像克隆 $repoName 失败(退出码 $LASTEXITCODE),改为直连重试。" +
+                        "若确认其为私有仓库,请加入 `$PrivateRepos 或 -PrivateRepos。")
                     # 克隆失败可能残留半成品目录,清理后再试直连
                     if (Test-Path -LiteralPath $repoPath)
                     {
@@ -445,19 +519,59 @@ function Update-ReposesConfiged
                 if ($Force)
                 {
                     Write-Host "强制对齐:origin/$branch"
-                    & git @gitNetworkArgs fetch origin $branch
-                    $exitCode = $LASTEXITCODE
+                    $previousPrompt = $env:GIT_TERMINAL_PROMPT
+                    if ($repoMirrorPrefix -or $isPrivate)
+                    {
+                        $env:GIT_TERMINAL_PROMPT = '0'
+                    }
+                    try
+                    {
+                        & git @gitNetworkArgs fetch origin $branch
+                        $exitCode = $LASTEXITCODE
+                    }
+                    finally
+                    {
+                        $env:GIT_TERMINAL_PROMPT = $previousPrompt
+                    }
+                    $fetchRef = "origin/$branch"
+                    if ($exitCode -ne 0 -and $repoMirrorPrefix)
+                    {
+                        Write-Warning ("经镜像拉取 $repoName 失败(退出码 $exitCode),改为直连重试。" +
+                            "若确认其为私有仓库,请加入 `$PrivateRepos 或 -PrivateRepos。")
+                        & git @gitNetworkArgs fetch $directUrl $branch
+                        $exitCode = $LASTEXITCODE
+                        $fetchRef = 'FETCH_HEAD'
+                    }
                     if ($exitCode -eq 0)
                     {
-                        & git @gitNetworkArgs reset --hard "origin/$branch"
+                        & git @gitNetworkArgs reset --hard $fetchRef
                         $exitCode = $LASTEXITCODE
                     }
                 }
                 else
                 {
                     Write-Host "拉取:origin/$branch"
-                    & git @gitNetworkArgs pull origin $branch
-                    $exitCode = $LASTEXITCODE
+                    $previousPrompt = $env:GIT_TERMINAL_PROMPT
+                    if ($repoMirrorPrefix -or $isPrivate)
+                    {
+                        $env:GIT_TERMINAL_PROMPT = '0'
+                    }
+                    try
+                    {
+                        & git @gitNetworkArgs pull origin $branch
+                        $exitCode = $LASTEXITCODE
+                    }
+                    finally
+                    {
+                        $env:GIT_TERMINAL_PROMPT = $previousPrompt
+                    }
+                    if ($exitCode -ne 0 -and $repoMirrorPrefix)
+                    {
+                        Write-Warning ("经镜像拉取 $repoName 失败(退出码 $exitCode),改为直连重试。" +
+                            "若确认其为私有仓库,请加入 `$PrivateRepos 或 -PrivateRepos。")
+                        & git @gitNetworkArgs pull $directUrl $branch
+                        $exitCode = $LASTEXITCODE
+                    }
                 }
 
                 if ($exitCode -eq 0)
@@ -486,7 +600,7 @@ function Update-ReposesConfiged
         else
         {
             Write-Warning ("更新完成:成功 $succeeded 个,失败 $($failures.Count) 个($($failures -join '、')),跳过 $($skipped.Count) 个。" +
-                '镜像不可用时改用 -NoMirror 或 -GithubMirror <其他镜像>;网络受限时加 -Proxy <代理地址> 后重试。')
+                '镜像不可用时改用 -NoMirror 或 -GithubMirror <其他镜像>;私有仓库用 -PrivateRepos 走 gitee;网络受限时加 -Proxy <代理地址> 后重试。')
         }
 
         # scripts 仓库若含 dll 变更:同步活件(并排版本只新增目录,不受锁限制,任何会话都可执行)并提示重开;
