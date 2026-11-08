@@ -83,7 +83,10 @@ $deployParams = @{
 
 ```powershell
 Test-PsEnvReadiness   # 必备/可选/首跑生成物三档表格，备注列直接给补法/对比结论
+Get-CxxuDependencyReport -Missing   # 按功能看外部依赖与安装建议，只读、零网络
 ```
+
+- `Test-PsEnvReadiness` 看整体安装态；`Get-CxxuDependencyReport` 按功能列出外部命令、PS 模块、argc 组件与活件，缺什么、怎么补见 [Feature-Dependencies.md](Feature-Dependencies.md)。
 
 ## 1. pwsh 7
 

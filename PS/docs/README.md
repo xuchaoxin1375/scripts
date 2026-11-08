@@ -10,6 +10,7 @@
 | 新机部署 | `Deploy-Guide.md`（保存脚本后按参数运行）→ `Feature-Guide.md §1/§11` | 从零到可用 + 手动项查漏 |
 | 日常使用 | `Feature-Guide.md §2`（命令表）→ §7/§8/§10（补全）→ §9（dll 四件套 + Tab 自查） | 查命令、配补全、管更新 |
 | 只启用补全（新机或已有环境） | `Deploy-Guide.md §5`（`Deploy-CompletionStack`）→ `Feature-Guide.md §7/§9`（开关/自查） | 一条命令装核心活件、argc 与可选增强 |
+| 查功能依赖与安装状态 | `Feature-Dependencies.md` → `Get-CxxuDependencyReport` | 哪些功能需要外部组件、缺什么、怎么补 |
 | 出问题先看 | `doctor`（命令）→ `Feature-Guide.md §9`（dll/活件/Tab 补全排查）/§6/§8（FAQ）→ `Dev-Notes.md`（常见坑） | 定位→自助→避坑 |
 | 补全不工作/变慢 | `doctor` → `Feature-Guide.md §9`「加载失败排查」+「Tab 补全自查」→ §8（ListView 候选）/§10（全景） | 先分清 Tab/ListView/参数层，再查开关/缓存/活件 |
 | 加模块/加函数 | `Feature-Guide.md §3` → `Module-Conventions.md`（§1 目录、§2 命名、§7 manifest）→ `Module-Map.md`（找位置） | 一次做对，不返工 |
@@ -24,6 +25,7 @@
 | 文档 | 一句话 | 规模 |
 |---|---|---|
 | `Feature-Guide.md` | 用户手册：命令表、补全、dll 管理、FAQ、手动启用清单（§11） | 长（手册主体） |
+| `Feature-Dependencies.md` | 功能依赖清单：按功能列外部组件、生成物、状态与安装建议 | 中 |
 | `Deploy-Guide.md` | 新机部署：一键脚本、分步详解、多设备差异、更新到新版本（§13） | 中 |
 | `Live-Versions.md` | 并排版本活件设计专章：结构、指针协议、流程、故障、命令分工、5.1 Tab 产物 | 中，含结构图与流程图 |
 | `Dev-Notes.md` | agent 决策要点：编码/部署/文档/提交的硬规则与常见坑，日期无关 | 短 |

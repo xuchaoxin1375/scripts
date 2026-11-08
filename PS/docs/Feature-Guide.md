@@ -26,6 +26,7 @@ Add-EnvVar -EnvVar PSModulePath -NewValue $p -Verbose
 | `dm` | 切极简 prompt（做笔记摘录时聚焦命令本身） |
 | `Test-PromptDelay` | 测当前 prompt 延迟 |
 | `doctor` | 统一诊断入口（定位问题先执行它）：先跑 `Test-PsEnvReadiness`（安装态），再查运行态（init 错误/PSReadLine/历史大小/predictor/门控/懒加载/守护/仓库脏），只读，默认零网络；按平台过滤不适用的检查并在表尾汇总已跳过项 |
+| `Get-CxxuDependencyReport` | 按功能列出外部依赖、生成物与当前安装状态，表后给出安装建议；只读、默认零网络，详见 [Feature-Dependencies.md](Feature-Dependencies.md) |
 | `New-CxxuConfigTemplate` | 生成用户配置模板（`~/.cxxu/config.psd1`，仓库外本机生效；内容由仓库默认偏好渲染） |
 | `Import-CxxuConfig` | 读用户配置（init 首步自动调；优先级：环境变量 > 配置文件 > 默认值） |
 | `Get-CxxuConfig` | 查看各开关的当前生效值、来源（环境变量/配置文件/默认值）与默认值；管道接 `Format-List` 看完整说明 |
@@ -203,6 +204,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | 动作 | 命令 | 说明 |
 |---|---|---|
 | 检查 | `doctor` / `Test-PsEnvReadiness` | `doctor` 先跑（安装态 + 运行态，含 `Tab 包装`/`Tab 缓存` 行，Windows 另有 `CxxuTab 5.1`）；readiness 活件行备注直接给出结论（`与仓库一致[hash]` / `不一致→执行 Sync-CxxuPredictor`），表尾另有仓库/pwsh/活件三行 |
+| 检查依赖 | `Get-CxxuDependencyReport [-Missing]` | 按功能列外部命令、PS 模块、argc 组件与活件状态，表后给安装建议；只读、零网络，详见 [Feature-Dependencies.md](Feature-Dependencies.md) |
 | 检查远端 | `Test-PsEnvReadiness -CheckRemote` | 默认零网络；加开关才询问远端是否有更新（`ls-remote` 只读，12s 超时） |
 | 安装 | `Sync-CxxuPredictor` | 无活件时生成两套产物（net9 predictor 写 `~/.cxxu/bin/<哈希>`；5.1 Tab 写 `~/.cxxu/bin/ps51/<哈希>`）并更新各自指针，缺目录自动创建；`-WhatIf` 可空跑查看意图 |
 | 更新 | `Update-ReposesConfiged` → 重开终端 → `init` | 拉取后自动调用 `Sync-CxxuPredictor` 同步活件（只新增版本目录，不受锁限制，任何会话都可执行）；纯文本变更执行 `ipmox` 即可（见 §3） |
@@ -260,7 +262,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | 模糊搜历史/文件 | `Ctrl+R` / `Ctrl+T`（PSFzf） | 全量历史/文件 | 历史翻不完用这个，不走 10/50 上限 |
 | 参数值补全 | `Tab` 在参数位 | `argc-completions`（800+ 命令库，默认开、懒加载）+ `PSCompletions`（~200 命令库，可选）+ 自带 `ArgumentCompleter`（EnvVar 系、`Get-Json -Key` 等，`Set-ArgumentCompleter` 批量注册） | PSCompletions 用法：解开 profile 里注释的两行；argc 开关 `$env:PsArgc`，首个 Tab 注册 |
 
-- 相关命令：`doctor`（统一诊断入口，定位问题先执行它）、`Register-PsUxLazyLoad [-Now]`（延迟加载入口）、
+- 相关命令：`doctor`（统一诊断入口，定位问题先执行它）、`Get-CxxuDependencyReport [-Missing]`（按功能查外部依赖与安装建议，详见 [Feature-Dependencies.md](Feature-Dependencies.md)）、`Register-PsUxLazyLoad [-Now]`（延迟加载入口）、
   `Deploy-CompletionStack [-WhatIf/-IncludePSCompletions/-SkipBinaries]`（新机一键装栈）、
   `Test-PsEnvReadiness`（查缺）、`predictNo`（当会话关预测）、
   `Enable-PsPlugin` / `Disable-PsPlugin`（插件启停，Fzf/Zoxide/Predictor/Tab/Argc）。
@@ -298,7 +300,8 @@ p -Force                    # 看 init 分步耗时，定位慢项
 ## 11. 手动启用清单（自动导入之外的东西）
 
 > 分界：`PSModulePath` 自动发现 + `init` + 延迟加载 + 缓存自建都是自动的，
-> 以下只有"缺了才管"，`Test-PsEnvReadiness` 的"可选"行即体检口（`doctor` 同步可见）。
+> 以下只有"缺了才管"，`Test-PsEnvReadiness` 的"可选"行即体检口（`doctor` 同步可见）；
+> 逐项外部依赖状态用 `Get-CxxuDependencyReport -Missing` 查，完整清单见 [Feature-Dependencies.md](Feature-Dependencies.md)。
 
 | 功能 | 默认状态 | 手动启用 | 说明 |
 |---|---|---|---|
@@ -329,7 +332,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 - Linux 可用链（2026-09-25 静态链路梳理，非全模块真机验证）：`init` 热路径已跨平台（变量文件/活件路径全走 `Join-Path`，`Startup`/`Prompt` 的 CIM/注册表分支凭 PSEdition 兜底跳过，`Test-AdminPermission` 走 `id -u`）；`Update-ReposesConfiged` 更新链可用（含自编译保持）；`PwshVar` 在 Linux 下不套 Windows/macOS 专属变量文件（仅基础集），conf 里 Windows 路径变量会指向空，需按本机改。仍不可用：scoop/注册表/计划任务/WT/CIM 信息类（`Hardware`/`Info` 多数为 Windows 专属，调用即报错，不做跨平台适配）。
 - 不可用（Windows 专属，不做跨平台适配）：`scoop` 系（安装/换源/buckets）、注册表持久化（`Add-EnvVar`、`Set-PsPrompt -Persist`、镜像持久化——改走 `$profile` 或 env 文件）、计划任务与开机（`Deploy-StartupTasks`/`Start-StartupTasks`）、WT 下发、CIM/WMI 信息类、`conda` scoop 路径、业务模块硬编码路径（如 WordPress/phpstudy、`C:\` 前缀）。
 - 部分兼容：`PwshVar` 有分平台变量文件表（`$PwshVarFilesWindows`/`$PwshVarFilesMacOs`），新增变量按此模式分文件存放；`Info` 个别函数有 `$IsWindows`/`$IsMacOS` 分支，其余缺分支的函数在非 Windows 下报错即代表不支持。
-- 建议：先跑 `Test-PsEnvReadiness` 看缺口（Windows 专属项已按平台隐藏，剩下的按需补齐）；`PwshVar/confs/VarSet1.conf` 的 `$PC*` 主机名按本机添加。
+- 建议：先跑 `Get-CxxuDependencyReport -Missing` 看外部依赖，再跑 `Test-PsEnvReadiness` 看安装态（Windows 专属项已按平台隐藏，剩下的按需补齐）；`PwshVar/confs/VarSet1.conf` 的 `$PC*` 主机名按本机添加。
 
 ## 13. Windows PowerShell 5.1 兼容（B 档：交互可用）
 

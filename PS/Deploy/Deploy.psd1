@@ -27,7 +27,8 @@
         'Deploy-EnvsByPwsh',
         'Deploy-TrafficMonitor',
         'Test-PsEnvReadiness',
-        'doctor'
+        'doctor',
+        'Get-CxxuDependencyReport'
     )
     CmdletsToExport = @()
     VariablesToExport = @()

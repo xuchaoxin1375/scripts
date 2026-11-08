@@ -66,7 +66,7 @@
 
 | 模块 | 行数/函数 | 职责 |
 |---|---|---|
-| `Deploy` | 1430/24 | 新机收尾：github hosts/镜像前缀、防火墙/SMB/自启任务、环境变量；`Test-PsEnvReadiness`、`doctor` 在此；Scoop 生态 10 函数已迁 `Scoop`、语言工具链 12 函数已迁 `DevEnv`（2026-09-22，命令名不变；B 档 5.1，doctor 三元改子表达式 `if`） |
+| `Deploy` | 2178/34 | 新机收尾：github hosts/镜像前缀、防火墙/SMB/自启任务、环境变量；`Test-PsEnvReadiness`、`doctor`、`Get-CxxuDependencyReport`（按功能查外部依赖，清单见 `Deploy/FeatureDependencies.ps1`）在此；Scoop 生态 10 函数已迁 `Scoop`、语言工具链 12 函数已迁 `DevEnv`（2026-09-22，命令名不变；B 档 5.1，doctor 三元改子表达式 `if`） |
 | `Scoop` | 984/11 | Scoop 包管理：国内镜像部署、批量装机、版本切换、`Repair-ScoopUpdate`（修复 update 被未提交更改中断，2026-09-22 从 `Deploy` 迁入，冷路径按需加载） |
 | `DevEnv` | 996/13 | 语言工具链与编辑器开箱：Python/conda/C++/Typora/VSCode/WT/补全栈（`Deploy-CompletionStack`、`Deploy-ArgcCompletions`；2026-09-22 从 `Deploy` 迁入，冷路径按需加载） |
 | `Development` | 340/22 | Django 快捷命令、ssh 别名、文本清理 |

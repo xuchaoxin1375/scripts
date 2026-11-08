@@ -39,6 +39,7 @@
 | nginx 与反向代理配置 | [nginx_conf/Readme.md](wp/woocommerce/woo_df/sh/nginx_conf/Readme.md) |
 | 故障定位 | powershell内先执行 `doctor`，再按 [PS/docs/README.md](PS/docs/README.md) 分流 |
 | 查找功能归属的模块 | [PS/docs/Module-Map.md](PS/docs/Module-Map.md) |
+| 查看功能依赖与安装状态 | [PS/docs/Feature-Dependencies.md](PS/docs/Feature-Dependencies.md) |
 | 开发模块或编写自动化 | [AGENTS.md](AGENTS.md) |
 | 部署 shell 环境/交互式shell体验增强(个人电脑、服务器、WSL/Lima) | [sh/README.md](wp/woocommerce/woo_df/sh/README.md) |
 

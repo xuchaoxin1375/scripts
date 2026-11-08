@@ -7,6 +7,7 @@
 - 默认不安装 PowerShell 7；需要时显式加 `-InstallPwsh7`。
 - 默认下载前缀为 `https://gh-proxy.com`，用于 git 克隆、raw 脚本与离线包；可用 `-GithubMirror` 或 `$env:PsGithubMirror` 替换。克隆失败会自动回退离线包。
 - 部署完成后需重开终端并执行 `init`；Windows PowerShell 5.1 的可用功能与限制见 [Feature-Guide.md](../docs/Feature-Guide.md) 的 5.1 兼容章节。
+- 查看功能依赖与安装状态：运行 `Get-CxxuDependencyReport`，只读、默认零网络；完整清单与安装建议见 [Feature-Dependencies.md](../docs/Feature-Dependencies.md)。
 - 本文示例统一使用两个变量：`$mirror`（下载镜像）与 `$deployScript`（部署脚本副本），两者都在「准备部署脚本」中赋值；新开终端窗口后需重新执行该节。
 
 ## 前置：执行策略

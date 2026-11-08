@@ -1123,7 +1123,7 @@ function Get-CxxuPlatformInfo
     # doctor/Test-PsEnvReadiness 共用的平台信息(不导出):平台名、argc 命名差异与备注。
     # 5.1 无 $IsWindows/$IsMacOS 自动变量,先用 PSEdition 兜底判 Windows(5.1 只跑 Windows)。
     $isWindowsOS = (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true))
-    $isMacOS = ($IsMacOS -eq $true)
+    $isMac = ($IsMacOS -eq $true)
     $isLinuxOS = ($IsLinux -eq $true)
     $name = 'Linux'
     $note = '非 Windows：scoop/注册表/计划任务/WT 系列不可用（见 Feature-Guide §12）；Windows 专属检查已跳过'
@@ -1132,7 +1132,7 @@ function Get-CxxuPlatformInfo
         $name = 'Windows'
         $note = 'Windows'
     }
-    elseif ($isMacOS)
+    elseif ($isMac)
     {
         $name = 'macOS'
     }
@@ -1143,13 +1143,13 @@ function Get-CxxuPlatformInfo
         $argcExe = 'argc.exe'
         $argcDir = 'windows'
     }
-    elseif ($isMacOS)
+    elseif ($isMac)
     {
         $argcDir = 'macos'
     }
     [PSCustomObject]@{
         IsWindows = $isWindowsOS
-        IsMac     = $isMacOS
+        IsMac     = $isMac
         IsLinux   = $isLinuxOS
         Name      = $name
         Note      = $note
@@ -1532,4 +1532,683 @@ function doctor
     $warns = @($rows | Where-Object { $_.状态 -eq 'WARN' })
     $warnNames = @($warns | ForEach-Object { $_.检查 })
     Write-Host $(if ($warns.Count) { "WARN $($warns.Count) 项（$($warnNames -join '、')）,按备注列逐个处理,处理完重跑 doctor。" } else { '全绿,无事可做。' })
+}
+
+function Resolve-CxxuDependencyPath
+{
+    # 依赖清单里的路径可能写 ~、$HOME 或 %VAR%；统一展开成当前会话可用路径。
+    param([string]$Path)
+    if ([string]::IsNullOrWhiteSpace($Path)) { return '' }
+    $p = $Path.Trim()
+    if ($p -eq '~') { $p = $HOME }
+    elseif (($p -like '~/*') -or ($p -like '~\*')) { $p = Join-Path $HOME $p.Substring(2) }
+    try { $p = [Environment]::ExpandEnvironmentVariables($p) } catch { return $Path.Trim() }
+    return $p
+}
+
+function Get-CxxuProfileInitFile
+{
+    # 在四个 profile 位置中找一个含裸 init 行的文件；找不到返回 $null。
+    $candidates = @($PROFILE.AllUsersAllHosts, $PROFILE.AllUsersCurrentHost, $PROFILE.CurrentUserAllHosts, $PROFILE.CurrentUserCurrentHost) |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique
+    foreach ($pf in $candidates)
+    {
+        if ((Test-Path -LiteralPath $pf) -and ((Get-Content -LiteralPath $pf -Raw -ErrorAction SilentlyContinue) -match '(?m)^\s*init\s*$'))
+        {
+            return $pf
+        }
+    }
+    return $null
+}
+
+function Get-CxxuArgcRoot
+{
+    # 返回可用的 argc-completions 仓库根；环境变量优先，其次默认目录。
+    $root = $env:ARGC_COMPLETIONS_ROOT
+    if (-not [string]::IsNullOrWhiteSpace($root))
+    {
+        $root = Resolve-CxxuDependencyPath $root
+        if (Test-Path -LiteralPath (Join-Path $root 'completions')) { return $root }
+    }
+    $candidates = @((Join-Path $HOME 'argc-completions'), (Join-Path (Join-Path $HOME 'repos') 'argc-completions'))
+    if (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true)) { $candidates += 'C:\repos\argc-completions' }
+    foreach ($cand in $candidates)
+    {
+        if (Test-Path -LiteralPath (Join-Path $cand 'completions')) { return $cand }
+    }
+    return $null
+}
+
+function Get-CxxuLiveArtifactPath
+{
+    # 按指针、版本目录、旧单文件三档解析活件；取不到返回 $null。
+    param([string]$Root, [string]$SubDir, [string]$FileName)
+    try
+    {
+        $base = Resolve-CxxuDependencyPath $Root
+        if ([string]::IsNullOrWhiteSpace($base)) { return $null }
+        if (-not [string]::IsNullOrWhiteSpace($SubDir)) { $base = Join-Path $base $SubDir }
+        if (-not (Test-Path -LiteralPath $base)) { return $null }
+        $ptr = Join-Path $base 'current.txt'
+        if (Test-Path -LiteralPath $ptr)
+        {
+            $h = Get-Content -LiteralPath $ptr -ErrorAction Stop | Select-Object -First 1
+            if ($h)
+            {
+                $c = Join-Path (Join-Path $base ([string]$h).Trim()) $FileName
+                if (Test-Path -LiteralPath $c) { return $c }
+            }
+        }
+        $best = Get-ChildItem -LiteralPath $base -Directory -ErrorAction SilentlyContinue |
+            Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName $FileName) } |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if ($best) { return (Join-Path $best.FullName $FileName) }
+        $legacy = Join-Path $base $FileName
+        if (Test-Path -LiteralPath $legacy) { return $legacy }
+    }
+    catch { return $null }
+    return $null
+}
+
+function Get-CxxuDependencyCommand
+{
+    # 外部命令优先按 Application/ExternalScript 查；AllowAny 供 conda 这类函数式入口使用。
+    param([string]$Name, [switch]$AllowAny)
+    if ([string]::IsNullOrWhiteSpace($Name)) { return $null }
+    $cmd = Get-Command $Name -CommandType Application, ExternalScript -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ((-not $cmd) -and $AllowAny) { $cmd = Get-Command $Name -ErrorAction SilentlyContinue | Select-Object -First 1 }
+    return $cmd
+}
+
+function Get-CxxuFileVersion
+{
+    # 取文件版本；scoop shim 常返回 0.0.0.0，视为未知，避免报告误导。
+    param([string]$Path)
+    if ([string]::IsNullOrWhiteSpace($Path)) { return '' }
+    if (-not (Test-Path -LiteralPath $Path)) { return '' }
+    try
+    {
+        $info = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($Path)
+        $ver = $info.FileVersion
+        if ([string]::IsNullOrWhiteSpace($ver) -or ($ver -eq '0.0.0.0')) { $ver = $info.ProductVersion }
+        if ($ver -eq '0.0.0.0') { $ver = '' }
+        return [string]$ver
+    }
+    catch { return '' }
+}
+
+function Get-CxxuDependencyCommandVersion
+{
+    param($Command)
+    if ($null -eq $Command) { return '' }
+    $ver = Get-CxxuFileVersion ([string]$Command.Source)
+    if ([string]::IsNullOrWhiteSpace($ver) -and $Command.Version) { $ver = [string]$Command.Version }
+    if ($ver -eq '0.0.0.0') { $ver = '' }
+    return $ver
+}
+
+function Get-CxxuDependencyModule
+{
+    # 已加载模块优先，其次列可用模块并取最高版本。
+    param([string]$Name)
+    if ([string]::IsNullOrWhiteSpace($Name)) { return $null }
+    $mod = Get-Module -Name $Name -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $mod)
+    {
+        $mod = Get-Module -ListAvailable -Name $Name -ErrorAction SilentlyContinue |
+            Sort-Object Version -Descending | Select-Object -First 1
+    }
+    return $mod
+}
+
+function Get-CxxuDependencyGate
+{
+    # 开关为 False/0/No/Off 时视为主动关闭；同时给出对应的启用命令。
+    param([string]$Gate)
+    if ([string]::IsNullOrWhiteSpace($Gate))
+    {
+        return [PSCustomObject]@{ Off = $false; Value = ''; Enable = '' }
+    }
+    $value = (Get-Item "env:$Gate" -ErrorAction SilentlyContinue).Value
+    $off = [bool]($value -match '^(False|0|No|Off)$')
+    $map = @{
+        PsFzf       = 'Enable-PsPlugin Fzf -Persist'
+        PsZoxide    = 'Enable-PsPlugin Zoxide -Persist'
+        PsPredictor = 'Enable-PsPlugin Predictor -Persist'
+        PsTab       = 'Enable-PsPlugin Tab -Persist'
+        PsArgc      = 'Enable-PsPlugin Argc -Persist'
+    }
+    $enable = $map[$Gate]
+    if ([string]::IsNullOrWhiteSpace($enable)) { $enable = "将环境变量 $Gate 设为 True" }
+    return [PSCustomObject]@{ Off = $off; Value = [string]$value; Enable = $enable }
+}
+
+function Resolve-CxxuDependencyInstall
+{
+    # Install 可以是字符串，也可以按平台写 Windows/Mac/Linux 哈希表。
+    param($Install, $PlatformInfo)
+    if ($null -eq $Install) { return '' }
+    if ($Install -is [string]) { return $Install }
+    if ($Install -is [hashtable])
+    {
+        $key = 'Windows'
+        if ($PlatformInfo.IsMac) { $key = 'Mac' }
+        elseif ($PlatformInfo.IsLinux) { $key = 'Linux' }
+        if ($Install.ContainsKey($key) -and (-not [string]::IsNullOrWhiteSpace([string]$Install[$key])))
+        {
+            return [string]$Install[$key]
+        }
+        foreach ($k in @('Windows', 'Mac', 'Linux', 'Unix'))
+        {
+            if ($Install.ContainsKey($k) -and (-not [string]::IsNullOrWhiteSpace([string]$Install[$k])))
+            {
+                return [string]$Install[$k]
+            }
+        }
+    }
+    return [string]$Install
+}
+
+function Get-CxxuDependencyReport
+{
+    <#
+    .SYNOPSIS
+    按功能列出 PowerShell 模块集的外部依赖、生成物与当前安装状态（只读）。
+    .DESCRIPTION
+    读取 PS/Deploy/FeatureDependencies.ps1 的依赖清单，逐项检测命令、模块、文件、开关与活件，
+    输出功能、依赖、级别、状态、版本/位置和安装建议。默认只显示当前平台适用项，不修改机器、
+    不发起网络请求。安装动作仍由 Deploy-CompletionStack、Confirm-ModuleInstalled、
+    Sync-CxxuPredictor、Deploy-ArgcCompletions 等既有命令负责；本命令只回答“缺什么、怎么补”。
+    .PARAMETER Feature
+    按功能或依赖名称筛选，支持通配符，可传多个模式。不含通配符时按包含匹配，例如 -Feature '补全'。
+    含 *、? 等通配符时按通配符匹配，例如 -Feature '补全*'。
+    .PARAMETER Level
+    按级别筛选：All、Required、Recommended、Optional、Generated；默认 All。
+    .PARAMETER Missing
+    只显示待处理项，包括缺失、未部署、未生成和版本过低；主动关闭与平台不适用不计入。
+    .PARAMETER IncludeSkipped
+    表格模式下同时显示当前平台不适用的依赖；默认隐藏，仅保留在汇总计数中。-Json 始终包含筛选后的全部项。
+    .PARAMETER Full
+    在待处理项中附带影响说明；默认只列安装建议。
+    .PARAMETER PassThru
+    不打印表格，直接返回结果对象，便于脚本继续处理。
+    .PARAMETER Json
+    输出 JSON 字符串，包含平台、汇总与逐项状态，便于其他程序消费。
+    .PARAMETER SummaryOnly
+    只打印按功能分组的汇总表，不逐项列出，也不打印待处理明细。
+    .EXAMPLE
+    Get-CxxuDependencyReport
+    .EXAMPLE
+    Get-CxxuDependencyReport -Missing
+    .EXAMPLE
+    Get-CxxuDependencyReport -Feature '补全*' -Full
+    .EXAMPLE
+    Get-CxxuDependencyReport -Level Recommended -PassThru
+    .EXAMPLE
+    Get-CxxuDependencyReport -Json
+    .OUTPUTS
+    默认无返回值；-PassThru 返回 PSCustomObject，-Json 返回 JSON 字符串。
+    #>
+    [CmdletBinding(DefaultParameterSetName = 'Table')]
+    param(
+        [string[]]$Feature,
+        [ValidateSet('All', 'Required', 'Recommended', 'Optional', 'Generated')]
+        [string]$Level = 'All',
+        [switch]$Missing,
+        [switch]$IncludeSkipped,
+        [Parameter(ParameterSetName = 'Table')]
+        [switch]$Full,
+        [Parameter(ParameterSetName = 'Object')]
+        [switch]$PassThru,
+        [Parameter(ParameterSetName = 'Json')]
+        [switch]$Json,
+        [Parameter(ParameterSetName = 'Summary')]
+        [switch]$SummaryOnly
+    )
+
+    $catalogPath = Join-Path $PSScriptRoot 'FeatureDependencies.ps1'
+    if (-not (Test-Path -LiteralPath $catalogPath))
+    {
+        throw "依赖清单不存在：$catalogPath"
+    }
+    $catalog = @(& $catalogPath)
+    if (-not $catalog.Count)
+    {
+        throw "依赖清单为空：$catalogPath"
+    }
+
+    $plat = Get-CxxuPlatformInfo
+    $levelMap = @{
+        Required    = '必需'
+        Recommended = '推荐'
+        Optional    = '可选'
+        Generated   = '生成物'
+    }
+
+    $items = @($catalog)
+    if ($Level -ne 'All')
+    {
+        $levelText = $levelMap[$Level]
+        $items = @($items | Where-Object { $_.Level -eq $levelText })
+    }
+    if ($Feature -and $Feature.Count)
+    {
+        $items = @($items | Where-Object {
+                $item = $_
+                $matched = $false
+                foreach ($pattern in $Feature)
+                {
+                    $p = [string]$pattern
+                    if ($p -match '[\*\?\[]')
+                    {
+                        if (($item.Feature -like $p) -or ($item.Component -like $p)) { $matched = $true; break }
+                    }
+                    else
+                    {
+                        if (($item.Feature -like "*$p*") -or ($item.Component -like "*$p*")) { $matched = $true; break }
+                    }
+                }
+                $matched
+            })
+    }
+
+    $results = [System.Collections.ArrayList]::new()
+    foreach ($item in $items)
+    {
+        $platform = 'All'
+        if ($item.Platform) { $platform = [string]$item.Platform }
+        $missingStatus = '缺失'
+        if ($item.MissingStatus) { $missingStatus = [string]$item.MissingStatus }
+        $impact = [string]$item.Impact
+        $note = [string]$item.Note
+        $install = Resolve-CxxuDependencyInstall $item.Install $plat
+        $gate = $null
+        if ($item.Gate) { $gate = Get-CxxuDependencyGate ([string]$item.Gate) }
+
+        $applicable = $true
+        if (($platform -eq 'Windows') -and (-not $plat.IsWindows)) { $applicable = $false }
+        elseif (($platform -eq 'Mac') -and (-not $plat.IsMac)) { $applicable = $false }
+        elseif (($platform -eq 'Unix') -and $plat.IsWindows) { $applicable = $false }
+
+        $status = ''
+        $version = ''
+        $location = ''
+        $extra = ''
+        if (-not $applicable)
+        {
+            $status = '不适用'
+            $extra = "当前平台（$($plat.Name)）不适用。"
+        }
+        elseif ($gate -and $gate.Off)
+        {
+            $status = '已关闭'
+            $extra = "开关 $($item.Gate)=$($gate.Value)；需要时 $($gate.Enable)。"
+        }
+        else
+        {
+            $detect = [PSCustomObject]@{ Ok = $false; Version = ''; Location = ''; Extra = '' }
+            switch ([string]$item.Kind)
+            {
+                'PowerShellVersion' {
+                    $current = $PSVersionTable.PSVersion
+                    $detect.Version = $current.ToString()
+                    $detect.Location = "pwsh $current"
+                    $ok = $true
+                    if ($item.MinVersion)
+                    {
+                        try { $ok = $current -ge [version]$item.MinVersion } catch { $ok = $true }
+                    }
+                    $detect.Ok = $ok
+                    if (-not $ok) { $detect.Extra = "当前 $current，低于要求的 $($item.MinVersion)。" }
+                }
+                'Command' {
+                    $cmd = Get-CxxuDependencyCommand -Name ([string]$item.Name) -AllowAny:([bool]$item.AllowAnyCommand)
+                    if ($cmd)
+                    {
+                        $detect.Ok = $true
+                        $detect.Version = Get-CxxuDependencyCommandVersion $cmd
+                        $detect.Location = [string]$cmd.Source
+                        if ([string]::IsNullOrWhiteSpace($detect.Location)) { $detect.Location = [string]$cmd.Name }
+                    }
+                }
+                'Module' {
+                    $mod = Get-CxxuDependencyModule ([string]$item.Name)
+                    if ($mod)
+                    {
+                        $detect.Version = [string]$mod.Version
+                        $detect.Location = [string]$mod.ModuleBase
+                        $ok = $true
+                        if ($item.MinVersion)
+                        {
+                            try { $ok = ([version]$mod.Version) -ge [version]$item.MinVersion } catch { $ok = $true }
+                        }
+                        $detect.Ok = $ok
+                        if (-not $ok) { $detect.Extra = "当前 $($mod.Version)，低于要求的 $($item.MinVersion)。" }
+                    }
+                }
+                'File' {
+                    $path = Resolve-CxxuDependencyPath ([string]$item.Path)
+                    if ($path -and (Test-Path -LiteralPath $path))
+                    {
+                        $detect.Ok = $true
+                        $detect.Location = $path
+                    }
+                }
+                'PathContains' {
+                    $value = (Get-Item "env:$($item.EnvVar)" -ErrorAction SilentlyContinue).Value
+                    $target = Resolve-CxxuDependencyPath ([string]$item.Path)
+                    if ($value -and $target)
+                    {
+                        $sep = [IO.Path]::PathSeparator
+                        $normTarget = (([string]$target) -replace '[/\\]', [IO.Path]::DirectorySeparatorChar).TrimEnd('/', '\')
+                        $found = $false
+                        foreach ($part in ([string]$value -split [regex]::Escape($sep)))
+                        {
+                            $norm = (([string]$part) -replace '[/\\]', [IO.Path]::DirectorySeparatorChar).TrimEnd('/', '\')
+                            if ($norm -eq $normTarget) { $found = $true; break }
+                        }
+                        $detect.Ok = $found
+                        $detect.Location = $target
+                        if (-not $found) { $detect.Extra = "当前 $($item.EnvVar) 不含该目录。" }
+                    }
+                }
+                'ProfileInit' {
+                    $pf = Get-CxxuProfileInitFile
+                    if ($pf)
+                    {
+                        $detect.Ok = $true
+                        $detect.Location = $pf
+                    }
+                }
+                'LiveArtifact' {
+                    $p = Get-CxxuLiveArtifactPath -Root ([string]$item.Root) -SubDir ([string]$item.SubDir) -FileName ([string]$item.FileName)
+                    if ($p)
+                    {
+                        $detect.Ok = $true
+                        $detect.Location = $p
+                    }
+                }
+                'ArgcRepo' {
+                    $root = Get-CxxuArgcRoot
+                    if ($root)
+                    {
+                        $detect.Location = $root
+                        $dir = Join-Path (Join-Path $root 'completions') $plat.ArgcDir
+                        if (Test-Path -LiteralPath $dir) { $detect.Ok = $true }
+                        else { $detect.Extra = "缺少平台补全目录：$dir" }
+                    }
+                    else { $detect.Extra = '未找到 argc-completions 仓库（检查 ARGC_COMPLETIONS_ROOT 或默认目录）。' }
+                }
+                'ArgcExe' {
+                    $exe = $null
+                    $root = Get-CxxuArgcRoot
+                    if ($root)
+                    {
+                        $local = Join-Path (Join-Path $root 'bin') $plat.ArgcExe
+                        if (Test-Path -LiteralPath $local) { $exe = $local }
+                    }
+                    if (-not $exe)
+                    {
+                        $cmd = Get-CxxuDependencyCommand ([string]$plat.ArgcExe)
+                        if ($cmd)
+                        {
+                            $exe = [string]$cmd.Source
+                            if ([string]::IsNullOrWhiteSpace($exe)) { $exe = [string]$cmd.Name }
+                        }
+                    }
+                    if ($exe)
+                    {
+                        $detect.Ok = $true
+                        $detect.Location = $exe
+                        $detect.Version = Get-CxxuFileVersion $exe
+                    }
+                }
+                'ArgcBin' {
+                    $root = Get-CxxuArgcRoot
+                    if ($root)
+                    {
+                        $p = Join-Path (Join-Path $root 'bin') ([string]$item.Name)
+                        if (Test-Path -LiteralPath $p)
+                        {
+                            $detect.Ok = $true
+                            $detect.Location = $p
+                        }
+                        else { $detect.Extra = "缺少 $p" }
+                    }
+                    else { $detect.Extra = '未找到 argc-completions 仓库。' }
+                }
+                'PathOrModule' {
+                    $mod = Get-CxxuDependencyModule ([string]$item.Name)
+                    if ($mod)
+                    {
+                        $detect.Ok = $true
+                        $detect.Version = [string]$mod.Version
+                        $detect.Location = [string]$mod.ModuleBase
+                    }
+                    else
+                    {
+                        $p = Resolve-CxxuDependencyPath ([string]$item.Path)
+                        if ($p -and (Test-Path -LiteralPath $p))
+                        {
+                            $detect.Ok = $true
+                            $detect.Location = $p
+                        }
+                    }
+                }
+                default {
+                    $detect.Extra = "未知检测类型：$($item.Kind)"
+                }
+            }
+
+            if ($detect.Ok)
+            {
+                $status = '已安装'
+                $version = $detect.Version
+                $location = $detect.Location
+                $extra = $detect.Extra
+            }
+            else
+            {
+                $status = $missingStatus
+                $version = $detect.Version
+                $location = $detect.Location
+                $extra = $detect.Extra
+            }
+        }
+
+        $detail = ''
+        if ($status -eq '已安装')
+        {
+            $detail = $impact
+            if ($note) { $detail = "$detail $note" }
+            if ($extra) { $detail = "$detail $extra" }
+        }
+        elseif (($status -eq '已关闭') -or ($status -eq '不适用'))
+        {
+            $detail = $extra
+        }
+        else
+        {
+            $bits = @()
+            if ($impact) { $bits += $impact }
+            if ($note) { $bits += $note }
+            if ($extra) { $bits += $extra }
+            if ($install) { $bits += "安装：$install" }
+            $detail = ($bits -join ' ')
+        }
+
+        [void]$results.Add([PSCustomObject]@{
+                Feature   = [string]$item.Feature
+                Component = [string]$item.Component
+                Level     = [string]$item.Level
+                Status    = $status
+                Version   = [string]$version
+                Location  = [string]$location
+                Impact    = $impact
+                Detail    = $detail
+                Install   = $install
+                Docs      = [string]$item.Docs
+                Platform  = $platform
+                Gate      = [string]$item.Gate
+                Note      = $note
+                IsReady   = (@('已安装', '已关闭', '不适用') -contains $status)
+            })
+    }
+
+    $all = @($results)
+    $displayItems = @($all)
+    if (-not $IncludeSkipped)
+    {
+        $displayItems = @($displayItems | Where-Object { $_.Status -ne '不适用' })
+    }
+    if ($Missing)
+    {
+        $displayItems = @($displayItems | Where-Object { -not $_.IsReady })
+    }
+    # JSON 面向程序消费，默认保留平台不适用项，使 items 数量与 summary.Total 一致。
+    $jsonItems = @($all)
+    if ($Missing) { $jsonItems = @($jsonItems | Where-Object { -not $_.IsReady }) }
+
+    $missingItems = @($all | Where-Object { (-not $_.IsReady) -and ($_.Status -ne '不适用') })
+    $summary = [PSCustomObject]@{
+        Total              = $all.Count
+        Installed          = @($all | Where-Object { $_.Status -eq '已安装' }).Count
+        Missing            = $missingItems.Count
+        MissingRequired    = @($missingItems | Where-Object { $_.Level -eq '必需' }).Count
+        MissingRecommended = @($missingItems | Where-Object { $_.Level -eq '推荐' }).Count
+        MissingOptional    = @($missingItems | Where-Object { $_.Level -eq '可选' }).Count
+        MissingGenerated   = @($missingItems | Where-Object { $_.Level -eq '生成物' }).Count
+        Disabled           = @($all | Where-Object { $_.Status -eq '已关闭' }).Count
+        NotApplicable      = @($all | Where-Object { $_.Status -eq '不适用' }).Count
+    }
+
+    if ($Json)
+    {
+        $payload = [PSCustomObject]@{
+            schemaVersion = 1
+            generatedAt   = (Get-Date).ToString('o')
+            platform      = $plat.Name
+            summary       = [PSCustomObject]@{
+                total              = $summary.Total
+                installed          = $summary.Installed
+                missing            = $summary.Missing
+                missingRequired    = $summary.MissingRequired
+                missingRecommended = $summary.MissingRecommended
+                missingOptional    = $summary.MissingOptional
+                missingGenerated   = $summary.MissingGenerated
+                disabled           = $summary.Disabled
+                notApplicable      = $summary.NotApplicable
+            }
+            items         = @($jsonItems | ForEach-Object {
+                    [PSCustomObject]@{
+                        feature   = $_.Feature
+                        component = $_.Component
+                        level     = $_.Level
+                        status    = $_.Status
+                        version   = $_.Version
+                        location  = $_.Location
+                        impact    = $_.Impact
+                        detail    = $_.Detail
+                        install   = $_.Install
+                        docs      = $_.Docs
+                        platform  = $_.Platform
+                        gate      = $_.Gate
+                        isReady   = $_.IsReady
+                    }
+                })
+        }
+        return ($payload | ConvertTo-Json -Depth 6)
+    }
+
+    if ($PassThru)
+    {
+        return $displayItems
+    }
+
+    if ($SummaryOnly)
+    {
+        # 按清单顺序分组，避免字母序把核心运行环境排到补全之后。
+        $featureOrder = @{}
+        $orderIndex = 0
+        foreach ($c in $catalog)
+        {
+            $fn = [string]$c.Feature
+            if (-not $featureOrder.ContainsKey($fn))
+            {
+                $featureOrder[$fn] = $orderIndex
+                $orderIndex++
+            }
+        }
+        $grouped = @($displayItems | Group-Object Feature | Sort-Object { $featureOrder[$_.Name] } | ForEach-Object {
+                $g = @($_.Group)
+                [PSCustomObject]@{
+                    功能   = $_.Name
+                    总数   = $g.Count
+                    已就绪 = @($g | Where-Object { $_.Status -eq '已安装' }).Count
+                    待处理 = @($g | Where-Object { (-not $_.IsReady) -and ($_.Status -ne '不适用') }).Count
+                    已关闭 = @($g | Where-Object { $_.Status -eq '已关闭' }).Count
+                    不适用 = @($g | Where-Object { $_.Status -eq '不适用' }).Count
+                }
+            })
+        $grouped | Format-Table -AutoSize | Out-Host
+    }
+    elseif (-not $Missing)
+    {
+        $table = @($displayItems | ForEach-Object {
+                $loc = $_.Version
+                if ([string]::IsNullOrWhiteSpace($loc)) { $loc = $_.Location }
+                elseif ((-not [string]::IsNullOrWhiteSpace($_.Location)) -and ($_.Location -ne $_.Version)) { $loc = "$($_.Version) · $($_.Location)" }
+
+                [PSCustomObject]@{
+                    功能       = $_.Feature
+                    依赖       = $_.Component
+                    级别       = $_.Level
+                    状态       = $_.Status
+                    '版本/位置' = $loc
+                }
+            })
+        $table | Format-Table -AutoSize | Out-Host
+    }
+
+    # 表格受终端宽度限制会丢弃右侧列，安装建议改为表后逐项列出，保证始终可见。
+    if (-not $SummaryOnly)
+    {
+        $pendingItems = @($displayItems | Where-Object { (-not $_.IsReady) -and ($_.Status -ne '不适用') })
+        if ($pendingItems.Count)
+        {
+            Write-Host ''
+            Write-Host "待处理项（$($pendingItems.Count)）："
+            foreach ($p in $pendingItems)
+            {
+                Write-Host ("  [{0}] {1} / {2}" -f $p.Level, $p.Feature, $p.Component)
+                if ($Full -and $p.Impact) { Write-Host ("       影响：{0}" -f $p.Impact) }
+                if ($p.Install) { Write-Host ("       安装：{0}" -f $p.Install) }
+                if ($p.Docs) { Write-Host ("       文档：{0}" -f $p.Docs) }
+            }
+        }
+
+        $disabledItems = @($displayItems | Where-Object { $_.Status -eq '已关闭' })
+        if ($disabledItems.Count)
+        {
+            Write-Host ''
+            Write-Host "已关闭项（$($disabledItems.Count)）："
+            foreach ($d in $disabledItems)
+            {
+                Write-Host ("  {0} / {1}：{2}" -f $d.Feature, $d.Component, $d.Detail)
+            }
+        }
+    }
+
+    $pendingText = '没有待处理项。'
+    if ($summary.Missing -gt 0)
+    {
+        $pendingText = "待处理 $($summary.Missing) 项（必需 $($summary.MissingRequired)，推荐 $($summary.MissingRecommended)，可选 $($summary.MissingOptional)，生成物 $($summary.MissingGenerated)）"
+        if ($SummaryOnly) { $pendingText = "$pendingText。" }
+        else { $pendingText = "$pendingText，见上方「待处理项」。" }
+    }
+    Write-Host ("平台 {0}；共 {1} 项：已安装 {2}，待处理 {3}，已关闭 {4}，不适用 {5}。{6}" -f $plat.Name, $summary.Total, $summary.Installed, $summary.Missing, $summary.Disabled, $summary.NotApplicable, $pendingText)
+    if ((-not $IncludeSkipped) -and ($summary.NotApplicable -gt 0))
+    {
+        Write-Host "已隐藏 $($summary.NotApplicable) 项当前平台不适用项；加 -IncludeSkipped 显示。"
+    }
 }
