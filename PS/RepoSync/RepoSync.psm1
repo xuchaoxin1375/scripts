@@ -141,21 +141,26 @@ function Update-ReposesConfiged
 {
     <#
     .SYNOPSIS
-    批量更新常用仓库:默认经 GitHub 加速镜像拉取,可切换镜像/直连,并支持网络代理。
+    批量更新常用仓库:按名单选择源域名,$CommonRepos 走 GitHub 加速镜像,其余仓库走 gitee。
 
     .DESCRIPTION
     依次处理 $CommonRepos 中的仓库;当前主机在 CxxuComputers 名单内时追加 $CxxuRepos。
     目录不存在时执行浅克隆(--depth=1);已存在的 git 仓库先校正 origin 地址,再拉取当前分支。
     镜像与代理只作用于 git 的网络访问,不修改工作区内容;需要丢弃本地改动并对齐远端时使用 -Force。
 
-    源地址优先级(加速前缀仅对 github 源生效):
+    源域名优先级(加速前缀仅对 github 源生效):
+    - -RepoSource github|gitee :本次强制所有仓库使用该源。
+    - auto(默认):$CommonRepos 内的仓库走 github,其余仓库走 gitee。
+    - $PrivateRepos 名单内的仓库按 gitee 处理,即使在 $CommonRepos 中也不走镜像。
+    已存在的仓库若 origin 指向本账号同名仓库,会改写为当前规则对应的主机;SSH 与自定义远端不改写。
+    gitee 源关闭交互式凭据询问,凭据未配置时快速失败,不阻塞批量更新。
+
+    加速前缀(仅 github 源使用):
     - -NoMirror 或 -GithubMirror '' :直连 https://github.com。
     - -GithubMirror <前缀> :使用指定加速前缀。
     - 未指定时读 $env:PsGithubMirror。
     - 以上都没有时使用默认前缀 https://gh-proxy.com。
-    加速镜像只能代理公开仓库,私有仓库经镜像会得到 401;因此私有仓库始终直连,优先使用
-    gitee 源,不走加速镜像。已存在的仓库以 origin 主机判断源域名,不强制改写主机;
-    名单外的仓库先经镜像尝试(关闭交互式凭据询问),失败后自动改为直连重试。
+    加速镜像只能代理公开仓库,私有仓库经镜像会得到 401;镜像失败后自动改为直连重试。
     私有仓库名单优先级:
     - -PrivateRepos <名称> :本次指定名单(别名 -DirectRepos)。
     - $env:PsPrivateRepos :以逗号、分号或空白分隔的仓库名。
@@ -173,21 +178,21 @@ function Update-ReposesConfiged
     CxxuComputers 时追加 $CxxuRepos;显式传入时只处理这些目录,不再追加。
 
     .PARAMETER RepoSource
-    仓库源域名:github(默认)或 gitee。加速前缀只对 github 生效,且只用于公开仓库。
-    已存在的仓库按 origin 主机判断源域名,此参数只决定新克隆仓库的默认源;
-    新克隆的私有仓库优先 gitee。
+    仓库源域名:auto(默认)、github 或 gitee。auto 时 $CommonRepos 内的仓库走 github,
+    其余仓库走 gitee;显式传入 github/gitee 时本次所有仓库都使用该源。
+    加速前缀只对 github 生效,且只用于公开仓库。
 
     .PARAMETER GithubMirror
     GitHub 加速前缀,例如 https://gh-proxy.com。默认读 $env:PsGithubMirror,未设置或为空时用
-    https://gh-proxy.com;传空字符串表示直连。已存在仓库的 origin 若指向本账号同名仓库,
-    会改为当前前缀对应的地址,使后续拉取沿用同一配置;镜像仅用于公开仓库下载,推送地址设为
-    直连 GitHub(保留 gitee 等其他推送地址),不影响 Push-ReposesConfiged。
+    https://gh-proxy.com;传空字符串表示直连。仅对按名单走 github 的仓库生效。已存在仓库的
+    origin 若指向本账号同名仓库,会改为当前前缀对应的地址,使后续拉取沿用同一配置;镜像仅用于
+    公开仓库下载,推送地址设为直连 GitHub(保留 gitee 等其他推送地址),不影响 Push-ReposesConfiged。
 
     .PARAMETER NoMirror
     强制直连 GitHub,忽略 -GithubMirror 与 $env:PsGithubMirror。
 
     .PARAMETER PrivateRepos
-    私有仓库目录名,始终直连并优先使用 gitee 源、不经过加速镜像。
+    私有仓库目录名,按 gitee 源处理且不经过加速镜像,即使出现在 $CommonRepos 中。
     省略时读 $env:PsPrivateRepos,再读 $PrivateRepos;显式传入时只使用本次传入的名单。
 
     .PARAMETER Proxy
@@ -213,7 +218,11 @@ function Update-ReposesConfiged
 
     .EXAMPLE
     Update-ReposesConfiged -NoMirror
-    直连 GitHub,用于镜像不可用或需要核对原始远端。
+    GitHub 源的仓库直连,用于镜像不可用或需要核对原始远端。
+
+    .EXAMPLE
+    Update-ReposesConfiged -RepoSource github
+    本次强制所有仓库走 GitHub(经默认镜像),用于确认某个仓库只在 GitHub 托管。
 
     .EXAMPLE
     Update-ReposesConfiged -GithubMirror 'https://ghfast.top' -Proxy 'http://127.0.0.1:7897'
@@ -231,8 +240,8 @@ function Update-ReposesConfiged
     param(
         [Alias('RepoNames')]
         [string[]]$RepoDirs = @(),
-        [ValidateSet('github', 'gitee')]
-        [string]$RepoSource = 'github',
+        [ValidateSet('auto', 'github', 'gitee')]
+        [string]$RepoSource = 'auto',
         [Alias('Mirror')]
         [string]$GithubMirror,
         [switch]$NoMirror,
@@ -273,9 +282,9 @@ function Update-ReposesConfiged
             New-Item -ItemType Directory -Path $repos -Force | Out-Null
         }
 
-        # 解析加速前缀:显式参数优先,-NoMirror 优先级最高,gitee 不使用前缀
+        # 解析加速前缀:显式参数优先,-NoMirror 优先级最高;是否使用由各仓库的源域名决定
         $mirrorPrefix = ''
-        if (-not $NoMirror -and $RepoSource -eq 'github')
+        if (-not $NoMirror)
         {
             if ($PSBoundParameters.ContainsKey('GithubMirror'))
             {
@@ -299,7 +308,19 @@ function Update-ReposesConfiged
             }
         }
 
-        # 解析私有仓库名单:优先 gitee,且不经过加速镜像
+        # 解析 GitHub 优先名单:auto 模式下 $CommonRepos 内的仓库走 github,其余走 gitee
+        # 注意:Get-Variable -ValueOnly 会把数组作为单个对象输出,须先存入变量再 @() 展开
+        $githubVar = Get-Variable -Name CommonRepos -Scope Global -ValueOnly -ErrorAction SilentlyContinue
+        if ($null -eq $githubVar)
+        {
+            $githubVar = $CommonRepos
+        }
+        $githubNames = @($githubVar |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            ForEach-Object { ([string]$_).Trim() } |
+            Select-Object -Unique)
+
+        # 解析私有仓库名单:按 gitee 处理,且不经过加速镜像
         $privateNames = @()
         if ($PSBoundParameters.ContainsKey('PrivateRepos'))
         {
@@ -311,7 +332,11 @@ function Update-ReposesConfiged
         }
         else
         {
-            $privateNames = @(Get-Variable -Name PrivateRepos -Scope Global -ValueOnly -ErrorAction SilentlyContinue)
+            $privateVar = Get-Variable -Name PrivateRepos -Scope Global -ValueOnly -ErrorAction SilentlyContinue
+            if ($null -ne $privateVar)
+            {
+                $privateNames = @($privateVar)
+            }
         }
         $privateNames = @($privateNames |
             Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
@@ -358,7 +383,15 @@ function Update-ReposesConfiged
         else
         {
             $targetNames = @($CommonRepos)
-            $cxxuList = if ($CxxuRepos.Count -gt 0) { @($CxxuRepos) } else { @(Get-Variable -Name CxxuRepos -Scope Global -ValueOnly -ErrorAction SilentlyContinue) }
+            $cxxuList = if ($CxxuRepos.Count -gt 0)
+            {
+                @($CxxuRepos)
+            }
+            else
+            {
+                $cxxuVar = Get-Variable -Name CxxuRepos -Scope Global -ValueOnly -ErrorAction SilentlyContinue
+                if ($null -ne $cxxuVar) { @($cxxuVar) } else { @() }
+            }
             $isCxxuComputer = if ($PSBoundParameters.ContainsKey('CxxuComputers'))
             {
                 Test-CxxuComputer -CxxuComputers $CxxuComputers
@@ -382,38 +415,41 @@ function Update-ReposesConfiged
         $mirrorDisplay = if ($mirrorPrefix) { $mirrorPrefix } else { '直连' }
         $proxyDisplay = if ($proxyUrl) { $proxyUrl } else { '未指定' }
         $privateDisplay = if ($privateNames.Count -gt 0) { $privateNames -join '、' } else { '无' }
-        Write-Verbose "仓库源:$RepoSource;加速镜像:$mirrorDisplay;私有仓库:$privateDisplay;代理:$proxyDisplay"
+        $githubDisplay = if ($githubNames.Count -gt 0) { $githubNames -join '、' } else { '无' }
+        $sourceDisplay = if ($RepoSource -eq 'auto') { 'auto(CommonRepos→github,其余→gitee)' } else { $RepoSource }
+        Write-Verbose "仓库源:$sourceDisplay;GitHub 名单:$githubDisplay;加速镜像:$mirrorDisplay;私有仓库:$privateDisplay;代理:$proxyDisplay"
 
         foreach ($repoName in $targetNames)
         {
             $repoPath = Join-Path -Path $repos -ChildPath $repoName
-            $repoExists = Test-Path -LiteralPath (Join-Path $repoPath '.git')
             $isPrivate = $privateNames -contains $repoName
 
-            # 源域名:已存在的仓库以 origin 主机为准,避免把 gitee 仓库改写为 github 地址;
-            # 新克隆的私有仓库优先 gitee,其余按 -RepoSource
-            $repoSource = $RepoSource
-            if ($repoExists)
+            # 源域名:显式 -RepoSource 优先;auto 时 $PrivateRepos 与 $CommonRepos 之外的仓库走 gitee,
+            # $CommonRepos 内的仓库走 github。origin 主机不参与判断,已存在仓库按本规则统一迁移
+            # 注意变量名不能与参数 $RepoSource 只差大小写:PowerShell 变量名不区分大小写
+            if ($RepoSource -ne 'auto')
             {
-                $existingOrigin = [string](& git -C $repoPath remote get-url origin 2>$null)
-                if ($existingOrigin -match '(^|/)https?://gitee\.com/')
-                {
-                    $repoSource = 'gitee'
-                }
-                elseif ($existingOrigin -match '(^|/)https?://github\.com/')
-                {
-                    $repoSource = 'github'
-                }
+                $repoSourceName = $RepoSource
             }
             elseif ($isPrivate)
             {
-                $repoSource = 'gitee'
+                $repoSourceName = 'gitee'
+            }
+            elseif ($githubNames -contains $repoName)
+            {
+                $repoSourceName = 'github'
+            }
+            else
+            {
+                $repoSourceName = 'gitee'
             }
 
-            $directUrl = "https://$repoSource.com/xuchaoxin1375/$repoName.git"
+            $directUrl = "https://$repoSourceName.com/xuchaoxin1375/$repoName.git"
             # 私有仓库无法经公开镜像拉取,镜像只用于公开的 github 仓库
-            $repoMirrorPrefix = if ($mirrorPrefix -and $repoSource -eq 'github' -and -not $isPrivate) { $mirrorPrefix } else { '' }
+            $repoMirrorPrefix = if ($mirrorPrefix -and $repoSourceName -eq 'github' -and -not $isPrivate) { $mirrorPrefix } else { '' }
             $targetUrl = if ($repoMirrorPrefix) { "$repoMirrorPrefix/$directUrl" } else { $directUrl }
+            # 镜像与 gitee 源关闭交互式凭据询问,避免批量更新停在输入处
+            $noPrompt = [bool]$repoMirrorPrefix -or ($repoSourceName -eq 'gitee')
 
             Write-Host "==> $repoName" -ForegroundColor Cyan
 
@@ -421,9 +457,8 @@ function Update-ReposesConfiged
             {
                 Write-Host "克隆:$targetUrl"
                 $previousPrompt = $env:GIT_TERMINAL_PROMPT
-                if ($repoMirrorPrefix -or $isPrivate)
+                if ($noPrompt)
                 {
-                    # 镜像不代理私有仓库;gitee 凭据缺失时也不应停在交互式输入处
                     $env:GIT_TERMINAL_PROMPT = '0'
                 }
                 try
@@ -486,23 +521,26 @@ function Update-ReposesConfiged
                         & git remote set-url origin $targetUrl
                         Write-Verbose "已更新 origin:$originUrl -> $targetUrl"
                     }
-                    # 镜像只用于下载:推送地址若仍指向镜像则改为直连,保证 Push-ReposesConfiged 可用;
-                    # 已有的多路推送配置(如 gitee)原样保留
-                    $pushUrls = @(& git remote get-url --push --all origin 2>$null | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-                    $mirrorPushUrls = @($pushUrls | Where-Object { $_ -match '/https?://github\.com/' })
-                    if ($mirrorPushUrls.Count -gt 0)
+                    # github 源:镜像只用于下载,推送地址统一为直连 GitHub(保留 gitee 等其他推送地址);
+                    # gitee 源不动 pushurl,避免清掉有意配置的多路推送
+                    if ($repoSourceName -eq 'github')
                     {
-                        $keepPushUrls = @($pushUrls | Where-Object { $_ -notmatch '/https?://github\.com/' })
-                        if ($keepPushUrls -notcontains $directUrl)
+                        $pushUrls = @(& git remote get-url --push --all origin 2>$null | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+                        $mirrorPushUrls = @($pushUrls | Where-Object { $_ -match '/https?://github\.com/' })
+                        if ($mirrorPushUrls.Count -gt 0)
                         {
-                            $keepPushUrls = @($directUrl) + $keepPushUrls
-                        }
-                        # 先清空 pushurl 再重建,避免 set-url 只替换首项而留下重复项
-                        & git config --unset-all remote.origin.pushurl 2>$null
-                        & git remote set-url --push origin $keepPushUrls[0]
-                        for ($i = 1; $i -lt $keepPushUrls.Count; $i++)
-                        {
-                            & git remote set-url --add --push origin $keepPushUrls[$i]
+                            $keepPushUrls = @($pushUrls | Where-Object { $_ -notmatch '/https?://github\.com/' })
+                            if ($keepPushUrls -notcontains $directUrl)
+                            {
+                                $keepPushUrls = @($directUrl) + $keepPushUrls
+                            }
+                            # 先清空 pushurl 再重建,避免 set-url 只替换首项而留下重复项
+                            & git config --unset-all remote.origin.pushurl 2>$null
+                            & git remote set-url --push origin $keepPushUrls[0]
+                            for ($i = 1; $i -lt $keepPushUrls.Count; $i++)
+                            {
+                                & git remote set-url --add --push origin $keepPushUrls[$i]
+                            }
                         }
                     }
                 }
@@ -520,7 +558,7 @@ function Update-ReposesConfiged
                 {
                     Write-Host "强制对齐:origin/$branch"
                     $previousPrompt = $env:GIT_TERMINAL_PROMPT
-                    if ($repoMirrorPrefix -or $isPrivate)
+                    if ($noPrompt)
                     {
                         $env:GIT_TERMINAL_PROMPT = '0'
                     }
@@ -552,7 +590,7 @@ function Update-ReposesConfiged
                 {
                     Write-Host "拉取:origin/$branch"
                     $previousPrompt = $env:GIT_TERMINAL_PROMPT
-                    if ($repoMirrorPrefix -or $isPrivate)
+                    if ($noPrompt)
                     {
                         $env:GIT_TERMINAL_PROMPT = '0'
                     }
@@ -600,7 +638,8 @@ function Update-ReposesConfiged
         else
         {
             Write-Warning ("更新完成:成功 $succeeded 个,失败 $($failures.Count) 个($($failures -join '、')),跳过 $($skipped.Count) 个。" +
-                '镜像不可用时改用 -NoMirror 或 -GithubMirror <其他镜像>;私有仓库用 -PrivateRepos 走 gitee;网络受限时加 -Proxy <代理地址> 后重试。')
+                '镜像不可用时改用 -NoMirror 或 -GithubMirror <其他镜像>;名单规则不适用时用 -RepoSource github|gitee 覆盖本次源;' +
+                'gitee 私有仓库需先配置凭据;网络受限时加 -Proxy <代理地址> 后重试。')
         }
 
         # scripts 仓库若含 dll 变更:同步活件(并排版本只新增目录,不受锁限制,任何会话都可执行)并提示重开;

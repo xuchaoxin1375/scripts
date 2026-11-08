@@ -71,7 +71,7 @@
 | `DevEnv` | 1835/13 | 语言工具链与编辑器开箱：Python/conda/C++/Typora/VSCode/WT/补全栈（`Deploy-CompletionStack` 默认只装仓库内核心层，argc/PSFzf/fzf/zoxide 按 `-Include*` 追加；`Deploy-ArgcCompletions` 并发下载、支持代理，并优先取 `scripts-deps` 转存仓库的固定版本；2026-09-22 从 `Deploy` 迁入，冷路径按需加载） |
 | `Development` | 340/22 | Django 快捷命令、ssh 别名、文本清理 |
 | `Git` | 548/16 | git 日常：浅克隆、一键提交、镜像加速下载（`Get-SpeedUpUri` 轻量单链版，2026-09-24 补） |
-| `RepoSync` | 556/8 | 多仓库同步/开发环境同步：`Push/Update-ReposesConfiged*`、`update_functions`（`Update-ReposesConfiged` 默认走 GitHub 加速镜像，支持 `-GithubMirror`/`-NoMirror`、`-PrivateRepos` 与 `-Proxy`/`-NoProxy`；`$PrivateRepos` 名单内仓库优先 gitee、不走镜像，已存在仓库按 origin 主机判断源域名，名单外仓库经镜像失败后自动直连重试；2026-09-22 从 `Basic` 迁入，B 档 5.1） |
+| `RepoSync` | 556/8 | 多仓库同步/开发环境同步：`Push/Update-ReposesConfiged*`、`update_functions`（`Update-ReposesConfiged` 按名单选源：`$CommonRepos` 走 GitHub 加速镜像，其余仓库（含 `$CxxuRepos`）默认走 gitee；支持 `-RepoSource auto/github/gitee`、`-GithubMirror`/`-NoMirror`、`-PrivateRepos` 与 `-Proxy`/`-NoProxy`；已有仓库 origin 指向本账号同名仓库时按名单迁移主机，镜像失败自动直连重试；2026-09-22 从 `Basic` 迁入，B 档 5.1） |
 | `MySql` | 905/12 | MySQL 库表备份/建删/查询（`Get-MySqlDatabaseNameCmdletDeprecated` 已删，2026-09-22） |
 | `WordPress` | 1685/9 | WP 本地建站 + 总入口 `Deploy-Wp`；线上运维 18 函数已迁 `WpOnline`、内容处理 6 函数已迁 `WpContent`（2026-09-22，命令名不变） |
 | `WpOnline` | 2818/21 | WP 线上运维：建站上线/插件/订单/远程更新/文件批量推送/cron 批量部署（2026-09-22 从 `WordPress` 迁入，冷路径按需加载） |

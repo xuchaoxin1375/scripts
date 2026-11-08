@@ -249,7 +249,8 @@ conda 缓存（`~/.conda_hook_cache.ps1`）与 zoxide 缓存（`~/.zoxide_init_c
 ## 12. GitHub 加速与中央变量（国内网络决策）
 
 - **决策**：gitee 对远程脚本执行（`irm|iex`）误报拦截、一键部署常被拦，不再作为默认源；
-  改走 github + 加速前缀。`-RepoSource` 默认已全切 `github`（gitee 只留兼容）。
+  改走 github + 加速前缀；部署链与远程脚本不以 gitee 为默认源。仓库更新按名单分流：
+  `$CommonRepos` 走 GitHub，其余仓库走 gitee（见 §13）。
 - **中央变量 `$env:PsGithubMirror`**：全仓库统一从它拿前缀。喜欢哪个镜像就持久化哪个：
   `Add-EnvVar -EnvVar PsGithubMirror -NewValue 'https://gh-proxy.com'`（以你实测最快的为准，
   `Get-AvailableGithubMirrors` 可测速；5.1 下同样并发探测，不再退化为串行）；不设则走默认 `gh-proxy.com`，
@@ -270,7 +271,7 @@ Sync-CxxuPredictor            # 单点操作（首次安装生成/手动修复/�
 ```
 
 - 入口 loader 只静默装载（旧版照常使用，无警告）：版本检查使用 `Test-PsEnvReadiness` 备注列。活件并排版本存放（只新增版本目录，从不覆盖），同步不受锁限制，任何会话都可执行。
-- 镜像与代理：`Update-ReposesConfiged` 默认经 `https://gh-proxy.com` 拉取，固定默认值，不做会话测速；未显式传参时读 `$env:PsGithubMirror`，该变量为空时仍用默认值。`-GithubMirror '<前缀>'` 临时换镜像，`-NoMirror` 或 `-GithubMirror ''` 直连。代理默认依次读 `HTTPS_PROXY`、`HTTP_PROXY`、`ALL_PROXY`（兼容小写形式），也可用 `-Proxy '<地址>'` 指定、用 `-NoProxy` 忽略环境变量。命令会把指向 `xuchaoxin1375/<仓库>` 的 http(s) `origin` 改为当前镜像或直连地址，使后续拉取沿用本次选择；镜像只用于下载，推送地址设为直连 GitHub（保留 gitee 等其他推送地址），`Push-ReposesConfiged` 不受影响；SSH 与自定义远端不改写。
+- 源域名与镜像：`Update-ReposesConfiged` 默认按名单选源——`$CommonRepos` 内的仓库走 GitHub（固定默认经 `https://gh-proxy.com` 加速），其余仓库（含 `$CxxuRepos`）走 gitee；`-RepoSource github|gitee` 本次强制统一源，`$PrivateRepos` 名单内仓库始终按 gitee 处理。镜像不做会话测速；未显式传参时读 `$env:PsGithubMirror`，该变量为空时仍用默认值。`-GithubMirror '<前缀>'` 临时换镜像，`-NoMirror` 或 `-GithubMirror ''` 直连。代理默认依次读 `HTTPS_PROXY`、`HTTP_PROXY`、`ALL_PROXY`（兼容小写形式），也可用 `-Proxy '<地址>'` 指定、用 `-NoProxy` 忽略环境变量。命令会把指向 `xuchaoxin1375/<仓库>` 的 http(s) `origin` 改为名单对应主机，使后续拉取沿用本次选择；GitHub 源的推送地址设为直连 GitHub（保留 gitee 等其他推送地址），`Push-ReposesConfiged` 不受影响；SSH 与自定义远端不改写。gitee 源在凭据缺失时快速失败，不会停在交互式输入。
 - 更新范围：默认处理 `$CommonRepos`，本机在 `CxxuComputers` 名单内时追加 `$CxxuRepos`；`-RepoDirs 'blogs','scripts'` 只处理列出的仓库。`-Force` 先执行 `fetch`，再执行 `reset --hard origin/<当前分支>`，会丢弃该仓库已跟踪文件的本地未提交改动；未跟踪文件不受影响。
 - 拉取含 dll 变更：活件已同步完成，**重新打开终端** → 执行 `init` 即可；只有 psm1 变更：执行 `ipmox` 即可，会话变量不丢失。
 - 自编译活件（`local-build.txt` 标记为 local）：`Update-ReposesConfiged` 保持活件不动并提示，不会换回仓库源；若同时有 5.1 Tab 活件更新，更新流程会用 `Sync-CxxuPredictor -Ps51Only` 只同步那一套。想跟进仓库源时，重编后重新 `Sync-CxxuPredictor -DllPath`（net9）或 `-Ps51DllPath`（5.1 Tab），或裸 `Sync-CxxuPredictor` 切回（流程见 `Live-Versions.md §10`）。

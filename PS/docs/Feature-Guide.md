@@ -214,7 +214,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 
 - 5.1 Tab：`Sync-CxxuPredictor` 生成的 `ps51` 活件由 `CxxuTab` 在 PowerShell 5.1 下选用；默认开，首个 Tab 才导入模块并读命令表缓存（缓存缺失时现建）。不需要时 `Disable-PsPlugin Tab -Persist`（或 `$env:PsTab='False'` 后重跑 `init`）。只提供 Tab 菜单，不提供边输边弹的内联预测。
 - 自编译 net9 活件保持不动时，更新流程只对 5.1 Tab 活件调用 `Sync-CxxuPredictor -Ps51Only`；手动等价命令相同。
-- 拉取网络：`Update-ReposesConfiged` 默认走 `https://gh-proxy.com`，`-NoMirror` 直连、`-GithubMirror` 换镜像、`-Proxy`/`-NoProxy` 控制代理；优先级与 `-Force` 的丢弃范围见 [Deploy-Guide.md](Deploy-Guide.md) 的更新章节。
+- 拉取网络：`Update-ReposesConfiged` 按名单分流——`$CommonRepos` 走 GitHub（默认 `https://gh-proxy.com` 加速），其余仓库走 gitee；`-RepoSource github|gitee` 本次强制统一源，`-NoMirror` 直连、`-GithubMirror` 换镜像、`-Proxy`/`-NoProxy` 控制代理；优先级与 `-Force` 的丢弃范围见 [Deploy-Guide.md](Deploy-Guide.md) 的更新章节。
 - 守护进程（报时/IP）默认不碰 dll：`Start-StartupBgProcesses` 置 `PsPredictor=False` 继承 + 两个守护函数按 `-Command` 自断，所以 `-Force` 关它们无压力（无状态，重起即回）。
 - 同一结论在 `Test-PsEnvReadiness` 的“建议”行也会再说一遍（缺必备 > 有更新 > 活件不一致）。
 
