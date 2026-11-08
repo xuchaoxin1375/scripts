@@ -453,7 +453,8 @@ Set-PSReadLineOption: 句柄无效。
   机理——PSReadLine 行编辑等待按键时引擎算 idle，`OnIdle` 照样触发；常驻订阅熬过首屏后，
   第 2~4 片随机砸在“命令刚跑完/正在打字第二条”的当口，主线程一冻几百毫秒到数秒
   （用户机器比沙盒慢，dll/AV 扫描再放大），键吞掉、屏不刷，看着就是卡死/回不来。
-  旧单发逻辑“首屏跑一次、跑之前先摘订阅”反而是安全的（用户还没开始打字）。
+  旧单发逻辑“首屏跑一次、跑之前先摘订阅”当时看似安全（用户还没开始打字）；
+  2026-11-09 更正：动作内 `Unregister-Event` 会自锁，见 §28。
   处置：`TerminalTools.psm1` 整文件 `git checkout HEAD` 精确回滚（diff 为空实锤），
   分片代码一个字不留；`Test-StartupPerformance` 的队列状态行同步改回单发口径。
   教训：OnIdle 动作=主线程同步执行，“分片让出”是个错觉——让出的是动作之间的缝，
@@ -469,7 +470,7 @@ Set-PSReadLineOption: 句柄无效。
   `TabExpansion2` 桩（原函数存 `$global:PsUxTabOriginal`；首个 Tab 先恢复原函数再装
   CxxuTab——它会把“当前”TabExpansion2 存为 `__CxxuTabOriginal` 再包，包到桩上即无限递归，
   然后转交新包装；装失败时原函数已恢复，直接透传）。predictor dll + zoxide 仍首屏
-  单发（先摘后装，用户没打字；预测是被动显示等不及手势，zoxide 20ms 搭车）。
+  单发（2026-11-09 起改为 `-MaxTriggerCount 1` 自动退订，见 §28；预测是被动显示等不及手势，zoxide 20ms 搭车）。
   `-Now` 全载四件不变；`Enable-PsPlugin Fzf/Tab` 改为立装桩即时生效（7+ 才调安装器）。
 - 联动：Deploy 就绪检查认桩（Tab 看 `__CxxuTabOriginal`/`PsUxTabOriginal` 三态，
   PSFzf 看模块/`$global:PsUxFzfStub` 三态）；`Test-StartupPerformance` 文案同步单发口径。
@@ -542,3 +543,24 @@ Set-PSReadLineOption: 句柄无效。
 - 验证：`mamba --version` 输出 2.5.0 且 `Invoke-Mamba` 按需出现；`Initialize-ArgcCompletions` 后 `$global:PsArgcLoaded=True`；`init -Timing` 显示 `Confirm-EnvVarOfInfo` 从 421ms 降到 26ms，`Set-PsPrompt` 129ms、`Set-PSReadLinesCommon` 94ms。
 - 后续（同日）：用户停用 mamba/conda，两处 shell 集成整体移除。`~/.config/powershell/profile.ps1` 清空并留迁移注释；`~/.zshrc` 的 `conda initialize` 块删除（备份为 `~/.zshrc.bak.<时间戳>`），zsh 交互启动从 1485ms 降到 914ms。miniforge 安装保留，`conda`/`mamba` 仍在 `/opt/homebrew/bin`，但 `conda activate` 需重新执行 `conda init zsh` 才可用。两个文件都不入仓库，换机需另配。接线与恢复步骤见 [macOS-Shell-Setup.md](macOS-Shell-Setup.md)。
 - 边界：`init` 剩余步骤（`Set-PsPrompt`、`Set-PSReadLinesCommon` 等）未动，单项都在百毫秒级，继续压缩需要拆 core 变量与别名导入，收益小于改动风险。zsh 侧剩余约 910ms 与 mamba 无关，是 omz/补全等其它初始化，未在本轮范围内。
+
+## 28. 第二十一轮：OnIdle 单发自锁（2026-11-09，用户报“首条命令输入假死、任何键无反应”）
+
+- 现场：卡住的 pwsh 存活、CPU 0%，ttys 处于 raw 模式，`FIONREAD` 读到输入队列里堆着
+  用户敲下的 110 字节（字母、退格、ESC、Ctrl+C、回车）。终端已把按键全部送达，是 pwsh 没在读。
+- 线程栈（`sample` + `DOTNET_PerfMapEnabled` 还原）：`PSConsoleReadLine.ReadKey()` 里
+  的 `PowerShell.Invoke()` 正在执行事件动作，链路是 `PSEventJob.Invoke` →
+  `UnregisterEventCommand.ProcessRecord` → `PSLocalEventManager.UnsubscribeEvent` →
+  `DrainPendingActions` → `Thread.Sleep`。`DrainPendingActions` 等的是“当前正在执行的
+  这个动作”自己，形成自锁；期间 PSReadLine 的 ReadKey 停摆，按键只能堆在 tty。
+- 触发条件：`TerminalTools.Register-PsUxLazyLoad` 的单发动作第一句是
+  `Unregister-Event -SourceIdentifier PowerShell.OnIdle`，在动作内部自摘订阅。
+  与 Tab 补全、CxxuTab/CxxuPredictor 无关。
+- 修法：动作内不再调 `Unregister-Event`；注册改用
+  `Register-EngineEvent PowerShell.OnIdle -MaxTriggerCount 1`，由事件管理器在动作结束后
+  自动退订。`$global:PsUxOnIdleRegistered` 标记位保留，继续承担幂等判断。
+- 验证：`-MaxTriggerCount 1` 在 pwsh 7.6.9 实测只触发一次且订阅自动消失；改后首屏仍会
+  加载 predictor/zoxide，`Get-EventSubscriber` 无残留。
+- 排查工具：`python/pwsh_hang_capture.py`。交互 shell 启动前设
+  `DOTNET_PerfMapEnabled=1`，卡住时用 `sample` 采样并按 `/tmp/perf-<pid>.map` 还原
+  托管方法名；同时读取 tty 输入队列深度。

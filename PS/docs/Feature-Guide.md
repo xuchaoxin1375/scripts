@@ -162,7 +162,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | `argc-completions`（800+ 命令参数补全；懒加载，首个 Tab 注册约 150ms；选中行反显高亮；首个参数位的静态 flag 自动进 ListView） | **已启用**（仓库 `~/argc-completions` 或 `C:\repos\argc-completions`；开关 `$env:PsArgc`；Tab 7/5.1 均可用，自动 flag 提示仅 7.5+） |
 | `inshellisense` | **否决**（用户拍板，不再考虑） |
 
-验：新开终端直接可用，`Ctrl+R`/`Ctrl+T` 首按装 PSFzf（本次按键即生效）；`z <目录>` 跳转（zoxide 首屏单发已装）。`CxxuTab` 默认开，首个 `Tab` 才导入它（命令表缓存命中时建表约 20ms，模块导入另计；缓存缺失/过期时现建，5.1 约 0.4s、7 约 0.1s，24h 内最多一次）。`argc-completions` 开关默认开，首个 `Tab` 才注册（需先用 `Deploy-CompletionStack -IncludeArgc` 部署；未部署时自动回退原生补全，约 150ms 的注册不会发生）。`Get-EventSubscriber` 应无残留（单发先摘后装）。若某主机 OnIdle 不触发（predictor 没装上），跑 `Register-PsUxLazyLoad -Now` 或报回来。自查跑 `Test-StartupPerformance`（分段计时+结论）。
+验：新开终端直接可用，`Ctrl+R`/`Ctrl+T` 首按装 PSFzf（本次按键即生效）；`z <目录>` 跳转（zoxide 首屏单发已装）。`CxxuTab` 默认开，首个 `Tab` 才导入它（命令表缓存命中时建表约 20ms，模块导入另计；缓存缺失/过期时现建，5.1 约 0.4s、7 约 0.1s，24h 内最多一次）。`argc-completions` 开关默认开，首个 `Tab` 才注册（需先用 `Deploy-CompletionStack -IncludeArgc` 部署；未部署时自动回退原生补全，约 150ms 的注册不会发生）。`Get-EventSubscriber` 应无残留（单发用 `-MaxTriggerCount 1` 自动退订）。若某主机 OnIdle 不触发（predictor 没装上），跑 `Register-PsUxLazyLoad -Now` 或报回来。自查跑 `Test-StartupPerformance`（分段计时+结论）。
 
 ## 8. FAQ（续）：补全候选与预测视图
 

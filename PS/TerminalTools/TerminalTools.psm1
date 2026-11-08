@@ -411,7 +411,8 @@ function Register-PsUxLazyLoad
     机制(2026-09-22 第三轮;分片常驻曾回归,见 Startup-Optimization.md §21):
     - PSFzf/CxxuTab:走手势桩(见 Install-PsUxGestureStubs),init 只花毫秒装桩,导入成本挪到
       首按 Ctrl+T/R 与首个 Tab(用户手势,可归因,无随机冻结)。
-    - predictor dll + zoxide:单发 OnIdle(首屏跑一次、跑之前先摘订阅;用户还没打字,安全)。
+    - predictor dll + zoxide:单发 OnIdle(首屏跑一次;-MaxTriggerCount 1 自动退订,
+      动作内不碰 Unregister-Event)。
       预测是被动显示等不及手势;zoxide 仅 20ms 搭车。
     幂等:重复调用只补缺。常驻订阅已死:OnIdle 在行编辑等键时也会触发,常驻=随机冻。
     .EXAMPLE
@@ -557,14 +558,11 @@ function Register-PsUxLazyLoad
     )
     $global:PsUxLoadErrors = @()
     $singleAction = {
-        # 先摘后装:跑之前即摘订阅,装再久也不再触发(单发安全性的全部)。
-        # 用 $global: 标记位而不用 try/catch 探路:terminating 错误抛出即进 $Error 记账,
-        # catch 只能止显示止不住记账。
-        if ($global:PsUxOnIdleRegistered)
-        {
-            $global:PsUxOnIdleRegistered = $false
-            try { Unregister-Event -SourceIdentifier PowerShell.OnIdle -ErrorAction Stop } catch { }
-        }
+        # 单发靠 -MaxTriggerCount 1 收尾:动作内不要调 Unregister-Event。
+        # Unregister-Event → UnsubscribeEvent → DrainPendingActions 会等"正在执行的
+        # 本动作"结束,形成自锁;期间 PSReadLine 的 ReadKey 停摆,按键堆在 tty 里,
+        # 表现为首屏假死。交给事件管理器在动作结束后自动退订才安全。
+        $global:PsUxOnIdleRegistered = $false
         foreach ($p in @($global:PsUxIdlePieces))
         {
             try { & $p.Action | Out-Null }
@@ -572,7 +570,7 @@ function Register-PsUxLazyLoad
         }
         $global:PsUxIdlePieces = @()
     }
-    Register-EngineEvent PowerShell.OnIdle -Action $singleAction | Out-Null
+    Register-EngineEvent PowerShell.OnIdle -MaxTriggerCount 1 -Action $singleAction | Out-Null
     $global:PsUxOnIdleRegistered = $true
 }
 function Sync-CxxuPredictorArtifact
