@@ -140,12 +140,12 @@ p -Force                    # 看 init 分步耗时，定位慢项
 ## 7. 补全体验件（推荐组合，默认启用）
 
 > 已启用的走延迟加载（`init` 只注册 `OnIdle` 事件，18ms），默认启动盘不受影响。
-> 安装层面：默认层只含 CxxuCommand/CxxuTab；PSFzf、CompletionPredictor、fzf/zoxide 需 `Deploy-CompletionStack -IncludeFuzzy` / `-IncludePredictor`，或按 §11 单独安装。可选层的仓库外二进制优先取 `scripts-deps` 转存仓库，失败才回上游。
+> 部署层、依赖级别、下载来源与 5.1/7.5+ 的能力对照见 [Deploy-Guide](Deploy-Guide.md) 的「分层、来源与能力」；本节只讲运行期开关与验证。
 > 开关：`$env:PsFzf` / `$env:PsZoxide` / `$env:PsPredictor`（默认开，`False` 关；
 > 守护进程由 `Start-StartupBgProcesses` 统一置 `PsPredictor=False`，永不加载 dll）；
 > `$env:PsTab`（CxxuTab Tab 补全，**默认开，置 `False` 关**）；
 > `$env:PsArgc`（argc-completions 参数补全，默认开，首个 Tab 才注册；需要时由 `Deploy-CompletionStack -IncludeArgc` 部署）；
-> 重定向场景自动不加载。可选层需要网络；国内下载不稳定可先 `Set-Proxy On`（或设置 `HTTPS_PROXY`）再部署。新机安装或一键重装看 `Deploy-Guide.md §5`（`Deploy-CompletionStack -WhatIf` 可空跑）。
+> 重定向场景自动不加载。新机安装或一键重装看 [Deploy-Guide](Deploy-Guide.md) 的「补全栈与第三方 PS 模块」（`Deploy-CompletionStack -WhatIf` 可空跑）。
 
 | 候选 | 状态 |
 |---|---|

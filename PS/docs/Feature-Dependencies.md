@@ -8,6 +8,7 @@
 - 检测范围是 PowerShell 模块集的外部依赖与生成物，包括命令、PS 模块、仓库文件、插件开关和 predictor 活件。
 - 不覆盖 shell 脚本与 Python 脚本的依赖：shell 侧用 [install_shell_deps.sh](../../wp/woocommerce/woo_df/sh/install_shell_deps.sh) 的 `--check` 检查，Python 侧按对应目录的 `requirements.txt` 安装。
 - 检测只回答“本机是否具备该组件”，不验证远端服务器是否具备对应命令；`ssh`、`scp` 等只检查本机入口。
+- 依赖级别不等于部署层：这里的“可选”与 `Deploy-CompletionStack` 的“可选层”不是一回事，分层、来源与能力对照见 [Deploy-Guide.md](Deploy-Guide.md) 的「分层、来源与能力」。
 
 ## 快速使用
 

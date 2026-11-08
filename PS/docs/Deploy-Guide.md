@@ -131,6 +131,25 @@ conda 用户：跑 `conda init powershell` 后**重贴缓存块**（它会覆盖
 
 ## 5. 补全栈与第三方 PS 模块
 
+### 分层、来源与能力
+
+`Deploy-CompletionStack` 按“默认层 + 可选层”组织。三个概念互不替代，不要混用：
+
+- **部署层**：默认层不联网、不装仓库外组件；可选层用 `-Include*` 显式选择。
+- **依赖级别**：必需、推荐、可选、生成物，由 `Get-CxxuDependencyReport` 判定，清单见 [Feature-Dependencies](Feature-Dependencies.md)。
+- **交互层**：Tab 全量索引、ListView 预测、PSFzf、参数位，见 [Feature-Guide](Feature-Guide.md) 的「补全全景速查」。
+
+| 部署层 | 组件 | 级别 | 下载来源 | pwsh 7.5+ | Windows PowerShell 5.1 |
+|---|---|---|---|---|---|
+| 默认层 | `CxxuPredictor` net9 活件、`CxxuTab`、配置模板 | 生成物/必需 | 仓库内文件同步到 `~/.cxxu/bin`，零网络 | ListView 命令名预测 + Tab 模糊增补 | 仅 Tab 模糊增补（`ps51` 活件） |
+| 可选层 `-IncludeArgc` | argc-completions 仓库、`argc.exe`、`yq.exe` | 推荐 | `scripts-deps` 固定版本 → 上游 GitHub（同样套镜像前缀） | Tab 参数补全 + 首参数位静态 flag | Tab 参数补全，无自动 flag 提示 |
+| 可选层 `-IncludeFuzzy` | `PSFzf`、`fzf`、`zoxide` | 推荐/可选 | `PSFzf` 走 PSGallery；`fzf`/`zoxide` 走 scoop → winget/brew → `scripts-deps` → 上游 | `Ctrl+T`/`Ctrl+R`、`z`；检测到代理时不走包管理器 | 同左 |
+| 可选层 `-IncludePredictor` | `CompletionPredictor` | 推荐 | PSGallery | 参数/路径内联预测 | 以模块自身要求为准 |
+| 可选层 `-IncludePSCompletions` | `PSCompletions` | 可选 | PSGallery | Tab 参数补全（需解开 profile 钩子） | 同左 |
+
+- 二进制优先取 [`scripts-deps`](https://github.com/xuchaoxin1375/scripts-deps) 的固定版本，地址失效自动回退上游；`-NoMirror` 跳过转存仓库，`$env:PsDepsMirror` 可整体换前缀。版本钉子维护见 [PS/Deploy/readme.md](../Deploy/readme.md) 的转存章节。
+- PSGallery 三件套由 PowerShellGet 安装，代理继承规则与 GitHub 直链不同；5.1 下环境变量可能不生效，网络受限时优先在 pwsh 7 执行，或先配系统代理。
+
 ### 只启用补全（仓库、`PSModulePath`、profile 已就绪）
 
 ```powershell
@@ -154,8 +173,7 @@ Deploy-CompletionStack -All -SkipBinaries      # 全部但跳过 fzf/zoxide 二�
 - 内联预测要 pwsh 7.5+；Windows PowerShell 5.1 只有 Tab 菜单，命令会自动发布 `ps51` 活件（新机也会顺带准备 net9 活件）。
 - 开关默认全开（组件未安装时对应开关不产生实际效果）；单关用 `Disable-PsPlugin Predictor|Tab|Fzf|Zoxide|Argc -Persist`，完整开关与优先级见 `Feature-Guide.md §7`。
 - 可选层需要网络。国内下载不稳定时，先 `Set-Proxy On`（或设置 `HTTPS_PROXY`/`HTTP_PROXY`）再执行；下载会自动识别代理，也可用 `-Proxy <地址>` / `-NoProxy` 单次覆盖。`Set-Proxy` 只影响当前会话（默认端口 7897，`-Port` 可改），新终端需重设或持久化 `HTTPS_PROXY`。缺少可选组件只提示，不影响默认层。
-- PSGallery 模块（`PSFzf`、`CompletionPredictor`、`PSCompletions`）由 PowerShellGet 安装，代理继承规则与 GitHub 直链下载不同；5.1 下环境变量可能不生效，网络受限时优先在 pwsh 7 执行，或配置系统代理后再装。
-- `-IncludeArgc` 的仓库、`argc.exe` 与 `yq.exe` 会并发下载（`-NoParallel` 可串行），且优先取 `scripts-deps` 转存仓库的固定版本，不查 release API；只想单独重装 argc 或指定目录用 `Deploy-ArgcCompletions [-Root <目录>]`。转存仓库不可达时自动回退上游；`-NoMirror` 可直接跳过转存仓库。
+- `-IncludeArgc` 的仓库、`argc.exe` 与 `yq.exe` 会并发下载（`-NoParallel` 可串行），且不查 release API；只想单独重装 argc 或指定目录用 `Deploy-ArgcCompletions [-Root <目录>]`。
 - 验收：ListView 输 `get-child` 应见 `[CxxuCommand]`；Tab 输 `get-chi` 应含 `Get-ChildItem`。不达预期按 `Feature-Guide.md §9` 的「Tab 补全自查」定位。
 - 仓库、模块路径或 profile 还没配好时，先走上面的极简版或 §0~§4。
 
@@ -261,7 +279,7 @@ Sync-CxxuPredictor            # 单点操作（首次安装生成/手动修复/�
 
 ## 14. 时效性资源清单（会过期的东西都在这里）
 
-> 这些资源控制权在外部（镜像站/第三方仓库/上游发版），会随时间失效；
+> 这些资源控制权在外部（镜像站/第三方仓库/上游发版），或需要人工跟进版本，会随时间失效；
 > 检查列是只读命令，更新列是人工动作。自动检查不是必需，先保证只读命令可用。
 
 | 资源 | 位置 | 现状快照 | 检查（只读） | 更新动作 | 频率 |
@@ -283,6 +301,7 @@ Sync-CxxuPredictor            # 单点操作（首次安装生成/手动修复/�
 | net9.0 / pwsh 版本门 | `CxxuPredictor.csproj` | 7.6 可直接用；pwsh 8 发布后再复核 | — | 加载失败时重编 dll（见 `Live-Versions.md §10`） | 慢变量 |
 | netstandard2.0 / 5.1 Tab | `CxxuPredictor.csproj` / `ps51` 活件 | 仅 Windows；5.1 固定在 .NET Framework 4.8 | 5.1 按 Tab 有模糊候选 | `Sync-CxxuPredictor` 重新发布 | 慢变量 |
 | 文档外链（博客/商店/聚合页） | `readme.md` / `Deploy-Guide.md` | 腐烂风险，低优 | 抽查 | 换链 | 年 |
-| PSGallery 第三方模块 | `Deploy-CompletionStack` | 浮动最新，不钉版 | `Test-PsEnvReadiness` | `Deploy-CompletionStack` | 按需 |
+| PSGallery 第三方模块 | `Deploy-CompletionStack -Include*` | 浮动最新，不钉版 | `Test-PsEnvReadiness` | `Deploy-CompletionStack -IncludeFuzzy/-IncludePredictor/-IncludePSCompletions` | 按需 |
+| 转存仓库 `scripts-deps` | `PS/Deploy/Sync-GithubDepsMirror.ps1` 的资产表 + `DevEnv.psm1` 里的 `Get-CxxuDepsMirrorAsset` | 已转存 argc、yq、fzf、zoxide 与 argc-completions 快照（2026-11-08） | `Sync-GithubDepsMirror.ps1 -WhatIf` | 跑同步脚本，把打印的钉子回填模块 | 上游发版时 |
 
 > 更新流程见 §13（`Update-ReposesConfiged` 批量更新 + 活件同步 + 重开终端）。
