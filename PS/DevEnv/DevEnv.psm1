@@ -695,6 +695,49 @@ function Get-CxxuDownloadUrls
     return @($Url, $mirrorUrl)
 }
 
+function Get-CxxuDepsMirrorAsset
+{
+    <#
+    .SYNOPSIS
+    返回 scripts-deps 转存仓库里固定版本的资产地址；没有对应架构时返回 $null。
+    .DESCRIPTION
+    版本固定在下方 $table：上游发布新版本后，先跑 PS/Deploy/Sync-GithubDepsMirror.ps1 转存，
+    再同步改这里的 Tag 与文件名。转存仓库只做原样转存，不自动跟随上游。
+    下载前缀默认 https://github.com/xuchaoxin1375/scripts-deps/releases/download，
+    可用 $env:PsDepsMirror 整体替换（自建镜像/测试）；置为 off 表示不用转存仓库。
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        # X64 | Arm64
+        [ValidateSet('X64', 'Arm64')][string]$Arch = 'X64'
+    )
+    $base = $env:PsDepsMirror
+    if ($base -and $base -match '^(off|none|false|0)$') { return $null }
+    if ([string]::IsNullOrWhiteSpace($base))
+    {
+        $base = 'https://github.com/xuchaoxin1375/scripts-deps/releases/download'
+    }
+
+    # 版本钉子：改这里的同时要保证转存仓库已有对应 Release。
+    $table = @{
+        argc               = @{ Tag = 'argc-v1.24.0'; X64 = 'argc-v1.24.0-x86_64-pc-windows-msvc.zip' }
+        yq                 = @{ Tag = 'yq-v4.54.2'; X64 = 'yq_windows_amd64.exe' }
+        fzf                = @{ Tag = 'fzf-v0.75.0'; X64 = 'fzf-0.75.0-windows_amd64.zip' }
+        zoxide             = @{ Tag = 'zoxide-v0.10.0'; X64 = 'zoxide-0.10.0-x86_64-pc-windows-msvc.zip' }
+        'argc-completions' = @{ Tag = 'argc-completions-main-20261022'; X64 = 'argc-completions-main-19b70387.zip' }
+    }
+    $entry = $table[$Name]
+    if (-not $entry) { return $null }
+    $asset = $entry[$Arch]
+    if (-not $asset) { return $null }
+    return [pscustomobject]@{
+        Name  = $Name
+        Tag   = $entry.Tag
+        Asset = $asset
+        Url   = ($base.TrimEnd('/') + '/' + $entry.Tag + '/' + $asset)
+    }
+}
+
 function Invoke-CxxuDownload
 {
     # 依次尝试候选地址；都失败才抛错。5.1 需要显式开 TLS 1.2。
@@ -1003,15 +1046,18 @@ function Install-CxxuFuzzyBinaries
     .DESCRIPTION
     fzf 与 zoxide 都是单文件命令，scoop 在国内网络下不稳定时不必反复重试：
     未检测到代理时先试 scoop，再试 winget（Windows）或 brew（macOS）；
-    设置了代理（-Proxy 或 HTTPS_PROXY/HTTP_PROXY）时直接用 GitHub release 下载，避免包管理器绕过代理。
-    最后回退到 GitHub release：并发下载、解压到 ~/.cxxu/bin，并把该目录加入用户 PATH。
+    设置了代理（-Proxy 或 HTTPS_PROXY/HTTP_PROXY）时直接下载，避免包管理器绕过代理。
+    下载优先取 scripts-deps 转存仓库的固定版本（国内更稳），失败再回退上游 GitHub release；
+    Windows 下并发下载、解压到 ~/.cxxu/bin，并把该目录加入用户 PATH。
     已存在的命令会跳过；失败只警告，不阻塞补全栈其他部分。
     #>
     [CmdletBinding()]
     param(
         [string]$Proxy = '',
         [switch]$NoProxy,
-        [switch]$NoParallel
+        [switch]$NoParallel,
+        # 跳过 scripts-deps 转存仓库，直接走上游 release
+        [switch]$NoMirror
     )
 
     $targets = @(
@@ -1120,17 +1166,33 @@ function Install-CxxuFuzzyBinaries
         {
             try
             {
-                $pattern = $target.Asset
-                if ($isArm) { $pattern = $target.AssetArm }
-                Write-Host ("  查询 {0} 最新 release ..." -f $target.Name)
-                $rel = Get-CxxuLatestRelease -Repo $target.Repo -Proxy $Proxy -NoProxy:$NoProxy
-                $asset = @($rel.assets | Where-Object { $_.name -match $pattern } | Select-Object -First 1)
-                if (-not $asset.Count) { throw "未找到匹配 $pattern 的 Windows 产物" }
+                $mirror = $null
+                if (-not $NoMirror -and -not $isArm)
+                {
+                    $mirror = Get-CxxuDepsMirrorAsset -Name $target.Name -Arch 'X64'
+                }
+                $url = ''
+                if ($mirror)
+                {
+                    $url = $mirror.Url
+                    Write-Host ("  {0}：使用 scripts-deps 固定版本 {1}" -f $target.Name, $mirror.Tag)
+                }
+                else
+                {
+                    $pattern = $target.Asset
+                    if ($isArm) { $pattern = $target.AssetArm }
+                    Write-Host ("  查询 {0} 最新 release ..." -f $target.Name)
+                    $rel = Get-CxxuLatestRelease -Repo $target.Repo -Proxy $Proxy -NoProxy:$NoProxy
+                    $asset = @($rel.assets | Where-Object { $_.name -match $pattern } | Select-Object -First 1)
+                    if (-not $asset.Count) { throw "未找到匹配 $pattern 的 Windows 产物" }
+                    $url = $asset[0].browser_download_url
+                }
                 $tasks += @{
                     Label   = $target.Name
-                    Url     = $asset[0].browser_download_url
+                    Url     = $url
                     OutFile = (Join-Path $tmpRoot ($target.Name + '.zip'))
                     Target  = $target
+                    Mirror  = [bool]$mirror
                 }
             }
             catch
@@ -1139,8 +1201,31 @@ function Install-CxxuFuzzyBinaries
             }
         }
         if (-not $tasks.Count) { return }
-        Write-Host ("  GitHub release 下载 {0} 项（{1}）" -f $tasks.Count, $(if ($proxyUrl) { '走代理' } else { '镜像/直连' }))
+        Write-Host ("  下载 {0} 项（{1}）" -f $tasks.Count, $(if ($proxyUrl) { '走代理' } else { '转存仓库优先，失败回退上游' }))
         $results = @(Invoke-CxxuDownloadBatch -Tasks $tasks -Proxy $Proxy -NoProxy:$NoProxy -Sequential:$NoParallel)
+
+        # 转存仓库的固定地址失效时回退上游 release，避免钉死版本后装不上。
+        foreach ($item in @($tasks | Where-Object { $_.Mirror }))
+        {
+            $done = @($results | Where-Object { $_.Label -eq $item.Label -and $_.Ok })
+            if ($done.Count) { continue }
+            Write-Host ("  {0}：scripts-deps 下载失败，回退上游 release" -f $item.Target.Name)
+            try
+            {
+                $pattern = $item.Target.Asset
+                if ($isArm) { $pattern = $item.Target.AssetArm }
+                $rel = Get-CxxuLatestRelease -Repo $item.Target.Repo -Proxy $Proxy -NoProxy:$NoProxy
+                $asset = @($rel.assets | Where-Object { $_.name -match $pattern } | Select-Object -First 1)
+                if (-not $asset.Count) { throw "未找到匹配 $pattern 的 Windows 产物" }
+                Invoke-CxxuDownload -Url $asset[0].browser_download_url -OutFile $item.OutFile -Proxy $Proxy -NoProxy:$NoProxy
+                $results = @($results | Where-Object { $_.Label -ne $item.Label })
+                $results += [pscustomobject]@{
+                    Label = $item.Label; OutFile = $item.OutFile; Ok = $true
+                    Source = $asset[0].browser_download_url; Seconds = 0; Error = ''
+                }
+            }
+            catch { Write-Warning ("{0} 回退上游也失败：{1}" -f $item.Target.Name, $_.Exception.Message) }
+        }
         $installed = 0
         foreach ($result in $results)
         {
@@ -1177,10 +1262,12 @@ function Deploy-ArgcCompletions
     .SYNOPSIS
     部署 argc-completions：补全仓库 + argc.exe/yq.exe + 当前会话注册。
     .DESCRIPTION
-    默认装到 ~/argc-completions（已存在则复用；可用 -Root 指定），仓库取 GitHub main 压缩包，
-    二进制取最新 release。缺少的仓库与二进制会并发下载（-NoParallel 可回到串行），
-    每项分别按镜像/直连回退；显式 -Proxy 或设置 HTTPS_PROXY/HTTP_PROXY/ALL_PROXY 可走代理加速，
-    -NoProxy 强制直连。下载后按“仓库 → 二进制 → 当前会话注册”输出进度与结果；
+    默认装到 ~/argc-completions（已存在则复用；可用 -Root 指定）。仓库与二进制优先取
+    scripts-deps 转存仓库的固定版本（国内更稳，不查 release API），失败再回退上游 GitHub；
+    缺少的仓库与二进制会并发下载（-NoParallel 可回到串行），每项分别按镜像/直连回退。
+    显式 -Proxy 或设置 HTTPS_PROXY/HTTP_PROXY/ALL_PROXY 可走代理加速，-NoProxy 强制直连；
+    -NoMirror 跳过转存仓库、直接走上游。
+    下载后按“确认缺失项 → 解析并下载 → 安装 → 当前会话注册”输出进度与结果；
     任一步失败只警告，不影响其他补全，并在结尾汇总失败项。
     -SkipBinaries 只准备仓库，-Force 重新下载仓库与二进制。仓库就位后调用 Set-ArgcCompletions 装 Tab 桩。
     .EXAMPLE
@@ -1203,7 +1290,9 @@ function Deploy-ArgcCompletions
         # 强制直连，忽略 -Proxy 与代理环境变量
         [switch]$NoProxy,
         # 关闭并发下载，改为逐个下载
-        [switch]$NoParallel
+        [switch]$NoParallel,
+        # 跳过 scripts-deps 转存仓库，直接走上游 GitHub
+        [switch]$NoMirror
     )
 
     if (-not $Root)
@@ -1240,11 +1329,26 @@ function Deploy-ArgcCompletions
     $needArgc = (-not $SkipBinaries) -and ((-not (Test-Path -LiteralPath $argcExe)) -or $Force)
     $needYq = (-not $SkipBinaries) -and ((-not (Test-Path -LiteralPath $yqExe)) -or $Force)
 
+    # 转存仓库固定版本：只有 x86_64 有转存；arm64 或 -NoMirror 直接走上游。
+    $isArm = ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64')
+    $mirrorArch = 'X64'
+    if ($isArm) { $mirrorArch = 'Arm64' }
+    $repoMirror = $null
+    $argcMirror = $null
+    $yqMirror = $null
+    if (-not $NoMirror)
+    {
+        $repoMirror = Get-CxxuDepsMirrorAsset -Name 'argc-completions' -Arch $mirrorArch
+        $argcMirror = Get-CxxuDepsMirrorAsset -Name 'argc' -Arch $mirrorArch
+        $yqMirror = Get-CxxuDepsMirrorAsset -Name 'yq' -Arch $mirrorArch
+    }
+
     # 1) 计划：让 -WhatIf 与正常执行看到同一份动作清单
     Write-Host '步骤 1/4：确认缺失项'
     if ($needRepo)
     {
         if ($repoExists) { Write-Host '  仓库：已就位，按 -Force 重新下载覆盖（保留 bin）' }
+        elseif ($repoMirror) { Write-Host ("  仓库：未找到，下载 scripts-deps 快照 {0}（失败回退 GitHub main）" -f $repoMirror.Tag) }
         else { Write-Host '  仓库：未找到，下载 GitHub main 压缩包' }
     }
     else { Write-Host '  仓库：已就位，复用；需要重新下载时加 -Force' }
@@ -1252,9 +1356,17 @@ function Deploy-ArgcCompletions
     if ($SkipBinaries) { Write-Host '  二进制：按 -SkipBinaries 跳过' }
     else
     {
-        if ($needArgc) { Write-Host '  argc.exe：缺失或 -Force，下载最新 release' }
+        if ($needArgc)
+        {
+            if ($argcMirror) { Write-Host ("  argc.exe：缺失或 -Force，取 scripts-deps 固定版本 {0}（失败回退上游）" -f $argcMirror.Tag) }
+            else { Write-Host '  argc.exe：缺失或 -Force，下载上游最新 release' }
+        }
         else { Write-Host '  argc.exe：已存在，跳过；更新加 -Force' }
-        if ($needYq) { Write-Host '  yq.exe：缺失或 -Force，下载最新 release' }
+        if ($needYq)
+        {
+            if ($yqMirror) { Write-Host ("  yq.exe：缺失或 -Force，取 scripts-deps 固定版本 {0}（失败回退上游）" -f $yqMirror.Tag) }
+            else { Write-Host '  yq.exe：缺失或 -Force，下载上游最新 release' }
+        }
         else { Write-Host '  yq.exe：已存在，跳过；更新加 -Force' }
     }
 
@@ -1264,9 +1376,8 @@ function Deploy-ArgcCompletions
         return
     }
 
-    # 2) 解析 release 地址：只查需要下载的项
+    # 2) 解析地址：转存仓库优先（不查 API），缺失或 arm64 才查上游 release
     Write-Host '步骤 2/4：解析并下载缺失项'
-    $isArm = ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64')
     $arch = 'x86_64'
     $yqArch = 'amd64'
     if ($isArm) { $arch = 'aarch64'; $yqArch = 'arm64' }
@@ -1274,36 +1385,44 @@ function Deploy-ArgcCompletions
     $yqUrl = ''
     if ($needArgc)
     {
-        try
+        if ($argcMirror) { $argcUrl = $argcMirror.Url }
+        else
         {
-            Write-Host '  查询 argc 最新 release ...'
-            $rel = Get-CxxuLatestRelease -Repo 'sigoden/argc' -Proxy $Proxy -NoProxy:$NoProxy
-            $asset = @($rel.assets | Where-Object { $_.name -match ('-' + $arch + '-pc-windows-msvc\.zip$') } | Select-Object -First 1)
-            if (-not $asset.Count) { throw "未找到 $arch Windows 产物" }
-            $argcUrl = $asset[0].browser_download_url
-            Write-Host ("  argc 目标版本：{0}（{1}）" -f $rel.tag_name, $arch)
-        }
-        catch
-        {
-            Write-Warning ("argc.exe 版本信息获取失败：{0}；重新运行会重试" -f $_.Exception.Message)
-            [void]$failed.Add('argc.exe')
+            try
+            {
+                Write-Host '  查询 argc 最新 release ...'
+                $rel = Get-CxxuLatestRelease -Repo 'sigoden/argc' -Proxy $Proxy -NoProxy:$NoProxy
+                $asset = @($rel.assets | Where-Object { $_.name -match ('-' + $arch + '-pc-windows-msvc\.zip$') } | Select-Object -First 1)
+                if (-not $asset.Count) { throw "未找到 $arch Windows 产物" }
+                $argcUrl = $asset[0].browser_download_url
+                Write-Host ("  argc 目标版本：{0}（{1}）" -f $rel.tag_name, $arch)
+            }
+            catch
+            {
+                Write-Warning ("argc.exe 版本信息获取失败：{0}；重新运行会重试" -f $_.Exception.Message)
+                [void]$failed.Add('argc.exe')
+            }
         }
     }
     if ($needYq)
     {
-        try
+        if ($yqMirror) { $yqUrl = $yqMirror.Url }
+        else
         {
-            Write-Host '  查询 yq 最新 release ...'
-            $rel = Get-CxxuLatestRelease -Repo 'mikefarah/yq' -Proxy $Proxy -NoProxy:$NoProxy
-            $asset = @($rel.assets | Where-Object { $_.name -eq ('yq_windows_' + $yqArch + '.exe') } | Select-Object -First 1)
-            if (-not $asset.Count) { throw "未找到 yq_windows_$yqArch.exe" }
-            $yqUrl = $asset[0].browser_download_url
-            Write-Host ("  yq 目标版本：{0}（{1}）" -f $rel.tag_name, $yqArch)
-        }
-        catch
-        {
-            Write-Warning ("yq.exe 版本信息获取失败：{0}；重新运行会重试" -f $_.Exception.Message)
-            [void]$failed.Add('yq.exe')
+            try
+            {
+                Write-Host '  查询 yq 最新 release ...'
+                $rel = Get-CxxuLatestRelease -Repo 'mikefarah/yq' -Proxy $Proxy -NoProxy:$NoProxy
+                $asset = @($rel.assets | Where-Object { $_.name -eq ('yq_windows_' + $yqArch + '.exe') } | Select-Object -First 1)
+                if (-not $asset.Count) { throw "未找到 yq_windows_$yqArch.exe" }
+                $yqUrl = $asset[0].browser_download_url
+                Write-Host ("  yq 目标版本：{0}（{1}）" -f $rel.tag_name, $yqArch)
+            }
+            catch
+            {
+                Write-Warning ("yq.exe 版本信息获取失败：{0}；重新运行会重试" -f $_.Exception.Message)
+                [void]$failed.Add('yq.exe')
+            }
         }
     }
 
@@ -1311,9 +1430,11 @@ function Deploy-ArgcCompletions
     $tasks = @()
     if ($needRepo)
     {
+        $repoUrl = 'https://github.com/sigoden/argc-completions/archive/refs/heads/main.zip'
+        if ($repoMirror) { $repoUrl = $repoMirror.Url }
         $tasks += @{
             Label   = '仓库'
-            Url     = 'https://github.com/sigoden/argc-completions/archive/refs/heads/main.zip'
+            Url     = $repoUrl
             OutFile = (Join-Path $tempRoot 'repo.zip')
         }
     }
@@ -1337,6 +1458,46 @@ function Deploy-ArgcCompletions
         $results = @(Invoke-CxxuDownloadBatch -Tasks $tasks -Proxy $Proxy -NoProxy:$NoProxy -Sequential:$NoParallel)
         $byLabel = @{}
         foreach ($result in $results) { $byLabel[$result.Label] = $result }
+
+        # 转存地址失效时回退上游：仓库回退 main 分支压缩包，二进制回退最新 release
+        $mirrorLabels = @()
+        if ($needRepo -and $repoMirror) { $mirrorLabels += '仓库' }
+        if ($needArgc -and $argcMirror) { $mirrorLabels += 'argc.exe' }
+        if ($needYq -and $yqMirror) { $mirrorLabels += 'yq.exe' }
+        foreach ($label in $mirrorLabels)
+        {
+            $current = $byLabel[$label]
+            if ($current -and $current.Ok) { continue }
+            $task = @($tasks | Where-Object { $_.Label -eq $label })[0]
+            Write-Host ("  {0}：scripts-deps 下载失败，回退上游" -f $label)
+            try
+            {
+                if ($label -eq '仓库')
+                {
+                    $url = 'https://github.com/sigoden/argc-completions/archive/refs/heads/main.zip'
+                }
+                elseif ($label -eq 'argc.exe')
+                {
+                    $rel = Get-CxxuLatestRelease -Repo 'sigoden/argc' -Proxy $Proxy -NoProxy:$NoProxy
+                    $asset = @($rel.assets | Where-Object { $_.name -match ('-' + $arch + '-pc-windows-msvc\.zip$') } | Select-Object -First 1)
+                    if (-not $asset.Count) { throw "未找到 $arch Windows 产物" }
+                    $url = $asset[0].browser_download_url
+                }
+                else
+                {
+                    $rel = Get-CxxuLatestRelease -Repo 'mikefarah/yq' -Proxy $Proxy -NoProxy:$NoProxy
+                    $asset = @($rel.assets | Where-Object { $_.name -eq ('yq_windows_' + $yqArch + '.exe') } | Select-Object -First 1)
+                    if (-not $asset.Count) { throw "未找到 yq_windows_$yqArch.exe" }
+                    $url = $asset[0].browser_download_url
+                }
+                Invoke-CxxuDownload -Url $url -OutFile $task.OutFile -Proxy $Proxy -NoProxy:$NoProxy
+                $byLabel[$label] = [pscustomobject]@{
+                    Label = $label; OutFile = $task.OutFile; Ok = $true
+                    Source = $url; Seconds = 0; Error = ''
+                }
+            }
+            catch { Write-Warning ("{0} 回退上游也失败：{1}" -f $label, $_.Exception.Message) }
+        }
 
         # 3) 安装仓库与二进制
         Write-Host '步骤 3/4：安装仓库与二进制'
@@ -1509,13 +1670,14 @@ function Deploy-CompletionStack
     默认层不发起网络请求、不依赖仓库外组件：同步 net9 predictor 与 5.1 Tab 两套活件，
     并补建用户配置模板；Tab 补全默认开启（$env:PsTab 未显式关闭时首个 Tab 自动加载）。
     可选层用开关显式选择，避免新机默认下载一堆仓库外依赖：
-    - -IncludeArgc：argc-completions 仓库 + argc.exe/yq.exe（并发下载，支持代理）。
-    - -IncludeFuzzy：PSFzf 模块 + fzf/zoxide 二进制（优先 scoop/winget/brew，失败回退 GitHub release）。
+    - -IncludeArgc：argc-completions 仓库 + argc.exe/yq.exe（并发下载，优先 scripts-deps 转存仓库）。
+    - -IncludeFuzzy：PSFzf 模块 + fzf/zoxide 二进制（优先 scoop/winget/brew，失败回退转存仓库再回上游）。
     - -IncludePredictor：CompletionPredictor 模块（参数/路径内联预测）。
     - -IncludePSCompletions：PSCompletions 模块（命令参数补全库）。
     - -All：一次选择以上全部；-SkipArgc / -SkipBinaries 仍可用于排除 argc 或二进制。
     国内网络不稳时，可先 Set-Proxy On（或设置 HTTPS_PROXY/HTTP_PROXY）再执行；
-    下载会自动识别代理，也可用 -Proxy/-NoProxy 单次覆盖。缺少可选组件只提示，不影响核心层。
+    下载会自动识别代理，也可用 -Proxy/-NoProxy 单次覆盖；-NoMirror 跳过转存仓库直接走上游。
+    缺少可选组件只提示，不影响核心层。
     -WhatIf 空跑看动作，零副作用。装完开新终端跑 init。
     .EXAMPLE
     Deploy-CompletionStack -WhatIf
@@ -1549,7 +1711,9 @@ function Deploy-CompletionStack
         # 强制直连，忽略 -Proxy 与代理环境变量
         [switch]$NoProxy,
         # 关闭并发下载，改为逐个下载
-        [switch]$NoParallel
+        [switch]$NoParallel,
+        # 跳过 scripts-deps 转存仓库，直接走上游 GitHub
+        [switch]$NoMirror
     )
 
     if ($All)
@@ -1612,7 +1776,7 @@ function Deploy-CompletionStack
         else
         {
             Write-Host '可选层：argc-completions 参数补全'
-            Deploy-ArgcCompletions -Root $ArgcRoot -Proxy $Proxy -NoProxy:$NoProxy -NoParallel:$NoParallel -WhatIf:$WhatIfPreference
+            Deploy-ArgcCompletions -Root $ArgcRoot -Proxy $Proxy -NoProxy:$NoProxy -NoParallel:$NoParallel -NoMirror:$NoMirror -WhatIf:$WhatIfPreference
         }
     }
 
@@ -1631,7 +1795,7 @@ function Deploy-CompletionStack
         if ($SkipBinaries) { Write-Host 'fzf/zoxide：按 -SkipBinaries 跳过' }
         elseif ($PSCmdlet.ShouldProcess('fzf/zoxide', '安装二进制（可选）'))
         {
-            Install-CxxuFuzzyBinaries -Proxy $Proxy -NoProxy:$NoProxy -NoParallel:$NoParallel
+            Install-CxxuFuzzyBinaries -Proxy $Proxy -NoProxy:$NoProxy -NoParallel:$NoParallel -NoMirror:$NoMirror
         }
     }
 

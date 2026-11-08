@@ -140,7 +140,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 ## 7. 补全体验件（推荐组合，默认启用）
 
 > 已启用的走延迟加载（`init` 只注册 `OnIdle` 事件，18ms），默认启动盘不受影响。
-> 安装层面：默认层只含 CxxuCommand/CxxuTab；PSFzf、CompletionPredictor、fzf/zoxide 需 `Deploy-CompletionStack -IncludeFuzzy` / `-IncludePredictor`，或按 §11 单独安装。
+> 安装层面：默认层只含 CxxuCommand/CxxuTab；PSFzf、CompletionPredictor、fzf/zoxide 需 `Deploy-CompletionStack -IncludeFuzzy` / `-IncludePredictor`，或按 §11 单独安装。可选层的仓库外二进制优先取 `scripts-deps` 转存仓库，失败才回上游。
 > 开关：`$env:PsFzf` / `$env:PsZoxide` / `$env:PsPredictor`（默认开，`False` 关；
 > 守护进程由 `Start-StartupBgProcesses` 统一置 `PsPredictor=False`，永不加载 dll）；
 > `$env:PsTab`（CxxuTab Tab 补全，**默认开，置 `False` 关**）；
@@ -307,7 +307,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | 功能 | 默认状态 | 手动启用 | 说明 |
 |---|---|---|---|
 | `PSCompletions`（~200 命令参数补全） | 未装，profile 两行钩子注释中 | `Confirm-ModuleInstalled -ModuleName PSCompletions -Install`，再解开 profile 第 4~5 行 | 旧注"可能导致 `ipmof|iex` 报错"已过期（白名单+`ipmox` 时代），现可放心开 |
-| `fzf` / `zoxide` 二进制 | 无则 `Ctrl+T/R`、`z` 不可用（不影响 CxxuCommand） | `Deploy-CompletionStack -IncludeFuzzy`（scoop→winget/brew→GitHub release），或 `scoop install fzf zoxide` | 装完重开终端，init 缓存自建 |
+| `fzf` / `zoxide` 二进制 | 无则 `Ctrl+T/R`、`z` 不可用（不影响 CxxuCommand） | `Deploy-CompletionStack -IncludeFuzzy`（scoop→winget/brew→`scripts-deps` 转存→上游），或 `scoop install fzf zoxide` | 装完重开终端，init 缓存自建 |
 | `scoop` 本体 | 无则二进制系列全停 | 按官网装，或 `Deploy-ScoopByGithubMirrors`（国内） | 装完补 buckets（`Add-ScoopBuckets`） |
 | `conda` | 无则 prompt  conda 段静默缺失 | `Deploy-MiniforgeConfig`；`$condaExe` 路径按机器对（profile 缓存块） | 缓存 `~/.conda_hook_cache.ps1`，首跑慢一次 |
 | `fnm` + 钩子 | 未装，profile 末行注释中 | `scoop install fnm`，再解开 profile 末行 | node 用户才需要 |

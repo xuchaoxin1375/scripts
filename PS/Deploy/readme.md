@@ -340,3 +340,26 @@ Deploy-GitForWindows -IgnoreCache
 
 ```
 
+## 转存依赖到 GitHub（可选）
+
+补全栈的 `argc`、`yq`、`fzf`、`zoxide` 与 `argc-completions` 快照默认优先从
+[`xuchaoxin1375/scripts-deps`](https://github.com/xuchaoxin1375/scripts-deps) 的固定版本下载，
+失败才回上游 GitHub。需要发布新版本时用本目录的 `Sync-GithubDepsMirror.ps1`：
+
+```powershell
+# 看计划，不下载
+.\PS\Deploy\Sync-GithubDepsMirror.ps1 -WhatIf
+
+# 转存全部工具（默认取各上游最新 release）
+.\PS\Deploy\Sync-GithubDepsMirror.ps1
+
+# 只处理部分工具，或指定版本
+.\PS\Deploy\Sync-GithubDepsMirror.ps1 -Tool argc,yq
+.\PS\Deploy\Sync-GithubDepsMirror.ps1 -Version @{ argc = 'v1.24.1' } -Proxy http://127.0.0.1:7897
+```
+
+- 需要 `GITHUB_TOKEN`（`repo`／`public_repo` 或 fine-grained 的 `Administration: write`）；`-WhatIf` 不需要。
+- 每个 Release 附 `LICENSE` 与 `SHA256SUMS`，并更新仓库根目录的 `SOURCES.md`；带 `-Tool` 时不动 `SOURCES.md`。
+- 脚本结束会打印版本钉子，需要手工同步到 `PS/DevEnv/DevEnv.psm1` 的 `Get-CxxuDepsMirrorAsset`，否则部署仍拉旧版本。
+- 部署时跳过转存仓库用 `-NoMirror`；整体换下载前缀用 `$env:PsDepsMirror`，置 `off` 等于不用转存仓库。
+

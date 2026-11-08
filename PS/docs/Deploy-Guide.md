@@ -155,7 +155,7 @@ Deploy-CompletionStack -All -SkipBinaries      # 全部但跳过 fzf/zoxide 二�
 - 开关默认全开（组件未安装时对应开关不产生实际效果）；单关用 `Disable-PsPlugin Predictor|Tab|Fzf|Zoxide|Argc -Persist`，完整开关与优先级见 `Feature-Guide.md §7`。
 - 可选层需要网络。国内下载不稳定时，先 `Set-Proxy On`（或设置 `HTTPS_PROXY`/`HTTP_PROXY`）再执行；下载会自动识别代理，也可用 `-Proxy <地址>` / `-NoProxy` 单次覆盖。`Set-Proxy` 只影响当前会话（默认端口 7897，`-Port` 可改），新终端需重设或持久化 `HTTPS_PROXY`。缺少可选组件只提示，不影响默认层。
 - PSGallery 模块（`PSFzf`、`CompletionPredictor`、`PSCompletions`）由 PowerShellGet 安装，代理继承规则与 GitHub 直链下载不同；5.1 下环境变量可能不生效，网络受限时优先在 pwsh 7 执行，或配置系统代理后再装。
-- `-IncludeArgc` 的仓库、`argc.exe` 与 `yq.exe` 会并发下载（`-NoParallel` 可串行）；只想单独重装 argc 或指定目录用 `Deploy-ArgcCompletions [-Root <目录>]`。
+- `-IncludeArgc` 的仓库、`argc.exe` 与 `yq.exe` 会并发下载（`-NoParallel` 可串行），且优先取 `scripts-deps` 转存仓库的固定版本，不查 release API；只想单独重装 argc 或指定目录用 `Deploy-ArgcCompletions [-Root <目录>]`。转存仓库不可达时自动回退上游；`-NoMirror` 可直接跳过转存仓库。
 - 验收：ListView 输 `get-child` 应见 `[CxxuCommand]`；Tab 输 `get-chi` 应含 `Get-ChildItem`。不达预期按 `Feature-Guide.md §9` 的「Tab 补全自查」定位。
 - 仓库、模块路径或 profile 还没配好时，先走上面的极简版或 §0~§4。
 
@@ -182,7 +182,7 @@ Install-BasicSoftwares        # 基础包
 Deploy-ScoopApps              # 应用包（fzf/zoxide/fnm/oh-my-posh 按需在里面）
 ```
 
-> `fzf`/`zoxide` 也可由 `Deploy-CompletionStack -IncludeFuzzy` 安装：优先 scoop，其次 winget（Windows）或 brew（macOS），最后回退 GitHub release 到 `~/.cxxu/bin`（自动加入用户 PATH）。scoop 下载不稳定时可直接用后两条。
+> `fzf`/`zoxide` 也可由 `Deploy-CompletionStack -IncludeFuzzy` 安装：优先 scoop，其次 winget（Windows）或 brew（macOS），最后回退直接下载到 `~/.cxxu/bin`（自动加入用户 PATH）。直接下载优先取 `scripts-deps` 转存仓库的固定版本，失败再回上游 release；scoop 下载不稳定时可走这条。
 
 ## 7. python/conda
 

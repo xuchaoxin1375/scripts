@@ -21,7 +21,7 @@
 
 > 一键部署提示：`Deploy-CompletionStack -IncludeArgc` 会一并部署 argc（仓库 + `argc.exe`/`yq.exe`）；只想单独部署或指定目录用 `Deploy-ArgcCompletions [-Root <目录>] [-Proxy <地址>]`。以下手动步骤用于离线、自定义镜像或排障。
 >
-> `Deploy-ArgcCompletions` 按“确认缺失项 → 解析并下载 → 安装 → 当前会话注册”四步输出进度：复用的组件会说明跳过原因，下载会标明目标与来源并在结束后报告大小或版本与耗时，镜像失败自动回退直连。缺少的仓库与二进制会并发下载（`-NoParallel` 改串行）；设置 `HTTPS_PROXY`/`HTTP_PROXY` 或加 `-Proxy` 可走代理，`-NoProxy` 强制直连。任一步失败只告警，结尾汇总失败项并提示重跑；重新执行会补齐缺失项，`-Force` 可强制重新下载。
+> `Deploy-ArgcCompletions` 按“确认缺失项 → 解析并下载 → 安装 → 当前会话注册”四步输出进度：复用的组件会说明跳过原因，下载会标明目标与来源并在结束后报告大小或版本与耗时。仓库与二进制优先取 [`xuchaoxin1375/scripts-deps`](https://github.com/xuchaoxin1375/scripts-deps) 的固定版本，失效才回退上游 GitHub 与镜像；`-NoMirror` 可跳过转存仓库、直接走上游。缺少的仓库与二进制会并发下载（`-NoParallel` 改串行）；设置 `HTTPS_PROXY`/`HTTP_PROXY` 或加 `-Proxy` 可走代理，`-NoProxy` 强制直连。任一步失败只告警，结尾汇总失败项并提示重跑；重新执行会补齐缺失项，`-Force` 可强制重新下载。转存新版本用 `PS/Deploy/Sync-GithubDepsMirror.ps1`，并把打印的版本钉子同步回 `DevEnv.psm1`。
 
 ### 2.1 克隆仓库
 

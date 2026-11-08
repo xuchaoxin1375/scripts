@@ -33,6 +33,9 @@
 - 一键部署默认不安装 PowerShell 7；需要时显式 `-InstallPwsh7`。已有 git/pwsh 时跳过安装，
   不重复覆盖。
 - 克隆优先镜像，失败回退直连，再失败回退离线包。下载后校验 zip/PE 签名，不能只看文件非空。
+- 补全栈二进制默认优先 `xuchaoxin1375/scripts-deps` 的固定版本（`Get-CxxuDepsMirrorAsset` 里的钉子），
+  失败才回上游；发新版先跑 `PS/Deploy/Sync-GithubDepsMirror.ps1`，再把脚本打印的钉子同步回模块。
+  版本钉子是有意为之：不在部署时查 release API，避免新机多一次网络往返与限流。
 - 交互提示按后果二选一：未装 git 时说明“安装 git 后克隆”与“直接下载压缩包”的差别，不只问 y/n；
   克隆加 `--progress` 并按约 10% 输出一行，避免长时间没有任何输出。
 - 本地调试用 `-Sandbox`：在用户下载目录下建独立沙箱目录（下载目录取资源管理器登记的实际路径，
