@@ -25,7 +25,7 @@ Add-EnvVar -EnvVar PSModulePath -NewValue $p -Verbose
 | `Set-PsPrompt -version < fast/short/...>` | 切换提示符；加 `-Persist` 才写注册表记住选择 |
 | `dm` | 切极简 prompt（做笔记摘录时聚焦命令本身） |
 | `Test-PromptDelay` | 测当前 prompt 延迟 |
-| `doctor` | 统一诊断入口（定位问题先执行它）：先跑 `Test-PsEnvReadiness`（安装态），再查运行态（init 错误/PSReadLine/历史大小/predictor/门控/懒加载/守护/仓库脏），只读，默认零网络 |
+| `doctor` | 统一诊断入口（定位问题先执行它）：先跑 `Test-PsEnvReadiness`（安装态），再查运行态（init 错误/PSReadLine/历史大小/predictor/门控/懒加载/守护/仓库脏），只读，默认零网络；按平台过滤不适用的检查并在表尾汇总已跳过项 |
 | `New-CxxuConfigTemplate` | 生成用户配置模板（`~/.cxxu/config.psd1`，仓库外本机生效；内容由仓库默认偏好渲染） |
 | `Import-CxxuConfig` | 读用户配置（init 首步自动调；优先级：环境变量 > 配置文件 > 默认值） |
 | `Get-CxxuConfig` | 查看各开关的当前生效值、来源（环境变量/配置文件/默认值）与默认值；管道接 `Format-List` 看完整说明 |
@@ -202,7 +202,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 
 | 动作 | 命令 | 说明 |
 |---|---|---|
-| 检查 | `doctor` / `Test-PsEnvReadiness` | `doctor` 先跑（安装态 + 运行态，含 `Tab 包装`/`Tab 缓存`/`CxxuTab 5.1` 行）；readiness 活件行备注直接给出结论（`与仓库一致[hash]` / `不一致→执行 Sync-CxxuPredictor`），表尾另有仓库/pwsh/活件三行 |
+| 检查 | `doctor` / `Test-PsEnvReadiness` | `doctor` 先跑（安装态 + 运行态，含 `Tab 包装`/`Tab 缓存` 行，Windows 另有 `CxxuTab 5.1`）；readiness 活件行备注直接给出结论（`与仓库一致[hash]` / `不一致→执行 Sync-CxxuPredictor`），表尾另有仓库/pwsh/活件三行 |
 | 检查远端 | `Test-PsEnvReadiness -CheckRemote` | 默认零网络；加开关才询问远端是否有更新（`ls-remote` 只读，12s 超时） |
 | 安装 | `Sync-CxxuPredictor` | 无活件时生成两套产物（net9 predictor 写 `~/.cxxu/bin/<哈希>`；5.1 Tab 写 `~/.cxxu/bin/ps51/<哈希>`）并更新各自指针，缺目录自动创建；`-WhatIf` 可空跑查看意图 |
 | 更新 | `Update-ReposesConfiged` → 重开终端 → `init` | 拉取后自动调用 `Sync-CxxuPredictor` 同步活件（只新增版本目录，不受锁限制，任何会话都可执行）；纯文本变更执行 `ipmox` 即可（见 §3） |
@@ -227,7 +227,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 
 - 执行策略只约束脚本与模块脚本文件，不约束 `.dll`；dll 加载失败时改执行策略无效。临时一次性运行也可用 `powershell -ExecutionPolicy Bypass -File ...`，日常保持 `RemoteSigned`。
 
-**Tab 补全自查**（`CxxuTab` + `argc`；先跑 `doctor`，看 `Tab 包装`、`Tab 键`、`Tab 缓存`、`CxxuTab 5.1`、`argc 补全` 行）：
+**Tab 补全自查**（`CxxuTab` + `argc`；先跑 `doctor`，看 `Tab 包装`、`Tab 键`、`Tab 缓存`、`argc 补全` 行，Windows 另看 `CxxuTab 5.1` 行）：
 
 | 检查项 | 命令 | 正常表现 |
 |---|---|---|
@@ -323,13 +323,13 @@ p -Force                    # 看 init 分步耗时，定位慢项
 
 ## 12. 非 Windows 说明（Linux/macOS）
 
-> 本模块集按 Windows 日常开发，其它系统"核心可用、部署件受限"。`doctor` 会标出平台行。
+> 本模块集按 Windows 日常开发，其它系统"核心可用、部署件受限"。`doctor` 与 `Test-PsEnvReadiness` 按平台过滤：Windows 专属检查（`scoop`、`CxxuTab 5.1`、守护(IP) 等）在 macOS/Linux 不显示，表尾汇总已跳过项；`平台` 行给出当前平台与限制。
 
-- 可直接用：纯 pwsh 模块（自动发现/`init`/补全栈/`doctor`）；`CxxuPredictor` 是 net9.0（pwsh 7 跨平台可加载，dll 随仓库分发；仓库源点不亮时本地重编，见 `Live-Versions.md §10`）；活件/配置/历史/`Data.json` 全在 `$HOME` 下，路径跨平台；`Test-PsEnvReadiness` 的 `PSModulePath` 检查已做分隔符自适应（`:`/`;`），备注列按 Win/macOS/Linux 三平台给安装建议（scoop 行非 Windows 直接忽略）。
+- 可直接用：纯 pwsh 模块（自动发现/`init`/补全栈/`doctor`）；`CxxuPredictor` 是 net9.0（pwsh 7 跨平台可加载，dll 随仓库分发；仓库源点不亮时本地重编，见 `Live-Versions.md §10`）；活件/配置/历史/`Data.json` 全在 `$HOME` 下，路径跨平台；`Test-PsEnvReadiness` 的 `PSModulePath` 检查已做分隔符自适应（`:`/`;`），备注列按 Win/macOS/Linux 三平台给安装建议，scoop 等 Windows 专属行在非 Windows 不出现；`argc` 探测按平台使用 `completions/macos`、`completions/linux` 与 PATH 中的 `argc`。
 - Linux 可用链（2026-09-25 静态链路梳理，非全模块真机验证）：`init` 热路径已跨平台（变量文件/活件路径全走 `Join-Path`，`Startup`/`Prompt` 的 CIM/注册表分支凭 PSEdition 兜底跳过，`Test-AdminPermission` 走 `id -u`）；`Update-ReposesConfiged` 更新链可用（含自编译保持）；`PwshVar` 在 Linux 下不套 Windows/macOS 专属变量文件（仅基础集），conf 里 Windows 路径变量会指向空，需按本机改。仍不可用：scoop/注册表/计划任务/WT/CIM 信息类（`Hardware`/`Info` 多数为 Windows 专属，调用即报错，不做跨平台适配）。
 - 不可用（Windows 专属，不做跨平台适配）：`scoop` 系（安装/换源/buckets）、注册表持久化（`Add-EnvVar`、`Set-PsPrompt -Persist`、镜像持久化——改走 `$profile` 或 env 文件）、计划任务与开机（`Deploy-StartupTasks`/`Start-StartupTasks`）、WT 下发、CIM/WMI 信息类、`conda` scoop 路径、业务模块硬编码路径（如 WordPress/phpstudy、`C:\` 前缀）。
 - 部分兼容：`PwshVar` 有分平台变量文件表（`$PwshVarFilesWindows`/`$PwshVarFilesMacOs`），新增变量按此模式分文件存放；`Info` 个别函数有 `$IsWindows`/`$IsMacOS` 分支，其余缺分支的函数在非 Windows 下报错即代表不支持。
-- 建议：先跑 `Test-PsEnvReadiness` 看缺口（缺的多为 Windows 专属，按 §11 逐项取舍）；`PwshVar/confs/VarSet1.conf` 的 `$PC*` 主机名按本机添加。
+- 建议：先跑 `Test-PsEnvReadiness` 看缺口（Windows 专属项已按平台隐藏，剩下的按需补齐）；`PwshVar/confs/VarSet1.conf` 的 `$PC*` 主机名按本机添加。
 
 ## 13. Windows PowerShell 5.1 兼容（B 档：交互可用）
 

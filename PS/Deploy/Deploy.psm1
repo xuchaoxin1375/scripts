@@ -1118,6 +1118,46 @@ function Deploy-TrafficMonitor
 
 # 注:镜像站测试函数已独立为 TestLinks 模块(同级目录),此处删除内联版本以降低 Deploy 解析成本
 
+function Get-CxxuPlatformInfo
+{
+    # doctor/Test-PsEnvReadiness 共用的平台信息(不导出):平台名、argc 命名差异与备注。
+    # 5.1 无 $IsWindows/$IsMacOS 自动变量,先用 PSEdition 兜底判 Windows(5.1 只跑 Windows)。
+    $isWindowsOS = (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true))
+    $isMacOS = ($IsMacOS -eq $true)
+    $isLinuxOS = ($IsLinux -eq $true)
+    $name = 'Linux'
+    $note = '非 Windows：scoop/注册表/计划任务/WT 系列不可用（见 Feature-Guide §12）；Windows 专属检查已跳过'
+    if ($isWindowsOS)
+    {
+        $name = 'Windows'
+        $note = 'Windows'
+    }
+    elseif ($isMacOS)
+    {
+        $name = 'macOS'
+    }
+    $argcExe = 'argc'
+    $argcDir = 'linux'
+    if ($isWindowsOS)
+    {
+        $argcExe = 'argc.exe'
+        $argcDir = 'windows'
+    }
+    elseif ($isMacOS)
+    {
+        $argcDir = 'macos'
+    }
+    [PSCustomObject]@{
+        IsWindows = $isWindowsOS
+        IsMac     = $isMacOS
+        IsLinux   = $isLinuxOS
+        Name      = $name
+        Note      = $note
+        ArgcExe   = $argcExe
+        ArgcDir   = $argcDir
+    }
+}
+
 function Test-PsEnvReadiness
 {
     <#
@@ -1136,17 +1176,32 @@ function Test-PsEnvReadiness
         [switch]$CheckRemote
     )
     $psRoot = Split-Path $PSScriptRoot -Parent
-    # 平台判定(备注列按平台给建议；5.1 无 $IsMacOS/$IsLinux 自动变量，$null 比 -eq $true 为假，安全)
-    $isMac = ($IsMacOS -eq $true)
-    $isLinuxOS = ($IsLinux -eq $true)
+    $plat = Get-CxxuPlatformInfo
+    $isMac = $plat.IsMac
+    $isLinuxOS = $plat.IsLinux
     $platNeed = { param($win, $mac, $lin) if ($isMac) { $mac } elseif ($isLinuxOS) { $lin } else { $win } }.GetNewClosure()
+    # profile 入口:四个级别任一有裸 init 行即算装好(Unix 常写在 CurrentUserAllHosts,
+    # 只查 CurrentUserCurrentHost 会误报;跳出范围按“先 PSModulePath 再 init”处理)
+    $profileCandidates = @($PROFILE.AllUsersAllHosts, $PROFILE.AllUsersCurrentHost, $PROFILE.CurrentUserAllHosts, $PROFILE.CurrentUserCurrentHost) |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique
+    $profileInitFile = $null
+    foreach ($pf in $profileCandidates)
+    {
+        if ((Test-Path -LiteralPath $pf) -and ((Get-Content -LiteralPath $pf -Raw -ErrorAction SilentlyContinue) -match '(?m)^\s*init\s*$'))
+        {
+            $profileInitFile = $pf
+            break
+        }
+    }
     # 路径归一化(分隔符统一为系统分隔符,尾部分隔符不敏感;PSModulePath 切分另用系统分隔符,见下)
     $sep = [IO.Path]::DirectorySeparatorChar
     $normPath = { param($p) (([string]$p) -replace '[/\\]', $sep).TrimEnd('/', '\') }.GetNewClosure()
-    # 用 ArrayList 攒行(闭包捕获同一对象引用)
+    # 用 ArrayList 攒行(闭包捕获同一对象引用);$skipped 记本平台不适用的检查,表尾汇总
     $rows = [System.Collections.ArrayList]::new()
+    $skipped = [System.Collections.ArrayList]::new()
     $chk = {
-        param($Item, $Level, $Test, $Need, $Date = { '' }, $Ver = { '' }, $Note = { '' })
+        param($Item, $Level, $Test, $Need, $Date = { '' }, $Ver = { '' }, $Note = { '' }, $Platform = 'All')
+        if (($Platform -eq 'Windows') -and (-not $plat.IsWindows)) { [void]$skipped.Add($Item); return }
         $ok = try { [bool](& $Test) } catch { $false }
         $date = try { & $Date } catch { '' }
         $ver = try { & $Ver } catch { '' }
@@ -1177,8 +1232,8 @@ function Test-PsEnvReadiness
     $binVer = { param($n) try { [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Get-Command $n -ErrorAction Stop).Source).FileVersion } catch { '' } }.GetNewClosure()
     # 必备
     & $chk 'pwsh 7+' '必备' { $PSVersionTable.PSVersion.Major -ge 7 } (& $platNeed 'Update-PowerShell 或重装 pwsh 7' 'brew upgrade --cask powershell（或官网 pkg 重装）' '微软文档 apt/dnf 装 pwsh（Ubuntu 可跑 Install-PwshUbuntu.ps1）') { & $binDate 'pwsh' } { $PSVersionTable.PSVersion.ToString() }
-    & $chk 'PSModulePath 含模块集' '必备' { @(($env:PSModulePath -split [regex]::Escape([IO.Path]::PathSeparator)) | ForEach-Object { & $normPath $_ }) -contains (& $normPath $psRoot) } "Add-EnvVar -EnvVar PSModulePath -NewValue '$psRoot'"
-    & $chk '$profile 有 init' '必备' { (Test-Path -LiteralPath $PROFILE.CurrentUserCurrentHost) -and ((Get-Content -LiteralPath $PROFILE.CurrentUserCurrentHost -Raw) -match '(?m)^\s*init\s*$') } 'Add-CxxuPsModuleToProfile 或手写 init' { & $fileDate $PROFILE.CurrentUserCurrentHost }
+    & $chk 'PSModulePath 含模块集' '必备' { @(($env:PSModulePath -split [regex]::Escape([IO.Path]::PathSeparator)) | ForEach-Object { & $normPath $_ }) -contains (& $normPath $psRoot) } (& $platNeed "Add-EnvVar -EnvVar PSModulePath -NewValue '$psRoot'" "在 `$PROFILE 里追加 `$env:PSModulePath = '${psRoot}:' + `$env:PSModulePath（持久化，重开生效）" "在 `$PROFILE 里追加 `$env:PSModulePath = '${psRoot}:' + `$env:PSModulePath（持久化，重开生效）")
+    & $chk '$profile 有 init' '必备' { $null -ne $profileInitFile } (& $platNeed 'Add-CxxuPsModuleToProfile 或手写 init' '在 $PROFILE 里加一行 init（先确保上面的 PSModulePath 已写入）' '在 $PROFILE 里加一行 init（先确保上面的 PSModulePath 已写入）') { if ($profileInitFile) { & $fileDate $profileInitFile } else { '' } }
     & $chk 'git' '必备' { Get-Command git -ErrorAction SilentlyContinue } 'Confirm-GitCommand / 装 git' { & $binDate 'git' } { & $binVer 'git' }
     & $chk 'PSFzf 模块' '必备' { Get-Module -ListAvailable PSFzf } 'Confirm-ModuleInstalled -ModuleName PSFzf -Install' { & $modDate 'PSFzf' } { & $modVer 'PSFzf' }
     & $chk 'CompletionPredictor 模块' '必备' { Get-Module -ListAvailable CompletionPredictor } 'Confirm-ModuleInstalled -ModuleName CompletionPredictor -Install' { & $modDate 'CompletionPredictor' } { & $modVer 'CompletionPredictor' }
@@ -1186,18 +1241,26 @@ function Test-PsEnvReadiness
     # 可选
     & $chk 'fzf 二进制' '可选' { Get-Command fzf -ErrorAction SilentlyContinue } (& $platNeed 'scoop install fzf' 'brew install fzf' '包管理器装 fzf（apt/dnf/brew）') { & $binDate 'fzf' } { & $binVer 'fzf' }
     & $chk 'zoxide 二进制' '可选' { Get-Command zoxide -ErrorAction SilentlyContinue } (& $platNeed 'scoop install zoxide' 'brew install zoxide' '包管理器装 zoxide（apt/dnf/brew）') { & $binDate 'zoxide' } { & $binVer 'zoxide' }
-    & $chk 'scoop' '可选' { Get-Command scoop -ErrorAction SilentlyContinue } (& $platNeed '按官网装 scoop(参考 Deploy-ScoopByGithubMirrors)' 'macOS 无 scoop，此行忽略（改用 brew 装二进制）' 'Linux 无 scoop，此行忽略（改用系统包管理器装二进制）') { & $binDate 'scoop' } { & $binVer 'scoop' }
-    & $chk 'conda' '可选' { Get-Command conda -ErrorAction SilentlyContinue } (& $platNeed 'Deploy-MiniforgeConfig' 'miniforge 官网装好后跑 Deploy-MiniforgeConfig 写配置' 'miniforge 官网装好后跑 Deploy-MiniforgeConfig 写配置') { & $binDate 'conda' } { & $binVer 'conda' }
+    & $chk 'scoop' '可选' { Get-Command scoop -ErrorAction SilentlyContinue } '按官网装 scoop(参考 Deploy-ScoopByGithubMirrors)' { & $binDate 'scoop' } { & $binVer 'scoop' } -Platform 'Windows'
+    & $chk 'conda' '可选' { Get-Command conda -ErrorAction SilentlyContinue } (& $platNeed 'Deploy-MiniforgeConfig' '官网装 miniforge 后按 config/miniforge 写 ~/.condarc（或 brew install miniforge）' '官网装 miniforge 后按 config/miniforge 写 ~/.condarc') { & $binDate 'conda' } { & $binVer 'conda' }
     & $chk 'fnm' '可选' { Get-Command fnm -ErrorAction SilentlyContinue } (& $platNeed 'scoop install fnm(后解开 profile 钩子)' 'brew install fnm(后解开 profile 钩子)' '包管理器/官网脚本装 fnm（后解开 profile 钩子）') { & $binDate 'fnm' } { & $binVer 'fnm' }
     & $chk 'PSCompletions 模块' '可选' { Get-Module -ListAvailable PSCompletions } 'Confirm-ModuleInstalled -ModuleName PSCompletions -Install(后解开 profile 钩子)' { & $modDate 'PSCompletions' } { & $modVer 'PSCompletions' }
     # 首跑生成物(跑一次 init 自动建)
     & $chk '~/Data.json' '生成物' { Test-Path -LiteralPath (Join-Path $HOME 'Data.json') } '跑一次 init' { & $fileDate (Join-Path $HOME 'Data.json') }
     & $chk 'predictor 活件 ~/.cxxu/bin' '生成物' { [bool](& $liveDllPath) } (& $platNeed '执行 Sync-CxxuPredictor 生成活件' 'Sync-CxxuPredictor（仓库 dll 若加载失败，本地重编后加 -DllPath，见 Live-Versions §10）' 'Sync-CxxuPredictor（仓库 dll 若加载失败，本地重编后加 -DllPath，见 Live-Versions §10）') { $lp = & $liveDllPath; if ($lp) { & $fileDate $lp } else { '' } } { '' } { & $dllSyncNote }
-    & $chk 'CxxuTab 5.1 活件 ~/.cxxu/bin/ps51' '生成物' { if (-not (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true))) { $true } else { [bool](& $livePs51DllPath) } } (& $platNeed '执行 Sync-CxxuPredictor 生成（5.1 只有 Tab 补全；内联预测仍需 pwsh 7.2+）' '非 Windows 不需要 5.1 Tab 活件' '非 Windows 不需要 5.1 Tab 活件') { $lp = & $livePs51DllPath; if ($lp) { & $fileDate $lp } else { '' } }
+    & $chk 'CxxuTab 5.1 活件 ~/.cxxu/bin/ps51' '生成物' { [bool](& $livePs51DllPath) } '执行 Sync-CxxuPredictor 生成（5.1 只有 Tab 补全；内联预测仍需 pwsh 7.2+）' { $lp = & $livePs51DllPath; if ($lp) { & $fileDate $lp } else { '' } } -Platform 'Windows'
     $rows | Format-Table -AutoSize | Out-Host
+    if ($skipped.Count)
+    {
+        Write-Host ("平台 $($plat.Name)：已跳过 {0} 项 Windows 专属检查（{1}）。" -f $skipped.Count, ($skipped -join '、'))
+    }
     $must = @($rows | Where-Object { $_.级别 -eq '必备' })
     $mustOk = @($must | Where-Object { $_.状态 -eq 'OK' }).Count
-    Write-Host "必备 $($mustOk)/$($must.Count);缺的按“备注”列补，补完重跑本检查。"
+    $optional = @($rows | Where-Object { $_.级别 -eq '可选' })
+    $optionalOk = @($optional | Where-Object { $_.状态 -eq 'OK' }).Count
+    $generated = @($rows | Where-Object { $_.级别 -eq '生成物' })
+    $generatedOk = @($generated | Where-Object { $_.状态 -eq 'OK' }).Count
+    Write-Host "必备 $mustOk/$($must.Count);可选 $optionalOk/$($optional.Count);生成物 $generatedOk/$($generated.Count)。缺的按“备注”列补，补完重跑本检查。"
     # 版本/日期表尾(只读,取不到标未知,永不抛;二进制不取进程版本,只取文件级信息)
     $repoRoot = Split-Path $psRoot -Parent
     $repoVer = try { (git -C $repoRoot log -1 --format='%h %ci' HEAD 2>$null).Trim() } catch { '' }
@@ -1222,7 +1285,7 @@ function Test-PsEnvReadiness
         }
         catch { $dllInfo = '未知(读取失败)' }
     }
-    Write-Host "仓库 $repoVer;pwsh $($PSVersionTable.PSVersion);dll 活件 $dllInfo;平台 $(if ($isMac) { 'macOS' } elseif (($IsLinux -eq $true)) { 'Linux' } else { 'Windows' })"
+    Write-Host "仓库 $repoVer;pwsh $($PSVersionTable.PSVersion);dll 活件 $dllInfo;平台 $($plat.Name)"
     # 远端版本对比(仅 -CheckRemote:ls-remote 只问远端,不 fetch 不动本地;12s 超时防卡死,离线/超时标未知,永不抛)
     $remoteInfo = '未查(加 -CheckRemote 问远端)'
     $remoteBehind = $false
@@ -1286,9 +1349,13 @@ function doctor
         [switch]$CheckRemote
     )
     Test-PsEnvReadiness -CheckRemote:$CheckRemote
+    $plat = Get-CxxuPlatformInfo
+    $platNeed = { param($win, $mac, $lin) if ($plat.IsMac) { $mac } elseif ($plat.IsLinux) { $lin } else { $win } }.GetNewClosure()
     $rows = [System.Collections.ArrayList]::new()
+    $skipped = [System.Collections.ArrayList]::new()
     $dchk = {
-        param($Item, $Ok, $Note)
+        param($Item, $Ok, $Note, $Platform = 'All')
+        if (($Platform -eq 'Windows') -and (-not $plat.IsWindows)) { [void]$skipped.Add($Item); return }
         [void]$rows.Add([PSCustomObject]@{
                 检查 = $Item
                 状态 = if ($Ok) { 'OK' } else { 'WARN' }
@@ -1298,11 +1365,13 @@ function doctor
     # init 错误账本(没跑过 init 时变量是 $null,先滤掉,不然 @($null) 数出 1 个空失败)
     $stepErrs = @($global:PsInitStepErrors | Where-Object { $_ })
     & $dchk 'init' ($global:PsInit -and -not $stepErrs.Count) $(if ($stepErrs.Count) { "有 $($stepErrs.Count) 步失败:$($stepErrs.Step -join ',')" } elseif (-not $global:PsInit) { '本会话没跑过 init' } else { 'clean' })
-    # PSReadLine 关键选项
+    # PSReadLine 关键选项(预测源/视图只在交互控制台有意义;重定向下 init 会主动跳过)
+    $consoleInteractive = try { -not [Console]::IsOutputRedirected } catch { $false }
     $pr = try { Get-PSReadLineOption } catch { $null }
     if ($pr)
     {
-        & $dchk '预测源/视图' ($pr.PredictionSource -match 'HistoryAndPlugin') "$($pr.PredictionSource)/$($pr.PredictionViewStyle)(窄窗 Inline 正常)"
+        if ($consoleInteractive) { & $dchk '预测源/视图' ($pr.PredictionSource -match 'HistoryAndPlugin') "$($pr.PredictionSource)/$($pr.PredictionViewStyle)(窄窗 Inline 正常)" }
+        else { [void]$skipped.Add('预测源/视图（非交互会话）') }
         & $dchk '历史策略' ($pr.HistoryNoDuplicates -and $pr.MaximumHistoryCount -ge 3000) "去重 $($pr.HistoryNoDuplicates),上限 $($pr.MaximumHistoryCount)"
     }
     else { & $dchk 'PSReadLine' $false '取不到选项(模块没加载?)' }
@@ -1365,9 +1434,8 @@ function doctor
         }
     }
     catch { $null }
-    if (-not (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true))) { & $dchk 'CxxuTab 5.1' $true '非 Windows 忽略（5.1 仅 Windows）' }
-    elseif ($ps51Live) { & $dchk 'CxxuTab 5.1' $true '5.1 Tab 活件存在（仅 Tab 补全，无内联预测）' }
-    else { & $dchk 'CxxuTab 5.1' $false '无 5.1 Tab 活件：执行 Sync-CxxuPredictor 生成' }
+    if ($ps51Live) { & $dchk 'CxxuTab 5.1' $true '5.1 Tab 活件存在（仅 Tab 补全，无内联预测）' -Platform 'Windows' }
+    else { & $dchk 'CxxuTab 5.1' $false '无 5.1 Tab 活件：执行 Sync-CxxuPredictor 生成' -Platform 'Windows' }
     # Tab 命令表缓存（仅提示）：命中时首个 Tab 约 20ms；过期/缺失会自动重建，不算故障
     $tabCacheDir = Join-Path (Join-Path $HOME '.cxxu') 'cache'
     $tabCache = @(Get-ChildItem -LiteralPath $tabCacheDir -Filter 'tab-commands-*.tsv' -ErrorAction SilentlyContinue |
@@ -1380,51 +1448,88 @@ function doctor
     }
     else { & $dchk 'Tab 缓存' $true '无缓存；首个 Tab 现建（5.1 约 0.4s、7 约 0.1s），之后约 20ms' }
     # 三门控 + 懒加载(5.1 无三元:子表达式内 if/else,双版本同行为)
-    $gates = @('PsFzf', 'PsZoxide', 'PsPredictor', 'PsTab') | ForEach-Object { $v = (Get-Item "env:$_" -ErrorAction SilentlyContinue).Value; "$_=$(if (-not [string]::IsNullOrEmpty($v)) { $v } else { '默认开' })" }
+    $gates = @('PsFzf', 'PsZoxide', 'PsPredictor', 'PsTab', 'PsArgc') | ForEach-Object { $v = (Get-Item "env:$_" -ErrorAction SilentlyContinue).Value; "$_=$(if (-not [string]::IsNullOrEmpty($v)) { $v } else { '默认开' })" }
     & $dchk '门控' $true ($gates -join ' ')
-    & $dchk '平台' $true $(if (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true)) { 'Windows' } else { '非 Windows：scoop/注册表/计划任务/WT 系列不可用，详见 Feature-Guide §12' })
+    & $dchk '平台' $true $plat.Note
     $tabSb = try { (Get-Command TabExpansion2 -CommandType Function -ErrorAction Stop).ScriptBlock.ToString() } catch { '' }
     $tabWrapped = $tabSb -match '__CxxuTabOriginal'
     $tabStub = $tabSb -match 'PsUxTabOriginal'
     & $dchk 'Tab 包装' ($tabWrapped -or $tabStub -or ($env:PsTab -match '^(False|0|No|Off)$')) $(if ($tabWrapped) { 'CxxuTab 包装已装入' } elseif ($tabStub) { '桩已装,首个 Tab 自动装入' } elseif ($env:PsTab -match '^(False|0|No|Off)$') { '已显式关闭(PsTab=False)' } else { '没装桩:跑 Register-PsUxLazyLoad' })
-    # argc 参数补全:仓库/二进制/bash 任缺都会让应用命令的 - 参数没候选
+    # argc 参数补全:仓库/可执行文件/平台补全目录/bash(仅 Windows)任缺都会让应用命令的 - 参数没候选
     $argcRoot = $env:ARGC_COMPLETIONS_ROOT
     if (-not $argcRoot)
     {
-        foreach ($cand in @((Join-Path $HOME 'argc-completions'), 'C:\repos\argc-completions'))
+        $cands = @((Join-Path $HOME 'argc-completions'), (Join-Path (Join-Path $HOME 'repos') 'argc-completions'))
+        if ($plat.IsWindows) { $cands += 'C:\repos\argc-completions' }
+        foreach ($cand in $cands)
         {
             if (Test-Path -LiteralPath (Join-Path $cand 'completions')) { $argcRoot = $cand; break }
         }
     }
+    $argcExe = $null
+    if ($argcRoot)
+    {
+        $localExe = Join-Path (Join-Path $argcRoot 'bin') $plat.ArgcExe
+        if (Test-Path -LiteralPath $localExe) { $argcExe = $localExe }
+    }
+    if (-not $argcExe)
+    {
+        $argcCmd = Get-Command $plat.ArgcExe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($argcCmd) { $argcExe = [string]$argcCmd.Source }
+    }
     if ($env:PsArgc -match '^(False|0|No|Off)$') { & $dchk 'argc 补全' $true '开关已关闭(PsArgc=False)，按需开启' }
-    elseif (-not $argcRoot) { & $dchk 'argc 补全' $false '未部署：跑 Deploy-CompletionStack（默认含 argc）或看 Argc-Completions-Deploy.md' }
-    elseif (-not (Test-Path -LiteralPath (Join-Path $argcRoot 'bin\argc.exe'))) { & $dchk 'argc 补全' $false "缺 argc.exe：$argcRoot\bin" }
-    elseif (-not (Test-Path -LiteralPath (Join-Path $argcRoot 'bin\yq.exe'))) { & $dchk 'argc 补全' $false "缺 yq.exe：$argcRoot\bin" }
+    elseif (-not $argcRoot)
+    {
+        & $dchk 'argc 补全' $false (& $platNeed '未部署：跑 Deploy-CompletionStack（默认含 argc）或看 Argc-Completions-Deploy.md' '未部署：clone argc-completions 到 ~/argc-completions 或 ~/repos/argc-completions，并 brew install argc' '未部署：clone argc-completions 到 ~/argc-completions 或 ~/repos/argc-completions，并装 argc（系统包管理器/cargo）')
+    }
+    elseif (-not (Test-Path -LiteralPath (Join-Path (Join-Path $argcRoot 'completions') $plat.ArgcDir)))
+    {
+        & $dchk 'argc 补全' $false "缺补全目录：$(Join-Path (Join-Path $argcRoot 'completions') $plat.ArgcDir)（仓库过旧？git pull）"
+    }
+    elseif (-not $argcExe) { & $dchk 'argc 补全' $false "缺 $($plat.ArgcExe)：$argcRoot/bin 与 PATH 都没有" }
+    elseif ($plat.IsWindows -and -not (Test-Path -LiteralPath (Join-Path (Join-Path $argcRoot 'bin') 'yq.exe'))) { & $dchk 'argc 补全' $false "缺 yq.exe：$(Join-Path (Join-Path $argcRoot 'bin') 'yq.exe')" }
+    elseif ((-not $plat.IsWindows) -and -not (Get-Command yq -ErrorAction SilentlyContinue)) { & $dchk 'argc 补全' $false '缺 yq：部分补全脚本依赖（brew/包管理器装 yq）' }
     else
     {
-        $argcBash = try { (& (Join-Path $argcRoot 'bin\argc.exe') --argc-shell-path 2>$null | Select-Object -First 1) } catch { '' }
-        if (-not $argcBash -or -not (Test-Path -LiteralPath $argcBash)) { & $dchk 'argc 补全' $false "bash 路径无效：$argcBash" }
-        elseif ($global:PsArgcLoaded) { & $dchk 'argc 补全' $true "已注册 $($global:PsArgcScripts.Count) 个命令" }
-        else { & $dchk 'argc 补全' $true '仓库就位，首个 Tab 自动注册' }
+        $argcVer = try { (& $argcExe --argc-version 2>$null | Select-Object -First 1) } catch { '' }
+        $argcState = if ($global:PsArgcLoaded) { "已注册 $($global:PsArgcScripts.Count) 个命令" } else { '仓库就位，首个 Tab 自动注册' }
+        if (-not $argcVer) { & $dchk 'argc 补全' $false "argc 无法执行：$argcExe" }
+        elseif (-not $plat.IsWindows) { & $dchk 'argc 补全' $true $argcState }
+        else
+        {
+            # Windows 还要确认 argc 能定位 bash;Unix 由 argc 自行找 sh
+            $argcBash = try { (& $argcExe --argc-shell-path 2>$null | Select-Object -First 1) } catch { '' }
+            if (-not $argcBash -or -not (Test-Path -LiteralPath $argcBash)) { & $dchk 'argc 补全' $false "bash 路径无效：$argcBash" }
+            else { & $dchk 'argc 补全' $true $argcState }
+        }
     }
     $tabKey = try { (Get-PSReadLineKeyHandler -Bound -ErrorAction Stop | Where-Object { $_.Key -eq 'Tab' } | Select-Object -First 1).Function } catch { '' }
     & $dchk 'Tab 键' (@('MenuComplete', 'TabCompleteNext', 'Complete', 'CustomAction') -contains $tabKey) $(if ($tabKey) { "当前=$tabKey（原生=MenuComplete/TabCompleteNext；argc 桩=CustomAction）" } else { '读不到绑定：交互会话里重跑 doctor' })
     & $dchk '懒加载' ([bool](Get-Module PSFzf) -or $global:PsUxFzfStub -or $env:PsFzf -match '^(False|0|No|Off)$') $(if (Get-Module PSFzf) { 'PSFzf 已装入(首按 Ctrl+T/R 即用)' } elseif ($global:PsUxFzfStub) { '桩已装,首按 Ctrl+T/R 自动装入' } elseif ($env:PsFzf -match '^(False|0|No|Off)$') { '开关已关闭，按需开启' } else { '没装桩:跑 Register-PsUxLazyLoad' })
-    # 守护进程代理:Data.json 新鲜度(>5 分钟没写=守护可能没跑)
+    # 守护进程代理:Data.json 新鲜度(>5 分钟没写=守护可能没跑;守护依赖计划任务,仅 Windows)
     $dj = Join-Path $HOME 'Data.json'
     if (Test-Path -LiteralPath $dj)
     {
         $age = (Get-Date) - (Get-Item -LiteralPath $dj).LastWriteTime
-        & $dchk '守护(IP)' ($age.TotalMinutes -le 5) ("Data.json $($age.TotalMinutes.ToString('0')) 分钟前更新(超 5 分钟查守护)")
+        & $dchk '守护(IP)' ($age.TotalMinutes -le 5) ("Data.json $($age.TotalMinutes.ToString('0')) 分钟前更新(超 5 分钟查守护)") -Platform 'Windows'
     }
-    else { & $dchk '守护(IP)' $false '无 Data.json:跑一次 init' }
+    else { & $dchk '守护(IP)' $false '无 Data.json:跑一次 init' -Platform 'Windows' }
     # 仓库脏检查(本地,只读)
     $repoRoot = Split-Path $PSScriptRoot -Parent
     $dirty = @(git -C $repoRoot status --porcelain 2>$null)
     & $dchk '仓库干净' (-not $dirty.Count) $(if ($dirty.Count) { "$($dirty.Count) 个未提交改动(更新前先看)" } else { 'clean' })
-    # conda 缓存
-    & $dchk 'conda 缓存' (Test-Path -LiteralPath (Join-Path $HOME '.conda_hook_cache.ps1')) '无则下次 init 现场生成(慢一次)'
+    # conda 缓存(未装 conda 时不检查,避免无意义 WARN)
+    if (Get-Command conda -ErrorAction SilentlyContinue)
+    {
+        & $dchk 'conda 缓存' (Test-Path -LiteralPath (Join-Path $HOME '.conda_hook_cache.ps1')) '无缓存：下次 init 现场生成(慢一次)'
+    }
+    else { [void]$skipped.Add('conda 缓存（未装 conda）') }
     $rows | Format-Table -AutoSize | Out-Host
-    $warn = @($rows | Where-Object { $_.状态 -eq 'WARN' }).Count
-    Write-Host $(if ($warn) { "WARN $warn 项,按备注列逐个处理,处理完重跑 doctor。" } else { '全绿,无事可做。' })
+    if ($skipped.Count)
+    {
+        Write-Host ("已跳过 {0} 项不适用检查（{1}）。" -f $skipped.Count, ($skipped -join '、'))
+    }
+    $warns = @($rows | Where-Object { $_.状态 -eq 'WARN' })
+    $warnNames = @($warns | ForEach-Object { $_.检查 })
+    Write-Host $(if ($warns.Count) { "WARN $($warns.Count) 项（$($warnNames -join '、')）,按备注列逐个处理,处理完重跑 doctor。" } else { '全绿,无事可做。' })
 }

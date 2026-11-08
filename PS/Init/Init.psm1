@@ -610,7 +610,7 @@ function Get-CxxuArgcExecutable
         $local = Join-Path (Join-Path $Root 'bin') $script:ArgcPlatform.Executable
         if (Test-Path -LiteralPath $local) { return $local }
     }
-    $cmd = Get-Command $script:ArgcPlatform.Executable -CommandType Application -ErrorAction Ignore
+    $cmd = Get-Command $script:ArgcPlatform.Executable -CommandType Application -ErrorAction Ignore | Select-Object -First 1
     if ($cmd) { return [string]$cmd.Source }
     return $null
 }
