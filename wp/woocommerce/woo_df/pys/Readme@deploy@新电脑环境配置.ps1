@@ -3,9 +3,9 @@
 
 # 下载火车头采集器: 
 ## 官网
-https://locoy.com/download
+# https://locoy.com/download
 # 10.28版本下载链接
-https://www.locoy.com/LocoySpider_V10.28_Build20250507.zip
+# https://www.locoy.com/LocoySpider_V10.28_Build20250507.zip
 
 # 配置powershell环境🎈
 #方案1: 手动安装powershell和git软件,然后执行以下语句快速部署基本powershell(pwsh)
@@ -33,8 +33,16 @@ proxyify (蝙蝠代理插件)
 划词翻译
 
  #>
+# python环境
+set-proxy -p 7897
+ winget install python.python.3.14 # 经典版本号ID
+# 新开标签,然后pip 安装
+pip install -r $woo_df/requirements.txt
+
 # 配置scoop for cn user🎈
 Deploy-ScoopForCNUser -InstallBasicSoftwares -UseGiteeForkAndBucket -InstallForAdmin
+# 代理加速(可选)
+scoop config proxy 127.0.0.1:7897
 #让scoop安装的软件可以在开始菜单中搜索到并且命令行中可以通过名字启动软件(尤其是gui软件)
 Deploy-ScoopStartMenuAppsStarter 
 # 安装额外的scoop bucket (如果失败,重新运行,并且在选择镜像链接的时候换一个(而不是默认回车))

@@ -71,7 +71,10 @@ lib64/
 # 安装日志
 pip-log.txt
 pip-delete-this-directory.txt
-
+# 临时文件
+temp.*
+tmp.*
+*.tmp
 # 单元测试/覆盖率
 nosetests.xml
 coverage.xml
