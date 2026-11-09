@@ -22,7 +22,7 @@ function Set-PsExtension
 
             # 补全模块
             'CompletionPredictor'
-            # 'PsCompletions' #这里导入此模块会报错(可能有冲突,请在其他位置导入此模块)
+            # PSCompletions 由 Init 的组件清单按需导入（默认关），不在扩展名单里重复加载
             
             # 目录跳转
             # 'ZLocation' 使用更加强大和通用的zoxide替代(跨平台高性能方案,无需通过powershell导入)
@@ -59,8 +59,7 @@ function Set-PsExtension
     elseif ($env:PsExtension -eq 'True')
     {
 
-        # scoop 相关
-        # Invoke-Expression (&scoop-search --hook)
+        # scoop 相关由组件清单管理（ScoopSearch，默认关）
         # 检查模块是否已经安装,必要时安装对应的模块
         $i = 0
         $count = $modules.Count

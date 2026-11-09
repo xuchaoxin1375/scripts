@@ -261,10 +261,11 @@ $homeDir = $HOME
         Level     = '可选'
         Kind      = 'Module'
         Name      = 'PSCompletions'
-        Impact    = '约 200 个命令的参数补全不可用；启用前还需解开 profile 中的钩子。'
-        Install   = 'Confirm-ModuleInstalled -ModuleName PSCompletions -Install，再解开 profile 钩子'
+        Gate      = 'PsCompletions'
+        Impact    = '约 200 个命令的参数补全不可用。'
+        Install   = 'Confirm-ModuleInstalled -ModuleName PSCompletions -Install（或 Deploy-CompletionStack -IncludePSCompletions），再 Enable-CxxuComponent PSCompletions -Persist'
         Docs      = 'Feature-Guide.md §11'
-        Note      = '默认不随 init 加载。'
+        Note      = '组件默认关闭；启用后由 init 导入模块。'
     }
 
     # 补全：git/gitk（git-completion）
@@ -332,13 +333,15 @@ $homeDir = $HOME
         Level     = '可选'
         Kind      = 'Command'
         Name      = 'fnm'
-        Impact    = 'node 版本切换与 profile 钩子不可用；仅 node 用户需要。'
+        Gate      = 'PsFnm'
+        Impact    = 'node 版本切换不可用；仅 node 用户需要。'
         Install   = @{
-            Windows = 'scoop install fnm，再解开 profile 钩子'
-            Mac     = 'brew install fnm，再解开 profile 钩子'
-            Linux   = '按官网脚本安装 fnm，再解开 profile 钩子'
+            Windows = 'scoop install fnm，再 Enable-CxxuComponent Fnm -Persist'
+            Mac     = 'brew install fnm，再 Enable-CxxuComponent Fnm -Persist'
+            Linux   = '按官网脚本安装 fnm，再 Enable-CxxuComponent Fnm -Persist'
         }
         Docs      = 'Feature-Guide.md §11'
+        Note      = '组件默认关闭；启用后由 init 执行 fnm env --use-on-cd。'
     }
 
     # 提示符：posh-git
@@ -391,9 +394,11 @@ $homeDir = $HOME
         Kind      = 'Command'
         Name      = 'scoop-search'
         Platform  = 'Windows'
-        Impact    = 'profile 中注释的 scoop-search 钩子不可用；scoop search 仍可用但较慢。'
-        Install   = 'scoop install scoop-search，再解开 profile 钩子'
+        Gate      = 'PsScoopSearch'
+        Impact    = 'scoop search 仍可用但较慢。'
+        Install   = 'scoop install scoop-search，再 Enable-CxxuComponent ScoopSearch -Persist'
         Docs      = 'Feature-Guide.md §11'
+        Note      = '组件默认关闭；启用后由 init 注入 scoop-search --hook。'
     }
     [PSCustomObject]@{
         Feature   = '工具链：包管理器'

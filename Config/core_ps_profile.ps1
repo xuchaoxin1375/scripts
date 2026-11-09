@@ -1,11 +1,3 @@
 init
-# 全局补全模块需要特殊处理,放在profile中,但是该模块可能导致ipmof|iex报错,所以不自动启用为好
-# Confirm-ModuleInstalled -Name PsCompletions -Install *> $null
-# Import-Module PSCompletions
-
-# $res = Get-Command 'scoop-search' -ErrorAction SilentlyContinue
-# if ($res)
-# {
-#     Write-Host 'scoop-search hook loaded!'
-#     Invoke-Expression (&scoop-search --hook)
-# }
+# PSCompletions/fnm/scoop-search 等可选组件由 init 按组件清单加载；
+# 启停用 Enable-CxxuComponent/Disable-CxxuComponent（-Persist 写入 ~/.cxxu/config.psd1），不再改 profile。

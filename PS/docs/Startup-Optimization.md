@@ -265,8 +265,8 @@ Set-PSReadLineOption: 句柄无效。
    对启动极敏感者可降级为 `History`。（状态同步：重定向场景已自动跳过预测源/列表视图，见 §12；
    真机交互分支行为不变。）
 4. ~~**`Set-PsExtension` 内的 `Write-Progress -ParentId 0`**~~——已完成（§10）：去掉悬空父引用并收尾。
-5. **`$profile` 尾部的 `argc/fnm` 钩子**（当前注释状态）：`argc` 二进制缺失时不要放开；
-   启用会显著加长启动，后续如需启用建议走 `Register-EngineEvent PowerShell.OnIdle` 延迟加载。
+5. ~~**`$profile` 尾部的 `argc/fnm` 钩子**~~——已完成：`argc` 由 `Set-ArgcCompletions` 懒加载，
+   `PSCompletions`/`fnm`/`scoop-search` 迁入组件清单（默认关，启用后按组件配置加载），profile 不再保留钩子。
 6. **开机任务**（`Startup.psm1:Start-StartupTasks`）：`TimeAnnouncer` + `IpUpdater` 两个常驻 pwsh 进程
    可合并为一个 daemon；`startup.ps1` 阻塞登录过程，建议计划任务延迟执行。
 7. ~~**conda 初始化钩子**~~——已完成（§8）：`~/.conda_hook_cache.ps1` 缓存，573→59ms。

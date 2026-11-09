@@ -1,6 +1,7 @@
 ﻿@{
     # CxxuPsModules 组件清单（仓库真源）。
-    # 用途：init 按 Phase 顺序加载；Get/Enable/Disable-CxxuComponent 读取同一份元数据；
+    # 用途：Get/Enable/Disable-CxxuComponent 读取同一份元数据；Phase 只做分组与说明，
+    # 实际加载顺序由 Init.psm1 的步骤表维护。
     # 用户配置只表达 Enabled 与选项，不在这里改加载顺序。
     # 新增组件：补一条记录，并在 Init.psm1 提供对应的 Init 函数。
     SchemaVersion = 1
@@ -114,6 +115,45 @@
                     Description = 'carapace 额外排除的命令（数组，如 winget、uv）'
                 }
             )
+        }
+        @{
+            Id          = 'PSCompletions'
+            Name        = 'PSCompletions'
+            Phase       = 'Completions'
+            Key         = 'PsCompletions'
+            Default     = $false
+            Description = '约 200 个命令的参数补全（init 导入模块）'
+            Lazy        = 'Startup'
+            Init        = 'Import-PsCompletions'
+            Detect      = 'PSCompletions'
+            Install     = 'Deploy-CompletionStack -IncludePSCompletions'
+            Docs        = 'Feature-Guide.md §7'
+        }
+        @{
+            Id          = 'Fnm'
+            Name        = 'fnm'
+            Phase       = 'Environment'
+            Key         = 'PsFnm'
+            Default     = $false
+            Description = 'node 版本切换（init 执行 fnm env --use-on-cd）'
+            Lazy        = 'Startup'
+            Init        = 'Initialize-Fnm'
+            Detect      = 'fnm'
+            Install     = 'scoop install fnm（或 brew install fnm）'
+            Docs        = 'Feature-Guide.md §7'
+        }
+        @{
+            Id          = 'ScoopSearch'
+            Name        = 'scoop-search'
+            Phase       = 'Tools'
+            Key         = 'PsScoopSearch'
+            Default     = $false
+            Description = 'scoop 搜索加速（init 注入 scoop-search --hook）'
+            Lazy        = 'Startup'
+            Init        = 'Initialize-ScoopSearch'
+            Detect      = 'scoop-search'
+            Install     = 'scoop install scoop-search'
+            Docs        = 'Feature-Guide.md §11'
         }
     )
 }

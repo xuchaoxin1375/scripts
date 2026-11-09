@@ -1243,8 +1243,8 @@ function Test-PsEnvReadiness
     & $chk 'zoxide 二进制' '可选' { Get-Command zoxide -ErrorAction SilentlyContinue } (& $platNeed 'scoop install zoxide' 'brew install zoxide' '包管理器装 zoxide（apt/dnf/brew）') { & $binDate 'zoxide' } { & $binVer 'zoxide' }
     & $chk 'scoop' '可选' { Get-Command scoop -ErrorAction SilentlyContinue } '按官网装 scoop(参考 Deploy-ScoopByGithubMirrors)' { & $binDate 'scoop' } { & $binVer 'scoop' } -Platform 'Windows'
     & $chk 'conda' '可选' { Get-Command conda -ErrorAction SilentlyContinue } (& $platNeed 'Deploy-MiniforgeConfig' '官网装 miniforge 后按 config/miniforge 写 ~/.condarc（或 brew install miniforge）' '官网装 miniforge 后按 config/miniforge 写 ~/.condarc') { & $binDate 'conda' } { & $binVer 'conda' }
-    & $chk 'fnm' '可选' { Get-Command fnm -ErrorAction SilentlyContinue } (& $platNeed 'scoop install fnm(后解开 profile 钩子)' 'brew install fnm(后解开 profile 钩子)' '包管理器/官网脚本装 fnm（后解开 profile 钩子）') { & $binDate 'fnm' } { & $binVer 'fnm' }
-    & $chk 'PSCompletions 模块' '可选' { Get-Module -ListAvailable PSCompletions } 'Confirm-ModuleInstalled -ModuleName PSCompletions -Install(后解开 profile 钩子)' { & $modDate 'PSCompletions' } { & $modVer 'PSCompletions' }
+    & $chk 'fnm' '可选' { Get-Command fnm -ErrorAction SilentlyContinue } (& $platNeed 'scoop install fnm(后 Enable-CxxuComponent Fnm -Persist)' 'brew install fnm(后 Enable-CxxuComponent Fnm -Persist)' '包管理器/官网脚本装 fnm（后 Enable-CxxuComponent Fnm -Persist）') { & $binDate 'fnm' } { & $binVer 'fnm' }
+    & $chk 'PSCompletions 模块' '可选' { Get-Module -ListAvailable PSCompletions } 'Confirm-ModuleInstalled -ModuleName PSCompletions -Install(后 Enable-CxxuComponent PSCompletions -Persist)' { & $modDate 'PSCompletions' } { & $modVer 'PSCompletions' }
     & $chk 'git-completion 模块' '可选' { Get-Module -ListAvailable git-completion } 'Deploy-CompletionStack -IncludeGitCompletion（或 Install-Module git-completion -Scope CurrentUser -Force）' { & $modDate 'git-completion' } { & $modVer 'git-completion' }
     # 首跑生成物(跑一次 init 自动建)
     & $chk '~/Data.json' '生成物' { Test-Path -LiteralPath (Join-Path $HOME 'Data.json') } '跑一次 init' { & $fileDate (Join-Path $HOME 'Data.json') }
@@ -1783,6 +1783,9 @@ function Get-CxxuDependencyGate
         PsArgc      = 'Enable-PsPlugin Argc -Persist'
         PsGitCompletion = 'Enable-PsPlugin GitCompletion -Persist'
         PsCarapace  = 'Enable-PsPlugin Carapace -Persist'
+        PsCompletions = 'Enable-PsPlugin PSCompletions -Persist'
+        PsFnm       = 'Enable-PsPlugin Fnm -Persist'
+        PsScoopSearch = 'Enable-PsPlugin ScoopSearch -Persist'
     }
     $enable = $map[$Gate]
     if ([string]::IsNullOrWhiteSpace($enable)) { $enable = "将环境变量 $Gate 设为 True" }

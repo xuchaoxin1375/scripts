@@ -100,13 +100,13 @@ Get-CxxuDependencyReport -Json           # 供其他程序消费
 | 补全：git/gitk（git-completion） | `git-completion` 模块 | 推荐 | `git`/`gitk` 回落 argc 或原生补全 | `Deploy-CompletionStack -IncludeGitCompletion` 或 `Install-Module git-completion -Scope CurrentUser -Force`；init 检测到模块后自动挂载；来源用 `Set-GitCompletionSource` 切换 |
 | 补全：外部 CLI 参数（carapace） | `carapace` 二进制 | 可选 | `scoop`、`winget`、`gh`、`docker` 等外部 CLI 的参数值补全不可用 | `Deploy-Carapace`，再 `Enable-PsPlugin Carapace -Persist`；git/gitk 归属用 `Set-GitCompletionSource` 切换 |
 | 补全：目录跳转 | `zoxide` 二进制 | 可选 | `z` 目录跳转不可用 | `Deploy-CompletionStack -IncludeFuzzy`；或 `scoop install zoxide` 或 `brew install zoxide` |
-| 补全：参数补全（PSCompletions） | `PSCompletions` 模块 | 可选 | 约 200 个命令的参数补全不可用 | `Confirm-ModuleInstalled -ModuleName PSCompletions -Install`，再解开 profile 钩子 |
+| 补全：参数补全（PSCompletions） | `PSCompletions` 模块 | 可选 | 约 200 个命令的参数补全不可用 | `Deploy-CompletionStack -IncludePSCompletions` 或 `Confirm-ModuleInstalled -ModuleName PSCompletions -Install`，再 `Enable-CxxuComponent PSCompletions -Persist` |
 | 交互：文件图标 | `Terminal-Icons` 模块 | 可选 | `Get-ChildItem` 的文件图标不显示 | `Confirm-ModuleInstalled -ModuleName Terminal-Icons -Install` |
 | 提示符：conda | `conda` | 可选 | 提示符 conda 段不显示；`Deploy-MiniforgeConfig` 也需要 | `Deploy-MiniforgeConfig` 或 `scoop install miniforge` / `brew install miniforge` |
-| 提示符：node | `fnm` | 可选 | node 版本切换与 profile 钩子不可用 | `scoop install fnm` 或 `brew install fnm`，再解开 profile 钩子 |
+| 提示符：node | `fnm` | 可选 | node 版本切换不可用；仅 node 用户需要 | `scoop install fnm`（或 `brew install fnm`），再 `Enable-CxxuComponent Fnm -Persist` |
 | 提示符：posh-git | `posh-git` 模块或仓库 | 可选 | `Set-PoshPrompt -Poshgit` 的 git 状态段不可用 | `Install-Module posh-git -Scope CurrentUser -Force` 或 clone 到 `~/repos/posh-git` |
 | 提示符：oh-my-posh | `oh-my-posh` | 可选 | `Set-PoshPrompt` 主题不可用；默认 prompt 不受影响 | `scoop install oh-my-posh`、`brew install oh-my-posh` 或官网脚本，并设置 `POSH_THEMES_PATH` |
-| 工具链：包管理器 | `scoop`、`scoop-search`、`brew` | 可选 | 不能一键安装 fzf、zoxide、fnm 等二进制；scoop 搜索增强不可用 | 按官网安装，或 `Deploy-ScoopByGithubMirrors`；`scoop install scoop-search` |
+| 工具链：包管理器 | `scoop`、`scoop-search`、`brew` | 可选 | 不能一键安装 fzf、zoxide、fnm 等二进制；scoop 搜索增强不可用 | 按官网安装，或 `Deploy-ScoopByGithubMirrors`；`scoop install scoop-search` 后 `Enable-CxxuComponent ScoopSearch -Persist` |
 | 运维：压缩归档 | `7z`、`zstd`、`lz4`、`gzip` | 可选 | 对应格式的压缩或解压不可用 | `scoop`、`brew` 或系统包管理器 |
 | 运维：SSH 远程 | `ssh`、`scp`、`sshpass`、`ssh-keygen`、`sshd` | 可选 | 远程执行、文件上传、密码自动登录、密钥生成或服务端初始化不可用 | OpenSSH 客户端、系统包管理器或 `scoop install openssh` |
 | 运维：MySQL | `mysql`、`mysqldump` | 可选 | 建库、查询、导入与备份不可用 | 安装 MySQL 客户端或使用 phpstudy 自带的 `mysql.exe`、`mysqldump.exe` |

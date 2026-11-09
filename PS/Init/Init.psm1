@@ -97,6 +97,10 @@ function init
         @{ Name = 'Initialize-Carapace'; Action = { Initialize-Carapace }; MinPS = 7 }
         # argc-completions:启动只设环境与 Tab 桩,首个 Tab 才注册(开关 $env:PsArgc;5.1 也可用)
         @{ Name = 'Set-ArgcCompletions'; Action = { Set-ArgcCompletions } }
+        # 可选组件:默认关,启用后按组件配置加载;未启用时不产生额外开销
+        @{ Name = 'Initialize-Fnm'; Action = { Initialize-Fnm } }
+        @{ Name = 'Import-PsCompletions'; Action = { Import-PsCompletions } }
+        @{ Name = 'Initialize-ScoopSearch'; Action = { Initialize-ScoopSearch } }
         @{ Name = 'Confirm-EnvVarOfInfo'; Action = { Confirm-EnvVarOfInfo }; MinPS = 7 }
         @{ Name = 'Set-PsExtension'; Action = { Set-PsExtension }; MinPS = 7 }
         # 设置prompt样式(这里面会导入基础的powershell预定变量和别名)
@@ -1078,6 +1082,124 @@ function Register-GitCompletion
     }
 }
 
+function Import-PsCompletions
+{
+    <#
+    .SYNOPSIS
+    按组件配置导入 PSCompletions 模块（默认关闭，启用时由 init 调用）。
+    .DESCRIPTION
+    开关 PsCompletions（默认 $false）；启用后要求模块已安装。
+    模块只导入到全局会话，失败只告警，不中断 init。
+    .EXAMPLE
+    Import-PsCompletions
+    .EXAMPLE
+    Enable-CxxuComponent PSCompletions -Persist
+    #>
+    [CmdletBinding()]
+    param()
+
+    if ([string]::IsNullOrWhiteSpace($env:PsCompletions)) { return }
+    if ($env:PsCompletions -match '^(False|0|No|Off)$') { return }
+    if (Get-Module PSCompletions) { return }
+    if (-not (Get-Module -ListAvailable PSCompletions -ErrorAction SilentlyContinue))
+    {
+        Write-Warning 'PsCompletions 已启用，但模块未安装；先执行 Deploy-CompletionStack -IncludePSCompletions。'
+        return
+    }
+
+    try
+    {
+        Import-Module PSCompletions -Global -ErrorAction Stop
+        Write-Verbose 'PSCompletions 已导入'
+    }
+    catch
+    {
+        Write-Warning ("PSCompletions 导入失败：{0}" -f $_.Exception.Message)
+    }
+}
+
+function Initialize-Fnm
+{
+    <#
+    .SYNOPSIS
+    按组件配置加载 fnm 的 PowerShell 环境（默认关闭，启用时由 init 调用）。
+    .DESCRIPTION
+    开关 PsFnm（默认 $false）；启用后要求 fnm 在 PATH。
+    执行 fnm env --use-on-cd，注册 node 版本切换所需的环境变量与目录切换钩子；
+    失败只告警，不中断 init。
+    .EXAMPLE
+    Initialize-Fnm
+    .EXAMPLE
+    Enable-CxxuComponent Fnm -Persist
+    #>
+    [CmdletBinding()]
+    param()
+
+    if ([string]::IsNullOrWhiteSpace($env:PsFnm)) { return }
+    if ($env:PsFnm -match '^(False|0|No|Off)$') { return }
+    if (-not (Get-Command fnm -ErrorAction SilentlyContinue))
+    {
+        Write-Warning 'PsFnm 已启用，但 PATH 中没有 fnm；先执行 scoop install fnm（或 brew install fnm）。'
+        return
+    }
+
+    try
+    {
+        $hookScript = & fnm env --use-on-cd --shell powershell 2>$null | Out-String
+        if ($LASTEXITCODE -ne 0)
+        {
+            $hookScript = & fnm env --use-on-cd 2>$null | Out-String
+        }
+        if ($LASTEXITCODE -ne 0) { throw "fnm env 退出码 $LASTEXITCODE" }
+        $hookScript | Invoke-Expression
+        Write-Verbose 'fnm 环境已加载'
+    }
+    catch
+    {
+        Write-Warning ("fnm 环境加载失败：{0}" -f $_.Exception.Message)
+    }
+}
+
+function Initialize-ScoopSearch
+{
+    <#
+    .SYNOPSIS
+    按组件配置注入 scoop-search 的搜索钩子（默认关闭，启用时由 init 调用）。
+    .DESCRIPTION
+    开关 PsScoopSearch（默认 $false）；启用后要求 scoop-search 在 PATH。
+    执行 scoop-search --hook，让 scoop search 走加速索引；失败只告警，不中断 init。
+    .EXAMPLE
+    Initialize-ScoopSearch
+    .EXAMPLE
+    Enable-CxxuComponent ScoopSearch -Persist
+    #>
+    [CmdletBinding()]
+    param()
+
+    if ([string]::IsNullOrWhiteSpace($env:PsScoopSearch)) { return }
+    if ($env:PsScoopSearch -match '^(False|0|No|Off)$') { return }
+    if (-not (Get-Command scoop-search -ErrorAction SilentlyContinue))
+    {
+        Write-Warning 'PsScoopSearch 已启用，但 PATH 中没有 scoop-search；先执行 scoop install scoop-search。'
+        return
+    }
+
+    try
+    {
+        $hookScript = & scoop-search --hook 2>$null | Out-String
+        if ($LASTEXITCODE -ne 0) { throw "scoop-search --hook 退出码 $LASTEXITCODE" }
+        # scoop-search 的钩子用 `function scoop` 定义；在模块函数内直接执行只会留在函数作用域，
+        # 这里把函数定义提升到全局，等价于原先在 profile 顶层执行 hook。
+        $hookScript = [regex]::Replace($hookScript, '(?m)^(\s*function\s+)(?!global:)', '$1global:')
+        $hookScript | Invoke-Expression
+        Write-Verbose 'scoop-search 钩子已加载'
+    }
+    catch
+    {
+        Write-Warning ("scoop-search 钩子加载失败：{0}" -f $_.Exception.Message)
+    }
+}
+
 # --- 从 Pwsh.psm1 迁入:环境等级跟踪与导入(职责:初始化) ---
 
 function Update-PwshEnv
@@ -1878,7 +2000,9 @@ function Disable-PsPlugin
     插件注册表：Fzf(PSFzf 快捷键)/Zoxide(z 跳转)/Predictor(命令名 ListView 预测)/
     Tab(CxxuTab 命令名 Tab 模糊，默认开,不需要时停用)/
     Argc(argc-completions 参数补全,默认开,懒加载)/GitCompletion(git/gitk 的 Tab 补全)/
-    Carapace(外部 CLI 参数补全,默认关,由 init 加载)。
+    Carapace(外部 CLI 参数补全,默认关,由 init 加载)/
+    PSCompletions(约 200 个命令的参数补全)/Fnm(node 版本切换)/ScoopSearch(scoop 搜索加速)；
+    后三项默认关，启用后由 init 按组件配置加载。
     停用只关本命令的合并/加载，引擎原生行为不受影响；持开关逐调用判定，无需重载。
     已注册的 Native completer 无法在当前会话撤销：停用 GitCompletion/Carapace 后需重开终端，
     剩余来源才会重新接管 git/gitk。
@@ -1892,7 +2016,7 @@ function Disable-PsPlugin
     param(
         # 插件名(Tab 补全可用)
         [Parameter(Mandatory)]
-        [ValidateSet('Fzf', 'Zoxide', 'Predictor', 'Tab', 'Argc', 'GitCompletion', 'Carapace')]
+        [ValidateSet('Fzf', 'Zoxide', 'Predictor', 'Tab', 'Argc', 'GitCompletion', 'Carapace', 'PSCompletions', 'Fnm', 'ScoopSearch')]
         [string]$Name,
         # 写入用户配置文件,长期有效(否则只关当会话)
         [switch]$Persist,
@@ -1919,6 +2043,10 @@ function Disable-PsPlugin
             {
                 Write-Host '当前会话已注册的 carapace completer 无法撤销；重开终端后由剩余来源接管 git/gitk。'
             }
+            elseif ($Name -in @('PSCompletions', 'Fnm', 'ScoopSearch'))
+            {
+                Write-Host '当前会话已加载的模块或钩子无法撤销；重开终端后完全停用。'
+            }
         }
     }
 }
@@ -1931,7 +2059,8 @@ function Enable-PsPlugin
     启用是显式开(环境变量 True,盖过配置文件)。Tab/Predictor 即时生效(逐调用判定,
     无需重载);7+ 的 Fzf/Tab 立装桩即时生效(重调安装器,幂等,只补缺);5.1 的 Tab
     直接导入 CxxuTab;Argc 立装 Tab 桩,真正的注册仍在首个 Tab;GitCompletion 在模块已安装时
-    立即注册 git/gitk completer;Carapace 立即按配置加载;Predictor/Zoxide 单发已过则重开终端
+    立即注册 git/gitk completer;Carapace 立即按配置加载;PSCompletions/Fnm/ScoopSearch
+    立即调用各自的初始化函数;Predictor/Zoxide 单发已过则重开终端
     (或 Register-PsUxLazyLoad -Now 立装)。
     .EXAMPLE
     Enable-PsPlugin Tab
@@ -1942,7 +2071,7 @@ function Enable-PsPlugin
     param(
         # 插件名(Tab 补全可用)
         [Parameter(Mandatory)]
-        [ValidateSet('Fzf', 'Zoxide', 'Predictor', 'Tab', 'Argc', 'GitCompletion', 'Carapace')]
+        [ValidateSet('Fzf', 'Zoxide', 'Predictor', 'Tab', 'Argc', 'GitCompletion', 'Carapace', 'PSCompletions', 'Fnm', 'ScoopSearch')]
         [string]$Name,
         # 写入用户配置文件,长期有效(否则只开当会话)
         [switch]$Persist,
@@ -1985,6 +2114,9 @@ function Enable-PsPlugin
             # 只补环境/PATH 与 Tab 桩(幂等);实际注册仍在首个 Tab
             Set-ArgcCompletions -ErrorAction SilentlyContinue
         }
+        if ($Name -eq 'PSCompletions') { Import-PsCompletions }
+        elseif ($Name -eq 'Fnm') { Initialize-Fnm }
+        elseif ($Name -eq 'ScoopSearch') { Initialize-ScoopSearch }
         if ((($Name -eq 'Fzf') -or ($Name -eq 'Tab')) -and ($PSVersionTable.PSVersion.Major -ge 7))
         {
             # 立装桩即时生效(幂等,只补缺;交互门由安装器自己判定,重定向下静默跳过)

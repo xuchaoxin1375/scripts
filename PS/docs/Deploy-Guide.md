@@ -127,7 +127,7 @@ Add-CxxuPsModuleToProfile  # 往 $profile（CurrentUserCurrentHost）写推荐�
 ```
 
 conda 用户：跑 `conda init powershell` 后**重贴缓存块**（它会覆盖，贴法见 `Feature-Guide.md §5`）；
-`argc` 钩子在 profile 里保持注释（Init 已接管，见 [Argc-Completions-Deploy](Argc-Completions-Deploy.md)）；`fnm` 按需再开（见 [Feature-Guide](Feature-Guide.md) 的「补全体验件」）。`git-completion` 不需要 profile 配置：装好模块后由 `init` 自动挂载（首次补全才导入）；`carapace` 由 `init` 按 `PsCarapace` 配置加载，默认关闭，需要时按「可选：carapace」启用。
+profile 里只保留 `init`；`argc` 由 Init 接管（部署见 [Argc-Completions-Deploy](Argc-Completions-Deploy.md)），`PSCompletions`/`fnm`/`scoop-search` 已迁到组件清单（默认关，装好后用 `Enable-CxxuComponent <Id> -Persist` 启用）。`git-completion` 不需要 profile 配置：装好模块后由 `init` 自动挂载（首次补全才导入）；`carapace` 由 `init` 按 `PsCarapace` 配置加载，默认关闭，需要时按「可选：carapace」启用。
 
 ## 5. 补全栈与第三方 PS 模块
 
@@ -145,7 +145,7 @@ conda 用户：跑 `conda init powershell` 后**重贴缓存块**（它会覆盖
 | 可选层 `-IncludeArgc` | argc-completions 仓库、`argc.exe`、`yq.exe` | 推荐 | `scripts-deps` 固定版本 → 上游 GitHub（同样套镜像前缀） | Tab 参数补全 + 首参数位静态 flag | Tab 参数补全，无自动 flag 提示 |
 | 可选层 `-IncludeFuzzy` | `PSFzf`、`fzf`、`zoxide` | 推荐/可选 | `PSFzf` 走 PSGallery；`fzf`/`zoxide` 走 scoop → winget/brew → `scripts-deps` → 上游 | `Ctrl+T`/`Ctrl+R`、`z`；检测到代理时不走包管理器 | 同左 |
 | 可选层 `-IncludePredictor` | `CompletionPredictor` | 推荐 | PSGallery | 参数/路径内联预测 | 以模块自身要求为准 |
-| 可选层 `-IncludePSCompletions` | `PSCompletions` | 可选 | PSGallery | Tab 参数补全（需解开 profile 钩子） | 同左 |
+| 可选层 `-IncludePSCompletions` | `PSCompletions` | 可选 | PSGallery | Tab 参数补全（装后 `Enable-CxxuComponent PSCompletions -Persist`） | 同左 |
 | 可选层 `-IncludeGitCompletion` | `git-completion` | 推荐 | PSGallery | `git`/`gitk` 的 Tab 补全（分支、提交、按状态过滤的文件；首次补全才导入模块） | 可用；选项补全受 5.1 引擎限制，见 Feature-Guide §13 |
 
 - 二进制优先取 [`scripts-deps`](https://github.com/xuchaoxin1375/scripts-deps) 的固定版本，地址失效自动回退上游；`-NoMirror` 跳过转存仓库，`$env:PsDepsMirror` 可整体换前缀。版本钉子维护见 [PS/Deploy/readme.md](../Deploy/readme.md) 的转存章节。
@@ -187,7 +187,7 @@ Sync-CxxuPredictor                                  # 默认层：生成/对齐 
 Deploy-ArgcCompletions                              # 可选：只装/重装 argc-completions（默认 ~/argc-completions）
 Confirm-ModuleInstalled -ModuleName PSFzf -Install  # 可选：Ctrl+T/Ctrl+R
 Confirm-ModuleInstalled -ModuleName CompletionPredictor -Install  # 可选：参数/路径预测
-# 按需：Terminal-Icons（`$env:PsExtension=True` 才用得上）、PSCompletions（延迟加载）
+# 按需：Terminal-Icons（`$env:PsExtension=True` 才用得上）、PSCompletions（装后 `Enable-CxxuComponent PSCompletions -Persist`）
 # 自研 CxxuPredictor 随仓库自带（PS/CxxuPredictor/，零模块安装，随 init 延迟加载）；
 # 内联预测要求 pwsh 7.5+（7.6 可直接用；dll 按 net9.0 编译，加载失败再进 PS/CxxuPredictor/src 重编）；
 # 5.1 Tab 版在 PS/CxxuPredictor/ps51/（netstandard2.0），由 Sync-CxxuPredictor 一并发布
