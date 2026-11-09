@@ -178,7 +178,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 
 carapace 是一个跨 shell 的命令行补全二进制，按命令读取自身的 completer（补全器），在 PowerShell 里通过 `Register-ArgumentCompleter -Native` 注册。它不补 PowerShell cmdlet 的参数，也不参与命令名模糊补全；定位是补外部 CLI 的参数值，与 `CxxuTab`、`git-completion`、`argc-completions` 并列。
 
-安装渠道不绑定 scoop：推荐 `Deploy-Carapace`，它会从官方 GitHub Release 下载对应架构的 zip、按 `checksums.txt` 校验并解压到 `~/.cxxu/bin`，可用 `-Version` 固定版本；也可手工下载官方 zip 或用 scoop。安装与校验步骤见 [Deploy-Guide](Deploy-Guide.md) 的「可选：carapace」。前置条件为 `pwsh` 7（`Register-ArgumentCompleter -Native` 在 5.1 不可用）且 `carapace.exe` 位于 PATH。
+安装渠道不绑定 scoop：推荐 `Deploy-Carapace`，它会按当前平台与架构从官方 GitHub Release 下载产物（Windows 为 zip，macOS/Linux 为 tar.gz）、按 `checksums.txt` 校验并解压到默认目录（Windows `~/.cxxu/bin`，其他平台 `~/.local/bin`），可用 `-Version` 固定版本；也可手工下载官方产物，或用包管理器（Windows `scoop`、macOS `brew`、Linux 发行版仓库）。安装与校验步骤见 [Deploy-Guide](Deploy-Guide.md) 的「可选：carapace」。前置条件为 `pwsh` 7（`Register-ArgumentCompleter -Native` 在 5.1 不可用）且 `carapace` 位于 PATH。
 
 本机 `carapace-bin 1.8.2`、`pwsh 7.6.3` 实测的代表性效果：
 
@@ -215,7 +215,7 @@ Set-GitCompletionSource Carapace -Persist   # 需要 carapace 接管 git/gitk �
 - 启动成本：约 0.1–0.2 秒（随版本与主机变化；本轮 1.8.2 实测首次约 130ms、重复约 60–90ms），只在 `PsCarapace=True` 时发生。`carapace` 不纳入 `Deploy-CompletionStack` 的 `-Include*` 层，但已进入 `Get-CxxuDependencyReport` 与 `doctor -Feature`。
 - 慢补全：`winget install` 约 3.3 秒、`uv add` 约 4.4 秒，按 Tab 会同步等待；写入 `PsCarapaceExcludes` 排除。
 - 错误候选：命令未安装或上下文缺失时会出现 `ERR` / `_` 候选（例如没有 `package.json` 时的 `npm run`）；写入 `PsCarapaceExcludes` 排除。
-- 回滚：`Disable-PsPlugin Carapace -Persist` 并重开终端；scoop 渠道可再执行 `scoop uninstall carapace-bin`，`Deploy-Carapace` 与手工渠道删除 `carapace.exe` 所在目录并从 PATH 移除。
+- 回滚：`Disable-PsPlugin Carapace -Persist` 并重开终端；包管理器渠道按对应命令卸载（`scoop uninstall carapace-bin`、`brew uninstall carapace`），`Deploy-Carapace` 与手工渠道删除二进制（默认 Windows 为 `~/.cxxu/bin/carapace.exe`，其他平台为 `~/.local/bin/carapace`）并从 PATH 移除。
 
 **git 补全对比（同一测试仓库）**：
 
@@ -384,7 +384,7 @@ Set-GitCompletionSource Carapace -Persist   # 需要 carapace 接管 git/gitk �
 | `fnm` + 钩子 | 未装；组件 `Fnm` 默认关 | `scoop install fnm`（或 `brew install fnm`），再 `Enable-CxxuComponent Fnm -Persist` | `init` 执行 `fnm env --use-on-cd`；node 用户才需要 |
 | `scoop-search` 钩子 | 组件 `ScoopSearch` 默认关 | `scoop install scoop-search`，再 `Enable-CxxuComponent ScoopSearch -Persist` | `init` 注入 `scoop-search --hook` |
 | `argc` 整块 | 未部署 | `Deploy-CompletionStack -IncludeArgc`（或 `Deploy-ArgcCompletions`） | 由 `init` 的 `Set-ArgcCompletions` 懒加载；装完重开终端/`init` |
-| `carapace-bin` | 可选，`PsCarapace` 默认 `$false` | `Deploy-Carapace -Enable`（推荐，安装并启用），或安装后再 `Enable-CxxuComponent Carapace -Persist -Now`；也可用官方 GitHub Release 的 Windows zip / `scoop install carapace-bin` | 由 `init` 按配置加载；不纳入 `Deploy-CompletionStack`；版本可固定；git/gitk 归属用 `Set-GitCompletionSource` 切换 |
+| `carapace-bin` | 可选，`PsCarapace` 默认 `$false` | `Deploy-Carapace -Enable`（推荐，安装并启用），或安装后再 `Enable-CxxuComponent Carapace -Persist -Now`；也可用官方 GitHub Release 产物或包管理器（`scoop install carapace-bin`、`brew install carapace`、Linux 发行版仓库） | 由 `init` 按配置加载；不纳入 `Deploy-CompletionStack`；跨平台默认目录不同；版本可固定；git/gitk 归属用 `Set-GitCompletionSource` 切换 |
 | `posh-git` | 未装 | 只要 git Tab 补全才装 | 已有 `git-completion` 时不需要 |
 | prompt 主题持久化 | 当会话有效，重开复原 | `Set-PsPrompt -version <…> -Persist`（写注册表） | 临展用 `dm` 切极简，不持久化 |
 | 开机任务 + 守护进程 | 未注册 | `Start-StartupTasks`（或 `Deploy-StartupTasks` 部署） | 报时/IP 守护，无状态，`-Force` 可杀 |

@@ -200,7 +200,7 @@ Confirm-ModuleInstalled -ModuleName CompletionPredictor -Install  # 可选：参
 
 carapace 是跨 shell 的命令行补全二进制，补外部 CLI 的参数值，不补 PowerShell cmdlet。它和 `argc-completions` 是并列关系，不是替代关系；git 仍建议由 `git-completion` 负责。效果、候选数量与三方对比见 [Feature-Guide](Feature-Guide.md) 的「carapace（可选，非默认）」。
 
-前置条件：已按「只启用补全」完成 `init` 与补全栈；`pwsh` 7（`Register-ArgumentCompleter -Native` 在 5.1 不可用，本次未验证 5.1）；`carapace.exe` 位于 PATH。安装渠道三选一：`Deploy-Carapace`（推荐）、官方 GitHub Release 手工下载、本机 `scoop` 与 `spc` bucket。
+前置条件：已按「只启用补全」完成 `init` 与补全栈；`pwsh` 7（`Register-ArgumentCompleter -Native` 在 5.1 不可用，本次未验证 5.1）；`carapace` 位于 PATH。安装渠道三选一：`Deploy-Carapace`（推荐，Windows/macOS/Linux）、官方 GitHub Release 手工下载、包管理器（Windows `scoop`/`spc` bucket，macOS `brew`，Linux 发行版仓库或官方 `.deb`/`.rpm`/`.apk`）。
 
 **推荐：`Deploy-Carapace`**
 
@@ -212,24 +212,28 @@ Deploy-Carapace
 Deploy-Carapace -Version 1.8.2 -Proxy http://127.0.0.1:7897
 ```
 
-命令会下载对应架构的官方 zip，按同版本 `checksums.txt` 校验 SHA-256，解压到 `~/.cxxu/bin` 并加入用户 PATH。加 `-Enable` 会同时把 `PsCarapace` 写入用户配置并在当前会话加载；不加则只安装并打印启用方式。`-Force` 覆盖重装，`-Destination` 与 `-SkipPath` 用于自定义目录或测试。它不修改 profile，加载由 init 按 `PsCarapace` 配置完成。
+命令会按当前平台与架构下载官方产物（Windows 为 zip，macOS/Linux 为 tar.gz），用同版本 `checksums.txt` 校验 SHA-256，解压 `carapace` 到目标目录并加入 PATH。默认目录：Windows 为 `~/.cxxu/bin`，其他平台为 `~/.local/bin`；非 Windows 只把目录加入当前会话，新终端需按提示写进 shell 配置。加 `-Enable` 会同时把 `PsCarapace` 写入用户配置并在当前会话加载；不加则只安装并打印启用方式。`-Force` 覆盖重装，`-Version` 固定版本（本地版本更高时默认拒绝降级，确需降级加 `-AllowDowngrade`），`-Destination` 与 `-SkipPath` 用于自定义目录或测试。它不修改 profile，加载由 init 按 `PsCarapace` 配置完成。macOS 的官方产物未签名；若系统提示无法验证开发者，优先改用 `brew install carapace`，或在确认来源后按系统设置放行。
 
 **手工渠道一：官方 GitHub Release**
 
-1. 打开 `https://github.com/carapace-sh/carapace-bin/releases`，下载与架构匹配的 `carapace-bin_<版本>_windows_amd64.zip`（ARM64 用 `_windows_arm64.zip`），并下载同版本的 `carapace-bin_<版本>_checksums.txt`。
-2. 校验压缩包：`(Get-FileHash <zip> -Algorithm SHA256).Hash` 与 `checksums.txt` 中对应文件名行比对；不一致时停止并重新下载。
-3. 解压出 `carapace.exe`，放到 PATH 中的固定目录（例如 `$env:LOCALAPPDATA\Programs\carapace`）；目录不在 PATH 时加入用户 PATH 并重开终端。
+1. 打开 `https://github.com/carapace-sh/carapace-bin/releases`，按平台下载：Windows 用 `carapace-bin_<版本>_windows_<架构>.zip`，macOS 用 `carapace-bin_<版本>_darwin_<架构>.tar.gz`，Linux 用 `carapace-bin_<版本>_linux_<架构>.tar.gz`（`<架构>` 为 `amd64` 或 `arm64`），并下载同版本的 `carapace-bin_<版本>_checksums.txt`。
+2. 校验：Windows 用 `(Get-FileHash <文件> -Algorithm SHA256).Hash`，macOS/Linux 用 `shasum -a 256 <文件>`；与 `checksums.txt` 中对应文件名行比对，不一致时停止并重新下载。
+3. 解压出 `carapace`（Windows 为 `carapace.exe`），放到 PATH 中的固定目录（例如 Windows `$env:LOCALAPPDATA\Programs\carapace`，Unix `~/.local/bin`）；macOS/Linux 需要 `chmod +x carapace`。
 4. 确认 `Get-Command carapace` 与 `carapace --version`。
 
-手工安装的升级与卸载也需手工完成：替换 `carapace.exe` 后重开终端，由 `init` 重新生成脚本；不再使用时删除该目录并从 PATH 移除。
+手工安装的升级与卸载也需手工完成：替换二进制后重开终端，由 `init` 重新生成脚本；不再使用时删除该目录并从 PATH 移除。
 
-**手工渠道二：scoop（可选）**
+**手工渠道二：包管理器（可选）**
 
 ```powershell
-scoop install carapace-bin
+scoop install carapace-bin        # Windows，需先添加 spc bucket
 ```
 
-`carapace-bin` 位于 scoop 的 `spc` bucket；未添加时先执行 `Add-ScoopBuckets`。该渠道受 bucket 与网络可用性影响，安装失败不代表 carapace 不可用，改用渠道一。
+```bash
+brew install carapace             # macOS
+```
+
+Linux 优先用发行版仓库；没有时从官方 Release 安装 `.deb`、`.rpm` 或 `.apk`。包管理器版本可能滞后于上游，需要固定或最新版本时改用 `Deploy-Carapace -Version`。
 
 **在 init 中启用（不修改 profile）**
 
@@ -244,7 +248,7 @@ Set-GitCompletionSource Carapace -Persist     # 让 carapace 接管 git/gitk
 - 旧版 profile 中的手动 carapace 片段需要删除，否则会与 init 重复注册。也不要执行 carapace 文档中的 `Set-PSReadlineKeyHandler -Key Tab -Function MenuComplete`，避免覆盖本仓库的 Tab 桩。
 - 版本可以不追新，但生成脚本随版本变化：init 在 pwsh 7.6 及更早版本按原文匹配空结果补丁，匹配不到时只告警，不中断启动。
 - 验收：`Get-Command carapace`、`carapace --version`、`carapace --list`（数量随版本变化，不写死）、`TabExpansion2 'scoop install ' 14` 能返回包名候选，`TabExpansion2 'gh pr ' 6` 能返回子命令。
-- 不需要时执行 `Disable-PsPlugin Carapace -Persist`；scoop 渠道可再加 `scoop uninstall carapace-bin`，`Deploy-Carapace` 与手工渠道删除二进制目录（默认 `~/.cxxu/bin`）并从 PATH 移除。慢命令（`winget install`、`uv add`）会阻塞 Tab，按需写入 `PsCarapaceExcludes`。
+- 不需要时执行 `Disable-PsPlugin Carapace -Persist`；包管理器渠道按对应命令卸载（`scoop uninstall carapace-bin`、`brew uninstall carapace`），`Deploy-Carapace` 与手工渠道删除二进制（默认 Windows 为 `~/.cxxu/bin/carapace.exe`，其他平台为 `~/.local/bin/carapace`）并从 PATH 移除。慢命令（`winget install`、`uv add`）会阻塞 Tab，按需写入 `PsCarapaceExcludes`。
 - `Deploy-CompletionStack -All` 不包含 carapace，也没有 `-IncludeCarapace` 开关；需要时用 `Deploy-Carapace -Enable` 一步安装并启用，或先 `Deploy-Carapace` 再 `Enable-CxxuComponent Carapace -Persist -Now`。
 
 ## 6. scoop 二进制
