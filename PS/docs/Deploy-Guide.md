@@ -237,20 +237,14 @@ Linux 优先用发行版仓库；没有时从官方 Release 安装 `.deb`、`.rp
 
 **Git Bash / MSYS（可选，与 PowerShell 独立）**
 
-Git Bash 使用同一个 `carapace.exe`，但接入由 bash 自己完成，不经过 `init` 或 `PsCarapace`；启用 PowerShell 组件不会自动改变 Git Bash，反之亦然。先在 Git Bash 中确认 `command -v carapace` 有输出，再把下面内容加入 `~/.bashrc`：
+Git Bash 使用同一个 `carapace.exe`，但接入由 bash 自己完成，不经过 `init` 或 `PsCarapace`；启用 PowerShell 组件不会自动改变 Git Bash，反之亦然。仓库提供一键写入/卸载 `~/.bashrc` 的脚本：
 
-```bash
-# 可选：桥接其他补全框架
-export CARAPACE_BRIDGES='zsh,fish,bash,inshellisense'
-source <(carapace _carapace bash)
-# Git Bash/MSYS：carapace 会追加 Windows 风格目录（C:/...;...），
-# 这里去掉该目录，避免它和后面的 /mingw64/bin 被当成同一个 PATH 项
-case "$PATH" in *';'*) PATH="${PATH#*;}" ;; esac
+```sh
+bash /c/repos/scripts/bash/carapace/setup.sh --dry-run
+bash /c/repos/scripts/bash/carapace/setup.sh
 ```
 
-重新打开 Git Bash，或执行 `source ~/.bashrc`。验收：`carapace --list` 有输出；`git checkout <Tab>` 出现分支和标签，`git add <Tab>` 出现未暂存文件。本机 Git Bash 5.2 + carapace 1.8.2 实测 `source` 约 44 ms，随版本与主机变化。
-
-限制：carapace 生成的 bash 片段要求 bash 4 及以上（Git Bash 5.x 满足，bash 3 会被拒绝）；carapace 不在 Git Bash PATH 时，先把安装目录（如 `~/.cxxu/bin` 或 `/c/scoop/shims`）加入 PATH。卸载时删除 `~/.bashrc` 中对应片段即可；PowerShell 侧的启停仍用 `Enable-CxxuComponent` / `Disable-CxxuComponent`。
+手工片段、PATH 修正原因、与 argc-completions 的共存和验收见 [bash/carapace/README.md](../../bash/carapace/README.md)。先在 Git Bash 中确认 `command -v carapace` 有输出；没有则把安装目录（如 `~/.cxxu/bin` 或 `/c/scoop/shims`）加入 PATH。
 
 **在 init 中启用（不修改 profile）**
 
