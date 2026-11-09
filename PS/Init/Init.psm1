@@ -5,6 +5,10 @@
 $script:CxxuConfigAppliedFromFile = @{}
 # 模块根目录:5.1 的 $PSScriptRoot 在函数内是动态作用域(取调用方脚本),不能用于定位 PS 根
 $script:CxxuModuleRoot = $PSScriptRoot
+# 组件清单与默认值在会话内不变，缓存解析结果，避免 Get-CxxuConfig/导入时反复读 PSD1。
+$script:CxxuComponentManifestCache = $null
+$script:CxxuSettingsDefaultCache = $null
+$script:CxxuConfigDefaultListCache = $null
 # argc-completions 的平台差异:可执行名与专用补全目录。
 # 5.1 无 $IsWindows/$IsMacOS 自动变量,先用 PSEdition 兜底判 Windows(5.1 只跑在 Windows 上)。
 $script:ArgcPlatform = @{ Executable = 'argc'; CompletionDir = 'linux' }
@@ -79,26 +83,12 @@ function init
     # 启动步骤表:直接调用(当前会话作用域),不要转字符串再 iex —— iex 慢且吞错误定位;
     # 进度条默认开(真机实测开销可忽略,用户 306ms 全链含进度条),开关见 $env:PsShowProgress,
     # 重定向下(无处渲染)自动关闭。
-    $steps = @(
-        # 导入图标模块(建议放到extension部分中)
-        # Import-TerminalIcons
-        # Import-ANSIColorEnv
-        # 补全模块PSReadline及其相关配置
-        @{ Name = 'Set-PSReadLinesCommon'; Action = { Set-PSReadLinesCommon } }
-        @{ Name = 'Set-PSReadLinesAdvanced'; Action = { Set-PSReadLinesAdvanced } }
-        @{ Name = 'Set-ArgumentCompleter'; Action = { Set-ArgumentCompleter }; MinPS = 7 }
-        # argc-completions:启动只设环境与 Tab 桩,首个 Tab 才注册(开关 $env:PsArgc;5.1 也可用)
-        @{ Name = 'Set-ArgcCompletions'; Action = { Set-ArgcCompletions } }
-        @{ Name = 'Confirm-EnvVarOfInfo'; Action = { Confirm-EnvVarOfInfo }; MinPS = 7 }
-        @{ Name = 'Set-PsExtension'; Action = { Set-PsExtension }; MinPS = 7 }
-        # 设置prompt样式(这里面会导入基础的powershell预定变量和别名)
-        @{ Name = 'Set-PsPrompt'; Action = { Set-PsPrompt } }
-        # Confirm-DataJson 有返回值(路径,供调用方使用),init 只关心副作用,屏蔽回显
-        @{ Name = 'Confirm-DataJson'; Action = { Confirm-DataJson | Out-Null }; MinPS = 7 }
-        # 体验件手势桩+单发收尾(7: PSFzf/Tab 首用才装,predictor/zoxide 首屏单发;
-        # 5.1: 只装 CxxuTab 的手势桩,其余 7-only 项跳过),启动零开销
-        @{ Name = 'Register-PsUxLazyLoad'; Action = { Register-PsUxLazyLoad } }
-    )
+    # 核心步骤固定;可选组件的加载步骤由 components.psd1 的 Init 字段生成,
+    # 组件顺序即清单顺序,新增组件不再需要在这里再写一行。
+    $coreSteps = Get-CxxuCoreInitSteps
+    $coveredInit = @(($coreSteps.Before + $coreSteps.After) | ForEach-Object { [string]$_.Name })
+    $componentSteps = @(Get-CxxuComponentInitSteps -CoveredInit $coveredInit)
+    $steps = @($coreSteps.Before) + @($componentSteps) + @($coreSteps.After)
 
     # 仅在要求时计时/报告(-Timing 或 -InformationAction Continue,`p -Force` 走后者)
     $needTiming = $Timing -or ($InformationPreference -eq 'Continue')
@@ -808,6 +798,8 @@ function Initialize-ArgcCompletions
     描述文本去掉 argc 自带的 ANSI,改由 PSReadLine 的 Selection(反显)统一着色,
     这样菜单选中行在浅色/深色主题下都有完整、可读的高亮。协议取自
     argc --argc-completions 生成的 completer(argc 1.24),仅移除颜色与加上 PsArgc 开关。
+    git-completion 模块由 init 挂载时跳过 git/gitk(同名 completer 后注册者胜出,argc 首个
+    Tab 才注册,不跳过会顶掉先注册的 git-completion)。
     #>
     [CmdletBinding()]
     param([switch]$Force)
@@ -835,6 +827,15 @@ function Initialize-ArgcCompletions
     # argc 自身也注册(与上游生成器一致;无专用脚本时由引擎回退路径补全)
     $scripts = @('argc') + @($scripts)
     $scripts = @($scripts | Select-Object -Unique)
+    # git-completion 或 carapace 负责 git/gitk 时把它们从 argc 名单里去掉:三者都注册同名
+    # Native completer,后注册者覆盖先注册者,而 argc 首个 Tab 才注册,会顶掉先注册的来源。
+    # 判定看 Register-GitCompletion 置的 $global:PsGitCompletion、Initialize-Carapace 置的
+    # $global:PsCarapaceGit,以及"模块已导入"(init 只注册 completer,首次补全才 Import-Module);
+    # 都没有时保留 argc 自己的 git 补全。
+    if ($global:PsGitCompletion -or $global:PsCarapaceGit -or (Get-Module git-completion -ErrorAction SilentlyContinue))
+    {
+        $scripts = @($scripts | Where-Object { $_ -notin 'git', 'gitk' })
+    }
     if (-not $scripts.Count)
     {
         $global:PsArgcUnavailable = $true
@@ -890,6 +891,290 @@ function Initialize-ArgcCompletions
     {
         $global:PsArgcUnavailable = $true
         Write-Verbose "argc-completions: 注册失败: $($_.Exception.Message)"
+    }
+}
+
+function Test-CxxuGitCompletionInstalled
+{
+    # 静态探测 PSModulePath，不调用 Get-Module -ListAvailable（冷启动约省 140ms）。
+    return [bool](@($env:PSModulePath -split [IO.Path]::PathSeparator |
+            Where-Object { $_ -and (Test-Path -LiteralPath (Join-Path $_ 'git-completion')) }).Count)
+}
+
+function Get-CxxuGitCompletionSource
+{
+    # 解析 git/gitk 补全来源：PsGitCompletionSource 优先；未设置时沿用 PsGitCompletion 旧语义。
+    $raw = [string]$env:PsGitCompletionSource
+    if ([string]::IsNullOrWhiteSpace($raw))
+    {
+        if ($env:PsGitCompletion -match '^(False|0|No|Off)$') { return 'Argc' }
+        if (Test-CxxuGitCompletionInstalled) { return 'GitCompletion' }
+        return 'Argc'
+    }
+    switch -Regex ($raw.Trim())
+    {
+        '^(?i:Auto)$'
+        {
+            if (Test-CxxuGitCompletionInstalled) { return 'GitCompletion' }
+            return 'Argc'
+        }
+        '^(?i:GitCompletion)$'
+        {
+            # 组件级禁用优先：Disable-CxxuComponent GitCompletion 不应被来源键抵消。
+            if ($env:PsGitCompletion -match '^(False|0|No|Off)$') { return 'Argc' }
+            return 'GitCompletion'
+        }
+        '^(?i:Carapace)$'
+        {
+            # carapace 未启用时按 argc 处理，避免 git 没有来源。
+            if ([string]::IsNullOrWhiteSpace($env:PsCarapace) -or $env:PsCarapace -match '^(False|0|No|Off)$') { return 'Argc' }
+            return 'Carapace'
+        }
+        '^(?i:Argc)$' { return 'Argc' }
+        default
+        {
+            Write-Warning "未知 PsGitCompletionSource=$raw；按 Auto 处理。"
+            if (Test-CxxuGitCompletionInstalled) { return 'GitCompletion' }
+            return 'Argc'
+        }
+    }
+}
+
+function Initialize-Carapace
+{
+    <#
+    .SYNOPSIS
+    按配置加载 carapace 补全（默认关闭，启用时由 init 调用）。
+    .DESCRIPTION
+    开关 PsCarapace（默认 $false）；启用时要求 carapace 在 PATH。
+    根据 PsGitCompletionSource 决定 carapace 是否接管 git/gitk：
+    - Carapace：不排除 git/gitk，并置 $global:PsCarapaceGit，供 argc 让路；
+    - GitCompletion、Argc、Auto：把 git/gitk 并入 CARAPACE_EXCLUDES。
+    PsCarapaceExcludes 提供用户自己的慢命令排除项；两处合并后写入环境变量。
+    加载失败只告警，不中断 init。
+    .EXAMPLE
+    Initialize-Carapace
+    #>
+    [CmdletBinding()]
+    param()
+
+    if ($PSVersionTable.PSVersion.Major -lt 7)
+    {
+        Write-Warning 'carapace 补全需要 pwsh 7+；5.1 已跳过 Initialize-Carapace。'
+        return
+    }
+    if ($env:PsCarapace -match '^(False|0|No|Off)$') { return }
+    if ([string]::IsNullOrWhiteSpace($env:PsCarapace)) { return }
+    if (-not (Get-Command carapace -ErrorAction SilentlyContinue))
+    {
+        Write-Warning 'PsCarapace 已启用，但 PATH 中没有 carapace；先执行 Deploy-Carapace。'
+        return
+    }
+
+    $source = Get-CxxuGitCompletionSource
+    # 配置键优先；未配置时沿用已有的 CARAPACE_EXCLUDES，避免覆盖用户自定义的慢命令排除项。
+    $baseExcludes = [string]$env:PsCarapaceExcludes
+    if ([string]::IsNullOrWhiteSpace($baseExcludes)) { $baseExcludes = [string]$env:CARAPACE_EXCLUDES }
+    $excludes = @($baseExcludes -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    if ($source -eq 'Carapace')
+    {
+        # 来源优先：即使 PsCarapaceExcludes 写了 git/gitk，也不让 carapace 让出。
+        $excludes = @($excludes | Where-Object { $_ -notmatch '^(?i:git|gitk)$' })
+    }
+    else
+    {
+        foreach ($name in @('git', 'gitk'))
+        {
+            if (-not ($excludes | Where-Object { $_ -ieq $name })) { $excludes += $name }
+        }
+    }
+    $env:CARAPACE_EXCLUDES = ($excludes -join ',')
+
+    try
+    {
+        $script = carapace _carapace powershell | Out-String
+        $needle = 'return "" # prevent default file completion'
+        if ($PSVersionTable.PSVersion -lt [version]'7.7')
+        {
+            if ($script.Contains($needle))
+            {
+                $script = $script.Replace($needle, 'return')
+            }
+            else
+            {
+                Write-Warning 'carapace 生成脚本已变化，空结果补丁未匹配；请核对当前版本的空结果处理。'
+            }
+        }
+        $script | Invoke-Expression
+        if ($source -eq 'Carapace') { $global:PsCarapaceGit = $true }
+        Write-Verbose ("carapace 已加载；git 来源={0}，排除项={1}" -f $source, $env:CARAPACE_EXCLUDES)
+    }
+    catch
+    {
+        Write-Warning ("carapace 加载失败：{0}" -f $_.Exception.Message)
+    }
+}
+
+function Register-GitCompletion
+{
+    <#
+    .SYNOPSIS
+    为 git/gitk 挂 git-completion 模块的 Tab 补全(懒加载,模块未安装时静默跳过)。
+    .DESCRIPTION
+    git-completion v2 起导入模块不再自动开启补全,必须自行注册 Native completer。
+    这里只注册 completer,首次补全才 Import-Module,启动不付导入成本;同时置
+    $global:PsGitCompletion,供 Initialize-ArgcCompletions 让出 git/gitk(两者同名
+    completer 后注册者胜出,argc 首个 Tab 才注册会顶掉这里的注册)。
+    模块位置按 PSModulePath 静态探测,不调用 Get-Module -ListAvailable(冷启动约 140ms)。
+    来源由 PsGitCompletionSource 决定(Auto/GitCompletion/Carapace/Argc,见 Get-CxxuGitCompletionSource);
+    未设置该键时沿用 PsGitCompletion 的旧语义,关闭后 argc 继续负责 git。
+    .EXAMPLE
+    Register-GitCompletion
+    .EXAMPLE
+    $env:PsGitCompletion = 'False'   # 本次会话不挂载,git 回到 argc 或原生补全
+    #>
+    [CmdletBinding()]
+    param()
+
+    if ($global:PsGitCompletion) { return }
+    # 来源不是 git-completion 时不注册；来源解析见 Get-CxxuGitCompletionSource。
+    if ((Get-CxxuGitCompletionSource) -ne 'GitCompletion') { return }
+    if (-not (Test-CxxuGitCompletionInstalled)) { return }
+
+    $global:PsGitCompletion = $true
+    Register-ArgumentCompleter -CommandName git -Native -ScriptBlock {
+        param($wordToComplete, $commandAst, $cursorPosition)
+        if (-not (Get-Module git-completion)) { Import-Module git-completion -Global -ErrorAction SilentlyContinue }
+        if (Get-Command Complete-Git -ErrorAction SilentlyContinue)
+        {
+            return (Complete-Git -CommandAst $commandAst -CursorPosition $cursorPosition)
+        }
+    }
+    Register-ArgumentCompleter -CommandName gitk -Native -ScriptBlock {
+        param($wordToComplete, $commandAst, $cursorPosition)
+        if (-not (Get-Module git-completion)) { Import-Module git-completion -Global -ErrorAction SilentlyContinue }
+        if (Get-Command Complete-Gitk -ErrorAction SilentlyContinue)
+        {
+            return (Complete-Gitk -CommandAst $commandAst -CursorPosition $cursorPosition)
+        }
+    }
+}
+
+function Import-PsCompletions
+{
+    <#
+    .SYNOPSIS
+    按组件配置导入 PSCompletions 模块（默认关闭，启用时由 init 调用）。
+    .DESCRIPTION
+    开关 PsCompletions（默认 $false）；启用后要求模块已安装。
+    模块只导入到全局会话，失败只告警，不中断 init。
+    .EXAMPLE
+    Import-PsCompletions
+    .EXAMPLE
+    Enable-CxxuComponent PSCompletions -Persist
+    #>
+    [CmdletBinding()]
+    param()
+
+    if ([string]::IsNullOrWhiteSpace($env:PsCompletions)) { return }
+    if ($env:PsCompletions -match '^(False|0|No|Off)$') { return }
+    if (Get-Module PSCompletions) { return }
+    if (-not (Get-Module -ListAvailable PSCompletions -ErrorAction SilentlyContinue))
+    {
+        Write-Warning 'PsCompletions 已启用，但模块未安装；先执行 Deploy-CompletionStack -IncludePSCompletions。'
+        return
+    }
+
+    try
+    {
+        Import-Module PSCompletions -Global -ErrorAction Stop
+        Write-Verbose 'PSCompletions 已导入'
+    }
+    catch
+    {
+        Write-Warning ("PSCompletions 导入失败：{0}" -f $_.Exception.Message)
+    }
+}
+
+function Initialize-Fnm
+{
+    <#
+    .SYNOPSIS
+    按组件配置加载 fnm 的 PowerShell 环境（默认关闭，启用时由 init 调用）。
+    .DESCRIPTION
+    开关 PsFnm（默认 $false）；启用后要求 fnm 在 PATH。
+    执行 fnm env --use-on-cd，注册 node 版本切换所需的环境变量与目录切换钩子；
+    失败只告警，不中断 init。
+    .EXAMPLE
+    Initialize-Fnm
+    .EXAMPLE
+    Enable-CxxuComponent Fnm -Persist
+    #>
+    [CmdletBinding()]
+    param()
+
+    if ([string]::IsNullOrWhiteSpace($env:PsFnm)) { return }
+    if ($env:PsFnm -match '^(False|0|No|Off)$') { return }
+    if (-not (Get-Command fnm -ErrorAction SilentlyContinue))
+    {
+        Write-Warning 'PsFnm 已启用，但 PATH 中没有 fnm；先执行 scoop install fnm（或 brew install fnm）。'
+        return
+    }
+
+    try
+    {
+        $hookScript = & fnm env --use-on-cd --shell powershell 2>$null | Out-String
+        if ($LASTEXITCODE -ne 0)
+        {
+            $hookScript = & fnm env --use-on-cd 2>$null | Out-String
+        }
+        if ($LASTEXITCODE -ne 0) { throw "fnm env 退出码 $LASTEXITCODE" }
+        $hookScript | Invoke-Expression
+        Write-Verbose 'fnm 环境已加载'
+    }
+    catch
+    {
+        Write-Warning ("fnm 环境加载失败：{0}" -f $_.Exception.Message)
+    }
+}
+
+function Initialize-ScoopSearch
+{
+    <#
+    .SYNOPSIS
+    按组件配置注入 scoop-search 的搜索钩子（默认关闭，启用时由 init 调用）。
+    .DESCRIPTION
+    开关 PsScoopSearch（默认 $false）；启用后要求 scoop-search 在 PATH。
+    执行 scoop-search --hook，让 scoop search 走加速索引；失败只告警，不中断 init。
+    .EXAMPLE
+    Initialize-ScoopSearch
+    .EXAMPLE
+    Enable-CxxuComponent ScoopSearch -Persist
+    #>
+    [CmdletBinding()]
+    param()
+
+    if ([string]::IsNullOrWhiteSpace($env:PsScoopSearch)) { return }
+    if ($env:PsScoopSearch -match '^(False|0|No|Off)$') { return }
+    if (-not (Get-Command scoop-search -ErrorAction SilentlyContinue))
+    {
+        Write-Warning 'PsScoopSearch 已启用，但 PATH 中没有 scoop-search；先执行 scoop install scoop-search。'
+        return
+    }
+
+    try
+    {
+        $hookScript = & scoop-search --hook 2>$null | Out-String
+        if ($LASTEXITCODE -ne 0) { throw "scoop-search --hook 退出码 $LASTEXITCODE" }
+        # scoop-search 的钩子用 `function scoop` 定义；在模块函数内直接执行只会留在函数作用域，
+        # 这里把函数定义提升到全局，等价于原先在 profile 顶层执行 hook。
+        $hookScript = [regex]::Replace($hookScript, '(?m)^(\s*function\s+)(?!global:)', '$1global:')
+        $hookScript | Invoke-Expression
+        Write-Verbose 'scoop-search 钩子已加载'
+    }
+    catch
+    {
+        Write-Warning ("scoop-search 钩子加载失败：{0}" -f $_.Exception.Message)
     }
 }
 
@@ -1159,35 +1444,376 @@ function Clear-PsCommandCacheIfStale
         Write-Verbose "命令表缓存检查跳过: $($_.Exception.Message)"
     }
 }
-function Read-CxxuConfigDefaultList
+function Read-CxxuComponentManifest
 {
-    # 读仓库默认偏好真源(不导出):PS/Init/config.defaults.psd1。
-    # 读取失败时警告一次并返回空数组,调用方按“无默认值”降级,不挡 init。
-    param(
-        [string]$Path = (Join-Path $script:CxxuModuleRoot 'config.defaults.psd1')
-    )
+    # 读组件清单(不导出)：PS/Init/components.psd1。
+    param([string]$Path = (Join-Path $script:CxxuModuleRoot 'components.psd1'))
+    if ($null -ne $script:CxxuComponentManifestCache) { return $script:CxxuComponentManifestCache }
     try
     {
         $data = Import-PowerShellDataFile -LiteralPath $Path -ErrorAction Stop
-        return @($data.Defaults)
+        $script:CxxuComponentManifestCache = @($data.Components)
+        return $script:CxxuComponentManifestCache
+    }
+    catch
+    {
+        Write-Warning "组件清单读失败($Path):$($_.Exception.Message);本次按无组件处理。"
+        $script:CxxuComponentManifestCache = @()
+        return @()
+    }
+}
+function Get-CxxuCoreInitSteps
+{
+    # 固定核心步骤（不导出）：Before 在可选组件之前，After 在之后。
+    # 组件清单里的 Init 若与这里的 Name 相同，则由核心步骤统一承担，不再重复生成。
+    @{
+        Before = @(
+            # 导入图标模块(建议放到extension部分中)
+            # Import-TerminalIcons
+            # Import-ANSIColorEnv
+            # 补全模块PSReadline及其相关配置
+            @{ Name = 'Set-PSReadLinesCommon'; Action = { Set-PSReadLinesCommon } }
+            @{ Name = 'Set-PSReadLinesAdvanced'; Action = { Set-PSReadLinesAdvanced } }
+            @{ Name = 'Set-ArgumentCompleter'; Action = { Set-ArgumentCompleter }; MinPS = 7 }
+        )
+        After = @(
+            @{ Name = 'Confirm-EnvVarOfInfo'; Action = { Confirm-EnvVarOfInfo }; MinPS = 7 }
+            @{ Name = 'Set-PsExtension'; Action = { Set-PsExtension }; MinPS = 7 }
+            # 设置prompt样式(这里面会导入基础的powershell预定变量和别名)
+            @{ Name = 'Set-PsPrompt'; Action = { Set-PsPrompt } }
+            # Confirm-DataJson 有返回值(路径,供调用方使用),init 只关心副作用,屏蔽回显
+            @{ Name = 'Confirm-DataJson'; Action = { Confirm-DataJson | Out-Null }; MinPS = 7 }
+            # 体验件手势桩+单发收尾(7: PSFzf/Tab 首用才装,predictor/zoxide 首屏单发;
+            # 5.1: 只装 CxxuTab 的手势桩,其余 7-only 项跳过),启动零开销
+            @{ Name = 'Register-PsUxLazyLoad'; Action = { Register-PsUxLazyLoad } }
+        )
+    }
+}
+function Get-CxxuComponentInitSteps
+{
+    # 由组件清单生成可选组件的 init 步骤（不导出）。
+    # 跳过：Init 为空、已被核心步骤覆盖、同名 Init 重复（多个组件共享一次加载）。
+    param([string[]]$CoveredInit = @())
+
+    $seen = @{}
+    foreach ($component in (Read-CxxuComponentManifest))
+    {
+        $init = [string]$component.Init
+        if ([string]::IsNullOrWhiteSpace($init)) { continue }
+        if ($CoveredInit -contains $init) { continue }
+        if ($seen.ContainsKey($init)) { continue }
+        $seen[$init] = $true
+
+        # 不在这里用 GetNewClosure：闭包会脱离模块会话状态，调用不到模块内部函数。
+        # 由模块内生成一个只含函数调用的脚本块，执行时仍按 init 的作用域查找函数。
+        $step = @{
+            Name   = $init
+            Action = [scriptblock]::Create(('& {0}' -f $init))
+        }
+        # 组件可在清单里声明最低 PowerShell 版本；与步骤表的 MinPS 语义一致。
+        if ($component.ContainsKey('MinPS') -and $component.MinPS)
+        {
+            $step.MinPS = [int]$component.MinPS
+        }
+        $step
+    }
+}
+function Read-CxxuSettingsDefaultList
+{
+    # 读全局设置默认值(不导出)：PS/Init/config.defaults.psd1。
+    param([string]$Path = (Join-Path $script:CxxuModuleRoot 'config.defaults.psd1'))
+    if ($null -ne $script:CxxuSettingsDefaultCache) { return $script:CxxuSettingsDefaultCache }
+    try
+    {
+        $data = Import-PowerShellDataFile -LiteralPath $Path -ErrorAction Stop
+        $script:CxxuSettingsDefaultCache = @($data.Defaults)
+        return $script:CxxuSettingsDefaultCache
     }
     catch
     {
         Write-Warning "默认偏好文件读失败($Path):$($_.Exception.Message);本次按无默认值处理。"
+        $script:CxxuSettingsDefaultCache = @()
         return @()
     }
 }
-function Format-CxxuConfigValue
+function Read-CxxuConfigDefaultList
 {
-    # 把默认值渲染成 psd1 字面量(不导出):布尔写 $true/$false,其余按单引号字符串转义。
-    param($Value)
-    if ($Value -is [bool])
+    # 把 Settings 与组件清单合成平坦键列表，供 Get-CxxuConfig、Reset-CxxuConfig 与旧键兼容使用。
+    if ($null -ne $script:CxxuConfigDefaultListCache) { return $script:CxxuConfigDefaultListCache }
+    $rows = New-Object System.Collections.Generic.List[object]
+    foreach ($component in (Read-CxxuComponentManifest))
     {
-        if ($Value) { return '$true' }
-        return '$false'
+        $rows.Add(@{
+                Key         = [string]$component.Key
+                Name        = [string]$component.Name
+                Default     = $component.Default
+                Description = [string]$component.Description
+            })
+        foreach ($option in @($component.Options | Where-Object { $_ }))
+        {
+            $rows.Add(@{
+                    Key         = [string]$option.Key
+                    Name        = ("{0}.{1}" -f $component.Name, $option.Name)
+                    Default     = $option.Default
+                    Description = [string]$option.Description
+                })
+        }
     }
+    foreach ($item in (Read-CxxuSettingsDefaultList)) { $rows.Add($item) }
+    $script:CxxuConfigDefaultListCache = $rows.ToArray()
+    return $script:CxxuConfigDefaultListCache
+}
+function ConvertTo-CxxuBool
+{
+    # 配置文件里的布尔可能是真正的 bool，也可能是旧版平坦键的 'False' 字符串。
+    param($Value)
+    if ($Value -is [bool]) { return $Value }
+    return -not ([string]$Value -match '^(False|0|No|Off)$')
+}
+function New-CxxuConfigModel
+{
+    # 按组件清单与 Settings 默认值构造 v2 内存模型。
+    $model = @{ SchemaVersion = 2; Components = @{}; Settings = @{} }
+    foreach ($component in (Read-CxxuComponentManifest))
+    {
+        $entry = @{ Enabled = [bool]$component.Default }
+        foreach ($option in @($component.Options | Where-Object { $_ }))
+        {
+            if ([string]$option.Type -eq 'List') { $entry[[string]$option.Name] = @($option.Default) }
+            else { $entry[[string]$option.Name] = $option.Default }
+        }
+        $model.Components[[string]$component.Id] = $entry
+    }
+    foreach ($item in (Read-CxxuSettingsDefaultList))
+    {
+        $model.Settings[[string]$item.Key] = $item.Default
+    }
+    return $model
+}
+function Get-CxxuModelValueByKey
+{
+    # 用旧版平坦键名读取模型值；找不到时返回 $null。
+    param($Model, [string]$Key)
+    foreach ($component in (Read-CxxuComponentManifest))
+    {
+        if ([string]$component.Key -ieq $Key) { return [bool]$Model.Components[[string]$component.Id].Enabled }
+        foreach ($option in @($component.Options | Where-Object { $_ }))
+        {
+            if ([string]$option.Key -ieq $Key) { return $Model.Components[[string]$component.Id][[string]$option.Name] }
+        }
+    }
+    foreach ($name in $Model.Settings.Keys)
+    {
+        if ([string]$name -ieq $Key) { return $Model.Settings[$name] }
+    }
+    return $null
+}
+function Set-CxxuModelValueByKey
+{
+    # 用旧版平坦键名写模型值；选项 List 接受数组或逗号分隔字符串。
+    param($Model, [string]$Key, $Value)
+    foreach ($component in (Read-CxxuComponentManifest))
+    {
+        if ([string]$component.Key -ieq $Key)
+        {
+            $Model.Components[[string]$component.Id].Enabled = ConvertTo-CxxuBool $Value
+            return $true
+        }
+        foreach ($option in @($component.Options | Where-Object { $_ }))
+        {
+            if ([string]$option.Key -ieq $Key)
+            {
+                if ([string]$option.Type -eq 'List')
+                {
+                    if ($Value -is [string]) { $Value = @($Value -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }) }
+                    else { $Value = @($Value | ForEach-Object { [string]$_ } | Where-Object { $_ }) }
+                }
+                $Model.Components[[string]$component.Id][[string]$option.Name] = $Value
+                return $true
+            }
+        }
+    }
+    foreach ($name in @($Model.Settings.Keys))
+    {
+        if ([string]$name -ieq $Key) { $Model.Settings[$name] = $Value; return $true }
+    }
+    return $false
+}
+function Format-CxxuPsd1Value
+{
+    # 渲染 PSD1 字面量（不导出）：bool/数组/字符串/数字。
+    param($Value)
+    if ($Value -is [bool]) { if ($Value) { return '$true' } return '$false' }
     if ($null -eq $Value) { return "''" }
+    if ($Value -is [array])
+    {
+        $items = @($Value | ForEach-Object { Format-CxxuPsd1Value $_ })
+        return '@(' + ($items -join ', ') + ')'
+    }
+    if ($Value -is [int] -or $Value -is [long] -or $Value -is [double]) { return [string]::Format([Globalization.CultureInfo]::InvariantCulture, '{0}', $Value) }
     return "'" + ([string]$Value).Replace("'", "''") + "'"
+}
+function ConvertTo-CxxuConfigText
+{
+    # 由内存模型生成带注释的 v2 配置文本；写入前会先备份旧文件。
+    param($Model)
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add('@{')
+    $lines.Add('    # CxxuPsModules 用户配置（本机生效，仓库外；优先级：环境变量 > 本文件 > 默认值）')
+    $lines.Add('    # 改完重开终端（或 init -Force）生效；查看生效值与来源：Get-CxxuConfig / Get-CxxuComponent。')
+    $lines.Add('    SchemaVersion = 2')
+    $lines.Add('')
+    $lines.Add('    Components = @{')
+    foreach ($component in (Read-CxxuComponentManifest))
+    {
+        $id = [string]$component.Id
+        $entry = $Model.Components[$id]
+        $lines.Add(("        # {0}：{1}" -f $component.Name, $component.Description))
+        $lines.Add(("        {0} = @{{" -f $id))
+        $lines.Add(("            Enabled = {0}" -f (Format-CxxuPsd1Value ([bool]$entry.Enabled))))
+        foreach ($option in @($component.Options | Where-Object { $_ }))
+        {
+            $value = $entry[[string]$option.Name]
+            $lines.Add(("            {0} = {1}  # {2}" -f $option.Name, (Format-CxxuPsd1Value $value), $option.Description))
+        }
+        $lines.Add('        }')
+    }
+    $lines.Add('    }')
+    $lines.Add('')
+    $lines.Add('    Settings = @{')
+    foreach ($item in (Read-CxxuSettingsDefaultList))
+    {
+        $key = [string]$item.Key
+        $lines.Add(("        {0} = {1}  # {2}" -f $key, (Format-CxxuPsd1Value $Model.Settings[$key]), $item.Description))
+    }
+    $lines.Add('    }')
+    $lines.Add('}')
+    return ($lines -join "`n")
+}
+function Read-CxxuConfigState
+{
+    # 读用户配置为 v2 模型；同时返回实际出现的平坦键（Present）和未识别键（Unknown）。
+    param([Parameter(Mandatory)][string]$Path)
+    $model = New-CxxuConfigModel
+    $present = @{}
+    $unknown = New-Object System.Collections.Generic.List[string]
+    $exists = Test-Path -LiteralPath $Path
+    if (-not $exists)
+    {
+        return [pscustomobject]@{ Model = $model; Present = $present; Unknown = @(); Exists = $false }
+    }
+    $data = Import-CxxuConfigData -Path $Path
+    $knownFlat = @{}
+    foreach ($row in (Read-CxxuConfigDefaultList)) { $knownFlat[[string]$row.Key] = $true }
+    $components = $null
+    if ($data.Contains('Components')) { $components = $data['Components'] }
+    if ($components -is [System.Collections.IDictionary])
+    {
+        foreach ($component in (Read-CxxuComponentManifest))
+        {
+            $id = [string]$component.Id
+            $actualId = @($components.Keys | Where-Object { [string]$_ -ieq $id } | Select-Object -First 1)
+            if (-not $actualId.Count) { continue }
+            $entry = $components[$actualId[0]]
+            if ($entry -isnot [System.Collections.IDictionary]) { continue }
+            if ($entry.Contains('Enabled'))
+            {
+                $model.Components[$id].Enabled = ConvertTo-CxxuBool $entry['Enabled']
+                $present[[string]$component.Key] = $true
+            }
+            foreach ($option in @($component.Options | Where-Object { $_ }))
+            {
+                $actualOption = @($entry.Keys | Where-Object { [string]$_ -ieq [string]$option.Name } | Select-Object -First 1)
+                if (-not $actualOption.Count) { continue }
+                $value = $entry[$actualOption[0]]
+                if ([string]$option.Type -eq 'List') { $value = @($value | ForEach-Object { [string]$_ } | Where-Object { $_ }) }
+                $model.Components[$id][[string]$option.Name] = $value
+                $present[[string]$option.Key] = $true
+            }
+            foreach ($name in $entry.Keys)
+            {
+                if (($name -notin @('Enabled') ) -and (-not (@($component.Options | ForEach-Object { $_.Name }) -contains [string]$name))) { $unknown.Add("Components.$id.$name") }
+            }
+        }
+        foreach ($name in $components.Keys)
+        {
+            if (-not (@(Read-CxxuComponentManifest | ForEach-Object { $_.Id }) -contains [string]$name)) { $unknown.Add("Components.$name") }
+        }
+    }
+    if ($data.Contains('Settings') -and ($data['Settings'] -is [System.Collections.IDictionary]))
+    {
+        $settings = $data['Settings']
+        foreach ($item in (Read-CxxuSettingsDefaultList))
+        {
+            $key = [string]$item.Key
+            $actual = @($settings.Keys | Where-Object { [string]$_ -ieq $key } | Select-Object -First 1)
+            if ($actual.Count)
+            {
+                $model.Settings[$key] = $settings[$actual[0]]
+                $present[$key] = $true
+            }
+        }
+        foreach ($name in $settings.Keys)
+        {
+            if (-not (@(Read-CxxuSettingsDefaultList | ForEach-Object { $_.Key }) -contains [string]$name)) { $unknown.Add("Settings.$name") }
+        }
+    }
+    # 兼容旧版平坦键：v1 文件或 v2 文件里同时保留的键仍然生效。
+    foreach ($key in $data.Keys)
+    {
+        if ($key -in @('SchemaVersion', 'Components', 'Settings')) { continue }
+        if ($knownFlat.ContainsKey([string]$key))
+        {
+            if (-not $present.ContainsKey([string]$key))
+            {
+                $null = Set-CxxuModelValueByKey -Model $model -Key ([string]$key) -Value $data[$key]
+                $present[[string]$key] = $true
+            }
+        }
+        else { $unknown.Add([string]$key) }
+    }
+    return [pscustomobject]@{ Model = $model; Present = $present; Unknown = @($unknown); Exists = $true }
+}
+function Write-CxxuConfigState
+{
+    # 以 v2 规范文本写用户配置；旧文件先备份。
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)]$Model)
+    if (Test-Path -LiteralPath $Path)
+    {
+        Copy-Item -LiteralPath $Path -Destination ($Path + '.bak-' + (Get-Date -Format 'yyyyMMddHHmmssfff')) -Force
+    }
+    $dir = Split-Path $Path -Parent
+    if ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    Write-CxxuUtf8Text -Path $Path -Text (ConvertTo-CxxuConfigText -Model $Model) -NoNewline -Bom
+}
+function Set-CxxuConfigModelValues
+{
+    # 一次读取、批量修改、一次写回；未知键只警告（旧文件已备份）。
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][hashtable]$Values
+    )
+    $state = Read-CxxuConfigState -Path $Path
+    if ($state.Unknown.Count)
+    {
+        Write-Warning ("用户配置含未识别键，重写会忽略：{0}；旧文件已备份。" -f ($state.Unknown -join '、'))
+    }
+    foreach ($key in $Values.Keys)
+    {
+        if (-not (Set-CxxuModelValueByKey -Model $state.Model -Key ([string]$key) -Value $Values[$key]))
+        {
+            throw "配置键未在 components.psd1/config.defaults.psd1 中定义：$key"
+        }
+    }
+    Write-CxxuConfigState -Path $Path -Model $state.Model
+}
+function Get-CxxuConfigStateTextValue
+{
+    # 把模型值转成环境变量/表格里的字符串。
+    param($Value)
+    if ($Value -is [bool]) { if ($Value) { return 'True' } return 'False' }
+    if ($Value -is [array]) { return ($Value -join ',') }
+    return [string]$Value
 }
 function Import-CxxuConfigData
 {
@@ -1219,10 +1845,12 @@ function Import-CxxuConfig
     .SYNOPSIS
     读用户配置(默认 ~/.cxxu/config.psd1):只填环境变量的空位,不覆盖已设的值。
     .DESCRIPTION
-    优先级:环境变量 > 配置文件 > 默认值(默认值真源见 PS/Init/config.defaults.psd1)。
-    缺文件静默跳过(首用零成本);文件损坏或含未知键时警告,但都不阻塞 init。
-    本函数记录哪些键由配置文件注入,供 Get-CxxuConfig 标注来源。
-    init 首步自动调;改完配置重开终端(或 init -Force)生效。-Path 供测试/便携覆盖。
+    支持 v2 嵌套结构（SchemaVersion=2，Components/Settings）与旧版平坦键；两者都按
+    环境变量 > 配置文件 > 默认值 的优先级注入。组件清单与默认值见 PS/Init/components.psd1，
+    Settings 默认值见 PS/Init/config.defaults.psd1。
+    缺文件静默跳过（首用零成本）；文件损坏或含未知键时警告，但都不阻塞 init。
+    本函数记录哪些键由配置文件注入，供 Get-CxxuConfig 标注来源。
+    init 首步自动调；改完配置重开终端（或 init -Force）生效。-Path 供测试/便携覆盖。
     .EXAMPLE
     Import-CxxuConfig
     #>
@@ -1232,30 +1860,28 @@ function Import-CxxuConfig
         [string]$Path = (Join-Path (Join-Path $HOME '.cxxu') 'config.psd1')
     )
     $script:CxxuConfigAppliedFromFile = @{}
-    if (-not (Test-Path -LiteralPath $Path)) { return }
-    $data = try { Import-CxxuConfigData -Path $Path } catch
+    $state = try { Read-CxxuConfigState -Path $Path } catch
     {
         Write-Warning "用户配置读失败($Path):$($_.Exception.Message);已忽略,用默认值。"
         return
     }
-    $defaults = Read-CxxuConfigDefaultList
-    $known = @($defaults | ForEach-Object { [string]$_.Key })
-    $unknown = @($data.Keys | Where-Object { $known -notcontains [string]$_ })
-    if ($unknown.Count)
+    $global:CxxuConfigModel = $state.Model
+    if (-not $state.Exists) { return }
+    if ($state.Unknown.Count)
     {
-        Write-Warning ("用户配置含未知键,已忽略:{0};可用键见 Get-CxxuConfig。" -f ($unknown -join '、'))
+        Write-Warning ("用户配置含未知键,已忽略:{0};可用键见 Get-CxxuConfig。" -f ($state.Unknown -join '、'))
     }
-    foreach ($item in $defaults)
+    foreach ($item in (Read-CxxuConfigDefaultList))
     {
         $key = [string]$item.Key
-        if (-not $data.Contains($key)) { continue }
+        if (-not $state.Present.ContainsKey($key)) { continue }
         if (-not [string]::IsNullOrEmpty((Get-Item "env:$key" -ErrorAction Ignore).Value)) { continue }
-        $v = $data[$key]
-        if ($null -eq $v -or "$v" -eq '') { continue }
-        # 布尔转环境变量惯用字符串(True/False 正好命中各开关的正则)
-        Set-Item "env:$key" -Value "$v"
-        $script:CxxuConfigAppliedFromFile[$key] = "$v"
-        Write-Verbose "用户配置生效: $key=$v"
+        $value = Get-CxxuModelValueByKey -Model $state.Model -Key $key
+        $text = Get-CxxuConfigStateTextValue $value
+        if ([string]::IsNullOrEmpty($text)) { continue }
+        Set-Item "env:$key" -Value $text
+        $script:CxxuConfigAppliedFromFile[$key] = $text
+        Write-Verbose "用户配置生效: $key=$text"
     }
 }
 function Get-CxxuConfig
@@ -1264,8 +1890,9 @@ function Get-CxxuConfig
     .SYNOPSIS
     查看配置开关的当前生效值、来源与默认值。
     .DESCRIPTION
-    逐项列出插件与 init 行为开关,来源为“环境变量”“配置文件”“默认值”之一:
-    环境变量优先于用户配置文件,配置文件优先于仓库默认值(PS/Init/config.defaults.psd1)。
+    逐项列出组件与 init 行为开关,来源为“环境变量”“配置文件”“默认值”之一:
+    环境变量优先于用户配置文件,配置文件优先于仓库默认值(组件见 PS/Init/components.psd1,
+    Settings 见 PS/Init/config.defaults.psd1)。
     配置文件的键由 init 首步注入环境变量,因此来源标注依赖本会话的注入记录;未跑过 init 时,
     已存在的环境变量一律标为“环境变量”。输出为对象,可用 Format-List 查看完整说明。
     .EXAMPLE
@@ -1278,36 +1905,37 @@ function Get-CxxuConfig
         # 用户配置文件路径(默认 ~/.cxxu/config.psd1)
         [string]$Path = (Join-Path (Join-Path $HOME '.cxxu') 'config.psd1')
     )
-    if (Test-Path -LiteralPath $Path)
+    $state = try { Read-CxxuConfigState -Path $Path } catch
     {
-        try { $null = Import-CxxuConfigData -Path $Path }
-        catch { Write-Warning "用户配置读失败($Path):$($_.Exception.Message);来源按环境变量与默认值判定。" }
+        Write-Warning "用户配置读失败($Path):$($_.Exception.Message);来源按环境变量与默认值判定。"
+        [pscustomobject]@{ Model = New-CxxuConfigModel; Present = @{}; Unknown = @(); Exists = $false }
     }
     foreach ($item in (Read-CxxuConfigDefaultList))
     {
         $key = [string]$item.Key
         $envValue = (Get-Item "env:$key" -ErrorAction Ignore).Value
-        if ([string]::IsNullOrEmpty($envValue))
-        {
-            $value = $item.Default
-            $source = '默认值'
-        }
-        elseif ($script:CxxuConfigAppliedFromFile -and $script:CxxuConfigAppliedFromFile[$key] -eq $envValue)
+        if (-not [string]::IsNullOrEmpty($envValue))
         {
             $value = $envValue
+            if ($script:CxxuConfigAppliedFromFile -and $script:CxxuConfigAppliedFromFile[$key] -eq $envValue) { $source = '配置文件' }
+            else { $source = '环境变量' }
+        }
+        elseif ($state.Present.ContainsKey($key))
+        {
+            $value = Get-CxxuConfigStateTextValue (Get-CxxuModelValueByKey -Model $state.Model -Key $key)
             $source = '配置文件'
         }
         else
         {
-            $value = $envValue
-            $source = '环境变量'
+            $value = Get-CxxuConfigStateTextValue $item.Default
+            $source = '默认值'
         }
         [pscustomobject]@{
             Name        = [string]$item.Name
             Key         = $key
             Value       = [string]$value
             Source      = $source
-            Default     = [string]$item.Default
+            Default     = (Get-CxxuConfigStateTextValue $item.Default)
             Description = [string]$item.Description
         }
     }
@@ -1318,8 +1946,9 @@ function New-CxxuConfigTemplate
     .SYNOPSIS
     生成用户配置模板(默认 ~/.cxxu/config.psd1):有文件默认不动,加 -Force 覆盖。
     .DESCRIPTION
-    模板由仓库默认偏好(PS/Init/config.defaults.psd1)渲染,每个键都带取值说明。
-    环境变量优先于本文件;要恢复默认偏好用 Reset-CxxuConfig,查看生效值用 Get-CxxuConfig。
+    模板由组件清单(PS/Init/components.psd1)与 Settings 默认值(PS/Init/config.defaults.psd1)
+    渲染为 SchemaVersion=2 的嵌套结构,组件与选项都带取值说明。
+    环境变量优先于本文件;要恢复默认偏好用 Reset-CxxuConfig,查看生效值用 Get-CxxuConfig/Get-CxxuComponent。
     .EXAMPLE
     New-CxxuConfigTemplate
     .EXAMPLE
@@ -1337,28 +1966,15 @@ function New-CxxuConfigTemplate
         Write-Host "模板已存在($Path):改值直接编辑;重建加 -Force。"
         return
     }
-    $defaults = Read-CxxuConfigDefaultList
-    if (-not $defaults.Count)
+    $model = New-CxxuConfigModel
+    if (-not $model.Components.Count)
     {
-        Write-Warning "默认偏好文件缺失或为空,未生成模板:$(Join-Path $script:CxxuModuleRoot 'config.defaults.psd1')"
+        Write-Warning "组件清单缺失或为空,未生成模板:$(Join-Path $script:CxxuModuleRoot 'components.psd1')"
         return
     }
     if ($PSCmdlet.ShouldProcess($Path, '写用户配置模板'))
     {
-        $dir = Split-Path $Path -Parent
-        if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
-        $lines = New-Object System.Collections.Generic.List[string]
-        $lines.Add('@{')
-        $lines.Add('    # CxxuPsModules 用户配置(本机生效,仓库外;优先级:环境变量 > 本文件 > 默认值)')
-        $lines.Add('    # 改完重开终端(或 init -Force)生效;读取:每次 init 自动调 Import-CxxuConfig。')
-        $lines.Add('    # 查看生效值与来源:Get-CxxuConfig;恢复仓库默认偏好:Reset-CxxuConfig。')
-        foreach ($item in $defaults)
-        {
-            $key = [string]$item.Key
-            $lines.Add('    ' + $key.PadRight(15) + '= ' + (Format-CxxuConfigValue $item.Default) + '  # ' + [string]$item.Description)
-        }
-        $lines.Add('}')
-        Write-CxxuUtf8Text -Path $Path -Text ($lines -join "`n") -Bom
+        Write-CxxuConfigState -Path $Path -Model $model
         Write-Host "模板已写 $Path"
     }
 }
@@ -1368,7 +1984,7 @@ function Reset-CxxuConfig
     .SYNOPSIS
     把用户配置重置为仓库默认偏好(默认 ~/.cxxu/config.psd1)。
     .DESCRIPTION
-    以仓库 PS/Init/config.defaults.psd1 为准重写用户配置文件;各设备拉同一仓库后执行本命令,
+    以仓库 PS/Init/components.psd1 与 config.defaults.psd1 为准重写用户配置文件;各设备拉同一仓库后执行本命令,
     即可得到同一份默认偏好。重置只改写配置文件,不改当前会话:$env: 中的值在会话结束前仍然生效,
     重开终端(或 init -Force)后按新配置生效。
     若同名环境变量已在用户级或机器级持久化,按“环境变量 > 配置文件”仍会覆盖默认值;
@@ -1409,42 +2025,6 @@ function Reset-CxxuConfig
         Write-Warning ("以下环境变量优先于配置文件,重置后仍按环境变量值生效:{0}。需要彻底回到默认时,先清除对应环境变量(如 Add-EnvVar 或 [Environment]::SetEnvironmentVariable)。" -f ($blocked -join '、'))
     }
 }
-function Set-CxxuConfigValue
-{
-    # 写用户配置文件单键(供 Enable/Disable-PsPlugin -Persist 用,不导出):
-    # 行级改写(保注释保其余键);无键则追到 } 前;无文件先建模板。失败警告,永不抛。
-    param([string]$Path, [string]$Key, [bool]$Value)
-    try
-    {
-        if (-not (Test-Path -LiteralPath $Path)) { New-CxxuConfigTemplate -Path $Path }
-        $text = Read-CxxuUtf8Text -Path $Path
-        $val = if ($Value) { '$true' } else { '$false' }
-        $ls = $text -split '\r?\n'
-        $done = $false
-        for ($i = 0; $i -lt $ls.Count; $i++)
-        {
-            if ($ls[$i] -match ('^(?<ind>\s*)' + [regex]::Escape($Key) + '(?<rest>\s*=).*?(?<cmt>\s*#.*)?$'))
-            {
-                $ls[$i] = $Matches.ind + $Key.PadRight(15) + '= ' + $val + $Matches.cmt
-                $done = $true
-                break
-            }
-        }
-        if (-not $done)
-        {
-            $at = @($ls).Count - 1
-            for ($k = $ls.Count - 1; $k -ge 0; $k--) { if ($ls[$k] -match '^\s*\}\s*$') { $at = $k; break } }
-            if ($at -le 0) { $ls = @("$Key = $val") + @($ls) }
-            else { $ls = @($ls[0..($at - 1)]) + @("$Key = $val") + @($ls[$at..($ls.Count - 1)]) }
-        }
-        Write-CxxuUtf8Text -Path $Path -Text ($ls -join "`n") -NoNewline -Bom
-        Write-Host "用户配置已持久化: $Key=$val($Path)"
-    }
-    catch
-    {
-        Write-Warning "用户配置持久化失败($Path):$($_.Exception.Message)"
-    }
-}
 function Disable-PsPlugin
 {
     <#
@@ -1453,8 +2033,14 @@ function Disable-PsPlugin
     .DESCRIPTION
     插件注册表：Fzf(PSFzf 快捷键)/Zoxide(z 跳转)/Predictor(命令名 ListView 预测)/
     Tab(CxxuTab 命令名 Tab 模糊，默认开,不需要时停用)/
-    Argc(argc-completions 参数补全,默认开,懒加载)。停用只关本命令的合并/加载，引擎原生行为不受影响；
-    持开关逐调用判定，无需重载。-Persist 写 ~/.cxxu/config.psd1（行级替换，保注释）。
+    Argc(argc-completions 参数补全,默认开,懒加载)/GitCompletion(git/gitk 的 Tab 补全)/
+    Carapace(外部 CLI 参数补全,默认关,由 init 加载)/
+    PSCompletions(约 200 个命令的参数补全)/Fnm(node 版本切换)/ScoopSearch(scoop 搜索加速)；
+    后三项默认关，启用后由 init 按组件配置加载。
+    停用只关本命令的合并/加载，引擎原生行为不受影响；持开关逐调用判定，无需重载。
+    已注册的 Native completer 无法在当前会话撤销：停用 GitCompletion/Carapace 后需重开终端，
+    剩余来源才会重新接管 git/gitk。
+    -Persist 写 ~/.cxxu/config.psd1 的 Components 段（v2 结构，旧文件先备份）。
     .EXAMPLE
     Disable-PsPlugin Tab
     .EXAMPLE
@@ -1464,19 +2050,38 @@ function Disable-PsPlugin
     param(
         # 插件名(Tab 补全可用)
         [Parameter(Mandatory)]
-        [ValidateSet('Fzf', 'Zoxide', 'Predictor', 'Tab', 'Argc')]
+        [ValidateSet('Fzf', 'Zoxide', 'Predictor', 'Tab', 'Argc', 'GitCompletion', 'Carapace', 'PSCompletions', 'Fnm', 'ScoopSearch')]
         [string]$Name,
         # 写入用户配置文件,长期有效(否则只关当会话)
         [switch]$Persist,
         # 配置文件路径(默认 ~/.cxxu/config.psd1)
         [string]$Path = (Join-Path (Join-Path $HOME '.cxxu') 'config.psd1')
     )
-    $key = @{ Fzf = 'PsFzf'; Zoxide = 'PsZoxide'; Predictor = 'PsPredictor'; Tab = 'PsTab'; Argc = 'PsArgc' }[$Name]
     if ($PSCmdlet.ShouldProcess($Name, '停用插件'))
     {
-        Set-Item "env:$key" -Value 'False'
-        Write-Host "$Name 已停用(当会话)。"
-        if ($Persist) { Set-CxxuConfigValue -Path $Path -Key $key -Value $false }
+        if ($Name -eq 'GitCompletion')
+        {
+            Set-Item 'env:PsGitCompletion' -Value 'False'
+            Set-Item 'env:PsGitCompletionSource' -Value 'Argc'
+            if ($Persist)
+            {
+                Set-CxxuConfigModelValues -Path $Path -Values @{ PsGitCompletion = $false; PsGitCompletionSource = 'Argc' }
+            }
+            Write-Host "$Name 已停用(当会话)。"
+            Write-Host '当前会话已注册的 git/gitk completer 无法撤销；重开终端后 argc 才会重新接管。'
+        }
+        else
+        {
+            Disable-CxxuComponent -Id $Name -Persist:$Persist -Path $Path
+            if ($Name -eq 'Carapace')
+            {
+                Write-Host '当前会话已注册的 carapace completer 无法撤销；重开终端后由剩余来源接管 git/gitk。'
+            }
+            elseif ($Name -in @('PSCompletions', 'Fnm', 'ScoopSearch'))
+            {
+                Write-Host '当前会话已加载的模块或钩子无法撤销；重开终端后完全停用。'
+            }
+        }
     }
 }
 function Enable-PsPlugin
@@ -1485,10 +2090,11 @@ function Enable-PsPlugin
     .SYNOPSIS
     启用体验插件(当会话生效;加 -Persist 长期启用,重开也开)。
     .DESCRIPTION
-    启用是显式开(环境变量 True,盖过配置文件)。Tab/Predictor 即时生效(逐调用判定,
-    无需重载);7+ 的 Fzf/Tab 立装桩即时生效(重调安装器,幂等,只补缺);5.1 的 Tab
-    直接导入 CxxuTab;Argc 立装 Tab 桩,真正的注册仍在首个 Tab;Predictor/Zoxide
-    单发已过则重开终端(或 Register-PsUxLazyLoad -Now 立装)。
+    启用是显式开(环境变量 True,盖过配置文件)。GitCompletion 额外切换来源并注册 git/gitk；
+    其余组件统一走 Enable-CxxuComponent -Now：先写开关，再调用清单里的 Init 函数。
+    Fzf/Tab 在 pwsh 7+ 继续补手势桩，5.1 的 Tab 直接导入 CxxuTab；Argc 的即时调用只装 Tab 桩，
+    真正的注册仍在首个 Tab；Predictor/Zoxide 若 OnIdle 单发已过，仍建议重开终端
+    (或 Register-PsUxLazyLoad -Now 立装)。
     .EXAMPLE
     Enable-PsPlugin Tab
     .EXAMPLE
@@ -1498,23 +2104,38 @@ function Enable-PsPlugin
     param(
         # 插件名(Tab 补全可用)
         [Parameter(Mandatory)]
-        [ValidateSet('Fzf', 'Zoxide', 'Predictor', 'Tab', 'Argc')]
+        [ValidateSet('Fzf', 'Zoxide', 'Predictor', 'Tab', 'Argc', 'GitCompletion', 'Carapace', 'PSCompletions', 'Fnm', 'ScoopSearch')]
         [string]$Name,
         # 写入用户配置文件,长期有效(否则只开当会话)
         [switch]$Persist,
         # 配置文件路径(默认 ~/.cxxu/config.psd1)
         [string]$Path = (Join-Path (Join-Path $HOME '.cxxu') 'config.psd1')
     )
-    $key = @{ Fzf = 'PsFzf'; Zoxide = 'PsZoxide'; Predictor = 'PsPredictor'; Tab = 'PsTab'; Argc = 'PsArgc' }[$Name]
     if ($PSCmdlet.ShouldProcess($Name, '启用插件'))
     {
-        Set-Item "env:$key" -Value 'True'
-        Write-Host "$Name 已启用(当会话)。"
-        if ($Name -eq 'Argc')
+        if ($Name -eq 'GitCompletion')
         {
-            # 只补环境/PATH 与 Tab 桩(幂等);实际注册仍在首个 Tab
-            Set-ArgcCompletions -ErrorAction SilentlyContinue
+            Set-Item 'env:PsGitCompletion' -Value 'True'
+            Set-Item 'env:PsGitCompletionSource' -Value 'GitCompletion'
+            if ($Persist)
+            {
+                Set-CxxuConfigModelValues -Path $Path -Values @{ PsGitCompletion = $true; PsGitCompletionSource = 'GitCompletion' }
+            }
+            Write-Host "$Name 已启用(当会话)。"
+            if (Test-CxxuGitCompletionInstalled)
+            {
+                Register-GitCompletion
+            }
+            else
+            {
+                Write-Warning 'git-completion 模块未安装：先执行 Deploy-CompletionStack -IncludeGitCompletion，再启用 GitCompletion。'
+            }
         }
+        else
+        {
+            Enable-CxxuComponent -Id $Name -Persist:$Persist -Path $Path -Now
+        }
+
         if ((($Name -eq 'Fzf') -or ($Name -eq 'Tab')) -and ($PSVersionTable.PSVersion.Major -ge 7))
         {
             # 立装桩即时生效(幂等,只补缺;交互门由安装器自己判定,重定向下静默跳过)
@@ -1525,7 +2146,482 @@ function Enable-PsPlugin
             # 5.1 直接导入 CxxuTab 立即生效(默认关,显式开启才走到这里)
             Import-Module CxxuTab -Global -ErrorAction SilentlyContinue
         }
-        if ($Persist) { Set-CxxuConfigValue -Path $Path -Key $key -Value $true }
+    }
+}
+
+function Set-GitCompletionSource
+{
+    <#
+    .SYNOPSIS
+    在 git-completion、carapace、argc 之间切换 git/gitk 的 Tab 补全来源。
+    .DESCRIPTION
+    来源由配置键 PsGitCompletionSource 决定（Auto/GitCompletion/Carapace/Argc），
+    由 init 在启动时读取；本命令只改环境变量与用户配置，不修改 profile。
+    - GitCompletion：启动时注册 git-completion；
+    - Carapace：同时打开 PsCarapace，由 init 加载 carapace 并让它接管 git/gitk；
+    - Argc：不注册 git-completion，由 argc 在首个 Tab 接管 git/gitk。
+    carapace 的额外排除项用 PsCarapaceExcludes 配置，不再写 profile。
+    -Persist 把来源写入 ~/.cxxu/config.psd1；不加时只改当前会话。
+    当前会话已注册的 Native completer 无法撤销，切换后需重开终端才完全生效。
+    .EXAMPLE
+    Set-GitCompletionSource GitCompletion
+    .EXAMPLE
+    Set-GitCompletionSource Carapace -Persist
+    .EXAMPLE
+    Set-GitCompletionSource Argc -WhatIf
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        # 目标来源：GitCompletion | Carapace | Argc
+        [Parameter(Mandatory)]
+        [ValidateSet('GitCompletion', 'Carapace', 'Argc')]
+        [string]$Source,
+        # 把来源及相关开关写入用户配置文件，重开终端后保持
+        [switch]$Persist,
+        # 用户配置文件路径（-Persist 时写入）
+        [string]$Path = (Join-Path (Join-Path $HOME '.cxxu') 'config.psd1')
+    )
+
+    $wantGitCompletion = $Source -eq 'GitCompletion'
+    $gitValue = if ($wantGitCompletion) { 'True' } else { 'False' }
+
+    $applied = $false
+    if ($PSCmdlet.ShouldProcess("git 补全来源 -> $Source", '设置'))
+    {
+        Set-Item 'env:PsGitCompletionSource' -Value $Source
+        Set-Item 'env:PsGitCompletion' -Value $gitValue
+        if ($Source -eq 'Carapace') { Set-Item 'env:PsCarapace' -Value 'True' }
+        if ($Persist)
+        {
+            $updates = @{ PsGitCompletionSource = $Source; PsGitCompletion = $wantGitCompletion }
+            if ($Source -eq 'Carapace') { $updates['PsCarapace'] = $true }
+            Set-CxxuConfigModelValues -Path $Path -Values $updates
+        }
+        $applied = $true
+    }
+
+    if ($Source -eq 'GitCompletion')
+    {
+        if (Test-CxxuGitCompletionInstalled)
+        {
+            if ($PSCmdlet.ShouldProcess('git-completion', '注册 git/gitk completer')) { Register-GitCompletion }
+        }
+        else
+        {
+            Write-Warning 'git-completion 模块未安装：先执行 Deploy-CompletionStack -IncludeGitCompletion。'
+        }
+    }
+    elseif ($Source -eq 'Carapace')
+    {
+        if (Get-Command carapace -ErrorAction SilentlyContinue)
+        {
+            if ($PSCmdlet.ShouldProcess('carapace', '加载补全')) { Initialize-Carapace }
+        }
+        else
+        {
+            Write-Warning '未检测到 carapace：先执行 Deploy-Carapace 安装。'
+        }
+    }
+    elseif (-not (Get-Command argc -ErrorAction SilentlyContinue))
+    {
+        Write-Warning '未检测到 argc：先执行 Deploy-CompletionStack -IncludeArgc 或 Deploy-ArgcCompletions。'
+    }
+
+    Write-Host ("git 补全来源：{0}" -f $Source)
+    if ($applied)
+    {
+        Write-Host ("当前会话：PsGitCompletionSource={0}，PsGitCompletion={1}" -f $Source, $gitValue)
+        if ($Source -eq 'Carapace') { Write-Host '当前会话：PsCarapace=True' }
+    }
+    else
+    {
+        Write-Host '当前会话未改动（-WhatIf）。'
+    }
+    if ($Persist)
+    {
+        if ($applied) { Write-Host '已写入用户配置，重开终端后保持。' }
+        else { Write-Host '未写入用户配置（-WhatIf）。' }
+    }
+    else
+    {
+        Write-Host '未加 -Persist：只改当前会话，重开终端后按配置文件决定。'
+    }
+    if (($Source -ne 'Carapace') -and ($env:PsCarapace -and ($env:PsCarapace -notmatch '^(False|0|No|Off)$')))
+    {
+        Write-Host 'carapace 仍处于启用状态，只让出 git/gitk；需要停止加载用 Disable-PsPlugin Carapace -Persist。'
+    }
+    Write-Host '重开终端后完全生效；当前会话已注册的 Native completer 无法撤销。'
+}
+
+function Get-CxxuComponent
+{
+    <#
+    .SYNOPSIS
+    列出组件清单与当前启用状态、选项值及来源。
+    .DESCRIPTION
+    元数据来自 PS/Init/components.psd1；值按“环境变量 > 用户配置 > 默认值”解析。
+    输出对象可直接接 Format-List/Format-Table；-Id 只查一个组件（不区分大小写）。
+    Install 给出依赖安装入口，Enable 给出未启用时的组件启用命令；-Validate 不列组件，
+    改跑清单结构、Init 步骤生成与已启用依赖的一致性检查。
+    .EXAMPLE
+    Get-CxxuComponent
+    .EXAMPLE
+    Get-CxxuComponent -Id Carapace | Format-List
+    .EXAMPLE
+    Get-CxxuComponent | Select-Object Id, Enabled, Install, Enable | Format-Table -Wrap
+    .EXAMPLE
+    Get-CxxuComponent -Validate | Where-Object Status -ne 'OK'
+    #>
+    [CmdletBinding()]
+    param(
+        # 组件 Id；省略时列出全部
+        [string]$Id = '',
+        # 用户配置文件路径(默认 ~/.cxxu/config.psd1)
+        [string]$Path = (Join-Path (Join-Path $HOME '.cxxu') 'config.psd1'),
+        # 只做一致性自检，输出 Component/Check/Status/Detail 行
+        [switch]$Validate
+    )
+    if ($Validate) { return Test-CxxuComponent -Path $Path }
+    $state = try { Read-CxxuConfigState -Path $Path } catch
+    {
+        Write-Warning "用户配置读失败($Path):$($_.Exception.Message);按环境变量与默认值判定。"
+        [pscustomobject]@{ Model = New-CxxuConfigModel; Present = @{}; Unknown = @(); Exists = $false }
+    }
+    foreach ($component in (Read-CxxuComponentManifest))
+    {
+        if ($Id -and ([string]$component.Id -ine $Id)) { continue }
+        $key = [string]$component.Key
+        $envValue = (Get-Item "env:$key" -ErrorAction Ignore).Value
+        if (-not [string]::IsNullOrEmpty($envValue))
+        {
+            $enabled = ConvertTo-CxxuBool $envValue
+            $source = '环境变量'
+        }
+        elseif ($state.Present.ContainsKey($key))
+        {
+            $enabled = [bool]$state.Model.Components[[string]$component.Id].Enabled
+            $source = '配置文件'
+        }
+        else
+        {
+            $enabled = [bool]$component.Default
+            $source = '默认值'
+        }
+        $options = [ordered]@{}
+        foreach ($option in @($component.Options | Where-Object { $_ }))
+        {
+            $optKey = [string]$option.Key
+            $optEnv = (Get-Item "env:$optKey" -ErrorAction Ignore).Value
+            if (-not [string]::IsNullOrEmpty($optEnv))
+            {
+                if ([string]$option.Type -eq 'List') { $options[[string]$option.Name] = @($optEnv -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }) }
+                else { $options[[string]$option.Name] = $optEnv }
+            }
+            elseif ($state.Present.ContainsKey($optKey))
+            {
+                $options[[string]$option.Name] = $state.Model.Components[[string]$component.Id][[string]$option.Name]
+            }
+            else
+            {
+                $options[[string]$option.Name] = $option.Default
+            }
+        }
+        $enableHint = if ($enabled)
+        {
+            ''
+        }
+        elseif ($component.ContainsKey('EnableHint') -and -not [string]::IsNullOrWhiteSpace([string]$component.EnableHint))
+        {
+            [string]$component.EnableHint
+        }
+        else
+        {
+            "Enable-CxxuComponent $([string]$component.Id) -Persist"
+        }
+        [pscustomobject]@{
+            Id          = [string]$component.Id
+            Name        = [string]$component.Name
+            Phase       = [string]$component.Phase
+            Enabled     = [bool]$enabled
+            Source      = $source
+            Default     = [bool]$component.Default
+            Key         = $key
+            Options     = [pscustomobject]$options
+            Description = [string]$component.Description
+            Lazy        = [string]$component.Lazy
+            MinPS       = [int]$component.MinPS
+            Init        = [string]$component.Init
+            Detect      = [string]$component.Detect
+            Install     = [string]$component.Install
+            Enable      = $enableHint
+            Docs        = [string]$component.Docs
+        }
+    }
+}
+function Test-CxxuComponent
+{
+    <#
+    .SYNOPSIS
+    检查组件清单、Init 步骤生成与已启用组件的外部依赖是否一致。
+    .DESCRIPTION
+    只读检查，不修改配置。清单结构错误、Init 步骤未覆盖或 Init 函数缺失记为“错误”；
+    组件已启用但 Detect 命令/模块不存在记为“警告”（附安装入口）。
+    输出对象含 Component、Check、Status、Detail，Status 为 OK/警告/错误。
+    .EXAMPLE
+    Test-CxxuComponent
+    .EXAMPLE
+    Test-CxxuComponent | Where-Object Status -ne 'OK'
+    #>
+    [CmdletBinding()]
+    param(
+        # 用户配置文件路径(默认 ~/.cxxu/config.psd1)
+        [string]$Path = (Join-Path (Join-Path $HOME '.cxxu') 'config.psd1')
+    )
+    $rows = New-Object System.Collections.Generic.List[object]
+    $add = {
+        param([string]$Component, [string]$Check, [string]$Status, [string]$Detail)
+        [void]$rows.Add([pscustomobject]@{
+                Component = $Component
+                Check     = $Check
+                Status    = $Status
+                Detail    = $Detail
+            })
+    }
+
+    $manifest = @(Read-CxxuComponentManifest)
+    if (-not $manifest.Count)
+    {
+        & $add '(清单)' '读取' '错误' 'components.psd1 为空或读取失败'
+        return $rows
+    }
+
+    # 步骤覆盖以 init 实际生成结果为准：核心步骤 + 清单生成的组件步骤。
+    $core = Get-CxxuCoreInitSteps
+    $coveredInit = @(($core.Before + $core.After) | ForEach-Object { [string]$_.Name })
+    $generated = @(Get-CxxuComponentInitSteps -CoveredInit $coveredInit)
+    $stepNames = @($coveredInit) + @($generated | ForEach-Object { [string]$_.Name })
+
+    $ids = @{}
+    $keys = @{}
+    foreach ($component in $manifest)
+    {
+        $id = [string]$component.Id
+        $label = if ([string]::IsNullOrWhiteSpace($id)) { '(未命名)' } else { $id }
+        $key = [string]$component.Key
+        $init = [string]$component.Init
+        $detect = [string]$component.Detect
+
+        if ([string]::IsNullOrWhiteSpace($id)) { & $add $label 'Id' '错误' '组件缺少 Id' }
+        elseif ($ids.ContainsKey($id)) { & $add $label 'Id' '错误' "Id 重复：$id" }
+        else { $ids[$id] = $true }
+
+        if ([string]::IsNullOrWhiteSpace($key)) { & $add $label 'Key' '错误' '组件缺少 Key' }
+        elseif ($keys.ContainsKey($key)) { & $add $label 'Key' '错误' "Key 重复：$key" }
+        else { $keys[$key] = $true }
+
+        if ([string]::IsNullOrWhiteSpace($init))
+        {
+            & $add $label 'Init 步骤' '错误' '组件缺少 Init 字段'
+        }
+        elseif ($stepNames -notcontains $init)
+        {
+            & $add $label 'Init 步骤' '错误' "清单已登记，但 init 步骤未覆盖：$init"
+        }
+        elseif (-not (Get-Command -Name $init -ErrorAction SilentlyContinue))
+        {
+            & $add $label 'Init 步骤' '错误' "init 步骤已生成，但函数不存在：$init"
+        }
+        else
+        {
+            & $add $label 'Init 步骤' 'OK' "$init 已生成"
+        }
+
+        if ([string]::IsNullOrWhiteSpace($detect))
+        {
+            & $add $label 'Detect' '警告' '未声明 Detect，跳过已启用依赖检查'
+        }
+
+        # 选项只做结构校验：Name/Key 必须唯一，Enum 必须有可选值。
+        $optionNames = @{}
+        $optionKeys = @{}
+        foreach ($option in @($component.Options | Where-Object { $_ }))
+        {
+            $optionName = [string]$option.Name
+            $optionKey = [string]$option.Key
+            if ([string]::IsNullOrWhiteSpace($optionName)) { & $add $label '选项' '错误' '选项缺少 Name' }
+            elseif ($optionNames.ContainsKey($optionName)) { & $add $label '选项' '错误' "选项 Name 重复：$optionName" }
+            else { $optionNames[$optionName] = $true }
+
+            if ([string]::IsNullOrWhiteSpace($optionKey)) { & $add $label '选项' '错误' "选项 $optionName 缺少 Key" }
+            elseif ($optionKeys.ContainsKey($optionKey)) { & $add $label '选项' '错误' "选项 Key 重复：$optionKey" }
+            else { $optionKeys[$optionKey] = $true }
+
+            if ([string]$option.Type -eq 'Enum' -and -not @($option.Values).Count)
+            {
+                & $add $label '选项' '错误' "枚举选项 $optionName 缺少 Values"
+            }
+        }
+    }
+
+    # 已启用组件的外部依赖：命令、已加载模块或 PSModulePath 下的模块目录。
+    $states = try { @(Get-CxxuComponent -Path $Path) } catch { @() }
+    foreach ($state in @($states | Where-Object { $_.Enabled }))
+    {
+        $component = @($manifest | Where-Object { [string]$_.Id -eq [string]$state.Id } | Select-Object -First 1)
+        if (-not $component.Count) { continue }
+        $detect = [string]$component[0].Detect
+        if ([string]::IsNullOrWhiteSpace($detect)) { continue }
+        $found = [bool](Get-Command -Name $detect -ErrorAction SilentlyContinue)
+        if (-not $found) { $found = [bool](Get-Module -Name $detect -ErrorAction SilentlyContinue) }
+        if (-not $found)
+        {
+            $found = [bool](@($env:PSModulePath -split [IO.Path]::PathSeparator |
+                        Where-Object { $_ -and (Test-Path -LiteralPath (Join-Path $_ $detect)) }).Count)
+        }
+        if ($found)
+        {
+            & $add ([string]$state.Id) '依赖' 'OK' "$detect 已就绪"
+        }
+        else
+        {
+            $install = [string]$component[0].Install
+            $enableHint = if ($component[0].ContainsKey('EnableHint') -and -not [string]::IsNullOrWhiteSpace([string]$component[0].EnableHint))
+            {
+                [string]$component[0].EnableHint
+            }
+            else
+            {
+                "Enable-CxxuComponent $($state.Id) -Now"
+            }
+            $hint = if ([string]::IsNullOrWhiteSpace($install))
+            {
+                "安装后重开终端，或执行 $enableHint。"
+            }
+            else
+            {
+                "先 $install，再重开终端或执行 $enableHint。"
+            }
+            & $add ([string]$state.Id) '依赖' '警告' ("组件已启用，但未检测到 {0}；{1}" -f $detect, $hint)
+        }
+    }
+
+    $rows
+}
+function Enable-CxxuComponent
+{
+    <#
+    .SYNOPSIS
+    启用一个组件：写当前会话环境变量；-Persist 写用户配置；-Now 立即调用组件 Init 函数。
+    .DESCRIPTION
+    组件 Id 来自 PS/Init/components.psd1。默认只负责启用意图，不立即加载；
+    加 -Now 时调用清单里的 Init 函数，等价于 Enable-PsPlugin 的即时加载路径。
+    部分组件即使立即调用 Init 也需重开终端才完全生效（如已注册的 completer）。
+    .EXAMPLE
+    Enable-CxxuComponent Carapace
+    .EXAMPLE
+    Enable-CxxuComponent Carapace -Persist
+    .EXAMPLE
+    Enable-CxxuComponent Fnm -Persist -Now
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter(Mandatory)][string]$Id,
+        [switch]$Persist,
+        # 立即调用组件清单里的 Init 函数（不需要重开终端时可加）
+        [switch]$Now,
+        [string]$Path = (Join-Path (Join-Path $HOME '.cxxu') 'config.psd1')
+    )
+    $component = @(Read-CxxuComponentManifest | Where-Object { [string]$_.Id -ieq $Id } | Select-Object -First 1)
+    if (-not $component.Count) { throw "未知组件：$Id；运行 Get-CxxuComponent 查看可用 Id。" }
+    $key = [string]$component[0].Key
+    if ($PSCmdlet.ShouldProcess($Id, '启用组件'))
+    {
+        Set-Item "env:$key" -Value 'True'
+        if ($Persist) { Set-CxxuConfigModelValues -Path $Path -Values @{ $key = $true } }
+        Write-Host ("组件 {0} 已启用{1}。" -f $Id, $(if ($Persist) { '并写入配置' } else { '（当会话）' }))
+        if ($Now)
+        {
+            $init = [string]$component[0].Init
+            if ([string]::IsNullOrWhiteSpace($init)) { Write-Warning "组件 $Id 没有 Init 函数，跳过立即加载。" }
+            elseif (Get-Command -Name $init -ErrorAction SilentlyContinue) { & $init }
+            else { Write-Warning "组件 $Id 的 Init 函数不存在：$init" }
+        }
+    }
+}
+function Disable-CxxuComponent
+{
+    <#
+    .SYNOPSIS
+    停用一个组件：写当前会话环境变量；-Persist 时写用户配置。
+    .DESCRIPTION
+    组件 Id 来自 PS/Init/components.psd1。已注册的 Native completer 无法在当前会话撤销，
+    需要重开终端才完全停用。
+    .EXAMPLE
+    Disable-CxxuComponent Carapace
+    .EXAMPLE
+    Disable-CxxuComponent Carapace -Persist
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter(Mandatory)][string]$Id,
+        [switch]$Persist,
+        [string]$Path = (Join-Path (Join-Path $HOME '.cxxu') 'config.psd1')
+    )
+    $component = @(Read-CxxuComponentManifest | Where-Object { [string]$_.Id -ieq $Id } | Select-Object -First 1)
+    if (-not $component.Count) { throw "未知组件：$Id；运行 Get-CxxuComponent 查看可用 Id。" }
+    $key = [string]$component[0].Key
+    if ($PSCmdlet.ShouldProcess($Id, '停用组件'))
+    {
+        Set-Item "env:$key" -Value 'False'
+        if ($Persist) { Set-CxxuConfigModelValues -Path $Path -Values @{ $key = $false } }
+        Write-Host ("组件 {0} 已停用{1}。" -f $Id, $(if ($Persist) { '并写入配置' } else { '（当会话）' }))
+    }
+}
+function Set-CxxuComponentOption
+{
+    <#
+    .SYNOPSIS
+    设置组件选项（如 GitCompletion.Source、Carapace.Excludes）。
+    .DESCRIPTION
+    选项定义、默认值与可选枚举来自 PS/Init/components.psd1。List 类型接受数组或逗号分隔字符串。
+    -Persist 时把选项写入用户配置；不加只改当前会话。
+    只改选项本身；git/gitk 来源切换请用 Set-GitCompletionSource（它同时维护 PsGitCompletion 与 PsCarapace）。
+    .EXAMPLE
+    Set-CxxuComponentOption -Id GitCompletion -Name Source -Value Carapace -Persist
+    .EXAMPLE
+    Set-CxxuComponentOption -Id Carapace -Name Excludes -Value @('winget','uv') -Persist
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter(Mandatory)][string]$Id,
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)]$Value,
+        [switch]$Persist,
+        [string]$Path = (Join-Path (Join-Path $HOME '.cxxu') 'config.psd1')
+    )
+    $component = @(Read-CxxuComponentManifest | Where-Object { [string]$_.Id -ieq $Id } | Select-Object -First 1)
+    if (-not $component.Count) { throw "未知组件：$Id；运行 Get-CxxuComponent 查看可用 Id。" }
+    $option = @($component[0].Options | Where-Object { $_ -and ([string]$_.Name -ieq $Name) } | Select-Object -First 1)
+    if (-not $option.Count) { throw "组件 $Id 没有选项 $Name；可用选项见 Get-CxxuComponent -Id $Id。" }
+    $definition = $option[0]
+    if ([string]$definition.Type -eq 'Enum')
+    {
+        $canonical = @($definition.Values | Where-Object { [string]$_ -ieq [string]$Value } | Select-Object -First 1)
+        if (-not $canonical.Count) { throw ("选项 {0}.{1} 只接受：{2}" -f $Id, $Name, ($definition.Values -join '、')) }
+        $Value = [string]$canonical[0]
+    }
+    elseif ([string]$definition.Type -eq 'List')
+    {
+        if ($Value -is [string]) { $Value = @($Value -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }) }
+        else { $Value = @($Value | ForEach-Object { [string]$_ } | Where-Object { $_ }) }
+    }
+    $envText = if ($Value -is [array]) { $Value -join ',' } else { [string]$Value }
+    $key = [string]$definition.Key
+    if ($PSCmdlet.ShouldProcess(("{0}.{1}" -f $Id, $Name), '设置组件选项'))
+    {
+        Set-Item "env:$key" -Value $envText
+        if ($Persist) { Set-CxxuConfigModelValues -Path $Path -Values @{ $key = $Value } }
+        Write-Host ("{0}.{1} = {2}{3}" -f $Id, $Name, $envText, $(if ($Persist) { '（已写入配置）' } else { '（当会话）' }))
     }
 }
 

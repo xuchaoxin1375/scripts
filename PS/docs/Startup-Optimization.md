@@ -10,7 +10,7 @@
 |---|---|---|
 | `pwsh -NoProfile -c exit` | ~208ms | 裸启动，优化天花板 |
 | conda hook（`profile.ps1`） | ~450~700ms | 每个 shell 都 fork 一次 conda.exe，**是第一大户，比 init 还贵**；已用缓存方案解决（见 §8） |
-| `init`（9 步） | +460~770ms | 沙盒多次测量区间 |
+| `init`（分步任务表） | +460~770ms | 沙盒多次测量区间 |
 | 真实全 profile（conda + init） | ~800~1300ms | 沙盒 1279ms，真机约 800~950ms |
 | `prompt` 每次回车 | ~100ms | 主要是 `Get-MemoryUseSummary` 的 CIM 查询（~100ms/次，由 5s 节流摊薄） |
 | 首屏 OnIdle 单发（predictor + zoxide，命令表缓存热） | ~30ms | 手势桩另计（毫秒级）；缓存缺失时 predictor 建表 +0.1~0.4s，24h 最多一次（§26；2026-11-07 本机实测） |
@@ -44,6 +44,8 @@ Test-PromptDelay                            # prompt 延迟（默认测 10 次�
 | Set-PsExtension（默认 False，近乎 no-op） | ~22ms |
 | Confirm-DataJson（首调含 Json 模块解析，拆分前 65ms） | ~19ms |
 | Register-PsUxLazyLoad（只注册 OnIdle 事件，TerminalTools 首解析在内） | ~18ms |
+| Register-GitCompletion（只注册 completer，首次补全才导入模块；未装时直接返回） | ~8ms |
+| Initialize-Carapace（默认关闭；`PsCarapace=True` 时生成并注册） | 0ms（关闭）/ 60~130ms（启用，本机实测） |
 
 ## 2. 本次改动总览
 
@@ -263,8 +265,8 @@ Set-PSReadLineOption: 句柄无效。
    对启动极敏感者可降级为 `History`。（状态同步：重定向场景已自动跳过预测源/列表视图，见 §12；
    真机交互分支行为不变。）
 4. ~~**`Set-PsExtension` 内的 `Write-Progress -ParentId 0`**~~——已完成（§10）：去掉悬空父引用并收尾。
-5. **`$profile` 尾部的 `argc/fnm` 钩子**（当前注释状态）：`argc` 二进制缺失时不要放开；
-   启用会显著加长启动，后续如需启用建议走 `Register-EngineEvent PowerShell.OnIdle` 延迟加载。
+5. ~~**`$profile` 尾部的 `argc/fnm` 钩子**~~——已完成：`argc` 由 `Set-ArgcCompletions` 懒加载，
+   `PSCompletions`/`fnm`/`scoop-search` 迁入组件清单（默认关，启用后按组件配置加载），profile 不再保留钩子。
 6. **开机任务**（`Startup.psm1:Start-StartupTasks`）：`TimeAnnouncer` + `IpUpdater` 两个常驻 pwsh 进程
    可合并为一个 daemon；`startup.ps1` 阻塞登录过程，建议计划任务延迟执行。
 7. ~~**conda 初始化钩子**~~——已完成（§8）：`~/.conda_hook_cache.ps1` 缓存，573→59ms。
@@ -372,7 +374,7 @@ Set-PSReadLineOption: 句柄无效。
 - 开：`PSFzf`（仅 Ctrl+T 文件 / Ctrl+R 历史，Tab 不动）+ `zoxide`（init 输出缓存，
   仿 conda 套路）+ 已有的 `CompletionPredictor`。不开：`oh-my-posh`（每回车进程税）、
   `carapace`/`PSCompletions` 二选一待定、`posh-git`/`fnm` 按需。
-- 实现：`TerminalTools.Register-PsUxLazyLoad`，`init` 第 9 步只注册
+- 实现：`TerminalTools.Register-PsUxLazyLoad`，`init` 任务表末步只注册
   `PowerShell.OnIdle` 事件即返回（沙盒实测 18ms，含模块首解析）；idle 触发后
   后台装模块，触发即摘掉自己。开关 `$env:PsFzf`/`$env:PsZoxide`（默认开，
   `False`/`0`/`No`/`Off` 关）；重定向下不注册（无交互）；`-Now` 立即执行

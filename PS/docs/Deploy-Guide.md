@@ -127,7 +127,7 @@ Add-CxxuPsModuleToProfile  # 往 $profile（CurrentUserCurrentHost）写推荐�
 ```
 
 conda 用户：跑 `conda init powershell` 后**重贴缓存块**（它会覆盖，贴法见 `Feature-Guide.md §5`）；
-`argc` 钩子在 profile 里保持注释（Init 已接管，见 [Argc-Completions-Deploy](Argc-Completions-Deploy.md)）；`fnm` 按需再开（见 `Feature-Guide.md §7`）。
+profile 里只保留 `init`；`argc` 由 Init 接管（部署见 [Argc-Completions-Deploy](Argc-Completions-Deploy.md)），`PSCompletions`/`fnm`/`scoop-search` 已迁到组件清单（默认关，装好后用 `Enable-CxxuComponent <Id> -Persist` 启用）。`git-completion` 不需要 profile 配置：装好模块后由 `init` 自动挂载（首次补全才导入）；`carapace` 由 `init` 按 `PsCarapace` 配置加载，默认关闭，需要时按「可选：carapace」启用。
 
 ## 5. 补全栈与第三方 PS 模块
 
@@ -145,10 +145,13 @@ conda 用户：跑 `conda init powershell` 后**重贴缓存块**（它会覆盖
 | 可选层 `-IncludeArgc` | argc-completions 仓库、`argc.exe`、`yq.exe` | 推荐 | `scripts-deps` 固定版本 → 上游 GitHub（同样套镜像前缀） | Tab 参数补全 + 首参数位静态 flag | Tab 参数补全，无自动 flag 提示 |
 | 可选层 `-IncludeFuzzy` | `PSFzf`、`fzf`、`zoxide` | 推荐/可选 | `PSFzf` 走 PSGallery；`fzf`/`zoxide` 走 scoop → winget/brew → `scripts-deps` → 上游 | `Ctrl+T`/`Ctrl+R`、`z`；检测到代理时不走包管理器 | 同左 |
 | 可选层 `-IncludePredictor` | `CompletionPredictor` | 推荐 | PSGallery | 参数/路径内联预测 | 以模块自身要求为准 |
-| 可选层 `-IncludePSCompletions` | `PSCompletions` | 可选 | PSGallery | Tab 参数补全（需解开 profile 钩子） | 同左 |
+| 可选层 `-IncludePSCompletions` | `PSCompletions` | 可选 | PSGallery | Tab 参数补全（装后 `Enable-CxxuComponent PSCompletions -Persist`） | 同左 |
+| 可选层 `-IncludeGitCompletion` | `git-completion` | 推荐 | PSGallery | `git`/`gitk` 的 Tab 补全（分支、提交、按状态过滤的文件；首次补全才导入模块） | 可用；选项补全受 5.1 引擎限制，见 Feature-Guide §13 |
 
 - 二进制优先取 [`scripts-deps`](https://github.com/xuchaoxin1375/scripts-deps) 的固定版本，地址失效自动回退上游；`-NoMirror` 跳过转存仓库，`$env:PsDepsMirror` 可整体换前缀。版本钉子维护见 [PS/Deploy/readme.md](../Deploy/readme.md) 的转存章节。
+- 表内组件装好后是否默认加载由组件清单决定；默认关闭的（如 `PSCompletions`、`carapace`）或曾手动停用的，再用 `Enable-CxxuComponent <Id> -Persist` 启用。`Get-CxxuComponent -Id <Id>` 会同时给出 `Install` 与 `Enable`，`Test-CxxuComponent` 的依赖警告也会带安装与启用命令。
 - PSGallery 三件套由 PowerShellGet 安装，代理继承规则与 GitHub 直链不同；5.1 下环境变量可能不生效，网络受限时优先在 pwsh 7 执行，或先配系统代理。
+- `carapace-bin` 不纳入上述部署层；需要跨 shell 的外部 CLI 补全时，用下面的 `Deploy-Carapace` 安装，再按「可选：carapace」启用。
 
 ### 只启用补全（仓库、`PSModulePath`、profile 已就绪）
 
@@ -166,12 +169,13 @@ Deploy-CompletionStack -IncludeArgc            # argc-completions 仓库 + argc.
 Deploy-CompletionStack -IncludeFuzzy           # PSFzf 模块 + fzf/zoxide 二进制
 Deploy-CompletionStack -IncludePredictor       # CompletionPredictor 模块
 Deploy-CompletionStack -IncludePSCompletions   # PSCompletions 模块
+Deploy-CompletionStack -IncludeGitCompletion   # git-completion 模块（git/gitk Tab 补全，init 自动挂载）
 Deploy-CompletionStack -All                    # 以上全部
 Deploy-CompletionStack -All -SkipBinaries      # 全部但跳过 fzf/zoxide 二进制
 ```
 
 - 内联预测要 pwsh 7.5+；Windows PowerShell 5.1 只有 Tab 菜单，命令会自动发布 `ps51` 活件（新机也会顺带准备 net9 活件）。
-- 开关默认全开（组件未安装时对应开关不产生实际效果）；单关用 `Disable-PsPlugin Predictor|Tab|Fzf|Zoxide|Argc -Persist`，完整开关与优先级见 `Feature-Guide.md §7`。
+- 开关默认全开（组件未安装时对应开关不产生实际效果；`PsCarapace` 默认关闭）；单关用 `Disable-PsPlugin Predictor|Tab|Fzf|Zoxide|Argc|GitCompletion|Carapace -Persist`，完整开关与优先级见 `Feature-Guide.md §7`。停用 `GitCompletion`/`Carapace` 后，当前会话已注册的 `git`/`gitk` completer 不会撤销，需重开终端才由剩余来源接管。
 - 可选层需要网络。国内下载不稳定时，先 `Set-Proxy On`（或设置 `HTTPS_PROXY`/`HTTP_PROXY`）再执行；下载会自动识别代理，也可用 `-Proxy <地址>` / `-NoProxy` 单次覆盖。`Set-Proxy` 只影响当前会话（默认端口 7897，`-Port` 可改），新终端需重设或持久化 `HTTPS_PROXY`。缺少可选组件只提示，不影响默认层。
 - `-IncludeArgc` 的仓库、`argc.exe` 与 `yq.exe` 会并发下载（`-NoParallel` 可串行），且不查 release API；只想单独重装 argc 或指定目录用 `Deploy-ArgcCompletions [-Root <目录>]`。
 - 验收：ListView 输 `get-child` 应见 `[CxxuCommand]`；Tab 输 `get-chi` 应含 `Get-ChildItem`。不达预期按 `Feature-Guide.md §9` 的「Tab 补全自查」定位。
@@ -184,13 +188,79 @@ Sync-CxxuPredictor                                  # 默认层：生成/对齐 
 Deploy-ArgcCompletions                              # 可选：只装/重装 argc-completions（默认 ~/argc-completions）
 Confirm-ModuleInstalled -ModuleName PSFzf -Install  # 可选：Ctrl+T/Ctrl+R
 Confirm-ModuleInstalled -ModuleName CompletionPredictor -Install  # 可选：参数/路径预测
-# 按需：Terminal-Icons（`$env:PsExtension=True` 才用得上）、PSCompletions（延迟加载）
+# 按需：Terminal-Icons（`$env:PsExtension=True` 才用得上）、PSCompletions（装后 `Enable-CxxuComponent PSCompletions -Persist`）
 # 自研 CxxuPredictor 随仓库自带（PS/CxxuPredictor/，零模块安装，随 init 延迟加载）；
 # 内联预测要求 pwsh 7.5+（7.6 可直接用；dll 按 net9.0 编译，加载失败再进 PS/CxxuPredictor/src 重编）；
 # 5.1 Tab 版在 PS/CxxuPredictor/ps51/（netstandard2.0），由 Sync-CxxuPredictor 一并发布
 ```
 
 > `argc-completions`（800+ 命令参数补全）不再默认随 `Deploy-CompletionStack` 部署；需要时加 `-IncludeArgc`，或单独运行 `Deploy-ArgcCompletions [-Root <目录>]`。首次部署、更新、开关与 5.1 注意事项见 [Argc-Completions-Deploy](Argc-Completions-Deploy.md)。
+
+### 可选：carapace（由 init 按配置加载）
+
+carapace 是跨 shell 的命令行补全二进制，补外部 CLI 的参数值，不补 PowerShell cmdlet。它和 `argc-completions` 是并列关系，不是替代关系；git 仍建议由 `git-completion` 负责。效果、候选数量与三方对比见 [Feature-Guide](Feature-Guide.md) 的「carapace（可选，非默认）」。
+
+前置条件：已按「只启用补全」完成 `init` 与补全栈；`pwsh` 7（`Register-ArgumentCompleter -Native` 在 5.1 不可用，本次未验证 5.1）；`carapace` 位于 PATH。安装渠道三选一：`Deploy-Carapace`（推荐，Windows/macOS/Linux）、官方 GitHub Release 手工下载、包管理器（Windows `scoop`/`spc` bucket，macOS `brew`，Linux 发行版仓库或官方 `.deb`/`.rpm`/`.apk`）。
+
+**推荐：`Deploy-Carapace`**
+
+```powershell
+Deploy-Carapace -Enable
+# 只安装不启用：
+Deploy-Carapace
+# 网络受限或需要可复现版本时，跳过 GitHub API：
+Deploy-Carapace -Version 1.8.2 -Proxy http://127.0.0.1:7897
+```
+
+命令会按当前平台与架构下载官方产物（Windows 为 zip，macOS/Linux 为 tar.gz），用同版本 `checksums.txt` 校验 SHA-256，解压 `carapace` 到目标目录并加入 PATH。默认目录：Windows 为 `~/.cxxu/bin`，其他平台为 `~/.local/bin`；非 Windows 只把目录加入当前会话，新终端需按提示写进 shell 配置。加 `-Enable` 会同时把 `PsCarapace` 写入用户配置并在当前会话加载；不加则只安装并打印启用方式。`-Force` 覆盖重装，`-Version` 固定版本（本地版本更高时默认拒绝降级，确需降级加 `-AllowDowngrade`），`-Destination` 与 `-SkipPath` 用于自定义目录或测试。它不修改 profile，加载由 init 按 `PsCarapace` 配置完成。macOS 的官方产物未签名；若系统提示无法验证开发者，优先改用 `brew install carapace`，或在确认来源后按系统设置放行。
+
+**手工渠道一：官方 GitHub Release**
+
+1. 打开 `https://github.com/carapace-sh/carapace-bin/releases`，按平台下载：Windows 用 `carapace-bin_<版本>_windows_<架构>.zip`，macOS 用 `carapace-bin_<版本>_darwin_<架构>.tar.gz`，Linux 用 `carapace-bin_<版本>_linux_<架构>.tar.gz`（`<架构>` 为 `amd64` 或 `arm64`），并下载同版本的 `carapace-bin_<版本>_checksums.txt`。
+2. 校验：Windows 用 `(Get-FileHash <文件> -Algorithm SHA256).Hash`，macOS/Linux 用 `shasum -a 256 <文件>`；与 `checksums.txt` 中对应文件名行比对，不一致时停止并重新下载。
+3. 解压出 `carapace`（Windows 为 `carapace.exe`），放到 PATH 中的固定目录（例如 Windows `$env:LOCALAPPDATA\Programs\carapace`，Unix `~/.local/bin`）；macOS/Linux 需要 `chmod +x carapace`。
+4. 确认 `Get-Command carapace` 与 `carapace --version`。
+
+手工安装的升级与卸载也需手工完成：替换二进制后重开终端，PowerShell 侧由 `init` 重新生成脚本，Git Bash 侧重新打开 shell；不再使用时删除该目录并从 PATH 移除。
+
+**手工渠道二：包管理器（可选）**
+
+```powershell
+scoop install carapace-bin        # Windows，需先添加 spc bucket
+```
+
+```bash
+brew install carapace             # macOS
+```
+
+Linux 优先用发行版仓库；没有时从官方 Release 安装 `.deb`、`.rpm` 或 `.apk`。包管理器版本可能滞后于上游，需要固定或最新版本时改用 `Deploy-Carapace -Version`。
+
+**Git Bash / MSYS（可选，与 PowerShell 独立）**
+
+Git Bash 使用同一个 `carapace.exe`，但接入由 bash 自己完成，不经过 `init` 或 `PsCarapace`；启用 PowerShell 组件不会自动改变 Git Bash，反之亦然。仓库提供一键写入/卸载 `~/.bashrc` 的脚本：
+
+```sh
+bash /c/repos/scripts/bash/carapace/setup.sh --dry-run
+bash /c/repos/scripts/bash/carapace/setup.sh
+```
+
+手工片段、PATH 修正原因、与 argc-completions 的共存和验收见 [bash/carapace/README.md](../../bash/carapace/README.md)。多个候选时按两次 `<Tab>` 显示列表；`gh` 等外部命令未安装时，静态子命令仍可补全，需要仓库或登录上下文的动态候选才依赖命令本身。先在 Git Bash 中确认 `command -v carapace` 有输出；没有则把安装目录（如 `~/.cxxu/bin` 或 `/c/scoop/shims`）加入 PATH。
+
+**在 init 中启用（不修改 profile）**
+
+```powershell
+Enable-CxxuComponent Carapace -Persist -Now   # 只启用 carapace；git/gitk 仍按 PsGitCompletionSource
+Set-GitCompletionSource Carapace -Persist     # 让 carapace 接管 git/gitk
+```
+
+- `PsCarapace=True` 时 init 在启动阶段加载 carapace；默认关闭，未启用时不承担约 0.1–0.2 秒的启动成本。
+- `PsGitCompletionSource` 决定 git/gitk 归属：`Auto`、`GitCompletion`、`Argc` 时 init 把 `git,gitk` 并入 `CARAPACE_EXCLUDES`；`Carapace` 时不排除，并让 argc 让路。切换到前三种来源不会关闭 carapace 本身，需要停止加载时另执行 `Disable-PsPlugin Carapace -Persist`。
+- 慢命令排除项写配置键 `PsCarapaceExcludes`（逗号分隔，如 `winget,uv`）；init 会把它与 git/gitk 的规则合并。未设置该键时沿用已有的 `CARAPACE_EXCLUDES`，避免覆盖旧配置。
+- 旧版 profile 中的手动 carapace 片段需要删除，否则会与 init 重复注册。也不要执行 carapace 文档中的 `Set-PSReadlineKeyHandler -Key Tab -Function MenuComplete`，避免覆盖本仓库的 Tab 桩。
+- 版本可以不追新，但生成脚本随版本变化：init 在 pwsh 7.6 及更早版本按原文匹配空结果补丁，匹配不到时只告警，不中断启动。
+- 验收：`Get-Command carapace`、`carapace --version`、`carapace --list`（数量随版本变化，不写死）、`TabExpansion2 'scoop install ' 14` 能返回包名候选，`TabExpansion2 'gh pr ' 6` 能返回子命令。
+- 不需要时执行 `Disable-PsPlugin Carapace -Persist`；包管理器渠道按对应命令卸载（`scoop uninstall carapace-bin`、`brew uninstall carapace`），`Deploy-Carapace` 与手工渠道删除二进制（默认 Windows 为 `~/.cxxu/bin/carapace.exe`，其他平台为 `~/.local/bin/carapace`）并从 PATH 移除。慢命令（`winget install`、`uv add`）会阻塞 Tab，按需写入 `PsCarapaceExcludes`。
+- `Deploy-CompletionStack -All` 不包含 carapace，也没有 `-IncludeCarapace` 开关；需要时用 `Deploy-Carapace -Enable` 一步安装并启用，或先 `Deploy-Carapace` 再 `Enable-CxxuComponent Carapace -Persist -Now`。
 
 ## 6. scoop 二进制
 
@@ -215,7 +285,7 @@ Deploy-UvConfig
 
 ```powershell
 init                 # Data.json/OS 版本 env/conf 预编译自动生成
-init -Timing         # 分步耗时，定位慢项（9 步，`Register-PsUxLazyLoad` 18ms 左右正常）
+init -Timing         # 分步耗时，定位慢项（`Register-PsUxLazyLoad` 18ms 左右正常）
 Test-PromptDelay     # prompt 延迟
 ```
 
@@ -234,7 +304,7 @@ conda 缓存（`~/.conda_hook_cache.ps1`）与 zoxide 缓存（`~/.zoxide_init_c
 ## 10. 多设备差异点（每台都要看一眼）
 
 - `PwshVar/confs/VarSet1.conf` 的 `$PC*` 主机名：新机器加自己的，不认识的别删。
-- 功能开关：`~/.cxxu/config.psd1`（仓库外，本机生效；`New-CxxuConfigTemplate` 生成模板，`Deploy-CompletionStack` 收尾自动补建；`Enable/Disable-PsPlugin -Persist` 单键管理；`Get-CxxuConfig` 查生效值与来源；优先级环境变量 > 配置文件 > 默认值）。默认值只在仓库 `PS/Init/config.defaults.psd1` 维护；`Reset-CxxuConfig` 按它重写用户配置文件，各设备拉同一仓库后执行一次即可统一到同一默认偏好（被用户级/机器级环境变量覆盖的项会列出，需先清除对应环境变量）。
+- 功能开关：`~/.cxxu/config.psd1`（仓库外，本机生效；`New-CxxuConfigTemplate` 生成 SchemaVersion=2 模板，`Deploy-CompletionStack` 收尾自动补建；`Enable/Disable-CxxuComponent -Persist` 或 `Enable/Disable-PsPlugin -Persist` 管理；`Get-CxxuComponent` 看分组状态，`Get-CxxuConfig` 看平坦键；优先级环境变量 > 配置文件 > 默认值）。组件默认值与选项在仓库 `PS/Init/components.psd1`，Settings 默认值在 `PS/Init/config.defaults.psd1`；`Reset-CxxuConfig` 按两者重写用户配置，各设备拉同一仓库后执行一次即可统一到同一默认偏好（被用户级/机器级环境变量覆盖的项会列出，需先清除对应环境变量）。`-Persist` 写入前会备份旧文件，并按 v2 规范文本重写，手工注释可能被规范化。
 - conda 路径：profile 缓存块里的 `$condaExe`（scoop 版在 `C:\scoop\apps\miniforge\...`，改安装位置要同步）。
 - 镜像/代理：`Get-SelectedMirror`、`Update-GithubHosts`、`Deploy-ScoopApps` 按当地网络选。
 - `Test-PsEnvReadiness` 收尾再跑一遍，必备全绿。默认只做本地对比（零网络）；
@@ -302,7 +372,7 @@ Sync-CxxuPredictor            # 单点操作（首次安装生成/手动修复/�
 | net9.0 / pwsh 版本门 | `CxxuPredictor.csproj` | 7.6 可直接用；pwsh 8 发布后再复核 | — | 加载失败时重编 dll（见 `Live-Versions.md §10`） | 慢变量 |
 | netstandard2.0 / 5.1 Tab | `CxxuPredictor.csproj` / `ps51` 活件 | 仅 Windows；5.1 固定在 .NET Framework 4.8 | 5.1 按 Tab 有模糊候选 | `Sync-CxxuPredictor` 重新发布 | 慢变量 |
 | 文档外链（博客/商店/聚合页） | `readme.md` / `Deploy-Guide.md` | 腐烂风险，低优 | 抽查 | 换链 | 年 |
-| PSGallery 第三方模块 | `Deploy-CompletionStack -Include*` | 浮动最新，不钉版 | `Test-PsEnvReadiness` | `Deploy-CompletionStack -IncludeFuzzy/-IncludePredictor/-IncludePSCompletions` | 按需 |
+| PSGallery 第三方模块 | `Deploy-CompletionStack -Include*` | 浮动最新，不钉版 | `Test-PsEnvReadiness` | `Deploy-CompletionStack -IncludeFuzzy/-IncludePredictor/-IncludePSCompletions/-IncludeGitCompletion` | 按需 |
 | 转存仓库 `scripts-deps` | `PS/Deploy/Sync-GithubDepsMirror.ps1` 的资产表 + `DevEnv.psm1` 里的 `Get-CxxuDepsMirrorAsset` | 已转存 argc、yq、fzf、zoxide 与 argc-completions 快照（2026-11-08） | `Sync-GithubDepsMirror.ps1 -WhatIf` | 跑同步脚本，把打印的钉子回填模块 | 上游发版时 |
 
 > 更新流程见 §13（`Update-ReposesConfiged` 批量更新 + 活件同步 + 重开终端）。

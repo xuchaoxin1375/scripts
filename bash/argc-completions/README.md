@@ -3,6 +3,8 @@
 [argc-completions](https://github.com/sigoden/argc-completions) 上游只提供“把片段写入 `~/.bashrc`”的通用做法，直接照搬到 Git Bash 与 WSL 会遇到二进制冲突、bash 探测失败、ble.sh 候选串污染等问题。本目录在**不修改上游仓库**的前提下补齐这些差异，两个环境共用同一份运行时脚本。
 
 > PowerShell 侧由 `PS/Init` 接管（懒加载，开关 `$env:PsArgc`）；启停、状态检查与排障见 [Argc-Completions-Deploy](../../PS/docs/Argc-Completions-Deploy.md)。本目录只覆盖 Git Bash 与 WSL bash。
+>
+> carapace 也会注册 bash 补全，两者对同一命令由后 source 的一方接管；需要把 git 留给 argc 时用 `CARAPACE_EXCLUDES`，见 [carapace README](../carapace/README.md)。
 
 ## 目录内容
 

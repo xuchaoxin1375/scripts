@@ -25,13 +25,18 @@ Add-EnvVar -EnvVar PSModulePath -NewValue $p -Verbose
 | `Set-PsPrompt -version < fast/short/...>` | 切换提示符；加 `-Persist` 才写注册表记住选择 |
 | `dm` | 切极简 prompt（做笔记摘录时聚焦命令本身） |
 | `Test-PromptDelay` | 测当前 prompt 延迟 |
-| `doctor` | 统一诊断入口（定位问题先执行它）：先跑 `Test-PsEnvReadiness`（安装态），再查运行态（init 错误/PSReadLine/历史大小/predictor/门控/懒加载/守护/仓库脏），只读，默认零网络；按平台过滤不适用的检查并在表尾汇总已跳过项 |
+| `doctor` | 统一诊断入口（定位问题先执行它）：先跑 `Test-PsEnvReadiness`（安装态），再查运行态（init 错误/PSReadLine/历史大小/predictor/门控/懒加载/守护/仓库脏），只读，默认零网络；按平台过滤不适用的检查并在表尾汇总已跳过项。`-Feature <名>` 只查单个功能（如 `doctor -Feature Argc`），支持依赖清单的功能名/关键字与 Argc/Tab/Predictor/Fzf/Zoxide/History/Init 别名 |
 | `Get-CxxuDependencyReport` | 按功能列出外部依赖、生成物与当前安装状态，表后给出安装建议；只读、默认零网络，详见 [Feature-Dependencies.md](Feature-Dependencies.md) |
-| `New-CxxuConfigTemplate` | 生成用户配置模板（`~/.cxxu/config.psd1`，仓库外本机生效；内容由仓库默认偏好渲染） |
+| `New-CxxuConfigTemplate` | 生成 SchemaVersion=2 用户配置模板（`~/.cxxu/config.psd1`，仓库外本机生效；组件来自 `components.psd1`，Settings 来自 `config.defaults.psd1`） |
 | `Import-CxxuConfig` | 读用户配置（init 首步自动调；优先级：环境变量 > 配置文件 > 默认值） |
 | `Get-CxxuConfig` | 查看各开关的当前生效值、来源（环境变量/配置文件/默认值）与默认值；管道接 `Format-List` 看完整说明 |
-| `Reset-CxxuConfig` | 按仓库默认偏好（`PS/Init/config.defaults.psd1`）重置用户配置文件；`-WhatIf` 只预览路径，重置后重开终端生效，并列出仍会覆盖默认值的环境变量 |
-| `Enable-PsPlugin` / `Disable-PsPlugin` | 体验插件启停（Fzf/Zoxide/Predictor/Tab/Argc，当会话生效；加 `-Persist` 长期有效，写 `~/.cxxu/config.psd1`） |
+| `Reset-CxxuConfig` | 按仓库默认偏好（组件见 `PS/Init/components.psd1`，Settings 见 `PS/Init/config.defaults.psd1`）重置用户配置文件；`-WhatIf` 只预览路径，重置后重开终端生效，并列出仍会覆盖默认值的环境变量 |
+| `Enable-PsPlugin` / `Disable-PsPlugin` | 体验插件启停（Fzf/Zoxide/Predictor/Tab/Argc/GitCompletion/Carapace/PSCompletions/Fnm/ScoopSearch，当会话生效；加 `-Persist` 长期有效，写 `~/.cxxu/config.psd1`） |
+| `Set-GitCompletionSource` | 切换 `git`/`gitk` 的 Tab 补全来源（`GitCompletion`/`Carapace`/`Argc`）：写入 `PsGitCompletionSource` 与相关开关，由 `init` 在启动时读取；不改 profile，`-Persist` 落配置，`-WhatIf` 预览 |
+| `Get-CxxuComponent` | 按组件列出启用状态、选项、来源、默认值与安装/文档入口，并给出 `Install`/`Enable` 建议命令；`-Id Carapace` 只查一个；`-Validate` 改跑清单/步骤/依赖一致性自检 |
+| `Test-CxxuComponent` | 只读检查组件清单结构、Init 步骤生成与已启用组件的外部依赖；`Status` 为 `OK`/`警告`/`错误`，依赖警告会带安装与启用命令；`Get-CxxuComponent -Validate` 与 `doctor` 复用同一结果 |
+| `Enable-CxxuComponent` / `Disable-CxxuComponent` | 按组件 Id 启停；默认只改开关，`-Now` 立即调用组件的 Init 函数；`-Persist` 写 `~/.cxxu/config.psd1` 的 `Components` 段，不加只改当前会话；写入前备份旧文件，并按 v2 规范文本重写（手工注释可能被规范化） |
+| `Set-CxxuComponentOption` | 设置组件选项（如 `GitCompletion.Source`、`Carapace.Excludes`）；`-Persist` 写配置，枚举与 List 类型按 `components.psd1` 校验；写入行为同上 |
 
 环境等级（`$PsEnvMode`，`Test-PsEnvMode` 查询）：core(1) 核心变量 → vars(2) 全量变量 →
 env(3) 变量+别名。`Update-PwshEnvIfNotYet` 按需补齐，不重复干活。
@@ -85,7 +90,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 - 想只走一边：删 WT 启动行参数（推荐，行为统一），别删 `$profile`。
 - conda 初始化已换缓存方案（`~/.conda_hook_cache.ps1`，573→59ms）；
   下次跑 `conda init` 会覆盖，届时重新应用（见 `Startup-Optimization.md §8`）。
-- profile 里的 `argc` 钩子保持注释（Init 已接管，部署见 [Argc-Completions-Deploy](Argc-Completions-Deploy.md)）；`fnm` 按需再开。
+- profile 里只保留 `init`；`argc` 已有 Init 接管（部署见 [Argc-Completions-Deploy](Argc-Completions-Deploy.md)），`PSCompletions`/`fnm`/`scoop-search` 也迁到组件清单（默认关，`Enable-CxxuComponent <Id> -Persist` 启用），不再改 profile。
 
 ## 6. FAQ
 - **`scoop update/install` 报 `cannot pull with rebase: Your index contains uncommitted changes`**：任一仓库（scoop 本体 `apps\scoop\current` 或某个 bucket）处于脏状态，git 拒绝执行 pull --rebase。修复：`Repair-ScoopUpdate`（`Scoop` 模块，逐个检查本体与全部 bucket，默认 stash 保留现场，加 `-Discard` 丢弃改动，收尾自动 `scoop update`，只看不动加 `-NoUpdate -WhatIf`）。
@@ -145,6 +150,9 @@ p -Force                    # 看 init 分步耗时，定位慢项
 > 守护进程由 `Start-StartupBgProcesses` 统一置 `PsPredictor=False`，永不加载 dll）；
 > `$env:PsTab`（CxxuTab Tab 补全，**默认开，置 `False` 关**）；
 > `$env:PsArgc`（argc-completions 参数补全，默认开，首个 Tab 才注册；需要时由 `Deploy-CompletionStack -IncludeArgc` 部署）；
+> `$env:PsGitCompletion`（git-completion 的 `git`/`gitk` 补全，默认开，未装模块时无效果；装模块用 `Deploy-CompletionStack -IncludeGitCompletion`，启停用 `Enable-PsPlugin GitCompletion` / `Disable-PsPlugin GitCompletion`）；
+> 来源切换用 `Set-GitCompletionSource GitCompletion|Carapace|Argc [-Persist]`：写入 `PsGitCompletionSource`（由 `init` 读取），不修改 profile；改完需重开终端；carapace 的启用与排除项分别由 `PsCarapace`、`PsCarapaceExcludes` 控制；
+> 组件统一管理：`Get-CxxuComponent` 按 `PS/Init/components.psd1` 列出状态与选项，`Enable/Disable-CxxuComponent` 与 `Set-CxxuComponentOption` 负责启停和选项；`Enable-CxxuComponent -Now` 立即调用组件的 Init 函数，与 `Enable-PsPlugin` 的即时路径共用同一份清单；用户配置 `~/.cxxu/config.psd1` 的 `Components` 段只表达 `Enabled` 与选项；核心步骤固定，可选组件的加载步骤按 `components.psd1` 的清单顺序生成，新增组件不必再改 init 步骤表。旧版平坦键继续兼容；`-Persist` 会先备份旧文件，再按 v2 规范文本重写，手工注释可能被规范化；`Get-CxxuComponent -Validate` 或 `Test-CxxuComponent` 检查清单结构、Init 函数与已启用依赖，`doctor` 的同名行复用该结果；
 > 重定向场景自动不加载。新机安装或一键重装看 [Deploy-Guide](Deploy-Guide.md) 的「补全栈与第三方 PS 模块」（`Deploy-CompletionStack -WhatIf` 可空跑）。
 
 | 候选 | 状态 |
@@ -154,15 +162,79 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | `CxxuTab`（自研命令名 Tab 补全：独立插件，命令名位合并模糊结果，参数位零干扰） | 默认开（开关 `$env:PsTab`，置 `False` 关；不需要时 `Disable-PsPlugin Tab -Persist`） |
 | `PSFzf`（Ctrl+T 文件 / Ctrl+R 历史） | **已启用**（Tab 不动，仍是 MenuComplete） |
 | `zoxide`（`z` 跳转，init 缓存 `~/.zoxide_init_cache.ps1`） | **已启用** |
-| `PSCompletions`（~200 命令的参数补全库） | 可选：已装 5.6.9；profile 里两行钩子默认注释着，解开即用 |
-| `fnm` | 待定（node 用户；profile 里放着注释） |
-| `carapace-bin`（千级命令补全） | 未装：逃生通道，真缺了再 `scoop install carapace-bin` 对比 |
+| `PSCompletions`（~200 命令的参数补全库） | 可选：已装 5.6.9；组件 `PSCompletions` 默认关，`Enable-CxxuComponent PSCompletions -Persist` 后由 `init` 导入模块 |
+| `fnm` | 可选（node 用户）：组件 `Fnm` 默认关；装好 fnm 后 `Enable-CxxuComponent Fnm -Persist`，`init` 执行 `fnm env --use-on-cd` |
+| `scoop-search` | 可选：组件 `ScoopSearch` 默认关；装好 `scoop-search` 后 `Enable-CxxuComponent ScoopSearch -Persist`，`init` 注入 `--hook` |
+| `carapace-bin`（跨 shell 的 CLI 参数补全；本机 1.8.2 实测 743 个 completer，带颜色和描述） | **可选**，`PsCarapace` 默认 `$false`：`Deploy-Carapace -Enable` 一步安装并启用，或安装后 `Enable-CxxuComponent Carapace -Persist -Now`；由 `init` 加载；git/gitk 归属用 `Set-GitCompletionSource` 切换；pwsh 7.6 空结果补丁由 `init` 处理。步骤与 git 对比见下文「carapace（可选，非默认）」 |
 | `posh-git` | 未装（只要 git Tab 补全才装） |
 | `oh-my-posh` | 不开（每回车进程税 + 与现有定制片重叠） |
 | `argc-completions`（800+ 命令参数补全；懒加载，首个 Tab 注册约 150ms；选中行反显高亮；首个参数位的静态 flag 自动进 ListView） | **已启用**（仓库 `~/argc-completions` 或 `C:\repos\argc-completions`；开关 `$env:PsArgc`；Tab 7/5.1 均可用，自动 flag 提示仅 7.5+） |
+| `git-completion`（`git`/`gitk` 的 Tab 补全：分支、提交、按 git 状态过滤的文件与选项描述） | **已启用**（init 检测到模块即注册 completer，首次补全才导入；未装时自动跳过；开关 `$env:PsGitCompletion`；启用后 argc 让出 `git`/`gitk`） |
 | `inshellisense` | **否决**（用户拍板，不再考虑） |
 
 验：新开终端直接可用，`Ctrl+R`/`Ctrl+T` 首按装 PSFzf（本次按键即生效）；`z <目录>` 跳转（zoxide 首屏单发已装）。`CxxuTab` 默认开，首个 `Tab` 才导入它（命令表缓存命中时建表约 20ms，模块导入另计；缓存缺失/过期时现建，5.1 约 0.4s、7 约 0.1s，24h 内最多一次）。`argc-completions` 开关默认开，首个 `Tab` 才注册（需先用 `Deploy-CompletionStack -IncludeArgc` 部署；未部署时自动回退原生补全，约 150ms 的注册不会发生）。`Get-EventSubscriber` 应无残留（单发用 `-MaxTriggerCount 1` 自动退订）。若某主机 OnIdle 不触发（predictor 没装上），跑 `Register-PsUxLazyLoad -Now` 或报回来。自查跑 `Test-StartupPerformance`（分段计时+结论）。
+
+### carapace（可选，非默认）
+
+carapace 是一个跨 shell 的命令行补全二进制，按命令读取自身的 completer（补全器），在 PowerShell 里通过 `Register-ArgumentCompleter -Native` 注册。它不补 PowerShell cmdlet 的参数，也不参与命令名模糊补全；定位是补外部 CLI 的参数值，与 `CxxuTab`、`git-completion`、`argc-completions` 并列。
+
+安装渠道不绑定 scoop：推荐 `Deploy-Carapace`，它会按当前平台与架构从官方 GitHub Release 下载产物（Windows 为 zip，macOS/Linux 为 tar.gz）、按 `checksums.txt` 校验并解压到默认目录（Windows `~/.cxxu/bin`，其他平台 `~/.local/bin`），可用 `-Version` 固定版本；也可手工下载官方产物，或用包管理器（Windows `scoop`、macOS `brew`、Linux 发行版仓库）。安装与校验步骤见 [Deploy-Guide](Deploy-Guide.md) 的「可选：carapace」。前置条件为 `pwsh` 7（`Register-ArgumentCompleter -Native` 在 5.1 不可用）且 `carapace` 位于 PATH。
+
+本机 `carapace-bin 1.8.2`、`pwsh 7.6.3` 实测的代表性效果：
+
+| 输入 | 候选 |
+|---|---|
+| `git checkout ` | 分支、标签、`HEAD`、stash，带提交主题或标签说明 |
+| `git commit --` | 47 个长选项，带英文说明 |
+| `git log -` | 263 个候选（短选项与长选项），带说明 |
+| `git add ` | 已修改与未跟踪文件，带 `(M)` / `(??)` 状态 |
+| `git show HEAD:` | 提交内文件树 |
+| `git -C ../other checkout ` | 另一个仓库的分支与标签 |
+| `npm run ` | `package.json` 的 scripts，并显示对应命令 |
+| `scoop install ` | 包名列表；`winget install` 同理，但本机约 3.3 秒 |
+| `docker run --`、`gh pr ` | 选项或子命令，带说明 |
+
+`carapace --list` 在本机为 743 个 completer，生成的 PowerShell 脚本注册 1486 个命令名（含 `.exe` 变体）；数量随版本变化，以该命令的实际输出为准。
+
+**启用步骤（由 `init` 按配置加载，不修改 profile）**：
+
+```powershell
+Deploy-Carapace -Enable                     # 安装二进制并直接启用（官方 Release + SHA-256）
+# 或分两步：
+Deploy-Carapace                             # 只安装二进制
+Enable-CxxuComponent Carapace -Persist -Now # 只启用 carapace；git/gitk 仍按 PsGitCompletionSource
+Set-GitCompletionSource Carapace -Persist   # 需要 carapace 接管 git/gitk 时
+```
+
+- `PsCarapace=True` 时 `init` 在启动阶段加载 carapace；默认关闭，未启用时不承担启动成本。
+- `PsGitCompletionSource` 决定 git/gitk 归属：`Auto`、`GitCompletion`、`Argc` 时 `init` 把 `git,gitk` 并入 `CARAPACE_EXCLUDES`；`Carapace` 时不排除，并让 argc 让路。切换到前三种来源不会关闭 carapace 本身，需要停止加载时另执行 `Disable-PsPlugin Carapace -Persist`。
+- 慢命令排除项写 `PsCarapaceExcludes`（逗号分隔，如 `winget,uv`），与 git/gitk 规则由 `init` 合并；未设置该键时沿用已有的 `CARAPACE_EXCLUDES`。
+- 旧版 profile 中的手动 carapace 片段需要删除，否则会与 `init` 重复注册；也不要执行 carapace 文档中的 `Set-PSReadlineKeyHandler -Key Tab -Function MenuComplete`，避免覆盖现有 Tab 桩。
+- 版本可以不追新，但生成脚本随版本变化：`init` 在 pwsh 7.6 及更早版本按原文匹配空结果补丁，匹配不到时只告警，不中断启动。
+- 验收：重开终端后 `Get-Command carapace`、`carapace --version`、`carapace --list`（数量随版本变化，不写死）可用；`TabExpansion2 'scoop install ' 14` 能返回包名候选，`TabExpansion2 'gh pr ' 6` 能返回子命令。
+- 启动成本：约 0.1–0.2 秒（随版本与主机变化；本轮 1.8.2 实测首次约 130ms、重复约 60–90ms），只在 `PsCarapace=True` 时发生。`carapace` 不纳入 `Deploy-CompletionStack` 的 `-Include*` 层，但已进入 `Get-CxxuDependencyReport` 与 `doctor -Feature`。
+- 慢补全：`winget install` 约 3.3 秒、`uv add` 约 4.4 秒，按 Tab 会同步等待；写入 `PsCarapaceExcludes` 排除。
+- 错误候选：命令未安装或上下文缺失时会出现 `ERR` / `_` 候选（例如没有 `package.json` 时的 `npm run`）；写入 `PsCarapaceExcludes` 排除。
+- 回滚：`Disable-PsPlugin Carapace -Persist` 并重开终端；包管理器渠道按对应命令卸载（`scoop uninstall carapace-bin`、`brew uninstall carapace`），`Deploy-Carapace` 与手工渠道删除二进制（默认 Windows 为 `~/.cxxu/bin/carapace.exe`，其他平台为 `~/.local/bin/carapace`）并从 PATH 移除。
+
+**Git Bash / MSYS（可选，与 PowerShell 独立）**：
+
+Git Bash 使用同一个 carapace 二进制，但接入由 bash 的 `~/.bashrc` 完成，不经过 `init`；`PsCarapace` 与 `Enable-CxxuComponent` 只控制 PowerShell。运行 `bash /c/repos/scripts/bash/carapace/setup.sh` 可写入标记块，`--uninstall` 卸载；手工片段、PATH 修复、与 argc-completions 的顺序和验收见 [bash/carapace/README.md](../../bash/carapace/README.md)。多个候选需按两次 `<Tab>`；`gh` 未安装时静态子命令仍可补全，需要上下文的动态候选才依赖命令本身。本机 Git Bash 5.2 + carapace 1.8.2 实测 `source` 约 44 ms，`git checkout` 返回 17 个带说明的候选，`gh pr` 返回 21 个候选。
+
+**git 补全对比（同一测试仓库）**：
+
+| 维度 | carapace | git-completion | argc-completions |
+|---|---|---|---|
+| 分支、标签、提交 | 强；`checkout --` 返回 ref 而不是修改文件 | 强且语义准确 | 弱：`checkout`、`switch`、`merge`、`rebase`、`reset`、`branch` 在本机回退为文件补全 |
+| 选项覆盖 | `commit -` 65 项、`log -` 263 项、`checkout -` 40 项，均带说明 | `commit --` 39 项带说明；`log -` 仅 3 项；`checkout -` 仅 12 个短选项 | `commit --` 41 项、`log --` 164 项，带说明 |
+| 文件与状态过滤 | 有状态标记；`commit` 混入未跟踪，`clean` 混入已修改，`rm --cached` 混入未跟踪 | `commit` 排除未跟踪，`checkout --` 只列已跟踪文件（排除未跟踪），`rm --cached` 只列已跟踪 | `add`、`checkout --` 可用；`checkout --` 混入未跟踪，`commit` 列原生文件，`rm --cached` 混入 `.git` |
+| 特殊路径 | 支持 `-C` 与 `HEAD:`；不支持 `--git-dir` | 支持 `-C` 与 `--git-dir`；不支持 `HEAD:` | 支持 `HEAD:`；`-C` 仅部分命令可用 |
+| PowerShell 适配 | 外部进程；空结果在 pwsh 7.6 会打断 Tab；需要 `MenuComplete` | 纯 PowerShell 模块，最稳 | 依赖 `argc.exe` 与 bash 脚本；有 `PsArgc` 开关 |
+| 延迟（本机） | 静态选项约 19–75ms；git ref 约 150–370ms | 首次约 470ms，之后约 20–310ms | 首次注册约 150ms，之后约 20–220ms |
+
+结论：git 继续用 `git-completion`；carapace 用于 `scoop`、`winget`、`gh`、`docker`、`kubectl`、`cargo`、`uv`、`npm` 等非 git 命令；argc 保留为 800+ 命令的补充。carapace 与 argc 的命令重合有限（本机 743 与 841 中约 271 个同名），不是互相替代关系。
+
+> 实测条件：`pwsh 7.6.3`、`PSReadLine 2.4.5`、`carapace-bin 1.8.2`、`git-completion 2.1.0`、`argc 1.24.0`；argc 测试时临时设 `$env:PsArgc='True'`。候选数量与延迟会随版本和仓库状态变化。
 
 ## 8. FAQ（续）：补全候选与预测视图
 
@@ -204,7 +276,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 
 | 动作 | 命令 | 说明 |
 |---|---|---|
-| 检查 | `doctor` / `Test-PsEnvReadiness` | `doctor` 先跑（安装态 + 运行态，含 `Tab 包装`/`Tab 缓存` 行，Windows 另有 `CxxuTab 5.1`）；readiness 活件行备注直接给出结论（`与仓库一致[hash]` / `不一致→执行 Sync-CxxuPredictor`），表尾另有仓库/pwsh/活件三行 |
+| 检查 | `doctor` / `Test-PsEnvReadiness` | `doctor` 先跑（安装态 + 运行态，含 `Tab 包装`/`Tab 缓存` 行，Windows 另有 `CxxuTab 5.1`）；只查预测器用 `doctor -Feature Predictor`；readiness 活件行备注直接给出结论（`与仓库一致[hash]` / `不一致→执行 Sync-CxxuPredictor`），表尾另有仓库/pwsh/活件三行 |
 | 检查依赖 | `Get-CxxuDependencyReport [-Missing]` | 按功能列外部命令、PS 模块、argc 组件与活件状态，表后给安装建议；只读、零网络，详见 [Feature-Dependencies.md](Feature-Dependencies.md) |
 | 检查远端 | `Test-PsEnvReadiness -CheckRemote` | 默认零网络；加开关才询问远端是否有更新（`ls-remote` 只读，12s 超时） |
 | 安装 | `Sync-CxxuPredictor` | 无活件时生成两套产物（net9 predictor 写 `~/.cxxu/bin/<哈希>`；5.1 Tab 写 `~/.cxxu/bin/ps51/<哈希>`）并更新各自指针，缺目录自动创建；`-WhatIf` 可空跑查看意图 |
@@ -230,7 +302,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 
 - 执行策略只约束脚本与模块脚本文件，不约束 `.dll`；dll 加载失败时改执行策略无效。临时一次性运行也可用 `powershell -ExecutionPolicy Bypass -File ...`，日常保持 `RemoteSigned`。
 
-**Tab 补全自查**（`CxxuTab` + `argc`；先跑 `doctor`，看 `Tab 包装`、`Tab 键`、`Tab 缓存`、`argc 补全` 行，Windows 另看 `CxxuTab 5.1` 行）：
+**Tab 补全自查**（`CxxuTab` + `argc`；先跑 `doctor`，看 `Tab 包装`、`Tab 键`、`Tab 缓存`、`argc 补全` 行，Windows 另看 `CxxuTab 5.1` 行；只查 Tab 层用 `doctor -Feature Tab`，只查 argc 层用 `doctor -Feature Argc`）：
 
 | 检查项 | 命令 | 正常表现 |
 |---|---|---|
@@ -263,14 +335,15 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | Tab 全量索引 | `Tab`（MenuComplete） | 引擎全量：函数/别名/文件/参数 | 命令名位经 `CxxuTab` 包装增强（模糊连写可选中，参数位零干扰；默认开，置 `$env:PsTab='False'` 关）；和下面两层**不是同一套索引**，结果不一样正常 |
 | ListView 预测 | 输入时自动浮现（`HistoryAndPlugin`） | 历史（最多 10 条，硬上限）+ 插件 | 插件= `CompletionPredictor`（参数/路径，命令名位跳过）+ `CxxuPredictor`（命令名，分层排序 + 别名/历史加权，默认 15 条，§8）+ `CxxuArgcFlags`（argc 覆盖命令的首个参数位，`-` 前缀，静态 flag ≤10 条；7.5+）；须 20ms 内返回，实测 2600 条 <1ms、flag 查表 <1ms |
 | 模糊搜历史/文件 | `Ctrl+R` / `Ctrl+T`（PSFzf） | 全量历史/文件 | 历史翻不完用这个，不走 10/50 上限 |
-| 参数值补全 | `Tab` 在参数位 | `argc-completions`（800+ 命令库，开关默认开、懒加载；按需 `-IncludeArgc` 部署）+ `PSCompletions`（~200 命令库，可选）+ 自带 `ArgumentCompleter`（EnvVar 系、`Get-Json -Key` 等，`Set-ArgumentCompleter` 批量注册） | PSCompletions 用法：解开 profile 里注释的两行；argc 开关 `$env:PsArgc`，首个 Tab 注册 |
+| 参数值补全 | `Tab` 在参数位 | `argc-completions`（800+ 命令库，开关默认开、懒加载；按需 `-IncludeArgc` 部署）+ `PSCompletions`（~200 命令库，可选）+ 自带 `ArgumentCompleter`（EnvVar 系、`Get-Json -Key` 等，`Set-ArgumentCompleter` 批量注册） | PSCompletions 用法：装模块后 `Enable-CxxuComponent PSCompletions -Persist`；argc 开关 `$env:PsArgc`，首个 Tab 注册；`git`/`gitk` 由 `git-completion` 提供，argc 不重复注册 |
 
+- 参数值补全还有可选的手动来源 carapace（不参与 `init` 开关，见本文「carapace（可选，非默认）」）：适合 `scoop`、`winget`、`gh`、`docker`、`kubectl`、`cargo`、`uv`、`npm` 等外部 CLI；git 仍由 `git-completion` 负责。
 - **Tab 菜单顺序**：原生前缀命中排在前并保持原生顺序，`CxxuTab` 的模糊补充按 dll 的 tier/分数顺序排在后面，同名去重。输入完整前缀时第一次 Tab 落在原生候选；只有没有原生前缀命中（如 `uprepos`）时，才由模糊结果主导。
 - **菜单中的 Ctrl+C**：真实按键在默认控制台模式下会被当作控制事件，Tab 菜单不响应；只把 `Ctrl+C` 绑到 `CancelLine` 也不会生效。要取消整行，按 `Esc` 关闭菜单（恢复输入前缀）再按 `Ctrl+C`；若要一次 `Ctrl+C` 直接清行，需在 Tab/MenuComplete 包装里临时设置 `[Console]::TreatControlCAsInput = $true` 并绑定 `CancelLine`（原理、验证与示例见 [交互式控制台验证](Interactive-Console-Verification.md)）。该包装只在菜单显示期间生效，命令执行时的 Ctrl+C 中断不受影响。
-- 相关命令：`doctor`（统一诊断入口，定位问题先执行它）、`Get-CxxuDependencyReport [-Missing]`（按功能查外部依赖与安装建议，详见 [Feature-Dependencies.md](Feature-Dependencies.md)）、`Register-PsUxLazyLoad [-Now]`（延迟加载入口）、
-  `Deploy-CompletionStack [-WhatIf] [-IncludeArgc] [-IncludeFuzzy] [-IncludePredictor] [-IncludePSCompletions] [-All]`（新机一键装栈）、
+- 相关命令：`doctor`（统一诊断入口，定位问题先执行它；`doctor -Feature <功能>` 只查单个功能）、`Get-CxxuDependencyReport [-Missing]`（按功能查外部依赖与安装建议，详见 [Feature-Dependencies.md](Feature-Dependencies.md)）、`Register-PsUxLazyLoad [-Now]`（延迟加载入口）、
+  `Deploy-CompletionStack [-WhatIf] [-IncludeArgc] [-IncludeFuzzy] [-IncludePredictor] [-IncludePSCompletions] [-IncludeGitCompletion] [-All]`（新机一键装栈）、
   `Test-PsEnvReadiness`（查缺）、`predictNo`（当会话关预测）、
-  `Enable-PsPlugin` / `Disable-PsPlugin`（插件启停，Fzf/Zoxide/Predictor/Tab/Argc）。
+  `Enable-PsPlugin` / `Disable-PsPlugin`（插件启停，Fzf/Zoxide/Predictor/Tab/Argc/GitCompletion/Carapace/PSCompletions/Fnm/ScoopSearch）。
 - **历史膨胀（Ctrl+R 变慢）**：`Optimize-PsHistory -WhatIf` 先看诊断（总数/去重率/重复 Top5）， `Optimize-PsHistory [-KeepLast 3000]` 动手（去重只留最后一次 + 去杂 + 截断，旧行进同目录 `.archive-时间.txt`，原文件留 `.bak-时间`，均可恢复）。治本：init 已开 `HistoryNoDuplicates`（新命令不再重复入库）+ `MaximumHistoryCount 3000`。注意历史文件无时间戳，切割按新旧顺序（文件尾=最近）；当前会话内存里的旧历史重启才换新。
 - 新终端对照：ListView 输 `get-child` 应出现 `Get-ChildItem`（`[CxxuCommand]`），Tab 输 `get-chi` 也应含它；`get child`（有空格）第二段进参数位，不会按命令名补（§8）。仍不对就按 §9 的「Tab 补全自查」/`doctor` 定位。
 
@@ -307,23 +380,27 @@ p -Force                    # 看 init 分步耗时，定位慢项
 > 分界：`PSModulePath` 自动发现 + `init` + 延迟加载 + 缓存自建都是自动的，
 > 以下只有"缺了才管"，`Test-PsEnvReadiness` 的"可选"行即体检口（`doctor` 同步可见）；
 > 逐项外部依赖状态用 `Get-CxxuDependencyReport -Missing` 查，完整清单见 [Feature-Dependencies.md](Feature-Dependencies.md)。
+> 组件缺失时的统一入口：`Get-CxxuComponent | Select-Object Id, Enabled, Install, Enable | Format-Table -Wrap`。
+> 先按 `Install` 安装依赖，再按 `Enable` 启用；想当会话立即生效，执行 `Enable-CxxuComponent <Id> -Persist -Now`。
 
 | 功能 | 默认状态 | 手动启用 | 说明 |
 |---|---|---|---|
-| `PSCompletions`（~200 命令参数补全） | 未装，profile 两行钩子注释中 | `Confirm-ModuleInstalled -ModuleName PSCompletions -Install`，再解开 profile 第 4~5 行 | 旧注"可能导致 `ipmof|iex` 报错"已过期（白名单+`ipmox` 时代），现可放心开 |
+| `PSCompletions`（~200 命令参数补全） | 未装；组件 `PSCompletions` 默认关 | `Deploy-CompletionStack -IncludePSCompletions`，再 `Enable-CxxuComponent PSCompletions -Persist` | 由 `init` 导入模块；旧注"可能导致 `ipmof`/`iex` 报错"已过期（白名单+`ipmox` 时代） |
 | `fzf` / `zoxide` 二进制 | 无则 `Ctrl+T/R`、`z` 不可用（不影响 CxxuCommand） | `Deploy-CompletionStack -IncludeFuzzy`（scoop→winget/brew→`scripts-deps` 转存→上游），或 `scoop install fzf zoxide` | 装完重开终端，init 缓存自建 |
 | `scoop` 本体 | 无则二进制系列全停 | 按官网装，或 `Deploy-ScoopByGithubMirrors`（国内） | 装完补 buckets（`Add-ScoopBuckets`） |
 | `conda` | 无则 prompt  conda 段静默缺失 | `Deploy-MiniforgeConfig`；`$condaExe` 路径按机器对（profile 缓存块） | 缓存 `~/.conda_hook_cache.ps1`，首跑慢一次 |
-| `fnm` + 钩子 | 未装，profile 末行注释中 | `scoop install fnm`，再解开 profile 末行 | node 用户才需要 |
-| `scoop-search` 钩子 | profile 6 行注释中 | 有 `scoop-search` 才解开（`--hook` 注入） | 无则不用管 |
-| `argc` 整块 | 未部署 | `Deploy-CompletionStack -IncludeArgc`（或 `Deploy-ArgcCompletions`） | profile 钩子保持注释（Init 接管）；装完重开终端/`init` |
-| `carapace-bin` / `posh-git` | 未装 | 逃生/按需：`scoop install carapace-bin`；只要 git Tab 才装 posh-git | 决策见 §7 |
+| `fnm` + 钩子 | 未装；组件 `Fnm` 默认关 | `scoop install fnm`（或 `brew install fnm`），再 `Enable-CxxuComponent Fnm -Persist` | `init` 执行 `fnm env --use-on-cd`；node 用户才需要 |
+| `scoop-search` 钩子 | 组件 `ScoopSearch` 默认关 | `scoop install scoop-search`，再 `Enable-CxxuComponent ScoopSearch -Persist` | `init` 注入 `scoop-search --hook` |
+| `argc` 整块 | 未部署 | `Deploy-CompletionStack -IncludeArgc`（或 `Deploy-ArgcCompletions`） | 由 `init` 的 `Set-ArgcCompletions` 懒加载；装完重开终端/`init` |
+| `carapace-bin` | 可选，`PsCarapace` 默认 `$false` | `Deploy-Carapace -Enable`（推荐，安装并启用），或安装后再 `Enable-CxxuComponent Carapace -Persist -Now`；也可用官方 GitHub Release 产物或包管理器（`scoop install carapace-bin`、`brew install carapace`、Linux 发行版仓库） | 由 `init` 按配置加载；不纳入 `Deploy-CompletionStack`；跨平台默认目录不同；版本可固定；git/gitk 归属用 `Set-GitCompletionSource` 切换 |
+| `carapace`（Git Bash/MSYS） | 可选，与 PowerShell 组件独立 | `bash /c/repos/scripts/bash/carapace/setup.sh`（`--uninstall` 卸载），或手工 source；步骤见 [bash/carapace/README.md](../../bash/carapace/README.md) | 不经过 `init`；PowerShell 的 `PsCarapace` 开关不影响 Git Bash |
+| `posh-git` | 未装 | 只要 git Tab 补全才装 | 已有 `git-completion` 时不需要 |
 | prompt 主题持久化 | 当会话有效，重开复原 | `Set-PsPrompt -version <…> -Persist`（写注册表） | 临展用 `dm` 切极简，不持久化 |
 | 开机任务 + 守护进程 | 未注册 | `Start-StartupTasks`（或 `Deploy-StartupTasks` 部署） | 报时/IP 守护，无状态，`-Force` 可杀 |
 | WT 设置下发 | 仓库 `Config/wtConf*.json` 仅供参考 | `Deploy-WtSettings` | 线上 WT 无自定义 profile 时才需要 |
 | github hosts 定时更新 | 未装 | `Deploy-GithubHostsAutoUpdater` | hosts 拉胯地区按需 |
 | 镜像持久化 | 默认自动（静默测速+缓存） | `$env:PsGithubMirror` 持久化（`Add-EnvVar`）指定镜像 | 出国/回国切换用 |
-| 开关组 | 默认值见 `PS/Init/config.defaults.psd1` | `~/.cxxu/config.psd1`（`New-CxxuConfigTemplate` 建模板）或 `Enable/Disable-PsPlugin [-Persist]`；`Get-CxxuConfig` 查生效值与来源，`Reset-CxxuConfig` 恢复仓库默认 | `PsFzf/PsZoxide/PsPredictor/PsTab/PsArgc/PsShowProgress`；环境变量永远优先 |
+| 开关组 | 组件默认值见 `PS/Init/components.psd1`，Settings 见 `PS/Init/config.defaults.psd1` | `~/.cxxu/config.psd1`（SchemaVersion=2；`New-CxxuConfigTemplate` 建模板）或 `Enable/Disable-CxxuComponent [-Persist]`；`Get-CxxuComponent` 看分组状态，`Get-CxxuConfig` 看平坦键，`Reset-CxxuConfig` 恢复仓库默认 | `PsFzf/PsZoxide/PsPredictor/PsTab/PsArgc/PsGitCompletion/PsGitCompletionSource/PsCarapace/PsCarapaceExcludes/PsCompletions/PsFnm/PsScoopSearch/PsShowProgress`；环境变量永远优先 |
 | 历史瘦身 | 从不自动执行 | `Optimize-PsHistory [-WhatIf]`（超 8000 行或 500KB 时 `doctor` 会提示） | 备份+归档双保险 |
 | pwsh 7.5+ 版本门 | 随安装 | `Update-PowerShell`（`CxxuPredictor` 需 net9；7.6 可直接用） | 不够 7.5 只缺 predictor，其余照常 |
 
@@ -354,6 +431,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 - 第七批（2026-09-22，中风险组，只验导入 + 逐项注明）：`TerminalTools`（`Install-Scoop`/`Push-ByScp`/`Sync-CxxuPredictor` 高 stakes，只验导入）、`Development`（短名裸命令包装多，只验导入）、`DevEnv`（全 `Deploy` 写配置/装软件，只验导入）、`MySql`（需服务端+配置，只验导入）、`WinConfig`（注册表/Defender/激活/`Restart-OS`，`Description` 中文转英文，只验导入）、`Web`（`Test-IsIPAddress` 直调，其余 hosts/nginx/phpstudy 只验导入）、`WordPress`/`WpContent`（硬编码路径+外部依赖，只验导入）、`WpOnline`（`Test-IsIPAddress` 同源直调已验；`Start-ThreadJob` 在 5.1 非内置，需 `Install-Module ThreadJob` 才能真跑部署流，只验导入）。15 模块双版本 manifest 全绿（函数数两边一致）。B 档 53→62。剩余 7.0：`Whois`（34 个 `??` 待重写）、`TaskSchdPwsh`/`TimeNotify`（`&` 无等价写法留 7）、`Test`（用户草稿区不动）、`CompletionPredictor`（第三方不管）、`CxxuPredictor`（内联预测留 7；5.1 Tab 另走 ps51 构建）。
 - 5.1 下自动降级：`init` 步骤表 `MinPS = 7` 的步骤静默跳过（`ArgumentCompletion`/`Startup`/`Pwsh`/`Json`）；`ForEach-Object -Parallel` 走串行分支；`Register-PsUxLazyLoad` 在 5.1 只装 CxxuTab 手势桩；`CxxuTab` 读 `~/.cxxu/bin/ps51` 的 netstandard2.0 活件（缺活件时纯透传），命令表缓存 `~/.cxxu/cache/tab-commands-4.tsv`；`HistoryNoDuplicates`/`inlineprediction` 配色按 PSReadLine 版本 gating（5.1 自带 2.0.0 跳过）。
 - `argc-completions` 在 5.1 也可用：依赖现有 `argc.exe` + Git Bash（`bash`/GNU 工具在 PATH），PSReadLine 2.0 的 `MenuComplete`/`Selection` 均支持；首个 Tab 注册约 200ms，之后零开销，开关 `$env:PsArgc`，与 7 同一套懒加载。5.1 的补全引擎不会把 `-`/`--` 开头的词交给 Native 补全器（6.0 才修），Tab 桩会在词首临时插一个零宽字符绕过（只对 argc 注册过的应用命令，cmdlet/函数参数补全不受影响；Esc 取消或选中后都会清掉，缓冲区不留字符）。
+- `git`/`gitk` 的补全由 `git-completion` 提供，5.1 同样可用（init 检测到模块即挂载，首个补全才导入）。受同一条引擎限制，选项补全在 5.1 不触发，子命令、分支与文件补全正常。
 - 提示符全对齐：`fast`/`Simple`/`Short`/`Default` 原生可用；`Balance` 的 Info/Startup 外部依赖在 `Prompt.psm1` 顶部有 5.1 本地兜底（CIM/注册表/内置 cmdlet 同口径；必须 `function global:` 定义，否则模块私有、直接调用撞坏 Info；缓存用 `$global:__Cxxu51*`，`$script:` 跨不了作用域），渲染与 7.5 逐字一致，稳态约 50ms/次（首屏冷缓存 1.4s 一次性）；`Get-IpAddressFormated` 含参数集的移植版，直接调用也可用。
 - 明确不可用：`CxxuCommand` 内联预测（net9 predictor）、预测视图（需 7.2+ 子系统）、`Deploy` 全系、`Test-PsEnvReadiness` 的 `pwsh 7+` 必备项（在 5.1 下即提示装 pwsh7）。
 - 5.1 Tab 补全可用（默认开）：`CxxuTab` 读 `~/.cxxu/bin/ps51/<哈希>/CxxuPredictor.dll`（netstandard2.0，只含 `CompleteCommand`），由 `Sync-CxxuPredictor` 发布。首个 Tab 才导入模块并读命令表缓存（命中约 20ms，缺失/过期时现建约 0.4s；缓存与排查见 §9「Tab 补全自查」），启动不加负担；只有 Tab 菜单，没有内联预测。不用时 `Disable-PsPlugin Tab -Persist`。

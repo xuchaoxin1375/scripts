@@ -1016,10 +1016,11 @@ function Add-CxxuBinToPath
     {
         $env:PATH = $BinDir + [IO.Path]::PathSeparator + $env:PATH
     }
-    $isWindowsHost = ($PSVersionTable.PSEdition -eq 'Desktop') -or ($env:OS -eq 'Windows_NT')
+    $isWindowsHost = if (Get-Variable -Name IsWindows -ErrorAction SilentlyContinue) { [bool]$IsWindows }
+    else { ($PSVersionTable.PSEdition -eq 'Desktop') -or ($env:OS -eq 'Windows_NT') }
     if (-not $isWindowsHost)
     {
-        Write-Host ("提示：把 {0} 加入 shell PATH 后，新终端才能直接调用这些命令。" -f $BinDir)
+        Write-Host ("提示：当前会话已加入 {0}；新终端需要把它写进 shell 配置，例如：export PATH=`"{0}:`$PATH`"" -f $BinDir)
         return
     }
     $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
@@ -1661,6 +1662,323 @@ function Deploy-ArgcCompletions
     }
 }
 
+function Show-CarapaceEnableHint
+{
+    # 只打印启用方式，不修改 profile；加载由 init 按 PsCarapace 配置完成。
+    Write-Host ''
+    Write-Host '启用方式（不修改 profile）：'
+    Write-Host '  Deploy-Carapace -Enable                     # 安装后直接启用（写入用户配置并立即加载）'
+    Write-Host '  Enable-CxxuComponent Carapace -Persist -Now  # 已安装时只启用组件'
+    Write-Host '  Set-GitCompletionSource Carapace -Persist   # 让 carapace 接管 git/gitk'
+    Write-Host '慢命令排除项写入 ~/.cxxu/config.psd1 的 PsCarapaceExcludes（逗号分隔）。'
+    Write-Host '只启用 Carapace 时 git/gitk 仍归 git-completion；重开终端后 init 自动加载，-Now 已在当前会话加载。'
+    Write-Host '旧版 profile 中的 carapace 片段请删除，避免重复注册。'
+}
+
+function Get-CxxuHostPlatform
+{
+    # 只读识别宿主 OS 与 CPU 架构，供跨平台二进制部署共用。
+    # 不依赖 $env:OS：部分宿主/容器会清掉该变量，曾把 Windows 误判为非 Windows。
+    $isWindowsHost = if (Get-Variable -Name IsWindows -ErrorAction SilentlyContinue) { [bool]$IsWindows }
+    else { ($PSVersionTable.PSEdition -eq 'Desktop') -or ($env:OS -eq 'Windows_NT') }
+    $isMacHost = if (Get-Variable -Name IsMacOS -ErrorAction SilentlyContinue) { [bool]$IsMacOS } else { $false }
+    $isLinuxHost = if (Get-Variable -Name IsLinux -ErrorAction SilentlyContinue) { [bool]$IsLinux } else { $false }
+
+    $osName = if ($isWindowsHost) { 'windows' } elseif ($isMacHost) { 'darwin' } elseif ($isLinuxHost) { 'linux' } else { '' }
+    if (-not $osName)
+    {
+        # 兜底：少数宿主不提供 $Is* 自动变量，用 uname 判定内核。
+        $uname = Get-Command uname -ErrorAction SilentlyContinue
+        if ($uname)
+        {
+            $kernel = (& $uname.Source -s 2>$null)
+            if ($kernel -eq 'Darwin') { $osName = 'darwin' }
+            elseif ($kernel -eq 'Linux') { $osName = 'linux' }
+        }
+    }
+    if (-not $osName) { throw '无法识别当前操作系统；请改用系统包管理器安装该工具。' }
+
+    $archRaw = ''
+    try { $archRaw = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString() } catch { }
+    if (-not $archRaw) { $archRaw = $env:PROCESSOR_ARCHITECTURE }
+    if (-not $archRaw)
+    {
+        $uname = Get-Command uname -ErrorAction SilentlyContinue
+        if ($uname) { $archRaw = (& $uname.Source -m 2>$null) }
+    }
+    $archName = switch -Regex ([string]$archRaw)
+    {
+        '^(X64|AMD64|x86_64|amd64)$' { 'amd64' }
+        '^(ARM64|aarch64|arm64)$' { 'arm64' }
+        default { '' }
+    }
+    if (-not $archName) { throw ("不支持的处理器架构：{0}（仅支持 amd64/arm64）。" -f $archRaw) }
+
+    [pscustomobject]@{
+        OS        = $osName
+        Arch      = $archName
+        IsWindows = [bool]$isWindowsHost
+    }
+}
+
+function Expand-CxxuReleaseArchive
+{
+    # 解压 GitHub Release 常见的 .zip / .tar.gz 到指定目录；调用方负责从解压结果中挑选文件。
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$Destination
+    )
+    if (-not (Test-Path -LiteralPath $Destination))
+    {
+        New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+    }
+    if ($Path -match '\.tar\.gz$|\.tgz$')
+    {
+        $tar = Get-Command tar -ErrorAction SilentlyContinue
+        if (-not $tar) { throw '未找到 tar，无法解压 .tar.gz；请安装 tar，或改用系统包管理器安装该工具。' }
+        & $tar.Source -xzf $Path -C $Destination
+        if ($LASTEXITCODE -ne 0) { throw ("tar 解压失败（退出码 {0}）：{1}" -f $LASTEXITCODE, $Path) }
+    }
+    elseif ($Path -match '\.zip$')
+    {
+        Expand-Archive -LiteralPath $Path -DestinationPath $Destination -Force
+    }
+    else
+    {
+        throw ("不支持的压缩包格式：{0}（仅支持 .zip 与 .tar.gz）。" -f $Path)
+    }
+}
+
+function Deploy-Carapace
+{
+    <#
+    .SYNOPSIS
+    安装 carapace 补全二进制（Windows/macOS/Linux），并打印启用方式（不自动修改 profile）。
+    .DESCRIPTION
+    carapace 是跨 shell 的外部 CLI 参数补全二进制，与 git-completion、argc-completions 并列。
+    本命令从官方 GitHub Release 下载当前平台与架构的产物：Windows 为 zip，macOS/Linux 为 tar.gz；
+    按同版本 checksums.txt 校验 SHA-256，解压 carapace 到目标目录并加入用户 PATH。
+    完成后打印启用方式，不修改 profile；加载由 init 按 PsCarapace 配置完成，不设置 Tab 键绑定。
+    加 -Enable 可在安装后直接启用 Carapace 组件并写入用户配置，当前会话立即加载。
+    默认查询最新 release；网络受限或需要可复现版本时用 -Version 指定版本号，可跳过 GitHub API。
+    已存在 carapace 时默认跳过，-Force 重新下载覆盖；本地版本高于 -Version 时默认拒绝降级，
+    确需降级加 -AllowDowngrade。下载失败可改用包管理器：Windows 用 scoop，macOS 用 brew，
+    Linux 用发行版仓库或官方 .deb/.rpm/.apk。
+    默认目录：Windows 为 ~/.cxxu/bin，其他平台为 ~/.local/bin；-Destination 与 -SkipPath 用于自定义目录或测试。
+    .EXAMPLE
+    Deploy-Carapace -Enable
+    .EXAMPLE
+    Deploy-Carapace -Version 1.8.2 -Proxy http://127.0.0.1:7897
+    .EXAMPLE
+    Deploy-Carapace -Destination "$HOME/.local/bin" -SkipPath -Force
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        # 指定版本（可带 v 前缀）；留空查询最新 release
+        [string]$Version = '',
+        # 安装目录；留空时 Windows 用 ~/.cxxu/bin，其他平台用 ~/.local/bin
+        [string]$Destination = '',
+        # 本次下载使用的代理；未指定时读取 HTTPS_PROXY/HTTP_PROXY/ALL_PROXY
+        [string]$Proxy = '',
+        # 强制直连，忽略 -Proxy 与代理环境变量
+        [switch]$NoProxy,
+        # 不修改当前会话与用户 PATH（自行管理 PATH 时使用）
+        [switch]$SkipPath,
+        # 安装后启用 Carapace 组件并写入用户配置（当前会话立即加载）
+        [switch]$Enable,
+        # 允许安装低于本地已装版本的 carapace
+        [switch]$AllowDowngrade,
+        # 已安装时也重新下载覆盖
+        [switch]$Force
+    )
+
+    $platform = Get-CxxuHostPlatform
+    if (-not $Destination)
+    {
+        $homeBin = if ($platform.IsWindows) { Join-Path $HOME '.cxxu' } else { Join-Path $HOME '.local' }
+        $Destination = Join-Path $homeBin 'bin'
+    }
+    $binName = if ($platform.IsWindows) { 'carapace.exe' } else { 'carapace' }
+    $archiveExt = if ($platform.IsWindows) { 'zip' } else { 'tar.gz' }
+
+    $existing = Get-Command carapace -ErrorAction SilentlyContinue
+    $existingVersion = ''
+    if ($existing)
+    {
+        try
+        {
+            $existingOutput = @(& $existing.Source --version 2>&1)
+            if ($LASTEXITCODE -eq 0) { $existingVersion = ($existingOutput -join ' ').Trim() }
+        }
+        catch { }
+    }
+    if ($existing -and -not $Force)
+    {
+        Write-Host ("carapace 已存在：{0}" -f $existing.Source)
+        if ($existingVersion) { Write-Host ("版本：{0}" -f $existingVersion) }
+        else { Write-Warning ("无法执行 {0} --version；可加 -Force 覆盖安装。" -f $existing.Source) }
+        Write-Host '如需覆盖安装，加 -Force。'
+        if ($Enable) { Enable-CxxuComponent -Id Carapace -Persist -Now -WhatIf:$WhatIfPreference }
+        else { Show-CarapaceEnableHint }
+        return
+    }
+    if ($Version -and $existingVersion -and -not $AllowDowngrade)
+    {
+        $installedMatch = [regex]::Match($existingVersion, '\d+\.\d+\.\d+')
+        $requestedMatch = [regex]::Match($Version.TrimStart('v'), '^\d+\.\d+\.\d+')
+        if ($installedMatch.Success -and $requestedMatch.Success)
+        {
+            $installed = [version]$installedMatch.Value
+            $requested = [version]$requestedMatch.Value
+            if ($requested -lt $installed)
+            {
+                throw ("本地已装 {0}，高于指定版本 {1}；确认要降级时加 -AllowDowngrade。" -f $installed, $requested)
+            }
+        }
+    }
+
+    if (-not $PSCmdlet.ShouldProcess('carapace', "安装到 $Destination"))
+    {
+        return
+    }
+
+    $rel = $null
+    if ([string]::IsNullOrWhiteSpace($Version))
+    {
+        Write-Host '查询 carapace 最新 release ...'
+        $rel = Get-CxxuLatestRelease -Repo 'carapace-sh/carapace-bin' -Proxy $Proxy -NoProxy:$NoProxy
+        $tag = [string]$rel.tag_name
+        $ver = $tag.TrimStart('v')
+    }
+    else
+    {
+        $ver = $Version.Trim().TrimStart('v')
+        $tag = 'v' + $ver
+    }
+    if ($ver -notmatch '^\d+\.\d+\.\d+')
+    {
+        throw "无法识别的 carapace 版本号：$Version；请使用 1.8.2 这类三段版本。"
+    }
+
+    $assetName = "carapace-bin_${ver}_$($platform.OS)_$($platform.Arch).$archiveExt"
+    $sumName = "carapace-bin_${ver}_checksums.txt"
+    $baseUrl = "https://github.com/carapace-sh/carapace-bin/releases/download/$tag"
+    $assetUrl = "$baseUrl/$assetName"
+    $sumUrl = "$baseUrl/$sumName"
+    if ($rel)
+    {
+        $releaseAsset = @($rel.assets | Where-Object { $_.name -eq $assetName } | Select-Object -First 1)
+        if (-not $releaseAsset.Count)
+        {
+            $available = @($rel.assets | Where-Object { $_.name -like "*_$($platform.OS)_*" } | ForEach-Object { $_.name })
+            $availableText = if ($available.Count) { $available -join '、' } else { '无' }
+            throw ("release {0} 中没有 {1}；当前平台可用产物：{2}" -f $tag, $assetName, $availableText)
+        }
+        $assetUrl = $releaseAsset[0].browser_download_url
+        $sumAsset = @($rel.assets | Where-Object { $_.name -eq $sumName } | Select-Object -First 1)
+        if ($sumAsset.Count) { $sumUrl = $sumAsset[0].browser_download_url }
+    }
+
+    $tmpRoot = Join-Path ([IO.Path]::GetTempPath()) ('cxxu-carapace-' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $tmpRoot -Force | Out-Null
+    try
+    {
+        $archivePath = Join-Path $tmpRoot $assetName
+        $sumPath = Join-Path $tmpRoot $sumName
+        $pmHint = switch ($platform.OS)
+        {
+            'windows' { 'scoop install carapace-bin' }
+            'darwin' { 'brew install carapace' }
+            default { '发行版仓库，或官方 Release 的 .deb/.rpm/.apk' }
+        }
+        Write-Host ("下载 {0}（{1}）..." -f $assetName, $tag)
+        try { Invoke-CxxuDownload -Url $assetUrl -OutFile $archivePath -Proxy $Proxy -NoProxy:$NoProxy }
+        catch { throw ("下载 {0} 失败：{1}`n可改用包管理器：{2}。" -f $assetName, $_.Exception.Message, $pmHint) }
+        Write-Host ("下载 {0} ..." -f $sumName)
+        try { Invoke-CxxuDownload -Url $sumUrl -OutFile $sumPath -Proxy $Proxy -NoProxy:$NoProxy }
+        catch { throw ("下载 {0} 失败：{1}`n可改用包管理器：{2}。" -f $sumName, $_.Exception.Message, $pmHint) }
+
+        $sumText = [IO.File]::ReadAllText($sumPath)
+        $match = [regex]::Match($sumText, '(?im)^([0-9a-f]{64})\s+\*?' + [regex]::Escape($assetName) + '\s*$')
+        if (-not $match.Success)
+        {
+            throw ("校验文件中没有 {0} 的 SHA-256，停止安装。" -f $assetName)
+        }
+        $expected = $match.Groups[1].Value.ToLowerInvariant()
+        $actual = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($actual -ne $expected)
+        {
+            throw ("SHA-256 不匹配：期望 {0}，实际 {1}。已停止安装。" -f $expected, $actual)
+        }
+        Write-Host '校验通过（SHA-256）'
+
+        $unzip = Join-Path $tmpRoot 'unzip'
+        Expand-CxxuReleaseArchive -Path $archivePath -Destination $unzip
+        $exe = @(Get-ChildItem -LiteralPath $unzip -Recurse -Filter $binName -File | Select-Object -First 1)
+        if (-not $exe.Count)
+        {
+            throw ("压缩包内没有 {0}，已停止安装。" -f $binName)
+        }
+        if (-not (Test-Path -LiteralPath $Destination))
+        {
+            New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+        }
+        $target = Join-Path $Destination $binName
+        $staged = Join-Path $Destination ($binName + '.new')
+        try
+        {
+            Copy-Item -LiteralPath $exe[0].FullName -Destination $staged -Force
+            if (-not $platform.IsWindows)
+            {
+                $chmod = Get-Command chmod -ErrorAction SilentlyContinue
+                if (-not $chmod) { throw '未找到 chmod，无法给 carapace 添加执行权限；请安装 coreutils 或手动执行 chmod +x。' }
+                & $chmod.Source '+x' $staged
+                if ($LASTEXITCODE -ne 0) { throw ("chmod +x 失败（退出码 {0}）：{1}" -f $LASTEXITCODE, $staged) }
+            }
+            if ($PSVersionTable.PSEdition -eq 'Core')
+            {
+                [System.IO.File]::Move($staged, $target, $true)
+            }
+            else
+            {
+                Move-Item -LiteralPath $staged -Destination $target -Force
+            }
+        }
+        catch
+        {
+            Remove-Item -LiteralPath $staged -Force -ErrorAction SilentlyContinue
+            throw
+        }
+        if (-not $SkipPath)
+        {
+            Add-CxxuBinToPath -BinDir $Destination
+        }
+
+        $output = @(& $target --version 2>&1)
+        if ($LASTEXITCODE -ne 0)
+        {
+            throw ("carapace --version 退出码 {0}：{1}" -f $LASTEXITCODE, ($output -join ' '))
+        }
+        Write-Host ("carapace 已安装：{0}" -f $target)
+        Write-Host ("版本：{0}" -f (($output -join ' ').Trim()))
+        $resolved = Get-Command carapace -ErrorAction SilentlyContinue
+        if (-not $resolved)
+        {
+            Write-Host ("当前会话未解析到 carapace；把 {0} 加入 PATH 后即可直接调用。" -f $Destination)
+        }
+        elseif ($resolved.Source -ne $target)
+        {
+            Write-Warning ("PATH 中仍先命中另一个 carapace：{0}。请确认 {1} 在它之前，或移除旧版本。" -f $resolved.Source, $Destination)
+        }
+        if ($Enable) { Enable-CxxuComponent -Id Carapace -Persist -Now -WhatIf:$WhatIfPreference }
+        else { Show-CarapaceEnableHint }
+    }
+    finally
+    {
+        Remove-Item -LiteralPath $tmpRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Deploy-CompletionStack
 {
     <#
@@ -1674,6 +1992,7 @@ function Deploy-CompletionStack
     - -IncludeFuzzy：PSFzf 模块 + fzf/zoxide 二进制（优先 scoop/winget/brew，失败回退转存仓库再回上游）。
     - -IncludePredictor：CompletionPredictor 模块（参数/路径内联预测）。
     - -IncludePSCompletions：PSCompletions 模块（命令参数补全库）。
+    - -IncludeGitCompletion：git-completion 模块（git/gitk 的 Tab 补全，init 检测到后自动挂载）。
     - -All：一次选择以上全部；-SkipArgc / -SkipBinaries 仍可用于排除 argc 或二进制。
     国内网络不稳时，可先 Set-Proxy On（或设置 HTTPS_PROXY/HTTP_PROXY）再执行；
     下载会自动识别代理，也可用 -Proxy/-NoProxy 单次覆盖；-NoMirror 跳过转存仓库直接走上游。
@@ -1698,7 +2017,9 @@ function Deploy-CompletionStack
         [switch]$IncludePredictor,
         # 追加 PSCompletions 模块（默认不装）
         [switch]$IncludePSCompletions,
-        # 等价于同时勾选以上四个 Include 开关
+        # 追加 git-completion 模块（默认不装；init 检测到后自动挂载 git/gitk 补全）
+        [switch]$IncludeGitCompletion,
+        # 等价于同时勾选以上全部 Include 开关
         [switch]$All,
         # 兼容旧参数：即使 -All/-IncludeArgc 也跳过 argc
         [switch]$SkipArgc,
@@ -1722,6 +2043,7 @@ function Deploy-CompletionStack
         $IncludeFuzzy = $true
         $IncludePredictor = $true
         $IncludePSCompletions = $true
+        $IncludeGitCompletion = $true
     }
 
     # 核心层:CxxuCommand(命令名分层模糊提示)与 CxxuTab 都随仓库分发,需要的是活件,不是安装模块
@@ -1815,22 +2137,30 @@ function Deploy-CompletionStack
         }
     }
 
+    if ($IncludeGitCompletion -and -not (Get-Module -ListAvailable git-completion))
+    {
+        if ($PSCmdlet.ShouldProcess('git-completion', '安装 PS 模块（可选）'))
+        {
+            Confirm-ModuleInstalled -ModuleName git-completion -Install
+        }
+    }
+
     if ($coreReady -eq $true) { Write-Host '核心 CxxuCommand：预测活件已就绪，新终端跑 init 生效（开关 $env:PsPredictor）' }
     elseif ($null -eq $coreReady) { Write-Host '核心 CxxuCommand：本次为空跑（-WhatIf），未同步活件；去掉 -WhatIf 执行' }
     elseif ($tabReady -eq $true) { Write-Host '核心 CxxuCommand：5.1 仅 Tab 补全，Tab 活件已就绪；重开终端后按 Tab 生效（开关 $env:PsTab）' }
     elseif ($null -eq $tabReady) { Write-Host '核心 CxxuCommand：本次为空跑（-WhatIf），未同步 5.1 Tab 活件；去掉 -WhatIf 执行' }
     else { Write-Host '核心 CxxuCommand：未就绪（内联预测需 pwsh 7.5+；5.1 Tab 需执行 Sync-CxxuPredictor）' }
 
-    Write-Host '默认层只含仓库内活件；可选层按 -IncludeArgc/-IncludeFuzzy/-IncludePredictor/-IncludePSCompletions 追加（-All 全选）。'
-    if (-not $IncludeArgc -and -not $IncludeFuzzy -and -not $IncludePredictor -and -not $IncludePSCompletions)
+    Write-Host '默认层只含仓库内活件；可选层按 -IncludeArgc/-IncludeFuzzy/-IncludePredictor/-IncludePSCompletions/-IncludeGitCompletion 追加（-All 全选）。'
+    if (-not $IncludeArgc -and -not $IncludeFuzzy -and -not $IncludePredictor -and -not $IncludePSCompletions -and -not $IncludeGitCompletion)
     {
         Write-Host '未选择可选层：本次没有网络下载，也没有安装仓库外组件。'
     }
     if ($env:PsTab -match '^(False|0|No|Off)$') { Write-Warning 'PsTab 当前为关闭：Tab 补全不会加载；需要时 Enable-PsPlugin Tab -Persist' }
     if ($env:PsPredictor -match '^(False|0|No|Off)$') { Write-Warning 'PsPredictor 当前为关闭：命令名内联预测不会加载；需要时 Enable-PsPlugin Predictor -Persist' }
     if ($IncludeArgc -and ($env:PsArgc -match '^(False|0|No|Off)$')) { Write-Warning 'PsArgc 当前为关闭：argc 参数补全不会加载；需要时 Enable-PsPlugin Argc -Persist' }
-    Write-Host '验收：pwsh 7.5+ 在 ListView 输 get-child；Tab 输 get-chi；参数输 nginx -<Tab>；异常先跑 doctor。'
-    if (($IncludeArgc -or $IncludeFuzzy -or $IncludePSCompletions) -and -not $Proxy -and -not $NoProxy -and -not (Get-CxxuProxyUrl))
+    Write-Host '验收：pwsh 7.5+ 在 ListView 输 get-child；Tab 输 get-chi；参数输 nginx -<Tab>；git 输 git ch<Tab>；异常先跑 doctor。'
+    if (($IncludeArgc -or $IncludeFuzzy -or $IncludePSCompletions -or $IncludeGitCompletion) -and -not $Proxy -and -not $NoProxy -and -not (Get-CxxuProxyUrl))
     {
         Write-Host '提示：国内网络下载不稳定时，可先 Set-Proxy On（或设置 HTTPS_PROXY）再重跑；下载会自动识别代理。'
     }

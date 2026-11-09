@@ -97,14 +97,16 @@ Get-CxxuDependencyReport -Json           # 供其他程序消费
 | 补全：模糊搜索 | `PSFzf` 模块、`fzf` 二进制 | 推荐 | `Ctrl+T` 选文件、`Ctrl+R` 搜历史不可用 | `Deploy-CompletionStack -IncludeFuzzy`；或 `Confirm-ModuleInstalled -ModuleName PSFzf -Install`、`scoop install fzf` 或 `brew install fzf` |
 | 补全：参数/路径预测 | `CompletionPredictor` 模块 | 推荐 | 参数值与路径的内联预测不可用 | `Confirm-ModuleInstalled -ModuleName CompletionPredictor -Install` |
 | 补全：参数补全（argc） | `argc-completions` 仓库、`argc`、`yq`、Windows 下的 `bash` | 推荐 | 应用命令的参数补全不可用 | `Deploy-CompletionStack -IncludeArgc` 或 `Deploy-ArgcCompletions` |
+| 补全：git/gitk（git-completion） | `git-completion` 模块 | 推荐 | `git`/`gitk` 回落 argc 或原生补全 | `Deploy-CompletionStack -IncludeGitCompletion` 或 `Install-Module git-completion -Scope CurrentUser -Force`；init 检测到模块后自动挂载；来源用 `Set-GitCompletionSource` 切换 |
+| 补全：外部 CLI 参数（carapace） | `carapace` 二进制 | 可选 | `scoop`、`winget`、`gh`、`docker` 等外部 CLI 的参数值补全不可用 | `Deploy-Carapace -Enable`（Windows/macOS/Linux 官方 Release + SHA-256），或安装后再 `Enable-CxxuComponent Carapace -Persist -Now`；下载失败可改用 `scoop`/`brew`/发行版仓库；git/gitk 归属用 `Set-GitCompletionSource` 切换 |
 | 补全：目录跳转 | `zoxide` 二进制 | 可选 | `z` 目录跳转不可用 | `Deploy-CompletionStack -IncludeFuzzy`；或 `scoop install zoxide` 或 `brew install zoxide` |
-| 补全：参数补全（PSCompletions） | `PSCompletions` 模块 | 可选 | 约 200 个命令的参数补全不可用 | `Confirm-ModuleInstalled -ModuleName PSCompletions -Install`，再解开 profile 钩子 |
+| 补全：参数补全（PSCompletions） | `PSCompletions` 模块 | 可选 | 约 200 个命令的参数补全不可用 | `Deploy-CompletionStack -IncludePSCompletions` 或 `Confirm-ModuleInstalled -ModuleName PSCompletions -Install`，再 `Enable-CxxuComponent PSCompletions -Persist` |
 | 交互：文件图标 | `Terminal-Icons` 模块 | 可选 | `Get-ChildItem` 的文件图标不显示 | `Confirm-ModuleInstalled -ModuleName Terminal-Icons -Install` |
 | 提示符：conda | `conda` | 可选 | 提示符 conda 段不显示；`Deploy-MiniforgeConfig` 也需要 | `Deploy-MiniforgeConfig` 或 `scoop install miniforge` / `brew install miniforge` |
-| 提示符：node | `fnm` | 可选 | node 版本切换与 profile 钩子不可用 | `scoop install fnm` 或 `brew install fnm`，再解开 profile 钩子 |
+| 提示符：node | `fnm` | 可选 | node 版本切换不可用；仅 node 用户需要 | `scoop install fnm`（或 `brew install fnm`），再 `Enable-CxxuComponent Fnm -Persist` |
 | 提示符：posh-git | `posh-git` 模块或仓库 | 可选 | `Set-PoshPrompt -Poshgit` 的 git 状态段不可用 | `Install-Module posh-git -Scope CurrentUser -Force` 或 clone 到 `~/repos/posh-git` |
 | 提示符：oh-my-posh | `oh-my-posh` | 可选 | `Set-PoshPrompt` 主题不可用；默认 prompt 不受影响 | `scoop install oh-my-posh`、`brew install oh-my-posh` 或官网脚本，并设置 `POSH_THEMES_PATH` |
-| 工具链：包管理器 | `scoop`、`scoop-search`、`brew` | 可选 | 不能一键安装 fzf、zoxide、fnm 等二进制；scoop 搜索增强不可用 | 按官网安装，或 `Deploy-ScoopByGithubMirrors`；`scoop install scoop-search` |
+| 工具链：包管理器 | `scoop`、`scoop-search`、`brew` | 可选 | 不能一键安装 fzf、zoxide、fnm 等二进制；scoop 搜索增强不可用 | 按官网安装，或 `Deploy-ScoopByGithubMirrors`；`scoop install scoop-search` 后 `Enable-CxxuComponent ScoopSearch -Persist` |
 | 运维：压缩归档 | `7z`、`zstd`、`lz4`、`gzip` | 可选 | 对应格式的压缩或解压不可用 | `scoop`、`brew` 或系统包管理器 |
 | 运维：SSH 远程 | `ssh`、`scp`、`sshpass`、`ssh-keygen`、`sshd` | 可选 | 远程执行、文件上传、密码自动登录、密钥生成或服务端初始化不可用 | OpenSSH 客户端、系统包管理器或 `scoop install openssh` |
 | 运维：MySQL | `mysql`、`mysqldump` | 可选 | 建库、查询、导入与备份不可用 | 安装 MySQL 客户端或使用 phpstudy 自带的 `mysql.exe`、`mysqldump.exe` |
@@ -120,9 +122,10 @@ Get-CxxuDependencyReport -Json           # 供其他程序消费
 | `Get-CxxuDependencyReport` | 按功能列出外部依赖、生成物、状态与安装建议 | 默认零网络 | 表格、待处理列表、JSON |
 | `Test-PsEnvReadiness` | 新机安装态：必备、可选、首跑生成物 | 默认零网络；`-CheckRemote` 才查远端 | 安装态表与建议 |
 | `doctor` | 运行态：init 错误、PSReadLine、历史大小、predictor 加载、argc 注册、门控、守护进程、仓库状态 | 默认零网络 | 健康检查表 |
+| `doctor -Feature <功能>` | 单功能聚焦：开关生效值与来源、相关运行态行、同一份清单的依赖结果 | 默认零网络（聚焦视图忽略 `-CheckRemote`） | 聚焦健康表 |
 | `install_shell_deps.sh --check` | shell 侧的 `zsh`、`git`、`curl`、`tar` 等系统依赖 | 只检查，不安装 | 缺失列表与非零退出码 |
 
-定位顺序建议：先跑 `Get-CxxuDependencyReport -Missing` 看缺什么，再按安装建议补齐；补完仍不生效时跑 `doctor` 看运行态，最后按 [Feature-Guide.md](Feature-Guide.md) 的补全与 dll 章节排查。
+定位顺序建议：先跑 `Get-CxxuDependencyReport -Missing` 看缺什么，再按安装建议补齐；补完仍不生效时跑 `doctor` 看运行态，最后按 [Feature-Guide.md](Feature-Guide.md) 的补全与 dll 章节排查。只关心一个功能时用 `doctor -Feature <名>`，它把开关、运行态和依赖合成一张表，不必先看整机检查。`-Feature` 支持功能名、关键字与 `Argc`/`Tab`/`Predictor`/`Fzf`/`Zoxide`/`History`/`Init` 等别名，也支持通配符（如 `doctor -Feature '补全*'`）。
 
 ## 维护依赖清单
 

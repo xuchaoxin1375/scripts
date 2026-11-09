@@ -261,10 +261,39 @@ $homeDir = $HOME
         Level     = '可选'
         Kind      = 'Module'
         Name      = 'PSCompletions'
-        Impact    = '约 200 个命令的参数补全不可用；启用前还需解开 profile 中的钩子。'
-        Install   = 'Confirm-ModuleInstalled -ModuleName PSCompletions -Install，再解开 profile 钩子'
+        Gate      = 'PsCompletions'
+        Impact    = '约 200 个命令的参数补全不可用。'
+        Install   = 'Confirm-ModuleInstalled -ModuleName PSCompletions -Install（或 Deploy-CompletionStack -IncludePSCompletions），再 Enable-CxxuComponent PSCompletions -Persist'
         Docs      = 'Feature-Guide.md §11'
-        Note      = '默认不随 init 加载。'
+        Note      = '组件默认关闭；启用后由 init 导入模块。'
+    }
+
+    # 补全：git/gitk（git-completion）
+    [PSCustomObject]@{
+        Feature   = '补全：git/gitk'
+        Component = 'git-completion 模块'
+        Level     = '推荐'
+        Kind      = 'Module'
+        Name      = 'git-completion'
+        Impact    = 'git/gitk 回落 argc 或原生补全，分支、按状态过滤的文件与选项描述缺失。'
+        Install   = 'Install-Module git-completion -Scope CurrentUser -Force（或 Deploy-CompletionStack -IncludeGitCompletion）；init 检测到后自动挂载'
+        Docs      = 'Feature-Guide.md §7'
+        Note      = '启用后 argc 让出 git/gitk；首次补全才导入模块；开关 PsGitCompletion，来源切换用 Set-GitCompletionSource。'
+    }
+
+    # 补全：外部 CLI 参数补全（carapace）
+    [PSCustomObject]@{
+        Feature   = '补全：外部 CLI 参数（carapace）'
+        Component = 'carapace 二进制'
+        Level     = '可选'
+        Kind      = 'Command'
+        Name      = 'carapace'
+        Platform  = 'Windows'
+        Gate      = 'PsCarapace'
+        Impact    = 'scoop、winget、gh、docker 等外部 CLI 的参数值补全不可用。'
+        Install   = 'Deploy-Carapace -Enable（安装并启用），或 Deploy-Carapace 后 Enable-CxxuComponent Carapace -Persist -Now'
+        Docs      = 'Feature-Guide.md §7'
+        Note      = '默认关闭；启用时 init 加载约 0.1–0.2 秒；git/gitk 归属用 Set-GitCompletionSource 切换。'
     }
 
     # 交互：文件图标
@@ -304,13 +333,15 @@ $homeDir = $HOME
         Level     = '可选'
         Kind      = 'Command'
         Name      = 'fnm'
-        Impact    = 'node 版本切换与 profile 钩子不可用；仅 node 用户需要。'
+        Gate      = 'PsFnm'
+        Impact    = 'node 版本切换不可用；仅 node 用户需要。'
         Install   = @{
-            Windows = 'scoop install fnm，再解开 profile 钩子'
-            Mac     = 'brew install fnm，再解开 profile 钩子'
-            Linux   = '按官网脚本安装 fnm，再解开 profile 钩子'
+            Windows = 'scoop install fnm，再 Enable-CxxuComponent Fnm -Persist'
+            Mac     = 'brew install fnm，再 Enable-CxxuComponent Fnm -Persist'
+            Linux   = '按官网脚本安装 fnm，再 Enable-CxxuComponent Fnm -Persist'
         }
         Docs      = 'Feature-Guide.md §11'
+        Note      = '组件默认关闭；启用后由 init 执行 fnm env --use-on-cd。'
     }
 
     # 提示符：posh-git
@@ -363,9 +394,11 @@ $homeDir = $HOME
         Kind      = 'Command'
         Name      = 'scoop-search'
         Platform  = 'Windows'
-        Impact    = 'profile 中注释的 scoop-search 钩子不可用；scoop search 仍可用但较慢。'
-        Install   = 'scoop install scoop-search，再解开 profile 钩子'
+        Gate      = 'PsScoopSearch'
+        Impact    = 'scoop search 仍可用但较慢。'
+        Install   = 'scoop install scoop-search，再 Enable-CxxuComponent ScoopSearch -Persist'
         Docs      = 'Feature-Guide.md §11'
+        Note      = '组件默认关闭；启用后由 init 注入 scoop-search --hook。'
     }
     [PSCustomObject]@{
         Feature   = '工具链：包管理器'

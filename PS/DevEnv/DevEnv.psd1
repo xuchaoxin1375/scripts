@@ -18,6 +18,7 @@
         'Deploy-WtSettings',
         'Deploy-MiniforgeConfig',
         'Deploy-ArgcCompletions',
+        'Deploy-Carapace',
         'Deploy-CompletionStack'
     )
     CmdletsToExport = @()

@@ -10,12 +10,14 @@
 | 新机部署 | `Deploy-Guide.md`（保存脚本后按参数运行）→ `Feature-Guide.md §1/§11` | 从零到可用 + 手动项查漏 |
 | 日常使用 | `Feature-Guide.md §2`（命令表）→ §7/§8/§10（补全）→ §9（dll 四件套 + Tab 自查） | 查命令、配补全、管更新 |
 | 只启用补全（新机或已有环境） | `Deploy-Guide.md §5`（`Deploy-CompletionStack`）→ `Feature-Guide.md §7/§9`（开关/自查） | 默认只装核心活件；argc、PSFzf、fzf/zoxide 等按需加 `-Include*` |
+| 统一管理组件启停与选项 | `Feature-Guide.md §7`（`Get/Enable/Disable-CxxuComponent`、`Set-CxxuComponentOption`）→ `PS/Init/components.psd1` | SchemaVersion=2 配置、组件清单、旧版平坦键兼容 |
+| 比较或接入 carapace 补全 | [Feature-Guide](Feature-Guide.md) 的「carapace（可选，非默认）」→ [Deploy-Guide](Deploy-Guide.md) 的「可选：carapace」 | git/argc/git-completion 对比、`Deploy-Carapace`、`PsCarapace` 配置、`Set-GitCompletionSource`、GitHub Release/scoop 安装渠道、pwsh 7.6 空结果补丁 |
 | 启停或检查 argc 参数补全 | [Argc-Completions-Deploy](Argc-Completions-Deploy.md#4-启停与状态) → `Feature-Guide.md` 的补全章节 | 本会话/持久启停、停止自动提示、查看注册状态 |
 | 查功能依赖与安装状态 | `Feature-Dependencies.md` → `Get-CxxuDependencyReport` | 哪些功能需要外部组件、缺什么、怎么补 |
 | 出问题先看 | `doctor`（命令）→ `Feature-Guide.md §9`（dll/活件/Tab 补全排查）/§6/§8（FAQ）→ `Dev-Notes.md`（常见坑） | 定位→自助→避坑 |
 | macOS 上 pwsh 假死或残留进程烧 CPU | [macOS-Pwsh-Runtime.md](macOS-Pwsh-Runtime.md) | 现场判据、清理步骤与防复发 |
 | macOS 上 shell 配置接线、恢复 mamba/conda | [macOS-Shell-Setup.md](macOS-Shell-Setup.md) | profile 链路、停用范围、实测变化与恢复命令 |
-| 补全不工作/变慢 | `doctor` → `Feature-Guide.md §9`「加载失败排查」+「Tab 补全自查」→ §8（ListView 候选）/§10（全景） | 先分清 Tab/ListView/参数层，再查开关/缓存/活件 |
+| 补全不工作/变慢 | `doctor`（单层用 `doctor -Feature Tab` 或 `doctor -Feature Argc`）→ `Feature-Guide.md §9`「加载失败排查」+「Tab 补全自查」→ §8（ListView 候选）/§10（全景） | 先分清 Tab/ListView/参数层，再查开关/缓存/活件 |
 | 复验 Tab 补全的实际界面 | [Interactive-Console-Verification.md](Interactive-Console-Verification.md) | 启动真实窗口、注入按键、读屏与截图取证 |
 | 加模块/加函数 | `Feature-Guide.md §3` → `Module-Conventions.md`（§1 目录、§2 命名、§7 manifest）→ `Module-Map.md`（找位置） | 一次做对，不返工 |
 | 搞懂 dll/同步 | `Live-Versions.md`（设计专章）→ `Deploy-Guide.md §13` | 结构、流程、命令分工、5.1 Tab 产物 |
