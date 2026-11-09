@@ -125,6 +125,7 @@ Initialize-ArgcCompletions -Force   # 当前会话重新注册 Tab 补全
 |---|---|---|
 | 开关生效值与来源 | `Get-CxxuConfig \| Where-Object Key -eq 'PsArgc' \| Format-List` | `Value=True` 表示启用；`Source` 为环境变量、配置文件或默认值 |
 | 统一诊断 | `doctor` | `门控` 行显示 `PsArgc=...`；`argc 补全` 行显示已注册命令数或“仓库就位，首个 Tab 自动注册” |
+| 单功能聚焦 | `doctor -Feature Argc` | 只列 `开关 PsArgc`（含值与来源）、argc 注册状态、Tab 包装/键与依赖结果，不跑整机检查 |
 | 本会话注册状态 | `$global:PsArgcLoaded`、`$global:PsArgcScripts.Count` | `True` 且计数非 0 表示 completer 已注册；空或 0 表示尚未触发首个 Tab |
 | 原始环境变量 | `$env:PsArgc` | 空表示本会话未显式设置；`False`、`0`、`No`、`Off` 均按关闭处理 |
 
@@ -148,7 +149,7 @@ Initialize-ArgcCompletions -Force   # 当前会话重新注册 Tab 补全
 
 ```powershell
 Get-CxxuConfig | Where-Object Key -eq 'PsArgc' | Format-List
-doctor
+doctor -Feature Argc   # 只看这一套：开关、注册状态、Tab 集成与依赖
 ```
 
 - 启用后：`nginx -<Tab>` 应出现 `-?`、`-h`、`-v`、`-V`、`-t`、`-T` 等；`docker --con<Tab>` 应出现 `--config`、`--context`。

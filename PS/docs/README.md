@@ -15,7 +15,7 @@
 | 出问题先看 | `doctor`（命令）→ `Feature-Guide.md §9`（dll/活件/Tab 补全排查）/§6/§8（FAQ）→ `Dev-Notes.md`（常见坑） | 定位→自助→避坑 |
 | macOS 上 pwsh 假死或残留进程烧 CPU | [macOS-Pwsh-Runtime.md](macOS-Pwsh-Runtime.md) | 现场判据、清理步骤与防复发 |
 | macOS 上 shell 配置接线、恢复 mamba/conda | [macOS-Shell-Setup.md](macOS-Shell-Setup.md) | profile 链路、停用范围、实测变化与恢复命令 |
-| 补全不工作/变慢 | `doctor` → `Feature-Guide.md §9`「加载失败排查」+「Tab 补全自查」→ §8（ListView 候选）/§10（全景） | 先分清 Tab/ListView/参数层，再查开关/缓存/活件 |
+| 补全不工作/变慢 | `doctor`（单层用 `doctor -Feature Tab` 或 `doctor -Feature Argc`）→ `Feature-Guide.md §9`「加载失败排查」+「Tab 补全自查」→ §8（ListView 候选）/§10（全景） | 先分清 Tab/ListView/参数层，再查开关/缓存/活件 |
 | 加模块/加函数 | `Feature-Guide.md §3` → `Module-Conventions.md`（§1 目录、§2 命名、§7 manifest）→ `Module-Map.md`（找位置） | 一次做对，不返工 |
 | 搞懂 dll/同步 | `Live-Versions.md`（设计专章）→ `Deploy-Guide.md §13` | 结构、流程、命令分工、5.1 Tab 产物 |
 | 非 Windows 系统 | `Feature-Guide.md §12`（`doctor`/readiness 按平台过滤并汇总已跳过项） | 哪些可用、哪些是 Windows 专属 |

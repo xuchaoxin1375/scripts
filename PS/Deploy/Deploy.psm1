@@ -1339,17 +1339,27 @@ function doctor
     .DESCRIPTION
     只读，不修改机器，默认零网络（远端版本通过 readiness 的 -CheckRemote 查看）。每行给出状态与处理动作，
     收尾计数。定位问题时先执行本命令，再按行处理。
+    加 -Feature 时只查一个功能：不跑整机安装态检查，改列该功能的开关（值与来源）、相关运行态行，
+    以及 Get-CxxuDependencyReport 的聚焦依赖结果。支持依赖清单里的功能名或关键字，也支持
+    Argc/Tab/Predictor/Fzf/Zoxide/History/Init 等快捷别名；-CheckRemote 在聚焦视图下不生效。
     .EXAMPLE
     doctor
     .EXAMPLE
     doctor -CheckRemote
+    .EXAMPLE
+    doctor -Feature Argc
+    .EXAMPLE
+    doctor -Feature '补全：Tab 增强'
     #>
     [CmdletBinding()]
     param(
         # 转发给 Test-PsEnvReadiness:问远端有没有更新(默认关)
-        [switch]$CheckRemote
+        [switch]$CheckRemote,
+        # 只查指定功能(依赖清单功能名/关键字或 Argc、Tab、Predictor 等别名);省略为整机体检
+        [string[]]$Feature
     )
-    Test-PsEnvReadiness -CheckRemote:$CheckRemote
+    $focused = [bool]($Feature -and $Feature.Count)
+    if (-not $focused) { Test-PsEnvReadiness -CheckRemote:$CheckRemote }
     $plat = Get-CxxuPlatformInfo
     $platNeed = { param($win, $mac, $lin) if ($plat.IsMac) { $mac } elseif ($plat.IsLinux) { $lin } else { $win } }.GetNewClosure()
     $rows = [System.Collections.ArrayList]::new()
@@ -1525,6 +1535,86 @@ function doctor
         & $dchk 'conda 缓存' (Test-Path -LiteralPath (Join-Path $HOME '.conda_hook_cache.ps1')) '无缓存：下次 init 现场生成(慢一次)'
     }
     else { [void]$skipped.Add('conda 缓存（未装 conda）') }
+    if ($focused)
+    {
+        # 聚焦视图:开关(值与来源)+相关运行态行+依赖清单的聚焦结果;不跑整机安装态检查。
+        if ($CheckRemote) { Write-Warning '-Feature 聚焦视图不查远端更新；需要时先执行 doctor -CheckRemote。' }
+        # 依赖项先取:其功能名也参与别名匹配,这样通配符(如“补全*”)能覆盖到对应的运行态行。
+        $depRows = @()
+        try { $depRows = @(Get-CxxuDependencyReport -Feature $Feature -PassThru -ErrorAction Stop) }
+        catch { Write-Warning "依赖检查失败：$($_.Exception.Message)" }
+        $matchTokens = @($Feature) + @($depRows | ForEach-Object { $_.Feature } | Select-Object -Unique)
+        # 功能别名到检查行/门控的映射。只做单向包含(输入包含别名),避免“补全”这类泛词误配。
+        $tags = @(
+            [PSCustomObject]@{ Keys = @('argc', '参数补全'); Gate = 'PsArgc'; Plugin = 'Argc'; Checks = @('argc 补全', 'Tab 键', 'Tab 包装', 'Tab 缓存') }
+            [PSCustomObject]@{ Keys = @('tab'); Gate = 'PsTab'; Plugin = 'Tab'; Checks = @('Tab 包装', 'Tab 键', 'Tab 缓存', 'CxxuTab 5.1') }
+            [PSCustomObject]@{ Keys = @('predictor', '命令名预测'); Gate = 'PsPredictor'; Plugin = 'Predictor'; Checks = @('predictor', '预测源/视图') }
+            [PSCustomObject]@{ Keys = @('fzf', '模糊搜索'); Gate = 'PsFzf'; Plugin = 'Fzf'; Checks = @('懒加载') }
+            [PSCustomObject]@{ Keys = @('zoxide', '目录跳转'); Gate = 'PsZoxide'; Plugin = 'Zoxide'; Checks = @() }
+            [PSCustomObject]@{ Keys = @('history', '历史'); Gate = ''; Plugin = ''; Checks = @('历史策略', '历史大小') }
+            [PSCustomObject]@{ Keys = @('init', '核心运行环境'); Gate = ''; Plugin = ''; Checks = @('init') }
+        )
+        $matchedTags = @($tags | Where-Object {
+                $tag = $_
+                $hit = $false
+                foreach ($pattern in $matchTokens)
+                {
+                    $p = ([string]$pattern).ToLowerInvariant()
+                    foreach ($key in $tag.Keys)
+                    {
+                        if ($p.Contains($key.ToLowerInvariant())) { $hit = $true; break }
+                    }
+                    if ($hit) { break }
+                }
+                $hit
+            })
+        $checkNames = @($matchedTags | ForEach-Object { $_.Checks } | Select-Object -Unique)
+        $gates = @($matchedTags | Where-Object { $_.Gate } | ForEach-Object { $_.Gate } | Select-Object -Unique)
+        $configRows = @()
+        if ($gates.Count -and (Get-Command Get-CxxuConfig -ErrorAction SilentlyContinue)) { $configRows = @(Get-CxxuConfig) }
+        $view = [System.Collections.ArrayList]::new()
+        foreach ($gate in $gates)
+        {
+            $tag = $matchedTags | Where-Object { $_.Gate -eq $gate } | Select-Object -First 1
+            $value = (Get-Item "env:$gate" -ErrorAction SilentlyContinue).Value
+            $source = '默认值'
+            if (-not [string]::IsNullOrEmpty($value)) { $source = '环境变量' }
+            $cfg = $configRows | Where-Object { $_.Key -eq $gate } | Select-Object -First 1
+            if ($cfg) { $value = [string]$cfg.Value; $source = [string]$cfg.Source }
+            if ([string]::IsNullOrEmpty($value)) { $value = '默认开' }
+            $note = "$value（$source）"
+            if ($value -match '^(False|0|No|Off)$') { $note += "；已关闭，需要时 Enable-PsPlugin $($tag.Plugin)" }
+            [void]$view.Add([PSCustomObject]@{ 检查 = "开关 $gate"; 状态 = 'OK'; 备注 = $note })
+        }
+        # 运行态行沿用整机检查结果,只保留本功能相关行;通用门控行由上面的开关行替代。
+        foreach ($row in $rows)
+        {
+            if ($row.检查 -eq '门控') { continue }
+            if ($checkNames -contains $row.检查) { [void]$view.Add($row) }
+        }
+        foreach ($dep in $depRows)
+        {
+            $ready = @('已安装', '已关闭', '不适用') -contains $dep.Status
+            $note = [string]$dep.Status
+            if (-not [string]::IsNullOrWhiteSpace($dep.Version)) { $note += " $($dep.Version)" }
+            if (-not [string]::IsNullOrWhiteSpace($dep.Location)) { $note += " $($dep.Location)" }
+            if (($dep.Status -ne '已安装') -and -not [string]::IsNullOrWhiteSpace($dep.Detail)) { $note += "；$($dep.Detail)" }
+            [void]$view.Add([PSCustomObject]@{
+                    检查 = "依赖：$($dep.Component)"
+                    状态 = if ($ready) { 'OK' } else { 'WARN' }
+                    备注 = $note
+                })
+        }
+        if ($view.Count -eq 0)
+        {
+            Write-Host "未匹配到功能：$($Feature -join '、')。可用功能名见 Get-CxxuDependencyReport -SummaryOnly。"
+            return
+        }
+        $shownFeatures = @($depRows | ForEach-Object { $_.Feature } | Select-Object -Unique)
+        Write-Host ("聚焦 {0}（未跑整机安装态检查；依赖项来自 Get-CxxuDependencyReport）" -f ($Feature -join '、'))
+        if ($shownFeatures.Count) { Write-Host "匹配功能：$($shownFeatures -join '、')" }
+        $rows = $view
+    }
     $rows | Format-Table -AutoSize | Out-Host
     if ($skipped.Count)
     {
@@ -1532,7 +1622,20 @@ function doctor
     }
     $warns = @($rows | Where-Object { $_.状态 -eq 'WARN' })
     $warnNames = @($warns | ForEach-Object { $_.检查 })
-    Write-Host $(if ($warns.Count) { "WARN $($warns.Count) 项（$($warnNames -join '、')）,按备注列逐个处理,处理完重跑 doctor。" } else { '全绿,无事可做。' })
+    if ($focused)
+    {
+        if ($warns.Count) { Write-Host "WARN $($warns.Count) 项（$($warnNames -join '、')）,按备注列逐个处理,处理完重跑 doctor -Feature $($Feature -join '、')。" }
+        else
+        {
+            $offGates = @($rows | Where-Object { $_.检查 -like '开关 *' -and $_.备注 -match '已关闭' } | ForEach-Object { $_.检查 -replace '^开关 ', '' })
+            if ($offGates.Count) { Write-Host "功能已关闭（$($offGates -join '、')）；需要时用 Enable-PsPlugin 开启。" }
+            else { Write-Host '该功能就绪,无事可做。' }
+        }
+    }
+    else
+    {
+        Write-Host $(if ($warns.Count) { "WARN $($warns.Count) 项（$($warnNames -join '、')）,按备注列逐个处理,处理完重跑 doctor。" } else { '全绿,无事可做。' })
+    }
 }
 
 function Resolve-CxxuDependencyPath
