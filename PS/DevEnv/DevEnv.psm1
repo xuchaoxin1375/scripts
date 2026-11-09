@@ -1666,10 +1666,12 @@ function Show-CarapaceEnableHint
     # 只打印启用方式，不修改 profile；加载由 init 按 PsCarapace 配置完成。
     Write-Host ''
     Write-Host '启用方式（不修改 profile）：'
-    Write-Host '  Enable-PsPlugin Carapace -Persist          # 只启用 carapace，git/gitk 仍归 git-completion'
-    Write-Host '  Set-GitCompletionSource Carapace -Persist  # 让 carapace 接管 git/gitk'
+    Write-Host '  Deploy-Carapace -Enable                     # 安装后直接启用（写入用户配置并立即加载）'
+    Write-Host '  Enable-CxxuComponent Carapace -Persist -Now  # 已安装时只启用组件'
+    Write-Host '  Set-GitCompletionSource Carapace -Persist   # 让 carapace 接管 git/gitk'
     Write-Host '慢命令排除项写入 ~/.cxxu/config.psd1 的 PsCarapaceExcludes（逗号分隔）。'
-    Write-Host '重开终端后由 init 加载；旧版 profile 中的 carapace 片段请删除，避免重复注册。'
+    Write-Host '只启用 Carapace 时 git/gitk 仍归 git-completion；重开终端后 init 自动加载，-Now 已在当前会话加载。'
+    Write-Host '旧版 profile 中的 carapace 片段请删除，避免重复注册。'
 }
 
 function Deploy-Carapace
@@ -1682,10 +1684,13 @@ function Deploy-Carapace
     本命令从官方 GitHub Release 下载 Windows zip，按同版本 checksums.txt 校验 SHA-256，
     解压 carapace.exe 到目标目录并加入用户 PATH；完成后打印启用方式，不修改 profile；
     加载由 init 按 PsCarapace 配置完成，不设置 Tab 键绑定。
+    加 -Enable 可在安装后直接启用 Carapace 组件并写入用户配置，当前会话立即加载。
     默认查询最新 release；网络受限或需要可复现版本时用 -Version 指定版本号，可跳过 GitHub API。
     已存在 carapace 时默认跳过，-Force 重新下载覆盖；-Destination 与 -SkipPath 用于自定义目录或测试。
     .EXAMPLE
     Deploy-Carapace
+    .EXAMPLE
+    Deploy-Carapace -Enable
     .EXAMPLE
     Deploy-Carapace -Version 1.8.2 -Proxy http://127.0.0.1:7897
     .EXAMPLE
@@ -1703,14 +1708,28 @@ function Deploy-Carapace
         [switch]$NoProxy,
         # 不修改当前会话与用户 PATH（自行管理 PATH 时使用）
         [switch]$SkipPath,
+        # 安装后启用 Carapace 组件并写入用户配置（当前会话立即加载）
+        [switch]$Enable,
         # 已安装时也重新下载覆盖
         [switch]$Force
     )
 
-    $isWindowsHost = ($PSVersionTable.PSEdition -eq 'Desktop') -or ($env:OS -eq 'Windows_NT')
+    # 5.1 没有 $IsWindows；pwsh 7 用自动变量判定，5.1 按 PSEdition 兜底。
+    # 不依赖 $env:OS：某些宿主/容器会清掉该变量，曾导致 Windows 被误判为非 Windows。
+    $isWindowsHost = if (Get-Variable -Name IsWindows -ErrorAction SilentlyContinue)
+    {
+        [bool]$IsWindows
+    }
+    else
+    {
+        ($PSVersionTable.PSEdition -eq 'Desktop') -or ($env:OS -eq 'Windows_NT')
+    }
     if (-not $isWindowsHost)
     {
-        throw 'Deploy-Carapace 目前只支持 Windows；其他平台请用系统包管理器安装 carapace。'
+        $platformName = '非 Windows'
+        if ((Get-Variable -Name IsMacOS -ErrorAction SilentlyContinue) -and $IsMacOS) { $platformName = 'macOS' }
+        elseif ((Get-Variable -Name IsLinux -ErrorAction SilentlyContinue) -and $IsLinux) { $platformName = 'Linux' }
+        throw ("Deploy-Carapace 只自动下载 Windows zip（当前平台：{0}）。macOS 可用 brew install carapace；Linux 用发行版包管理器或官方 Release 的 linux 产物。" -f $platformName)
     }
 
     $existing = Get-Command carapace -ErrorAction SilentlyContinue
@@ -1719,7 +1738,8 @@ function Deploy-Carapace
         Write-Host ("carapace 已存在：{0}" -f $existing.Source)
         try { & $existing.Source --version } catch { Write-Warning ("无法执行 carapace --version：{0}" -f $_.Exception.Message) }
         Write-Host '如需覆盖安装，加 -Force。'
-        Show-CarapaceEnableHint
+        if ($Enable) { Enable-CxxuComponent -Id Carapace -Persist -Now -WhatIf:$WhatIfPreference }
+        else { Show-CarapaceEnableHint }
         return
     }
 
@@ -1829,7 +1849,8 @@ function Deploy-Carapace
         {
             Write-Warning ("PATH 中仍先命中另一个 carapace：{0}。请确认 {1} 在它之前，或移除旧版本。" -f $resolved.Source, $Destination)
         }
-        Show-CarapaceEnableHint
+        if ($Enable) { Enable-CxxuComponent -Id Carapace -Persist -Now -WhatIf:$WhatIfPreference }
+        else { Show-CarapaceEnableHint }
     }
     finally
     {

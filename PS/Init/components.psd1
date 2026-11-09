@@ -4,6 +4,7 @@
     # 可选组件生成加载步骤，因此新增组件只需在这里登记并实现 Init 函数。
     # Phase 只做分组与说明；用户配置只表达 Enabled 与选项，不在这里改加载逻辑。
     # 新增组件：补一条记录，并在 Init.psm1 提供对应的 Init 函数。
+    # 可选 EnableHint：Get-CxxuComponent/Test-CxxuComponent 的启用提示（默认 Enable-CxxuComponent <Id> -Persist）。
     SchemaVersion = 1
     Components    = @(
         @{
@@ -82,6 +83,7 @@
             Init        = 'Register-GitCompletion'
             Detect      = 'git-completion'
             Install     = 'Deploy-CompletionStack -IncludeGitCompletion'
+            EnableHint  = 'Set-GitCompletionSource GitCompletion -Persist'
             Docs        = 'Feature-Guide.md §7'
             Options     = @(
                 @{

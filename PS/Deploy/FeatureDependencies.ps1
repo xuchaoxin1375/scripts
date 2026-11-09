@@ -291,7 +291,7 @@ $homeDir = $HOME
         Platform  = 'Windows'
         Gate      = 'PsCarapace'
         Impact    = 'scoop、winget、gh、docker 等外部 CLI 的参数值补全不可用。'
-        Install   = 'Deploy-Carapace，然后 Enable-PsPlugin Carapace -Persist'
+        Install   = 'Deploy-Carapace -Enable（安装并启用），或 Deploy-Carapace 后 Enable-CxxuComponent Carapace -Persist -Now'
         Docs      = 'Feature-Guide.md §7'
         Note      = '默认关闭；启用时 init 加载约 0.1–0.2 秒；git/gitk 归属用 Set-GitCompletionSource 切换。'
     }

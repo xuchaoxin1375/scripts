@@ -2326,6 +2326,18 @@ function Get-CxxuComponent
                 $options[[string]$option.Name] = $option.Default
             }
         }
+        $enableHint = if ($enabled)
+        {
+            ''
+        }
+        elseif ($component.ContainsKey('EnableHint') -and -not [string]::IsNullOrWhiteSpace([string]$component.EnableHint))
+        {
+            [string]$component.EnableHint
+        }
+        else
+        {
+            "Enable-CxxuComponent $([string]$component.Id) -Persist"
+        }
         [pscustomobject]@{
             Id          = [string]$component.Id
             Name        = [string]$component.Name
@@ -2341,7 +2353,7 @@ function Get-CxxuComponent
             Init        = [string]$component.Init
             Detect      = [string]$component.Detect
             Install     = [string]$component.Install
-            Enable      = if ($enabled) { '' } else { "Enable-CxxuComponent $([string]$component.Id) -Persist" }
+            Enable      = $enableHint
             Docs        = [string]$component.Docs
         }
     }
@@ -2473,13 +2485,21 @@ function Test-CxxuComponent
         else
         {
             $install = [string]$component[0].Install
-            $hint = if ([string]::IsNullOrWhiteSpace($install))
+            $enableHint = if ($component[0].ContainsKey('EnableHint') -and -not [string]::IsNullOrWhiteSpace([string]$component[0].EnableHint))
             {
-                "安装后重开终端，或执行 Enable-CxxuComponent $($state.Id) -Now。"
+                [string]$component[0].EnableHint
             }
             else
             {
-                "先 $install，再重开终端或执行 Enable-CxxuComponent $($state.Id) -Now。"
+                "Enable-CxxuComponent $($state.Id) -Now"
+            }
+            $hint = if ([string]::IsNullOrWhiteSpace($install))
+            {
+                "安装后重开终端，或执行 $enableHint。"
+            }
+            else
+            {
+                "先 $install，再重开终端或执行 $enableHint。"
             }
             & $add ([string]$state.Id) '依赖' '警告' ("组件已启用，但未检测到 {0}；{1}" -f $detect, $hint)
         }

@@ -205,12 +205,14 @@ carapace 是跨 shell 的命令行补全二进制，补外部 CLI 的参数值�
 **推荐：`Deploy-Carapace`**
 
 ```powershell
+Deploy-Carapace -Enable
+# 只安装不启用：
 Deploy-Carapace
 # 网络受限或需要可复现版本时，跳过 GitHub API：
 Deploy-Carapace -Version 1.8.2 -Proxy http://127.0.0.1:7897
 ```
 
-命令会下载对应架构的官方 zip，按同版本 `checksums.txt` 校验 SHA-256，解压到 `~/.cxxu/bin` 并加入用户 PATH，最后打印启用方式。`-Force` 覆盖重装，`-Destination` 与 `-SkipPath` 用于自定义目录或测试。它不修改 profile，加载由 init 按 `PsCarapace` 配置完成。
+命令会下载对应架构的官方 zip，按同版本 `checksums.txt` 校验 SHA-256，解压到 `~/.cxxu/bin` 并加入用户 PATH。加 `-Enable` 会同时把 `PsCarapace` 写入用户配置并在当前会话加载；不加则只安装并打印启用方式。`-Force` 覆盖重装，`-Destination` 与 `-SkipPath` 用于自定义目录或测试。它不修改 profile，加载由 init 按 `PsCarapace` 配置完成。
 
 **手工渠道一：官方 GitHub Release**
 
@@ -232,8 +234,8 @@ scoop install carapace-bin
 **在 init 中启用（不修改 profile）**
 
 ```powershell
-Enable-PsPlugin Carapace -Persist          # 只启用 carapace；git/gitk 仍按 PsGitCompletionSource
-Set-GitCompletionSource Carapace -Persist  # 让 carapace 接管 git/gitk
+Enable-CxxuComponent Carapace -Persist -Now   # 只启用 carapace；git/gitk 仍按 PsGitCompletionSource
+Set-GitCompletionSource Carapace -Persist     # 让 carapace 接管 git/gitk
 ```
 
 - `PsCarapace=True` 时 init 在启动阶段加载 carapace；默认关闭，未启用时不承担约 0.1–0.2 秒的启动成本。
@@ -243,7 +245,7 @@ Set-GitCompletionSource Carapace -Persist  # 让 carapace 接管 git/gitk
 - 版本可以不追新，但生成脚本随版本变化：init 在 pwsh 7.6 及更早版本按原文匹配空结果补丁，匹配不到时只告警，不中断启动。
 - 验收：`Get-Command carapace`、`carapace --version`、`carapace --list`（数量随版本变化，不写死）、`TabExpansion2 'scoop install ' 14` 能返回包名候选，`TabExpansion2 'gh pr ' 6` 能返回子命令。
 - 不需要时执行 `Disable-PsPlugin Carapace -Persist`；scoop 渠道可再加 `scoop uninstall carapace-bin`，`Deploy-Carapace` 与手工渠道删除二进制目录（默认 `~/.cxxu/bin`）并从 PATH 移除。慢命令（`winget install`、`uv add`）会阻塞 Tab，按需写入 `PsCarapaceExcludes`。
-- `Deploy-CompletionStack -All` 不包含 carapace，也没有 `-IncludeCarapace` 开关；需要时先 `Deploy-Carapace` 安装，再 `Enable-PsPlugin Carapace -Persist`。
+- `Deploy-CompletionStack -All` 不包含 carapace，也没有 `-IncludeCarapace` 开关；需要时用 `Deploy-Carapace -Enable` 一步安装并启用，或先 `Deploy-Carapace` 再 `Enable-CxxuComponent Carapace -Persist -Now`。
 
 ## 6. scoop 二进制
 
