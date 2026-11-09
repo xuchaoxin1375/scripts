@@ -808,6 +808,8 @@ function Initialize-ArgcCompletions
     描述文本去掉 argc 自带的 ANSI,改由 PSReadLine 的 Selection(反显)统一着色,
     这样菜单选中行在浅色/深色主题下都有完整、可读的高亮。协议取自
     argc --argc-completions 生成的 completer(argc 1.24),仅移除颜色与加上 PsArgc 开关。
+    git-completion 模块已加载时跳过 git/gitk(同名 completer 后注册者胜出,argc 首个
+    Tab 才注册,不跳过会顶掉 profile 里先注册的 git-completion)。
     #>
     [CmdletBinding()]
     param([switch]$Force)
@@ -835,6 +837,14 @@ function Initialize-ArgcCompletions
     # argc 自身也注册(与上游生成器一致;无专用脚本时由引擎回退路径补全)
     $scripts = @('argc') + @($scripts)
     $scripts = @($scripts | Select-Object -Unique)
+    # git-completion 负责 git/gitk 时把它们从 argc 名单里去掉:两者都注册同名 Native
+    # completer,后注册者覆盖先注册者,而 argc 首个 Tab 才注册,会顶掉先注册的 git-completion。
+    # 判定同时看 profile 的懒加载标记与"模块已导入"(profile 首次补全才 Import-Module,
+    # 不能只看 Get-Module);都没有时保留 argc 自己的 git 补全。
+    if ($global:PsGitCompletion -or (Get-Module git-completion -ErrorAction SilentlyContinue))
+    {
+        $scripts = @($scripts | Where-Object { $_ -notin 'git', 'gitk' })
+    }
     if (-not $scripts.Count)
     {
         $global:PsArgcUnavailable = $true
