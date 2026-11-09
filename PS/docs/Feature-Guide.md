@@ -217,6 +217,18 @@ Set-GitCompletionSource Carapace -Persist   # 需要 carapace 接管 git/gitk �
 - 错误候选：命令未安装或上下文缺失时会出现 `ERR` / `_` 候选（例如没有 `package.json` 时的 `npm run`）；写入 `PsCarapaceExcludes` 排除。
 - 回滚：`Disable-PsPlugin Carapace -Persist` 并重开终端；包管理器渠道按对应命令卸载（`scoop uninstall carapace-bin`、`brew uninstall carapace`），`Deploy-Carapace` 与手工渠道删除二进制（默认 Windows 为 `~/.cxxu/bin/carapace.exe`，其他平台为 `~/.local/bin/carapace`）并从 PATH 移除。
 
+**Git Bash / MSYS（可选，与 PowerShell 独立）**：
+
+Git Bash 使用同一个 carapace 二进制，但接入由 bash 的 `~/.bashrc` 完成，不经过 `init`；`PsCarapace` 与 `Enable-CxxuComponent` 只控制 PowerShell。最小片段：
+
+```bash
+source <(carapace _carapace bash)
+# Git Bash/MSYS：去掉 carapace 追加的 Windows 风格 PATH 项
+case "$PATH" in *';'*) PATH="${PATH#*;}" ;; esac
+```
+
+本机 Git Bash 5.2 + carapace 1.8.2 实测：`git checkout <Tab>` 返回分支与标签，`git add <Tab>` 返回未暂存文件；`source` 约 44 ms。完整步骤、`PATH` 修复原因、Windows 风格目录的由来与卸载见 [Deploy-Guide](Deploy-Guide.md) 的「可选：carapace」。carapace 不在 Git Bash PATH 时，先确认 `command -v carapace` 并把安装目录加入 PATH。
+
 **git 补全对比（同一测试仓库）**：
 
 | 维度 | carapace | git-completion | argc-completions |
@@ -385,6 +397,7 @@ Set-GitCompletionSource Carapace -Persist   # 需要 carapace 接管 git/gitk �
 | `scoop-search` 钩子 | 组件 `ScoopSearch` 默认关 | `scoop install scoop-search`，再 `Enable-CxxuComponent ScoopSearch -Persist` | `init` 注入 `scoop-search --hook` |
 | `argc` 整块 | 未部署 | `Deploy-CompletionStack -IncludeArgc`（或 `Deploy-ArgcCompletions`） | 由 `init` 的 `Set-ArgcCompletions` 懒加载；装完重开终端/`init` |
 | `carapace-bin` | 可选，`PsCarapace` 默认 `$false` | `Deploy-Carapace -Enable`（推荐，安装并启用），或安装后再 `Enable-CxxuComponent Carapace -Persist -Now`；也可用官方 GitHub Release 产物或包管理器（`scoop install carapace-bin`、`brew install carapace`、Linux 发行版仓库） | 由 `init` 按配置加载；不纳入 `Deploy-CompletionStack`；跨平台默认目录不同；版本可固定；git/gitk 归属用 `Set-GitCompletionSource` 切换 |
+| `carapace`（Git Bash/MSYS） | 可选，与 PowerShell 组件独立 | 在 `~/.bashrc` 加入 `source <(carapace _carapace bash)` 并修正 PATH，步骤见 [Deploy-Guide](Deploy-Guide.md) 的「可选：carapace」 | 不经过 `init`；PowerShell 的 `PsCarapace` 开关不影响 Git Bash |
 | `posh-git` | 未装 | 只要 git Tab 补全才装 | 已有 `git-completion` 时不需要 |
 | prompt 主题持久化 | 当会话有效，重开复原 | `Set-PsPrompt -version <…> -Persist`（写注册表） | 临展用 `dm` 切极简，不持久化 |
 | 开机任务 + 守护进程 | 未注册 | `Start-StartupTasks`（或 `Deploy-StartupTasks` 部署） | 报时/IP 守护，无状态，`-Force` 可杀 |
