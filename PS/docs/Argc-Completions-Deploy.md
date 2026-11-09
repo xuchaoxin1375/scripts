@@ -1,7 +1,7 @@
 # argc-completions 部署与更新
 
 > Init 已内置接管：仓库与工具就位后 `init` 自动装 Tab 懒加载桩，首个 Tab 才注册（约 150–200ms）。
-> 补全栈定位与自动提示边界见 [Feature-Guide §10](Feature-Guide.md#10-补全全景速查三层--参数层)；本文只讲部署、更新、开关与排障。
+> 补全栈定位与自动提示边界见 [Feature-Guide §10](Feature-Guide.md#10-补全全景速查三层--参数层)；本文只讲部署、更新、启停与状态、排障。
 
 ## 1. 前置条件
 
@@ -117,16 +117,41 @@ Initialize-ArgcCompletions -Force   # 当前会话重新注册 Tab 补全
 - 只更新 `bin\argc.exe` / `bin\yq.exe` 时不需要重注册（路径不变），用 `--argc-version` 确认版本即可。
 - `argc` 与补全脚本的协议要匹配：当前仓库基线为 argc 1.24；跨大版本升级后先跑上面的验收命令。
 
-## 4. 开关
+## 4. 启停与状态
 
-| 目标 | 做法 |
-|---|---|
-| 本会话关闭 | `$env:PsArgc = 'False'`；或 `Disable-PsPlugin Argc` |
-| 持久关闭 | `Disable-PsPlugin Argc -Persist`（写 `~/.cxxu/config.psd1` 的 `PsArgc`） |
-| 重新开启 | `Enable-PsPlugin Argc [-Persist]` |
-| 只关自动提示 | `Disable-PsPlugin Predictor`（命令名与 flag 提示一起停） |
+### 4.1 查看状态
 
-关闭后 completer 每次调用直接返回空，`Tab` 回落原生补全；不影响 `Get-ChildItem -` 等 cmdlet 的参数补全。
+| 检查项 | 命令 | 判读 |
+|---|---|---|
+| 开关生效值与来源 | `Get-CxxuConfig \| Where-Object Key -eq 'PsArgc' \| Format-List` | `Value=True` 表示启用；`Source` 为环境变量、配置文件或默认值 |
+| 统一诊断 | `doctor` | `门控` 行显示 `PsArgc=...`；`argc 补全` 行显示已注册命令数或“仓库就位，首个 Tab 自动注册” |
+| 本会话注册状态 | `$global:PsArgcLoaded`、`$global:PsArgcScripts.Count` | `True` 且计数非 0 表示 completer 已注册；空或 0 表示尚未触发首个 Tab |
+| 原始环境变量 | `$env:PsArgc` | 空表示本会话未显式设置；`False`、`0`、`No`、`Off` 均按关闭处理 |
+
+### 4.2 启停
+
+| 目标 | 命令 | 生效范围与时机 |
+|---|---|---|
+| 本会话关闭 argc（Tab 与 flag 提示） | `Disable-PsPlugin Argc`（等价于 `$env:PsArgc = 'False'`） | 立即；已注册的 completer 每次调用返回空，Tab 回落原生补全 |
+| 本会话开启 argc | `Enable-PsPlugin Argc` | 立即设置 `PsArgc=True` 并补装 Tab 桩；已注册的 completer 立即恢复，未注册的在首个 Tab 注册 |
+| 持久关闭 argc | `Disable-PsPlugin Argc -Persist` | 当前会话立即关闭；写入 `~/.cxxu/config.psd1`，之后新会话默认关闭 |
+| 持久开启 argc | `Enable-PsPlugin Argc -Persist` | 当前会话立即开启；写入配置文件，之后新会话默认开启 |
+| 停止自动提示并保留 argc Tab | `Disable-PsPlugin Predictor`，然后重开终端 | 当前会话若已加载 `CxxuPredictor.dll`，需重开终端才完全停止；`PsArgc` 不变，Tab 参数补全继续可用 |
+
+- `PsArgc` 同时控制 Tab 参数补全与 `CxxuArgcFlags` 自动提示，没有只关 Tab 或只关 flag 提示的独立开关。
+- `PsPredictor` 是 `CxxuPredictor.dll` 的加载门，命令名预测与 `CxxuArgcFlags` 共用；关闭后两类自动提示一起停，不能只停其中一类。
+- 关闭 `Argc` 不删除仓库、缓存或已注册的 completer，重新开启无需重开终端；仓库或工具变化后按[更新](#3-更新)一节执行 `Initialize-ArgcCompletions -Force`。
+- 关闭 argc 只影响应用命令的参数补全，不影响 `Get-ChildItem -` 等 cmdlet 的原生参数补全。
+
+### 4.3 验证
+
+```powershell
+Get-CxxuConfig | Where-Object Key -eq 'PsArgc' | Format-List
+doctor
+```
+
+- 启用后：`nginx -<Tab>` 应出现 `-?`、`-h`、`-v`、`-V`、`-t`、`-T` 等；`docker --con<Tab>` 应出现 `--config`、`--context`。
+- 关闭后：`$env:PsArgc` 为 `False`，同样输入应回落原生补全，`doctor` 的 `门控` 行显示 `PsArgc=False`。
 
 ## 5. PowerShell 5.1
 
