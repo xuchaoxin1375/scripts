@@ -27,12 +27,15 @@ Add-EnvVar -EnvVar PSModulePath -NewValue $p -Verbose
 | `Test-PromptDelay` | 测当前 prompt 延迟 |
 | `doctor` | 统一诊断入口（定位问题先执行它）：先跑 `Test-PsEnvReadiness`（安装态），再查运行态（init 错误/PSReadLine/历史大小/predictor/门控/懒加载/守护/仓库脏），只读，默认零网络；按平台过滤不适用的检查并在表尾汇总已跳过项。`-Feature <名>` 只查单个功能（如 `doctor -Feature Argc`），支持依赖清单的功能名/关键字与 Argc/Tab/Predictor/Fzf/Zoxide/History/Init 别名 |
 | `Get-CxxuDependencyReport` | 按功能列出外部依赖、生成物与当前安装状态，表后给出安装建议；只读、默认零网络，详见 [Feature-Dependencies.md](Feature-Dependencies.md) |
-| `New-CxxuConfigTemplate` | 生成用户配置模板（`~/.cxxu/config.psd1`，仓库外本机生效；内容由仓库默认偏好渲染） |
+| `New-CxxuConfigTemplate` | 生成 SchemaVersion=2 用户配置模板（`~/.cxxu/config.psd1`，仓库外本机生效；组件来自 `components.psd1`，Settings 来自 `config.defaults.psd1`） |
 | `Import-CxxuConfig` | 读用户配置（init 首步自动调；优先级：环境变量 > 配置文件 > 默认值） |
 | `Get-CxxuConfig` | 查看各开关的当前生效值、来源（环境变量/配置文件/默认值）与默认值；管道接 `Format-List` 看完整说明 |
-| `Reset-CxxuConfig` | 按仓库默认偏好（`PS/Init/config.defaults.psd1`）重置用户配置文件；`-WhatIf` 只预览路径，重置后重开终端生效，并列出仍会覆盖默认值的环境变量 |
+| `Reset-CxxuConfig` | 按仓库默认偏好（组件见 `PS/Init/components.psd1`，Settings 见 `PS/Init/config.defaults.psd1`）重置用户配置文件；`-WhatIf` 只预览路径，重置后重开终端生效，并列出仍会覆盖默认值的环境变量 |
 | `Enable-PsPlugin` / `Disable-PsPlugin` | 体验插件启停（Fzf/Zoxide/Predictor/Tab/Argc/GitCompletion/Carapace，当会话生效；加 `-Persist` 长期有效，写 `~/.cxxu/config.psd1`） |
 | `Set-GitCompletionSource` | 切换 `git`/`gitk` 的 Tab 补全来源（`GitCompletion`/`Carapace`/`Argc`）：写入 `PsGitCompletionSource` 与相关开关，由 `init` 在启动时读取；不改 profile，`-Persist` 落配置，`-WhatIf` 预览 |
+| `Get-CxxuComponent` | 按组件列出启用状态、选项、来源、默认值与安装/文档入口；`-Id Carapace` 只查一个 |
+| `Enable-CxxuComponent` / `Disable-CxxuComponent` | 按组件 Id 启停；`-Persist` 写 `~/.cxxu/config.psd1` 的 `Components` 段，不加只改当前会话 |
+| `Set-CxxuComponentOption` | 设置组件选项（如 `GitCompletion.Source`、`Carapace.Excludes`）；`-Persist` 写配置，枚举与 List 类型按 `components.psd1` 校验 |
 
 环境等级（`$PsEnvMode`，`Test-PsEnvMode` 查询）：core(1) 核心变量 → vars(2) 全量变量 →
 env(3) 变量+别名。`Update-PwshEnvIfNotYet` 按需补齐，不重复干活。
@@ -148,6 +151,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 > `$env:PsArgc`（argc-completions 参数补全，默认开，首个 Tab 才注册；需要时由 `Deploy-CompletionStack -IncludeArgc` 部署）；
 > `$env:PsGitCompletion`（git-completion 的 `git`/`gitk` 补全，默认开，未装模块时无效果；装模块用 `Deploy-CompletionStack -IncludeGitCompletion`，启停用 `Enable-PsPlugin GitCompletion` / `Disable-PsPlugin GitCompletion`）；
 > 来源切换用 `Set-GitCompletionSource GitCompletion|Carapace|Argc [-Persist]`：写入 `PsGitCompletionSource`（由 `init` 读取），不修改 profile；改完需重开终端；carapace 的启用与排除项分别由 `PsCarapace`、`PsCarapaceExcludes` 控制；
+> 组件统一管理：`Get-CxxuComponent` 按 `PS/Init/components.psd1` 列出状态与选项，`Enable/Disable-CxxuComponent` 与 `Set-CxxuComponentOption` 负责启停和选项；用户配置 `~/.cxxu/config.psd1` 的 `Components` 段只表达 `Enabled` 与选项，加载顺序仍由清单维护。旧版平坦键继续兼容；
 > 重定向场景自动不加载。新机安装或一键重装看 [Deploy-Guide](Deploy-Guide.md) 的「补全栈与第三方 PS 模块」（`Deploy-CompletionStack -WhatIf` 可空跑）。
 
 | 候选 | 状态 |
@@ -381,7 +385,7 @@ Set-GitCompletionSource Carapace -Persist  # 需要 carapace 接管 git/gitk 时
 | WT 设置下发 | 仓库 `Config/wtConf*.json` 仅供参考 | `Deploy-WtSettings` | 线上 WT 无自定义 profile 时才需要 |
 | github hosts 定时更新 | 未装 | `Deploy-GithubHostsAutoUpdater` | hosts 拉胯地区按需 |
 | 镜像持久化 | 默认自动（静默测速+缓存） | `$env:PsGithubMirror` 持久化（`Add-EnvVar`）指定镜像 | 出国/回国切换用 |
-| 开关组 | 默认值见 `PS/Init/config.defaults.psd1` | `~/.cxxu/config.psd1`（`New-CxxuConfigTemplate` 建模板）或 `Enable/Disable-PsPlugin [-Persist]`；`Get-CxxuConfig` 查生效值与来源，`Reset-CxxuConfig` 恢复仓库默认 | `PsFzf/PsZoxide/PsPredictor/PsTab/PsArgc/PsGitCompletion/PsGitCompletionSource/PsCarapace/PsCarapaceExcludes/PsShowProgress`；环境变量永远优先 |
+| 开关组 | 组件默认值见 `PS/Init/components.psd1`，Settings 见 `PS/Init/config.defaults.psd1` | `~/.cxxu/config.psd1`（SchemaVersion=2；`New-CxxuConfigTemplate` 建模板）或 `Enable/Disable-CxxuComponent [-Persist]`；`Get-CxxuComponent` 看分组状态，`Get-CxxuConfig` 看平坦键，`Reset-CxxuConfig` 恢复仓库默认 | `PsFzf/PsZoxide/PsPredictor/PsTab/PsArgc/PsGitCompletion/PsGitCompletionSource/PsCarapace/PsCarapaceExcludes/PsShowProgress`；环境变量永远优先 |
 | 历史瘦身 | 从不自动执行 | `Optimize-PsHistory [-WhatIf]`（超 8000 行或 500KB 时 `doctor` 会提示） | 备份+归档双保险 |
 | pwsh 7.5+ 版本门 | 随安装 | `Update-PowerShell`（`CxxuPredictor` 需 net9；7.6 可直接用） | 不够 7.5 只缺 predictor，其余照常 |
 
