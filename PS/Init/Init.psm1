@@ -83,7 +83,9 @@ function init
     # 启动步骤表:直接调用(当前会话作用域),不要转字符串再 iex —— iex 慢且吞错误定位;
     # 进度条默认开(真机实测开销可忽略,用户 306ms 全链含进度条),开关见 $env:PsShowProgress,
     # 重定向下(无处渲染)自动关闭。
-    $steps = @(
+    # 核心步骤固定;可选组件的加载步骤由 components.psd1 的 Init 字段生成,
+    # 组件顺序即清单顺序,新增组件不再需要在这里再写一行。
+    $coreStepsBefore = @(
         # 导入图标模块(建议放到extension部分中)
         # Import-TerminalIcons
         # Import-ANSIColorEnv
@@ -91,16 +93,8 @@ function init
         @{ Name = 'Set-PSReadLinesCommon'; Action = { Set-PSReadLinesCommon } }
         @{ Name = 'Set-PSReadLinesAdvanced'; Action = { Set-PSReadLinesAdvanced } }
         @{ Name = 'Set-ArgumentCompleter'; Action = { Set-ArgumentCompleter }; MinPS = 7 }
-        # git-completion:git/gitk 的 Tab 补全(首次补全才导入模块;未安装时静默跳过)
-        @{ Name = 'Register-GitCompletion'; Action = { Register-GitCompletion } }
-        # carapace:按 PsCarapace 开关加载;默认关闭,启用时再决定是否接管 git/gitk（仅 pwsh 7+）
-        @{ Name = 'Initialize-Carapace'; Action = { Initialize-Carapace }; MinPS = 7 }
-        # argc-completions:启动只设环境与 Tab 桩,首个 Tab 才注册(开关 $env:PsArgc;5.1 也可用)
-        @{ Name = 'Set-ArgcCompletions'; Action = { Set-ArgcCompletions } }
-        # 可选组件:默认关,启用后按组件配置加载;未启用时不产生额外开销
-        @{ Name = 'Initialize-Fnm'; Action = { Initialize-Fnm } }
-        @{ Name = 'Import-PsCompletions'; Action = { Import-PsCompletions } }
-        @{ Name = 'Initialize-ScoopSearch'; Action = { Initialize-ScoopSearch } }
+    )
+    $coreStepsAfter = @(
         @{ Name = 'Confirm-EnvVarOfInfo'; Action = { Confirm-EnvVarOfInfo }; MinPS = 7 }
         @{ Name = 'Set-PsExtension'; Action = { Set-PsExtension }; MinPS = 7 }
         # 设置prompt样式(这里面会导入基础的powershell预定变量和别名)
@@ -111,6 +105,9 @@ function init
         # 5.1: 只装 CxxuTab 的手势桩,其余 7-only 项跳过),启动零开销
         @{ Name = 'Register-PsUxLazyLoad'; Action = { Register-PsUxLazyLoad } }
     )
+    $coveredInit = @(($coreStepsBefore + $coreStepsAfter) | ForEach-Object { [string]$_.Name })
+    $componentSteps = @(Get-CxxuComponentInitSteps -CoveredInit $coveredInit)
+    $steps = @($coreStepsBefore) + @($componentSteps) + @($coreStepsAfter)
 
     # 仅在要求时计时/报告(-Timing 或 -InformationAction Continue,`p -Force` 走后者)
     $needTiming = $Timing -or ($InformationPreference -eq 'Continue')
@@ -1482,6 +1479,35 @@ function Read-CxxuComponentManifest
         Write-Warning "组件清单读失败($Path):$($_.Exception.Message);本次按无组件处理。"
         $script:CxxuComponentManifestCache = @()
         return @()
+    }
+}
+function Get-CxxuComponentInitSteps
+{
+    # 由组件清单生成可选组件的 init 步骤（不导出）。
+    # 跳过：Init 为空、已被核心步骤覆盖、同名 Init 重复（多个组件共享一次加载）。
+    param([string[]]$CoveredInit = @())
+
+    $seen = @{}
+    foreach ($component in (Read-CxxuComponentManifest))
+    {
+        $init = [string]$component.Init
+        if ([string]::IsNullOrWhiteSpace($init)) { continue }
+        if ($CoveredInit -contains $init) { continue }
+        if ($seen.ContainsKey($init)) { continue }
+        $seen[$init] = $true
+
+        # 不在这里用 GetNewClosure：闭包会脱离模块会话状态，调用不到模块内部函数。
+        # 由模块内生成一个只含函数调用的脚本块，执行时仍按 init 的作用域查找函数。
+        $step = @{
+            Name   = $init
+            Action = [scriptblock]::Create(('& {0}' -f $init))
+        }
+        # 组件可在清单里声明最低 PowerShell 版本；与步骤表的 MinPS 语义一致。
+        if ($component.ContainsKey('MinPS') -and $component.MinPS)
+        {
+            $step.MinPS = [int]$component.MinPS
+        }
+        $step
     }
 }
 function Read-CxxuSettingsDefaultList

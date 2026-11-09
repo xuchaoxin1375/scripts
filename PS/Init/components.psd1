@@ -1,8 +1,8 @@
 ﻿@{
     # CxxuPsModules 组件清单（仓库真源）。
-    # 用途：Get/Enable/Disable-CxxuComponent 读取同一份元数据；Phase 只做分组与说明，
-    # 实际加载顺序由 Init.psm1 的步骤表维护。
-    # 用户配置只表达 Enabled 与选项，不在这里改加载顺序。
+    # 用途：Get/Enable/Disable-CxxuComponent 读取同一份元数据；init 也按清单顺序为
+    # 可选组件生成加载步骤，因此新增组件只需在这里登记并实现 Init 函数。
+    # Phase 只做分组与说明；用户配置只表达 Enabled 与选项，不在这里改加载逻辑。
     # 新增组件：补一条记录，并在 Init.psm1 提供对应的 Init 函数。
     SchemaVersion = 1
     Components    = @(
@@ -102,6 +102,7 @@
             Default     = $false
             Description = '外部 CLI 参数补全（init 启动时加载，约 0.1–0.2 秒）'
             Lazy        = 'Startup'
+            MinPS       = 7
             Init        = 'Initialize-Carapace'
             Detect      = 'carapace'
             Install     = 'Deploy-Carapace'
