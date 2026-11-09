@@ -286,7 +286,7 @@ conda 缓存（`~/.conda_hook_cache.ps1`）与 zoxide 缓存（`~/.zoxide_init_c
 ## 10. 多设备差异点（每台都要看一眼）
 
 - `PwshVar/confs/VarSet1.conf` 的 `$PC*` 主机名：新机器加自己的，不认识的别删。
-- 功能开关：`~/.cxxu/config.psd1`（仓库外，本机生效；`New-CxxuConfigTemplate` 生成 SchemaVersion=2 模板，`Deploy-CompletionStack` 收尾自动补建；`Enable/Disable-CxxuComponent -Persist` 或 `Enable/Disable-PsPlugin -Persist` 管理；`Get-CxxuComponent` 看分组状态，`Get-CxxuConfig` 看平坦键；优先级环境变量 > 配置文件 > 默认值）。组件默认值与选项在仓库 `PS/Init/components.psd1`，Settings 默认值在 `PS/Init/config.defaults.psd1`；`Reset-CxxuConfig` 按两者重写用户配置，各设备拉同一仓库后执行一次即可统一到同一默认偏好（被用户级/机器级环境变量覆盖的项会列出，需先清除对应环境变量）。
+- 功能开关：`~/.cxxu/config.psd1`（仓库外，本机生效；`New-CxxuConfigTemplate` 生成 SchemaVersion=2 模板，`Deploy-CompletionStack` 收尾自动补建；`Enable/Disable-CxxuComponent -Persist` 或 `Enable/Disable-PsPlugin -Persist` 管理；`Get-CxxuComponent` 看分组状态，`Get-CxxuConfig` 看平坦键；优先级环境变量 > 配置文件 > 默认值）。组件默认值与选项在仓库 `PS/Init/components.psd1`，Settings 默认值在 `PS/Init/config.defaults.psd1`；`Reset-CxxuConfig` 按两者重写用户配置，各设备拉同一仓库后执行一次即可统一到同一默认偏好（被用户级/机器级环境变量覆盖的项会列出，需先清除对应环境变量）。`-Persist` 写入前会备份旧文件，并按 v2 规范文本重写，手工注释可能被规范化。
 - conda 路径：profile 缓存块里的 `$condaExe`（scoop 版在 `C:\scoop\apps\miniforge\...`，改安装位置要同步）。
 - 镜像/代理：`Get-SelectedMirror`、`Update-GithubHosts`、`Deploy-ScoopApps` 按当地网络选。
 - `Test-PsEnvReadiness` 收尾再跑一遍，必备全绿。默认只做本地对比（零网络）；
