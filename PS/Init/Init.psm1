@@ -2261,11 +2261,14 @@ function Get-CxxuComponent
     .DESCRIPTION
     元数据来自 PS/Init/components.psd1；值按“环境变量 > 用户配置 > 默认值”解析。
     输出对象可直接接 Format-List/Format-Table；-Id 只查一个组件（不区分大小写）。
-    -Validate 不列组件，改跑清单结构、Init 步骤生成与已启用依赖的一致性检查。
+    Install 给出依赖安装入口，Enable 给出未启用时的组件启用命令；-Validate 不列组件，
+    改跑清单结构、Init 步骤生成与已启用依赖的一致性检查。
     .EXAMPLE
     Get-CxxuComponent
     .EXAMPLE
     Get-CxxuComponent -Id Carapace | Format-List
+    .EXAMPLE
+    Get-CxxuComponent | Select-Object Id, Enabled, Install, Enable | Format-Table -Wrap
     .EXAMPLE
     Get-CxxuComponent -Validate | Where-Object Status -ne 'OK'
     #>
@@ -2338,6 +2341,7 @@ function Get-CxxuComponent
             Init        = [string]$component.Init
             Detect      = [string]$component.Detect
             Install     = [string]$component.Install
+            Enable      = if ($enabled) { '' } else { "Enable-CxxuComponent $([string]$component.Id) -Persist" }
             Docs        = [string]$component.Docs
         }
     }
@@ -2468,7 +2472,16 @@ function Test-CxxuComponent
         }
         else
         {
-            & $add ([string]$state.Id) '依赖' '警告' ("组件已启用，但未检测到 {0}；{1}" -f $detect, [string]$component[0].Install)
+            $install = [string]$component[0].Install
+            $hint = if ([string]::IsNullOrWhiteSpace($install))
+            {
+                "安装后重开终端，或执行 Enable-CxxuComponent $($state.Id) -Now。"
+            }
+            else
+            {
+                "先 $install，再重开终端或执行 Enable-CxxuComponent $($state.Id) -Now。"
+            }
+            & $add ([string]$state.Id) '依赖' '警告' ("组件已启用，但未检测到 {0}；{1}" -f $detect, $hint)
         }
     }
 

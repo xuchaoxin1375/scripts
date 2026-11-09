@@ -33,8 +33,8 @@ Add-EnvVar -EnvVar PSModulePath -NewValue $p -Verbose
 | `Reset-CxxuConfig` | 按仓库默认偏好（组件见 `PS/Init/components.psd1`，Settings 见 `PS/Init/config.defaults.psd1`）重置用户配置文件；`-WhatIf` 只预览路径，重置后重开终端生效，并列出仍会覆盖默认值的环境变量 |
 | `Enable-PsPlugin` / `Disable-PsPlugin` | 体验插件启停（Fzf/Zoxide/Predictor/Tab/Argc/GitCompletion/Carapace/PSCompletions/Fnm/ScoopSearch，当会话生效；加 `-Persist` 长期有效，写 `~/.cxxu/config.psd1`） |
 | `Set-GitCompletionSource` | 切换 `git`/`gitk` 的 Tab 补全来源（`GitCompletion`/`Carapace`/`Argc`）：写入 `PsGitCompletionSource` 与相关开关，由 `init` 在启动时读取；不改 profile，`-Persist` 落配置，`-WhatIf` 预览 |
-| `Get-CxxuComponent` | 按组件列出启用状态、选项、来源、默认值与安装/文档入口；`-Id Carapace` 只查一个；`-Validate` 改跑清单/步骤/依赖一致性自检 |
-| `Test-CxxuComponent` | 只读检查组件清单结构、Init 步骤生成与已启用组件的外部依赖；`Status` 为 `OK`/`警告`/`错误`，`Get-CxxuComponent -Validate` 与 `doctor` 复用同一结果 |
+| `Get-CxxuComponent` | 按组件列出启用状态、选项、来源、默认值与安装/文档入口，并给出 `Install`/`Enable` 建议命令；`-Id Carapace` 只查一个；`-Validate` 改跑清单/步骤/依赖一致性自检 |
+| `Test-CxxuComponent` | 只读检查组件清单结构、Init 步骤生成与已启用组件的外部依赖；`Status` 为 `OK`/`警告`/`错误`，依赖警告会带安装与启用命令；`Get-CxxuComponent -Validate` 与 `doctor` 复用同一结果 |
 | `Enable-CxxuComponent` / `Disable-CxxuComponent` | 按组件 Id 启停；默认只改开关，`-Now` 立即调用组件的 Init 函数；`-Persist` 写 `~/.cxxu/config.psd1` 的 `Components` 段，不加只改当前会话；写入前备份旧文件，并按 v2 规范文本重写（手工注释可能被规范化） |
 | `Set-CxxuComponentOption` | 设置组件选项（如 `GitCompletion.Source`、`Carapace.Excludes`）；`-Persist` 写配置，枚举与 List 类型按 `components.psd1` 校验；写入行为同上 |
 
@@ -370,6 +370,8 @@ Set-GitCompletionSource Carapace -Persist  # 需要 carapace 接管 git/gitk 时
 > 分界：`PSModulePath` 自动发现 + `init` + 延迟加载 + 缓存自建都是自动的，
 > 以下只有"缺了才管"，`Test-PsEnvReadiness` 的"可选"行即体检口（`doctor` 同步可见）；
 > 逐项外部依赖状态用 `Get-CxxuDependencyReport -Missing` 查，完整清单见 [Feature-Dependencies.md](Feature-Dependencies.md)。
+> 组件缺失时的统一入口：`Get-CxxuComponent | Select-Object Id, Enabled, Install, Enable | Format-Table -Wrap`。
+> 先按 `Install` 安装依赖，再按 `Enable` 启用；想当会话立即生效，执行 `Enable-CxxuComponent <Id> -Persist -Now`。
 
 | 功能 | 默认状态 | 手动启用 | 说明 |
 |---|---|---|---|

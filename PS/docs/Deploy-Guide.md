@@ -149,6 +149,7 @@ profile 里只保留 `init`；`argc` 由 Init 接管（部署见 [Argc-Completio
 | 可选层 `-IncludeGitCompletion` | `git-completion` | 推荐 | PSGallery | `git`/`gitk` 的 Tab 补全（分支、提交、按状态过滤的文件；首次补全才导入模块） | 可用；选项补全受 5.1 引擎限制，见 Feature-Guide §13 |
 
 - 二进制优先取 [`scripts-deps`](https://github.com/xuchaoxin1375/scripts-deps) 的固定版本，地址失效自动回退上游；`-NoMirror` 跳过转存仓库，`$env:PsDepsMirror` 可整体换前缀。版本钉子维护见 [PS/Deploy/readme.md](../Deploy/readme.md) 的转存章节。
+- 表内组件装好后是否默认加载由组件清单决定；默认关闭的（如 `PSCompletions`、`carapace`）或曾手动停用的，再用 `Enable-CxxuComponent <Id> -Persist` 启用。`Get-CxxuComponent -Id <Id>` 会同时给出 `Install` 与 `Enable`，`Test-CxxuComponent` 的依赖警告也会带安装与启用命令。
 - PSGallery 三件套由 PowerShellGet 安装，代理继承规则与 GitHub 直链不同；5.1 下环境变量可能不生效，网络受限时优先在 pwsh 7 执行，或先配系统代理。
 - `carapace-bin` 不纳入上述部署层；需要跨 shell 的外部 CLI 补全时，用下面的 `Deploy-Carapace` 安装，再按「可选：carapace」启用。
 
