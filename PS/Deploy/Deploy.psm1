@@ -1335,7 +1335,7 @@ function doctor
 {
     <#
     .SYNOPSIS
-    pwsh 健康诊断：先执行 Test-PsEnvReadiness（安装态），再检查运行态（init 错误/PSReadLine/历史大小/predictor/门控/懒加载/守护/仓库脏）。
+    pwsh 健康诊断：先执行 Test-PsEnvReadiness（安装态），再检查运行态（init 错误/组件清单/PSReadLine/历史大小/predictor/门控/懒加载/守护/仓库脏）。
     .DESCRIPTION
     只读，不修改机器，默认零网络（远端版本通过 readiness 的 -CheckRemote 查看）。每行给出状态与处理动作，
     收尾计数。定位问题时先执行本命令，再按行处理。
@@ -1376,6 +1376,16 @@ function doctor
     # init 错误账本(没跑过 init 时变量是 $null,先滤掉,不然 @($null) 数出 1 个空失败)
     $stepErrs = @($global:PsInitStepErrors | Where-Object { $_ })
     & $dchk 'init' ($global:PsInit -and -not $stepErrs.Count) $(if ($stepErrs.Count) { "有 $($stepErrs.Count) 步失败:$($stepErrs.Step -join ',')" } elseif (-not $global:PsInit) { '本会话没跑过 init' } else { 'clean' })
+    # 组件清单与 init 步骤的一致性：步骤由清单生成，这里查结构、Init 函数与已启用依赖。
+    $componentChecks = @()
+    try { $componentChecks = @(Get-CxxuComponent -Validate -ErrorAction Stop) }
+    catch { $componentChecks = @([pscustomobject]@{ Status = '错误'; Detail = "组件自检不可用：$($_.Exception.Message)" }) }
+    $componentErrors = @($componentChecks | Where-Object { $_.Status -eq '错误' })
+    $componentWarns = @($componentChecks | Where-Object { $_.Status -eq '警告' })
+    $componentNote = if ($componentErrors.Count) { "错误 $($componentErrors.Count)：$($componentErrors[0].Detail)" }
+    elseif ($componentWarns.Count) { "警告 $($componentWarns.Count)：$($componentWarns[0].Detail)" }
+    else { '清单、Init 函数与已启用依赖正常' }
+    & $dchk '组件清单' ((-not $componentErrors.Count) -and (-not $componentWarns.Count)) $componentNote
     # PSReadLine 关键选项(预测源/视图只在交互控制台有意义;重定向下 init 会主动跳过)
     $consoleInteractive = try { -not [Console]::IsOutputRedirected } catch { $false }
     $pr = try { Get-PSReadLineOption } catch { $null }

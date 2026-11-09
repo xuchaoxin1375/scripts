@@ -85,29 +85,10 @@ function init
     # 重定向下(无处渲染)自动关闭。
     # 核心步骤固定;可选组件的加载步骤由 components.psd1 的 Init 字段生成,
     # 组件顺序即清单顺序,新增组件不再需要在这里再写一行。
-    $coreStepsBefore = @(
-        # 导入图标模块(建议放到extension部分中)
-        # Import-TerminalIcons
-        # Import-ANSIColorEnv
-        # 补全模块PSReadline及其相关配置
-        @{ Name = 'Set-PSReadLinesCommon'; Action = { Set-PSReadLinesCommon } }
-        @{ Name = 'Set-PSReadLinesAdvanced'; Action = { Set-PSReadLinesAdvanced } }
-        @{ Name = 'Set-ArgumentCompleter'; Action = { Set-ArgumentCompleter }; MinPS = 7 }
-    )
-    $coreStepsAfter = @(
-        @{ Name = 'Confirm-EnvVarOfInfo'; Action = { Confirm-EnvVarOfInfo }; MinPS = 7 }
-        @{ Name = 'Set-PsExtension'; Action = { Set-PsExtension }; MinPS = 7 }
-        # 设置prompt样式(这里面会导入基础的powershell预定变量和别名)
-        @{ Name = 'Set-PsPrompt'; Action = { Set-PsPrompt } }
-        # Confirm-DataJson 有返回值(路径,供调用方使用),init 只关心副作用,屏蔽回显
-        @{ Name = 'Confirm-DataJson'; Action = { Confirm-DataJson | Out-Null }; MinPS = 7 }
-        # 体验件手势桩+单发收尾(7: PSFzf/Tab 首用才装,predictor/zoxide 首屏单发;
-        # 5.1: 只装 CxxuTab 的手势桩,其余 7-only 项跳过),启动零开销
-        @{ Name = 'Register-PsUxLazyLoad'; Action = { Register-PsUxLazyLoad } }
-    )
-    $coveredInit = @(($coreStepsBefore + $coreStepsAfter) | ForEach-Object { [string]$_.Name })
+    $coreSteps = Get-CxxuCoreInitSteps
+    $coveredInit = @(($coreSteps.Before + $coreSteps.After) | ForEach-Object { [string]$_.Name })
     $componentSteps = @(Get-CxxuComponentInitSteps -CoveredInit $coveredInit)
-    $steps = @($coreStepsBefore) + @($componentSteps) + @($coreStepsAfter)
+    $steps = @($coreSteps.Before) + @($componentSteps) + @($coreSteps.After)
 
     # 仅在要求时计时/报告(-Timing 或 -InformationAction Continue,`p -Force` 走后者)
     $needTiming = $Timing -or ($InformationPreference -eq 'Continue')
@@ -1481,6 +1462,33 @@ function Read-CxxuComponentManifest
         return @()
     }
 }
+function Get-CxxuCoreInitSteps
+{
+    # 固定核心步骤（不导出）：Before 在可选组件之前，After 在之后。
+    # 组件清单里的 Init 若与这里的 Name 相同，则由核心步骤统一承担，不再重复生成。
+    @{
+        Before = @(
+            # 导入图标模块(建议放到extension部分中)
+            # Import-TerminalIcons
+            # Import-ANSIColorEnv
+            # 补全模块PSReadline及其相关配置
+            @{ Name = 'Set-PSReadLinesCommon'; Action = { Set-PSReadLinesCommon } }
+            @{ Name = 'Set-PSReadLinesAdvanced'; Action = { Set-PSReadLinesAdvanced } }
+            @{ Name = 'Set-ArgumentCompleter'; Action = { Set-ArgumentCompleter }; MinPS = 7 }
+        )
+        After = @(
+            @{ Name = 'Confirm-EnvVarOfInfo'; Action = { Confirm-EnvVarOfInfo }; MinPS = 7 }
+            @{ Name = 'Set-PsExtension'; Action = { Set-PsExtension }; MinPS = 7 }
+            # 设置prompt样式(这里面会导入基础的powershell预定变量和别名)
+            @{ Name = 'Set-PsPrompt'; Action = { Set-PsPrompt } }
+            # Confirm-DataJson 有返回值(路径,供调用方使用),init 只关心副作用,屏蔽回显
+            @{ Name = 'Confirm-DataJson'; Action = { Confirm-DataJson | Out-Null }; MinPS = 7 }
+            # 体验件手势桩+单发收尾(7: PSFzf/Tab 首用才装,predictor/zoxide 首屏单发;
+            # 5.1: 只装 CxxuTab 的手势桩,其余 7-only 项跳过),启动零开销
+            @{ Name = 'Register-PsUxLazyLoad'; Action = { Register-PsUxLazyLoad } }
+        )
+    }
+}
 function Get-CxxuComponentInitSteps
 {
     # 由组件清单生成可选组件的 init 步骤（不导出）。
@@ -2268,18 +2276,24 @@ function Get-CxxuComponent
     .DESCRIPTION
     元数据来自 PS/Init/components.psd1；值按“环境变量 > 用户配置 > 默认值”解析。
     输出对象可直接接 Format-List/Format-Table；-Id 只查一个组件（不区分大小写）。
+    -Validate 不列组件，改跑清单结构、Init 步骤生成与已启用依赖的一致性检查。
     .EXAMPLE
     Get-CxxuComponent
     .EXAMPLE
     Get-CxxuComponent -Id Carapace | Format-List
+    .EXAMPLE
+    Get-CxxuComponent -Validate | Where-Object Status -ne 'OK'
     #>
     [CmdletBinding()]
     param(
         # 组件 Id；省略时列出全部
         [string]$Id = '',
         # 用户配置文件路径(默认 ~/.cxxu/config.psd1)
-        [string]$Path = (Join-Path (Join-Path $HOME '.cxxu') 'config.psd1')
+        [string]$Path = (Join-Path (Join-Path $HOME '.cxxu') 'config.psd1'),
+        # 只做一致性自检，输出 Component/Check/Status/Detail 行
+        [switch]$Validate
     )
+    if ($Validate) { return Test-CxxuComponent -Path $Path }
     $state = try { Read-CxxuConfigState -Path $Path } catch
     {
         Write-Warning "用户配置读失败($Path):$($_.Exception.Message);按环境变量与默认值判定。"
@@ -2335,12 +2349,145 @@ function Get-CxxuComponent
             Options     = [pscustomobject]$options
             Description = [string]$component.Description
             Lazy        = [string]$component.Lazy
+            MinPS       = [int]$component.MinPS
             Init        = [string]$component.Init
             Detect      = [string]$component.Detect
             Install     = [string]$component.Install
             Docs        = [string]$component.Docs
         }
     }
+}
+function Test-CxxuComponent
+{
+    <#
+    .SYNOPSIS
+    检查组件清单、Init 步骤生成与已启用组件的外部依赖是否一致。
+    .DESCRIPTION
+    只读检查，不修改配置。清单结构错误、Init 步骤未覆盖或 Init 函数缺失记为“错误”；
+    组件已启用但 Detect 命令/模块不存在记为“警告”（附安装入口）。
+    输出对象含 Component、Check、Status、Detail，Status 为 OK/警告/错误。
+    .EXAMPLE
+    Test-CxxuComponent
+    .EXAMPLE
+    Test-CxxuComponent | Where-Object Status -ne 'OK'
+    #>
+    [CmdletBinding()]
+    param(
+        # 用户配置文件路径(默认 ~/.cxxu/config.psd1)
+        [string]$Path = (Join-Path (Join-Path $HOME '.cxxu') 'config.psd1')
+    )
+    $rows = New-Object System.Collections.Generic.List[object]
+    $add = {
+        param([string]$Component, [string]$Check, [string]$Status, [string]$Detail)
+        [void]$rows.Add([pscustomobject]@{
+                Component = $Component
+                Check     = $Check
+                Status    = $Status
+                Detail    = $Detail
+            })
+    }
+
+    $manifest = @(Read-CxxuComponentManifest)
+    if (-not $manifest.Count)
+    {
+        & $add '(清单)' '读取' '错误' 'components.psd1 为空或读取失败'
+        return $rows
+    }
+
+    # 步骤覆盖以 init 实际生成结果为准：核心步骤 + 清单生成的组件步骤。
+    $core = Get-CxxuCoreInitSteps
+    $coveredInit = @(($core.Before + $core.After) | ForEach-Object { [string]$_.Name })
+    $generated = @(Get-CxxuComponentInitSteps -CoveredInit $coveredInit)
+    $stepNames = @($coveredInit) + @($generated | ForEach-Object { [string]$_.Name })
+
+    $ids = @{}
+    $keys = @{}
+    foreach ($component in $manifest)
+    {
+        $id = [string]$component.Id
+        $label = if ([string]::IsNullOrWhiteSpace($id)) { '(未命名)' } else { $id }
+        $key = [string]$component.Key
+        $init = [string]$component.Init
+        $detect = [string]$component.Detect
+
+        if ([string]::IsNullOrWhiteSpace($id)) { & $add $label 'Id' '错误' '组件缺少 Id' }
+        elseif ($ids.ContainsKey($id)) { & $add $label 'Id' '错误' "Id 重复：$id" }
+        else { $ids[$id] = $true }
+
+        if ([string]::IsNullOrWhiteSpace($key)) { & $add $label 'Key' '错误' '组件缺少 Key' }
+        elseif ($keys.ContainsKey($key)) { & $add $label 'Key' '错误' "Key 重复：$key" }
+        else { $keys[$key] = $true }
+
+        if ([string]::IsNullOrWhiteSpace($init))
+        {
+            & $add $label 'Init 步骤' '错误' '组件缺少 Init 字段'
+        }
+        elseif ($stepNames -notcontains $init)
+        {
+            & $add $label 'Init 步骤' '错误' "清单已登记，但 init 步骤未覆盖：$init"
+        }
+        elseif (-not (Get-Command -Name $init -ErrorAction SilentlyContinue))
+        {
+            & $add $label 'Init 步骤' '错误' "init 步骤已生成，但函数不存在：$init"
+        }
+        else
+        {
+            & $add $label 'Init 步骤' 'OK' "$init 已生成"
+        }
+
+        if ([string]::IsNullOrWhiteSpace($detect))
+        {
+            & $add $label 'Detect' '警告' '未声明 Detect，跳过已启用依赖检查'
+        }
+
+        # 选项只做结构校验：Name/Key 必须唯一，Enum 必须有可选值。
+        $optionNames = @{}
+        $optionKeys = @{}
+        foreach ($option in @($component.Options | Where-Object { $_ }))
+        {
+            $optionName = [string]$option.Name
+            $optionKey = [string]$option.Key
+            if ([string]::IsNullOrWhiteSpace($optionName)) { & $add $label '选项' '错误' '选项缺少 Name' }
+            elseif ($optionNames.ContainsKey($optionName)) { & $add $label '选项' '错误' "选项 Name 重复：$optionName" }
+            else { $optionNames[$optionName] = $true }
+
+            if ([string]::IsNullOrWhiteSpace($optionKey)) { & $add $label '选项' '错误' "选项 $optionName 缺少 Key" }
+            elseif ($optionKeys.ContainsKey($optionKey)) { & $add $label '选项' '错误' "选项 Key 重复：$optionKey" }
+            else { $optionKeys[$optionKey] = $true }
+
+            if ([string]$option.Type -eq 'Enum' -and -not @($option.Values).Count)
+            {
+                & $add $label '选项' '错误' "枚举选项 $optionName 缺少 Values"
+            }
+        }
+    }
+
+    # 已启用组件的外部依赖：命令、已加载模块或 PSModulePath 下的模块目录。
+    $states = try { @(Get-CxxuComponent -Path $Path) } catch { @() }
+    foreach ($state in @($states | Where-Object { $_.Enabled }))
+    {
+        $component = @($manifest | Where-Object { [string]$_.Id -eq [string]$state.Id } | Select-Object -First 1)
+        if (-not $component.Count) { continue }
+        $detect = [string]$component[0].Detect
+        if ([string]::IsNullOrWhiteSpace($detect)) { continue }
+        $found = [bool](Get-Command -Name $detect -ErrorAction SilentlyContinue)
+        if (-not $found) { $found = [bool](Get-Module -Name $detect -ErrorAction SilentlyContinue) }
+        if (-not $found)
+        {
+            $found = [bool](@($env:PSModulePath -split [IO.Path]::PathSeparator |
+                        Where-Object { $_ -and (Test-Path -LiteralPath (Join-Path $_ $detect)) }).Count)
+        }
+        if ($found)
+        {
+            & $add ([string]$state.Id) '依赖' 'OK' "$detect 已就绪"
+        }
+        else
+        {
+            & $add ([string]$state.Id) '依赖' '警告' ("组件已启用，但未检测到 {0}；{1}" -f $detect, [string]$component[0].Install)
+        }
+    }
+
+    $rows
 }
 function Enable-CxxuComponent
 {

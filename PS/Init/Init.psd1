@@ -26,6 +26,7 @@
         'Enable-PsPlugin',
         'Set-GitCompletionSource',
         'Get-CxxuComponent',
+        'Test-CxxuComponent',
         'Enable-CxxuComponent',
         'Disable-CxxuComponent',
         'Set-CxxuComponentOption',
