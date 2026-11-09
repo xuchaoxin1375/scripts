@@ -105,6 +105,8 @@ Initialize-ArgcCompletions
 
 预测视图（7.5+）：输入 `nginx -`，ListView 应出现 `[CxxuArgcFlags]` 来源行。
 
+需要在真实窗口内自动复验界面效果时，按 [交互式控制台验证](Interactive-Console-Verification.md) 启动独立窗口并注入按键；该流程同时给出读屏、截图与清行的做法。
+
 ## 3. 更新
 
 ```powershell
