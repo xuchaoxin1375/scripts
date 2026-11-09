@@ -88,15 +88,18 @@ carapace --list
 
 在交互式 Git Bash 中：
 
-- `git checkout <Tab>` 应出现分支、标签与 `HEAD`。
-- `git add <Tab>` 应出现未暂存或未跟踪文件。
-- `carapace <Tab>` 应出现 completer 列表。
+- 多个候选时按两次 `<Tab>`：第一次只补公共前缀（没有公共前缀时响铃），第二次显示候选列表；候选很多时 Bash 会询问 `Display all ...? (y or n)`，输入 `y` 显示。
+- `git checkout <Tab><Tab>` 应出现分支、标签与 `HEAD`，可带提交说明。
+- `git add <Tab><Tab>` 应出现未暂存或未跟踪文件。
+- `gh pr <Tab><Tab>` 即使未安装 `gh` 也应出现静态子命令；需要读取仓库、PR 编号或登录状态的动态候选才依赖 `gh` 本身。
+- `carapace <Tab><Tab>` 应出现 completer 列表。
 
-本机验证环境为 Git Bash 5.2.37（MSYS）+ carapace 1.8.2：`source` 约 44 ms；在临时仓库中 `git checkout <Tab>` 返回 `HEAD`、`feature`、`main`，`git add <Tab>` 返回未暂存文件。`source` 的成本随版本与主机变化。
+本机交互式验证环境为 Git Bash 5.2.37（MSYS）+ carapace 1.8.2：`source` 约 44 ms；`git checkout <Tab><Tab>` 返回 17 个标签/分支/引用候选（含提交说明），`gh pr <Tab><Tab>` 返回 21 个子命令（本机未安装 `gh`）。`source` 的成本随版本与主机变化。
 
 ## 已知限制
 
 - 需要 bash 4 及以上；Git Bash 5.x 满足，bash 3 会被 carapace 拒绝。
+- bash 补全函数调用 `xargs`；极简环境缺少 coreutils 时，运行时脚本会警告并跳过，不注册半可用的补全。
 - 每次打开 shell 都会执行一次 carapace 生成补全，本机约 44 ms；需要更快启动时减少注册命令或仅在需要的终端加载。
 - carapace 会为大量命令注册补全，可能覆盖已有的 bash-completion；用 `CARAPACE_EXCLUDES` 排除不需要的命令。
 - 仅 Git Bash（MSYS）完成实机验证；Cygwin 走同一脚本与兼容层 PATH 分支，Linux/WSL 走同一脚本但不需要 PATH 修正，均未逐项实机确认。

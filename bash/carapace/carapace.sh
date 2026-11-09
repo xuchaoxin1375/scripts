@@ -24,6 +24,10 @@ _carapace_main() {
 		printf '[carapace] carapace --version 执行失败，跳过补全初始化\n' >&2
 		return 0
 	fi
+	if ! command -v xargs >/dev/null 2>&1; then
+		printf '[carapace] 未找到 xargs，bash 补全需要 coreutils；跳过补全初始化\n' >&2
+		return 0
+	fi
 
 	# shellcheck disable=SC1090
 	source <(carapace _carapace bash)

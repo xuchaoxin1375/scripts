@@ -219,7 +219,7 @@ Set-GitCompletionSource Carapace -Persist   # 需要 carapace 接管 git/gitk �
 
 **Git Bash / MSYS（可选，与 PowerShell 独立）**：
 
-Git Bash 使用同一个 carapace 二进制，但接入由 bash 的 `~/.bashrc` 完成，不经过 `init`；`PsCarapace` 与 `Enable-CxxuComponent` 只控制 PowerShell。运行 `bash /c/repos/scripts/bash/carapace/setup.sh` 可写入标记块，`--uninstall` 卸载；手工片段、PATH 修复、与 argc-completions 的顺序和验收见 [bash/carapace/README.md](../../bash/carapace/README.md)。本机 Git Bash 5.2 + carapace 1.8.2 实测 `source` 约 44 ms，`git checkout <Tab>` 与 `git add <Tab>` 均能返回候选。
+Git Bash 使用同一个 carapace 二进制，但接入由 bash 的 `~/.bashrc` 完成，不经过 `init`；`PsCarapace` 与 `Enable-CxxuComponent` 只控制 PowerShell。运行 `bash /c/repos/scripts/bash/carapace/setup.sh` 可写入标记块，`--uninstall` 卸载；手工片段、PATH 修复、与 argc-completions 的顺序和验收见 [bash/carapace/README.md](../../bash/carapace/README.md)。多个候选需按两次 `<Tab>`；`gh` 未安装时静态子命令仍可补全，需要上下文的动态候选才依赖命令本身。本机 Git Bash 5.2 + carapace 1.8.2 实测 `source` 约 44 ms，`git checkout` 返回 17 个带说明的候选，`gh pr` 返回 21 个候选。
 
 **git 补全对比（同一测试仓库）**：
 

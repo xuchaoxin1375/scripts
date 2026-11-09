@@ -244,7 +244,7 @@ bash /c/repos/scripts/bash/carapace/setup.sh --dry-run
 bash /c/repos/scripts/bash/carapace/setup.sh
 ```
 
-手工片段、PATH 修正原因、与 argc-completions 的共存和验收见 [bash/carapace/README.md](../../bash/carapace/README.md)。先在 Git Bash 中确认 `command -v carapace` 有输出；没有则把安装目录（如 `~/.cxxu/bin` 或 `/c/scoop/shims`）加入 PATH。
+手工片段、PATH 修正原因、与 argc-completions 的共存和验收见 [bash/carapace/README.md](../../bash/carapace/README.md)。多个候选时按两次 `<Tab>` 显示列表；`gh` 等外部命令未安装时，静态子命令仍可补全，需要仓库或登录上下文的动态候选才依赖命令本身。先在 Git Bash 中确认 `command -v carapace` 有输出；没有则把安装目录（如 `~/.cxxu/bin` 或 `/c/scoop/shims`）加入 PATH。
 
 **在 init 中启用（不修改 profile）**
 
