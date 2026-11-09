@@ -1512,8 +1512,10 @@ function Disable-PsPlugin
     .DESCRIPTION
     插件注册表：Fzf(PSFzf 快捷键)/Zoxide(z 跳转)/Predictor(命令名 ListView 预测)/
     Tab(CxxuTab 命令名 Tab 模糊，默认开,不需要时停用)/
-    Argc(argc-completions 参数补全,默认开,懒加载)。停用只关本命令的合并/加载，引擎原生行为不受影响；
-    持开关逐调用判定，无需重载。-Persist 写 ~/.cxxu/config.psd1（行级替换，保注释）。
+    Argc(argc-completions 参数补全,默认开,懒加载)/GitCompletion(git/gitk 的 Tab 补全)。
+    停用只关本命令的合并/加载，引擎原生行为不受影响；持开关逐调用判定，无需重载。
+    已注册的 Native completer 无法在当前会话撤销：停用 GitCompletion 后需重开终端，argc 才会重新接管 git/gitk。
+    -Persist 写 ~/.cxxu/config.psd1（行级替换，保注释）。
     .EXAMPLE
     Disable-PsPlugin Tab
     .EXAMPLE
@@ -1523,18 +1525,22 @@ function Disable-PsPlugin
     param(
         # 插件名(Tab 补全可用)
         [Parameter(Mandatory)]
-        [ValidateSet('Fzf', 'Zoxide', 'Predictor', 'Tab', 'Argc')]
+        [ValidateSet('Fzf', 'Zoxide', 'Predictor', 'Tab', 'Argc', 'GitCompletion')]
         [string]$Name,
         # 写入用户配置文件,长期有效(否则只关当会话)
         [switch]$Persist,
         # 配置文件路径(默认 ~/.cxxu/config.psd1)
         [string]$Path = (Join-Path (Join-Path $HOME '.cxxu') 'config.psd1')
     )
-    $key = @{ Fzf = 'PsFzf'; Zoxide = 'PsZoxide'; Predictor = 'PsPredictor'; Tab = 'PsTab'; Argc = 'PsArgc' }[$Name]
+    $key = @{ Fzf = 'PsFzf'; Zoxide = 'PsZoxide'; Predictor = 'PsPredictor'; Tab = 'PsTab'; Argc = 'PsArgc'; GitCompletion = 'PsGitCompletion' }[$Name]
     if ($PSCmdlet.ShouldProcess($Name, '停用插件'))
     {
         Set-Item "env:$key" -Value 'False'
         Write-Host "$Name 已停用(当会话)。"
+        if ($Name -eq 'GitCompletion')
+        {
+            Write-Host '当前会话已注册的 git/gitk completer 无法撤销；重开终端后 argc 才会重新接管。'
+        }
         if ($Persist) { Set-CxxuConfigValue -Path $Path -Key $key -Value $false }
     }
 }
@@ -1546,8 +1552,8 @@ function Enable-PsPlugin
     .DESCRIPTION
     启用是显式开(环境变量 True,盖过配置文件)。Tab/Predictor 即时生效(逐调用判定,
     无需重载);7+ 的 Fzf/Tab 立装桩即时生效(重调安装器,幂等,只补缺);5.1 的 Tab
-    直接导入 CxxuTab;Argc 立装 Tab 桩,真正的注册仍在首个 Tab;Predictor/Zoxide
-    单发已过则重开终端(或 Register-PsUxLazyLoad -Now 立装)。
+    直接导入 CxxuTab;Argc 立装 Tab 桩,真正的注册仍在首个 Tab;GitCompletion 在模块已安装时
+    立即注册 git/gitk completer;Predictor/Zoxide 单发已过则重开终端(或 Register-PsUxLazyLoad -Now 立装)。
     .EXAMPLE
     Enable-PsPlugin Tab
     .EXAMPLE
@@ -1557,14 +1563,14 @@ function Enable-PsPlugin
     param(
         # 插件名(Tab 补全可用)
         [Parameter(Mandatory)]
-        [ValidateSet('Fzf', 'Zoxide', 'Predictor', 'Tab', 'Argc')]
+        [ValidateSet('Fzf', 'Zoxide', 'Predictor', 'Tab', 'Argc', 'GitCompletion')]
         [string]$Name,
         # 写入用户配置文件,长期有效(否则只开当会话)
         [switch]$Persist,
         # 配置文件路径(默认 ~/.cxxu/config.psd1)
         [string]$Path = (Join-Path (Join-Path $HOME '.cxxu') 'config.psd1')
     )
-    $key = @{ Fzf = 'PsFzf'; Zoxide = 'PsZoxide'; Predictor = 'PsPredictor'; Tab = 'PsTab'; Argc = 'PsArgc' }[$Name]
+    $key = @{ Fzf = 'PsFzf'; Zoxide = 'PsZoxide'; Predictor = 'PsPredictor'; Tab = 'PsTab'; Argc = 'PsArgc'; GitCompletion = 'PsGitCompletion' }[$Name]
     if ($PSCmdlet.ShouldProcess($Name, '启用插件'))
     {
         Set-Item "env:$key" -Value 'True'
@@ -1573,6 +1579,18 @@ function Enable-PsPlugin
         {
             # 只补环境/PATH 与 Tab 桩(幂等);实际注册仍在首个 Tab
             Set-ArgcCompletions -ErrorAction SilentlyContinue
+        }
+        if ($Name -eq 'GitCompletion')
+        {
+            if (Get-Module -ListAvailable git-completion)
+            {
+                # 立即可用:置全局标记并注册 git/gitk completer(幂等)
+                Register-GitCompletion
+            }
+            else
+            {
+                Write-Warning 'git-completion 模块未安装：先执行 Deploy-CompletionStack -IncludeGitCompletion，再启用 GitCompletion。'
+            }
         }
         if ((($Name -eq 'Fzf') -or ($Name -eq 'Tab')) -and ($PSVersionTable.PSVersion.Major -ge 7))
         {

@@ -1661,6 +1661,198 @@ function Deploy-ArgcCompletions
     }
 }
 
+function Show-CarapaceProfileHint
+{
+    # 只打印 carapace 接入片段，不修改 profile；有 git-completion 时默认让出 git/gitk。
+    Write-Host ''
+    Write-Host '接入片段（放到 profile 的 init 之后，重开终端生效）：'
+    if (Get-Module -ListAvailable git-completion)
+    {
+        Write-Host "`$env:CARAPACE_EXCLUDES = 'git,gitk'"
+    }
+    else
+    {
+        Write-Host '# 安装了 git-completion 时，取消下一行注释，让 git/gitk 继续由它负责'
+        Write-Host "# `$env:CARAPACE_EXCLUDES = 'git,gitk'"
+    }
+    Write-Host @'
+$carapaceScript = carapace _carapace powershell | Out-String
+$needle = 'return "" # prevent default file completion'
+if ($PSVersionTable.PSVersion -lt [version]'7.7') {
+    if (-not $carapaceScript.Contains($needle)) {
+        throw 'carapace 生成脚本已变化，空结果补丁未匹配。请核对当前版本的空结果处理，确认无需补丁后删除本断言。'
+    }
+    $carapaceScript = $carapaceScript.Replace($needle, 'return')
+}
+$carapaceScript | Invoke-Expression
+'@
+    Write-Host '不要执行 carapace 文档中的 Set-PSReadlineKeyHandler Tab 绑定，避免覆盖现有 Tab 桩。'
+}
+
+function Deploy-Carapace
+{
+    <#
+    .SYNOPSIS
+    安装 carapace 补全二进制，并打印 profile 接入片段（不自动修改 profile）。
+    .DESCRIPTION
+    carapace 是跨 shell 的外部 CLI 参数补全二进制，与 git-completion、argc-completions 并列。
+    本命令从官方 GitHub Release 下载 Windows zip，按同版本 checksums.txt 校验 SHA-256，
+    解压 carapace.exe 到目标目录并加入用户 PATH；完成后打印接入片段，不设置 Tab 键绑定。
+    默认查询最新 release；网络受限或需要可复现版本时用 -Version 指定版本号，可跳过 GitHub API。
+    已存在 carapace 时默认跳过，-Force 重新下载覆盖；-Destination 与 -SkipPath 用于自定义目录或测试。
+    .EXAMPLE
+    Deploy-Carapace
+    .EXAMPLE
+    Deploy-Carapace -Version 1.8.2 -Proxy http://127.0.0.1:7897
+    .EXAMPLE
+    Deploy-Carapace -Destination "$env:TEMP\carapace-test" -SkipPath -Force
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        # 指定版本（可带 v 前缀）；留空查询最新 release
+        [string]$Version = '',
+        # 安装目录，默认 ~/.cxxu/bin
+        [string]$Destination = (Join-Path (Join-Path $HOME '.cxxu') 'bin'),
+        # 本次下载使用的代理；未指定时读取 HTTPS_PROXY/HTTP_PROXY/ALL_PROXY
+        [string]$Proxy = '',
+        # 强制直连，忽略 -Proxy 与代理环境变量
+        [switch]$NoProxy,
+        # 不修改当前会话与用户 PATH（自行管理 PATH 时使用）
+        [switch]$SkipPath,
+        # 已安装时也重新下载覆盖
+        [switch]$Force
+    )
+
+    $isWindowsHost = ($PSVersionTable.PSEdition -eq 'Desktop') -or ($env:OS -eq 'Windows_NT')
+    if (-not $isWindowsHost)
+    {
+        throw 'Deploy-Carapace 目前只支持 Windows；其他平台请用系统包管理器安装 carapace。'
+    }
+
+    $existing = Get-Command carapace -ErrorAction SilentlyContinue
+    if ($existing -and -not $Force)
+    {
+        Write-Host ("carapace 已存在：{0}" -f $existing.Source)
+        try { & $existing.Source --version } catch { Write-Warning ("无法执行 carapace --version：{0}" -f $_.Exception.Message) }
+        Write-Host '如需覆盖安装，加 -Force。'
+        Show-CarapaceProfileHint
+        return
+    }
+
+    $osArch = ''
+    try { $osArch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString() } catch { }
+    if (-not $osArch) { $osArch = $env:PROCESSOR_ARCHITECTURE }
+    switch -Regex ($osArch)
+    {
+        '^(X64|AMD64)$' { $arch = 'amd64' }
+        '^ARM64$' { $arch = 'arm64' }
+        default { throw "不支持的处理器架构：$osArch（官方只提供 amd64/arm64 产物）。" }
+    }
+
+    if (-not $PSCmdlet.ShouldProcess('carapace', "安装到 $Destination"))
+    {
+        return
+    }
+
+    $rel = $null
+    if ([string]::IsNullOrWhiteSpace($Version))
+    {
+        Write-Host '查询 carapace 最新 release ...'
+        $rel = Get-CxxuLatestRelease -Repo 'carapace-sh/carapace-bin' -Proxy $Proxy -NoProxy:$NoProxy
+        $tag = [string]$rel.tag_name
+        $ver = $tag.TrimStart('v')
+    }
+    else
+    {
+        $ver = $Version.Trim().TrimStart('v')
+        $tag = 'v' + $ver
+    }
+    if ($ver -notmatch '^\d+\.\d+\.\d+')
+    {
+        throw "无法识别的 carapace 版本号：$Version；请使用 1.8.2 这类三段版本。"
+    }
+
+    $assetName = "carapace-bin_${ver}_windows_${arch}.zip"
+    $sumName = "carapace-bin_${ver}_checksums.txt"
+    $baseUrl = "https://github.com/carapace-sh/carapace-bin/releases/download/$tag"
+    $zipUrl = "$baseUrl/$assetName"
+    $sumUrl = "$baseUrl/$sumName"
+    if ($rel)
+    {
+        $zipAsset = @($rel.assets | Where-Object { $_.name -eq $assetName } | Select-Object -First 1)
+        if (-not $zipAsset.Count)
+        {
+            throw ("release {0} 中没有 {1}；可用 Windows 产物：{2}" -f $tag, $assetName,
+                ((@($rel.assets | Where-Object { $_.name -match '_windows_.*\.zip$' } | ForEach-Object { $_.name })) -join '、'))
+        }
+        $zipUrl = $zipAsset[0].browser_download_url
+        $sumAsset = @($rel.assets | Where-Object { $_.name -eq $sumName } | Select-Object -First 1)
+        if ($sumAsset.Count) { $sumUrl = $sumAsset[0].browser_download_url }
+    }
+
+    $tmpRoot = Join-Path ([IO.Path]::GetTempPath()) ('cxxu-carapace-' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $tmpRoot -Force | Out-Null
+    try
+    {
+        $zipPath = Join-Path $tmpRoot $assetName
+        $sumPath = Join-Path $tmpRoot $sumName
+        Write-Host ("下载 {0}（{1}）..." -f $assetName, $tag)
+        Invoke-CxxuDownload -Url $zipUrl -OutFile $zipPath -Proxy $Proxy -NoProxy:$NoProxy
+        Write-Host ("下载 {0} ..." -f $sumName)
+        Invoke-CxxuDownload -Url $sumUrl -OutFile $sumPath -Proxy $Proxy -NoProxy:$NoProxy
+
+        $sumText = [IO.File]::ReadAllText($sumPath)
+        $match = [regex]::Match($sumText, '(?im)^([0-9a-f]{64})\s+\*?' + [regex]::Escape($assetName) + '\s*$')
+        if (-not $match.Success)
+        {
+            throw ("校验文件中没有 {0} 的 SHA-256，停止安装。" -f $assetName)
+        }
+        $expected = $match.Groups[1].Value.ToLowerInvariant()
+        $actual = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($actual -ne $expected)
+        {
+            throw ("SHA-256 不匹配：期望 {0}，实际 {1}。已停止安装。" -f $expected, $actual)
+        }
+        Write-Host '校验通过（SHA-256）'
+
+        $unzip = Join-Path $tmpRoot 'unzip'
+        Expand-Archive -LiteralPath $zipPath -DestinationPath $unzip -Force
+        $exe = @(Get-ChildItem -LiteralPath $unzip -Recurse -Filter 'carapace.exe' -File | Select-Object -First 1)
+        if (-not $exe.Count)
+        {
+            throw '压缩包内没有 carapace.exe，已停止安装。'
+        }
+        if (-not (Test-Path -LiteralPath $Destination))
+        {
+            New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+        }
+        $target = Join-Path $Destination 'carapace.exe'
+        Copy-Item -LiteralPath $exe[0].FullName -Destination $target -Force
+        if (-not $SkipPath)
+        {
+            Add-CxxuBinToPath -BinDir $Destination
+        }
+
+        $output = @(& $target --version 2>&1)
+        if ($LASTEXITCODE -ne 0)
+        {
+            throw ("carapace --version 退出码 {0}：{1}" -f $LASTEXITCODE, ($output -join ' '))
+        }
+        Write-Host ("carapace 已安装：{0}" -f $target)
+        Write-Host ("版本：{0}" -f (($output -join ' ').Trim()))
+        $resolved = Get-Command carapace -ErrorAction SilentlyContinue
+        if ($resolved -and ($resolved.Source -ne $target))
+        {
+            Write-Warning ("PATH 中仍先命中另一个 carapace：{0}。请确认 {1} 在它之前，或移除旧版本。" -f $resolved.Source, $Destination)
+        }
+        Show-CarapaceProfileHint
+    }
+    finally
+    {
+        Remove-Item -LiteralPath $tmpRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Deploy-CompletionStack
 {
     <#

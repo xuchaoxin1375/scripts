@@ -150,7 +150,7 @@ conda 用户：跑 `conda init powershell` 后**重贴缓存块**（它会覆盖
 
 - 二进制优先取 [`scripts-deps`](https://github.com/xuchaoxin1375/scripts-deps) 的固定版本，地址失效自动回退上游；`-NoMirror` 跳过转存仓库，`$env:PsDepsMirror` 可整体换前缀。版本钉子维护见 [PS/Deploy/readme.md](../Deploy/readme.md) 的转存章节。
 - PSGallery 三件套由 PowerShellGet 安装，代理继承规则与 GitHub 直链不同；5.1 下环境变量可能不生效，网络受限时优先在 pwsh 7 执行，或先配系统代理。
-- `carapace-bin` 不纳入上述部署层；需要跨 shell 的外部 CLI 补全时，按下面的「可选：carapace」手动安装与接入。
+- `carapace-bin` 不纳入上述部署层；需要跨 shell 的外部 CLI 补全时，用下面的 `Deploy-Carapace` 安装，再按「可选：carapace」接入。
 
 ### 只启用补全（仓库、`PSModulePath`、profile 已就绪）
 
@@ -174,7 +174,7 @@ Deploy-CompletionStack -All -SkipBinaries      # 全部但跳过 fzf/zoxide 二�
 ```
 
 - 内联预测要 pwsh 7.5+；Windows PowerShell 5.1 只有 Tab 菜单，命令会自动发布 `ps51` 活件（新机也会顺带准备 net9 活件）。
-- 开关默认全开（组件未安装时对应开关不产生实际效果）；单关用 `Disable-PsPlugin Predictor|Tab|Fzf|Zoxide|Argc -Persist`，完整开关与优先级见 `Feature-Guide.md §7`。
+- 开关默认全开（组件未安装时对应开关不产生实际效果）；单关用 `Disable-PsPlugin Predictor|Tab|Fzf|Zoxide|Argc|GitCompletion -Persist`，完整开关与优先级见 `Feature-Guide.md §7`。停用 `GitCompletion` 后，当前会话已注册的 `git`/`gitk` completer 不会撤销，需重开终端才由 argc 接管。
 - 可选层需要网络。国内下载不稳定时，先 `Set-Proxy On`（或设置 `HTTPS_PROXY`/`HTTP_PROXY`）再执行；下载会自动识别代理，也可用 `-Proxy <地址>` / `-NoProxy` 单次覆盖。`Set-Proxy` 只影响当前会话（默认端口 7897，`-Port` 可改），新终端需重设或持久化 `HTTPS_PROXY`。缺少可选组件只提示，不影响默认层。
 - `-IncludeArgc` 的仓库、`argc.exe` 与 `yq.exe` 会并发下载（`-NoParallel` 可串行），且不查 release API；只想单独重装 argc 或指定目录用 `Deploy-ArgcCompletions [-Root <目录>]`。
 - 验收：ListView 输 `get-child` 应见 `[CxxuCommand]`；Tab 输 `get-chi` 应含 `Get-ChildItem`。不达预期按 `Feature-Guide.md §9` 的「Tab 补全自查」定位。
@@ -199,9 +199,19 @@ Confirm-ModuleInstalled -ModuleName CompletionPredictor -Install  # 可选：参
 
 carapace 是跨 shell 的命令行补全二进制，补外部 CLI 的参数值，不补 PowerShell cmdlet。它和 `argc-completions` 是并列关系，不是替代关系；git 仍建议由 `git-completion` 负责。效果、候选数量与三方对比见 [Feature-Guide](Feature-Guide.md) 的「carapace（可选，非默认）」。
 
-前置条件：已按「只启用补全」完成 `init` 与补全栈；`pwsh` 7（`Register-ArgumentCompleter -Native` 在 5.1 不可用，本次未验证 5.1）；`carapace.exe` 位于 PATH。安装渠道二选一：能访问 GitHub Release 时优先官方 zip（不依赖 scoop，版本可固定）；本机 `scoop` 与 `spc` bucket 可用时可走 scoop。
+前置条件：已按「只启用补全」完成 `init` 与补全栈；`pwsh` 7（`Register-ArgumentCompleter -Native` 在 5.1 不可用，本次未验证 5.1）；`carapace.exe` 位于 PATH。安装渠道三选一：`Deploy-Carapace`（推荐）、官方 GitHub Release 手工下载、本机 `scoop` 与 `spc` bucket。
 
-**渠道一：官方 GitHub Release（首选）**
+**推荐：`Deploy-Carapace`**
+
+```powershell
+Deploy-Carapace
+# 网络受限或需要可复现版本时，跳过 GitHub API：
+Deploy-Carapace -Version 1.8.2 -Proxy http://127.0.0.1:7897
+```
+
+命令会下载对应架构的官方 zip，按同版本 `checksums.txt` 校验 SHA-256，解压到 `~/.cxxu/bin` 并加入用户 PATH，最后打印接入片段。`-Force` 覆盖重装，`-Destination` 与 `-SkipPath` 用于自定义目录或测试。它不自动修改 profile，也不设置 Tab 键绑定；接入仍按下文片段手动完成。
+
+**手工渠道一：官方 GitHub Release**
 
 1. 打开 `https://github.com/carapace-sh/carapace-bin/releases`，下载与架构匹配的 `carapace-bin_<版本>_windows_amd64.zip`（ARM64 用 `_windows_arm64.zip`），并下载同版本的 `carapace-bin_<版本>_checksums.txt`。
 2. 校验压缩包：`(Get-FileHash <zip> -Algorithm SHA256).Hash` 与 `checksums.txt` 中对应文件名行比对；不一致时停止并重新下载。
@@ -210,7 +220,7 @@ carapace 是跨 shell 的命令行补全二进制，补外部 CLI 的参数值�
 
 手工安装的升级与卸载也需手工完成：替换 `carapace.exe` 后重新生成接入脚本；不再使用时删除该目录并从 PATH 移除。
 
-**渠道二：scoop（可选）**
+**手工渠道二：scoop（可选）**
 
 ```powershell
 scoop install carapace-bin
@@ -240,8 +250,8 @@ $carapaceScript | Invoke-Expression
 - `CARAPACE_EXCLUDES` 在生成脚本时写入，不是运行时读取；增减排除项后修改环境变量并重新生成脚本。
 - 版本可以不追新，但生成脚本随版本变化：空结果补丁按原文匹配，`String.Replace` 未命中时会静默保留原文，因此断言失败时先在 pwsh 7.6 下实测空结果，再决定保留或删除补丁。
 - 接入后重开终端或执行 `. $profile`；验收：`Get-Command carapace`、`carapace --version`、`carapace --list`（数量随版本变化，不写死）、`TabExpansion2 'scoop install ' 14` 能返回包名候选，`TabExpansion2 'gh pr ' 6` 能返回子命令；git 仍由 `git-completion` 负责。
-- 启动成本约 180–200ms；不需要时删除 profile 片段，scoop 渠道执行 `scoop uninstall carapace-bin`，手工渠道删除二进制目录。慢命令（`winget install`、`uv add`）会阻塞 Tab，按需排除。
-- `Deploy-CompletionStack -All` 不包含 carapace，也没有 `-IncludeCarapace` 开关；需要时按本节手动接入。
+- 启动成本约 180–200ms；不需要时删除 profile 片段，scoop 渠道执行 `scoop uninstall carapace-bin`，`Deploy-Carapace` 与手工渠道删除二进制目录（默认 `~/.cxxu/bin`）并从 PATH 移除。慢命令（`winget install`、`uv add`）会阻塞 Tab，按需排除。
+- `Deploy-CompletionStack -All` 不包含 carapace，也没有 `-IncludeCarapace` 开关；用 `Deploy-Carapace` 安装二进制，接入仍按本节手动加入 profile。
 
 ## 6. scoop 二进制
 
