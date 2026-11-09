@@ -199,25 +199,48 @@ Confirm-ModuleInstalled -ModuleName CompletionPredictor -Install  # 可选：参
 
 carapace 是跨 shell 的命令行补全二进制，补外部 CLI 的参数值，不补 PowerShell cmdlet。它和 `argc-completions` 是并列关系，不是替代关系；git 仍建议由 `git-completion` 负责。效果、候选数量与三方对比见 [Feature-Guide](Feature-Guide.md) 的「carapace（可选，非默认）」。
 
-前置条件：`scoop` 可用（安装需要网络），且已添加 `spc` bucket（`carapace-bin` 在该 bucket；未添加时先执行 `Add-ScoopBuckets` 或手动添加）；`pwsh` 7（本次未验证 5.1）；已按「只启用补全」完成 `init` 与补全栈。
+前置条件：已按「只启用补全」完成 `init` 与补全栈；`pwsh` 7（`Register-ArgumentCompleter -Native` 在 5.1 不可用，本次未验证 5.1）；`carapace.exe` 位于 PATH。安装渠道二选一：能访问 GitHub Release 时优先官方 zip（不依赖 scoop，版本可固定）；本机 `scoop` 与 `spc` bucket 可用时可走 scoop。
+
+**渠道一：官方 GitHub Release（首选）**
+
+1. 打开 `https://github.com/carapace-sh/carapace-bin/releases`，下载与架构匹配的 `carapace-bin_<版本>_windows_amd64.zip`（ARM64 用 `_windows_arm64.zip`），并下载同版本的 `carapace-bin_<版本>_checksums.txt`。
+2. 校验压缩包：`(Get-FileHash <zip> -Algorithm SHA256).Hash` 与 `checksums.txt` 中对应文件名行比对；不一致时停止并重新下载。
+3. 解压出 `carapace.exe`，放到 PATH 中的固定目录（例如 `$env:LOCALAPPDATA\Programs\carapace`）；目录不在 PATH 时加入用户 PATH 并重开终端。
+4. 确认 `Get-Command carapace` 与 `carapace --version`。
+
+手工安装的升级与卸载也需手工完成：替换 `carapace.exe` 后重新生成接入脚本；不再使用时删除该目录并从 PATH 移除。
+
+**渠道二：scoop（可选）**
 
 ```powershell
 scoop install carapace-bin
+```
 
-# 可选：让 git-completion 继续独占 git/gitk
+`carapace-bin` 位于 scoop 的 `spc` bucket；未添加时先执行 `Add-ScoopBuckets`。该渠道受 bucket 与网络可用性影响，安装失败不代表 carapace 不可用，改用渠道一。
+
+**接入 profile**
+
+```powershell
+# 可选：让 git-completion 继续独占 git/gitk；该变量在生成脚本时生效
 $env:CARAPACE_EXCLUDES = 'git,gitk'
 
 $carapaceScript = carapace _carapace powershell | Out-String
+$needle = 'return "" # prevent default file completion'
 if ($PSVersionTable.PSVersion -lt [version]'7.7') {
     # pwsh 7.6 的 CompletionResult 不接受空字符串；回退到默认补全
-    $carapaceScript = $carapaceScript.Replace('return "" # prevent default file completion', 'return')
+    if (-not $carapaceScript.Contains($needle)) {
+        throw 'carapace 生成脚本已变化，空结果补丁未匹配。请核对当前版本的空结果处理，确认无需补丁后删除本断言。'
+    }
+    $carapaceScript = $carapaceScript.Replace($needle, 'return')
 }
 $carapaceScript | Invoke-Expression
 ```
 
 - 片段放在 profile 的 `init` 之后；不要再执行 carapace 文档中的 `Set-PSReadlineKeyHandler -Key Tab -Function MenuComplete`，否则会覆盖本仓库的 Tab 桩。
-- 接入后重开终端或执行 `. $profile`；验收：`Get-Command carapace`、`carapace --version`、`TabExpansion2 'scoop install ' 14` 能返回包名候选，`TabExpansion2 'gh pr ' 6` 能返回子命令；git 仍由 `git-completion` 负责。
-- 启动成本约 180–200ms；不需要时删除 profile 片段，必要时 `scoop uninstall carapace-bin`。慢命令（`winget install`、`uv add`）会阻塞 Tab，按需排除。
+- `CARAPACE_EXCLUDES` 在生成脚本时写入，不是运行时读取；增减排除项后修改环境变量并重新生成脚本。
+- 版本可以不追新，但生成脚本随版本变化：空结果补丁按原文匹配，`String.Replace` 未命中时会静默保留原文，因此断言失败时先在 pwsh 7.6 下实测空结果，再决定保留或删除补丁。
+- 接入后重开终端或执行 `. $profile`；验收：`Get-Command carapace`、`carapace --version`、`carapace --list`（数量随版本变化，不写死）、`TabExpansion2 'scoop install ' 14` 能返回包名候选，`TabExpansion2 'gh pr ' 6` 能返回子命令；git 仍由 `git-completion` 负责。
+- 启动成本约 180–200ms；不需要时删除 profile 片段，scoop 渠道执行 `scoop uninstall carapace-bin`，手工渠道删除二进制目录。慢命令（`winget install`、`uv add`）会阻塞 Tab，按需排除。
 - `Deploy-CompletionStack -All` 不包含 carapace，也没有 `-IncludeCarapace` 开关；需要时按本节手动接入。
 
 ## 6. scoop 二进制
