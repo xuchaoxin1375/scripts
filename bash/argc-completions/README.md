@@ -109,6 +109,45 @@ sudo pacman -S go-yq        # Arch
 - 上游 `bin/` 内两个 argc 版本可能不一致（本机实测 Linux 版 1.23.0、Windows 版 1.24.0）。升级时运行上游 `scripts/download-tools.sh`，运行时脚本会按修改时间自动刷新 `~/.local/bin/argc.exe` 副本。
 - 路径形态需注意：`ARGC_COMPLETIONS_ROOT` 必须是 bash 可读的 POSIX 路径，`ARGC_COMPLETIONS_PATH` 必须是 argc 可解析的 Windows 路径，两者不能互换。
 
+### git diff 缺少 --cached 与 --staged 补全
+
+现象：在 argc-completions 接管 `git` 补全后，`git diff --sta` 只给出 `--stat`，不会出现 `--staged`；`git diff --ca` 也没有 `--cached`。同组缺失的还有 `--merge-base`、`--no-index` 等。`git restore --sta` 能正常补出 `--staged`，说明 argc 的 flag 补全与本地接入均正常，问题只在 `git diff` 的选项表。
+
+原因：上游 `completions/git.sh` 是自动生成的（文件头标注 `Automatic generated, DON'T MODIFY IT.`），生成源 `src/git.sh` 通过解析 `git <cmd> --help` 的 OPTIONS 段构造选项。`git diff` 支持多种调用形态，`--cached` / `--staged` 只写在 SYNOPSIS 与描述文字中，不进入 OPTIONS 段，生成器因此收不到。git 自带的 bash 补全把这组选项单独维护在 `__git_diff_difftool_options` 中，可侧面说明它们容易被帮助文本驱动的生成器漏掉。
+
+可直接调用 argc 的补全入口复现，无需进入交互式补全：
+
+```sh
+argc --argc-compgen bash /c/repos/argc-completions/completions/git.sh git diff --sta
+```
+
+输出只有 `--stat`；把末尾参数换成 `--ca` 则没有输出。
+
+临时处理：在上游仓库的 `completions/git.sh`（默认 `/c/repos/argc-completions/completions/git.sh`）的 `git diff` 段、`# @arg` 参数定义行之前补两行，重新打开终端即可生效：
+
+```bash
+# @flag --cached                          View staged changes; synonym --staged.
+# @flag --staged                          Synonym for --cached.
+```
+
+该文件是生成产物，上游更新或重新生成时补丁会丢失；这与本文档其余部分“不修改上游仓库”的做法不同，仅建议用于确认问题或短期过渡。
+
+长期处理：把补丁放到上游生成源 `src/git.sh` 的 `_patch_table` 中 `git diff` 分支，用 `_patch_table_edit_options` 的 `;;` 追加语法补充选项，再在上游仓库根执行 `./Argcfile.sh generate git` 重新生成，并向 argc-completions 提交 PR：
+
+```bash
+elif [[ "$*" == "git diff" ]]; then
+    _patch_table_edit_arguments ';;' '[commit-path]...;[`_choice_diff`]' | \
+    _patch_table_edit_options ';;' \
+        '--cached;;View changes staged in the index' \
+        '--staged;;Synonym for --cached' \
+        '--merge-base;;Use the merge base of two commits' \
+        '--no-index;;Compare two paths outside a Git repository'
+```
+
+本机 `git config help.format` 为 `html`，`git diff --help` 会打开浏览器并阻塞生成流程；Git Bash 中也没有 `man` 与 `col`。重新生成应在 WSL/Linux 或具备 man 查看器的环境进行，或先把 `help.format` 调整为可用方式。
+
+该缺口基于上游 `main` 的 `completions/git.sh`（提交 `19b7038`）核对；更新上游后应先确认是否已被修复。
+
 ## 验证
 
 安装后可在对应 shell 中检查：
