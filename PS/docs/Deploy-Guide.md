@@ -127,7 +127,7 @@ Add-CxxuPsModuleToProfile  # 往 $profile（CurrentUserCurrentHost）写推荐�
 ```
 
 conda 用户：跑 `conda init powershell` 后**重贴缓存块**（它会覆盖，贴法见 `Feature-Guide.md §5`）；
-`argc` 钩子在 profile 里保持注释（Init 已接管，见 [Argc-Completions-Deploy](Argc-Completions-Deploy.md)）；`fnm` 按需再开（见 `Feature-Guide.md §7`）。`git-completion` 不需要 profile 配置：装好模块后由 `init` 自动挂载（首次补全才导入）。
+`argc` 钩子在 profile 里保持注释（Init 已接管，见 [Argc-Completions-Deploy](Argc-Completions-Deploy.md)）；`fnm` 按需再开（见 [Feature-Guide](Feature-Guide.md) 的「补全体验件」）。`git-completion` 不需要 profile 配置：装好模块后由 `init` 自动挂载（首次补全才导入）；`carapace` 也不由 `init` 自动挂载，需要时按「可选：carapace」手动接入。
 
 ## 5. 补全栈与第三方 PS 模块
 
@@ -150,6 +150,7 @@ conda 用户：跑 `conda init powershell` 后**重贴缓存块**（它会覆盖
 
 - 二进制优先取 [`scripts-deps`](https://github.com/xuchaoxin1375/scripts-deps) 的固定版本，地址失效自动回退上游；`-NoMirror` 跳过转存仓库，`$env:PsDepsMirror` 可整体换前缀。版本钉子维护见 [PS/Deploy/readme.md](../Deploy/readme.md) 的转存章节。
 - PSGallery 三件套由 PowerShellGet 安装，代理继承规则与 GitHub 直链不同；5.1 下环境变量可能不生效，网络受限时优先在 pwsh 7 执行，或先配系统代理。
+- `carapace-bin` 不纳入上述部署层；需要跨 shell 的外部 CLI 补全时，按下面的「可选：carapace」手动安装与接入。
 
 ### 只启用补全（仓库、`PSModulePath`、profile 已就绪）
 
@@ -193,6 +194,31 @@ Confirm-ModuleInstalled -ModuleName CompletionPredictor -Install  # 可选：参
 ```
 
 > `argc-completions`（800+ 命令参数补全）不再默认随 `Deploy-CompletionStack` 部署；需要时加 `-IncludeArgc`，或单独运行 `Deploy-ArgcCompletions [-Root <目录>]`。首次部署、更新、开关与 5.1 注意事项见 [Argc-Completions-Deploy](Argc-Completions-Deploy.md)。
+
+### 可选：carapace（手动接入）
+
+carapace 是跨 shell 的命令行补全二进制，补外部 CLI 的参数值，不补 PowerShell cmdlet。它和 `argc-completions` 是并列关系，不是替代关系；git 仍建议由 `git-completion` 负责。效果、候选数量与三方对比见 [Feature-Guide](Feature-Guide.md) 的「carapace（可选，非默认）」。
+
+前置条件：`scoop` 可用（安装需要网络），且已添加 `spc` bucket（`carapace-bin` 在该 bucket；未添加时先执行 `Add-ScoopBuckets` 或手动添加）；`pwsh` 7（本次未验证 5.1）；已按「只启用补全」完成 `init` 与补全栈。
+
+```powershell
+scoop install carapace-bin
+
+# 可选：让 git-completion 继续独占 git/gitk
+$env:CARAPACE_EXCLUDES = 'git,gitk'
+
+$carapaceScript = carapace _carapace powershell | Out-String
+if ($PSVersionTable.PSVersion -lt [version]'7.7') {
+    # pwsh 7.6 的 CompletionResult 不接受空字符串；回退到默认补全
+    $carapaceScript = $carapaceScript.Replace('return "" # prevent default file completion', 'return')
+}
+$carapaceScript | Invoke-Expression
+```
+
+- 片段放在 profile 的 `init` 之后；不要再执行 carapace 文档中的 `Set-PSReadlineKeyHandler -Key Tab -Function MenuComplete`，否则会覆盖本仓库的 Tab 桩。
+- 接入后重开终端或执行 `. $profile`；验收：`Get-Command carapace`、`carapace --version`、`TabExpansion2 'scoop install ' 14` 能返回包名候选，`TabExpansion2 'gh pr ' 6` 能返回子命令；git 仍由 `git-completion` 负责。
+- 启动成本约 180–200ms；不需要时删除 profile 片段，必要时 `scoop uninstall carapace-bin`。慢命令（`winget install`、`uv add`）会阻塞 Tab，按需排除。
+- `Deploy-CompletionStack -All` 不包含 carapace，也没有 `-IncludeCarapace` 开关；需要时按本节手动接入。
 
 ## 6. scoop 二进制
 

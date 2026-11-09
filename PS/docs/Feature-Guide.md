@@ -157,7 +157,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | `zoxide`（`z` 跳转，init 缓存 `~/.zoxide_init_cache.ps1`） | **已启用** |
 | `PSCompletions`（~200 命令的参数补全库） | 可选：已装 5.6.9；profile 里两行钩子默认注释着，解开即用 |
 | `fnm` | 待定（node 用户；profile 里放着注释） |
-| `carapace-bin`（千级命令补全） | 未装：逃生通道，真缺了再 `scoop install carapace-bin` 对比 |
+| `carapace-bin`（跨 shell 的 CLI 参数补全；本机 1.8.2 实测 743 个 completer，带颜色和描述） | **可选**，手动接入：`scoop install carapace-bin`；建议排除 `git`/`gitk`，让 `git-completion` 继续负责 git；pwsh 7.6 需给生成脚本打空结果补丁。步骤与 git 对比见下文「carapace（可选，非默认）」 |
 | `posh-git` | 未装（只要 git Tab 补全才装） |
 | `oh-my-posh` | 不开（每回车进程税 + 与现有定制片重叠） |
 | `argc-completions`（800+ 命令参数补全；懒加载，首个 Tab 注册约 150ms；选中行反显高亮；首个参数位的静态 flag 自动进 ListView） | **已启用**（仓库 `~/argc-completions` 或 `C:\repos\argc-completions`；开关 `$env:PsArgc`；Tab 7/5.1 均可用，自动 flag 提示仅 7.5+） |
@@ -165,6 +165,65 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | `inshellisense` | **否决**（用户拍板，不再考虑） |
 
 验：新开终端直接可用，`Ctrl+R`/`Ctrl+T` 首按装 PSFzf（本次按键即生效）；`z <目录>` 跳转（zoxide 首屏单发已装）。`CxxuTab` 默认开，首个 `Tab` 才导入它（命令表缓存命中时建表约 20ms，模块导入另计；缓存缺失/过期时现建，5.1 约 0.4s、7 约 0.1s，24h 内最多一次）。`argc-completions` 开关默认开，首个 `Tab` 才注册（需先用 `Deploy-CompletionStack -IncludeArgc` 部署；未部署时自动回退原生补全，约 150ms 的注册不会发生）。`Get-EventSubscriber` 应无残留（单发用 `-MaxTriggerCount 1` 自动退订）。若某主机 OnIdle 不触发（predictor 没装上），跑 `Register-PsUxLazyLoad -Now` 或报回来。自查跑 `Test-StartupPerformance`（分段计时+结论）。
+
+### carapace（可选，非默认）
+
+carapace 是一个跨 shell 的命令行补全二进制，按命令读取自身的 completer（补全器），在 PowerShell 里通过 `Register-ArgumentCompleter -Native` 注册。它不补 PowerShell cmdlet 的参数，也不参与命令名模糊补全；定位是补外部 CLI 的参数值，与 `CxxuTab`、`git-completion`、`argc-completions` 并列。
+
+本机 `carapace-bin 1.8.2`、`pwsh 7.6.3` 实测的代表性效果：
+
+| 输入 | 候选 |
+|---|---|
+| `git checkout ` | 分支、标签、`HEAD`、stash，带提交主题或标签说明 |
+| `git commit --` | 47 个长选项，带英文说明 |
+| `git log -` | 263 个候选（短选项与长选项），带说明 |
+| `git add ` | 已修改与未跟踪文件，带 `(M)` / `(??)` 状态 |
+| `git show HEAD:` | 提交内文件树 |
+| `git -C ../other checkout ` | 另一个仓库的分支与标签 |
+| `npm run ` | `package.json` 的 scripts，并显示对应命令 |
+| `scoop install ` | 包名列表；`winget install` 同理，但本机约 3.3 秒 |
+| `docker run --`、`gh pr ` | 选项或子命令，带说明 |
+
+`carapace --list` 在本机为 743 个 completer，生成的 PowerShell 脚本注册 1486 个命令名（含 `.exe` 变体）；数量随版本变化，以该命令的实际输出为准。
+
+**接入步骤（手动，不随 `init` 自动加载）**：
+
+```powershell
+scoop install carapace-bin
+
+# 可选：让 git-completion 继续独占 git/gitk
+$env:CARAPACE_EXCLUDES = 'git,gitk'
+
+$carapaceScript = carapace _carapace powershell | Out-String
+if ($PSVersionTable.PSVersion -lt [version]'7.7') {
+    # pwsh 7.6 的 CompletionResult 不接受空字符串；回退到默认补全
+    $carapaceScript = $carapaceScript.Replace('return "" # prevent default file completion', 'return')
+}
+$carapaceScript | Invoke-Expression
+```
+
+- 片段放在 profile 的 `init` 之后；`init` 已把 Tab 绑定为 `MenuComplete`，或以 `argc` Tab 桩包装，不要再执行 carapace 文档中的 `Set-PSReadlineKeyHandler -Key Tab -Function MenuComplete`，否则会覆盖现有 Tab 桩。
+- `carapace-bin` 位于 scoop 的 `spc` bucket；新机先按 [Deploy-Guide](Deploy-Guide.md) 的「可选：carapace」准备 bucket。
+- 接入后重开终端，或执行 `. $profile`；`Get-Command carapace` 应能定位到二进制，`carapace --version` 应输出版本号。
+- 启动成本：本机实测生成脚本约 120–140ms，注册约 50–70ms，合计约 180–200ms。需要控制启动时间时，把生成脚本缓存到文件后点源，或仿照 `argc` 做“首个 Tab 才注册”的桩；carapace 不纳入 `Deploy-CompletionStack` 的 `-Include*` 层，也不出现在 `doctor` 的依赖检查中。
+- 慢补全：`winget install` 约 3.3 秒、`uv add` 约 4.4 秒，按 Tab 会同步等待；只保留常用命令，或用 `CARAPACE_EXCLUDES` 排除慢命令。
+- 错误候选：命令未安装或上下文缺失时会出现 `ERR` / `_` 候选（例如没有 `package.json` 时的 `npm run`）；可在生成前筛掉未安装命令，或用 `CARAPACE_EXCLUDES` 排除。
+- 回滚：删除 profile 中的接入片段并重开终端；需要移除二进制时执行 `scoop uninstall carapace-bin`。
+
+**git 补全对比（同一测试仓库）**：
+
+| 维度 | carapace | git-completion | argc-completions |
+|---|---|---|---|
+| 分支、标签、提交 | 强；`checkout --` 返回 ref 而不是修改文件 | 强且语义准确 | 弱：`checkout`、`switch`、`merge`、`rebase`、`reset`、`branch` 在本机回退为文件补全 |
+| 选项覆盖 | `commit -` 65 项、`log -` 263 项、`checkout -` 40 项，均带说明 | `commit --` 39 项带说明；`log -` 仅 3 项；`checkout -` 仅 12 个短选项 | `commit --` 41 项、`log --` 164 项，带说明 |
+| 文件与状态过滤 | 有状态标记；`commit` 混入未跟踪，`clean` 混入已修改，`rm --cached` 混入未跟踪 | `commit` 排除未跟踪，`checkout --` 只列已跟踪文件（排除未跟踪），`rm --cached` 只列已跟踪 | `add`、`checkout --` 可用；`checkout --` 混入未跟踪，`commit` 列原生文件，`rm --cached` 混入 `.git` |
+| 特殊路径 | 支持 `-C` 与 `HEAD:`；不支持 `--git-dir` | 支持 `-C` 与 `--git-dir`；不支持 `HEAD:` | 支持 `HEAD:`；`-C` 仅部分命令可用 |
+| PowerShell 适配 | 外部进程；空结果在 pwsh 7.6 会打断 Tab；需要 `MenuComplete` | 纯 PowerShell 模块，最稳 | 依赖 `argc.exe` 与 bash 脚本；有 `PsArgc` 开关 |
+| 延迟（本机） | 静态选项约 19–75ms；git ref 约 150–370ms | 首次约 470ms，之后约 20–310ms | 首次注册约 150ms，之后约 20–220ms |
+
+结论：git 继续用 `git-completion`；carapace 用于 `scoop`、`winget`、`gh`、`docker`、`kubectl`、`cargo`、`uv`、`npm` 等非 git 命令；argc 保留为 800+ 命令的补充。carapace 与 argc 的命令重合有限（本机 743 与 841 中约 271 个同名），不是互相替代关系。
+
+> 实测条件：`pwsh 7.6.3`、`PSReadLine 2.4.5`、`carapace-bin 1.8.2`、`git-completion 2.1.0`、`argc 1.24.0`；argc 测试时临时设 `$env:PsArgc='True'`。候选数量与延迟会随版本和仓库状态变化。
 
 ## 8. FAQ（续）：补全候选与预测视图
 
@@ -265,6 +324,7 @@ p -Force                    # 看 init 分步耗时，定位慢项
 | 模糊搜历史/文件 | `Ctrl+R` / `Ctrl+T`（PSFzf） | 全量历史/文件 | 历史翻不完用这个，不走 10/50 上限 |
 | 参数值补全 | `Tab` 在参数位 | `argc-completions`（800+ 命令库，开关默认开、懒加载；按需 `-IncludeArgc` 部署）+ `PSCompletions`（~200 命令库，可选）+ 自带 `ArgumentCompleter`（EnvVar 系、`Get-Json -Key` 等，`Set-ArgumentCompleter` 批量注册） | PSCompletions 用法：解开 profile 里注释的两行；argc 开关 `$env:PsArgc`，首个 Tab 注册；`git`/`gitk` 由 `git-completion` 提供，argc 不重复注册 |
 
+- 参数值补全还有可选的手动来源 carapace（不参与 `init` 开关，见本文「carapace（可选，非默认）」）：适合 `scoop`、`winget`、`gh`、`docker`、`kubectl`、`cargo`、`uv`、`npm` 等外部 CLI；git 仍由 `git-completion` 负责。
 - 相关命令：`doctor`（统一诊断入口，定位问题先执行它；`doctor -Feature <功能>` 只查单个功能）、`Get-CxxuDependencyReport [-Missing]`（按功能查外部依赖与安装建议，详见 [Feature-Dependencies.md](Feature-Dependencies.md)）、`Register-PsUxLazyLoad [-Now]`（延迟加载入口）、
   `Deploy-CompletionStack [-WhatIf] [-IncludeArgc] [-IncludeFuzzy] [-IncludePredictor] [-IncludePSCompletions] [-IncludeGitCompletion] [-All]`（新机一键装栈）、
   `Test-PsEnvReadiness`（查缺）、`predictNo`（当会话关预测）、
@@ -308,14 +368,15 @@ p -Force                    # 看 init 分步耗时，定位慢项
 
 | 功能 | 默认状态 | 手动启用 | 说明 |
 |---|---|---|---|
-| `PSCompletions`（~200 命令参数补全） | 未装，profile 两行钩子注释中 | `Confirm-ModuleInstalled -ModuleName PSCompletions -Install`，再解开 profile 第 4~5 行 | 旧注"可能导致 `ipmof|iex` 报错"已过期（白名单+`ipmox` 时代），现可放心开 |
+| `PSCompletions`（~200 命令参数补全） | 未装，profile 两行钩子注释中 | `Confirm-ModuleInstalled -ModuleName PSCompletions -Install`，再解开 profile 第 4~5 行 | 旧注"可能导致 `ipmof`/`iex` 报错"已过期（白名单+`ipmox` 时代），现可放心开 |
 | `fzf` / `zoxide` 二进制 | 无则 `Ctrl+T/R`、`z` 不可用（不影响 CxxuCommand） | `Deploy-CompletionStack -IncludeFuzzy`（scoop→winget/brew→`scripts-deps` 转存→上游），或 `scoop install fzf zoxide` | 装完重开终端，init 缓存自建 |
 | `scoop` 本体 | 无则二进制系列全停 | 按官网装，或 `Deploy-ScoopByGithubMirrors`（国内） | 装完补 buckets（`Add-ScoopBuckets`） |
 | `conda` | 无则 prompt  conda 段静默缺失 | `Deploy-MiniforgeConfig`；`$condaExe` 路径按机器对（profile 缓存块） | 缓存 `~/.conda_hook_cache.ps1`，首跑慢一次 |
 | `fnm` + 钩子 | 未装，profile 末行注释中 | `scoop install fnm`，再解开 profile 末行 | node 用户才需要 |
 | `scoop-search` 钩子 | profile 6 行注释中 | 有 `scoop-search` 才解开（`--hook` 注入） | 无则不用管 |
 | `argc` 整块 | 未部署 | `Deploy-CompletionStack -IncludeArgc`（或 `Deploy-ArgcCompletions`） | profile 钩子保持注释（Init 接管）；装完重开终端/`init` |
-| `carapace-bin` / `posh-git` | 未装 | 逃生/按需：`scoop install carapace-bin`；只要 git Tab 才装 posh-git | 决策见 §7 |
+| `carapace-bin` | 未装，手动接入 | `scoop install carapace-bin`，按「carapace（可选，非默认）」接入 | 非默认；不纳入 `init` 开关与 `Deploy-CompletionStack` |
+| `posh-git` | 未装 | 只要 git Tab 补全才装 | 已有 `git-completion` 时不需要 |
 | prompt 主题持久化 | 当会话有效，重开复原 | `Set-PsPrompt -version <…> -Persist`（写注册表） | 临展用 `dm` 切极简，不持久化 |
 | 开机任务 + 守护进程 | 未注册 | `Start-StartupTasks`（或 `Deploy-StartupTasks` 部署） | 报时/IP 守护，无状态，`-Force` 可杀 |
 | WT 设置下发 | 仓库 `Config/wtConf*.json` 仅供参考 | `Deploy-WtSettings` | 线上 WT 无自定义 profile 时才需要 |
