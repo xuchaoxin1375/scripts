@@ -277,7 +277,7 @@ $homeDir = $HOME
         Impact    = 'git/gitk 回落 argc 或原生补全，分支、按状态过滤的文件与选项描述缺失。'
         Install   = 'Install-Module git-completion -Scope CurrentUser -Force（或 Deploy-CompletionStack -IncludeGitCompletion）；init 检测到后自动挂载'
         Docs      = 'Feature-Guide.md §7'
-        Note      = '启用后 argc 让出 git/gitk；首次补全才导入模块；开关 PsGitCompletion。'
+        Note      = '启用后 argc 让出 git/gitk；首次补全才导入模块；开关 PsGitCompletion，来源切换用 Set-GitCompletionSource。'
     }
 
     # 交互：文件图标

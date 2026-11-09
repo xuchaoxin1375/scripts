@@ -10,7 +10,7 @@
 | 新机部署 | `Deploy-Guide.md`（保存脚本后按参数运行）→ `Feature-Guide.md §1/§11` | 从零到可用 + 手动项查漏 |
 | 日常使用 | `Feature-Guide.md §2`（命令表）→ §7/§8/§10（补全）→ §9（dll 四件套 + Tab 自查） | 查命令、配补全、管更新 |
 | 只启用补全（新机或已有环境） | `Deploy-Guide.md §5`（`Deploy-CompletionStack`）→ `Feature-Guide.md §7/§9`（开关/自查） | 默认只装核心活件；argc、PSFzf、fzf/zoxide 等按需加 `-Include*` |
-| 比较或接入 carapace 补全 | [Feature-Guide](Feature-Guide.md) 的「carapace（可选，非默认）」→ [Deploy-Guide](Deploy-Guide.md) 的「可选：carapace」 | git/argc/git-completion 对比、`Deploy-Carapace`、GitHub Release/scoop 安装渠道、pwsh 7.6 空结果补丁 |
+| 比较或接入 carapace 补全 | [Feature-Guide](Feature-Guide.md) 的「carapace（可选，非默认）」→ [Deploy-Guide](Deploy-Guide.md) 的「可选：carapace」 | git/argc/git-completion 对比、`Deploy-Carapace`、`Set-GitCompletionSource`、GitHub Release/scoop 安装渠道、pwsh 7.6 空结果补丁 |
 | 启停或检查 argc 参数补全 | [Argc-Completions-Deploy](Argc-Completions-Deploy.md#4-启停与状态) → `Feature-Guide.md` 的补全章节 | 本会话/持久启停、停止自动提示、查看注册状态 |
 | 查功能依赖与安装状态 | `Feature-Dependencies.md` → `Get-CxxuDependencyReport` | 哪些功能需要外部组件、缺什么、怎么补 |
 | 出问题先看 | `doctor`（命令）→ `Feature-Guide.md §9`（dll/活件/Tab 补全排查）/§6/§8（FAQ）→ `Dev-Notes.md`（常见坑） | 定位→自助→避坑 |

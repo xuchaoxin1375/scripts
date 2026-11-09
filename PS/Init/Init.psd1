@@ -24,6 +24,7 @@
         'Reset-CxxuConfig',
         'Disable-PsPlugin',
         'Enable-PsPlugin',
+        'Set-GitCompletionSource',
         'Update-PwshEnv',
         'Test-PsEnvMode',
         'Update-PwshvarsIfNotYet',

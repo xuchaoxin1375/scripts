@@ -247,6 +247,7 @@ $carapaceScript | Invoke-Expression
 ```
 
 - 片段放在 profile 的 `init` 之后；不要再执行 carapace 文档中的 `Set-PSReadlineKeyHandler -Key Tab -Function MenuComplete`，否则会覆盖本仓库的 Tab 桩。
+- 来源切换用 `Set-GitCompletionSource GitCompletion|Carapace|Argc [-Persist]`：同时调整 `PsGitCompletion` 与 profile 中的 `CARAPACE_EXCLUDES`。carapace 行属于持久修改，`-Persist` 只控制 `PsGitCompletion` 是否写入用户配置；未加 `-Persist` 时 argc 目标可能在下一次启动被默认的 `PsGitCompletion=True` 覆盖。
 - `CARAPACE_EXCLUDES` 在生成脚本时写入，不是运行时读取；增减排除项后修改环境变量并重新生成脚本。
 - 版本可以不追新，但生成脚本随版本变化：空结果补丁按原文匹配，`String.Replace` 未命中时会静默保留原文，因此断言失败时先在 pwsh 7.6 下实测空结果，再决定保留或删除补丁。
 - 接入后重开终端或执行 `. $profile`；验收：`Get-Command carapace`、`carapace --version`、`carapace --list`（数量随版本变化，不写死）、`TabExpansion2 'scoop install ' 14` 能返回包名候选，`TabExpansion2 'gh pr ' 6` 能返回子命令；git 仍由 `git-completion` 负责。

@@ -1606,6 +1606,182 @@ function Enable-PsPlugin
     }
 }
 
+function Set-GitCompletionSource
+{
+    <#
+    .SYNOPSIS
+    在 git-completion、carapace、argc 之间切换 git/gitk 的 Tab 补全来源。
+    .DESCRIPTION
+    三个来源的注册层不同：git-completion 由 init 注册，argc 在首个 Tab 注册，
+    carapace 由 profile 中的生成脚本注册，是否接管 git/gitk 取决于 CARAPACE_EXCLUDES。
+    本命令统一调整两处：写 PsGitCompletion 开关；在 profile 的 carapace 片段中增删 git/gitk 排除项。
+    carapace 的排除项写在 profile，属于持久修改；-Persist 只控制 PsGitCompletion 是否写入用户配置。
+    未加 -Persist 时只改当前会话，重开终端后可能回到配置文件中的来源。
+    当前会话已注册的 Native completer 无法撤销，切换后需重开终端才完全生效。
+    .EXAMPLE
+    Set-GitCompletionSource GitCompletion
+    .EXAMPLE
+    Set-GitCompletionSource Carapace -Persist
+    .EXAMPLE
+    Set-GitCompletionSource Argc -WhatIf
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        # 目标来源：GitCompletion | Carapace | Argc
+        [Parameter(Mandatory)]
+        [ValidateSet('GitCompletion', 'Carapace', 'Argc')]
+        [string]$Source,
+        # 把 PsGitCompletion 写入用户配置文件，重开终端后保持
+        [switch]$Persist,
+        # 不修改 profile，只调整当前会话开关（carapace 的排除项需自行处理）
+        [switch]$SkipProfile,
+        # profile 路径，默认当前用户当前宿主
+        [string]$ProfilePath = $PROFILE,
+        # 用户配置文件路径（-Persist 时写入）
+        [string]$Path = (Join-Path (Join-Path $HOME '.cxxu') 'config.psd1')
+    )
+
+    $wantGitCompletion = $Source -eq 'GitCompletion'
+    $wantCarapaceExclude = $Source -ne 'Carapace'
+    $value = if ($wantGitCompletion) { 'True' } else { 'False' }
+
+    $applied = $false
+    if ($PSCmdlet.ShouldProcess("PsGitCompletion=$value", '设置 git 补全来源'))
+    {
+        Set-Item 'env:PsGitCompletion' -Value $value
+        if ($Persist) { Set-CxxuConfigValue -Path $Path -Key 'PsGitCompletion' -Value $wantGitCompletion }
+        $applied = $true
+    }
+
+    if ($wantGitCompletion)
+    {
+        if (Get-Module -ListAvailable git-completion)
+        {
+            if ($PSCmdlet.ShouldProcess('git-completion', '注册 git/gitk completer'))
+            {
+                Register-GitCompletion
+            }
+        }
+        else
+        {
+            Write-Warning 'git-completion 模块未安装：先执行 Deploy-CompletionStack -IncludeGitCompletion，再重新运行本命令。'
+        }
+    }
+    elseif ($Source -eq 'Carapace')
+    {
+        if (-not (Get-Command carapace -ErrorAction SilentlyContinue))
+        {
+            Write-Warning '未检测到 carapace：先执行 Deploy-Carapace 安装并接入 profile。'
+        }
+    }
+    elseif (-not (Get-Command argc -ErrorAction SilentlyContinue))
+    {
+        Write-Warning '未检测到 argc：先执行 Deploy-CompletionStack -IncludeArgc 或 Deploy-ArgcCompletions。'
+    }
+
+    $profileNote = ''
+    $profileApplied = $false
+    $changed = $false
+    if (-not $SkipProfile)
+    {
+        if (-not (Test-Path -LiteralPath $ProfilePath))
+        {
+            $profileNote = "profile 不存在：$ProfilePath；已跳过 carapace 排除项调整。"
+        }
+        else
+        {
+            $text = Read-CxxuUtf8Text -Path $ProfilePath
+            if ($text -notmatch '_carapace\s+powershell')
+            {
+                $profileNote = 'profile 中没有 carapace 接入片段；已跳过 carapace 排除项调整。'
+            }
+            else
+            {
+                $nl = if ($text.Contains("`r`n")) { "`r`n" } else { "`n" }
+                $lines = [Collections.Generic.List[string]]::new([string[]]($text -split '\r?\n'))
+                $assignPattern = '^\s*' + [regex]::Escape('$env:CARAPACE_EXCLUDES') + '\s*=\s*(?<q>[''"])(?<list>.*?)\k<q>(?<cmt>\s*#.*)?$'
+                $assignIndex = -1
+                $genIndex = -1
+                for ($i = 0; $i -lt $lines.Count; $i++)
+                {
+                    if (($assignIndex -lt 0) -and ($lines[$i] -match $assignPattern)) { $assignIndex = $i }
+                    if (($genIndex -lt 0) -and ($lines[$i] -match '_carapace\s+powershell')) { $genIndex = $i }
+                }
+
+                $changed = $false
+                if ($assignIndex -ge 0)
+                {
+                    $match = [regex]::Match($lines[$assignIndex], $assignPattern)
+                    $items = @($match.Groups['list'].Value -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+                    if ($wantCarapaceExclude)
+                    {
+                        foreach ($name in @('git', 'gitk'))
+                        {
+                            if (-not ($items | Where-Object { $_ -ieq $name })) { $items += $name }
+                        }
+                    }
+                    else
+                    {
+                        $items = @($items | Where-Object { $_ -notmatch '^(?i:git|gitk)$' })
+                    }
+                    $newList = $items -join ','
+                    $indent = ([regex]::Match($lines[$assignIndex], '^\s*')).Value
+                    $comment = $match.Groups['cmt'].Value
+                    $newLine = $indent + '$env:CARAPACE_EXCLUDES = ' + "'$newList'" + $comment
+                    if ($newLine -ne $lines[$assignIndex])
+                    {
+                        $lines[$assignIndex] = $newLine
+                        $changed = $true
+                    }
+                    $displayList = if ($newList) { $newList } else { '无' }
+                    $profileNote = if ($wantCarapaceExclude) { "carapace 继续让出 git/gitk（排除项：$displayList）" } else { "carapace 接管 git/gitk（排除项：$displayList）" }
+                }
+                elseif ($wantCarapaceExclude -and $genIndex -ge 0)
+                {
+                    $indent = ([regex]::Match($lines[$genIndex], '^\s*')).Value
+                    $lines.Insert($genIndex, $indent + '$env:CARAPACE_EXCLUDES = ''git,gitk''')
+                    $changed = $true
+                    $profileNote = '已在 carapace 生成脚本前插入 git/gitk 排除项'
+                }
+                else
+                {
+                    $profileNote = 'profile 中没有 CARAPACE_EXCLUDES 行；carapace 保持现有配置。'
+                }
+
+                if ($changed)
+                {
+                    $newText = $lines -join $nl
+                    if ($PSCmdlet.ShouldProcess($ProfilePath, '更新 carapace 排除项'))
+                    {
+                        $bytes = [IO.File]::ReadAllBytes($ProfilePath)
+                        $hasBom = ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF)
+                        Copy-Item -LiteralPath $ProfilePath -Destination ($ProfilePath + '.bak-' + (Get-Date -Format 'yyyyMMddHHmmssfff')) -Force
+                        [IO.File]::WriteAllText($ProfilePath, $newText, [Text.UTF8Encoding]::new($hasBom))
+                        $profileApplied = $true
+                    }
+                }
+            }
+        }
+    }
+    else
+    {
+        $profileNote = '已按 -SkipProfile 跳过 profile 修改。'
+    }
+
+    Write-Host ("git 补全来源：{0}" -f $Source)
+    if ($applied) { Write-Host ("当前会话 PsGitCompletion={0}" -f $value) }
+    else { Write-Host '当前会话未改动（-WhatIf）。' }
+    if ($Persist)
+    {
+        if ($applied) { Write-Host 'PsGitCompletion 已写入用户配置，重开终端后保持。' }
+        else { Write-Host 'PsGitCompletion 未写入用户配置（-WhatIf）。' }
+    }
+    else { Write-Host '未加 -Persist：只改当前会话，重开终端后按配置文件决定。' }
+    if ($profileNote) { Write-Host $profileNote }
+    if ($changed -and -not $profileApplied) { Write-Host 'profile 未写入（-WhatIf）。' }
+    Write-Host '重开终端后完全生效；当前会话已注册的 Native completer 无法撤销。'
+}
+
 function Install-Ps51Profile
 {
     <#
