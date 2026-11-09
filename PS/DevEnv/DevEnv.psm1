@@ -1674,6 +1674,7 @@ function Deploy-CompletionStack
     - -IncludeFuzzy：PSFzf 模块 + fzf/zoxide 二进制（优先 scoop/winget/brew，失败回退转存仓库再回上游）。
     - -IncludePredictor：CompletionPredictor 模块（参数/路径内联预测）。
     - -IncludePSCompletions：PSCompletions 模块（命令参数补全库）。
+    - -IncludeGitCompletion：git-completion 模块（git/gitk 的 Tab 补全，init 检测到后自动挂载）。
     - -All：一次选择以上全部；-SkipArgc / -SkipBinaries 仍可用于排除 argc 或二进制。
     国内网络不稳时，可先 Set-Proxy On（或设置 HTTPS_PROXY/HTTP_PROXY）再执行；
     下载会自动识别代理，也可用 -Proxy/-NoProxy 单次覆盖；-NoMirror 跳过转存仓库直接走上游。
@@ -1698,7 +1699,9 @@ function Deploy-CompletionStack
         [switch]$IncludePredictor,
         # 追加 PSCompletions 模块（默认不装）
         [switch]$IncludePSCompletions,
-        # 等价于同时勾选以上四个 Include 开关
+        # 追加 git-completion 模块（默认不装；init 检测到后自动挂载 git/gitk 补全）
+        [switch]$IncludeGitCompletion,
+        # 等价于同时勾选以上全部 Include 开关
         [switch]$All,
         # 兼容旧参数：即使 -All/-IncludeArgc 也跳过 argc
         [switch]$SkipArgc,
@@ -1722,6 +1725,7 @@ function Deploy-CompletionStack
         $IncludeFuzzy = $true
         $IncludePredictor = $true
         $IncludePSCompletions = $true
+        $IncludeGitCompletion = $true
     }
 
     # 核心层:CxxuCommand(命令名分层模糊提示)与 CxxuTab 都随仓库分发,需要的是活件,不是安装模块
@@ -1815,22 +1819,30 @@ function Deploy-CompletionStack
         }
     }
 
+    if ($IncludeGitCompletion -and -not (Get-Module -ListAvailable git-completion))
+    {
+        if ($PSCmdlet.ShouldProcess('git-completion', '安装 PS 模块（可选）'))
+        {
+            Confirm-ModuleInstalled -ModuleName git-completion -Install
+        }
+    }
+
     if ($coreReady -eq $true) { Write-Host '核心 CxxuCommand：预测活件已就绪，新终端跑 init 生效（开关 $env:PsPredictor）' }
     elseif ($null -eq $coreReady) { Write-Host '核心 CxxuCommand：本次为空跑（-WhatIf），未同步活件；去掉 -WhatIf 执行' }
     elseif ($tabReady -eq $true) { Write-Host '核心 CxxuCommand：5.1 仅 Tab 补全，Tab 活件已就绪；重开终端后按 Tab 生效（开关 $env:PsTab）' }
     elseif ($null -eq $tabReady) { Write-Host '核心 CxxuCommand：本次为空跑（-WhatIf），未同步 5.1 Tab 活件；去掉 -WhatIf 执行' }
     else { Write-Host '核心 CxxuCommand：未就绪（内联预测需 pwsh 7.5+；5.1 Tab 需执行 Sync-CxxuPredictor）' }
 
-    Write-Host '默认层只含仓库内活件；可选层按 -IncludeArgc/-IncludeFuzzy/-IncludePredictor/-IncludePSCompletions 追加（-All 全选）。'
-    if (-not $IncludeArgc -and -not $IncludeFuzzy -and -not $IncludePredictor -and -not $IncludePSCompletions)
+    Write-Host '默认层只含仓库内活件；可选层按 -IncludeArgc/-IncludeFuzzy/-IncludePredictor/-IncludePSCompletions/-IncludeGitCompletion 追加（-All 全选）。'
+    if (-not $IncludeArgc -and -not $IncludeFuzzy -and -not $IncludePredictor -and -not $IncludePSCompletions -and -not $IncludeGitCompletion)
     {
         Write-Host '未选择可选层：本次没有网络下载，也没有安装仓库外组件。'
     }
     if ($env:PsTab -match '^(False|0|No|Off)$') { Write-Warning 'PsTab 当前为关闭：Tab 补全不会加载；需要时 Enable-PsPlugin Tab -Persist' }
     if ($env:PsPredictor -match '^(False|0|No|Off)$') { Write-Warning 'PsPredictor 当前为关闭：命令名内联预测不会加载；需要时 Enable-PsPlugin Predictor -Persist' }
     if ($IncludeArgc -and ($env:PsArgc -match '^(False|0|No|Off)$')) { Write-Warning 'PsArgc 当前为关闭：argc 参数补全不会加载；需要时 Enable-PsPlugin Argc -Persist' }
-    Write-Host '验收：pwsh 7.5+ 在 ListView 输 get-child；Tab 输 get-chi；参数输 nginx -<Tab>；异常先跑 doctor。'
-    if (($IncludeArgc -or $IncludeFuzzy -or $IncludePSCompletions) -and -not $Proxy -and -not $NoProxy -and -not (Get-CxxuProxyUrl))
+    Write-Host '验收：pwsh 7.5+ 在 ListView 输 get-child；Tab 输 get-chi；参数输 nginx -<Tab>；git 输 git ch<Tab>；异常先跑 doctor。'
+    if (($IncludeArgc -or $IncludeFuzzy -or $IncludePSCompletions -or $IncludeGitCompletion) -and -not $Proxy -and -not $NoProxy -and -not (Get-CxxuProxyUrl))
     {
         Write-Host '提示：国内网络下载不稳定时，可先 Set-Proxy On（或设置 HTTPS_PROXY）再重跑；下载会自动识别代理。'
     }

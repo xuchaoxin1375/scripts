@@ -127,7 +127,7 @@ Add-CxxuPsModuleToProfile  # 往 $profile（CurrentUserCurrentHost）写推荐�
 ```
 
 conda 用户：跑 `conda init powershell` 后**重贴缓存块**（它会覆盖，贴法见 `Feature-Guide.md §5`）；
-`argc` 钩子在 profile 里保持注释（Init 已接管，见 [Argc-Completions-Deploy](Argc-Completions-Deploy.md)）；`fnm` 按需再开（见 `Feature-Guide.md §7`）。
+`argc` 钩子在 profile 里保持注释（Init 已接管，见 [Argc-Completions-Deploy](Argc-Completions-Deploy.md)）；`fnm` 按需再开（见 `Feature-Guide.md §7`）。`git-completion` 不需要 profile 配置：装好模块后由 `init` 自动挂载（首次补全才导入）。
 
 ## 5. 补全栈与第三方 PS 模块
 
@@ -146,6 +146,7 @@ conda 用户：跑 `conda init powershell` 后**重贴缓存块**（它会覆盖
 | 可选层 `-IncludeFuzzy` | `PSFzf`、`fzf`、`zoxide` | 推荐/可选 | `PSFzf` 走 PSGallery；`fzf`/`zoxide` 走 scoop → winget/brew → `scripts-deps` → 上游 | `Ctrl+T`/`Ctrl+R`、`z`；检测到代理时不走包管理器 | 同左 |
 | 可选层 `-IncludePredictor` | `CompletionPredictor` | 推荐 | PSGallery | 参数/路径内联预测 | 以模块自身要求为准 |
 | 可选层 `-IncludePSCompletions` | `PSCompletions` | 可选 | PSGallery | Tab 参数补全（需解开 profile 钩子） | 同左 |
+| 可选层 `-IncludeGitCompletion` | `git-completion` | 推荐 | PSGallery | `git`/`gitk` 的 Tab 补全（分支、提交、按状态过滤的文件；首次补全才导入模块） | 可用；选项补全受 5.1 引擎限制，见 Feature-Guide §13 |
 
 - 二进制优先取 [`scripts-deps`](https://github.com/xuchaoxin1375/scripts-deps) 的固定版本，地址失效自动回退上游；`-NoMirror` 跳过转存仓库，`$env:PsDepsMirror` 可整体换前缀。版本钉子维护见 [PS/Deploy/readme.md](../Deploy/readme.md) 的转存章节。
 - PSGallery 三件套由 PowerShellGet 安装，代理继承规则与 GitHub 直链不同；5.1 下环境变量可能不生效，网络受限时优先在 pwsh 7 执行，或先配系统代理。
@@ -166,6 +167,7 @@ Deploy-CompletionStack -IncludeArgc            # argc-completions 仓库 + argc.
 Deploy-CompletionStack -IncludeFuzzy           # PSFzf 模块 + fzf/zoxide 二进制
 Deploy-CompletionStack -IncludePredictor       # CompletionPredictor 模块
 Deploy-CompletionStack -IncludePSCompletions   # PSCompletions 模块
+Deploy-CompletionStack -IncludeGitCompletion   # git-completion 模块（git/gitk Tab 补全，init 自动挂载）
 Deploy-CompletionStack -All                    # 以上全部
 Deploy-CompletionStack -All -SkipBinaries      # 全部但跳过 fzf/zoxide 二进制
 ```
@@ -215,7 +217,7 @@ Deploy-UvConfig
 
 ```powershell
 init                 # Data.json/OS 版本 env/conf 预编译自动生成
-init -Timing         # 分步耗时，定位慢项（9 步，`Register-PsUxLazyLoad` 18ms 左右正常）
+init -Timing         # 分步耗时，定位慢项（`Register-PsUxLazyLoad` 18ms 左右正常）
 Test-PromptDelay     # prompt 延迟
 ```
 
@@ -302,7 +304,7 @@ Sync-CxxuPredictor            # 单点操作（首次安装生成/手动修复/�
 | net9.0 / pwsh 版本门 | `CxxuPredictor.csproj` | 7.6 可直接用；pwsh 8 发布后再复核 | — | 加载失败时重编 dll（见 `Live-Versions.md §10`） | 慢变量 |
 | netstandard2.0 / 5.1 Tab | `CxxuPredictor.csproj` / `ps51` 活件 | 仅 Windows；5.1 固定在 .NET Framework 4.8 | 5.1 按 Tab 有模糊候选 | `Sync-CxxuPredictor` 重新发布 | 慢变量 |
 | 文档外链（博客/商店/聚合页） | `readme.md` / `Deploy-Guide.md` | 腐烂风险，低优 | 抽查 | 换链 | 年 |
-| PSGallery 第三方模块 | `Deploy-CompletionStack -Include*` | 浮动最新，不钉版 | `Test-PsEnvReadiness` | `Deploy-CompletionStack -IncludeFuzzy/-IncludePredictor/-IncludePSCompletions` | 按需 |
+| PSGallery 第三方模块 | `Deploy-CompletionStack -Include*` | 浮动最新，不钉版 | `Test-PsEnvReadiness` | `Deploy-CompletionStack -IncludeFuzzy/-IncludePredictor/-IncludePSCompletions/-IncludeGitCompletion` | 按需 |
 | 转存仓库 `scripts-deps` | `PS/Deploy/Sync-GithubDepsMirror.ps1` 的资产表 + `DevEnv.psm1` 里的 `Get-CxxuDepsMirrorAsset` | 已转存 argc、yq、fzf、zoxide 与 argc-completions 快照（2026-11-08） | `Sync-GithubDepsMirror.ps1 -WhatIf` | 跑同步脚本，把打印的钉子回填模块 | 上游发版时 |
 
 > 更新流程见 §13（`Update-ReposesConfiged` 批量更新 + 活件同步 + 重开终端）。

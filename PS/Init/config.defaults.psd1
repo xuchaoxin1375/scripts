@@ -8,6 +8,7 @@
         @{ Key = 'PsPredictor'; Name = 'Predictor'; Default = $true; Description = 'CxxuPredictor：命令名预测（守护进程固定关闭）' }
         @{ Key = 'PsTab'; Name = 'Tab'; Default = $true; Description = 'CxxuTab：命令名 Tab 模糊补全（首个 Tab 懒加载）' }
         @{ Key = 'PsArgc'; Name = 'Argc'; Default = $true; Description = 'argc-completions：参数补全（首个 Tab 懒加载）' }
+        @{ Key = 'PsGitCompletion'; Name = 'GitCompletion'; Default = $true; Description = 'git-completion：git/gitk 的 Tab 补全（首次补全才导入模块）' }
         @{ Key = 'PsShowProgress'; Name = 'ShowProgress'; Default = $true; Description = 'init：启动进度条' }
         @{ Key = 'PsGithubMirror'; Name = 'GithubMirror'; Default = ''; Description = 'GitHub 镜像前缀；为空时走默认地址与静默测速' }
     )

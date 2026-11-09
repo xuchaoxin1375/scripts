@@ -1245,6 +1245,7 @@ function Test-PsEnvReadiness
     & $chk 'conda' '可选' { Get-Command conda -ErrorAction SilentlyContinue } (& $platNeed 'Deploy-MiniforgeConfig' '官网装 miniforge 后按 config/miniforge 写 ~/.condarc（或 brew install miniforge）' '官网装 miniforge 后按 config/miniforge 写 ~/.condarc') { & $binDate 'conda' } { & $binVer 'conda' }
     & $chk 'fnm' '可选' { Get-Command fnm -ErrorAction SilentlyContinue } (& $platNeed 'scoop install fnm(后解开 profile 钩子)' 'brew install fnm(后解开 profile 钩子)' '包管理器/官网脚本装 fnm（后解开 profile 钩子）') { & $binDate 'fnm' } { & $binVer 'fnm' }
     & $chk 'PSCompletions 模块' '可选' { Get-Module -ListAvailable PSCompletions } 'Confirm-ModuleInstalled -ModuleName PSCompletions -Install(后解开 profile 钩子)' { & $modDate 'PSCompletions' } { & $modVer 'PSCompletions' }
+    & $chk 'git-completion 模块' '可选' { Get-Module -ListAvailable git-completion } 'Deploy-CompletionStack -IncludeGitCompletion（或 Install-Module git-completion -Scope CurrentUser -Force）' { & $modDate 'git-completion' } { & $modVer 'git-completion' }
     # 首跑生成物(跑一次 init 自动建)
     & $chk '~/Data.json' '生成物' { Test-Path -LiteralPath (Join-Path $HOME 'Data.json') } '跑一次 init' { & $fileDate (Join-Path $HOME 'Data.json') }
     & $chk 'predictor 活件 ~/.cxxu/bin' '生成物' { [bool](& $liveDllPath) } (& $platNeed '执行 Sync-CxxuPredictor 生成活件' 'Sync-CxxuPredictor（仓库 dll 若加载失败，本地重编后加 -DllPath，见 Live-Versions §10）' 'Sync-CxxuPredictor（仓库 dll 若加载失败，本地重编后加 -DllPath，见 Live-Versions §10）') { $lp = & $liveDllPath; if ($lp) { & $fileDate $lp } else { '' } } { '' } { & $dllSyncNote }

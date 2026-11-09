@@ -87,6 +87,8 @@ function init
         @{ Name = 'Set-PSReadLinesCommon'; Action = { Set-PSReadLinesCommon } }
         @{ Name = 'Set-PSReadLinesAdvanced'; Action = { Set-PSReadLinesAdvanced } }
         @{ Name = 'Set-ArgumentCompleter'; Action = { Set-ArgumentCompleter }; MinPS = 7 }
+        # git-completion:git/gitk 的 Tab 补全(首次补全才导入模块;未安装时静默跳过)
+        @{ Name = 'Register-GitCompletion'; Action = { Register-GitCompletion } }
         # argc-completions:启动只设环境与 Tab 桩,首个 Tab 才注册(开关 $env:PsArgc;5.1 也可用)
         @{ Name = 'Set-ArgcCompletions'; Action = { Set-ArgcCompletions } }
         @{ Name = 'Confirm-EnvVarOfInfo'; Action = { Confirm-EnvVarOfInfo }; MinPS = 7 }
@@ -808,8 +810,8 @@ function Initialize-ArgcCompletions
     描述文本去掉 argc 自带的 ANSI,改由 PSReadLine 的 Selection(反显)统一着色,
     这样菜单选中行在浅色/深色主题下都有完整、可读的高亮。协议取自
     argc --argc-completions 生成的 completer(argc 1.24),仅移除颜色与加上 PsArgc 开关。
-    git-completion 模块已加载时跳过 git/gitk(同名 completer 后注册者胜出,argc 首个
-    Tab 才注册,不跳过会顶掉 profile 里先注册的 git-completion)。
+    git-completion 模块由 init 挂载时跳过 git/gitk(同名 completer 后注册者胜出,argc 首个
+    Tab 才注册,不跳过会顶掉先注册的 git-completion)。
     #>
     [CmdletBinding()]
     param([switch]$Force)
@@ -839,8 +841,9 @@ function Initialize-ArgcCompletions
     $scripts = @($scripts | Select-Object -Unique)
     # git-completion 负责 git/gitk 时把它们从 argc 名单里去掉:两者都注册同名 Native
     # completer,后注册者覆盖先注册者,而 argc 首个 Tab 才注册,会顶掉先注册的 git-completion。
-    # 判定同时看 profile 的懒加载标记与"模块已导入"(profile 首次补全才 Import-Module,
-    # 不能只看 Get-Module);都没有时保留 argc 自己的 git 补全。
+    # 判定同时看 Register-GitCompletion 置的 $global:PsGitCompletion 与"模块已导入"
+    # (init 只注册 completer,首次补全才 Import-Module,不能只看 Get-Module);
+    # 都没有时保留 argc 自己的 git 补全。
     if ($global:PsGitCompletion -or (Get-Module git-completion -ErrorAction SilentlyContinue))
     {
         $scripts = @($scripts | Where-Object { $_ -notin 'git', 'gitk' })
@@ -900,6 +903,52 @@ function Initialize-ArgcCompletions
     {
         $global:PsArgcUnavailable = $true
         Write-Verbose "argc-completions: 注册失败: $($_.Exception.Message)"
+    }
+}
+
+function Register-GitCompletion
+{
+    <#
+    .SYNOPSIS
+    为 git/gitk 挂 git-completion 模块的 Tab 补全(懒加载,模块未安装时静默跳过)。
+    .DESCRIPTION
+    git-completion v2 起导入模块不再自动开启补全,必须自行注册 Native completer。
+    这里只注册 completer,首次补全才 Import-Module,启动不付导入成本;同时置
+    $global:PsGitCompletion,供 Initialize-ArgcCompletions 让出 git/gitk(两者同名
+    completer 后注册者胜出,argc 首个 Tab 才注册会顶掉这里的注册)。
+    模块位置按 PSModulePath 静态探测,不调用 Get-Module -ListAvailable(冷启动约 140ms)。
+    开关 PsGitCompletion(环境变量 > ~/.cxxu/config.psd1 > 默认 $true),关闭后 argc 继续负责 git。
+    .EXAMPLE
+    Register-GitCompletion
+    .EXAMPLE
+    $env:PsGitCompletion = 'False'   # 本次会话不挂载,git 回到 argc 或原生补全
+    #>
+    [CmdletBinding()]
+    param()
+
+    if ($global:PsGitCompletion) { return }
+    # 开关:配置键 PsGitCompletion(环境变量 > ~/.cxxu/config.psd1 > 默认 $true)
+    if ($env:PsGitCompletion -match '^(False|0|No|Off)$') { return }
+    $found = @($env:PSModulePath -split [IO.Path]::PathSeparator |
+            Where-Object { $_ -and (Test-Path -LiteralPath (Join-Path $_ 'git-completion')) })
+    if (-not $found.Count) { return }
+
+    $global:PsGitCompletion = $true
+    Register-ArgumentCompleter -CommandName git -Native -ScriptBlock {
+        param($wordToComplete, $commandAst, $cursorPosition)
+        if (-not (Get-Module git-completion)) { Import-Module git-completion -Global -ErrorAction SilentlyContinue }
+        if (Get-Command Complete-Git -ErrorAction SilentlyContinue)
+        {
+            return (Complete-Git -CommandAst $commandAst -CursorPosition $cursorPosition)
+        }
+    }
+    Register-ArgumentCompleter -CommandName gitk -Native -ScriptBlock {
+        param($wordToComplete, $commandAst, $cursorPosition)
+        if (-not (Get-Module git-completion)) { Import-Module git-completion -Global -ErrorAction SilentlyContinue }
+        if (Get-Command Complete-Gitk -ErrorAction SilentlyContinue)
+        {
+            return (Complete-Gitk -CommandAst $commandAst -CursorPosition $cursorPosition)
+        }
     }
 }
 

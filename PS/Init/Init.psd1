@@ -16,6 +16,7 @@
         'Set-PSReadLinesAdvanced',
         'Set-ArgcCompletions',
         'Initialize-ArgcCompletions',
+        'Register-GitCompletion',
         'Optimize-PsHistory',
         'Import-CxxuConfig',
         'Get-CxxuConfig',
