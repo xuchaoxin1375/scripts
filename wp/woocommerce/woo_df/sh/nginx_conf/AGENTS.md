@@ -4,7 +4,7 @@
 
 ## 作用范围
 
-- 本目录：`com_*.conf`（`com_js_signed.conf` 等挑战/限流/日志片段）、`*_vhost*.conf`、`nginx_*.conf`、`js_challenge*.html`、`docs/`（三份说明）、`archived/`、`js_fake/`、`reverse_proxy/`（另有其 `AGENTS.md`）。
+- 本目录：`com_*.conf`（`com_js_signed.conf` 等挑战/限流/日志片段）、`*_vhost*.conf`、`nginx_*.conf`、`js_challenge*.html`、`docs/`、`archived/`、`js_fake/`、`reverse_proxy/`（另有其 `AGENTS.md`）。
 - `com_js_signed.conf` 为 `server` 块片段，不可单文件直测，须包一层最小 `harness` 再验。
 - 不碰目录外文件；现有文档只读不改，除非任务明确要求。
 
@@ -23,6 +23,7 @@
 | `docs/Readme@nginx_conf@Nginx配置总说明文档.md` | 本目录配置总体说明（先读） |
 | `docs/README_js_challenge_signed.md` | `com_js_signed.conf` 设计说明（`$sc2_ok`、`$sc_suspected_se_bot` 语义以此为准） |
 | `docs/Readme@Nginx配置修改脚本说明@Nginx分批次施加限流@为新站配置宽松限流.md` | 限流施加脚本说明 |
+| `docs/限流说明.md` | 429 限流桶、命中对象与调参建议（含 `site_global` 现状） |
 
 ## 验证入口
 
