@@ -45,6 +45,7 @@ Test-PromptDelay                            # prompt 延迟（默认测 10 次�
 | Confirm-DataJson（首调含 Json 模块解析，拆分前 65ms） | ~19ms |
 | Register-PsUxLazyLoad（只注册 OnIdle 事件，TerminalTools 首解析在内） | ~18ms |
 | Register-GitCompletion（只注册 completer，首次补全才导入模块；未装时直接返回） | ~8ms |
+| Initialize-Carapace（默认关闭；`PsCarapace=True` 时生成并注册） | 0ms（关闭）/ 60~130ms（启用，本机实测） |
 
 ## 2. 本次改动总览
 

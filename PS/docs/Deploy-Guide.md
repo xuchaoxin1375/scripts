@@ -127,7 +127,7 @@ Add-CxxuPsModuleToProfile  # 往 $profile（CurrentUserCurrentHost）写推荐�
 ```
 
 conda 用户：跑 `conda init powershell` 后**重贴缓存块**（它会覆盖，贴法见 `Feature-Guide.md §5`）；
-`argc` 钩子在 profile 里保持注释（Init 已接管，见 [Argc-Completions-Deploy](Argc-Completions-Deploy.md)）；`fnm` 按需再开（见 [Feature-Guide](Feature-Guide.md) 的「补全体验件」）。`git-completion` 不需要 profile 配置：装好模块后由 `init` 自动挂载（首次补全才导入）；`carapace` 也不由 `init` 自动挂载，需要时按「可选：carapace」手动接入。
+`argc` 钩子在 profile 里保持注释（Init 已接管，见 [Argc-Completions-Deploy](Argc-Completions-Deploy.md)）；`fnm` 按需再开（见 [Feature-Guide](Feature-Guide.md) 的「补全体验件」）。`git-completion` 不需要 profile 配置：装好模块后由 `init` 自动挂载（首次补全才导入）；`carapace` 由 `init` 按 `PsCarapace` 配置加载，默认关闭，需要时按「可选：carapace」启用。
 
 ## 5. 补全栈与第三方 PS 模块
 
@@ -150,7 +150,7 @@ conda 用户：跑 `conda init powershell` 后**重贴缓存块**（它会覆盖
 
 - 二进制优先取 [`scripts-deps`](https://github.com/xuchaoxin1375/scripts-deps) 的固定版本，地址失效自动回退上游；`-NoMirror` 跳过转存仓库，`$env:PsDepsMirror` 可整体换前缀。版本钉子维护见 [PS/Deploy/readme.md](../Deploy/readme.md) 的转存章节。
 - PSGallery 三件套由 PowerShellGet 安装，代理继承规则与 GitHub 直链不同；5.1 下环境变量可能不生效，网络受限时优先在 pwsh 7 执行，或先配系统代理。
-- `carapace-bin` 不纳入上述部署层；需要跨 shell 的外部 CLI 补全时，用下面的 `Deploy-Carapace` 安装，再按「可选：carapace」接入。
+- `carapace-bin` 不纳入上述部署层；需要跨 shell 的外部 CLI 补全时，用下面的 `Deploy-Carapace` 安装，再按「可选：carapace」启用。
 
 ### 只启用补全（仓库、`PSModulePath`、profile 已就绪）
 
@@ -174,7 +174,7 @@ Deploy-CompletionStack -All -SkipBinaries      # 全部但跳过 fzf/zoxide 二�
 ```
 
 - 内联预测要 pwsh 7.5+；Windows PowerShell 5.1 只有 Tab 菜单，命令会自动发布 `ps51` 活件（新机也会顺带准备 net9 活件）。
-- 开关默认全开（组件未安装时对应开关不产生实际效果）；单关用 `Disable-PsPlugin Predictor|Tab|Fzf|Zoxide|Argc|GitCompletion -Persist`，完整开关与优先级见 `Feature-Guide.md §7`。停用 `GitCompletion` 后，当前会话已注册的 `git`/`gitk` completer 不会撤销，需重开终端才由 argc 接管。
+- 开关默认全开（组件未安装时对应开关不产生实际效果；`PsCarapace` 默认关闭）；单关用 `Disable-PsPlugin Predictor|Tab|Fzf|Zoxide|Argc|GitCompletion|Carapace -Persist`，完整开关与优先级见 `Feature-Guide.md §7`。停用 `GitCompletion`/`Carapace` 后，当前会话已注册的 `git`/`gitk` completer 不会撤销，需重开终端才由剩余来源接管。
 - 可选层需要网络。国内下载不稳定时，先 `Set-Proxy On`（或设置 `HTTPS_PROXY`/`HTTP_PROXY`）再执行；下载会自动识别代理，也可用 `-Proxy <地址>` / `-NoProxy` 单次覆盖。`Set-Proxy` 只影响当前会话（默认端口 7897，`-Port` 可改），新终端需重设或持久化 `HTTPS_PROXY`。缺少可选组件只提示，不影响默认层。
 - `-IncludeArgc` 的仓库、`argc.exe` 与 `yq.exe` 会并发下载（`-NoParallel` 可串行），且不查 release API；只想单独重装 argc 或指定目录用 `Deploy-ArgcCompletions [-Root <目录>]`。
 - 验收：ListView 输 `get-child` 应见 `[CxxuCommand]`；Tab 输 `get-chi` 应含 `Get-ChildItem`。不达预期按 `Feature-Guide.md §9` 的「Tab 补全自查」定位。
@@ -195,7 +195,7 @@ Confirm-ModuleInstalled -ModuleName CompletionPredictor -Install  # 可选：参
 
 > `argc-completions`（800+ 命令参数补全）不再默认随 `Deploy-CompletionStack` 部署；需要时加 `-IncludeArgc`，或单独运行 `Deploy-ArgcCompletions [-Root <目录>]`。首次部署、更新、开关与 5.1 注意事项见 [Argc-Completions-Deploy](Argc-Completions-Deploy.md)。
 
-### 可选：carapace（手动接入）
+### 可选：carapace（由 init 按配置加载）
 
 carapace 是跨 shell 的命令行补全二进制，补外部 CLI 的参数值，不补 PowerShell cmdlet。它和 `argc-completions` 是并列关系，不是替代关系；git 仍建议由 `git-completion` 负责。效果、候选数量与三方对比见 [Feature-Guide](Feature-Guide.md) 的「carapace（可选，非默认）」。
 
@@ -209,7 +209,7 @@ Deploy-Carapace
 Deploy-Carapace -Version 1.8.2 -Proxy http://127.0.0.1:7897
 ```
 
-命令会下载对应架构的官方 zip，按同版本 `checksums.txt` 校验 SHA-256，解压到 `~/.cxxu/bin` 并加入用户 PATH，最后打印接入片段。`-Force` 覆盖重装，`-Destination` 与 `-SkipPath` 用于自定义目录或测试。它不自动修改 profile，也不设置 Tab 键绑定；接入仍按下文片段手动完成。
+命令会下载对应架构的官方 zip，按同版本 `checksums.txt` 校验 SHA-256，解压到 `~/.cxxu/bin` 并加入用户 PATH，最后打印启用方式。`-Force` 覆盖重装，`-Destination` 与 `-SkipPath` 用于自定义目录或测试。它不修改 profile，加载由 init 按 `PsCarapace` 配置完成。
 
 **手工渠道一：官方 GitHub Release**
 
@@ -218,7 +218,7 @@ Deploy-Carapace -Version 1.8.2 -Proxy http://127.0.0.1:7897
 3. 解压出 `carapace.exe`，放到 PATH 中的固定目录（例如 `$env:LOCALAPPDATA\Programs\carapace`）；目录不在 PATH 时加入用户 PATH 并重开终端。
 4. 确认 `Get-Command carapace` 与 `carapace --version`。
 
-手工安装的升级与卸载也需手工完成：替换 `carapace.exe` 后重新生成接入脚本；不再使用时删除该目录并从 PATH 移除。
+手工安装的升级与卸载也需手工完成：替换 `carapace.exe` 后重开终端，由 `init` 重新生成脚本；不再使用时删除该目录并从 PATH 移除。
 
 **手工渠道二：scoop（可选）**
 
@@ -228,31 +228,21 @@ scoop install carapace-bin
 
 `carapace-bin` 位于 scoop 的 `spc` bucket；未添加时先执行 `Add-ScoopBuckets`。该渠道受 bucket 与网络可用性影响，安装失败不代表 carapace 不可用，改用渠道一。
 
-**接入 profile**
+**在 init 中启用（不修改 profile）**
 
 ```powershell
-# 可选：让 git-completion 继续独占 git/gitk；该变量在生成脚本时生效
-$env:CARAPACE_EXCLUDES = 'git,gitk'
-
-$carapaceScript = carapace _carapace powershell | Out-String
-$needle = 'return "" # prevent default file completion'
-if ($PSVersionTable.PSVersion -lt [version]'7.7') {
-    # pwsh 7.6 的 CompletionResult 不接受空字符串；回退到默认补全
-    if (-not $carapaceScript.Contains($needle)) {
-        throw 'carapace 生成脚本已变化，空结果补丁未匹配。请核对当前版本的空结果处理，确认无需补丁后删除本断言。'
-    }
-    $carapaceScript = $carapaceScript.Replace($needle, 'return')
-}
-$carapaceScript | Invoke-Expression
+Enable-PsPlugin Carapace -Persist          # 只启用 carapace；git/gitk 仍按 PsGitCompletionSource
+Set-GitCompletionSource Carapace -Persist  # 让 carapace 接管 git/gitk
 ```
 
-- 片段放在 profile 的 `init` 之后；不要再执行 carapace 文档中的 `Set-PSReadlineKeyHandler -Key Tab -Function MenuComplete`，否则会覆盖本仓库的 Tab 桩。
-- 来源切换用 `Set-GitCompletionSource GitCompletion|Carapace|Argc [-Persist]`：同时调整 `PsGitCompletion` 与 profile 中的 `CARAPACE_EXCLUDES`。carapace 行属于持久修改，`-Persist` 只控制 `PsGitCompletion` 是否写入用户配置；未加 `-Persist` 时 argc 目标可能在下一次启动被默认的 `PsGitCompletion=True` 覆盖。
-- `CARAPACE_EXCLUDES` 在生成脚本时写入，不是运行时读取；增减排除项后修改环境变量并重新生成脚本。
-- 版本可以不追新，但生成脚本随版本变化：空结果补丁按原文匹配，`String.Replace` 未命中时会静默保留原文，因此断言失败时先在 pwsh 7.6 下实测空结果，再决定保留或删除补丁。
-- 接入后重开终端或执行 `. $profile`；验收：`Get-Command carapace`、`carapace --version`、`carapace --list`（数量随版本变化，不写死）、`TabExpansion2 'scoop install ' 14` 能返回包名候选，`TabExpansion2 'gh pr ' 6` 能返回子命令；git 仍由 `git-completion` 负责。
-- 启动成本约 180–200ms；不需要时删除 profile 片段，scoop 渠道执行 `scoop uninstall carapace-bin`，`Deploy-Carapace` 与手工渠道删除二进制目录（默认 `~/.cxxu/bin`）并从 PATH 移除。慢命令（`winget install`、`uv add`）会阻塞 Tab，按需排除。
-- `Deploy-CompletionStack -All` 不包含 carapace，也没有 `-IncludeCarapace` 开关；用 `Deploy-Carapace` 安装二进制，接入仍按本节手动加入 profile。
+- `PsCarapace=True` 时 init 在启动阶段加载 carapace；默认关闭，未启用时不承担约 0.1–0.2 秒的启动成本。
+- `PsGitCompletionSource` 决定 git/gitk 归属：`Auto`、`GitCompletion`、`Argc` 时 init 把 `git,gitk` 并入 `CARAPACE_EXCLUDES`；`Carapace` 时不排除，并让 argc 让路。切换到前三种来源不会关闭 carapace 本身，需要停止加载时另执行 `Disable-PsPlugin Carapace -Persist`。
+- 慢命令排除项写配置键 `PsCarapaceExcludes`（逗号分隔，如 `winget,uv`）；init 会把它与 git/gitk 的规则合并。未设置该键时沿用已有的 `CARAPACE_EXCLUDES`，避免覆盖旧配置。
+- 旧版 profile 中的手动 carapace 片段需要删除，否则会与 init 重复注册。也不要执行 carapace 文档中的 `Set-PSReadlineKeyHandler -Key Tab -Function MenuComplete`，避免覆盖本仓库的 Tab 桩。
+- 版本可以不追新，但生成脚本随版本变化：init 在 pwsh 7.6 及更早版本按原文匹配空结果补丁，匹配不到时只告警，不中断启动。
+- 验收：`Get-Command carapace`、`carapace --version`、`carapace --list`（数量随版本变化，不写死）、`TabExpansion2 'scoop install ' 14` 能返回包名候选，`TabExpansion2 'gh pr ' 6` 能返回子命令。
+- 不需要时执行 `Disable-PsPlugin Carapace -Persist`；scoop 渠道可再加 `scoop uninstall carapace-bin`，`Deploy-Carapace` 与手工渠道删除二进制目录（默认 `~/.cxxu/bin`）并从 PATH 移除。慢命令（`winget install`、`uv add`）会阻塞 Tab，按需写入 `PsCarapaceExcludes`。
+- `Deploy-CompletionStack -All` 不包含 carapace，也没有 `-IncludeCarapace` 开关；需要时先 `Deploy-Carapace` 安装，再 `Enable-PsPlugin Carapace -Persist`。
 
 ## 6. scoop 二进制
 

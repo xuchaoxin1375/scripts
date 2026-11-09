@@ -89,6 +89,8 @@ function init
         @{ Name = 'Set-ArgumentCompleter'; Action = { Set-ArgumentCompleter }; MinPS = 7 }
         # git-completion:git/gitk 的 Tab 补全(首次补全才导入模块;未安装时静默跳过)
         @{ Name = 'Register-GitCompletion'; Action = { Register-GitCompletion } }
+        # carapace:按 PsCarapace 开关加载;默认关闭,启用时再决定是否接管 git/gitk（仅 pwsh 7+）
+        @{ Name = 'Initialize-Carapace'; Action = { Initialize-Carapace }; MinPS = 7 }
         # argc-completions:启动只设环境与 Tab 桩,首个 Tab 才注册(开关 $env:PsArgc;5.1 也可用)
         @{ Name = 'Set-ArgcCompletions'; Action = { Set-ArgcCompletions } }
         @{ Name = 'Confirm-EnvVarOfInfo'; Action = { Confirm-EnvVarOfInfo }; MinPS = 7 }
@@ -839,12 +841,12 @@ function Initialize-ArgcCompletions
     # argc 自身也注册(与上游生成器一致;无专用脚本时由引擎回退路径补全)
     $scripts = @('argc') + @($scripts)
     $scripts = @($scripts | Select-Object -Unique)
-    # git-completion 负责 git/gitk 时把它们从 argc 名单里去掉:两者都注册同名 Native
-    # completer,后注册者覆盖先注册者,而 argc 首个 Tab 才注册,会顶掉先注册的 git-completion。
-    # 判定同时看 Register-GitCompletion 置的 $global:PsGitCompletion 与"模块已导入"
-    # (init 只注册 completer,首次补全才 Import-Module,不能只看 Get-Module);
+    # git-completion 或 carapace 负责 git/gitk 时把它们从 argc 名单里去掉:三者都注册同名
+    # Native completer,后注册者覆盖先注册者,而 argc 首个 Tab 才注册,会顶掉先注册的来源。
+    # 判定看 Register-GitCompletion 置的 $global:PsGitCompletion、Initialize-Carapace 置的
+    # $global:PsCarapaceGit,以及"模块已导入"(init 只注册 completer,首次补全才 Import-Module);
     # 都没有时保留 argc 自己的 git 补全。
-    if ($global:PsGitCompletion -or (Get-Module git-completion -ErrorAction SilentlyContinue))
+    if ($global:PsGitCompletion -or $global:PsCarapaceGit -or (Get-Module git-completion -ErrorAction SilentlyContinue))
     {
         $scripts = @($scripts | Where-Object { $_ -notin 'git', 'gitk' })
     }
@@ -906,6 +908,122 @@ function Initialize-ArgcCompletions
     }
 }
 
+function Test-CxxuGitCompletionInstalled
+{
+    # 静态探测 PSModulePath，不调用 Get-Module -ListAvailable（冷启动约省 140ms）。
+    return [bool](@($env:PSModulePath -split [IO.Path]::PathSeparator |
+            Where-Object { $_ -and (Test-Path -LiteralPath (Join-Path $_ 'git-completion')) }).Count)
+}
+
+function Get-CxxuGitCompletionSource
+{
+    # 解析 git/gitk 补全来源：PsGitCompletionSource 优先；未设置时沿用 PsGitCompletion 旧语义。
+    $raw = [string]$env:PsGitCompletionSource
+    if ([string]::IsNullOrWhiteSpace($raw))
+    {
+        if ($env:PsGitCompletion -match '^(False|0|No|Off)$') { return 'Argc' }
+        if (Test-CxxuGitCompletionInstalled) { return 'GitCompletion' }
+        return 'Argc'
+    }
+    switch -Regex ($raw.Trim())
+    {
+        '^(?i:Auto)$'
+        {
+            if (Test-CxxuGitCompletionInstalled) { return 'GitCompletion' }
+            return 'Argc'
+        }
+        '^(?i:GitCompletion)$' { return 'GitCompletion' }
+        '^(?i:Carapace)$'
+        {
+            # carapace 未启用时按 argc 处理，避免 git 没有来源。
+            if ([string]::IsNullOrWhiteSpace($env:PsCarapace) -or $env:PsCarapace -match '^(False|0|No|Off)$') { return 'Argc' }
+            return 'Carapace'
+        }
+        '^(?i:Argc)$' { return 'Argc' }
+        default
+        {
+            Write-Warning "未知 PsGitCompletionSource=$raw；按 Auto 处理。"
+            if (Test-CxxuGitCompletionInstalled) { return 'GitCompletion' }
+            return 'Argc'
+        }
+    }
+}
+
+function Initialize-Carapace
+{
+    <#
+    .SYNOPSIS
+    按配置加载 carapace 补全（默认关闭，启用时由 init 调用）。
+    .DESCRIPTION
+    开关 PsCarapace（默认 $false）；启用时要求 carapace 在 PATH。
+    根据 PsGitCompletionSource 决定 carapace 是否接管 git/gitk：
+    - Carapace：不排除 git/gitk，并置 $global:PsCarapaceGit，供 argc 让路；
+    - GitCompletion、Argc、Auto：把 git/gitk 并入 CARAPACE_EXCLUDES。
+    PsCarapaceExcludes 提供用户自己的慢命令排除项；两处合并后写入环境变量。
+    加载失败只告警，不中断 init。
+    .EXAMPLE
+    Initialize-Carapace
+    #>
+    [CmdletBinding()]
+    param()
+
+    if ($PSVersionTable.PSVersion.Major -lt 7)
+    {
+        Write-Warning 'carapace 补全需要 pwsh 7+；5.1 已跳过 Initialize-Carapace。'
+        return
+    }
+    if ($env:PsCarapace -match '^(False|0|No|Off)$') { return }
+    if ([string]::IsNullOrWhiteSpace($env:PsCarapace)) { return }
+    if (-not (Get-Command carapace -ErrorAction SilentlyContinue))
+    {
+        Write-Warning 'PsCarapace 已启用，但 PATH 中没有 carapace；先执行 Deploy-Carapace。'
+        return
+    }
+
+    $source = Get-CxxuGitCompletionSource
+    # 配置键优先；未配置时沿用已有的 CARAPACE_EXCLUDES，避免覆盖用户自定义的慢命令排除项。
+    $baseExcludes = [string]$env:PsCarapaceExcludes
+    if ([string]::IsNullOrWhiteSpace($baseExcludes)) { $baseExcludes = [string]$env:CARAPACE_EXCLUDES }
+    $excludes = @($baseExcludes -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    if ($source -eq 'Carapace')
+    {
+        # 来源优先：即使 PsCarapaceExcludes 写了 git/gitk，也不让 carapace 让出。
+        $excludes = @($excludes | Where-Object { $_ -notmatch '^(?i:git|gitk)$' })
+    }
+    else
+    {
+        foreach ($name in @('git', 'gitk'))
+        {
+            if (-not ($excludes | Where-Object { $_ -ieq $name })) { $excludes += $name }
+        }
+    }
+    $env:CARAPACE_EXCLUDES = ($excludes -join ',')
+
+    try
+    {
+        $script = carapace _carapace powershell | Out-String
+        $needle = 'return "" # prevent default file completion'
+        if ($PSVersionTable.PSVersion -lt [version]'7.7')
+        {
+            if ($script.Contains($needle))
+            {
+                $script = $script.Replace($needle, 'return')
+            }
+            else
+            {
+                Write-Warning 'carapace 生成脚本已变化，空结果补丁未匹配；请核对当前版本的空结果处理。'
+            }
+        }
+        $script | Invoke-Expression
+        if ($source -eq 'Carapace') { $global:PsCarapaceGit = $true }
+        Write-Verbose ("carapace 已加载；git 来源={0}，排除项={1}" -f $source, $env:CARAPACE_EXCLUDES)
+    }
+    catch
+    {
+        Write-Warning ("carapace 加载失败：{0}" -f $_.Exception.Message)
+    }
+}
+
 function Register-GitCompletion
 {
     <#
@@ -917,7 +1035,8 @@ function Register-GitCompletion
     $global:PsGitCompletion,供 Initialize-ArgcCompletions 让出 git/gitk(两者同名
     completer 后注册者胜出,argc 首个 Tab 才注册会顶掉这里的注册)。
     模块位置按 PSModulePath 静态探测,不调用 Get-Module -ListAvailable(冷启动约 140ms)。
-    开关 PsGitCompletion(环境变量 > ~/.cxxu/config.psd1 > 默认 $true),关闭后 argc 继续负责 git。
+    来源由 PsGitCompletionSource 决定(Auto/GitCompletion/Carapace/Argc,见 Get-CxxuGitCompletionSource);
+    未设置该键时沿用 PsGitCompletion 的旧语义,关闭后 argc 继续负责 git。
     .EXAMPLE
     Register-GitCompletion
     .EXAMPLE
@@ -927,11 +1046,9 @@ function Register-GitCompletion
     param()
 
     if ($global:PsGitCompletion) { return }
-    # 开关:配置键 PsGitCompletion(环境变量 > ~/.cxxu/config.psd1 > 默认 $true)
-    if ($env:PsGitCompletion -match '^(False|0|No|Off)$') { return }
-    $found = @($env:PSModulePath -split [IO.Path]::PathSeparator |
-            Where-Object { $_ -and (Test-Path -LiteralPath (Join-Path $_ 'git-completion')) })
-    if (-not $found.Count) { return }
+    # 来源不是 git-completion 时不注册；来源解析见 Get-CxxuGitCompletionSource。
+    if ((Get-CxxuGitCompletionSource) -ne 'GitCompletion') { return }
+    if (-not (Test-CxxuGitCompletionInstalled)) { return }
 
     $global:PsGitCompletion = $true
     Register-ArgumentCompleter -CommandName git -Native -ScriptBlock {
@@ -1472,12 +1589,13 @@ function Set-CxxuConfigValue
 {
     # 写用户配置文件单键(供 Enable/Disable-PsPlugin -Persist 用,不导出):
     # 行级改写(保注释保其余键);无键则追到 } 前;无文件先建模板。失败警告,永不抛。
-    param([string]$Path, [string]$Key, [bool]$Value)
+    param([string]$Path, [string]$Key, [object]$Value)
     try
     {
         if (-not (Test-Path -LiteralPath $Path)) { New-CxxuConfigTemplate -Path $Path }
         $text = Read-CxxuUtf8Text -Path $Path
-        $val = if ($Value) { '$true' } else { '$false' }
+        if ($Value -is [bool]) { $val = if ($Value) { '$true' } else { '$false' } }
+        else { $val = "'" + ([string]$Value).Replace("'", "''") + "'" }
         $ls = $text -split '\r?\n'
         $done = $false
         for ($i = 0; $i -lt $ls.Count; $i++)
@@ -1512,9 +1630,11 @@ function Disable-PsPlugin
     .DESCRIPTION
     插件注册表：Fzf(PSFzf 快捷键)/Zoxide(z 跳转)/Predictor(命令名 ListView 预测)/
     Tab(CxxuTab 命令名 Tab 模糊，默认开,不需要时停用)/
-    Argc(argc-completions 参数补全,默认开,懒加载)/GitCompletion(git/gitk 的 Tab 补全)。
+    Argc(argc-completions 参数补全,默认开,懒加载)/GitCompletion(git/gitk 的 Tab 补全)/
+    Carapace(外部 CLI 参数补全,默认关,由 init 加载)。
     停用只关本命令的合并/加载，引擎原生行为不受影响；持开关逐调用判定，无需重载。
-    已注册的 Native completer 无法在当前会话撤销：停用 GitCompletion 后需重开终端，argc 才会重新接管 git/gitk。
+    已注册的 Native completer 无法在当前会话撤销：停用 GitCompletion/Carapace 后需重开终端，
+    剩余来源才会重新接管 git/gitk。
     -Persist 写 ~/.cxxu/config.psd1（行级替换，保注释）。
     .EXAMPLE
     Disable-PsPlugin Tab
@@ -1525,21 +1645,27 @@ function Disable-PsPlugin
     param(
         # 插件名(Tab 补全可用)
         [Parameter(Mandatory)]
-        [ValidateSet('Fzf', 'Zoxide', 'Predictor', 'Tab', 'Argc', 'GitCompletion')]
+        [ValidateSet('Fzf', 'Zoxide', 'Predictor', 'Tab', 'Argc', 'GitCompletion', 'Carapace')]
         [string]$Name,
         # 写入用户配置文件,长期有效(否则只关当会话)
         [switch]$Persist,
         # 配置文件路径(默认 ~/.cxxu/config.psd1)
         [string]$Path = (Join-Path (Join-Path $HOME '.cxxu') 'config.psd1')
     )
-    $key = @{ Fzf = 'PsFzf'; Zoxide = 'PsZoxide'; Predictor = 'PsPredictor'; Tab = 'PsTab'; Argc = 'PsArgc'; GitCompletion = 'PsGitCompletion' }[$Name]
+    $key = @{ Fzf = 'PsFzf'; Zoxide = 'PsZoxide'; Predictor = 'PsPredictor'; Tab = 'PsTab'; Argc = 'PsArgc'; GitCompletion = 'PsGitCompletion'; Carapace = 'PsCarapace' }[$Name]
     if ($PSCmdlet.ShouldProcess($Name, '停用插件'))
     {
         Set-Item "env:$key" -Value 'False'
         Write-Host "$Name 已停用(当会话)。"
         if ($Name -eq 'GitCompletion')
         {
+            Set-Item 'env:PsGitCompletionSource' -Value 'Argc'
+            if ($Persist) { Set-CxxuConfigValue -Path $Path -Key 'PsGitCompletionSource' -Value 'Argc' }
             Write-Host '当前会话已注册的 git/gitk completer 无法撤销；重开终端后 argc 才会重新接管。'
+        }
+        if ($Name -eq 'Carapace')
+        {
+            Write-Host '当前会话已注册的 carapace completer 无法撤销；重开终端后由剩余来源接管 git/gitk。'
         }
         if ($Persist) { Set-CxxuConfigValue -Path $Path -Key $key -Value $false }
     }
@@ -1553,7 +1679,8 @@ function Enable-PsPlugin
     启用是显式开(环境变量 True,盖过配置文件)。Tab/Predictor 即时生效(逐调用判定,
     无需重载);7+ 的 Fzf/Tab 立装桩即时生效(重调安装器,幂等,只补缺);5.1 的 Tab
     直接导入 CxxuTab;Argc 立装 Tab 桩,真正的注册仍在首个 Tab;GitCompletion 在模块已安装时
-    立即注册 git/gitk completer;Predictor/Zoxide 单发已过则重开终端(或 Register-PsUxLazyLoad -Now 立装)。
+    立即注册 git/gitk completer;Carapace 立即按配置加载;Predictor/Zoxide 单发已过则重开终端
+    (或 Register-PsUxLazyLoad -Now 立装)。
     .EXAMPLE
     Enable-PsPlugin Tab
     .EXAMPLE
@@ -1563,14 +1690,14 @@ function Enable-PsPlugin
     param(
         # 插件名(Tab 补全可用)
         [Parameter(Mandatory)]
-        [ValidateSet('Fzf', 'Zoxide', 'Predictor', 'Tab', 'Argc', 'GitCompletion')]
+        [ValidateSet('Fzf', 'Zoxide', 'Predictor', 'Tab', 'Argc', 'GitCompletion', 'Carapace')]
         [string]$Name,
         # 写入用户配置文件,长期有效(否则只开当会话)
         [switch]$Persist,
         # 配置文件路径(默认 ~/.cxxu/config.psd1)
         [string]$Path = (Join-Path (Join-Path $HOME '.cxxu') 'config.psd1')
     )
-    $key = @{ Fzf = 'PsFzf'; Zoxide = 'PsZoxide'; Predictor = 'PsPredictor'; Tab = 'PsTab'; Argc = 'PsArgc'; GitCompletion = 'PsGitCompletion' }[$Name]
+    $key = @{ Fzf = 'PsFzf'; Zoxide = 'PsZoxide'; Predictor = 'PsPredictor'; Tab = 'PsTab'; Argc = 'PsArgc'; GitCompletion = 'PsGitCompletion'; Carapace = 'PsCarapace' }[$Name]
     if ($PSCmdlet.ShouldProcess($Name, '启用插件'))
     {
         Set-Item "env:$key" -Value 'True'
@@ -1582,7 +1709,9 @@ function Enable-PsPlugin
         }
         if ($Name -eq 'GitCompletion')
         {
-            if (Get-Module -ListAvailable git-completion)
+            Set-Item 'env:PsGitCompletionSource' -Value 'GitCompletion'
+            if ($Persist) { Set-CxxuConfigValue -Path $Path -Key 'PsGitCompletionSource' -Value 'GitCompletion' }
+            if (Test-CxxuGitCompletionInstalled)
             {
                 # 立即可用:置全局标记并注册 git/gitk completer(幂等)
                 Register-GitCompletion
@@ -1590,6 +1719,17 @@ function Enable-PsPlugin
             else
             {
                 Write-Warning 'git-completion 模块未安装：先执行 Deploy-CompletionStack -IncludeGitCompletion，再启用 GitCompletion。'
+            }
+        }
+        if ($Name -eq 'Carapace')
+        {
+            if (Get-Command carapace -ErrorAction SilentlyContinue)
+            {
+                Initialize-Carapace
+            }
+            else
+            {
+                Write-Warning '未检测到 carapace：先执行 Deploy-Carapace 安装。'
             }
         }
         if ((($Name -eq 'Fzf') -or ($Name -eq 'Tab')) -and ($PSVersionTable.PSVersion.Major -ge 7))
@@ -1612,11 +1752,13 @@ function Set-GitCompletionSource
     .SYNOPSIS
     在 git-completion、carapace、argc 之间切换 git/gitk 的 Tab 补全来源。
     .DESCRIPTION
-    三个来源的注册层不同：git-completion 由 init 注册，argc 在首个 Tab 注册，
-    carapace 由 profile 中的生成脚本注册，是否接管 git/gitk 取决于 CARAPACE_EXCLUDES。
-    本命令统一调整两处：写 PsGitCompletion 开关；在 profile 的 carapace 片段中增删 git/gitk 排除项。
-    carapace 的排除项写在 profile，属于持久修改；-Persist 只控制 PsGitCompletion 是否写入用户配置。
-    未加 -Persist 时只改当前会话，重开终端后可能回到配置文件中的来源。
+    来源由配置键 PsGitCompletionSource 决定（Auto/GitCompletion/Carapace/Argc），
+    由 init 在启动时读取；本命令只改环境变量与用户配置，不修改 profile。
+    - GitCompletion：启动时注册 git-completion；
+    - Carapace：同时打开 PsCarapace，由 init 加载 carapace 并让它接管 git/gitk；
+    - Argc：不注册 git-completion，由 argc 在首个 Tab 接管 git/gitk。
+    carapace 的额外排除项用 PsCarapaceExcludes 配置，不再写 profile。
+    -Persist 把来源写入 ~/.cxxu/config.psd1；不加时只改当前会话。
     当前会话已注册的 Native completer 无法撤销，切换后需重开终端才完全生效。
     .EXAMPLE
     Set-GitCompletionSource GitCompletion
@@ -1631,47 +1773,50 @@ function Set-GitCompletionSource
         [Parameter(Mandatory)]
         [ValidateSet('GitCompletion', 'Carapace', 'Argc')]
         [string]$Source,
-        # 把 PsGitCompletion 写入用户配置文件，重开终端后保持
+        # 把来源及相关开关写入用户配置文件，重开终端后保持
         [switch]$Persist,
-        # 不修改 profile，只调整当前会话开关（carapace 的排除项需自行处理）
-        [switch]$SkipProfile,
-        # profile 路径，默认当前用户当前宿主
-        [string]$ProfilePath = $PROFILE,
         # 用户配置文件路径（-Persist 时写入）
         [string]$Path = (Join-Path (Join-Path $HOME '.cxxu') 'config.psd1')
     )
 
     $wantGitCompletion = $Source -eq 'GitCompletion'
-    $wantCarapaceExclude = $Source -ne 'Carapace'
-    $value = if ($wantGitCompletion) { 'True' } else { 'False' }
+    $gitValue = if ($wantGitCompletion) { 'True' } else { 'False' }
 
     $applied = $false
-    if ($PSCmdlet.ShouldProcess("PsGitCompletion=$value", '设置 git 补全来源'))
+    if ($PSCmdlet.ShouldProcess("git 补全来源 -> $Source", '设置'))
     {
-        Set-Item 'env:PsGitCompletion' -Value $value
-        if ($Persist) { Set-CxxuConfigValue -Path $Path -Key 'PsGitCompletion' -Value $wantGitCompletion }
+        Set-Item 'env:PsGitCompletionSource' -Value $Source
+        Set-Item 'env:PsGitCompletion' -Value $gitValue
+        if ($Source -eq 'Carapace') { Set-Item 'env:PsCarapace' -Value 'True' }
+        if ($Persist)
+        {
+            Set-CxxuConfigValue -Path $Path -Key 'PsGitCompletionSource' -Value $Source
+            Set-CxxuConfigValue -Path $Path -Key 'PsGitCompletion' -Value $wantGitCompletion
+            if ($Source -eq 'Carapace') { Set-CxxuConfigValue -Path $Path -Key 'PsCarapace' -Value $true }
+        }
         $applied = $true
     }
 
-    if ($wantGitCompletion)
+    if ($Source -eq 'GitCompletion')
     {
-        if (Get-Module -ListAvailable git-completion)
+        if (Test-CxxuGitCompletionInstalled)
         {
-            if ($PSCmdlet.ShouldProcess('git-completion', '注册 git/gitk completer'))
-            {
-                Register-GitCompletion
-            }
+            if ($PSCmdlet.ShouldProcess('git-completion', '注册 git/gitk completer')) { Register-GitCompletion }
         }
         else
         {
-            Write-Warning 'git-completion 模块未安装：先执行 Deploy-CompletionStack -IncludeGitCompletion，再重新运行本命令。'
+            Write-Warning 'git-completion 模块未安装：先执行 Deploy-CompletionStack -IncludeGitCompletion。'
         }
     }
     elseif ($Source -eq 'Carapace')
     {
-        if (-not (Get-Command carapace -ErrorAction SilentlyContinue))
+        if (Get-Command carapace -ErrorAction SilentlyContinue)
         {
-            Write-Warning '未检测到 carapace：先执行 Deploy-Carapace 安装并接入 profile。'
+            if ($PSCmdlet.ShouldProcess('carapace', '加载补全')) { Initialize-Carapace }
+        }
+        else
+        {
+            Write-Warning '未检测到 carapace：先执行 Deploy-Carapace 安装。'
         }
     }
     elseif (-not (Get-Command argc -ErrorAction SilentlyContinue))
@@ -1679,106 +1824,29 @@ function Set-GitCompletionSource
         Write-Warning '未检测到 argc：先执行 Deploy-CompletionStack -IncludeArgc 或 Deploy-ArgcCompletions。'
     }
 
-    $profileNote = ''
-    $profileApplied = $false
-    $changed = $false
-    if (-not $SkipProfile)
+    Write-Host ("git 补全来源：{0}" -f $Source)
+    if ($applied)
     {
-        if (-not (Test-Path -LiteralPath $ProfilePath))
-        {
-            $profileNote = "profile 不存在：$ProfilePath；已跳过 carapace 排除项调整。"
-        }
-        else
-        {
-            $text = Read-CxxuUtf8Text -Path $ProfilePath
-            if ($text -notmatch '_carapace\s+powershell')
-            {
-                $profileNote = 'profile 中没有 carapace 接入片段；已跳过 carapace 排除项调整。'
-            }
-            else
-            {
-                $nl = if ($text.Contains("`r`n")) { "`r`n" } else { "`n" }
-                $lines = [Collections.Generic.List[string]]::new([string[]]($text -split '\r?\n'))
-                $assignPattern = '^\s*' + [regex]::Escape('$env:CARAPACE_EXCLUDES') + '\s*=\s*(?<q>[''"])(?<list>.*?)\k<q>(?<cmt>\s*#.*)?$'
-                $assignIndex = -1
-                $genIndex = -1
-                for ($i = 0; $i -lt $lines.Count; $i++)
-                {
-                    if (($assignIndex -lt 0) -and ($lines[$i] -match $assignPattern)) { $assignIndex = $i }
-                    if (($genIndex -lt 0) -and ($lines[$i] -match '_carapace\s+powershell')) { $genIndex = $i }
-                }
-
-                $changed = $false
-                if ($assignIndex -ge 0)
-                {
-                    $match = [regex]::Match($lines[$assignIndex], $assignPattern)
-                    $items = @($match.Groups['list'].Value -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
-                    if ($wantCarapaceExclude)
-                    {
-                        foreach ($name in @('git', 'gitk'))
-                        {
-                            if (-not ($items | Where-Object { $_ -ieq $name })) { $items += $name }
-                        }
-                    }
-                    else
-                    {
-                        $items = @($items | Where-Object { $_ -notmatch '^(?i:git|gitk)$' })
-                    }
-                    $newList = $items -join ','
-                    $indent = ([regex]::Match($lines[$assignIndex], '^\s*')).Value
-                    $comment = $match.Groups['cmt'].Value
-                    $newLine = $indent + '$env:CARAPACE_EXCLUDES = ' + "'$newList'" + $comment
-                    if ($newLine -ne $lines[$assignIndex])
-                    {
-                        $lines[$assignIndex] = $newLine
-                        $changed = $true
-                    }
-                    $displayList = if ($newList) { $newList } else { '无' }
-                    $profileNote = if ($wantCarapaceExclude) { "carapace 继续让出 git/gitk（排除项：$displayList）" } else { "carapace 接管 git/gitk（排除项：$displayList）" }
-                }
-                elseif ($wantCarapaceExclude -and $genIndex -ge 0)
-                {
-                    $indent = ([regex]::Match($lines[$genIndex], '^\s*')).Value
-                    $lines.Insert($genIndex, $indent + '$env:CARAPACE_EXCLUDES = ''git,gitk''')
-                    $changed = $true
-                    $profileNote = '已在 carapace 生成脚本前插入 git/gitk 排除项'
-                }
-                else
-                {
-                    $profileNote = 'profile 中没有 CARAPACE_EXCLUDES 行；carapace 保持现有配置。'
-                }
-
-                if ($changed)
-                {
-                    $newText = $lines -join $nl
-                    if ($PSCmdlet.ShouldProcess($ProfilePath, '更新 carapace 排除项'))
-                    {
-                        $bytes = [IO.File]::ReadAllBytes($ProfilePath)
-                        $hasBom = ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF)
-                        Copy-Item -LiteralPath $ProfilePath -Destination ($ProfilePath + '.bak-' + (Get-Date -Format 'yyyyMMddHHmmssfff')) -Force
-                        [IO.File]::WriteAllText($ProfilePath, $newText, [Text.UTF8Encoding]::new($hasBom))
-                        $profileApplied = $true
-                    }
-                }
-            }
-        }
+        Write-Host ("当前会话：PsGitCompletionSource={0}，PsGitCompletion={1}" -f $Source, $gitValue)
+        if ($Source -eq 'Carapace') { Write-Host '当前会话：PsCarapace=True' }
     }
     else
     {
-        $profileNote = '已按 -SkipProfile 跳过 profile 修改。'
+        Write-Host '当前会话未改动（-WhatIf）。'
     }
-
-    Write-Host ("git 补全来源：{0}" -f $Source)
-    if ($applied) { Write-Host ("当前会话 PsGitCompletion={0}" -f $value) }
-    else { Write-Host '当前会话未改动（-WhatIf）。' }
     if ($Persist)
     {
-        if ($applied) { Write-Host 'PsGitCompletion 已写入用户配置，重开终端后保持。' }
-        else { Write-Host 'PsGitCompletion 未写入用户配置（-WhatIf）。' }
+        if ($applied) { Write-Host '已写入用户配置，重开终端后保持。' }
+        else { Write-Host '未写入用户配置（-WhatIf）。' }
     }
-    else { Write-Host '未加 -Persist：只改当前会话，重开终端后按配置文件决定。' }
-    if ($profileNote) { Write-Host $profileNote }
-    if ($changed -and -not $profileApplied) { Write-Host 'profile 未写入（-WhatIf）。' }
+    else
+    {
+        Write-Host '未加 -Persist：只改当前会话，重开终端后按配置文件决定。'
+    }
+    if (($Source -ne 'Carapace') -and ($env:PsCarapace -and ($env:PsCarapace -notmatch '^(False|0|No|Off)$')))
+    {
+        Write-Host 'carapace 仍处于启用状态，只让出 git/gitk；需要停止加载用 Disable-PsPlugin Carapace -Persist。'
+    }
     Write-Host '重开终端后完全生效；当前会话已注册的 Native completer 无法撤销。'
 }
 

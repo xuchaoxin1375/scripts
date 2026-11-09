@@ -1781,6 +1781,8 @@ function Get-CxxuDependencyGate
         PsPredictor = 'Enable-PsPlugin Predictor -Persist'
         PsTab       = 'Enable-PsPlugin Tab -Persist'
         PsArgc      = 'Enable-PsPlugin Argc -Persist'
+        PsGitCompletion = 'Enable-PsPlugin GitCompletion -Persist'
+        PsCarapace  = 'Enable-PsPlugin Carapace -Persist'
     }
     $enable = $map[$Gate]
     if ([string]::IsNullOrWhiteSpace($enable)) { $enable = "将环境变量 $Gate 设为 True" }

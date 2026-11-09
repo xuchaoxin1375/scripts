@@ -143,7 +143,7 @@ Initialize-ArgcCompletions -Force   # 当前会话重新注册 Tab 补全
 - `PsPredictor` 是 `CxxuPredictor.dll` 的加载门，命令名预测与 `CxxuArgcFlags` 共用；关闭后两类自动提示一起停，不能只停其中一类。
 - 关闭 `Argc` 不删除仓库、缓存或已注册的 completer，重新开启无需重开终端；仓库或工具变化后按[更新](#3-更新)一节执行 `Initialize-ArgcCompletions -Force`。
 - 关闭 argc 只影响应用命令的参数补全，不影响 `Get-ChildItem -` 等 cmdlet 的原生参数补全。
-- init 检测到 `git-completion` 时（`$global:PsGitCompletion`），argc 不注册 `git`/`gitk`：两者都注册同名 Native completer，后注册者覆盖先注册者，而 argc 首个 Tab 才注册，会顶掉先注册的补全。其余命令不受影响。
+- init 检测到 `git-completion`（`$global:PsGitCompletion`）或 carapace 接管 git（`$global:PsCarapaceGit`）时，argc 不注册 `git`/`gitk`：三者都注册同名 Native completer，后注册者覆盖先注册者，而 argc 首个 Tab 才注册，会顶掉先注册的补全。其余命令不受影响。
 
 ### 4.3 验证
 

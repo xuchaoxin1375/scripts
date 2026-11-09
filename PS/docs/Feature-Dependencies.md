@@ -97,7 +97,8 @@ Get-CxxuDependencyReport -Json           # 供其他程序消费
 | 补全：模糊搜索 | `PSFzf` 模块、`fzf` 二进制 | 推荐 | `Ctrl+T` 选文件、`Ctrl+R` 搜历史不可用 | `Deploy-CompletionStack -IncludeFuzzy`；或 `Confirm-ModuleInstalled -ModuleName PSFzf -Install`、`scoop install fzf` 或 `brew install fzf` |
 | 补全：参数/路径预测 | `CompletionPredictor` 模块 | 推荐 | 参数值与路径的内联预测不可用 | `Confirm-ModuleInstalled -ModuleName CompletionPredictor -Install` |
 | 补全：参数补全（argc） | `argc-completions` 仓库、`argc`、`yq`、Windows 下的 `bash` | 推荐 | 应用命令的参数补全不可用 | `Deploy-CompletionStack -IncludeArgc` 或 `Deploy-ArgcCompletions` |
-| 补全：git/gitk（git-completion） | `git-completion` 模块 | 推荐 | `git`/`gitk` 回落 argc 或原生补全 | `Deploy-CompletionStack -IncludeGitCompletion` 或 `Install-Module git-completion -Scope CurrentUser -Force`；init 检测到模块后自动挂载 |
+| 补全：git/gitk（git-completion） | `git-completion` 模块 | 推荐 | `git`/`gitk` 回落 argc 或原生补全 | `Deploy-CompletionStack -IncludeGitCompletion` 或 `Install-Module git-completion -Scope CurrentUser -Force`；init 检测到模块后自动挂载；来源用 `Set-GitCompletionSource` 切换 |
+| 补全：外部 CLI 参数（carapace） | `carapace` 二进制 | 可选 | `scoop`、`winget`、`gh`、`docker` 等外部 CLI 的参数值补全不可用 | `Deploy-Carapace`，再 `Enable-PsPlugin Carapace -Persist`；git/gitk 归属用 `Set-GitCompletionSource` 切换 |
 | 补全：目录跳转 | `zoxide` 二进制 | 可选 | `z` 目录跳转不可用 | `Deploy-CompletionStack -IncludeFuzzy`；或 `scoop install zoxide` 或 `brew install zoxide` |
 | 补全：参数补全（PSCompletions） | `PSCompletions` 模块 | 可选 | 约 200 个命令的参数补全不可用 | `Confirm-ModuleInstalled -ModuleName PSCompletions -Install`，再解开 profile 钩子 |
 | 交互：文件图标 | `Terminal-Icons` 模块 | 可选 | `Get-ChildItem` 的文件图标不显示 | `Confirm-ModuleInstalled -ModuleName Terminal-Icons -Install` |

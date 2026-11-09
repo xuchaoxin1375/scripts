@@ -280,6 +280,21 @@ $homeDir = $HOME
         Note      = '启用后 argc 让出 git/gitk；首次补全才导入模块；开关 PsGitCompletion，来源切换用 Set-GitCompletionSource。'
     }
 
+    # 补全：外部 CLI 参数补全（carapace）
+    [PSCustomObject]@{
+        Feature   = '补全：外部 CLI 参数（carapace）'
+        Component = 'carapace 二进制'
+        Level     = '可选'
+        Kind      = 'Command'
+        Name      = 'carapace'
+        Platform  = 'Windows'
+        Gate      = 'PsCarapace'
+        Impact    = 'scoop、winget、gh、docker 等外部 CLI 的参数值补全不可用。'
+        Install   = 'Deploy-Carapace，然后 Enable-PsPlugin Carapace -Persist'
+        Docs      = 'Feature-Guide.md §7'
+        Note      = '默认关闭；启用时 init 加载约 0.1–0.2 秒；git/gitk 归属用 Set-GitCompletionSource 切换。'
+    }
+
     # 交互：文件图标
     [PSCustomObject]@{
         Feature   = '交互：文件图标'
