@@ -2090,11 +2090,10 @@ function Enable-PsPlugin
     .SYNOPSIS
     启用体验插件(当会话生效;加 -Persist 长期启用,重开也开)。
     .DESCRIPTION
-    启用是显式开(环境变量 True,盖过配置文件)。Tab/Predictor 即时生效(逐调用判定,
-    无需重载);7+ 的 Fzf/Tab 立装桩即时生效(重调安装器,幂等,只补缺);5.1 的 Tab
-    直接导入 CxxuTab;Argc 立装 Tab 桩,真正的注册仍在首个 Tab;GitCompletion 在模块已安装时
-    立即注册 git/gitk completer;Carapace 立即按配置加载;PSCompletions/Fnm/ScoopSearch
-    立即调用各自的初始化函数;Predictor/Zoxide 单发已过则重开终端
+    启用是显式开(环境变量 True,盖过配置文件)。GitCompletion 额外切换来源并注册 git/gitk；
+    其余组件统一走 Enable-CxxuComponent -Now：先写开关，再调用清单里的 Init 函数。
+    Fzf/Tab 在 pwsh 7+ 继续补手势桩，5.1 的 Tab 直接导入 CxxuTab；Argc 的即时调用只装 Tab 桩，
+    真正的注册仍在首个 Tab；Predictor/Zoxide 若 OnIdle 单发已过，仍建议重开终端
     (或 Register-PsUxLazyLoad -Now 立装)。
     .EXAMPLE
     Enable-PsPlugin Tab
@@ -2132,25 +2131,11 @@ function Enable-PsPlugin
                 Write-Warning 'git-completion 模块未安装：先执行 Deploy-CompletionStack -IncludeGitCompletion，再启用 GitCompletion。'
             }
         }
-        elseif ($Name -eq 'Carapace')
-        {
-            Enable-CxxuComponent -Id 'Carapace' -Persist:$Persist -Path $Path
-            if (Get-Command carapace -ErrorAction SilentlyContinue) { Initialize-Carapace }
-            else { Write-Warning '未检测到 carapace：先执行 Deploy-Carapace 安装。' }
-        }
         else
         {
-            Enable-CxxuComponent -Id $Name -Persist:$Persist -Path $Path
+            Enable-CxxuComponent -Id $Name -Persist:$Persist -Path $Path -Now
         }
 
-        if ($Name -eq 'Argc')
-        {
-            # 只补环境/PATH 与 Tab 桩(幂等);实际注册仍在首个 Tab
-            Set-ArgcCompletions -ErrorAction SilentlyContinue
-        }
-        if ($Name -eq 'PSCompletions') { Import-PsCompletions }
-        elseif ($Name -eq 'Fnm') { Initialize-Fnm }
-        elseif ($Name -eq 'ScoopSearch') { Initialize-ScoopSearch }
         if ((($Name -eq 'Fzf') -or ($Name -eq 'Tab')) -and ($PSVersionTable.PSVersion.Major -ge 7))
         {
             # 立装桩即时生效(幂等,只补缺;交互门由安装器自己判定,重定向下静默跳过)
@@ -2493,19 +2478,24 @@ function Enable-CxxuComponent
 {
     <#
     .SYNOPSIS
-    启用一个组件：写当前会话环境变量；-Persist 时写用户配置。
+    启用一个组件：写当前会话环境变量；-Persist 写用户配置；-Now 立即调用组件 Init 函数。
     .DESCRIPTION
-    组件 Id 来自 PS/Init/components.psd1。只负责启用意图，不立即加载组件；
-    需要立即生效的函数（如 carapace）请用 Enable-PsPlugin 或重开终端。
+    组件 Id 来自 PS/Init/components.psd1。默认只负责启用意图，不立即加载；
+    加 -Now 时调用清单里的 Init 函数，等价于 Enable-PsPlugin 的即时加载路径。
+    部分组件即使立即调用 Init 也需重开终端才完全生效（如已注册的 completer）。
     .EXAMPLE
     Enable-CxxuComponent Carapace
     .EXAMPLE
     Enable-CxxuComponent Carapace -Persist
+    .EXAMPLE
+    Enable-CxxuComponent Fnm -Persist -Now
     #>
     [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory)][string]$Id,
         [switch]$Persist,
+        # 立即调用组件清单里的 Init 函数（不需要重开终端时可加）
+        [switch]$Now,
         [string]$Path = (Join-Path (Join-Path $HOME '.cxxu') 'config.psd1')
     )
     $component = @(Read-CxxuComponentManifest | Where-Object { [string]$_.Id -ieq $Id } | Select-Object -First 1)
@@ -2516,6 +2506,13 @@ function Enable-CxxuComponent
         Set-Item "env:$key" -Value 'True'
         if ($Persist) { Set-CxxuConfigModelValues -Path $Path -Values @{ $key = $true } }
         Write-Host ("组件 {0} 已启用{1}。" -f $Id, $(if ($Persist) { '并写入配置' } else { '（当会话）' }))
+        if ($Now)
+        {
+            $init = [string]$component[0].Init
+            if ([string]::IsNullOrWhiteSpace($init)) { Write-Warning "组件 $Id 没有 Init 函数，跳过立即加载。" }
+            elseif (Get-Command -Name $init -ErrorAction SilentlyContinue) { & $init }
+            else { Write-Warning "组件 $Id 的 Init 函数不存在：$init" }
+        }
     }
 }
 function Disable-CxxuComponent
