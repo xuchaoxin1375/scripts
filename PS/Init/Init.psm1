@@ -1119,6 +1119,18 @@ function Initialize-Carapace
                 Write-Warning 'carapace 生成脚本已变化，空结果补丁未匹配；请核对当前版本的空结果处理。'
             }
         }
+        # 在 completer 入口加 PsCarapace 门控：已注册的 Native completer 无法撤销，
+        # 没有这道门时 Disable-PsPlugin Carapace 后旧绑定仍会返回候选，停用要等重开终端才见效。
+        $paramNeedle = 'param($wordToComplete, $commandAst, $cursorPosition)'
+        $gate = '    if ($env:PsCarapace -match ''^(False|0|No|Off)$'') { return }'
+        if ($script.Contains($paramNeedle))
+        {
+            $script = $script.Replace($paramNeedle, $paramNeedle + "`n" + $gate)
+        }
+        else
+        {
+            Write-Warning 'carapace 生成脚本已变化，PsCarapace 门控未注入；停用 carapace 后需重开终端才完全停止。'
+        }
         $script | Invoke-Expression
         $global:PsCarapaceLoaded = $true
         $global:PsCarapacePending = $false
@@ -2302,7 +2314,27 @@ function Disable-PsPlugin
             Disable-CxxuComponent -Id $Name -Persist:$Persist -Path $Path
             if ($Name -eq 'Carapace')
             {
-                Write-Host '当前会话已注册的 carapace completer 无法撤销；重开终端后由剩余来源接管 git/gitk。'
+                # carapace 的 completer 带 PsCarapace 门控，停用后已注册的绑定立即返回空；
+                # argc 已启用时重新注册，让重叠命令当场换回 argc（与停用 Argc 时对称）。
+                $argcOn = -not [string]::IsNullOrWhiteSpace($env:PsArgc) -and
+                    $env:PsArgc -notmatch '^(False|0|No|Off)$'
+                if ($argcOn -and $global:PsArgcLoaded)
+                {
+                    Initialize-ArgcCompletions -Force
+                    Write-Host 'carapace 已停用；argc 已重新注册，重叠命令由 argc 接管。'
+                }
+                elseif ($argcOn)
+                {
+                    Write-Host 'carapace 已停用；argc 尚未注册，下一个 Tab 由 argc 接管重叠命令。'
+                }
+                else
+                {
+                    Write-Host 'carapace 已停用；argc 未启用，当前会话这些命令无候选，重开终端后回到原生补全。'
+                }
+                if ($global:PsCarapaceGit)
+                {
+                    Write-Host 'git/gitk 当前由 carapace 负责（PsGitCompletionSource=Carapace），重开终端后才会改由其他来源接管。'
+                }
             }
             elseif ($Name -eq 'Argc')
             {

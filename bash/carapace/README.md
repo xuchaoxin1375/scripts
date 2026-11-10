@@ -390,6 +390,7 @@ PowerShell 不按 rc 的 source 顺序，而是由 `init` 注册 Native complete
 - carapace 由 `PsCarapace` 在 `init` 启动时加载；argc 由 `PsArgc` 在首个 Tab 才注册。
 - PowerShell 对同名 Native completer 采**后注册覆盖先注册**。因此两者都开启时，argc 会接管非 git/gitk 的重叠命令，carapace 只补 argc 没有的命令。
 - 需要 carapace 负责这些外部 CLI 时，关闭 argc：`Disable-PsPlugin Argc -Persist`；或只保留 carapace 与 `git-completion`。关闭时若 carapace 可用会自动重新注册，当前会话即交还，不必重开终端。
+- 反向停用 carapace 会立即生效：`Initialize-Carapace` 在 completer 入口注入 `PsCarapace` 门控，停用后旧绑定返回空；argc 已启用时重叠命令当场交回 argc。只有 carapace 独有的命令会暂时无候选，重开终端后回到原生补全。
 - `PsGitCompletionSource` 只影响 PowerShell 的 git/gitk 归属，不改变 bash 的注册顺序；`Auto` 在装有 `git-completion` 模块时选它，也不建议选 `Argc`（同样的选项缺口）。
 - 两侧配置独立：`PsCarapace` 控制 PowerShell，rc 标记块控制 bash；同一个 carapace 二进制可以共用，但启用、停用与排除项不联动。
 
@@ -473,7 +474,7 @@ apply_tab_completion_mode
 | --- | --- | --- |
 | 停用 bash 补全 | `setup.sh --disable`（登录 shell 加 `--login`），或手工删除/注释标记块 | 否 |
 | 只停用部分命令 | `CARAPACE_EXCLUDES='git,gitk'` | 否 |
-| 停用 PowerShell 侧 | `Disable-PsPlugin Carapace -Persist`（`Disable-CxxuComponent Carapace -Persist` 等价），重开终端后不再加载 | 否 |
+| 停用 PowerShell 侧 | `Disable-PsPlugin Carapace -Persist`（`Disable-CxxuComponent Carapace -Persist` 等价），当前会话立即停止返回候选，重开终端后不再加载 | 否 |
 | 删除二进制 | `scoop uninstall carapace-bin`、`brew uninstall carapace`，或删除 `~/.cxxu/bin/carapace.exe` / `~/.local/bin/carapace` 并从 PATH 移除 | 是 |
 
 两侧独立：停用 PowerShell 组件不影响 bash 的 rc 片段，`--disable` 也不修改 `PsCarapace` 配置。与 argc 组合部署时按范围停用的完整说明见 [completion-stack README](../completion-stack/README.md#停用与卸载)。
