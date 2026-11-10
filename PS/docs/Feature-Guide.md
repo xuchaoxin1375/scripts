@@ -25,7 +25,7 @@ Add-EnvVar -EnvVar PSModulePath -NewValue $p -Verbose
 | `Set-PsPrompt -version < fast/short/...>` | 切换提示符；加 `-Persist` 才写注册表记住选择 |
 | `dm` | 切极简 prompt（做笔记摘录时聚焦命令本身） |
 | `Test-PromptDelay` | 测当前 prompt 延迟 |
-| `doctor` | 统一诊断入口（定位问题先执行它）：先跑 `Test-PsEnvReadiness`（安装态），再查运行态（init 错误/PSReadLine/历史大小/predictor/门控/懒加载/守护/仓库脏），只读，默认零网络；按平台过滤不适用的检查并在表尾汇总已跳过项。`-Feature <名>` 只查单个功能（如 `doctor -Feature Argc`），支持依赖清单的功能名/关键字与 Argc/Tab/Predictor/Fzf/Zoxide/History/Init 别名 |
+| `doctor` | 统一诊断入口（定位问题先执行它）：先跑 `Test-PsEnvReadiness`（安装态），再查运行态（init 错误/PSReadLine/历史大小/predictor/门控/懒加载/守护/仓库脏），只读，默认零网络；按平台过滤不适用的检查并在表尾汇总已跳过项。`-Feature <名>` 只查单个功能（如 `doctor -Feature Argc`），支持依赖清单的功能分组名、关键字与正式短名，`-Feature` 可用 Tab 补全 |
 | `Get-CxxuDependencyReport` | 按功能列出外部依赖、生成物与当前安装状态，表后给出安装建议；只读、默认零网络，详见 [Feature-Dependencies.md](Feature-Dependencies.md) |
 | `New-CxxuConfigTemplate` | 生成 SchemaVersion=2 用户配置模板（`~/.cxxu/config.psd1`，仓库外本机生效；组件来自 `components.psd1`，Settings 来自 `config.defaults.psd1`） |
 | `Import-CxxuConfig` | 读用户配置（init 首步自动调；优先级：环境变量 > 配置文件 > 默认值） |
@@ -348,7 +348,7 @@ Git Bash 使用同一个 carapace 二进制，Linux/macOS 使用各自平台的�
   `Deploy-CompletionStack [-WhatIf] [-IncludeArgc] [-IncludeFuzzy] [-IncludePredictor] [-IncludePSCompletions] [-IncludeGitCompletion] [-All]`（新机一键装栈）、
   `Test-PsEnvReadiness`（查缺）、`predictNo`（当会话关预测）、
   `Enable-PsPlugin` / `Disable-PsPlugin`（插件启停，Fzf/Zoxide/Predictor/Tab/Argc/GitCompletion/Carapace/PSCompletions/Fnm/ScoopSearch）。
-- `doctor -Feature` 与 `Get-CxxuDependencyReport -Feature` 的 `-Feature` 支持 Tab 补全功能名与 `Argc`/`Tab`/`Predictor`/`Fzf`/`Zoxide`/`History`/`Init`/`Carapace` 等别名。
+- `doctor -Feature` 与 `Get-CxxuDependencyReport -Feature` 支持 Tab 补全，候选为正式短名（`Core`、`Argc`、`Carapace`、`GitCompletion` 等）；完整对应表见 [Feature-Dependencies.md](Feature-Dependencies.md)。
 - **历史膨胀（Ctrl+R 变慢）**：`Optimize-PsHistory -WhatIf` 先看诊断（总数/去重率/重复 Top5）， `Optimize-PsHistory [-KeepLast 3000]` 动手（去重只留最后一次 + 去杂 + 截断，旧行进同目录 `.archive-时间.txt`，原文件留 `.bak-时间`，均可恢复）。治本：init 已开 `HistoryNoDuplicates`（新命令不再重复入库）+ `MaximumHistoryCount 3000`。注意历史文件无时间戳，切割按新旧顺序（文件尾=最近）；当前会话内存里的旧历史重启才换新。
 - 新终端对照：ListView 输 `get-child` 应出现 `Get-ChildItem`（`[CxxuCommand]`），Tab 输 `get-chi` 也应含它；`get child`（有空格）第二段进参数位，不会按命令名补（§8）。仍不对就按 §9 的「Tab 补全自查」/`doctor` 定位。
 

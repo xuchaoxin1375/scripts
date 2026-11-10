@@ -125,7 +125,40 @@ Get-CxxuDependencyReport -Json           # 供其他程序消费
 | `doctor -Feature <功能>` | 单功能聚焦：开关生效值与来源、相关运行态行、同一份清单的依赖结果 | 默认零网络（聚焦视图忽略 `-CheckRemote`） | 聚焦健康表 |
 | `install_shell_deps.sh --check` | shell 侧的 `zsh`、`git`、`curl`、`tar` 等系统依赖 | 只检查，不安装 | 缺失列表与非零退出码 |
 
-定位顺序建议：先跑 `Get-CxxuDependencyReport -Missing` 看缺什么，再按安装建议补齐；补完仍不生效时跑 `doctor` 看运行态，最后按 [Feature-Guide.md](Feature-Guide.md) 的补全与 dll 章节排查。只关心一个功能时用 `doctor -Feature <名>`，它把开关、运行态和依赖合成一张表，不必先看整机检查。`-Feature` 支持功能名、关键字与 `Argc`/`Tab`/`Predictor`/`Fzf`/`Zoxide`/`History`/`Init` 等别名，也支持通配符（如 `doctor -Feature '补全*'`）。交互式 pwsh 中，`doctor -Feature` 与 `Get-CxxuDependencyReport -Feature` 的 `-Feature` 参数支持 Tab 补全功能名和上述别名。
+定位顺序建议：先跑 `Get-CxxuDependencyReport -Missing` 看缺什么，再按安装建议补齐；补完仍不生效时跑 `doctor` 看运行态，最后按 [Feature-Guide.md](Feature-Guide.md) 的补全与 dll 章节排查。只关心一个功能时用 `doctor -Feature <名>`，它把开关、运行态和依赖合成一张表，不必先看整机检查。`-Feature` 支持正式短名（见下节）、功能分组名、关键字与通配符（如 `doctor -Feature '补全*'`）；交互式 pwsh 中，`doctor -Feature` 与 `Get-CxxuDependencyReport -Feature` 均可用 Tab 补全正式短名。
+
+## 正式短名
+
+正式短名用于 `-Feature` 的日常输入与 Tab 补全，解析为对应的功能分组；功能分组名、关键字与通配符仍然可用。
+
+| 短名 | 功能分组 |
+|---|---|
+| `Core` | 核心运行环境 |
+| `Tab` | 补全：Tab 增强 |
+| `CompletionPredictor` | 补全：参数/路径预测 |
+| `CommandPredictor` | 补全：命令名预测 |
+| `Fzf` | 补全：模糊搜索 |
+| `Zoxide` | 补全：目录跳转 |
+| `Argc` | 补全：参数补全（argc） |
+| `PSCompletions` | 补全：参数补全（PSCompletions） |
+| `GitCompletion` | 补全：git/gitk |
+| `Carapace` | 补全：外部 CLI 参数（carapace） |
+| `TerminalIcons` | 交互：文件图标 |
+| `Conda` | 提示符：conda |
+| `Fnm` | 提示符：node |
+| `OhMyPosh` | 提示符：oh-my-posh |
+| `PoshGit` | 提示符：posh-git |
+| `PackageManager` | 工具链：包管理器 |
+| `Archive` | 运维：压缩归档 |
+| `SSH` | 运维：SSH 远程 |
+| `MySQL` | 运维：MySQL |
+| `Nginx` | 运维：Nginx |
+| `Cloudflare` | 运维：Cloudflare 与脚本 |
+| `NetworkDrive` | 运维：网络驱动器 |
+| `Toast` | 通知：Toast |
+| `History` | 历史策略与历史大小检查（无依赖分组） |
+
+短名与功能分组的对应关系定义在 `Deploy.psm1` 的 `CxxuFeatureKeyMap`；新增功能分组时同步登记短名，否则该分组只能用完整名称匹配。
 
 ## 维护依赖清单
 

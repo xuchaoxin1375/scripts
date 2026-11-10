@@ -10,8 +10,33 @@ Invoke-Expression ((Invoke-RestMethod "$mirror/https://raw.githubusercontent.com
 # 配置一个相对稳定的镜像源(出了源的贡献者,还有可能被 墙,因此还是要定期检查)
 #>
 
-# /Feature 补全候选缓存；首次补全时读取依赖清单，模块重新导入后重建。
-$script:CxxuDependencyFeatureNames = $null
+# -Feature 正式短名到依赖清单功能分组的映射；参数解析与 Tab 补全共用同一份。
+# 新增功能分组时在此登记短名；未登记的仍可用完整功能名或关键字匹配。
+$script:CxxuFeatureKeyMap = [ordered]@{
+    Core                = '核心运行环境'
+    Tab                 = '补全：Tab 增强'
+    CompletionPredictor = '补全：参数/路径预测'
+    CommandPredictor    = '补全：命令名预测'
+    Fzf                 = '补全：模糊搜索'
+    Zoxide              = '补全：目录跳转'
+    Argc                = '补全：参数补全（argc）'
+    PSCompletions       = '补全：参数补全（PSCompletions）'
+    GitCompletion       = '补全：git/gitk'
+    Carapace            = '补全：外部 CLI 参数（carapace）'
+    TerminalIcons       = '交互：文件图标'
+    Conda               = '提示符：conda'
+    Fnm                 = '提示符：node'
+    OhMyPosh            = '提示符：oh-my-posh'
+    PoshGit             = '提示符：posh-git'
+    PackageManager      = '工具链：包管理器'
+    Archive             = '运维：压缩归档'
+    SSH                 = '运维：SSH 远程'
+    MySQL               = '运维：MySQL'
+    Nginx               = '运维：Nginx'
+    Cloudflare          = '运维：Cloudflare 与脚本'
+    NetworkDrive        = '运维：网络驱动器'
+    Toast               = '通知：Toast'
+}
 
 function Confirm-GitCommand
 {
@@ -1331,23 +1356,33 @@ function Test-PsEnvReadiness
     Write-Host "建议 $advice"
 }
 
+function Resolve-CxxuFeatureToken
+{
+    # 把 -Feature 的正式短名展开为依赖清单的功能分组名；未登记的值原样返回。
+    param([string[]]$Token)
+    @($Token | ForEach-Object {
+            $value = [string]$_
+            if ($value -and $script:CxxuFeatureKeyMap.Contains($value)) { $script:CxxuFeatureKeyMap[$value] } else { $value }
+        })
+}
+
 function Get-CxxuDoctorFeatureCompletion
 {
-    # 为 doctor/Get-CxxuDependencyReport 的 -Feature 生成候选（模块内部）。
-    # 首次调用读取依赖清单并按功能名缓存；别名与功能名一起返回。
+    # 为 doctor/Get-CxxuDependencyReport 的 -Feature 生成正式短名候选（模块内部）。
+    # 候选文本只用 ASCII 短名，功能分组名放在提示里。
     param([string]$WordToComplete)
 
-    if ($null -eq $script:CxxuDependencyFeatureNames)
-    {
-        $catalogPath = Join-Path $PSScriptRoot 'FeatureDependencies.ps1'
-        $script:CxxuDependencyFeatureNames = if (Test-Path -LiteralPath $catalogPath)
+    $candidates = @(
+        foreach ($key in $script:CxxuFeatureKeyMap.Keys)
         {
-            @(& $catalogPath | ForEach-Object { [string]$_.Feature } | Where-Object { $_ } | Select-Object -Unique)
+            $group = [string]$script:CxxuFeatureKeyMap[$key]
+            [PSCustomObject]@{
+                Name        = [string]$key
+                Description = ($group -split '：', 2)[-1]
+            }
         }
-        else { @() }
-    }
-
-    $aliases = @('Argc', 'Tab', 'Predictor', 'Fzf', 'Zoxide', 'History', 'Init', 'Carapace', 'PSCompletions')
+        [PSCustomObject]@{ Name = 'History'; Description = '历史策略与历史大小检查' }
+    )
     $pattern = if ([string]::IsNullOrEmpty($WordToComplete))
     {
         '*'
@@ -1356,11 +1391,15 @@ function Get-CxxuDoctorFeatureCompletion
     {
         '*' + [System.Management.Automation.WildcardPattern]::Escape($WordToComplete) + '*'
     }
-    @($script:CxxuDependencyFeatureNames + $aliases) |
-        Where-Object { $_ -like $pattern } |
-        Sort-Object -Unique |
+    $candidates |
+        Where-Object { $_.Name -like $pattern } |
+        Sort-Object -Property Name |
         ForEach-Object {
-            [System.Management.Automation.CompletionResult]::new($_, $_, [System.Management.Automation.CompletionResultType]::ParameterValue, $_)
+            [System.Management.Automation.CompletionResult]::new(
+                $_.Name,
+                $_.Name,
+                [System.Management.Automation.CompletionResultType]::ParameterValue,
+                $_.Description)
         }
 }
 
@@ -1373,8 +1412,8 @@ function doctor
     只读，不修改机器，默认零网络（远端版本通过 readiness 的 -CheckRemote 查看）。每行给出状态与处理动作，
     收尾计数。定位问题时先执行本命令，再按行处理。
     加 -Feature 时只查一个功能：不跑整机安装态检查，改列该功能的开关（值与来源）、相关运行态行，
-    以及 Get-CxxuDependencyReport 的聚焦依赖结果。支持依赖清单里的功能名或关键字，也支持
-    Argc/Tab/Predictor/Fzf/Zoxide/History/Init 等快捷别名；-CheckRemote 在聚焦视图下不生效。
+    以及 Get-CxxuDependencyReport 的聚焦依赖结果。支持正式短名（如 Core、Argc、Carapace）、
+    依赖清单里的功能分组名与关键字；-CheckRemote 在聚焦视图下不生效。
     .EXAMPLE
     doctor
     .EXAMPLE
@@ -1388,7 +1427,7 @@ function doctor
     param(
         # 转发给 Test-PsEnvReadiness:问远端有没有更新(默认关)
         [switch]$CheckRemote,
-        # 只查指定功能(依赖清单功能名/关键字或 Argc、Tab、Predictor 等别名);省略为整机体检
+        # 只查指定功能(正式短名、依赖清单功能分组名或关键字);省略为整机体检
         [ArgumentCompleter({
                 param($commandName, $parameterName, $wordToComplete, $commandAst, $fakeBoundParameters)
                 $cmd = Get-Command -Name $commandName -ErrorAction SilentlyContinue
@@ -1884,6 +1923,7 @@ function Get-CxxuDependencyReport
     Sync-CxxuPredictor、Deploy-ArgcCompletions 等既有命令负责；本命令只回答“缺什么、怎么补”。
     .PARAMETER Feature
     按功能或依赖名称筛选，支持通配符，可传多个模式。不含通配符时按包含匹配，例如 -Feature '补全'。
+    也可以是正式短名（如 Core、Argc、Carapace、GitCompletion），解析为对应的功能分组。
     含 *、? 等通配符时按通配符匹配，例如 -Feature '补全*'。
     .PARAMETER Level
     按级别筛选：All、Required、Recommended、Optional、Generated；默认 All。
@@ -1938,6 +1978,8 @@ function Get-CxxuDependencyReport
         [Parameter(ParameterSetName = 'Summary')]
         [switch]$SummaryOnly
     )
+
+    if ($Feature -and $Feature.Count) { $Feature = @(Resolve-CxxuFeatureToken -Token $Feature) }
 
     $catalogPath = Join-Path $PSScriptRoot 'FeatureDependencies.ps1'
     if (-not (Test-Path -LiteralPath $catalogPath))
