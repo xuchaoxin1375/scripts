@@ -20,7 +20,7 @@
 # 这里的链接gitee也可以换成gitee(适合国内用户,但是可能要登录gitee账号)
 # 使用-h获取命令行帮助
 
-version=20260911.1
+version=20261110.1
 # 插件仓库源
 REPO_SOURCE="github" # gitee
 repo_source_explicit=false
@@ -1114,6 +1114,57 @@ plugins=(\
 
 update_omz_plugins_rc
 
+# 将 git 的 bash 兼容层 _git 所在目录降到 fpath 末尾。
+# 这类目录（如 Homebrew git 的 share/zsh/site-functions）由 brew shellenv 前置，
+# 会遮住 zsh 自带、带选项描述的 _git；降级后原生补全重新生效。
+ensure_git_completion_fpath_zshrc() {
+    local zshrc=${1:-${zshrc_path:-$HOME/.zshrc}}
+    local snippet tmp
+    [[ -f $zshrc ]] || return 0
+    snippet=$(
+        cat <<'EOF'
+# >>> git completion fpath
+# 部分 git 安装（如 Homebrew）附带 bash 兼容层 _git，并经 shellenv 前置到 fpath，
+# 会遮住 zsh 自带、带选项描述的 _git。把这类目录移到 fpath 末尾；无可移动项时不做改动。
+() {
+  emulate -L zsh
+  local d
+  local -a demote keep
+  for d in $fpath; do
+    [[ -f $d/_git ]] || continue
+    if grep -q 'zsh completion wrapper for git' "$d/_git" 2>/dev/null; then
+      demote+=("$d")
+    fi
+  done
+  (( ${#demote} )) || return 0
+  for d in $fpath; do
+    (( ${demote[(Ie)$d]} )) || keep+=("$d")
+  done
+  fpath=($keep $demote)
+}
+# <<< git completion fpath
+EOF
+    )
+    tmp=$(mktemp)
+    # 删除旧片段后统一追加到文件末尾，保证它在所有 fpath 变更之后执行。
+    awk '
+        $0 == "# >>> git completion fpath" { skip = 1; next }
+        skip && $0 == "# <<< git completion fpath" { skip = 0; next }
+        skip { next }
+        { lines[++n] = $0 }
+        END {
+            while (n > 0 && lines[n] ~ /^[[:space:]]*$/) n--
+            for (i = 1; i <= n; i++) print lines[i]
+        }
+    ' "$zshrc" > "$tmp"
+    if [[ -s $tmp ]]; then
+        printf '\n' >> "$tmp"
+    fi
+    printf '%s\n' "$snippet" >> "$tmp"
+    cat "$tmp" > "$zshrc"
+    rm -f "$tmp"
+}
+
 # 将补全(completions,complete)相关插件的配置写入.zshrc
 update_comp_plugins_config_rc() {
 
@@ -1299,6 +1350,7 @@ source ~/zsh_bindkey_hss_config.sh\
     }
     update_hss_config_rc
     update_zac_config_rc
+    ensure_git_completion_fpath_zshrc "$zshrc_path"
     # 将最终的plugins列表写回到~/.zshrc中
     update_omz_plugins_rc
 }

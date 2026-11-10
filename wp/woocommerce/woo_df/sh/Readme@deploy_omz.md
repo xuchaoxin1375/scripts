@@ -3,7 +3,7 @@
 本文说明本仓库用 `deploy_omz.sh` 部署的 zsh 环境：Oh My Zsh（omz）框架、一组补全/提示插件，以及更新时必须处理的 `zasync` 依赖。
 
 脚本路径：`deploy_omz.sh`  
-脚本版本：以文件内 `version=` 为准（当前文档对应 `20260911.1`）。
+脚本版本：以文件内 `version=` 为准（当前文档对应 `20261110.1`）。
 
 脚本只改 **zsh**（主要写 `~/.zshrc` 和 `$ZSH_CUSTOM/plugins`）。可以用 bash 执行部署，但对 bash 本身没有增强效果。
 
@@ -159,6 +159,10 @@ zsh-syntax-highlighting: unhandled ZLE widget 'recent-paths'
 fpath+=${ZSH_CUSTOM:-${ZSH:-~/.oh-my-zsh}/custom}/plugins/zasync
 # <<< zasync
 
+# >>> git completion fpath
+# 把含 bash 兼容层 _git 的目录降到 fpath 末尾，保留原生 _git 的选项描述
+# <<< git completion fpath
+
 # >>> zac zsyh widgets   # 必须在 source $ZSH/oh-my-zsh.sh 之前
 if autoload -Uz is-at-least 2>/dev/null && ! is-at-least 5.9; then
   zle -N menu-search
@@ -167,7 +171,9 @@ fi
 # <<< zac zsyh widgets
 ```
 
-其它标记包括：`disable_compfix`、`zac_compinit`、`zac bindkey config`、`zac zsyh widgets`、`zac pin`、`zhss bindkey config`。
+其它标记包括：`disable_compfix`、`zac_compinit`、`zac bindkey config`、`zac zsyh widgets`、`zac pin`、`zhss bindkey config`、`git completion fpath`。
+
+`git completion fpath` 处理 macOS 上 Homebrew git 的补全 wrapper 遮住原生 `_git`、导致选项描述缺失的问题，机制与验收见 [bash/shell-completion-descriptions.md](../../../../bash/shell-completion-descriptions.md)。
 
 绑定键配置会生成独立文件再 source：
 
