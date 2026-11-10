@@ -22,6 +22,10 @@
 
 - manifest 是导出真相源。新增或删除函数时同步 `FunctionsToExport`，并跑
   `Test-ModuleManifest`。
+- 5.1 会话可能继承 pwsh 7 的 `PSModulePath`（从 pwsh 7 终端启动 VS Code、Windows Terminal 等）。
+  7 的目录排在 5.1 自带目录之前时，5.1 会加载 `Microsoft.PowerShell.Utility` 7.0.0.0，
+  `Import-PowerShellDataFile` 等命令随之不可见；`init` 的 `Update-CxxuModulePathOrder`
+  会前置 5.1 自带目录并重载 Utility。排查“命令不存在”先看 `$env:PSModulePath` 的顺序。
 - 读 `.psd1` 数据文件（组件清单、默认值、用户配置）一律走 `Init` 的内部函数
   `Read-CxxuDataFile`：它先看 `Import-PowerShellDataFile` 是否可见，缺失时退回 AST 解析。
   不要直接调该 cmdlet，否则在识别不到它的宿主里会连发读取警告。

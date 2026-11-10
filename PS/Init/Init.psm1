@@ -23,6 +23,62 @@ elseif ($IsMacOS -eq $true)
     $script:ArgcPlatform.CompletionDir = 'macos'
 }
 
+function Test-CxxuPs7ModulePathEntry
+{
+    # 判断路径是否属于 PowerShell 7 的模块目录(不导出):
+    # 7 的用户级与机器级目录以 \PowerShell\Modules 结尾;便携或 scoop 安装的 7 为 \powershell\<版本或别名>\Modules。
+    param([Parameter(Mandatory)][string]$Path)
+
+    $p = $Path.TrimEnd('\')
+    if ($p -match '(?i)\\WindowsPowerShell\\Modules$') { return $false }
+    if ($p -match '(?i)\\PowerShell\\Modules$') { return $true }
+    return [bool]($p -match '(?i)\\powershell\\[^\\]+\\Modules$')
+}
+function Update-CxxuModulePathOrder
+{
+    # 修正 5.1 会话的模块路径顺序(不导出)。
+    # 从 pwsh 7 终端启动 VS Code、Windows Terminal 等程序时,子进程会继承 7 的 PSModulePath,
+    # 7 的模块目录因此排在 5.1 自带目录之前;5.1 会优先解析到仅 7 可用的模块。
+    # 实测 Microsoft.PowerShell.Utility 7.0.0.0 在 5.1 下加载后,Import-PowerShellDataFile 等命令不可见,
+    # init 读组件清单与用户配置即失败。修复分两步:把 5.1 自带的机器级与 $PSHOME\Modules 前置(不删除条目),
+    # 再重新导入已被错误版本占位的 Microsoft.PowerShell.Utility;顺序正常时不动作。
+    if ($PSVersionTable.PSEdition -ne 'Desktop') { return }
+
+    $ownHome = Join-Path $PSHOME 'Modules'
+    $ownNorm = @($ownHome.TrimEnd('\'))
+    if ($env:ProgramFiles) { $ownNorm += (Join-Path $env:ProgramFiles 'WindowsPowerShell\Modules').TrimEnd('\') }
+    $entries = @($env:PSModulePath -split ';' | Where-Object { $_ })
+    $ownIndex = -1
+    $ps7Index = -1
+    for ($i = 0; $i -lt $entries.Count; $i++)
+    {
+        $current = $entries[$i].TrimEnd('\')
+        if ($ownIndex -lt 0 -and ($ownNorm -contains $current)) { $ownIndex = $i; continue }
+        if ($ps7Index -lt 0 -and ($ownNorm -notcontains $current) -and (Test-CxxuPs7ModulePathEntry -Path $entries[$i])) { $ps7Index = $i }
+    }
+    # 自带目录不在路径里或 7 目录并未抢在它前面时,保持原样
+    if ($ownIndex -lt 0 -or $ps7Index -lt 0 -or $ps7Index -gt $ownIndex) { return }
+
+    $front = @($entries | Where-Object { $ownNorm -contains $_.TrimEnd('\') })
+    $back = @($entries | Where-Object { $ownNorm -notcontains $_.TrimEnd('\') })
+    $env:PSModulePath = (@($front) + @($back)) -join ';'
+    Write-Verbose 'PSModulePath 中 pwsh 7 的目录原本排在 5.1 自带目录之前,已把 5.1 自带目录前置。'
+
+    # 已经加载 7 版 Utility 的会话不会因排序自动恢复,需要重新导入
+    if (-not (Get-Command Import-PowerShellDataFile -ErrorAction Ignore))
+    {
+        try
+        {
+            Import-Module Microsoft.PowerShell.Utility -Force -ErrorAction Stop
+            Write-Verbose '已重新导入 Microsoft.PowerShell.Utility,恢复 5.1 自带命令。'
+        }
+        catch
+        {
+            Write-Verbose "重新导入 Microsoft.PowerShell.Utility 失败(清单读取已由内置解析兜底):$($_.Exception.Message)"
+        }
+    }
+}
+
 function init
 { 
     <# 
@@ -53,6 +109,8 @@ function init
         $reInit = $null -ne $PsInit
         # $env:PsInit = 'True' 
         $global:PsInit = $True
+        # 从 pwsh 7 终端启动的宿主会让 5.1 继承 7 的模块路径,先修正顺序再读配置与导入模块
+        Update-CxxuModulePathOrder
         # 用户配置文件先行(环境变量 > 配置文件 > 默认;缺文件静默跳过,见 Import-CxxuConfig)
         Import-CxxuConfig
         # 仓库模块文件比命令表缓存新时删缓存:插件每进程只建一次表(见 CxxuPredictor),
