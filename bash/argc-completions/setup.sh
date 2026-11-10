@@ -6,11 +6,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INIT_FILE="$SCRIPT_DIR/argc-completions.sh"
 RC_FILE="$HOME/.bashrc"
+RC_FILE_EXPLICIT=0
+USE_LOGIN_RC=0
 DRY_RUN=0
 UNINSTALL=0
+ARGC_DIR=''
 
 BEGIN_MARK="# >>> argc-completions >>>"
 END_MARK="# <<< argc-completions <<<"
+CARAPACE_MARK="# >>> carapace >>>"
 
 usage() {
 	cat <<'EOF'
@@ -19,23 +23,50 @@ usage() {
 选项:
   -u, --uninstall    从 rc 文件移除已安装的片段
       --rc <file>    指定 rc 文件（默认 ~/.bashrc）
-      --dry-run      只打印将要写入或移除的内容
+  -l, --login        写入登录 shell 实际读取的 rc 文件
+      --argc-dir <d> 指定 argc-completions 克隆目录，写入 ARGC_COMPLETIONS_DIR
+  -n, --dry-run      只打印将要写入或移除的内容
   -h, --help         显示本帮助
+
+说明:
+  同一命令由后 source 的补全框架接管。rc 中已有 carapace 块时，本脚本把
+  argc 块插到它之前，保证 carapace 继续负责重叠命令（git 等），argc 只补
+  carapace 缺失的部分。--login 与 --rc 不能同时使用。
 EOF
+}
+
+login_rc_file() {
+	for candidate in "$HOME/.bash_profile" "$HOME/.bash_login" "$HOME/.profile"; do
+		if [ -f "$candidate" ]; then
+			printf '%s\n' "$candidate"
+			return 0
+		fi
+	done
+	printf '%s\n' "$HOME/.bash_profile"
 }
 
 while [ $# -gt 0 ]; do
 	case "$1" in
 	-u | --uninstall) UNINSTALL=1 ;;
-	--rc)
+	-l | --login) USE_LOGIN_RC=1 ;;
+	-r | --rc)
 		shift
 		if [ $# -eq 0 ]; then
 			echo "错误: --rc 缺少参数" >&2
 			exit 2
 		fi
 		RC_FILE="$1"
+		RC_FILE_EXPLICIT=1
 		;;
-	--dry-run) DRY_RUN=1 ;;
+	--argc-dir)
+		shift
+		if [ $# -eq 0 ]; then
+			echo "错误: --argc-dir 缺少参数" >&2
+			exit 2
+		fi
+		ARGC_DIR="$1"
+		;;
+	-n | --dry-run) DRY_RUN=1 ;;
 	-h | --help)
 		usage
 		exit 0
@@ -49,6 +80,25 @@ while [ $# -gt 0 ]; do
 	shift
 done
 
+if [ "$USE_LOGIN_RC" -eq 1 ] && [ "$RC_FILE_EXPLICIT" -eq 1 ]; then
+	echo "错误: --login 与 --rc 不能同时使用" >&2
+	exit 2
+fi
+if [ "$USE_LOGIN_RC" -eq 1 ]; then
+	RC_FILE="$(login_rc_file)"
+fi
+
+# shellcheck disable=SC2088
+case "$ARGC_DIR" in
+'') ;;
+"~") ARGC_DIR="$HOME" ;;
+"~/"*) ARGC_DIR="$HOME/${ARGC_DIR#\~/}" ;;
+esac
+if [ -n "$ARGC_DIR" ] && { [ ! -d "$ARGC_DIR/completions" ] || [ ! -d "$ARGC_DIR/bin" ]; }; then
+	echo "错误: $ARGC_DIR 不是 argc-completions 克隆目录（缺少 completions/ 或 bin/）" >&2
+	exit 1
+fi
+
 if [ ! -f "$INIT_FILE" ]; then
 	echo "错误: 找不到 $INIT_FILE" >&2
 	exit 1
@@ -56,9 +106,19 @@ fi
 
 remove_block() {
 	awk -v begin="$BEGIN_MARK" -v end="$END_MARK" '
-        $0 == begin { skip = 1; next }
-        $0 == end   { skip = 0; next }
-        !skip
+        {
+            line = $0
+            sub(/\r$/, "", line)
+        }
+        line == begin { skip = 1; pending = 0; next }
+        line == end   { skip = 0; next }
+        skip          { next }
+        line == ""    { pending = 1; next }
+        {
+            if (pending) { print ""; pending = 0 }
+            print line
+        }
+        END { if (pending) print "" }
     ' "$1"
 }
 
@@ -71,10 +131,32 @@ show_block() {
 }
 
 write_block() {
-	printf '\n%s\n' "$BEGIN_MARK"
+	printf '%s\n' "$BEGIN_MARK"
 	printf '# 由 scripts/bash/argc-completions/setup.sh 维护，删除本标记块即卸载\n'
+	if [ -n "$ARGC_DIR" ]; then
+		printf 'export ARGC_COMPLETIONS_DIR="%s"\n' "$ARGC_DIR"
+	fi
 	printf '[ -f "%s" ] && source "%s"\n' "$INIT_FILE" "$INIT_FILE"
 	printf '%s\n' "$END_MARK"
+}
+
+insert_block() {
+	local base="$1" block="$2" out="$3"
+	if grep -qxF "$CARAPACE_MARK" "$base"; then
+		awk -v mark="$CARAPACE_MARK" -v bf="$block" '
+            $0 == mark && !done {
+                while ((getline line < bf) > 0) print line
+                close(bf)
+                print ""
+                done = 1
+            }
+            { print }
+        ' "$base" >"$out"
+	else
+		cat "$base" >"$out"
+		printf '\n' >>"$out"
+		cat "$block" >>"$out"
+	fi
 }
 
 if [ ! -f "$RC_FILE" ]; then
@@ -105,15 +187,24 @@ fi
 
 if [ "$DRY_RUN" -eq 1 ]; then
 	echo "[dry-run] 目标 rc 文件: $RC_FILE"
+	if [ -f "$RC_FILE" ] && grep -qxF "$CARAPACE_MARK" "$RC_FILE"; then
+		echo "[dry-run] 插入位置: carapace 块之前（保证 carapace 后加载）"
+	else
+		echo "[dry-run] 插入位置: 文件末尾"
+	fi
 	echo "[dry-run] 将写入以下标记块:"
 	write_block
 	exit 0
 fi
 
-tmp="$(mktemp "${RC_FILE}.XXXXXX")"
-remove_block "$RC_FILE" >"$tmp"
-write_block >>"$tmp"
-mv "$tmp" "$RC_FILE"
+tmp_base="$(mktemp "${RC_FILE}.XXXXXX")"
+tmp_block="$(mktemp "${RC_FILE}.block.XXXXXX")"
+tmp_out="$(mktemp "${RC_FILE}.out.XXXXXX")"
+remove_block "$RC_FILE" >"$tmp_base"
+write_block >"$tmp_block"
+insert_block "$tmp_base" "$tmp_block" "$tmp_out"
+mv "$tmp_out" "$RC_FILE"
+rm -f "$tmp_base" "$tmp_block"
 
 if bash -n "$RC_FILE" 2>/dev/null; then
 	echo "已写入 $RC_FILE"

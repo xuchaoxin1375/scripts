@@ -239,9 +239,15 @@ remove_block() {
             line = $0
             sub(/\r$/, "", line)
         }
-        line == begin { skip = 1; next }
+        line == begin { skip = 1; pending = 0; next }
         line == end   { skip = 0; next }
-        !skip
+        skip          { next }
+        line == ""    { pending = 1; next }
+        {
+            if (pending) { print ""; pending = 0 }
+            print line
+        }
+        END { if (pending) print "" }
     ' "$1"
 }
 

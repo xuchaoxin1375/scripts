@@ -35,6 +35,7 @@
 | 新机器部署 PowerShell 环境 | [PS/docs/Deploy-Guide.md](PS/docs/Deploy-Guide.md) |
 | 只启用补全（机器已就绪） | [PS/docs/Deploy-Guide.md](PS/docs/Deploy-Guide.md) §5 → [Feature-Guide.md](PS/docs/Feature-Guide.md) §7/§9 |
 | Git Bash / Linux / macOS 的 bash 补全（carapace） | [bash/carapace/README.md](bash/carapace/README.md) | 平台差异、登录 shell 与 rc 选择、安装/卸载、验收与未验证项 |
+| bash 补全组合部署（argc 补缺口 + carapace 负责 git） | [bash/completion-stack/README.md](bash/completion-stack/README.md) | 一条命令写入两个 rc 块、顺序规则、验收与卸载 |
 | 日常使用：初始化、命令查询、补全、更新 | [PS/docs/Feature-Guide.md](PS/docs/Feature-Guide.md) |
 | 目标机器只有 Windows PowerShell 5.1 | [PS/Deploy/readme.md](PS/Deploy/readme.md)(轻量部署) |
 | nginx 与反向代理配置 | [nginx_conf/Readme.md](wp/woocommerce/woo_df/sh/nginx_conf/Readme.md) |

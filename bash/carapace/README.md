@@ -358,6 +358,8 @@ comm -13 \
 
 代价是启动时间：本机实测 argc 运行时 `source` 约 135–145 ms、carapace 约 50 ms；只想要一部分命令时用 `ARGC_COMPLETIONS_ONLY` 缩小注册范围。
 
+组合部署（argc 在前、carapace 在后，一次写入两个 rc 块）可以直接用 [completion-stack/setup.sh](../completion-stack/setup.sh)，步骤与验收见其 [README](../completion-stack/README.md)。
+
 ### Tab 列表与循环
 
 bash 默认的 `menu-complete` 逐个插入候选，看不到完整候选集；加载 carapace 或 argc-completions 后通常更适合改成一次列出全部候选。readline 绑定必须在补全函数注册之后再决定，因此在 rc 中、source 完补全框架后执行：

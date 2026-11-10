@@ -14,27 +14,30 @@
 
 ## 安装
 
-Git Bash 中执行：
+Git Bash 中执行（克隆目录不在默认位置时用 `--argc-dir` 指定）：
 
 ```sh
 bash /c/repos/scripts/bash/argc-completions/setup.sh --dry-run
-bash /c/repos/scripts/bash/argc-completions/setup.sh
+bash /c/repos/scripts/bash/argc-completions/setup.sh --argc-dir ~/argc-completions
 ```
 
 WSL 中执行：
 
 ```sh
 bash /mnt/c/repos/scripts/bash/argc-completions/setup.sh --dry-run
-bash /mnt/c/repos/scripts/bash/argc-completions/setup.sh
+bash /mnt/c/repos/scripts/bash/argc-completions/setup.sh --argc-dir ~/argc-completions
 ```
 
-安装动作只有一处：在 `~/.bashrc` 末尾写入 `# >>> argc-completions >>>` 标记块，内容为 source 运行时脚本。重新打开终端或 `source ~/.bashrc` 后生效。
+安装动作只有一处：写入 `# >>> argc-completions >>>` 标记块，块内按需 `export ARGC_COMPLETIONS_DIR` 并 source 运行时脚本。rc 中已有 carapace 块时，argc 块会插到它之前，保证 carapace 继续负责重叠命令（git 等）；登录 shell 加 `--login`。重新打开终端或 `source` 对应 rc 后生效。
+
+与 carapace 组合部署（argc 补缺口、carapace 负责 git）推荐用一键脚本：[bash/completion-stack/setup.sh](../completion-stack/setup.sh)。
 
 卸载：
 
 ```sh
 bash /c/repos/scripts/bash/argc-completions/setup.sh --uninstall          # Git Bash
 bash /mnt/c/repos/scripts/bash/argc-completions/setup.sh --uninstall      # WSL
+bash /path/to/scripts/bash/argc-completions/setup.sh --uninstall --login  # 登录 shell 安装时
 ```
 
 ## 手工接入
