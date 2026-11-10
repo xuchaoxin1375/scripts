@@ -125,7 +125,7 @@ Get-CxxuDependencyReport -Json           # 供其他程序消费
 | `doctor -Feature <功能>` | 单功能聚焦：开关生效值与来源、相关运行态行、同一份清单的依赖结果 | 默认零网络（聚焦视图忽略 `-CheckRemote`） | 聚焦健康表 |
 | `install_shell_deps.sh --check` | shell 侧的 `zsh`、`git`、`curl`、`tar` 等系统依赖 | 只检查，不安装 | 缺失列表与非零退出码 |
 
-定位顺序建议：先跑 `Get-CxxuDependencyReport -Missing` 看缺什么，再按安装建议补齐；补完仍不生效时跑 `doctor` 看运行态，最后按 [Feature-Guide.md](Feature-Guide.md) 的补全与 dll 章节排查。只关心一个功能时用 `doctor -Feature <名>`，它把开关、运行态和依赖合成一张表，不必先看整机检查。`-Feature` 支持功能名、关键字与 `Argc`/`Tab`/`Predictor`/`Fzf`/`Zoxide`/`History`/`Init` 等别名，也支持通配符（如 `doctor -Feature '补全*'`）。
+定位顺序建议：先跑 `Get-CxxuDependencyReport -Missing` 看缺什么，再按安装建议补齐；补完仍不生效时跑 `doctor` 看运行态，最后按 [Feature-Guide.md](Feature-Guide.md) 的补全与 dll 章节排查。只关心一个功能时用 `doctor -Feature <名>`，它把开关、运行态和依赖合成一张表，不必先看整机检查。`-Feature` 支持功能名、关键字与 `Argc`/`Tab`/`Predictor`/`Fzf`/`Zoxide`/`History`/`Init` 等别名，也支持通配符（如 `doctor -Feature '补全*'`）。交互式 pwsh 中，`doctor -Feature` 与 `Get-CxxuDependencyReport -Feature` 的 `-Feature` 参数支持 Tab 补全功能名和上述别名。
 
 ## 维护依赖清单
 

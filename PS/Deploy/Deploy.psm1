@@ -10,8 +10,8 @@ Invoke-Expression ((Invoke-RestMethod "$mirror/https://raw.githubusercontent.com
 # 配置一个相对稳定的镜像源(出了源的贡献者,还有可能被 墙,因此还是要定期检查)
 #>
 
-
-
+# /Feature 补全候选缓存；首次补全时读取依赖清单，模块重新导入后重建。
+$script:CxxuDependencyFeatureNames = $null
 
 function Confirm-GitCommand
 {
@@ -1331,6 +1331,39 @@ function Test-PsEnvReadiness
     Write-Host "建议 $advice"
 }
 
+function Get-CxxuDoctorFeatureCompletion
+{
+    # 为 doctor/Get-CxxuDependencyReport 的 -Feature 生成候选（模块内部）。
+    # 首次调用读取依赖清单并按功能名缓存；别名与功能名一起返回。
+    param([string]$WordToComplete)
+
+    if ($null -eq $script:CxxuDependencyFeatureNames)
+    {
+        $catalogPath = Join-Path $PSScriptRoot 'FeatureDependencies.ps1'
+        $script:CxxuDependencyFeatureNames = if (Test-Path -LiteralPath $catalogPath)
+        {
+            @(& $catalogPath | ForEach-Object { [string]$_.Feature } | Where-Object { $_ } | Select-Object -Unique)
+        }
+        else { @() }
+    }
+
+    $aliases = @('Argc', 'Tab', 'Predictor', 'Fzf', 'Zoxide', 'History', 'Init', 'Carapace', 'PSCompletions')
+    $pattern = if ([string]::IsNullOrEmpty($WordToComplete))
+    {
+        '*'
+    }
+    else
+    {
+        '*' + [System.Management.Automation.WildcardPattern]::Escape($WordToComplete) + '*'
+    }
+    @($script:CxxuDependencyFeatureNames + $aliases) |
+        Where-Object { $_ -like $pattern } |
+        Sort-Object -Unique |
+        ForEach-Object {
+            [System.Management.Automation.CompletionResult]::new($_, $_, [System.Management.Automation.CompletionResultType]::ParameterValue, $_)
+        }
+}
+
 function doctor
 {
     <#
@@ -1356,6 +1389,16 @@ function doctor
         # 转发给 Test-PsEnvReadiness:问远端有没有更新(默认关)
         [switch]$CheckRemote,
         # 只查指定功能(依赖清单功能名/关键字或 Argc、Tab、Predictor 等别名);省略为整机体检
+        [ArgumentCompleter({
+                param($commandName, $parameterName, $wordToComplete, $commandAst, $fakeBoundParameters)
+                $cmd = Get-Command -Name $commandName -ErrorAction SilentlyContinue
+                if (-not $cmd) { return }
+                $module = if ($cmd.Module) { $cmd.Module } elseif ($cmd.ModuleName) { Get-Module -Name $cmd.ModuleName }
+                if ($module)
+                {
+                    & $module { param($w) Get-CxxuDoctorFeatureCompletion -WordToComplete $w } $wordToComplete
+                }
+            })]
         [string[]]$Feature
     )
     $focused = [bool]($Feature -and $Feature.Count)
@@ -1561,6 +1604,7 @@ function doctor
             [PSCustomObject]@{ Keys = @('predictor', '命令名预测'); Gate = 'PsPredictor'; Plugin = 'Predictor'; Checks = @('predictor', '预测源/视图') }
             [PSCustomObject]@{ Keys = @('fzf', '模糊搜索'); Gate = 'PsFzf'; Plugin = 'Fzf'; Checks = @('懒加载') }
             [PSCustomObject]@{ Keys = @('zoxide', '目录跳转'); Gate = 'PsZoxide'; Plugin = 'Zoxide'; Checks = @() }
+            [PSCustomObject]@{ Keys = @('carapace', '外部 CLI'); Gate = 'PsCarapace'; Plugin = 'Carapace'; Checks = @(); DefaultOff = $true }
             [PSCustomObject]@{ Keys = @('history', '历史'); Gate = ''; Plugin = ''; Checks = @('历史策略', '历史大小') }
             [PSCustomObject]@{ Keys = @('init', '核心运行环境'); Gate = ''; Plugin = ''; Checks = @('init') }
         )
@@ -1591,7 +1635,7 @@ function doctor
             if (-not [string]::IsNullOrEmpty($value)) { $source = '环境变量' }
             $cfg = $configRows | Where-Object { $_.Key -eq $gate } | Select-Object -First 1
             if ($cfg) { $value = [string]$cfg.Value; $source = [string]$cfg.Source }
-            if ([string]::IsNullOrEmpty($value)) { $value = '默认开' }
+            if ([string]::IsNullOrEmpty($value)) { $value = if ($tag.DefaultOff) { '默认关' } else { '默认开' } }
             $note = "$value（$source）"
             if ($value -match '^(False|0|No|Off)$') { $note += "；已关闭，需要时 Enable-PsPlugin $($tag.Plugin)" }
             [void]$view.Add([PSCustomObject]@{ 检查 = "开关 $gate"; 状态 = 'OK'; 备注 = $note })
@@ -1870,6 +1914,16 @@ function Get-CxxuDependencyReport
     #>
     [CmdletBinding(DefaultParameterSetName = 'Table')]
     param(
+        [ArgumentCompleter({
+                param($commandName, $parameterName, $wordToComplete, $commandAst, $fakeBoundParameters)
+                $cmd = Get-Command -Name $commandName -ErrorAction SilentlyContinue
+                if (-not $cmd) { return }
+                $module = if ($cmd.Module) { $cmd.Module } elseif ($cmd.ModuleName) { Get-Module -Name $cmd.ModuleName }
+                if ($module)
+                {
+                    & $module { param($w) Get-CxxuDoctorFeatureCompletion -WordToComplete $w } $wordToComplete
+                }
+            })]
         [string[]]$Feature,
         [ValidateSet('All', 'Required', 'Recommended', 'Optional', 'Generated')]
         [string]$Level = 'All',
