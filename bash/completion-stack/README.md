@@ -31,7 +31,8 @@ bash setup.sh --check              # 只读验收
 | --- | --- |
 | `-n`, `--dry-run` | 只打印两个子脚本将执行的动作，不修改文件 |
 | `-c`, `--check`、`--status` | 只读检查 carapace 状态、argc 片段与加载状态 |
-| `-u`, `--uninstall` | 移除两个 rc 标记块，不删除二进制 |
+| `-d`, `--disable` | 停用：移除两个 rc 标记块，保留二进制与克隆目录 |
+| `-u`, `--uninstall` | 同 `--disable`（历史名称，不代表删除安装物） |
 | `-l`, `--login` | 写入登录 shell 实际读取的 rc |
 | `-r`, `--rc <file>` | 指定 rc 文件，默认 `~/.bashrc`；与 `--login` 互斥 |
 | `--argc-dir <dir>` | argc-completions 克隆目录；默认 `$ARGC_COMPLETIONS_DIR` 或自动探测 `~/argc-completions` 等 |
@@ -51,7 +52,38 @@ bash -ic 'bind -p | grep C-i'
 
 ## 停用与卸载
 
-按停用范围选择下面某一层，不必每次都整体卸载。
+先分清三个说法，下文只按这三个词使用：
+
+| 说法 | 含义 | 保留的安装物 |
+| --- | --- | --- |
+| 停用（`--disable`） | 之后的 bash 不再加载补全：移除 rc 中的标记块 | carapace 二进制、argc 克隆目录、PowerShell 配置全部保留 |
+| 彻底卸载 | 在停用的基础上删除安装物 | 无 |
+| 临时停用 | 不改文件：缩小注册范围，或只改当前会话的 Tab 绑定 | 全部 |
+
+三个 `setup.sh` 的 `--disable` 与历史名称 `--uninstall` 是**同一个动作**：只移除标记块，不删除任何安装物。`--uninstall` 只为兼容已有脚本保留，不代表会删二进制。
+
+### 停用是怎么实现的
+
+补全不是常驻进程，而是 bash 启动时由 rc 中的标记块 source 运行时脚本，运行时脚本再用 `complete -F` 把补全函数绑定到各命令：
+
+```text
+~/.bashrc
+  ├─ # >>> argc-completions >>>  → source argc-completions.sh  → complete -F _argc_completer ...
+  └─ # >>> carapace >>>          → source carapace.sh          → complete -F _carapace_completer_ble ...
+```
+
+所以停用就是**让这段 source 不再执行**，`setup.sh --disable` 做的事只有：
+
+- 用 `awk` 删掉开始/结束标记之间的行，块外内容原样保留；先写临时文件再 `mv` 替换，并用 `cp -p` 保留原 rc 权限。
+- 不改运行时脚本、不删二进制、不动 PowerShell 的 `~/.cxxu/config.psd1`；加 `--dry-run` 只打印将删除的块。
+- 幂等：rc 中没有标记块时直接返回 0，不报错。
+
+停用后还要注意：
+
+- **只影响之后的 shell**。当前会话里 `complete -F` 已注册、补全函数仍在内存中；要新开终端才真正不加载。想立刻在当前会话撤销，用 `complete -r git nginx` 逐个移除。
+- **接管关系会变化**。同一命令后注册者生效，移除 carapace 块后 git 回落到更早注册的来源（argc 或 git 自带补全）——这就是「只停 carapace」的实际效果。
+- **加载守卫不是开关**。两个运行时脚本的 `_CARAPACE_SHELL_LOADED`、`_ARGC_COMPLETIONS_LOADED` 只防重复 source：同一会话里再次 source 运行时脚本会直接返回，既不会重复注册，也不能用来开关；恢复要重新运行 `setup.sh` 并新开终端。
+- **恢复**就是重新执行 `setup.sh`（不带 `--disable`），标记块会重新写回。
 
 ### 只停部分命令
 
@@ -64,7 +96,7 @@ export ARGC_COMPLETIONS_ONLY='git docker'    # argc 只注册列出的命令
 
 想让某个两侧都有的命令改用 argc 时，把它写进 `CARAPACE_EXCLUDES`；argc 侧没有排除项，只能正向列举要注册的命令。
 
-### 回退 Tab 模式
+### 临时停用 Tab 模式
 
 Tab 的「列表/循环」来自 dotfiles 的 `shellrc_addition.sh`，与两个补全框架独立，停用框架后 `auto` 会自动回到循环模式：
 
@@ -76,16 +108,16 @@ export CXXU_TAB_MODE=cycle                      # 持久：写进环境变量或
 
 列表模式会把 `ARGC_COMPGEN_DESCRIPTION` 设为 `1`，切回循环模式时该变量不会自动复位；仍加载 argc 时需一并 `export ARGC_COMPGEN_DESCRIPTION=0`，否则候选说明会被插入命令行。
 
-### 停用整个框架
+### 停用接入
 
 | 目标 | 命令 |
 | --- | --- |
-| 只停 carapace | `bash ../carapace/setup.sh --uninstall` |
-| 只停 argc | `bash ../argc-completions/setup.sh --uninstall` |
-| 两个都停 | `bash setup.sh --uninstall` |
+| 只停 carapace | `bash ../carapace/setup.sh --disable` |
+| 只停 argc | `bash ../argc-completions/setup.sh --disable` |
+| 两个都停 | `bash setup.sh --disable` |
 | 登录 shell 安装的 | 以上命令各加 `--login` |
 
-卸载只移除 rc 中的标记块，不删除二进制，也不改 PowerShell 的 `~/.cxxu/config.psd1` 配置。新开终端后生效，验收：
+只移除标记块，二进制、克隆目录和 PowerShell 配置都不动。新开终端后验收：
 
 ```bash
 bash -ic 'complete -p git; complete -p nginx'
@@ -93,9 +125,19 @@ bash -ic 'complete -p git; complete -p nginx'
 
 停用后对应命令回落到其余来源（git 自带补全或 bash 默认）；两侧都停时 `complete -p` 只会剩下系统自带或 bash-completion 注册的条目，没有任何来源则为空。
 
-### 删除二进制
+### 彻底卸载
 
-按安装渠道卸载（`scoop uninstall carapace-bin`、`brew uninstall carapace`，或删除 `~/.cxxu/bin/carapace.exe` / `~/.local/bin/carapace` 并从 PATH 移除）。argc 的运行时来自 argc-completions 克隆目录，删掉克隆即可，无独立安装步骤。
+先停用接入，再按渠道删除安装物：
+
+```bash
+scoop uninstall carapace-bin          # scoop 渠道
+brew uninstall carapace               # Homebrew 渠道
+rm -f ~/.cxxu/bin/carapace.exe        # setup.sh --install 的 Windows 默认目录
+rm -f ~/.local/bin/carapace           # setup.sh --install 的其他平台默认目录
+rm -rf ~/argc-completions             # argc 运行时来自克隆目录，删除即彻底移除
+```
+
+删除后从 PATH 中移除对应目录。PowerShell 侧另有 `Disable-PsPlugin Carapace|Argc -Persist` 控制是否加载，与 bash 的 rc 片段互不影响。
 
 ## 边界与已知行为
 

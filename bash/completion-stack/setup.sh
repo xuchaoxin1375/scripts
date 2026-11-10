@@ -33,7 +33,8 @@ usage() {
 选项:
   -n, --dry-run          只打印两个 setup.sh 将执行的动作
   -c, --check            只读检查：carapace 状态 + argc 片段与加载状态
-  -u, --uninstall        移除两个 rc 标记块（不删除二进制）
+  -d, --disable          停用：移除两个 rc 标记块，保留二进制与克隆目录
+  -u, --uninstall        同 --disable，历史名称
   -l, --login            写入登录 shell 实际读取的 rc
   -r, --rc <file>        指定 rc 文件（默认 ~/.bashrc，与 --login 互斥）
       --argc-dir <dir>   argc-completions 克隆目录（默认 $ARGC_COMPLETIONS_DIR
@@ -56,7 +57,7 @@ while [ $# -gt 0 ]; do
 	case "$1" in
 	-n | --dry-run) DRY_RUN=1 ;;
 	-c | --check | --status) CHECK_ONLY=1 ;;
-	-u | --uninstall) UNINSTALL=1 ;;
+	-d | --disable | -u | --uninstall) UNINSTALL=1 ;;
 	-l | --login) USE_LOGIN_RC=1 ;;
 	-r | --rc)
 		shift
@@ -100,7 +101,7 @@ if [ "$SKIP_ARGC" -eq 1 ] && [ "$SKIP_CARAPACE" -eq 1 ]; then
 	exit 2
 fi
 if [ "$CHECK_ONLY" -eq 1 ] && { [ "$UNINSTALL" -eq 1 ] || [ "$DRY_RUN" -eq 1 ]; }; then
-	echo "错误: --check 不能与 --uninstall、--dry-run 同时使用" >&2
+	echo "错误: --check 不能与 --disable/--uninstall、--dry-run 同时使用" >&2
 	exit 2
 fi
 for script in "$ARGC_SETUP" "$CARAPACE_SETUP"; do
@@ -210,10 +211,10 @@ fi
 
 if [ "$UNINSTALL" -eq 1 ]; then
 	if [ "$SKIP_CARAPACE" -eq 0 ]; then
-		bash "$CARAPACE_SETUP" --uninstall "${rc_opts[@]}" "${dry_opts[@]}"
+		bash "$CARAPACE_SETUP" --disable "${rc_opts[@]}" "${dry_opts[@]}"
 	fi
 	if [ "$SKIP_ARGC" -eq 0 ]; then
-		bash "$ARGC_SETUP" --uninstall "${rc_opts[@]}" "${dry_opts[@]}"
+		bash "$ARGC_SETUP" --disable "${rc_opts[@]}" "${dry_opts[@]}"
 	fi
 	exit 0
 fi

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 安装 / 卸载 carapace 的 bash 接入片段（Git Bash、Cygwin、Linux/WSL、macOS bash 通用）。
+# 安装 / 停用 carapace 的 bash 接入片段（Git Bash、Cygwin、Linux/WSL、macOS bash 通用）。
 # 只改写 rc 文件中的标记块，不修改 carapace 本体。
 set -euo pipefail
 
@@ -34,7 +34,8 @@ usage() {
   -n, --dry-run      只打印将要写入或移除的内容，不修改文件
   -l, --login        写入登录 shell 实际读取的 rc 文件
   -r, --rc <file>    指定 rc 文件（默认 ~/.bashrc）
-  -u, --uninstall    从 rc 文件移除已安装的片段
+  -d, --disable      停用：从 rc 移除标记块，不删除二进制（--uninstall 同义）
+  -u, --uninstall    同 --disable，历史名称
   -c, --check        只读检查依赖、rc 片段与端到端加载状态，不修改文件
       --status       同 --check
   -i, --install      下载并安装 carapace（官方 Release + SHA-256），然后写入 rc
@@ -104,7 +105,7 @@ while [ $# -gt 0 ]; do
 		RC_FILE="$1"
 		RC_FILE_EXPLICIT=1
 		;;
-	-u | --uninstall) UNINSTALL=1 ;;
+	-d | --disable | -u | --uninstall) UNINSTALL=1 ;;
 	-c | --check | --status) CHECK_ONLY=1 ;;
 	-i | --install) INSTALL=1 ;;
 	--install-deps) INSTALL_DEPS=1 ;;
@@ -175,12 +176,12 @@ if [ "$USE_LOGIN_RC" -eq 1 ]; then
 fi
 
 if [ "$CHECK_ONLY" -eq 1 ] && { [ "$UNINSTALL" -eq 1 ] || [ "$DRY_RUN" -eq 1 ]; }; then
-	echo "错误: --check 不能与 --uninstall 或 --dry-run 同时使用" >&2
+	echo "错误: --check 不能与 --disable/--uninstall 或 --dry-run 同时使用" >&2
 	exit 2
 fi
 
 if [ "$INSTALL" -eq 1 ] && { [ "$UNINSTALL" -eq 1 ] || [ "$CHECK_ONLY" -eq 1 ]; }; then
-	echo "错误: --install 不能与 --uninstall 或 --check 同时使用" >&2
+	echo "错误: --install 不能与 --disable/--uninstall 或 --check 同时使用" >&2
 	exit 2
 fi
 
@@ -988,11 +989,11 @@ fi
 
 if [ "$UNINSTALL" -eq 1 ]; then
 	if [ ! -f "$RC_FILE" ] || ! has_marker "$RC_FILE" "$BEGIN_MARK"; then
-		echo "$RC_FILE 中没有 carapace 片段，无需卸载"
+		echo "$RC_FILE 中没有 carapace 片段，无需停用"
 		if [ "$USE_LOGIN_RC" -eq 0 ] && [ "$RC_FILE_EXPLICIT" -eq 0 ]; then
 			login_rc="$(login_rc_file)"
 			if [ -f "$login_rc" ] && has_marker "$login_rc" "$BEGIN_MARK"; then
-				echo "提示: $login_rc 中有 carapace 片段；如果是登录 shell 安装，请加 --login 卸载" >&2
+				echo "提示: $login_rc 中有 carapace 片段；如果是登录 shell 安装，请加 --login 停用" >&2
 			fi
 		fi
 		exit 0
@@ -1006,7 +1007,7 @@ if [ "$UNINSTALL" -eq 1 ]; then
 	cp -p "$RC_FILE" "$tmp"
 	remove_block "$RC_FILE" >"$tmp"
 	mv "$tmp" "$RC_FILE"
-	echo "已从 $RC_FILE 移除 carapace 片段"
+	echo "已从 $RC_FILE 移除 carapace 片段（已停用，二进制未删除）"
 	exit 0
 fi
 

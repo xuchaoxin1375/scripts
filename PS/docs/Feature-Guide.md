@@ -217,11 +217,11 @@ Set-GitCompletionSource Carapace -Persist   # 需要 carapace 接管 git/gitk �
 - 启动成本：约 0.1–0.2 秒（随版本与主机变化；本轮 1.8.2 实测首次约 130ms、重复约 60–90ms），只在 `PsCarapace=True` 时发生。`carapace` 不纳入 `Deploy-CompletionStack` 的 `-Include*` 层，但已进入 `Get-CxxuDependencyReport` 与 `doctor -Feature`。
 - 慢补全：`winget install` 约 3.3 秒、`uv add` 约 4.4 秒，按 Tab 会同步等待；写入 `PsCarapaceExcludes` 排除。
 - 错误候选：命令未安装或上下文缺失时会出现 `ERR` / `_` 候选（例如没有 `package.json` 时的 `npm run`）；写入 `PsCarapaceExcludes` 排除。
-- 回滚：`Disable-PsPlugin Carapace -Persist` 并重开终端；包管理器渠道按对应命令卸载（`scoop uninstall carapace-bin`、`brew uninstall carapace`），`Deploy-Carapace` 与手工渠道删除二进制（默认 Windows 为 `~/.cxxu/bin/carapace.exe`，其他平台为 `~/.local/bin/carapace`）并从 PATH 移除。bash 侧用 `setup.sh --uninstall`（登录 shell 加 `--login`）移除 rc 片段，与 PowerShell 侧互不影响。
+- 回滚：`Disable-PsPlugin Carapace -Persist` 并重开终端；包管理器渠道按对应命令卸载（`scoop uninstall carapace-bin`、`brew uninstall carapace`），`Deploy-Carapace` 与手工渠道删除二进制（默认 Windows 为 `~/.cxxu/bin/carapace.exe`，其他平台为 `~/.local/bin/carapace`）并从 PATH 移除。bash 侧用 `bash /path/to/scripts/bash/carapace/setup.sh --disable`（登录 shell 加 `--login`）移除 rc 片段，与 PowerShell 侧互不影响；重复执行 `Deploy-Carapace -Bash` 只刷新同一个标记块。
 
 **Git Bash / MSYS 与 Linux/macOS bash（可选，与 PowerShell 独立）**：
 
-Git Bash 使用同一个 carapace 二进制，Linux/macOS 使用各自平台的二进制；接入由 bash 自己完成，不经过 `init`，`PsCarapace` 与 `Enable-CxxuComponent` 只控制 PowerShell。非登录 shell 通常写 `~/.bashrc`；macOS Terminal、Git Bash 等登录 shell 读 `~/.bash_profile`、`~/.bash_login` 或 `~/.profile`，用 `bash /path/to/scripts/bash/carapace/setup.sh --login` 写入。二进制与 rc 一次接好时用 `Deploy-Carapace -Bash`（登录 shell 加 `-BashLogin`），它内部调用同一个 `setup.sh`。macOS 自带 bash 3.2 不满足 carapace 要求，需 `brew install bash` 并切换登录 shell；macOS 默认 zsh 不在该接入范围。运行 `bash /path/to/scripts/bash/carapace/setup.sh [--login]` 写入标记块，`--uninstall` 卸载；平台差异、手工片段、PATH 修复、与 argc-completions 的顺序和验收见 [bash/carapace/README.md](../../bash/carapace/README.md)。多个候选需按两次 `<Tab>`；`gh` 未安装时静态子命令仍可补全，需要上下文的动态候选才依赖命令本身。本机 Git Bash 5.2 + carapace 1.8.2 实测运行时脚本 `source` 约 40–55 ms，`git checkout` 返回带说明的候选，`gh pr` 返回静态子命令候选。
+Git Bash 使用同一个 carapace 二进制，Linux/macOS 使用各自平台的二进制；接入由 bash 自己完成，不经过 `init`，`PsCarapace` 与 `Enable-CxxuComponent` 只控制 PowerShell。非登录 shell 通常写 `~/.bashrc`；macOS Terminal、Git Bash 等登录 shell 读 `~/.bash_profile`、`~/.bash_login` 或 `~/.profile`，用 `bash /path/to/scripts/bash/carapace/setup.sh --login` 写入。二进制与 rc 一次接好时用 `Deploy-Carapace -Bash`（登录 shell 加 `-BashLogin`），它内部调用同一个 `setup.sh`。macOS 自带 bash 3.2 不满足 carapace 要求，需 `brew install bash` 并切换登录 shell；macOS 默认 zsh 不在该接入范围。运行 `bash /path/to/scripts/bash/carapace/setup.sh [--login]` 写入标记块，`--disable` 停用（不删除二进制）；平台差异、手工片段、PATH 修复、与 argc-completions 的顺序和验收见 [bash/carapace/README.md](../../bash/carapace/README.md)。多个候选需按两次 `<Tab>`；`gh` 未安装时静态子命令仍可补全，需要上下文的动态候选才依赖命令本身。本机 Git Bash 5.2 + carapace 1.8.2 实测运行时脚本 `source` 约 40–55 ms，`git checkout` 返回带说明的候选，`gh pr` 返回静态子命令候选。
 
 **git 补全对比（同一测试仓库）**：
 
@@ -395,7 +395,7 @@ Git Bash 使用同一个 carapace 二进制，Linux/macOS 使用各自平台的�
 | `scoop-search` 钩子 | 组件 `ScoopSearch` 默认关 | `scoop install scoop-search`，再 `Enable-CxxuComponent ScoopSearch -Persist` | `init` 注入 `scoop-search --hook` |
 | `argc` 整块 | 未部署 | `Deploy-CompletionStack -IncludeArgc`（或 `Deploy-ArgcCompletions`） | 由 `init` 的 `Set-ArgcCompletions` 懒加载；装完重开终端/`init` |
 | `carapace-bin` | 可选，`PsCarapace` 默认 `$false` | `Deploy-Carapace -Enable`（推荐，安装并启用），或安装后再 `Enable-CxxuComponent Carapace -Persist -Now`；也可用官方 GitHub Release 产物或包管理器（`scoop install carapace-bin`、`brew install carapace`、Linux 发行版仓库） | 由 `init` 按配置加载；不纳入 `Deploy-CompletionStack`；跨平台默认目录不同；版本可固定；git/gitk 归属用 `Set-GitCompletionSource` 切换 |
-| `carapace`（Git Bash/MSYS 与 Linux/macOS bash） | 可选，与 PowerShell 组件独立 | `bash /path/to/scripts/bash/carapace/setup.sh`（`--uninstall` 卸载；登录 shell 加 `--login`；`--install` 装二进制、`--install-deps` 补依赖），或手工 source；步骤见 [bash/carapace/README.md](../../bash/carapace/README.md) | 不经过 `init`；PowerShell 的 `PsCarapace` 开关不影响 bash；macOS 系统 bash 3.2 需先换 bash 4+ |
+| `carapace`（Git Bash/MSYS 与 Linux/macOS bash） | 可选，与 PowerShell 组件独立 | `bash /path/to/scripts/bash/carapace/setup.sh`（`--disable` 停用，不删除二进制；登录 shell 加 `--login`；`--install` 装二进制、`--install-deps` 补依赖），或手工 source；步骤见 [bash/carapace/README.md](../../bash/carapace/README.md) | 不经过 `init`；PowerShell 的 `PsCarapace` 开关不影响 bash；macOS 系统 bash 3.2 需先换 bash 4+ |
 | `posh-git` | 未装 | 只要 git Tab 补全才装 | 已有 `git-completion` 时不需要 |
 | prompt 主题持久化 | 当会话有效，重开复原 | `Set-PsPrompt -version <…> -Persist`（写注册表） | 临展用 `dm` 切极简，不持久化 |
 | 开机任务 + 守护进程 | 未注册 | `Start-StartupTasks`（或 `Deploy-StartupTasks` 部署） | 报时/IP 守护，无状态，`-Force` 可杀 |

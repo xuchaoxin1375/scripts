@@ -206,7 +206,8 @@ macOS Terminal 默认是登录 shell；VS Code 等集成终端可能是非登录
 | `-n`, `--dry-run` | 只打印将要写入或移除的内容，不修改文件 |
 | `-l`, `--login` | 写入登录 shell 实际读取的 rc 文件 |
 | `-r`, `--rc <file>` | 指定 rc 文件，默认 `~/.bashrc` |
-| `-u`, `--uninstall` | 从 rc 文件移除 `# >>> carapace >>>` 标记块 |
+| `-d`, `--disable` | 停用：从 rc 移除 `# >>> carapace >>>` 标记块，不删除二进制 |
+| `-u`, `--uninstall` | 同 `--disable`（历史名称，不代表删除二进制） |
 | `-c`, `--check`、`--status` | 只读检查依赖、rc 片段与端到端加载状态；不修改任何文件 |
 | `-i`, `--install` | 下载并安装 carapace（Linux/macOS/Git Bash/Cygwin），随后写入 rc |
 | `--install-deps` | 安装缺失依赖：缺 curl/wget、coreutils、tar 时调用包管理器；Linux 用 sudo、macOS 用 brew，Git Bash 只给出命令 |
@@ -228,7 +229,7 @@ macOS Terminal 默认是登录 shell；VS Code 等集成终端可能是非登录
 - 安装与卸载通过同目录临时文件加 `mv` 替换，并用 `cp -p` 保留原 rc 的权限；Git Bash/MSYS 的 `awk`/`grep` 以文本模式处理文件，重写 rc 时可能把该文件的行尾统一为 LF。bash 不受影响；要保持 CRLF 请手工编辑，或用版本控制对比后决定。
 - 标记块中的路径是当前仓库副本的绝对路径；仓库移动后重新运行 `setup.sh` 刷新，或手工删除旧块。
 - 找不到 carapace 时只提示，不阻止写入；新开 shell 后由运行时脚本再次提示并跳过初始化。装好 carapace 后新开终端，或重新 `source` 对应 rc。
-- `--check`（`--status` 同义）只读：依次报告 bash 版本、`carapace` 与 `xargs` 是否可用、运行时脚本是否存在、平台、目标 rc、四个候选 rc 的标记块状态（含块内路径是否仍然存在），再用 `bash -ic` / `bash -lic` 各起一个子 shell 验证实际是否加载；不改写任何文件，且不能与 `--dry-run`、`--uninstall` 同时使用。
+- `--check`（`--status` 同义）只读：依次报告 bash 版本、`carapace` 与 `xargs` 是否可用、运行时脚本是否存在、平台、目标 rc、四个候选 rc 的标记块状态（含块内路径是否仍然存在），再用 `bash -ic` / `bash -lic` 各起一个子 shell 验证实际是否加载；不改写任何文件，且不能与 `--dry-run`、`--disable` 同时使用。
 - `--check` 退出码：全部正常为 0；缺依赖、rc 片段有问题或尚未接入为 1；参数错误为 2。结论行会给出对应的修复命令。
 - `--install` 支持 Linux/macOS 与 Git Bash/Cygwin：Windows 下载 `carapace-bin_<版本>_windows_<架构>.zip`，解压出 `carapace.exe` 装到 `~/.cxxu/bin`；其他平台下载 `tar.gz` 装到 `~/.local/bin`。解压顺序为 `unzip` → `bsdtar` → `powershell.exe`（Expand-Archive），三者都没有时报错并给出安装命令。安装目录不在 PATH 时，rc 片段额外写 `export CARAPACE_BIN`，运行时脚本会前置该目录。
 - `--mirror` 只作用于 Release 文件（`tar.gz`/`zip` 与 `checksums.txt`）；版本查询始终直连或经 `--proxy`，不经过文件镜像。`auto` 顺序为 `gh-proxy.com` → `ghproxy.net` → 直连，单个候选失败才换下一个。
@@ -237,7 +238,7 @@ macOS Terminal 默认是登录 shell；VS Code 等集成终端可能是非登录
 - 下载与解压都在 `mktemp -d` 的临时目录完成，脚本退出时清理；下载、校验或解压失败都以非零码退出，不写半成品二进制。
 - 镜像与 `checksums.txt` 来自同一通道，恶意镜像可以同时替换两者；需要更强保证时用 `--mirror direct`（或 `--proxy` + 官方源）并核对 Release 页面的校验值。
 - `--install --dry-run` 不联网，只打印平台、版本、通道、安装目录与依赖可用性。
-- `--login` 安装后，默认的 `--uninstall` 不会去登录 rc 找块；用 `--uninstall --login`，或用 `--rc` 指向同一个文件。
+- `--login` 安装后，默认的 `--disable` 不会去登录 rc 找块；用 `--disable --login`，或用 `--rc` 指向同一个文件。
 - 标记块带 `[ -n "${BASH_VERSION:-}" ]` 保护，写进 `.profile` 这类可能被 sh/dash 读取的文件时，非 bash shell 会跳过，不会因加载 bash 脚本报错。
 
 ## 手工接入
@@ -407,32 +408,38 @@ apply_tab_completion_mode
 - `--force` 只覆盖目标目录的二进制，不清理其他渠道的副本；多个副本并存时以 PATH 顺序为准，用 `command -v carapace` 确认实际命中哪一个。
 - 目标目录没有副本时，rc 片段不写 `CARAPACE_BIN`，避免导出不存在的目录。
 
-停用与卸载分开处理：
+## 停用与卸载
+
+先分清两个动作：
+
+- **停用**（`--disable`）：移除 rc 中的标记块，之后启动的 bash 不再加载 carapace。二进制保留，随时重新运行 `setup.sh` 即可恢复。
+- **卸载**：在停用的基础上删除二进制，按安装渠道处理。
+
+`--uninstall` 是 `--disable` 的历史名称，两者完全等价，都不会删除二进制。
 
 | 目标 | 操作 | 删除二进制 |
 | --- | --- | --- |
-| 停用 bash 补全 | `setup.sh --uninstall`（登录 shell 加 `--login`），或手工删除/注释标记块 | 否 |
+| 停用 bash 补全 | `setup.sh --disable`（登录 shell 加 `--login`），或手工删除/注释标记块 | 否 |
 | 只停用部分命令 | `CARAPACE_EXCLUDES='git,gitk'` | 否 |
 | 停用 PowerShell 侧 | `Disable-PsPlugin Carapace -Persist`（`Disable-CxxuComponent Carapace -Persist` 等价），重开终端后不再加载 | 否 |
-| 彻底卸载 bash 接入 | 见下节「卸载」 | 否 |
 | 删除二进制 | `scoop uninstall carapace-bin`、`brew uninstall carapace`，或删除 `~/.cxxu/bin/carapace.exe` / `~/.local/bin/carapace` 并从 PATH 移除 | 是 |
 
-两侧独立：停用 PowerShell 组件不影响 bash 的 rc 片段，`--uninstall` 也不修改 `PsCarapace` 配置。与 argc 组合部署时按范围停用的完整说明见 [completion-stack README](../completion-stack/README.md#停用与卸载)。
+两侧独立：停用 PowerShell 组件不影响 bash 的 rc 片段，`--disable` 也不修改 `PsCarapace` 配置。与 argc 组合部署时按范围停用的完整说明见 [completion-stack README](../completion-stack/README.md#停用与卸载)。
 
-## 卸载
+### 命令
 
 ```bash
 # 非登录 shell 安装
-bash /path/to/scripts/bash/carapace/setup.sh --uninstall
+bash /path/to/scripts/bash/carapace/setup.sh --disable
 
 # 登录 shell 安装
-bash /path/to/scripts/bash/carapace/setup.sh --uninstall --login
+bash /path/to/scripts/bash/carapace/setup.sh --disable --login
 
 # 自定义 rc
-bash /path/to/scripts/bash/carapace/setup.sh --uninstall --rc ~/.bash_profile
+bash /path/to/scripts/bash/carapace/setup.sh --disable --rc ~/.bash_profile
 ```
 
-卸载只移除标记块，不删除 carapace 二进制。二进制按安装渠道卸载（`scoop uninstall carapace-bin`、`brew uninstall carapace`，或删除 `~/.local/bin/carapace`）并从 PATH 移除。
+停用只移除标记块，不删除 carapace 二进制；彻底卸载再按安装渠道删除二进制（`scoop uninstall carapace-bin`、`brew uninstall carapace`，或删除 `~/.local/bin/carapace`）并从 PATH 移除。
 
 ## 故障排查
 
@@ -457,7 +464,7 @@ bash /path/to/scripts/bash/carapace/setup.sh --uninstall --rc ~/.bash_profile
 已完成的实测：
 
 - Git Bash 5.2.37（MSYS）+ carapace 1.8.2：运行时脚本 `source` 约 40–55 ms（含一次 `carapace _carapace bash` 生成；单独执行该生成命令约 35–40 ms）；`git checkout <Tab><Tab>` 返回带说明的标签/分支/引用候选，`gh pr <Tab><Tab>` 在未安装 `gh` 时返回静态子命令。
-- `setup.sh` 在隔离 `HOME` 下验证了试运行不建文件、首次安装、重复安装幂等、卸载、标记块损坏报错、`--login` 目标选择与 `--uninstall --login`；还验证了权限保持、CRLF 文件在 Linux/WSL 下保留行尾、符号链接拒绝改写。
+- `setup.sh` 在隔离 `HOME` 下验证了试运行不建文件、首次安装、重复安装幂等、停用（`--disable` 与 `--uninstall` 同义）、标记块损坏报错、`--login` 目标选择与 `--disable --login`；还验证了权限保持、CRLF 文件在 Linux/WSL 下保留行尾、符号链接拒绝改写。
 - `setup.sh --check` 在隔离 `HOME` 下验证了未接入、已接入（非登录与登录两类 shell 均加载）、块内路径失效、缺结束标记四种状态与对应退出码；`--check --dry-run` 按参数错误拒绝。
 - `setup.sh --install` 用假 release 与假 curl 在隔离 `HOME` 下验证：dry-run 不联网、auto 从 gh-proxy 回退 ghproxy.net、`--mirror` 各模式的前缀、`--proxy` 传入 curl、SHA-256 不符拒绝写入、已装跳过与 `--force` 覆盖、`--check` 能识别 rc 片段里的 `CARAPACE_BIN`。
 - WSL Ubuntu 24.04 实机经 `gh-proxy.com` 完成 `--install`（1.8.2，20.1MB，约 5.4MB/s，下载到写 rc 约 19s），`--check` 通过并在非登录 shell 中加载。

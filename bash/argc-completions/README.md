@@ -32,12 +32,12 @@ bash /mnt/c/repos/scripts/bash/argc-completions/setup.sh --argc-dir ~/argc-compl
 
 与 carapace 组合部署（argc 补缺口、carapace 负责 git）推荐用一键脚本：[bash/completion-stack/setup.sh](../completion-stack/setup.sh)。
 
-卸载：
+卸载（停用接入，不删除克隆目录；`--uninstall` 为同义历史名称）：
 
 ```sh
-bash /c/repos/scripts/bash/argc-completions/setup.sh --uninstall          # Git Bash
-bash /mnt/c/repos/scripts/bash/argc-completions/setup.sh --uninstall      # WSL
-bash /path/to/scripts/bash/argc-completions/setup.sh --uninstall --login  # 登录 shell 安装时
+bash /c/repos/scripts/bash/argc-completions/setup.sh --disable          # Git Bash
+bash /mnt/c/repos/scripts/bash/argc-completions/setup.sh --disable      # WSL
+bash /path/to/scripts/bash/argc-completions/setup.sh --disable --login  # 登录 shell 安装时
 ```
 
 只停部分命令用 `ARGC_COMPLETIONS_ONLY` 缩小注册范围；与 carapace 组合部署时的分层停用（只停一侧、回退 Tab、删二进制）见 [completion-stack README](../completion-stack/README.md#停用与卸载)。

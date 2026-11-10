@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 安装 / 卸载 argc-completions 的 bash 接入片段（Git Bash 与 WSL/Linux 通用）。
+# 安装 / 停用 argc-completions 的 bash 接入片段（Git Bash 与 WSL/Linux 通用）。
 # 只改写 ~/.bashrc 中的标记块，不修改 argc-completions 仓库。
 set -euo pipefail
 
@@ -21,7 +21,8 @@ usage() {
 用法: setup.sh [选项]
 
 选项:
-  -u, --uninstall    从 rc 文件移除已安装的片段
+  -d, --disable      停用：从 rc 移除标记块，不删除克隆目录（--uninstall 同义）
+  -u, --uninstall    同 --disable，历史名称
       --rc <file>    指定 rc 文件（默认 ~/.bashrc）
   -l, --login        写入登录 shell 实际读取的 rc 文件
       --argc-dir <d> 指定 argc-completions 克隆目录，写入 ARGC_COMPLETIONS_DIR
@@ -47,7 +48,7 @@ login_rc_file() {
 
 while [ $# -gt 0 ]; do
 	case "$1" in
-	-u | --uninstall) UNINSTALL=1 ;;
+	-d | --disable | -u | --uninstall) UNINSTALL=1 ;;
 	-l | --login) USE_LOGIN_RC=1 ;;
 	-r | --rc)
 		shift
@@ -170,7 +171,7 @@ fi
 
 if [ "$UNINSTALL" -eq 1 ]; then
 	if [ ! -f "$RC_FILE" ] || ! grep -qxF "$BEGIN_MARK" "$RC_FILE"; then
-		echo "$RC_FILE 中没有 argc-completions 片段，无需卸载"
+		echo "$RC_FILE 中没有 argc-completions 片段，无需停用"
 		exit 0
 	fi
 	if [ "$DRY_RUN" -eq 1 ]; then
@@ -181,7 +182,7 @@ if [ "$UNINSTALL" -eq 1 ]; then
 	tmp="$(mktemp "${RC_FILE}.XXXXXX")"
 	remove_block "$RC_FILE" >"$tmp"
 	mv "$tmp" "$RC_FILE"
-	echo "已从 $RC_FILE 移除 argc-completions 片段"
+	echo "已从 $RC_FILE 移除 argc-completions 片段（已停用，克隆目录未删除）"
 	exit 0
 fi
 
