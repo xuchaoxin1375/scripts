@@ -340,6 +340,24 @@ carapace 提供专门的 `bash-ble` 生成模式，本目录的运行时脚本�
 
 PowerShell 侧：`PsGitCompletionSource` 只影响 PowerShell 的 git/gitk 归属，不改变 bash 的注册顺序；`Auto` 在装有 `git-completion` 模块时选它，也不建议选 `Argc`（同样的选项缺口）。
 
+### 互补用法（各管一部分命令）
+
+两个工具的覆盖并不重合：carapace 缺少的命令（如 `nginx`）可以由 argc 提供。因为同一命令后注册者生效，按「argc 先、carapace 后」source 就能自动分工：
+
+- 重叠命令（git、docker 等）由 carapace 接管；
+- 只有 argc 有的命令保留 argc 的补全；
+- 想让 argc 接管某个 carapace 也有的命令时，把该命令写进 `CARAPACE_EXCLUDES`。
+
+列出「argc 有、carapace 没有」的命令（按当前安装的版本）：
+
+```bash
+comm -13 \
+	<(carapace --list | sed -n 's/^  "\([^"]*\)".*/\1/p' | sort -u) \
+	<(ls ~/argc-completions/completions/*.sh | xargs -n1 basename | sed 's/\.sh$//' | grep -v '^_' | sort -u)
+```
+
+代价是启动时间：本机实测 argc 运行时 `source` 约 135–145 ms、carapace 约 50 ms；只想要一部分命令时用 `ARGC_COMPLETIONS_ONLY` 缩小注册范围。
+
 ### Tab 列表与循环
 
 bash 默认的 `menu-complete` 逐个插入候选，看不到完整候选集；加载 carapace 或 argc-completions 后通常更适合改成一次列出全部候选。readline 绑定必须在补全函数注册之后再决定，因此在 rc 中、source 完补全框架后执行：

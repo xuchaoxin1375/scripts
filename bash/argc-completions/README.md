@@ -4,7 +4,7 @@
 
 > PowerShell 侧由 `PS/Init` 接管（懒加载，开关 `$env:PsArgc`）；启停、状态检查与排障见 [Argc-Completions-Deploy](../../PS/docs/Argc-Completions-Deploy.md)。本目录只覆盖 Git Bash 与 WSL bash。
 >
-> carapace 也会注册 bash 补全，两者对同一命令由后 source 的一方接管；本仓库建议 git/gitk 归 carapace（argc 的 git 补全缺 `--cached`/`--staged` 等选项，见下文），其余命令可任意分工。见 [carapace README](../carapace/README.md) 的「与 argc-completions 共存」。
+> carapace 也会注册 bash 补全，两者对同一命令由后 source 的一方接管；本仓库建议 git/gitk 归 carapace（argc 的 git 补全缺 `--cached`/`--staged` 等选项，见下文），其余命令可任意分工。要做互补，把 argc 片段放在 carapace 之前：重叠命令交给 carapace，argc 独有命令（如 `nginx`）保留 argc。见 [carapace README](../carapace/README.md) 的「与 argc-completions 共存」。
 
 ## 目录内容
 
