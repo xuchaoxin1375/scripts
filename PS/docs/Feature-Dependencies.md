@@ -112,7 +112,7 @@ Get-CxxuDependencyReport -Json           # 供其他程序消费
 | 运维：MySQL | `mysql`、`mysqldump` | 可选 | 建库、查询、导入与备份不可用 | 安装 MySQL 客户端或使用 phpstudy 自带的 `mysql.exe`、`mysqldump.exe` |
 | 运维：Nginx | `nginx` | 可选 | 本地站点启动、重载与配置检查不可用 | 安装 phpstudy 或 nginx，并把可执行文件目录加入 `PATH` |
 | 运维：Cloudflare 与脚本 | `python`、`curl`、`ThreadJob` 模块 | 可选 | Cloudflare/BTCN 脚本、curl 下载或 5.1 并行部署不可用 | `python` 与 `curl` 按平台安装；`Install-Module ThreadJob` |
-| 运维：网络驱动器 | `alist`、`chfs`、`aria2c` | 可选 | 服务启动或下载加速不可用 | 下载 alist/chfs 并加入 `PATH`；`scoop install aria2` |
+| 运维：网络驱动器 | `alist`、`chfs`、`aria2c` | 可选 | 服务启动或下载加速不可用；`Deploy-Carapace` 等单文件下载仍会回退 `Invoke-WebRequest` | 下载 alist/chfs 并加入 `PATH`；`scoop install aria2` |
 | 通知：Toast | `BurntToast` 模块 | 可选 | Toast 通知与整点报时不可用 | `Install-Module BurntToast -Scope CurrentUser -Force` |
 
 ## 与其他检查命令的分工

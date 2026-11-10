@@ -213,9 +213,14 @@ Deploy-Carapace -Bash
 Deploy-Carapace -Bash -BashLogin          # 登录 shell：改写 --login 的目标 rc
 # 网络受限或需要可复现版本时，跳过 GitHub API：
 Deploy-Carapace -Version 1.8.2 -Proxy http://127.0.0.1:7897
+# 关闭 GitHub 加速镜像，直接连官方源：
+Deploy-Carapace -NoGithubMirror
+# 临时指定镜像，或强制不用 aria2c：
+Deploy-Carapace -GithubMirror 'https://gh-proxy.com'
+Deploy-Carapace -NoAria2
 ```
 
-命令会按当前平台与架构下载官方产物（Windows 为 zip，macOS/Linux 为 tar.gz），用同版本 `checksums.txt` 校验 SHA-256，解压 `carapace` 到目标目录并加入 PATH。默认目录：Windows 为 `~/.cxxu/bin`，其他平台为 `~/.local/bin`；非 Windows 只把目录加入当前会话，新终端需按提示写进 shell 配置。加 `-Enable` 会同时把 `PsCarapace` 写入用户配置并在当前会话加载；不加则只安装并打印启用方式。加 `-Bash` 会在安装后调用 [bash/carapace/setup.sh](../../bash/carapace/setup.sh) 写入 bash 的 rc 标记块：默认写非登录 shell 的 `~/.bashrc`，`-BashLogin` 改写登录 shell 读取的 rc；未找到 `bash` 或 `setup.sh` 时只告警，不中断安装。`-Force` 覆盖重装，`-Version` 固定版本（本地版本更高时默认拒绝降级，确需降级加 `-AllowDowngrade`），`-Destination` 与 `-SkipPath` 用于自定义目录或测试。它不修改 profile，加载由 init 注册首个 Tab 懒加载桩完成，实际注册在首次 Tab。macOS 的官方产物未签名；若系统提示无法验证开发者，优先改用 `brew install carapace`，或在确认来源后按系统设置放行。
+命令会按当前平台与架构下载官方产物（Windows 为 zip，macOS/Linux 为 tar.gz），用同版本 `checksums.txt` 校验 SHA-256，解压 `carapace` 到目标目录并加入 PATH。下载默认优先使用 `aria2c`（`--split` 与 `--max-connection-per-server` 由 `-Aria2Connections` 控制，默认 16，并启用 1M 分片），未找到 `aria2c` 或加 `-NoAria2` 时回退 `Invoke-WebRequest`。每次下载都会打印原始链接、实际使用的链接、来源（原始地址或 GitHub 加速镜像）以及实际执行命令；代理只显示“已启用”，不回显地址。GitHub 加速镜像默认读取 `$env:PsGithubMirror`（未设置时用 `https://gh-proxy.com`），`-NoGithubMirror`（别名 `-NoMirror`）或 `-GithubMirror ''` 直连，`-GithubMirror`（别名 `-Mirror`）`'<前缀>'` 本次指定。默认目录：Windows 为 `~/.cxxu/bin`，其他平台为 `~/.local/bin`；非 Windows 只把目录加入当前会话，新终端需按提示写进 shell 配置。加 `-Enable` 会同时把 `PsCarapace` 写入用户配置并在当前会话加载；不加则只安装并打印启用方式。加 `-Bash` 会在安装后调用 [bash/carapace/setup.sh](../../bash/carapace/setup.sh) 写入 bash 的 rc 标记块：默认写非登录 shell 的 `~/.bashrc`，`-BashLogin` 改写登录 shell 读取的 rc；未找到 `bash` 或 `setup.sh` 时只告警，不中断安装。`-Force` 覆盖重装，`-Version` 固定版本（本地版本更高时默认拒绝降级，确需降级加 `-AllowDowngrade`），`-Destination` 与 `-SkipPath` 用于自定义目录或测试。它不修改 profile，加载由 init 注册首个 Tab 懒加载桩完成，实际注册在首次 Tab。macOS 的官方产物未签名；若系统提示无法验证开发者，优先改用 `brew install carapace`，或在确认来源后按系统设置放行。
 
 **手工渠道一：官方 GitHub Release**
 

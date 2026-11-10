@@ -676,20 +676,50 @@ function Get-CxxuProxyUrl
     return ''
 }
 
+function Get-CxxuGithubMirror
+{
+    # 解析 GitHub 加速镜像前缀：显式参数优先，其次 $env:PsGithubMirror，最后内置默认。
+    # -NoMirror 或取值 off/none/false/0/no 表示直连，返回空字符串。
+    param(
+        [AllowEmptyString()][string]$Mirror,
+        [switch]$NoMirror,
+        # 调用方显式传了 -Mirror：此时空字符串表示直连，不再回落到环境变量或默认镜像
+        [switch]$MirrorSpecified
+    )
+    if ($NoMirror) { return '' }
+    $value = $Mirror
+    if (-not $MirrorSpecified -and [string]::IsNullOrWhiteSpace($value))
+    {
+        $value = $env:PsGithubMirror
+    }
+    if (-not $MirrorSpecified -and [string]::IsNullOrWhiteSpace($value))
+    {
+        $value = 'https://gh-proxy.com'
+    }
+    if ([string]::IsNullOrWhiteSpace($value)) { return '' }
+    $value = $value.Trim()
+    if ($value -match '^(off|none|false|0|no)$') { return '' }
+    return $value.TrimEnd('/')
+}
+
 function Get-CxxuDownloadUrls
 {
     # 有代理时直连优先（代理就是加速通道）；无代理时镜像优先、直连回退。
     param(
         [Parameter(Mandatory)][string]$Url,
         [string]$Mirror,
-        [string]$ProxyUrl
+        [string]$ProxyUrl,
+        # 镜像为空时保持直连，不回落到内置默认
+        [switch]$NoMirror
     )
-    if ([string]::IsNullOrWhiteSpace($Mirror)) { $Mirror = 'https://gh-proxy.com' }
+    if ($NoMirror) { $Mirror = '' }
+    elseif ([string]::IsNullOrWhiteSpace($Mirror)) { $Mirror = 'https://gh-proxy.com' }
     # 只有 GitHub 域才套镜像；本地/其他站点直接走原地址，避免无意义的前缀请求。
     if ($Url -notmatch '^https?://(?:github\.com|raw\.githubusercontent\.com|codeload\.github\.com|api\.github\.com)/')
     {
         return @($Url)
     }
+    if ([string]::IsNullOrWhiteSpace($Mirror)) { return @($Url) }
     $mirrorUrl = $Mirror.TrimEnd('/') + '/' + $Url
     if ([string]::IsNullOrWhiteSpace($ProxyUrl)) { return @($mirrorUrl, $Url) }
     return @($Url, $mirrorUrl)
@@ -740,13 +770,21 @@ function Get-CxxuDepsMirrorAsset
 
 function Invoke-CxxuDownload
 {
-    # 依次尝试候选地址；都失败才抛错。5.1 需要显式开 TLS 1.2。
+    # 下载单个文件：优先 aria2c（多连接并发分片），不可用时回退 Invoke-WebRequest。
+    # 依次尝试镜像/直连候选，并打印原始链接、实际链接、来源与下载命令，便于排查。
     # -Proxy 显式指定代理；未指定时读取代理环境变量，-NoProxy 强制直连。
     param(
         [string]$Url,
         [string]$OutFile,
         [string]$Proxy,
-        [switch]$NoProxy
+        [switch]$NoProxy,
+        # GitHub 加速镜像；显式传空字符串表示直连
+        [AllowEmptyString()][string]$GithubMirror = '',
+        [switch]$NoGithubMirror,
+        # 本次不使用 aria2c，直接走 Invoke-WebRequest
+        [switch]$NoAria2,
+        # aria2c 分片数与单服务器最大连接数
+        [ValidateRange(1, 64)][int]$Aria2Connections = 16
     )
     try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }
     $proxyUrl = ''
@@ -755,29 +793,101 @@ function Invoke-CxxuDownload
         if (-not [string]::IsNullOrWhiteSpace($Proxy)) { $proxyUrl = $Proxy.Trim() }
         else { $proxyUrl = Get-CxxuProxyUrl }
     }
-    $mirror = $env:PsGithubMirror
-    if (-not $mirror) { $mirror = 'https://gh-proxy.com' }
-    $candidates = @(Get-CxxuDownloadUrls -Url $Url -Mirror $mirror -ProxyUrl $proxyUrl)
+    $mirror = Get-CxxuGithubMirror -Mirror $GithubMirror -NoMirror:$NoGithubMirror -MirrorSpecified:($PSBoundParameters.ContainsKey('GithubMirror'))
+    $candidates = @(Get-CxxuDownloadUrls -Url $Url -Mirror $mirror -ProxyUrl $proxyUrl -NoMirror:(-not $mirror))
+
+    $aria2 = $null
+    if (-not $NoAria2) { $aria2 = Get-Command aria2c -ErrorAction SilentlyContinue }
+    $fullOutFile = [IO.Path]::GetFullPath($OutFile)
+    $outDir = Split-Path -Parent $fullOutFile
+    $outName = Split-Path -Leaf $fullOutFile
+    if ($outDir -and -not (Test-Path -LiteralPath $outDir))
+    {
+        New-Item -ItemType Directory -Path $outDir -Force | Out-Null
+    }
+
+    Write-Host ("下载文件：{0}" -f $outName)
+    Write-Host ("原始链接：{0}" -f $Url)
+    if ($proxyUrl) { Write-Host '代理：已启用（值不回显）' }
+    if ($aria2) { Write-Host ("下载器：aria2c（{0} 连接，1M 分片）" -f $Aria2Connections) }
+    else { Write-Host '下载器：Invoke-WebRequest（未找到 aria2c 或已用 -NoAria2 禁用）' }
+
     $last = $null
     for ($i = 0; $i -lt $candidates.Count; $i++)
     {
+        $candidate = $candidates[$i]
+        $sourceKind = '回退地址'
+        if ($candidate -eq $Url) { $sourceKind = '原始地址' }
+        elseif ($mirror -and $candidate.StartsWith($mirror.TrimEnd('/') + '/', [StringComparison]::OrdinalIgnoreCase))
+        {
+            $sourceKind = 'GitHub 加速镜像'
+        }
+        Write-Host ("下载源 {0}/{1}：{2}" -f ($i + 1), $candidates.Count, $sourceKind)
+        Write-Host ("  链接：{0}" -f $candidate)
+
+        if ($aria2)
+        {
+            $aria2Args = @(
+                ("--dir={0}" -f $outDir)
+                ("--out={0}" -f $outName)
+                ("--split={0}" -f $Aria2Connections)
+                ("--max-connection-per-server={0}" -f $Aria2Connections)
+                '--min-split-size=1M'
+                '--file-allocation=none'
+                '--allow-overwrite=true'
+                '--auto-file-renaming=false'
+                '--console-log-level=warn'
+                '--summary-interval=0'
+            )
+            if ($proxyUrl) { $aria2Args += ("--all-proxy={0}" -f $proxyUrl) }
+            elseif ($NoProxy) { $aria2Args += '--all-proxy=' }
+            $aria2Args += $candidate
+            $displayArgs = @($aria2Args | ForEach-Object {
+                if ($_ -like '--all-proxy=*') { '--all-proxy=<已设置>' }
+                elseif ($_ -match '\s') { '"' + $_ + '"' }
+                else { $_ }
+            })
+            $aria2Display = $aria2.Source
+            if ($aria2Display -match '\s') { $aria2Display = '"' + $aria2Display + '"' }
+            Write-Host ("  执行：{0} {1}" -f $aria2Display, ($displayArgs -join ' '))
+            try
+            {
+                & $aria2.Source @aria2Args
+                if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $fullOutFile))
+                {
+                    Write-Host ("  完成：{0}" -f $fullOutFile)
+                    return
+                }
+                throw ("aria2c 退出码 {0}，未生成目标文件" -f $LASTEXITCODE)
+            }
+            catch
+            {
+                $last = $_
+                Remove-Item -LiteralPath $fullOutFile -Force -ErrorAction SilentlyContinue
+                Remove-Item -LiteralPath ($fullOutFile + '.aria2') -Force -ErrorAction SilentlyContinue
+                Write-Host ("  aria2c 失败：{0}；改用 Invoke-WebRequest 重试同一链接" -f $_.Exception.Message)
+            }
+        }
+
         try
         {
-            Write-Verbose ("下载源 {0}/{1}:{2}" -f ($i + 1), $candidates.Count, $candidates[$i])
             $params = @{
-                Uri             = $candidates[$i]
-                OutFile         = $OutFile
+                Uri             = $candidate
+                OutFile         = $fullOutFile
                 UseBasicParsing = $true
                 TimeoutSec      = 300
             }
             if ($proxyUrl) { $params.Proxy = $proxyUrl }
+            $proxyText = if ($proxyUrl) { ' -Proxy <已设置>' } else { '' }
+            Write-Host ("  执行：Invoke-WebRequest -Uri '{0}' -OutFile '{1}'{2}" -f $candidate, $fullOutFile, $proxyText)
             Invoke-WebRequest @params
+            Write-Host ("  完成：{0}" -f $fullOutFile)
             return
         }
         catch
         {
             $last = $_
-            Remove-Item -LiteralPath $OutFile -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $fullOutFile -Force -ErrorAction SilentlyContinue
             if ($i -lt ($candidates.Count - 1))
             {
                 Write-Host ("  当前源不可用，回退下一个：{0}" -f $_.Exception.Message)
@@ -790,10 +900,13 @@ function Invoke-CxxuDownload
 function Get-CxxuLatestRelease
 {
     # GitHub API；有代理时直连优先，否则先镜像再直连。
+    # -NoGithubMirror 只查直连；显式 -GithubMirror 指定镜像前缀。
     param(
         [string]$Repo,
         [string]$Proxy,
-        [switch]$NoProxy
+        [switch]$NoProxy,
+        [AllowEmptyString()][string]$GithubMirror = '',
+        [switch]$NoGithubMirror
     )
     try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }
     $proxyUrl = ''
@@ -803,15 +916,16 @@ function Get-CxxuLatestRelease
         else { $proxyUrl = Get-CxxuProxyUrl }
     }
     $url = "https://api.github.com/repos/$Repo/releases/latest"
-    $mirror = $env:PsGithubMirror
-    if (-not $mirror) { $mirror = 'https://gh-proxy.com' }
+    $mirror = Get-CxxuGithubMirror -Mirror $GithubMirror -NoMirror:$NoGithubMirror -MirrorSpecified:($PSBoundParameters.ContainsKey('GithubMirror'))
     # API 直连优先（多数网络可用且响应快），失败再走镜像；有代理时直连也自动经过代理。
-    $candidates = @($url, ($mirror.TrimEnd('/') + '/' + $url))
+    $candidates = @($url)
+    if ($mirror) { $candidates += ($mirror.TrimEnd('/') + '/' + $url) }
     $params = @{ TimeoutSec = 30 }
     if ($proxyUrl) { $params.Proxy = $proxyUrl }
     $last = $null
     foreach ($candidate in $candidates)
     {
+        Write-Verbose ("release API 来源：{0}" -f $candidate)
         $params.Uri = $candidate
         try { return Invoke-RestMethod @params }
         catch { $last = $_ }
@@ -847,9 +961,7 @@ function Invoke-CxxuDownloadBatch
         if (-not [string]::IsNullOrWhiteSpace($Proxy)) { $proxyUrl = $Proxy.Trim() }
         else { $proxyUrl = Get-CxxuProxyUrl }
     }
-    $mirror = $env:PsGithubMirror
-    if (-not $mirror) { $mirror = 'https://gh-proxy.com' }
-
+    $mirror = Get-CxxuGithubMirror
     $prepared = @()
     foreach ($task in $Tasks)
     {
@@ -857,7 +969,7 @@ function Invoke-CxxuDownloadBatch
         if ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
         $prepared += [pscustomobject]@{
             Task = $task
-            Urls = @(Get-CxxuDownloadUrls -Url $task.Url -Mirror $mirror -ProxyUrl $proxyUrl)
+            Urls = @(Get-CxxuDownloadUrls -Url $task.Url -Mirror $mirror -ProxyUrl $proxyUrl -NoMirror:(-not $mirror))
         }
     }
 
@@ -1819,6 +1931,12 @@ function Deploy-Carapace
     rc 标记块；停用 bash 片段用 bash/carapace/setup.sh --disable（登录 shell 加 --login），
     停用 PowerShell 侧用 Disable-PsPlugin Carapace -Persist，两者互不影响。
     默认查询最新 release；网络受限或需要可复现版本时用 -Version 指定版本号，可跳过 GitHub API。
+    下载默认优先使用 aria2c（多连接并发分片），未找到 aria2c 时回退 Invoke-WebRequest；
+    每次尝试都打印原始链接、实际链接、来源与执行命令，便于确认走了哪个源。
+    默认经 GitHub 加速镜像（$env:PsGithubMirror，未设置时 https://gh-proxy.com）；
+    -NoGithubMirror（别名 -NoMirror）本次直连，-GithubMirror（别名 -Mirror）指定镜像，
+    -GithubMirror '' 等同直连；-NoAria2 强制回退 Invoke-WebRequest，
+    -Aria2Connections 调整 aria2c 连接数。
     已存在 carapace 时默认跳过，-Force 重新下载覆盖；本地版本高于 -Version 时默认拒绝降级，
     确需降级加 -AllowDowngrade。下载失败可改用包管理器：Windows 用 scoop，macOS 用 brew，
     Linux 用发行版仓库或官方 .deb/.rpm/.apk。
@@ -1832,6 +1950,10 @@ function Deploy-Carapace
     .EXAMPLE
     Deploy-Carapace -Version 1.8.2 -Proxy http://127.0.0.1:7897
     .EXAMPLE
+    Deploy-Carapace -NoGithubMirror -NoAria2
+    .EXAMPLE
+    Deploy-Carapace -GithubMirror 'https://gh-proxy.com' -Aria2Connections 16
+    .EXAMPLE
     Deploy-Carapace -Destination "$HOME/.local/bin" -SkipPath -Force
     #>
     [CmdletBinding(SupportsShouldProcess)]
@@ -1844,6 +1966,14 @@ function Deploy-Carapace
         [string]$Proxy = '',
         # 强制直连，忽略 -Proxy 与代理环境变量
         [switch]$NoProxy,
+        # GitHub 加速镜像前缀；留空时读 $env:PsGithubMirror，未设置用 https://gh-proxy.com
+        [AllowEmptyString()][Alias('Mirror')][string]$GithubMirror = '',
+        # 本次直连 GitHub，忽略 -GithubMirror 与 $env:PsGithubMirror
+        [Alias('NoMirror')][switch]$NoGithubMirror,
+        # 不使用 aria2c，强制走 Invoke-WebRequest
+        [switch]$NoAria2,
+        # aria2c 分片数与单服务器最大连接数
+        [ValidateRange(1, 64)][int]$Aria2Connections = 16,
         # 不修改当前会话与用户 PATH（自行管理 PATH 时使用）
         [switch]$SkipPath,
         # 安装后启用 Carapace 组件并写入用户配置（当前会话立即加载）
@@ -1859,6 +1989,7 @@ function Deploy-Carapace
     )
 
     $platform = Get-CxxuHostPlatform
+    $mirror = Get-CxxuGithubMirror -Mirror $GithubMirror -NoMirror:$NoGithubMirror -MirrorSpecified:($PSBoundParameters.ContainsKey('GithubMirror'))
     if (-not $Destination)
     {
         $homeBin = if ($platform.IsWindows) { Join-Path $HOME '.cxxu' } else { Join-Path $HOME '.local' }
@@ -1910,11 +2041,20 @@ function Deploy-Carapace
         return
     }
 
+    if ($mirror)
+    {
+        Write-Host ("GitHub 加速镜像：{0}（-NoGithubMirror 关闭，-GithubMirror 指定）" -f $mirror)
+    }
+    else
+    {
+        Write-Host 'GitHub 加速镜像：已关闭（直连 GitHub）'
+    }
+
     $rel = $null
     if ([string]::IsNullOrWhiteSpace($Version))
     {
         Write-Host '查询 carapace 最新 release ...'
-        $rel = Get-CxxuLatestRelease -Repo 'carapace-sh/carapace-bin' -Proxy $Proxy -NoProxy:$NoProxy
+        $rel = Get-CxxuLatestRelease -Repo 'carapace-sh/carapace-bin' -Proxy $Proxy -NoProxy:$NoProxy -GithubMirror $mirror
         $tag = [string]$rel.tag_name
         $ver = $tag.TrimStart('v')
     }
@@ -1960,10 +2100,10 @@ function Deploy-Carapace
             default { '发行版仓库，或官方 Release 的 .deb/.rpm/.apk' }
         }
         Write-Host ("下载 {0}（{1}）..." -f $assetName, $tag)
-        try { Invoke-CxxuDownload -Url $assetUrl -OutFile $archivePath -Proxy $Proxy -NoProxy:$NoProxy }
+        try { Invoke-CxxuDownload -Url $assetUrl -OutFile $archivePath -Proxy $Proxy -NoProxy:$NoProxy -GithubMirror $mirror -NoAria2:$NoAria2 -Aria2Connections $Aria2Connections }
         catch { throw ("下载 {0} 失败：{1}`n可改用包管理器：{2}。" -f $assetName, $_.Exception.Message, $pmHint) }
         Write-Host ("下载 {0} ..." -f $sumName)
-        try { Invoke-CxxuDownload -Url $sumUrl -OutFile $sumPath -Proxy $Proxy -NoProxy:$NoProxy }
+        try { Invoke-CxxuDownload -Url $sumUrl -OutFile $sumPath -Proxy $Proxy -NoProxy:$NoProxy -GithubMirror $mirror -NoAria2:$NoAria2 -Aria2Connections $Aria2Connections }
         catch { throw ("下载 {0} 失败：{1}`n可改用包管理器：{2}。" -f $sumName, $_.Exception.Message, $pmHint) }
 
         $sumText = [IO.File]::ReadAllText($sumPath)

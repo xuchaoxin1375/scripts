@@ -183,7 +183,7 @@ Test-StartupPerformance -Simple   # 只测一次新 pwsh 启动（带 profile）
 
 carapace 是一个跨 shell 的命令行补全二进制，按命令读取自身的 completer（补全器），在 PowerShell 里通过 `Register-ArgumentCompleter -Native` 注册。它不补 PowerShell cmdlet 的参数，也不参与命令名模糊补全；定位是补外部 CLI 的参数值，与 `CxxuTab`、`git-completion`、`argc-completions` 并列。
 
-安装渠道不绑定 scoop：推荐 `Deploy-Carapace`，它会按当前平台与架构从官方 GitHub Release 下载产物（Windows 为 zip，macOS/Linux 为 tar.gz）、按 `checksums.txt` 校验并解压到默认目录（Windows `~/.cxxu/bin`，其他平台 `~/.local/bin`），可用 `-Version` 固定版本；也可手工下载官方产物，或用包管理器（Windows `scoop`、macOS `brew`、Linux 发行版仓库）。安装与校验步骤见 [Deploy-Guide](Deploy-Guide.md) 的「可选：carapace」。前置条件为 `pwsh` 7（`Register-ArgumentCompleter -Native` 在 5.1 不可用）且 `carapace` 位于 PATH。
+安装渠道不绑定 scoop：推荐 `Deploy-Carapace`，它会按当前平台与架构从官方 GitHub Release 下载产物（Windows 为 zip，macOS/Linux 为 tar.gz）、按 `checksums.txt` 校验并解压到默认目录（Windows `~/.cxxu/bin`，其他平台 `~/.local/bin`），可用 `-Version` 固定版本；也可手工下载官方产物，或用包管理器（Windows `scoop`、macOS `brew`、Linux 发行版仓库）。下载默认优先 `aria2c` 多连接分片（`-Aria2Connections`，默认 16），不可用时回退 `Invoke-WebRequest`；每次尝试都会打印原始链接、实际链接、来源与执行命令。GitHub 加速镜像默认读 `$env:PsGithubMirror`（未设置用 `https://gh-proxy.com`），`-NoGithubMirror`（别名 `-NoMirror`）直连，`-GithubMirror`（别名 `-Mirror`）`'<前缀>'` 本次指定。安装与校验步骤见 [Deploy-Guide](Deploy-Guide.md) 的「可选：carapace」。前置条件为 `pwsh` 7（`Register-ArgumentCompleter -Native` 在 5.1 不可用）且 `carapace` 位于 PATH。
 
 本机 `carapace-bin 1.8.2`、`pwsh 7.6.3` 实测的代表性效果：
 

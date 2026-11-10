@@ -36,7 +36,8 @@
 ## 部署与网络
 
 - 国内默认 GitHub + 镜像前缀 `https://gh-proxy.com`；可用 `-GithubMirror` 或
-  `$env:PsGithubMirror` 覆盖。
+  `$env:PsGithubMirror` 覆盖。单文件下载优先 `aria2c`（多连接分片，`-NoAria2` 关闭），
+  并打印原始链接、实际链接、来源与执行命令；镜像可用 `-NoGithubMirror` 或 `-GithubMirror ''` 关闭。
 - 一键部署默认不安装 PowerShell 7；需要时显式 `-InstallPwsh7`。已有 git/pwsh 时跳过安装，
   不重复覆盖。
 - 克隆优先镜像，失败回退直连，再失败回退离线包。下载后校验 zip/PE 签名，不能只看文件非空。
