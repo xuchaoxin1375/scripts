@@ -12,6 +12,7 @@ DRY_RUN=0
 UNINSTALL=0
 CHECK_ONLY=0
 INSTALL=0
+INSTALL_DEPS=0
 INSTALL_VERSION=''
 BIN_DIR=''
 FORCE_INSTALL=0
@@ -36,9 +37,11 @@ usage() {
   -u, --uninstall    从 rc 文件移除已安装的片段
   -c, --check        只读检查依赖、rc 片段与端到端加载状态，不修改文件
       --status       同 --check
-  -i, --install      下载并安装 carapace（Linux/macOS 官方 Release + SHA-256），然后写入 rc
+  -i, --install      下载并安装 carapace（官方 Release + SHA-256），然后写入 rc
+      --install-deps 安装缺失依赖（Linux 用 sudo 包管理器，macOS 用 brew）
       --version <v>  --install 时固定版本；默认查询最新 release
-      --bin-dir <d>  --install 的安装目录（默认 $CARAPACE_BIN 或 ~/.local/bin）
+      --bin-dir <d>  --install 的安装目录（默认 $CARAPACE_BIN；Windows 为
+                     ~/.cxxu/bin，其他平台为 ~/.local/bin）
       --mirror <m>   --install 的下载通道: auto（默认，镜像优先）、direct、ghproxy、
                      ghproxynet、ghfast 或 https 前缀
       --proxy <url>  --install 时经 HTTP/HTTPS/SOCKS 代理下载
@@ -51,10 +54,16 @@ usage() {
   shopt -q login_shell && echo login || echo non-login
   再决定是否加 --login。--login 与 --rc 不能同时使用。
 
-  --install 只用于 Linux/macOS；Git Bash/MSYS 请用 scoop install carapace-bin
-  或 Deploy-Carapace -Enable。下载走 curl 或 wget：auto 模式先试 GitHub 文件
-  镜像再回退直连；版本查询始终直连（或经 --proxy），不经过文件镜像。
-  未指定 --proxy 时沿用 HTTPS_PROXY/HTTP_PROXY/ALL_PROXY。
+  --install 支持 Linux/macOS 与 Git Bash/Cygwin：Windows 下载 windows zip，
+  解压出 carapace.exe 后装到 ~/.cxxu/bin，其他平台下载 tar.gz 装到
+  ~/.local/bin。下载走 curl 或 wget：auto 模式先试 GitHub 文件镜像再回退直连；
+  版本查询始终直连（或经 --proxy），不经过文件镜像。未指定 --proxy 时沿用
+  HTTPS_PROXY/HTTP_PROXY/ALL_PROXY。
+
+  --install-deps 只在显式给出时执行：缺 curl/wget、coreutils、tar 时调用
+  包管理器安装；Linux 需要 sudo（已是 root 时直接执行），macOS 用 brew。
+  Git Bash 的这些依赖通常随 Git 提供；缺失时给出手工安装命令，不自动执行。
+  不加该选项时只提示命令，不安装任何软件。
 
   退出码: 0 正常；1 需要处理；2 参数或环境错误。--check 不修改任何文件。
 EOF
@@ -98,6 +107,7 @@ while [ $# -gt 0 ]; do
 	-u | --uninstall) UNINSTALL=1 ;;
 	-c | --check | --status) CHECK_ONLY=1 ;;
 	-i | --install) INSTALL=1 ;;
+	--install-deps) INSTALL_DEPS=1 ;;
 	--version)
 		shift
 		if [ $# -eq 0 ]; then
@@ -260,7 +270,7 @@ write_block() {
 
 install_hint() {
 	case "${OSTYPE:-}" in
-	msys* | cygwin*) printf 'Windows 可执行 scoop install carapace-bin（需 spc bucket）或 Deploy-Carapace -Enable' ;;
+	msys* | cygwin*) printf 'Windows 可执行 bash setup.sh --install（官方 Release + SHA-256），或 scoop install carapace-bin；也可用 Deploy-Carapace -Enable' ;;
 	darwin*) printf 'macOS 可执行 brew install carapace' ;;
 	*) printf 'Linux 可从官方 Release 安装到 ~/.local/bin，或使用发行版仓库' ;;
 	esac
@@ -502,6 +512,160 @@ sha_tool() {
 	fi
 }
 
+bin_name() {
+	if [ "$(host_os)" = "windows" ]; then
+		printf 'carapace.exe\n'
+	else
+		printf 'carapace\n'
+	fi
+}
+
+archive_ext() {
+	if [ "$(host_os)" = "windows" ]; then
+		printf 'zip\n'
+	else
+		printf 'tar.gz\n'
+	fi
+}
+
+extract_tool() {
+	if [ "$(host_os)" = "windows" ]; then
+		if command -v unzip >/dev/null 2>&1; then
+			printf 'unzip\n'
+		elif command -v bsdtar >/dev/null 2>&1; then
+			printf 'bsdtar\n'
+		elif command -v powershell.exe >/dev/null 2>&1; then
+			printf 'powershell\n'
+		fi
+	elif command -v tar >/dev/null 2>&1; then
+		printf 'tar\n'
+	fi
+}
+
+extract_release() {
+	local dir="$1" asset="$2" member="$3"
+	case "$asset" in
+	*.tar.gz)
+		tar -xzf "$dir/$asset" -C "$dir" "$member"
+		;;
+	*.zip)
+		if command -v unzip >/dev/null 2>&1; then
+			unzip -o -q "$dir/$asset" "$member" -d "$dir"
+		elif command -v bsdtar >/dev/null 2>&1; then
+			bsdtar -xf "$dir/$asset" -C "$dir" "$member"
+		elif command -v powershell.exe >/dev/null 2>&1; then
+			powershell.exe -NoProfile -NonInteractive -Command \
+				"Expand-Archive -LiteralPath '$(cygpath -w "$dir/$asset")' -DestinationPath '$(cygpath -w "$dir")' -Force"
+		else
+			return 1
+		fi
+		;;
+	*)
+		return 1
+		;;
+	esac
+}
+
+package_manager() {
+	if command -v apt-get >/dev/null 2>&1; then
+		printf 'apt-get\n'
+	elif command -v dnf >/dev/null 2>&1; then
+		printf 'dnf\n'
+	elif command -v pacman >/dev/null 2>&1; then
+		printf 'pacman\n'
+	elif command -v apk >/dev/null 2>&1; then
+		printf 'apk\n'
+	elif command -v brew >/dev/null 2>&1; then
+		printf 'brew\n'
+	fi
+}
+
+run_privileged() {
+	if [ "$(id -u)" -eq 0 ]; then
+		"$@"
+	elif command -v sudo >/dev/null 2>&1; then
+		sudo "$@"
+	else
+		printf '需要 root 权限；请手工执行: %s\n' "$*" >&2
+		return 1
+	fi
+}
+
+install_packages() {
+	local pm="$1"
+	shift
+	case "$pm" in
+	apt-get) run_privileged apt-get install -y "$@" ;;
+	dnf) run_privileged dnf install -y "$@" ;;
+	pacman) run_privileged pacman -S --needed "$@" ;;
+	apk) run_privileged apk add "$@" ;;
+	brew) brew install "$@" ;;
+	*)
+		printf '错误: 不支持的包管理器 %s\n' "$pm" >&2
+		return 1
+		;;
+	esac
+}
+
+missing_install_deps() {
+	local deps=''
+	[ -n "$(download_tool)" ] || deps="$deps curl"
+	[ -n "$(sha_tool)" ] || deps="$deps coreutils"
+	command -v tar >/dev/null 2>&1 || deps="$deps tar"
+	command -v xargs >/dev/null 2>&1 || deps="$deps coreutils"
+	printf '%s\n' "$deps" | tr ' ' '\n' | awk 'NF && !seen[$0]++'
+}
+
+install_deps() {
+	local deps pm
+	if [ "${BASH_VERSINFO[0]:-0}" -lt 4 ]; then
+		printf '提示: 当前 bash %s 低于 4，carapace 会拒绝加载。\n' "$BASH_VERSION" >&2
+		if [ "$(host_os)" = "darwin" ]; then
+			printf '      macOS 可执行 brew install bash，把新版 bash 加入 /etc/shells 后 chsh 切换。\n' >&2
+		else
+			printf '      请安装 bash 4 及以上版本。\n' >&2
+		fi
+	fi
+
+	deps="$(missing_install_deps | tr '\n' ' ' | sed 's/ *$//')"
+	if [ -z "$deps" ]; then
+		printf '依赖已齐全（下载=%s，解压=%s，校验=%s）\n' \
+			"$(download_tool)" "$(extract_tool)" "$(sha_tool)"
+		return 0
+	fi
+	printf '缺少依赖: %s\n' "$deps"
+
+	if [ "$(host_os)" = "windows" ]; then
+		printf 'Git Bash 的依赖随 Git for Windows 提供：请在 MSYS2 中用 pacman 安装对应包，或重装 Git for Windows。\n' >&2
+		return 1
+	fi
+
+	pm="$(package_manager)"
+	if [ -z "$pm" ]; then
+		printf '未识别到包管理器；请手工安装: %s\n' "$deps" >&2
+		return 1
+	fi
+	if [ "$DRY_RUN" -eq 1 ]; then
+		case "$pm" in
+		apt-get) printf '[dry-run] 将执行: sudo apt-get install -y %s\n' "$deps" ;;
+		dnf) printf '[dry-run] 将执行: sudo dnf install -y %s\n' "$deps" ;;
+		pacman) printf '[dry-run] 将执行: sudo pacman -S --needed %s\n' "$deps" ;;
+		apk) printf '[dry-run] 将执行: sudo apk add %s\n' "$deps" ;;
+		brew) printf '[dry-run] 将执行: brew install %s\n' "$deps" ;;
+		esac
+		return 0
+	fi
+	printf '调用 %s 安装: %s\n' "$pm" "$deps"
+	# shellcheck disable=SC2086
+	install_packages "$pm" $deps || return 1
+
+	if [ -z "$(download_tool)" ] || [ -z "$(sha_tool)" ]; then
+		printf '警告: 安装后仍缺 curl/wget 或 sha256sum；请手工处理后重试\n' >&2
+		return 1
+	fi
+	return 0
+}
+
 deps_hint() {
 	if command -v apt-get >/dev/null 2>&1; then
 		printf 'sudo apt-get install -y %s\n' "$1"
@@ -634,7 +798,16 @@ verify_sha256() {
 }
 
 install_dest() {
-	local dest="${BIN_DIR:-${CARAPACE_BIN:-$HOME/.local/bin}}"
+	local dest
+	if [ -n "$BIN_DIR" ]; then
+		dest="$BIN_DIR"
+	elif [ -n "${CARAPACE_BIN:-}" ]; then
+		dest="$CARAPACE_BIN"
+	elif [ "$(host_os)" = "windows" ]; then
+		dest="$HOME/.cxxu/bin"
+	else
+		dest="$HOME/.local/bin"
+	fi
 	# shellcheck disable=SC2088
 	case "$dest" in
 	"~") dest="$HOME" ;;
@@ -659,26 +832,20 @@ print_install_plan() {
 	esac
 	printf '[dry-run] 平台: %s/%s\n' "$os" "${arch:-未知}"
 	printf '[dry-run] 版本: %s\n' "$ver"
+	printf '[dry-run] 产物: carapace-bin_<版本>_%s_%s.%s\n' "$os" "${arch:-未知}" "$(archive_ext)"
 	printf '[dry-run] 安装目录: %s\n' "$dest"
 	printf '[dry-run] 下载通道: %s\n' "$channel"
 	if [ -n "$PROXY_URL" ]; then
 		printf '[dry-run] 代理: 已设置（不显示地址）\n'
 	fi
-	printf '[dry-run] 依赖: 下载=%s，tar=%s，校验=%s\n' \
-		"$(download_tool || true)" "$(command -v tar || true)" "$(sha_tool || true)"
-	if [ "$os" = "windows" ]; then
-		printf '[dry-run] 注意: MSYS/Cygwin 不支持 --install，请改用 scoop 或 Deploy-Carapace\n'
-	fi
+	printf '[dry-run] 依赖: 下载=%s，解压=%s，校验=%s\n' \
+		"$(download_tool || true)" "$(extract_tool || true)" "$(sha_tool || true)"
 }
 
 run_install() {
-	local os arch dest ver asset base dep
+	local os arch dest ver asset base dep bin
 
 	os="$(host_os)"
-	if [ "$os" = "windows" ]; then
-		echo "错误: --install 仅用于 Linux/macOS；Git Bash/MSYS 请用 scoop install carapace-bin 或 Deploy-Carapace -Enable" >&2
-		return 1
-	fi
 	if [ "$os" = "unknown" ]; then
 		echo "错误: 无法识别的平台 ${OSTYPE:-unknown}；请改用包管理器安装" >&2
 		return 1
@@ -689,6 +856,7 @@ run_install() {
 		return 1
 	fi
 	dest="$(install_dest)"
+	bin="$(bin_name)"
 
 	if command -v carapace >/dev/null 2>&1 && [ "$FORCE_INSTALL" -eq 0 ]; then
 		printf '已安装 %s（%s）；如需覆盖，加 --force\n' \
@@ -696,24 +864,29 @@ run_install() {
 		note_install_path "$dest"
 		return 0
 	fi
-	if [ -x "$dest/carapace" ] && [ "$FORCE_INSTALL" -eq 0 ]; then
+	if [ -x "$dest/$bin" ] && [ "$FORCE_INSTALL" -eq 0 ]; then
 		printf '已安装 %s（%s）；如需覆盖，加 --force\n' \
-			"$dest/carapace" "$("$dest/carapace" --version 2>/dev/null || printf '版本未知')"
+			"$dest/$bin" "$("$dest/$bin" --version 2>/dev/null || printf '版本未知')"
 		note_install_path "$dest"
 		return 0
 	fi
 
 	dep="$(download_tool)"
 	if [ -z "$dep" ]; then
-		echo "错误: 需要 curl 或 wget；$(deps_hint curl)" >&2
+		echo "错误: 需要 curl 或 wget；$(deps_hint curl)（也可加 --install-deps 自动安装）" >&2
 		return 1
 	fi
-	if ! command -v tar >/dev/null 2>&1; then
-		echo "错误: 需要 tar；$(deps_hint tar)" >&2
+	if [ "$os" = "windows" ]; then
+		if [ -z "$(extract_tool)" ]; then
+			echo "错误: 解压 zip 需要 unzip、bsdtar 或 powershell.exe 之一；$(deps_hint unzip)" >&2
+			return 1
+		fi
+	elif ! command -v tar >/dev/null 2>&1; then
+		echo "错误: 需要 tar；$(deps_hint tar)（也可加 --install-deps 自动安装）" >&2
 		return 1
 	fi
 	if [ -z "$(sha_tool)" ]; then
-		echo "错误: 需要 sha256sum 或 shasum；$(deps_hint coreutils)" >&2
+		echo "错误: 需要 sha256sum 或 shasum；$(deps_hint coreutils)（也可加 --install-deps 自动安装）" >&2
 		return 1
 	fi
 
@@ -734,7 +907,7 @@ run_install() {
 		;;
 	esac
 
-	asset="carapace-bin_${ver}_${os}_${arch}.tar.gz"
+	asset="carapace-bin_${ver}_${os}_${arch}.$(archive_ext)"
 	base="https://github.com/carapace-sh/carapace-bin/releases/download/v${ver}"
 	INSTALL_TMP="$(mktemp -d)"
 	trap 'rm -rf "${INSTALL_TMP:-}"' EXIT
@@ -750,26 +923,30 @@ run_install() {
 	fi
 	verify_sha256 "$INSTALL_TMP" "$asset" || return 1
 
-	if ! tar -xzf "$INSTALL_TMP/$asset" -C "$INSTALL_TMP" carapace; then
-		echo "错误: 解压 $asset 失败" >&2
+	if ! extract_release "$INSTALL_TMP" "$asset" "$bin"; then
+		echo "错误: 解压 $asset 失败（Windows 需要 unzip、bsdtar 或 powershell.exe 之一）" >&2
 		return 1
 	fi
 	if ! mkdir -p "$dest"; then
 		echo "错误: 无法创建安装目录 $dest" >&2
 		return 1
 	fi
-	if ! install_binary "$INSTALL_TMP/carapace" "$dest/carapace"; then
-		echo "错误: 无法写入 $dest/carapace" >&2
+	if ! install_binary "$INSTALL_TMP/$bin" "$dest/$bin"; then
+		echo "错误: 无法写入 $dest/$bin" >&2
 		return 1
 	fi
-	if ! "$dest/carapace" --version >/dev/null 2>&1; then
-		echo "错误: 安装后的二进制无法执行：$dest/carapace" >&2
+	if ! "$dest/$bin" --version >/dev/null 2>&1; then
+		echo "错误: 安装后的二进制无法执行：$dest/$bin" >&2
 		return 1
 	fi
-	printf '已安装 %s（%s）\n' "$dest/carapace" "$("$dest/carapace" --version 2>/dev/null)"
+	printf '已安装 %s（%s）\n' "$dest/$bin" "$("$dest/$bin" --version 2>/dev/null)"
 	note_install_path "$dest"
 	return 0
 }
+
+if [ "$INSTALL_DEPS" -eq 1 ]; then
+	install_deps || exit 1
+fi
 
 if [ "$CHECK_ONLY" -eq 1 ]; then
 	if run_check; then

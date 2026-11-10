@@ -252,7 +252,7 @@ bash /path/to/scripts/bash/carapace/setup.sh --dry-run --login
 bash /path/to/scripts/bash/carapace/setup.sh --login
 ```
 
-如果二进制也还没装，可在 PowerShell 里用一条命令覆盖两边：`Deploy-Carapace -Bash`（登录 shell 用 `Deploy-Carapace -Bash -BashLogin`）。它内部调用同一个 `setup.sh`，写入内容与上面手工执行一致；bash 侧修改 rc 前仍建议先 `bash setup.sh --dry-run` 确认目标文件。
+如果二进制也还没装，可在 PowerShell 里用一条命令覆盖两边：`Deploy-Carapace -Bash`（登录 shell 用 `Deploy-Carapace -Bash -BashLogin`）。它内部调用同一个 `setup.sh`，写入内容与上面手工执行一致；在 Git Bash 内也可以直接 `bash setup.sh --install`（官方 Release + SHA-256，Windows 下载 windows zip），再按需用 `--install-deps` 补齐依赖。bash 侧修改 rc 前仍建议先 `bash setup.sh --dry-run` 确认目标文件。
 
 macOS 自带 bash 3.2 会被 carapace 拒绝，需要 `brew install bash` 并切换登录 shell；macOS 默认 zsh 不在该接入范围。平台差异、手工片段、PATH 修正原因、与 argc-completions 的共存、验收与未验证项见 [bash/carapace/README.md](../../bash/carapace/README.md)。多个候选时按两次 `<Tab>` 显示列表；`gh` 等外部命令未安装时，静态子命令仍可补全，需要仓库或登录上下文的动态候选才依赖命令本身。先在 bash 中确认 `command -v carapace` 有输出；没有则把安装目录（Git Bash 常见为 `~/.cxxu/bin` 或 `/c/scoop/shims`，Linux/macOS 常见为 `~/.local/bin`）加入 PATH。
 

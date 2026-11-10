@@ -6,7 +6,7 @@
 
 _carapace_install_hint() {
 	case "${OSTYPE:-}" in
-	msys* | cygwin*) printf 'Windows 可执行 scoop install carapace-bin（需 spc bucket），或 Deploy-Carapace -Enable' ;;
+	msys* | cygwin*) printf 'Windows 可在 Git Bash 执行 bash setup.sh --install（官方 Release + SHA-256），或 scoop install carapace-bin；也可用 Deploy-Carapace -Enable' ;;
 	darwin*) printf 'macOS 可执行 brew install carapace；系统自带 bash 3.2 需先 brew install bash 并切换登录 shell' ;;
 	*) printf 'Linux 可从官方 Release 安装到 ~/.local/bin，或使用发行版仓库' ;;
 	esac

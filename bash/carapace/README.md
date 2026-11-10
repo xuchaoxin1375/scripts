@@ -14,7 +14,7 @@
 | --- | --- |
 | 覆盖的 shell | Git Bash（MSYS）、Cygwin、Linux、WSL、macOS 的 bash 4 及以上 |
 | 不覆盖 | zsh（macOS 默认 shell）、fish、cmd.exe、PowerShell；这些环境不在本目录的接入范围 |
-| 前置条件 | `carapace` 位于 PATH（或由 `setup.sh --install` 安装）；bash 4+；`xargs`（coreutils）；`--install` 另需 curl 或 wget、tar、sha256sum（或 shasum） |
+| 前置条件 | `carapace` 位于 PATH（或由 `setup.sh --install` 安装）；bash 4+；`xargs`（coreutils）；`--install` 另需 curl 或 wget、sha256sum（或 shasum），Linux/macOS 还需 tar，Git Bash/Cygwin 还需 unzip、bsdtar 或 powershell.exe 之一（用于解压 zip） |
 | 修改范围 | 只在 rc 文件写入 `# >>> carapace >>>` 标记块；不修改 carapace 本体，不修改 profile |
 | 生效方式 | 新开终端，或 `source` 对应 rc；运行时脚本可重复 source |
 | 效果 | 注册 carapace 的全部 completer；Tab 补全命令参数值，不补命令名，也不补 PowerShell cmdlet |
@@ -29,7 +29,7 @@ shopt -q login_shell && echo "login shell" || echo "non-login shell"
 
 | 平台 | carapace 安装 | 实际读取的 rc | PATH 修正 | 验证状态 |
 | --- | --- | --- | --- | --- |
-| Git Bash（MSYS） | `scoop install carapace-bin`（需 `spc` bucket），或 PowerShell 里 `Deploy-Carapace -Bash`（装二进制并写 rc） | 非登录 `.bashrc`；登录 `.bash_profile`/`.bash_login`/`.profile` | 需要 | 已实测 |
+| Git Bash（MSYS） | `setup.sh --install`（官方 Release 的 windows zip + SHA-256，装到 `~/.cxxu/bin`）、`scoop install carapace-bin`，或 PowerShell 里 `Deploy-Carapace -Bash`（装二进制并写 rc） | 非登录 `.bashrc`；登录 `.bash_profile`/`.bash_login`/`.profile` | 需要 | `--install` 已实测；Cygwin 未实测 |
 | Cygwin | 同 Git Bash，或 Cygwin 包管理器 | 同 bash 规则 | 需要（兼容层） | 未实测 |
 | Linux | `setup.sh --install`（官方 Release + SHA-256 + 镜像/代理），或发行版仓库，或手工装到 `~/.local/bin` | 非登录 `.bashrc`；登录 `.bash_profile`/`.bash_login`/`.profile` | 不需要 | `--install` 在 WSL Ubuntu 24.04 已实测；实际补全未在 Linux 桌面验证 |
 | WSL | 在 WSL 内用 `setup.sh --install` 装 Linux 版；不要复用 Windows 的 `carapace.exe` | 通常为非登录 `.bashrc` | 不需要 | `--install` 与 `--check` 已实测；ble.sh 菜单未验证 |
@@ -50,6 +50,15 @@ carapace --version
 ```bash
 bash /path/to/scripts/bash/carapace/setup.sh --check
 ```
+
+依赖不全时，先看会执行什么再安装：
+
+```bash
+bash /path/to/scripts/bash/carapace/setup.sh --install-deps --dry-run
+bash /path/to/scripts/bash/carapace/setup.sh --install-deps
+```
+
+`--install-deps` 只在显式给出时执行：Linux 用 sudo 调包管理器，macOS 用 brew，Git Bash 只打印 scoop/pacman 命令。
 
 在 PowerShell 中也可以用一条命令同时装二进制并写 rc（内部调用本目录的 `setup.sh`，写入内容与手工执行一致）：
 
@@ -76,16 +85,31 @@ bash /path/to/scripts/bash/carapace/setup.sh --dry-run --login
 
 ### Git Bash / MSYS
 
-在 PowerShell 中安装 carapace（已有可跳过）：
+三种方式选一，都会得到可用的二进制：
 
-```powershell
-scoop install carapace-bin
-# 或使用仓库的 Deploy-Carapace（需要 pwsh 7）；-Bash 会同时写入 bash rc
-Deploy-Carapace -Bash
-Deploy-Carapace -Bash -BashLogin   # 当前终端是登录 shell 时
+```bash
+# 1. 只用 bash：官方 Release 的 windows zip + SHA-256，装到 ~/.cxxu/bin 并写 rc
+cd /path/to/scripts/bash/carapace
+bash setup.sh --install --dry-run
+bash setup.sh --install
 ```
 
-用 `Deploy-Carapace -Bash` 时 rc 已写好，可跳过下面的 `setup.sh`，直接做确认与验收；只用 `scoop` 装二进制时才需要继续跑 `setup.sh`。
+```powershell
+# 2. 在 PowerShell 里一条命令：装二进制 + 写 bash rc（需要 pwsh 7）
+Deploy-Carapace -Bash
+Deploy-Carapace -Bash -BashLogin   # 当前终端是登录 shell 时
+
+# 3. 已有 scoop 渠道
+scoop install carapace-bin
+```
+
+用 `setup.sh --install` 或 `Deploy-Carapace -Bash` 时 rc 已写好，可直接验收；用 `scoop` 装二进制时再补写 rc：
+
+```bash
+cd /path/to/scripts/bash/carapace
+bash setup.sh --dry-run
+bash setup.sh
+```
 
 回到 Git Bash 验收：
 
@@ -94,15 +118,7 @@ command -v carapace
 carapace --version
 ```
 
-只用 `scoop` 装二进制时，再补写 rc（用 `Deploy-Carapace -Bash` 时已写好，可跳过）：
-
-```bash
-cd /path/to/scripts/bash/carapace
-bash setup.sh --dry-run
-bash setup.sh
-```
-
-如果 `command -v carapace` 没有输出，把安装目录加入 PATH（常见为 `~/.cxxu/bin` 或 `/c/scoop/shims`），再重开终端。Git Bash 使用登录 shell 时改加 `--login`。
+如果 `command -v carapace` 没有输出，把安装目录加入 PATH（常见为 `~/.cxxu/bin` 或 `/c/scoop/shims`），再重开终端；用 `setup.sh --install` 时 rc 片段会通过 `CARAPACE_BIN` 自动前置该目录。Git Bash 使用登录 shell 时改加 `--login`。
 
 ### Linux
 
@@ -192,9 +208,10 @@ macOS Terminal 默认是登录 shell；VS Code 等集成终端可能是非登录
 | `-r`, `--rc <file>` | 指定 rc 文件，默认 `~/.bashrc` |
 | `-u`, `--uninstall` | 从 rc 文件移除 `# >>> carapace >>>` 标记块 |
 | `-c`, `--check`、`--status` | 只读检查依赖、rc 片段与端到端加载状态；不修改任何文件 |
-| `-i`, `--install` | 下载并安装 carapace（仅 Linux/macOS），随后写入 rc |
+| `-i`, `--install` | 下载并安装 carapace（Linux/macOS/Git Bash/Cygwin），随后写入 rc |
+| `--install-deps` | 安装缺失依赖：缺 curl/wget、coreutils、tar 时调用包管理器；Linux 用 sudo、macOS 用 brew，Git Bash 只给出命令 |
 | `--version <v>` | `--install` 固定版本，默认查询最新 release |
-| `--bin-dir <dir>` | `--install` 安装目录，默认 `$CARAPACE_BIN` 或 `~/.local/bin` |
+| `--bin-dir <dir>` | `--install` 安装目录，默认 `$CARAPACE_BIN`；Windows 为 `~/.cxxu/bin`，其他平台为 `~/.local/bin` |
 | `--mirror <m>` | 下载通道：`auto`（默认）、`direct`、`ghproxy`、`ghproxynet`、`ghfast` 或 https 前缀 |
 | `--proxy <url>` | `--install` 时经 HTTP/HTTPS/SOCKS 代理下载 |
 | `--force` | `--install` 覆盖已存在的二进制 |
@@ -213,10 +230,10 @@ macOS Terminal 默认是登录 shell；VS Code 等集成终端可能是非登录
 - 找不到 carapace 时只提示，不阻止写入；新开 shell 后由运行时脚本再次提示并跳过初始化。装好 carapace 后新开终端，或重新 `source` 对应 rc。
 - `--check`（`--status` 同义）只读：依次报告 bash 版本、`carapace` 与 `xargs` 是否可用、运行时脚本是否存在、平台、目标 rc、四个候选 rc 的标记块状态（含块内路径是否仍然存在），再用 `bash -ic` / `bash -lic` 各起一个子 shell 验证实际是否加载；不改写任何文件，且不能与 `--dry-run`、`--uninstall` 同时使用。
 - `--check` 退出码：全部正常为 0；缺依赖、rc 片段有问题或尚未接入为 1；参数错误为 2。结论行会给出对应的修复命令。
-- `--install` 只用于 Linux/macOS；Git Bash/MSYS 与 Cygwin 走 `scoop install carapace-bin` 或 `Deploy-Carapace -Enable`。
-- `--mirror` 只作用于 Release 文件（`tar.gz` 与 `checksums.txt`）；版本查询始终直连或经 `--proxy`，不经过文件镜像。`auto` 顺序为 `gh-proxy.com` → `ghproxy.net` → 直连，单个候选失败才换下一个。
-- 依赖缺失（curl/wget、tar、sha256sum）时只报告并给出对应包管理器命令，不自动 `sudo` 安装。
-- 升级与降级都只按 `--version` 指定的版本下载；已存在的二进制默认跳过，`--force` 才覆盖。安装目录不在 PATH 时，rc 片段额外写 `export CARAPACE_BIN`，运行时脚本会前置该目录。
+- `--install` 支持 Linux/macOS 与 Git Bash/Cygwin：Windows 下载 `carapace-bin_<版本>_windows_<架构>.zip`，解压出 `carapace.exe` 装到 `~/.cxxu/bin`；其他平台下载 `tar.gz` 装到 `~/.local/bin`。解压顺序为 `unzip` → `bsdtar` → `powershell.exe`（Expand-Archive），三者都没有时报错并给出安装命令。安装目录不在 PATH 时，rc 片段额外写 `export CARAPACE_BIN`，运行时脚本会前置该目录。
+- `--mirror` 只作用于 Release 文件（`tar.gz`/`zip` 与 `checksums.txt`）；版本查询始终直连或经 `--proxy`，不经过文件镜像。`auto` 顺序为 `gh-proxy.com` → `ghproxy.net` → 直连，单个候选失败才换下一个。
+- 依赖缺失（curl/wget、tar、sha256sum）时默认只报告并给出对应包管理器命令，不自动 `sudo` 安装；显式加 `--install-deps` 才会调用包管理器（Linux 缺 sudo 时提示手工执行，Git Bash 只给出 scoop/pacman 命令）。`--install-deps` 与 `--dry-run` 组合时只打印将执行的安装命令。
+- 升级与降级都只按 `--version` 指定的版本下载；已存在的二进制默认跳过，`--force` 才覆盖。
 - 下载与解压都在 `mktemp -d` 的临时目录完成，脚本退出时清理；下载、校验或解压失败都以非零码退出，不写半成品二进制。
 - 镜像与 `checksums.txt` 来自同一通道，恶意镜像可以同时替换两者；需要更强保证时用 `--mirror direct`（或 `--proxy` + 官方源）并核对 Release 页面的校验值。
 - `--install --dry-run` 不联网，只打印平台、版本、通道、安装目录与依赖可用性。
@@ -352,6 +369,8 @@ bash /path/to/scripts/bash/carapace/setup.sh --uninstall --rc ~/.bash_profile
 | git 补全被 argc 或 bash-completion 覆盖 | rc 中的 source 顺序 | 调整顺序，或用 `CARAPACE_EXCLUDES` 排除 |
 | 提示 rc 是符号链接 | `ls -l ~/.bashrc` | 用 `--rc` 指向真实文件，或手工编辑目标文件 |
 | Git Bash 下 rc 行尾被改为 LF | `git diff` 或 `od -c ~/.bashrc` | 手工改回，或先把配置纳入版本控制在重写后对比 |
+| `--install` 报缺 curl/wget、tar、sha256sum | 报错行给出的包管理器命令 | 加 `--install-deps` 让脚本调用包管理器，或按提示手工安装 |
+| Windows 下 `--install` 解压失败 | `command -v unzip bsdtar powershell.exe` | 安装 unzip（`scoop install unzip`），或确认 `powershell.exe` 可用；三者有其一即可 |
 | 想一次确认依赖与接入状态 | `bash /path/to/scripts/bash/carapace/setup.sh --check` | 按输出标出的问题逐项处理；退出码 1 表示仍需处理 |
 
 ## 验证记录与未验证项
@@ -363,6 +382,9 @@ bash /path/to/scripts/bash/carapace/setup.sh --uninstall --rc ~/.bash_profile
 - `setup.sh --check` 在隔离 `HOME` 下验证了未接入、已接入（非登录与登录两类 shell 均加载）、块内路径失效、缺结束标记四种状态与对应退出码；`--check --dry-run` 按参数错误拒绝。
 - `setup.sh --install` 用假 release 与假 curl 在隔离 `HOME` 下验证：dry-run 不联网、auto 从 gh-proxy 回退 ghproxy.net、`--mirror` 各模式的前缀、`--proxy` 传入 curl、SHA-256 不符拒绝写入、已装跳过与 `--force` 覆盖、`--check` 能识别 rc 片段里的 `CARAPACE_BIN`。
 - WSL Ubuntu 24.04 实机经 `gh-proxy.com` 完成 `--install`（1.8.2，20.1MB，约 5.4MB/s，下载到写 rc 约 19s），`--check` 通过并在非登录 shell 中加载。
+- Git Bash 实机 `--install --version 1.8.2`（windows zip）：经 `gh-proxy.com` 下载 19.4MB，SHA-256 通过，`unzip` 解压出 `carapace.exe` 并装到临时目录，`carapace.exe --version` 返回 1.8.2，rc 片段写入 `CARAPACE_BIN`。
+- WSL Ubuntu 实机 `--install --version 1.8.2`（tar.gz）：安装到临时目录成功，`carapace --version` 返回 1.8.2。
+- `--install-deps` 在隔离 PATH（只有 bash 与少量 coreutils）下识别出缺少 `curl coreutils tar`；无包管理器时给出手工安装命令并返回 1，PATH 中加入假 `apt-get` 后 `--dry-run` 打印 `sudo apt-get install -y curl coreutils tar`，未实际执行。
 - `bash-ble`：Git Bash 上验证生成脚本、`_carapace_completer_ble` 注册，以及未加载 ble.sh 时回退到普通补全并返回正常候选；真实 ble.sh 菜单未验证（本机 WSL 的 ble.sh 在非 tty 子 shell 中不加载）。
 - 运行时脚本在未安装 carapace 时给出平台提示并跳过；`BASH_VERSION`、`xargs`、`source` 失败都有对应提示。
 - `shellcheck 0.9.0` 与 `shfmt 3.8.0` 对 `setup.sh`、`carapace.sh` 无报错，`bash -n` 通过。
@@ -371,7 +393,7 @@ bash /path/to/scripts/bash/carapace/setup.sh --uninstall --rc ~/.bash_profile
 未验证或未覆盖：
 
 - macOS 的 bash 4+ 安装、`chsh`、登录 rc 与 carapace 实际补全未在 macOS 实机验证；本文按 bash 的通用读取规则给出步骤。
-- Cygwin 未实测；PATH 修正分支按 MSYS 的行为编写。
+- Cygwin 未实测：`--install` 的 zip 解压回退（unzip/bsdtar/powershell）只在 Git Bash（MSYS）验证；PATH 修正分支按 MSYS 的行为编写。
 - Linux 桌面发行版、ssh 登录 shell、`.deb`/`.rpm`/`.apk` 渠道未逐项验证。
 - macOS 默认 zsh 不在本目录范围；zsh 的接入需要按 carapace 官方方式单独配置。
 - carapace 生成脚本随版本变化；本文的 PATH 修正与候选行为基于 1.8.2，升级后如遇差异以实际输出为准。
@@ -384,6 +406,7 @@ bash /path/to/scripts/bash/carapace/setup.sh --uninstall --rc ~/.bash_profile
 - carapace 会为大量命令注册补全，可能覆盖已有的 bash-completion；用 `CARAPACE_EXCLUDES` 排除不需要的命令。
 - PATH 修正只处理 Git Bash/MSYS 中 carapace 追加的、以盘符开头的 `C:/...;...` 项；如果 PATH 里其他位置也有分号，修正不会主动清理。
 - 慢命令（如需要网络或扫描大目录的 completer）会阻塞 Tab；按需排除。
+- Windows 下 `--install` 默认装到 `~/.cxxu/bin`，只通过 rc 片段的 `CARAPACE_BIN` 对 bash 生效；要在 PowerShell/cmd 直接调用 `carapace`，需另把该目录加入 Windows 用户 PATH（`Deploy-Carapace` 会做这一步）。
 - 本目录只覆盖 bash；PowerShell、zsh、fish、cmd.exe 的接入各自独立。
 - `bash-ble` 的补全菜单、自动建议与 `bleopt` 副作用未在真实 ble.sh 会话中验证；本机 WSL 的 ble.sh 在非 tty 子 shell 内不加载，`--check` 只能按 rc 内容判断。
 - 文件镜像只保证传输完整性（同一通道的 `checksums.txt`），不构成对镜像运营者的信任；敏感环境请用 `--mirror direct` 或走代理访问官方源。
