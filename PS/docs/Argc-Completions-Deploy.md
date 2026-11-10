@@ -139,8 +139,8 @@ Initialize-ArgcCompletions -Force   # 当前会话重新注册 Tab 补全
 
 | 目标 | 命令 | 生效范围与时机 |
 |---|---|---|
-| 本会话关闭 argc（Tab 与 flag 提示） | `Disable-PsPlugin Argc`（等价于 `$env:PsArgc = 'False'`） | 立即；已注册的 completer 每次调用返回空，Tab 回落原生补全 |
-| 本会话开启 argc | `Enable-PsPlugin Argc` | 立即设置 `PsArgc=True` 并补装 Tab 桩；已注册的 completer 立即恢复，未注册的在首个 Tab 注册 |
+| 本会话关闭 argc（Tab 与 flag 提示） | `Disable-PsPlugin Argc`（等价于 `$env:PsArgc = 'False'`） | 立即；已注册的 completer 每次调用返回空。carapace 可用时会自动重注册它，重叠命令（如 `npm`、`docker`）当场交还 carapace；没有 carapace 时这些命令在重开终端前无候选 |
+| 本会话开启 argc | `Enable-PsPlugin Argc` | 立即设置 `PsArgc=True` 并补装 Tab 桩；已注册的 completer 重新注册并夺回重叠命令，未注册的在首个 Tab 注册 |
 | 持久关闭 argc | `Disable-PsPlugin Argc -Persist` | 当前会话立即关闭；写入 `~/.cxxu/config.psd1`，之后新会话默认关闭 |
 | 持久开启 argc | `Enable-PsPlugin Argc -Persist` | 当前会话立即开启；写入配置文件，之后新会话默认开启 |
 | 停止自动提示并保留 argc Tab | `Disable-PsPlugin Predictor`，然后重开终端 | 当前会话若已加载 `CxxuPredictor.dll`，需重开终端才完全停止；`PsArgc` 不变，Tab 参数补全继续可用 |
@@ -148,6 +148,7 @@ Initialize-ArgcCompletions -Force   # 当前会话重新注册 Tab 补全
 - `PsArgc` 同时控制 Tab 参数补全与 `CxxuArgcFlags` 自动提示，没有只关 Tab 或只关 flag 提示的独立开关。
 - `PsPredictor` 是 `CxxuPredictor.dll` 的加载门，命令名预测与 `CxxuArgcFlags` 共用；关闭后两类自动提示一起停，不能只停其中一类。
 - 关闭 `Argc` 不删除仓库、缓存或已注册的 completer，重新开启无需重开终端；仓库或工具变化后按[更新](#3-更新)一节执行 `Initialize-ArgcCompletions -Force`。
+- 关闭与重开 `Argc` 都会处理同名 completer 的归属：关闭时若 carapace 可用，自动执行 `Initialize-Carapace -Force` 重新注册（约 0.2 秒），当前会话的重叠命令立即由 carapace 接管；重开时再执行 `Initialize-ArgcCompletions -Force` 夺回。来回切换不需要重开终端。
 - 关闭 argc 只影响应用命令的参数补全，不影响 `Get-ChildItem -` 等 cmdlet 的原生参数补全。
 - init 检测到 `git-completion`（`$global:PsGitCompletion`）或 carapace 接管 git（`$global:PsCarapaceGit`）时，argc 不注册 `git`/`gitk`：三者都注册同名 Native completer，后注册者覆盖先注册者，而 argc 首个 Tab 才注册，会顶掉先注册的补全；只启用 git-completion 时其余命令不受影响。
 - 与 carapace 同时启用时，非 git/gitk 的重叠命令也会遇到同一顺序问题：carapace 在 `init` 注册，argc 在首个 Tab 注册，同名 completer 后注册者生效。需要 carapace 负责这些外部 CLI（如 `docker`、`gh`）时，关闭 argc（`Disable-PsPlugin Argc -Persist`）或接受 argc 的候选；bash 侧的顺序相反，见 [completion-stack](../../bash/completion-stack/README.md)。

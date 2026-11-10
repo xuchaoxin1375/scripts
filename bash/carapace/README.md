@@ -389,7 +389,7 @@ PowerShell 不按 rc 的 source 顺序，而是由 `init` 注册 Native complete
 
 - carapace 由 `PsCarapace` 在 `init` 启动时加载；argc 由 `PsArgc` 在首个 Tab 才注册。
 - PowerShell 对同名 Native completer 采**后注册覆盖先注册**。因此两者都开启时，argc 会接管非 git/gitk 的重叠命令，carapace 只补 argc 没有的命令。
-- 需要 carapace 负责这些外部 CLI 时，关闭 argc：`Disable-PsPlugin Argc -Persist`；或只保留 carapace 与 `git-completion`。
+- 需要 carapace 负责这些外部 CLI 时，关闭 argc：`Disable-PsPlugin Argc -Persist`；或只保留 carapace 与 `git-completion`。关闭时若 carapace 可用会自动重新注册，当前会话即交还，不必重开终端。
 - `PsGitCompletionSource` 只影响 PowerShell 的 git/gitk 归属，不改变 bash 的注册顺序；`Auto` 在装有 `git-completion` 模块时选它，也不建议选 `Argc`（同样的选项缺口）。
 - 两侧配置独立：`PsCarapace` 控制 PowerShell，rc 标记块控制 bash；同一个 carapace 二进制可以共用，但启用、停用与排除项不联动。
 

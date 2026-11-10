@@ -1063,15 +1063,19 @@ function Initialize-Carapace
     PsCarapaceExcludes 提供用户自己的慢命令排除项；两处合并后写入环境变量。
     init 只调用 Register-CarapaceLazyLoad 装桩；首次 Tab 才由桩调用本函数完成注册。
     加载失败只告警，不中断 init，也不在后续 Tab 反复重试。
+    .PARAMETER Force
+    已加载时也重新执行注册，用于同名 Native completer 被其他来源覆盖后夺回（如关闭 argc 后）。
     .EXAMPLE
     Initialize-Carapace
+    .EXAMPLE
+    Initialize-Carapace -Force
     .EXAMPLE
     Enable-CxxuComponent Carapace -Persist -Now
     #>
     [CmdletBinding()]
-    param()
+    param([switch]$Force)
 
-    if ($global:PsCarapaceLoaded) { return }
+    if ($global:PsCarapaceLoaded -and -not $Force) { return }
     if ($PSVersionTable.PSVersion.Major -lt 7)
     {
         $global:PsCarapacePending = $false
@@ -2261,7 +2265,8 @@ function Disable-PsPlugin
     后三项默认关，启用后由 init 按组件配置加载。
     停用只关本命令的合并/加载，引擎原生行为不受影响；持开关逐调用判定，无需重载。
     已注册的 Native completer 无法在当前会话撤销：停用 GitCompletion/Carapace 后需重开终端，
-    剩余来源才会重新接管 git/gitk。
+    剩余来源才会重新接管 git/gitk。Argc 例外：停用时若 carapace 可用会重新注册它，
+    重叠命令在当前会话即交还 carapace；Enable-PsPlugin Argc 会再注册回来。
     -Persist 写 ~/.cxxu/config.psd1 的 Components 段（v2 结构，旧文件先备份）。
     .EXAMPLE
     Disable-PsPlugin Tab
@@ -2298,6 +2303,24 @@ function Disable-PsPlugin
             if ($Name -eq 'Carapace')
             {
                 Write-Host '当前会话已注册的 carapace completer 无法撤销；重开终端后由剩余来源接管 git/gitk。'
+            }
+            elseif ($Name -eq 'Argc')
+            {
+                # 已注册的 argc completer 不随开关撤销，只会返回空；carapace 可用时立即重新注册，
+                # 让重叠命令（npm、docker 等）在当前会话就交还 carapace，不必重开终端。
+                $carapaceOn = $PSVersionTable.PSVersion.Major -ge 7 -and
+                    -not [string]::IsNullOrWhiteSpace($env:PsCarapace) -and
+                    $env:PsCarapace -notmatch '^(False|0|No|Off)$' -and
+                    $null -ne (Get-Command carapace -ErrorAction SilentlyContinue)
+                if ($carapaceOn)
+                {
+                    Initialize-Carapace -Force
+                    if ($global:PsCarapaceLoaded) { Write-Host 'carapace 已重新注册，当前会话接管重叠命令的参数补全。' }
+                }
+                else
+                {
+                    Write-Host '没有可接管的 carapace；当前会话已注册的 argc completer 无法撤销，重开终端后这些命令才回到原生补全。'
+                }
             }
             elseif ($Name -in @('PSCompletions', 'Fnm', 'ScoopSearch'))
             {
@@ -2356,6 +2379,12 @@ function Enable-PsPlugin
         else
         {
             Enable-CxxuComponent -Id $Name -Persist:$Persist -Path $Path -Now
+            if ($Name -eq 'Argc' -and $global:PsArgcLoaded)
+            {
+                # 停用期间 carapace 可能已重新注册并覆盖同名 completer，重开时再注册回来；
+                # 未注册过时仍按原样等首个 Tab 由桩注册。
+                Initialize-ArgcCompletions -Force
+            }
         }
 
         if ((($Name -eq 'Fzf') -or ($Name -eq 'Tab')) -and ($PSVersionTable.PSVersion.Major -ge 7))
