@@ -340,6 +340,38 @@ carapace 提供专门的 `bash-ble` 生成模式，本目录的运行时脚本�
 
 PowerShell 侧的 `PsGitCompletionSource` 只影响 PowerShell 的 git/gitk 归属，不改变 bash 的注册顺序。
 
+### Tab 列表与循环
+
+bash 默认的 `menu-complete` 逐个插入候选，看不到完整候选集；加载 carapace 或 argc-completions 后通常更适合改成一次列出全部候选。readline 绑定必须在补全函数注册之后再决定，因此在 rc 中、source 完补全框架后执行：
+
+```bash
+apply_tab_completion_mode() {
+	local mode="${CXXU_TAB_MODE:-auto}"
+	local has_framework=0
+	type -t _carapace_completer >/dev/null 2>&1 && has_framework=1
+	type -t _argc_completer >/dev/null 2>&1 && has_framework=1
+
+	case "$mode" in
+	list) has_framework=1 ;;
+	cycle) has_framework=0 ;;
+	*) echo "未知 CXXU_TAB_MODE=$mode，按 auto 处理" >&2 ;;
+	esac
+
+	if [[ $has_framework -eq 1 ]]; then
+		bind '"\C-i": complete'
+		bind 'set show-all-if-ambiguous on'
+		type -t _argc_completer >/dev/null 2>&1 && export ARGC_COMPGEN_DESCRIPTION=1
+	else
+		bind '"\C-i": menu-complete'
+	fi
+}
+apply_tab_completion_mode
+```
+
+- `CXXU_TAB_MODE=auto`（默认）按是否检测到 `_carapace_completer` / `_argc_completer` 决定；`list`、`cycle` 可强制其中一侧。
+- 必须放在补全框架 source 之后；早于注册时检测不到函数，会退回循环模式。交互式会话里重复执行 `apply_tab_completion_mode` 即可切换，不需要重开终端。
+- 描述显示受 bash 限制：`complete` 只显示候选本身。argc 在 `ARGC_COMPGEN_DESCRIPTION=1` 时把说明拼在候选后（Tab 只补公共前缀，不会把说明插入命令行）；carapace 的描述只在 ble.sh（`bash-ble`）菜单里出现，普通 readline 看不到。
+
 ## 重复安装与停用
 
 重复执行是幂等的：

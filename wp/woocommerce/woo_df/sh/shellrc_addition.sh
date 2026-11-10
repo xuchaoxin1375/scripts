@@ -323,6 +323,34 @@ echo "update inputrc [$INPUTRC]..."
 
 }
 
+# 补全框架加载后决定 Tab 模式：
+# - 加载了 carapace / argc-completions 等扩展时，改用普通 complete 列出全部候选
+# - 未加载扩展时保留 .inputrc 中的循环补全
+# 手动切换：CXXU_TAB_MODE=list|cycle（默认 auto）；也可在当前会话再次调用 apply_tab_completion_mode
+apply_tab_completion_mode() {
+  local mode="${CXXU_TAB_MODE:-auto}"
+  local has_framework=0
+  type -t _carapace_completer > /dev/null 2>&1 && has_framework=1
+  type -t _argc_completer > /dev/null 2>&1 && has_framework=1
+
+  case "$mode" in
+  list) has_framework=1 ;;
+  cycle) has_framework=0 ;;
+  auto) ;;
+  *) echo "warning: 未知 CXXU_TAB_MODE=$mode（可用 auto/list/cycle），按 auto 处理" >&2 ;;
+  esac
+
+  if [[ $has_framework -eq 1 ]]; then
+    bind '"\C-i": complete' 2> /dev/null
+    bind 'set show-all-if-ambiguous on' 2> /dev/null
+    # argc 的候选可附带说明；仅在 Tab 为普通 complete 时安全，不会把说明插入命令行
+    type -t _argc_completer > /dev/null 2>&1 && export ARGC_COMPGEN_DESCRIPTION=1
+  else
+    bind '"\C-i": menu-complete' 2> /dev/null
+  fi
+}
+[[ -n ${BASH_VERSION:-} ]] && apply_tab_completion_mode
+
 # end bash-completion importer
 end_time=$(date +%s%N)
 # 计算差值（纳秒转毫秒）
