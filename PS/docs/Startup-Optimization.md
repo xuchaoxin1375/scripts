@@ -45,7 +45,7 @@ Test-PromptDelay                            # prompt 延迟（默认测 10 次�
 | Confirm-DataJson（首调含 Json 模块解析，拆分前 65ms） | ~19ms |
 | Register-PsUxLazyLoad（只注册 OnIdle 事件，TerminalTools 首解析在内） | ~18ms |
 | Register-GitCompletion（只注册 completer，首次补全才导入模块；未装时直接返回） | ~8ms |
-| Initialize-Carapace（默认关闭；`PsCarapace=True` 时生成并注册） | 0ms（关闭）/ 60~130ms（启用，本机实测） |
+| Register-CarapaceLazyLoad（默认关闭；启用时只装首个 Tab 桩） | 0ms（关闭）/ ~8ms（启用）；首次 Tab 另付约 0.2–0.3 秒 |
 
 ## 2. 本次改动总览
 
@@ -110,7 +110,7 @@ Test-PromptDelay                            # prompt 延迟（默认测 10 次�
 三个问题：`iex` 慢且报错丢定位；`Write-Progress` 渲染是启动链最贵操作之一；正常启动根本不需要逐项计时。
 
 - 改为**直接调用步骤表**（当前会话作用域，与原来 `iex` 效果一致），默认无进度条、无计时。
-- 计时改为轻量 `[datetime]::UtcNow` 差值，仅 `-Timing` 或 `-InformationAction Continue`（即 `p -Force` 路径）时收集并打印报告。
+- 计时改为轻量 `[datetime]::UtcNow` 差值，仅 `-Timing` 或 `-InformationAction Continue`（`init -Force -Timing` 走前者）时收集并打印报告。
 - 新增 `init -Timing` 开关，替代原来“想看报告就得忍受慢启动”的两难。
 
 ## 4. 热路径去注册表写（`EnvVar.psm1:941`）
@@ -578,3 +578,22 @@ Set-PSReadLineOption: 句柄无效。
 - 排查工具：`python/pwsh_hang_capture.py`。交互 shell 启动前设
   `DOTNET_PerfMapEnabled=1`，卡住时用 `sample` 采样并按 `/tmp/perf-<pid>.map` 还原
   托管方法名；同时读取 tty 输入队列深度。
+
+## 29. 第二十二轮：carapace 首个 Tab 懒加载（2026-11-10，用户要求“加载优化”）
+
+- 现场：macOS、carapace-bin 1.8.2、`PsCarapace=True`；`Test-StartupPerformance` 显示
+  `Initialize-Carapace` 216ms，是 init 步骤表最大单项。
+- 成因：`carapace _carapace powershell` 生成约 108KB 脚本，注册 1486 个命令名（含 `.exe`
+  变体），启动阶段必须解析并执行；与用户是否马上按 Tab 无关。
+- 处置：新增 `Register-CarapaceLazyLoad`，init 只计算排除项并注册首个 Tab 桩；
+  `Initialize-Carapace` 保留为实际加载函数，`Enable-CxxuComponent -Now` 走清单新增的
+  `InitNow` 立即加载。argc 已装 Tab 桩时复用，不重复绑定；两者同开时桩内先加载
+  carapace、再注册 argc。
+- 结果：同机 `Test-StartupPerformance` 的 init 从 757ms 降到 558ms，profile 从 1324ms
+  降到 1121ms；`Register-CarapaceLazyLoad` 约 8ms。首次 Tab 一次性约 254ms，之后正常。
+- 行为变化：`$global:PsCarapacePending=True` 表示等待首次 Tab；
+  `$global:PsCarapaceLoaded=True` 表示已加载。直接调用 `TabExpansion2` 不触发 Tab 桩，
+  验证前需先按一次真实 Tab 或执行 `Enable-CxxuComponent Carapace -Now`。加载失败会摘下
+  Pending，不在后续 Tab 重复告警。
+- 边界：`PSCompletions`/`fnm`/`scoop-search` 保持原加载方式；默认关闭，启用后仍按组件
+  清单加载。carapace 首次 Tab 的 0.2–0.3 秒是功能成本，不摊到每个会话启动。

@@ -292,7 +292,7 @@ $homeDir = $HOME
         Impact    = 'scoop、winget、gh、docker 等外部 CLI 的参数值补全不可用。'
         Install   = 'Deploy-Carapace -Enable（安装并启用），或 Deploy-Carapace 后 Enable-CxxuComponent Carapace -Persist -Now；bash 侧用 Deploy-Carapace -Bash/-BashLogin'
         Docs      = 'Feature-Guide.md §7'
-        Note      = '默认关闭；启用时 init 加载约 0.1–0.2 秒；git/gitk 归属用 Set-GitCompletionSource 切换。'
+        Note      = '默认关闭；启用时 init 只注册首个 Tab 懒加载桩，首次 Tab 加载约 0.2–0.3 秒；git/gitk 归属用 Set-GitCompletionSource 切换。'
     }
 
     # 交互：文件图标

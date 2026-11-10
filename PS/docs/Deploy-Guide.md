@@ -127,7 +127,7 @@ Add-CxxuPsModuleToProfile  # 往 $profile（CurrentUserCurrentHost）写推荐�
 ```
 
 conda 用户：跑 `conda init powershell` 后**重贴缓存块**（它会覆盖，贴法见 `Feature-Guide.md §5`）；
-profile 里只保留 `init`；`argc` 由 Init 接管（部署见 [Argc-Completions-Deploy](Argc-Completions-Deploy.md)），`PSCompletions`/`fnm`/`scoop-search` 已迁到组件清单（默认关，装好后用 `Enable-CxxuComponent <Id> -Persist` 启用）。`git-completion` 不需要 profile 配置：装好模块后由 `init` 自动挂载（首次补全才导入）；`carapace` 由 `init` 按 `PsCarapace` 配置加载，默认关闭，需要时按「可选：carapace」启用。
+profile 里只保留 `init`；`argc` 由 Init 接管（部署见 [Argc-Completions-Deploy](Argc-Completions-Deploy.md)），`PSCompletions`/`fnm`/`scoop-search` 已迁到组件清单（默认关，装好后用 `Enable-CxxuComponent <Id> -Persist` 启用）。`git-completion` 不需要 profile 配置：装好模块后由 `init` 自动挂载（首次补全才导入）；`carapace` 由 `init` 按 `PsCarapace` 配置注册首个 Tab 懒加载桩，默认关闭，需要时按「可选：carapace」启用。
 
 ## 5. 补全栈与第三方 PS 模块
 
@@ -196,7 +196,7 @@ Confirm-ModuleInstalled -ModuleName CompletionPredictor -Install  # 可选：参
 
 > `argc-completions`（800+ 命令参数补全）不再默认随 `Deploy-CompletionStack` 部署；需要时加 `-IncludeArgc`，或单独运行 `Deploy-ArgcCompletions [-Root <目录>]`。首次部署、更新、开关与 5.1 注意事项见 [Argc-Completions-Deploy](Argc-Completions-Deploy.md)。
 
-### 可选：carapace（由 init 按配置加载）
+### 可选：carapace（由 init 注册懒加载桩）
 
 carapace 是跨 shell 的命令行补全二进制，补外部 CLI 的参数值，不补 PowerShell cmdlet。它和 `argc-completions` 是并列关系，不是替代关系；git 仍建议由 `git-completion` 负责。效果、候选数量与三方对比见 [Feature-Guide](Feature-Guide.md) 的「carapace（可选，非默认）」。
 
@@ -215,7 +215,7 @@ Deploy-Carapace -Bash -BashLogin          # 登录 shell：改写 --login 的目
 Deploy-Carapace -Version 1.8.2 -Proxy http://127.0.0.1:7897
 ```
 
-命令会按当前平台与架构下载官方产物（Windows 为 zip，macOS/Linux 为 tar.gz），用同版本 `checksums.txt` 校验 SHA-256，解压 `carapace` 到目标目录并加入 PATH。默认目录：Windows 为 `~/.cxxu/bin`，其他平台为 `~/.local/bin`；非 Windows 只把目录加入当前会话，新终端需按提示写进 shell 配置。加 `-Enable` 会同时把 `PsCarapace` 写入用户配置并在当前会话加载；不加则只安装并打印启用方式。加 `-Bash` 会在安装后调用 [bash/carapace/setup.sh](../../bash/carapace/setup.sh) 写入 bash 的 rc 标记块：默认写非登录 shell 的 `~/.bashrc`，`-BashLogin` 改写登录 shell 读取的 rc；未找到 `bash` 或 `setup.sh` 时只告警，不中断安装。`-Force` 覆盖重装，`-Version` 固定版本（本地版本更高时默认拒绝降级，确需降级加 `-AllowDowngrade`），`-Destination` 与 `-SkipPath` 用于自定义目录或测试。它不修改 profile，加载由 init 按 `PsCarapace` 配置完成。macOS 的官方产物未签名；若系统提示无法验证开发者，优先改用 `brew install carapace`，或在确认来源后按系统设置放行。
+命令会按当前平台与架构下载官方产物（Windows 为 zip，macOS/Linux 为 tar.gz），用同版本 `checksums.txt` 校验 SHA-256，解压 `carapace` 到目标目录并加入 PATH。默认目录：Windows 为 `~/.cxxu/bin`，其他平台为 `~/.local/bin`；非 Windows 只把目录加入当前会话，新终端需按提示写进 shell 配置。加 `-Enable` 会同时把 `PsCarapace` 写入用户配置并在当前会话加载；不加则只安装并打印启用方式。加 `-Bash` 会在安装后调用 [bash/carapace/setup.sh](../../bash/carapace/setup.sh) 写入 bash 的 rc 标记块：默认写非登录 shell 的 `~/.bashrc`，`-BashLogin` 改写登录 shell 读取的 rc；未找到 `bash` 或 `setup.sh` 时只告警，不中断安装。`-Force` 覆盖重装，`-Version` 固定版本（本地版本更高时默认拒绝降级，确需降级加 `-AllowDowngrade`），`-Destination` 与 `-SkipPath` 用于自定义目录或测试。它不修改 profile，加载由 init 注册首个 Tab 懒加载桩完成，实际注册在首次 Tab。macOS 的官方产物未签名；若系统提示无法验证开发者，优先改用 `brew install carapace`，或在确认来源后按系统设置放行。
 
 **手工渠道一：官方 GitHub Release**
 
@@ -256,33 +256,34 @@ bash /path/to/scripts/bash/carapace/setup.sh --login
 
 macOS 自带 bash 3.2 会被 carapace 拒绝，需要 `brew install bash` 并切换登录 shell；macOS 默认 zsh 不在该接入范围。平台差异、手工片段、PATH 修正原因、与 argc-completions 的共存、验收与未验证项见 [bash/carapace/README.md](../../bash/carapace/README.md)。多个候选时按两次 `<Tab>` 显示列表；`gh` 等外部命令未安装时，静态子命令仍可补全，需要仓库或登录上下文的动态候选才依赖命令本身。先在 bash 中确认 `command -v carapace` 有输出；没有则把安装目录（Git Bash 常见为 `~/.cxxu/bin` 或 `/c/scoop/shims`，Linux/macOS 常见为 `~/.local/bin`）加入 PATH。
 
-**在 init 中启用（不修改 profile）**
+**启用（不修改 profile）**
 
 ```powershell
-Enable-CxxuComponent Carapace -Persist -Now   # 只启用 carapace；git/gitk 仍按 PsGitCompletionSource
+Enable-CxxuComponent Carapace -Persist        # 启用；下次启动注册懒加载桩，首个 Tab 加载
+Enable-CxxuComponent Carapace -Persist -Now   # 或立即加载（当前会话）
 Set-GitCompletionSource Carapace -Persist     # 让 carapace 接管 git/gitk
 ```
 
-- `PsCarapace=True` 时 init 在启动阶段加载 carapace；默认关闭，未启用时不承担约 0.1–0.2 秒的启动成本。
+- `PsCarapace=True` 时 init 只计算排除项并注册首个 Tab 懒加载桩，启动阶段不执行 carapace 的注册脚本；默认关闭，未启用时没有这项开销。首次 Tab 会一次性多花约 0.2–0.3 秒。
 - `PsGitCompletionSource` 决定 git/gitk 归属：`Auto`、`GitCompletion`、`Argc` 时 init 把 `git,gitk` 并入 `CARAPACE_EXCLUDES`；`Carapace` 时不排除，并让 argc 让路。`Argc` 不推荐用于 git：argc 上游生成的 git 补全缺 `--cached`、`--staged` 等选项；`Auto` 的顺序为 `GitCompletion` → `Carapace` → `Argc`，`Argc` 仅作兜底。切换到前三种来源不会关闭 carapace 本身，需要停止加载时另执行 `Disable-PsPlugin Carapace -Persist`。
-- 与 argc 同时启用时要注意 PowerShell 的注册顺序：carapace 在 `init` 注册，argc 在首个 Tab 注册，同名 Native completer 后注册者生效，因此非 git/gitk 的重叠命令会由 argc 接管。需要 carapace 负责这些外部 CLI 时，关闭 argc（`Disable-PsPlugin Argc -Persist`）；bash 侧的顺序相反（argc 前、carapace 后），见 [bash/carapace README](../../bash/carapace/README.md)。
+- 与 argc 同时启用时要注意注册顺序：两者都在首个 Tab 注册，Tab 桩先加载 carapace、再注册 argc，同名 Native completer 后注册者 argc 生效，因此非 git/gitk 的重叠命令会由 argc 接管。需要 carapace 负责这些外部 CLI 时，关闭 argc（`Disable-PsPlugin Argc -Persist`）；bash 侧的顺序相反（argc 前、carapace 后），见 [bash/carapace README](../../bash/carapace/README.md)。
 - 慢命令排除项写配置键 `PsCarapaceExcludes`（逗号分隔，如 `winget,uv`）；init 会把它与 git/gitk 的规则合并。未设置该键时沿用已有的 `CARAPACE_EXCLUDES`，避免覆盖旧配置。
-- 旧版 profile 中的手动 carapace 片段需要删除，否则会与 init 重复注册。也不要执行 carapace 文档中的 `Set-PSReadlineKeyHandler -Key Tab -Function MenuComplete`，避免覆盖本仓库的 Tab 桩。
-- 版本可以不追新，但生成脚本随版本变化：init 在 pwsh 7.6 及更早版本按原文匹配空结果补丁，匹配不到时只告警，不中断启动。
-- 验收：`Get-Command carapace`、`carapace --version`、`carapace --list`（数量随版本变化，不写死）、`TabExpansion2 'scoop install ' 14` 能返回包名候选，`TabExpansion2 'gh pr ' 6` 能返回子命令。
+- 旧版 profile 中的手动 carapace 片段需要删除，否则会与懒加载桩重复注册。也不要执行 carapace 文档中的 `Set-PSReadlineKeyHandler -Key Tab -Function MenuComplete`，避免覆盖本仓库的 Tab 桩。
+- 版本可以不追新，但生成脚本随版本变化：懒加载或手动加载时，pwsh 7.6 及更早版本按原文匹配空结果补丁，匹配不到时只告警，不中断启动。
+- 验收：重开终端后先按一次真实 `Tab` 触发懒加载（或 `Enable-CxxuComponent Carapace -Now`），再检查 `Get-Command carapace`、`carapace --version`、`carapace --list`（数量随版本变化，不写死）、`TabExpansion2 'scoop install ' 14` 能返回包名候选，`TabExpansion2 'gh pr ' 6` 能返回子命令。直接调用 `TabExpansion2` 不会触发 Tab 懒加载。
 - 不需要时执行 `Disable-PsPlugin Carapace -Persist`；包管理器渠道按对应命令卸载（`scoop uninstall carapace-bin`、`brew uninstall carapace`），`Deploy-Carapace` 与手工渠道删除二进制（默认 Windows 为 `~/.cxxu/bin/carapace.exe`，其他平台为 `~/.local/bin/carapace`）并从 PATH 移除。bash 侧用 `bash /path/to/scripts/bash/carapace/setup.sh --disable`（登录 shell 加 `--login`）移除 rc 片段，与 PowerShell 侧互不影响；重复执行 `Deploy-Carapace -Bash` 只刷新同一个标记块。慢命令（`winget install`、`uv add`）会阻塞 Tab，按需写入 `PsCarapaceExcludes`。
 - `Deploy-CompletionStack -All` 不包含 carapace，也没有 `-IncludeCarapace` 开关；需要时用 `Deploy-Carapace -Enable` 一步安装并启用，或先 `Deploy-Carapace` 再 `Enable-CxxuComponent Carapace -Persist -Now`。
 
 #### 状态检查
 
-carapace 的状态分四层；只看 `Get-Command` 只能确认二进制存在，不能确认组件启用或 `init` 已加载。
+carapace 的状态分四层；只看 `Get-Command` 只能确认二进制存在，不能确认组件启用或懒加载桩是否已注册。
 
 | 层 | 正常表现 |
 | --- | --- |
 | 二进制 | `Get-Command carapace` 返回路径，`carapace --version` 返回版本 |
 | 安装与启用 | 依赖报告显示 `已安装`，组件 `Enabled=True`，配置 `PsCarapace=True` |
-| 运行态 | `$env:PsCarapace=True`；`CARAPACE_EXCLUDES` 与 git 来源一致；`PsCarapaceGit` 只在 carapace 接管 git 时非空 |
-| 实际补全 | `TabExpansion2` 对 `gh`、`docker` 等命令返回子命令或参数候选 |
+| 运行态 | `$env:PsCarapace=True`；`CARAPACE_EXCLUDES` 与 git 来源一致；`PsCarapaceGit` 只在 carapace 接管 git 时为 `True`；`$global:PsCarapacePending=True` 表示等待首次 Tab，`$global:PsCarapaceLoaded=True` 表示已加载 |
+| 实际补全 | 首次 Tab 后，`TabExpansion2` 对 `gh`、`docker` 等命令返回子命令或参数候选 |
 
 ```powershell
 # 二进制
@@ -291,7 +292,7 @@ carapace --version
 
 # 安装与启用
 Get-CxxuDependencyReport -Feature '补全：外部 CLI 参数（carapace）' -Full
-Get-CxxuComponent Carapace | Format-List Id, Enabled, Source, Default
+Get-CxxuComponent Carapace | Format-List Id, Enabled, Source, Default, Lazy, Init, InitNow
 Get-CxxuConfig | Where-Object Key -eq 'PsCarapace' | Format-List Key, Value, Source
 doctor -Feature Carapace
 
@@ -299,17 +300,19 @@ doctor -Feature Carapace
 $env:PsCarapace
 $env:CARAPACE_EXCLUDES
 $global:PsCarapaceGit
+$global:PsCarapacePending
+$global:PsCarapaceLoaded
 
-# 实际补全
+# 实际补全（先按一次真实 Tab；或先执行 Enable-CxxuComponent Carapace -Now）
 (TabExpansion2 'gh pr ' 6).CompletionMatches | Select-Object -First 5 -ExpandProperty CompletionText
 (TabExpansion2 'docker --con' 12).CompletionMatches | Select-Object -First 5 -ExpandProperty CompletionText
 ```
 
-- `PsCarapace=True` 且 `Get-Command carapace` 有输出，才说明 `init` 有条件加载；只有二进制没有开关时，`init` 不会注册 completer。
-- `PsCarapaceGit` 为空不是错误：`Auto` 且装有 `git-completion` 时 git/gitk 归 git-completion，carapace 只负责其他命令。把 `PsGitCompletionSource` 设为 `Carapace` 后它才会非空，同时 `CARAPACE_EXCLUDES` 不再包含 `git,gitk`。
-- 因此 `git diff --st<Tab>` 默认不会出现 carapace 菜单：`CARAPACE_EXCLUDES` 含 `git,gitk`，候选来自 `git-completion`。需要 carapace 接管 git 时执行 `Set-GitCompletionSource Carapace -Persist` 并重开终端；接管后 `git diff --st<Tab>` 才会出现 carapace 的 `--staged`、`--stat` 等候选。
-- `doctor -Feature Carapace` 是较短的汇总入口，显示 `开关 PsCarapace`、依赖与就绪结论；需要核对来源时再看 `Get-CxxuConfig`。它不执行交互式 Tab，实际候选仍用 `TabExpansion2` 或新开终端按 Tab 验证。
-- `TabExpansion2` 没有候选时，先看 `$env:PsCarapace` 与 `Get-Command carapace`，再看 `$global:PsArgcLoaded`：两者都开启时，argc 首个 Tab 注册会覆盖 carapace 的同名命令。
+- `PsCarapace=True` 且 `Get-Command carapace` 有输出，才说明 `init` 注册了首个 Tab 懒加载桩；只有二进制没有开关时，`init` 不会注册 completer。`Pending=True` 是正常状态，按一次 Tab 后变为 `Loaded=True`。
+- `PsCarapaceGit` 为 `False`（旧会话可能为空）不是错误：`Auto` 且装有 `git-completion` 时 git/gitk 归 git-completion，carapace 只负责其他命令。把 `PsGitCompletionSource` 设为 `Carapace` 后它才变为 `True`，同时 `CARAPACE_EXCLUDES` 不再包含 `git,gitk`。
+- 因此 `git diff --st<Tab>` 默认不会出现 carapace 菜单：`CARAPACE_EXCLUDES` 含 `git,gitk`，候选来自 `git-completion`。需要 carapace 接管 git 时执行 `Set-GitCompletionSource Carapace -Persist` 并重开终端；接管后按一次 Tab 触发加载，`git diff --st<Tab>` 才会出现 carapace 的 `--staged`、`--stat` 等候选。
+- `doctor -Feature Carapace` 是较短的汇总入口，显示 `开关 PsCarapace`、依赖与就绪结论；需要核对来源时再看 `Get-CxxuConfig`。它不执行交互式 Tab；先用真实 Tab 或 `Enable-CxxuComponent Carapace -Now` 触发加载，再用 `TabExpansion2` 检查候选。
+- `TabExpansion2` 没有候选时，先看 `$env:PsCarapace`、`Get-Command carapace` 与 `$global:PsCarapaceLoaded`；两者都开启时，Tab 桩先加载 carapace、再注册 argc，argc 的同名 completer 后注册生效。
 
 ## 6. scoop 二进制
 

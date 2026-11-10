@@ -286,7 +286,7 @@
                 "antialiasingMode": "cleartype",
                 "closeOnExit": "automatic",
                 "colorScheme": "One Half Light (modified)",
-                "commandline": "pwsh -noe -c p",
+                "commandline": "pwsh",
                 "elevate": true,
                 "experimental.retroTerminalEffect": false,
                 "guid": "{d109fd44-ac64-4ea0-a19a-311150c640a8}",
@@ -338,7 +338,7 @@
                 "bellStyle": "taskbar",
                 "closeOnExit": "automatic",
                 "colorScheme": "One Half Light (modified)",
-                "commandline": "pwsh -noe -c p",
+                "commandline": "pwsh",
                 "cursorColor": "#000000",
                 "experimental.retroTerminalEffect": false,
                 "font": 

@@ -182,7 +182,7 @@ doctor -Feature Argc   # 只看这一套：开关、注册状态、Tab 集成与
 | 现象 | 先查 | 处理 |
 |---|---|---|
 | `init` 后 `$env:ARGC_COMPLETIONS_ROOT` 为空 | 仓库是否在默认位置（`~/argc-completions`、`~/repos/argc-completions`、Windows 的 `C:\repos\argc-completions`）且 argc 可用 | 设置 `ARGC_COMPLETIONS_ROOT` 后重开终端 |
-| `Tab` 完全没反应 | `(Get-PSReadLineKeyHandler -Bound \| Where-Object Key -eq 'Tab').Function` 应为 `CustomAction`；`$global:PsArgcScripts.Count` 应为 846 | 旧会话未重载：`Import-Module Init -Force; init -Force`；5.1 不要用 `p -Force`（它开的是 pwsh 7） |
+| `Tab` 完全没反应 | `(Get-PSReadLineKeyHandler -Bound \| Where-Object Key -eq 'Tab').Function` 应为 `CustomAction`；`$global:PsArgcScripts.Count` 应为 846 | 旧会话未重载：`Import-Module Init -Force; init -Force`；5.1 用 `init -Force`，不要用 `p`（它开的是 pwsh 7，不刷新当前 5.1 会话） |
 | 首次 Tab 后仍无候选 | `Initialize-ArgcCompletions -Verbose` 的报错；`argc --argc-compgen powershell '' git ch` 是否输出 `checkout`/`cherry`/`cherry-pick` | 补全脚本缺失或脚本依赖的工具不在 Git Bash 中；按报错补依赖 |
 | `argc --argc-compgen` 无输出 | `argc --argc-shell-path`；`$env:ARGC_COMPLETIONS_PATH` | bash 路径无效 / 仓库路径错 / 环境变量被清 |
 | Git Bash 报 `cannot execute binary file` | `bin\argc` 是否是 Linux ELF | 删掉或改名，让 Git Bash 用 `argc.exe` |

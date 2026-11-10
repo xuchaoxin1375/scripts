@@ -94,7 +94,7 @@ function init
     [CmdletBinding()]
     param(
         [switch]$Force,
-        # 显示每步耗时报告(默认关闭以保启动速度;`p -Force` 通过 -InformationAction Continue 间接触发)
+        # 显示每步耗时报告(默认关闭以保启动速度;`init -Force -Timing` 可直接看报告)
         [switch]$Timing
     )
 
@@ -105,7 +105,7 @@ function init
     {
         Write-Verbose 'Init pwsh env...'
         # 首次初始化与"重跑已初始化会话"分流:只有后者需要重载变量 conf
-        #(p -Force 是新进程首次路径,不叠加重载,保住启动基线)
+        #(init -Force 是已初始化会话的重载路径,不叠加重载,保住启动基线)
         $reInit = $null -ne $PsInit
         # $env:PsInit = 'True' 
         $global:PsInit = $True
@@ -150,7 +150,7 @@ function init
     $componentSteps = @(Get-CxxuComponentInitSteps -CoveredInit $coveredInit)
     $steps = @($coreSteps.Before) + @($componentSteps) + @($coreSteps.After)
 
-    # 仅在要求时计时/报告(-Timing 或 -InformationAction Continue,`p -Force` 走后者)
+    # 仅在要求时计时/报告(-Timing 或 -InformationAction Continue;`init -Force -Timing` 走前者)
     $needTiming = $Timing -or ($InformationPreference -eq 'Continue')
     $report = @()
     # 单步失败只记账不中断:历史上 PSReadLine 在重定向下抛 terminating error,
@@ -315,7 +315,7 @@ function Test-StartupPerformance
     自查 pwsh 启动性能:分段计时(裸启动/profile 税/init 合计+步骤表/OnIdle 体验件/prompt)并给结论。
     .DESCRIPTION
     每段都在全新 pwsh 进程里测(冷数字,排除本会话已摊销的解析成本);本机改动对照看 Startup-Optimization.md。
-    耗时组成(沙盒 VM 参考,真机按比例):裸 211ms + profile 税(含 conda 缓存约 59ms + init 约 416ms)≈700ms
+    耗时组成(参考值见 Startup-Optimization.md 的基线表,真机按比例):裸启动 + profile 税(conda 缓存 + init)
     + 首屏单发(predictor 约 400/zoxide 约 20,先摘后装一次);PSFzf/CxxuTab 转手势按需
     (首按 Ctrl+T/R、首个 Tab 才装,手势可归因,无随机冻结)。
     首屏"能看见 prompt 但打字滞后"= 常驻 OnIdle 订阅随机冻结(分片时代已回滚,见 Startup-Optimization.md §21);
@@ -365,7 +365,7 @@ Import-Module TerminalTools -ErrorAction Stop
         [PSCustomObject]@{ 段 = 'bare(裸启动,天花板)'; ms = $bare },
         [PSCustomObject]@{ 段 = 'profile(含 conda+init,OnIdle 未触发)'; ms = $prof },
         [PSCustomObject]@{ 段 = 'profile 税(profile-bare)'; ms = ($prof - $bare) },
-        [PSCustomObject]@{ 段 = 'init 合计(8 步)'; ms = $tInit },
+        [PSCustomObject]@{ 段 = 'init 合计(步骤表)'; ms = $tInit },
         [PSCustomObject]@{ 段 = 'idle 全载合计(-Now 4 件;首屏单发只跑 predictor+zoxide)'; ms = $tIdle }
     )
     $rows | Format-Table -AutoSize | Out-String | Write-Host
@@ -411,63 +411,19 @@ $r -join ' '
 }
 function p
 {
-    <# 
+    <#
     .SYNOPSIS
-    打开新的powershell环境 
+    启动一个新的 pwsh 会话。
     .DESCRIPTION
-    支持两种模式,一类是当需要要刷新模块时,在当前powershell会话中执行此命令
-    另一类是作为每个powershell会话自动导入的基础性配置
-    .NOTES
-    性能分析
-    默认情况下,载入powershell环境或配置不会显示过多细节以保持简洁,但是如果用户对于加载过程中的耗时环节感兴趣,那么可以使用
-    `p -force`来查看加载耗时报告(此时内部调用pwsh -noprofile,会忽略$profile中的指令,同时用了-c参数执行`p`函数,以强制重新加载新的pwsh会话以及相应的环境配置导入任务,并且使用-InformationAction continue来输出加载耗时报告)
-    .Notes
-    报告给的细节部分(比如加载哪些模块对应耗时,但是其他一些语句也会产生耗时,
-    尤其是gmo -listavailables是比较耗时的,其耗时比较稳定,这里不展示该项目耗时)
-    .NOTES
-    将此命令配置到环境变量时,一定要使用原地导入配置的模式,即使用参数`NoNewShell`否则会导致循环创建新的pwsh进程
-    这种情况下只能使用Ctrl+C关闭会话,并且使用`ps pwsh`检查相关进程,关闭多余进程
-    .NOTES
-    如果发现 提示语句被重复导入,那么可能是配置文件中的配置项目重复了
-    例如Setting basic environment in current shell...提示了两次,那么用编辑器打开$profile移除多余的导入语句
+    只负责新进程，不刷新当前会话：新 pwsh 读取 profile 后会执行 init。
+    刷新当前会话的配置用 init -Force；冷启动耗时分段用 Test-StartupPerformance；
+    当前会话分步耗时用 init -Force -Timing。
+    .EXAMPLE
+    p
     #>
     [CmdletBinding()]
-    param(
-        #是否启动新的shell环境
-        [switch]
-        [Alias('KeepCurrentShell', 'InlineImport')]
-        $NoNewShell , #默认启动新环境
-        [switch]$Force
-
-    )
-    # 配置编码输出组合防止外部脚本(非powershell脚本输出非英文字符时乱码)
-    # Write-Verbose 'Setting Output Encoding to UTF8' -Verbose
-    # $OutputEncoding = [System.Text.Encoding]::UTF8
-    # [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-  
-    # 处理$profile 和windows terminal 中的携带参数启动pwsh冲突或重复关系
-    if ($null -eq $PsInit)
-    {
-        if ($NoNewShell)
-        {
-            # 当前环境不启动新的shell环境，直接执行$script
-            Write-Host 'Setting basic environment in current shell...'
-            init -Verbose:$VerbosePreference
-            
-        }
-        else
-        {
-            # 请求启动新的powershell环境
-            Write-Host 'Loading new pwsh environment...'
-            
-            pwsh -noe -c init
-            # Start-Process -FilePath pwsh -NoNewWindow -ArgumentList " -noe -c init -Verbose:$([int]$VerbosePreference) "
-        }
-    }
-    if ($Force)
-    {
-        pwsh -noe -noprofile -c { init -Force -InformationAction continue }
-    }
+    param()
+    pwsh -NoLogo
 }
 function Set-CommonInit
 {
@@ -564,6 +520,10 @@ function Set-PSReadLinesCommon
     Set-PSReadLineKeyHandler -Key Tab -Function Complete
     Set-PSReadLineKeyHandler -Chord 'Ctrl+d' -Function ForwardWord
     Set-PSReadLineKeyHandler -Key 'Tab' -Function MenuComplete # 设置 Ctrl+d 为菜单补全和 Intellisense
+    # Tab 已重置为原生 MenuComplete，之前装的 argc/carapace 懒加载桩随之失效；
+    # 清标记，让后续组件步骤重新装桩（init -Force 重跑时也走这条）。
+    $global:PsArgcTabStub = $false
+    $global:PsCarapaceTabStub = $false
     Set-PSReadLineKeyHandler -Key 'Ctrl+z' -Function Undo # 设置 Ctrl+z 为撤销
     Set-PSReadLineKeyHandler -Key UpArrow -Function HistorySearchBackward # 设置向上键为后向搜索历史记录, 光标前的数据将为筛选
     Set-PSReadLineKeyHandler -Key DownArrow -Function HistorySearchForward # 设置向下键为前向搜索历史纪录, 光标前的数据将为筛选
@@ -751,6 +711,8 @@ function Set-ArgcCompletions
     try
     {
         Set-PSReadLineKeyHandler -Key Tab -ScriptBlock {
+            # carapace 与 argc 共用 Tab 桩：先按需加载 carapace，再走 argc 注册。
+            if ($global:PsCarapacePending) { Initialize-Carapace }
             if ($env:PsArgc -match '^(False|0|No|Off)$')
             {
                 [Microsoft.PowerShell.PSConsoleReadLine]::MenuComplete()
@@ -889,7 +851,7 @@ function Initialize-ArgcCompletions
     $scripts = @($scripts | Select-Object -Unique)
     # git-completion 或 carapace 负责 git/gitk 时把它们从 argc 名单里去掉:三者都注册同名
     # Native completer,后注册者覆盖先注册者,而 argc 首个 Tab 才注册,会顶掉先注册的来源。
-    # 判定看 Register-GitCompletion 置的 $global:PsGitCompletion、Initialize-Carapace 置的
+    # 判定看 Register-GitCompletion 置的 $global:PsGitCompletion、carapace 懒加载桩置的
     # $global:PsCarapaceGit,以及"模块已导入"(init 只注册 completer,首次补全才 Import-Module);
     # 都没有时保留 argc 自己的 git 补全。
     if ($global:PsGitCompletion -or $global:PsCarapaceGit -or (Get-Module git-completion -ErrorAction SilentlyContinue))
@@ -1003,24 +965,54 @@ function Get-CxxuGitCompletionSource
     }
 }
 
+function Set-CarapaceCompletionOptions
+{
+    # 计算 carapace 的排除项与 git 归属，只写环境变量和全局标记，不加载补全脚本。
+    $source = Get-CxxuGitCompletionSource
+    $global:PsCarapaceGit = $false
+    # 配置键优先；未配置时沿用已有的 CARAPACE_EXCLUDES，避免覆盖用户自定义的慢命令排除项。
+    $baseExcludes = [string]$env:PsCarapaceExcludes
+    if ([string]::IsNullOrWhiteSpace($baseExcludes)) { $baseExcludes = [string]$env:CARAPACE_EXCLUDES }
+    $excludes = @($baseExcludes -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    if ($source -eq 'Carapace')
+    {
+        # 来源优先：即使 PsCarapaceExcludes 写了 git/gitk，也不让 carapace 让出。
+        $excludes = @($excludes | Where-Object { $_ -notmatch '^(?i:git|gitk)$' })
+        $global:PsCarapaceGit = $true
+    }
+    else
+    {
+        foreach ($name in @('git', 'gitk'))
+        {
+            if (-not ($excludes | Where-Object { $_ -ieq $name })) { $excludes += $name }
+        }
+    }
+    $env:CARAPACE_EXCLUDES = ($excludes -join ',')
+    return $source
+}
+
 function Initialize-Carapace
 {
     <#
     .SYNOPSIS
-    按配置加载 carapace 补全（默认关闭，启用时由 init 调用）。
+    按配置加载 carapace 补全（默认关闭；首个 Tab 或显式调用时执行）。
     .DESCRIPTION
     开关 PsCarapace（默认 $false）；启用时要求 carapace 在 PATH。
     根据 PsGitCompletionSource 决定 carapace 是否接管 git/gitk：
     - Carapace：不排除 git/gitk，并置 $global:PsCarapaceGit，供 argc 让路；
     - GitCompletion、Argc、Auto：把 git/gitk 并入 CARAPACE_EXCLUDES。
     PsCarapaceExcludes 提供用户自己的慢命令排除项；两处合并后写入环境变量。
-    加载失败只告警，不中断 init。
+    init 只调用 Register-CarapaceLazyLoad 装桩；首次 Tab 才由桩调用本函数完成注册。
+    加载失败只告警，不中断 init，也不在后续 Tab 反复重试。
     .EXAMPLE
     Initialize-Carapace
+    .EXAMPLE
+    Enable-CxxuComponent Carapace -Persist -Now
     #>
     [CmdletBinding()]
     param()
 
+    if ($global:PsCarapaceLoaded) { return }
     if ($PSVersionTable.PSVersion.Major -lt 7)
     {
         Write-Warning 'carapace 补全需要 pwsh 7+；5.1 已跳过 Initialize-Carapace。'
@@ -1034,24 +1026,7 @@ function Initialize-Carapace
         return
     }
 
-    $source = Get-CxxuGitCompletionSource
-    # 配置键优先；未配置时沿用已有的 CARAPACE_EXCLUDES，避免覆盖用户自定义的慢命令排除项。
-    $baseExcludes = [string]$env:PsCarapaceExcludes
-    if ([string]::IsNullOrWhiteSpace($baseExcludes)) { $baseExcludes = [string]$env:CARAPACE_EXCLUDES }
-    $excludes = @($baseExcludes -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
-    if ($source -eq 'Carapace')
-    {
-        # 来源优先：即使 PsCarapaceExcludes 写了 git/gitk，也不让 carapace 让出。
-        $excludes = @($excludes | Where-Object { $_ -notmatch '^(?i:git|gitk)$' })
-    }
-    else
-    {
-        foreach ($name in @('git', 'gitk'))
-        {
-            if (-not ($excludes | Where-Object { $_ -ieq $name })) { $excludes += $name }
-        }
-    }
-    $env:CARAPACE_EXCLUDES = ($excludes -join ',')
+    $source = Set-CarapaceCompletionOptions
 
     try
     {
@@ -1069,12 +1044,80 @@ function Initialize-Carapace
             }
         }
         $script | Invoke-Expression
-        if ($source -eq 'Carapace') { $global:PsCarapaceGit = $true }
+        $global:PsCarapaceLoaded = $true
+        $global:PsCarapacePending = $false
         Write-Verbose ("carapace 已加载；git 来源={0}，排除项={1}" -f $source, $env:CARAPACE_EXCLUDES)
     }
     catch
     {
+        # 失败后摘掉待加载标记，避免每个 Tab 重复告警；显式调用本函数仍会重试。
+        # 若 carapace 原本负责 git/gitk，交出归属，让 argc 在首个 Tab 补上。
+        $global:PsCarapacePending = $false
+        $global:PsCarapaceGit = $false
         Write-Warning ("carapace 加载失败：{0}" -f $_.Exception.Message)
+    }
+}
+
+function Register-CarapaceLazyLoad
+{
+    <#
+    .SYNOPSIS
+    为 carapace 安装首个 Tab 懒加载桩（启用时由 init 调用）。
+    .DESCRIPTION
+    只校验开关、计算排除项并装 Tab 桩，不执行 carapace 生成的注册脚本；
+    首次 Tab 才调用 Initialize-Carapace，把约 0.2 秒的注册成本从启动挪到用户手势。
+    已有 argc 的 Tab 桩时复用该桩，不重复绑定 Tab；两者都未启用时不装桩。
+    .EXAMPLE
+    Register-CarapaceLazyLoad
+    #>
+    [CmdletBinding()]
+    param()
+
+    if ($global:PsCarapaceLoaded)
+    {
+        # init -Force 可能改了来源或排除项；completer 已注册无法撤销，但环境变量要跟着更新。
+        $null = Set-CarapaceCompletionOptions
+        return
+    }
+
+    # 每次 init 都重新校验，让 init -Force 能反映启停变化。
+    if ($PSVersionTable.PSVersion.Major -lt 7)
+    {
+        $global:PsCarapacePending = $false
+        $global:PsCarapaceGit = $false
+        return
+    }
+    if ($env:PsCarapace -match '^(False|0|No|Off)$' -or [string]::IsNullOrWhiteSpace($env:PsCarapace))
+    {
+        $global:PsCarapacePending = $false
+        $global:PsCarapaceGit = $false
+        return
+    }
+    if (-not (Get-Command carapace -ErrorAction SilentlyContinue))
+    {
+        $global:PsCarapacePending = $false
+        $global:PsCarapaceGit = $false
+        Write-Warning 'PsCarapace 已启用，但 PATH 中没有 carapace；先执行 Deploy-Carapace。'
+        return
+    }
+    $null = Set-CarapaceCompletionOptions
+    $global:PsCarapacePending = $true
+
+    # 已有可用的 Tab 桩（argc 或本函数此前装的）就不再重复绑定。
+    if ($global:PsArgcTabStub -or $global:PsCarapaceTabStub) { return }
+
+    try
+    {
+        Set-PSReadLineKeyHandler -Key Tab -ScriptBlock {
+            if ($global:PsCarapacePending) { Initialize-Carapace }
+            [Microsoft.PowerShell.PSConsoleReadLine]::MenuComplete()
+        }
+        $global:PsCarapaceTabStub = $true
+        Write-Verbose 'carapace: 已装首个 Tab 懒加载桩'
+    }
+    catch
+    {
+        Write-Verbose "carapace: 安装 Tab 桩失败，跳过：$($_.Exception.Message)"
     }
 }
 
@@ -2136,7 +2179,7 @@ function Disable-PsPlugin
     插件注册表：Fzf(PSFzf 快捷键)/Zoxide(z 跳转)/Predictor(命令名 ListView 预测)/
     Tab(CxxuTab 命令名 Tab 模糊，默认开,不需要时停用)/
     Argc(argc-completions 参数补全,默认开,懒加载)/GitCompletion(git/gitk 的 Tab 补全)/
-    Carapace(外部 CLI 参数补全,默认关,由 init 加载)/
+    Carapace(外部 CLI 参数补全,默认关,首个 Tab 懒加载)/
     PSCompletions(约 200 个命令的参数补全)/Fnm(node 版本切换)/ScoopSearch(scoop 搜索加速)；
     后三项默认关，启用后由 init 按组件配置加载。
     停用只关本命令的合并/加载，引擎原生行为不受影响；持开关逐调用判定，无需重载。
@@ -2193,7 +2236,7 @@ function Enable-PsPlugin
     启用体验插件(当会话生效;加 -Persist 长期启用,重开也开)。
     .DESCRIPTION
     启用是显式开(环境变量 True,盖过配置文件)。GitCompletion 额外切换来源并注册 git/gitk；
-    其余组件统一走 Enable-CxxuComponent -Now：先写开关，再调用清单里的 Init 函数。
+    其余组件统一走 Enable-CxxuComponent -Now：先写开关，再调用清单里的 InitNow（未声明时用 Init）。
     Fzf/Tab 在 pwsh 7+ 继续补手势桩，5.1 的 Tab 直接导入 CxxuTab；Argc 的即时调用只装 Tab 桩，
     真正的注册仍在首个 Tab；Predictor/Zoxide 若 OnIdle 单发已过，仍建议重开终端
     (或 Register-PsUxLazyLoad -Now 立装)。
@@ -2260,7 +2303,7 @@ function Set-GitCompletionSource
     来源由配置键 PsGitCompletionSource 决定（Auto/GitCompletion/Carapace/Argc），
     由 init 在启动时读取；本命令只改环境变量与用户配置，不修改 profile。
     - GitCompletion：启动时注册 git-completion；
-    - Carapace：同时打开 PsCarapace，由 init 加载 carapace 并让它接管 git/gitk；
+    - Carapace：同时打开 PsCarapace，由 init 注册懒加载桩并让它接管 git/gitk；
     - Argc：不注册 git-completion，由 argc 在首个 Tab 接管 git/gitk（不推荐：argc 的 git 补全缺 --cached/--staged 等选项）。
     carapace 的额外排除项用 PsCarapaceExcludes 配置，不再写 profile。
     -Persist 把来源写入 ~/.cxxu/config.psd1；不加时只改当前会话。
@@ -2453,6 +2496,7 @@ function Get-CxxuComponent
             Lazy        = [string]$component.Lazy
             MinPS       = [int]$component.MinPS
             Init        = [string]$component.Init
+            InitNow     = [string]$component.InitNow
             Detect      = [string]$component.Detect
             Install     = [string]$component.Install
             Enable      = $enableHint
@@ -2538,6 +2582,12 @@ function Test-CxxuComponent
             & $add $label 'Init 步骤' 'OK' "$init 已生成"
         }
 
+        $initNow = [string]$component.InitNow
+        if (-not [string]::IsNullOrWhiteSpace($initNow) -and -not (Get-Command -Name $initNow -ErrorAction SilentlyContinue))
+        {
+            & $add $label '立即加载' '错误' "InitNow 函数不存在：$initNow"
+        }
+
         if ([string]::IsNullOrWhiteSpace($detect))
         {
             & $add $label 'Detect' '警告' '未声明 Detect，跳过已启用依赖检查'
@@ -2613,10 +2663,10 @@ function Enable-CxxuComponent
 {
     <#
     .SYNOPSIS
-    启用一个组件：写当前会话环境变量；-Persist 写用户配置；-Now 立即调用组件 Init 函数。
+    启用一个组件：写当前会话环境变量；-Persist 写用户配置；-Now 立即调用组件的立即加载函数。
     .DESCRIPTION
     组件 Id 来自 PS/Init/components.psd1。默认只负责启用意图，不立即加载；
-    加 -Now 时调用清单里的 Init 函数，等价于 Enable-PsPlugin 的即时加载路径。
+    加 -Now 时调用清单里的 `InitNow`（未声明时用 `Init`），等价于 Enable-PsPlugin 的即时加载路径。
     部分组件即使立即调用 Init 也需重开终端才完全生效（如已注册的 completer）。
     .EXAMPLE
     Enable-CxxuComponent Carapace
@@ -2629,7 +2679,7 @@ function Enable-CxxuComponent
     param(
         [Parameter(Mandatory)][string]$Id,
         [switch]$Persist,
-        # 立即调用组件清单里的 Init 函数（不需要重开终端时可加）
+        # 立即调用组件清单里的立即加载函数（不需要重开终端时可加）
         [switch]$Now,
         [string]$Path = (Join-Path (Join-Path $HOME '.cxxu') 'config.psd1')
     )
@@ -2643,10 +2693,17 @@ function Enable-CxxuComponent
         Write-Host ("组件 {0} 已启用{1}。" -f $Id, $(if ($Persist) { '并写入配置' } else { '（当会话）' }))
         if ($Now)
         {
-            $init = [string]$component[0].Init
-            if ([string]::IsNullOrWhiteSpace($init)) { Write-Warning "组件 $Id 没有 Init 函数，跳过立即加载。" }
-            elseif (Get-Command -Name $init -ErrorAction SilentlyContinue) { & $init }
-            else { Write-Warning "组件 $Id 的 Init 函数不存在：$init" }
+            $initNow = if ($component[0].ContainsKey('InitNow') -and -not [string]::IsNullOrWhiteSpace([string]$component[0].InitNow))
+            {
+                [string]$component[0].InitNow
+            }
+            else
+            {
+                [string]$component[0].Init
+            }
+            if ([string]::IsNullOrWhiteSpace($initNow)) { Write-Warning "组件 $Id 没有 Init 函数，跳过立即加载。" }
+            elseif (Get-Command -Name $initNow -ErrorAction SilentlyContinue) { & $initNow }
+            else { Write-Warning "组件 $Id 的立即加载函数不存在：$initNow" }
         }
     }
 }

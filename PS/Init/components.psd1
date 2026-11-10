@@ -4,6 +4,8 @@
     # 可选组件生成加载步骤，因此新增组件只需在这里登记并实现 Init 函数。
     # Phase 只做分组与说明；用户配置只表达 Enabled 与选项，不在这里改加载逻辑。
     # 新增组件：补一条记录，并在 Init.psm1 提供对应的 Init 函数。
+    # Init 是 init 启动步骤调用的入口；需要首用懒加载的组件，Init 指向注册桩，
+    # 再用 InitNow 指向立即加载函数（Enable-CxxuComponent -Now 调用）。
     # 可选 EnableHint：Get-CxxuComponent/Test-CxxuComponent 的启用提示（默认 Enable-CxxuComponent <Id> -Persist）。
     SchemaVersion = 1
     Components    = @(
@@ -102,10 +104,11 @@
             Phase       = 'Completions'
             Key         = 'PsCarapace'
             Default     = $false
-            Description = '外部 CLI 参数补全（init 启动时加载，约 0.1–0.2 秒）'
-            Lazy        = 'Startup'
+            Description = '外部 CLI 参数补全（首个 Tab 懒加载，约 0.2–0.3 秒）'
+            Lazy        = 'FirstUse'
             MinPS       = 7
-            Init        = 'Initialize-Carapace'
+            Init        = 'Register-CarapaceLazyLoad'
+            InitNow     = 'Initialize-Carapace'
             Detect      = 'carapace'
             Install     = 'Deploy-Carapace'
             Docs        = 'Feature-Guide.md §7'
