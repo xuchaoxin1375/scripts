@@ -98,17 +98,18 @@ function init
         [switch]$Timing
     )
 
-    Write-Host 'initing...'
+    # 计时从函数入口开始：配置读取/变量重载与步骤表分开统计，避免把准备阶段漏在总数外。
+    $initStart = [datetime]::UtcNow
     # 使用临时环境$env:Psinit会引发副作用(子作用域的pwsh也会继承此变量),这里限制其作用域,使用普通变量(局部)
     #考虑到$profile和wt中的启动参数同时调用init,都是同一个作用域,不需要第二个作用域访问到此标记变量,因此使用普通变量即可(同一个会话内可以访问)
     if ($Force -or $null -eq $PsInit)
     {
+        Write-Host 'initing...'
         Write-Verbose 'Init pwsh env...'
         # 首次初始化与"重跑已初始化会话"分流:只有后者需要重载变量 conf
         #(init -Force 是已初始化会话的重载路径,不叠加重载,保住启动基线)
         $reInit = $null -ne $PsInit
         # $env:PsInit = 'True' 
-        $global:PsInit = $True
         # 从 pwsh 7 终端启动的宿主会让 5.1 继承 7 的模块路径,先修正顺序再读配置与导入模块
         Update-CxxuModulePathOrder
         # 用户配置文件先行(环境变量 > 配置文件 > 默认;缺文件静默跳过,见 Import-CxxuConfig)
@@ -132,14 +133,11 @@ function init
     else
     {
 
-        Write-Verbose 'Init work loaded !' -Verbose
+        Write-Verbose 'Init work loaded !'
         return
     }
 
 
-    # 获取当前日期时间
-    $startTime = Get-Date
-    Set-LastUpdateTime
     # 启动步骤表:直接调用(当前会话作用域),不要转字符串再 iex —— iex 慢且吞错误定位;
     # 进度条默认开(真机实测开销可忽略,用户 306ms 全链含进度条),开关见 $env:PsShowProgress,
     # 重定向下(无处渲染)自动关闭。
@@ -149,6 +147,11 @@ function init
     $coveredInit = @(($coreSteps.Before + $coreSteps.After) | ForEach-Object { [string]$_.Name })
     $componentSteps = @(Get-CxxuComponentInitSteps -CoveredInit $coveredInit)
     $steps = @($coreSteps.Before) + @($componentSteps) + @($coreSteps.After)
+
+    # 步骤表构建完成后再置已初始化标记：前面任何一步失败时保留未初始化状态，允许重试；
+    # 步骤表内部单步失败只记账不中断。
+    $global:PsInit = $True
+    $prepMs = [int]([datetime]::UtcNow - $initStart).TotalMilliseconds
 
     # 仅在要求时计时/报告(-Timing 或 -InformationAction Continue;`init -Force -Timing` 走前者)
     $needTiming = $Timing -or ($InformationPreference -eq 'Continue')
@@ -166,6 +169,7 @@ function init
         $PSStyle.Progress.View = 'Classic'
     }
     $global:PsInitStepErrors = @()
+    $stepsStart = [datetime]::UtcNow
     for ($i = 0; $i -lt $steps.Count; $i++)
     {
         $step = $steps[$i]
@@ -205,6 +209,8 @@ function init
         }
     }
 
+    $stepsMs = [int]([datetime]::UtcNow - $stepsStart).TotalMilliseconds
+
     # -Force 重载后恢复环境等级:VarSet1.conf 恒写 1,已到 Env 级的会话不被打回,
     # 免得后续第一个 Update-PwshEnvIfNotYet 调用再多跑一次全量补齐
     if ($reInit -and $prevEnvMode -gt $global:PsEnvMode)
@@ -225,7 +231,15 @@ function init
 
     if ($needTiming -and $report.Count)
     {
-        $report | Sort-Object Time -Descending | Format-Table -AutoSize | Out-String | Write-Host
+        # 步骤表带占比与合计：一眼看出“步骤内部”谁最贵，也说明合计口径。
+        $sumStepMs = [int](($report | Measure-Object -Property Time -Sum).Sum)
+        $report = @($report | Sort-Object Time -Descending | ForEach-Object {
+                $share = ''
+                if ($sumStepMs -gt 0) { $share = '{0:P0}' -f ($_.Time / $sumStepMs) }
+                [PSCustomObject]@{ Command = $_.Command; Time = $_.Time; Share = $share }
+            })
+        $report += [PSCustomObject]@{ Command = '步骤合计'; Time = $sumStepMs; Share = '100%' }
+        $report | Format-Table -AutoSize | Out-String | Write-Host
     }
 
     # 其他自定义绑定的任务🎈
@@ -299,11 +313,8 @@ function init
     #     . $condaCompletionFile
     # }
     # 耗时统计
-    $endTime = Get-Date
-    $loadTime = $endTime - $startTime
-    $loadTime = $loadTime.Totalmilliseconds
-
-    Write-Host "Environment Loading time: $loadTime ms " -ForegroundColor Magenta
+    $totalMs = [int]([datetime]::UtcNow - $initStart).TotalMilliseconds
+    Write-Host ("Environment Loading time: {0} ms (steps; prep {1} ms, total {2} ms)" -f $stepsMs, $prepMs, $totalMs) -ForegroundColor Magenta
     # 清理竞争关系变量
     # $env:PsInit = $null
     # Remove-Variable $env:PsInit
@@ -337,7 +348,12 @@ function Test-StartupPerformance
     {
         $v = @(1..([Math]::Max(1, $N)) | ForEach-Object { & $Probe })
         $s = @($v | Sort-Object)
-        return [int]$s[[int]($s.Count / 2)]
+        # 偶数次取中间两个的平均，避免 -Repeat 2 时系统性偏向较大的那次。
+        if (($s.Count % 2) -eq 0)
+        {
+            return [int](($s[$s.Count / 2 - 1] + $s[$s.Count / 2]) / 2)
+        }
+        return [int]$s[[int][Math]::Floor($s.Count / 2)]
     }
     $pwsh = Get-Command pwsh -ErrorAction SilentlyContinue
     if (-not $pwsh)
@@ -355,23 +371,27 @@ function Test-StartupPerformance
 Import-Module Init -ErrorAction Stop
 [int](Measure-Command { init *> $null }).TotalMilliseconds
 '@
-    $tInit = [int](& $pwsh -NoProfile -NonInteractive -Command $probeInit)
+    $tInit = Get-MedianMs { [int](& $pwsh -NoProfile -NonInteractive -Command $probeInit) } $Repeat
     $probeIdle = @'
 Import-Module TerminalTools -ErrorAction Stop
 [int](Measure-Command { Register-PsUxLazyLoad -Now *> $null }).TotalMilliseconds
 '@
-    $tIdle = [int](& $pwsh -NoProfile -NonInteractive -Command $probeIdle)
+    $tIdle = Get-MedianMs { [int](& $pwsh -NoProfile -NonInteractive -Command $probeIdle) } $Repeat
+    # profile 税 = bare 之外的全部启动开销；init 是它的子集，必须扣掉才能得到 conda/模块导入等其余部分。
+    $profileTax = $prof - $bare
+    $profileOther = [Math]::Max(0, $profileTax - $tInit)
     $rows = @(
-        [PSCustomObject]@{ 段 = 'bare(裸启动,天花板)'; ms = $bare },
-        [PSCustomObject]@{ 段 = 'profile(含 conda+init,OnIdle 未触发)'; ms = $prof },
-        [PSCustomObject]@{ 段 = 'profile 税(profile-bare)'; ms = ($prof - $bare) },
-        [PSCustomObject]@{ 段 = 'init 合计(步骤表)'; ms = $tInit },
-        [PSCustomObject]@{ 段 = 'idle 全载合计(-Now 4 件;首屏单发只跑 predictor+zoxide)'; ms = $tIdle }
+        [PSCustomObject]@{ 段 = 'bare（裸启动基线）'; ms = $bare; 说明 = '不含 profile' },
+        [PSCustomObject]@{ 段 = 'profile（完整启动）'; ms = $prof; 说明 = 'bare + profile 税' },
+        [PSCustomObject]@{ 段 = 'profile 税'; ms = $profileTax; 说明 = 'profile - bare' },
+        [PSCustomObject]@{ 段 = '  init 合计'; ms = $tInit; 说明 = 'profile 税的子集，不另外相加' },
+        [PSCustomObject]@{ 段 = '  profile 其他'; ms = $profileOther; 说明 = 'profile 税 - init（conda/模块导入等）' },
+        [PSCustomObject]@{ 段 = 'idle 全载'; ms = $tIdle; 说明 = '启动后首屏一次，不计入 profile' }
     )
-    $rows | Format-Table -AutoSize | Out-String | Write-Host
-    Write-Host '--- init -Timing 步骤表(当前值,看头两名) ---' -ForegroundColor Cyan
+    $rows | Format-Table -AutoSize | Out-String -Width 160 | Write-Host
+    Write-Host '--- init -Timing 步骤表（另一次新进程，仅供占比；总量看上一行 init 合计） ---' -ForegroundColor Cyan
     & $pwsh -NoProfile -NonInteractive -Command 'Import-Module Init; init -Timing' 2>$null |
-        Select-Object -Skip 1 | Write-Host
+        Select-Object -Skip 1 | Where-Object { $_ -notmatch 'Environment Loading time' } | Write-Host
     if ($Detail)
     {
         Write-Host '--- -Now 全载四件各自耗时(与 Register-PsUxLazyLoad -Now 同源,改动两边同步) ---' -ForegroundColor Cyan
@@ -517,9 +537,8 @@ function Set-PSReadLinesCommon
     #(the command line will try to offer you a list(candidated) when you press the `tab`key
     #of course,if the current path have only one or even none can match what you want to match,it will just try to complete the current object name
     #>
-    Set-PSReadLineKeyHandler -Key Tab -Function Complete
     Set-PSReadLineKeyHandler -Chord 'Ctrl+d' -Function ForwardWord
-    Set-PSReadLineKeyHandler -Key 'Tab' -Function MenuComplete # 设置 Ctrl+d 为菜单补全和 Intellisense
+    Set-PSReadLineKeyHandler -Key 'Tab' -Function MenuComplete # Tab 用菜单补全（与 Intellisense 一致）
     # Tab 已重置为原生 MenuComplete，之前装的 argc/carapace 懒加载桩随之失效；
     # 清标记，让后续组件步骤重新装桩（init -Force 重跑时也走这条）。
     $global:PsArgcTabStub = $false
@@ -686,8 +705,9 @@ function Set-ArgcCompletions
     ARGC_COMPLETIONS_ROOT > ~/argc-completions > ~/repos/argc-completions
     > C:\repos\argc-completions(仅 Windows)。仓库判定要求有 completions 目录,
     argc 可执行文件可来自仓库 bin 或 PATH(macOS/Linux 用系统安装的 argc)。
-    关闭:$env:PsArgc='False'/'0'/'No'/'Off'(逐次判定,无需重载);关闭后
-    Register 的 completer 直接返回空,不影响 PowerShell 原生补全。
+    关闭:$env:PsArgc='False'/'0'/'No'/'Off'(逐次判定,无需重载);关闭时
+    不再设置 ARGC_COMPLETIONS_ROOT/PATH，也不装 Tab 桩；后续 Register 的 completer
+    直接返回空,不影响 PowerShell 原生补全。
     .EXAMPLE
     Set-ArgcCompletions
     .EXAMPLE
@@ -696,6 +716,9 @@ function Set-ArgcCompletions
     [CmdletBinding()]
     param()
 
+    # 关闭时不改 ARGC_COMPLETIONS_ROOT/PATH，也不装 Tab 桩；需要时再打开并 init -Force。
+    if ($env:PsArgc -match '^(False|0|No|Off)$') { return }
+
     $root = Get-ArgcCompletionsRoot
     if (-not $root)
     {
@@ -703,8 +726,6 @@ function Set-ArgcCompletions
         return
     }
     Set-ArgcCompletionsEnvironment -Root $root
-
-    if ($env:PsArgc -match '^(False|0|No|Off)$') { return }
 
     # 每次 init 都重装(Set-PSReadLinesCommon 会把 Tab 重置成 MenuComplete;
     # init -Force 重跑时不能因为全局标记而跳过)
@@ -1015,13 +1036,26 @@ function Initialize-Carapace
     if ($global:PsCarapaceLoaded) { return }
     if ($PSVersionTable.PSVersion.Major -lt 7)
     {
+        $global:PsCarapacePending = $false
         Write-Warning 'carapace 补全需要 pwsh 7+；5.1 已跳过 Initialize-Carapace。'
         return
     }
-    if ($env:PsCarapace -match '^(False|0|No|Off)$') { return }
-    if ([string]::IsNullOrWhiteSpace($env:PsCarapace)) { return }
+    if ($env:PsCarapace -match '^(False|0|No|Off)$')
+    {
+        $global:PsCarapacePending = $false
+        $global:PsCarapaceGit = $false
+        return
+    }
+    if ([string]::IsNullOrWhiteSpace($env:PsCarapace))
+    {
+        $global:PsCarapacePending = $false
+        $global:PsCarapaceGit = $false
+        return
+    }
     if (-not (Get-Command carapace -ErrorAction SilentlyContinue))
     {
+        $global:PsCarapacePending = $false
+        $global:PsCarapaceGit = $false
         Write-Warning 'PsCarapace 已启用，但 PATH 中没有 carapace；先执行 Deploy-Carapace。'
         return
     }
@@ -1402,6 +1436,7 @@ function Update-PwshEnvIfNotYet
     # 如果环境模式(等级)不满足要求,则导入对应级别的环境
     if ($Force)
     {
+        # Update-PwshEnv 已包含 Set-PsPrompt,不再重复刷新
         Update-PwshEnv
     }
     elseif (! (Test-PsEnvMode -Mode $Mode ))
@@ -1418,8 +1453,11 @@ function Update-PwshEnvIfNotYet
         {
             Update-PwshEnv
         }
-        # 导入变量后,更新命令提示符
-        Set-PsPrompt -Verbose:$VerbosePreference
+        # Env 分支已由 Update-PwshEnv 刷新 prompt；core/Vars 只导入变量，需要单独刷新
+        if ($Mode -ne 'Env')
+        {
+            Set-PsPrompt -Verbose:$VerbosePreference
+        }
     }
 
     Write-Verbose 'Environment  have been Imported in the current powershell!'
@@ -1621,11 +1659,12 @@ function Get-CxxuCoreInitSteps
         )
         After = @(
             @{ Name = 'Confirm-EnvVarOfInfo'; Action = { Confirm-EnvVarOfInfo }; MinPS = 7 }
-            @{ Name = 'Set-PsExtension'; Action = { Set-PsExtension }; MinPS = 7 }
+            # 默认关闭时跳过调用，避免为一次 no-op 导入 PsEnv 模块（约 17ms）。
+            @{ Name = 'Set-PsExtension'; Action = { if ($env:PsExtension -eq 'True') { Set-PsExtension } }; MinPS = 7 }
             # 设置prompt样式(这里面会导入基础的powershell预定变量和别名)
             @{ Name = 'Set-PsPrompt'; Action = { Set-PsPrompt } }
-            # Confirm-DataJson 有返回值(路径,供调用方使用),init 只关心副作用,屏蔽回显
-            @{ Name = 'Confirm-DataJson'; Action = { Confirm-DataJson | Out-Null }; MinPS = 7 }
+            # 只有用到网卡 IP 的主题才需要 Data.json；fast/short/default 不必在启动时解析。
+            @{ Name = 'Confirm-DataJson'; Action = { if ($env:PsPrompt -match '^(?i:Balance|Brilliant|Brilliant2)$') { Confirm-DataJson | Out-Null } }; MinPS = 7 }
             # 体验件手势桩+单发收尾(7: PSFzf/Tab 首用才装,predictor/zoxide 首屏单发;
             # 5.1: 只装 CxxuTab 的手势桩,其余 7-only 项跳过),启动零开销
             @{ Name = 'Register-PsUxLazyLoad'; Action = { Register-PsUxLazyLoad } }
@@ -2556,6 +2595,12 @@ function Test-CxxuComponent
         $key = [string]$component.Key
         $init = [string]$component.Init
         $detect = [string]$component.Detect
+        $lazy = [string]$component.Lazy
+
+        if ($lazy -and (@('Startup', 'FirstUse', 'OnIdle') -notcontains $lazy))
+        {
+            & $add $label 'Lazy' '警告' "未知 Lazy 值：$lazy（可选 Startup/FirstUse/OnIdle）"
+        }
 
         if ([string]::IsNullOrWhiteSpace($id)) { & $add $label 'Id' '错误' '组件缺少 Id' }
         elseif ($ids.ContainsKey($id)) { & $add $label 'Id' '错误' "Id 重复：$id" }

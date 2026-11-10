@@ -22,7 +22,7 @@
 | `Startup` | 307/12 | 开机任务、后台守护进程、OS 版本缓存（`Confirm-EnvVarOfInfo`；B 档 5.1，`$IsWindows` 加 `PSEdition` 兜底） |
 | `Json` | 251/5 | `Data.json` 读写校验（init 与 prompt 共用，无递归设计；B 档 5.1） |
 | `Pwsh` | 460/8 | 模块加载脚手架：`ipmox`/`ipmof` 重载（仅仓库内模块）、`New-ModuleByCxxu`、`Sync-ModuleManifest` 偷懒同步（-Name Tab 补全）；版本环境 8 函数已迁 `PsEnv`、内省调试 13 函数已迁 `PsDebug`（2026-09-22，命令名不变；B 档 5.1，哈希表键改点号取值） |
-| `PsEnv` | 261/8 | PowerShell 版本/环境：`Update-PowerShell` 升级、`Set-PsExtension`（init 调用，默认关）、profile 路径管理（2026-09-22 从 `Pwsh` 迁入，init 链会加载；B 档 5.1） |
+| `PsEnv` | 261/8 | PowerShell 版本/环境：`Update-PowerShell` 升级、`Set-PsExtension`（init 默认跳过；`PsExtension=True` 才调用）、profile 路径管理（2026-09-22 从 `Pwsh` 迁入，init 链会加载；B 档 5.1） |
 
 ## prompt 首渲染会顺带加载
 
@@ -117,9 +117,9 @@ $profile -> init
   ├─ Import-PsCompletions                  (可选组件：导入 PSCompletions，默认关)
   ├─ Initialize-ScoopSearch                (可选组件：scoop-search --hook，默认关)
   ├─ Confirm-EnvVarOfInfo                  (Startup：OSCaption/FullCode/DisplayVersion 持久化)
-  ├─ Set-PsExtension                       (默认 False，no-op)
-  ├─ Set-PsPrompt                          (Prompt；内含 core 环境导入)
-  ├─ Confirm-DataJson                      (Json：~/Data.json 兜底+校验)
+  ├─ Set-PsExtension                       (默认 False：init 直接跳过，不导入 PsEnv)
+  ├─ Set-PsPrompt                          (Prompt；含 core 环境检查/按需导入)
+  ├─ Confirm-DataJson                      (Json：仅 Balance/Brilliant 等 IP 主题执行)
   └─ Register-PsUxLazyLoad                 (TerminalTools：只注册 OnIdle 事件即返回)
 首渲染 prompt (PromptFast 默认)
   ├─ Write-BatteryAndMemoryUse → Info(Get-MemoryUseSummary 5s节流 / Get-BatteryLevelCached 30s)

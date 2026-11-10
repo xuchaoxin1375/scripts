@@ -22,7 +22,7 @@ Add-EnvVar -EnvVar PSModulePath -NewValue $p -Verbose
 | `init` | 全量初始化（变量+别名+补全+prompt，约 400~700ms）；同会话重复调用直接返回；`-Force` 重跑步骤表，并在已初始化会话真重载全部变量 conf（2026-10-03 起，重载开销约零点几秒；首次初始化路径不变） |
 | `init -Timing` | 同上，附每步耗时表（首次启动）；已初始化会话用 `init -Force -Timing` |
 | `p` | 新开一个 pwsh 会话，由新进程的 profile 执行 `init`；不刷新当前会话 |
-| `Test-StartupPerformance` | 新进程分段计时（裸启动/profile/init/OnIdle），定位启动慢项 |
+| `Test-StartupPerformance` | 新进程分段计时（bare/profile/init/idle），标明 `init` 是 `profile 税` 的子集 |
 | `Set-PsPrompt -version < fast/short/...>` | 切换提示符；加 `-Persist` 才写注册表记住选择 |
 | `dm` | 切极简 prompt（做笔记摘录时聚焦命令本身） |
 | `Test-PromptDelay` | 测当前 prompt 延迟 |
@@ -40,7 +40,8 @@ Add-EnvVar -EnvVar PSModulePath -NewValue $p -Verbose
 | `Set-CxxuComponentOption` | 设置组件选项（如 `GitCompletion.Source`、`Carapace.Excludes`）；`-Persist` 写配置，枚举与 List 类型按 `components.psd1` 校验；写入行为同上 |
 
 环境等级（`$PsEnvMode`，`Test-PsEnvMode` 查询）：core(1) 核心变量 → vars(2) 全量变量 →
-env(3) 变量+别名。`Update-PwshEnvIfNotYet` 按需补齐，不重复干活。
+env(3) 变量+别名。`Update-PwshVars` 全量导入后置 2，`Update-PwshEnv` 置 3；
+`Update-PwshEnvIfNotYet` 按需补齐，达到对应等级后不重复导入。
 
 ## 3. 改模块 / 加函数（有了 `.psd1` 之后的工作流）
 

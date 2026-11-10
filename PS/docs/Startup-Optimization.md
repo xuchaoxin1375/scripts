@@ -19,9 +19,9 @@
 
 ```powershell
 # 复测命令（重定向/agent 下也干净：PSReadLine 控制台相关选项已按场景跳过，见 §12）
-pwsh -NoProfile -c { Measure-Command { pwsh -NoProfile -c init } }
-init -Timing -InformationAction Continue   # 分步耗时报告（默认关闭）
-Test-PromptDelay                            # prompt 延迟（默认测 10 次取平均）
+Test-StartupPerformance                      # 新进程分段：bare/profile/init/idle
+init -Force -Timing                           # 当前会话分步耗时（已初始化；首次启动用 init -Timing）
+Test-PromptDelay                              # prompt 延迟（默认测 10 次取平均）
 ```
 
 ### 关于 `Loading personal and system profiles took ...ms`
@@ -32,20 +32,20 @@ Test-PromptDelay                            # prompt 延迟（默认测 10 次�
   conda + init 全套。与“第几次启动”无关，只和该实例耗时是否过线有关（机器负载、冷热缓存
   会让同一配置在 500ms 线上下横跳，看起来像“有时有、有时无”）。
 
-`init -Timing` 沙盒实测（顺序即耗时顺序；`Json` 拆分 + conf 缓存后复测）：
+`init -Timing` 沙盒实测（顺序即耗时顺序；`Json` 拆分 + conf 缓存后复测；当前 macOS 口径见 §30）：
 
 | 步骤 | 时间 |
 |---|---|
-| Set-PsPrompt（含 core 环境导入） | 148~177ms |
-| Set-PSReadLinesCommon | ~102ms |
-| Set-PSReadLinesAdvanced | ~83ms |
-| Confirm-EnvVarOfInfo（稳态命中缓存） | ~37ms |
-| Set-ArgumentCompleter | ~36ms |
-| Set-PsExtension（默认 False，近乎 no-op） | ~22ms |
-| Confirm-DataJson（首调含 Json 模块解析，拆分前 65ms） | ~19ms |
-| Register-PsUxLazyLoad（只注册 OnIdle 事件，TerminalTools 首解析在内） | ~18ms |
-| Register-GitCompletion（只注册 completer，首次补全才导入模块；未装时直接返回） | ~8ms |
-| Register-CarapaceLazyLoad（默认关闭；启用时只装首个 Tab 桩） | 0ms（关闭）/ ~8ms（启用）；首次 Tab 另付约 0.2–0.3 秒 |
+| Set-PsPrompt（含 core 环境导入；已消除重复调用） | 130~177ms |
+| Set-PSReadLinesCommon | ~90~102ms |
+| Set-PSReadLinesAdvanced | ~8~83ms（随冷热与预测视图分支变化） |
+| Confirm-EnvVarOfInfo（稳态命中缓存） | ~26~37ms |
+| Set-ArgumentCompleter | ~36~51ms |
+| Set-PsExtension（默认 False 时 init 直接跳过，不再导入 PsEnv） | 0ms（默认）/ 启用时另计 |
+| Confirm-DataJson（仅 Balance/Brilliant 等用到 IP 的主题执行） | 0ms（fast/short/default）/ ~35ms（IP 主题） |
+| Register-PsUxLazyLoad（只注册 OnIdle 事件，TerminalTools 首解析在内） | ~18~25ms |
+| Register-GitCompletion（只注册 completer，首次补全才导入模块；未装时直接返回） | ~6~8ms |
+| Register-CarapaceLazyLoad（默认关闭；启用时只装首个 Tab 桩） | 0ms（关闭）/ ~7ms（启用）；首次 Tab 另付约 0.2–0.3 秒 |
 
 ## 2. 本次改动总览
 
@@ -597,3 +597,62 @@ Set-PSReadLineOption: 句柄无效。
   Pending，不在后续 Tab 重复告警。
 - 边界：`PSCompletions`/`fnm`/`scoop-search` 保持原加载方式；默认关闭，启用后仍按组件
   清单加载。carapace 首次 Tab 的 0.2–0.3 秒是功能成本，不摊到每个会话启动。
+
+## 30. 第二十三轮：启动链审计、计时口径与 conda prompt 边界（2026-11-10）
+
+- 审计范围：`init` 的固定步骤、组件清单生成的步骤、`Set-PsPrompt`/`Update-PwshEnv*`/
+  `Update-PwshVars`、argc/carapace/git-completion 的装载入口，以及 `p` 的嵌套进程路径。
+- 修掉的逻辑与重复：
+  - `Set-PsPrompt` 首次执行会经 `Update-PwshEnvIfNotYet -Mode core` 回调自身，导致
+    prompt、core 别名和 `LastUpdate` 各执行两遍。改为直接检查 `Test-PsEnvMode -Mode core`
+    后调用 `Update-PwshVars -Core`，不再回调。
+  - `Update-PwshEnvIfNotYet -Mode Env` 在 `Update-PwshEnv` 已刷新 prompt 后又调一次
+    `Set-PsPrompt`；改为 Env 分支只由 `Update-PwshEnv` 负责，core/Vars 分支才补 prompt。
+  - `Update-PwshVars` 全量导入后原先仍停留在 `PsEnvMode=1`，`Test-PsEnvMode -Mode Vars`
+    永远为假，`Update-PwshEnvIfNotYet -Mode Vars` 每次调用都重复导入全量变量。现在全量
+    导入标记为 2，`-Core`/`-Fast` 保持 1，已有更高级别时不降级。
+  - `Set-PSReadLinesCommon` 先把 Tab 绑到 `Complete`，下一行又改成 `MenuComplete`；
+    删除这次无效绑定。`Set-PsExtension` 默认关闭时 init 直接跳过，不再为 no-op 导入
+    PsEnv 模块；`Confirm-DataJson` 只在 Balance/Brilliant 等使用 IP 的主题执行。
+  - `Set-ArgcCompletions` 原先在 `PsArgc=False` 时仍会写 `ARGC_COMPLETIONS_ROOT`/PATH；
+    现在关闭即返回，不再改环境。`Initialize-Carapace` 的提前返回路径会清掉
+    `PsCarapacePending`，避免禁用后每次 Tab 重复做开关/路径检查。
+  - `init` 的 `$global:PsInit` 改为在步骤表构建完成后才置位：前置阶段失败时仍可重试。
+    重复调用 `init` 不再打印 `initing...`；`Init work loaded` 与
+    `confrim pwsh extension functions` 不再强制 `-Verbose` 输出。
+  - `promptx` 增加原 prompt 缺失/执行失败的守卫。原实现直接 `& $originalPromptScript`，
+    在 `prompt` 被移除或宿主未定义时每次渲染都会抛
+    “expression after '&' ... was not valid”。
+- 计时口径：
+  - `init` 的 `Environment Loading time` 现在写作 `steps / prep / total` 三段：
+    `steps` 只含步骤循环，`prep` 含配置读取、变量重载与步骤表构建，`total` 从函数入口
+    起算。`init -Timing` 的步骤表增加 `Share` 与“步骤合计”行，合计只表示步骤内部口径，
+    与 `total` 的差额是准备阶段。
+  - `Test-StartupPerformance` 的表格改为“段 / ms / 说明”，明确 `init` 是 `profile 税`
+    的子集，并单列 `profile 其他 = profile 税 - init`；`bare`、`profile`、`init`、
+    `idle` 都按 `-Repeat` 取中位数。`idle 全载` 是启动后首屏一次的成本，不计入
+    `profile`。
+- 同机复测（macOS，一次采样，数值随负载抖动）：
+  `bare 328ms`、`profile 1051ms`、`profile 税 723ms`、`init 497ms`、
+  `profile 其他 226ms`、`idle 全载 529ms`；对比第二十二轮的 `init 564ms`/`profile 1122ms`。
+  `init -Timing` 步骤表前三名为 `Set-PsPrompt 134ms`、`Set-PSReadLinesCommon 89ms`、
+  `Set-ArgumentCompleter 43ms`，步骤合计约 364ms。
+- 仍偏贵的项：`Set-ArgumentCompleter` 的 43ms 主要花在
+  `Get-Command -Module EnvVar` 的模块发现，不是注册本身；`Set-PsPrompt` 的 134ms 与
+  `Set-PSReadLinesCommon` 的 89ms 多为首次模块/PSReadLine 初始化。继续压缩需要把
+  EnvVar 补全注册或 PSReadLine 初始化改成就绪后/首用触发，会增加桩与失败路径，本轮未做。
+- conda 与嵌套加载：
+  - 用与 conda 相同的 prompt 包装器（保存原 prompt、按 `CONDA_PROMPT_MODIFIER` 写前缀）
+    实测两种顺序：包装器在 `Init` 之前（`promptx` 捕获并执行它）或在 `init` 之后
+    （包装器重命名当前 `prompt` 为备份再包一层）。两种情况 `prompt` 都能正常返回，
+    `(base)` 前缀保留，没有递归或异常。未在本机实际执行 conda 模块（当前 profile 已
+    移除 mamba/conda hook），结论按上游 `Conda.psm1` 的 prompt 契约复现。
+  - `promptx` 只丢弃原 prompt 的返回值，不屏蔽其 `Write-Host`，因此 conda 的
+    `CONDA_PROMPT_MODIFIER` 仍会显示；原 prompt 缺失或抛错时现在静默降级为不执行它。
+  - `p` 启动的是新进程，只继承环境变量，不继承 `$global:PsInit`/`$global:PsEnvMode`；
+    子进程会重新执行 profile + init。实测嵌套后 PATH 未新增重复项（父进程原有的重复项
+    保持不变），`ARGC_COMPLETIONS_ROOT` 与开关正常传递。
+  - 边界：如果 conda 在同一会话用 `Import-Module Conda.psm1 -Force` 重载，上游
+    `Rename-Item Function:\prompt CondaPromptBackup` 可能因目标已存在而报错；这是 conda
+    自身的重入限制，不是 `init` 路径。需要换 prompt 底时按 Prompt 模块注释先
+    `Remove-Variable global:__CxxuOriginalPrompt` 再重载 Prompt。

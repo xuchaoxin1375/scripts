@@ -109,7 +109,7 @@ function Confirm-DataJson
     }
     catch
     {
-        Write-Warning "DataJson无效($DataJson): $_. 正在重建."
+        Write-Warning "DataJson无效($DataJson): $($_.Exception.Message) 正在重建."
         try
         {
             $bak = "$DataJson.bak.$((Get-Date).ToString('yyyy-MM-dd--HH-mm-ss'))"

@@ -17,6 +17,8 @@
         'Set-ArgcCompletions',
         'Initialize-ArgcCompletions',
         'Register-GitCompletion',
+        'Initialize-Carapace',
+        'Register-CarapaceLazyLoad',
         'Optimize-PsHistory',
         'Import-CxxuConfig',
         'Get-CxxuConfig',

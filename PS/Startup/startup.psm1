@@ -210,7 +210,7 @@ function Confirm-EnvVarOfInfo
     #确认是否启用扩展功能
     if ($null -eq $env:PsExtension)
     {
-        Write-Verbose 'confrim pwsh extension functions' -Verbose
+        Write-Verbose 'confrim pwsh extension functions'
         # 默认禁用扩展部分，加快安装和pwsh启动速度
         Set-StartupInfoEnvVar -Name 'PsExtension' -Value 'False'
     }

@@ -187,9 +187,14 @@ function promptx
     # $originalPromptScript = $function:prompt #禁止在prompt内部执行此代码
     Write-Debug "{$originalPromptScript}" 
     # & $originalPromptScript
-    $prefix = & $originalPromptScript
-    # 丢弃此部分的返回值
-    $prefix > $null
+    $prefix = $null
+    if ($originalPromptScript)
+    {
+        try { $prefix = & $originalPromptScript }
+        catch { Write-Debug "原 prompt 执行失败，已忽略: $($_.Exception.Message)" }
+        # 丢弃此部分的返回值；conda 等包装器在脚本里 Write-Host 的前缀仍会保留
+        $prefix > $null
+    }
     # 或打印出来查看
     # Write-Host "[[$prefix]]"
     
@@ -844,8 +849,9 @@ function Set-PsPrompt
         }
     }
 
-    # 检查基础环境信息,以便powershell prompt字段可以正确显示
-    Update-PwshEnvIfNotYet -Mode core # > $null
+    # 只补 core 变量，不调用 Update-PwshEnvIfNotYet：后者补齐后会回调 Set-PsPrompt，
+    # 首次 init 会把本函数完整执行两遍（prompt、core 别名、LastUpdate 各两次）。
+    if (-not (Test-PsEnvMode -Mode core)) { Update-PwshVars -Core }
     Update-PwshAliases -Core
     Set-LastUpdateTime -Verbose:$VerbosePreference
 

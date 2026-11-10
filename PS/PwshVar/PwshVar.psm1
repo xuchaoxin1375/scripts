@@ -146,11 +146,18 @@ function Update-PwshVars
     # $PSVersion = $PSVersionTable.PSVersion.Major
 
     
+    $prevEnvMode = $global:PsEnvMode
     foreach ($VarFile in $PwshVarFiles) 
     {
         Write-Verbose "processing:[$VarFile]"
         Import-PwshVarFile -VarFile $VarFile -NoCache:$NoCache # -AsPwshEnvForHomeVars
     }
+    # 全量导入后把等级标到 2：VarSet1.conf 固定写 1，若不提升，Test-PsEnvMode -Mode Vars
+    # 永远为假，Update-PwshEnvIfNotYet -Mode Vars 会在每次调用时重复导入全量变量。
+    # -Core/-Fast 是子集，保持 1；已有更高等级（如 Env=3）时不降级。
+    $targetMode = if ($Core -or $Fast) { 1 } else { 2 }
+    if ($null -ne $prevEnvMode -and $prevEnvMode -gt $targetMode) { $targetMode = $prevEnvMode }
+    Set-Variable -Name PsEnvMode -Value $targetMode -Scope Global
     Write-Verbose 'envs updated!'
     
 }

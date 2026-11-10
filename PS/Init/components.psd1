@@ -6,6 +6,8 @@
     # 新增组件：补一条记录，并在 Init.psm1 提供对应的 Init 函数。
     # Init 是 init 启动步骤调用的入口；需要首用懒加载的组件，Init 指向注册桩，
     # 再用 InitNow 指向立即加载函数（Enable-CxxuComponent -Now 调用）。
+    # Lazy 只描述预期加载时机（展示/文档用），实际加载由 Init/InitNow 函数决定；
+    # 两者不一致时以函数行为为准，并在 Test-CxxuComponent 中补检查。
     # 可选 EnableHint：Get-CxxuComponent/Test-CxxuComponent 的启用提示（默认 Enable-CxxuComponent <Id> -Persist）。
     SchemaVersion = 1
     Components    = @(
