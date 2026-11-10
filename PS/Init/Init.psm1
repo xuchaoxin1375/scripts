@@ -2279,6 +2279,8 @@ function Disable-PsPlugin
     已注册的 Native completer 无法在当前会话撤销：停用 GitCompletion/Carapace 后需重开终端，
     剩余来源才会重新接管 git/gitk。Argc 例外：停用时若 carapace 可用会重新注册它，
     重叠命令在当前会话即交还 carapace；Enable-PsPlugin Argc 会再注册回来。
+    停用 Carapace 时 completer 按 PsCarapace 门控立即返回空，重叠命令交回 argc，
+    git/gitk 按 PsGitCompletionSource 解析后当场回落。
     -Persist 写 ~/.cxxu/config.psd1 的 Components 段（v2 结构，旧文件先备份）。
     .EXAMPLE
     Disable-PsPlugin Tab
@@ -2316,6 +2318,13 @@ function Disable-PsPlugin
             {
                 # carapace 的 completer 带 PsCarapace 门控，停用后已注册的绑定立即返回空；
                 # argc 已启用时重新注册，让重叠命令当场换回 argc（与停用 Argc 时对称）。
+                # git/gitk 由 carapace 负责时先按来源解析回落，再让 argc 注册把它们纳入。
+                $gitFallback = $null
+                if ($global:PsCarapaceGit)
+                {
+                    $global:PsCarapaceGit = $false
+                    $gitFallback = Get-CxxuGitCompletionSource
+                }
                 $argcOn = -not [string]::IsNullOrWhiteSpace($env:PsArgc) -and
                     $env:PsArgc -notmatch '^(False|0|No|Off)$'
                 if ($argcOn -and $global:PsArgcLoaded)
@@ -2331,9 +2340,35 @@ function Disable-PsPlugin
                 {
                     Write-Host 'carapace 已停用；argc 未启用，当前会话这些命令无候选，重开终端后回到原生补全。'
                 }
-                if ($global:PsCarapaceGit)
+                if ($gitFallback -eq 'GitCompletion')
                 {
-                    Write-Host 'git/gitk 当前由 carapace 负责（PsGitCompletionSource=Carapace），重开终端后才会改由其他来源接管。'
+                    if (Test-CxxuGitCompletionInstalled)
+                    {
+                        Register-GitCompletion
+                        if ($global:PsGitCompletion) { Write-Host 'git/gitk 已改由 git-completion 接管。' }
+                        else { Write-Host 'git-completion 未重新注册（已加载或来源未指向它），git/gitk 维持当前来源。' }
+                    }
+                    else
+                    {
+                        Write-Host 'git/gitk 暂无来源：git-completion 未安装，重开终端后按来源配置回落。'
+                    }
+                }
+                elseif ($gitFallback -eq 'Argc')
+                {
+                    $argcGit = $argcOn -and $global:PsArgcLoaded -and
+                        $global:PsArgcScripts -and $global:PsArgcScripts.ContainsKey('git')
+                    if ($argcGit)
+                    {
+                        Write-Host 'git/gitk 已改由 argc 接管；偏好 git-completion 可执行 Set-GitCompletionSource GitCompletion。'
+                    }
+                    elseif ($argcOn)
+                    {
+                        Write-Host 'git/gitk 将在 argc 注册后由它接管；偏好 git-completion 可执行 Set-GitCompletionSource GitCompletion。'
+                    }
+                    else
+                    {
+                        Write-Host 'git/gitk 暂无来源：argc 未启用；重开终端后按来源配置回落，或执行 Set-GitCompletionSource GitCompletion。'
+                    }
                 }
             }
             elseif ($Name -eq 'Argc')
