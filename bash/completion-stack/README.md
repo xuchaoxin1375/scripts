@@ -49,14 +49,53 @@ bash -ic 'bind -p | grep C-i'
 
 预期 `git` 为 `_carapace_completer_ble`、`nginx` 为 `_argc_completer`。Tab 的「列表/循环」模式来自 dotfiles 的 `shellrc_addition.sh`（见 [carapace README](../carapace/README.md) 的「Tab 列表与循环」）；只部署本目录不会改动 Tab 绑定。
 
-## 卸载
+## 停用与卸载
+
+按停用范围选择下面某一层，不必每次都整体卸载。
+
+### 只停部分命令
+
+两个变量都在 source 时读取，需写在 rc 中标记块之前（或系统环境变量里），改完重开终端：
 
 ```bash
-bash setup.sh --uninstall           # 移除两个标记块
-bash setup.sh --uninstall --login   # 登录 shell 安装时
+export CARAPACE_EXCLUDES='git,gitk'          # 这些命令不再由 carapace 注册
+export ARGC_COMPLETIONS_ONLY='git docker'    # argc 只注册列出的命令
 ```
 
-二进制按安装渠道卸载（`scoop uninstall carapace-bin`、`brew uninstall carapace`，或删除 `~/.cxxu/bin/carapace.exe` / `~/.local/bin/carapace`）。
+想让某个两侧都有的命令改用 argc 时，把它写进 `CARAPACE_EXCLUDES`；argc 侧没有排除项，只能正向列举要注册的命令。
+
+### 回退 Tab 模式
+
+Tab 的「列表/循环」来自 dotfiles 的 `shellrc_addition.sh`，与两个补全框架独立，停用框架后 `auto` 会自动回到循环模式：
+
+```bash
+CXXU_TAB_MODE=cycle apply_tab_completion_mode   # 当前会话：恢复逐个循环
+bind '"\C-i": menu-complete'                    # 等价的手工写法，只影响当前会话
+export CXXU_TAB_MODE=cycle                      # 持久：写进环境变量或 rc 中标记块之前
+```
+
+列表模式会把 `ARGC_COMPGEN_DESCRIPTION` 设为 `1`，切回循环模式时该变量不会自动复位；仍加载 argc 时需一并 `export ARGC_COMPGEN_DESCRIPTION=0`，否则候选说明会被插入命令行。
+
+### 停用整个框架
+
+| 目标 | 命令 |
+| --- | --- |
+| 只停 carapace | `bash ../carapace/setup.sh --uninstall` |
+| 只停 argc | `bash ../argc-completions/setup.sh --uninstall` |
+| 两个都停 | `bash setup.sh --uninstall` |
+| 登录 shell 安装的 | 以上命令各加 `--login` |
+
+卸载只移除 rc 中的标记块，不删除二进制，也不改 PowerShell 的 `~/.cxxu/config.psd1` 配置。新开终端后生效，验收：
+
+```bash
+bash -ic 'complete -p git; complete -p nginx'
+```
+
+停用后对应命令回落到其余来源（git 自带补全或 bash 默认）；两侧都停时 `complete -p` 只会剩下系统自带或 bash-completion 注册的条目，没有任何来源则为空。
+
+### 删除二进制
+
+按安装渠道卸载（`scoop uninstall carapace-bin`、`brew uninstall carapace`，或删除 `~/.cxxu/bin/carapace.exe` / `~/.local/bin/carapace` 并从 PATH 移除）。argc 的运行时来自 argc-completions 克隆目录，删掉克隆即可，无独立安装步骤。
 
 ## 边界与已知行为
 

@@ -417,7 +417,7 @@ apply_tab_completion_mode
 | 彻底卸载 bash 接入 | 见下节「卸载」 | 否 |
 | 删除二进制 | `scoop uninstall carapace-bin`、`brew uninstall carapace`，或删除 `~/.cxxu/bin/carapace.exe` / `~/.local/bin/carapace` 并从 PATH 移除 | 是 |
 
-两侧独立：停用 PowerShell 组件不影响 bash 的 rc 片段，`--uninstall` 也不修改 `PsCarapace` 配置。
+两侧独立：停用 PowerShell 组件不影响 bash 的 rc 片段，`--uninstall` 也不修改 `PsCarapace` 配置。与 argc 组合部署时按范围停用的完整说明见 [completion-stack README](../completion-stack/README.md#停用与卸载)。
 
 ## 卸载
 

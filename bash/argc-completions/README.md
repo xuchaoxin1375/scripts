@@ -40,6 +40,8 @@ bash /mnt/c/repos/scripts/bash/argc-completions/setup.sh --uninstall      # WSL
 bash /path/to/scripts/bash/argc-completions/setup.sh --uninstall --login  # 登录 shell 安装时
 ```
 
+只停部分命令用 `ARGC_COMPLETIONS_ONLY` 缩小注册范围；与 carapace 组合部署时的分层停用（只停一侧、回退 Tab、删二进制）见 [completion-stack README](../completion-stack/README.md#停用与卸载)。
+
 ## 手工接入
 
 不运行 `setup.sh` 时，把下面一行加入 `~/.bashrc` 即可，路径按当前平台替换：
