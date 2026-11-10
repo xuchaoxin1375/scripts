@@ -45,7 +45,7 @@ prompt_switcher() {
         # 定义共同前缀
         _COMMOM_PROMPT_PREFIX="${_LAST_STATUS}${gray}${_ENV_PROMPT}${_IS_WSL:+[wsl]}[$(get_os_name -o)][$(current_shell -v)]${reset}"
         # _PS1_PRE 会在conda等对PS1进行修改后将增加的前缀(例如base)传播回来
-        PS1="# ${_PS1_PRE}${_COMMOM_PROMPT_PREFIX}${__PS1__}"
+        PS1="\n# ${_PS1_PRE}${_COMMOM_PROMPT_PREFIX}${__PS1__}"
         # echo  "===debug on PROMPT_COMMAND: PS1: <<${PS1}->[${PS1@P}]>>"
     else
         echo "warning: unknown prompt configuration [$BASH_PROMPT]" >&2
