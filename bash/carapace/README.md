@@ -6,7 +6,7 @@
 - macOS 与 Git Bash：终端常以登录 shell 启动，读 `~/.bash_profile`、`~/.bash_login` 或 `~/.profile`，不读 `~/.bashrc`。
 - macOS 自带 `/bin/bash` 是 3.2，carapace 会拒绝加载，需要 bash 4 及以上。
 
-本目录提供一个可重复 source 的运行时脚本，以及一个写入/卸载 rc 标记块、可做只读状态检查的小工具，覆盖 Git Bash、Cygwin、Linux、WSL 与 macOS 的 bash。PowerShell 侧的 carapace 由 `init` 按 `PsCarapace` 配置加载，启停用 `Enable-CxxuComponent` / `Disable-CxxuComponent`；本目录只覆盖 bash，两边互不影响。安装与 PowerShell 侧配置见 [Deploy-Guide](../../PS/docs/Deploy-Guide.md) 的「可选：carapace」。
+本目录提供一个可重复 source 的运行时脚本，以及一个安装二进制、写入/卸载 rc 标记块、可做只读状态检查的小工具，覆盖 Git Bash、Cygwin、Linux、WSL 与 macOS 的 bash。PowerShell 侧的 carapace 由 `init` 按 `PsCarapace` 配置加载，启停用 `Enable-CxxuComponent` / `Disable-CxxuComponent`；本目录只覆盖 bash，两边互不影响。安装与 PowerShell 侧配置见 [Deploy-Guide](../../PS/docs/Deploy-Guide.md) 的「可选：carapace」。
 
 ## 适用范围
 
@@ -14,7 +14,7 @@
 | --- | --- |
 | 覆盖的 shell | Git Bash（MSYS）、Cygwin、Linux、WSL、macOS 的 bash 4 及以上 |
 | 不覆盖 | zsh（macOS 默认 shell）、fish、cmd.exe、PowerShell；这些环境不在本目录的接入范围 |
-| 前置条件 | `carapace` 位于 PATH；bash 4+；`xargs`（coreutils） |
+| 前置条件 | `carapace` 位于 PATH（或由 `setup.sh --install` 安装）；bash 4+；`xargs`（coreutils）；`--install` 另需 curl 或 wget、tar、sha256sum（或 shasum） |
 | 修改范围 | 只在 rc 文件写入 `# >>> carapace >>>` 标记块；不修改 carapace 本体，不修改 profile |
 | 生效方式 | 新开终端，或 `source` 对应 rc；运行时脚本可重复 source |
 | 效果 | 注册 carapace 的全部 completer；Tab 补全命令参数值，不补命令名，也不补 PowerShell cmdlet |
@@ -31,8 +31,8 @@ shopt -q login_shell && echo "login shell" || echo "non-login shell"
 | --- | --- | --- | --- | --- |
 | Git Bash（MSYS） | `scoop install carapace-bin`（需 `spc` bucket），或 `Deploy-Carapace -Enable` | 非登录 `.bashrc`；登录 `.bash_profile`/`.bash_login`/`.profile` | 需要 | 已实测 |
 | Cygwin | 同 Git Bash，或 Cygwin 包管理器 | 同 bash 规则 | 需要（兼容层） | 未实测 |
-| Linux | 发行版仓库，或官方 Release 装到 `~/.local/bin` | 非登录 `.bashrc`；登录 `.bash_profile`/`.bash_login`/`.profile` | 不需要 | `setup.sh` 在 WSL 通过；实际补全未在 Linux 实机验证 |
-| WSL | 在 WSL 内装 Linux 版；不要复用 Windows 的 `carapace.exe` | 通常为非登录 `.bashrc` | 不需要 | `setup.sh` 通过；实际补全未在 WSL 验证 |
+| Linux | `setup.sh --install`（官方 Release + SHA-256 + 镜像/代理），或发行版仓库，或手工装到 `~/.local/bin` | 非登录 `.bashrc`；登录 `.bash_profile`/`.bash_login`/`.profile` | 不需要 | `--install` 在 WSL Ubuntu 24.04 已实测；实际补全未在 Linux 桌面验证 |
+| WSL | 在 WSL 内用 `setup.sh --install` 装 Linux 版；不要复用 Windows 的 `carapace.exe` | 通常为非登录 `.bashrc` | 不需要 | `--install` 与 `--check` 已实测；ble.sh 菜单未验证 |
 | macOS bash | `brew install bash carapace`；系统 bash 3.2 不可用 | 非登录 `.bashrc`；登录 `.bash_profile`/`.bash_login`/`.profile` | 不需要 | 未实测 |
 | macOS zsh | 不在本目录范围 | — | — | — |
 
@@ -89,7 +89,21 @@ bash setup.sh
 
 ### Linux
 
-从发行版仓库安装；没有时从官方 Release 下载，解压出 `carapace` 并放到 PATH 中的目录：
+一键安装（官方 Release，SHA-256 校验，默认镜像优先）：
+
+```bash
+cd /path/to/scripts/bash/carapace
+bash setup.sh --install --dry-run   # 先看平台、版本、通道与安装目录
+bash setup.sh --install             # 下载 → 校验 → 装到 ~/.local/bin → 写入 rc
+bash setup.sh --check               # 复核依赖、rc 片段与加载结果
+```
+
+- 下载通道默认 `auto`：先试 `gh-proxy.com`，失败换 `ghproxy.net`，最后直连 GitHub；`--mirror direct` 强制直连，`--mirror ghproxy|ghproxynet|ghfast` 固定节点，`--mirror https://...` 用自建或内网前缀。
+- 需要代理时加 `--proxy http://127.0.0.1:7897`，或先导出 `HTTPS_PROXY`。
+- 版本查询（`releases/latest` 重定向、API 兜底）不走文件镜像，只走直连或 `--proxy`；想省掉这次查询用 `--version 1.8.2`。
+- 安装目录不在 PATH 时，rc 片段会写入 `CARAPACE_BIN` 让运行时脚本前置该目录；已有 carapace 时默认跳过，`--force` 覆盖。
+
+没有网络或想用包管理器时，从发行版仓库安装；没有时从官方 Release 手工下载：
 
 ```bash
 # 版本与架构以 https://github.com/carapace-sh/carapace-bin/releases 为准
@@ -101,25 +115,26 @@ chmod +x ~/.local/bin/carapace
 # 新终端要能找到 ~/.local/bin，按所用 shell 写进对应的 profile 或 rc
 export PATH="$HOME/.local/bin:$PATH"
 
-command -v carapace
-carapace --version
 cd /path/to/scripts/bash/carapace
 bash setup.sh --dry-run
 bash setup.sh
 ```
 
-校验 SHA-256、固定版本与 `.deb`/`.rpm`/`.apk` 渠道见 [Deploy-Guide](../../PS/docs/Deploy-Guide.md) 的「可选：carapace」。Linux 桌面终端通常是非登录 shell；ssh 登录或显式 `bash -l` 时用 `--login`。
+`.deb`/`.rpm`/`.apk` 渠道与 PowerShell 侧的 `Deploy-Carapace` 见 [Deploy-Guide](../../PS/docs/Deploy-Guide.md) 的「可选：carapace」。Linux 桌面终端通常是非登录 shell；ssh 登录或显式 `bash -l` 时用 `--login`。
 
 ### WSL
 
-在 WSL 内安装 Linux 版 carapace，不要复用 Windows 侧的 `carapace.exe`：
+在 WSL 内装 Linux 版 carapace，不要复用 Windows 侧的 `carapace.exe`。安装与检查都在 WSL 内执行：
 
 ```bash
-# 安装步骤同上一节；如果仓库在 Windows 盘，路径形如 /mnt/c/path/to/scripts
+# 如果仓库在 Windows 盘，路径形如 /mnt/c/path/to/scripts
 cd /mnt/c/path/to/scripts/bash/carapace
-bash setup.sh --dry-run
-bash setup.sh
+bash setup.sh --install --dry-run
+bash setup.sh --install
+bash setup.sh --check
 ```
+
+WSL 内跑 PowerShell 需要单独安装 pwsh，因此 `Deploy-Carapace` 不是默认路径；`setup.sh --install` 只依赖 curl/wget、tar 与 sha256sum。
 
 `setup.sh` 写入的是 WSL 自己的 `~/.bashrc`，不会改动 Windows 侧 Git Bash 的配置。WSL 默认终端通常是非登录 shell。
 
@@ -160,6 +175,12 @@ macOS Terminal 默认是登录 shell；VS Code 等集成终端可能是非登录
 | `-r`, `--rc <file>` | 指定 rc 文件，默认 `~/.bashrc` |
 | `-u`, `--uninstall` | 从 rc 文件移除 `# >>> carapace >>>` 标记块 |
 | `-c`, `--check`、`--status` | 只读检查依赖、rc 片段与端到端加载状态；不修改任何文件 |
+| `-i`, `--install` | 下载并安装 carapace（仅 Linux/macOS），随后写入 rc |
+| `--version <v>` | `--install` 固定版本，默认查询最新 release |
+| `--bin-dir <dir>` | `--install` 安装目录，默认 `$CARAPACE_BIN` 或 `~/.local/bin` |
+| `--mirror <m>` | 下载通道：`auto`（默认）、`direct`、`ghproxy`、`ghproxynet`、`ghfast` 或 https 前缀 |
+| `--proxy <url>` | `--install` 时经 HTTP/HTTPS/SOCKS 代理下载 |
+| `--force` | `--install` 覆盖已存在的二进制 |
 | `-h`, `--help` | 显示帮助 |
 
 行为与边界：
@@ -175,6 +196,13 @@ macOS Terminal 默认是登录 shell；VS Code 等集成终端可能是非登录
 - 找不到 carapace 时只提示，不阻止写入；新开 shell 后由运行时脚本再次提示并跳过初始化。装好 carapace 后新开终端，或重新 `source` 对应 rc。
 - `--check`（`--status` 同义）只读：依次报告 bash 版本、`carapace` 与 `xargs` 是否可用、运行时脚本是否存在、平台、目标 rc、四个候选 rc 的标记块状态（含块内路径是否仍然存在），再用 `bash -ic` / `bash -lic` 各起一个子 shell 验证实际是否加载；不改写任何文件，且不能与 `--dry-run`、`--uninstall` 同时使用。
 - `--check` 退出码：全部正常为 0；缺依赖、rc 片段有问题或尚未接入为 1；参数错误为 2。结论行会给出对应的修复命令。
+- `--install` 只用于 Linux/macOS；Git Bash/MSYS 与 Cygwin 走 `scoop install carapace-bin` 或 `Deploy-Carapace -Enable`。
+- `--mirror` 只作用于 Release 文件（`tar.gz` 与 `checksums.txt`）；版本查询始终直连或经 `--proxy`，不经过文件镜像。`auto` 顺序为 `gh-proxy.com` → `ghproxy.net` → 直连，单个候选失败才换下一个。
+- 依赖缺失（curl/wget、tar、sha256sum）时只报告并给出对应包管理器命令，不自动 `sudo` 安装。
+- 升级与降级都只按 `--version` 指定的版本下载；已存在的二进制默认跳过，`--force` 才覆盖。安装目录不在 PATH 时，rc 片段额外写 `export CARAPACE_BIN`，运行时脚本会前置该目录。
+- 下载与解压都在 `mktemp -d` 的临时目录完成，脚本退出时清理；下载、校验或解压失败都以非零码退出，不写半成品二进制。
+- 镜像与 `checksums.txt` 来自同一通道，恶意镜像可以同时替换两者；需要更强保证时用 `--mirror direct`（或 `--proxy` + 官方源）并核对 Release 页面的校验值。
+- `--install --dry-run` 不联网，只打印平台、版本、通道、安装目录与依赖可用性。
 - `--login` 安装后，默认的 `--uninstall` 不会去登录 rc 找块；用 `--uninstall --login`，或用 `--rc` 指向同一个文件。
 - 标记块带 `[ -n "${BASH_VERSION:-}" ]` 保护，写进 `.profile` 这类可能被 sh/dash 读取的文件时，非 bash shell 会跳过，不会因加载 bash 脚本报错。
 
@@ -186,7 +214,8 @@ macOS Terminal 默认是登录 shell；VS Code 等集成终端可能是非登录
 if [ -n "${BASH_VERSION:-}" ]; then
 	# 可选：桥接其他补全框架
 	export CARAPACE_BRIDGES='zsh,fish,bash,inshellisense'
-	source <(carapace _carapace bash)
+	# bash-ble：加载了 ble.sh 时走 ble 专用补全，否则自动回退普通 bash 补全
+	source <(carapace _carapace bash-ble)
 
 	# Git Bash/MSYS：去掉 carapace 追加的 Windows 风格 PATH 项
 	case "${OSTYPE:-}" in
@@ -201,7 +230,7 @@ fi
 
 写入登录 rc（如 `~/.bash_profile`）时保留外层的 `BASH_VERSION` 判断；Linux/macOS 不需要 PATH 修正，其中的 `msys* | cygwin*` 分支可以省略。
 
-`source <(carapace _carapace bash)` 会注册全部 completer。只想加载单个命令时，可把 `_carapace` 换成命令名，例如 `source <(carapace chmod bash)`。
+`source <(carapace _carapace bash-ble)` 会注册全部 completer。只想加载单个命令时，可把 `_carapace` 换成命令名，例如 `source <(carapace chmod bash-ble)`。
 
 ## 环境变量
 
@@ -255,6 +284,18 @@ bash -lic 'type _carapace_completer'   # 登录 shell 读取 ~/.bash_profile/~/.
 - 未安装外部命令时，静态子命令仍可补全；需要命令自身返回上下文的候选会为空或变慢。
 - 加载成本只在每次打开 shell 时发生，随注册命令数和主机变化；需要更快启动时用 `CARAPACE_EXCLUDES` 缩小范围。
 
+## ble.sh 用户
+
+carapace 提供专门的 `bash-ble` 生成模式，本目录的运行时脚本固定使用它：`bash-ble` 只在 ble.sh 已加载时接管，未加载时回退到普通补全，所以同一段 rc 可以同时服务 ble.sh 与普通 bash。
+
+- 已加载 ble.sh（`BLE_ATTACHED`）时：自动补全直接返回，避免候选污染 ble.sh 的自动建议；菜单用 `bleopt complete_menu_style=desc`，候选通过 `ble/complete/cand/yield` 交给 ble.sh，并设置 `compopt -o ble/no-default`。
+- 未加载 ble.sh 时：回退到 `_carapace_completer`，行为与普通 bash 模式一致。
+- 不要用 `carapace _carapace bash` 配 ble.sh：普通 bash 生成器依赖 `IFS=$'\001' read`，ble.sh 的 `read` 包装会破坏它，表现为原始输出被写进命令行（ble.sh issue #735 的复现场景）。
+- 需要 ble.sh 0.4 及以上（`ble/no-default` 与 `ble/complete/cand/yield`）；更旧的版本可能在补全时报 `compopt` 错误。
+- 片段顺序：carapace 通过 `complete -F` 注册，ble.sh 在补全时读取这些定义，因此 ble.sh 常用的「顶部 `--attach=none`、末尾 `ble-attach`」写法也能取到；若遇到个别命令没有候选，把 carapace 片段放到 ble.sh 之后重试。
+
+`setup.sh --check` 会单独报告 rc 中是否检测到 ble.sh，用来确认当前用的是哪种模式。
+
 ## 与 argc-completions 共存
 
 两个工具都用 bash 的 `complete -F` 注册补全，同一个命令以后注册的为准。`~/.bashrc` 中的 source 顺序决定优先级：
@@ -303,6 +344,9 @@ bash /path/to/scripts/bash/carapace/setup.sh --uninstall --rc ~/.bash_profile
 - Git Bash 5.2.37（MSYS）+ carapace 1.8.2：运行时脚本 `source` 约 40–55 ms（含一次 `carapace _carapace bash` 生成；单独执行该生成命令约 35–40 ms）；`git checkout <Tab><Tab>` 返回带说明的标签/分支/引用候选，`gh pr <Tab><Tab>` 在未安装 `gh` 时返回静态子命令。
 - `setup.sh` 在隔离 `HOME` 下验证了试运行不建文件、首次安装、重复安装幂等、卸载、标记块损坏报错、`--login` 目标选择与 `--uninstall --login`；还验证了权限保持、CRLF 文件在 Linux/WSL 下保留行尾、符号链接拒绝改写。
 - `setup.sh --check` 在隔离 `HOME` 下验证了未接入、已接入（非登录与登录两类 shell 均加载）、块内路径失效、缺结束标记四种状态与对应退出码；`--check --dry-run` 按参数错误拒绝。
+- `setup.sh --install` 用假 release 与假 curl 在隔离 `HOME` 下验证：dry-run 不联网、auto 从 gh-proxy 回退 ghproxy.net、`--mirror` 各模式的前缀、`--proxy` 传入 curl、SHA-256 不符拒绝写入、已装跳过与 `--force` 覆盖、`--check` 能识别 rc 片段里的 `CARAPACE_BIN`。
+- WSL Ubuntu 24.04 实机经 `gh-proxy.com` 完成 `--install`（1.8.2，20.1MB，约 5.4MB/s，下载到写 rc 约 19s），`--check` 通过并在非登录 shell 中加载。
+- `bash-ble`：Git Bash 上验证生成脚本、`_carapace_completer_ble` 注册，以及未加载 ble.sh 时回退到普通补全并返回正常候选；真实 ble.sh 菜单未验证（本机 WSL 的 ble.sh 在非 tty 子 shell 中不加载）。
 - 运行时脚本在未安装 carapace 时给出平台提示并跳过；`BASH_VERSION`、`xargs`、`source` 失败都有对应提示。
 - `shellcheck 0.9.0` 与 `shfmt 3.8.0` 对 `setup.sh`、`carapace.sh` 无报错，`bash -n` 通过。
 - WSL Ubuntu 24.04：`setup.sh` 的安装、重复安装、卸载、符号链接保护与 CRLF 保留通过；WSL 内未安装 carapace，因此 Linux 的实际补全效果未验证。
@@ -324,3 +368,5 @@ bash /path/to/scripts/bash/carapace/setup.sh --uninstall --rc ~/.bash_profile
 - PATH 修正只处理 Git Bash/MSYS 中 carapace 追加的、以盘符开头的 `C:/...;...` 项；如果 PATH 里其他位置也有分号，修正不会主动清理。
 - 慢命令（如需要网络或扫描大目录的 completer）会阻塞 Tab；按需排除。
 - 本目录只覆盖 bash；PowerShell、zsh、fish、cmd.exe 的接入各自独立。
+- `bash-ble` 的补全菜单、自动建议与 `bleopt` 副作用未在真实 ble.sh 会话中验证；本机 WSL 的 ble.sh 在非 tty 子 shell 内不加载，`--check` 只能按 rc 内容判断。
+- 文件镜像只保证传输完整性（同一通道的 `checksums.txt`），不构成对镜像运营者的信任；敏感环境请用 `--mirror direct` 或走代理访问官方源。

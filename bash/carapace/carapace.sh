@@ -41,10 +41,13 @@ _carapace_main() {
 		return 0
 	fi
 
+	# 用 bash-ble：ble.sh 已加载时走 ble 专用补全（compopt -o ble/no-default、
+	# 候选交给 ble 菜单、自动补全时不接管），未加载时同一份脚本回退到普通
+	# bash 补全，因此不需要在运行时探测 ble.sh 是否可用。
 	# process substitution 不会把生成器的退出码传给 source；没有输出或输出不完整时，
 	# 由下面的 declare -F 兜底。
 	# shellcheck disable=SC1090
-	if ! source <(carapace _carapace bash); then
+	if ! source <(carapace _carapace bash-ble); then
 		printf '[carapace] 生成或加载补全脚本失败，跳过补全初始化；请检查 carapace 版本与 bash 环境\n' >&2
 		return 0
 	fi
