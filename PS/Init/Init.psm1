@@ -326,6 +326,7 @@ function Test-StartupPerformance
     自查 pwsh 启动性能:分段计时(裸启动/profile 税/init 合计+步骤表/OnIdle 体验件/prompt)并给结论。
     .DESCRIPTION
     每段都在全新 pwsh 进程里测(冷数字,排除本会话已摊销的解析成本);本机改动对照看 Startup-Optimization.md。
+    -Simple 只测一次(或 -Repeat 次)带 profile 的新 pwsh 启动,几秒内出结果;-PassThru 返回结构化对象。
     耗时组成(参考值见 Startup-Optimization.md 的基线表,真机按比例):裸启动 + profile 税(conda 缓存 + init)
     + 首屏单发(predictor 约 400/zoxide 约 20,先摘后装一次);PSFzf/CxxuTab 转手势按需
     (首按 Ctrl+T/R、首个 Tab 才装,手势可归因,无随机冻结)。
@@ -335,13 +336,22 @@ function Test-StartupPerformance
     Test-StartupPerformance
     .EXAMPLE
     Test-StartupPerformance -Repeat 3 -Detail
+    .EXAMPLE
+    Test-StartupPerformance -Simple
+    .EXAMPLE
+    Test-StartupPerformance -Simple -PassThru
     #>
     [CmdletBinding()]
     param(
         # 每段重复次数(默认 1;传 3 取中位数,压住机器抖动;代价是总耗时翻倍)
         [int]$Repeat = 1,
         # 加测 OnIdle 四片各自耗时(默认只测合计;排查"哪片最重"时开)
-        [switch]$Detail
+        [switch]$Detail,
+        # 简单模式:只测新 pwsh 启动(带 profile),不做 bare/init 分段与步骤表
+        [Alias('Quick')]
+        [switch]$Simple,
+        # 返回结构化对象;与 -Simple 连用时只输出对象,不打印表格
+        [switch]$PassThru
     )
     # 嵌套 helper:与 Show-MemoryBar 内嵌套风格一致;顶层解析器看不见,不进 manifest
     function Get-MedianMs([scriptblock]$Probe, [int]$N)
@@ -362,11 +372,25 @@ function Test-StartupPerformance
         return
     }
     if ($Repeat -lt 1) { $Repeat = 1 }
+    if ($Simple)
+    {
+        $simpleRuns = [Math]::Max(1, $Repeat)
+        $ms = Get-MedianMs { [int](Measure-Command { & $pwsh -NonInteractive -Command 'exit' *> $null }).TotalMilliseconds } $simpleRuns
+        $result = [PSCustomObject]@{
+            Mode    = 'Profile'
+            Ms      = $ms
+            Runs    = $simpleRuns
+            Command = 'pwsh -NonInteractive -Command exit'
+        }
+        if ($PassThru) { return $result }
+        Write-Host ("pwsh startup (profile, {0} run(s){1}): {2} ms" -f $simpleRuns, $(if ($simpleRuns -gt 1) { ', median' } else { '' }), $ms) -ForegroundColor Cyan
+        return
+    }
     Write-Host "分段计时中(新进程每段 $Repeat 次,约需 $((10 + 5 * $Repeat)) 秒)..." -ForegroundColor Cyan
-    $null = & $pwsh -NoProfile -NonInteractive -Command 'exit'
-    $bare = Get-MedianMs { [int](Measure-Command { & $pwsh -NoProfile -NonInteractive -Command 'exit' }).TotalMilliseconds } $Repeat
-    $null = & $pwsh -NonInteractive -Command 'exit'
-    $prof = Get-MedianMs { [int](Measure-Command { & $pwsh -NonInteractive -Command 'exit' }).TotalMilliseconds } $Repeat
+    $null = & $pwsh -NoProfile -NonInteractive -Command 'exit' *> $null
+    $bare = Get-MedianMs { [int](Measure-Command { & $pwsh -NoProfile -NonInteractive -Command 'exit' *> $null }).TotalMilliseconds } $Repeat
+    $null = & $pwsh -NonInteractive -Command 'exit' *> $null
+    $prof = Get-MedianMs { [int](Measure-Command { & $pwsh -NonInteractive -Command 'exit' *> $null }).TotalMilliseconds } $Repeat
     $probeInit = @'
 Import-Module Init -ErrorAction Stop
 [int](Measure-Command { init *> $null }).TotalMilliseconds
@@ -428,6 +452,20 @@ $r -join ' '
     if ($promptSec -gt 0.3) { $verdicts += 'prompt 偏高:换 Set-PsPrompt -version Simple 或给主题做减法(见 Startup-Optimization.md §5)' }
     if (-not $verdicts.Count) { $verdicts += '各项正常:首屏微顿来自 OnIdle 分片(百毫秒级),打字即回显即符合预期' }
     $verdicts | ForEach-Object { Write-Host "- $_" }
+    if ($PassThru)
+    {
+        # 完整模式仍会打印上面的报告；-PassThru 额外返回一份便于脚本消费的数据。
+        return [PSCustomObject]@{
+            Mode            = 'Full'
+            BareMs          = $bare
+            ProfileMs       = $prof
+            ProfileTaxMs    = $profileTax
+            InitMs          = $tInit
+            ProfileOtherMs  = $profileOther
+            IdleMs          = $tIdle
+            PromptSeconds   = [math]::Round($promptSec, 3)
+        }
+    }
 }
 function p
 {

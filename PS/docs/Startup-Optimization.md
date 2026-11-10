@@ -20,6 +20,7 @@
 ```powershell
 # 复测命令（重定向/agent 下也干净：PSReadLine 控制台相关选项已按场景跳过，见 §12）
 Test-StartupPerformance                      # 新进程分段：bare/profile/init/idle
+Test-StartupPerformance -Simple              # 只测一次带 profile 的新 pwsh 启动
 init -Force -Timing                           # 当前会话分步耗时（已初始化；首次启动用 init -Timing）
 Test-PromptDelay                              # prompt 延迟（默认测 10 次取平均）
 ```
@@ -631,7 +632,8 @@ Set-PSReadLineOption: 句柄无效。
   - `Test-StartupPerformance` 的表格改为“段 / ms / 说明”，明确 `init` 是 `profile 税`
     的子集，并单列 `profile 其他 = profile 税 - init`；`bare`、`profile`、`init`、
     `idle` 都按 `-Repeat` 取中位数。`idle 全载` 是启动后首屏一次的成本，不计入
-    `profile`。
+    `profile`。日常只关心“新开一个 pwsh 要多久”时用 `-Simple`（默认一次，支持
+    `-Repeat` 取中位数），需要脚本消费时加 `-PassThru`。
 - 同机复测（macOS，一次采样，数值随负载抖动）：
   `bare 328ms`、`profile 1051ms`、`profile 税 723ms`、`init 497ms`、
   `profile 其他 226ms`、`idle 全载 529ms`；对比第二十二轮的 `init 564ms`/`profile 1122ms`。

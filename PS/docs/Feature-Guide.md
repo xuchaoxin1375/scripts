@@ -22,7 +22,7 @@ Add-EnvVar -EnvVar PSModulePath -NewValue $p -Verbose
 | `init` | 全量初始化（变量+别名+补全+prompt，约 400~700ms）；同会话重复调用直接返回；`-Force` 重跑步骤表，并在已初始化会话真重载全部变量 conf（2026-10-03 起，重载开销约零点几秒；首次初始化路径不变） |
 | `init -Timing` | 同上，附每步耗时表（首次启动）；已初始化会话用 `init -Force -Timing` |
 | `p` | 新开一个 pwsh 会话，由新进程的 profile 执行 `init`；不刷新当前会话 |
-| `Test-StartupPerformance` | 新进程分段计时（bare/profile/init/idle），标明 `init` 是 `profile 税` 的子集 |
+| `Test-StartupPerformance` | 新进程分段计时（bare/profile/init/idle），标明 `init` 是 `profile 税` 的子集；`-Simple` 只测一次带 profile 的启动，`-PassThru` 返回对象 |
 | `Set-PsPrompt -version < fast/short/...>` | 切换提示符；加 `-Persist` 才写注册表记住选择 |
 | `dm` | 切极简 prompt（做笔记摘录时聚焦命令本身） |
 | `Test-PromptDelay` | 测当前 prompt 延迟 |
@@ -77,6 +77,7 @@ ipmof | iex                     # 旧版（兼容）：只重载仓库内(PS/)�
 Get-SourceCode <命令名>     # 看任意自定义函数源码（带补全）
 init -Force -Timing         # 看当前会话 init 分步耗时，定位慢项
 Test-StartupPerformance     # 新进程分段计时（裸启动/profile/init）
+Test-StartupPerformance -Simple   # 只测一次新 pwsh 启动（带 profile）
 ```
 
 ## 4. 开机与后台
