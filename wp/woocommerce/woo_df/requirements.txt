@@ -25,6 +25,6 @@ uv
 scrapling
 scrapling[shell]
 # please run:[  scrapling install  ] this command in your terminal to install playwright browser automation tool
-# scrapling install
+# scrapling install chrome
 dotenv
 # opencv-python
