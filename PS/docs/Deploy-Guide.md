@@ -208,11 +208,14 @@ carapace 是跨 shell 的命令行补全二进制，补外部 CLI 的参数值�
 Deploy-Carapace -Enable
 # 只安装不启用：
 Deploy-Carapace
+# 同时接入 bash（Git Bash / Linux / macOS），装完后调用仓库内 bash/carapace/setup.sh：
+Deploy-Carapace -Bash
+Deploy-Carapace -Bash -BashLogin          # 登录 shell：改写 --login 的目标 rc
 # 网络受限或需要可复现版本时，跳过 GitHub API：
 Deploy-Carapace -Version 1.8.2 -Proxy http://127.0.0.1:7897
 ```
 
-命令会按当前平台与架构下载官方产物（Windows 为 zip，macOS/Linux 为 tar.gz），用同版本 `checksums.txt` 校验 SHA-256，解压 `carapace` 到目标目录并加入 PATH。默认目录：Windows 为 `~/.cxxu/bin`，其他平台为 `~/.local/bin`；非 Windows 只把目录加入当前会话，新终端需按提示写进 shell 配置。加 `-Enable` 会同时把 `PsCarapace` 写入用户配置并在当前会话加载；不加则只安装并打印启用方式。`-Force` 覆盖重装，`-Version` 固定版本（本地版本更高时默认拒绝降级，确需降级加 `-AllowDowngrade`），`-Destination` 与 `-SkipPath` 用于自定义目录或测试。它不修改 profile，加载由 init 按 `PsCarapace` 配置完成。macOS 的官方产物未签名；若系统提示无法验证开发者，优先改用 `brew install carapace`，或在确认来源后按系统设置放行。
+命令会按当前平台与架构下载官方产物（Windows 为 zip，macOS/Linux 为 tar.gz），用同版本 `checksums.txt` 校验 SHA-256，解压 `carapace` 到目标目录并加入 PATH。默认目录：Windows 为 `~/.cxxu/bin`，其他平台为 `~/.local/bin`；非 Windows 只把目录加入当前会话，新终端需按提示写进 shell 配置。加 `-Enable` 会同时把 `PsCarapace` 写入用户配置并在当前会话加载；不加则只安装并打印启用方式。加 `-Bash` 会在安装后调用 [bash/carapace/setup.sh](../../bash/carapace/setup.sh) 写入 bash 的 rc 标记块：默认写非登录 shell 的 `~/.bashrc`，`-BashLogin` 改写登录 shell 读取的 rc；未找到 `bash` 或 `setup.sh` 时只告警，不中断安装。`-Force` 覆盖重装，`-Version` 固定版本（本地版本更高时默认拒绝降级，确需降级加 `-AllowDowngrade`），`-Destination` 与 `-SkipPath` 用于自定义目录或测试。它不修改 profile，加载由 init 按 `PsCarapace` 配置完成。macOS 的官方产物未签名；若系统提示无法验证开发者，优先改用 `brew install carapace`，或在确认来源后按系统设置放行。
 
 **手工渠道一：官方 GitHub Release**
 
@@ -248,6 +251,8 @@ bash /path/to/scripts/bash/carapace/setup.sh
 bash /path/to/scripts/bash/carapace/setup.sh --dry-run --login
 bash /path/to/scripts/bash/carapace/setup.sh --login
 ```
+
+如果二进制也还没装，可在 PowerShell 里用一条命令覆盖两边：`Deploy-Carapace -Bash`（登录 shell 用 `Deploy-Carapace -Bash -BashLogin`）。它内部调用同一个 `setup.sh`，写入内容与上面手工执行一致；bash 侧修改 rc 前仍建议先 `bash setup.sh --dry-run` 确认目标文件。
 
 macOS 自带 bash 3.2 会被 carapace 拒绝，需要 `brew install bash` 并切换登录 shell；macOS 默认 zsh 不在该接入范围。平台差异、手工片段、PATH 修正原因、与 argc-completions 的共存、验收与未验证项见 [bash/carapace/README.md](../../bash/carapace/README.md)。多个候选时按两次 `<Tab>` 显示列表；`gh` 等外部命令未安装时，静态子命令仍可补全，需要仓库或登录上下文的动态候选才依赖命令本身。先在 bash 中确认 `command -v carapace` 有输出；没有则把安装目录（Git Bash 常见为 `~/.cxxu/bin` 或 `/c/scoop/shims`，Linux/macOS 常见为 `~/.local/bin`）加入 PATH。
 

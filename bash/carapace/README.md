@@ -29,7 +29,7 @@ shopt -q login_shell && echo "login shell" || echo "non-login shell"
 
 | 平台 | carapace 安装 | 实际读取的 rc | PATH 修正 | 验证状态 |
 | --- | --- | --- | --- | --- |
-| Git Bash（MSYS） | `scoop install carapace-bin`（需 `spc` bucket），或 `Deploy-Carapace -Enable` | 非登录 `.bashrc`；登录 `.bash_profile`/`.bash_login`/`.profile` | 需要 | 已实测 |
+| Git Bash（MSYS） | `scoop install carapace-bin`（需 `spc` bucket），或 PowerShell 里 `Deploy-Carapace -Bash`（装二进制并写 rc） | 非登录 `.bashrc`；登录 `.bash_profile`/`.bash_login`/`.profile` | 需要 | 已实测 |
 | Cygwin | 同 Git Bash，或 Cygwin 包管理器 | 同 bash 规则 | 需要（兼容层） | 未实测 |
 | Linux | `setup.sh --install`（官方 Release + SHA-256 + 镜像/代理），或发行版仓库，或手工装到 `~/.local/bin` | 非登录 `.bashrc`；登录 `.bash_profile`/`.bash_login`/`.profile` | 不需要 | `--install` 在 WSL Ubuntu 24.04 已实测；实际补全未在 Linux 桌面验证 |
 | WSL | 在 WSL 内用 `setup.sh --install` 装 Linux 版；不要复用 Windows 的 `carapace.exe` | 通常为非登录 `.bashrc` | 不需要 | `--install` 与 `--check` 已实测；ble.sh 菜单未验证 |
@@ -51,6 +51,15 @@ carapace --version
 bash /path/to/scripts/bash/carapace/setup.sh --check
 ```
 
+在 PowerShell 中也可以用一条命令同时装二进制并写 rc（内部调用本目录的 `setup.sh`，写入内容与手工执行一致）：
+
+```powershell
+Deploy-Carapace -Bash            # 非登录 shell：写 ~/.bashrc
+Deploy-Carapace -Bash -BashLogin # 登录 shell：写 ~/.bash_profile/~/.bash_login/~/.profile
+```
+
+下面仍按平台分开写，便于只处理二进制或只处理 rc 的情况。
+
 接入命令按终端类型二选一：
 
 | 终端类型 | 接入命令 |
@@ -71,15 +80,23 @@ bash /path/to/scripts/bash/carapace/setup.sh --dry-run --login
 
 ```powershell
 scoop install carapace-bin
-# 或使用仓库的 Deploy-Carapace（需要 pwsh 7）
-Deploy-Carapace -Enable
+# 或使用仓库的 Deploy-Carapace（需要 pwsh 7）；-Bash 会同时写入 bash rc
+Deploy-Carapace -Bash
+Deploy-Carapace -Bash -BashLogin   # 当前终端是登录 shell 时
 ```
 
-回到 Git Bash 确认并接入：
+用 `Deploy-Carapace -Bash` 时 rc 已写好，可跳过下面的 `setup.sh`，直接做确认与验收；只用 `scoop` 装二进制时才需要继续跑 `setup.sh`。
+
+回到 Git Bash 验收：
 
 ```bash
 command -v carapace
 carapace --version
+```
+
+只用 `scoop` 装二进制时，再补写 rc（用 `Deploy-Carapace -Bash` 时已写好，可跳过）：
+
+```bash
 cd /path/to/scripts/bash/carapace
 bash setup.sh --dry-run
 bash setup.sh

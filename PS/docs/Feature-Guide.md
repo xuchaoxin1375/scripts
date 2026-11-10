@@ -200,6 +200,8 @@ carapace 是一个跨 shell 的命令行补全二进制，按命令读取自身�
 
 ```powershell
 Deploy-Carapace -Enable                     # 安装二进制并直接启用（官方 Release + SHA-256）
+Deploy-Carapace -Bash                       # 只装二进制并接入 bash（写 ~/.bashrc）
+Deploy-Carapace -Bash -BashLogin            # 登录 shell：改写 --login 的目标 rc
 # 或分两步：
 Deploy-Carapace                             # 只安装二进制
 Enable-CxxuComponent Carapace -Persist -Now # 只启用 carapace；git/gitk 仍按 PsGitCompletionSource
@@ -219,7 +221,7 @@ Set-GitCompletionSource Carapace -Persist   # 需要 carapace 接管 git/gitk �
 
 **Git Bash / MSYS 与 Linux/macOS bash（可选，与 PowerShell 独立）**：
 
-Git Bash 使用同一个 carapace 二进制，Linux/macOS 使用各自平台的二进制；接入由 bash 自己完成，不经过 `init`，`PsCarapace` 与 `Enable-CxxuComponent` 只控制 PowerShell。非登录 shell 通常写 `~/.bashrc`；macOS Terminal、Git Bash 等登录 shell 读 `~/.bash_profile`、`~/.bash_login` 或 `~/.profile`，用 `bash /path/to/scripts/bash/carapace/setup.sh --login` 写入。macOS 自带 bash 3.2 不满足 carapace 要求，需 `brew install bash` 并切换登录 shell；macOS 默认 zsh 不在该接入范围。运行 `bash /path/to/scripts/bash/carapace/setup.sh [--login]` 写入标记块，`--uninstall` 卸载；平台差异、手工片段、PATH 修复、与 argc-completions 的顺序和验收见 [bash/carapace/README.md](../../bash/carapace/README.md)。多个候选需按两次 `<Tab>`；`gh` 未安装时静态子命令仍可补全，需要上下文的动态候选才依赖命令本身。本机 Git Bash 5.2 + carapace 1.8.2 实测运行时脚本 `source` 约 40–55 ms，`git checkout` 返回带说明的候选，`gh pr` 返回静态子命令候选。
+Git Bash 使用同一个 carapace 二进制，Linux/macOS 使用各自平台的二进制；接入由 bash 自己完成，不经过 `init`，`PsCarapace` 与 `Enable-CxxuComponent` 只控制 PowerShell。非登录 shell 通常写 `~/.bashrc`；macOS Terminal、Git Bash 等登录 shell 读 `~/.bash_profile`、`~/.bash_login` 或 `~/.profile`，用 `bash /path/to/scripts/bash/carapace/setup.sh --login` 写入。二进制与 rc 一次接好时用 `Deploy-Carapace -Bash`（登录 shell 加 `-BashLogin`），它内部调用同一个 `setup.sh`。macOS 自带 bash 3.2 不满足 carapace 要求，需 `brew install bash` 并切换登录 shell；macOS 默认 zsh 不在该接入范围。运行 `bash /path/to/scripts/bash/carapace/setup.sh [--login]` 写入标记块，`--uninstall` 卸载；平台差异、手工片段、PATH 修复、与 argc-completions 的顺序和验收见 [bash/carapace/README.md](../../bash/carapace/README.md)。多个候选需按两次 `<Tab>`；`gh` 未安装时静态子命令仍可补全，需要上下文的动态候选才依赖命令本身。本机 Git Bash 5.2 + carapace 1.8.2 实测运行时脚本 `source` 约 40–55 ms，`git checkout` 返回带说明的候选，`gh pr` 返回静态子命令候选。
 
 **git 补全对比（同一测试仓库）**：
 

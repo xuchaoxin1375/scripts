@@ -1668,6 +1668,7 @@ function Show-CarapaceEnableHint
     Write-Host ''
     Write-Host '启用方式（不修改 profile）：'
     Write-Host '  Deploy-Carapace -Enable                     # 安装后直接启用（写入用户配置并立即加载）'
+    Write-Host '  Deploy-Carapace -Bash                       # 安装后顺带接入 bash（Git Bash/Linux/macOS）'
     Write-Host '  Enable-CxxuComponent Carapace -Persist -Now  # 已安装时只启用组件'
     Write-Host '  Set-GitCompletionSource Carapace -Persist   # 让 carapace 接管 git/gitk'
     Write-Host '慢命令排除项写入 ~/.cxxu/config.psd1 的 PsCarapaceExcludes（逗号分隔）。'
@@ -1749,6 +1750,56 @@ function Expand-CxxuReleaseArchive
     }
 }
 
+function Invoke-CarapaceBashSetup
+{
+    # 调用仓库内 bash/carapace/setup.sh，把 carapace 接入 bash（Git Bash、Linux、macOS）。
+    # 只写 rc 标记块；与 PowerShell 侧启用互不影响，失败只告警不抛错。
+    param(
+        # 写入登录 shell 读取的 rc（~/.bash_profile、~/.bash_login 或 ~/.profile）
+        [switch]$Login,
+        [switch]$WhatIf
+    )
+
+    $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+    $setupSh = Join-Path $repoRoot 'bash/carapace/setup.sh'
+    if (-not (Test-Path -LiteralPath $setupSh))
+    {
+        Write-Warning ("未找到 bash 接入脚本：{0}；请在仓库克隆目录执行 bash bash/carapace/setup.sh。" -f $setupSh)
+        return
+    }
+    $bash = Get-Command bash -ErrorAction SilentlyContinue
+    if (-not $bash)
+    {
+        Write-Warning '未找到 bash：跳过 bash 接入；安装 Git for Windows（或发行版 bash）后重跑 Deploy-Carapace -Bash。'
+        return
+    }
+
+    $bashArgs = @($setupSh)
+    if ($Login) { $bashArgs += '--login' }
+    $display = "bash $setupSh" + $(if ($Login) { ' --login' } else { '' })
+    if ($WhatIf)
+    {
+        Write-Host ("[WhatIf] 执行：{0}" -f $display)
+        return
+    }
+
+    Write-Host ''
+    Write-Host ("接入 bash：{0}" -f $display)
+    & $bash.Source @bashArgs
+    if ($LASTEXITCODE -ne 0)
+    {
+        Write-Warning ("bash 接入脚本退出码 {0}：按上面的输出处理后重跑，或手工执行 {1}" -f $LASTEXITCODE, $display)
+        return
+    }
+
+    $binInBash = @(& $bash.Source -c 'command -v carapace' 2>&1)
+    if ($LASTEXITCODE -ne 0 -or -not ($binInBash -join '').Trim())
+    {
+        Write-Warning 'bash 当前环境找不到 carapace：把安装目录加入 PATH（新终端生效），或设置 CARAPACE_BIN；再重开终端验证。'
+    }
+    Write-Host 'bash 侧已写入 rc 标记块：新开终端后执行 type _carapace_completer 验证。'
+}
+
 function Deploy-Carapace
 {
     <#
@@ -1760,6 +1811,10 @@ function Deploy-Carapace
     按同版本 checksums.txt 校验 SHA-256，解压 carapace 到目标目录并加入用户 PATH。
     完成后打印启用方式，不修改 profile；加载由 init 按 PsCarapace 配置完成，不设置 Tab 键绑定。
     加 -Enable 可在安装后直接启用 Carapace 组件并写入用户配置，当前会话立即加载。
+    加 -Bash 会在安装后调用仓库内 bash/carapace/setup.sh，把同一二进制接入 bash：
+    默认写非登录 shell 的 ~/.bashrc，加 -BashLogin 改写登录 shell 的 rc
+    （~/.bash_profile、~/.bash_login 或 ~/.profile）。bash 侧与 PowerShell 侧互相独立，
+    只写 rc 标记块，不修改 profile。未找到 bash 或 setup.sh 时只告警，不中断安装。
     默认查询最新 release；网络受限或需要可复现版本时用 -Version 指定版本号，可跳过 GitHub API。
     已存在 carapace 时默认跳过，-Force 重新下载覆盖；本地版本高于 -Version 时默认拒绝降级，
     确需降级加 -AllowDowngrade。下载失败可改用包管理器：Windows 用 scoop，macOS 用 brew，
@@ -1767,6 +1822,10 @@ function Deploy-Carapace
     默认目录：Windows 为 ~/.cxxu/bin，其他平台为 ~/.local/bin；-Destination 与 -SkipPath 用于自定义目录或测试。
     .EXAMPLE
     Deploy-Carapace -Enable
+    .EXAMPLE
+    Deploy-Carapace -Bash
+    .EXAMPLE
+    Deploy-Carapace -Bash -BashLogin
     .EXAMPLE
     Deploy-Carapace -Version 1.8.2 -Proxy http://127.0.0.1:7897
     .EXAMPLE
@@ -1786,6 +1845,10 @@ function Deploy-Carapace
         [switch]$SkipPath,
         # 安装后启用 Carapace 组件并写入用户配置（当前会话立即加载）
         [switch]$Enable,
+        # 安装后把 carapace 接入 bash（调用仓库内 bash/carapace/setup.sh，默认写 ~/.bashrc）
+        [switch]$Bash,
+        # 与 -Bash 配合：改写登录 shell 的 rc（~/.bash_profile、~/.bash_login 或 ~/.profile）
+        [switch]$BashLogin,
         # 允许安装低于本地已装版本的 carapace
         [switch]$AllowDowngrade,
         # 已安装时也重新下载覆盖
@@ -1820,6 +1883,7 @@ function Deploy-Carapace
         Write-Host '如需覆盖安装，加 -Force。'
         if ($Enable) { Enable-CxxuComponent -Id Carapace -Persist -Now -WhatIf:$WhatIfPreference }
         else { Show-CarapaceEnableHint }
+        if ($Bash -or $BashLogin) { Invoke-CarapaceBashSetup -Login:$BashLogin -WhatIf:$WhatIfPreference }
         return
     }
     if ($Version -and $existingVersion -and -not $AllowDowngrade)
@@ -1839,6 +1903,7 @@ function Deploy-Carapace
 
     if (-not $PSCmdlet.ShouldProcess('carapace', "安装到 $Destination"))
     {
+        if ($Bash -or $BashLogin) { Invoke-CarapaceBashSetup -Login:$BashLogin -WhatIf }
         return
     }
 
@@ -1972,6 +2037,7 @@ function Deploy-Carapace
         }
         if ($Enable) { Enable-CxxuComponent -Id Carapace -Persist -Now -WhatIf:$WhatIfPreference }
         else { Show-CarapaceEnableHint }
+        if ($Bash -or $BashLogin) { Invoke-CarapaceBashSetup -Login:$BashLogin -WhatIf:$WhatIfPreference }
     }
     finally
     {
