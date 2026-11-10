@@ -22,6 +22,9 @@
 
 - manifest 是导出真相源。新增或删除函数时同步 `FunctionsToExport`，并跑
   `Test-ModuleManifest`。
+- 读 `.psd1` 数据文件（组件清单、默认值、用户配置）一律走 `Init` 的内部函数
+  `Read-CxxuDataFile`：它先看 `Import-PowerShellDataFile` 是否可见，缺失时退回 AST 解析。
+  不要直接调该 cmdlet，否则在识别不到它的宿主里会连发读取警告。
 - 不要向成功流泄漏中间对象。目录创建、探测结果等用 `| Out-Null`，只返回调用方需要的数据。
 - 跨模块访问变量要显式作用域，不依赖动态作用域碰运气。
 - 模块目录名必须与模块名一致，否则无法自动发现。

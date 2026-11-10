@@ -9,6 +9,8 @@ $script:CxxuModuleRoot = $PSScriptRoot
 $script:CxxuComponentManifestCache = $null
 $script:CxxuSettingsDefaultCache = $null
 $script:CxxuConfigDefaultListCache = $null
+# 标准 psd1 解析器是否可见：缺失时 Read-CxxuDataFile 退回 AST 解析，只探测一次。
+$script:CxxuDataFileReaderAvailable = $null
 # argc-completions 的平台差异:可执行名与专用补全目录。
 # 5.1 无 $IsWindows/$IsMacOS 自动变量,先用 PSEdition 兜底判 Windows(5.1 只跑在 Windows 上)。
 $script:ArgcPlatform = @{ Executable = 'argc'; CompletionDir = 'linux' }
@@ -1444,6 +1446,43 @@ function Clear-PsCommandCacheIfStale
         Write-Verbose "命令表缓存检查跳过: $($_.Exception.Message)"
     }
 }
+function Read-CxxuDataFile
+{
+    # 读 .psd1 数据文件(不导出)：优先标准解析器，会话里识别不到该 cmdlet 时改用 AST 解析。
+    # 部分宿主(如 VS Code 集成控制台的 5.1 会话)可能出现该 cmdlet 不可见的情况，
+    # 组件清单与默认值读不到时 init 会连发三条警告。兜底只接受单个哈希表字面量，
+    # 不执行文件里的其它代码；文件按 UTF-8 读取，顺带覆盖 5.1 对无 BOM 中文的误判。
+    param([Parameter(Mandatory)][string]$Path)
+
+    if ($null -eq $script:CxxuDataFileReaderAvailable)
+    {
+        $script:CxxuDataFileReaderAvailable = [bool](Get-Command Import-PowerShellDataFile -ErrorAction Ignore)
+    }
+    if ($script:CxxuDataFileReaderAvailable)
+    {
+        return Import-PowerShellDataFile -LiteralPath $Path -ErrorAction Stop
+    }
+
+    Write-Verbose "会话缺少 Import-PowerShellDataFile，改用内置解析:$Path"
+    $text = Read-CxxuUtf8Text -Path $Path
+    $tokens = $null
+    $parseErrors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseInput($text, [ref]$tokens, [ref]$parseErrors)
+    if ($parseErrors)
+    {
+        $first = $parseErrors[0]
+        throw ("{0} 第 {1} 行解析失败:{2}" -f $Path, $first.Extent.StartLineNumber, $first.Message)
+    }
+    $statements = @($ast.EndBlock.Statements)
+    $pipeline = if ($statements.Count -eq 1) { $statements[0] -as [System.Management.Automation.Language.PipelineAst] } else { $null }
+    $elements = if ($pipeline) { @($pipeline.PipelineElements) } else { @() }
+    $element = if ($elements.Count -eq 1) { $elements[0] -as [System.Management.Automation.Language.CommandExpressionAst] } else { $null }
+    if ($null -eq $element -or $element.Expression -isnot [System.Management.Automation.Language.HashtableAst])
+    {
+        throw "$Path 不是单个哈希表字面量，无法在缺少 Import-PowerShellDataFile 的会话里读取。"
+    }
+    return $element.Expression.SafeGetValue()
+}
 function Read-CxxuComponentManifest
 {
     # 读组件清单(不导出)：PS/Init/components.psd1。
@@ -1451,7 +1490,7 @@ function Read-CxxuComponentManifest
     if ($null -ne $script:CxxuComponentManifestCache) { return $script:CxxuComponentManifestCache }
     try
     {
-        $data = Import-PowerShellDataFile -LiteralPath $Path -ErrorAction Stop
+        $data = Read-CxxuDataFile -Path $Path
         $script:CxxuComponentManifestCache = @($data.Components)
         return $script:CxxuComponentManifestCache
     }
@@ -1525,7 +1564,7 @@ function Read-CxxuSettingsDefaultList
     if ($null -ne $script:CxxuSettingsDefaultCache) { return $script:CxxuSettingsDefaultCache }
     try
     {
-        $data = Import-PowerShellDataFile -LiteralPath $Path -ErrorAction Stop
+        $data = Read-CxxuDataFile -Path $Path
         $script:CxxuSettingsDefaultCache = @($data.Defaults)
         return $script:CxxuSettingsDefaultCache
     }
@@ -1818,15 +1857,17 @@ function Get-CxxuConfigStateTextValue
 function Import-CxxuConfigData
 {
     # 读用户配置(不导出):优先标准 psd1 解析;失败时按 UTF-8 读出另存带 BOM 的临时文件再解析。
-    # 5.1 对无 BOM 的中文配置按 ANSI 页解码,直接 Import-PowerShellDataFile 会解析失败;
+    # 5.1 对无 BOM 的中文配置按 ANSI 页解码,直接解析会失败;
     # 该兜底让历史配置无需先重置即可继续生效,真实语法错误仍会在第二次解析时暴露。
+    # 会话里识别不到 Import-PowerShellDataFile 时,Read-CxxuDataFile 已按 UTF-8 走 AST 解析,无需临时文件。
     param([Parameter(Mandatory)][string]$Path)
     try
     {
-        return Import-PowerShellDataFile -LiteralPath $Path -ErrorAction Stop
+        return Read-CxxuDataFile -Path $Path
     }
     catch
     {
+        if (-not $script:CxxuDataFileReaderAvailable) { throw }
         $tmp = Join-Path ([IO.Path]::GetTempPath()) ('cxxu-cfg-' + [guid]::NewGuid().ToString('N') + '.psd1')
         try
         {
