@@ -219,7 +219,7 @@ macOS Terminal 默认是登录 shell；VS Code 等集成终端可能是非登录
 
 行为与边界：
 
-- 安装动作只有一处：在目标 rc 写入带标记的块，块内用绝对路径加载 `carapace.sh`。重复运行会先移除旧块再追加，不会产生多个副本。
+- 安装动作只有一处：在目标 rc 写入带标记的块，块内用绝对路径加载 `carapace.sh`。重复运行会先移除旧块再追加，不会产生多个副本。追加位置固定在文件末尾：如果原先手工把块移到了别处（例如放在其他 `source` 之前），重跑会把它移回末尾，从而改变与相邻片段的加载顺序；要固定顺序就不要再重跑，或每次重跑后手工调整。
 - `setup.sh` 本身作为非登录 bash 子进程运行，无法替你判断终端是登录还是非登录；`--login` 必须由使用者先在实际终端执行 `shopt -q login_shell` 后选择。
 - `--login` 按 bash 的读取顺序选择目标：已有 `~/.bash_profile` 用它，其次 `~/.bash_login`，再次 `~/.profile`；三个都不存在时创建 `~/.bash_profile`。`--login` 与 `--rc` 互斥。
 - 创建 `~/.bash_profile` 后，登录 shell 不再读取 `~/.profile`；如果之后新增 `~/.profile`，需要在 `~/.bash_profile` 中显式 source 它。
