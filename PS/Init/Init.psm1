@@ -239,7 +239,7 @@ function init
                 [PSCustomObject]@{ Command = $_.Command; Time = $_.Time; Share = $share }
             })
         $report += [PSCustomObject]@{ Command = '步骤合计'; Time = $sumStepMs; Share = '100%' }
-        $report | Format-Table -AutoSize | Out-String | Write-Host
+        $report | Format-Table -AutoSize | Out-String -Width 160 | Write-Host
     }
 
     # 其他自定义绑定的任务🎈
