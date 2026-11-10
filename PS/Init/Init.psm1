@@ -913,7 +913,10 @@ function Initialize-ArgcCompletions
     # 判定看 Register-GitCompletion 置的 $global:PsGitCompletion、carapace 懒加载桩置的
     # $global:PsCarapaceGit,以及"模块已导入"(init 只注册 completer,首次补全才 Import-Module);
     # 都没有时保留 argc 自己的 git 补全。
-    if ($global:PsGitCompletion -or $global:PsCarapaceGit -or (Get-Module git-completion -ErrorAction SilentlyContinue))
+    # 来源明确选 Argc 时，即使其他来源已加载也让 argc 接管 git/gitk（后注册者胜出），
+    # 供 Set-GitCompletionSource Argc 在当前会话直接切换。
+    if ((Get-CxxuGitCompletionSource) -ne 'Argc' -and
+        ($global:PsGitCompletion -or $global:PsCarapaceGit -or (Get-Module git-completion -ErrorAction SilentlyContinue)))
     {
         $scripts = @($scripts | Where-Object { $_ -notin 'git', 'gitk' })
     }
@@ -1227,15 +1230,19 @@ function Register-GitCompletion
     模块位置按 PSModulePath 静态探测,不调用 Get-Module -ListAvailable(冷启动约 140ms)。
     来源由 PsGitCompletionSource 决定(Auto/GitCompletion/Carapace/Argc,见 Get-CxxuGitCompletionSource);
     未设置该键时沿用 PsGitCompletion 的旧语义,关闭后 argc 继续负责 git。
+    .PARAMETER Force
+    已注册时也重新注册，用于其他来源覆盖 git/gitk 后夺回（如 Set-GitCompletionSource GitCompletion）。
     .EXAMPLE
     Register-GitCompletion
+    .EXAMPLE
+    Register-GitCompletion -Force
     .EXAMPLE
     $env:PsGitCompletion = 'False'   # 本次会话不挂载,git 回到 argc 或原生补全
     #>
     [CmdletBinding()]
-    param()
+    param([switch]$Force)
 
-    if ($global:PsGitCompletion) { return }
+    if ($global:PsGitCompletion -and -not $Force) { return }
     # 来源不是 git-completion 时不注册；来源解析见 Get-CxxuGitCompletionSource。
     if ((Get-CxxuGitCompletionSource) -ne 'GitCompletion') { return }
     if (-not (Test-CxxuGitCompletionInstalled)) { return }
@@ -2485,7 +2492,7 @@ function Set-GitCompletionSource
     切到 Carapace/Argc 不会把 GitCompletion 组件置为停用，只有显式 Disable-PsPlugin GitCompletion 才会。
     carapace 的额外排除项用 PsCarapaceExcludes 配置，不再写 profile。
     -Persist 把来源写入 ~/.cxxu/config.psd1；不加时只改当前会话。
-    当前会话已注册的 Native completer 无法撤销，切换后需重开终端才完全生效。
+    切换会在当前会话重新注册对应 completer，git/gitk 立即生效；argc 尚未注册时由首个 Tab 完成。
     .EXAMPLE
     Set-GitCompletionSource GitCompletion
     .EXAMPLE
@@ -2529,7 +2536,8 @@ function Set-GitCompletionSource
     {
         if (Test-CxxuGitCompletionInstalled)
         {
-            if ($PSCmdlet.ShouldProcess('git-completion', '注册 git/gitk completer')) { Register-GitCompletion }
+            $global:PsCarapaceGit = $false
+            if ($PSCmdlet.ShouldProcess('git-completion', '注册 git/gitk completer')) { Register-GitCompletion -Force }
         }
         else
         {
@@ -2540,7 +2548,7 @@ function Set-GitCompletionSource
     {
         if (Get-Command carapace -ErrorAction SilentlyContinue)
         {
-            if ($PSCmdlet.ShouldProcess('carapace', '加载补全')) { Initialize-Carapace }
+            if ($PSCmdlet.ShouldProcess('carapace', '加载并重新注册补全')) { Initialize-Carapace -Force }
         }
         else
         {
@@ -2551,11 +2559,24 @@ function Set-GitCompletionSource
     {
         Write-Warning '未检测到 argc：先执行 Deploy-CompletionStack -IncludeArgc 或 Deploy-ArgcCompletions。'
     }
+    else
+    {
+        # 已注册时重新注册，把 git/gitk 一并纳入；未注册则首个 Tab 按来源注册。
+        $global:PsCarapaceGit = $false
+        if ($global:PsArgcLoaded)
+        {
+            if ($PSCmdlet.ShouldProcess('argc', '重新注册 git/gitk completer')) { Initialize-ArgcCompletions -Force }
+        }
+        else
+        {
+            Write-Host 'argc 尚未注册：首个 Tab 注册时会按 Argc 来源接管 git/gitk。'
+        }
+    }
 
     Write-Host ("git 补全来源：{0}" -f $Source)
     if ($applied)
     {
-        Write-Host ("当前会话：PsGitCompletionSource={0}，PsGitCompletion={1}" -f $Source, $gitValue)
+        Write-Host ("当前会话：PsGitCompletionSource={0}，PsGitCompletion={1}" -f $Source, $env:PsGitCompletion)
         if ($Source -eq 'Carapace') { Write-Host '当前会话：PsCarapace=True' }
     }
     else
@@ -2575,7 +2596,7 @@ function Set-GitCompletionSource
     {
         Write-Host 'carapace 仍处于启用状态，只让出 git/gitk；需要停止加载用 Disable-PsPlugin Carapace -Persist。'
     }
-    Write-Host '重开终端后完全生效；当前会话已注册的 Native completer 无法撤销。'
+    Write-Host 'git/gitk 已在当前会话按新来源重新注册；argc 尚未注册时由首个 Tab 完成，无需重开终端。'
 }
 
 function Get-CxxuComponent
