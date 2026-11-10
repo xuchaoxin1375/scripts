@@ -98,9 +98,13 @@ function Install-CxxuTabWrapper
             $sw.Stop()
             if ($sw.ElapsedMilliseconds -gt 800) { $global:__CxxuTabFuse = $true }
             if (-not $extra.Count) { return $base }
+            # 原生前缀命中优先:命令名位置的 base 都是前缀匹配(最强),放在最前;
+            # 模糊结果只补充 base 未覆盖的名字,沿用 dll 既有 tier/分数顺序追加。
+            $baseMatches = @($base.CompletionMatches)
             $seen = @{}
-            foreach ($m in @($base.CompletionMatches | ForEach-Object { $_.CompletionText })) { $seen[$m] = $true }
+            foreach ($m in $baseMatches) { $seen[$m.CompletionText] = $true }
             $merged = [System.Collections.Generic.List[System.Management.Automation.CompletionResult]]::new()
+            foreach ($m in $baseMatches) { $merged.Add($m) }
             foreach ($m in $extra)
             {
                 if (-not $seen.ContainsKey($m))
@@ -109,8 +113,9 @@ function Install-CxxuTabWrapper
                     $seen[$m] = $true
                 }
             }
-            foreach ($m in $base.CompletionMatches) { $merged.Add($m) }
-            return [System.Management.Automation.CommandCompletion]::new($merged, $base.CurrentMatchIndex, $base.ReplacementIndex, $base.ReplacementLength)
+            $current = 0
+            if ($baseMatches.Count -gt 0 -and $base.CurrentMatchIndex -ge 0) { $current = $base.CurrentMatchIndex }
+            return [System.Management.Automation.CommandCompletion]::new($merged, $current, $base.ReplacementIndex, $base.ReplacementLength)
         }
         catch
         {

@@ -425,7 +425,7 @@ python $pys\image_compressor.py
 python $pys\image_compressor.py -R auto -p -F  -O -k -f webp  -r 1000 800  -s webp -i .  #默认压缩当前目录,跳过webp图片的压缩(对于混合目录一般压缩过另一半没压缩的情况)
 ```
 
--   [ReadMe@image_compressor@Imgcompressor.md](..\ReadMe@image_compressor@Imgcompressor.md) 
+-   [ReadMe@image_compressor@Imgcompressor.md](../ReadMe@image_compressor@Imgcompressor.md) 
 
 
 ### 查看命令行帮助
@@ -449,7 +449,7 @@ pip install -r $woo_df/requirements.txt
 
 配置环境变量(另见本仓库其他说明文档)
 
- [Readme@Env.md](..\Readme@Env.md) 
+ [Readme@Env.md](../Readme@Env.md) 
 
 
 
@@ -459,7 +459,7 @@ pip install -r $woo_df/requirements.txt
 
 ### 本地wordpress站点批量复制🎈
 
-节约篇幅,详情另见它文 [ReadMe@Deploy-WpSitesLocal.md](..\ReadMe@Deploy-WpSitesLocal.md) 
+节约篇幅,详情另见它文 [ReadMe@Deploy-WpSitesLocal.md](../ReadMe@Deploy-WpSitesLocal.md) 
 
 
 

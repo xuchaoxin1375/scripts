@@ -326,6 +326,8 @@ Git Bash 使用同一个 carapace 二进制，Linux/macOS 使用各自平台的�
 
 命令表在每个进程**只建一次**（predictor 构造时、Tab 首次调用时各建一份内存表）。因此删除缓存或 `init` 自动清理都只影响之后启动的进程：当前窗口继续使用旧表，必须新开终端；新终端首次 Tab 或 predictor 首次触发时才重建。
 
+需要按用户视角自动复验界面效果（真实窗口、按键注入、读屏与截图）时，见 [交互式控制台验证](Interactive-Console-Verification.md)。
+
 ## 10. 补全全景速查（三层 + 参数层）
 
 | 层 | 按键/视图 | 来源 | 说明 |
@@ -336,6 +338,8 @@ Git Bash 使用同一个 carapace 二进制，Linux/macOS 使用各自平台的�
 | 参数值补全 | `Tab` 在参数位 | `argc-completions`（800+ 命令库，开关默认开、懒加载；按需 `-IncludeArgc` 部署）+ `PSCompletions`（~200 命令库，可选）+ 自带 `ArgumentCompleter`（EnvVar 系、`Get-Json -Key` 等，`Set-ArgumentCompleter` 批量注册） | PSCompletions 用法：装模块后 `Enable-CxxuComponent PSCompletions -Persist`；argc 开关 `$env:PsArgc`，首个 Tab 注册；`git`/`gitk` 由 `git-completion` 提供，argc 不重复注册 |
 
 - 参数值补全还有可选的手动来源 carapace（不参与 `init` 开关，见本文「carapace（可选，非默认）」）：适合 `scoop`、`winget`、`gh`、`docker`、`kubectl`、`cargo`、`uv`、`npm` 等外部 CLI；git 仍由 `git-completion` 负责。
+- **Tab 菜单顺序**：原生前缀命中排在前并保持原生顺序，`CxxuTab` 的模糊补充按 dll 的 tier/分数顺序排在后面，同名去重。输入完整前缀时第一次 Tab 落在原生候选；只有没有原生前缀命中（如 `uprepos`）时，才由模糊结果主导。
+- **菜单中的 Ctrl+C**：真实按键在默认控制台模式下会被当作控制事件，Tab 菜单不响应；只把 `Ctrl+C` 绑到 `CancelLine` 也不会生效。要取消整行，按 `Esc` 关闭菜单（恢复输入前缀）再按 `Ctrl+C`；若要一次 `Ctrl+C` 直接清行，需在 Tab/MenuComplete 包装里临时设置 `[Console]::TreatControlCAsInput = $true` 并绑定 `CancelLine`（原理、验证与示例见 [交互式控制台验证](Interactive-Console-Verification.md)）。该包装只在菜单显示期间生效，命令执行时的 Ctrl+C 中断不受影响。
 - 相关命令：`doctor`（统一诊断入口，定位问题先执行它；`doctor -Feature <功能>` 只查单个功能）、`Get-CxxuDependencyReport [-Missing]`（按功能查外部依赖与安装建议，详见 [Feature-Dependencies.md](Feature-Dependencies.md)）、`Register-PsUxLazyLoad [-Now]`（延迟加载入口）、
   `Deploy-CompletionStack [-WhatIf] [-IncludeArgc] [-IncludeFuzzy] [-IncludePredictor] [-IncludePSCompletions] [-IncludeGitCompletion] [-All]`（新机一键装栈）、
   `Test-PsEnvReadiness`（查缺）、`predictNo`（当会话关预测）、

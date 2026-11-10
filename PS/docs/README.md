@@ -18,6 +18,7 @@
 | macOS 上 pwsh 假死或残留进程烧 CPU | [macOS-Pwsh-Runtime.md](macOS-Pwsh-Runtime.md) | 现场判据、清理步骤与防复发 |
 | macOS 上 shell 配置接线、恢复 mamba/conda | [macOS-Shell-Setup.md](macOS-Shell-Setup.md) | profile 链路、停用范围、实测变化与恢复命令 |
 | 补全不工作/变慢 | `doctor`（单层用 `doctor -Feature Tab` 或 `doctor -Feature Argc`）→ `Feature-Guide.md §9`「加载失败排查」+「Tab 补全自查」→ §8（ListView 候选）/§10（全景） | 先分清 Tab/ListView/参数层，再查开关/缓存/活件 |
+| 复验 Tab 补全的实际界面 | [Interactive-Console-Verification.md](Interactive-Console-Verification.md) | 启动真实窗口、注入按键、读屏与截图取证 |
 | 加模块/加函数 | `Feature-Guide.md §3` → `Module-Conventions.md`（§1 目录、§2 命名、§7 manifest）→ `Module-Map.md`（找位置） | 一次做对，不返工 |
 | 搞懂 dll/同步 | `Live-Versions.md`（设计专章）→ `Deploy-Guide.md §13` | 结构、流程、命令分工、5.1 Tab 产物 |
 | 非 Windows 系统 | `Feature-Guide.md §12`（`doctor`/readiness 按平台过滤并汇总已跳过项） | 哪些可用、哪些是 Windows 专属 |
@@ -33,6 +34,7 @@
 | `Feature-Dependencies.md` | 功能依赖清单：按功能列外部组件、生成物、状态与安装建议 | 中 |
 | `Deploy-Guide.md` | 新机部署：一键脚本、分步详解、多设备差异、更新到新版本（§13） | 中 |
 | [Argc-Completions-Deploy.md](Argc-Completions-Deploy.md) | argc-completions 部署、更新、启停与排障 | 中 |
+| [Interactive-Console-Verification.md](Interactive-Console-Verification.md) | 模拟用户按键复验 Tab 补全：真实窗口、按键注入、读屏与截图 | 中 |
 | `Live-Versions.md` | 并排版本活件设计专章：结构、指针协议、流程、故障、命令分工、5.1 Tab 产物 | 中，含结构图与流程图 |
 | `Dev-Notes.md` | agent 决策要点：编码/部署/文档/提交的硬规则与常见坑，日期无关 | 短 |
 | `Module-Conventions.md` | 规范：命名/编码铁律 + 文档语言（§11 术语表、§12 行文风格） | 中 |
