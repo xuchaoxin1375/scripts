@@ -7,15 +7,19 @@ macOS 上 zsh 补全 `git` 时只出现选项名、不显示说明，原因通�
 在 `~/.zshrc` 加载完成后，按 Tab 只看到选项名：
 
 ```text
-git commit --am<TAB>
---amend
+git commit --a<TAB>
+--ahead-behind   --all            --amend          --author=
 ```
 
 正常应当带描述：
 
 ```text
---amend  -- amend the tip of the current branch
+--all                  -- stage all modified and deleted paths
+--allow-empty          -- allow recording an empty commit
+--amend                -- amend the tip of the current branch
 ```
+
+验证时用 `--a` 这类有多个候选的前缀；只有一个候选时（如 `--am`）补全可能直接插入，不弹出列表。
 
 ## 原因
 
@@ -51,6 +55,15 @@ for d in $fpath; do
   [[ -f $d/_git ]] && grep -q 'zsh completion wrapper for git' "$d/_git" && print -r -- "$d"
 done
 ```
+
+只在当前会话复现（不修改配置，需在还没触发过 git 补全的新会话里）：
+
+```zsh
+fpath=("$(brew --prefix)/share/zsh/site-functions" $fpath)
+git commit --a<TAB>
+```
+
+列表会重新变成只有选项名；`exec zsh` 恢复。
 
 ## 修复
 
@@ -100,8 +113,10 @@ print -r -- ${functions_source[_git]}
 再新开终端（或 `exec zsh`）验证描述：
 
 ```text
-git commit --am<TAB>
---amend  -- amend the tip of the current branch
+git commit --a<TAB>
+--all                  -- stage all modified and deleted paths
+--allow-empty          -- allow recording an empty commit
+--amend                -- amend the tip of the current branch
 
 git --no-pag<TAB>
 --no-pager  -- don't pipe git output into a pager
