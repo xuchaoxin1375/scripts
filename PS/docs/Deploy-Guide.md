@@ -307,6 +307,7 @@ $global:PsCarapaceGit
 
 - `PsCarapace=True` 且 `Get-Command carapace` 有输出，才说明 `init` 有条件加载；只有二进制没有开关时，`init` 不会注册 completer。
 - `PsCarapaceGit` 为空不是错误：`Auto` 且装有 `git-completion` 时 git/gitk 归 git-completion，carapace 只负责其他命令。把 `PsGitCompletionSource` 设为 `Carapace` 后它才会非空，同时 `CARAPACE_EXCLUDES` 不再包含 `git,gitk`。
+- 因此 `git diff --st<Tab>` 默认不会出现 carapace 菜单：`CARAPACE_EXCLUDES` 含 `git,gitk`，候选来自 `git-completion`。需要 carapace 接管 git 时执行 `Set-GitCompletionSource Carapace -Persist` 并重开终端；接管后 `git diff --st<Tab>` 才会出现 carapace 的 `--staged`、`--stat` 等候选。
 - `doctor -Feature Carapace` 是较短的汇总入口，显示依赖与就绪结论；开关值以 `Get-CxxuConfig` 为准。它不执行交互式 Tab，实际候选仍用 `TabExpansion2` 或新开终端按 Tab 验证。
 - `TabExpansion2` 没有候选时，先看 `$env:PsCarapace` 与 `Get-Command carapace`，再看 `$global:PsArgcLoaded`：两者都开启时，argc 首个 Tab 注册会覆盖 carapace 的同名命令。
 

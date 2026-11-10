@@ -296,6 +296,8 @@ source <(carapace _carapace bash)
 bash /path/to/scripts/bash/carapace/setup.sh --check
 ```
 
+使用本仓库的 `~/sh` 点文件时，可以直接运行 `check_carapace`（定义在 `~/sh/shell_utils.sh`），等价于上面的 `--check`。
+
 `--check` 不改任何文件，退出码 0 表示全部正常，1 表示仍需处理，2 表示参数或环境错误。它依次检查：
 
 | 检查项 | 正常表现 | 异常时怎么读 |

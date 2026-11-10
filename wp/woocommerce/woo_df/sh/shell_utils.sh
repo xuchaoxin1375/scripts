@@ -1900,6 +1900,19 @@ wp() {
     local EXIT_CODE=$?
     return $EXIT_CODE
 }
+# 检查 bash 侧 carapace 的依赖、rc 片段与实际加载状态（只读）
+check_carapace() {
+    local repo_root="${SCRIPT_ROOT:-}"
+    if [ -z "$repo_root" ]; then
+        repo_root="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+    fi
+    local setup="$repo_root/bash/carapace/setup.sh"
+    if [ ! -f "$setup" ]; then
+        echo "找不到 $setup；请确认 scripts 仓库位于 $repo_root" >&2
+        return 1
+    fi
+    bash "$setup" --check "$@"
+}
 # 按任意键继续的简单交互提示指令
 pause_bash() {
     read -n 1 -s -r -p "${1:-按任意键继续...}"
