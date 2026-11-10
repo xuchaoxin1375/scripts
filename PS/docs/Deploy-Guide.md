@@ -273,6 +273,43 @@ Set-GitCompletionSource Carapace -Persist     # 让 carapace 接管 git/gitk
 - 不需要时执行 `Disable-PsPlugin Carapace -Persist`；包管理器渠道按对应命令卸载（`scoop uninstall carapace-bin`、`brew uninstall carapace`），`Deploy-Carapace` 与手工渠道删除二进制（默认 Windows 为 `~/.cxxu/bin/carapace.exe`，其他平台为 `~/.local/bin/carapace`）并从 PATH 移除。bash 侧用 `bash /path/to/scripts/bash/carapace/setup.sh --disable`（登录 shell 加 `--login`）移除 rc 片段，与 PowerShell 侧互不影响；重复执行 `Deploy-Carapace -Bash` 只刷新同一个标记块。慢命令（`winget install`、`uv add`）会阻塞 Tab，按需写入 `PsCarapaceExcludes`。
 - `Deploy-CompletionStack -All` 不包含 carapace，也没有 `-IncludeCarapace` 开关；需要时用 `Deploy-Carapace -Enable` 一步安装并启用，或先 `Deploy-Carapace` 再 `Enable-CxxuComponent Carapace -Persist -Now`。
 
+#### 状态检查
+
+carapace 的状态分四层；只看 `Get-Command` 只能确认二进制存在，不能确认组件启用或 `init` 已加载。
+
+| 层 | 正常表现 |
+| --- | --- |
+| 二进制 | `Get-Command carapace` 返回路径，`carapace --version` 返回版本 |
+| 安装与启用 | 依赖报告显示 `已安装`，组件 `Enabled=True`，配置 `PsCarapace=True` |
+| 运行态 | `$env:PsCarapace=True`；`CARAPACE_EXCLUDES` 与 git 来源一致；`PsCarapaceGit` 只在 carapace 接管 git 时非空 |
+| 实际补全 | `TabExpansion2` 对 `gh`、`docker` 等命令返回子命令或参数候选 |
+
+```powershell
+# 二进制
+Get-Command carapace
+carapace --version
+
+# 安装与启用
+Get-CxxuDependencyReport -Feature '补全：外部 CLI 参数（carapace）' -Full
+Get-CxxuComponent Carapace | Format-List Id, Enabled, Source, Default
+Get-CxxuConfig | Where-Object Key -eq 'PsCarapace' | Format-List Key, Value, Source
+doctor -Feature Carapace
+
+# 运行态
+$env:PsCarapace
+$env:CARAPACE_EXCLUDES
+$global:PsCarapaceGit
+
+# 实际补全
+(TabExpansion2 'gh pr ' 6).CompletionMatches | Select-Object -First 5 -ExpandProperty CompletionText
+(TabExpansion2 'docker --con' 12).CompletionMatches | Select-Object -First 5 -ExpandProperty CompletionText
+```
+
+- `PsCarapace=True` 且 `Get-Command carapace` 有输出，才说明 `init` 有条件加载；只有二进制没有开关时，`init` 不会注册 completer。
+- `PsCarapaceGit` 为空不是错误：`Auto` 且装有 `git-completion` 时 git/gitk 归 git-completion，carapace 只负责其他命令。把 `PsGitCompletionSource` 设为 `Carapace` 后它才会非空，同时 `CARAPACE_EXCLUDES` 不再包含 `git,gitk`。
+- `doctor -Feature Carapace` 是较短的汇总入口，显示依赖与就绪结论；开关值以 `Get-CxxuConfig` 为准。它不执行交互式 Tab，实际候选仍用 `TabExpansion2` 或新开终端按 Tab 验证。
+- `TabExpansion2` 没有候选时，先看 `$env:PsCarapace` 与 `Get-Command carapace`，再看 `$global:PsArgcLoaded`：两者都开启时，argc 首个 Tab 注册会覆盖 carapace 的同名命令。
+
 ## 6. scoop 二进制
 
 ```powershell

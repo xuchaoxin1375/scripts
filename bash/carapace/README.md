@@ -6,7 +6,7 @@
 - macOS 与 Git Bash：终端常以登录 shell 启动，读 `~/.bash_profile`、`~/.bash_login` 或 `~/.profile`，不读 `~/.bashrc`。
 - macOS 自带 `/bin/bash` 是 3.2，carapace 会拒绝加载，需要 bash 4 及以上。
 
-本目录提供一个可重复 source 的运行时脚本，以及一个安装二进制、写入/卸载 rc 标记块、可做只读状态检查的小工具，覆盖 Git Bash、Cygwin、Linux、WSL 与 macOS 的 bash。PowerShell 侧的 carapace 由 `init` 按 `PsCarapace` 配置加载，启停用 `Enable-CxxuComponent` / `Disable-CxxuComponent`；本目录只覆盖 bash，两边互不影响。安装与 PowerShell 侧配置见 [Deploy-Guide](../../PS/docs/Deploy-Guide.md) 的「可选：carapace」。
+本目录提供一个可重复 source 的运行时脚本，以及一个安装二进制、写入/卸载 rc 标记块、可做只读状态检查的小工具，覆盖 Git Bash、Cygwin、Linux、WSL 与 macOS 的 bash。PowerShell 侧的 carapace 由 `init` 按 `PsCarapace` 配置加载，启停用 `Enable-CxxuComponent` / `Disable-CxxuComponent`；本目录只覆盖 bash，两边互不影响。安装、PowerShell 侧配置与分层状态检查见 [Deploy-Guide](../../PS/docs/Deploy-Guide.md) 的「可选：carapace」。
 
 ## 适用范围
 
@@ -287,6 +287,42 @@ fi
 export CARAPACE_EXCLUDES='git,gitk'
 source <(carapace _carapace bash)
 ```
+
+## 状态检查
+
+先分两种需求：只看“装了没、接入了没、当前 shell 加载没”，用只读检查；要看“按 Tab 有没有候选”，用下一节的手工验收。
+
+```bash
+bash /path/to/scripts/bash/carapace/setup.sh --check
+```
+
+`--check` 不改任何文件，退出码 0 表示全部正常，1 表示仍需处理，2 表示参数或环境错误。它依次检查：
+
+| 检查项 | 正常表现 | 异常时怎么读 |
+| --- | --- | --- |
+| `bash` | 4.x 或 5.x | 低于 4：macOS 用 `brew install bash`，其他平台安装 bash 4+ |
+| `carapace` | 能打印路径与版本 | 缺失：安装 carapace，或把安装目录加入 PATH |
+| `xargs` | 能找到可执行文件 | 缺失：安装 coreutils；运行时脚本会跳过注册 |
+| `runtime` | 指向本仓库的 `carapace.sh` | 不存在：仓库移动过，重新运行 `setup.sh` 刷新块内路径 |
+| `platform` | `darwin*`、`linux*` 或 MSYS | 其他平台不在接入范围 |
+| `rc target` | 实际要读取的 rc 文件 | 登录/非登录选错：按 `shopt -q login_shell` 的结果加 `--login` 或用 `--rc` 指定 |
+| `rc blocks` | 目标 rc 为 `已安装`，块内路径存在 | `未安装`：运行 `setup.sh`；`路径失效`：重跑 `setup.sh` |
+| `load test` | 非登录/登录子 shell 至少对实际终端类型显示 `已加载` | 未加载：确认 rc 目标，或新开终端后重试 |
+| `ble.sh` | 仅报告是否检测到 ble.sh | 检测到表示使用 `bash-ble` 模式，不需要额外处理 |
+| `结论` | `已接入 carapace，Tab 补全可用` | `需要处理`：按上面标出的项修复后重跑 |
+
+不想跑 `--check` 时，最小手工检查是：
+
+```bash
+command -v carapace
+carapace --version
+type _carapace_completer_ble
+complete -p git
+```
+
+`type` 应输出函数定义，`complete -p git` 应显示 `_carapace_completer_ble`。如果显示 `_argc_completer` 或其他来源，说明加载顺序或 `CARAPACE_EXCLUDES` 不同，不是二进制没装。
+
+`--check` 会用 `bash -ic` / `bash -lic` 起子 shell，验证的是 rc 实际加载结果，不验证交互式 Tab 菜单；候选效果按下一节手工确认。使用组合部署时，`bash /path/to/scripts/bash/completion-stack/setup.sh --check` 会同时检查 carapace 与 argc，只想看 carapace 用上面的命令。
 
 ## 效果与验收
 
