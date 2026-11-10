@@ -18,7 +18,7 @@
 ## 红线
 - 本文件约束 `PS/` 内的改动，跨区工作按根 `AGENTS.md` 执行；`PS/Pwsh/demo.ps1` 的删除不是你干的，别碰。
 - 换行：默认忽略 CRLF/LF 差异，不做提交前对照与整文件转换（`.psm1`/`.psd1` 跟随文件原状）；仅 `.sh` 用 LF、`.cmd`/`.bat` 用 CRLF。
-- 中文用户：中文回复；行内 `pwsh -Command` 引号必炸，复杂命令写 `.ps1` 再 `-File` 执行。
+- 回复语言与 Windows 命令调用（复杂命令写 `.ps1` 再 `-File`）按 `user-profile` 与 skill `powershell-pitfalls` 执行，本文件不重复。
 - 用户可见文本（根 `readme.md`、指南、帮助、警告）：遵循 `docs/Module-Conventions.md §11` 用词、`§12` 行文与 `§13` 用户文档结构（正式、规范、严谨）；改用户可见行为先看 `Feature-Guide.md`，改完自查动作三要素（前置条件、执行者、善后）与术语一致；入口文档只放指引不复制正文。
 - 提交：默认直接提交全部改动（用户手动改动可询问是否单独提交，分多次提交亦可）；推送/PR 须用户明确指示；提交后必验 HEAD（`git show HEAD:<关键文件>` + 状态干净）。
 
