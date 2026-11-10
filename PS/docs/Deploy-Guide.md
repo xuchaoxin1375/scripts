@@ -252,7 +252,7 @@ bash /path/to/scripts/bash/carapace/setup.sh --dry-run --login
 bash /path/to/scripts/bash/carapace/setup.sh --login
 ```
 
-如果二进制也还没装，可在 PowerShell 里用一条命令覆盖两边：`Deploy-Carapace -Bash`（登录 shell 用 `Deploy-Carapace -Bash -BashLogin`）。它内部调用同一个 `setup.sh`，写入内容与上面手工执行一致；在 Git Bash 内也可以直接 `bash setup.sh --install`（官方 Release + SHA-256，Windows 下载 windows zip），再按需用 `--install-deps` 补齐依赖。bash 侧修改 rc 前仍建议先 `bash setup.sh --dry-run` 确认目标文件。
+如果二进制也还没装，可在 PowerShell 里用一条命令覆盖两边：`Deploy-Carapace -Bash`（登录 shell 用 `Deploy-Carapace -Bash -BashLogin`）。它内部调用同一个 `setup.sh`，写入内容与上面手工执行一致；重复执行只刷新同一个标记块。在 Git Bash 内也可以直接 `bash setup.sh --install`（官方 Release + SHA-256，Windows 下载 windows zip），再按需用 `--install-deps` 补齐依赖。bash 侧修改 rc 前仍建议先 `bash setup.sh --dry-run` 确认目标文件。
 
 macOS 自带 bash 3.2 会被 carapace 拒绝，需要 `brew install bash` 并切换登录 shell；macOS 默认 zsh 不在该接入范围。平台差异、手工片段、PATH 修正原因、与 argc-completions 的共存、验收与未验证项见 [bash/carapace/README.md](../../bash/carapace/README.md)。多个候选时按两次 `<Tab>` 显示列表；`gh` 等外部命令未安装时，静态子命令仍可补全，需要仓库或登录上下文的动态候选才依赖命令本身。先在 bash 中确认 `command -v carapace` 有输出；没有则把安装目录（Git Bash 常见为 `~/.cxxu/bin` 或 `/c/scoop/shims`，Linux/macOS 常见为 `~/.local/bin`）加入 PATH。
 
@@ -269,7 +269,7 @@ Set-GitCompletionSource Carapace -Persist     # 让 carapace 接管 git/gitk
 - 旧版 profile 中的手动 carapace 片段需要删除，否则会与 init 重复注册。也不要执行 carapace 文档中的 `Set-PSReadlineKeyHandler -Key Tab -Function MenuComplete`，避免覆盖本仓库的 Tab 桩。
 - 版本可以不追新，但生成脚本随版本变化：init 在 pwsh 7.6 及更早版本按原文匹配空结果补丁，匹配不到时只告警，不中断启动。
 - 验收：`Get-Command carapace`、`carapace --version`、`carapace --list`（数量随版本变化，不写死）、`TabExpansion2 'scoop install ' 14` 能返回包名候选，`TabExpansion2 'gh pr ' 6` 能返回子命令。
-- 不需要时执行 `Disable-PsPlugin Carapace -Persist`；包管理器渠道按对应命令卸载（`scoop uninstall carapace-bin`、`brew uninstall carapace`），`Deploy-Carapace` 与手工渠道删除二进制（默认 Windows 为 `~/.cxxu/bin/carapace.exe`，其他平台为 `~/.local/bin/carapace`）并从 PATH 移除。慢命令（`winget install`、`uv add`）会阻塞 Tab，按需写入 `PsCarapaceExcludes`。
+- 不需要时执行 `Disable-PsPlugin Carapace -Persist`；包管理器渠道按对应命令卸载（`scoop uninstall carapace-bin`、`brew uninstall carapace`），`Deploy-Carapace` 与手工渠道删除二进制（默认 Windows 为 `~/.cxxu/bin/carapace.exe`，其他平台为 `~/.local/bin/carapace`）并从 PATH 移除。bash 侧用 `bash /path/to/scripts/bash/carapace/setup.sh --uninstall`（登录 shell 加 `--login`）移除 rc 片段，与 PowerShell 侧互不影响；重复执行 `Deploy-Carapace -Bash` 只刷新同一个标记块。慢命令（`winget install`、`uv add`）会阻塞 Tab，按需写入 `PsCarapaceExcludes`。
 - `Deploy-CompletionStack -All` 不包含 carapace，也没有 `-IncludeCarapace` 开关；需要时用 `Deploy-Carapace -Enable` 一步安装并启用，或先 `Deploy-Carapace` 再 `Enable-CxxuComponent Carapace -Persist -Now`。
 
 ## 6. scoop 二进制

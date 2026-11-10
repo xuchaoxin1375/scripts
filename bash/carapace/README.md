@@ -340,6 +340,33 @@ carapace 提供专门的 `bash-ble` 生成模式，本目录的运行时脚本�
 
 PowerShell 侧的 `PsGitCompletionSource` 只影响 PowerShell 的 git/gitk 归属，不改变 bash 的注册顺序。
 
+## 重复安装与停用
+
+重复执行是幂等的：
+
+| 操作 | 重复执行的结果 |
+| --- | --- |
+| `setup.sh` / `setup.sh --login` | 先移除旧标记块再追加，始终只有一份，不会重复 source |
+| `Deploy-Carapace -Bash`（及 `-BashLogin`） | 内部调用同一脚本，效果同上；二进制已存在时跳过下载，但仍刷新 rc |
+| `setup.sh --install` | PATH 中已有 carapace 时跳过并提示，`--force` 才重新下载覆盖 |
+| `setup.sh --install-deps` | 只处理缺失项；包管理器自身幂等，重复执行无副作用 |
+
+- 「已安装」按 `command -v carapace` 判定：PATH 中命中其他渠道（如 `scoop` 的 shims）时同样跳过，不会写到 `--bin-dir`；要把副本装到指定目录加 `--force`。
+- `--force` 只覆盖目标目录的二进制，不清理其他渠道的副本；多个副本并存时以 PATH 顺序为准，用 `command -v carapace` 确认实际命中哪一个。
+- 目标目录没有副本时，rc 片段不写 `CARAPACE_BIN`，避免导出不存在的目录。
+
+停用与卸载分开处理：
+
+| 目标 | 操作 | 删除二进制 |
+| --- | --- | --- |
+| 停用 bash 补全 | `setup.sh --uninstall`（登录 shell 加 `--login`），或手工删除/注释标记块 | 否 |
+| 只停用部分命令 | `CARAPACE_EXCLUDES='git,gitk'` | 否 |
+| 停用 PowerShell 侧 | `Disable-PsPlugin Carapace -Persist`（`Disable-CxxuComponent Carapace -Persist` 等价），重开终端后不再加载 | 否 |
+| 彻底卸载 bash 接入 | 见下节「卸载」 | 否 |
+| 删除二进制 | `scoop uninstall carapace-bin`、`brew uninstall carapace`，或删除 `~/.cxxu/bin/carapace.exe` / `~/.local/bin/carapace` 并从 PATH 移除 | 是 |
+
+两侧独立：停用 PowerShell 组件不影响 bash 的 rc 片段，`--uninstall` 也不修改 `PsCarapace` 配置。
+
 ## 卸载
 
 ```bash

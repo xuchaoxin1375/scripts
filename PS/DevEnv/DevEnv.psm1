@@ -1815,6 +1815,9 @@ function Deploy-Carapace
     默认写非登录 shell 的 ~/.bashrc，加 -BashLogin 改写登录 shell 的 rc
     （~/.bash_profile、~/.bash_login 或 ~/.profile）。bash 侧与 PowerShell 侧互相独立，
     只写 rc 标记块，不修改 profile。未找到 bash 或 setup.sh 时只告警，不中断安装。
+    重复执行是幂等的：已存在的 carapace 默认跳过（-Force 才重新下载），-Bash 只刷新同一个
+    rc 标记块；移除 bash 片段用 bash/carapace/setup.sh --uninstall（登录 shell 加 --login），
+    停用 PowerShell 侧用 Disable-PsPlugin Carapace -Persist，两者互不影响。
     默认查询最新 release；网络受限或需要可复现版本时用 -Version 指定版本号，可跳过 GitHub API。
     已存在 carapace 时默认跳过，-Force 重新下载覆盖；本地版本高于 -Version 时默认拒绝降级，
     确需降级加 -AllowDowngrade。下载失败可改用包管理器：Windows 用 scoop，macOS 用 brew，

@@ -861,7 +861,10 @@ run_install() {
 	if command -v carapace >/dev/null 2>&1 && [ "$FORCE_INSTALL" -eq 0 ]; then
 		printf '已安装 %s（%s）；如需覆盖，加 --force\n' \
 			"$(command -v carapace)" "$(carapace --version 2>/dev/null || printf '版本未知')"
-		note_install_path "$dest"
+		# 目标目录没有副本时不再写 CARAPACE_BIN，避免 rc 指向不存在的目录
+		if [ -x "$dest/$bin" ]; then
+			note_install_path "$dest"
+		fi
 		return 0
 	fi
 	if [ -x "$dest/$bin" ] && [ "$FORCE_INSTALL" -eq 0 ]; then

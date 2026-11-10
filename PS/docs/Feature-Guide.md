@@ -217,7 +217,7 @@ Set-GitCompletionSource Carapace -Persist   # 需要 carapace 接管 git/gitk �
 - 启动成本：约 0.1–0.2 秒（随版本与主机变化；本轮 1.8.2 实测首次约 130ms、重复约 60–90ms），只在 `PsCarapace=True` 时发生。`carapace` 不纳入 `Deploy-CompletionStack` 的 `-Include*` 层，但已进入 `Get-CxxuDependencyReport` 与 `doctor -Feature`。
 - 慢补全：`winget install` 约 3.3 秒、`uv add` 约 4.4 秒，按 Tab 会同步等待；写入 `PsCarapaceExcludes` 排除。
 - 错误候选：命令未安装或上下文缺失时会出现 `ERR` / `_` 候选（例如没有 `package.json` 时的 `npm run`）；写入 `PsCarapaceExcludes` 排除。
-- 回滚：`Disable-PsPlugin Carapace -Persist` 并重开终端；包管理器渠道按对应命令卸载（`scoop uninstall carapace-bin`、`brew uninstall carapace`），`Deploy-Carapace` 与手工渠道删除二进制（默认 Windows 为 `~/.cxxu/bin/carapace.exe`，其他平台为 `~/.local/bin/carapace`）并从 PATH 移除。
+- 回滚：`Disable-PsPlugin Carapace -Persist` 并重开终端；包管理器渠道按对应命令卸载（`scoop uninstall carapace-bin`、`brew uninstall carapace`），`Deploy-Carapace` 与手工渠道删除二进制（默认 Windows 为 `~/.cxxu/bin/carapace.exe`，其他平台为 `~/.local/bin/carapace`）并从 PATH 移除。bash 侧用 `setup.sh --uninstall`（登录 shell 加 `--login`）移除 rc 片段，与 PowerShell 侧互不影响。
 
 **Git Bash / MSYS 与 Linux/macOS bash（可选，与 PowerShell 独立）**：
 
