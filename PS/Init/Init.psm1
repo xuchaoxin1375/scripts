@@ -976,6 +976,8 @@ function Get-CxxuGitCompletionSource
         '^(?i:Auto)$'
         {
             if (Test-CxxuGitCompletionInstalled) { return 'GitCompletion' }
+            # 没有 git-completion 时优先 carapace；argc 的 git 补全缺 --cached/--staged 等选项，只作最后兜底。
+            if (-not [string]::IsNullOrWhiteSpace($env:PsCarapace) -and $env:PsCarapace -notmatch '^(False|0|No|Off)$') { return 'Carapace' }
             return 'Argc'
         }
         '^(?i:GitCompletion)$'
@@ -995,6 +997,7 @@ function Get-CxxuGitCompletionSource
         {
             Write-Warning "未知 PsGitCompletionSource=$raw；按 Auto 处理。"
             if (Test-CxxuGitCompletionInstalled) { return 'GitCompletion' }
+            if (-not [string]::IsNullOrWhiteSpace($env:PsCarapace) -and $env:PsCarapace -notmatch '^(False|0|No|Off)$') { return 'Carapace' }
             return 'Argc'
         }
     }
@@ -2258,7 +2261,7 @@ function Set-GitCompletionSource
     由 init 在启动时读取；本命令只改环境变量与用户配置，不修改 profile。
     - GitCompletion：启动时注册 git-completion；
     - Carapace：同时打开 PsCarapace，由 init 加载 carapace 并让它接管 git/gitk；
-    - Argc：不注册 git-completion，由 argc 在首个 Tab 接管 git/gitk。
+    - Argc：不注册 git-completion，由 argc 在首个 Tab 接管 git/gitk（不推荐：argc 的 git 补全缺 --cached/--staged 等选项）。
     carapace 的额外排除项用 PsCarapaceExcludes 配置，不再写 profile。
     -Persist 把来源写入 ~/.cxxu/config.psd1；不加时只改当前会话。
     当前会话已注册的 Native completer 无法撤销，切换后需重开终端才完全生效。

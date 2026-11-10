@@ -92,7 +92,7 @@
                     Default     = 'Auto'
                     Type        = 'Enum'
                     Values      = @('Auto', 'GitCompletion', 'Carapace', 'Argc')
-                    Description = 'git/gitk 补全来源：Auto/GitCompletion/Carapace/Argc'
+                    Description = 'git/gitk 补全来源：Auto/GitCompletion/Carapace/Argc（Argc 缺 --cached/--staged 等选项，不推荐）'
                 }
             )
         }

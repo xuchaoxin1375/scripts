@@ -332,13 +332,13 @@ carapace 提供专门的 `bash-ble` 生成模式，本目录的运行时脚本�
 
 ## 与 argc-completions 共存
 
-两个工具都用 bash 的 `complete -F` 注册补全，同一个命令以后注册的为准。`~/.bashrc` 中的 source 顺序决定优先级：
+两个工具都用 bash 的 `complete -F` 注册补全，同一个命令以后注册的为准。**本仓库的默认约定是 git/gitk 由 carapace 负责**：argc-completions 的 git 补全由 `git <cmd> --help` 的 OPTIONS 段生成，缺 `--cached`、`--staged`、`--merge-base`、`--no-index` 等只写在 SYNOPSIS 里的选项（见 [argc-completions README](../argc-completions/README.md#git-diff-缺少---cached-与---staged-补全)），把 git 交给 argc 会丢这些候选。
 
-- 需要 carapace 接管 git：把 carapace 的片段放在 argc-completions 之后。
-- 需要 argc-completions 保留 git：在 carapace 前设置 `CARAPACE_EXCLUDES='git,gitk'`，或把 carapace 片段放在 argc 之前。
-- 只想各管一部分命令时，用 `CARAPACE_EXCLUDES` 把 git 留给 argc，其余命令交给 carapace。
+- 让 carapace 接管 git：不设置 `CARAPACE_EXCLUDES`，并让 carapace 的片段在 argc 之后 source。`setup.sh` 默认把块追加到 rc 末尾，所以「先装 argc、后装 carapace」即符合该顺序。
+- 只有明确接受上述缺口时才把 git 交给 argc：在 carapace 前设置 `CARAPACE_EXCLUDES='git,gitk'`，或把 carapace 片段放在 argc 之前。
+- 其余命令可以任意分工：`CARAPACE_EXCLUDES` 只列要从 carapace 排除的命令。
 
-PowerShell 侧的 `PsGitCompletionSource` 只影响 PowerShell 的 git/gitk 归属，不改变 bash 的注册顺序。
+PowerShell 侧：`PsGitCompletionSource` 只影响 PowerShell 的 git/gitk 归属，不改变 bash 的注册顺序；`Auto` 在装有 `git-completion` 模块时选它，也不建议选 `Argc`（同样的选项缺口）。
 
 ### Tab 列表与循环
 
