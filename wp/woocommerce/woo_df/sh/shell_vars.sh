@@ -43,6 +43,7 @@ uploader_files="/srv/uploads/uploader/files"
 # 总仓库目录,存放各个仓库
 REPOS="$HOME/$_REPOS" # ~/repos/
 repos="$REPOS"
+skills="$repos/skills-for-developer"
 # 定义scripts 仓库clone 的保存路径
 SCRIPT_ROOT="$HOME/$_SCRIPT_REPO_BASE" # 默认以家目录为基础路径
 # [[ -d "$repos" ]] && export repos
@@ -88,5 +89,5 @@ export desktop repos sh macos_sh omb_themes \
   reverse_proxy_scripts \
   bt_nginx_conf_home uploader_files woo_df pys \
   SH_SYM SCRIPT_ROOT SH_SCRIPT_DIR PYTHONPATH \
-  scripts \
+  scripts skills \
   mihomo_config_dir
