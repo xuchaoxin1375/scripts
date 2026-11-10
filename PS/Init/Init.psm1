@@ -1009,8 +1009,13 @@ function Get-CxxuGitCompletionSource
         }
         '^(?i:Carapace)$'
         {
-            # carapace 未启用时按 argc 处理，避免 git 没有来源。
-            if ([string]::IsNullOrWhiteSpace($env:PsCarapace) -or $env:PsCarapace -match '^(False|0|No|Off)$') { return 'Argc' }
+            # carapace 未启用时按可用来源回落：git-completion 选项更全，优先；
+            # 组件被显式关闭（PsGitCompletion=False）或模块缺失时才用 argc。
+            if ([string]::IsNullOrWhiteSpace($env:PsCarapace) -or $env:PsCarapace -match '^(False|0|No|Off)$')
+            {
+                if ($env:PsGitCompletion -notmatch '^(False|0|No|Off)$' -and (Test-CxxuGitCompletionInstalled)) { return 'GitCompletion' }
+                return 'Argc'
+            }
             return 'Carapace'
         }
         '^(?i:Argc)$' { return 'Argc' }
@@ -2325,6 +2330,11 @@ function Disable-PsPlugin
                     $global:PsCarapaceGit = $false
                     $gitFallback = Get-CxxuGitCompletionSource
                 }
+                # 回落到 git-completion 时先注册，argc 重新注册就会继续让出 git/gitk。
+                if ($gitFallback -eq 'GitCompletion' -and (Test-CxxuGitCompletionInstalled))
+                {
+                    Register-GitCompletion
+                }
                 $argcOn = -not [string]::IsNullOrWhiteSpace($env:PsArgc) -and
                     $env:PsArgc -notmatch '^(False|0|No|Off)$'
                 if ($argcOn -and $global:PsArgcLoaded)
@@ -2342,16 +2352,9 @@ function Disable-PsPlugin
                 }
                 if ($gitFallback -eq 'GitCompletion')
                 {
-                    if (Test-CxxuGitCompletionInstalled)
-                    {
-                        Register-GitCompletion
-                        if ($global:PsGitCompletion) { Write-Host 'git/gitk 已改由 git-completion 接管。' }
-                        else { Write-Host 'git-completion 未重新注册（已加载或来源未指向它），git/gitk 维持当前来源。' }
-                    }
-                    else
-                    {
-                        Write-Host 'git/gitk 暂无来源：git-completion 未安装，重开终端后按来源配置回落。'
-                    }
+                    if ($global:PsGitCompletion) { Write-Host 'git/gitk 已改由 git-completion 接管。' }
+                    elseif (Test-CxxuGitCompletionInstalled) { Write-Host 'git-completion 未重新注册（已加载或来源未指向它），git/gitk 维持当前来源。' }
+                    else { Write-Host 'git/gitk 暂无来源：git-completion 未安装，重开终端后按来源配置回落。' }
                 }
                 elseif ($gitFallback -eq 'Argc')
                 {
@@ -2477,7 +2480,9 @@ function Set-GitCompletionSource
     由 init 在启动时读取；本命令只改环境变量与用户配置，不修改 profile。
     - GitCompletion：启动时注册 git-completion；
     - Carapace：同时打开 PsCarapace，由 init 注册懒加载桩并让它接管 git/gitk；
-    - Argc：不注册 git-completion，由 argc 在首个 Tab 接管 git/gitk（不推荐：argc 的 git 补全缺 --cached/--staged 等选项）。
+      carapace 停用或未加载时按可用来源回落（git-completion 优先，其次 argc）。
+    - Argc：由 argc 在首个 Tab 接管 git/gitk（不推荐：argc 的 git 补全缺 --cached/--staged 等选项）。
+    切到 Carapace/Argc 不会把 GitCompletion 组件置为停用，只有显式 Disable-PsPlugin GitCompletion 才会。
     carapace 的额外排除项用 PsCarapaceExcludes 配置，不再写 profile。
     -Persist 把来源写入 ~/.cxxu/config.psd1；不加时只改当前会话。
     当前会话已注册的 Native completer 无法撤销，切换后需重开终端才完全生效。
@@ -2501,17 +2506,19 @@ function Set-GitCompletionSource
     )
 
     $wantGitCompletion = $Source -eq 'GitCompletion'
-    $gitValue = if ($wantGitCompletion) { 'True' } else { 'False' }
 
     $applied = $false
     if ($PSCmdlet.ShouldProcess("git 补全来源 -> $Source", '设置'))
     {
         Set-Item 'env:PsGitCompletionSource' -Value $Source
-        Set-Item 'env:PsGitCompletion' -Value $gitValue
+        # 选来源不等于停用组件：只有选中 git-completion 时才打开组件开关；
+        # 切到 Carapace/Argc 保留原组件状态，供 carapace 不可用时回落到 git-completion。
+        if ($wantGitCompletion) { Set-Item 'env:PsGitCompletion' -Value 'True' }
         if ($Source -eq 'Carapace') { Set-Item 'env:PsCarapace' -Value 'True' }
         if ($Persist)
         {
-            $updates = @{ PsGitCompletionSource = $Source; PsGitCompletion = $wantGitCompletion }
+            $updates = @{ PsGitCompletionSource = $Source }
+            if ($wantGitCompletion) { $updates['PsGitCompletion'] = $true }
             if ($Source -eq 'Carapace') { $updates['PsCarapace'] = $true }
             Set-CxxuConfigModelValues -Path $Path -Values $updates
         }

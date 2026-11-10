@@ -33,7 +33,7 @@ Add-EnvVar -EnvVar PSModulePath -NewValue $p -Verbose
 | `Get-CxxuConfig` | 查看各开关的当前生效值、来源（环境变量/配置文件/默认值）与默认值；管道接 `Format-List` 看完整说明 |
 | `Reset-CxxuConfig` | 按仓库默认偏好（组件见 `PS/Init/components.psd1`，Settings 见 `PS/Init/config.defaults.psd1`）重置用户配置文件；`-WhatIf` 只预览路径，重置后重开终端生效，并列出仍会覆盖默认值的环境变量 |
 | `Enable-PsPlugin` / `Disable-PsPlugin` | 体验插件启停（Fzf/Zoxide/Predictor/Tab/Argc/GitCompletion/Carapace/PSCompletions/Fnm/ScoopSearch，当会话生效；加 `-Persist` 长期有效，写 `~/.cxxu/config.psd1`） |
-| `Set-GitCompletionSource` | 切换 `git`/`gitk` 的 Tab 补全来源（`GitCompletion`/`Carapace`/`Argc`）：写入 `PsGitCompletionSource` 与相关开关，由 `init` 在启动时读取；不改 profile，`-Persist` 落配置，`-WhatIf` 预览 |
+| `Set-GitCompletionSource` | 切换 `git`/`gitk` 的 Tab 补全来源（`GitCompletion`/`Carapace`/`Argc`）：写入 `PsGitCompletionSource` 与相关开关，由 `init` 在启动时读取；切到 `Carapace`/`Argc` 不会停用 GitCompletion 组件（停用需显式 `Disable-PsPlugin GitCompletion`）；不改 profile，`-Persist` 落配置，`-WhatIf` 预览 |
 | `Get-CxxuComponent` | 按组件列出启用状态、选项、来源、默认值与安装/文档入口，并给出 `Install`/`Enable` 建议命令；`-Id Carapace` 只查一个；`-Validate` 改跑清单/步骤/依赖一致性自检 |
 | `Test-CxxuComponent` | 只读检查组件清单结构、Init 步骤生成与已启用组件的外部依赖；`Status` 为 `OK`/`警告`/`错误`，依赖警告会带安装与启用命令；`Get-CxxuComponent -Validate` 与 `doctor` 复用同一结果 |
 | `Enable-CxxuComponent` / `Disable-CxxuComponent` | 按组件 Id 启停；默认只改开关，`-Now` 立即调用组件的 Init 函数；`-Persist` 写 `~/.cxxu/config.psd1` 的 `Components` 段，不加只改当前会话；写入前备份旧文件，并按 v2 规范文本重写（手工注释可能被规范化） |
@@ -215,7 +215,7 @@ Set-GitCompletionSource Carapace -Persist   # 需要 carapace 接管 git/gitk �
 ```
 
 - `PsCarapace=True` 时 `init` 只计算排除项并注册首个 Tab 懒加载桩，启动阶段不执行 carapace 的注册脚本；默认关闭，未启用时没有这项开销。首次 Tab 加载约 0.2–0.3 秒，之后 Tab 正常。
-- `PsGitCompletionSource` 决定 git/gitk 归属：`Auto`、`GitCompletion`、`Argc` 时 `init` 把 `git,gitk` 并入 `CARAPACE_EXCLUDES`；`Carapace` 时不排除，并让 argc 让路。`Argc` 不推荐用于 git：argc 上游生成的 git 补全缺 `--cached`、`--staged` 等只写在 SYNOPSIS 的选项；`Auto` 的顺序为 `GitCompletion` → `Carapace` → `Argc`，`Argc` 仅作兜底。切换到前三种来源不会关闭 carapace 本身，需要停止加载时另执行 `Disable-PsPlugin Carapace`（加 `-Persist` 长期生效）；已加载的 completer 按 `PsCarapace` 门控立即返回空，`git`/`gitk` 按来源当场回落（`Carapace` 来源落到 `Argc`，`GitCompletion` 来源重新注册模块）。
+- `PsGitCompletionSource` 决定 git/gitk 归属：`Auto`、`GitCompletion`、`Argc` 时 `init` 把 `git,gitk` 并入 `CARAPACE_EXCLUDES`；`Carapace` 时不排除，并让 argc 让路。`Argc` 不推荐用于 git：argc 上游生成的 git 补全缺 `--cached`、`--staged` 等只写在 SYNOPSIS 的选项；`Auto` 的顺序为 `GitCompletion` → `Carapace` → `Argc`，`Argc` 仅作兜底。切换到前三种来源不会关闭 carapace 本身，需要停止加载时另执行 `Disable-PsPlugin Carapace`（加 `-Persist` 长期生效）；已加载的 completer 按 `PsCarapace` 门控立即返回空，`git`/`gitk` 当场回落：`Carapace` 来源优先交给 `git-completion`（模块已安装且组件未关闭），否则用 `Argc`；`GitCompletion` 来源直接重新注册模块。
 - 与 argc 同开时，两者都在首个 Tab 注册；Tab 桩先加载 carapace，再注册 argc，同名 Native completer 后注册者 argc 生效，因此非 git/gitk 的重叠命令会由 argc 接管。需要 carapace 负责这些外部 CLI 时，关闭 argc（`Disable-PsPlugin Argc -Persist`）或接受 argc 的候选；bash 侧顺序相反，见 [bash/carapace README](../../bash/carapace/README.md)。
 - 慢命令排除项写 `PsCarapaceExcludes`（逗号分隔，如 `winget,uv`），与 git/gitk 规则由 `init` 合并；未设置该键时沿用已有的 `CARAPACE_EXCLUDES`。
 - 旧版 profile 中的手动 carapace 片段需要删除，否则会与懒加载桩重复注册；也不要执行 carapace 文档中的 `Set-PSReadlineKeyHandler -Key Tab -Function MenuComplete`，避免覆盖现有 Tab 桩。

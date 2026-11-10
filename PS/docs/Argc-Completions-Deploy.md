@@ -150,7 +150,7 @@ Initialize-ArgcCompletions -Force   # 当前会话重新注册 Tab 补全
 - 关闭 `Argc` 不删除仓库、缓存或已注册的 completer，重新开启无需重开终端；仓库或工具变化后按[更新](#3-更新)一节执行 `Initialize-ArgcCompletions -Force`。
 - 关闭与重开 `Argc` 都会处理同名 completer 的归属：关闭时若 carapace 可用，自动执行 `Initialize-Carapace -Force` 重新注册（约 0.2 秒），当前会话的重叠命令立即由 carapace 接管；重开时再执行 `Initialize-ArgcCompletions -Force` 夺回。来回切换不需要重开终端。
 - 反向停用 `Carapace` 对称：carapace 的 completer 入口带 `PsCarapace` 门控，停用后已注册的绑定立即返回空；argc 已注册时自动重新注册，重叠命令当场换回 argc。只有 carapace 独有的命令会暂时无候选，重开终端后回到原生补全。
-- `git`/`gitk` 在停用 carapace 时按 `PsGitCompletionSource` 当场回落：来源为 `Carapace` 时落到 `Argc`（argc 重新注册时把 git/gitk 纳入），来源为 `GitCompletion` 时重新注册 git-completion；都不需要重开终端。偏好 git-completion 可执行 `Set-GitCompletionSource GitCompletion`。
+- `git`/`gitk` 在停用 carapace 时按 `PsGitCompletionSource` 当场回落：来源为 `Carapace` 时优先交给 `git-completion`（模块已安装且组件未被 `PsGitCompletion=False` 关闭），模块缺失或组件被显式关闭才落到 `Argc`；来源为 `GitCompletion` 时直接重新注册模块。都不需要重开终端。
 - 关闭 argc 只影响应用命令的参数补全，不影响 `Get-ChildItem -` 等 cmdlet 的原生参数补全。
 - init 检测到 `git-completion`（`$global:PsGitCompletion`）或 carapace 接管 git（`$global:PsCarapaceGit`）时，argc 不注册 `git`/`gitk`：三者都注册同名 Native completer，后注册者覆盖先注册者，而 argc 首个 Tab 才注册，会顶掉先注册的补全；只启用 git-completion 时其余命令不受影响。
 - 与 carapace 同时启用时，非 git/gitk 的重叠命令也会遇到同一顺序问题：carapace 在 `init` 注册，argc 在首个 Tab 注册，同名 completer 后注册者生效。需要 carapace 负责这些外部 CLI（如 `docker`、`gh`）时，关闭 argc（`Disable-PsPlugin Argc -Persist`）或接受 argc 的候选；bash 侧的顺序相反，见 [completion-stack](../../bash/completion-stack/README.md)。
