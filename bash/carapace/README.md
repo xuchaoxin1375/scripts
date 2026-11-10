@@ -6,7 +6,7 @@
 - macOS 与 Git Bash：终端常以登录 shell 启动，读 `~/.bash_profile`、`~/.bash_login` 或 `~/.profile`，不读 `~/.bashrc`。
 - macOS 自带 `/bin/bash` 是 3.2，carapace 会拒绝加载，需要 bash 4 及以上。
 
-本目录提供一个可重复 source 的运行时脚本和一个写入/卸载 rc 标记块的小工具，覆盖 Git Bash、Cygwin、Linux、WSL 与 macOS 的 bash。PowerShell 侧的 carapace 由 `init` 按 `PsCarapace` 配置加载，启停用 `Enable-CxxuComponent` / `Disable-CxxuComponent`；本目录只覆盖 bash，两边互不影响。安装与 PowerShell 侧配置见 [Deploy-Guide](../../PS/docs/Deploy-Guide.md) 的「可选：carapace」。
+本目录提供一个可重复 source 的运行时脚本，以及一个写入/卸载 rc 标记块、可做只读状态检查的小工具，覆盖 Git Bash、Cygwin、Linux、WSL 与 macOS 的 bash。PowerShell 侧的 carapace 由 `init` 按 `PsCarapace` 配置加载，启停用 `Enable-CxxuComponent` / `Disable-CxxuComponent`；本目录只覆盖 bash，两边互不影响。安装与 PowerShell 侧配置见 [Deploy-Guide](../../PS/docs/Deploy-Guide.md) 的「可选：carapace」。
 
 ## 适用范围
 
@@ -43,6 +43,12 @@ shopt -q login_shell && echo "login shell" || echo "non-login shell"
 ```bash
 command -v carapace
 carapace --version
+```
+
+接入前可以先看整体状态（只读，不改文件）：
+
+```bash
+bash /path/to/scripts/bash/carapace/setup.sh --check
 ```
 
 接入命令按终端类型二选一：
@@ -153,6 +159,7 @@ macOS Terminal 默认是登录 shell；VS Code 等集成终端可能是非登录
 | `-l`, `--login` | 写入登录 shell 实际读取的 rc 文件 |
 | `-r`, `--rc <file>` | 指定 rc 文件，默认 `~/.bashrc` |
 | `-u`, `--uninstall` | 从 rc 文件移除 `# >>> carapace >>>` 标记块 |
+| `-c`, `--check`、`--status` | 只读检查依赖、rc 片段与端到端加载状态；不修改任何文件 |
 | `-h`, `--help` | 显示帮助 |
 
 行为与边界：
@@ -166,6 +173,8 @@ macOS Terminal 默认是登录 shell；VS Code 等集成终端可能是非登录
 - 安装与卸载通过同目录临时文件加 `mv` 替换，并用 `cp -p` 保留原 rc 的权限；Git Bash/MSYS 的 `awk`/`grep` 以文本模式处理文件，重写 rc 时可能把该文件的行尾统一为 LF。bash 不受影响；要保持 CRLF 请手工编辑，或用版本控制对比后决定。
 - 标记块中的路径是当前仓库副本的绝对路径；仓库移动后重新运行 `setup.sh` 刷新，或手工删除旧块。
 - 找不到 carapace 时只提示，不阻止写入；新开 shell 后由运行时脚本再次提示并跳过初始化。装好 carapace 后新开终端，或重新 `source` 对应 rc。
+- `--check`（`--status` 同义）只读：依次报告 bash 版本、`carapace` 与 `xargs` 是否可用、运行时脚本是否存在、平台、目标 rc、四个候选 rc 的标记块状态（含块内路径是否仍然存在），再用 `bash -ic` / `bash -lic` 各起一个子 shell 验证实际是否加载；不改写任何文件，且不能与 `--dry-run`、`--uninstall` 同时使用。
+- `--check` 退出码：全部正常为 0；缺依赖、rc 片段有问题或尚未接入为 1；参数错误为 2。结论行会给出对应的修复命令。
 - `--login` 安装后，默认的 `--uninstall` 不会去登录 rc 找块；用 `--uninstall --login`，或用 `--rc` 指向同一个文件。
 - 标记块带 `[ -n "${BASH_VERSION:-}" ]` 保护，写进 `.profile` 这类可能被 sh/dash 读取的文件时，非 bash shell 会跳过，不会因加载 bash 脚本报错。
 
@@ -285,6 +294,7 @@ bash /path/to/scripts/bash/carapace/setup.sh --uninstall --rc ~/.bash_profile
 | git 补全被 argc 或 bash-completion 覆盖 | rc 中的 source 顺序 | 调整顺序，或用 `CARAPACE_EXCLUDES` 排除 |
 | 提示 rc 是符号链接 | `ls -l ~/.bashrc` | 用 `--rc` 指向真实文件，或手工编辑目标文件 |
 | Git Bash 下 rc 行尾被改为 LF | `git diff` 或 `od -c ~/.bashrc` | 手工改回，或先把配置纳入版本控制在重写后对比 |
+| 想一次确认依赖与接入状态 | `bash /path/to/scripts/bash/carapace/setup.sh --check` | 按输出标出的问题逐项处理；退出码 1 表示仍需处理 |
 
 ## 验证记录与未验证项
 
@@ -292,6 +302,7 @@ bash /path/to/scripts/bash/carapace/setup.sh --uninstall --rc ~/.bash_profile
 
 - Git Bash 5.2.37（MSYS）+ carapace 1.8.2：运行时脚本 `source` 约 40–55 ms（含一次 `carapace _carapace bash` 生成；单独执行该生成命令约 35–40 ms）；`git checkout <Tab><Tab>` 返回带说明的标签/分支/引用候选，`gh pr <Tab><Tab>` 在未安装 `gh` 时返回静态子命令。
 - `setup.sh` 在隔离 `HOME` 下验证了试运行不建文件、首次安装、重复安装幂等、卸载、标记块损坏报错、`--login` 目标选择与 `--uninstall --login`；还验证了权限保持、CRLF 文件在 Linux/WSL 下保留行尾、符号链接拒绝改写。
+- `setup.sh --check` 在隔离 `HOME` 下验证了未接入、已接入（非登录与登录两类 shell 均加载）、块内路径失效、缺结束标记四种状态与对应退出码；`--check --dry-run` 按参数错误拒绝。
 - 运行时脚本在未安装 carapace 时给出平台提示并跳过；`BASH_VERSION`、`xargs`、`source` 失败都有对应提示。
 - `shellcheck 0.9.0` 与 `shfmt 3.8.0` 对 `setup.sh`、`carapace.sh` 无报错，`bash -n` 通过。
 - WSL Ubuntu 24.04：`setup.sh` 的安装、重复安装、卸载、符号链接保护与 CRLF 保留通过；WSL 内未安装 carapace，因此 Linux 的实际补全效果未验证。
