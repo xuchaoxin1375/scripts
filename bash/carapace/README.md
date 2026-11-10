@@ -33,7 +33,7 @@ shopt -q login_shell && echo "login shell" || echo "non-login shell"
 | Cygwin | 同 Git Bash，或 Cygwin 包管理器 | 同 bash 规则 | 需要（兼容层） | 未实测 |
 | Linux | `setup.sh --install`（官方 Release + SHA-256 + 镜像/代理），或发行版仓库，或手工装到 `~/.local/bin` | 非登录 `.bashrc`；登录 `.bash_profile`/`.bash_login`/`.profile` | 不需要 | `--install` 在 WSL Ubuntu 24.04 已实测；实际补全未在 Linux 桌面验证 |
 | WSL | 在 WSL 内用 `setup.sh --install` 装 Linux 版；不要复用 Windows 的 `carapace.exe` | 通常为非登录 `.bashrc` | 不需要 | `--install` 与 `--check` 已实测；ble.sh 菜单未验证 |
-| macOS bash | `brew install bash carapace`；系统 bash 3.2 不可用 | 非登录 `.bashrc`；登录 `.bash_profile`/`.bash_login`/`.profile` | 不需要 | 未实测 |
+| macOS bash | `brew install bash carapace`；系统 bash 3.2 不可用 | 非登录 `.bashrc`；登录 `.bash_profile`/`.bash_login`/`.profile` | 不需要 | 运行时脚本与 git 注册已实测；交互式候选菜单未验证 |
 | macOS zsh | 不在本目录范围 | — | — | — |
 
 ## 最短路径（新设备复用）
@@ -199,6 +199,12 @@ bash setup.sh --login
 
 macOS Terminal 默认是登录 shell；VS Code 等集成终端可能是非登录 shell，仍按上面的 `shopt` 结果选择。macOS 默认 shell 是 zsh，本目录不配置 zsh；如果要用默认终端，需要按 carapace 的 zsh 接入方式另行配置。macOS 的官方 carapace 产物未签名，优先用 `brew install carapace`。
 
+macOS 上的 pwsh 用户如果同时使用 bash，按两侧分别处理：
+
+- PowerShell 侧由 `init` 的 `PsCarapace` 加载：`brew install carapace` 后执行 `Enable-CxxuComponent Carapace -Persist -Now`，或用 `Deploy-Carapace -Enable`。
+- bash 侧仍由本目录的 `setup.sh` 写 rc；`Deploy-Carapace -Bash` 只调用这个脚本，不负责安装 bash 4+。系统 bash 3.2 会被 carapace 拒绝，先确认 `bash --version` 是 4.x/5.x。
+- `Deploy-Carapace` 在非 Windows 上只把安装目录加入当前会话 PATH；`~/.local/bin` 需要写进 shell 配置，Homebrew 的 `/opt/homebrew/bin` 通常已在 PATH。
+
 ## setup.sh 的选项与行为
 
 | 选项 | 作用 |
@@ -339,7 +345,15 @@ carapace 提供专门的 `bash-ble` 生成模式，本目录的运行时脚本�
 - 只有明确接受上述缺口时才把 git 交给 argc：在 carapace 前设置 `CARAPACE_EXCLUDES='git,gitk'`，或把 carapace 片段放在 argc 之前。
 - 其余命令可以任意分工：`CARAPACE_EXCLUDES` 只列要从 carapace 排除的命令。
 
-PowerShell 侧：`PsGitCompletionSource` 只影响 PowerShell 的 git/gitk 归属，不改变 bash 的注册顺序；`Auto` 在装有 `git-completion` 模块时选它，也不建议选 `Argc`（同样的选项缺口）。
+### PowerShell 侧的顺序不同
+
+PowerShell 不按 rc 的 source 顺序，而是由 `init` 注册 Native completer；两侧都开启时不要照搬 bash 的“argc 前、carapace 后”：
+
+- carapace 由 `PsCarapace` 在 `init` 启动时加载；argc 由 `PsArgc` 在首个 Tab 才注册。
+- PowerShell 对同名 Native completer 采**后注册覆盖先注册**。因此两者都开启时，argc 会接管非 git/gitk 的重叠命令，carapace 只补 argc 没有的命令。
+- 需要 carapace 负责这些外部 CLI 时，关闭 argc：`Disable-PsPlugin Argc -Persist`；或只保留 carapace 与 `git-completion`。
+- `PsGitCompletionSource` 只影响 PowerShell 的 git/gitk 归属，不改变 bash 的注册顺序；`Auto` 在装有 `git-completion` 模块时选它，也不建议选 `Argc`（同样的选项缺口）。
+- 两侧配置独立：`PsCarapace` 控制 PowerShell，rc 标记块控制 bash；同一个 carapace 二进制可以共用，但启用、停用与排除项不联动。
 
 ### 互补用法（各管一部分命令）
 
@@ -475,10 +489,11 @@ bash /path/to/scripts/bash/carapace/setup.sh --disable --rc ~/.bash_profile
 - 运行时脚本在未安装 carapace 时给出平台提示并跳过；`BASH_VERSION`、`xargs`、`source` 失败都有对应提示。
 - `shellcheck 0.9.0` 与 `shfmt 3.8.0` 对 `setup.sh`、`carapace.sh` 无报错，`bash -n` 通过。
 - WSL Ubuntu 24.04：`setup.sh` 的安装、重复安装、卸载、符号链接保护与 CRLF 保留通过；WSL 内未安装 carapace，因此 Linux 的实际补全效果未验证。
+- macOS 27.2（arm64、Homebrew bash 5.3.15、carapace 1.8.2、ble.sh）：`setup.sh` 写入 `~/.bashrc` 后，`bash -ic` 能加载 `_carapace_completer_ble`，`complete -p git` 显示 `-F _carapace_completer_ble`；登录 shell 场景未单独验证。`brew install carapace` 安装的是 1.8.2。
 
 未验证或未覆盖：
 
-- macOS 的 bash 4+ 安装、`chsh`、登录 rc 与 carapace 实际补全未在 macOS 实机验证；本文按 bash 的通用读取规则给出步骤。
+- macOS 的 `chsh` 与登录 rc 选择未实测；交互式 Tab 候选菜单、ble.sh 菜单外观与动态候选未在真实窗口中逐项验证。
 - Cygwin 未实测：`--install` 的 zip 解压回退（unzip/bsdtar/powershell）只在 Git Bash（MSYS）验证；PATH 修正分支按 MSYS 的行为编写。
 - Linux 桌面发行版、ssh 登录 shell、`.deb`/`.rpm`/`.apk` 渠道未逐项验证。
 - macOS 默认 zsh 不在本目录范围；zsh 的接入需要按 carapace 官方方式单独配置。

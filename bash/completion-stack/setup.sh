@@ -151,7 +151,9 @@ resolve_argc_dir() {
 
 probe_loaded() {
 	local flag="$1" out
-	out="$(bash "$flag" 'type _argc_completer >/dev/null 2>&1 && echo loaded=1 || echo loaded=0' 2>/dev/null || true)"
+	# Homebrew 的 argc 自带 bash-completion.d，会注册 _argc_completer 但只绑定 argc 本身；
+	# 用 nginx 这类 carapace 不覆盖、argc 覆盖的命令判断仓库运行时是否真的接入。
+	out="$(bash "$flag" 'complete -p nginx 2>/dev/null | grep -q "_argc_completer" && echo loaded=1 || echo loaded=0' 2>/dev/null || true)"
 	case "$out" in
 	*loaded=1*) return 0 ;;
 	*) return 1 ;;
@@ -172,9 +174,9 @@ run_check() {
 	fi
 	if [ "$SKIP_ARGC" -eq 0 ]; then
 		if [ -f "$rc" ] && grep -qxF "$BEGIN_MARK" "$rc"; then
-			echo "  argc     : rc 中已有片段（$rc）"
+			echo "  argc     : rc 中已有片段（${rc}）"
 		else
-			echo "  argc     : rc 中未安装（$rc）"
+			echo "  argc     : rc 中未安装（${rc}）"
 			failures=$((failures + 1))
 		fi
 		if probe_loaded -ic || probe_loaded -lc; then
@@ -243,7 +245,7 @@ if [ "$SKIP_CARAPACE" -eq 0 ]; then
 	fi
 	if [ -f "$rc" ] && grep -qxF "$CARAPACE_MARK" "$rc" && [ "$INSTALL_CARAPACE" -eq 0 ]; then
 		echo ''
-		echo "== carapace（rc 中已有片段，跳过：$rc） =="
+		echo "== carapace（rc 中已有片段，跳过：${rc}） =="
 	else
 		echo ''
 		echo '== carapace（后加载，接管重叠命令） =='

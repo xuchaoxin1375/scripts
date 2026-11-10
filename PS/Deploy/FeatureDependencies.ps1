@@ -288,7 +288,6 @@ $homeDir = $HOME
         Level     = '可选'
         Kind      = 'Command'
         Name      = 'carapace'
-        Platform  = 'Windows'
         Gate      = 'PsCarapace'
         Impact    = 'scoop、winget、gh、docker 等外部 CLI 的参数值补全不可用。'
         Install   = 'Deploy-Carapace -Enable（安装并启用），或 Deploy-Carapace 后 Enable-CxxuComponent Carapace -Persist -Now；bash 侧用 Deploy-Carapace -Bash/-BashLogin'

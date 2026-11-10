@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 安装 / 停用 argc-completions 的 bash 接入片段（Git Bash 与 WSL/Linux 通用）。
+# 安装 / 停用 argc-completions 的 bash 接入片段（Git Bash、WSL/Linux 与 macOS 通用）。
 # 只改写 ~/.bashrc 中的标记块，不修改 argc-completions 仓库。
 set -euo pipefail
 
@@ -95,8 +95,8 @@ case "$ARGC_DIR" in
 "~") ARGC_DIR="$HOME" ;;
 "~/"*) ARGC_DIR="$HOME/${ARGC_DIR#\~/}" ;;
 esac
-if [ -n "$ARGC_DIR" ] && { [ ! -d "$ARGC_DIR/completions" ] || [ ! -d "$ARGC_DIR/bin" ]; }; then
-	echo "错误: $ARGC_DIR 不是 argc-completions 克隆目录（缺少 completions/ 或 bin/）" >&2
+if [ -n "$ARGC_DIR" ] && [ ! -d "$ARGC_DIR/completions" ]; then
+	echo "错误: $ARGC_DIR 不是 argc-completions 克隆目录（缺少 completions/）" >&2
 	exit 1
 fi
 

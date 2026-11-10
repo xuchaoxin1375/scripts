@@ -1,14 +1,14 @@
-# argc-completions 在 Git Bash 与 WSL bash 中的适配
+# argc-completions 在 bash 中的适配（Git Bash / WSL / Linux / macOS）
 
-[argc-completions](https://github.com/sigoden/argc-completions) 上游只提供“把片段写入 `~/.bashrc`”的通用做法，直接照搬到 Git Bash 与 WSL 会遇到二进制冲突、bash 探测失败、ble.sh 候选串污染等问题。本目录在**不修改上游仓库**的前提下补齐这些差异，两个环境共用同一份运行时脚本。
+[argc-completions](https://github.com/sigoden/argc-completions) 上游只提供“把片段写入 `~/.bashrc`”的通用做法，直接照搬到 Git Bash、WSL/Linux 与 macOS bash 会遇到二进制冲突、bash 探测失败、ble.sh 候选串污染等问题。本目录在**不修改上游仓库**的前提下补齐这些差异，各环境共用同一份运行时脚本。
 
-> PowerShell 侧由 `PS/Init` 接管（懒加载，开关 `$env:PsArgc`）；启停、状态检查与排障见 [Argc-Completions-Deploy](../../PS/docs/Argc-Completions-Deploy.md)。本目录只覆盖 Git Bash 与 WSL bash。
+> PowerShell 侧由 `PS/Init` 接管（懒加载，开关 `$env:PsArgc`）；启停、状态检查与排障见 [Argc-Completions-Deploy](../../PS/docs/Argc-Completions-Deploy.md)。本目录覆盖 Git Bash、WSL/Linux 与 macOS bash。
 >
 > carapace 也会注册 bash 补全，两者对同一命令由后 source 的一方接管；本仓库建议 git/gitk 归 carapace（argc 的 git 补全缺 `--cached`/`--staged` 等选项，见下文），其余命令可任意分工。要做互补，把 argc 片段放在 carapace 之前：重叠命令交给 carapace，argc 独有命令（如 `nginx`）保留 argc。见 [carapace README](../carapace/README.md) 的「与 argc-completions 共存」。
 
 ## 目录内容
 
-- [argc-completions.sh](argc-completions.sh)：运行时初始化，被 `~/.bashrc` source；自动区分 MSYS 与 Linux/WSL，可重复 source。
+- [argc-completions.sh](argc-completions.sh)：运行时初始化，被 `~/.bashrc` source；自动区分 MSYS、Linux/WSL 与 macOS，可重复 source。
 - [setup.sh](setup.sh)：在 `~/.bashrc` 中写入或移除带标记的接入片段，支持试运行与卸载。
 - [README.md](README.md)：本文档。
 
@@ -21,12 +21,21 @@ bash /c/repos/scripts/bash/argc-completions/setup.sh --dry-run
 bash /c/repos/scripts/bash/argc-completions/setup.sh --argc-dir ~/argc-completions
 ```
 
-WSL 中执行：
+WSL / Linux 中执行：
 
 ```sh
-bash /mnt/c/repos/scripts/bash/argc-completions/setup.sh --dry-run
-bash /mnt/c/repos/scripts/bash/argc-completions/setup.sh --argc-dir ~/argc-completions
+bash /path/to/scripts/bash/argc-completions/setup.sh --dry-run
+bash /path/to/scripts/bash/argc-completions/setup.sh --argc-dir ~/argc-completions
 ```
+
+macOS bash 中执行：
+
+```sh
+bash /path/to/scripts/bash/argc-completions/setup.sh --dry-run --argc-dir ~/argc-completions
+bash /path/to/scripts/bash/argc-completions/setup.sh --argc-dir ~/argc-completions
+```
+
+macOS Terminal 通常是登录 shell，但 `~/.bash_profile` 已经 source `~/.bashrc` 时写在 `~/.bashrc` 即可；否则加 `--login`。macOS 自带 `/bin/bash` 3.2 未验证，建议用 `brew install bash` 后切换到 bash 4.4+，`-o nosort` 也要求 4.4 及以上。macOS/Linux 用 Homebrew 或系统包的 `argc` 时，仓库可以没有 `bin/` 目录；运行时脚本只在 `bin/` 存在时把它前置到 PATH。
 
 安装动作只有一处：写入 `# >>> argc-completions >>>` 标记块，块内按需 `export ARGC_COMPLETIONS_DIR` 并 source 运行时脚本。rc 中已有 carapace 块时，argc 块会插到它之前，保证 carapace 继续负责重叠命令（git 等）；登录 shell 加 `--login`。重新打开终端或 `source` 对应 rc 后生效。
 
@@ -49,13 +58,14 @@ bash /path/to/scripts/bash/argc-completions/setup.sh --disable --login  # 登录
 ```sh
 source /c/repos/scripts/bash/argc-completions/argc-completions.sh          # Git Bash
 source /mnt/c/repos/scripts/bash/argc-completions/argc-completions.sh      # WSL
+source /path/to/scripts/bash/argc-completions/argc-completions.sh          # Linux / macOS
 ```
 
 可用环境变量覆盖默认行为：
 
 | 变量 | 作用 |
 | --- | --- |
-| `ARGC_COMPLETIONS_DIR` | 上游仓库位置，默认 Git Bash 为 `/c/repos/argc-completions`，WSL 为 `/mnt/c/repos/argc-completions` |
+| `ARGC_COMPLETIONS_DIR` | 上游仓库位置，默认 Git Bash 为 `/c/repos/argc-completions`，WSL 为 `/mnt/c/repos/argc-completions`，macOS/Linux 依次探测 `~/argc-completions`、`~/repos/argc-completions` |
 | `ARGC_COMPLETIONS_ONLY` | 只注册指定命令，如 `ARGC_COMPLETIONS_ONLY="git docker cargo"` |
 | `ARGC_COMPGEN_DESCRIPTION` | 是否输出候选描述，默认 `0`。只有 Tab 仍绑定普通 `complete` 且未加载 ble.sh 时，设为 `1` 才安全 |
 
@@ -99,14 +109,14 @@ sudo pacman -S go-yq        # Arch
 
 ## 平台差异
 
-| 项目 | Git Bash（MSYS） | WSL / Linux |
-| --- | --- | --- |
-| `argc` 入口 | `~/.local/bin/argc.exe` 副本 | 上游 `bin/argc` |
-| `ARGC_COMPLETIONS_ROOT` | POSIX 路径，供 bash `source` 使用 | 仓库绝对路径 |
-| `ARGC_COMPLETIONS_PATH` | Windows 路径、`;` 分隔，含 `windows` 子目录 | POSIX 路径、`:` 分隔，含 `linux` 子目录 |
-| `ARGC_SHELL_PATH` | 必须显式指定 | 不需要 |
-| `PATH` 处理 | shim 在前，上游 `bin` 在末尾 | 上游 `bin` 前置 |
-| 描述输出 | 默认关闭（避免说明被插入） | 默认关闭（兼容 ble.sh） |
+| 项目 | Git Bash（MSYS） | WSL / Linux | macOS bash |
+| --- | --- | --- | --- |
+| `argc` 入口 | `~/.local/bin/argc.exe` 副本 | 上游 `bin/argc` | 上游 `bin/argc`，或 Homebrew 的 `argc` |
+| `ARGC_COMPLETIONS_ROOT` | POSIX 路径，供 bash `source` 使用 | 仓库绝对路径 | 仓库绝对路径 |
+| `ARGC_COMPLETIONS_PATH` | Windows 路径、`;` 分隔，含 `windows` 子目录 | POSIX 路径、`:` 分隔，含 `linux` 子目录 | POSIX 路径、`:` 分隔，含 `macos` 子目录 |
+| `ARGC_SHELL_PATH` | 必须显式指定 | 不需要 | 不需要 |
+| `PATH` 处理 | shim 在前，上游 `bin` 在末尾 | 上游 `bin` 前置 | 上游 `bin` 存在时前置 |
+| 描述输出 | 默认关闭（避免说明被插入） | 默认关闭（兼容 ble.sh） | 默认关闭（兼容 ble.sh） |
 
 ## 已知问题与限制
 
@@ -116,7 +126,14 @@ sudo pacman -S go-yq        # Arch
 - 启动开销：本机实测 source 全部补全时 Git Bash 约 110 ms，WSL 约 25 ms。需要更快启动时用 `ARGC_COMPLETIONS_ONLY`。
 - `-o nosort` 需要 bash 4.4 及以上；本机 Git Bash 为 5.2，WSL 为 5.3，均满足。
 - 上游 `bin/` 内两个 argc 版本可能不一致（本机实测 Linux 版 1.23.0、Windows 版 1.24.0）。升级时运行上游 `scripts/download-tools.sh`，运行时脚本会按修改时间自动刷新 `~/.local/bin/argc.exe` 副本。
-- 路径形态需注意：`ARGC_COMPLETIONS_ROOT` 必须是 bash 可读的 POSIX 路径，`ARGC_COMPLETIONS_PATH` 必须是 argc 可解析的 Windows 路径，两者不能互换。
+- 路径形态需注意：`ARGC_COMPLETIONS_ROOT` 必须是 bash 可读的 POSIX 路径；`ARGC_COMPLETIONS_PATH` 在 Git Bash 下是 argc 可解析的 Windows 路径，在 Linux/macOS 下是 POSIX 路径，两者不能按同一形态互换。
+
+### macOS / Linux 的 bin 与 bash 版本
+
+- 运行时脚本只要求仓库存在 `completions/`；`argc` 可以来自仓库 `bin/`，也可以来自 PATH（macOS/Linux 的 Homebrew 或系统包）。仓库 `bin/` 不存在时不再整体跳过，也不会把不存在的目录写进 PATH。
+- macOS 平台目录为 `completions/macos`，Linux 为 `completions/linux`；两者都保留通用 `completions/*.sh` 作为回退。
+- macOS 自带 `/bin/bash` 3.2 未验证；`-o nosort` 需要 bash 4.4 及以上，建议 `brew install bash` 后使用 5.x。
+- Homebrew 的 argc 自带 `/opt/homebrew/etc/bash_completion.d/argc`，会把 `_argc_completer` 绑定到 `argc` 自身；因此 `type _argc_completer` 有输出 **不等于** 本目录的仓库运行时已经接入。验收应看 `complete -p nginx` 是否为 `_argc_completer`。
 
 ### git diff 缺少 --cached 与 --staged 补全
 
@@ -171,3 +188,5 @@ complete -p git
 预期 `argc` 指向 shim 或上游二进制，`argc --argc-shell-path` 返回可执行的 bash 路径，`complete -p git` 显示 `_argc_completer`。动态补全可用临时仓库验证：创建未跟踪文件与分支后，`git add <Tab>`、`git checkout <Tab>` 应分别列出文件与分支。
 
 以上结论基于本机 Git Bash（bash 5.2.37、MSYS）与 WSL Arch Linux（bash 5.3.9、ble.sh）实测；其他发行版或 Git for Windows 官方安装包的目录布局不同，`ARGC_SHELL_PATH` 可能无需设置，但不影响本方案。
+
+macOS 27.2（arm64、Homebrew bash 5.3.15、argc 1.24.0、补全仓库位于 `~/repos/argc-completions`）已在隔离 shell 中验证：`ARGC_COMPLETIONS_PATH` 使用 `completions/macos`，`complete -p git` 注册到 `_argc_completer`，`argc --argc-shell-path` 返回 Homebrew bash。未接入交互式 ble.sh 菜单验证。

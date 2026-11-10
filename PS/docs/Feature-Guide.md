@@ -210,6 +210,7 @@ Set-GitCompletionSource Carapace -Persist   # 需要 carapace 接管 git/gitk �
 
 - `PsCarapace=True` 时 `init` 在启动阶段加载 carapace；默认关闭，未启用时不承担启动成本。
 - `PsGitCompletionSource` 决定 git/gitk 归属：`Auto`、`GitCompletion`、`Argc` 时 `init` 把 `git,gitk` 并入 `CARAPACE_EXCLUDES`；`Carapace` 时不排除，并让 argc 让路。`Argc` 不推荐用于 git：argc 上游生成的 git 补全缺 `--cached`、`--staged` 等只写在 SYNOPSIS 的选项；`Auto` 的顺序为 `GitCompletion` → `Carapace` → `Argc`，`Argc` 仅作兜底。切换到前三种来源不会关闭 carapace 本身，需要停止加载时另执行 `Disable-PsPlugin Carapace -Persist`。
+- 与 argc 同开时，carapace 在 `init` 注册、argc 在首个 Tab 注册，同名 Native completer 后注册者生效，因此非 git/gitk 的重叠命令会由 argc 接管。需要 carapace 负责这些外部 CLI 时，关闭 argc（`Disable-PsPlugin Argc -Persist`）或接受 argc 的候选；bash 侧顺序相反，见 [bash/carapace README](../../bash/carapace/README.md)。
 - 慢命令排除项写 `PsCarapaceExcludes`（逗号分隔，如 `winget,uv`），与 git/gitk 规则由 `init` 合并；未设置该键时沿用已有的 `CARAPACE_EXCLUDES`。
 - 旧版 profile 中的手动 carapace 片段需要删除，否则会与 `init` 重复注册；也不要执行 carapace 文档中的 `Set-PSReadlineKeyHandler -Key Tab -Function MenuComplete`，避免覆盖现有 Tab 桩。
 - 版本可以不追新，但生成脚本随版本变化：`init` 在 pwsh 7.6 及更早版本按原文匹配空结果补丁，匹配不到时只告警，不中断启动。

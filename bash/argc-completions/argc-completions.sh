@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# argc-completions 运行时初始化，Git Bash(MSYS) 与 Linux/WSL 共用。
+# argc-completions 运行时初始化，Git Bash(MSYS)、Linux/WSL 与 macOS bash 共用。
 # 由同目录 setup.sh 写入 ~/.bashrc，也可手工 source。
 # 不修改 argc-completions 仓库本身。
 # shellcheck shell=bash
@@ -10,6 +10,8 @@ _argc_completions_main() {
 		return 0
 	fi
 
+	local candidate
+
 	# 允许通过环境变量覆盖，默认按平台推断
 	: "${ARGC_COMPLETIONS_DIR:=}"
 	if [ -z "$ARGC_COMPLETIONS_DIR" ]; then
@@ -18,11 +20,17 @@ _argc_completions_main() {
 		elif [[ "${OSTYPE:-}" == linux* ]] && [ -d /mnt/c/repos/argc-completions ]; then
 			ARGC_COMPLETIONS_DIR=/mnt/c/repos/argc-completions
 		else
-			ARGC_COMPLETIONS_DIR="$HOME/argc-completions"
+			for candidate in "$HOME/argc-completions" "$HOME/repos/argc-completions"; do
+				if [ -d "$candidate/completions" ]; then
+					ARGC_COMPLETIONS_DIR="$candidate"
+					break
+				fi
+			done
+			[ -n "$ARGC_COMPLETIONS_DIR" ] || ARGC_COMPLETIONS_DIR="$HOME/argc-completions"
 		fi
 	fi
 
-	if [ ! -d "$ARGC_COMPLETIONS_DIR/completions" ] || [ ! -d "$ARGC_COMPLETIONS_DIR/bin" ]; then
+	if [ ! -d "$ARGC_COMPLETIONS_DIR/completions" ]; then
 		return 0
 	fi
 
@@ -31,6 +39,9 @@ _argc_completions_main() {
 	msys* | cygwin*)
 		is_msys=1
 		os_dir=windows
+		;;
+	darwin*)
+		os_dir=macos
 		;;
 	esac
 
@@ -59,12 +70,15 @@ _argc_completions_main() {
 		export ARGC_COMPLETIONS_PATH="${win_completions}\\windows;${win_completions}"
 	else
 		export ARGC_COMPLETIONS_ROOT="$ARGC_COMPLETIONS_DIR"
-		export ARGC_COMPLETIONS_PATH="$ARGC_COMPLETIONS_DIR/completions/linux:$ARGC_COMPLETIONS_DIR/completions"
-		export PATH="$ARGC_COMPLETIONS_DIR/bin:$PATH"
+		export ARGC_COMPLETIONS_PATH="$ARGC_COMPLETIONS_DIR/completions/$os_dir:$ARGC_COMPLETIONS_DIR/completions"
+		# argc 也可以来自 PATH（例如 macOS/Linux 的 Homebrew）；只有仓库内确有 bin/ 时才前置。
+		if [ -d "$ARGC_COMPLETIONS_DIR/bin" ]; then
+			export PATH="$ARGC_COMPLETIONS_DIR/bin:$PATH"
+		fi
 	fi
 
 	if ! argc --argc-version >/dev/null 2>&1; then
-		echo "[argc-completions] argc 不可用，跳过补全初始化（检查 $ARGC_COMPLETIONS_DIR/bin）" >&2
+		echo "[argc-completions] argc 不可用，跳过补全初始化（检查 $ARGC_COMPLETIONS_DIR/bin 或 PATH）" >&2
 		return 0
 	fi
 

@@ -17,6 +17,8 @@
 - 未装 Git for Windows 时：`scoop install git`，或安装 Git for Windows 并勾选“Git from the command line”；完成后 `bash --version` 应有输出。
 - 不需要单独安装 `gawk`/`sed`/`unzip`：补全脚本由 bash 启动，直接使用 Git Bash 自带的 `/usr/bin`。
 
+> 非 Windows（macOS/Linux）没有 `argc.exe`/`yq.exe` 的自动下载：`Deploy-ArgcCompletions` 只准备补全仓库，`argc` 与 `yq` 用 Homebrew 或系统包管理器安装。`argc` 探测按平台使用 `completions/macos`（macOS）或 `completions/linux`（Linux），`ARGC_COMPLETIONS_PATH` 用 `:` 分隔；`argc --argc-shell-path` 仍需返回可执行的 bash。
+
 ## 2. 首次部署
 
 > 一键部署提示：`Deploy-CompletionStack -IncludeArgc` 会一并部署 argc（仓库 + `argc.exe`/`yq.exe`）；只想单独部署或指定目录用 `Deploy-ArgcCompletions [-Root <目录>] [-Proxy <地址>]`。以下手动步骤用于离线、自定义镜像或排障。
@@ -56,6 +58,8 @@ $env:ARGC_COMPLETIONS_ROOT = 'D:\tools\argc-completions'
 ```
 
 > `bin\argc`（无扩展名的 Linux ELF）在 Windows 的 Git Bash 里执行会报“cannot execute binary file”；PowerShell 会按 PATHEXT 优先 `argc.exe`。只在 Git Bash 里用 argc 时，删掉或改名这个 ELF。
+
+macOS/Linux 不使用本节：用 Homebrew/系统包管理器安装 `argc`（>= 1.24）和 `yq` 即可，仓库 `bin/` 可以留空；`Get-CxxuArgcExecutable` 会在仓库 `bin` 未命中时回退到 PATH。`yq` 缺失只会让部分补全候选为空，不影响其余命令。
 
 ### 2.3 初始化
 
@@ -145,7 +149,8 @@ Initialize-ArgcCompletions -Force   # 当前会话重新注册 Tab 补全
 - `PsPredictor` 是 `CxxuPredictor.dll` 的加载门，命令名预测与 `CxxuArgcFlags` 共用；关闭后两类自动提示一起停，不能只停其中一类。
 - 关闭 `Argc` 不删除仓库、缓存或已注册的 completer，重新开启无需重开终端；仓库或工具变化后按[更新](#3-更新)一节执行 `Initialize-ArgcCompletions -Force`。
 - 关闭 argc 只影响应用命令的参数补全，不影响 `Get-ChildItem -` 等 cmdlet 的原生参数补全。
-- init 检测到 `git-completion`（`$global:PsGitCompletion`）或 carapace 接管 git（`$global:PsCarapaceGit`）时，argc 不注册 `git`/`gitk`：三者都注册同名 Native completer，后注册者覆盖先注册者，而 argc 首个 Tab 才注册，会顶掉先注册的补全。其余命令不受影响。
+- init 检测到 `git-completion`（`$global:PsGitCompletion`）或 carapace 接管 git（`$global:PsCarapaceGit`）时，argc 不注册 `git`/`gitk`：三者都注册同名 Native completer，后注册者覆盖先注册者，而 argc 首个 Tab 才注册，会顶掉先注册的补全；只启用 git-completion 时其余命令不受影响。
+- 与 carapace 同时启用时，非 git/gitk 的重叠命令也会遇到同一顺序问题：carapace 在 `init` 注册，argc 在首个 Tab 注册，同名 completer 后注册者生效。需要 carapace 负责这些外部 CLI（如 `docker`、`gh`）时，关闭 argc（`Disable-PsPlugin Argc -Persist`）或接受 argc 的候选；bash 侧的顺序相反，见 [completion-stack](../../bash/completion-stack/README.md)。
 
 ### 4.3 验证
 
@@ -184,6 +189,7 @@ doctor -Feature Argc   # 只看这一套：开关、注册状态、Tab 集成与
 | 只有个别命令不补全 | `completions\<cmd>.sh` 是否存在 | 没有脚本就是不支持；不要改 completer 注册逻辑 |
 | 5.1 下 `-` 开头没候选 | 当前 `Init` 是否为最新；`Set-ArgcCompletions` 是否执行 | 重载模块/重开窗口；确认该步骤不再带 `MinPS = 7` |
 | 更新仓库后仍是旧候选 | `Initialize-ArgcCompletions -Force` 是否执行 | flag 表需重开终端；Tab completer 当前会话强制重注册 |
+| 同时开 carapace 后，`docker`/`gh` 等候选变了 | `$env:PsCarapace`、`$global:PsArgcLoaded` | argc 首个 Tab 注册会覆盖 carapace 的同名 completer；要 carapace 负责就 `Disable-PsPlugin Argc -Persist` |
 | flag 提示不出现 | pwsh 是否 7.5+；`PsArgc`/`PsPredictor` 是否被关；是否首个参数位 | `GetSubsystemInfo` 查 `CxxuArgcFlags` 是否注册；删缓存重开 |
 | 选中行看不清 / 描述带颜色码 | `Selection` 是否为 `ESC[7m` | 保持反显方案；completer 已剥掉 ANSI，不要改回固定前景色 |
 | 下载经常失败或很慢 | 镜像是否可用；是否已设置代理 | 换 `$env:PsGithubMirror`；先 `Set-Proxy On` 或加 `-Proxy <地址>`；排除代理故障时加 `-NoProxy` |

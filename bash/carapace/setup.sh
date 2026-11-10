@@ -367,14 +367,14 @@ run_check() {
 
 	if carapace_path="$(command -v carapace 2>/dev/null)"; then
 		if carapace_ver="$(carapace --version 2>/dev/null)"; then
-			check_item carapace "$carapace_path（$carapace_ver）"
+			check_item carapace "${carapace_path}（${carapace_ver}）"
 		else
-			check_item carapace "$carapace_path（--version 执行失败）"
+			check_item carapace "${carapace_path}（--version 执行失败）"
 			failures=$((failures + 1))
 		fi
 	elif [ -n "$rc_bin" ]; then
 		if carapace_ver="$("$rc_bin/carapace" --version 2>/dev/null)"; then
-			check_item carapace "$rc_bin/carapace（$carapace_ver，经 rc 片段的 CARAPACE_BIN）"
+			check_item carapace "${rc_bin}/carapace（${carapace_ver}，经 rc 片段的 CARAPACE_BIN）"
 		else
 			check_item carapace "$rc_bin/carapace（--version 执行失败）"
 			failures=$((failures + 1))
@@ -799,7 +799,7 @@ verify_sha256() {
 		actual="$(shasum -a 256 "$dir/$asset" | awk '{ print $1 }')"
 	fi
 	if [ "$expected" != "$actual" ]; then
-		echo "错误: SHA-256 校验失败（期望 $expected，实际 $actual）" >&2
+		echo "错误: SHA-256 校验失败（期望 ${expected}，实际 ${actual}）" >&2
 		return 1
 	fi
 }
@@ -835,7 +835,7 @@ print_install_plan() {
 	ghproxy) channel='ghproxy（https://gh-proxy.com）' ;;
 	ghproxynet) channel='ghproxynet（https://ghproxy.net）' ;;
 	ghfast) channel='ghfast（https://ghfast.top）' ;;
-	custom) channel="custom（$CUSTOM_MIRROR）" ;;
+	custom) channel="custom（${CUSTOM_MIRROR}）" ;;
 	esac
 	printf '[dry-run] 平台: %s/%s\n' "$os" "${arch:-未知}"
 	printf '[dry-run] 版本: %s\n' "$ver"
@@ -912,7 +912,7 @@ run_install() {
 		return 1
 		;;
 	*[!0-9.]*)
-		echo "错误: 无法识别的版本号 $ver（用 1.8.2 这类三段版本）" >&2
+		echo "错误: 无法识别的版本号 ${ver}（用 1.8.2 这类三段版本）" >&2
 		return 1
 		;;
 	esac
@@ -924,7 +924,7 @@ run_install() {
 
 	printf '下载 %s ...\n' "$asset"
 	if ! download_release_file "$base/$asset" "$INSTALL_TMP/$asset"; then
-		echo "错误: 下载失败: $base/$asset（可加 --mirror 或 --proxy 重试）" >&2
+		echo "错误: 下载失败: ${base}/${asset}（可加 --mirror 或 --proxy 重试）" >&2
 		return 1
 	fi
 	if ! download_release_file "$base/carapace-bin_${ver}_checksums.txt" "$INSTALL_TMP/checksums.txt"; then
