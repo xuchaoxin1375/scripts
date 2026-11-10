@@ -221,7 +221,7 @@ Deploy-Carapace -Version 1.8.2 -Proxy http://127.0.0.1:7897
 3. 解压出 `carapace`（Windows 为 `carapace.exe`），放到 PATH 中的固定目录（例如 Windows `$env:LOCALAPPDATA\Programs\carapace`，Unix `~/.local/bin`）；macOS/Linux 需要 `chmod +x carapace`。
 4. 确认 `Get-Command carapace` 与 `carapace --version`。
 
-手工安装的升级与卸载也需手工完成：替换二进制后重开终端，PowerShell 侧由 `init` 重新生成脚本，Git Bash 侧重新打开 shell；不再使用时删除该目录并从 PATH 移除。
+手工安装的升级与卸载也需手工完成：替换二进制后重开终端，PowerShell 侧由 `init` 重新生成脚本，bash 侧重新打开对应终端或 `source` 已接入的 rc；不再使用时删除该目录并从 PATH 移除。
 
 **手工渠道二：包管理器（可选）**
 
@@ -235,16 +235,21 @@ brew install carapace             # macOS
 
 Linux 优先用发行版仓库；没有时从官方 Release 安装 `.deb`、`.rpm` 或 `.apk`。包管理器版本可能滞后于上游，需要固定或最新版本时改用 `Deploy-Carapace -Version`。
 
-**Git Bash / MSYS（可选，与 PowerShell 独立）**
+**Git Bash / MSYS 与 Linux/macOS bash（可选，与 PowerShell 独立）**
 
-Git Bash 使用同一个 `carapace.exe`，但接入由 bash 自己完成，不经过 `init` 或 `PsCarapace`；启用 PowerShell 组件不会自动改变 Git Bash，反之亦然。仓库提供一键写入/卸载 `~/.bashrc` 的脚本：
+Git Bash 使用同一个 `carapace.exe`，Linux/macOS 使用各自平台的二进制；接入由 bash 自己完成，不经过 `init` 或 `PsCarapace`。启用 PowerShell 组件不会自动改变 bash，反之亦然。仓库提供一键写入/卸载 rc 标记块的脚本；把 `/path/to/scripts` 换成实际克隆目录：
 
 ```sh
-bash /c/repos/scripts/bash/carapace/setup.sh --dry-run
-bash /c/repos/scripts/bash/carapace/setup.sh
+# 非登录 shell：写 ~/.bashrc
+bash /path/to/scripts/bash/carapace/setup.sh --dry-run
+bash /path/to/scripts/bash/carapace/setup.sh
+
+# 登录 shell（macOS Terminal、Git Bash 常见）：写 ~/.bash_profile、~/.bash_login 或 ~/.profile
+bash /path/to/scripts/bash/carapace/setup.sh --dry-run --login
+bash /path/to/scripts/bash/carapace/setup.sh --login
 ```
 
-手工片段、PATH 修正原因、与 argc-completions 的共存和验收见 [bash/carapace/README.md](../../bash/carapace/README.md)。多个候选时按两次 `<Tab>` 显示列表；`gh` 等外部命令未安装时，静态子命令仍可补全，需要仓库或登录上下文的动态候选才依赖命令本身。先在 Git Bash 中确认 `command -v carapace` 有输出；没有则把安装目录（如 `~/.cxxu/bin` 或 `/c/scoop/shims`）加入 PATH。
+macOS 自带 bash 3.2 会被 carapace 拒绝，需要 `brew install bash` 并切换登录 shell；macOS 默认 zsh 不在该接入范围。平台差异、手工片段、PATH 修正原因、与 argc-completions 的共存、验收与未验证项见 [bash/carapace/README.md](../../bash/carapace/README.md)。多个候选时按两次 `<Tab>` 显示列表；`gh` 等外部命令未安装时，静态子命令仍可补全，需要仓库或登录上下文的动态候选才依赖命令本身。先在 bash 中确认 `command -v carapace` 有输出；没有则把安装目录（Git Bash 常见为 `~/.cxxu/bin` 或 `/c/scoop/shims`，Linux/macOS 常见为 `~/.local/bin`）加入 PATH。
 
 **在 init 中启用（不修改 profile）**
 

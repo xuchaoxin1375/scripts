@@ -1,55 +1,196 @@
 # carapace 在 bash / Git Bash 中的接入
 
-[carapace](https://carapace.sh/) 的 bash 接入本身只有一行 `source <(carapace _carapace bash)`，但直接放进 Git Bash 的 `~/.bashrc` 会遇到一个 PATH 细节：carapace 会追加 Windows 风格的目录（`C:/...;...`），而 MSYS 的 PATH 用 `:` 分隔，`;` 会把后面的第一个目录粘进同一个 PATH 项。本目录提供一个可重复 source 的运行时脚本和一个写入/卸载 `~/.bashrc` 标记块的小工具。
+[carapace](https://carapace.sh/) 的 bash 接入本体只有一行 `source <(carapace _carapace bash)`，但直接把它放进 rc 文件会在部分环境失效或留下副作用：
 
-> PowerShell 侧的 carapace 由 `init` 按 `PsCarapace` 配置加载，启停用 `Enable-CxxuComponent` / `Disable-CxxuComponent`；本目录只覆盖 bash。两边互不影响，安装与 PowerShell 侧配置见 [Deploy-Guide](../../PS/docs/Deploy-Guide.md) 的「可选：carapace」。
+- Git Bash/MSYS：carapace 会在 PATH 最前面追加 Windows 风格目录（`C:/...;...`），而 MSYS 的 PATH 用 `:` 分隔，`;` 会把后面的第一个目录粘进同一项。
+- macOS 与 Git Bash：终端常以登录 shell 启动，读 `~/.bash_profile`、`~/.bash_login` 或 `~/.profile`，不读 `~/.bashrc`。
+- macOS 自带 `/bin/bash` 是 3.2，carapace 会拒绝加载，需要 bash 4 及以上。
 
-## 目录内容
+本目录提供一个可重复 source 的运行时脚本和一个写入/卸载 rc 标记块的小工具，覆盖 Git Bash、Cygwin、Linux、WSL 与 macOS 的 bash。PowerShell 侧的 carapace 由 `init` 按 `PsCarapace` 配置加载，启停用 `Enable-CxxuComponent` / `Disable-CxxuComponent`；本目录只覆盖 bash，两边互不影响。安装与 PowerShell 侧配置见 [Deploy-Guide](../../PS/docs/Deploy-Guide.md) 的「可选：carapace」。
 
-- [carapace.sh](carapace.sh)：运行时初始化，被 `~/.bashrc` source；检查 carapace、加载补全、修正 Git Bash 的 PATH，可重复 source。
-- [setup.sh](setup.sh)：在 rc 文件中写入或移除带标记的接入片段，支持试运行与卸载。
-- [README.md](README.md)：本文档。
+## 适用范围
 
-## 安装
+| 项目 | 说明 |
+| --- | --- |
+| 覆盖的 shell | Git Bash（MSYS）、Cygwin、Linux、WSL、macOS 的 bash 4 及以上 |
+| 不覆盖 | zsh（macOS 默认 shell）、fish、cmd.exe、PowerShell；这些环境不在本目录的接入范围 |
+| 前置条件 | `carapace` 位于 PATH；bash 4+；`xargs`（coreutils） |
+| 修改范围 | 只在 rc 文件写入 `# >>> carapace >>>` 标记块；不修改 carapace 本体，不修改 profile |
+| 生效方式 | 新开终端，或 `source` 对应 rc；运行时脚本可重复 source |
+| 效果 | 注册 carapace 的全部 completer；Tab 补全命令参数值，不补命令名，也不补 PowerShell cmdlet |
 
-Git Bash 中执行：
+## 平台差异
 
-```sh
-bash /c/repos/scripts/bash/carapace/setup.sh --dry-run
-bash /c/repos/scripts/bash/carapace/setup.sh
+登录/非登录不是按操作系统划分，而是按终端启动方式。先在实际使用的终端里执行：
+
+```bash
+shopt -q login_shell && echo "login shell" || echo "non-login shell"
 ```
 
-WSL 中使用 Windows 侧仓库副本时，路径改为 `/mnt/c/repos/scripts/bash/carapace/setup.sh`；脚本写入的是当前环境的 `~/.bashrc`。Linux/WSL 使用各自的 carapace 二进制。
+| 平台 | carapace 安装 | 实际读取的 rc | PATH 修正 | 验证状态 |
+| --- | --- | --- | --- | --- |
+| Git Bash（MSYS） | `scoop install carapace-bin`（需 `spc` bucket），或 `Deploy-Carapace -Enable` | 非登录 `.bashrc`；登录 `.bash_profile`/`.bash_login`/`.profile` | 需要 | 已实测 |
+| Cygwin | 同 Git Bash，或 Cygwin 包管理器 | 同 bash 规则 | 需要（兼容层） | 未实测 |
+| Linux | 发行版仓库，或官方 Release 装到 `~/.local/bin` | 非登录 `.bashrc`；登录 `.bash_profile`/`.bash_login`/`.profile` | 不需要 | `setup.sh` 在 WSL 通过；实际补全未在 Linux 实机验证 |
+| WSL | 在 WSL 内装 Linux 版；不要复用 Windows 的 `carapace.exe` | 通常为非登录 `.bashrc` | 不需要 | `setup.sh` 通过；实际补全未在 WSL 验证 |
+| macOS bash | `brew install bash carapace`；系统 bash 3.2 不可用 | 非登录 `.bashrc`；登录 `.bash_profile`/`.bash_login`/`.profile` | 不需要 | 未实测 |
+| macOS zsh | 不在本目录范围 | — | — | — |
 
-安装动作只有一处：在 `~/.bashrc` 末尾写入 `# >>> carapace >>>` 标记块，内容为 source 运行时脚本。重新打开终端或执行 `source ~/.bashrc` 后生效。
+## 最短路径（新设备复用）
 
-卸载：
+把 `/path/to/scripts` 换成仓库的克隆目录，不要照抄某台机器的绝对路径。所有平台都先确认 carapace 可用：
 
-```sh
-bash /c/repos/scripts/bash/carapace/setup.sh --uninstall
+```bash
+command -v carapace
+carapace --version
 ```
 
-`setup.sh` 的选项：
+接入命令按终端类型二选一：
+
+| 终端类型 | 接入命令 |
+| --- | --- |
+| 非登录 shell（默认写 `~/.bashrc`） | `bash /path/to/scripts/bash/carapace/setup.sh` |
+| 登录 shell（macOS Terminal、Git Bash、ssh 登录常见） | `bash /path/to/scripts/bash/carapace/setup.sh --login` |
+
+先加 `--dry-run` 看目标文件与将写入的内容：
+
+```bash
+bash /path/to/scripts/bash/carapace/setup.sh --dry-run
+bash /path/to/scripts/bash/carapace/setup.sh --dry-run --login
+```
+
+### Git Bash / MSYS
+
+在 PowerShell 中安装 carapace（已有可跳过）：
+
+```powershell
+scoop install carapace-bin
+# 或使用仓库的 Deploy-Carapace（需要 pwsh 7）
+Deploy-Carapace -Enable
+```
+
+回到 Git Bash 确认并接入：
+
+```bash
+command -v carapace
+carapace --version
+cd /path/to/scripts/bash/carapace
+bash setup.sh --dry-run
+bash setup.sh
+```
+
+如果 `command -v carapace` 没有输出，把安装目录加入 PATH（常见为 `~/.cxxu/bin` 或 `/c/scoop/shims`），再重开终端。Git Bash 使用登录 shell 时改加 `--login`。
+
+### Linux
+
+从发行版仓库安装；没有时从官方 Release 下载，解压出 `carapace` 并放到 PATH 中的目录：
+
+```bash
+# 版本与架构以 https://github.com/carapace-sh/carapace-bin/releases 为准
+tar -xzf carapace-bin_<版本>_linux_amd64.tar.gz carapace
+mkdir -p ~/.local/bin
+cp carapace ~/.local/bin/carapace
+chmod +x ~/.local/bin/carapace
+
+# 新终端要能找到 ~/.local/bin，按所用 shell 写进对应的 profile 或 rc
+export PATH="$HOME/.local/bin:$PATH"
+
+command -v carapace
+carapace --version
+cd /path/to/scripts/bash/carapace
+bash setup.sh --dry-run
+bash setup.sh
+```
+
+校验 SHA-256、固定版本与 `.deb`/`.rpm`/`.apk` 渠道见 [Deploy-Guide](../../PS/docs/Deploy-Guide.md) 的「可选：carapace」。Linux 桌面终端通常是非登录 shell；ssh 登录或显式 `bash -l` 时用 `--login`。
+
+### WSL
+
+在 WSL 内安装 Linux 版 carapace，不要复用 Windows 侧的 `carapace.exe`：
+
+```bash
+# 安装步骤同上一节；如果仓库在 Windows 盘，路径形如 /mnt/c/path/to/scripts
+cd /mnt/c/path/to/scripts/bash/carapace
+bash setup.sh --dry-run
+bash setup.sh
+```
+
+`setup.sh` 写入的是 WSL 自己的 `~/.bashrc`，不会改动 Windows 侧 Git Bash 的配置。WSL 默认终端通常是非登录 shell。
+
+### macOS bash
+
+macOS 自带 `/bin/bash` 是 3.2，carapace 会直接拒绝。先安装新版 bash 并切换登录 shell：
+
+```bash
+brew install bash carapace
+"$(brew --prefix)/bin/bash" --version
+
+# 如果 chsh 报 non-standard shell，先把 brew bash 加入 /etc/shells
+if ! grep -qxF "$(brew --prefix)/bin/bash" /etc/shells; then
+	echo "$(brew --prefix)/bin/bash" | sudo tee -a /etc/shells
+fi
+chsh -s "$(brew --prefix)/bin/bash"
+```
+
+重新登录后确认，再接入：
+
+```bash
+echo "$BASH_VERSION"          # 应为 4.x 或 5.x
+shopt -q login_shell && echo "login shell"
+
+cd /path/to/scripts/bash/carapace
+bash setup.sh --dry-run --login
+bash setup.sh --login
+```
+
+macOS Terminal 默认是登录 shell；VS Code 等集成终端可能是非登录 shell，仍按上面的 `shopt` 结果选择。macOS 默认 shell 是 zsh，本目录不配置 zsh；如果要用默认终端，需要按 carapace 的 zsh 接入方式另行配置。macOS 的官方 carapace 产物未签名，优先用 `brew install carapace`。
+
+## setup.sh 的选项与行为
 
 | 选项 | 作用 |
 | --- | --- |
-| `--dry-run` | 只打印将要写入或移除的内容，不修改文件 |
-| `--uninstall` | 从 rc 文件移除 `# >>> carapace >>>` 标记块 |
-| `--rc <file>` | 指定 rc 文件，默认 `~/.bashrc` |
+| `-n`, `--dry-run` | 只打印将要写入或移除的内容，不修改文件 |
+| `-l`, `--login` | 写入登录 shell 实际读取的 rc 文件 |
+| `-r`, `--rc <file>` | 指定 rc 文件，默认 `~/.bashrc` |
+| `-u`, `--uninstall` | 从 rc 文件移除 `# >>> carapace >>>` 标记块 |
+| `-h`, `--help` | 显示帮助 |
 
-标记块里记录的是 `carapace.sh` 的绝对路径；仓库移动后重新运行 `setup.sh` 即可刷新。
+行为与边界：
+
+- 安装动作只有一处：在目标 rc 写入带标记的块，块内用绝对路径加载 `carapace.sh`。重复运行会先移除旧块再追加，不会产生多个副本。
+- `setup.sh` 本身作为非登录 bash 子进程运行，无法替你判断终端是登录还是非登录；`--login` 必须由使用者先在实际终端执行 `shopt -q login_shell` 后选择。
+- `--login` 按 bash 的读取顺序选择目标：已有 `~/.bash_profile` 用它，其次 `~/.bash_login`，再次 `~/.profile`；三个都不存在时创建 `~/.bash_profile`。`--login` 与 `--rc` 互斥。
+- 创建 `~/.bash_profile` 后，登录 shell 不再读取 `~/.profile`；如果之后新增 `~/.profile`，需要在 `~/.bash_profile` 中显式 source 它。
+- 目标 rc 不存在时会创建（包括父目录）。脚本不备份原文件；重要配置先自行备份或用版本控制，改动前可先跑 `--dry-run`。
+- 目标 rc 是符号链接时脚本拒绝执行，避免把链接替换成普通文件；请用 `--rc` 指向真实文件，或手工编辑目标文件。
+- 安装与卸载通过同目录临时文件加 `mv` 替换，并用 `cp -p` 保留原 rc 的权限；Git Bash/MSYS 的 `awk`/`grep` 以文本模式处理文件，重写 rc 时可能把该文件的行尾统一为 LF。bash 不受影响；要保持 CRLF 请手工编辑，或用版本控制对比后决定。
+- 标记块中的路径是当前仓库副本的绝对路径；仓库移动后重新运行 `setup.sh` 刷新，或手工删除旧块。
+- 找不到 carapace 时只提示，不阻止写入；新开 shell 后由运行时脚本再次提示并跳过初始化。装好 carapace 后新开终端，或重新 `source` 对应 rc。
+- `--login` 安装后，默认的 `--uninstall` 不会去登录 rc 找块；用 `--uninstall --login`，或用 `--rc` 指向同一个文件。
+- 标记块带 `[ -n "${BASH_VERSION:-}" ]` 保护，写进 `.profile` 这类可能被 sh/dash 读取的文件时，非 bash shell 会跳过，不会因加载 bash 脚本报错。
 
 ## 手工接入
 
-不运行 `setup.sh` 时，把下面内容加入 `~/.bashrc`：
+不运行 `setup.sh` 时，把下面内容加入非登录 shell 的 `~/.bashrc`：
 
 ```bash
-# 可选：桥接其他补全框架
-export CARAPACE_BRIDGES='zsh,fish,bash,inshellisense'
-source <(carapace _carapace bash)
-# Git Bash/MSYS：去掉 carapace 追加的 Windows 风格 PATH 项
-case "$PATH" in *';'*) PATH="${PATH#*;}" ;; esac
+if [ -n "${BASH_VERSION:-}" ]; then
+	# 可选：桥接其他补全框架
+	export CARAPACE_BRIDGES='zsh,fish,bash,inshellisense'
+	source <(carapace _carapace bash)
+
+	# Git Bash/MSYS：去掉 carapace 追加的 Windows 风格 PATH 项
+	case "${OSTYPE:-}" in
+	msys* | cygwin*)
+		case "$PATH" in
+		[A-Za-z]:/*';'*) PATH="${PATH#*;}" ;;
+		esac
+		;;
+	esac
+fi
 ```
+
+写入登录 rc（如 `~/.bash_profile`）时保留外层的 `BASH_VERSION` 判断；Linux/macOS 不需要 PATH 修正，其中的 `msys* | cygwin*` 分支可以省略。
 
 `source <(carapace _carapace bash)` 会注册全部 completer。只想加载单个命令时，可把 `_carapace` 换成命令名，例如 `source <(carapace chmod bash)`。
 
@@ -57,7 +198,7 @@ case "$PATH" in *';'*) PATH="${PATH#*;}" ;; esac
 
 | 变量 | 作用 |
 | --- | --- |
-| `CARAPACE_BIN` | 可选；把 carapace 所在目录前置到 bash PATH，例如 `~/.cxxu/bin` |
+| `CARAPACE_BIN` | 可选；把 carapace 所在目录前置到 bash PATH，例如 `~/.cxxu/bin`。目录不存在时忽略 |
 | `CARAPACE_BRIDGES` | 可选；启用其他补全框架桥接，值如 `zsh,fish,bash,inshellisense` |
 | `CARAPACE_EXCLUDES` | 可选；不注册补全的命令，逗号分隔。本机 1.8.2 实测 `git,gitk` 可同时排除两者，空格分隔不生效 |
 
@@ -67,6 +208,43 @@ case "$PATH" in *';'*) PATH="${PATH#*;}" ;; esac
 export CARAPACE_EXCLUDES='git,gitk'
 source <(carapace _carapace bash)
 ```
+
+## 效果与验收
+
+基础检查：
+
+```bash
+command -v carapace
+carapace --version
+carapace --list
+echo "$BASH_VERSION"
+shopt -q login_shell && echo "login shell" || echo "non-login shell"
+type _carapace_completer
+```
+
+`type _carapace_completer` 应输出函数定义；没有输出说明当前 shell 没有加载运行时脚本。
+
+不打开交互式终端时，可以用下面的命令按 rc 类型检查（登录 shell 会打印 job control 警告，可忽略）：
+
+```bash
+bash -ic 'type _carapace_completer'    # 非登录 shell 读取 ~/.bashrc
+bash -lic 'type _carapace_completer'   # 登录 shell 读取 ~/.bash_profile/~/.bash_login/~/.profile
+```
+
+在交互式 bash 中：
+
+- 多个候选时按两次 `<Tab>`：第一次只补公共前缀（没有公共前缀时响铃），第二次显示候选列表；候选很多时 Bash 会询问 `Display all ...? (y or n)`，输入 `y` 显示。
+- `git checkout <Tab><Tab>` 应出现分支、标签与 `HEAD`，可带提交说明。
+- `git add <Tab><Tab>` 应出现未暂存或未跟踪文件。
+- `gh pr <Tab><Tab>` 即使未安装 `gh` 也应出现静态子命令；需要读取仓库、PR 编号或登录状态的动态候选才依赖 `gh` 本身。
+- `carapace <Tab><Tab>` 应出现 completer 列表。
+
+效果范围：
+
+- carapace 注册的是参数值补全，不替代 bash 的命令名补全，也不补 PowerShell cmdlet。
+- 候选数量随 carapace 版本、已安装命令与仓库状态变化；`carapace --list` 的数字不要写死。
+- 未安装外部命令时，静态子命令仍可补全；需要命令自身返回上下文的候选会为空或变慢。
+- 加载成本只在每次打开 shell 时发生，随注册命令数和主机变化；需要更快启动时用 `CARAPACE_EXCLUDES` 缩小范围。
 
 ## 与 argc-completions 共存
 
@@ -78,29 +256,60 @@ source <(carapace _carapace bash)
 
 PowerShell 侧的 `PsGitCompletionSource` 只影响 PowerShell 的 git/gitk 归属，不改变 bash 的注册顺序。
 
-## 验收
+## 卸载
 
-```sh
-command -v carapace
-carapace --version
-carapace --list
+```bash
+# 非登录 shell 安装
+bash /path/to/scripts/bash/carapace/setup.sh --uninstall
+
+# 登录 shell 安装
+bash /path/to/scripts/bash/carapace/setup.sh --uninstall --login
+
+# 自定义 rc
+bash /path/to/scripts/bash/carapace/setup.sh --uninstall --rc ~/.bash_profile
 ```
 
-在交互式 Git Bash 中：
+卸载只移除标记块，不删除 carapace 二进制。二进制按安装渠道卸载（`scoop uninstall carapace-bin`、`brew uninstall carapace`，或删除 `~/.local/bin/carapace`）并从 PATH 移除。
 
-- 多个候选时按两次 `<Tab>`：第一次只补公共前缀（没有公共前缀时响铃），第二次显示候选列表；候选很多时 Bash 会询问 `Display all ...? (y or n)`，输入 `y` 显示。
-- `git checkout <Tab><Tab>` 应出现分支、标签与 `HEAD`，可带提交说明。
-- `git add <Tab><Tab>` 应出现未暂存或未跟踪文件。
-- `gh pr <Tab><Tab>` 即使未安装 `gh` 也应出现静态子命令；需要读取仓库、PR 编号或登录状态的动态候选才依赖 `gh` 本身。
-- `carapace <Tab><Tab>` 应出现 completer 列表。
+## 故障排查
 
-本机交互式验证环境为 Git Bash 5.2.37（MSYS）+ carapace 1.8.2：`source` 约 44 ms；`git checkout <Tab><Tab>` 返回 17 个标签/分支/引用候选（含提交说明），`gh pr <Tab><Tab>` 返回 21 个子命令（本机未安装 `gh`）。`source` 的成本随版本与主机变化。
+| 现象 | 检查 | 处理 |
+| --- | --- | --- |
+| 打开终端提示未找到 carapace | `command -v carapace` | 安装 carapace，或把安装目录加入 PATH 后重开终端 |
+| `carapace --version` 失败 | `carapace --version` 的实际报错 | 重新安装与平台/架构匹配的二进制 |
+| 提示需要 bash 4 及以上 | `echo "$BASH_VERSION"` | macOS 用 `brew install bash` 并切换登录 shell；其他平台安装 bash 4+ |
+| 补全完全没反应 | `type _carapace_completer` | 没有函数说明 rc 没加载：确认登录/非登录类型，重新运行 `setup.sh` 或 `setup.sh --login` |
+| 只有部分命令没有候选 | `carapace --list`、`CARAPACE_EXCLUDES` | 确认命令是否被排除、是否需要该命令自身提供上下文 |
+| `PATH` 出现带分号的异常项 | `printf '%s\n' "$PATH"` | Git Bash/MSYS 的 PATH 修正未生效；确认 `OSTYPE` 与运行时脚本版本 |
+| 按 Tab 只补前缀不显示列表 | 候选数量 | 再按一次 `<Tab>`；候选很多时输入 `y` 确认 `Display all` |
+| git 补全被 argc 或 bash-completion 覆盖 | rc 中的 source 顺序 | 调整顺序，或用 `CARAPACE_EXCLUDES` 排除 |
+| 提示 rc 是符号链接 | `ls -l ~/.bashrc` | 用 `--rc` 指向真实文件，或手工编辑目标文件 |
+| Git Bash 下 rc 行尾被改为 LF | `git diff` 或 `od -c ~/.bashrc` | 手工改回，或先把配置纳入版本控制在重写后对比 |
+
+## 验证记录与未验证项
+
+已完成的实测：
+
+- Git Bash 5.2.37（MSYS）+ carapace 1.8.2：运行时脚本 `source` 约 40–55 ms（含一次 `carapace _carapace bash` 生成；单独执行该生成命令约 35–40 ms）；`git checkout <Tab><Tab>` 返回带说明的标签/分支/引用候选，`gh pr <Tab><Tab>` 在未安装 `gh` 时返回静态子命令。
+- `setup.sh` 在隔离 `HOME` 下验证了试运行不建文件、首次安装、重复安装幂等、卸载、标记块损坏报错、`--login` 目标选择与 `--uninstall --login`；还验证了权限保持、CRLF 文件在 Linux/WSL 下保留行尾、符号链接拒绝改写。
+- 运行时脚本在未安装 carapace 时给出平台提示并跳过；`BASH_VERSION`、`xargs`、`source` 失败都有对应提示。
+- `shellcheck 0.9.0` 与 `shfmt 3.8.0` 对 `setup.sh`、`carapace.sh` 无报错，`bash -n` 通过。
+- WSL Ubuntu 24.04：`setup.sh` 的安装、重复安装、卸载、符号链接保护与 CRLF 保留通过；WSL 内未安装 carapace，因此 Linux 的实际补全效果未验证。
+
+未验证或未覆盖：
+
+- macOS 的 bash 4+ 安装、`chsh`、登录 rc 与 carapace 实际补全未在 macOS 实机验证；本文按 bash 的通用读取规则给出步骤。
+- Cygwin 未实测；PATH 修正分支按 MSYS 的行为编写。
+- Linux 桌面发行版、ssh 登录 shell、`.deb`/`.rpm`/`.apk` 渠道未逐项验证。
+- macOS 默认 zsh 不在本目录范围；zsh 的接入需要按 carapace 官方方式单独配置。
+- carapace 生成脚本随版本变化；本文的 PATH 修正与候选行为基于 1.8.2，升级后如遇差异以实际输出为准。
 
 ## 已知限制
 
-- 需要 bash 4 及以上；Git Bash 5.x 满足，bash 3 会被 carapace 拒绝。
+- 需要 bash 4 及以上；bash 3（macOS 自带 3.2）会被 carapace 拒绝。
 - bash 补全函数调用 `xargs`；极简环境缺少 coreutils 时，运行时脚本会警告并跳过，不注册半可用的补全。
-- 每次打开 shell 都会执行一次 carapace 生成补全，本机约 44 ms；需要更快启动时减少注册命令或仅在需要的终端加载。
+- 每次打开 shell 都会执行一次 carapace 生成补全，本机约 40–55 ms；需要更快启动时减少注册命令或仅在需要的终端加载。
 - carapace 会为大量命令注册补全，可能覆盖已有的 bash-completion；用 `CARAPACE_EXCLUDES` 排除不需要的命令。
-- 仅 Git Bash（MSYS）完成实机验证；Cygwin 走同一脚本与兼容层 PATH 分支，Linux/WSL 走同一脚本但不需要 PATH 修正，均未逐项实机确认。
-- PATH 修正是针对 Git Bash/Cygwin 的兼容处理；Linux 下 carapace 追加的是 POSIX 路径，不需要该行。
+- PATH 修正只处理 Git Bash/MSYS 中 carapace 追加的、以盘符开头的 `C:/...;...` 项；如果 PATH 里其他位置也有分号，修正不会主动清理。
+- 慢命令（如需要网络或扫描大目录的 completer）会阻塞 Tab；按需排除。
+- 本目录只覆盖 bash；PowerShell、zsh、fish、cmd.exe 的接入各自独立。
