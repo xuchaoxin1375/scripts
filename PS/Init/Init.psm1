@@ -2567,6 +2567,7 @@ function Get-GitCompletionSource
         elseif ($carapaceLoaded) { '已启用，已加载，git/gitk 已排除' }
         else { '已启用，待首个 Tab 加载，git/gitk 已排除' }
     $argcState = if (-not $argcInstalled) { '未安装' }
+        elseif ($global:PsArgcUnavailable) { '已安装，补全库未就绪' }
         elseif (-not $argcEnabled) { '已安装，未启用' }
         elseif ($registered -eq 'Argc') { '已启用，已注册并接管 git/gitk' }
         elseif ($argcLoaded) { '已启用，已注册，git/gitk 已排除' }
@@ -2639,7 +2640,7 @@ function Get-GitCompletionSource
     {
         'GitCompletion' { $gitInstalled }
         'Carapace' { $carapaceEnabled -and $carapaceInstalled }
-        'Argc' { $argcEnabled -and $argcInstalled }
+        'Argc' { $argcEnabled -and $argcInstalled -and -not $global:PsArgcUnavailable }
         default { $false }
     }
     $note = if ($fallback) { "按 EffectiveSource 的条件修复开关或安装，或用 Set-GitCompletionSource 改选可用来源。" }
@@ -2677,11 +2678,12 @@ function Set-GitCompletionSource
     - GitCompletion：启动时注册 git-completion；
     - Carapace：同时打开 PsCarapace，由 init 注册懒加载桩并让它接管 git/gitk；
       carapace 停用或未加载时按可用来源回落（git-completion 优先，其次 argc）。
-    - Argc：由 argc 在首个 Tab 接管 git/gitk（不推荐：argc 的 git 补全缺 --cached/--staged 等选项）。
-    切到 Carapace/Argc 不会把 GitCompletion 组件置为停用，只有显式 Disable-PsPlugin GitCompletion 才会。
+    - Argc：同时打开 PsArgc，并当场注册 argc completer（不推荐：argc 的 git 补全缺 --cached/--staged 等选项）。
+    选来源即启用对应组件：GitCompletion/Carapace/Argc 之前处于停用状态也会被打开；
+    但不会停用其他组件，切走时保留原状态，供回落。
     carapace 的额外排除项用 PsCarapaceExcludes 配置，不再写 profile。
-    -Persist 把来源写入 ~/.cxxu/config.psd1；不加时只改当前会话。
-    切换会在当前会话重新注册对应 completer，git/gitk 立即生效；argc 尚未注册时由首个 Tab 完成。
+    -Persist 把来源与开关写入 ~/.cxxu/config.psd1；不加时只改当前会话。
+    切换会在当前会话重新注册对应 completer，git/gitk 立即生效；argc 首次注册约 0.15–0.25 秒。
     .EXAMPLE
     Set-GitCompletionSource GitCompletion
     .EXAMPLE
@@ -2707,15 +2709,16 @@ function Set-GitCompletionSource
     if ($PSCmdlet.ShouldProcess("git 补全来源 -> $Source", '设置'))
     {
         Set-Item 'env:PsGitCompletionSource' -Value $Source
-        # 选来源不等于停用组件：只有选中 git-completion 时才打开组件开关；
-        # 切到 Carapace/Argc 保留原组件状态，供 carapace 不可用时回落到 git-completion。
+        # 选来源即打开该来源的组件开关；但不反向停用其他组件，切走时保留原状态供回落。
         if ($wantGitCompletion) { Set-Item 'env:PsGitCompletion' -Value 'True' }
         if ($Source -eq 'Carapace') { Set-Item 'env:PsCarapace' -Value 'True' }
+        if ($Source -eq 'Argc') { Set-Item 'env:PsArgc' -Value 'True' }
         if ($Persist)
         {
             $updates = @{ PsGitCompletionSource = $Source }
             if ($wantGitCompletion) { $updates['PsGitCompletion'] = $true }
             if ($Source -eq 'Carapace') { $updates['PsCarapace'] = $true }
+            if ($Source -eq 'Argc') { $updates['PsArgc'] = $true }
             Set-CxxuConfigModelValues -Path $Path -Values $updates
         }
         $applied = $true
@@ -2750,15 +2753,12 @@ function Set-GitCompletionSource
     }
     else
     {
-        # 已注册时重新注册，把 git/gitk 一并纳入；未注册则首个 Tab 按来源注册。
+        # 选 Argc 即强制启用并当场注册；未加载过也直接注册，不再等首个 Tab。
         $global:PsCarapaceGit = $false
-        if ($global:PsArgcLoaded)
+        if ($PSCmdlet.ShouldProcess('argc', '注册 git/gitk completer')) { Initialize-ArgcCompletions -Force }
+        if ($global:PsArgcUnavailable)
         {
-            if ($PSCmdlet.ShouldProcess('argc', '重新注册 git/gitk completer')) { Initialize-ArgcCompletions -Force }
-        }
-        else
-        {
-            Write-Host 'argc 尚未注册：首个 Tab 注册时会按 Argc 来源接管 git/gitk。'
+            Write-Warning 'argc 补全库未就绪（仓库或依赖缺失）：先执行 Deploy-CompletionStack -IncludeArgc 或 Deploy-ArgcCompletions。'
         }
     }
 
@@ -2767,6 +2767,7 @@ function Set-GitCompletionSource
     {
         Write-Host ("当前会话：PsGitCompletionSource={0}，PsGitCompletion={1}" -f $Source, $env:PsGitCompletion)
         if ($Source -eq 'Carapace') { Write-Host '当前会话：PsCarapace=True' }
+        if ($Source -eq 'Argc') { Write-Host ("当前会话：PsArgc={0}" -f $env:PsArgc) }
     }
     else
     {
@@ -2803,7 +2804,8 @@ function Set-GitCompletionSource
     }
     else
     {
-        Write-Host 'git/gitk 未在当前会话重新注册；按来源条件修复后，首个 Tab 或下一次切换会完成接管。'
+        if ($applied) { Write-Host 'git/gitk 未在当前会话重新注册；按来源条件修复后，首个 Tab 或下一次切换会完成接管。' }
+        else { Write-Host '当前会话未改动（-WhatIf），未执行注册。' }
     }
 }
 
