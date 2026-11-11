@@ -596,12 +596,12 @@ Set-PSReadLineOption: 句柄无效。
   `$global:PsCarapaceLoaded=True` 表示已加载。直接调用 `TabExpansion2` 不触发 Tab 桩，
   验证前需先按一次真实 Tab 或执行 `Enable-CxxuComponent Carapace -Now`。加载失败会摘下
   Pending，不在后续 Tab 重复告警。
-- 5.1：加载时缓存 `CARAPACE_SHELL_*` 名称列表（函数名截断到 30,000 字符），并把调用
-  改走 .NET `Process`（`StandardOutputEncoding=UTF-8`，保留空字符串参数），避免环境变量
-  超长、中文乱码与空参数丢失；候选描述去 ANSI。首次 Tab 约 0.5–1 秒（枚举函数名 +
-  生成并执行注册脚本），之后约 0.1–0.4 秒。
+- 5.1：把 `CARAPACE_SHELL_*` 名称列表改为加载一次并落盘缓存（见 §32），函数名截断到
+  30,000 字符；调用改走 .NET `Process`（`StandardOutputEncoding=UTF-8`，保留空字符串参数），
+  避免环境变量超长、中文乱码与空参数丢失；候选描述去 ANSI。首次 Tab 约 0.4–0.6 秒
+  （冷缓存约 1 秒），之后约 0.1–0.4 秒。
 - 边界：`PSCompletions`/`fnm`/`scoop-search` 保持原加载方式；默认关闭，启用后仍按组件
-  清单加载。carapace 首次 Tab 的 0.2–0.3 秒（5.1 约 0.5–1 秒）是功能成本，不摊到每个
+  清单加载。carapace 首次 Tab 的 0.2–0.3 秒（5.1 约 0.4–0.6 秒）是功能成本，不摊到每个
   会话启动。
 
 ## 30. 第二十三轮：启动链审计、计时口径与 conda prompt 边界（2026-11-10）
@@ -697,4 +697,26 @@ WindowsTerminal.exe
 - 结论：嵌套 pwsh 重跑 init 是设计边界，不是重复执行缺陷；跨进程无法也不应该去重。
   启动器只写 `pwsh`，`p` 留给已开的会话新开窗口。验收看“每个 pwsh 进程恰好一行
   `initing...`”，并用 `Get-CimInstance Win32_Process` 确认新 tab 不再带 `-c p`。
+
+## 32. 第二十五轮：5.1 carapace 上下文列表落盘缓存（2026-11-11，用户问“5.1 首个 Tab 约 2 秒能否优化”）
+
+- 现场：Windows PowerShell 5.1.26100、PSReadLine 2.0.0、carapace-bin 1.8.2、argc 与
+  carapace 同开；真实窗口注入 Tab 测量首个 Tab 约 1.1 秒（首次落盘/冷磁盘时约 2 秒），
+  pwsh 7.5.4 同条件约 1.1 秒。
+- 分解（5.1，profile 已加载）：`Initialize-Carapace` 约 490ms，其中 `Get-Alias` 5ms、
+  `Get-Command -CommandType Cmdlet` 63ms、`Get-Command -CommandType Function` 275ms、
+  `Get-Variable` 12ms、生成脚本 28ms、文本补丁 35ms、`Invoke-Expression` 38ms；
+  `Initialize-ArgcCompletions` 130ms、CxxuTab 导入 35ms（命令表缓存命中）、实际补全调用
+  约 185ms，其余为 PSReadLine 菜单与 5.1 的桩逻辑。5.1 比 7 多出的主要就是约 350ms
+  名称列表枚举（7 同类枚举约 100ms）。
+- 处置：新增 `Get-CarapaceShellContext51`，把四个 `CARAPACE_SHELL_*` 名称列表落盘到
+  `~/.cxxu/cache/carapace-shell-51/`（四个 txt + `meta.txt` 记录宿主、PSHOME 与写入时间），
+  首个 Tab 命中缓存只读 4 个小文件（约 2–3ms）。失效条件：宿主或 PSHOME 变化、超过
+  24 小时、文件缺失或为空、`Initialize-Carapace -Force`；24 小时口径与 CxxuTab 命令表
+  缓存一致。缓存写入失败只影响下次首 Tab 的耗时，不阻断加载。
+- 结果（同机、真实窗口注入）：5.1 首个 Tab 从约 1.1 秒降到约 0.6 秒；首次落盘
+  （冷缓存）约 1.05 秒；`Initialize-Carapace` 从约 490ms 降到约 150ms。7 未受影响。
+- 边界：24 小时内新增的函数/别名不会进入 carapace 的 shell 名称列表（外部 CLI 的参数
+  补全不受影响）；需要立即刷新时删除缓存目录或执行 `Initialize-Carapace -Force`。
+  函数名列表仍按 30,000 字符截断。
 

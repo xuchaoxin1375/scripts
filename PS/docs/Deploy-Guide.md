@@ -270,7 +270,7 @@ Enable-CxxuComponent Carapace -Persist -Now   # 或立即加载（当前会话�
 Set-GitCompletionSource Carapace -Persist     # 让 carapace 接管 git/gitk
 ```
 
-- `PsCarapace=True` 时 init 只计算排除项并注册首个 Tab 懒加载桩，启动阶段不执行 carapace 的注册脚本；默认关闭，未启用时没有这项开销。pwsh 7 首次 Tab 一次性多花约 0.2–0.3 秒；5.1 约 0.5–1 秒（枚举函数名并缓存、生成并执行注册脚本），之后约 0.1–0.4 秒。
+- `PsCarapace=True` 时 init 只计算排除项并注册首个 Tab 懒加载桩，启动阶段不执行 carapace 的注册脚本；默认关闭，未启用时没有这项开销。pwsh 7 首次 Tab 一次性多花约 0.2–0.3 秒；5.1 约 0.4–0.6 秒（名称列表缓存命中，冷缓存约 1 秒；生成并执行注册脚本），之后约 0.1–0.4 秒。
 - `PsGitCompletionSource` 决定 git/gitk 归属：`Auto`、`GitCompletion`、`Argc` 时 init 把 `git,gitk` 并入 `CARAPACE_EXCLUDES`；`Carapace` 时不排除，并让 argc 让路。`Argc` 不推荐用于 git：argc 上游生成的 git 补全缺 `--cached`、`--staged` 等选项；`Auto` 的顺序为 `GitCompletion` → `Carapace` → `Argc`，`Argc` 仅作兜底。切换到前三种来源不会关闭 carapace 本身，需要停止加载时另执行 `Disable-PsPlugin Carapace`（加 `-Persist` 长期生效）；已加载的 completer 按 `PsCarapace` 门控立即返回空，`git`/`gitk` 当场回落：`Carapace` 来源优先交给 `git-completion`（模块已安装且组件未关闭），否则用 `Argc`；`GitCompletion` 来源直接重新注册模块。
 - 与 argc 同时启用时要注意注册顺序：两者都在首个 Tab 注册，Tab 桩先加载 carapace、再注册 argc，同名 Native completer 后注册者 argc 生效，因此非 git/gitk 的重叠命令会由 argc 接管。需要 carapace 负责这些外部 CLI 时，关闭 argc（`Disable-PsPlugin Argc`，加 `-Persist` 长期生效）；关闭会立即重新注册 carapace，当前会话即接管，不必重开终端。bash 侧的顺序相反（argc 前、carapace 后），见 [bash/carapace README](../../bash/carapace/README.md)。
 - 慢命令排除项写配置键 `PsCarapaceExcludes`（逗号分隔，如 `winget,uv`）；init 会把它与 git/gitk 的规则合并。未设置该键时沿用已有的 `CARAPACE_EXCLUDES`，避免覆盖旧配置。

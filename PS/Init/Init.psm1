@@ -1071,6 +1071,99 @@ function Set-CarapaceCompletionOptions
     return $source
 }
 
+function Get-CarapaceShellContext51
+{
+    # 5.1 的 carapace 生成脚本每次补全都会枚举别名/内置/函数/变量（合计约 350ms）；
+    # 加载时算一次并缓存到磁盘，后续会话首个 Tab 只读缓存。缓存失效：-Force、宿主或
+    # PSHOME 变化、超过 24 小时、任一文件缺失或为空。24 小时上限与 CxxuTab 命令表
+    # 缓存一致：新装模块的函数名最多晚一天进入列表，外部 CLI 的参数补全不受影响。
+    param([switch]$Force)
+
+    $names = @('Aliases', 'Builtins', 'Functions', 'Variables')
+    $fileNames = @{
+        Aliases   = 'aliases.txt'
+        Builtins  = 'builtins.txt'
+        Functions = 'functions.txt'
+        Variables = 'variables.txt'
+    }
+    $cacheDir = $null
+    try { $cacheDir = Join-Path (Join-Path (Join-Path $HOME '.cxxu') 'cache') 'carapace-shell-51' } catch { }
+    $metaPath = if ($cacheDir) { Join-Path $cacheDir 'meta.txt' } else { $null }
+    $hostKey = '{0}|{1}|{2}' -f $PSVersionTable.PSVersion, [Environment]::Version, $PSHOME
+    $result = @{}
+
+    if ($cacheDir -and -not $Force)
+    {
+        try
+        {
+            $valid = $false
+            if (Test-Path -LiteralPath $metaPath)
+            {
+                $meta = [IO.File]::ReadAllLines($metaPath)
+                if ($meta.Count -ge 2 -and $meta[0].Trim() -eq $hostKey)
+                {
+                    $age = [DateTime]::UtcNow.Ticks - [long]$meta[1].Trim()
+                    $valid = ($age -ge 0) -and ($age -le [TimeSpan]::FromHours(24).Ticks)
+                }
+            }
+            if ($valid)
+            {
+                $loaded = @{}
+                foreach ($name in $names)
+                {
+                    $path = Join-Path $cacheDir $fileNames[$name]
+                    if (-not (Test-Path -LiteralPath $path)) { $valid = $false; break }
+                    $text = [IO.File]::ReadAllText($path)
+                    if ([string]::IsNullOrEmpty($text)) { $valid = $false; break }
+                    $loaded[$name] = $text
+                }
+                if ($valid)
+                {
+                    foreach ($name in $names) { $result[$name] = $loaded[$name] }
+                    Write-Verbose "carapace: 已读取 5.1 上下文缓存（$cacheDir）"
+                    return $result
+                }
+            }
+        }
+        catch
+        {
+            Write-Verbose "carapace: 读取 5.1 上下文缓存失败，改为重建：$($_.Exception.Message)"
+        }
+    }
+
+    $result.Aliases = (Get-Alias | ForEach-Object { $_.Name } | Out-String).TrimEnd()
+    $result.Builtins = (Get-Command -CommandType Cmdlet | ForEach-Object { $_.Name } | Out-String).TrimEnd()
+    $result.Functions = (Get-Command -CommandType Function | ForEach-Object { $_.Name } | Out-String).TrimEnd()
+    if ($result.Functions.Length -gt 30000)
+    {
+        $result.Functions = $result.Functions.Substring(0, 30000)
+    }
+    $result.Variables = (Get-Variable | ForEach-Object { $_.Name } | Out-String).TrimEnd()
+
+    # 缓存写入是尽力而为：失败只影响下次首 Tab 的耗时，不影响本次加载。
+    try
+    {
+        if ($cacheDir -and -not (Test-Path -LiteralPath $cacheDir))
+        {
+            $null = New-Item -ItemType Directory -Path $cacheDir -Force
+        }
+        if ($cacheDir)
+        {
+            $utf8 = New-Object System.Text.UTF8Encoding($false)
+            foreach ($name in $names)
+            {
+                [IO.File]::WriteAllText((Join-Path $cacheDir $fileNames[$name]), $result[$name], $utf8)
+            }
+            [IO.File]::WriteAllText($metaPath, ($hostKey + "`n" + [DateTime]::UtcNow.Ticks + "`n"), $utf8)
+        }
+    }
+    catch
+    {
+        Write-Verbose "carapace: 写入 5.1 上下文缓存失败，跳过：$($_.Exception.Message)"
+    }
+    return $result
+}
+
 function Initialize-Carapace
 {
     <#
@@ -1143,15 +1236,12 @@ function Initialize-Carapace
             # 5.1: 环境变量单值上限 32767，函数名列表通常超长会直接抛
             # "Environment variable name or value is too long"；截断只影响
             # PowerShell 函数名补全，外部 CLI 的参数补全不受影响。
-            # 这些列表在 5.1 每次补全都要枚举约 350ms，改为加载时算一次并缓存。
-            $global:PsCarapaceShellAliases = (Get-Alias | ForEach-Object { $_.Name } | Out-String).TrimEnd()
-            $global:PsCarapaceShellBuiltins = (Get-Command -CommandType Cmdlet | ForEach-Object { $_.Name } | Out-String).TrimEnd()
-            $global:PsCarapaceShellFunctions = (Get-Command -CommandType Function | ForEach-Object { $_.Name } | Out-String).TrimEnd()
-            if ($global:PsCarapaceShellFunctions.Length -gt 30000)
-            {
-                $global:PsCarapaceShellFunctions = $global:PsCarapaceShellFunctions.Substring(0, 30000)
-            }
-            $global:PsCarapaceShellVariables = (Get-Variable | ForEach-Object { $_.Name } | Out-String).TrimEnd()
+            # 枚举成本约 350ms/次，改为加载时算一次并落盘缓存（Get-CarapaceShellContext51）。
+            $context = Get-CarapaceShellContext51 -Force:$Force
+            $global:PsCarapaceShellAliases = $context.Aliases
+            $global:PsCarapaceShellBuiltins = $context.Builtins
+            $global:PsCarapaceShellFunctions = $context.Functions
+            $global:PsCarapaceShellVariables = $context.Variables
 
             $envPatches = @(
                 @{ Old = '$env:CARAPACE_SHELL_ALIASES = (Get-Alias | ForEach-Object { $_.Name } | Out-String).TrimEnd()'; New = '$env:CARAPACE_SHELL_ALIASES = $global:PsCarapaceShellAliases' }

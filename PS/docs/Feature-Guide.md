@@ -209,7 +209,7 @@ carapace 是一个跨 shell 的命令行补全二进制，按命令读取自身�
 
 `carapace --list` 在本机为 743 个 completer，生成的 PowerShell 脚本注册 1486 个命令名（含 `.exe` 变体）；数量随版本变化，以该命令的实际输出为准。
 
-5.1 侧在 Windows 11 26100、PowerShell 5.1.26100.8875、PSReadLine 2.0.0、carapace-bin 1.8.2 实测：`git checkout <Tab>` 返回 11 个 ref，`git status --sh<Tab>` 返回 `--short`、`--show-stash`，菜单中文描述正常且无 ANSI 残留；首次 Tab 约 0.5 秒，之后约 0.1–0.4 秒。候选数量与延迟随版本、仓库状态变化。
+5.1 侧在 Windows 11 26100、PowerShell 5.1.26100.8875、PSReadLine 2.0.0、carapace-bin 1.8.2 实测：`git checkout <Tab>` 返回 11 个 ref，`git status --sh<Tab>` 返回 `--short`、`--show-stash`，菜单中文描述正常且无 ANSI 残留；首次 Tab 约 0.6 秒（首次建立上下文缓存约 1 秒），之后约 0.1–0.4 秒。候选数量与延迟随版本、仓库状态变化。
 
 **启用步骤（由 `init` 注册懒加载桩，不修改 profile）**：
 
@@ -225,7 +225,7 @@ Set-GitCompletionSource Carapace -Persist   # 需要 carapace 接管 git/gitk �
 ```
 
 - `PsCarapace=True` 时 `init` 只计算排除项并注册首个 Tab 懒加载桩，启动阶段不执行 carapace 的注册脚本；默认关闭，未启用时没有这项开销。pwsh 7 首次 Tab 加载约 0.2–0.3 秒，之后 Tab 正常。
-- 5.1 支持：`Register-ArgumentCompleter -Native` 在 5.1 可用，主要差异由加载时处理。`-`/`--` 开头的词由 Tab 桩在词首临时插零宽字符（与 argc 同一机制），交给 carapace 后随候选替换或由桩删除，不残留在输入行；`CARAPACE_SHELL_*` 名称列表在加载时枚举一次并缓存，函数名列表截断到 30,000 字符（环境变量上限 32,767），避免 `Environment variable name or value is too long`；调用改走 .NET `Process` 并固定 `StandardOutputEncoding=UTF-8`，同时还原空字符串参数，中文提交说明不再乱码；候选描述去掉 ANSI（PSReadLine 2.0 不解析转义序列）。代价是首次 Tab 约 0.5–1 秒（枚举函数名 + 生成并执行注册脚本），之后约 0.1–0.4 秒。
+- 5.1 支持：`Register-ArgumentCompleter -Native` 在 5.1 可用，主要差异由加载时处理。`-`/`--` 开头的词由 Tab 桩在词首临时插零宽字符（与 argc 同一机制），交给 carapace 后随候选替换或由桩删除，不残留在输入行；`CARAPACE_SHELL_*` 名称列表在加载时枚举一次并落盘缓存（`~/.cxxu/cache/carapace-shell-51/`，24 小时或宿主变化后重建），函数名列表截断到 30,000 字符（环境变量上限 32,767），避免 `Environment variable name or value is too long`；调用改走 .NET `Process` 并固定 `StandardOutputEncoding=UTF-8`，同时还原空字符串参数，中文提交说明不再乱码；候选描述去掉 ANSI（PSReadLine 2.0 不解析转义序列）。代价是首次 Tab 约 0.4–0.6 秒（冷缓存约 1 秒），之后约 0.1–0.4 秒。
 - `PsGitCompletionSource` 决定 git/gitk 归属：`Auto`、`GitCompletion`、`Argc` 时 `init` 把 `git,gitk` 并入 `CARAPACE_EXCLUDES`；`Carapace` 时不排除，并让 argc 让路。`Argc` 不推荐用于 git：argc 上游生成的 git 补全缺 `--cached`、`--staged` 等只写在 SYNOPSIS 的选项；`Auto` 的顺序为 `GitCompletion` → `Carapace` → `Argc`，`Argc` 仅作兜底。切换到前三种来源不会关闭 carapace 本身，需要停止加载时另执行 `Disable-PsPlugin Carapace`（加 `-Persist` 长期生效）；已加载的 completer 按 `PsCarapace` 门控立即返回空，`git`/`gitk` 当场回落：`Carapace` 来源优先交给 `git-completion`（模块已安装且组件未关闭），否则用 `Argc`；`GitCompletion` 来源直接重新注册模块。
 - 与 argc 同开时，两者都在首个 Tab 注册；Tab 桩先加载 carapace，再注册 argc，同名 Native completer 后注册者 argc 生效，因此非 git/gitk 的重叠命令会由 argc 接管。需要 carapace 负责这些外部 CLI 时，关闭 argc（`Disable-PsPlugin Argc -Persist`）或接受 argc 的候选；bash 侧顺序相反，见 [bash/carapace README](../../bash/carapace/README.md)。
 - 慢命令排除项写 `PsCarapaceExcludes`（逗号分隔，如 `winget,uv`），与 git/gitk 规则由 `init` 合并；未设置该键时沿用已有的 `CARAPACE_EXCLUDES`。
@@ -454,7 +454,7 @@ Git Bash 使用同一个 carapace 二进制，Linux/macOS 使用各自平台的�
 - 5.1 下自动降级：`init` 步骤表 `MinPS = 7` 的步骤静默跳过（`ArgumentCompletion`/`Startup`/`Pwsh`/`Json`）；`ForEach-Object -Parallel` 走串行分支；`Register-PsUxLazyLoad` 在 5.1 只装 CxxuTab 手势桩；`CxxuTab` 读 `~/.cxxu/bin/ps51` 的 netstandard2.0 活件（缺活件时纯透传），命令表缓存 `~/.cxxu/cache/tab-commands-4.tsv`；`HistoryNoDuplicates`/`inlineprediction` 配色按 PSReadLine 版本 gating（5.1 自带 2.0.0 跳过）。
 - `argc-completions` 在 5.1 也可用：依赖现有 `argc.exe` + Git Bash（`bash`/GNU 工具在 PATH），PSReadLine 2.0 的 `MenuComplete`/`Selection` 均支持；首个 Tab 注册约 200ms，之后零开销，开关 `$env:PsArgc`，与 7 同一套懒加载。5.1 的补全引擎不会把 `-`/`--` 开头的词交给 Native 补全器（6.0 才修），Tab 桩会在词首临时插一个零宽字符绕过（只对 argc/carapace 注册过的应用命令，cmdlet/函数参数补全不受影响；Esc 取消或选中后都会清掉，缓冲区不留字符）。
 - `git`/`gitk` 的补全由 `git-completion` 提供，5.1 同样可用（init 检测到模块即挂载，首个补全才导入）。受同一条引擎限制，选项补全在 5.1 不触发，子命令、分支与文件补全正常。模块须位于 5.1 的 `PSModulePath` 中：`-Scope CurrentUser` 在 7 与 5.1 落在不同目录，只在 7 上装过时 5.1 不会挂载，安装步骤见 [Deploy-Guide](Deploy-Guide.md) 的「分层、来源与能力」。
-- `carapace` 在 5.1 也可用：`Register-ArgumentCompleter -Native` 本身可用，`-` 开头的词由共享 Tab 桩插入零宽字符绕过引擎限制，因此参数、git ref 与 flag 都能触发；加载时会缓存并截断 shell 名称列表、用 UTF-8 读取 carapace 输出、去掉候选描述里的 ANSI。首次 Tab 约 0.5–1 秒，之后约 0.1–0.4 秒。启用与来源切换与 7 相同。
+- `carapace` 在 5.1 也可用：`Register-ArgumentCompleter -Native` 本身可用，`-` 开头的词由共享 Tab 桩插入零宽字符绕过引擎限制，因此参数、git ref 与 flag 都能触发；加载时会把 shell 名称列表落盘缓存并截断、用 UTF-8 读取 carapace 输出、去掉候选描述里的 ANSI。首次 Tab 约 0.4–0.6 秒（冷缓存约 1 秒），之后约 0.1–0.4 秒。启用与来源切换与 7 相同。
 - 提示符全对齐：`fast`/`Simple`/`Short`/`Default` 原生可用；`Balance` 的 Info/Startup 外部依赖在 `Prompt.psm1` 顶部有 5.1 本地兜底（CIM/注册表/内置 cmdlet 同口径；必须 `function global:` 定义，否则模块私有、直接调用撞坏 Info；缓存用 `$global:__Cxxu51*`，`$script:` 跨不了作用域），渲染与 7.5 逐字一致，稳态约 50ms/次（首屏冷缓存 1.4s 一次性）；`Get-IpAddressFormated` 含参数集的移植版，直接调用也可用。
 - 明确不可用：`CxxuCommand` 内联预测（net9 predictor）、预测视图（需 7.2+ 子系统）、`Deploy` 全系、`Test-PsEnvReadiness` 的 `pwsh 7+` 必备项（在 5.1 下即提示装 pwsh7）。
 - 5.1 Tab 补全可用（默认开）：`CxxuTab` 读 `~/.cxxu/bin/ps51/<哈希>/CxxuPredictor.dll`（netstandard2.0，只含 `CompleteCommand`），由 `Sync-CxxuPredictor` 发布。首个 Tab 才导入模块并读命令表缓存（命中约 20ms，缺失/过期时现建约 0.4s；缓存与排查见 §9「Tab 补全自查」），启动不加负担；只有 Tab 菜单，没有内联预测。不用时 `Disable-PsPlugin Tab -Persist`。
