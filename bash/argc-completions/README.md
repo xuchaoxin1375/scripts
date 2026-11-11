@@ -149,6 +149,8 @@ argc --argc-compgen bash /c/repos/argc-completions/completions/git.sh git diff -
 
 输出只有 `--stat`；把末尾参数换成 `--ca` 则没有输出。
 
+需要确认交互式界面（候选菜单、排序、描述列）时，Windows 下按 [交互式控制台验证](../../PS/docs/Interactive-Console-Verification.md) 的「非 PowerShell 控制台（Git Bash / MSYS）」一节启动独立窗口并注入按键；macOS/Linux 不在该流程范围内。
+
 临时处理：在上游仓库的 `completions/git.sh`（默认 `/c/repos/argc-completions/completions/git.sh`）的 `git diff` 段、`# @arg` 参数定义行之前补两行，重新打开终端即可生效：
 
 ```bash

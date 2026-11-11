@@ -356,6 +356,8 @@ bash -lic 'type _carapace_completer'   # 登录 shell 读取 ~/.bash_profile/~/.
 - `gh pr <Tab><Tab>` 即使未安装 `gh` 也应出现静态子命令；需要读取仓库、PR 编号或登录状态的动态候选才依赖 `gh` 本身。
 - `carapace <Tab><Tab>` 应出现 completer 列表。
 
+Windows 下需要脚本化复验（注入按键、读屏取证，而不是肉眼确认）时，按 [交互式控制台验证](../../PS/docs/Interactive-Console-Verification.md) 的「非 PowerShell 控制台（Git Bash / MSYS）」一节启动 `bin\bash.exe` 或 Windows Terminal 中的 bash；该流程只适用于 Windows，macOS/Linux 不在范围内。
+
 效果范围：
 
 - carapace 注册的是参数值补全，不替代 bash 的命令名补全，也不补 PowerShell cmdlet。
