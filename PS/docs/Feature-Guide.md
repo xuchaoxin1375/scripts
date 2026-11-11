@@ -171,7 +171,7 @@ Test-StartupPerformance -Simple   # 只测一次新 pwsh 启动（带 profile）
 |---|---|
 | `CompletionPredictor`（参数/路径预测，命令名位置源码级跳过） | 一直在用 |
 | `CxxuPredictor`（自研命令名预测：分层模糊 `别名 > 前缀 > 词边界/首字母 > 连续片段 > 一般子序列` + 严格通配，按历史频率加权，默认 15 条，3000 条 1ms 内） | **已启用**（详见 §8） |
-| `CxxuTab`（自研命令名 Tab 补全：独立插件，命令名位合并模糊结果，参数位零干扰） | 默认开（开关 `$env:PsTab`，置 `False` 关；不需要时 `Disable-PsPlugin Tab -Persist`）；选中已加载函数时菜单下方显示 `.SYNOPSIS` 首段与参数语法（`$env:PsTabSynopsis` 可单独关） |
+| `CxxuTab`（自研命令名 Tab 补全：独立插件，命令名位合并模糊结果，参数位零干扰） | 默认开（开关 `$env:PsTab`，置 `False` 关；不需要时 `Disable-PsPlugin Tab -Persist`）；选中带注释帮助的函数时菜单下方显示 `.SYNOPSIS` 首段与参数语法（`$env:PsTabSynopsis` 可单独关；未加载模块在 pwsh 7+ 按需读源码） |
 | `PSFzf`（Ctrl+T 文件 / Ctrl+R 历史） | **已启用**（Tab 不动，仍是 MenuComplete） |
 | `zoxide`（`z` 跳转，init 缓存 `~/.zoxide_init_cache.ps1`） | **已启用** |
 | `PSCompletions`（~200 命令的参数补全库） | 可选：已装 5.6.9；组件 `PSCompletions` 默认关，`Enable-CxxuComponent PSCompletions -Persist` 后由 `init` 导入模块 |
@@ -330,6 +330,7 @@ Git Bash 使用同一个 carapace 二进制，Linux/macOS 使用各自平台的�
 |---|---|---|
 | 开关 | `$env:PsTab` | 空（默认开）或 `True`；只有 `False` 才是关闭 |
 | 摘要开关 | `$env:PsTabSynopsis` | 空（默认开）或 `True`；显式 `False` 才关闭；只影响菜单摘要，不影响候选 |
+| 未加载模块的函数没有摘要 | 5.1 不启用源码解析；模块为二进制或帮助写在 MAML；候选超过 20 个时跳过 | pwsh 7+ 用更短的前缀（候选 ≤20）再按一次 Tab；或先 `Import-Module <模块>` / 用一次该函数；5.1 同样先导入模块 |
 | 模块 | `Get-Module CxxuTab` | 首个 Tab 后应有；5.1 与 7 都靠它装包装 |
 | dll 方法 | `$global:__CxxuTabMethod` | 非空；空 = 活件没找到或加载失败 |
 | 命令表缓存 | `Get-ChildItem $HOME\.cxxu\cache\tab-commands-*.tsv` | 存在且 24h 内为命中；过期/缺失会自动重建；比仓库模块文件旧时 `init` 会删除（只对新终端生效） |
@@ -363,7 +364,7 @@ Git Bash 使用同一个 carapace 二进制，Linux/macOS 使用各自平台的�
 
 - 参数值补全还有可选的手动来源 carapace（不参与 `init` 开关，见本文「carapace（可选，非默认）」）：适合 `scoop`、`winget`、`gh`、`docker`、`kubectl`、`cargo`、`uv`、`npm` 等外部 CLI；git 仍由 `git-completion` 负责。
 - **Tab 菜单顺序**：原生前缀命中排在前并保持原生顺序，`CxxuTab` 的模糊补充按 dll 的 tier/分数顺序排在后面，同名去重。输入完整前缀时第一次 Tab 落在原生候选；只有没有原生前缀命中（如 `uprepos`）时，才由模糊结果主导。
-- **Tab 菜单摘要**：选中项若是已加载函数（或其别名）且带注释帮助，菜单下方显示 `.SYNOPSIS` 首段与参数语法；cmdlet、未加载模块的函数与没有注释帮助的函数保持原生提示。摘要从函数定义文本解析（不调用 `Get-Help`，不为候选触发模块自动加载），重新定义函数后下一次 Tab 自动刷新；不需要时置 `$env:PsTabSynopsis='False'`。
+- **Tab 菜单摘要**：选中项若是函数（或其别名）且带注释帮助，菜单下方显示 `.SYNOPSIS` 首段与参数语法。已加载函数直接取定义文本；未加载模块的函数在 pwsh 7+、候选不超过 20 个时读模块源文件解析（不导入模块），首次每模块约几十毫秒、之后缓存；5.1 只覆盖已加载函数。cmdlet、二进制模块与帮助写在 MAML 的函数保持原生提示。摘要不调用 `Get-Help`，不因候选触发模块自动加载；重新定义函数后下一次 Tab 自动刷新；不需要时置 `$env:PsTabSynopsis='False'`。
 - **菜单中的 Ctrl+C**：真实按键在默认控制台模式下会被当作控制事件，Tab 菜单不响应；只把 `Ctrl+C` 绑到 `CancelLine` 也不会生效。要取消整行，按 `Esc` 关闭菜单（恢复输入前缀）再按 `Ctrl+C`；若要一次 `Ctrl+C` 直接清行，需在 Tab/MenuComplete 包装里临时设置 `[Console]::TreatControlCAsInput = $true` 并绑定 `CancelLine`（原理、验证与示例见 [交互式控制台验证](Interactive-Console-Verification.md)）。该包装只在菜单显示期间生效，命令执行时的 Ctrl+C 中断不受影响。
 - 相关命令：`doctor`（统一诊断入口，定位问题先执行它；`doctor -Feature <功能>` 只查单个功能）、`Get-CxxuDependencyReport [-Missing]`（按功能查外部依赖与安装建议，详见 [Feature-Dependencies.md](Feature-Dependencies.md)）、`Register-PsUxLazyLoad [-Now]`（延迟加载入口）、
   `Deploy-CompletionStack [-WhatIf] [-IncludeArgc] [-IncludeFuzzy] [-IncludePredictor] [-IncludePSCompletions] [-IncludeGitCompletion] [-All]`（新机一键装栈）、

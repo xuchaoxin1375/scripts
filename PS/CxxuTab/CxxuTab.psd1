@@ -1,6 +1,6 @@
 @{
     RootModule = 'CxxuTab.psm1'
-    ModuleVersion = '1.0.5'
+    ModuleVersion = '1.0.6'
     GUID = 'd740d667-a86b-496d-92e9-a5333e88cc1d'
     Author = 'cxxu'
     Description = 'Cxxu PowerShell module: CxxuTab (Tab command-name fuzzy completion and function synopsis in the menu tooltip, backed by CxxuPredictor)'

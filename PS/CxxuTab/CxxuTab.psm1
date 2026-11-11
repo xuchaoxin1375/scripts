@@ -4,7 +4,8 @@
 # 显式置 False/0/No/Off 才关),关掉就是纯透传,行为与没装一样;启停管理看
 # Enable/Disable-PsPlugin。异常/超慢调用会自熔断(本会话只透传),不拖死 Tab。
 # 命令名候选另补函数 .SYNOPSIS 首段(与参数语法同屏,开关 $env:PsTabSynopsis,
-# 默认开),独立熔断;只查已加载函数/别名,不为候选触发模块自动加载。
+# 默认开),独立熔断;已加载函数取定义文本,未加载模块在 pwsh 7+ 且候选较少时
+# 读 .psm1 源码(不导入模块,5.1 不做这层)。
 # 跨作用域说明:global:TabExpansion2 运行在全局作用域,看不到模块 $script:,
 # 方法缓存必须放 $global:__CxxuTabMethod(命名避冲突)。
 # 5.1 走 ps51 活件(netstandard2.0,只有 CompleteCommand);7+ 走预测器活件
@@ -105,6 +106,147 @@ function Get-CxxuTabSynopsis
     return $text
 }
 
+# 未加载模块的源码索引:Get-Command 不带名字只枚举、不导入(7 约 30ms;5.1 约 260ms,
+# 故 5.1 不启用源码解析)。每个进程只建一次,只用于候选较少时的按需解析。
+function Get-CxxuTabModuleMap
+{
+    if ($null -ne $global:__CxxuTabModMap) { return $global:__CxxuTabModMap }
+    $map = @{}
+    try
+    {
+        foreach ($cmd in Get-Command -CommandType Function -ErrorAction Ignore)
+        {
+            if ($cmd.Name -and $cmd.Module -and $cmd.Module.Path -and -not $map.ContainsKey($cmd.Name))
+            {
+                $map[$cmd.Name] = $cmd.Module.Path
+            }
+        }
+    }
+    catch { }
+    $global:__CxxuTabModMap = $map
+    return $map
+}
+
+# 模块清单 → 根 .psm1 路径。优先同名 psm1(仓库约定),缺失再读清单的 RootModule;
+# 二进制模块与找不到源文件的模块返回 null,不触发导入。
+function Get-CxxuTabModuleSource
+{
+    param([string]$ModulePath)
+    if ([string]::IsNullOrEmpty($ModulePath)) { return $null }
+    if ($ModulePath -like '*.psm1') { return $ModulePath }
+    if ($ModulePath -notlike '*.psd1') { return $null }
+    $cache = $global:__CxxuTabModSrc
+    if ($null -eq $cache) { $cache = @{}; $global:__CxxuTabModSrc = $cache }
+    if ($cache.ContainsKey($ModulePath)) { return $cache[$ModulePath] }
+    $source = $null
+    $base = [System.IO.Path]::GetDirectoryName($ModulePath)
+    $leaf = [System.IO.Path]::GetFileNameWithoutExtension($ModulePath)
+    $guess = Join-Path $base ($leaf + '.psm1')
+    if (Test-Path -LiteralPath $guess)
+    {
+        $source = $guess
+    }
+    else
+    {
+        $root = $null
+        try
+        {
+            if (Get-Command Import-PowerShellDataFile -ErrorAction Ignore)
+            {
+                $root = (Import-PowerShellDataFile -LiteralPath $ModulePath).RootModule
+            }
+        }
+        catch { }
+        if (-not $root)
+        {
+            try
+            {
+                $tokens = $null; $errors = $null
+                $ast = [System.Management.Automation.Language.Parser]::ParseFile($ModulePath, [ref]$tokens, [ref]$errors)
+                $table = $ast.Find({ param($n) $n -is [System.Management.Automation.Language.HashtableAst] }, $true)
+                if ($table)
+                {
+                    $data = $table.SafeGetValue()
+                    if ($data -and $data.ContainsKey('RootModule')) { $root = $data['RootModule'] }
+                }
+            }
+            catch { }
+        }
+        if ($root -and $root -like '*.psm1')
+        {
+            $path = Join-Path $base $root
+            if (Test-Path -LiteralPath $path) { $source = $path }
+        }
+    }
+    $cache[$ModulePath] = $source
+    return $source
+}
+
+# 解析模块源文件并缓存“函数名 → AST”,按文件 LastWriteTimeUtc 失效;失败返回空表。
+function Get-CxxuTabSourceFunctions
+{
+    param([string]$Path)
+    $cache = $global:__CxxuTabModFiles
+    if ($null -eq $cache) { $cache = @{}; $global:__CxxuTabModFiles = $cache }
+    $item = Get-Item -LiteralPath $Path -ErrorAction Ignore
+    if (-not $item) { return $null }
+    $stamp = $item.LastWriteTimeUtc.Ticks
+    $entry = $cache[$Path]
+    if ($entry -and $entry.Stamp -eq $stamp) { return $entry.Functions }
+    $tokens = $null; $errors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($Path, [ref]$tokens, [ref]$errors)
+    $map = @{}
+    foreach ($fn in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true))
+    {
+        if ($fn.Name -and -not $map.ContainsKey($fn.Name)) { $map[$fn.Name] = $fn }
+    }
+    $cache[$Path] = @{ Stamp = $stamp; Functions = $map }
+    return $map
+}
+
+# 未加载函数 → 从源码取 .SYNOPSIS 首段。每次 Tab 最多新解析 $MaxParses 个模块文件,
+# 已缓存的模块不计;候选过多(宽前缀)由调用方跳过,避免一次解析几十个文件。
+function Get-CxxuTabSourceSynopsis
+{
+    param([string]$Name, [ref]$Parses, [int]$MaxParses = 3)
+    if ([string]::IsNullOrEmpty($Name)) { return $null }
+    $map = Get-CxxuTabModuleMap
+    $modulePath = $map[$Name]
+    if (-not $modulePath) { return $null }
+    $source = Get-CxxuTabModuleSource -ModulePath $modulePath
+    if (-not $source) { return $null }
+    $cache = $global:__CxxuTabSrcSynCache
+    if ($null -eq $cache) { $cache = @{}; $global:__CxxuTabSrcSynCache = $cache }
+    $item = Get-Item -LiteralPath $source -ErrorAction Ignore
+    if (-not $item) { return $null }
+    $stamp = $item.LastWriteTimeUtc.Ticks
+    $entry = $cache[$Name]
+    if ($entry -and $entry.Stamp -eq $stamp) { return $entry.Text }
+    $files = $global:__CxxuTabModFiles
+    $known = $null -ne $files -and $files.ContainsKey($source)
+    if (-not $known)
+    {
+        if ($Parses.Value -ge $MaxParses) { return $null }
+        $Parses.Value++
+    }
+    $functions = Get-CxxuTabSourceFunctions -Path $source
+    $text = $null
+    if ($functions -and $functions.ContainsKey($Name))
+    {
+        try
+        {
+            $help = $functions[$Name].GetHelpContent()
+            if ($help -and $help.Synopsis)
+            {
+                $text = (($help.Synopsis -split '\r?\n' | ForEach-Object { $_.Trim() } | Where-Object { $_ }) -join ' ')
+            }
+        }
+        catch { }
+    }
+    $cache[$Name] = @{ Stamp = $stamp; Text = $text }
+    return $text
+}
+
 # 命令名候选统一附加摘要:摘要在前、原有参数语法保留在后;非命令候选原样保留。
 # 查表直接内联(大候选集下逐个函数调用白付数百次开销),只有确有注释帮助时才取摘要。
 function Add-CxxuTabSynopsis
@@ -112,30 +254,43 @@ function Add-CxxuTabSynopsis
     param([System.Management.Automation.CommandCompletion]$Completion)
     if ($null -eq $Completion -or $null -eq $Completion.CompletionMatches) { return $Completion }
     $index = Get-CxxuTabSynopsisIndex
+    # 源码回退只在候选较少(pwsh 7+)时启用:首次要建模块索引并解析文件,宽前缀会放大成本
+    $allowSource = $Completion.CompletionMatches.Count -le 20 -and $PSVersionTable.PSVersion.Major -ge 6
+    $parses = 0
     $list = [System.Collections.Generic.List[System.Management.Automation.CompletionResult]]::new()
     $changed = $false
     foreach ($m in $Completion.CompletionMatches)
     {
         if ($m.ResultType -eq 'Command')
         {
-            $func = $index.Functions[$m.CompletionText]
+            $lookup = $m.CompletionText
+            $func = $index.Functions[$lookup]
             if (-not $func)
             {
-                $target = $index.Aliases[$m.CompletionText]
-                if ($target) { $func = $index.Functions[$target] }
+                $target = $index.Aliases[$lookup]
+                if ($target)
+                {
+                    $func = $index.Functions[$target]
+                    $lookup = $target
+                }
             }
+            $text = $null
             if ($func -and $func.Definition -and $func.Definition.Contains('.SYNOPSIS'))
             {
                 $text = Get-CxxuTabSynopsis -Name $m.CompletionText -Function $func
-                if ($text)
-                {
-                    $tip = [string]$m.ToolTip
-                    if ($tip) { $tip = $text + "`n" + $tip.Trim() } else { $tip = $text }
-                    # 只重建真正要改的候选,其余原对象复用,避免大候选集(如 Get-)白付分配成本
-                    $list.Add([System.Management.Automation.CompletionResult]::new($m.CompletionText, $m.ListItemText, $m.ResultType, $tip))
-                    $changed = $true
-                    continue
-                }
+            }
+            elseif ($allowSource -and $lookup -notmatch '\\')
+            {
+                $text = Get-CxxuTabSourceSynopsis -Name $lookup -Parses ([ref]$parses)
+            }
+            if ($text)
+            {
+                $tip = [string]$m.ToolTip
+                if ($tip) { $tip = $text + "`n" + $tip.Trim() } else { $tip = $text }
+                # 只重建真正要改的候选,其余原对象复用,避免大候选集(如 Get-)白付分配成本
+                $list.Add([System.Management.Automation.CompletionResult]::new($m.CompletionText, $m.ListItemText, $m.ResultType, $tip))
+                $changed = $true
+                continue
             }
         }
         $list.Add($m)

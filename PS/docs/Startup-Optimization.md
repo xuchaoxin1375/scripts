@@ -736,20 +736,29 @@ WindowsTerminal.exe
   与独立熔断 `$global:__CxxuTabSynFuse`，失败只丢摘要，不影响候选与模糊。
 - 取摘要方式：不走 `Get-Help`/`Ast.GetHelpContent()`——本机会话 75 个带帮助的函数合计
   约 678ms，且 `Get-Command` 不带 `-ListImported` 会为未加载模块触发自动加载（30 个候选
-  实测可拖到数秒）。改为从 `FunctionInfo.Definition` 文本解析首段（遇空行或下一个帮助
-  标签停止，行注释/块注释统一归一化），函数/别名索引每命令名 Tab 用
+  实测可拖到数秒）。已加载函数从 `FunctionInfo.Definition` 文本解析首段（遇空行或下一个
+  帮助标签停止，行注释/块注释统一归一化），函数/别名索引每命令名 Tab 用
   `Get-Command -CommandType Function, Alias -ListImported` 重建（约 1ms，首次含 JIT 约 8ms），
   摘要文本按 ScriptBlock 对象身份缓存，函数重新定义后下一次 Tab 自动换新。
+- 未加载模块（第二版）：用户报 `Get-SystemInfoBasic` 没有摘要，实测它属于 `Hardware`，
+  该模块启动时未导入；`Get-Help` 能出摘要是因为自动导入了模块。为兼顾懒加载，新增源码
+  回退：`Get-Command -CommandType Function` 只枚举不导入（1901 个函数约 33ms，每进程一次），
+  得到函数名→清单路径；按同名 `.psm1`（缺失时读清单 `RootModule`）解析文件，
+  缓存“函数名→AST”，按文件 LastWriteTimeUtc 失效。只在 pwsh 7+ 且候选不超过 20 个时启用，
+  每次 Tab 最多新解析 3 个模块文件；已缓存模块不计。5.1 枚举约 260ms，维持仅已加载函数。
 - 性能（profile 已加载，交错 20 次取中位数）：668 个候选的 `Get-` 前缀，摘要开 52.0ms、
   关 36.9ms；单独调用装饰逻辑约 2.7ms（大候选集只重建真正要改的 15 个候选，其余原对象
   复用）；常规 4~12 个候选（`Get-EnvVar`、`Confirm-`）无可测差异（约 24.6ms 与 24.8ms）。
+  源码回退：`Get-SystemInfo` 首次 105ms（含模块索引 33ms 与解析 `Hardware.psm1`），
+  同会话第二次 29ms；`Hardware` 始终未导入；宽前缀 `Get-` 不触发源码解析。
 - 验证：pwsh 7.5.4 与 Windows PowerShell 5.1.26100 直调 `TabExpansion2`——函数摘要、
   别名指向函数、无帮助函数保持原样、cmdlet 保持参数语法、重定义立即刷新、开关关闭、
-  参数位不受影响；真实窗口注入按键（pwsh 7.5.4 + profile）`Get-EnvVar<Tab>` 菜单下方
-  显示“查询指定环境变量的值……”与参数语法。单候选（如 `Confirm-EnvVar`）不展开菜单，
-  属 MenuComplete 行为，直接检查 ToolTip 可见摘要。
-- 边界：只覆盖已导入函数/别名，未加载模块的函数不触发自动加载、也就没有摘要；cmdlet 的
-  内置帮助不读取；只取 `.SYNOPSIS` 首段；ListView 不改（其 tooltip 需在
+  参数位不受影响；真实窗口注入按键（pwsh 7.5.4 + profile）`Get-EnvVar<Tab>` 与
+  `Get-SystemInfo<Tab>` 菜单下方均显示摘要与参数语法，后者验证时不导入 `Hardware`。
+  单候选（如 `Confirm-EnvVar`）不展开菜单，属 MenuComplete 行为，直接检查 ToolTip 可见摘要。
+- 边界：已加载函数走定义文本；未加载模块只在 pwsh 7+、候选 ≤20 时读源码，二进制模块、
+  嵌套模块中找不到根 `.psm1`、帮助写在 MAML 的函数拿不到；5.1 只覆盖已加载函数；cmdlet
+  的内置帮助不读取；只取 `.SYNOPSIS` 首段；ListView 不改（其 tooltip 需在
   `CxxuPredictor` 的 dll 里给 `PredictiveSuggestion` 补第二个参数）。
-- 版本：`CxxuTab` 1.0.5。
+- 版本：`CxxuTab` 1.0.6。
 
