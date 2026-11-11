@@ -1595,7 +1595,7 @@ function doctor
     else
     {
         $argcVer = try { (& $argcExe --argc-version 2>$null | Select-Object -First 1) } catch { '' }
-        $argcState = if ($global:PsArgcLoaded) { "已注册 $($global:PsArgcScripts.Count) 个命令" } else { '仓库就位，首个 Tab 自动注册' }
+        $argcState = if ($global:PsArgcLoaded) { "已注册 $($global:PsArgcScripts.Count) 个命令" } else { '仓库就位，首次外部 CLI 参数补全时自动注册' }
         if (-not $argcVer) { & $dchk 'argc 补全' $false "argc 无法执行：$argcExe" }
         elseif (-not $plat.IsWindows) { & $dchk 'argc 补全' $true $argcState }
         else

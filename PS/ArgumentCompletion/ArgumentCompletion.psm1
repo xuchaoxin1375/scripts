@@ -105,7 +105,15 @@ function Set-ArgumentCompleter
     )
     # Import-Module ArgumentCompletion
     # 获取命令名字
-    $EnvVarCmds = Get-Command -Module EnvVar | Select-Object -ExpandProperty Name 
+    # init 已导入 EnvVar 时只读本会话命令,避免再次扫描 PSModulePath;独立调用仍支持发现模块。
+    $EnvVarCmds = if (Get-Module EnvVar)
+    {
+        Get-Command -Module EnvVar -ListImported | Select-Object -ExpandProperty Name
+    }
+    else
+    {
+        Get-Command -Module EnvVar | Select-Object -ExpandProperty Name
+    }
     # foreach ($cmd in $EnvVarCmds)
     $EnvVarCmds | ForEach-Object {
         $cmd = $_

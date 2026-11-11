@@ -323,15 +323,14 @@ function Test-StartupPerformance
 {
     <#
     .SYNOPSIS
-    自查 pwsh 启动性能:分段计时(裸启动/profile 税/init 合计+步骤表/OnIdle 体验件/prompt)并给结论。
+    自查 pwsh 启动性能:分段计时(裸启动/profile 税/init 合计+步骤表/体验件全载/prompt)并给结论。
     .DESCRIPTION
     每段都在全新 pwsh 进程里测(冷数字,排除本会话已摊销的解析成本);本机改动对照看 Startup-Optimization.md。
     -Simple 只测一次(或 -Repeat 次)带 profile 的新 pwsh 启动,几秒内出结果;-PassThru 返回结构化对象。
     耗时组成(参考值见 Startup-Optimization.md 的基线表,真机按比例):裸启动 + profile 税(conda 缓存 + init)
-    + 首屏单发(predictor 约 400/zoxide 约 20,先摘后装一次);PSFzf/CxxuTab 转手势按需
-    (首按 Ctrl+T/R、首个 Tab 才装,手势可归因,无随机冻结)。
-    首屏"能看见 prompt 但打字滞后"= 常驻 OnIdle 订阅随机冻结(分片时代已回滚,见 Startup-Optimization.md §21);
-    现只有首屏一次单发(用户还没打字),之后全程无后台加载。
+    + 首屏单发(predictor/zoxide);PSFzf/CxxuTab 转手势按需(首按 Ctrl+T/R、首个 Tab 才装)。
+    体验件全载使用 Register-PsUxLazyLoad -Now,包含手势组件,不是首屏 OnIdle 的实际耗时;
+    argc/carapace 的首次参数补全加载另计。首屏单发也在主线程执行,冷缓存仍可能短暂阻塞输入。
     .EXAMPLE
     Test-StartupPerformance
     .EXAMPLE
@@ -410,7 +409,7 @@ Import-Module TerminalTools -ErrorAction Stop
         [PSCustomObject]@{ 段 = 'profile 税'; ms = $profileTax; 说明 = 'profile - bare' },
         [PSCustomObject]@{ 段 = '  init 合计'; ms = $tInit; 说明 = 'profile 税的子集，不另外相加' },
         [PSCustomObject]@{ 段 = '  profile 其他'; ms = $profileOther; 说明 = 'profile 税 - init（conda/模块导入等）' },
-        [PSCustomObject]@{ 段 = 'idle 全载'; ms = $tIdle; 说明 = '启动后首屏一次，不计入 profile' }
+        [PSCustomObject]@{ 段 = '体验件全载（-Now）'; ms = $tIdle; 说明 = '含 PSFzf/CxxuTab，不等于首屏 OnIdle；不计入 profile' }
     )
     $rows | Format-Table -AutoSize | Out-String -Width 160 | Write-Host
     Write-Host '--- init -Timing 步骤表（另一次新进程，仅供占比；总量看上一行 init 合计） ---' -ForegroundColor Cyan
@@ -446,11 +445,11 @@ $r -join ' '
         "OnIdle已注册=$global:PsUxOnIdleRegistered(单发,触发即摘) 加载错误=$uxErrs")
     Write-Host '--- 结论 ---' -ForegroundColor Cyan
     $verdicts = @()
-    if (($prof - $bare) -gt 1200) { $verdicts += 'profile 税偏高:查 conda 缓存是否命中(~/.conda_hook_cache.ps1 时间戳应早于 conda.exe)与 profile 杂项' }
+    if (($prof - $bare) -gt 1200) { $verdicts += 'profile 税偏高:查 conda 缓存是否命中(~/.conda_hook_cache.ps1 时间戳应不早于 conda.exe)与 profile 杂项' }
     if ($tInit -gt 800) { $verdicts += 'init 偏高:看上面步骤表头两名(常见 Set-PsPrompt/PSReadLine 两项)' }
-    if ($tIdle -gt 800) { $verdicts += '体验件(首屏单发)偏高:PSFzf/CxxuTab 已转手势按需,首屏只剩 predictor + zoxide;还想更快则关 PsPredictor/PsZoxide(见 Register-PsUxLazyLoad 帮助)' }
+    if ($tIdle -gt 800) { $verdicts += '体验件全载偏高:该值包含 PSFzf/CxxuTab 的首用成本;实际首屏单发只加载 predictor + zoxide,需在交互终端分别核验' }
     if ($promptSec -gt 0.3) { $verdicts += 'prompt 偏高:换 Set-PsPrompt -version Simple 或给主题做减法(见 Startup-Optimization.md §5)' }
-    if (-not $verdicts.Count) { $verdicts += '各项正常:首屏微顿来自 OnIdle 分片(百毫秒级),打字即回显即符合预期' }
+    if (-not $verdicts.Count) { $verdicts += '启动各段未超过诊断阈值;首次 Tab 与首屏输入延迟需在交互终端另行核验' }
     $verdicts | ForEach-Object { Write-Host "- $_" }
     if ($PassThru)
     {
@@ -463,6 +462,7 @@ $r -join ' '
             InitMs          = $tInit
             ProfileOtherMs  = $profileOther
             IdleMs          = $tIdle
+            UxFullLoadMs    = $tIdle
             PromptSeconds   = [math]::Round($promptSec, 3)
         }
     }
@@ -732,6 +732,39 @@ function Set-ArgcCompletionsEnvironment
     }
 }
 
+function Test-CxxuNativeArgumentContext
+{
+    # 只在原生命令的参数位置加载 CLI 补全,命令名、PowerShell 参数和重定向路径不承担该成本。
+    param([string]$Line, [int]$Cursor)
+    if ([string]::IsNullOrWhiteSpace($Line) -or $Cursor -lt 0 -or $Cursor -gt $Line.Length) { return $false }
+    $lexemes = $null; $errors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseInput($Line, [ref]$lexemes, [ref]$errors)
+    $command = $null
+    foreach ($node in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] }, $true))
+    {
+        if (-not $node.CommandElements.Count -or $node.Extent.StartOffset -gt $Cursor) { continue }
+        # AST 不包含末尾空格;允许命令后的空白,但不能跨越管道或分号选择上一条命令。
+        if ($node.Extent.EndOffset -lt $Cursor -and
+            -not [string]::IsNullOrWhiteSpace($Line.Substring($node.Extent.EndOffset, $Cursor - $node.Extent.EndOffset))) { continue }
+        if (-not $command -or $node.Extent.StartOffset -gt $command.Extent.StartOffset) { $command = $node }
+    }
+    if (-not $command -or $Cursor -le $command.CommandElements[0].Extent.EndOffset) { return $false }
+    $argument = $false
+    $previousEnd = $command.CommandElements[0].Extent.EndOffset
+    foreach ($element in $command.CommandElements | Select-Object -Skip 1)
+    {
+        if ($element.Extent.StartOffset -le $Cursor -and $element.Extent.EndOffset -ge $Cursor) { $argument = $true; break }
+        if ($element.Extent.EndOffset -lt $Cursor) { $previousEnd = $element.Extent.EndOffset }
+    }
+    if (-not $argument -and -not [string]::IsNullOrWhiteSpace($Line.Substring($previousEnd, $Cursor - $previousEnd))) { return $false }
+    $name = $command.GetCommandName()
+    # 动态命令与尚不可发现的命令保留加载入口,避免破坏变量调用或工具提供的静态候选。
+    if (-not $name) { return $true }
+    $info = Get-Command -Name $name -ListImported -ErrorAction Ignore | Select-Object -First 1
+    if ($info -and $info.CommandType -eq 'Alias') { $info = $info.ResolvedCommand }
+    return (-not $info -or $info.CommandType -in 'Application', 'ExternalScript')
+}
+
 function Register-CxxuTabStub
 {
     # 安装统一的 Tab 桩:按需加载 carapace/argc,并处理 5.1 的 - 开头词。
@@ -741,11 +774,18 @@ function Register-CxxuTabStub
     # 应用命令生效,cmdlet/函数的参数补全仍走引擎原生逻辑(不能被破坏)。
     # 每次 init 都重装:Set-PSReadLinesCommon 会把 Tab 重置成 MenuComplete。
     Set-PSReadLineKeyHandler -Key Tab -ScriptBlock {
-        if ($global:PsCarapacePending) { Initialize-Carapace }
-        if (($env:PsArgc -notmatch '^(False|0|No|Off)$') -and
-            (-not $global:PsArgcLoaded) -and (-not $global:PsArgcUnavailable))
+        $needArgc = ($env:PsArgc -notmatch '^(False|0|No|Off)$') -and
+            (-not $global:PsArgcLoaded) -and (-not $global:PsArgcUnavailable)
+        if ($global:PsCarapacePending -or $needArgc)
         {
-            Initialize-ArgcCompletions
+            $line = ''
+            $cursor = 0
+            [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref]$line, [ref]$cursor)
+            if (Test-CxxuNativeArgumentContext -Line $line -Cursor $cursor)
+            {
+                if ($global:PsCarapacePending) { Initialize-Carapace }
+                if ($needArgc) { Initialize-ArgcCompletions }
+            }
         }
 
         $sentinel = [char]0x200B
@@ -839,7 +879,7 @@ function Set-ArgcCompletions
 {
     <#
     .SYNOPSIS
-    启用 argc-completions(懒加载:首个 Tab 才注册,启动零开销)。
+    启用 argc-completions(懒加载:首次外部 CLI 参数补全 才注册,启动仅作轻量准备)。
     .DESCRIPTION
     只做轻量准备(定位仓库、设 ARGC_COMPLETIONS_ROOT/PATH、PATH 前置)并装 Tab 桩;
     真正注册 845+ 个命令的补全推迟到第一次按 Tab。仓库定位顺序:
@@ -934,7 +974,7 @@ function Initialize-ArgcCompletions
 {
     <#
     .SYNOPSIS
-    注册 argc-completions 的原生参数补全(幂等;首次 Tab 由桩自动调用)。
+    注册 argc-completions 的原生参数补全(幂等;首次外部 CLI 参数补全 由桩自动调用)。
     .DESCRIPTION
     描述文本去掉 argc 自带的 ANSI,改由 PSReadLine 的 Selection(反显)统一着色,
     这样菜单选中行在浅色/深色主题下都有完整、可读的高亮。协议取自
@@ -969,7 +1009,7 @@ function Initialize-ArgcCompletions
     $scripts = @('argc') + @($scripts)
     $scripts = @($scripts | Select-Object -Unique)
     # git-completion 或 carapace 负责 git/gitk 时把它们从 argc 名单里去掉:三者都注册同名
-    # Native completer,后注册者覆盖先注册者,而 argc 首个 Tab 才注册,会顶掉先注册的来源。
+    # Native completer,后注册者覆盖先注册者,而 argc 首次外部 CLI 参数补全 才注册,会顶掉先注册的来源。
     # 判定看 Register-GitCompletion 置的 $global:PsGitCompletion、carapace 懒加载桩置的
     # $global:PsCarapaceGit,以及"模块已导入"(init 只注册 completer,首次补全才 Import-Module);
     # 都没有时保留 argc 自己的 git 补全。
@@ -1248,14 +1288,14 @@ function Initialize-Carapace
 {
     <#
     .SYNOPSIS
-    按配置加载 carapace 补全（默认关闭；首个 Tab 或显式调用时执行）。
+    按配置加载 carapace 补全（默认关闭；首次外部 CLI 参数补全 或显式调用时执行）。
     .DESCRIPTION
     开关 PsCarapace（默认 $false）；启用时要求 carapace 在 PATH。
     根据 PsGitCompletionSource 决定 carapace 是否接管 git/gitk：
     - Carapace：不排除 git/gitk，并置 $global:PsCarapaceGit，供 argc 让路；
     - GitCompletion、Argc、Auto：把 git/gitk 并入 CARAPACE_EXCLUDES。
     PsCarapaceExcludes 提供用户自己的慢命令排除项；两处合并后写入环境变量。
-    init 只调用 Register-CarapaceLazyLoad 装桩；首次 Tab 才由桩调用本函数完成注册。
+    init 只调用 Register-CarapaceLazyLoad 装桩；首次外部 CLI 参数补全 才由桩调用本函数完成注册。
     5.1 也可用：Register-ArgumentCompleter -Native 在 5.1 可用，但引擎不会把
     - 开头的词交给 Native completer（6.0 才修），由 Tab 桩插零宽字符绕过；
     环境变量超长与空字符串参数丢弃这两个 5.1 差异在生成脚本上打补丁，
@@ -1422,7 +1462,7 @@ function global:Invoke-Carapace51 {
     catch
     {
         # 失败后摘掉待加载标记，避免每个 Tab 重复告警；显式调用本函数仍会重试。
-        # 若 carapace 原本负责 git/gitk，交出归属，让 argc 在首个 Tab 补上。
+        # 若 carapace 原本负责 git/gitk，交出归属，让 argc 在首次外部 CLI 参数补全 补上。
         $global:PsCarapacePending = $false
         $global:PsCarapaceGit = $false
         Write-Warning ("carapace 加载失败：{0}" -f $_.Exception.Message)
@@ -1433,10 +1473,10 @@ function Register-CarapaceLazyLoad
 {
     <#
     .SYNOPSIS
-    为 carapace 安装首个 Tab 懒加载桩（启用时由 init 调用）。
+    为 carapace 安装首次外部 CLI 参数补全 懒加载桩（启用时由 init 调用）。
     .DESCRIPTION
     只校验开关、计算排除项并装 Tab 桩，不执行 carapace 生成的注册脚本；
-    首次 Tab 才调用 Initialize-Carapace，把约 0.2 秒的注册成本从启动挪到用户手势。
+    首次外部 CLI 参数补全 才调用 Initialize-Carapace，把约 0.2 秒的注册成本从启动挪到用户手势。
     与 argc 共用同一个 Tab 桩（Register-CxxuTabStub），两者都未启用时不装桩。
     .EXAMPLE
     Register-CarapaceLazyLoad
@@ -1480,7 +1520,7 @@ function Register-CarapaceLazyLoad
     {
         # 与 argc 共用同一个桩：桩内按需加载 carapace/argc，并处理 5.1 的 - 开头词。
         Register-CxxuTabStub
-        Write-Verbose 'carapace: 已装首个 Tab 懒加载桩'
+        Write-Verbose 'carapace: 已装首次外部 CLI 参数补全 懒加载桩'
     }
     catch
     {
@@ -1497,7 +1537,7 @@ function Register-GitCompletion
     git-completion v2 起导入模块不再自动开启补全,必须自行注册 Native completer。
     这里只注册 completer,首次补全才 Import-Module,启动不付导入成本;同时置
     $global:PsGitCompletion,供 Initialize-ArgcCompletions 让出 git/gitk(两者同名
-    completer 后注册者胜出,argc 首个 Tab 才注册会顶掉这里的注册)。
+    completer 后注册者胜出,argc 首次外部 CLI 参数补全 才注册会顶掉这里的注册)。
     模块位置按 PSModulePath 静态探测,不调用 Get-Module -ListAvailable(冷启动约 140ms)。
     来源由 PsGitCompletionSource 决定(Auto/GitCompletion/Carapace/Argc,见 Get-CxxuGitCompletionSource);
     未设置该键时沿用 PsGitCompletion 的旧语义,关闭后 argc 继续负责 git。
@@ -2694,7 +2734,7 @@ function Enable-PsPlugin
     启用是显式开(环境变量 True,盖过配置文件)。GitCompletion 额外切换来源并注册 git/gitk；
     其余组件统一走 Enable-CxxuComponent -Now：先写开关，再调用清单里的 InitNow（未声明时用 Init）。
     Fzf/Tab 在 pwsh 7+ 继续补手势桩，5.1 的 Tab 直接导入 CxxuTab；Argc 的即时调用只装 Tab 桩，
-    真正的注册仍在首个 Tab；Predictor/Zoxide 若 OnIdle 单发已过，仍建议重开终端
+    argc 的首次注册仍由外部 CLI 参数位 Tab 触发；Predictor/Zoxide 若 OnIdle 单发已过，仍建议重开终端
     (或 Register-PsUxLazyLoad -Now 立装)。
     .EXAMPLE
     Enable-PsPlugin Tab
@@ -2739,7 +2779,7 @@ function Enable-PsPlugin
             if ($Name -eq 'Argc' -and $global:PsArgcLoaded)
             {
                 # 停用期间 carapace 可能已重新注册并覆盖同名 completer，重开时再注册回来；
-                # 未注册过时仍按原样等首个 Tab 由桩注册。
+                # 未注册过时仍等首次外部 CLI 参数补全由桩注册。
                 Initialize-ArgcCompletions -Force
             }
         }
@@ -2829,15 +2869,15 @@ function Get-GitCompletionSource
     $carapaceState = if (-not $carapaceInstalled) { '未安装' }
         elseif (-not $carapaceEnabled) { '已安装，未启用' }
         elseif ($carapaceOwnsGit -and $carapaceLoaded) { '已启用，已加载并接管 git/gitk' }
-        elseif ($carapaceOwnsGit) { '已启用，待首个 Tab 加载后接管 git/gitk' }
+        elseif ($carapaceOwnsGit) { '已启用，待参数位 Tab 加载后接管 git/gitk' }
         elseif ($carapaceLoaded) { '已启用，已加载，git/gitk 已排除' }
-        else { '已启用，待首个 Tab 加载，git/gitk 已排除' }
+        else { '已启用，待参数位 Tab 加载，git/gitk 已排除' }
     $argcState = if (-not $argcInstalled) { '未安装' }
         elseif ($global:PsArgcUnavailable) { '已安装，补全库未就绪' }
         elseif (-not $argcEnabled) { '已安装，未启用' }
         elseif ($registered -eq 'Argc') { '已启用，已注册并接管 git/gitk' }
         elseif ($argcLoaded) { '已启用，已注册，git/gitk 已排除' }
-        else { '已启用，待首个 Tab 注册' }
+        else { '已启用，待参数位 Tab 注册' }
     $poshGitState = if ($poshGitLoaded) { "已导入 $($poshGitModule.Version)，注册同名 completer（后注册者生效）" }
         elseif ($poshGitModule) { "已安装 $($poshGitModule.Version)，未导入" }
         else { '未安装' }
@@ -2912,8 +2952,8 @@ function Get-GitCompletionSource
     $note = if ($fallback) { "按 EffectiveSource 的条件修复开关或安装，或用 Set-GitCompletionSource 改选可用来源。" }
         elseif (-not $sourceReady) { "解析来源 $effective 当前不可用（开关关闭或未安装）；用 Set-GitCompletionSource 改选可用来源，或打开对应开关。" }
         elseif ($poshGitLoaded) { '检测到 posh-git 已导入：它也在导入时注册同名 git completer，后注册者生效；不要与其他来源混用，切换前先 Remove-Module posh-git。' }
-        elseif ($registered -eq 'Pending') { '当前会话尚未注册；首个 Tab 或重开终端后完成，本检查不会触发加载。' }
-        elseif ($effective -eq 'Argc' -and -not $argcLoaded) { "$registered 仍在当前会话生效；argc 尚未注册，首个 Tab 接管后会覆盖它。需要立即切回可执行 Set-GitCompletionSource $registered。" }
+        elseif ($registered -eq 'Pending') { '当前会话尚未注册；首次外部 CLI 参数补全时完成，本检查不会触发加载。' }
+        elseif ($effective -eq 'Argc' -and -not $argcLoaded) { "$registered 仍在当前会话生效；argc 尚未注册，首次外部 CLI 参数补全接管后会覆盖它。需要立即切回可执行 Set-GitCompletionSource $registered。" }
         elseif ($effective -ne $registered) { "解析来源为 $effective，当前会话仍由 $registered 注册；执行 Set-GitCompletionSource $effective 可当场重注册。" }
         else { '' }
 
@@ -3070,7 +3110,7 @@ function Set-GitCompletionSource
     }
     else
     {
-        if ($applied) { Write-Host 'git/gitk 未在当前会话重新注册；按来源条件修复后，首个 Tab 或下一次切换会完成接管。' }
+        if ($applied) { Write-Host 'git/gitk 未在当前会话重新注册；按来源条件修复后，首次外部 CLI 参数补全或下一次切换会完成接管。' }
         else { Write-Host '当前会话未改动（-WhatIf），未执行注册。' }
     }
 }
@@ -3084,7 +3124,7 @@ function Get-CxxuComponent
     元数据来自 PS/Init/components.psd1；值按“环境变量 > 用户配置 > 默认值”解析。
     输出对象可直接接 Format-List/Format-Table；-Id 只查一个组件（不区分大小写）。
     Carapace 额外带 Runtime、RegisteredCommands、CachePath、CacheState 四个运行态字段：
-    Runtime 区分未安装/未启用/待首个 Tab/已加载/未加载，CacheState 描述 5.1 上下文缓存是否有效。
+    Runtime 区分未安装/未启用/待参数位 Tab/已加载/未加载，CacheState 描述 5.1 上下文缓存是否有效。
     Install 给出依赖安装入口，Enable 给出未启用时的组件启用命令；-Validate 不列组件，
     改跑清单结构、Init 步骤生成与已启用依赖的一致性检查。
     .EXAMPLE
@@ -3192,7 +3232,7 @@ function Get-CxxuComponent
                 elseif (-not $enabled) { '未启用' }
                 elseif ($global:PsCarapaceLoaded) { '已加载' }
                 elseif ($global:PsCarapacePending -eq $false) { '未加载（加载失败或已停用）' }
-                else { '待首个 Tab' }
+                else { '待参数位 Tab' }
             $registered = if ($global:PsCarapaceScripts) { [int]$global:PsCarapaceScripts.Count } else { 0 }
             if ($PSVersionTable.PSVersion.Major -lt 6)
             {

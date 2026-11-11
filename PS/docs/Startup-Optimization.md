@@ -19,7 +19,7 @@
 
 ```powershell
 # 复测命令（重定向/agent 下也干净：PSReadLine 控制台相关选项已按场景跳过，见 §12）
-Test-StartupPerformance                      # 新进程分段：bare/profile/init/idle
+Test-StartupPerformance                      # 新进程分段：bare/profile/init/体验件全载
 Test-StartupPerformance -Simple              # 只测一次带 profile 的新 pwsh 启动
 init -Force -Timing                           # 当前会话分步耗时（已初始化；首次启动用 init -Timing）
 Test-PromptDelay                              # prompt 延迟（默认测 10 次取平均）
@@ -46,7 +46,28 @@ Test-PromptDelay                              # prompt 延迟（默认测 10 次
 | Confirm-DataJson（仅 Balance/Brilliant 等用到 IP 的主题执行） | 0ms（fast/short/default）/ ~35ms（IP 主题） |
 | Register-PsUxLazyLoad（只注册 OnIdle 事件，TerminalTools 首解析在内） | ~18~25ms |
 | Register-GitCompletion（只注册 completer，首次补全才导入模块；未装时直接返回） | ~6~8ms |
-| Register-CarapaceLazyLoad（默认关闭；启用时只装首个 Tab 桩） | 0ms（关闭）/ ~7ms（启用）；首次 Tab 另付约 0.2–0.3 秒 |
+| Register-CarapaceLazyLoad（默认关闭；启用时只装参数位 Tab 桩） | 0ms（关闭）/ ~7ms（启用）；首次外部 CLI 参数补全另付约 0.2–0.3 秒 |
+
+### 当前 Windows 会话复验
+
+本机 pwsh 7.5.4、PSReadLine 2.3.6、传统控制台，保留 conda 缓存与真实 profile，并同时启用 argc/carapace。独立交互窗口使用临时提示符和禁写历史设置，注入按键后轮询读屏；Tab 数值包含菜单首次重绘，测量分辨率约 10ms。以下为同机先后对照，命令表缓存有效，不代表系统重启后的磁盘冷启动。
+
+| 场景 | 修改前 | 修改后 | 测量范围 |
+| --- | --- | --- | --- |
+| 新会话 `Get-Chi` 首次 Tab | 404–487ms | 158–170ms | 完整配置，首次进入补全菜单 |
+| 同会话后续相同补全 | 30–63ms | 30–61ms | 关闭菜单、清行后重新输入 |
+| 完整 profile 启动 | 980ms | 936ms | 非交互新进程，重复三次取中位数 |
+| `init` | 530ms | 511ms | 新进程，重复三次取中位数；属于 profile 启动的一部分 |
+
+主要原因是共享 Tab 桩原先不区分输入位置，在 `Get-Chi` 等命令名补全前也初始化 argc/carapace。现在只在外部 CLI 参数位置加载，PowerShell 命令名、已加载函数/cmdlet 参数与重定向路径不触发。管道、分号与嵌套命令按光标所在的命令判断；应用程序别名与 `scoop.ps1` 一类外部脚本仍可触发，动态或无法解析的命令保留原有加载入口。回归入口为 [NativeArgumentContext.Tests.ps1](../Init/tests/NativeArgumentContext.Tests.ps1)，pwsh 7 与 Windows PowerShell 5.1 均通过。
+
+另外，CxxuTab 原先按字节再次加载已供 predictor 使用的程序集，进程内出现两份同版本程序集。现在复用同一活件路径已导入的程序集；predictor 尚未加载时仍按字节装载，独立启停与只读仓库源的规则保持不变。EnvVar 补全注册在模块已加载时只枚举本会话命令，独立调用仍保留模块发现行为。
+
+实际交互复验包括 `git --ver<Tab>` → `git --version`、`scoop ins<Tab>` → `scoop install`、`Get-SystemI<Tab>` 菜单摘要。首次外部 CLI 参数补全仍约 434ms，包含一次性注册与 git 补全模块加载；此成本延后到相关场景，没有消失。首次命令名 Tab 仍承担 CxxuTab 导入、读表和摘要的冷路径，强制清缓存会使下次首次补全更慢。
+
+启动诊断中的“体验件全载（-Now）”包含 PSFzf/CxxuTab，因此不能当作首屏 OnIdle 的实际耗时。结构化结果使用 `UxFullLoadMs`；`IdleMs` 为兼容保留同一数值。真实首屏单发只加载 predictor/zoxide，仍在主线程执行，不能据非交互启动报告推断“输入完全无阻塞”。当前初始化主要开销为提示符设置约 148ms、PSReadLine 基础配置约 96ms，未见步骤错误或重复初始化；继续优化应分别测量这些冷路径，不宜直接把它们集中到 OnIdle 或提前导入全部补全组件。
+
+用户侧开关与显式初始化入口见 [Feature-Guide](Feature-Guide.md) 的补全体验件说明；本次文本改动需新开 pwsh 会话生效，无需更新 dll。
 
 ## 2. 本次改动总览
 

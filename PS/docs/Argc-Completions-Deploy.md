@@ -1,6 +1,6 @@
 # argc-completions 部署与更新
 
-> Init 已内置接管：仓库与工具就位后 `init` 自动装 Tab 懒加载桩，首个 Tab 才注册（约 150–200ms）。
+> Init 已内置接管：仓库与工具就位后 `init` 自动装 Tab 懒加载桩，首次在外部 CLI 参数位按 `Tab` 时才注册（约 150–200ms）；命令名与 PowerShell 原生参数位不会触发。
 > 补全栈定位与自动提示边界见 [Feature-Guide §10](Feature-Guide.md#10-补全全景速查三层--参数层)；本文只讲部署、更新、启停与状态、排障。
 
 ## 1. 前置条件
@@ -77,9 +77,9 @@ init          # 或直接打开一个新终端
 
 启动只花约 1ms，不注册 846 个 completer。
 
-### 2.4 首次 Tab
+### 首次参数补全
 
-- 第一次按 `Tab` 才注册全部 completer，约 150–200ms；之后零开销。
+- 第一次在外部 CLI 参数位按 `Tab` 时才注册全部 completer，约 150–200ms；之后不再重复注册。
 - 需要立即注册（或更新后重注册）：
 
 ```powershell
@@ -131,9 +131,9 @@ Initialize-ArgcCompletions -Force   # 当前会话重新注册 Tab 补全
 | 检查项 | 命令 | 判读 |
 |---|---|---|
 | 开关生效值与来源 | `Get-CxxuConfig \| Where-Object Key -eq 'PsArgc' \| Format-List` | `Value=True` 表示启用；`Source` 为环境变量、配置文件或默认值 |
-| 统一诊断 | `doctor` | `门控` 行显示 `PsArgc=...`；`argc 补全` 行显示已注册命令数或“仓库就位，首个 Tab 自动注册” |
+| 统一诊断 | `doctor` | `门控` 行显示 `PsArgc=...`；`argc 补全` 行显示已注册命令数或“仓库就位，首次外部 CLI 参数补全时自动注册” |
 | 单功能聚焦 | `doctor -Feature Argc` | 只列 `开关 PsArgc`（含值与来源）、argc 注册状态、Tab 包装/键与依赖结果，不跑整机检查 |
-| 本会话注册状态 | `$global:PsArgcLoaded`、`$global:PsArgcScripts.Count` | `True` 且计数非 0 表示 completer 已注册；空或 0 表示尚未触发首个 Tab |
+| 本会话注册状态 | `$global:PsArgcLoaded`、`$global:PsArgcScripts.Count` | `True` 且计数非 0 表示 completer 已注册；空或 0 表示尚未触发首次参数补全 |
 | 原始环境变量 | `$env:PsArgc` | 空表示本会话未显式设置；`False`、`0`、`No`、`Off` 均按关闭处理 |
 
 ### 4.2 启停
@@ -141,7 +141,7 @@ Initialize-ArgcCompletions -Force   # 当前会话重新注册 Tab 补全
 | 目标 | 命令 | 生效范围与时机 |
 |---|---|---|
 | 本会话关闭 argc（Tab 与 flag 提示） | `Disable-PsPlugin Argc`（等价于 `$env:PsArgc = 'False'`） | 立即；已注册的 completer 每次调用返回空。carapace 可用时会自动重注册它，重叠命令（如 `npm`、`docker`）当场交还 carapace；没有 carapace 时这些命令在重开终端前无候选 |
-| 本会话开启 argc | `Enable-PsPlugin Argc` | 立即设置 `PsArgc=True` 并补装 Tab 桩；已注册的 completer 重新注册并夺回重叠命令，未注册的在首个 Tab 注册 |
+| 本会话开启 argc | `Enable-PsPlugin Argc` | 立即设置 `PsArgc=True` 并补装 Tab 桩；已注册的 completer 重新注册并夺回重叠命令，未注册的在首次参数补全时注册 |
 | 持久关闭 argc | `Disable-PsPlugin Argc -Persist` | 当前会话立即关闭；写入 `~/.cxxu/config.psd1`，之后新会话默认关闭 |
 | 持久开启 argc | `Enable-PsPlugin Argc -Persist` | 当前会话立即开启；写入配置文件，之后新会话默认开启 |
 | 停止自动提示并保留 argc Tab | `Disable-PsPlugin Predictor`，然后重开终端 | 当前会话若已加载 `CxxuPredictor.dll`，需重开终端才完全停止；`PsArgc` 不变，Tab 参数补全继续可用 |
@@ -154,8 +154,8 @@ Initialize-ArgcCompletions -Force   # 当前会话重新注册 Tab 补全
 - `git`/`gitk` 在停用 carapace 时按 `PsGitCompletionSource` 当场回落：来源为 `Carapace` 时优先交给 `git-completion`（模块已安装且组件未被 `PsGitCompletion=False` 关闭），模块缺失或组件被显式关闭才落到 `Argc`；来源为 `GitCompletion` 时直接重新注册模块。都不需要重开终端。
 - 关闭 argc 后若来源仍解析为 `git-completion`（`Auto` 且模块已安装），会当场重新注册它，`git`/`gitk` 不必等重开终端。当前归属与回落原因用 `Get-GitCompletionSource` 查看。
 - 关闭 argc 只影响应用命令的参数补全，不影响 `Get-ChildItem -` 等 cmdlet 的原生参数补全。
-- init 检测到 `git-completion`（`$global:PsGitCompletion`）或 carapace 接管 git（`$global:PsCarapaceGit`）时，argc 不注册 `git`/`gitk`：三者都注册同名 Native completer，后注册者覆盖先注册者，而 argc 首个 Tab 才注册，会顶掉先注册的补全；只启用 git-completion 时其余命令不受影响。
-- 与 carapace 同时启用时，非 git/gitk 的重叠命令也会遇到同一顺序问题：carapace 在 `init` 注册，argc 在首个 Tab 注册，同名 completer 后注册者生效。需要 carapace 负责这些外部 CLI（如 `docker`、`gh`）时，关闭 argc（`Disable-PsPlugin Argc -Persist`）或接受 argc 的候选；bash 侧的顺序相反，见 [completion-stack](../../bash/completion-stack/README.md)。
+- init 检测到 `git-completion`（`$global:PsGitCompletion`）或 carapace 接管 git（`$global:PsCarapaceGit`）时，argc 不注册 `git`/`gitk`：三者都注册同名 Native completer，后注册者覆盖先注册者，而 argc 首次参数补全时才注册，会顶掉先注册的补全；只启用 git-completion 时其余命令不受影响。
+- 与 carapace 同时启用时，非 git/gitk 的重叠命令也会遇到同一顺序问题：两者均在首次外部 CLI 参数补全时注册，先 carapace 后 argc，同名 completer 后注册者生效。需要 carapace 负责这些外部 CLI（如 `docker`、`gh`）时，关闭 argc（`Disable-PsPlugin Argc -Persist`）或接受 argc 的候选；bash 侧的顺序相反，见 [completion-stack](../../bash/completion-stack/README.md)。
 
 ### 4.3 验证
 
@@ -188,14 +188,14 @@ doctor -Feature Argc   # 只看这一套：开关、注册状态、Tab 集成与
 |---|---|---|
 | `init` 后 `$env:ARGC_COMPLETIONS_ROOT` 为空 | 仓库是否在默认位置（`~/argc-completions`、`~/repos/argc-completions`、Windows 的 `C:\repos\argc-completions`）且 argc 可用 | 设置 `ARGC_COMPLETIONS_ROOT` 后重开终端 |
 | `Tab` 完全没反应 | `(Get-PSReadLineKeyHandler -Bound \| Where-Object Key -eq 'Tab').Function` 应为 `CustomAction`；`$global:PsArgcScripts.Count` 应为 846 | 旧会话未重载：`Import-Module Init -Force; init -Force`；5.1 用 `init -Force`，不要用 `p`（它开的是 pwsh 7，不刷新当前 5.1 会话） |
-| 首次 Tab 后仍无候选 | `Initialize-ArgcCompletions -Verbose` 的报错；`argc --argc-compgen powershell '' git ch` 是否输出 `checkout`/`cherry`/`cherry-pick` | 补全脚本缺失或脚本依赖的工具不在 Git Bash 中；按报错补依赖 |
+| 首次参数补全后仍无候选 | `Initialize-ArgcCompletions -Verbose` 的报错；`argc --argc-compgen powershell '' git ch` 是否输出 `checkout`/`cherry`/`cherry-pick` | 补全脚本缺失或脚本依赖的工具不在 Git Bash 中；按报错补依赖 |
 | 中文文件名候选乱码（如含中文目录下 `nginx <Tab>`） | 当前会话是否在更新前启动；`[Console]::OutputEncoding` 是否为系统代码页（如 `gb2312`） | 重开终端或执行 `Initialize-ArgcCompletions -Force`；当前 completer 已固定按 UTF-8 读取 argc 输出，不再依赖控制台代码页 |
 | `argc --argc-compgen` 无输出 | `argc --argc-shell-path`；`$env:ARGC_COMPLETIONS_PATH` | bash 路径无效 / 仓库路径错 / 环境变量被清 |
 | Git Bash 报 `cannot execute binary file` | `bin\argc` 是否是 Linux ELF | 删掉或改名，让 Git Bash 用 `argc.exe` |
 | 只有个别命令不补全 | `completions\<cmd>.sh` 是否存在 | 没有脚本就是不支持；不要改 completer 注册逻辑 |
 | 5.1 下 `-` 开头没候选 | 当前 `Init` 是否为最新；`Set-ArgcCompletions` 是否执行 | 重载模块/重开窗口；确认该步骤不再带 `MinPS = 7` |
 | 更新仓库后仍是旧候选 | `Initialize-ArgcCompletions -Force` 是否执行 | flag 表需重开终端；Tab completer 当前会话强制重注册 |
-| 同时开 carapace 后，`docker`/`gh` 等候选变了 | `$env:PsCarapace`、`$global:PsArgcLoaded` | argc 首个 Tab 注册会覆盖 carapace 的同名 completer；要 carapace 负责就 `Disable-PsPlugin Argc -Persist` |
+| 同时开 carapace 后，`docker`/`gh` 等候选变了 | `$env:PsCarapace`、`$global:PsArgcLoaded` | argc 首次参数补全时注册会覆盖 carapace 的同名 completer；要 carapace 负责就 `Disable-PsPlugin Argc -Persist` |
 | flag 提示不出现 | pwsh 是否 7.5+；`PsArgc`/`PsPredictor` 是否被关；是否首个参数位 | `GetSubsystemInfo` 查 `CxxuArgcFlags` 是否注册；删缓存重开 |
 | 选中行看不清 / 描述带颜色码 | `Selection` 是否为 `ESC[7m` | 保持反显方案；completer 已剥掉 ANSI，不要改回固定前景色 |
 | 下载经常失败或很慢 | 镜像是否可用；是否已设置代理 | 换 `$env:PsGithubMirror`；先 `Set-Proxy On` 或加 `-Proxy <地址>`；排除代理故障时加 `-NoProxy` |

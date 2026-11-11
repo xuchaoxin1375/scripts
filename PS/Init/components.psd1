@@ -69,7 +69,7 @@
             Phase       = 'Completions'
             Key         = 'PsArgc'
             Default     = $true
-            Description = '参数补全（首个 Tab 懒加载）'
+            Description = '参数补全（首次在外部 CLI 参数位按 Tab 时加载）'
             Lazy        = 'FirstUse'
             Init        = 'Set-ArgcCompletions'
             Detect      = 'argc'
@@ -106,7 +106,7 @@
             Phase       = 'Completions'
             Key         = 'PsCarapace'
             Default     = $false
-            Description = '外部 CLI 参数补全（首个 Tab 懒加载，7 约 0.2–0.3 秒；5.1 约 0.5–1 秒）'
+            Description = '外部 CLI 参数补全（首次参数位 Tab 懒加载，7 约 0.2–0.3 秒；5.1 约 0.5–1 秒）'
             Lazy        = 'FirstUse'
             Init        = 'Register-CarapaceLazyLoad'
             InitNow     = 'Initialize-Carapace'
