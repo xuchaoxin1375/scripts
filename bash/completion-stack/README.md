@@ -145,5 +145,5 @@ rm -rf ~/argc-completions             # argc 运行时来自克隆目录，删�
 - 需要 bash 4 及以上；Windows 用 Git Bash，`--install-carapace` 走 windows zip。macOS 建议用 Homebrew bash 5.x，`-o nosort` 需要 4.4 及以上。
 - 启动成本：本机实测 argc 运行时约 135–145 ms、carapace 约 50 ms；只想覆盖部分命令时用 `ARGC_COMPLETIONS_ONLY` 缩小注册范围。
 - 重跑单个子脚本会改变顺序：重跑 argc 会自动插到 carapace 前；重跑 carapace 会追加到末尾（仍在 argc 之后）。
-- 只覆盖 bash；PowerShell 的 git 归属由 `PsGitCompletionSource` 决定（`Auto` 已优先 `git-completion`）。
+- 只覆盖 bash；PowerShell 的 git 归属由 `PsGitCompletionSource` 决定（`Auto` 已优先 `git-completion`），当前实际来源用 `Get-GitCompletionSource` 查看（只读，不加载补全模块）。
 - `--check` 会分别用 `bash -ic` / `bash -lic` 探测 argc 是否加载，登录 shell 会打印 job control 警告，可忽略。

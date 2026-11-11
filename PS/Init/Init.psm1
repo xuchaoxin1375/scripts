@@ -969,6 +969,8 @@ function Initialize-ArgcCompletions
         foreach ($scriptName in $scripts) { $global:PsArgcScripts[$scriptName] = $true }
         $global:PsArgcLoaded = $true
         $global:PsArgcUnavailable = $false
+        # argc 名单含 git 时它最后注册、覆盖其他来源；不含时不动上一来源的标记。
+        if ($scripts -contains 'git') { $global:PsGitCompletionActive = 'Argc' }
         Write-Verbose "argc-completions: 已注册 $($scripts.Count) 个命令"
     }
     catch
@@ -1142,6 +1144,8 @@ function Initialize-Carapace
         $script | Invoke-Expression
         $global:PsCarapaceLoaded = $true
         $global:PsCarapacePending = $false
+        # git/gitk 由 carapace 接管时才记来源；被排除时保留上一来源的标记。
+        if ($source -eq 'Carapace') { $global:PsGitCompletionActive = 'Carapace' }
         Write-Verbose ("carapace 已加载；git 来源={0}，排除项={1}" -f $source, $env:CARAPACE_EXCLUDES)
     }
     catch
@@ -1248,6 +1252,7 @@ function Register-GitCompletion
     if (-not (Test-CxxuGitCompletionInstalled)) { return }
 
     $global:PsGitCompletion = $true
+    $global:PsGitCompletionActive = 'GitCompletion'
     Register-ArgumentCompleter -CommandName git -Native -ScriptBlock {
         param($wordToComplete, $commandAst, $cursorPosition)
         if (-not (Get-Module git-completion)) { Import-Module git-completion -Global -ErrorAction SilentlyContinue }
@@ -2340,7 +2345,8 @@ function Disable-PsPlugin
                 # 回落到 git-completion 时先注册，argc 重新注册就会继续让出 git/gitk。
                 if ($gitFallback -eq 'GitCompletion' -and (Test-CxxuGitCompletionInstalled))
                 {
-                    Register-GitCompletion
+                    # -Force：git-completion 可能在本会话更早注册过，需覆盖 carapace 留在同名的 completer。
+                    Register-GitCompletion -Force
                 }
                 $argcOn = -not [string]::IsNullOrWhiteSpace($env:PsArgc) -and
                     $env:PsArgc -notmatch '^(False|0|No|Off)$'
@@ -2377,6 +2383,7 @@ function Disable-PsPlugin
                     }
                     else
                     {
+                        $global:PsGitCompletionActive = if ($global:PsGitCompletion) { 'GitCompletion' } else { 'Pending' }
                         Write-Host 'git/gitk 暂无来源：argc 未启用；重开终端后按来源配置回落，或执行 Set-GitCompletionSource GitCompletion。'
                     }
                 }
@@ -2397,6 +2404,12 @@ function Disable-PsPlugin
                 else
                 {
                     Write-Host '没有可接管的 carapace；当前会话已注册的 argc completer 无法撤销，重开终端后这些命令才回到原生补全。'
+                }
+                # argc 的 git completer 已被 PsArgc 门控停用；来源仍指向 GitCompletion 时当场接回。
+                if ((Get-CxxuGitCompletionSource) -eq 'GitCompletion' -and (Test-CxxuGitCompletionInstalled))
+                {
+                    Register-GitCompletion -Force
+                    Write-Host 'git/gitk 已交回 git-completion。'
                 }
             }
             elseif ($Name -in @('PSCompletions', 'Fnm', 'ScoopSearch'))
@@ -2446,7 +2459,8 @@ function Enable-PsPlugin
             Write-Host "$Name 已启用(当会话)。"
             if (Test-CxxuGitCompletionInstalled)
             {
-                Register-GitCompletion
+                # -Force：从其他来源切回时覆盖同名 completer。
+                Register-GitCompletion -Force
             }
             else
             {
@@ -2474,6 +2488,114 @@ function Enable-PsPlugin
             # 5.1 直接导入 CxxuTab 立即生效(默认关,显式开启才走到这里)
             Import-Module CxxuTab -Global -ErrorAction SilentlyContinue
         }
+    }
+}
+
+function Get-GitCompletionSource
+{
+    <#
+    .SYNOPSIS
+    查看 git/gitk Tab 补全的来源配置、解析结果与当前会话已注册来源。
+    .DESCRIPTION
+    只读检查：不修改配置，也不加载补全模块或触发首个 Tab。
+    结果分三层，避免把配置值当成实际生效值：
+    - ConfiguredSource：PsGitCompletionSource 的当前值；为空时显示“未设置”，表示沿用 PsGitCompletion 旧语义。
+    - EffectiveSource：按开关、安装状态与回落规则解析出的来源；Auto 的顺序为 GitCompletion、Carapace、Argc。
+    - RegisteredSource：当前会话最后接管 git/gitk 补全的来源；Pending 表示尚未注册，posh-git 已导入时优先显示 PoshGit。
+    Fallback 非空表示配置来源不可用并已回落；Note 给出下一步命令或状态说明。
+    .EXAMPLE
+    Get-GitCompletionSource
+    .EXAMPLE
+    Get-GitCompletionSource | Format-List
+    .EXAMPLE
+    Get-GitCompletionSource | Select-Object ConfiguredSource, EffectiveSource, RegisteredSource
+    #>
+    [CmdletBinding()]
+    param()
+
+    $switchOff = '^(False|0|No|Off)$'
+    $configured = [string]$env:PsGitCompletionSource
+    $configuredLabel = if ([string]::IsNullOrWhiteSpace($configured)) { '未设置' } else { $configured.Trim() }
+    $effective = Get-CxxuGitCompletionSource
+
+    $gitInstalled = Test-CxxuGitCompletionInstalled
+    $gitModule = if ($gitInstalled) { Get-Module -ListAvailable git-completion | Sort-Object Version -Descending | Select-Object -First 1 }
+    $carapaceInstalled = [bool](Get-Command carapace -ErrorAction SilentlyContinue)
+    $argcInstalled = [bool](Get-Command argc -ErrorAction SilentlyContinue)
+    $poshGitModule = Get-Module -ListAvailable posh-git | Sort-Object Version -Descending | Select-Object -First 1
+    $poshGitLoaded = [bool](Get-Module posh-git)
+    $carapaceEnabled = (-not [string]::IsNullOrWhiteSpace($env:PsCarapace)) -and ($env:PsCarapace -notmatch $switchOff)
+    $argcEnabled = (-not [string]::IsNullOrWhiteSpace($env:PsArgc)) -and ($env:PsArgc -notmatch $switchOff)
+    $gitRegistered = [bool]$global:PsGitCompletion
+    $carapaceLoaded = [bool]$global:PsCarapaceLoaded
+    $carapaceOwnsGit = [bool]$global:PsCarapaceGit
+    $argcLoaded = [bool]$global:PsArgcLoaded
+
+    $registered = [string]$global:PsGitCompletionActive
+    if ([string]::IsNullOrWhiteSpace($registered))
+    {
+        # 旧会话没有来源标记：按各来源的注册状态推断，carapace 需已加载才算真正接管。
+        if ($carapaceOwnsGit -and $carapaceLoaded) { $registered = 'Carapace' }
+        elseif ($gitRegistered) { $registered = 'GitCompletion' }
+        elseif ($argcLoaded) { $registered = 'Argc' }
+        else { $registered = 'Pending' }
+    }
+    # posh-git 导入后覆盖 TabExpansion2，优先级高于上述 Native completer。
+    if ($poshGitLoaded) { $registered = 'PoshGit' }
+
+    $fallback = ''
+    if ($configuredLabel -notmatch '^(未设置|(?i:Auto))$' -and $effective -ne $configuredLabel)
+    {
+        $fallback = "配置为 $configuredLabel，当前开关或安装状态不满足，回落到 $effective"
+    }
+
+    $gitState = if (-not $gitInstalled) { '未安装' }
+        elseif (-not $gitModule) { '已安装，未注册' }
+        elseif ($gitRegistered) { "已安装 $($gitModule.Version)，已注册" }
+        else { "已安装 $($gitModule.Version)，未注册" }
+    $carapaceState = if (-not $carapaceInstalled) { '未安装' }
+        elseif (-not $carapaceEnabled) { '已安装，未启用' }
+        elseif ($carapaceOwnsGit -and $carapaceLoaded) { '已启用，已加载并接管 git/gitk' }
+        elseif ($carapaceOwnsGit) { '已启用，待首个 Tab 加载后接管 git/gitk' }
+        elseif ($carapaceLoaded) { '已启用，已加载，git/gitk 已排除' }
+        else { '已启用，待首个 Tab 加载，git/gitk 已排除' }
+    $argcState = if (-not $argcInstalled) { '未安装' }
+        elseif (-not $argcEnabled) { '已安装，未启用' }
+        elseif ($registered -eq 'Argc') { '已启用，已注册并接管 git/gitk' }
+        elseif ($argcLoaded) { '已启用，已注册，git/gitk 已排除' }
+        else { '已启用，待首个 Tab 注册' }
+    $poshGitState = if ($poshGitLoaded) { "已导入 $($poshGitModule.Version)，注册同名 completer（后注册者生效）" }
+        elseif ($poshGitModule) { "已安装 $($poshGitModule.Version)，未导入" }
+        else { '未安装' }
+
+    $sourceReady = switch ($effective)
+    {
+        'GitCompletion' { $gitInstalled }
+        'Carapace' { $carapaceEnabled -and $carapaceInstalled }
+        'Argc' { $argcEnabled -and $argcInstalled }
+        default { $false }
+    }
+    $note = if ($fallback) { "按 EffectiveSource 的条件修复开关或安装，或用 Set-GitCompletionSource 改选可用来源。" }
+        elseif (-not $sourceReady) { "解析来源 $effective 当前不可用（开关关闭或未安装）；用 Set-GitCompletionSource 改选可用来源，或打开对应开关。" }
+        elseif ($poshGitLoaded) { '检测到 posh-git 已导入：它也在导入时注册同名 git completer，后注册者生效；不要与其他来源混用，切换前先 Remove-Module posh-git。' }
+        elseif ($registered -eq 'Pending') { '当前会话尚未注册；首个 Tab 或重开终端后完成，本检查不会触发加载。' }
+        elseif ($effective -eq 'Argc' -and -not $argcLoaded) { "$registered 仍在当前会话生效；argc 尚未注册，首个 Tab 接管后会覆盖它。需要立即切回可执行 Set-GitCompletionSource $registered。" }
+        elseif ($effective -ne $registered) { "解析来源为 $effective，当前会话仍由 $registered 注册；执行 Set-GitCompletionSource $effective 可当场重注册。" }
+        else { '' }
+
+    [pscustomobject]@{
+        ConfiguredSource = $configuredLabel
+        EffectiveSource  = $effective
+        Available        = [bool]$sourceReady
+        RegisteredSource = $registered
+        Fallback         = $fallback
+        GitCompletion    = $gitState
+        Carapace         = $carapaceState
+        Argc             = $argcState
+        PoshGit          = $poshGitState
+        GitExcluded      = [bool](@([string]$env:CARAPACE_EXCLUDES -split ',' | ForEach-Object { $_.Trim() } |
+                    Where-Object { $_ -match '^(?i:git|gitk)$' }).Count)
+        Note             = $note
     }
 }
 
@@ -2596,7 +2718,26 @@ function Set-GitCompletionSource
     {
         Write-Host 'carapace 仍处于启用状态，只让出 git/gitk；需要停止加载用 Disable-PsPlugin Carapace -Persist。'
     }
-    Write-Host 'git/gitk 已在当前会话按新来源重新注册；argc 尚未注册时由首个 Tab 完成，无需重开终端。'
+    if (Get-Module posh-git)
+    {
+        Write-Warning 'posh-git 已导入并注册同名 git completer；它的注册可能覆盖本次切换，建议先 Remove-Module posh-git。'
+    }
+    if ($Source -eq 'GitCompletion' -and $global:PsGitCompletion)
+    {
+        Write-Host 'git/gitk 已在当前会话由 git-completion 注册。'
+    }
+    elseif ($Source -eq 'Carapace' -and $global:PsCarapaceGit -and $global:PsCarapaceLoaded)
+    {
+        Write-Host 'git/gitk 已在当前会话改由 carapace 接管。'
+    }
+    elseif ($Source -eq 'Argc' -and $global:PsArgcLoaded)
+    {
+        Write-Host 'git/gitk 已在当前会话改由 argc 接管。'
+    }
+    else
+    {
+        Write-Host 'git/gitk 未在当前会话重新注册；按来源条件修复后，首个 Tab 或下一次切换会完成接管。'
+    }
 }
 
 function Get-CxxuComponent

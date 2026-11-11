@@ -34,6 +34,7 @@ Add-EnvVar -EnvVar PSModulePath -NewValue $p -Verbose
 | `Reset-CxxuConfig` | 按仓库默认偏好（组件见 `PS/Init/components.psd1`，Settings 见 `PS/Init/config.defaults.psd1`）重置用户配置文件；`-WhatIf` 只预览路径，重置后重开终端生效，并列出仍会覆盖默认值的环境变量 |
 | `Enable-PsPlugin` / `Disable-PsPlugin` | 体验插件启停（Fzf/Zoxide/Predictor/Tab/Argc/GitCompletion/Carapace/PSCompletions/Fnm/ScoopSearch，当会话生效；加 `-Persist` 长期有效，写 `~/.cxxu/config.psd1`） |
 | `Set-GitCompletionSource` | 切换 `git`/`gitk` 的 Tab 补全来源（`GitCompletion`/`Carapace`/`Argc`）：写入 `PsGitCompletionSource` 与相关开关，由 `init` 在启动时读取，当前会话立即重新注册；切到 `Carapace`/`Argc` 不会停用 GitCompletion 组件（停用需显式 `Disable-PsPlugin GitCompletion`）；不改 profile，`-Persist` 落配置，`-WhatIf` 预览 |
+| `Get-GitCompletionSource` | 只读查看 `git`/`gitk` 补全的配置来源、解析来源与当前会话已注册来源，附各来源（含 `posh-git`）的安装/启用状态、回落原因与下一步命令；用于确认“当前实际用的是哪个”，不加载补全模块 |
 | `Get-CxxuComponent` | 按组件列出启用状态、选项、来源、默认值与安装/文档入口，并给出 `Install`/`Enable` 建议命令；`-Id Carapace` 只查一个；`-Validate` 改跑清单/步骤/依赖一致性自检 |
 | `Test-CxxuComponent` | 只读检查组件清单结构、Init 步骤生成与已启用组件的外部依赖；`Status` 为 `OK`/`警告`/`错误`，依赖警告会带安装与启用命令；`Get-CxxuComponent -Validate` 与 `doctor` 复用同一结果 |
 | `Enable-CxxuComponent` / `Disable-CxxuComponent` | 按组件 Id 启停；默认只改开关，`-Now` 立即调用组件的 Init 函数；`-Persist` 写 `~/.cxxu/config.psd1` 的 `Components` 段，不加只改当前会话；写入前备份旧文件，并按 v2 规范文本重写（手工注释可能被规范化） |
@@ -156,7 +157,7 @@ Test-StartupPerformance -Simple   # 只测一次新 pwsh 启动（带 profile）
 > `$env:PsTab`（CxxuTab Tab 补全，**默认开，置 `False` 关**）；
 > `$env:PsArgc`（argc-completions 参数补全，默认开，首个 Tab 才注册；需要时由 `Deploy-CompletionStack -IncludeArgc` 部署）；
 > `$env:PsGitCompletion`（git-completion 的 `git`/`gitk` 补全，默认开，未装模块时无效果；装模块用 `Deploy-CompletionStack -IncludeGitCompletion`，启停用 `Enable-PsPlugin GitCompletion` / `Disable-PsPlugin GitCompletion`）；
-> 来源切换用 `Set-GitCompletionSource GitCompletion|Carapace|Argc [-Persist]`：写入 `PsGitCompletionSource`（由 `init` 读取），不修改 profile；当前会话会立即重新注册对应 completer（argc 尚未注册时由首个 Tab 完成）；carapace 的启用与排除项分别由 `PsCarapace`、`PsCarapaceExcludes` 控制；
+> 来源切换用 `Set-GitCompletionSource GitCompletion|Carapace|Argc [-Persist]`：写入 `PsGitCompletionSource`（由 `init` 读取），不修改 profile；当前会话会立即重新注册对应 completer（argc 尚未注册时由首个 Tab 完成）；确认当前实际来源用 `Get-GitCompletionSource`（只读，区分“配置值 / 解析值 / 已注册来源”，并说明回落原因）；carapace 的启用与排除项分别由 `PsCarapace`、`PsCarapaceExcludes` 控制；
 > 组件统一管理：`Get-CxxuComponent` 按 `PS/Init/components.psd1` 列出状态与选项，`Enable/Disable-CxxuComponent` 与 `Set-CxxuComponentOption` 负责启停和选项；`Enable-CxxuComponent -Now` 立即调用组件的 `InitNow`（未声明时用 `Init`），与 `Enable-PsPlugin` 的即时路径共用同一份清单；用户配置 `~/.cxxu/config.psd1` 的 `Components` 段只表达 `Enabled` 与选项；核心步骤固定，可选组件的加载步骤按 `components.psd1` 的清单顺序生成，新增组件不必再改 init 步骤表。旧版平坦键继续兼容；`-Persist` 会先备份旧文件，再按 v2 规范文本重写，手工注释可能被规范化；`Get-CxxuComponent -Validate` 或 `Test-CxxuComponent` 检查清单结构、Init/InitNow 函数与已启用依赖，`doctor` 的同名行复用该结果；
 > 重定向场景自动不加载。新机安装或一键重装看 [Deploy-Guide](Deploy-Guide.md) 的「补全栈与第三方 PS 模块」（`Deploy-CompletionStack -WhatIf` 可空跑）。
 
@@ -171,13 +172,15 @@ Test-StartupPerformance -Simple   # 只测一次新 pwsh 启动（带 profile）
 | `fnm` | 可选（node 用户）：组件 `Fnm` 默认关；装好 fnm 后 `Enable-CxxuComponent Fnm -Persist`，`init` 执行 `fnm env --use-on-cd` |
 | `scoop-search` | 可选：组件 `ScoopSearch` 默认关；装好 `scoop-search` 后 `Enable-CxxuComponent ScoopSearch -Persist`，`init` 注入 `--hook` |
 | `carapace-bin`（跨 shell 的 CLI 参数补全；本机 1.8.2 实测 743 个 completer，带颜色和描述） | **可选**，`PsCarapace` 默认 `$false`：`Deploy-Carapace -Enable` 一步安装并启用，或安装后 `Enable-CxxuComponent Carapace -Persist`；`init` 只注册首个 Tab 懒加载桩，首次 Tab 才加载；git/gitk 归属用 `Set-GitCompletionSource` 切换；pwsh 7.6 空结果补丁在加载时处理。步骤与 git 对比见下文「carapace（可选，非默认）」 |
-| `posh-git` | 未装（只要 git Tab 补全才装） |
+| `posh-git` | 已安装，未导入（`init` 不加载；导入时会注册同名 git completer，与其他来源不可混用） |
 | `oh-my-posh` | 不开（每回车进程税 + 与现有定制片重叠） |
 | `argc-completions`（800+ 命令参数补全；懒加载，首个 Tab 注册约 150ms；选中行反显高亮；首个参数位的静态 flag 自动进 ListView） | **已启用**（仓库 `~/argc-completions` 或 `C:\repos\argc-completions`；开关 `$env:PsArgc`；Tab 7/5.1 均可用，自动 flag 提示仅 7.5+） |
-| `git-completion`（`git`/`gitk` 的 Tab 补全：分支、提交、按 git 状态过滤的文件与选项描述） | **已启用**（init 检测到模块即注册 completer，首次补全才导入；未装时自动跳过；开关 `$env:PsGitCompletion`；启用后 argc 让出 `git`/`gitk`） |
+| `git-completion`（`git`/`gitk` 的 Tab 补全：分支、提交、按 git 状态过滤的文件与选项描述） | **已启用**（init 检测到模块即注册 completer，首次补全才导入；未装时自动跳过；开关 `$env:PsGitCompletion`；启用后 argc 让出 `git`/`gitk`；当前归属用 `Get-GitCompletionSource` 确认） |
 | `inshellisense` | **否决**（用户拍板，不再考虑） |
 
 验：新开终端直接可用，`Ctrl+R`/`Ctrl+T` 首按装 PSFzf（本次按键即生效）；`z <目录>` 跳转（zoxide 首屏单发已装）。`CxxuTab` 默认开，首个 `Tab` 才导入它（命令表缓存命中时建表约 20ms，模块导入另计；缓存缺失/过期时现建，5.1 约 0.4s、7 约 0.1s，24h 内最多一次）。`argc-completions` 开关默认开，首个 `Tab` 才注册（需先用 `Deploy-CompletionStack -IncludeArgc` 部署；未部署时自动回退原生补全，约 150ms 的注册不会发生）。`Get-EventSubscriber` 应无残留（单发用 `-MaxTriggerCount 1` 自动退订）。若某主机 OnIdle 不触发（predictor 没装上），跑 `Register-PsUxLazyLoad -Now` 或报回来。自查跑 `Test-StartupPerformance`（分段计时+结论）。
+
+git 补全来源先看 `Get-GitCompletionSource`：`ConfiguredSource` 是配置值（`Auto` 不代表实际用了 `GitCompletion`），`EffectiveSource` 是按开关与安装状态解析的结果，`RegisteredSource` 才是当前会话已注册的 completer；`PoshGit` 列显示 posh-git 是否导入及是否参与同名覆盖；`Fallback` 或 `Note` 非空时按提示修正。需要眼见为实再按一次真实 Tab（如 `git diff --st<Tab>`）。`Get-CxxuConfig` 只显示配置键的生效值，不判断补全归属。
 
 ### carapace（可选，非默认）
 
@@ -221,7 +224,7 @@ Set-GitCompletionSource Carapace -Persist   # 需要 carapace 接管 git/gitk �
 - 旧版 profile 中的手动 carapace 片段需要删除，否则会与懒加载桩重复注册；也不要执行 carapace 文档中的 `Set-PSReadlineKeyHandler -Key Tab -Function MenuComplete`，避免覆盖现有 Tab 桩。
 - 版本可以不追新，但生成脚本随版本变化：懒加载或手动加载时，pwsh 7.6 及更早版本按原文匹配空结果补丁，匹配不到时只告警，不中断启动。
 - 验收：重开终端后先按一次真实 `Tab` 触发懒加载（或用 `Enable-CxxuComponent Carapace -Now` 手动加载），再 `Get-Command carapace`、`carapace --version`、`carapace --list`（数量随版本变化，不写死）应可用；`TabExpansion2 'scoop install ' 14` 能返回包名候选，`TabExpansion2 'gh pr ' 6` 能返回子命令。直接调用 `TabExpansion2` 不会触发 Tab 懒加载。
-- 状态检查：二进制、安装与启用、运行态与实际补全的分层检查见 [Deploy-Guide](Deploy-Guide.md) 的「可选：carapace」；`doctor -Feature Carapace` 可先看开关与依赖结论，来源用 `Get-CxxuConfig` 核对。
+- 状态检查：二进制、安装与启用、运行态与实际补全的分层检查见 [Deploy-Guide](Deploy-Guide.md) 的「可选：carapace」；`doctor -Feature Carapace` 可先看开关与依赖结论，git 补全归属用 `Get-GitCompletionSource` 核对。
 - 启动成本：注册懒加载桩约毫秒级；首次 Tab 一次性约 0.2–0.3 秒（随版本与主机变化），之后不再重复。`carapace` 不纳入 `Deploy-CompletionStack` 的 `-Include*` 层，但已进入 `Get-CxxuDependencyReport` 与 `doctor -Feature`。
 - 慢补全：`winget install` 约 3.3 秒、`uv add` 约 4.4 秒，按 Tab 会同步等待；写入 `PsCarapaceExcludes` 排除。
 - 错误候选：命令未安装或上下文缺失时会出现 `ERR` / `_` 候选（例如没有 `package.json` 时的 `npm run`）；写入 `PsCarapaceExcludes` 排除。
@@ -405,7 +408,7 @@ Git Bash 使用同一个 carapace 二进制，Linux/macOS 使用各自平台的�
 | `argc` 整块 | 未部署 | `Deploy-CompletionStack -IncludeArgc`（或 `Deploy-ArgcCompletions`） | 由 `init` 的 `Set-ArgcCompletions` 懒加载；装完重开终端/`init` |
 | `carapace-bin` | 可选，`PsCarapace` 默认 `$false` | `Deploy-Carapace -Enable`（推荐，安装并启用），或安装后再 `Enable-CxxuComponent Carapace -Persist`；也可用官方 GitHub Release 产物或包管理器（`scoop install carapace-bin`、`brew install carapace`、Linux 发行版仓库） | `init` 只注册首个 Tab 懒加载桩；不纳入 `Deploy-CompletionStack`；跨平台默认目录不同；版本可固定；git/gitk 归属用 `Set-GitCompletionSource` 切换 |
 | `carapace`（Git Bash/MSYS 与 Linux/macOS bash） | 可选，与 PowerShell 组件独立 | `bash /path/to/scripts/bash/carapace/setup.sh`（`--disable` 停用，不删除二进制；登录 shell 加 `--login`；`--install` 装二进制、`--install-deps` 补依赖），或手工 source；步骤见 [bash/carapace/README.md](../../bash/carapace/README.md) | 不经过 `init`；PowerShell 的 `PsCarapace` 开关不影响 bash；macOS 系统 bash 3.2 需先换 bash 4+ |
-| `posh-git` | 未装 | 只要 git Tab 补全才装 | 已有 `git-completion` 时不需要 |
+| `posh-git` | 已安装，未导入 | 仅需提示符的 git 状态时才导入 | 其 git 补全与现有来源注册同名 completer，导入后按顺序覆盖，已有 `git-completion` 时不要混用 |
 | prompt 主题持久化 | 当会话有效，重开复原 | `Set-PsPrompt -version <…> -Persist`（写注册表） | 临展用 `dm` 切极简，不持久化 |
 | 开机任务 + 守护进程 | 未注册 | `Start-StartupTasks`（或 `Deploy-StartupTasks` 部署） | 报时/IP 守护，无状态，`-Force` 可杀 |
 | WT 设置下发 | 仓库 `Config/wtConf*.json` 仅供参考 | `Deploy-WtSettings` | 线上 WT 无自定义 profile 时才需要 |

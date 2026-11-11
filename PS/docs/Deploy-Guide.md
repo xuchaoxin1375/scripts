@@ -308,6 +308,9 @@ $global:PsCarapaceGit
 $global:PsCarapacePending
 $global:PsCarapaceLoaded
 
+# git/gitk 补全归属（配置值、解析值、已注册来源与回落原因）
+Get-GitCompletionSource | Format-List
+
 # 实际补全（先按一次真实 Tab；或先执行 Enable-CxxuComponent Carapace -Now）
 (TabExpansion2 'gh pr ' 6).CompletionMatches | Select-Object -First 5 -ExpandProperty CompletionText
 (TabExpansion2 'docker --con' 12).CompletionMatches | Select-Object -First 5 -ExpandProperty CompletionText
@@ -316,7 +319,7 @@ $global:PsCarapaceLoaded
 - `PsCarapace=True` 且 `Get-Command carapace` 有输出，才说明 `init` 注册了首个 Tab 懒加载桩；只有二进制没有开关时，`init` 不会注册 completer。`Pending=True` 是正常状态，按一次 Tab 后变为 `Loaded=True`。
 - `PsCarapaceGit` 为 `False`（旧会话可能为空）不是错误：`Auto` 且装有 `git-completion` 时 git/gitk 归 git-completion，carapace 只负责其他命令。把 `PsGitCompletionSource` 设为 `Carapace` 后它才变为 `True`，同时 `CARAPACE_EXCLUDES` 不再包含 `git,gitk`。
 - 因此 `git diff --st<Tab>` 默认不会出现 carapace 菜单：`CARAPACE_EXCLUDES` 含 `git,gitk`，候选来自 `git-completion`。需要 carapace 接管 git 时执行 `Set-GitCompletionSource Carapace -Persist`，当前会话即会加载并注册 carapace；之后 `git diff --st<Tab>` 出现 carapace 的 `--staged`、`--stat` 等候选。
-- `doctor -Feature Carapace` 是较短的汇总入口，显示 `开关 PsCarapace`、依赖与就绪结论；需要核对来源时再看 `Get-CxxuConfig`。它不执行交互式 Tab；先用真实 Tab 或 `Enable-CxxuComponent Carapace -Now` 触发加载，再用 `TabExpansion2` 检查候选。
+- `doctor -Feature Carapace` 是较短的汇总入口，显示 `开关 PsCarapace`、依赖与就绪结论；需要核对 git 补全归属时用 `Get-GitCompletionSource`（配置值、解析值、已注册来源与回落原因），其余开关值仍看 `Get-CxxuConfig`。它不执行交互式 Tab；先用真实 Tab 或 `Enable-CxxuComponent Carapace -Now` 触发加载，再用 `TabExpansion2` 检查候选。
 - `TabExpansion2` 没有候选时，先看 `$env:PsCarapace`、`Get-Command carapace` 与 `$global:PsCarapaceLoaded`；两者都开启时，Tab 桩先加载 carapace、再注册 argc，argc 的同名 completer 后注册生效。
 
 ## 6. scoop 二进制
