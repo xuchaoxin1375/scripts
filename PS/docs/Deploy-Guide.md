@@ -289,6 +289,7 @@ carapace 的状态分四层；只看 `Get-Command` 只能确认二进制存在�
 | 二进制 | `Get-Command carapace` 返回路径，`carapace --version` 返回版本 |
 | 安装与启用 | 依赖报告显示 `已安装`，组件 `Enabled=True`，配置 `PsCarapace=True` |
 | 运行态 | `$env:PsCarapace=True`；`CARAPACE_EXCLUDES` 与 git 来源一致；`PsCarapaceGit` 只在 carapace 接管 git 时为 `True`；`$global:PsCarapacePending=True` 表示等待首次 Tab，`$global:PsCarapaceLoaded=True` 表示已加载 |
+| 上下文缓存（5.1） | `Get-CxxuComponent -Id Carapace` 的 `CacheState` 为 `有效（n 小时 / 24 小时）`；显示未建立、已过期、宿主已变化或文件不完整时，下次首个 Tab 会重建 |
 | 实际补全 | 首次 Tab 后，`TabExpansion2` 对 `gh`、`docker` 等命令返回子命令或参数候选 |
 
 ```powershell
@@ -298,7 +299,7 @@ carapace --version
 
 # 安装与启用
 Get-CxxuDependencyReport -Feature '补全：外部 CLI 参数（carapace）' -Full
-Get-CxxuComponent Carapace | Format-List Id, Enabled, Source, Default, Lazy, Init, InitNow
+Get-CxxuComponent -Id Carapace | Format-List Id, Enabled, Source, Default, Lazy, Runtime, RegisteredCommands, CacheState, CachePath
 Get-CxxuConfig | Where-Object Key -eq 'PsCarapace' | Format-List Key, Value, Source
 doctor -Feature Carapace
 
@@ -308,6 +309,11 @@ $env:CARAPACE_EXCLUDES
 $global:PsCarapaceGit
 $global:PsCarapacePending
 $global:PsCarapaceLoaded
+$global:PsCarapaceScripts.Count
+
+# 缓存清理（5.1）
+Reset-PsCommandCache -WhatIf
+Reset-PsCommandCache
 
 # git/gitk 补全归属（配置值、解析值、已注册来源与回落原因）
 Get-GitCompletionSource | Format-List

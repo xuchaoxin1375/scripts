@@ -1071,6 +1071,49 @@ function Set-CarapaceCompletionOptions
     return $source
 }
 
+function Get-CarapaceShellCacheInfo51
+{
+    # 只读：返回 5.1 上下文缓存的位置与有效性，不创建目录，也不枚举当前会话名称。
+    # Valid 为 $false 时 Reason 指出重建原因；AgeHours 只在 meta.txt 可读时有值。
+    $cacheDir = $null
+    try { $cacheDir = Join-Path (Join-Path (Join-Path $HOME '.cxxu') 'cache') 'carapace-shell-51' } catch { }
+    $info = [pscustomobject]@{
+        Path      = $cacheDir
+        Exists    = $false
+        AgeHours  = $null
+        HostMatch = $false
+        Valid     = $false
+        Reason    = '未建立'
+    }
+    if (-not $cacheDir -or -not (Test-Path -LiteralPath $cacheDir)) { return $info }
+    $info.Exists = $true
+    $metaPath = Join-Path $cacheDir 'meta.txt'
+    if (-not (Test-Path -LiteralPath $metaPath)) { $info.Reason = 'meta.txt 缺失'; return $info }
+    try
+    {
+        $meta = [IO.File]::ReadAllLines($metaPath)
+        if ($meta.Count -lt 2) { $info.Reason = 'meta.txt 不完整'; return $info }
+        $hostKey = '{0}|{1}|{2}' -f $PSVersionTable.PSVersion, [Environment]::Version, $PSHOME
+        $info.HostMatch = ($meta[0].Trim() -eq $hostKey)
+        $info.AgeHours = ([DateTime]::UtcNow.Ticks - [long]$meta[1].Trim()) / [TimeSpan]::TicksPerHour
+        if (-not $info.HostMatch) { $info.Reason = '宿主或 PSHOME 已变化'; return $info }
+        if (($info.AgeHours -lt 0) -or ($info.AgeHours -gt 24)) { $info.Reason = '已过期'; return $info }
+        foreach ($file in @('aliases.txt', 'builtins.txt', 'functions.txt', 'variables.txt'))
+        {
+            $path = Join-Path $cacheDir $file
+            if (-not (Test-Path -LiteralPath $path)) { $info.Reason = "缺少 $file"; return $info }
+            if ((Get-Item -LiteralPath $path).Length -le 0) { $info.Reason = "$file 为空"; return $info }
+        }
+        $info.Valid = $true
+        $info.Reason = ''
+    }
+    catch
+    {
+        $info.Reason = 'meta.txt 不可读'
+    }
+    return $info
+}
+
 function Get-CarapaceShellContext51
 {
     # 5.1 的 carapace 生成脚本每次补全都会枚举别名/内置/函数/变量（合计约 350ms）；
@@ -1086,43 +1129,28 @@ function Get-CarapaceShellContext51
         Functions = 'functions.txt'
         Variables = 'variables.txt'
     }
-    $cacheDir = $null
-    try { $cacheDir = Join-Path (Join-Path (Join-Path $HOME '.cxxu') 'cache') 'carapace-shell-51' } catch { }
+    $cache = Get-CarapaceShellCacheInfo51
+    $cacheDir = $cache.Path
     $metaPath = if ($cacheDir) { Join-Path $cacheDir 'meta.txt' } else { $null }
     $hostKey = '{0}|{1}|{2}' -f $PSVersionTable.PSVersion, [Environment]::Version, $PSHOME
     $result = @{}
 
-    if ($cacheDir -and -not $Force)
+    if (-not $Force -and $cache.Valid)
     {
         try
         {
-            $valid = $false
-            if (Test-Path -LiteralPath $metaPath)
+            $loaded = @{}
+            foreach ($name in $names)
             {
-                $meta = [IO.File]::ReadAllLines($metaPath)
-                if ($meta.Count -ge 2 -and $meta[0].Trim() -eq $hostKey)
-                {
-                    $age = [DateTime]::UtcNow.Ticks - [long]$meta[1].Trim()
-                    $valid = ($age -ge 0) -and ($age -le [TimeSpan]::FromHours(24).Ticks)
-                }
+                $text = [IO.File]::ReadAllText((Join-Path $cacheDir $fileNames[$name]))
+                if ([string]::IsNullOrEmpty($text)) { $loaded = $null; break }
+                $loaded[$name] = $text
             }
-            if ($valid)
+            if ($loaded)
             {
-                $loaded = @{}
-                foreach ($name in $names)
-                {
-                    $path = Join-Path $cacheDir $fileNames[$name]
-                    if (-not (Test-Path -LiteralPath $path)) { $valid = $false; break }
-                    $text = [IO.File]::ReadAllText($path)
-                    if ([string]::IsNullOrEmpty($text)) { $valid = $false; break }
-                    $loaded[$name] = $text
-                }
-                if ($valid)
-                {
-                    foreach ($name in $names) { $result[$name] = $loaded[$name] }
-                    Write-Verbose "carapace: 已读取 5.1 上下文缓存（$cacheDir）"
-                    return $result
-                }
+                foreach ($name in $names) { $result[$name] = $loaded[$name] }
+                Write-Verbose "carapace: 已读取 5.1 上下文缓存（$cacheDir）"
+                return $result
             }
         }
         catch
@@ -3003,12 +3031,16 @@ function Get-CxxuComponent
     .DESCRIPTION
     元数据来自 PS/Init/components.psd1；值按“环境变量 > 用户配置 > 默认值”解析。
     输出对象可直接接 Format-List/Format-Table；-Id 只查一个组件（不区分大小写）。
+    Carapace 额外带 Runtime、RegisteredCommands、CachePath、CacheState 四个运行态字段：
+    Runtime 区分未安装/未启用/待首个 Tab/已加载/未加载，CacheState 描述 5.1 上下文缓存是否有效。
     Install 给出依赖安装入口，Enable 给出未启用时的组件启用命令；-Validate 不列组件，
     改跑清单结构、Init 步骤生成与已启用依赖的一致性检查。
     .EXAMPLE
     Get-CxxuComponent
     .EXAMPLE
     Get-CxxuComponent -Id Carapace | Format-List
+    .EXAMPLE
+    Get-CxxuComponent -Id Carapace | Select-Object Enabled, Runtime, RegisteredCommands, CacheState
     .EXAMPLE
     Get-CxxuComponent | Select-Object Id, Enabled, Install, Enable | Format-Table -Wrap
     .EXAMPLE
@@ -3080,7 +3112,7 @@ function Get-CxxuComponent
         {
             "Enable-CxxuComponent $([string]$component.Id) -Persist"
         }
-        [pscustomobject]@{
+        $row = [pscustomobject]@{
             Id          = [string]$component.Id
             Name        = [string]$component.Name
             Phase       = [string]$component.Phase
@@ -3099,6 +3131,38 @@ function Get-CxxuComponent
             Enable      = $enableHint
             Docs        = [string]$component.Docs
         }
+        # Carapace 额外带运行态与 5.1 上下文缓存：开关/配置与实际是否加载、缓存是否可用
+        # 是两层信息，分开列，避免把 Enabled 当成"已生效"。
+        if ([string]$component.Id -eq 'Carapace')
+        {
+            $installed = [bool](Get-Command carapace -ErrorAction SilentlyContinue)
+            $runtime = if (-not $installed) { '未安装' }
+                elseif (-not $enabled) { '未启用' }
+                elseif ($global:PsCarapaceLoaded) { '已加载' }
+                elseif ($global:PsCarapacePending -eq $false) { '未加载（加载失败或已停用）' }
+                else { '待首个 Tab' }
+            $registered = if ($global:PsCarapaceScripts) { [int]$global:PsCarapaceScripts.Count } else { 0 }
+            if ($PSVersionTable.PSVersion.Major -lt 6)
+            {
+                $cache = Get-CarapaceShellCacheInfo51
+                $cachePath = [string]$cache.Path
+                $cacheState = if (-not $cache.Exists) { '未建立' }
+                    elseif ($cache.Valid) { '有效（{0:N1} 小时 / 24 小时）' -f [double]$cache.AgeHours }
+                    elseif ($cache.Reason -eq '宿主或 PSHOME 已变化') { '宿主已变化，下次首 Tab 重建' }
+                    elseif ($cache.Reason -eq '已过期') { '已过期（{0:N1} 小时 / 24 小时），下次首 Tab 重建' -f [double]$cache.AgeHours }
+                    else { '不完整（{0}），下次首 Tab 重建' -f $cache.Reason }
+            }
+            else
+            {
+                $cachePath = ''
+                $cacheState = '不适用（仅 5.1 使用）'
+            }
+            $row | Add-Member -NotePropertyName Runtime -NotePropertyValue $runtime
+            $row | Add-Member -NotePropertyName RegisteredCommands -NotePropertyValue $registered
+            $row | Add-Member -NotePropertyName CachePath -NotePropertyValue $cachePath
+            $row | Add-Member -NotePropertyName CacheState -NotePropertyValue $cacheState
+        }
+        $row
     }
 }
 function Test-CxxuComponent

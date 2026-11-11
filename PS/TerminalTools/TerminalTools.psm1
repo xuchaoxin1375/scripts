@@ -799,10 +799,13 @@ function Reset-PsCommandCache
     删除补全命令表缓存,让新装或刚更新的命令进入候选。
     .DESCRIPTION
     命令表缓存在 ~/.cxxu/cache/tab-commands-<CLR主版本>.tsv,CxxuPredictor 与 CxxuTab
-    每个进程只建一次表。删除文件只对之后启动的进程有效:当前会话仍使用内存里的旧表,
-    必须新开终端;新终端首次 Tab(或 predictor 首次触发)会用当前已加载的命令重建。
-    默认只删当前 PowerShell 版本对应的缓存;加 -All 连同 5.1 的 tab-commands-4.tsv 一起删。
-    仓库模块更新后 init 会自动删除比模块文件旧的缓存;本命令用于候选缺失时手工清理,清理后仍需新开终端。
+    每个进程只建一次表。5.1 的 carapace 上下文缓存在 ~/.cxxu/cache/carapace-shell-51/
+    (四个名称列表 + meta.txt),用于首个 Tab 免去约 350ms 枚举。删除只对之后启动的进程
+    有效:当前会话仍使用内存里的旧表或旧全局变量,必须新开终端;新终端首次 Tab 会用当前
+    已加载的命令重建。默认只删当前 PowerShell 版本对应的命令表缓存;加 -All 连同 5.1 的
+    tab-commands-4.tsv 一起删;carapace 缓存只被 5.1 使用,两种模式都会删除。
+    仓库模块更新后 init 会自动删除比模块文件旧的命令表缓存;本命令用于候选缺失或缓存
+    过期时手工清理,清理后仍需新开终端。
     .EXAMPLE
     Reset-PsCommandCache
     .EXAMPLE
@@ -817,27 +820,38 @@ function Reset-PsCommandCache
         # 缓存目录(默认 ~/.cxxu/cache,供测试或便携环境覆盖)
         [string]$CacheDir = (Join-Path (Join-Path $HOME '.cxxu') 'cache')
     )
-    $files = @()
+    $targets = @()
     if ($All)
     {
-        $files = @(Get-ChildItem -LiteralPath $CacheDir -Filter 'tab-commands-*.tsv' -File -ErrorAction Ignore)
+        $targets += @(Get-ChildItem -LiteralPath $CacheDir -Filter 'tab-commands-*.tsv' -File -ErrorAction Ignore)
     }
     else
     {
         $path = Join-Path $CacheDir ('tab-commands-' + [Environment]::Version.Major + '.tsv')
-        if (Test-Path -LiteralPath $path) { $files = @(Get-Item -LiteralPath $path) }
+        if (Test-Path -LiteralPath $path) { $targets += Get-Item -LiteralPath $path }
     }
-    if (-not $files.Count)
+    $carapaceDir = Join-Path $CacheDir 'carapace-shell-51'
+    if (Test-Path -LiteralPath $carapaceDir) { $targets += Get-Item -LiteralPath $carapaceDir }
+    if (-not $targets.Count)
     {
-        Write-Host "没有可删除的命令表缓存($CacheDir)。"
+        Write-Host "没有可删除的补全缓存($CacheDir)。"
         return
     }
-    foreach ($f in $files)
+    foreach ($target in $targets)
     {
-        if ($PSCmdlet.ShouldProcess($f.FullName, '删除命令表缓存'))
+        if ($target.PSIsContainer)
         {
-            Remove-Item -LiteralPath $f.FullName -Force -ErrorAction Stop
-            Write-Host "已删除 $($f.Name):当前窗口仍使用内存中的旧表,请新开终端后首次 Tab 重建。"
+            if ($PSCmdlet.ShouldProcess($target.FullName, '删除 carapace 上下文缓存'))
+            {
+                Remove-Item -LiteralPath $target.FullName -Recurse -Force -ErrorAction Stop
+                Write-Host "已删除 $($target.Name):当前窗口仍使用内存中的旧变量,请新开终端后首次 Tab 重建。"
+            }
+            continue
+        }
+        if ($PSCmdlet.ShouldProcess($target.FullName, '删除命令表缓存'))
+        {
+            Remove-Item -LiteralPath $target.FullName -Force -ErrorAction Stop
+            Write-Host "已删除 $($target.Name):当前窗口仍使用内存中的旧表,请新开终端后首次 Tab 重建。"
         }
     }
 }

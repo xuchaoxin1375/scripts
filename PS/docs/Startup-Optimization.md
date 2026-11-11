@@ -716,6 +716,10 @@ WindowsTerminal.exe
   缓存一致。缓存写入失败只影响下次首 Tab 的耗时，不阻断加载。
 - 结果（同机、真实窗口注入）：5.1 首个 Tab 从约 1.1 秒降到约 0.6 秒；首次落盘
   （冷缓存）约 1.05 秒；`Initialize-Carapace` 从约 490ms 降到约 150ms。7 未受影响。
+- 查询与清理：`Get-CxxuComponent -Id Carapace` 的 `Runtime`、`RegisteredCommands`、
+  `CachePath`、`CacheState` 分别给出加载阶段、已注册命令数、缓存目录与有效性/重建原因；
+  `Reset-PsCommandCache` 会连同 `carapace-shell-51` 目录一起删除（新开终端后首个 Tab 重建），
+  当前会话仍用内存中的旧全局变量。
 - 边界：24 小时内新增的函数/别名不会进入 carapace 的 shell 名称列表（外部 CLI 的参数
   补全不受影响）；需要立即刷新时删除缓存目录或执行 `Initialize-Carapace -Force`。
   函数名列表仍按 30,000 字符截断。

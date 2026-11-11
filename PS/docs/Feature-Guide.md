@@ -232,7 +232,7 @@ Set-GitCompletionSource Carapace -Persist   # 需要 carapace 接管 git/gitk �
 - 旧版 profile 中的手动 carapace 片段需要删除，否则会与懒加载桩重复注册；也不要执行 carapace 文档中的 `Set-PSReadlineKeyHandler -Key Tab -Function MenuComplete`，避免覆盖现有 Tab 桩。
 - 版本可以不追新，但生成脚本随版本变化：懒加载或手动加载时，pwsh 7.6 及更早版本按原文匹配空结果补丁，5.1 另匹配环境变量截断、空参数、编码与 ANSI 四处补丁；匹配不到时只告警，不中断启动。升级 carapace 后按一次真实 `Tab` 复验。
 - 验收：重开终端后先按一次真实 `Tab` 触发懒加载（或用 `Enable-CxxuComponent Carapace -Now` 手动加载），再 `Get-Command carapace`、`carapace --version`、`carapace --list`（数量随版本变化，不写死）应可用；`TabExpansion2 'scoop install ' 14` 能返回包名候选，`TabExpansion2 'gh pr ' 6` 能返回子命令。直接调用 `TabExpansion2` 不会触发 Tab 懒加载。5.1 下再验 `git checkout <Tab>` 能出分支，`git status --sh<Tab>` 能出 `--short`、`--show-stash`，菜单描述为纯文本且中文不乱码，输入行无零宽字符残留。
-- 状态检查：二进制、安装与启用、运行态与实际补全的分层检查见 [Deploy-Guide](Deploy-Guide.md) 的「可选：carapace」；`doctor -Feature Carapace` 可先看开关与依赖结论，git 补全归属用 `Get-GitCompletionSource` 核对。
+- 状态检查：二进制、安装与启用、运行态与实际补全的分层检查见 [Deploy-Guide](Deploy-Guide.md) 的「可选：carapace」；`doctor -Feature Carapace` 可先看开关与依赖结论，git 补全归属用 `Get-GitCompletionSource` 核对。`Get-CxxuComponent -Id Carapace` 额外给出 `Runtime`（未安装/未启用/待首个 Tab/已加载/未加载）、`RegisteredCommands`、`CachePath` 与 `CacheState`（5.1 上下文缓存是否有效及重建原因）；缓存过期或候选缺失时用 `Reset-PsCommandCache` 清理，新开终端后首个 Tab 重建。
 - 启动成本：注册懒加载桩约毫秒级；首次 Tab 一次性约 0.2–0.3 秒（随版本与主机变化），之后不再重复。`carapace` 不纳入 `Deploy-CompletionStack` 的 `-Include*` 层，但已进入 `Get-CxxuDependencyReport` 与 `doctor -Feature`。
 - 慢补全：`winget install` 约 3.3 秒、`uv add` 约 4.4 秒，按 Tab 会同步等待；写入 `PsCarapaceExcludes` 排除。
 - 错误候选：命令未安装或上下文缺失时会出现 `ERR` / `_` 候选（例如没有 `package.json` 时的 `npm run`）；写入 `PsCarapaceExcludes` 排除。
