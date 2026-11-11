@@ -94,6 +94,7 @@ Initialize-ArgcCompletions -Force
 git ch<Tab>         -> checkout / cherry / cherry-pick
 docker --con<Tab>   -> --config / --context
 nginx -<Tab>        -> -? / -h / -v / -V / -t / -T ...
+nginx <Tab>         -> 当前目录文件（argc 对空参数位的上游行为）；中文文件名应正常显示
 ```
 
 非交互：
@@ -188,6 +189,7 @@ doctor -Feature Argc   # 只看这一套：开关、注册状态、Tab 集成与
 | `init` 后 `$env:ARGC_COMPLETIONS_ROOT` 为空 | 仓库是否在默认位置（`~/argc-completions`、`~/repos/argc-completions`、Windows 的 `C:\repos\argc-completions`）且 argc 可用 | 设置 `ARGC_COMPLETIONS_ROOT` 后重开终端 |
 | `Tab` 完全没反应 | `(Get-PSReadLineKeyHandler -Bound \| Where-Object Key -eq 'Tab').Function` 应为 `CustomAction`；`$global:PsArgcScripts.Count` 应为 846 | 旧会话未重载：`Import-Module Init -Force; init -Force`；5.1 用 `init -Force`，不要用 `p`（它开的是 pwsh 7，不刷新当前 5.1 会话） |
 | 首次 Tab 后仍无候选 | `Initialize-ArgcCompletions -Verbose` 的报错；`argc --argc-compgen powershell '' git ch` 是否输出 `checkout`/`cherry`/`cherry-pick` | 补全脚本缺失或脚本依赖的工具不在 Git Bash 中；按报错补依赖 |
+| 中文文件名候选乱码（如含中文目录下 `nginx <Tab>`） | 当前会话是否在更新前启动；`[Console]::OutputEncoding` 是否为系统代码页（如 `gb2312`） | 重开终端或执行 `Initialize-ArgcCompletions -Force`；当前 completer 已固定按 UTF-8 读取 argc 输出，不再依赖控制台代码页 |
 | `argc --argc-compgen` 无输出 | `argc --argc-shell-path`；`$env:ARGC_COMPLETIONS_PATH` | bash 路径无效 / 仓库路径错 / 环境变量被清 |
 | Git Bash 报 `cannot execute binary file` | `bin\argc` 是否是 Linux ELF | 删掉或改名，让 Git Bash 用 `argc.exe` |
 | 只有个别命令不补全 | `completions\<cmd>.sh` 是否存在 | 没有脚本就是不支持；不要改 completer 注册逻辑 |

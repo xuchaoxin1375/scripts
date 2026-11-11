@@ -340,6 +340,7 @@ Git Bash 使用同一个 carapace 二进制，Linux/macOS 使用各自平台的�
 | Tab 只有原生候选，没有 `CxxuTab fuzzy:` | `$env:PsTab` 被显式关；`CxxuTab` 未导入；`__CxxuTabMethod` 为空；5.1 缺 `ps51` 活件 | 按上表逐项查；`Enable-PsPlugin Tab`；5.1 执行 `Sync-CxxuPredictor` 后重开终端 |
 | Tab 完全没反应（连原生候选也没有） | Tab 键绑定异常（旧会话/argc 桩残留），或 PSReadLine 未加载 | `doctor` 看 `Tab 键` 行；`Import-Module Init -Force; init -Force` 或重开终端 |
 | 应用命令的 `-` 参数没候选（如 `nginx -<Tab>`） | argc 未部署；`argc --argc-shell-path` 的 bash 不存在；`PsArgc=False` | 跑 `Deploy-CompletionStack -IncludeArgc` 或 `Deploy-ArgcCompletions`；`doctor` 看 `argc 补全`/`Tab 键`；细节见 Argc 文档 §7 |
+| `nginx <Tab>` 的文件名候选中文乱码 | 当前会话在修复前启动，仍用旧 completer | 重开终端或 `Initialize-ArgcCompletions -Force`；当前 completer 固定按 UTF-8 读取 argc 输出，不随控制台代码页变化 |
 | 首个 Tab 卡 0.1~0.4s | 命令表缓存未命中（首次/过期/损坏） | 正常一次性，之后约 20ms；想立刻重建执行 `Reset-PsCommandCache` 后重开终端 |
 | 候选里缺新装模块的命令 | 缓存仍是旧表，或当前窗口在更新前已建表 | 仓库更新后 `init` 会自动删除比模块文件旧的缓存；执行 `Reset-PsCommandCache` 并重开终端可立即刷新。原生 Tab 的前缀匹配不受缓存影响 |
 | 用一会儿后突然只剩原生候选 | 自熔断触发（单次调用 >800ms 或异常） | `$global:__CxxuTabFuse` 为 `True`；重开终端恢复；反复出现查主机/杀软扫描 |

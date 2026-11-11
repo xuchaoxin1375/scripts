@@ -881,6 +881,55 @@ function Set-ArgcCompletions
     }
 }
 
+function Invoke-CxxuArgcCompgen
+{
+    # 读取 argc --argc-compgen 的输出(不导出)。
+    # argc 固定输出 UTF-8,而默认 [Console]::OutputEncoding 是系统代码页(中文 Windows
+    # 为 936),直接 & 会把中文文件名解成乱码;这里用 ProcessStartInfo 固定 UTF-8。
+    # 5.1 没有 ArgumentList,手工引用参数,空字符串仍按一个参数位置传给 argc。
+    param([string]$Executable, [string[]]$Arguments)
+    try
+    {
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = $Executable
+        $psi.UseShellExecute = $false
+        $psi.CreateNoWindow = $true
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+        # 原生命令按 PowerShell 当前位置执行(Set-Location 不会改 OS 工作目录)。
+        try { $psi.WorkingDirectory = (Get-Location).ProviderPath } catch { }
+        if ($PSVersionTable.PSVersion.Major -ge 6)
+        {
+            foreach ($arg in $Arguments) { $psi.ArgumentList.Add($arg) }
+        }
+        else
+        {
+            $quoted = foreach ($arg in $Arguments)
+            {
+                if ($arg.Length -eq 0) { '""'; continue }
+                if ($arg -notmatch '[\s"]') { $arg; continue }
+                $escaped = [regex]::Replace($arg, '(\\*)"', '$1$1\"')
+                $escaped = [regex]::Replace($escaped, '(\\+)$', '$1$1')
+                '"' + $escaped + '"'
+            }
+            $psi.Arguments = $quoted -join ' '
+        }
+        $process = [System.Diagnostics.Process]::Start($psi)
+        # stderr 异步读完,避免 argc 报错内容占满管道导致死锁。
+        $errTask = $process.StandardError.ReadToEndAsync()
+        $output = $process.StandardOutput.ReadToEnd()
+        $process.WaitForExit()
+        $null = $errTask.Result
+        return $output
+    }
+    catch
+    {
+        # 补全失败按无候选处理,不把异常抛给 Tab 管线。
+        return ''
+    }
+}
+
 function Initialize-ArgcCompletions
 {
     <#
@@ -937,6 +986,8 @@ function Initialize-ArgcCompletions
         return
     }
 
+    # 闭包捕获函数体,避免 completer 在调用方作用域解析不到模块私有函数。
+    $argcRunner = ${function:Invoke-CxxuArgcCompgen}
     $completer = {
         param($wordToComplete, $commandAst, $cursorPosition)
         if ($env:PsArgc -match '^(False|0|No|Off)$') { return }
@@ -954,11 +1005,12 @@ function Initialize-ArgcCompletions
             return $word.Replace($zw, '')
         })
         $emptyS = ''
-        if ($PSVersionTable.PSVersion.Major -eq 5) { $emptyS = '""' }
         $lastElemIndex = -1
         if ($words.Count -lt $commandAst.CommandElements.Count) { $lastElemIndex = $words.Count - 1 }
         if ($commandAst.CommandElements[$lastElemIndex].Extent.EndOffset -lt $cursorPosition) { $words += $emptyS }
-        $lines = & $argcExe --argc-compgen powershell $emptyS @words 2>$null
+        # 走 .NET Process 固定按 UTF-8 读取 argc 输出:默认控制台代码页(中文 Windows
+        # 为 936)会把中文文件名解成乱码。参数用 ArgumentList / 手工引用保留空字符串位置。
+        $lines = & $argcRunner $argcExe (@('--argc-compgen', 'powershell', $emptyS) + $words)
         foreach ($line in ($lines -split "`n"))
         {
             $line = $line.TrimEnd("`r")

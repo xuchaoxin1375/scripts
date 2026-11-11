@@ -17,6 +17,10 @@
   不用裸 `Get-Content`/`Set-Content`。
 - 重定义内置别名（`rm`/`r`/`ps`/`h` 等）必须
   `Set-Alias <名> <目标> -Option AllScope -Scope Global`。
+- 原生命令的 stdout 按 `[Console]::OutputEncoding` 解码；新控制台默认是系统代码页
+  （中文 Windows 为 936），不是 `$OutputEncoding`。外部工具固定输出 UTF-8 时，用
+  `ProcessStartInfo.StandardOutputEncoding` 读取（argc 补全已按此处理），不要依赖
+  临时改控制台代码页；重定向场景下改 `[Console]::OutputEncoding` 未必同步控制台 CP。
 
 ## 模块与输出
 
