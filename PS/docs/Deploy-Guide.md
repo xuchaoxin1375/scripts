@@ -146,11 +146,12 @@ profile 里只保留 `init`；`argc` 由 Init 接管（部署见 [Argc-Completio
 | 可选层 `-IncludeFuzzy` | `PSFzf`、`fzf`、`zoxide` | 推荐/可选 | `PSFzf` 走 PSGallery；`fzf`/`zoxide` 走 scoop → winget/brew → `scripts-deps` → 上游 | `Ctrl+T`/`Ctrl+R`、`z`；检测到代理时不走包管理器 | 同左 |
 | 可选层 `-IncludePredictor` | `CompletionPredictor` | 推荐 | PSGallery | 参数/路径内联预测 | 以模块自身要求为准 |
 | 可选层 `-IncludePSCompletions` | `PSCompletions` | 可选 | PSGallery | Tab 参数补全（装后 `Enable-CxxuComponent PSCompletions -Persist`） | 同左 |
-| 可选层 `-IncludeGitCompletion` | `git-completion` | 推荐 | PSGallery | `git`/`gitk` 的 Tab 补全（分支、提交、按状态过滤的文件；首次补全才导入模块） | 可用；选项补全受 5.1 引擎限制，见 Feature-Guide §13 |
+| 可选层 `-IncludeGitCompletion` | `git-completion` | 推荐 | PSGallery | `git`/`gitk` 的 Tab 补全（分支、提交、按状态过滤的文件；首次补全才导入模块） | 可用；模块须在 5.1 可见的目录中（默认安装位置与 7 不同），选项补全受 5.1 引擎限制，见 [Feature-Guide](Feature-Guide.md) 的「Windows PowerShell 5.1 兼容」 |
 
 - 二进制优先取 [`scripts-deps`](https://github.com/xuchaoxin1375/scripts-deps) 的固定版本，地址失效自动回退上游；`-NoMirror` 跳过转存仓库，`$env:PsDepsMirror` 可整体换前缀。版本钉子维护见 [PS/Deploy/readme.md](../Deploy/readme.md) 的转存章节。
 - 表内组件装好后是否默认加载由组件清单决定；默认关闭的（如 `PSCompletions`、`carapace`）或曾手动停用的，再用 `Enable-CxxuComponent <Id> -Persist` 启用。`Get-CxxuComponent -Id <Id>` 会同时给出 `Install` 与 `Enable`，`Test-CxxuComponent` 的依赖警告也会带安装与启用命令。
 - PSGallery 三件套由 PowerShellGet 安装，代理继承规则与 GitHub 直链不同；5.1 下环境变量可能不生效，网络受限时优先在 pwsh 7 执行，或先配系统代理。
+- `git-completion` 的用户模块目录按宿主版本区分：`Install-Module git-completion -Scope CurrentUser` 在 pwsh 7 写入 `~\Documents\PowerShell\Modules`，在 5.1 写入 `~\Documents\WindowsPowerShell\Modules`。5.1 的 `PSModulePath` 默认不含 7 的用户目录，只在 7 上装过时，5.1 的 `init` 会判定模块缺失并跳过，`git`/`gitk` 回落到 argc 或原生补全；从 pwsh 7 启动的子进程继承 7 的 `PSModulePath` 时例外，但那条路径同时带模块顺序问题，不宜依赖。需要 5.1 也启用时，在 5.1 中执行 `Install-Module git-completion -Scope CurrentUser -Force`，或装入两个版本都扫描的 `Program Files\WindowsPowerShell\Modules`（需管理员权限）。5.1 下 `Deploy` 模块不可用，`Deploy-CompletionStack -IncludeGitCompletion` 只能从 pwsh 7 执行。装好后重开终端，再用 `Get-GitCompletionSource` 确认当前归属。
 - `carapace-bin` 不纳入上述部署层；需要跨 shell 的外部 CLI 补全时，用下面的 `Deploy-Carapace` 安装，再按「可选：carapace」启用。
 
 ### 只启用补全（仓库、`PSModulePath`、profile 已就绪）
