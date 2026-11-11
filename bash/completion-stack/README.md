@@ -1,5 +1,7 @@
 # bash 补全组合部署（argc + carapace）
 
+> 补全归属、顺序与症状排查总览见 [bash/README.md](../README.md)。
+
 把 bash 的参数补全接成「carapace 负责重叠命令（git、docker 等）、argc-completions 补 carapace 缺失的命令（如 nginx）」。本目录只做编排，安装与 rc 写入仍由两个子脚本完成：
 
 - [../argc-completions/setup.sh](../argc-completions/setup.sh)

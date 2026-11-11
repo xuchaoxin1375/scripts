@@ -529,8 +529,13 @@ run_check() {
 		printf '建议: 执行 carapace --version，以及 carapace git bash "" 查看实际输出；检查 PATH 与 carapace 版本\n'
 		return 1
 	fi
+	# 状态检查只覆盖 rc 与子 shell：当前已打开的终端不会因安装而更新；
+	# 这里显式给出 reload 与自查命令，避免把“配置已接入”当成“终端已生效”而重复排查。
 	printf '结论: 已接入 carapace，git 补全候选正常\n'
-	printf '提示: 本检查不验证交互式 Tab 的列表/循环模式；在终端执行 bind -q complete 确认\n'
+	printf '提示: 本检查只读 rc 与子 shell，不代表当前已打开的终端；\n'
+	printf '      需 source %s 或新开终端，再用 complete -p git 确认来源（应为 _carapace_completer*）。\n' "$RC_FILE"
+	printf '      当前会话自查可运行: source "%s/completion-diagnose.sh"\n' "${SCRIPT_DIR%/*}"
+	printf '      本检查也不验证交互式 Tab 的列表/循环模式；在终端执行 bind -q complete 确认\n'
 	return 0
 }
 

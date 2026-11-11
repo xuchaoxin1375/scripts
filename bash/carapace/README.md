@@ -1,5 +1,7 @@
 # carapace 在 bash / Git Bash 中的接入
 
+> 补全归属、顺序与症状排查总览见 [bash/README.md](../README.md)。
+
 [carapace](https://carapace.sh/) 的 bash 接入本体只有一行 `source <(carapace _carapace bash)`，但直接把它放进 rc 文件会在部分环境失效或留下副作用：
 
 - Git Bash/MSYS：carapace 会在 PATH 最前面追加 Windows 风格目录（`C:/...;...`），而 MSYS 的 PATH 用 `:` 分隔，`;` 会把后面的第一个目录粘进同一项。

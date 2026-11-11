@@ -268,6 +268,8 @@ if (Get-Process -Id $id -ErrorAction SilentlyContinue) { Stop-Process -Id $id -F
 
 同一套附加、注入与读屏方法也适用于 Git Bash 的 bash 进程，但启动目标与判读规则有差异：
 
+- 先确认补全归属：在目标窗口执行 `complete -p <命令>`，或 source 仓库的 `bash/completion-diagnose.sh`；看注册函数是 `_carapace_completer*` 还是 `_argc_completer`。在补全框架安装前启动的终端仍用旧注册，需 `source` rc 或新开窗口。归属、顺序与取舍见 [bash/README.md](../../bash/README.md)。
+
 - 目标必须是持有真实控制台的进程。`git-bash.exe` / mintty 使用自建终端窗口，`AttachConsole` 附加不上，也读不到屏幕；改用 Git 安装目录下的 `bin\bash.exe`，或在 Windows Terminal 里启动 bash。
 - `bin\bash.exe` 可能只是启动器，真正接管的交互 shell 是它的 `usr\bin\bash.exe` 子进程。附加前按 `ParentProcessId` 找到子 bash，或附加到持有 `conhost` 的进程；只附加启动器时读不到提示符，现象与"窗口未就绪"相同。
 - 从 `usr\bin\bash.exe` 直接启动时，`/usr/bin`、`/mingw64/bin` 可能没有进入 PATH，补全函数依赖的 `xargs` 等命令不可用，表现为候选静默为空。先 `command -v xargs` 验证，或从正常入口启动。

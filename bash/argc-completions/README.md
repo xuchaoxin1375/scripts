@@ -1,5 +1,7 @@
 # argc-completions 在 bash 中的适配（Git Bash / WSL / Linux / macOS）
 
+> 补全归属、顺序与症状排查总览见 [bash/README.md](../README.md)。
+
 [argc-completions](https://github.com/sigoden/argc-completions) 上游只提供“把片段写入 `~/.bashrc`”的通用做法，直接照搬到 Git Bash、WSL/Linux 与 macOS bash 会遇到二进制冲突、bash 探测失败、ble.sh 候选串污染等问题。本目录在**不修改上游仓库**的前提下补齐这些差异，各环境共用同一份运行时脚本。
 
 > PowerShell 侧由 `PS/Init` 接管（懒加载，开关 `$env:PsArgc`）；启停、状态检查与排障见 [Argc-Completions-Deploy](../../PS/docs/Argc-Completions-Deploy.md)。本目录覆盖 Git Bash、WSL/Linux 与 macOS bash。
