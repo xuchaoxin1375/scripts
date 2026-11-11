@@ -588,16 +588,21 @@ Set-PSReadLineOption: 句柄无效。
   变体），启动阶段必须解析并执行；与用户是否马上按 Tab 无关。
 - 处置：新增 `Register-CarapaceLazyLoad`，init 只计算排除项并注册首个 Tab 桩；
   `Initialize-Carapace` 保留为实际加载函数，`Enable-CxxuComponent -Now` 走清单新增的
-  `InitNow` 立即加载。argc 已装 Tab 桩时复用，不重复绑定；两者同开时桩内先加载
-  carapace、再注册 argc。
+  `InitNow` 立即加载。argc 与 carapace 共用 `Register-CxxuTabStub` 安装的同一个
+  Tab 桩；两者同开时桩内先加载 carapace、再注册 argc。
 - 结果：同机 `Test-StartupPerformance` 的 init 从 757ms 降到 558ms，profile 从 1324ms
   降到 1121ms；`Register-CarapaceLazyLoad` 约 8ms。首次 Tab 一次性约 254ms，之后正常。
 - 行为变化：`$global:PsCarapacePending=True` 表示等待首次 Tab；
   `$global:PsCarapaceLoaded=True` 表示已加载。直接调用 `TabExpansion2` 不触发 Tab 桩，
   验证前需先按一次真实 Tab 或执行 `Enable-CxxuComponent Carapace -Now`。加载失败会摘下
   Pending，不在后续 Tab 重复告警。
+- 5.1：加载时缓存 `CARAPACE_SHELL_*` 名称列表（函数名截断到 30,000 字符），并把调用
+  改走 .NET `Process`（`StandardOutputEncoding=UTF-8`，保留空字符串参数），避免环境变量
+  超长、中文乱码与空参数丢失；候选描述去 ANSI。首次 Tab 约 0.5–1 秒（枚举函数名 +
+  生成并执行注册脚本），之后约 0.1–0.4 秒。
 - 边界：`PSCompletions`/`fnm`/`scoop-search` 保持原加载方式；默认关闭，启用后仍按组件
-  清单加载。carapace 首次 Tab 的 0.2–0.3 秒是功能成本，不摊到每个会话启动。
+  清单加载。carapace 首次 Tab 的 0.2–0.3 秒（5.1 约 0.5–1 秒）是功能成本，不摊到每个
+  会话启动。
 
 ## 30. 第二十三轮：启动链审计、计时口径与 conda prompt 边界（2026-11-10）
 

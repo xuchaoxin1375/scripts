@@ -106,9 +106,8 @@
             Phase       = 'Completions'
             Key         = 'PsCarapace'
             Default     = $false
-            Description = '外部 CLI 参数补全（首个 Tab 懒加载，约 0.2–0.3 秒）'
+            Description = '外部 CLI 参数补全（首个 Tab 懒加载，7 约 0.2–0.3 秒；5.1 约 0.5–1 秒）'
             Lazy        = 'FirstUse'
-            MinPS       = 7
             Init        = 'Register-CarapaceLazyLoad'
             InitNow     = 'Initialize-Carapace'
             Detect      = 'carapace'

@@ -662,7 +662,7 @@ function Set-PSReadLinesAdvanced
 
     <# set colors #>
     # inlineprediction 配色需 PSReadLine 2.1+;低版本(5.1 自带 2.0)未知键会报错,跳过
-    try { Set-PSReadLineOption -Colors @{'inlineprediction' = '#d0d0cb' } } catch { Write-Verbose "跳过 inlineprediction 配色: $($_.Exception.Message)" }#grayLight(grayDark #babbb4)
+    try { Set-PSReadLineOption -Colors @{'inlineprediction' = '#d0d0cb' } -ErrorAction Stop } catch { Write-Verbose "跳过 inlineprediction 配色: $($_.Exception.Message)" }#grayLight(grayDark #babbb4)
     <# suggestion list #>
     # Set-PSReadLineOption -PredictionViewStyle ListView
     # Set-PSReadLineOption -EditMode Windows
@@ -732,6 +732,109 @@ function Set-ArgcCompletionsEnvironment
     }
 }
 
+function Register-CxxuTabStub
+{
+    # 安装统一的 Tab 桩:按需加载 carapace/argc,并处理 5.1 的 - 开头词。
+    # 5.1 的补全引擎不会把 - 开头的词交给 Native 补全器(6.0 才修),
+    # 先在词首临时插一个零宽字符(引擎当作普通词),MenuComplete 返回后再删掉;
+    # 选中候选时该字符随整个词被替换,不会残留。只对 argc/carapace 注册过的
+    # 应用命令生效,cmdlet/函数的参数补全仍走引擎原生逻辑(不能被破坏)。
+    # 每次 init 都重装:Set-PSReadLinesCommon 会把 Tab 重置成 MenuComplete。
+    Set-PSReadLineKeyHandler -Key Tab -ScriptBlock {
+        if ($global:PsCarapacePending) { Initialize-Carapace }
+        if (($env:PsArgc -notmatch '^(False|0|No|Off)$') -and
+            (-not $global:PsArgcLoaded) -and (-not $global:PsArgcUnavailable))
+        {
+            Initialize-ArgcCompletions
+        }
+
+        $sentinel = [char]0x200B
+        $sentinelIndex = -1
+        $cursor = 0
+        $carapaceActive = (-not [string]::IsNullOrWhiteSpace($env:PsCarapace)) -and
+            ($env:PsCarapace -notmatch '^(False|0|No|Off)$')
+        if (($PSVersionTable.PSVersion.Major -lt 6) -and
+            ($global:PsArgcScripts -or ($carapaceActive -and $global:PsCarapaceScripts)))
+        {
+            $line = ''
+            [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref]$line, [ref]$cursor)
+            if ($cursor -gt 0)
+            {
+                $start = $cursor
+                while ($start -gt 0 -and -not [char]::IsWhiteSpace($line[$start - 1])) { $start-- }
+                if (($start -lt $cursor) -and ($line[$start] -eq '-'))
+                {
+                    $cmdName = $null
+                    try
+                    {
+                        $astTokens = $null
+                        $astErrors = $null
+                        $ast = [System.Management.Automation.Language.Parser]::ParseInput($line, [ref]$astTokens, [ref]$astErrors)
+                        $cmdAst = $ast.Find({
+                            param($node)
+                            ($node -is [System.Management.Automation.Language.CommandAst]) -and
+                            ($node.Extent.StartOffset -le $cursor) -and
+                            ($node.Extent.EndOffset -ge $cursor)
+                        }, $true)
+                        if ($cmdAst) { $cmdName = $cmdAst.GetCommandName() }
+                    }
+                    catch { }
+                    $isCompletionCommand = $false
+                    if ($cmdName)
+                    {
+                        $name = [string]$cmdName
+                        $baseName = [IO.Path]::GetFileNameWithoutExtension($name)
+                        if ($global:PsArgcScripts)
+                        {
+                            $isCompletionCommand = $global:PsArgcScripts.ContainsKey($name) -or
+                                $global:PsArgcScripts.ContainsKey($baseName)
+                        }
+                        if (-not $isCompletionCommand -and $carapaceActive -and $global:PsCarapaceScripts)
+                        {
+                            $isCompletionCommand = $global:PsCarapaceScripts.ContainsKey($name) -or
+                                $global:PsCarapaceScripts.ContainsKey($baseName)
+                        }
+                    }
+                    if ($isCompletionCommand)
+                    {
+                        $sentinelIndex = $start
+                        [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($start)
+                        [Microsoft.PowerShell.PSConsoleReadLine]::Insert([string]$sentinel)
+                        [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($cursor + 1)
+                    }
+                }
+            }
+        }
+
+        try
+        {
+            [Microsoft.PowerShell.PSConsoleReadLine]::MenuComplete()
+        }
+        finally
+        {
+            if ($sentinelIndex -ge 0)
+            {
+                try
+                {
+                    $line = ''
+                    $nowCursor = 0
+                    [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref]$line, [ref]$nowCursor)
+                    $idx = $line.IndexOf($sentinel)
+                    if ($idx -ge 0)
+                    {
+                        $newPos = if ($nowCursor -gt $idx) { $nowCursor - 1 } else { $nowCursor }
+                        [Microsoft.PowerShell.PSConsoleReadLine]::Delete($idx, 1)
+                        [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($newPos)
+                    }
+                }
+                catch { }
+            }
+        }
+    }
+    $global:PsArgcTabStub = $true
+    $global:PsCarapaceTabStub = $true
+}
+
 function Set-ArgcCompletions
 {
     <#
@@ -769,99 +872,7 @@ function Set-ArgcCompletions
     # init -Force 重跑时不能因为全局标记而跳过)
     try
     {
-        Set-PSReadLineKeyHandler -Key Tab -ScriptBlock {
-            # carapace 与 argc 共用 Tab 桩：先按需加载 carapace，再走 argc 注册。
-            if ($global:PsCarapacePending) { Initialize-Carapace }
-            if ($env:PsArgc -match '^(False|0|No|Off)$')
-            {
-                [Microsoft.PowerShell.PSConsoleReadLine]::MenuComplete()
-                return
-            }
-            if ((-not $global:PsArgcLoaded) -and (-not $global:PsArgcUnavailable))
-            {
-                Initialize-ArgcCompletions
-            }
-            if ($global:PsArgcUnavailable)
-            {
-                [Microsoft.PowerShell.PSConsoleReadLine]::MenuComplete()
-                return
-            }
-
-            # PS 5.1 的补全引擎不会把 - 开头的词交给 Native 补全器(6.0 才修),
-            # 先在词首临时插一个零宽字符(引擎当作普通词),MenuComplete 返回后再删掉;
-            # 选中候选时该字符随整个词被替换,不会残留。只对 argc 注册过的
-            # 应用命令生效,cmdlet/函数的参数补全仍走引擎原生逻辑(不能被破坏)。
-            $sentinel = [char]0x200B
-            $sentinelIndex = -1
-            $cursor = 0
-            if (($PSVersionTable.PSVersion.Major -lt 6) -and $global:PsArgcScripts)
-            {
-                $line = ''
-                [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref]$line, [ref]$cursor)
-                if ($cursor -gt 0)
-                {
-                    $start = $cursor
-                    while ($start -gt 0 -and -not [char]::IsWhiteSpace($line[$start - 1])) { $start-- }
-                    if (($start -lt $cursor) -and ($line[$start] -eq '-'))
-                    {
-                        $cmdName = $null
-                        try
-                        {
-                            $astTokens = $null
-                            $astErrors = $null
-                            $ast = [System.Management.Automation.Language.Parser]::ParseInput($line, [ref]$astTokens, [ref]$astErrors)
-                            $cmdAst = $ast.Find({
-                                param($node)
-                                ($node -is [System.Management.Automation.Language.CommandAst]) -and
-                                ($node.Extent.StartOffset -le $cursor) -and
-                                ($node.Extent.EndOffset -ge $cursor)
-                            }, $true)
-                            if ($cmdAst) { $cmdName = $cmdAst.GetCommandName() }
-                        }
-                        catch { }
-                        $isArgcCommand = $false
-                        if ($cmdName)
-                        {
-                            $isArgcCommand = $global:PsArgcScripts.ContainsKey([string]$cmdName) -or
-                                $global:PsArgcScripts.ContainsKey([IO.Path]::GetFileNameWithoutExtension([string]$cmdName))
-                        }
-                        if ($isArgcCommand)
-                        {
-                            $sentinelIndex = $start
-                            [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($start)
-                            [Microsoft.PowerShell.PSConsoleReadLine]::Insert([string]$sentinel)
-                            [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($cursor + 1)
-                        }
-                    }
-                }
-            }
-
-            try
-            {
-                [Microsoft.PowerShell.PSConsoleReadLine]::MenuComplete()
-            }
-            finally
-            {
-                if ($sentinelIndex -ge 0)
-                {
-                    try
-                    {
-                        $line = ''
-                        $nowCursor = 0
-                        [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref]$line, [ref]$nowCursor)
-                        $idx = $line.IndexOf($sentinel)
-                        if ($idx -ge 0)
-                        {
-                            $newPos = if ($nowCursor -gt $idx) { $nowCursor - 1 } else { $nowCursor }
-                            [Microsoft.PowerShell.PSConsoleReadLine]::Delete($idx, 1)
-                            [Microsoft.PowerShell.PSConsoleReadLine]::SetCursorPosition($newPos)
-                        }
-                    }
-                    catch { }
-                }
-            }
-        }
-        $global:PsArgcTabStub = $true
+        Register-CxxuTabStub
         Write-Verbose 'argc-completions: 已装 Tab 懒加载桩'
     }
     catch
@@ -1072,6 +1083,10 @@ function Initialize-Carapace
     - GitCompletion、Argc、Auto：把 git/gitk 并入 CARAPACE_EXCLUDES。
     PsCarapaceExcludes 提供用户自己的慢命令排除项；两处合并后写入环境变量。
     init 只调用 Register-CarapaceLazyLoad 装桩；首次 Tab 才由桩调用本函数完成注册。
+    5.1 也可用：Register-ArgumentCompleter -Native 在 5.1 可用，但引擎不会把
+    - 开头的词交给 Native completer（6.0 才修），由 Tab 桩插零宽字符绕过；
+    环境变量超长与空字符串参数丢弃这两个 5.1 差异在生成脚本上打补丁，
+    其中函数名列表截断会让 PowerShell 函数名补全不完整，外部 CLI 不受影响。
     加载失败只告警，不中断 init，也不在后续 Tab 反复重试。
     .PARAMETER Force
     已加载时也重新执行注册，用于同名 Native completer 被其他来源覆盖后夺回（如关闭 argc 后）。
@@ -1086,12 +1101,6 @@ function Initialize-Carapace
     param([switch]$Force)
 
     if ($global:PsCarapaceLoaded -and -not $Force) { return }
-    if ($PSVersionTable.PSVersion.Major -lt 7)
-    {
-        $global:PsCarapacePending = $false
-        Write-Warning 'carapace 补全需要 pwsh 7+；5.1 已跳过 Initialize-Carapace。'
-        return
-    }
     if ($env:PsCarapace -match '^(False|0|No|Off)$')
     {
         $global:PsCarapacePending = $false
@@ -1129,6 +1138,85 @@ function Initialize-Carapace
                 Write-Warning 'carapace 生成脚本已变化，空结果补丁未匹配；请核对当前版本的空结果处理。'
             }
         }
+        if ($PSVersionTable.PSVersion.Major -lt 6)
+        {
+            # 5.1: 环境变量单值上限 32767，函数名列表通常超长会直接抛
+            # "Environment variable name or value is too long"；截断只影响
+            # PowerShell 函数名补全，外部 CLI 的参数补全不受影响。
+            # 这些列表在 5.1 每次补全都要枚举约 350ms，改为加载时算一次并缓存。
+            $global:PsCarapaceShellAliases = (Get-Alias | ForEach-Object { $_.Name } | Out-String).TrimEnd()
+            $global:PsCarapaceShellBuiltins = (Get-Command -CommandType Cmdlet | ForEach-Object { $_.Name } | Out-String).TrimEnd()
+            $global:PsCarapaceShellFunctions = (Get-Command -CommandType Function | ForEach-Object { $_.Name } | Out-String).TrimEnd()
+            if ($global:PsCarapaceShellFunctions.Length -gt 30000)
+            {
+                $global:PsCarapaceShellFunctions = $global:PsCarapaceShellFunctions.Substring(0, 30000)
+            }
+            $global:PsCarapaceShellVariables = (Get-Variable | ForEach-Object { $_.Name } | Out-String).TrimEnd()
+
+            $envPatches = @(
+                @{ Old = '$env:CARAPACE_SHELL_ALIASES = (Get-Alias | ForEach-Object { $_.Name } | Out-String).TrimEnd()'; New = '$env:CARAPACE_SHELL_ALIASES = $global:PsCarapaceShellAliases' }
+                @{ Old = '$env:CARAPACE_SHELL_BUILTINS = (Get-Command -CommandType Cmdlet | ForEach-Object { $_.Name } | Out-String).TrimEnd()'; New = '$env:CARAPACE_SHELL_BUILTINS = $global:PsCarapaceShellBuiltins' }
+                @{ Old = '$env:CARAPACE_SHELL_FUNCTIONS = (Get-Command -CommandType Function | ForEach-Object { $_.Name } | Out-String).TrimEnd()'; New = '$env:CARAPACE_SHELL_FUNCTIONS = $global:PsCarapaceShellFunctions' }
+                @{ Old = '$env:CARAPACE_SHELL_VARIABLES = (Get-Variable | ForEach-Object { $_.Name } | Out-String).TrimEnd()'; New = '$env:CARAPACE_SHELL_VARIABLES = $global:PsCarapaceShellVariables' }
+            )
+            foreach ($patch in $envPatches)
+            {
+                if ($script.Contains($patch.Old)) { $script = $script.Replace($patch.Old, $patch.New) }
+                else { Write-Warning "carapace 生成脚本已变化，5.1 环境变量补丁未匹配：$($patch.New)" }
+            }
+            # 5.1 的 ConvertFrom-Json 把 JSON 数组当作单个对象输出，直接接
+            # ForEach-Object 只会跑一次并把整份候选拼成一条；先赋值再逐项构造。
+            # 调用改走 .NET Process：StandardOutputEncoding 固定 UTF-8，避免控制台
+            # 代码页把中文提交说明解成乱码；空字符串参数也由参数拼装函数还原为 ""，
+            # 不受 PowerShell 5.1 丢弃空参数的影响。
+            $global:PsCarapaceExe = (Get-Command carapace -ErrorAction Stop).Source
+            $script = $script.Replace('carapace ($elems[0]', '$__r = Invoke-Carapace51 ($elems[0]')
+            $script = $script.Replace('| ConvertFrom-Json | ForEach-Object {', "`n          `$__r | ForEach-Object {")
+            # PowerShell 函数调用会把 $($elems|...) 当成一个字符串参数；改为传数组，
+            # 由 Invoke-Carapace51 展平，保留原有的参数边界与末尾空参数。
+            $script = $script.Replace('$($elems| ForEach-Object {$_})', '$elems')
+            # Tab 桩会在 - 开头的词前插入零宽字符，查询前去掉。
+            $script = $script.Replace('$t = $_.Extent.Text', '$t = $_.Extent.Text.Replace([string][char]0x200B, [string]::Empty)')
+            # PSReadLine 2.0 的菜单不解析 ANSI，候选描述会显示成 `^[[21;...`；
+            # 5.1 去掉颜色，保留纯文本描述（选中行仍由 PSReadLine 的 Selection 反显）。
+            $script = $script.Replace('$_.ListItemText.replace(''`e['', "`e[")', '($_.ListItemText -replace ''`e\[[0-9;]*m'', [string]::Empty -replace "`e\[[0-9;]*m", [string]::Empty)')
+            $script = $script.Replace('$_.ToolTip.replace(''`e['', "`e[")', '($_.ToolTip -replace ''`e\[[0-9;]*m'', [string]::Empty -replace "`e\[[0-9;]*m", [string]::Empty)')
+
+            # 生成的 completer 在会话里调用这两个全局辅助函数；仅 5.1 定义。
+            $helper = @'
+function global:ConvertTo-CarapaceArg51 {
+    param([string]$Value)
+    if ($Value.Length -eq 0) { return '""' }
+    if ($Value -notmatch '[\s"]') { return $Value }
+    $escaped = [regex]::Replace($Value, '(\\*)"', '$1$1\"')
+    $escaped = [regex]::Replace($escaped, '(\\+)$', '$1$1')
+    return '"' + $escaped + '"'
+}
+function global:Invoke-Carapace51 {
+    param([Parameter(ValueFromRemainingArguments = $true)][object[]]$Arguments)
+    $flat = @()
+    foreach ($item in $Arguments)
+    {
+        if ($item -is [array]) { $flat += $item }
+        else { $flat += [string]$item }
+    }
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $global:PsCarapaceExe
+    $psi.Arguments = ($flat | ForEach-Object { ConvertTo-CarapaceArg51 $_ }) -join ' '
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $p = [System.Diagnostics.Process]::Start($psi)
+    $out = $p.StandardOutput.ReadToEnd()
+    $null = $p.StandardError.ReadToEnd()
+    $p.WaitForExit()
+    if ($out) { $out | ConvertFrom-Json }
+}
+'@
+            $helper | Invoke-Expression
+        }
         # 在 completer 入口加 PsCarapace 门控：已注册的 Native completer 无法撤销，
         # 没有这道门时 Disable-PsPlugin Carapace 后旧绑定仍会返回候选，停用要等重开终端才见效。
         $paramNeedle = 'param($wordToComplete, $commandAst, $cursorPosition)'
@@ -1142,6 +1230,19 @@ function Initialize-Carapace
             Write-Warning 'carapace 生成脚本已变化，PsCarapace 门控未注入；停用 carapace 后需重开终端才完全停止。'
         }
         $script | Invoke-Expression
+        # 记录 carapace 注册的命令名，供 5.1 的 Tab 桩判断是否需要插零宽字符。
+        $global:PsCarapaceScripts = @{}
+        foreach ($line in ($script -split "`r?`n"))
+        {
+            if ($line -match '^Register-ArgumentCompleter -Native -ScriptBlock \$_carapace_completer -CommandName (.+)$')
+            {
+                foreach ($name in ($Matches[1] -split ','))
+                {
+                    $trimmed = $name.Trim()
+                    if ($trimmed) { $global:PsCarapaceScripts[$trimmed] = $true }
+                }
+            }
+        }
         $global:PsCarapaceLoaded = $true
         $global:PsCarapacePending = $false
         # git/gitk 由 carapace 接管时才记来源；被排除时保留上一来源的标记。
@@ -1166,7 +1267,7 @@ function Register-CarapaceLazyLoad
     .DESCRIPTION
     只校验开关、计算排除项并装 Tab 桩，不执行 carapace 生成的注册脚本；
     首次 Tab 才调用 Initialize-Carapace，把约 0.2 秒的注册成本从启动挪到用户手势。
-    已有 argc 的 Tab 桩时复用该桩，不重复绑定 Tab；两者都未启用时不装桩。
+    与 argc 共用同一个 Tab 桩（Register-CxxuTabStub），两者都未启用时不装桩。
     .EXAMPLE
     Register-CarapaceLazyLoad
     #>
@@ -1175,18 +1276,20 @@ function Register-CarapaceLazyLoad
 
     if ($global:PsCarapaceLoaded)
     {
-        # init -Force 可能改了来源或排除项；completer 已注册无法撤销，但环境变量要跟着更新。
+        # 已加载时 init -Force 仍可能改了来源或排除项；completer 已注册无法撤销，但环境变量要跟着更新。
+        # Set-PSReadLinesCommon 会把 Tab 重置成 MenuComplete，因此共享桩也要重装。
+        if ($env:PsCarapace -match '^(False|0|No|Off)$' -or [string]::IsNullOrWhiteSpace($env:PsCarapace))
+        {
+            $global:PsCarapacePending = $false
+            $global:PsCarapaceGit = $false
+            return
+        }
         $null = Set-CarapaceCompletionOptions
+        try { Register-CxxuTabStub } catch { Write-Verbose "carapace: 重装 Tab 桩失败，跳过：$($_.Exception.Message)" }
         return
     }
 
     # 每次 init 都重新校验，让 init -Force 能反映启停变化。
-    if ($PSVersionTable.PSVersion.Major -lt 7)
-    {
-        $global:PsCarapacePending = $false
-        $global:PsCarapaceGit = $false
-        return
-    }
     if ($env:PsCarapace -match '^(False|0|No|Off)$' -or [string]::IsNullOrWhiteSpace($env:PsCarapace))
     {
         $global:PsCarapacePending = $false
@@ -1203,16 +1306,10 @@ function Register-CarapaceLazyLoad
     $null = Set-CarapaceCompletionOptions
     $global:PsCarapacePending = $true
 
-    # 已有可用的 Tab 桩（argc 或本函数此前装的）就不再重复绑定。
-    if ($global:PsArgcTabStub -or $global:PsCarapaceTabStub) { return }
-
     try
     {
-        Set-PSReadLineKeyHandler -Key Tab -ScriptBlock {
-            if ($global:PsCarapacePending) { Initialize-Carapace }
-            [Microsoft.PowerShell.PSConsoleReadLine]::MenuComplete()
-        }
-        $global:PsCarapaceTabStub = $true
+        # 与 argc 共用同一个桩：桩内按需加载 carapace/argc，并处理 5.1 的 - 开头词。
+        Register-CxxuTabStub
         Write-Verbose 'carapace: 已装首个 Tab 懒加载桩'
     }
     catch
@@ -2392,8 +2489,7 @@ function Disable-PsPlugin
             {
                 # 已注册的 argc completer 不随开关撤销，只会返回空；carapace 可用时立即重新注册，
                 # 让重叠命令（npm、docker 等）在当前会话就交还 carapace，不必重开终端。
-                $carapaceOn = $PSVersionTable.PSVersion.Major -ge 7 -and
-                    -not [string]::IsNullOrWhiteSpace($env:PsCarapace) -and
+                $carapaceOn = -not [string]::IsNullOrWhiteSpace($env:PsCarapace) -and
                     $env:PsCarapace -notmatch '^(False|0|No|Off)$' -and
                     $null -ne (Get-Command carapace -ErrorAction SilentlyContinue)
                 if ($carapaceOn)

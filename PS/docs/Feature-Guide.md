@@ -176,7 +176,7 @@ Test-StartupPerformance -Simple   # 只测一次新 pwsh 启动（带 profile）
 | `PSCompletions`（~200 命令的参数补全库） | 可选：已装 5.6.9；组件 `PSCompletions` 默认关，`Enable-CxxuComponent PSCompletions -Persist` 后由 `init` 导入模块 |
 | `fnm` | 可选（node 用户）：组件 `Fnm` 默认关；装好 fnm 后 `Enable-CxxuComponent Fnm -Persist`，`init` 执行 `fnm env --use-on-cd` |
 | `scoop-search` | 可选：组件 `ScoopSearch` 默认关；装好 `scoop-search` 后 `Enable-CxxuComponent ScoopSearch -Persist`，`init` 注入 `--hook` |
-| `carapace-bin`（跨 shell 的 CLI 参数补全；本机 1.8.2 实测 743 个 completer，带颜色和描述） | **可选**，`PsCarapace` 默认 `$false`：`Deploy-Carapace -Enable` 一步安装并启用，或安装后 `Enable-CxxuComponent Carapace -Persist`；`init` 只注册首个 Tab 懒加载桩，首次 Tab 才加载；git/gitk 归属用 `Set-GitCompletionSource` 切换；pwsh 7.6 空结果补丁在加载时处理。步骤与 git 对比见下文「carapace（可选，非默认）」 |
+| `carapace-bin`（跨 shell 的 CLI 参数补全；本机 1.8.2 实测 743 个 completer，带颜色和描述） | **可选**，`PsCarapace` 默认 `$false`：`Deploy-Carapace -Enable` 一步安装并启用，或安装后 `Enable-CxxuComponent Carapace -Persist`；`init` 只注册首个 Tab 懒加载桩，首次 Tab 才加载；git/gitk 归属用 `Set-GitCompletionSource` 切换；5.1 与 7.6 的生成脚本差异（空结果、零宽字符、环境变量、UTF-8/空参数、ANSI）在加载时处理。步骤与 git 对比见下文「carapace（可选，非默认）」 |
 | `posh-git` | 已安装，未导入（`init` 不加载；导入时会注册同名 git completer，与其他来源不可混用） |
 | `oh-my-posh` | 不开（每回车进程税 + 与现有定制片重叠） |
 | `argc-completions`（800+ 命令参数补全；懒加载，首个 Tab 注册约 150ms；选中行反显高亮；首个参数位的静态 flag 自动进 ListView） | **已启用**（仓库 `~/argc-completions` 或 `C:\repos\argc-completions`；开关 `$env:PsArgc`；Tab 7/5.1 均可用，自动 flag 提示仅 7.5+） |
@@ -191,7 +191,7 @@ git 补全来源先看 `Get-GitCompletionSource`：`ConfiguredSource` 是配置�
 
 carapace 是一个跨 shell 的命令行补全二进制，按命令读取自身的 completer（补全器），在 PowerShell 里通过 `Register-ArgumentCompleter -Native` 注册。它不补 PowerShell cmdlet 的参数，也不参与命令名模糊补全；定位是补外部 CLI 的参数值，与 `CxxuTab`、`git-completion`、`argc-completions` 并列。
 
-安装渠道不绑定 scoop：推荐 `Deploy-Carapace`，它会按当前平台与架构从官方 GitHub Release 下载产物（Windows 为 zip，macOS/Linux 为 tar.gz）、按 `checksums.txt` 校验并解压到默认目录（Windows `~/.cxxu/bin`，其他平台 `~/.local/bin`），可用 `-Version` 固定版本；也可手工下载官方产物，或用包管理器（Windows `scoop`、macOS `brew`、Linux 发行版仓库）。下载默认优先 `aria2c` 多连接分片（`-Aria2Connections`，默认 16），不可用时回退 `Invoke-WebRequest`；每次尝试都会打印原始链接、实际链接、来源与执行命令。GitHub 加速镜像默认读 `$env:PsGithubMirror`（未设置用 `https://gh-proxy.com`），`-NoGithubMirror`（别名 `-NoMirror`）直连，`-GithubMirror`（别名 `-Mirror`）`'<前缀>'` 本次指定。安装与校验步骤见 [Deploy-Guide](Deploy-Guide.md) 的「可选：carapace」。前置条件为 `pwsh` 7（`Register-ArgumentCompleter -Native` 在 5.1 不可用）且 `carapace` 位于 PATH。
+安装渠道不绑定 scoop：推荐 `Deploy-Carapace`，它会按当前平台与架构从官方 GitHub Release 下载产物（Windows 为 zip，macOS/Linux 为 tar.gz）、按 `checksums.txt` 校验并解压到默认目录（Windows `~/.cxxu/bin`，其他平台 `~/.local/bin`），可用 `-Version` 固定版本；也可手工下载官方产物，或用包管理器（Windows `scoop`、macOS `brew`、Linux 发行版仓库）。下载默认优先 `aria2c` 多连接分片（`-Aria2Connections`，默认 16），不可用时回退 `Invoke-WebRequest`；每次尝试都会打印原始链接、实际链接、来源与执行命令。GitHub 加速镜像默认读 `$env:PsGithubMirror`（未设置用 `https://gh-proxy.com`），`-NoGithubMirror`（别名 `-NoMirror`）直连，`-GithubMirror`（别名 `-Mirror`）`'<前缀>'` 本次指定。安装与校验步骤见 [Deploy-Guide](Deploy-Guide.md) 的「可选：carapace」。Windows PowerShell 5.1 与 pwsh 7 均可用，`carapace` 位于 PATH 即可；5.1 的引擎不会把 `-` 开头的词交给 Native completer，由仓库的共享 Tab 桩插入零宽字符绕过，编码、空参数与超长环境变量在加载时按版本处理。
 
 本机 `carapace-bin 1.8.2`、`pwsh 7.6.3` 实测的代表性效果：
 
@@ -209,6 +209,8 @@ carapace 是一个跨 shell 的命令行补全二进制，按命令读取自身�
 
 `carapace --list` 在本机为 743 个 completer，生成的 PowerShell 脚本注册 1486 个命令名（含 `.exe` 变体）；数量随版本变化，以该命令的实际输出为准。
 
+5.1 侧在 Windows 11 26100、PowerShell 5.1.26100.8875、PSReadLine 2.0.0、carapace-bin 1.8.2 实测：`git checkout <Tab>` 返回 11 个 ref，`git status --sh<Tab>` 返回 `--short`、`--show-stash`，菜单中文描述正常且无 ANSI 残留；首次 Tab 约 0.5 秒，之后约 0.1–0.4 秒。候选数量与延迟随版本、仓库状态变化。
+
 **启用步骤（由 `init` 注册懒加载桩，不修改 profile）**：
 
 ```powershell
@@ -222,13 +224,14 @@ Enable-CxxuComponent Carapace -Persist -Now # 或立即加载（当前会话）
 Set-GitCompletionSource Carapace -Persist   # 需要 carapace 接管 git/gitk 时
 ```
 
-- `PsCarapace=True` 时 `init` 只计算排除项并注册首个 Tab 懒加载桩，启动阶段不执行 carapace 的注册脚本；默认关闭，未启用时没有这项开销。首次 Tab 加载约 0.2–0.3 秒，之后 Tab 正常。
+- `PsCarapace=True` 时 `init` 只计算排除项并注册首个 Tab 懒加载桩，启动阶段不执行 carapace 的注册脚本；默认关闭，未启用时没有这项开销。pwsh 7 首次 Tab 加载约 0.2–0.3 秒，之后 Tab 正常。
+- 5.1 支持：`Register-ArgumentCompleter -Native` 在 5.1 可用，主要差异由加载时处理。`-`/`--` 开头的词由 Tab 桩在词首临时插零宽字符（与 argc 同一机制），交给 carapace 后随候选替换或由桩删除，不残留在输入行；`CARAPACE_SHELL_*` 名称列表在加载时枚举一次并缓存，函数名列表截断到 30,000 字符（环境变量上限 32,767），避免 `Environment variable name or value is too long`；调用改走 .NET `Process` 并固定 `StandardOutputEncoding=UTF-8`，同时还原空字符串参数，中文提交说明不再乱码；候选描述去掉 ANSI（PSReadLine 2.0 不解析转义序列）。代价是首次 Tab 约 0.5–1 秒（枚举函数名 + 生成并执行注册脚本），之后约 0.1–0.4 秒。
 - `PsGitCompletionSource` 决定 git/gitk 归属：`Auto`、`GitCompletion`、`Argc` 时 `init` 把 `git,gitk` 并入 `CARAPACE_EXCLUDES`；`Carapace` 时不排除，并让 argc 让路。`Argc` 不推荐用于 git：argc 上游生成的 git 补全缺 `--cached`、`--staged` 等只写在 SYNOPSIS 的选项；`Auto` 的顺序为 `GitCompletion` → `Carapace` → `Argc`，`Argc` 仅作兜底。切换到前三种来源不会关闭 carapace 本身，需要停止加载时另执行 `Disable-PsPlugin Carapace`（加 `-Persist` 长期生效）；已加载的 completer 按 `PsCarapace` 门控立即返回空，`git`/`gitk` 当场回落：`Carapace` 来源优先交给 `git-completion`（模块已安装且组件未关闭），否则用 `Argc`；`GitCompletion` 来源直接重新注册模块。
 - 与 argc 同开时，两者都在首个 Tab 注册；Tab 桩先加载 carapace，再注册 argc，同名 Native completer 后注册者 argc 生效，因此非 git/gitk 的重叠命令会由 argc 接管。需要 carapace 负责这些外部 CLI 时，关闭 argc（`Disable-PsPlugin Argc -Persist`）或接受 argc 的候选；bash 侧顺序相反，见 [bash/carapace README](../../bash/carapace/README.md)。
 - 慢命令排除项写 `PsCarapaceExcludes`（逗号分隔，如 `winget,uv`），与 git/gitk 规则由 `init` 合并；未设置该键时沿用已有的 `CARAPACE_EXCLUDES`。
 - 旧版 profile 中的手动 carapace 片段需要删除，否则会与懒加载桩重复注册；也不要执行 carapace 文档中的 `Set-PSReadlineKeyHandler -Key Tab -Function MenuComplete`，避免覆盖现有 Tab 桩。
-- 版本可以不追新，但生成脚本随版本变化：懒加载或手动加载时，pwsh 7.6 及更早版本按原文匹配空结果补丁，匹配不到时只告警，不中断启动。
-- 验收：重开终端后先按一次真实 `Tab` 触发懒加载（或用 `Enable-CxxuComponent Carapace -Now` 手动加载），再 `Get-Command carapace`、`carapace --version`、`carapace --list`（数量随版本变化，不写死）应可用；`TabExpansion2 'scoop install ' 14` 能返回包名候选，`TabExpansion2 'gh pr ' 6` 能返回子命令。直接调用 `TabExpansion2` 不会触发 Tab 懒加载。
+- 版本可以不追新，但生成脚本随版本变化：懒加载或手动加载时，pwsh 7.6 及更早版本按原文匹配空结果补丁，5.1 另匹配环境变量截断、空参数、编码与 ANSI 四处补丁；匹配不到时只告警，不中断启动。升级 carapace 后按一次真实 `Tab` 复验。
+- 验收：重开终端后先按一次真实 `Tab` 触发懒加载（或用 `Enable-CxxuComponent Carapace -Now` 手动加载），再 `Get-Command carapace`、`carapace --version`、`carapace --list`（数量随版本变化，不写死）应可用；`TabExpansion2 'scoop install ' 14` 能返回包名候选，`TabExpansion2 'gh pr ' 6` 能返回子命令。直接调用 `TabExpansion2` 不会触发 Tab 懒加载。5.1 下再验 `git checkout <Tab>` 能出分支，`git status --sh<Tab>` 能出 `--short`、`--show-stash`，菜单描述为纯文本且中文不乱码，输入行无零宽字符残留。
 - 状态检查：二进制、安装与启用、运行态与实际补全的分层检查见 [Deploy-Guide](Deploy-Guide.md) 的「可选：carapace」；`doctor -Feature Carapace` 可先看开关与依赖结论，git 补全归属用 `Get-GitCompletionSource` 核对。
 - 启动成本：注册懒加载桩约毫秒级；首次 Tab 一次性约 0.2–0.3 秒（随版本与主机变化），之后不再重复。`carapace` 不纳入 `Deploy-CompletionStack` 的 `-Include*` 层，但已进入 `Get-CxxuDependencyReport` 与 `doctor -Feature`。
 - 慢补全：`winget install` 约 3.3 秒、`uv add` 约 4.4 秒，按 Tab 会同步等待；写入 `PsCarapaceExcludes` 排除。
@@ -247,7 +250,7 @@ Git Bash 使用同一个 carapace 二进制，Linux/macOS 使用各自平台的�
 | 选项覆盖 | `commit -` 65 项、`log -` 263 项、`checkout -` 40 项，均带说明 | `commit --` 39 项带说明；`log -` 仅 3 项；`checkout -` 仅 12 个短选项 | `commit --` 41 项、`log --` 164 项，带说明 |
 | 文件与状态过滤 | 有状态标记；`commit` 混入未跟踪，`clean` 混入已修改，`rm --cached` 混入未跟踪 | `commit` 排除未跟踪，`checkout --` 只列已跟踪文件（排除未跟踪），`rm --cached` 只列已跟踪 | `add`、`checkout --` 可用；`checkout --` 混入未跟踪，`commit` 列原生文件，`rm --cached` 混入 `.git` |
 | 特殊路径 | 支持 `-C` 与 `HEAD:`；不支持 `--git-dir` | 支持 `-C` 与 `--git-dir`；不支持 `HEAD:` | 支持 `HEAD:`；`-C` 仅部分命令可用 |
-| PowerShell 适配 | 外部进程；空结果在 pwsh 7.6 会打断 Tab；需要 `MenuComplete` | 纯 PowerShell 模块，最稳 | 依赖 `argc.exe` 与 bash 脚本；有 `PsArgc` 开关 |
+| PowerShell 适配 | 外部进程；5.1 需 Tab 桩绕过 `-` 开头词并去掉 ANSI；空结果在 pwsh 7.6 会打断 Tab；需要 `MenuComplete` | 纯 PowerShell 模块，最稳 | 依赖 `argc.exe` 与 bash 脚本；有 `PsArgc` 开关 |
 | 延迟（本机） | 静态选项约 19–75ms；git ref 约 150–370ms | 首次约 470ms，之后约 20–310ms | 首次注册约 150ms，之后约 20–220ms |
 
 结论：git 继续用 `git-completion`；carapace 用于 `scoop`、`winget`、`gh`、`docker`、`kubectl`、`cargo`、`uv`、`npm` 等非 git 命令；argc 保留为 800+ 命令的补充。carapace 与 argc 的命令重合有限（本机 743 与 841 中约 271 个同名），不是互相替代关系。
@@ -449,8 +452,9 @@ Git Bash 使用同一个 carapace 二进制，Linux/macOS 使用各自平台的�
 - 第六批（2026-09-22，低风险本地组）：`TextProcess`（`Measure-AlphabeticChars` 等纯函数直调）、`Text`（`Format-FileSize`/`Get-CharCount` 直调，GUI 类只验导入）、`CSV`（自建小表 `Get-CsvPreview` 直调，`Get-CsvTailRowsGUI` 弹窗只验导入；注意 `Get-CsvPreview` 的 `$csv` 参数非管道绑定，必须具名传）、`ArchiveProcess`（`tar.exe` 现场打小包后 `Test-TarFile` 直调；修 1 处真 7 独占：`Split-Path -Extension` 是 6+ 参数，改 `[IO.Path]::GetExtension`，与 `TextProcess` 内既有写法统一）、`Info`（`Get-UserHostName`/`Get-MemoryUseSummary`/`Get-MemoryUseRatio`/`Test-SubItem` 直调；修跨模块运行时依赖：`Get-MemoryUseRatio` 调留 7 的 `TaskSchdPwsh` 的 `Start-ScriptWhenIntervalEnough`，5.1 探不到时直接 `& $s` 执行，与首建缓存分支行为一致，`Get-Command -ErrorAction Ignore` 探针无 `$Error` 污染）、`Sitemap`（`Test-SubItem` 直调；`Get-SourceFromUrls` 的 `ForEach-Object -Parallel` 只在 `-Threads` 非零时进并行分支，默认 0 走串行，5.1 不传参即安全，见 §13 串行分支惯例；`Sitemap:326` 的裸探针上轮已预修）。B 档 47→53。
 - 第七批（2026-09-22，中风险组，只验导入 + 逐项注明）：`TerminalTools`（`Install-Scoop`/`Push-ByScp`/`Sync-CxxuPredictor` 高 stakes，只验导入）、`Development`（短名裸命令包装多，只验导入）、`DevEnv`（全 `Deploy` 写配置/装软件，只验导入）、`MySql`（需服务端+配置，只验导入）、`WinConfig`（注册表/Defender/激活/`Restart-OS`，`Description` 中文转英文，只验导入）、`Web`（`Test-IsIPAddress` 直调，其余 hosts/nginx/phpstudy 只验导入）、`WordPress`/`WpContent`（硬编码路径+外部依赖，只验导入）、`WpOnline`（`Test-IsIPAddress` 同源直调已验；`Start-ThreadJob` 在 5.1 非内置，需 `Install-Module ThreadJob` 才能真跑部署流，只验导入）。15 模块双版本 manifest 全绿（函数数两边一致）。B 档 53→62。剩余 7.0：`Whois`（34 个 `??` 待重写）、`TaskSchdPwsh`/`TimeNotify`（`&` 无等价写法留 7）、`Test`（用户草稿区不动）、`CompletionPredictor`（第三方不管）、`CxxuPredictor`（内联预测留 7；5.1 Tab 另走 ps51 构建）。
 - 5.1 下自动降级：`init` 步骤表 `MinPS = 7` 的步骤静默跳过（`ArgumentCompletion`/`Startup`/`Pwsh`/`Json`）；`ForEach-Object -Parallel` 走串行分支；`Register-PsUxLazyLoad` 在 5.1 只装 CxxuTab 手势桩；`CxxuTab` 读 `~/.cxxu/bin/ps51` 的 netstandard2.0 活件（缺活件时纯透传），命令表缓存 `~/.cxxu/cache/tab-commands-4.tsv`；`HistoryNoDuplicates`/`inlineprediction` 配色按 PSReadLine 版本 gating（5.1 自带 2.0.0 跳过）。
-- `argc-completions` 在 5.1 也可用：依赖现有 `argc.exe` + Git Bash（`bash`/GNU 工具在 PATH），PSReadLine 2.0 的 `MenuComplete`/`Selection` 均支持；首个 Tab 注册约 200ms，之后零开销，开关 `$env:PsArgc`，与 7 同一套懒加载。5.1 的补全引擎不会把 `-`/`--` 开头的词交给 Native 补全器（6.0 才修），Tab 桩会在词首临时插一个零宽字符绕过（只对 argc 注册过的应用命令，cmdlet/函数参数补全不受影响；Esc 取消或选中后都会清掉，缓冲区不留字符）。
+- `argc-completions` 在 5.1 也可用：依赖现有 `argc.exe` + Git Bash（`bash`/GNU 工具在 PATH），PSReadLine 2.0 的 `MenuComplete`/`Selection` 均支持；首个 Tab 注册约 200ms，之后零开销，开关 `$env:PsArgc`，与 7 同一套懒加载。5.1 的补全引擎不会把 `-`/`--` 开头的词交给 Native 补全器（6.0 才修），Tab 桩会在词首临时插一个零宽字符绕过（只对 argc/carapace 注册过的应用命令，cmdlet/函数参数补全不受影响；Esc 取消或选中后都会清掉，缓冲区不留字符）。
 - `git`/`gitk` 的补全由 `git-completion` 提供，5.1 同样可用（init 检测到模块即挂载，首个补全才导入）。受同一条引擎限制，选项补全在 5.1 不触发，子命令、分支与文件补全正常。
+- `carapace` 在 5.1 也可用：`Register-ArgumentCompleter -Native` 本身可用，`-` 开头的词由共享 Tab 桩插入零宽字符绕过引擎限制，因此参数、git ref 与 flag 都能触发；加载时会缓存并截断 shell 名称列表、用 UTF-8 读取 carapace 输出、去掉候选描述里的 ANSI。首次 Tab 约 0.5–1 秒，之后约 0.1–0.4 秒。启用与来源切换与 7 相同。
 - 提示符全对齐：`fast`/`Simple`/`Short`/`Default` 原生可用；`Balance` 的 Info/Startup 外部依赖在 `Prompt.psm1` 顶部有 5.1 本地兜底（CIM/注册表/内置 cmdlet 同口径；必须 `function global:` 定义，否则模块私有、直接调用撞坏 Info；缓存用 `$global:__Cxxu51*`，`$script:` 跨不了作用域），渲染与 7.5 逐字一致，稳态约 50ms/次（首屏冷缓存 1.4s 一次性）；`Get-IpAddressFormated` 含参数集的移植版，直接调用也可用。
 - 明确不可用：`CxxuCommand` 内联预测（net9 predictor）、预测视图（需 7.2+ 子系统）、`Deploy` 全系、`Test-PsEnvReadiness` 的 `pwsh 7+` 必备项（在 5.1 下即提示装 pwsh7）。
 - 5.1 Tab 补全可用（默认开）：`CxxuTab` 读 `~/.cxxu/bin/ps51/<哈希>/CxxuPredictor.dll`（netstandard2.0，只含 `CompleteCommand`），由 `Sync-CxxuPredictor` 发布。首个 Tab 才导入模块并读命令表缓存（命中约 20ms，缺失/过期时现建约 0.4s；缓存与排查见 §9「Tab 补全自查」），启动不加负担；只有 Tab 菜单，没有内联预测。不用时 `Disable-PsPlugin Tab -Persist`。
