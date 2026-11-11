@@ -3,6 +3,8 @@
 # dll 公开接口的模糊结果,其余位置原样透传。开关逐调用读 $env:PsTab(默认开,
 # 显式置 False/0/No/Off 才关),关掉就是纯透传,行为与没装一样;启停管理看
 # Enable/Disable-PsPlugin。异常/超慢调用会自熔断(本会话只透传),不拖死 Tab。
+# 命令名候选另补函数 .SYNOPSIS 首段(与参数语法同屏,开关 $env:PsTabSynopsis,
+# 默认开),独立熔断;只查已加载函数/别名,不为候选触发模块自动加载。
 # 跨作用域说明:global:TabExpansion2 运行在全局作用域,看不到模块 $script:,
 # 方法缓存必须放 $global:__CxxuTabMethod(命名避冲突)。
 # 5.1 走 ps51 活件(netstandard2.0,只有 CompleteCommand);7+ 走预测器活件
@@ -33,11 +35,120 @@ function Get-CxxuTabLiveDll
     return $null
 }
 
+# 从函数定义文本里取 .SYNOPSIS 首段:Get-Help/GetHelpContent 在本机会话 75 个带帮助的
+# 函数合计约 678ms,而 Definition 已在内存里,按行解析只需毫秒级。遇空行或下一个 .TAG
+# 停止,菜单只展示首段;行注释与块注释两种写法都按同一规则归一化。
+function Get-CxxuTabSynopsisFromDefinition
+{
+    param([string]$Definition)
+    if ([string]::IsNullOrWhiteSpace($Definition)) { return $null }
+    $lines = $Definition -split '\r?\n'
+    $norm = foreach ($line in $lines)
+    {
+        $t = $line.Trim()
+        if ($t -eq '<#' -or $t -eq '#>') { $t = '' }
+        elseif ($t.StartsWith('#')) { $t = $t.Substring(1).TrimStart() }
+        $t
+    }
+    $inSynopsis = $false
+    $buf = [System.Collections.Generic.List[string]]::new()
+    foreach ($t in $norm)
+    {
+        if (-not $inSynopsis)
+        {
+            if ($t -match '^\.SYNOPSIS\b')
+            {
+                $inSynopsis = $true
+                $rest = $t.Substring(9).Trim()
+                if ($rest) { $buf.Add($rest) }
+            }
+            continue
+        }
+        # 摘要到空行或下一个帮助标签结束;首段之外的段落不进菜单
+        if ($t -eq '' -or $t -match '^\.[A-Z][A-Z0-9_-]*\b') { break }
+        $buf.Add($t)
+    }
+    if ($buf.Count -eq 0) { return $null }
+    return ($buf -join ' ').Trim()
+}
+
+# 候选名索引与摘要。索引只含已导入函数/别名(-ListImported 不触发模块自动加载),
+# 每个命令名 Tab 重建一次(本机会话约 1ms,首次含 JIT 约 8ms),函数重新定义后立即换新;
+# 摘要文本按 ScriptBlock 对象身份缓存在 $global:__CxxuTabSynCache。
+function Get-CxxuTabSynopsisIndex
+{
+    $index = @{ Functions = @{}; Aliases = @{} }
+    foreach ($cmd in Get-Command -CommandType Function, Alias -ListImported -ErrorAction Ignore)
+    {
+        if ($cmd.CommandType -eq 'Alias')
+        {
+            if ($cmd.Definition) { $index.Aliases[$cmd.Name] = $cmd.Definition.Trim() }
+        }
+        else
+        {
+            $index.Functions[$cmd.Name] = $cmd
+        }
+    }
+    return $index
+}
+
+# 摘要缓存:命中且 ScriptBlock 未变时直接返回;函数重新定义会换新 ScriptBlock,自动重算。
+function Get-CxxuTabSynopsis
+{
+    param([string]$Name, $Function)
+    $cache = $global:__CxxuTabSynCache
+    if ($null -eq $cache) { $cache = @{}; $global:__CxxuTabSynCache = $cache }
+    $entry = $cache[$Name]
+    if ($entry -and [object]::ReferenceEquals($entry.Sb, $Function.ScriptBlock)) { return $entry.Text }
+    $text = Get-CxxuTabSynopsisFromDefinition -Definition $Function.Definition
+    $cache[$Name] = @{ Sb = $Function.ScriptBlock; Text = $text }
+    return $text
+}
+
+# 命令名候选统一附加摘要:摘要在前、原有参数语法保留在后;非命令候选原样保留。
+# 查表直接内联(大候选集下逐个函数调用白付数百次开销),只有确有注释帮助时才取摘要。
+function Add-CxxuTabSynopsis
+{
+    param([System.Management.Automation.CommandCompletion]$Completion)
+    if ($null -eq $Completion -or $null -eq $Completion.CompletionMatches) { return $Completion }
+    $index = Get-CxxuTabSynopsisIndex
+    $list = [System.Collections.Generic.List[System.Management.Automation.CompletionResult]]::new()
+    $changed = $false
+    foreach ($m in $Completion.CompletionMatches)
+    {
+        if ($m.ResultType -eq 'Command')
+        {
+            $func = $index.Functions[$m.CompletionText]
+            if (-not $func)
+            {
+                $target = $index.Aliases[$m.CompletionText]
+                if ($target) { $func = $index.Functions[$target] }
+            }
+            if ($func -and $func.Definition -and $func.Definition.Contains('.SYNOPSIS'))
+            {
+                $text = Get-CxxuTabSynopsis -Name $m.CompletionText -Function $func
+                if ($text)
+                {
+                    $tip = [string]$m.ToolTip
+                    if ($tip) { $tip = $text + "`n" + $tip.Trim() } else { $tip = $text }
+                    # 只重建真正要改的候选,其余原对象复用,避免大候选集(如 Get-)白付分配成本
+                    $list.Add([System.Management.Automation.CompletionResult]::new($m.CompletionText, $m.ListItemText, $m.ResultType, $tip))
+                    $changed = $true
+                    continue
+                }
+            }
+        }
+        $list.Add($m)
+    }
+    if (-not $changed) { return $Completion }
+    return [System.Management.Automation.CommandCompletion]::new($list, $Completion.CurrentMatchIndex, $Completion.ReplacementIndex, $Completion.ReplacementLength)
+}
+
 function Install-CxxuTabWrapper
 {
     <#
     .SYNOPSIS
-    安装 TabExpansion2 包装(命令名位置合并自研模糊结果,缺省 30 条)。
+    安装 TabExpansion2 包装(命令名位置合并自研模糊结果,缺省 30 条,并补函数摘要)。
     #>
     # 程序集按字节加载(不锁定文件,不注册 ListView predictor,与 PsPredictor 门独立)。
     # 已装过就不再重载:重复 Import-Module -Force 不该再付一次加载/建表成本;
@@ -88,34 +199,44 @@ function Install-CxxuTabWrapper
                 }
             }
             $base = & $fallBack
-            if (-not $isCmdName -or [string]::IsNullOrEmpty($word) -or -not $global:__CxxuTabMethod -or $global:__CxxuTabFuse)
+            if (-not $isCmdName -or [string]::IsNullOrEmpty($word)) { return $base }
+            $result = $base
+            if ($global:__CxxuTabMethod -and -not $global:__CxxuTabFuse)
             {
-                return $base
-            }
-            # 自熔断:正常 1ms 级;单次超过 800ms 说明主机/杀软异常,本会话不再加重负担
-            $sw = [System.Diagnostics.Stopwatch]::StartNew()
-            $extra = @($global:__CxxuTabMethod.Invoke($null, @($word, 30)))
-            $sw.Stop()
-            if ($sw.ElapsedMilliseconds -gt 800) { $global:__CxxuTabFuse = $true }
-            if (-not $extra.Count) { return $base }
-            # 原生前缀命中优先:命令名位置的 base 都是前缀匹配(最强),放在最前;
-            # 模糊结果只补充 base 未覆盖的名字,沿用 dll 既有 tier/分数顺序追加。
-            $baseMatches = @($base.CompletionMatches)
-            $seen = @{}
-            foreach ($m in $baseMatches) { $seen[$m.CompletionText] = $true }
-            $merged = [System.Collections.Generic.List[System.Management.Automation.CompletionResult]]::new()
-            foreach ($m in $baseMatches) { $merged.Add($m) }
-            foreach ($m in $extra)
-            {
-                if (-not $seen.ContainsKey($m))
+                # 自熔断:正常 1ms 级;单次超过 800ms 说明主机/杀软异常,本会话不再加重负担
+                $sw = [System.Diagnostics.Stopwatch]::StartNew()
+                $extra = @($global:__CxxuTabMethod.Invoke($null, @($word, 30)))
+                $sw.Stop()
+                if ($sw.ElapsedMilliseconds -gt 800) { $global:__CxxuTabFuse = $true }
+                if ($extra.Count)
                 {
-                    $merged.Add([System.Management.Automation.CompletionResult]::new($m, $m, 'Command', "CxxuTab fuzzy: $m"))
-                    $seen[$m] = $true
+                    # 原生前缀命中优先:命令名位置的 base 都是前缀匹配(最强),放在最前;
+                    # 模糊结果只补充 base 未覆盖的名字,沿用 dll 既有 tier/分数顺序追加。
+                    $baseMatches = @($base.CompletionMatches)
+                    $seen = @{}
+                    foreach ($m in $baseMatches) { $seen[$m.CompletionText] = $true }
+                    $merged = [System.Collections.Generic.List[System.Management.Automation.CompletionResult]]::new()
+                    foreach ($m in $baseMatches) { $merged.Add($m) }
+                    foreach ($m in $extra)
+                    {
+                        if (-not $seen.ContainsKey($m))
+                        {
+                            $merged.Add([System.Management.Automation.CompletionResult]::new($m, $m, 'Command', "CxxuTab fuzzy: $m"))
+                            $seen[$m] = $true
+                        }
+                    }
+                    $current = 0
+                    if ($baseMatches.Count -gt 0 -and $base.CurrentMatchIndex -ge 0) { $current = $base.CurrentMatchIndex }
+                    $result = [System.Management.Automation.CommandCompletion]::new($merged, $current, $base.ReplacementIndex, $base.ReplacementLength)
                 }
             }
-            $current = 0
-            if ($baseMatches.Count -gt 0 -and $base.CurrentMatchIndex -ge 0) { $current = $base.CurrentMatchIndex }
-            return [System.Management.Automation.CommandCompletion]::new($merged, $current, $base.ReplacementIndex, $base.ReplacementLength)
+            # 摘要装饰:独立开关与独立熔断,失败只丢摘要,不影响候选与模糊
+            if ($env:PsTabSynopsis -notmatch '^(False|0|No|Off)$' -and -not $global:__CxxuTabSynFuse)
+            {
+                try { $result = Add-CxxuTabSynopsis -Completion $result }
+                catch { $global:__CxxuTabSynFuse = $true }
+            }
+            return $result
         }
         catch
         {

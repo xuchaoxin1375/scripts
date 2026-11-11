@@ -363,7 +363,7 @@ conda 缓存（`~/.conda_hook_cache.ps1`）与 zoxide 缓存（`~/.zoxide_init_c
 “二进制更新才重建”，平时零开销；新开终端等一拍，`Ctrl+R` / `z` 应可用
 （`Register-PsUxLazyLoad -Now` 可强制立即装；开关 `$env:PsFzf`/`$env:PsZoxide`）。
 
-补全验收：ListView 输 `get-child` 应出现 `[CxxuCommand]` 的 `Get-ChildItem`；`Tab` 输 `get-chi` 应含 `Get-ChildItem`（`CxxuTab` 默认开，首个 Tab 才加载模块并读命令表缓存，约 0.1~0.4s，之后毫秒级）。5.1 同样按 `get-chi<Tab>` 验收。不达预期按 [Feature-Guide](Feature-Guide.md) §9 的「Tab 补全自查」定位。
+补全验收：ListView 输 `get-child` 应出现 `[CxxuCommand]` 的 `Get-ChildItem`；`Tab` 输 `get-chi` 应含 `Get-ChildItem`（`CxxuTab` 默认开，首个 Tab 才加载模块并读命令表缓存，约 0.1~0.4s，之后毫秒级）；选中带注释帮助的已加载函数（如 `Get-EnvVar`）时，菜单下方应显示 `.SYNOPSIS` 首段与参数语法（置 `$env:PsTabSynopsis='False'` 可单独关闭）。5.1 同样按 `get-chi<Tab>` 验收。不达预期按 [Feature-Guide](Feature-Guide.md) §9 的「Tab 补全自查」定位。
 
 ## 9. WT 与开机任务（按需）
 

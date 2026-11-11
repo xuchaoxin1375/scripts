@@ -160,6 +160,7 @@ Test-StartupPerformance -Simple   # 只测一次新 pwsh 启动（带 profile）
 > 开关：`$env:PsFzf` / `$env:PsZoxide` / `$env:PsPredictor`（默认开，`False` 关；
 > 守护进程由 `Start-StartupBgProcesses` 统一置 `PsPredictor=False`，永不加载 dll）；
 > `$env:PsTab`（CxxuTab Tab 补全，**默认开，置 `False` 关**）；
+> `$env:PsTabSynopsis`（Tab 菜单里的函数 `.SYNOPSIS` 首段，默认开，置 `False` 关；只影响摘要，不影响候选）；
 > `$env:PsArgc`（argc-completions 参数补全，默认开，首个 Tab 才注册；需要时由 `Deploy-CompletionStack -IncludeArgc` 部署）；
 > `$env:PsGitCompletion`（git-completion 的 `git`/`gitk` 补全，默认开，未装模块时无效果；装模块用 `Deploy-CompletionStack -IncludeGitCompletion`，启停用 `Enable-PsPlugin GitCompletion` / `Disable-PsPlugin GitCompletion`）；
 > 来源切换用 `Set-GitCompletionSource GitCompletion|Carapace|Argc [-Persist]`：写入 `PsGitCompletionSource`（由 `init` 读取），不修改 profile；选来源即启用对应组件（此前停用也会重新打开）并在当前会话立即注册（argc 未加载时也当场注册，约 0.15–0.25 秒）；确认当前实际来源用 `Get-GitCompletionSource`（只读，区分“配置值 / 解析值 / 已注册来源”，并说明回落原因）；carapace 的启用与排除项分别由 `PsCarapace`、`PsCarapaceExcludes` 控制；
@@ -170,7 +171,7 @@ Test-StartupPerformance -Simple   # 只测一次新 pwsh 启动（带 profile）
 |---|---|
 | `CompletionPredictor`（参数/路径预测，命令名位置源码级跳过） | 一直在用 |
 | `CxxuPredictor`（自研命令名预测：分层模糊 `别名 > 前缀 > 词边界/首字母 > 连续片段 > 一般子序列` + 严格通配，按历史频率加权，默认 15 条，3000 条 1ms 内） | **已启用**（详见 §8） |
-| `CxxuTab`（自研命令名 Tab 补全：独立插件，命令名位合并模糊结果，参数位零干扰） | 默认开（开关 `$env:PsTab`，置 `False` 关；不需要时 `Disable-PsPlugin Tab -Persist`） |
+| `CxxuTab`（自研命令名 Tab 补全：独立插件，命令名位合并模糊结果，参数位零干扰） | 默认开（开关 `$env:PsTab`，置 `False` 关；不需要时 `Disable-PsPlugin Tab -Persist`）；选中已加载函数时菜单下方显示 `.SYNOPSIS` 首段与参数语法（`$env:PsTabSynopsis` 可单独关） |
 | `PSFzf`（Ctrl+T 文件 / Ctrl+R 历史） | **已启用**（Tab 不动，仍是 MenuComplete） |
 | `zoxide`（`z` 跳转，init 缓存 `~/.zoxide_init_cache.ps1`） | **已启用** |
 | `PSCompletions`（~200 命令的参数补全库） | 可选：已装 5.6.9；组件 `PSCompletions` 默认关，`Enable-CxxuComponent PSCompletions -Persist` 后由 `init` 导入模块 |
@@ -328,6 +329,7 @@ Git Bash 使用同一个 carapace 二进制，Linux/macOS 使用各自平台的�
 | 检查项 | 命令 | 正常表现 |
 |---|---|---|
 | 开关 | `$env:PsTab` | 空（默认开）或 `True`；只有 `False` 才是关闭 |
+| 摘要开关 | `$env:PsTabSynopsis` | 空（默认开）或 `True`；显式 `False` 才关闭；只影响菜单摘要，不影响候选 |
 | 模块 | `Get-Module CxxuTab` | 首个 Tab 后应有；5.1 与 7 都靠它装包装 |
 | dll 方法 | `$global:__CxxuTabMethod` | 非空；空 = 活件没找到或加载失败 |
 | 命令表缓存 | `Get-ChildItem $HOME\.cxxu\cache\tab-commands-*.tsv` | 存在且 24h 内为命中；过期/缺失会自动重建；比仓库模块文件旧时 `init` 会删除（只对新终端生效） |
@@ -354,13 +356,14 @@ Git Bash 使用同一个 carapace 二进制，Linux/macOS 使用各自平台的�
 
 | 层 | 按键/视图 | 来源 | 说明 |
 |---|---|---|---|
-| Tab 全量索引 | `Tab`（MenuComplete） | 引擎全量：函数/别名/文件/参数 | 命令名位经 `CxxuTab` 包装增强（模糊连写可选中，参数位零干扰；默认开，置 `$env:PsTab='False'` 关）；和下面两层**不是同一套索引**，结果不一样正常 |
+| Tab 全量索引 | `Tab`（MenuComplete） | 引擎全量：函数/别名/文件/参数 | 命令名位经 `CxxuTab` 包装增强（模糊连写可选中，选中函数时显示 `.SYNOPSIS` 首段与参数语法；参数位零干扰；默认开，置 `$env:PsTab='False'` 关）；和下面两层**不是同一套索引**，结果不一样正常 |
 | ListView 预测 | 输入时自动浮现（`HistoryAndPlugin`） | 历史（最多 10 条，硬上限）+ 插件 | 插件= `CompletionPredictor`（参数/路径，命令名位跳过）+ `CxxuPredictor`（命令名，分层排序 + 别名/历史加权，默认 15 条，§8）+ `CxxuArgcFlags`（argc 覆盖命令的首个参数位，`-` 前缀，静态 flag ≤10 条；7.5+）；须 20ms 内返回，实测 2600 条 <1ms、flag 查表 <1ms |
 | 模糊搜历史/文件 | `Ctrl+R` / `Ctrl+T`（PSFzf） | 全量历史/文件 | 历史翻不完用这个，不走 10/50 上限 |
 | 参数值补全 | `Tab` 在参数位 | `argc-completions`（800+ 命令库，开关默认开、懒加载；按需 `-IncludeArgc` 部署）+ `PSCompletions`（~200 命令库，可选）+ 自带 `ArgumentCompleter`（EnvVar 系、`Get-Json -Key` 等，`Set-ArgumentCompleter` 批量注册） | PSCompletions 用法：装模块后 `Enable-CxxuComponent PSCompletions -Persist`；argc 开关 `$env:PsArgc`，首个 Tab 注册；`git`/`gitk` 由 `git-completion` 提供，argc 不重复注册 |
 
 - 参数值补全还有可选的手动来源 carapace（不参与 `init` 开关，见本文「carapace（可选，非默认）」）：适合 `scoop`、`winget`、`gh`、`docker`、`kubectl`、`cargo`、`uv`、`npm` 等外部 CLI；git 仍由 `git-completion` 负责。
 - **Tab 菜单顺序**：原生前缀命中排在前并保持原生顺序，`CxxuTab` 的模糊补充按 dll 的 tier/分数顺序排在后面，同名去重。输入完整前缀时第一次 Tab 落在原生候选；只有没有原生前缀命中（如 `uprepos`）时，才由模糊结果主导。
+- **Tab 菜单摘要**：选中项若是已加载函数（或其别名）且带注释帮助，菜单下方显示 `.SYNOPSIS` 首段与参数语法；cmdlet、未加载模块的函数与没有注释帮助的函数保持原生提示。摘要从函数定义文本解析（不调用 `Get-Help`，不为候选触发模块自动加载），重新定义函数后下一次 Tab 自动刷新；不需要时置 `$env:PsTabSynopsis='False'`。
 - **菜单中的 Ctrl+C**：真实按键在默认控制台模式下会被当作控制事件，Tab 菜单不响应；只把 `Ctrl+C` 绑到 `CancelLine` 也不会生效。要取消整行，按 `Esc` 关闭菜单（恢复输入前缀）再按 `Ctrl+C`；若要一次 `Ctrl+C` 直接清行，需在 Tab/MenuComplete 包装里临时设置 `[Console]::TreatControlCAsInput = $true` 并绑定 `CancelLine`（原理、验证与示例见 [交互式控制台验证](Interactive-Console-Verification.md)）。该包装只在菜单显示期间生效，命令执行时的 Ctrl+C 中断不受影响。
 - 相关命令：`doctor`（统一诊断入口，定位问题先执行它；`doctor -Feature <功能>` 只查单个功能）、`Get-CxxuDependencyReport [-Missing]`（按功能查外部依赖与安装建议，详见 [Feature-Dependencies.md](Feature-Dependencies.md)）、`Register-PsUxLazyLoad [-Now]`（延迟加载入口）、
   `Deploy-CompletionStack [-WhatIf] [-IncludeArgc] [-IncludeFuzzy] [-IncludePredictor] [-IncludePSCompletions] [-IncludeGitCompletion] [-All]`（新机一键装栈）、

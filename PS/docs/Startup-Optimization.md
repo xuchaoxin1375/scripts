@@ -724,3 +724,32 @@ WindowsTerminal.exe
   补全不受影响）；需要立即刷新时删除缓存目录或执行 `Initialize-Carapace -Force`。
   函数名列表仍按 30,000 字符截断。
 
+## 33. 第二十六轮：Tab 菜单显示函数 .SYNOPSIS（2026-11-11，用户问“自定义函数的 synopsis 能否显示在补全菜单”）
+
+- 现场：用户的自定义函数带注释帮助，Tab 菜单只能看到参数语法，看不到 `.SYNOPSIS`。
+  核对 PSReadLine 2.3.6 源码与 `Changes.txt`：`MenuComplete` 一直会渲染选中项的
+  `CompletionResult.ToolTip`（tooltip 与候选文本不同、窗口高度够时才显示），本机
+  `ShowToolTips=True`；ListView 自 2.3.1 起也支持选中项 tooltip，最多 4 行。
+  问题不在渲染层，而是引擎给命令候选的 ToolTip 只含参数语法。
+- 处置：`CxxuTab` 在命令名位置合并模糊结果后，给 `ResultType=Command` 的候选补摘要，
+  顺序为“`.SYNOPSIS` 首段 + 原有参数语法”，独立开关 `$env:PsTabSynopsis`（默认开）
+  与独立熔断 `$global:__CxxuTabSynFuse`，失败只丢摘要，不影响候选与模糊。
+- 取摘要方式：不走 `Get-Help`/`Ast.GetHelpContent()`——本机会话 75 个带帮助的函数合计
+  约 678ms，且 `Get-Command` 不带 `-ListImported` 会为未加载模块触发自动加载（30 个候选
+  实测可拖到数秒）。改为从 `FunctionInfo.Definition` 文本解析首段（遇空行或下一个帮助
+  标签停止，行注释/块注释统一归一化），函数/别名索引每命令名 Tab 用
+  `Get-Command -CommandType Function, Alias -ListImported` 重建（约 1ms，首次含 JIT 约 8ms），
+  摘要文本按 ScriptBlock 对象身份缓存，函数重新定义后下一次 Tab 自动换新。
+- 性能（profile 已加载，交错 20 次取中位数）：668 个候选的 `Get-` 前缀，摘要开 52.0ms、
+  关 36.9ms；单独调用装饰逻辑约 2.7ms（大候选集只重建真正要改的 15 个候选，其余原对象
+  复用）；常规 4~12 个候选（`Get-EnvVar`、`Confirm-`）无可测差异（约 24.6ms 与 24.8ms）。
+- 验证：pwsh 7.5.4 与 Windows PowerShell 5.1.26100 直调 `TabExpansion2`——函数摘要、
+  别名指向函数、无帮助函数保持原样、cmdlet 保持参数语法、重定义立即刷新、开关关闭、
+  参数位不受影响；真实窗口注入按键（pwsh 7.5.4 + profile）`Get-EnvVar<Tab>` 菜单下方
+  显示“查询指定环境变量的值……”与参数语法。单候选（如 `Confirm-EnvVar`）不展开菜单，
+  属 MenuComplete 行为，直接检查 ToolTip 可见摘要。
+- 边界：只覆盖已导入函数/别名，未加载模块的函数不触发自动加载、也就没有摘要；cmdlet 的
+  内置帮助不读取；只取 `.SYNOPSIS` 首段；ListView 不改（其 tooltip 需在
+  `CxxuPredictor` 的 dll 里给 `PredictiveSuggestion` 补第二个参数）。
+- 版本：`CxxuTab` 1.0.5。
+
