@@ -2503,15 +2503,22 @@ function Get-GitCompletionSource
     - EffectiveSource：按开关、安装状态与回落规则解析出的来源；Auto 的顺序为 GitCompletion、Carapace、Argc。
     - RegisteredSource：当前会话最后接管 git/gitk 补全的来源；Pending 表示尚未注册，posh-git 已导入时优先显示 PoshGit。
     Fallback 非空表示配置来源不可用并已回落；Note 给出下一步命令或状态说明。
+    加 -List 按来源逐行列出候选的安装、版本、启用与当前状态，类似 Get-Module -ListAvailable；
+    该模式会调用 carapace/argc 的版本命令，仅用于人工查看。
     .EXAMPLE
     Get-GitCompletionSource
     .EXAMPLE
     Get-GitCompletionSource | Format-List
     .EXAMPLE
+    Get-GitCompletionSource -List | Format-Table -AutoSize
+    .EXAMPLE
     Get-GitCompletionSource | Select-Object ConfiguredSource, EffectiveSource, RegisteredSource
     #>
     [CmdletBinding()]
-    param()
+    param(
+        # 按来源列出全部候选（安装、版本、启用、当前状态与安装命令）
+        [switch]$List
+    )
 
     $switchOff = '^(False|0|No|Off)$'
     $configured = [string]$env:PsGitCompletionSource
@@ -2540,7 +2547,7 @@ function Get-GitCompletionSource
         elseif ($argcLoaded) { $registered = 'Argc' }
         else { $registered = 'Pending' }
     }
-    # posh-git 导入后覆盖 TabExpansion2，优先级高于上述 Native completer。
+    # posh-git 导入时注册同名 Native completer，按导入顺序可能与实际候选不一致。
     if ($poshGitLoaded) { $registered = 'PoshGit' }
 
     $fallback = ''
@@ -2567,6 +2574,66 @@ function Get-GitCompletionSource
     $poshGitState = if ($poshGitLoaded) { "已导入 $($poshGitModule.Version)，注册同名 completer（后注册者生效）" }
         elseif ($poshGitModule) { "已安装 $($poshGitModule.Version)，未导入" }
         else { '未安装' }
+
+    if ($List)
+    {
+        # 候选清单：每行一个来源，字段对齐 Get-Module 的“是否安装/启用”视角。
+        $carapaceVersion = ''
+        if ($carapaceInstalled)
+        {
+            try { $carapaceVersion = [string]@(& carapace --version 2>$null)[0] } catch { }
+        }
+        $argcVersion = ''
+        if ($argcInstalled)
+        {
+            try { $argcVersion = [string]@(& argc --argc-version 2>$null)[0] } catch { }
+        }
+        $gitEnabled = $env:PsGitCompletion -notmatch $switchOff
+        $gitStatus = if (-not $gitInstalled) { '未安装' }
+            elseif (-not $gitEnabled) { '已安装，组件已停用' }
+            elseif (-not $gitRegistered) { '已安装，未注册' }
+            elseif ($registered -eq 'GitCompletion') { "已安装 $($gitModule.Version)，当前生效" }
+            else { "已安装 $($gitModule.Version)，已注册但被 $registered 覆盖" }
+
+        return @(
+            [pscustomobject]@{
+                Source    = 'GitCompletion'
+                Version   = if ($gitModule) { [string]$gitModule.Version } else { '' }
+                Installed = $gitInstalled
+                Enabled   = [bool]$gitEnabled
+                Current   = ($registered -eq 'GitCompletion')
+                Status    = $gitStatus
+                Install   = 'Deploy-CompletionStack -IncludeGitCompletion'
+            }
+            [pscustomobject]@{
+                Source    = 'Carapace'
+                Version   = $carapaceVersion
+                Installed = $carapaceInstalled
+                Enabled   = [bool]$carapaceEnabled
+                Current   = ($registered -eq 'Carapace')
+                Status    = $carapaceState
+                Install   = 'Deploy-Carapace -Enable'
+            }
+            [pscustomobject]@{
+                Source    = 'Argc'
+                Version   = $argcVersion
+                Installed = $argcInstalled
+                Enabled   = [bool]$argcEnabled
+                Current   = ($registered -eq 'Argc')
+                Status    = $argcState
+                Install   = 'Deploy-CompletionStack -IncludeArgc'
+            }
+            [pscustomobject]@{
+                Source    = 'PoshGit'
+                Version   = if ($poshGitModule) { [string]$poshGitModule.Version } else { '' }
+                Installed = [bool]$poshGitModule
+                Enabled   = [bool]$poshGitLoaded
+                Current   = ($registered -eq 'PoshGit')
+                Status    = $poshGitState
+                Install   = 'Install-Module posh-git -Scope CurrentUser -Force'
+            }
+        )
+    }
 
     $sourceReady = switch ($effective)
     {

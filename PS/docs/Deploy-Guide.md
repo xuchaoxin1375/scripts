@@ -311,6 +311,9 @@ $global:PsCarapaceLoaded
 # git/gitk 补全归属（配置值、解析值、已注册来源与回落原因）
 Get-GitCompletionSource | Format-List
 
+# 候选清单（安装、版本、启用、当前生效与安装命令）
+Get-GitCompletionSource -List | Format-Table -AutoSize
+
 # 实际补全（先按一次真实 Tab；或先执行 Enable-CxxuComponent Carapace -Now）
 (TabExpansion2 'gh pr ' 6).CompletionMatches | Select-Object -First 5 -ExpandProperty CompletionText
 (TabExpansion2 'docker --con' 12).CompletionMatches | Select-Object -First 5 -ExpandProperty CompletionText

@@ -34,7 +34,7 @@ Add-EnvVar -EnvVar PSModulePath -NewValue $p -Verbose
 | `Reset-CxxuConfig` | 按仓库默认偏好（组件见 `PS/Init/components.psd1`，Settings 见 `PS/Init/config.defaults.psd1`）重置用户配置文件；`-WhatIf` 只预览路径，重置后重开终端生效，并列出仍会覆盖默认值的环境变量 |
 | `Enable-PsPlugin` / `Disable-PsPlugin` | 体验插件启停（Fzf/Zoxide/Predictor/Tab/Argc/GitCompletion/Carapace/PSCompletions/Fnm/ScoopSearch，当会话生效；加 `-Persist` 长期有效，写 `~/.cxxu/config.psd1`） |
 | `Set-GitCompletionSource` | 切换 `git`/`gitk` 的 Tab 补全来源（`GitCompletion`/`Carapace`/`Argc`）：写入 `PsGitCompletionSource` 与相关开关，由 `init` 在启动时读取，当前会话立即重新注册；切到 `Carapace`/`Argc` 不会停用 GitCompletion 组件（停用需显式 `Disable-PsPlugin GitCompletion`）；不改 profile，`-Persist` 落配置，`-WhatIf` 预览 |
-| `Get-GitCompletionSource` | 只读查看 `git`/`gitk` 补全的配置来源、解析来源与当前会话已注册来源，附各来源（含 `posh-git`）的安装/启用状态、回落原因与下一步命令；用于确认“当前实际用的是哪个”，不加载补全模块 |
+| `Get-GitCompletionSource` | 只读查看 `git`/`gitk` 补全的配置来源、解析来源与当前会话已注册来源，附各来源（含 `posh-git`）的安装/启用状态、回落原因与下一步命令；`-List` 按来源逐行列出候选（安装、版本、启用、当前生效与安装命令）；用于确认“当前实际用的是哪个”，不加载补全模块 |
 | `Get-CxxuComponent` | 按组件列出启用状态、选项、来源、默认值与安装/文档入口，并给出 `Install`/`Enable` 建议命令；`-Id Carapace` 只查一个；`-Validate` 改跑清单/步骤/依赖一致性自检 |
 | `Test-CxxuComponent` | 只读检查组件清单结构、Init 步骤生成与已启用组件的外部依赖；`Status` 为 `OK`/`警告`/`错误`，依赖警告会带安装与启用命令；`Get-CxxuComponent -Validate` 与 `doctor` 复用同一结果 |
 | `Enable-CxxuComponent` / `Disable-CxxuComponent` | 按组件 Id 启停；默认只改开关，`-Now` 立即调用组件的 Init 函数；`-Persist` 写 `~/.cxxu/config.psd1` 的 `Components` 段，不加只改当前会话；写入前备份旧文件，并按 v2 规范文本重写（手工注释可能被规范化） |
@@ -185,7 +185,7 @@ Test-StartupPerformance -Simple   # 只测一次新 pwsh 启动（带 profile）
 
 验：新开终端直接可用，`Ctrl+R`/`Ctrl+T` 首按装 PSFzf（本次按键即生效）；`z <目录>` 跳转（zoxide 首屏单发已装）。`CxxuTab` 默认开，首个 `Tab` 才导入它（命令表缓存命中时建表约 20ms，模块导入另计；缓存缺失/过期时现建，5.1 约 0.4s、7 约 0.1s，24h 内最多一次）。`argc-completions` 开关默认开，首个 `Tab` 才注册（需先用 `Deploy-CompletionStack -IncludeArgc` 部署；未部署时自动回退原生补全，约 150ms 的注册不会发生）。`Get-EventSubscriber` 应无残留（单发用 `-MaxTriggerCount 1` 自动退订）。若某主机 OnIdle 不触发（predictor 没装上），跑 `Register-PsUxLazyLoad -Now` 或报回来。自查跑 `Test-StartupPerformance`（分段计时+结论）。
 
-git 补全来源先看 `Get-GitCompletionSource`：`ConfiguredSource` 是配置值（`Auto` 不代表实际用了 `GitCompletion`），`EffectiveSource` 是按开关与安装状态解析的结果，`RegisteredSource` 才是当前会话已注册的 completer；`PoshGit` 列显示 posh-git 是否导入及是否参与同名覆盖；`Fallback` 或 `Note` 非空时按提示修正。需要眼见为实再按一次真实 Tab（如 `git diff --st<Tab>`）。`Get-CxxuConfig` 只显示配置键的生效值，不判断补全归属。
+git 补全来源先看 `Get-GitCompletionSource`：`ConfiguredSource` 是配置值（`Auto` 不代表实际用了 `GitCompletion`），`EffectiveSource` 是按开关与安装状态解析的结果，`RegisteredSource` 才是当前会话已注册的 completer；`PoshGit` 列显示 posh-git 是否导入及是否参与同名覆盖；`Fallback` 或 `Note` 非空时按提示修正。需要候选清单时用 `Get-GitCompletionSource -List`（每行一个来源，含安装、版本、启用与当前生效），需要眼见为实再按一次真实 Tab（如 `git diff --st<Tab>`）。`Get-CxxuConfig` 只显示配置键的生效值，不判断补全归属。
 
 ### carapace（可选，非默认）
 
