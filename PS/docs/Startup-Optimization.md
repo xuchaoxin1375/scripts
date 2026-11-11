@@ -2,7 +2,7 @@
 
 > 适用：`PS/` 模块集（`$env:PSModulePath` 引用 `C:/repos/scripts/PS`，`$profile` 里只有 `init`）。
 > 测量环境：Windows Server 级虚拟机，pwsh 7.5。个人电脑数值不同，但瓶颈排序一致。
-> 本文件按轮次追加历史实测；**现行默认值与性能以 §1 基线表和最后一轮实测为准**（最近更新 2026-11-08）。旧轮次中的“默认关/冷启动约 400ms”等结论只代表当时状态。
+> 本文件按轮次追加历史实测；**现行默认值与性能以 §1 基线表和最后一轮实测为准**（最近更新 2026-11-11）。旧轮次中的“默认关/冷启动约 400ms”等结论只代表当时状态。
 
 ## 1. 基线数据
 
@@ -658,3 +658,38 @@ Set-PSReadLineOption: 句柄无效。
     `Rename-Item Function:\prompt CondaPromptBackup` 可能因目标已存在而报错；这是 conda
     自身的重入限制，不是 `init` 路径。需要换 prompt 底时按 Prompt 模块注释先
     `Remove-Variable global:__CxxuOriginalPrompt` 再重载 Prompt。
+
+## 31. 第二十四轮：启动器与 init 幂等判据（2026-11-11，用户报“双重初始化”）
+
+- 现象：`$profile` 里只写 `init`，新开终端连续打印两次 `initing...` 与两行
+  `Environment Loading time`（353ms / 386ms），之后才出现提示符。
+- 定位（进程树，创建时间 08:19:43 / 08:19:45）：
+
+```text
+WindowsTerminal.exe
+└─ pwsh（scoop shim）  "pwsh -noe -c p"
+   └─ pwsh             "-noe -c p"   → profile → init（第 1 次）
+      └─ pwsh          "-NoLogo"      → profile → init（第 2 次，真正的交互 shell）
+```
+
+- 根因：`e51aa26` 重写了 `p` 的语义。旧实现是“当前会话已初始化（`$PsInit` 非空）就
+  直接返回，否则 `pwsh -noe -c init`”；新实现固定为 `pwsh -NoLogo`，即永远新开进程。
+  启动器若仍写 `pwsh -noe -c p`，外层 profile 先 init 一次，`p` 开的子进程再 init 一次。
+- 同一提交已把 `Config/wtConf.json` 里的两处 `pwsh -noe -c p` 改成 `pwsh`。本机运行中的
+  WT 的 `settings.json` 是指向该文件的符号链接，没有感知目标文件更新，新 tab 仍按旧命令
+  启动；改 `wtConf.json` 后要完全退出并重启 WT（见 `Deploy-Guide.md` 的 WT 一节）。
+- 幂等判据（现行决策）：
+  - 用进程内 `$global:PsInit` 判断“本进程是否跑完 init”，在步骤表构建完成后置位；
+    同一进程重复调用直接 no-op（`-Verbose` 显示 `Init work loaded !`），`init -Force`
+    才是强制重跑入口。标记放在步骤表构建之后，前置阶段失败时仍可重试。
+  - 不用 `$env:PsInit`：子 pwsh 会继承环境变量，但函数、别名与 prompt 不会继承；子会话
+    会误判为已初始化而跳过 init，变成没有环境定义的残废会话，该变量还会泄漏给其他子进程。
+  - 如果将来确实需要跨进程判断，可把环境变量写成 `$env:PsInit = $PID` 并与当前 PID 比较
+    （子进程 PID 不同，照常重跑）；当前无此需求，不引入。
+  - 与 init 门分离的状态：`$global:PsEnvMode` 记录变量导入等级（core/Vars/Env），负责
+    懒加载逐级补齐；`$global:PsInitStepErrors` 记录本次步骤失败；组件另有
+    `PsArgcLoaded`/`PsCarapaceLoaded`/`PsGitCompletion` 等标记。
+- 结论：嵌套 pwsh 重跑 init 是设计边界，不是重复执行缺陷；跨进程无法也不应该去重。
+  启动器只写 `pwsh`，`p` 留给已开的会话新开窗口。验收看“每个 pwsh 进程恰好一行
+  `initing...`”，并用 `Get-CimInstance Win32_Process` 确认新 tab 不再带 `-c p`。
+

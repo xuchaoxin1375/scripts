@@ -358,6 +358,9 @@ conda 缓存（`~/.conda_hook_cache.ps1`）与 zoxide 缓存（`~/.zoxide_init_c
 ## 9. WT 与开机任务（按需）
 
 - 终端配置参考 `Config/wtConf.json`（线上值可能更新过，仅供参考）。
+- `Deploy-WtSettings` 把 WT 的 `settings.json` 建成指向 `Config/wtConf.json` 的符号链接；
+  运行中的 WT 不保证感知目标文件更新，改完配置要完全退出并重启 WT，否则新 tab 仍按旧
+  profile 与旧命令启动（典型表现：配置已改成 `pwsh`，新 tab 却还带 `-c p`，`init` 跑两次）。
 - `Deploy-WtSettings` / `Deploy-VsCodeSettings_depends` 写配置；`Deploy-GitConfig` 写 gitconfig。
 - 开机任务按需：`Start-StartupTasks`（拉仓库/起软件/报时+IP 双守护进程，见 `Feature-Guide.md §4`）。
 

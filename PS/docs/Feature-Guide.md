@@ -93,6 +93,9 @@ Test-StartupPerformance -Simple   # 只测一次新 pwsh 启动（带 profile）
 - `$profile`（`CurrentUserCurrentHost`）里是 `init`；WT 直接启动 `pwsh` 即可，不需要
   `-c p`。`$profile` 会执行 `init`，`$global:PsInit` 保证同会话只初始化一次；`p` 只负责
   新开一个 pwsh，不刷新当前会话。
+- `p` 不判断当前会话是否已初始化，固定新开一个 pwsh。把它放进启动器
+  （`pwsh -noe -c p`）会让外层 profile 先 `init` 一次，再由 `p` 开的子进程 `init` 一次，
+  终端里就会出现两行 `initing...`；启动器只写 `pwsh`。
 - 只保留 `$profile` 这一条路径即可；WT 不需要额外启动参数。
 - conda 初始化已换缓存方案（`~/.conda_hook_cache.ps1`，573→59ms）；
   下次跑 `conda init` 会覆盖，届时重新应用（见 `Startup-Optimization.md §8`）。
@@ -103,7 +106,9 @@ Test-StartupPerformance -Simple   # 只测一次新 pwsh 启动（带 profile）
 - **看不到 `Loading personal and system profiles took ...ms`**：正常。引擎只在四个
   profile 合计 >500ms（硬编码）才打印，不到就静默。
 - **嵌套 `pwsh` 又跑一遍 init**：新进程不继承 `$global:PsInit`，只能重跑；
-  贵的是 conda + init + 模块发现（见基线表），不是重复 bug。
+  贵的是 conda + init + 模块发现（见基线表），不是重复 bug。若启动器写成
+  `pwsh -noe -c p`，会看到两次 `initing...`（外层 profile 一次、`p` 开的子进程一次）；
+  把启动器改成 `pwsh` 即可，原因与验证见 `Startup-Optimization.md` 的启动器重复初始化记录。
 - **prompt 显示空 IP**：`~/Data.json` 的 `IpPrompt` 为空且守护进程没跑；
   手动跑一次 `Get-IpAddressFormated` 即写回，以后就快了。
 - **`ipmof|iex` 后提示符叠了**：根因不是 Prompt 模块（沙箱最小复现证伪：
@@ -411,7 +416,7 @@ Git Bash 使用同一个 carapace 二进制，Linux/macOS 使用各自平台的�
 | `posh-git` | 已安装，未导入 | 仅需提示符的 git 状态时才导入 | 其 git 补全与现有来源注册同名 completer，导入后按顺序覆盖，已有 `git-completion` 时不要混用 |
 | prompt 主题持久化 | 当会话有效，重开复原 | `Set-PsPrompt -version <…> -Persist`（写注册表） | 临展用 `dm` 切极简，不持久化 |
 | 开机任务 + 守护进程 | 未注册 | `Start-StartupTasks`（或 `Deploy-StartupTasks` 部署） | 报时/IP 守护，无状态，`-Force` 可杀 |
-| WT 设置下发 | 仓库 `Config/wtConf*.json` 仅供参考 | `Deploy-WtSettings` | 线上 WT 无自定义 profile 时才需要 |
+| WT 设置下发 | 仓库 `Config/wtConf*.json` 仅供参考 | `Deploy-WtSettings` | 线上 WT 无自定义 profile 时才需要；`settings.json` 为符号链接，改完配置需重启 WT 才生效 |
 | github hosts 定时更新 | 未装 | `Deploy-GithubHostsAutoUpdater` | hosts 拉胯地区按需 |
 | 镜像持久化 | 默认自动（静默测速+缓存） | `$env:PsGithubMirror` 持久化（`Add-EnvVar`）指定镜像 | 出国/回国切换用 |
 | 开关组 | 组件默认值见 `PS/Init/components.psd1`，Settings 见 `PS/Init/config.defaults.psd1` | `~/.cxxu/config.psd1`（SchemaVersion=2；`New-CxxuConfigTemplate` 建模板）或 `Enable/Disable-CxxuComponent [-Persist]`；`Get-CxxuComponent` 看分组状态，`Get-CxxuConfig` 看平坦键，`Reset-CxxuConfig` 恢复仓库默认 | `PsFzf/PsZoxide/PsPredictor/PsTab/PsArgc/PsGitCompletion/PsGitCompletionSource/PsCarapace/PsCarapaceExcludes/PsCompletions/PsFnm/PsScoopSearch/PsShowProgress`；环境变量永远优先 |
