@@ -40,7 +40,7 @@ $child.Id | Set-Content -LiteralPath (Join-Path $lab 'child.pid') -Encoding asci
 
 判据：读屏出现提示符才表示窗口就绪，不能用 `MainWindowHandle` 判断——实测目标进程与它的 `conhost` 子进程都为 0 时仍能附加并读屏，窗口矩形也可能为零；Windows Terminal 承载时窗口归终端进程，shell 进程通常一直为 0。`-NoExit` 让命令行执行完后停在提示符，`-Command` 只用于设置窗口标题（需要截图时用它定位窗口）；不要加 `-NoProfile`，否则验证的不是用户日常环境。
 
-Profile 初始化耗时因机器而异。固定等待只用于首次试探；先用探针读屏确认提示符出现再注入，profile 较慢时延长等待，超时按失败处理，不用固定等待掩盖问题。
+Profile 初始化耗时因机器而异。固定等待只用于首次试探；先用探针读屏确认提示符出现再注入，profile 较慢时延长等待，超时按失败处理，不用固定等待掩盖问题。探针会对每行调用 `TrimEnd()`，就绪检测应匹配去掉末尾空白的提示符，避免因提示符尾部空格被移除而误判超时。
 
 ## 探针脚本
 
@@ -203,7 +203,7 @@ public static class ConLab
             uint read;
             if (!ReadConsoleOutputCharacterW(Out, sb, (uint)width, new COORD { X = 0, Y = (short)y }, out read))
                 throw new Exception("ReadConsoleOutputCharacter failed at row " + y + ": " + Marshal.GetLastWin32Error());
-            all.AppendLine(string.Format("{0,3}|{1}", y, sb.ToString().TrimEnd()));
+            all.AppendLine(string.Format("{0,3}|{1}", y, sb.ToString(0, (int)read).TrimEnd()));
         }
         return all.ToString();
     }
@@ -431,14 +431,14 @@ $hwnd = (Get-Process | Where-Object { $_.MainWindowTitle -eq 'CONSOLE-LAB' }).Ma
 | 参数绑定报 `Pid` 为只读变量 | 参数名 `Pid` 与自动变量 `$PID` 冲突 | 改用 `TargetPid` 等名称 |
 | `Add-Type` 报缺少 `System.Private.Windows.Core` | pwsh 7.5 基于 .NET 9，`System.Drawing` 需要额外程序集 | 截图脚本改用 `powershell.exe` 5.1，并加 `-ReferencedAssemblies System.Drawing` |
 | 截图为空白或只有标题栏 | 窗口被遮挡或未完成绘制 | `PrintWindow` 使用 `PW_RENDERFULLCONTENT`（`flags=2`），并确保窗口已重绘后再抓取 |
-| 读屏行尾出现乱码字符 | 缓冲区未使用单元格保留旧内容 | 按可见窗口逐行读取并 `TrimEnd()`；不要用整块缓冲区内容判断 |
+| 读屏行尾出现乱码字符，或 UTF-8 写入报 `EncoderFallbackException` | 未按实际读取长度截取，整个封送缓冲区可能包含尾部乱码或孤立代理项 | 按 `ReadConsoleOutputCharacterW` 返回的字符数 `read` 截取：`sb.ToString(0, (int)read).TrimEnd()`；只调用 `TrimEnd()` 无法去除非空白乱码 |
 | 菜单打开时 Ctrl+C 没反应（菜单不关） | 默认控制台模式把真实 Ctrl+C 当控制事件，PSReadLine 菜单收不到；只绑 `CancelLine` 不解决 | 先 `Esc` 关菜单再 `Ctrl+C`；要一次生效，在 Tab/MenuComplete 包装里临时开启 `[Console]::TreatControlCAsInput`（见 [Feature-Guide](Feature-Guide.md)）；不要用探针 `CtrlC` 的合成结果判断 |
 | 附加失败 `AttachConsole failed` | 目标进程没有控制台，或探针本身仍附着其他控制台 | 用 `Start-Process` 启动独立窗口；探针先 `FreeConsole()` |
 | 目标是 Git Bash 时附加失败 | `git-bash.exe` / mintty 自建终端，不是控制台进程 | 改用 `bin\bash.exe` 或 Windows Terminal 里的 bash，见「非 PowerShell 控制台（Git Bash / MSYS）」 |
 | 附加 Git Bash 成功但读不到提示符 | `bin\bash.exe` 只是启动器，交互 shell 是它的 `usr\bin\bash.exe` 子进程 | 按 `ParentProcessId` 找子 bash，或附加持有 `conhost` 的进程 |
 | bash 补全候选静默为空 | 从 `usr\bin\bash.exe` 直接启动，缺 `/usr/bin`、`/mingw64/bin`，`xargs` 等命令不可用 | 先 `command -v xargs`；或从正常入口启动 |
 | bash 第一次 Tab 没有候选列表 | 可编程补全先补公共前缀或响铃；候选超过 `completion-query-items` 时先询问 | 再按一次 Tab；出现 `Display all ...? (y or n)` 时按 `y` |
-| 窗口一直等不到提示符 | Profile 初始化较慢或报错 | 读屏确认；必要时先以 `-NoProfile` 对照，再恢复带 profile 的验证 |
+| 窗口一直等不到提示符 | Profile 初始化较慢、报错，或就绪检测仍要求提示符末尾空格 | 先核对读屏文本与去掉末尾空白的提示符；必要时以 `-NoProfile` 对照，再恢复带 profile 的验证 |
 
 ## 实测记录
 
