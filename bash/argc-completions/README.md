@@ -67,7 +67,7 @@ source /path/to/scripts/bash/argc-completions/argc-completions.sh          # Lin
 | --- | --- |
 | `ARGC_COMPLETIONS_DIR` | 上游仓库位置，默认 Git Bash 为 `/c/repos/argc-completions`，WSL 为 `/mnt/c/repos/argc-completions`，macOS/Linux 依次探测 `~/argc-completions`、`~/repos/argc-completions` |
 | `ARGC_COMPLETIONS_ONLY` | 只注册指定命令，如 `ARGC_COMPLETIONS_ONLY="git docker cargo"` |
-| `ARGC_COMPGEN_DESCRIPTION` | 是否输出候选描述，默认 `0`。只有 Tab 仍绑定普通 `complete` 且未加载 ble.sh 时，设为 `1` 才安全 |
+| `ARGC_COMPGEN_DESCRIPTION` | 是否输出候选描述，默认 `0`。Tab 绑定 `complete` 且未加载 ble.sh 时才安全；点文件的 `apply_tab_completion_mode` 在该条件下会自动设为 `1` |
 
 ## 为什么不能直接照搬上游步骤
 
@@ -95,7 +95,7 @@ git checkout\ \(Switch\ branches\ or\ restore\ working\ tree\ files\)
 
 适配方式：默认导出 `ARGC_COMPGEN_DESCRIPTION=0`，候选只剩命令名，ble.sh 菜单与预览均正常。该开关在每次补全时读取，无需改上游脚本。
 
-Git Bash 也有同样的取舍：本机 `~/.inputrc` 把 Tab 绑定为 `menu-complete`，若保留说明，列表能看到解释，但再次按 Tab 选中候选时 readline 会把整串说明插入命令行。因此默认关闭说明。若确认 Tab 使用普通 `complete` 且未加载 ble.sh，可显式设置 `ARGC_COMPGEN_DESCRIPTION=1`，此时列表显示说明，而 Tab 只补全公共前缀，不会插入说明。把 `"\C-i"` 改回 `complete` 会失去菜单循环，需要自行权衡。
+Git Bash 也有同样的取舍：`~/.inputrc` 的默认绑定是 `menu-complete`，保留说明时再次按 Tab 选中候选会把整串说明插入命令行。`argc-completions.sh` 注册完成后会调用点文件的 `apply_tab_completion_mode`（存在时）：Tab 已切成普通 `complete` 就把 `ARGC_COMPGEN_DESCRIPTION` 设为 `1`，列表带说明而 Tab 只补公共前缀；仍是 `menu-complete` 时保持默认 `0`。要保留候选循环又不想让说明进命令行，维持默认值即可。
 
 ### WSL：缺少 `yq`
 

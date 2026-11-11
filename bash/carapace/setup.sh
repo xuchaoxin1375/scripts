@@ -36,7 +36,7 @@ usage() {
   -r, --rc <file>    指定 rc 文件（默认 ~/.bashrc）
   -d, --disable      停用：从 rc 移除标记块，不删除二进制（--uninstall 同义）
   -u, --uninstall    同 --disable，历史名称
-  -c, --check        只读检查依赖、rc 片段与端到端加载状态，不修改文件
+  -c, --check        只读检查依赖、rc 片段、加载状态与候选生成，不修改文件
       --status       同 --check
   -i, --install      下载并安装 carapace（官方 Release + SHA-256），然后写入 rc
       --install-deps 安装缺失依赖（Linux 用 sudo 包管理器，macOS 用 brew）
@@ -319,6 +319,45 @@ probe_shell() {
 	' 2>/dev/null || true
 }
 
+# 端到端验证：按 rc 加载后，用 git 的子命令补全实际取一次候选。
+# 只验证函数是否存在会把「注册了但取不到候选」也报成正常，因此单独统计候选数。
+probe_candidates() {
+	bash "$1" -c '
+	if ! declare -F _carapace_completer >/dev/null 2>&1; then
+		exit 3
+	fi
+	COMP_WORDS=(git "")
+	COMP_CWORD=1
+	COMP_LINE="git "
+	COMP_POINT=${#COMP_LINE}
+	COMP_TYPE=9
+	COMPREPLY=()
+	_carapace_completer 2>/dev/null
+	printf "carapace-probe:candidates=%s\n" "${#COMPREPLY[@]}"
+	' 2>/dev/null || true
+}
+
+candidate_count() {
+	local out="$1" n
+	case "$out" in
+	*carapace-probe:candidates=*) n="${out##*carapace-probe:candidates=}" ;;
+	*) return 0 ;;
+	esac
+	n="${n%%[!0-9]*}"
+	printf '%s' "$n"
+}
+
+report_candidates() {
+	local label="$1" out="$2" n
+	n="$(candidate_count "$out")"
+	if [ -z "$n" ]; then
+		printf '    %s : 未取到候选\n' "$label"
+		return 1
+	fi
+	printf '    %s : %s 个候选\n' "$label" "$n"
+	[ "$n" -gt 0 ]
+}
+
 report_load() {
 	local label="$1" out="$2"
 	case "$out" in
@@ -345,6 +384,7 @@ check_item() {
 run_check() {
 	local failures=0 rc_installed=0 loaded_any=0
 	local candidate block_path bin_dir rc_bin carapace_path carapace_ver nonlogin login
+	local nonlogin_cand login_cand cand_ok
 
 	printf 'carapace bash 接入检查（只读）\n'
 
@@ -462,6 +502,13 @@ run_check() {
 	*carapace-probe:loaded=1*) loaded_any=1 ;;
 	esac
 
+	printf '  completion test:\n'
+	nonlogin_cand="$(probe_candidates -i)"
+	login_cand="$(probe_candidates -l)"
+	cand_ok=0
+	if report_candidates '非登录 shell（git 补全）' "$nonlogin_cand"; then cand_ok=1; fi
+	if report_candidates '登录 shell（git 补全）' "$login_cand"; then cand_ok=1; fi
+
 	if [ "$failures" -gt 0 ]; then
 		printf '结论: 需要处理（见上面标出的依赖或 rc 问题）\n'
 		return 1
@@ -477,7 +524,13 @@ run_check() {
 		printf '建议: 检查块内路径与 bash 版本，必要时重新运行 bash %q 刷新片段\n' "$SCRIPT_DIR/setup.sh"
 		return 1
 	fi
-	printf '结论: 已接入 carapace，Tab 补全可用\n'
+	if [ "$cand_ok" -eq 0 ]; then
+		printf '结论: 补全函数已注册，但取不到候选\n'
+		printf '建议: 执行 carapace --version，以及 carapace git bash "" 查看实际输出；检查 PATH 与 carapace 版本\n'
+		return 1
+	fi
+	printf '结论: 已接入 carapace，git 补全候选正常\n'
+	printf '提示: 本检查不验证交互式 Tab 的列表/循环模式；在终端执行 bind -q complete 确认\n'
 	return 0
 }
 

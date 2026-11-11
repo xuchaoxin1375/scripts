@@ -68,6 +68,13 @@ _carapace_main() {
 	esac
 
 	_CARAPACE_SHELL_LOADED=1
+
+	# Tab 模式需要在补全函数注册之后再决定：读取 ~/sh 点文件的 shellrc_addition.sh
+	# 在 rc 顶部调用该助手时还看不到 _carapace_completer，会退回 menu-complete。
+	# 这里补一次，把 Tab 切回「列出全部候选」；没有该助手时保持原有绑定。
+	if declare -F apply_tab_completion_mode >/dev/null 2>&1; then
+		apply_tab_completion_mode
+	fi
 }
 
 _carapace_main

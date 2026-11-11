@@ -98,7 +98,7 @@ export ARGC_COMPLETIONS_ONLY='git docker'    # argc 只注册列出的命令
 
 ### 临时停用 Tab 模式
 
-Tab 的「列表/循环」来自 dotfiles 的 `shellrc_addition.sh`，与两个补全框架独立，停用框架后 `auto` 会自动回到循环模式：
+Tab 的「列表/循环」来自 dotfiles 的 `shellrc_addition.sh`，与两个补全框架独立：`carapace.sh` 与 `argc-completions.sh` 在注册完成后会调用一次该助手（存在时），所以加载框架会切到列表模式，停用后 `auto` 回到循环。需要只改当前会话或持久覆盖时：
 
 ```bash
 CXXU_TAB_MODE=cycle apply_tab_completion_mode   # 当前会话：恢复逐个循环

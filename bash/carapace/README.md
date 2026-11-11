@@ -310,8 +310,9 @@ bash /path/to/scripts/bash/carapace/setup.sh --check
 | `rc target` | 实际要读取的 rc 文件 | 登录/非登录选错：按 `shopt -q login_shell` 的结果加 `--login` 或用 `--rc` 指定 |
 | `rc blocks` | 目标 rc 为 `已安装`，块内路径存在 | `未安装`：运行 `setup.sh`；`路径失效`：重跑 `setup.sh` |
 | `load test` | 非登录/登录子 shell 至少对实际终端类型显示 `已加载` | 未加载：确认 rc 目标，或新开终端后重试 |
+| `completion test` | 按 rc 加载后实际取一次 `git` 子命令候选，至少一侧大于 0 | 0 或取不到：执行 `carapace git bash ""` 看实际输出，检查 PATH 与版本 |
 | `ble.sh` | 仅报告是否检测到 ble.sh | 检测到表示使用 `bash-ble` 模式，不需要额外处理 |
-| `结论` | `已接入 carapace，Tab 补全可用` | `需要处理`：按上面标出的项修复后重跑 |
+| `结论` | `已接入 carapace，git 补全候选正常` | `需要处理`：按上面标出的项修复后重跑 |
 
 不想跑 `--check` 时，最小手工检查是：
 
@@ -324,7 +325,7 @@ complete -p git
 
 `type` 应输出函数定义，`complete -p git` 应显示 `_carapace_completer_ble`。如果显示 `_argc_completer` 或其他来源，说明加载顺序或 `CARAPACE_EXCLUDES` 不同，不是二进制没装。
 
-`--check` 会用 `bash -ic` / `bash -lic` 起子 shell，验证的是 rc 实际加载结果，不验证交互式 Tab 菜单；候选效果按下一节手工确认。使用组合部署时，`bash /path/to/scripts/bash/completion-stack/setup.sh --check` 会同时检查 carapace 与 argc，只想看 carapace 用上面的命令。
+`--check` 会用 `bash -ic` / `bash -lic` 起子 shell，验证的是 rc 实际加载结果与候选生成，不验证交互式 Tab 菜单；候选效果按下一节手工确认。使用组合部署时，`bash /path/to/scripts/bash/completion-stack/setup.sh --check` 会同时检查 carapace 与 argc，只想看 carapace 用上面的命令。
 
 ## 效果与验收
 
@@ -350,11 +351,12 @@ bash -lic 'type _carapace_completer'   # 登录 shell 读取 ~/.bash_profile/~/.
 
 在交互式 bash 中：
 
-- 多个候选时按两次 `<Tab>`：第一次只补公共前缀（没有公共前缀时响铃），第二次显示候选列表；候选很多时 Bash 会询问 `Display all ...? (y or n)`，输入 `y` 显示。
+- 多个候选时按两次 `<Tab>`：默认第一次只补公共前缀（没有公共前缀时响铃），第二次显示候选列表；本仓库的 Tab 模式同时开启 `show-all-if-ambiguous`，第一次就直接列出全部候选。候选很多时 Bash 会询问 `Display all ...? (y or n)`，输入 `y` 显示。
 - `git checkout <Tab><Tab>` 应出现分支、标签与 `HEAD`，可带提交说明。
 - `git add <Tab><Tab>` 应出现未暂存或未跟踪文件。
 - `gh pr <Tab><Tab>` 即使未安装 `gh` 也应出现静态子命令；需要读取仓库、PR 编号或登录状态的动态候选才依赖 `gh` 本身。
 - `carapace <Tab><Tab>` 应出现 completer 列表。
+- Tab 的列表/循环模式：在交互式终端执行 `bind -q complete`，应显示 `\C-i`。若显示的是 `menu-complete`，说明 `apply_tab_completion_mode` 早于补全框架执行（见 [Tab 列表与循环](#tab-列表与循环)）；本仓库的 `carapace.sh` 在补全注册完成后会补调一次。
 
 Windows 下需要脚本化复验（注入按键、读屏取证，而不是肉眼确认）时，按 [交互式控制台验证](../../PS/docs/Interactive-Console-Verification.md) 的「非 PowerShell 控制台（Git Bash / MSYS）」一节启动 `bin\bash.exe` 或 Windows Terminal 中的 bash；该流程只适用于 Windows，macOS/Linux 不在范围内。
 
@@ -505,6 +507,8 @@ bash /path/to/scripts/bash/carapace/setup.sh --disable --rc ~/.bash_profile
 | `carapace --version` 失败 | `carapace --version` 的实际报错 | 重新安装与平台/架构匹配的二进制 |
 | 提示需要 bash 4 及以上 | `echo "$BASH_VERSION"` | macOS 用 `brew install bash` 并切换登录 shell；其他平台安装 bash 4+ |
 | 补全完全没反应 | `type _carapace_completer` | 没有函数说明 rc 没加载：确认登录/非登录类型，重新运行 `setup.sh` 或 `setup.sh --login` |
+| 第二次按 Tab 插入候选、看不到完整列表 | `bind -q complete` | Tab 仍是 `menu-complete`：见 [Tab 列表与循环](#tab-列表与循环)，确认 `apply_tab_completion_mode` 在补全框架之后执行 |
+| 候选里出现 `ERR`、`ERR1`、`_` | 所在目录是否为目标仓库、对应命令是否已安装 | carapace 把 completer 的错误标记当候选返回（非 git 目录补 `git checkout`、未安装 `kubectl` 补 `kubectl get` 等）；换目录或安装后重试 |
 | 只有部分命令没有候选 | `carapace --list`、`CARAPACE_EXCLUDES` | 确认命令是否被排除、是否需要该命令自身提供上下文 |
 | `PATH` 出现带分号的异常项 | `printf '%s\n' "$PATH"` | Git Bash/MSYS 的 PATH 修正未生效；确认 `OSTYPE` 与运行时脚本版本 |
 | 按 Tab 只补前缀不显示列表 | 候选数量 | 再按一次 `<Tab>`；候选很多时输入 `y` 确认 `Display all` |
@@ -521,7 +525,7 @@ bash /path/to/scripts/bash/carapace/setup.sh --disable --rc ~/.bash_profile
 
 - Git Bash 5.2.37（MSYS）+ carapace 1.8.2：运行时脚本 `source` 约 40–55 ms（含一次 `carapace _carapace bash` 生成；单独执行该生成命令约 35–40 ms）；`git checkout <Tab><Tab>` 返回带说明的标签/分支/引用候选，`gh pr <Tab><Tab>` 在未安装 `gh` 时返回静态子命令。
 - `setup.sh` 在隔离 `HOME` 下验证了试运行不建文件、首次安装、重复安装幂等、停用（`--disable` 与 `--uninstall` 同义）、标记块损坏报错、`--login` 目标选择与 `--disable --login`；还验证了权限保持、CRLF 文件在 Linux/WSL 下保留行尾、符号链接拒绝改写。
-- `setup.sh --check` 在隔离 `HOME` 下验证了未接入、已接入（非登录与登录两类 shell 均加载）、块内路径失效、缺结束标记四种状态与对应退出码；`--check --dry-run` 按参数错误拒绝。
+- `setup.sh --check` 在隔离 `HOME` 下验证了未接入、已接入（非登录与登录两类 shell 均加载）、块内路径失效、缺结束标记四种状态与对应退出码；`--check --dry-run` 按参数错误拒绝。本机实测 `completion test` 取到 168 个 `git` 候选；0 候选的失败分支未在隔离环境复验。
 - `setup.sh --install` 用假 release 与假 curl 在隔离 `HOME` 下验证：dry-run 不联网、auto 从 gh-proxy 回退 ghproxy.net、`--mirror` 各模式的前缀、`--proxy` 传入 curl、SHA-256 不符拒绝写入、已装跳过与 `--force` 覆盖、`--check` 能识别 rc 片段里的 `CARAPACE_BIN`。
 - WSL Ubuntu 24.04 实机经 `gh-proxy.com` 完成 `--install`（1.8.2，20.1MB，约 5.4MB/s，下载到写 rc 约 19s），`--check` 通过并在非登录 shell 中加载。
 - Git Bash 实机 `--install --version 1.8.2`（windows zip）：经 `gh-proxy.com` 下载 19.4MB，SHA-256 通过，`unzip` 解压出 `carapace.exe` 并装到临时目录，`carapace.exe --version` 返回 1.8.2，rc 片段写入 `CARAPACE_BIN`。
@@ -532,6 +536,9 @@ bash /path/to/scripts/bash/carapace/setup.sh --disable --rc ~/.bash_profile
 - `shellcheck 0.9.0` 与 `shfmt 3.8.0` 对 `setup.sh`、`carapace.sh` 无报错，`bash -n` 通过。
 - WSL Ubuntu 24.04：`setup.sh` 的安装、重复安装、卸载、符号链接保护与 CRLF 保留通过；WSL 内未安装 carapace，因此 Linux 的实际补全效果未验证。
 - macOS 27.2（arm64、Homebrew bash 5.3.15、carapace 1.8.2、ble.sh）：`setup.sh` 写入 `~/.bashrc` 后，`bash -ic` 能加载 `_carapace_completer_ble`，`complete -p git` 显示 `-F _carapace_completer_ble`；登录 shell 场景未单独验证。`brew install carapace` 安装的是 1.8.2。
+- Windows 11 + Git Bash 5.2.37（scoop git 2.51.0，`bin\bash.exe --login -i`，ConPTY 注入按键）：`complete -p git` 为 carapace，743 个注册命令在完整 rc 加载后无一个被 argc/bash-completion 覆盖；`git di<Tab>`、`git diff --sta<Tab>`、`git diff --c<Tab>`、`git diff --mer<Tab>` 分别列出子命令与选项（含 argc 缺失的 `--merge-base`、`--cached`），`gh pr <Tab>`/`scoop <Tab>`/`winget <Tab>` 也由 carapace 提供。
+- 同一环境验证 Tab 模式：修复前 `bind -q menu-complete` 指向 `\C-i`，第二次 Tab 会把候选插入命令行（`git diff --sta` → `--staged`/循环），看起来像候选不全；`carapace.sh` 在补全注册后补调 `apply_tab_completion_mode` 后，`bind -q complete` 指向 `\C-i`，连续 Tab 只列出候选不再改写命令行。
+- 同一环境验证错误候选：非 git 目录补 `git checkout` 返回 `ERR`/`ERR1`，未安装 `kubectl` 时 `kubectl get` 返回 `ERR`/`_`，纯 bash 下会被当成候选插入；已在故障排查中记录，未在运行时脚本里过滤（会丢失 carapace 的报错信息）。
 
 未验证或未覆盖：
 

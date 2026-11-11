@@ -103,6 +103,12 @@ _argc_completions_main() {
 	source <(argc --argc-completions bash "${argc_scripts[@]}")
 
 	_ARGC_COMPLETIONS_LOADED=1
+
+	# Tab 模式：shellrc_addition.sh 在 rc 顶部判定时还看不到 _argc_completer，
+	# 会退回 menu-complete（选中候选时把描述写进命令行）。注册完成后再判定一次。
+	if declare -F apply_tab_completion_mode >/dev/null 2>&1; then
+		apply_tab_completion_mode
+	fi
 }
 
 _argc_completions_main
