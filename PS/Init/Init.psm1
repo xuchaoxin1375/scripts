@@ -339,7 +339,7 @@ function Test-StartupPerformance
     每段都在全新 pwsh 进程里测(冷数字,排除本会话已摊销的解析成本);本机改动对照看 Startup-Optimization.md。
     -Simple 只测一次(或 -Repeat 次)带 profile 的新 pwsh 启动,几秒内出结果;-PassThru 返回结构化对象。
     耗时组成(参考值见 Startup-Optimization.md 的基线表,真机按比例):裸启动 + profile 税(conda 缓存 + init)
-    + 首屏单发(predictor/zoxide);PSFzf/CxxuTab 转手势按需(首按 Ctrl+T/R、首个 Tab 才装)。
+    + 首屏单发(predictor/zoxide);PSFzf/CxxuTab 转手势按需(首按 Ctrl+T/R、首次裸命令名 Tab 才装)。
     体验件全载使用 Register-PsUxLazyLoad -Now,包含手势组件,不是首屏 OnIdle 的实际耗时;
     argc/carapace 的首次参数补全加载另计。首屏单发也在主线程执行,冷缓存仍可能短暂阻塞输入。
     .EXAMPLE
@@ -1095,7 +1095,7 @@ function Initialize-ArgcCompletions
 
     try
     {
-        $scripts | ForEach-Object { Register-ArgumentCompleter -Native -ScriptBlock $completer -CommandName $_ }
+        Register-ArgumentCompleter -Native -ScriptBlock $completer -CommandName $scripts
         # 5.1 的 Tab 桩靠它判断该不该补 - 开头的参数(只处理应用命令)
         $global:PsArgcScripts = @{}
         foreach ($scriptName in $scripts) { $global:PsArgcScripts[$scriptName] = $true }

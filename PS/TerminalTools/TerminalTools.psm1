@@ -305,7 +305,7 @@ function Install-PsUxGestureStubs
 {
     <#
     .SYNOPSIS
-    装体验件手势桩(Ctrl+T/R 首按装 PSFzf,首个 Tab 装 CxxuTab):毫秒级,零导入。
+    装体验件手势桩(Ctrl+T/R 首按装 PSFzf,首次命令名 Tab 装 CxxuTab):毫秒级,零导入。
     .DESCRIPTION
     幂等:重复调用只补缺(PSFzf/CxxuTab 已装入则跳过对应桩;CxxuTab 已装时绝不重装 Tab 桩,
     否则会把它的包装存成"原函数"导致无限递归)。开关逐项判定,关了的不装。
@@ -365,7 +365,7 @@ function Install-PsUxGestureStubs
         } -ErrorAction SilentlyContinue
         $global:PsUxFzfStub = $true
     }
-    # Tab 桩:存原函数,首个 Tab 先恢复原函数再装 CxxuTab(它会把"当前" TabExpansion2 存为
+    # Tab 桩:存原函数,首次裸命令名 Tab 先恢复原函数再装 CxxuTab(它会把"当前" TabExpansion2 存为
     # __CxxuTabOriginal 再包,包到桩上即无限递归),然后转交新包装;装失败时原函数已恢复,直接透传。
     # PsTab 默认开:显式 False/0/No/Off 才不装桩(关掉用 Disable-PsPlugin Tab -Persist)。
     if (($env:PsTab -notmatch '^(False|0|No|Off)$') -and (-not (Get-Module CxxuTab -ErrorAction SilentlyContinue)) -and (-not $global:PsUxTabStub))
@@ -381,11 +381,31 @@ function Install-PsUxGestureStubs
             }
             try
             {
+                # 路径/参数等位置保留桩并透传;只在光标所在裸命令名加载增强层。
+                if ([string]::IsNullOrEmpty($inputScript) -or $cursorColumn -le 0 -or $cursorColumn -gt $inputScript.Length)
+                {
+                    return (& $fallBack)
+                }
+                $tokens = $null; $parseErrors = $null
+                $ast = [System.Management.Automation.Language.Parser]::ParseInput($inputScript, [ref]$tokens, [ref]$parseErrors)
+                $isCommandName = $false
+                foreach ($cmd in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] }, $true))
+                {
+                    $element = $cmd.CommandElements[0]
+                    if ($element -is [System.Management.Automation.Language.StringConstantExpressionAst] -and
+                        $element.StringConstantType -eq [System.Management.Automation.Language.StringConstantType]::BareWord -and
+                        $cursorColumn -gt $element.Extent.StartOffset -and $cursorColumn -le $element.Extent.EndOffset)
+                    {
+                        $isCommandName = $element.Extent.Text -notmatch '[/\\:]'
+                        break
+                    }
+                }
+                if (-not $isCommandName) { return (& $fallBack) }
                 if (($env:PsTab -notmatch '^(False|0|No|Off)$') -and (-not (Get-Module CxxuTab -ErrorAction SilentlyContinue)) -and (-not $global:PsUxNoCxxuTab))
                 {
                     if ($global:PsUxTabOriginal) { Set-Item -Path 'function:global:TabExpansion2' -Value $global:PsUxTabOriginal }
                     else { Remove-Item -Path 'function:global:TabExpansion2' -ErrorAction SilentlyContinue }
-                    # -Global 防嵌套;CxxuTab 按字节装 dll(不锁文件)+预热建表,导入即包 TabExpansion2
+                    # -Global 防嵌套;CxxuTab 复用活件程序集与命令表,导入即包 TabExpansion2
                     Import-Module CxxuTab -Global -ErrorAction SilentlyContinue
                     if (Get-Module CxxuTab -ErrorAction SilentlyContinue)
                     {
@@ -410,7 +430,7 @@ function Register-PsUxLazyLoad
     -Now 立即全装(测试/非 idle 主机用,不受重定向门限制)。Tab 与预测补全都不动。
     机制(2026-09-22 第三轮;分片常驻曾回归,见 Startup-Optimization.md §21):
     - PSFzf/CxxuTab:走手势桩(见 Install-PsUxGestureStubs),init 只花毫秒装桩,导入成本挪到
-      首按 Ctrl+T/R 与首个 Tab(用户手势,可归因,无随机冻结)。
+      首按 Ctrl+T/R 与首次裸命令名 Tab(用户手势,可归因,无随机冻结)。
     - predictor dll + zoxide:单发 OnIdle(首屏跑一次;-MaxTriggerCount 1 自动退订,
       动作内不碰 Unregister-Event)。
       预测是被动显示等不及手势;zoxide 仅 20ms 搭车。
@@ -423,7 +443,7 @@ function Register-PsUxLazyLoad
         [switch]$Now
     )
     # 5.1：只装 Tab 手势桩（PSFzf/predictor/zoxide 均为 7-only）。
-    # 桩本身零导入，首个 Tab 才导入 CxxuTab，避免把建表的数百毫秒摊到启动。
+    # 桩本身零导入，首次裸命令名 Tab 才导入 CxxuTab，避免把建表的数百毫秒摊到启动。
     if ($PSVersionTable.PSVersion.Major -lt 7)
     {
         if ($Now)

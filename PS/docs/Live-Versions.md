@@ -87,7 +87,7 @@ flowchart TD
 ```
 
 - 旧会话继续使用装载时的旧版本，新会话使用指针指向的新版本。同一时刻存在多版本**是设计允许的状态，不是故障**。
-- `CxxuTab`（Tab 插件）不经过模块装载，直接按字节读取指针指向的版本文件（不锁定文件，不注册 ListView 预测），因此与 `PsPredictor` 门独立，可单独启停（默认开，置 `$env:PsTab='False'` 关）。5.1 读 `ps51` 活件，7+ 读根活件，见本章『5.1 Tab-only 产物』。
+- `CxxuTab`（Tab 插件）在 pwsh 7+ 优先复用已导入的预测器程序集；尚未导入时使用 `Assembly.LoadFrom` 加载指针指向的活件，使稍后预测器导入仍复用同一程序集。两者共享一份进程内只读命令表，无论哪一方先初始化都不重复读表；Tab 自身不注册 ListView 预测，仍可独立启停（默认开，置 `$env:PsTab='False'` 关）。按路径加载可能持有活件文件，更新继续新增哈希目录，仓库源始终不被加载。5.1 仍按字节读取 `ps51` 活件，见本章『5.1 Tab-only 产物』。
 - 指针损坏（空文件/指向不存在的目录）时自动降级，不报错；检查命令会报版本不一致，执行一次同步即恢复正常。
 
 ## 6. 回收与卸载
@@ -170,6 +170,6 @@ Sync-CxxuPredictor -Ps51DllPath ./bin/Release/netstandard2.0/CxxuPredictor.dll
 - 仓库源：`PS/CxxuPredictor/ps51/CxxuPredictor.dll`，`netstandard2.0`，引用 5.1 的 GAC SMA；同一份 `CxxuPredictor.cs` 用 `PS51` 条件编译，去掉 `ICommandPredictor` 实现，只保留 `CompleteCommand`。
 - 活件：`~/.cxxu/bin/ps51/<哈希>/CxxuPredictor.dll` + `ps51/current.txt`；`Sync-CxxuPredictor` 与 net9 产物一起发布，根目录回收时保留 `ps51` 子目录。自编译 net9 活件保持不动时，更新流程用 `Sync-CxxuPredictor -Ps51Only` 只同步这一套。
 - 加载：`CxxuTab` 在 `$PSVersionTable.PSVersion.Major -lt 6` 时只读 `ps51` 指针；按字节 `Assembly.Load`，不锁定文件，不注册 predictor。7+ 仍读根活件。
-- 启用：默认开（`$env:PsTab='False'` 关）；重开 5.1 终端后首个 Tab 才导入 CxxuTab 并读命令表缓存（命中时建表约 20ms，模块导入另计；缺失/过期时现建约 0.4s，24h 内最多一次；之后 1ms 级）。
+- 启用：默认开（`$env:PsTab='False'` 关）；重开 5.1 终端后首次裸命令名 Tab 才导入 CxxuTab 并读命令表缓存（命中时建表约 20ms，模块导入另计；缺失/过期时现建约 0.4s，24h 内最多一次；之后 1ms 级）。
 - 验收：5.1 中输入 `get-chi` 按 Tab，候选里应出现 `Get-ChildItem` 等模糊结果；`Get-Module CxxuTab` 应有模块；`~/.cxxu/bin/ps51/current.txt` 指向的 dll 应存在。
 - 限制：只有 Tab 菜单，没有边输边弹的 ListView；后者需要 pwsh 7.2+（本仓库现成 net9 predictor 要求 7.5+）。

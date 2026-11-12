@@ -2,7 +2,7 @@
 
 > 适用：`PS/` 模块集（`$env:PSModulePath` 引用 `C:/repos/scripts/PS`，`$profile` 里只有 `init`）。
 > 测量环境：Windows Server 级虚拟机，pwsh 7.5。个人电脑数值不同，但瓶颈排序一致。
-> 本文件按轮次追加历史实测；**现行默认值与性能以 §1 基线表和最后一轮实测为准**（最近更新 2026-11-11）。旧轮次中的“默认关/冷启动约 400ms”等结论只代表当时状态。
+> 本文件按轮次追加历史实测；**现行默认值与性能以 §1 基线表和最后一轮实测为准**（最近更新 2026-11-13）。旧轮次中的“默认关/冷启动约 400ms”等结论只代表当时状态。
 
 ## 1. 基线数据
 
@@ -61,13 +61,33 @@ Test-PromptDelay                              # prompt 延迟（默认测 10 次
 
 主要原因是共享 Tab 桩原先不区分输入位置，在 `Get-Chi` 等命令名补全前也初始化 argc/carapace。现在只在外部 CLI 参数位置加载，PowerShell 命令名、已加载函数/cmdlet 参数与重定向路径不触发。管道、分号与嵌套命令按光标所在的命令判断；应用程序别名与 `scoop.ps1` 一类外部脚本仍可触发，动态或无法解析的命令保留原有加载入口。回归入口为 [NativeArgumentContext.Tests.ps1](../Init/tests/NativeArgumentContext.Tests.ps1)，pwsh 7 与 Windows PowerShell 5.1 均通过。
 
-另外，CxxuTab 原先按字节再次加载已供 predictor 使用的程序集，进程内出现两份同版本程序集。现在复用同一活件路径已导入的程序集；predictor 尚未加载时仍按字节装载，独立启停与只读仓库源的规则保持不变。EnvVar 补全注册在模块已加载时只枚举本会话命令，独立调用仍保留模块发现行为。
+另外，CxxuTab 原先按字节再次加载已供 predictor 使用的程序集，进程内出现两份同版本程序集。现在复用同一活件路径已导入的程序集；pwsh 7+ 在 predictor 尚未加载时改用 `Assembly.LoadFrom` 加载活件，稍后 predictor 导入也复用同一程序集与进程内命令表。5.1 仍按字节装载 Tab-only 活件；独立启停与仓库源从不被加载的规则保持不变。EnvVar 补全注册在模块已加载时只枚举本会话命令，独立调用仍保留模块发现行为。
 
 实际交互复验包括 `git --ver<Tab>` → `git --version`、`scoop ins<Tab>` → `scoop install`、`Get-SystemI<Tab>` 菜单摘要。首次外部 CLI 参数补全仍约 434ms，包含一次性注册与 git 补全模块加载；此成本延后到相关场景，没有消失。首次命令名 Tab 仍承担 CxxuTab 导入、读表和摘要的冷路径，强制清缓存会使下次首次补全更慢。
 
 启动诊断中的“体验件全载（-Now）”包含 PSFzf/CxxuTab，因此不能当作首屏 OnIdle 的实际耗时。结构化结果使用 `UxFullLoadMs`；`IdleMs` 为兼容保留同一数值。真实首屏单发只加载 predictor/zoxide，仍在主线程执行，不能据非交互启动报告推断“输入完全无阻塞”。当前初始化主要开销为提示符设置约 148ms、PSReadLine 基础配置约 96ms，未见步骤错误或重复初始化；继续优化应分别测量这些冷路径，不宜直接把它们集中到 OnIdle 或提前导入全部补全组件。
 
-用户侧开关与显式初始化入口见 [Feature-Guide](Feature-Guide.md) 的补全体验件说明；本次文本改动需新开 pwsh 会话生效，无需更新 dll。
+用户侧开关与显式初始化入口见 [Feature-Guide](Feature-Guide.md) 的补全体验件说明；本轮包含命令表共享的双目标 DLL 更新；开发构建后执行 `Sync-CxxuPredictor` 发布，再新开终端生效。只重跑 `init` 或删除缓存不能替换当前进程已加载的程序集。
+
+### 共享命令表与按输入位置加载复验
+
+本轮沿用 pwsh 7.5.4、PSReadLine 2.3.6 和实际 profile。命令名补全在修改前后各开三个真实窗口，每个窗口关闭菜单、清行后再补全两次；路径与 CLI 参数的对照在独立窗口恢复旧版手势桩与 argc 注册函数，使用同一新活件，因而只隔离加载边界与批量注册，不代表整套旧版本。命令表磁盘缓存有效，屏幕轮询分辨率约 10ms；数值会受负载、磁盘缓存与菜单重绘影响。
+
+| 场景 | 本轮修改前 | 本轮修改后 | 结论 |
+| --- | --- | --- | --- |
+| `Get-Chi` 首次 Tab | 170、171、170ms | 295、172、173ms | 中位数 170 → 173ms，没有证实加速；更新后首个样本较慢 |
+| 同窗口重新输入 `Get-Chi` | 32–63ms | 47–63ms | 后续仍明显快于首次；收益不能归因于重复按菜单切换 |
+| `./readm` 首次路径 Tab | 109、109、110ms | 61、61、47ms | 中位数 109 → 61ms；新逻辑不导入 CxxuTab，argc/carapace 也未加载 |
+| `git --ver` 首次参数 Tab | 669、646、699ms | 617、595、618ms | 中位数 669 → 617ms；新逻辑不导入 CxxuTab，仍有 CLI 注册与 carapace 运行开销 |
+| argc 初始化（组件级、各三次） | 中位数 159.6ms | 中位数 154.6ms | 同为 845 个注册名；批量注册仅节省约 5ms，未消除枚举与闭包准备 |
+
+当前完整 profile 启动三次中位数为 1044ms，真实窗口初始化无步骤错误。另一次从临时模块路径加载旧代码的启动对照受到模块发现路径变化影响，不作为速度改善的证据。本轮未增加启动预热或常驻后台任务；首次相关操作仍承担未加载组件的成本。
+
+分段探针在带 profile 的新进程中顺序测得：CxxuTab 导入约 39ms、原生 `Get-Chi` 补全约 43ms、额外模糊查询约 2.4ms、首次摘要装饰约 111ms。这些独立调用包含各自冷路径，**不能与真实按键总耗时直接相加**；它们表明剩余命令名首次延迟主要需要继续审查摘要索引/源码解析与原生补全，而不是重复优化已缓存的模糊匹配。真实菜单 `Get-SystemI` 首次约 267ms、后续 36–40ms，中文摘要正常，`Hardware` 未被导入。
+
+共享表在先注册 predictor 与先触发 Tab 两种顺序下均验证为同一个对象与程序集；Tab 先加载时不隐式注册 predictor。实际窗口等待空闲事件后确认 predictor 从新活件导入，加载错误为空。没有将依赖 `CurrentRunspace` 的建表工作迁到后台线程。命令名、路径、参数、管道、分号、嵌套命令、重定向、禁用开关、失败回落及 argc 的 git 归属、幂等、强制重注册均有回归覆盖；双目标构建无警告、无错误，pwsh 7 与 Windows PowerShell 5.1 的组件测试通过。入口为 [TabGestureContext.Tests.ps1](../TerminalTools/tests/TabGestureContext.Tests.ps1)、[SharedCommandTable.Tests.ps1](../CxxuPredictor/tests/SharedCommandTable.Tests.ps1) 与 [ArgcBatchRegistration.Tests.ps1](../Init/tests/ArgcBatchRegistration.Tests.ps1)。
+
+后续若继续压低命令名首次延迟，应先独立测量摘要模块索引与源码解析，再评估持久化摘要索引或将其设为可选预热；缓存必须按源文件变化失效。直接把所有导入挪到启动或单发空闲事件只改变等待发生的时间，不能证明总体更快，因此本轮不增加该策略。停用、回落与缓存清理仍使用 [Feature-Guide](Feature-Guide.md) 的既有入口。
 
 ## 2. 本次改动总览
 

@@ -53,7 +53,7 @@ namespace CxxuPredictor
         internal CxxuCommandPredictor(string guid)
         {
             _guid = new Guid(guid);
-            _table = LoadCommands();
+            _table = GetCommandTable();
         }
 
         public Guid Id => _guid;
@@ -860,10 +860,29 @@ namespace CxxuPredictor
             return token.Length == 0 ? null : token;
         }
 
-        // Tab 侧公开入口:独立缓存表(与 predictor 实例表互不干扰,本进程首次调用时建表);
-        // 给 TabExpansion2 包装调用,纯读共享表,并发安全,失败返回空数组永不抛。
-        private static readonly object _tabLock = new object();
-        private static CommandTable _tabTable;
+        // predictor 与 Tab 共用只读命令表;首次在调用线程建表,避免后台线程丢失 CurrentRunspace。
+        // volatile 保证无锁读能看见构建完成的表;5.1 没有 predictor,由 Tab 独立初始化。
+        private static readonly object _commandTableLock = new object();
+        private static volatile CommandTable _commandTable;
+
+        private static CommandTable GetCommandTable()
+        {
+            CommandTable table = _commandTable;
+            if (table is null)
+            {
+                lock (_commandTableLock)
+                {
+                    if (_commandTable is null)
+                    {
+                        _commandTable = LoadCommands();
+                    }
+                    table = _commandTable;
+                }
+            }
+            return table;
+        }
+
+        // Tab 侧公开入口:纯读共享表,并发安全,失败返回空数组永不抛。
         public static string[] CompleteCommand(string word, int maxResults)
         {
             try
@@ -872,18 +891,7 @@ namespace CxxuPredictor
                 {
                     return Array.Empty<string>();
                 }
-                CommandTable table = _tabTable;
-                if (table is null)
-                {
-                    lock (_tabLock)
-                    {
-                        if (_tabTable is null)
-                        {
-                            _tabTable = LoadCommands();
-                        }
-                        table = _tabTable;
-                    }
-                }
+                CommandTable table = GetCommandTable();
                 return FilterCommands(table, word, maxResults).ToArray();
             }
             catch

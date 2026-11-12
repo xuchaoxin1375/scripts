@@ -184,9 +184,9 @@ Test-StartupPerformance -Simple   # 只测一次新 pwsh 启动（带 profile）
 | `git-completion`（`git`/`gitk` 的 Tab 补全：分支、提交、按 git 状态过滤的文件与选项描述） | **已启用**（init 检测到模块即注册 completer，首次补全才导入；未装时自动跳过；开关 `$env:PsGitCompletion`；启用后 argc 让出 `git`/`gitk`；当前归属用 `Get-GitCompletionSource` 确认） |
 | `inshellisense` | **否决**（用户拍板，不再考虑） |
 
-验：新开终端直接可用，`Ctrl+R`/`Ctrl+T` 首按装 PSFzf（本次按键即生效）；`z <目录>` 跳转（zoxide 首屏单发已装）。`CxxuTab` 默认开，首个 `Tab` 才导入它（命令表缓存命中时建表约 20ms，模块导入另计；缓存缺失/过期时现建，5.1 约 0.4s、7 约 0.1s，24h 内最多一次）。`argc-completions` 开关默认开，首次在外部 CLI 参数位按 `Tab` 才注册（需先用 `Deploy-CompletionStack -IncludeArgc` 部署；未部署时自动回退原生补全，约 150ms 的注册不会发生）。`Get-EventSubscriber` 应无残留（单发用 `-MaxTriggerCount 1` 自动退订）。若某主机 OnIdle 不触发（predictor 没装上），跑 `Register-PsUxLazyLoad -Now` 或报回来。自查跑 `Test-StartupPerformance`（分段计时+结论）。
+验：新开终端直接可用，`Ctrl+R`/`Ctrl+T` 首按装 PSFzf（本次按键即生效）；`z <目录>` 跳转（zoxide 首屏单发已装）。`CxxuTab` 默认开，首次在裸命令名位置按 `Tab` 才导入它；参数、显式路径、变量与字符串位置保持原生补全且不提前导入。命令表优先复用 predictor 已初始化的进程内表，否则读取磁盘缓存（命中时约 20ms，模块导入另计；缓存缺失/过期时现建，5.1 约 0.4s、7 约 0.1s，24h 内最多一次）。`argc-completions` 开关默认开，首次在外部 CLI 参数位按 `Tab` 才注册（需先用 `Deploy-CompletionStack -IncludeArgc` 部署；未部署时自动回退原生补全，约 150ms 的注册不会发生）。`Get-EventSubscriber` 应无残留（单发用 `-MaxTriggerCount 1` 自动退订）。若某主机 OnIdle 不触发（predictor 没装上），跑 `Register-PsUxLazyLoad -Now` 或报回来。自查跑 `Test-StartupPerformance`（分段计时+结论）。
 
-argc/carapace 的共享桩先识别光标所在命令与参数位置：命令名、PowerShell 函数/cmdlet 参数和重定向路径不触发注册；应用程序与外部脚本（如 `scoop.ps1`）的参数位才触发。变量形式调用与当前无法解析的命令保留原有加载入口。两者同时启用时仍按 carapace → argc 的顺序注册，重叠命令由后者接管；首次加载成本只推迟到相关场景。改动后需新开 pwsh 会话生效，运行期开关与显式初始化入口保持不变。
+argc/carapace 的共享桩先识别光标所在命令与参数位置：命令名、PowerShell 函数/cmdlet 参数和重定向路径不触发注册；应用程序与外部脚本（如 `scoop.ps1`）的参数位才触发。变量形式调用与当前无法解析的命令保留原有加载入口。两者同时启用时仍按 carapace → argc 的顺序注册；argc 用一次 `Register-ArgumentCompleter -CommandName <字符串数组>` 注册去重后的名单，保留 git/gitk 的来源归属、运行期开关与强制重注册语义，重叠命令由后者接管；首次加载成本只推迟到相关场景。改动后需新开 pwsh 会话生效，运行期开关与显式初始化入口保持不变。
 
 git 补全来源先看 `Get-GitCompletionSource`：`ConfiguredSource` 是配置值（`Auto` 不代表实际用了 `GitCompletion`），`EffectiveSource` 是按开关与安装状态解析的结果，`RegisteredSource` 才是当前会话已注册的 completer；`PoshGit` 列显示 posh-git 是否导入及是否参与同名覆盖；`Fallback` 或 `Note` 非空时按提示修正。需要候选清单时用 `Get-GitCompletionSource -List`（每行一个来源，含安装、版本、启用与当前生效），需要眼见为实再按一次真实 Tab（如 `git diff --st<Tab>`）。`Get-CxxuConfig` 只显示配置键的生效值，不判断补全归属。
 
@@ -308,7 +308,7 @@ Git Bash 使用同一个 carapace 二进制，Linux/macOS 使用各自平台的�
 | 移除 | `Sync-CxxuPredictor -Uninstall`（有其他会话锁定加 `-Force`） | 删除两套指针与版本目录（含 `ps51`）；被会话锁定的版本删不掉会报告，下次再收；`Remove-Module` 不能卸载程序集（锁随进程存在，已实测）；彻底停用请持久化 `$env:PsPredictor='False'`（5.1 Tab 另加 `$env:PsTab='False'`），否则下次同步或更新会重新安装 |
 | 自编译 | 先 `dotnet build`（见 `Live-Versions.md §10`），再 `Sync-CxxuPredictor -DllPath <产物>`；5.1 Tab 用 `-Ps51DllPath <产物>` | macOS/新版 pwsh 与仓库源 dll 的 SMA 对不上时用；不碰仓库源，检查端显示 `自编译版本[哈希]` 属正常，`Update-ReposesConfiged` 会保持活件不动 |
 
-- 5.1 Tab：`Sync-CxxuPredictor` 生成的 `ps51` 活件由 `CxxuTab` 在 PowerShell 5.1 下选用；默认开，首个 Tab 才导入模块并读命令表缓存（缓存缺失时现建）。不需要时 `Disable-PsPlugin Tab -Persist`（或 `$env:PsTab='False'` 后重跑 `init`）。只提供 Tab 菜单，不提供边输边弹的内联预测。
+- 5.1 Tab：`Sync-CxxuPredictor` 生成的 `ps51` 活件由 `CxxuTab` 在 PowerShell 5.1 下选用；默认开，首次裸命令名 Tab 才导入模块并读命令表缓存（缓存缺失时现建）。不需要时 `Disable-PsPlugin Tab -Persist`（或 `$env:PsTab='False'` 后重跑 `init`）。只提供 Tab 菜单，不提供边输边弹的内联预测。
 - 自编译 net9 活件保持不动时，更新流程只对 5.1 Tab 活件调用 `Sync-CxxuPredictor -Ps51Only`；手动等价命令相同。
 - 拉取网络：`Update-ReposesConfiged` 按名单分流——`$CommonRepos` 走 GitHub（默认 `https://gh-proxy.com` 加速），其余仓库走 gitee；`-RepoSource github|gitee` 本次强制统一源，`-NoMirror` 直连、`-GithubMirror` 换镜像、`-Proxy`/`-NoProxy` 控制代理；优先级与 `-Force` 的丢弃范围见 [Deploy-Guide.md](Deploy-Guide.md) 的更新章节。
 - 守护进程（报时/IP）默认不碰 dll：`Start-StartupBgProcesses` 置 `PsPredictor=False` 继承 + 两个守护函数按 `-Command` 自断，所以 `-Force` 关它们无压力（无状态，重起即回）。
@@ -333,7 +333,7 @@ Git Bash 使用同一个 carapace 二进制，Linux/macOS 使用各自平台的�
 | 开关 | `$env:PsTab` | 空（默认开）或 `True`；只有 `False` 才是关闭 |
 | 摘要开关 | `$env:PsTabSynopsis` | 空（默认开）或 `True`；显式 `False` 才关闭；只影响菜单摘要，不影响候选 |
 | 未加载模块的函数没有摘要 | 5.1 不启用源码解析；模块为二进制或帮助写在 MAML；候选超过 20 个时跳过 | pwsh 7+ 用更短的前缀（候选 ≤20）再按一次 Tab；或先 `Import-Module <模块>` / 用一次该函数；5.1 同样先导入模块 |
-| 模块 | `Get-Module CxxuTab` | 首个 Tab 后应有；5.1 与 7 都靠它装包装 |
+| 模块 | `Get-Module CxxuTab` | 首次裸命令名 Tab 后应有；参数与显式路径不触发导入；5.1 与 7 都靠它装包装 |
 | dll 方法 | `$global:__CxxuTabMethod` | 非空；空 = 活件没找到或加载失败 |
 | 命令表缓存 | `Get-ChildItem $HOME\.cxxu\cache\tab-commands-*.tsv` | 存在且 24h 内为命中；过期/缺失会自动重建；比仓库模块文件旧时 `init` 会删除（只对新终端生效） |
 | 包装/桩 | `doctor` 的 `Tab 包装` 行 | `CxxuTab 包装已装入` 或 `桩已装,首个 Tab 自动装入` |
@@ -351,7 +351,7 @@ Git Bash 使用同一个 carapace 二进制，Linux/macOS 使用各自平台的�
 | 用一会儿后突然只剩原生候选 | 自熔断触发（单次调用 >800ms 或异常） | `$global:__CxxuTabFuse` 为 `True`；重开终端恢复；反复出现查主机/杀软扫描 |
 | 5.1 完全没有模糊增补 | `ps51` 活件/指针缺失，或 `PsTab=False` | `Sync-CxxuPredictor` → `doctor` 的 `CxxuTab 5.1` 行；确认开关 |
 
-命令表在每个进程**只建一次**（predictor 构造时、Tab 首次调用时各建一份内存表）。因此删除缓存或 `init` 自动清理都只影响之后启动的进程：当前窗口继续使用旧表，必须新开终端；新终端首次 Tab 或 predictor 首次触发时才重建。
+命令表在每个进程**只初始化一份并由 predictor 与 Tab 共享**，由先触发的一方读取磁盘缓存或重建；predictor 关闭时 Tab 仍可独立初始化。pwsh 7+ 的两种加载顺序复用同一活件程序集，5.1 仅由 Tab 使用。因此删除缓存或 `init` 自动清理都只影响之后启动的进程：当前窗口继续使用旧表，必须新开终端；新终端首次命令名 Tab 或 predictor 首次触发时才重建。
 
 需要按用户视角自动复验界面效果（真实窗口、按键注入、读屏与截图）时，见 [交互式控制台验证](Interactive-Console-Verification.md)。
 
@@ -464,7 +464,7 @@ Git Bash 使用同一个 carapace 二进制，Linux/macOS 使用各自平台的�
 - `carapace` 在 5.1 也可用：`Register-ArgumentCompleter -Native` 本身可用，`-` 开头的词由共享 Tab 桩插入零宽字符绕过引擎限制，因此参数、git ref 与 flag 都能触发；加载时会把 shell 名称列表落盘缓存并截断、用 UTF-8 读取 carapace 输出、去掉候选描述里的 ANSI（5.1 默认 2.0；升级 PSReadLine 后仍保留该处理，兼容未升级会话）。首次外部 CLI 参数补全约 0.4–0.6 秒（冷缓存约 1 秒），之后约 0.1–0.4 秒。启用与来源切换与 7 相同。
 - 提示符全对齐：`fast`/`Simple`/`Short`/`Default` 原生可用；`Balance` 的 Info/Startup 外部依赖在 `Prompt.psm1` 顶部有 5.1 本地兜底（CIM/注册表/内置 cmdlet 同口径；必须 `function global:` 定义，否则模块私有、直接调用撞坏 Info；缓存用 `$global:__Cxxu51*`，`$script:` 跨不了作用域），渲染与 7.5 逐字一致，稳态约 50ms/次（首屏冷缓存 1.4s 一次性）；`Get-IpAddressFormated` 含参数集的移植版，直接调用也可用。
 - 明确不可用：`CxxuCommand` 内联预测（net9 predictor，插件预测源需 7.2+）、完整部署流程（建议在 pwsh 7 执行，5.1 可单独运行 `Install-Ps51PSReadLine`）、`Test-PsEnvReadiness` 的 `pwsh 7+` 必备项（在 5.1 下即提示装 pwsh7）。PSReadLine 2.0 没有预测视图；升级到 2.2.6+ 后历史预测与 ListView 可用，但插件预测仍不可用。
-- 5.1 Tab 补全可用（默认开）：`CxxuTab` 读 `~/.cxxu/bin/ps51/<哈希>/CxxuPredictor.dll`（netstandard2.0，只含 `CompleteCommand`），由 `Sync-CxxuPredictor` 发布。首个 Tab 才导入模块并读命令表缓存（命中约 20ms，缺失/过期时现建约 0.4s；缓存与排查见 §9「Tab 补全自查」），启动不加负担；默认只有 Tab 菜单，没有内联预测（升级 PSReadLine 后可用历史预测，见下）。不用时 `Disable-PsPlugin Tab -Persist`。
+- 5.1 Tab 补全可用（默认开）：`CxxuTab` 读 `~/.cxxu/bin/ps51/<哈希>/CxxuPredictor.dll`（netstandard2.0，只含 `CompleteCommand`），由 `Sync-CxxuPredictor` 发布。首次裸命令名 Tab 才导入模块并读命令表缓存（命中约 20ms，缺失/过期时现建约 0.4s；缓存与排查见 §9「Tab 补全自查」），启动不加负担；默认只有 Tab 菜单，没有内联预测（升级 PSReadLine 后可用历史预测，见下）。不用时 `Disable-PsPlugin Tab -Persist`。
 - 用法：`powershell -NoProfile` 起 5.1，保证 `PSModulePath` 含模块集后 `init` 即可；Tab 包裹默认开，`$env:PsTab='False'` 关。
 - **PSReadLine 升级（可选）**：默认不升级，保持 5.1 原样；需要历史预测、历史去重与 `inlineprediction` 配色时执行
   `Deploy-CompletionStack -IncludePSReadLine51`，或单独 `Install-Ps51PSReadLine`（默认取 PSGallery 最新稳定版，当前 2.4.5；本机已有同版本则离线复制；`-Version` 固定版本）。

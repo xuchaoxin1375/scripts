@@ -305,8 +305,8 @@ function Install-CxxuTabWrapper
     .SYNOPSIS
     安装 TabExpansion2 包装(命令名位置合并自研模糊结果,缺省 30 条,并补函数摘要)。
     #>
-    # 优先复用同一活件的 predictor 程序集,避免重复加载/JIT;未加载时按字节装载,
-    # 不注册 ListView predictor,与 PsPredictor 门独立。
+    # 优先复用同一活件的 predictor 程序集;7+ 按活件路径加载,使稍后 Import-Module
+    # 也复用同一程序集与命令表。5.1 仍按字节装载 Tab-only 产物,不注册 predictor。
     # 已装过就不再重载:重复 Import-Module -Force 不该再付一次加载/建表成本;
     # 新 dll 仍按活件的"重开终端生效"规则走(与 predictor 一致)。
     if (-not $global:__CxxuTabMethod)
@@ -319,7 +319,11 @@ function Install-CxxuTabWrapper
                 $asm = $null
                 $predictor = Get-Module CxxuPredictor | Where-Object { $_.Path -eq $dll } | Select-Object -First 1
                 if ($predictor) { $asm = $predictor.ImplementingAssembly }
-                if (-not $asm) { $asm = [System.Reflection.Assembly]::Load([System.IO.File]::ReadAllBytes($dll)) }
+                if (-not $asm)
+                {
+                    if ($PSVersionTable.PSVersion.Major -ge 7) { $asm = [System.Reflection.Assembly]::LoadFrom($dll) }
+                    else { $asm = [System.Reflection.Assembly]::Load([System.IO.File]::ReadAllBytes($dll)) }
+                }
                 $global:__CxxuTabMethod = $asm.GetType('CxxuPredictor.CxxuCommandPredictor').GetMethod('CompleteCommand')
             }
             catch { $global:__CxxuTabMethod = $null }
