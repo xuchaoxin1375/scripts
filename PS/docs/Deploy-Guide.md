@@ -150,7 +150,7 @@ profile 里只保留 `init`；`argc` 由 Init 接管（部署见 [Argc-Completio
 | 可选层 `-IncludePSReadLine51` | `PSReadLine`（仅 5.1） | 推荐 | 优先复制本机 pwsh 自带的同版本模块；缺失时 PSGallery | 不需要（pwsh 随附） | 2.0.0 → 2.3.6，启用历史预测、历史去重与 `inlineprediction` 配色；`-PSReadLine51FollowPwsh` 可跟随 pwsh 升级；重开 5.1 生效 |
 
 - 二进制优先取 [`scripts-deps`](https://github.com/xuchaoxin1375/scripts-deps) 的固定版本，地址失效自动回退上游；`-NoMirror` 跳过转存仓库，`$env:PsDepsMirror` 可整体换前缀。版本钉子维护见 [PS/Deploy/readme.md](../Deploy/readme.md) 的转存章节。
-- `-IncludePSReadLine51` 只处理 Windows PowerShell 5.1：默认版本 2.3.6（与 pwsh 7.5 随附版本一致，已在 5.1.26100 验证），优先从本机 pwsh 安装目录离线复制，本机没有时才回退 PSGallery。`-All` 会包含它；只需要升级时可直接运行 `Install-Ps51PSReadLine`（`-WhatIf`/`-Force`/`-Version`/`-NoGallery`）。pwsh 升级后要跟随时用 `Sync-Ps51PSReadLine`，或给部署层加 `-PSReadLine51FollowPwsh`（与 `-PSReadLineVersion51` 互斥）。
+- `-IncludePSReadLine51` 只处理 Windows PowerShell 5.1：默认版本 2.3.6（与 pwsh 7.5 随附版本一致，已在 5.1.26100 验证），优先从本机 pwsh 安装目录离线复制，本机没有时才回退 PSGallery。`-All` 会包含它；只需要升级时可直接运行 `Install-Ps51PSReadLine`（`-WhatIf`/`-Force`/`-Version`/`-NoGallery`/`-SourcePath`）。pwsh 升级后要跟随时用 `Sync-Ps51PSReadLine`，或给部署层加 `-PSReadLine51FollowPwsh`（与 `-PSReadLineVersion51` 互斥）；没有 pwsh 7 时用 `-Version` 走 PSGallery 或 `-SourcePath` 离线安装。
 - 表内组件装好后是否默认加载由组件清单决定；默认关闭的（如 `PSCompletions`、`carapace`）或曾手动停用的，再用 `Enable-CxxuComponent <Id> -Persist` 启用。`Get-CxxuComponent -Id <Id>` 会同时给出 `Install` 与 `Enable`，`Test-CxxuComponent` 的依赖警告也会带安装与启用命令。
 - PSGallery 三件套由 PowerShellGet 安装，代理继承规则与 GitHub 直链不同；5.1 下环境变量可能不生效，网络受限时优先在 pwsh 7 执行，或先配系统代理。
 - `git-completion` 的用户模块目录按宿主版本区分：`Install-Module git-completion -Scope CurrentUser` 在 pwsh 7 写入 `~\Documents\PowerShell\Modules`，在 5.1 写入 `~\Documents\WindowsPowerShell\Modules`。5.1 的 `PSModulePath` 默认不含 7 的用户目录，只在 7 上装过时，5.1 的 `init` 会判定模块缺失并跳过，`git`/`gitk` 回落到 argc 或原生补全；从 pwsh 7 启动的子进程继承 7 的 `PSModulePath` 时例外，但那条路径同时带模块顺序问题，不宜依赖。需要 5.1 也启用时，在 5.1 中执行 `Install-Module git-completion -Scope CurrentUser -Force`，或装入两个版本都扫描的 `Program Files\WindowsPowerShell\Modules`（需管理员权限）。5.1 下 `Deploy` 模块可导入，但完整部署流程仍建议在 pwsh 7 执行；`Deploy-CompletionStack -IncludePSReadLine51` 与 `Install-Ps51PSReadLine` 也可直接在 5.1 运行，`-IncludeGitCompletion` 在 5.1 执行时会把模块装到 5.1 的目录。装好后重开终端，再用 `Get-GitCompletionSource` 确认当前归属。
@@ -213,12 +213,16 @@ Install-Ps51PSReadLine                                # 等价入口，可单独
 Install-Ps51PSReadLine -Version 2.3.6 -Force          # 重装指定版本
 Install-Ps51PSReadLine -NoGallery                     # 没有离线副本时不联网
 Install-Ps51PSReadLine -NoPersistModulePath           # 只装模块，不改 User PSModulePath
+Install-Ps51PSReadLine -Version 2.3.6                 # 没有 pwsh 7 时改走 PSGallery（需网络）
+Install-Ps51PSReadLine -SourcePath D:\offline\PSReadLine\2.3.6 -Force  # 完全离线，不查 pwsh
 Sync-Ps51PSReadLine -CheckOnly                        # 只看两边版本，不写入
 Sync-Ps51PSReadLine                                   # 跟随 pwsh 升级到新版本
 ```
 
 - 目标目录是 5.1 的 CurrentUser 模块目录 `~\Documents\WindowsPowerShell\Modules\PSReadLine\<版本>`；安装后会启动 5.1 子进程实际导入一次，确认版本与 `net462` 资产可用。
 - 默认版本 2.3.6 与 pwsh 7.5 随附版本一致；本机已有该版本时直接复制，不联网。没有离线副本时才回退到 5.1 的 `Install-Module`（PSGallery，需要网络；代理按 5.1 的系统代理设置）。
+- **5.1 的安装不依赖 pwsh 7**：源顺序是「`-SourcePath` 指定目录 → 本机已有同版本模块（含 pwsh 7 随附的）→ PSGallery」。没有安装 pwsh 7 的机器用 `-Version <版本>` 走 PSGallery；完全离线或想固定产物时用 `-SourcePath` 指向含 `PSReadLine.psd1` 与 `net462` 的目录，版本以该目录 manifest 为准，同时给 `-Version` 时必须一致。`-NoGallery` 用于确保任何情况下都不联网。
+- 5.1 这份副本与 pwsh 7 本来就是独立的：不使用 `Sync-Ps51PSReadLine` 或 `-PSReadLine51FollowPwsh` 时，pwsh 升级不会改变 5.1 的版本。
 - **pwsh 升级不会传导到 5.1**：5.1 这份是安装时的一次性副本，与 pwsh 模块目录没有链接或订阅关系。pwsh 换版本后 5.1 仍用原版本；想跟随时执行 `Sync-Ps51PSReadLine`（或加 `-PSReadLine51FollowPwsh` 重跑部署层），只重跑不带跟随开关的安装会因“已安装 ≥ 目标版本”直接跳过。`Sync-Ps51PSReadLine -CheckOnly` 可先看两边版本与是否需要同步。
 - 跟随的前提是新版本仍带 `net462` 资产；pwsh 侧只有 net6/net9 的版本会报告并跳过，5.1 保持现有版本，不降级。
 - 默认会把 `~\Documents\WindowsPowerShell\Modules` 前插到 User 级 `PSModulePath`（已存在则跳过）。这一步是用户级验收的关键：PSReadLine 可能在 `init` 之前加载，只改运行期路径换不掉已加载的 2.0.0。加 `-NoPersistModulePath` 可跳过并只打印手动命令。

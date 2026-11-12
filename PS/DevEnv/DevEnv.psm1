@@ -2504,7 +2504,7 @@ function Sync-Ps51PSReadLine
     }
     else
     {
-        Write-Warning ("pwsh 侧没有可供 5.1 使用的 PSReadLine（需要 net462 资产）。{0}" -f
+        Write-Warning ("pwsh 侧没有可供 5.1 使用的 PSReadLine（需要 net462 资产）。{0}需要独立安装时用 Install-Ps51PSReadLine -Version <版本>（PSGallery）或 -SourcePath <目录>。" -f
             $(if ($source.NewestSeen) { "最新为 $($source.NewestSeen)，缺少 net462。" } else { '' }))
     }
     if (@($source.Skipped).Count)
@@ -2559,6 +2559,10 @@ function Install-Ps51PSReadLine
     本机没有时才回退到 PowerShell 5.1 的 Install-Module（PSGallery，需要网络）。
     复制和安装都会在 5.1 子进程里实际导入一次做验证，验证失败会告警并保留回退入口。
 
+    不依赖 pwsh 7 的独立安装有两种方式：本机没有 pwsh 时自动走 PSGallery（需网络，
+    用 `-Version` 指定版本）；完全离线或想用指定产物时用 `-SourcePath` 指向本地模块目录
+    （必须含 PSReadLine.psd1 与 net462），完全不查 pwsh、不联网。
+
     默认会把 5.1 用户模块目录前插到 User 级 PSModulePath（已存在则跳过），否则
     PSReadLine 可能在 init 之前就加载了系统自带的 2.0.0；`-NoPersistModulePath` 可跳过。
     持久化后仍需完全重开 5.1 窗口，旧窗口不会热替换已加载的模块。
@@ -2575,6 +2579,10 @@ function Install-Ps51PSReadLine
     .PARAMETER NoGallery
     本机没有可复制的离线副本时不再回退 PSGallery，直接结束并告警。
 
+    .PARAMETER SourcePath
+    本地模块目录（含 PSReadLine.psd1 与 net462），直接作为安装源，不查 pwsh 7 也不联网。
+    版本从该目录的 manifest 读取；同时指定 `-Version` 时必须与 manifest 一致。
+
     .PARAMETER NoPersistModulePath
     不把 5.1 用户模块目录写入 User PSModulePath。默认会检查并前插（已存在则跳过）；
     不写入时，新开的 5.1 窗口可能仍加载系统自带的 2.0.0。
@@ -2587,13 +2595,17 @@ function Install-Ps51PSReadLine
 
     .EXAMPLE
     Install-Ps51PSReadLine -Version 2.3.6 -Force
+
+    .EXAMPLE
+    Install-Ps51PSReadLine -SourcePath D:\offline\PSReadLine\2.3.6 -Force
     #>
     [CmdletBinding(SupportsShouldProcess)]
     param(
         [version]$Version = [version]'2.3.6',
         [switch]$Force,
         [switch]$NoGallery,
-        [switch]$NoPersistModulePath
+        [switch]$NoPersistModulePath,
+        [string]$SourcePath
     )
 
     if (-not (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true)))
@@ -2607,6 +2619,36 @@ function Install-Ps51PSReadLine
     {
         Write-Warning '未找到 powershell.exe（Windows PowerShell 5.1），跳过 PSReadLine 升级。'
         return
+    }
+
+    # -SourcePath 是独立安装源：版本以该目录的 manifest 为准，完全不查 pwsh 7。
+    if ($SourcePath)
+    {
+        $resolvedSource = Resolve-Path -LiteralPath $SourcePath -ErrorAction SilentlyContinue
+        if (-not $resolvedSource)
+        {
+            throw ("找不到指定的模块目录：{0}" -f $SourcePath)
+        }
+        $resolvedSource = $resolvedSource.Path
+        if (-not (Test-CxxuPSReadLineModule -ModuleBase $resolvedSource))
+        {
+            throw ("目录不是可供 5.1 使用的 PSReadLine 模块（需要 PSReadLine.psd1 与 net462）：{0}" -f $resolvedSource)
+        }
+        $manifestVersion = $null
+        try
+        {
+            $manifestVersion = [version](Import-PowerShellDataFile -LiteralPath (Join-Path $resolvedSource 'PSReadLine.psd1')).ModuleVersion
+        }
+        catch
+        {
+            throw ("无法从 {0} 读取 ModuleVersion：{1}" -f $resolvedSource, $_.Exception.Message)
+        }
+        if ($PSBoundParameters.ContainsKey('Version') -and ($manifestVersion -ne $Version))
+        {
+            throw ("-Version {0} 与源目录 manifest 的版本 {1} 不一致。" -f $Version, $manifestVersion)
+        }
+        $Version = $manifestVersion
+        $SourcePath = $resolvedSource
     }
 
     $moduleRoot = Get-CxxuPSReadLineModuleRoot51
@@ -2678,10 +2720,11 @@ function Install-Ps51PSReadLine
         }
     }
 
-    $source = Get-CxxuPSReadLineSource -Version $Version
+    $source = if ($SourcePath) { $SourcePath } else { Get-CxxuPSReadLineSource -Version $Version }
     if ($source)
     {
-        Write-Host ("来源：{0}（本机已有，离线复制，不联网）" -f $source)
+        $sourceNote = if ($SourcePath) { '指定目录，离线复制，不联网' } else { '本机已有，离线复制，不联网' }
+        Write-Host ("来源：{0}（{1}）" -f $source, $sourceNote)
         Write-Host ("目标：{0}" -f $dest)
         if (-not $PSCmdlet.ShouldProcess($dest, "复制 PSReadLine $Version")) { return }
 
