@@ -2205,9 +2205,12 @@ function Invoke-CxxuChildPowerShell
     # 在子 PowerShell 进程里执行脚本并取回结果（内部函数）。
     # 子进程把结果写入 UTF-8 临时文件，避免 stdout 编码与代理对象污染；
     # 调用方脚本必须给 $__cxxuResult 赋值。
+    # -TimeoutSeconds > 0 时超时会结束子进程并返回 ExitCode 124、TimedOut=True，
+    # 避免网络/包管理器卡住时调用方无限等待。
     param(
         [Parameter(Mandatory)][string]$PowerShellPath,
-        [Parameter(Mandatory)][string]$Script
+        [Parameter(Mandatory)][string]$Script,
+        [int]$TimeoutSeconds = 0
     )
     $resultFile = Join-Path ([IO.Path]::GetTempPath()) ('cxxu-child-' + [guid]::NewGuid().ToString('N') + '.txt')
     $escapedResult = $resultFile.Replace("'", "''")
@@ -2227,13 +2230,56 @@ catch
 }
 "@
     $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($full))
-    $null = & $PowerShellPath -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $encoded 2>&1
-    $exitCode = $LASTEXITCODE
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $PowerShellPath
+    $psi.Arguments = '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ' + $encoded
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    # 5.1 会优先使用继承来的 PSModulePath：从 pwsh 7 启动时会先命中 pwsh 的
+    # PackageManagement/PowerShellGet（缺少 fullclr 资产）而加载失败。
+    # 移除后由 5.1 按注册表重建自己的模块路径。
+    if (($PowerShellPath -match '\\WindowsPowerShell\\v1\.0\\powershell\.exe$') -and
+        $psi.EnvironmentVariables.ContainsKey('PSModulePath'))
+    {
+        $null = $psi.EnvironmentVariables.Remove('PSModulePath')
+    }
+    $proc = New-Object System.Diagnostics.Process
+    $proc.StartInfo = $psi
+    $timedOut = $false
+    try
+    {
+        $null = $proc.Start()
+        # 先异步读干净管道，避免子进程输出填满缓冲区后卡住。
+        $stdoutTask = $proc.StandardOutput.ReadToEndAsync()
+        $stderrTask = $proc.StandardError.ReadToEndAsync()
+        if ($TimeoutSeconds -gt 0)
+        {
+            if (-not $proc.WaitForExit($TimeoutSeconds * 1000))
+            {
+                $timedOut = $true
+                try { $proc.Kill() } catch { Write-Verbose "结束超时子进程失败：$($_.Exception.Message)" }
+                $null = $proc.WaitForExit(5000)
+            }
+        }
+        else
+        {
+            $proc.WaitForExit()
+        }
+        $exitCode = if ($timedOut) { 124 } else { $proc.ExitCode }
+        $null = $stdoutTask.Result
+        $null = $stderrTask.Result
+    }
+    finally
+    {
+        $proc.Dispose()
+    }
     $text = ''
     if (Test-Path -LiteralPath $resultFile) { $text = [IO.File]::ReadAllText($resultFile, [Text.Encoding]::UTF8) }
     # 清理不受外层 -WhatIf 影响：这是临时文件，不是用户可见的部署动作。
     Remove-Item -LiteralPath $resultFile -Force -ErrorAction SilentlyContinue -WhatIf:$false
-    [PSCustomObject]@{ ExitCode = $exitCode; Text = $text }
+    [PSCustomObject]@{ ExitCode = $exitCode; Text = $text; TimedOut = $timedOut }
 }
 
 function Get-CxxuPSReadLineModuleRoot51
@@ -2730,23 +2776,27 @@ function Install-Ps51PSReadLine
 $m = Find-Module PSReadLine -ErrorAction Stop
 $__cxxuResult = $m.Version.ToString()
 '@
-            $latestResult = Invoke-CxxuChildPowerShell -PowerShellPath $ps51 -Script $latestScript
+            Write-Host '正在查询 PSGallery 最新稳定版（联网，通常十几秒；无网络时会超时回退）...'
+            $sw = [System.Diagnostics.Stopwatch]::StartNew()
+            $latestResult = Invoke-CxxuChildPowerShell -PowerShellPath $ps51 -Script $latestScript -TimeoutSeconds 45
+            $sw.Stop()
+            $reason = if ($latestResult.TimedOut) { '查询超时（45 秒）' } else { $latestResult.Text.Trim() }
             if (($latestResult.ExitCode -ne 0) -or [string]::IsNullOrWhiteSpace($latestResult.Text))
             {
                 $fallback = Get-CxxuPSReadLineFromPwsh
                 if (-not $fallback.Version)
                 {
-                    Write-Warning ("无法从 PSGallery 查询 PSReadLine 最新版本，且本机没有可复制的 PSReadLine：{0}" -f $latestResult.Text.Trim())
+                    Write-Warning ("无法从 PSGallery 查询 PSReadLine 最新版本（{0}），且本机没有可复制的 PSReadLine。" -f $reason)
                     Write-Warning '联网后重试，或用 -Version 固定版本、-SourcePath 指定本地目录。'
                     return
                 }
-                Write-Warning ("无法从 PSGallery 查询最新版本，回退到本机可用的最高版本 {0}：{1}" -f $fallback.Version, $latestResult.Text.Trim())
+                Write-Warning ("无法从 PSGallery 查询最新版本（{0}），回退到本机可用的最高版本 {1}。" -f $reason, $fallback.Version)
                 $Version = $fallback.Version
             }
             else
             {
                 $Version = [version]$latestResult.Text.Trim()
-                Write-Host ("PSGallery 最新稳定版本：{0}" -f $Version)
+                Write-Host ("PSGallery 最新稳定版本：{0}（耗时 {1:N1} 秒）" -f $Version, $sw.Elapsed.TotalSeconds)
             }
         }
     }
@@ -3148,7 +3198,7 @@ function Deploy-CompletionStack
 
     if ($IncludePSReadLine51)
     {
-        Write-Host '可选层：Windows PowerShell 5.1 的 PSReadLine'
+        Write-Host '可选层：Windows PowerShell 5.1 的 PSReadLine（默认查询最新稳定版，可能联网）'
         if (-not (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true)))
         {
             Write-Warning 'PSReadLine 5.1 升级只适用于 Windows，已跳过。'

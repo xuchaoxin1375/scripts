@@ -229,6 +229,7 @@ Install-Module -Name PSReadLine -Scope CurrentUser -AllowClobber -Force
 
 - 目标目录是 5.1 的 CurrentUser 模块目录 `~\Documents\WindowsPowerShell\Modules\PSReadLine\<版本>`；安装后会启动 5.1 子进程实际导入一次，确认版本与可加载资产可用。
 - 默认目标取 PSGallery 最新稳定版（当前 2.4.5，已在 5.1.26100 验证），本机已有同版本时直接复制、不联网；`-NoGallery` 或查询失败时回退到本机可用的最高版本（通常是 pwsh 附带的 2.3.6），并打印原因。`-Version` 用于固定版本。
+- 查询最新版需要联网，PowerShellGet 首次加载通常要十几秒（会先打印“正在查询…”，超过 45 秒按超时回退）。不想等或离线时用 `-NoGallery`，直接用 `-Version`/`-SourcePath` 也不会触发查询。
 - 2.3.x 的模块资产目录是 `net462`，2.4.x 起改为 `netstd`（netstandard2.0），两者都能被 5.1 加载。
 - **5.1 的安装不依赖 pwsh 7**：源顺序是「`-SourcePath` 指定目录 → 本机已有同版本模块（含 pwsh 7 随附的）→ PSGallery」。没有安装 pwsh 7 的机器用 `-Version <版本>` 走 PSGallery；完全离线或想固定产物时用 `-SourcePath` 指向含 `PSReadLine.psd1` 与 `net462`/`netstd` 的目录，版本以该目录 manifest 为准，同时给 `-Version` 时必须一致。`-NoGallery` 用于确保任何情况下都不联网。
 - **pwsh 升级不会传导到 5.1**：5.1 这份是安装时的一次性副本，与 pwsh 模块目录没有链接或订阅关系；不使用同步入口时，pwsh 升级不会改变 5.1 的版本。想跟随时执行 `Sync-Ps51PSReadLine`（或加 `-PSReadLine51FollowPwsh` 重跑部署层），只重跑不带跟随开关的安装会按目标版本重新判断（已满足就跳过）。`Sync-Ps51PSReadLine -CheckOnly` 可先看两边版本与是否需要同步；它只跟随 pwsh 当前附带的版本，不追 PSGallery 最新，默认安装才会取最新。
