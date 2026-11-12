@@ -40,6 +40,10 @@
   就该重跑，启动器不要写成 `pwsh -c p`（原因见 `Startup-Optimization.md` 的启动器重复
   初始化记录）。
 - 模块目录名必须与模块名一致，否则无法自动发现。
+- 验证 5.1 模块安装/升级是否对用户生效，必须在保留 profile 的真实交互窗口里查
+  `(Get-Module <name>).Version` 与 `.ModuleBase`；`-NoProfile` 子进程 `Import-Module`、
+  手动调用 `init` 或只看文件存在都只是组件级验证。5.1 用户模块目录必须在进程启动前
+  位于 `PSModulePath`；profile/init 里再补路径不能替换已经加载的模块。
 
 ## 部署与网络
 
