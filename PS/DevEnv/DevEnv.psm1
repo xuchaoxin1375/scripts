@@ -2358,6 +2358,10 @@ function Install-Ps51PSReadLine
     本机没有时才回退到 PowerShell 5.1 的 Install-Module（PSGallery，需要网络）。
     复制和安装都会在 5.1 子进程里实际导入一次做验证，验证失败会告警并保留回退入口。
 
+    默认会把 5.1 用户模块目录前插到 User 级 PSModulePath（已存在则跳过），否则
+    PSReadLine 可能在 init 之前就加载了系统自带的 2.0.0；`-NoPersistModulePath` 可跳过。
+    持久化后仍需完全重开 5.1 窗口，旧窗口不会热替换已加载的模块。
+
     .PARAMETER Version
     目标版本，默认 2.3.6（与 pwsh 7.5 随附版本一致，已在 5.1.26100 验证）。
     指定其他版本时，该版本必须带 net462 资产，否则不会被复制。
@@ -2367,6 +2371,10 @@ function Install-Ps51PSReadLine
 
     .PARAMETER NoGallery
     本机没有可复制的离线副本时不再回退 PSGallery，直接结束并告警。
+
+    .PARAMETER NoPersistModulePath
+    不把 5.1 用户模块目录写入 User PSModulePath。默认会检查并前插（已存在则跳过）；
+    不写入时，新开的 5.1 窗口可能仍加载系统自带的 2.0.0。
 
     .EXAMPLE
     Install-Ps51PSReadLine -WhatIf
@@ -2381,7 +2389,8 @@ function Install-Ps51PSReadLine
     param(
         [version]$Version = [version]'2.3.6',
         [switch]$Force,
-        [switch]$NoGallery
+        [switch]$NoGallery,
+        [switch]$NoPersistModulePath
     )
 
     if (-not (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true)))
@@ -2410,6 +2419,32 @@ function Install-Ps51PSReadLine
     else
     {
         Write-Host 'Windows PowerShell 5.1 当前未发现 PSReadLine。'
+    }
+
+    # 用户级验收的关键：5.1 启动时必须能从 PSModulePath 看到用户模块目录。
+    # 只写 init 不够——PSReadLine 可能在 init 之前就已加载；这里默认把目录前插到 User 级，
+    # 即使模块已经装好也执行，避免出现“文件在、窗口里仍是 2.0.0”的情况。
+    $userModules = Split-Path $moduleRoot -Parent
+    $userPath = [Environment]::GetEnvironmentVariable('PSModulePath', 'User')
+    $machinePath = [Environment]::GetEnvironmentVariable('PSModulePath', 'Machine')
+    $combinedPath = @((([string]$userPath + ';' + [string]$machinePath)) -split ';' | Where-Object { $_ })
+    if ($combinedPath -contains $userModules)
+    {
+        Write-Host ("User/Machine PSModulePath 已包含 5.1 用户模块目录：{0}" -f $userModules)
+    }
+    elseif ($NoPersistModulePath)
+    {
+        Write-Warning ("User PSModulePath 不含 {0}，新开的 5.1 窗口可能仍加载 2.0.0。需要时执行：Add-EnvVar -EnvVar PSModulePath -NewValue '{0}' -Scope User -Force" -f $userModules)
+    }
+    elseif ($PSCmdlet.ShouldProcess($userModules, '加入 User PSModulePath'))
+    {
+        $newUserPath = if ([string]::IsNullOrWhiteSpace($userPath)) { $userModules } else { $userModules + ';' + $userPath }
+        [Environment]::SetEnvironmentVariable('PSModulePath', $newUserPath, 'User')
+        if (($env:PSModulePath -split ';') -notcontains $userModules)
+        {
+            $env:PSModulePath = $userModules + ';' + $env:PSModulePath
+        }
+        Write-Host ("已把 {0} 前置到 User PSModulePath；完全重开 5.1 窗口后生效。" -f $userModules)
     }
 
     if ($installed -and ($installed.Version -ge $Version) -and (-not $Force))
@@ -2509,7 +2544,6 @@ $__cxxuResult = '{0}|{1}' -f $m.Version, $m.ModuleBase
     {
         if ($after.Version -lt $Version)
         {
-            $userModules = Split-Path $moduleRoot -Parent
             Write-Host ("注意：未执行 init 的 5.1 子进程仍自动发现 PSReadLine {0}；正常启动 5.1 跑 init 后会前置 {1} 并加载 {2}。若你的 5.1 不跑 init，请把该目录加入 5.1 的 PSModulePath。" -f $after.Version, $userModules, $Version)
         }
         else
@@ -2537,7 +2571,8 @@ function Deploy-CompletionStack
     - -IncludePSCompletions：PSCompletions 模块（命令参数补全库）。
     - -IncludeGitCompletion：git-completion 模块（git/gitk 的 Tab 补全，init 检测到后自动挂载）。
     - -IncludePSReadLine51：Windows PowerShell 5.1 的 PSReadLine 升级（默认 2.3.6；
-      优先复制本机 pwsh 自带的同版本模块，缺失时才回退 PSGallery）。
+      优先复制本机 pwsh 自带的同版本模块，缺失时才回退 PSGallery；默认把用户模块目录
+      加入 User PSModulePath，完全重开 5.1 生效）。
     - -All：一次选择以上全部；-SkipArgc / -SkipBinaries 仍可用于排除 argc 或二进制。
     国内网络不稳时，可先 Set-Proxy On（或设置 HTTPS_PROXY/HTTP_PROXY）再执行；
     下载会自动识别代理，也可用 -Proxy/-NoProxy 单次覆盖；-NoMirror 跳过转存仓库直接走上游。

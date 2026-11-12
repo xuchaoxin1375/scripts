@@ -792,17 +792,22 @@ WindowsTerminal.exe
   `-IncludePSReadLine51`（`-All` 包含）。默认目标 2.3.6，优先从本机 pwsh 安装目录离线复制，
   本机没有时才回退 5.1 的 `Install-Module`；安装到
   `~\Documents\WindowsPowerShell\Modules\PSReadLine\<版本>`，并在 5.1 子进程里实际导入验证。
-  默认层仍不联网、不装仓库外组件，未选择该开关时行为不变。
+  安装还会默认把用户模块目录前插到 User 级 `PSModulePath`（`-NoPersistModulePath` 可跳过），
+  否则 PSReadLine 可能在 `init` 之前加载，窗口里仍是 2.0.0。默认层仍不联网、不装仓库外组件，
+  未选择该开关时行为不变。
 - `init` 的 `Set-PSReadLinesAdvanced` 改为按版本分流：pwsh 7.2+ 且 PSReadLine 2.2.2+
   用 `HistoryAndPlugin`，其余 2.1+（含升级后的 5.1）用 `History`，2.0 跳过预测参数；
   `PredictionViewStyle` 另按 2.2.2+ 门控，不再依赖 catch 兜底。
-- 验证（5.1.26100.8875 + PSReadLine 2.3.6，真实控制台子进程）：
-  `Import-Module`、`HistoryNoDuplicates`、`CompletionQueryItems`、`inlineprediction` 配色、
-  `MenuComplete` 均成功；`PredictionSource History` 与 `PredictionViewStyle ListView` 成功，
-  `Get-PSReadLineOption` 读回 `History`/`ListView`。`HistoryAndPlugin` 与 `Plugin` 按预期失败，
-  提示插件预测源需要 7.2+。另把 5.1 的 `PSModulePath` 设为不含用户模块目录的继承值后跑
-  `init`，`Update-CxxuModulePathOrder` 会前置用户目录，最终 `Get-Module PSReadLine` 为 2.3.6。
-- 边界：2.4.x 未在本栈验证，需要时用 `-Version` 指定并自行确认；从 pwsh 7 启动 5.1 时
-  子进程可能继承 7 的 `PSModulePath` 而不含 5.1 用户模块目录，`init` 的
-  `Update-CxxuModulePathOrder` 会前置该目录。回退为关闭所有 5.1 窗口后删除对应版本目录。
+- 验证（5.1.26100.8875 + PSReadLine 2.3.6，**真实交互窗口 + 实际 profile/init**，
+  通过控制台注入命令读回）：`PS=5.1.26100.8875`、`PSRL=2.3.6`、
+  `BASE=~\Documents\WindowsPowerShell\Modules\PSReadLine\2.3.6`、`PRED=History`、
+  `VIEW=ListView`、`NODUP=True`、`PATHHAS=True`。另在 5.1 子进程里验证
+  `HistoryNoDuplicates`、`CompletionQueryItems`、`inlineprediction` 配色与 `MenuComplete`；
+  `HistoryAndPlugin`/`Plugin` 按预期失败，提示插件预测源需要 7.2+。此前只看子进程导入，
+  层级低于用户实际窗口，不能作为验收依据。
+- 边界：2.4.x 未在本栈验证，需要时用 `-Version` 指定并自行确认；5.1 启动前
+  `PSModulePath` 必须包含用户模块目录，安装命令会持久化 User 级路径，已加载旧版的窗口
+  必须完全重开才能换版本。从 pwsh 7 启动 5.1 时，`init` 的
+  `Update-CxxuModulePathOrder` 也会前置该目录，但不能替代启动前的 User 级路径。
+  回退为关闭所有 5.1 窗口后删除对应版本目录。
 

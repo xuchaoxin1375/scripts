@@ -211,14 +211,16 @@ Deploy-CompletionStack -IncludePSReadLine51           # 默认 2.3.6；优先离
 Install-Ps51PSReadLine                                # 等价入口，可单独执行
 Install-Ps51PSReadLine -Version 2.3.6 -Force          # 重装指定版本
 Install-Ps51PSReadLine -NoGallery                     # 没有离线副本时不联网
+Install-Ps51PSReadLine -NoPersistModulePath           # 只装模块，不改 User PSModulePath
 ```
 
 - 目标目录是 5.1 的 CurrentUser 模块目录 `~\Documents\WindowsPowerShell\Modules\PSReadLine\<版本>`；安装后会启动 5.1 子进程实际导入一次，确认版本与 `net462` 资产可用。
 - 默认版本 2.3.6 与 pwsh 7.5 随附版本一致；本机已有该版本时直接复制，不联网。没有离线副本时才回退到 5.1 的 `Install-Module`（PSGallery，需要网络；代理按 5.1 的系统代理设置）。
+- 默认会把 `~\Documents\WindowsPowerShell\Modules` 前插到 User 级 `PSModulePath`（已存在则跳过）。这一步是用户级验收的关键：PSReadLine 可能在 `init` 之前加载，只改运行期路径换不掉已加载的 2.0.0。加 `-NoPersistModulePath` 可跳过并只打印手动命令。
 - 升级后 `init` 会在 5.1 下启用 `HistoryNoDuplicates`、`inlineprediction` 配色与历史预测；`Set-PSReadLinesAdvanced` 在 5.1 使用 `PredictionSource History` 和 ListView/InlineView，插件预测（`CxxuCommand`）仍要求 pwsh 7.2+。
-- 验证：重开 5.1 后执行 `(Get-Module PSReadLine).Version` 与 `Get-PSReadLineOption | Select-Object PredictionSource, PredictionViewStyle`；前者应为目标版本，后者在支持 VT 的终端里为 `History` 与 `ListView`/`InlineView`。
+- 验证：**完全重开** 5.1 窗口（不是只开新标签页），执行 `(Get-Module PSReadLine).Version` 与 `Get-PSReadLineOption | Select-Object PredictionSource, PredictionViewStyle`；前者应为目标版本，后者在支持 VT 的终端里为 `History` 与 `ListView`/`InlineView`。也应在真实交互窗口里验收，而不是只看子进程 `Import-Module`。
 - 回退：关闭所有 5.1 窗口，删除 `~\Documents\WindowsPowerShell\Modules\PSReadLine\<版本>`，重开 5.1 即回到自带的 2.0.0。
-- 从 pwsh 7 启动 `powershell.exe` 时，子进程可能继承 7 的 `PSModulePath` 而不含 5.1 用户模块目录；`init` 在 5.1 下会前置该目录（`Update-CxxuModulePathOrder`），所以重开 5.1 并跑 `init` 后应加载新版本。若 5.1 不跑 `init`，需手动把 `~\Documents\WindowsPowerShell\Modules` 加入 5.1 的 `PSModulePath`。
+- 从 pwsh 7 启动 `powershell.exe` 时，子进程可能继承 7 的 `PSModulePath` 而不含 5.1 用户模块目录；安装命令会持久化 User 级路径，`init` 也会在 5.1 下前置该目录（`Update-CxxuModulePathOrder`）。若 5.1 不跑 `init`，仍需手动把该目录加入 5.1 的 `PSModulePath`。
 
 ### 可选：carapace（由 init 注册懒加载桩）
 
