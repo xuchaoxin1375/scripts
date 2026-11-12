@@ -44,6 +44,17 @@ function Update-CxxuModulePathOrder
     # 再重新导入已被错误版本占位的 Microsoft.PowerShell.Utility;顺序正常时不动作。
     if ($PSVersionTable.PSEdition -ne 'Desktop') { return }
 
+    # 从 pwsh 7 终端启动 5.1 时,子进程可能继承一个不含 5.1 用户模块目录的 PSModulePath;
+    # PSReadLine 在首个提示符前才加载,这里前置用户目录后,升级到 2.3.6 的模块才会被自动选中。
+    $userModules = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'WindowsPowerShell\Modules'
+    $entries = @($env:PSModulePath -split ';' | Where-Object { $_ })
+    if ($userModules -and (Test-Path -LiteralPath $userModules) -and ($entries -notcontains $userModules))
+    {
+        $entries = @($userModules) + $entries
+        $env:PSModulePath = $entries -join ';'
+        Write-Verbose "PSModulePath 缺少 5.1 用户模块目录,已前置: $userModules"
+    }
+
     $ownHome = Join-Path $PSHOME 'Modules'
     $ownNorm = @($ownHome.TrimEnd('\'))
     if ($env:ProgramFiles) { $ownNorm += (Join-Path $env:ProgramFiles 'WindowsPowerShell\Modules').TrimEnd('\') }
@@ -614,25 +625,41 @@ function Set-PSReadLinesAdvanced
     # 注意:[Environment]::UserInteractive 在重定向下仍为 True,不可用;
     # 只有 [Console]::IsOutputRedirected 能区分。
     $consoleInteractive = try { -not [Console]::IsOutputRedirected } catch { $false }
+    # PSReadLine 版本决定可用的预测源与视图:
+    # - 插件预测源(HistoryAndPlugin/Plugin)要求 PowerShell 7.2+;
+    # - 5.1 升级到 PSReadLine 2.2.6+ 后可用 History,但插件源仍不可用;
+    # - 2.0 没有预测参数,整段跳过,避免把 terminating error 当版本不兼容。
+    $rlVer = try { (Get-Module PSReadLine | Sort-Object Version -Descending | Select-Object -First 1).Version } catch { $null }
     if ($consoleInteractive)
     {
         try
         {
-            # 插件必须显式 import 才会向 ListView 供稿(装了不等于加载了);缺失时静默降级为纯历史
-            # -Global:函数内 import 默认嵌套(Get-Module 列不出),强制顶层
-            Import-Module CompletionPredictor -Global -ErrorAction SilentlyContinue
-            Set-PSReadLineOption -PredictionSource HistoryAndPlugin # 设置预测文本来源为历史和插件
-            # 窄窗口(<50 宽或 <5 高)PSReadLine 会刷 ListView WARNING:事先按尺寸分流,窄用内联
-            # (取不到尺寸按宽处理,行为与以前一致;窗口拉大后重跑本函数即按新尺寸重选)
-            $wideEnough = try { ([Console]::WindowWidth -ge 50) -and ([Console]::WindowHeight -ge 5) } catch { $true }
-            if ($wideEnough)
+            if (($PSVersionTable.PSVersion -ge [version]'7.2') -and ($null -ne $rlVer) -and ($rlVer -ge [version]'2.2.2'))
             {
-                Set-PSReadLineOption -PredictionViewStyle ListView -BellStyle None  #使用视图列表显示预测后选
+                # 插件必须显式 import 才会向 ListView 供稿(装了不等于加载了);缺失时静默降级为纯历史
+                # -Global:函数内 import 默认嵌套(Get-Module 列不出),强制顶层
+                Import-Module CompletionPredictor -Global -ErrorAction SilentlyContinue
+                Set-PSReadLineOption -PredictionSource HistoryAndPlugin # 设置预测文本来源为历史和插件
             }
-            else
+            elseif (($null -ne $rlVer) -and ($rlVer -ge [version]'2.1'))
             {
-                Set-PSReadLineOption -PredictionViewStyle InlineView -BellStyle None
-                Write-Verbose '窗口过窄(<50x5),预测视图用内联(避开 ListView 警告);拉大窗口后重跑 Set-PSReadLinesAdvanced 切回列表'
+                Set-PSReadLineOption -PredictionSource History # 5.1 只能用历史预测
+            }
+
+            if (($null -ne $rlVer) -and ($rlVer -ge [version]'2.2.2'))
+            {
+                # 窄窗口(<50 宽或 <5 高)PSReadLine 会刷 ListView WARNING:事先按尺寸分流,窄用内联
+                # (取不到尺寸按宽处理,行为与以前一致;窗口拉大后重跑本函数即按新尺寸重选)
+                $wideEnough = try { ([Console]::WindowWidth -ge 50) -and ([Console]::WindowHeight -ge 5) } catch { $true }
+                if ($wideEnough)
+                {
+                    Set-PSReadLineOption -PredictionViewStyle ListView -BellStyle None  #使用视图列表显示预测后选
+                }
+                else
+                {
+                    Set-PSReadLineOption -PredictionViewStyle InlineView -BellStyle None
+                    Write-Verbose '窗口过窄(<50x5),预测视图用内联(避开 ListView 警告);拉大窗口后重跑 Set-PSReadLinesAdvanced 切回列表'
+                }
             }
         }
         catch
@@ -647,7 +674,6 @@ function Set-PSReadLinesAdvanced
     # listView列表设置
     Set-PSReadLineOption -MaximumHistoryCount 3000  # 可选：增大历史记录总数
     # HistoryNoDuplicates 需 PSReadLine 2.1+;5.1 自带 2.0 无此参数,版本不足跳过
-    $rlVer = try { (Get-Module PSReadLine).Version } catch { $null }
     if (($null -ne $rlVer) -and ($rlVer -ge [version]'2.1'))
     {
         Set-PSReadLineOption -HistoryNoDuplicates  # 历史不存重复命令(防 ConsoleHost_history.txt 无限膨胀,Ctl+R 读全文件,3 万行是它慢的主因)
@@ -661,8 +687,11 @@ function Set-PSReadLinesAdvanced
     # 设置建议窗口高度为 30 行
 
     <# set colors #>
-    # inlineprediction 配色需 PSReadLine 2.1+;低版本(5.1 自带 2.0)未知键会报错,跳过
-    try { Set-PSReadLineOption -Colors @{'inlineprediction' = '#d0d0cb' } -ErrorAction Stop } catch { Write-Verbose "跳过 inlineprediction 配色: $($_.Exception.Message)" }#grayLight(grayDark #babbb4)
+    # inlineprediction 配色需 PSReadLine 2.1+;低版本(5.1 自带 2.0)未知键会报错,版本不足跳过
+    if (($null -ne $rlVer) -and ($rlVer -ge [version]'2.1'))
+    {
+        try { Set-PSReadLineOption -Colors @{'inlineprediction' = '#d0d0cb' } -ErrorAction Stop } catch { Write-Verbose "跳过 inlineprediction 配色: $($_.Exception.Message)" }#grayLight(grayDark #babbb4)
+    }
     <# suggestion list #>
     # Set-PSReadLineOption -PredictionViewStyle ListView
     # Set-PSReadLineOption -EditMode Windows

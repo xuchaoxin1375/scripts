@@ -22,7 +22,7 @@
 | 加模块/加函数 | `Feature-Guide.md §3` → `Module-Conventions.md`（§1 目录、§2 命名、§7 manifest）→ `Module-Map.md`（找位置） | 一次做对，不返工 |
 | 搞懂 dll/同步 | `Live-Versions.md`（设计专章）→ `Deploy-Guide.md §13` | 结构、流程、命令分工、5.1 Tab 产物 |
 | 非 Windows 系统 | `Feature-Guide.md §12`（`doctor`/readiness 按平台过滤并汇总已跳过项） | 哪些可用、哪些是 Windows 专属 |
-| 5.1 兼容 | `Feature-Guide.md §13`（B 档兼容集，`init` 零失败；Tab 补全走 5.1 专用活件） | 降级清单、加码禁区 |
+| 5.1 兼容 | `Feature-Guide.md §13`（B 档兼容集，`init` 零失败；Tab 补全走 5.1 专用活件；PSReadLine 可选用 `-IncludePSReadLine51` 升级） | 降级清单、加码禁区 |
 | 启动太慢 | `Startup-Optimization.md`（基线表 + 搬迁史）→ `init -Timing` | 基线对比，定位慢项 |
 | 写 agent/自动化 | `AGENTS.md`（仓库根入口）→ `Dev-Notes.md`（决策要点，必读） | 红线、换行、提交规范 |
 

@@ -1,6 +1,6 @@
 @{
     RootModule = 'DevEnv.psm1'
-    ModuleVersion = '1.1.0'
+    ModuleVersion = '1.1.1'
     GUID = 'd417f649-d5ce-48ce-82f7-e980051d43a0'
     Author = 'cxxu'
     Description = 'Language toolchains and editors setup: Python/conda/C++/editors/completion'
@@ -19,7 +19,8 @@
         'Deploy-MiniforgeConfig',
         'Deploy-ArgcCompletions',
         'Deploy-Carapace',
-        'Deploy-CompletionStack'
+        'Deploy-CompletionStack',
+        'Install-Ps51PSReadLine'
     )
     CmdletsToExport = @()
     VariablesToExport = @()

@@ -2188,6 +2188,340 @@ function Deploy-Carapace
     }
 }
 
+function Get-CxxuWindowsPowerShell51Path
+{
+    # 定位 Windows PowerShell 5.1 的 powershell.exe（内部函数）。
+    if ($PSEdition -eq 'Desktop') { return (Join-Path $PSHOME 'powershell.exe') }
+    $root = $env:SystemRoot
+    if (-not $root) { $root = $env:windir }
+    if (-not $root) { return $null }
+    $candidate = Join-Path (Join-Path (Join-Path $root 'System32') 'WindowsPowerShell\v1.0') 'powershell.exe'
+    if (Test-Path -LiteralPath $candidate) { return $candidate }
+    return $null
+}
+
+function Invoke-CxxuChildPowerShell
+{
+    # 在子 PowerShell 进程里执行脚本并取回结果（内部函数）。
+    # 子进程把结果写入 UTF-8 临时文件，避免 stdout 编码与代理对象污染；
+    # 调用方脚本必须给 $__cxxuResult 赋值。
+    param(
+        [Parameter(Mandatory)][string]$PowerShellPath,
+        [Parameter(Mandatory)][string]$Script
+    )
+    $resultFile = Join-Path ([IO.Path]::GetTempPath()) ('cxxu-child-' + [guid]::NewGuid().ToString('N') + '.txt')
+    $escapedResult = $resultFile.Replace("'", "''")
+    $full = @"
+`$ErrorActionPreference = 'Stop'
+`$__cxxuResultFile = '$escapedResult'
+try
+{
+$Script
+    [IO.File]::WriteAllText(`$__cxxuResultFile, [string]`$__cxxuResult, [Text.UTF8Encoding]::new(`$false))
+    exit 0
+}
+catch
+{
+    [IO.File]::WriteAllText(`$__cxxuResultFile, 'ERROR: ' + `$_.Exception.Message, [Text.UTF8Encoding]::new(`$false))
+    exit 1
+}
+"@
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($full))
+    $null = & $PowerShellPath -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $encoded 2>&1
+    $exitCode = $LASTEXITCODE
+    $text = ''
+    if (Test-Path -LiteralPath $resultFile) { $text = [IO.File]::ReadAllText($resultFile, [Text.Encoding]::UTF8) }
+    # 清理不受外层 -WhatIf 影响：这是临时文件，不是用户可见的部署动作。
+    Remove-Item -LiteralPath $resultFile -Force -ErrorAction SilentlyContinue -WhatIf:$false
+    [PSCustomObject]@{ ExitCode = $exitCode; Text = $text }
+}
+
+function Get-CxxuPSReadLineModuleRoot51
+{
+    # 5.1 的 CurrentUser 模块目录（内部函数）：正常启动 5.1 时位于 PSModulePath。
+    return (Join-Path (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'WindowsPowerShell\Modules') 'PSReadLine')
+}
+
+function Get-CxxuInstalledPSReadLine
+{
+    # 读取指定模块根目录下已安装的最高版本（内部函数）。
+    param([string]$ModuleRoot)
+    if (-not (Test-Path -LiteralPath $ModuleRoot)) { return $null }
+    $best = $null
+    foreach ($dir in @(Get-ChildItem -LiteralPath $ModuleRoot -Directory -ErrorAction SilentlyContinue))
+    {
+        $version = $null
+        try { $version = [version]$dir.Name } catch { continue }
+        if (-not $version) { continue }
+        if (-not (Test-CxxuPSReadLineModule -ModuleBase $dir.FullName)) { continue }
+        if ((-not $best) -or ($version -gt $best.Version))
+        {
+            $best = [PSCustomObject]@{ Version = $version; Path = $dir.FullName }
+        }
+    }
+    return $best
+}
+
+function Test-CxxuPSReadLineModule
+{
+    # 判断目录是否为可供 5.1 加载的 PSReadLine 模块（内部函数）。
+    # 5.1 需要 net462 资产；只有 net6plus 的版本（面向 pwsh 7+）不能复制过去。
+    param([string]$ModuleBase)
+    if (-not $ModuleBase -or -not (Test-Path -LiteralPath $ModuleBase)) { return $false }
+    if (-not (Test-Path -LiteralPath (Join-Path $ModuleBase 'PSReadLine.psd1'))) { return $false }
+    if (-not (Test-Path -LiteralPath (Join-Path $ModuleBase 'net462'))) { return $false }
+    return $true
+}
+
+function Get-CxxuPSReadLineSource
+{
+    # 查找本机可离线复制的 PSReadLine 模块（内部函数）。
+    # 先看当前会话，再问 pwsh，最后查常见安装目录；都不命中返回 $null。
+    param([Parameter(Mandatory)][version]$Version)
+    $found = @(Get-Module -ListAvailable PSReadLine -ErrorAction SilentlyContinue |
+        Where-Object { ($_.Version -eq $Version) -and (Test-CxxuPSReadLineModule -ModuleBase $_.ModuleBase) } |
+        Select-Object -First 1)
+    if ($found.Count) { return $found[0].ModuleBase }
+
+    $pwsh = Get-Command pwsh -ErrorAction SilentlyContinue
+    if ($pwsh)
+    {
+        $query = @'
+$m = Get-Module -ListAvailable PSReadLine | Where-Object { $_.Version -eq [version]'__VERSION__' } | Select-Object -First 1
+if ($m) { $__cxxuResult = $m.ModuleBase } else { $__cxxuResult = '' }
+'@.Replace('__VERSION__', $Version.ToString())
+        $result = Invoke-CxxuChildPowerShell -PowerShellPath $pwsh.Source -Script $query
+        if (($result.ExitCode -eq 0) -and $result.Text -and (Test-CxxuPSReadLineModule -ModuleBase $result.Text.Trim()))
+        {
+            return $result.Text.Trim()
+        }
+    }
+
+    if ($env:ProgramFiles)
+    {
+        foreach ($edition in @('7', '7-preview', '6'))
+        {
+            $base = Join-Path (Join-Path $env:ProgramFiles 'PowerShell') $edition
+            $candidate = Join-Path (Join-Path $base 'Modules\PSReadLine') $Version.ToString()
+            if (Test-CxxuPSReadLineModule -ModuleBase $candidate) { return $candidate }
+        }
+    }
+    return $null
+}
+
+function Get-CxxuPSReadLineDiscovery51
+{
+    # 读取 5.1 当前能自动发现的 PSReadLine 版本（内部函数）。
+    # 已在 5.1 会话时直接查当前会话，避免把 -NoProfile 子进程的状态误当成用户会话；
+    # 在 pwsh 7 里才启动 5.1 子进程查询。
+    param([Parameter(Mandatory)][string]$PowerShellPath)
+    $version = $null
+    $path = ''
+    if ($PSEdition -eq 'Desktop')
+    {
+        $m = Get-Module -ListAvailable PSReadLine -ErrorAction SilentlyContinue |
+            Sort-Object Version -Descending | Select-Object -First 1
+        if ($m)
+        {
+            $version = $m.Version
+            $path = $m.ModuleBase
+        }
+    }
+    else
+    {
+        $script = @'
+$m = Get-Module -ListAvailable PSReadLine | Sort-Object Version -Descending | Select-Object -First 1
+if ($m) { $__cxxuResult = '{0}|{1}' -f $m.Version, $m.ModuleBase } else { $__cxxuResult = 'none|' }
+'@
+        $r = Invoke-CxxuChildPowerShell -PowerShellPath $PowerShellPath -Script $script
+        if (($r.ExitCode -eq 0) -and ($r.Text -match '^(.+?)\|(.*)$') -and ($matches[1] -ne 'none'))
+        {
+            try { $version = [version]$matches[1] } catch { $version = $null }
+            $path = $matches[2]
+        }
+    }
+    [PSCustomObject]@{ Version = $version; Path = $path }
+}
+
+function Install-Ps51PSReadLine
+{
+    <#
+    .SYNOPSIS
+    为 Windows PowerShell 5.1 安装或更新 PSReadLine（默认 2.3.6，优先离线复制本机模块）。
+
+    .DESCRIPTION
+    5.1 自带 PSReadLine 2.0.0，缺少历史去重、历史预测、inlineprediction 配色与 ListView 等能力。
+    本函数把兼容 5.1 的版本装进 5.1 的 CurrentUser 模块目录
+    （~\Documents\WindowsPowerShell\Modules\PSReadLine\<版本>），重开 5.1 后由 init 自动使用。
+
+    安装源优先取本机已安装的同版本模块（通常是 pwsh 7 随附的 2.3.6），直接复制，不联网；
+    本机没有时才回退到 PowerShell 5.1 的 Install-Module（PSGallery，需要网络）。
+    复制和安装都会在 5.1 子进程里实际导入一次做验证，验证失败会告警并保留回退入口。
+
+    .PARAMETER Version
+    目标版本，默认 2.3.6（与 pwsh 7.5 随附版本一致，已在 5.1.26100 验证）。
+    指定其他版本时，该版本必须带 net462 资产，否则不会被复制。
+
+    .PARAMETER Force
+    即使 5.1 用户模块目录已有同版本或更高版本，也重新复制/安装。
+
+    .PARAMETER NoGallery
+    本机没有可复制的离线副本时不再回退 PSGallery，直接结束并告警。
+
+    .EXAMPLE
+    Install-Ps51PSReadLine -WhatIf
+
+    .EXAMPLE
+    Install-Ps51PSReadLine
+
+    .EXAMPLE
+    Install-Ps51PSReadLine -Version 2.3.6 -Force
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [version]$Version = [version]'2.3.6',
+        [switch]$Force,
+        [switch]$NoGallery
+    )
+
+    if (-not (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true)))
+    {
+        Write-Warning 'PSReadLine 5.1 升级只适用于 Windows。'
+        return
+    }
+
+    $ps51 = Get-CxxuWindowsPowerShell51Path
+    if (-not $ps51)
+    {
+        Write-Warning '未找到 powershell.exe（Windows PowerShell 5.1），跳过 PSReadLine 升级。'
+        return
+    }
+
+    $moduleRoot = Get-CxxuPSReadLineModuleRoot51
+    $dest = Join-Path $moduleRoot $Version.ToString()
+    $installed = Get-CxxuInstalledPSReadLine -ModuleRoot $moduleRoot
+
+    # 先报告 5.1 当前实际能发现的版本，便于判断是 2.0.0 还是已经升级过。
+    $state = Get-CxxuPSReadLineDiscovery51 -PowerShellPath $ps51
+    if ($state.Version)
+    {
+        Write-Host ("Windows PowerShell 5.1 当前可发现：PSReadLine {0}（{1}）" -f $state.Version, $state.Path)
+    }
+    else
+    {
+        Write-Host 'Windows PowerShell 5.1 当前未发现 PSReadLine。'
+    }
+
+    if ($installed -and ($installed.Version -ge $Version) -and (-not $Force))
+    {
+        Write-Host ("5.1 用户模块目录已有 PSReadLine {0}（{1}），无需安装；要重装加 -Force。" -f $installed.Version, $installed.Path)
+        if ($state.Version -and ($state.Version -lt $installed.Version))
+        {
+            Write-Host '当前 5.1 会话尚未把用户模块目录放进 PSModulePath；跑 init 或重开 5.1 后会使用新版本。'
+        }
+        return
+    }
+
+    if (-not $installed -or ($installed.Version -lt $Version))
+    {
+        Write-Host ("5.1 自带 2.0.0，不支持历史去重、历史预测与 inlineprediction 配色；本次安装 {0}。" -f $Version)
+    }
+
+    $source = Get-CxxuPSReadLineSource -Version $Version
+    if ($source)
+    {
+        Write-Host ("来源：{0}（本机已有，离线复制，不联网）" -f $source)
+        Write-Host ("目标：{0}" -f $dest)
+        if (-not $PSCmdlet.ShouldProcess($dest, "复制 PSReadLine $Version")) { return }
+
+        if (-not (Test-Path -LiteralPath $moduleRoot)) { $null = New-Item -ItemType Directory -Path $moduleRoot -Force }
+        $staging = Join-Path $moduleRoot ('.staging-' + [guid]::NewGuid().ToString('N'))
+        $backup = $null
+        try
+        {
+            Copy-Item -LiteralPath $source -Destination $staging -Recurse -Force
+            if (-not (Test-CxxuPSReadLineModule -ModuleBase $staging)) { throw '复制后的模块缺少 PSReadLine.psd1 或 net462 资产。' }
+            if (Test-Path -LiteralPath $dest)
+            {
+                $backup = $dest + '.old-' + (Get-Date -Format 'yyyyMMddHHmmss')
+                Move-Item -LiteralPath $dest -Destination $backup -Force
+            }
+            Move-Item -LiteralPath $staging -Destination $dest -Force
+            if ($backup -and (Test-Path -LiteralPath $backup)) { Remove-Item -LiteralPath $backup -Recurse -Force -ErrorAction SilentlyContinue -WhatIf:$false }
+        }
+        catch
+        {
+            if ($backup -and (-not (Test-Path -LiteralPath $dest)) -and (Test-Path -LiteralPath $backup))
+            {
+                Move-Item -LiteralPath $backup -Destination $dest -Force -ErrorAction SilentlyContinue
+            }
+            throw
+        }
+        finally
+        {
+            if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue -WhatIf:$false }
+        }
+    }
+    else
+    {
+        if ($NoGallery)
+        {
+            Write-Warning ("本机没有 PSReadLine {0} 的离线副本，且已指定 -NoGallery。" -f $Version)
+            return
+        }
+        Write-Host '来源：本机没有可复制的离线副本，改用 5.1 从 PSGallery 安装（需要网络）。'
+        Write-Host ("目标：{0}" -f $dest)
+        if (-not $PSCmdlet.ShouldProcess($dest, "从 PSGallery 安装 PSReadLine $Version")) { return }
+
+        $galleryScript = @'
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+Install-Module -Name PSReadLine -RequiredVersion '__VERSION__' -Scope CurrentUser -Force -AllowClobber -ErrorAction Stop
+$__cxxuResult = 'installed'
+'@.Replace('__VERSION__', $Version.ToString())
+        $gallery = Invoke-CxxuChildPowerShell -PowerShellPath $ps51 -Script $galleryScript
+        if ($gallery.ExitCode -ne 0)
+        {
+            Write-Warning ("PSGallery 安装失败：{0}`n可在 5.1 中手动执行：Install-Module PSReadLine -RequiredVersion {1} -Scope CurrentUser -Force" -f $gallery.Text, $Version)
+            return
+        }
+    }
+
+    # 实际在 5.1 子进程里导入一次，确认版本与资产都能用。
+    $destManifest = Join-Path $dest 'PSReadLine.psd1'
+    $verifyScript = @'
+Import-Module '__DEST__' -Force -ErrorAction Stop
+$m = Get-Module PSReadLine
+$__cxxuResult = '{0}|{1}' -f $m.Version, $m.ModuleBase
+'@.Replace('__DEST__', $destManifest.Replace("'", "''"))
+    $verify = Invoke-CxxuChildPowerShell -PowerShellPath $ps51 -Script $verifyScript
+    if ($verify.ExitCode -ne 0)
+    {
+        Write-Warning ("PSReadLine 已写入 {0}，但在 5.1 中导入验证失败：{1}`n可删除该版本目录回退。" -f $dest, $verify.Text)
+        return
+    }
+
+    Write-Host ("已安装并验证：PSReadLine {0}" -f $verify.Text.Trim())
+
+    # 再从默认模块路径查一次：从 pwsh 7 启动的 5.1 子进程可能没有用户模块目录，
+    # 这种情况下文件已装好，但该子进程仍会自动发现旧版，需要正常启动 5.1 才生效。
+    $after = Get-CxxuPSReadLineDiscovery51 -PowerShellPath $ps51
+    if ($after.Version)
+    {
+        if ($after.Version -lt $Version)
+        {
+            $userModules = Split-Path $moduleRoot -Parent
+            Write-Host ("注意：未执行 init 的 5.1 子进程仍自动发现 PSReadLine {0}；正常启动 5.1 跑 init 后会前置 {1} 并加载 {2}。若你的 5.1 不跑 init，请把该目录加入 5.1 的 PSModulePath。" -f $after.Version, $userModules, $Version)
+        }
+        else
+        {
+            Write-Host ("5.1 已能自动发现：PSReadLine {0}" -f $after.Version)
+        }
+    }
+
+    Write-Host '重开 Windows PowerShell 5.1 后生效；init 会按版本启用历史去重、inlineprediction 配色和历史预测。'
+    Write-Host ("回退：关闭所有 5.1 窗口后删除 {0}" -f $dest)
+}
+
 function Deploy-CompletionStack
 {
     <#
@@ -2202,6 +2536,8 @@ function Deploy-CompletionStack
     - -IncludePredictor：CompletionPredictor 模块（参数/路径内联预测）。
     - -IncludePSCompletions：PSCompletions 模块（命令参数补全库）。
     - -IncludeGitCompletion：git-completion 模块（git/gitk 的 Tab 补全，init 检测到后自动挂载）。
+    - -IncludePSReadLine51：Windows PowerShell 5.1 的 PSReadLine 升级（默认 2.3.6；
+      优先复制本机 pwsh 自带的同版本模块，缺失时才回退 PSGallery）。
     - -All：一次选择以上全部；-SkipArgc / -SkipBinaries 仍可用于排除 argc 或二进制。
     国内网络不稳时，可先 Set-Proxy On（或设置 HTTPS_PROXY/HTTP_PROXY）再执行；
     下载会自动识别代理，也可用 -Proxy/-NoProxy 单次覆盖；-NoMirror 跳过转存仓库直接走上游。
@@ -2215,6 +2551,8 @@ function Deploy-CompletionStack
     Deploy-CompletionStack -IncludeArgc -IncludeFuzzy -Proxy http://127.0.0.1:7897
     .EXAMPLE
     Deploy-CompletionStack -All -SkipBinaries
+    .EXAMPLE
+    Deploy-CompletionStack -IncludePSReadLine51
     #>
     [CmdletBinding(SupportsShouldProcess)]
     param(
@@ -2228,6 +2566,10 @@ function Deploy-CompletionStack
         [switch]$IncludePSCompletions,
         # 追加 git-completion 模块（默认不装；init 检测到后自动挂载 git/gitk 补全）
         [switch]$IncludeGitCompletion,
+        # 追加 Windows PowerShell 5.1 的 PSReadLine 升级（默认不装；优先离线复制本机模块）
+        [switch]$IncludePSReadLine51,
+        # 5.1 目标 PSReadLine 版本（默认 2.3.6，与 pwsh 7.5 随附版本一致）
+        [version]$PSReadLineVersion51 = [version]'2.3.6',
         # 等价于同时勾选以上全部 Include 开关
         [switch]$All,
         # 兼容旧参数：即使 -All/-IncludeArgc 也跳过 argc
@@ -2253,6 +2595,7 @@ function Deploy-CompletionStack
         $IncludePredictor = $true
         $IncludePSCompletions = $true
         $IncludeGitCompletion = $true
+        $IncludePSReadLine51 = $true
     }
 
     # 核心层:CxxuCommand(命令名分层模糊提示)与 CxxuTab 都随仓库分发,需要的是活件,不是安装模块
@@ -2354,20 +2697,38 @@ function Deploy-CompletionStack
         }
     }
 
+    if ($IncludePSReadLine51)
+    {
+        Write-Host '可选层：Windows PowerShell 5.1 的 PSReadLine'
+        if (-not (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true)))
+        {
+            Write-Warning 'PSReadLine 5.1 升级只适用于 Windows，已跳过。'
+        }
+        else
+        {
+            Install-Ps51PSReadLine -Version $PSReadLineVersion51 -WhatIf:$WhatIfPreference
+        }
+    }
+
     if ($coreReady -eq $true) { Write-Host '核心 CxxuCommand：预测活件已就绪，新终端跑 init 生效（开关 $env:PsPredictor）' }
     elseif ($null -eq $coreReady) { Write-Host '核心 CxxuCommand：本次为空跑（-WhatIf），未同步活件；去掉 -WhatIf 执行' }
     elseif ($tabReady -eq $true) { Write-Host '核心 CxxuCommand：5.1 仅 Tab 补全，Tab 活件已就绪；重开终端后按 Tab 生效（开关 $env:PsTab）' }
     elseif ($null -eq $tabReady) { Write-Host '核心 CxxuCommand：本次为空跑（-WhatIf），未同步 5.1 Tab 活件；去掉 -WhatIf 执行' }
     else { Write-Host '核心 CxxuCommand：未就绪（内联预测需 pwsh 7.5+；5.1 Tab 需执行 Sync-CxxuPredictor）' }
 
-    Write-Host '默认层只含仓库内活件；可选层按 -IncludeArgc/-IncludeFuzzy/-IncludePredictor/-IncludePSCompletions/-IncludeGitCompletion 追加（-All 全选）。'
-    if (-not $IncludeArgc -and -not $IncludeFuzzy -and -not $IncludePredictor -and -not $IncludePSCompletions -and -not $IncludeGitCompletion)
+    Write-Host '默认层只含仓库内活件；可选层按 -IncludeArgc/-IncludeFuzzy/-IncludePredictor/-IncludePSCompletions/-IncludeGitCompletion/-IncludePSReadLine51 追加（-All 全选）。'
+    if (-not $IncludeArgc -and -not $IncludeFuzzy -and -not $IncludePredictor -and -not $IncludePSCompletions -and -not $IncludeGitCompletion -and -not $IncludePSReadLine51)
     {
         Write-Host '未选择可选层：本次没有网络下载，也没有安装仓库外组件。'
+    }
+    if ((-not $IncludePSReadLine51) -and (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true)))
+    {
+        Write-Host '提示：Windows PowerShell 5.1 自带 PSReadLine 2.0.0；需要历史预测、历史去重与 inlineprediction 配色时加 -IncludePSReadLine51（默认装 2.3.6，优先离线复制本机模块）。'
     }
     if ($env:PsTab -match '^(False|0|No|Off)$') { Write-Warning 'PsTab 当前为关闭：Tab 补全不会加载；需要时 Enable-PsPlugin Tab -Persist' }
     if ($env:PsPredictor -match '^(False|0|No|Off)$') { Write-Warning 'PsPredictor 当前为关闭：命令名内联预测不会加载；需要时 Enable-PsPlugin Predictor -Persist' }
     if ($IncludeArgc -and ($env:PsArgc -match '^(False|0|No|Off)$')) { Write-Warning 'PsArgc 当前为关闭：argc 参数补全不会加载；需要时 Enable-PsPlugin Argc -Persist' }
+    if ($IncludePSReadLine51) { Write-Host '验收（5.1 PSReadLine）：重开 Windows PowerShell 5.1 跑 init 后，(Get-Module PSReadLine).Version 应显示目标版本。' }
     Write-Host '验收：pwsh 7.5+ 在 ListView 输 get-child；Tab 输 get-chi；参数输 nginx -<Tab>；git 输 git ch<Tab>；异常先跑 doctor。'
     if (($IncludeArgc -or $IncludeFuzzy -or $IncludePSCompletions -or $IncludeGitCompletion) -and -not $Proxy -and -not $NoProxy -and -not (Get-CxxuProxyUrl))
     {

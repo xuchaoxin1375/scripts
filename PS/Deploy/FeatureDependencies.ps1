@@ -79,8 +79,8 @@ $homeDir = $HOME
         Name          = 'PSReadLine'
         MinVersion    = '2.1'
         MissingStatus = '版本过低'
-        Impact        = '历史去重、inlineprediction 配色等增强不可用；Windows PowerShell 5.1 自带 2.0.0。'
-        Install       = '随 pwsh 分发；需要时 Install-Module PSReadLine -Scope CurrentUser -Force'
+        Impact        = '历史去重、inlineprediction 配色、历史预测与 ListView 不可用；Windows PowerShell 5.1 自带 2.0.0。'
+        Install       = '随 pwsh 分发；5.1 用 Deploy-CompletionStack -IncludePSReadLine51，或单独 Install-Ps51PSReadLine（默认 2.3.6，优先离线复制）'
         Docs          = 'Feature-Guide.md §13'
     }
 

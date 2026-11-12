@@ -91,7 +91,7 @@ Get-CxxuDependencyReport -Json           # 供其他程序消费
 
 | 功能 | 外部依赖或生成物 | 级别 | 缺失影响 | 安装或生成入口 |
 |---|---|---|---|---|
-| 核心运行环境 | `PSModulePath` 含模块集、profile 含 `init`、pwsh 7.5+、git、PSReadLine 2.1+ | 必需/推荐 | 模块不自动加载、新终端不初始化、命令名预测不可用、更新与克隆不可用、历史增强不可用 | `Add-EnvVar`、`Add-CxxuPsModuleToProfile`、`Update-PowerShell`、`Confirm-GitCommand`、`Install-Module PSReadLine` |
+| 核心运行环境 | `PSModulePath` 含模块集、profile 含 `init`、pwsh 7.5+、git、PSReadLine 2.1+ | 必需/推荐 | 模块不自动加载、新终端不初始化、命令名预测不可用、更新与克隆不可用、历史增强不可用 | `Add-EnvVar`、`Add-CxxuPsModuleToProfile`、`Update-PowerShell`、`Confirm-GitCommand`、`Install-Ps51PSReadLine`（5.1） |
 | 补全：命令名预测 | `CxxuPredictor` 活件；本地重编另需 `dotnet` SDK | 生成物/可选 | 命令名内联预测不工作；Tab 补全仍可用 | `Sync-CxxuPredictor`；本地重编另装 .NET SDK 9+ |
 | 补全：Tab 增强 | `CxxuTab` 的 Windows PowerShell 5.1 活件 | 生成物 | 5.1 的 Tab 模糊补全不可用；pwsh 7 使用根活件 | `Sync-CxxuPredictor` |
 | 补全：模糊搜索 | `PSFzf` 模块、`fzf` 二进制 | 推荐 | `Ctrl+T` 选文件、`Ctrl+R` 搜历史不可用 | `Deploy-CompletionStack -IncludeFuzzy`；或 `Confirm-ModuleInstalled -ModuleName PSFzf -Install`、`scoop install fzf` 或 `brew install fzf` |
@@ -180,7 +180,7 @@ Get-CxxuDependencyReport -Json           # 供其他程序消费
 
 - Windows 专属依赖（`scoop`、`sshd`、`alist`、`chfs`、`BurntToast`、5.1 Tab 活件）在 macOS/Linux 上自动标记为 `不适用`，不计入待处理。
 - macOS 专属依赖（`brew`）在 Windows/Linux 上标记为 `不适用`；Linux 使用系统包管理器安装同类软件。
-- `pwsh 7.5+` 与 `PSReadLine 2.1+` 只比较版本；其余命令依赖只判断是否存在，不执行 `--version`，避免报告过程启动大量子进程。
+- `pwsh 7.5+` 与 `PSReadLine 2.1+` 只比较版本；其余命令依赖只判断是否存在，不执行 `--version`，避免报告过程启动大量子进程。Windows PowerShell 5.1 的 PSReadLine 2.0.0 会被判为版本过低，升级入口是 `Deploy-CompletionStack -IncludePSReadLine51` 或 `Install-Ps51PSReadLine`；不升级不影响 Tab 补全。
 - 模块依赖只检查已加载或可发现的模块，不验证能否在当前 PowerShell 版本加载；实际加载状态由 `doctor` 与 `init` 错误账本给出。
 - `argc` 的检查覆盖仓库、平台补全目录、可执行文件和 Windows 下的 `bash`；更细的注册状态与 `argc --argc-shell-path` 结果由 `doctor` 的 `argc 补全` 行给出。
 - 运维模块的远端依赖不在本表：例如 `WpOnline` 还需要目标服务器具备 `unzip`、`screen`、`mysql` 等命令，详见对应模块帮助与 [Module-Map.md](Module-Map.md)。

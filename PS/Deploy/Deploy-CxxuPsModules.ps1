@@ -751,6 +751,7 @@ function Deploy-CxxuPsModules
             }
             Install-Ps51Profile -ErrorAction Stop
             Write-Host "部署完成。请重新打开 powershell.exe(Windows PowerShell 5.1),再执行 init。" -ForegroundColor Green
+            Write-Host "提示：5.1 自带 PSReadLine 2.0.0；需要历史预测或 ListView 时，重开 5.1 后运行 Install-Ps51PSReadLine（或 Deploy-CompletionStack -IncludePSReadLine51）。" -ForegroundColor Yellow
         }
         catch
         {
