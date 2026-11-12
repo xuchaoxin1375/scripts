@@ -2343,6 +2343,207 @@ if ($m) { $__cxxuResult = '{0}|{1}' -f $m.Version, $m.ModuleBase } else { $__cxx
     [PSCustomObject]@{ Version = $version; Path = $path }
 }
 
+function Get-CxxuPSReadLineFromPwsh
+{
+    # 枚举本机 pwsh 侧的 PSReadLine，返回可供 5.1 同步的最高版本（内部函数）。
+    # 5.1 需要 net462 资产；不含该资产的版本只有在比可用版本更新时才记入 Skipped，
+    # 用于提示“pwsh 升级了但 5.1 跟不了”。
+    $seen = New-Object System.Collections.Generic.List[object]
+    $pwsh = Get-Command pwsh -ErrorAction SilentlyContinue
+    if ($pwsh)
+    {
+        $query = @'
+$lines = @(Get-Module -ListAvailable PSReadLine | ForEach-Object { '{0}|{1}' -f $_.Version, $_.ModuleBase })
+$__cxxuResult = ($lines -join "`n")
+'@
+        $r = Invoke-CxxuChildPowerShell -PowerShellPath $pwsh.Source -Script $query
+        if (($r.ExitCode -eq 0) -and $r.Text)
+        {
+            foreach ($line in @($r.Text -split "`r?`n"))
+            {
+                if ($line -match '^(\d+(?:\.\d+){1,3})\|(.+)$')
+                {
+                    $seen.Add([pscustomobject]@{ Version = [version]$matches[1]; ModuleBase = $matches[2].Trim() })
+                }
+            }
+        }
+    }
+    if ($env:ProgramFiles)
+    {
+        foreach ($edition in @('7', '7-preview', '6'))
+        {
+            $root = Join-Path (Join-Path (Join-Path $env:ProgramFiles 'PowerShell') $edition) 'Modules\PSReadLine'
+            if (-not (Test-Path -LiteralPath $root)) { continue }
+            foreach ($dir in @(Get-ChildItem -LiteralPath $root -Directory -ErrorAction SilentlyContinue))
+            {
+                $v = $null
+                try { $v = [version]$dir.Name } catch { continue }
+                $seen.Add([pscustomobject]@{ Version = $v; ModuleBase = $dir.FullName })
+            }
+        }
+    }
+
+    # 同一目录可能来自多个入口（pwsh 查询、常见安装目录），按版本+目录去重；
+    # 5.1 自己的用户模块目录是同步目标，不能反过来当来源。
+    $destRoot = (Get-CxxuPSReadLineModuleRoot51).TrimEnd('\')
+    $unique = @{}
+    foreach ($item in $seen)
+    {
+        if (($item.ModuleBase.TrimEnd('\')) -like ($destRoot + '\*')) { continue }
+        $key = '{0}|{1}' -f $item.Version, $item.ModuleBase
+        if (-not $unique.ContainsKey($key)) { $unique[$key] = $item }
+    }
+    $all = @($unique.Values | Sort-Object Version -Descending)
+    if ($all.Count -eq 0)
+    {
+        return [pscustomobject]@{ Version = $null; ModuleBase = ''; NewestSeen = $null; Skipped = @() }
+    }
+
+    $usable = @($all | Where-Object { Test-CxxuPSReadLineModule -ModuleBase $_.ModuleBase })
+    # 只报告“比可用版本还新、但缺少 net462”的版本：旧版本（如系统自带 2.0.0）不构成跟进信号。
+    $skipped = @($all | Where-Object {
+            (-not (Test-CxxuPSReadLineModule -ModuleBase $_.ModuleBase)) -and
+            (($usable.Count -eq 0) -or ($_.Version -gt $usable[0].Version))
+        } | ForEach-Object { $_.Version.ToString() } | Select-Object -Unique)
+    if ($usable.Count -eq 0)
+    {
+        return [pscustomobject]@{ Version = $null; ModuleBase = ''; NewestSeen = $all[0].Version; Skipped = $skipped }
+    }
+    return [pscustomobject]@{
+        Version = $usable[0].Version
+        ModuleBase = $usable[0].ModuleBase
+        NewestSeen = $all[0].Version
+        Skipped = $skipped
+    }
+}
+
+function Sync-Ps51PSReadLine
+{
+    <#
+    .SYNOPSIS
+    让 Windows PowerShell 5.1 的 PSReadLine 跟随本机 pwsh 附带的版本。
+
+    .DESCRIPTION
+    5.1 的 PSReadLine 是安装时从 pwsh 模块目录复制的一份独立副本，pwsh 升级不会
+    自动传导过去。本函数对比两边版本：pwsh 侧更高且带 net462 资产时安装该版本，
+    已相同时不做改动，5.1 更高时不降级。
+
+    只同步可被 5.1 加载的版本：pwsh 侧若只有 net6/net9 资产的新版本，会报告并保持
+    5.1 现有版本。安装后仍需完全重开 5.1 窗口，旧窗口不会热替换已加载的模块。
+
+    .PARAMETER CheckOnly
+    只报告两边版本与是否需要同步，不写入任何文件；返回状态对象。
+
+    .PARAMETER Force
+    版本相同也重新复制一次。
+
+    .PARAMETER NoPersistModulePath
+    不检查/写入 User PSModulePath，见 Install-Ps51PSReadLine。
+
+    .PARAMETER PassThru
+    返回状态对象（Version、ModuleBase、SyncNeeded、Action）。
+
+    .EXAMPLE
+    Sync-Ps51PSReadLine -CheckOnly
+
+    .EXAMPLE
+    Sync-Ps51PSReadLine
+
+    .EXAMPLE
+    Sync-Ps51PSReadLine -CheckOnly | Select-Object Ps51Version, PwshVersion, SyncNeeded
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [switch]$CheckOnly,
+        [switch]$Force,
+        [switch]$NoPersistModulePath,
+        [switch]$PassThru
+    )
+
+    if (-not (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true)))
+    {
+        Write-Warning 'PSReadLine 5.1 同步只适用于 Windows。'
+        return
+    }
+
+    $ps51 = Get-CxxuWindowsPowerShell51Path
+    if (-not $ps51)
+    {
+        Write-Warning '未找到 powershell.exe（Windows PowerShell 5.1），跳过同步。'
+        return
+    }
+
+    $moduleRoot = Get-CxxuPSReadLineModuleRoot51
+    $installed = Get-CxxuInstalledPSReadLine -ModuleRoot $moduleRoot
+    $source = Get-CxxuPSReadLineFromPwsh
+
+    $ps51Version = if ($installed) { $installed.Version } else { $null }
+    $pwshVersion = $source.Version
+    $syncNeeded = ($null -ne $pwshVersion) -and (($null -eq $ps51Version) -or ($pwshVersion -gt $ps51Version))
+    $status = [pscustomobject]@{
+        Ps51Version = $ps51Version
+        Ps51Path = if ($installed) { $installed.Path } else { '' }
+        PwshVersion = $pwshVersion
+        PwshPath = $source.ModuleBase
+        NewestSeen = $source.NewestSeen
+        SyncNeeded = $syncNeeded
+        Action = 'none'
+    }
+
+    if ($ps51Version)
+    {
+        Write-Host ("5.1 当前：PSReadLine {0}（{1}）" -f $ps51Version, $installed.Path)
+    }
+    else
+    {
+        Write-Host '5.1 当前：用户模块目录没有可用的 PSReadLine（只有系统自带 2.0.0 时属于此情况）。'
+    }
+    if ($pwshVersion)
+    {
+        Write-Host ("pwsh 侧可同步：PSReadLine {0}（{1}）" -f $pwshVersion, $source.ModuleBase)
+    }
+    else
+    {
+        Write-Warning ("pwsh 侧没有可供 5.1 使用的 PSReadLine（需要 net462 资产）。{0}" -f
+            $(if ($source.NewestSeen) { "最新为 $($source.NewestSeen)，缺少 net462。" } else { '' }))
+    }
+    if (@($source.Skipped).Count)
+    {
+        Write-Host ("已跳过缺少 net462 的版本：{0}" -f (@($source.Skipped) -join '、'))
+    }
+
+    if (-not $pwshVersion)
+    {
+        if ($PassThru -or $CheckOnly) { return $status }
+        return
+    }
+
+    if ($syncNeeded)
+    {
+        Write-Host ("需要同步：{0} → {1}" -f $(if ($ps51Version) { $ps51Version } else { '无' }), $pwshVersion)
+    }
+    elseif ($Force)
+    {
+        Write-Host ("版本相同（{0}），按 -Force 重新复制。" -f $pwshVersion)
+    }
+    elseif ($ps51Version -gt $pwshVersion)
+    {
+        Write-Host ("5.1 已高于 pwsh（{0} > {1}），不降级。" -f $ps51Version, $pwshVersion)
+    }
+    else
+    {
+        Write-Host '两边一致，无需同步。'
+    }
+
+    if ($CheckOnly) { return $status }
+    if ((-not $syncNeeded) -and (-not $Force)) { if ($PassThru) { return $status }; return }
+
+    # 复制、导入验证与 PSModulePath 持久化都复用安装函数，避免两条实现分叉。
+    Install-Ps51PSReadLine -Version $pwshVersion -Force:$Force -NoPersistModulePath:$NoPersistModulePath
+    $status.Action = 'installed'
+    if ($PassThru) { return $status }
+}
+
 function Install-Ps51PSReadLine
 {
     <#
@@ -2361,6 +2562,8 @@ function Install-Ps51PSReadLine
     默认会把 5.1 用户模块目录前插到 User 级 PSModulePath（已存在则跳过），否则
     PSReadLine 可能在 init 之前就加载了系统自带的 2.0.0；`-NoPersistModulePath` 可跳过。
     持久化后仍需完全重开 5.1 窗口，旧窗口不会热替换已加载的模块。
+
+    这是安装时的一次性副本，pwsh 升级不会自动传导；需要跟随时执行 Sync-Ps51PSReadLine。
 
     .PARAMETER Version
     目标版本，默认 2.3.6（与 pwsh 7.5 随附版本一致，已在 5.1.26100 验证）。
@@ -2454,12 +2657,25 @@ function Install-Ps51PSReadLine
         {
             Write-Host '当前 5.1 会话尚未把用户模块目录放进 PSModulePath；跑 init 或重开 5.1 后会使用新版本。'
         }
+        # pwsh 升级不会传导到这份独立副本；这里只提示，不自动跟随（新版本未在 5.1 验证）。
+        $pwshSide = Get-CxxuPSReadLineFromPwsh
+        if ($pwshSide.Version -and ($pwshSide.Version -gt $installed.Version))
+        {
+            Write-Host ("提示：本机 pwsh 附带 PSReadLine {0}，比 5.1 的 {1} 新；需要跟随时执行 Sync-Ps51PSReadLine（或 -Version {0} -Force）。" -f $pwshSide.Version, $installed.Version)
+        }
         return
     }
 
     if (-not $installed -or ($installed.Version -lt $Version))
     {
-        Write-Host ("5.1 自带 2.0.0，不支持历史去重、历史预测与 inlineprediction 配色；本次安装 {0}。" -f $Version)
+        if ($installed)
+        {
+            Write-Host ("5.1 用户模块目录当前为 {0}，本次升级到 {1}。" -f $installed.Version, $Version)
+        }
+        else
+        {
+            Write-Host ("5.1 自带 2.0.0，不支持历史去重、历史预测与 inlineprediction 配色；本次安装 {0}。" -f $Version)
+        }
     }
 
     $source = Get-CxxuPSReadLineSource -Version $Version
@@ -2573,6 +2789,8 @@ function Deploy-CompletionStack
     - -IncludePSReadLine51：Windows PowerShell 5.1 的 PSReadLine 升级（默认 2.3.6；
       优先复制本机 pwsh 自带的同版本模块，缺失时才回退 PSGallery；默认把用户模块目录
       加入 User PSModulePath，完全重开 5.1 生效）。
+    - -PSReadLine51FollowPwsh：不钉死版本，改为跟随本机 pwsh 当前附带的 PSReadLine
+      （要求该版本带 net462 资产）；与 -PSReadLineVersion51 互斥。
     - -All：一次选择以上全部；-SkipArgc / -SkipBinaries 仍可用于排除 argc 或二进制。
     国内网络不稳时，可先 Set-Proxy On（或设置 HTTPS_PROXY/HTTP_PROXY）再执行；
     下载会自动识别代理，也可用 -Proxy/-NoProxy 单次覆盖；-NoMirror 跳过转存仓库直接走上游。
@@ -2605,6 +2823,8 @@ function Deploy-CompletionStack
         [switch]$IncludePSReadLine51,
         # 5.1 目标 PSReadLine 版本（默认 2.3.6，与 pwsh 7.5 随附版本一致）
         [version]$PSReadLineVersion51 = [version]'2.3.6',
+        # 改为跟随本机 pwsh 附带的 PSReadLine 版本（与 -PSReadLineVersion51 互斥）
+        [switch]$PSReadLine51FollowPwsh,
         # 等价于同时勾选以上全部 Include 开关
         [switch]$All,
         # 兼容旧参数：即使 -All/-IncludeArgc 也跳过 argc
@@ -2741,7 +2961,18 @@ function Deploy-CompletionStack
         }
         else
         {
-            Install-Ps51PSReadLine -Version $PSReadLineVersion51 -WhatIf:$WhatIfPreference
+            if ($PSReadLine51FollowPwsh)
+            {
+                if ($PSBoundParameters.ContainsKey('PSReadLineVersion51'))
+                {
+                    Write-Warning '-PSReadLine51FollowPwsh 与 -PSReadLineVersion51 互斥，本次按跟随 pwsh 处理。'
+                }
+                Sync-Ps51PSReadLine -WhatIf:$WhatIfPreference
+            }
+            else
+            {
+                Install-Ps51PSReadLine -Version $PSReadLineVersion51 -WhatIf:$WhatIfPreference
+            }
         }
     }
 
@@ -2752,13 +2983,17 @@ function Deploy-CompletionStack
     else { Write-Host '核心 CxxuCommand：未就绪（内联预测需 pwsh 7.5+；5.1 Tab 需执行 Sync-CxxuPredictor）' }
 
     Write-Host '默认层只含仓库内活件；可选层按 -IncludeArgc/-IncludeFuzzy/-IncludePredictor/-IncludePSCompletions/-IncludeGitCompletion/-IncludePSReadLine51 追加（-All 全选）。'
+    if ($IncludePSReadLine51 -and (-not $PSReadLine51FollowPwsh))
+    {
+        Write-Host '5.1 PSReadLine 按固定版本安装（默认 2.3.6）；pwsh 升级后要跟随时用 -PSReadLine51FollowPwsh 重跑，或直接 Sync-Ps51PSReadLine。'
+    }
     if (-not $IncludeArgc -and -not $IncludeFuzzy -and -not $IncludePredictor -and -not $IncludePSCompletions -and -not $IncludeGitCompletion -and -not $IncludePSReadLine51)
     {
         Write-Host '未选择可选层：本次没有网络下载，也没有安装仓库外组件。'
     }
     if ((-not $IncludePSReadLine51) -and (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true)))
     {
-        Write-Host '提示：Windows PowerShell 5.1 自带 PSReadLine 2.0.0；需要历史预测、历史去重与 inlineprediction 配色时加 -IncludePSReadLine51（默认装 2.3.6，优先离线复制本机模块）。'
+        Write-Host '提示：Windows PowerShell 5.1 自带 PSReadLine 2.0.0；需要历史预测、历史去重与 inlineprediction 配色时加 -IncludePSReadLine51（默认装 2.3.6，优先离线复制本机模块；需要跟随 pwsh 升级用 -PSReadLine51FollowPwsh 或 Sync-Ps51PSReadLine）。'
     }
     if ($env:PsTab -match '^(False|0|No|Off)$') { Write-Warning 'PsTab 当前为关闭：Tab 补全不会加载；需要时 Enable-PsPlugin Tab -Persist' }
     if ($env:PsPredictor -match '^(False|0|No|Off)$') { Write-Warning 'PsPredictor 当前为关闭：命令名内联预测不会加载；需要时 Enable-PsPlugin Predictor -Persist' }

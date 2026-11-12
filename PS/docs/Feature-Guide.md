@@ -470,6 +470,7 @@ Git Bash 使用同一个 carapace 二进制，Linux/macOS 使用各自平台的�
   `Deploy-CompletionStack -IncludePSReadLine51`，或单独 `Install-Ps51PSReadLine`（默认 2.3.6；优先离线复制本机 pwsh 自带模块，缺失时才从 PSGallery 安装）。
   目标目录为 `~\Documents\WindowsPowerShell\Modules\PSReadLine\<版本>`；默认还会把该模块目录前插到 User 级 `PSModulePath`（`-NoPersistModulePath` 可跳过），否则 PSReadLine 可能在 `init` 之前就加载系统自带的 2.0.0。
   完全重开 5.1 生效；`init` 会在 5.1 下改用 `PredictionSource History`，再按版本启用 ListView/InlineView。
+  `pwsh` 升级不会自动传导到这份副本：需要跟随时用 `Sync-Ps51PSReadLine`（`-CheckOnly` 先看两边版本），或给部署层加 `-PSReadLine51FollowPwsh`；只报告、不降级，缺少 `net462` 的新版本会跳过。
   插件预测（`CxxuCommand`）仍要求 pwsh 7.2+；回退时关闭所有 5.1 窗口并删除该版本目录。部署细节见 [Deploy-Guide](Deploy-Guide.md) 的「可选：Windows PowerShell 5.1 的 PSReadLine」。
 - 轻量部署（免 git，新机器只有 v5 时）：先按 Deploy-Guide 的「前置：执行策略」设置执行策略，再保存部署脚本并运行 `& $deployScript -Light`；`$deployScript` 是仓库 `PS/Deploy/Deploy-CxxuPsModules.ps1` 的本地副本，保存方法与参数说明见 [Deploy-Guide](Deploy-Guide.md) 和 [PS/Deploy/readme](../Deploy/readme.md)。
   走离线包下载（codeload + 中央镜像静默，不弹窗选源），落 `PSModulePath`（setx 追加，不覆盖），
