@@ -3528,11 +3528,16 @@ function Set-CxxuComponentOption
 {
     <#
     .SYNOPSIS
-    设置组件选项（如 GitCompletion.Source、Carapace.Excludes）。
+    设置组件选项（如 Tab.Synopsis、GitCompletion.Source、Carapace.Excludes）。
     .DESCRIPTION
     选项定义、默认值与可选枚举来自 PS/Init/components.psd1。List 类型接受数组或逗号分隔字符串。
     -Persist 时把选项写入用户配置；不加只改当前会话。
+    Tab.Synopsis 接受 True/False 或 $true/$false；下一次 Tab 生效，不提前加载 CxxuTab。
     只改选项本身；git/gitk 来源切换请用 Set-GitCompletionSource（它同时维护 PsGitCompletion 与 PsCarapace）。
+    .EXAMPLE
+    Set-CxxuComponentOption -Id Tab -Name Synopsis -Value $true
+    .EXAMPLE
+    Set-CxxuComponentOption -Id Tab -Name Synopsis -Value $false -Persist
     .EXAMPLE
     Set-CxxuComponentOption -Id GitCompletion -Name Source -Value Carapace -Persist
     .EXAMPLE

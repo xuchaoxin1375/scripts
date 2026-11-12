@@ -62,6 +62,16 @@
             Detect      = 'CxxuTab'
             Install     = '随仓库分发'
             Docs        = 'Feature-Guide.md §7'
+            Options     = @(
+                @{
+                    Name        = 'Synopsis'
+                    Key         = 'PsTabSynopsis'
+                    Default     = 'False'
+                    Type        = 'Enum'
+                    Values      = @('False', 'True')
+                    Description = 'Tab 菜单函数摘要：默认关闭；开启后增加首次索引与源码解析开销，不影响原生参数语法'
+                }
+            )
         }
         @{
             Id          = 'Argc'
