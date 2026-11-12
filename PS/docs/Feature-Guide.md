@@ -461,18 +461,18 @@ Git Bash 使用同一个 carapace 二进制，Linux/macOS 使用各自平台的�
 - 5.1 下自动降级：`init` 步骤表 `MinPS = 7` 的步骤静默跳过（`ArgumentCompletion`/`Startup`/`Pwsh`/`Json`）；`ForEach-Object -Parallel` 走串行分支；`Register-PsUxLazyLoad` 在 5.1 只装 CxxuTab 手势桩；`CxxuTab` 读 `~/.cxxu/bin/ps51` 的 netstandard2.0 活件（缺活件时纯透传），命令表缓存 `~/.cxxu/cache/tab-commands-4.tsv`；`HistoryNoDuplicates`/`inlineprediction` 配色按 PSReadLine 版本 gating（5.1 自带 2.0.0 跳过；升级到 2.1+ 后启用）。
 - `argc-completions` 在 5.1 也可用：依赖现有 `argc.exe` + Git Bash（`bash`/GNU 工具在 PATH），PSReadLine 2.0 与升级后的 2.3.6 均支持 `MenuComplete`/`Selection`；首次外部 CLI 参数补全时注册约 200ms，之后零开销，开关 `$env:PsArgc`，与 7 同一套懒加载。5.1 的补全引擎不会把 `-`/`--` 开头的词交给 Native 补全器（6.0 才修），Tab 桩会在词首临时插一个零宽字符绕过（只对 argc/carapace 注册过的应用命令，cmdlet/函数参数补全不受影响；Esc 取消或选中后都会清掉，缓冲区不留字符）。
 - `git`/`gitk` 的补全由 `git-completion` 提供，5.1 同样可用（init 检测到模块即挂载，首个补全才导入）。受同一条引擎限制，选项补全在 5.1 不触发，子命令、分支与文件补全正常。模块须位于 5.1 的 `PSModulePath` 中：`-Scope CurrentUser` 在 7 与 5.1 落在不同目录，只在 7 上装过时 5.1 不会挂载，安装步骤见 [Deploy-Guide](Deploy-Guide.md) 的「分层、来源与能力」。
-- `carapace` 在 5.1 也可用：`Register-ArgumentCompleter -Native` 本身可用，`-` 开头的词由共享 Tab 桩插入零宽字符绕过引擎限制，因此参数、git ref 与 flag 都能触发；加载时会把 shell 名称列表落盘缓存并截断、用 UTF-8 读取 carapace 输出、去掉候选描述里的 ANSI（5.1 默认 2.0；升级到 2.3.6 后仍保留该处理，兼容未升级会话）。首次外部 CLI 参数补全约 0.4–0.6 秒（冷缓存约 1 秒），之后约 0.1–0.4 秒。启用与来源切换与 7 相同。
+- `carapace` 在 5.1 也可用：`Register-ArgumentCompleter -Native` 本身可用，`-` 开头的词由共享 Tab 桩插入零宽字符绕过引擎限制，因此参数、git ref 与 flag 都能触发；加载时会把 shell 名称列表落盘缓存并截断、用 UTF-8 读取 carapace 输出、去掉候选描述里的 ANSI（5.1 默认 2.0；升级 PSReadLine 后仍保留该处理，兼容未升级会话）。首次外部 CLI 参数补全约 0.4–0.6 秒（冷缓存约 1 秒），之后约 0.1–0.4 秒。启用与来源切换与 7 相同。
 - 提示符全对齐：`fast`/`Simple`/`Short`/`Default` 原生可用；`Balance` 的 Info/Startup 外部依赖在 `Prompt.psm1` 顶部有 5.1 本地兜底（CIM/注册表/内置 cmdlet 同口径；必须 `function global:` 定义，否则模块私有、直接调用撞坏 Info；缓存用 `$global:__Cxxu51*`，`$script:` 跨不了作用域），渲染与 7.5 逐字一致，稳态约 50ms/次（首屏冷缓存 1.4s 一次性）；`Get-IpAddressFormated` 含参数集的移植版，直接调用也可用。
 - 明确不可用：`CxxuCommand` 内联预测（net9 predictor，插件预测源需 7.2+）、完整部署流程（建议在 pwsh 7 执行，5.1 可单独运行 `Install-Ps51PSReadLine`）、`Test-PsEnvReadiness` 的 `pwsh 7+` 必备项（在 5.1 下即提示装 pwsh7）。PSReadLine 2.0 没有预测视图；升级到 2.2.6+ 后历史预测与 ListView 可用，但插件预测仍不可用。
 - 5.1 Tab 补全可用（默认开）：`CxxuTab` 读 `~/.cxxu/bin/ps51/<哈希>/CxxuPredictor.dll`（netstandard2.0，只含 `CompleteCommand`），由 `Sync-CxxuPredictor` 发布。首个 Tab 才导入模块并读命令表缓存（命中约 20ms，缺失/过期时现建约 0.4s；缓存与排查见 §9「Tab 补全自查」），启动不加负担；默认只有 Tab 菜单，没有内联预测（升级 PSReadLine 后可用历史预测，见下）。不用时 `Disable-PsPlugin Tab -Persist`。
 - 用法：`powershell -NoProfile` 起 5.1，保证 `PSModulePath` 含模块集后 `init` 即可；Tab 包裹默认开，`$env:PsTab='False'` 关。
 - **PSReadLine 升级（可选）**：默认不升级，保持 5.1 原样；需要历史预测、历史去重与 `inlineprediction` 配色时执行
-  `Deploy-CompletionStack -IncludePSReadLine51`，或单独 `Install-Ps51PSReadLine`（默认 2.3.6；优先离线复制本机 pwsh 自带模块，缺失时才从 PSGallery 安装；`-Latest` 取 PSGallery 最新稳定版）。
+  `Deploy-CompletionStack -IncludePSReadLine51`，或单独 `Install-Ps51PSReadLine`（默认取 PSGallery 最新稳定版，当前 2.4.5；本机已有同版本则离线复制；`-Version` 固定版本）。
   目标目录为 `~\Documents\WindowsPowerShell\Modules\PSReadLine\<版本>`；默认还会把该模块目录前插到 User 级 `PSModulePath`（`-NoPersistModulePath` 可跳过），否则 PSReadLine 可能在 `init` 之前就加载系统自带的 2.0.0。
   完全重开 5.1 生效；`init` 会在 5.1 下改用 `PredictionSource History`，再按版本启用 ListView/InlineView。
   安装不依赖 pwsh 7：没有 pwsh 时用 `-Version` 走 PSGallery，完全离线用 `-SourcePath <目录>`（含 `PSReadLine.psd1` 与 `net462`/`netstd`）；不使用同步入口时，pwsh 升级不会改变 5.1 的版本。
   `pwsh` 升级不会自动传导到这份副本：需要跟随时用 `Sync-Ps51PSReadLine`（`-CheckOnly` 先看两边版本），或给部署层加 `-PSReadLine51FollowPwsh`；只报告、不降级，缺少可加载资产（`net462`/`netstd`）的新版本会跳过。
-  2.3.x 的资产目录是 `net462`，2.4.x 起是 `netstd`；2.4.5 已在 5.1 验证可用，`-Latest` 可直接装最新稳定版。
+  2.3.x 的资产目录是 `net462`，2.4.x 起是 `netstd`；默认安装即最新稳定版（当前 2.4.5），离线或装载失败时回退本机可用版本。
   不同版本按目录并存、5.1 取最高版本，旧目录不自动删除；AllUsers 已有同版本时默认不重复安装（`-Force` 建用户副本）。
   插件预测（`CxxuCommand`）仍要求 pwsh 7.2+；回退时关闭所有 5.1 窗口并删除该版本目录。部署细节见 [Deploy-Guide](Deploy-Guide.md) 的「可选：Windows PowerShell 5.1 的 PSReadLine」。
 - 轻量部署（免 git，新机器只有 v5 时）：先按 Deploy-Guide 的「前置：执行策略」设置执行策略，再保存部署脚本并运行 `& $deployScript -Light`；`$deployScript` 是仓库 `PS/Deploy/Deploy-CxxuPsModules.ps1` 的本地副本，保存方法与参数说明见 [Deploy-Guide](Deploy-Guide.md) 和 [PS/Deploy/readme](../Deploy/readme.md)。
