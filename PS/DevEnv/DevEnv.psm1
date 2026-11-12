@@ -2262,6 +2262,38 @@ function Get-CxxuInstalledPSReadLine
     return $best
 }
 
+function Get-CxxuPSReadLineSharedInstall
+{
+    # 读取 5.1 可见但不在用户模块目录里的最高 PSReadLine（内部函数）。
+    # 覆盖 AllUsers（Program Files）与系统 WindowsPowerShell 目录，用于避免同一版本装两份。
+    $best = $null
+    $roots = @()
+    if ($env:ProgramFiles)
+    {
+        $roots += Join-Path (Join-Path $env:ProgramFiles 'WindowsPowerShell\Modules') 'PSReadLine'
+    }
+    if ($env:SystemRoot)
+    {
+        $roots += Join-Path (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\Modules') 'PSReadLine'
+    }
+    foreach ($root in $roots)
+    {
+        if (-not (Test-Path -LiteralPath $root)) { continue }
+        foreach ($dir in @(Get-ChildItem -LiteralPath $root -Directory -ErrorAction SilentlyContinue))
+        {
+            $version = $null
+            try { $version = [version]$dir.Name } catch { continue }
+            if (-not $version) { continue }
+            if (-not (Test-CxxuPSReadLineModule -ModuleBase $dir.FullName)) { continue }
+            if ((-not $best) -or ($version -gt $best.Version))
+            {
+                $best = [pscustomobject]@{ Version = $version; Path = $dir.FullName }
+            }
+        }
+    }
+    return $best
+}
+
 function Test-CxxuPSReadLineModule
 {
     # 判断目录是否为可供 5.1 加载的 PSReadLine 模块（内部函数）。
@@ -2386,12 +2418,27 @@ $__cxxuResult = ($lines -join "`n")
     }
 
     # 同一目录可能来自多个入口（pwsh 查询、常见安装目录），按版本+目录去重；
-    # 5.1 自己的用户模块目录是同步目标，不能反过来当来源。
-    $destRoot = (Get-CxxuPSReadLineModuleRoot51).TrimEnd('\')
+    # 5.1 自己的用户模块目录以及 AllUsers/系统目录都是“已安装给 5.1 的副本”，
+    # 不能反过来当作“pwsh 附带版本”的来源。
+    $excludeRoots = @((Get-CxxuPSReadLineModuleRoot51).TrimEnd('\'))
+    if ($env:ProgramFiles)
+    {
+        $excludeRoots += (Join-Path (Join-Path $env:ProgramFiles 'WindowsPowerShell\Modules') 'PSReadLine').TrimEnd('\')
+    }
+    if ($env:SystemRoot)
+    {
+        $excludeRoots += (Join-Path (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\Modules') 'PSReadLine').TrimEnd('\')
+    }
     $unique = @{}
     foreach ($item in $seen)
     {
-        if (($item.ModuleBase.TrimEnd('\')) -like ($destRoot + '\*')) { continue }
+        $itemPath = $item.ModuleBase.TrimEnd('\')
+        $excluded = $false
+        foreach ($root in $excludeRoots)
+        {
+            if ($itemPath -like ($root + '\*')) { $excluded = $true; break }
+        }
+        if ($excluded) { continue }
         $key = '{0}|{1}' -f $item.Version, $item.ModuleBase
         if (-not $unique.ContainsKey($key)) { $unique[$key] = $item }
     }
@@ -2477,14 +2524,27 @@ function Sync-Ps51PSReadLine
 
     $moduleRoot = Get-CxxuPSReadLineModuleRoot51
     $installed = Get-CxxuInstalledPSReadLine -ModuleRoot $moduleRoot
+    $shared = Get-CxxuPSReadLineSharedInstall
     $source = Get-CxxuPSReadLineFromPwsh
 
-    $ps51Version = if ($installed) { $installed.Version } else { $null }
+    # 5.1 实际加载的是可见的最高版本：用户目录与 AllUsers/系统目录取较大者。
+    $ps51Version = $null
+    $ps51Path = ''
+    if ($installed -and ((-not $shared) -or ($installed.Version -ge $shared.Version)))
+    {
+        $ps51Version = $installed.Version
+        $ps51Path = $installed.Path
+    }
+    elseif ($shared)
+    {
+        $ps51Version = $shared.Version
+        $ps51Path = $shared.Path
+    }
     $pwshVersion = $source.Version
     $syncNeeded = ($null -ne $pwshVersion) -and (($null -eq $ps51Version) -or ($pwshVersion -gt $ps51Version))
     $status = [pscustomobject]@{
         Ps51Version = $ps51Version
-        Ps51Path = if ($installed) { $installed.Path } else { '' }
+        Ps51Path = $ps51Path
         PwshVersion = $pwshVersion
         PwshPath = $source.ModuleBase
         NewestSeen = $source.NewestSeen
@@ -2494,7 +2554,8 @@ function Sync-Ps51PSReadLine
 
     if ($ps51Version)
     {
-        Write-Host ("5.1 当前：PSReadLine {0}（{1}）" -f $ps51Version, $installed.Path)
+        $scopeNote = if ($installed -and ($installed.Path -eq $ps51Path)) { '用户模块目录' } else { 'AllUsers/系统目录' }
+        Write-Host ("5.1 当前：PSReadLine {0}（{1}，{2}）" -f $ps51Version, $ps51Path, $scopeNote)
     }
     else
     {
@@ -2694,6 +2755,7 @@ $__cxxuResult = $m.Version.ToString()
     $moduleRoot = Get-CxxuPSReadLineModuleRoot51
     $dest = Join-Path $moduleRoot $Version.ToString()
     $installed = Get-CxxuInstalledPSReadLine -ModuleRoot $moduleRoot
+    $shared = Get-CxxuPSReadLineSharedInstall
 
     # 先报告 5.1 当前实际能发现的版本，便于判断是 2.0.0 还是已经升级过。
     $state = Get-CxxuPSReadLineDiscovery51 -PowerShellPath $ps51
@@ -2748,6 +2810,14 @@ $__cxxuResult = $m.Version.ToString()
         return
     }
 
+    # AllUsers/系统目录已有同版本：5.1 本来就能加载，默认不再装一份用户副本。
+    if ((-not $Force) -and $shared -and ($shared.Version -eq $Version) -and (-not (Test-Path -LiteralPath $dest)))
+    {
+        Write-Host ("PSReadLine {0} 已存在于 AllUsers/系统模块目录：{1}" -f $Version, $shared.Path)
+        Write-Host '5.1 可直接加载该副本，无需在用户目录重复安装；要建立用户目录副本加 -Force。'
+        return
+    }
+
     if (-not $installed -or ($installed.Version -lt $Version))
     {
         if ($installed)
@@ -2788,6 +2858,10 @@ $__cxxuResult = $m.Version.ToString()
             if ($backup -and (-not (Test-Path -LiteralPath $dest)) -and (Test-Path -LiteralPath $backup))
             {
                 Move-Item -LiteralPath $backup -Destination $dest -Force -ErrorAction SilentlyContinue
+            }
+            if ($_.Exception.Message -match 'being used by another process|Access is denied|拒绝访问|正在使用')
+            {
+                throw ("更新 PSReadLine 失败：{0} 可能正被已打开的 5.1 窗口使用。关闭所有 5.1 窗口后重试。原始错误：{1}" -f $dest, $_.Exception.Message)
             }
             throw
         }
@@ -2835,6 +2909,15 @@ $__cxxuResult = '{0}|{1}' -f $m.Version, $m.ModuleBase
     }
 
     Write-Host ("已安装并验证：PSReadLine {0}" -f $verify.Text.Trim())
+
+    # 不同版本按目录并存，5.1 加载最高版本；旧目录不自动删除，避免影响回退。
+    $oldVersions = @(Get-ChildItem -LiteralPath $moduleRoot -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '^\d+(\.\d+){1,3}$' -and ($_.Name -ne $Version.ToString()) } |
+        Sort-Object Name)
+    if ($oldVersions.Count)
+    {
+        Write-Host ("旧版本仍保留：{0}；5.1 会按最高版本加载，不影响使用。需要清理时关闭所有 5.1 窗口后删除对应目录。" -f (($oldVersions | Select-Object -ExpandProperty Name) -join '、'))
+    }
 
     # 再从默认模块路径查一次：从 pwsh 7 启动的 5.1 子进程可能没有用户模块目录，
     # 这种情况下文件已装好，但该子进程仍会自动发现旧版，需要正常启动 5.1 才生效。

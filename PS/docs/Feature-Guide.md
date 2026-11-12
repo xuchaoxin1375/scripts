@@ -473,6 +473,7 @@ Git Bash 使用同一个 carapace 二进制，Linux/macOS 使用各自平台的�
   安装不依赖 pwsh 7：没有 pwsh 时用 `-Version` 走 PSGallery，完全离线用 `-SourcePath <目录>`（含 `PSReadLine.psd1` 与 `net462`/`netstd`）；不使用同步入口时，pwsh 升级不会改变 5.1 的版本。
   `pwsh` 升级不会自动传导到这份副本：需要跟随时用 `Sync-Ps51PSReadLine`（`-CheckOnly` 先看两边版本），或给部署层加 `-PSReadLine51FollowPwsh`；只报告、不降级，缺少可加载资产（`net462`/`netstd`）的新版本会跳过。
   2.3.x 的资产目录是 `net462`，2.4.x 起是 `netstd`；2.4.5 已在 5.1 验证可用，`-Latest` 可直接装最新稳定版。
+  不同版本按目录并存、5.1 取最高版本，旧目录不自动删除；AllUsers 已有同版本时默认不重复安装（`-Force` 建用户副本）。
   插件预测（`CxxuCommand`）仍要求 pwsh 7.2+；回退时关闭所有 5.1 窗口并删除该版本目录。部署细节见 [Deploy-Guide](Deploy-Guide.md) 的「可选：Windows PowerShell 5.1 的 PSReadLine」。
 - 轻量部署（免 git，新机器只有 v5 时）：先按 Deploy-Guide 的「前置：执行策略」设置执行策略，再保存部署脚本并运行 `& $deployScript -Light`；`$deployScript` 是仓库 `PS/Deploy/Deploy-CxxuPsModules.ps1` 的本地副本，保存方法与参数说明见 [Deploy-Guide](Deploy-Guide.md) 和 [PS/Deploy/readme](../Deploy/readme.md)。
   走离线包下载（codeload + 中央镜像静默，不弹窗选源），落 `PSModulePath`（setx 追加，不覆盖），
