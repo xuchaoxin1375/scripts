@@ -87,7 +87,23 @@ Test-PromptDelay                              # prompt 延迟（默认测 10 次
 
 共享表在先注册 predictor 与先触发 Tab 两种顺序下均验证为同一个对象与程序集；Tab 先加载时不隐式注册 predictor。实际窗口等待空闲事件后确认 predictor 从新活件导入，加载错误为空。没有将依赖 `CurrentRunspace` 的建表工作迁到后台线程。命令名、路径、参数、管道、分号、嵌套命令、重定向、禁用开关、失败回落及 argc 的 git 归属、幂等、强制重注册均有回归覆盖；双目标构建无警告、无错误，pwsh 7 与 Windows PowerShell 5.1 的组件测试通过。入口为 [TabGestureContext.Tests.ps1](../TerminalTools/tests/TabGestureContext.Tests.ps1)、[SharedCommandTable.Tests.ps1](../CxxuPredictor/tests/SharedCommandTable.Tests.ps1) 与 [ArgcBatchRegistration.Tests.ps1](../Init/tests/ArgcBatchRegistration.Tests.ps1)。
 
-后续若继续压低命令名首次延迟，应先独立测量摘要模块索引与源码解析，再评估持久化摘要索引或将其设为可选预热；缓存必须按源文件变化失效。直接把所有导入挪到启动或单发空闲事件只改变等待发生的时间，不能证明总体更快，因此本轮不增加该策略。停用、回落与缓存清理仍使用 [Feature-Guide](Feature-Guide.md) 的既有入口。
+本轮未引入摘要持久化缓存或启动预热；后续摘要开关的独立测量与取舍见下文。直接把所有导入挪到启动或单发空闲事件只改变等待发生的时间，不能证明总体更快。停用、回落与缓存清理仍使用 [Feature-Guide](Feature-Guide.md) 的既有入口。
+
+### 摘要按需启用复验
+
+沿用 pwsh 7.5.4、PSReadLine 2.3.6、真实 profile 和有效的命令表缓存，在独立传统控制台中输入命令并注入 Tab，按约 10ms 间隔轮询读屏。每个窗口关闭菜单、清行后重输两次，以区分首次调用与缓存后的补全；本轮只切换摘要开关，不提前导入模块。以下是系统持续运行期间的进程内冷路径测试，不代表系统重启后的磁盘冷启动。
+
+| 场景 | 显式开启摘要 | 关闭摘要 | 修改后未设置开关 |
+| --- | --- | --- | --- |
+| `Get-Chi` 首次 Tab，各三个新窗口 | 270、160、175ms | 149、135、146ms | 266、145、145ms |
+| `Get-SystemI` 首次 Tab，匹配未加载模块函数 | 269、256ms | 132、135ms | 144、149、141ms |
+| 同窗口重新输入 `Get-SystemI` | 33–43ms | 29–46ms | 28–51ms |
+
+普通命令首个样本仍会出现约 266–270ms 的波动，因此不能承诺每个新窗口都低于 150ms。对未加载模块函数，关闭摘要将首次补全从约 0.26 秒降到约 0.14 秒，减少约 0.12 秒，收益显著；额外复验一对新窗口，默认关闭为 141ms，显式开启为 273ms。相应状态确认加载的是仓库 `CxxuTab` 1.0.7：默认模式没有创建摘要缓存、模块索引或源码 AST 缓存，显式开启才创建模块索引与源码缓存；两种模式均未导入 `Hardware`，`ShowToolTips=True`，没有触发熔断或体验件加载错误。
+
+耗时来自为候选附加摘要前的函数/别名枚举、未加载模块索引、按需解析源码，以及相应首次调用开销；即使当前候选没有可显示的函数摘要，旧默认也会进入装饰分支。`CxxuTab` 1.0.7 改为摘要默认关闭，仅显式 `True`、`1`、`Yes`、`On` 时启用。原生候选、模糊匹配顺序与参数语法提示保持不变；没有新增磁盘缓存、后台任务或启动预热。首次剩余成本仍包括 CxxuTab 导入、命令表读取、原生补全与菜单首次重绘，因此后续相同输入仍明显更快。
+
+当前完整 profile 启动三次中位数为 1072ms，与前轮 1044ms 处于相近量级；本轮不据此声称初始化提速。真实窗口初始化没有步骤错误，摘要开关改变的是首次相关操作的工作量。运行期启停与持久化说明见 [Feature-Guide](Feature-Guide.md) 的「Tab 菜单摘要」；新开终端即可加载新脚本，不需要重新构建或同步 DLL。回归入口 [SynopsisOptIn.Tests.ps1](../CxxuTab/tests/SynopsisOptIn.Tests.ps1) 在 pwsh 7 与 Windows PowerShell 5.1 均通过，覆盖默认不建摘要缓存、非法值关闭、显式开启、中文摘要、原生候选/参数语法和运行期关闭。5.1 另在保留 profile 的真实窗口确认从仓库加载 1.0.7，默认未建立摘要索引，Tab 候选与原生提示正常；其首次耗时不使用 pwsh 7 的数字作为基线。
 
 ## 2. 本次改动总览
 
@@ -773,7 +789,7 @@ WindowsTerminal.exe
   `ShowToolTips=True`；ListView 自 2.3.1 起也支持选中项 tooltip，最多 4 行。
   问题不在渲染层，而是引擎给命令候选的 ToolTip 只含参数语法。
 - 处置：`CxxuTab` 在命令名位置合并模糊结果后，给 `ResultType=Command` 的候选补摘要，
-  顺序为“`.SYNOPSIS` 首段 + 原有参数语法”，独立开关 `$env:PsTabSynopsis`（默认开）
+  顺序为“`.SYNOPSIS` 首段 + 原有参数语法”，独立开关 `$env:PsTabSynopsis`（当时默认开，现行默认关闭，见「摘要按需启用复验」）
   与独立熔断 `$global:__CxxuTabSynFuse`，失败只丢摘要，不影响候选与模糊。
 - 取摘要方式：不走 `Get-Help`/`Ast.GetHelpContent()`——本机会话 75 个带帮助的函数合计
   约 678ms，且 `Get-Command` 不带 `-ListImported` 会为未加载模块触发自动加载（30 个候选

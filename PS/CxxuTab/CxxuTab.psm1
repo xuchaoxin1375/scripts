@@ -4,7 +4,7 @@
 # 显式置 False/0/No/Off 才关),关掉就是纯透传,行为与没装一样;启停管理看
 # Enable/Disable-PsPlugin。异常/超慢调用会自熔断(本会话只透传),不拖死 Tab。
 # 命令名候选另补函数 .SYNOPSIS 首段(与参数语法同屏,开关 $env:PsTabSynopsis,
-# 默认开),独立熔断;已加载函数取定义文本,未加载模块在 pwsh 7+ 且候选较少时
+# 默认关,显式 True/1/Yes/On 才开),独立熔断;已加载函数取定义文本,未加载模块在 pwsh 7+ 且候选较少时
 # 读 .psm1 源码(不导入模块,5.1 不做这层)。
 # 跨作用域说明:global:TabExpansion2 运行在全局作用域,看不到模块 $script:,
 # 方法缓存必须放 $global:__CxxuTabMethod(命名避冲突)。
@@ -303,7 +303,7 @@ function Install-CxxuTabWrapper
 {
     <#
     .SYNOPSIS
-    安装 TabExpansion2 包装(命令名位置合并自研模糊结果,缺省 30 条,并补函数摘要)。
+    安装 TabExpansion2 包装(命令名位置合并自研模糊结果,缺省 30 条,函数摘要按需开启)。
     #>
     # 优先复用同一活件的 predictor 程序集;7+ 按活件路径加载,使稍后 Import-Module
     # 也复用同一程序集与命令表。5.1 仍按字节装载 Tab-only 产物,不注册 predictor。
@@ -393,8 +393,9 @@ function Install-CxxuTabWrapper
                     $result = [System.Management.Automation.CommandCompletion]::new($merged, $current, $base.ReplacementIndex, $base.ReplacementLength)
                 }
             }
-            # 摘要装饰:独立开关与独立熔断,失败只丢摘要,不影响候选与模糊
-            if ($env:PsTabSynopsis -notmatch '^(False|0|No|Off)$' -and -not $global:__CxxuTabSynFuse)
+            # 摘要默认关闭,避免首次 Tab 枚举函数/模块并解析源码;原生语法提示不受影响。
+            # 独立开关与独立熔断:显式启用才装饰,失败只丢摘要,不影响候选与模糊。
+            if ($env:PsTabSynopsis -match '^(True|1|Yes|On)$' -and -not $global:__CxxuTabSynFuse)
             {
                 try { $result = Add-CxxuTabSynopsis -Completion $result }
                 catch { $global:__CxxuTabSynFuse = $true }
