@@ -792,9 +792,10 @@ WindowsTerminal.exe
   `-IncludePSReadLine51`（`-All` 包含）。默认目标 2.3.6，优先从本机 pwsh 安装目录离线复制，
   本机没有时才回退 5.1 的 `Install-Module`；安装到
   `~\Documents\WindowsPowerShell\Modules\PSReadLine\<版本>`，并在 5.1 子进程里实际导入验证。
-  安装还会默认把用户模块目录前插到 User 级 `PSModulePath`（`-NoPersistModulePath` 可跳过），
-  否则 PSReadLine 可能在 `init` 之前加载，窗口里仍是 2.0.0。默认层仍不联网、不装仓库外组件，
-  未选择该开关时行为不变。
+  `Sync-Ps51PSReadLine` 跟随 pwsh 版本，`-Latest` 取 PSGallery 最新稳定版（2.4.5），
+  `-SourcePath` 支持完全离线安装。安装还会默认把用户模块目录前插到 User 级 `PSModulePath`
+  （`-NoPersistModulePath` 可跳过），否则 PSReadLine 可能在 `init` 之前加载，窗口里仍是 2.0.0。
+  默认层仍不联网、不装仓库外组件，未选择该开关时行为不变。
 - `init` 的 `Set-PSReadLinesAdvanced` 改为按版本分流：pwsh 7.2+ 且 PSReadLine 2.2.2+
   用 `HistoryAndPlugin`，其余 2.1+（含升级后的 5.1）用 `History`，2.0 跳过预测参数；
   `PredictionViewStyle` 另按 2.2.2+ 门控，不再依赖 catch 兜底。
@@ -805,7 +806,9 @@ WindowsTerminal.exe
   `HistoryNoDuplicates`、`CompletionQueryItems`、`inlineprediction` 配色与 `MenuComplete`；
   `HistoryAndPlugin`/`Plugin` 按预期失败，提示插件预测源需要 7.2+。此前只看子进程导入，
   层级低于用户实际窗口，不能作为验收依据。
-- 边界：2.4.x 未在本栈验证，需要时用 `-Version` 指定并自行确认；5.1 启动前
+- 边界：2.3.x 的模块资产是 `net462`，2.4.x 起改为 `netstd`；两者都接受，2.4.5 已在
+  5.1.26100 上验证可导入并可用（本机组件级验证 + 用户另一台 5.1 实际使用）。默认仍钉 2.3.6，
+  因为它是 pwsh 7.5 随附、离线可复制的版本；要最新版用 `-Latest`。5.1 启动前
   `PSModulePath` 必须包含用户模块目录，安装命令会持久化 User 级路径，已加载旧版的窗口
   必须完全重开才能换版本。从 pwsh 7 启动 5.1 时，`init` 的
   `Update-CxxuModulePathOrder` 也会前置该目录，但不能替代启动前的 User 级路径。

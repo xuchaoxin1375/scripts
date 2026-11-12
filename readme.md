@@ -88,7 +88,7 @@ Unblock-File $deployScript
 Deploy-CompletionStack
 ```
 
-> 默认只装仓库内核心补全（CxxuCommand + Tab），不下载仓库外依赖；需要 argc、PSFzf、fzf/zoxide 等加对应 `-Include*` 或 `-All`，Windows PowerShell 5.1 的 PSReadLine 升级用 `-IncludePSReadLine51`（会持久化 User `PSModulePath`，完全重开 5.1 生效；pwsh 升级后用 `Sync-Ps51PSReadLine` 跟随），详见 [PS/docs/Deploy-Guide.md](PS/docs/Deploy-Guide.md)。
+> 默认只装仓库内核心补全（CxxuCommand + Tab），不下载仓库外依赖；需要 argc、PSFzf、fzf/zoxide 等加对应 `-Include*` 或 `-All`，Windows PowerShell 5.1 的 PSReadLine 升级用 `-IncludePSReadLine51`（会持久化 User `PSModulePath`，完全重开 5.1 生效；最新版用 `Install-Ps51PSReadLine -Latest`，pwsh 升级后用 `Sync-Ps51PSReadLine` 跟随），详见 [PS/docs/Deploy-Guide.md](PS/docs/Deploy-Guide.md)。
 
 > 若提示找不到 `Deploy-CompletionStack`，说明 profile 的 `init` 没有执行；先回到第 2 步检查执行策略，而不是重复运行部署脚本。
 

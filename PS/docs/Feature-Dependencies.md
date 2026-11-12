@@ -180,7 +180,7 @@ Get-CxxuDependencyReport -Json           # 供其他程序消费
 
 - Windows 专属依赖（`scoop`、`sshd`、`alist`、`chfs`、`BurntToast`、5.1 Tab 活件）在 macOS/Linux 上自动标记为 `不适用`，不计入待处理。
 - macOS 专属依赖（`brew`）在 Windows/Linux 上标记为 `不适用`；Linux 使用系统包管理器安装同类软件。
-- `pwsh 7.5+` 与 `PSReadLine 2.1+` 只比较版本；其余命令依赖只判断是否存在，不执行 `--version`，避免报告过程启动大量子进程。Windows PowerShell 5.1 的 PSReadLine 2.0.0 会被判为版本过低，升级入口是 `Deploy-CompletionStack -IncludePSReadLine51` 或 `Install-Ps51PSReadLine`；安装会默认持久化 User `PSModulePath`，需完全重开 5.1 后在真实交互窗口验收。升级不依赖 pwsh 7（没有时走 PSGallery，离线用 `-SourcePath`）；pwsh 升级不会自动传导，需要跟随时用 `Sync-Ps51PSReadLine`（`-CheckOnly` 只报告）。不升级不影响 Tab 补全。
+- `pwsh 7.5+` 与 `PSReadLine 2.1+` 只比较版本；其余命令依赖只判断是否存在，不执行 `--version`，避免报告过程启动大量子进程。Windows PowerShell 5.1 的 PSReadLine 2.0.0 会被判为版本过低，升级入口是 `Deploy-CompletionStack -IncludePSReadLine51` 或 `Install-Ps51PSReadLine`（`-Latest` 取 PSGallery 最新，2.4.5 已验证）；安装会默认持久化 User `PSModulePath`，需完全重开 5.1 后在真实交互窗口验收。升级不依赖 pwsh 7（没有时走 PSGallery，离线用 `-SourcePath`）；pwsh 升级不会自动传导，需要跟随时用 `Sync-Ps51PSReadLine`（`-CheckOnly` 只报告）。不升级不影响 Tab 补全。
 - 模块依赖只检查已加载或可发现的模块，不验证能否在当前 PowerShell 版本加载；实际加载状态由 `doctor` 与 `init` 错误账本给出。
 - `argc` 的检查覆盖仓库、平台补全目录、可执行文件和 Windows 下的 `bash`；更细的注册状态与 `argc --argc-shell-path` 结果由 `doctor` 的 `argc 补全` 行给出。
 - 运维模块的远端依赖不在本表：例如 `WpOnline` 还需要目标服务器具备 `unzip`、`screen`、`mysql` 等命令，详见对应模块帮助与 [Module-Map.md](Module-Map.md)。

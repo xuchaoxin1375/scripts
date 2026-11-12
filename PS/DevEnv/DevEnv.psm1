@@ -2265,11 +2265,13 @@ function Get-CxxuInstalledPSReadLine
 function Test-CxxuPSReadLineModule
 {
     # 判断目录是否为可供 5.1 加载的 PSReadLine 模块（内部函数）。
-    # 5.1 需要 net462 资产；只有 net6plus 的版本（面向 pwsh 7+）不能复制过去。
+    # 2.3.x 及更早用 net462 资产；2.4.x 起改为 netstd（netstandard2.0），两者都能在
+    # Windows PowerShell 5.1（.NET Framework 4.8）加载；只有 net6plus 的不行。
     param([string]$ModuleBase)
     if (-not $ModuleBase -or -not (Test-Path -LiteralPath $ModuleBase)) { return $false }
     if (-not (Test-Path -LiteralPath (Join-Path $ModuleBase 'PSReadLine.psd1'))) { return $false }
-    if (-not (Test-Path -LiteralPath (Join-Path $ModuleBase 'net462'))) { return $false }
+    if (-not (Test-Path -LiteralPath (Join-Path $ModuleBase 'net462')) -and
+        -not (Test-Path -LiteralPath (Join-Path $ModuleBase 'netstd'))) { return $false }
     return $true
 }
 
@@ -2346,7 +2348,7 @@ if ($m) { $__cxxuResult = '{0}|{1}' -f $m.Version, $m.ModuleBase } else { $__cxx
 function Get-CxxuPSReadLineFromPwsh
 {
     # 枚举本机 pwsh 侧的 PSReadLine，返回可供 5.1 同步的最高版本（内部函数）。
-    # 5.1 需要 net462 资产；不含该资产的版本只有在比可用版本更新时才记入 Skipped，
+    # 5.1 需要可加载资产（net462/netstd）；不含该资产的版本只有在比可用版本更新时才记入 Skipped，
     # 用于提示“pwsh 升级了但 5.1 跟不了”。
     $seen = New-Object System.Collections.Generic.List[object]
     $pwsh = Get-Command pwsh -ErrorAction SilentlyContinue
@@ -2400,7 +2402,7 @@ $__cxxuResult = ($lines -join "`n")
     }
 
     $usable = @($all | Where-Object { Test-CxxuPSReadLineModule -ModuleBase $_.ModuleBase })
-    # 只报告“比可用版本还新、但缺少 net462”的版本：旧版本（如系统自带 2.0.0）不构成跟进信号。
+    # 只报告“比可用版本还新、但缺少 net462/netstd”的版本：旧版本（如系统自带 2.0.0）不构成跟进信号。
     $skipped = @($all | Where-Object {
             (-not (Test-CxxuPSReadLineModule -ModuleBase $_.ModuleBase)) -and
             (($usable.Count -eq 0) -or ($_.Version -gt $usable[0].Version))
@@ -2425,7 +2427,7 @@ function Sync-Ps51PSReadLine
 
     .DESCRIPTION
     5.1 的 PSReadLine 是安装时从 pwsh 模块目录复制的一份独立副本，pwsh 升级不会
-    自动传导过去。本函数对比两边版本：pwsh 侧更高且带 net462 资产时安装该版本，
+    自动传导过去。本函数对比两边版本：pwsh 侧更高且带可加载资产（net462/netstd）时安装该版本，
     已相同时不做改动，5.1 更高时不降级。
 
     只同步可被 5.1 加载的版本：pwsh 侧若只有 net6/net9 资产的新版本，会报告并保持
@@ -2504,12 +2506,12 @@ function Sync-Ps51PSReadLine
     }
     else
     {
-        Write-Warning ("pwsh 侧没有可供 5.1 使用的 PSReadLine（需要 net462 资产）。{0}需要独立安装时用 Install-Ps51PSReadLine -Version <版本>（PSGallery）或 -SourcePath <目录>。" -f
-            $(if ($source.NewestSeen) { "最新为 $($source.NewestSeen)，缺少 net462。" } else { '' }))
+        Write-Warning ("pwsh 侧没有可供 5.1 使用的 PSReadLine（需要 net462/netstd 资产）。{0}需要独立安装时用 Install-Ps51PSReadLine -Version <版本>（PSGallery）或 -SourcePath <目录>。" -f
+            $(if ($source.NewestSeen) { "最新为 $($source.NewestSeen)，缺少 net462/netstd。" } else { '' }))
     }
     if (@($source.Skipped).Count)
     {
-        Write-Host ("已跳过缺少 net462 的版本：{0}" -f (@($source.Skipped) -join '、'))
+        Write-Host ("已跳过缺少 net462/netstd 的版本：{0}" -f (@($source.Skipped) -join '、'))
     }
 
     if (-not $pwshVersion)
@@ -2559,9 +2561,12 @@ function Install-Ps51PSReadLine
     本机没有时才回退到 PowerShell 5.1 的 Install-Module（PSGallery，需要网络）。
     复制和安装都会在 5.1 子进程里实际导入一次做验证，验证失败会告警并保留回退入口。
 
+    2.3.x 的资产目录是 net462，2.4.x 起改为 netstd（netstandard2.0），两者都能在 5.1
+    加载；2.4.5 已在 5.1.26100 实测可用。要装 PSGallery 上的最新稳定版用 `-Latest`。
+
     不依赖 pwsh 7 的独立安装有两种方式：本机没有 pwsh 时自动走 PSGallery（需网络，
     用 `-Version` 指定版本）；完全离线或想用指定产物时用 `-SourcePath` 指向本地模块目录
-    （必须含 PSReadLine.psd1 与 net462），完全不查 pwsh、不联网。
+    （必须含 PSReadLine.psd1 与 net462/netstd），完全不查 pwsh、不联网。
 
     默认会把 5.1 用户模块目录前插到 User 级 PSModulePath（已存在则跳过），否则
     PSReadLine 可能在 init 之前就加载了系统自带的 2.0.0；`-NoPersistModulePath` 可跳过。
@@ -2571,7 +2576,7 @@ function Install-Ps51PSReadLine
 
     .PARAMETER Version
     目标版本，默认 2.3.6（与 pwsh 7.5 随附版本一致，已在 5.1.26100 验证）。
-    指定其他版本时，该版本必须带 net462 资产，否则不会被复制。
+    2.4.5 同样已在 5.1.26100 验证；模块资产为 net462 或 netstd，两者都会被接受。
 
     .PARAMETER Force
     即使 5.1 用户模块目录已有同版本或更高版本，也重新复制/安装。
@@ -2579,8 +2584,12 @@ function Install-Ps51PSReadLine
     .PARAMETER NoGallery
     本机没有可复制的离线副本时不再回退 PSGallery，直接结束并告警。
 
+    .PARAMETER Latest
+    从 PSGallery 取最新稳定版本（在 5.1 里执行 Find-Module）再安装，走同一套复制/验证
+    流程；需要网络。与 -Version、-SourcePath 互斥。
+
     .PARAMETER SourcePath
-    本地模块目录（含 PSReadLine.psd1 与 net462），直接作为安装源，不查 pwsh 7 也不联网。
+    本地模块目录（含 PSReadLine.psd1 与 net462/netstd），直接作为安装源，不查 pwsh 7 也不联网。
     版本从该目录的 manifest 读取；同时指定 `-Version` 时必须与 manifest 一致。
 
     .PARAMETER NoPersistModulePath
@@ -2598,6 +2607,9 @@ function Install-Ps51PSReadLine
 
     .EXAMPLE
     Install-Ps51PSReadLine -SourcePath D:\offline\PSReadLine\2.3.6 -Force
+
+    .EXAMPLE
+    Install-Ps51PSReadLine -Latest
     #>
     [CmdletBinding(SupportsShouldProcess)]
     param(
@@ -2605,7 +2617,8 @@ function Install-Ps51PSReadLine
         [switch]$Force,
         [switch]$NoGallery,
         [switch]$NoPersistModulePath,
-        [string]$SourcePath
+        [string]$SourcePath,
+        [switch]$Latest
     )
 
     if (-not (($PSEdition -eq 'Desktop') -or ($IsWindows -eq $true)))
@@ -2622,6 +2635,33 @@ function Install-Ps51PSReadLine
     }
 
     # -SourcePath 是独立安装源：版本以该目录的 manifest 为准，完全不查 pwsh 7。
+    if ($SourcePath -and $Latest)
+    {
+        throw '-Latest 与 -SourcePath 互斥：前者取 PSGallery 最新版，后者用指定目录。'
+    }
+    if ($Latest -and $NoGallery)
+    {
+        throw '-Latest 需要访问 PSGallery，不能与 -NoGallery 同用。'
+    }
+    if ($Latest)
+    {
+        if ($PSBoundParameters.ContainsKey('Version'))
+        {
+            throw '-Latest 与 -Version 互斥：请二选一。'
+        }
+        $latestScript = @'
+$m = Find-Module PSReadLine -ErrorAction Stop
+$__cxxuResult = $m.Version.ToString()
+'@
+        $latestResult = Invoke-CxxuChildPowerShell -PowerShellPath $ps51 -Script $latestScript
+        if (($latestResult.ExitCode -ne 0) -or [string]::IsNullOrWhiteSpace($latestResult.Text))
+        {
+            Write-Warning ("无法从 PSGallery 查询 PSReadLine 最新版本：{0}" -f $latestResult.Text.Trim())
+            return
+        }
+        $Version = [version]$latestResult.Text.Trim()
+        Write-Host ("PSGallery 最新稳定版本：{0}" -f $Version)
+    }
     if ($SourcePath)
     {
         $resolvedSource = Resolve-Path -LiteralPath $SourcePath -ErrorAction SilentlyContinue
@@ -2632,7 +2672,7 @@ function Install-Ps51PSReadLine
         $resolvedSource = $resolvedSource.Path
         if (-not (Test-CxxuPSReadLineModule -ModuleBase $resolvedSource))
         {
-            throw ("目录不是可供 5.1 使用的 PSReadLine 模块（需要 PSReadLine.psd1 与 net462）：{0}" -f $resolvedSource)
+            throw ("目录不是可供 5.1 使用的 PSReadLine 模块（需要 PSReadLine.psd1 与 net462/netstd）：{0}" -f $resolvedSource)
         }
         $manifestVersion = $null
         try
@@ -2734,7 +2774,7 @@ function Install-Ps51PSReadLine
         try
         {
             Copy-Item -LiteralPath $source -Destination $staging -Recurse -Force
-            if (-not (Test-CxxuPSReadLineModule -ModuleBase $staging)) { throw '复制后的模块缺少 PSReadLine.psd1 或 net462 资产。' }
+            if (-not (Test-CxxuPSReadLineModule -ModuleBase $staging)) { throw '复制后的模块缺少 PSReadLine.psd1 或可加载资产（net462/netstd）。' }
             if (Test-Path -LiteralPath $dest)
             {
                 $backup = $dest + '.old-' + (Get-Date -Format 'yyyyMMddHHmmss')
@@ -2833,7 +2873,7 @@ function Deploy-CompletionStack
       优先复制本机 pwsh 自带的同版本模块，缺失时才回退 PSGallery；默认把用户模块目录
       加入 User PSModulePath，完全重开 5.1 生效）。
     - -PSReadLine51FollowPwsh：不钉死版本，改为跟随本机 pwsh 当前附带的 PSReadLine
-      （要求该版本带 net462 资产）；与 -PSReadLineVersion51 互斥。
+      （要求该版本带 net462/netstd 资产）；与 -PSReadLineVersion51 互斥。
     - -All：一次选择以上全部；-SkipArgc / -SkipBinaries 仍可用于排除 argc 或二进制。
     国内网络不稳时，可先 Set-Proxy On（或设置 HTTPS_PROXY/HTTP_PROXY）再执行；
     下载会自动识别代理，也可用 -Proxy/-NoProxy 单次覆盖；-NoMirror 跳过转存仓库直接走上游。
