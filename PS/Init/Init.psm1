@@ -357,6 +357,8 @@ function Test-StartupPerformance
     每段都在全新 pwsh 进程里测(冷数字,排除本会话已摊销的解析成本);本机改动对照看 Startup-Optimization.md。
     默认输出可加分解的启动因子行:bare、profile 其他(conda/模块导入)、init 准备/收尾、各 init 步骤;
     列固定为 Category/Name/Ms/Share/Note,按 Ms 降序,Share 为占 profile 的百分比,第一行即当前最大影响因素。
+    交互终端测量时显示进度条(重定向或 PsShowProgress=False 时自动关闭);-Report 输出文本摘要
+    (总耗时、分解与前三因素),不输出对象行。
     -Prompt 追加 prompt 延迟行;-Ux 追加体验件全载行;-Detail 再加四件明细(隐含 -Ux);
     -Status 追加本会话开关与懒加载状态;-All 等价于 -Prompt -Ux -Status。
     -Repeat 取中位数时按次数线性增加,不再多跑预热。
@@ -368,6 +370,8 @@ function Test-StartupPerformance
     新进程继承当前 PsStartupTier;测其他档位前先设置 $env:PsStartupTier。
     .EXAMPLE
     Test-StartupPerformance | Format-Table -AutoSize
+    .EXAMPLE
+    Test-StartupPerformance -Report
     .EXAMPLE
     Test-StartupPerformance -All | Format-List
     .EXAMPLE
@@ -391,6 +395,8 @@ function Test-StartupPerformance
         [switch]$All,
         # 加测 OnIdle 四片各自耗时(隐含 -Ux;排查"哪片最重"时开)
         [switch]$Detail,
+        # 报告模式:输出文本摘要(总耗时、分解、前三因素)，不输出对象行
+        [switch]$Report,
         # 简单模式:只测新 pwsh 启动(带 profile),不做分段;与其他评估开关互斥
         [Alias('Quick')]
         [switch]$Simple
@@ -438,18 +444,36 @@ function Test-StartupPerformance
         $simpleRuns = [Math]::Max(1, $Repeat)
         $ms = Get-MedianMs { [int](Measure-Command { & $pwsh -NonInteractive -Command 'exit' *> $null }).TotalMilliseconds } $simpleRuns
         $note = if ($simpleRuns -gt 1) { "$simpleRuns 次中位数" } else { '1 次' }
+        if ($Report) { return ("pwsh 启动报告（{0}）`n总耗时 profile {1} ms" -f $note, $ms) }
         return New-ResultRow 'Startup' 'profile（完整启动）' $ms 100 $note
     }
     # -All 打开附加评估面；分步明细已默认包含，不再单列开关。
     if ($All) { $Prompt = $true; $Ux = $true; $Status = $true }
     if ($Detail) { $Ux = $true }
     Write-Verbose "分段计时中(每段 $Repeat 次)..."
+    # 交互终端显示进度;重定向或 PsShowProgress=False 时静默,不污染管道。
+    $progressEnabled = (-not [Console]::IsOutputRedirected) -and
+        ([string]$env:PsShowProgress -notmatch '^(False|0|No|Off)$')
+    $progressState = @{ Index = 0; Total = 4 + $(if ($Ux) { 1 } else { 0 }) + $(if ($Prompt) { 1 } else { 0 }) + $(if ($Detail) { 1 } else { 0 }) }
+    function Update-StartupProgress([string]$Status)
+    {
+        if (-not $progressEnabled) { return }
+        $progressState.Index++
+        Write-Progress -Activity 'pwsh 启动计时' -Status $Status -PercentComplete ([int](100 * $progressState.Index / $progressState.Total))
+    }
+    function Complete-StartupProgress
+    {
+        if (-not $progressEnabled) { return }
+        Write-Progress -Activity 'pwsh 启动计时' -Completed
+    }
     if ($Repeat -gt 1)
     {
         $null = & $pwsh -NoProfile -NonInteractive -Command 'exit' *> $null
         $null = & $pwsh -NonInteractive -Command 'exit' *> $null
     }
+    Update-StartupProgress 'bare（裸启动）'
     $bare = Get-MedianMs { [int](Measure-Command { & $pwsh -NoProfile -NonInteractive -Command 'exit' *> $null }).TotalMilliseconds } $Repeat
+    Update-StartupProgress 'profile（完整启动）'
     $prof = Get-MedianMs { [int](Measure-Command { & $pwsh -NonInteractive -Command 'exit' *> $null }).TotalMilliseconds } $Repeat
     # init 合计与步骤表同一次新进程:总量取 init 自己打印的 Environment Loading time,
     # 步骤行一并留存,避免为“占比”再开一个进程。重复时取总量中位数,步骤表用第一次。
@@ -459,6 +483,7 @@ init -Timing
 '@
     $initTotals = @()
     $initTable = @()
+    Update-StartupProgress 'init（含步骤表）'
     for ($i = 0; $i -lt $Repeat; $i++)
     {
         $out = & $pwsh -NoProfile -NonInteractive -Command $probeInit 2>&1 | Out-String
@@ -476,21 +501,12 @@ init -Timing
         }
     }
     $tInit = Get-MedianValue $initTotals
-    # 体验件全载不属于启动 profile,默认不测;需要时用 -Ux/-Detail/-All。
-    $tIdle = $null
-    if ($Ux)
-    {
-        $probeIdle = @'
-Import-Module TerminalTools -ErrorAction Stop
-[int](Measure-Command { Register-PsUxLazyLoad -Now *> $null }).TotalMilliseconds
-'@
-        $tIdle = Get-MedianMs { [int](& $pwsh -NoProfile -NonInteractive -Command $probeIdle) } $Repeat
-    }
     # profile 税 = bare 之外的全部启动开销；init 是它的子集，必须扣掉才能得到 conda/模块导入等其余部分。
     $profileTax = $prof - $bare
     $profileOther = [Math]::Max(0, $profileTax - $tInit)
     # profile 其他里占大头的是 Init 模块导入，单独测出来；剩余归为 conda/其他 profile。
     $probeImport = '[int](Measure-Command { Import-Module Init -ErrorAction Stop }).TotalMilliseconds'
+    Update-StartupProgress 'Init 模块导入'
     $tImport = Get-MedianMs { [int](& $pwsh -NoProfile -NonInteractive -Command $probeImport) } $Repeat
     $profileRest = [Math]::Max(0, $profileOther - $tImport)
     # 把 init 步骤表转成因子行，并把 init 内部拆成“步骤 + 准备/收尾”，
@@ -529,8 +545,10 @@ Import-Module TerminalTools -ErrorAction Stop
     $factorRows = @($factorRows | Sort-Object Ms -Descending)
 
     $extraRows = @()
+    $tIdle = $null
     if ($Ux)
     {
+        Update-StartupProgress '体验件全载（-Now）'
         $probeIdle = @'
 Import-Module TerminalTools -ErrorAction Stop
 [int](Measure-Command { Register-PsUxLazyLoad -Now *> $null }).TotalMilliseconds
@@ -540,6 +558,7 @@ Import-Module TerminalTools -ErrorAction Stop
     }
     if ($Detail)
     {
+        Update-StartupProgress '全载四件明细'
         $probeDetail = @'
 $r = @()
 $r += 'PSFzf:' + [int](Measure-Command { if (Get-Module -ListAvailable PSFzf) { Import-Module PSFzf -Global; Set-PsFzfOption -PSReadlineChordProvider 'Ctrl+t' -PSReadlineChordReverseHistory 'Ctrl+r' } }).TotalMilliseconds
@@ -560,12 +579,15 @@ $r -join ' '
             }
         }
     }
+    $promptMs = $null
     if ($Prompt)
     {
+        Update-StartupProgress 'prompt 延迟'
         $promptLine = & $pwsh -NoProfile -NonInteractive -Command 'Test-PromptDelay 5' 2>$null | Select-Object -Last 1
         $promptSec = 0
         if ($promptLine -match '([\d.]+)') { $promptSec = [double]$Matches[1] }
-        $extraRows += New-ResultRow 'Prompt' 'Test-PromptDelay 5' ([int][Math]::Round($promptSec * 1000)) $null '5 次均值'
+        $promptMs = [int][Math]::Round($promptSec * 1000)
+        $extraRows += New-ResultRow 'Prompt' 'Test-PromptDelay 5' $promptMs $null '5 次均值'
     }
     if ($Status)
     {
@@ -579,7 +601,39 @@ $r -join ' '
         $extraRows += New-ResultRow 'Switch' 'OnIdle已注册' $null $null ([string][bool]$global:PsUxOnIdleRegistered)
         $extraRows += New-ResultRow 'Switch' '加载错误' $null $null ([string]$uxErrs)
     }
-    return @($factorRows) + @($extraRows)
+    Complete-StartupProgress
+    $rows = @($factorRows) + @($extraRows)
+    if ($Report)
+    {
+        $mode = if ($Repeat -gt 1) { "$Repeat 次中位数" } else { '1 次' }
+        $lines = @(
+            "pwsh 启动报告（$mode）"
+            ("总耗时 profile       {0,6} ms" -f $prof)
+            ("  bare               {0,6} ms  {1,3}%" -f $bare, (Get-Share $bare))
+            ("  Init 模块导入       {0,6} ms  {1,3}%" -f $tImport, (Get-Share $tImport))
+            ("  conda/其他 profile {0,6} ms  {1,3}%" -f $profileRest, (Get-Share $profileRest))
+            ("  init 内部          {0,6} ms  {1,3}%" -f $tInit, (Get-Share $tInit))
+            ("    init 准备/收尾   {0,6} ms  {1,3}%" -f $initPrep, (Get-Share $initPrep))
+            ("    init 步骤合计    {0,6} ms  {1,3}%" -f $stepSum, (Get-Share $stepSum))
+            '前三因素：'
+        )
+        foreach ($row in ($factorRows | Select-Object -First 3))
+        {
+            $lines += ("  {0,-18} {1,6} ms  {2,3}%" -f $row.Name, $row.Ms, $row.Share)
+        }
+        if ($Ux -and $null -ne $tIdle) { $lines += ("体验件全载（-Now） {0,6} ms（不计入 profile）" -f $tIdle) }
+        if ($Detail)
+        {
+            foreach ($row in @($extraRows | Where-Object Category -eq 'UxDetail'))
+            {
+                $value = if ($null -ne $row.Ms) { "$($row.Ms) ms" } else { '本机缺件' }
+                $lines += ("  {0,-10} {1,6}" -f $row.Name, $value)
+            }
+        }
+        if ($Prompt -and $null -ne $promptMs) { $lines += ("prompt 均值(5 次) {0,6} ms" -f $promptMs) }
+        return ($lines -join [Environment]::NewLine)
+    }
+    return $rows
 }
 function p
 {
