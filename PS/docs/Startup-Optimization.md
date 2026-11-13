@@ -19,8 +19,8 @@
 
 ```powershell
 # 复测命令（重定向/agent 下也干净：PSReadLine 控制台相关选项已按场景跳过，见 §12）
-Test-StartupPerformance                      # 默认分段：bare/profile/init/其他（约 2~3 秒）
-Test-StartupPerformance -Steps               # 追加 init 分步表；-All 打开全部评估面
+Test-StartupPerformance                      # 启动因子按 Ms 降序，可接 ft/fl（约 3 秒）
+Test-StartupPerformance -All | ft            # 追加 prompt、体验件全载与开关状态
 Test-StartupPerformance -Simple              # 只测一次带 profile 的新 pwsh 启动
 init -Force -Timing                           # 当前会话分步耗时（已初始化；首次启动用 init -Timing）
 init -Tier Fast -Timing                       # 指定启动档位看分步表（Fast/Balanced，Minimal 为 Fast 别名）
@@ -699,11 +699,11 @@ Set-PSReadLineOption: 句柄无效。
     步骤表构建；`steps` 只含步骤循环（含进度条渲染）；`other` 是循环前后的计时、环境等级
     恢复与进度条收尾开销。`init -Timing` 的步骤表另给 `Share` 与“步骤合计”行，合计只表示
     各步骤自身耗时之和，与 `steps` 的差额是循环内未被单步计时的开销，不参与上面的拆分。
-  - `Test-StartupPerformance` 的表格改为“段 / ms / 说明”，明确 `init` 是 `profile 税`
-    的子集，并单列 `profile 其他 = profile 税 - init`；`bare`、`profile`、`init`、
-    `idle` 都按 `-Repeat` 取中位数。`idle 全载` 是启动后首屏一次的成本，不计入
-    `profile`。日常只关心“新开一个 pwsh 要多久”时用 `-Simple`（默认一次，支持
-    `-Repeat` 取中位数），需要脚本消费时加 `-PassThru`。
+  - `Test-StartupPerformance` 输出按耗时降序的因子对象，列 `Category`/`Name`/`Ms`/`Share`/`Note`，
+    可接 `ft`/`fl`；因子包含 `bare`、`Init 模块导入`、`conda/其他 profile`、`init 准备/收尾`
+    与各 init 步骤。`bare`、`profile`、`init`、`idle` 都按 `-Repeat` 取中位数。`idle 全载`
+    是启动后首屏一次的成本，不计入 `profile`。日常只关心“新开一个 pwsh 要多久”时用
+    `-Simple`（默认一次，支持 `-Repeat` 取中位数）。
 - 同机复测（macOS，一次采样，数值随负载抖动）：
   `bare 328ms`、`profile 1051ms`、`profile 税 723ms`、`init 497ms`、
   `profile 其他 226ms`、`idle 全载 529ms`；对比第二十二轮的 `init 564ms`/`profile 1122ms`。
@@ -902,10 +902,12 @@ WindowsTerminal.exe
   一次分段体检做成了需要专门等待的操作。用户预期是默认跑一次就列出全部分段。
 - 处置：默认单次不再做预热；`init` 合计与步骤表合并到同一次新进程（原先为占比多开一次），
   总量改读该次 `Environment Loading time`；只有 `-Repeat > 1` 才预热并取中位数。
-  输出按评估面拆开：默认只列启动分段；`-Steps` 加步骤表，`-Prompt`/`-Ux`/`-Status` 分别加
-  prompt、体验件全载与开关状态，`-All` 全开，避免默认报告把不同维度混在一起。
-- 结果：同机默认约 2~3 秒，`-All` 约 4~5 秒，`-Repeat 2` 约 5 秒；分段口径
-  （bare/profile/init/profile 其他）不变，`-Simple` 仍为 1~2 秒。
+  输出改为对象流，列固定为 `Category`/`Name`/`Ms`/`Share`/`Note`，可直接接 `ft`/`fl`；
+  默认按耗时降序给出可加分解：`bare`、`Init 模块导入`、`conda/其他 profile`、`init 准备/收尾`
+  与各 init 步骤，`Share` 为占 profile 的百分比，第一行即当前最大影响因素。不再打印表头、
+  进度行与结论；`-Prompt`/`-Ux`/`-Status` 追加其他评估面，`-All` 全开。
+- 结果：同机默认约 3 秒（含两次新进程），`-All` 约 4~5 秒，`-Repeat 2` 约 5 秒；分解各项
+  之和与 profile 的差额来自取整与测量抖动，`-Simple` 仍为 1~2 秒。
 
 ## 变量组缓存与预设变量启动开销
 
