@@ -106,8 +106,14 @@ function init
     param(
         [switch]$Force,
         # 显示每步耗时报告(默认关闭以保启动速度;`init -Force -Timing` 可直接看报告)
-        [switch]$Timing
+        [switch]$Timing,
+        # 启动档位:Minimal 最轻/Fast 保留常用补全/Balanced 当前默认;省略时读 PsStartupTier(环境变量 > 用户配置 > 默认)
+        [ValidateSet('Minimal', 'Fast', 'Balanced')]
+        [string]$Tier = ''
     )
+
+    # 显式 -Tier 优先于环境变量与配置文件；写入进程环境，供步骤内组件判断与子进程继承。
+    if ($Tier) { $env:PsStartupTier = $Tier }
 
     # 计时从函数入口开始：配置读取/变量重载与步骤表分开统计，避免把准备阶段漏在总数外。
     $initStart = [datetime]::UtcNow
@@ -152,12 +158,24 @@ function init
     # 启动步骤表:直接调用(当前会话作用域),不要转字符串再 iex —— iex 慢且吞错误定位;
     # 进度条默认开(真机实测开销可忽略,用户 306ms 全链含进度条),开关见 $env:PsShowProgress,
     # 重定向下(无处渲染)自动关闭。
-    # 核心步骤固定;可选组件的加载步骤由 components.psd1 的 Init 字段生成,
-    # 组件顺序即清单顺序,新增组件不再需要在这里再写一行。
-    $coreSteps = Get-CxxuCoreInitSteps
-    $coveredInit = @(($coreSteps.Before + $coreSteps.After) | ForEach-Object { [string]$_.Name })
-    $componentSteps = @(Get-CxxuComponentInitSteps -CoveredInit $coveredInit)
-    $steps = @($coreSteps.Before) + @($componentSteps) + @($coreSteps.After)
+    # 档位决定核心步骤与可选组件的上限:Minimal 只留基础 PSReadLine + prompt,
+    # Fast 再加 advanced PSReadLine + Argc/Git 补全,Balanced 保持原有全部步骤。
+    $tierName = Get-CxxuStartupTier
+    if ($env:PsStartupTier -and ($env:PsStartupTier -notmatch '^(?i:Minimal|Fast|Balanced)$'))
+    {
+        Write-Warning "未知的 PsStartupTier 值 '$env:PsStartupTier'，本次按 Balanced 处理。可用值：Minimal、Fast、Balanced。"
+    }
+    # Minimal 默认使用极简提示符;用户显式设置的 PsPrompt 优先。
+    if ($tierName -eq 'Minimal' -and [string]::IsNullOrWhiteSpace($env:PsPrompt))
+    {
+        $env:PsPrompt = 'Simple'
+    }
+    # Fast/Minimal 默认不渲染启动进度条;用户显式设置的 PsShowProgress 优先。
+    if (($tierName -in @('Minimal', 'Fast')) -and [string]::IsNullOrWhiteSpace($env:PsShowProgress))
+    {
+        $env:PsShowProgress = 'False'
+    }
+    $steps = @(Get-CxxuInitStepsForTier -Tier $tierName)
 
     # 步骤表构建完成后再置已初始化标记：前面任何一步失败时保留未初始化状态，允许重试；
     # 步骤表内部单步失败只记账不中断。
@@ -328,8 +346,8 @@ function init
     #     }
     #     . $condaCompletionFile
     # }
-    # 耗时统计：主数字是 init 总耗时，括号内三段严格等于总耗时。
-    Write-Host ("Environment Loading time: {0} ms (prep {1} + steps {2} + other {3})" -f $totalMs, $prepMs, $stepsMs, $otherMs) -ForegroundColor Magenta
+    # 耗时统计：主数字是 init 总耗时，括号内三段严格等于总耗时；末尾标注当前档位。
+    Write-Host ("Environment Loading time: {0} ms (prep {1} + steps {2} + other {3}) [{4}]" -f $totalMs, $prepMs, $stepsMs, $otherMs, $tierName) -ForegroundColor Magenta
     # 清理竞争关系变量
     # $env:PsInit = $null
     # Remove-Variable $env:PsInit
@@ -346,10 +364,13 @@ function Test-StartupPerformance
     + 首屏单发(predictor/zoxide);PSFzf/CxxuTab 转手势按需(首按 Ctrl+T/R、首次裸命令名 Tab 才装)。
     体验件全载使用 Register-PsUxLazyLoad -Now,包含手势组件,不是首屏 OnIdle 的实际耗时;
     argc/carapace 的首次参数补全加载另计。首屏单发也在主线程执行,冷缓存仍可能短暂阻塞输入。
+    新进程继承当前 PsStartupTier;测其他档位前先设置 $env:PsStartupTier。
     .EXAMPLE
     Test-StartupPerformance
     .EXAMPLE
     Test-StartupPerformance -Repeat 3 -Detail
+    .EXAMPLE
+    $env:PsStartupTier='Fast'; Test-StartupPerformance -Simple
     .EXAMPLE
     Test-StartupPerformance -Simple
     .EXAMPLE
@@ -2054,6 +2075,61 @@ function Read-CxxuComponentManifest
         return @()
     }
 }
+function Get-CxxuStartupTier
+{
+    # 读取启动档位(不导出):显式参数 > 环境变量/用户配置 > Balanced。
+    # 环境变量由 Import-CxxuConfig 按“环境变量 > 配置文件 > 默认值”注入。
+    param([string]$Tier = '')
+    if ($Tier) { return $Tier }
+    $value = [string]$env:PsStartupTier
+    foreach ($known in @('Minimal', 'Fast', 'Balanced'))
+    {
+        if ($value -ieq $known) { return $known }
+    }
+    return 'Balanced'
+}
+function Test-CxxuTierAllowsComponent
+{
+    # 档位对可选组件是上限(不导出):Minimal 全关，Fast 只留 Argc/GitCompletion，
+    # Balanced 按组件自身开关。显式 Enable 不能突破档位，需先切换档位。
+    param(
+        [string]$Tier = 'Balanced',
+        [string]$Id
+    )
+    if ($Tier -eq 'Minimal') { return $false }
+    if ($Tier -eq 'Fast')
+    {
+        return ($Id -in @('Argc', 'GitCompletion'))
+    }
+    return $true
+}
+function Get-CxxuInitStepsForTier
+{
+    # 按档位生成 init 步骤表(不导出):核心步骤先过滤，再生成允许的组件步骤。
+    param([ValidateSet('Minimal', 'Fast', 'Balanced')][string]$Tier = 'Balanced')
+
+    $core = Get-CxxuCoreInitSteps
+    $beforeNames = @(if ($Tier -eq 'Minimal') { 'Set-PSReadLinesCommon' }
+        elseif ($Tier -eq 'Fast') { 'Set-PSReadLinesCommon'; 'Set-PSReadLinesAdvanced' })
+    $afterNames = @(if ($Tier -eq 'Balanced') { } else { 'Set-PsPrompt' })
+    # 用户显式选择富信息提示符时，即使 Fast/Minimal 也补回其依赖的系统信息步骤。
+    if ($Tier -ne 'Balanced' -and ($env:PsPrompt -match '^(?i:Balance|Brilliant|Brilliant2)$'))
+    {
+        $afterNames += @('Confirm-EnvVarOfInfo', 'Confirm-DataJson')
+    }
+
+    $before = @(if ($beforeNames.Count) { @($core.Before | Where-Object { $beforeNames -contains [string]$_.Name }) } else { @($core.Before) })
+    $after = @(if ($afterNames.Count) { @($core.After | Where-Object { $afterNames -contains [string]$_.Name }) } else { @($core.After) })
+    $coveredInit = @()
+    $coveredInit += @($before | ForEach-Object { [string]$_.Name })
+    $coveredInit += @($after | ForEach-Object { [string]$_.Name })
+    $componentSteps = @(Get-CxxuComponentInitSteps -CoveredInit $coveredInit -Tier $Tier)
+    $result = @()
+    $result += @($before)
+    $result += @($componentSteps)
+    $result += @($after)
+    return $result
+}
 function Get-CxxuCoreInitSteps
 {
     # 固定核心步骤（不导出）：Before 在可选组件之前，After 在之后。
@@ -2085,12 +2161,17 @@ function Get-CxxuCoreInitSteps
 function Get-CxxuComponentInitSteps
 {
     # 由组件清单生成可选组件的 init 步骤（不导出）。
-    # 跳过：Init 为空、已被核心步骤覆盖、同名 Init 重复（多个组件共享一次加载）。
-    param([string[]]$CoveredInit = @())
+    # 跳过：Init 为空、已被核心步骤覆盖、同名 Init 重复（多个组件共享一次加载）、
+    # 当前启动档位不允许的组件。
+    param(
+        [string[]]$CoveredInit = @(),
+        [ValidateSet('Minimal', 'Fast', 'Balanced')][string]$Tier = 'Balanced'
+    )
 
     $seen = @{}
     foreach ($component in (Read-CxxuComponentManifest))
     {
+        if (-not (Test-CxxuTierAllowsComponent -Tier $Tier -Id ([string]$component.Id))) { continue }
         $init = [string]$component.Init
         if ([string]::IsNullOrWhiteSpace($init)) { continue }
         if ($CoveredInit -contains $init) { continue }
@@ -2618,6 +2699,50 @@ function Reset-CxxuConfig
     if ($blocked.Count)
     {
         Write-Warning ("以下环境变量优先于配置文件,重置后仍按环境变量值生效:{0}。需要彻底回到默认时,先清除对应环境变量(如 Add-EnvVar 或 [Environment]::SetEnvironmentVariable)。" -f ($blocked -join '、'))
+    }
+}
+function Set-PsStartupTier
+{
+    <#
+    .SYNOPSIS
+    切换启动档位(Minimal/Fast/Balanced),可持久化到用户配置。
+    .DESCRIPTION
+    档位决定 init 的步骤上限：Minimal 只保留核心变量/别名、基础 PSReadLine 与 prompt；
+    Fast 再加 advanced PSReadLine 与 Argc/GitCompletion；Balanced 保持原有默认。
+    组件开关不能突破档位上限；被档位挡住的组件可用 Get-CxxuComponent 查看 TierAllowed。
+    本命令只切换当前进程并可选写入 ~/.cxxu/config.psd1；当前会话已加载的模块不会卸载，
+    新开终端(或 init -Force)后按新档位重新构建步骤表。
+    .PARAMETER Tier
+    目标档位：Minimal、Fast、Balanced。
+    .PARAMETER Persist
+    同时写入用户配置的 Settings.PsStartupTier；已有文件先备份，再规范重写。
+    .PARAMETER Path
+    用户配置文件路径，默认 ~/.cxxu/config.psd1；只影响本次持久化。
+    .EXAMPLE
+    Set-PsStartupTier Fast
+    .EXAMPLE
+    Set-PsStartupTier Fast -Persist
+    .EXAMPLE
+    Set-PsStartupTier Minimal -Persist -WhatIf
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter(Mandatory, Position = 0)]
+        [ValidateSet('Minimal', 'Fast', 'Balanced')]
+        [string]$Tier,
+        # 写入用户配置，重开终端后保持
+        [switch]$Persist,
+        # 用户配置文件路径(默认 ~/.cxxu/config.psd1)
+        [string]$Path = (Join-Path (Join-Path $HOME '.cxxu') 'config.psd1')
+    )
+    if ($PSCmdlet.ShouldProcess($Path, "切换启动档位为 $Tier"))
+    {
+        $env:PsStartupTier = $Tier
+        if ($Persist)
+        {
+            Set-CxxuConfigModelValues -Path $Path -Values @{ PsStartupTier = $Tier }
+        }
+        Write-Host "PsStartupTier=$Tier；当前会话已加载的模块不会卸载，新开终端(或 init -Force)后生效。"
     }
 }
 function Disable-PsPlugin
@@ -3206,8 +3331,10 @@ function Get-CxxuComponent
     .DESCRIPTION
     元数据来自 PS/Init/components.psd1；值按“环境变量 > 用户配置 > 默认值”解析。
     输出对象可直接接 Format-List/Format-Table；-Id 只查一个组件（不区分大小写）。
+    Tier/TierAllowed/Effective 表示当前启动档位、档位是否允许该组件、以及最终是否会在
+    init 中加载；组件开关不能突破档位上限（Minimal 全关，Fast 只留 Argc/GitCompletion）。
     Carapace 额外带 Runtime、RegisteredCommands、CachePath、CacheState 四个运行态字段：
-    Runtime 区分未安装/未启用/待参数位 Tab/已加载/未加载，CacheState 描述 5.1 上下文缓存是否有效。
+    Runtime 区分未安装/未启用/档位禁用/待参数位 Tab/已加载/未加载，CacheState 描述 5.1 上下文缓存是否有效。
     Install 给出依赖安装入口，Enable 给出未启用时的组件启用命令；-Validate 不列组件，
     改跑清单结构、Init 步骤生成与已启用依赖的一致性检查。
     .PARAMETER Id
@@ -3227,6 +3354,8 @@ function Get-CxxuComponent
     .EXAMPLE
     Get-CxxuComponent | Select-Object Id, Enabled, Install, Enable | Format-Table -Wrap
     .EXAMPLE
+    Get-CxxuComponent | Select-Object Id, Enabled, TierAllowed, Effective | Format-Table
+    .EXAMPLE
     Get-CxxuComponent -Validate | Where-Object Status -ne 'OK'
     #>
     [CmdletBinding()]
@@ -3239,6 +3368,7 @@ function Get-CxxuComponent
         [switch]$Validate
     )
     if ($Validate) { return Test-CxxuComponent -Path $Path }
+    $tierName = Get-CxxuStartupTier
     $state = try { Read-CxxuConfigState -Path $Path } catch
     {
         Write-Warning "用户配置读失败($Path):$($_.Exception.Message);按环境变量与默认值判定。"
@@ -3247,6 +3377,7 @@ function Get-CxxuComponent
     foreach ($component in (Read-CxxuComponentManifest))
     {
         if ($Id -and ([string]$component.Id -ine $Id)) { continue }
+        $tierAllowed = Test-CxxuTierAllowsComponent -Tier $tierName -Id ([string]$component.Id)
         $key = [string]$component.Key
         $envValue = (Get-Item "env:$key" -ErrorAction Ignore).Value
         if (-not [string]::IsNullOrEmpty($envValue))
@@ -3283,9 +3414,13 @@ function Get-CxxuComponent
                 $options[[string]$option.Name] = $option.Default
             }
         }
-        $enableHint = if ($enabled)
+        $enableHint = if ($enabled -and $tierAllowed)
         {
             ''
+        }
+        elseif (-not $tierAllowed)
+        {
+            "Set-PsStartupTier Balanced"
         }
         elseif ($component.ContainsKey('EnableHint') -and -not [string]::IsNullOrWhiteSpace([string]$component.EnableHint))
         {
@@ -3300,6 +3435,9 @@ function Get-CxxuComponent
             Name        = [string]$component.Name
             Phase       = [string]$component.Phase
             Enabled     = [bool]$enabled
+            Tier        = $tierName
+            TierAllowed = [bool]$tierAllowed
+            Effective   = [bool]($enabled -and $tierAllowed)
             Source      = $source
             Default     = [bool]$component.Default
             Key         = $key
@@ -3321,6 +3459,7 @@ function Get-CxxuComponent
             $installed = [bool](Get-Command carapace -ErrorAction SilentlyContinue)
             $runtime = if (-not $installed) { '未安装' }
                 elseif (-not $enabled) { '未启用' }
+                elseif (-not $tierAllowed) { '档位禁用' }
                 elseif ($global:PsCarapaceLoaded) { '已加载' }
                 elseif ($global:PsCarapacePending -eq $false) { '未加载（加载失败或已停用）' }
                 else { '待参数位 Tab' }
@@ -3550,6 +3689,11 @@ function Enable-CxxuComponent
     )
     $component = @(Read-CxxuComponentManifest | Where-Object { [string]$_.Id -ieq $Id } | Select-Object -First 1)
     if (-not $component.Count) { throw "未知组件：$Id；运行 Get-CxxuComponent 查看可用 Id。" }
+    $tierName = Get-CxxuStartupTier
+    if (-not (Test-CxxuTierAllowsComponent -Tier $tierName -Id ([string]$component[0].Id)))
+    {
+        Write-Warning "当前启动档位 $tierName 不加载组件 $Id；本次只保存开关或立即调用，启动仍需先 Set-PsStartupTier Balanced。"
+    }
     $key = [string]$component[0].Key
     if ($PSCmdlet.ShouldProcess($Id, '启用组件'))
     {

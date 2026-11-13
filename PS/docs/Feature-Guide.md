@@ -19,7 +19,8 @@ Add-EnvVar -EnvVar PSModulePath -NewValue $p -Verbose
 
 | 命令 | 用途 |
 |---|---|
-| `init` | 全量初始化（变量+别名+补全+prompt，约 400~700ms）；同会话重复调用直接返回；`-Force` 重跑步骤表，并在已初始化会话真重载全部变量 conf（2026-10-03 起，重载开销约零点几秒；首次初始化路径不变） |
+| `init` | 全量初始化（变量+别名+补全+prompt，约 400~700ms，实际随档位与组件变化）；同会话重复调用直接返回；`-Force` 重跑步骤表，并在已初始化会话真重载全部变量 conf（2026-10-03 起，重载开销约零点几秒；首次初始化路径不变） |
+| `init -Tier <Minimal/Fast/Balanced>` | 本次初始化指定启动档位；档位含义与取舍见「启动档位」 |
 | `init -Timing` | 同上，附每步耗时表（首次启动）；已初始化会话用 `init -Force -Timing` |
 | `p` | 新开一个 pwsh 会话，由新进程的 profile 执行 `init`；不刷新当前会话 |
 | `Test-StartupPerformance` | 新进程分段计时（bare/profile/init/idle），标明 `init` 是 `profile 税` 的子集；`-Simple` 只测一次带 profile 的启动，`-PassThru` 返回对象 |
@@ -32,10 +33,11 @@ Add-EnvVar -EnvVar PSModulePath -NewValue $p -Verbose
 | `Import-CxxuConfig` | 读用户配置（init 首步自动调；优先级：环境变量 > 配置文件 > 默认值） |
 | `Get-CxxuConfig` | 查看各开关的当前生效值、来源（环境变量/配置文件/默认值）与默认值；管道接 `Format-List` 看完整说明 |
 | `Reset-CxxuConfig` | 按仓库默认偏好（组件见 `PS/Init/components.psd1`，Settings 见 `PS/Init/config.defaults.psd1`）重置用户配置文件；`-WhatIf` 只预览路径，重置后重开终端生效，并列出仍会覆盖默认值的环境变量 |
+| `Set-PsStartupTier` | 切换启动档位 `Minimal`/`Fast`/`Balanced`；`-Persist` 写入用户配置，`-WhatIf` 预览；当前会话不卸载已加载模块 |
 | `Enable-PsPlugin` / `Disable-PsPlugin` | 体验插件启停（Fzf/Zoxide/Predictor/Tab/Argc/GitCompletion/Carapace/PSCompletions/Fnm/ScoopSearch，当会话生效；加 `-Persist` 长期有效，写 `~/.cxxu/config.psd1`） |
 | `Set-GitCompletionSource` | 切换 `git`/`gitk` 的 Tab 补全来源（`GitCompletion`/`Carapace`/`Argc`）：写入 `PsGitCompletionSource` 与相关开关，由 `init` 在启动时读取，当前会话立即重新注册；选来源即启用对应组件（此前被 `Disable-PsPlugin` 停用也会重新打开），但不会停用其他组件；不改 profile，`-Persist` 落配置，`-WhatIf` 预览 |
 | `Get-GitCompletionSource` | 只读查看 `git`/`gitk` 补全的配置来源、解析来源与当前会话已注册来源，附各来源（含 `posh-git`）的安装/启用状态、回落原因与下一步命令；`-List` 按来源逐行列出候选（安装、版本、启用、当前生效与安装命令）；用于确认“当前实际用的是哪个”，不加载补全模块 |
-| `Get-CxxuComponent` | 按组件列出启用状态、选项、来源、默认值与安装/文档入口，并给出 `Install`/`Enable` 建议命令；`-Id Carapace` 只查一个；`-Validate` 改跑清单/步骤/依赖一致性自检 |
+| `Get-CxxuComponent` | 按组件列出启用状态、选项、来源、默认值与安装/文档入口，并给出 `Install`/`Enable` 建议命令；`Tier`/`TierAllowed`/`Effective` 显示当前启动档位与最终是否加载；`-Id Carapace` 只查一个；`-Validate` 改跑清单/步骤/依赖一致性自检 |
 | `Test-CxxuComponent` | 只读检查组件清单结构、Init 步骤生成与已启用组件的外部依赖；`Status` 为 `OK`/`警告`/`错误`，依赖警告会带安装与启用命令；`Get-CxxuComponent -Validate` 与 `doctor` 复用同一结果 |
 | `Enable-CxxuComponent` / `Disable-CxxuComponent` | 按组件 Id 启停；默认只改开关，`-Now` 立即调用组件的 Init 函数；`-Persist` 写 `~/.cxxu/config.psd1` 的 `Components` 段，不加只改当前会话；写入前备份旧文件，并按 v2 规范文本重写（手工注释可能被规范化） |
 | `Set-CxxuComponentOption` | 设置组件选项（如 `Tab.Synopsis`、`GitCompletion.Source`、`Carapace.Excludes`）；`-Id`、`-Name` 与枚举 `-Value` 支持联动 Tab 补全；`-Persist` 写配置，枚举与 List 类型按 [组件清单](../Init/components.psd1) 校验；写入行为同上 |
@@ -101,6 +103,34 @@ Test-StartupPerformance -Simple   # 只测一次新 pwsh 启动（带 profile）
   下次跑 `conda init` 会覆盖，届时重新应用（见 `Startup-Optimization.md §8`）。
 - profile 里只保留 `init`；`argc` 已有 Init 接管（部署见 [Argc-Completions-Deploy](Argc-Completions-Deploy.md)），`PSCompletions`/`fnm`/`scoop-search` 也迁到组件清单（默认关，`Enable-CxxuComponent <Id> -Persist` 启用），不再改 profile。
 
+### 启动档位（Minimal/Fast/Balanced）
+
+启动档位决定 `init` 加载到哪一层，适合临时开快速 shell 或让低配机器少加载扩展。档位只控制
+`init` 内的步骤；`$profile` 里的 conda 钩子、终端自身启动参数不在其中。
+
+| 档位 | 保留 | 不加载 |
+|---|---|---|
+| `Minimal` | 核心变量/别名、`Set-PSReadLinesCommon`、prompt（未显式设置 `PsPrompt` 时用 `Simple`） | advanced PSReadLine、`Set-ArgumentCompleter`、`Confirm-EnvVarOfInfo`、PSFzf/zoxide/predictor/CxxuTab、所有可选组件 |
+| `Fast` | `Minimal` 的全部 + advanced PSReadLine + `Argc`/`GitCompletion` 补全 + 默认 `fast` prompt | 体验件（PSFzf/zoxide/predictor/CxxuTab）、`Carapace`、`PSCompletions`/`Fnm`/`ScoopSearch`、`Set-ArgumentCompleter`、`Confirm-EnvVarOfInfo` |
+| `Balanced` | 当前默认的全部步骤与已启用组件 | 无（仍按各组件自身开关） |
+
+```powershell
+Get-CxxuConfig | Where-Object Key -eq PsStartupTier   # 查看当前档位与来源
+Set-PsStartupTier Fast                                # 当前会话切换
+Set-PsStartupTier Fast -Persist                       # 写入 ~/.cxxu/config.psd1，重开终端后保持
+init -Tier Minimal                                    # 单次初始化指定档位
+Get-CxxuComponent | Select-Object Id, Enabled, TierAllowed, Effective
+```
+
+- 档位是组件开关的上限：切到 `Minimal` 后单独 `Enable-CxxuComponent Tab` 不会在启动时加载该组件，
+  `Get-CxxuComponent` 的 `TierAllowed` 为 `False`、`Effective` 为 `False`；先切回 `Fast` 或 `Balanced`。
+- 当前会话已加载的模块不会卸载；切换后新开终端，或执行 `init -Force` 重新构建步骤表。
+- `PsPrompt`、`PsShowProgress` 的显式设置优先于档位默认值；档位只在它们未设置时提供默认
+  （`Minimal` 默认 `Simple`，`Fast/Minimal` 默认关闭进度条）。
+- 同机实测（pwsh 7.5、含 conda 缓存、新进程三次中位数）：`Minimal`/`Fast` 约 880ms，
+  `Balanced` 约 996ms；具体数值随负载与冷热缓存变化，复测用 `Test-StartupPerformance -Simple`。
+- 非法 `PsStartupTier` 值会在 `init` 时警告并按 `Balanced` 处理。
+
 ## 6. FAQ
 - **`scoop update/install` 报 `cannot pull with rebase: Your index contains uncommitted changes`**：任一仓库（scoop 本体 `apps\scoop\current` 或某个 bucket）处于脏状态，git 拒绝执行 pull --rebase。修复：`Repair-ScoopUpdate`（`Scoop` 模块，逐个检查本体与全部 bucket，默认 stash 保留现场，加 `-Discard` 丢弃改动，收尾自动 `scoop update`，只看不动加 `-NoUpdate -WhatIf`）。
 - **看不到 `Loading personal and system profiles took ...ms`**：正常。引擎只在四个
@@ -110,6 +140,9 @@ Test-StartupPerformance -Simple   # 只测一次新 pwsh 启动（带 profile）
   还包含 conda 缓存段与 Init 模块导入。两者不是同一口径，后者通常更大；分段对照用
   `Test-StartupPerformance`，口径说明见 [Startup-Optimization](Startup-Optimization.md)
   的「计时口径」。
+- **Fast/Minimal 档位下 Tab 模糊补全、PSFzf、预测或 Carapace 不工作**：档位是组件开关的上限。
+  先看 `Get-CxxuConfig | Where-Object Key -eq PsStartupTier`；需要这些功能时执行
+  `Set-PsStartupTier Balanced`（或 `Fast` 只恢复 Argc/Git 补全），再新开终端或 `init -Force`。
 - **嵌套 `pwsh` 又跑一遍 init**：新进程不继承 `$global:PsInit`，只能重跑；
   贵的是 conda + init + 模块发现（见基线表），不是重复 bug。若启动器写成
   `pwsh -noe -c p`，会看到两次 `initing...`（外层 profile 一次、`p` 开的子进程一次）；
@@ -169,7 +202,7 @@ Test-StartupPerformance -Simple   # 只测一次新 pwsh 启动（带 profile）
 > `$env:PsArgc`（argc-completions 参数补全，默认开，首次在外部 CLI 参数位按 Tab 才注册；需要时由 `Deploy-CompletionStack -IncludeArgc` 部署）；
 > `$env:PsGitCompletion`（git-completion 的 `git`/`gitk` 补全，默认开，未装模块时无效果；装模块用 `Deploy-CompletionStack -IncludeGitCompletion`，启停用 `Enable-PsPlugin GitCompletion` / `Disable-PsPlugin GitCompletion`）；
 > 来源切换用 `Set-GitCompletionSource GitCompletion|Carapace|Argc [-Persist]`：写入 `PsGitCompletionSource`（由 `init` 读取），不修改 profile；选来源即启用对应组件（此前停用也会重新打开）并在当前会话立即注册（argc 未加载时也当场注册，约 0.15–0.25 秒）；确认当前实际来源用 `Get-GitCompletionSource`（只读，区分“配置值 / 解析值 / 已注册来源”，并说明回落原因）；carapace 的启用与排除项分别由 `PsCarapace`、`PsCarapaceExcludes` 控制；
-> 组件统一管理：`Get-CxxuComponent` 按 `PS/Init/components.psd1` 列出状态与选项，`Enable/Disable-CxxuComponent` 与 `Set-CxxuComponentOption` 负责启停和选项；`Enable-CxxuComponent -Now` 立即调用组件的 `InitNow`（未声明时用 `Init`），与 `Enable-PsPlugin` 的即时路径共用同一份清单；用户配置 `~/.cxxu/config.psd1` 的 `Components` 段只表达 `Enabled` 与选项；核心步骤固定，可选组件的加载步骤按 `components.psd1` 的清单顺序生成，新增组件不必再改 init 步骤表。旧版平坦键继续兼容；`-Persist` 会先备份旧文件，再按 v2 规范文本重写，手工注释可能被规范化；`Get-CxxuComponent -Validate` 或 `Test-CxxuComponent` 检查清单结构、Init/InitNow 函数与已启用依赖，`doctor` 的同名行复用该结果；
+> 组件统一管理：`Get-CxxuComponent` 按 `PS/Init/components.psd1` 列出状态与选项，`Enable/Disable-CxxuComponent` 与 `Set-CxxuComponentOption` 负责启停和选项；`Enable-CxxuComponent -Now` 立即调用组件的 `InitNow`（未声明时用 `Init`），与 `Enable-PsPlugin` 的即时路径共用同一份清单；用户配置 `~/.cxxu/config.psd1` 的 `Components` 段只表达 `Enabled` 与选项；核心步骤按启动档位过滤，可选组件的加载步骤按 `components.psd1` 的清单顺序与档位生成，新增组件不必再改 init 步骤表。旧版平坦键继续兼容；`-Persist` 会先备份旧文件，再按 v2 规范文本重写，手工注释可能被规范化；`Get-CxxuComponent -Validate` 或 `Test-CxxuComponent` 检查清单结构、Init/InitNow 函数与已启用依赖，`doctor` 的同名行复用该结果；
 > 重定向场景自动不加载。新机安装或一键重装看 [Deploy-Guide](Deploy-Guide.md) 的「补全栈与第三方 PS 模块」（`Deploy-CompletionStack -WhatIf` 可空跑）。
 
 | 候选 | 状态 |
@@ -453,7 +486,7 @@ Git Bash 使用同一个 carapace 二进制，Linux/macOS 使用各自平台的�
 | WT 设置下发 | 仓库 `Config/wtConf*.json` 仅供参考 | `Deploy-WtSettings` | 线上 WT 无自定义 profile 时才需要；`settings.json` 为符号链接，改完配置需重启 WT 才生效 |
 | github hosts 定时更新 | 未装 | `Deploy-GithubHostsAutoUpdater` | hosts 拉胯地区按需 |
 | 镜像持久化 | 默认自动（静默测速+缓存） | `$env:PsGithubMirror` 持久化（`Add-EnvVar`）指定镜像 | 出国/回国切换用 |
-| 开关组 | 组件默认值见 [components.psd1](../Init/components.psd1)，Settings 见 [config.defaults.psd1](../Init/config.defaults.psd1) | `~/.cxxu/config.psd1`（SchemaVersion=2；`New-CxxuConfigTemplate` 建模板）或 `Enable/Disable-CxxuComponent [-Persist]`；组件选项用 `Set-CxxuComponentOption [-Persist]`，例如 `Tab.Synopsis`；`Get-CxxuComponent` 看分组状态，`Get-CxxuConfig` 看平坦键，`Reset-CxxuConfig` 恢复仓库默认 | 可用键由组件清单与 Settings 默认值生成，含摘要键 `PsTabSynopsis`；环境变量永远优先 |
+| 开关组 | 组件默认值见 [components.psd1](../Init/components.psd1)，Settings 见 [config.defaults.psd1](../Init/config.defaults.psd1) | `~/.cxxu/config.psd1`（SchemaVersion=2；`New-CxxuConfigTemplate` 建模板）或 `Enable/Disable-CxxuComponent [-Persist]`；组件选项用 `Set-CxxuComponentOption [-Persist]`，例如 `Tab.Synopsis`；启动档位用 `Set-PsStartupTier [-Persist]`；`Get-CxxuComponent` 看分组状态，`Get-CxxuConfig` 看平坦键，`Reset-CxxuConfig` 恢复仓库默认 | 可用键由组件清单与 Settings 默认值生成，含摘要键 `PsTabSynopsis` 与档位键 `PsStartupTier`；环境变量永远优先 |
 | 历史瘦身 | 从不自动执行 | `Optimize-PsHistory [-WhatIf]`（超 8000 行或 500KB 时 `doctor` 会提示） | 备份+归档双保险 |
 | pwsh 7.5+ 版本门 | 随安装 | `Update-PowerShell`（`CxxuPredictor` 需 net9；7.6 可直接用） | 不够 7.5 只缺 predictor，其余照常 |
 

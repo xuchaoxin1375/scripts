@@ -22,6 +22,7 @@
 Test-StartupPerformance                      # 新进程分段：bare/profile/init/体验件全载
 Test-StartupPerformance -Simple              # 只测一次带 profile 的新 pwsh 启动
 init -Force -Timing                           # 当前会话分步耗时（已初始化；首次启动用 init -Timing）
+init -Tier Fast -Timing                       # 指定启动档位看分步表（Minimal/Fast/Balanced）
 Test-PromptDelay                              # prompt 延迟（默认测 10 次取平均）
 ```
 
@@ -848,6 +849,41 @@ WindowsTerminal.exe
   核心变量/别名，主要成本仍是 PSReadLine、`Set-PsPrompt` 与体验件桩，不能用全量加载的
   改善宣传首屏提速。以上为同一台 Windows 虚拟机、新进程、一次采样，数值随负载和冷热
   缓存抖动；5.1 与 pwsh 7 均已直调验证，`-NoCache` 回退路径正常。
+
+## 35. 第二十八轮：启动档位（2026-11-13）
+
+- 目标：在现有组件开关之上提供整体档位，允许用户用一次切换放弃整套扩展，而不是逐个
+  `Disable-CxxuComponent`。档位只约束 `init` 的步骤表；`$profile` 中的 conda 钩子与终端
+  启动参数不在其中，conda 仍需单独处理（本轮按用户决定不纳入档位）。
+- 三档语义：
+  - `Minimal`：`Set-PSReadLinesCommon` + `Set-PsPrompt`。未显式设置 `PsPrompt` 时用
+    `Simple`；所有可选组件与体验件不加载。
+  - `Fast`：在 `Minimal` 上增加 `Set-PSReadLinesAdvanced`、`Set-ArgcCompletions`、
+    `Register-GitCompletion`，保留常用参数补全与 git 补全；体验件与 Carapace/PSCompletions/
+    Fnm/ScoopSearch 不加载。
+  - `Balanced`：原有默认步骤表与已启用组件，行为不变。
+- 实现：
+  - `init` 新增 `-Tier Minimal|Fast|Balanced`；省略时按“`$env:PsStartupTier` > 用户配置 >
+    `Balanced`”解析。显式 `-Tier` 写入进程环境，子进程与组件判断可见。
+  - 新增 `Set-PsStartupTier`（`-Persist` 写 `~/.cxxu/config.psd1` 的 Settings，
+    `-WhatIf` 可预览）；`PsStartupTier` 加入 `config.defaults.psd1`，`Get-CxxuConfig`、
+    `New-CxxuConfigTemplate`、`Reset-CxxuConfig` 自动包含。
+  - 新增 `Get-CxxuInitStepsForTier`、`Test-CxxuTierAllowsComponent`：核心步骤按档位过滤，
+    组件步骤按 `components.psd1` 的 Id 过滤，`Argc`/`GitCompletion` 是 Fast 唯一保留的组件。
+  - `Get-CxxuComponent` 增加 `Tier`、`TierAllowed`、`Effective`；`Enable-CxxuComponent` 在
+    档位不允许时警告“只保存开关或立即调用，启动仍需切回 Balanced”。档位是硬上限，组件开关不能突破。
+  - `PsPrompt`/`PsShowProgress` 的显式值优先；档位只在为空时给默认值。用户显式选择
+    `Balance`/`Brilliant`/`Brilliant2` 时，`Fast`/`Minimal` 仍补回 `Confirm-EnvVarOfInfo`
+    与 `Confirm-DataJson`，避免富提示符缺数据。
+- 同机复测（Windows、pwsh 7.5、含 conda 缓存、新进程三次中位数）：
+  `Minimal` 886ms、`Fast` 880ms、`Balanced` 996ms。收益约 110ms，主要来自去掉
+  `Set-ArgumentCompleter`、`Confirm-EnvVarOfInfo`、`Register-PsUxLazyLoad` 与可选组件步骤；
+  核心变量、PSReadLine、prompt 与 Init 模块导入仍占主要部分，不能据此宣称首屏减半。
+  若还需更快，优先处理 conda 钩子（本机缓存命中约 150ms）或 Init 模块导入，而不是继续
+  增加档位数量。
+- 验证入口：`init -Tier Minimal -Timing`、`init -Tier Fast -Timing`、
+  `Get-CxxuComponent | Select-Object Id, Enabled, Tier, TierAllowed, Effective`、
+  `PS/Init/tests/StartupTier.Tests.ps1`；pwsh 7 与 5.1 均可运行。
 
 ## 5.1 PSReadLine 可选升级与预测版本门控
 

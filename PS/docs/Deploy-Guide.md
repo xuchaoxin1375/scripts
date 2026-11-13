@@ -400,6 +400,7 @@ Deploy-UvConfig
 ```powershell
 init                 # Data.json/OS 版本 env/conf 预编译自动生成
 init -Timing         # 分步耗时，定位慢项（`Register-PsUxLazyLoad` 18ms 左右正常）
+init -Tier Fast -Timing  # 指定启动档位看分步表；档位见 Feature-Guide 的「启动档位」
 Test-PromptDelay     # prompt 延迟
 ```
 

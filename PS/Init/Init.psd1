@@ -1,6 +1,6 @@
 @{
     RootModule = 'Init.psm1'
-    ModuleVersion = '1.0.5'
+    ModuleVersion = '1.0.6'
     GUID = '55ff76df-c972-4ac7-ab2e-b034eba51fa2'
     Author = 'cxxu'
     Description = 'Pwsh startup orchestration: init/p entry points and env-level tracking'
@@ -24,6 +24,7 @@
         'Get-CxxuConfig',
         'New-CxxuConfigTemplate',
         'Reset-CxxuConfig',
+        'Set-PsStartupTier',
         'Disable-PsPlugin',
         'Enable-PsPlugin',
         'Set-GitCompletionSource',
