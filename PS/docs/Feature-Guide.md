@@ -23,7 +23,7 @@ Add-EnvVar -EnvVar PSModulePath -NewValue $p -Verbose
 | `init -Tier <Fast/Balanced>` | 本次初始化指定启动档位（`Minimal` 为 `Fast` 的兼容别名）；档位含义与取舍见「启动档位」 |
 | `init -Timing` | 同上，附每步耗时表（首次启动）；已初始化会话用 `init -Force -Timing` |
 | `p` | 新开一个 pwsh 会话，由新进程的 profile 执行 `init`；不刷新当前会话 |
-| `Test-StartupPerformance` | 默认输出按耗时降序的启动因子表（`Category`/`Name`/`Ms`/`Share(%)`/`Note`，格式视图 `Init.format.ps1xml`，无需 `ft`/`fl`），表头 `Share(%)` 的值（属性名 `Share`）为占 profile 的百分比；对象流仍可直接筛选与管道；默认拆到 bare、Init 模块导入、conda/其他 profile、init 准备/收尾与各 init 步骤；交互终端显示进度条；`-Report` 在默认因子对象之后追加独立汇总文本块（总耗时、bare、profile 税、模块导入、conda/其他、init 合计/步骤/准备收尾），汇总不混入对象表且已对齐；`-Prompt`/`-Ux`/`-Status` 追加其他评估面，`-All` 全开，`-Simple` 只给一行总耗时 |
+| `Test-StartupPerformance` | 默认输出按耗时降序的启动因子表（`Category`/`Name`/`Ms`/`Share(%)`/`Note`，格式视图 `Init.format.ps1xml`，无需 `ft`/`fl`），表头 `Share(%)` 的值（属性名 `Share`）为占 profile 的百分比；对象流仍可直接筛选与管道；默认拆到 bare、Init 模块导入、conda/其他 profile、init 准备/收尾与各 init 步骤；交互终端显示进度条；`-Report` 在默认因子对象之后追加独立汇总文本块（总耗时、bare、profile 税、模块导入、conda/其他、init 合计/步骤/准备收尾），汇总不混入对象表且已对齐；`-Prompt`/`-Ux`/`-Vars`/`-Status` 追加其他评估面（`-Vars` 为预设变量 Core 独立探针，已含在 `Set-PsPrompt`，不单独相加），`-All` 全开，`-Simple` 只给一行总耗时 |
 | `Set-PsPrompt -version < fast/short/...>` | 切换提示符；加 `-Persist` 才写注册表记住选择 |
 | `dm` | 切极简 prompt（做笔记摘录时聚焦命令本身） |
 | `Test-PromptDelay` | 测当前 prompt 延迟 |
@@ -58,6 +58,8 @@ env(3) 变量+别名。`Update-PwshVars` 全量导入后置 2，`Update-PwshEnv`
 | 排查缓存问题 | `Update-PwshVars -Core -NoCache` | 本次逐行加载核心配置；也可将 `-NoCache` 用于其他变量模式 |
 
 同时指定 `-Core` 和 `-Fast` 时以 `-Core` 为准。默认沿用系统临时目录中的单文件缓存 `CxxuPwshVar_<文件名>.cache.ps1`，源配置比缓存新时重建。缓存保存表达式，变量值每次重新计算；首次生成缓存需要额外转换。`-NoCache` 本次直接逐行加载，不读取或写入缓存；`-Debug` 可查看逐行诊断。
+
+想看 Core 变量在启动中的量级，用 `Test-StartupPerformance -Vars`。该行是独立进程探针，只测 `Update-PwshVars -Core`，并标记为已含在 `Set-PsPrompt`，不重复计入启动因子加总；`init -Force` 的 Core + 全量重载则计入 `init 准备/收尾`。
 
 缓存读取、构建或语法检查失败时回退逐行加载。缓存脚本执行期间的运行错误直接报告，避免重跑已执行的表达式。单文件缓存沿用按文件名命名和比较新旧时间的判据；切换仓库副本或恢复较旧配置后，若发现旧值，可先用 `-NoCache` 核对，再删除临时目录中对应的单文件缓存，下次调用会重新生成。
 
@@ -98,7 +100,8 @@ Get-SourceCode <命令名>     # 看任意自定义函数源码（带补全）
 init -Force -Timing         # 看当前会话 init 分步耗时，定位慢项
 Test-StartupPerformance     # 启动因子表（默认已表格化，可直接阅读；对象仍可管道）
 Test-StartupPerformance -Report    # 默认因子表 + 独立汇总块（总耗时/分解）
-Test-StartupPerformance -All | ft    # 追加 prompt、体验件全载与开关状态
+Test-StartupPerformance -Vars      # 预设变量 Core 探针（已含在 Set-PsPrompt）
+Test-StartupPerformance -All | ft    # 追加预设变量、prompt、体验件全载与开关状态
 Test-StartupPerformance -Simple   # 只测一次新 pwsh 启动（带 profile）
 ```
 

@@ -21,7 +21,8 @@
 # 复测命令（重定向/agent 下也干净：PSReadLine 控制台相关选项已按场景跳过，见 §12）
 Test-StartupPerformance                      # 启动因子表（默认已表格化，可直接阅读；约 3 秒）
 Test-StartupPerformance -Report              # 默认因子表 + 独立汇总块（总耗时/分解）
-Test-StartupPerformance -All | ft            # 追加 prompt、体验件全载与开关状态
+Test-StartupPerformance -Vars                # 预设变量 Core 探针（已含在 Set-PsPrompt）
+Test-StartupPerformance -All | ft            # 追加预设变量、prompt、体验件全载与开关状态
 Test-StartupPerformance -Simple              # 只测一次带 profile 的新 pwsh 启动
 init -Force -Timing                           # 当前会话分步耗时（已初始化；首次启动用 init -Timing）
 init -Tier Fast -Timing                       # 指定启动档位看分步表（Fast/Balanced，Minimal 为 Fast 别名）
@@ -924,6 +925,15 @@ WindowsTerminal.exe
 - 结果：默认输出即为表格，不再需要 `ft`/`fl`；对象流不变，仍可 `Where-Object`/`Select-Object`；
   同机 `Import-Module Init` 约 61~77ms，未观察到明显额外开销。
 
+## 38. 第三十一轮：预设变量耗时探针（2026-11-13）
+
+- 现场：首次 init 的预设变量 Core 加载由 `Set-PsPrompt` 内部触发，`Test-StartupPerformance`
+  只看到 `Set-PsPrompt` 整步，无法区分变量、别名与提示符本身的耗时。
+- 处置：新增 `-Vars` 探针，在独立新进程里只测 `Update-PwshVars -Core`；结果 Category 为
+  `Vars`，`Share` 留空，Note 标注“已含在 Set-PsPrompt，不单独相加”。`-All` 一并打开。
+- 结果：同机 `Update-PwshVars -Core` 约 90~115ms，占 profile 约 9~11%；`Set-PsPrompt` 步骤
+  仍按整步计时，避免改变既有加总口径。
+
 ## 变量组缓存与预设变量启动开销
 
 **结论：分组缓存已撤回，保留 `.conf` 配置、既有单文件缓存、直接点源加载长字符串和公共帮助。** 普通启动只调用 `Update-PwshVars -Core`，主要目标是减少新窗口的首次加载；完整变量与同进程重复加载的改善不能替代这个目标。当前使用方式见 [预设变量配置与缓存](Feature-Guide.md#预设变量配置与缓存)。
@@ -959,6 +969,7 @@ WindowsTerminal.exe
 ### 避免重复探索与重新评估条件
 
 - 后续处理“预设变量导致启动慢”时，先读取本节与 [用户指南](Feature-Guide.md#预设变量配置与缓存)，不从分组脚本原型重新开始。历史实现和回归可通过提交 `a18551b` 查阅，无需为留证保留线上分支逻辑。
+- 想看预设变量本身的耗时：跑 `Test-StartupPerformance -Vars`。它是独立进程探针，只测 `Update-PwshVars -Core`，结果标记为“已含在 Set-PsPrompt”，不参与启动因子加总；`init -Force` 的 Core + 全量重载计入 `init 准备/收尾`。
 - 仅在 Core 规模、真实调用频率、运行时或底层成本发生实质变化，或用户明确要求时重新评估分组缓存；重试前写明变化和目标收益。Full 变快或同进程第二次变快，仍不足以证明新窗口首屏改善。
 - 后续若继续优化，先定位 Core 内实际表达式、文件读取与系统查询的占比，再考虑减少必要工作或延迟非必要工作；尚未验证的方案不承诺可省数百毫秒。
 - 优化或重构收益小、落在测量波动内或难以抵消维护成本时，应先向用户说明证据和代价，询问是否放弃或收敛。用户已选定撤回时直接执行；将已尝试方案、测量条件、结果、放弃原因及重试条件留在同一处，后续先查记录。

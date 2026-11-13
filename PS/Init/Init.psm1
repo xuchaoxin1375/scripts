@@ -361,8 +361,10 @@ function Test-StartupPerformance
     交互终端测量时显示进度条(重定向或 PsShowProgress=False 时自动关闭)。-Report 在默认因子对象之后
     追加独立文本汇总块(profile 总耗时、bare、profile 税、Init 模块导入、conda/其他 profile、
     init 合计/步骤/准备收尾)，汇总不混入因子对象表;汇总表由 Format-Table 对齐，无需再指定 fl。
-    -Prompt 追加 prompt 延迟行;-Ux 追加体验件全载行;-Detail 再加四件明细(隐含 -Ux);
-    -Status 追加本会话开关与懒加载状态;-All 等价于 -Prompt -Ux -Status。
+    -Prompt 追加 prompt 延迟行;-Ux 追加体验件全载行;-Vars 追加预设变量 Core 探针
+    (独立进程，已含在 Set-PsPrompt，不单独相加);-Detail 再加四件明细(隐含 -Ux);
+    -Status 追加本会话开关与懒加载状态;-All 等价于 -Prompt -Ux -Vars -Status。
+    首次 init 的预设变量加载发生在 Set-PsPrompt 内；-Vars 只给独立探针量级，不重复计入加总。
     -Repeat 取中位数时按次数线性增加,不再多跑预热。
     -Simple 只测一次(或 -Repeat 次)带 profile 的新 pwsh 启动,输出一行,1~2 秒。
     耗时组成(参考值见 Startup-Optimization.md 的基线表,真机按比例):裸启动 + profile 税(conda 缓存 + init)
@@ -374,6 +376,8 @@ function Test-StartupPerformance
     Test-StartupPerformance | Format-Table -AutoSize
     .EXAMPLE
     Test-StartupPerformance -Report
+    .EXAMPLE
+    Test-StartupPerformance -Vars
     .EXAMPLE
     Test-StartupPerformance -All | Format-List
     .EXAMPLE
@@ -391,9 +395,11 @@ function Test-StartupPerformance
         [switch]$Prompt,
         # 附体验件全载（-Now）行（另开一个新进程，约 1 秒）
         [switch]$Ux,
+        # 附预设变量 Core 加载探针（另开一个新进程，约 0.3 秒；已含在 Set-PsPrompt）
+        [switch]$Vars,
         # 附本会话开关与懒加载状态
         [switch]$Status,
-        # 等价于 -Steps -Prompt -Ux -Status
+        # 等价于 -Prompt -Ux -Vars -Status
         [switch]$All,
         # 加测 OnIdle 四片各自耗时(隐含 -Ux;排查"哪片最重"时开)
         [switch]$Detail,
@@ -448,9 +454,9 @@ function Test-StartupPerformance
         return
     }
     if ($Repeat -lt 1) { $Repeat = 1 }
-    if ($Simple -and ($Prompt -or $Ux -or $Status -or $Detail -or $All))
+    if ($Simple -and ($Prompt -or $Ux -or $Vars -or $Status -or $Detail -or $All))
     {
-        Write-Warning '-Simple 只测总启动，已忽略 -Prompt/-Ux/-Detail/-Status/-All。'
+        Write-Warning '-Simple 只测总启动，已忽略 -Prompt/-Ux/-Vars/-Detail/-Status/-All。'
     }
     if ($Simple)
     {
@@ -460,13 +466,13 @@ function Test-StartupPerformance
         return New-ResultRow 'Startup' 'profile（完整启动）' $ms 100 $note
     }
     # -All 打开附加评估面；分步明细已默认包含，不再单列开关。
-    if ($All) { $Prompt = $true; $Ux = $true; $Status = $true }
+    if ($All) { $Prompt = $true; $Ux = $true; $Vars = $true; $Status = $true }
     if ($Detail) { $Ux = $true }
     Write-Verbose "分段计时中(每段 $Repeat 次)..."
     # 交互终端显示进度;重定向或 PsShowProgress=False 时静默,不污染管道。
     $progressEnabled = (-not [Console]::IsOutputRedirected) -and
         ([string]$env:PsShowProgress -notmatch '^(False|0|No|Off)$')
-    $progressState = @{ Index = 0; Total = 4 + $(if ($Ux) { 1 } else { 0 }) + $(if ($Prompt) { 1 } else { 0 }) + $(if ($Detail) { 1 } else { 0 }) }
+    $progressState = @{ Index = 0; Total = 4 + $(if ($Vars) { 1 } else { 0 }) + $(if ($Ux) { 1 } else { 0 }) + $(if ($Prompt) { 1 } else { 0 }) + $(if ($Detail) { 1 } else { 0 }) }
     function Update-StartupProgress([string]$Status)
     {
         if (-not $progressEnabled) { return }
@@ -557,6 +563,29 @@ init -Timing
     $factorRows = @($factorRows | Sort-Object Ms -Descending)
 
     $extraRows = @()
+    if ($Vars)
+    {
+        # 预设变量在首次 init 中由 Set-PsPrompt 内部触发（Update-PwshVars -Core），
+        # 没有独立步骤行；这里用独立进程探针给出量级，并注明与 Set-PsPrompt 的重叠。
+        Update-StartupProgress '预设变量（Core）'
+        $probeVars = @'
+try {
+    Import-Module PwshVar -ErrorAction Stop
+    [int](Measure-Command { Update-PwshVars -Core *> $null }).TotalMilliseconds
+} catch { -1 }
+'@
+        $tVars = Get-MedianMs { [int](& $pwsh -NoProfile -NonInteractive -Command $probeVars) } $Repeat
+        if ($tVars -ge 0)
+        {
+            $varsShare = Get-Share $tVars
+            $varsNote = if ($null -ne $varsShare) { "已含在 Set-PsPrompt；约占 profile ${varsShare}%，不单独相加" } else { '已含在 Set-PsPrompt；不单独相加' }
+            $extraRows += New-ResultRow 'Vars' '预设变量（Core）' $tVars $null $varsNote
+        }
+        else
+        {
+            $extraRows += New-ResultRow 'Vars' '预设变量（Core）' $null $null '探测失败（PwshVar 不可用）；已含在 Set-PsPrompt'
+        }
+    }
     $tIdle = $null
     if ($Ux)
     {
