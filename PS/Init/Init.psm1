@@ -119,6 +119,8 @@ function init
 
     # 计时从函数入口开始：配置读取/变量重载与步骤表分开统计，避免把准备阶段漏在总数外。
     $initStart = [datetime]::UtcNow
+    # prep 子阶段供 -Timing/Test-StartupPerformance 做逻辑分解；时间戳开销可忽略。
+    $prepDetail = [ordered]@{}
     # 使用临时环境$env:Psinit会引发副作用(子作用域的pwsh也会继承此变量),这里限制其作用域,使用普通变量(局部)
     #考虑到$profile和wt中的启动参数同时调用init,都是同一个作用域,不需要第二个作用域访问到此标记变量,因此使用普通变量即可(同一个会话内可以访问)
     if ($Force -or $null -eq $PsInit)
@@ -130,12 +132,18 @@ function init
         $reInit = $null -ne $PsInit
         # $env:PsInit = 'True' 
         # 从 pwsh 7 终端启动的宿主会让 5.1 继承 7 的模块路径,先修正顺序再读配置与导入模块
+        $prepT0 = [datetime]::UtcNow
         Update-CxxuModulePathOrder
+        $prepDetail['module path'] = [int]([datetime]::UtcNow - $prepT0).TotalMilliseconds
         # 用户配置文件先行(环境变量 > 配置文件 > 默认;缺文件静默跳过,见 Import-CxxuConfig)
+        $prepT0 = [datetime]::UtcNow
         Import-CxxuConfig
+        $prepDetail['config'] = [int]([datetime]::UtcNow - $prepT0).TotalMilliseconds
         # 仓库模块文件比命令表缓存新时删缓存:插件每进程只建一次表(见 CxxuPredictor),
         # 这里只保证“之后启动的进程”不再读到旧表,当前会话未建表时首次 Tab 也会直接重建。
+        $prepT0 = [datetime]::UtcNow
         Clear-PsCommandCacheIfStale
+        $prepDetail['cache'] = [int]([datetime]::UtcNow - $prepT0).TotalMilliseconds
         if ($reInit)
         {
             # -Force 必须真重载变量 conf:步骤表唯一变量入口(Set-PsPrompt 内的
@@ -144,9 +152,11 @@ function init
             # 两连跑取并集:Core 名单(含 ConstantString) + 全量名单(VarSet3/GlobalConfig 等
             # 平时懒加载的部分);VarSet1/2 幂等重跑,预编译缓存命中,开销低。
             # VarSet1.conf 会把等级恒写 1,步骤尾恢复原等级,Env 级会话不被打回。
+            $prepT0 = [datetime]::UtcNow
             $prevEnvMode = $global:PsEnvMode
             Update-PwshVars -Core
             Update-PwshVars
+            $prepDetail['variable reload'] = [int]([datetime]::UtcNow - $prepT0).TotalMilliseconds
         }
     }
     else
@@ -162,6 +172,7 @@ function init
     # 重定向下(无处渲染)自动关闭。
     # 档位决定核心步骤与可选组件的上限:Fast 只留核心 + advanced PSReadLine + Argc/Git 补全,
     # Balanced 保持原有全部步骤;Minimal 与 Fast 等价(兼容别名)。
+    $prepT0 = [datetime]::UtcNow
     $tierName = Get-CxxuStartupTier
     if ($env:PsStartupTier -and ($env:PsStartupTier -notmatch '^(?i:Minimal|Fast|Balanced)$'))
     {
@@ -172,11 +183,15 @@ function init
     # 会话内切档后 init -Force 也能跟着变，且不会覆盖用户显式设置。
     $progressSetting = Resolve-CxxuShowProgressSetting -Setting ([string]$env:PsShowProgress) -Tier $tierName
     $steps = @(Get-CxxuInitStepsForTier -Tier $tierName)
+    $prepDetail['step table'] = [int]([datetime]::UtcNow - $prepT0).TotalMilliseconds
 
     # 步骤表构建完成后再置已初始化标记：前面任何一步失败时保留未初始化状态，允许重试；
     # 步骤表内部单步失败只记账不中断。
     $global:PsInit = $True
     $prepMs = [int]([datetime]::UtcNow - $initStart).TotalMilliseconds
+    $prepKnown = 0
+    foreach ($value in $prepDetail.Values) { $prepKnown += [int]$value }
+    $prepDetail['other'] = [Math]::Max(0, $prepMs - $prepKnown)
 
     # 仅在要求时计时/报告(-Timing 或 -InformationAction Continue;`init -Force -Timing` 走前者)
     $needTiming = $Timing -or ($InformationPreference -eq 'Continue')
@@ -268,7 +283,7 @@ function init
                 if ($sumStepMs -gt 0) { $share = '{0:P0}' -f ($_.Time / $sumStepMs) }
                 [PSCustomObject]@{ Command = $_.Command; Time = $_.Time; Share = $share }
             })
-        $report += [PSCustomObject]@{ Command = '步骤合计'; Time = $sumStepMs; Share = '100%' }
+        $report += [PSCustomObject]@{ Command = 'Step total'; Time = $sumStepMs; Share = '100%' }
         $report | Format-Table -AutoSize | Out-String -Width 160 | Write-Host
     }
 
@@ -344,6 +359,11 @@ function init
     # }
     # 耗时统计：主数字是 init 总耗时，括号内三段严格等于总耗时；末尾标注当前档位。
     Write-Host ("Environment Loading time: {0} ms (prep {1} + steps {2} + other {3}) [{4}]" -f $totalMs, $prepMs, $stepsMs, $otherMs, $tierName) -ForegroundColor Magenta
+    if ($needTiming -and $prepDetail.Count)
+    {
+        $prepText = ($prepDetail.GetEnumerator() | ForEach-Object { "$($_.Key) $($_.Value)" }) -join ' + '
+        Write-Host ("Init prep: {0} ms ({1})" -f $prepMs, $prepText) -ForegroundColor Cyan
+    }
     # 清理竞争关系变量
     # $env:PsInit = $null
     # Remove-Variable $env:PsInit
@@ -355,13 +375,16 @@ function Test-StartupPerformance
     自查 pwsh 启动性能:默认输出按耗时降序的启动因子表(格式视图,无需 ft/fl),对象流仍可筛选与管道。
     .DESCRIPTION
     每段都在全新 pwsh 进程里测(冷数字,排除本会话已摊销的解析成本);本机改动对照看 Startup-Optimization.md。
-    默认输出可加分解的启动因子行:bare、profile 剩余(非 init/模块导入)、init 准备/收尾、各 init 步骤;
-    列固定为 Category/Name/Ms/Share(%)/Note,按 Ms 降序,Share 为占 profile 的百分比,第一行即当前最大影响因素。
+    默认输出可加分解的启动因子行:bare、Init module import、Profile other、Init prep、
+    Init loop overhead、Init teardown 与各 init 步骤;Category 用 Baseline/Profile/InitPrep/InitStep/Init
+    标出所处阶段;列固定为 Category/Name/Ms/Share(%)/Note,按 Ms 降序,Share 为占 profile 的百分比,
+    第一行即当前最大影响因素。
     因子对象带 Cxxu.StartupFactor 类型名,Init.format.ps1xml 提供默认表格视图,无需再指定 ft/fl。
     预设变量 Core 是独立 init 步骤(Update-PwshVars)，耗时直接出现在 InitStep 行，不再藏在 Set-PsPrompt 内。
     交互终端测量时显示进度条(重定向或 PsShowProgress=False 时自动关闭)。-Report 在默认因子对象之后
-    追加独立文本汇总块(profile 总耗时、bare、profile 税、Init 模块导入、profile 剩余、
-    init 合计/步骤/准备收尾)，汇总不混入因子对象表;汇总表由 Format-Table 对齐，无需再指定 fl。
+    追加独立文本汇总块(Profile total、bare、Profile tax、Init module import、Profile other、Init total、
+    Init prep、Init steps total、Init loop overhead、Init teardown)，汇总不混入因子对象表;
+    汇总表由 Format-Table 对齐，无需再指定 fl。
     -Prompt 追加 prompt 延迟行;-Ux 追加体验件全载行;-Detail 再加四件明细(隐含 -Ux);
     -Status 追加本会话开关与懒加载状态;-All 等价于 -Prompt -Ux -Status。
     -Repeat 取中位数时按次数线性增加,不再多跑预热。
@@ -379,6 +402,8 @@ function Test-StartupPerformance
     Test-StartupPerformance -All | Format-List
     .EXAMPLE
     Test-StartupPerformance | Where-Object Category -eq InitStep | Select-Object -First 3
+    .EXAMPLE
+    Test-StartupPerformance | Where-Object Category -eq InitPrep
     .EXAMPLE
     Test-StartupPerformance -Repeat 3
     .EXAMPLE
@@ -445,25 +470,25 @@ function Test-StartupPerformance
     $pwsh = Get-Command pwsh -ErrorAction SilentlyContinue
     if (-not $pwsh)
     {
-        Write-Warning '没找到 pwsh(本工具在新进程里测 7 的启动链);5.1 会话可用 init -Timing 看步骤表。'
+        Write-Warning 'pwsh not found; this tool measures the pwsh 7 startup chain in a new process. In a 5.1 session, use init -Timing for the step table.'
         return
     }
     if ($Repeat -lt 1) { $Repeat = 1 }
     if ($Simple -and ($Prompt -or $Ux -or $Status -or $Detail -or $All))
     {
-        Write-Warning '-Simple 只测总启动，已忽略 -Prompt/-Ux/-Detail/-Status/-All。'
+        Write-Warning '-Simple measures total startup only; ignoring -Prompt/-Ux/-Detail/-Status/-All.'
     }
     if ($Simple)
     {
         $simpleRuns = [Math]::Max(1, $Repeat)
         $ms = Get-MedianMs { [int](Measure-Command { & $pwsh -NonInteractive -Command 'exit' *> $null }).TotalMilliseconds } $simpleRuns
-        $note = if ($simpleRuns -gt 1) { "$simpleRuns 次中位数" } else { '1 次' }
-        return New-ResultRow 'Startup' 'profile（完整启动）' $ms 100 $note
+        $note = if ($simpleRuns -gt 1) { "median of $simpleRuns runs" } else { '1 run' }
+        return New-ResultRow 'Startup' 'Profile (full startup)' $ms 100 $note
     }
     # -All 打开附加评估面；分步明细已默认包含，不再单列开关。
     if ($All) { $Prompt = $true; $Ux = $true; $Status = $true }
     if ($Detail) { $Ux = $true }
-    Write-Verbose "分段计时中(每段 $Repeat 次)..."
+    Write-Verbose "Measuring startup segments ($Repeat run(s) each)..."
     # 交互终端显示进度;重定向或 PsShowProgress=False 时静默,不污染管道。
     $progressEnabled = (-not [Console]::IsOutputRedirected) -and
         ([string]$env:PsShowProgress -notmatch '^(False|0|No|Off)$')
@@ -472,21 +497,21 @@ function Test-StartupPerformance
     {
         if (-not $progressEnabled) { return }
         $progressState.Index++
-        Write-Progress -Activity 'pwsh 启动计时' -Status $Status -PercentComplete ([int](100 * $progressState.Index / $progressState.Total))
+        Write-Progress -Activity 'pwsh startup timing' -Status $Status -PercentComplete ([int](100 * $progressState.Index / $progressState.Total))
     }
     function Complete-StartupProgress
     {
         if (-not $progressEnabled) { return }
-        Write-Progress -Activity 'pwsh 启动计时' -Completed
+        Write-Progress -Activity 'pwsh startup timing' -Completed
     }
     if ($Repeat -gt 1)
     {
         $null = & $pwsh -NoProfile -NonInteractive -Command 'exit' *> $null
         $null = & $pwsh -NonInteractive -Command 'exit' *> $null
     }
-    Update-StartupProgress 'bare（裸启动）'
+    Update-StartupProgress 'bare (no profile)'
     $bare = Get-MedianMs { [int](Measure-Command { & $pwsh -NoProfile -NonInteractive -Command 'exit' *> $null }).TotalMilliseconds } $Repeat
-    Update-StartupProgress 'profile（完整启动）'
+    Update-StartupProgress 'profile (full startup)'
     $prof = Get-MedianMs { [int](Measure-Command { & $pwsh -NonInteractive -Command 'exit' *> $null }).TotalMilliseconds } $Repeat
     # init 合计与步骤表同一次新进程:总量取 init 自己打印的 Environment Loading time,
     # 步骤行一并留存,避免为“占比”再开一个进程。重复时取总量中位数,步骤表用第一次。
@@ -495,13 +520,37 @@ Import-Module Init -ErrorAction Stop
 init -Timing
 '@
     $initTotals = @()
+    $initPreps = @()
+    $initStepsWall = @()
     $initTable = @()
-    Update-StartupProgress 'init（含步骤表）'
+    $prepDetail = [ordered]@{}
+    Update-StartupProgress 'init (with step table)'
     for ($i = 0; $i -lt $Repeat; $i++)
     {
         $out = & $pwsh -NoProfile -NonInteractive -Command $probeInit 2>&1 | Out-String
-        $matched = [regex]::Match($out, 'Environment Loading time:\s*(\d+)\s*ms')
-        if ($matched.Success) { $initTotals += [int]$matched.Groups[1].Value }
+        $matched = [regex]::Match($out, 'Environment Loading time:\s*(\d+)\s*ms\s*\(prep\s*(\d+)\s*\+\s*steps\s*(\d+)\s*\+\s*other\s*(\d+)\)')
+        if ($matched.Success)
+        {
+            $initTotals += [int]$matched.Groups[1].Value
+            $initPreps += [int]$matched.Groups[2].Value
+            $initStepsWall += [int]$matched.Groups[3].Value
+        }
+        else
+        {
+            $matched = [regex]::Match($out, 'Environment Loading time:\s*(\d+)\s*ms')
+            if ($matched.Success) { $initTotals += [int]$matched.Groups[1].Value }
+        }
+        if (-not $prepDetail.Count)
+        {
+            $detailMatch = [regex]::Match($out, 'Init prep:\s*(\d+)\s*ms\s*\(([^)]*)\)')
+            if ($detailMatch.Success)
+            {
+                foreach ($m in [regex]::Matches($detailMatch.Groups[2].Value, '([a-z ]+?)\s+(\d+)'))
+                {
+                    $prepDetail[$m.Groups[1].Value.Trim()] = [int]$m.Groups[2].Value
+                }
+            }
+        }
         if (-not $initTable.Count)
         {
             $inTable = $false
@@ -509,7 +558,7 @@ init -Timing
             {
                 if ($line -match '^Command\s+Time\s+Share') { $inTable = $true }
                 if ($inTable) { $initTable += $line }
-                if ($line -match '^\s*步骤合计') { break }
+                if ($line -match '^\s*(?:步骤合计|Step total)') { break }
             }
         }
     }
@@ -519,16 +568,16 @@ init -Timing
     $profileOther = [Math]::Max(0, $profileTax - $tInit)
     # profile 其他里占大头的是 Init 模块导入，单独测出来；剩余归为 profile 剩余。
     $probeImport = '[int](Measure-Command { Import-Module Init -ErrorAction Stop }).TotalMilliseconds'
-    Update-StartupProgress 'Init 模块导入'
+    Update-StartupProgress 'Init module import'
     $tImport = Get-MedianMs { [int](& $pwsh -NoProfile -NonInteractive -Command $probeImport) } $Repeat
     $profileRest = [Math]::Max(0, $profileOther - $tImport)
-    # 把 init 步骤表转成因子行，并把 init 内部拆成“步骤 + 准备/收尾”，
-    # 与 bare、profile 剩余共同构成 profile 的可加分解；Share 为占 profile 的百分比。
+    # 把 init 步骤表转成因子行，并把 init 内部拆成 prep / steps / loop / teardown，
+    # 与 bare、Init module import、Profile other 共同构成 profile 的可加分解。
     $stepRows = @()
     $stepSum = 0
     foreach ($line in $initTable)
     {
-        if ($line -match '^\s*步骤合计') { continue }
+        if ($line -match '^\s*(?:步骤合计|Step total)') { continue }
         if ($line -match '^(\S+)\s+(\d+)\s+(\d+)%')
         {
             $stepMs = [int]$Matches[2]
@@ -536,7 +585,21 @@ init -Timing
             $stepSum += $stepMs
         }
     }
-    $initPrep = [Math]::Max(0, $tInit - $stepSum)
+    $initPrep = Get-MedianValue $initPreps
+    $initStepWall = Get-MedianValue $initStepsWall
+    if (-not $initPreps.Count)
+    {
+        # 旧版 init 无 prep 子阶段行：退回“prep = 总 - 步骤”的粗分。
+        $initPrep = [Math]::Max(0, $tInit - $stepSum)
+        $initStepWall = $stepSum
+    }
+    $loopOverhead = [Math]::Max(0, $initStepWall - $stepSum)
+    $initTeardown = [Math]::Max(0, $tInit - $initPrep - $stepSum - $loopOverhead)
+    # prep 子项来自第一次 init（与步骤表同一次）；按 prep 中位数把差额并入 other，
+    # 使因子表中的 prep 子项之和等于汇总里的 Init prep。
+    $prepDetailSum = 0
+    if ($prepDetail.Count) { $prepDetailSum = [int](($prepDetail.Values | Measure-Object -Sum).Sum) }
+    $prepDelta = $initPrep - $prepDetailSum
     # 只有启动链路参与 Share；体验件/prompt 不属于 profile，保持空值，避免误读。
     function Get-Share([int]$Ms)
     {
@@ -544,11 +607,43 @@ init -Timing
         return [int][Math]::Round(100.0 * $Ms / $prof)
     }
     $factorRows = @(
-        (New-ResultRow 'Startup' 'bare' $bare (Get-Share $bare) '不含 profile')
-        (New-ResultRow 'Startup' 'Init 模块导入' $tImport (Get-Share $tImport) 'Import-Module Init')
-        (New-ResultRow 'Startup' 'profile 剩余' $profileRest (Get-Share $profileRest) 'profile 税 - init - 模块导入')
-        (New-ResultRow 'Startup' 'init 准备/收尾' $initPrep (Get-Share $initPrep) 'prep + 收尾')
+        (New-ResultRow 'Baseline' 'bare' $bare (Get-Share $bare) 'no profile; not optimizable')
+        (New-ResultRow 'Profile' 'Init module import' $tImport (Get-Share $tImport) 'Import-Module Init')
+        (New-ResultRow 'Profile' 'Profile other' $profileRest (Get-Share $profileRest) 'non-init profile code; conda hook if present')
     )
+    $prepLabels = [ordered]@{
+        'module path'     = 'Module path'
+        'config'          = 'Config load'
+        'cache'           = 'Cache check'
+        'variable reload' = 'Variable reload'
+        'step table'      = 'Step table'
+        'other'           = 'Prep other'
+    }
+    $prepNotes = @{
+        'module path'     = 'Update-CxxuModulePathOrder'
+        'config'          = 'Import-CxxuConfig'
+        'cache'           = 'Clear-PsCommandCacheIfStale'
+        'variable reload' = '-Force only'
+        'step table'      = 'tier + progress + step list'
+        'other'           = 'remaining prep'
+    }
+    if ($prepDetail.Count)
+    {
+        foreach ($key in $prepLabels.Keys)
+        {
+            if (-not $prepDetail.Contains($key)) { continue }
+            $value = [int]$prepDetail[$key]
+            if ($key -eq 'other') { $value = [Math]::Max(0, $value + $prepDelta) }
+            if ($value -le 0 -and $key -notin @('module path', 'config', 'cache', 'step table')) { continue }
+            $factorRows += New-ResultRow 'InitPrep' $prepLabels[$key] $value (Get-Share $value) $prepNotes[$key]
+        }
+    }
+    else
+    {
+        $factorRows += New-ResultRow 'InitPrep' 'Init prep' $initPrep (Get-Share $initPrep) 'module path + config + cache + step table'
+    }
+    $factorRows += New-ResultRow 'Init' 'Init loop overhead' $loopOverhead (Get-Share $loopOverhead) 'step loop/progress/timing'
+    $factorRows += New-ResultRow 'Init' 'Init teardown' $initTeardown (Get-Share $initTeardown) 'env restore + progress cleanup'
     foreach ($row in $stepRows)
     {
         $row.Share = Get-Share $row.Ms
@@ -561,17 +656,17 @@ init -Timing
     $tIdle = $null
     if ($Ux)
     {
-        Update-StartupProgress '体验件全载（-Now）'
+        Update-StartupProgress 'full UX load (-Now)'
         $probeIdle = @'
 Import-Module TerminalTools -ErrorAction Stop
 [int](Measure-Command { Register-PsUxLazyLoad -Now *> $null }).TotalMilliseconds
 '@
         $tIdle = Get-MedianMs { [int](& $pwsh -NoProfile -NonInteractive -Command $probeIdle) } $Repeat
-        $extraRows += New-ResultRow 'Ux' '体验件全载（-Now）' $tIdle $null '含 PSFzf/CxxuTab，不等于首屏 OnIdle；不计入 profile'
+        $extraRows += New-ResultRow 'Ux' 'Full UX load (-Now)' $tIdle $null 'includes PSFzf/CxxuTab; not first-prompt OnIdle; excluded from profile'
     }
     if ($Detail)
     {
-        Update-StartupProgress '全载四件明细'
+        Update-StartupProgress 'UX detail (4 components)'
         $probeDetail = @'
 $r = @()
 $r += 'PSFzf:' + [int](Measure-Command { if (Get-Module -ListAvailable PSFzf) { Import-Module PSFzf -Global; Set-PsFzfOption -PSReadlineChordProvider 'Ctrl+t' -PSReadlineChordReverseHistory 'Ctrl+r' } }).TotalMilliseconds
@@ -588,19 +683,19 @@ $r -join ' '
             if ($piece -match '^([^:]+):(-?\d+)$')
             {
                 $value = [int]$Matches[2]
-                $extraRows += New-ResultRow 'UxDetail' $Matches[1] $(if ($value -ge 0) { $value } else { $null }) $null $(if ($value -lt 0) { '本机缺件' } else { $null })
+                $extraRows += New-ResultRow 'UxDetail' $Matches[1] $(if ($value -ge 0) { $value } else { $null }) $null $(if ($value -lt 0) { 'missing on this host' } else { $null })
             }
         }
     }
     $promptMs = $null
     if ($Prompt)
     {
-        Update-StartupProgress 'prompt 延迟'
+        Update-StartupProgress 'prompt latency'
         $promptLine = & $pwsh -NoProfile -NonInteractive -Command 'Test-PromptDelay 5' 2>$null | Select-Object -Last 1
         $promptSec = 0
         if ($promptLine -match '([\d.]+)') { $promptSec = [double]$Matches[1] }
         $promptMs = [int][Math]::Round($promptSec * 1000)
-        $extraRows += New-ResultRow 'Prompt' 'Test-PromptDelay 5' $promptMs $null '5 次均值'
+        $extraRows += New-ResultRow 'Prompt' 'Test-PromptDelay 5' $promptMs $null 'mean of 5'
     }
     if ($Status)
     {
@@ -611,8 +706,8 @@ $r -join ' '
         $extraRows += New-ResultRow 'Switch' 'PsZoxide' $null $null ([string]$env:PsZoxide)
         $extraRows += New-ResultRow 'Switch' 'PsTab' $null $null ([string]$env:PsTab)
         $extraRows += New-ResultRow 'Switch' 'PsPredictor' $null $null ([string]$env:PsPredictor)
-        $extraRows += New-ResultRow 'Switch' 'OnIdle已注册' $null $null ([string][bool]$global:PsUxOnIdleRegistered)
-        $extraRows += New-ResultRow 'Switch' '加载错误' $null $null ([string]$uxErrs)
+        $extraRows += New-ResultRow 'Switch' 'OnIdle registered' $null $null ([string][bool]$global:PsUxOnIdleRegistered)
+        $extraRows += New-ResultRow 'Switch' 'Load errors' $null $null ([string]$uxErrs)
     }
     Complete-StartupProgress
     $rows = @($factorRows) + @($extraRows)
@@ -620,21 +715,23 @@ $r -join ' '
     {
         # 报告模式：默认因子对象保持原样，汇总另起一个文本块，避免把 Summary 行
         # 塞进因子对象流后共用同一组列。汇总表由 Format-Table 对齐，可直接阅读。
-        $mode = if ($Repeat -gt 1) { "$Repeat 次中位数" } else { '1 次' }
+        $mode = if ($Repeat -gt 1) { "median of $Repeat runs" } else { '1 run' }
         $summaryRows = @(
-            (New-SummaryRow 'profile 总耗时' $prof 100 $null)
-            (New-SummaryRow 'bare' $bare (Get-Share $bare) '裸启动基线，profile 无法优化')
-            (New-SummaryRow 'profile 税' $profileTax (Get-Share $profileTax) 'profile - bare')
-            (New-SummaryRow 'Init 模块导入' $tImport (Get-Share $tImport) 'Import-Module Init')
-            (New-SummaryRow 'profile 剩余' $profileRest (Get-Share $profileRest) 'profile 税 - init - 模块导入')
-            (New-SummaryRow 'init 合计' $tInit (Get-Share $tInit) '步骤 + 准备/收尾')
-            (New-SummaryRow 'init 步骤合计' $stepSum (Get-Share $stepSum) '各 init 步骤之和')
-            (New-SummaryRow 'init 准备/收尾' $initPrep (Get-Share $initPrep) 'prep + 收尾')
+            (New-SummaryRow 'Profile total' $prof 100 $null)
+            (New-SummaryRow '  bare' $bare (Get-Share $bare) 'no profile; not optimizable')
+            (New-SummaryRow '  Profile tax' $profileTax (Get-Share $profileTax) 'profile - bare')
+            (New-SummaryRow '    Init module import' $tImport (Get-Share $tImport) 'Import-Module Init')
+            (New-SummaryRow '    Profile other' $profileRest (Get-Share $profileRest) 'non-init profile code')
+            (New-SummaryRow '    Init total' $tInit (Get-Share $tInit) 'prep + steps + loop + teardown')
+            (New-SummaryRow '      Init prep' $initPrep (Get-Share $initPrep) 'module path + config + cache + step table')
+            (New-SummaryRow '      Init steps total' $stepSum (Get-Share $stepSum) 'sum of init steps')
+            (New-SummaryRow '      Init loop overhead' $loopOverhead (Get-Share $loopOverhead) 'step loop/progress/timing')
+            (New-SummaryRow '      Init teardown' $initTeardown (Get-Share $initTeardown) 'env restore + progress cleanup')
         )
         $summaryTable = (($summaryRows | Format-Table -AutoSize | Out-String -Width 160).Trim())
         $summaryBlock = @(
             ''
-            "汇总（$mode）"
+            "Summary ($mode)"
             $summaryTable
         ) -join [Environment]::NewLine
         return @($rows) + @($summaryBlock)

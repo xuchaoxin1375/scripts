@@ -23,7 +23,7 @@ Add-EnvVar -EnvVar PSModulePath -NewValue $p -Verbose
 | `init -Tier <Fast/Balanced>` | 本次初始化指定启动档位（`Minimal` 为 `Fast` 的兼容别名）；档位含义与取舍见「启动档位」 |
 | `init -Timing` | 同上，附每步耗时表（首次启动）；已初始化会话用 `init -Force -Timing` |
 | `p` | 新开一个 pwsh 会话，由新进程的 profile 执行 `init`；不刷新当前会话 |
-| `Test-StartupPerformance` | 默认输出按耗时降序的启动因子表（`Category`/`Name`/`Ms`/`Share(%)`/`Note`，格式视图 `Init.format.ps1xml`，无需 `ft`/`fl`），表头 `Share(%)` 的值（属性名 `Share`）为占 profile 的百分比；对象流仍可直接筛选与管道；默认拆到 bare、Init 模块导入、profile 剩余、init 准备/收尾、`Update-PwshVars` 与各 init 步骤；交互终端显示进度条；`-Report` 在默认因子对象之后追加独立汇总文本块（总耗时、bare、profile 税、模块导入、profile 剩余、init 合计/步骤/准备收尾），汇总不混入对象表且已对齐；`-Prompt`/`-Ux`/`-Status` 追加其他评估面，`-All` 全开，`-Simple` 只给一行总耗时 |
+| `Test-StartupPerformance` | 默认输出按耗时降序的启动因子表（`Category`/`Name`/`Ms`/`Share(%)`/`Note`，格式视图 `Init.format.ps1xml`，无需 `ft`/`fl`），表头 `Share(%)` 的值（属性名 `Share`）为占 profile 的百分比；对象流仍可直接筛选与管道；默认拆到 `bare`、`Init module import`、`Profile other`、`Config load`/`Cache check`/`Step table`/`Module path` 等 `InitPrep` 行、`Init loop overhead`、`Init teardown`、`Update-PwshVars` 与各 `InitStep`；交互终端显示进度条；`-Report` 在默认因子对象之后追加独立汇总文本块（`Profile total`、`bare`、`Profile tax`、`Init module import`、`Profile other`、`Init total`、`Init prep`/`Init steps total`/`Init loop overhead`/`Init teardown`），汇总不混入对象表且已对齐；`-Prompt`/`-Ux`/`-Status` 追加其他评估面，`-All` 全开，`-Simple` 只给一行总耗时 |
 | `Set-PsPrompt -version < fast/short/...>` | 切换提示符；加 `-Persist` 才写注册表记住选择 |
 | `dm` | 切极简 prompt（做笔记摘录时聚焦命令本身） |
 | `Test-PromptDelay` | 测当前 prompt 延迟 |
@@ -59,7 +59,7 @@ env(3) 变量+别名。`Update-PwshVars` 全量导入后置 2，`Update-PwshEnv`
 
 同时指定 `-Core` 和 `-Fast` 时以 `-Core` 为准。默认沿用系统临时目录中的单文件缓存 `CxxuPwshVar_<文件名>.cache.ps1`，源配置比缓存新时重建。缓存保存表达式，变量值每次重新计算；首次生成缓存需要额外转换。`-NoCache` 本次直接逐行加载，不读取或写入缓存；`-Debug` 可查看逐行诊断。
 
-想看 Core 变量在启动中的量级，直接看 `Test-StartupPerformance` 的 `Update-PwshVars` 行（独立 init 步骤，带 `Share(%)`）。`init -Force` 的 Core + 全量重载发生在准备阶段，计入 `init 准备/收尾`。
+想看 Core 变量在启动中的量级，直接看 `Test-StartupPerformance` 的 `Update-PwshVars` 行（独立 init 步骤，带 `Share(%)`）。`init -Force` 的 Core + 全量重载发生在准备阶段，计入 `Init prep` 的 `Variable reload`。
 
 缓存读取、构建或语法检查失败时回退逐行加载。缓存脚本执行期间的运行错误直接报告，避免重跑已执行的表达式。单文件缓存沿用按文件名命名和比较新旧时间的判据；切换仓库副本或恢复较旧配置后，若发现旧值，可先用 `-NoCache` 核对，再删除临时目录中对应的单文件缓存，下次调用会重新生成。
 
@@ -169,7 +169,7 @@ Get-CxxuComponent | Select-Object Id, Enabled, TierAllowed, Effective
   profile 合计 >500ms（硬编码）才打印，不到就静默。
 - **`Environment Loading time` 与 `Loading personal and system profiles took` 数值不同**：
   前者是 `init` 函数内部耗时（准备 + 步骤 + 收尾），后者是 pwsh 引擎统计的 profile 总耗时，
-  还包含 conda 缓存段与 Init 模块导入。两者不是同一口径，后者通常更大；分段对照用
+  还包含 conda 缓存段与 Init module import。两者不是同一口径，后者通常更大；分段对照用
   `Test-StartupPerformance`，口径说明见 [Startup-Optimization](Startup-Optimization.md)
   的「计时口径」。
 - **Fast 档位下 Tab 模糊补全、PSFzf、预测或 Carapace 不工作**：档位是组件开关的上限。
