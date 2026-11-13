@@ -355,7 +355,8 @@ function Test-StartupPerformance
     自查 pwsh 启动性能:分段计时(裸启动/profile 税/init 合计+步骤表/体验件全载/prompt)并给结论。
     .DESCRIPTION
     每段都在全新 pwsh 进程里测(冷数字,排除本会话已摊销的解析成本);本机改动对照看 Startup-Optimization.md。
-    -Simple 只测一次(或 -Repeat 次)带 profile 的新 pwsh 启动,几秒内出结果;-PassThru 返回结构化对象。
+    默认每段跑一次并直接列出分段表,约 4 秒;-Repeat 取中位数时按次数线性增加,不再多跑预热。
+    -Simple 只测一次(或 -Repeat 次)带 profile 的新 pwsh 启动,1~2 秒出结果;-PassThru 返回结构化对象。
     耗时组成(参考值见 Startup-Optimization.md 的基线表,真机按比例):裸启动 + profile 税(conda 缓存 + init)
     + 首屏单发(predictor/zoxide);PSFzf/CxxuTab 转手势按需(首按 Ctrl+T/R、首次裸命令名 Tab 才装)。
     体验件全载使用 Register-PsUxLazyLoad -Now,包含手势组件,不是首屏 OnIdle 的实际耗时;
@@ -364,11 +365,11 @@ function Test-StartupPerformance
     .EXAMPLE
     Test-StartupPerformance
     .EXAMPLE
-    Test-StartupPerformance -Repeat 3 -Detail
+    Test-StartupPerformance -Repeat 3
+    .EXAMPLE
+    Test-StartupPerformance -Detail
     .EXAMPLE
     $env:PsStartupTier='Fast'; Test-StartupPerformance -Simple
-    .EXAMPLE
-    Test-StartupPerformance -Simple
     .EXAMPLE
     Test-StartupPerformance -Simple -PassThru
     #>
@@ -385,16 +386,21 @@ function Test-StartupPerformance
         [switch]$PassThru
     )
     # 嵌套 helper:与 Show-MemoryBar 内嵌套风格一致;顶层解析器看不见,不进 manifest
-    function Get-MedianMs([scriptblock]$Probe, [int]$N)
+    function Get-MedianValue([int[]]$Values)
     {
-        $v = @(1..([Math]::Max(1, $N)) | ForEach-Object { & $Probe })
-        $s = @($v | Sort-Object)
+        $s = @($Values | Sort-Object)
+        if (-not $s.Count) { return 0 }
         # 偶数次取中间两个的平均，避免 -Repeat 2 时系统性偏向较大的那次。
         if (($s.Count % 2) -eq 0)
         {
             return [int](($s[$s.Count / 2 - 1] + $s[$s.Count / 2]) / 2)
         }
         return [int]$s[[int][Math]::Floor($s.Count / 2)]
+    }
+    function Get-MedianMs([scriptblock]$Probe, [int]$N)
+    {
+        $v = @(1..([Math]::Max(1, $N)) | ForEach-Object { & $Probe })
+        return Get-MedianValue $v
     }
     $pwsh = Get-Command pwsh -ErrorAction SilentlyContinue
     if (-not $pwsh)
@@ -417,16 +423,41 @@ function Test-StartupPerformance
         Write-Host ("pwsh startup (profile, {0} run(s){1}): {2} ms" -f $simpleRuns, $(if ($simpleRuns -gt 1) { ', median' } else { '' }), $ms) -ForegroundColor Cyan
         return
     }
-    Write-Host "分段计时中(新进程每段 $Repeat 次,约需 $((10 + 5 * $Repeat)) 秒)..." -ForegroundColor Cyan
-    $null = & $pwsh -NoProfile -NonInteractive -Command 'exit' *> $null
+    # 默认单次就能给出全部分段:不再为取中位数之外的稳定性多跑预热。
+    $estimate = "约 $([int](4 * $Repeat)) 秒"
+    Write-Host "分段计时中(每段 $Repeat 次,$estimate)..." -ForegroundColor Cyan
+    if ($Repeat -gt 1)
+    {
+        $null = & $pwsh -NoProfile -NonInteractive -Command 'exit' *> $null
+        $null = & $pwsh -NonInteractive -Command 'exit' *> $null
+    }
     $bare = Get-MedianMs { [int](Measure-Command { & $pwsh -NoProfile -NonInteractive -Command 'exit' *> $null }).TotalMilliseconds } $Repeat
-    $null = & $pwsh -NonInteractive -Command 'exit' *> $null
     $prof = Get-MedianMs { [int](Measure-Command { & $pwsh -NonInteractive -Command 'exit' *> $null }).TotalMilliseconds } $Repeat
+    # init 合计与步骤表同一次新进程:总量取 init 自己打印的 Environment Loading time,
+    # 步骤行一并留存,避免为“占比”再开一个进程。重复时取总量中位数,步骤表用第一次。
     $probeInit = @'
 Import-Module Init -ErrorAction Stop
-[int](Measure-Command { init *> $null }).TotalMilliseconds
+init -Timing
 '@
-    $tInit = Get-MedianMs { [int](& $pwsh -NoProfile -NonInteractive -Command $probeInit) } $Repeat
+    $initTotals = @()
+    $initTable = @()
+    for ($i = 0; $i -lt $Repeat; $i++)
+    {
+        $out = & $pwsh -NoProfile -NonInteractive -Command $probeInit 2>&1 | Out-String
+        $matched = [regex]::Match($out, 'Environment Loading time:\s*(\d+)\s*ms')
+        if ($matched.Success) { $initTotals += [int]$matched.Groups[1].Value }
+        if (-not $initTable.Count)
+        {
+            $inTable = $false
+            foreach ($line in ($out -split "`r?`n"))
+            {
+                if ($line -match '^Command\s+Time\s+Share') { $inTable = $true }
+                if ($inTable) { $initTable += $line }
+                if ($line -match '^\s*步骤合计') { break }
+            }
+        }
+    }
+    $tInit = Get-MedianValue $initTotals
     $probeIdle = @'
 Import-Module TerminalTools -ErrorAction Stop
 [int](Measure-Command { Register-PsUxLazyLoad -Now *> $null }).TotalMilliseconds
@@ -444,9 +475,9 @@ Import-Module TerminalTools -ErrorAction Stop
         [PSCustomObject]@{ 段 = '体验件全载（-Now）'; ms = $tIdle; 说明 = '含 PSFzf/CxxuTab，不等于首屏 OnIdle；不计入 profile' }
     )
     $rows | Format-Table -AutoSize | Out-String -Width 160 | Write-Host
-    Write-Host '--- init -Timing 步骤表（另一次新进程，仅供占比；总量看上一行 init 合计） ---' -ForegroundColor Cyan
-    & $pwsh -NoProfile -NonInteractive -Command 'Import-Module Init; init -Timing' 2>$null |
-        Select-Object -Skip 1 | Where-Object { $_ -notmatch 'Environment Loading time' } | Write-Host
+    Write-Host '--- init -Timing 步骤表（与 init 合计同一次新进程，仅供占比） ---' -ForegroundColor Cyan
+    if ($initTable.Count) { $initTable | ForEach-Object { Write-Host $_ } }
+    else { Write-Host '(未捕获到步骤表；可单独运行 init -Timing)' }
     if ($Detail)
     {
         Write-Host '--- -Now 全载四件各自耗时(与 Register-PsUxLazyLoad -Now 同源,改动两边同步) ---' -ForegroundColor Cyan
