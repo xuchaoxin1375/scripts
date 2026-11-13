@@ -825,6 +825,30 @@ WindowsTerminal.exe
   `CxxuPredictor` 的 dll 里给 `PredictiveSuggestion` 补第二个参数）。
 - 版本：`CxxuTab` 1.0.6。
 
+## 34. 第二十七轮：变量与别名加载优化（2026-11-13）
+
+- 现场：变量/别名本身是启动链的固定成本，且不全在首屏。核心变量约 100ms；全量变量
+  约 470ms，其中 `GlobalConfig.conf` 的 `Get-CimInstance` 约 330ms、`Get-MemoryCapacity`
+  约 100ms；全量别名约 150ms，逐行 `Get-Content`、`Get-Alias` 与 `Invoke-Expression`
+  占主要部分。`Update-PwshEnv`（全量变量 + 全量别名 + prompt）实测约 748ms。
+- 变量优化：
+  - `VarSet1.conf` 的 `current_shell` 从 `Get-Process -Id $PID` 改为
+    `[System.Diagnostics.Process]::GetCurrentProcess()`，避免 cmdlet 首次调用开销。
+  - `GlobalConfig.conf` 的 `$SystemCaption` 改读 `$env:OSCaption`（`Confirm-EnvVarOfInfo`
+    已缓存），`$TotalMemory` 优先读 `$env:TotalMemoryGB`，其次读 `Data.json` 的
+    `cachedTotalMemory`，缺失才调用 `Get-MemoryCapacity`；`$PermissionLevel` 在 Windows
+    内联 .NET 管理员组判断，避免为一个布尔值自动导入 `Basic` 模块。
+  - `GlobalConfig` 单文件从约 346ms 降到约 38ms；全量变量从约 472ms 降到约 227ms
+    （缓存热，另一次 241ms）。
+- 别名优化：`Aliases` 新增 `Get-CompiledPwshAliasFile`，把 `alias_core.ps1`、`functions`、
+  `shortcuts` 预编译为 `$TEMP/CxxuPwshAlias_*.cache.ps1`，按文件 mtime 失效，构建时
+  判定一次 AllScope，运行时只点源一次；`Update-PwshAliases -NoCache` 保留逐行回退。
+  全量别名从约 149ms 降到约 57ms（首次构建）/ 19ms（缓存命中）。
+- 结果：`Update-PwshEnv` 从约 748ms 降到约 318ms；`profile` 仍约 996ms，因为首屏只加载
+  核心变量/别名，主要成本仍是 PSReadLine、`Set-PsPrompt` 与体验件桩，不能用全量加载的
+  改善宣传首屏提速。以上为同一台 Windows 虚拟机、新进程、一次采样，数值随负载和冷热
+  缓存抖动；5.1 与 pwsh 7 均已直调验证，`-NoCache` 回退路径正常。
+
 ## 5.1 PSReadLine 可选升级与预测版本门控
 
 - 现场：Windows PowerShell 5.1.26100.8875 自带 PSReadLine 2.0.0，`HistoryNoDuplicates`、

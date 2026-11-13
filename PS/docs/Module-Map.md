@@ -16,7 +16,7 @@
 | `CxxuPredictor` | 1170/0导出 | 自研双 predictor：`CxxuCommand` 命令名（分层模糊：别名精确/前缀/词边界/连续片段/一般子序列 + 严格通配；别名也进候选，PSReadLine 历史频率加权，默认 15 条）+ `CxxuArgcFlags`（argc 覆盖命令首参数位的静态 flag，`-` 前缀，≤10 条，表缓存 `~/.cxxu/cache/argc-flags.tsv`）；二进制：dll 发布件 + src；`CompleteCommand` 公开 Tab 接口；活件并排版本 `~/.cxxu/bin`，loader 按指针装载；OnIdle 加载；命令表缓存 `~/.cxxu/cache/tab-commands-<CLR主版本>.tsv`（24h，删除即重建）；5.1 Tab-only 产物 `ps51/CxxuPredictor.dll`（netstandard2.0，仅 `CompleteCommand`，见 [Live-Versions.md](Live-Versions.md) 的『5.1 Tab-only 产物』） |
 | `CxxuTab` | 见源码与 manifest | 自研 Tab 命令名补全（独立插件：`TabExpansion2` 包装，命令名位合并 dll 模糊结果，参数位透传；函数 `.SYNOPSIS` 附加摘要默认关闭，用 `Set-CxxuComponentOption -Id Tab -Name Synopsis -Value $true [-Persist]` 管理（底层开关 `PsTabSynopsis`），开启后已加载函数取定义文本、未加载模块在 pwsh 7+ 且候选 ≤20 时解析 `.psm1` 源码（不导入模块）；原生参数语法保留；门控 `$env:PsTab` 逐调用判定，**默认开**（置 `False` 关）；异常/超慢调用自熔断；命令表缓存 `~/.cxxu/cache/tab-commands-<CLR主版本>.tsv`；启停见 `Enable/Disable-PsPlugin`；5.1 读 `~/.cxxu/bin/ps51` 活件，7+ 读根活件） |
 | `PwshVar` | 329/6 | `.conf` 变量文件加载（预编译缓存，`Update-PwshVars -NoCache` 回退） |
-| `Aliases` | 68/2 | 别名文件加载（`alias_core`/`functions`/`shortcuts`，逐行 iex 是故意的） |
+| `Aliases` | 68/2 | 别名文件加载（`alias_core`/`functions`/`shortcuts`；预编译缓存，`Update-PwshAliases -NoCache` 回退） |
 | `ArgumentCompletion` | 115/2 | 参数补全注册（`prompt` 已迁出，只剩补全；B 档 5.1） |
 | `EnvVar` | 1021/15 | 环境变量 User/Machine/Process 三档；热路径一律 `Set-ProcessEnvVar` |
 | `Startup` | 307/12 | 开机任务、后台守护进程、OS 版本缓存（`Confirm-EnvVarOfInfo`；B 档 5.1，`$IsWindows` 加 `PSEdition` 兜底） |
@@ -136,4 +136,5 @@ Data.json (~/.Data.json) ← Update-NetConnectionInfo 守护进程(6s) ← 网�
 prompt / Get-MemoryUseRatio(5s节流) / Confirm-DataJson(校验+重建)
 ~/.conda_hook_cache.ps1 ← profile 点源（conda.exe 更新才重建）
 $TEMP/CxxuPwshVar_*.cache.ps1 ← conf 预编译（conf 更新才重建）
+$TEMP/CxxuPwshAlias_*.cache.ps1 ← 别名预编译（别名文件更新才重建）
 ```
