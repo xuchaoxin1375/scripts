@@ -47,10 +47,10 @@ try
     $fastSteps = @(Get-StepNames 'Fast')
     $minimalSteps = @(Get-StepNames 'Minimal')
     Assert-True (($fastSteps -join ',') -eq ($minimalSteps -join ',')) "Minimal 应与 Fast 步骤一致：$($minimalSteps -join ',')"
-    Assert-True (($minimalSteps -join ',') -eq 'Set-PSReadLinesCommon,Set-PSReadLinesAdvanced,Set-ArgcCompletions,Register-GitCompletion,Set-PsPrompt') "Fast 步骤不符：$($minimalSteps -join ',')"
+    Assert-True (($minimalSteps -join ',') -eq 'Set-PSReadLinesCommon,Set-PSReadLinesAdvanced,Set-ArgcCompletions,Register-GitCompletion,Update-PwshVars,Set-PsPrompt') "Fast 步骤不符：$($minimalSteps -join ',')"
 
     Assert-Steps -Tier 'Fast' -MustHave @(
-        'Set-PSReadLinesCommon', 'Set-PSReadLinesAdvanced', 'Set-ArgcCompletions', 'Register-GitCompletion', 'Set-PsPrompt'
+        'Set-PSReadLinesCommon', 'Set-PSReadLinesAdvanced', 'Set-ArgcCompletions', 'Register-GitCompletion', 'Update-PwshVars', 'Set-PsPrompt'
     ) -MustNotHave @(
         'Set-ArgumentCompleter', 'Confirm-EnvVarOfInfo', 'Register-PsUxLazyLoad', 'Register-CarapaceLazyLoad',
         'Import-PsCompletions', 'Initialize-Fnm', 'Initialize-ScoopSearch'
@@ -58,14 +58,14 @@ try
 
     # 富提示符需要补回系统信息与 DataJson，即使档位是 Fast。
     $env:PsPrompt = 'Balance'
-    Assert-Steps -Tier 'Fast' -MustHave @('Confirm-EnvVarOfInfo', 'Confirm-DataJson', 'Set-PsPrompt') -MustNotHave @()
+    Assert-Steps -Tier 'Fast' -MustHave @('Confirm-EnvVarOfInfo', 'Update-PwshVars', 'Confirm-DataJson', 'Set-PsPrompt') -MustNotHave @()
     $env:PsPrompt = ''
 
     $balanced = Get-StepNames 'Balanced'
     Assert-True ($balanced.Count -gt 0) 'Balanced 步骤为空'
     Assert-Steps -Tier 'Balanced' -MustHave @(
         'Set-PSReadLinesCommon', 'Set-PSReadLinesAdvanced', 'Set-ArgumentCompleter', 'Confirm-EnvVarOfInfo',
-        'Set-PsPrompt', 'Register-PsUxLazyLoad', 'Set-ArgcCompletions', 'Register-GitCompletion'
+        'Update-PwshVars', 'Set-PsPrompt', 'Register-PsUxLazyLoad', 'Set-ArgcCompletions', 'Register-GitCompletion'
     ) -MustNotHave @()
 
     $tierChecks = & $module {

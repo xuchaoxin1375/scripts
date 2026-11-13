@@ -2,7 +2,7 @@
 
 > 适用：`PS/` 模块集（`$env:PSModulePath` 引用 `C:/repos/scripts/PS`，`$profile` 里只有 `init`）。
 > 测量环境：Windows Server 级虚拟机，pwsh 7.5。个人电脑数值不同，但瓶颈排序一致。
-> 本文件按轮次追加历史实测；**现行默认值与性能以 §1 基线表和最后一轮实测为准**（最近更新 2026-11-13）。旧轮次中的“默认关/冷启动约 400ms”等结论只代表当时状态。
+> 本文件按轮次追加历史实测；**现行默认值与性能以 §1 基线表和最后一轮实测为准**（最近更新 2026-11-13）。旧轮次中的“默认关/冷启动约 400ms”等结论只代表当时状态。2026-11-13 起 core 变量加载拆为独立步骤 `Update-PwshVars`；旧轮次中 `Set-PsPrompt` 的计时包含变量加载，新口径见 §38。
 
 ## 1. 基线数据
 
@@ -21,8 +21,7 @@
 # 复测命令（重定向/agent 下也干净：PSReadLine 控制台相关选项已按场景跳过，见 §12）
 Test-StartupPerformance                      # 启动因子表（默认已表格化，可直接阅读；约 3 秒）
 Test-StartupPerformance -Report              # 默认因子表 + 独立汇总块（总耗时/分解）
-Test-StartupPerformance -Vars                # 预设变量 Core 探针（已含在 Set-PsPrompt）
-Test-StartupPerformance -All | ft            # 追加预设变量、prompt、体验件全载与开关状态
+Test-StartupPerformance -All | ft            # 追加 prompt、体验件全载与开关状态
 Test-StartupPerformance -Simple              # 只测一次带 profile 的新 pwsh 启动
 init -Force -Timing                           # 当前会话分步耗时（已初始化；首次启动用 init -Timing）
 init -Tier Fast -Timing                       # 指定启动档位看分步表（Fast/Balanced，Minimal 为 Fast 别名）
@@ -46,7 +45,8 @@ Test-PromptDelay                              # prompt 延迟（默认测 10 次
 
 | 步骤 | 时间 |
 |---|---|
-| Set-PsPrompt（含 core 环境导入；已消除重复调用） | 130~177ms |
+| Update-PwshVars（core 变量，2026-11-13 起独立步骤） | ~80~110ms |
+| Set-PsPrompt（提示符/别名；core 变量已由前一步加载） | ~60~90ms |
 | Set-PSReadLinesCommon | ~90~102ms |
 | Set-PSReadLinesAdvanced | ~8~83ms（随冷热与预测视图分支变化） |
 | Confirm-EnvVarOfInfo（稳态命中缓存） | ~26~37ms |
@@ -611,7 +611,7 @@ Set-PSReadLineOption: 句柄无效。
 - 行为变化：非 Windows 上 `OSCaption` 与 `OSFullVersionCode` 的值由原来的 `macOS 27.2`、`27.2-26B123` 统一变为 `macOS 27.2.0`（`$PSVersionTable.OS` 原样）；两者只作展示，macOS 的 prompt 不读取。mamba 的环境变量仍在启动时设置，`mamba activate`/`deactivate` 在首次调用时可用，prompt 环境前缀也随首次导入生效。
 - 验证：`mamba --version` 输出 2.5.0 且 `Invoke-Mamba` 按需出现；`Initialize-ArgcCompletions` 后 `$global:PsArgcLoaded=True`；`init -Timing` 显示 `Confirm-EnvVarOfInfo` 从 421ms 降到 26ms，`Set-PsPrompt` 129ms、`Set-PSReadLinesCommon` 94ms。
 - 后续（同日）：用户停用 mamba/conda，两处 shell 集成整体移除。`~/.config/powershell/profile.ps1` 清空并留迁移注释；`~/.zshrc` 的 `conda initialize` 块删除（备份为 `~/.zshrc.bak.<时间戳>`），zsh 交互启动从 1485ms 降到 914ms。miniforge 安装保留，`conda`/`mamba` 仍在 `/opt/homebrew/bin`，但 `conda activate` 需重新执行 `conda init zsh` 才可用。两个文件都不入仓库，换机需另配。接线与恢复步骤见 [macOS-Shell-Setup.md](macOS-Shell-Setup.md)。
-- 边界：`init` 剩余步骤（`Set-PsPrompt`、`Set-PSReadLinesCommon` 等）未动，单项都在百毫秒级，继续压缩需要拆 core 变量与别名导入，收益小于改动风险。zsh 侧剩余约 910ms 与 mamba 无关，是 omz/补全等其它初始化，未在本轮范围内。
+- 边界：`init` 剩余步骤（`Set-PsPrompt`、`Set-PSReadLinesCommon` 等）未动，单项都在百毫秒级，继续压缩需要拆 core 变量与别名导入，收益小于改动风险（2026-11-13 已将 core 变量拆为 `Update-PwshVars` 独立步骤，见 §38；别名仍在 `Set-PsPrompt`）。zsh 侧剩余约 910ms 与 mamba 无关，是 omz/补全等其它初始化，未在本轮范围内。
 
 ## 28. 第二十一轮：OnIdle 单发自锁（2026-11-09，用户报“首条命令输入假死、任何键无反应”）
 
@@ -703,12 +703,12 @@ Set-PSReadLineOption: 句柄无效。
     各步骤自身耗时之和，与 `steps` 的差额是循环内未被单步计时的开销，不参与上面的拆分。
   - `Test-StartupPerformance` 输出按耗时降序的因子对象，列 `Category`/`Name`/`Ms`/`Share(%)`/`Note`，
     默认由 `Init.format.ps1xml` 表格化，无需 `ft`/`fl`；对象流仍可筛选。因子包含 `bare`、
-    `Init 模块导入`、`conda/其他 profile`、`init 准备/收尾` 与各 init 步骤。`bare`、`profile`、
-    `init`、`idle` 都按 `-Repeat` 取中位数。`idle 全载` 是启动后首屏一次的成本，不计入
-    `profile`。日常只关心“新开一个 pwsh 要多久”时用 `-Simple`（默认一次，支持 `-Repeat` 取中位数）。
+    `Init 模块导入`、`profile 剩余`、`init 准备/收尾`、`Update-PwshVars` 与各 init 步骤。
+    `bare`、`profile`、`init`、`idle` 都按 `-Repeat` 取中位数。`idle 全载` 是启动后首屏一次的成本，
+    不计入 `profile`。日常只关心“新开一个 pwsh 要多久”时用 `-Simple`（默认一次，支持 `-Repeat` 取中位数）。
 - 同机复测（macOS，一次采样，数值随负载抖动）：
   `bare 328ms`、`profile 1051ms`、`profile 税 723ms`、`init 497ms`、
-  `profile 其他 226ms`、`idle 全载 529ms`；对比第二十二轮的 `init 564ms`/`profile 1122ms`。
+  `profile 剩余 226ms`、`idle 全载 529ms`；对比第二十二轮的 `init 564ms`/`profile 1122ms`。
   `init -Timing` 步骤表前三名为 `Set-PsPrompt 134ms`、`Set-PSReadLinesCommon 89ms`、
   `Set-ArgumentCompleter 43ms`，步骤合计约 364ms。
 - 仍偏贵的项：`Set-ArgumentCompleter` 的 43ms 主要花在
@@ -861,10 +861,10 @@ WindowsTerminal.exe
 - 初版做过三档（`Minimal`/`Fast`/`Balanced`）。复测发现 `Minimal` 与 `Fast` 的差值在噪声内
   （新进程三次中位数 441ms 与 438ms），保留两档没有意义，最终收敛为两档，`Minimal` 只作
   兼容别名：
-  - `Fast`：`Set-PSReadLinesCommon` + `Set-PSReadLinesAdvanced` + `Set-PsPrompt` +
-    `Set-ArgcCompletions` + `Register-GitCompletion`；体验件（`Register-PsUxLazyLoad`）、
-    `Set-ArgumentCompleter`、`Confirm-EnvVarOfInfo`、`Carapace` 与 PSCompletions/Fnm/
-    ScoopSearch 不加载。
+  - `Fast`：`Set-PSReadLinesCommon` + `Set-PSReadLinesAdvanced` + `Update-PwshVars` +
+    `Set-PsPrompt` + `Set-ArgcCompletions` + `Register-GitCompletion`；体验件
+    （`Register-PsUxLazyLoad`）、`Set-ArgumentCompleter`、`Confirm-EnvVarOfInfo`、`Carapace`
+    与 PSCompletions/Fnm/ScoopSearch 不加载。
   - `Balanced`：原有默认步骤表与已启用组件，行为不变。
 - 实现：
   - `init` 新增 `-Tier Fast|Balanced`（`Minimal` 仍被接受）；省略时按“`$env:PsStartupTier` >
@@ -889,11 +889,11 @@ WindowsTerminal.exe
   （steps 约 280）、`Balanced` 约 550~580ms（steps 约 390~420），差约 120~150ms，
   几乎全在步骤表：`Register-PsUxLazyLoad` 20~50ms、`Set-ArgumentCompleter` 约 40ms、
   `Confirm-EnvVarOfInfo` 25~35ms、`Register-CarapaceLazyLoad` 约 7ms、三个可选组件桩
-  合计约 3ms。`Set-PsPrompt`（约 145~180ms）与 `Set-PSReadLinesCommon`（约 95ms）两档都执行，
-  prep（约 150ms，含配置读取与核心变量/别名）也不受档位影响，所以档位最多只能省这两成，
-  不能据此宣称首屏减半。含 conda 缓存（约 150ms）与 Init 模块导入的进程级口径同样差
-  约 120~150ms。若还要更快，优先处理 conda 钩子、`Set-PsPrompt` 与 Init 模块导入，
-  而不是继续拆档位。
+  合计约 3ms。`Update-PwshVars`（约 80~110ms）+ `Set-PsPrompt`（约 60~90ms）与
+  `Set-PSReadLinesCommon`（约 95ms）两档都执行，prep（约 150ms，含配置读取与步骤表构建）
+  也不受档位影响，所以档位最多只能省这两成，不能据此宣称首屏减半。含 conda 缓存
+  （约 150ms）与 Init 模块导入的进程级口径同样差约 120~150ms。若还要更快，优先处理
+  conda 钩子、`Update-PwshVars`/`Set-PsPrompt` 与 Init 模块导入，而不是继续拆档位。
 - 验证入口：`init -Tier Fast -Timing`、`init -Tier Balanced -Timing`、
   `Get-CxxuComponent | Select-Object Id, Enabled, Tier, TierAllowed, Effective`、
   `PS/Init/tests/StartupTier.Tests.ps1`；pwsh 7 与 5.1 均可运行。
@@ -905,10 +905,10 @@ WindowsTerminal.exe
 - 处置：默认单次不再做预热；`init` 合计与步骤表合并到同一次新进程（原先为占比多开一次），
   总量改读该次 `Environment Loading time`；只有 `-Repeat > 1` 才预热并取中位数。
   输出改为对象流，列固定为 `Category`/`Name`/`Ms`/`Share`/`Note`，可直接接 `ft`/`fl`；
-  默认按耗时降序给出可加分解：`bare`、`Init 模块导入`、`conda/其他 profile`、`init 准备/收尾`
+  默认按耗时降序给出可加分解：`bare`、`Init 模块导入`、`profile 剩余`、`init 准备/收尾`
   与各 init 步骤，`Share(%)` 为占 profile 的百分比，第一行即当前最大影响因素。不再打印表头与结论；
   交互终端测量时显示进度条（重定向或 `PsShowProgress=False` 时关闭）。`-Report` 在默认因子对象
-  之后追加独立汇总文本块（profile 总耗时、bare、profile 税、Init 模块导入、conda/其他 profile、
+  之后追加独立汇总文本块（profile 总耗时、bare、profile 税、Init 模块导入、profile 剩余、
   init 合计/步骤/准备收尾），汇总不混入因子对象表；汇总表由 `Format-Table` 对齐，直接阅读即可。
   `-Prompt`/`-Ux`/`-Status` 追加其他评估面，`-All` 全开。
 - 结果：同机默认约 3 秒（含两次新进程），`-All` 约 4~5 秒，`-Repeat 2` 约 5 秒；分解各项
@@ -925,14 +925,17 @@ WindowsTerminal.exe
 - 结果：默认输出即为表格，不再需要 `ft`/`fl`；对象流不变，仍可 `Where-Object`/`Select-Object`；
   同机 `Import-Module Init` 约 61~77ms，未观察到明显额外开销。
 
-## 38. 第三十一轮：预设变量耗时探针（2026-11-13）
+## 38. 第三十一轮：预设变量改为独立 init 步骤（2026-11-13）
 
-- 现场：首次 init 的预设变量 Core 加载由 `Set-PsPrompt` 内部触发，`Test-StartupPerformance`
-  只看到 `Set-PsPrompt` 整步，无法区分变量、别名与提示符本身的耗时。
-- 处置：新增 `-Vars` 探针，在独立新进程里只测 `Update-PwshVars -Core`；结果 Category 为
-  `Vars`，`Share` 留空，Note 标注“已含在 Set-PsPrompt，不单独相加”。`-All` 一并打开。
-- 结果：同机 `Update-PwshVars -Core` 约 90~115ms，占 profile 约 9~11%；`Set-PsPrompt` 步骤
-  仍按整步计时，避免改变既有加总口径。
+- 现场：首次 init 的预设变量 Core 加载由 `Set-PsPrompt` 内部触发，步骤表只能看到
+  `Set-PsPrompt` 整步，用户无法判断变量、别名与提示符本身各占多少。
+- 处置：在核心步骤表 `Set-PsPrompt` 之前新增 `Update-PwshVars` 步骤，按
+  `Test-PsEnvMode -Mode core` 守卫后调用 `Update-PwshVars -Core`；`Set-PsPrompt` 内部守卫
+  因此跳过，变量耗时进入独立步骤。Fast 档的 `afterNames` 同步加入 `Update-PwshVars`，
+  `init -Force` 的准备阶段重载路径不变。
+- 结果：同机 `Test-StartupPerformance` 中 `Update-PwshVars` 约 80~110ms，`Set-PsPrompt`
+  从约 160ms 降到约 60~90ms；两者之和与原先基本一致，默认因子表直接显示变量开销，无需
+  额外开关。`init -Force` 的变量重载仍在 `init 准备/收尾`。
 
 ## 变量组缓存与预设变量启动开销
 
@@ -969,7 +972,7 @@ WindowsTerminal.exe
 ### 避免重复探索与重新评估条件
 
 - 后续处理“预设变量导致启动慢”时，先读取本节与 [用户指南](Feature-Guide.md#预设变量配置与缓存)，不从分组脚本原型重新开始。历史实现和回归可通过提交 `a18551b` 查阅，无需为留证保留线上分支逻辑。
-- 想看预设变量本身的耗时：跑 `Test-StartupPerformance -Vars`。它是独立进程探针，只测 `Update-PwshVars -Core`，结果标记为“已含在 Set-PsPrompt”，不参与启动因子加总；`init -Force` 的 Core + 全量重载计入 `init 准备/收尾`。
+- 想看预设变量本身的耗时：直接看 `Test-StartupPerformance` 的 `Update-PwshVars` 行（独立 init 步骤，带 `Share(%)`）；`init -Force` 的 Core + 全量重载计入 `init 准备/收尾`。
 - 仅在 Core 规模、真实调用频率、运行时或底层成本发生实质变化，或用户明确要求时重新评估分组缓存；重试前写明变化和目标收益。Full 变快或同进程第二次变快，仍不足以证明新窗口首屏改善。
 - 后续若继续优化，先定位 Core 内实际表达式、文件读取与系统查询的占比，再考虑减少必要工作或延迟非必要工作；尚未验证的方案不承诺可省数百毫秒。
 - 优化或重构收益小、落在测量波动内或难以抵消维护成本时，应先向用户说明证据和代价，询问是否放弃或收敛。用户已选定撤回时直接执行；将已尝试方案、测量条件、结果、放弃原因及重试条件留在同一处，后续先查记录。

@@ -355,19 +355,18 @@ function Test-StartupPerformance
     自查 pwsh 启动性能:默认输出按耗时降序的启动因子表(格式视图,无需 ft/fl),对象流仍可筛选与管道。
     .DESCRIPTION
     每段都在全新 pwsh 进程里测(冷数字,排除本会话已摊销的解析成本);本机改动对照看 Startup-Optimization.md。
-    默认输出可加分解的启动因子行:bare、profile 其他(conda/模块导入)、init 准备/收尾、各 init 步骤;
+    默认输出可加分解的启动因子行:bare、profile 剩余(非 init/模块导入)、init 准备/收尾、各 init 步骤;
     列固定为 Category/Name/Ms/Share(%)/Note,按 Ms 降序,Share 为占 profile 的百分比,第一行即当前最大影响因素。
     因子对象带 Cxxu.StartupFactor 类型名,Init.format.ps1xml 提供默认表格视图,无需再指定 ft/fl。
+    预设变量 Core 是独立 init 步骤(Update-PwshVars)，耗时直接出现在 InitStep 行，不再藏在 Set-PsPrompt 内。
     交互终端测量时显示进度条(重定向或 PsShowProgress=False 时自动关闭)。-Report 在默认因子对象之后
-    追加独立文本汇总块(profile 总耗时、bare、profile 税、Init 模块导入、conda/其他 profile、
+    追加独立文本汇总块(profile 总耗时、bare、profile 税、Init 模块导入、profile 剩余、
     init 合计/步骤/准备收尾)，汇总不混入因子对象表;汇总表由 Format-Table 对齐，无需再指定 fl。
-    -Prompt 追加 prompt 延迟行;-Ux 追加体验件全载行;-Vars 追加预设变量 Core 探针
-    (独立进程，已含在 Set-PsPrompt，不单独相加);-Detail 再加四件明细(隐含 -Ux);
-    -Status 追加本会话开关与懒加载状态;-All 等价于 -Prompt -Ux -Vars -Status。
-    首次 init 的预设变量加载发生在 Set-PsPrompt 内；-Vars 只给独立探针量级，不重复计入加总。
+    -Prompt 追加 prompt 延迟行;-Ux 追加体验件全载行;-Detail 再加四件明细(隐含 -Ux);
+    -Status 追加本会话开关与懒加载状态;-All 等价于 -Prompt -Ux -Status。
     -Repeat 取中位数时按次数线性增加,不再多跑预热。
     -Simple 只测一次(或 -Repeat 次)带 profile 的新 pwsh 启动,输出一行,1~2 秒。
-    耗时组成(参考值见 Startup-Optimization.md 的基线表,真机按比例):裸启动 + profile 税(conda 缓存 + init)
+    耗时组成(参考值见 Startup-Optimization.md 的基线表,真机按比例):裸启动 + profile 税(profile 自身 + init)
     + 首屏单发(predictor/zoxide);PSFzf/CxxuTab 转手势按需(首按 Ctrl+T/R、首次裸命令名 Tab 才装)。
     体验件全载使用 Register-PsUxLazyLoad -Now,包含手势组件,不是首屏 OnIdle 的实际耗时;
     argc/carapace 的首次参数补全加载另计。首屏单发也在主线程执行,冷缓存仍可能短暂阻塞输入。
@@ -376,8 +375,6 @@ function Test-StartupPerformance
     Test-StartupPerformance | Format-Table -AutoSize
     .EXAMPLE
     Test-StartupPerformance -Report
-    .EXAMPLE
-    Test-StartupPerformance -Vars
     .EXAMPLE
     Test-StartupPerformance -All | Format-List
     .EXAMPLE
@@ -395,11 +392,9 @@ function Test-StartupPerformance
         [switch]$Prompt,
         # 附体验件全载（-Now）行（另开一个新进程，约 1 秒）
         [switch]$Ux,
-        # 附预设变量 Core 加载探针（另开一个新进程，约 0.3 秒；已含在 Set-PsPrompt）
-        [switch]$Vars,
         # 附本会话开关与懒加载状态
         [switch]$Status,
-        # 等价于 -Prompt -Ux -Vars -Status
+        # 等价于 -Prompt -Ux -Status
         [switch]$All,
         # 加测 OnIdle 四片各自耗时(隐含 -Ux;排查"哪片最重"时开)
         [switch]$Detail,
@@ -454,9 +449,9 @@ function Test-StartupPerformance
         return
     }
     if ($Repeat -lt 1) { $Repeat = 1 }
-    if ($Simple -and ($Prompt -or $Ux -or $Vars -or $Status -or $Detail -or $All))
+    if ($Simple -and ($Prompt -or $Ux -or $Status -or $Detail -or $All))
     {
-        Write-Warning '-Simple 只测总启动，已忽略 -Prompt/-Ux/-Vars/-Detail/-Status/-All。'
+        Write-Warning '-Simple 只测总启动，已忽略 -Prompt/-Ux/-Detail/-Status/-All。'
     }
     if ($Simple)
     {
@@ -466,13 +461,13 @@ function Test-StartupPerformance
         return New-ResultRow 'Startup' 'profile（完整启动）' $ms 100 $note
     }
     # -All 打开附加评估面；分步明细已默认包含，不再单列开关。
-    if ($All) { $Prompt = $true; $Ux = $true; $Vars = $true; $Status = $true }
+    if ($All) { $Prompt = $true; $Ux = $true; $Status = $true }
     if ($Detail) { $Ux = $true }
     Write-Verbose "分段计时中(每段 $Repeat 次)..."
     # 交互终端显示进度;重定向或 PsShowProgress=False 时静默,不污染管道。
     $progressEnabled = (-not [Console]::IsOutputRedirected) -and
         ([string]$env:PsShowProgress -notmatch '^(False|0|No|Off)$')
-    $progressState = @{ Index = 0; Total = 4 + $(if ($Vars) { 1 } else { 0 }) + $(if ($Ux) { 1 } else { 0 }) + $(if ($Prompt) { 1 } else { 0 }) + $(if ($Detail) { 1 } else { 0 }) }
+    $progressState = @{ Index = 0; Total = 4 + $(if ($Ux) { 1 } else { 0 }) + $(if ($Prompt) { 1 } else { 0 }) + $(if ($Detail) { 1 } else { 0 }) }
     function Update-StartupProgress([string]$Status)
     {
         if (-not $progressEnabled) { return }
@@ -519,16 +514,16 @@ init -Timing
         }
     }
     $tInit = Get-MedianValue $initTotals
-    # profile 税 = bare 之外的全部启动开销；init 是它的子集，必须扣掉才能得到 conda/模块导入等其余部分。
+    # profile 税 = bare 之外的全部启动开销；init 是它的子集，必须扣掉才能得到 profile 自身/模块导入等其余部分。
     $profileTax = $prof - $bare
     $profileOther = [Math]::Max(0, $profileTax - $tInit)
-    # profile 其他里占大头的是 Init 模块导入，单独测出来；剩余归为 conda/其他 profile。
+    # profile 其他里占大头的是 Init 模块导入，单独测出来；剩余归为 profile 剩余。
     $probeImport = '[int](Measure-Command { Import-Module Init -ErrorAction Stop }).TotalMilliseconds'
     Update-StartupProgress 'Init 模块导入'
     $tImport = Get-MedianMs { [int](& $pwsh -NoProfile -NonInteractive -Command $probeImport) } $Repeat
     $profileRest = [Math]::Max(0, $profileOther - $tImport)
     # 把 init 步骤表转成因子行，并把 init 内部拆成“步骤 + 准备/收尾”，
-    # 与 bare、profile 其他共同构成 profile 的可加分解；Share 为占 profile 的百分比。
+    # 与 bare、profile 剩余共同构成 profile 的可加分解；Share 为占 profile 的百分比。
     $stepRows = @()
     $stepSum = 0
     foreach ($line in $initTable)
@@ -551,7 +546,7 @@ init -Timing
     $factorRows = @(
         (New-ResultRow 'Startup' 'bare' $bare (Get-Share $bare) '不含 profile')
         (New-ResultRow 'Startup' 'Init 模块导入' $tImport (Get-Share $tImport) 'Import-Module Init')
-        (New-ResultRow 'Startup' 'conda/其他 profile' $profileRest (Get-Share $profileRest) 'profile 税 - init - 模块导入')
+        (New-ResultRow 'Startup' 'profile 剩余' $profileRest (Get-Share $profileRest) 'profile 税 - init - 模块导入')
         (New-ResultRow 'Startup' 'init 准备/收尾' $initPrep (Get-Share $initPrep) 'prep + 收尾')
     )
     foreach ($row in $stepRows)
@@ -563,29 +558,6 @@ init -Timing
     $factorRows = @($factorRows | Sort-Object Ms -Descending)
 
     $extraRows = @()
-    if ($Vars)
-    {
-        # 预设变量在首次 init 中由 Set-PsPrompt 内部触发（Update-PwshVars -Core），
-        # 没有独立步骤行；这里用独立进程探针给出量级，并注明与 Set-PsPrompt 的重叠。
-        Update-StartupProgress '预设变量（Core）'
-        $probeVars = @'
-try {
-    Import-Module PwshVar -ErrorAction Stop
-    [int](Measure-Command { Update-PwshVars -Core *> $null }).TotalMilliseconds
-} catch { -1 }
-'@
-        $tVars = Get-MedianMs { [int](& $pwsh -NoProfile -NonInteractive -Command $probeVars) } $Repeat
-        if ($tVars -ge 0)
-        {
-            $varsShare = Get-Share $tVars
-            $varsNote = if ($null -ne $varsShare) { "已含在 Set-PsPrompt；约占 profile ${varsShare}%，不单独相加" } else { '已含在 Set-PsPrompt；不单独相加' }
-            $extraRows += New-ResultRow 'Vars' '预设变量（Core）' $tVars $null $varsNote
-        }
-        else
-        {
-            $extraRows += New-ResultRow 'Vars' '预设变量（Core）' $null $null '探测失败（PwshVar 不可用）；已含在 Set-PsPrompt'
-        }
-    }
     $tIdle = $null
     if ($Ux)
     {
@@ -654,7 +626,7 @@ $r -join ' '
             (New-SummaryRow 'bare' $bare (Get-Share $bare) '裸启动基线，profile 无法优化')
             (New-SummaryRow 'profile 税' $profileTax (Get-Share $profileTax) 'profile - bare')
             (New-SummaryRow 'Init 模块导入' $tImport (Get-Share $tImport) 'Import-Module Init')
-            (New-SummaryRow 'conda/其他 profile' $profileRest (Get-Share $profileRest) 'profile 税 - init - 模块导入')
+            (New-SummaryRow 'profile 剩余' $profileRest (Get-Share $profileRest) 'profile 税 - init - 模块导入')
             (New-SummaryRow 'init 合计' $tInit (Get-Share $tInit) '步骤 + 准备/收尾')
             (New-SummaryRow 'init 步骤合计' $stepSum (Get-Share $stepSum) '各 init 步骤之和')
             (New-SummaryRow 'init 准备/收尾' $initPrep (Get-Share $initPrep) 'prep + 收尾')
@@ -2291,7 +2263,7 @@ function Get-CxxuInitStepsForTier
     if ($Tier -ieq 'Minimal') { $Tier = 'Fast' }
     $core = Get-CxxuCoreInitSteps
     $beforeNames = @(if ($Tier -eq 'Fast') { 'Set-PSReadLinesCommon'; 'Set-PSReadLinesAdvanced' })
-    $afterNames = @(if ($Tier -eq 'Balanced') { } else { 'Set-PsPrompt' })
+    $afterNames = @(if ($Tier -eq 'Balanced') { } else { 'Update-PwshVars'; 'Set-PsPrompt' })
     # 用户显式选择富信息提示符时，即使 Fast 也补回其依赖的系统信息步骤。
     if ($Tier -ne 'Balanced' -and ($env:PsPrompt -match '^(?i:Balance|Brilliant|Brilliant2)$'))
     {
@@ -2328,7 +2300,11 @@ function Get-CxxuCoreInitSteps
             @{ Name = 'Confirm-EnvVarOfInfo'; Action = { Confirm-EnvVarOfInfo }; MinPS = 7 }
             # 默认关闭时跳过调用，避免为一次 no-op 导入 PsEnv 模块（约 17ms）。
             @{ Name = 'Set-PsExtension'; Action = { if ($env:PsExtension -eq 'True') { Set-PsExtension } }; MinPS = 7 }
-            # 设置prompt样式(这里面会导入基础的powershell预定变量和别名)
+            # 预设变量单独作为一步：Set-PsPrompt 内部也会按需补 Core，但步骤表只能看到
+            # Set-PsPrompt 整步；先在此加载后，Set-PsPrompt 的 Test-PsEnvMode 守卫会跳过，
+            # 变量耗时因此进入独立步骤，不再藏在 prompt 步骤里。
+            @{ Name = 'Update-PwshVars'; Action = { if (-not (Test-PsEnvMode -Mode core)) { Update-PwshVars -Core } } }
+            # 设置 prompt 样式；未加载 core 变量时内部会按需补(init 中已由 Update-PwshVars 先加载)
             @{ Name = 'Set-PsPrompt'; Action = { Set-PsPrompt } }
             # 只有用到网卡 IP 的主题才需要 Data.json；fast/short/default 不必在启动时解析。
             @{ Name = 'Confirm-DataJson'; Action = { if ($env:PsPrompt -match '^(?i:Balance|Brilliant|Brilliant2)$') { Confirm-DataJson | Out-Null } }; MinPS = 7 }
