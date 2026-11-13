@@ -19,7 +19,7 @@
 
 ```powershell
 # 复测命令（重定向/agent 下也干净：PSReadLine 控制台相关选项已按场景跳过，见 §12）
-Test-StartupPerformance                      # 启动因子按 Ms 降序，可接 ft/fl（约 3 秒）
+Test-StartupPerformance                      # 启动因子表（默认已表格化，可直接阅读；约 3 秒）
 Test-StartupPerformance -Report              # 默认因子表 + 独立汇总块（总耗时/分解）
 Test-StartupPerformance -All | ft            # 追加 prompt、体验件全载与开关状态
 Test-StartupPerformance -Simple              # 只测一次带 profile 的新 pwsh 启动
@@ -701,10 +701,10 @@ Set-PSReadLineOption: 句柄无效。
     恢复与进度条收尾开销。`init -Timing` 的步骤表另给 `Share` 与“步骤合计”行，合计只表示
     各步骤自身耗时之和，与 `steps` 的差额是循环内未被单步计时的开销，不参与上面的拆分。
   - `Test-StartupPerformance` 输出按耗时降序的因子对象，列 `Category`/`Name`/`Ms`/`Share`/`Note`，
-    可接 `ft`/`fl`；因子包含 `bare`、`Init 模块导入`、`conda/其他 profile`、`init 准备/收尾`
-    与各 init 步骤。`bare`、`profile`、`init`、`idle` 都按 `-Repeat` 取中位数。`idle 全载`
-    是启动后首屏一次的成本，不计入 `profile`。日常只关心“新开一个 pwsh 要多久”时用
-    `-Simple`（默认一次，支持 `-Repeat` 取中位数）。
+    默认由 `Init.format.ps1xml` 表格化，无需 `ft`/`fl`；对象流仍可筛选。因子包含 `bare`、
+    `Init 模块导入`、`conda/其他 profile`、`init 准备/收尾` 与各 init 步骤。`bare`、`profile`、
+    `init`、`idle` 都按 `-Repeat` 取中位数。`idle 全载` 是启动后首屏一次的成本，不计入
+    `profile`。日常只关心“新开一个 pwsh 要多久”时用 `-Simple`（默认一次，支持 `-Repeat` 取中位数）。
 - 同机复测（macOS，一次采样，数值随负载抖动）：
   `bare 328ms`、`profile 1051ms`、`profile 税 723ms`、`init 497ms`、
   `profile 其他 226ms`、`idle 全载 529ms`；对比第二十二轮的 `init 564ms`/`profile 1122ms`。
@@ -912,6 +912,17 @@ WindowsTerminal.exe
   `-Prompt`/`-Ux`/`-Status` 追加其他评估面，`-All` 全开。
 - 结果：同机默认约 3 秒（含两次新进程），`-All` 约 4~5 秒，`-Repeat 2` 约 5 秒；分解各项
   之和与 profile 的差额来自取整与测量抖动，`-Simple` 仍为 1~2 秒。
+
+## 37. 第三十轮：启动因子默认表格化（2026-11-13）
+
+- 现场：运行 `Test-StartupPerformance`（尤其加 `-Report`）时，因子对象逐属性显示为列表，
+  而不是表格；需要手动 `| ft` 才能按表阅读。
+- 原因：PowerShell 对没有注册格式视图、且属性超过 4 个的对象，默认用列表视图；启动因子对象
+  有 `Category`/`Name`/`Ms`/`Share`/`Note` 5 个属性，正好落到列表分支。
+- 处置：新增 `Init.format.ps1xml`，为 `Cxxu.StartupFactor` 与 `Cxxu.StartupSummary` 注册表格视图；
+  `New-ResultRow`/`New-SummaryRow` 写入 `PSTypeName`，`Init.psd1` 增加 `FormatsToProcess`。
+- 结果：默认输出即为表格，不再需要 `ft`/`fl`；对象流不变，仍可 `Where-Object`/`Select-Object`；
+  同机 `Import-Module Init` 约 61~77ms，未观察到明显额外开销。
 
 ## 变量组缓存与预设变量启动开销
 

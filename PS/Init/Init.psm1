@@ -352,11 +352,12 @@ function Test-StartupPerformance
 {
     <#
     .SYNOPSIS
-    自查 pwsh 启动性能:默认输出按耗时降序的启动因子对象,可直接接 Format-Table/Format-List。
+    自查 pwsh 启动性能:默认输出按耗时降序的启动因子表(格式视图,无需 ft/fl),对象流仍可筛选与管道。
     .DESCRIPTION
     每段都在全新 pwsh 进程里测(冷数字,排除本会话已摊销的解析成本);本机改动对照看 Startup-Optimization.md。
     默认输出可加分解的启动因子行:bare、profile 其他(conda/模块导入)、init 准备/收尾、各 init 步骤;
     列固定为 Category/Name/Ms/Share/Note,按 Ms 降序,Share 为占 profile 的百分比,第一行即当前最大影响因素。
+    因子对象带 Cxxu.StartupFactor 类型名,Init.format.ps1xml 提供默认表格视图,无需再指定 ft/fl。
     交互终端测量时显示进度条(重定向或 PsShowProgress=False 时自动关闭)。-Report 在默认因子对象之后
     追加独立文本汇总块(profile 总耗时、bare、profile 税、Init 模块导入、conda/其他 profile、
     init 合计/步骤/准备收尾)，汇总不混入因子对象表;汇总表由 Format-Table 对齐，无需再指定 fl。
@@ -406,20 +407,22 @@ function Test-StartupPerformance
     function New-ResultRow([string]$Category, [string]$Name, $Ms, $Share, [string]$Note)
     {
         [pscustomobject]@{
-            Category = $Category
-            Name     = $Name
-            Ms       = $Ms
-            Share    = $Share
-            Note     = $Note
+            PSTypeName = 'Cxxu.StartupFactor'
+            Category   = $Category
+            Name       = $Name
+            Ms         = $Ms
+            Share      = $Share
+            Note       = $Note
         }
     }
     function New-SummaryRow([string]$Name, $Ms, $Share, [string]$Note)
     {
         [pscustomobject]@{
-            Summary = $Name
-            Ms      = $Ms
-            Share   = $Share
-            Note    = $Note
+            PSTypeName = 'Cxxu.StartupSummary'
+            Summary    = $Name
+            Ms         = $Ms
+            Share      = $Share
+            Note       = $Note
         }
     }
     function Get-MedianValue([int[]]$Values)

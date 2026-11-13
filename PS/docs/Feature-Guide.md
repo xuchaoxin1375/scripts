@@ -23,7 +23,7 @@ Add-EnvVar -EnvVar PSModulePath -NewValue $p -Verbose
 | `init -Tier <Fast/Balanced>` | 本次初始化指定启动档位（`Minimal` 为 `Fast` 的兼容别名）；档位含义与取舍见「启动档位」 |
 | `init -Timing` | 同上，附每步耗时表（首次启动）；已初始化会话用 `init -Force -Timing` |
 | `p` | 新开一个 pwsh 会话，由新进程的 profile 执行 `init`；不刷新当前会话 |
-| `Test-StartupPerformance` | 输出按耗时降序的启动因子对象（`Category`/`Name`/`Ms`/`Share`/`Note`），`Share` 为占 profile 的百分比，可直接接 `ft`/`fl`；默认拆到 bare、Init 模块导入、conda/其他 profile、init 准备/收尾与各 init 步骤；交互终端显示进度条；`-Report` 在默认因子对象之后追加独立汇总文本块（总耗时、bare、profile 税、模块导入、conda/其他、init 合计/步骤/准备收尾），汇总不混入对象表且已对齐；`-Prompt`/`-Ux`/`-Status` 追加其他评估面，`-All` 全开，`-Simple` 只给一行总耗时 |
+| `Test-StartupPerformance` | 默认输出按耗时降序的启动因子表（`Category`/`Name`/`Ms`/`Share`/`Note`，格式视图 `Init.format.ps1xml`，无需 `ft`/`fl`），`Share` 为占 profile 的百分比；对象流仍可直接筛选与管道；默认拆到 bare、Init 模块导入、conda/其他 profile、init 准备/收尾与各 init 步骤；交互终端显示进度条；`-Report` 在默认因子对象之后追加独立汇总文本块（总耗时、bare、profile 税、模块导入、conda/其他、init 合计/步骤/准备收尾），汇总不混入对象表且已对齐；`-Prompt`/`-Ux`/`-Status` 追加其他评估面，`-All` 全开，`-Simple` 只给一行总耗时 |
 | `Set-PsPrompt -version < fast/short/...>` | 切换提示符；加 `-Persist` 才写注册表记住选择 |
 | `dm` | 切极简 prompt（做笔记摘录时聚焦命令本身） |
 | `Test-PromptDelay` | 测当前 prompt 延迟 |
@@ -96,7 +96,7 @@ ipmof | iex                     # 旧版（兼容）：只重载仓库内(PS/)�
 ```powershell
 Get-SourceCode <命令名>     # 看任意自定义函数源码（带补全）
 init -Force -Timing         # 看当前会话 init 分步耗时，定位慢项
-Test-StartupPerformance     # 启动因子按耗时降序（bare/Init 导入/conda/init 步骤），可接 ft/fl
+Test-StartupPerformance     # 启动因子表（默认已表格化，可直接阅读；对象仍可管道）
 Test-StartupPerformance -Report    # 默认因子表 + 独立汇总块（总耗时/分解）
 Test-StartupPerformance -All | ft    # 追加 prompt、体验件全载与开关状态
 Test-StartupPerformance -Simple   # 只测一次新 pwsh 启动（带 profile）
@@ -255,7 +255,7 @@ Get-CxxuComponent | Select-Object Id, Enabled, TierAllowed, Effective
 | `git-completion`（`git`/`gitk` 的 Tab 补全：分支、提交、按 git 状态过滤的文件与选项描述） | **已启用**（init 检测到模块即注册 completer，首次补全才导入；未装时自动跳过；开关 `$env:PsGitCompletion`；启用后 argc 让出 `git`/`gitk`；当前归属用 `Get-GitCompletionSource` 确认） |
 | `inshellisense` | **否决**（用户拍板，不再考虑） |
 
-验：新开终端直接可用，`Ctrl+R`/`Ctrl+T` 首按装 PSFzf（本次按键即生效）；`z <目录>` 跳转（zoxide 首屏单发已装）。`CxxuTab` 默认开，首次在裸命令名位置按 `Tab` 才导入它；参数、显式路径、变量与字符串位置保持原生补全且不提前导入。命令表优先复用 predictor 已初始化的进程内表，否则读取磁盘缓存（命中时约 20ms，模块导入另计；缓存缺失/过期时现建，5.1 约 0.4s、7 约 0.1s，24h 内最多一次）。`argc-completions` 开关默认开，首次在外部 CLI 参数位按 `Tab` 才注册（需先用 `Deploy-CompletionStack -IncludeArgc` 部署；未部署时自动回退原生补全，约 150ms 的注册不会发生）。`Get-EventSubscriber` 应无残留（单发用 `-MaxTriggerCount 1` 自动退订）。若某主机 OnIdle 不触发（predictor 没装上），跑 `Register-PsUxLazyLoad -Now` 或报回来。自查跑 `Test-StartupPerformance`（启动因子按耗时降序，可直接接 `ft`/`fl`）。
+验：新开终端直接可用，`Ctrl+R`/`Ctrl+T` 首按装 PSFzf（本次按键即生效）；`z <目录>` 跳转（zoxide 首屏单发已装）。`CxxuTab` 默认开，首次在裸命令名位置按 `Tab` 才导入它；参数、显式路径、变量与字符串位置保持原生补全且不提前导入。命令表优先复用 predictor 已初始化的进程内表，否则读取磁盘缓存（命中时约 20ms，模块导入另计；缓存缺失/过期时现建，5.1 约 0.4s、7 约 0.1s，24h 内最多一次）。`argc-completions` 开关默认开，首次在外部 CLI 参数位按 `Tab` 才注册（需先用 `Deploy-CompletionStack -IncludeArgc` 部署；未部署时自动回退原生补全，约 150ms 的注册不会发生）。`Get-EventSubscriber` 应无残留（单发用 `-MaxTriggerCount 1` 自动退订）。若某主机 OnIdle 不触发（predictor 没装上），跑 `Register-PsUxLazyLoad -Now` 或报回来。自查跑 `Test-StartupPerformance`（启动因子按耗时降序，默认表格，可直接阅读）。
 
 argc/carapace 的共享桩先识别光标所在命令与参数位置：命令名、PowerShell 函数/cmdlet 参数和重定向路径不触发注册；应用程序与外部脚本（如 `scoop.ps1`）的参数位才触发。变量形式调用与当前无法解析的命令保留原有加载入口。两者同时启用时仍按 carapace → argc 的顺序注册；argc 用一次 `Register-ArgumentCompleter -CommandName <字符串数组>` 注册去重后的名单，保留 git/gitk 的来源归属、运行期开关与强制重注册语义，重叠命令由后者接管；首次加载成本只推迟到相关场景。改动后需新开 pwsh 会话生效，运行期开关与显式初始化入口保持不变。
 
