@@ -46,6 +46,21 @@ Add-EnvVar -EnvVar PSModulePath -NewValue $p -Verbose
 env(3) 变量+别名。`Update-PwshVars` 全量导入后置 2，`Update-PwshEnv` 置 3；
 `Update-PwshEnvIfNotYet` 按需补齐，达到对应等级后不重复导入。
 
+### 预设变量配置与缓存
+
+`$scripts`、`$repos` 等变量继续由 [PwshVar 配置目录](../PwshVar/confs/) 定义。修改配置后，下次启动或运行对应加载命令时自动生效。加载会覆盖配置中列出的全局变量；各模式均先执行长字符串脚本，不访问网络，也不修改配置文件。
+
+| 模式 | 命令 | 加载范围 |
+| --- | --- | --- |
+| 核心变量 | `Update-PwshVars -Core` | VarSet1、VarSet2、ConstantString；启动首屏使用 |
+| Fast 变量子集 | `Update-PwshVars -Fast` | VarSet1、VarSet2、GlobalConfig、ConstantString；与启动档位 Fast 是不同入口 |
+| 完整变量 | `Update-PwshVars` | Fast 变量子集及适用平台的扩展配置 |
+| 排查缓存问题 | `Update-PwshVars -Core -NoCache` | 本次逐行加载核心配置；也可将 `-NoCache` 用于其他变量模式 |
+
+同时指定 `-Core` 和 `-Fast` 时以 `-Core` 为准。默认将所选组编译为系统临时目录中的 `CxxuPwshVarGroup_*.cache.ps1`，按仓库位置、变量组、PowerShell 版本隔离；源文件时间或大小、有序文件名单或加载器变化时自动重建。缓存保存表达式，变量值每次重新计算，不延迟到首次使用。缓存首次生成会增加一次构建成本；删除所属组缓存后，下次调用会自动生成。
+
+缓存检查、构建失败或缓存语法损坏时自动回退逐行加载，`-Verbose` 可查看回退原因。配置表达式的运行错误按原调用环境报告，不通过重跑整组来隐藏错误。使用 `-Debug` 时走逐行路径，保留逐行诊断输出。性能口径与验证记录见 [启动优化记录](Startup-Optimization.md#变量组缓存与预设变量启动开销)。
+
 ## 3. 改模块 / 加函数（有了 `.psd1` 之后的工作流）
 
 以前只有 `.psm1`，写完函数直接能用；现在每个模块多了 `.psd1`（显式导出表），
@@ -187,7 +202,7 @@ Get-CxxuComponent | Select-Object Id, Enabled, TierAllowed, Effective
        VarSet1/VarSet2/ConstantString + 平时懒加载的全量名单 VarSet3/GlobalConfig 等；
        已初始化会话重载开销约零点几秒，环境等级保持不被打回；首次初始化与新进程路径
        不叠加重载，启动基线不变；冷启动分段用 `Test-StartupPerformance`）。也可用对应 loader 直刷：变量 `Update-PwshVars`
-       （`-Fast` 只刷 VarSet1/2，预编译缓存按 mtime 自动失效，无需清理）、别名 `Update-PwshEnv`、
+       （变量子集与缓存行为见「预设变量配置与缓存」）、别名 `Update-PwshEnv`、
        prompt/PSReadLine 由步骤表重跑。
     3. 改了 profile 文件本身 → `. $profile`；若 profile 只调用 `init`，`. $profile` 仍受 `$global:PsInit` 守卫，实际重跑用 `init -Force`。
   - 安全差异：bash 重 source 会叠 PATH，这边 `init` 有 `$global:PsInit` 防重复（`. $profile` 默认 no-op，真重跑靠 `-Force`），`Add-EnvVar` 自带去重（见 `EnvVar.psm1:621/629`），prompt 全局只抓一次，OnIdle 有标记位。

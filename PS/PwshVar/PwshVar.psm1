@@ -71,17 +71,41 @@ function Import-PwshVarFileTesting
 
 function Update-PwshVars
 {
+    <#
+    .SYNOPSIS
+    从配置文件加载预设的 PowerShell 变量。
+    .DESCRIPTION
+    默认按配置顺序加载完整变量组。Core、Fast 选择原有子集；同时指定时 Core 优先。
+    配置表达式每次重新求值，变量立即可用。默认在系统临时目录生成按组编译的脚本缓存，
+    不修改 conf，不访问网络。源文件时间或大小变化、加载器更新时自动重建缓存。
+    缓存检查、构建失败或缓存语法损坏时回退逐行加载；配置表达式报错时不重跑整组。
+    .PARAMETER Core
+    只加载 VarSet1、VarSet2 和 ConstantString，供启动时使用。
+    .PARAMETER Fast
+    加载 VarSet1、VarSet2、GlobalConfig 和 ConstantString。
+    .PARAMETER NoCache
+    不读取或写入编译缓存，逐行执行配置，用于排查缓存问题。
+    .EXAMPLE
+    Update-PwshVars -Core
+    .EXAMPLE
+    Update-PwshVars -Fast
+    .EXAMPLE
+    Update-PwshVars
+    .EXAMPLE
+    Update-PwshVars -Core -NoCache
+    .NOTES
+    完整变量组将 PsEnvMode 提升到 2，Core/Fast 提升到 1；不降低已有更高等级。
+    #>
     [CmdletBinding()]
     param(
         [switch]$Fast,
         [switch]$Core,
-        # 透传给 Import-PwshVarFile:禁用预编译缓存(排查用)
         [switch]$NoCache
     )
     
     $PwshVarFilesCore = @(
         'VarSet1',
-        'Varset2', 
+        'VarSet2',
         # 'GlobalConfig'
         ,
         'ConstantString'
@@ -124,9 +148,8 @@ function Update-PwshVars
     #🎈在需要添加新的环境变量配置文件时,只需要在PwshVarFiles中追加即可
     # 单独导入长字符串,手动声明为$global:变量
 
-    $express = ". `"$(Join-Path $PSScriptRoot 'VarLongStrings.ps1')`""
-    Write-Verbose "executing $express"
-    Invoke-Expression $express
+    # 保持长字符串脚本的原始位置与点源作用域，不通过字符串再解析调用。
+    . ([IO.Path]::Combine($PSScriptRoot, 'VarLongStrings.ps1'))
     
 
     # $PwshVarFiles = ($Fast ) ? $PwshVarFilesFast : $PwshVarFilesFull
@@ -147,10 +170,34 @@ function Update-PwshVars
 
     
     $prevEnvMode = $global:PsEnvMode
-    foreach ($VarFile in $PwshVarFiles) 
+    $groupLoaded = $false
+    # 调试输出仍走逐文件入口，保留原有的逐行 Write-Debug。
+    if (-not $NoCache -and $DebugPreference -in @('SilentlyContinue', 'Ignore'))
     {
-        Write-Verbose "processing:[$VarFile]"
-        Import-PwshVarFile -VarFile $VarFile -NoCache:$NoCache # -AsPwshEnvForHomeVars
+        $group = if ($Core) { 'Core' } elseif ($Fast) { 'Fast' } else { 'Full' }
+        $groupCache = Get-PwshVarGroupCache -VarFiles $PwshVarFiles -Group $group
+        if ($groupCache)
+        {
+            try
+            {
+                . $groupCache
+                $groupLoaded = $true
+            }
+            catch [System.Management.Automation.ParseException]
+            {
+                # 完整脚本尚未开始执行，语法损坏时才可安全回退，避免重复运行表达式。
+                Write-Verbose '变量组缓存语法损坏，本次回退逐文件加载。'
+                try { [IO.File]::Delete($groupCache) } catch { Write-Verbose '无法删除损坏的变量组缓存。' }
+            }
+        }
+    }
+    if (-not $groupLoaded)
+    {
+        foreach ($VarFile in $PwshVarFiles)
+        {
+            Write-Verbose "processing:[$VarFile]"
+            Import-PwshVarFile -VarFile $VarFile -NoCache
+        }
     }
     # 全量导入后把等级标到 2：VarSet1.conf 固定写 1，若不提升，Test-PsEnvMode -Mode Vars
     # 永远为假，Update-PwshEnvIfNotYet -Mode Vars 会在每次调用时重复导入全量变量。
@@ -160,6 +207,123 @@ function Update-PwshVars
     Set-Variable -Name PsEnvMode -Value $targetMode -Scope Global
     Write-Verbose 'envs updated!'
     
+}
+
+function ConvertTo-PwshVarScriptLine
+{
+    # 与逐行回退使用相同的转换规则，合并组缓存与单文件缓存共享此入口。
+    param([string]$ConfPath)
+    foreach ($rawLine in [IO.File]::ReadLines($ConfPath))
+    {
+        $line = $rawLine
+        if (!$line.Contains('=')) { $line = $line -replace '(^.*?) ', '$1=' }
+        if ($line.TrimStart() -match '^([a-zA-Z_$])')
+        {
+            $line -replace '^\s*\$?', '$global:'
+        }
+    }
+}
+
+function Get-PwshVarGroupCache
+{
+    <#
+    .SYNOPSIS
+    返回当前变量组的编译缓存路径；构建或校验失败时返回空值，不执行配置。
+    #>
+    param(
+        [Parameter(Mandatory)][string[]]$VarFiles,
+        [ValidateSet('Core', 'Fast', 'Full')][string]$Group = 'Core'
+    )
+    try
+    {
+        # 路径用可逆的十六进制编码；普通路径避免每个进程首次初始化加密组件的开销。
+        $edition = [string]$PSVersionTable.PSEdition
+        $rootBytes = [Text.Encoding]::UTF8.GetBytes([IO.Path]::GetFullPath($PSScriptRoot))
+        $pathId = [BitConverter]::ToString($rootBytes).Replace('-', '')
+        $cache = [IO.Path]::Combine([IO.Path]::GetTempPath(), "CxxuPwshVarGroup_${pathId}_${Group}_${edition}_$($PSVersionTable.PSVersion.Major).cache.ps1")
+        # 超长路径才使用摘要，保留 Windows PowerShell 5.1 的路径长度兼容性。
+        if ($cache.Length -gt 240)
+        {
+            $sha = [Security.Cryptography.SHA256]::Create()
+            try { $pathId = [BitConverter]::ToString($sha.ComputeHash($rootBytes)).Replace('-', '').Substring(0, 24) }
+            finally { $sha.Dispose() }
+            $cache = [IO.Path]::Combine([IO.Path]::GetTempPath(), "CxxuPwshVarGroup_${pathId}_${Group}_${edition}_$($PSVersionTable.PSVersion.Major).cache.ps1")
+        }
+        $sourcePaths = @([IO.Path]::Combine($PSScriptRoot, 'PwshVar.psm1'), [IO.Path]::Combine($PSScriptRoot, 'VarLongStrings.ps1'))
+        foreach ($name in $VarFiles) { $sourcePaths += [IO.Path]::Combine($PSScriptRoot, 'confs', "$name.conf") }
+        $stamps = foreach ($path in $sourcePaths)
+        {
+            $file = [IO.FileInfo]::new($path)
+            if (-not $file.Exists) { return }
+            [string]$file.LastWriteTimeUtc.Ticks + ':' + $file.Length
+        }
+        # 精确比较时间与长度，文件回退到较旧版本或被删除时也不能沿用旧缓存。
+        $header = '# CxxuPwshVarGroup v1 ' + ($VarFiles -join ',') + ' ' + ($stamps -join '|')
+        if ([IO.File]::Exists($cache))
+        {
+            $reader = [IO.File]::OpenText($cache)
+            try { $valid = $reader.ReadLine() -eq $header }
+            finally { $reader.Dispose() }
+            if ($valid) { return $cache }
+        }
+        Get-CompiledPwshVarGroupFile -Cache $cache -Header $header -VarFiles $VarFiles
+    }
+    catch
+    {
+        Write-Verbose ("变量组缓存不可用，本次回退逐文件加载：{0}" -f $_.Exception.Message)
+    }
+}
+
+function Get-CompiledPwshVarGroupFile
+{
+    # 构建代码仅在源文件变化时进入，避免正常启动也支付其首次编译成本。
+    param([string]$Cache, [string]$Header, [string[]]$VarFiles)
+    $pendingCache = $null
+    try
+    {
+        $built = [Text.StringBuilder]::new()
+        $null = $built.AppendLine($Header)
+        foreach ($name in $VarFiles)
+        {
+            foreach ($line in (ConvertTo-PwshVarScriptLine -ConfPath ([IO.Path]::Combine($PSScriptRoot, 'confs', "$name.conf"))))
+            {
+                $null = $built.AppendLine($line)
+            }
+        }
+        $scriptText = $built.ToString()
+        $parseErrors = $null
+        $null = [Management.Automation.Language.Parser]::ParseInput($scriptText, [ref]$null, [ref]$parseErrors)
+        if ($parseErrors.Count) { return }
+        # 先写同目录临时文件，再原子替换，避免同时启动多个 pwsh 时读到半份脚本。
+        $pendingCache = $cache + '.' + [guid]::NewGuid().ToString('N') + '.tmp'
+        [IO.File]::WriteAllText($pendingCache, $scriptText, [Text.UTF8Encoding]::new($true))
+        if ([IO.File]::Exists($cache))
+        {
+            [IO.File]::Replace($pendingCache, $cache, [Management.Automation.Language.NullString]::Value)
+        }
+        else
+        {
+            try { [IO.File]::Move($pendingCache, $cache) }
+            catch [IO.IOException]
+            {
+                if (-not [IO.File]::Exists($cache)) { throw }
+                [IO.File]::Replace($pendingCache, $cache, [Management.Automation.Language.NullString]::Value)
+            }
+        }
+        return $cache
+    }
+    catch
+    {
+        Write-Verbose ("变量组缓存构建失败，本次回退逐文件加载：{0}" -f $_.Exception.Message)
+        return
+    }
+    finally
+    {
+        if ($pendingCache -and [IO.File]::Exists($pendingCache))
+        {
+            try { [IO.File]::Delete($pendingCache) } catch { Write-Verbose '无法删除本次缓存构建的临时文件。' }
+        }
+    }
 }
 
 function Get-CompiledPwshVarLines
@@ -187,27 +351,14 @@ function Get-CompiledPwshVarLines
         }
         if ($regen)
         {
-            $built = [System.Collections.Generic.List[string]]::new()
-            foreach ($rawLine in ([System.IO.File]::ReadLines($ConfPath)))
-            {
-                $line = $rawLine.ToString()
-                if (!$line.Contains('='))
-                {
-                    $line = $line -replace '(^.*?) ', '$1='
-                }
-                if ($line.TrimStart() -match '^([a-zA-Z_$])')
-                {
-                    $line = $line -replace '^\s*\$?', '$global:'
-                    $built.Add($line)
-                }
-            }
+            $built = @(ConvertTo-PwshVarScriptLine -ConfPath $ConfPath)
             if ($built.Count -eq 0) { return }
             $parseErrs = $null
             $null = [System.Management.Automation.Language.Parser]::ParseInput(($built -join "`n"), [ref]$null, [ref]$parseErrs)
             if ($parseErrs.Count -gt 0) { return }
             [System.IO.File]::WriteAllLines($cache, $built, [System.Text.UTF8Encoding]::new($false))
             . $cache
-            return $built.ToArray()
+            return $built
         }
         else
         {
