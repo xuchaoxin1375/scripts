@@ -32,6 +32,11 @@ Test-PromptDelay                              # prompt 延迟（默认测 10 次
 - 嵌套 `pwsh` 是全新进程，`$global:PsInit` 防重复只在同一进程内有效，所以每次都要重跑
   conda + init 全套。与“第几次启动”无关，只和该实例耗时是否过线有关（机器负载、冷热缓存
   会让同一配置在 500ms 线上下横跳，看起来像“有时有、有时无”）。
+- `init` 自己打印的 `Environment Loading time` 是函数内部口径，从 `init` 函数入口起算，
+  不含 `init` 命令的模块发现、导入与解析，也不含 `$profile` 中排在 `init` 之前的 conda
+  缓存段。引擎的 profile 总计包含这些内容，因此通常更大；例如 init 506ms 对应 profile
+  701ms 时，约 195ms 来自 conda 钩子、Init 模块导入与 profile 其他语句。两个数字不能
+  相加，也不表示 `init` 重复执行；分段对照用 `Test-StartupPerformance`。
 
 `init -Timing` 沙盒实测（顺序即耗时顺序；`Json` 拆分 + conf 缓存后复测；当前 macOS 口径见 §30）：
 
@@ -687,10 +692,11 @@ Set-PSReadLineOption: 句柄无效。
     在 `prompt` 被移除或宿主未定义时每次渲染都会抛
     “expression after '&' ... was not valid”。
 - 计时口径：
-  - `init` 的 `Environment Loading time` 现在写作 `steps / prep / total` 三段：
-    `steps` 只含步骤循环，`prep` 含配置读取、变量重载与步骤表构建，`total` 从函数入口
-    起算。`init -Timing` 的步骤表增加 `Share` 与“步骤合计”行，合计只表示步骤内部口径，
-    与 `total` 的差额是准备阶段。
+  - `init` 的 `Environment Loading time` 主数字是 `total`（从函数入口到初始化收尾），括号内
+    为 `prep + steps + other`，三项按定义严格等于 `total`：`prep` 含配置读取、变量重载与
+    步骤表构建；`steps` 只含步骤循环（含进度条渲染）；`other` 是循环前后的计时、环境等级
+    恢复与进度条收尾开销。`init -Timing` 的步骤表另给 `Share` 与“步骤合计”行，合计只表示
+    各步骤自身耗时之和，与 `steps` 的差额是循环内未被单步计时的开销，不参与上面的拆分。
   - `Test-StartupPerformance` 的表格改为“段 / ms / 说明”，明确 `init` 是 `profile 税`
     的子集，并单列 `profile 其他 = profile 税 - init`；`bare`、`profile`、`init`、
     `idle` 都按 `-Repeat` 取中位数。`idle 全载` 是启动后首屏一次的成本，不计入

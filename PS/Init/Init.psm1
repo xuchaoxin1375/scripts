@@ -234,6 +234,11 @@ function init
         Write-Progress -Activity 'Loading...' -Completed
     }
 
+    # 总耗时在打印报告与警告之前取：-Timing 的步骤表属于诊断输出，不计入 init 本身。
+    $totalMs = [int]([datetime]::UtcNow - $initStart).TotalMilliseconds
+    # 三段按定义严格加总：other 是步骤循环前后的计时、环境等级恢复与进度条收尾开销。
+    $otherMs = [Math]::Max(0, $totalMs - $prepMs - $stepsMs)
+
     if ($global:PsInitStepErrors.Count)
     {
         Write-Warning ("init 有 $($global:PsInitStepErrors.Count) 个步骤失败(其余已继续执行): " +
@@ -323,9 +328,8 @@ function init
     #     }
     #     . $condaCompletionFile
     # }
-    # 耗时统计
-    $totalMs = [int]([datetime]::UtcNow - $initStart).TotalMilliseconds
-    Write-Host ("Environment Loading time: {0} ms (steps; prep {1} ms, total {2} ms)" -f $stepsMs, $prepMs, $totalMs) -ForegroundColor Magenta
+    # 耗时统计：主数字是 init 总耗时，括号内三段严格等于总耗时。
+    Write-Host ("Environment Loading time: {0} ms (prep {1} + steps {2} + other {3})" -f $totalMs, $prepMs, $stepsMs, $otherMs) -ForegroundColor Magenta
     # 清理竞争关系变量
     # $env:PsInit = $null
     # Remove-Variable $env:PsInit

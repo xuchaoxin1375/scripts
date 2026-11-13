@@ -105,6 +105,11 @@ Test-StartupPerformance -Simple   # 只测一次新 pwsh 启动（带 profile）
 - **`scoop update/install` 报 `cannot pull with rebase: Your index contains uncommitted changes`**：任一仓库（scoop 本体 `apps\scoop\current` 或某个 bucket）处于脏状态，git 拒绝执行 pull --rebase。修复：`Repair-ScoopUpdate`（`Scoop` 模块，逐个检查本体与全部 bucket，默认 stash 保留现场，加 `-Discard` 丢弃改动，收尾自动 `scoop update`，只看不动加 `-NoUpdate -WhatIf`）。
 - **看不到 `Loading personal and system profiles took ...ms`**：正常。引擎只在四个
   profile 合计 >500ms（硬编码）才打印，不到就静默。
+- **`Environment Loading time` 与 `Loading personal and system profiles took` 数值不同**：
+  前者是 `init` 函数内部耗时（准备 + 步骤 + 收尾），后者是 pwsh 引擎统计的 profile 总耗时，
+  还包含 conda 缓存段与 Init 模块导入。两者不是同一口径，后者通常更大；分段对照用
+  `Test-StartupPerformance`，口径说明见 [Startup-Optimization](Startup-Optimization.md)
+  的「计时口径」。
 - **嵌套 `pwsh` 又跑一遍 init**：新进程不继承 `$global:PsInit`，只能重跑；
   贵的是 conda + init + 模块发现（见基线表），不是重复 bug。若启动器写成
   `pwsh -noe -c p`，会看到两次 `initing...`（外层 profile 一次、`p` 开的子进程一次）；
