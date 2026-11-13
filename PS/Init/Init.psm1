@@ -357,8 +357,8 @@ function Test-StartupPerformance
     每段都在全新 pwsh 进程里测(冷数字,排除本会话已摊销的解析成本);本机改动对照看 Startup-Optimization.md。
     默认输出可加分解的启动因子行:bare、profile 其他(conda/模块导入)、init 准备/收尾、各 init 步骤;
     列固定为 Category/Name/Ms/Share/Note,按 Ms 降序,Share 为占 profile 的百分比,第一行即当前最大影响因素。
-    交互终端测量时显示进度条(重定向或 PsShowProgress=False 时自动关闭);-Report 输出文本摘要
-    (总耗时、分解与前三因素),不输出对象行。
+    交互终端测量时显示进度条(重定向或 PsShowProgress=False 时自动关闭);-Report 在默认因子行末尾
+    追加 Summary 汇总行(profile 总耗时、init 合计、init 步骤合计、init 准备/收尾)，仍走同一对象流。
     -Prompt 追加 prompt 延迟行;-Ux 追加体验件全载行;-Detail 再加四件明细(隐含 -Ux);
     -Status 追加本会话开关与懒加载状态;-All 等价于 -Prompt -Ux -Status。
     -Repeat 取中位数时按次数线性增加,不再多跑预热。
@@ -395,7 +395,7 @@ function Test-StartupPerformance
         [switch]$All,
         # 加测 OnIdle 四片各自耗时(隐含 -Ux;排查"哪片最重"时开)
         [switch]$Detail,
-        # 报告模式:输出文本摘要(总耗时、分解、前三因素)，不输出对象行
+        # 报告模式:在默认输出末尾追加 Summary 汇总行(总耗时与 init 合计/步骤/准备收尾)
         [switch]$Report,
         # 简单模式:只测新 pwsh 启动(带 profile),不做分段;与其他评估开关互斥
         [Alias('Quick')]
@@ -444,7 +444,7 @@ function Test-StartupPerformance
         $simpleRuns = [Math]::Max(1, $Repeat)
         $ms = Get-MedianMs { [int](Measure-Command { & $pwsh -NonInteractive -Command 'exit' *> $null }).TotalMilliseconds } $simpleRuns
         $note = if ($simpleRuns -gt 1) { "$simpleRuns 次中位数" } else { '1 次' }
-        if ($Report) { return ("pwsh 启动报告（{0}）`n总耗时 profile {1} ms" -f $note, $ms) }
+        if ($Report) { return New-ResultRow 'Summary' 'profile 总耗时' $ms 100 $note }
         return New-ResultRow 'Startup' 'profile（完整启动）' $ms 100 $note
     }
     # -All 打开附加评估面；分步明细已默认包含，不再单列开关。
@@ -605,33 +605,12 @@ $r -join ' '
     $rows = @($factorRows) + @($extraRows)
     if ($Report)
     {
+        # 报告模式只追加汇总行，沿用同一对象形状，由默认格式化负责对齐。
         $mode = if ($Repeat -gt 1) { "$Repeat 次中位数" } else { '1 次' }
-        $lines = @(
-            "pwsh 启动报告（$mode）"
-            ("总耗时 profile       {0,6} ms" -f $prof)
-            ("  bare               {0,6} ms  {1,3}%" -f $bare, (Get-Share $bare))
-            ("  Init 模块导入       {0,6} ms  {1,3}%" -f $tImport, (Get-Share $tImport))
-            ("  conda/其他 profile {0,6} ms  {1,3}%" -f $profileRest, (Get-Share $profileRest))
-            ("  init 内部          {0,6} ms  {1,3}%" -f $tInit, (Get-Share $tInit))
-            ("    init 准备/收尾   {0,6} ms  {1,3}%" -f $initPrep, (Get-Share $initPrep))
-            ("    init 步骤合计    {0,6} ms  {1,3}%" -f $stepSum, (Get-Share $stepSum))
-            '前三因素：'
-        )
-        foreach ($row in ($factorRows | Select-Object -First 3))
-        {
-            $lines += ("  {0,-18} {1,6} ms  {2,3}%" -f $row.Name, $row.Ms, $row.Share)
-        }
-        if ($Ux -and $null -ne $tIdle) { $lines += ("体验件全载（-Now） {0,6} ms（不计入 profile）" -f $tIdle) }
-        if ($Detail)
-        {
-            foreach ($row in @($extraRows | Where-Object Category -eq 'UxDetail'))
-            {
-                $value = if ($null -ne $row.Ms) { "$($row.Ms) ms" } else { '本机缺件' }
-                $lines += ("  {0,-10} {1,6}" -f $row.Name, $value)
-            }
-        }
-        if ($Prompt -and $null -ne $promptMs) { $lines += ("prompt 均值(5 次) {0,6} ms" -f $promptMs) }
-        return ($lines -join [Environment]::NewLine)
+        $rows += New-ResultRow 'Summary' 'profile 总耗时' $prof 100 $mode
+        $rows += New-ResultRow 'Summary' 'init 合计' $tInit (Get-Share $tInit) $null
+        $rows += New-ResultRow 'Summary' 'init 步骤合计' $stepSum (Get-Share $stepSum) $null
+        $rows += New-ResultRow 'Summary' 'init 准备/收尾' $initPrep (Get-Share $initPrep) $null
     }
     return $rows
 }

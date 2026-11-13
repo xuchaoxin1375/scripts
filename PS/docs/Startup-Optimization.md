@@ -20,7 +20,7 @@
 ```powershell
 # 复测命令（重定向/agent 下也干净：PSReadLine 控制台相关选项已按场景跳过，见 §12）
 Test-StartupPerformance                      # 启动因子按 Ms 降序，可接 ft/fl（约 3 秒）
-Test-StartupPerformance -Report              # 文本摘要：总耗时、分解、前三因素
+Test-StartupPerformance -Report              # 在因子表末尾追加总耗时/init 合计等 Summary 行
 Test-StartupPerformance -All | ft            # 追加 prompt、体验件全载与开关状态
 Test-StartupPerformance -Simple              # 只测一次带 profile 的新 pwsh 启动
 init -Force -Timing                           # 当前会话分步耗时（已初始化；首次启动用 init -Timing）
@@ -906,8 +906,9 @@ WindowsTerminal.exe
   输出改为对象流，列固定为 `Category`/`Name`/`Ms`/`Share`/`Note`，可直接接 `ft`/`fl`；
   默认按耗时降序给出可加分解：`bare`、`Init 模块导入`、`conda/其他 profile`、`init 准备/收尾`
   与各 init 步骤，`Share` 为占 profile 的百分比，第一行即当前最大影响因素。不再打印表头与结论；
-  交互终端测量时显示进度条（重定向或 `PsShowProgress=False` 时关闭），`-Report` 额外提供文本摘要
-  （总耗时、分解、前三因素）。`-Prompt`/`-Ux`/`-Status` 追加其他评估面，`-All` 全开。
+  交互终端测量时显示进度条（重定向或 `PsShowProgress=False` 时关闭），`-Report` 在末尾追加
+  Summary 汇总行（profile 总耗时、init 合计、init 步骤合计、init 准备/收尾），沿用同一对象流，
+  由默认格式化对齐。`-Prompt`/`-Ux`/`-Status` 追加其他评估面，`-All` 全开。
 - 结果：同机默认约 3 秒（含两次新进程），`-All` 约 4~5 秒，`-Repeat 2` 约 5 秒；分解各项
   之和与 profile 的差额来自取整与测量抖动，`-Simple` 仍为 1~2 秒。
 
