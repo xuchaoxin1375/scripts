@@ -115,6 +115,8 @@ Test-StartupPerformance -Simple   # 只测一次新 pwsh 启动（带 profile）
 
 `Minimal` 是 `Fast` 的兼容别名：两者步骤表与组件上限一致。旧配置里的 `PsStartupTier=Minimal`
 与 `init -Tier Minimal` 都按 `Fast` 执行，`Set-PsStartupTier Minimal` 会归一化并写入 `Fast`。
+因此实际只有两种行为：`Minimal` 与 `Fast` 完全相同（实测差异在噪声内），`Balanced` 比它们
+多约 120~150ms。
 
 ```powershell
 Get-CxxuConfig | Where-Object Key -eq PsStartupTier   # 查看当前档位与来源
@@ -132,12 +134,12 @@ Get-CxxuComponent | Select-Object Id, Enabled, TierAllowed, Effective
 - `Set-PsStartupTier` 不带 `-Persist` 时只改当前进程的环境变量：本会话 `init -Force` 与
   在本会话内启动的子进程（如直接执行 `pwsh`）立即按新档位；从桌面或终端应用独立启动的窗口
   不继承，需要 `-Persist` 写入用户配置。
-- 同机实测（pwsh 7.5、新进程三次中位数、init 内部口径）：`Fast` 约 438ms，`Balanced` 约 546ms。
-  差额约 110ms，主要来自 `Register-PsUxLazyLoad`（约 48ms）、`Set-ArgumentCompleter`（约 37ms）、
-  `Confirm-EnvVarOfInfo`（约 25ms），加 `Carapace` 与可选组件桩约 10ms；`Set-PsPrompt` 与
-  `Set-PSReadLinesCommon` 两档都要执行。含 conda 与模块导入的进程级口径同样差约 110ms，
-  另有 conda 缓存约 150ms 不受档位影响。具体数值随负载与冷热缓存变化，复测用
-  `Test-StartupPerformance -Simple`。
+- 同机实测（pwsh 7.5、新进程三次中位数、init 内部口径，多次复测）：`Fast`（与 `Minimal` 同一
+  行为）约 430ms，`Balanced` 约 550~580ms，差约 120~150ms。主要来自 `Register-PsUxLazyLoad`
+  （20~50ms）、`Set-ArgumentCompleter`（约 40ms）、`Confirm-EnvVarOfInfo`（25~35ms），加
+  `Carapace` 与可选组件桩约 10ms；`Set-PsPrompt` 与 `Set-PSReadLinesCommon` 两档都要执行。
+  含 conda 与模块导入的进程级口径同样差约 120~150ms，另有 conda 缓存约 150ms 不受档位影响。
+  具体数值随负载与冷热缓存变化，复测用 `Test-StartupPerformance -Simple`。
 - 非法 `PsStartupTier` 值会在 `init` 时警告并按 `Balanced` 处理。
 
 ## 6. FAQ

@@ -882,14 +882,15 @@ WindowsTerminal.exe
     `Balance`/`Brilliant`/`Brilliant2` 时，`Fast` 仍补回 `Confirm-EnvVarOfInfo`
     与 `Confirm-DataJson`，避免富提示符缺数据。初版 `Minimal` 的 `Simple` 提示符默认值
     随档位合并取消，`Fast` 不再改写 `PsPrompt`。
-- 差额归因（pwsh 7.5、新进程三次中位数、init 内部口径）：`Fast` 438ms（steps 276）、
-  `Balanced` 546ms（steps 391），差约 108ms，几乎全在步骤表：
-  `Register-PsUxLazyLoad` 48ms、`Set-ArgumentCompleter` 37ms、`Confirm-EnvVarOfInfo` 25ms、
-  `Register-CarapaceLazyLoad` 7ms、三个可选组件桩合计约 3ms。`Set-PsPrompt`（约 145ms）与
-  `Set-PSReadLinesCommon`（约 97ms）两档都执行，prep（约 150ms，含配置读取与核心变量/别名）
-  也不受档位影响，所以档位最多只能省这两成，不能据此宣称首屏减半。含 conda 缓存（约 150ms）
-  与 Init 模块导入的进程级口径同样差约 110ms。若还要更快，优先处理 conda 钩子、
-  `Set-PsPrompt` 与 Init 模块导入，而不是继续拆档位。
+- 差额归因（pwsh 7.5、新进程三次中位数、init 内部口径，多次复测）：`Fast` 约 430ms
+  （steps 约 280）、`Balanced` 约 550~580ms（steps 约 390~420），差约 120~150ms，
+  几乎全在步骤表：`Register-PsUxLazyLoad` 20~50ms、`Set-ArgumentCompleter` 约 40ms、
+  `Confirm-EnvVarOfInfo` 25~35ms、`Register-CarapaceLazyLoad` 约 7ms、三个可选组件桩
+  合计约 3ms。`Set-PsPrompt`（约 145~180ms）与 `Set-PSReadLinesCommon`（约 95ms）两档都执行，
+  prep（约 150ms，含配置读取与核心变量/别名）也不受档位影响，所以档位最多只能省这两成，
+  不能据此宣称首屏减半。含 conda 缓存（约 150ms）与 Init 模块导入的进程级口径同样差
+  约 120~150ms。若还要更快，优先处理 conda 钩子、`Set-PsPrompt` 与 Init 模块导入，
+  而不是继续拆档位。
 - 验证入口：`init -Tier Fast -Timing`、`init -Tier Balanced -Timing`、
   `Get-CxxuComponent | Select-Object Id, Enabled, Tier, TierAllowed, Effective`、
   `PS/Init/tests/StartupTier.Tests.ps1`；pwsh 7 与 5.1 均可运行。
