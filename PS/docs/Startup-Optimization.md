@@ -19,7 +19,8 @@
 
 ```powershell
 # 复测命令（重定向/agent 下也干净：PSReadLine 控制台相关选项已按场景跳过，见 §12）
-Test-StartupPerformance                      # 新进程分段：bare/profile/init/体验件全载（默认每段一次，约 4 秒）
+Test-StartupPerformance                      # 默认分段：bare/profile/init/其他（约 2~3 秒）
+Test-StartupPerformance -Steps               # 追加 init 分步表；-All 打开全部评估面
 Test-StartupPerformance -Simple              # 只测一次带 profile 的新 pwsh 启动
 init -Force -Timing                           # 当前会话分步耗时（已初始化；首次启动用 init -Timing）
 init -Tier Fast -Timing                       # 指定启动档位看分步表（Fast/Balanced，Minimal 为 Fast 别名）
@@ -900,10 +901,11 @@ WindowsTerminal.exe
 - 现场：`Test-StartupPerformance` 默认探针提示“约需 15 秒”，实际约 6 秒；提示既不准，也把
   一次分段体检做成了需要专门等待的操作。用户预期是默认跑一次就列出全部分段。
 - 处置：默认单次不再做预热；`init` 合计与步骤表合并到同一次新进程（原先为占比多开一次），
-  总量改读该次 `Environment Loading time`；提示按每段约 4 秒估算；只有 `-Repeat > 1` 才预热
-  并取中位数。
-- 结果：同机默认约 4 秒，`-Repeat 2` 约 8 秒；分段口径（bare/profile/init/profile 其他/
-  体验件全载）不变，`-Simple` 仍为 1~2 秒。
+  总量改读该次 `Environment Loading time`；只有 `-Repeat > 1` 才预热并取中位数。
+  输出按评估面拆开：默认只列启动分段；`-Steps` 加步骤表，`-Prompt`/`-Ux`/`-Status` 分别加
+  prompt、体验件全载与开关状态，`-All` 全开，避免默认报告把不同维度混在一起。
+- 结果：同机默认约 2~3 秒，`-All` 约 4~5 秒，`-Repeat 2` 约 5 秒；分段口径
+  （bare/profile/init/profile 其他）不变，`-Simple` 仍为 1~2 秒。
 
 ## 变量组缓存与预设变量启动开销
 

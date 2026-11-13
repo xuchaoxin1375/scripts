@@ -23,7 +23,7 @@ Add-EnvVar -EnvVar PSModulePath -NewValue $p -Verbose
 | `init -Tier <Fast/Balanced>` | 本次初始化指定启动档位（`Minimal` 为 `Fast` 的兼容别名）；档位含义与取舍见「启动档位」 |
 | `init -Timing` | 同上，附每步耗时表（首次启动）；已初始化会话用 `init -Force -Timing` |
 | `p` | 新开一个 pwsh 会话，由新进程的 profile 执行 `init`；不刷新当前会话 |
-| `Test-StartupPerformance` | 新进程分段计时（bare/profile/init/idle），标明 `init` 是 `profile 税` 的子集；默认每段一次、约 4 秒出全部分段与步骤表；`-Simple` 只测带 profile 的启动，`-PassThru` 返回对象 |
+| `Test-StartupPerformance` | 默认只列启动分段（bare/profile/init/其他）并给结论，约 2~3 秒；`-Steps` 加 init 分步表，`-Prompt`/`-Ux`/`-Status` 分别加 prompt、体验件全载、开关状态，`-All` 全开；`-Simple` 只测带 profile 的启动，`-PassThru` 返回对象（未测项为 `$null`） |
 | `Set-PsPrompt -version < fast/short/...>` | 切换提示符；加 `-Persist` 才写注册表记住选择 |
 | `dm` | 切极简 prompt（做笔记摘录时聚焦命令本身） |
 | `Test-PromptDelay` | 测当前 prompt 延迟 |
@@ -94,7 +94,8 @@ ipmof | iex                     # 旧版（兼容）：只重载仓库内(PS/)�
 ```powershell
 Get-SourceCode <命令名>     # 看任意自定义函数源码（带补全）
 init -Force -Timing         # 看当前会话 init 分步耗时，定位慢项
-Test-StartupPerformance     # 新进程分段计时（裸启动/profile/init）
+Test-StartupPerformance     # 默认：新进程分段（裸启动/profile/init/其他，约 2~3 秒）
+Test-StartupPerformance -Steps    # 追加 init 分步表；-All 打开全部评估面
 Test-StartupPerformance -Simple   # 只测一次新 pwsh 启动（带 profile）
 ```
 

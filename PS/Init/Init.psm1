@@ -352,10 +352,13 @@ function Test-StartupPerformance
 {
     <#
     .SYNOPSIS
-    自查 pwsh 启动性能:分段计时(裸启动/profile 税/init 合计+步骤表/体验件全载/prompt)并给结论。
+    自查 pwsh 启动性能:默认只列分段耗时(bare/profile/init/其他),其他评估按开关追加。
     .DESCRIPTION
     每段都在全新 pwsh 进程里测(冷数字,排除本会话已摊销的解析成本);本机改动对照看 Startup-Optimization.md。
-    默认每段跑一次并直接列出分段表,约 4 秒;-Repeat 取中位数时按次数线性增加,不再多跑预热。
+    默认只测启动分段并给出结论,约 3 秒;不同评估面用开关追加,互不掺杂:
+    -Steps 加 init 分步表(与 init 合计同一次新进程,不额外耗时);-Prompt 加 prompt 延迟;
+    -Ux 加体验件全载行;-Detail 再加四件明细(隐含 -Ux);-Status 加本会话开关与懒加载状态;
+    -All 等价于 -Steps -Prompt -Ux -Status。-Repeat 取中位数时按次数线性增加,不再多跑预热。
     -Simple 只测一次(或 -Repeat 次)带 profile 的新 pwsh 启动,1~2 秒出结果;-PassThru 返回结构化对象。
     耗时组成(参考值见 Startup-Optimization.md 的基线表,真机按比例):裸启动 + profile 税(conda 缓存 + init)
     + 首屏单发(predictor/zoxide);PSFzf/CxxuTab 转手势按需(首按 Ctrl+T/R、首次裸命令名 Tab 才装)。
@@ -365,9 +368,13 @@ function Test-StartupPerformance
     .EXAMPLE
     Test-StartupPerformance
     .EXAMPLE
-    Test-StartupPerformance -Repeat 3
+    Test-StartupPerformance -Steps
     .EXAMPLE
-    Test-StartupPerformance -Detail
+    Test-StartupPerformance -All
+    .EXAMPLE
+    Test-StartupPerformance -Ux -Detail
+    .EXAMPLE
+    Test-StartupPerformance -Repeat 3
     .EXAMPLE
     $env:PsStartupTier='Fast'; Test-StartupPerformance -Simple
     .EXAMPLE
@@ -377,9 +384,19 @@ function Test-StartupPerformance
     param(
         # 每段重复次数(默认 1;传 3 取中位数,压住机器抖动;代价是总耗时翻倍)
         [int]$Repeat = 1,
-        # 加测 OnIdle 四片各自耗时(默认只测合计;排查"哪片最重"时开)
+        # 附 init 分步表（与 init 合计同一次新进程，不额外耗时）
+        [switch]$Steps,
+        # 附 prompt 延迟（另开一个新进程，约 1 秒）
+        [switch]$Prompt,
+        # 附体验件全载（-Now）行（另开一个新进程，约 1 秒）
+        [switch]$Ux,
+        # 附本会话开关与懒加载状态
+        [switch]$Status,
+        # 等价于 -Steps -Prompt -Ux -Status
+        [switch]$All,
+        # 加测 OnIdle 四片各自耗时(隐含 -Ux;排查"哪片最重"时开)
         [switch]$Detail,
-        # 简单模式:只测新 pwsh 启动(带 profile),不做 bare/init 分段与步骤表
+        # 简单模式:只测新 pwsh 启动(带 profile),不做分段;与其他评估开关互斥
         [Alias('Quick')]
         [switch]$Simple,
         # 返回结构化对象;与 -Simple 连用时只输出对象,不打印表格
@@ -409,6 +426,10 @@ function Test-StartupPerformance
         return
     }
     if ($Repeat -lt 1) { $Repeat = 1 }
+    if ($Simple -and ($Steps -or $Prompt -or $Ux -or $Status -or $Detail -or $All))
+    {
+        Write-Warning '-Simple 只测总启动，已忽略 -Steps/-Prompt/-Ux/-Detail/-Status/-All。'
+    }
     if ($Simple)
     {
         $simpleRuns = [Math]::Max(1, $Repeat)
@@ -423,8 +444,12 @@ function Test-StartupPerformance
         Write-Host ("pwsh startup (profile, {0} run(s){1}): {2} ms" -f $simpleRuns, $(if ($simpleRuns -gt 1) { ', median' } else { '' }), $ms) -ForegroundColor Cyan
         return
     }
-    # 默认单次就能给出全部分段:不再为取中位数之外的稳定性多跑预热。
-    $estimate = "约 $([int](4 * $Repeat)) 秒"
+    # -All 打开全部评估面；-Detail 需要体验件全载行作对照。
+    if ($All) { $Steps = $true; $Prompt = $true; $Ux = $true; $Status = $true }
+    if ($Detail) { $Ux = $true }
+    # 默认只跑 3 段(bare/profile/init),其余评估面各多 1 段;-Repeat 时按次数线性增加。
+    $segmentRuns = 3 + $(if ($Ux) { 1 } else { 0 }) + $(if ($Prompt) { 1 } else { 0 })
+    $estimate = "约 $([int](0.7 * $segmentRuns * $Repeat + 0.5)) 秒"
     Write-Host "分段计时中(每段 $Repeat 次,$estimate)..." -ForegroundColor Cyan
     if ($Repeat -gt 1)
     {
@@ -458,11 +483,16 @@ init -Timing
         }
     }
     $tInit = Get-MedianValue $initTotals
-    $probeIdle = @'
+    # 体验件全载不属于启动 profile,默认不测;需要时用 -Ux/-Detail/-All。
+    $tIdle = $null
+    if ($Ux)
+    {
+        $probeIdle = @'
 Import-Module TerminalTools -ErrorAction Stop
 [int](Measure-Command { Register-PsUxLazyLoad -Now *> $null }).TotalMilliseconds
 '@
-    $tIdle = Get-MedianMs { [int](& $pwsh -NoProfile -NonInteractive -Command $probeIdle) } $Repeat
+        $tIdle = Get-MedianMs { [int](& $pwsh -NoProfile -NonInteractive -Command $probeIdle) } $Repeat
+    }
     # profile 税 = bare 之外的全部启动开销；init 是它的子集，必须扣掉才能得到 conda/模块导入等其余部分。
     $profileTax = $prof - $bare
     $profileOther = [Math]::Max(0, $profileTax - $tInit)
@@ -471,13 +501,19 @@ Import-Module TerminalTools -ErrorAction Stop
         [PSCustomObject]@{ 段 = 'profile（完整启动）'; ms = $prof; 说明 = 'bare + profile 税' },
         [PSCustomObject]@{ 段 = 'profile 税'; ms = $profileTax; 说明 = 'profile - bare' },
         [PSCustomObject]@{ 段 = '  init 合计'; ms = $tInit; 说明 = 'profile 税的子集，不另外相加' },
-        [PSCustomObject]@{ 段 = '  profile 其他'; ms = $profileOther; 说明 = 'profile 税 - init（conda/模块导入等）' },
-        [PSCustomObject]@{ 段 = '体验件全载（-Now）'; ms = $tIdle; 说明 = '含 PSFzf/CxxuTab，不等于首屏 OnIdle；不计入 profile' }
+        [PSCustomObject]@{ 段 = '  profile 其他'; ms = $profileOther; 说明 = 'profile 税 - init（conda/模块导入等）' }
     )
+    if ($Ux)
+    {
+        $rows += [PSCustomObject]@{ 段 = '体验件全载（-Now）'; ms = $tIdle; 说明 = '含 PSFzf/CxxuTab，不等于首屏 OnIdle；不计入 profile' }
+    }
     $rows | Format-Table -AutoSize | Out-String -Width 160 | Write-Host
-    Write-Host '--- init -Timing 步骤表（与 init 合计同一次新进程，仅供占比） ---' -ForegroundColor Cyan
-    if ($initTable.Count) { $initTable | ForEach-Object { Write-Host $_ } }
-    else { Write-Host '(未捕获到步骤表；可单独运行 init -Timing)' }
+    if ($Steps)
+    {
+        Write-Host '--- init -Timing 步骤表（与 init 合计同一次新进程，仅供占比） ---' -ForegroundColor Cyan
+        if ($initTable.Count) { $initTable | ForEach-Object { Write-Host $_ } }
+        else { Write-Host '(未捕获到步骤表；可单独运行 init -Timing)' }
+    }
     if ($Detail)
     {
         Write-Host '--- -Now 全载四件各自耗时(与 Register-PsUxLazyLoad -Now 同源,改动两边同步) ---' -ForegroundColor Cyan
@@ -495,28 +531,36 @@ $r -join ' '
         Write-Host (& $pwsh -NoProfile -NonInteractive -Command $probeDetail)
         Write-Host '(-1=本机缺件,已跳过)'
     }
-    Write-Host '--- prompt 均值(5 次) ---' -ForegroundColor Cyan
-    $promptLine = & $pwsh -NoProfile -NonInteractive -Command 'Test-PromptDelay 5' 2>$null | Select-Object -Last 1
-    Write-Host $promptLine
-    $promptSec = 0
-    if ($promptLine -match '([\d.]+)') { $promptSec = [double]$Matches[1] }
-    Write-Host '--- 开关与延迟加载(本会话) ---' -ForegroundColor Cyan
-    # 5.1 无 ??,不用;单发模式无队列,$null 直接 .Count 会吞显示,先归零
-    $uxErrs = 0
-    if ($global:PsUxLoadErrors) { $uxErrs = $global:PsUxLoadErrors.Count }
-    Write-Host ("PsFzf=$env:PsFzf PsZoxide=$env:PsZoxide PsTab=$env:PsTab PsPredictor=$env:PsPredictor | " +
-        "OnIdle已注册=$global:PsUxOnIdleRegistered(单发,触发即摘) 加载错误=$uxErrs")
+    $promptSec = $null
+    if ($Prompt)
+    {
+        Write-Host '--- prompt 均值(5 次) ---' -ForegroundColor Cyan
+        $promptLine = & $pwsh -NoProfile -NonInteractive -Command 'Test-PromptDelay 5' 2>$null | Select-Object -Last 1
+        Write-Host $promptLine
+        $promptSec = 0
+        if ($promptLine -match '([\d.]+)') { $promptSec = [double]$Matches[1] }
+    }
+    if ($Status)
+    {
+        Write-Host '--- 开关与延迟加载(本会话) ---' -ForegroundColor Cyan
+        # 5.1 无 ??,不用;单发模式无队列,$null 直接 .Count 会吞显示,先归零
+        $uxErrs = 0
+        if ($global:PsUxLoadErrors) { $uxErrs = $global:PsUxLoadErrors.Count }
+        Write-Host ("PsFzf=$env:PsFzf PsZoxide=$env:PsZoxide PsTab=$env:PsTab PsPredictor=$env:PsPredictor | " +
+            "OnIdle已注册=$global:PsUxOnIdleRegistered(单发,触发即摘) 加载错误=$uxErrs")
+    }
     Write-Host '--- 结论 ---' -ForegroundColor Cyan
     $verdicts = @()
     if (($prof - $bare) -gt 1200) { $verdicts += 'profile 税偏高:查 conda 缓存是否命中(~/.conda_hook_cache.ps1 时间戳应不早于 conda.exe)与 profile 杂项' }
-    if ($tInit -gt 800) { $verdicts += 'init 偏高:看上面步骤表头两名(常见 Set-PsPrompt/PSReadLine 两项)' }
-    if ($tIdle -gt 800) { $verdicts += '体验件全载偏高:该值包含 PSFzf/CxxuTab 的首用成本;实际首屏单发只加载 predictor + zoxide,需在交互终端分别核验' }
-    if ($promptSec -gt 0.3) { $verdicts += 'prompt 偏高:换 Set-PsPrompt -version Simple 或给主题做减法(见 Startup-Optimization.md §5)' }
+    if ($tInit -gt 800) { $verdicts += 'init 偏高:用 -Steps 看步骤表头两名(常见 Set-PsPrompt/PSReadLine 两项)' }
+    if ($Ux -and $tIdle -gt 800) { $verdicts += '体验件全载偏高:该值包含 PSFzf/CxxuTab 的首用成本;实际首屏单发只加载 predictor + zoxide,需在交互终端分别核验' }
+    if ($Prompt -and $promptSec -gt 0.3) { $verdicts += 'prompt 偏高:换 Set-PsPrompt -version Simple 或给主题做减法(见 Startup-Optimization.md §5)' }
     if (-not $verdicts.Count) { $verdicts += '启动各段未超过诊断阈值;首次 Tab 与首屏输入延迟需在交互终端另行核验' }
     $verdicts | ForEach-Object { Write-Host "- $_" }
     if ($PassThru)
     {
         # 完整模式仍会打印上面的报告；-PassThru 额外返回一份便于脚本消费的数据。
+        # 未测的评估面返回 $null，避免把“没测”误读成 0ms。
         return [PSCustomObject]@{
             Mode            = 'Full'
             BareMs          = $bare
@@ -526,7 +570,7 @@ $r -join ' '
             ProfileOtherMs  = $profileOther
             IdleMs          = $tIdle
             UxFullLoadMs    = $tIdle
-            PromptSeconds   = [math]::Round($promptSec, 3)
+            PromptSeconds   = if ($null -ne $promptSec) { [math]::Round($promptSec, 3) } else { $null }
         }
     }
 }
