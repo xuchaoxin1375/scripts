@@ -357,8 +357,9 @@ function Test-StartupPerformance
     每段都在全新 pwsh 进程里测(冷数字,排除本会话已摊销的解析成本);本机改动对照看 Startup-Optimization.md。
     默认输出可加分解的启动因子行:bare、profile 其他(conda/模块导入)、init 准备/收尾、各 init 步骤;
     列固定为 Category/Name/Ms/Share/Note,按 Ms 降序,Share 为占 profile 的百分比,第一行即当前最大影响因素。
-    交互终端测量时显示进度条(重定向或 PsShowProgress=False 时自动关闭);-Report 在默认因子行末尾
-    追加 Summary 汇总行(profile 总耗时、init 合计、init 步骤合计、init 准备/收尾)，仍走同一对象流。
+    交互终端测量时显示进度条(重定向或 PsShowProgress=False 时自动关闭)。-Report 在默认因子对象之后
+    追加独立文本汇总块(profile 总耗时、bare、profile 税、Init 模块导入、conda/其他 profile、
+    init 合计/步骤/准备收尾)，汇总不混入因子对象表;汇总表由 Format-Table 对齐，无需再指定 fl。
     -Prompt 追加 prompt 延迟行;-Ux 追加体验件全载行;-Detail 再加四件明细(隐含 -Ux);
     -Status 追加本会话开关与懒加载状态;-All 等价于 -Prompt -Ux -Status。
     -Repeat 取中位数时按次数线性增加,不再多跑预热。
@@ -395,7 +396,7 @@ function Test-StartupPerformance
         [switch]$All,
         # 加测 OnIdle 四片各自耗时(隐含 -Ux;排查"哪片最重"时开)
         [switch]$Detail,
-        # 报告模式:在默认输出末尾追加 Summary 汇总行(总耗时与 init 合计/步骤/准备收尾)
+        # 报告模式:在默认因子对象之后追加独立汇总文本块，不进入对象表
         [switch]$Report,
         # 简单模式:只测新 pwsh 启动(带 profile),不做分段;与其他评估开关互斥
         [Alias('Quick')]
@@ -410,6 +411,15 @@ function Test-StartupPerformance
             Ms       = $Ms
             Share    = $Share
             Note     = $Note
+        }
+    }
+    function New-SummaryRow([string]$Name, $Ms, $Share, [string]$Note)
+    {
+        [pscustomobject]@{
+            Summary = $Name
+            Ms      = $Ms
+            Share   = $Share
+            Note    = $Note
         }
     }
     function Get-MedianValue([int[]]$Values)
@@ -444,7 +454,6 @@ function Test-StartupPerformance
         $simpleRuns = [Math]::Max(1, $Repeat)
         $ms = Get-MedianMs { [int](Measure-Command { & $pwsh -NonInteractive -Command 'exit' *> $null }).TotalMilliseconds } $simpleRuns
         $note = if ($simpleRuns -gt 1) { "$simpleRuns 次中位数" } else { '1 次' }
-        if ($Report) { return New-ResultRow 'Summary' 'profile 总耗时' $ms 100 $note }
         return New-ResultRow 'Startup' 'profile（完整启动）' $ms 100 $note
     }
     # -All 打开附加评估面；分步明细已默认包含，不再单列开关。
@@ -605,12 +614,26 @@ $r -join ' '
     $rows = @($factorRows) + @($extraRows)
     if ($Report)
     {
-        # 报告模式只追加汇总行，沿用同一对象形状，由默认格式化负责对齐。
+        # 报告模式：默认因子对象保持原样，汇总另起一个文本块，避免把 Summary 行
+        # 塞进因子对象流后共用同一组列。汇总表由 Format-Table 对齐，可直接阅读。
         $mode = if ($Repeat -gt 1) { "$Repeat 次中位数" } else { '1 次' }
-        $rows += New-ResultRow 'Summary' 'profile 总耗时' $prof 100 $mode
-        $rows += New-ResultRow 'Summary' 'init 合计' $tInit (Get-Share $tInit) $null
-        $rows += New-ResultRow 'Summary' 'init 步骤合计' $stepSum (Get-Share $stepSum) $null
-        $rows += New-ResultRow 'Summary' 'init 准备/收尾' $initPrep (Get-Share $initPrep) $null
+        $summaryRows = @(
+            (New-SummaryRow 'profile 总耗时' $prof 100 $null)
+            (New-SummaryRow 'bare' $bare (Get-Share $bare) '裸启动基线，profile 无法优化')
+            (New-SummaryRow 'profile 税' $profileTax (Get-Share $profileTax) 'profile - bare')
+            (New-SummaryRow 'Init 模块导入' $tImport (Get-Share $tImport) 'Import-Module Init')
+            (New-SummaryRow 'conda/其他 profile' $profileRest (Get-Share $profileRest) 'profile 税 - init - 模块导入')
+            (New-SummaryRow 'init 合计' $tInit (Get-Share $tInit) '步骤 + 准备/收尾')
+            (New-SummaryRow 'init 步骤合计' $stepSum (Get-Share $stepSum) '各 init 步骤之和')
+            (New-SummaryRow 'init 准备/收尾' $initPrep (Get-Share $initPrep) 'prep + 收尾')
+        )
+        $summaryTable = (($summaryRows | Format-Table -AutoSize | Out-String -Width 160).Trim())
+        $summaryBlock = @(
+            ''
+            "汇总（$mode）"
+            $summaryTable
+        ) -join [Environment]::NewLine
+        return @($rows) + @($summaryBlock)
     }
     return $rows
 }

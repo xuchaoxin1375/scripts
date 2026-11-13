@@ -23,7 +23,7 @@ Add-EnvVar -EnvVar PSModulePath -NewValue $p -Verbose
 | `init -Tier <Fast/Balanced>` | 本次初始化指定启动档位（`Minimal` 为 `Fast` 的兼容别名）；档位含义与取舍见「启动档位」 |
 | `init -Timing` | 同上，附每步耗时表（首次启动）；已初始化会话用 `init -Force -Timing` |
 | `p` | 新开一个 pwsh 会话，由新进程的 profile 执行 `init`；不刷新当前会话 |
-| `Test-StartupPerformance` | 输出按耗时降序的启动因子对象（`Category`/`Name`/`Ms`/`Share`/`Note`），`Share` 为占 profile 的百分比，可直接接 `ft`/`fl`；默认拆到 bare、Init 模块导入、conda/其他 profile、init 准备/收尾与各 init 步骤；交互终端显示进度条；`-Report` 在末尾追加 Summary 汇总行（总耗时、init 合计/步骤/准备收尾）；`-Prompt`/`-Ux`/`-Status` 追加其他评估面，`-All` 全开，`-Simple` 只给一行总耗时 |
+| `Test-StartupPerformance` | 输出按耗时降序的启动因子对象（`Category`/`Name`/`Ms`/`Share`/`Note`），`Share` 为占 profile 的百分比，可直接接 `ft`/`fl`；默认拆到 bare、Init 模块导入、conda/其他 profile、init 准备/收尾与各 init 步骤；交互终端显示进度条；`-Report` 在默认因子对象之后追加独立汇总文本块（总耗时、bare、profile 税、模块导入、conda/其他、init 合计/步骤/准备收尾），汇总不混入对象表且已对齐；`-Prompt`/`-Ux`/`-Status` 追加其他评估面，`-All` 全开，`-Simple` 只给一行总耗时 |
 | `Set-PsPrompt -version < fast/short/...>` | 切换提示符；加 `-Persist` 才写注册表记住选择 |
 | `dm` | 切极简 prompt（做笔记摘录时聚焦命令本身） |
 | `Test-PromptDelay` | 测当前 prompt 延迟 |
@@ -97,7 +97,7 @@ ipmof | iex                     # 旧版（兼容）：只重载仓库内(PS/)�
 Get-SourceCode <命令名>     # 看任意自定义函数源码（带补全）
 init -Force -Timing         # 看当前会话 init 分步耗时，定位慢项
 Test-StartupPerformance     # 启动因子按耗时降序（bare/Init 导入/conda/init 步骤），可接 ft/fl
-Test-StartupPerformance -Report    # 在因子表末尾追加总耗时/init 合计等 Summary 行
+Test-StartupPerformance -Report    # 默认因子表 + 独立汇总块（总耗时/分解）
 Test-StartupPerformance -All | ft    # 追加 prompt、体验件全载与开关状态
 Test-StartupPerformance -Simple   # 只测一次新 pwsh 启动（带 profile）
 ```
