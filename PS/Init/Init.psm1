@@ -3144,6 +3144,56 @@ function Set-GitCompletionSource
     }
 }
 
+function Complete-CxxuComponentArgument
+{
+    # 按需读取并缓存清单，不查询用户配置、探测依赖或加载补全组件，避免把管理补全变成启动热路径。
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'CommandAst', Justification = '原生补全回调的固定签名；仅使用原生绑定结果，不执行命令行表达式。')]
+    param(
+        [string]$CommandName,
+        [string]$ParameterName,
+        [string]$WordToComplete,
+        [System.Management.Automation.Language.CommandAst]$CommandAst,
+        [System.Collections.IDictionary]$BoundParameters
+    )
+    $prefix = $WordToComplete.Trim([char[]]@([char]39, [char]34))
+    $components = @(Read-CxxuComponentManifest)
+    $candidates = @()
+    if ($ParameterName -eq 'Id')
+    {
+        foreach ($component in $components)
+        {
+            if (($CommandName -split '\\')[-1] -eq 'Set-CxxuComponentOption' -and -not @($component.Options | Where-Object { $_ }).Count) { continue }
+            $candidates += @{ Text = [string]$component.Id; Tip = ('{0}；默认启用：{1}' -f $component.Description, $component.Default) }
+        }
+    }
+    else
+    {
+        # 依赖原生参数绑定结果，支持参数重排；不执行用户在命令行中写入的表达式。
+        $component = @($components | Where-Object { [string]$_.Id -ieq [string]$BoundParameters['Id'] } | Select-Object -First 1)
+        if (-not $component.Count) { return }
+        foreach ($option in @($component[0].Options | Where-Object { $_ }))
+        {
+            $default = if ([string]$option.Type -eq 'List') { '@(' + ($option.Default -join ', ') + ')' } else { [string]$option.Default }
+            $tip = '{0}.{1}：{2}；默认值：{3}' -f $component[0].Id, $option.Name, $option.Description, $default
+            if ($ParameterName -eq 'Name')
+            {
+                $candidates += @{ Text = [string]$option.Name; Tip = $tip }
+            }
+            elseif ($ParameterName -eq 'Value' -and [string]$option.Name -ieq [string]$BoundParameters['Name'] -and [string]$option.Type -eq 'Enum')
+            {
+                foreach ($value in $option.Values) { $candidates += @{ Text = [string]$value; Tip = $tip } }
+            }
+            # List 是开放输入，不伪造固定候选；无可用枚举时保留 PowerShell 的原生回退。
+        }
+    }
+    foreach ($candidate in $candidates)
+    {
+        $text = $candidate.Text
+        if (-not $text.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { continue }
+        $completion = if ($text -match '^[a-zA-Z0-9_][a-zA-Z0-9_.-]*$') { $text } else { "'" + $text.Replace("'", "''") + "'" }
+        [System.Management.Automation.CompletionResult]::new($completion, $text, 'ParameterValue', $candidate.Tip)
+    }
+}
 function Get-CxxuComponent
 {
     <#
@@ -3156,6 +3206,14 @@ function Get-CxxuComponent
     Runtime 区分未安装/未启用/待参数位 Tab/已加载/未加载，CacheState 描述 5.1 上下文缓存是否有效。
     Install 给出依赖安装入口，Enable 给出未启用时的组件启用命令；-Validate 不列组件，
     改跑清单结构、Init 步骤生成与已启用依赖的一致性检查。
+    .PARAMETER Id
+    组件标识，不区分大小写；Tab 列出清单候选，省略时查询全部组件。
+    .PARAMETER Path
+    用户配置文件路径，默认 ~/.cxxu/config.psd1；查询不写入文件。
+    .PARAMETER Validate
+    执行一致性检查并输出 Component/Check/Status/Detail，不输出组件状态对象。
+    .OUTPUTS
+    System.Management.Automation.PSCustomObject
     .EXAMPLE
     Get-CxxuComponent
     .EXAMPLE
@@ -3456,6 +3514,21 @@ function Enable-CxxuComponent
     组件 Id 来自 PS/Init/components.psd1。默认只负责启用意图，不立即加载；
     加 -Now 时调用清单里的 `InitNow`（未声明时用 `Init`），等价于 Enable-PsPlugin 的即时加载路径。
     部分组件即使立即调用 Init 也需重开终端才完全生效（如已注册的 completer）。
+    .PARAMETER Id
+    必填的组件标识，不区分大小写；Tab 列出组件清单中的候选。
+    .PARAMETER Persist
+    同时保存到用户配置；省略时仅修改当前进程环境变量。已有配置先备份再规范重写。
+    .PARAMETER Now
+    立即调用组件的 InitNow 或 Init 入口；省略时不主动加载组件。与 Persist 可同时使用。
+    .PARAMETER Path
+    用户配置文件路径，默认 ~/.cxxu/config.psd1；仅 Persist 时写入。
+    .INPUTS
+    None
+    .OUTPUTS
+    None
+    .NOTES
+    支持 WhatIf；预览时不修改环境变量、不写配置、不调用加载入口。
+    先修改当前会话再保存配置；持久化失败不会自动回滚环境变量。
     .EXAMPLE
     Enable-CxxuComponent Carapace
     .EXAMPLE
@@ -3503,6 +3576,19 @@ function Disable-CxxuComponent
     .DESCRIPTION
     组件 Id 来自 PS/Init/components.psd1。已注册的 Native completer 无法在当前会话撤销，
     需要重开终端才完全停用。
+    .PARAMETER Id
+    必填的组件标识，不区分大小写；Tab 列出组件清单中的候选。
+    .PARAMETER Persist
+    同时保存到用户配置；省略时仅修改当前进程环境变量。已有配置先备份再规范重写。
+    .PARAMETER Path
+    用户配置文件路径，默认 ~/.cxxu/config.psd1；仅 Persist 时写入。
+    .INPUTS
+    None
+    .OUTPUTS
+    None
+    .NOTES
+    支持 WhatIf；预览时不修改环境变量或配置。不会卸载模块或删除已安装依赖。
+    先修改当前会话再保存配置；持久化失败不会自动回滚环境变量。
     .EXAMPLE
     Disable-CxxuComponent Carapace
     .EXAMPLE
@@ -3534,6 +3620,30 @@ function Set-CxxuComponentOption
     -Persist 时把选项写入用户配置；不加只改当前会话。
     Tab.Synopsis 接受 True/False 或 $true/$false；下一次 Tab 生效，不提前加载 CxxuTab。
     只改选项本身；git/gitk 来源切换请用 Set-GitCompletionSource（它同时维护 PsGitCompletion 与 PsCarapace）。
+    Id、Name、枚举 Value 提供联动 Tab 候选与用途提示；提示直接读取组件清单，
+    不受 PsTabSynopsis 控制，不解析函数源码、不连接网络、不安装或加载可选组件。
+    .PARAMETER Id
+    必填的组件标识，不区分大小写；Tab 只推荐定义了选项的组件。
+    .PARAMETER Name
+    必填的选项名称，不区分大小写；Tab 根据已填写的 Id 推荐选项。
+    .PARAMETER Value
+    必填的选项值。枚举值不区分大小写并规范化保存，Tab 根据 Id 和 Name 提供合法枚举。
+    Tab.Synopsis 默认 False，接受 True/False 字符串或布尔值；其他值报错。
+    List 接受数组或逗号分隔字符串，空项移除；它是开放输入，不提供固定取值候选。
+    .PARAMETER Persist
+    同时写当前会话与用户配置；省略时只写当前进程环境变量，子进程会继承。
+    配置目录不存在时创建；已有文件先生成 .bak-* 备份，再规范重写，手工注释可能被规范化。
+    .PARAMETER Path
+    用户配置文件路径，默认 ~/.cxxu/config.psd1；仅 Persist 时读写，不改变启动时的默认配置路径。
+    .INPUTS
+    None
+    .OUTPUTS
+    None
+    .NOTES
+    前提是已导入 Init；正常 profile 中的 init 已完成导入。支持 WhatIf，预览不写环境变量或配置。
+    未知组件、选项或非法枚举在写入前报错；先设置环境变量再持久化，文件写入失败不回滚环境变量。
+    启动时优先级为环境变量 > 用户配置 > 清单默认值；profile 赋值可能覆盖持久配置。
+    设置选项不改变组件启用状态；除 Tab.Synopsis 下一次 Tab 生效外，其他组件的生效时机见对应组件说明。
     .EXAMPLE
     Set-CxxuComponentOption -Id Tab -Name Synopsis -Value $true
     .EXAMPLE
@@ -3542,6 +3652,8 @@ function Set-CxxuComponentOption
     Set-CxxuComponentOption -Id GitCompletion -Name Source -Value Carapace -Persist
     .EXAMPLE
     Set-CxxuComponentOption -Id Carapace -Name Excludes -Value @('winget','uv') -Persist
+    .EXAMPLE
+    Set-CxxuComponentOption -Id Tab -Name Synopsis -Value True -Persist -WhatIf
     #>
     [CmdletBinding(SupportsShouldProcess)]
     param(
@@ -3616,4 +3728,13 @@ function Install-Ps51Profile
         Write-Host "已写入 $profile51,重开 powershell.exe 即生效。"
         return $profile51
     }
+}
+
+# 在模块作用域注册，保证回调能访问私有清单读取器；参数属性回调在调用者作用域执行。
+# 导入时只登记回调，候选到按 Tab 时才生成；独立导入 Init 与 5.1 同样可用。
+$componentCompleter = ${function:Complete-CxxuComponentArgument}
+Register-ArgumentCompleter -CommandName Get-CxxuComponent, Enable-CxxuComponent, Disable-CxxuComponent, Set-CxxuComponentOption -ParameterName Id -ScriptBlock $componentCompleter
+foreach ($parameter in @('Name', 'Value'))
+{
+    Register-ArgumentCompleter -CommandName Set-CxxuComponentOption -ParameterName $parameter -ScriptBlock $componentCompleter
 }

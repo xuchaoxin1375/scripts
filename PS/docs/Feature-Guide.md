@@ -38,7 +38,7 @@ Add-EnvVar -EnvVar PSModulePath -NewValue $p -Verbose
 | `Get-CxxuComponent` | 按组件列出启用状态、选项、来源、默认值与安装/文档入口，并给出 `Install`/`Enable` 建议命令；`-Id Carapace` 只查一个；`-Validate` 改跑清单/步骤/依赖一致性自检 |
 | `Test-CxxuComponent` | 只读检查组件清单结构、Init 步骤生成与已启用组件的外部依赖；`Status` 为 `OK`/`警告`/`错误`，依赖警告会带安装与启用命令；`Get-CxxuComponent -Validate` 与 `doctor` 复用同一结果 |
 | `Enable-CxxuComponent` / `Disable-CxxuComponent` | 按组件 Id 启停；默认只改开关，`-Now` 立即调用组件的 Init 函数；`-Persist` 写 `~/.cxxu/config.psd1` 的 `Components` 段，不加只改当前会话；写入前备份旧文件，并按 v2 规范文本重写（手工注释可能被规范化） |
-| `Set-CxxuComponentOption` | 设置组件选项（如 `Tab.Synopsis`、`GitCompletion.Source`、`Carapace.Excludes`）；`-Persist` 写配置，枚举与 List 类型按 `components.psd1` 校验；写入行为同上 |
+| `Set-CxxuComponentOption` | 设置组件选项（如 `Tab.Synopsis`、`GitCompletion.Source`、`Carapace.Excludes`）；`-Id`、`-Name` 与枚举 `-Value` 支持联动 Tab 补全；`-Persist` 写配置，枚举与 List 类型按 [组件清单](../Init/components.psd1) 校验；写入行为同上 |
 
 环境等级（`$PsEnvMode`，`Test-PsEnvMode` 查询）：core(1) 核心变量 → vars(2) 全量变量 →
 env(3) 变量+别名。`Update-PwshVars` 全量导入后置 2，`Update-PwshEnv` 置 3；
@@ -379,7 +379,11 @@ Git Bash 使用同一个 carapace 二进制，Linux/macOS 使用各自平台的�
 | 保存为默认关闭 | `Set-CxxuComponentOption -Id Tab -Name Synopsis -Value $false -Persist` | 同上；仅恢复摘要选项，不重置其他组件 |
 | 预览持久化操作 | `Set-CxxuComponentOption -Id Tab -Name Synopsis -Value $true -Persist -WhatIf` | 不写环境变量或配置文件 |
 
-统一入口接受布尔值 `$true/$false` 或字符串 `'True'/'False'`（不区分大小写）；其他输入会报错并保持原值。启动时仍按“环境变量 > 用户配置 > 默认值”解析；已有 profile 赋值或用户级环境变量可能覆盖保存的配置。临时环境变量仍可直接设置；若设置了持久配置，删除当前环境变量不会删除该配置，可用 `Import-CxxuConfig` 重新读取。需要取消摘要的持久覆盖时，只删除用户配置中的 `Components.Tab.Synopsis` 项（旧平坦键 `PsTabSynopsis` 也须移除），并清除自己添加的环境变量/profile 赋值，再新开终端恢复仓库默认；其他组件不受影响。
+统一入口接受布尔值 `$true/$false` 或字符串 `'True'/'False'`（不区分大小写）；非法枚举在写入前报错，保持原值。`-Persist` 先设置当前会话再保存文件；配置写入失败时会话值不会自动回滚，须修复路径或权限后重试。`-Path` 只指定此次操作的配置文件，不改变启动读取的默认路径。启动时仍按“环境变量 > 用户配置 > 默认值”解析；已有 profile 赋值或用户级环境变量可能覆盖保存的配置。临时环境变量仍可直接设置；若设置了持久配置，删除当前环境变量不会删除该配置，可用 `Import-CxxuConfig` 重新读取。需要取消摘要的持久覆盖时，只删除用户配置中的 `Components.Tab.Synopsis` 项（旧平坦键 `PsTabSynopsis` 也须移除），并清除自己添加的环境变量/profile 赋值，再新开终端恢复仓库默认；其他组件不受影响。
+
+**管理命令的 Tab 补全**：导入 Init 后即可使用，PowerShell 7 与 Windows PowerShell 5.1 均支持。查询、启用、停用命令的 `-Id` 列出全部组件；设置选项命令的 `-Id` 只推荐含选项的组件，`-Name` 根据已填写的 Id 推荐选项，`-Value` 根据 Id 与 Name 推荐合法枚举。例如依次输入 `Set-CxxuComponentOption -Id Ta`、`-Name Sy`、`-Value F` 并在各参数值后按 Tab，可补成 `Tab`、`Synopsis`、`False`。参数顺序可调整；缺少关联参数或名称无效时，不推测其他组件的选项。
+
+候选提示直接取自 [组件清单](../Init/components.psd1)，显示用途和默认值；这些轻量参数提示不受函数摘要开关影响。补全按需读取清单并复用会话内缓存，不扫描模块源码、不查询用户配置、不加载可选组件，也不在启动时预热。开放列表（如 `Carapace.Excludes`）没有固定取值候选，无候选时保留 PowerShell 原生回退；`-Path` 继续使用原生文件补全。完整参数契约与示例可执行 `Get-Help Set-CxxuComponentOption -Full` 查看。
 
 - 摘要开启时，已加载函数直接取定义文本；未加载模块的函数在 pwsh 7+、候选不超过 20 个时解析模块源码（不导入模块），每次最多新解析 3 个文件，首次包含模块索引和解析成本，之后使用缓存；5.1 只覆盖已加载函数。cmdlet、二进制模块与帮助写在 MAML 的函数保持原生提示。摘要不调用 `Get-Help`，不因候选自动导入模块；重新定义函数后下一次 Tab 自动刷新。实际耗时与首次/后续差异见 [Startup-Optimization](Startup-Optimization.md) 的「摘要按需启用复验」。
 - **菜单中的 Ctrl+C**：真实按键在默认控制台模式下会被当作控制事件，Tab 菜单不响应；只把 `Ctrl+C` 绑到 `CancelLine` 也不会生效。要取消整行，按 `Esc` 关闭菜单（恢复输入前缀）再按 `Ctrl+C`；若要一次 `Ctrl+C` 直接清行，需在 Tab/MenuComplete 包装里临时设置 `[Console]::TreatControlCAsInput = $true` 并绑定 `CancelLine`（原理、验证与示例见 [交互式控制台验证](Interactive-Console-Verification.md)）。该包装只在菜单显示期间生效，命令执行时的 Ctrl+C 中断不受影响。
