@@ -357,8 +357,11 @@ function init
     #     }
     #     . $condaCompletionFile
     # }
-    # 耗时统计：主数字是 init 总耗时，括号内三段严格等于总耗时；末尾标注当前档位。
-    Write-Host ("Environment Loading time: {0} ms (prep {1} + steps {2} + other {3}) [{4}]" -f $totalMs, $prepMs, $stepsMs, $otherMs, $tierName) -ForegroundColor Magenta
+    # 耗时统计：默认不打印，避免每次启动多一行诊断输出；-Timing 或 Test-StartupPerformance 的采集进程才输出。
+    if ($needTiming -or $env:CXXU_INIT_REPORT -eq '1')
+    {
+        Write-Host ("Environment Loading time: {0} ms (prep {1} + steps {2} + other {3}) [{4}]" -f $totalMs, $prepMs, $stepsMs, $otherMs, $tierName) -ForegroundColor Magenta
+    }
     if ($needTiming -and $prepDetail.Count)
     {
         $prepText = ($prepDetail.GetEnumerator() | ForEach-Object { "$($_.Key) $($_.Value)" }) -join ' + '
@@ -375,15 +378,16 @@ function Test-StartupPerformance
     自查 pwsh 启动性能:默认输出按耗时降序的启动因子表(格式视图,无需 ft/fl),对象流仍可筛选与管道。
     .DESCRIPTION
     每段都在全新 pwsh 进程里测(冷数字,排除本会话已摊销的解析成本);本机改动对照看 Startup-Optimization.md。
-    默认输出可加分解的启动因子行:bare、Init module import、Profile other、Init prep、
-    Init loop overhead、Init teardown 与各 init 步骤;Category 用 Baseline/Profile/InitPrep/InitStep/Init
+    默认输出可加分解的启动因子行:bare、Init module load、Profile other、Process exit、Init prep、
+    Init loop overhead、Init teardown 与各 init 步骤;Category 用 Baseline/Profile/Process/InitPrep/InitStep/Init
     标出所处阶段;列固定为 Category/Name/Ms/Share(%)/Note,按 Ms 降序,Share 为占 profile 的百分比,
-    第一行即当前最大影响因素。
+    第一行即当前最大影响因素。bare/profile 测到第一条命令执行为止,同时保留完整进程生命周期;
+    Process exit 是 profile 比 bare 多出的退出成本,不计入首屏。
     因子对象带 Cxxu.StartupFactor 类型名,Init.format.ps1xml 提供默认表格视图,无需再指定 ft/fl。
     预设变量 Core 是独立 init 步骤(Update-PwshVars)，耗时直接出现在 InitStep 行，不再藏在 Set-PsPrompt 内。
     交互终端测量时显示进度条(重定向或 PsShowProgress=False 时自动关闭)。-Report 在默认因子对象之后
-    追加独立文本汇总块(Profile total、bare、Profile tax、Init module import、Profile other、Init total、
-    Init prep、Init steps total、Init loop overhead、Init teardown)，汇总不混入因子对象表;
+    追加独立文本汇总块(Profile total、bare、Profile tax、Init module load、Profile other、Process exit、
+    Init total、Init prep、Init steps total、Init loop overhead、Init teardown)，汇总不混入因子对象表;
     汇总表由 Format-Table 对齐，无需再指定 fl。
     -Prompt 追加 prompt 延迟行;-Ux 追加体验件全载行;-Detail 再加四件明细(隐含 -Ux);
     -Status 追加本会话开关与懒加载状态;-All 等价于 -Prompt -Ux -Status。
@@ -482,7 +486,7 @@ function Test-StartupPerformance
     {
         $simpleRuns = [Math]::Max(1, $Repeat)
         $ms = Get-MedianMs { [int](Measure-Command { & $pwsh -NonInteractive -Command 'exit' *> $null }).TotalMilliseconds } $simpleRuns
-        $note = if ($simpleRuns -gt 1) { "median of $simpleRuns runs" } else { '1 run' }
+        $note = if ($simpleRuns -gt 1) { "full lifetime; median of $simpleRuns runs" } else { 'full lifetime; includes exit' }
         return New-ResultRow 'Startup' 'Profile (full startup)' $ms 100 $note
     }
     # -All 打开附加评估面；分步明细已默认包含，不再单列开关。
@@ -510,11 +514,55 @@ function Test-StartupPerformance
         $null = & $pwsh -NonInteractive -Command 'exit' *> $null
     }
     Update-StartupProgress 'bare (no profile)'
-    $bare = Get-MedianMs { [int](Measure-Command { & $pwsh -NoProfile -NonInteractive -Command 'exit' *> $null }).TotalMilliseconds } $Repeat
+    # 启动耗时测到“第一条命令执行”为止，同时保留完整进程生命周期；退出卸载模块的成本另列。
+    # 时间戳由父进程写入环境变量，子进程在 profile 执行完后立即读取，避免把 exit 算进首屏。
+    $probeReady = '$t=[long][DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() - [long]$env:CXXU_START_T0; "CXXU_READY=$t"'
+    $bareWalls = @()
+    $bareReadies = @()
+    $profWalls = @()
+    $profReadies = @()
+    $profileInits = @()
+    $profilePreps = @()
+    $profileSteps = @()
+    for ($i = 0; $i -lt $Repeat; $i++)
+    {
+        $env:CXXU_START_T0 = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        $out = & $pwsh -NoProfile -NonInteractive -Command $probeReady 2>&1 | Out-String
+        $sw.Stop()
+        $bareWalls += [int]$sw.ElapsedMilliseconds
+        $matched = [regex]::Match($out, 'CXXU_READY=(-?\d+)')
+        if ($matched.Success) { $bareReadies += [int]$matched.Groups[1].Value }
+    }
+    # 正常启动不再打印计时行；采集进程用环境变量让 profile 里的 init 输出同进程计时。
+    $prevInitReport = $env:CXXU_INIT_REPORT
+    $env:CXXU_INIT_REPORT = '1'
     Update-StartupProgress 'profile (full startup)'
-    $prof = Get-MedianMs { [int](Measure-Command { & $pwsh -NonInteractive -Command 'exit' *> $null }).TotalMilliseconds } $Repeat
-    # init 合计与步骤表同一次新进程:总量取 init 自己打印的 Environment Loading time,
-    # 步骤行一并留存,避免为“占比”再开一个进程。重复时取总量中位数,步骤表用第一次。
+    for ($i = 0; $i -lt $Repeat; $i++)
+    {
+        $env:CXXU_START_T0 = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        $out = & $pwsh -NonInteractive -Command $probeReady 2>&1 | Out-String
+        $sw.Stop()
+        $profWalls += [int]$sw.ElapsedMilliseconds
+        $matched = [regex]::Match($out, 'CXXU_READY=(-?\d+)')
+        if ($matched.Success) { $profReadies += [int]$matched.Groups[1].Value }
+        # 同一个 profile 进程里 init 自报的 prep/steps/total：避免跨进程比较把差值算进 Profile other。
+        $matched = [regex]::Match($out, 'Environment Loading time:\s*(\d+)\s*ms\s*\(prep\s*(\d+)\s*\+\s*steps\s*(\d+)\s*\+\s*other\s*(\d+)\)')
+        if ($matched.Success)
+        {
+            $profileInits += [int]$matched.Groups[1].Value
+            $profilePreps += [int]$matched.Groups[2].Value
+            $profileSteps += [int]$matched.Groups[3].Value
+        }
+    }
+    if ($null -eq $prevInitReport) { Remove-Item Env:CXXU_INIT_REPORT -ErrorAction Ignore } else { $env:CXXU_INIT_REPORT = $prevInitReport }
+    Remove-Item Env:CXXU_START_T0 -ErrorAction Ignore
+    $bare = Get-MedianValue $bareWalls
+    $prof = Get-MedianValue $profWalls
+    $bareReady = if ($bareReadies.Count) { Get-MedianValue $bareReadies } else { $bare }
+    $profReady = if ($profReadies.Count) { Get-MedianValue $profReadies } else { $prof }
+    # 步骤表仍在独立进程里取；总量与 prep/steps 优先用 profile 进程自己的数字。
     $probeInit = @'
 Import-Module Init -ErrorAction Stop
 init -Timing
@@ -563,16 +611,18 @@ init -Timing
         }
     }
     $tInit = Get-MedianValue $initTotals
-    # profile 税 = bare 之外的全部启动开销；init 是它的子集，必须扣掉才能得到 profile 自身/模块导入等其余部分。
-    $profileTax = $prof - $bare
-    $profileOther = [Math]::Max(0, $profileTax - $tInit)
-    # profile 其他里占大头的是 Init 模块导入，单独测出来；剩余归为 profile 剩余。
-    $probeImport = '[int](Measure-Command { Import-Module Init -ErrorAction Stop }).TotalMilliseconds'
-    Update-StartupProgress 'Init module import'
+    $profileInitMs = Get-MedianValue $profileInits
+    if ($profileInitMs -gt 0) { $tInit = $profileInitMs }
+    # profile 里写的是 init；实际支付的是命令发现 + 模块导入，用 Get-Command init 测同一路径。
+    $probeImport = '[int](Measure-Command { Get-Command init -ErrorAction Stop | Out-Null }).TotalMilliseconds'
+    Update-StartupProgress 'Init module load'
     $tImport = Get-MedianMs { [int](& $pwsh -NoProfile -NonInteractive -Command $probeImport) } $Repeat
-    $profileRest = [Math]::Max(0, $profileOther - $tImport)
+    # profile 税 = bare 之外的全部启动开销；init/模块加载/退出分别扣除，余量才是 profile 自身代码与调用开销。
+    $profileTax = $prof - $bare
+    $exitExtra = [Math]::Max(0, ($prof - $profReady) - ($bare - $bareReady))
+    $profileRest = [Math]::Max(0, $profileTax - $tInit - $tImport - $exitExtra)
     # 把 init 步骤表转成因子行，并把 init 内部拆成 prep / steps / loop / teardown，
-    # 与 bare、Init module import、Profile other 共同构成 profile 的可加分解。
+    # 与 bare、Init module load、Profile other、Process exit 共同构成 profile 的可加分解。
     $stepRows = @()
     $stepSum = 0
     foreach ($line in $initTable)
@@ -587,7 +637,13 @@ init -Timing
     }
     $initPrep = Get-MedianValue $initPreps
     $initStepWall = Get-MedianValue $initStepsWall
-    if (-not $initPreps.Count)
+    # prep/steps 优先用 profile 进程自己的数字；步骤表仍来自独立探针，差额由 teardown 吸收。
+    if ($profileInits.Count -and $profilePreps.Count)
+    {
+        $initPrep = Get-MedianValue $profilePreps
+        $initStepWall = Get-MedianValue $profileSteps
+    }
+    if (-not $initPreps.Count -and -not $profileInits.Count)
     {
         # 旧版 init 无 prep 子阶段行：退回“prep = 总 - 步骤”的粗分。
         $initPrep = [Math]::Max(0, $tInit - $stepSum)
@@ -608,8 +664,9 @@ init -Timing
     }
     $factorRows = @(
         (New-ResultRow 'Baseline' 'bare' $bare (Get-Share $bare) 'no profile; not optimizable')
-        (New-ResultRow 'Profile' 'Init module import' $tImport (Get-Share $tImport) 'Import-Module Init')
-        (New-ResultRow 'Profile' 'Profile other' $profileRest (Get-Share $profileRest) 'non-init profile code; conda hook if present')
+        (New-ResultRow 'Profile' 'Init module load' $tImport (Get-Share $tImport) 'Get-Command init (discovery + import)')
+        (New-ResultRow 'Profile' 'Profile other' $profileRest (Get-Share $profileRest) 'residual: profile files + init JIT + timing noise')
+        (New-ResultRow 'Process' 'Process exit' $exitExtra (Get-Share $exitExtra) 'module unload after last command; not first-prompt latency')
     )
     $prepLabels = [ordered]@{
         'module path'     = 'Module path'
@@ -717,11 +774,12 @@ $r -join ' '
         # 塞进因子对象流后共用同一组列。汇总表由 Format-Table 对齐，可直接阅读。
         $mode = if ($Repeat -gt 1) { "median of $Repeat runs" } else { '1 run' }
         $summaryRows = @(
-            (New-SummaryRow 'Profile total' $prof 100 $null)
-            (New-SummaryRow '  bare' $bare (Get-Share $bare) 'no profile; not optimizable')
-            (New-SummaryRow '  Profile tax' $profileTax (Get-Share $profileTax) 'profile - bare')
-            (New-SummaryRow '    Init module import' $tImport (Get-Share $tImport) 'Import-Module Init')
-            (New-SummaryRow '    Profile other' $profileRest (Get-Share $profileRest) 'non-init profile code')
+            (New-SummaryRow 'Profile total' $prof 100 'full lifetime; includes Process exit')
+            (New-SummaryRow '  bare' $bare (Get-Share $bare) 'no profile; full lifetime')
+            (New-SummaryRow '  Profile tax' $profileTax (Get-Share $profileTax) 'profile - bare; full lifetime')
+            (New-SummaryRow '    Init module load' $tImport (Get-Share $tImport) 'Get-Command init (discovery + import)')
+            (New-SummaryRow '    Profile other' $profileRest (Get-Share $profileRest) 'residual: profile files + init JIT + timing noise')
+            (New-SummaryRow '    Process exit' $exitExtra (Get-Share $exitExtra) 'module unload after last command')
             (New-SummaryRow '    Init total' $tInit (Get-Share $tInit) 'prep + steps + loop + teardown')
             (New-SummaryRow '      Init prep' $initPrep (Get-Share $initPrep) 'module path + config + cache + step table')
             (New-SummaryRow '      Init steps total' $stepSum (Get-Share $stepSum) 'sum of init steps')

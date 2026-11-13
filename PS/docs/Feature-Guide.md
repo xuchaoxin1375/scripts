@@ -23,7 +23,7 @@ Add-EnvVar -EnvVar PSModulePath -NewValue $p -Verbose
 | `init -Tier <Fast/Balanced>` | 本次初始化指定启动档位（`Minimal` 为 `Fast` 的兼容别名）；档位含义与取舍见「启动档位」 |
 | `init -Timing` | 同上，附每步耗时表（首次启动）；已初始化会话用 `init -Force -Timing` |
 | `p` | 新开一个 pwsh 会话，由新进程的 profile 执行 `init`；不刷新当前会话 |
-| `Test-StartupPerformance` | 默认输出按耗时降序的启动因子表（`Category`/`Name`/`Ms`/`Share(%)`/`Note`，格式视图 `Init.format.ps1xml`，无需 `ft`/`fl`），表头 `Share(%)` 的值（属性名 `Share`）为占 profile 的百分比；对象流仍可直接筛选与管道；默认拆到 `bare`、`Init module import`、`Profile other`、`Config load`/`Cache check`/`Step table`/`Module path` 等 `InitPrep` 行、`Init loop overhead`、`Init teardown`、`Update-PwshVars` 与各 `InitStep`；交互终端显示进度条；`-Report` 在默认因子对象之后追加独立汇总文本块（`Profile total`、`bare`、`Profile tax`、`Init module import`、`Profile other`、`Init total`、`Init prep`/`Init steps total`/`Init loop overhead`/`Init teardown`），汇总不混入对象表且已对齐；`-Prompt`/`-Ux`/`-Status` 追加其他评估面，`-All` 全开，`-Simple` 只给一行总耗时 |
+| `Test-StartupPerformance` | 默认输出按耗时降序的启动因子表（`Category`/`Name`/`Ms`/`Share(%)`/`Note`，格式视图 `Init.format.ps1xml`，无需 `ft`/`fl`），表头 `Share(%)` 的值（属性名 `Share`）为占 profile 的百分比；对象流仍可直接筛选与管道；默认拆到 `bare`、`Init module load`（命令发现 + 模块导入）、`Profile other`（残差）、`Process exit`（退出卸载，不计入首屏）、`Config load`/`Cache check`/`Step table`/`Module path` 等 `InitPrep` 行、`Init loop overhead`、`Init teardown`、`Update-PwshVars` 与各 `InitStep`；`bare`/`profile` 测到第一条命令执行，同时保留完整进程生命周期；交互终端显示进度条；`-Report` 在默认因子对象之后追加独立汇总文本块（`Profile total`、`bare`、`Profile tax`、`Init module load`、`Profile other`、`Process exit`、`Init total`、`Init prep`/`Init steps total`/`Init loop overhead`/`Init teardown`），汇总不混入对象表且已对齐；`-Prompt`/`-Ux`/`-Status` 追加其他评估面，`-All` 全开，`-Simple` 只给一行总耗时（完整进程生命周期） |
 | `Set-PsPrompt -version < fast/short/...>` | 切换提示符；加 `-Persist` 才写注册表记住选择 |
 | `dm` | 切极简 prompt（做笔记摘录时聚焦命令本身） |
 | `Test-PromptDelay` | 测当前 prompt 延迟 |
@@ -168,10 +168,16 @@ Get-CxxuComponent | Select-Object Id, Enabled, TierAllowed, Effective
 - **看不到 `Loading personal and system profiles took ...ms`**：正常。引擎只在四个
   profile 合计 >500ms（硬编码）才打印，不到就静默。
 - **`Environment Loading time` 与 `Loading personal and system profiles took` 数值不同**：
-  前者是 `init` 函数内部耗时（准备 + 步骤 + 收尾），后者是 pwsh 引擎统计的 profile 总耗时，
-  还包含 conda 缓存段与 Init module import。两者不是同一口径，后者通常更大；分段对照用
-  `Test-StartupPerformance`，口径说明见 [Startup-Optimization](Startup-Optimization.md)
-  的「计时口径」。
+  正常启动默认不再打印 `Environment Loading time`；需要时运行 `init -Timing`，或直接看
+  `Test-StartupPerformance`。前者是 `init` 函数内部耗时（`total` = prep + steps + other），
+  后者是 pwsh 引擎统计的 profile 总耗时，还包含 profile 文件本身、`Init module load` 与进程退出。
+  两者不是同一口径，后者通常更大；分段对照用 `Test-StartupPerformance`，口径说明见
+  [Startup-Optimization](Startup-Optimization.md) 的「计时口径」与 §39。
+- **为什么以前看到 600ms，现在 `Profile total` 约 1000ms**：600ms 是 `init` 的 `total`，
+  不含裸进程、模块发现/导入和 profile 自身开销；`Profile total` 是从启动到进程退出的完整生命周期。
+  2026-11-13 的 worktree 对照显示 `600b94f` 与当前版本的完整 profile 都在 1000ms 左右，
+  `init` total 都在 600ms 左右，没有 100ms 级回退；只是 `27ad607` 把主数字从 `steps` 改成了
+  `total`。细节见 [Startup-Optimization](Startup-Optimization.md) §39。
 - **Fast 档位下 Tab 模糊补全、PSFzf、预测或 Carapace 不工作**：档位是组件开关的上限。
   先看 `Get-CxxuConfig | Where-Object Key -eq PsStartupTier`；需要这些功能时执行
   `Set-PsStartupTier Balanced`，再新开终端或 `init -Force`。

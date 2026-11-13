@@ -35,10 +35,11 @@ Test-PromptDelay                              # prompt 延迟（默认测 10 次
 - 嵌套 `pwsh` 是全新进程，`$global:PsInit` 防重复只在同一进程内有效，所以每次都要重跑
   conda + init 全套。与“第几次启动”无关，只和该实例耗时是否过线有关（机器负载、冷热缓存
   会让同一配置在 500ms 线上下横跳，看起来像“有时有、有时无”）。
-- `init` 自己打印的 `Environment Loading time` 是函数内部口径，从 `init` 函数入口起算，
+- `init -Timing`（以及 `Test-StartupPerformance` 的采集进程）打印的 `Environment Loading time`
+  是函数内部口径，从 `init` 函数入口起算，
   不含 `init` 命令的模块发现、导入与解析，也不含 `$profile` 中排在 `init` 之前的 conda
   缓存段。引擎的 profile 总计包含这些内容，因此通常更大；例如 init 506ms 对应 profile
-  701ms 时，约 195ms 来自 conda 钩子、Init module import 与 profile 其他语句。两个数字不能
+  701ms 时，约 195ms 来自 conda 钩子、Init module load 与 profile 其他语句。两个数字不能
   相加，也不表示 `init` 重复执行；分段对照用 `Test-StartupPerformance`。
 
 `init -Timing` 沙盒实测（顺序大致即耗时顺序；`Json` 拆分 + conf 缓存后复测；当前 macOS 口径见 §30）：
@@ -700,20 +701,26 @@ Set-PSReadLineOption: 句柄无效。
     在 `prompt` 被移除或宿主未定义时每次渲染都会抛
     “expression after '&' ... was not valid”。
 - 计时口径：
-  - `init` 的 `Environment Loading time` 主数字是 `total`（从函数入口到初始化收尾），括号内
+  - `init -Timing` 的 `Environment Loading time` 主数字是 `total`（从函数入口到初始化收尾），括号内
     为 `prep + steps + other`，三项按定义严格等于 `total`：`prep` 含配置读取、变量重载与
     步骤表构建；`steps` 只含步骤循环（含进度条渲染）；`other` 是循环前后的计时、环境等级
     恢复与进度条收尾开销。`init -Timing` 的步骤表另给 `Share` 与 `Step total` 行，合计只表示
     各步骤自身耗时之和，与 `steps` 的差额是循环内未被单步计时的开销，不参与上面的拆分。
   - `Test-StartupPerformance` 输出按耗时降序的因子对象，列 `Category`/`Name`/`Ms`/`Share(%)`/`Note`，
     默认由 `Init.format.ps1xml` 表格化，无需 `ft`/`fl`；对象流仍可筛选。因子包含 `bare`、
-    `Init module import`、`Profile other`、`InitPrep` 子项、`Init loop overhead`、`Init teardown`、
-    `Update-PwshVars` 与各 init 步骤。`bare`、`profile`、`init`、`idle` 都按 `-Repeat` 取中位数。
-    `idle 全载` 是启动后首屏一次的成本，不计入 `profile`。日常只关心“新开一个 pwsh 要多久”时用
-    `-Simple`（默认一次，支持 `-Repeat` 取中位数）。
+    `Init module load`、`Profile other`、`Process exit`、`InitPrep` 子项、`Init loop overhead`、
+    `Init teardown`、`Update-PwshVars` 与各 init 步骤。`bare`/`profile` 用父进程时间戳测到
+    “第一条命令执行”，同时保留完整进程生命周期；`Process exit` 是 profile 比 bare 多出的
+    退出卸载成本，不计入首屏。`init` 的 `total`/`prep`/`steps` 取 profile 进程自己打印的数字，
+    步骤表明细仍来自独立 `init -Timing` 探针。`Profile other` 是残差：profile 税减
+    `Init total`、`Init module load` 与 `Process exit` 后的余量，包含 profile 文件解析、
+    `init` 首次调用/JIT 与测量抖动，不是一段单独的 profile 代码。`bare`、`profile`、`init`、
+    `idle` 都按 `-Repeat` 取中位数。`idle 全载` 是启动后首屏一次的成本，不计入 `profile`。
+    日常只关心“新开一个 pwsh 要多久”时用 `-Simple`（默认一次，支持 `-Repeat` 取中位数；
+    它仍报完整进程生命周期）。
 - 同机复测（macOS，一次采样，数值随负载抖动）：
   `bare 328ms`、`profile 1051ms`、`profile 税 723ms`、`init 497ms`、
-  `Profile other 226ms`、`idle 全载 529ms`；对比第二十二轮的 `init 564ms`/`profile 1122ms`。
+  `Profile other 226ms`（旧口径；含跨进程与退出残差，见 §39）、`idle 全载 529ms`；对比第二十二轮的 `init 564ms`/`profile 1122ms`。
   `init -Timing` 步骤表前三名为 `Set-PsPrompt 134ms`、`Set-PSReadLinesCommon 89ms`、
   `Set-ArgumentCompleter 43ms`，Step total 约 364ms。
 - 仍偏贵的项：`Set-ArgumentCompleter` 的 43ms 主要花在
@@ -897,8 +904,8 @@ WindowsTerminal.exe
   合计约 3ms。`Update-PwshVars`（约 80~110ms）+ `Set-PsPrompt`（约 60~90ms）与
   `Set-PSReadLinesCommon`（约 95ms）两档都执行，prep（约 150ms，含配置读取与步骤表构建）
   也不受档位影响，所以档位最多只能省这两成，不能据此宣称首屏减半。含 conda 缓存
-  （约 150ms）与 Init module import 的进程级口径同样差约 120~150ms。若还要更快，优先处理
-  conda 钩子、`Update-PwshVars`/`Set-PsPrompt` 与 Init module import，而不是继续拆档位。
+  （约 150ms）与 Init module load 的进程级口径同样差约 120~150ms。若还要更快，优先处理
+  conda 钩子、`Update-PwshVars`/`Set-PsPrompt` 与 Init module load，而不是继续拆档位。
 - 验证入口：`init -Tier Fast -Timing`、`init -Tier Balanced -Timing`、
   `Get-CxxuComponent | Select-Object Id, Enabled, Tier, TierAllowed, Effective`、
   `PS/Init/tests/StartupTier.Tests.ps1`；pwsh 7 与 5.1 均可运行。
@@ -908,15 +915,16 @@ WindowsTerminal.exe
 - 现场：`Test-StartupPerformance` 默认探针提示“约需 15 秒”，实际约 6 秒；提示既不准，也把
   一次分段体检做成了需要专门等待的操作。用户预期是默认跑一次就列出全部分段。
 - 处置：默认单次不再做预热；`init` 合计与步骤表合并到同一次新进程（原先为占比多开一次），
-  总量改读该次 `Environment Loading time`；只有 `-Repeat > 1` 才预热并取中位数。
+  总量改读采集进程里 `init` 强制打印的 `Environment Loading time`（正常启动不打印，
+  `-Timing` 或采集环境变量 `CXXU_INIT_REPORT=1` 才输出）；只有 `-Repeat > 1` 才预热并取中位数。
   输出改为对象流，列固定为 `Category`/`Name`/`Ms`/`Share`/`Note`，可直接接 `ft`/`fl`；
-  默认按耗时降序给出可加分解：`bare`、`Init module import`、`Profile other`、`InitPrep` 子项、
-  `Init loop overhead`、`Init teardown` 与各 init 步骤，`Share(%)` 为占 profile 的百分比，
-  第一行即当前最大影响因素。不再打印表头与结论；交互终端测量时显示进度条
+  默认按耗时降序给出可加分解：`bare`、`Init module load`、`Profile other`、`Process exit`、
+  `InitPrep` 子项、`Init loop overhead`、`Init teardown` 与各 init 步骤，`Share(%)` 为占 profile
+  的百分比，第一行即当前最大影响因素。不再打印表头与结论；交互终端测量时显示进度条
   （重定向或 `PsShowProgress=False` 时关闭）。`-Report` 在默认因子对象之后追加独立汇总文本块
-  （`Profile total`、`bare`、`Profile tax`、`Init module import`、`Profile other`、`Init total`、
-  `Init prep`、`Init steps total`、`Init loop overhead`、`Init teardown`），汇总不混入因子对象表；
-  汇总表由 `Format-Table` 对齐，直接阅读即可。
+  （`Profile total`、`bare`、`Profile tax`、`Init module load`、`Profile other`、`Process exit`、
+  `Init total`、`Init prep`、`Init steps total`、`Init loop overhead`、`Init teardown`），
+  汇总不混入因子对象表；汇总表由 `Format-Table` 对齐，直接阅读即可。
   `-Prompt`/`-Ux`/`-Status` 追加其他评估面，`-All` 全开。
 - 结果：同机默认约 3 秒（含两次新进程），`-All` 约 4~5 秒，`-Repeat 2` 约 5 秒；分解各项
   之和与 profile 的差额来自取整与测量抖动，`-Simple` 仍为 1~2 秒。
@@ -942,11 +950,44 @@ WindowsTerminal.exe
     `Init prep: N ms (module path ... + config ... + cache ... + step table ... + other ...)`；
     `-Force` 额外含 `variable reload`。
   - `Test-StartupPerformance` 解析 `prep/steps/other` 与 prep 子阶段，因子表按
-    `Baseline`/`Profile`/`InitPrep`/`InitStep`/`Init` 分类；移除 `Init prep/teardown` 黑盒，
+    `Baseline`/`Profile`/`Process`/`InitPrep`/`InitStep`/`Init` 分类；移除 `Init prep/teardown` 黑盒，
     改为 `Init prep` 子项 + `Init loop overhead` + `Init teardown`。
   - 所有输出行与 `Note` 改英文；`init -Timing` 合计行改为 `Step total`。
 - 结果：同机 `Config load` 约 100~120ms，`Update-PwshVars` 约 80~110ms，`Set-PsPrompt`
   约 60~90ms；因子表 `Share` 合计仍约 100%，`Init` 子项与 `Init total` 保持加总。
+
+## 39. 第三十二轮：启动报告口径校正与 600ms 对照（2026-11-13）
+
+- 现场：用户看到 `Profile other` 约 200ms，怀疑 conda 初始化；同时记得 07:00~08:00 的版本
+  “加载约 600ms”，当前报告约 1000ms，怀疑有 100ms 级回退。
+- 复核：
+  - 本机 `profile.ps1` 的 conda 块全部注释；真实 profile 会话里只有 `conda.exe`/`conda.bat`，
+    没有 `conda` 函数，`CONDA_SHLVL` 为空，conda hook 没有执行。
+  - worktree 对照 `600b94f`（06:34，07:00~08:00 的 HEAD）与 `d5a3936`：完整 profile 进程约
+    1066ms 对 1079ms，init total 约 603ms 对 616ms，差异在噪声内。
+  - 600ms 来自旧版 `init -Timing` 括号里的 `total`，例如
+    `Environment Loading time: 424 ms (steps; prep 187 ms, total 642 ms)`；`27ad607` 把主数字
+    从 `steps` 改成 `total`，主数字因此从约 400ms 变成约 600ms，但实际 total 没有突变。
+    完整 profile 一直是约 1000ms。
+- 处置：
+  - `bare`/`profile` 用父进程时间戳测到第一条命令执行，同时保留完整进程生命周期；新增
+    `Process exit`（profile 比 bare 多出的退出成本）。
+  - `init` 的 `total`/`prep`/`steps` 改为解析 profile 进程自己打印的
+    `Environment Loading time`，不再与独立探针进程的 init 比较。
+  - `Init module import` 改名 `Init module load`，改用 `Get-Command init` 测量，覆盖 profile
+    实际支付的命令发现与模块导入。
+  - `Profile other` 改为明确的残差：profile 税 - init total - module load - process exit；
+    Note 不再暗示 conda。
+  - `init` 默认不再打印 `Environment Loading time`；只有 `-Timing` 或采集环境变量
+    `CXXU_INIT_REPORT=1`（由 `Test-StartupPerformance` 设置）才输出。正常启动少一行诊断输出，
+    报告仍能拿到同进程计时。
+- 结果（同机 Windows，pwsh 7，`-Repeat 3` 中位数，数值随负载抖动）：
+  `Profile total` 约 1000ms、`bare` 约 240ms、`Profile tax` 约 750~830ms、
+  `Init total` 约 545~620ms、`Init module load` 约 100~110ms、`Profile other` 约 80~110ms、
+  `Process exit` 约 15~20ms。`Profile other` 从约 150~200ms 降到约 80~110ms，
+  剩余主要是 profile 文件解析、init 首次调用/JIT 与测量抖动，不再是无法解释的黑盒。
+- 验证：`Test-StartupPerformance`、`-Repeat 3 -Report`、`-Simple`、Init 测试（pwsh 7/5.1）、
+  PSScriptAnalyzer 0 error。
 
 ## 变量组缓存与预设变量启动开销
 
