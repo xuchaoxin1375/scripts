@@ -2,10 +2,12 @@
 
 > 补全归属、顺序与症状排查总览见 [bash/README.md](../README.md)。
 
-把 bash 的参数补全接成「carapace 负责重叠命令（git、docker 等）、argc-completions 补 carapace 缺失的命令（如 nginx）」。本目录只做编排，安装与 rc 写入仍由两个子脚本完成：
+把 bash 的参数补全接成「carapace 负责重叠命令（git、docker 等）、argc-completions 补 carapace 缺失的命令（如 nginx）」。本目录负责编排与响应速度对照，安装与 rc 写入仍由两个子脚本完成：
 
 - [../argc-completions/setup.sh](../argc-completions/setup.sh)
 - [../carapace/setup.sh](../carapace/setup.sh)
+
+另有 [bench-completion.sh](bench-completion.sh) 用于对比两者响应速度，不参与安装。
 
 两者都通过 bash 的 `complete -F` 注册，同一命令后加载者生效，所以组合顺序固定为 **argc 在前、carapace 在后**。
 
@@ -51,6 +53,51 @@ bash -ic 'bind -p | grep C-i'
 ```
 
 预期 `git` 为 `_carapace_completer_ble`、`nginx` 为 `_argc_completer`。Tab 的「列表/循环」模式来自 dotfiles 的 `shellrc_addition.sh`（见 [carapace README](../carapace/README.md) 的「Tab 列表与循环」）；只部署本目录不会改动 Tab 绑定。
+
+## 性能与取舍
+
+补全延迟要分两层看，两者方向可能相反：
+
+- **启动/注册**：打开 shell 时的一次性成本。本机 Git Bash 实测 argc 约 110–145ms，carapace 约 40–55ms；具体值随注册范围变化。
+- **每次 Tab**：稳态成本。argc 在静态选项和普通命令上通常更快；动态值补全两者接近，个别命令 carapace 反超。
+
+[bench-completion.sh](bench-completion.sh) 提供同机对照入口。它不修改 shell 配置，直接调用两个补全函数，因此只测补全引擎，不包含菜单重绘、终端渲染与按键处理；source 运行时可能刷新 argc shim 或补全引擎缓存：
+
+```bash
+bash bench-completion.sh
+bash bench-completion.sh --iterations 9 --warmup 1
+bash bench-completion.sh --mode argc --line 'git commit --a'
+bash bench-completion.sh --format markdown
+```
+
+默认场景覆盖静态选项、子命令、动态引用和 carapace 无 completer 的命令；`--line` 可替换为自己的命令行，`--format` 支持 `table`、`tsv` 与 `markdown`。完整参数见 `bash bench-completion.sh --help`。
+
+本机 Git Bash 对照（bash 5.2.37、carapace 1.8.2、argc 1.24.0；预热 1 次、稳态 9 次取中位数；工作目录是一个 git 仓库）：
+
+| 场景 | argc 中位 | carapace 中位 | 候选与备注 |
+| --- | ---: | ---: | --- |
+| `git commit --a` | 34.8ms | 249.6ms | 5 vs 6，静态选项 |
+| `git diff --` | 40.7ms | 254.4ms | 82 vs 103，静态选项 |
+| `git che` | 187.2ms | 320.3ms | 8 vs 8，子命令 |
+| `docker ` | 43.7ms | 287.5ms | 59 vs 57 |
+| `nginx ` | 33.4ms | 207.8ms | 20 vs 0，carapace 无 completer |
+| `git checkout ` | 445.8ms | 338.4ms | 5 vs 10，动态引用 |
+
+数字随版本、命令复杂度和是否走动态回调变化；不同文档里的单条记录口径不同，不能直接与这里的中位数比较。
+
+这些数字说明的是成本结构，不是固定排名：
+
+- **carapace 的主要成本在每次 Tab 的固定开销。** 它每次都要启动较大的 `carapace` 二进制；本机 1.8.2 的 `carapace.exe` 约 107MB（体积随版本变化），`argc.exe` 约 1.1MB。生成的 bash 包装层还会先导出别名、内建、函数、作业与变量列表，再经 `xargs` 调用。即使某个命令没有 carapace completer，也会付出这笔固定成本。
+- **argc 的主要成本在启动和动态回调。** 静态选项表是预生成的，稳态只调用较小的 `argc` 二进制；动态值需要启动 bash 执行 `_choice_*`，像 `git checkout` 这种同时取多个引用来源的命令会明显变慢。
+- **启动与每次 Tab 是互换的。** argc 启动时加载全集，换来更低的稳态成本；carapace 启动只生成一次注册脚本，但每次 Tab 都要重新启动大二进制。
+- **平台会放大或缩小差距。** Windows/MSYS 的进程创建、文件系统与安全软件扫描会放大 carapace 的固定成本；Linux/macOS 应在目标机复测，不能直接套用本机毫秒数。
+- **候选数量与描述是次要因素。** 候选数接近的场景仍有明显差距；但 `git` 的选项覆盖差异是真实存在的，不能只看速度。argc 的 git 补全缺 `--cached`、`--staged` 等选项，原因见 [argc-completions README](../argc-completions/README.md) 的 git 选项缺口。
+
+因此组合部署的取舍是：
+
+- `git`/`gitk` 归 carapace 是为了选项覆盖，不是速度；代价是每次 git Tab 的固定开销。只想要 carapace 的 git 补全时，可以用 `source <(carapace git bash-ble)` 单命令注册，避免全量注册。
+- 其余命令优先用 argc；启动敏感时用 `ARGC_COMPLETIONS_ONLY` 缩小注册范围。
+- 验收时分开记录首次加载与稳态 Tab；不要用 `source` 耗时代表 Tab 响应，也不要用一次冷启动代表平均。真实按键延迟还要加上菜单重绘和终端渲染。
 
 ## 停用与卸载
 
@@ -145,7 +192,7 @@ rm -rf ~/argc-completions             # argc 运行时来自克隆目录，删�
 
 - 本目录的顺序只适用于 bash。PowerShell 侧由 `init` 加载 carapace、argc 首个 Tab 注册，重叠命令由 argc 接管（git/gitk 除外）；需要 carapace 负责时关闭 `Argc`，见 [carapace README](../carapace/README.md) 的「PowerShell 侧的顺序不同」。
 - 需要 bash 4 及以上；Windows 用 Git Bash，`--install-carapace` 走 windows zip。macOS 建议用 Homebrew bash 5.x，`-o nosort` 需要 4.4 及以上。
-- 启动成本：本机实测 argc 运行时约 135–145 ms、carapace 约 50 ms；只想覆盖部分命令时用 `ARGC_COMPLETIONS_ONLY` 缩小注册范围。
+- 启动成本与每次 Tab 的取舍见[性能与取舍](#性能与取舍)；只想覆盖部分命令时用 `ARGC_COMPLETIONS_ONLY` 缩小注册范围。
 - 重跑单个子脚本会改变顺序：重跑 argc 会自动插到 carapace 前；重跑 carapace 会追加到末尾（仍在 argc 之后）。
 - 只覆盖 bash；PowerShell 的 git 归属由 `PsGitCompletionSource` 决定（`Auto` 已优先 `git-completion`），当前实际来源用 `Get-GitCompletionSource` 查看（只读，不加载补全模块）。
 - `--check` 会分别用 `bash -ic` / `bash -lic` 探测 argc 是否加载，登录 shell 会打印 job control 警告，可忽略。

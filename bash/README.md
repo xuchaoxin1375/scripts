@@ -39,6 +39,6 @@ source <仓库路径>/bash/completion-diagnose.sh
 
 - [carapace](carapace/README.md)：安装、rc 接入、共存与排障
 - [argc-completions](argc-completions/README.md)：安装、平台适配与 git 选项缺口
-- [completion-stack](completion-stack/README.md)：一键组合、顺序规则、分层停用与验收
+- [completion-stack](completion-stack/README.md)：一键组合、顺序规则、分层停用、验收与响应速度对照
 - [completion-diagnose.sh](completion-diagnose.sh)：当前会话的来源、rc 新鲜度、排除项与 Tab 绑定诊断（source 运行）
 - [shell-completion-descriptions.md](shell-completion-descriptions.md)：zsh 侧 `_git` 描述缺失（与 bash 无关）

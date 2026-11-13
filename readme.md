@@ -35,7 +35,7 @@
 | 新机器部署 PowerShell 环境 | [PS/docs/Deploy-Guide.md](PS/docs/Deploy-Guide.md) |
 | 只启用补全（机器已就绪） | [PS/docs/Deploy-Guide.md](PS/docs/Deploy-Guide.md) §5 → [Feature-Guide.md](PS/docs/Feature-Guide.md) §7/§9 |
 | Git Bash / Linux / macOS 的 bash 补全（carapace） | [bash/carapace/README.md](bash/carapace/README.md) | 平台差异、登录 shell 与 rc 选择、安装/卸载、验收与未验证项 |
-| bash 补全组合部署（argc 补缺口 + carapace 负责 git） | [bash/completion-stack/README.md](bash/completion-stack/README.md) | 一条命令写入两个 rc 块、顺序规则、验收与卸载 |
+| bash 补全组合部署（argc 补缺口 + carapace 负责 git） | [bash/completion-stack/README.md](bash/completion-stack/README.md) | 一条命令写入两个 rc 块、顺序规则、验收、卸载与响应速度对照 |
 | bash 补全归属与排查（装完不生效、仍是旧框架、缺 git 选项） | [bash/README.md](bash/README.md) | 谁负责哪些命令、顺序与 reload 边界、症状分流 |
 | zsh 的 git 补全选项描述缺失 | [bash/shell-completion-descriptions.md](bash/shell-completion-descriptions.md) | wrapper 遮住原生 `_git` 的原因、fpath 降级修复、验收与回退 |
 | 日常使用：初始化、命令查询、补全、更新 | [PS/docs/Feature-Guide.md](PS/docs/Feature-Guide.md) |
