@@ -356,7 +356,7 @@ function Test-StartupPerformance
     .DESCRIPTION
     每段都在全新 pwsh 进程里测(冷数字,排除本会话已摊销的解析成本);本机改动对照看 Startup-Optimization.md。
     默认输出可加分解的启动因子行:bare、profile 其他(conda/模块导入)、init 准备/收尾、各 init 步骤;
-    列固定为 Category/Name/Ms/Share/Note,按 Ms 降序,Share 为占 profile 的百分比,第一行即当前最大影响因素。
+    列固定为 Category/Name/Ms/Share(%)/Note,按 Ms 降序,Share 为占 profile 的百分比,第一行即当前最大影响因素。
     因子对象带 Cxxu.StartupFactor 类型名,Init.format.ps1xml 提供默认表格视图,无需再指定 ft/fl。
     交互终端测量时显示进度条(重定向或 PsShowProgress=False 时自动关闭)。-Report 在默认因子对象之后
     追加独立文本汇总块(profile 总耗时、bare、profile 税、Init 模块导入、conda/其他 profile、

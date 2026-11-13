@@ -700,7 +700,7 @@ Set-PSReadLineOption: 句柄无效。
     步骤表构建；`steps` 只含步骤循环（含进度条渲染）；`other` 是循环前后的计时、环境等级
     恢复与进度条收尾开销。`init -Timing` 的步骤表另给 `Share` 与“步骤合计”行，合计只表示
     各步骤自身耗时之和，与 `steps` 的差额是循环内未被单步计时的开销，不参与上面的拆分。
-  - `Test-StartupPerformance` 输出按耗时降序的因子对象，列 `Category`/`Name`/`Ms`/`Share`/`Note`，
+  - `Test-StartupPerformance` 输出按耗时降序的因子对象，列 `Category`/`Name`/`Ms`/`Share(%)`/`Note`，
     默认由 `Init.format.ps1xml` 表格化，无需 `ft`/`fl`；对象流仍可筛选。因子包含 `bare`、
     `Init 模块导入`、`conda/其他 profile`、`init 准备/收尾` 与各 init 步骤。`bare`、`profile`、
     `init`、`idle` 都按 `-Repeat` 取中位数。`idle 全载` 是启动后首屏一次的成本，不计入
@@ -905,7 +905,7 @@ WindowsTerminal.exe
   总量改读该次 `Environment Loading time`；只有 `-Repeat > 1` 才预热并取中位数。
   输出改为对象流，列固定为 `Category`/`Name`/`Ms`/`Share`/`Note`，可直接接 `ft`/`fl`；
   默认按耗时降序给出可加分解：`bare`、`Init 模块导入`、`conda/其他 profile`、`init 准备/收尾`
-  与各 init 步骤，`Share` 为占 profile 的百分比，第一行即当前最大影响因素。不再打印表头与结论；
+  与各 init 步骤，`Share(%)` 为占 profile 的百分比，第一行即当前最大影响因素。不再打印表头与结论；
   交互终端测量时显示进度条（重定向或 `PsShowProgress=False` 时关闭）。`-Report` 在默认因子对象
   之后追加独立汇总文本块（profile 总耗时、bare、profile 税、Init 模块导入、conda/其他 profile、
   init 合计/步骤/准备收尾），汇总不混入因子对象表；汇总表由 `Format-Table` 对齐，直接阅读即可。

@@ -23,7 +23,7 @@ Add-EnvVar -EnvVar PSModulePath -NewValue $p -Verbose
 | `init -Tier <Fast/Balanced>` | 本次初始化指定启动档位（`Minimal` 为 `Fast` 的兼容别名）；档位含义与取舍见「启动档位」 |
 | `init -Timing` | 同上，附每步耗时表（首次启动）；已初始化会话用 `init -Force -Timing` |
 | `p` | 新开一个 pwsh 会话，由新进程的 profile 执行 `init`；不刷新当前会话 |
-| `Test-StartupPerformance` | 默认输出按耗时降序的启动因子表（`Category`/`Name`/`Ms`/`Share`/`Note`，格式视图 `Init.format.ps1xml`，无需 `ft`/`fl`），`Share` 为占 profile 的百分比；对象流仍可直接筛选与管道；默认拆到 bare、Init 模块导入、conda/其他 profile、init 准备/收尾与各 init 步骤；交互终端显示进度条；`-Report` 在默认因子对象之后追加独立汇总文本块（总耗时、bare、profile 税、模块导入、conda/其他、init 合计/步骤/准备收尾），汇总不混入对象表且已对齐；`-Prompt`/`-Ux`/`-Status` 追加其他评估面，`-All` 全开，`-Simple` 只给一行总耗时 |
+| `Test-StartupPerformance` | 默认输出按耗时降序的启动因子表（`Category`/`Name`/`Ms`/`Share(%)`/`Note`，格式视图 `Init.format.ps1xml`，无需 `ft`/`fl`），表头 `Share(%)` 的值（属性名 `Share`）为占 profile 的百分比；对象流仍可直接筛选与管道；默认拆到 bare、Init 模块导入、conda/其他 profile、init 准备/收尾与各 init 步骤；交互终端显示进度条；`-Report` 在默认因子对象之后追加独立汇总文本块（总耗时、bare、profile 税、模块导入、conda/其他、init 合计/步骤/准备收尾），汇总不混入对象表且已对齐；`-Prompt`/`-Ux`/`-Status` 追加其他评估面，`-All` 全开，`-Simple` 只给一行总耗时 |
 | `Set-PsPrompt -version < fast/short/...>` | 切换提示符；加 `-Persist` 才写注册表记住选择 |
 | `dm` | 切极简 prompt（做笔记摘录时聚焦命令本身） |
 | `Test-PromptDelay` | 测当前 prompt 延迟 |

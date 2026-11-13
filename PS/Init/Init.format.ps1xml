@@ -21,7 +21,7 @@
             <Alignment>Right</Alignment>
           </TableColumnHeader>
           <TableColumnHeader>
-            <Label>Share</Label>
+            <Label>Share(%)</Label>
             <Alignment>Right</Alignment>
           </TableColumnHeader>
           <TableColumnHeader>
@@ -67,7 +67,7 @@
             <Alignment>Right</Alignment>
           </TableColumnHeader>
           <TableColumnHeader>
-            <Label>Share</Label>
+            <Label>Share(%)</Label>
             <Alignment>Right</Alignment>
           </TableColumnHeader>
           <TableColumnHeader>
