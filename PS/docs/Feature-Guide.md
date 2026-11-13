@@ -127,9 +127,11 @@ Get-CxxuComponent | Select-Object Id, Enabled, TierAllowed, Effective
 - 档位是组件开关的上限：`Fast` 下单独 `Enable-CxxuComponent Tab` 不会在启动时加载该组件，
   `Get-CxxuComponent` 的 `TierAllowed` 为 `False`、`Effective` 为 `False`；先切回 `Balanced`。
 - 当前会话已加载的模块不会卸载；切换后新开终端，或执行 `init -Force` 重新构建步骤表。
-- `PsShowProgress` 是用户设置项：环境变量或配置文件已有值时优先；`Fast` 只在两处都未提供时
-  关闭启动进度条。`New-CxxuConfigTemplate` 会写入 `PsShowProgress = $true`，因此按模板生成过
-  配置的终端仍会显示进度条；需要关闭时改该键为 `$false` 或删掉该行。
+- `PsShowProgress` 默认值为 `Auto`，跟随档位（`Fast` 关、`Balanced` 开）；显式 `True`/`False`
+  优先。旧配置里已被模板写成 `$true` 的终端仍会显示进度条，改成 `Auto` 或 `$false` 即可。
+- `Set-PsStartupTier` 不带 `-Persist` 时只改当前进程的环境变量：本会话 `init -Force` 与
+  在本会话内启动的子进程（如直接执行 `pwsh`）立即按新档位；从桌面或终端应用独立启动的窗口
+  不继承，需要 `-Persist` 写入用户配置。
 - 同机实测（pwsh 7.5、新进程三次中位数、init 内部口径）：`Fast` 约 438ms，`Balanced` 约 546ms。
   差额约 110ms，主要来自 `Register-PsUxLazyLoad`（约 48ms）、`Set-ArgumentCompleter`（约 37ms）、
   `Confirm-EnvVarOfInfo`（约 25ms），加 `Carapace` 与可选组件桩约 10ms；`Set-PsPrompt` 与
@@ -150,6 +152,9 @@ Get-CxxuComponent | Select-Object Id, Enabled, TierAllowed, Effective
 - **Fast 档位下 Tab 模糊补全、PSFzf、预测或 Carapace 不工作**：档位是组件开关的上限。
   先看 `Get-CxxuConfig | Where-Object Key -eq PsStartupTier`；需要这些功能时执行
   `Set-PsStartupTier Balanced`，再新开终端或 `init -Force`。
+- **`Set-PsStartupTier` 后当前会话没变化**：它只改当前进程的环境变量（`-Persist` 才写配置），
+  不会卸载已加载模块。本会话执行 `init -Force` 会按新档位重建步骤表；在本会话里直接执行
+  `pwsh` 启动的子进程会继承，从桌面或终端应用独立启动的窗口不继承，需 `-Persist`。
 - **嵌套 `pwsh` 又跑一遍 init**：新进程不继承 `$global:PsInit`，只能重跑；
   贵的是 conda + init + 模块发现（见基线表），不是重复 bug。若启动器写成
   `pwsh -noe -c p`，会看到两次 `initing...`（外层 profile 一次、`p` 开的子进程一次）；

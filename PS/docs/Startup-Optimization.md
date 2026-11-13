@@ -876,7 +876,9 @@ WindowsTerminal.exe
     组件步骤按 `components.psd1` 的 Id 过滤，`Argc`/`GitCompletion` 是 Fast 唯一保留的组件。
   - `Get-CxxuComponent` 增加 `Tier`、`TierAllowed`、`Effective`；`Enable-CxxuComponent` 在
     档位不允许时警告“只保存开关或立即调用，启动仍需切回 Balanced”。档位是硬上限，组件开关不能突破。
-  - `PsShowProgress` 的显式值优先；`Fast` 只在为空时关闭进度条。用户显式选择
+  - `PsShowProgress` 默认值改为 `Auto`，由档位解析（`Fast` 关、`Balanced` 开），显式
+    `True`/`False` 优先。初版用“环境变量为空才关”的写法，但模板会把默认值 `$true` 写进
+    配置文件，模板用户的该分支永远不成立，属于缺陷修正；用户显式选择
     `Balance`/`Brilliant`/`Brilliant2` 时，`Fast` 仍补回 `Confirm-EnvVarOfInfo`
     与 `Confirm-DataJson`，避免富提示符缺数据。初版 `Minimal` 的 `Simple` 提示符默认值
     随档位合并取消，`Fast` 不再改写 `PsPrompt`。

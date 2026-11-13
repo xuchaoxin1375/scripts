@@ -167,11 +167,10 @@ function init
     {
         Write-Warning "未知的 PsStartupTier 值 '$env:PsStartupTier'，本次按 Balanced 处理。可用值：Fast、Balanced（Minimal 为 Fast 的兼容别名）。"
     }
-    # Fast 默认不渲染启动进度条;用户显式设置的 PsShowProgress 优先。
-    if ($tierName -eq 'Fast' -and [string]::IsNullOrWhiteSpace($env:PsShowProgress))
-    {
-        $env:PsShowProgress = 'False'
-    }
+    # 进度条:默认 Auto 跟随档位(Fast 关,Balanced 开);显式 True/False 等用户值优先。
+    # 只算本次 init 的取值，不回写环境变量：这样 Auto 在每次 init 都按当前档位重新解析，
+    # 会话内切档后 init -Force 也能跟着变，且不会覆盖用户显式设置。
+    $progressSetting = Resolve-CxxuShowProgressSetting -Setting ([string]$env:PsShowProgress) -Tier $tierName
     $steps = @(Get-CxxuInitStepsForTier -Tier $tierName)
 
     # 步骤表构建完成后再置已初始化标记：前面任何一步失败时保留未初始化状态，允许重试；
@@ -185,11 +184,11 @@ function init
     # 单步失败只记账不中断:历史上 PSReadLine 在重定向下抛 terminating error,
     # 曾导致后面 5 步静默被跳过(见 docs/Startup-Optimization.md §12);现在失败步骤
     # 记入 $global:PsInitStepErrors,最后统一 Warning 汇总,成功路径行为/耗时不变。
-    # 进度条总开关(默认开):$env:PsShowProgress='False'/'0'/'No'/'Off' 关闭,
-    # 未设置或其它值均为开;stdout 重定向时(agent/CI/管道,无处渲染)强制关闭。
+    # 进度条总开关:Auto 已在上面按档位解析为 True/False;
+    # 'False'/'0'/'No'/'Off' 关闭,其它值视为开;stdout 重定向时(agent/CI/管道,无处渲染)强制关闭。
     # 样式沿用历史原版:Classic 视图 + 一位小数百分比(用户偏爱,不要"优化"掉)。
     $consoleInteractive = try { -not [Console]::IsOutputRedirected } catch { $false }
-    $showProgress = ($env:PsShowProgress -notmatch '^(False|0|No|Off)$') -and $consoleInteractive
+    $showProgress = ($progressSetting -notmatch '^(False|0|No|Off)$') -and $consoleInteractive
     if ($showProgress -and ($PSVersionTable.PSVersion.Major -ge 7))
     {
         $PSStyle.Progress.View = 'Classic'
@@ -2072,6 +2071,18 @@ function Read-CxxuComponentManifest
         return @()
     }
 }
+function Resolve-CxxuShowProgressSetting
+{
+    # 解析进度条取值(不导出):空值或 Auto 按档位(Fast 关、Balanced 开),其它值原样返回。
+    # 不在 init 里回写环境变量,Auto 才能在每次 init 按当前档位重新解析。
+    param([string]$Setting, [string]$Tier = 'Balanced')
+    if ([string]::IsNullOrWhiteSpace($Setting) -or $Setting -ieq 'Auto')
+    {
+        if ($Tier -ieq 'Fast') { return 'False' }
+        return 'True'
+    }
+    return $Setting
+}
 function Get-CxxuStartupTier
 {
     # 读取启动档位(不导出):显式参数 > 环境变量/用户配置 > Balanced。
@@ -2710,8 +2721,9 @@ function Set-PsStartupTier
     与 Argc/GitCompletion 补全；Balanced 保持原有默认（含体验件与 Set-ArgumentCompleter 等）。
     Minimal 保留为 Fast 的兼容别名，两者行为一致，持久化时统一写入 Fast。
     组件开关不能突破档位上限；被档位挡住的组件可用 Get-CxxuComponent 查看 TierAllowed。
-    本命令只切换当前进程并可选写入 ~/.cxxu/config.psd1；当前会话已加载的模块不会卸载，
-    新开终端(或 init -Force)后按新档位重新构建步骤表。
+    不带 -Persist 时只改当前进程的环境变量：本会话执行 init -Force、以及在本会话内启动的
+    子进程（如直接执行 pwsh）立即按新档位；从桌面或终端应用独立启动的窗口不继承，需 -Persist
+    写入 ~/.cxxu/config.psd1。当前会话已加载的模块不会卸载。
     .PARAMETER Tier
     目标档位：Fast、Balanced；Minimal 作为 Fast 的别名接受。
     .PARAMETER Persist
@@ -2744,7 +2756,15 @@ function Set-PsStartupTier
         {
             Set-CxxuConfigModelValues -Path $Path -Values @{ PsStartupTier = $Tier }
         }
-        Write-Host "PsStartupTier=$Tier；当前会话已加载的模块不会卸载，新开终端(或 init -Force)后生效。"
+        $scopeText = if ($Persist)
+        {
+            '已写入当前进程与用户配置'
+        }
+        else
+        {
+            '只写入当前进程；独立启动的新终端不继承，需加 -Persist'
+        }
+        Write-Host ("PsStartupTier={0} {1}。本会话可用 init -Force 重建步骤表或直接开子进程；当前会话已加载的模块不会卸载。" -f $Tier, $scopeText)
     }
 }
 function Disable-PsPlugin

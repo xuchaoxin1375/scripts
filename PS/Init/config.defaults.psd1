@@ -5,7 +5,7 @@
     # 用途：New-CxxuConfigTemplate 生成用户配置、Reset-CxxuConfig 重置默认、Get-CxxuConfig 对照默认值。
     # 改动这里会改变所有设备的默认偏好；用户配置文件与环境变量仍按“环境变量 > 配置文件 > 默认值”覆盖。
     Defaults = @(
-        @{ Key = 'PsShowProgress'; Name = 'ShowProgress'; Default = $true; Description = 'init：启动进度条' }
+        @{ Key = 'PsShowProgress'; Name = 'ShowProgress'; Default = 'Auto'; Description = 'init：启动进度条；Auto 跟随档位（Fast 关、Balanced 开），True/False 显式指定' }
         @{ Key = 'PsStartupTier'; Name = 'StartupTier'; Default = 'Balanced'; Description = 'init：启动档位 Fast/Balanced；Fast 为轻档（核心 + advanced PSReadLine + Argc/Git 补全），Minimal 为其兼容别名' }
         @{ Key = 'PsGithubMirror'; Name = 'GithubMirror'; Default = ''; Description = 'GitHub 镜像前缀；为空时走默认地址与静默测速' }
     )

@@ -85,7 +85,27 @@ try
     Assert-True $tierChecks.FastGit 'Fast 应允许 GitCompletion'
     Assert-True $tierChecks.BalancedTab 'Balanced 应允许 Tab'
 
+    # 进度条 Auto 跟随档位，显式值优先；不在 init 回写环境变量。
+    $progressChecks = & $module {
+        [pscustomobject]@{
+            AutoFast      = Resolve-CxxuShowProgressSetting -Setting 'Auto' -Tier Fast
+            AutoBalanced  = Resolve-CxxuShowProgressSetting -Setting 'Auto' -Tier Balanced
+            EmptyFast     = Resolve-CxxuShowProgressSetting -Setting '' -Tier Fast
+            ExplicitTrue  = Resolve-CxxuShowProgressSetting -Setting 'True' -Tier Fast
+            ExplicitFalse = Resolve-CxxuShowProgressSetting -Setting 'False' -Tier Balanced
+        }
+    }
+    Assert-True ($progressChecks.AutoFast -eq 'False') 'Auto 在 Fast 下应解析为 False'
+    Assert-True ($progressChecks.AutoBalanced -eq 'True') 'Auto 在 Balanced 下应解析为 True'
+    Assert-True ($progressChecks.EmptyFast -eq 'False') '空值在 Fast 下应解析为 False'
+    Assert-True ($progressChecks.ExplicitTrue -eq 'True') '显式 True 不应被档位覆盖'
+    Assert-True ($progressChecks.ExplicitFalse -eq 'False') '显式 False 不应被档位覆盖'
+
     New-CxxuConfigTemplate -Path $configPath -Force | Out-Null
+    # 模板写入的进度条默认值是 Auto（跟随档位），不是写死的 True。
+    $progressRow = Get-CxxuConfig -Path $configPath | Where-Object Key -eq PsShowProgress
+    Assert-True ($progressRow.Default -eq 'Auto') 'PsShowProgress 默认值应为 Auto'
+    Assert-True ((Get-Content -LiteralPath $configPath -Raw) -match "PsShowProgress\s*=\s*'Auto'") '模板应写入 PsShowProgress = Auto'
     $env:PsStartupTier = 'Fast'
     $fastTab = Get-CxxuComponent -Id Tab -Path $configPath
     Assert-True ($fastTab.Tier -eq 'Fast') 'Get-CxxuComponent 未报告 Fast 档位'
