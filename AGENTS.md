@@ -15,6 +15,7 @@
 - 工具安装脚本（`wp/woocommerce/woo_df/sh/tool_installer/`）：新脚本默认按 [`README.installers-best-practices.md`](wp/woocommerce/woo_df/sh/tool_installer/README.installers-best-practices.md) 的「基础层」规格编写——主流 Linux（Ubuntu/Debian 为必测基线）、预编译优先、latest 检测与更新确认、镜像/代理下载；固定版本、卸载、SHA-256、附属资源与全架构矩阵只在明确需要时添加，不把完整层脚本当模板整体复制。
 - 文档与注释的并列列举编号、占位路径等排版细则按全局偏好与 skill `markdown-style`，本文件不重复。
 - 文档不写死仓库自身的清单数量与章节编号（如模块数、脚本数、`§2`、第 3 节），改用名单、链接或主题描述；具体值以对应真相源为准。
+- 优化与重构先查已有实验和取舍记录；收益不足时按全局规则说明代价并询问是否放弃或收敛，保留未采用方案的结论与重试条件。PowerShell 启动相关结论统一记录在 [启动优化记录](PS/docs/Startup-Optimization.md)。
 - 仓库内可导航的本地文件优先用 Markdown 链接 `[标题](相对路径)`，不要只写成内联代码；代码块、命令参数与占位示例除外。
 - 批量覆盖/下发类脚本的写入前检查与 `--force` 一类强制覆盖入口按 skill `scripting-best-practices` 的「覆盖写入与写入前检查」执行，本文件不重复细则。
 - 记住指令入库：用户以“记住”下达的长期约束，须同步落盘到对应治理文档（全仓事项进根 `AGENTS.md`，分区事项进对应分区 `AGENTS.md`），不只记在会话内。

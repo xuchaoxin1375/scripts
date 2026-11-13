@@ -15,7 +15,7 @@
 | `Prompt` | 723/32 | 提示符：`prompt` 入口、`Prompt*` 主题、`Write-*` 片段、`Set-PsPrompt`（`-Persist` 才写注册表）、电池 30s 缓存 |
 | `CxxuPredictor` | 1170/0导出 | 自研双 predictor：`CxxuCommand` 命令名（分层模糊：别名精确/前缀/词边界/连续片段/一般子序列 + 严格通配；别名也进候选，PSReadLine 历史频率加权，默认 15 条）+ `CxxuArgcFlags`（argc 覆盖命令首参数位的静态 flag，`-` 前缀，≤10 条，表缓存 `~/.cxxu/cache/argc-flags.tsv`）；二进制：dll 发布件 + src；`CompleteCommand` 公开 Tab 接口；活件并排版本 `~/.cxxu/bin`，loader 按指针装载；OnIdle 加载；命令表缓存 `~/.cxxu/cache/tab-commands-<CLR主版本>.tsv`（24h，删除即重建）；5.1 Tab-only 产物 `ps51/CxxuPredictor.dll`（netstandard2.0，仅 `CompleteCommand`，见 [Live-Versions.md](Live-Versions.md) 的『5.1 Tab-only 产物』） |
 | `CxxuTab` | 见源码与 manifest | 自研 Tab 命令名补全（独立插件：`TabExpansion2` 包装，命令名位合并 dll 模糊结果，参数位透传；函数 `.SYNOPSIS` 附加摘要默认关闭，用 `Set-CxxuComponentOption -Id Tab -Name Synopsis -Value $true [-Persist]` 管理（底层开关 `PsTabSynopsis`），开启后已加载函数取定义文本、未加载模块在 pwsh 7+ 且候选 ≤20 时解析 `.psm1` 源码（不导入模块）；原生参数语法保留；门控 `$env:PsTab` 逐调用判定，**默认开**（置 `False` 关）；异常/超慢调用自熔断；命令表缓存 `~/.cxxu/cache/tab-commands-<CLR主版本>.tsv`；启停见 `Enable/Disable-PsPlugin`；5.1 读 `~/.cxxu/bin/ps51` 活件，7+ 读根活件） |
-| `PwshVar` | 见源码与 manifest | `.conf` 变量文件按 Core/Fast/Full 组编译缓存，按源文件时间与大小失效，保留声明顺序与动态求值；`Update-PwshVars -NoCache` 逐行回退，单文件入口保留 |
+| `PwshVar` | 见源码与 manifest | `.conf` 变量文件按 Core/Fast/Full 子集顺序加载，沿用单文件缓存与动态求值；`Update-PwshVars -NoCache` 逐行回退；分组缓存的低收益试验与撤回理由见 [启动优化记录](Startup-Optimization.md#变量组缓存与预设变量启动开销) |
 | `Aliases` | 68/2 | 别名文件加载（`alias_core`/`functions`/`shortcuts`；预编译缓存，`Update-PwshAliases -NoCache` 回退） |
 | `ArgumentCompletion` | 115/2 | 参数补全注册（`prompt` 已迁出，只剩补全；B 档 5.1） |
 | `EnvVar` | 1021/15 | 环境变量 User/Machine/Process 三档；热路径一律 `Set-ProcessEnvVar` |

@@ -76,9 +76,9 @@ function Update-PwshVars
     从配置文件加载预设的 PowerShell 变量。
     .DESCRIPTION
     默认按配置顺序加载完整变量组。Core、Fast 选择原有子集；同时指定时 Core 优先。
-    配置表达式每次重新求值，变量立即可用。默认在系统临时目录生成按组编译的脚本缓存，
-    不修改 conf，不访问网络。源文件时间或大小变化、加载器更新时自动重建缓存。
-    缓存检查、构建失败或缓存语法损坏时回退逐行加载；配置表达式报错时不重跑整组。
+    配置表达式每次重新求值，变量立即可用。默认使用系统临时目录中的单文件脚本缓存，
+    源配置比缓存新时重建。不修改 conf，不访问网络；缓存不可用时回退逐行加载。
+    配置表达式的运行错误直接报告，不通过重复执行配置来回退。
     .PARAMETER Core
     只加载 VarSet1、VarSet2 和 ConstantString，供启动时使用。
     .PARAMETER Fast
@@ -170,34 +170,10 @@ function Update-PwshVars
 
     
     $prevEnvMode = $global:PsEnvMode
-    $groupLoaded = $false
-    # 调试输出仍走逐文件入口，保留原有的逐行 Write-Debug。
-    if (-not $NoCache -and $DebugPreference -in @('SilentlyContinue', 'Ignore'))
+    foreach ($VarFile in $PwshVarFiles)
     {
-        $group = if ($Core) { 'Core' } elseif ($Fast) { 'Fast' } else { 'Full' }
-        $groupCache = Get-PwshVarGroupCache -VarFiles $PwshVarFiles -Group $group
-        if ($groupCache)
-        {
-            try
-            {
-                . $groupCache
-                $groupLoaded = $true
-            }
-            catch [System.Management.Automation.ParseException]
-            {
-                # 完整脚本尚未开始执行，语法损坏时才可安全回退，避免重复运行表达式。
-                Write-Verbose '变量组缓存语法损坏，本次回退逐文件加载。'
-                try { [IO.File]::Delete($groupCache) } catch { Write-Verbose '无法删除损坏的变量组缓存。' }
-            }
-        }
-    }
-    if (-not $groupLoaded)
-    {
-        foreach ($VarFile in $PwshVarFiles)
-        {
-            Write-Verbose "processing:[$VarFile]"
-            Import-PwshVarFile -VarFile $VarFile -NoCache
-        }
+        Write-Verbose "processing:[$VarFile]"
+        Import-PwshVarFile -VarFile $VarFile -NoCache:$NoCache
     }
     # 全量导入后把等级标到 2：VarSet1.conf 固定写 1，若不提升，Test-PsEnvMode -Mode Vars
     # 永远为假，Update-PwshEnvIfNotYet -Mode Vars 会在每次调用时重复导入全量变量。
@@ -209,131 +185,20 @@ function Update-PwshVars
     
 }
 
-function ConvertTo-PwshVarScriptLine
-{
-    # 与逐行回退使用相同的转换规则，合并组缓存与单文件缓存共享此入口。
-    param([string]$ConfPath)
-    foreach ($rawLine in [IO.File]::ReadLines($ConfPath))
-    {
-        $line = $rawLine
-        if (!$line.Contains('=')) { $line = $line -replace '(^.*?) ', '$1=' }
-        if ($line.TrimStart() -match '^([a-zA-Z_$])')
-        {
-            $line -replace '^\s*\$?', '$global:'
-        }
-    }
-}
-
-function Get-PwshVarGroupCache
-{
-    <#
-    .SYNOPSIS
-    返回当前变量组的编译缓存路径；构建或校验失败时返回空值，不执行配置。
-    #>
-    param(
-        [Parameter(Mandatory)][string[]]$VarFiles,
-        [ValidateSet('Core', 'Fast', 'Full')][string]$Group = 'Core'
-    )
-    try
-    {
-        # 路径用可逆的十六进制编码；普通路径避免每个进程首次初始化加密组件的开销。
-        $edition = [string]$PSVersionTable.PSEdition
-        $rootBytes = [Text.Encoding]::UTF8.GetBytes([IO.Path]::GetFullPath($PSScriptRoot))
-        $pathId = [BitConverter]::ToString($rootBytes).Replace('-', '')
-        $cache = [IO.Path]::Combine([IO.Path]::GetTempPath(), "CxxuPwshVarGroup_${pathId}_${Group}_${edition}_$($PSVersionTable.PSVersion.Major).cache.ps1")
-        # 超长路径才使用摘要，保留 Windows PowerShell 5.1 的路径长度兼容性。
-        if ($cache.Length -gt 240)
-        {
-            $sha = [Security.Cryptography.SHA256]::Create()
-            try { $pathId = [BitConverter]::ToString($sha.ComputeHash($rootBytes)).Replace('-', '').Substring(0, 24) }
-            finally { $sha.Dispose() }
-            $cache = [IO.Path]::Combine([IO.Path]::GetTempPath(), "CxxuPwshVarGroup_${pathId}_${Group}_${edition}_$($PSVersionTable.PSVersion.Major).cache.ps1")
-        }
-        $sourcePaths = @([IO.Path]::Combine($PSScriptRoot, 'PwshVar.psm1'), [IO.Path]::Combine($PSScriptRoot, 'VarLongStrings.ps1'))
-        foreach ($name in $VarFiles) { $sourcePaths += [IO.Path]::Combine($PSScriptRoot, 'confs', "$name.conf") }
-        $stamps = foreach ($path in $sourcePaths)
-        {
-            $file = [IO.FileInfo]::new($path)
-            if (-not $file.Exists) { return }
-            [string]$file.LastWriteTimeUtc.Ticks + ':' + $file.Length
-        }
-        # 精确比较时间与长度，文件回退到较旧版本或被删除时也不能沿用旧缓存。
-        $header = '# CxxuPwshVarGroup v1 ' + ($VarFiles -join ',') + ' ' + ($stamps -join '|')
-        if ([IO.File]::Exists($cache))
-        {
-            $reader = [IO.File]::OpenText($cache)
-            try { $valid = $reader.ReadLine() -eq $header }
-            finally { $reader.Dispose() }
-            if ($valid) { return $cache }
-        }
-        Get-CompiledPwshVarGroupFile -Cache $cache -Header $header -VarFiles $VarFiles
-    }
-    catch
-    {
-        Write-Verbose ("变量组缓存不可用，本次回退逐文件加载：{0}" -f $_.Exception.Message)
-    }
-}
-
-function Get-CompiledPwshVarGroupFile
-{
-    # 构建代码仅在源文件变化时进入，避免正常启动也支付其首次编译成本。
-    param([string]$Cache, [string]$Header, [string[]]$VarFiles)
-    $pendingCache = $null
-    try
-    {
-        $built = [Text.StringBuilder]::new()
-        $null = $built.AppendLine($Header)
-        foreach ($name in $VarFiles)
-        {
-            foreach ($line in (ConvertTo-PwshVarScriptLine -ConfPath ([IO.Path]::Combine($PSScriptRoot, 'confs', "$name.conf"))))
-            {
-                $null = $built.AppendLine($line)
-            }
-        }
-        $scriptText = $built.ToString()
-        $parseErrors = $null
-        $null = [Management.Automation.Language.Parser]::ParseInput($scriptText, [ref]$null, [ref]$parseErrors)
-        if ($parseErrors.Count) { return }
-        # 先写同目录临时文件，再原子替换，避免同时启动多个 pwsh 时读到半份脚本。
-        $pendingCache = $cache + '.' + [guid]::NewGuid().ToString('N') + '.tmp'
-        [IO.File]::WriteAllText($pendingCache, $scriptText, [Text.UTF8Encoding]::new($true))
-        if ([IO.File]::Exists($cache))
-        {
-            [IO.File]::Replace($pendingCache, $cache, [Management.Automation.Language.NullString]::Value)
-        }
-        else
-        {
-            try { [IO.File]::Move($pendingCache, $cache) }
-            catch [IO.IOException]
-            {
-                if (-not [IO.File]::Exists($cache)) { throw }
-                [IO.File]::Replace($pendingCache, $cache, [Management.Automation.Language.NullString]::Value)
-            }
-        }
-        return $cache
-    }
-    catch
-    {
-        Write-Verbose ("变量组缓存构建失败，本次回退逐文件加载：{0}" -f $_.Exception.Message)
-        return
-    }
-    finally
-    {
-        if ($pendingCache -and [IO.File]::Exists($pendingCache))
-        {
-            try { [IO.File]::Delete($pendingCache) } catch { Write-Verbose '无法删除本次缓存构建的临时文件。' }
-        }
-    }
-}
-
 function Get-CompiledPwshVarLines
 {
     <#
     .SYNOPSIS
-    将变量 conf 文件预编译为缓存脚本并点源执行,返回转换后的可执行行;任何失败返回 $null
+    将变量 conf 文件转换为单文件缓存脚本并点源执行，返回可执行行。
     .DESCRIPTION
-    转换规则与逐行 Invoke-Expression 完全一致(同一套正则),但整个文件只解析一次。
-    缓存失效条件:conf 比缓存新。缓存经 Parser 语法校验,点源失败也会回退,调用方无感。
+    源配置比缓存新时重新转换。缓存读取、写入或语法检查失败时返回空值，供调用方逐行回退。
+    配置表达式的运行错误向调用方报告，不回退重跑，以免重复执行已发生的副作用。
+    .PARAMETER ConfPath
+    源 conf 文件的完整路径。
+    .PARAMETER VarFile
+    缓存文件标识，通常为不含扩展名的配置文件名。
+    .EXAMPLE
+    Get-CompiledPwshVarLines -ConfPath (Resolve-Path ./PS/PwshVar/confs/VarSet1.conf).Path -VarFile VarSet1
     #>
     [CmdletBinding()]
     param(
@@ -351,26 +216,37 @@ function Get-CompiledPwshVarLines
         }
         if ($regen)
         {
-            $built = @(ConvertTo-PwshVarScriptLine -ConfPath $ConfPath)
+            $built = [System.Collections.Generic.List[string]]::new()
+            foreach ($rawLine in [System.IO.File]::ReadLines($ConfPath))
+            {
+                $line = $rawLine
+                if (!$line.Contains('=')) { $line = $line -replace '(^.*?) ', '$1=' }
+                if ($line.TrimStart() -match '^([a-zA-Z_$])')
+                {
+                    $built.Add(($line -replace '^\s*\$?', '$global:'))
+                }
+            }
             if ($built.Count -eq 0) { return }
-            $parseErrs = $null
-            $null = [System.Management.Automation.Language.Parser]::ParseInput(($built -join "`n"), [ref]$null, [ref]$parseErrs)
-            if ($parseErrs.Count -gt 0) { return }
-            [System.IO.File]::WriteAllLines($cache, $built, [System.Text.UTF8Encoding]::new($false))
-            . $cache
-            return $built
+            $parseErrors = $null
+            $null = [System.Management.Automation.Language.Parser]::ParseInput(($built -join "`n"), [ref]$null, [ref]$parseErrors)
+            if ($parseErrors.Count) { return }
+            # 5.1 将点源执行缓存脚本，中文内容需要 UTF-8 BOM。
+            [System.IO.File]::WriteAllLines($cache, $built, [System.Text.UTF8Encoding]::new($true))
+            $execLines = $built.ToArray()
         }
         else
         {
-            $cached = Get-Content -LiteralPath $cache
-            . $cache
-            return $cached
+            $execLines = Get-Content -LiteralPath $cache -Encoding UTF8 -ErrorAction Stop
         }
     }
     catch
     {
         return
     }
+    # 只对尚未执行的语法错误回退；运行错误不能被缓存准备阶段的 catch 吞掉。
+    try { . $cache }
+    catch [System.Management.Automation.ParseException] { return }
+    return $execLines
 }
 function Import-PwshVarFileLegacy
 {
