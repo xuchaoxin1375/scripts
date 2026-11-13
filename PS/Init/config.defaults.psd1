@@ -6,7 +6,7 @@
     # 改动这里会改变所有设备的默认偏好；用户配置文件与环境变量仍按“环境变量 > 配置文件 > 默认值”覆盖。
     Defaults = @(
         @{ Key = 'PsShowProgress'; Name = 'ShowProgress'; Default = $true; Description = 'init：启动进度条' }
-        @{ Key = 'PsStartupTier'; Name = 'StartupTier'; Default = 'Balanced'; Description = 'init：启动档位 Minimal/Fast/Balanced；Minimal 最轻，Fast 保留常用补全，Balanced 为默认' }
+        @{ Key = 'PsStartupTier'; Name = 'StartupTier'; Default = 'Balanced'; Description = 'init：启动档位 Fast/Balanced；Fast 为轻档（核心 + advanced PSReadLine + Argc/Git 补全），Minimal 为其兼容别名' }
         @{ Key = 'PsGithubMirror'; Name = 'GithubMirror'; Default = ''; Description = 'GitHub 镜像前缀；为空时走默认地址与静默测速' }
     )
 }

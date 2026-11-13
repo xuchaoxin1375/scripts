@@ -107,13 +107,15 @@ function init
         [switch]$Force,
         # 显示每步耗时报告(默认关闭以保启动速度;`init -Force -Timing` 可直接看报告)
         [switch]$Timing,
-        # 启动档位:Minimal 最轻/Fast 保留常用补全/Balanced 当前默认;省略时读 PsStartupTier(环境变量 > 用户配置 > 默认)
+        # 启动档位:Fast 为轻档(核心 + advanced PSReadLine + Argc/Git 补全),Balanced 为默认全量;
+        # Minimal 保留为 Fast 的兼容别名;省略时读 PsStartupTier(环境变量 > 用户配置 > 默认)
         [ValidateSet('Minimal', 'Fast', 'Balanced')]
         [string]$Tier = ''
     )
 
     # 显式 -Tier 优先于环境变量与配置文件；写入进程环境，供步骤内组件判断与子进程继承。
-    if ($Tier) { $env:PsStartupTier = $Tier }
+    # Minimal 统一落成 Fast，避免后续判断再遇到别名。
+    if ($Tier) { $env:PsStartupTier = if ($Tier -ieq 'Minimal') { 'Fast' } else { $Tier } }
 
     # 计时从函数入口开始：配置读取/变量重载与步骤表分开统计，避免把准备阶段漏在总数外。
     $initStart = [datetime]::UtcNow
@@ -158,20 +160,15 @@ function init
     # 启动步骤表:直接调用(当前会话作用域),不要转字符串再 iex —— iex 慢且吞错误定位;
     # 进度条默认开(真机实测开销可忽略,用户 306ms 全链含进度条),开关见 $env:PsShowProgress,
     # 重定向下(无处渲染)自动关闭。
-    # 档位决定核心步骤与可选组件的上限:Minimal 只留基础 PSReadLine + prompt,
-    # Fast 再加 advanced PSReadLine + Argc/Git 补全,Balanced 保持原有全部步骤。
+    # 档位决定核心步骤与可选组件的上限:Fast 只留核心 + advanced PSReadLine + Argc/Git 补全,
+    # Balanced 保持原有全部步骤;Minimal 与 Fast 等价(兼容别名)。
     $tierName = Get-CxxuStartupTier
     if ($env:PsStartupTier -and ($env:PsStartupTier -notmatch '^(?i:Minimal|Fast|Balanced)$'))
     {
-        Write-Warning "未知的 PsStartupTier 值 '$env:PsStartupTier'，本次按 Balanced 处理。可用值：Minimal、Fast、Balanced。"
+        Write-Warning "未知的 PsStartupTier 值 '$env:PsStartupTier'，本次按 Balanced 处理。可用值：Fast、Balanced（Minimal 为 Fast 的兼容别名）。"
     }
-    # Minimal 默认使用极简提示符;用户显式设置的 PsPrompt 优先。
-    if ($tierName -eq 'Minimal' -and [string]::IsNullOrWhiteSpace($env:PsPrompt))
-    {
-        $env:PsPrompt = 'Simple'
-    }
-    # Fast/Minimal 默认不渲染启动进度条;用户显式设置的 PsShowProgress 优先。
-    if (($tierName -in @('Minimal', 'Fast')) -and [string]::IsNullOrWhiteSpace($env:PsShowProgress))
+    # Fast 默认不渲染启动进度条;用户显式设置的 PsShowProgress 优先。
+    if ($tierName -eq 'Fast' -and [string]::IsNullOrWhiteSpace($env:PsShowProgress))
     {
         $env:PsShowProgress = 'False'
     }
@@ -2079,25 +2076,26 @@ function Get-CxxuStartupTier
 {
     # 读取启动档位(不导出):显式参数 > 环境变量/用户配置 > Balanced。
     # 环境变量由 Import-CxxuConfig 按“环境变量 > 配置文件 > 默认值”注入。
+    # Minimal 是 Fast 的兼容别名(实测两者差在噪声内),统一返回 Fast。
     param([string]$Tier = '')
-    if ($Tier) { return $Tier }
-    $value = [string]$env:PsStartupTier
-    foreach ($known in @('Minimal', 'Fast', 'Balanced'))
+    $value = if ($Tier) { [string]$Tier } else { [string]$env:PsStartupTier }
+    foreach ($known in @('Fast', 'Balanced'))
     {
         if ($value -ieq $known) { return $known }
     }
+    if ($value -ieq 'Minimal') { return 'Fast' }
     return 'Balanced'
 }
 function Test-CxxuTierAllowsComponent
 {
-    # 档位对可选组件是上限(不导出):Minimal 全关，Fast 只留 Argc/GitCompletion，
+    # 档位对可选组件是上限(不导出):Fast 只留 Argc/GitCompletion(Minimal 是其兼容别名),
     # Balanced 按组件自身开关。显式 Enable 不能突破档位，需先切换档位。
     param(
         [string]$Tier = 'Balanced',
         [string]$Id
     )
-    if ($Tier -eq 'Minimal') { return $false }
-    if ($Tier -eq 'Fast')
+    if ($Tier -ieq 'Minimal') { $Tier = 'Fast' }
+    if ($Tier -ieq 'Fast')
     {
         return ($Id -in @('Argc', 'GitCompletion'))
     }
@@ -2108,11 +2106,12 @@ function Get-CxxuInitStepsForTier
     # 按档位生成 init 步骤表(不导出):核心步骤先过滤，再生成允许的组件步骤。
     param([ValidateSet('Minimal', 'Fast', 'Balanced')][string]$Tier = 'Balanced')
 
+    # Minimal 与 Fast 等价，统一按 Fast 生成步骤。
+    if ($Tier -ieq 'Minimal') { $Tier = 'Fast' }
     $core = Get-CxxuCoreInitSteps
-    $beforeNames = @(if ($Tier -eq 'Minimal') { 'Set-PSReadLinesCommon' }
-        elseif ($Tier -eq 'Fast') { 'Set-PSReadLinesCommon'; 'Set-PSReadLinesAdvanced' })
+    $beforeNames = @(if ($Tier -eq 'Fast') { 'Set-PSReadLinesCommon'; 'Set-PSReadLinesAdvanced' })
     $afterNames = @(if ($Tier -eq 'Balanced') { } else { 'Set-PsPrompt' })
-    # 用户显式选择富信息提示符时，即使 Fast/Minimal 也补回其依赖的系统信息步骤。
+    # 用户显式选择富信息提示符时，即使 Fast 也补回其依赖的系统信息步骤。
     if ($Tier -ne 'Balanced' -and ($env:PsPrompt -match '^(?i:Balance|Brilliant|Brilliant2)$'))
     {
         $afterNames += @('Confirm-EnvVarOfInfo', 'Confirm-DataJson')
@@ -2705,15 +2704,16 @@ function Set-PsStartupTier
 {
     <#
     .SYNOPSIS
-    切换启动档位(Minimal/Fast/Balanced),可持久化到用户配置。
+    切换启动档位(Fast/Balanced),可持久化到用户配置。
     .DESCRIPTION
-    档位决定 init 的步骤上限：Minimal 只保留核心变量/别名、基础 PSReadLine 与 prompt；
-    Fast 再加 advanced PSReadLine 与 Argc/GitCompletion；Balanced 保持原有默认。
+    档位决定 init 的步骤上限：Fast 只保留核心变量/别名、advanced PSReadLine、prompt
+    与 Argc/GitCompletion 补全；Balanced 保持原有默认（含体验件与 Set-ArgumentCompleter 等）。
+    Minimal 保留为 Fast 的兼容别名，两者行为一致，持久化时统一写入 Fast。
     组件开关不能突破档位上限；被档位挡住的组件可用 Get-CxxuComponent 查看 TierAllowed。
     本命令只切换当前进程并可选写入 ~/.cxxu/config.psd1；当前会话已加载的模块不会卸载，
     新开终端(或 init -Force)后按新档位重新构建步骤表。
     .PARAMETER Tier
-    目标档位：Minimal、Fast、Balanced。
+    目标档位：Fast、Balanced；Minimal 作为 Fast 的别名接受。
     .PARAMETER Persist
     同时写入用户配置的 Settings.PsStartupTier；已有文件先备份，再规范重写。
     .PARAMETER Path
@@ -2721,9 +2721,9 @@ function Set-PsStartupTier
     .EXAMPLE
     Set-PsStartupTier Fast
     .EXAMPLE
-    Set-PsStartupTier Fast -Persist
+    Set-PsStartupTier Balanced -Persist
     .EXAMPLE
-    Set-PsStartupTier Minimal -Persist -WhatIf
+    Set-PsStartupTier Minimal -WhatIf
     #>
     [CmdletBinding(SupportsShouldProcess)]
     param(
@@ -2735,6 +2735,8 @@ function Set-PsStartupTier
         # 用户配置文件路径(默认 ~/.cxxu/config.psd1)
         [string]$Path = (Join-Path (Join-Path $HOME '.cxxu') 'config.psd1')
     )
+    # Minimal 与 Fast 等价：统一按 Fast 落盘，避免旧别名继续传播。
+    if ($Tier -ieq 'Minimal') { $Tier = 'Fast' }
     if ($PSCmdlet.ShouldProcess($Path, "切换启动档位为 $Tier"))
     {
         $env:PsStartupTier = $Tier
@@ -3332,7 +3334,7 @@ function Get-CxxuComponent
     元数据来自 PS/Init/components.psd1；值按“环境变量 > 用户配置 > 默认值”解析。
     输出对象可直接接 Format-List/Format-Table；-Id 只查一个组件（不区分大小写）。
     Tier/TierAllowed/Effective 表示当前启动档位、档位是否允许该组件、以及最终是否会在
-    init 中加载；组件开关不能突破档位上限（Minimal 全关，Fast 只留 Argc/GitCompletion）。
+    init 中加载；组件开关不能突破档位上限（Fast 只留 Argc/GitCompletion，Minimal 是其兼容别名）。
     Carapace 额外带 Runtime、RegisteredCommands、CachePath、CacheState 四个运行态字段：
     Runtime 区分未安装/未启用/档位禁用/待参数位 Tab/已加载/未加载，CacheState 描述 5.1 上下文缓存是否有效。
     Install 给出依赖安装入口，Enable 给出未启用时的组件启用命令；-Validate 不列组件，

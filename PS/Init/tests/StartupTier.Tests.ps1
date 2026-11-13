@@ -42,12 +42,13 @@ try
 {
     $null = New-Item -ItemType Directory -Path $root
 
-    $env:PsStartupTier = 'Minimal'
-    $env:PsPrompt = 'Simple'
-    $minimal = Get-StepNames 'Minimal'
-    Assert-True (($minimal -join ',') -eq 'Set-PSReadLinesCommon,Set-PsPrompt') "Minimal 步骤不符：$($minimal -join ',')"
-
+    # Minimal 是 Fast 的兼容别名：步骤表必须完全一致。
     $env:PsStartupTier = 'Fast'
+    $fastSteps = @(Get-StepNames 'Fast')
+    $minimalSteps = @(Get-StepNames 'Minimal')
+    Assert-True (($fastSteps -join ',') -eq ($minimalSteps -join ',')) "Minimal 应与 Fast 步骤一致：$($minimalSteps -join ',')"
+    Assert-True (($minimalSteps -join ',') -eq 'Set-PSReadLinesCommon,Set-PSReadLinesAdvanced,Set-ArgcCompletions,Register-GitCompletion,Set-PsPrompt') "Fast 步骤不符：$($minimalSteps -join ',')"
+
     Assert-Steps -Tier 'Fast' -MustHave @(
         'Set-PSReadLinesCommon', 'Set-PSReadLinesAdvanced', 'Set-ArgcCompletions', 'Register-GitCompletion', 'Set-PsPrompt'
     ) -MustNotHave @(
@@ -70,13 +71,15 @@ try
     $tierChecks = & $module {
         [pscustomobject]@{
             MinimalTab = Test-CxxuTierAllowsComponent -Tier Minimal -Id Tab
+            MinimalArgc = Test-CxxuTierAllowsComponent -Tier Minimal -Id Argc
             FastTab    = Test-CxxuTierAllowsComponent -Tier Fast -Id Tab
             FastArgc   = Test-CxxuTierAllowsComponent -Tier Fast -Id Argc
             FastGit    = Test-CxxuTierAllowsComponent -Tier Fast -Id GitCompletion
             BalancedTab = Test-CxxuTierAllowsComponent -Tier Balanced -Id Tab
         }
     }
-    Assert-True (-not $tierChecks.MinimalTab) 'Minimal 不应允许 Tab'
+    Assert-True (-not $tierChecks.MinimalTab) 'Minimal（Fast 别名）不应允许 Tab'
+    Assert-True $tierChecks.MinimalArgc 'Minimal（Fast 别名）应允许 Argc'
     Assert-True (-not $tierChecks.FastTab) 'Fast 不应允许 Tab'
     Assert-True $tierChecks.FastArgc 'Fast 应允许 Argc'
     Assert-True $tierChecks.FastGit 'Fast 应允许 GitCompletion'
@@ -93,13 +96,17 @@ try
 
     Set-PsStartupTier Minimal -WhatIf -Path $configPath | Out-Null
     Assert-True ($env:PsStartupTier -eq 'Fast') 'WhatIf 不应改当前进程档位'
+    # Minimal 归一化为 Fast：写入配置的应是 Fast。
     Set-PsStartupTier Minimal -Persist -Path $configPath | Out-Null
-    Assert-True ($env:PsStartupTier -eq 'Minimal') 'Set-PsStartupTier 未更新当前进程'
+    Assert-True ($env:PsStartupTier -eq 'Fast') 'Set-PsStartupTier 未把 Minimal 归一化为 Fast'
     Remove-Item Env:PsStartupTier -ErrorAction Ignore
     $saved = Get-CxxuConfig -Path $configPath | Where-Object Key -eq PsStartupTier
-    Assert-True ($saved.Value -eq 'Minimal') 'PsStartupTier 未写入配置'
+    Assert-True ($saved.Value -eq 'Fast') 'PsStartupTier 未按 Fast 写入配置'
     Assert-True ($saved.Source -eq '配置文件') 'PsStartupTier 配置来源不符'
 
+    $env:PsStartupTier = 'Minimal'
+    $normalized = & $module { Get-CxxuStartupTier }
+    Assert-True ($normalized -eq 'Fast') 'Minimal 应归一化为 Fast'
     $env:PsStartupTier = 'Bogus'
     $fallback = & $module { Get-CxxuStartupTier }
     Assert-True ($fallback -eq 'Balanced') '非法档位应回退 Balanced'

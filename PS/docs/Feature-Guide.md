@@ -20,7 +20,7 @@ Add-EnvVar -EnvVar PSModulePath -NewValue $p -Verbose
 | 命令 | 用途 |
 |---|---|
 | `init` | 全量初始化（变量+别名+补全+prompt，约 400~700ms，实际随档位与组件变化）；同会话重复调用直接返回；`-Force` 重跑步骤表，并在已初始化会话真重载全部变量 conf（2026-10-03 起，重载开销约零点几秒；首次初始化路径不变） |
-| `init -Tier <Minimal/Fast/Balanced>` | 本次初始化指定启动档位；档位含义与取舍见「启动档位」 |
+| `init -Tier <Fast/Balanced>` | 本次初始化指定启动档位（`Minimal` 为 `Fast` 的兼容别名）；档位含义与取舍见「启动档位」 |
 | `init -Timing` | 同上，附每步耗时表（首次启动）；已初始化会话用 `init -Force -Timing` |
 | `p` | 新开一个 pwsh 会话，由新进程的 profile 执行 `init`；不刷新当前会话 |
 | `Test-StartupPerformance` | 新进程分段计时（bare/profile/init/idle），标明 `init` 是 `profile 税` 的子集；`-Simple` 只测一次带 profile 的启动，`-PassThru` 返回对象 |
@@ -33,7 +33,7 @@ Add-EnvVar -EnvVar PSModulePath -NewValue $p -Verbose
 | `Import-CxxuConfig` | 读用户配置（init 首步自动调；优先级：环境变量 > 配置文件 > 默认值） |
 | `Get-CxxuConfig` | 查看各开关的当前生效值、来源（环境变量/配置文件/默认值）与默认值；管道接 `Format-List` 看完整说明 |
 | `Reset-CxxuConfig` | 按仓库默认偏好（组件见 `PS/Init/components.psd1`，Settings 见 `PS/Init/config.defaults.psd1`）重置用户配置文件；`-WhatIf` 只预览路径，重置后重开终端生效，并列出仍会覆盖默认值的环境变量 |
-| `Set-PsStartupTier` | 切换启动档位 `Minimal`/`Fast`/`Balanced`；`-Persist` 写入用户配置，`-WhatIf` 预览；当前会话不卸载已加载模块 |
+| `Set-PsStartupTier` | 切换启动档位 `Fast`/`Balanced`（`Minimal` 作为 `Fast` 别名接受）；`-Persist` 写入用户配置，`-WhatIf` 预览；当前会话不卸载已加载模块 |
 | `Enable-PsPlugin` / `Disable-PsPlugin` | 体验插件启停（Fzf/Zoxide/Predictor/Tab/Argc/GitCompletion/Carapace/PSCompletions/Fnm/ScoopSearch，当会话生效；加 `-Persist` 长期有效，写 `~/.cxxu/config.psd1`） |
 | `Set-GitCompletionSource` | 切换 `git`/`gitk` 的 Tab 补全来源（`GitCompletion`/`Carapace`/`Argc`）：写入 `PsGitCompletionSource` 与相关开关，由 `init` 在启动时读取，当前会话立即重新注册；选来源即启用对应组件（此前被 `Disable-PsPlugin` 停用也会重新打开），但不会停用其他组件；不改 profile，`-Persist` 落配置，`-WhatIf` 预览 |
 | `Get-GitCompletionSource` | 只读查看 `git`/`gitk` 补全的配置来源、解析来源与当前会话已注册来源，附各来源（含 `posh-git`）的安装/启用状态、回落原因与下一步命令；`-List` 按来源逐行列出候选（安装、版本、启用、当前生效与安装命令）；用于确认“当前实际用的是哪个”，不加载补全模块 |
@@ -103,32 +103,39 @@ Test-StartupPerformance -Simple   # 只测一次新 pwsh 启动（带 profile）
   下次跑 `conda init` 会覆盖，届时重新应用（见 `Startup-Optimization.md §8`）。
 - profile 里只保留 `init`；`argc` 已有 Init 接管（部署见 [Argc-Completions-Deploy](Argc-Completions-Deploy.md)），`PSCompletions`/`fnm`/`scoop-search` 也迁到组件清单（默认关，`Enable-CxxuComponent <Id> -Persist` 启用），不再改 profile。
 
-### 启动档位（Minimal/Fast/Balanced）
+### 启动档位（Fast/Balanced）
 
 启动档位决定 `init` 加载到哪一层，适合临时开快速 shell 或让低配机器少加载扩展。档位只控制
 `init` 内的步骤；`$profile` 里的 conda 钩子、终端自身启动参数不在其中。
 
 | 档位 | 保留 | 不加载 |
 |---|---|---|
-| `Minimal` | 核心变量/别名、`Set-PSReadLinesCommon`、prompt（未显式设置 `PsPrompt` 时用 `Simple`） | advanced PSReadLine、`Set-ArgumentCompleter`、`Confirm-EnvVarOfInfo`、PSFzf/zoxide/predictor/CxxuTab、所有可选组件 |
-| `Fast` | `Minimal` 的全部 + advanced PSReadLine + `Argc`/`GitCompletion` 补全 + 默认 `fast` prompt | 体验件（PSFzf/zoxide/predictor/CxxuTab）、`Carapace`、`PSCompletions`/`Fnm`/`ScoopSearch`、`Set-ArgumentCompleter`、`Confirm-EnvVarOfInfo` |
+| `Fast` | 核心变量/别名、`Set-PSReadLinesCommon`/`Set-PSReadLinesAdvanced`、prompt、`Argc`/`GitCompletion` 补全 | 体验件（PSFzf/zoxide/predictor/CxxuTab）与 `Register-PsUxLazyLoad`、`Set-ArgumentCompleter`、`Confirm-EnvVarOfInfo`、`Carapace`、`PSCompletions`/`Fnm`/`ScoopSearch` |
 | `Balanced` | 当前默认的全部步骤与已启用组件 | 无（仍按各组件自身开关） |
+
+`Minimal` 是 `Fast` 的兼容别名：两者步骤表与组件上限一致。旧配置里的 `PsStartupTier=Minimal`
+与 `init -Tier Minimal` 都按 `Fast` 执行，`Set-PsStartupTier Minimal` 会归一化并写入 `Fast`。
 
 ```powershell
 Get-CxxuConfig | Where-Object Key -eq PsStartupTier   # 查看当前档位与来源
 Set-PsStartupTier Fast                                # 当前会话切换
 Set-PsStartupTier Fast -Persist                       # 写入 ~/.cxxu/config.psd1，重开终端后保持
-init -Tier Minimal                                    # 单次初始化指定档位
+init -Tier Fast                                       # 单次初始化指定档位
 Get-CxxuComponent | Select-Object Id, Enabled, TierAllowed, Effective
 ```
 
-- 档位是组件开关的上限：切到 `Minimal` 后单独 `Enable-CxxuComponent Tab` 不会在启动时加载该组件，
-  `Get-CxxuComponent` 的 `TierAllowed` 为 `False`、`Effective` 为 `False`；先切回 `Fast` 或 `Balanced`。
+- 档位是组件开关的上限：`Fast` 下单独 `Enable-CxxuComponent Tab` 不会在启动时加载该组件，
+  `Get-CxxuComponent` 的 `TierAllowed` 为 `False`、`Effective` 为 `False`；先切回 `Balanced`。
 - 当前会话已加载的模块不会卸载；切换后新开终端，或执行 `init -Force` 重新构建步骤表。
-- `PsPrompt`、`PsShowProgress` 的显式设置优先于档位默认值；档位只在它们未设置时提供默认
-  （`Minimal` 默认 `Simple`，`Fast/Minimal` 默认关闭进度条）。
-- 同机实测（pwsh 7.5、含 conda 缓存、新进程三次中位数）：`Minimal`/`Fast` 约 880ms，
-  `Balanced` 约 996ms；具体数值随负载与冷热缓存变化，复测用 `Test-StartupPerformance -Simple`。
+- `PsShowProgress` 是用户设置项：环境变量或配置文件已有值时优先；`Fast` 只在两处都未提供时
+  关闭启动进度条。`New-CxxuConfigTemplate` 会写入 `PsShowProgress = $true`，因此按模板生成过
+  配置的终端仍会显示进度条；需要关闭时改该键为 `$false` 或删掉该行。
+- 同机实测（pwsh 7.5、新进程三次中位数、init 内部口径）：`Fast` 约 438ms，`Balanced` 约 546ms。
+  差额约 110ms，主要来自 `Register-PsUxLazyLoad`（约 48ms）、`Set-ArgumentCompleter`（约 37ms）、
+  `Confirm-EnvVarOfInfo`（约 25ms），加 `Carapace` 与可选组件桩约 10ms；`Set-PsPrompt` 与
+  `Set-PSReadLinesCommon` 两档都要执行。含 conda 与模块导入的进程级口径同样差约 110ms，
+  另有 conda 缓存约 150ms 不受档位影响。具体数值随负载与冷热缓存变化，复测用
+  `Test-StartupPerformance -Simple`。
 - 非法 `PsStartupTier` 值会在 `init` 时警告并按 `Balanced` 处理。
 
 ## 6. FAQ
@@ -140,9 +147,9 @@ Get-CxxuComponent | Select-Object Id, Enabled, TierAllowed, Effective
   还包含 conda 缓存段与 Init 模块导入。两者不是同一口径，后者通常更大；分段对照用
   `Test-StartupPerformance`，口径说明见 [Startup-Optimization](Startup-Optimization.md)
   的「计时口径」。
-- **Fast/Minimal 档位下 Tab 模糊补全、PSFzf、预测或 Carapace 不工作**：档位是组件开关的上限。
+- **Fast 档位下 Tab 模糊补全、PSFzf、预测或 Carapace 不工作**：档位是组件开关的上限。
   先看 `Get-CxxuConfig | Where-Object Key -eq PsStartupTier`；需要这些功能时执行
-  `Set-PsStartupTier Balanced`（或 `Fast` 只恢复 Argc/Git 补全），再新开终端或 `init -Force`。
+  `Set-PsStartupTier Balanced`，再新开终端或 `init -Force`。
 - **嵌套 `pwsh` 又跑一遍 init**：新进程不继承 `$global:PsInit`，只能重跑；
   贵的是 conda + init + 模块发现（见基线表），不是重复 bug。若启动器写成
   `pwsh -noe -c p`，会看到两次 `initing...`（外层 profile 一次、`p` 开的子进程一次）；
