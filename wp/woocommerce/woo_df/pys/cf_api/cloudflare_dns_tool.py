@@ -974,11 +974,23 @@ def parse_add_record_spec(spec: str) -> tuple[str, str, str]:
     """解析 --add-record 参数，兼容 IPv6 内容中的冒号。
 
     支持 name:type:content、name-type-content、空格分隔。中间的 type
-    通过已知类型 token 定位，避免 IPv6 的冒号破坏切分。
+    通过已知类型 token 定位，避免 IPv6 的冒号破坏切分。名称含连字符时
+    优先用冒号分隔，避免把名称片段误判为类型。
     """
     text = (spec or "").strip()
     if not text:
         raise ValueError("记录格式为空")
+    # 名称不允许冒号，内容可能含冒号（IPv6）；先按前两个冒号切分。
+    if ":" in text:
+        name, _, rest = text.partition(":")
+        if ":" in rest:
+            rtype, _, content = rest.partition(":")
+            if (
+                name.strip()
+                and re.fullmatch(r"[A-Za-z]+", rtype.strip())
+                and content.strip()
+            ):
+                return name.strip(), rtype.strip().upper(), content.strip()
     match = re.match(
         r"^(?P<name>.+?)[\s:\-]+(?P<rtype>[A-Za-z]+)[\s:\-]+(?P<content>.+)$",
         text,

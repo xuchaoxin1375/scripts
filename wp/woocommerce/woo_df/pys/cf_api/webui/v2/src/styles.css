@@ -5,7 +5,7 @@
   --surface-3: #eef2f5;
   --ink: #17202a;
   --muted: #5d6977;
-  --muted-2: #7b8794;
+  --muted-2: #68737f;
   --line: #d7dee5;
   --line-strong: #c4ced8;
   --accent: #0f6e8c;
@@ -248,20 +248,21 @@ a {
   width: 264px;
   height: calc(100vh - 52px);
   padding: 14px 12px;
-  overflow: auto;
+  overflow: hidden;
   background: var(--surface);
   border-right: 1px solid var(--line);
 }
 
 .nav-section {
   display: flex;
+  flex: 1 1 0;
   flex-direction: column;
   gap: 7px;
   min-height: 0;
 }
 
 .zones-section {
-  flex: 1;
+  flex: 1 1 0;
 }
 
 .nav-heading {
@@ -310,9 +311,12 @@ a {
 .account-list,
 .zone-list {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 2px;
   min-height: 0;
+  overflow-y: auto;
+  padding-right: 2px;
 }
 
 .account-item,
@@ -366,6 +370,11 @@ a {
   font-size: 10px;
 }
 
+.account-item.selected .account-count,
+.zone-item.selected .zone-status {
+  color: var(--accent-strong);
+}
+
 .zone-dot {
   width: 7px;
   height: 7px;
@@ -408,6 +417,7 @@ a {
 
 .advanced-link {
   display: flex;
+  flex: none;
   align-items: center;
   gap: 8px;
   min-height: 36px;

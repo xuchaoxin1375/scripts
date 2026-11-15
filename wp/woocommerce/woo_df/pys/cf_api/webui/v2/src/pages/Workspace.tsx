@@ -1,5 +1,5 @@
 import { AlertTriangle, Layers, Trash2, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   ActionDraft,
   ActionMode,
@@ -345,6 +345,51 @@ export default function Workspace(props: Props) {
   );
 }
 
+function useDialogFocus(onCancel: () => void) {
+  const ref = useRef<HTMLDivElement>(null);
+  const cancelRef = useRef(onCancel);
+  cancelRef.current = onCancel;
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    const root = ref.current;
+    if (!root) return;
+    const focusables = () =>
+      Array.from(
+        root.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((element) => element.offsetParent !== null);
+    const initial =
+      root.querySelector<HTMLElement>("[data-dialog-initial]") ?? focusables()[0];
+    initial?.focus();
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        cancelRef.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const items = focusables();
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+    root.addEventListener("keydown", onKeyDown);
+    return () => {
+      root.removeEventListener("keydown", onKeyDown);
+      if (previous && document.contains(previous)) previous.focus();
+    };
+  }, []);
+  return ref;
+}
+
 function BulkContentDialog({
   records,
   zone,
@@ -359,6 +404,7 @@ function BulkContentDialog({
   const [content, setContent] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const dialogRef = useDialogFocus(onCancel);
 
   async function submit() {
     if (!content.trim()) {
@@ -379,6 +425,7 @@ function BulkContentDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="bulk-content-title"
+        ref={dialogRef}
         onClick={(event) => event.stopPropagation()}
       >
         <header className="modal-head">
@@ -406,6 +453,7 @@ function BulkContentDialog({
               value={content}
               onChange={(event) => setContent(event.target.value)}
               placeholder="198.51.100.10 或 target.example.net"
+              data-dialog-initial
               autoFocus
             />
           </label>
@@ -446,6 +494,7 @@ function BulkDeleteDialog({
   const [ack, setAck] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const dialogRef = useDialogFocus(onCancel);
 
   async function submit() {
     setBusy(true);
@@ -462,6 +511,7 @@ function BulkDeleteDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="bulk-delete-title"
+        ref={dialogRef}
         onClick={(event) => event.stopPropagation()}
       >
         <header className="modal-head">

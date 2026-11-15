@@ -73,6 +73,53 @@ def _ensure_table(
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {coltype}")
 
 
+def _create_jobs_table(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS jobs_history ("
+        "id TEXT PRIMARY KEY, mode TEXT, status TEXT, label TEXT, accounts TEXT,"
+        " exit_code INTEGER, created_at TEXT, finished_at TEXT)"
+    )
+
+
+def _ensure_jobs_table(conn: sqlite3.Connection) -> None:
+    """迁移旧版以 job_id 为主键的 jobs_history，再补齐当前列。
+
+    旧库把主键命名为 job_id，并在后续版本中增量补过 id/mode 列；这种表
+    无法用 ON CONFLICT(id) 写入。这里重建为当前 schema，并保留历史数据。
+    """
+    rows = conn.execute("PRAGMA table_info(jobs_history)").fetchall()
+    columns = {str(r["name"]) for r in rows}
+    if not columns:
+        _create_jobs_table(conn)
+        return
+    if "job_id" in columns:
+        conn.execute("ALTER TABLE jobs_history RENAME TO jobs_history_old")
+        _create_jobs_table(conn)
+        id_expr = "COALESCE(NULLIF(id, ''), job_id)" if "id" in columns else "job_id"
+        if "mode" in columns and "kind" in columns:
+            mode_expr = "COALESCE(NULLIF(mode, ''), kind)"
+        elif "mode" in columns:
+            mode_expr = "mode"
+        elif "kind" in columns:
+            mode_expr = "kind"
+        else:
+            mode_expr = "''"
+        status_expr = "status" if "status" in columns else "''"
+        label_expr = "label" if "label" in columns else "''"
+        exit_expr = "exit_code" if "exit_code" in columns else "NULL"
+        created_expr = "created_at" if "created_at" in columns else "''"
+        finished_expr = "finished_at" if "finished_at" in columns else "''"
+        conn.execute(
+            "INSERT INTO jobs_history"
+            "(id, mode, status, label, accounts, exit_code, created_at, finished_at)"
+            f" SELECT {id_expr}, {mode_expr}, {status_expr}, {label_expr}, '',"
+            f" {exit_expr}, {created_expr}, {finished_expr} FROM jobs_history_old"
+        )
+        conn.execute("DROP TABLE jobs_history_old")
+        return
+    _ensure_table(conn, "jobs_history", JOBS_COLUMNS)
+
+
 def init_db(config_path: str) -> str:
     """初始化库文件并执行迁移，返回库路径。"""
     global _db_path
@@ -81,7 +128,7 @@ def init_db(config_path: str) -> str:
         conn = _connect()
         try:
             conn.execute("PRAGMA journal_mode=WAL")
-            _ensure_table(conn, "jobs_history", JOBS_COLUMNS)
+            _ensure_jobs_table(conn)
             _ensure_table(conn, "audit_log", AUDIT_COLUMNS)
             conn.commit()
         finally:
@@ -105,7 +152,7 @@ def upsert_history(entry: dict[str, Any]) -> None:
     with _lock:
         conn = _connect()
         try:
-            _ensure_table(conn, "jobs_history", JOBS_COLUMNS)
+            _ensure_jobs_table(conn)
             conn.execute(
                 "INSERT INTO jobs_history(id, mode, status, label, accounts, exit_code, created_at, finished_at)"
                 " VALUES(?,?,?,?,?,?,?,?)"
@@ -133,7 +180,7 @@ def list_history(limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
     with _lock:
         conn = _connect()
         try:
-            _ensure_table(conn, "jobs_history", JOBS_COLUMNS)
+            _ensure_jobs_table(conn)
             rows = conn.execute(
                 "SELECT id, mode, status, label, accounts, exit_code, created_at, finished_at"
                 " FROM jobs_history ORDER BY finished_at DESC LIMIT ? OFFSET ?",
@@ -149,7 +196,7 @@ def count_history() -> int:
     with _lock:
         conn = _connect()
         try:
-            _ensure_table(conn, "jobs_history", JOBS_COLUMNS)
+            _ensure_jobs_table(conn)
             row = conn.execute("SELECT COUNT(*) AS n FROM jobs_history").fetchone()
             return int(row["n"] if row is not None else 0)
         finally:

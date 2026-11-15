@@ -575,6 +575,10 @@ class NormalizeTest(unittest.TestCase):
             tool.parse_add_record_spec("www A 1.2.3.4"),
             ("www", "A", "1.2.3.4"),
         )
+        self.assertEqual(
+            tool.parse_add_record_spec("_webui-accept-185240:TXT:webui-v1"),
+            ("_webui-accept-185240", "TXT", "webui-v1"),
+        )
 
 
 class FailureCsvTest(unittest.TestCase):

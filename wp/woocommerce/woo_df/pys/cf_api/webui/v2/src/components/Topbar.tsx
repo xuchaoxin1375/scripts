@@ -27,6 +27,7 @@ export default function Topbar({
 }: Props) {
   return (
     <header className="topbar">
+      <h1 className="sr-only">Cloudflare DNS 控制台</h1>
       <button className="icon-button menu-button" onClick={onMenu} aria-label="打开导航">
         <PanelLeft size={18} />
       </button>
