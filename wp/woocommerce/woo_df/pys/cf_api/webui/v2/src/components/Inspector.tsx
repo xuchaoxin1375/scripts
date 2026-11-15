@@ -32,9 +32,11 @@ import type {
 import { shortName } from "../shared/names";
 import {
   downloadJobExport,
+  useEmailRoutingAddresses,
   useJobExports,
   useJobLogs,
 } from "../api/hooks";
+import EmailRoutingNotes from "./EmailRoutingNotes";
 
 type Props = {
   tab: InspectorTab;
@@ -426,6 +428,11 @@ function ActionForm({
   const [forwardEmail, setForwardEmail] = useState("");
   const [sslMode, setSslMode] = useState("");
   const [formError, setFormError] = useState("");
+  const addressesQuery = useEmailRoutingAddresses(account, mode === "provision");
+  const forwardTarget =
+    (addressesQuery.data?.items ?? []).find(
+      (item) => item.email.toLowerCase() === forwardEmail.trim().toLowerCase(),
+    ) ?? null;
 
   const card = ACTION_CARDS.find((item) => item.mode === mode);
   const title = card?.title ?? "批量操作";
@@ -677,6 +684,17 @@ function ActionForm({
               onChange={(event) => setForwardEmail(event.target.value)}
               placeholder="admin@example.com"
             />
+            <span className="field-hint">
+              {addressesQuery.isError
+                ? "无法读取目标邮箱验证状态；请到 Cloudflare 控制台确认"
+                : forwardEmail.trim()
+                  ? forwardTarget
+                    ? forwardTarget.verified
+                      ? "目标邮箱已验证"
+                      : "目标邮箱已添加，等待验证"
+                    : "目标邮箱尚未添加；执行时会创建并发送验证邮件"
+                  : "用于 catch-all 转发；建议先在高级页“邮箱转发”面板验证"}
+            </span>
           </Field>
           <Field label="SSL 模式">
             <select
@@ -700,6 +718,15 @@ function ActionForm({
             </div>
           </Field>
           <p className="form-hint">provision 只对当前域名执行；完整流程在高级页配置。</p>
+          {forwardEmail.trim() &&
+            !addressesQuery.isLoading &&
+            !forwardTarget?.verified && (
+            <div className="inline-warning">
+              目标邮箱尚未验证；执行后 MX 会先切换，catch-all
+              不会生效，域名收信可能被拒。建议先在高级页“邮箱转发”面板完成验证。
+            </div>
+          )}
+          <EmailRoutingNotes />
         </>
       )}
 

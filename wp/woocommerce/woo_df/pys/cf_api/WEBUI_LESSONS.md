@@ -102,3 +102,9 @@ provision 全流程（DNS/等激活/邮箱/SSL/安全/加速）、zones `status`
 - 本轮反例：`drafts/draft-b.html` 只有顶栏折叠按钮和静态页脚；v2 按草稿落地时漏掉 fable 外壳的 Rail 悬停/键盘临时展开、页脚收起/展开、Esc、`[` 快捷键和覆盖式槽宽不变。这些项在 v1 的 `TASKS.md` 已有记录，v2 重写时没有回查。
 - 施工前先列 skill 对照清单：外壳状态、时序、键盘/触屏、覆盖与点击稳定、验收脚本；草稿未覆盖的条目默认纳入，不因草稿没画就省略。
 - 验收按 skill 补测：悬停/焦点 peek、Esc、页脚按钮、主内容几何不变、快捷键；只测草稿画出的按钮不算完成。
+
+## 八、异步验证不能当同步配置（2026-11-16）
+
+- Cloudflare Email Routing 的目标地址验证是账号级、异步、邮件送达的：添加地址只触发验证信，未点击前 routing rule 与 catch-all 都不生效。
+- 旧 provision 的顺序是先补 MX/启用路由、再检查目标地址是否已验证；首次配置时 MX 已切到 Cloudflare 而 catch-all 未设，来信会被拒（Address does not exist）。WebUI 应把“先验证目标地址、再启用路由”作为主路径，并在 provision 表单提示未验证风险。
+- 验收覆盖：未添加、待验证、已验证、验证后完成 catch-all、非 Cloudflare MX、zone 非 active，以及 Gmail 垃圾箱与测试信提示；只测“能提交”不算完成。

@@ -100,6 +100,21 @@ class RecordBody(BaseModel):
     priority: Optional[int] = None
 
 
+class EmailRoutingAddressBody(BaseModel):
+    """添加邮箱转发目标。"""
+
+    account: str = ""
+    email: str = ""
+
+
+class EmailRoutingCompleteBody(BaseModel):
+    """验证通过后启用路由并设置 catch-all。"""
+
+    account: str = ""
+    zone: str = ""
+    email: str = ""
+
+
 class BulkDelete(BaseModel):
     account: str = ""
     zone: str = ""

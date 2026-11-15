@@ -186,6 +186,71 @@ export type ApiBulkResult = {
   total: number;
 };
 
+export type ApiEmailRoutingAddress = {
+  id: string;
+  email: string;
+  verified: boolean;
+  created: string;
+  modified: string;
+};
+
+export type ApiEmailRoutingAddresses = {
+  account: string;
+  total: number;
+  items: ApiEmailRoutingAddress[];
+  target?: ApiEmailRoutingAddress | null;
+};
+
+export type ApiEmailRoutingCatchAll = {
+  enabled: boolean;
+  forward_to: string[];
+  name: string;
+};
+
+export type ApiEmailRoutingRequiredRecord = {
+  type: string;
+  name: string;
+  content: string;
+  priority?: number | null;
+};
+
+export type ApiEmailRoutingMxRecord = {
+  name: string;
+  content: string;
+  priority?: number | null;
+};
+
+export type ApiEmailRoutingStatus = {
+  account: string;
+  zone: string;
+  zone_id: string;
+  zone_status: string;
+  routing_enabled: boolean;
+  catch_all: ApiEmailRoutingCatchAll;
+  required_records: ApiEmailRoutingRequiredRecord[];
+  mx_records: ApiEmailRoutingMxRecord[];
+  non_cloudflare_mx: string[];
+  records_error: string;
+};
+
+export type ApiEmailRoutingAddressResult = {
+  account: string;
+  email: string;
+  found: boolean;
+  verified: boolean;
+  created: boolean;
+  message: string;
+};
+
+export type ApiEmailRoutingCompleteResult = {
+  account: string;
+  zone: string;
+  email: string;
+  status: string;
+  message: string;
+  records: string[];
+};
+
 export type ApiJobLogs = {
   job_id: string;
   total: number;

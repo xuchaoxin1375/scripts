@@ -3,8 +3,8 @@
 
 不访问 Cloudflare：所有 /api/v1 请求由 Playwright 用固定 JSON 响应。
 覆盖：记录服务端分页、搜索、预览真实结果、任务详情、单条编辑、批量内容/删除、
-高级页查找/历史/上传、侧栏默认展开/页脚收起/Rail 悬停与键盘临时展开/Esc/快捷键、
-390 窄屏无横滚与零 pageerror。
+高级页查找/历史/上传、邮箱转发目标验证/完成 catch-all、侧栏默认展开/页脚收起/Rail
+悬停与键盘临时展开/Esc/快捷键、390 窄屏无横滚与零 pageerror。
 """
 
 from __future__ import annotations
@@ -200,6 +200,50 @@ META = {
     "config_path": "C:/Users/Administrator/Desktop/deploy_configs/cf_config.csv",
     "proxy": {"mode": "", "count": 0},
 }
+EMAIL_ADDRESSES = [
+    {
+        "id": "a1",
+        "email": "owner@gmail.com",
+        "verified": True,
+        "created": "",
+        "modified": "",
+    },
+    {
+        "id": "a2",
+        "email": "pending@example.net",
+        "verified": False,
+        "created": "",
+        "modified": "",
+    },
+]
+EMAIL_STATUS = {
+    "zone": "example.com",
+    "zone_id": "z1",
+    "zone_status": "active",
+    "routing_enabled": True,
+    "catch_all": {
+        "enabled": False,
+        "forward_to": [],
+        "name": "catch-all",
+    },
+    "required_records": [
+        {
+            "type": "MX",
+            "name": "example.com",
+            "content": "route1.mx.cloudflare.net",
+            "priority": 10,
+        }
+    ],
+    "mx_records": [
+        {
+            "name": "example.com",
+            "content": "route1.mx.cloudflare.net",
+            "priority": 10,
+        }
+    ],
+    "non_cloudflare_mx": [],
+    "records_error": "",
+}
 
 
 def free_port() -> int:
@@ -248,6 +292,14 @@ def main() -> None:
         stderr=subprocess.DEVNULL,
     )
     errors: list[str] = []
+    email_addresses = [dict(item) for item in EMAIL_ADDRESSES]
+    email_status = {
+        **EMAIL_STATUS,
+        "catch_all": {
+            **EMAIL_STATUS["catch_all"],
+            "forward_to": list(EMAIL_STATUS["catch_all"]["forward_to"]),
+        },
+    }
     data_requests: list[tuple[str, str]] = []
     job_posts: list[dict] = []
 
@@ -293,6 +345,83 @@ def main() -> None:
                     "total": 1,
                 }
             )
+        elif path.endswith("/api/v1/email-routing/addresses") and method == "GET":
+            account_name = query.get("account", [""])[0]
+            wanted = query.get("email", [""])[0].strip().lower()
+            target = next(
+                (
+                    item
+                    for item in email_addresses
+                    if item["email"].lower() == wanted
+                ),
+                None,
+            )
+            body = {
+                "account": account_name,
+                "total": len(email_addresses),
+                "items": email_addresses,
+                "target": target,
+            }
+        elif path.endswith("/api/v1/email-routing/status"):
+            body = {
+                **email_status,
+                "account": query.get("account", [""])[0],
+                "zone": query.get("zone", ["example.com"])[0],
+            }
+        elif path.endswith("/api/v1/email-routing/addresses") and method == "POST":
+            payload = json.loads(request.post_data or "{}")
+            account_name = str(payload.get("account", ""))
+            wanted = str(payload.get("email", "")).strip().lower()
+            existing = next(
+                (
+                    item
+                    for item in email_addresses
+                    if item["email"].lower() == wanted
+                ),
+                None,
+            )
+            if existing is not None:
+                body = {
+                    "account": account_name,
+                    "email": wanted,
+                    "found": True,
+                    "verified": bool(existing["verified"]),
+                    "created": False,
+                    "message": "目标邮箱已存在；请检查验证状态。",
+                }
+            else:
+                item = {
+                    "id": f"a{len(email_addresses) + 1}",
+                    "email": wanted,
+                    "verified": False,
+                    "created": "",
+                    "modified": "",
+                }
+                email_addresses.append(item)
+                body = {
+                    "account": account_name,
+                    "email": wanted,
+                    "found": True,
+                    "verified": False,
+                    "created": True,
+                    "message": "已添加目标邮箱，Cloudflare 已发送验证邮件。",
+                }
+        elif path.endswith("/api/v1/email-routing/complete"):
+            payload = json.loads(request.post_data or "{}")
+            target_email = str(payload.get("email", ""))
+            email_status["catch_all"] = {
+                "enabled": True,
+                "forward_to": [target_email],
+                "name": "catch-all",
+            }
+            body = {
+                "account": str(payload.get("account", "")),
+                "zone": str(payload.get("zone", "")),
+                "email": target_email,
+                "status": "ok",
+                "message": f"邮箱转发已配置到 {target_email}",
+                "records": ["MX example.com: ok"],
+            }
         elif path.endswith("/api/v1/jobs") and method == "GET":
             body = {"jobs": [JOB, PREVIEW_JOB]}
         elif path.endswith("/api/v1/jobs") and method == "POST":
@@ -640,6 +769,44 @@ def main() -> None:
             page.get_by_role("button", name="查找", exact=True).click()
             page.wait_for_selector("text=命中 1 个账号", timeout=10_000)
             page.screenshot(path=os.path.join(shots, "advanced_1440.png"), full_page=True)
+
+            email_panel = page.locator("section.panel").filter(
+                has_text="邮箱转发（Email Routing）"
+            )
+            email_panel.get_by_text("邮箱转发注意事项（首次配置必看）").click()
+            if not email_panel.get_by_text("目标邮箱必须先验证").is_visible():
+                raise AssertionError("邮箱转发注意事项未展开")
+            email_panel.get_by_placeholder("you@gmail.com").fill("owner@gmail.com")
+            if not email_panel.get_by_text(
+                "目标邮箱已验证，可以完成 catch-all 配置。"
+            ).is_visible():
+                raise AssertionError("已验证目标邮箱未显示可完成状态")
+            email_panel.get_by_role("button", name="验证后完成配置").click()
+            page.wait_for_selector("text=邮箱转发已配置到 owner@gmail.com", timeout=10_000)
+            email_panel.get_by_placeholder("you@gmail.com").fill("new@gmail.com")
+            email_panel.get_by_role("button", name="添加并发送验证").click()
+            page.wait_for_selector("text=已添加目标邮箱，Cloudflare 已发送验证邮件", timeout=10_000)
+            if not email_panel.get_by_text(
+                "目标邮箱已添加，等待验证；请检查收件箱和垃圾箱。"
+            ).is_visible():
+                raise AssertionError("新目标邮箱未显示待验证状态")
+            provision_panel = page.locator("section.panel").filter(
+                has_text="域名配置向导"
+            )
+            provision_panel.get_by_placeholder("admin@example.com").fill("new@gmail.com")
+            if not provision_panel.get_by_text("目标邮箱尚未验证").is_visible():
+                raise AssertionError("provision 未提示目标邮箱未验证")
+            if not any(
+                path.endswith("/api/v1/email-routing/complete")
+                for _method, path in data_requests
+            ):
+                raise AssertionError("未提交邮箱转发完成请求")
+            email_panel.scroll_into_view_if_needed()
+            page.wait_for_timeout(120)
+            page.screenshot(path=os.path.join(shots, "email_routing_view_1440.png"))
+            page.screenshot(
+                path=os.path.join(shots, "email_routing_1440.png"), full_page=True
+            )
 
             file_input = page.locator(".drop-zone input[type=file]").first
             with tempfile.NamedTemporaryFile(

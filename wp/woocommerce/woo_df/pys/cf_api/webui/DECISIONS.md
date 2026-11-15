@@ -17,3 +17,10 @@
 - 决定：设计草稿只用于确认布局、信息架构与交互方向，不作实现目标；正式实现按 `admin-console-design` 的完整状态模型与验收底线补齐。
 - 为什么：`drafts/draft-b.html` 只有顶栏折叠按钮和静态页脚，v2 按草稿落地时漏掉 fable 外壳的 Rail 悬停/键盘临时展开、页脚收起/展开、Esc、`[` 快捷键与覆盖式槽宽不变；这些项在 v1 的 `TASKS.md` 已有记录，重写时没有回查。
 - 后果：施工前列 skill 对照清单，草稿未覆盖的条目默认纳入；验收补测悬停/焦点 peek、Esc、页脚按钮、主内容几何不变与快捷键，只测草稿画出的按钮不算完成。
+
+## 2026-11-16 邮箱转发先验证再启用
+
+- 决定：Cloudflare Email Routing 按“先添加并验证目标地址、再启用路由并设置 catch-all”实现；目标地址按账号共享，验证一次可复用到同账号其他域名。
+- 为什么：目标地址验证是异步邮件步骤；未验证就切 MX，catch-all 不会生效，来信会被 Cloudflare 拒绝（Address does not exist），已有邮箱可能中断。
+- 范围：WebUI 只配置 catch-all；按前缀的 routing rule、重发验证邮件、删除目标地址仍在 Cloudflare 控制台。provision 表单在目标邮箱未验证时给出中断风险提示，本轮不调整引擎既有执行顺序。
+- 后果：新增 `/api/v1/email-routing/addresses`、`status`、`complete` 契约与目标地址状态面板；真实账号首次使用需 API Token 具备 Email Routing Addresses / Rules / Settings 权限，并先在目标邮箱完成验证。

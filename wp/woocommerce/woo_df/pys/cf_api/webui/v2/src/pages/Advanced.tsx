@@ -28,6 +28,7 @@ import {
   downloadRecordsJson,
   downloadZoneCsv,
   useAudit,
+  useEmailRoutingAddresses,
   useExecuteJob,
   useFindDomain,
   useHistory,
@@ -39,6 +40,8 @@ import {
   useUploadResume,
   useUploadWhitelist,
 } from "../api/hooks";
+import EmailRoutingNotes from "../components/EmailRoutingNotes";
+import EmailRoutingPanel from "../components/EmailRoutingPanel";
 
 type Props = {
   accounts: Account[];
@@ -91,7 +94,7 @@ export default function Advanced({
       <header className="page-head">
         <span className="eyebrow">ADVANCED</span>
         <h1>高级</h1>
-        <p>低频能力集中在这里：跨账号查找、配置向导、导入导出、范围附件与历史审计。</p>
+        <p>低频能力集中在这里：跨账号查找、配置向导、邮箱转发、导入导出、范围附件与历史审计。</p>
       </header>
 
       <div className="advanced-context">
@@ -117,6 +120,12 @@ export default function Advanced({
           defaultZone={zone}
           runtime={runtime}
           onOpenJob={onOpenJob}
+          onNotify={onNotify}
+        />
+        <EmailRoutingPanel
+          accounts={accounts}
+          defaultAccount={account}
+          defaultZone={zone}
           onNotify={onNotify}
         />
         <TransferPanel
@@ -309,6 +318,22 @@ function ProvisionPanel({
   const execute = useExecuteJob();
   const jobQuery = useJob(jobId);
   const job = jobQuery.data ?? null;
+  const addressesQuery = useEmailRoutingAddresses(account);
+  const forwardTarget = useMemo(() => {
+    const wanted = forwardEmail.trim().toLowerCase();
+    if (!wanted) return null;
+    return (
+      (addressesQuery.data?.items ?? []).find(
+        (item) => item.email.toLowerCase() === wanted,
+      ) ?? null
+    );
+  }, [addressesQuery.data, forwardEmail]);
+  const forwardNeedsVerification = Boolean(
+    steps.email &&
+      forwardEmail.trim() &&
+      !addressesQuery.isLoading &&
+      !forwardTarget?.verified,
+  );
 
   useEffect(() => {
     if (!account && defaultAccount) setAccount(defaultAccount);
@@ -440,8 +465,26 @@ function ProvisionPanel({
             onChange={(event) => setForwardEmail(event.target.value)}
             placeholder="admin@example.com"
           />
+          <span className="field-hint">
+            {addressesQuery.isError
+              ? "无法读取目标邮箱验证状态；请到 Cloudflare 控制台确认"
+              : forwardEmail.trim()
+                ? forwardTarget
+                  ? forwardTarget.verified
+                    ? "目标邮箱已验证"
+                    : "目标邮箱已添加，等待验证"
+                  : "目标邮箱尚未添加；执行时会创建并发送验证邮件"
+                : "用于 catch-all 转发；建议先在本页下方完成目标邮箱验证"}
+          </span>
         </label>
       </div>
+      {forwardNeedsVerification && (
+        <div className="inline-warning">
+          目标邮箱尚未验证：执行后 Cloudflare MX 会先切换，catch-all
+          不会生效，域名收信可能被拒。建议先在下方“邮箱转发”面板完成验证，再执行带“邮箱”步骤的配置。
+        </div>
+      )}
+      <EmailRoutingNotes />
       <div className="step-toggle-row">
         {(
           [

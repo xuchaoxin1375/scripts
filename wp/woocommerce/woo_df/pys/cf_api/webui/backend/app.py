@@ -12,7 +12,16 @@ import os
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 
-from .routers import find, history, jobs, meta, records, uploads, zones
+from .routers import (
+    email_routing,
+    find,
+    history,
+    jobs,
+    meta,
+    records,
+    uploads,
+    zones,
+)
 
 
 def create_app(frontend: str = "") -> FastAPI:
@@ -22,6 +31,7 @@ def create_app(frontend: str = "") -> FastAPI:
     app.include_router(meta.router)
     app.include_router(zones.router)
     app.include_router(records.router)
+    app.include_router(email_routing.router)
     app.include_router(find.router)
     app.include_router(jobs.router)
     app.include_router(uploads.router)

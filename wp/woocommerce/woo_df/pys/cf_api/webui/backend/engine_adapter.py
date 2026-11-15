@@ -212,3 +212,90 @@ def create_record_full(
     return updater._request(  # noqa: SLF001 - 适配层复用引擎传输能力
         "POST", f"/zones/{zone_id}/dns_records", json=body
     )
+
+
+def list_email_routing_addresses(updater: Any) -> list[dict[str, Any]]:
+    """读取账号级邮箱转发目标，分页取回并归一化验证状态。"""
+    try:
+        account_id = updater.get_account_id()
+    except Exception as exc:  # noqa: BLE001 - 统一转成 Web 可展示错误
+        raise EngineError(f"无法获取账号 ID: {exc}") from exc
+    if not account_id:
+        raise EngineError("无法获取账号 ID，不能读取邮箱转发目标")
+    try:
+        raw_items: list[Any] = []
+        page = 1
+        while True:
+            data = updater._request(  # noqa: SLF001 - 适配层复用引擎传输能力
+                "GET",
+                f"/accounts/{account_id}/email/routing/addresses",
+                params={"page": page, "per_page": 50},
+            )
+            batch = data.get("result", []) if isinstance(data, dict) else []
+            if not isinstance(batch, list) or not batch:
+                break
+            raw_items.extend(batch)
+            info = data.get("result_info", {}) if isinstance(data, dict) else {}
+            if not isinstance(info, dict):
+                info = {}
+            total_pages = int(info.get("total_pages", 1) or 1)
+            if page >= total_pages or page >= 4:
+                break
+            page += 1
+    except Exception as exc:  # noqa: BLE001
+        raise EngineError(f"读取邮箱转发目标失败: {exc}") from exc
+    rows: list[dict[str, Any]] = []
+    for item in raw_items:
+        if isinstance(item, str):
+            rows.append(
+                {
+                    "id": "",
+                    "email": item,
+                    "verified": False,
+                    "created": "",
+                    "modified": "",
+                }
+            )
+            continue
+        if not isinstance(item, dict):
+            continue
+        email = str(item.get("email") or "").strip()
+        if not email:
+            continue
+        rows.append(
+            {
+                "id": str(item.get("id") or item.get("tag") or ""),
+                "email": email,
+                "verified": bool(item.get("verified")),
+                "created": str(item.get("created") or ""),
+                "modified": str(item.get("modified") or ""),
+            }
+        )
+    return rows
+
+
+def get_email_routing_catch_all(updater: Any, zone_id: str) -> dict[str, Any]:
+    """读取 zone 的 catch-all 规则；未配置或无权读取时返回空状态。"""
+    try:
+        data = updater._request(  # noqa: SLF001 - 适配层复用引擎传输能力
+            "GET", f"/zones/{zone_id}/email/routing/rules/catch_all"
+        )
+    except Exception:  # noqa: BLE001 - 未配置时 Cloudflare 可能返回 404
+        return {"enabled": False, "forward_to": [], "name": ""}
+    result = data.get("result", {}) if isinstance(data, dict) else {}
+    if not isinstance(result, dict):
+        return {"enabled": False, "forward_to": [], "name": ""}
+    forward_to: list[str] = []
+    for action in result.get("actions") or []:
+        if not isinstance(action, dict) or action.get("type") != "forward":
+            continue
+        value = action.get("value")
+        if isinstance(value, list):
+            forward_to.extend(str(item) for item in value if item)
+        elif isinstance(value, str) and value:
+            forward_to.append(value)
+    return {
+        "enabled": bool(result.get("enabled")),
+        "forward_to": forward_to,
+        "name": str(result.get("name") or ""),
+    }

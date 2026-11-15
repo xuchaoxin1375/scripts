@@ -32,6 +32,10 @@ import type {
   ApiAccount,
   ApiAuditRow,
   ApiBulkResult,
+  ApiEmailRoutingAddressResult,
+  ApiEmailRoutingAddresses,
+  ApiEmailRoutingCompleteResult,
+  ApiEmailRoutingStatus,
   ApiFindResponse,
   ApiHistoryRow,
   ApiImportItem,
@@ -51,6 +55,23 @@ import type {
 } from "./types";
 
 const ZONE_MAX_ITEMS = 3000;
+
+const MOCK_EMAIL_ADDRESSES = [
+  {
+    id: "a1",
+    email: "owner@gmail.com",
+    verified: true,
+    created: "",
+    modified: "",
+  },
+  {
+    id: "a2",
+    email: "pending@example.net",
+    verified: false,
+    created: "",
+    modified: "",
+  },
+];
 
 function mapAccount(item: ApiAccount): Account {
   return {
@@ -313,6 +334,138 @@ export function useZones(account: string) {
     },
     enabled: Boolean(account),
     staleTime: 60_000,
+  });
+}
+
+export function useEmailRoutingAddresses(account: string, enabled = true) {
+  return useQuery({
+    queryKey: ["email-routing-addresses", account] as const,
+    queryFn: async ({ signal }): Promise<ApiEmailRoutingAddresses> => {
+      if (!account) return { account: "", total: 0, items: [] };
+      if (USE_MOCK) {
+        return {
+          account,
+          total: MOCK_EMAIL_ADDRESSES.length,
+          items: MOCK_EMAIL_ADDRESSES,
+        };
+      }
+      return apiGet<ApiEmailRoutingAddresses>(
+        `/api/v1/email-routing/addresses?account=${encodeURIComponent(account)}`,
+        { signal, timeoutMs: 60_000 },
+      );
+    },
+    enabled: Boolean(account) && enabled,
+    staleTime: 15_000,
+  });
+}
+
+export function useEmailRoutingStatus(account: string, zone: string) {
+  return useQuery({
+    queryKey: ["email-routing-status", account, zone] as const,
+    queryFn: async ({ signal }): Promise<ApiEmailRoutingStatus> => {
+      if (USE_MOCK) {
+        return {
+          account,
+          zone,
+          zone_id: "z1",
+          zone_status: "active",
+          routing_enabled: true,
+          catch_all: {
+            enabled: true,
+            forward_to: ["owner@gmail.com"],
+            name: "catch-all",
+          },
+          required_records: [
+            {
+              type: "MX",
+              name: zone,
+              content: "route1.mx.cloudflare.net",
+              priority: 10,
+            },
+          ],
+          mx_records: [
+            {
+              name: zone,
+              content: "route1.mx.cloudflare.net",
+              priority: 10,
+            },
+          ],
+          non_cloudflare_mx: [],
+          records_error: "",
+        };
+      }
+      return apiGet<ApiEmailRoutingStatus>(
+        `/api/v1/email-routing/status?account=${encodeURIComponent(account)}&zone=${encodeURIComponent(zone)}`,
+        { signal, timeoutMs: 60_000 },
+      );
+    },
+    enabled: Boolean(account && zone),
+    staleTime: 15_000,
+  });
+}
+
+export function useAddEmailRoutingAddress() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: {
+      account: string;
+      email: string;
+    }): Promise<ApiEmailRoutingAddressResult> => {
+      if (USE_MOCK) {
+        return {
+          account: payload.account,
+          email: payload.email,
+          found: true,
+          verified: false,
+          created: true,
+          message: "已添加目标邮箱，Cloudflare 已发送验证邮件。",
+        };
+      }
+      return apiPost<ApiEmailRoutingAddressResult>(
+        "/api/v1/email-routing/addresses",
+        payload,
+      );
+    },
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: ["email-routing-addresses", variables.account],
+      });
+    },
+  });
+}
+
+export function useCompleteEmailRouting() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: {
+      account: string;
+      zone: string;
+      email: string;
+    }): Promise<ApiEmailRoutingCompleteResult> => {
+      if (USE_MOCK) {
+        return {
+          account: payload.account,
+          zone: payload.zone,
+          email: payload.email,
+          status: "ok",
+          message: `邮箱转发已配置到 ${payload.email}`,
+          records: ["MX: ok"],
+        };
+      }
+      return apiPost<ApiEmailRoutingCompleteResult>(
+        "/api/v1/email-routing/complete",
+        payload,
+        { timeoutMs: 120_000 },
+      );
+    },
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: ["email-routing-status", variables.account, variables.zone],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["email-routing-addresses", variables.account],
+      });
+    },
   });
 }
 

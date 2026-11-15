@@ -70,7 +70,27 @@ flowchart TD
 - 选中记录或直接点“批量操作”，填写参数后先提交预览任务；预览面板读取任务真实结果，确认后“执行变更”。
 - 任务页签里可看进度、原始日志、失败清单、异常 CSV、失败域重跑、执行预览、导出文件。
 - 1023px 以下记录表转卡片，1024px 及以上保留表格；页面无横向滚动。
-- 高级页已接：跨账号查找、provision 预览/执行、JSON 导入预检/写入、记录 JSON / zone CSV 导出、服务器导出任务、白名单/重跑清单上传、任务历史与审计、运行参数。
+- 高级页已接：跨账号查找、provision 预览/执行、邮箱转发、JSON 导入预检/写入、记录 JSON / zone CSV 导出、服务器导出任务、白名单/重跑清单上传、任务历史与审计、运行参数。
+
+### 邮箱转发（Email Routing）
+
+在高级页“邮箱转发（Email Routing）”面板：
+
+1. 选择账号和域名，填写目标邮箱（例如 Gmail）。
+2. 点“添加并发送验证”；Cloudflare 会向目标邮箱发验证邮件。目标地址是账号级的，验证一次可复用到同账号其他域名。
+3. 到目标邮箱（含垃圾箱）点 “Verify email address”，回到面板点“刷新状态”。
+4. 目标邮箱显示“已验证”后，点“验证后完成配置”；面板会启用路由并设置 catch-all。
+5. 从另一个邮箱发到 `test@你的域名`，检查目标邮箱收件箱和垃圾箱；不要用同一个 Gmail 自发。
+
+注意：
+
+- 新账号的第一个域名同样要验证目标邮箱；新账号本身的邮箱验证是另一件事，不能替代目标地址验证。
+- 域名必须使用 Cloudflare DNS 且已激活；已有其他 MX（Google Workspace、企业邮箱）会冲突，启用 Email Routing 会替换 MX，先确认原邮箱是否保留。
+- 未验证前不要执行带“邮箱”步骤的 provision：MX 会先切换，但 catch-all 不生效，来信可能被拒（Address does not exist）。
+- 本页只配置 catch-all；只想收指定前缀（如 `info@`）时到 Cloudflare 控制台建具体 routing rule。
+- 验证邮件没收到，到 Cloudflare 控制台 `Email Service > Email Routing > Destination Addresses` 重发；WebUI 负责添加、刷新状态和验证后完成配置。
+- API Token 需要 Email Routing Addresses / Rules / Settings 权限；权限不足会报 403。
+- 限制：目标地址 200 个/账号、规则 200 条/域名、单封 25 MiB。
 
 启动（与旧版对比，建议单独端口）：
 

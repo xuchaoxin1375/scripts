@@ -67,7 +67,9 @@ Windows PowerShell 设置 mock：`$env:VITE_USE_MOCK='true'; npm run dev`。
 - `src/components/RecordDialogs.tsx`：单条编辑弹窗与新增记录预览弹窗。
 - `src/components/ScopeBar.tsx`：页头、范围条、附件与刷新。
 - `src/components/RecordsTable.tsx`：服务端分页表格与 1023px 以下记录卡片。
-- `src/pages/Advanced.tsx`：跨账号查找、provision、导入导出、范围附件、历史审计。
+- `src/components/EmailRoutingPanel.tsx`：邮箱转发目标添加/验证状态、刷新、验证后启用路由并设置 catch-all。
+- `src/components/EmailRoutingNotes.tsx`：展开式邮箱转发注意事项（验证、Gmail、MX 冲突、限制）。
+- `src/pages/Advanced.tsx`：跨账号查找、provision、邮箱转发、导入导出、范围附件、历史审计。
 - `src/api/`：`client.ts` 请求/取消/下载，`hooks.ts` TanStack Query hooks，`types.ts` API 形状。
 - `src/shared/actions.ts`：动作任务 payload 组装。
 - `src/shared/runtime.ts`：本机运行参数读取/保存。
@@ -81,5 +83,13 @@ python webui/v2/tests/browser_accept.py
 
 测试启动真实 FastAPI 静态托管，用 Playwright 拦截 `/api/v1` 返回固定 JSON；
 不访问 Cloudflare。覆盖记录分页、资源切换、侧栏默认展开/页脚收起/Rail 悬停与键盘临时展开/Esc/快捷键、
-新增与编辑弹窗焦点、批量抽屉真实预览、任务详情与日志、批量内容/删除、高级页查找/历史/上传，
-1440/1024/768/390 无页面横滚、390 侧栏与抽屉、零 pageerror。
+新增与编辑弹窗焦点、批量抽屉真实预览、任务详情与日志、批量内容/删除、高级页查找/历史/上传、
+邮箱转发目标验证与完成 catch-all，1440/1024/768/390 无页面横滚、390 侧栏与抽屉、零 pageerror。
+
+## 邮箱转发限制
+
+- 本页只配置 catch-all（`*@domain` 全部转发到一个目标邮箱）；按前缀的 routing rule 仍在 Cloudflare 控制台配置。
+- 目标邮箱验证由 Cloudflare 发送邮件，必须到收件箱点击；WebUI 只负责添加、刷新状态和验证后完成配置。
+- 验证邮件重发、目标地址删除在 Cloudflare 控制台 `Email Service > Email Routing > Destination Addresses` 操作。
+- API Token 需要 Email Routing Addresses / Rules / Settings 权限；权限不足时接口返回 403。
+- 域名必须使用 Cloudflare DNS 且已激活；已有其他 MX 时先确认是否保留原邮箱，避免启用后中断收信。
