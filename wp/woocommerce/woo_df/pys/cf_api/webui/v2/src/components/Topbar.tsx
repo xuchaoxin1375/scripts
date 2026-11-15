@@ -2,8 +2,6 @@ import {
   Activity,
   Menu,
   Moon,
-  PanelLeftClose,
-  PanelLeftOpen,
   ShieldCheck,
   Sun,
 } from "lucide-react";
@@ -14,8 +12,6 @@ type Props = {
   theme: "light" | "dark";
   onToggleTheme: () => void;
   onMenu: () => void;
-  onRailToggle: () => void;
-  rail: boolean;
   onTasks: () => void;
   runningJobs: number;
   proxyCount?: number;
@@ -26,8 +22,6 @@ export default function Topbar({
   theme,
   onToggleTheme,
   onMenu,
-  onRailToggle,
-  rail,
   onTasks,
   runningJobs,
   proxyCount,
@@ -69,20 +63,6 @@ export default function Topbar({
         <ShieldCheck size={14} aria-hidden="true" />
         代理 {proxyCount ?? 0}
       </span>
-      <button
-        type="button"
-        className="icon-button rail-toggle"
-        onClick={onRailToggle}
-        aria-label={rail ? "展开侧栏" : "收起侧栏"}
-        aria-pressed={rail}
-        title={rail ? "展开侧栏" : "收起侧栏"}
-      >
-        {rail ? (
-          <PanelLeftOpen size={18} aria-hidden="true" />
-        ) : (
-          <PanelLeftClose size={18} aria-hidden="true" />
-        )}
-      </button>
       <button
         type="button"
         className="icon-button"

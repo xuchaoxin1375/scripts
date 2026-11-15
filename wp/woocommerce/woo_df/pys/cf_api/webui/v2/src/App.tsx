@@ -75,9 +75,11 @@ export default function App() {
   });
   const [navOpen, setNavOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [rail, setRail] = useState(() => {
-    const saved = localStorage.getItem("cfv2-sidebar-rail");
-    return saved === null ? true : saved === "1";
+  const [sidebarPinned, setSidebarPinned] = useState(() => {
+    const saved = localStorage.getItem("cfv2-sidebar-pinned");
+    if (saved !== null) return saved === "1";
+    const legacy = localStorage.getItem("cfv2-sidebar-rail");
+    return legacy === null ? true : legacy !== "1";
   });
   const [account, setAccount] = useState("");
   const [zone, setZone] = useState("");
@@ -143,8 +145,8 @@ export default function App() {
   }, [theme]);
 
   useEffect(() => {
-    localStorage.setItem("cfv2-sidebar-rail", rail ? "1" : "0");
-  }, [rail]);
+    localStorage.setItem("cfv2-sidebar-pinned", sidebarPinned ? "1" : "0");
+  }, [sidebarPinned]);
 
   useEffect(() => {
     setNavOpen(false);
@@ -497,9 +499,11 @@ export default function App() {
 
   return (
     <div
-      className={`app ${rail ? "rail" : ""} ${navOpen ? "nav-open" : ""} ${
-        drawerOpen ? "drawer-open" : ""
-      } ${selected.size > 0 ? "has-bulk" : ""}`}
+      className={`app ${sidebarPinned ? "" : "rail"} ${
+        navOpen ? "nav-open" : ""
+      } ${drawerOpen ? "drawer-open" : ""} ${
+        selected.size > 0 ? "has-bulk" : ""
+      }`}
     >
       <a
         className="skip-link"
@@ -519,8 +523,6 @@ export default function App() {
           setNavOpen((open) => !open);
           setDrawerOpen(false);
         }}
-        onRailToggle={() => setRail((value) => !value)}
-        rail={rail}
         onTasks={openTasks}
         runningJobs={runningJobs}
         proxyCount={metaQuery.data?.proxy.count}
@@ -551,6 +553,8 @@ export default function App() {
         recordCount={workspaceActive ? recordPage.total : undefined}
         configPath={metaQuery.data?.config_path}
         proxyCount={metaQuery.data?.proxy.count}
+        pinned={sidebarPinned}
+        onPinnedChange={setSidebarPinned}
       />
 
       <main className="main" id="main" tabIndex={-1}>

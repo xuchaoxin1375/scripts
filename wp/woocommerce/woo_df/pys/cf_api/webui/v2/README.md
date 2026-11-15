@@ -60,7 +60,7 @@ Windows PowerShell 设置 mock：`$env:VITE_USE_MOCK='true'; npm run dev`。
 ## 结构
 
 - `src/App.tsx`：账号/域名范围、记录与任务状态、侧栏/抽屉/弹窗编排。
-- `src/components/Sidebar.tsx`：全局导航（桌面 Rail/展开，窄屏抽屉）。
+- `src/components/Sidebar.tsx`：全局导航（桌面默认展开 264，页脚按钮收起为 Rail 64；Rail 悬停/键盘进入临时展开，只覆盖不推挤主内容；窄屏抽屉）。
 - `src/components/ResourceSwitcher.tsx`：顶栏账号/域名切换、搜索、加载与重试。
 - `src/components/OperationsDrawer.tsx`：右侧批量抽屉、操作/任务页签、焦点与遮罩。
 - `src/components/Inspector.tsx`：动作选择、参数、真实 Diff 预览、任务详情。
@@ -80,6 +80,6 @@ python webui/v2/tests/browser_accept.py
 ```
 
 测试启动真实 FastAPI 静态托管，用 Playwright 拦截 `/api/v1` 返回固定 JSON；
-不访问 Cloudflare。覆盖记录分页、资源切换、Rail 展开/收起、新增与编辑弹窗焦点、
-批量抽屉真实预览、任务详情与日志、批量内容/删除、高级页查找/历史/上传，
+不访问 Cloudflare。覆盖记录分页、资源切换、侧栏默认展开/页脚收起/Rail 悬停与键盘临时展开/Esc/快捷键、
+新增与编辑弹窗焦点、批量抽屉真实预览、任务详情与日志、批量内容/删除、高级页查找/历史/上传，
 1440/1024/768/390 无页面横滚、390 侧栏与抽屉、零 pageerror。

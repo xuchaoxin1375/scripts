@@ -3,7 +3,8 @@
 
 不访问 Cloudflare：所有 /api/v1 请求由 Playwright 用固定 JSON 响应。
 覆盖：记录服务端分页、搜索、预览真实结果、任务详情、单条编辑、批量内容/删除、
-高级页查找/历史/上传、390 窄屏无横滚与零 pageerror。
+高级页查找/历史/上传、侧栏默认展开/页脚收起/Rail 悬停与键盘临时展开/Esc/快捷键、
+390 窄屏无横滚与零 pageerror。
 """
 
 from __future__ import annotations
@@ -382,8 +383,16 @@ def main() -> None:
             )
             if page.locator(".sidebar .nav-link").count() < 3:
                 raise AssertionError("全局侧栏导航项数量不符合预期")
-            if page.locator(".app.rail").count() != 1:
-                raise AssertionError("侧栏未按方案 B 默认 Rail")
+            if page.locator(".app.rail").count() != 0:
+                raise AssertionError("桌面首次访问侧栏应默认展开")
+            if page.get_by_role("button", name="展开侧栏").count() != 0:
+                raise AssertionError("顶栏不应保留重复的侧栏折叠按钮")
+            expanded_width = page.locator(".sidebar").evaluate(
+                "el => Math.round(el.getBoundingClientRect().width)"
+            )
+            if expanded_width < 240:
+                raise AssertionError(f"桌面展开侧栏宽度异常: {expanded_width}")
+            page.screenshot(path=os.path.join(shots, "sidebar_expanded_1440.png"))
             page.keyboard.press("Tab")
             if not page.evaluate(
                 "document.activeElement?.classList.contains('skip-link')"
@@ -413,14 +422,94 @@ def main() -> None:
             page.screenshot(path=os.path.join(shots, "workspace_dark_1440.png"))
             page.get_by_role("button", name="切换到浅色主题").click()
 
-            page.get_by_role("button", name="展开侧栏").click()
-            page.wait_for_timeout(240)
-            if page.locator(".app.rail").count() != 0:
-                raise AssertionError("展开侧栏失败")
-            page.get_by_role("button", name="收起侧栏").click()
-            page.wait_for_timeout(240)
+            page.get_by_role("button", name="收起侧栏").click(
+                position={"x": 18, "y": 19}
+            )
+            page.wait_for_timeout(320)
             if page.locator(".app.rail").count() != 1:
-                raise AssertionError("收起侧栏失败")
+                raise AssertionError("页脚收起侧栏失败")
+            if page.locator(".sidebar").get_attribute("data-state") != "rail":
+                raise AssertionError("手动收起后指针仍在 Rail 上，却立即弹回")
+            rail_main_left = page.locator(".main").bounding_box()["x"]
+            rail_width = page.locator(".sidebar").evaluate(
+                "el => Math.round(el.getBoundingClientRect().width)"
+            )
+            if rail_width > 80:
+                raise AssertionError(f"Rail 宽度异常: {rail_width}")
+            page.screenshot(path=os.path.join(shots, "sidebar_rail_1440.png"))
+            collapse_metrics = page.locator(".sidebar-collapse").evaluate(
+                """el => ({
+                  h: Math.round(el.getBoundingClientRect().height),
+                  icon: Math.round(el.querySelector('svg').getBoundingClientRect().width),
+                })"""
+            )
+            if collapse_metrics["h"] > 42 or collapse_metrics["icon"] < 16:
+                raise AssertionError(f"Rail 页脚折叠按钮尺寸异常: {collapse_metrics}")
+            rail_icon_y = page.locator(".sidebar .nav-link .nav-icon").first.evaluate(
+                "el => el.getBoundingClientRect().y"
+            )
+
+            page.mouse.move(900, 700)
+            page.wait_for_timeout(80)
+            page.locator(".sidebar").hover()
+            page.wait_for_timeout(480)
+            if page.locator(".sidebar").get_attribute("data-state") != "peek":
+                raise AssertionError("Rail 悬停未进入临时展开")
+            peek_width = page.locator(".sidebar").evaluate(
+                "el => Math.round(el.getBoundingClientRect().width)"
+            )
+            if peek_width < 240:
+                raise AssertionError(f"悬停展开宽度异常: {peek_width}")
+            if abs(page.locator(".main").bounding_box()["x"] - rail_main_left) > 1:
+                raise AssertionError("悬停展开推挤了主内容槽宽")
+            peek_icon_y = page.locator(".sidebar .nav-link .nav-icon").first.evaluate(
+                "el => el.getBoundingClientRect().y"
+            )
+            if abs(peek_icon_y - rail_icon_y) > 1:
+                raise AssertionError(
+                    f"悬停展开使导航图标位移: {rail_icon_y} -> {peek_icon_y}"
+                )
+            page.screenshot(path=os.path.join(shots, "sidebar_peek_1440.png"))
+            page.get_by_role("link", name="高级工具", exact=True).click()
+            page.wait_for_selector("text=历史与审计", timeout=10_000)
+            page.get_by_role("link", name="DNS 记录", exact=True).click()
+            page.wait_for_selector(".records-table tbody tr", timeout=10_000)
+            page.locator("#main").focus()
+
+            page.mouse.move(900, 700)
+            page.wait_for_timeout(320)
+            if page.locator(".sidebar").get_attribute("data-state") != "rail":
+                raise AssertionError("指针离开后侧栏未回到 Rail")
+
+            page.get_by_role("button", name="保持展开").click()
+            page.wait_for_timeout(320)
+            if page.locator(".app.rail").count() != 0:
+                raise AssertionError("页脚保持展开失败")
+
+            page.keyboard.press("[")
+            page.wait_for_timeout(320)
+            if page.locator(".app.rail").count() != 1:
+                raise AssertionError("快捷键 [ 未收起侧栏")
+
+            page.evaluate("document.activeElement?.blur()")
+            page.locator(".sidebar-collapse").focus()
+            page.wait_for_timeout(100)
+            if page.locator(".sidebar").get_attribute("data-state") != "peek":
+                raise AssertionError("键盘进入 Rail 未临时展开")
+
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(120)
+            if page.locator(".sidebar").get_attribute("data-state") != "rail":
+                raise AssertionError("Esc 未收起临时展开")
+            if not page.evaluate(
+                "document.activeElement?.classList.contains('sidebar-collapse')"
+            ):
+                raise AssertionError("Esc 收起后焦点未回到侧栏折叠按钮")
+
+            page.get_by_role("button", name="保持展开").click()
+            page.wait_for_timeout(320)
+            if page.locator(".app.rail").count() != 0:
+                raise AssertionError("恢复展开侧栏失败")
 
             page.get_by_role("button", name="新增记录").click()
             page.wait_for_selector("#add-record-title", timeout=10_000)
