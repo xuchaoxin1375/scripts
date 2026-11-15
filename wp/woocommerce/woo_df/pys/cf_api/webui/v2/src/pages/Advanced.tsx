@@ -1,4 +1,5 @@
 import {
+  ArrowLeft,
   ChevronLeft,
   ChevronRight,
   Download,
@@ -103,6 +104,7 @@ export default function Advanced({
           disabled={!account || !zone}
           onClick={() => onOpenScope(account, zone)}
         >
+          <ArrowLeft size={15} aria-hidden="true" />
           回到工作台
         </button>
       </div>

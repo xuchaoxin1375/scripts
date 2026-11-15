@@ -5,8 +5,9 @@
 新前端源码与构建产物在 `webui/v2/`，默认入口即 v2；状态与功能对照见
 [v2/README.md](v2/README.md) 与 [REDESIGN.md](REDESIGN.md)。
 
-交互方案草稿见 [drafts/index.html](drafts/index.html)：三版静态 mock，不接后端，
-用于选择“全局侧栏 + 弹窗编辑 / 批量抽屉”等导航与编辑方式。
+交互方案草稿见 [drafts/index.html](drafts/index.html)：三版静态 mock，不接后端。
+已选定草稿 B（全局 Rail + 顶栏资源切换 + 弹窗编辑 + 右侧批量抽屉）并在
+`webui/v2/` 落地；A/C 保留供回退。
 
 ## 启动（后台，不占 shell）
 

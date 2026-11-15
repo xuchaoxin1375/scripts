@@ -7,6 +7,8 @@ import {
   Download,
   FileJson,
   Globe2,
+  Layers,
+  ListChecks,
   Loader2,
   Play,
   Plus,
@@ -26,8 +28,8 @@ import type {
   InspectorTab,
   Job,
   PreviewRow,
-  RecordPatchValues,
 } from "../types";
+import { shortName } from "../shared/names";
 import {
   downloadJobExport,
   useJobExports,
@@ -36,17 +38,14 @@ import {
 
 type Props = {
   tab: InspectorTab;
-  onTab: (tab: InspectorTab) => void;
+  visible: boolean;
   account: string;
   zone: string;
   selectedRecords: DnsRecord[];
   selectedCount: number;
-  editingRecord: DnsRecord | null;
-  onCancelEdit: () => void;
-  onSaveRecord: (
-    recordId: string,
-    patch: RecordPatchValues,
-  ) => Promise<boolean>;
+  onBulkContentOpen: () => void;
+  onBulkDeleteOpen: () => void;
+  onClearSelection: () => void;
   actionMode: ActionMode | null;
   onActionMode: (mode: ActionMode | null) => void;
   previewOpen: boolean;
@@ -72,7 +71,7 @@ type Props = {
   onRerun: (jobId: string) => Promise<void>;
   onCancel: (jobId: string) => Promise<void>;
   onDownload: (jobId: string, kind: "failures" | "anomalies") => Promise<void>;
-  onExecutePreview: (jobId: string) => Promise<void>;
+  onExecutePreview: (jobId: string) => Promise<boolean>;
   onRetryJobs: () => void;
 };
 
@@ -139,14 +138,14 @@ const ACTION_CARDS: {
 export default function Inspector(props: Props) {
   const {
     tab,
-    onTab,
+    visible,
     account,
     zone,
     selectedRecords,
     selectedCount,
-    editingRecord,
-    onCancelEdit,
-    onSaveRecord,
+    onBulkContentOpen,
+    onBulkDeleteOpen,
+    onClearSelection,
     actionMode,
     onActionMode,
     previewOpen,
@@ -177,50 +176,17 @@ export default function Inspector(props: Props) {
   } = props;
 
   return (
-    <aside className="inspector" aria-label="操作与任务面板">
-      <div className="inspector-tabs" role="tablist" aria-label="检查器">
-        <button
-          role="tab"
-          aria-selected={tab === "action"}
-          className={tab === "action" ? "active" : ""}
-          onClick={() => onTab("action")}
-        >
-          操作
-        </button>
-        <button
-          role="tab"
-          aria-selected={tab === "tasks"}
-          className={tab === "tasks" ? "active" : ""}
-          onClick={() => onTab("tasks")}
-        >
-          任务
-          {jobs.some((job) => job.status === "running") && <span className="live-dot" />}
-        </button>
-      </div>
-
-      {tab === "action" ? (
-        <div className="inspector-body">
-          {editingRecord ? (
-            <RecordEditForm
-              record={editingRecord}
-              onCancel={onCancelEdit}
-              onSave={onSaveRecord}
-            />
-          ) : previewOpen ? (
-            <PreviewPanel
-              rows={previewRows}
-              offerCount={previewTotal}
-              zone={zone}
-              jobId={previewJobId}
-              job={previewJob}
-              loading={previewLoading}
-              page={previewPage}
-              pages={previewPages}
-              onPage={onPreviewPage}
-              onBack={onBack}
-              onExecute={onExecute}
-            />
-          ) : actionMode ? (
+    <div className="inspector">
+      <div
+        className="inspector-body"
+        id="drawer-panel-action"
+        role="tabpanel"
+        aria-labelledby="drawer-tab-action"
+        hidden={tab !== "action"}
+        tabIndex={0}
+      >
+        {actionMode && (
+          <div hidden={previewOpen}>
             <ActionForm
               mode={actionMode}
               account={account}
@@ -233,16 +199,45 @@ export default function Inspector(props: Props) {
               onBack={() => onActionMode(null)}
               onPreview={onPreview}
             />
-          ) : (
-            <ActionPicker
-              selectedCount={selectedCount}
-              zone={zone}
-              onPick={onActionMode}
-            />
-          )}
-        </div>
-      ) : (
-        <div className="inspector-body">
+          </div>
+        )}
+        {previewOpen && (
+          <PreviewPanel
+            rows={previewRows}
+            offerCount={previewTotal}
+            zone={zone}
+            jobId={previewJobId}
+            job={previewJob}
+            loading={previewLoading}
+            page={previewPage}
+            pages={previewPages}
+            onPage={onPreviewPage}
+            onBack={onBack}
+            onExecute={onExecute}
+          />
+        )}
+        {!actionMode && !previewOpen && (
+          <ActionPicker
+            selectedCount={selectedCount}
+            selectedRecords={selectedRecords}
+            zone={zone}
+            onPick={onActionMode}
+            onBulkContentOpen={onBulkContentOpen}
+            onBulkDeleteOpen={onBulkDeleteOpen}
+            onClearSelection={onClearSelection}
+          />
+        )}
+      </div>
+
+      <div
+        className="inspector-body"
+        id="drawer-panel-tasks"
+        role="tabpanel"
+        aria-labelledby="drawer-tab-tasks"
+        hidden={tab !== "tasks"}
+        tabIndex={0}
+      >
+        {visible && tab === "tasks" && (
           <TaskPanel
             jobs={jobs}
             jobsLoading={jobsLoading}
@@ -255,51 +250,118 @@ export default function Inspector(props: Props) {
             onExecutePreview={onExecutePreview}
             onRetryJobs={onRetryJobs}
           />
-        </div>
-      )}
-    </aside>
+        )}
+      </div>
+    </div>
   );
 }
 
 function ActionPicker({
   selectedCount,
+  selectedRecords,
   zone,
   onPick,
+  onBulkContentOpen,
+  onBulkDeleteOpen,
+  onClearSelection,
 }: {
   selectedCount: number;
+  selectedRecords: DnsRecord[];
   zone: string;
   onPick: (mode: ActionMode) => void;
+  onBulkContentOpen: () => void;
+  onBulkDeleteOpen: () => void;
+  onClearSelection: () => void;
 }) {
   return (
     <div className="action-picker">
       <div className="inspector-intro">
         <span className="eyebrow">CONTEXT</span>
-        <h2>
-          {selectedCount > 0 ? `已选 ${selectedCount} 条（用于预填）` : "选择一个动作"}
-        </h2>
+        <h2>{selectedCount > 0 ? "批量操作" : "选择一个动作"}</h2>
         <p>
           {selectedCount > 0
-            ? `实际作用范围是 ${zone} 下匹配的记录；先用选中项预填旧内容，再预览确认。`
+            ? `已选 ${selectedCount} 条用于预填或核对；按域名批量操作仍先预览再执行。`
             : "也可以不选记录，直接对当前域名发起批量操作。"}
         </p>
       </div>
+
+      {selectedCount > 0 ? (
+        <section className="selected-records" aria-label="已选记录">
+          <div className="selected-records-head">
+            <span>
+              <ListChecks size={14} aria-hidden="true" />
+              已选 {selectedCount} 条
+            </span>
+            <button
+              type="button"
+              className="link-button"
+              onClick={onClearSelection}
+            >
+              清除
+            </button>
+          </div>
+          <div className="selected-list">
+            {selectedRecords.slice(0, 5).map((record) => (
+              <div className="selected-item" key={record.id}>
+                <span className="selected-item-name">
+                  {shortName(record.name, zone)}
+                  <em>{record.type}</em>
+                </span>
+                <code title={record.content}>{record.content}</code>
+              </div>
+            ))}
+            {selectedRecords.length > 5 && (
+              <p className="selected-more">
+                另有 {selectedRecords.length - 5} 条已选记录
+              </p>
+            )}
+          </div>
+          <div className="selected-record-actions">
+            <button
+              type="button"
+              className="button"
+              onClick={onBulkContentOpen}
+            >
+              <Layers size={15} aria-hidden="true" />
+              改选中内容
+            </button>
+            <button
+              type="button"
+              className="button danger"
+              onClick={onBulkDeleteOpen}
+            >
+              <Trash2 size={15} aria-hidden="true" />
+              删除选中
+            </button>
+          </div>
+          <p className="form-hint">
+            直接批量写入，不经过预览任务；按域名批量操作仍走预览。
+          </p>
+        </section>
+      ) : (
+        <p className="form-hint">
+          在表格中勾选记录可查看已选清单，并预填批量动作。
+        </p>
+      )}
+
       <div className="action-list">
         {ACTION_CARDS.map((card) => {
           const Icon = card.icon;
           return (
             <button
               key={card.mode}
+              type="button"
               className={`action-card ${card.tone === "danger" ? "danger" : ""}`}
               onClick={() => onPick(card.mode)}
             >
               <span className="action-icon">
-                <Icon size={17} />
+                <Icon size={17} aria-hidden="true" />
               </span>
               <span className="action-copy">
                 <strong>{card.title}</strong>
                 <small>{card.copy}</small>
               </span>
-              <ArrowRight size={15} className="action-arrow" />
+              <ArrowRight size={15} className="action-arrow" aria-hidden="true" />
             </button>
           );
         })}
@@ -659,132 +721,6 @@ function ActionForm({
   );
 }
 
-function RecordEditForm({
-  record,
-  onCancel,
-  onSave,
-}: {
-  record: DnsRecord;
-  onCancel: () => void;
-  onSave: (recordId: string, patch: RecordPatchValues) => Promise<boolean>;
-}) {
-  const [name, setName] = useState(record.name);
-  const [type, setType] = useState(record.type);
-  const [content, setContent] = useState(record.content);
-  const [proxied, setProxied] = useState(record.proxied);
-  const [ttl, setTtl] = useState(String(record.ttl || 1));
-  const [comment, setComment] = useState(record.comment || "");
-  const [priority, setPriority] = useState(
-    record.priority == null ? "" : String(record.priority),
-  );
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const proxiable = ["A", "AAAA", "CNAME"].includes(type);
-
-  async function save() {
-    if (!name.trim()) {
-      setError("名称不能为空");
-      return;
-    }
-    if (!content.trim()) {
-      setError("内容不能为空");
-      return;
-    }
-    setBusy(true);
-    setError("");
-    const ok = await onSave(record.id, {
-      name: name.trim(),
-      type,
-      content: content.trim(),
-      proxied: proxiable ? proxied : false,
-      ttl: proxiable && proxied ? 1 : Number(ttl) || 1,
-      comment: comment.trim(),
-      priority: type === "MX" ? Number(priority) : null,
-    });
-    setBusy(false);
-    if (!ok) setError("保存失败，请检查字段或稍后重试");
-  }
-
-  return (
-    <div className="record-edit">
-      <button className="back-link" onClick={onCancel}>
-        <ArrowLeft size={15} /> 返回
-      </button>
-      <div className="inspector-intro">
-        <span className="eyebrow">EDIT RECORD</span>
-        <h2>编辑记录</h2>
-        <p>单条 PATCH；保存后刷新当前域名记录。</p>
-      </div>
-      <Field label="名称">
-        <input value={name} onChange={(event) => setName(event.target.value)} />
-      </Field>
-      <div className="form-grid">
-        <Field label="类型">
-          <select value={type} onChange={(event) => setType(event.target.value)}>
-            {["A", "AAAA", "CNAME", "TXT", "MX"].map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="TTL" hint={proxied ? "代理开时锁定自动" : "1=自动"}>
-          <input
-            type="number"
-            min={1}
-            value={proxiable && proxied ? "1" : ttl}
-            disabled={proxiable && proxied}
-            onChange={(event) => setTtl(event.target.value)}
-          />
-        </Field>
-      </div>
-      <Field label="内容">
-        <input value={content} onChange={(event) => setContent(event.target.value)} />
-      </Field>
-      <div className="form-grid">
-        <Field label="代理">
-          <label className="checkbox-line">
-            <input
-              type="checkbox"
-              checked={proxiable && proxied}
-              disabled={!proxiable}
-              onChange={(event) => setProxied(event.target.checked)}
-            />
-            {proxiable ? "启用 Cloudflare 代理" : `${type} 不可代理`}
-          </label>
-        </Field>
-        {type === "MX" && (
-          <Field label="优先级">
-            <input
-              type="number"
-              min={0}
-              max={65535}
-              value={priority}
-              onChange={(event) => setPriority(event.target.value)}
-            />
-          </Field>
-        )}
-      </div>
-      <Field label="备注" hint={`${comment.length}/100`}>
-        <input
-          value={comment}
-          maxLength={100}
-          onChange={(event) => setComment(event.target.value)}
-        />
-      </Field>
-      {error && <div className="inline-warning">{error}</div>}
-      <div className="form-actions">
-        <button className="button ghost" onClick={onCancel}>
-          取消
-        </button>
-        <button className="button primary" onClick={() => void save()} disabled={busy}>
-          {busy ? "保存中…" : "保存记录"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
 function Field({
   label,
   hint,
@@ -878,38 +814,45 @@ function PreviewPanel({
       </div>
       <div className="diff-table" role="table" aria-label="变更预览">
         <div className="diff-head" role="row">
-          <span>名称</span>
-          <span>旧内容</span>
-          <span>新内容</span>
+          <span role="columnheader">名称</span>
+          <span role="columnheader">旧内容</span>
+          <span role="columnheader">新内容</span>
         </div>
         {loading && rows.length === 0 ? (
           Array.from({ length: 3 }).map((_, index) => (
             <div className="diff-row skeleton-row" role="row" key={index}>
-              <span className="skeleton-line" />
-              <span className="skeleton-line" />
-              <span className="skeleton-line" />
+              <span className="skeleton-line" role="cell" />
+              <span className="skeleton-line" role="cell" />
+              <span className="skeleton-line" role="cell" />
             </div>
           ))
         ) : rows.length > 0 ? (
           rows.map((row) => (
             <div className="diff-row" role="row" key={row.id}>
-              <span className="diff-name">
+              <span className="diff-name" role="cell">
                 {row.name} <em>{row.type}</em>
                 {row.action !== "更新" && row.action !== "删除" && (
                   <small> · {row.action}</small>
                 )}
               </span>
-              <code>{row.oldContent}</code>
-              <code className={row.action === "删除" ? "diff-delete" : "diff-add"}>
+              <code role="cell">{row.oldContent}</code>
+              <code
+                role="cell"
+                className={row.action === "删除" ? "diff-delete" : "diff-add"}
+              >
                 {row.newContent}
               </code>
             </div>
           ))
         ) : (
-          <div className="diff-row">
-            <span>—</span>
-            <span>{running ? "正在读取预览结果…" : "没有逐条变更"}</span>
-            <span>{running ? "无需操作" : "可返回修改范围"}</span>
+          <div className="diff-row" role="row">
+            <span role="cell">—</span>
+            <span role="cell">
+              {running ? "正在读取预览结果…" : "没有逐条变更"}
+            </span>
+            <span role="cell">
+              {running ? "无需操作" : "可返回修改范围"}
+            </span>
           </div>
         )}
       </div>
@@ -981,7 +924,7 @@ function TaskPanel({
   onRerun: (jobId: string) => Promise<void>;
   onCancel: (jobId: string) => Promise<void>;
   onDownload: (jobId: string, kind: "failures" | "anomalies") => Promise<void>;
-  onExecutePreview: (jobId: string) => Promise<void>;
+  onExecutePreview: (jobId: string) => Promise<boolean>;
   onRetryJobs: () => void;
 }) {
   const selectedJobId = selectedJob?.id ?? null;

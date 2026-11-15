@@ -31,7 +31,8 @@ import {
   useZones,
 } from "./api/hooks";
 import Topbar from "./components/Topbar";
-import Navigator from "./components/Navigator";
+import Sidebar from "./components/Sidebar";
+import ResourceSwitcher from "./components/ResourceSwitcher";
 import Workspace from "./pages/Workspace";
 import Advanced from "./pages/Advanced";
 
@@ -73,6 +74,11 @@ export default function App() {
     return saved === "dark" ? "dark" : "light";
   });
   const [navOpen, setNavOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [rail, setRail] = useState(() => {
+    const saved = localStorage.getItem("cfv2-sidebar-rail");
+    return saved === null ? true : saved === "1";
+  });
   const [account, setAccount] = useState("");
   const [zone, setZone] = useState("");
   const [pendingZone, setPendingZone] = useState<string | null>(null);
@@ -99,7 +105,10 @@ export default function App() {
     workspaceActive,
   );
   const jobsQuery = useJobs();
-  const jobQuery = useJob(selectedJobId);
+  const jobQuery = useJob(
+    selectedJobId,
+    drawerOpen && inspectorTab === "tasks",
+  );
   const submitJob = useSubmitJob();
   const executeJob = useExecuteJob();
   const rerunJob = useRerunJob();
@@ -132,6 +141,15 @@ export default function App() {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("cfv2-theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    localStorage.setItem("cfv2-sidebar-rail", rail ? "1" : "0");
+  }, [rail]);
+
+  useEffect(() => {
+    setNavOpen(false);
+    if (!workspaceActive) setDrawerOpen(false);
+  }, [location.pathname, workspaceActive]);
 
   useEffect(() => {
     saveRuntime(runtime);
@@ -172,6 +190,7 @@ export default function App() {
     setSelected(new Map());
     setFilters(DEFAULT_FILTERS);
     setInspectorTab("action");
+    setDrawerOpen(false);
   }, [account, zone]);
 
   useEffect(() => {
@@ -209,6 +228,7 @@ export default function App() {
     setSelected(new Map());
     setFilters(DEFAULT_FILTERS);
     setNavOpen(false);
+    setDrawerOpen(false);
   }
 
   function chooseZone(name: string) {
@@ -216,6 +236,7 @@ export default function App() {
     setSelected(new Map());
     setFilters(DEFAULT_FILTERS);
     setNavOpen(false);
+    setDrawerOpen(false);
   }
 
   function toggleRecord(record: DnsRecord) {
@@ -245,6 +266,24 @@ export default function App() {
     setSelected(new Map());
   }
 
+  function openDrawer(tab?: InspectorTab) {
+    if (tab) setInspectorTab(tab);
+    setDrawerOpen(true);
+    setNavOpen(false);
+  }
+
+  function closeDrawer() {
+    setDrawerOpen(false);
+  }
+
+  function openTasks() {
+    setInspectorTab("tasks");
+    setSelectedJobId(null);
+    setDrawerOpen(true);
+    setNavOpen(false);
+    if (!workspaceActive) navigate("/");
+  }
+
   function openScope(nextAccount: string, nextZone: string) {
     if (nextAccount !== account) {
       setAccount(nextAccount);
@@ -259,12 +298,15 @@ export default function App() {
     setInspectorTab("action");
     setSelectedJobId(null);
     setNavOpen(false);
+    setDrawerOpen(false);
     navigate("/");
   }
 
   function openJob(jobId: string) {
     setSelectedJobId(jobId);
     setInspectorTab("tasks");
+    setDrawerOpen(true);
+    setNavOpen(false);
     navigate("/");
   }
 
@@ -281,14 +323,17 @@ export default function App() {
     }
   }
 
-  async function handleExecutePreview(jobId: string) {
+  async function handleExecutePreview(jobId: string): Promise<boolean> {
     try {
       const result = await executeJob.mutateAsync(jobId);
       setSelectedJobId(result.job_id);
       setInspectorTab("tasks");
+      setDrawerOpen(true);
       notify("已提交执行任务：" + result.job_id);
+      return true;
     } catch (error) {
       notify("执行失败：" + messageOf(error));
+      return false;
     }
   }
 
@@ -297,6 +342,7 @@ export default function App() {
       const result = await rerunJob.mutateAsync({ jobId, failedOnly: true });
       setSelectedJobId(result.job_id);
       setInspectorTab("tasks");
+      setDrawerOpen(true);
       notify("已提交失败域重跑：" + result.job_id);
     } catch (error) {
       notify("重跑失败：" + messageOf(error));
@@ -447,136 +493,160 @@ export default function App() {
   const runningJobs = jobs.filter(
     (job) => job.status === "running" || job.status === "pending",
   ).length;
+  const zoneStatus = zones.find((item) => item.name === zone)?.status;
 
   return (
-    <div className="app">
+    <div
+      className={`app ${rail ? "rail" : ""} ${navOpen ? "nav-open" : ""} ${
+        drawerOpen ? "drawer-open" : ""
+      } ${selected.size > 0 ? "has-bulk" : ""}`}
+    >
+      <a
+        className="skip-link"
+        href="#main"
+        onClick={(event) => {
+          event.preventDefault();
+          document.getElementById("main")?.focus();
+        }}
+      >
+        跳到主要内容
+      </a>
+
       <Topbar
         theme={theme}
         onToggleTheme={() => setTheme(theme === "light" ? "dark" : "light")}
-        onMenu={() => setNavOpen((open) => !open)}
-        onTasks={() => {
-          setInspectorTab("tasks");
-          if (!workspaceActive) navigate("/");
+        onMenu={() => {
+          setNavOpen((open) => !open);
+          setDrawerOpen(false);
         }}
+        onRailToggle={() => setRail((value) => !value)}
+        rail={rail}
+        onTasks={openTasks}
         runningJobs={runningJobs}
+        proxyCount={metaQuery.data?.proxy.count}
+        resource={
+          <ResourceSwitcher
+            accounts={accounts}
+            zones={zones}
+            account={account}
+            zone={zone}
+            accountsLoading={accountsQuery.isPending}
+            zonesLoading={Boolean(account) && zonesQuery.isPending}
+            accountsError={accountsError}
+            zonesError={zonesError}
+            onAccount={chooseAccount}
+            onZone={chooseZone}
+            onRetryAccounts={() => void accountsQuery.refetch()}
+            onRetryZones={() => void zonesQuery.refetch()}
+          />
+        }
+      />
+
+      <Sidebar
+        mobileOpen={navOpen}
+        onClose={() => setNavOpen(false)}
+        onTasks={openTasks}
+        tasksActive={drawerOpen && inspectorTab === "tasks"}
+        runningJobs={runningJobs}
+        recordCount={workspaceActive ? recordPage.total : undefined}
         configPath={metaQuery.data?.config_path}
         proxyCount={metaQuery.data?.proxy.count}
       />
-      <div className={`shell ${navOpen ? "nav-open" : ""}`}>
-        <Navigator
-          accounts={accounts}
-          zones={zones}
-          account={account}
-          zone={zone}
-          accountsLoading={accountsQuery.isPending}
-          zonesLoading={Boolean(account) && zonesQuery.isPending}
-          accountsError={accountsError}
-          zonesError={zonesError}
-          onAccount={chooseAccount}
-          onZone={chooseZone}
-          onAdvanced={() => {
-            setNavOpen(false);
-            setSelectedJobId(null);
-          }}
-          onRetryAccounts={() => void accountsQuery.refetch()}
-          onRetryZones={() => void zonesQuery.refetch()}
-        />
-        {navOpen && (
-          <button
-            className="nav-backdrop"
-            aria-label="关闭导航"
-            onClick={() => setNavOpen(false)}
+
+      <main className="main" id="main" tabIndex={-1}>
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <Workspace
+                account={account}
+                zone={zone}
+                zoneStatus={zoneStatus}
+                records={recordPage.items}
+                total={recordPage.total}
+                page={recordPage.page}
+                perPage={recordPage.perPage}
+                loading={
+                  workspaceActive &&
+                  Boolean(account && zone) &&
+                  recordsQuery.isPending
+                }
+                fetching={recordsQuery.isFetching}
+                recordsError={recordsError}
+                filters={effectiveFilters}
+                selectedIds={selectedIds}
+                selectedRecords={selectedRecords}
+                selectedJob={selectedJob}
+                jobs={jobs}
+                jobsLoading={jobsQuery.isPending}
+                jobsError={jobsError}
+                inspectorTab={inspectorTab}
+                attachments={attachments}
+                defaultBackupDir={metaQuery.data?.dirs.backup_dir ?? ""}
+                defaultExportDir={metaQuery.data?.dirs.export_dir ?? ""}
+                refreshing={recordsQuery.isFetching || zonesQuery.isFetching}
+                drawerOpen={drawerOpen}
+                onDrawerOpen={openDrawer}
+                onDrawerClose={closeDrawer}
+                onTab={setInspectorTab}
+                onToggleRecord={toggleRecord}
+                onToggleAll={toggleAll}
+                onClearSelection={clearSelection}
+                onFilters={updateFilters}
+                onPage={(page) => updateFilters({ page })}
+                onRetryRecords={() => void recordsQuery.refetch()}
+                onRetryJobs={() => void jobsQuery.refetch()}
+                onSelectJob={(job) => {
+                  setSelectedJobId(job?.id ?? null);
+                  setInspectorTab("tasks");
+                  setDrawerOpen(true);
+                }}
+                onRefresh={handleRefresh}
+                onPreview={handlePreview}
+                onExecutePreview={handleExecutePreview}
+                onRerun={handleRerun}
+                onCancel={handleCancel}
+                onDownload={handleDownload}
+                onBulkProxy={handleBulkProxy}
+                onBulkDelete={handleBulkDelete}
+                onBulkContent={handleBulkContent}
+                onSaveRecord={handleSaveRecord}
+                onExportRecords={handleExportRecords}
+                onClearAttachment={(kind) =>
+                  setAttachments((current) => ({
+                    ...current,
+                    [kind]: null,
+                  }))
+                }
+                onNotify={notify}
+              />
+            }
           />
-        )}
-        <main className="main">
-          <Routes>
-            <Route
-              path="/"
-              element={
-                <Workspace
-                  account={account}
-                  zone={zone}
-                  records={recordPage.items}
-                  total={recordPage.total}
-                  page={recordPage.page}
-                  perPage={recordPage.perPage}
-                  loading={
-                    workspaceActive &&
-                    Boolean(account && zone) &&
-                    recordsQuery.isPending
-                  }
-                  fetching={recordsQuery.isFetching}
-                  recordsError={recordsError}
-                  filters={effectiveFilters}
-                  selectedIds={selectedIds}
-                  selectedRecords={selectedRecords}
-                  selectedJob={selectedJob}
-                  jobs={jobs}
-                  jobsLoading={jobsQuery.isPending}
-                  jobsError={jobsError}
-                  inspectorTab={inspectorTab}
-                  attachments={attachments}
-                  defaultBackupDir={metaQuery.data?.dirs.backup_dir ?? ""}
-                  defaultExportDir={metaQuery.data?.dirs.export_dir ?? ""}
-                  refreshing={recordsQuery.isFetching || zonesQuery.isFetching}
-                  onTab={setInspectorTab}
-                  onToggleRecord={toggleRecord}
-                  onToggleAll={toggleAll}
-                  onClearSelection={clearSelection}
-                  onFilters={updateFilters}
-                  onPage={(page) => updateFilters({ page })}
-                  onRetryRecords={() => void recordsQuery.refetch()}
-                  onRetryJobs={() => void jobsQuery.refetch()}
-                  onSelectJob={(job) => {
-                    setSelectedJobId(job?.id ?? null);
-                    setInspectorTab("tasks");
-                  }}
-                  onRefresh={handleRefresh}
-                  onPreview={handlePreview}
-                  onExecutePreview={handleExecutePreview}
-                  onRerun={handleRerun}
-                  onCancel={handleCancel}
-                  onDownload={handleDownload}
-                  onBulkProxy={handleBulkProxy}
-                  onBulkDelete={handleBulkDelete}
-                  onBulkContent={handleBulkContent}
-                  onSaveRecord={handleSaveRecord}
-                  onExportRecords={handleExportRecords}
-                  onClearAttachment={(kind) =>
-                    setAttachments((current) => ({
-                      ...current,
-                      [kind]: null,
-                    }))
-                  }
-                  onNotify={notify}
-                />
-              }
-            />
-            <Route
-              path="/advanced"
-              element={
-                <Advanced
-                  accounts={accounts}
-                  account={account}
-                  zone={zone}
-                  attachments={attachments}
-                  runtime={runtime}
-                  onOpenScope={openScope}
-                  onOpenJob={openJob}
-                  onAttachmentChange={(kind, value) =>
-                    setAttachments((current) => ({
-                      ...current,
-                      [kind]: value,
-                    }))
-                  }
-                  onRuntimeChange={setRuntime}
-                  onNotify={notify}
-                />
-              }
-            />
-          </Routes>
-        </main>
-      </div>
+          <Route
+            path="/advanced"
+            element={
+              <Advanced
+                accounts={accounts}
+                account={account}
+                zone={zone}
+                attachments={attachments}
+                runtime={runtime}
+                onOpenScope={openScope}
+                onOpenJob={openJob}
+                onAttachmentChange={(kind, value) =>
+                  setAttachments((current) => ({
+                    ...current,
+                    [kind]: value,
+                  }))
+                }
+                onRuntimeChange={setRuntime}
+                onNotify={notify}
+              />
+            }
+          />
+        </Routes>
+      </main>
+
       {toast && (
         <div className="toast" role="status">
           {toast}

@@ -1,13 +1,17 @@
 import {
   ArrowDownAZ,
   ArrowUpAZ,
+  ChevronLeft,
+  ChevronRight,
   Download,
   Loader2,
   Pencil,
   Search,
+  Trash2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { DnsRecord, RecordFilters } from "../types";
+import { shortName, zoneSuffix } from "../shared/names";
 
 type Props = {
   zone: string;
@@ -25,26 +29,19 @@ type Props = {
   onToggle: (record: DnsRecord) => void;
   onToggleAll: (items: DnsRecord[]) => void;
   onEdit: (record: DnsRecord) => void;
+  onDelete: (record: DnsRecord) => void;
   onExport: () => void;
   onRetry: () => void;
 };
 
 type SortKey = "name" | "type" | "content";
 
-function shortName(full: string, zone: string) {
-  if (!zone) return full;
-  const lower = full.toLowerCase();
-  const suffix = `.${zone.toLowerCase()}`;
-  if (lower === zone.toLowerCase()) return "@";
-  if (lower.endsWith(suffix)) return full.slice(0, full.length - suffix.length);
-  return full;
-}
-
 function typeClass(type: string) {
   const key = type.toLowerCase();
   if (key === "a") return "type-a";
   if (key === "aaaa") return "type-aaaa";
   if (key === "cname") return "type-cname";
+  if (key === "txt") return "type-txt";
   if (key === "mx") return "type-mx";
   return "type-other";
 }
@@ -79,6 +76,7 @@ export default function RecordsTable({
   onToggle,
   onToggleAll,
   onEdit,
+  onDelete,
   onExport,
   onRetry,
 }: Props) {
@@ -134,13 +132,19 @@ export default function RecordsTable({
   const emptyCopy = error
     ? error
     : !zone
-      ? "先在左侧选择账号与域名。"
+      ? "先在顶部切换账号与域名。"
       : hasFilters
         ? "调整搜索或筛选条件，或清除过滤后重试。"
-        : "可以在右侧操作面板新增记录，或刷新后重试。";
+        : "点击页头的新增记录，或刷新后重试。";
 
   return (
-    <section className="records-panel" aria-label="DNS 记录" aria-busy={loading}>
+    <section
+      className="records-panel"
+      aria-label="DNS 记录"
+      aria-busy={loading}
+      tabIndex={-1}
+      data-focus-fallback
+    >
       <div className="records-toolbar">
         <label className="search-field">
           <Search size={15} />
@@ -207,27 +211,29 @@ export default function RecordsTable({
         <table className="records-table">
           <caption className="sr-only">DNS 记录列表</caption>
           <colgroup>
-            <col style={{ width: 36 }} />
-            <col style={{ width: 190 }} />
+            <col style={{ width: 38 }} />
+            <col style={{ width: 220 }} />
             <col style={{ width: 84 }} />
             <col />
             <col style={{ width: 96 }} />
             <col style={{ width: 64 }} />
-            <col style={{ width: 100 }} />
-            <col style={{ width: 76 }} />
+            <col style={{ width: 120 }} />
+            <col style={{ width: 126 }} />
           </colgroup>
           <thead>
             <tr>
               <th className="check-cell">
-                <input
-                  type="checkbox"
-                  checked={allSelected}
-                  ref={(element) => {
-                    if (element) element.indeterminate = partiallySelected;
-                  }}
-                  onChange={() => onToggleAll(records)}
-                  aria-label="全选当前页记录"
-                />
+                <label className="checkbox-hit">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    ref={(element) => {
+                      if (element) element.indeterminate = partiallySelected;
+                    }}
+                    onChange={() => onToggleAll(records)}
+                    aria-label="全选当前页记录"
+                  />
+                </label>
               </th>
               <th
                 aria-sort={
@@ -290,16 +296,23 @@ export default function RecordsTable({
                       className="check-cell"
                       onClick={(event) => event.stopPropagation()}
                     >
-                      <input
-                        type="checkbox"
-                        checked={selected}
-                        onChange={() => onToggle(record)}
-                        aria-label={`选择 ${shortName(record.name, zone)}`}
-                      />
+                      <label className="checkbox-hit">
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          onChange={() => onToggle(record)}
+                          aria-label={`选择 ${shortName(record.name, zone)}`}
+                        />
+                      </label>
                     </td>
                     <td className="name-cell">
                       <span className="record-name" title={record.name}>
                         {shortName(record.name, zone)}
+                        {zoneSuffix(record.name, zone) && (
+                          <span className="record-zone">
+                            {zoneSuffix(record.name, zone)}
+                          </span>
+                        )}
                       </span>
                       {record.name.startsWith("*") &&
                         shortName(record.name, zone) !== "*" && (
@@ -333,9 +346,22 @@ export default function RecordsTable({
                       className="sticky-action"
                       onClick={(event) => event.stopPropagation()}
                     >
-                      <button className="row-action" onClick={() => onEdit(record)}>
-                        <Pencil size={13} /> 编辑
-                      </button>
+                      <span className="row-actions">
+                        <button
+                          type="button"
+                          className="row-action"
+                          onClick={() => onEdit(record)}
+                        >
+                          <Pencil size={13} aria-hidden="true" /> 编辑
+                        </button>
+                        <button
+                          type="button"
+                          className="row-action danger"
+                          onClick={() => onDelete(record)}
+                        >
+                          <Trash2 size={13} aria-hidden="true" /> 删除
+                        </button>
+                      </span>
                     </td>
                   </tr>
                 );
@@ -380,34 +406,51 @@ export default function RecordsTable({
                 onClick={() => onToggle(record)}
               >
                 <div className="record-card-head">
-                  <input
-                    type="checkbox"
-                    checked={selected}
-                    onChange={() => onToggle(record)}
+                  <label
+                    className="checkbox-hit"
                     onClick={(event) => event.stopPropagation()}
-                    aria-label={`选择 ${shortName(record.name, zone)}`}
-                  />
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      onChange={() => onToggle(record)}
+                      aria-label={`选择 ${shortName(record.name, zone)}`}
+                    />
+                  </label>
                   <strong className="record-name">
                     {shortName(record.name, zone)}
                   </strong>
                   <span className={`type-pill ${typeClass(record.type)}`}>
                     {record.type}
                   </span>
-                  <button
-                    className="row-action"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onEdit(record);
-                    }}
-                  >
-                    <Pencil size={13} /> 编辑
-                  </button>
                 </div>
                 <code className="record-card-content">{record.content}</code>
                 <div className="record-card-meta">
                   <span>{record.proxied ? "已代理" : "仅 DNS"}</span>
                   <span>TTL {record.ttl === 1 ? "自动" : record.ttl}</span>
                   {record.comment && <span>备注 {record.comment}</span>}
+                </div>
+                <div className="record-card-actions">
+                  <button
+                    type="button"
+                    className="row-action"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onEdit(record);
+                    }}
+                  >
+                    <Pencil size={13} aria-hidden="true" /> 编辑
+                  </button>
+                  <button
+                    type="button"
+                    className="row-action danger"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onDelete(record);
+                    }}
+                  >
+                    <Trash2 size={13} aria-hidden="true" /> 删除
+                  </button>
                 </div>
               </article>
             );
@@ -440,21 +483,25 @@ export default function RecordsTable({
         </span>
         <span className="pager" aria-label="分页">
           <button
+            type="button"
             className="button ghost"
             onClick={() => onPage(page - 1)}
             disabled={page <= 1 || loading}
           >
+            <ChevronLeft size={14} aria-hidden="true" />
             上一页
           </button>
           <span className="page-indicator">
             {page} / {pageCount}
           </span>
           <button
+            type="button"
             className="button ghost"
             onClick={() => onPage(page + 1)}
             disabled={page >= pageCount || loading}
           >
             下一页
+            <ChevronRight size={14} aria-hidden="true" />
           </button>
         </span>
       </footer>

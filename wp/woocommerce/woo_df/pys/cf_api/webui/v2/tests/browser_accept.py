@@ -248,6 +248,7 @@ def main() -> None:
     )
     errors: list[str] = []
     data_requests: list[tuple[str, str]] = []
+    job_posts: list[dict] = []
 
     def api(route) -> None:
         request = route.request
@@ -294,6 +295,7 @@ def main() -> None:
         elif path.endswith("/api/v1/jobs") and method == "GET":
             body = {"jobs": [JOB, PREVIEW_JOB]}
         elif path.endswith("/api/v1/jobs") and method == "POST":
+            job_posts.append(json.loads(request.post_data or "{}"))
             body = {"job_id": "job-9002"}
         elif path.endswith("/api/v1/jobs/job-9002/results"):
             body = {
@@ -373,24 +375,75 @@ def main() -> None:
             )
             page.route("**/api/v1/**", api)
             page.goto(base, wait_until="networkidle")
-            page.wait_for_selector(".account-item", timeout=10_000)
+            page.wait_for_selector(".resource-trigger", timeout=10_000)
             page.wait_for_function(
                 "document.querySelectorAll('.records-table tbody tr').length === 3",
                 timeout=10_000,
             )
-            if page.locator(".account-item").count() != 1:
+            if page.locator(".sidebar .nav-link").count() < 3:
+                raise AssertionError("全局侧栏导航项数量不符合预期")
+            if page.locator(".app.rail").count() != 1:
+                raise AssertionError("侧栏未按方案 B 默认 Rail")
+            page.keyboard.press("Tab")
+            if not page.evaluate(
+                "document.activeElement?.classList.contains('skip-link')"
+            ):
+                raise AssertionError("首个 Tab 未聚焦跳到主要内容")
+            page.keyboard.press("Enter")
+            page.wait_for_timeout(50)
+            if not page.evaluate("document.activeElement?.id === 'main'"):
+                raise AssertionError("跳到主要内容未把焦点移到 main")
+            page.locator(".resource-trigger").click()
+            page.wait_for_selector(".resource-menu", timeout=10_000)
+            if page.locator('[data-resource-kind="account"]').count() != 1:
                 raise AssertionError("账号数量不符合预期")
+            if page.locator('[data-resource-kind="zone"]').count() != 2:
+                raise AssertionError("域名数量不符合预期")
+            page.keyboard.press("Escape")
+            page.wait_for_selector(".resource-menu", state="detached", timeout=5_000)
+            if not page.evaluate(
+                "document.activeElement === document.querySelector('.resource-trigger')"
+            ):
+                raise AssertionError("资源切换器关闭后焦点未回到触发器")
             if "共 3 条" not in page.locator(".records-footer span").first.inner_text():
                 raise AssertionError("记录总数未按服务端分页显示")
             page.screenshot(path=os.path.join(shots, "workspace_1440.png"))
+            page.get_by_role("button", name="切换到深色主题").click()
+            page.wait_for_timeout(160)
+            page.screenshot(path=os.path.join(shots, "workspace_dark_1440.png"))
+            page.get_by_role("button", name="切换到浅色主题").click()
+
+            page.get_by_role("button", name="展开侧栏").click()
+            page.wait_for_timeout(240)
+            if page.locator(".app.rail").count() != 0:
+                raise AssertionError("展开侧栏失败")
+            page.get_by_role("button", name="收起侧栏").click()
+            page.wait_for_timeout(240)
+            if page.locator(".app.rail").count() != 1:
+                raise AssertionError("收起侧栏失败")
+
+            page.get_by_role("button", name="新增记录").click()
+            page.wait_for_selector("#add-record-title", timeout=10_000)
+            page.wait_for_timeout(80)
+            if not page.evaluate(
+                'document.activeElement?.id === "add-record-name"'
+            ):
+                raise AssertionError("新增记录弹窗首焦不在名称输入框")
+            page.keyboard.press("Escape")
+            page.wait_for_selector("#add-record-title", state="detached", timeout=5_000)
+            page.wait_for_timeout(80)
+            if not page.evaluate(
+                'document.activeElement?.hasAttribute("data-add-record")'
+            ):
+                raise AssertionError("新增记录弹窗关闭后焦点未回到触发器")
 
             boxes = page.locator(".records-table tbody input[type=checkbox]")
             boxes.nth(0).check()
             boxes.nth(1).check()
-            page.get_by_role("button", name="改选中内容").click()
-            page.get_by_placeholder("198.51.100.10 或 target.example.net").fill(
-                "198.51.100.88"
-            )
+            page.locator(".bulk-bar").get_by_role(
+                "button", name="改选中内容"
+            ).click()
+            page.locator("#bulk-content-input").fill("198.51.100.88")
             page.get_by_role("button", name="确认写入").click()
             page.wait_for_selector("text=已更新 2 条记录内容", timeout=10_000)
             page.screenshot(path=os.path.join(shots, "bulk_content_1440.png"))
@@ -402,9 +455,29 @@ def main() -> None:
             page.wait_for_selector("text=已删除 1 条记录", timeout=10_000)
 
             page.get_by_role("button", name="批量操作").click()
-            page.get_by_placeholder("198.51.100.10 或 target.example.net").fill(
-                "198.51.100.77"
-            )
+            page.wait_for_selector(".drawer.open", timeout=10_000)
+            page.wait_for_timeout(80)
+            if page.locator(".drawer").get_attribute("aria-modal") is not None:
+                raise AssertionError("宽屏批量抽屉不应按模态打开")
+            if not page.evaluate(
+                'document.activeElement?.getAttribute("aria-label") === "关闭面板"'
+            ):
+                raise AssertionError("批量抽屉打开后首焦不在关闭按钮")
+            page.get_by_role("button", name="关闭面板", exact=True).click()
+            page.wait_for_timeout(240)
+            if page.locator(".drawer.open").count() != 0:
+                raise AssertionError("批量抽屉未关闭")
+            if not page.evaluate(
+                "document.activeElement?.textContent?.includes('批量操作')"
+            ):
+                raise AssertionError("批量抽屉关闭后焦点未回到触发器")
+            page.get_by_role("button", name="批量操作").click()
+            page.wait_for_selector(".drawer.open", timeout=10_000)
+            page.wait_for_timeout(240)
+            page.locator(".action-card", has_text="更新记录内容").click()
+            page.locator(".drawer .inspector-body").get_by_placeholder(
+                "198.51.100.10 或 target.example.net"
+            ).fill("198.51.100.77")
             page.get_by_role("button", name="预览变更").click()
             page.wait_for_selector("text=预览 · 尚未执行", timeout=10_000)
             page.wait_for_selector("text=预览任务返回 3 条变更", timeout=10_000)
@@ -420,11 +493,56 @@ def main() -> None:
 
             page.get_by_role("tab", name="操作").click()
             page.locator(".records-table tbody .row-action").first.click()
-            page.wait_for_selector("text=编辑记录", timeout=10_000)
+            page.wait_for_selector("#edit-record-title", timeout=10_000)
+            page.wait_for_timeout(80)
+            if not page.evaluate(
+                'document.activeElement?.id === "edit-record-name"'
+            ):
+                raise AssertionError("编辑记录弹窗首焦不在名称输入框")
             page.get_by_role("button", name="保存记录").click()
             page.wait_for_selector("text=记录已保存", timeout=10_000)
+            page.wait_for_selector("#edit-record-title", state="detached", timeout=5_000)
+            page.wait_for_timeout(80)
+            active_class = page.evaluate(
+                "document.activeElement?.className || ''"
+            )
+            if "row-action" not in active_class and "records-panel" not in active_class:
+                raise AssertionError("编辑记录弹窗关闭后焦点未回到行操作或记录区")
 
-            page.get_by_role("button", name="高级页").click()
+            row = page.locator(".records-table tbody tr").first
+            row.locator(".row-action", has_text="删除").click()
+            page.wait_for_selector("#bulk-delete-title", timeout=10_000)
+            if page.locator("#bulk-delete-title").inner_text() != "删除记录":
+                raise AssertionError("单条删除确认标题不正确")
+            page.get_by_text("我已核对范围，确认删除").click()
+            page.get_by_role("button", name="删除 1 条").click()
+            page.wait_for_selector("text=已删除 1 条记录", timeout=10_000)
+            page.wait_for_selector("#bulk-delete-title", state="detached", timeout=5_000)
+
+            page.get_by_role("button", name="新增记录").click()
+            page.wait_for_selector("#add-record-title", timeout=10_000)
+            page.locator("#add-record-name").fill("_webui-accept-add")
+            page.locator("#add-record-content").fill("198.51.100.99")
+            page.get_by_role("button", name="提交预览").click()
+            page.wait_for_selector("text=预览 · 尚未执行", timeout=10_000)
+            page.wait_for_selector("text=预览任务返回 3 条变更", timeout=10_000)
+            page.wait_for_selector("#add-record-title", state="detached", timeout=5_000)
+            if not job_posts or job_posts[-1].get("mode") != "add":
+                raise AssertionError("新增记录未提交 add 预览任务")
+            add_payload = job_posts[-1]
+            if add_payload.get("dry_run") is not True:
+                raise AssertionError("新增记录预览未使用 dry_run")
+            if add_payload.get("domains") != ["example.com"]:
+                raise AssertionError("新增记录预览范围不是当前域名")
+            if not any(
+                "_webui-accept-add:A:198.51.100.99" in item
+                for item in (add_payload.get("add_records") or [])
+            ):
+                raise AssertionError("新增记录预览缺少 add_records 规格")
+            page.screenshot(path=os.path.join(shots, "add_preview_1440.png"))
+
+            page.screenshot(path=os.path.join(shots, "drawer_1440.png"))
+            page.get_by_role("link", name="高级工具").click()
             page.wait_for_selector("text=历史与审计", timeout=10_000)
             page.wait_for_selector("text=job-9002", timeout=10_000)
             page.get_by_role("button", name="审计日志").click()
@@ -448,17 +566,83 @@ def main() -> None:
             page.wait_for_selector("text=白名单 2 域", timeout=10_000)
             page.screenshot(path=os.path.join(shots, "attachment_1440.png"))
 
+            tablet = browser.new_page(viewport={"width": 768, "height": 900})
+            tablet.on("pageerror", lambda exc: errors.append(f"tablet pageerror: {exc}"))
+            tablet.route("**/api/v1/**", api)
+            tablet.goto(base, wait_until="networkidle")
+            tablet.wait_for_selector(".record-card", state="visible", timeout=10_000)
+            tablet_overflow = tablet.evaluate(
+                "document.documentElement.scrollWidth - window.innerWidth"
+            )
+            if tablet_overflow > 1:
+                raise AssertionError(f"768 页面横滚 {tablet_overflow}px")
+            tablet.screenshot(path=os.path.join(shots, "workspace_768.png"))
+            tablet.close()
+
+            compact = browser.new_page(viewport={"width": 1024, "height": 900})
+            compact.on("pageerror", lambda exc: errors.append(f"1024 pageerror: {exc}"))
+            compact.route("**/api/v1/**", api)
+            compact.goto(base, wait_until="networkidle")
+            compact.wait_for_selector(".records-table tbody tr", timeout=10_000)
+            if not compact.locator(".table-wrap").is_visible():
+                raise AssertionError("1024 记录表未显示")
+            compact_overflow = compact.evaluate(
+                "document.documentElement.scrollWidth - window.innerWidth"
+            )
+            if compact_overflow > 1:
+                raise AssertionError(f"1024 页面横滚 {compact_overflow}px")
+            compact.screenshot(path=os.path.join(shots, "workspace_1024.png"))
+            compact.close()
+
             mobile = browser.new_page(viewport={"width": 390, "height": 900})
             mobile.on("pageerror", lambda exc: errors.append(f"mobile pageerror: {exc}"))
             mobile.route("**/api/v1/**", api)
             mobile.goto(base, wait_until="networkidle")
-            mobile.wait_for_selector(".record-card", timeout=10_000)
+            mobile.wait_for_selector(".record-card", state="visible", timeout=10_000)
             overflow = mobile.evaluate(
                 "document.documentElement.scrollWidth - window.innerWidth"
             )
             if overflow > 1:
                 raise AssertionError(f"390 页面横滚 {overflow}px")
             mobile.screenshot(path=os.path.join(shots, "workspace_390.png"))
+
+            mobile.get_by_role("button", name="打开导航", exact=True).click()
+            mobile.wait_for_timeout(220)
+            if mobile.locator(".app.nav-open").count() != 1:
+                raise AssertionError("390 侧栏未打开")
+            if not mobile.get_by_role(
+                "link", name="DNS 记录", exact=True
+            ).is_visible():
+                raise AssertionError("390 侧栏展开后导航链接不可见")
+            mobile.screenshot(path=os.path.join(shots, "nav_390.png"))
+            mobile.get_by_role("button", name="关闭导航", exact=True).click()
+            mobile.wait_for_timeout(220)
+            if mobile.locator(".app.nav-open").count() != 0:
+                raise AssertionError("390 侧栏未关闭")
+            if (
+                mobile.locator(".sidebar").evaluate(
+                    "el => getComputedStyle(el).visibility"
+                )
+                != "hidden"
+            ):
+                raise AssertionError("390 侧栏关闭后仍可见")
+
+            mobile.get_by_role("button", name="批量操作", exact=True).click()
+            mobile.wait_for_selector(".drawer.open", timeout=10_000)
+            mobile.wait_for_timeout(240)
+            if mobile.locator(".drawer").get_attribute("aria-modal") != "true":
+                raise AssertionError("390 批量抽屉未按模态打开")
+            drawer_box = mobile.locator(".drawer").bounding_box()
+            if not drawer_box or drawer_box["width"] < 380:
+                raise AssertionError(f"390 批量抽屉宽度异常: {drawer_box}")
+            if drawer_box["x"] > 1:
+                raise AssertionError(f"390 批量抽屉未贴边: {drawer_box}")
+            mobile.screenshot(path=os.path.join(shots, "drawer_390.png"))
+            mobile.get_by_role("button", name="关闭面板", exact=True).click()
+            mobile.wait_for_timeout(220)
+            if mobile.locator(".drawer.open").count() != 0:
+                raise AssertionError("390 批量抽屉未关闭")
+
             mobile.goto(base + "/#/advanced", wait_until="networkidle")
             mobile.wait_for_selector("text=历史与审计", timeout=10_000)
             mobile_overflow = mobile.evaluate(

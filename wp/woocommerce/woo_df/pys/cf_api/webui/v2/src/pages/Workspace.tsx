@@ -1,4 +1,4 @@
-import { AlertTriangle, Layers, Trash2, X } from "lucide-react";
+import { AlertTriangle, Layers, ListChecks, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type {
   ActionDraft,
@@ -14,10 +14,18 @@ import { useJob, useJobResults } from "../api/hooks";
 import ScopeBar from "../components/ScopeBar";
 import RecordsTable from "../components/RecordsTable";
 import Inspector from "../components/Inspector";
+import OperationsDrawer from "../components/OperationsDrawer";
+import {
+  AddRecordDialog,
+  RecordEditDialog,
+} from "../components/RecordDialogs";
+import { useDialogFocus } from "../shared/useDialogFocus";
+import { shortName } from "../shared/names";
 
 type Props = {
   account: string;
   zone: string;
+  zoneStatus?: string;
   records: DnsRecord[];
   total: number;
   page: number;
@@ -37,6 +45,9 @@ type Props = {
   defaultBackupDir: string;
   defaultExportDir: string;
   refreshing: boolean;
+  drawerOpen: boolean;
+  onDrawerOpen: (tab?: InspectorTab) => void;
+  onDrawerClose: () => void;
   onTab: (tab: InspectorTab) => void;
   onToggleRecord: (record: DnsRecord) => void;
   onToggleAll: (items: DnsRecord[]) => void;
@@ -48,7 +59,7 @@ type Props = {
   onSelectJob: (job: Job | null) => void;
   onRefresh: () => void;
   onPreview: (draft: ActionDraft) => Promise<string | null>;
-  onExecutePreview: (jobId: string) => Promise<void>;
+  onExecutePreview: (jobId: string) => Promise<boolean>;
   onRerun: (jobId: string) => Promise<void>;
   onCancel: (jobId: string) => Promise<void>;
   onDownload: (jobId: string, kind: "failures" | "anomalies") => Promise<void>;
@@ -68,6 +79,7 @@ export default function Workspace(props: Props) {
   const {
     account,
     zone,
+    zoneStatus,
     records,
     total,
     page,
@@ -87,6 +99,9 @@ export default function Workspace(props: Props) {
     defaultBackupDir,
     defaultExportDir,
     refreshing,
+    drawerOpen,
+    onDrawerOpen,
+    onDrawerClose,
     onTab,
     onToggleRecord,
     onToggleAll,
@@ -113,14 +128,21 @@ export default function Workspace(props: Props) {
 
   const [actionMode, setActionMode] = useState<ActionMode | null>(null);
   const [editingRecord, setEditingRecord] = useState<DnsRecord | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewJobId, setPreviewJobId] = useState<string | null>(null);
   const [previewPage, setPreviewPage] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [bulkContentOpen, setBulkContentOpen] = useState(false);
-  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkContentRecords, setBulkContentRecords] = useState<DnsRecord[]>(
+    [],
+  );
+  const [deletingRecords, setDeletingRecords] = useState<DnsRecord[] | null>(
+    null,
+  );
+  const submittingRef = useRef(false);
 
-  const previewJobQuery = useJob(previewJobId);
+  const previewJobQuery = useJob(previewJobId, drawerOpen);
   const previewJob = previewJobQuery.data ?? null;
   const previewReady = Boolean(
     previewJob && !["pending", "running"].includes(previewJob.status),
@@ -129,17 +151,19 @@ export default function Workspace(props: Props) {
     previewJobId,
     previewPage,
     50,
-    previewReady,
+    previewReady && drawerOpen,
     previewJob?.mode ?? "",
   );
 
   useEffect(() => {
     setEditingRecord(null);
+    setAddOpen(false);
     setPreviewOpen(false);
     setPreviewJobId(null);
     setActionMode(null);
     setBulkContentOpen(false);
-    setBulkDeleteOpen(false);
+    setBulkContentRecords([]);
+    setDeletingRecords(null);
   }, [zone]);
 
   useEffect(() => {
@@ -162,16 +186,54 @@ export default function Workspace(props: Props) {
     setPreviewJobId(null);
     setEditingRecord(null);
     onTab("action");
+    onDrawerOpen("action");
   }
 
-  async function handlePreview(draft: ActionDraft) {
+  function openBatchPanel() {
+    onTab("action");
+    onDrawerOpen("action");
+  }
+
+  function openAddDialog() {
+    setAddOpen(true);
+    setEditingRecord(null);
+    setPreviewOpen(false);
+    setPreviewJobId(null);
+    setActionMode(null);
+    onTab("action");
+  }
+
+  function openBulkContentDialog() {
+    if (!selectedRecords.length) return;
+    setBulkContentRecords(selectedRecords);
+    setBulkContentOpen(true);
+  }
+
+  function openRecordEditor(record: DnsRecord) {
+    setEditingRecord(record);
+    setPreviewOpen(false);
+    setPreviewJobId(null);
+    setActionMode(null);
+    onTab("action");
+  }
+
+  async function handlePreview(draft: ActionDraft): Promise<boolean> {
+    if (submittingRef.current) return false;
+    submittingRef.current = true;
     setSubmitting(true);
-    const jobId = await onPreview(draft);
-    setSubmitting(false);
-    if (!jobId) return;
-    setPreviewJobId(jobId);
-    setPreviewPage(1);
-    setPreviewOpen(true);
+    try {
+      const jobId = await onPreview(draft);
+      if (!jobId) return false;
+      setPreviewJobId(jobId);
+      setPreviewPage(1);
+      setPreviewOpen(true);
+      onTab("action");
+      onDrawerOpen("action");
+      return true;
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
   }
 
   async function execute() {
@@ -179,7 +241,8 @@ export default function Workspace(props: Props) {
       onNotify("预览任务尚未就绪");
       return;
     }
-    await onExecutePreview(previewJobId);
+    const ok = await onExecutePreview(previewJobId);
+    if (!ok) return;
     setPreviewOpen(false);
     setActionMode(null);
     setPreviewJobId(null);
@@ -191,203 +254,220 @@ export default function Workspace(props: Props) {
     setPreviewJobId(null);
   }
 
+  const drawerModalOpen = Boolean(
+    editingRecord || addOpen || bulkContentOpen || deletingRecords,
+  );
+  const runningJobs = jobs.filter(
+    (job) => job.status === "running" || job.status === "pending",
+  ).length;
+  const deleting = deletingRecords;
+
   return (
-    <div className="workspace">
-      <div className="workspace-main">
-        <ScopeBar
-          account={account}
-          zone={zone}
-          recordCount={total}
-          selectedCount={selectedIds.size}
-          refreshing={refreshing}
-          attachments={attachments}
-          onRefresh={onRefresh}
-          onAdd={() => startAction("add")}
-          onBatch={() => startAction("update")}
-          onClearAttachment={onClearAttachment}
-        />
-        {loading && <div className="data-banner subtle">正在读取记录…</div>}
-        <RecordsTable
-          key={zone}
-          zone={zone}
-          records={records}
-          total={total}
-          page={page}
-          perPage={perPage}
-          loading={loading}
-          fetching={fetching}
-          error={recordsError}
-          filters={filters}
-          selectedIds={selectedIds}
-          onFilters={onFilters}
-          onPage={onPage}
-          onToggle={onToggleRecord}
-          onToggleAll={onToggleAll}
-          onEdit={(record) => {
-            setEditingRecord(record);
-            setPreviewOpen(false);
-            setActionMode(null);
-            onTab("action");
-          }}
-          onExport={onExportRecords}
-          onRetry={onRetryRecords}
-        />
-        {selectedIds.size > 0 && (
-          <div className="bulk-bar" role="toolbar" aria-label="批量操作">
-            <span className="bulk-count">已选 {selectedIds.size} 条</span>
-            <span className="bulk-divider" />
-            <button
-              className="button ghost"
-              onClick={() => setBulkContentOpen(true)}
-            >
-              <Layers size={15} /> 改选中内容
-            </button>
-            <button className="button ghost" onClick={() => startAction("update")}>
-              按域名批量
-            </button>
-            <button className="button ghost" onClick={() => void onBulkProxy(true)}>
-              设为已代理
-            </button>
-            <button className="button ghost" onClick={() => void onBulkProxy(false)}>
-              设为仅 DNS
-            </button>
-            <button
-              className="button ghost danger-text"
-              onClick={() => setBulkDeleteOpen(true)}
-            >
-              <Trash2 size={15} /> 删除
-            </button>
-            <button className="button ghost" onClick={onClearSelection}>
-              <X size={15} /> 清除
-            </button>
-          </div>
-        )}
+    <>
+      <div className="workspace">
+        <div className="workspace-main">
+          <ScopeBar
+            account={account}
+            zone={zone}
+            zoneStatus={zoneStatus}
+            recordCount={total}
+            selectedCount={selectedIds.size}
+            refreshing={refreshing}
+            attachments={attachments}
+            onRefresh={onRefresh}
+            onAdd={openAddDialog}
+            onBatch={openBatchPanel}
+            onClearAttachment={onClearAttachment}
+          />
+          {loading && <div className="data-banner subtle">正在读取记录…</div>}
+          <RecordsTable
+            key={zone}
+            zone={zone}
+            records={records}
+            total={total}
+            page={page}
+            perPage={perPage}
+            loading={loading}
+            fetching={fetching}
+            error={recordsError}
+            filters={filters}
+            selectedIds={selectedIds}
+            onFilters={onFilters}
+            onPage={onPage}
+            onToggle={onToggleRecord}
+            onToggleAll={onToggleAll}
+            onEdit={openRecordEditor}
+            onDelete={(record) => setDeletingRecords([record])}
+            onExport={onExportRecords}
+            onRetry={onRetryRecords}
+          />
+          {selectedIds.size > 0 && (
+            <div className="bulk-bar" role="toolbar" aria-label="批量操作">
+              <span className="bulk-count">已选 {selectedIds.size} 条</span>
+              <span className="bulk-divider" />
+              <button
+                type="button"
+                className="button ghost"
+                onClick={openBatchPanel}
+              >
+                <ListChecks size={15} aria-hidden="true" />
+                批量面板
+              </button>
+              <button
+                type="button"
+                className="button ghost bulk-extra"
+                onClick={openBulkContentDialog}
+              >
+                <Layers size={15} aria-hidden="true" />
+                改选中内容
+              </button>
+              <button
+                type="button"
+                className="button ghost bulk-extra"
+                onClick={() => startAction("update")}
+              >
+                按域名批量
+              </button>
+              <button
+                type="button"
+                className="button ghost bulk-extra"
+                onClick={() => void onBulkProxy(true)}
+              >
+                设为已代理
+              </button>
+              <button
+                type="button"
+                className="button ghost bulk-extra"
+                onClick={() => void onBulkProxy(false)}
+              >
+                设为仅 DNS
+              </button>
+              <button
+                type="button"
+                className="button ghost danger-text"
+                onClick={() => setDeletingRecords(selectedRecords)}
+              >
+                <Trash2 size={15} aria-hidden="true" />
+                删除
+              </button>
+              <button
+                type="button"
+                className="button ghost"
+                onClick={onClearSelection}
+              >
+                <X size={15} aria-hidden="true" />
+                清除
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
-      <Inspector
+      <OperationsDrawer
+        open={drawerOpen}
         tab={inspectorTab}
         onTab={onTab}
+        onClose={onDrawerClose}
+        modalOpen={drawerModalOpen}
         account={account}
         zone={zone}
-        selectedRecords={selectedRecords}
         selectedCount={selectedIds.size}
-        editingRecord={editingRecord}
-        onCancelEdit={() => setEditingRecord(null)}
-        onSaveRecord={async (recordId, patch) => {
-          const ok = await onSaveRecord(recordId, patch);
-          if (ok) setEditingRecord(null);
-          return ok;
-        }}
-        actionMode={actionMode}
-        onActionMode={(mode) => {
-          setActionMode(mode);
-          setPreviewOpen(false);
-          setPreviewJobId(null);
-          setEditingRecord(null);
-        }}
-        previewOpen={previewOpen}
-        previewRows={previewResults.data?.rows ?? []}
-        previewTotal={previewResults.data?.total ?? 0}
-        previewPage={previewPage}
-        previewPages={Math.max(
-          1,
-          Math.ceil((previewResults.data?.total ?? 0) / 50),
-        )}
-        previewLoading={
-          previewJobQuery.isLoading || previewResults.isFetching
-        }
-        previewJobId={previewJobId}
-        previewJob={previewJob}
-        submitting={submitting}
-        defaultBackupDir={defaultBackupDir}
-        defaultExportDir={defaultExportDir}
-        onPreview={handlePreview}
-        onPreviewPage={setPreviewPage}
-        onBack={closePreview}
-        onExecute={execute}
-        jobs={jobs}
-        jobsLoading={jobsLoading}
-        jobsError={jobsError}
-        selectedJob={selectedJob}
-        onSelectJob={onSelectJob}
-        onRerun={onRerun}
-        onCancel={onCancel}
-        onDownload={onDownload}
-        onExecutePreview={onExecutePreview}
-        onRetryJobs={onRetryJobs}
-      />
+        runningJobs={runningJobs}
+      >
+        <Inspector
+          tab={inspectorTab}
+          visible={drawerOpen}
+          account={account}
+          zone={zone}
+          selectedRecords={selectedRecords}
+          selectedCount={selectedIds.size}
+          onBulkContentOpen={openBulkContentDialog}
+          onBulkDeleteOpen={() => setDeletingRecords(selectedRecords)}
+          onClearSelection={onClearSelection}
+          actionMode={actionMode}
+          onActionMode={(mode) => {
+            setActionMode(mode);
+            setPreviewOpen(false);
+            setPreviewJobId(null);
+            setEditingRecord(null);
+          }}
+          previewOpen={previewOpen}
+          previewRows={previewResults.data?.rows ?? []}
+          previewTotal={previewResults.data?.total ?? 0}
+          previewPage={previewPage}
+          previewPages={Math.max(
+            1,
+            Math.ceil((previewResults.data?.total ?? 0) / 50),
+          )}
+          previewLoading={
+            previewJobQuery.isLoading || previewResults.isFetching
+          }
+          previewJobId={previewJobId}
+          previewJob={previewJob}
+          submitting={submitting}
+          defaultBackupDir={defaultBackupDir}
+          defaultExportDir={defaultExportDir}
+          onPreview={handlePreview}
+          onPreviewPage={setPreviewPage}
+          onBack={closePreview}
+          onExecute={execute}
+          jobs={jobs}
+          jobsLoading={jobsLoading}
+          jobsError={jobsError}
+          selectedJob={selectedJob}
+          onSelectJob={onSelectJob}
+          onRerun={onRerun}
+          onCancel={onCancel}
+          onDownload={onDownload}
+          onExecutePreview={onExecutePreview}
+          onRetryJobs={onRetryJobs}
+        />
+      </OperationsDrawer>
+
+      {editingRecord && (
+        <RecordEditDialog
+          record={editingRecord}
+          zone={zone}
+          onClose={() => setEditingRecord(null)}
+          onSave={onSaveRecord}
+        />
+      )}
+
+      {addOpen && (
+        <AddRecordDialog
+          zone={zone}
+          onClose={() => setAddOpen(false)}
+          onSubmit={handlePreview}
+        />
+      )}
 
       {bulkContentOpen && (
         <BulkContentDialog
-          records={selectedRecords}
+          records={bulkContentRecords}
           zone={zone}
-          onCancel={() => setBulkContentOpen(false)}
-          onConfirm={async (content) => {
-            const ok = await onBulkContent([...selectedIds], content);
-            if (ok) setBulkContentOpen(false);
-            return ok;
+          onCancel={() => {
+            setBulkContentOpen(false);
+            setBulkContentRecords([]);
           }}
+          onConfirm={(content) =>
+            onBulkContent(
+              bulkContentRecords.map((record) => record.id),
+              content,
+            )
+          }
         />
       )}
-      {bulkDeleteOpen && (
-        <BulkDeleteDialog
-          records={selectedRecords}
-          zone={zone}
-          onCancel={() => setBulkDeleteOpen(false)}
-          onConfirm={async () => {
-            const ok = await onBulkDelete([...selectedIds]);
-            if (ok) setBulkDeleteOpen(false);
-            return ok;
-          }}
-        />
-      )}
-    </div>
-  );
-}
 
-function useDialogFocus(onCancel: () => void) {
-  const ref = useRef<HTMLDivElement>(null);
-  const cancelRef = useRef(onCancel);
-  cancelRef.current = onCancel;
-  useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null;
-    const root = ref.current;
-    if (!root) return;
-    const focusables = () =>
-      Array.from(
-        root.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        ),
-      ).filter((element) => element.offsetParent !== null);
-    const initial =
-      root.querySelector<HTMLElement>("[data-dialog-initial]") ?? focusables()[0];
-    initial?.focus();
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        cancelRef.current();
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const items = focusables();
-      if (!items.length) return;
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    }
-    root.addEventListener("keydown", onKeyDown);
-    return () => {
-      root.removeEventListener("keydown", onKeyDown);
-      if (previous && document.contains(previous)) previous.focus();
-    };
-  }, []);
-  return ref;
+      {deleting && (
+        <BulkDeleteDialog
+          records={deleting}
+          zone={zone}
+          onCancel={() => setDeletingRecords(null)}
+          onConfirm={() => onBulkDelete(deleting.map((record) => record.id))}
+        />
+      )}
+    </>
+  );
 }
 
 function BulkContentDialog({
@@ -404,22 +484,35 @@ function BulkContentDialog({
   const [content, setContent] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const dialogRef = useDialogFocus(onCancel);
+  const busyRef = useRef(false);
+  busyRef.current = busy;
+
+  function closeIfIdle() {
+    if (!busyRef.current) onCancel();
+  }
+  const dialogRef = useDialogFocus(closeIfIdle);
 
   async function submit() {
+    if (busyRef.current) return;
     if (!content.trim()) {
       setError("请填写新内容");
       return;
     }
     setBusy(true);
+    busyRef.current = true;
     setError("");
     const ok = await onConfirm(content.trim());
     setBusy(false);
-    if (!ok) setError("批量更新失败，请查看提示后重试");
+    busyRef.current = false;
+    if (ok) {
+      onCancel();
+    } else {
+      setError("批量更新失败，请查看提示后重试");
+    }
   }
 
   return (
-    <div className="modal-backdrop" role="presentation" onClick={onCancel}>
+    <div className="modal-backdrop" role="presentation" onClick={closeIfIdle}>
       <div
         className="modal"
         role="dialog"
@@ -429,52 +522,83 @@ function BulkContentDialog({
         onClick={(event) => event.stopPropagation()}
       >
         <header className="modal-head">
-          <h2 id="bulk-content-title">改选中记录内容</h2>
-          <button className="icon-button" aria-label="关闭" onClick={onCancel}>
-            <X size={16} />
+          <div className="modal-head-copy">
+            <h2 id="bulk-content-title">改选中记录内容</h2>
+            <p className="modal-subtitle">{zone} · 直接写入</p>
+          </div>
+          <button
+            type="button"
+            className="icon-button"
+            onClick={closeIfIdle}
+            disabled={busy}
+            aria-label="关闭"
+          >
+            <X size={18} aria-hidden="true" />
           </button>
         </header>
-        <div className="modal-body">
-          <p className="modal-copy">
-            将直接写入 {records.length} 条记录（{zone}），不经过预览任务。
-          </p>
-          <div className="dialog-list">
-            {records.slice(0, 6).map((record) => (
-              <span key={record.id}>
-                <strong>{record.name}</strong> <em>{record.type}</em>{" "}
-                <code>{record.content}</code>
+        <form
+          className="modal-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submit();
+          }}
+          noValidate
+        >
+          <div className="modal-body">
+            <p className="modal-copy">
+              将直接写入 {records.length} 条记录（{zone}），不经过预览任务。
+            </p>
+            <div className="dialog-list">
+              {records.slice(0, 6).map((record) => (
+                <span key={record.id}>
+                  <strong>{shortName(record.name, zone)}</strong>{" "}
+                  <em>{record.type}</em> <code>{record.content}</code>
+                </span>
+              ))}
+              {records.length > 6 && <span>… 另有 {records.length - 6} 条</span>}
+            </div>
+            <div className="field">
+              <label htmlFor="bulk-content-input">新内容</label>
+              <input
+                id="bulk-content-input"
+                value={content}
+                onChange={(event) => {
+                  setContent(event.target.value);
+                  if (error) setError("");
+                }}
+                placeholder="198.51.100.10 或 target.example.net"
+                data-dialog-initial
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </div>
+            {error && (
+              <div className="inline-warning" role="alert">
+                <AlertTriangle size={16} aria-hidden="true" />
+                <span>{error}</span>
+              </div>
+            )}
+            <div className="inline-warning">
+              <AlertTriangle size={16} aria-hidden="true" />
+              <span>
+                仅改内容，保留类型、名称、代理与 TTL；任一条校验失败会跳过并计入失败。
               </span>
-            ))}
-            {records.length > 6 && <span>… 另有 {records.length - 6} 条</span>}
+            </div>
           </div>
-          <label className="field">
-            <span className="field-label">新内容</span>
-            <input
-              value={content}
-              onChange={(event) => setContent(event.target.value)}
-              placeholder="198.51.100.10 或 target.example.net"
-              data-dialog-initial
-              autoFocus
-            />
-          </label>
-          {error && <div className="inline-warning">{error}</div>}
-          <div className="inline-warning">
-            <AlertTriangle size={16} />
-            仅改内容，保留类型、名称、代理与 TTL；任一条校验失败会跳过并计入失败。
-          </div>
-        </div>
-        <footer className="modal-actions">
-          <button className="button ghost" onClick={onCancel} disabled={busy}>
-            取消
-          </button>
-          <button
-            className="button primary"
-            onClick={() => void submit()}
-            disabled={busy}
-          >
-            {busy ? "写入中…" : "确认写入"}
-          </button>
-        </footer>
+          <footer className="modal-actions">
+            <button
+              type="button"
+              className="button ghost"
+              onClick={closeIfIdle}
+              disabled={busy}
+            >
+              取消
+            </button>
+            <button type="submit" className="button primary" disabled={busy}>
+              {busy ? "写入中…" : "确认写入"}
+            </button>
+          </footer>
+        </form>
       </div>
     </div>
   );
@@ -494,18 +618,31 @@ function BulkDeleteDialog({
   const [ack, setAck] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const dialogRef = useDialogFocus(onCancel);
+  const busyRef = useRef(false);
+  busyRef.current = busy;
+
+  function closeIfIdle() {
+    if (!busyRef.current) onCancel();
+  }
+  const dialogRef = useDialogFocus(closeIfIdle);
 
   async function submit() {
+    if (busyRef.current || !ack) return;
     setBusy(true);
+    busyRef.current = true;
     setError("");
     const ok = await onConfirm();
     setBusy(false);
-    if (!ok) setError("删除失败，请查看提示后重试");
+    busyRef.current = false;
+    if (ok) {
+      onCancel();
+    } else {
+      setError("删除失败，请查看提示后重试");
+    }
   }
 
   return (
-    <div className="modal-backdrop" role="presentation" onClick={onCancel}>
+    <div className="modal-backdrop" role="presentation" onClick={closeIfIdle}>
       <div
         className="modal"
         role="dialog"
@@ -515,46 +652,76 @@ function BulkDeleteDialog({
         onClick={(event) => event.stopPropagation()}
       >
         <header className="modal-head">
-          <h2 id="bulk-delete-title">删除选中记录</h2>
-          <button className="icon-button" aria-label="关闭" onClick={onCancel}>
-            <X size={16} />
+          <div className="modal-head-copy">
+            <h2 id="bulk-delete-title">
+              {records.length === 1 ? "删除记录" : "删除选中记录"}
+            </h2>
+            <p className="modal-subtitle">{zone} · 不可撤销</p>
+          </div>
+          <button
+            type="button"
+            className="icon-button"
+            onClick={closeIfIdle}
+            disabled={busy}
+            aria-label="关闭"
+          >
+            <X size={18} aria-hidden="true" />
           </button>
         </header>
-        <div className="modal-body">
-          <p className="modal-copy">
-            将永久删除 {records.length} 条记录（{zone}），无法撤销。
-          </p>
-          <div className="dialog-list">
-            {records.slice(0, 6).map((record) => (
-              <span key={record.id}>
-                <strong>{record.name}</strong> <em>{record.type}</em>{" "}
-                <code>{record.content}</code>
-              </span>
-            ))}
-            {records.length > 6 && <span>… 另有 {records.length - 6} 条</span>}
+        <form
+          className="modal-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submit();
+          }}
+          noValidate
+        >
+          <div className="modal-body">
+            <p className="modal-copy">
+              将永久删除 {records.length} 条记录（{zone}），无法撤销。
+            </p>
+            <div className="dialog-list">
+              {records.slice(0, 6).map((record) => (
+                <span key={record.id}>
+                  <strong>{shortName(record.name, zone)}</strong>{" "}
+                  <em>{record.type}</em> <code>{record.content}</code>
+                </span>
+              ))}
+              {records.length > 6 && <span>… 另有 {records.length - 6} 条</span>}
+            </div>
+            <label className="checkbox-line">
+              <input
+                type="checkbox"
+                checked={ack}
+                onChange={(event) => setAck(event.target.checked)}
+              />
+              我已核对范围，确认删除
+            </label>
+            {error && (
+              <div className="inline-warning" role="alert">
+                <AlertTriangle size={16} aria-hidden="true" />
+                <span>{error}</span>
+              </div>
+            )}
           </div>
-          <label className="checkbox-line">
-            <input
-              type="checkbox"
-              checked={ack}
-              onChange={(event) => setAck(event.target.checked)}
-            />
-            我已核对范围，确认删除
-          </label>
-          {error && <div className="inline-warning">{error}</div>}
-        </div>
-        <footer className="modal-actions">
-          <button className="button ghost" onClick={onCancel} disabled={busy}>
-            取消
-          </button>
-          <button
-            className="button danger"
-            onClick={() => void submit()}
-            disabled={!ack || busy}
-          >
-            {busy ? "删除中…" : `删除 ${records.length} 条`}
-          </button>
-        </footer>
+          <footer className="modal-actions">
+            <button
+              type="button"
+              className="button ghost"
+              onClick={closeIfIdle}
+              disabled={busy}
+            >
+              取消
+            </button>
+            <button
+              type="submit"
+              className="button danger-solid"
+              disabled={!ack || busy}
+            >
+              {busy ? "删除中…" : `删除 ${records.length} 条`}
+            </button>
+          </footer>
+        </form>
       </div>
     </div>
   );

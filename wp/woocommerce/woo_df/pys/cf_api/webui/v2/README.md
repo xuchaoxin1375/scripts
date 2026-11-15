@@ -31,6 +31,7 @@ Windows PowerShell 设置 mock：`$env:VITE_USE_MOCK='true'; npm run dev`。
 - 预览面板读取任务的真实结果（`/api/v1/jobs/{id}/results`），不再用本地记录猜 Diff。
 - 任务列表有运行中任务时 3 秒轮询，空闲时 20 秒；单任务详情仅在运行中 2 秒轮询，
   任务日志仅在运行中自动刷新。
+- 批量抽屉关闭时，预览任务详情与任务日志停止轮询；重新打开后再拉取。
 - 高级页的历史/审计、跨账号查找、上传与导入都在进入页面或触发动作后才请求；
   离开工作台后不再加载记录。
 - 记录、域名、账号分别显示加载/失败状态，失败可单独重试，不会互相遮住。
@@ -51,15 +52,21 @@ Windows PowerShell 设置 mock：`$env:VITE_USE_MOCK='true'; npm run dev`。
 
 ## 尚未完成
 
-- 真实账号的完整写入验收需要可用的测试 zone；`cftest` 当前没有 zone，账号级只读与任务链已验收。
+- 真实账号的完整写入验收已在授权测试 scope `cf00/goodpayway.shop` 完成，并清理了
+  专用测试记录；`cftest` 当前没有 zone，账号级只读与任务链已验收。
 - 运行参数只保存本机浏览器，不写回账号配置文件。
 - 记录表筛选仍由后端先取全量记录再过滤；超大型 zone 的进一步上游分页需要引擎支持。
 
 ## 结构
 
-- `src/pages/Workspace.tsx`：账号/域名导航 + 范围条 + 记录表 + 批量条 + 检查器。
-- `src/components/Inspector.tsx`：动作选择、参数、真实 Diff 预览、单条编辑、任务详情。
-- `src/components/RecordsTable.tsx`：服务端分页表格与 640px 以下记录卡片。
+- `src/App.tsx`：账号/域名范围、记录与任务状态、侧栏/抽屉/弹窗编排。
+- `src/components/Sidebar.tsx`：全局导航（桌面 Rail/展开，窄屏抽屉）。
+- `src/components/ResourceSwitcher.tsx`：顶栏账号/域名切换、搜索、加载与重试。
+- `src/components/OperationsDrawer.tsx`：右侧批量抽屉、操作/任务页签、焦点与遮罩。
+- `src/components/Inspector.tsx`：动作选择、参数、真实 Diff 预览、任务详情。
+- `src/components/RecordDialogs.tsx`：单条编辑弹窗与新增记录预览弹窗。
+- `src/components/ScopeBar.tsx`：页头、范围条、附件与刷新。
+- `src/components/RecordsTable.tsx`：服务端分页表格与 1023px 以下记录卡片。
 - `src/pages/Advanced.tsx`：跨账号查找、provision、导入导出、范围附件、历史审计。
 - `src/api/`：`client.ts` 请求/取消/下载，`hooks.ts` TanStack Query hooks，`types.ts` API 形状。
 - `src/shared/actions.ts`：动作任务 payload 组装。
@@ -73,5 +80,6 @@ python webui/v2/tests/browser_accept.py
 ```
 
 测试启动真实 FastAPI 静态托管，用 Playwright 拦截 `/api/v1` 返回固定 JSON；
-不访问 Cloudflare。覆盖记录分页、预览真实结果、任务详情与日志、单条编辑、批量
-内容/删除、高级页查找/历史/上传、1440/390 无横滚与零 pageerror。
+不访问 Cloudflare。覆盖记录分页、资源切换、Rail 展开/收起、新增与编辑弹窗焦点、
+批量抽屉真实预览、任务详情与日志、批量内容/删除、高级页查找/历史/上传，
+1440/1024/768/390 无页面横滚、390 侧栏与抽屉、零 pageerror。
