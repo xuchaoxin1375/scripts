@@ -70,7 +70,7 @@ class RecordValidateTest(unittest.TestCase):
 class RecordApiGateTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        from tests.test_webui import make_client
+        from .test_webui import make_client
 
         cls.c = make_client()
 

@@ -135,6 +135,120 @@ class ExtraContractTest(unittest.TestCase):
         )
         self.assertEqual(r.status_code, 400)
 
+    def test_job_rerun_and_anomalies_missing_job(self):
+        self.assertEqual(self.c.post("/api/v1/jobs/no-such/rerun").status_code, 404)
+        self.assertEqual(self.c.post("/api/v1/jobs/no-such/execute").status_code, 404)
+        self.assertEqual(
+            self.c.get("/api/v1/jobs/no-such/anomalies").status_code, 404
+        )
+        self.assertEqual(
+            self.c.get("/api/v1/jobs/no-such/anomalies.csv").status_code, 404
+        )
+
+    def test_job_snapshot_scope(self):
+        from webui.backend.jobs import Job
+
+        job = Job(
+            id="job-test",
+            label="preview",
+            kind="preview",
+            mode="update",
+            account_names=["t1"],
+            params={
+                "mode": "update",
+                "domains": ["example.com"],
+                "whitelist": ["a.example", "b.example"],
+            },
+            dry_run=True,
+        )
+        snapshot = job.snapshot()
+        self.assertTrue(snapshot["dry_run"])
+        self.assertEqual(snapshot["scope"]["domains"], ["example.com"])
+        self.assertEqual(snapshot["scope"]["whitelist_count"], 2)
+        self.assertEqual(snapshot["anomaly_count"], 0)
+
+    def test_rerun_job_reuses_params_and_overrides_dry_run(self):
+        from unittest import mock
+
+        from webui.backend.jobs import Job
+        from webui.backend.services import jobs as svc
+
+        class FakeManager:
+            def __init__(self):
+                self.call = None
+
+            def submit(self, *args, **kwargs):
+                self.call = (args, kwargs)
+                return "job-new"
+
+        manager = FakeManager()
+        job = Job(
+            id="job-old",
+            label="preview",
+            kind="preview",
+            mode="update",
+            account_names=["t1"],
+            params={
+                "mode": "update",
+                "domains": ["example.com"],
+                "new_content": "198.51.100.10",
+            },
+            speed={"workers": 2, "interval": 0.5, "max_retries": 5},
+            dry_run=True,
+            status="done",
+        )
+        with mock.patch.object(svc, "lookup_accounts", return_value=[{"name": "t1"}]):
+            with mock.patch.object(svc.deps, "get_manager", return_value=manager):
+                with mock.patch.object(svc.deps, "get_proxy_pool", return_value=None):
+                    new_id = svc.rerun_job(job, failed_only=False, dry_run=False)
+        self.assertEqual(new_id, "job-new")
+        args, kwargs = manager.call
+        self.assertEqual(args[1], "execute")
+        self.assertFalse(kwargs["dry_run"])
+        self.assertEqual(kwargs["params"]["domains"], ["example.com"])
+        self.assertEqual(kwargs["params"]["new_content"], "198.51.100.10")
+
+    def test_rerun_failed_only_keeps_failed_scope(self):
+        from unittest import mock
+
+        from webui.backend.jobs import Job
+        from webui.backend.services import jobs as svc
+
+        class FakeManager:
+            def __init__(self):
+                self.call = None
+
+            def submit(self, *args, **kwargs):
+                self.call = (args, kwargs)
+                return "job-rerun"
+
+        manager = FakeManager()
+        job = Job(
+            id="job-failed",
+            label="execute",
+            kind="execute",
+            mode="update",
+            account_names=["t1", "t2"],
+            params={"mode": "update", "domains": ["all.example"]},
+            speed={"workers": 2, "interval": 0.5, "max_retries": 5},
+            dry_run=False,
+            status="failed",
+            failure_rows=[
+                {"account": "t2", "zone": "failed.example", "status": "error"},
+            ],
+        )
+        with mock.patch.object(
+            svc, "lookup_accounts", return_value=[{"name": "t2"}]
+        ) as lookup:
+            with mock.patch.object(svc.deps, "get_manager", return_value=manager):
+                with mock.patch.object(svc.deps, "get_proxy_pool", return_value=None):
+                    new_id = svc.rerun_job(job, failed_only=True)
+        self.assertEqual(new_id, "job-rerun")
+        lookup.assert_called_once_with(["t2"])
+        _args, kwargs = manager.call
+        self.assertEqual(kwargs["params"]["domains"], ["failed.example"])
+        self.assertFalse(kwargs["dry_run"])
+
     def test_job_exports_empty_404(self):
         body = {
             "accounts": ["t1"],

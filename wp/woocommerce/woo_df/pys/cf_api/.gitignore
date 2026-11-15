@@ -7,3 +7,4 @@ webui.log*
 cf_export/
 cf_backup/
 node_modules/
+*.tsbuildinfo

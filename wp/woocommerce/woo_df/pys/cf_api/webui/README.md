@@ -1,6 +1,10 @@
 # WebUI（单一前端重建）
 
-后端 `webui/backend/`，前端 `webui/frontend/`（源码 `src/index.html`，构建产物 `dist/index.html`，`npm run build` 仅复制，无重型依赖）。
+后端 `webui/backend/`，默认前端 `webui/frontend/`（源码 `src/index.html`，构建产物 `dist/index.html`，`npm run build` 仅复制，无重型依赖）。
+
+新前端在 `webui/frontend-v2/`（Vite + React + TypeScript，单工作台），可通过
+`python start_web_ui.py --frontend-v2 --port 8601` 单独启动；状态与功能对照见
+[frontend-v2/README.md](frontend-v2/README.md) 与 [REDESIGN.md](REDESIGN.md)。
 
 ## 启动（后台，不占 shell）
 

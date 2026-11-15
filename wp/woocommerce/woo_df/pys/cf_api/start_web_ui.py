@@ -20,6 +20,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8600)
     p.add_argument("--config", default=DEFAULT_CONFIG)
+    p.add_argument(
+        "--frontend-v2",
+        action="store_true",
+        help="使用 webui/frontend-v2/dist（新前端；默认仍用 webui/frontend/dist）",
+    )
     p.add_argument("--password", default=os.getenv("CF_WEB_PASSWORD", ""))
     p.add_argument("--log-file", default=os.getenv("CF_WEB_LOG", ""))
     p.add_argument("-P", "--proxy", action="append", default=None)
@@ -127,14 +132,18 @@ def main() -> None:
         print(f"出口代理: 模式={proxy_pool.mode} 数量={len(proxy_pool.urls)}")
 
     deps.configure(args.config, password=args.password, proxy_pool=proxy_pool)
+    frontend_name = "frontend-v2" if args.frontend_v2 else "frontend"
     frontend = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "webui", "frontend", "dist"
+        os.path.dirname(os.path.abspath(__file__)), "webui", frontend_name, "dist"
     )
     app = create_app(frontend if os.path.isdir(frontend) else "")
 
     import uvicorn
 
-    print(f"WebUI: http://{args.host}:{args.port} config={args.config}")
+    print(
+        f"WebUI: http://{args.host}:{args.port} config={args.config} "
+        f"frontend={frontend_name}"
+    )
     # Hidden 后台日志落盘：关掉着色（否则 webui.log 满是 ANSI 转义，与 serve-preview 的 stripAnsi 同理）。
     uvicorn.run(app, host=args.host, port=args.port, log_level="info", use_colors=False)
 

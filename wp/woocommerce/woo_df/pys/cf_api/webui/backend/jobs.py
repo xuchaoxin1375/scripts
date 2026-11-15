@@ -50,7 +50,11 @@ class Job:
     current_account: str = ""
     results: list[dict[str, Any]] = field(default_factory=list)
     failure_rows: list[dict[str, Any]] = field(default_factory=list)
+    anomalies: list[dict[str, Any]] = field(default_factory=list)
     verdict_lines: list[str] = field(default_factory=list)
+    params: dict[str, Any] = field(default_factory=dict)
+    speed: dict[str, Any] = field(default_factory=dict)
+    dry_run: bool = True
     exit_code: Optional[int] = None
     error: str = ""
     created_at: str = ""
@@ -114,6 +118,15 @@ class Job:
                 "zone_summary": zone_summary,
                 "result_count": len(self.results),
                 "failure_count": len(self.failure_rows),
+                "anomaly_count": len(self.anomalies),
+                "dry_run": self.dry_run,
+                "scope": {
+                    "accounts": list(self.account_names),
+                    "domains": list(self.params.get("domains") or []),
+                    "whitelist_count": len(self.params.get("whitelist") or []),
+                    "add_domain": self.params.get("add_domain"),
+                    "delete_ip": self.params.get("delete_ip"),
+                },
                 "exit_code": self.exit_code,
                 "error": self.error,
                 "created_at": self.created_at,
@@ -154,6 +167,34 @@ def failures_csv_text(job: Job) -> str:
     writer.writeheader()
     with job._lock:
         rows = list(job.failure_rows)
+    for row in rows:
+        writer.writerow({k: row.get(k, "") for k in fieldnames})
+    return buf.getvalue()
+
+
+def anomalies_csv_text(job: Job) -> str:
+    """请求异常 CSV 文本（无 BOM，调用方按需加 BOM 下发）。"""
+    mod = engine_adapter.engine()
+    fieldnames: list[str] = list(getattr(mod, "RETRY_CSV_FIELDNAMES", []))
+    if not fieldnames:
+        fieldnames = [
+            "account",
+            "zone",
+            "zone_id",
+            "method",
+            "endpoint",
+            "kind",
+            "http_status",
+            "attempts",
+            "resolved",
+            "error",
+            "timestamp",
+        ]
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=fieldnames)
+    writer.writeheader()
+    with job._lock:
+        rows = list(job.anomalies)
     for row in rows:
         writer.writerow({k: row.get(k, "") for k in fieldnames})
     return buf.getvalue()
@@ -204,12 +245,17 @@ class JobManager:
         **kwargs: Any,
     ) -> str:
         job_id = f"job-{next(_counter):04d}"
+        params = dict(kwargs.get("params") or {})
+        speed = dict(kwargs.get("speed") or {})
         job = Job(
             id=job_id,
             label=label,
             kind=kind,
-            mode=str(kwargs.get("params", {}).get("mode", "update")),
+            mode=str(params.get("mode", "update")),
             account_names=list(account_names),
+            params=params,
+            speed=speed,
+            dry_run=bool(kwargs.get("dry_run", True)),
             status="pending",
             created_at=_now_iso(),
         )
@@ -275,6 +321,21 @@ def _bind_progress(updater: Any, job: Job, account_name: str) -> None:
     updater.progress_cb = _cb
 
 
+def _collect_anomalies(job: Job, updater: Any) -> None:
+    """把一个账号的请求异常并入任务；单条异常读取失败不影响任务。"""
+    if updater is None:
+        return
+    try:
+        rows = updater.request_anomalies()
+    except Exception:
+        return
+    if not rows:
+        return
+    with job._lock:
+        if len(job.anomalies) < MAX_RESULTS:
+            job.anomalies.extend(rows[: MAX_RESULTS - len(job.anomalies)])
+
+
 def run_operation_job(
     job: Job,
     accounts: list[dict],
@@ -311,6 +372,7 @@ def run_operation_job(
         name = account.get("name") or account.get("email") or "unknown"
         job.current_account = name
         job.set_account_status(name, "running")
+        updater: Any = None
         try:
             updater = mod.CloudflareDNSUpdater(
                 auth_method=account["auth_method"],
@@ -363,6 +425,7 @@ def run_operation_job(
                     )
             rows = mod.failure_rows_for_results(name, batch.results)
             all_failures.extend(rows)
+            _collect_anomalies(job, updater)
             pending = batch.stats.errors + batch.stats.cancelled
             if job.stop_event.is_set():
                 job.set_account_status(name, "interrupted")
@@ -374,6 +437,7 @@ def run_operation_job(
                 job.set_account_status(name, "done")
                 success += 1
         except Exception as exc:  # noqa: BLE001 - 单账号失败不影响其它账号
+            _collect_anomalies(job, updater)
             job.set_account_status(name, "failed")
             job.append_log(f"[ACCOUNT-ERR] {name}: {exc}")
             failed += 1
