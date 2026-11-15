@@ -108,3 +108,10 @@ provision 全流程（DNS/等激活/邮箱/SSL/安全/加速）、zones `status`
 - Cloudflare Email Routing 的目标地址验证是账号级、异步、邮件送达的：添加地址只触发验证信，未点击前 routing rule 与 catch-all 都不生效。
 - 旧 provision 的顺序是先补 MX/启用路由、再检查目标地址是否已验证；首次配置时 MX 已切到 Cloudflare 而 catch-all 未设，来信会被拒（Address does not exist）。WebUI 应把“先验证目标地址、再启用路由”作为主路径，并在 provision 表单提示未验证风险。
 - 验收覆盖：未添加、待验证、已验证、验证后完成 catch-all、非 Cloudflare MX、zone 非 active，以及 Gmail 垃圾箱与测试信提示；只测“能提交”不算完成。
+
+## 九、验收要覆盖“运行中的那一份”（2026-11-16）
+
+- 现象：源码、`dist` 构建、后端契约测试都通过，浏览器里邮箱转发面板仍报“接口不存在”。`webui.log` 显示新接口 404，后端进程启动时间早于这批代码约 8 小时。
+- 根因：前端 `dist` 每次请求从磁盘读取，刷新就是新界面；Python 进程启动时已加载旧路由，不重启不会更新。浏览器验收另起新进程，又用 Playwright 拦截全部 `/api/v1`，所以测不到“正在运行的进程过期”。
+- 补强：`tests/test_webui_api_paths.py` 比对前端源码路径与后端 OpenAPI 路由表；`serve-webui.ps1 -Status` 和复用分支对比进程启动时间与后端源码修改时间；后端代码改动后执行 `-Restart`。
+- 通用规则：UI 与后端分别更新（静态产物 + 常驻进程）时，验收必须确认运行中的进程版本，不能只凭新进程测试通过；UI 全量 mock 时，另设前端路径与后端路由的静态契约，避免路径漂移被 mock 掩盖。

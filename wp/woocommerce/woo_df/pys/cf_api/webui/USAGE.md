@@ -104,5 +104,7 @@ python start_web_ui.py --port 8601 --config <cf_config.csv|json>
 
 也可用 `.\serve-webui.ps1 -Port 8601 -Config <cf_config.csv|json>` 由后台服务管理；
 `-Restart -V1` 切回旧前端，不传前端参数时 `-Restart` 保持现状。
+改了后端代码（`webui/backend/`、`start_web_ui.py`、`cloudflare_dns_tool.py`）后必须 `-Restart`；
+`-Status` 发现进程早于代码更新时会提示，否则浏览器可能加载新界面却调用到旧接口。
 
 浏览器打开 `http://127.0.0.1:8601`。旧版用 `-V1` 启动；v2 已是默认入口。

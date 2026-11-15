@@ -9,7 +9,7 @@
   停止按端口精确匹配进程，不影响本机其他 python 进程。
   安全沿用 start_web_ui.py：默认仅 127.0.0.1；绑 0.0.0.0（-Lan）无口令拒绝启动。
 .PARAMETER Status
-  快查：端口空闲还是被谁占（进程 PID + 端口探活 + meta 标注）。
+  快查：端口空闲还是被谁占（进程 PID + 端口探活 + meta 标注）；后端代码比进程新时提示 -Restart。
 .PARAMETER Restart
   先停本端口服务再起（换 start_web_ui.py / webui/backend 代码后用它生效）。
   外部访问/配置默认保持现状：之前是 -Lan 就继续 0.0.0.0，仅本机就继续 127.0.0.1；
@@ -208,8 +208,33 @@ function Get-ServerDetail([int]$Port) {
     ProxyFile = $pf
     ProxyMode = $pm
     Frontend = if ($cmd -match '--v1|--frontend-v1') { 'v1' } else { 'v2' }
+    StartedAt = $procs[0].CreationDate
     CommandLine = $cmd
   }
+}
+
+function Get-BackendStamp {
+  # 只统计启动时会被加载的后端源码；前端 dist 每次请求从磁盘读，不需要重启。
+  $files = @()
+  foreach ($path in @((Join-Path $here 'start_web_ui.py'), (Join-Path $here 'cloudflare_dns_tool.py'))) {
+    if (Test-Path -LiteralPath $path) { $files += Get-Item -LiteralPath $path }
+  }
+  $backend = Join-Path $here 'webui/backend'
+  if (Test-Path -LiteralPath $backend) {
+    $files += @(Get-ChildItem -LiteralPath $backend -Recurse -File -Filter '*.py')
+  }
+  if (-not $files.Count) { return $null }
+  return ($files | Sort-Object -Property LastWriteTime -Descending)[0].LastWriteTime
+}
+
+function Get-StaleBackendHint($Detail) {
+  if (-not $Detail -or -not $Detail.StartedAt) { return '' }
+  $stamp = Get-BackendStamp
+  if (-not $stamp) { return '' }
+  if ($stamp -le $Detail.StartedAt.AddSeconds(2)) { return '' }
+  $codeAt = $stamp.ToString('yyyy-MM-dd HH:mm:ss')
+  $procAt = $Detail.StartedAt.ToString('yyyy-MM-dd HH:mm:ss')
+  return "后端代码最新修改 $codeAt，晚于当前进程启动 $procAt；当前进程可能缺少新接口，请执行 .\serve-webui.ps1 -Restart -Port $($Detail.Port)。"
 }
 
 function Find-FreePort([int]$From) {
@@ -295,6 +320,7 @@ function Start-WebUI([int]$Port, [string]$HostName, [string]$Cfg, [string]$Token
     Write-Host "端口 $Port 有监听，确认是谁的服务…"
     if ((Test-Http200 $Port) -and @(Find-WebUI $Port).Count) {
       $d = Get-ServerDetail $Port
+      $stale = Get-StaleBackendHint $d
       Write-Host "已在运行，直接用：http://localhost:$Port/"
       if ($d.Frontend -eq 'v2' -and -not $V2Arg) {
         Write-Host '提示：当前运行 v2 前端；如要切回旧前端，用 -Restart -V1。'
@@ -302,6 +328,7 @@ function Start-WebUI([int]$Port, [string]$HostName, [string]$Cfg, [string]$Token
         Write-Host '提示：当前运行旧前端；如要切到 v2，用 -Restart -V2。'
       }
       Show-Endpoints $Port $d.Host $d.Config $Token $d.Frontend
+      if ($stale) { Write-Host $stale }
       return
     }
     Start-WebUI (Resolve-Conflict $Port) $HostName $Cfg $Token $Proxies $ProxyFileArg $ProxyModeArg $V2Arg
@@ -364,8 +391,10 @@ function Show-Status([int]$Port) {
   if ($http -and $procs.Count) {
     $d = Get-ServerDetail $Port
     $tok = Resolve-Password $Password $d.Password
+    $stale = Get-StaleBackendHint $d
     echo "端口 $Port：WebUI 正常（200），绑定 $($d.Host)，前端 $($d.Frontend)，入口 http://localhost:$Port/"
     echo "配置：$($d.Config)"
+    if ($stale) { echo $stale }
     $m = Get-Meta $Port $tok
     if ($m) {
       $auth = if ($m.requires_auth) { '需口令' } else { '未设口令' }

@@ -48,10 +48,13 @@ Windows PowerShell 设置 mock：`$env:VITE_USE_MOCK='true'; npm run dev`。
 - 记录 JSON 导出（`POST /api/v1/records/export`）与 zone CSV 导出。
 - 高级页：跨账号查找、provision 预览/执行、JSON 导入预检/写入、服务器导出任务与
   文件下载、白名单/重跑清单上传、任务历史与审计分页、运行参数。
+- 邮箱转发：账号级目标地址添加与验证状态、zone 路由/MX 状态、验证后启用路由并设置 catch-all。
 - 白名单/重跑清单上传后附加到下一次任务，不写入账号配置。
 
 ## 尚未完成
 
+- 邮箱转发的真实 Cloudflare 写入（添加目标地址、邮箱验证、启用路由与 catch-all）尚未在真实账号验收；
+  当前通过后端契约测试、假 updater 与浏览器 mock 验收，首次真实使用需按 `USAGE.md` 走一遍。
 - 真实账号的完整写入验收已在授权测试 scope `cf00/goodpayway.shop` 完成，并清理了
   专用测试记录；`cftest` 当前没有 zone，账号级只读与任务链已验收。
 - 运行参数只保存本机浏览器，不写回账号配置文件。
@@ -79,10 +82,16 @@ Windows PowerShell 设置 mock：`$env:VITE_USE_MOCK='true'; npm run dev`。
 ```bash
 npm run build
 python webui/v2/tests/browser_accept.py
+python tests/test_webui_email_routing.py
+python tests/test_webui_api_paths.py
 ```
 
-测试启动真实 FastAPI 静态托管，用 Playwright 拦截 `/api/v1` 返回固定 JSON；
-不访问 Cloudflare。覆盖记录分页、资源切换、侧栏默认展开/页脚收起/Rail 悬停与键盘临时展开/Esc/快捷键、
+浏览器验收启动新的 FastAPI 进程托管真实 `dist`，但用 Playwright 拦截 `/api/v1` 返回固定 JSON；
+它验证界面状态与交互，不验证运行中的后端是否存在这些路由，也不访问 Cloudflare。
+`test_webui_api_paths.py` 比对前端源码里的 `/api/v1` 路径与后端 OpenAPI 路由表，补上路径漂移；
+`serve-webui.ps1 -Status` 会提示后端进程早于代码更新的情况。
+
+覆盖记录分页、资源切换、侧栏默认展开/页脚收起/Rail 悬停与键盘临时展开/Esc/快捷键、
 新增与编辑弹窗焦点、批量抽屉真实预览、任务详情与日志、批量内容/删除、高级页查找/历史/上传、
 邮箱转发目标验证与完成 catch-all，1440/1024/768/390 无页面横滚、390 侧栏与抽屉、零 pageerror。
 

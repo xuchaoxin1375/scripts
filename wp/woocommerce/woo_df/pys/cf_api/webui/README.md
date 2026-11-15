@@ -31,6 +31,9 @@ A/C 保留供回退。
 
 - 对标 `frontend_design/serve-preview.ps1` 的管理模型：端口空闲直接拉起并等就绪反馈；
   已是本服务则复用；被别的程序占用则询问新端口（回车自动顺延）。
+- 改了后端代码（`webui/backend/`、`start_web_ui.py`、`cloudflare_dns_tool.py`）后必须 `-Restart`；
+  `-Status` 或复用已有服务时会对比代码修改时间与进程启动时间，可能过期时给出提示。
+  前端 `dist` 每次请求从磁盘读取，重新构建后刷新页面即可，不必重启。
 - 日志 `webui.log`（`--log-file` 追加，超 512KB 转 `.1` 备份，无 ANSI 着色）；Hidden 进程不保证跨会话存活，每次先 `-Status` 确认。
 - 直接 `python start_web_ui.py` 仍可用（前台阻塞，仅调试用）；日常用 `serve-webui.ps1`。
 
@@ -77,7 +80,7 @@ sequenceDiagram
 
 ## 接口
 
-- 主接口 `/api/v1`：`meta/accounts/zones(status|csv)/records(GET/POST/PATCH/DELETE/bulk-delete/bulk-update/bulk-restore/import/export)/find?domain=/zones/activation-check/jobs/jobs/{id}[/logs|results|failures|anomalies|failures.csv|anomalies.csv|cancel|zones|exports|exports/{n}|rerun|execute]/resume-preview/resume-upload/whitelist-upload/history/audit`。
+- 主接口 `/api/v1`：`meta/accounts/zones(status|csv)/records(GET/POST/PATCH/DELETE/bulk-delete/bulk-update/bulk-restore/import/export)/email-routing(addresses|status|complete)/find?domain=/zones/activation-check/jobs/jobs/{id}[/logs|results|failures|anomalies|failures.csv|anomalies.csv|cancel|zones|exports|exports/{n}|rerun|execute]/resume-preview/resume-upload/whitelist-upload/history/audit`。
 - 兼容旧端 `/api/meta`、`/api/accounts`。
 - 分页一律服务端，上限 200/页；日志增量 `offset/limit`；失败清单 CSV 含 BOM。
 - 持久化 `sqlite3`（WAL），库文件在配置同目录 `cf_web.db`；旧库缺列自动迁移。
