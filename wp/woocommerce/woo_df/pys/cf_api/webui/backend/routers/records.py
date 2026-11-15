@@ -7,6 +7,7 @@ import json
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 
 from .. import db, engine_adapter
 from ..auth import require_auth
@@ -16,6 +17,7 @@ from ..schemas import (
     BulkRestore,
     BulkUpdate,
     RecordBody,
+    RecordExport,
     RecordImport,
     RecordPatch,
     SingleRecord,
@@ -26,6 +28,38 @@ from ..services.zones import get_zones, resolve_zone
 from ..validate import validate_single_record
 
 router = APIRouter(dependencies=[Depends(require_auth)])
+
+
+def _filtered_records(
+    all_records: list[dict[str, Any]],
+    record_type: str,
+    search: str,
+    proxied: str,
+) -> list[dict[str, Any]]:
+    """按类型、关键字与代理状态过滤，返回精简记录。"""
+    keyword = (search or "").strip().lower()
+    wanted = (record_type or "ALL").strip().upper()
+    proxy_want = (proxied or "all").strip().lower()
+    rows = []
+    for record in all_records:
+        if wanted not in {"", "ALL"} and str(record.get("type", "")).upper() != wanted:
+            continue
+        if proxy_want in {"true", "1", "proxied", "on"} and not bool(
+            record.get("proxied", False)
+        ):
+            continue
+        if proxy_want in {"false", "0", "dns", "off"} and bool(
+            record.get("proxied", False)
+        ):
+            continue
+        if (
+            keyword
+            and keyword not in str(record.get("name", "")).lower()
+            and keyword not in str(record.get("content", "")).lower()
+        ):
+            continue
+        rows.append(engine_adapter.slim_record(record))
+    return rows
 
 
 @router.get("/api/v1/records")
@@ -55,28 +89,7 @@ def records(
         all_records = engine_adapter.get_records(matched[0], zone_id, "ALL")
     except engine_adapter.EngineError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    keyword = (search or "").strip().lower()
-    wanted = (type or "ALL").strip().upper()
-    proxy_want = (proxied or "all").strip().lower()
-    rows = []
-    for record in all_records:
-        if wanted not in {"", "ALL"} and str(record.get("type", "")).upper() != wanted:
-            continue
-        if proxy_want in {"true", "1", "proxied", "on"} and not bool(
-            record.get("proxied", False)
-        ):
-            continue
-        if proxy_want in {"false", "0", "dns", "off"} and bool(
-            record.get("proxied", False)
-        ):
-            continue
-        if (
-            keyword
-            and keyword not in str(record.get("name", "")).lower()
-            and keyword not in str(record.get("content", "")).lower()
-        ):
-            continue
-        rows.append(engine_adapter.slim_record(record))
+    rows = _filtered_records(all_records, type, search, proxied)
     skey = (sort or "").strip()
     if skey in {"type", "-type", "name", "-name", "content", "-content"}:
         rev = skey.startswith("-")
@@ -92,6 +105,33 @@ def records(
     data = paginate(rows, page, per_page)
     data.update({"account": account, "zone": zone})
     return data
+
+
+@router.post("/api/v1/records/export")
+def export_records(body: RecordExport) -> Response:
+    """导出记录 JSON：ids 优先，否则按当前筛选范围，最多 5000 条。"""
+    ids = [str(i).strip() for i in (body.ids or []) if str(i).strip()]
+    ids = list(dict.fromkeys(ids))
+    if len(ids) > 5000:
+        raise HTTPException(status_code=400, detail="单次导出至多 5000 条")
+    matched = lookup_accounts([body.account])
+    zone_id, zone_name = resolve_zone(matched[0], body.zone)
+    try:
+        all_records = engine_adapter.get_records(matched[0], zone_id, "ALL")
+    except engine_adapter.EngineError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    rows = _filtered_records(all_records, body.type, body.search, body.proxied)
+    if ids:
+        wanted = set(ids)
+        rows = [row for row in rows if str(row.get("id", "")) in wanted]
+    rows = rows[:5000]
+    payload = json.dumps(rows, ensure_ascii=False, indent=2)
+    filename = f"records_{zone_name}_{len(rows)}.json"
+    return Response(
+        content=payload,
+        media_type="application/json; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/api/v1/records")
@@ -348,8 +388,11 @@ def bulk_update(body: BulkUpdate) -> dict[str, Any]:
         return {"updated": [], "prev": [], "failed": [], "total": 0}
     if len(ids) > 200:
         raise HTTPException(status_code=400, detail="单次批量更新至多 200 条")
-    if body.proxied is None and body.ttl is None:
-        raise HTTPException(status_code=400, detail="批量更新至少指定 proxied 或 ttl 其一")
+    if body.proxied is None and body.ttl is None and body.content is None:
+        raise HTTPException(
+            status_code=400,
+            detail="批量更新至少指定 content、proxied 或 ttl 其一",
+        )
     matched = lookup_accounts([body.account])
     zone_id, zone_name = resolve_zone(matched[0], body.zone)
     updater = engine_adapter.build_updater(matched[0])
@@ -368,7 +411,9 @@ def bulk_update(body: BulkUpdate) -> dict[str, Any]:
             continue
         merged = {
             "type": str(current.get("type", "A")).upper(),
-            "content": str(current.get("content", "")),
+            "content": body.content.strip()
+            if body.content is not None
+            else str(current.get("content", "")),
             "proxied": body.proxied
             if body.proxied is not None
             else bool(current.get("proxied", False)),
@@ -406,7 +451,10 @@ def bulk_update(body: BulkUpdate) -> dict[str, Any]:
         db.audit(
             "bulk_update",
             account=body.account,
-            detail=f"{zone_name} 更新 {len(updated)} 条，失败 {len(failed)} 条",
+            detail=(
+                f"{zone_name} 更新 {len(updated)} 条，失败 {len(failed)} 条"
+                + ("（含内容）" if body.content is not None else "")
+            ),
         )
     except Exception:
         pass

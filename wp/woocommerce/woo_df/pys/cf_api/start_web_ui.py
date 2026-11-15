@@ -137,6 +137,12 @@ def main() -> None:
         os.path.dirname(os.path.abspath(__file__)), "webui", frontend_name, "dist"
     )
     app = create_app(frontend if os.path.isdir(frontend) else "")
+    if args.frontend_v2 and not os.path.isdir(frontend):
+        print(
+            "警告：未找到 webui/frontend-v2/dist，当前仅提供 API；"
+            "先执行 cd webui/frontend-v2 && npm run build",
+            flush=True,
+        )
 
     import uvicorn
 

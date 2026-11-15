@@ -128,7 +128,7 @@ def upsert_history(entry: dict[str, Any]) -> None:
             conn.close()
 
 
-def list_history(limit: int = 50) -> list[dict[str, Any]]:
+def list_history(limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
     _require_db()
     with _lock:
         conn = _connect()
@@ -136,10 +136,22 @@ def list_history(limit: int = 50) -> list[dict[str, Any]]:
             _ensure_table(conn, "jobs_history", JOBS_COLUMNS)
             rows = conn.execute(
                 "SELECT id, mode, status, label, accounts, exit_code, created_at, finished_at"
-                " FROM jobs_history ORDER BY finished_at DESC LIMIT ?",
-                (max(1, limit),),
+                " FROM jobs_history ORDER BY finished_at DESC LIMIT ? OFFSET ?",
+                (max(1, limit), max(0, offset)),
             ).fetchall()
             return [dict(r) for r in rows]
+        finally:
+            conn.close()
+
+
+def count_history() -> int:
+    _require_db()
+    with _lock:
+        conn = _connect()
+        try:
+            _ensure_table(conn, "jobs_history", JOBS_COLUMNS)
+            row = conn.execute("SELECT COUNT(*) AS n FROM jobs_history").fetchone()
+            return int(row["n"] if row is not None else 0)
         finally:
             conn.close()
 
@@ -160,16 +172,29 @@ def audit(kind: str, account: str = "", detail: str = "") -> None:
             conn.close()
 
 
-def list_audit(limit: int = 50) -> list[dict[str, Any]]:
+def list_audit(limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
     _require_db()
     with _lock:
         conn = _connect()
         try:
             _ensure_table(conn, "audit_log", AUDIT_COLUMNS)
             rows = conn.execute(
-                "SELECT id, ts, kind, account, detail FROM audit_log ORDER BY id DESC LIMIT ?",
-                (max(1, limit),),
+                "SELECT id, ts, kind, account, detail FROM audit_log"
+                " ORDER BY id DESC LIMIT ? OFFSET ?",
+                (max(1, limit), max(0, offset)),
             ).fetchall()
             return [dict(r) for r in rows]
+        finally:
+            conn.close()
+
+
+def count_audit() -> int:
+    _require_db()
+    with _lock:
+        conn = _connect()
+        try:
+            _ensure_table(conn, "audit_log", AUDIT_COLUMNS)
+            row = conn.execute("SELECT COUNT(*) AS n FROM audit_log").fetchone()
+            return int(row["n"] if row is not None else 0)
         finally:
             conn.close()

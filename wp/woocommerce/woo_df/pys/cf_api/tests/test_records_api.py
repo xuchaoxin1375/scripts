@@ -96,6 +96,77 @@ class RecordApiGateTest(unittest.TestCase):
         )
         self.assertEqual(r.status_code, 400)
 
+    def test_bulk_content_empty_ids_no_network(self):
+        r = self.c.post(
+            "/api/v1/records/bulk-update",
+            json={
+                "account": "t1",
+                "zone": "example.com",
+                "ids": [],
+                "content": "198.51.100.10",
+            },
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["total"], 0)
+
+    def test_bulk_update_content_writes_selected_ids(self):
+        from unittest import mock
+
+        from webui.backend.routers import records as records_router
+
+        class FakeUpdater:
+            def get_dns_records(self, zone_id, record_type):
+                return [
+                    {
+                        "id": "r1",
+                        "type": "A",
+                        "name": "www.example.com",
+                        "content": "203.0.113.10",
+                        "ttl": 1,
+                        "proxied": False,
+                        "comment": "",
+                        "priority": None,
+                    }
+                ]
+
+        updater = FakeUpdater()
+        with mock.patch.object(
+            records_router, "lookup_accounts", return_value=[{"name": "t1"}]
+        ):
+            with mock.patch.object(
+                records_router,
+                "resolve_zone",
+                return_value=("z1", "example.com"),
+            ):
+                with mock.patch.object(
+                    records_router.engine_adapter,
+                    "build_updater",
+                    return_value=updater,
+                ):
+                    with mock.patch.object(
+                        records_router.engine_adapter, "write_record_full"
+                    ) as write:
+                        r = self.c.post(
+                            "/api/v1/records/bulk-update",
+                            json={
+                                "account": "t1",
+                                "zone": "example.com",
+                                "ids": ["r1"],
+                                "content": "198.51.100.88",
+                            },
+                        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["updated"], ["r1"])
+        self.assertFalse(r.json()["failed"])
+        self.assertEqual(write.call_args.args[3]["content"], "198.51.100.88")
+
+    def test_export_unknown_account_400(self):
+        r = self.c.post(
+            "/api/v1/records/export",
+            json={"account": "nobody", "zone": "example.com", "ids": []},
+        )
+        self.assertEqual(r.status_code, 400)
+
     def test_import_over_cap(self):
         recs = [
             {"name": f"h{i}", "type": "A", "content": "1.2.3.4"}

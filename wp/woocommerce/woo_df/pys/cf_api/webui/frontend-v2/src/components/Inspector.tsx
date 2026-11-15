@@ -7,8 +7,7 @@ import {
   Download,
   FileJson,
   Globe2,
-  Layers,
-  ListFilter,
+  Loader2,
   Play,
   Plus,
   RefreshCw,
@@ -16,7 +15,6 @@ import {
   ShieldAlert,
   SlidersHorizontal,
   Trash2,
-  Upload,
   XCircle,
 } from "lucide-react";
 import { useState } from "react";
@@ -30,6 +28,11 @@ import type {
   PreviewRow,
   RecordPatchValues,
 } from "../types";
+import {
+  downloadJobExport,
+  useJobExports,
+  useJobLogs,
+} from "../api/hooks";
 
 type Props = {
   tab: InspectorTab;
@@ -37,6 +40,7 @@ type Props = {
   account: string;
   zone: string;
   selectedRecords: DnsRecord[];
+  selectedCount: number;
   editingRecord: DnsRecord | null;
   onCancelEdit: () => void;
   onSaveRecord: (
@@ -47,20 +51,29 @@ type Props = {
   onActionMode: (mode: ActionMode | null) => void;
   previewOpen: boolean;
   previewRows: PreviewRow[];
+  previewTotal: number;
+  previewPage: number;
+  previewPages: number;
+  previewLoading: boolean;
   previewJobId: string | null;
   previewJob: Job | null;
   submitting: boolean;
+  defaultBackupDir: string;
+  defaultExportDir: string;
   onPreview: (draft: ActionDraft) => void;
+  onPreviewPage: (page: number) => void;
   onBack: () => void;
   onExecute: () => void;
   jobs: Job[];
+  jobsLoading: boolean;
+  jobsError: string | null;
   selectedJob: Job | null;
   onSelectJob: (job: Job | null) => void;
   onRerun: (jobId: string) => Promise<void>;
   onCancel: (jobId: string) => Promise<void>;
   onDownload: (jobId: string, kind: "failures" | "anomalies") => Promise<void>;
   onExecutePreview: (jobId: string) => Promise<void>;
-  onNotify: (message: string) => void;
+  onRetryJobs: () => void;
 };
 
 const ACTION_CARDS: {
@@ -123,12 +136,6 @@ const ACTION_CARDS: {
   },
 ];
 
-function ActionIcon({ mode }: { mode: ActionMode }) {
-  const card = ACTION_CARDS.find((item) => item.mode === mode);
-  const Icon = card?.icon ?? Layers;
-  return <Icon size={16} />;
-}
-
 export default function Inspector(props: Props) {
   const {
     tab,
@@ -136,6 +143,7 @@ export default function Inspector(props: Props) {
     account,
     zone,
     selectedRecords,
+    selectedCount,
     editingRecord,
     onCancelEdit,
     onSaveRecord,
@@ -143,20 +151,29 @@ export default function Inspector(props: Props) {
     onActionMode,
     previewOpen,
     previewRows,
+    previewTotal,
+    previewPage,
+    previewPages,
+    previewLoading,
     previewJobId,
     previewJob,
     submitting,
+    defaultBackupDir,
+    defaultExportDir,
     onPreview,
+    onPreviewPage,
     onBack,
     onExecute,
     jobs,
+    jobsLoading,
+    jobsError,
     selectedJob,
     onSelectJob,
     onRerun,
     onCancel,
     onDownload,
     onExecutePreview,
-    onNotify,
+    onRetryJobs,
   } = props;
 
   return (
@@ -192,9 +209,14 @@ export default function Inspector(props: Props) {
           ) : previewOpen ? (
             <PreviewPanel
               rows={previewRows}
+              offerCount={previewTotal}
               zone={zone}
               jobId={previewJobId}
               job={previewJob}
+              loading={previewLoading}
+              page={previewPage}
+              pages={previewPages}
+              onPage={onPreviewPage}
               onBack={onBack}
               onExecute={onExecute}
             />
@@ -203,16 +225,17 @@ export default function Inspector(props: Props) {
               mode={actionMode}
               account={account}
               zone={zone}
-              selectedCount={selectedRecords.length}
+              selectedCount={selectedCount}
               selectedRecords={selectedRecords}
               submitting={submitting}
+              defaultBackupDir={defaultBackupDir}
+              defaultExportDir={defaultExportDir}
               onBack={() => onActionMode(null)}
               onPreview={onPreview}
-              onNotify={onNotify}
             />
           ) : (
             <ActionPicker
-              selectedCount={selectedRecords.length}
+              selectedCount={selectedCount}
               zone={zone}
               onPick={onActionMode}
             />
@@ -222,12 +245,15 @@ export default function Inspector(props: Props) {
         <div className="inspector-body">
           <TaskPanel
             jobs={jobs}
+            jobsLoading={jobsLoading}
+            jobsError={jobsError}
             selectedJob={selectedJob}
             onSelectJob={onSelectJob}
             onRerun={onRerun}
             onCancel={onCancel}
             onDownload={onDownload}
             onExecutePreview={onExecutePreview}
+            onRetryJobs={onRetryJobs}
           />
         </div>
       )}
@@ -289,9 +315,10 @@ function ActionForm({
   selectedCount,
   selectedRecords,
   submitting,
+  defaultBackupDir,
+  defaultExportDir,
   onBack,
   onPreview,
-  onNotify,
 }: {
   mode: ActionMode;
   account: string;
@@ -299,9 +326,10 @@ function ActionForm({
   selectedCount: number;
   selectedRecords: DnsRecord[];
   submitting: boolean;
+  defaultBackupDir: string;
+  defaultExportDir: string;
   onBack: () => void;
   onPreview: (draft: ActionDraft) => void;
-  onNotify: (message: string) => void;
 }) {
   const sharedType =
     selectedRecords.length > 0 &&
@@ -319,17 +347,23 @@ function ActionForm({
   const [deleteIp, setDeleteIp] = useState("");
   const [deleteZoneMode, setDeleteZoneMode] = useState("dns");
   const [confirm, setConfirm] = useState("");
-  const [backupDir, setBackupDir] = useState("C:/Users/Administrator/Desktop/deploy_configs/cf_backup");
+  const [backupDir, setBackupDir] = useState(
+    defaultBackupDir || "./cf_backup",
+  );
   const [proxy, setProxy] = useState("keep");
   const [ttl, setTtl] = useState("");
   const [domain, setDomain] = useState("");
   const [recordsText, setRecordsText] = useState("www:A:198.51.100.10");
   const [addProxied, setAddProxied] = useState("on");
   const [addTtl, setAddTtl] = useState("1");
-  const [exportDir, setExportDir] = useState("C:/Users/Administrator/Desktop/deploy_configs/cf_export");
+  const [exportDir, setExportDir] = useState(
+    defaultExportDir || "./cf_export",
+  );
   const [exportFormat, setExportFormat] = useState("json");
   const [serverIp, setServerIp] = useState("");
   const [forwardEmail, setForwardEmail] = useState("");
+  const [sslMode, setSslMode] = useState("");
+  const [formError, setFormError] = useState("");
 
   const card = ACTION_CARDS.find((item) => item.mode === mode);
   const title = card?.title ?? "批量操作";
@@ -338,21 +372,30 @@ function ActionForm({
 
   function submitPreview() {
     if (mode === "update" && !newContent.trim()) {
-      onNotify("请填写新内容，例如 198.51.100.10 或目标域名");
+      setFormError("请填写新内容，例如 198.51.100.10 或目标域名");
       return;
     }
     if (mode === "delete_ip" && !deleteIp.trim()) {
-      onNotify("请填写要删除的 IP");
+      setFormError("请填写要删除的 IP");
       return;
     }
     if (mode === "delete_zone" && confirm.trim() !== "DELETE") {
-      onNotify("删除域名需输入 DELETE 确认");
+      setFormError("删除域名需输入 DELETE 确认");
       return;
     }
     if (mode === "set_attrs" && proxy === "keep" && !ttl.trim()) {
-      onNotify("属性设置至少改一项：代理或 TTL");
+      setFormError("属性设置至少改一项：代理或 TTL");
       return;
     }
+    if (mode === "delete_zone" && !backupDir.trim()) {
+      setFormError("删域名必须填写快照目录");
+      return;
+    }
+    if (mode === "export" && !exportDir.trim()) {
+      setFormError("导出模式必须填写导出目录");
+      return;
+    }
+    setFormError("");
     onPreview({
       mode,
       newContent,
@@ -372,6 +415,7 @@ function ActionForm({
       exportFormat,
       serverIp,
       forwardEmail,
+      sslMode,
     });
   }
 
@@ -572,6 +616,18 @@ function ActionForm({
               placeholder="admin@example.com"
             />
           </Field>
+          <Field label="SSL 模式">
+            <select
+              value={sslMode}
+              onChange={(event) => setSslMode(event.target.value)}
+            >
+              <option value="">不改 SSL</option>
+              <option value="flexible">flexible</option>
+              <option value="full">full</option>
+              <option value="strict">strict</option>
+              <option value="off">off</option>
+            </select>
+          </Field>
           <Field label="步骤">
             <div className="step-chips">
               {["DNS", "等激活", "邮箱", "SSL", "安全", "加速"].map((step) => (
@@ -584,6 +640,8 @@ function ActionForm({
           <p className="form-hint">provision 只对当前域名执行；完整流程在高级页配置。</p>
         </>
       )}
+
+      {formError && <div className="inline-warning">{formError}</div>}
 
       <div className="form-actions">
         <button className="button ghost" onClick={onBack}>
@@ -747,24 +805,33 @@ function Field({
 
 function PreviewPanel({
   rows,
+  offerCount,
   zone,
   jobId,
   job,
+  loading,
+  page,
+  pages,
+  onPage,
   onBack,
   onExecute,
 }: {
   rows: PreviewRow[];
+  offerCount: number;
   zone: string;
   jobId: string | null;
   job: Job | null;
+  loading: boolean;
+  page: number;
+  pages: number;
+  onPage: (page: number) => void;
   onBack: () => void;
   onExecute: () => void;
 }) {
-  const updates = rows.filter((row) => row.action === "更新").length;
-  const deletes = rows.filter((row) => row.action === "删除").length;
   const running = job ? ["pending", "running"].includes(job.status) : false;
   const failed = job ? job.status === "failed" || job.failures > 0 : false;
   const ready = job ? job.status === "done" && job.failures === 0 : false;
+  const total = job?.records ?? offerCount;
   return (
     <div className="preview-panel">
       <button className="back-link" onClick={onBack}>
@@ -774,9 +841,11 @@ function PreviewPanel({
         <span className="eyebrow">PREVIEW</span>
         <h2>预览 · 尚未执行</h2>
         <p>
-          {rows.length > 0
-            ? `${zone} · 将更新 ${updates} 条、删除 ${deletes} 条。确认后才写入 Cloudflare。`
-            : "该动作没有逐条 diff，提交后以任务日志与结果为准。"}
+          {running
+            ? `${zone} · 预览任务正在读取并核对记录，完成后显示真实 diff。`
+            : total > 0
+              ? `${zone} · 预览任务返回 ${total} 条变更；确认后才写入 Cloudflare。`
+              : `${zone} · 预览任务已结束，没有匹配到需要变更的记录。`}
         </p>
         {jobId && (
           <p className="preview-job">
@@ -784,25 +853,27 @@ function PreviewPanel({
             {running
               ? "运行中…"
               : failed
-                ? "有失败项"
+                ? `有失败项 ${job?.failures ?? 0} 条`
                 : ready
                   ? "已完成，可执行"
-                  : "状态读取中…"}
+                  : job
+                    ? job.status
+                    : "状态读取中…"}
           </p>
         )}
       </div>
       <div className="preview-stats">
         <div>
+          <strong>{total}</strong>
+          <span>预览结果</span>
+        </div>
+        <div>
+          <strong>{job?.failures ?? 0}</strong>
+          <span>失败</span>
+        </div>
+        <div>
           <strong>{rows.length}</strong>
-          <span>涉及记录</span>
-        </div>
-        <div>
-          <strong>{updates}</strong>
-          <span>更新</span>
-        </div>
-        <div>
-          <strong>{deletes}</strong>
-          <span>删除</span>
+          <span>本页</span>
         </div>
       </div>
       <div className="diff-table" role="table" aria-label="变更预览">
@@ -811,11 +882,22 @@ function PreviewPanel({
           <span>旧内容</span>
           <span>新内容</span>
         </div>
-        {rows.length > 0 ? (
+        {loading && rows.length === 0 ? (
+          Array.from({ length: 3 }).map((_, index) => (
+            <div className="diff-row skeleton-row" role="row" key={index}>
+              <span className="skeleton-line" />
+              <span className="skeleton-line" />
+              <span className="skeleton-line" />
+            </div>
+          ))
+        ) : rows.length > 0 ? (
           rows.map((row) => (
             <div className="diff-row" role="row" key={row.id}>
               <span className="diff-name">
                 {row.name} <em>{row.type}</em>
+                {row.action !== "更新" && row.action !== "删除" && (
+                  <small> · {row.action}</small>
+                )}
               </span>
               <code>{row.oldContent}</code>
               <code className={row.action === "删除" ? "diff-delete" : "diff-add"}>
@@ -826,14 +908,35 @@ function PreviewPanel({
         ) : (
           <div className="diff-row">
             <span>—</span>
-            <span>该动作无逐条差异</span>
-            <span>执行前请以任务日志为准</span>
+            <span>{running ? "正在读取预览结果…" : "没有逐条变更"}</span>
+            <span>{running ? "无需操作" : "可返回修改范围"}</span>
           </div>
         )}
       </div>
+      {pages > 1 && (
+        <div className="preview-pager">
+          <button
+            className="button ghost"
+            onClick={() => onPage(page - 1)}
+            disabled={page <= 1 || loading}
+          >
+            上一页
+          </button>
+          <span>
+            {page} / {pages}
+          </span>
+          <button
+            className="button ghost"
+            onClick={() => onPage(page + 1)}
+            disabled={page >= pages || loading}
+          >
+            下一页
+          </button>
+        </div>
+      )}
       <div className="inline-warning">
         <AlertTriangle size={16} />
-        预览任务不会写入 Cloudflare。Diff 为本地预估，最终以预览任务结果为准；执行后会生成新的任务记录。
+        预览任务不会写入 Cloudflare。Diff 来自预览任务结果；执行后会生成新的任务记录。
       </div>
       {job && !ready && (
         <p className="form-hint">
@@ -849,7 +952,7 @@ function PreviewPanel({
         <button
           className="button primary"
           onClick={onExecute}
-          disabled={!ready}
+          disabled={!ready || loading}
         >
           <Play size={15} /> {running ? "等待预览完成…" : "执行变更"}
         </button>
@@ -860,21 +963,44 @@ function PreviewPanel({
 
 function TaskPanel({
   jobs,
+  jobsLoading,
+  jobsError,
   selectedJob,
   onSelectJob,
   onRerun,
   onCancel,
   onDownload,
   onExecutePreview,
+  onRetryJobs,
 }: {
   jobs: Job[];
+  jobsLoading: boolean;
+  jobsError: string | null;
   selectedJob: Job | null;
   onSelectJob: (job: Job | null) => void;
   onRerun: (jobId: string) => Promise<void>;
   onCancel: (jobId: string) => Promise<void>;
   onDownload: (jobId: string, kind: "failures" | "anomalies") => Promise<void>;
   onExecutePreview: (jobId: string) => Promise<void>;
+  onRetryJobs: () => void;
 }) {
+  const selectedJobId = selectedJob?.id ?? null;
+  const logsQuery = useJobLogs(
+    selectedJobId,
+    Boolean(
+      selectedJob &&
+        ["pending", "running"].includes(selectedJob.status),
+    ),
+  );
+  const exportQuery = useJobExports(
+    selectedJobId,
+    Boolean(
+      selectedJob &&
+        selectedJob.mode === "export" &&
+        ["done", "failed", "cancelled"].includes(selectedJob.status),
+    ),
+  );
+
   if (!selectedJob) {
     return (
       <div className="task-list">
@@ -883,6 +1009,20 @@ function TaskPanel({
           <h2>任务</h2>
           <p>预览、执行、失败重跑都在这里闭环。</p>
         </div>
+        {jobsLoading && jobs.length === 0 && (
+          <p className="nav-empty">正在读取任务…</p>
+        )}
+        {jobsError && (
+          <div className="error-inline">
+            <span>任务读取失败：{jobsError}</span>
+            <button className="link-button" onClick={onRetryJobs}>
+              重试
+            </button>
+          </div>
+        )}
+        {!jobsLoading && !jobsError && jobs.length === 0 && (
+          <p className="nav-empty">暂无任务。提交预览后会出现在这里。</p>
+        )}
         {jobs.map((job) => (
           <button key={job.id} className="task-row" onClick={() => onSelectJob(job)}>
             <span className={`task-status ${job.status}`} />
@@ -901,6 +1041,7 @@ function TaskPanel({
     );
   }
 
+  const logs = logsQuery.data?.logs ?? [];
   return (
     <div className="task-detail">
       <button className="back-link" onClick={() => onSelectJob(null)}>
@@ -944,22 +1085,30 @@ function TaskPanel({
         ))}
       </div>
       <div className="task-actions">
-        <button
-          className="button ghost"
-          onClick={() => void onDownload(selectedJob.id, "failures")}
-        >
-          <Download size={15} /> 失败清单
-        </button>
-        <button
-          className="button ghost"
-          onClick={() => void onDownload(selectedJob.id, "anomalies")}
-        >
-          <Download size={15} /> 异常 CSV
-        </button>
-        <button className="button" onClick={() => void onRerun(selectedJob.id)}>
-          <RotateCcw size={15} /> 重跑失败域
-        </button>
+        {selectedJob.failures > 0 && (
+          <button
+            className="button ghost"
+            onClick={() => void onDownload(selectedJob.id, "failures")}
+          >
+            <Download size={15} /> 失败清单
+          </button>
+        )}
+        {selectedJob.anomalies > 0 && (
+          <button
+            className="button ghost"
+            onClick={() => void onDownload(selectedJob.id, "anomalies")}
+          >
+            <Download size={15} /> 异常 CSV
+          </button>
+        )}
+        {selectedJob.failures > 0 &&
+          !["pending", "running"].includes(selectedJob.status) && (
+            <button className="button" onClick={() => void onRerun(selectedJob.id)}>
+              <RotateCcw size={15} /> 重跑失败域
+            </button>
+          )}
         {selectedJob.kind === "preview" &&
+          selectedJob.mode !== "export" &&
           selectedJob.status === "done" &&
           selectedJob.failures === 0 && (
             <button
@@ -978,12 +1127,62 @@ function TaskPanel({
           </button>
         )}
       </div>
+      {selectedJob.mode === "export" && (
+        <div className="export-list">
+          <div className="task-progress-head">
+            <span>导出文件</span>
+            <span className="muted">
+              {exportQuery.data?.total ?? 0} 个
+            </span>
+          </div>
+          {exportQuery.isFetching && (
+            <p className="form-hint">正在读取导出文件…</p>
+          )}
+          {exportQuery.error && (
+            <div className="error-inline">
+              导出文件读取失败：{exportQuery.error.message}
+            </div>
+          )}
+          {exportQuery.data?.items.map((item) => (
+            <button
+              key={item.index}
+              className="export-row"
+              onClick={() =>
+                void downloadJobExport(selectedJob.id, item.index, item.zone)
+              }
+            >
+              <span>{item.zone || `导出 ${item.index + 1}`}</span>
+              <small title={item.path}>{item.path}</small>
+              <Download size={14} />
+            </button>
+          ))}
+          {!exportQuery.isFetching && exportQuery.data?.total === 0 && (
+            <p className="form-hint">任务尚未产生导出文件。</p>
+          )}
+        </div>
+      )}
       <div className="log-block">
         <div className="log-head">
           <span>日志</span>
-          <span className="muted">原始输出折叠</span>
+          <span className="muted">
+            {logsQuery.isFetching ? (
+              <span className="inline-loading">
+                <Loader2 size={12} className="spin" /> 读取中
+              </span>
+            ) : (
+              `${logsQuery.data?.total ?? 0} 行 · 最近 500 行`
+            )}
+          </span>
         </div>
-        <pre>[job] {selectedJob.id} 已创建{"\n"}[account] 正在读取 zone…{"\n"}[progress] 6/10</pre>
+        <pre>
+          {logsQuery.error
+            ? `日志读取失败：${logsQuery.error.message}`
+            : logs.length
+              ? logs.join("\n")
+              : logsQuery.isLoading
+                ? "正在读取日志…"
+                : "暂无日志输出。"}
+        </pre>
       </div>
     </div>
   );

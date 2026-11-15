@@ -28,6 +28,45 @@ export type InspectorTab = "action" | "tasks";
 
 export type RecordPatchValues = Omit<DnsRecord, "id">;
 
+export type RecordFilters = {
+  search: string;
+  type: string;
+  proxied: string;
+  sort: string;
+  page: number;
+  perPage: number;
+};
+
+export type RecordsPage = {
+  items: DnsRecord[];
+  total: number;
+  page: number;
+  perPage: number;
+};
+
+export type WhitelistAttachment = {
+  path: string;
+  count: number;
+  domains: string[];
+};
+
+export type ResumeAttachment = {
+  path: string;
+  rows: number;
+  zones: string[];
+};
+
+export type Attachments = {
+  whitelist: WhitelistAttachment | null;
+  resume: ResumeAttachment | null;
+};
+
+export type RuntimeSettings = {
+  speed: string;
+  scope: string;
+  maxRetries: number;
+};
+
 export type ActionMode =
   | "update"
   | "delete_wildcard"
@@ -88,4 +127,8 @@ export type PreviewRow = {
   oldContent: string;
   newContent: string;
   action: string;
+  status?: string;
+  message?: string;
+  account?: string;
+  zone?: string;
 };

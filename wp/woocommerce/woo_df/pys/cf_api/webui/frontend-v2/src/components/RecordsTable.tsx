@@ -2,21 +2,31 @@ import {
   ArrowDownAZ,
   ArrowUpAZ,
   Download,
+  Loader2,
   Pencil,
   Search,
-  SlidersHorizontal,
 } from "lucide-react";
-import { useMemo, useState } from "react";
-import type { DnsRecord } from "../types";
+import { useEffect, useState } from "react";
+import type { DnsRecord, RecordFilters } from "../types";
 
 type Props = {
   zone: string;
   records: DnsRecord[];
+  total: number;
+  page: number;
+  perPage: number;
+  loading: boolean;
+  fetching: boolean;
+  error: string | null;
+  filters: RecordFilters;
   selectedIds: Set<string>;
-  onToggle: (id: string) => void;
+  onFilters: (patch: Partial<RecordFilters>) => void;
+  onPage: (page: number) => void;
+  onToggle: (record: DnsRecord) => void;
   onToggleAll: (items: DnsRecord[]) => void;
   onEdit: (record: DnsRecord) => void;
-  onNotify: (message: string) => void;
+  onExport: () => void;
+  onRetry: () => void;
 };
 
 type SortKey = "name" | "type" | "content";
@@ -39,68 +49,98 @@ function typeClass(type: string) {
   return "type-other";
 }
 
+function SkeletonRows({ count = 6 }: { count?: number }) {
+  return (
+    <>
+      {Array.from({ length: count }).map((_, index) => (
+        <tr className="skeleton-row" key={index}>
+          <td colSpan={8}>
+            <span className="skeleton-line" />
+          </td>
+        </tr>
+      ))}
+    </>
+  );
+}
+
 export default function RecordsTable({
   zone,
   records,
+  total,
+  page,
+  perPage,
+  loading,
+  fetching,
+  error,
+  filters,
   selectedIds,
+  onFilters,
+  onPage,
   onToggle,
   onToggleAll,
   onEdit,
-  onNotify,
+  onExport,
+  onRetry,
 }: Props) {
-  const [query, setQuery] = useState("");
-  const [type, setType] = useState("ALL");
-  const [proxy, setProxy] = useState("all");
-  const [sort, setSort] = useState<{ key: SortKey; direction: "asc" | "desc" }>({
-    key: "name",
-    direction: "asc",
-  });
+  const [query, setQuery] = useState(filters.search);
 
-  const visible = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const filtered = records.filter((record) => {
-      if (type !== "ALL" && record.type !== type) return false;
-      if (proxy === "proxied" && !record.proxied) return false;
-      if (proxy === "dnsonly" && record.proxied) return false;
-      if (
-        q &&
-        !record.name.toLowerCase().includes(q) &&
-        !record.content.toLowerCase().includes(q)
-      ) {
-        return false;
-      }
-      return true;
-    });
-    const direction = sort.direction === "asc" ? 1 : -1;
-    return [...filtered].sort((a, b) => {
-      const left = String(a[sort.key] ?? "");
-      const right = String(b[sort.key] ?? "");
-      return left.localeCompare(right, "zh-CN") * direction;
-    });
-  }, [records, query, type, proxy, sort]);
+  useEffect(() => {
+    setQuery(filters.search);
+  }, [filters.search]);
 
-  const allSelected = visible.length > 0 && visible.every((record) => selectedIds.has(record.id));
-  const partiallySelected = visible.some((record) => selectedIds.has(record.id)) && !allSelected;
+  useEffect(() => {
+    if (query === filters.search) return;
+    const timer = window.setTimeout(() => onFilters({ search: query }), 350);
+    return () => window.clearTimeout(timer);
+  }, [query, filters.search, onFilters]);
+
+  const sortKey = (filters.sort.replace(/^-/, "") || "name") as SortKey;
+  const sortDesc = filters.sort.startsWith("-");
+  const allSelected =
+    records.length > 0 && records.every((record) => selectedIds.has(record.id));
+  const partiallySelected =
+    records.some((record) => selectedIds.has(record.id)) && !allSelected;
+  const pageCount = Math.max(1, Math.ceil(total / Math.max(1, perPage)));
+  const start = total === 0 ? 0 : (page - 1) * perPage + 1;
+  const end = Math.min(total, (page - 1) * perPage + records.length);
+  const hasFilters =
+    filters.search.trim() !== "" ||
+    filters.type !== "ALL" ||
+    filters.proxied !== "all" ||
+    query.trim() !== "";
 
   function changeSort(key: SortKey) {
-    setSort((current) =>
-      current.key === key
-        ? { key, direction: current.direction === "asc" ? "desc" : "asc" }
-        : { key, direction: "asc" },
-    );
+    const nextDesc = sortKey === key ? !sortDesc : false;
+    onFilters({ sort: `${nextDesc ? "-" : ""}${key}` });
   }
 
   function sortIcon(key: SortKey) {
-    if (sort.key !== key) return <ArrowDownAZ size={13} className="muted-icon" />;
-    return sort.direction === "asc" ? (
-      <ArrowUpAZ size={13} />
-    ) : (
-      <ArrowDownAZ size={13} />
-    );
+    if (sortKey !== key) return <ArrowDownAZ size={13} className="muted-icon" />;
+    return sortDesc ? <ArrowDownAZ size={13} /> : <ArrowUpAZ size={13} />;
   }
 
+  function clearFilters() {
+    setQuery("");
+    onFilters({ search: "", type: "ALL", proxied: "all" });
+  }
+
+  const emptyTitle = error
+    ? "记录加载失败"
+    : !zone
+      ? "未选择域名"
+      : hasFilters
+        ? "没有匹配记录"
+        : "该域名暂无记录";
+  const emptyCopy = error
+    ? error
+    : !zone
+      ? "先在左侧选择账号与域名。"
+      : hasFilters
+        ? "调整搜索或筛选条件，或清除过滤后重试。"
+        : "可以在右侧操作面板新增记录，或刷新后重试。";
+
   return (
-    <section className="records-panel" aria-label="DNS 记录">
+    <section className="records-panel" aria-label="DNS 记录" aria-busy={loading}>
       <div className="records-toolbar">
         <label className="search-field">
           <Search size={15} />
@@ -113,7 +153,10 @@ export default function RecordsTable({
         </label>
         <label className="compact-select">
           <span className="sr-only">记录类型</span>
-          <select value={type} onChange={(event) => setType(event.target.value)}>
+          <select
+            value={filters.type}
+            onChange={(event) => onFilters({ type: event.target.value })}
+          >
             <option value="ALL">全部类型</option>
             <option value="A">A</option>
             <option value="AAAA">AAAA</option>
@@ -124,19 +167,41 @@ export default function RecordsTable({
         </label>
         <label className="compact-select">
           <span className="sr-only">代理状态</span>
-          <select value={proxy} onChange={(event) => setProxy(event.target.value)}>
+          <select
+            value={filters.proxied}
+            onChange={(event) => onFilters({ proxied: event.target.value })}
+          >
             <option value="all">全部代理</option>
             <option value="proxied">已代理</option>
             <option value="dnsonly">仅 DNS</option>
           </select>
         </label>
-        <button className="button ghost" onClick={() => onNotify("列显示设置将在下一步接入")}>
-          <SlidersHorizontal size={15} /> 显示
-        </button>
-        <button className="button ghost" onClick={() => onNotify("导出当前范围（原型）")}>
+        <span className="fetch-state" aria-live="polite">
+          {fetching ? (
+            <>
+              <Loader2 size={13} className="spin" /> 加载中
+            </>
+          ) : (
+            `${total} 条`
+          )}
+        </span>
+        <button
+          className="button ghost"
+          onClick={onExport}
+          disabled={total === 0 && selectedIds.size === 0}
+        >
           <Download size={15} /> 导出
         </button>
       </div>
+
+      {error && records.length > 0 && (
+        <div className="error-inline">
+          刷新失败：{error}
+          <button className="link-button" onClick={onRetry}>
+            重试
+          </button>
+        </div>
+      )}
 
       <div className="table-wrap">
         <table className="records-table">
@@ -160,18 +225,48 @@ export default function RecordsTable({
                   ref={(element) => {
                     if (element) element.indeterminate = partiallySelected;
                   }}
-                  onChange={() => onToggleAll(visible)}
+                  onChange={() => onToggleAll(records)}
                   aria-label="全选当前页记录"
                 />
               </th>
-              <th aria-sort={sort.key === "name" ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}>
-                <button onClick={() => changeSort("name")}>名称 {sortIcon("name")}</button>
+              <th
+                aria-sort={
+                  sortKey === "name"
+                    ? sortDesc
+                      ? "descending"
+                      : "ascending"
+                    : "none"
+                }
+              >
+                <button onClick={() => changeSort("name")}>
+                  名称 {sortIcon("name")}
+                </button>
               </th>
-              <th aria-sort={sort.key === "type" ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}>
-                <button onClick={() => changeSort("type")}>类型 {sortIcon("type")}</button>
+              <th
+                aria-sort={
+                  sortKey === "type"
+                    ? sortDesc
+                      ? "descending"
+                      : "ascending"
+                    : "none"
+                }
+              >
+                <button onClick={() => changeSort("type")}>
+                  类型 {sortIcon("type")}
+                </button>
               </th>
-              <th aria-sort={sort.key === "content" ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}>
-                <button onClick={() => changeSort("content")}>内容 {sortIcon("content")}</button>
+              <th
+                aria-sort={
+                  sortKey === "content"
+                    ? sortDesc
+                      ? "descending"
+                      : "ascending"
+                    : "none"
+                }
+              >
+                <button onClick={() => changeSort("content")}>
+                  内容 {sortIcon("content")}
+                </button>
               </th>
               <th>代理</th>
               <th>TTL</th>
@@ -180,134 +275,185 @@ export default function RecordsTable({
             </tr>
           </thead>
           <tbody>
-            {visible.map((record) => {
-              const selected = selectedIds.has(record.id);
-              return (
-                <tr
-                  key={record.id}
-                  className={selected ? "selected" : ""}
-                  onClick={() => onToggle(record.id)}
-                >
-                  <td className="check-cell" onClick={(event) => event.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      checked={selected}
-                      onChange={() => onToggle(record.id)}
-                      aria-label={`选择 ${shortName(record.name, zone)}`}
-                    />
-                  </td>
-                  <td className="name-cell">
-                    <span className="record-name" title={record.name}>
-                      {shortName(record.name, zone)}
-                    </span>
-                    {record.name.startsWith("*") && shortName(record.name, zone) !== "*" && (
-                      <span className="wildcard-mark">*</span>
-                    )}
-                  </td>
-                  <td>
-                    <span className={`type-pill ${typeClass(record.type)}`}>{record.type}</span>
-                  </td>
-                  <td className="content-cell" title={record.content}>
-                    <code>{record.content}</code>
-                  </td>
-                  <td>
-                    {record.proxied ? (
-                      <span className="proxy-on">
-                        <span className="proxy-dot" /> 已代理
+            {loading ? (
+              <SkeletonRows />
+            ) : (
+              records.map((record) => {
+                const selected = selectedIds.has(record.id);
+                return (
+                  <tr
+                    key={record.id}
+                    className={selected ? "selected" : ""}
+                    onClick={() => onToggle(record)}
+                  >
+                    <td
+                      className="check-cell"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={() => onToggle(record)}
+                        aria-label={`选择 ${shortName(record.name, zone)}`}
+                      />
+                    </td>
+                    <td className="name-cell">
+                      <span className="record-name" title={record.name}>
+                        {shortName(record.name, zone)}
                       </span>
-                    ) : (
-                      <span className="proxy-off">
-                        <span className="proxy-dot" /> 仅 DNS
+                      {record.name.startsWith("*") &&
+                        shortName(record.name, zone) !== "*" && (
+                          <span className="wildcard-mark">*</span>
+                        )}
+                    </td>
+                    <td>
+                      <span className={`type-pill ${typeClass(record.type)}`}>
+                        {record.type}
                       </span>
-                    )}
-                  </td>
-                  <td>{record.ttl === 1 ? "自动" : record.ttl}</td>
-                  <td className="comment-cell" title={record.comment}>
-                    {record.comment || <span className="muted">—</span>}
-                  </td>
-                  <td className="sticky-action" onClick={(event) => event.stopPropagation()}>
-                    <button className="row-action" onClick={() => onEdit(record)}>
-                      <Pencil size={13} /> 编辑
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
+                    </td>
+                    <td className="content-cell" title={record.content}>
+                      <code>{record.content}</code>
+                    </td>
+                    <td>
+                      {record.proxied ? (
+                        <span className="proxy-on">
+                          <span className="proxy-dot" /> 已代理
+                        </span>
+                      ) : (
+                        <span className="proxy-off">
+                          <span className="proxy-dot" /> 仅 DNS
+                        </span>
+                      )}
+                    </td>
+                    <td>{record.ttl === 1 ? "自动" : record.ttl}</td>
+                    <td className="comment-cell" title={record.comment}>
+                      {record.comment || <span className="muted">—</span>}
+                    </td>
+                    <td
+                      className="sticky-action"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <button className="row-action" onClick={() => onEdit(record)}>
+                        <Pencil size={13} /> 编辑
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
           </tbody>
         </table>
-        {visible.length === 0 && (
+        {!loading && records.length === 0 && (
           <div className="empty-state">
-            <p className="empty-title">没有匹配记录</p>
-            <p className="empty-copy">调整搜索或筛选条件，或清除过滤后重试。</p>
-            <button
-              className="button"
-              onClick={() => {
-                setQuery("");
-                setType("ALL");
-                setProxy("all");
-              }}
-            >
-              清除过滤
-            </button>
+            <p className="empty-title">{emptyTitle}</p>
+            <p className="empty-copy">{emptyCopy}</p>
+            {error ? (
+              <button className="button" onClick={onRetry}>
+                重试
+              </button>
+            ) : (
+              hasFilters && (
+                <button className="button" onClick={clearFilters}>
+                  清除过滤
+                </button>
+              )
+            )}
           </div>
         )}
       </div>
 
       <div className="record-cards" aria-label="DNS 记录卡片">
-        {visible.map((record) => {
-          const selected = selectedIds.has(record.id);
-          return (
-            <article
-              key={record.id}
-              className={`record-card ${selected ? "selected" : ""}`}
-              onClick={() => onToggle(record.id)}
-            >
-              <div className="record-card-head">
-                <input
-                  type="checkbox"
-                  checked={selected}
-                  onChange={() => onToggle(record.id)}
-                  onClick={(event) => event.stopPropagation()}
-                  aria-label={`选择 ${shortName(record.name, zone)}`}
-                />
-                <strong className="record-name">{shortName(record.name, zone)}</strong>
-                <span className={`type-pill ${typeClass(record.type)}`}>{record.type}</span>
-                <button
-                  className="row-action"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onEdit(record);
-                  }}
-                >
-                  <Pencil size={13} /> 编辑
-                </button>
-              </div>
-              <code className="record-card-content">{record.content}</code>
-              <div className="record-card-meta">
-                <span>{record.proxied ? "已代理" : "仅 DNS"}</span>
-                <span>TTL {record.ttl === 1 ? "自动" : record.ttl}</span>
-                {record.comment && <span>备注 {record.comment}</span>}
-              </div>
-            </article>
-          );
-        })}
-        {visible.length === 0 && (
+        {loading &&
+          Array.from({ length: 3 }).map((_, index) => (
+            <div className="record-card skeleton-card" key={index}>
+              <span className="skeleton-line" />
+              <span className="skeleton-line short" />
+            </div>
+          ))}
+        {!loading &&
+          records.map((record) => {
+            const selected = selectedIds.has(record.id);
+            return (
+              <article
+                key={record.id}
+                className={`record-card ${selected ? "selected" : ""}`}
+                onClick={() => onToggle(record)}
+              >
+                <div className="record-card-head">
+                  <input
+                    type="checkbox"
+                    checked={selected}
+                    onChange={() => onToggle(record)}
+                    onClick={(event) => event.stopPropagation()}
+                    aria-label={`选择 ${shortName(record.name, zone)}`}
+                  />
+                  <strong className="record-name">
+                    {shortName(record.name, zone)}
+                  </strong>
+                  <span className={`type-pill ${typeClass(record.type)}`}>
+                    {record.type}
+                  </span>
+                  <button
+                    className="row-action"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onEdit(record);
+                    }}
+                  >
+                    <Pencil size={13} /> 编辑
+                  </button>
+                </div>
+                <code className="record-card-content">{record.content}</code>
+                <div className="record-card-meta">
+                  <span>{record.proxied ? "已代理" : "仅 DNS"}</span>
+                  <span>TTL {record.ttl === 1 ? "自动" : record.ttl}</span>
+                  {record.comment && <span>备注 {record.comment}</span>}
+                </div>
+              </article>
+            );
+          })}
+        {!loading && records.length === 0 && (
           <div className="empty-state">
-            <p className="empty-title">没有匹配记录</p>
-            <p className="empty-copy">调整搜索或筛选条件，或清除过滤后重试。</p>
+            <p className="empty-title">{emptyTitle}</p>
+            <p className="empty-copy">{emptyCopy}</p>
+            {error ? (
+              <button className="button" onClick={onRetry}>
+                重试
+              </button>
+            ) : (
+              hasFilters && (
+                <button className="button" onClick={clearFilters}>
+                  清除过滤
+                </button>
+              )
+            )}
           </div>
         )}
       </div>
 
       <footer className="records-footer">
         <span>
-          第 1–{visible.length} 条，共 {visible.length} 条 · {zone || "未选择域名"}
+          {total === 0
+            ? "共 0 条"
+            : `第 ${start}–${end} 条，共 ${total} 条`}{" "}
+          · {zone || "未选择域名"}
         </span>
-        <span className="pager" aria-label="分页（原型）">
-          <button className="button ghost" disabled>
+        <span className="pager" aria-label="分页">
+          <button
+            className="button ghost"
+            onClick={() => onPage(page - 1)}
+            disabled={page <= 1 || loading}
+          >
             上一页
           </button>
-          <button className="button ghost" disabled>
+          <span className="page-indicator">
+            {page} / {pageCount}
+          </span>
+          <button
+            className="button ghost"
+            onClick={() => onPage(page + 1)}
+            disabled={page >= pageCount || loading}
+          >
             下一页
           </button>
         </span>

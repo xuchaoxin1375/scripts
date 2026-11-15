@@ -8,9 +8,15 @@ type Props = {
   zones: Zone[];
   account: string;
   zone: string;
+  accountsLoading: boolean;
+  zonesLoading: boolean;
+  accountsError: string | null;
+  zonesError: string | null;
   onAccount: (name: string) => void;
   onZone: (name: string) => void;
   onAdvanced: () => void;
+  onRetryAccounts: () => void;
+  onRetryZones: () => void;
 };
 
 export default function Navigator({
@@ -18,9 +24,15 @@ export default function Navigator({
   zones,
   account,
   zone,
+  accountsLoading,
+  zonesLoading,
+  accountsError,
+  zonesError,
   onAccount,
   onZone,
   onAdvanced,
+  onRetryAccounts,
+  onRetryZones,
 }: Props) {
   const navigate = useNavigate();
   const [accountQuery, setAccountQuery] = useState("");
@@ -58,18 +70,38 @@ export default function Navigator({
           />
         </label>
         <div className="account-list">
+          {accountsLoading && accounts.length === 0 && (
+            <p className="nav-empty">正在读取账号…</p>
+          )}
+          {accountsError && accounts.length === 0 && (
+            <div className="nav-empty">
+              <span>账号读取失败</span>
+              <button className="link-button" onClick={onRetryAccounts}>
+                重试
+              </button>
+            </div>
+          )}
           {visibleAccounts.map((item) => (
             <button
               key={item.name}
               className={`account-item ${item.name === account ? "selected" : ""}`}
               onClick={() => onAccount(item.name)}
+              title={item.email || item.name}
+              aria-current={item.name === account ? "true" : undefined}
             >
               <span className="status-dot" />
               <span className="account-name">{item.name}</span>
-              <span className="account-count">{item.zoneCount ?? "—"}</span>
+              <span className="account-count">
+                {item.zoneCount ??
+                  (item.auth === "key" ? "KEY" : "TOKEN")}
+              </span>
             </button>
           ))}
-          {visibleAccounts.length === 0 && <p className="nav-empty">没有匹配账号</p>}
+          {!accountsLoading &&
+            !accountsError &&
+            visibleAccounts.length === 0 && (
+              <p className="nav-empty">没有匹配账号</p>
+            )}
         </div>
       </div>
 
@@ -88,18 +120,36 @@ export default function Navigator({
           />
         </label>
         <div className="zone-list">
+          {zonesLoading && zones.length === 0 && (
+            <p className="nav-empty">正在读取域名…</p>
+          )}
+          {zonesError && zones.length === 0 && (
+            <div className="nav-empty">
+              <span>域名读取失败</span>
+              <button className="link-button" onClick={onRetryZones}>
+                重试
+              </button>
+            </div>
+          )}
           {visibleZones.map((item) => (
             <button
               key={item.id}
               className={`zone-item ${item.name === zone ? "selected" : ""}`}
               onClick={() => onZone(item.name)}
+              aria-current={item.name === zone ? "true" : undefined}
             >
               <span className={`zone-dot ${item.status}`} />
               <span className="zone-name">{item.name}</span>
               <span className={`zone-status ${item.status}`}>{item.status}</span>
             </button>
           ))}
-          {visibleZones.length === 0 && <p className="nav-empty">没有匹配域名</p>}
+          {!zonesLoading &&
+            !zonesError &&
+            visibleZones.length === 0 && (
+              <p className="nav-empty">
+                {account ? "没有匹配域名" : "先选择账号"}
+              </p>
+            )}
         </div>
       </div>
 

@@ -107,11 +107,25 @@ class BulkDelete(BaseModel):
 
 
 class BulkUpdate(BaseModel):
+    """按记录 ID 批量改属性或内容；content 为选中记录精确改写。"""
+
     account: str = ""
     zone: str = ""
     ids: list[str] = Field(default_factory=list)
     proxied: Optional[bool] = None
     ttl: Optional[int] = None
+    content: Optional[str] = None
+
+
+class RecordExport(BaseModel):
+    """记录导出：有 ids 导出选中项，否则按筛选条件导出当前范围。"""
+
+    account: str = ""
+    zone: str = ""
+    ids: list[str] = Field(default_factory=list)
+    type: str = "ALL"
+    search: str = ""
+    proxied: str = "all"
 
 
 class BulkRestore(BaseModel):

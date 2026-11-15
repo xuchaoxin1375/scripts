@@ -106,4 +106,103 @@ export type ApiMeta = {
   proxy: { mode: string; count: number };
 };
 
+export type ApiHistoryRow = {
+  id: string;
+  mode: string;
+  status: string;
+  label: string;
+  accounts: string;
+  exit_code: number | null;
+  created_at: string;
+  finished_at: string;
+};
+
+export type ApiAuditRow = {
+  id: number;
+  ts: string;
+  kind: string;
+  account: string;
+  detail: string;
+};
+
+export type ApiPageResult<T> = {
+  total: number;
+  limit: number;
+  offset: number;
+  items: T[];
+};
+
+export type ApiFindResult = {
+  account: string;
+  zone?: string;
+  zone_id?: string;
+  status?: string;
+  record_count?: number | string;
+  error?: string;
+};
+
+export type ApiFindResponse = {
+  domain: string;
+  found: number;
+  results: ApiFindResult[];
+};
+
+export type ApiWhitelistUpload = {
+  path: string;
+  count: number;
+  domains: string[];
+};
+
+export type ApiResumeUpload = {
+  path: string;
+  rows: number;
+  zones: string[];
+};
+
+export type ApiImportItem = {
+  name: string;
+  type: string;
+  content: string;
+  proxied?: boolean;
+  ttl?: number;
+  comment?: string;
+  priority?: number | null;
+};
+
+export type ApiImportResult = {
+  added?: number;
+  updated?: number;
+  unchanged?: number;
+  checked?: number;
+  errors: unknown[];
+  failed: unknown[];
+  total: number;
+};
+
+export type ApiBulkResult = {
+  updated?: string[];
+  deleted?: unknown[];
+  failed: unknown[];
+  total: number;
+};
+
+export type ApiJobLogs = {
+  job_id: string;
+  total: number;
+  offset: number;
+  logs: string[];
+};
+
+export type ApiJobExportItem = {
+  index: number;
+  zone: string;
+  path: string;
+};
+
+export type ApiJobExports = {
+  job_id: string;
+  total: number;
+  items: ApiJobExportItem[];
+};
+
 export type JobSubmitPayload = Record<string, unknown>;

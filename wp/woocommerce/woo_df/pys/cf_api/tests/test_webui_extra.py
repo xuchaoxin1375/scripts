@@ -117,6 +117,16 @@ class ExtraContractTest(unittest.TestCase):
         r = self.c.get("/api/v1/zones.csv", params={"account": "no-such"})
         self.assertEqual(r.status_code, 400)
 
+    def test_history_and_audit_page_shape(self):
+        hist = self.c.get("/api/v1/history", params={"limit": 10, "offset": 0})
+        self.assertEqual(hist.status_code, 200)
+        self.assertIn("items", hist.json())
+        self.assertIn("total", hist.json())
+        audit = self.c.get("/api/v1/audit", params={"limit": 10})
+        self.assertEqual(audit.status_code, 200)
+        self.assertIn("items", audit.json())
+        self.assertIn("total", audit.json())
+
     def test_explicit_workers_validation(self):
         base = {"accounts": ["t1"], "domains": ["example.com"], "dry_run": True}
         r = self.c.post(

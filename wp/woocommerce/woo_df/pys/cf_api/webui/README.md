@@ -15,6 +15,8 @@
 .\serve-webui.ps1 -Restart -Lan -Password <pwd>  # 重启并绑定 0.0.0.0 对外分享（无口令拒绝）
 .\serve-webui.ps1 -Restart -NoLan        # 重启并切回仅本机
 .\serve-webui.ps1 -Port 8601 -Status     # 查别的端口（Status/Stop/Restart 均可组合 -Port）
+.\serve-webui.ps1 -Port 8601 -FrontendV2 # 在 8601 启动新单工作台（需先构建 frontend-v2）
+.\serve-webui.ps1 -Restart -FrontendV2   # 重启并切到 v2；-FrontendV1 切回旧前端
 .\serve-webui.ps1 -Ports                 # 列出本机所有 WebUI 服务（只读）
 .\serve-webui.ps1 -RestartAll            # 重启本机所有 WebUI 服务（逐个模式保持）
 .\serve-webui.ps1 -Logs -Lines 100       # 看 webui.log 末尾（Hidden 启动排障全靠它）
@@ -66,7 +68,7 @@ sequenceDiagram
 
 ## 接口
 
-- 主接口 `/api/v1`：`meta/accounts/zones(status|csv)/records(GET/POST/PATCH/DELETE)/find?domain=/zones/activation-check/jobs/jobs/{id}[/logs|results|failures|failures.csv|cancel|zones|exports|exports/{n}]/resume-preview/resume-upload/whitelist-upload/history/audit`。
+- 主接口 `/api/v1`：`meta/accounts/zones(status|csv)/records(GET/POST/PATCH/DELETE/bulk-delete/bulk-update/bulk-restore/import/export)/find?domain=/zones/activation-check/jobs/jobs/{id}[/logs|results|failures|anomalies|failures.csv|anomalies.csv|cancel|zones|exports|exports/{n}|rerun|execute]/resume-preview/resume-upload/whitelist-upload/history/audit`。
 - 兼容旧端 `/api/meta`、`/api/accounts`。
 - 分页一律服务端，上限 200/页；日志增量 `offset/limit`；失败清单 CSV 含 BOM。
 - 持久化 `sqlite3`（WAL），库文件在配置同目录 `cf_web.db`；旧库缺列自动迁移。

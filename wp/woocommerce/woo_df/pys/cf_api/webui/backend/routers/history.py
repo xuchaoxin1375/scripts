@@ -14,16 +14,30 @@ router = APIRouter(dependencies=[Depends(require_auth)])
 
 
 @router.get("/api/v1/history")
-def history(limit: int = 50) -> dict[str, Any]:
+def history(limit: int = 50, offset: int = 0) -> dict[str, Any]:
+    limit = max(1, min(200, limit))
+    offset = max(0, offset)
     try:
-        return {"items": db.list_history(limit)}
+        return {
+            "items": db.list_history(limit, offset),
+            "total": db.count_history(),
+            "limit": limit,
+            "offset": offset,
+        }
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @router.get("/api/v1/audit")
-def audit(limit: int = 50) -> dict[str, Any]:
+def audit(limit: int = 50, offset: int = 0) -> dict[str, Any]:
+    limit = max(1, min(200, limit))
+    offset = max(0, offset)
     try:
-        return {"items": db.list_audit(limit)}
+        return {
+            "items": db.list_audit(limit, offset),
+            "total": db.count_audit(),
+            "limit": limit,
+            "offset": offset,
+        }
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=str(exc)) from exc
