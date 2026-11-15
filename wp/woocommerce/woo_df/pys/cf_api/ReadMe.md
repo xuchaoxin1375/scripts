@@ -1211,8 +1211,8 @@ flowchart LR
 
 ## Web 操作台（单一前端重建）
 
-启动入口 `start_web_ui.py`，后端 `webui/backend/`，前端 `webui/frontend/`（构建产物
-`webui/frontend/dist/`）；说明见 [webui/README.md](webui/README.md)，操作见
+启动入口 `start_web_ui.py`，后端 `webui/backend/`，默认前端 `webui/v2/`（构建产物
+`webui/v2/dist/`）；旧前端保留在 `webui/v1/`，用 `--v1` 切回。说明见 [webui/README.md](webui/README.md)，操作见
 [webui/USAGE.md](webui/USAGE.md)。设计约束与历史教训见 [WEBUI_LESSONS.md](WEBUI_LESSONS.md)。
 
 ---

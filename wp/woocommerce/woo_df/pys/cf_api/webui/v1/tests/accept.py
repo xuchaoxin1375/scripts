@@ -29,7 +29,7 @@ def fail(msg: str) -> None:
 
 def main() -> None:
     if not os.path.exists(DIST):
-        fail(f"构建产物缺失: {DIST}，先跑 npm --prefix webui/frontend run build")
+        fail(f"构建产物缺失: {DIST}，先跑 npm --prefix webui/v1 run build")
     with open(DIST, encoding="utf-8") as fh:
         html = fh.read()
     checks = [

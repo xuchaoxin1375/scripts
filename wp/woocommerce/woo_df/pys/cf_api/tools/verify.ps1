@@ -29,14 +29,17 @@ function Run-Step([string]$name, [string]$cmd) {
 }
 
 # 1-2 后端单测（行为不变，黄金用例不得修改；增量契约另见 test_webui_extra/test_db_migrate）
-Run-Step 'backend-unittest' 'python -m unittest tests.test_cf_dns_reliability tests.test_webui tests.test_db_migrate tests.test_webui_extra'
+$parent = Split-Path -Parent $root
+Push-Location $parent
+Run-Step 'backend-unittest' 'python -m unittest cf_api.tests.test_cf_dns_reliability cf_api.tests.test_webui cf_api.tests.test_db_migrate cf_api.tests.test_webui_extra cf_api.tests.test_records_api'
+Pop-Location
 
 # 3 编译检查
 Run-Step 'backend-compile' 'python -m py_compile cloudflare_dns_tool.py start_web_ui.py webui/backend/app.py webui/backend/deps.py webui/backend/jobs.py webui/backend/validate.py webui/backend/engine_adapter.py webui/backend/db.py'
 
-# 4 Ruff（缺失则 SKIP＋安装指引，不伪装通过）
+# 4 Ruff（缺失则 SKIP＋安装指引，不伪装通过；引擎文件只做语法/未用导入范围检查）
 if (Get-Command ruff -ErrorAction SilentlyContinue) {
-  Run-Step 'backend-ruff' 'ruff check cloudflare_dns_tool.py tests/ webui/backend/'
+  Run-Step 'backend-ruff' 'ruff check --select F401,F811,E9 webui/backend/ tests/ start_web_ui.py'
 } else { Add-Step 'backend-ruff' 'SKIP' '未安装：pip install ruff（批准后）' }
 
 # 5 Pyright（缺失则 SKIP）
@@ -44,8 +47,9 @@ if (Get-Command pyright -ErrorAction SilentlyContinue) {
   Run-Step 'backend-pyright' 'pyright cloudflare_dns_tool.py'
 } else { Add-Step 'backend-pyright' 'SKIP' '未安装 pyright' }
 
-# 6 前端构建
-Run-Step 'frontend-build' 'npm --prefix webui/frontend run build'
+# 6 前端构建（v2 默认 + v1 回退）
+Run-Step 'frontend-build-v2' 'npm --prefix webui/v2 run build'
+Run-Step 'frontend-build-v1' 'npm --prefix webui/v1 run build'
 
 # 7 API 冒烟（含 dry_run 任务与日志断言）
 try {
@@ -58,10 +62,12 @@ try {
 if ($SkipVisual) { Add-Step 'visual-accept' 'SKIP' '用户显式 -SkipVisual' }
 else {
   try {
-    python (Join-Path $root 'webui/frontend/tests/accept.py') | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw 'static accept failed' }
-    python (Join-Path $root 'webui/frontend/tests/browser_accept.py') | Out-Null
-    if ($LASTEXITCODE -eq 0) { Add-Step 'visual-accept' 'PASS' 'VISUAL+BROWSER PASS' }
+    python (Join-Path $root 'webui/v1/tests/accept.py') | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'v1 static accept failed' }
+    python (Join-Path $root 'webui/v1/tests/browser_accept.py') | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'v1 browser accept failed' }
+    python (Join-Path $root 'webui/v2/tests/browser_accept.py') | Out-Null
+    if ($LASTEXITCODE -eq 0) { Add-Step 'visual-accept' 'PASS' 'V1+V2 VISUAL+BROWSER PASS' }
     else { Add-Step 'visual-accept' 'FAIL' ("exit=" + $LASTEXITCODE) }
   } catch { Add-Step 'visual-accept' 'FAIL' $_.Exception.Message }
 }
@@ -69,9 +75,10 @@ else {
 # 9 空白错误（仅任务区跟踪文件；CRLF 按仓库治理用 cr-at-eol 豁免，
 # 判定时对照 git diff 与 --ignore-cr-at-eol；仓内其他脏文件与本任务无关，不挡门禁）
 Run-Step 'whitespace-tracked' 'git -c core.whitespace=cr-at-eol diff --check -- cloudflare_dns_tool.py start_web_ui.py tests/ tools/ examples/ legacy/'
-$newFiles = @('webui/frontend/src/index.html', 'webui/frontend/dist/index.html',
-  'webui/frontend/scripts/build.mjs', 'webui/frontend/package.json', 'webui/frontend/DESIGN.md', 'webui/TASKS.md',
-  'webui/frontend/tests/accept.py', 'webui/frontend/tests/browser_accept.py', 'tools/verify.ps1', 'webui/README.md', 'webui/USAGE.md',
+$newFiles = @('webui/v1/src/index.html', 'webui/v1/dist/index.html',
+  'webui/v1/scripts/build.mjs', 'webui/v1/package.json', 'webui/v1/DESIGN.md', 'webui/TASKS.md',
+  'webui/v1/tests/accept.py', 'webui/v1/tests/browser_accept.py', 'webui/v2/README.md',
+  'webui/v2/tests/browser_accept.py', 'tools/verify.ps1', 'webui/README.md', 'webui/USAGE.md',
   'webui/backend/app.py', 'webui/backend/deps.py', 'webui/backend/jobs.py', 'webui/backend/validate.py',
   'webui/backend/engine_adapter.py', 'webui/backend/db.py', 'tests/test_webui_extra.py')
 $bad = @()

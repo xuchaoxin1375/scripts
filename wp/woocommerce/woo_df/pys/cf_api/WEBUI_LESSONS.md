@@ -1,7 +1,7 @@
 # WebUI 教训（单一前端已重建，历史保留）
 
 原“双前端已移除”状态已过期：`webui/` 现为单一前端（后端 `webui/backend/` +
-前端 `webui/frontend/dist/index.html`），本节保留历史教训，现状见第四节。
+前端 `webui/v1/dist/index.html`），本节保留历史教训，现状见第四节。
 
 ## 一、必须保留的后端设计
 

@@ -233,12 +233,6 @@ a {
   font-weight: 700;
 }
 
-.command-button {
-  border-color: var(--line);
-  font-family: var(--font-mono);
-  font-size: 11px;
-}
-
 .shell {
   display: flex;
   min-height: calc(100vh - 52px);
@@ -2273,10 +2267,6 @@ input[type="file"]::file-selector-button:hover {
   }
 
   .badge {
-    display: none;
-  }
-
-  .command-button span {
     display: none;
   }
 

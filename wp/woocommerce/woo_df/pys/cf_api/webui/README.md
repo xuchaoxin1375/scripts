@@ -1,10 +1,9 @@
 # WebUI（单一前端重建）
 
-后端 `webui/backend/`，默认前端 `webui/frontend/`（源码 `src/index.html`，构建产物 `dist/index.html`，`npm run build` 仅复制，无重型依赖）。
+后端 `webui/backend/`，默认前端 `webui/v2/`（Vite + React + TypeScript，单工作台）；旧四页前端保留在 `webui/v1/`，可用 `--v1` 切回。
 
-新前端在 `webui/frontend-v2/`（Vite + React + TypeScript，单工作台），可通过
-`python start_web_ui.py --frontend-v2 --port 8601` 单独启动；状态与功能对照见
-[frontend-v2/README.md](frontend-v2/README.md) 与 [REDESIGN.md](REDESIGN.md)。
+新前端源码与构建产物在 `webui/v2/`，默认入口即 v2；状态与功能对照见
+[v2/README.md](v2/README.md) 与 [REDESIGN.md](REDESIGN.md)。
 
 ## 启动（后台，不占 shell）
 
@@ -15,8 +14,9 @@
 .\serve-webui.ps1 -Restart -Lan -Password <pwd>  # 重启并绑定 0.0.0.0 对外分享（无口令拒绝）
 .\serve-webui.ps1 -Restart -NoLan        # 重启并切回仅本机
 .\serve-webui.ps1 -Port 8601 -Status     # 查别的端口（Status/Stop/Restart 均可组合 -Port）
-.\serve-webui.ps1 -Port 8601 -FrontendV2 # 在 8601 启动新单工作台（需先构建 frontend-v2）
-.\serve-webui.ps1 -Restart -FrontendV2   # 重启并切到 v2；-FrontendV1 切回旧前端
+.\serve-webui.ps1 -Port 8601             # 在 8601 启动 v2（默认）
+.\serve-webui.ps1 -Port 8601 -V1         # 在 8601 启动旧四页前端
+.\serve-webui.ps1 -Restart -V1           # 重启并切到 v1；-V2 切回 v2
 .\serve-webui.ps1 -Ports                 # 列出本机所有 WebUI 服务（只读）
 .\serve-webui.ps1 -RestartAll            # 重启本机所有 WebUI 服务（逐个模式保持）
 .\serve-webui.ps1 -Logs -Lines 100       # 看 webui.log 末尾（Hidden 启动排障全靠它）
@@ -32,6 +32,8 @@
 
 ```bash
 python start_web_ui.py --config <cf_config.csv|json> --port 8600
+# 旧四页前端回退
+python start_web_ui.py --v1 --config <cf_config.csv|json> --port 8600
 # 对外监听必须设口令
 python start_web_ui.py --host 0.0.0.0 --port 8600 --password <pwd>
 ```
@@ -44,7 +46,8 @@ python start_web_ui.py --host 0.0.0.0 --port 8600 --password <pwd>
 
 ```mermaid
 flowchart LR
-    UI[单文件前端 dist/index.html<br>概览/浏览/操作/任务] --> API[FastAPI /api/v1<br>+ /api 兼容]
+    UI[v2 单工作台<br>webui/v2/dist] --> API[FastAPI /api/v1<br>+ /api 兼容]
+    V1[v1 旧四页回退<br>webui/v1/dist] -.-> API
     API --> MGR[JobManager 线程池<br>log 分流/三级进度/verdict]
     MGR --> ENG[engine_adapter 按路径加载<br>cloudflare_dns_tool.py]
     ENG --> CF[Cloudflare REST API]

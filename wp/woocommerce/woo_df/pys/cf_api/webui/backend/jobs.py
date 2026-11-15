@@ -423,6 +423,12 @@ def run_operation_job(
                             "message": item.message,
                         }
                     )
+                if mode == "provision" and item.zone:
+                    job.record_zone(
+                        name,
+                        item.zone,
+                        "error" if item.status in {"error", "cancelled"} else "done",
+                    )
             rows = mod.failure_rows_for_results(name, batch.results)
             all_failures.extend(rows)
             _collect_anomalies(job, updater)

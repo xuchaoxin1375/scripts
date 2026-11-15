@@ -7,7 +7,7 @@
 |---|---|---|---|---|
 | OPT-1 | P0 | 弹窗截图后复断言仍可见（门禁证据有效性） | 门禁 `shot-1440-light-选择域名.png` 缺弹窗但判 PASS；探针复现弹窗正常（bbox 720×380 可见，零控制台错误），属证据链缺口 | DONE（`accept.py#shot_dialog_ok`；复跑截图已含弹窗，门禁过） |
 | OPT-2 | P1 | `jobs.py:88,93,106,167` 静默吞异常：日志补救写失败不可见 | `webui/backend/jobs.py:88,93,106,167` 四处 `except Exception: pass`（日志扇出守卫按设计保留，历史落盘失败转 stderr 上报） | DONE（`jobs.py:168` 打 `[history-upsert-failed]`，门禁扫描可收敛） |
-| OPT-3 | P1 | `loadJob` 轮询吞错：任务跟踪页请求失败用户无感知 | `webui/frontend/src/App.jsx:283`（`catch {}`） | DONE（连续 2 次失败亮错误条＋重试） |
+| OPT-3 | P1 | `loadJob` 轮询吞错：任务跟踪页请求失败用户无感知 | `webui/frontend/src/App.jsx:283`（catch {}，旧前端历史路径，现 `webui/v1/`） | DONE（连续 2 次失败亮错误条＋重试） |
 | OPT-4 | P2 | 后端错误转中文可操作提示：无效 Token 等情形给出“检查 API Token 权限”指引，而非仅原始 `HTTP 400 code 6003` | `shot-1440-light-submitted.png`（verdict 展示原始引擎错误串） | DONE（任务页口令失效 hint） |
 | OPT-6 | P1 | 刷新按钮无上下文时静默空转（点击无请求、无反馈） | 点击横扫 v2：`刷新` DEAD（`loadRecords` 在无账号/域名时直接返回）；`App.jsx:464` | DONE（未选齐时禁用＋title 提示） |
 | OPT-7 | P2 | 下一页在空列表下仍可点（翻到空页，无意义但无害） | 点击横扫 v2：`下一页` EFFECT（空翻页） | PENDING（建议：按 `total` 禁用越界翻页） |

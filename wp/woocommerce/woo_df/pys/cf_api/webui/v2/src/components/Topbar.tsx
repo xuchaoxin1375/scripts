@@ -1,6 +1,5 @@
 import {
   Activity,
-  Command,
   Moon,
   PanelLeft,
   ShieldCheck,
@@ -50,10 +49,6 @@ export default function Topbar({
       </button>
       <button className="icon-button" onClick={onToggleTheme} aria-label="切换主题">
         {theme === "light" ? <Moon size={17} /> : <Sun size={17} />}
-      </button>
-      <button className="topbar-action command-button" aria-label="命令面板">
-        <Command size={15} />
-        <span>Ctrl K</span>
       </button>
     </header>
   );

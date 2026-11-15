@@ -1,6 +1,6 @@
 # 决策记录（WebUI 单一前端重建）
 
-- 日期：2026-10-07；决定：FastAPI + 单文件原生前端（`webui/frontend/dist/index.html`），后端 `/api/v1` 为主 + `/api` 兼容。
+- 日期：2026-10-07；决定：FastAPI + 单文件原生前端（现为 `webui/v1/dist/index.html`），后端 `/api/v1` 为主 + `/api` 兼容。
 - 为什么：仅自己本机用，浏览器打开最快；无 Node 重依赖，`npm run build` 仅复制；复用引擎 `SPEED_PRESETS`/校验/失败清单，不由前端算。
 - 放弃了：Vite+React（交互更强但需工具链）、Tauri 桌面壳（要窗口托盘才需要）、双前端（历史主败因）。
 - 假设：Python 3.9+ 且愿装 fastapi/uvicorn；契约沿用 WEBUI_LESSONS 第一节；无需对外监听。

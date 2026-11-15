@@ -62,7 +62,7 @@ def main() -> None:
         os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     )
     proc = subprocess.Popen(
-        [sys.executable, "start_web_ui.py", "--port", str(PORT), "--config", cfg],
+        [sys.executable, "start_web_ui.py", "--v1", "--port", str(PORT), "--config", cfg],
         cwd=root,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,

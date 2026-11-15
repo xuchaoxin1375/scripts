@@ -3,18 +3,19 @@
 ## 1 打开
 
 ```powershell
-.\serve-webui.ps1              # 后台启动 8600（推荐，shell 立即返回）
+.\serve-webui.ps1              # 后台启动 8600，默认 v2 单工作台
+.\serve-webui.ps1 -V1          # 需要旧四页前端时启动 v1
 ```
 
 浏览器访问 `http://127.0.0.1:8600`。排障看 `.\serve-webui.ps1 -Logs`；前台调试才用 `python start_web_ui.py --port 8600`。
 
-## 2 建议顺序
+## 2 建议顺序（v2）
 
-1. 概览确认账号数与配置路径。
-2. 浏览页选账号填域名查记录，双击行填入操作页。
-3. 操作页选模式，保持 `dry-run` 开提交预览任务。
-4. 任务页看进度与 `verdict`，确认无误后回操作页关掉 `dry-run` 正式执行。
-5. 有失败项时下载失败清单，下次用重跑清单预览后填入域名重跑。
+1. 左侧选账号与域名，中间记录表按服务端分页加载。
+2. 选中记录或点“批量操作”，在右侧填写参数并提交预览。
+3. 预览面板读取任务真实结果；确认无误后执行变更。
+4. 任务页签看进度、日志与失败清单；有失败域可重跑。
+5. 删除类动作先限定范围；删域名必须填快照目录并输入 `DELETE`。
 
 ## 3 高风险动作
 
@@ -26,40 +27,40 @@
 
 | CLI | Web |
 |---|---|
-| `-f` 查找域名 | 浏览页“全账号查找” → `GET /api/v1/find?domain=` |
-| `--list-dns` | 浏览页查询 → `GET /api/v1/records`（服务端分页） |
-| 单条增改 | 新建/编辑弹窗 → `POST /api/v1/records`；按 id 改 → `PATCH`；按 id 删 → `DELETE` |
-| 批量更新/删除/添加/设属性/导出 | 操作页模式 → `POST /api/v1/jobs`（`dry_run` 默认开） |
-| `--provision` 全流程 | 操作页 provision：服务器 IP/转发邮箱/SSL/步骤开关 → 同名模式任务 |
-| 失败清单重跑 | 清单上传 `POST /api/v1/resume-upload` 落盘返回 path；或预览后填入域名提交；任务页“一键重跑失败域”自动填入 |
-| 白名单文件 | `POST /api/v1/whitelist-upload` 解析后填入文本框并记入提交（等价 `-w`） |
-| 域名列表导出 | 浏览页“域名 CSV” → `GET /api/v1/zones.csv`（UTF-8-SIG，5000 行上限） |
-| 备份产物下载 | 任务页“导出文件” → `GET /api/v1/jobs/{id}/exports[/{n}]`（仅限导出/快照目录内） |
-| 显式调参 | 高级区 `-W/-A/-i/-R/-B/-M` 留空按档位，填值钳制覆盖（账号并发越界 400） |
+| `-f` 查找域名 | 高级页“跨账号查找” → `GET /api/v1/find?domain=` |
+| `--list-dns` | 工作台记录表 → `GET /api/v1/records`（服务端分页） |
+| 单条增改 | 记录编辑器 → `PATCH /api/v1/records`；新增/导入 → `POST`；按 id 删 → `DELETE` |
+| 批量更新/删除/添加/设属性/导出 | 动作面板/高级页 → `POST /api/v1/jobs`（`dry_run` 默认开） |
+| `--provision` 全流程 | 动作面板或高级页 provision：服务器 IP/转发邮箱/SSL/步骤开关 → 同名模式任务 |
+| 失败清单重跑 | 高级页上传清单 `POST /api/v1/resume-upload`；任务页签“重跑失败域” |
+| 白名单文件 | 高级页上传 `POST /api/v1/whitelist-upload`，附加到下一次任务（等价 `-w`） |
+| 域名列表导出 | 高级页“zone CSV” → `GET /api/v1/zones.csv`（UTF-8-SIG，5000 行上限） |
+| 备份产物下载 | 任务页签“导出文件” → `GET /api/v1/jobs/{id}/exports[/{n}]`（仅限导出/快照目录内） |
+| 显式调参 | 高级页“运行参数”：速度档位/限速范围/最大重试（账号并发越界 400） |
 | 催激活 | 域名激活等待在 provision 内自动执行；也可调 `POST /api/v1/zones/activation-check` |
 
 ```mermaid
 flowchart TD
-    A[浏览确认] --> B[操作页 dry-run 预览任务]
-    B --> C{verdict 是否符合预期?}
-    C -->|否| D[调整模式/范围/白名单]
+    A[工作台确认账号/域名/记录范围] --> B[动作面板提交预览任务]
+    B --> C{预览结果与 verdict 是否符合预期?}
+    C -->|否| D[调整范围/参数/白名单]
     D --> B
-    C -->|是| E[关 dry-run 正式执行]
-    E --> F[任务页看 verdict]
+    C -->|是| E[执行预览]
+    E --> F[任务页签核对日志与失败清单]
     F --> G{有失败项?}
-    G -->|是| H[下载清单→上传重跑/填入域名重跑]
+    G -->|是| H[下载清单→重跑失败域]
     G -->|否| I[完成]
 ```
 
-## 5 快捷键
+## 5 导航与窄屏
 
-- `Ctrl+K` 命令面板：输域名或账号跳转浏览。
-- `[` 折叠/展开侧边栏。
-- 390/768/1440 三宽可用，窄屏表格转横滑，页面无横向滚动。
+- 左侧账号/域名搜索框用于本地过滤，不触发额外请求。
+- 390/768/980/1440 宽度可用；640 以下记录表转卡片，页面无横向滚动。
+- 移动端左侧导航通过顶栏菜单按钮展开，选择后自动收起。
 
 ## 6 新前端 v2（单工作台）
 
-`webui/frontend-v2/` 是重设计中的新前端，不再分概览/浏览/操作/任务四页：
+`webui/v2/` 是默认单工作台前端，不再分概览/浏览/操作/任务四页：
 
 - 左侧账号/域名导航，中间记录表，右侧操作/任务检查器。
 - 记录表按服务端分页加载（50 条/页），搜索、类型、代理与排序都传后端；选中记录跨页保留。
@@ -71,14 +72,14 @@ flowchart TD
 启动（与旧版对比，建议单独端口）：
 
 ```powershell
-cd webui/frontend-v2
+cd webui/v2
 npm install
 npm run build
 cd ../..
-python start_web_ui.py --frontend-v2 --port 8601 --config <cf_config.csv|json>
+python start_web_ui.py --port 8601 --config <cf_config.csv|json>
 ```
 
-也可用 `.\serve-webui.ps1 -Port 8601 -FrontendV2 -Config <cf_config.csv|json>` 由后台服务管理；
-`-Restart -FrontendV1` 切回旧前端，不传前端参数时 `-Restart` 保持现状。
+也可用 `.\serve-webui.ps1 -Port 8601 -Config <cf_config.csv|json>` 由后台服务管理；
+`-Restart -V1` 切回旧前端，不传前端参数时 `-Restart` 保持现状。
 
-浏览器打开 `http://127.0.0.1:8601`。旧版仍按本文第 1 节启动；v2 稳定后再切默认入口。
+浏览器打开 `http://127.0.0.1:8601`。旧版用 `-V1` 启动；v2 已是默认入口。

@@ -22,7 +22,7 @@ ROOT = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 )
 START_PY = os.path.join(ROOT, "start_web_ui.py")
-DIST = os.path.join(ROOT, "webui", "frontend-v2", "dist", "index.html")
+DIST = os.path.join(ROOT, "webui", "v2", "dist", "index.html")
 
 ACCOUNTS = {
     "items": [
@@ -222,7 +222,7 @@ def wait_ready(base: str, timeout: float = 30.0) -> None:
 def main() -> None:
     if not os.path.exists(DIST):
         raise SystemExit(
-            "缺少 dist/index.html：先执行 cd webui/frontend-v2 && npm run build"
+            "缺少 dist/index.html：先执行 cd webui/v2 && npm run build"
         )
     from playwright.sync_api import sync_playwright
 
@@ -237,7 +237,6 @@ def main() -> None:
         [
             sys.executable,
             "start_web_ui.py",
-            "--frontend-v2",
             "--port",
             str(port),
             "--config",

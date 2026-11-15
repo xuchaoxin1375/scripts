@@ -1,17 +1,17 @@
 # WebUI v2（单工作台）
 
-Vite + React + TypeScript。目标是替换旧四页壳；旧前端 `webui/frontend/` 仍是默认入口，
-本目录可通过 `--frontend-v2` 或 `serve-webui.ps1 -FrontendV2` 单独启动。
+Vite + React + TypeScript，默认入口。旧四页前端保留在 `webui/v1/`，可用
+`--v1` 或 `serve-webui.ps1 -V1` 切回。
 
 ## 启动
 
 ```bash
-# 生产构建后用 FastAPI 托管（推荐先开 8601 与旧版对比）
+# 生产构建后用 FastAPI 托管（默认入口，推荐单独端口）
 npm run build
-python start_web_ui.py --frontend-v2 --port 8601 --config <cf_config.csv|json>
+python start_web_ui.py --port 8601 --config <cf_config.csv|json>
 
 # 或由 PowerShell 管理后台服务
-.\serve-webui.ps1 -Port 8601 -FrontendV2 -Config <cf_config.csv|json>
+.\serve-webui.ps1 -Port 8601 -Config <cf_config.csv|json>
 
 # 开发模式：Vite 8612，/api 代理到 8600
 npm run dev
@@ -21,7 +21,7 @@ VITE_USE_MOCK=true npm run dev
 ```
 
 Windows PowerShell 设置 mock：`$env:VITE_USE_MOCK='true'; npm run dev`。
-切回旧前端：`.\serve-webui.ps1 -Port 8601 -Restart -FrontendV1`。
+切回旧前端：`.\serve-webui.ps1 -Port 8601 -Restart -V1`。
 
 ## 加载策略
 
@@ -51,7 +51,7 @@ Windows PowerShell 设置 mock：`$env:VITE_USE_MOCK='true'; npm run dev`。
 
 ## 尚未完成
 
-- 旧前端默认入口切换；当前 v2 需显式参数启动，旧入口仍可回退。
+- 真实账号的完整写入验收需要可用的测试 zone；`cftest` 当前没有 zone，账号级只读与任务链已验收。
 - 运行参数只保存本机浏览器，不写回账号配置文件。
 - 记录表筛选仍由后端先取全量记录再过滤；超大型 zone 的进一步上游分页需要引擎支持。
 
@@ -69,7 +69,7 @@ Windows PowerShell 设置 mock：`$env:VITE_USE_MOCK='true'; npm run dev`。
 
 ```bash
 npm run build
-python webui/frontend-v2/tests/browser_accept.py
+python webui/v2/tests/browser_accept.py
 ```
 
 测试启动真实 FastAPI 静态托管，用 Playwright 拦截 `/api/v1` 返回固定 JSON；

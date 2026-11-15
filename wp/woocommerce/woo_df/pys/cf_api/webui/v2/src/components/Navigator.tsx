@@ -147,7 +147,11 @@ export default function Navigator({
             !zonesError &&
             visibleZones.length === 0 && (
               <p className="nav-empty">
-                {account ? "没有匹配域名" : "先选择账号"}
+                {!account
+                  ? "先选择账号"
+                  : zones.length === 0
+                    ? "该账号暂无域名"
+                    : "没有匹配域名"}
               </p>
             )}
         </div>

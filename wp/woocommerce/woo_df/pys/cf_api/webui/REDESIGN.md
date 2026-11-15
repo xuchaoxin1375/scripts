@@ -1,6 +1,6 @@
 # WebUI 重设计（v2）方案
 
-状态：设计待确认。旧前端 `webui/frontend/` 保留为回退，不在旧稿上继续打补丁。
+状态：v2 已作为默认入口。旧前端 `webui/v1/` 保留为回退，不在旧稿上继续打补丁。
 
 ## 1. 主张
 
@@ -222,9 +222,9 @@ webui/backend/
 - 路由：React Router；服务状态：TanStack Query；UI 状态：轻量 store/context。
 - 组件：Radix UI（对话框/弹出层/Combobox）+ Lucide 图标；样式用 CSS 变量 + CSS Modules（或 Tailwind，按实现时依赖情况定）。
 - 测试：Vitest + React Testing Library + Playwright。
-- 开发目录：`webui/frontend-v2/`；构建产物 `webui/frontend-v2/dist/`。
-- 迁移期：FastAPI 同时可服务旧 `frontend/dist` 与新 `frontend-v2/dist`（建议新前端挂 `/v2`），验收通过后再切默认入口。
-- 旧前端保留在 `webui/frontend/`，不删除、不继续加功能；回退只需切回入口。
+- 开发目录：`webui/v2/`；构建产物 `webui/v2/dist/`。
+- 迁移期：FastAPI 同时可服务旧 `v1/dist` 与新 `v2/dist`，默认 v2，`--v1` 回退。
+- 旧前端保留在 `webui/v1/`，不删除、不继续加功能；回退只需切回入口。
 
 ## 8. 验收
 
@@ -249,7 +249,7 @@ webui/backend/
 - 旧前端不删，新前端独立构建、独立入口。
 - 先完成只读工作台，再接批量任务；每阶段可用旧入口回退。
 - 切换默认入口前，逐项对照第 5 节功能表；未覆盖项不得声称完成。
-- 保留 `webui/frontend/` 与现有 `/api/v1` 契约；新增接口先加 `/api/v1`，旧接口不动。
+- 保留 `webui/v1/` 与现有 `/api/v1` 契约；新增接口先加 `/api/v1`，旧接口不动。
 
 ## 10. 待确认
 
@@ -262,12 +262,12 @@ webui/backend/
 
 - 后端结构拆分已落地：`app.py` 只保留应用组装与 SPA 回退；路由拆到 `routers/`，schema 拆到 `schemas.py`，账号/zone/记录/任务编排在 `services/`。现有 29 个契约测试通过。
 - 任务模型已补 `params/speed/dry_run/anomalies`，新增 `anomalies`、`anomalies.csv`、`rerun`、`execute` 接口；zone 列表加 30 秒 TTL 缓存。
-- `webui/frontend-v2/` 已建立 Vite + React + TypeScript 单工作台：范围条、动作面板、真实任务结果预览、任务检查器、高级页、390 记录卡片；支持 mock 模式与真实 `/api/v1`。
+- `webui/v2/` 已建立 Vite + React + TypeScript 单工作台：范围条、动作面板、真实任务结果预览、任务检查器、高级页、390 记录卡片；支持 mock 模式与真实 `/api/v1`。
 - 加载策略已调整：记录表改服务端分页（50 条/页，搜索 350ms 防抖），预览读取任务真实结果，任务/日志按运行状态轮询，高级页请求延迟到进入页面或触发动作。
 - 已接真实 API：账号/zone/记录/meta、任务列表与详情、预览提交、预览结果分页、预览转执行、失败域重跑、取消、失败/异常 CSV、单条 PATCH、批量代理、按 ID 批量内容/删除、记录 JSON 导出。
 - 高级页已接：跨账号查找、provision 预览/执行、JSON 导入预检/写入、zone CSV、服务器导出任务与文件下载、白名单/重跑清单上传、任务历史与审计分页、运行参数。
-- `start_web_ui.py --frontend-v2` 可托管 `webui/frontend-v2/dist`；`serve-webui.ps1` 增加 `-FrontendV2`/`-FrontendV1`，`-Restart` 保持或切换前端。
-- `webui/frontend-v2/tests/browser_accept.py` 用真实静态托管 + Playwright API 契约拦截，覆盖记录分页、预览真实结果、任务详情/日志、编辑、批量内容/删除、高级页查找/历史/上传、1440/390 无横滚，零 pageerror。
+- `start_web_ui.py` 默认托管 `webui/v2/dist`，`--v1` 回退旧前端；`serve-webui.ps1` 增加 `-V1`/`-V2`，`-Restart` 保持或切换前端。
+- `webui/v2/tests/browser_accept.py` 用真实静态托管 + Playwright API 契约拦截，覆盖记录分页、预览真实结果、任务详情/日志、编辑、批量内容/删除、高级页查找/历史/上传、1440/390 无横滚，零 pageerror。
 - 尚未完成：旧前端默认入口切换、真实 59 账号只读验收；记录上游分页仍受引擎一次性读取限制。
 
 ## 保留清单（重设计举证）
