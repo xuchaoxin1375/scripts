@@ -214,7 +214,12 @@ function FindPanel({
             {failed.length ? ` · ${failed.length} 个账号读取失败` : ""}
           </p>
           {success.length > 0 && (
-            <div className="data-table-wrap">
+            <div
+              className="data-table-wrap"
+              role="region"
+              aria-label="跨账号查找结果"
+              tabIndex={0}
+            >
               <table className="data-table">
                 <thead>
                   <tr>
@@ -693,6 +698,7 @@ function TransferPanel({
           ref={fileRef}
           type="file"
           accept=".json,application/json"
+          aria-label="导入记录 JSON 文件"
           onChange={(event) => void chooseFile(event)}
           disabled={!scopeReady}
         />
@@ -864,6 +870,7 @@ function AttachmentPanel({
               ref={whitelistRef}
               type="file"
               accept=".txt,.csv"
+              aria-label="上传白名单文件"
               onChange={(event) => {
                 const file = event.target.files?.[0];
                 if (file) {
@@ -898,6 +905,7 @@ function AttachmentPanel({
               ref={resumeRef}
               type="file"
               accept=".csv"
+              aria-label="上传失败清单 CSV"
               onChange={(event) => {
                 const file = event.target.files?.[0];
                 if (file) {
@@ -1013,7 +1021,12 @@ function HistoryPanel({ onNotify }: { onNotify: (message: string) => void }) {
       {active.isPending ? (
         <p className="form-hint">正在读取…</p>
       ) : tab === "history" ? (
-        <div className="data-table-wrap">
+        <div
+          className="data-table-wrap"
+          role="region"
+          aria-label="任务历史"
+          tabIndex={0}
+        >
           <table className="data-table">
             <thead>
               <tr>
@@ -1048,7 +1061,12 @@ function HistoryPanel({ onNotify }: { onNotify: (message: string) => void }) {
           </table>
         </div>
       ) : (
-        <div className="data-table-wrap">
+        <div
+          className="data-table-wrap"
+          role="region"
+          aria-label="审计日志"
+          tabIndex={0}
+        >
           <table className="data-table">
             <thead>
               <tr>

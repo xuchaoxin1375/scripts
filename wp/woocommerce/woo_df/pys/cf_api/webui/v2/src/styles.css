@@ -17,6 +17,7 @@
   --warning-soft: #fbf0d9;
   --danger: #b42318;
   --danger-soft: #fbe9e7;
+  --danger-on-bulk: #ffb4ab;
   --bulk-bg: #17202a;
   --bulk-ink: #f7fafc;
   --shadow-1: 0 1px 2px rgba(16, 24, 40, 0.05);
@@ -50,6 +51,7 @@
   --warning-soft: #342810;
   --danger: #ff8a80;
   --danger-soft: #3a1a1d;
+  --danger-on-bulk: #b42318;
   --bulk-bg: #e6edf3;
   --bulk-ink: #0b1015;
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.3);
@@ -595,6 +597,10 @@ a {
 
 .danger-text {
   color: var(--danger) !important;
+}
+
+.bulk-bar .button.ghost.danger-text {
+  color: var(--danger-on-bulk) !important;
 }
 
 /* ---------- records ---------- */

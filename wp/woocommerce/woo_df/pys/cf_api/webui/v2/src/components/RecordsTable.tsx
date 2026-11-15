@@ -203,7 +203,7 @@ export default function RecordsTable({
         </div>
       )}
 
-      <div className="table-wrap">
+      <div className="table-wrap" role="region" aria-label="DNS 记录列表" tabIndex={0}>
         <table className="records-table">
           <caption className="sr-only">DNS 记录列表</caption>
           <colgroup>
