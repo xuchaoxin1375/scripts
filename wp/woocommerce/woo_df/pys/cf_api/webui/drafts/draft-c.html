@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Draft C · Current workspace + modal editing</title>
+  <link rel="stylesheet" href="drafts.css">
+</head>
+<body class="draft-c">
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+    <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5 8.5 8.5 0 1 0 20.5 14.5Z"/></symbol>
+    <symbol id="i-activity" viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></symbol>
+    <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 20 6v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6Z"/></symbol>
+    <symbol id="i-zap" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7Z"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2 2-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V20h-3v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1-2-2 .1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H4v-3h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1 2-2 .1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.5V4h3v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1 2 2-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1h.1v3h-.1a1.7 1.7 0 0 0-1.5 1Z"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="m4 20 4.5-1 10-10a2.1 2.1 0 0 0-3-3l-10 10L4 20Z"/><path d="m13.5 6.5 4 4"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V5h6v2M7 7l1 14h8l1-14M10 11v6M14 11v6"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0 2 6"/><path d="M20 4v7h-7"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 22 21H2Z"/><path d="M12 9v5M12 18h.01"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l2 2M14 9l2 2"/></symbol>
+    <symbol id="i-server" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="6" rx="2"/><rect x="3" y="14" width="18" height="6" rx="2"/><path d="M7 7h.01M7 17h.01"/></symbol>
+  </svg>
+
+  <header class="topbar">
+    <button class="icon-btn menu-btn" data-sidebar-toggle aria-label="Open navigation">
+      <svg class="icon"><use href="#i-menu"/></svg>
+    </button>
+    <div class="brand">
+      <span class="brand-mark">C</span>
+      <span class="brand-text">DNS Console</span>
+    </div>
+    <span class="topbar-sep"></span>
+    <span class="mono-sm muted" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">config: cf_config.csv</span>
+    <div class="topbar-spacer"></div>
+    <span class="env-badge"><span class="dot"></span>Local</span>
+    <button class="icon-btn" data-theme-toggle aria-label="Switch to dark theme">
+      <svg class="icon icon-moon"><use href="#i-moon"/></svg>
+      <svg class="icon icon-sun"><use href="#i-sun"/></svg>
+    </button>
+    <button class="icon-btn topbar-action" data-toast="Task queue is outside this draft." aria-label="Tasks">
+      <svg class="icon"><use href="#i-activity"/></svg>
+      <span class="topbar-count">1</span>
+    </button>
+  </header>
+
+  <div class="shell">
+    <aside class="sidebar" aria-label="Primary navigation">
+      <button class="icon-btn sidebar-close" data-sidebar-close aria-label="Close navigation">
+        <svg class="icon"><use href="#i-x"/></svg>
+      </button>
+      <div class="sidebar-inner">
+        <nav aria-label="Account and zone navigation">
+          <div class="nav-group">
+            <div class="nav-group-title">Accounts <span class="nav-badge">4</span></div>
+            <label class="nav-search">
+              <svg class="icon-sm"><use href="#i-search"/></svg>
+              <input class="input" placeholder="Search accounts" aria-label="Search accounts">
+            </label>
+            <div class="account-list">
+              <button class="account-item" data-toast="Account switching is mocked in this draft."><span class="status-dot"></span><span class="name">cftest</span><span class="count">0</span></button>
+              <button class="account-item active" data-toast="Account switching is mocked in this draft."><span class="status-dot"></span><span class="name">cf00</span><span class="count">5</span></button>
+              <button class="account-item" data-toast="Account switching is mocked in this draft."><span class="status-dot"></span><span class="name">cf10</span><span class="count">2</span></button>
+              <button class="account-item" data-toast="Account switching is mocked in this draft."><span class="status-dot"></span><span class="name">cf11</span><span class="count">1</span></button>
+            </div>
+          </div>
+          <div class="nav-group">
+            <div class="nav-group-title">Zones <span class="nav-badge">4</span></div>
+            <label class="nav-search">
+              <svg class="icon-sm"><use href="#i-search"/></svg>
+              <input class="input" placeholder="Filter zones" aria-label="Filter zones">
+            </label>
+            <div class="zone-list">
+              <button class="zone-item active" data-toast="Zone switching is mocked in this draft."><span class="status-dot"></span><span class="name">goodpayway.shop</span><span class="status">active</span></button>
+              <button class="zone-item" data-toast="Zone switching is mocked in this draft."><span class="status-dot"></span><span class="name">goodhjw.top</span><span class="status">active</span></button>
+              <button class="zone-item" data-toast="Zone switching is mocked in this draft."><span class="status-dot pending"></span><span class="name">goodmaw.top</span><span class="status">pending</span></button>
+              <button class="zone-item" data-toast="Zone switching is mocked in this draft."><span class="status-dot"></span><span class="name">goodyiw.top</span><span class="status">active</span></button>
+            </div>
+          </div>
+          <button class="btn ghost" style="width:100%;justify-content:flex-start;margin-top:4px" data-toast="Advanced tools are outside this draft.">
+            <svg class="icon-sm"><use href="#i-settings"/></svg> Advanced
+          </button>
+        </nav>
+        <div class="sidebar-footer">
+          <span class="sidebar-footer-text">config: <code>cf_config.csv</code><br>Draft C · static mock</span>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">Workspace</div>
+          <h1>DNS workspace</h1>
+          <p class="page-sub">Account, zone and records in one screen. Single-record edits open in a modal; batch actions stay in the inspector.</p>
+        </div>
+        <div class="page-actions">
+          <button class="btn ghost" data-toast="Import is outside this draft.">
+            <svg class="icon-sm"><use href="#i-upload"/></svg> Import
+          </button>
+          <button class="btn primary" data-add-record>
+            <svg class="icon-sm"><use href="#i-plus"/></svg> Add record
+          </button>
+        </div>
+      </div>
+
+      <div class="scope-bar">
+        <span class="scope-label">SCOPE</span>
+        <strong>cf00</strong><span class="muted-2">/</span><strong>goodpayway.shop</strong>
+        <span class="scope-meta"><strong data-total-count>8</strong> records · <span data-inspector-selection>No records selected</span></span>
+        <span class="scope-actions">
+          <button class="btn ghost" data-toast="Refresh is mocked in this draft."><svg class="icon-sm"><use href="#i-refresh"/></svg> Refresh</button>
+          <button class="btn" data-toast="Batch actions live in the inspector on this draft.">Batch</button>
+        </span>
+      </div>
+
+      <div class="workspace-grid">
+        <section class="panel records-region" data-records-region data-state="normal" aria-label="DNS records">
+        <div class="toolbar">
+          <label class="search-field">
+            <svg class="icon-sm"><use href="#i-search"/></svg>
+            <input class="input" data-filter-search placeholder="Search name or content" aria-label="Search records">
+          </label>
+          <select class="select" data-filter-type aria-label="Filter by record type" style="width:auto">
+            <option value="ALL">All types</option>
+            <option value="A">A</option>
+            <option value="AAAA">AAAA</option>
+            <option value="CNAME">CNAME</option>
+            <option value="TXT">TXT</option>
+            <option value="MX">MX</option>
+          </select>
+          <select class="select" data-filter-proxy aria-label="Filter by proxy status" style="width:auto">
+            <option value="all">All proxy</option>
+            <option value="proxied">Proxied</option>
+            <option value="dns">DNS only</option>
+          </select>
+          <span class="toolbar-spacer"></span>
+          <span class="toolbar-note"><strong data-visible-count>8</strong> of <span data-total-count>8</span></span>
+        </div>
+
+        <div class="table-wrap">
+          <table class="records">
+            <caption class="sr-only">DNS records for goodpayway.shop</caption>
+            <thead>
+              <tr>
+                <th class="check-cell"><input class="checkbox" type="checkbox" data-select-all aria-label="Select all records"></th>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Content</th>
+                <th>Proxy</th>
+                <th>TTL</th>
+                <th>Comment</th>
+                <th style="text-align:right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr data-record data-id="r1" data-type="A" data-name="www" data-content="213.111.154.72" data-proxy="true" data-ttl="Auto" data-comment="Primary site">
+                <td class="check-cell"><input class="checkbox" type="checkbox" data-row-select aria-label="Select www"></td>
+                <td class="name-cell" data-label="Name"><span class="record-name"><span data-cell-name>www</span><span class="at">.goodpayway.shop</span></span></td>
+                <td data-label="Type"><span class="type-pill type-A" data-cell-type>A</span></td>
+                <td class="content-cell" data-label="Content"><code data-cell-content>213.111.154.72</code></td>
+                <td data-label="Proxy"><span class="proxy on" data-cell-proxy><span class="proxy-dot"></span>Proxied</span></td>
+                <td data-label="TTL"><span data-cell-ttl>Auto</span></td>
+                <td class="comment-cell" data-label="Comment"><span data-cell-comment>Primary site</span></td>
+                <td class="actions-cell" data-label="Actions"><span class="row-actions"><button class="row-btn" data-edit-record><svg class="icon-sm"><use href="#i-edit"/></svg> Edit</button><button class="row-btn danger" data-delete-record><svg class="icon-sm"><use href="#i-trash"/></svg> Delete</button></span></td>
+              </tr>
+              <tr data-record data-id="r2" data-type="A" data-name="api" data-content="213.111.154.72" data-proxy="true" data-ttl="Auto" data-comment="">
+                <td class="check-cell"><input class="checkbox" type="checkbox" data-row-select aria-label="Select api"></td>
+                <td class="name-cell" data-label="Name"><span class="record-name"><span data-cell-name>api</span><span class="at">.goodpayway.shop</span></span></td>
+                <td data-label="Type"><span class="type-pill type-A" data-cell-type>A</span></td>
+                <td class="content-cell" data-label="Content"><code data-cell-content>213.111.154.72</code></td>
+                <td data-label="Proxy"><span class="proxy on" data-cell-proxy><span class="proxy-dot"></span>Proxied</span></td>
+                <td data-label="TTL"><span data-cell-ttl>Auto</span></td>
+                <td class="comment-cell" data-label="Comment"><span data-cell-comment>—</span></td>
+                <td class="actions-cell" data-label="Actions"><span class="row-actions"><button class="row-btn" data-edit-record><svg class="icon-sm"><use href="#i-edit"/></svg> Edit</button><button class="row-btn danger" data-delete-record><svg class="icon-sm"><use href="#i-trash"/></svg> Delete</button></span></td>
+              </tr>
+              <tr data-record data-id="r3" data-type="A" data-name="dc" data-content="213.111.154.72" data-proxy="true" data-ttl="Auto" data-comment="">
+                <td class="check-cell"><input class="checkbox" type="checkbox" data-row-select aria-label="Select dc"></td>
+                <td class="name-cell" data-label="Name"><span class="record-name"><span data-cell-name>dc</span><span class="at">.goodpayway.shop</span></span></td>
+                <td data-label="Type"><span class="type-pill type-A" data-cell-type>A</span></td>
+                <td class="content-cell" data-label="Content"><code data-cell-content>213.111.154.72</code></td>
+                <td data-label="Proxy"><span class="proxy on" data-cell-proxy><span class="proxy-dot"></span>Proxied</span></td>
+                <td data-label="TTL"><span data-cell-ttl>Auto</span></td>
+                <td class="comment-cell" data-label="Comment"><span data-cell-comment>—</span></td>
+                <td class="actions-cell" data-label="Actions"><span class="row-actions"><button class="row-btn" data-edit-record><svg class="icon-sm"><use href="#i-edit"/></svg> Edit</button><button class="row-btn danger" data-delete-record><svg class="icon-sm"><use href="#i-trash"/></svg> Delete</button></span></td>
+              </tr>
+              <tr data-record data-id="r4" data-type="A" data-name="1" data-content="213.111.154.72" data-proxy="true" data-ttl="Auto" data-comment="">
+                <td class="check-cell"><input class="checkbox" type="checkbox" data-row-select aria-label="Select 1"></td>
+                <td class="name-cell" data-label="Name"><span class="record-name"><span data-cell-name>1</span><span class="at">.goodpayway.shop</span></span></td>
+                <td data-label="Type"><span class="type-pill type-A" data-cell-type>A</span></td>
+                <td class="content-cell" data-label="Content"><code data-cell-content>213.111.154.72</code></td>
+                <td data-label="Proxy"><span class="proxy on" data-cell-proxy><span class="proxy-dot"></span>Proxied</span></td>
+                <td data-label="TTL"><span data-cell-ttl>Auto</span></td>
+                <td class="comment-cell" data-label="Comment"><span data-cell-comment>—</span></td>
+                <td class="actions-cell" data-label="Actions"><span class="row-actions"><button class="row-btn" data-edit-record><svg class="icon-sm"><use href="#i-edit"/></svg> Edit</button><button class="row-btn danger" data-delete-record><svg class="icon-sm"><use href="#i-trash"/></svg> Delete</button></span></td>
+              </tr>
+              <tr data-record data-id="r5" data-type="CNAME" data-name="shop" data-content="goodpayway.shop" data-proxy="true" data-ttl="Auto" data-comment="Storefront alias">
+                <td class="check-cell"><input class="checkbox" type="checkbox" data-row-select aria-label="Select shop"></td>
+                <td class="name-cell" data-label="Name"><span class="record-name"><span data-cell-name>shop</span><span class="at">.goodpayway.shop</span></span></td>
+                <td data-label="Type"><span class="type-pill type-CNAME" data-cell-type>CNAME</span></td>
+                <td class="content-cell" data-label="Content"><code data-cell-content>goodpayway.shop</code></td>
+                <td data-label="Proxy"><span class="proxy on" data-cell-proxy><span class="proxy-dot"></span>Proxied</span></td>
+                <td data-label="TTL"><span data-cell-ttl>Auto</span></td>
+                <td class="comment-cell" data-label="Comment"><span data-cell-comment>Storefront alias</span></td>
+                <td class="actions-cell" data-label="Actions"><span class="row-actions"><button class="row-btn" data-edit-record><svg class="icon-sm"><use href="#i-edit"/></svg> Edit</button><button class="row-btn danger" data-delete-record><svg class="icon-sm"><use href="#i-trash"/></svg> Delete</button></span></td>
+              </tr>
+              <tr data-record data-id="r6" data-type="TXT" data-name="@" data-content="v=spf1 include:_spf.example.com ~all" data-proxy="false" data-ttl="Auto" data-comment="SPF">
+                <td class="check-cell"><input class="checkbox" type="checkbox" data-row-select aria-label="Select zone root"></td>
+                <td class="name-cell" data-label="Name"><span class="record-name"><span data-cell-name>@</span><span class="at">goodpayway.shop</span></span></td>
+                <td data-label="Type"><span class="type-pill type-TXT" data-cell-type>TXT</span></td>
+                <td class="content-cell" data-label="Content"><code data-cell-content>v=spf1 include:_spf.example.com ~all</code></td>
+                <td data-label="Proxy"><span class="proxy off" data-cell-proxy><span class="proxy-dot"></span>DNS only</span></td>
+                <td data-label="TTL"><span data-cell-ttl>Auto</span></td>
+                <td class="comment-cell" data-label="Comment"><span data-cell-comment>SPF</span></td>
+                <td class="actions-cell" data-label="Actions"><span class="row-actions"><button class="row-btn" data-edit-record><svg class="icon-sm"><use href="#i-edit"/></svg> Edit</button><button class="row-btn danger" data-delete-record><svg class="icon-sm"><use href="#i-trash"/></svg> Delete</button></span></td>
+              </tr>
+              <tr data-record data-id="r7" data-type="MX" data-name="@" data-content="mail.goodpayway.shop" data-proxy="false" data-ttl="Auto" data-comment="Priority 10">
+                <td class="check-cell"><input class="checkbox" type="checkbox" data-row-select aria-label="Select zone root mail"></td>
+                <td class="name-cell" data-label="Name"><span class="record-name"><span data-cell-name>@</span><span class="at">goodpayway.shop</span></span></td>
+                <td data-label="Type"><span class="type-pill type-MX" data-cell-type>MX</span></td>
+                <td class="content-cell" data-label="Content"><code data-cell-content>mail.goodpayway.shop</code></td>
+                <td data-label="Proxy"><span class="proxy off" data-cell-proxy><span class="proxy-dot"></span>DNS only</span></td>
+                <td data-label="TTL"><span data-cell-ttl>Auto</span></td>
+                <td class="comment-cell" data-label="Comment"><span data-cell-comment>Priority 10</span></td>
+                <td class="actions-cell" data-label="Actions"><span class="row-actions"><button class="row-btn" data-edit-record><svg class="icon-sm"><use href="#i-edit"/></svg> Edit</button><button class="row-btn danger" data-delete-record><svg class="icon-sm"><use href="#i-trash"/></svg> Delete</button></span></td>
+              </tr>
+              <tr data-record data-id="r8" data-type="TXT" data-name="_dmarc" data-content="v=DMARC1; p=none; rua=mailto:dmarc@goodpayway.shop" data-proxy="false" data-ttl="Auto" data-comment="DMARC">
+                <td class="check-cell"><input class="checkbox" type="checkbox" data-row-select aria-label="Select _dmarc"></td>
+                <td class="name-cell" data-label="Name"><span class="record-name"><span data-cell-name>_dmarc</span><span class="at">.goodpayway.shop</span></span></td>
+                <td data-label="Type"><span class="type-pill type-TXT" data-cell-type>TXT</span></td>
+                <td class="content-cell" data-label="Content"><code data-cell-content>v=DMARC1; p=none; rua=mailto:dmarc@goodpayway.shop</code></td>
+                <td data-label="Proxy"><span class="proxy off" data-cell-proxy><span class="proxy-dot"></span>DNS only</span></td>
+                <td data-label="TTL"><span data-cell-ttl>Auto</span></td>
+                <td class="comment-cell" data-label="Comment"><span data-cell-comment>DMARC</span></td>
+                <td class="actions-cell" data-label="Actions"><span class="row-actions"><button class="row-btn" data-edit-record><svg class="icon-sm"><use href="#i-edit"/></svg> Edit</button><button class="row-btn danger" data-delete-record><svg class="icon-sm"><use href="#i-trash"/></svg> Delete</button></span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="state-panel state-empty">
+          <h3>No records in this zone</h3>
+          <p>Add the first record to start resolving traffic.</p>
+          <button class="btn primary" data-add-record><svg class="icon-sm"><use href="#i-plus"/></svg> Add record</button>
+        </div>
+        <div class="state-panel state-loading" aria-live="polite">
+          <h3>Loading records</h3>
+          <p>Reading the zone from Cloudflare…</p>
+          <span class="skeleton-line"></span><span class="skeleton-line short"></span>
+        </div>
+        <div class="state-panel state-error">
+          <h3>Could not load records</h3>
+          <p>The zone request failed. Check the account token or retry.</p>
+          <button class="btn" data-toast="Retry is mocked in this draft."><svg class="icon-sm"><use href="#i-refresh"/></svg> Retry</button>
+        </div>
+
+        <div class="table-foot">
+          <span>Showing <strong data-visible-count>8</strong> of <span data-total-count>8</span> records</span>
+          <span class="pager"><button aria-label="Previous page" disabled>Previous</button><button aria-current="page">1</button><button aria-label="Next page" disabled>Next</button></span>
+        </div>
+      </section>
+
+        <aside class="inspector" aria-label="Actions and tasks">
+          <div class="inspector-tabs" role="tablist" aria-label="Inspector">
+            <button class="tab-btn active" data-tab="action" role="tab" aria-selected="true">Actions</button>
+            <button class="tab-btn" data-tab="tasks" role="tab" aria-selected="false">Tasks</button>
+          </div>
+          <div class="inspector-body" data-panel="action">
+            <div class="inspector-kicker">CONTEXT</div>
+            <h2>Choose an action</h2>
+            <p class="inspector-copy"><span data-inspector-selection>No records selected</span>. Batch actions apply to the current zone after a preview.</p>
+            <div class="action-list">
+              <button class="action-card" data-toast="Select records, then choose Edit content (draft).">
+                <span class="action-icon"><svg class="icon-sm"><use href="#i-edit"/></svg></span>
+                <span class="action-text"><strong>Edit content</strong><small>Change selected records</small></span>
+                <svg class="icon-sm chev"><use href="#i-chevron-right"/></svg>
+              </button>
+              <button class="action-card" data-toast="Proxy and TTL changes are outside this draft.">
+                <span class="action-icon"><svg class="icon-sm"><use href="#i-settings"/></svg></span>
+                <span class="action-text"><strong>Set proxy / TTL</strong><small>Batch attributes without content</small></span>
+                <svg class="icon-sm chev"><use href="#i-chevron-right"/></svg>
+              </button>
+              <button class="action-card danger" data-toast="Wildcard delete is outside this draft.">
+                <span class="action-icon"><svg class="icon-sm"><use href="#i-trash"/></svg></span>
+                <span class="action-text"><strong>Delete wildcard records</strong><small>Preview before delete</small></span>
+                <svg class="icon-sm chev"><use href="#i-chevron-right"/></svg>
+              </button>
+              <button class="action-card" data-add-record>
+                <span class="action-icon"><svg class="icon-sm"><use href="#i-plus"/></svg></span>
+                <span class="action-text"><strong>Add domain or record</strong><small>Open the record modal</small></span>
+                <svg class="icon-sm chev"><use href="#i-chevron-right"/></svg>
+              </button>
+              <button class="action-card" data-toast="Export and backup are outside this draft.">
+                <span class="action-icon"><svg class="icon-sm"><use href="#i-download"/></svg></span>
+                <span class="action-text"><strong>Export / backup</strong><small>JSON, BIND or snapshot</small></span>
+                <svg class="icon-sm chev"><use href="#i-chevron-right"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="inspector-body" data-panel="tasks" hidden>
+            <div class="inspector-kicker">TASKS</div>
+            <h2>Recent jobs</h2>
+            <p class="inspector-copy">Preview and execute jobs stay visible while you edit records.</p>
+            <div class="action-list">
+              <div class="selected-item"><span><strong>job-0002</strong> · add</span><span class="badge">done</span></div>
+              <div class="selected-item"><span><strong>job-0001</strong> · add</span><span class="badge">done</span></div>
+            </div>
+            <button class="btn ghost" style="width:100%;margin-top:10px" data-toast="Task detail is outside this draft.">Open task inspector</button>
+          </div>
+        </aside>
+      </div>
+    </main>
+  </div>
+
+  <div class="backdrop" id="record-modal" role="dialog" aria-modal="true" aria-labelledby="record-modal-title">
+    <div class="modal">
+      <div class="modal-header">
+        <div>
+          <h2 id="record-modal-title" data-record-modal-title>Edit record</h2>
+          <p data-record-modal-subtitle>Update the record without leaving the list.</p>
+        </div>
+        <button class="icon-btn" data-close-modal aria-label="Close dialog"><svg class="icon"><use href="#i-x"/></svg></button>
+      </div>
+      <form data-record-form>
+        <div class="modal-body">
+          <div class="form-grid">
+            <div class="field">
+              <label for="record-type">Type</label>
+              <select class="select" id="record-type" data-record-type>
+                <option>A</option><option>AAAA</option><option>CNAME</option><option>TXT</option><option>MX</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="record-name">Name</label>
+              <div class="input-group">
+                <input class="input" id="record-name" data-record-name data-autofocus placeholder="www">
+                <span class="suffix">.goodpayway.shop</span>
+              </div>
+              <span class="hint">Use @ for the zone root.</span>
+              <span class="error">Enter a record name.</span>
+            </div>
+          </div>
+          <div class="field">
+            <label for="record-content">Content</label>
+            <input class="input" id="record-content" data-record-content placeholder="203.0.113.10">
+            <span class="error">Enter record content.</span>
+          </div>
+          <div class="switch-row">
+            <div class="switch-copy">
+              <strong>Proxy through Cloudflare</strong>
+              <small>Available for A, AAAA and CNAME records.</small>
+            </div>
+            <label class="switch">
+              <input type="checkbox" data-record-proxy aria-label="Proxy through Cloudflare">
+              <span></span>
+            </label>
+          </div>
+          <div class="field">
+            <label for="record-ttl">TTL</label>
+            <select class="select" id="record-ttl" data-record-ttl>
+              <option>Auto</option><option>1 min</option><option>5 min</option><option>1 hour</option><option>12 hours</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="record-comment">Comment</label>
+            <input class="input" id="record-comment" data-record-comment maxlength="100" placeholder="Optional note">
+            <span class="hint">Optional, up to 100 characters.</span>
+          </div>
+          <div class="modal-warning">
+            <svg class="icon"><use href="#i-alert"/></svg>
+            <span>This static draft does not write to Cloudflare. In the real flow, saving would show a preview before applying.</span>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn ghost" data-close-modal>Cancel</button>
+          <button type="submit" class="btn primary">Save record</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="backdrop" id="delete-modal" role="dialog" aria-modal="true" aria-labelledby="delete-title">
+    <div class="modal narrow">
+      <div class="modal-header">
+        <div><h2 id="delete-title" data-delete-title>Delete record</h2><p>This action cannot be undone.</p></div>
+        <button class="icon-btn" data-close-modal aria-label="Close dialog"><svg class="icon"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-warning danger">
+          <svg class="icon"><use href="#i-alert"/></svg>
+          <span>The record is removed from <strong>goodpayway.shop</strong>. Existing traffic using this name will stop resolving.</span>
+        </div>
+        <div class="modal-list" data-delete-list></div>
+        <label class="checkbox-line"><input type="checkbox" data-delete-ack> I understand this will remove the record from the zone.</label>
+      </div>
+      <div class="modal-footer">
+        <button class="btn ghost" data-close-modal>Cancel</button>
+        <button class="btn danger-solid" data-confirm-delete disabled>Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="backdrop" id="bulk-modal" role="dialog" aria-modal="true" aria-labelledby="bulk-title">
+    <div class="modal">
+      <div class="modal-header">
+        <div><h2 id="bulk-title">Edit selected records</h2><p>Apply one content value to the selected records.</p></div>
+        <button class="icon-btn" data-close-modal aria-label="Close dialog"><svg class="icon"><use href="#i-x"/></svg></button>
+      </div>
+      <form data-bulk-form>
+        <div class="modal-body">
+          <div class="modal-list" data-bulk-list></div>
+          <div class="field">
+            <label for="bulk-content">New content</label>
+            <textarea class="textarea" id="bulk-content" data-bulk-content placeholder="198.51.100.10 or target.example.net"></textarea>
+            <span class="error">Enter the new content.</span>
+          </div>
+          <div class="modal-warning">
+            <svg class="icon"><use href="#i-alert"/></svg>
+            <span>Only content changes. Type, name, proxy and TTL are preserved. In production this would be a preview job.</span>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn ghost" data-close-modal>Cancel</button>
+          <button type="submit" class="btn primary">Update records</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <button class="sidebar-backdrop" data-sidebar-close aria-label="Close navigation"></button>
+  <div class="toast-region" data-toast-region aria-live="polite"></div>
+  <div class="draft-controls" data-draft-controls>
+    <span class="draft-label">Draft C</span>
+    <label class="sr-only" for="state-a">Preview state</label>
+    <select class="select" id="state-a" data-state-select>
+      <option value="normal">Normal</option>
+      <option value="loading">Loading</option>
+      <option value="empty">Empty</option>
+      <option value="error">Error</option>
+    </select>
+  </div>
+  <script src="drafts.js"></script>
+</body>
+</html>

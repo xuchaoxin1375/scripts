@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DNS Console · Interaction drafts</title>
+  <link rel="stylesheet" href="drafts.css">
+</head>
+<body>
+  <main class="index-wrap">
+    <header class="index-head">
+      <div class="eyebrow">Design draft · static HTML</div>
+      <h1>Choose the interaction model</h1>
+      <p>
+        Three clickable drafts for the DNS console. All data is mock data; no API is called and
+        the existing v2 app is untouched. Try Add / Edit / Delete, select a few rows, collapse
+        the sidebar, switch the theme, and resize the window to 390px.
+      </p>
+    </header>
+
+    <div class="index-note">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 22 21H2Z"/><path d="M12 9v5M12 18h.01"/></svg>
+      <span>
+        The small <strong>Draft controls</strong> pill at the bottom of each page switches
+        Normal / Loading / Empty / Error states. Open a draft in a new tab for the full viewport.
+      </span>
+    </div>
+
+    <section class="draft-grid" aria-label="Draft options">
+      <article class="draft-card">
+        <div class="mini-shell" aria-hidden="true">
+          <div class="mini-rail">
+            <span class="mini-dot active"></span><span class="mini-dot"></span><span class="mini-dot"></span><span class="mini-dot"></span>
+          </div>
+          <div class="mini-main">
+            <span class="mini-line wide"></span><span class="mini-line mid"></span>
+            <div class="mini-table">
+              <div class="mini-row"><span></span><span></span><span></span></div>
+              <div class="mini-row"><span></span><span></span><span></span></div>
+              <div class="mini-row"><span></span><span></span><span></span></div>
+            </div>
+          </div>
+        </div>
+        <div class="card-top">
+          <div>
+            <div class="card-kicker">Draft A</div>
+            <h2>Global sidebar + modal editing</h2>
+          </div>
+        </div>
+        <p>The closest to the Cloudflare dashboard: global navigation on the left, resource switcher on top, and every single-record change in a focused modal.</p>
+        <ul>
+          <li><strong>Best for:</strong> fast navigation and single-record edits.</li>
+          <li><strong>Gain:</strong> clear hierarchy; the table keeps its context.</li>
+          <li><strong>Cost:</strong> batch preview and task detail need a modal or a separate page.</li>
+        </ul>
+        <div class="card-actions">
+          <a class="btn primary" href="draft-a.html">Open Draft A</a>
+        </div>
+      </article>
+
+      <article class="draft-card recommended">
+        <div class="mini-shell" aria-hidden="true">
+          <div class="mini-rail">
+            <span class="mini-dot active"></span><span class="mini-dot"></span><span class="mini-dot"></span><span class="mini-dot"></span>
+          </div>
+          <div class="mini-main">
+            <span class="mini-line wide"></span><span class="mini-line mid"></span>
+            <div class="mini-table">
+              <div class="mini-row"><span></span><span></span><span></span></div>
+              <div class="mini-row"><span></span><span></span><span></span></div>
+              <div class="mini-row"><span></span><span></span><span></span></div>
+            </div>
+          </div>
+        </div>
+        <div class="card-top">
+          <div>
+            <div class="card-kicker">Draft B</div>
+            <h2>Global sidebar + modal + batch drawer</h2>
+          </div>
+          <span class="recommend-badge">Recommended</span>
+        </div>
+        <p>Keeps the Cloudflare-style navigation and modal edit, while a right-side drawer holds batch selection, preview diff and execution. The hybrid preserves the current tool's strongest workflow.</p>
+        <ul>
+          <li><strong>Best for:</strong> teams that do both single edits and batch DNS changes.</li>
+          <li><strong>Gain:</strong> fast single edits without losing preview/job context.</li>
+          <li><strong>Cost:</strong> one more layer of state than Draft A; focus handling must stay explicit.</li>
+        </ul>
+        <div class="card-actions">
+          <a class="btn primary" href="draft-b.html">Open Draft B</a>
+        </div>
+      </article>
+
+      <article class="draft-card">
+        <div class="mini-shell" aria-hidden="true">
+          <div class="mini-rail">
+            <span class="mini-dot active"></span><span class="mini-dot"></span><span class="mini-dot"></span><span class="mini-dot"></span>
+          </div>
+          <div class="mini-main">
+            <span class="mini-line wide"></span><span class="mini-line mid"></span>
+            <div class="mini-table">
+              <div class="mini-row"><span></span><span></span><span></span></div>
+              <div class="mini-row"><span></span><span></span><span></span></div>
+              <div class="mini-row"><span></span><span></span><span></span></div>
+            </div>
+          </div>
+        </div>
+        <div class="card-top">
+          <div>
+            <div class="card-kicker">Draft C</div>
+            <h2>Current workspace + modal editing</h2>
+          </div>
+        </div>
+        <p>The smallest change: keep the account/zone navigator and the right inspector, but move single-record editing into the same modal as Draft A/B.</p>
+        <ul>
+          <li><strong>Best for:</strong> minimizing change and preserving current muscle memory.</li>
+          <li><strong>Gain:</strong> no routing rewrite; inspector still handles batch and tasks.</li>
+          <li><strong>Cost:</strong> does not deliver the global Cloudflare-style navigation.</li>
+        </ul>
+        <div class="card-actions">
+          <a class="btn" href="draft-c.html">Open Draft C</a>
+        </div>
+      </article>
+    </section>
+
+    <section class="panel" style="margin-top:24px;padding:18px">
+      <div class="eyebrow">Comparison</div>
+      <div class="table-wrap" style="overflow:auto">
+        <table class="records" style="min-width:720px">
+          <thead>
+            <tr><th>Decision</th><th>Draft A</th><th>Draft B</th><th>Draft C</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>Global sidebar</strong></td><td>Yes</td><td>Yes, rail default</td><td>No, account/zone list</td></tr>
+            <tr><td><strong>Single-record edit</strong></td><td>Modal</td><td>Modal</td><td>Modal</td></tr>
+            <tr><td><strong>Batch preview / tasks</strong></td><td>Modal or page</td><td>Right drawer</td><td>Right inspector</td></tr>
+            <tr><td><strong>Change from current v2</strong></td><td>Large</td><td>Medium</td><td>Small</td></tr>
+            <tr><td><strong>Preference fit</strong></td><td>Purest Cloudflare feel</td><td>Best balance</td><td>Conservative</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <p class="index-foot">
+      Files: <code>draft-a.html</code>, <code>draft-b.html</code>, <code>draft-c.html</code>,
+      <code>drafts.css</code>, <code>drafts.js</code>. Static mock data only; no backend or
+      Cloudflare request is made.
+    </p>
+  </main>
+</body>
+</html>

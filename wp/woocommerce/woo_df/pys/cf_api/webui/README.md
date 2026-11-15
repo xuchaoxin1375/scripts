@@ -5,6 +5,9 @@
 新前端源码与构建产物在 `webui/v2/`，默认入口即 v2；状态与功能对照见
 [v2/README.md](v2/README.md) 与 [REDESIGN.md](REDESIGN.md)。
 
+交互方案草稿见 [drafts/index.html](drafts/index.html)：三版静态 mock，不接后端，
+用于选择“全局侧栏 + 弹窗编辑 / 批量抽屉”等导航与编辑方式。
+
 ## 启动（后台，不占 shell）
 
 ```powershell
