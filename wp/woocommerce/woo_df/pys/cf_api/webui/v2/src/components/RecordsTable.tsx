@@ -68,7 +68,7 @@ const COLUMN_SPECS: ColSpec[] = [
 ];
 
 const CHECK_W = 38;
-const ACTION_W = 126;
+const ACTION_W = 132;
 const FILLER_MIN = 40;
 const FIXED_EXTRA = CHECK_W + ACTION_W;
 

@@ -450,7 +450,8 @@ a {
 .resource-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  /* 激活项有描边，项间距至少 4px；6px 同时给焦点环留余量。 */
+  gap: 6px;
   max-height: 300px;
   padding-right: 2px;
   overflow: auto;
@@ -482,6 +483,11 @@ a {
   background: var(--accent-soft);
   color: var(--accent-strong);
   font-weight: 700;
+}
+
+/* 列表自身滚动并裁切，外扩焦点环会被截断，改为内缩。 */
+.resource-option:focus-visible {
+  outline-offset: -2px;
 }
 
 .resource-option-name {
@@ -578,10 +584,16 @@ a {
   margin-bottom: 0;
 }
 
+/* 焦点环外扩 4px：相邻导航项留 6px（2px 余量），避免焦点态压住上下项。 */
+.nav-group .nav-link + .nav-link {
+  margin-top: 6px;
+}
+
 .nav-group-title {
   position: relative;
-  height: 18px;
-  padding: 0 10px 4px;
+  /* 标题上方 12px 给上一组激活项描边与焦点环留位，下方 8px 给本组首项焦点环留位。 */
+  height: 32px;
+  padding: 12px 10px 8px;
   overflow: hidden;
   color: var(--muted-2);
   font-size: 10px;
@@ -758,7 +770,7 @@ a {
   .app.rail .sidebar:not(.peek) .nav-group + .nav-group::before {
     content: "";
     position: absolute;
-    top: 8px;
+    top: 16px;
     left: 6px;
     right: 6px;
     height: 1px;
@@ -1114,6 +1126,23 @@ a {
   overflow: auto;
 }
 
+/* 滚动容器被 .records-panel 的圆角裁切，焦点环改为内缩，避免只显示一半。 */
+.table-wrap:focus-visible {
+  outline-offset: -2px;
+}
+
+/* 表头与粘性操作列是不透明定位元素，会盖住内缩焦点环；支持 :has 时改画在面板外沿。 */
+@supports selector(:has(*)) {
+  .table-wrap:focus-visible {
+    outline: none;
+  }
+
+  .records-panel:has(.table-wrap:focus-visible) {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
 .records-table {
   width: 100%;
   min-width: 980px;
@@ -1431,7 +1460,7 @@ body.col-resizing * {
 .row-actions {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 6px;
 }
 
 .row-action {
@@ -2232,7 +2261,8 @@ a.button {
 
 .drawer-tabs {
   display: flex;
-  gap: 4px;
+  /* 页签之间的空隙要留够焦点环（2px 环 + 2px 偏移）。 */
+  gap: 8px;
 }
 
 .drawer-tab {
@@ -2248,6 +2278,11 @@ a.button {
   color: var(--muted);
   font-size: 11px;
   font-weight: 700;
+}
+
+/* 页签贴着头部分隔线，外扩焦点环会压到线外；改为内缩。 */
+.drawer-tab:focus-visible {
+  outline-offset: -2px;
 }
 
 .drawer-tab:hover {
@@ -3067,7 +3102,7 @@ a.button {
 }
 
 .proxy-empty {
-  margin: 0 0 10px;
+  margin: 0;
   padding: 10px;
   border: 1px dashed var(--line-strong);
   border-radius: var(--radius-sm);
@@ -3078,14 +3113,17 @@ a.button {
 .proxy-add-row {
   display: flex;
   align-items: flex-start;
-  gap: 6px;
+  /* 8px：留出输入框焦点环（2px 环 + 2px 偏移）与上方列表项、右侧按钮的间距 */
+  gap: 8px;
+  margin-top: 8px;
 }
 
 .proxy-add-row textarea {
   flex: 1;
   min-width: 0;
   min-height: 52px;
-  padding: 6px 8px;
+  /* 右侧 16px 给原生缩放柄留位，文字不会压在柄上 */
+  padding: 6px 16px 6px 8px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: var(--surface-2);
@@ -3093,6 +3131,11 @@ a.button {
   font-size: 11px;
   line-height: 1.5;
   resize: vertical;
+}
+
+.proxy-add-row + .field-hint {
+  display: block;
+  margin-top: 6px;
 }
 
 .proxy-add-row textarea:focus {

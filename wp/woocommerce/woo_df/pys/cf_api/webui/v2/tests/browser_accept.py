@@ -759,6 +759,25 @@ def main() -> None:
             )
             if expanded_width < 240:
                 raise AssertionError(f"桌面展开侧栏宽度异常: {expanded_width}")
+            sidebar_gaps = page.evaluate(
+                """() => {
+                  const groups = [...document.querySelectorAll('.sidebar .nav-group')];
+                  const link = groups[0]?.querySelector('.nav-link.active');
+                  const title = groups[1]?.querySelector('.nav-group-title');
+                  const first = groups[1]?.querySelector('.nav-link');
+                  if (!link || !title || !first) return null;
+                  const lr = link.getBoundingClientRect();
+                  const tr = title.getBoundingClientRect();
+                  const fr = first.getBoundingClientRect();
+                  const ts = getComputedStyle(title);
+                  return {
+                    above: Math.round(tr.top + parseFloat(ts.paddingTop) - lr.bottom),
+                    below: Math.round(fr.top - (tr.bottom - parseFloat(ts.paddingBottom))),
+                  };
+                }"""
+            )
+            if not sidebar_gaps or sidebar_gaps["above"] < 8 or sidebar_gaps["below"] < 6:
+                raise AssertionError(f"侧栏分组标题与相邻项间距不足: {sidebar_gaps}")
             page.screenshot(path=os.path.join(shots, "sidebar_expanded_1440.png"))
             page.keyboard.press("Tab")
             if not page.evaluate(
@@ -1059,7 +1078,8 @@ def main() -> None:
             )
             if not rail_groups:
                 raise AssertionError("Rail 分组结构缺失")
-            if rail_groups["gap"] > 22:
+            # 焦点环需要 6px 项间距和 32px 标题槽；组间空白上限按当前结构放宽到 36px。
+            if rail_groups["gap"] > 36:
                 raise AssertionError(f"Rail 组间空白过大: {rail_groups['gap']}px")
             if (
                 rail_groups["lineContent"] == "none"
