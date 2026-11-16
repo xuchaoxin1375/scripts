@@ -1,4 +1,4 @@
-// 轻量构建：单文件前端，无依赖，直接复制 src/index.html 到 dist/index.html。
+// 轻量构建：无依赖，复制单文件前端与页面图标到 dist/。
 import { copyFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -6,5 +6,7 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");
 mkdirSync(join(root, "dist"), { recursive: true });
-copyFileSync(join(root, "src", "index.html"), join(root, "dist", "index.html"));
-console.log("build ok: src/index.html -> dist/index.html");
+for (const file of ["index.html", "favicon.svg", "favicon.ico"]) {
+  copyFileSync(join(root, "src", file), join(root, "dist", file));
+}
+console.log("build ok: src/index.html + favicon.* -> dist/");
