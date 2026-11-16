@@ -18,6 +18,7 @@ from .routers import (
     history,
     jobs,
     meta,
+    proxy,
     records,
     uploads,
     zones,
@@ -29,6 +30,7 @@ def create_app(frontend: str = "") -> FastAPI:
     app = FastAPI(title="Cloudflare DNS WebUI")
 
     app.include_router(meta.router)
+    app.include_router(proxy.router)
     app.include_router(zones.router)
     app.include_router(records.router)
     app.include_router(email_routing.router)

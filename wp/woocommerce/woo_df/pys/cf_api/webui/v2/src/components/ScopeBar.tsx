@@ -8,6 +8,7 @@ type Props = {
   recordCount: number;
   selectedCount: number;
   refreshing: boolean;
+  mode: "local" | "server";
   attachments: Attachments;
   onRefresh: () => void;
   onAdd: () => void;
@@ -22,6 +23,7 @@ export default function ScopeBar({
   recordCount,
   selectedCount,
   refreshing,
+  mode,
   attachments,
   onRefresh,
   onAdd,
@@ -103,7 +105,7 @@ export default function ScopeBar({
 
         <span className="strip-spacer" />
         <span className="refresh-note">
-          {refreshing ? "刷新中…" : "服务端分页"}
+          {refreshing ? "刷新中…" : mode === "server" ? "服务端分页" : "本地已加载"}
         </span>
         <button
           className="button ghost"

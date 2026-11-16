@@ -16,7 +16,7 @@ A/C 保留供回退。
 ```powershell
 .\serve-webui.ps1                        # 启动 8600（Hidden 后台，shell 立即返回；已在跑则复用）
 .\serve-webui.ps1 -Status                # 快查 8600（进程 PID + 端口探活 + meta）
-.\serve-webui.ps1 -Restart               # 重启 8600（配置/绑定/代理保持现状，口令复用旧值或环境变量）
+.\serve-webui.ps1 -Restart               # 重启 8600（配置/绑定/启动参数代理保持现状，口令复用旧值；页面内运行时代理不保存）
 .\serve-webui.ps1 -Restart -Lan -Password <pwd>  # 重启并绑定 0.0.0.0 对外分享（无口令拒绝）
 .\serve-webui.ps1 -Restart -NoLan        # 重启并切回仅本机
 .\serve-webui.ps1 -Port 8601 -Status     # 查别的端口（Status/Stop/Restart 均可组合 -Port）
@@ -49,7 +49,7 @@ python start_web_ui.py --host 0.0.0.0 --port 8600 --password <pwd>
 
 - 默认仅监听 `127.0.0.1`；对外无口令拒绝启动。
 - 口令走请求头 `X-Auth-Token`；前端记住到 `localStorage`。
-- 全局代理仅驻内存：`-P URL` / `--proxy-file`，审计只记数量与模式。
+- 全局代理仅驻内存：启动参数 `-P URL` / `--proxy-file` 预设初始列表，或在页面顶栏“代理”/侧栏页脚打开设置后增删代理、切换总开关与单项开关；总开关关闭时只保存不启用。不写配置文件，重启恢复启动参数。审计只记数量、开关与模式。
 
 ## 架构
 
@@ -80,11 +80,13 @@ sequenceDiagram
 
 ## 接口
 
-- 主接口 `/api/v1`：`meta/accounts/zones(status|csv)/records(GET/POST/PATCH/DELETE/bulk-delete/bulk-update/bulk-restore/import/export)/email-routing(addresses|status|complete)/find?domain=/zones/activation-check/jobs/jobs/{id}[/logs|results|failures|anomalies|failures.csv|anomalies.csv|cancel|zones|exports|exports/{n}|rerun|execute]/resume-preview/resume-upload/whitelist-upload/history/audit`。
+- 主接口 `/api/v1`：`meta/accounts/proxy(GET|PUT)/zones(status|csv)/records(GET/POST/PATCH/DELETE/bulk-delete/bulk-update/bulk-restore/import/export/refresh)/email-routing(addresses|status|complete)/find/scans(POST|GET|cancel|continue)/find?domain=/zones/activation-check/jobs/jobs/{id}[/logs|results|failures|anomalies|failures.csv|anomalies.csv|cancel|zones|exports|exports/{n}|rerun|execute]/resume-preview/resume-upload/whitelist-upload/history/audit`。
 - 兼容旧端 `/api/meta`、`/api/accounts`。
-- 分页一律服务端，上限 200/页；日志增量 `offset/limit`；失败清单 CSV 含 BOM。
+- 分页一律服务端，上限 200/页；日志增量 `offset/limit`，同时返回原始 `logs` 与结构化 `events`；失败清单 CSV 含 BOM。
+- 记录表按总量分档：首请求 50 条；`total <= 50` 直接本地，`51–500` 再用 `all=true` 取一次全量，`>500` 保持服务端分页。小 zone 的筛选/排序/翻页在前端本地完成，其他列表仍服务端分页。
+- 记录读取在进程内缓存 30 秒，减少切换域名/刷新时的重复 Cloudflare 请求；单条/批量/导入/任务执行与邮箱转发写入后自动失效，`POST /api/v1/records/refresh` 供前端“刷新”显式绕过。
 - 持久化 `sqlite3`（WAL），库文件在配置同目录 `cf_web.db`；旧库缺列自动迁移。
-- `meta` 下发 `SPEED_PRESETS`、默认值、快照/导出目录与代理数量模式，前端只读展示。
+- `meta` 下发 `SPEED_PRESETS`、默认值、快照/导出目录与代理解析状态（启用数/总数/总开关），前端只读展示；代理列表与开关走 `GET/PUT /api/v1/proxy`（URL 脱敏、仅内存）。
 
 ## 约束
 

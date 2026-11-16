@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 
 from .. import db, engine_adapter
@@ -23,11 +23,14 @@ from ..schemas import (
     SingleRecord,
 )
 from ..services.accounts import lookup_accounts
-from ..services.records import canon_name, import_item_error
+from ..services.records import canon_name, import_item_error, load_records
+from ..services.records import invalidate as invalidate_records
 from ..services.zones import get_zones, resolve_zone
 from ..validate import validate_single_record
 
 router = APIRouter(dependencies=[Depends(require_auth)])
+
+ALL_RECORDS_LIMIT = 5000
 
 
 def _filtered_records(
@@ -72,6 +75,8 @@ def records(
     per_page: int = 50,
     sort: str = "",
     proxied: str = "all",
+    refresh: bool = False,
+    all_records: bool = Query(False, alias="all"),
 ) -> dict[str, Any]:
     matched = lookup_accounts([account])
     try:
@@ -86,7 +91,7 @@ def records(
     if not zone_id:
         raise HTTPException(status_code=404, detail=f"域名不在该账号中: {zone}")
     try:
-        all_records = engine_adapter.get_records(matched[0], zone_id, "ALL")
+        all_records = load_records(matched[0], zone_id, "ALL", refresh=refresh)
     except engine_adapter.EngineError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     rows = _filtered_records(all_records, type, search, proxied)
@@ -94,17 +99,37 @@ def records(
     if skey in {"type", "-type", "name", "-name", "content", "-content"}:
         rev = skey.startswith("-")
         field = skey.lstrip("-")
-        rows.sort(
-            key=lambda r: (
-                str(r.get(field, "")),
-                str(r.get("name", "")),
-                str(r.get("type", "")),
-            ),
-            reverse=rev,
-        )
+        # 先按稳定的次级键排序，再按主键升降序，避免降序时并列项也整体倒序。
+        rows.sort(key=lambda r: (str(r.get("name", "")), str(r.get("type", ""))))
+        rows.sort(key=lambda r: str(r.get(field, "")), reverse=rev)
+    if all_records:
+        truncated = len(rows) > ALL_RECORDS_LIMIT
+        items = rows[:ALL_RECORDS_LIMIT]
+        return {
+            "total": len(rows),
+            "page": 1,
+            "per_page": len(items) or 1,
+            "items": items,
+            "truncated": truncated,
+            "account": account,
+            "zone": zone,
+        }
     data = paginate(rows, page, per_page)
     data.update({"account": account, "zone": zone})
     return data
+
+
+@router.post("/api/v1/records/refresh")
+def refresh_records(body: dict[str, Any]) -> dict[str, Any]:
+    """显式绕过记录缓存：前端“刷新”按钮先清缓存再重新读取。"""
+    account = str(body.get("account", "")).strip()
+    zone = str(body.get("zone", "")).strip()
+    if not account or not zone:
+        raise HTTPException(status_code=400, detail="缺少账号或域名")
+    matched = lookup_accounts([account])
+    zone_id, zone_name = resolve_zone(matched[0], zone)
+    invalidate_records(matched[0], zone_id)
+    return {"account": account, "zone": zone_name, "refreshed": True}
 
 
 @router.post("/api/v1/records/export")
@@ -117,7 +142,7 @@ def export_records(body: RecordExport) -> Response:
     matched = lookup_accounts([body.account])
     zone_id, zone_name = resolve_zone(matched[0], body.zone)
     try:
-        all_records = engine_adapter.get_records(matched[0], zone_id, "ALL")
+        all_records = load_records(matched[0], zone_id, "ALL")
     except engine_adapter.EngineError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     rows = _filtered_records(all_records, body.type, body.search, body.proxied)
@@ -216,6 +241,7 @@ def single_record(body: SingleRecord) -> dict[str, Any]:
         msg = f"{msg}（备注已回写）"
     if status == "error":
         raise HTTPException(status_code=502, detail=msg)
+    invalidate_records(matched[0], zone_id)
     try:
         db.audit(
             "single_upsert",
@@ -306,6 +332,7 @@ def patch_record(body: RecordPatch) -> dict[str, Any]:
             )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"更新失败: {exc}") from exc
+    invalidate_records(matched[0], zone_id)
     try:
         db.audit(
             "single_patch",
@@ -314,7 +341,12 @@ def patch_record(body: RecordPatch) -> dict[str, Any]:
         )
     except Exception:
         pass
-    return {"status": "updated", "message": "已更新"}
+    effective = {"id": str(current.get("id", "")), **merged}
+    return {
+        "status": "updated",
+        "message": "已更新",
+        "record": engine_adapter.slim_record(effective),
+    }
 
 
 @router.delete("/api/v1/records")
@@ -328,6 +360,7 @@ def delete_record(account: str, zone: str, id: str) -> dict[str, Any]:
         updater.delete_dns_record(zone_id, id.strip())
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"删除失败: {exc}") from exc
+    invalidate_records(matched[0], zone_id)
     try:
         db.audit("single_delete", account=account, detail=f"{zone_name} {id}")
     except Exception:
@@ -369,6 +402,7 @@ def bulk_delete(body: BulkDelete) -> dict[str, Any]:
             failed.append({"id": rid, "error": f"删除失败: {exc}"})
             continue
         deleted.append(engine_adapter.slim_record(current))
+    invalidate_records(matched[0], zone_id)
     try:
         db.audit(
             "bulk_delete",
@@ -447,6 +481,7 @@ def bulk_update(body: BulkUpdate) -> dict[str, Any]:
             continue
         prev.append(engine_adapter.slim_record(current))
         updated.append(rid)
+    invalidate_records(matched[0], zone_id)
     try:
         db.audit(
             "bulk_update",
@@ -501,6 +536,7 @@ def bulk_restore(body: BulkRestore) -> dict[str, Any]:
         except Exception:
             rid = ""
         restored.append({"index": index, "id": rid})
+    invalidate_records(matched[0], zone_id)
     try:
         db.audit(
             "bulk_restore",
@@ -538,7 +574,7 @@ def import_records(body: RecordImport) -> dict[str, Any]:
     if body.dry_run:
         return {"checked": len(items), "errors": []}
     matched = lookup_accounts([body.account])
-    resolve_zone(matched[0], body.zone)
+    zone_id, zone_name = resolve_zone(matched[0], body.zone)
     added = updated = unchanged = 0
     failed: list[dict[str, Any]] = []
     for index, item in enumerate(items, start=1):
@@ -566,11 +602,12 @@ def import_records(body: RecordImport) -> dict[str, Any]:
             updated += 1
         else:
             unchanged += 1
+    invalidate_records(matched[0], zone_id)
     try:
         db.audit(
             "records_import",
             account=body.account,
-            detail=f"{body.zone} 导入：新增 {added} 更新 {updated} 未变 {unchanged} 失败 {len(failed)}",
+            detail=f"{zone_name} 导入：新增 {added} 更新 {updated} 未变 {unchanged} 失败 {len(failed)}",
         )
     except Exception:
         pass

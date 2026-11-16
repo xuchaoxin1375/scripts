@@ -13,6 +13,7 @@ from .. import deps
 from .. import jobs as job_runner
 from ..auth import require_auth
 from ..common import paginate
+from ..log_events import parse_log_entries
 from ..schemas import JobSubmit
 from ..services.accounts import lookup_accounts
 from ..services.jobs import (
@@ -71,12 +72,14 @@ def job_logs(job_id: str, offset: int = 0, limit: int = 500) -> dict[str, Any]:
     job = deps.get_manager().get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail=f"任务不存在: {job_id}")
-    total, lines = job.read_logs(offset, limit)
+    total, entries = job.read_log_entries(offset, limit)
+    lines = [str(entry.get("text") or "") for entry in entries]
     return {
         "job_id": job_id,
         "total": total,
         "offset": max(0, offset),
         "logs": lines,
+        "events": parse_log_entries(entries),
     }
 
 

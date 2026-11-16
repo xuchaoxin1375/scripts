@@ -14,6 +14,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from webui.backend import engine_adapter  # noqa: E402
+from webui.backend.services import records as records_service  # noqa: E402
 from webui.backend.validate import validate_single_record  # noqa: E402
 
 
@@ -214,6 +215,171 @@ class RecordApiGateTest(unittest.TestCase):
                   "records": [{"name": "", "type": "A", "content": "x"}]},
         )
         self.assertEqual(r.status_code, 400)
+
+
+class RecordCacheTest(unittest.TestCase):
+    """记录读取缓存：排序/筛选/翻页不重复打 Cloudflare，写入后失效。"""
+
+    def setUp(self):
+        records_service.invalidate()
+
+    def tearDown(self):
+        records_service.invalidate()
+
+    def test_cache_hit_and_invalidate(self):
+        from unittest import mock
+
+        calls = []
+
+        def fake_get_records(account, zone_id, record_type):
+            calls.append((account.get("name"), zone_id, record_type))
+            return [{"id": "r1", "type": "A", "name": "www.example.com"}]
+
+        with mock.patch.object(
+            records_service.engine_adapter, "get_records", side_effect=fake_get_records
+        ):
+            first = records_service.load_records({"name": "t1"}, "z1")
+            first[0]["name"] = "mutated"
+            second = records_service.load_records({"name": "t1"}, "z1")
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(second[0]["name"], "www.example.com")
+            records_service.invalidate({"name": "t1"}, "z1")
+            records_service.load_records({"name": "t1"}, "z1")
+            self.assertEqual(len(calls), 2)
+
+    def test_refresh_bypasses_cache(self):
+        from unittest import mock
+
+        calls = []
+
+        def fake_get_records(account, zone_id, record_type):
+            calls.append(zone_id)
+            return []
+
+        with mock.patch.object(
+            records_service.engine_adapter, "get_records", side_effect=fake_get_records
+        ):
+            records_service.load_records({"name": "t1"}, "z1")
+            records_service.load_records({"name": "t1"}, "z1")
+            records_service.load_records({"name": "t1"}, "z1", refresh=True)
+            self.assertEqual(len(calls), 2)
+
+    def test_records_route_reuses_cache_for_sort(self):
+        from unittest import mock
+
+        from webui.backend.routers import records as records_router
+
+        c = self._client()
+        calls = []
+        rows = [
+            {"id": "r2", "type": "A", "name": "www.example.com", "content": "203.0.113.2"},
+            {"id": "r1", "type": "A", "name": "api.example.com", "content": "203.0.113.1"},
+            {"id": "r3", "type": "A", "name": "example.com", "content": "203.0.113.3"},
+        ]
+
+        def fake_get_records(account, zone_id, record_type):
+            calls.append(zone_id)
+            return [dict(item) for item in rows]
+
+        with mock.patch.object(
+            records_router, "lookup_accounts", return_value=[{"name": "t1"}]
+        ):
+            with mock.patch.object(
+                records_router,
+                "get_zones",
+                return_value=[{"name": "example.com", "id": "z1", "status": "active"}],
+            ):
+                with mock.patch.object(
+                    records_service.engine_adapter,
+                    "get_records",
+                    side_effect=fake_get_records,
+                ):
+                    first = c.get(
+                        "/api/v1/records",
+                        params={"account": "t1", "zone": "example.com"},
+                    )
+                    second = c.get(
+                        "/api/v1/records",
+                        params={
+                            "account": "t1",
+                            "zone": "example.com",
+                            "sort": "name",
+                        },
+                    )
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(
+            [item["name"] for item in second.json()["items"]],
+            ["api.example.com", "example.com", "www.example.com"],
+        )
+
+    def test_records_all_returns_full_collection(self):
+        from unittest import mock
+
+        from webui.backend.routers import records as records_router
+
+        c = self._client()
+        rows = [
+            {"id": "r1", "type": "A", "name": "example.com", "content": "203.0.113.1"},
+            {"id": "r2", "type": "A", "name": "www.example.com", "content": "203.0.113.2"},
+        ]
+        with mock.patch.object(
+            records_router, "lookup_accounts", return_value=[{"name": "t1"}]
+        ):
+            with mock.patch.object(
+                records_router,
+                "get_zones",
+                return_value=[{"name": "example.com", "id": "z1", "status": "active"}],
+            ):
+                with mock.patch.object(
+                    records_service.engine_adapter,
+                    "get_records",
+                    return_value=[dict(item) for item in rows],
+                ):
+                    r = c.get(
+                        "/api/v1/records",
+                        params={
+                            "account": "t1",
+                            "zone": "example.com",
+                            "all": "true",
+                        },
+                    )
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body["total"], 2)
+        self.assertEqual(len(body["items"]), 2)
+        self.assertFalse(body["truncated"])
+        self.assertEqual(body["page"], 1)
+
+    def test_refresh_route_invalidates_cache(self):
+        from unittest import mock
+
+        from webui.backend.routers import records as records_router
+
+        c = self._client()
+        with mock.patch.object(
+            records_router, "lookup_accounts", return_value=[{"name": "t1"}]
+        ):
+            with mock.patch.object(
+                records_router, "resolve_zone", return_value=("z1", "example.com")
+            ):
+                with mock.patch.object(
+                    records_router, "invalidate_records"
+                ) as invalidate:
+                    r = c.post(
+                        "/api/v1/records/refresh",
+                        json={"account": "t1", "zone": "example.com"},
+                    )
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.json()["refreshed"])
+        invalidate.assert_called_once_with({"name": "t1"}, "z1")
+
+    @staticmethod
+    def _client():
+        from .test_webui import make_client
+
+        return make_client()
 
 
 if __name__ == "__main__":

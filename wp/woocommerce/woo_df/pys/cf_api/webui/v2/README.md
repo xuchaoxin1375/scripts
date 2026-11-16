@@ -25,30 +25,44 @@ Windows PowerShell 设置 mock：`$env:VITE_USE_MOCK='true'; npm run dev`。
 
 ## 加载策略
 
-- 记录表使用服务端分页（每页 50 条），搜索 350ms 防抖，类型/代理/排序都走
-  `/api/v1/records` 查询参数；不再一次性拉完整个域名。
-- 选中记录跨页保留，批量改内容/删除按记录 ID 精确执行；按域名批量仍走预览任务。
+- 记录表按总量分档：首次请求 50 条；`total <= 50` 时第一页就是全部，直接本地；
+  `51–500` 再请求一次 `all=true` 取回全量后本地处理；`>500` 保持服务端分页，
+  排序/筛选/翻页走请求，并用旧数据占位避免闪骨架。
+- 本地模式下搜索 150ms 防抖，类型/代理/两态排序/分页全部即时完成，不请求后端。
+- 编辑保存、批量改内容成功后直接更新本地缓存，不重新拉整表；批量删除更新本地并在
+  服务端分页模式下后台刷新当前页；导入可能批量新增/更新，后台重拉一次且保留旧数据。
+- 表头列宽可拖动，方向键 8px（Shift 32px）、Home/End 最小/最大、Enter 或双击恢复默认，
+  宽度写入 `localStorage`（`cfv2-records-cols`）；1023px 以下切记录卡片，不显示表头。
+- 名称/类型/内容表头按钮两态排序：新列从升序开始，同列在升序/降序间切换，不再点回“未排序”；
+  回到默认顺序用工具栏“重置排序”（排序激活时出现），1023px 以下用工具栏“排序”下拉的“默认顺序”。
 - 预览面板读取任务的真实结果（`/api/v1/jobs/{id}/results`），不再用本地记录猜 Diff。
 - 任务列表有运行中任务时 3 秒轮询，空闲时 20 秒；单任务详情仅在运行中 2 秒轮询，
   任务日志仅在运行中自动刷新。
 - 批量抽屉关闭时，预览任务详情与任务日志停止轮询；重新打开后再拉取。
-- 高级页的历史/审计、跨账号查找、上传与导入都在进入页面或触发动作后才请求；
-  离开工作台后不再加载记录。
+- 高级页按分区路由加载，只请求当前分区需要的数据；离开工作台后不再加载记录。
+- 跨账号查找创建后台扫描后每 1 秒轮询进度；默认“找到第一个就停止”，可切换
+  “扫描全部账号”，命中后也可“继续查询剩余账号”；离开页面扫描继续，返回时按
+  `sessionStorage`（`cfv2-find-scan`）恢复。扫描结果只保留在服务端内存，重启后失效；
+  页面会自动清理失效的扫描 ID，并提示重新查找。
 - 记录、域名、账号分别显示加载/失败状态，失败可单独重试，不会互相遮住。
 
 ## 已接真实 API
 
-- 账号、zone、DNS 记录（服务端分页/过滤/排序）、meta、任务列表与详情。
+- 账号、zone、DNS 记录（小 zone 全量本地、大 zone 服务端分页）、meta、任务列表与详情。
 - 预览任务提交（`POST /api/v1/jobs`，`dry_run=true`）。
 - 预览结果分页读取、预览转执行（`POST /api/v1/jobs/{id}/execute`）。
 - 失败域重跑、取消任务、失败清单 CSV、请求异常 CSV。
-- 单条记录编辑（`PATCH /api/v1/records`）。
+- 任务详情：结构化执行时间线 + 折叠的原始日志；`/api/v1/jobs/{id}/logs`
+  同时返回 `events` 与 `logs`。
+- 单条记录编辑（`PATCH /api/v1/records`）与新增（`POST /api/v1/records`）都在弹窗内直接写入，不经过预览任务。
 - 选中记录批量设置代理、按 ID 批量改内容、按 ID 批量删除
   （`POST /api/v1/records/bulk-update` / `bulk-delete`）。
 - 记录 JSON 导出（`POST /api/v1/records/export`）与 zone CSV 导出。
-- 高级页：跨账号查找、provision 预览/执行、JSON 导入预检/写入、服务器导出任务与
-  文件下载、白名单/重跑清单上传、任务历史与审计分页、运行参数。
+- 高级页：跨账号查找（后台扫描、进度、部分结果、取消、命中即停/扫描全部/继续查询）、
+  provision 预览/执行、JSON 导入预检/写入、服务器导出任务与文件下载、
+  白名单/重跑清单上传、任务历史与审计分页、运行参数。
 - 邮箱转发：账号级目标地址添加与验证状态、zone 路由/MX 状态、验证后启用路由并设置 catch-all。
+- 出口代理：顶栏/侧栏打开设置，`GET/PUT /api/v1/proxy` 在当前进程保存代理列表；总开关与单项开关分离，总开关关闭时只保存不启用。URL 脱敏回显，已有条目按 id 切换不会丢凭据，不落盘。
 - 白名单/重跑清单上传后附加到下一次任务，不写入账号配置。
 
 ## 尚未完成
@@ -58,21 +72,26 @@ Windows PowerShell 设置 mock：`$env:VITE_USE_MOCK='true'; npm run dev`。
 - 真实账号的完整写入验收已在授权测试 scope `cf00/goodpayway.shop` 完成，并清理了
   专用测试记录；`cftest` 当前没有 zone，账号级只读与任务链已验收。
 - 运行参数只保存本机浏览器，不写回账号配置文件。
-- 记录表筛选仍由后端先取全量记录再过滤；超大型 zone 的进一步上游分页需要引擎支持。
+- 超过 500 条的 zone 仍走服务端分页；超大 zone 的上游分页/分段加载需要引擎支持。
 
 ## 结构
 
+- `src/main.tsx`：BrowserRouter 路径路由；旧 `#/` 链接在启动时自动迁移到对应路径。
 - `src/App.tsx`：账号/域名范围、记录与任务状态、侧栏/抽屉/弹窗编排。
-- `src/components/Sidebar.tsx`：全局导航（桌面默认展开 264，页脚按钮收起为 Rail 64；Rail 悬停/键盘进入临时展开，只覆盖不推挤主内容；第一段无标题、后续分组标题槽固定高度，折叠态用分隔线；折叠态点击导航保持到指针离开，固定展开时不收起；窄屏抽屉）。
+- `src/components/Sidebar.tsx`：全局导航（桌面默认展开 264，页脚按钮收起为 Rail 64；Rail 悬停/键盘进入临时展开，只覆盖不推挤主内容；第一段无标题、后续分组标题槽固定高度，折叠态用分隔线；折叠态点击导航保持到指针离开，固定展开时不收起；高级工具按分区列出；窄屏抽屉）。
 - `src/components/ResourceSwitcher.tsx`：顶栏账号/域名切换、搜索、加载与重试。
 - `src/components/OperationsDrawer.tsx`：右侧批量抽屉、操作/任务页签、焦点与遮罩。
 - `src/components/Inspector.tsx`：动作选择、参数、真实 Diff 预览、任务详情。
-- `src/components/RecordDialogs.tsx`：单条编辑弹窗与新增记录预览弹窗。
+- `src/components/RecordDialogs.tsx`：单条编辑与新增记录弹窗，都在弹窗内直接写入。
+- `src/components/ProxySettingsDialog.tsx`：出口代理设置弹窗（代理列表、总开关、单项开关、脱敏状态与未保存修改提示）。
 - `src/components/ScopeBar.tsx`：页头、范围条、附件与刷新。
-- `src/components/RecordsTable.tsx`：服务端分页表格与 1023px 以下记录卡片。
+- `src/components/RecordsTable.tsx`：按总量分档的记录表、两态排序与工具栏重置、可调列宽与 1023px 以下记录卡片。
+- `src/components/ColumnResize.tsx`：列宽拖动/键盘/持久化单元，`<colgroup>` 与填充列配合。
 - `src/components/EmailRoutingPanel.tsx`：邮箱转发目标添加/验证状态、刷新、验证后启用路由并设置 catch-all。
+- `src/components/FindPanel.tsx`：跨账号扫描的创建、进度轮询、取消、命中表、未找到账号与结构化扫描记录。
 - `src/components/EmailRoutingNotes.tsx`：展开式邮箱转发注意事项（验证、Gmail、MX 冲突、限制）。
-- `src/pages/Advanced.tsx`：跨账号查找、provision、邮箱转发、导入导出、范围附件、历史审计。
+- `src/pages/Advanced.tsx`：高级页各分区、跨账号查找、provision、邮箱转发、导入导出、范围附件、历史审计、运行参数。
+- `src/shared/advancedSections.ts`：侧栏与高级页共用的分区名称、说明与图标。
 - `src/api/`：`client.ts` 请求/取消/下载，`hooks.ts` TanStack Query hooks，`types.ts` API 形状。
 - `src/shared/actions.ts`：动作任务 payload 组装。
 - `src/shared/runtime.ts`：本机运行参数读取/保存。
@@ -92,7 +111,7 @@ python tests/test_webui_api_paths.py
 `serve-webui.ps1 -Status` 会提示后端进程早于代码更新的情况。
 
 覆盖记录分页、资源切换、侧栏默认展开/页脚收起/Rail 悬停与键盘临时展开/Esc/快捷键、
-新增与编辑弹窗焦点、批量抽屉真实预览、任务详情与日志、批量内容/删除、高级页查找/历史/上传、
+新增与编辑弹窗焦点、批量抽屉真实预览、任务详情与日志、批量内容/删除、侧栏高级工具分区与查找/历史/上传、
 邮箱转发目标验证与完成 catch-all，1440/1024/768/390 无页面横滚、390 侧栏与抽屉、零 pageerror。
 
 ## 邮箱转发限制

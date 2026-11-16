@@ -14,3 +14,15 @@ export function zoneSuffix(full: string, zone: string): string {
   if (short === "@" || short === full) return "";
   return `.${zone}`;
 }
+
+/** 与后端 canon_name 一致：短名补 zone 后缀，@ 展开为根域名。 */
+export function fullName(name: string, zone: string): string {
+  const short = name.trim();
+  if (!short || short === "@") return zone;
+  if (!zone) return short;
+  const low = short.toLowerCase();
+  const zoneLow = zone.toLowerCase();
+  if (low === zoneLow || low.endsWith(`.${zoneLow}`)) return short;
+  if (!short.includes(".")) return `${short}.${zone}`;
+  return short;
+}

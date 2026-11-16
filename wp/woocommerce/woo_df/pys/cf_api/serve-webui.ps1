@@ -15,6 +15,7 @@
   外部访问/配置默认保持现状：之前是 -Lan 就继续 0.0.0.0，仅本机就继续 127.0.0.1；
   显式加 -Lan 切到局域网分享，加 -NoLan 切回仅本机（两者互斥）。
   配置（-Config）与代理（-Proxy/-ProxyFile/-ProxyMode）同样保持现状，除非显式传入覆盖。
+  页面内运行时设置的代理只驻内存，不会进入命令行，-Restart 后不保留。
   口令永不落盘：-Restart 默认复用进程命令行里的旧口令（仅内存重组新命令行），
   显式 -Password 优先，环境变量 CF_WEB_PASSWORD 次之；三者皆无且目标为 0.0.0.0 则拒绝。
 .PARAMETER Stop
@@ -37,6 +38,7 @@
   不传则复用当前进程命令行里的旧口令（-Restart 时），再无则看环境变量。
 .PARAMETER Proxy
   出口代理（可多次传，等价 -P/--proxy，仅驻内存）。-Restart 不传即沿用当前值。
+  页面内运行时设置的代理只驻内存，不会进入命令行，重启不保留。
 .PARAMETER ProxyFile
   代理文件（等价 --proxy-file）。-Restart 不传即沿用当前值。
 .PARAMETER ProxyMode
@@ -278,7 +280,11 @@ function Show-Endpoints([int]$Port, [string]$HostName, [string]$Cfg, [string]$To
   if ($m) {
     $auth = if ($m.requires_auth) { '需口令（X-Auth-Token）' } else { '未设口令（仅本机可访问）' }
     Write-Host "服务：WebUI 版本 $($m.version)  $auth"
-    if ($m.proxy -and $m.proxy.count) { Write-Host "代理：模式=$($m.proxy.mode) 数量=$($m.proxy.count)（仅驻内存）" }
+    if ($m.proxy -and ($m.proxy.count -or $m.proxy.total)) {
+      $proxyTotal = if ($null -ne $m.proxy.total) { $m.proxy.total } else { $m.proxy.count }
+      $proxyState = if ($null -eq $m.proxy.enabled -or $m.proxy.enabled) { '开' } else { '关' }
+      Write-Host "代理：总开关=$proxyState 启用=$($m.proxy.count)/$proxyTotal 模式=$($m.proxy.mode)（仅驻内存）"
+    }
   } else {
     Write-Host '服务：HTTP 已通，但 /api/v1/meta 未返回（设了口令未传 Token 属正常，刚启动也在此列）。'
   }

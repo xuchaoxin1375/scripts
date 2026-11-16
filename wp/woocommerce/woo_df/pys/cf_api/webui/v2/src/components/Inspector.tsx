@@ -7,6 +7,7 @@ import {
   Download,
   FileJson,
   Globe2,
+  Info,
   Layers,
   ListChecks,
   Loader2,
@@ -931,6 +932,20 @@ function PreviewPanel({
   );
 }
 
+function formatEventTime(value: string): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("zh-CN", { hour12: false });
+}
+
+function JobEventIcon({ level }: { level: string }) {
+  if (level === "success") return <CheckCircle2 size={13} />;
+  if (level === "warning") return <AlertTriangle size={13} />;
+  if (level === "error") return <XCircle size={13} />;
+  return <Info size={13} />;
+}
+
 function TaskPanel({
   jobs,
   jobsLoading,
@@ -1012,6 +1027,7 @@ function TaskPanel({
   }
 
   const logs = logsQuery.data?.logs ?? [];
+  const events = logsQuery.data?.events ?? [];
   return (
     <div className="task-detail">
       <button className="back-link" onClick={() => onSelectJob(null)}>
@@ -1131,19 +1147,74 @@ function TaskPanel({
           )}
         </div>
       )}
-      <div className="log-block">
+      <div className="task-timeline-block">
         <div className="log-head">
-          <span>日志</span>
+          <span>执行时间线</span>
           <span className="muted">
             {logsQuery.isFetching ? (
               <span className="inline-loading">
                 <Loader2 size={12} className="spin" /> 读取中
               </span>
             ) : (
-              `${logsQuery.data?.total ?? 0} 行 · 最近 500 行`
+              `${events.length} 个事件`
             )}
           </span>
         </div>
+        {logsQuery.error ? (
+          <p className="form-hint">
+            日志读取失败：{logsQuery.error.message}
+          </p>
+        ) : events.length ? (
+          <ol className="task-timeline">
+            {events.map((event, index) => (
+              <li
+                className={`task-event ${event.level}`}
+                key={`${event.ts}-${index}`}
+              >
+                <span className="task-event-icon">
+                  <JobEventIcon level={event.level} />
+                </span>
+                <div className="task-event-body">
+                  <div className="task-event-head">
+                    <strong>{event.title}</strong>
+                    <time>{formatEventTime(event.ts)}</time>
+                    {event.account && (
+                      <span className="step-chip">{event.account}</span>
+                    )}
+                    {event.zone && (
+                      <span className="step-chip">{event.zone}</span>
+                    )}
+                  </div>
+                  {event.detail && (
+                    <p className="task-event-detail">{event.detail}</p>
+                  )}
+                  {Object.keys(event.meta).length > 0 && (
+                    <div className="task-event-meta">
+                      {Object.entries(event.meta)
+                        .slice(0, 8)
+                        .map(([key, value]) => (
+                          <span key={key}>
+                            <em>{key}</em>={value}
+                          </span>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="form-hint">
+            {logsQuery.isLoading
+              ? "正在读取执行事件…"
+              : "暂无结构化事件；展开原始日志查看引擎输出。"}
+          </p>
+        )}
+      </div>
+      <details className="raw-log">
+        <summary>
+          原始日志（{logsQuery.data?.total ?? 0} 行，排障用）
+        </summary>
         <pre>
           {logsQuery.error
             ? `日志读取失败：${logsQuery.error.message}`
@@ -1153,7 +1224,7 @@ function TaskPanel({
                 ? "正在读取日志…"
                 : "暂无日志输出。"}
         </pre>
-      </div>
+      </details>
     </div>
   );
 }

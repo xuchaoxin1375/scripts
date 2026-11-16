@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import type {
@@ -6,10 +6,12 @@ import type {
   Attachments,
   DnsRecord,
   InspectorTab,
+  RecordCreateValues,
   RecordFilters,
   RecordPatchValues,
   RuntimeSettings,
 } from "./types";
+import type { ApiProxyUpdate } from "./api/types";
 import { buildJobPayload } from "./shared/actions";
 import { loadRuntime, saveRuntime } from "./shared/runtime";
 import {
@@ -20,19 +22,26 @@ import {
   useBulkDeleteRecords,
   useBulkUpdateRecords,
   useCancelJob,
+  useCreateRecord,
   useExecuteJob,
   useJob,
   useJobs,
   useMeta,
   usePatchRecord,
-  useRecordsPage,
+  useProxySettings,
+  useRecordsBootstrap,
+  useRecordsServerPage,
   useRerunJob,
   useSubmitJob,
+  useUpdateProxySettings,
   useZones,
+  refreshRecordsCache,
 } from "./api/hooks";
+import { proxyModeLabel } from "./shared/proxy";
 import Topbar from "./components/Topbar";
 import Sidebar from "./components/Sidebar";
 import ResourceSwitcher from "./components/ResourceSwitcher";
+import ProxySettingsDialog from "./components/ProxySettingsDialog";
 import Workspace from "./pages/Workspace";
 import Advanced from "./pages/Advanced";
 
@@ -68,7 +77,7 @@ export default function App() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
-  const workspaceActive = location.pathname !== "/advanced";
+  const workspaceActive = !location.pathname.startsWith("/advanced");
   const [theme, setTheme] = useState<Theme>(() => {
     const saved = localStorage.getItem("cfv2-theme");
     return saved === "dark" ? "dark" : "light";
@@ -93,18 +102,23 @@ export default function App() {
     resume: null,
   });
   const [runtime, setRuntime] = useState<RuntimeSettings>(() => loadRuntime());
+  const [proxyOpen, setProxyOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   const effectiveFilters = filters;
 
   const metaQuery = useMeta();
+  const proxyQuery = useProxySettings(proxyOpen);
+  const updateProxy = useUpdateProxySettings();
   const accountsQuery = useAccounts();
   const zonesQuery = useZones(account);
-  const recordsQuery = useRecordsPage(
+  const bootstrapQuery = useRecordsBootstrap(account, zone, workspaceActive);
+  const recordsMode = bootstrapQuery.data?.mode ?? "local";
+  const serverRecordsQuery = useRecordsServerPage(
     account,
     zone,
     effectiveFilters,
-    workspaceActive,
+    workspaceActive && recordsMode === "server",
   );
   const jobsQuery = useJobs();
   const jobQuery = useJob(
@@ -118,13 +132,90 @@ export default function App() {
   const bulkUpdateRecords = useBulkUpdateRecords();
   const bulkDeleteRecords = useBulkDeleteRecords();
   const patchRecord = usePatchRecord();
+  const createRecord = useCreateRecord();
 
   const accounts = accountsQuery.data ?? [];
   const zones = zonesQuery.data ?? [];
-  const recordPage = recordsQuery.data ?? {
-    items: [] as DnsRecord[],
-    total: 0,
-    page: effectiveFilters.page,
+  const allRecords =
+    bootstrapQuery.data?.mode === "local" ? bootstrapQuery.data.items : [];
+  const filteredRecords = useMemo(() => {
+    const keyword = filters.search.trim().toLowerCase();
+    let rows = allRecords;
+    if (filters.type !== "ALL") {
+      rows = rows.filter((record) => record.type.toUpperCase() === filters.type);
+    }
+    if (filters.proxied === "proxied") {
+      rows = rows.filter((record) => record.proxied);
+    } else if (filters.proxied === "dnsonly") {
+      rows = rows.filter((record) => !record.proxied);
+    }
+    if (keyword) {
+      rows = rows.filter((record) =>
+        [record.name, record.type, record.content, record.comment].some(
+          (value) => value.toLowerCase().includes(keyword),
+        ),
+      );
+    }
+    const rawSort = filters.sort.trim();
+    const sortKey = rawSort.replace(/^-/, "");
+    if (
+      sortKey === "name" ||
+      sortKey === "type" ||
+      sortKey === "content"
+    ) {
+      const desc = rawSort.startsWith("-");
+      rows = [...rows].sort((left, right) => {
+        const primary = left[sortKey].localeCompare(right[sortKey], undefined, {
+          numeric: true,
+          sensitivity: "base",
+        });
+        if (primary !== 0) return desc ? -primary : primary;
+        const byName = left.name.localeCompare(right.name, undefined, {
+          numeric: true,
+          sensitivity: "base",
+        });
+        if (byName !== 0) return byName;
+        return left.type.localeCompare(right.type);
+      });
+    }
+    return rows;
+  }, [
+    allRecords,
+    filters.search,
+    filters.type,
+    filters.proxied,
+    filters.sort,
+  ]);
+  const serverPage = serverRecordsQuery.data;
+  const defaultPageFilters =
+    filters.search === "" &&
+    filters.type === "ALL" &&
+    filters.proxied === "all" &&
+    filters.sort === "" &&
+    filters.page === 1;
+  const bootstrapPage =
+    recordsMode === "server" && !serverPage && defaultPageFilters
+      ? bootstrapQuery.data?.items ?? []
+      : [];
+  const recordsTotal =
+    recordsMode === "local"
+      ? filteredRecords.length
+      : serverPage?.total ?? bootstrapQuery.data?.total ?? 0;
+  const pageCount = Math.max(
+    1,
+    Math.ceil(recordsTotal / Math.max(1, effectiveFilters.perPage)),
+  );
+  const currentPage = Math.min(Math.max(1, effectiveFilters.page), pageCount);
+  const recordPage = {
+    items:
+      recordsMode === "local"
+        ? filteredRecords.slice(
+            (currentPage - 1) * effectiveFilters.perPage,
+            currentPage * effectiveFilters.perPage,
+          )
+        : serverPage?.items ?? bootstrapPage,
+    total: recordsTotal,
+    page: currentPage,
     perPage: effectiveFilters.perPage,
   };
   const jobs = jobsQuery.data ?? [];
@@ -136,8 +227,38 @@ export default function App() {
 
   const accountsError = accountsQuery.error ? messageOf(accountsQuery.error) : null;
   const zonesError = zonesQuery.error ? messageOf(zonesQuery.error) : null;
-  const recordsError = recordsQuery.error ? messageOf(recordsQuery.error) : null;
+  const recordsErrorSource =
+    bootstrapQuery.error ??
+    (recordsMode === "server" ? serverRecordsQuery.error : null);
+  const recordsError = recordsErrorSource ? messageOf(recordsErrorSource) : null;
   const jobsError = jobsQuery.error ? messageOf(jobsQuery.error) : null;
+  const seenJobs = useRef<Set<string> | null>(null);
+
+  useEffect(() => {
+    if (!jobs.length) return;
+    if (!seenJobs.current) {
+      // 首次加载只记录历史任务，不因旧任务触发记录重拉。
+      seenJobs.current = new Set(jobs.map((job) => job.id));
+      return;
+    }
+    let executeFinished = false;
+    for (const job of jobs) {
+      if (job.kind !== "execute") continue;
+      if (!["done", "failed", "cancelled"].includes(job.status)) continue;
+      if (seenJobs.current.has(job.id)) continue;
+      seenJobs.current.add(job.id);
+      executeFinished = true;
+    }
+    if (executeFinished) {
+      // 执行任务完成后后台同步一次记录，保留旧数据，不闪整表骨架。
+      void queryClient.invalidateQueries({
+        queryKey: ["records-bootstrap", account, zone],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["records-page", account, zone],
+      });
+    }
+  }, [jobs, account, zone, queryClient]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -196,20 +317,11 @@ export default function App() {
   }, [account, zone]);
 
   useEffect(() => {
-    if (!workspaceActive || !recordsQuery.data) return;
-    const maxPage = Math.max(
-      1,
-      Math.ceil(recordsQuery.data.total / effectiveFilters.perPage),
-    );
-    if (filters.page > maxPage) {
-      setFilters((current) => ({ ...current, page: maxPage }));
+    if (!workspaceActive) return;
+    if (filters.page > pageCount) {
+      setFilters((current) => ({ ...current, page: pageCount }));
     }
-  }, [
-    workspaceActive,
-    recordsQuery.data,
-    filters.page,
-    effectiveFilters.perPage,
-  ]);
+  }, [workspaceActive, filters.page, pageCount]);
 
   function notify(message: string) {
     setToast(message);
@@ -284,6 +396,35 @@ export default function App() {
     setDrawerOpen(true);
     setNavOpen(false);
     if (!workspaceActive) navigate("/");
+  }
+
+  function openProxySettings() {
+    setDrawerOpen(false);
+    setProxyOpen(true);
+  }
+
+  async function handleProxySave(
+    payload: ApiProxyUpdate,
+  ): Promise<string | null> {
+    try {
+      const data = await updateProxy.mutateAsync(payload);
+      setProxyOpen(false);
+      setNavOpen(false);
+      if (data.total === 0) {
+        notify("代理配置已清空");
+      } else if (!data.enabled) {
+        notify(`代理配置已保存：${data.total} 个（未启用）`);
+      } else if (data.count === 0) {
+        notify("代理总开关已开，但没有启用任何代理，当前仍直连");
+      } else {
+        notify(
+          `代理已启用：${data.count}/${data.total} 个（${proxyModeLabel(data.mode)}）`,
+        );
+      }
+      return null;
+    } catch (error) {
+      return messageOf(error);
+    }
   }
 
   function openScope(nextAccount: string, nextZone: string) {
@@ -438,6 +579,29 @@ export default function App() {
     }
   }
 
+  async function handleCreateRecord(
+    values: RecordCreateValues,
+  ): Promise<boolean> {
+    try {
+      const result = await createRecord.mutateAsync({
+        account,
+        zone,
+        ...values,
+      });
+      notify(
+        result.status === "unchanged"
+          ? "记录已存在且内容一致"
+          : result.status === "updated"
+            ? "记录已更新"
+            : "记录已创建",
+      );
+      return true;
+    } catch (error) {
+      notify("新增失败：" + messageOf(error));
+      return false;
+    }
+  }
+
   async function handleSaveRecord(
     recordId: string,
     patch: RecordPatchValues,
@@ -463,9 +627,18 @@ export default function App() {
   }
 
   async function handleRefresh() {
+    try {
+      await refreshRecordsCache(account, zone);
+    } catch (error) {
+      notify("刷新缓存失败：" + messageOf(error));
+      return;
+    }
     await Promise.all([
       queryClient.invalidateQueries({
-        queryKey: ["records", account, zone],
+        queryKey: ["records-bootstrap", account, zone],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["records-page", account, zone],
       }),
       queryClient.invalidateQueries({ queryKey: ["zones", account] }),
     ]);
@@ -524,8 +697,11 @@ export default function App() {
           setDrawerOpen(false);
         }}
         onTasks={openTasks}
+        onProxy={openProxySettings}
         runningJobs={runningJobs}
         proxyCount={metaQuery.data?.proxy.count}
+        proxyTotal={metaQuery.data?.proxy.total}
+        proxyEnabled={metaQuery.data?.proxy.enabled}
         resource={
           <ResourceSwitcher
             accounts={accounts}
@@ -548,11 +724,14 @@ export default function App() {
         mobileOpen={navOpen}
         onClose={() => setNavOpen(false)}
         onTasks={openTasks}
+        onProxy={openProxySettings}
         tasksActive={drawerOpen && inspectorTab === "tasks"}
         runningJobs={runningJobs}
         recordCount={workspaceActive ? recordPage.total : undefined}
         configPath={metaQuery.data?.config_path}
         proxyCount={metaQuery.data?.proxy.count}
+        proxyTotal={metaQuery.data?.proxy.total}
+        proxyEnabled={metaQuery.data?.proxy.enabled}
         pinned={sidebarPinned}
         onPinnedChange={setSidebarPinned}
       />
@@ -570,12 +749,18 @@ export default function App() {
                 total={recordPage.total}
                 page={recordPage.page}
                 perPage={recordPage.perPage}
+                recordsMode={recordsMode}
                 loading={
                   workspaceActive &&
                   Boolean(account && zone) &&
-                  recordsQuery.isPending
+                  (bootstrapQuery.isPending ||
+                    (recordsMode === "server" &&
+                      serverRecordsQuery.isPending &&
+                      bootstrapPage.length === 0))
                 }
-                fetching={recordsQuery.isFetching}
+                fetching={
+                  bootstrapQuery.isFetching || serverRecordsQuery.isFetching
+                }
                 recordsError={recordsError}
                 filters={effectiveFilters}
                 selectedIds={selectedIds}
@@ -588,7 +773,11 @@ export default function App() {
                 attachments={attachments}
                 defaultBackupDir={metaQuery.data?.dirs.backup_dir ?? ""}
                 defaultExportDir={metaQuery.data?.dirs.export_dir ?? ""}
-                refreshing={recordsQuery.isFetching || zonesQuery.isFetching}
+                refreshing={
+                  bootstrapQuery.isFetching ||
+                  serverRecordsQuery.isFetching ||
+                  zonesQuery.isFetching
+                }
                 drawerOpen={drawerOpen}
                 onDrawerOpen={openDrawer}
                 onDrawerClose={closeDrawer}
@@ -598,7 +787,12 @@ export default function App() {
                 onClearSelection={clearSelection}
                 onFilters={updateFilters}
                 onPage={(page) => updateFilters({ page })}
-                onRetryRecords={() => void recordsQuery.refetch()}
+                onRetryRecords={() => {
+                  void bootstrapQuery.refetch();
+                  if (recordsMode === "server") {
+                    void serverRecordsQuery.refetch();
+                  }
+                }}
                 onRetryJobs={() => void jobsQuery.refetch()}
                 onSelectJob={(job) => {
                   setSelectedJobId(job?.id ?? null);
@@ -615,6 +809,7 @@ export default function App() {
                 onBulkDelete={handleBulkDelete}
                 onBulkContent={handleBulkContent}
                 onSaveRecord={handleSaveRecord}
+                onCreateRecord={handleCreateRecord}
                 onExportRecords={handleExportRecords}
                 onClearAttachment={(kind) =>
                   setAttachments((current) => ({
@@ -627,7 +822,7 @@ export default function App() {
             }
           />
           <Route
-            path="/advanced"
+            path="/advanced/:section?"
             element={
               <Advanced
                 accounts={accounts}
@@ -655,6 +850,19 @@ export default function App() {
         <div className="toast" role="status">
           {toast}
         </div>
+      )}
+
+      {proxyOpen && (
+        <ProxySettingsDialog
+          current={proxyQuery.data}
+          loading={proxyQuery.isPending}
+          loadError={
+            proxyQuery.error ? messageOf(proxyQuery.error) : undefined
+          }
+          onRetry={() => void proxyQuery.refetch()}
+          onClose={() => setProxyOpen(false)}
+          onSave={handleProxySave}
+        />
       )}
     </div>
   );

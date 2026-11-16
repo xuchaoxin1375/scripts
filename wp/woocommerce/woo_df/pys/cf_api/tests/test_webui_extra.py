@@ -41,7 +41,8 @@ class ExtraContractTest(unittest.TestCase):
         body = self.c.get("/api/v1/meta").json()
         self.assertIn("version", body)
         self.assertIn("proxy", body)
-        self.assertIn("count", body["proxy"])
+        for key in ("mode", "count", "total", "enabled", "enabled_count"):
+            self.assertIn(key, body["proxy"])
 
     def test_zones_unknown_account_400(self):
         r = self.c.get("/api/v1/zones", params={"account": "no-such"})

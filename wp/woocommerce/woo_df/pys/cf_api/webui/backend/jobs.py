@@ -16,10 +16,12 @@ import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from datetime import datetime
 from threading import Event, Lock
 from typing import Any, Callable, Optional
 
 from . import db, engine_adapter
+from .services import records as records_service
 from .validate import validate_job_params as _validate_params
 
 MAX_RESULTS = 2000
@@ -65,10 +67,21 @@ class Job:
     zone_states: dict[str, dict[str, str]] = field(default_factory=dict)
     _lock: Lock = field(default_factory=Lock, repr=False)
     _logs: Any = field(default_factory=lambda: deque(maxlen=MAX_LOGS), repr=False)
+    _log_entries: Any = field(
+        default_factory=lambda: deque(maxlen=MAX_LOGS), repr=False
+    )
 
     def append_log(self, text: str) -> None:
         with self._lock:
             self._logs.append(text)
+            self._log_entries.append(
+                {
+                    "ts": datetime.now().astimezone().isoformat(
+                        timespec="seconds"
+                    ),
+                    "text": text,
+                }
+            )
 
     def read_logs(self, offset: int = 0, limit: int = 500) -> tuple[int, list[str]]:
         with self._lock:
@@ -76,6 +89,16 @@ class Job:
         total = len(lines)
         start = max(0, offset)
         return total, lines[start : start + max(1, limit)]
+
+    def read_log_entries(
+        self, offset: int = 0, limit: int = 500
+    ) -> tuple[int, list[dict[str, Any]]]:
+        """读取带时间戳的原始行，供结构化事件解析。"""
+        with self._lock:
+            entries = list(self._log_entries)
+        total = len(entries)
+        start = max(0, offset)
+        return total, entries[start : start + max(1, limit)]
 
     def set_account_status(self, account: str, status: str) -> None:
         with self._lock:
@@ -279,6 +302,9 @@ class JobManager:
             if job.status == "running":
                 job.status = "done"
             job.finished_at = _now_iso()
+            # 执行任务可能改动多个账号/域名；结束后清空记录缓存，避免刷新读到旧记录。
+            if job.kind != "preview":
+                records_service.invalidate()
             try:
                 db.upsert_history(
                     {

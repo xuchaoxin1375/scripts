@@ -15,8 +15,8 @@
 | OPT-8 | P0 | 历史/审计按钮无 catch 死按钮＋后端 history/audit 无 502 包裹（用户报障：点击没反应、后台一堆错误） | `App.jsx:397-398,561-562`（裸 `then`）；`app.py:511-517`（裸 `db.list_*`） | DONE（`openList` 统一入口＋顶栏错误条；后端 502 包裹；路由拦截失败路径断言） |
 | OPT-9 | P0 | 旧库 schema 漂移：`audit_log` 无 `kind` 列致接口 500（用户 Traceback：`no such column: kind`） | 用户 Traceback（`db.py:99 list_audit`）；复现脚本同字报错（含 `jobs_history` 缺 `accounts`） | DONE（`db.py#_ensure_columns` 轻量迁移＋`tests/test_db_migrate.py`；旧数据保留） |
 | OPT-5 | P2 | 选择域名门禁截图缺弹窗根因：功能经探针证实正常，门禁截图缺失原因待查；`shot_dialog_ok` 落地后若复现即 FAIL，不再静默 | 本轮探针记录（`cf_probe_full.png` 有弹窗、`cf_accept` 门禁截图无） | PENDING（复跑即验证） |
-| OPT-11 | P2 | 记录表列宽拖拽（8px 热区/键盘/持久化）：列少且固定，ROI 低，本轮不做 | admin-console-design `tables.md` 列宽节；重设计方案§6 | PENDING（待用户定优先级） |
-| OPT-12 | P2 | 记录表服务端排序：排序语义归后端（分页下前端排序失真），需后端接口支持，本轮不做 | 重设计方案§6；`accept.py` 仅账号表（内存数据）有排序断言 | PENDING（本轮仅当前页客户端三态排序＋aria-sort；待用户定优先级） |
+| OPT-11 | P2 | 记录表列宽拖拽（8px 热区/键盘/持久化） | admin-console-design `tables.md` 列宽节；`browser_accept.py` 方向键/Enter/刷新持久化断言 | DONE（`ColumnResize.tsx`：8/32px、Home/End、Enter/双击还原、`cfv2-records-cols`） |
+| OPT-12 | P2 | 记录表排序与筛选：分页下前端排序失真，需先改加载策略 | `browser_accept.py` 小 zone 本地排序零请求、大 zone 排序走服务端请求断言；`test_records_api.py` 全量接口/缓存/refresh | DONE（首请求 50 条按 total 分档：≤50 本地、51–500 全量本地、>500 服务端分页；编辑/批量写入更新缓存） |
 | OPT-13 | — | 悬浮批量条：不做。单页三面板共存，fixed 条与 panel-foot 打架；批量语义由 panel-foot 承担 | 重设计方案§6 | 不做（方案决策） |
 | OPT-14 | P2 | verdict 文案 CLI 残留：Web 失败任务 verdict 显示“建议下次加 --failed-output …”，Web 应指引“下载失败清单”按钮 | `shot_flow.png`（job-0001 failed verdict 末行） | PENDING（`build_final_verdict` 加 `web_hint` 参数或前端改写末行） |
 | OPT-15 | P2 | 失败终态结果表空态文案误导：“暂无明细（进行中或全部跳过）”在 failed 终态下仍显示“进行中” | `shot_flow.png`（failed 任务结果表） | PENDING（按终态区分空态文案） |

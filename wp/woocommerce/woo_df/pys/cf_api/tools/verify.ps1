@@ -31,11 +31,11 @@ function Run-Step([string]$name, [string]$cmd) {
 # 1-2 后端单测（行为不变，黄金用例不得修改；增量契约另见 test_webui_extra/test_db_migrate）
 $parent = Split-Path -Parent $root
 Push-Location $parent
-Run-Step 'backend-unittest' 'python -m unittest cf_api.tests.test_cf_dns_reliability cf_api.tests.test_webui cf_api.tests.test_db_migrate cf_api.tests.test_webui_extra cf_api.tests.test_records_api'
+Run-Step 'backend-unittest' 'python -m unittest cf_api.tests.test_cf_dns_reliability cf_api.tests.test_webui cf_api.tests.test_db_migrate cf_api.tests.test_webui_extra cf_api.tests.test_records_api cf_api.tests.test_find_scan cf_api.tests.test_log_events'
 Pop-Location
 
 # 3 编译检查
-Run-Step 'backend-compile' 'python -m py_compile cloudflare_dns_tool.py start_web_ui.py webui/backend/app.py webui/backend/deps.py webui/backend/jobs.py webui/backend/validate.py webui/backend/engine_adapter.py webui/backend/db.py'
+Run-Step 'backend-compile' 'python -m py_compile cloudflare_dns_tool.py start_web_ui.py webui/backend/app.py webui/backend/deps.py webui/backend/jobs.py webui/backend/validate.py webui/backend/engine_adapter.py webui/backend/db.py webui/backend/routers/find.py webui/backend/services/find.py webui/backend/log_events.py webui/backend/routers/jobs.py'
 
 # 4 Ruff（缺失则 SKIP＋安装指引，不伪装通过；引擎文件只做语法/未用导入范围检查）
 if (Get-Command ruff -ErrorAction SilentlyContinue) {
@@ -80,7 +80,10 @@ $newFiles = @('webui/v1/src/index.html', 'webui/v1/dist/index.html',
   'webui/v1/tests/accept.py', 'webui/v1/tests/browser_accept.py', 'webui/v2/README.md',
   'webui/v2/tests/browser_accept.py', 'tools/verify.ps1', 'webui/README.md', 'webui/USAGE.md',
   'webui/backend/app.py', 'webui/backend/deps.py', 'webui/backend/jobs.py', 'webui/backend/validate.py',
-  'webui/backend/engine_adapter.py', 'webui/backend/db.py', 'tests/test_webui_extra.py')
+  'webui/backend/engine_adapter.py', 'webui/backend/db.py', 'webui/backend/routers/find.py',
+  'webui/backend/services/find.py', 'webui/backend/log_events.py', 'webui/backend/routers/jobs.py',
+  'webui/v2/src/components/FindPanel.tsx', 'webui/v2/src/components/Inspector.tsx',
+  'tests/test_webui_extra.py', 'tests/test_find_scan.py', 'tests/test_log_events.py')
 $bad = @()
 foreach ($f in $newFiles) {
   $p = Join-Path $root $f

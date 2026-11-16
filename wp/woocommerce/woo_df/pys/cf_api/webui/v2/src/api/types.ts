@@ -28,6 +28,7 @@ export type ApiPage<T> = {
   page: number;
   per_page: number;
   items: T[];
+  truncated?: boolean;
 };
 
 export type ApiJobScope = {
@@ -103,7 +104,42 @@ export type ApiMeta = {
   dirs: { backup_dir: string; export_dir: string };
   requires_auth: boolean;
   config_path: string;
-  proxy: { mode: string; count: number };
+  proxy: {
+    mode: string;
+    count: number;
+    total: number;
+    enabled: boolean;
+    enabled_count: number;
+  };
+};
+
+export type ApiProxyEntry = {
+  id: string;
+  url: string;
+  enabled: boolean;
+};
+
+export type ApiProxySettings = {
+  enabled: boolean;
+  mode: string;
+  proxies: ApiProxyEntry[];
+  count: number;
+  total: number;
+  enabled_count: number;
+  active: boolean;
+  persisted: boolean;
+};
+
+export type ApiProxyInput = {
+  id?: string;
+  url?: string;
+  enabled: boolean;
+};
+
+export type ApiProxyUpdate = {
+  enabled: boolean;
+  mode: string;
+  proxies: ApiProxyInput[];
 };
 
 export type ApiHistoryRow = {
@@ -132,19 +168,66 @@ export type ApiPageResult<T> = {
   items: T[];
 };
 
-export type ApiFindResult = {
+export type ApiFindHit = {
   account: string;
-  zone?: string;
-  zone_id?: string;
-  status?: string;
-  record_count?: number | string;
-  error?: string;
+  zone: string;
+  zone_id: string;
+  status: string;
+  elapsed_ms: number;
 };
 
-export type ApiFindResponse = {
+export type ApiFindError = {
+  account: string;
+  error: string;
+  elapsed_ms: number;
+};
+
+export type ApiFindEvent = {
+  ts: string;
+  level: "info" | "success" | "warning" | "error" | string;
+  account: string;
+  message: string;
+};
+
+export type ApiFindScanStatus =
+  | "pending"
+  | "running"
+  | "cancelling"
+  | "done"
+  | "partial"
+  | "failed"
+  | "cancelled";
+
+export type ApiFindScan = {
+  scan_id: string;
   domain: string;
-  found: number;
-  results: ApiFindResult[];
+  status: ApiFindScanStatus;
+  stop_on_first: boolean;
+  stopped_early: boolean;
+  stop_reason: string;
+  total: number;
+  checked: number;
+  unchecked: number;
+  hits: number;
+  misses: number;
+  failed: number;
+  results: ApiFindHit[];
+  errors: ApiFindError[];
+  missed_accounts: string[];
+  unchecked_accounts: string[];
+  events: ApiFindEvent[];
+  in_flight: string[];
+  started_at: string;
+  finished_at: string;
+  elapsed_ms: number;
+  complete: boolean;
+};
+
+export type ApiFindScanRequest = {
+  domain: string;
+  speed: string;
+  max_retries: number;
+  stop_on_first: boolean;
 };
 
 export type ApiWhitelistUpload = {
@@ -181,7 +264,7 @@ export type ApiImportResult = {
 
 export type ApiBulkResult = {
   updated?: string[];
-  deleted?: unknown[];
+  deleted?: Array<{ id: string }>;
   failed: unknown[];
   total: number;
 };
@@ -251,11 +334,22 @@ export type ApiEmailRoutingCompleteResult = {
   records: string[];
 };
 
+export type ApiJobEvent = {
+  ts: string;
+  level: "info" | "success" | "warning" | "error" | string;
+  title: string;
+  detail: string;
+  account: string;
+  zone: string;
+  meta: Record<string, string>;
+};
+
 export type ApiJobLogs = {
   job_id: string;
   total: number;
   offset: number;
   logs: string[];
+  events?: ApiJobEvent[];
 };
 
 export type ApiJobExportItem = {

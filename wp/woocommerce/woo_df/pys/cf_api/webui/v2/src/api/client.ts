@@ -141,6 +141,19 @@ export async function apiPatch<T>(
   });
 }
 
+export async function apiPut<T>(
+  path: string,
+  json?: unknown,
+  options: FetchOptions = {},
+): Promise<T> {
+  return apiRequest<T>(path, {
+    method: "PUT",
+    json,
+    signal: options.signal,
+    timeoutMs: options.timeoutMs,
+  });
+}
+
 export async function apiDelete<T>(
   path: string,
   options: FetchOptions = {},

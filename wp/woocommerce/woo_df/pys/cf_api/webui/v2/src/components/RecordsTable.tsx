@@ -1,17 +1,24 @@
 import {
-  ArrowDownAZ,
-  ArrowUpAZ,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   ChevronLeft,
   ChevronRight,
   Download,
   Loader2,
   Pencil,
+  RotateCcw,
   Search,
   Trash2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { DnsRecord, RecordFilters } from "../types";
 import { shortName, zoneSuffix } from "../shared/names";
+import {
+  ResizeHandle,
+  useColumnWidths,
+  type ColSpec,
+} from "./ColumnResize";
 
 type Props = {
   zone: string;
@@ -36,6 +43,39 @@ type Props = {
 
 type SortKey = "name" | "type" | "content";
 
+const SORTABLE_COLUMNS: Array<{ id: SortKey; label: string }> = [
+  { id: "name", label: "名称" },
+  { id: "type", label: "类型" },
+  { id: "content", label: "内容" },
+];
+
+// 工具栏排序入口：窄屏卡片视图没有表头，同时承担“重置排序”（默认顺序）。
+const SORT_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "", label: "默认顺序" },
+  ...SORTABLE_COLUMNS.flatMap((column) => [
+    { value: column.id, label: `${column.label}升序` },
+    { value: `-${column.id}`, label: `${column.label}降序` },
+  ]),
+];
+
+const COLUMN_SPECS: ColSpec[] = [
+  { id: "name", label: "名称", min: 120, def: 220, max: 520 },
+  { id: "type", label: "类型", min: 64, def: 84, max: 160 },
+  { id: "content", label: "内容", min: 140, def: 280, max: 720 },
+  { id: "proxied", label: "代理", min: 78, def: 96, max: 180 },
+  { id: "ttl", label: "TTL", min: 56, def: 64, max: 120 },
+  { id: "comment", label: "备注", min: 90, def: 120, max: 360 },
+];
+
+const CHECK_W = 38;
+const ACTION_W = 126;
+const FILLER_MIN = 40;
+const FIXED_EXTRA = CHECK_W + ACTION_W;
+
+function isSortKey(id: string): id is SortKey {
+  return SORTABLE_COLUMNS.some((column) => column.id === id);
+}
+
 function typeClass(type: string) {
   const key = type.toLowerCase();
   if (key === "a") return "type-a";
@@ -51,7 +91,7 @@ function SkeletonRows({ count = 6 }: { count?: number }) {
     <>
       {Array.from({ length: count }).map((_, index) => (
         <tr className="skeleton-row" key={index}>
-          <td colSpan={8}>
+          <td colSpan={9}>
             <span className="skeleton-line" />
           </td>
         </tr>
@@ -81,6 +121,7 @@ export default function RecordsTable({
   onRetry,
 }: Props) {
   const [query, setQuery] = useState(filters.search);
+  const colw = useColumnWidths(COLUMN_SPECS, FIXED_EXTRA, FILLER_MIN);
 
   useEffect(() => {
     setQuery(filters.search);
@@ -88,12 +129,14 @@ export default function RecordsTable({
 
   useEffect(() => {
     if (query === filters.search) return;
-    const timer = window.setTimeout(() => onFilters({ search: query }), 350);
+    const timer = window.setTimeout(() => onFilters({ search: query }), 150);
     return () => window.clearTimeout(timer);
   }, [query, filters.search, onFilters]);
 
-  const sortKey = (filters.sort.replace(/^-/, "") || "name") as SortKey;
-  const sortDesc = filters.sort.startsWith("-");
+  const rawSort = filters.sort.trim();
+  const rawKey = rawSort.startsWith("-") ? rawSort.slice(1) : rawSort;
+  const sortKey = isSortKey(rawKey) ? rawKey : null;
+  const sortDesc = rawSort.startsWith("-");
   const allSelected =
     records.length > 0 && records.every((record) => selectedIds.has(record.id));
   const partiallySelected =
@@ -108,13 +151,25 @@ export default function RecordsTable({
     query.trim() !== "";
 
   function changeSort(key: SortKey) {
-    const nextDesc = sortKey === key ? !sortDesc : false;
-    onFilters({ sort: `${nextDesc ? "-" : ""}${key}` });
+    // 两态：新列从升序开始，同列在升序/降序间切换；回到默认顺序用“重置排序”。
+    const next = sortKey !== key ? key : sortDesc ? key : `-${key}`;
+    onFilters({ sort: next });
   }
 
   function sortIcon(key: SortKey) {
-    if (sortKey !== key) return <ArrowDownAZ size={13} className="muted-icon" />;
-    return sortDesc ? <ArrowDownAZ size={13} /> : <ArrowUpAZ size={13} />;
+    if (sortKey !== key) {
+      return <ArrowUpDown size={13} className="muted-icon" aria-hidden="true" />;
+    }
+    return sortDesc ? (
+      <ArrowDown size={13} aria-hidden="true" />
+    ) : (
+      <ArrowUp size={13} aria-hidden="true" />
+    );
+  }
+
+  function ariaSort(key: SortKey) {
+    if (sortKey !== key) return "none" as const;
+    return sortDesc ? ("descending" as const) : ("ascending" as const);
   }
 
   function clearFilters() {
@@ -180,6 +235,28 @@ export default function RecordsTable({
             <option value="dnsonly">仅 DNS</option>
           </select>
         </label>
+        <label className="compact-select sort-select">
+          <span className="sr-only">排序</span>
+          <select
+            value={sortKey ? rawSort : ""}
+            onChange={(event) => onFilters({ sort: event.target.value })}
+          >
+            {SORT_OPTIONS.map((option) => (
+              <option key={option.value || "default"} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {sortKey && (
+          <button
+            type="button"
+            className="button ghost sort-reset"
+            onClick={() => onFilters({ sort: "" })}
+          >
+            <RotateCcw size={14} aria-hidden="true" /> 重置排序
+          </button>
+        )}
         <span className="fetch-state" aria-live="polite">
           {fetching ? (
             <>
@@ -208,17 +285,25 @@ export default function RecordsTable({
       )}
 
       <div className="table-wrap" role="region" aria-label="DNS 记录列表" tabIndex={0}>
-        <table className="records-table">
-          <caption className="sr-only">DNS 记录列表</caption>
+        <table
+          className="records-table"
+          ref={colw.tableRef}
+          style={{ minWidth: colw.total }}
+        >
+          <caption className="sr-only">
+            DNS 记录列表。拖动表头右缘的分隔条，或聚焦后使用方向键调整列宽。
+          </caption>
           <colgroup>
-            <col style={{ width: 38 }} />
-            <col style={{ width: 220 }} />
-            <col style={{ width: 84 }} />
+            <col style={{ width: CHECK_W }} />
+            {COLUMN_SPECS.map((spec) => (
+              <col
+                key={spec.id}
+                ref={colw.colRef(spec.id)}
+                style={{ width: colw.widths[spec.id] }}
+              />
+            ))}
             <col />
-            <col style={{ width: 96 }} />
-            <col style={{ width: 64 }} />
-            <col style={{ width: 120 }} />
-            <col style={{ width: 126 }} />
+            <col style={{ width: ACTION_W }} />
           </colgroup>
           <thead>
             <tr>
@@ -235,48 +320,40 @@ export default function RecordsTable({
                   />
                 </label>
               </th>
-              <th
-                aria-sort={
-                  sortKey === "name"
-                    ? sortDesc
-                      ? "descending"
-                      : "ascending"
-                    : "none"
-                }
-              >
-                <button onClick={() => changeSort("name")}>
-                  名称 {sortIcon("name")}
-                </button>
-              </th>
-              <th
-                aria-sort={
-                  sortKey === "type"
-                    ? sortDesc
-                      ? "descending"
-                      : "ascending"
-                    : "none"
-                }
-              >
-                <button onClick={() => changeSort("type")}>
-                  类型 {sortIcon("type")}
-                </button>
-              </th>
-              <th
-                aria-sort={
-                  sortKey === "content"
-                    ? sortDesc
-                      ? "descending"
-                      : "ascending"
-                    : "none"
-                }
-              >
-                <button onClick={() => changeSort("content")}>
-                  内容 {sortIcon("content")}
-                </button>
-              </th>
-              <th>代理</th>
-              <th>TTL</th>
-              <th>备注</th>
+              {COLUMN_SPECS.map((spec) => {
+                const sortableId: SortKey | null = isSortKey(spec.id)
+                  ? spec.id
+                  : null;
+                return (
+                  <th
+                    key={spec.id}
+                    aria-sort={sortableId ? ariaSort(sortableId) : undefined}
+                  >
+                    {sortableId ? (
+                      <button
+                        type="button"
+                        className={sortKey === sortableId ? "active" : undefined}
+                        onClick={() => changeSort(sortableId)}
+                      >
+                        {spec.label} {sortIcon(sortableId)}
+                      </button>
+                    ) : (
+                      <span>{spec.label}</span>
+                    )}
+                    <ResizeHandle
+                      column={spec.id}
+                      label={spec.label}
+                      value={colw.widths[spec.id]}
+                      min={spec.min}
+                      max={spec.max}
+                      onPreview={(width) => colw.preview(spec.id, width)}
+                      onCommit={(width) => colw.commit(spec.id, width)}
+                      onReset={() => colw.reset(spec.id)}
+                    />
+                  </th>
+                );
+              })}
+              <th className="filler-cell" aria-hidden="true" />
               <th className="sticky-action">操作</th>
             </tr>
           </thead>
@@ -342,6 +419,7 @@ export default function RecordsTable({
                     <td className="comment-cell" title={record.comment}>
                       {record.comment || <span className="muted">—</span>}
                     </td>
+                    <td className="filler-cell" aria-hidden="true" />
                     <td
                       className="sticky-action"
                       onClick={(event) => event.stopPropagation()}

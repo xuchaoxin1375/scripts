@@ -2,7 +2,8 @@
 """WebUI 启动入口（FastAPI + 单一前端）。
 
 - 默认仅监听 127.0.0.1；对外监听无口令拒绝启动；
-- 口令走 X-Auth-Token；代理仅全局（任务级代理不落盘、不进审计）。
+- 口令走 X-Auth-Token；代理仅全局，页面可保存代理列表并用总开关/单项开关启用；
+  仅驻内存、不落盘，审计只记数量、开关与模式；重启后回到启动参数。
 """
 
 from __future__ import annotations
@@ -128,7 +129,7 @@ def main() -> None:
     from webui.backend.engine_adapter import get_engine
 
     eng = get_engine()
-    # 全局代理池（任务级代理已移除，仅驻内存全局池；审计只记数量与模式）。
+    # 全局代理池（任务级代理已移除，仅驻内存全局池；页面可运行时替换；审计只记数量与模式）。
     proxy_pool = None
     urls: list[str] = []
     if args.proxy:

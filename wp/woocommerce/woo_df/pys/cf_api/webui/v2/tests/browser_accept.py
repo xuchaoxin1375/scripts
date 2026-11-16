@@ -2,9 +2,10 @@
 """WebUI v2 浏览器验收：真实 FastAPI 静态托管 + Playwright 拦截 API 契约。
 
 不访问 Cloudflare：所有 /api/v1 请求由 Playwright 用固定 JSON 响应。
-覆盖：记录服务端分页、搜索、预览真实结果、任务详情、单条编辑、批量内容/删除、
-高级页查找/历史/上传、邮箱转发目标验证/完成 catch-all、侧栏默认展开/页脚收起/Rail
-悬停与键盘临时展开/Esc/快捷键、390 窄屏无横滚与零 pageerror。
+覆盖：记录按总量分档（小 zone 本地、大 zone 服务端分页）、两态排序与工具栏重置、列宽键盘调整/还原/刷新持久化、复选框单元格无省略号、
+搜索、预览真实结果、任务详情、单条编辑、批量内容/删除、侧栏高级工具分区与查找/历史/上传、
+邮箱转发目标验证/完成 catch-all、侧栏默认展开/页脚收起/Rail 悬停与键盘临时展开/Esc/快捷键、
+390 窄屏无横滚与零 pageerror。
 """
 
 from __future__ import annotations
@@ -198,7 +199,13 @@ META = {
     "dirs": {"backup_dir": "./cf_backup", "export_dir": "./cf_export"},
     "requires_auth": False,
     "config_path": "C:/Users/Administrator/Desktop/deploy_configs/cf_config.csv",
-    "proxy": {"mode": "", "count": 0},
+    "proxy": {
+        "mode": "round-robin",
+        "count": 0,
+        "total": 0,
+        "enabled": False,
+        "enabled_count": 0,
+    },
 }
 EMAIL_ADDRESSES = [
     {
@@ -292,6 +299,7 @@ def main() -> None:
         stderr=subprocess.DEVNULL,
     )
     errors: list[str] = []
+    expected_resource_errors = {"remaining": 0}
     email_addresses = [dict(item) for item in EMAIL_ADDRESSES]
     email_status = {
         **EMAIL_STATUS,
@@ -302,6 +310,89 @@ def main() -> None:
     }
     data_requests: list[tuple[str, str]] = []
     job_posts: list[dict] = []
+    record_posts: list[dict] = []
+    find_scan_posts: list[dict] = []
+    find_continue_posts: list[int] = []
+    find_scan_polls = {"count": 0}
+    meta_state = json.loads(json.dumps(META))
+    proxy_state = {
+        "enabled": False,
+        "mode": "round-robin",
+        "proxies": [],
+        "count": 0,
+        "total": 0,
+        "enabled_count": 0,
+        "active": False,
+        "persisted": False,
+    }
+    proxy_seq = {"n": 0}
+
+    def find_scan_body(
+        status: str,
+        checked: int,
+        hits: int,
+        misses: int,
+        stopped_early: bool = False,
+    ) -> dict:
+        """固定扫描快照：先 running 再 done，覆盖进度、命中与提前停止。"""
+        missed = [f"t{n}" for n in range(2, 2 + misses)]
+        results = (
+            [
+                {
+                    "account": "t1",
+                    "zone": "example.com",
+                    "zone_id": "z1",
+                    "status": "active",
+                    "elapsed_ms": 1400,
+                }
+            ]
+            if hits
+            else []
+        )
+        return {
+            "scan_id": "scan-9001",
+            "domain": "example.com",
+            "status": status,
+            "stop_on_first": True,
+            "stopped_early": stopped_early,
+            "stop_reason": "first_hit" if stopped_early else "",
+            "total": 59,
+            "checked": checked,
+            "unchecked": max(0, 59 - checked),
+            "hits": hits,
+            "misses": misses,
+            "failed": 0,
+            "results": results,
+            "errors": [],
+            "missed_accounts": missed,
+            "unchecked_accounts": [
+                f"u{n}" for n in range(checked + 1, 60)
+            ],
+            "events": [
+                {
+                    "ts": "2026-11-16T10:00:00+00:00",
+                    "level": "info",
+                    "account": "",
+                    "message": "开始扫描 59 个账号",
+                },
+                {
+                    "ts": "2026-11-16T10:00:01+00:00",
+                    "level": "success",
+                    "account": "t1",
+                    "message": "找到 example.com（active）",
+                },
+            ],
+            "in_flight": ["t2", "t3"]
+            if status in {"running", "cancelling"}
+            else [],
+            "started_at": "2026-11-16T10:00:00+00:00",
+            "finished_at": ""
+            if status in {"running", "cancelling"}
+            else "2026-11-16T10:00:02+00:00",
+            "elapsed_ms": 2000,
+            "complete": status in {"done", "partial", "failed"}
+            and not stopped_early,
+        }
 
     def api(route) -> None:
         request = route.request
@@ -310,12 +401,73 @@ def main() -> None:
         method = request.method
         query = parse_qs(parsed.query)
         data_requests.append((method, path))
-        if path.endswith("/api/v1/meta"):
-            body = META
+        if path.endswith("/api/v1/proxy") and method == "GET":
+            body = proxy_state
+        elif path.endswith("/api/v1/proxy") and method == "PUT":
+            payload = json.loads(request.post_data or "{}")
+            enabled = bool(payload.get("enabled"))
+            mode = str(payload.get("mode") or "round-robin")
+            existing = {item["id"]: item for item in proxy_state["proxies"]}
+            proxies: list[dict] = []
+            for item in payload.get("proxies") or []:
+                item_id = str(item.get("id") or "").strip()
+                item_enabled = bool(item.get("enabled", True))
+                raw_url = item.get("url")
+                if item_id:
+                    current = existing.get(item_id)
+                    if current is None:
+                        errors.append(f"unknown proxy id: {item_id}")
+                        route.fulfill(
+                            status=400,
+                            content_type="application/json",
+                            body=json.dumps(
+                                {"detail": f"代理条目不存在: {item_id}"}
+                            ),
+                        )
+                        return
+                    url = (
+                        str(raw_url).strip()
+                        if raw_url and str(raw_url).strip()
+                        else str(current["url"])
+                    )
+                else:
+                    proxy_seq["n"] += 1
+                    item_id = f"p{proxy_seq['n']}"
+                    url = str(raw_url or "").strip()
+                proxies.append(
+                    {"id": item_id, "url": url, "enabled": item_enabled}
+                )
+            total = len(proxies)
+            enabled_count = sum(1 for item in proxies if item["enabled"])
+            count = enabled_count if enabled else 0
+            proxy_state.update(
+                {
+                    "enabled": enabled,
+                    "mode": mode,
+                    "proxies": proxies,
+                    "count": count,
+                    "total": total,
+                    "enabled_count": enabled_count,
+                    "active": count > 0,
+                    "persisted": False,
+                }
+            )
+            meta_state["proxy"] = {
+                "mode": proxy_state["mode"],
+                "count": proxy_state["count"],
+                "total": proxy_state["total"],
+                "enabled": proxy_state["enabled"],
+                "enabled_count": proxy_state["enabled_count"],
+            }
+            body = proxy_state
+        elif path.endswith("/api/v1/meta"):
+            body = meta_state
         elif path.endswith("/api/v1/accounts"):
             body = ACCOUNTS
         elif path.endswith("/api/v1/zones"):
             body = ZONES
+        elif path.endswith("/api/v1/records/refresh") and method == "POST":
+            body = {"account": "t1", "zone": "example.com", "refreshed": True}
         elif path.endswith("/api/v1/records") and method == "GET":
             records = RECORDS
             wanted = query.get("type", ["ALL"])[0]
@@ -327,6 +479,9 @@ def main() -> None:
             body = records
         elif path.endswith("/api/v1/records") and method == "PATCH":
             body = {"status": "updated", "message": "已更新"}
+        elif path.endswith("/api/v1/records") and method == "POST":
+            record_posts.append(json.loads(request.post_data or "{}"))
+            body = {"status": "added", "message": "已添加"}
         elif path.endswith("/api/v1/records/bulk-update"):
             body = {"updated": ["r1", "r2"], "failed": [], "total": 2}
         elif path.endswith("/api/v1/records/bulk-delete"):
@@ -440,13 +595,49 @@ def main() -> None:
                 "total": 2,
                 "offset": 0,
                 "logs": ["[job] job-9002 已创建", "[progress] 3/3"],
+                "events": [
+                    {
+                        "ts": "2026-11-16T10:00:00+00:00",
+                        "level": "info",
+                        "title": "任务开始",
+                        "detail": "Cloudflare DNS 预览任务",
+                        "account": "t1",
+                        "zone": "example.com",
+                        "meta": {"dry_run": "True"},
+                    },
+                    {
+                        "ts": "2026-11-16T10:00:02+00:00",
+                        "level": "success",
+                        "title": "账号完成",
+                        "detail": "",
+                        "account": "t1",
+                        "zone": "example.com",
+                        "meta": {"updated": "3", "errors": "0"},
+                    },
+                ],
             }
         elif path.endswith("/api/v1/jobs/job-9002/exports"):
             body = {"job_id": "job-9002", "total": 0, "items": []}
         elif path.endswith("/api/v1/jobs/job-9002"):
             body = PREVIEW_JOB
         elif path.endswith("/api/v1/jobs/job-9001/logs"):
-            body = {"job_id": "job-9001", "total": 1, "offset": 0, "logs": ["[job] running"]}
+            body = {
+                "job_id": "job-9001",
+                "total": 1,
+                "offset": 0,
+                "logs": ["[job] running"],
+                "events": [
+                    {
+                        "ts": "2026-11-16T10:00:00+00:00",
+                        "level": "info",
+                        "title": "任务开始",
+                        "detail": "执行任务运行中",
+                        "account": "t1",
+                        "zone": "example.com",
+                        "meta": {},
+                    }
+                ],
+            }
         elif path.endswith("/api/v1/jobs/job-9001"):
             body = JOB
         elif path.endswith("/api/v1/jobs/job-9001/execute"):
@@ -457,19 +648,59 @@ def main() -> None:
             body = {"items": HISTORY, "total": len(HISTORY), "limit": 50, "offset": 0}
         elif path.endswith("/api/v1/audit"):
             body = {"items": AUDIT, "total": len(AUDIT), "limit": 50, "offset": 0}
+        elif path.endswith("/api/v1/find/scans") and method == "POST":
+            find_scan_posts.append(json.loads(request.post_data or "{}"))
+            body = find_scan_body("running", checked=5, hits=0, misses=5)
+        elif path.endswith("/api/v1/find/scans/scan-9001"):
+            find_scan_polls["count"] += 1
+            if find_scan_polls["count"] == 1:
+                body = find_scan_body("running", checked=5, hits=0, misses=5)
+            else:
+                body = find_scan_body(
+                    "done",
+                    checked=6,
+                    hits=1,
+                    misses=5,
+                    stopped_early=True,
+                )
+        elif path.endswith("/api/v1/find/scans/scan-9001/continue"):
+            find_continue_posts.append(1)
+            body = find_scan_body(
+                "done",
+                checked=59,
+                hits=1,
+                misses=58,
+            )
+        elif path.endswith("/api/v1/find/scans/scan-9001/cancel"):
+            body = find_scan_body("cancelled", checked=5, hits=0, misses=5)
+        elif path.endswith("/api/v1/find/scans/scan-expired"):
+            route.fulfill(
+                status=404,
+                content_type="application/json",
+                body=json.dumps({"detail": "扫描不存在: scan-expired"}),
+            )
+            return
+        elif path.endswith("/api/v1/find/scans/scan-offline"):
+            route.abort()
+            return
         elif path.endswith("/api/v1/find"):
             body = {
                 "domain": query.get("domain", [""])[0],
                 "found": 1,
+                "checked": 1,
+                "missed": 0,
+                "failed": 0,
+                "complete": True,
                 "results": [
                     {
                         "account": "t1",
                         "zone": "example.com",
                         "zone_id": "z1",
                         "status": "active",
-                        "record_count": 3,
+                        "elapsed_ms": 1400,
                     }
                 ],
+                "errors": [],
             }
         elif path.endswith("/api/v1/whitelist-upload"):
             body = {
@@ -497,12 +728,19 @@ def main() -> None:
             browser = pw.chromium.launch()
             page = browser.new_page(viewport={"width": 1440, "height": 1000})
             page.on("pageerror", lambda exc: errors.append(f"pageerror: {exc}"))
-            page.on(
-                "console",
-                lambda msg: errors.append(f"console-{msg.type}: {msg.text}")
-                if msg.type == "error"
-                else None,
-            )
+
+            def on_console(msg) -> None:
+                if msg.type != "error":
+                    return
+                if (
+                    expected_resource_errors["remaining"] > 0
+                    and "Failed to load resource" in msg.text
+                ):
+                    expected_resource_errors["remaining"] -= 1
+                    return
+                errors.append(f"console-{msg.type}: {msg.text}")
+
+            page.on("console", on_console)
             page.route("**/api/v1/**", api)
             page.goto(base, wait_until="networkidle")
             page.wait_for_selector(".resource-trigger", timeout=10_000)
@@ -544,7 +782,225 @@ def main() -> None:
             ):
                 raise AssertionError("资源切换器关闭后焦点未回到触发器")
             if "共 3 条" not in page.locator(".records-footer span").first.inner_text():
-                raise AssertionError("记录总数未按服务端分页显示")
+                raise AssertionError("记录总数未正确显示")
+
+            proxy_trigger = page.locator('[data-proxy-trigger="topbar"]')
+            proxy_trigger.click()
+            page.wait_for_selector("#proxy-settings-title", timeout=10_000)
+            page.wait_for_function(
+                'document.activeElement?.id === "proxy-add-url"',
+                timeout=5_000,
+            )
+            page.keyboard.press("Escape")
+            page.wait_for_selector(
+                "#proxy-settings-title", state="detached", timeout=5_000
+            )
+            if not page.evaluate(
+                'document.activeElement === document.querySelector(\'[data-proxy-trigger="topbar"]\')'
+            ):
+                raise AssertionError("代理设置弹窗关闭后焦点未回到顶栏徽标")
+
+            # 新增但未保存：关闭应提示丢弃，且不影响当前生效配置。
+            proxy_trigger.click()
+            page.wait_for_selector("#proxy-settings-title", timeout=10_000)
+            if page.locator(".proxy-edit-item").count() != 0:
+                raise AssertionError("初始代理列表应为空")
+            page.locator("#proxy-add-url").fill("http://127.0.0.1:7897")
+            page.locator(".proxy-add-row").get_by_role("button", name="添加").click()
+            if page.locator(".proxy-edit-item").count() != 1:
+                raise AssertionError("添加代理后列表未更新")
+            page.keyboard.press("Escape")
+            if not page.get_by_text("再次关闭或按 Esc 将丢弃").is_visible():
+                raise AssertionError("有未保存修改时关闭未提示")
+            if "代理 0" not in proxy_trigger.inner_text():
+                raise AssertionError("未保存的代理不应影响当前生效配置")
+            page.keyboard.press("Escape")
+            page.wait_for_selector(
+                "#proxy-settings-title", state="detached", timeout=5_000
+            )
+
+            proxy_trigger.click()
+            page.wait_for_selector("#proxy-settings-title", timeout=10_000)
+            if page.locator(".proxy-edit-item").count() != 0:
+                raise AssertionError("放弃修改后代理列表不应保留草稿")
+            page.locator("#proxy-add-url").fill("socks5://127.0.0.1:1080")
+            page.locator(".proxy-add-row").get_by_role("button", name="添加").click()
+            if not page.get_by_text(
+                "仅支持 http:// 或 https:// 代理"
+            ).is_visible():
+                raise AssertionError("非 http(s) 代理未在添加时拦截")
+
+            for proxy_url in (
+                "http://127.0.0.1:7897",
+                "http://127.0.0.1:7898",
+            ):
+                page.locator("#proxy-add-url").fill(proxy_url)
+                page.locator(".proxy-add-row").get_by_role(
+                    "button", name="添加"
+                ).click()
+            if page.locator(".proxy-edit-item").count() != 2:
+                raise AssertionError("批量添加代理后列表数量不符")
+            page.locator(".proxy-edit-item .switch").nth(1).click()
+            page.locator(".proxy-master .switch").click()
+            page.locator("#proxy-mode").select_option("failover")
+            page.wait_for_timeout(100)
+            if not page.locator(".proxy-master input[type=checkbox]").is_checked():
+                raise AssertionError("总开关未打开")
+            if page.locator(".proxy-edit-item input[type=checkbox]").nth(1).is_checked():
+                raise AssertionError("第二项单项开关未关闭")
+            if not page.get_by_role("button", name="保存配置").is_enabled():
+                raise AssertionError("有未保存修改时保存按钮应可用")
+            page.screenshot(path=os.path.join(shots, "proxy_dialog_1440.png"))
+            page.get_by_role("button", name="保存配置").click()
+            page.wait_for_selector(
+                "text=代理已启用：1/2 个（故障切换）", timeout=10_000
+            )
+            page.wait_for_selector(
+                "#proxy-settings-title", state="detached", timeout=5_000
+            )
+            if "代理 1/2" not in proxy_trigger.inner_text():
+                raise AssertionError("代理保存后顶栏数量未更新")
+
+            proxy_trigger.click()
+            page.wait_for_selector("#proxy-settings-title", timeout=10_000)
+            if (
+                "当前启用 1/2 · 故障切换"
+                not in page.locator(".proxy-state").inner_text()
+            ):
+                raise AssertionError("代理弹窗当前状态未显示")
+            if page.locator(".proxy-edit-item").count() != 2:
+                raise AssertionError("已保存代理未在列表中保留")
+            if not page.locator(".proxy-master input[type=checkbox]").is_checked():
+                raise AssertionError("总开关状态未保留")
+            if page.locator(".proxy-edit-item input[type=checkbox]").nth(1).is_checked():
+                raise AssertionError("单项关闭状态未保留")
+            if page.locator("#proxy-add-url").input_value() != "":
+                raise AssertionError("新增输入框不应回填已保存地址")
+            page.screenshot(path=os.path.join(shots, "proxy_active_1440.png"))
+
+            # 关闭总开关：列表与单项开关保留，但当前不生效。
+            page.locator(".proxy-master .switch").click()
+            page.get_by_role("button", name="保存配置").click()
+            page.wait_for_selector(
+                "text=代理配置已保存：2 个（未启用）", timeout=10_000
+            )
+            page.wait_for_selector(
+                "#proxy-settings-title", state="detached", timeout=5_000
+            )
+            if "代理 关" not in proxy_trigger.inner_text():
+                raise AssertionError("总开关关闭后顶栏未显示关闭")
+
+            proxy_trigger.click()
+            page.wait_for_selector("#proxy-settings-title", timeout=10_000)
+            if (
+                "当前关闭（已保存 2 个）"
+                not in page.locator(".proxy-state").inner_text()
+            ):
+                raise AssertionError("总开关关闭后已保存代理未保留")
+            if page.locator(".proxy-edit-item").count() != 2:
+                raise AssertionError("总开关关闭后代理列表丢失")
+            if page.locator(".proxy-master input[type=checkbox]").is_checked():
+                raise AssertionError("总开关关闭状态未保留")
+            page.screenshot(path=os.path.join(shots, "proxy_saved_off_1440.png"))
+
+            page.locator(".proxy-master .switch").click()
+            page.locator(".proxy-edit-item .switch").nth(1).click()
+            page.get_by_role("button", name="保存配置").click()
+            page.wait_for_selector(
+                "text=代理已启用：2/2 个（故障切换）", timeout=10_000
+            )
+            page.wait_for_selector(
+                "#proxy-settings-title", state="detached", timeout=5_000
+            )
+            if "代理 2/2" not in proxy_trigger.inner_text():
+                raise AssertionError("重新启用后顶栏数量未更新")
+
+            proxy_trigger.click()
+            page.wait_for_selector("#proxy-settings-title", timeout=10_000)
+            page.get_by_role("button", name="清空列表").click()
+            if page.locator(".proxy-edit-item").count() != 0:
+                raise AssertionError("清空列表未清空草稿")
+            page.get_by_role("button", name="保存配置").click()
+            page.wait_for_selector("text=代理配置已清空", timeout=10_000)
+            page.wait_for_selector(
+                "#proxy-settings-title", state="detached", timeout=5_000
+            )
+            if "代理 0" not in proxy_trigger.inner_text():
+                raise AssertionError("清空代理后顶栏数量未更新")
+            if not any(
+                method == "PUT" and path.endswith("/api/v1/proxy")
+                for method, path in data_requests
+            ):
+                raise AssertionError("代理设置未提交 PUT 请求")
+
+            check_cell = page.locator(".records-table tbody .check-cell").first
+            if check_cell.evaluate("el => getComputedStyle(el).textOverflow") != "clip":
+                raise AssertionError("复选框单元格仍在用省略号，会在右侧显示小点")
+
+            records_before_sort = sum(
+                1
+                for method, path in data_requests
+                if method == "GET" and path.endswith("/api/v1/records")
+            )
+            name_header = page.locator(".records-table thead th").filter(
+                has=page.get_by_role("button", name="名称", exact=True)
+            ).first
+            name_button = name_header.get_by_role("button", name="名称", exact=True)
+            if name_header.get_attribute("aria-sort") != "none":
+                raise AssertionError("初始未排序时 aria-sort 应为 none")
+            if page.locator(".sort-select").is_visible():
+                raise AssertionError("桌面表头存在时不应重复显示工具栏排序下拉")
+            name_button.click()
+            page.wait_for_timeout(80)
+            if name_header.get_attribute("aria-sort") != "ascending":
+                raise AssertionError("第一次点击排序应为升序")
+            page.screenshot(path=os.path.join(shots, "records_sorted_asc_1440.png"))
+            name_button.click()
+            page.wait_for_timeout(80)
+            if name_header.get_attribute("aria-sort") != "descending":
+                raise AssertionError("第二次点击排序应为降序")
+            name_button.click()
+            page.wait_for_timeout(80)
+            if name_header.get_attribute("aria-sort") != "ascending":
+                raise AssertionError("第三次点击排序应切回升序（两态，不回未排序）")
+            page.get_by_role("button", name="重置排序").click()
+            page.wait_for_timeout(80)
+            if name_header.get_attribute("aria-sort") != "none":
+                raise AssertionError("重置排序后 aria-sort 应回到 none")
+            records_after_sort = sum(
+                1
+                for method, path in data_requests
+                if method == "GET" and path.endswith("/api/v1/records")
+            )
+            if records_after_sort != records_before_sort:
+                raise AssertionError(
+                    "排序触发了记录接口请求，未使用本地数据"
+                )
+
+            resize_handle = page.locator('.col-resizer[data-column="name"]')
+            name_th = page.locator(".records-table thead th").nth(1)
+            width_before = name_th.bounding_box()["width"]
+            resize_handle.focus()
+            page.keyboard.press("ArrowRight")
+            page.wait_for_timeout(80)
+            width_after = name_th.bounding_box()["width"]
+            if width_after < width_before + 7:
+                raise AssertionError(
+                    f"方向键未增加列宽: {width_before} -> {width_after}"
+                )
+            saved_width = json.loads(
+                page.evaluate("localStorage.getItem('cfv2-records-cols')")
+            )["name"]
+            if saved_width != round(width_after):
+                raise AssertionError(
+                    f"列宽未持久化: 实际 {width_after}，存储 {saved_width}"
+                )
+            resize_handle.focus()
+            page.keyboard.press("Enter")
+            page.wait_for_timeout(80)
+            if abs(name_th.bounding_box()["width"] - 220) > 1:
+                raise AssertionError("Enter 未把列宽恢复默认")
+
             page.screenshot(path=os.path.join(shots, "workspace_1440.png"))
             page.get_by_role("button", name="切换到深色主题").click()
             page.wait_for_timeout(160)
@@ -633,8 +1089,8 @@ def main() -> None:
                     f"悬停展开使导航图标位移: {rail_icon_y} -> {peek_icon_y}"
                 )
             page.screenshot(path=os.path.join(shots, "sidebar_peek_1440.png"))
-            page.get_by_role("link", name="高级工具", exact=True).click()
-            page.wait_for_selector("text=历史与审计", timeout=10_000)
+            page.get_by_role("link", name="跨账号查找", exact=True).click()
+            page.wait_for_selector("text=查找域名", timeout=10_000)
             if page.locator(".sidebar").get_attribute("data-state") != "peek":
                 raise AssertionError("点击导航后不应立即收起，应在鼠标离开后再收起")
             page.get_by_role("link", name="DNS 记录", exact=True).click()
@@ -650,8 +1106,8 @@ def main() -> None:
             page.wait_for_timeout(320)
             if page.locator(".app.rail").count() != 0:
                 raise AssertionError("页脚保持展开失败")
-            page.get_by_role("link", name="高级工具", exact=True).click()
-            page.wait_for_selector("text=历史与审计", timeout=10_000)
+            page.get_by_role("link", name="跨账号查找", exact=True).click()
+            page.wait_for_selector("text=查找域名", timeout=10_000)
             if page.locator(".sidebar").get_attribute("data-state") != "pinned":
                 raise AssertionError("固定展开时点击导航不应收起侧栏")
             page.get_by_role("link", name="DNS 记录", exact=True).click()
@@ -750,10 +1206,18 @@ def main() -> None:
             page.get_by_role("tab", name="任务").click()
             page.locator(".task-row", has_text="job-9002").click()
             page.wait_for_selector("text=TASK DETAIL", timeout=10_000)
-            page.wait_for_selector("text=[job] job-9002 已创建", timeout=10_000)
+            page.wait_for_selector("text=执行时间线", timeout=10_000)
+            page.wait_for_selector("text=任务开始", timeout=10_000)
+            page.wait_for_selector("text=账号完成", timeout=10_000)
+            page.wait_for_selector("text=原始日志", timeout=10_000)
             page.screenshot(path=os.path.join(shots, "task_1440.png"))
 
             page.get_by_role("tab", name="操作").click()
+            records_before_edit = sum(
+                1
+                for method, path in data_requests
+                if method == "GET" and path.endswith("/api/v1/records")
+            )
             page.locator(".records-table tbody .row-action").first.click()
             page.wait_for_selector("#edit-record-title", timeout=10_000)
             page.wait_for_timeout(80)
@@ -765,6 +1229,13 @@ def main() -> None:
             page.wait_for_selector("text=记录已保存", timeout=10_000)
             page.wait_for_selector("#edit-record-title", state="detached", timeout=5_000)
             page.wait_for_timeout(80)
+            records_after_edit = sum(
+                1
+                for method, path in data_requests
+                if method == "GET" and path.endswith("/api/v1/records")
+            )
+            if records_after_edit != records_before_edit:
+                raise AssertionError("编辑保存后重新拉取了整表记录")
             active_class = page.evaluate(
                 "document.activeElement?.className || ''"
             )
@@ -785,35 +1256,109 @@ def main() -> None:
             page.wait_for_selector("#add-record-title", timeout=10_000)
             page.locator("#add-record-name").fill("_webui-accept-add")
             page.locator("#add-record-content").fill("198.51.100.99")
-            page.get_by_role("button", name="提交预览").click()
-            page.wait_for_selector("text=预览 · 尚未执行", timeout=10_000)
-            page.wait_for_selector("text=预览任务返回 3 条变更", timeout=10_000)
+            jobs_before_add = len(job_posts)
+            page.get_by_role("button", name="保存记录").click()
+            page.wait_for_selector("text=记录已创建", timeout=10_000)
             page.wait_for_selector("#add-record-title", state="detached", timeout=5_000)
-            if not job_posts or job_posts[-1].get("mode") != "add":
-                raise AssertionError("新增记录未提交 add 预览任务")
-            add_payload = job_posts[-1]
-            if add_payload.get("dry_run") is not True:
-                raise AssertionError("新增记录预览未使用 dry_run")
-            if add_payload.get("domains") != ["example.com"]:
-                raise AssertionError("新增记录预览范围不是当前域名")
-            if not any(
-                "_webui-accept-add:A:198.51.100.99" in item
-                for item in (add_payload.get("add_records") or [])
-            ):
-                raise AssertionError("新增记录预览缺少 add_records 规格")
-            page.screenshot(path=os.path.join(shots, "add_preview_1440.png"))
+            if len(job_posts) != jobs_before_add:
+                raise AssertionError("新增记录仍然提交了预览任务")
+            if not record_posts:
+                raise AssertionError("新增记录未直接写入 /api/v1/records")
+            add_payload = record_posts[-1]
+            if add_payload.get("zone") != "example.com":
+                raise AssertionError("新增记录写入范围不是当前域名")
+            if add_payload.get("name") != "_webui-accept-add":
+                raise AssertionError("新增记录名称未提交")
+            if add_payload.get("type") != "A":
+                raise AssertionError("新增记录类型未提交")
+            if add_payload.get("content") != "198.51.100.99":
+                raise AssertionError("新增记录内容未提交")
+            if add_payload.get("proxied") is not True:
+                raise AssertionError("新增记录未提交代理状态")
+            page.screenshot(path=os.path.join(shots, "add_record_1440.png"))
 
             page.screenshot(path=os.path.join(shots, "drawer_1440.png"))
-            page.get_by_role("link", name="高级工具").click()
-            page.wait_for_selector("text=历史与审计", timeout=10_000)
+            page.get_by_role("link", name="跨账号查找", exact=True).click()
+            page.wait_for_function(
+                "window.location.pathname === '/advanced/find'", timeout=10_000
+            )
+            page.wait_for_function(
+                "document.querySelector('.sidebar .nav-link[aria-current=\"page\"]')?.textContent?.includes('跨账号查找')",
+                timeout=10_000,
+            )
+            if (
+                page.get_by_role("link", name="跨账号查找", exact=True).get_attribute(
+                    "aria-current"
+                )
+                != "page"
+            ):
+                raise AssertionError("侧栏高级工具默认项不是跨账号查找")
+            page.screenshot(path=os.path.join(shots, "advanced_1440.png"), full_page=True)
+
+            page.get_by_role("link", name="历史与审计", exact=True).click()
+            page.wait_for_function(
+                "window.location.pathname === '/advanced/history'", timeout=10_000
+            )
             page.wait_for_selector("text=job-9002", timeout=10_000)
             page.get_by_role("button", name="审计日志").click()
             page.wait_for_selector("text=bulk_update", timeout=10_000)
+            page.screenshot(
+                path=os.path.join(shots, "advanced_history_1440.png"), full_page=True
+            )
+
+            page.get_by_role("link", name="跨账号查找", exact=True).click()
             page.get_by_placeholder("example.com").first.fill("example.com")
             page.get_by_role("button", name="查找", exact=True).click()
             page.wait_for_selector("text=命中 1 个账号", timeout=10_000)
-            page.screenshot(path=os.path.join(shots, "advanced_1440.png"), full_page=True)
+            page.wait_for_selector("text=提前停止", timeout=10_000)
+            if (
+                not find_scan_posts
+                or find_scan_posts[-1].get("stop_on_first") is not True
+            ):
+                raise AssertionError("跨账号查找默认未启用命中即停")
+            page.locator("button", has_text="继续查询剩余").click()
+            page.wait_for_selector("text=已检查 59/59 个账号", timeout=10_000)
+            if not find_continue_posts:
+                raise AssertionError("继续查询未调用后端")
 
+            # 服务重启后旧扫描记录失效：自动清理并提示重新查找。
+            expected_resource_errors["remaining"] = 1
+            page.evaluate(
+                "sessionStorage.setItem('cfv2-find-scan', 'scan-expired')"
+            )
+            page.reload(wait_until="networkidle")
+            page.wait_for_selector("text=上次扫描记录已失效", timeout=10_000)
+            if page.evaluate("sessionStorage.getItem('cfv2-find-scan')") is not None:
+                raise AssertionError("失效扫描 ID 未从 sessionStorage 清理")
+            if page.locator(".error-inline").count():
+                raise AssertionError("失效扫描仍显示红色错误")
+            if not page.get_by_placeholder("example.com").first.is_visible():
+                raise AssertionError("失效扫描后查找表单不可用")
+            page.screenshot(
+                path=os.path.join(shots, "find_expired_1440.png"),
+                full_page=True,
+            )
+            expected_resource_errors["remaining"] = 0
+
+            # 后端离线：显示中文连接提示，而不是原始 Failed to fetch。
+            expected_resource_errors["remaining"] = 4
+            page.evaluate(
+                "sessionStorage.setItem('cfv2-find-scan', 'scan-offline')"
+            )
+            page.reload(wait_until="networkidle")
+            page.wait_for_selector("text=无法连接后端", timeout=10_000)
+            if page.get_by_text("Failed to fetch").count():
+                raise AssertionError("仍显示原始 Failed to fetch")
+            if not page.get_by_placeholder("example.com").first.is_visible():
+                raise AssertionError("后端离线时查找表单不可用")
+            page.screenshot(
+                path=os.path.join(shots, "find_offline_1440.png"),
+                full_page=True,
+            )
+            expected_resource_errors["remaining"] = 0
+
+            page.get_by_role("link", name="邮箱转发", exact=True).click()
+            page.wait_for_selector("text=邮箱转发（Email Routing）", timeout=10_000)
             email_panel = page.locator("section.panel").filter(
                 has_text="邮箱转发（Email Routing）"
             )
@@ -834,6 +1379,15 @@ def main() -> None:
                 "目标邮箱已添加，等待验证；请检查收件箱和垃圾箱。"
             ).is_visible():
                 raise AssertionError("新目标邮箱未显示待验证状态")
+            email_panel.scroll_into_view_if_needed()
+            page.wait_for_timeout(120)
+            page.screenshot(path=os.path.join(shots, "email_routing_view_1440.png"))
+            page.screenshot(
+                path=os.path.join(shots, "email_routing_1440.png"), full_page=True
+            )
+
+            page.get_by_role("link", name="配置向导", exact=True).click()
+            page.wait_for_selector("text=域名配置向导", timeout=10_000)
             provision_panel = page.locator("section.panel").filter(
                 has_text="域名配置向导"
             )
@@ -845,13 +1399,9 @@ def main() -> None:
                 for _method, path in data_requests
             ):
                 raise AssertionError("未提交邮箱转发完成请求")
-            email_panel.scroll_into_view_if_needed()
-            page.wait_for_timeout(120)
-            page.screenshot(path=os.path.join(shots, "email_routing_view_1440.png"))
-            page.screenshot(
-                path=os.path.join(shots, "email_routing_1440.png"), full_page=True
-            )
 
+            page.get_by_role("link", name="范围附件", exact=True).click()
+            page.wait_for_selector("text=白名单 / 重跑清单", timeout=10_000)
             file_input = page.locator(".drop-zone input[type=file]").first
             with tempfile.NamedTemporaryFile(
                 "w", suffix=".txt", delete=False, encoding="utf-8"
@@ -866,6 +1416,28 @@ def main() -> None:
             page.wait_for_selector("text=白名单 2 域", timeout=10_000)
             page.screenshot(path=os.path.join(shots, "attachment_1440.png"))
 
+            page.wait_for_selector(".records-table tbody tr", timeout=10_000)
+            resize_handle = page.locator('.col-resizer[data-column="name"]')
+            resize_handle.focus()
+            page.keyboard.press("ArrowRight")
+            page.keyboard.press("ArrowRight")
+            page.wait_for_timeout(80)
+            resized_width = round(
+                page.locator(".records-table thead th").nth(1).bounding_box()["width"]
+            )
+            page.reload(wait_until="networkidle")
+            page.wait_for_selector(".records-table tbody tr", timeout=10_000)
+            reloaded_width = round(
+                page.locator(".records-table thead th").nth(1).bounding_box()["width"]
+            )
+            if reloaded_width != resized_width:
+                raise AssertionError(
+                    f"刷新后列宽未保持: {resized_width} -> {reloaded_width}"
+                )
+            page.locator('.col-resizer[data-column="name"]').focus()
+            page.keyboard.press("Enter")
+            page.wait_for_timeout(80)
+
             tablet = browser.new_page(viewport={"width": 768, "height": 900})
             tablet.on("pageerror", lambda exc: errors.append(f"tablet pageerror: {exc}"))
             tablet.route("**/api/v1/**", api)
@@ -877,6 +1449,16 @@ def main() -> None:
             if tablet_overflow > 1:
                 raise AssertionError(f"768 页面横滚 {tablet_overflow}px")
             tablet.screenshot(path=os.path.join(shots, "workspace_768.png"))
+            if not tablet.locator(".sort-select").is_visible():
+                raise AssertionError("768 卡片视图缺少工具栏排序入口")
+            tablet.locator(".sort-select select").select_option("-name")
+            tablet.wait_for_timeout(120)
+            first_card = tablet.locator(".record-card .record-name").first.inner_text()
+            if first_card != "www":
+                raise AssertionError(f"卡片视图按名称降序后首条应为 www，实际 {first_card}")
+            if not tablet.get_by_role("button", name="重置排序").is_visible():
+                raise AssertionError("卡片视图排序激活后缺少重置排序入口")
+            tablet.screenshot(path=os.path.join(shots, "records_sorted_768.png"))
             tablet.close()
 
             compact = browser.new_page(viewport={"width": 1024, "height": 900})
@@ -927,6 +1509,34 @@ def main() -> None:
             ):
                 raise AssertionError("390 侧栏关闭后仍可见")
 
+            mobile.get_by_role("button", name="打开导航", exact=True).click()
+            mobile.wait_for_timeout(220)
+            mobile.locator('[data-proxy-trigger="sidebar"]').click()
+            mobile.wait_for_selector("#proxy-settings-title", timeout=10_000)
+            mobile.screenshot(path=os.path.join(shots, "proxy_dialog_390.png"))
+            proxy_box = mobile.locator(".proxy-modal").bounding_box()
+            if (
+                not proxy_box
+                or proxy_box["x"] < 0
+                or proxy_box["x"] + proxy_box["width"] > 391
+            ):
+                raise AssertionError(f"390 代理弹窗超出视口: {proxy_box}")
+            mobile_proxy_overflow = mobile.evaluate(
+                "document.documentElement.scrollWidth - window.innerWidth"
+            )
+            if mobile_proxy_overflow > 1:
+                raise AssertionError(
+                    f"390 代理弹窗横滚 {mobile_proxy_overflow}px"
+                )
+            mobile.get_by_role("button", name="关闭代理设置").click()
+            mobile.wait_for_selector(
+                "#proxy-settings-title", state="detached", timeout=5_000
+            )
+            mobile.get_by_role("button", name="关闭导航", exact=True).click()
+            mobile.wait_for_timeout(220)
+            if mobile.locator(".app.nav-open").count() != 0:
+                raise AssertionError("390 代理弹窗关闭后侧栏未关闭")
+
             mobile.get_by_role("button", name="批量操作", exact=True).click()
             mobile.wait_for_selector(".drawer.open", timeout=10_000)
             mobile.wait_for_timeout(240)
@@ -943,14 +1553,135 @@ def main() -> None:
             if mobile.locator(".drawer.open").count() != 0:
                 raise AssertionError("390 批量抽屉未关闭")
 
-            mobile.goto(base + "/#/advanced", wait_until="networkidle")
-            mobile.wait_for_selector("text=历史与审计", timeout=10_000)
+            mobile.goto(base + "/advanced", wait_until="networkidle")
+            mobile.wait_for_function(
+                "window.location.pathname === '/advanced/find'", timeout=10_000
+            )
+            mobile.wait_for_selector("text=查找域名", timeout=10_000)
+            active_nav = (
+                mobile.locator('.sidebar .nav-link[aria-current="page"]').text_content()
+                or ""
+            )
+            if "跨账号查找" not in active_nav:
+                raise AssertionError("390 侧栏高级工具默认项不是跨账号查找")
             mobile_overflow = mobile.evaluate(
                 "document.documentElement.scrollWidth - window.innerWidth"
             )
             if mobile_overflow > 1:
                 raise AssertionError(f"390 高级页横滚 {mobile_overflow}px")
-            mobile.screenshot(path=os.path.join(shots, "advanced_390.png"), full_page=True)
+            mobile.get_by_role("button", name="打开导航", exact=True).click()
+            mobile.wait_for_timeout(220)
+            mobile.get_by_role("link", name="运行参数", exact=True).click()
+            mobile.wait_for_function(
+                "window.location.pathname === '/advanced/runtime'", timeout=10_000
+            )
+            mobile.wait_for_selector("text=速度档位", timeout=10_000)
+            mobile.wait_for_function(
+                "document.querySelector('.sidebar .nav-link[aria-current=\"page\"]')?.textContent?.includes('运行参数')",
+                timeout=10_000,
+            )
+            mobile.wait_for_timeout(220)
+            if mobile.locator(".app.nav-open").count() != 0:
+                raise AssertionError("390 选择高级工具后侧栏未收起")
+            active_nav = (
+                mobile.locator('.sidebar .nav-link[aria-current="page"]').text_content()
+                or ""
+            )
+            if "运行参数" not in active_nav:
+                raise AssertionError("390 高级工具路由切换未生效")
+            mobile.screenshot(
+                path=os.path.join(shots, "advanced_390.png"), full_page=True
+            )
+
+            legacy = browser.new_page(viewport={"width": 390, "height": 900})
+            legacy.on("pageerror", lambda exc: errors.append(f"legacy pageerror: {exc}"))
+            legacy.route("**/api/v1/**", api)
+            legacy.goto(
+                base + "/advanced/history#/advanced/transfer",
+                wait_until="networkidle",
+            )
+            legacy.wait_for_function(
+                "window.location.pathname === '/advanced/transfer'", timeout=10_000
+            )
+            legacy.wait_for_selector(".advanced-page h1", timeout=10_000)
+            if legacy.locator(".advanced-page h1").inner_text() != "导入 / 导出":
+                raise AssertionError("旧 hash 链接未迁移到对应分区")
+            legacy.close()
+
+            large_items = [
+                {
+                    "id": f"L{i}",
+                    "type": "A",
+                    "name": f"host{i}.example.com",
+                    "content": f"203.0.113.{i % 250}",
+                    "ttl": 1,
+                    "proxied": False,
+                    "comment": "",
+                    "priority": None,
+                }
+                for i in range(620)
+            ]
+
+            def large_records(route) -> None:
+                request = route.request
+                parsed = urlparse(request.url)
+                if not (
+                    request.method == "GET"
+                    and parsed.path.endswith("/api/v1/records")
+                ):
+                    route.fallback()
+                    return
+                data_requests.append((request.method, parsed.path))
+                query = parse_qs(parsed.query)
+                page_no = int(query.get("page", ["1"])[0])
+                per_page = int(query.get("per_page", ["50"])[0])
+                if "all" in query:
+                    items = large_items
+                else:
+                    start = (page_no - 1) * per_page
+                    items = large_items[start : start + per_page]
+                route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps(
+                        {
+                            "total": len(large_items),
+                            "page": page_no,
+                            "per_page": per_page,
+                            "items": items,
+                        }
+                    ),
+                )
+
+            large = browser.new_page(viewport={"width": 1440, "height": 900})
+            large.on("pageerror", lambda exc: errors.append(f"large pageerror: {exc}"))
+            large.route("**/api/v1/**", api)
+            large.route("**/api/v1/**", large_records)
+            large.goto(base, wait_until="networkidle")
+            large.wait_for_function(
+                "document.querySelectorAll('.records-table tbody tr:not(.skeleton-row)').length === 50",
+                timeout=10_000,
+            )
+            if "共 620 条" not in large.locator(".records-footer span").first.inner_text():
+                raise AssertionError("大 zone 未进入服务端分页模式")
+            before_large_sort = sum(
+                1
+                for method, path in data_requests
+                if method == "GET" and path.endswith("/api/v1/records")
+            )
+            large.get_by_role("button", name="名称", exact=True).click()
+            large.wait_for_timeout(300)
+            after_large_sort = sum(
+                1
+                for method, path in data_requests
+                if method == "GET" and path.endswith("/api/v1/records")
+            )
+            if after_large_sort <= before_large_sort:
+                raise AssertionError("大 zone 排序未走服务端分页请求")
+            large.screenshot(
+                path=os.path.join(shots, "workspace_large_server_1440.png")
+            )
+            large.close()
             browser.close()
         if errors:
             raise AssertionError("; ".join(errors[:6]))

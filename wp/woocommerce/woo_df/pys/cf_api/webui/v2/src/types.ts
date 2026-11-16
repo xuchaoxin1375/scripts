@@ -28,6 +28,9 @@ export type InspectorTab = "action" | "tasks";
 
 export type RecordPatchValues = Omit<DnsRecord, "id">;
 
+/** 新增记录与编辑共用同一份写入值，区别只是新增还没有记录 id。 */
+export type RecordCreateValues = RecordPatchValues;
+
 export type RecordFilters = {
   search: string;
   type: string;
@@ -37,7 +40,16 @@ export type RecordFilters = {
   perPage: number;
 };
 
-export type RecordsPage = {
+export type RecordsBootstrap = {
+  mode: "local" | "server";
+  items: DnsRecord[];
+  total: number;
+  page: number;
+  perPage: number;
+  truncated: boolean;
+};
+
+export type RecordsPageData = {
   items: DnsRecord[];
   total: number;
   page: number;

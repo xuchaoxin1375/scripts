@@ -61,6 +61,31 @@ class JobSubmit(BaseModel):
     label: Optional[str] = None
 
 
+class FindScanRequest(BaseModel):
+    """跨账号查找扫描请求。"""
+
+    domain: str = ""
+    speed: str = "eco"
+    max_retries: int = 5
+    stop_on_first: bool = True
+
+
+class ProxyEntryInput(BaseModel):
+    """代理条目：已有条目只传 id 即可保留原地址与凭据。"""
+
+    id: Optional[str] = None
+    url: Optional[str] = None
+    enabled: bool = True
+
+
+class ProxySettings(BaseModel):
+    """运行时出口代理配置；proxies 为空表示清空列表。"""
+
+    enabled: bool = False
+    mode: str = "round-robin"
+    proxies: list[ProxyEntryInput] = Field(default_factory=list)
+
+
 class RecordPatch(BaseModel):
     """单条 PATCH：省略字段沿用原值（与 Cloudflare 网页版对齐）。"""
 

@@ -3,6 +3,7 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
+  type QueryClient,
 } from "@tanstack/react-query";
 import type {
   Account,
@@ -10,7 +11,8 @@ import type {
   Job,
   PreviewRow,
   RecordFilters,
-  RecordsPage,
+  RecordsBootstrap,
+  RecordsPageData,
   Zone,
 } from "../types";
 import {
@@ -19,10 +21,12 @@ import {
   recordsForZone,
   zonesByAccount,
 } from "../data/mock";
+import { fullName } from "../shared/names";
 import {
   apiGet,
   apiPatch,
   apiPost,
+  apiPut,
   apiUpload,
   downloadFile,
   downloadPostFile,
@@ -36,7 +40,8 @@ import type {
   ApiEmailRoutingAddresses,
   ApiEmailRoutingCompleteResult,
   ApiEmailRoutingStatus,
-  ApiFindResponse,
+  ApiFindScan,
+  ApiFindScanRequest,
   ApiHistoryRow,
   ApiImportItem,
   ApiImportResult,
@@ -47,6 +52,8 @@ import type {
   ApiMeta,
   ApiPage,
   ApiPageResult,
+  ApiProxySettings,
+  ApiProxyUpdate,
   ApiRecord,
   ApiResumeUpload,
   ApiWhitelistUpload,
@@ -73,6 +80,18 @@ const MOCK_EMAIL_ADDRESSES = [
   },
 ];
 
+let mockProxySeq = 0;
+let mockProxyState: ApiProxySettings = {
+  enabled: false,
+  mode: "round-robin",
+  proxies: [],
+  count: 0,
+  total: 0,
+  enabled_count: 0,
+  active: false,
+  persisted: false,
+};
+
 function mapAccount(item: ApiAccount): Account {
   return {
     name: item.name,
@@ -98,13 +117,67 @@ function mapRecord(item: ApiRecord): DnsRecord {
   };
 }
 
-function mapRecordPage(data: ApiPage<ApiRecord>): RecordsPage {
+const LOCAL_RECORDS_LIMIT = 500;
+
+function mapRecordPage(data: ApiPage<ApiRecord>): RecordsPageData {
   return {
     items: (data.items ?? []).map(mapRecord),
     total: data.total ?? 0,
     page: data.page ?? 1,
     perPage: data.per_page ?? 50,
   };
+}
+
+function recordsBootstrapKey(account: string, zone: string) {
+  return ["records-bootstrap", account, zone] as const;
+}
+
+function recordsPageKey(account: string, zone: string) {
+  return ["records-page", account, zone] as const;
+}
+
+function recordsQueryString(
+  account: string,
+  zone: string,
+  filters: RecordFilters,
+  all: boolean,
+): string {
+  const params = new URLSearchParams({
+    account,
+    zone,
+    type: filters.type,
+    search: filters.search,
+    proxied: filters.proxied,
+    page: String(filters.page),
+    per_page: String(filters.perPage),
+  });
+  if (filters.sort) params.set("sort", filters.sort);
+  if (all) params.set("all", "true");
+  return params.toString();
+}
+
+function updateCachedRecords(
+  queryClient: QueryClient,
+  account: string,
+  zone: string,
+  update: (items: DnsRecord[]) => DnsRecord[],
+) {
+  queryClient.setQueryData<RecordsBootstrap>(
+    recordsBootstrapKey(account, zone),
+    (current) => {
+      if (!current || current.mode !== "local") return current;
+      const items = update(current.items);
+      return { ...current, items, total: items.length };
+    },
+  );
+  queryClient.setQueriesData<RecordsPageData>(
+    { queryKey: recordsPageKey(account, zone) },
+    (current) => {
+      if (!current) return current;
+      const items = update(current.items);
+      return { ...current, items };
+    },
+  );
 }
 
 function progressOf(api: ApiJob): number {
@@ -141,9 +214,20 @@ function scopeText(api: ApiJob): string {
 }
 
 export function mapJob(api: ApiJob): Job {
-  const verdict = (api.verdict ?? []).join("\n").trim();
-  const causes = (api.verdict ?? [])
-    .filter((line) => line.trim().startsWith("- ["))
+  const verdictLines = (api.verdict ?? [])
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const finalLine = [...verdictLines]
+    .reverse()
+    .find((line) => line.startsWith("[VERDICT]"));
+  const verdict = finalLine
+    ? finalLine.replace(/^\[VERDICT\]\s*/, "")
+    : verdictLines
+        .filter((line) => !line.startsWith("- ["))
+        .join(" ")
+        .trim();
+  const causes = verdictLines
+    .filter((line) => line.startsWith("- ["))
     .slice(0, 3);
   return {
     id: api.job_id || api.id,
@@ -234,45 +318,15 @@ async function fetchAll<T>(
   return items.slice(0, ZONE_MAX_ITEMS);
 }
 
-function mockRecordPage(
-  zone: string,
-  filters: RecordFilters,
-): RecordsPage {
-  let items = recordsForZone(zone);
-  const query = filters.search.trim().toLowerCase();
-  if (filters.type !== "ALL") {
-    items = items.filter((item) => item.type === filters.type);
-  }
-  if (filters.proxied === "proxied") {
-    items = items.filter((item) => item.proxied);
-  } else if (filters.proxied === "dnsonly") {
-    items = items.filter((item) => !item.proxied);
-  }
-  if (query) {
-    items = items.filter(
-      (item) =>
-        item.name.toLowerCase().includes(query) ||
-        item.content.toLowerCase().includes(query),
-    );
-  }
-  if (filters.sort) {
-    const desc = filters.sort.startsWith("-");
-    const key = filters.sort.replace(/^-/, "") as keyof DnsRecord;
-    items = [...items].sort((left, right) => {
-      const result = String(left[key] ?? "").localeCompare(
-        String(right[key] ?? ""),
-        "zh-CN",
-      );
-      return desc ? -result : result;
-    });
-  }
-  const total = items.length;
-  const start = (filters.page - 1) * filters.perPage;
+function mockRecordsBootstrap(zone: string): RecordsBootstrap {
+  const items = recordsForZone(zone);
   return {
-    items: items.slice(start, start + filters.perPage),
-    total,
-    page: filters.page,
-    perPage: filters.perPage,
+    mode: "local",
+    items,
+    total: items.length,
+    page: 1,
+    perPage: items.length || 50,
+    truncated: false,
   };
 }
 
@@ -296,12 +350,103 @@ export function useMeta() {
           },
           requires_auth: false,
           config_path: "C:/Users/Administrator/Desktop/deploy_configs/cf_config.csv",
-          proxy: { mode: "", count: 0 },
+          proxy: {
+            mode: mockProxyState.mode,
+            count: mockProxyState.count,
+            total: mockProxyState.total,
+            enabled: mockProxyState.enabled,
+            enabled_count: mockProxyState.enabled_count,
+          },
         };
       }
       return apiGet<ApiMeta>("/api/v1/meta");
     },
     staleTime: 5 * 60_000,
+  });
+}
+
+export function useProxySettings(enabled: boolean) {
+  return useQuery({
+    queryKey: ["proxy-settings"] as const,
+    queryFn: async ({ signal }): Promise<ApiProxySettings> => {
+      if (USE_MOCK) {
+        return {
+          ...mockProxyState,
+          proxies: mockProxyState.proxies.map((item) => ({ ...item })),
+        };
+      }
+      return apiGet<ApiProxySettings>("/api/v1/proxy", { signal });
+    },
+    enabled,
+    staleTime: 10_000,
+  });
+}
+
+export function useUpdateProxySettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (
+      payload: ApiProxyUpdate,
+    ): Promise<ApiProxySettings> => {
+      if (USE_MOCK) {
+        const existing = new Map(
+          mockProxyState.proxies.map((item) => [item.id, item]),
+        );
+        const proxies = payload.proxies.map((item) => {
+          if (item.id) {
+            const current = existing.get(item.id);
+            if (!current) throw new Error("代理条目不存在，请刷新后重试");
+            return {
+              ...current,
+              ...(item.url ? { url: item.url } : {}),
+              enabled: item.enabled,
+            };
+          }
+          mockProxySeq += 1;
+          return {
+            id: `mock-proxy-${mockProxySeq}`,
+            url: item.url ?? "",
+            enabled: item.enabled,
+          };
+        });
+        const total = proxies.length;
+        const enabled_count = proxies.filter((item) => item.enabled).length;
+        const count = payload.enabled ? enabled_count : 0;
+        mockProxyState = {
+          enabled: payload.enabled,
+          mode: payload.mode,
+          proxies,
+          count,
+          total,
+          enabled_count,
+          active: count > 0,
+          persisted: false,
+        };
+        return {
+          ...mockProxyState,
+          proxies: proxies.map((item) => ({ ...item })),
+        };
+      }
+      return apiPut<ApiProxySettings>("/api/v1/proxy", payload);
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(["proxy-settings"], data);
+      queryClient.setQueryData<ApiMeta | null>(["meta"], (current) =>
+        current
+          ? {
+              ...current,
+              proxy: {
+                mode: data.mode,
+                count: data.count,
+                total: data.total,
+                enabled: data.enabled,
+                enabled_count: data.enabled_count,
+              },
+            }
+          : current,
+      );
+      void queryClient.invalidateQueries({ queryKey: ["meta"] });
+    },
   });
 }
 
@@ -469,36 +614,118 @@ export function useCompleteEmailRouting() {
   });
 }
 
-export function useRecordsPage(
+const PROBE_FILTERS: RecordFilters = {
+  search: "",
+  type: "ALL",
+  proxied: "all",
+  sort: "",
+  page: 1,
+  perPage: 50,
+};
+
+/** 首个请求看总量：<=50 直接本地，<=500 再拉一次全量，超过阈值转服务端分页。 */
+export function useRecordsBootstrap(
+  account: string,
+  zone: string,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: recordsBootstrapKey(account, zone),
+    queryFn: async ({ signal }): Promise<RecordsBootstrap> => {
+      if (!account || !zone) {
+        return {
+          mode: "local",
+          items: [],
+          total: 0,
+          page: 1,
+          perPage: 50,
+          truncated: false,
+        };
+      }
+      if (USE_MOCK) return mockRecordsBootstrap(zone);
+      const first = await apiGet<ApiPage<ApiRecord>>(
+        `/api/v1/records?${recordsQueryString(account, zone, PROBE_FILTERS, false)}`,
+        { signal },
+      );
+      const firstPage = mapRecordPage(first);
+      if (firstPage.total <= 50) {
+        return {
+          mode: "local",
+          items: firstPage.items,
+          total: firstPage.total,
+          page: 1,
+          perPage: firstPage.perPage,
+          truncated: false,
+        };
+      }
+      if (firstPage.total <= LOCAL_RECORDS_LIMIT) {
+        const all = await apiGet<ApiPage<ApiRecord>>(
+          `/api/v1/records?${recordsQueryString(
+            account,
+            zone,
+            { ...PROBE_FILTERS, perPage: LOCAL_RECORDS_LIMIT },
+            true,
+          )}`,
+          { signal },
+        );
+        const collection = mapRecordPage(all);
+        return {
+          mode: "local",
+          items: collection.items,
+          total: collection.total,
+          page: 1,
+          perPage: collection.perPage,
+          truncated: Boolean(all.truncated),
+        };
+      }
+      return {
+        mode: "server",
+        items: firstPage.items,
+        total: firstPage.total,
+        page: 1,
+        perPage: firstPage.perPage,
+        truncated: false,
+      };
+    },
+    enabled: enabled && Boolean(account && zone),
+    staleTime: 30_000,
+  });
+}
+
+export function useRecordsServerPage(
   account: string,
   zone: string,
   filters: RecordFilters,
   enabled: boolean,
 ) {
   return useQuery({
-    queryKey: ["records", account, zone, filters] as const,
-    queryFn: async ({ signal }): Promise<RecordsPage> => {
+    queryKey: ["records-page", account, zone, filters] as const,
+    queryFn: async ({ signal }): Promise<RecordsPageData> => {
       if (!account || !zone) {
         return { items: [], total: 0, page: 1, perPage: filters.perPage };
       }
-      if (USE_MOCK) return mockRecordPage(zone, filters);
-      const params = new URLSearchParams({
-        account,
-        zone,
-        type: filters.type,
-        search: filters.search,
-        proxied: filters.proxied,
-        page: String(filters.page),
-        per_page: String(filters.perPage),
-      });
-      if (filters.sort) params.set("sort", filters.sort);
+      if (USE_MOCK) {
+        const items = recordsForZone(zone);
+        const start = (filters.page - 1) * filters.perPage;
+        return {
+          items: items.slice(start, start + filters.perPage),
+          total: items.length,
+          page: filters.page,
+          perPage: filters.perPage,
+        };
+      }
       const data = await apiGet<ApiPage<ApiRecord>>(
-        `/api/v1/records?${params.toString()}`,
+        `/api/v1/records?${recordsQueryString(account, zone, filters, false)}`,
         { signal },
       );
       return mapRecordPage(data);
     },
     enabled: enabled && Boolean(account && zone),
+    placeholderData: (previousData, previousQuery) => {
+      const key = previousQuery?.queryKey;
+      if (!key || key[1] !== account || key[2] !== zone) return undefined;
+      return previousData;
+    },
     staleTime: 15_000,
   });
 }
@@ -701,28 +928,142 @@ export function useAudit(enabled: boolean, limit = 50, offset = 0) {
   });
 }
 
-export function useFindDomain() {
+let mockFindScan: ApiFindScan | null = null;
+
+function mockFindScanSnapshot(
+  domain: string,
+  stopOnFirst = true,
+): ApiFindScan {
+  const target = domain.trim().toLowerCase();
+  const accounts = Object.keys(zonesByAccount);
+  const results = accounts.flatMap((account) => {
+    const zone = (zonesByAccount[account] ?? []).find(
+      (item) => item.name === target,
+    );
+    return zone
+      ? [
+          {
+            account,
+            zone: zone.name,
+            zone_id: zone.id,
+            status: zone.status,
+            elapsed_ms: 120,
+          },
+        ]
+      : [];
+  });
+  const hitAccounts = new Set(results.map((item) => item.account));
+  const missed = accounts.filter((account) => !hitAccounts.has(account));
+  return {
+    scan_id: "scan-mock",
+    domain: target,
+    status: "done",
+    stop_on_first: stopOnFirst,
+    stopped_early: false,
+    stop_reason: "",
+    total: accounts.length,
+    checked: accounts.length,
+    unchecked: 0,
+    hits: results.length,
+    misses: missed.length,
+    failed: 0,
+    results,
+    errors: [],
+    missed_accounts: missed,
+    unchecked_accounts: [],
+    events: [],
+    in_flight: [],
+    started_at: new Date().toISOString(),
+    finished_at: new Date().toISOString(),
+    elapsed_ms: 1200,
+    complete: true,
+  };
+}
+
+export function useStartFindScan() {
   return useMutation({
-    mutationFn: async (domain: string): Promise<ApiFindResponse> => {
+    mutationFn: async (payload: ApiFindScanRequest): Promise<ApiFindScan> => {
       if (USE_MOCK) {
-        const target = domain.trim().toLowerCase();
-        const results = Object.entries(zonesByAccount)
-          .filter(([, zones]) => zones.some((zone) => zone.name === target))
-          .map(([account, zones]) => {
-            const zone = zones.find((item) => item.name === target)!;
-            return {
-              account,
-              zone: zone.name,
-              zone_id: zone.id,
-              status: zone.status,
-              record_count: recordsForZone(zone.name).length,
-            };
-          });
-        return { domain: target, found: results.length, results };
+        mockFindScan = mockFindScanSnapshot(
+          payload.domain,
+          payload.stop_on_first,
+        );
+        return mockFindScan;
       }
-      return apiGet<ApiFindResponse>(
-        `/api/v1/find?domain=${encodeURIComponent(domain.trim())}`,
-        { timeoutMs: 120_000 },
+      return apiPost<ApiFindScan>("/api/v1/find/scans", payload, {
+        timeoutMs: 30_000,
+      });
+    },
+  });
+}
+
+export function useFindScan(scanId: string | null) {
+  return useQuery({
+    queryKey: ["find-scan", scanId] as const,
+    queryFn: async ({ signal }): Promise<ApiFindScan | null> => {
+      if (!scanId) return null;
+      if (USE_MOCK) return mockFindScan;
+      return apiGet<ApiFindScan>(
+        `/api/v1/find/scans/${encodeURIComponent(scanId)}`,
+        { signal },
+      );
+    },
+    enabled: Boolean(scanId),
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      return data &&
+        ["pending", "running", "cancelling"].includes(data.status)
+        ? 1_000
+        : false;
+    },
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: false,
+    staleTime: 500,
+  });
+}
+
+export function useCancelFindScan() {
+  return useMutation({
+    mutationFn: async (scanId: string): Promise<ApiFindScan> => {
+      if (USE_MOCK) {
+        if (mockFindScan) {
+          mockFindScan = {
+            ...mockFindScan,
+            status: "cancelled",
+            finished_at: new Date().toISOString(),
+          };
+        }
+        return mockFindScan ?? mockFindScanSnapshot("");
+      }
+      return apiPost<ApiFindScan>(
+        `/api/v1/find/scans/${encodeURIComponent(scanId)}/cancel`,
+      );
+    },
+  });
+}
+
+export function useContinueFindScan() {
+  return useMutation({
+    mutationFn: async (scanId: string): Promise<ApiFindScan> => {
+      if (USE_MOCK) {
+        if (mockFindScan) {
+          mockFindScan = {
+            ...mockFindScan,
+            status: "done",
+            stopped_early: false,
+            stop_reason: "",
+            checked: mockFindScan.total,
+            unchecked: 0,
+            misses: Math.max(0, mockFindScan.total - mockFindScan.hits),
+            unchecked_accounts: [],
+            complete: true,
+            finished_at: new Date().toISOString(),
+          };
+        }
+        return mockFindScan ?? mockFindScanSnapshot("");
+      }
+      return apiPost<ApiFindScan>(
+        `/api/v1/find/scans/${encodeURIComponent(scanId)}/continue`,
       );
     },
   });
@@ -777,8 +1118,12 @@ export function useImportRecords() {
     },
     onSuccess: (_data, variables) => {
       if (variables.dry_run) return;
+      // 导入可能批量新增/更新，响应不带完整记录；后台重拉一次，保留旧数据不闪骨架。
       void queryClient.invalidateQueries({
-        queryKey: ["records", variables.account, variables.zone],
+        queryKey: recordsBootstrapKey(variables.account, variables.zone),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: recordsPageKey(variables.account, variables.zone),
       });
     },
   });
@@ -866,10 +1211,33 @@ export function useBulkUpdateRecords() {
         timeoutMs: 120_000,
       });
     },
-    onSuccess: (_data, variables) => {
-      void queryClient.invalidateQueries({
-        queryKey: ["records", variables.account, variables.zone],
-      });
+    onSuccess: (data, variables) => {
+      const updated = new Set(data.updated ?? []);
+      updateCachedRecords(
+        queryClient,
+        variables.account,
+        variables.zone,
+        (items) =>
+          items.map((item) =>
+            updated.has(item.id)
+              ? {
+                  ...item,
+                  ...(variables.content !== undefined
+                    ? { content: variables.content }
+                    : {}),
+                  ...(variables.proxied !== undefined
+                    ? {
+                        proxied: variables.proxied,
+                        ttl: variables.proxied ? 1 : item.ttl,
+                      }
+                    : {}),
+                  ...(variables.ttl !== undefined
+                    ? { ttl: variables.ttl }
+                    : {}),
+                }
+              : item,
+          ),
+      );
     },
   });
 }
@@ -893,9 +1261,50 @@ export function useBulkDeleteRecords() {
         timeoutMs: 120_000,
       });
     },
-    onSuccess: (_data, variables) => {
+    onSuccess: (data, variables) => {
+      const deleted = new Set((data.deleted ?? []).map((item) => item.id));
+      updateCachedRecords(
+        queryClient,
+        variables.account,
+        variables.zone,
+        (items) => items.filter((item) => !deleted.has(item.id)),
+      );
+      // 服务端分页模式下当前页总数需要重算；后台刷新，保留旧行不闪骨架。
       void queryClient.invalidateQueries({
-        queryKey: ["records", variables.account, variables.zone],
+        queryKey: recordsPageKey(variables.account, variables.zone),
+      });
+    },
+  });
+}
+
+export function useCreateRecord() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: {
+      account: string;
+      zone: string;
+      name: string;
+      type: string;
+      content: string;
+      proxied: boolean;
+      ttl: number;
+      comment: string;
+      priority?: number | null;
+    }): Promise<{ status: string; message: string }> => {
+      if (USE_MOCK) return { status: "added", message: "已添加" };
+      return apiPost<{ status: string; message: string }>(
+        "/api/v1/records",
+        payload,
+        { timeoutMs: 60_000 },
+      );
+    },
+    onSuccess: (_data, variables) => {
+      // 新增没有可直接复用的记录 id：后台重拉当前范围，保留旧数据避免闪骨架。
+      void queryClient.invalidateQueries({
+        queryKey: recordsBootstrapKey(variables.account, variables.zone),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: recordsPageKey(variables.account, variables.zone),
       });
     },
   });
@@ -915,19 +1324,58 @@ export function usePatchRecord() {
       ttl: number;
       comment: string;
       priority?: number | null;
-    }) => {
-      if (USE_MOCK) return { status: "updated", message: "已更新" };
-      return apiPatch<{ status: string; message: string }>(
+    }): Promise<{ status: string; message: string; record?: ApiRecord }> => {
+      if (USE_MOCK) {
+        return {
+          status: "updated",
+          message: "已更新",
+          record: {
+            id: payload.id,
+            name: fullName(payload.name, payload.zone),
+            type: payload.type,
+            content: payload.content,
+            ttl: payload.ttl,
+            proxied: payload.proxied,
+            comment: payload.comment,
+            priority: payload.priority ?? null,
+          },
+        };
+      }
+      return apiPatch<{ status: string; message: string; record?: ApiRecord }>(
         "/api/v1/records",
         payload,
       );
     },
-    onSuccess: (_data, variables) => {
-      void queryClient.invalidateQueries({
-        queryKey: ["records", variables.account, variables.zone],
-      });
+    onSuccess: (data, variables) => {
+      const effective = data.record
+        ? mapRecord(data.record)
+        : {
+            id: variables.id,
+            name: fullName(variables.name, variables.zone),
+            type: variables.type,
+            content: variables.content,
+            proxied: variables.proxied,
+            ttl: variables.ttl,
+            comment: variables.comment,
+            priority: variables.priority ?? null,
+          };
+      updateCachedRecords(
+        queryClient,
+        variables.account,
+        variables.zone,
+        (items) =>
+          items.map((item) => (item.id === variables.id ? effective : item)),
+      );
     },
   });
+}
+
+export async function refreshRecordsCache(
+  account: string,
+  zone: string,
+): Promise<void> {
+  if (USE_MOCK || !account || !zone) return;
+  await apiPost("/api/v1/records/refresh", { account, zone });
 }
 
 export async function downloadFailuresCsv(jobId: string): Promise<void> {

@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends
 from .. import deps, engine_adapter
 from ..auth import require_auth
 from ..services.accounts import accounts_payload
+from ..services.proxy import proxy_payload
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 
@@ -17,7 +18,7 @@ router = APIRouter(dependencies=[Depends(require_auth)])
 def _meta() -> dict[str, Any]:
     eng = engine_adapter.engine()
     dirs = deps.default_dirs()
-    pool = deps.get_proxy_pool()
+    proxy = proxy_payload()
     return {
         "version": str(getattr(eng, "VERSION", "")),
         "speed_presets": dict(getattr(eng, "SPEED_PRESETS", {})),
@@ -33,8 +34,11 @@ def _meta() -> dict[str, Any]:
         "requires_auth": bool(deps.get_password()),
         "config_path": deps.get_config_path(),
         "proxy": {
-            "mode": getattr(pool, "mode", ""),
-            "count": len(getattr(pool, "urls", []) or []),
+            "mode": proxy["mode"],
+            "count": proxy["count"],
+            "total": proxy["total"],
+            "enabled": proxy["enabled"],
+            "enabled_count": proxy["enabled_count"],
         },
     }
 

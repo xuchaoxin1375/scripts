@@ -3,7 +3,6 @@ import {
   ListTree,
   PanelLeftClose,
   PanelLeftOpen,
-  Settings2,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -13,16 +12,20 @@ import type {
   PointerEvent as ReactPointerEvent,
 } from "react";
 import { NavLink } from "react-router-dom";
+import { ADVANCED_SECTIONS } from "../shared/advancedSections";
 
 type Props = {
   mobileOpen: boolean;
   onClose: () => void;
   onTasks: () => void;
+  onProxy: () => void;
   tasksActive: boolean;
   runningJobs: number;
   recordCount?: number;
   configPath?: string;
   proxyCount?: number;
+  proxyTotal?: number;
+  proxyEnabled?: boolean;
   pinned: boolean;
   onPinnedChange: (pinned: boolean) => void;
 };
@@ -56,11 +59,14 @@ export default function Sidebar({
   mobileOpen,
   onClose,
   onTasks,
+  onProxy,
   tasksActive,
   runningJobs,
   recordCount,
   configPath,
   proxyCount,
+  proxyTotal,
+  proxyEnabled,
   pinned,
   onPinnedChange,
 }: Props) {
@@ -84,6 +90,17 @@ export default function Sidebar({
   const pressHold = useRef(false);
 
   const peek = (hoverPeek || focusPeek) && !pinned;
+  const savedProxies = proxyTotal ?? 0;
+  const proxyLabel =
+    proxyEnabled === false && savedProxies > 0
+      ? `关(${savedProxies})`
+      : savedProxies > 0
+        ? `${proxyCount ?? 0}/${savedProxies}`
+        : `${proxyCount ?? 0}`;
+  const proxyAria =
+    proxyEnabled === false && savedProxies > 0
+      ? `出口代理已关闭，已保存 ${savedProxies} 个`
+      : `出口代理当前 ${proxyCount ?? 0} 个启用`;
 
   const clearTimers = useCallback(() => {
     if (enterTimer.current !== null) {
@@ -377,18 +394,25 @@ export default function Sidebar({
                   <span className="nav-badge">{recordCount}</span>
                 )}
               </NavLink>
-              <NavLink
-                to="/advanced"
-                className={({ isActive }) =>
-                  `nav-link ${isActive ? "active" : ""}`
-                }
-                aria-label="高级工具"
-                title="高级工具"
-                onClick={handleNavigate}
-              >
-                <Settings2 size={18} className="nav-icon" aria-hidden="true" />
-                <span className="nav-label">高级工具</span>
-              </NavLink>
+            </div>
+
+            <div className="nav-group">
+              <div className="nav-group-title">高级工具</div>
+              {ADVANCED_SECTIONS.map(({ key, label, icon: Icon }) => (
+                <NavLink
+                  key={key}
+                  to={`/advanced/${key}`}
+                  className={({ isActive }) =>
+                    `nav-link ${isActive ? "active" : ""}`
+                  }
+                  aria-label={label}
+                  title={label}
+                  onClick={handleNavigate}
+                >
+                  <Icon size={18} className="nav-icon" aria-hidden="true" />
+                  <span className="nav-label">{label}</span>
+                </NavLink>
+              ))}
             </div>
 
             <div className="nav-group">
@@ -418,7 +442,16 @@ export default function Sidebar({
                   {configPath || "—"}
                 </code>
               </span>
-              <span>代理 {proxyCount ?? 0} · 本机模式</span>
+              <button
+                type="button"
+                className="sidebar-proxy"
+                onClick={onProxy}
+                data-proxy-trigger="sidebar"
+                aria-label={`配置${proxyAria}`}
+                title="配置出口代理（仅本次运行）"
+              >
+                代理 {proxyLabel} · 本机模式
+              </button>
             </span>
             <button
               type="button"

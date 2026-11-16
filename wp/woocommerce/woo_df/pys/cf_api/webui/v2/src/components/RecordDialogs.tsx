@@ -1,7 +1,7 @@
 import { AlertTriangle, X } from "lucide-react";
 import { useRef, useState } from "react";
 import type { FormEvent } from "react";
-import type { ActionDraft, DnsRecord, RecordPatchValues } from "../types";
+import type { DnsRecord, RecordCreateValues, RecordPatchValues } from "../types";
 import { shortName } from "../shared/names";
 import { useDialogFocus } from "../shared/useDialogFocus";
 
@@ -382,17 +382,19 @@ export function RecordEditDialog({
 export function AddRecordDialog({
   zone,
   onClose,
-  onSubmit,
+  onSave,
 }: {
   zone: string;
   onClose: () => void;
-  onSubmit: (draft: ActionDraft) => Promise<boolean>;
+  onSave: (values: RecordCreateValues) => Promise<boolean>;
 }) {
   const [type, setType] = useState("A");
   const [name, setName] = useState("");
   const [content, setContent] = useState("");
   const [proxied, setProxied] = useState(true);
   const [ttl, setTtl] = useState("1");
+  const [comment, setComment] = useState("");
+  const [priority, setPriority] = useState("");
   const [errors, setErrors] = useState<FieldErrors>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -445,6 +447,13 @@ export function AddRecordDialog({
     if (errors.ttl) setErrors((current) => ({ ...current, ttl: undefined }));
   }
 
+  function updatePriority(value: string) {
+    setPriority(value);
+    if (errors.priority) {
+      setErrors((current) => ({ ...current, priority: undefined }));
+    }
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busyRef.current) return;
@@ -452,6 +461,7 @@ export function AddRecordDialog({
     const trimmedName = name.trim();
     const trimmedContent = content.trim();
     const ttlValue = Number(ttl);
+    const priorityValue = type === "MX" ? Number(priority) : null;
 
     if (!trimmedName) nextErrors.name = "请输入记录名称";
     else if (trimmedName.includes(":")) nextErrors.name = "名称不能包含冒号";
@@ -461,6 +471,15 @@ export function AddRecordDialog({
         nextErrors.ttl = "TTL 必须是大于 0 的整数";
       }
     }
+    if (
+      type === "MX" &&
+      (priority.trim() === "" ||
+        !Number.isFinite(priorityValue) ||
+        (priorityValue ?? 0) < 0 ||
+        (priorityValue ?? 0) > 65535)
+    ) {
+      nextErrors.priority = "优先级需在 0–65535";
+    }
 
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) {
@@ -468,7 +487,9 @@ export function AddRecordDialog({
         ? "add-record-name"
         : nextErrors.content
           ? "add-record-content"
-          : "add-record-ttl";
+          : nextErrors.ttl
+            ? "add-record-ttl"
+            : "add-record-priority";
       document.getElementById(firstId)?.focus();
       return;
     }
@@ -476,19 +497,21 @@ export function AddRecordDialog({
     setBusy(true);
     busyRef.current = true;
     setError("");
-    const ok = await onSubmit({
-      mode: "add",
-      addDomain: "",
-      addRecords: `${trimmedName}:${type}:${trimmedContent}`,
+    const ok = await onSave({
+      name: trimmedName,
+      type,
+      content: trimmedContent,
       proxied: proxiable ? proxied : false,
       ttl: proxiable && proxied ? 1 : ttlValue,
+      comment: comment.trim(),
+      priority: type === "MX" ? priorityValue : null,
     });
     setBusy(false);
     busyRef.current = false;
     if (ok) {
       onClose();
     } else {
-      setError("预览提交失败，请查看提示后重试");
+      setError("保存失败，请查看提示后重试");
     }
   }
 
@@ -505,7 +528,7 @@ export function AddRecordDialog({
         <header className="modal-head">
           <div className="modal-head-copy">
             <h2 id="add-record-title">新增记录</h2>
-            <p className="modal-subtitle">{zone} · 提交后先预览</p>
+            <p className="modal-subtitle">{zone || "未选择域名"} · 直接写入</p>
           </div>
           <button
             type="button"
@@ -603,36 +626,77 @@ export function AddRecordDialog({
               </span>
             </label>
 
-            <div className={`field ${errors.ttl ? "invalid" : ""}`}>
-              <label htmlFor="add-record-ttl">TTL</label>
+            <div className="form-grid">
+              <div className={`field ${errors.ttl ? "invalid" : ""}`}>
+                <label htmlFor="add-record-ttl">TTL</label>
+                <input
+                  id="add-record-ttl"
+                  type="number"
+                  min={1}
+                  value={proxiable && proxied ? "1" : ttl}
+                  disabled={proxiable && proxied}
+                  onChange={(event) => updateTtl(event.target.value)}
+                  aria-invalid={Boolean(errors.ttl)}
+                  aria-describedby={describedBy(
+                    "add-record-ttl-hint",
+                    "add-record-ttl-error",
+                    Boolean(errors.ttl),
+                  )}
+                />
+                <span className="field-hint" id="add-record-ttl-hint">
+                  {proxiable && proxied
+                    ? "代理开启时固定自动"
+                    : "1 = 自动；其余为秒"}
+                </span>
+                <FieldError id="add-record-ttl-error" message={errors.ttl} />
+              </div>
+              {type === "MX" && (
+                <div className={`field ${errors.priority ? "invalid" : ""}`}>
+                  <label htmlFor="add-record-priority">优先级</label>
+                  <input
+                    id="add-record-priority"
+                    type="number"
+                    min={0}
+                    max={65535}
+                    value={priority}
+                    onChange={(event) => updatePriority(event.target.value)}
+                    aria-invalid={Boolean(errors.priority)}
+                    aria-describedby={describedBy(
+                      "add-record-priority-hint",
+                      "add-record-priority-error",
+                      Boolean(errors.priority),
+                    )}
+                  />
+                  <span
+                    className="field-hint"
+                    id="add-record-priority-hint"
+                  >
+                    0–65535
+                  </span>
+                  <FieldError
+                    id="add-record-priority-error"
+                    message={errors.priority}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="field">
+              <label htmlFor="add-record-comment">备注</label>
               <input
-                id="add-record-ttl"
-                type="number"
-                min={1}
-                value={proxiable && proxied ? "1" : ttl}
-                disabled={proxiable && proxied}
-                onChange={(event) => updateTtl(event.target.value)}
-                aria-invalid={Boolean(errors.ttl)}
-                aria-describedby={describedBy(
-                  "add-record-ttl-hint",
-                  "add-record-ttl-error",
-                  Boolean(errors.ttl),
-                )}
+                id="add-record-comment"
+                value={comment}
+                maxLength={100}
+                onChange={(event) => setComment(event.target.value)}
               />
-              <span className="field-hint" id="add-record-ttl-hint">
-                {proxiable && proxied
-                  ? "代理开启时固定自动"
-                  : "1 = 自动；其余为秒"}
-              </span>
-              <FieldError id="add-record-ttl-error" message={errors.ttl} />
+              <span className="field-hint">{comment.length}/100</span>
             </div>
 
             <div className="inline-warning">
               <AlertTriangle size={16} aria-hidden="true" />
               <span>
-                提交后先生成预览任务，确认没有失败项再执行；不会直接写入
-                Cloudflare。需要一次添加多条或新建域名时，用右侧批量抽屉的
-                “添加域名或记录”。
+                保存会直接写入 Cloudflare，不再生成预览任务。需要先预览或一次加多条时，用右侧批量抽屉的“添加域名或记录”（等同命令行
+                dry-run）。
               </span>
             </div>
             {error && (
@@ -653,7 +717,7 @@ export function AddRecordDialog({
               取消
             </button>
             <button type="submit" className="button primary" disabled={busy}>
-              {busy ? "提交中…" : "提交预览"}
+              {busy ? "保存中…" : "保存记录"}
             </button>
           </footer>
         </form>

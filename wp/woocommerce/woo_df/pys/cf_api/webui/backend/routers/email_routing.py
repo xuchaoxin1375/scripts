@@ -11,6 +11,7 @@ from .. import deps, engine_adapter
 from ..auth import require_auth
 from ..schemas import EmailRoutingAddressBody, EmailRoutingCompleteBody
 from ..services import email_routing
+from ..services import records as records_service
 from ..services.accounts import lookup_accounts
 from ..services.zones import resolve_zone
 
@@ -83,6 +84,7 @@ def complete(payload: EmailRoutingCompleteBody) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except engine_adapter.EngineError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    records_service.invalidate(matched[0], zone_id)
     result["account"] = payload.account
     result["zone"] = zone_name
     return result

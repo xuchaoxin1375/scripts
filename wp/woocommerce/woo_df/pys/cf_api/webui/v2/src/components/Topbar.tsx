@@ -13,8 +13,11 @@ type Props = {
   onToggleTheme: () => void;
   onMenu: () => void;
   onTasks: () => void;
+  onProxy: () => void;
   runningJobs: number;
   proxyCount?: number;
+  proxyTotal?: number;
+  proxyEnabled?: boolean;
   resource: ReactNode;
 };
 
@@ -23,10 +26,29 @@ export default function Topbar({
   onToggleTheme,
   onMenu,
   onTasks,
+  onProxy,
   runningJobs,
   proxyCount,
+  proxyTotal,
+  proxyEnabled,
   resource,
 }: Props) {
+  const savedProxies = proxyTotal ?? 0;
+  const activeProxies = proxyCount ?? 0;
+  const proxyLabel =
+    proxyEnabled === false && savedProxies > 0
+      ? `关(${savedProxies})`
+      : savedProxies > 0
+        ? `${activeProxies}/${savedProxies}`
+        : `${activeProxies}`;
+  const proxyTitle =
+    proxyEnabled === false && savedProxies > 0
+      ? `出口代理已关闭，已保存 ${savedProxies} 个（仅本次运行）`
+      : "配置出口代理（仅本次运行）";
+  const proxyAria =
+    proxyEnabled === false && savedProxies > 0
+      ? `出口代理已关闭，已保存 ${savedProxies} 个`
+      : `出口代理当前 ${activeProxies} 个启用`;
   return (
     <header className="topbar">
       <button
@@ -59,10 +81,18 @@ export default function Topbar({
         <span className="dot" aria-hidden="true" />
         本机
       </span>
-      <span className="badge subtle proxy-badge">
+      <button
+        type="button"
+        className="badge subtle proxy-badge proxy-trigger"
+        onClick={onProxy}
+        data-proxy-trigger="topbar"
+        data-active={Boolean(proxyEnabled && activeProxies > 0)}
+        aria-label={`配置${proxyAria}`}
+        title={proxyTitle}
+      >
         <ShieldCheck size={14} aria-hidden="true" />
-        代理 {proxyCount ?? 0}
-      </span>
+        代理 {proxyLabel}
+      </button>
       <button
         type="button"
         className="icon-button"

@@ -6,15 +6,15 @@ import {
   FileJson,
   Gauge,
   History,
-  Loader2,
   RefreshCw,
-  Search,
   Upload,
   Wand2,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
+import { Navigate, useParams } from "react-router-dom";
+import { ADVANCED_SECTIONS } from "../shared/advancedSections";
 import type {
   Account,
   Attachments,
@@ -30,7 +30,6 @@ import {
   useAudit,
   useEmailRoutingAddresses,
   useExecuteJob,
-  useFindDomain,
   useHistory,
   useImportRecords,
   useJob,
@@ -42,6 +41,7 @@ import {
 } from "../api/hooks";
 import EmailRoutingNotes from "../components/EmailRoutingNotes";
 import EmailRoutingPanel from "../components/EmailRoutingPanel";
+import FindPanel from "../components/FindPanel";
 
 type Props = {
   accounts: Account[];
@@ -58,6 +58,13 @@ type Props = {
   onRuntimeChange: (settings: RuntimeSettings) => void;
   onNotify: (message: string) => void;
 };
+
+const SCOPED_SECTIONS = new Set([
+  "provision",
+  "email-routing",
+  "transfer",
+  "attachments",
+]);
 
 function linesOf(text: string): string[] {
   return text
@@ -89,197 +96,93 @@ export default function Advanced({
   onRuntimeChange,
   onNotify,
 }: Props) {
-  return (
-    <div className="advanced-page">
-      <header className="page-head">
-        <span className="eyebrow">ADVANCED</span>
-        <h1>高级</h1>
-        <p>低频能力集中在这里：跨账号查找、配置向导、邮箱转发、导入导出、范围附件与历史审计。</p>
-      </header>
+  const { section } = useParams<{ section?: string }>();
+  const active = ADVANCED_SECTIONS.find((item) => item.key === section);
 
-      <div className="advanced-context">
-        <span>当前范围</span>
-        <strong>
-          {account || "未选择账号"} / {zone || "未选择域名"}
-        </strong>
-        <button
-          className="button ghost"
-          disabled={!account || !zone}
-          onClick={() => onOpenScope(account, zone)}
-        >
-          <ArrowLeft size={15} aria-hidden="true" />
-          回到工作台
-        </button>
-      </div>
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [section]);
 
-      <div className="advanced-grid">
-        <FindPanel onOpenScope={onOpenScope} onNotify={onNotify} />
-        <ProvisionPanel
-          accounts={accounts}
-          defaultAccount={account}
-          defaultZone={zone}
-          runtime={runtime}
-          onOpenJob={onOpenJob}
-          onNotify={onNotify}
-        />
-        <EmailRoutingPanel
-          accounts={accounts}
-          defaultAccount={account}
-          defaultZone={zone}
-          onNotify={onNotify}
-        />
-        <TransferPanel
-          account={account}
-          zone={zone}
-          runtime={runtime}
-          onOpenJob={onOpenJob}
-          onNotify={onNotify}
-        />
-        <AttachmentPanel
-          account={account}
-          zone={zone}
-          attachments={attachments}
-          onAttachmentChange={onAttachmentChange}
-          onNotify={onNotify}
-        />
-        <HistoryPanel onNotify={onNotify} />
-        <RuntimePanel runtime={runtime} onRuntimeChange={onRuntimeChange} />
-      </div>
-    </div>
-  );
-}
-
-function FindPanel({
-  onOpenScope,
-  onNotify,
-}: {
-  onOpenScope: (account: string, zone: string) => void;
-  onNotify: (message: string) => void;
-}) {
-  const [domain, setDomain] = useState("");
-  const [error, setError] = useState("");
-  const find = useFindDomain();
-  const results = find.data?.results ?? [];
-  const success = results.filter((item) => !item.error);
-  const failed = results.filter((item) => item.error);
-
-  async function submit() {
-    const target = domain.trim();
-    if (!target) {
-      setError("请输入域名，例如 example.com");
-      return;
-    }
-    setError("");
-    try {
-      const data = await find.mutateAsync(target);
-      if (data.found === 0) {
-        onNotify(`未在任何账号中找到 ${data.domain}`);
-      } else {
-        onNotify(`找到 ${data.found} 个账号包含 ${data.domain}`);
-      }
-    } catch (err) {
-      setError(errorText(err));
-    }
+  if (!active) {
+    return <Navigate to={`/advanced/${ADVANCED_SECTIONS[0].key}`} replace />;
   }
 
   return (
-    <section className="panel wide">
-      <div className="panel-head">
-        <Search size={17} />
-        <div>
-          <h2>跨账号查找域名</h2>
-          <p>逐个账号检查 zone 是否存在；账号较多时会较慢，结果按账号列出。</p>
+    <div className="advanced-page">
+      <header className="page-head">
+        <span className="eyebrow">高级工具 / ADVANCED</span>
+        <h1>{active.label}</h1>
+        <p>{active.description}</p>
+      </header>
+
+      {SCOPED_SECTIONS.has(active.key) && (
+        <div className="advanced-context">
+          <span>当前范围</span>
+          <strong>
+            {account || "未选择账号"} / {zone || "未选择域名"}
+          </strong>
+          <button
+            className="button ghost"
+            disabled={!account || !zone}
+            onClick={() => onOpenScope(account, zone)}
+          >
+            <ArrowLeft size={15} aria-hidden="true" />
+            回到工作台
+          </button>
         </div>
-      </div>
-      <div className="inline-form">
-        <input
-          value={domain}
-          onChange={(event) => setDomain(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") void submit();
-          }}
-          placeholder="example.com"
-          aria-label="要查找的域名"
-        />
-        <button
-          className="button primary"
-          onClick={() => void submit()}
-          disabled={find.isPending}
-        >
-          {find.isPending ? (
-            <>
-              <Loader2 size={15} className="spin" /> 查找中
-            </>
-          ) : (
-            <>
-              <Search size={15} /> 查找
-            </>
-          )}
-        </button>
-      </div>
-      {error && <div className="error-inline">{error}</div>}
-      {find.data && (
-        <>
-          <p className="form-hint result-summary">
-            {find.data.domain} · 命中 {find.data.found} 个账号
-            {failed.length ? ` · ${failed.length} 个账号读取失败` : ""}
-          </p>
-          {success.length > 0 && (
-            <div
-              className="data-table-wrap"
-              role="region"
-              aria-label="跨账号查找结果"
-              tabIndex={0}
-            >
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>账号</th>
-                    <th>域名</th>
-                    <th>状态</th>
-                    <th>记录数</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {success.map((item) => (
-                    <tr key={`${item.account}-${item.zone}`}>
-                      <td>{item.account}</td>
-                      <td>{item.zone || find.data?.domain}</td>
-                      <td>
-                        <span className={`status-pill ${item.status === "active" ? "done" : "running"}`}>
-                          {item.status || "—"}
-                        </span>
-                      </td>
-                      <td>{item.record_count ?? "—"}</td>
-                      <td>
-                        <button
-                          className="button ghost"
-                          onClick={() =>
-                            onOpenScope(item.account, item.zone || find.data!.domain)
-                          }
-                        >
-                          打开
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          {failed.length > 0 && (
-            <div className="error-inline">
-              {failed.map((item) => (
-                <div key={item.account}>
-                  {item.account}：{item.error}
-                </div>
-              ))}
-            </div>
-          )}
-        </>
       )}
-    </section>
+
+      <div className="advanced-section">
+        {active.key === "find" && (
+          <FindPanel
+            accounts={accounts}
+            runtime={runtime}
+            onOpenScope={onOpenScope}
+            onNotify={onNotify}
+          />
+        )}
+        {active.key === "provision" && (
+          <ProvisionPanel
+            accounts={accounts}
+            defaultAccount={account}
+            defaultZone={zone}
+            runtime={runtime}
+            onOpenJob={onOpenJob}
+            onNotify={onNotify}
+          />
+        )}
+        {active.key === "email-routing" && (
+          <EmailRoutingPanel
+            accounts={accounts}
+            defaultAccount={account}
+            defaultZone={zone}
+            onNotify={onNotify}
+          />
+        )}
+        {active.key === "transfer" && (
+          <TransferPanel
+            account={account}
+            zone={zone}
+            runtime={runtime}
+            onOpenJob={onOpenJob}
+            onNotify={onNotify}
+          />
+        )}
+        {active.key === "attachments" && (
+          <AttachmentPanel
+            account={account}
+            zone={zone}
+            attachments={attachments}
+            onAttachmentChange={onAttachmentChange}
+            onNotify={onNotify}
+          />
+        )}
+        {active.key === "history" && <HistoryPanel onNotify={onNotify} />}
+        {active.key === "runtime" && (
+          <RuntimePanel runtime={runtime} onRuntimeChange={onRuntimeChange} />
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -1180,7 +1083,7 @@ function RuntimePanel({
         <Gauge size={17} />
         <div>
           <h2>运行参数</h2>
-          <p>保存在本机浏览器，作为工作台预览与执行的默认值。</p>
+          <p>保存在本机浏览器；速度档位与重试次数也用于跨账号扫描。</p>
         </div>
       </div>
       <div className="form-grid">

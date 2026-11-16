@@ -7,6 +7,7 @@ import type {
   DnsRecord,
   InspectorTab,
   Job,
+  RecordCreateValues,
   RecordFilters,
   RecordPatchValues,
 } from "../types";
@@ -30,6 +31,7 @@ type Props = {
   total: number;
   page: number;
   perPage: number;
+  recordsMode: "local" | "server";
   loading: boolean;
   fetching: boolean;
   recordsError: string | null;
@@ -70,6 +72,7 @@ type Props = {
     recordId: string,
     patch: RecordPatchValues,
   ) => Promise<boolean>;
+  onCreateRecord: (values: RecordCreateValues) => Promise<boolean>;
   onExportRecords: () => void;
   onClearAttachment: (kind: "whitelist" | "resume") => void;
   onNotify: (message: string) => void;
@@ -84,6 +87,7 @@ export default function Workspace(props: Props) {
     total,
     page,
     perPage,
+    recordsMode,
     loading,
     fetching,
     recordsError,
@@ -121,6 +125,7 @@ export default function Workspace(props: Props) {
     onBulkDelete,
     onBulkContent,
     onSaveRecord,
+    onCreateRecord,
     onExportRecords,
     onClearAttachment,
     onNotify,
@@ -195,12 +200,10 @@ export default function Workspace(props: Props) {
   }
 
   function openAddDialog() {
+    // 新增在弹窗里直接写 Cloudflare；需要先预览时走右侧批量抽屉的添加动作。
     setAddOpen(true);
     setEditingRecord(null);
-    setPreviewOpen(false);
-    setPreviewJobId(null);
     setActionMode(null);
-    onTab("action");
   }
 
   function openBulkContentDialog() {
@@ -273,6 +276,7 @@ export default function Workspace(props: Props) {
             recordCount={total}
             selectedCount={selectedIds.size}
             refreshing={refreshing}
+            mode={recordsMode}
             attachments={attachments}
             onRefresh={onRefresh}
             onAdd={openAddDialog}
@@ -437,7 +441,7 @@ export default function Workspace(props: Props) {
         <AddRecordDialog
           zone={zone}
           onClose={() => setAddOpen(false)}
-          onSubmit={handlePreview}
+          onSave={onCreateRecord}
         />
       )}
 
