@@ -577,6 +577,40 @@ def main() -> None:
             rail_icon_y = page.locator(".sidebar .nav-link .nav-icon").first.evaluate(
                 "el => el.getBoundingClientRect().y"
             )
+            rail_top = page.locator(".sidebar").bounding_box()["y"]
+            first_link_top = page.locator(".sidebar .nav-link").first.bounding_box()["y"]
+            if first_link_top - rail_top > 22:
+                raise AssertionError(
+                    f"Rail 首项顶部空白过大: {first_link_top - rail_top}px"
+                )
+            rail_groups = page.evaluate(
+                """() => {
+                  const groups = Array.from(document.querySelectorAll('.sidebar .nav-group'));
+                  if (groups.length < 2) return null;
+                  const leftLinks = groups[0].querySelectorAll('.nav-link');
+                  const rightLink = groups[1].querySelector('.nav-link');
+                  if (!leftLinks.length || !rightLink) return null;
+                  const a = leftLinks[leftLinks.length - 1].getBoundingClientRect();
+                  const b = rightLink.getBoundingClientRect();
+                  const line = getComputedStyle(groups[1], '::before');
+                  return {
+                    gap: Math.round(b.top - a.bottom),
+                    lineHeight: line.height,
+                    lineColor: line.backgroundColor,
+                    lineContent: line.content,
+                  };
+                }"""
+            )
+            if not rail_groups:
+                raise AssertionError("Rail 分组结构缺失")
+            if rail_groups["gap"] > 22:
+                raise AssertionError(f"Rail 组间空白过大: {rail_groups['gap']}px")
+            if (
+                rail_groups["lineContent"] == "none"
+                or rail_groups["lineHeight"] != "1px"
+                or rail_groups["lineColor"] == "rgba(0, 0, 0, 0)"
+            ):
+                raise AssertionError(f"Rail 组间缺少可见分隔线: {rail_groups}")
 
             page.mouse.move(900, 700)
             page.wait_for_timeout(80)
@@ -601,6 +635,8 @@ def main() -> None:
             page.screenshot(path=os.path.join(shots, "sidebar_peek_1440.png"))
             page.get_by_role("link", name="高级工具", exact=True).click()
             page.wait_for_selector("text=历史与审计", timeout=10_000)
+            if page.locator(".sidebar").get_attribute("data-state") != "peek":
+                raise AssertionError("点击导航后不应立即收起，应在鼠标离开后再收起")
             page.get_by_role("link", name="DNS 记录", exact=True).click()
             page.wait_for_selector(".records-table tbody tr", timeout=10_000)
             page.locator("#main").focus()
@@ -614,6 +650,14 @@ def main() -> None:
             page.wait_for_timeout(320)
             if page.locator(".app.rail").count() != 0:
                 raise AssertionError("页脚保持展开失败")
+            page.get_by_role("link", name="高级工具", exact=True).click()
+            page.wait_for_selector("text=历史与审计", timeout=10_000)
+            if page.locator(".sidebar").get_attribute("data-state") != "pinned":
+                raise AssertionError("固定展开时点击导航不应收起侧栏")
+            page.get_by_role("link", name="DNS 记录", exact=True).click()
+            page.wait_for_selector(".records-table tbody tr", timeout=10_000)
+            if page.locator(".sidebar").get_attribute("data-state") != "pinned":
+                raise AssertionError("固定展开时点击导航不应收起侧栏")
 
             page.keyboard.press("[")
             page.wait_for_timeout(320)

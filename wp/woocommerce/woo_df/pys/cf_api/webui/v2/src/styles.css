@@ -561,15 +561,18 @@ a {
 }
 
 .nav-group {
-  margin-bottom: 16px;
+  margin-bottom: 0;
 }
 
 .nav-group-title {
-  padding: 0 10px 6px;
+  position: relative;
+  height: 18px;
+  padding: 0 10px 4px;
   overflow: hidden;
   color: var(--muted-2);
   font-size: 10px;
   font-weight: 700;
+  line-height: 12px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   white-space: nowrap;
@@ -714,6 +717,21 @@ a {
 @media (min-width: 1025px) {
   .app.rail .sidebar-inner {
     min-width: 0;
+  }
+
+  .app.rail .nav-group {
+    position: relative;
+  }
+
+  /* 折叠态用分隔线代替被隐藏的分组标题留白；标题槽高度不变，peek 时不推动图标。 */
+  .app.rail .sidebar:not(.peek) .nav-group + .nav-group::before {
+    content: "";
+    position: absolute;
+    top: 8px;
+    left: 6px;
+    right: 6px;
+    height: 1px;
+    background: var(--line);
   }
 
   .app.rail .nav-group-title {

@@ -7,7 +7,11 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { FocusEvent, PointerEvent as ReactPointerEvent } from "react";
+import type {
+  FocusEvent,
+  MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
+} from "react";
 import { NavLink } from "react-router-dom";
 
 type Props = {
@@ -248,12 +252,16 @@ export default function Sidebar({
     }, HOVER_ENTER_DELAY);
   }
 
-  function handleNavigate() {
+  const releaseFocusPeekAfterAction = useCallback((pointer: boolean) => {
+    if (pinned || !pointer) return;
+    // 鼠标点击后只释放焦点维持的展开；hover peek 保留到指针离开。
+    suppressFocus.current = true;
+    setFocusPeek(false);
+  }, [pinned]);
+
+  function handleNavigate(event: ReactMouseEvent<HTMLAnchorElement>) {
     closeCallback.current();
-    if (!canHover()) {
-      setHoverPeek(false);
-      setFocusPeek(false);
-    }
+    releaseFocusPeekAfterAction(event.detail > 0);
   }
 
   useEffect(() => {
@@ -312,12 +320,9 @@ export default function Sidebar({
     };
   }, [mobileOpen]);
 
-  function handleTasks() {
+  function handleTasks(event: ReactMouseEvent<HTMLButtonElement>) {
     closeCallback.current();
-    if (!canHover()) {
-      setHoverPeek(false);
-      setFocusPeek(false);
-    }
+    releaseFocusPeekAfterAction(event.detail > 0);
     onTasks();
   }
 
@@ -356,7 +361,6 @@ export default function Sidebar({
         <div className="sidebar-inner">
           <nav aria-label="主要导航">
             <div className="nav-group">
-              <div className="nav-group-title">工作区</div>
               <NavLink
                 to="/"
                 end
