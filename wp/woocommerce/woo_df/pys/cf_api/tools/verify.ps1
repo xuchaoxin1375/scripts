@@ -47,9 +47,8 @@ if (Get-Command pyright -ErrorAction SilentlyContinue) {
   Run-Step 'backend-pyright' 'pyright cloudflare_dns_tool.py'
 } else { Add-Step 'backend-pyright' 'SKIP' '未安装 pyright' }
 
-# 6 前端构建（v2 默认 + v1 回退）
+# 6 前端构建
 Run-Step 'frontend-build-v2' 'npm --prefix webui/v2 run build'
-Run-Step 'frontend-build-v1' 'npm --prefix webui/v1 run build'
 
 # 7 API 冒烟（含 dry_run 任务与日志断言）
 try {
@@ -58,16 +57,12 @@ try {
   else { Add-Step 'api-smoke' 'FAIL' ("exit=" + $LASTEXITCODE) }
 } catch { Add-Step 'api-smoke' 'FAIL' $_.Exception.Message }
 
-# 8 视觉验收（静态断言 + 真浏览器模拟；L0/L1 可 -SkipVisual 加速）
+# 8 视觉验收（真浏览器模拟；L0/L1 可 -SkipVisual 加速）
 if ($SkipVisual) { Add-Step 'visual-accept' 'SKIP' '用户显式 -SkipVisual' }
 else {
   try {
-    python (Join-Path $root 'webui/v1/tests/accept.py') | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw 'v1 static accept failed' }
-    python (Join-Path $root 'webui/v1/tests/browser_accept.py') | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw 'v1 browser accept failed' }
     python (Join-Path $root 'webui/v2/tests/browser_accept.py') | Out-Null
-    if ($LASTEXITCODE -eq 0) { Add-Step 'visual-accept' 'PASS' 'V1+V2 VISUAL+BROWSER PASS' }
+    if ($LASTEXITCODE -eq 0) { Add-Step 'visual-accept' 'PASS' 'V2 VISUAL+BROWSER PASS' }
     else { Add-Step 'visual-accept' 'FAIL' ("exit=" + $LASTEXITCODE) }
   } catch { Add-Step 'visual-accept' 'FAIL' $_.Exception.Message }
 }
@@ -75,9 +70,8 @@ else {
 # 9 空白错误（仅任务区跟踪文件；CRLF 按仓库治理用 cr-at-eol 豁免，
 # 判定时对照 git diff 与 --ignore-cr-at-eol；仓内其他脏文件与本任务无关，不挡门禁）
 Run-Step 'whitespace-tracked' 'git -c core.whitespace=cr-at-eol diff --check -- cloudflare_dns_tool.py start_web_ui.py tests/ tools/ examples/ legacy/'
-$newFiles = @('webui/v1/src/index.html', 'webui/v1/dist/index.html',
-  'webui/v1/scripts/build.mjs', 'webui/v1/package.json', 'webui/v1/DESIGN.md', 'webui/TASKS.md',
-  'webui/v1/tests/accept.py', 'webui/v1/tests/browser_accept.py', 'webui/v2/README.md',
+$newFiles = @('webui/TASKS.md',
+  'webui/v2/README.md',
   'webui/v2/tests/browser_accept.py', 'tools/verify.ps1', 'webui/README.md', 'webui/USAGE.md',
   'webui/backend/app.py', 'webui/backend/deps.py', 'webui/backend/jobs.py', 'webui/backend/validate.py',
   'webui/backend/engine_adapter.py', 'webui/backend/db.py', 'webui/backend/routers/find.py',

@@ -10,7 +10,5 @@ node_modules/
 *.tsbuildinfo
 
 # WebUI 页面图标是源码资产；根 .gitignore 默认忽略图片，这里显式放行
-!webui/v1/src/favicon.svg
-!webui/v1/src/favicon.ico
 !webui/v2/public/favicon.svg
 !webui/v2/public/favicon.ico

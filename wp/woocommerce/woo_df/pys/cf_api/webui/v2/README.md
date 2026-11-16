@@ -1,12 +1,11 @@
 # WebUI v2（单工作台）
 
-Vite + React + TypeScript，默认入口。旧四页前端保留在 `webui/v1/`，可用
-`--v1` 或 `serve-webui.ps1 -V1` 切回。
+Vite + React + TypeScript，唯一前端。旧 v1 四页前端已移除。
 
 ## 启动
 
 ```bash
-# 生产构建后用 FastAPI 托管（默认入口，推荐单独端口）
+# 生产构建后用 FastAPI 托管（推荐单独端口）
 npm run build
 python start_web_ui.py --port 8601 --config <cf_config.csv|json>
 
@@ -21,7 +20,6 @@ VITE_USE_MOCK=true npm run dev
 ```
 
 Windows PowerShell 设置 mock：`$env:VITE_USE_MOCK='true'; npm run dev`。
-切回旧前端：`.\serve-webui.ps1 -Port 8601 -Restart -V1`。
 
 ## 加载策略
 

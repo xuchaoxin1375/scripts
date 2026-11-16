@@ -3,13 +3,12 @@
 ## 1 打开
 
 ```powershell
-.\serve-webui.ps1              # 后台启动 8600，默认 v2 单工作台
-.\serve-webui.ps1 -V1          # 需要旧四页前端时启动 v1
+.\serve-webui.ps1              # 后台启动 8600
 ```
 
 浏览器访问 `http://127.0.0.1:8600`。排障看 `.\serve-webui.ps1 -Logs`；前台调试才用 `python start_web_ui.py --port 8600`。
 
-## 2 建议顺序（v2）
+## 2 建议顺序
 
 1. 顶栏切换账号与域名；左侧全局导航默认展开，页脚按钮可收起为 Rail。
 2. 记录表按总量分档加载：小 zone 首次加载后本地排序/筛选；大 zone 保持服务端分页。单条编辑点行末“编辑”在弹窗保存。
@@ -55,13 +54,12 @@ flowchart TD
 
 ## 5 导航与窄屏
 
-- 旧前端 v1 的左侧账号/域名搜索框用于本地过滤，不触发额外请求。
-- 390/768/1024/1440 宽度可用；v2 在 1023 以下记录表转卡片，页面无横向滚动。
+- 390/768/1024/1440 宽度可用；记录表在 1023 以下转卡片，页面无横向滚动。
 - 移动端左侧导航通过顶栏菜单按钮展开，选择后自动收起。
 
-## 6 新前端 v2（单工作台）
+## 6 单工作台前端
 
-`webui/v2/` 是默认单工作台前端，不再分概览/浏览/操作/任务四页：
+`webui/v2/` 是唯一前端，不再分概览/浏览/操作/任务四页：
 
 - 顶栏切换账号/域名；左侧全局导航默认展开，页脚按钮收起为 Rail；Rail 悬停或键盘进入会临时展开，主内容槽宽不变，`[` 可切换收起/展开；窄屏抽屉。
 - 单条记录“新增”与“编辑”都在弹窗内直接写入（`POST` / `PATCH /api/v1/records`），不再经预览任务；新增弹窗支持类型、名称、内容、代理、TTL、备注与 MX 优先级。
@@ -107,7 +105,7 @@ flowchart TD
 - API Token 需要 Email Routing Addresses / Rules / Settings 权限；权限不足会报 403。
 - 限制：目标地址 200 个/账号、规则 200 条/域名、单封 25 MiB。
 
-启动（与旧版对比，建议单独端口）：
+前台启动（调试用，建议单独端口）：
 
 ```powershell
 cd webui/v2
@@ -117,9 +115,8 @@ cd ../..
 python start_web_ui.py --port 8601 --config <cf_config.csv|json>
 ```
 
-也可用 `.\serve-webui.ps1 -Port 8601 -Config <cf_config.csv|json>` 由后台服务管理；
-`-Restart -V1` 切回旧前端，不传前端参数时 `-Restart` 保持现状。
+也可用 `.\serve-webui.ps1 -Port 8601 -Config <cf_config.csv|json>` 由后台服务管理。
 改了后端代码（`webui/backend/`、`start_web_ui.py`、`cloudflare_dns_tool.py`）后必须 `-Restart`；
 `-Status` 发现进程早于代码更新时会提示，否则浏览器可能加载新界面却调用到旧接口。
 
-浏览器打开 `http://127.0.0.1:8601`。旧版用 `-V1` 启动；v2 已是默认入口。
+浏览器打开 `http://127.0.0.1:8601`。

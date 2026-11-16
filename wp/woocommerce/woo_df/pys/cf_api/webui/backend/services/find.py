@@ -486,7 +486,7 @@ def find_sync(
 ) -> dict[str, Any]:
     """旧 `/api/v1/find` 的同步实现，返回兼容字段 + 覆盖统计。
 
-    旧接口保持原来的“扫描全部账号”语义，避免 v1 只拿到第一个命中。
+    旧接口保持原来的“扫描全部账号”语义，避免调用方只拿到第一个命中。
     """
     names = [a.get("name") or a.get("email") or "unknown" for a in accounts]
     scan = FindScan(

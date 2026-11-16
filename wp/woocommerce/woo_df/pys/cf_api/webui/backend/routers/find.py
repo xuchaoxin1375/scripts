@@ -2,7 +2,7 @@
 """跨账号查找域名（对应 CLI -f）。
 
 v2 使用可轮询的后台扫描（进度/部分结果/取消）；旧 `/api/v1/find`
-保留同步响应，供 v1 前端与外部调用兼容。
+保留同步响应，供外部调用兼容。
 """
 
 from __future__ import annotations
@@ -102,7 +102,7 @@ def continue_find_scan(scan_id: str) -> dict[str, Any]:
 
 @router.get("/api/v1/find")
 def find_domain(domain: str) -> dict[str, Any]:
-    """旧同步接口：保持 v1 兼容，返回命中与覆盖统计。"""
+    """旧同步接口：兼容保留，返回命中与覆盖统计。"""
     try:
         target = find_service.normalize_domain(domain)
     except engine_adapter.EngineError as exc:

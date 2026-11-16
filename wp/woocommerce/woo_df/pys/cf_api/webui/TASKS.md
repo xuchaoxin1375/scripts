@@ -1,5 +1,7 @@
 # 工程开发清单（需求对照/架构/功能/测试/效率预算）
 
+> 历史记录：本文对应已移除的 v1 四页前端；v2 现状见 [v2/README.md](v2/README.md)、[DECISIONS.md](DECISIONS.md)。
+
 - [x] 需求：仅自己本机用，浏览器本地 WebUI，全量 CLI 能力
 - [x] 架构：FastAPI + 单文件原生前端，引擎零侵入，/api/v1 主接口 + /api 兼容
 - [x] 功能：浏览/批量更新/删通配符/删IP/删域/添加/设属性/导出/provision/失败清单重跑

@@ -45,10 +45,6 @@
   多代理调度（round-robin/sticky/failover）。空串表示沿用当前值。
 .PARAMETER Logs
   看服务日志（webui.log 末尾，默认 50 行；-Lines 改行数）。服务是 Hidden 启动，排障看这里。
-.PARAMETER V2
-  使用 webui/v2/dist（Vite + React 单工作台，默认）。
-.PARAMETER V1
-  使用 webui/v1/dist（旧四页前端）。与 -V2 互斥；-Restart 不传则保持现状。
 .PARAMETER Lines
   配合 -Logs，指定看最后几行。
 .EXAMPLE
@@ -77,13 +73,7 @@
   重启本机所有 WebUI 服务（逐个按当前模式保持，约 1s/个）。
 .EXAMPLE
   .\serve-webui.ps1 -Port 8601
-  在 8601 启动 v2 单工作台（默认）。
-.EXAMPLE
-  .\serve-webui.ps1 -Port 8601 -V1
-  在 8601 启动旧四页前端。
-.EXAMPLE
-  .\serve-webui.ps1 -Restart -V2
-  重启当前端口并切到 v2；-Restart -V1 切回旧前端。
+  在 8601 启动 v2 单工作台。
 .EXAMPLE
   .\serve-webui.ps1 -Logs -Lines 100
   看服务日志末尾 100 行（排障用）。
@@ -99,7 +89,7 @@
 #>
 
 #Requires -Version 5.1
-param([switch]$Status, [switch]$Restart, [switch]$RestartAll, [switch]$Stop, [switch]$Ports, [switch]$Lan, [switch]$NoLan, [switch]$Logs, [switch]$V1, [switch]$V2, [int]$Lines = 50, [int]$Port = 8600, [string]$Config = '', [string]$Bind = '', [string]$Password = '', [string[]]$Proxy = @(), [string]$ProxyFile = '', [string]$ProxyMode = '')
+param([switch]$Status, [switch]$Restart, [switch]$RestartAll, [switch]$Stop, [switch]$Ports, [switch]$Lan, [switch]$NoLan, [switch]$Logs, [int]$Lines = 50, [int]$Port = 8600, [string]$Config = '', [string]$Bind = '', [string]$Password = '', [string[]]$Proxy = @(), [string]$ProxyFile = '', [string]$ProxyMode = '')
 
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $scriptBound = $PSBoundParameters
@@ -209,7 +199,6 @@ function Get-ServerDetail([int]$Port) {
     Proxy = $px
     ProxyFile = $pf
     ProxyMode = $pm
-    Frontend = if ($cmd -match '--v1|--frontend-v1') { 'v1' } else { 'v2' }
     StartedAt = $procs[0].CreationDate
     CommandLine = $cmd
   }
@@ -270,13 +259,12 @@ function Resolve-Password([string]$Explicit, [string]$OldFromCmd) {
   return ''
 }
 
-function Show-Endpoints([int]$Port, [string]$HostName, [string]$Cfg, [string]$Token = '', [string]$Frontend = 'v2') {
+function Show-Endpoints([int]$Port, [string]$HostName, [string]$Cfg, [string]$Token = '') {
   $m = Get-Meta $Port $Token
   $bind = if ($HostName -eq '0.0.0.0') { '0.0.0.0（局域网可达，需口令）' } else { '127.0.0.1（仅本机）' }
   Write-Host "本机：http://localhost:$Port/  http://127.0.0.1:$Port/"
   Write-Host "绑定：$bind"
   Write-Host "配置：$Cfg"
-  Write-Host "前端：$(if ($Frontend -eq 'v2') { 'v2（单工作台）' } else { 'v1（旧四页）' })"
   if ($m) {
     $auth = if ($m.requires_auth) { '需口令（X-Auth-Token）' } else { '未设口令（仅本机可访问）' }
     Write-Host "服务：WebUI 版本 $($m.version)  $auth"
@@ -303,18 +291,16 @@ function Show-Endpoints([int]$Port, [string]$HostName, [string]$Cfg, [string]$To
   Write-Host "停止：.\serve-webui.ps1 -Stop -Port $Port"
 }
 
-function Start-WebUI([int]$Port, [string]$HostName, [string]$Cfg, [string]$Token, [string[]]$Proxies, [string]$ProxyFileArg, [string]$ProxyModeArg, [bool]$V2Arg = $true) {
+function Start-WebUI([int]$Port, [string]$HostName, [string]$Cfg, [string]$Token, [string[]]$Proxies, [string]$ProxyFileArg, [string]$ProxyModeArg) {
   $t0 = Get-Date
   if ($Port -lt 1 -or $Port -gt 65535) { echo "端口无效：$Port"; exit 2 }
   if (-not $HostName) { $HostName = '127.0.0.1' }
   if (-not $Cfg) { $Cfg = Get-DefaultConfig }
   if (-not (Test-Path $Cfg)) { echo "配置文件不存在: $Cfg（-Config 指定正确路径，或设 CF_CONFIG_PATH）"; exit 2 }
   if (-not (Test-Path $START_PY)) { echo "启动入口缺失: $START_PY"; exit 2 }
-  $frontend_dir = if ($V2Arg) { 'v2' } else { 'v1' }
-  $dist = Join-Path $here "webui/$frontend_dir/dist/index.html"
+  $dist = Join-Path $here "webui/v2/dist/index.html"
   if (-not (Test-Path $dist)) {
-    if ($V2Arg) { echo '前端 v2 未构建：cd webui/v2; npm install; npm run build' }
-    else { echo '前端 v1 构建产物缺失：检查 webui/v1/dist/index.html' }
+    echo '前端未构建：cd webui/v2; npm install; npm run build'
     exit 2
   }
   if ($HostName -notin @('127.0.0.1', 'localhost', '::1') -and -not $Token) {
@@ -328,23 +314,17 @@ function Start-WebUI([int]$Port, [string]$HostName, [string]$Cfg, [string]$Token
       $d = Get-ServerDetail $Port
       $stale = Get-StaleBackendHint $d
       Write-Host "已在运行，直接用：http://localhost:$Port/"
-      if ($d.Frontend -eq 'v2' -and -not $V2Arg) {
-        Write-Host '提示：当前运行 v2 前端；如要切回旧前端，用 -Restart -V1。'
-      } elseif ($d.Frontend -ne 'v2' -and $V2Arg) {
-        Write-Host '提示：当前运行旧前端；如要切到 v2，用 -Restart -V2。'
-      }
-      Show-Endpoints $Port $d.Host $d.Config $Token $d.Frontend
+      Show-Endpoints $Port $d.Host $d.Config $Token
       if ($stale) { Write-Host $stale }
       return
     }
-    Start-WebUI (Resolve-Conflict $Port) $HostName $Cfg $Token $Proxies $ProxyFileArg $ProxyModeArg $V2Arg
+    Start-WebUI (Resolve-Conflict $Port) $HostName $Cfg $Token $Proxies $ProxyFileArg $ProxyModeArg
     return
   }
   if (Get-Command python -ErrorAction SilentlyContinue) { $py = 'python' }
   else { echo '未找到 python（需 Python 3.9+ 且装 fastapi/uvicorn）'; exit 2 }
-  Write-Host "端口 $Port 空闲，正在拉起 WebUI（前端 $frontend_dir）…"
+  Write-Host "端口 $Port 空闲，正在拉起 WebUI…"
   $pyArgs = @('-u', 'start_web_ui.py', '--host', $HostName, '--port', "$Port", '--config', $Cfg, '--log-file', $LOG_FILE)
-  if ($V2Arg) { $pyArgs += '--v2' } else { $pyArgs += '--v1' }
   if ($Token) { $pyArgs += @('--password', $Token) }
   foreach ($u in $Proxies) { if ($u) { $pyArgs += @('--proxy', $u) } }
   if ($ProxyFileArg) { $pyArgs += @('--proxy-file', $ProxyFileArg) }
@@ -360,7 +340,7 @@ function Start-WebUI([int]$Port, [string]$HostName, [string]$Cfg, [string]$Token
   if ($ready -and (Test-Http200 $Port)) {
     $sec = '{0:N1}' -f ((Get-Date) - $t0).TotalSeconds
     Write-Host "已启动：http://localhost:$Port/（用时 ${sec}s，PID $($proc.Id)，日志 webui.log）"
-    Show-Endpoints $Port $HostName $Cfg $Token $frontend_dir
+    Show-Endpoints $Port $HostName $Cfg $Token
     return
   }
   Write-Host "启动失败：PID $($proc.Id) 未在 5 秒内就绪。看日志：.\serve-webui.ps1 -Logs -Port $Port"
@@ -398,7 +378,7 @@ function Show-Status([int]$Port) {
     $d = Get-ServerDetail $Port
     $tok = Resolve-Password $Password $d.Password
     $stale = Get-StaleBackendHint $d
-    echo "端口 $Port：WebUI 正常（200），绑定 $($d.Host)，前端 $($d.Frontend)，入口 http://localhost:$Port/"
+    echo "端口 $Port：WebUI 正常（200），绑定 $($d.Host)，入口 http://localhost:$Port/"
     echo "配置：$($d.Config)"
     if ($stale) { echo $stale }
     $m = Get-Meta $Port $tok
@@ -432,7 +412,7 @@ function Get-ServerList {
     $cfg = Parse-Arg $cmd 'config'
     $hst = Parse-Arg $cmd 'host'
     if (-not $hst) { $hst = '127.0.0.1' }
-    [pscustomobject]@{ Pid = $p.ProcessId; Port = $port; Host = $hst; Config = $cfg; Frontend = if ($cmd -match '--v1|--frontend-v1') { 'v1' } else { 'v2' } }
+    [pscustomobject]@{ Pid = $p.ProcessId; Port = $port; Host = $hst; Config = $cfg }
   }
 }
 
@@ -448,7 +428,7 @@ function Show-Servers {
   foreach ($s in $servers) {
     $net = if (Test-Http200 $s.Port) { 'HTTP 通' } else { 'HTTP 不通（刚起或已僵死）' }
     $where = if ($s.Host -eq '0.0.0.0') { '局域网可达' } else { '仅本机' }
-    echo "PID $($s.Pid) · 端口 $($s.Port) · 前端 $($s.Frontend) · $where · http://localhost:$($s.Port)/ · $net · 配置 $($s.Config)"
+    echo "PID $($s.Pid) · 端口 $($s.Port) · $where · http://localhost:$($s.Port)/ · $net · 配置 $($s.Config)"
   }
   echo '细查某端口：.\serve-webui.ps1 -Port <端口> -Status ；停某端口：.\serve-webui.ps1 -Port <端口> -Stop'
 }
@@ -464,7 +444,7 @@ function Restart-AllServers {
     $tok = Resolve-Password '' $d.Password
     echo "--- 端口 $($s.Port)（PID $($s.Pid)，绑定 $h）"
     Stop-WebUI $s.Port; Start-Sleep 1
-    Start-WebUI $s.Port $h $c $tok $d.Proxy $d.ProxyFile $d.ProxyMode ($d.Frontend -eq 'v2')
+    Start-WebUI $s.Port $h $c $tok $d.Proxy $d.ProxyFile $d.ProxyMode
     if (-not (Test-Http200 $s.Port)) { echo "端口 $($s.Port)：重启后未就绪，手动检查：.\serve-webui.ps1 -Port $($s.Port) -Status"; $fail++ }
   }
   if ($fail) { echo "完工：$fail 个未就绪。"; exit 1 }
@@ -477,7 +457,6 @@ function Show-Logs([int]$Lines) {
 }
 
 if ($Lan -and $NoLan) { echo '-Lan 与 -NoLan 互斥：二选一。'; exit 2 }
-if ($V2 -and $V1) { echo '-V2 与 -V1 互斥：二选一。'; exit 2 }
 if ($Bind -and ($Lan -or $NoLan)) { echo '-Bind 与 -Lan/-NoLan 互斥：指定其一即可。'; exit 2 }
 if ($Logs) { Show-Logs $Lines; exit 0 }
 if ($Ports) { Show-Servers; exit 0 }
@@ -492,10 +471,6 @@ if ($Restart) {
   $oldPx = if ($cur -and $cur.Proxy) { $cur.Proxy } else { @() }
   $oldPf = if ($cur) { $cur.ProxyFile } else { '' }
   $oldPm = if ($cur) { $cur.ProxyMode } else { '' }
-  $oldV2 = if ($cur) { $cur.Frontend -eq 'v2' } else { $true }
-  if ($V2) { $targetV2 = $true }
-  elseif ($V1) { $targetV2 = $false }
-  else { $targetV2 = $oldV2 }
   if ($Lan) { $targetHost = '0.0.0.0' }
   elseif ($NoLan) { $targetHost = '127.0.0.1' }
   elseif ($scriptBound.ContainsKey('Bind') -and $Bind) { $targetHost = $Bind }
@@ -513,10 +488,10 @@ if ($Restart) {
   $targetPwd = Resolve-Password $Password $oldPwd
   if (-not $cur) { Write-Host '当前模式问不到（服务没在跑或刚停），按显式参数/默认值重启；要分享加 -Lan。' }
   else { Write-Host "外部访问：$targetHost（配置 $targetCfg，代理 $($targetPx.Count) 个，模式保持）" }
-  Stop-WebUI $Port; Start-Sleep 1; Start-WebUI $Port $targetHost $targetCfg $targetPwd $targetPx $targetPf $targetPm $targetV2; exit 0
+  Stop-WebUI $Port; Start-Sleep 1; Start-WebUI $Port $targetHost $targetCfg $targetPwd $targetPx $targetPf $targetPm; exit 0
 }
 if ($Lan) { $startHost = '0.0.0.0' } elseif ($NoLan) { $startHost = '127.0.0.1' } elseif ($Bind) { $startHost = $Bind } else { $startHost = '127.0.0.1' }
 if ($scriptBound.ContainsKey('Config') -and $Config) { $startCfg = $Config } else { $startCfg = Get-DefaultConfig }
 $startPwd = Resolve-Password $Password ''
 if ($scriptBound.ContainsKey('ProxyMode')) { $startPm = $ProxyMode } else { $startPm = '' }
-Start-WebUI $Port $startHost $startCfg $startPwd $Proxy $ProxyFile $startPm (-not $V1)
+Start-WebUI $Port $startHost $startCfg $startPwd $Proxy $ProxyFile $startPm
