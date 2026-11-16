@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
-import { Navigate, useParams } from "react-router-dom";
+import { Link, Navigate, useParams } from "react-router-dom";
 import { ADVANCED_SECTIONS } from "../shared/advancedSections";
 import type {
   Account,
@@ -222,25 +222,34 @@ function ProvisionPanel({
   const jobQuery = useJob(jobId);
   const job = jobQuery.data ?? null;
   const addressesQuery = useEmailRoutingAddresses(account);
+  const verifiedAddresses = useMemo(
+    () => (addressesQuery.data?.items ?? []).filter((item) => item.verified),
+    [addressesQuery.data],
+  );
   const forwardTarget = useMemo(() => {
     const wanted = forwardEmail.trim().toLowerCase();
     if (!wanted) return null;
     return (
-      (addressesQuery.data?.items ?? []).find(
-        (item) => item.email.toLowerCase() === wanted,
-      ) ?? null
+      verifiedAddresses.find((item) => item.email.toLowerCase() === wanted) ??
+      null
     );
-  }, [addressesQuery.data, forwardEmail]);
-  const forwardNeedsVerification = Boolean(
+  }, [verifiedAddresses, forwardEmail]);
+  const emailStepBlocked = Boolean(
     steps.email &&
-      forwardEmail.trim() &&
-      !addressesQuery.isLoading &&
-      !forwardTarget?.verified,
+      (addressesQuery.isLoading ||
+        addressesQuery.isError ||
+        !forwardTarget?.verified),
   );
 
   useEffect(() => {
     if (!account && defaultAccount) setAccount(defaultAccount);
   }, [account, defaultAccount]);
+
+  useEffect(() => {
+    setForwardEmail("");
+    setJobId(null);
+    setError("");
+  }, [account]);
 
   useEffect(() => {
     if (!domainsText && defaultZone) setDomainsText(defaultZone);
@@ -255,6 +264,16 @@ function ProvisionPanel({
     }
     if (!domains.length) {
       setError("至少填写一个域名");
+      return;
+    }
+    if (steps.email && !forwardTarget?.verified) {
+      setError(
+        addressesQuery.isLoading
+          ? "正在读取目标邮箱验证状态，请稍候"
+          : addressesQuery.isError
+            ? "无法读取目标邮箱验证状态；请先在邮箱转发面板处理"
+            : "邮箱步骤已开启，但没有已验证目标地址；请选择已验证地址或关闭邮箱步骤",
+      );
       return;
     }
     setError("");
@@ -363,28 +382,68 @@ function ProvisionPanel({
         </label>
         <label className="field">
           <span className="field-label">邮箱转发目标</span>
-          <input
+          <select
             value={forwardEmail}
             onChange={(event) => setForwardEmail(event.target.value)}
-            placeholder="admin@example.com"
-          />
+            disabled={!steps.email || addressesQuery.isLoading}
+          >
+            <option value="">不配置邮箱转发（跳过邮箱步骤）</option>
+            {verifiedAddresses.map((item) => (
+              <option key={item.id || item.email} value={item.email}>
+                {item.email}
+              </option>
+            ))}
+          </select>
           <span className="field-hint">
-            {addressesQuery.isError
-              ? "无法读取目标邮箱验证状态；请到 Cloudflare 控制台确认"
-              : forwardEmail.trim()
-                ? forwardTarget
-                  ? forwardTarget.verified
-                    ? "目标邮箱已验证"
-                    : "目标邮箱已添加，等待验证"
-                  : "目标邮箱尚未添加；执行时会创建并发送验证邮件"
-                : "用于 catch-all 转发；建议先在本页下方完成目标邮箱验证"}
+            {!steps.email
+              ? "邮箱步骤已关闭，不会修改 Email Routing。"
+              : addressesQuery.isLoading
+                ? "正在读取账号级目标地址…"
+                : addressesQuery.isError
+                  ? "无法读取目标地址验证状态；请先在邮箱转发面板处理。"
+                  : verifiedAddresses.length === 0
+                    ? (
+                        <>
+                          账号内没有已验证目标地址。先到{" "}
+                          <Link to="/advanced/email-routing">邮箱转发</Link>{" "}
+                          添加并验证。
+                        </>
+                      )
+                    : `只列出已验证地址；当前账号 ${verifiedAddresses.length} 个，同账号域名可复用。`}
           </span>
         </label>
       </div>
-      {forwardNeedsVerification && (
+      {emailStepBlocked && !addressesQuery.isLoading && (
         <div className="inline-warning">
-          目标邮箱尚未验证：执行后 Cloudflare MX 会先切换，catch-all
-          不会生效，域名收信可能被拒。建议先在下方“邮箱转发”面板完成验证，再执行带“邮箱”步骤的配置。
+          <span>
+            {addressesQuery.isError ? (
+              "无法读取目标地址验证状态；请先在邮箱转发面板处理。"
+            ) : verifiedAddresses.length === 0 ? (
+              <>
+                邮箱步骤已开启，但当前账号没有已验证目标地址。先到{" "}
+                <Link to="/advanced/email-routing">邮箱转发</Link>{" "}
+                添加并验证，或关闭邮箱步骤。
+              </>
+            ) : (
+              <>
+                邮箱步骤已开启，请选择一个已验证目标地址后再预览。
+                {verifiedAddresses.length === 1 && (
+                  <>
+                    {" "}
+                    <button
+                      type="button"
+                      className="link-button"
+                      onClick={() =>
+                        setForwardEmail(verifiedAddresses[0].email)
+                      }
+                    >
+                      使用 {verifiedAddresses[0].email}
+                    </button>
+                  </>
+                )}
+              </>
+            )}
+          </span>
         </div>
       )}
       <EmailRoutingNotes />
@@ -422,7 +481,10 @@ function ProvisionPanel({
         <button
           className="button primary"
           onClick={() => void submitPreview()}
-          disabled={submit.isPending}
+          disabled={submit.isPending || emailStepBlocked}
+          title={
+            emailStepBlocked ? "邮箱步骤缺少已验证目标地址" : undefined
+          }
         >
           {submit.isPending ? "提交中…" : "预览配置"}
         </button>
@@ -435,7 +497,10 @@ function ProvisionPanel({
           <button
             className="button"
             onClick={() => void executePreview()}
-            disabled={execute.isPending}
+            disabled={execute.isPending || emailStepBlocked}
+            title={
+              emailStepBlocked ? "邮箱步骤缺少已验证目标地址" : undefined
+            }
           >
             {execute.isPending ? "提交中…" : "执行此预览"}
           </button>

@@ -89,19 +89,19 @@ flowchart TD
 
 ### 邮箱转发（Email Routing）
 
-在高级页“邮箱转发（Email Routing）”面板：
+在高级页“邮箱转发（Email Routing）”面板，账号级目标邮箱与域名级启用分成两列；1024px 及以下自动堆叠：
 
-1. 选择账号和域名，填写目标邮箱（例如 Gmail）。
+1. 左列“账号级 · 目标邮箱”：选择账号，列表显示该账号全部目标地址。已验证地址默认选中，可直接复用；需要新地址时点“添加新目标邮箱”。
 2. 点“添加并发送验证”；Cloudflare 会向目标邮箱发验证邮件。目标地址是账号级的，验证一次可复用到同账号其他域名。
-3. 到目标邮箱（含垃圾箱）点 “Verify email address”，回到面板点“刷新状态”。
-4. 目标邮箱显示“已验证”后，点“验证后完成配置”；面板会启用路由并设置 catch-all。
+3. 到目标邮箱（含垃圾箱）点 “Verify email address”，回到面板点“刷新验证状态”；状态变为“已验证”后即可复用。
+4. 右列“域名级 · 启用转发”：选择域名和目标地址，点“启用转发并设置 catch-all”；已有 catch-all 或非 Cloudflare MX 时先二次确认。
 5. 从另一个邮箱发到 `test@你的域名`，检查目标邮箱收件箱和垃圾箱；不要用同一个 Gmail 自发。
 
 注意：
 
 - 新账号的第一个域名同样要验证目标邮箱；新账号本身的邮箱验证是另一件事，不能替代目标地址验证。
 - 域名必须使用 Cloudflare DNS 且已激活；已有其他 MX（Google Workspace、企业邮箱）会冲突，启用 Email Routing 会替换 MX，先确认原邮箱是否保留。
-- 未验证前不要执行带“邮箱”步骤的 provision：MX 会先切换，但 catch-all 不生效，来信可能被拒（Address does not exist）。
+- 目标地址未验证时，域名级配置保持阻断；Provision 与 Inspector 的邮箱目标只列出已验证地址，未验证不会提交。引擎也不会在验证前切换 MX 或启用路由：未验证时只创建目标地址并返回待验证，不改 DNS/MX。
 - 本页只配置 catch-all；只想收指定前缀（如 `info@`）时到 Cloudflare 控制台建具体 routing rule。
 - 验证邮件没收到，到 Cloudflare 控制台 `Email Service > Email Routing > Destination Addresses` 重发；WebUI 负责添加、刷新状态和验证后完成配置。
 - API Token 需要 Email Routing Addresses / Rules / Settings 权限；权限不足会报 403。

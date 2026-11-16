@@ -2562,7 +2562,7 @@ class CloudflareDNSUpdater:
             return False, "empty"
         for address in self.list_email_routing_addresses(account_id):
             # API 在不同账号/版本下可能返回字符串列表或对象列表，二者均兼容；
-            # 字符串元素无法确认验证状态，一律按未验证处理（只配路由、不设 catch-all）。
+            # 字符串元素无法确认验证状态，一律按未验证处理，不启用路由。
             if isinstance(address, str):
                 addr_email, addr_verified = address, False
             elif isinstance(address, dict):
@@ -2644,12 +2644,24 @@ class CloudflareDNSUpdater:
     ) -> tuple[str, str, list[str]]:
         """完整配置邮箱路由:补齐所需 DNS、启用路由、设置 catch-all。
 
+        未验证的目标地址只确保存在并返回 pending_verification；在目标邮箱
+        验证完成前不修改 DNS、MX 或路由，避免 catch-all 未生效就切换收信。
+
         Returns:
             (status, message, records_status)
             status: ok / pending_verification / error
         """
+        if not (forward_email or "").strip():
+            return "error", "邮箱转发目标为空", []
         verified, addr_status = self.ensure_email_routing_address(forward_email)
         records_status: list[str] = []
+        if not verified:
+            return (
+                "pending_verification",
+                f"目标邮箱 {forward_email} 未验证({addr_status});"
+                "未修改 DNS、MX 或路由；请先完成邮箱验证后重跑",
+                records_status,
+            )
         try:
             required = self.get_email_routing_required_records(zone_id)
         except Exception as exc:  # noqa: BLE001
@@ -2703,13 +2715,6 @@ class CloudflareDNSUpdater:
 
         if not catch_all:
             return "ok", "邮箱路由已启用(未设置 catch-all)", records_status
-        if not verified:
-            return (
-                "pending_verification",
-                f"目标邮箱 {forward_email} 未验证({addr_status}),"
-                "已启用路由但暂不设置 catch-all,请先完成邮箱验证",
-                records_status,
-            )
         try:
             self.update_email_routing_catch_all(zone_id, forward_email)
         except Exception as exc:  # noqa: BLE001

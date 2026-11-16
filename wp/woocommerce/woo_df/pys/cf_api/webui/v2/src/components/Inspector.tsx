@@ -20,8 +20,9 @@ import {
   Trash2,
   XCircle,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import { Link } from "react-router-dom";
 import type {
   ActionDraft,
   ActionMode,
@@ -430,10 +431,25 @@ function ActionForm({
   const [sslMode, setSslMode] = useState("");
   const [formError, setFormError] = useState("");
   const addressesQuery = useEmailRoutingAddresses(account, mode === "provision");
+  const verifiedAddresses = (addressesQuery.data?.items ?? []).filter(
+    (item) => item.verified,
+  );
   const forwardTarget =
-    (addressesQuery.data?.items ?? []).find(
+    verifiedAddresses.find(
       (item) => item.email.toLowerCase() === forwardEmail.trim().toLowerCase(),
     ) ?? null;
+  const provisionEmailBlocked = Boolean(
+    mode === "provision" &&
+      forwardEmail.trim() &&
+      (addressesQuery.isLoading ||
+        addressesQuery.isError ||
+        !forwardTarget?.verified),
+  );
+
+  useEffect(() => {
+    setForwardEmail("");
+    setFormError("");
+  }, [account]);
 
   const card = ACTION_CARDS.find((item) => item.mode === mode);
   const title = card?.title ?? "批量操作";
@@ -463,6 +479,10 @@ function ActionForm({
     }
     if (mode === "export" && !exportDir.trim()) {
       setFormError("导出模式必须填写导出目录");
+      return;
+    }
+    if (mode === "provision" && forwardEmail.trim() && !forwardTarget) {
+      setFormError("目标邮箱未验证或已失效；请重新选择已验证地址");
       return;
     }
     setFormError("");
@@ -680,21 +700,32 @@ function ActionForm({
             />
           </Field>
           <Field label="邮箱转发目标">
-            <input
+            <select
               value={forwardEmail}
               onChange={(event) => setForwardEmail(event.target.value)}
-              placeholder="admin@example.com"
-            />
+              disabled={addressesQuery.isLoading}
+            >
+              <option value="">不配置邮箱转发</option>
+              {verifiedAddresses.map((item) => (
+                <option key={item.id || item.email} value={item.email}>
+                  {item.email}
+                </option>
+              ))}
+            </select>
             <span className="field-hint">
-              {addressesQuery.isError
-                ? "无法读取目标邮箱验证状态；请到 Cloudflare 控制台确认"
-                : forwardEmail.trim()
-                  ? forwardTarget
-                    ? forwardTarget.verified
-                      ? "目标邮箱已验证"
-                      : "目标邮箱已添加，等待验证"
-                    : "目标邮箱尚未添加；执行时会创建并发送验证邮件"
-                  : "用于 catch-all 转发；建议先在高级页“邮箱转发”面板验证"}
+              {addressesQuery.isLoading
+                ? "正在读取账号级目标地址…"
+                : addressesQuery.isError
+                  ? "无法读取目标地址验证状态；请先在邮箱转发面板处理。"
+                  : verifiedAddresses.length === 0
+                    ? (
+                        <>
+                          账号内没有已验证目标地址。先到{" "}
+                          <Link to="/advanced/email-routing">邮箱转发</Link>{" "}
+                          添加并验证。
+                        </>
+                      )
+                    : "只列出已验证地址；留空则跳过邮箱步骤。"}
             </span>
           </Field>
           <Field label="SSL 模式">
@@ -711,20 +742,19 @@ function ActionForm({
           </Field>
           <Field label="步骤">
             <div className="step-chips">
-              {["DNS", "等激活", "邮箱", "SSL", "安全", "加速"].map((step) => (
+              {["DNS", "等激活", "邮箱（可选）", "SSL", "安全", "加速"].map((step) => (
                 <span key={step} className="step-chip">
                   {step}
                 </span>
               ))}
             </div>
           </Field>
-          <p className="form-hint">provision 只对当前域名执行；完整流程在高级页配置。</p>
-          {forwardEmail.trim() &&
-            !addressesQuery.isLoading &&
-            !forwardTarget?.verified && (
+          <p className="form-hint">
+            provision 只对当前域名执行；邮箱留空则跳过邮箱步骤；完整流程在高级页配置。
+          </p>
+          {provisionEmailBlocked && (
             <div className="inline-warning">
-              目标邮箱尚未验证；执行后 MX 会先切换，catch-all
-              不会生效，域名收信可能被拒。建议先在高级页“邮箱转发”面板完成验证。
+              所选目标邮箱未验证或已失效；请重新选择已验证地址。
             </div>
           )}
           <EmailRoutingNotes />
@@ -740,7 +770,12 @@ function ActionForm({
         <button
           className={`button ${isDanger ? "danger" : "primary"}`}
           onClick={submitPreview}
-          disabled={submitting}
+          disabled={submitting || provisionEmailBlocked}
+          title={
+            provisionEmailBlocked
+              ? "所选目标邮箱未验证或已失效"
+              : undefined
+          }
         >
           {submitting ? "提交中…" : "预览变更"}
         </button>

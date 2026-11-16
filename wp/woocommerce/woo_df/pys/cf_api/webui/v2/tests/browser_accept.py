@@ -4,7 +4,7 @@
 不访问 Cloudflare：所有 /api/v1 请求由 Playwright 用固定 JSON 响应。
 覆盖：记录按总量分档（小 zone 本地、大 zone 服务端分页）、两态排序与工具栏重置、列宽键盘调整/还原/刷新持久化、复选框单元格无省略号、
 搜索、预览真实结果、任务详情、单条编辑、批量内容/删除、侧栏高级工具分区与查找/历史/上传、
-邮箱转发目标验证/完成 catch-all、侧栏默认展开/页脚收起/Rail 悬停与键盘临时展开/Esc/快捷键、
+邮箱转发目标验证/完成 catch-all、Provision/Inspector 仅选已验证目标、侧栏默认展开/页脚收起/Rail 悬停与键盘临时展开/Esc/快捷键、
 390 窄屏无横滚与零 pageerror。
 """
 
@@ -1385,40 +1385,201 @@ def main() -> None:
             email_panel.get_by_text("邮箱转发注意事项（首次配置必看）").click()
             if not email_panel.get_by_text("目标邮箱必须先验证").is_visible():
                 raise AssertionError("邮箱转发注意事项未展开")
-            email_panel.get_by_placeholder("you@gmail.com").fill("owner@gmail.com")
             if not email_panel.get_by_text(
-                "目标邮箱已验证，可以完成 catch-all 配置。"
-            ).is_visible():
-                raise AssertionError("已验证目标邮箱未显示可完成状态")
-            email_panel.get_by_role("button", name="验证后完成配置").click()
-            page.wait_for_selector("text=邮箱转发已配置到 owner@gmail.com", timeout=10_000)
+                "owner@gmail.com", exact=True
+            ).first.is_visible():
+                raise AssertionError("账号级目标地址未显示")
+            if not email_panel.get_by_text(
+                "已验证 · 本账号域名可直接复用", exact=True
+            ).first.is_visible():
+                raise AssertionError("已验证目标地址未标记可复用")
+            email_panel.get_by_role("button", name="添加新目标邮箱").click()
             email_panel.get_by_placeholder("you@gmail.com").fill("new@gmail.com")
             email_panel.get_by_role("button", name="添加并发送验证").click()
             page.wait_for_selector("text=已添加目标邮箱，Cloudflare 已发送验证邮件", timeout=10_000)
+            email_panel.get_by_text("new@gmail.com", exact=True).first.wait_for(
+                timeout=10_000
+            )
             if not email_panel.get_by_text(
-                "目标邮箱已添加，等待验证；请检查收件箱和垃圾箱。"
-            ).is_visible():
+                "待验证 · 请检查收件箱和垃圾箱", exact=True
+            ).first.is_visible():
                 raise AssertionError("新目标邮箱未显示待验证状态")
+            if not email_panel.get_by_text(
+                "验证完成前不能完成 catch-all 配置；请不要先切换 MX。"
+            ).is_visible():
+                raise AssertionError("未启用的域名未阻止待验证目标")
+            email_panel.get_by_text("owner@gmail.com", exact=True).first.click()
+            page.wait_for_timeout(120)
+            if not email_panel.get_by_role(
+                "radio", name="选择 owner@gmail.com"
+            ).is_checked():
+                raise AssertionError("点击目标地址条目未选中对应单选")
+            if not email_panel.get_by_role(
+                "button", name="启用转发并设置 catch-all"
+            ).is_visible():
+                raise AssertionError("切回已验证地址后未恢复完成入口")
+            email_panel.get_by_role(
+                "button", name="启用转发并设置 catch-all"
+            ).click()
+            page.wait_for_selector("text=邮箱转发已配置到 owner@gmail.com", timeout=10_000)
+            if not email_panel.get_by_text(
+                "已启用", exact=True
+            ).first.is_visible():
+                raise AssertionError("完成配置后未显示已启用状态")
+            pending_details = email_panel.locator("details.email-routing-more")
+            if not pending_details.evaluate("el => el.open"):
+                email_panel.get_by_text("账号内待验证地址（2）").click()
+                page.wait_for_timeout(100)
+            email_panel.get_by_role(
+                "radio", name="选择 new@gmail.com"
+            ).check()
+            page.wait_for_timeout(120)
+            if not email_panel.get_by_text(
+                "尚未验证；验证完成前不会改动当前 catch-all。"
+            ).is_visible():
+                raise AssertionError("待验证目标邮箱未说明当前路由保持不变")
+            if not email_panel.get_by_text(
+                "catch-all → owner@gmail.com", exact=True
+            ).is_visible():
+                raise AssertionError("待验证目标邮箱未保留当前 catch-all 状态")
+            for width in (1024, 768):
+                page.set_viewport_size({"width": width, "height": 900})
+                page.wait_for_timeout(140)
+                panel_overflow = page.evaluate(
+                    "document.documentElement.scrollWidth - window.innerWidth"
+                )
+                if panel_overflow > 1:
+                    raise AssertionError(
+                        f"{width} 邮箱转发面板横滚 {panel_overflow}px"
+                    )
+                account_scope = email_panel.locator(
+                    ".email-routing-scope"
+                ).first.bounding_box()
+                domain_scope = email_panel.locator(
+                    ".email-routing-scope"
+                ).nth(1).bounding_box()
+                if (
+                    not account_scope
+                    or not domain_scope
+                    or domain_scope["y"] < account_scope["y"] + account_scope["height"]
+                ):
+                    raise AssertionError(f"{width} 邮箱转发面板未按单列堆叠")
+                page.screenshot(
+                    path=os.path.join(shots, f"email_routing_{width}.png"),
+                    full_page=True,
+                )
+            page.set_viewport_size({"width": 1440, "height": 900})
+            page.wait_for_timeout(140)
             email_panel.scroll_into_view_if_needed()
             page.wait_for_timeout(120)
             page.screenshot(path=os.path.join(shots, "email_routing_view_1440.png"))
             page.screenshot(
                 path=os.path.join(shots, "email_routing_1440.png"), full_page=True
             )
+            page.get_by_role("button", name="切换到深色主题").click()
+            page.wait_for_timeout(160)
+            if page.locator("html").get_attribute("data-theme") != "dark":
+                raise AssertionError("邮箱转发面板深色主题未生效")
+            page.screenshot(
+                path=os.path.join(shots, "email_routing_dark_1440.png"),
+                full_page=True,
+            )
+            page.get_by_role("button", name="切换到浅色主题").click()
+            page.wait_for_timeout(160)
+            if page.locator("html").get_attribute("data-theme") != "light":
+                raise AssertionError("邮箱转发面板浅色主题未恢复")
 
             page.get_by_role("link", name="配置向导", exact=True).click()
             page.wait_for_selector("text=域名配置向导", timeout=10_000)
             provision_panel = page.locator("section.panel").filter(
                 has_text="域名配置向导"
             )
-            provision_panel.get_by_placeholder("admin@example.com").fill("new@gmail.com")
-            if not provision_panel.get_by_text("目标邮箱尚未验证").is_visible():
-                raise AssertionError("provision 未提示目标邮箱未验证")
+            provision_target = provision_panel.get_by_label("邮箱转发目标")
+            provision_target.wait_for(timeout=10_000)
+            provision_target.locator(
+                'option[value="owner@gmail.com"]'
+            ).wait_for(state="attached", timeout=10_000)
+            option_texts = provision_target.locator("option").all_inner_texts()
+            if "owner@gmail.com" not in option_texts:
+                raise AssertionError("provision 未列出已验证目标地址")
+            if "new@gmail.com" in option_texts:
+                raise AssertionError("provision 列出了待验证目标地址")
+            preview_button = provision_panel.get_by_role(
+                "button", name="预览配置"
+            )
+            if not preview_button.is_disabled():
+                raise AssertionError("provision 缺少已验证目标时仍可预览")
+            if not provision_panel.get_by_text(
+                "邮箱步骤已开启，请选择一个已验证目标地址"
+            ).is_visible():
+                raise AssertionError("provision 未说明需要选择已验证目标")
+            if not provision_panel.get_by_role(
+                "button", name="使用 owner@gmail.com"
+            ).is_visible():
+                raise AssertionError("provision 未提供使用已验证目标的快捷操作")
+            page.screenshot(
+                path=os.path.join(shots, "provision_email_blocked_1440.png")
+            )
+            provision_panel.get_by_role(
+                "button", name="使用 owner@gmail.com"
+            ).click()
+            if provision_target.input_value() != "owner@gmail.com":
+                raise AssertionError("provision 快捷选择未写入目标地址")
+            if preview_button.is_disabled():
+                raise AssertionError("provision 选择已验证目标后仍不可预览")
+            provision_target.select_option("")
+            provision_panel.get_by_role(
+                "checkbox", name="邮箱", exact=True
+            ).uncheck()
+            if preview_button.is_disabled():
+                raise AssertionError("provision 关闭邮箱步骤后仍不可预览")
+            provision_panel.get_by_role(
+                "checkbox", name="邮箱", exact=True
+            ).check()
+            if not preview_button.is_disabled():
+                raise AssertionError("provision 重新开启邮箱步骤后未阻断")
+            provision_target.select_option("owner@gmail.com")
+            page.screenshot(
+                path=os.path.join(shots, "provision_email_target_1440.png")
+            )
+            preview_button.click()
+            page.wait_for_selector("text=provision 预览已提交", timeout=10_000)
+            if not job_posts or job_posts[-1].get("forward_email") != "owner@gmail.com":
+                raise AssertionError("provision 预览未携带已验证目标地址")
+            if not job_posts[-1].get("do_email"):
+                raise AssertionError("provision 预览未标记邮箱步骤")
             if not any(
                 path.endswith("/api/v1/email-routing/complete")
                 for _method, path in data_requests
             ):
                 raise AssertionError("未提交邮箱转发完成请求")
+
+            page.get_by_role("button", name="回到工作台").click()
+            page.wait_for_selector(".records-table tbody tr", timeout=10_000)
+            page.reload(wait_until="networkidle")
+            page.wait_for_selector(".records-table tbody tr", timeout=10_000)
+            page.get_by_role("button", name="批量操作", exact=True).click()
+            page.wait_for_selector(".drawer.open", timeout=10_000)
+            drawer = page.locator(".drawer.open")
+            drawer.locator(".action-card", has_text="域名配置向导").click()
+            inspector_target = drawer.get_by_label("邮箱转发目标")
+            inspector_target.wait_for(timeout=10_000)
+            inspector_target.locator(
+                'option[value="owner@gmail.com"]'
+            ).wait_for(state="attached", timeout=10_000)
+            inspector_options = inspector_target.locator("option").all_inner_texts()
+            if "owner@gmail.com" not in inspector_options:
+                raise AssertionError("Inspector 未列出已验证目标地址")
+            if "new@gmail.com" in inspector_options:
+                raise AssertionError("Inspector 列出了待验证目标地址")
+            if drawer.get_by_placeholder("admin@example.com").count():
+                raise AssertionError("Inspector 仍保留目标邮箱自由输入")
+            inspector_target.select_option("owner@gmail.com")
+            if drawer.get_by_role("button", name="预览变更").is_disabled():
+                raise AssertionError("Inspector 选择已验证目标后不可预览")
+            page.screenshot(path=os.path.join(shots, "inspector_provision_1440.png"))
+            drawer.get_by_role("button", name="关闭面板", exact=True).click()
+            page.wait_for_timeout(200)
 
             page.get_by_role("link", name="范围附件", exact=True).click()
             page.wait_for_selector("text=白名单 / 重跑清单", timeout=10_000)
@@ -1611,6 +1772,40 @@ def main() -> None:
                 raise AssertionError("390 高级工具路由切换未生效")
             mobile.screenshot(
                 path=os.path.join(shots, "advanced_390.png"), full_page=True
+            )
+
+            mobile.get_by_role("button", name="打开导航", exact=True).click()
+            mobile.wait_for_timeout(220)
+            mobile.get_by_role("link", name="邮箱转发", exact=True).click()
+            mobile.wait_for_function(
+                "window.location.pathname === '/advanced/email-routing'", timeout=10_000
+            )
+            mobile.wait_for_selector("text=邮箱转发（Email Routing）", timeout=10_000)
+            mobile.wait_for_timeout(220)
+            mobile_email_overflow = mobile.evaluate(
+                "document.documentElement.scrollWidth - window.innerWidth"
+            )
+            if mobile_email_overflow > 1:
+                raise AssertionError(
+                    f"390 邮箱转发面板横滚 {mobile_email_overflow}px"
+                )
+            mobile_email_panel = mobile.locator("section.panel").filter(
+                has_text="邮箱转发（Email Routing）"
+            )
+            account_box = mobile_email_panel.locator(
+                ".email-routing-scope"
+            ).first.bounding_box()
+            domain_box = mobile_email_panel.locator(
+                ".email-routing-scope"
+            ).nth(1).bounding_box()
+            if (
+                not account_box
+                or not domain_box
+                or domain_box["y"] < account_box["y"] + account_box["height"]
+            ):
+                raise AssertionError("390 邮箱转发面板未按单列堆叠")
+            mobile.screenshot(
+                path=os.path.join(shots, "email_routing_390.png"), full_page=True
             )
 
             legacy = browser.new_page(viewport={"width": 390, "height": 900})

@@ -1942,81 +1942,512 @@ body.col-resizing * {
   color: var(--accent-strong);
 }
 
-.address-chip-row {
+/* ---------- email routing ---------- */
+
+.email-routing-scopes {
+  display: grid;
+  grid-template-columns: minmax(300px, 350px) minmax(0, 1fr);
+  align-items: start;
+  min-width: 0;
+}
+
+.email-routing-scope {
+  min-width: 0;
+}
+
+.email-routing-scope:first-child {
+  padding-right: 16px;
+}
+
+.email-routing-scope + .email-routing-scope {
+  padding-left: 16px;
+  border-left: 1px solid var(--line);
+}
+
+.email-routing-scope-head {
   display: flex;
   align-items: center;
+  gap: 8px;
   flex-wrap: wrap;
-  gap: 5px;
-  margin-bottom: 9px;
+  margin-bottom: 10px;
 }
 
-.address-chip {
+.email-routing-tag {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  max-width: 100%;
-  padding: 3px 7px;
-  border: 1px solid var(--line);
+  min-height: 20px;
+  padding: 0 7px;
   border-radius: 999px;
-  background: var(--surface-2);
-  color: var(--muted);
-  font-size: 10px;
-}
-
-.address-chip span {
-  overflow: hidden;
-  text-overflow: ellipsis;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 9px;
+  font-weight: 800;
   white-space: nowrap;
 }
 
-.address-chip em {
-  color: var(--warning);
-  font-style: normal;
-  white-space: nowrap;
+.email-routing-scope-head h3 {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.3;
 }
 
-.address-chip.verified {
-  border-color: var(--success);
-  color: var(--ink);
-}
-
-.address-chip.verified em {
-  color: var(--success);
-}
-
-.address-chip:hover {
-  border-color: var(--accent);
-  color: var(--ink);
-}
-
-.forward-status {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
-  gap: 7px;
-  margin-bottom: 9px;
-}
-
-.forward-status > div {
-  min-width: 0;
-  padding: 7px 9px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
-}
-
-.forward-status span {
-  display: block;
+.email-routing-scope-note {
+  margin-left: auto;
   color: var(--muted-2);
   font-size: 10px;
 }
 
-.forward-status strong {
+.email-routing-account-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.email-routing-account-row .field {
+  flex: 0 1 220px;
+}
+
+.email-routing-counts {
+  padding-bottom: 8px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.email-routing-address-list {
+  display: grid;
+  gap: 6px;
+}
+
+.email-routing-address {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+  padding: 8px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.email-routing-address-main {
+  display: flex;
+  align-items: center;
+  flex: 1 1 220px;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.email-routing-address.is-selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.email-routing-address.is-pending {
+  border-style: dashed;
+}
+
+.email-routing-radio {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent);
+  flex: none;
+}
+
+.email-routing-address-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 50%;
+}
+
+.email-routing-address-icon.is-verified {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.email-routing-address-icon.is-pending {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.email-routing-address-copy {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+
+.email-routing-address-copy strong {
   display: block;
   overflow: hidden;
   color: var(--ink);
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.email-routing-address-copy small {
+  display: block;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.email-routing-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 19px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 700;
+  white-space: nowrap;
+  flex: none;
+}
+
+.email-routing-badge.is-success {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.email-routing-badge.is-warning {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.email-routing-address-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.email-routing-address-actions .button {
+  min-height: 26px;
+  padding: 0 7px;
+  font-size: 10px;
+}
+
+.email-routing-more {
+  margin-top: 1px;
+}
+
+.email-routing-more summary {
+  padding: 4px 1px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.email-routing-more[open] summary {
+  margin-bottom: 5px;
+}
+
+.email-routing-add-toggle {
+  margin-top: 7px;
+  min-height: 28px;
+  padding: 0 8px;
+  font-size: 10px;
+}
+
+.email-routing-add-form {
+  margin-top: 9px;
+  padding: 9px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.email-routing-add-form[hidden] {
+  display: none;
+}
+
+.email-routing-add-form .field {
+  margin-bottom: 7px;
+}
+
+.email-routing-empty {
+  padding: 10px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.email-routing-console-link {
+  display: flex;
+  width: fit-content;
+  align-items: center;
+  gap: 4px;
+  margin-top: 9px;
+  color: var(--accent-strong);
+  font-size: 10px;
+}
+
+.email-routing-domain-form {
+  margin-bottom: 10px;
+}
+
+.email-routing-status {
+  margin-top: 9px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.email-routing-status.is-on {
+  border-color: color-mix(in srgb, var(--success) 42%, var(--line));
+  background: var(--success-soft);
+}
+
+.email-routing-status.is-warn,
+.email-routing-status.is-blocked {
+  border-color: var(--warning);
+  background: var(--warning-soft);
+}
+
+.email-routing-status-line {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  font-size: 11px;
+}
+
+.email-routing-status-line strong {
+  font-size: 12px;
+}
+
+.email-routing-status-line > span:not(.email-routing-dot) {
+  color: var(--muted);
+}
+
+.email-routing-status-line .button {
+  margin-left: auto;
+}
+
+.email-routing-dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+}
+
+.email-routing-dot.is-on {
+  background: var(--success);
+}
+
+.email-routing-dot.is-off {
+  background: var(--line-strong);
+}
+
+.email-routing-dot.is-warn {
+  background: var(--warning);
+}
+
+.email-routing-action-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+  margin-top: 9px;
+}
+
+.email-routing-action-row .field-hint {
+  flex: 1 1 220px;
+  margin: 0;
+}
+
+.email-routing-blocked {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 8px;
+  color: var(--warning);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.email-routing-confirm {
+  margin-top: 9px;
+  padding: 9px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+}
+
+.email-routing-confirm strong {
+  display: block;
+  color: var(--danger);
+  font-size: 11px;
+}
+
+.email-routing-confirm p {
+  margin: 3px 0 8px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.email-routing-mx-warning {
+  margin-top: 9px;
+}
+
+.email-routing-advanced {
+  margin-top: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.email-routing-advanced summary {
+  color: var(--ink);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.email-routing-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.email-routing-detail-grid > div {
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.email-routing-detail-grid span {
+  display: block;
+  color: var(--muted-2);
+  font-size: 9px;
+}
+
+.email-routing-detail-grid strong {
+  display: block;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.email-routing-records {
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.email-routing-records > div {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) minmax(0, 1.3fr) 48px;
+  gap: 6px;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  font-size: 10px;
+}
+
+.email-routing-records > div:last-child {
+  border-bottom: 0;
+}
+
+.email-routing-records > .email-routing-records-head {
+  background: var(--surface-3);
+  color: var(--muted-2);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.email-routing-records code {
+  color: var(--accent-strong);
+  font-family: var(--font-mono);
+}
+
+.email-routing-records span {
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.email-routing-records .is-warning span {
+  color: var(--warning);
+}
+
+.email-routing-notice {
+  margin-top: 9px;
+}
+
+@media (max-width: 1024px) {
+  .email-routing-scopes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .email-routing-scope:first-child {
+    padding-right: 0;
+  }
+
+  .email-routing-scope + .email-routing-scope {
+    margin-top: 14px;
+    padding-top: 14px;
+    padding-left: 0;
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+}
+
+@media (max-width: 420px) {
+  .email-routing-address {
+    align-items: flex-start;
+  }
+
+  .email-routing-address-copy {
+    flex: 1 1 120px;
+  }
+
+  .email-routing-address-copy small {
+    white-space: normal;
+  }
+
+  .email-routing-address-actions {
+    margin-left: 0;
+  }
+
+  .email-routing-status-line .button {
+    margin-left: 0;
+  }
+
+  .email-routing-action-row .button {
+    width: 100%;
+  }
+
+  .email-routing-records > div {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+
+  .email-routing-records > div span:nth-of-type(2),
+  .email-routing-records > div span:nth-of-type(3) {
+    grid-column: 2;
+  }
 }
 
 a.button {

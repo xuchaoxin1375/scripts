@@ -689,12 +689,12 @@ python cloudflare_dns_tool.py --add-domain domain.com \
 | `update_zone_setting(zone_id, setting_id, value)` | 更新单个 zone 设置（ssl、speed_brain 等） |
 | `apply_zone_settings(zone_id, settings)` | 批量应用设置，逐项容错 |
 | `ensure_email_routing_address(email)` | 确保转发目标邮箱存在（返回是否已验证） |
-| `configure_email_routing(zone_id, name, email)` | 补齐 MX/SPF/DKIM、启用路由、设置 catch-all |
+| `configure_email_routing(zone_id, name, email)` | 目标邮箱验证通过后补齐 MX/SPF/DKIM、启用路由、设置 catch-all；未验证时只确保目标地址存在并返回 pending |
 | `load_cf_globals(config_path)` | 读取旧 `cf_config.json` 顶层默认值 |
 
 说明：
 
-- 邮箱转发目标地址必须先在 Cloudflare 完成验证，未验证时只启用路由、不设置 catch-all。
+- 邮箱转发目标地址必须先在 Cloudflare 完成验证；未验证时 `configure_email_routing` 只确保目标地址存在并返回 `pending_verification`，不修改 DNS、MX 或路由，避免 catch-all 未生效就切换收信。
 - DNS 记录与 SSL/安全设置在 `pending` zone 上即可写入；但 **Email Routing 要求 zone 为 `active`**
   （否则 API 报 403/code 2009）。`provision_zone` 会在配邮箱前先查 zone 状态，未激活时记
   `deferred:requires-active-zone` 而非 error，待激活后重跑补配。

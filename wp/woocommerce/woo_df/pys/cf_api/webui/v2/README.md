@@ -61,7 +61,7 @@ Windows PowerShell 设置 mock：`$env:VITE_USE_MOCK='true'; npm run dev`。
 - 高级页：跨账号查找（后台扫描、进度、部分结果、取消、命中即停/扫描全部/继续查询）、
   provision 预览/执行、JSON 导入预检/写入、服务器导出任务与文件下载、
   白名单/重跑清单上传、任务历史与审计分页、运行参数。
-- 邮箱转发：账号级目标地址添加与验证状态、zone 路由/MX 状态、验证后启用路由并设置 catch-all。
+- 邮箱转发：账号级目标地址库（已验证默认选中、待验证折叠、添加与刷新）与域名级启用（域名、目标、状态、风险确认）双列分层；1024px 及以下堆叠。Provision 与 Inspector 的邮箱目标只从账号内已验证地址中选择。
 - 出口代理：顶栏/侧栏打开设置，`GET/PUT /api/v1/proxy` 在当前进程保存代理列表；总开关与单项开关分离，总开关关闭时只保存不启用。URL 脱敏回显，已有条目按 id 切换不会丢凭据，不落盘。
 - 白名单/重跑清单上传后附加到下一次任务，不写入账号配置。
 
@@ -87,7 +87,7 @@ Windows PowerShell 设置 mock：`$env:VITE_USE_MOCK='true'; npm run dev`。
 - `src/components/ScopeBar.tsx`：页头、范围条、附件与刷新。
 - `src/components/RecordsTable.tsx`：按总量分档的记录表、两态排序与工具栏重置、可调列宽与 1023px 以下记录卡片。
 - `src/components/ColumnResize.tsx`：列宽拖动/键盘/持久化单元，`<colgroup>` 与填充列配合。
-- `src/components/EmailRoutingPanel.tsx`：邮箱转发目标添加/验证状态、刷新、验证后启用路由并设置 catch-all。
+- `src/components/EmailRoutingPanel.tsx`：邮箱转发面板；账号级目标地址库与域名级启用双列分层，已验证地址默认选中，待验证地址折叠，风险确认内联，技术详情折叠。
 - `src/components/FindPanel.tsx`：跨账号扫描的创建、进度轮询、取消、命中表、未找到账号与结构化扫描记录。
 - `src/components/EmailRoutingNotes.tsx`：展开式邮箱转发注意事项（验证、Gmail、MX 冲突、限制）。
 - `src/pages/Advanced.tsx`：高级页各分区、跨账号查找、provision、邮箱转发、导入导出、范围附件、历史审计、运行参数。
@@ -112,12 +112,12 @@ python tests/test_webui_api_paths.py
 
 覆盖记录分页、资源切换、侧栏默认展开/页脚收起/Rail 悬停与键盘临时展开/Esc/快捷键、
 新增与编辑弹窗焦点、批量抽屉真实预览、任务详情与日志、批量内容/删除、侧栏高级工具分区与查找/历史/上传、
-邮箱转发目标验证与完成 catch-all，1440/1024/768/390 无页面横滚、390 侧栏与抽屉、零 pageerror。
+邮箱转发目标验证与完成 catch-all（账号级/域名级双列在 1024/768/390 下堆叠）、Provision/Inspector 只选已验证目标，1440/1024/768/390 无页面横滚、390 侧栏与抽屉、零 pageerror。
 
 ## 邮箱转发限制
 
 - 本页只配置 catch-all（`*@domain` 全部转发到一个目标邮箱）；按前缀的 routing rule 仍在 Cloudflare 控制台配置。
-- 目标邮箱验证由 Cloudflare 发送邮件，必须到收件箱点击；WebUI 只负责添加、刷新状态和验证后完成配置。
+- 目标邮箱验证由 Cloudflare 发送邮件，必须到收件箱点击；WebUI 只负责添加、刷新状态和验证后完成配置。未验证时引擎不修改 DNS/MX/路由，Provision 与 Inspector 也不会提交未验证目标。
 - 验证邮件重发、目标地址删除在 Cloudflare 控制台 `Email Service > Email Routing > Destination Addresses` 操作。
 - API Token 需要 Email Routing Addresses / Rules / Settings 权限；权限不足时接口返回 403。
 - 域名必须使用 Cloudflare DNS 且已激活；已有其他 MX 时先确认是否保留原邮箱，避免启用后中断收信。

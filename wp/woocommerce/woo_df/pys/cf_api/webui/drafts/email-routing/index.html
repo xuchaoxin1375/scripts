@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>邮箱转发面板 · 方案 A 原型草稿</title>
+  <link rel="icon" href="../../v2/public/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../../v2/src/styles.css">
+  <link rel="stylesheet" href="email-routing.css">
+</head>
+<body>
+  <div class="er-draft-shell">
+    <header class="er-draft-head">
+      <div class="er-draft-title">
+        <span class="er-draft-badge">Draft · Plan A</span>
+        <h1>邮箱转发面板 · 分层重构</h1>
+        <p>
+          账号级目标邮箱与域名级启用转发分开；已验证地址默认复用，技术信息按需展开。
+          全部为静态 mock，不调用 API，也不影响正式 <code>webui/v2</code> 页面。
+        </p>
+      </div>
+      <div class="er-draft-actions">
+        <a class="button ghost" href="../index.html">返回草稿首页</a>
+        <button class="button" type="button" data-theme-toggle>深色</button>
+      </div>
+    </header>
+
+    <div class="er-index-grid">
+      <article class="panel er-index-card">
+        <span class="er-draft-badge">A1 · 备选</span>
+        <h2>单列分层</h2>
+        <p>账号级目标邮箱在上，域名级配置在下；信息层级最清楚，窄屏最自然。</p>
+        <ul>
+          <li><strong>优点：</strong>首次配置不迷路；账号级复用关系一眼可见。</li>
+          <li><strong>代价：</strong>桌面宽屏下垂直空间用得比较多。</li>
+          <li><strong>适合：</strong>首次配置、低频操作、手机/平板。</li>
+        </ul>
+        <a class="button" href="draft-a.html">打开 A1 单列版</a>
+      </article>
+
+      <article class="panel er-index-card">
+        <span class="er-draft-badge">A2 · 已选定</span>
+        <h2>双列工作台</h2>
+        <p>左侧目标地址库，右侧域名配置；桌面一次看全，窄屏自动堆叠。</p>
+        <ul>
+          <li><strong>优点：</strong>给多个域名重复配置时切换更少，账号级/域名级关系并排可见。</li>
+          <li><strong>代价：</strong>左列信息密度更高，首次使用要多看一眼。</li>
+          <li><strong>适合：</strong>多账号、多域名、熟练用户。</li>
+        </ul>
+        <a class="button primary" href="draft-b.html">打开 A2 双列版</a>
+      </article>
+    </div>
+
+    <section class="panel er-index-section" style="padding: 14px">
+      <h2>建议重点看的六种状态</h2>
+      <div style="overflow-x:auto">
+        <table class="er-state-table">
+          <thead>
+            <tr>
+              <th>状态</th>
+              <th>看什么</th>
+              <th>预期</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>已验证</td>
+              <td>账号级目标地址、域名级主按钮</td>
+              <td>默认选中已验证地址，不需要再次输入或验证；主按钮直接可用。</td>
+            </tr>
+            <tr>
+              <td>待验证</td>
+              <td>待验证卡片、刷新入口、域名级阻断原因</td>
+              <td>明确“验证完成前不能完成 catch-all”；不显示可点击的假完成按钮。</td>
+            </tr>
+            <tr>
+              <td>未添加</td>
+              <td>空状态表单、主操作数量</td>
+              <td>首屏只做一件事：添加并发送验证；域名级保持不可用。</td>
+            </tr>
+            <tr>
+              <td>已配置</td>
+              <td>状态摘要、重复操作的处理</td>
+              <td>显示“已启用，catch-all → 目标”，不诱导重复写入。</td>
+            </tr>
+            <tr>
+              <td>风险冲突</td>
+              <td>覆盖其他 catch-all、非 Cloudflare MX</td>
+              <td>风险只在决策点出现；主按钮进入二次确认，不直接写入。</td>
+            </tr>
+            <tr>
+              <td>域名未激活</td>
+              <td>zone 状态、阻断提示</td>
+              <td>先解释为什么不能配置，再给等待/刷新路径。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <div class="er-draft-note">
+      <strong>草稿边界：</strong>
+      草稿只确认布局、信息层级和交互方向，不是实现规格。正式施工会按
+      <code>frontend-design</code> / <code>admin-console-design</code> 补齐加载/空/错/成功态、
+      键盘与焦点、确认弹窗、API 契约核对、响应式验收和回归测试；草稿没画到的状态不会省略。
+    </div>
+
+    <div class="er-draft-note">
+      <strong>建议试的操作：</strong>
+      切换顶部的“预览状态”；在“已验证”状态点“+ 添加新目标邮箱”并提交；
+      在“待验证”状态点“刷新验证”，观察它如何变成可复用地址；
+      在“风险冲突”状态点主按钮，查看二次确认；展开“高级详情”看技术信息是否足够隐蔽。
+    </div>
+  </div>
+
+  <div class="er-toast-region" data-toast-region aria-live="polite"></div>
+  <script src="email-routing.js"></script>
+</body>
+</html>

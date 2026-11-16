@@ -140,10 +140,50 @@
       </div>
     </section>
 
+    <section class="panel" style="margin-top:24px;padding:18px">
+      <div class="eyebrow">Feature draft · Plan A</div>
+      <h2 style="margin:0 0 4px">邮箱转发面板 · 分层重构</h2>
+      <p style="margin:0 0 12px;color:var(--muted);font-size:12px">
+        Account-level destination addresses and zone-level forwarding are separated; verified
+        addresses are reused by default. A2 (two-column workbench) is selected and implemented.
+      </p>
+      <div class="draft-grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">
+        <article class="draft-card recommended">
+          <div class="card-top">
+            <div>
+              <div class="card-kicker">A2 · Selected</div>
+              <h2>双列工作台</h2>
+            </div>
+            <span class="recommend-badge">Selected</span>
+          </div>
+          <p>左侧目标地址库、右侧域名配置；桌面一次看全，窄屏自动堆叠。</p>
+          <div class="card-actions">
+            <a class="btn primary" href="email-routing/draft-b.html">Open A2</a>
+          </div>
+        </article>
+        <article class="draft-card">
+          <div class="card-top">
+            <div>
+              <div class="card-kicker">A1 · Alternative</div>
+              <h2>单列分层</h2>
+            </div>
+          </div>
+          <p>账号级在上、域名级在下；首次配置最清楚，窄屏最自然。</p>
+          <div class="card-actions">
+            <a class="btn" href="email-routing/draft-a.html">Open A1</a>
+          </div>
+        </article>
+      </div>
+      <p style="margin:12px 0 0;font-size:11px;color:var(--muted)">
+        说明与六种状态：
+        <a href="email-routing/index.html" style="color:var(--accent-strong);text-decoration:underline">邮箱转发面板草稿说明</a>
+      </p>
+    </section>
+
     <p class="index-foot">
       Files: <code>draft-a.html</code>, <code>draft-b.html</code>, <code>draft-c.html</code>,
-      <code>drafts.css</code>, <code>drafts.js</code>. Static mock data only; no backend or
-      Cloudflare request is made.
+      <code>drafts.css</code>, <code>drafts.js</code>, <code>email-routing/</code>. Static mock data only;
+      no backend or Cloudflare request is made.
     </p>
   </main>
 </body>

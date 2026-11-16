@@ -11,6 +11,10 @@
 补齐外壳细节（默认展开、页脚收起/展开、Rail 悬停与键盘临时展开、Esc、`[`）。
 A/C 保留供回退。
 
+功能级原型：邮箱转发面板（账号级目标邮箱 + 域名级启用转发）见
+[drafts/email-routing/index.html](drafts/email-routing/index.html)；A1 单列 / A2 双列两版，
+已选定 A2 并在 v2 落地，A1 保留供回退；草稿为静态 mock，不接后端。
+
 ## 启动（后台，不占 shell）
 
 ```powershell

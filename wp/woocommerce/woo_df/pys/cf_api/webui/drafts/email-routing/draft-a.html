@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>邮箱转发面板 · A1 单列分层 · 原型草稿</title>
+  <link rel="icon" href="../../v2/public/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../../v2/src/styles.css">
+  <link rel="stylesheet" href="email-routing.css">
+</head>
+<body>
+  <div class="er-draft-shell">
+    <header class="er-draft-head">
+      <div class="er-draft-title">
+        <span class="er-draft-badge">Draft · Plan A</span>
+        <div class="er-draft-title-main">邮箱转发面板 · A1 单列分层</div>
+        <p>账号级目标邮箱 + 域名级启用转发。静态 mock，不调用 API，不影响正式页面；草稿只确认布局与交互方向。</p>
+      </div>
+      <div class="er-draft-actions">
+        <a class="button ghost" href="index.html">草稿说明</a>
+        <a class="button ghost" href="draft-b.html">切到双列版</a>
+        <button class="button" type="button" data-theme-toggle>深色</button>
+      </div>
+    </header>
+
+    <div class="er-draft-toolbar">
+      <label class="er-draft-control">
+        <span>预览状态</span>
+        <select data-state-select></select>
+      </label>
+      <p class="er-draft-hint">
+        试试切换状态、添加目标邮箱、刷新验证、展开高级详情；再拖到 390px 看窄屏。
+      </p>
+    </div>
+
+    <main class="advanced-page" id="prototype-root" data-layout="single"></main>
+  </div>
+
+  <div class="er-toast-region" data-toast-region aria-live="polite"></div>
+  <noscript>
+    <p style="padding: 16px">这个原型需要 JavaScript 才能切换状态。</p>
+  </noscript>
+  <script src="email-routing.js"></script>
+</body>
+</html>
