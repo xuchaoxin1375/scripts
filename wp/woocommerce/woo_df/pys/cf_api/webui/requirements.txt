@@ -1,0 +1,8 @@
+# WebUI 运行时依赖（Python >= 3.10）
+# 安装：pip install -r webui/requirements.txt
+# 版本于 2026-11-16 在 Python 3.13.15 验证；升级时同步更新本文件与部署文档。
+
+fastapi==0.141.1
+uvicorn==0.54.0
+python-multipart==0.0.32
+requests==2.34.2

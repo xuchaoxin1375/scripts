@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 .ruff_cache/
+.venv/
 cf_web.db*
 webui.log*
 cf_export/

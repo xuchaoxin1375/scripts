@@ -1,0 +1,10 @@
+# WebUI 验证与测试依赖（可选；运行时不需要）
+# 安装：pip install -r webui/requirements-dev.txt
+# 浏览器验收另需：python -m playwright install chromium
+# 静态检查 pyright 未在此固定版本：pip install pyright 或 npm install -g pyright。
+
+-r requirements.txt
+
+httpx==0.28.1
+playwright==1.63.0
+ruff==0.17.2

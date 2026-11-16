@@ -80,12 +80,14 @@
 .INPUTS
   无（交互式端口询问从控制台读取；管道输入按“回车=自动选端口”处理）。
 .OUTPUTS
-  中文状态文本。退出码：0 正常；1 启动失败（5 秒未就绪）；2 参数无效（端口/配置/口令缺失）。
+  中文状态文本。退出码：0 正常；1 启动失败（5 秒未就绪）；2 参数无效、依赖缺失或前端未构建。
 .NOTES
-  要求 PowerShell 5.1+，Python 3.9+ 且已装 fastapi/uvicorn。
+  要求 PowerShell 5.1+，Python 3.10+ 且已装 webui/requirements.txt 中的依赖。
   约定：参数用单横线；Hidden 进程不保证跨会话存活，每次先 -Status 确认。
 .LINK
   webui/README.md
+.LINK
+  webui/DEPLOY.md
 #>
 
 #Requires -Version 5.1
@@ -300,7 +302,7 @@ function Start-WebUI([int]$Port, [string]$HostName, [string]$Cfg, [string]$Token
   if (-not (Test-Path $START_PY)) { echo "启动入口缺失: $START_PY"; exit 2 }
   $dist = Join-Path $here "webui/v2/dist/index.html"
   if (-not (Test-Path $dist)) {
-    echo '前端未构建：cd webui/v2; npm install; npm run build'
+    echo '前端未构建：npm ci --prefix webui/v2; npm --prefix webui/v2 run build'
     exit 2
   }
   if ($HostName -notin @('127.0.0.1', 'localhost', '::1') -and -not $Token) {
@@ -322,7 +324,12 @@ function Start-WebUI([int]$Port, [string]$HostName, [string]$Cfg, [string]$Token
     return
   }
   if (Get-Command python -ErrorAction SilentlyContinue) { $py = 'python' }
-  else { echo '未找到 python（需 Python 3.9+ 且装 fastapi/uvicorn）'; exit 2 }
+  else { echo '未找到 python（需 Python 3.10+ 且装 webui/requirements.txt）'; exit 2 }
+  & $py -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 3)' 2>$null
+  if ($LASTEXITCODE -eq 3) { echo 'Python 版本过低：需 3.10+（见 webui/DEPLOY.md）'; exit 2 }
+  if ($LASTEXITCODE -ne 0) { echo 'Python 不可用：检查安装与虚拟环境（见 webui/DEPLOY.md）'; exit 2 }
+  & $py -c 'import fastapi, uvicorn, multipart, requests' 2>$null
+  if ($LASTEXITCODE -ne 0) { echo 'Python 依赖缺失：pip install -r webui/requirements.txt'; exit 2 }
   Write-Host "端口 $Port 空闲，正在拉起 WebUI…"
   $pyArgs = @('-u', 'start_web_ui.py', '--host', $HostName, '--port', "$Port", '--config', $Cfg, '--log-file', $LOG_FILE)
   if ($Token) { $pyArgs += @('--password', $Token) }

@@ -1,9 +1,9 @@
 # 决策记录（WebUI 单一前端重建）
 
 - 日期：2026-10-07；决定：FastAPI + 单文件原生前端（当时为 `webui/v1/dist/index.html`，v1 已于 2026-11-16 移除），后端 `/api/v1` 为主 + `/api` 兼容。
-- 为什么：仅自己本机用，浏览器打开最快；无 Node 重依赖，`npm run build` 仅复制；复用引擎 `SPEED_PRESETS`/校验/失败清单，不由前端算。
-- 放弃了：Vite+React（交互更强但需工具链）、Tauri 桌面壳（要窗口托盘才需要）、双前端（历史主败因）。
-- 假设：Python 3.9+ 且愿装 fastapi/uvicorn；契约沿用 WEBUI_LESSONS 第一节；无需对外监听。
+- 为什么：仅自己本机用，浏览器打开最快；当时 v1 无 Node 重依赖，`npm run build` 仅复制；复用引擎 `SPEED_PRESETS`/校验/失败清单，不由前端算。v2 已改用 Vite + React，需 Node 构建。
+- 放弃了：Vite+React（v1 阶段放弃，后于 v2 重启并采用）、Tauri 桌面壳（要窗口托盘才需要）、双前端（历史主败因）。
+- 假设：Python 3.10+ 且愿装 fastapi/uvicorn（当前依赖要求，见 `DEPLOY.md`）；契约沿用 WEBUI_LESSONS 第一节；无需对外监听。
 
 ## 最新 skill 落地（2026-10-08，复用口径：直觉层冻结，功能层自定义）
 
@@ -89,3 +89,9 @@
 - 为什么：v2 已覆盖全部功能并稳定使用，v1 仅作回退；保留两套前端会让交互对齐、构建与验收继续产生双份成本。
 - 范围：同步更新 `ReadMe.md`、`webui/README.md`、`USAGE.md`、`REDESIGN.md`、`v2/README.md`、`tools/verify.ps1` 与 `.gitignore`；`/api/v1` 是后端接口版本，不受本次删除影响。
 - 后果：`--v1`、`--frontend-v1`、`-V1`、`-V2` 不再可用；如需旧四页界面，只能从 Git 历史取回对应提交。
+
+## 2026-11-16 固定 WebUI 依赖与部署入口
+
+- 决定：运行时依赖写入 `webui/requirements.txt`（直接依赖固定版本），验证依赖写入 `webui/requirements-dev.txt`；Node 版本写入 `webui/v2/package.json` 的 `engines`；首次部署、升级、回滚与排障集中到 `webui/DEPLOY.md`。
+- 为什么：此前只有零散的 `pip install requests` 与 fastapi/uvicorn 提示，干净环境无法一次装齐；`webui/v2/dist/` 被 Git 忽略，但文档没有明确“必须先构建”；Python 3.9 的旧说法也与当前 fastapi/uvicorn 要求不符。
+- 后果：升级 Python 或前端依赖时需同步更新 requirements 与部署文档；部署统一使用 `npm ci` 按锁文件安装，`npm install` 只用于有意升级依赖。

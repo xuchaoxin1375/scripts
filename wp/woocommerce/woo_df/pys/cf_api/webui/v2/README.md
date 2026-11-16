@@ -1,11 +1,13 @@
 # WebUI v2（单工作台）
 
 Vite + React + TypeScript，唯一前端。旧 v1 四页前端已移除。
+依赖、首次部署与升级见 [DEPLOY.md](../DEPLOY.md)。
 
 ## 启动
 
 ```bash
-# 生产构建后用 FastAPI 托管（推荐单独端口）
+# 首次或依赖变更后：按锁文件安装并构建
+npm ci
 npm run build
 python start_web_ui.py --port 8601 --config <cf_config.csv|json>
 

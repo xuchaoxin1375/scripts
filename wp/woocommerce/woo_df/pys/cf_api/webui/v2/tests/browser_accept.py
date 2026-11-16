@@ -274,7 +274,8 @@ def wait_ready(base: str, timeout: float = 30.0) -> None:
 def main() -> None:
     if not os.path.exists(DIST):
         raise SystemExit(
-            "缺少 dist/index.html：先执行 cd webui/v2 && npm run build"
+            "缺少 dist/index.html：先执行 npm ci --prefix webui/v2 与 "
+            "npm --prefix webui/v2 run build"
         )
     from playwright.sync_api import sync_playwright
 

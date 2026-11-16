@@ -135,7 +135,7 @@ def main() -> None:
     if not os.path.isdir(frontend):
         print(
             "警告：未找到 webui/v2/dist，当前仅提供 API；"
-            "先执行 cd webui/v2 && npm run build",
+            "先执行 npm ci --prefix webui/v2 && npm --prefix webui/v2 run build",
             flush=True,
         )
 

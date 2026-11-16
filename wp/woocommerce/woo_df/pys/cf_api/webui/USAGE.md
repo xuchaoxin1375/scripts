@@ -7,6 +7,7 @@
 ```
 
 浏览器访问 `http://127.0.0.1:8600`。排障看 `.\serve-webui.ps1 -Logs`；前台调试才用 `python start_web_ui.py --port 8600`。
+首次部署、依赖安装与升级见 [DEPLOY.md](DEPLOY.md)。
 
 ## 2 建议顺序
 
@@ -105,13 +106,9 @@ flowchart TD
 - API Token 需要 Email Routing Addresses / Rules / Settings 权限；权限不足会报 403。
 - 限制：目标地址 200 个/账号、规则 200 条/域名、单封 25 MiB。
 
-前台启动（调试用，建议单独端口）：
+前台启动（调试用，建议单独端口；首次部署与构建见 [DEPLOY.md](DEPLOY.md)）：
 
 ```powershell
-cd webui/v2
-npm install
-npm run build
-cd ../..
 python start_web_ui.py --port 8601 --config <cf_config.csv|json>
 ```
 

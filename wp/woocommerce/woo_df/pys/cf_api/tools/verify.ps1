@@ -40,7 +40,7 @@ Run-Step 'backend-compile' 'python -m py_compile cloudflare_dns_tool.py start_we
 # 4 Ruff（缺失则 SKIP＋安装指引，不伪装通过；引擎文件只做语法/未用导入范围检查）
 if (Get-Command ruff -ErrorAction SilentlyContinue) {
   Run-Step 'backend-ruff' 'ruff check --select F401,F811,E9 webui/backend/ tests/ start_web_ui.py'
-} else { Add-Step 'backend-ruff' 'SKIP' '未安装：pip install ruff（批准后）' }
+} else { Add-Step 'backend-ruff' 'SKIP' '未安装：pip install -r webui/requirements-dev.txt' }
 
 # 5 Pyright（缺失则 SKIP）
 if (Get-Command pyright -ErrorAction SilentlyContinue) {

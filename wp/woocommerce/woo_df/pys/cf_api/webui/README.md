@@ -2,8 +2,8 @@
 
 后端 `webui/backend/`，前端 `webui/v2/`（Vite + React + TypeScript，单工作台）。旧 v1 四页前端已移除。
 
-前端源码与构建产物在 `webui/v2/`；状态与功能对照见
-[v2/README.md](v2/README.md) 与 [REDESIGN.md](REDESIGN.md)。
+前端源码与构建产物在 `webui/v2/`；依赖、首次部署、升级与回滚见
+[DEPLOY.md](DEPLOY.md)。状态与功能对照见 [v2/README.md](v2/README.md) 与 [REDESIGN.md](REDESIGN.md)。
 
 交互方案草稿见 [drafts/index.html](drafts/index.html)：三版静态 mock，不接后端。
 已选定草稿 B（全局侧栏 + 顶栏资源切换 + 弹窗编辑 + 右侧批量抽屉）并在
@@ -16,6 +16,8 @@ A/C 保留供回退。
 已选定 A2 并在 v2 落地，A1 保留供回退；草稿为静态 mock，不接后端。
 
 ## 启动（后台，不占 shell）
+
+以下命令假定已按 [DEPLOY.md](DEPLOY.md) 安装 Python 依赖并构建 `webui/v2/dist/`。
 
 ```powershell
 .\serve-webui.ps1                        # 启动 8600（Hidden 后台，shell 立即返回；已在跑则复用）

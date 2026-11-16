@@ -37,17 +37,27 @@ cloudflare_dns_tool.py
 
 ## 运行环境
 
-建议：
+CLI：
 
 ```text
 Python >= 3.9
-```
-
-依赖：
-
-```bash
 pip install requests
 ```
+
+WebUI：
+
+```text
+Python >= 3.10
+Node.js ^20.19.0 或 >= 22.12.0（仅构建前端）
+```
+
+```bash
+pip install -r webui/requirements.txt
+npm ci --prefix webui/v2
+npm --prefix webui/v2 run build
+```
+
+依赖、首次部署、升级与回滚见 [webui/DEPLOY.md](webui/DEPLOY.md)。
 
 开发 / 检查工具，可选：
 
@@ -1212,8 +1222,9 @@ flowchart LR
 ## Web 操作台（单一前端重建）
 
 启动入口 `start_web_ui.py`，后端 `webui/backend/`，前端 `webui/v2/`（构建产物
-`webui/v2/dist/`）。旧 v1 前端已移除。说明见 [webui/README.md](webui/README.md)，操作见
-[webui/USAGE.md](webui/USAGE.md)。设计约束与历史教训见 [WEBUI_LESSONS.md](WEBUI_LESSONS.md)。
+`webui/v2/dist/`）。旧 v1 前端已移除。依赖与部署见 [webui/DEPLOY.md](webui/DEPLOY.md)，
+说明见 [webui/README.md](webui/README.md)，操作见 [webui/USAGE.md](webui/USAGE.md)。
+设计约束与历史教训见 [WEBUI_LESSONS.md](WEBUI_LESSONS.md)。
 
 ---
 
