@@ -47,10 +47,10 @@ try
     $fastSteps = @(Get-StepNames 'Fast')
     $minimalSteps = @(Get-StepNames 'Minimal')
     Assert-True (($fastSteps -join ',') -eq ($minimalSteps -join ',')) "Minimal 应与 Fast 步骤一致：$($minimalSteps -join ',')"
-    Assert-True (($minimalSteps -join ',') -eq 'Set-PSReadLinesCommon,Set-PSReadLinesAdvanced,Set-ArgcCompletions,Register-GitCompletion,Update-PwshVars,Set-PsPrompt') "Fast 步骤不符：$($minimalSteps -join ',')"
+    Assert-True (($minimalSteps -join ',') -eq 'Set-PsFileListStyle,Set-PSReadLinesCommon,Set-PSReadLinesAdvanced,Set-ArgcCompletions,Register-GitCompletion,Update-PwshVars,Set-PsPrompt') "Fast 步骤不符：$($minimalSteps -join ',')"
 
     Assert-Steps -Tier 'Fast' -MustHave @(
-        'Set-PSReadLinesCommon', 'Set-PSReadLinesAdvanced', 'Set-ArgcCompletions', 'Register-GitCompletion', 'Update-PwshVars', 'Set-PsPrompt'
+        'Set-PsFileListStyle', 'Set-PSReadLinesCommon', 'Set-PSReadLinesAdvanced', 'Set-ArgcCompletions', 'Register-GitCompletion', 'Update-PwshVars', 'Set-PsPrompt'
     ) -MustNotHave @(
         'Set-ArgumentCompleter', 'Confirm-EnvVarOfInfo', 'Register-PsUxLazyLoad', 'Register-CarapaceLazyLoad',
         'Import-PsCompletions', 'Initialize-Fnm', 'Initialize-ScoopSearch'
@@ -64,7 +64,7 @@ try
     $balanced = Get-StepNames 'Balanced'
     Assert-True ($balanced.Count -gt 0) 'Balanced 步骤为空'
     Assert-Steps -Tier 'Balanced' -MustHave @(
-        'Set-PSReadLinesCommon', 'Set-PSReadLinesAdvanced', 'Set-ArgumentCompleter', 'Confirm-EnvVarOfInfo',
+        'Set-PsFileListStyle', 'Set-PSReadLinesCommon', 'Set-PSReadLinesAdvanced', 'Set-ArgumentCompleter', 'Confirm-EnvVarOfInfo',
         'Update-PwshVars', 'Set-PsPrompt', 'Register-PsUxLazyLoad', 'Set-ArgcCompletions', 'Register-GitCompletion'
     ) -MustNotHave @()
 

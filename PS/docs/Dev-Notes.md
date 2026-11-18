@@ -34,6 +34,7 @@
   `Read-CxxuDataFile`：它先看 `Import-PowerShellDataFile` 是否可见，缺失时退回 AST 解析。
   不要直接调该 cmdlet，否则在识别不到它的宿主里会连发读取警告。
 - 不要向成功流泄漏中间对象。目录创建、探测结果等用 `| Out-Null`，只返回调用方需要的数据。
+- `Get-ChildItem` 文件列表配色统一走 `Set-PsFileListStyle`（配置键 `PsFileListStyle`），不要在各处直接改 `$PSStyle.FileInfo`；该函数已处理 7.2+ 门控、Auto/Classic/Off 与用户覆盖。
 - 跨模块访问变量要显式作用域，不依赖动态作用域碰运气。
 - `init` 的防重复判据是进程内 `$global:PsInit`，不要改回 `$env:PsInit`：环境变量会被子
   pwsh 继承，而函数/别名/prompt 不继承，子会话会误判为已初始化并跳过 init。跨进程本来

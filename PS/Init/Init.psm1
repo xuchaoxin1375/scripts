@@ -1015,6 +1015,85 @@ function Set-PSReadLinesAdvanced
     # Set-PSReadLineOption -EditMode Windows
 }
 
+function Resolve-CxxuFileListStyle
+{
+    # 解析文件列表配色(不导出):空值与未知值按 Auto,False/0/No 视为 Off。
+    param([string]$Style = '')
+    if ($Style -match '^(Off|False|0|No)$') { return 'Off' }
+    if ($Style -ieq 'Classic') { return 'Classic' }
+    return 'Auto'
+}
+function Set-PsFileListStyle
+{
+    <#
+    .SYNOPSIS
+    设置 Get-ChildItem 文件列表配色，避免浅色主题下的目录蓝底。
+    .DESCRIPTION
+    仅 PowerShell 7.2 及以上版本生效。Auto（默认）去掉目录名的蓝色背景，改用标准前景色：
+    目录为蓝色，符号链接为青色，可执行文件为绿色；这些颜色在浅色与深色主题下均保持可读。
+    Classic 恢复 PowerShell 原生配色（目录蓝底加粗、符号链接亮青、可执行文件亮绿）。
+    Off 不改动当前值：新会话保持 PowerShell 原生配色，当前会话若已应用 Auto 则保留 Auto。
+    不带 -Style 时读取 PsFileListStyle（优先级：环境变量 > 用户配置 > 默认值）。
+    当前会话修改后执行本命令或 init -Force 刷新；新终端在 init 时自动应用。
+    Windows PowerShell 5.1 与 pwsh 7.0/7.1 没有 $PSStyle，静默跳过。
+    .PARAMETER Style
+    目标配色：Auto、Classic、Off。省略时读取 PsFileListStyle；显式指定时写入当前进程的环境变量，仅本次会话有效。
+    .PARAMETER Persist
+    把 -Style 写入用户配置的 Settings.PsFileListStyle；必须同时指定 -Style。
+    .PARAMETER Path
+    用户配置文件路径，默认 ~/.cxxu/config.psd1；只影响本次持久化。
+    .EXAMPLE
+    Set-PsFileListStyle
+    .EXAMPLE
+    Set-PsFileListStyle -Style Classic
+    .EXAMPLE
+    Set-PsFileListStyle -Style Off -Persist
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        # 目标配色；省略时读取 PsFileListStyle
+        [ValidateSet('Auto', 'Classic', 'Off')]
+        [string]$Style = '',
+        # 写入用户配置，重开终端后保持
+        [switch]$Persist,
+        # 用户配置文件路径(默认 ~/.cxxu/config.psd1)
+        [string]$Path = (Join-Path (Join-Path $HOME '.cxxu') 'config.psd1')
+    )
+    if ($Persist -and [string]::IsNullOrWhiteSpace($Style))
+    {
+        throw '使用 -Persist 时必须同时指定 -Style。'
+    }
+    $resolved = Resolve-CxxuFileListStyle -Style $(if ($Style) { $Style } else { [string]$env:PsFileListStyle })
+    if (-not $PSCmdlet.ShouldProcess('Get-ChildItem 文件列表', "应用配色 $resolved")) { return }
+    if ($Style) { $env:PsFileListStyle = $Style }
+
+    if ($PSVersionTable.PSVersion -ge [version]'7.2')
+    {
+        switch ($resolved)
+        {
+            'Classic'
+            {
+                $esc = [char]0x1b
+                $PSStyle.FileInfo.Directory = "$esc[44;1m"
+                $PSStyle.FileInfo.SymbolicLink = "$esc[36;1m"
+                $PSStyle.FileInfo.Executable = "$esc[32;1m"
+            }
+            'Off' { }
+            default
+            {
+                $PSStyle.FileInfo.Directory = $PSStyle.Foreground.Blue
+                $PSStyle.FileInfo.SymbolicLink = $PSStyle.Foreground.Cyan
+                $PSStyle.FileInfo.Executable = $PSStyle.Foreground.Green
+            }
+        }
+    }
+
+    if ($Persist)
+    {
+        Set-CxxuConfigModelValues -Path $Path -Values @{ PsFileListStyle = $Style }
+    }
+    Write-Verbose "文件列表配色: $resolved"
+}
 function Get-CxxuArgcExecutable
 {
     # 定位 argc 可执行文件(不导出):仓库 bin 优先,其次 PATH(Homebrew 等系统安装)。
@@ -2417,7 +2496,7 @@ function Get-CxxuInitStepsForTier
     # Minimal 与 Fast 等价，统一按 Fast 生成步骤。
     if ($Tier -ieq 'Minimal') { $Tier = 'Fast' }
     $core = Get-CxxuCoreInitSteps
-    $beforeNames = @(if ($Tier -eq 'Fast') { 'Set-PSReadLinesCommon'; 'Set-PSReadLinesAdvanced' })
+    $beforeNames = @(if ($Tier -eq 'Fast') { 'Set-PsFileListStyle'; 'Set-PSReadLinesCommon'; 'Set-PSReadLinesAdvanced' })
     $afterNames = @(if ($Tier -eq 'Balanced') { } else { 'Update-PwshVars'; 'Set-PsPrompt' })
     # 用户显式选择富信息提示符时，即使 Fast 也补回其依赖的系统信息步骤。
     if ($Tier -ne 'Balanced' -and ($env:PsPrompt -match '^(?i:Balance|Brilliant|Brilliant2)$'))
@@ -2443,6 +2522,8 @@ function Get-CxxuCoreInitSteps
     # 组件清单里的 Init 若与这里的 Name 相同，则由核心步骤统一承担，不再重复生成。
     @{
         Before = @(
+            # 文件列表配色(7.2+):去掉浅色主题下目录名的蓝底,统一改为无背景前景色
+            @{ Name = 'Set-PsFileListStyle'; Action = { Set-PsFileListStyle }; MinPS = 7 }
             # 导入图标模块(建议放到extension部分中)
             # Import-TerminalIcons
             # Import-ANSIColorEnv

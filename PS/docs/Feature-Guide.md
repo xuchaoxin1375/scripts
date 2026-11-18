@@ -34,6 +34,7 @@ Add-EnvVar -EnvVar PSModulePath -NewValue $p -Verbose
 | `Get-CxxuConfig` | 查看各开关的当前生效值、来源（环境变量/配置文件/默认值）与默认值；管道接 `Format-List` 看完整说明 |
 | `Reset-CxxuConfig` | 按仓库默认偏好（组件见 `PS/Init/components.psd1`，Settings 见 `PS/Init/config.defaults.psd1`）重置用户配置文件；`-WhatIf` 只预览路径，重置后重开终端生效，并列出仍会覆盖默认值的环境变量 |
 | `Set-PsStartupTier` | 切换启动档位 `Fast`/`Balanced`（`Minimal` 作为 `Fast` 别名接受）；`-Persist` 写入用户配置，`-WhatIf` 预览；当前会话不卸载已加载模块 |
+| `Set-PsFileListStyle` | 调整 `Get-ChildItem` 文件列表配色：`Auto`（默认）去掉目录蓝底并改用标准前景色，`Classic` 恢复 PowerShell 原生蓝底，`Off` 不改动；`-Persist` 写入用户配置的 `Settings.PsFileListStyle` |
 | `Enable-PsPlugin` / `Disable-PsPlugin` | 体验插件启停（Fzf/Zoxide/Predictor/Tab/Argc/GitCompletion/Carapace/PSCompletions/Fnm/ScoopSearch，当会话生效；加 `-Persist` 长期有效，写 `~/.cxxu/config.psd1`） |
 | `Set-GitCompletionSource` | 切换 `git`/`gitk` 的 Tab 补全来源（`GitCompletion`/`Carapace`/`Argc`）：写入 `PsGitCompletionSource` 与相关开关，由 `init` 在启动时读取，当前会话立即重新注册；选来源即启用对应组件（此前被 `Disable-PsPlugin` 停用也会重新打开），但不会停用其他组件；不改 profile，`-Persist` 落配置，`-WhatIf` 预览 |
 | `Get-GitCompletionSource` | 只读查看 `git`/`gitk` 补全的配置来源、解析来源与当前会话已注册来源，附各来源（含 `posh-git`）的安装/启用状态、回落原因与下一步命令；`-List` 按来源逐行列出候选（安装、版本、启用、当前生效与安装命令）；用于确认“当前实际用的是哪个”，不加载补全模块 |
@@ -203,6 +204,7 @@ Get-CxxuComponent | Select-Object Id, Enabled, TierAllowed, Effective
 - **启动进度条**：默认开（`Loading...` + 分步百分比，跑完自动消失）。
   不想要：`$env:PsShowProgress = 'False'`（当前会话）；一劳永逸：
   `Add-EnvVar -EnvVar PsShowProgress -NewValue 'False'`。agent/CI 等重定向场景自动关闭，不用管。
+- **浅色主题下 `ls` 的目录蓝底刺眼**：PowerShell 7.2 起 `Get-ChildItem` 通过 `$PSStyle.FileInfo.Directory` 给目录名加蓝色背景（默认 `44;1` 样式），在浅色终端主题下对比过强。`init` 按 `PsFileListStyle=Auto` 去掉背景，目录、符号链接与可执行文件改用标准前景色；设 `Classic` 恢复 PowerShell 原生蓝底；设 `Off` 不改动（自行配色时用它，并把覆盖语句放在 profile 的 `init` 之后；当前会话已应用 Auto 时用 `Classic` 恢复原生）。当前会话执行 `Set-PsFileListStyle`（或 `init -Force`）立即生效；持久化用 `Set-PsFileListStyle -Style <值> -Persist`，或编辑 `~/.cxxu/config.psd1` 的 `Settings` 段；`Get-CxxuConfig | Where-Object Key -eq PsFileListStyle` 查看生效值与来源。Windows PowerShell 5.1 与 pwsh 7.0/7.1 没有 `$PSStyle`，该步骤静默跳过。
 - **窄窗口（宽<50 或高<5）启动刷 ListView WARNING**：PSReadLine 的硬门槛，
   2026-09-21 已在设 ListView 之前按尺寸分流（`Set-PSReadLinesAdvanced` 里）：
   窄窗口自动用内联视图，无警告；窗口拉大后重跑 `Set-PSReadLinesAdvanced` 即按新尺寸重选。
