@@ -137,6 +137,34 @@ function Push-ReposesConfigedFromMainPC
     Push-ReposesConfiged
 }
 
+function Test-GitRebaseInProgress
+{
+    <#
+    .SYNOPSIS
+    判断指定仓库是否停留在未完成的 rebase 中(含冲突暂停)。
+
+    .DESCRIPTION
+    读取仓库的 git 目录并检查 rebase-merge、rebase-apply 标记目录。处于 rebase 中时,
+    git 会拒绝新的拉取,换远端或镜像重试也不会推进;应先解决冲突并执行 git rebase --continue,
+    或执行 git rebase --abort 放弃本次更新。
+    #>
+    param(
+        [string]$RepoPath = '.'
+    )
+
+    $gitDir = [string](& git -C $RepoPath rev-parse --git-dir 2>$null)
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($gitDir))
+    {
+        return $false
+    }
+    if (-not [IO.Path]::IsPathRooted($gitDir))
+    {
+        $gitDir = Join-Path -Path $RepoPath -ChildPath $gitDir
+    }
+    return ((Test-Path -LiteralPath (Join-Path $gitDir 'rebase-merge')) -or
+        (Test-Path -LiteralPath (Join-Path $gitDir 'rebase-apply')))
+}
+
 function Update-ReposesConfiged
 {
     <#
@@ -147,6 +175,11 @@ function Update-ReposesConfiged
     依次处理 $CommonRepos 中的仓库;当前主机在 CxxuComputers 名单内时追加 $CxxuRepos。
     目录不存在时执行浅克隆(--depth=1);已存在的 git 仓库先校正 origin 地址,再拉取当前分支。
     镜像与代理只作用于 git 的网络访问,不修改工作区内容;需要丢弃本地改动并对齐远端时使用 -Force。
+
+    拉取前检查已跟踪文件的未提交改动。存在此类改动时 pull --rebase 必然失败,命令改为先 fetch
+    核对远端:远端无新提交则报告已是最新并保留改动;远端有新提交则跳过该仓库,提示先提交或
+    git stash。需要丢弃这些改动时使用 -Force。拉取失败按原因(本地 rebase 未完成、gitee 凭据、
+    网络或镜像)分别给出处理建议。
 
     源域名优先级(加速前缀仅对 github 源生效):
     - -RepoSource github|gitee :本次强制所有仓库使用该源。
@@ -494,7 +527,8 @@ function Update-ReposesConfiged
                 }
                 else
                 {
-                    $failures += $repoName
+                    $failureReason = if ($repoSourceName -eq 'gitee') { 'auth' } else { 'network' }
+                    $failures += [pscustomobject]@{ Name = $repoName; Reason = $failureReason }
                     Write-Warning "[$repoName] 克隆失败(退出码 $LASTEXITCODE)。"
                 }
                 continue
@@ -502,7 +536,7 @@ function Update-ReposesConfiged
 
             if (-not (Test-Path -LiteralPath (Join-Path $repoPath '.git')))
             {
-                $skipped += $repoName
+                $skipped += [pscustomobject]@{ Name = $repoName; Reason = 'not-git' }
                 Write-Warning "[$repoName] 目录已存在但不是 git 仓库,已跳过。如需纳入更新,请手动移走该目录后重试。"
                 continue
             }
@@ -554,6 +588,7 @@ function Update-ReposesConfiged
                 $branch = $branch.Trim()
 
                 $exitCode = 0
+                $failureReason = ''
                 if ($Force)
                 {
                     Write-Host "强制对齐:origin/$branch"
@@ -574,20 +609,94 @@ function Update-ReposesConfiged
                     $fetchRef = "origin/$branch"
                     if ($exitCode -ne 0 -and $repoMirrorPrefix)
                     {
-                        Write-Warning ("经镜像拉取 $repoName 失败(退出码 $exitCode),改为直连重试。" +
-                            "若确认其为私有仓库,请加入 `$PrivateRepos 或 -PrivateRepos。")
+                        Write-Warning ("经镜像获取 $repoName 更新失败(退出码 $exitCode),改为直连重试。" +
+                            '镜像只代理公开仓库;若确认其为私有仓库,请加入 $PrivateRepos 或 -PrivateRepos。')
                         & git @gitNetworkArgs fetch $directUrl $branch
                         $exitCode = $LASTEXITCODE
                         $fetchRef = 'FETCH_HEAD'
+                    }
+                    if ($exitCode -ne 0)
+                    {
+                        $failureReason = 'network'
                     }
                     if ($exitCode -eq 0)
                     {
                         & git @gitNetworkArgs reset --hard $fetchRef
                         $exitCode = $LASTEXITCODE
+                        if ($exitCode -ne 0)
+                        {
+                            # fetch 已成功,失败来自本地工作区(文件被占用或权限不足),与网络无关
+                            $failureReason = 'other'
+                        }
                     }
                 }
                 else
                 {
+                    # pull --rebase 遇到已跟踪文件的未提交改动必然失败(退出码 128),与网络无关:
+                    # 先检测并单独处理,避免误报为镜像故障或私有仓库问题,也不做无用的直连重试
+                    $dirtyLines = @(& git status --porcelain --untracked-files=no 2>$null |
+                        Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+                    if ($dirtyLines.Count -gt 0)
+                    {
+                        $dirtyNames = @($dirtyLines | ForEach-Object { ($_ -replace '^.{2}\s+', '').Trim('"') })
+                        $dirtySample = ($dirtyNames | Select-Object -First 3) -join '、'
+                        if ($dirtyNames.Count -gt 3)
+                        {
+                            $dirtySample += ' 等'
+                        }
+                        Write-Host ("本地有 $($dirtyNames.Count) 个已跟踪文件未提交:$dirtySample。" +
+                            'pull --rebase 会被拒绝,改为先核对远端是否有新提交。') -ForegroundColor Yellow
+
+                        # 改动不参与拉取,只 fetch 判断是否落后;有落后才算真正漏掉一次更新
+                        $fetchRef = "origin/$branch"
+                        $previousPrompt = $env:GIT_TERMINAL_PROMPT
+                        if ($noPrompt)
+                        {
+                            $env:GIT_TERMINAL_PROMPT = '0'
+                        }
+                        try
+                        {
+                            & git @gitNetworkArgs fetch origin $branch
+                            $exitCode = $LASTEXITCODE
+                        }
+                        finally
+                        {
+                            $env:GIT_TERMINAL_PROMPT = $previousPrompt
+                        }
+                        if ($exitCode -ne 0 -and $repoMirrorPrefix)
+                        {
+                            Write-Warning ("经镜像获取 $repoName 更新失败(退出码 $exitCode),改为直连重试。" +
+                                '镜像只代理公开仓库;若确认其为私有仓库,请加入 $PrivateRepos 或 -PrivateRepos。')
+                            & git @gitNetworkArgs fetch $directUrl $branch
+                            $exitCode = $LASTEXITCODE
+                            $fetchRef = 'FETCH_HEAD'
+                        }
+                        if ($exitCode -ne 0)
+                        {
+                            $failures += [pscustomobject]@{ Name = $repoName; Reason = 'network' }
+                            Write-Warning "[$repoName] 获取远端更新失败(退出码 $exitCode)。"
+                            continue
+                        }
+
+                        $behind = 0
+                        $behindText = [string](& git rev-list --count "HEAD..$fetchRef" 2>$null)
+                        if ($LASTEXITCODE -eq 0 -and $behindText -match '^\s*(\d+)\s*$')
+                        {
+                            $behind = [int]$Matches[1]
+                        }
+                        if ($behind -eq 0)
+                        {
+                            $succeeded++
+                            Write-Host "[$repoName] 已是远端最新,本地未提交改动保持不动。" -ForegroundColor Green
+                        }
+                        else
+                        {
+                            $skipped += [pscustomobject]@{ Name = $repoName; Reason = 'dirty' }
+                            Write-Warning "[$repoName] 远端有新提交 $behind 个,本地未提交改动阻止拉取,已跳过。"
+                        }
+                        continue
+                    }
+
                     Write-Host "拉取:origin/$branch"
                     $previousPrompt = $env:GIT_TERMINAL_PROMPT
                     if ($noPrompt)
@@ -603,10 +712,11 @@ function Update-ReposesConfiged
                     {
                         $env:GIT_TERMINAL_PROMPT = $previousPrompt
                     }
-                    if ($exitCode -ne 0 -and $repoMirrorPrefix)
+                    # rebase 冲突时换直连再拉一次没有意义,还会覆盖需要保留的中间状态
+                    if ($exitCode -ne 0 -and $repoMirrorPrefix -and -not (Test-GitRebaseInProgress -RepoPath $repoPath))
                     {
                         Write-Warning ("经镜像拉取 $repoName 失败(退出码 $exitCode),改为直连重试。" +
-                            "若确认其为私有仓库,请加入 `$PrivateRepos 或 -PrivateRepos。")
+                            '镜像只代理公开仓库;若确认其为私有仓库,请加入 $PrivateRepos 或 -PrivateRepos。')
                         & git @gitNetworkArgs pull $directUrl $branch
                         $exitCode = $LASTEXITCODE
                     }
@@ -620,7 +730,14 @@ function Update-ReposesConfiged
                 }
                 else
                 {
-                    $failures += $repoName
+                    # 失败原因只决定汇总里的处理建议,不改变失败判定
+                    if (-not $failureReason)
+                    {
+                        $failureReason = if (Test-GitRebaseInProgress -RepoPath $repoPath) { 'conflict' }
+                            elseif ($repoSourceName -eq 'gitee') { 'auth' }
+                            else { 'network' }
+                    }
+                    $failures += [pscustomobject]@{ Name = $repoName; Reason = $failureReason }
                     Write-Warning "[$repoName] 更新失败(退出码 $exitCode)。"
                 }
             }
@@ -631,15 +748,31 @@ function Update-ReposesConfiged
         }
 
         Write-Host ''
-        if ($failures.Count -eq 0)
+        $summaryColor = if ($failures.Count -eq 0) { 'Green' } else { 'Yellow' }
+        Write-Host ("更新完成:成功 $succeeded 个,失败 $($failures.Count) 个,跳过 $($skipped.Count) 个。") -ForegroundColor $summaryColor
+
+        # 按本次实际遇到的失败原因逐类给出处理建议,不把无关提示堆在同一行
+        if ($failures.Count -gt 0)
         {
-            Write-Host "更新完成:成功 $succeeded 个仓库,跳过 $($skipped.Count) 个。" -ForegroundColor Green
+            $reasonHints = @(
+                @{ Key = 'conflict'; Hint = '本地 rebase 未完成:在仓库目录解决冲突后执行 git rebase --continue,或执行 git rebase --abort 放弃本次更新,然后重跑。' },
+                @{ Key = 'auth'; Hint = '凭据或权限不足:先确认 gitee 凭据可用、仓库名正确;私有仓库需加入 $PrivateRepos 或 -PrivateRepos(不走加速镜像)。' },
+                @{ Key = 'network'; Hint = '网络或镜像不可用:改用 -NoMirror 或 -GithubMirror <其他镜像>;网络受限时加 -Proxy <代理地址>;仓库实际不在 GitHub 时用 -RepoSource github|gitee 覆盖本次源。' },
+                @{ Key = 'other'; Hint = '查看上方 git 输出定位原因;需要直连时加 -NoMirror。' }
+            )
+            foreach ($reason in $reasonHints)
+            {
+                $failedNames = @($failures | Where-Object { $_.Reason -eq $reason.Key } | ForEach-Object { $_.Name })
+                if ($failedNames.Count -gt 0)
+                {
+                    Write-Warning ("[$($failedNames -join '、')] " + $reason.Hint)
+                }
+            }
         }
-        else
+        $dirtyNames = @($skipped | Where-Object { $_.Reason -eq 'dirty' } | ForEach-Object { $_.Name })
+        if ($dirtyNames.Count -gt 0)
         {
-            Write-Warning ("更新完成:成功 $succeeded 个,失败 $($failures.Count) 个($($failures -join '、')),跳过 $($skipped.Count) 个。" +
-                '镜像不可用时改用 -NoMirror 或 -GithubMirror <其他镜像>;名单规则不适用时用 -RepoSource github|gitee 覆盖本次源;' +
-                'gitee 私有仓库需先配置凭据;网络受限时加 -Proxy <代理地址> 后重试。')
+            Write-Warning ("[$($dirtyNames -join '、')] 本地有未提交改动,已跳过拉取:提交或 git stash 后重跑;确认可以丢弃本地改动时加 -Force。")
         }
 
         # scripts 仓库若含 dll 变更:同步活件(并排版本只新增目录,不受锁限制,任何会话都可执行)并提示重开;

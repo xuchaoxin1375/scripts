@@ -1,6 +1,6 @@
 @{
     RootModule = 'RepoSync.psm1'
-    ModuleVersion = '1.0.4'
+    ModuleVersion = '1.0.5'
     GUID = 'fc2215c8-56d0-4fde-a9cd-908a0f858ca2'
     Author = 'cxxu'
     Description = 'Repo sync and dev-env sync'
