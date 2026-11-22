@@ -1,10 +1,10 @@
 {
     "$help": "https://aka.ms/terminal-documentation",
     "$schema": "https://aka.ms/terminal-profiles-schema",
-    "actions": 
+    "actions":
     [
         {
-            "command": 
+            "command":
             {
                 "action": "switchToTab",
                 "index": 8
@@ -12,7 +12,7 @@
             "id": "User.switchToTab.ED268D78"
         },
         {
-            "command": 
+            "command":
             {
                 "action": "switchToTab",
                 "index": 4
@@ -20,7 +20,7 @@
             "id": "User.switchToTab.F747588A"
         },
         {
-            "command": 
+            "command":
             {
                 "action": "switchToTab",
                 "index": 7
@@ -28,7 +28,7 @@
             "id": "User.switchToTab.D7681B66"
         },
         {
-            "command": 
+            "command":
             {
                 "action": "swapPane",
                 "direction": "left"
@@ -36,7 +36,7 @@
             "id": "User.swapPane.2A0DA8E0"
         },
         {
-            "command": 
+            "command":
             {
                 "action": "copy",
                 "singleLine": false
@@ -44,7 +44,7 @@
             "id": "User.copy.644BA8F2"
         },
         {
-            "command": 
+            "command":
             {
                 "action": "switchToTab",
                 "index": 0
@@ -52,7 +52,7 @@
             "id": "User.switchToTab.D3F0B923"
         },
         {
-            "command": 
+            "command":
             {
                 "action": "openSettings",
                 "target": "settingsUI"
@@ -64,7 +64,7 @@
             "id": "User.togglePaneZoom"
         },
         {
-            "command": 
+            "command":
             {
                 "action": "splitPane",
                 "split": "auto",
@@ -73,7 +73,7 @@
             "id": "User.splitPane.A6751878"
         },
         {
-            "command": 
+            "command":
             {
                 "action": "switchToTab",
                 "index": 2
@@ -81,14 +81,14 @@
             "id": "User.switchToTab.87C324ED"
         },
         {
-            "command": 
+            "command":
             {
                 "action": "setMaximized"
             },
             "id": "User.setMaximized.3856770F"
         },
         {
-            "command": 
+            "command":
             {
                 "action": "switchToTab",
                 "index": 5
@@ -96,7 +96,7 @@
             "id": "User.switchToTab.75247157"
         },
         {
-            "command": 
+            "command":
             {
                 "action": "switchToTab",
                 "index": 6
@@ -108,7 +108,7 @@
             "id": "User.paste"
         },
         {
-            "command": 
+            "command":
             {
                 "action": "switchToTab",
                 "index": 3
@@ -124,7 +124,7 @@
             "id": "User.toggleFullscreen"
         },
         {
-            "command": 
+            "command":
             {
                 "action": "resizePane",
                 "direction": "left"
@@ -133,14 +133,15 @@
         }
     ],
     "autoHideWindow": false,
+    "compatibility.enableUnfocusedAcrylic": false,
     "copyFormatting": "none",
     "copyOnSelect": false,
     "defaultProfile": "{74fd5587-5585-4037-a746-20164b911685}",
-    "disableAnimations": false,
+    "disableAnimations": true,
     "experimental.enableColorSelection": false,
     "firstWindowPreference": "defaultProfile",
     "focusFollowMouse": false,
-    "keybindings": 
+    "keybindings":
     [
         {
             "id": null,
@@ -236,15 +237,15 @@
         }
     ],
     "language": "zh-Hans",
-    "newTabMenu": 
+    "newTabMenu":
     [
         {
             "type": "remainingProfiles"
         }
     ],
-    "profiles": 
+    "profiles":
     {
-        "defaults": 
+        "defaults":
         {
             "adjustIndistinguishableColors": "always",
             "antialiasingMode": "grayscale",
@@ -256,7 +257,7 @@
             "cursorHeight": 28,
             "cursorShape": "vintage",
             "experimental.retroTerminalEffect": false,
-            "font": 
+            "font":
             {
                 "face": "LiterationMono Nerd Font",
                 "size": 10
@@ -265,7 +266,7 @@
             "padding": "14",
             "useAcrylic": true
         },
-        "list": 
+        "list":
         [
             {
                 "adjustIndistinguishableColors": "always",
@@ -341,7 +342,7 @@
                 "commandline": "pwsh",
                 "cursorColor": "#000000",
                 "experimental.retroTerminalEffect": false,
-                "font": 
+                "font":
                 {
                     "face": "LiterationMono Nerd Font"
                 },
@@ -384,14 +385,28 @@
                 "source": "Microsoft.WSL"
             },
             {
-                "guid": "{086cad9e-f79f-5197-804f-9d27e161e43c}",
+                "adjustIndistinguishableColors": "always",
+                "antialiasingMode": "cleartype",
+                "bellStyle": "taskbar",
+                "closeOnExit": "automatic",
+                "colorScheme": "One Half Dark",
+                "commandline": "pwsh",
+                "cursorColor": "#000000",
+                "experimental.retroTerminalEffect": false,
+                "font":
+                {
+                    "face": "LiterationMono Nerd Font"
+                },
+                "guid": "{ecff2cc5-2ef2-4e2b-98dd-23de3a5943f5}",
                 "hidden": false,
-                "name": "archlinux",
-                "source": "Microsoft.WSL"
+                "name": "pwsh7 Scoop Dark",
+                "opacity": 90,
+                "startingDirectory": "%USERPROFILE%\\Desktop",
+                "useAcrylic": true
             }
         ]
     },
-    "schemes": 
+    "schemes":
     [
         {
             "background": "#0C0C0C",
