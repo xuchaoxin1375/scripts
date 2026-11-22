@@ -181,6 +181,10 @@ function Update-ReposesConfiged
     git stash。需要丢弃这些改动时使用 -Force。拉取失败按原因(本地 rebase 未完成、gitee 凭据、
     网络或镜像)分别给出处理建议。
 
+    拉取期间关闭 git 的自动 gc/repack(gc.auto=0、maintenance.auto=false):repack 需要删除被替换
+    的旧 pack,Windows 上该文件被其他进程占用时会停在 "Unlink of file ... failed" 的交互询问,
+    阻塞批量流程。需要压缩仓库时,在没有其他 git 操作的情况下于仓库目录手动执行 git gc。
+
     源域名优先级(加速前缀仅对 github 源生效):
     - -RepoSource github|gitee :本次强制所有仓库使用该源。
     - auto(默认):$CommonRepos 内的仓库走 github,其余仓库走 gitee。
@@ -407,6 +411,10 @@ function Update-ReposesConfiged
         {
             $gitNetworkArgs = @('-c', "http.proxy=$proxyUrl", '-c', "https.proxy=$proxyUrl")
         }
+        # 拉取时不触发自动 gc/repack:repack 要删除被替换的旧 pack,Windows 上该文件被其他进程
+        # (并发 git、编辑器集成、杀毒扫描)占用时,git 会停在 "Unlink of file ... failed" 的交互询问,
+        # 阻塞批量流程;维护压缩留给空闲时手动 git gc
+        $gitUpdateArgs = @($gitNetworkArgs) + @('-c', 'gc.auto=0', '-c', 'maintenance.auto=false')
 
         # 解析仓库列表:显式 -RepoDirs 覆盖默认集合
         if ($PSBoundParameters.ContainsKey('RepoDirs'))
@@ -599,7 +607,7 @@ function Update-ReposesConfiged
                     }
                     try
                     {
-                        & git @gitNetworkArgs fetch origin $branch
+                        & git @gitUpdateArgs fetch origin $branch
                         $exitCode = $LASTEXITCODE
                     }
                     finally
@@ -611,7 +619,7 @@ function Update-ReposesConfiged
                     {
                         Write-Warning ("经镜像获取 $repoName 更新失败(退出码 $exitCode),改为直连重试。" +
                             '镜像只代理公开仓库;若确认其为私有仓库,请加入 $PrivateRepos 或 -PrivateRepos。')
-                        & git @gitNetworkArgs fetch $directUrl $branch
+                        & git @gitUpdateArgs fetch $directUrl $branch
                         $exitCode = $LASTEXITCODE
                         $fetchRef = 'FETCH_HEAD'
                     }
@@ -656,7 +664,7 @@ function Update-ReposesConfiged
                         }
                         try
                         {
-                            & git @gitNetworkArgs fetch origin $branch
+                            & git @gitUpdateArgs fetch origin $branch
                             $exitCode = $LASTEXITCODE
                         }
                         finally
@@ -667,7 +675,7 @@ function Update-ReposesConfiged
                         {
                             Write-Warning ("经镜像获取 $repoName 更新失败(退出码 $exitCode),改为直连重试。" +
                                 '镜像只代理公开仓库;若确认其为私有仓库,请加入 $PrivateRepos 或 -PrivateRepos。')
-                            & git @gitNetworkArgs fetch $directUrl $branch
+                            & git @gitUpdateArgs fetch $directUrl $branch
                             $exitCode = $LASTEXITCODE
                             $fetchRef = 'FETCH_HEAD'
                         }
@@ -705,7 +713,7 @@ function Update-ReposesConfiged
                     }
                     try
                     {
-                        & git @gitNetworkArgs pull origin $branch
+                        & git @gitUpdateArgs pull origin $branch
                         $exitCode = $LASTEXITCODE
                     }
                     finally
@@ -717,7 +725,7 @@ function Update-ReposesConfiged
                     {
                         Write-Warning ("经镜像拉取 $repoName 失败(退出码 $exitCode),改为直连重试。" +
                             '镜像只代理公开仓库;若确认其为私有仓库,请加入 $PrivateRepos 或 -PrivateRepos。')
-                        & git @gitNetworkArgs pull $directUrl $branch
+                        & git @gitUpdateArgs pull $directUrl $branch
                         $exitCode = $LASTEXITCODE
                     }
                 }
