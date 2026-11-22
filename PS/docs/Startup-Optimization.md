@@ -2,16 +2,16 @@
 
 > 适用：`PS/` 模块集（`$env:PSModulePath` 引用 `C:/repos/scripts/PS`，`$profile` 里只有 `init`）。
 > 测量环境：Windows Server 级虚拟机，pwsh 7.5。个人电脑数值不同，但瓶颈排序一致。
-> 本文件按轮次追加历史实测；**现行默认值与性能以 §1 基线表和最后一轮实测为准**（最近更新 2026-11-13）。旧轮次中的“默认关/冷启动约 400ms”等结论只代表当时状态。2026-11-13 起 core 变量加载拆为独立步骤 `Update-PwshVars`；旧轮次中 `Set-PsPrompt` 的计时包含变量加载，新口径见 §38。
+> 本文件按轮次追加历史实测；**现行默认值与性能以 §1 基线表和最后一轮实测为准**（最近更新 2026-11-22）。旧轮次中的“默认关/冷启动约 400ms”等结论只代表当时状态。2026-11-13 起 core 变量加载拆为独立步骤 `Update-PwshVars`；旧轮次中 `Set-PsPrompt` 的计时包含变量加载，新口径见 §38。2026-11-22 补旧提交对照与 conda hook 停用，见 §40。
 
 ## 1. 基线数据
 
 | 场景 | 耗时 | 说明 |
 |---|---|---|
 | `pwsh -NoProfile -c exit` | ~208ms | 裸启动，优化天花板 |
-| conda hook（`profile.ps1`） | ~450~700ms | 每个 shell 都 fork 一次 conda.exe，**是第一大户，比 init 还贵**；已用缓存方案解决（见 §8） |
+| conda hook（`profile.ps1`） | ~450~700ms（原始 hook） | 每个 shell 都 fork 一次 conda.exe，**是第一大户，比 init 还贵**；缓存方案约 59ms（见 §8）；2026-11-22 本机改为停用 |
 | `init`（分步任务表） | +460~770ms | 沙盒多次测量区间 |
-| 真实全 profile（conda + init） | ~800~1300ms | 沙盒 1279ms，真机约 800~950ms |
+| 真实全 profile（conda + init） | ~800~1300ms | 沙盒 1279ms，真机约 800~950ms；2026-11-22 本机停用 conda 后为 ~818ms（见 §40） |
 | `prompt` 每次回车 | ~100ms | 主要是 `Get-MemoryUseSummary` 的 CIM 查询（~100ms/次，由 5s 节流摊薄） |
 | 首屏 OnIdle 单发（predictor + zoxide，命令表缓存热） | ~30ms | 手势桩另计（毫秒级）；缓存缺失时 predictor 建表 +0.1~0.4s，24h 最多一次（§26；2026-11-07 本机实测） |
 | `Get-Module -ListAvailable Terminal-Icons` | ~78ms | 每次全盘扫描 PSModulePath，不可放热路径 |
@@ -988,6 +988,72 @@ WindowsTerminal.exe
   剩余主要是 profile 文件解析、init 首次调用/JIT 与测量抖动，不再是无法解释的黑盒。
 - 验证：`Test-StartupPerformance`、`-Repeat 3 -Report`、`-Simple`、Init 测试（pwsh 7/5.1）、
   PSScriptAnalyzer 0 error。
+
+## 40. 第三十三轮：426ms 口径、旧提交对照与 conda hook（2026-11-22）
+
+- 触发：用户贴出 `49b0582`（2026-11-06）的截图，`Environment Loading time: 426.5481 ms`，
+  感觉比当前 HEAD（`c9f032f`，2026-11-22）快；并追问旧版本是否即使没动 conda profile 也更快。
+- 测量环境：本机 Windows、pwsh 7.7.0、热缓存；完整 profile 与新进程 `init` 均三次采样取中位数。
+- 口径核对：
+  - 截图是旧版 `init` 的**步骤计时**。旧代码在 `Import-CxxuConfig` 与可选变量重载之后才取
+    `$startTime`，打印值不含 conda hook、Init 模块发现/导入、config load、profile 解析与裸启动。
+  - 当前 `init` 的主数字是 `total`（prep + steps + other）。同机冷进程实测
+    `prep 133 + steps 318 + other 5 ≈ 458ms`；`steps` 为 297–347ms，低于截图的 426ms。
+  - 按 `600b94f` 的 `prep` 约 115ms 估算（仅供参考），旧版 total 约 440–470ms，与当前 445–485ms 接近；
+    截图 426ms 与当前 458ms 不能直接当作版本回退。
+- 旧提交对照（同一份 profile、同一台机、新进程；`PSModulePath` 与 `CxxuPSModulePath`
+  指向各 worktree，conda 停用）：
+
+  | 提交 | 完整 profile | `init` 输出 |
+  | --- | --- | --- |
+  | `49b0582` | 723–762ms，中位 757ms | `steps` 328–356ms（截图单次 426ms） |
+  | `600b94f` | 783–816ms，中位 797ms | `steps` 302–309 + `prep` 114–124 = `total` 423–432ms |
+  | `d5a3936` | 796–844ms，中位 799ms | `total` 443–465ms |
+  | `HEAD` | 794–851ms，中位 817ms | `total` 445–485ms |
+
+  - 旧版确实略快，但 `49b0582` 只比当前快约 60ms，`600b94f`/`d5a3936` 与当前差约 20ms；
+    不是数百毫秒级的回退。
+  - `Init module load`：`49b0582` 53–60ms，`HEAD` 83–101ms；`Init.psm1` 从 952 行增至 4139 行。
+    这是旧版那约 60ms 的主要来源，属于可解释的小回退。
+- conda hook（本轮重点）：
+  - 测量时 `$PROFILE.CurrentUserAllHosts` 仍是原始
+    `conda.exe shell.powershell hook`，每次启动 fork；`~/.conda_hook_cache.ps1` 不存在。
+  - 实测 hook 本体 532–536ms；带 `Invoke-Expression` 500–563ms。
+  - 同一 profile：带 conda 1372–1492ms；停用 conda 814–853ms；差 546–662ms。
+  - `Test-StartupPerformance` 的 `Profile other` 为 694ms（占 50%），其中约 530ms 是 conda，
+    剩余约 160ms 是 profile 解析、init JIT 与测量抖动。
+  - 结论：旧版“看起来快”主要不是 init 代码回退；conda hook 是当前最大单项，且不在
+    `Environment Loading time` 里。只要 conda 仍用原始 hook，任何版本都会多约 0.5s。
+- 处置（2026-11-22，本机 profile）：停用 conda 自动集成，保留 `#region conda initialize`
+  与注释掉的三行，并写明恢复方式；`conda` 命令仍作为 Application 可用，`CONDA_SHLVL`/
+  `CONDA_DEFAULT_ENV` 为空，`conda` 函数不存在。重新运行 `conda init powershell` 会恢复该块。
+- 停用后复测（HEAD，`Test-StartupPerformance -Repeat 3 -Report`，中位数）：
+
+  | 指标 | 停用前 | 停用后 |
+  | --- | ---: | ---: |
+  | `Profile total` | 1379ms | 818ms |
+  | `Profile other` | 694ms | 107ms |
+  | `Init total` | 432ms | 456ms |
+  | `Init module load` | 86ms | 83ms |
+  | `bare` | 167ms | 172ms |
+
+  `Init total` 的小幅上升在噪声内；本轮变化来自 conda 移出启动链，不是 init 提速。
+- 复测方法（可复用）：
+
+  ```powershell
+  git worktree add --detach /path/to/tmp/wt-<sha> <sha>
+  $oldPS = '/path/to/tmp/wt-<sha>/PS'
+  $env:PSModulePath = "$oldPS;$env:PSModulePath"
+  $env:CxxuPSModulePath = $oldPS
+  Measure-Command { pwsh -NoLogo -Command 'exit' }   # 完整 profile
+  ```
+
+  两边必须使用同一份 `$profile`；`profile.ps1` 不在仓库内，换 worktree 不会换它是正常的。
+  测完恢复 `$env:PSModulePath`/`$env:CxxuPSModulePath`；更稳妥的是把设置放进子进程脚本。
+  旧版 `init` 默认打印 `Environment Loading time`；当前需 `CXXU_INIT_REPORT=1` 或 `init -Timing`。
+- 边界：旧提交对照使用当前 profile 与当前外部模块；如果截图时 conda 已停用或已缓存，
+  当时的绝对启动会再低约 0.5s，但仓库代码本身的差值仍是约 20–60ms。上述数值为单机、热缓存、
+  三次采样中位数，受负载与杀软影响；不要用截图里的单行数字直接比较版本。
 
 ## 变量组缓存与预设变量启动开销
 

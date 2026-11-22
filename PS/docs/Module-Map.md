@@ -135,7 +135,7 @@ $profile -> init
 Data.json (~/.Data.json) ← Update-NetConnectionInfo 守护进程(6s) ← 网络变化
   ↑读                                    ↑写 IpPrompt/ConnectionName/cached*Memory
 prompt / Get-MemoryUseRatio(5s节流) / Confirm-DataJson(校验+重建)
-~/.conda_hook_cache.ps1 ← profile 点源（conda.exe 更新才重建）
+~/.conda_hook_cache.ps1 ← profile 点源（conda.exe 更新才重建；仅启用 conda 集成时；本机 2026-11-22 起停用）
 $TEMP/CxxuPwshVar_*.cache.ps1 ← conf 预编译（conf 更新才重建）
 $TEMP/CxxuPwshAlias_*.cache.ps1 ← 别名预编译（别名文件更新才重建）
 ```

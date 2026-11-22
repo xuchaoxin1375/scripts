@@ -121,14 +121,18 @@ Test-StartupPerformance -Simple   # 只测一次新 pwsh 启动（带 profile）
   （`pwsh -noe -c p`）会让外层 profile 先 `init` 一次，再由 `p` 开的子进程 `init` 一次，
   终端里就会出现两行 `initing...`；启动器只写 `pwsh`。
 - 只保留 `$profile` 这一条路径即可；WT 不需要额外启动参数。
-- conda 初始化已换缓存方案（`~/.conda_hook_cache.ps1`，573→59ms）；
-  下次跑 `conda init` 会覆盖，届时重新应用（见 `Startup-Optimization.md §8`）。
+- 本机 conda 自动集成已于 2026-11-22 停用：原始 hook 每次启动 fork `conda.exe`，
+  实测约 530ms；停用后 `Profile total` 约 818ms。需要自动激活时再启用，优先用缓存方案
+  （`~/.conda_hook_cache.ps1`，573→59ms）；`conda init powershell` 会覆盖/恢复该块，
+  届时按 [Startup-Optimization](Startup-Optimization.md) 的 conda 复测重新处理。
+  停用不影响 `conda` 命令本身，只影响 `conda activate` 的自动钩子。
 - profile 里只保留 `init`；`argc` 已有 Init 接管（部署见 [Argc-Completions-Deploy](Argc-Completions-Deploy.md)），`PSCompletions`/`fnm`/`scoop-search` 也迁到组件清单（默认关，`Enable-CxxuComponent <Id> -Persist` 启用），不再改 profile。
 
 ### 启动档位（Fast/Balanced）
 
 启动档位决定 `init` 加载到哪一层，适合临时开快速 shell 或让低配机器少加载扩展。档位只控制
-`init` 内的步骤；`$profile` 里的 conda 钩子、终端自身启动参数不在其中。
+`init` 内的步骤；`$profile` 里的 conda 钩子、终端自身启动参数不在其中
+（本机 2026-11-22 起 conda 钩子已停用，见 [Startup-Optimization](Startup-Optimization.md) §40）。
 
 | 档位 | 保留 | 不加载 |
 |---|---|---|
@@ -160,7 +164,8 @@ Get-CxxuComponent | Select-Object Id, Enabled, TierAllowed, Effective
   行为）约 430ms，`Balanced` 约 550~580ms，差约 120~150ms。主要来自 `Register-PsUxLazyLoad`
   （20~50ms）、`Set-ArgumentCompleter`（约 40ms）、`Confirm-EnvVarOfInfo`（25~35ms），加
   `Carapace` 与可选组件桩约 10ms；`Update-PwshVars`、`Set-PsPrompt` 与 `Set-PSReadLinesCommon` 两档都要执行。
-  含 conda 与模块导入的进程级口径同样差约 120~150ms，另有 conda 缓存约 150ms 不受档位影响。
+  含 conda 与模块导入的进程级口径同样差约 120~150ms；conda 原始 hook 约 530ms（缓存方案约 59ms）
+  不受档位影响。2026-11-22 本机停用 conda 后，整进程基线约 818ms。
   具体数值随负载与冷热缓存变化，复测用 `Test-StartupPerformance -Simple`。
 - 非法 `PsStartupTier` 值会在 `init` 时警告并按 `Balanced` 处理。
 
@@ -173,12 +178,15 @@ Get-CxxuComponent | Select-Object Id, Enabled, TierAllowed, Effective
   `Test-StartupPerformance`。前者是 `init` 函数内部耗时（`total` = prep + steps + other），
   后者是 pwsh 引擎统计的 profile 总耗时，还包含 profile 文件本身、`Init module load` 与进程退出。
   两者不是同一口径，后者通常更大；分段对照用 `Test-StartupPerformance`，口径说明见
-  [Startup-Optimization](Startup-Optimization.md) 的「计时口径」与 §39。
+  [Startup-Optimization](Startup-Optimization.md) 的「计时口径」、§39 与 §40。
+  另：旧版截图里的 426ms 是旧 `init` 的 `steps` 口径，不含 conda、模块加载与 config load；
+  当前同口径 `steps` 约 300–350ms，完整 profile 约 0.8s（conda 停用）或 1.3s（conda 原始 hook）。
 - **为什么以前看到 600ms，现在 `Profile total` 约 1000ms**：600ms 是 `init` 的 `total`，
   不含裸进程、模块发现/导入和 profile 自身开销；`Profile total` 是从启动到进程退出的完整生命周期。
   2026-11-13 的 worktree 对照显示 `600b94f` 与当前版本的完整 profile 都在 1000ms 左右，
   `init` total 都在 600ms 左右，没有 100ms 级回退；只是 `27ad607` 把主数字从 `steps` 改成了
-  `total`。细节见 [Startup-Optimization](Startup-Optimization.md) §39。
+  `total`。2026-11-22 本机停用 conda hook 后 `Profile total` 约 818ms；细节见
+  [Startup-Optimization](Startup-Optimization.md) §39 与 §40。
 - **Fast 档位下 Tab 模糊补全、PSFzf、预测或 Carapace 不工作**：档位是组件开关的上限。
   先看 `Get-CxxuConfig | Where-Object Key -eq PsStartupTier`；需要这些功能时执行
   `Set-PsStartupTier Balanced`，再新开终端或 `init -Force`。
@@ -186,7 +194,7 @@ Get-CxxuComponent | Select-Object Id, Enabled, TierAllowed, Effective
   不会卸载已加载模块。本会话执行 `init -Force` 会按新档位重建步骤表；在本会话里直接执行
   `pwsh` 启动的子进程会继承，从桌面或终端应用独立启动的窗口不继承，需 `-Persist`。
 - **嵌套 `pwsh` 又跑一遍 init**：新进程不继承 `$global:PsInit`，只能重跑；
-  贵的是 conda + init + 模块发现（见基线表），不是重复 bug。若启动器写成
+  贵的是 conda（若启用）+ init + 模块发现（见基线表），不是重复 bug。若启动器写成
   `pwsh -noe -c p`，会看到两次 `initing...`（外层 profile 一次、`p` 开的子进程一次）；
   把启动器改成 `pwsh` 即可，原因与验证见 `Startup-Optimization.md` 的启动器重复初始化记录。
 - **prompt 显示空 IP**：`~/Data.json` 的 `IpPrompt` 为空且守护进程没跑；
@@ -195,8 +203,9 @@ Get-CxxuComponent | Select-Object Id, Enabled, TierAllowed, Effective
   纯 Prompt 重载只会因抓空报错，不会叠）。真凶是 `Conda.psm1:232-247`——每次 import
   都 `Rename-Item prompt→CondaPromptBackup` 再包一层（`ChangePs1` 缺省真），旧 `ipmof`
   全量重载每轮多包一层。2026-09-20 已改白名单：只重载仓库内模块 + `*conda*` 跳过。
-  已堆起来的会话跑一行恢复（变量不丢，空槽/叠层两种状态通用）：
-  `Remove-Module Prompt,Conda -Force; . $HOME/.conda_hook_cache.ps1; Import-Module Prompt -Force`。
+  已堆起来的会话跑一行恢复（变量不丢，空槽/叠层两种状态通用；仅在启用 conda 集成且缓存
+  存在时执行）：
+  `Remove-Module Prompt,Conda -Force; if (Test-Path "$HOME/.conda_hook_cache.ps1") { . "$HOME/.conda_hook_cache.ps1" }; Import-Module Prompt -Force`。
   另：`Prompt.psm1` 顶层已改“全局只抓一次”（`$global:__CxxuOriginalPrompt`），
   裸重载复用首存不再抓空，故 Prompt 可留在轮转里；想换底（如后激活 conda）：
   `Remove-Variable global:__CxxuOriginalPrompt` 后重载一次即重抓。
@@ -518,7 +527,7 @@ Git Bash 使用同一个 carapace 二进制，Linux/macOS 使用各自平台的�
 | `PSCompletions`（~200 命令参数补全） | 未装；组件 `PSCompletions` 默认关 | `Deploy-CompletionStack -IncludePSCompletions`，再 `Enable-CxxuComponent PSCompletions -Persist` | 由 `init` 导入模块；旧注"可能导致 `ipmof`/`iex` 报错"已过期（白名单+`ipmox` 时代） |
 | `fzf` / `zoxide` 二进制 | 无则 `Ctrl+T/R`、`z` 不可用（不影响 CxxuCommand） | `Deploy-CompletionStack -IncludeFuzzy`（scoop→winget/brew→`scripts-deps` 转存→上游），或 `scoop install fzf zoxide` | 装完重开终端，init 缓存自建 |
 | `scoop` 本体 | 无则二进制系列全停 | 按官网装，或 `Deploy-ScoopByGithubMirrors`（国内） | 装完补 buckets（`Add-ScoopBuckets`） |
-| `conda` | 无则 prompt  conda 段静默缺失 | `Deploy-MiniforgeConfig`；`$condaExe` 路径按机器对（profile 缓存块） | 缓存 `~/.conda_hook_cache.ps1`，首跑慢一次 |
+| `conda` | 本机已停用自动集成；无则 prompt conda 段静默缺失 | `Deploy-MiniforgeConfig`；`$condaExe` 路径按机器对（profile 缓存块） | 启用时优先缓存 `~/.conda_hook_cache.ps1`；原始 hook 每次约 530ms，停用不影响 `conda` 命令 |
 | `fnm` + 钩子 | 未装；组件 `Fnm` 默认关 | `scoop install fnm`（或 `brew install fnm`），再 `Enable-CxxuComponent Fnm -Persist` | `init` 执行 `fnm env --use-on-cd`；node 用户才需要 |
 | `scoop-search` 钩子 | 组件 `ScoopSearch` 默认关 | `scoop install scoop-search`，再 `Enable-CxxuComponent ScoopSearch -Persist` | `init` 注入 `scoop-search --hook` |
 | `argc` 整块 | 未部署 | `Deploy-CompletionStack -IncludeArgc`（或 `Deploy-ArgcCompletions`） | 由 `init` 的 `Set-ArgcCompletions` 懒加载；装完重开终端/`init` |
