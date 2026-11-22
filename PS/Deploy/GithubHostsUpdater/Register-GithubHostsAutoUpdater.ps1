@@ -33,7 +33,7 @@ function Register-GithubHostsAutoUpdater-Archive
     {
         # 中央镜像优先,失败回直连(与 Deploy-GithubHostsAutoUpdater 同策略,不再只走 gitee)
         # 下载脚本用 -OutFile 直存原始字节:5.1 的 ">" 写成 UTF-16 会与内容自带 BOM 叠加成双 BOM,执行时解析失败
-        $ghuMirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
+        $ghuMirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.org' }
         $ghuRawBase = 'https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/GithubHostsUpdater'
         $files | ForEach-Object {
             try

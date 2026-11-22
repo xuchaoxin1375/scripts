@@ -284,7 +284,7 @@ git 补全来源先看 `Get-GitCompletionSource`：`ConfiguredSource` 是配置�
 
 carapace 是一个跨 shell 的命令行补全二进制，按命令读取自身的 completer（补全器），在 PowerShell 里通过 `Register-ArgumentCompleter -Native` 注册。它不补 PowerShell cmdlet 的参数，也不参与命令名模糊补全；定位是补外部 CLI 的参数值，与 `CxxuTab`、`git-completion`、`argc-completions` 并列。
 
-安装渠道不绑定 scoop：推荐 `Deploy-Carapace`，它会按当前平台与架构从官方 GitHub Release 下载产物（Windows 为 zip，macOS/Linux 为 tar.gz）、按 `checksums.txt` 校验并解压到默认目录（Windows `~/.cxxu/bin`，其他平台 `~/.local/bin`），可用 `-Version` 固定版本；也可手工下载官方产物，或用包管理器（Windows `scoop`、macOS `brew`、Linux 发行版仓库）。下载默认优先 `aria2c` 多连接分片（`-Aria2Connections`，默认 16），不可用时回退 `Invoke-WebRequest`；每次尝试都会打印原始链接、实际链接、来源与执行命令。GitHub 加速镜像默认读 `$env:PsGithubMirror`（未设置用 `https://gh-proxy.com`），`-NoGithubMirror`（别名 `-NoMirror`）直连，`-GithubMirror`（别名 `-Mirror`）`'<前缀>'` 本次指定。安装与校验步骤见 [Deploy-Guide](Deploy-Guide.md) 的「可选：carapace」。Windows PowerShell 5.1 与 pwsh 7 均可用，`carapace` 位于 PATH 即可；5.1 的引擎不会把 `-` 开头的词交给 Native completer，由仓库的共享 Tab 桩插入零宽字符绕过，编码、空参数与超长环境变量在加载时按版本处理。
+安装渠道不绑定 scoop：推荐 `Deploy-Carapace`，它会按当前平台与架构从官方 GitHub Release 下载产物（Windows 为 zip，macOS/Linux 为 tar.gz）、按 `checksums.txt` 校验并解压到默认目录（Windows `~/.cxxu/bin`，其他平台 `~/.local/bin`），可用 `-Version` 固定版本；也可手工下载官方产物，或用包管理器（Windows `scoop`、macOS `brew`、Linux 发行版仓库）。下载默认优先 `aria2c` 多连接分片（`-Aria2Connections`，默认 16），不可用时回退 `Invoke-WebRequest`；每次尝试都会打印原始链接、实际链接、来源与执行命令。GitHub 加速镜像默认读 `$env:PsGithubMirror`（未设置用 `https://gh-proxy.org`），`-NoGithubMirror`（别名 `-NoMirror`）直连，`-GithubMirror`（别名 `-Mirror`）`'<前缀>'` 本次指定。安装与校验步骤见 [Deploy-Guide](Deploy-Guide.md) 的「可选：carapace」。Windows PowerShell 5.1 与 pwsh 7 均可用，`carapace` 位于 PATH 即可；5.1 的引擎不会把 `-` 开头的词交给 Native completer，由仓库的共享 Tab 桩插入零宽字符绕过，编码、空参数与超长环境变量在加载时按版本处理。
 
 本机 `carapace-bin 1.8.2`、`pwsh 7.6.3` 实测的代表性效果：
 
@@ -400,7 +400,7 @@ Git Bash 使用同一个 carapace 二进制，Linux/macOS 使用各自平台的�
 
 - 5.1 Tab：`Sync-CxxuPredictor` 生成的 `ps51` 活件由 `CxxuTab` 在 PowerShell 5.1 下选用；默认开，首次裸命令名 Tab 才导入模块并读命令表缓存（缓存缺失时现建）。不需要时 `Disable-PsPlugin Tab -Persist`（或 `$env:PsTab='False'` 后重跑 `init`）。只提供 Tab 菜单，不提供边输边弹的内联预测。
 - 自编译 net9 活件保持不动时，更新流程只对 5.1 Tab 活件调用 `Sync-CxxuPredictor -Ps51Only`；手动等价命令相同。
-- 拉取网络：`Update-ReposesConfiged` 按名单分流——`$CommonRepos` 走 GitHub（默认 `https://gh-proxy.com` 加速），其余仓库走 gitee；`-RepoSource github|gitee` 本次强制统一源，`-NoMirror` 直连、`-GithubMirror` 换镜像、`-Proxy`/`-NoProxy` 控制代理；优先级与 `-Force` 的丢弃范围见 [Deploy-Guide.md](Deploy-Guide.md) 的更新章节。已跟踪文件存在未提交改动时，命令先 `fetch` 核对远端：无新提交只报告已是最新并保留改动，有新提交则跳过该仓库并提示先提交或 `git stash`；拉取失败按原因给出对应处理建议。
+- 拉取网络：`Update-ReposesConfiged` 按名单分流——`$CommonRepos` 走 GitHub（默认 `https://gh-proxy.org` 加速），其余仓库走 gitee；`-RepoSource github|gitee` 本次强制统一源，`-NoMirror` 直连、`-GithubMirror` 换镜像、`-Proxy`/`-NoProxy` 控制代理；优先级与 `-Force` 的丢弃范围见 [Deploy-Guide.md](Deploy-Guide.md) 的更新章节。已跟踪文件存在未提交改动时，命令先 `fetch` 核对远端：无新提交只报告已是最新并保留改动，有新提交则跳过该仓库并提示先提交或 `git stash`；拉取失败按原因给出对应处理建议。
 - 拉取期间的 pack 维护：`Update-ReposesConfiged` 拉取时关闭 git 的自动 gc/repack（`gc.auto=0`），避免 Windows 上删除被替换的旧 pack 时因文件被其他进程占用而停在 `Unlink of file ... failed` 的 y/n 询问；需要压缩时，在没有其他 git 操作的情况下进仓库目录手动执行 `git gc`。
 - 守护进程（报时/IP）默认不碰 dll：`Start-StartupBgProcesses` 置 `PsPredictor=False` 继承 + 两个守护函数按 `-Command` 自断，所以 `-Force` 关它们无压力（无状态，重起即回）。
 - 同一结论在 `Test-PsEnvReadiness` 的“建议”行也会再说一遍（缺必备 > 有更新 > 活件不一致）。
@@ -594,7 +594,7 @@ Git Bash 使用同一个 carapace 二进制，Linux/macOS 使用各自平台的�
   # 前置：允许当前用户运行本地脚本（与 Scoop 安装前置相同）
   Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
   $deployScript = "$HOME\Downloads\Deploy-CxxuPsModules.ps1"
-  $mirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }  # 换源只改这一行
+  $mirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.org' }  # 换源只改这一行
   irm "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1" -OutFile $deployScript
   & $deployScript -Light
   # 需要 pwsh 7 时：& $deployScript -InstallPwsh7

@@ -5,7 +5,7 @@
 - 本目录提供 PowerShell 模块集的部署脚本，部署入口为 `Deploy-CxxuPsModules.ps1`；保存到本地后按参数运行。
 - 模块面向 PowerShell 7 编写（`CxxuPredictor` 需 7.5+，7.6 可直接用），部署脚本同时支持 Windows PowerShell 5.1 与 PowerShell 7，允许先部署模块再安装 PowerShell 7。
 - 默认不安装 PowerShell 7；需要时显式加 `-InstallPwsh7`。
-- 默认下载前缀为 `https://gh-proxy.com`，用于 git 克隆、raw 脚本与离线包；可用 `-GithubMirror` 或 `$env:PsGithubMirror` 替换。克隆失败会自动回退离线包。
+- 默认下载前缀为 `https://gh-proxy.org`，用于 git 克隆、raw 脚本与离线包；可用 `-GithubMirror` 或 `$env:PsGithubMirror` 替换。克隆失败会自动回退离线包。
 - 部署完成后需重开终端并执行 `init`；Windows PowerShell 5.1 的可用功能与限制见 [Feature-Guide.md](../docs/Feature-Guide.md) 的 5.1 兼容章节。
 - 查看功能依赖与安装状态：运行 `Get-CxxuDependencyReport`，只读、默认零网络；完整清单与安装建议见 [Feature-Dependencies.md](../docs/Feature-Dependencies.md)。
 - 本文示例统一使用两个变量：`$mirror`（下载镜像）与 `$deployScript`（部署脚本副本），两者都在「准备部署脚本」中赋值；新开终端窗口后需重新执行该节。
@@ -29,7 +29,7 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 # 后文用 $deployScript 指这份副本；目录和文件名都可以自定
 $deployScript = "$HOME\Downloads\Deploy-CxxuPsModules.ps1"
 # 镜像单独设置：换源只改这一行
-$mirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
+$mirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.org' }
 irm "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1" -OutFile $deployScript
 ```
 
@@ -72,7 +72,7 @@ $deployParams = @{
     # 目标目录已存在时先备份再重新部署
     # Force        = $true
     # 替换下载镜像
-    # GithubMirror = 'https://gh-proxy.com'
+    # GithubMirror = 'https://gh-proxy.org'
 }
 & $deployScript @deployParams
 ```
@@ -88,7 +88,7 @@ $deployParams = @{
 | 参数 | 默认值 | 作用 |
 |---|---|---|
 | `-RepoSource` | `github` | 仓库源；`gitee` 仅为兼容保留 |
-| `-GithubMirror`（别名 `-Mirror`） | `$env:PsGithubMirror`；未设置时 `https://gh-proxy.com` | 克隆、raw 与离线包共用的加速前缀；传空字符串表示直连 |
+| `-GithubMirror`（别名 `-Mirror`） | `$env:PsGithubMirror`；未设置时 `https://gh-proxy.org` | 克隆、raw 与离线包共用的加速前缀；传空字符串表示直连 |
 | `-Mode` | `Default` | `Default`：本地包 → git 克隆 → 离线包；`FromPackage`：重新下载离线包；`FromRemoteGit`：只走克隆 |
 | `-PackagePath` | 空 | 本地 zip 文件路径；与 `-Mode Default` 配合时优先使用，配合 `-Sandbox` 可完全离线 |
 | `-RepoPath` | `$env:SystemDrive\repos\scripts` | 仓库解压或克隆的目标目录 |
@@ -117,7 +117,7 @@ Deploy-CxxuPsModules -RepoPath 'D:\repos\scripts' -Mode Default -PackagePath 'D:
 - 标准部署并安装 PowerShell 7：`& $deployScript -InstallPwsh7`
 - 重新部署默认目录：`& $deployScript -Force`
 - 完全离线（已下载 zip）：`& $deployScript -Mode Default -PackagePath D:\downloads\scripts-main.zip`
-- 指定镜像：`& $deployScript -GithubMirror 'https://gh-proxy.com'`
+- 指定镜像：`& $deployScript -GithubMirror 'https://gh-proxy.org'`
 - 部署到其他目录：`& $deployScript -RepoPath D:\repos\scripts`
 - 沙箱回归：`& $deployScript -Sandbox -Mode FromPackage -KeepSandbox`
 
@@ -208,7 +208,7 @@ C:/repos/scripts/PS/Deploy/Deploy-CxxuPsModules.ps1 -Sandbox
 
 ```powershell
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser  # 与 Scoop 安装前置相同；不需要管理员
-$mirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
+$mirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.org' }
 $urls = @(
     "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1"
     'https://gitee.com/xuchaoxin1375/scripts/raw/main/PS/Deploy/Deploy-CxxuPsModules.ps1'

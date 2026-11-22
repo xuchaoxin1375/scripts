@@ -204,7 +204,7 @@ function Add-ScoopBuckets
     补充方案才是直接利用github配合镜像加速
     创建冗余bucket,提高可用性和更大几率,更好的加速备选选择(使用scoop install -k 来避免可能造成错误的断点恢复下载)
     可用镜像见 TestLinks 模块(PS/TestLinks/TestLinks.psm1,2026-09-24 本机实测),例如:
-    scoop bucket add spc https://gh-proxy.com/https://github.com/lzwme/scoop-proxy-cn
+    scoop bucket add spc https://gh-proxy.org/https://github.com/lzwme/scoop-proxy-cn
     scoop bucket add spc1 https://ghproxy.net/https://github.com/lzwme/scoop-proxy-cn
     scoop bucket add spc2 https://ghfast.top/https://github.com/lzwme/scoop-proxy-cn
     scoop bucket add spc3 https://gh-proxy.org/https://github.com/lzwme/scoop-proxy-cn
@@ -212,7 +212,7 @@ function Add-ScoopBuckets
     .NOTES
     建议在Deploy-ScoopForCNUser调用时就指定相应的参数,不推荐单独调用(需要传入加速镜像地址参数)
     .EXAMPLE
-    Add-ScoopBuckets -mirror  'https://gh-proxy.com'
+    Add-ScoopBuckets -mirror  'https://gh-proxy.org'
      
     #>
     [CmdletBinding()]
@@ -349,10 +349,10 @@ PS> Update-ScoopMirror -BucketName sysinternals -UpdateBucket
 Checking available Mirrors...
          https://gh.con.sh
          https://gh.ddlc.top.
-         https://gh-proxy.com
+         https://gh-proxy.org
 
 Select the number of the mirror you want to use [0~10] ?(default: 1): 2
-You Selected mirror:[2 : https://gh-proxy.com]
+You Selected mirror:[2 : https://gh-proxy.org]
 The sysinternals bucket was removed successfully.
 Checking repo... OK
 The sysinternals bucket was added successfully.
@@ -369,7 +369,7 @@ Name         Source                                                             
 ----         ------                                                                       -------            ---------
 main         https://ghproxy.cc/https://github.com/ScoopInstaller/Main                    2024/9/3 20:32:16       1340
 extras       https://ghproxy.cc/https://github.com/ScoopInstaller/Extras                  2024/9/3 20:35:06       2067
-sysinternals https://gh-proxy.com/https://github.com/niheaven/scoop-sysinternals          2024/7/24 0:37:20         75
+sysinternals https://gh-proxy.org/https://github.com/niheaven/scoop-sysinternals          2024/7/24 0:37:20         75
 
 对指定bucket更新加速镜像
 PS🌙[BAT:70%][MEM:32.59% (10.33/31.71)GB][22:31:07]
@@ -567,7 +567,7 @@ function Set-ScoopVersion
     ----     ------                                                          -------               ---------
     main     https://github.moeyy.xyz/https://github.com/ScoopInstaller/Main 10/30/2024 4:31:22 PM      1344
     scoop-cn https://github.moeyy.xyz/https://github.com/duzyn/scoop-cn      10/30/2024 9:52:06 AM      5734
-    spc      https://gh-proxy.com/https://github.com/lzwme/scoop-proxy-cn    10/30/2024 9:53:02 AM     10017
+    spc      https://gh-proxy.org/https://github.com/lzwme/scoop-proxy-cn    10/30/2024 9:53:02 AM     10017
 
 
     PS[Mode:1][BAT:97%][MEM:60.79% (9.34/15.37)GB][Win 11 IoT @24H2:10.0.26100.2033][5:49:09 PM][UP:1.9Days]
@@ -590,7 +590,7 @@ function Set-ScoopVersion
     extras  https://gitee.com/scoop-installer/Extras                     10/30/2024 12:32:18 PM      2092
     java    https://gitee.com/scoop-installer/Java                       10/25/2024 9:20:21 AM        294
     scoopcn https://gitee.com/scoop-installer/scoopcn                    10/28/2024 4:39:06 PM         30
-    spc     https://gh-proxy.com/https://github.com/lzwme/scoop-proxy-cn 10/30/2024 9:53:02 AM      10017
+    spc     https://gh-proxy.org/https://github.com/lzwme/scoop-proxy-cn 10/30/2024 9:53:02 AM      10017
     .NOTES
     Author: Cxxu
     #>

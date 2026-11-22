@@ -24,7 +24,7 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 # 后文用 $deployScript 指这份副本；目录和文件名可以自定
 $deployScript = "$HOME\Downloads\Deploy-CxxuPsModules.ps1"
 # 镜像单独设置：换源只改这一行
-$mirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
+$mirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.org' }
 irm "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1" -OutFile $deployScript
 ```
 
@@ -43,7 +43,7 @@ Deploy-CompletionStack
 
 - 只使用 Windows PowerShell 5.1 时直接运行即可；若同时没有 git，改用 `& $deployScript -Light`（见下）。
 - 需要 PowerShell 7 时用 `& $deployScript -InstallPwsh7`；默认不安装。
-- 默认下载前缀为 `https://gh-proxy.com`，用于 git 克隆、raw 脚本与离线包；可用 `-GithubMirror '<镜像>'` 或持久化 `$env:PsGithubMirror` 覆盖。
+- 默认下载前缀为 `https://gh-proxy.org`，用于 git 克隆、raw 脚本与离线包；可用 `-GithubMirror '<镜像>'` 或持久化 `$env:PsGithubMirror` 覆盖。
 - 核心 `CxxuCommand` 的内联预测要求 PowerShell 7.5 及以上（7.5/7.6 均可，7.6 基于 .NET 10 可直接加载）；版本不足时只有警告，其余功能照常。仅用 Windows PowerShell 5.1 时另有 Tab 补全（`ps51` netstandard2.0 活件），没有内联预测。
 - 参数的完整说明、离线安装、开发模式与沙箱调试见 [PS/Deploy/readme.md](../Deploy/readme.md)。
 - 若 `& $deployScript` 仍报“禁止运行脚本”，回到“前置：执行策略”；重开后找不到 `Deploy-CompletionStack`，说明 profile 的 `init` 未执行，同样先处理策略。
@@ -261,11 +261,11 @@ Deploy-Carapace -Version 1.8.2 -Proxy http://127.0.0.1:7897
 # 关闭 GitHub 加速镜像，直接连官方源：
 Deploy-Carapace -NoGithubMirror
 # 临时指定镜像，或强制不用 aria2c：
-Deploy-Carapace -GithubMirror 'https://gh-proxy.com'
+Deploy-Carapace -GithubMirror 'https://gh-proxy.org'
 Deploy-Carapace -NoAria2
 ```
 
-命令会按当前平台与架构下载官方产物（Windows 为 zip，macOS/Linux 为 tar.gz），用同版本 `checksums.txt` 校验 SHA-256，解压 `carapace` 到目标目录并加入 PATH。下载默认优先使用 `aria2c`（`--split` 与 `--max-connection-per-server` 由 `-Aria2Connections` 控制，默认 16，并启用 1M 分片），未找到 `aria2c` 或加 `-NoAria2` 时回退 `Invoke-WebRequest`。每次下载都会打印原始链接、实际使用的链接、来源（原始地址或 GitHub 加速镜像）以及实际执行命令；代理只显示“已启用”，不回显地址。GitHub 加速镜像默认读取 `$env:PsGithubMirror`（未设置时用 `https://gh-proxy.com`），`-NoGithubMirror`（别名 `-NoMirror`）或 `-GithubMirror ''` 直连，`-GithubMirror`（别名 `-Mirror`）`'<前缀>'` 本次指定。默认目录：Windows 为 `~/.cxxu/bin`，其他平台为 `~/.local/bin`；非 Windows 只把目录加入当前会话，新终端需按提示写进 shell 配置。加 `-Enable` 会同时把 `PsCarapace` 写入用户配置并在当前会话加载；不加则只安装并打印启用方式。加 `-Bash` 会在安装后调用 [bash/carapace/setup.sh](../../bash/carapace/setup.sh) 写入 bash 的 rc 标记块：默认写非登录 shell 的 `~/.bashrc`，`-BashLogin` 改写登录 shell 读取的 rc；未找到 `bash` 或 `setup.sh` 时只告警，不中断安装。`-Force` 覆盖重装，`-Version` 固定版本（本地版本更高时默认拒绝降级，确需降级加 `-AllowDowngrade`），`-Destination` 与 `-SkipPath` 用于自定义目录或测试。它不修改 profile，加载由 init 注册懒加载桩完成，首次在外部 CLI 参数位按 Tab 时实际注册。macOS 的官方产物未签名；若系统提示无法验证开发者，优先改用 `brew install carapace`，或在确认来源后按系统设置放行。
+命令会按当前平台与架构下载官方产物（Windows 为 zip，macOS/Linux 为 tar.gz），用同版本 `checksums.txt` 校验 SHA-256，解压 `carapace` 到目标目录并加入 PATH。下载默认优先使用 `aria2c`（`--split` 与 `--max-connection-per-server` 由 `-Aria2Connections` 控制，默认 16，并启用 1M 分片），未找到 `aria2c` 或加 `-NoAria2` 时回退 `Invoke-WebRequest`。每次下载都会打印原始链接、实际使用的链接、来源（原始地址或 GitHub 加速镜像）以及实际执行命令；代理只显示“已启用”，不回显地址。GitHub 加速镜像默认读取 `$env:PsGithubMirror`（未设置时用 `https://gh-proxy.org`），`-NoGithubMirror`（别名 `-NoMirror`）或 `-GithubMirror ''` 直连，`-GithubMirror`（别名 `-Mirror`）`'<前缀>'` 本次指定。默认目录：Windows 为 `~/.cxxu/bin`，其他平台为 `~/.local/bin`；非 Windows 只把目录加入当前会话，新终端需按提示写进 shell 配置。加 `-Enable` 会同时把 `PsCarapace` 写入用户配置并在当前会话加载；不加则只安装并打印启用方式。加 `-Bash` 会在安装后调用 [bash/carapace/setup.sh](../../bash/carapace/setup.sh) 写入 bash 的 rc 标记块：默认写非登录 shell 的 `~/.bashrc`，`-BashLogin` 改写登录 shell 读取的 rc；未找到 `bash` 或 `setup.sh` 时只告警，不中断安装。`-Force` 覆盖重装，`-Version` 固定版本（本地版本更高时默认拒绝降级，确需降级加 `-AllowDowngrade`），`-Destination` 与 `-SkipPath` 用于自定义目录或测试。它不修改 profile，加载由 init 注册懒加载桩完成，首次在外部 CLI 参数位按 Tab 时实际注册。macOS 的官方产物未签名；若系统提示无法验证开发者，优先改用 `brew install carapace`，或在确认来源后按系统设置放行。
 
 **手工渠道一：官方 GitHub Release**
 
@@ -441,11 +441,19 @@ zoxide 缓存（`~/.zoxide_init_cache.ps1`）都是“二进制更新才重建�
   改走 github + 加速前缀；部署链与远程脚本不以 gitee 为默认源。仓库更新按名单分流：
   `$CommonRepos` 走 GitHub，其余仓库走 gitee（见 §13）。
 - **中央变量 `$env:PsGithubMirror`**：全仓库统一从它拿前缀。喜欢哪个镜像就持久化哪个：
-  `Add-EnvVar -EnvVar PsGithubMirror -NewValue 'https://gh-proxy.com'`（以你实测最快的为准，
-  `Get-AvailableGithubMirrors` 可测速；5.1 下同样并发探测，不再退化为串行）；不设则走默认 `gh-proxy.com`，
-  需要自动挑选时由 `Get-GithubMirrorPrefix`（部署链）调用 `Get-SelectedMirror -Silent` 静默测速并缓存一次会话；
+  `Add-EnvVar -EnvVar PsGithubMirror -NewValue 'https://gh-proxy.org'`（以你实测最快的为准，
+  `Get-AvailableGithubMirrors` 可测可用性；需要按速度选时用 `Get-FastestGithubMirror`，
+  5.1 下同样并发探测，不再退化为串行）；不设则走默认 `gh-proxy.org`，
+  需要自动挑选时由 `Get-GithubMirrorPrefix`（部署链）调用 `Get-SelectedMirror -Silent`，
+  后者优先用 `Get-FastestGithubMirror` 的 git 传输测速并缓存一次会话；
   `Update-ReposesConfiged` 为保证更新可复现，固定使用默认值或 `-GithubMirror`，不做测速。
-- **一键部署的镜像**：`Deploy-CxxuPsModules -GithubMirror 'https://gh-proxy.com'` 显式指定，
+- **候选列表 `$env:PsGithubMirrorCandidates`**（可选）：逗号分隔，按顺序探测最快；为空时用
+  `TestLinks` 内置列表。固定使用某个前缀时设置 `PsGithubMirror`，它在探测前短路。
+- **git 仓库单点**：`Update-GitMirrorConfig` 把当前前缀写进 `~/.config/git/github-mirror.inc`，
+  并在全局 gitconfig 加 `includeIf "gitdir/i:C:/repos/"`；fetch 走 `insteadOf`，push 用
+  `pushInsteadOf` 指回 `https://github.com:443/`（不能写成同值 no-op，否则 push 会回退到镜像）。
+  `gitm fetch|pull|clone` 在缓存超过 10 分钟或上次失败时先测速刷新；普通 `git` 读缓存。
+- **一键部署的镜像**：`Deploy-CxxuPsModules -GithubMirror 'https://gh-proxy.org'` 显式指定，
   同一前缀用于 git clone、raw 脚本与离线包下载；克隆失败会自动回退离线包，直连失败不再让部署中断。
 - **统一出口**：模块内拼 raw 地址一律 `Get-RepoRawUrl -Path 'PS/...'`（自动套前缀），
   别手拼；独立脚本（`Deploy-*.ps1`，模块还没加载）内联同策略三行（见 `Deploy-GitForWindows.ps1`）。
@@ -460,7 +468,7 @@ Sync-CxxuPredictor            # 单点操作（首次安装生成/手动修复/�
 ```
 
 - 入口 loader 只静默装载（旧版照常使用，无警告）：版本检查使用 `Test-PsEnvReadiness` 备注列。活件并排版本存放（只新增版本目录，从不覆盖），同步不受锁限制，任何会话都可执行。
-- 源域名与镜像：`Update-ReposesConfiged` 默认按名单选源——`$CommonRepos` 内的仓库走 GitHub（固定默认经 `https://gh-proxy.com` 加速），其余仓库（含 `$CxxuRepos`）走 gitee；`-RepoSource github|gitee` 本次强制统一源，`$PrivateRepos` 名单内仓库始终按 gitee 处理。镜像不做会话测速；未显式传参时读 `$env:PsGithubMirror`，该变量为空时仍用默认值。`-GithubMirror '<前缀>'` 临时换镜像，`-NoMirror` 或 `-GithubMirror ''` 直连。代理默认依次读 `HTTPS_PROXY`、`HTTP_PROXY`、`ALL_PROXY`（兼容小写形式），也可用 `-Proxy '<地址>'` 指定、用 `-NoProxy` 忽略环境变量。命令会把指向 `xuchaoxin1375/<仓库>` 的 http(s) `origin` 改为名单对应主机，使后续拉取沿用本次选择；GitHub 源的推送地址设为直连 GitHub（保留 gitee 等其他推送地址），`Push-ReposesConfiged` 不受影响；SSH 与自定义远端不改写。gitee 源在凭据缺失时快速失败，不会停在交互式输入。
+- 源域名与镜像：`Update-ReposesConfiged` 默认按名单选源——`$CommonRepos` 内的仓库走 GitHub（固定默认经 `https://gh-proxy.org` 加速），其余仓库（含 `$CxxuRepos`）走 gitee；`-RepoSource github|gitee` 本次强制统一源，`$PrivateRepos` 名单内仓库始终按 gitee 处理。镜像不做会话测速；未显式传参时读 `$env:PsGithubMirror`，该变量为空时仍用默认值。`-GithubMirror '<前缀>'` 临时换镜像，`-NoMirror` 或 `-GithubMirror ''` 直连。代理默认依次读 `HTTPS_PROXY`、`HTTP_PROXY`、`ALL_PROXY`（兼容小写形式），也可用 `-Proxy '<地址>'` 指定、用 `-NoProxy` 忽略环境变量。命令会把指向 `xuchaoxin1375/<仓库>` 的 http(s) `origin` 改为名单对应主机，使后续拉取沿用本次选择；GitHub 源的推送地址设为直连 GitHub（保留 gitee 等其他推送地址），`Push-ReposesConfiged` 不受影响；SSH 与自定义远端不改写。gitee 源在凭据缺失时快速失败，不会停在交互式输入。
 - 更新范围：默认处理 `$CommonRepos`，本机在 `CxxuComputers` 名单内时追加 `$CxxuRepos`；`-RepoDirs 'blogs','scripts'` 只处理列出的仓库。`-Force` 先执行 `fetch`，再执行 `reset --hard origin/<当前分支>`，会丢弃该仓库已跟踪文件的本地未提交改动；未跟踪文件不受影响。
 - 未提交改动：常规拉取前检查已跟踪文件的未提交改动，因为 `pull --rebase` 遇到这类改动会直接失败。命令改为先 `fetch` 核对远端：远端无新提交时报告“已是远端最新”并保留改动；有新提交时跳过该仓库并提示先提交或执行 `git stash`。需要丢弃这些改动时改用 `-Force`。拉取失败后按原因分别给出处理建议（本地 rebase 未完成、gitee 凭据、网络或镜像）。
 - 拉取期间的 pack 维护：`fetch`/`pull` 带 `gc.auto=0` 与 `maintenance.auto=false`，不触发自动 gc/repack。原因是 repack 要删除被替换的旧 pack，Windows 上该文件被其他进程（并发 git、编辑器集成、杀毒扫描）占用时，git 会停在 `Unlink of file ... failed. Should I try again?` 的交互询问，阻塞批量更新；`-Force` 走同一条 `fetch`，不能规避。需要压缩时，在没有其他 git 操作的情况下进仓库目录执行 `git gc`。
@@ -477,7 +485,7 @@ Sync-CxxuPredictor            # 单点操作（首次安装生成/手动修复/�
 | 资源 | 位置 | 现状快照 | 检查（只读） | 更新动作 | 频率 |
 |---|---|---|---|---|---|
 | GH 镜像站 13 个 | `TestLinks.psm1` 头部 | 全可用（本机 raw 实测） | `Get-AvailableGithubMirrors` | 删失效条目 | 季度 / 部署失败时 |
-| 默认镜像 `gh-proxy.com` | 各独立脚本内联 + `$env:PsGithubMirror` | OK（约 500ms） | `Test-MirrorAvailability -Url <镜像>` | 挑最快的 `Add-EnvVar PsGithubMirror` 持久化 | 同上 |
+| 默认镜像 `gh-proxy.org` | 各独立脚本内联 + `$env:PsGithubMirror` | OK（约 500ms） | `Test-MirrorAvailability -Url <镜像>` | 挑最快的 `Add-EnvVar PsGithubMirror` 持久化 | 同上 |
 | Git for Windows 默认版 | `Deploy-GitForWindows.ps1` 的 `$url` 回退值（`-url`/`-PackagePath` 可覆盖） | `v2.55.0.windows.5`（api 实测 latest） | 查 `api.github.com/repos/git-for-windows/git/releases/latest` 的 tag | 改默认值（api 失败自动回退，不急） | 有新版时 |
 | pwsh Ubuntu deb 版 | `Install-PwshUbuntu.ps1` 头部 `$pwsh_version`（一处，环境变量可覆盖） | `v7.6.6`（LTS 现行） | 查 PowerShell releases | 改头变量即可 | LTS 更新时 |
 | pwsh 最新版查询（两份） | `Deploy-Pwsh7Portable.ps1` 的 `Get-LatestPowerShellDownloadUrl` / `PsEnv.psm1` 对应逻辑（均带超时；独立脚本须自包含故保留两份，改逻辑两边同步） | `v7.6.6` | 同上 | 勿两头各改各的 | 按需 |

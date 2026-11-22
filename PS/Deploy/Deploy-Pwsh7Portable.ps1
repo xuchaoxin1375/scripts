@@ -1,5 +1,5 @@
 ﻿
-# $github_mirror="https://gh-proxy.com"
+# $github_mirror="https://gh-proxy.org"
 [CmdletBinding()]
 param(
     # 仓库源(默认 github+加速;gitee 仅保留兼容)
@@ -7,7 +7,7 @@ param(
     $RepoSource = 'github',
     # 下载加速镜像:显式指定时不再测速/弹窗;$env:PsGithubMirror 优先,否则默认 gh-proxy
     [Alias('Mirror')]
-    $GithubMirror = $(if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }),
+    $GithubMirror = $(if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.org' }),
     # 开发模式:用本地最新模块(Deploy.psm1/TestLinks.psm1/Git.psm1),不拉远程;仓库根自动从脚本位置推导
     [switch]$Dev,
     $DevRoot = '',

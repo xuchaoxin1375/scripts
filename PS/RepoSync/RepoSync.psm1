@@ -196,7 +196,7 @@ function Update-ReposesConfiged
     - -NoMirror 或 -GithubMirror '' :直连 https://github.com。
     - -GithubMirror <前缀> :使用指定加速前缀。
     - 未指定时读 $env:PsGithubMirror。
-    - 以上都没有时使用默认前缀 https://gh-proxy.com。
+    - 以上都没有时使用默认前缀 https://gh-proxy.org。
     加速镜像只能代理公开仓库,私有仓库经镜像会得到 401;镜像失败后自动改为直连重试。
     私有仓库名单优先级:
     - -PrivateRepos <名称> :本次指定名单(别名 -DirectRepos)。
@@ -220,8 +220,8 @@ function Update-ReposesConfiged
     加速前缀只对 github 生效,且只用于公开仓库。
 
     .PARAMETER GithubMirror
-    GitHub 加速前缀,例如 https://gh-proxy.com。默认读 $env:PsGithubMirror,未设置或为空时用
-    https://gh-proxy.com;传空字符串表示直连。仅对按名单走 github 的仓库生效。已存在仓库的
+    GitHub 加速前缀,例如 https://gh-proxy.org。默认读 $env:PsGithubMirror,未设置或为空时用
+    https://gh-proxy.org;传空字符串表示直连。仅对按名单走 github 的仓库生效。已存在仓库的
     origin 若指向本账号同名仓库,会改为当前前缀对应的地址,使后续拉取沿用同一配置;镜像仅用于
     公开仓库下载,推送地址设为直连 GitHub(保留 gitee 等其他推送地址),不影响 Push-ReposesConfiged。
 
@@ -333,7 +333,7 @@ function Update-ReposesConfiged
             }
             else
             {
-                $mirrorPrefix = 'https://gh-proxy.com'
+                $mirrorPrefix = 'https://gh-proxy.org'
             }
             if ([string]::IsNullOrWhiteSpace($mirrorPrefix))
             {

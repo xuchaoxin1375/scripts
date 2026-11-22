@@ -56,7 +56,7 @@
 - 部署脚本是仓库里的 `PS/Deploy/Deploy-CxxuPsModules.ps1`。先保存到本地，再按参数运行；保存后可反复使用，也便于查看内容。
 - 脚本会检查 git：已安装则用镜像克隆仓库；未安装时提示选择安装 Git 或直接下载仓库压缩包；克隆失败自动回退离线包。
 - 默认不安装 PowerShell 7，需要时加 `-InstallPwsh7`。
-- 下载与仓库更新默认走 `https://gh-proxy.com`，可用 `-GithubMirror` 或 `$env:PsGithubMirror` 覆盖，更新时也可用 `-NoMirror` 直连；镜像与代理细节见 [Deploy-Guide.md](PS/docs/Deploy-Guide.md)。
+- 下载与仓库更新默认走 `https://gh-proxy.org`，可用 `-GithubMirror` 或 `$env:PsGithubMirror` 覆盖，更新时也可用 `-NoMirror` 直连；镜像与代理细节见 [Deploy-Guide.md](PS/docs/Deploy-Guide.md)。
 - 参数较多时建议写进哈希表，完整参数、离线安装与沙箱调试见 [PS/Deploy/readme.md](PS/Deploy/readme.md)。
 
 ```powershell
@@ -65,7 +65,7 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 
 # 2. 保存脚本
 $deployScript = "$HOME\Downloads\Deploy-CxxuPsModules.ps1"
-$mirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
+$mirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.org' }
 irm "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-CxxuPsModules.ps1" -OutFile $deployScript
 
 # 3. 下载文件带 Mark-of-the-Web 时先解锁（irm 保存的通常没有）
@@ -121,5 +121,5 @@ bash <(curl -SfL https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/he
 ## 兼容与网络
 
 - 推荐 PowerShell 7 及以上；Windows PowerShell 5.1 的可用范围、轻量部署与 UTF-8 读取注意事项，见 [Feature-Guide.md](PS/docs/Feature-Guide.md) 的 5.1 兼容说明，模块级兼容性用 `Get-CxxuModuleCompatibility` 自查。
-- 国内网络默认经 `gh-proxy.com` 加速；镜像测速与时效性清单见 [Deploy-Guide.md](PS/docs/Deploy-Guide.md) 的镜像与时效性说明。
+- 国内网络默认经 `gh-proxy.org` 加速；镜像测速与时效性清单见 [Deploy-Guide.md](PS/docs/Deploy-Guide.md) 的镜像与时效性说明。
 - 执行策略报错时，先按 Scoop 同款前置设置：`Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`；仍被下载标记拦截时对文件执行 `Unblock-File`。dll 加载不受执行策略影响，排查见 [Feature-Guide.md](PS/docs/Feature-Guide.md) 的 dll/活件章节。git 配置损坏时备份或移除 `~/.gitconfig` 后重试。

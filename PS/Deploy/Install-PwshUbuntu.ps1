@@ -1,4 +1,4 @@
-github_mirror="${github_mirror:-https://gh-proxy.com}"
+github_mirror="${github_mirror:-https://gh-proxy.org}"
 # pwsh 版本收敛到这一处(改一处即全改;也可用环境变量覆盖: pwsh_version=7.6.7 bash Install-PwshUbuntu.ps1)
 pwsh_version="${pwsh_version:-7.6.6}"
 ###################################

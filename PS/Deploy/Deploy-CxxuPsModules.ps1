@@ -32,7 +32,7 @@ param(
     $RepoSource = 'github',
     # 下载加速镜像:默认 gh-proxy,$env:PsGithubMirror 可覆盖;git clone 与 raw/包下载都用它
     [Alias('Mirror')]
-    $GithubMirror = $(if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }),
+    $GithubMirror = $(if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.org' }),
     # 适用于开发(维护调整)的测试模式(用本地最新代码,不拉远程;仓库根自动从脚本位置推导)
     [switch]$Dev,
     $DevRoot = '',
@@ -206,7 +206,7 @@ function Deploy-CxxuPsModules
     选择部署模式:Default 优先使用 -PackagePath 指定的本地包,没有则尝试镜像克隆,克隆失败再下载离线包;
     FromPackage 重新下载离线包后安装(不使用 -PackagePath);FromRemoteGit 只从远程仓库克隆(要求已安装 git)。
     .PARAMETER GithubMirror
-    下载加速镜像,默认 https://gh-proxy.com;用于 git clone、raw 脚本与离线包下载。
+    下载加速镜像,默认 https://gh-proxy.org;用于 git clone、raw 脚本与离线包下载。
     .PARAMETER InstallPwsh7
     部署完成后安装 PowerShell 7 portable;默认关闭,只想要 Windows PowerShell 5.1 的机器不必下载。
     .PARAMETER Sandbox

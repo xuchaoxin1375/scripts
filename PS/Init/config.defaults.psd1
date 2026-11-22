@@ -8,6 +8,7 @@
         @{ Key = 'PsShowProgress'; Name = 'ShowProgress'; Default = 'Auto'; Description = 'init：启动进度条；Auto 跟随档位（Fast 关、Balanced 开），True/False 显式指定' }
         @{ Key = 'PsFileListStyle'; Name = 'FileListStyle'; Default = 'Auto'; Description = 'Get-ChildItem 文件列表配色（7.2+）：Auto 为无背景前景色（浅色/深色主题通用），Classic 为 PowerShell 原生蓝底，Off 不改动' }
         @{ Key = 'PsStartupTier'; Name = 'StartupTier'; Default = 'Balanced'; Description = 'init：启动档位 Fast/Balanced；Fast 为轻档（核心 + advanced PSReadLine + Argc/Git 补全），Minimal 为其兼容别名' }
-        @{ Key = 'PsGithubMirror'; Name = 'GithubMirror'; Default = ''; Description = 'GitHub 镜像前缀；为空时走默认地址与静默测速' }
+        @{ Key = 'PsGithubMirror'; Name = 'GithubMirror'; Default = ''; Description = 'GitHub 镜像前缀；设置后固定使用，不再测速' }
+        @{ Key = 'PsGithubMirrorCandidates'; Name = 'GithubMirrorCandidates'; Default = ''; Description = 'GitHub 镜像候选（逗号分隔，按顺序测速取最快）；为空时用内置列表' }
     )
 }

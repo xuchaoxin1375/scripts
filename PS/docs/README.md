@@ -42,6 +42,7 @@
 | `Startup-Optimization.md` | 性能基线 + 搬迁史：动热路径先看基线表 | 长（历史日志） |
 | [macOS-Pwsh-Runtime.md](macOS-Pwsh-Runtime.md) | macOS 运行层故障：假死与残留 pwsh 空转的判据、清理与防复发 | 短 |
 | [macOS-Shell-Setup.md](macOS-Shell-Setup.md) | macOS shell 配置现状：profile 接线、mamba/conda 停用记录、实测变化与恢复方式 | 短 |
+| [Git 镜像单点](../Git/readme.md) | `includeIf` 单点、fetch/push 分流、测速缓存、迁移与卸载 | 短 |
 | `AGENTS.md`（仓库 `PS/` 根） | agent 入口：红线、换行、提交规范 | 短 |
 
 ## 检索方法

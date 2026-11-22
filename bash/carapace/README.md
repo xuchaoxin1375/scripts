@@ -133,7 +133,7 @@ bash setup.sh --install             # 下载 → 校验 → 装到 ~/.local/bin 
 bash setup.sh --check               # 复核依赖、rc 片段与加载结果
 ```
 
-- 下载通道默认 `auto`：先试 `gh-proxy.com`，失败换 `ghproxy.net`，最后直连 GitHub；`--mirror direct` 强制直连，`--mirror ghproxy|ghproxynet|ghfast` 固定节点，`--mirror https://...` 用自建或内网前缀。
+- 下载通道默认 `auto`：先试 `gh-proxy.org`，失败换 `ghproxy.net`，最后直连 GitHub；`--mirror direct` 强制直连，`--mirror ghproxy|ghproxynet|ghfast` 固定节点，`--mirror https://...` 用自建或内网前缀。
 - 需要代理时加 `--proxy http://127.0.0.1:7897`，或先导出 `HTTPS_PROXY`。
 - 版本查询（`releases/latest` 重定向、API 兜底）不走文件镜像，只走直连或 `--proxy`；想省掉这次查询用 `--version 1.8.2`。
 - 安装目录不在 PATH 时，rc 片段会写入 `CARAPACE_BIN` 让运行时脚本前置该目录；已有 carapace 时默认跳过，`--force` 覆盖。
@@ -240,7 +240,7 @@ macOS 上的 pwsh 用户如果同时使用 bash，按两侧分别处理：
 - `--check`（`--status` 同义）只读：依次报告 bash 版本、`carapace` 与 `xargs` 是否可用、运行时脚本是否存在、平台、目标 rc、四个候选 rc 的标记块状态（含块内路径是否仍然存在），再用 `bash -ic` / `bash -lic` 各起一个子 shell 验证实际是否加载；不改写任何文件，且不能与 `--dry-run`、`--disable` 同时使用。
 - `--check` 退出码：全部正常为 0；缺依赖、rc 片段有问题或尚未接入为 1；参数错误为 2。结论行会给出对应的修复命令。
 - `--install` 支持 Linux/macOS 与 Git Bash/Cygwin：Windows 下载 `carapace-bin_<版本>_windows_<架构>.zip`，解压出 `carapace.exe` 装到 `~/.cxxu/bin`；其他平台下载 `tar.gz` 装到 `~/.local/bin`。解压顺序为 `unzip` → `bsdtar` → `powershell.exe`（Expand-Archive），三者都没有时报错并给出安装命令。安装目录不在 PATH 时，rc 片段额外写 `export CARAPACE_BIN`，运行时脚本会前置该目录。
-- `--mirror` 只作用于 Release 文件（`tar.gz`/`zip` 与 `checksums.txt`）；版本查询始终直连或经 `--proxy`，不经过文件镜像。`auto` 顺序为 `gh-proxy.com` → `ghproxy.net` → 直连，单个候选失败才换下一个。
+- `--mirror` 只作用于 Release 文件（`tar.gz`/`zip` 与 `checksums.txt`）；版本查询始终直连或经 `--proxy`，不经过文件镜像。`auto` 顺序为 `gh-proxy.org` → `ghproxy.net` → 直连，单个候选失败才换下一个。
 - 依赖缺失（curl/wget、tar、sha256sum）时默认只报告并给出对应包管理器命令，不自动 `sudo` 安装；显式加 `--install-deps` 才会调用包管理器（Linux 缺 sudo 时提示手工执行，Git Bash 只给出 scoop/pacman 命令）。`--install-deps` 与 `--dry-run` 组合时只打印将执行的安装命令。
 - 升级与降级都只按 `--version` 指定的版本下载；已存在的二进制默认跳过，`--force` 才覆盖。
 - 下载与解压都在 `mktemp -d` 的临时目录完成，脚本退出时清理；下载、校验或解压失败都以非零码退出，不写半成品二进制。

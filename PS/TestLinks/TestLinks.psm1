@@ -5,18 +5,20 @@ TestLinks 模块:GitHub 镜像站可用性测试(曾与 Git.psm1 重复,现收�
 # 数据源 $GithubMirrors 与 Test-Links*/Get-AvailableGithubMirrors 曾在 Git.psm1 有重复定义,已收敛到此
 
 # 镜像站数据源(从 Git.psm1 迁入,与测试函数同模块,自包含)
-# 2026-09-24 本机实测可用(取 readme.md 与 TestLinks.psm1 的 raw 文件,12~15s 超时):
-# gh-proxy.com / gh-proxy.org / v4.gh-proxy.org / ghproxy.net / ghfast.top /
-# ghproxy.cxkpro.top / cors.isteed.cc / ghfile.geekertao.top / gh.noki.icu /
-# gh.xxooo.cf / gh.zwy.one / git.yylx.win / cdn.crashmc.com
-# 已剔除:ghproxy.cc / mirror.ghproxy.com / github.moeyy.xyz(停服) /
-# sciproxy.com / cf.ghproxy.cc(SSL 失败) / gh.llkk.cc(超时) /
+# 2026-11-22 本机实测(raw/git/archive/release,5s 超时;Release 前 256KiB 小样本):
+# gh-proxy.org(约 109KB/s) / ghfast.top / ghfile.geekertao.top 四类可用;
+# ghproxy.net / v4.gh-proxy.org / cors.isteed.cc 仅 raw。
+# 已剔除:gh-proxy.com(403,转发层拒绝;首页仍 200) / cdn.crashmc.com(跨域重定向到 cdn.akaere.online) /
+# gh.noki.icu(503) /
+# gh.zwy.one(超时) / ghproxy.cxkpro.top(429) / git.yylx.win(超时) /
+# gh.xxooo.cf(DNS) / ghproxy.cc(证书) / hub.gitmirror.com(DNS) /
+# github.moeyy.xyz(停服) / gh.llkk.cc(超时) / ghproxy.link(返回 HTML) /
+# slink.ltd(内容与源不一致) / mirror.ghproxy.com / cf.ghproxy.cc(SSL) /
 # ghproxy.homeboyc.cn / gh.h233.eu.org(403) / github.akams.cn(404,非前缀式) /
-# hub.gitmirror.com(DNS) / ghps.cc / github.ur1.fun(402) /
-# gh.ddlc.top / gh.con.sh / slink.ltd(返回内容与源文件不一致,不可靠)
-# 新候选先用 Test-MirrorAvailability 逐个验证再入库;顺序即线性测试顺序(快的在前)
-$global:github_mirror = "https://gh-proxy.com"
-# Set-Variable -Name github-mirror -Value "https://gh-proxy.com"  -Scope Global
+# ghps.cc / github.ur1.fun(402) / gh.ddlc.top / gh.con.sh
+# 新候选先用 Test-MirrorAvailability 或 Get-FastestGithubMirror 验证再入库;顺序即线性测试顺序(快的在前)
+$global:github_mirror = "https://gh-proxy.org"
+# Set-Variable -Name github-mirror -Value "https://gh-proxy.org"  -Scope Global
 
 $GithubMirrors = @(
 
@@ -28,19 +30,12 @@ $GithubMirrorsTest = @(
 )
 
 $GithubMirrorsInString = @'
-https://gh-proxy.com/,
 https://gh-proxy.org/,
-https://v4.gh-proxy.org/,
-https://ghproxy.net/,
 https://ghfast.top/,
-https://ghproxy.cxkpro.top/,
-https://cors.isteed.cc/,
 https://ghfile.geekertao.top/,
-https://gh.noki.icu/,
-https://gh.xxooo.cf/,
-https://gh.zwy.one/,
-https://git.yylx.win/,
-https://cdn.crashmc.com/',
+https://ghproxy.net/,
+https://v4.gh-proxy.org/,
+https://cors.isteed.cc/,
 '@
 
 $GithubMirrorsInString = $GithubMirrorsInString -replace '#.*', ' ' -replace '[",;\n\r]', ' ' -replace "'" , ' ' -replace '\s+', ' '
@@ -407,6 +402,128 @@ function Test-MirrorAvailability
         }
     }
     return   $availability
+}
+
+function Test-GitRemoteUrl
+{
+    <#
+    .SYNOPSIS
+    用 git ls-remote 探测加速前缀的 git 传输是否可用,带超时。
+    .DESCRIPTION
+    镜像首页或 raw 可用不代表 git 传输可用;这里直接请求目标仓库的 refs。
+    超时或非零退出都返回 $false,不抛。
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Url,
+        [int]$TimeoutSec = 5
+    )
+    $out = [System.IO.Path]::GetTempFileName()
+    $err = [System.IO.Path]::GetTempFileName()
+    $oldPrompt = $env:GIT_TERMINAL_PROMPT
+    try
+    {
+        $env:GIT_TERMINAL_PROMPT = '0'
+        $p = Start-Process -FilePath 'git' -ArgumentList @('ls-remote', '--heads', $Url) -NoNewWindow -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+        if (-not $p.WaitForExit($TimeoutSec * 1000))
+        {
+            try { $p.Kill() } catch { Write-Verbose "结束超时的 git 进程失败：$($_.Exception.Message)" }
+            return $false
+        }
+        if ($p.ExitCode -ne 0 -or -not ((Get-Item -LiteralPath $out -ErrorAction SilentlyContinue).Length -gt 0)) { return $false }
+        # 跨域重定向不当作可用:目标仓库路径会被转到未核验的第三方域名
+        $errText = Get-Content -LiteralPath $err -Raw -ErrorAction SilentlyContinue
+        if ($errText -match 'redirecting to (\S+)')
+        {
+            try
+            {
+                if (([uri]$matches[1]).Host -ne ([uri]$Url).Host) { return $false }
+            }
+            catch { return $false }
+        }
+        return $true
+    }
+    catch
+    {
+        return $false
+    }
+    finally
+    {
+        $env:GIT_TERMINAL_PROMPT = $oldPrompt
+        Remove-Item -LiteralPath @($out, $err) -ErrorAction SilentlyContinue
+    }
+}
+
+function Get-GithubMirrorCandidates
+{
+    <#
+    .SYNOPSIS
+    返回本次要探测的镜像候选:显式参数 > $env:PsGithubMirrorCandidates > 内置列表。
+    .DESCRIPTION
+    空字符串表示直连,调用方按空前缀处理;顺序即优先级,不做去重或排序。
+    #>
+    [CmdletBinding()]
+    param(
+        [string[]]$Mirrors
+    )
+    if ($Mirrors -and @($Mirrors).Count -gt 0) { return @($Mirrors) }
+    if (-not [string]::IsNullOrWhiteSpace($env:PsGithubMirrorCandidates))
+    {
+        return @($env:PsGithubMirrorCandidates -split '[,;\s]+' | Where-Object { $_ })
+    }
+    return @($GithubMirrors)
+}
+
+function Get-FastestGithubMirror
+{
+    <#
+    .SYNOPSIS
+    按 git 传输的响应速度挑选镜像,结果在模块会话内缓存。
+    .DESCRIPTION
+    逐候选运行 git ls-remote --heads 计时;只有退出码 0 且有 refs 才算可用,
+    超时与 HTTP 错误都不计入。$env:PsGithubMirror 设置时
+    直接返回它,不探测。返回最快的前缀;全部不可用时返回 ''(直连)。
+    .EXAMPLE
+    Get-FastestGithubMirror -Detailed
+    #>
+    [CmdletBinding()]
+    param(
+        [string[]]$Mirrors,
+        [string]$ProbeRepo = 'https://github.com/octocat/Hello-World.git',
+        [int]$TimeoutSec = 5,
+        [int]$CacheMinutes = 10,
+        [int]$MaxCandidates = 4,
+        [switch]$Force,
+        [switch]$Detailed
+    )
+    if (-not [string]::IsNullOrWhiteSpace($env:PsGithubMirror))
+    {
+        $fixed = ([string]$env:PsGithubMirror).TrimEnd('/')
+        if ($Detailed) { return [pscustomobject]@{ Mirror = $fixed; Source = 'env'; Results = @() } }
+        return $fixed
+    }
+    if (-not $Force -and $null -ne $script:FastestMirrorCache -and ((Get-Date) - $script:FastestMirrorCacheAt).TotalMinutes -lt $CacheMinutes)
+    {
+        if ($Detailed) { return [pscustomobject]@{ Mirror = $script:FastestMirrorCache; Source = 'cache'; Results = @() } }
+        return $script:FastestMirrorCache
+    }
+    $candidates = @(Get-GithubMirrorCandidates -Mirrors $Mirrors | Select-Object -First $MaxCandidates)
+    $results = foreach ($candidate in $candidates)
+    {
+        $mirror = ([string]$candidate).TrimEnd('/')
+        if (-not $mirror) { continue }
+        $url = "$mirror/$ProbeRepo"
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        $ok = Test-GitRemoteUrl -Url $url -TimeoutSec $TimeoutSec
+        $sw.Stop()
+        [pscustomobject]@{ Mirror = $mirror; Ok = [bool]$ok; Milliseconds = $sw.ElapsedMilliseconds }
+    }
+    $best = $results | Where-Object { $_.Ok } | Sort-Object Milliseconds | Select-Object -First 1
+    $mirror = if ($best) { $best.Mirror } else { '' }
+    $script:FastestMirrorCache = $mirror
+    $script:FastestMirrorCacheAt = Get-Date
+    if ($Detailed) { return [pscustomobject]@{ Mirror = $mirror; Source = 'probe'; Results = @($results); Checked = Get-Date } }
+    return $mirror
 }
 
 function Get-AvailableGithubMirrors

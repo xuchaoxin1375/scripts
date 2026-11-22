@@ -182,7 +182,7 @@ function Get-SpeedUpUrl
     .EXAMPLE
     获取加速修改后的链接(默认为追加头域名,可用镜像见 TestLinks 模块)
     PS C:\> Get-SpeedUpUrl -Url https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip
-    https://gh-proxy.com/https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip
+    https://gh-proxy.org/https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip
     另一种方式(-Option InsteadOf 把 github.com 整体替换为你自备的加速域名)
     PS C:\> Get-SpeedUpUrl -Url https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip -Option InsteadOf -InsteadOf 'your-mirror.example.com'
     .EXAMPLE
@@ -198,8 +198,8 @@ function Get-SpeedUpUrl
     param (
         # 被加速的链接,比如github release 的链接,或githubusercontent的链接;至于能不能够加速需要看源是否支持,比较好的源都支持
         $Url,
-        # 源可能会失效,默认的源可能会失效,可以找找新的源(可用列表见 TestLinks 模块,2026-09-24 本机实测)
-        $Prefix = '', #https://gh-proxy.com/
+        # 源可能会失效,默认的源可能会失效,可以找找新的源(可用列表见 TestLinks 模块,2026-11-22 本机实测)
+        $Prefix = '', #https://gh-proxy.org/
 
         # 其他通过替换域名的方式加速(自备替换域名,默认空表示不替换)
         $OriginDomain = 'github.com',
@@ -278,7 +278,7 @@ function Invoke-GithubResourcesSpeedup
     Set user agent for HTTP(S) downloads. Default: aria2/$VERSION, $VERSION is replaced by package version.
     .EXAMPLE
     PS> Invoke-GithubResourcesSpeedup -Url https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip
-    Download from: https://gh-proxy.com/https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip
+    Download from: https://gh-proxy.org/https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip
     .EXAMPLE
     PS> 'https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip'|Invoke-GithubResourcesSpeedup
 
@@ -365,7 +365,7 @@ function Get-SpeedUpUri
     要交互选镜/多镜像用 Get-SpeedUpUrl。
     .EXAMPLE
     Get-SpeedUpUri https://github.com/PowerShell/PowerShell/releases/download/v7.6.6/PowerShell-7.6.6-win-x64.zip
-    https://gh-proxy.com/https://github.com/PowerShell/PowerShell/releases/download/v7.6.6/PowerShell-7.6.6-win-x64.zip
+    https://gh-proxy.org/https://github.com/PowerShell/PowerShell/releases/download/v7.6.6/PowerShell-7.6.6-win-x64.zip
     #>
     [CmdletBinding()]
     param(
@@ -545,4 +545,275 @@ function gctm
 {
     param([String]$CommentStr)
     git commit -m $CommentStr
+}
+
+function Get-GitMirrorConfigPaths
+{
+    # 单点配置:inc 是 git 读取的缓存,state 记录最近一次选择与探测结果。
+    $dir = Join-Path $HOME '.config/git'
+    [pscustomobject]@{
+        Directory = $dir
+        Inc       = Join-Path $dir 'github-mirror.inc'
+        State     = Join-Path $dir 'github-mirror.json'
+    }
+}
+
+function Read-GitMirrorState
+{
+    <#
+    .SYNOPSIS
+    读取最近一次镜像选择结果;文件不存在或损坏时返回 $null。
+    #>
+    $paths = Get-GitMirrorConfigPaths
+    if (-not (Test-Path -LiteralPath $paths.State)) { return $null }
+    try { return Get-Content -LiteralPath $paths.State -Raw -Encoding UTF8 | ConvertFrom-Json }
+    catch { return $null }
+}
+
+function Write-GitMirrorState
+{
+    param($Prefix, $Source, $Results, $RepoRoot, [bool]$Failed = $false)
+    $paths = Get-GitMirrorConfigPaths
+    if (-not (Test-Path -LiteralPath $paths.Directory)) { New-Item -ItemType Directory -Path $paths.Directory -Force | Out-Null }
+    [pscustomobject]@{
+        prefix   = [string]$Prefix
+        source   = [string]$Source
+        checked  = (Get-Date).ToString('o')
+        repoRoot = [string]$RepoRoot
+        inc      = [string]$paths.Inc
+        failed   = $Failed
+        results  = @($Results)
+    } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $paths.State -Encoding UTF8
+}
+
+function Update-GitMirrorConfig
+{
+    <#
+    .SYNOPSIS
+    选择镜像前缀并写入 includeIf 单点配置:fetch 走镜像,push 仍走原站。
+    .DESCRIPTION
+    前缀来源优先级:显式 -Prefix > $env:PsGithubMirror > 未过期的 state 缓存 >
+    TestLinks 的 Get-FastestGithubMirror(git ls-remote 计时)> Get-SelectedMirror -Silent。
+    写入 ~/.config/git/github-mirror.inc(insteadOf + pushInsteadOf),并在全局
+    gitconfig 中确保 includeIf "gitdir/i:<RepoRoot>/" 指向它。前缀为空表示直连。
+    .EXAMPLE
+    Update-GitMirrorConfig -Force -Quiet
+    .EXAMPLE
+    Update-GitMirrorConfig -Prefix https://ghfast.top
+    #>
+    [CmdletBinding()]
+    param(
+        [string]$Prefix,
+        [string]$RepoRoot = 'C:\repos',
+        [int]$CacheMinutes = 10,
+        [int]$ProbeTimeoutSec = 5,
+        [switch]$Force,
+        [switch]$Quiet
+    )
+    $paths = Get-GitMirrorConfigPaths
+    if (-not (Test-Path -LiteralPath $paths.Directory)) { New-Item -ItemType Directory -Path $paths.Directory -Force | Out-Null }
+    $source = 'explicit'
+    $probeResults = @()
+    if (-not $PSBoundParameters.ContainsKey('Prefix'))
+    {
+        if (-not [string]::IsNullOrWhiteSpace($env:PsGithubMirror))
+        {
+            $Prefix = $env:PsGithubMirror
+            $source = 'env'
+        }
+        else
+        {
+            $state = Read-GitMirrorState
+            if (-not $Force -and $state -and $state.checked -and ([datetime]$state.checked).AddMinutes($CacheMinutes) -gt (Get-Date) -and -not $state.failed)
+            {
+                $Prefix = [string]$state.prefix
+                $source = 'cache'
+            }
+            else
+            {
+                if (-not (Get-Command Get-FastestGithubMirror -ErrorAction Ignore))
+                {
+                    Import-Module TestLinks -ErrorAction SilentlyContinue
+                }
+                if (Get-Command Get-FastestGithubMirror -ErrorAction Ignore)
+                {
+                    $detail = Get-FastestGithubMirror -Force -TimeoutSec $ProbeTimeoutSec -CacheMinutes 0 -Detailed
+                    $Prefix = [string]$detail.Mirror
+                    $probeResults = @($detail.Results)
+                    $source = 'probe'
+                }
+                elseif (Get-Command Get-SelectedMirror -ErrorAction Ignore)
+                {
+                    $Prefix = [string](Get-SelectedMirror -Silent | Select-Object -First 1)
+                    $source = 'selected'
+                }
+                else
+                {
+                    $Prefix = 'https://gh-proxy.org'
+                    $source = 'default'
+                }
+            }
+        }
+    }
+    $Prefix = ([string]$Prefix).TrimEnd('/')
+    if ($Prefix -match '^(off|none|false|0|no)$') { $Prefix = '' }
+    $lines = @('# Generated by Update-GitMirrorConfig; do not edit by hand.')
+    if ($Prefix)
+    {
+        $lines += "[url `"$Prefix/https://github.com/`"]"
+        $lines += '    insteadOf = https://github.com/'
+        # pushInsteadOf 的 base 不能与 insteadOf 的值相同:同值会被当成无改写而回退到 insteadOf,
+        # push 就会走到镜像。用显式 :443 保留原站,同时避开 insteadOf 的前缀匹配。
+        $lines += '[url "https://github.com:443/"]'
+        $lines += '    pushInsteadOf = https://github.com/'
+    }
+    else
+    {
+        $lines += '# No mirror selected; fetch stays on the original URL.'
+    }
+    $tmp = $paths.Inc + '.tmp'
+    Set-Content -LiteralPath $tmp -Value $lines -Encoding UTF8
+    Move-Item -LiteralPath $tmp -Destination $paths.Inc -Force
+
+    $root = ($RepoRoot.TrimEnd('\', '/')) -replace '\\', '/'
+    $key = "includeIf.gitdir/i:$root/.path"
+    $existing = @(& git config --global --get-all $key 2>$null)
+    if ($existing -notcontains '~/.config/git/github-mirror.inc')
+    {
+        & git config --global --add $key '~/.config/git/github-mirror.inc'
+    }
+
+    Write-GitMirrorState -Prefix $Prefix -Source $source -Results $probeResults -RepoRoot $RepoRoot
+    if (-not $Quiet)
+    {
+        $shown = if ($Prefix) { $Prefix } else { '(direct)' }
+        Write-Host "Git mirror: $shown ($source)" -ForegroundColor Cyan
+    }
+    return [pscustomobject]@{
+        Prefix = $Prefix
+        Source = $source
+        Inc    = $paths.Inc
+        State  = $paths.State
+    }
+}
+
+function Get-GitMirrorStatus
+{
+    <#
+    .SYNOPSIS
+    只读查看当前 git 镜像前缀、缓存年龄、includeIf 与最近探测结果。
+    #>
+    [CmdletBinding()]
+    param()
+    $paths = Get-GitMirrorConfigPaths
+    $state = Read-GitMirrorState
+    $root = if ($state -and $state.repoRoot) { [string]$state.repoRoot } else { 'C:\repos' }
+    $root = ($root.TrimEnd('\', '/')) -replace '\\', '/'
+    $key = "includeIf.gitdir/i:$root/.path"
+    $include = @(& git config --global --get-all $key 2>$null)
+    [pscustomobject]@{
+        Prefix      = if ($state) { [string]$state.prefix } else { $null }
+        Source      = if ($state) { [string]$state.source } else { $null }
+        AgeMinutes  = if ($state -and $state.checked) { [math]::Round(((Get-Date) - [datetime]$state.checked).TotalMinutes, 1) } else { $null }
+        Failed      = if ($state) { [bool]$state.failed } else { $false }
+        IncPath     = $paths.Inc
+        IncExists   = Test-Path -LiteralPath $paths.Inc
+        IncludeIf   = ($include -contains '~/.config/git/github-mirror.inc')
+        RepoRoot    = $root
+        Results     = if ($state) { @($state.results) } else { @() }
+    }
+}
+
+function Repair-GitMirrorRemoteUrls
+{
+    <#
+    .SYNOPSIS
+    把 C:\repos 下仓库 origin 里的镜像前缀移除,恢复为 https://github.com/...。
+    .DESCRIPTION
+    一次性迁移用:旧 remote 形如 https://<镜像>/https://github.com/<owner>/<repo>.git,
+    归一到原站 URL 后,后续 fetch 由 includeIf 的 insteadOf 统一改写。
+    .EXAMPLE
+    Repair-GitMirrorRemoteUrls -WhatIf
+    #>
+    [CmdletBinding(SupportsShouldProcess = $true)]
+    param(
+        [string]$Root = 'C:\repos',
+        [string[]]$Mirrors = @(
+            'https://gh-proxy.org',
+            'https://cdn.crashmc.com',
+            'https://ghfast.top',
+            'https://ghfile.geekertao.top',
+            'https://ghproxy.net',
+            'https://v4.gh-proxy.org',
+            'https://cors.isteed.cc',
+            'https://gh-proxy.com'
+        )
+    )
+    $repos = Get-ChildItem -LiteralPath $Root -Directory -Force -ErrorAction SilentlyContinue |
+        Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName '.git') }
+    foreach ($repo in $repos)
+    {
+        $url = (& git -C $repo.FullName remote get-url origin 2>$null)
+        if ([string]::IsNullOrWhiteSpace($url)) { continue }
+        $url = ([string]$url).Trim()
+        foreach ($mirror in $Mirrors)
+        {
+            $prefix = ([string]$mirror).TrimEnd('/')
+            if ($url.StartsWith("$prefix/https://github.com/", [System.StringComparison]::OrdinalIgnoreCase))
+            {
+                $newUrl = $url.Substring($prefix.Length + 1)
+                if ($PSCmdlet.ShouldProcess("$($repo.Name) origin", "set-url $newUrl"))
+                {
+                    & git -C $repo.FullName remote set-url origin $newUrl
+                }
+                break
+            }
+        }
+    }
+}
+
+function gitm
+{
+    <#
+    .SYNOPSIS
+    git 包装:fetch/pull/clone 前按 TTL 检查镜像缓存,过期或上次失败时先刷新。
+    .DESCRIPTION
+    普通 git 命令读 includeIf 缓存,零额外延迟;本函数只在网络型子命令前补一次
+    有界测速。上次调用失败时把 failed 记进 state,下一次调用会强制刷新。
+    .EXAMPLE
+    gitm fetch origin
+    .EXAMPLE
+    gitm pull --ff-only
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(ValueFromRemainingArguments = $true)][string[]]$GitArgs
+    )
+    $sub = $null
+    $i = 0
+    while ($i -lt @($GitArgs).Count)
+    {
+        $arg = $GitArgs[$i]
+        if ($arg -in @('-C', '-c', '--git-dir', '--work-tree')) { $i += 2; continue }
+        if ($arg -notmatch '^-') { $sub = $arg; break }
+        $i++
+    }
+    if ($sub -in @('fetch', 'pull', 'clone'))
+    {
+        $state = Read-GitMirrorState
+        $stale = (-not $state) -or (-not $state.checked) -or
+            ([datetime]$state.checked).AddMinutes(10) -lt (Get-Date) -or [bool]$state.failed
+        if ($stale) { Update-GitMirrorConfig -Force -Quiet | Out-Null }
+    }
+    & git @GitArgs
+    $code = $LASTEXITCODE
+    if ($code -ne 0 -and $sub -in @('fetch', 'pull', 'clone'))
+    {
+        $state = Read-GitMirrorState
+        if ($state)
+        {
+            $state | Add-Member -NotePropertyName failed -NotePropertyValue $true -Force
+            $state | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Get-GitMirrorConfigPaths).State -Encoding UTF8
+        }
+    }
 }

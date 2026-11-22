@@ -747,9 +747,9 @@ deps_hint() {
 
 gh_mirror_prefixes() {
 	case "$MIRROR_MODE" in
-	auto) printf '%s\n' 'https://gh-proxy.com' 'https://ghproxy.net' '' ;;
+	auto) printf '%s\n' 'https://gh-proxy.org' 'https://ghproxy.net' '' ;;
 	direct) printf '%s\n' '' ;;
-	ghproxy) printf '%s\n' 'https://gh-proxy.com' ;;
+	ghproxy) printf '%s\n' 'https://gh-proxy.org' ;;
 	ghproxynet) printf '%s\n' 'https://ghproxy.net' ;;
 	ghfast) printf '%s\n' 'https://ghfast.top' ;;
 	custom) printf '%s\n' "$CUSTOM_MIRROR" ;;
@@ -890,7 +890,7 @@ print_install_plan() {
 	case "$MIRROR_MODE" in
 	auto) channel='auto（gh-proxy → ghproxy.net → 直连）' ;;
 	direct) channel='direct（直连）' ;;
-	ghproxy) channel='ghproxy（https://gh-proxy.com）' ;;
+	ghproxy) channel='ghproxy（https://gh-proxy.org）' ;;
 	ghproxynet) channel='ghproxynet（https://ghproxy.net）' ;;
 	ghfast) channel='ghfast（https://ghfast.top）' ;;
 	custom) channel="custom（${CUSTOM_MIRROR}）" ;;

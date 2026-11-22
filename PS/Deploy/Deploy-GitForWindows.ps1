@@ -1,7 +1,7 @@
 ﻿<# 
 .SYNOPSIS
 临时部署此脚本文件
-$mirror = 'https://gh-proxy.com'   # 镜像单独设置；也可用 $env:PsGithubMirror
+$mirror = 'https://gh-proxy.org'   # 镜像单独设置；也可用 $env:PsGithubMirror
 Invoke-Expression ((Invoke-RestMethod "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy-GitForWindows.ps1").TrimStart([char]0xFEFF))
 .DESCRIPTION
 此脚本文件用于部署Git for Windows到windows系统,可以自动下载最新版本的Git for Windows安装包,也可以指定下载链接,也可以指定本地安装包路径进行部署
@@ -13,7 +13,7 @@ param(
     $RepoSource = 'github',
     # 下载加速镜像:显式指定时不再测速/弹窗;$env:PsGithubMirror 优先,否则默认 gh-proxy
     [Alias('Mirror')]
-    $GithubMirror = $(if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }),
+    $GithubMirror = $(if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.org' }),
     # 开发模式:用本地最新模块(Deploy.psm1/Git.psm1),不拉远程;仓库根自动从脚本位置推导
     [switch]$Dev,
     $DevRoot = ''
@@ -51,7 +51,7 @@ if (Get-Command git -ErrorAction SilentlyContinue)
     Write-Host 'Git command already exists,skip installation.' -ForegroundColor yellow
     return $true
 }
-# $github_mirror="https://gh-proxy.com"
+# $github_mirror="https://gh-proxy.org"
 ## 导入其他模块(Deploy.psm1/Git.psm1 只提供函数定义,点源本地版与 irm 远端版等价)
 if ($Dev)
 {

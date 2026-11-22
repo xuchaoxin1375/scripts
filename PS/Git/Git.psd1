@@ -21,7 +21,12 @@
         'gitS',
         'gitNoRepeatValidate',
         'checkGitReports',
-        'gctm'
+        'gctm',
+        'Read-GitMirrorState',
+        'Update-GitMirrorConfig',
+        'Get-GitMirrorStatus',
+        'Repair-GitMirrorRemoteUrls',
+        'gitm'
     )
     CmdletsToExport = @()
     VariablesToExport = @()

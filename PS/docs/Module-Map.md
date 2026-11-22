@@ -46,7 +46,7 @@
 | `NetDrivers` | 443/9 | 网络驱动器挂载、alist/chfs/aria2 服务（B 档 5.1） |
 | `Proxy` | 168/5 | 代理开关与系统代理设置（B 档 5.1，2026-09-22 酌情降档） |
 | `SSH` | 766/12 | SSH 密钥/服务端/客户端初始化 + 远程执行（`Invoke-RemoteSSH(0)`、`Add-SSHkeyOnHost` 2026-09-22 从 `Web` 迁入） |
-| `TestLinks` | 347/4 | GitHub 镜像站可用性测试（含数据源；B 档 5.1） |
+| `TestLinks` | 347/4 | GitHub 镜像站可用性测试（含数据源；`Get-FastestGithubMirror` 按 git 传输测速，`Test-GitRemoteUrl` 带超时与跨域重定向过滤；B 档 5.1） |
 | `FileSystem` | 1733/29 | 文件/目录度量（`Get-Size` 等）+ Robocopy 封装 + 日常操作（浏览/检索/改名/链接，2026-09-22 从 `Basic` 迁入 19 函数，B 档 5.1） |
 | `WinSys` | 351/16 | Windows 本机设置：键盘输入法/TTS 语音/电源管理（2026-09-21 从 `Basic` 迁入，命令名不变；B 档 5.1） |
 | `Tools` | 405/10 | 通用日常小工具：历史/版本/命令可用性/vscode 右键/conda 源（系统配置 14 函数已迁 `WinConfig`，2026-09-22） |
@@ -70,7 +70,7 @@
 | `Scoop` | 984/11 | Scoop 包管理：国内镜像部署、批量装机、版本切换、`Repair-ScoopUpdate`（修复 update 被未提交更改中断，2026-09-22 从 `Deploy` 迁入，冷路径按需加载） |
 | `DevEnv` | 2378/27 | 语言工具链与编辑器开箱：Python/conda/C++/Typora/VSCode/WT/补全栈（`Deploy-CompletionStack` 默认只装仓库内核心层，argc/PSFzf/fzf/zoxide 按 `-Include*` 追加；`-IncludePSReadLine51` 把 5.1 的 PSReadLine 从 2.0.0 升到最新稳定版（当前 2.4.5），本机已有则离线复制并默认持久化 User PSModulePath；`Install-Ps51PSReadLine` 提供单独入口（`-Version` 固定版本；2.4.x 用 netstd 资产），`Sync-Ps51PSReadLine` 跟随 pwsh 升级；`Deploy-ArgcCompletions` 并发下载、支持代理，并优先取 `scripts-deps` 转存仓库的固定版本；`Deploy-Carapace` 按 Windows/macOS/Linux 与 amd64/arm64 从官方 Release 下载、校验并安装 carapace，下载优先 aria2c 多连接并打印链接/来源，镜像可用 `-NoGithubMirror`/`-GithubMirror` 控制，`-Enable` 可安装后直接启用组件，`-Bash`/`-BashLogin` 装完顺带写入 bash rc；2026-09-22 从 `Deploy` 迁入，冷路径按需加载） |
 | `Development` | 340/22 | Django 快捷命令、ssh 别名、文本清理 |
-| `Git` | 548/16 | git 日常：浅克隆、一键提交、镜像加速下载（`Get-SpeedUpUri` 轻量单链版，2026-09-24 补） |
+| `Git` | 548/16 | git 日常：浅克隆、一键提交、镜像加速下载（`Get-SpeedUpUri` 轻量单链版，2026-09-24 补）；镜像单点配置（`Update-GitMirrorConfig`/`Get-GitMirrorStatus`/`gitm`，includeIf + insteadOf + pushInsteadOf） |
 | `RepoSync` | 556/8 | 多仓库同步/开发环境同步：`Push/Update-ReposesConfiged*`、`update_functions`（`Update-ReposesConfiged` 按名单选源：`$CommonRepos` 走 GitHub 加速镜像，其余仓库（含 `$CxxuRepos`）默认走 gitee；支持 `-RepoSource auto/github/gitee`、`-GithubMirror`/`-NoMirror`、`-PrivateRepos` 与 `-Proxy`/`-NoProxy`；已有仓库 origin 指向本账号同名仓库时按名单迁移主机；拉取前检测已跟踪文件的未提交改动，镜像失败自动直连重试（rebase 冲突除外）；2026-09-22 从 `Basic` 迁入，B 档 5.1） |
 | `MySql` | 905/12 | MySQL 库表备份/建删/查询（`Get-MySqlDatabaseNameCmdletDeprecated` 已删，2026-09-22） |
 | `WordPress` | 1685/9 | WP 本地建站 + 总入口 `Deploy-Wp`；线上运维 18 函数已迁 `WpOnline`、内容处理 6 函数已迁 `WpContent`（2026-09-22，命令名不变） |

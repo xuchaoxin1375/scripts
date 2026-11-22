@@ -2,7 +2,7 @@
 .SYNOPSIS
 临时部署此模块
 
-$mirror = 'https://gh-proxy.com'   # 镜像单独设置；也可用 $env:PsGithubMirror
+$mirror = 'https://gh-proxy.org'   # 镜像单独设置；也可用 $env:PsGithubMirror
 Invoke-Expression ((Invoke-RestMethod "$mirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/Deploy.psm1").TrimStart([char]0xFEFF))
 .DESCRIPTION
 
@@ -88,13 +88,13 @@ function Get-SelectedMirror
     .EXAMPLE
     PS C:\repos\scripts> Get-SelectedMirror
 Checking available Mirrors...
-         https://gh-proxy.com
+         https://gh-proxy.org
          https://gh-proxy.org
 ...
 
 Available Mirrors:
  0: Use No Mirror
- 1: https://gh-proxy.com
+ 1: https://gh-proxy.org
  2: https://gh-proxy.org
  3: https://ghfast.top
  4: https://ghproxy.net
@@ -102,17 +102,17 @@ Available Mirrors:
 
 Select the number(s) of the mirror you want to use [0~13] ?(default: 1): 1,3,5
 Selected mirror:[
-        https://gh-proxy.com
+        https://gh-proxy.org
         https://ghfast.top
         https://cors.isteed.cc
 ]
-https://gh-proxy.com
+https://gh-proxy.org
 https://ghfast.top
 https://cors.isteed.cc
 PS C:\repos\scripts>
     .EXAMPLE
     指定镜像时不测速、不弹窗(部署脚本的默认路径):
-    Get-SelectedMirror -Mirror 'https://gh-proxy.com'
+    Get-SelectedMirror -Mirror 'https://gh-proxy.org'
     #>
     [CmdletBinding()]
     param (
@@ -144,10 +144,17 @@ PS C:\repos\scripts>
     {
         # 临时获取链接测试函数(走中央镜像,不再依赖 gitee)
         # 远端模块带 UTF-8 BOM,irm 保留为 U+FEFF,不裁掉会让首行 <# 注释失效(解析报错)
-        $tlMirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
+        $tlMirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.org' }
         (Invoke-RestMethod "$tlMirror/https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/TestLinks/TestLinks.psm1").TrimStart([char]0xFEFF) | Invoke-Expression
     }
  
+    # 静默路径优先按 git 传输测速选镜；TestLinks 未加载或测速不可用时保持原探测流程
+    if ($Silent -and -not $Linearly -and (Get-Command Get-FastestGithubMirror -ErrorAction Ignore))
+    {
+        $fastest = Get-FastestGithubMirror
+        if ($null -ne $fastest) { return @($fastest) }
+    }
+
     $Mirrors = Get-AvailableGithubMirrors -PassThru -Linearly:$Linearly
 
     $res = @()
@@ -157,7 +164,7 @@ PS C:\repos\scripts>
         $numOfMirrors = $Mirrors.Count
         $range = "[0~$($numOfMirrors-1)]"
         $num = Read-Host -Prompt "Select the number(s) of the mirror you want to use $range ?(default: $default)"
-        # $mirror = 'https://gh-proxy.com'
+        # $mirror = 'https://gh-proxy.org'
         # if($num.ToCharArray() -contains ','){
         # }
 
@@ -385,7 +392,7 @@ function Deploy-GithubHostsAutoUpdater
     #>
     param (
     )
-    $tlMirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.com' }
+    $tlMirror = if ($env:PsGithubMirror) { ([string]$env:PsGithubMirror).TrimEnd('/') } else { 'https://gh-proxy.org' }
     $regRaw = 'https://raw.githubusercontent.com/xuchaoxin1375/scripts/refs/heads/main/PS/Deploy/GithubHostsUpdater/Register-GithubHostsAutoUpdater.ps1'
     # 远端脚本带 UTF-8 BOM,irm 保留为 U+FEFF,不裁掉会让首行 <# 注释失效(解析报错)
     try

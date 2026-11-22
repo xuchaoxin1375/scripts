@@ -9,7 +9,10 @@
         'Test-LinksLinearly',
         'Test-LinksParallel',
         'Test-MirrorAvailability',
-        'Get-AvailableGithubMirrors'
+        'Get-AvailableGithubMirrors',
+        'Test-GitRemoteUrl',
+        'Get-GithubMirrorCandidates',
+        'Get-FastestGithubMirror'
     )
     CmdletsToExport = @()
     VariablesToExport = @()

@@ -694,7 +694,7 @@ function Get-CxxuGithubMirror
     }
     if (-not $MirrorSpecified -and [string]::IsNullOrWhiteSpace($value))
     {
-        $value = 'https://gh-proxy.com'
+        $value = 'https://gh-proxy.org'
     }
     if ([string]::IsNullOrWhiteSpace($value)) { return '' }
     $value = $value.Trim()
@@ -713,7 +713,7 @@ function Get-CxxuDownloadUrls
         [switch]$NoMirror
     )
     if ($NoMirror) { $Mirror = '' }
-    elseif ([string]::IsNullOrWhiteSpace($Mirror)) { $Mirror = 'https://gh-proxy.com' }
+    elseif ([string]::IsNullOrWhiteSpace($Mirror)) { $Mirror = 'https://gh-proxy.org' }
     # 只有 GitHub 域才套镜像；本地/其他站点直接走原地址，避免无意义的前缀请求。
     if ($Url -notmatch '^https?://(?:github\.com|raw\.githubusercontent\.com|codeload\.github\.com|api\.github\.com)/')
     {
@@ -1933,7 +1933,7 @@ function Deploy-Carapace
     默认查询最新 release；网络受限或需要可复现版本时用 -Version 指定版本号，可跳过 GitHub API。
     下载默认优先使用 aria2c（多连接并发分片），未找到 aria2c 时回退 Invoke-WebRequest；
     每次尝试都打印原始链接、实际链接、来源与执行命令，便于确认走了哪个源。
-    默认经 GitHub 加速镜像（$env:PsGithubMirror，未设置时 https://gh-proxy.com）；
+    默认经 GitHub 加速镜像（$env:PsGithubMirror，未设置时 https://gh-proxy.org）；
     -NoGithubMirror（别名 -NoMirror）本次直连，-GithubMirror（别名 -Mirror）指定镜像，
     -GithubMirror '' 等同直连；-NoAria2 强制回退 Invoke-WebRequest，
     -Aria2Connections 调整 aria2c 连接数。
@@ -1952,7 +1952,7 @@ function Deploy-Carapace
     .EXAMPLE
     Deploy-Carapace -NoGithubMirror -NoAria2
     .EXAMPLE
-    Deploy-Carapace -GithubMirror 'https://gh-proxy.com' -Aria2Connections 16
+    Deploy-Carapace -GithubMirror 'https://gh-proxy.org' -Aria2Connections 16
     .EXAMPLE
     Deploy-Carapace -Destination "$HOME/.local/bin" -SkipPath -Force
     #>
@@ -1966,7 +1966,7 @@ function Deploy-Carapace
         [string]$Proxy = '',
         # 强制直连，忽略 -Proxy 与代理环境变量
         [switch]$NoProxy,
-        # GitHub 加速镜像前缀；留空时读 $env:PsGithubMirror，未设置用 https://gh-proxy.com
+        # GitHub 加速镜像前缀；留空时读 $env:PsGithubMirror，未设置用 https://gh-proxy.org
         [AllowEmptyString()][Alias('Mirror')][string]$GithubMirror = '',
         # 本次直连 GitHub，忽略 -GithubMirror 与 $env:PsGithubMirror
         [Alias('NoMirror')][switch]$NoGithubMirror,
